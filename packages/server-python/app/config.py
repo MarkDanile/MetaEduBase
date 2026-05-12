@@ -1,0 +1,46 @@
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    app_name: str = "MetaEduBase"
+    app_version: str = "0.1.0"
+    debug: bool = True
+
+    database_url: str = "postgresql+asyncpg://metaedu@localhost:5432/metaedu"
+    database_url_sync: str = "postgresql://metaedu@localhost:5432/metaedu"
+    database_echo: bool = False
+
+    redis_url: str = "redis://localhost:6379/0"
+    celery_broker_url: str = "redis://localhost:6379/1"
+    celery_result_backend: str = "redis://localhost:6379/2"
+
+    minio_endpoint: str = "localhost:9000"
+    minio_access_key: str = "metaedu"
+    minio_secret_key: str = "dev_only_123"
+    minio_bucket: str = "metaedu-resources"
+    minio_secure: bool = False
+
+    jwt_secret: str = "dev-only-change-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 1440
+
+    llm_default_provider: str = "minimax"
+    minimax_api_key: str = ""
+    minimax_base_url: str = "https://api.minimaxi.com/v1"
+    minimax_model: str = "MiniMax-M2"
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com/v1"
+    deepseek_model: str = "deepseek-chat"
+    qwen_api_key: str = ""
+    qwen_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    qwen_model: str = "qwen-max"
+
+    embedding_model: str = "BAAI/bge-m3"
+
+    mcp_server_host: str = "0.0.0.0"
+    mcp_server_port: int = 8001
+
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+
+settings = Settings()

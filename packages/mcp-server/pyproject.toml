@@ -1,0 +1,14 @@
+[project]
+name = "metaedu-mcp-server"
+version = "0.1.0"
+description = "MetaEduBase MCP Server - AI Native 知识服务接口"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=1.6.0",
+    "httpx>=0.28.0",
+    "pydantic>=2.10.0",
+]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"

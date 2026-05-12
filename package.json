@@ -1,0 +1,23 @@
+{
+  "name": "metaedu-base",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MetaEduBase - AI Native 职业教育知识基座",
+  "scripts": {
+    "dev:web": "pnpm --filter @metaedu/web dev",
+    "build:web": "pnpm --filter @metaedu/web build",
+    "dev:server": "cd packages/server-python && make dev",
+    "dev:mcp": "cd packages/mcp-server && make dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "build": "turbo run build"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
