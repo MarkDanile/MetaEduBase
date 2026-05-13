@@ -19,9 +19,11 @@
       </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div class="lg:col-span-2 space-y-4 animate-slide-up stagger-2">
-        <h2 class="text-[16px] font-semibold">功能模块</h2>
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <div class="lg:col-span-3 space-y-5 animate-slide-up stagger-2">
+        <div class="flex items-center justify-between">
+          <h2 class="text-[16px] font-semibold">功能模块</h2>
+        </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <RouterLink
             v-for="(item, i) in navItems"
@@ -45,35 +47,43 @@
         </div>
       </div>
 
-      <div class="space-y-4 animate-slide-up stagger-3">
-        <h2 class="text-[16px] font-semibold">快速开始</h2>
-        <div class="space-y-2">
-          <button
-            v-for="shortcut in shortcuts"
-            :key="shortcut.label"
-            @click="$router.push(shortcut.route)"
-            class="liquid-card p-3.5 w-full text-left group"
-          >
-            <div class="flex items-center gap-2.5">
-              <div class="w-7 h-7 rounded-md bg-[var(--color-accent-bg)] flex items-center justify-center flex-shrink-0">
-                <div v-html="shortcut.icon" />
-              </div>
-              <div class="flex-1 min-w-0">
-                <p class="text-[13px] font-medium group-hover:text-[var(--color-accent)] transition-colors duration-200">{{ shortcut.label }}</p>
-                <p class="text-[11px] text-[var(--color-ink-tertiary)]">{{ shortcut.hint }}</p>
-              </div>
+      <div class="lg:col-span-2 animate-slide-up stagger-3">
+        <div class="liquid-card p-5 space-y-5">
+          <div>
+            <h2 class="text-[15px] font-semibold mb-3">快捷操作</h2>
+            <div class="space-y-1.5">
+              <button
+                v-for="shortcut in shortcuts"
+                :key="shortcut.label"
+                @click="$router.push(shortcut.route)"
+                class="w-full flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] hover:bg-[var(--color-bg-hover)] transition-colors group text-left"
+              >
+                <div class="w-8 h-8 rounded-md bg-[var(--color-accent-bg)] flex items-center justify-center flex-shrink-0">
+                  <div v-html="shortcut.icon" />
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-[13px] font-medium group-hover:text-[var(--color-accent)] transition-colors">{{ shortcut.label }}</p>
+                  <p class="text-[11px] text-[var(--color-ink-tertiary)]">{{ shortcut.hint }}</p>
+                </div>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-[var(--color-ink-tertiary)] flex-shrink-0 transition-transform group-hover:translate-x-1"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
             </div>
-          </button>
-        </div>
+          </div>
 
-        <div class="liquid-card p-4 mt-4">
-          <h3 class="text-[13px] font-semibold mb-2.5">最近活动</h3>
-          <div class="space-y-2.5">
-            <div v-for="activity in recentActivities" :key="activity.text" class="flex items-start gap-2">
-              <div class="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" :class="activity.dotClass"></div>
-              <div>
-                <p class="text-[12px] text-[var(--color-ink)]">{{ activity.text }}</p>
-                <p class="text-[10px] text-[var(--color-ink-tertiary)]">{{ activity.time }}</p>
+          <div class="border-t border-[var(--color-border-subtle)] pt-5">
+            <h2 class="text-[15px] font-semibold mb-3">最近动态</h2>
+            <div class="space-y-0">
+              <div v-for="(activity, i) in recentActivities" :key="activity.text">
+                <div class="flex items-start gap-3 py-2.5">
+                  <div class="relative flex flex-col items-center">
+                    <div class="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" :class="activity.dotClass"></div>
+                    <div v-if="i < recentActivities.length - 1" class="w-px flex-1 min-h-[12px] bg-[var(--color-border-subtle)] mt-1"></div>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-[12px] text-[var(--color-ink)]">{{ activity.text }}</p>
+                    <p class="text-[11px] text-[var(--color-ink-tertiary)] mt-0.5">{{ activity.time }}</p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
