@@ -1,8 +1,8 @@
 from abc import abstractmethod
 from typing import Any
 
-from app.shared.domain.repository import Repository
 from app.contexts.knowledge.domain.entities.knowledge_node import KnowledgeNode
+from app.shared.domain.repository import Repository
 
 
 class KnowledgeNodeRepository(Repository[KnowledgeNode]):

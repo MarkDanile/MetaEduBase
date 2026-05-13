@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, Index, String, Text
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.infrastructure.database import Base
@@ -30,8 +30,8 @@ class KnowledgeNodeModel(Base):
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
     embedding_id: Mapped[str | None] = mapped_column(String(100))
     full_text: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None), onupdate=lambda: datetime.now(UTC).replace(tzinfo=None))
 
     tenant = relationship("TenantModel", lazy="selectin")
     children = relationship("KnowledgeNodeModel", lazy="selectin", backref="parent_node", remote_side="KnowledgeNodeModel.id")
@@ -52,7 +52,7 @@ class KnowledgeEdgeModel(Base):
     relation_type: Mapped[str] = mapped_column(String(50), nullable=False)
     weight: Mapped[float] = mapped_column(default=1.0)
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
     tenant = relationship("TenantModel", lazy="selectin")
     source = relationship("KnowledgeNodeModel", foreign_keys=[source_id], lazy="selectin")

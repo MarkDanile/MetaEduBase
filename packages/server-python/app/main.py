@@ -3,13 +3,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import settings
 import app.shared.infrastructure.models  # noqa: F401
-from app.shared.infrastructure.seed import init_db_with_seed
+from app.config import settings
 from app.contexts.identity.interfaces.api.router import router as identity_router
-from app.contexts.knowledge.interfaces.api.router import router as knowledge_router
 from app.contexts.knowledge.interfaces.api.ai_router import router as ai_router
+from app.contexts.knowledge.interfaces.api.router import router as knowledge_router
 from app.contexts.resource.interfaces.api.router import router as resource_router
+from app.shared.infrastructure.seed import init_db_with_seed
 
 
 @asynccontextmanager

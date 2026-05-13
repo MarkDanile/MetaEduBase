@@ -5,9 +5,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.shared.infrastructure.database import get_session
-from app.shared.infrastructure.tenant_context import set_tenant_context, clear_tenant_context
 from app.contexts.identity.application.auth_service import decode_access_token
+from app.shared.infrastructure.database import get_session
+from app.shared.infrastructure.tenant_context import set_tenant_context
 
 security_scheme = HTTPBearer()
 

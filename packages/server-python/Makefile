@@ -15,6 +15,15 @@ migrate:
 migrate-create:
 	alembic revision --autogenerate -m "$(msg)"
 
+migrate-downgrade:
+	alembic downgrade -1
+
+migrate-history:
+	alembic history --verbose
+
+migrate-current:
+	alembic current
+
 lint:
 	ruff check app/ tests/
 	mypy app/

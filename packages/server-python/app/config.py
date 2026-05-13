@@ -37,6 +37,12 @@ class Settings(BaseSettings):
 
     embedding_model: str = "BAAI/bge-m3"
 
+    ner_backend: str = "rule"
+    recall_mode: str = "pg_parallel"
+    fusion_backend: str = "frequency"
+    recall_top_k: int = 5
+    fusion_top_k: int = 10
+
     mcp_server_host: str = "0.0.0.0"
     mcp_server_port: int = 8001
 

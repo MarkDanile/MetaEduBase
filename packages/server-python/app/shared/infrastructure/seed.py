@@ -1,15 +1,15 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 import bcrypt
 from sqlalchemy import text
 
-from app.shared.infrastructure.database import async_session_factory, engine
+from app.shared.infrastructure.database import async_session_factory
 
 DEFAULT_TENANT_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 DEFAULT_ADMIN_ID = uuid.UUID("00000000-0000-0000-0000-000000000002")
 
-_now = datetime.utcnow()
+_now = datetime.now(UTC).replace(tzinfo=None)
 
 
 async def seed_default_data() -> None:
@@ -35,7 +35,7 @@ async def seed_default_data() -> None:
             },
         )
 
-        password_hash = bcrypt.hashpw("admin123".encode(), bcrypt.gensalt()).decode()
+        password_hash = bcrypt.hashpw(b"admin123", bcrypt.gensalt()).decode()
         await session.execute(
             text(
                 "INSERT INTO metaedu.users (id, tenant_id, username, email, password_hash, role, clearance_level, is_active, created_at, updated_at) "
@@ -57,8 +57,8 @@ async def seed_default_data() -> None:
 
 
 async def init_db_with_seed() -> None:
-    from app.shared.infrastructure.database import init_db
     import app.shared.infrastructure.models  # noqa: F401
+    from app.shared.infrastructure.database import init_db
 
     await init_db()
     await seed_default_data()

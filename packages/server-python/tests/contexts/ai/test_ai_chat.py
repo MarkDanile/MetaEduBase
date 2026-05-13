@@ -49,7 +49,10 @@ async def test_chat_with_mock_llm(client: AsyncClient, auth_headers: dict):
     mock_http_client.__aexit__ = AsyncMock(return_value=False)
 
     with patch("app.contexts.knowledge.interfaces.api.ai_router.httpx.AsyncClient", return_value=mock_http_client):
-        with patch("app.contexts.knowledge.interfaces.api.ai_router.get_embedding_vec", return_value=None):
+        with patch(
+            "app.contexts.knowledge.application.recall_service.get_embedding_vec",
+            return_value=None,
+        ):
             resp = await client.post(
                 "/api/v1/ai/chat",
                 headers=auth_headers,

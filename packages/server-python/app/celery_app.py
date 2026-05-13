@@ -19,4 +19,4 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
 )
 
-celery_app.autodiscover_tasks(["app.contexts.document.application.tasks"])
+celery_app.autodiscover_tasks(["app.contexts"])
