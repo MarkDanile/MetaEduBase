@@ -1,18 +1,19 @@
 <template>
-  <div class="p-8 max-w-[1200px] mx-auto">
+  <div class="p-8 max-w-[1000px] mx-auto">
     <div class="flex items-start justify-between mb-8 animate-slide-up">
       <div>
-        <h1 class="text-[28px] font-semibold tracking-tight" style="font-family: var(--font-display)">知识库</h1>
+        <h1 class="text-[24px] font-semibold tracking-tight" style="letter-spacing:-0.5px">知识库</h1>
         <p class="text-[13px] text-[var(--color-ink-tertiary)] mt-1">管理和浏览结构化的职业教育知识体系</p>
+        <div class="wet-line mt-2.5" style="width:40px"></div>
       </div>
       <button @click="showCreateDialog = true" class="liquid-btn liquid-btn-primary">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         新建节点
       </button>
     </div>
 
-    <div class="mb-6 glass rounded-[var(--radius-lg)] p-4 flex gap-3 items-center animate-slide-up stagger-1">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <div class="mb-6 bg-[var(--color-bg-warm)] border border-[var(--color-border)] rounded-[var(--radius-md)] px-4 py-2.5 flex gap-3 items-center animate-slide-up stagger-1">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input
         v-model="searchQuery"
         type="text"
@@ -26,7 +27,7 @@
     <div v-if="breadcrumbPath.length > 0" class="mb-5 flex items-center gap-1.5 text-[13px] animate-slide-up stagger-2">
       <button @click="loadNodes()" class="text-[var(--color-accent)] hover:underline">根目录</button>
       <template v-for="(crumb, i) in breadcrumbPath" :key="i">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="1.5"><polyline points="9 18 15 12 9 6"/></svg>
         <button
           @click="loadNodes(crumb.id)"
           :class="i === breadcrumbPath.length - 1 ? 'text-[var(--color-ink)] font-medium' : 'text-[var(--color-accent)] hover:underline'"
@@ -43,82 +44,88 @@
       </div>
     </div>
 
-    <div v-else-if="nodes.length === 0" class="py-20 text-center animate-slide-up stagger-2">
-      <div class="w-16 h-16 mx-auto mb-4 rounded-[var(--radius-lg)] bg-gradient-to-br from-[var(--color-bg-mesh-1)] to-[var(--color-bg-mesh-2)] flex items-center justify-center">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-      </div>
-      <p class="text-[var(--color-ink-tertiary)] text-[14px]">暂无知识节点</p>
+    <div v-else-if="nodes.length === 0" class="py-16 text-center animate-slide-up stagger-2">
+      <svg class="mx-auto mb-5" width="80" height="60" viewBox="0 0 80 60" fill="none">
+        <rect x="8" y="4" width="64" height="48" rx="4" stroke="var(--color-border)" stroke-width="1.5"/>
+        <line x1="8" y1="20" x2="72" y2="20" stroke="var(--color-border)" stroke-width="1"/>
+        <line x1="8" y1="36" x2="72" y2="36" stroke="var(--color-border)" stroke-width="1"/>
+        <rect x="16" y="9" width="12" height="7" rx="1.5" fill="var(--color-accent-bg)" stroke="var(--color-accent)" stroke-width="0.8"/>
+        <rect x="32" y="9" width="16" height="7" rx="1.5" fill="var(--color-accent-bg)" stroke="var(--color-accent)" stroke-width="0.8"/>
+        <rect x="16" y="25" width="20" height="7" rx="1.5" fill="var(--color-tag-green)" stroke="var(--color-tag-green-text)" stroke-width="0.8"/>
+        <rect x="40" y="25" width="8" height="7" rx="1.5" fill="var(--color-tag-green)" stroke="var(--color-tag-green-text)" stroke-width="0.8"/>
+        <rect x="16" y="41" width="14" height="7" rx="1.5" fill="var(--color-tag-amber)" stroke="var(--color-tag-amber-text)" stroke-width="0.8"/>
+        <rect x="34" y="41" width="22" height="7" rx="1.5" fill="var(--color-tag-amber)" stroke="var(--color-tag-amber-text)" stroke-width="0.8"/>
+      </svg>
+      <p class="text-[var(--color-ink-secondary)] text-[14px] font-medium">暂无知识节点</p>
       <p class="text-[var(--color-ink-tertiary)] text-[12px] mt-1">点击右上角创建第一个知识节点</p>
     </div>
 
-    <div v-else class="space-y-3">
+    <div v-else class="space-y-2">
       <div
         v-for="(node, i) in nodes"
         :key="node.id"
-        class="liquid-card p-5 cursor-pointer group animate-slide-up"
+        class="liquid-card p-4 cursor-pointer group animate-slide-up"
         :class="[`stagger-${Math.min(i + 1, 5)}`]"
         @click="selectNode(node)"
       >
         <div class="flex items-center gap-3">
-          <div class="w-9 h-9 rounded-lg flex items-center justify-center text-[11px] font-semibold" :class="levelIconClass(node.level)">
+          <div class="w-8 h-8 rounded-md flex items-center justify-center text-[11px] font-semibold" :class="levelIconClass(node.level)">
             {{ levelLabel(node.level).charAt(0) }}
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
-              <span class="font-medium text-[15px] text-[var(--color-ink)] truncate">{{ node.title }}</span>
+              <span class="font-medium text-[14px] text-[var(--color-ink)] truncate">{{ node.title }}</span>
               <span class="liquid-tag liquid-tag-blue">{{ levelLabel(node.level) }}</span>
               <span class="liquid-tag liquid-tag-green">{{ domainLabel(node.domain) }}</span>
             </div>
-            <p v-if="node.description" class="text-[12px] text-[var(--color-ink-tertiary)] mt-1 truncate">{{ node.description }}</p>
+            <p v-if="node.description" class="text-[12px] text-[var(--color-ink-tertiary)] mt-0.5 truncate">{{ node.description }}</p>
           </div>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             <polyline points="9 18 15 12 9 6"/>
           </svg>
         </div>
-        <div v-if="node.tags.length > 0" class="flex gap-1.5 mt-3 ml-12 flex-wrap">
+        <div v-if="node.tags.length > 0" class="flex gap-1.5 mt-2 ml-11 flex-wrap">
           <span v-for="tag in node.tags" :key="tag" class="liquid-tag liquid-tag-amber">{{ tag }}</span>
         </div>
       </div>
     </div>
 
     <transition name="detail-slide">
-      <div v-if="selectedNode" class="mt-6 glass-heavy rounded-[var(--radius-xl)] p-8 animate-slide-up">
-        <div class="flex items-start justify-between mb-6">
+      <div v-if="selectedNode" class="mt-6 bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-[var(--radius-lg)] p-6 animate-slide-up">
+        <div class="flex items-start justify-between mb-5">
           <div>
-            <h2 class="text-[20px] font-semibold tracking-tight" style="font-family: var(--font-display)">{{ selectedNode.title }}</h2>
+            <h2 class="text-[18px] font-semibold tracking-tight">{{ selectedNode.title }}</h2>
             <p v-if="selectedNode.description" class="text-[14px] text-[var(--color-ink-secondary)] mt-1">{{ selectedNode.description }}</p>
           </div>
-          <button @click="selectedNode = null" class="p-2 rounded-lg hover:bg-[var(--color-glass)] transition-colors">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <button @click="selectedNode = null" class="p-1.5 rounded-md hover:bg-[var(--color-bg-hover)] transition-colors">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
 
-        <div class="grid grid-cols-3 gap-5">
-          <div class="glass-subtle rounded-[var(--radius-md)] p-4">
-            <p class="text-[11px] text-[var(--color-ink-tertiary)] mb-1 uppercase tracking-wider">层级</p>
-            <p class="text-[14px] font-medium">{{ levelLabel(selectedNode.level) }}</p>
+        <div class="grid grid-cols-3 gap-3">
+          <div class="bg-[var(--color-bg-warm)] rounded-[var(--radius-md)] p-3">
+            <p class="text-[11px] text-[var(--color-ink-tertiary)] mb-0.5">层级</p>
+            <p class="text-[13px] font-medium">{{ levelLabel(selectedNode.level) }}</p>
           </div>
-          <div class="glass-subtle rounded-[var(--radius-md)] p-4">
-            <p class="text-[11px] text-[var(--color-ink-tertiary)] mb-1 uppercase tracking-wider">专业域</p>
-            <p class="text-[14px] font-medium">{{ domainLabel(selectedNode.domain) }}</p>
+          <div class="bg-[var(--color-bg-warm)] rounded-[var(--radius-md)] p-3">
+            <p class="text-[11px] text-[var(--color-ink-tertiary)] mb-0.5">专业域</p>
+            <p class="text-[13px] font-medium">{{ domainLabel(selectedNode.domain) }}</p>
           </div>
-          <div class="glass-subtle rounded-[var(--radius-md)] p-4">
-            <p class="text-[11px] text-[var(--color-ink-tertiary)] mb-1 uppercase tracking-wider">路径</p>
+          <div class="bg-[var(--color-bg-warm)] rounded-[var(--radius-md)] p-3">
+            <p class="text-[11px] text-[var(--color-ink-tertiary)] mb-0.5">路径</p>
             <p class="text-[12px] font-mono text-[var(--color-ink-secondary)] truncate">{{ selectedNode.path || "—" }}</p>
           </div>
         </div>
 
-        <div v-if="selectedNode.tags.length > 0" class="mt-5 flex gap-2 flex-wrap">
+        <div v-if="selectedNode.tags.length > 0" class="mt-4 flex gap-1.5 flex-wrap">
           <span v-for="tag in selectedNode.tags" :key="tag" class="liquid-tag liquid-tag-amber">{{ tag }}</span>
         </div>
 
-        <div class="mt-6 flex gap-3">
-          <button @click="drillDown(selectedNode)" class="liquid-btn liquid-btn-primary text-[13px] py-2 px-5">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        <div class="mt-5 flex gap-2">
+          <button @click="drillDown(selectedNode)" class="liquid-btn liquid-btn-primary text-[13px] py-1.5 px-4">
             查看子节点
           </button>
-          <button @click="deleteNode(selectedNode.id)" class="liquid-btn liquid-btn-ghost text-[13px] py-2 px-5 !text-[var(--color-danger)] hover:!bg-[rgba(239,68,68,0.06)]">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          <button @click="deleteNode(selectedNode.id)" class="liquid-btn liquid-btn-ghost text-[13px] py-1.5 px-4 !text-[var(--color-danger)]">
             删除
           </button>
         </div>
@@ -127,29 +134,29 @@
 
     <div v-if="showCreateDialog" class="liquid-dialog-overlay" @click.self="showCreateDialog = false">
       <div class="liquid-dialog">
-        <h3 class="text-[18px] font-semibold mb-6" style="font-family: var(--font-display)">新建知识节点</h3>
-        <form @submit.prevent="createNode" class="space-y-5">
+        <h3 class="text-[16px] font-semibold mb-5">新建知识节点</h3>
+        <form @submit.prevent="createNode" class="space-y-4">
           <div>
-            <label class="block text-[13px] font-medium text-[var(--color-ink-secondary)] mb-1.5 ml-1">标题</label>
+            <label class="block text-[13px] font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">标题</label>
             <input v-model="newNode.title" type="text" required class="liquid-input" />
           </div>
           <div>
-            <label class="block text-[13px] font-medium text-[var(--color-ink-secondary)] mb-1.5 ml-1">专业域</label>
+            <label class="block text-[13px] font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">专业域</label>
             <select v-model="newNode.domain" class="liquid-input">
               <option v-for="(label, key) in domainMap" :key="key" :value="key">{{ label }}</option>
             </select>
           </div>
           <div>
-            <label class="block text-[13px] font-medium text-[var(--color-ink-secondary)] mb-1.5 ml-1">层级</label>
+            <label class="block text-[13px] font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">层级</label>
             <select v-model="newNode.level" class="liquid-input">
               <option v-for="(label, key) in levelMap" :key="key" :value="key">{{ label }}</option>
             </select>
           </div>
           <div>
-            <label class="block text-[13px] font-medium text-[var(--color-ink-secondary)] mb-1.5 ml-1">描述（可选）</label>
+            <label class="block text-[13px] font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">描述（可选）</label>
             <textarea v-model="newNode.description" rows="2" class="liquid-input resize-none" />
           </div>
-          <div class="flex gap-3 justify-end pt-2">
+          <div class="flex gap-2 justify-end pt-1">
             <button type="button" @click="showCreateDialog = false" class="liquid-btn liquid-btn-ghost text-[13px]">取消</button>
             <button type="submit" class="liquid-btn liquid-btn-primary text-[13px]">创建</button>
           </div>
@@ -210,12 +217,12 @@ function domainLabel(domain: string) {
 
 function levelIconClass(level: string) {
   const map: Record<string, string> = {
-    professional: "bg-gradient-to-br from-[var(--color-bg-mesh-1)] to-[var(--color-bg-mesh-2)] text-[var(--color-accent)]",
-    course: "bg-gradient-to-br from-[var(--color-bg-mesh-2)] to-[var(--color-bg-mesh-4)] text-[var(--color-tag-green-text)]",
-    chapter: "bg-gradient-to-br from-[var(--color-bg-mesh-3)] to-[var(--color-bg-mesh-1)] text-[var(--color-tag-amber-text)]",
-    knowledge_point: "bg-gradient-to-br from-[var(--color-bg-mesh-4)] to-[var(--color-bg-mesh-2)] text-[var(--color-success)]",
-    skill_point: "bg-gradient-to-br from-[var(--color-bg-mesh-1)] to-[var(--color-bg-mesh-3)] text-[var(--color-tag-purple-text)]",
-    operation_step: "bg-gradient-to-br from-[var(--color-bg-mesh-2)] to-[var(--color-bg-mesh-1)] text-[var(--color-accent)]",
+    professional: "bg-[var(--color-accent-bg)] text-[var(--color-accent)]",
+    course: "bg-[var(--color-tag-green)] text-[var(--color-tag-green-text)]",
+    chapter: "bg-[var(--color-highlight-bg)] text-[var(--color-highlight)]",
+    knowledge_point: "bg-[var(--color-tag-blue)] text-[var(--color-tag-blue-text)]",
+    skill_point: "bg-[var(--color-tag-purple)] text-[var(--color-tag-purple-text)]",
+    operation_step: "bg-[var(--color-bg-warm)] text-[var(--color-ink-secondary)]",
   };
   return map[level] ?? map.professional;
 }
@@ -285,14 +292,14 @@ onMounted(() => {
 
 <style scoped>
 .detail-slide-enter-active {
-  transition: all var(--duration-normal) var(--ease-liquid);
+  transition: all var(--duration-normal) var(--ease-out);
 }
 .detail-slide-leave-active {
-  transition: all var(--duration-fast) var(--ease-liquid);
+  transition: all var(--duration-fast) var(--ease-out);
 }
 .detail-slide-enter-from,
 .detail-slide-leave-to {
   opacity: 0;
-  transform: translateY(8px);
+  transform: translateY(6px);
 }
 </style>
