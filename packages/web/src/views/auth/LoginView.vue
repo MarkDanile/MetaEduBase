@@ -61,24 +61,24 @@
 
     <div class="relative z-10 w-full max-w-[420px] mx-6 animate-slide-up">
       <div class="login-card">
-        <div class="text-center mb-8" :class="{ 'icon-focused': inputFocused }">
-          <div class="relative inline-flex items-center justify-center mb-5">
-            <svg width="64" height="64" viewBox="0 0 64 64" fill="none" class="relative z-[1]">
-              <rect x="2" y="2" width="60" height="60" rx="14" stroke="var(--color-accent)" stroke-width="1.5" stroke-opacity="0.3" fill="none"/>
-              <path d="M12 18C12 15.24 14.24 13 17 13H30L35 18H49C51.76 18 54 20.24 54 23V41C54 43.76 51.76 46 49 46H17C14.24 46 12 43.76 12 41V18Z" stroke="var(--color-accent)" stroke-width="1.8" fill="var(--color-accent-bg)" fill-opacity="0.4"/>
-              <rect x="21" y="28" width="22" height="2.5" rx="1.2" fill="var(--color-accent)" opacity="0.45"/>
-              <rect x="21" y="34" width="28" height="2.5" rx="1.2" fill="var(--color-accent)" opacity="0.3"/>
-              <rect x="21" y="40" width="16" height="2.5" rx="1.2" fill="var(--color-accent)" opacity="0.2"/>
+        <div class="flex items-center justify-center gap-3 mb-7" :class="{ 'logo-focused': inputFocused }">
+          <div class="relative flex-shrink-0">
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" class="relative z-[1]">
+              <rect x="1" y="1" width="38" height="38" rx="10" fill="url(#logo-grad)"/>
+              <text x="20" y="27" text-anchor="middle" fill="white" font-size="20" font-weight="700" font-family="Inter, sans-serif">元</text>
+              <defs>
+                <linearGradient id="logo-grad" x1="0" y1="0" x2="0" y2="40">
+                  <stop stop-color="#3B82F6"/>
+                  <stop offset="1" stop-color="#60A5FA"/>
+                </linearGradient>
+              </defs>
             </svg>
-            <div class="absolute inset-[-8px] rounded-xl bg-[var(--color-accent-bg)] blur-md transition-opacity duration-300" :class="inputFocused ? 'opacity-100' : 'opacity-0'"></div>
+            <div class="absolute inset-[-6px] rounded-xl bg-[var(--color-accent-bg)] blur-sm transition-opacity duration-300" :class="inputFocused ? 'opacity-100' : 'opacity-0'"></div>
           </div>
-          <h1 class="text-[20px] font-semibold text-[var(--color-ink)] mb-1.5" style="letter-spacing:-0.3px">元知职教基座</h1>
-          <p class="text-[14px] text-[var(--color-ink-secondary)]">MetaEduBase</p>
-        </div>
-
-        <div class="text-center mb-8">
-          <h2 class="text-[18px] font-medium text-[var(--color-ink)]">欢迎登录</h2>
-          <p class="text-[13px] text-[var(--color-ink-secondary)] mt-1">开启你的校本知识之旅</p>
+          <div>
+            <h1 class="text-[18px] font-semibold text-[var(--color-ink)]" style="letter-spacing:-0.3px">元知职教基座</h1>
+            <p class="text-[13px] text-[var(--color-ink-secondary)]">开启你的校本知识之旅</p>
+          </div>
         </div>
 
         <form @submit.prevent="handleLogin" class="space-y-4">
@@ -174,7 +174,9 @@ async function handleLogin() {
 }
 
 .login-card {
-  background: #FFFFFF;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(59, 130, 246, 0.1);
   border-radius: var(--radius-xl);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
@@ -191,7 +193,7 @@ async function handleLogin() {
   transform: scale(1.02);
 }
 
-.icon-focused svg {
+.logo-focused svg {
   filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.2));
   transition: filter 200ms var(--ease-out);
 }
