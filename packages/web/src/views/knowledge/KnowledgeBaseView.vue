@@ -3,7 +3,7 @@
     <div class="flex items-start justify-between mb-8 animate-slide-up">
       <div>
         <h1 class="text-[24px] font-semibold tracking-tight" style="letter-spacing:-0.5px">知识库</h1>
-        <p class="text-[13px] text-[var(--color-ink-tertiary)] mt-1">管理和浏览结构化的职业教育知识体系</p>
+        <p class="text-[13px] text-[var(--color-ink-tertiary)] mt-1">结构化职业教育知识体系</p>
         <div class="wet-line mt-2.5" style="width:40px"></div>
       </div>
       <button @click="showCreateDialog = true" class="liquid-btn liquid-btn-primary">

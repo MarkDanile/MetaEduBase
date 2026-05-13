@@ -3,7 +3,7 @@
     <header class="mb-8 animate-slide-up">
       <p class="text-[12px] text-[var(--color-ink-tertiary)] mb-1">{{ greeting }}，{{ roleLabel }}</p>
       <h1 class="text-[24px] font-semibold tracking-tight" style="letter-spacing:-0.5px">元知职教基座</h1>
-      <p class="text-[14px] text-[var(--color-ink-secondary)] mt-1">探索、构建、管理你的职业教育知识体系</p>
+      <p class="text-[14px] text-[var(--color-ink-secondary)] mt-1">构建 · 管理 · 探索 职业教育知识体系</p>
       <div class="wet-line mt-3" style="width:48px"></div>
     </header>
 
@@ -146,7 +146,7 @@ const stats = computed(() => [
 const recentActivities = [
   { text: "新增知识节点「电路基础」", time: "2 小时前", dotClass: "bg-[var(--color-accent)]" },
   { text: "上传资源「实训手册 v2」", time: "5 小时前", dotClass: "bg-[var(--color-tag-green-text)]" },
-  { text: "AI 助教回答了 3 个问题", time: "昨天", dotClass: "bg-[var(--color-highlight)]" },
+  { text: "AI 问答处理了 3 个问题", time: "昨天", dotClass: "bg-[var(--color-highlight)]" },
   { text: "知识节点「智能制造」已校验", time: "2 天前", dotClass: "bg-[var(--color-success)]" },
 ];
 
@@ -166,14 +166,14 @@ const navItems = [
     icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-tag-green-text)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
   },
   {
-    title: "AI 助教",
+    title: "AI 问答",
     desc: "基于知识库的智能问答，精准检索课程内容",
     route: "/ai-chat",
     bgClass: "bg-[var(--color-highlight-bg)]",
     icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-highlight)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
   },
   {
-    title: "Skill 编排",
+    title: "技能编排",
     desc: "可视化编排 AI 技能流程与自动化工作流",
     route: "/skill-editor",
     bgClass: "bg-[var(--color-tag-purple)]",
@@ -189,7 +189,7 @@ const shortcuts = [
     icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
   },
   {
-    label: "与 AI 助教对话",
+    label: "AI 智能问答",
     hint: "提问职教相关问题",
     route: "/ai-chat",
     icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',

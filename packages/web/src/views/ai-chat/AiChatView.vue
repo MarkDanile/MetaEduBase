@@ -7,8 +7,8 @@
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="relative z-[1]"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         </div>
         <div>
-          <h1 class="text-[15px] font-semibold tracking-tight">AI 助教</h1>
-          <p class="text-[11px] text-[var(--color-ink-tertiary)] -mt-0.5">基于职教知识库的智能问答</p>
+          <h1 class="text-[15px] font-semibold tracking-tight">AI 问答</h1>
+          <p class="text-[11px] text-[var(--color-ink-tertiary)] -mt-0.5">基于知识库的智能问答与内容溯源</p>
         </div>
         <div class="wet-line ml-auto" style="width:32px"></div>
       </div>
@@ -24,7 +24,7 @@
           <circle cx="68" cy="52" r="14" fill="var(--color-bg-elevated)" stroke="var(--color-accent)" stroke-width="1.2"/>
           <path d="M62 52L66 56L74 48" stroke="var(--color-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <h2 class="text-[18px] font-semibold mb-1.5">欢迎使用 AI 助教</h2>
+        <h2 class="text-[18px] font-semibold mb-1.5">欢迎使用 AI 问答</h2>
         <p class="text-[13px] text-[var(--color-ink-tertiary)] mb-6">你可以问我关于职教课程、知识点、技能标准等问题</p>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full max-w-[560px]">
           <button

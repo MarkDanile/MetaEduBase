@@ -44,7 +44,7 @@
         </svg>
         <h1 class="text-[32px] font-semibold text-white tracking-tight mb-2" style="letter-spacing:-0.5px">元知职教基座</h1>
         <p class="text-[13px] text-white/50 font-medium tracking-wide mb-3">MetaEduBase</p>
-        <p class="text-[14px] text-white/60 leading-relaxed">AI Native 职业教育知识基座<br/>构建、管理、探索你的知识体系</p>
+        <p class="text-[14px] text-white/60 leading-relaxed">面向职业教育的 AI 知识平台</p>
         <div class="mt-12 flex justify-center gap-8">
           <div class="text-center">
             <p class="text-[28px] font-semibold text-white tabular-nums">10</p>
@@ -96,7 +96,7 @@
         <div class="liquid-card p-8">
           <div class="mb-6">
             <h2 class="text-[20px] font-semibold tracking-tight" style="letter-spacing:-0.5px">欢迎登录</h2>
-            <p class="text-[13px] text-[var(--color-ink-tertiary)] mt-1">登录以访问你的职业教育知识平台</p>
+            <p class="text-[13px] text-[var(--color-ink-tertiary)] mt-1">进入你的知识空间</p>
             <div class="wet-line mt-2.5" style="width:36px"></div>
           </div>
 

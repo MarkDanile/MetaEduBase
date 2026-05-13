@@ -3,7 +3,7 @@
     <div class="flex items-start justify-between mb-8 animate-slide-up">
       <div>
         <h1 class="text-[24px] font-semibold tracking-tight" style="letter-spacing:-0.5px">校本资源</h1>
-        <p class="text-[13px] text-[var(--color-ink-tertiary)] mt-1">上传、解析和管理教学资源</p>
+        <p class="text-[13px] text-[var(--color-ink-tertiary)] mt-1">教学资源上传、解析与管理</p>
         <div class="wet-line mt-2.5" style="width:40px"></div>
       </div>
       <button @click="showUploadDialog = true" class="liquid-btn liquid-btn-primary">
