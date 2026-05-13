@@ -64,21 +64,21 @@
       </div>
     </div>
 
-    <div class="flex-1 flex items-center justify-center bg-gradient-to-br from-[var(--color-bg-base)] to-[var(--color-bg-warm)] relative overflow-hidden">
+    <div class="flex-1 flex items-center justify-center bg-gradient-to-br from-[#1E293B] via-[#172033] to-[#0F172A] relative overflow-hidden">
       <div class="absolute inset-0 z-0 pointer-events-none">
         <svg width="100%" height="100%" viewBox="0 0 600 900" fill="none" preserveAspectRatio="xMidYMid slice">
-          <rect x="380" y="120" width="200" height="200" rx="28" stroke="var(--color-border)" stroke-width="0.8" stroke-opacity="0.4" fill="none"/>
-          <rect x="420" y="160" width="120" height="120" rx="14" stroke="var(--color-border)" stroke-width="0.6" stroke-opacity="0.3" fill="none"/>
-          <rect x="460" y="200" width="40" height="40" rx="6" stroke="var(--color-accent)" stroke-width="0.8" stroke-opacity="0.15" fill="var(--color-accent-bg)" fill-opacity="0.3"/>
-          <rect x="60" y="600" width="160" height="160" rx="20" stroke="var(--color-border)" stroke-width="0.8" stroke-opacity="0.35" fill="none"/>
-          <rect x="100" y="640" width="80" height="80" rx="10" stroke="var(--color-accent)" stroke-width="0.6" stroke-opacity="0.12" fill="var(--color-accent-bg)" fill-opacity="0.2"/>
-          <circle cx="140" cy="680" r="5" fill="var(--color-accent)" opacity="0.1"/>
-          <circle cx="500" cy="620" r="6" fill="var(--color-ink-tertiary)" opacity="0.08"/>
-          <circle cx="300" cy="750" r="250" fill="var(--color-accent)" opacity="0.015"/>
-          <circle cx="150" cy="200" r="180" fill="var(--color-accent)" opacity="0.015"/>
-          <path d="M140 700 L300 730" stroke="var(--color-border)" stroke-width="0.5" stroke-opacity="0.3" stroke-dasharray="3 5"/>
-          <path d="M460 220 L500 620" stroke="var(--color-border)" stroke-width="0.5" stroke-opacity="0.25" stroke-dasharray="3 5"/>
-          <path d="M500 240 L300 200" stroke="var(--color-border)" stroke-width="0.4" stroke-opacity="0.2"/>
+          <rect x="380" y="120" width="200" height="200" rx="28" stroke="white" stroke-width="0.8" stroke-opacity="0.06" fill="none"/>
+          <rect x="420" y="160" width="120" height="120" rx="14" stroke="white" stroke-width="0.6" stroke-opacity="0.05" fill="none"/>
+          <rect x="460" y="200" width="40" height="40" rx="6" stroke="#3B82F6" stroke-width="0.8" stroke-opacity="0.12" fill="#3B82F6" fill-opacity="0.06"/>
+          <rect x="60" y="600" width="160" height="160" rx="20" stroke="white" stroke-width="0.8" stroke-opacity="0.05" fill="none"/>
+          <rect x="100" y="640" width="80" height="80" rx="10" stroke="#3B82F6" stroke-width="0.6" stroke-opacity="0.1" fill="#3B82F6" fill-opacity="0.04"/>
+          <circle cx="140" cy="680" r="5" fill="#3B82F6" opacity="0.08"/>
+          <circle cx="500" cy="620" r="6" fill="#94A3B8" opacity="0.06"/>
+          <circle cx="300" cy="750" r="250" fill="#3B82F6" opacity="0.02"/>
+          <circle cx="150" cy="200" r="180" fill="#3B82F6" opacity="0.02"/>
+          <path d="M140 700 L300 730" stroke="white" stroke-width="0.5" stroke-opacity="0.06" stroke-dasharray="3 5"/>
+          <path d="M460 220 L500 620" stroke="white" stroke-width="0.5" stroke-opacity="0.05" stroke-dasharray="3 5"/>
+          <path d="M500 240 L300 200" stroke="white" stroke-width="0.4" stroke-opacity="0.04"/>
         </svg>
       </div>
       <div class="w-full max-w-[400px] mx-6 animate-slide-up relative z-10">
@@ -89,8 +89,8 @@
               <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
             </svg>
           </div>
-          <h1 class="text-[24px] font-semibold tracking-tight" style="letter-spacing:-0.5px">元知职教基座</h1>
-          <p class="text-[12px] text-[var(--color-ink-tertiary)] mt-0.5">MetaEduBase</p>
+          <h1 class="text-[24px] font-semibold tracking-tight text-white" style="letter-spacing:-0.5px">元知职教基座</h1>
+          <p class="text-[12px] text-white/30 mt-0.5">MetaEduBase</p>
         </div>
 
         <div class="liquid-card p-8">
@@ -140,7 +140,7 @@
           </form>
         </div>
 
-        <p class="text-[11px] text-[var(--color-ink-tertiary)] text-center mt-6">
+        <p class="text-[11px] text-white/20 text-center mt-6">
           默认账号: admin / admin123
         </p>
       </div>
