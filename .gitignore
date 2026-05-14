@@ -6,7 +6,8 @@ __pycache__/
 .venv/
 *.egg-info/
 .env
-.env.local
+.env.*
+!.env.example
 *.log
 .DS_Store
 .idea/
@@ -19,3 +20,6 @@ coverage/
 .ruff_cache/
 .dev-logs/
 dump.rdb
+.claude/
+*.tsbuildinfo
+Thumbs.db

@@ -295,6 +295,74 @@ auth store 的 `userRole` 和 `userDomain` 必须持久化到 localStorage，刷
 | 改前端 API 服务 | packages/web/src/services/ |
 | 改前端状态管理 | packages/web/src/stores/ |
 
+## Git 工作流规则
+
+### 分支策略
+
+- `main` 锁定，禁止直接 push，所有变更通过 PR 合入
+- 功能分支命名：`feat/功能名` / `fix/问题名` / `docs/文档名`
+- 合并策略：`Squash and merge`，保持 main 历史线性整洁
+
+### Commit 规范（Conventional Commits）
+
+格式：`type(scope): description`
+
+| type | 含义 |
+|---|---|
+| `feat` | 新功能 |
+| `fix` | Bug 修复 |
+| `docs` | 文档变更 |
+| `style` | 格式（不影响逻辑） |
+| `refactor` | 重构（无功能/修复变化） |
+| `perf` | 性能优化 |
+| `test` | 测试相关 |
+| `build` | 构建系统/依赖 |
+| `ci` | CI/CD 配置 |
+| `chore` | 杂项/维护 |
+| `revert` | 回退 |
+
+Scope 按目录：`web` / `server` / `knowledge` / `identity` / `resource` / `deploy` / `shared` / `mcp`
+
+### Git Hooks（`.githooks/`）
+
+| Hook | 触发时机 | 作用 |
+|---|---|---|
+| `commit-msg` | `git commit` | 校验 message 符合 Conventional Commits 格式 |
+| `pre-commit` | `git commit` | Python: ruff check；TS/Vue: vue-tsc --noEmit |
+| `pre-push` | `git push` | 拦截直接 push 到 main/master，强制 PR 流程 |
+
+跳过 hooks：`git commit --no-verify` / `git push --no-verify`（仅紧急 hotfix 使用）
+
+### 标准工作流
+
+```
+# 1. 创建功能分支
+git checkout -b feat/your-feature
+
+# 2. 开发和提交
+git add .
+git commit              # ← 自动触发 commit-msg + pre-commit
+git push origin feat/your-feature   # ← pre-push 允许非 main 分支
+
+# 3. 创建 PR
+gh pr create --fill
+
+# 4. 合并（Review 后 Squash and merge）
+
+# 5. 清理
+git checkout main
+git pull origin main
+git branch -d feat/your-feature
+```
+
+### MCP GitHub 绕过规则
+
+**MCP GitHub 服务（`mcp_GitHub_*`）直接调用 GitHub API，完全绕过 git**，不触发任何 git hooks。当 HTTPS 网络不稳定时可用 MCP 作为兜底，但日常开发仍须通过标准 git 流程提交，确保历史可追溯。
+
+### 版本发布
+
+每次 milestone 完成时打 tag：`git tag -a v0.x.0 -m "版本说明" && git push origin v0.x.0`
+
 ## 验证命令
 
 - 后端类型检查 + 测试：`cd packages/server-python && make lint && make test`
