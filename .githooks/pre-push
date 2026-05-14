@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+
+if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
+  echo "[pre-push] ❌ 直接推送到 $BRANCH 被拦截"
+  echo "[pre-push] 请使用功能分支 + PR 流程:"
+  echo "  git checkout -b feat/your-feature"
+  echo "  git push origin feat/your-feature"
+  echo "  gh pr create --fill"
+  echo ""
+  echo "[pre-push] 如需紧急 hotfix: git push --no-verify"
+  exit 1
+fi
+
+echo "[pre-push] ✅ 推送到 $BRANCH"

@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$' || true)
+STAGED_TS=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|vue)$' || true)
+
+if [[ -n "$STAGED_PY" ]]; then
+  echo "[pre-commit] Running ruff check on Python files..."
+  cd packages/server-python
+  for f in $STAGED_PY; do
+    if [[ -f "$f" ]]; then
+      .venv/bin/ruff check "../../$f" 2>/dev/null || true
+    fi
+  done
+  cd ../..
+fi
+
+if [[ -n "$STAGED_TS" ]]; then
+  echo "[pre-commit] Running vue-tsc --noEmit..."
+  cd packages/web && npx vue-tsc --noEmit 2>&1
+  RESULT=$?
+  cd ../..
+  if [[ $RESULT -ne 0 ]]; then
+    echo "[pre-commit] ❌ TypeScript check failed. Fix errors or commit with --no-verify."
+    exit 1
+  fi
+fi
+
+echo "[pre-commit] ✅ All checks passed"
