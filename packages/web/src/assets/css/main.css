@@ -1,20 +1,21 @@
 @import "tailwindcss";
 
 @theme {
-  --color-ink: #1E293B;
+  --color-ink: #334155;
   --color-ink-secondary: #64748B;
   --color-ink-tertiary: #94A3B8;
   --color-ink-inverse: #FFFFFF;
+  --color-ink-dim: #C8CDD4;
 
-  --color-bg-base: #F8FAFC;
-  --color-bg-warm: #F1F5F9;
+  --color-bg-base: #F5F7FA;
+  --color-bg-warm: #EDF0F5;
   --color-bg-elevated: #FFFFFF;
-  --color-bg-hover: #F8FAFC;
+  --color-bg-hover: #F5F7FA;
 
-  --color-accent: #3B82F6;
-  --color-accent-light: #2563EB;
-  --color-accent-bg: #EFF6FF;
-  --color-accent-glow: #DBEAFE;
+  --color-accent: #4C5EEB;
+  --color-accent-light: #3A4CD9;
+  --color-accent-bg: #EEF1FE;
+  --color-accent-glow: #DEE3FC;
 
   --color-highlight: #F59E0B;
   --color-highlight-bg: rgba(245, 158, 11, 0.08);
@@ -27,14 +28,14 @@
   --color-tag-green-text: #059669;
   --color-tag-amber: rgba(245, 158, 11, 0.08);
   --color-tag-amber-text: #B45309;
-  --color-tag-blue: rgba(59, 130, 246, 0.08);
-  --color-tag-blue-text: #2563EB;
+  --color-tag-blue: rgba(76, 94, 235, 0.10);
+  --color-tag-blue-text: #4C5EEB;
   --color-tag-purple: rgba(109, 40, 217, 0.06);
   --color-tag-purple-text: #6D28D9;
 
-  --color-border: #E2E8F0;
-  --color-border-subtle: #F1F5F9;
-  --color-border-accent: #3B82F6;
+  --color-border: #E1E6EE;
+  --color-border-subtle: #EEF1F6;
+  --color-border-accent: #4C5EEB;
 
   --font-display: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
   --font-body: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
@@ -62,6 +63,7 @@
 
   --text-page-title: 24px;
   --text-section-title: 18px;
+  --text-subtitle: 16px;
   --text-body: 14px;
   --text-caption: 13px;
   --text-small: 12px;
@@ -112,25 +114,34 @@
 
 @layer components {
   .sidebar-shell {
-    background: rgba(255, 255, 255, 0.7);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-right: 1px solid rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-right: 1px solid var(--color-border-subtle);
   }
 
   .liquid-card {
-    background: rgba(255, 255, 255, 0.6);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
     border: 1px solid rgba(255, 255, 255, 0.8);
     border-radius: var(--radius-lg);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    box-shadow: 0 8px 32px rgba(28, 44, 80, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6);
     transition: all var(--duration-liquid) var(--ease-elastic);
   }
 
   .liquid-card:hover {
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    box-shadow: 0 10px 40px rgba(28, 44, 80, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.7);
     transform: translateY(-1px);
+  }
+
+  .liquid-card-elevated {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(32px);
+    -webkit-backdrop-filter: blur(32px);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 12px 40px rgba(28, 44, 80, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.7);
   }
 
   .liquid-card-scan {
@@ -166,7 +177,7 @@
   .liquid-input:focus {
     background: rgba(255, 255, 255, 0.8);
     border-color: var(--color-accent);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1), inset 0 0 0 1px rgba(59, 130, 246, 0.1);
+    box-shadow: 0 0 0 3px rgba(76, 94, 235, 0.1), inset 0 0 0 1px rgba(76, 94, 235, 0.1);
   }
 
   .liquid-input::placeholder {
@@ -181,7 +192,7 @@
     padding: 8px 18px;
     height: 36px;
     font-family: var(--font-body);
-    font-size: 14px;
+    font-size: var(--text-caption);
     font-weight: 500;
     letter-spacing: 0;
     border-radius: var(--radius-md);
@@ -193,8 +204,8 @@
   .liquid-btn-primary {
     position: relative;
     overflow: hidden;
-    background: radial-gradient(circle at 30% 30%, #60A5FA, var(--color-accent));
-    color: white;
+    background: radial-gradient(circle at 30% 30%, #7289F6, var(--color-accent));
+    color: var(--color-ink-inverse);
   }
 
   .liquid-btn-primary::after {
@@ -211,7 +222,7 @@
   }
 
   .liquid-btn-primary:hover {
-    background: radial-gradient(circle at 30% 30%, #93C5FD, var(--color-accent-light));
+    background: radial-gradient(circle at 30% 30%, #9BA8F8, var(--color-accent-light));
   }
 
   .liquid-btn-primary:active {
@@ -235,11 +246,14 @@
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     border: 1px solid var(--color-border);
-    color: var(--color-accent);
+    color: var(--color-ink-secondary);
+    transition: all var(--duration-liquid) var(--ease-elastic);
   }
 
   .liquid-btn-ghost:hover {
     background: var(--color-accent-bg);
+    color: var(--color-accent);
+    border-color: var(--color-accent);
   }
 
   .liquid-btn-danger {
@@ -250,7 +264,7 @@
   }
 
   .liquid-btn-danger:hover {
-    background: #DC2626;
+    background: color-mix(in srgb, var(--color-danger) 90%, black);
   }
 
   .liquid-btn-danger:active {
@@ -294,7 +308,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 50;
+    z-index: var(--z-dialog);
     animation: fade-in var(--duration-instant) var(--ease-out);
   }
 
@@ -382,8 +396,21 @@
 
   .content-bg {
     background-color: var(--color-bg-base);
-    background-image: radial-gradient(var(--color-border) 0.5px, transparent 0.5px);
-    background-size: 24px 24px;
+    background-image:
+      radial-gradient(ellipse at 50% 0%, var(--color-accent-glow) 0%, transparent 60%),
+      radial-gradient(var(--color-border) 0.5px, transparent 0.5px);
+    background-size: 100% 400px, 24px 24px;
+  }
+
+  .mesh-bg {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.4;
+    background-image:
+      radial-gradient(at 10% 20%, var(--color-accent-glow) 0px, transparent 50%),
+      radial-gradient(at 90% 80%, var(--color-accent-glow) 0px, transparent 50%),
+      radial-gradient(at 50% 50%, var(--color-bg-base) 0%, transparent 70%);
   }
 
   .markdown-body {
@@ -475,7 +502,7 @@
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(90deg, transparent 40%, rgba(59, 130, 246, 0.08) 50%, transparent 60%);
+    background: linear-gradient(90deg, transparent 40%, rgba(76, 94, 235, 0.08) 50%, transparent 60%);
     transform: translateX(-100%);
     animation: highlight-sweep 2s var(--ease-out) 0.3s 1 forwards;
   }
@@ -501,7 +528,7 @@
   .markdown-body pre {
     margin: 8px 0;
     padding: 14px 16px;
-    background: #1E293B;
+    background: var(--color-ink);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     overflow-x: auto;
@@ -512,7 +539,7 @@
     padding: 0;
     background: none;
     border-radius: 0;
-    color: #E5E5E5;
+    color: var(--color-ink-dim);
     line-height: 1.6;
   }
 
@@ -571,10 +598,14 @@
 
   @media (prefers-reduced-motion: reduce) {
     .animate-slide-up { animation: none; }
+    .animate-spin { animation: none; }
     .liquid-rise-enter-active,
     .liquid-rise-leave-active { transition: none; }
     .liquid-card-scan::after { animation: none; }
     .liquid-btn-primary::after { transition: none; }
+    .liquid-dialog-overlay { animation: none; }
+    .liquid-dialog { animation: none; }
+    .toast-item { animation: none; }
     .markdown-body blockquote::after { animation: none; }
   }
 

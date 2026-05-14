@@ -9,8 +9,8 @@
           <BookOpen :size="16" color="white" :stroke-width="2" />
         </div>
         <div v-if="!collapsed">
-          <h1 class="text-[14px] font-semibold tracking-tight text-[var(--color-ink)]" style="letter-spacing:-0.3px">元知职教基座</h1>
-          <p class="text-[10px] text-[var(--color-ink-tertiary)] -mt-0.5">MetaEduBase</p>
+          <h1 class="text-[var(--text-body)] font-semibold tracking-tight text-[var(--color-ink)]" style="letter-spacing:-0.3px">元知职教基座</h1>
+          <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)] -mt-0.5">MetaEduBase</p>
         </div>
       </div>
 
@@ -32,11 +32,11 @@
 
       <div class="px-2 pb-3 pt-3 border-t border-[var(--color-border)]">
         <div class="flex items-center gap-2 px-2" :class="collapsed ? 'justify-center' : ''">
-          <div class="w-7 h-7 rounded-full bg-[var(--color-accent-bg)] flex items-center justify-center text-[11px] font-semibold text-[var(--color-accent)] flex-shrink-0">
+          <div class="w-7 h-7 rounded-full bg-[var(--color-accent-bg)] flex items-center justify-center text-[var(--text-micro)] font-semibold text-[var(--color-accent)] flex-shrink-0">
             {{ roleInitial }}
           </div>
           <div v-if="!collapsed" class="flex-1 min-w-0">
-            <p class="text-[13px] font-medium truncate text-[var(--color-ink)]">{{ roleLabel }}</p>
+            <p class="font-medium truncate text-[var(--color-ink)]">{{ roleLabel }}</p>
           </div>
           <button v-if="!collapsed" @click="logout" class="p-1.5 rounded-md hover:bg-[var(--color-bg-hover)] transition-colors group" title="退出登录" aria-label="退出登录">
             <LogOut :size="14" :stroke-width="1.5" class="text-[var(--color-ink-tertiary)] group-hover:text-[var(--color-danger)] transition-colors" />

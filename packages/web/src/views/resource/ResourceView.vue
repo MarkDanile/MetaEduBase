@@ -1,9 +1,9 @@
 <template>
-  <div class="p-8 max-w-[1000px] mx-auto">
-    <div class="flex items-start justify-between mb-8 animate-slide-up">
+  <div class="p-[var(--spacing-page)] max-w-[1000px] mx-auto">
+    <div class="flex items-start justify-between mb-[var(--spacing-page)] animate-slide-up">
       <PageHeader title="校本资源" subtitle="教学资源上传、解析与管理" />
       <button @click="showUploadDialog = true" class="liquid-btn liquid-btn-primary flex-shrink-0">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <Upload :size="16" :stroke-width="2" />
         上传资源
       </button>
     </div>
@@ -41,59 +41,59 @@
             </div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2">
-                <span class="font-medium text-[14px] text-[var(--color-ink)] truncate">{{ item.title }}</span>
+                <span class="font-medium text-[var(--text-body)] text-[var(--color-ink)] truncate">{{ item.title }}</span>
                 <span class="liquid-tag" :class="typeTagClass(item.resource_type)">{{ resourceTypeMap[item.resource_type] ?? item.resource_type }}</span>
                 <span v-if="item.domain" class="liquid-tag liquid-tag-green">{{ domainMap[item.domain] ?? item.domain }}</span>
               </div>
-              <div class="flex items-center gap-3 mt-0.5 text-[12px] text-[var(--color-ink-tertiary)]">
+              <div class="flex items-center gap-3 mt-0.5 text-[var(--color-ink-tertiary)]">
                 <span v-if="item.file_size">{{ formatSize(item.file_size) }}</span>
                 <span>{{ item.created_at?.slice(0, 10) }}</span>
               </div>
             </div>
           </div>
           <div class="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <button @click="downloadResource(item)" class="liquid-btn liquid-btn-ghost text-[12px] py-1 px-2.5" aria-label="下载资源">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <button @click="downloadResource(item)" class="liquid-btn liquid-btn-ghost py-1 px-2.5" aria-label="下载资源">
+              <Download :size="12" :stroke-width="2" />
               下载
             </button>
-            <button @click="confirmDeleteId = item.id" class="liquid-btn liquid-btn-ghost text-[12px] py-1 px-2.5 !text-[var(--color-danger)]" aria-label="删除资源">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            <button @click="confirmDeleteId = item.id" class="liquid-btn liquid-btn-ghost py-1 px-2.5 !text-[var(--color-danger)]" aria-label="删除资源">
+              <Trash2 :size="12" :stroke-width="2" />
               删除
             </button>
           </div>
         </div>
-        <p v-if="item.description" class="text-[12px] text-[var(--color-ink-tertiary)] mt-1.5 ml-12 truncate">{{ item.description }}</p>
+        <p v-if="item.description" class="text-[var(--color-ink-tertiary)] mt-1.5 ml-12 truncate">{{ item.description }}</p>
       </div>
     </div>
 
-    <div v-if="total > limit" class="mt-8 flex justify-center items-center gap-4">
-      <button :disabled="offset === 0" @click="offset -= limit; loadResources()" class="liquid-btn liquid-btn-ghost text-[13px] disabled:opacity-30">
+    <div v-if="total > limit" class="mt-[var(--spacing-page)] flex justify-center items-center gap-4">
+      <button :disabled="offset === 0" @click="offset -= limit; loadResources()" class="liquid-btn liquid-btn-ghost disabled:opacity-30">
         上一页
       </button>
-      <span class="text-[13px] text-[var(--color-ink-tertiary)]">共 {{ total }} 条</span>
-      <button :disabled="offset + limit >= total" @click="offset += limit; loadResources()" class="liquid-btn liquid-btn-ghost text-[13px] disabled:opacity-30">
+      <span class="text-[var(--color-ink-tertiary)]">共 {{ total }} 条</span>
+      <button :disabled="offset + limit >= total" @click="offset += limit; loadResources()" class="liquid-btn liquid-btn-ghost disabled:opacity-30">
         下一页
       </button>
     </div>
 
     <div v-if="showUploadDialog" class="liquid-dialog-overlay" @click.self="showUploadDialog = false" @keydown.escape="showUploadDialog = false" role="dialog" aria-modal="true">
       <div class="liquid-dialog">
-        <h3 class="text-[16px] font-semibold mb-5">上传资源</h3>
+        <h3 class="text-[var(--text-subtitle)] font-semibold mb-5">上传资源</h3>
         <form @submit.prevent="uploadResource" class="space-y-4">
           <div>
-            <label class="block text-[13px] font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">文件</label>
+            <label class="block font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">文件</label>
             <div
               class="liquid-input flex items-center cursor-pointer"
               :class="dragOver ? 'border-[var(--color-accent)] bg-[var(--color-accent-bg)]' : ''"
-              @click="($refs.fileInput as HTMLInputElement)?.click()"
+              @click="fileInput?.click()"
               @dragover.prevent="dragOver = true"
               @dragleave="dragOver = false"
               @drop.prevent="handleDrop"
             >
-              <span class="flex-1 text-[13px]" :class="selectedFile ? 'text-[var(--color-ink)]' : 'text-[var(--color-ink-tertiary)]'">
+              <span class="flex-1" :class="selectedFile ? 'text-[var(--color-ink)]' : 'text-[var(--color-ink-tertiary)]'">
                 {{ selectedFile ? selectedFile.name : '拖拽文件到此处或点击选择...' }}
               </span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <Upload :size="14" :stroke-width="1.5" color="var(--color-ink-tertiary)" />
             </div>
             <input ref="fileInput" type="file" @change="onFileChange" required class="hidden" />
           </div>
@@ -101,25 +101,25 @@
             <div class="h-full bg-[var(--color-accent)] rounded-full transition-all duration-300" :style="{ width: uploadProgress + '%' }"></div>
           </div>
           <div>
-            <label class="block text-[13px] font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">标题</label>
+            <label class="block font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">标题</label>
             <input v-model="uploadForm.title" type="text" required class="liquid-input" />
           </div>
           <div>
-            <label class="block text-[13px] font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">类型</label>
+            <label class="block font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">类型</label>
             <select v-model="uploadForm.resource_type" class="liquid-input">
               <option v-for="(label, key) in resourceTypeMap" :key="key" :value="key">{{ label }}</option>
             </select>
           </div>
           <div>
-            <label class="block text-[13px] font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">专业域（可选）</label>
+            <label class="block font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">专业域（可选）</label>
             <select v-model="uploadForm.domain" class="liquid-input">
               <option value="">不指定</option>
               <option v-for="(label, key) in domainMap" :key="key" :value="key">{{ label }}</option>
             </select>
           </div>
           <div class="flex gap-2 justify-end pt-1">
-            <button type="button" @click="showUploadDialog = false" class="liquid-btn liquid-btn-ghost text-[13px]">取消</button>
-            <button type="submit" :disabled="uploading" class="liquid-btn liquid-btn-primary text-[13px]">
+            <button type="button" @click="showUploadDialog = false" class="liquid-btn liquid-btn-ghost">取消</button>
+            <button type="submit" :disabled="uploading" class="liquid-btn liquid-btn-primary">
               {{ uploading ? "上传中..." : "上传" }}
             </button>
           </div>
@@ -138,6 +138,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from "vue";
+import { Upload, Download, Trash2 } from "lucide-vue-next";
 import api from "@/services/api";
 import { domainMap, resourceTypeMap } from "@/constants/maps";
 import PageHeader from "@/components/PageHeader.vue";
@@ -167,6 +168,7 @@ const dragOver = ref(false);
 const limit = 50;
 const offset = ref(0);
 const selectedFile = ref<File | null>(null);
+const fileInput = ref<HTMLInputElement | null>(null);
 const confirmDeleteId = ref<string | null>(null);
 
 const confirmDeleteOpen = computed({

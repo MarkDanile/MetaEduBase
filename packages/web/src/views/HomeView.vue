@@ -1,27 +1,27 @@
 <template>
-  <div class="p-8 max-w-[1000px] mx-auto">
+  <div class="p-[var(--spacing-page)] max-w-[1000px] mx-auto">
     <PageHeader title="元知职教基座" subtitle="构建 · 管理 · 探索 职业教育知识体系" :line-width="48">
       <template #greeting>
-        <p class="text-[12px] text-[var(--color-ink-tertiary)] mb-1">{{ greeting }}，{{ roleLabel }}</p>
+        <p class="text-[var(--color-ink-tertiary)] mb-1">{{ greeting }}，{{ roleLabel }}</p>
       </template>
     </PageHeader>
 
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8 animate-slide-up stagger-1">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-[var(--spacing-page)] animate-slide-up stagger-1">
       <div v-for="(stat, i) in stats" :key="stat.label" class="liquid-card liquid-card-scan p-4" :style="{ animationDelay: (i * 1.5 + 6) + 's' }">
         <div class="flex items-center gap-2.5 mb-2">
           <div class="w-8 h-8 rounded-lg flex items-center justify-center" :class="stat.bgClass">
             <div v-html="stat.icon" />
           </div>
         </div>
-        <p class="text-[20px] font-semibold tracking-tight tabular-nums">{{ stat.value }}</p>
-        <p class="text-[12px] text-[var(--color-ink-tertiary)] mt-0.5">{{ stat.label }}</p>
+        <p class="text-[var(--text-page-title)] font-semibold tracking-tight tabular-nums">{{ stat.value }}</p>
+        <p class="text-[var(--color-ink-tertiary)] mt-0.5">{{ stat.label }}</p>
       </div>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
       <div class="lg:col-span-3 space-y-5 animate-slide-up stagger-2">
         <div class="flex items-center justify-between">
-          <h2 class="text-[16px] font-semibold">功能模块</h2>
+          <h2 class="text-[var(--text-subtitle)] font-semibold">功能模块</h2>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <RouterLink
@@ -35,8 +35,8 @@
                 <div v-html="item.icon" />
               </div>
               <div class="flex-1 min-w-0">
-                <h3 class="text-[14px] font-semibold group-hover:text-[var(--color-accent)] transition-colors duration-200">{{ item.title }}</h3>
-                <p class="text-[12px] text-[var(--color-ink-tertiary)] mt-0.5 truncate">{{ item.desc }}</p>
+                <h3 class="text-[var(--text-body)] font-semibold group-hover:text-[var(--color-accent)] transition-colors duration-200">{{ item.title }}</h3>
+                <p class="text-[var(--color-ink-tertiary)] mt-0.5 truncate">{{ item.desc }}</p>
               </div>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-[var(--color-ink-tertiary)] flex-shrink-0 transition-transform duration-200 group-hover:translate-x-1.5 group-hover:text-[var(--color-accent)]">
                 <polyline points="9 18 15 12 9 6"/>
@@ -49,7 +49,7 @@
       <div class="lg:col-span-2 animate-slide-up stagger-3">
         <div class="liquid-card p-5 space-y-5">
           <div>
-            <h2 class="text-[15px] font-semibold mb-3">快捷操作</h2>
+            <h2 class="text-[var(--text-subtitle)] font-semibold mb-3">快捷操作</h2>
             <div class="space-y-1.5">
               <button
                 v-for="shortcut in shortcuts"
@@ -61,8 +61,8 @@
                   <div v-html="shortcut.icon" />
                 </div>
                 <div class="flex-1 min-w-0">
-                  <p class="text-[13px] font-medium group-hover:text-[var(--color-accent)] transition-colors">{{ shortcut.label }}</p>
-                  <p class="text-[11px] text-[var(--color-ink-tertiary)]">{{ shortcut.hint }}</p>
+                  <p class="font-medium group-hover:text-[var(--color-accent)] transition-colors">{{ shortcut.label }}</p>
+                  <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">{{ shortcut.hint }}</p>
                 </div>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-[var(--color-ink-tertiary)] flex-shrink-0 transition-transform group-hover:translate-x-1"><polyline points="9 18 15 12 9 6"/></svg>
               </button>
@@ -70,7 +70,7 @@
           </div>
 
           <div class="border-t border-[var(--color-border-subtle)] pt-5">
-            <h2 class="text-[15px] font-semibold mb-3">最近动态</h2>
+            <h2 class="text-[var(--text-subtitle)] font-semibold mb-3">最近动态</h2>
             <div class="space-y-0">
               <div v-for="(activity, i) in recentActivities" :key="activity.text">
                 <div class="flex items-start gap-3 py-2.5">
@@ -79,8 +79,8 @@
                     <div v-if="i < recentActivities.length - 1" class="w-px flex-1 min-h-[12px] bg-[var(--color-border-subtle)] mt-1"></div>
                   </div>
                   <div class="flex-1 min-w-0">
-                    <p class="text-[12px] text-[var(--color-ink)]">{{ activity.text }}</p>
-                    <p class="text-[11px] text-[var(--color-ink-tertiary)] mt-0.5">{{ activity.time }}</p>
+                    <p class="text-[var(--color-ink)]">{{ activity.text }}</p>
+                    <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)] mt-0.5">{{ activity.time }}</p>
                   </div>
                 </div>
               </div>

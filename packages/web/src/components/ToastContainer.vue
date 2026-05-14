@@ -7,10 +7,16 @@
           :key="toast.id"
           class="toast-item"
           :class="`toast-${toast.type}`"
-          @click="remove(toast.id)"
+          :role="toast.type === 'error' ? 'alert' : 'status'"
         >
           <span class="flex-1">{{ toast.text }}</span>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0 cursor-pointer"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <button
+            class="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-sm hover:bg-black/5 transition-colors cursor-pointer border-none bg-none"
+            :aria-label="`关闭${toast.type === 'error' ? '错误' : '通知'}`"
+            @click.stop="remove(toast.id)"
+          >
+            <X :size="14" :stroke-width="1.5" color="var(--color-ink-tertiary)" />
+          </button>
         </div>
       </TransitionGroup>
     </div>
@@ -18,6 +24,7 @@
 </template>
 
 <script setup lang="ts">
+import { X } from "lucide-vue-next";
 import { useToast } from "@/composables/useToast";
 
 const { toasts, remove } = useToast();
