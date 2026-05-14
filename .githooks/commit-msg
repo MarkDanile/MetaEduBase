@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+MSG_FILE="$1"
+MSG=$(cat "$MSG_FILE")
+
+if ! echo "$MSG" | grep -qE '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9/-]+\))?: .{1,72}'; then
+  echo "[commit-msg] ❌ Commit message 不符合 Conventional Commits 规范"
+  echo ""
+  echo "  格式: type(scope): description"
+  echo ""
+  echo "  type: feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert"
+  echo "  scope: 按目录/模块 (web|server|knowledge|identity|resource|deploy|shared|mcp)"
+  echo "  description: 祈使句, <72 字符"
+  echo ""
+  echo "  示例:"
+  echo "    feat(knowledge): add semantic search endpoint"
+  echo "    fix(web): resolve login redirect on expired token"
+  echo "    docs: update deployment architecture"
+  echo ""
+  echo "  跳过: git commit --no-verify"
+  exit 1
+fi
