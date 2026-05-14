@@ -91,24 +91,118 @@
 - Python 3.12+
 - Node.js 20+
 - pnpm 9+
-- Docker & Docker Compose (用于数据库/Redis/MinIO)
+- PostgreSQL 16 + pgvector 扩展（本地开发）**或** Docker & Docker Compose（全栈开发）
 
-### 1. 克隆项目
+<details>
+<summary>Docker 环境安装（macOS 推荐 Colima）</summary>
+
+macOS 不支持原生 Docker Engine，需通过轻量 VM 运行。推荐使用 Colima（纯命令行、开源免费）：
 
 ```bash
+# 安装 colima + docker CLI + compose
+brew install colima docker docker-compose
+
+# 首次启动（国内网络可能卡住，见下方解决方案）
+colima start --cpu 2 --memory 4 --disk 60
+```
+
+**国内网络加速**：Colima 首次启动需从 GitHub 下载 VM 镜像，国内直连可能超时。
+
+```bash
+# 通过 GitHub 加速代理下载对应版本镜像
+curl -L -o /tmp/colima-arm64-docker.qcow2 \
+  https://ghfast.top/https://github.com/abiosoft/colima-core/releases/download/v0.10.1/ubuntu-24.04-minimal-cloudimg-arm64-docker.qcow2
+
+# Intel Mac 将 arm64 替换为 amd64
+
+# 使用本地镜像启动
+colima start --cpu 2 --memory 4 --disk 60 --disk-image /tmp/colima-arm64-docker.qcow2
+```
+
+**Docker Hub 镜像加速**：编辑 `~/.colima/default/colima.yaml`，在末尾的 `docker: {}` 替换为：
+
+```yaml
+docker:
+  registry-mirrors:
+    - https://docker.1ms.run
+    - https://docker-0.unsee.tech
+    - https://docker.m.daocloud.io
+```
+
+然后 `colima stop && colima start` 使配置生效。
+
+</details>
+
+### 方式 A：一键启动（推荐）
+
+项目提供了 `dev.sh` 脚本，自动检测环境并启动全部服务：
+
+```bash
+# 克隆项目
 git clone https://github.com/MarkDanile/MetaEduBase.git
 cd MetaEduBase
+
+# 安装依赖
+pnpm install
+cd packages/server-python && make install && cd ../..
+
+# 一键启动（基础设施 + 后端 + 前端）
+./dev.sh
 ```
 
-### 2. 启动基础设施
+脚本会自动检测 Docker 是否可用：有 Docker 则用 Docker Compose 启动全栈基础设施，无 Docker 则使用本地 PostgreSQL。
+
+更多命令：
+
+| 命令 | 说明 |
+|---|---|
+| `./dev.sh` | 启动全部服务 |
+| `./dev.sh infra` | 仅启动基础设施 |
+| `./dev.sh backend` | 基础设施 + 后端 |
+| `./dev.sh frontend` | 基础设施 + 前端 |
+| `./dev.sh stop` | 停止全部服务 |
+| `./dev.sh status` | 查看运行状态 |
+
+也可通过 pnpm 调用：
 
 ```bash
-cd deploy
-cp .env.example .env        # 按需修改配置
-docker compose -f docker-compose.dev.yml up -d
+pnpm dev          # 等同于 ./dev.sh all
+pnpm dev:infra    # 仅基础设施
+pnpm dev:stop     # 停止
+pnpm dev:status   # 查看状态
 ```
 
-启动后可用服务：
+环境变量（可选）：
+
+| 变量 | 说明 | 默认值 |
+|---|---|---|
+| `METAEDU_INFRA` | 基础设施模式: `docker` / `local` | 自动检测 |
+| `METAEDU_PG_BIN` | 本地 PostgreSQL bin 目录 | `/opt/homebrew/opt/postgresql@16/bin` |
+| `METAEDU_PG_DIR` | 本地 PostgreSQL 数据目录 | `/opt/homebrew/var/postgresql@16` |
+
+### 方式 B：分步手动启动
+
+<details>
+<summary>使用 Docker 全栈基础设施</summary>
+
+```bash
+# 1. 启动基础设施
+cd deploy
+cp .env.example .env
+docker compose -f docker-compose.dev.yml up -d
+cd ..
+
+# 2. 启动后端
+cd packages/server-python
+make install
+make dev    # http://localhost:8000
+
+# 3. 启动前端（新终端）
+cd packages/web
+pnpm dev    # http://localhost:3000
+```
+
+Docker 基础设施包含：
 
 | 服务 | 端口 | 说明 |
 |---|---|---|
@@ -117,39 +211,41 @@ docker compose -f docker-compose.dev.yml up -d
 | MinIO API | 9000 | 对象存储 |
 | MinIO Console | 9001 | 存储管理界面 |
 
-### 3. 启动后端
+</details>
+
+<details>
+<summary>使用本地 PostgreSQL（macOS Homebrew）</summary>
 
 ```bash
+# 1. 确保 PostgreSQL 已安装并运行
+brew install postgresql@16
+brew services start postgresql@16
+
+# 2. 创建数据库和用户
+/opt/homebrew/opt/postgresql@16/bin/psql -d postgres -c \
+  "CREATE USER metaedu WITH PASSWORD 'dev_only_123' SUPERUSER;"
+/opt/homebrew/opt/postgresql@16/bin/psql -d postgres -c \
+  "CREATE DATABASE metaedu OWNER metaedu;"
+
+# 3. 安装扩展（需要 pgvector）
+/opt/homebrew/opt/postgresql@16/bin/psql -U metaedu -d metaedu -c \
+  "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS ltree;"
+
+# 4. 启动后端
 cd packages/server-python
-
-# 安装依赖
 make install
+make dev    # http://localhost:8000
 
-# 初始化数据库 (创建 schema + 种子数据)
-make setup-db
-
-# 启动开发服务器
-make dev
+# 5. 启动前端（新终端）
+cd packages/web
+pnpm dev    # http://localhost:3000
 ```
 
-后端运行在 `http://localhost:8000`，API 文档访问 `http://localhost:8000/docs`
+> ⚠️ 本地模式下 Redis 和 MinIO 不可用，异步任务和对象存储功能受限。
 
-### 4. 启动前端
+</details>
 
-```bash
-# 回到项目根目录
-cd ../..
-
-# 安装前端依赖
-pnpm install
-
-# 启动开发服务器
-pnpm dev:web
-```
-
-前端运行在 `http://localhost:3000`
-
-### 5. 默认账号
+### 默认账号
 
 | 用户名 | 密码 | 角色 |
 |---|---|---|

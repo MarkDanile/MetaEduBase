@@ -4,10 +4,14 @@
   "private": true,
   "description": "MetaEduBase - AI Native 职业教育知识基座",
   "scripts": {
+    "dev": "./dev.sh all",
+    "dev:infra": "./dev.sh infra",
     "dev:web": "pnpm --filter @metaedu/web dev",
-    "build:web": "pnpm --filter @metaedu/web build",
-    "dev:server": "cd packages/server-python && make dev",
+    "dev:server": "cd packages/server-python && .venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
     "dev:mcp": "cd packages/mcp-server && make dev",
+    "dev:stop": "./dev.sh stop",
+    "dev:status": "./dev.sh status",
+    "build:web": "pnpm --filter @metaedu/web build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "build": "turbo run build"

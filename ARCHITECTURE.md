@@ -959,3 +959,80 @@ def get_result_fusion() -> ResultFusion:
 - 百万级向量检索 p99 ≤ 200ms
 - 系统可用性 ≥ 99.9%
 - 多模态（文本+语音+图像）端到端检索
+
+---
+
+## 14. 生产部署架构
+
+### 14.1 部署单元
+
+| 部署单元 | 构建产物 | 镜像 | 独立部署 |
+|---|---|---|---|
+| `@metaedu/shared` | TypeScript 类型 (编译时依赖) | — | ❌ |
+| `@metaedu/web` | Vite 静态文件 | `Dockerfile.frontend` → Nginx | ✅ |
+| `server-python` | FastAPI 应用 | `Dockerfile.backend` | ✅ |
+| `mcp-server` | MCP 工具服务 | (待补充) | ✅ |
+
+### 14.2 生产架构
+
+```
+VPS (单机 2C4G 起步)
+├── frontend (Nginx 容器, port 80/443)
+│   ├── /              → Vite build 静态文件
+│   ├── /api/*         → proxy_pass backend:8000
+│   └── /docs /openapi → proxy_pass backend:8000
+├── backend (FastAPI 容器, 2 workers)
+│   └── 依赖 postgres + redis + minio
+├── postgres (pgvector:pg16)
+├── redis (7-alpine, 密码保护)
+└── minio (对象存储)
+```
+
+### 14.3 文件结构
+
+```
+deploy/
+├── docker-compose.yml        # 生产编排 (全栈 7 容器)
+├── docker-compose.dev.yml    # 开发编排 (仅基础设施)
+├── Dockerfile.backend        # Python 3.12-slim
+├── Dockerfile.frontend       # Node 20 build → Nginx alpine
+├── nginx/
+│   └── nginx.conf            # 反向代理 + SPA fallback + gzip + 静态缓存
+├── .env.example              # 开发环境变量
+├── .env.production           # 生产环境变量模板 (密码占位符)
+└── init-db.sql               # PostgreSQL 初始化脚本
+```
+
+### 14.4 部署命令
+
+```bash
+# 首次部署
+cd deploy
+cp .env.production .env       # 编辑: 替换所有 CHANGE_ME 占位符
+docker-compose up -d           # 构建镜像 + 启动全部服务
+
+# 更新部署 (代码变更后)
+git pull
+docker-compose up -d --build   # 只重建变更的镜像, 滚动更新
+
+# 仅重建后端
+docker-compose up -d --build backend
+
+# 仅重建前端
+docker-compose up -d --build frontend
+
+# 查看日志
+docker-compose logs -f backend
+docker-compose logs -f frontend
+```
+
+### 14.5 安全要点
+
+| 项目 | 开发环境 | 生产环境 |
+|---|---|---|
+| PostgreSQL 密码 | `dev_only_123` | `.env` 中 `POSTGRES_PASSWORD` (必须修改) |
+| Redis 密码 | 无 | `.env` 中 `REDIS_PASSWORD` (必须修改) |
+| MinIO 密码 | `dev_only_123` | `.env` 中 `MINIO_SECRET_KEY` (必须修改) |
+| JWT 密钥 | `dev-only-change-in-production` | `.env` 中 `JWT_SECRET` (至少 32 位随机) |
+| 端口暴露 | 全部映射到 localhost | 仅 `frontend:80` 对外，其他仅内部网络 |
+| HTTPS | 无 | Coolify/反向代理自动管理，或手动 certbot |

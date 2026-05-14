@@ -1,0 +1,26 @@
+FROM node:20-slim AS build
+
+WORKDIR /app
+
+RUN corepack enable
+
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json ./
+COPY packages/shared/package.json packages/shared/
+COPY packages/web/package.json packages/web/
+
+RUN pnpm install --frozen-lockfile
+
+COPY packages/shared/ packages/shared/
+COPY packages/web/ packages/web/
+COPY tsconfig.base.json ./
+
+RUN pnpm --filter @metaedu/web build
+
+FROM nginx:alpine
+
+COPY --from=build /app/packages/web/dist /usr/share/nginx/html
+COPY deploy/nginx/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
