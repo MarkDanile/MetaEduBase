@@ -1,36 +1,31 @@
 <template>
   <div class="p-8 max-w-[1000px] mx-auto">
     <div class="flex items-start justify-between mb-8 animate-slide-up">
-      <div>
-        <h1 class="text-[24px] font-semibold tracking-tight" style="letter-spacing:-0.5px">校本资源</h1>
-        <p class="text-[13px] text-[var(--color-ink-tertiary)] mt-1">教学资源上传、解析与管理</p>
-        <div class="wet-line mt-2.5" style="width:40px"></div>
-      </div>
-      <button @click="showUploadDialog = true" class="liquid-btn liquid-btn-primary">
+      <PageHeader title="校本资源" subtitle="教学资源上传、解析与管理" />
+      <button @click="showUploadDialog = true" class="liquid-btn liquid-btn-primary flex-shrink-0">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         上传资源
       </button>
     </div>
 
-    <div v-if="loading" class="py-20 text-center">
-      <div class="inline-flex items-center gap-2 text-[var(--color-ink-tertiary)] text-[14px]">
-        <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-        加载中...
-      </div>
-    </div>
+    <LoadingSpinner v-if="loading" />
 
-    <div v-else-if="items.length === 0" class="py-16 text-center animate-slide-up stagger-1">
-      <svg class="mx-auto mb-5" width="70" height="60" viewBox="0 0 70 60" fill="none">
-        <path d="M4 12C4 9.79 5.79 8 8 8H24L30 14H62C64.21 14 66 15.79 66 18V48C66 50.21 64.21 52 62 52H8C5.79 52 4 50.21 4 48V12Z" stroke="var(--color-border)" stroke-width="1.5"/>
-        <path d="M4 24H66" stroke="var(--color-border)" stroke-width="1"/>
-        <rect x="14" y="30" width="18" height="3" rx="1.5" fill="var(--color-accent-bg)"/>
-        <rect x="14" y="37" width="26" height="3" rx="1.5" fill="var(--color-accent-bg)"/>
-        <circle cx="54" cy="34" r="8" fill="var(--color-accent-bg)" stroke="var(--color-accent)" stroke-width="0.8"/>
-        <path d="M51 34L53.5 36.5L57 32" stroke="var(--color-accent)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-      <p class="text-[var(--color-ink-secondary)] text-[14px] font-medium">暂无资源</p>
-      <p class="text-[var(--color-ink-tertiary)] text-[12px] mt-1">点击右上角上传第一个资源</p>
-    </div>
+    <EmptyState
+      v-else-if="items.length === 0"
+      title="暂无资源"
+      hint="点击右上角上传第一个资源"
+    >
+      <template #icon>
+        <svg class="mx-auto mb-5" width="70" height="60" viewBox="0 0 70 60" fill="none">
+          <path d="M4 12C4 9.79 5.79 8 8 8H24L30 14H62C64.21 14 66 15.79 66 18V48C66 50.21 64.21 52 62 52H8C5.79 52 4 50.21 4 48V12Z" stroke="var(--color-border)" stroke-width="1.5"/>
+          <path d="M4 24H66" stroke="var(--color-border)" stroke-width="1"/>
+          <rect x="14" y="30" width="18" height="3" rx="1.5" fill="var(--color-accent-bg)"/>
+          <rect x="14" y="37" width="26" height="3" rx="1.5" fill="var(--color-accent-bg)"/>
+          <circle cx="54" cy="34" r="8" fill="var(--color-accent-bg)" stroke="var(--color-accent)" stroke-width="0.8"/>
+          <path d="M51 34L53.5 36.5L57 32" stroke="var(--color-accent)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </template>
+    </EmptyState>
 
     <div v-else class="space-y-2">
       <div
@@ -47,8 +42,8 @@
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2">
                 <span class="font-medium text-[14px] text-[var(--color-ink)] truncate">{{ item.title }}</span>
-                <span class="liquid-tag" :class="typeTagClass(item.resource_type)">{{ typeLabel(item.resource_type) }}</span>
-                <span v-if="item.domain" class="liquid-tag liquid-tag-green">{{ domainLabel(item.domain) }}</span>
+                <span class="liquid-tag" :class="typeTagClass(item.resource_type)">{{ resourceTypeMap[item.resource_type] ?? item.resource_type }}</span>
+                <span v-if="item.domain" class="liquid-tag liquid-tag-green">{{ domainMap[item.domain] ?? item.domain }}</span>
               </div>
               <div class="flex items-center gap-3 mt-0.5 text-[12px] text-[var(--color-ink-tertiary)]">
                 <span v-if="item.file_size">{{ formatSize(item.file_size) }}</span>
@@ -57,11 +52,11 @@
             </div>
           </div>
           <div class="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <button @click="downloadResource(item)" class="liquid-btn liquid-btn-ghost text-[12px] py-1 px-2.5">
+            <button @click="downloadResource(item)" class="liquid-btn liquid-btn-ghost text-[12px] py-1 px-2.5" aria-label="下载资源">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               下载
             </button>
-            <button @click="deleteResource(item.id)" class="liquid-btn liquid-btn-ghost text-[12px] py-1 px-2.5 !text-[var(--color-danger)]">
+            <button @click="confirmDeleteId = item.id" class="liquid-btn liquid-btn-ghost text-[12px] py-1 px-2.5 !text-[var(--color-danger)]" aria-label="删除资源">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
               删除
             </button>
@@ -81,19 +76,29 @@
       </button>
     </div>
 
-    <div v-if="showUploadDialog" class="liquid-dialog-overlay" @click.self="showUploadDialog = false">
+    <div v-if="showUploadDialog" class="liquid-dialog-overlay" @click.self="showUploadDialog = false" @keydown.escape="showUploadDialog = false" role="dialog" aria-modal="true">
       <div class="liquid-dialog">
         <h3 class="text-[16px] font-semibold mb-5">上传资源</h3>
         <form @submit.prevent="uploadResource" class="space-y-4">
           <div>
             <label class="block text-[13px] font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">文件</label>
-            <div class="liquid-input flex items-center cursor-pointer" @click="($refs.fileInput as HTMLInputElement)?.click()">
+            <div
+              class="liquid-input flex items-center cursor-pointer"
+              :class="dragOver ? 'border-[var(--color-accent)] bg-[var(--color-accent-bg)]' : ''"
+              @click="($refs.fileInput as HTMLInputElement)?.click()"
+              @dragover.prevent="dragOver = true"
+              @dragleave="dragOver = false"
+              @drop.prevent="handleDrop"
+            >
               <span class="flex-1 text-[13px]" :class="selectedFile ? 'text-[var(--color-ink)]' : 'text-[var(--color-ink-tertiary)]'">
-                {{ selectedFile ? selectedFile.name : '选择文件...' }}
+                {{ selectedFile ? selectedFile.name : '拖拽文件到此处或点击选择...' }}
               </span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             </div>
             <input ref="fileInput" type="file" @change="onFileChange" required class="hidden" />
+          </div>
+          <div v-if="uploadProgress !== null" class="w-full h-2 bg-[var(--color-bg-warm)] rounded-full overflow-hidden">
+            <div class="h-full bg-[var(--color-accent)] rounded-full transition-all duration-300" :style="{ width: uploadProgress + '%' }"></div>
           </div>
           <div>
             <label class="block text-[13px] font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">标题</label>
@@ -102,7 +107,7 @@
           <div>
             <label class="block text-[13px] font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">类型</label>
             <select v-model="uploadForm.resource_type" class="liquid-input">
-              <option v-for="(label, key) in typeMap" :key="key" :value="key">{{ label }}</option>
+              <option v-for="(label, key) in resourceTypeMap" :key="key" :value="key">{{ label }}</option>
             </select>
           </div>
           <div>
@@ -121,12 +126,24 @@
         </form>
       </div>
     </div>
+
+    <ConfirmDialog
+      v-model:open="confirmDeleteOpen"
+      title="删除资源"
+      message="删除后资源文件也将被移除，此操作不可撤销。"
+      @confirm="doDeleteResource"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from "vue";
+import { ref, reactive, computed, onMounted } from "vue";
 import api from "@/services/api";
+import { domainMap, resourceTypeMap } from "@/constants/maps";
+import PageHeader from "@/components/PageHeader.vue";
+import EmptyState from "@/components/EmptyState.vue";
+import LoadingSpinner from "@/components/LoadingSpinner.vue";
+import ConfirmDialog from "@/components/ConfirmDialog.vue";
 
 interface ResourceItem {
   id: string;
@@ -144,40 +161,24 @@ const items = ref<ResourceItem[]>([]);
 const total = ref(0);
 const loading = ref(false);
 const uploading = ref(false);
+const uploadProgress = ref<number | null>(null);
 const showUploadDialog = ref(false);
+const dragOver = ref(false);
 const limit = 50;
 const offset = ref(0);
 const selectedFile = ref<File | null>(null);
+const confirmDeleteId = ref<string | null>(null);
+
+const confirmDeleteOpen = computed({
+  get: () => confirmDeleteId.value !== null,
+  set: (v: boolean) => { if (!v) confirmDeleteId.value = null; },
+});
 
 const uploadForm = reactive({
   title: "",
   resource_type: "document",
   domain: "",
 });
-
-const typeMap: Record<string, string> = {
-  document: "文档",
-  video: "视频",
-  image: "图片",
-  audio: "音频",
-  other: "其他",
-};
-
-const domainMap: Record<string, string> = {
-  electronics_info: "电子与信息",
-  smart_manufacturing: "智能制造",
-  finance_commerce: "财经商贸",
-  medical_health: "医药健康",
-  education_sports: "教育与体育",
-  civil_engineering: "土木建筑",
-  transportation: "交通运输",
-  agriculture: "农林牧渔",
-  art_design: "文化艺术",
-  public_service: "公共管理",
-};
-
-function typeLabel(t: string) { return typeMap[t] ?? t; }
-function domainLabel(d: string) { return domainMap[d] ?? d; }
 
 function typeIcon(type: string) {
   const icons: Record<string, string> = {
@@ -227,6 +228,17 @@ function onFileChange(e: Event) {
   }
 }
 
+function handleDrop(e: DragEvent) {
+  dragOver.value = false;
+  const file = e.dataTransfer?.files[0];
+  if (file) {
+    selectedFile.value = file;
+    if (!uploadForm.title) {
+      uploadForm.title = file.name.replace(/\.[^.]+$/, "");
+    }
+  }
+}
+
 async function loadResources() {
   loading.value = true;
   try {
@@ -241,17 +253,23 @@ async function loadResources() {
 async function uploadResource() {
   if (!selectedFile.value) return;
   uploading.value = true;
+  uploadProgress.value = 0;
   try {
     const formData = new FormData();
     formData.append("file", selectedFile.value);
     formData.append("title", uploadForm.title);
     formData.append("resource_type", uploadForm.resource_type);
     if (uploadForm.domain) formData.append("domain", uploadForm.domain);
-    await api.post("/resources/upload", formData);
+    await api.post("/resources/upload", formData, {
+      onUploadProgress: (e) => {
+        if (e.total) uploadProgress.value = Math.round((e.loaded / e.total) * 100);
+      },
+    });
     showUploadDialog.value = false;
     uploadForm.title = "";
     uploadForm.domain = "";
     selectedFile.value = null;
+    uploadProgress.value = null;
     await loadResources();
   } finally {
     uploading.value = false;
@@ -263,8 +281,10 @@ function downloadResource(item: ResourceItem) {
   window.open(`/api/v1/resources/${item.id}/download?token=${token}`, "_blank");
 }
 
-async function deleteResource(id: string) {
-  await api.delete(`/resources/${id}`);
+async function doDeleteResource() {
+  if (!confirmDeleteId.value) return;
+  await api.delete(`/resources/${confirmDeleteId.value}`);
+  confirmDeleteId.value = null;
   await loadResources();
 }
 

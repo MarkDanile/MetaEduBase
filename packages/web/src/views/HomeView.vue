@@ -1,11 +1,10 @@
 <template>
   <div class="p-8 max-w-[1000px] mx-auto">
-    <header class="mb-8 animate-slide-up">
-      <p class="text-[12px] text-[var(--color-ink-tertiary)] mb-1">{{ greeting }}，{{ roleLabel }}</p>
-      <h1 class="text-[24px] font-semibold tracking-tight" style="letter-spacing:-0.5px">元知职教基座</h1>
-      <p class="text-[14px] text-[var(--color-ink-secondary)] mt-1">构建 · 管理 · 探索 职业教育知识体系</p>
-      <div class="wet-line mt-3" style="width:48px"></div>
-    </header>
+    <PageHeader title="元知职教基座" subtitle="构建 · 管理 · 探索 职业教育知识体系" :line-width="48">
+      <template #greeting>
+        <p class="text-[12px] text-[var(--color-ink-tertiary)] mb-1">{{ greeting }}，{{ roleLabel }}</p>
+      </template>
+    </PageHeader>
 
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8 animate-slide-up stagger-1">
       <div v-for="(stat, i) in stats" :key="stat.label" class="liquid-card liquid-card-scan p-4" :style="{ animationDelay: (i * 1.5 + 6) + 's' }">
@@ -26,7 +25,7 @@
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <RouterLink
-            v-for="(item, i) in navItems"
+            v-for="item in navItems"
             :key="item.route"
             :to="item.route"
             class="liquid-card p-4 group"
@@ -95,23 +94,15 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted } from "vue";
-import { RouterLink, useRouter } from "vue-router";
+import { RouterLink } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import { roleShortMap } from "@/constants/maps";
+import PageHeader from "@/components/PageHeader.vue";
 import api from "@/services/api";
 
 const authStore = useAuthStore();
-const router = useRouter();
 
-const roleMap: Record<string, string> = {
-  super_admin: "管理员",
-  domain_expert: "领域专家",
-  teacher: "老师",
-  student: "同学",
-  harness_engineer: "工程师",
-  system_ops: "运维",
-};
-
-const roleLabel = computed(() => roleMap[authStore.userRole ?? ""] ?? "用户");
+const roleLabel = computed(() => roleShortMap[authStore.userRole ?? ""] ?? "用户");
 
 const greeting = computed(() => {
   const h = new Date().getHours();
@@ -122,26 +113,25 @@ const greeting = computed(() => {
   return "晚上好";
 });
 
-const knowledgeCount = ref(0);
-const resourceCount = ref(0);
-const chatCount = ref(0);
+const knowledgeCount = ref<number | null>(null);
+const resourceCount = ref<number | null>(null);
 
 const stats = computed(() => [
   {
     label: "知识节点",
-    value: knowledgeCount.value,
+    value: knowledgeCount.value ?? "—",
     bgClass: "bg-[var(--color-accent-bg)]",
     icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
   },
   {
     label: "校本资源",
-    value: resourceCount.value,
+    value: resourceCount.value ?? "—",
     bgClass: "bg-[var(--color-tag-green)]",
     icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-tag-green-text)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
   },
   {
     label: "AI 问答",
-    value: chatCount.value,
+    value: "—",
     bgClass: "bg-[var(--color-highlight-bg)]",
     icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-highlight)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
   },

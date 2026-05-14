@@ -59,6 +59,22 @@
   --duration-liquid: 300ms;
 
   --ease-elastic: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --text-page-title: 24px;
+  --text-section-title: 18px;
+  --text-body: 14px;
+  --text-caption: 13px;
+  --text-small: 12px;
+  --text-micro: 11px;
+
+  --spacing-page: 32px;
+  --spacing-section: 24px;
+  --spacing-card: 16px;
+
+  --z-sidebar: 10;
+  --z-drawer: 30;
+  --z-dialog: 40;
+  --z-toast: 50;
 }
 
 @layer base {
@@ -224,6 +240,21 @@
 
   .liquid-btn-ghost:hover {
     background: var(--color-accent-bg);
+  }
+
+  .liquid-btn-danger {
+    position: relative;
+    overflow: hidden;
+    background: var(--color-danger);
+    color: white;
+  }
+
+  .liquid-btn-danger:hover {
+    background: #DC2626;
+  }
+
+  .liquid-btn-danger:active {
+    transform: scale(0.97);
   }
 
   .liquid-tag {
@@ -545,5 +576,53 @@
     .liquid-card-scan::after { animation: none; }
     .liquid-btn-primary::after { transition: none; }
     .markdown-body blockquote::after { animation: none; }
+  }
+
+  .toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: var(--z-toast);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+  }
+
+  .toast-item {
+    pointer-events: auto;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    padding: 12px 16px;
+    font-size: 13px;
+    color: var(--color-ink);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: toast-in var(--duration-normal) var(--ease-elastic);
+    max-width: 360px;
+  }
+
+  .toast-item.toast-success { border-left: 3px solid var(--color-success); }
+  .toast-item.toast-error { border-left: 3px solid var(--color-danger); }
+  .toast-item.toast-warning { border-left: 3px solid var(--color-warning); }
+  .toast-item.toast-info { border-left: 3px solid var(--color-accent); }
+
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateX(24px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .toast-leave-active {
+    transition: all var(--duration-fast) var(--ease-out);
+  }
+
+  .toast-leave-to {
+    opacity: 0;
+    transform: translateX(24px);
   }
 }

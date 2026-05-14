@@ -63,7 +63,7 @@
                 :key="src.id"
                 class="liquid-tag liquid-tag-blue"
               >
-                <span class="opacity-70">{{ levelLabel(src.level) }}</span>
+                <span class="opacity-70">{{ levelMap[src.level] ?? src.level }}</span>
                 <span class="font-medium ml-0.5">{{ src.title }}</span>
                 <span v-if="src.score" class="opacity-50 ml-0.5">{{ (src.score * 100).toFixed(0) }}%</span>
               </span>
@@ -94,17 +94,30 @@
     <div class="px-8 py-3 border-t border-[var(--color-border)]">
       <form @submit.prevent="sendMessage" class="flex gap-2.5 items-end">
         <div class="flex-1 bg-[var(--color-bg-warm)] border border-[var(--color-border)] rounded-[var(--radius-md)] px-4 py-2.5 flex items-center transition-all duration-200 focus-within:border-[var(--color-accent)] focus-within:shadow-[0_0_0_2px_var(--color-accent-bg)]">
-          <input
+          <textarea
+            ref="inputEl"
             v-model="inputText"
-            type="text"
-            placeholder="输入你的问题..."
-            class="flex-1 bg-transparent outline-none text-[14px] text-[var(--color-ink)] placeholder:text-[var(--color-ink-tertiary)]"
+            placeholder="输入你的问题... (Shift+Enter 换行)"
+            rows="1"
+            class="flex-1 bg-transparent outline-none text-[14px] text-[var(--color-ink)] placeholder:text-[var(--color-ink-tertiary)] resize-none max-h-[120px]"
             :disabled="loading"
+            @keydown.enter.exact.prevent="sendMessage"
+            @input="autoResize"
           />
         </div>
         <button
+          v-if="loading"
+          type="button"
+          @click="abortRequest"
+          class="liquid-btn liquid-btn-ghost w-10 h-10 !p-0 !rounded-[var(--radius-md)]"
+          aria-label="停止生成"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" class="text-[var(--color-danger)]"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        </button>
+        <button
+          v-else
           type="submit"
-          :disabled="loading || !inputText.trim()"
+          :disabled="!inputText.trim()"
           class="liquid-btn liquid-btn-primary w-10 h-10 !p-0 !rounded-[var(--radius-md)]"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -127,6 +140,7 @@ import bash from "highlight.js/lib/languages/bash";
 import xml from "highlight.js/lib/languages/xml";
 import css from "highlight.js/lib/languages/css";
 import markdown from "highlight.js/lib/languages/markdown";
+import { levelMap } from "@/constants/maps";
 import api from "@/services/api";
 
 hljs.registerLanguage("python", python);
@@ -168,13 +182,8 @@ const messages = ref<ChatMessage[]>([]);
 const inputText = ref("");
 const loading = ref(false);
 const chatContainer = ref<HTMLElement | null>(null);
-
-const levelMap: Record<string, string> = {
-  professional: "专业", course: "课程", chapter: "章节",
-  knowledge_point: "知识点", skill_point: "技能点", operation_step: "操作步骤",
-};
-
-function levelLabel(l: string) { return levelMap[l] ?? l; }
+const inputEl = ref<HTMLTextAreaElement | null>(null);
+const abortController = ref<AbortController | null>(null);
 
 const quickQuestions = [
   "电子信息工程专业有哪些核心课程？",
@@ -190,32 +199,57 @@ function scrollToBottom() {
   });
 }
 
+function autoResize() {
+  nextTick(() => {
+    if (inputEl.value) {
+      inputEl.value.style.height = "auto";
+      inputEl.value.style.height = inputEl.value.scrollHeight + "px";
+    }
+  });
+}
+
 async function sendMessage() {
   const text = inputText.value.trim();
   if (!text || loading.value) return;
 
   messages.value.push({ role: "user", content: text });
   inputText.value = "";
+  if (inputEl.value) inputEl.value.style.height = "auto";
   loading.value = true;
+  abortController.value = new AbortController();
   scrollToBottom();
 
   try {
-    const { data } = await api.post("/ai/chat", { message: text });
+    const { data } = await api.post("/ai/chat", { message: text }, {
+      signal: abortController.value.signal,
+    });
     messages.value.push({
       role: "assistant",
       content: data.reply,
       sources: data.sources,
     });
   } catch (e: unknown) {
-    const err = e as { response?: { data?: { detail?: string } } };
-    messages.value.push({
-      role: "assistant",
-      content: `请求失败: ${err.response?.data?.detail ?? "网络错误"}`,
-    });
+    if ((e as Error).name === "CanceledError" || (e as Error).name === "AbortError") {
+      messages.value.push({
+        role: "assistant",
+        content: "（已停止生成）",
+      });
+    } else {
+      const err = e as { response?: { data?: { detail?: string } } };
+      messages.value.push({
+        role: "assistant",
+        content: `请求失败: ${err.response?.data?.detail ?? "网络错误"}`,
+      });
+    }
   } finally {
     loading.value = false;
+    abortController.value = null;
     scrollToBottom();
   }
+}
+
+function abortRequest() {
+  abortController.value?.abort();
 }
 
 function sendQuick(q: string) {
