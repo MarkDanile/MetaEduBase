@@ -91,18 +91,18 @@
         <!-- Tab 1: Structured extraction -->
         <div v-if="activeTab === 'structured'">
           <EmptyState
-            v-if="!file.structured_data || Object.keys(file.structured_data).length === 0"
+            v-if="!templateData || Object.keys(templateData).length === 0"
             title="暂无结构化数据"
             hint="等待模板抽取任务完成"
           />
-          <div v-else class="grid grid-cols-2 gap-3">
+          <div v-else class="space-y-3">
             <div
-              v-for="(value, key) in file.structured_data"
+              v-for="(value, key) in templateData"
               :key="key"
               class="p-3 rounded-lg border border-[var(--color-border)]"
             >
-              <p class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-1">{{ key }}</p>
-              <p class="text-[var(--text-caption)] text-[var(--color-ink)]">{{ formatJsonValue(value) }}</p>
+              <p class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-1">{{ templateFieldLabel(key) }}</p>
+              <p class="text-[var(--text-caption)] text-[var(--color-ink)]">{{ formatTemplateValue(value) }}</p>
             </div>
           </div>
         </div>
@@ -111,37 +111,38 @@
         <div v-if="activeTab === 'chunks'">
           <LoadingSpinner v-if="loadingChunks" text="加载切片..." />
           <EmptyState v-else-if="chunks.length === 0" title="暂无切片" hint="等待切片任务完成" />
-          <div v-else class="overflow-auto max-h-[400px]">
-            <table class="w-full text-[var(--text-caption)]">
-              <thead>
-                <tr class="border-b border-[var(--color-border)] text-[var(--text-small)] text-[var(--color-ink-tertiary)]">
-                  <th class="text-left py-2 px-2 font-medium">#</th>
-                  <th class="text-left py-2 px-2 font-medium">章节</th>
-                  <th class="text-left py-2 px-2 font-medium">路径</th>
-                  <th class="text-left py-2 px-2 font-medium">字符数</th>
-                  <th class="text-left py-2 px-2 font-medium">Embedding</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="chunk in chunks"
-                  :key="chunk.id"
-                  class="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-hover)]"
-                >
-                  <td class="py-2 px-2 text-[var(--color-ink-tertiary)]">{{ chunk.chunk_index }}</td>
-                  <td class="py-2 px-2 text-[var(--color-ink)]">{{ chunk.section_title || '-' }}</td>
-                  <td class="py-2 px-2 text-[var(--color-ink-secondary)]">{{ chunk.section_path || '-' }}</td>
-                  <td class="py-2 px-2 text-[var(--color-ink-secondary)]">
-                    {{ chunk.char_start != null && chunk.char_end != null ? chunk.char_end - chunk.char_start : '-' }}
-                  </td>
-                  <td class="py-2 px-2">
-                    <span :class="chunk.has_embedding ? 'liquid-tag-green' : 'liquid-tag-amber'" class="text-[var(--text-micro)]">
-                      {{ chunk.has_embedding ? '已生成' : '未生成' }}
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div v-else class="space-y-2">
+            <div
+              v-for="chunk in chunks"
+              :key="chunk.id"
+              class="p-3 rounded-lg border border-[var(--color-border)] hover:bg-[var(--color-bg-hover)]"
+            >
+              <div class="flex items-start justify-between gap-3 mb-1">
+                <div class="flex items-center gap-2">
+                  <span class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">#{{ chunk.chunk_index }}</span>
+                  <span class="text-[var(--text-caption)] text-[var(--color-ink)] font-medium">
+                    {{ chunk.section_title || '无标题' }}
+                  </span>
+                  <span v-if="chunk.section_path" class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">
+                    {{ chunk.section_path }}
+                  </span>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <span
+                    :class="chunk.has_embedding ? 'liquid-tag-green' : 'liquid-tag-amber'"
+                    class="text-[var(--text-micro)]"
+                  >
+                    {{ chunk.has_embedding ? '已向量化' : '未向量化' }}
+                  </span>
+                  <span class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">
+                    {{ chunk.content.length }} 字
+                  </span>
+                </div>
+              </div>
+              <p class="text-[var(--text-caption)] text-[var(--color-ink-secondary)] line-clamp-3">
+                {{ chunk.content }}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -149,18 +150,19 @@
         <div v-if="activeTab === 'kg'">
           <LoadingSpinner v-if="loadingKg" text="加载知识图谱..." />
           <EmptyState v-else-if="kgNodes.length === 0" title="暂无知识节点" hint="等待知识图谱抽取任务完成" />
-          <div v-else>
-            <h4 class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-2">知识节点 ({{ kgNodes.length }})</h4>
-            <div class="flex flex-wrap gap-2">
-              <div
-                v-for="node in kgNodes"
-                :key="node.id"
-                class="liquid-card px-3 py-2 flex items-center gap-2"
-              >
-                <GitBranch :size="12" class="text-[var(--color-accent)]" />
-                <span class="text-[var(--text-caption)] text-[var(--color-ink)]">{{ node.title }}</span>
-                <span class="liquid-tag-blue text-[var(--text-micro)]">{{ node.domain }}</span>
-              </div>
+          <div v-else class="relative">
+            <KGGraph
+              :nodes="kgNodes"
+              :edges="kgEdges"
+              :height="420"
+              @node-click="selectedKgNode = $event"
+            />
+            <!-- Legend -->
+            <div class="mt-2 flex flex-wrap gap-2">
+              <span class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">
+                {{ kgNodes.length }} 节点 / {{ kgEdges.length }} 关系
+              </span>
+              <span class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">· 点击节点查看详情</span>
             </div>
           </div>
         </div>
@@ -174,6 +176,14 @@
       :message="`确定删除文件「${file?.filename}」？此操作不可恢复。`"
       @confirm="doDelete"
     />
+
+    <!-- KG node detail panel -->
+    <KGDetailPanel
+      :node="selectedKgNode"
+      :edges="kgEdges"
+      :nodes="kgNodes"
+      @close="selectedKgNode = null"
+    />
   </div>
 </template>
 
@@ -181,7 +191,7 @@
 import { ref, onMounted, onUnmounted, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
-  ArrowLeft, FileText, Trash2, RefreshCw, GitBranch,
+  ArrowLeft, FileText, Trash2, RefreshCw,
   FileSearch, Scissors, Cpu, Search, LayoutTemplate,
 } from "lucide-vue-next";
 import type { Component } from "vue";
@@ -189,9 +199,11 @@ import PageHeader from "@/components/PageHeader.vue";
 import EmptyState from "@/components/EmptyState.vue";
 import LoadingSpinner from "@/components/LoadingSpinner.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
+import KGGraph from "@/components/KGGraph.vue";
+import KGDetailPanel from "@/components/KGDetailPanel.vue";
 import { useToast } from "@/composables/useToast";
 import { documentApi, type FileDTO, type ChunkDTO, type TaskDTO } from "@/services/document";
-import { knowledgeApi, type KnowledgeNodeDTO } from "@/services/knowledge";
+import { knowledgeApi, type KnowledgeNodeDTO, type KnowledgeEdgeDTO } from "@/services/knowledge";
 import { DOC_TASK_STEPS, TASK_STATUS_MAP, FILE_STATUS_MAP } from "@/constants/pipeline";
 
 const route = useRoute();
@@ -205,6 +217,8 @@ const file = ref<FileDTO | null>(null);
 const tasks = ref<TaskDTO[]>([]);
 const chunks = ref<ChunkDTO[]>([]);
 const kgNodes = ref<KnowledgeNodeDTO[]>([]);
+const kgEdges = ref<KnowledgeEdgeDTO[]>([]);
+const selectedKgNode = ref<KnowledgeNodeDTO | null>(null);
 const loading = ref(true);
 const loadingTasks = ref(false);
 const loadingChunks = ref(false);
@@ -220,6 +234,39 @@ const tabs = [
 ];
 
 const polling = computed(() => tasks.value.some((t) => t.status === "running" || t.status === "pending"));
+
+// --- Structured data helpers ---
+const templateData = computed(() => {
+  if (!file.value?.structured_data) return null;
+  return (file.value.structured_data as Record<string, unknown>)["template"] as Record<string, unknown> | null ?? null;
+});
+
+function templateFieldLabel(key: string): string {
+  const labels: Record<string, string> = {
+    course_name: "课程名称",
+    chapter: "章节",
+    objectives: "教学目标",
+    key_points: "重点",
+    difficulties: "难点",
+    methods: "教学方法",
+    duration: "课时",
+    title: "文档标题",
+    summary: "摘要",
+    sections: "主要章节",
+    keywords: "关键词",
+  };
+  return labels[key] ?? key;
+}
+
+function formatTemplateValue(value: unknown): string {
+  if (value === null || value === undefined) return "-";
+  if (typeof value === "string") return value || "-";
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "-";
+    return value.map((v) => String(v)).join("、");
+  }
+  return JSON.stringify(value);
+}
 
 // --- Data loading ---
 async function loadFile() {
@@ -261,8 +308,12 @@ async function loadChunks() {
 async function loadKg() {
   loadingKg.value = true;
   try {
-    const { data } = await knowledgeApi.listNodes();
-    kgNodes.value = data;
+    const [nodesRes, edgesRes] = await Promise.all([
+      knowledgeApi.listNodes({ source_file_id: fileId.value }),
+      knowledgeApi.listEdges({ source_file_id: fileId.value }),
+    ]);
+    kgNodes.value = nodesRes.data;
+    kgEdges.value = edgesRes.data;
   } catch {
     toast.error("加载知识图谱失败");
   } finally {
@@ -288,7 +339,7 @@ function stepStatusLabel(type: string) {
 }
 
 const stepIconMap: Record<string, Component> = {
-  FileSearch, Scissors, Cpu, Search, LayoutTemplate, GitBranch,
+  FileSearch, Scissors, Cpu, Search, LayoutTemplate,
 };
 
 function stepIcon(type: string): Component {
@@ -366,8 +417,17 @@ watch(activeTab, () => {
 // --- Auto-poll ---
 function startPolling() {
   if (pollTimer) return;
-  pollTimer = setInterval(() => {
-    if (polling.value) loadTasks();
+  pollTimer = setInterval(async () => {
+    if (polling.value) {
+      await loadTasks();
+    } else {
+      // All tasks finished — refresh file data to show structured_data
+      stopPolling();
+      await loadFile();
+      // Also load tab data if tab is active
+      if (activeTab.value === "chunks") await loadChunks();
+      if (activeTab.value === "kg") await loadKg();
+    }
   }, 3000);
 }
 

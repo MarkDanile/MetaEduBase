@@ -13,9 +13,20 @@ export interface KnowledgeNodeDTO {
   metadata: Record<string, unknown>;
 }
 
+export interface KnowledgeEdgeDTO {
+  id: string;
+  source_id: string;
+  target_id: string;
+  relation_type: string;
+  weight: number;
+  metadata: Record<string, unknown>;
+}
+
 export const knowledgeApi = {
-  listNodes: (params?: { domain?: string; parent_id?: string }) =>
+  listNodes: (params?: { domain?: string; parent_id?: string; source_file_id?: string }) =>
     api.get<KnowledgeNodeDTO[]>("/knowledge/nodes", { params }),
+  listEdges: (params?: { source_file_id?: string }) =>
+    api.get<KnowledgeEdgeDTO[]>("/knowledge/edges", { params }),
   getNode: (id: string) => api.get<KnowledgeNodeDTO>(`/knowledge/nodes/${id}`),
   createNode: (data: Partial<KnowledgeNodeDTO> & { title: string; domain: string; level: string }) =>
     api.post<KnowledgeNodeDTO>("/knowledge/nodes", data),

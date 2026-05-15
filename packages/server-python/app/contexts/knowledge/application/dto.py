@@ -50,3 +50,12 @@ class KnowledgeSearchDTO(BaseModel):
 class SearchResultDTO(BaseModel):
     node: KnowledgeNodeDTO
     score: float
+
+
+class KnowledgeEdgeDTO(BaseModel):
+    id: uuid.UUID
+    source_id: uuid.UUID
+    target_id: uuid.UUID
+    relation_type: str
+    weight: float
+    metadata: dict[str, Any]

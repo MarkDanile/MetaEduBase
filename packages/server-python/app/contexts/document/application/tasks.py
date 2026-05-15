@@ -107,6 +107,8 @@ def parse_document(file_id_str: str, tenant_id_str: str):
     tenant_id = uuid.UUID(tenant_id_str)
 
     async def _do(session: AsyncSession):
+        created_task_id: uuid.UUID | None = None
+
         # Get file record
         result = await session.execute(
             text("SELECT * FROM metaedu.files WHERE id = :fid AND tenant_id = :tid"),
@@ -114,10 +116,13 @@ def parse_document(file_id_str: str, tenant_id_str: str):
         )
         row = result.mappings().first()
         if not row:
-            raise ValueError(f"File {file_id} not found")
+            task_id = await _create_task(session, tenant_id, file_id, "parse")
+            await _update_task_status(session, task_id, "failed", 0, f"File {file_id} not found")
+            await session.commit()
+            return
 
-        # Create task record
         task_id = await _create_task(session, tenant_id, file_id, "parse")
+        created_task_id = task_id
         await _update_task_status(session, task_id, "running", 0)
         await session.commit()
 
@@ -148,12 +153,10 @@ def parse_document(file_id_str: str, tenant_id_str: str):
             # Store full_text in file's structured_data
             await session.execute(
                 text(
-                    "UPDATE metaedu.files SET structured_data = :data::jsonb, status = 'processing', updated_at = :now WHERE id = :fid"
+                    "UPDATE metaedu.files SET structured_data = CAST(:data AS JSONB), status = 'processing', updated_at = :now WHERE id = :fid"
                 ),
                 {
-                    "data": json.dumps(
-                        {"full_text": parsed.full_text, "section_count": len(parsed.sections)}
-                    ),
+                    "data": json.dumps({"full_text": parsed.full_text, "section_count": len(parsed.sections)}),
                     "now": datetime.now(UTC).replace(tzinfo=None),
                     "fid": file_id,
                 },
@@ -164,16 +167,24 @@ def parse_document(file_id_str: str, tenant_id_str: str):
             chunk_document.delay(file_id_str, tenant_id_str)
 
         except Exception as e:
-            await _update_task_status(session, task_id, "failed", 0, str(e))
-            await session.execute(
-                text(
-                    "UPDATE metaedu.files SET status = 'failed', updated_at = :now WHERE id = :fid"
-                ),
-                {"now": datetime.now(UTC).replace(tzinfo=None), "fid": file_id},
-            )
+            if created_task_id:
+                try:
+                    await _update_task_status(session, created_task_id, "failed", 0, str(e))
+                    await session.execute(
+                        text(
+                            "UPDATE metaedu.files SET status = 'failed', updated_at = :now WHERE id = :fid"
+                        ),
+                        {"now": datetime.now(UTC).replace(tzinfo=None), "fid": file_id},
+                    )
+                    await session.commit()
+                except Exception:
+                    pass  # Status update failed, don't hide original error
             raise
 
-    asyncio.run(_run_in_session(_do))
+    try:
+        asyncio.run(_run_in_session(_do))
+    except Exception:
+        raise  # Celery will mark task as FAILED
 
 
 # --- Task 2: Chunk document ---
@@ -203,15 +214,42 @@ def chunk_document(file_id_str: str, tenant_id_str: str):
             if not row or not row["structured_data"]:
                 raise ValueError("No parsed data found for file")
 
-            full_text = row["structured_data"].get("full_text", "")
+            # Handle both dict (new) and string (legacy) storage
+            sd = row["structured_data"]
+            if isinstance(sd, str):
+                sd = json.loads(sd)
+            if not isinstance(sd, dict):
+                raise ValueError("No parsed data found for file")
+
+            full_text = sd.get("full_text", "") or ""
             from app.shared.parsing.chunker import chunk_by_structure
             from app.shared.parsing.pdf_parser import DocumentSection, ParsedDocument
 
-            # Rebuild a minimal ParsedDocument from stored text
-            parsed = ParsedDocument(
-                sections=[DocumentSection(title="", level=0, content=full_text, page=0)],
-                full_text=full_text,
-            )
+            # Reconstruct sections from full_text (which has markdown ## headings)
+            # Format: "## 标题\n内容\n\n## 标题2\n内容2"
+            sections = []
+            if full_text:
+                # Split on ## headings (at line start only)
+                import re
+                parts = re.split(r'\n(?=##\s)', full_text)
+                for part in parts:
+                    part = part.strip()
+                    if not part:
+                        continue
+                    if part.startswith("## "):
+                        # "## 标题\n内容" format
+                        first_newline = part.index("\n")
+                        title = part[2:first_newline].strip()
+                        content = part[first_newline + 1:].strip()
+                        sections.append(DocumentSection(title=title, level=1, content=content, page=0))
+                    elif sections:
+                        # Continuation of previous section (indented content without heading)
+                        sections[-1].content += "\n" + part
+                    else:
+                        # No heading at all, treat as first section
+                        sections.append(DocumentSection(title="", level=0, content=part, page=0))
+
+            parsed = ParsedDocument(sections=sections, full_text=full_text)
             chunks = chunk_by_structure(parsed)
 
             # Delete old chunks
@@ -285,41 +323,69 @@ def embed_chunks(file_id_str: str, tenant_id_str: str):
             chunks = result.mappings().all()
             total = len(chunks)
 
-            api_key = settings.qwen_api_key or os.environ.get("DASHSCOPE_API_KEY", "")
-            if not api_key:
-                logger.warning("No DashScope API key, skipping embedding")
+            import httpx
+
+            if not chunks:
                 await _update_task_status(session, task_id, "success", 100)
                 index_tsvector.delay(file_id_str, tenant_id_str)
                 return
 
-            import httpx
+            # Batch embedding — SiliconFlow supports batch input
+            texts = [chunk["content"][:8192] for chunk in chunks]
 
-            for i, chunk in enumerate(chunks):
+            async def batch_embed_siliconflow(texts: list[str]) -> list[list[float]] | None:
+                if not settings.siliconflow_api_key:
+                    return None
                 try:
-                    async with httpx.AsyncClient(timeout=30.0) as client:
+                    async with httpx.AsyncClient(timeout=120.0) as client:
                         resp = await client.post(
-                            f"{settings.qwen_base_url}/embeddings",
-                            headers={"Authorization": f"Bearer {api_key}"},
-                            json={
-                                "model": settings.embedding_model,
-                                "input": [chunk["content"][:8192]],
-                            },
+                            f"{settings.siliconflow_base_url}/embeddings",
+                            headers={"Authorization": f"Bearer {settings.siliconflow_api_key}"},
+                            json={"model": settings.siliconflow_embedding_model, "input": texts},
                         )
                         resp.raise_for_status()
-                        embedding = resp.json()["data"][0]["embedding"]
-                        vec_str = "[" + ",".join(str(v) for v in embedding) + "]"
-                        await session.execute(
-                            text(
-                                "UPDATE metaedu.document_chunks SET embedding = :vec::vector WHERE id = :cid"
-                            ),
-                            {"vec": vec_str, "cid": chunk["id"]},
-                        )
+                        return [item["embedding"] for item in resp.json()["data"]]
                 except Exception as e:
-                    logger.warning(f"Embedding failed for chunk {chunk['id']}: {e}")
+                    logger.warning(f"SiliconFlow batch embedding failed: {e}")
+                    return None
 
-                progress = int((i + 1) / total * 100) if total > 0 else 100
-                await _update_task_status(session, task_id, "running", progress)
-                await session.commit()
+            async def batch_embed_minimax(texts: list[str]) -> list[list[float]] | None:
+                if not settings.minimax_api_key:
+                    return None
+                try:
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        resp = await client.post(
+                            f"{settings.minimax_base_url}/embeddings",
+                            headers={"Authorization": f"Bearer {settings.minimax_api_key}"},
+                            json={"model": settings.minimax_embedding_model, "input": texts},
+                        )
+                        resp.raise_for_status()
+                        return [item["embedding"] for item in resp.json()["data"]]
+                except Exception as e:
+                    logger.warning(f"MiniMax batch embedding failed: {e}")
+                    return None
+
+            # Try MiniMax batch first, fallback to SiliconFlow batch
+            embeddings = await batch_embed_minimax(texts)
+            if not embeddings:
+                embeddings = await batch_embed_siliconflow(texts)
+
+            if not embeddings:
+                logger.warning("All embedding providers failed for all chunks")
+                await _update_task_status(session, task_id, "success", 100)
+                index_tsvector.delay(file_id_str, tenant_id_str)
+                return
+
+            # Batch update all chunks
+            for chunk, embedding in zip(chunks, embeddings):
+                vec_str = "[" + ",".join(str(v) for v in embedding) + "]"
+                await session.execute(
+                    text("UPDATE metaedu.document_chunks SET embedding = :vec WHERE id = :cid"),
+                    {"vec": vec_str, "cid": chunk["id"]},
+                )
+
+            await _update_task_status(session, task_id, "running", 90)
+            await session.commit()
 
             await _update_task_status(session, task_id, "success", 100)
 
@@ -376,16 +442,8 @@ def index_tsvector(file_id_str: str, tenant_id_str: str):
 
             await _update_task_status(session, task_id, "success", 100)
 
-            # Chain to extract_template if doc_type is set
-            result = await session.execute(
-                text("SELECT doc_type FROM metaedu.files WHERE id = :fid"),
-                {"fid": file_id},
-            )
-            row = result.mappings().first()
-            if row and row["doc_type"]:
-                extract_template.delay(file_id_str, tenant_id_str)
-            else:
-                extract_knowledge_graph.delay(file_id_str, tenant_id_str)
+            # Always chain to extract_template (does LLM summarization if no template defined)
+            extract_template.delay(file_id_str, tenant_id_str)
 
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
@@ -410,50 +468,80 @@ def extract_template(file_id_str: str, tenant_id_str: str):
         await session.commit()
 
         try:
-            # Get chunks content
+            # Get chunks content and doc_type hint
             result = await session.execute(
                 text(
-                    "SELECT content FROM metaedu.document_chunks "
-                    "WHERE file_id = :fid AND tenant_id = :tid ORDER BY chunk_index LIMIT 10"
+                    "SELECT dc.content, f.doc_type FROM metaedu.document_chunks dc "
+                    "JOIN metaedu.files f ON f.id = dc.file_id "
+                    "WHERE dc.file_id = :fid AND dc.tenant_id = :tid ORDER BY dc.chunk_index LIMIT 10"
                 ),
                 {"fid": file_id, "tid": tenant_id},
             )
-            chunks_text = "\n".join(row["content"] for row in result.mappings().all())
+            rows = result.mappings().all()
+            chunks_text = "\n".join(row["content"] for row in rows)
+            doc_type = rows[0]["doc_type"] if rows else None
 
-            # Call LLM (Qwen/DeepSeek via OpenAI-compatible API — 国内模型)
-            api_key = settings.qwen_api_key or os.environ.get("DASHSCOPE_API_KEY", "")
-            base_url = settings.qwen_base_url
-            model = settings.qwen_model
+            # Call LLM (MiniMax via OpenAI-compatible API)
+            api_key = settings.minimax_api_key
+            base_url = settings.minimax_base_url
+            model = settings.minimax_model
 
             template_data = {}
             if api_key:
                 import httpx
 
-                prompt = (
-                    "请从以下教案内容中提取结构化信息，返回JSON格式：\n"
-                    "包含字段：course_name(课程名), chapter(章节), objectives(教学目标数组), "
-                    "key_points(重点数组), difficulties(难点数组), methods(教学方法数组), duration(课时)。\n\n"
-                    f"内容：\n{chunks_text[:6000]}"
-                )
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    resp = await client.post(
-                        f"{base_url}/chat/completions",
-                        headers={"Authorization": f"Bearer {api_key}"},
-                        json={
-                            "model": model,
-                            "messages": [{"role": "user", "content": prompt}],
-                            "temperature": 0.1,
-                        },
+                if doc_type == "教案":
+                    prompt = (
+                        "请从以下教案内容中提取结构化信息，返回JSON格式：\n"
+                        "包含字段：course_name(课程名), chapter(章节), objectives(教学目标数组), "
+                        "key_points(重点数组), difficulties(难点数组), methods(教学方法数组), duration(课时)。\n\n"
+                        f"内容：\n{chunks_text[:6000]}"
                     )
-                    resp.raise_for_status()
-                    content = resp.json()["choices"][0]["message"]["content"]
-                    # Try to parse JSON from response
+                else:
+                    prompt = (
+                        "请对以下文档内容进行结构化摘要提取，返回JSON格式：\n"
+                        "包含字段：title(文档标题/主题), summary(100字内的摘要), "
+                        "sections(主要章节列表), key_points(关键要点数组), "
+                        "keywords(关键词数组，最多5个)。\n\n"
+                        f"内容：\n{chunks_text[:6000]}"
+                    )
+
+                def try_parse(content: str) -> dict:
                     try:
                         json_start = content.index("{")
                         json_end = content.rindex("}") + 1
-                        template_data = json.loads(content[json_start:json_end])
+                        return json.loads(content[json_start:json_end])
                     except (ValueError, json.JSONDecodeError):
-                        template_data = {"raw_extraction": content}
+                        return {}
+
+                # Try MiniMax first
+                try:
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        resp = await client.post(
+                            f"{base_url}/chat/completions",
+                            headers={"Authorization": f"Bearer {api_key}"},
+                            json={"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0.1},
+                        )
+                        resp.raise_for_status()
+                        content = resp.json()["choices"][0]["message"]["content"]
+                        template_data = try_parse(content)
+                except Exception as e:
+                    logger.warning(f"extract_template MiniMax failed: {e}")
+
+                # Fallback to SiliconFlow
+                if not template_data and settings.siliconflow_api_key:
+                    try:
+                        async with httpx.AsyncClient(timeout=60.0) as client:
+                            resp = await client.post(
+                                f"{settings.siliconflow_base_url}/chat/completions",
+                                headers={"Authorization": f"Bearer {settings.siliconflow_api_key}"},
+                                json={"model": settings.siliconflow_embedding_model, "messages": [{"role": "user", "content": prompt}]},
+                            )
+                            resp.raise_for_status()
+                            content = resp.json()["choices"][0]["message"]["content"]
+                            template_data = try_parse(content)
+                    except Exception as e:
+                        logger.warning(f"extract_template SiliconFlow failed: {e}")
 
             # Save to file structured_data
             result = await session.execute(
@@ -461,14 +549,16 @@ def extract_template(file_id_str: str, tenant_id_str: str):
                 {"fid": file_id},
             )
             existing = result.mappings().first()
-            existing_data = (
-                existing["structured_data"] if existing and existing["structured_data"] else {}
-            )
+            existing_raw = existing["structured_data"] if existing and existing["structured_data"] else "{}"
+            if isinstance(existing_raw, str):
+                existing_data = json.loads(existing_raw)
+            else:
+                existing_data = dict(existing_raw)
             existing_data["template"] = template_data
 
             await session.execute(
                 text(
-                    "UPDATE metaedu.files SET structured_data = :data::jsonb, updated_at = :now WHERE id = :fid"
+                    "UPDATE metaedu.files SET structured_data = CAST(:data AS JSONB), updated_at = :now WHERE id = :fid"
                 ),
                 {
                     "data": json.dumps(existing_data),
@@ -519,10 +609,10 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str):
                 await _update_task_status(session, task_id, "success", 100)
                 return
 
-            # Call LLM to extract entities and relations (国内模型)
-            api_key = settings.qwen_api_key or os.environ.get("DASHSCOPE_API_KEY", "")
-            base_url = settings.qwen_base_url
-            model = settings.qwen_model
+            # Call LLM to extract entities and relations (MiniMax)
+            api_key = settings.minimax_api_key
+            base_url = settings.minimax_base_url
+            model = settings.minimax_model
 
             if api_key:
                 import httpx
@@ -531,9 +621,9 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str):
                     f"[{c['section_title'] or '段落'}] {c['content'][:500]}" for c in chunks
                 )
                 prompt = (
-                    "请从以下文本中提取知识实体和关系，返回JSON格式：\n"
+                    "请从以下文本中提取知识实体和关系，返回JSON格式（relations中的source和target必须是entities数组中的name字段值）：\n"
                     '{"entities": [{"name": "实体名", "type": "类型"}], '
-                    '"relations": [{"source": "实体1", "target": "实体2", "relation": "关系"}]}\n\n'
+                    '"relations": [{"source": "实体1名称", "target": "实体2名称", "relation": "关系描述"}]}\n\n'
                     f"文本：\n{chunks_text[:6000]}"
                 )
                 async with httpx.AsyncClient(timeout=60.0) as client:
@@ -553,26 +643,47 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str):
                         json_end = content.rindex("}") + 1
                         kg_data = json.loads(content[json_start:json_end])
                     except (ValueError, json.JSONDecodeError):
+                        logger.warning("KG extraction MiniMax JSON parse failed, raw content: %s", content[:500])
                         kg_data = {"entities": [], "relations": []}
 
-                # Write entities to knowledge_nodes with source tracking
-                from app.contexts.knowledge.application.embedding_service import get_embedding
+                # Fallback to SiliconFlow if MiniMax returned empty
+                if not kg_data.get("entities") and settings.siliconflow_api_key:
+                    try:
+                        async with httpx.AsyncClient(timeout=60.0) as client:
+                            resp = await client.post(
+                                f"{settings.siliconflow_base_url}/chat/completions",
+                                headers={"Authorization": f"Bearer {settings.siliconflow_api_key}"},
+                                json={
+                                    "model": "Qwen/Qwen3-8B",
+                                    "messages": [{"role": "user", "content": prompt}],
+                                    "temperature": 0.1,
+                                },
+                            )
+                            resp.raise_for_status()
+                            content = resp.json()["choices"][0]["message"]["content"]
+                            json_start = content.index("{")
+                            json_end = content.rindex("}") + 1
+                            kg_data = json.loads(content[json_start:json_end])
+                    except Exception as e:
+                        logger.warning("KG extraction SiliconFlow fallback failed: %s", e)
 
+                # Write entities to knowledge_nodes with source tracking
+                # Build name→id map so relations can reference nodes by name
+                node_name_map: dict[str, uuid.UUID] = {}
                 for entity in kg_data.get("entities", []):
                     name = entity.get("name", "")
                     if not name:
                         continue
                     node_id = uuid.uuid4()
-                    embedding = await get_embedding(name)
-                    vec_str = None
-                    if embedding:
-                        vec_str = "[" + ",".join(str(v) for v in embedding) + "]"
+                    node_name_map[name] = node_id
+                    # Store normalized forms too
+                    node_name_map[name.strip().strip('"')] = node_id
 
                     await session.execute(
                         text(
                             "INSERT INTO metaedu.knowledge_nodes "
-                            "(id, tenant_id, title, description, domain, level, path, source_file_id, created_at) "
-                            "VALUES (:id, :tid, :title, '', 'general', 'concept', :path, :fid, :now)"
+                            "(id, tenant_id, title, description, domain, level, path, source_file_id, created_at, updated_at) "
+                            "VALUES (:id, :tid, :title, '', 'education_sports', 'knowledge_point', :path, :fid, :now, :now)"
                         ),
                         {
                             "id": node_id,
@@ -583,13 +694,54 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str):
                             "now": datetime.now(UTC).replace(tzinfo=None),
                         },
                     )
-                    if vec_str:
-                        await session.execute(
-                            text(
-                                "UPDATE metaedu.knowledge_nodes SET embedding = :vec::vector WHERE id = :nid"
-                            ),
-                            {"vec": vec_str, "nid": node_id},
-                        )
+
+                # Insert edges — source/target are entity names, resolve to node IDs
+                # Priority: exact match > stripped match > substring match (case-insensitive)
+                def find_node_id(raw_name: str) -> uuid.UUID | None:
+                    name = raw_name.strip().strip('"')
+                    if name in node_name_map:
+                        return node_name_map[name]
+                    # Substring match: entity name is contained in the relation reference
+                    name_lower = name.lower()
+                    for entity_name, nid in node_name_map.items():
+                        if entity_name.lower() == name_lower:
+                            return nid
+                    for entity_name, nid in node_name_map.items():
+                        if name_lower in entity_name.lower() or entity_name.lower() in name_lower:
+                            return nid
+                    return None
+
+                edges_inserted = 0
+                skipped_edges: list[tuple[str, str]] = []
+                for rel in kg_data.get("relations", []):
+                    src_id = find_node_id(rel.get("source", ""))
+                    tgt_id = find_node_id(rel.get("target", ""))
+                    if not src_id or not tgt_id:
+                        skipped_edges.append((rel.get("source", ""), rel.get("target", "")))
+                        continue
+                    edge_id = uuid.uuid4()
+                    await session.execute(
+                        text(
+                            "INSERT INTO metaedu.knowledge_edges "
+                            "(id, tenant_id, source_id, target_id, relation_type, weight, metadata, created_at) "
+                            "VALUES (:id, :tid, :src, :tgt, :rtype, :wt, :meta, :now)"
+                        ),
+                        {
+                            "id": edge_id,
+                            "tid": tenant_id,
+                            "src": src_id,
+                            "tgt": tgt_id,
+                            "rtype": rel.get("relation", "related"),
+                            "wt": 1.0,
+                            "meta": json.dumps({}),
+                            "now": datetime.now(UTC).replace(tzinfo=None),
+                        },
+                    )
+                    edges_inserted += 1
+                logger.info(
+                    "KG extraction: %d nodes, %d edges inserted, %d skipped (unmatched: %s)",
+                    len(node_name_map), edges_inserted, len(skipped_edges), skipped_edges[:5],
+                )
 
             await _update_task_status(session, task_id, "success", 100)
 
