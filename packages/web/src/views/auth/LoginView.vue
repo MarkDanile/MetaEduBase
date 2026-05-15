@@ -125,7 +125,7 @@ async function handleLogin() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(160deg, #0F172A 0%, #1E3A5F 40%, #1E40AF 100%);
+  background: var(--login-brand-gradient);
   overflow: hidden;
 }
 

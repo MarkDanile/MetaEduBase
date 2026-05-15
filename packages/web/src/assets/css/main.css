@@ -1,66 +1,101 @@
 @import "tailwindcss";
 
 @theme {
-  --color-ink: #334155;
-  --color-ink-secondary: #64748B;
-  --color-ink-tertiary: #94A3B8;
-  --color-ink-inverse: #FFFFFF;
-  --color-ink-dim: #C8CDD4;
+  /* ---- Text (per-theme) ---- */
+  --color-ink: var(--theme-ink);
+  --color-ink-secondary: var(--theme-ink-secondary);
+  --color-ink-tertiary: var(--theme-ink-tertiary);
+  --color-ink-inverse: var(--theme-ink-inverse);
+  --color-ink-dim: var(--theme-ink-dim);
 
-  --color-bg-base: #F5F7FA;
-  --color-bg-warm: #EDF0F5;
-  --color-bg-elevated: #FFFFFF;
-  --color-bg-hover: #F5F7FA;
+  /* ---- Backgrounds (per-theme) ---- */
+  --color-bg-base: var(--theme-bg-base);
+  --color-bg-warm: var(--theme-bg-warm);
+  --color-bg-elevated: var(--theme-bg-elevated);
+  --color-bg-hover: var(--theme-bg-hover);
 
-  --color-accent: #4C5EEB;
-  --color-accent-light: #3A4CD9;
-  --color-accent-bg: #EEF1FE;
-  --color-accent-glow: #DEE3FC;
+  /* ---- Accent (per-theme) ---- */
+  --color-accent: var(--theme-accent);
+  --color-accent-light: var(--theme-accent-light);
+  --color-accent-bg: var(--theme-accent-bg);
+  --color-accent-glow: var(--theme-accent-glow);
+  --color-accent-glow-start: var(--theme-accent-glow-start);
+  --color-accent-glow-start-hover: var(--theme-accent-glow-start-hover);
+  --color-accent-ring: var(--theme-accent-ring);
+  --color-accent-sweep: var(--theme-accent-sweep);
 
-  --color-highlight: #F59E0B;
-  --color-highlight-bg: rgba(245, 158, 11, 0.08);
+  /* ---- Highlight (per-theme) ---- */
+  --color-highlight: var(--theme-highlight);
+  --color-highlight-bg: var(--theme-highlight-bg);
 
+  /* ---- Tags (per-theme) ---- */
+  --color-tag-green: var(--theme-tag-green);
+  --color-tag-green-text: var(--theme-tag-green-text);
+  --color-tag-amber: var(--theme-tag-amber);
+  --color-tag-amber-text: var(--theme-tag-amber-text);
+  --color-tag-blue: var(--theme-tag-blue);
+  --color-tag-blue-text: var(--theme-tag-blue-text);
+  --color-tag-purple: var(--theme-tag-purple);
+  --color-tag-purple-text: var(--theme-tag-purple-text);
+
+  /* ---- Borders (per-theme) ---- */
+  --color-border: var(--theme-border);
+  --color-border-subtle: var(--theme-border-subtle);
+  --color-border-accent: var(--theme-border-accent);
+
+  /* ---- Semantic (constant across themes) ---- */
   --color-success: #10B981;
   --color-warning: #F59E0B;
   --color-danger: #EF4444;
 
-  --color-tag-green: rgba(16, 185, 129, 0.08);
-  --color-tag-green-text: #059669;
-  --color-tag-amber: rgba(245, 158, 11, 0.08);
-  --color-tag-amber-text: #B45309;
-  --color-tag-blue: rgba(76, 94, 235, 0.10);
-  --color-tag-blue-text: #4C5EEB;
-  --color-tag-purple: rgba(109, 40, 217, 0.06);
-  --color-tag-purple-text: #6D28D9;
+  /* ---- Surface / glass behavior tokens ---- */
+  --surface-card-bg: var(--_surface-card-bg);
+  --surface-card-border: var(--_surface-card-border);
+  --surface-card-shadow: var(--_surface-card-shadow);
+  --surface-card-shadow-hover: var(--_surface-card-shadow-hover);
+  --surface-card-elevated-bg: var(--_surface-card-elevated-bg);
+  --surface-card-elevated-shadow: var(--_surface-card-elevated-shadow);
+  --surface-glass-blur: var(--_surface-glass-blur);
+  --surface-glass-blur-light: var(--_surface-glass-blur-light);
+  --surface-sidebar-bg: var(--_surface-sidebar-bg);
+  --surface-input-bg: var(--_surface-input-bg);
+  --surface-input-bg-focus: var(--_surface-input-bg-focus);
+  --surface-dialog-bg: var(--_surface-dialog-bg);
+  --surface-dialog-border: var(--_surface-dialog-border);
+  --surface-dialog-shadow: var(--_surface-dialog-shadow);
+  --surface-toast-bg: var(--_surface-toast-bg);
+  --surface-ghost-btn-bg: var(--_surface-ghost-btn-bg);
+  --login-brand-gradient: var(--_login-brand-gradient);
 
-  --color-border: #E1E6EE;
-  --color-border-subtle: #EEF1F6;
-  --color-border-accent: #4C5EEB;
-
+  /* ---- Typography (constant) ---- */
   --font-display: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
   --font-body: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
   --font-mono: "SF Mono", "Fira Code", "Cascadia Code", monospace;
 
+  /* ---- Radii (constant) ---- */
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-full: 9999px;
 
+  /* ---- Shadows (constant) ---- */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 2px 12px rgba(0, 0, 0, 0.04);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.06);
 
+  /* ---- Easing (constant) ---- */
   --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-elastic: cubic-bezier(0.34, 1.56, 0.64, 1);
 
+  /* ---- Durations (constant) ---- */
   --duration-instant: 80ms;
   --duration-fast: 150ms;
   --duration-normal: 200ms;
   --duration-slow: 300ms;
   --duration-liquid: 300ms;
 
-  --ease-elastic: cubic-bezier(0.34, 1.56, 0.64, 1);
-
+  /* ---- Type scale (constant) ---- */
   --text-page-title: 24px;
   --text-section-title: 18px;
   --text-subtitle: 16px;
@@ -69,16 +104,205 @@
   --text-small: 12px;
   --text-micro: 11px;
 
+  /* ---- Spacing (constant) ---- */
   --spacing-page: 32px;
   --spacing-section: 24px;
   --spacing-card: 16px;
 
+  /* ---- Z-index (constant) ---- */
   --z-sidebar: 10;
   --z-drawer: 30;
   --z-dialog: 40;
   --z-toast: 50;
 }
 
+/* ================================================================
+   THEME 1: Liquid Glass (default) — 液态玻璃
+   ================================================================ */
+:root,
+:root[data-theme="liquid"] {
+  /* Text */
+  --theme-ink: #334155;
+  --theme-ink-secondary: #64748B;
+  --theme-ink-tertiary: #94A3B8;
+  --theme-ink-inverse: #FFFFFF;
+  --theme-ink-dim: #C8CDD4;
+  /* Backgrounds */
+  --theme-bg-base: #F5F7FA;
+  --theme-bg-warm: #EDF0F5;
+  --theme-bg-elevated: #FFFFFF;
+  --theme-bg-hover: #F5F7FA;
+  /* Accent */
+  --theme-accent: #4C5EEB;
+  --theme-accent-light: #3A4CD9;
+  --theme-accent-bg: #EEF1FE;
+  --theme-accent-glow: #DEE3FC;
+  --theme-accent-glow-start: #7289F6;
+  --theme-accent-glow-start-hover: #9BA8F8;
+  --theme-accent-ring: rgba(76, 94, 235, 0.1);
+  --theme-accent-sweep: rgba(76, 94, 235, 0.08);
+  /* Highlight */
+  --theme-highlight: #F59E0B;
+  --theme-highlight-bg: rgba(245, 158, 11, 0.08);
+  /* Tags */
+  --theme-tag-green: rgba(16, 185, 129, 0.08);
+  --theme-tag-green-text: #059669;
+  --theme-tag-amber: rgba(245, 158, 11, 0.08);
+  --theme-tag-amber-text: #B45309;
+  --theme-tag-blue: rgba(76, 94, 235, 0.10);
+  --theme-tag-blue-text: #4C5EEB;
+  --theme-tag-purple: rgba(109, 40, 217, 0.06);
+  --theme-tag-purple-text: #6D28D9;
+  /* Borders */
+  --theme-border: #E1E6EE;
+  --theme-border-subtle: #EEF1F6;
+  --theme-border-accent: #4C5EEB;
+  /* Surfaces — full glass morphism */
+  --_surface-card-bg: rgba(255, 255, 255, 0.65);
+  --_surface-card-border: 1px solid rgba(255, 255, 255, 0.8);
+  --_surface-card-shadow: 0 8px 32px rgba(28, 44, 80, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --_surface-card-shadow-hover: 0 10px 40px rgba(28, 44, 80, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --_surface-card-elevated-bg: rgba(255, 255, 255, 0.8);
+  --_surface-card-elevated-shadow: 0 12px 40px rgba(28, 44, 80, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --_surface-glass-blur: blur(24px);
+  --_surface-glass-blur-light: blur(8px);
+  --_surface-sidebar-bg: rgba(255, 255, 255, 0.72);
+  --_surface-input-bg: rgba(255, 255, 255, 0.5);
+  --_surface-input-bg-focus: rgba(255, 255, 255, 0.8);
+  --_surface-dialog-bg: rgba(255, 255, 255, 0.8);
+  --_surface-dialog-border: 1px solid rgba(255, 255, 255, 0.9);
+  --_surface-dialog-shadow: 0 12px 40px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --_surface-toast-bg: rgba(255, 255, 255, 0.9);
+  --_surface-ghost-btn-bg: rgba(255, 255, 255, 0.5);
+  /* Login */
+  --_login-brand-gradient: linear-gradient(160deg, #0F172A 0%, #1E3A5F 40%, #1E40AF 100%);
+}
+
+/* ================================================================
+   THEME 2: Ink & Paper — 墨韵书香
+   ================================================================ */
+:root[data-theme="ink"] {
+  /* Text */
+  --theme-ink: #1C1C1C;
+  --theme-ink-secondary: #5A5954;
+  --theme-ink-tertiary: #8C8A82;
+  --theme-ink-inverse: #FFFFFF;
+  --theme-ink-dim: #B5B1A7;
+  /* Backgrounds */
+  --theme-bg-base: #FAF8F2;
+  --theme-bg-warm: #F1ECE2;
+  --theme-bg-elevated: #FEFDF9;
+  --theme-bg-hover: #F3EFE5;
+  /* Accent — muted iron oxide / 铁锈红 */
+  --theme-accent: #AD533A;
+  --theme-accent-light: #89412E;
+  --theme-accent-bg: #FCF4F0;
+  --theme-accent-glow: #F2E6E0;
+  --theme-accent-glow-start: #B86850;
+  --theme-accent-glow-start-hover: #C47A62;
+  --theme-accent-ring: rgba(173, 83, 58, 0.1);
+  --theme-accent-sweep: rgba(173, 83, 58, 0.05);
+  /* Highlight */
+  --theme-highlight: #B07D20;
+  --theme-highlight-bg: rgba(176, 125, 32, 0.08);
+  /* Tags */
+  --theme-tag-green: rgba(16, 185, 129, 0.08);
+  --theme-tag-green-text: #059669;
+  --theme-tag-amber: rgba(176, 125, 32, 0.08);
+  --theme-tag-amber-text: #805A14;
+  --theme-tag-blue: rgba(173, 83, 58, 0.08);
+  --theme-tag-blue-text: #AD533A;
+  --theme-tag-purple: rgba(109, 40, 217, 0.06);
+  --theme-tag-purple-text: #6D28D9;
+  /* Borders */
+  --theme-border: #E3DDD2;
+  --theme-border-subtle: #EFE9DF;
+  --theme-border-accent: #AD533A;
+  /* Surfaces — solid, no glass */
+  --_surface-card-bg: #FEFDF9;
+  --_surface-card-border: 1px solid #E3DDD2;
+  --_surface-card-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --_surface-card-shadow-hover: 0 4px 14px rgba(0, 0, 0, 0.06);
+  --_surface-card-elevated-bg: #FEFDF9;
+  --_surface-card-elevated-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
+  --_surface-glass-blur: none;
+  --_surface-glass-blur-light: none;
+  --_surface-sidebar-bg: #FEFDF9;
+  --_surface-input-bg: #F3EFE5;
+  --_surface-input-bg-focus: #FEFDF9;
+  --_surface-dialog-bg: #FEFDF9;
+  --_surface-dialog-border: 1px solid #E3DDD2;
+  --_surface-dialog-shadow: 0 16px 48px rgba(0, 0, 0, 0.1);
+  --_surface-toast-bg: #FEFDF9;
+  --_surface-ghost-btn-bg: transparent;
+  /* Login */
+  --_login-brand-gradient: linear-gradient(160deg, #2E2B24 0%, #423A2E 40%, #5A3E34 100%);
+}
+
+/* ================================================================
+   THEME 3: Navy & Brass — 沉稳奢华
+   ================================================================ */
+:root[data-theme="navy"] {
+  /* Text */
+  --theme-ink: #212125;
+  --theme-ink-secondary: #5D5C5E;
+  --theme-ink-tertiary: #8D8B8C;
+  --theme-ink-inverse: #FFFFFF;
+  --theme-ink-dim: #B6B4B2;
+  /* Backgrounds */
+  --theme-bg-base: #F7F6F2;
+  --theme-bg-warm: #EEECE6;
+  --theme-bg-elevated: #FFFFFF;
+  --theme-bg-hover: #F2F0EB;
+  /* Accent — aged brass / 古铜金 */
+  --theme-accent: #A0784C;
+  --theme-accent-light: #83623A;
+  --theme-accent-bg: #FCF6EF;
+  --theme-accent-glow: #F4EBDE;
+  --theme-accent-glow-start: #B89060;
+  --theme-accent-glow-start-hover: #C8A070;
+  --theme-accent-ring: rgba(160, 120, 76, 0.1);
+  --theme-accent-sweep: rgba(160, 120, 76, 0.05);
+  /* Highlight */
+  --theme-highlight: #A88430;
+  --theme-highlight-bg: rgba(168, 132, 48, 0.08);
+  /* Tags */
+  --theme-tag-green: rgba(16, 185, 129, 0.08);
+  --theme-tag-green-text: #059669;
+  --theme-tag-amber: rgba(168, 132, 48, 0.08);
+  --theme-tag-amber-text: #7A5E1E;
+  --theme-tag-blue: rgba(160, 120, 76, 0.08);
+  --theme-tag-blue-text: #A0784C;
+  --theme-tag-purple: rgba(109, 40, 217, 0.06);
+  --theme-tag-purple-text: #6D28D9;
+  /* Borders */
+  --theme-border: #DFDAD1;
+  --theme-border-subtle: #ECE8E0;
+  --theme-border-accent: #A0784C;
+  /* Surfaces — solid cards, glass only on dialogs */
+  --_surface-card-bg: #FFFFFF;
+  --_surface-card-border: 1px solid #DFDAD1;
+  --_surface-card-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  --_surface-card-shadow-hover: 0 4px 18px rgba(0, 0, 0, 0.08);
+  --_surface-card-elevated-bg: #FFFFFF;
+  --_surface-card-elevated-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --_surface-glass-blur: none;
+  --_surface-glass-blur-light: none;
+  --_surface-sidebar-bg: #FFFFFF;
+  --_surface-input-bg: #F2F0EB;
+  --_surface-input-bg-focus: #FFFFFF;
+  --_surface-dialog-bg: rgba(255, 255, 255, 0.92);
+  --_surface-dialog-border: 1px solid rgba(255, 255, 255, 0.9);
+  --_surface-dialog-shadow: 0 16px 48px rgba(0, 0, 0, 0.1);
+  --_surface-toast-bg: #FFFFFF;
+  --_surface-ghost-btn-bg: transparent;
+  /* Login */
+  --_login-brand-gradient: linear-gradient(160deg, #1E1F26 0%, #2B2D34 40%, #3A3C42 100%);
+}
+
+/* ================================================================
+   Base layer
+   ================================================================ */
 @layer base {
   *,
   *::before,
@@ -112,36 +336,39 @@
   }
 }
 
+/* ================================================================
+   Component classes — all surface/color values via tokens
+   ================================================================ */
 @layer components {
   .sidebar-shell {
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
+    background: var(--surface-sidebar-bg);
+    backdrop-filter: var(--surface-glass-blur);
+    -webkit-backdrop-filter: var(--surface-glass-blur);
     border-right: 1px solid var(--color-border-subtle);
   }
 
   .liquid-card {
-    background: rgba(255, 255, 255, 0.65);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.8);
+    background: var(--surface-card-bg);
+    backdrop-filter: var(--surface-glass-blur);
+    -webkit-backdrop-filter: var(--surface-glass-blur);
+    border: var(--surface-card-border);
     border-radius: var(--radius-lg);
-    box-shadow: 0 8px 32px rgba(28, 44, 80, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    box-shadow: var(--surface-card-shadow);
     transition: all var(--duration-liquid) var(--ease-elastic);
   }
 
   .liquid-card:hover {
-    box-shadow: 0 10px 40px rgba(28, 44, 80, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    box-shadow: var(--surface-card-shadow-hover);
     transform: translateY(-1px);
   }
 
   .liquid-card-elevated {
-    background: rgba(255, 255, 255, 0.8);
-    backdrop-filter: blur(32px);
-    -webkit-backdrop-filter: blur(32px);
-    border: 1px solid rgba(255, 255, 255, 0.9);
+    background: var(--surface-card-elevated-bg);
+    backdrop-filter: var(--surface-glass-blur);
+    -webkit-backdrop-filter: var(--surface-glass-blur);
+    border: var(--surface-card-border);
     border-radius: var(--radius-lg);
-    box-shadow: 0 12px 40px rgba(28, 44, 80, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    box-shadow: var(--surface-card-elevated-shadow);
   }
 
   .liquid-card-scan {
@@ -163,9 +390,9 @@
   .liquid-input {
     width: 100%;
     padding: 9px 14px;
-    background: rgba(255, 255, 255, 0.5);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: var(--surface-input-bg);
+    backdrop-filter: var(--surface-glass-blur-light);
+    -webkit-backdrop-filter: var(--surface-glass-blur-light);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     color: var(--color-ink);
@@ -175,9 +402,9 @@
   }
 
   .liquid-input:focus {
-    background: rgba(255, 255, 255, 0.8);
+    background: var(--surface-input-bg-focus);
     border-color: var(--color-accent);
-    box-shadow: 0 0 0 3px rgba(76, 94, 235, 0.1), inset 0 0 0 1px rgba(76, 94, 235, 0.1);
+    box-shadow: 0 0 0 3px var(--color-accent-ring), inset 0 0 0 1px var(--color-accent-ring);
   }
 
   .liquid-input::placeholder {
@@ -204,7 +431,7 @@
   .liquid-btn-primary {
     position: relative;
     overflow: hidden;
-    background: radial-gradient(circle at 30% 30%, #7289F6, var(--color-accent));
+    background: radial-gradient(circle at 30% 30%, var(--color-accent-glow-start), var(--color-accent));
     color: var(--color-ink-inverse);
   }
 
@@ -222,7 +449,7 @@
   }
 
   .liquid-btn-primary:hover {
-    background: radial-gradient(circle at 30% 30%, #9BA8F8, var(--color-accent-light));
+    background: radial-gradient(circle at 30% 30%, var(--color-accent-glow-start-hover), var(--color-accent-light));
   }
 
   .liquid-btn-primary:active {
@@ -242,12 +469,11 @@
   }
 
   .liquid-btn-ghost {
-    background: rgba(255, 255, 255, 0.5);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: var(--surface-ghost-btn-bg);
+    backdrop-filter: var(--surface-glass-blur-light);
+    -webkit-backdrop-filter: var(--surface-glass-blur-light);
     border: 1px solid var(--color-border);
     color: var(--color-ink-secondary);
-    transition: all var(--duration-liquid) var(--ease-elastic);
   }
 
   .liquid-btn-ghost:hover {
@@ -313,12 +539,12 @@
   }
 
   .liquid-dialog {
-    background: rgba(255, 255, 255, 0.8);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.9);
+    background: var(--surface-dialog-bg);
+    backdrop-filter: var(--surface-glass-blur);
+    -webkit-backdrop-filter: var(--surface-glass-blur);
+    border: var(--surface-dialog-border);
     border-radius: var(--radius-lg);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    box-shadow: var(--surface-dialog-shadow);
     padding: 24px;
     width: 100%;
     max-width: 440px;
@@ -502,7 +728,7 @@
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(90deg, transparent 40%, rgba(76, 94, 235, 0.08) 50%, transparent 60%);
+    background: linear-gradient(90deg, transparent 40%, var(--color-accent-sweep) 50%, transparent 60%);
     transform: translateX(-100%);
     animation: highlight-sweep 2s var(--ease-out) 0.3s 1 forwards;
   }
@@ -622,9 +848,9 @@
 
   .toast-item {
     pointer-events: auto;
-    background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: var(--surface-toast-bg);
+    backdrop-filter: var(--surface-glass-blur-light);
+    -webkit-backdrop-filter: var(--surface-glass-blur-light);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-lg);
