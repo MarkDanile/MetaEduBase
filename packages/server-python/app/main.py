@@ -8,6 +8,8 @@ from app.config import settings
 from app.contexts.identity.interfaces.api.router import router as identity_router
 from app.contexts.knowledge.interfaces.api.ai_router import router as ai_router
 from app.contexts.knowledge.interfaces.api.router import router as knowledge_router
+from app.contexts.document.interfaces.api.router import router as document_router
+from app.contexts.document.interfaces.api.task_router import router as document_task_router
 from app.contexts.resource.interfaces.api.router import router as resource_router
 from app.shared.infrastructure.seed import init_db_with_seed
 
@@ -36,6 +38,8 @@ app.include_router(identity_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(knowledge_router, prefix="/api/v1/knowledge", tags=["knowledge"])
 app.include_router(ai_router, prefix="/api/v1/ai", tags=["ai"])
 app.include_router(resource_router, prefix="/api/v1/resources", tags=["resources"])
+app.include_router(document_router, prefix="/api/v1/document", tags=["document"])
+app.include_router(document_task_router, prefix="/api/v1/document", tags=["document-tasks"])
 
 
 @app.get("/api/v1/health")
