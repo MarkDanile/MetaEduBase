@@ -124,10 +124,10 @@ const stats = computed(() => [
     icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
   },
   {
-    label: "校本资源",
+    label: "资源库",
     value: resourceCount.value ?? "—",
     bgClass: "bg-[var(--color-tag-green)]",
-    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-tag-green-text)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
+    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-tag-green-text)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
   },
   {
     label: "AI 问答",
@@ -159,11 +159,18 @@ const navItems = [
     icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
   },
   {
-    title: "校本资源",
+    title: "资源库",
     desc: "上传和管理教学文档、视频等多媒体资源",
     route: "/resource",
     bgClass: "bg-[var(--color-tag-green)]",
-    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-tag-green-text)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
+    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-tag-green-text)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
+  },
+  {
+    title: "数据库",
+    desc: "管理结构化数据集与知识图谱构建",
+    route: "/database",
+    bgClass: "bg-[var(--color-tag-amber)]",
+    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-tag-amber-text)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>',
   },
   {
     title: "AI 问答",

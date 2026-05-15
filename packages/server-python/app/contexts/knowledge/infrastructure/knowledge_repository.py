@@ -16,6 +16,7 @@ class KnowledgeNodeRepository:
         *,
         domain: str | None = None,
         parent_id: uuid.UUID | None = None,
+        source_file_id: uuid.UUID | None = None,
         offset: int = 0,
         limit: int = 50,
     ) -> list[dict]:
@@ -25,11 +26,15 @@ class KnowledgeNodeRepository:
         if domain:
             conditions.append("n.domain = :domain")
             params["domain"] = domain
-        if parent_id:
-            conditions.append("n.parent_id = :pid")
-            params["pid"] = parent_id
-        else:
-            conditions.append("n.parent_id IS NULL")
+        if parent_id is not None:
+            if parent_id:
+                conditions.append("n.parent_id = :pid")
+                params["pid"] = parent_id
+            else:
+                conditions.append("n.parent_id IS NULL")
+        if source_file_id:
+            conditions.append("n.source_file_id = :sfid")
+            params["sfid"] = source_file_id
 
         where = " AND ".join(conditions)
         result = await self._session.execute(
@@ -271,5 +276,16 @@ class KnowledgeNodeRepository:
                 "ORDER BY level, created_at LIMIT 100"
             ),
             {"tid": tenant_id, "prefix": f"{path_prefix}%"},
+        )
+        return [dict(row) for row in result.mappings().all()]
+
+    async def list_edges_by_file(self, tenant_id: uuid.UUID, source_file_id: uuid.UUID) -> list[dict]:
+        result = await self._session.execute(
+            text(
+                "SELECT ke.* FROM metaedu.knowledge_edges ke "
+                "JOIN metaedu.knowledge_nodes kn_src ON ke.source_id = kn_src.id "
+                "WHERE ke.tenant_id = :tid AND kn_src.source_file_id = :sfid"
+            ),
+            {"tid": tenant_id, "sfid": source_file_id},
         )
         return [dict(row) for row in result.mappings().all()]

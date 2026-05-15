@@ -1,3 +1,5 @@
+import os
+
 from pydantic_settings import BaseSettings
 
 
@@ -19,6 +21,8 @@ class Settings(BaseSettings):
     minio_secret_key: str = "dev_only_123"
     minio_bucket: str = "metaedu-resources"
     minio_secure: bool = False
+
+    upload_dir: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
 
     jwt_secret: str = "dev-only-change-in-production"
     jwt_algorithm: str = "HS256"

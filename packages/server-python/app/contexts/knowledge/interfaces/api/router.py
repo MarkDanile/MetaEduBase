@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.contexts.knowledge.application.dto import (
+    KnowledgeEdgeDTO,
     KnowledgeNodeCreate,
     KnowledgeNodeDTO,
     KnowledgeNodeUpdate,
@@ -21,14 +22,25 @@ from app.shared.infrastructure.tenant_context import get_tenant_id
 router = APIRouter()
 
 
+_VALID_DOMAINS = {"electronics_info", "smart_manufacturing", "finance_commerce", "medical_health", "education_sports", "civil_engineering", "transportation", "agriculture", "art_design", "public_service"}
+_VALID_LEVELS = {"professional", "course", "chapter", "knowledge_point", "skill_point", "operation_step"}
+
+
 def _row_to_dto(row: dict) -> KnowledgeNodeDTO:
+    domain = row["domain"]
+    level = row["level"]
+    # Map unknown values to defaults (LLM-extracted nodes may use arbitrary names)
+    if domain not in _VALID_DOMAINS:
+        domain = "education_sports"
+    if level not in _VALID_LEVELS:
+        level = "knowledge_point"
     return KnowledgeNodeDTO(
         id=row["id"],
         tenant_id=row["tenant_id"],
         title=row["title"],
         description=row.get("description"),
-        domain=row["domain"],
-        level=row["level"],
+        domain=domain,
+        level=level,
         parent_id=row.get("parent_id"),
         path=row.get("path"),
         tags=row.get("tags", []),
@@ -36,10 +48,36 @@ def _row_to_dto(row: dict) -> KnowledgeNodeDTO:
     )
 
 
+@router.get("/edges", response_model=list[KnowledgeEdgeDTO])
+async def list_knowledge_edges(
+    source_file_id: str | None = None,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+    current_user: dict = Depends(get_current_user),  # noqa: B008
+):
+    tid = get_tenant_id()
+    repo = KnowledgeNodeRepository(session)
+    if source_file_id:
+        rows = await repo.list_edges_by_file(tid, uuid.UUID(source_file_id))
+    else:
+        rows = []
+    return [
+        KnowledgeEdgeDTO(
+            id=row["id"],
+            source_id=row["source_id"],
+            target_id=row["target_id"],
+            relation_type=row["relation_type"],
+            weight=row["weight"],
+            metadata=row.get("metadata", {}),
+        )
+        for row in rows
+    ]
+
+
 @router.get("/nodes", response_model=list[KnowledgeNodeDTO])
 async def list_knowledge_nodes(
     domain: str | None = None,
     parent_id: str | None = None,
+    source_file_id: str | None = None,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
     session: AsyncSession = Depends(get_session),  # noqa: B008
@@ -51,6 +89,7 @@ async def list_knowledge_nodes(
         tid,
         domain=domain,
         parent_id=uuid.UUID(parent_id) if parent_id else None,
+        source_file_id=uuid.UUID(source_file_id) if source_file_id else None,
         offset=offset,
         limit=limit,
     )

@@ -128,8 +128,9 @@ import { useAuthStore } from "@/stores/auth";
 import { roleMap } from "@/constants/maps";
 import {
   BookOpen,
+  Database,
+  FolderOpen,
   LayoutGrid,
-  Upload,
   MessageSquare,
   Settings,
   LogOut,
@@ -152,6 +153,7 @@ const themes: { id: ThemeId; label: string; shortLabel: string }[] = [
   { id: "liquid", label: "液态玻璃", shortLabel: "液态" },
   { id: "ink", label: "墨韵书香", shortLabel: "墨韵" },
   { id: "navy", label: "沉稳奢华", shortLabel: "奢华" },
+  { id: "notion", label: "Notion", shortLabel: "N" },
 ];
 
 const roleLabel = computed(() => roleMap[authStore.userRole ?? ""] ?? authStore.userRole ?? "用户");
@@ -160,7 +162,8 @@ const roleInitial = computed(() => roleLabel.value.charAt(0));
 const navItems: { title: string; route: string; icon: Component }[] = [
   { title: "总览", route: "/", icon: LayoutGrid },
   { title: "知识库", route: "/knowledge", icon: BookOpen },
-  { title: "校本资源", route: "/resource", icon: Upload },
+  { title: "资源库", route: "/resource", icon: FolderOpen },
+  { title: "数据库", route: "/database", icon: Database },
   { title: "AI 问答", route: "/ai-chat", icon: MessageSquare },
   { title: "技能编排", route: "/skill-editor", icon: Settings },
   { title: "系统管理", route: "/admin", icon: Cog },
