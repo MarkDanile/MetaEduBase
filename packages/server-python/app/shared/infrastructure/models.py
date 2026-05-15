@@ -7,6 +7,7 @@ from app.contexts.document.infrastructure.models import (
 from app.contexts.identity.infrastructure.models import TenantModel, UserModel
 from app.contexts.knowledge.infrastructure.models import KnowledgeEdgeModel, KnowledgeNodeModel
 from app.contexts.resource.infrastructure.models import ResourceModel
+from app.contexts.structured_data.infrastructure.models import DatasetModel, DatasetRowModel
 
 __all__ = [
     "DocumentChunkModel",
@@ -18,4 +19,6 @@ __all__ = [
     "KnowledgeNodeModel",
     "KnowledgeEdgeModel",
     "ResourceModel",
+    "DatasetModel",
+    "DatasetRowModel",
 ]
