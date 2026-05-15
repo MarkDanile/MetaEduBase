@@ -152,6 +152,7 @@ const themes: { id: ThemeId; label: string; shortLabel: string }[] = [
   { id: "liquid", label: "液态玻璃", shortLabel: "液态" },
   { id: "ink", label: "墨韵书香", shortLabel: "墨韵" },
   { id: "navy", label: "沉稳奢华", shortLabel: "奢华" },
+  { id: "notion", label: "Notion", shortLabel: "N" },
 ];
 
 const roleLabel = computed(() => roleMap[authStore.userRole ?? ""] ?? authStore.userRole ?? "用户");

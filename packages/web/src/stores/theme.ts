@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { ref, watch } from "vue";
 
-export type ThemeId = "liquid" | "ink" | "navy";
+export type ThemeId = "liquid" | "ink" | "navy" | "notion";
 
 export const useThemeStore = defineStore("theme", () => {
   const activeTheme = ref<ThemeId>(

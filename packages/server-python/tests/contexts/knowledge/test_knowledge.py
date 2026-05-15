@@ -3,7 +3,6 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
-
 KBASE_URL = "/api/v1/knowledge"
 
 

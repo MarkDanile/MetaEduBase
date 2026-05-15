@@ -4,7 +4,6 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
-
 RES_URL = "/api/v1/resources"
 
 

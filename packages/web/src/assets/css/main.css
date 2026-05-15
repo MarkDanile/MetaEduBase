@@ -301,6 +301,67 @@
 }
 
 /* ================================================================
+   THEME 4: Notion — 豆包极简冷白风
+   ================================================================ */
+:root[data-theme="notion"] {
+  /* Text — 柔和深灰，无纯黑刺眼 */
+  --theme-ink: #1F1F1F;
+  --theme-ink-secondary: #6B7280;
+  --theme-ink-tertiary: #9CA3AF;
+  --theme-ink-inverse: #FFFFFF;
+  --theme-ink-dim: #D1D5DB;
+  /* Backgrounds — 多级浅灰层级 */
+  --theme-bg-base: #FFFFFF;
+  --theme-bg-warm: #F4F5F7;
+  --theme-bg-elevated: #FFFFFF;
+  --theme-bg-hover: #F8F9FA;
+  /* Accent — 低饱和青蓝（天蓝） */
+  --theme-accent: #0EA5C9;
+  --theme-accent-light: #0891B2;
+  --theme-accent-bg: #E0F7FC;
+  --theme-accent-glow: #BAE6FD;
+  --theme-accent-glow-start: #38BDF8;
+  --theme-accent-glow-start-hover: #7DD3FC;
+  --theme-accent-ring: rgba(14, 165, 201, 0.12);
+  --theme-accent-sweep: rgba(14, 165, 201, 0.06);
+  /* Highlight */
+  --theme-highlight: #F59E0B;
+  --theme-highlight-bg: rgba(245, 158, 11, 0.06);
+  /* Tags — 低饱和彩色 */
+  --theme-tag-green: rgba(14, 165, 201, 0.08);
+  --theme-tag-green-text: #0891B2;
+  --theme-tag-amber: rgba(245, 158, 11, 0.08);
+  --theme-tag-amber-text: #D97706;
+  --theme-tag-blue: rgba(14, 165, 201, 0.10);
+  --theme-tag-blue-text: #0EA5C9;
+  --theme-tag-purple: rgba(139, 92, 246, 0.08);
+  --theme-tag-purple-text: #7C3AED;
+  /* Borders — 极浅灰细边框 */
+  --theme-border: #E5E7EB;
+  --theme-border-subtle: #F3F4F6;
+  --theme-border-accent: #0EA5C9;
+  /* Surfaces — 纯白底 + 极浅灰边框，无阴影 */
+  --_surface-card-bg: #FFFFFF;
+  --_surface-card-border: 1px solid #E5E7EB;
+  --_surface-card-shadow: none;
+  --_surface-card-shadow-hover: none;
+  --_surface-card-elevated-bg: #FFFFFF;
+  --_surface-card-elevated-shadow: none;
+  --_surface-glass-blur: none;
+  --_surface-glass-blur-light: none;
+  --_surface-sidebar-bg: #F8F9FA;
+  --_surface-input-bg: #FFFFFF;
+  --_surface-input-bg-focus: #FFFFFF;
+  --_surface-dialog-bg: #FFFFFF;
+  --_surface-dialog-border: 1px solid #E5E7EB;
+  --_surface-dialog-shadow: none;
+  --_surface-toast-bg: #FFFFFF;
+  --_surface-ghost-btn-bg: transparent;
+  /* Login */
+  --_login-brand-gradient: linear-gradient(160deg, #F8FAFC 0%, #E0F7FC 100%);
+}
+
+/* ================================================================
    Base layer
    ================================================================ */
 @layer base {
@@ -881,5 +942,148 @@
   .toast-leave-to {
     opacity: 0;
     transform: translateX(24px);
+  }
+}
+
+/* ================================================================
+   Notion Theme Overrides — 豆包极简冷白风适配
+   ================================================================ */
+:root[data-theme="notion"] {
+  /* 卡片：纯白底 + 极浅灰边框，hover 微妙底色变化 */
+  .liquid-card {
+    border: 1px solid #E5E7EB;
+    box-shadow: none;
+    transition: border-color var(--duration-fast) var(--ease-out),
+                background-color var(--duration-fast) var(--ease-out);
+  }
+
+  .liquid-card:hover {
+    border-color: #D1D5DB;
+    background: #FAFBFC;
+    transform: none;
+    box-shadow: none;
+  }
+
+  .liquid-card-elevated {
+    border: 1px solid #E5E7EB;
+    box-shadow: none;
+  }
+
+  /* 主按钮：低饱和青蓝，纯色无渐变 */
+  .liquid-btn-primary {
+    background: #0EA5C9;
+    border-radius: var(--radius-md);
+  }
+
+  .liquid-btn-primary::after {
+    display: none;
+  }
+
+  .liquid-btn-primary:hover {
+    background: #0891B2;
+  }
+
+  /* 幽灵按钮：细边框灰字 */
+  .liquid-btn-ghost {
+    border: 1px solid #E5E7EB;
+    color: #6B7280;
+    border-radius: var(--radius-md);
+    background: transparent;
+  }
+
+  .liquid-btn-ghost:hover {
+    background: #F8F9FA;
+    border-color: #D1D5DB;
+    color: #0EA5C9;
+  }
+
+  /* 输入框：纯白底 + 极浅灰边框 */
+  .liquid-input {
+    border-radius: var(--radius-md);
+    border: 1px solid #E5E7EB;
+    background: #FFFFFF;
+  }
+
+  .liquid-input:focus {
+    border-color: #0EA5C9;
+    box-shadow: 0 0 0 3px rgba(14, 165, 201, 0.1);
+  }
+
+  /* 标签：小圆角低饱和 */
+  .liquid-tag {
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    padding: 2px 8px;
+  }
+
+  /* 弹窗：纯白底 + 极浅灰边框 */
+  .liquid-dialog-overlay {
+    background: rgba(0, 0, 0, 0.15);
+  }
+
+  .liquid-dialog {
+    border: 1px solid #E5E7EB;
+    box-shadow: none;
+    border-radius: var(--radius-lg);
+  }
+
+  /* 侧边栏：浅灰白背景 + 右侧细分割线 */
+  .sidebar-shell {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: #F8F9FA;
+    border-right: 1px solid #E5E7EB;
+  }
+
+  /* 导航项：柔和灰调 */
+  .nav-item {
+    border-radius: var(--radius-md);
+    color: #6B7280;
+  }
+
+  .nav-item:hover {
+    background: #F4F5F7;
+    color: #1F1F1F;
+  }
+
+  .nav-item-active {
+    background: #E0F7FC;
+    color: #0EA5C9;
+  }
+
+  .nav-item-active .nav-icon::before {
+    display: none;
+  }
+
+  /* 内容区背景：纯白 */
+  .content-bg {
+    background-color: #FFFFFF;
+    background-image: none;
+  }
+
+  /* 禁用装饰动效 */
+  .animate-slide-up {
+    animation: none;
+  }
+
+  .stagger-1, .stagger-2, .stagger-3, .stagger-4, .stagger-5 {
+    animation-delay: 0ms;
+  }
+
+  .liquid-rise-enter-active,
+  .liquid-rise-leave-active {
+    transition: opacity var(--duration-fast) var(--ease-out);
+  }
+
+  .liquid-rise-enter-from,
+  .liquid-rise-leave-to {
+    opacity: 0;
+    transform: none;
+    filter: none;
+  }
+
+  .liquid-card-scan::after,
+  .markdown-body blockquote::after {
+    display: none;
   }
 }

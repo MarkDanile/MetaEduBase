@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.shared.parsing.pdf_parser import ParsedDocument, DocumentSection
+from app.shared.parsing.pdf_parser import DocumentSection, ParsedDocument
 
 
 def extract_docx_text(file_path: str) -> ParsedDocument:
@@ -19,10 +19,18 @@ def extract_docx_text(file_path: str) -> ParsedDocument:
     section_counter: dict[int, int] = {}
 
     _HEADING_STYLE = {
-        "Heading 1": 1, "Heading 2": 2, "Heading 3": 3,
-        "Heading 4": 4, "Heading 5": 5, "Heading 6": 6,
-        "标题 1": 1, "标题 2": 2, "标题 3": 3,
-        "标题 4": 4, "标题 5": 5, "标题 6": 6,
+        "Heading 1": 1,
+        "Heading 2": 2,
+        "Heading 3": 3,
+        "Heading 4": 4,
+        "Heading 5": 5,
+        "Heading 6": 6,
+        "标题 1": 1,
+        "标题 2": 2,
+        "标题 3": 3,
+        "标题 4": 4,
+        "标题 5": 5,
+        "标题 6": 6,
     }
 
     for para in doc.paragraphs:
@@ -37,13 +45,15 @@ def extract_docx_text(file_path: str) -> ParsedDocument:
             if current_title:
                 content = "\n".join(current_content_parts).strip()
                 path = _build_section_path(section_counter, heading_level)
-                sections.append(DocumentSection(
-                    title=current_title,
-                    level=current_level,
-                    content=content,
-                    page=0,
-                    path=path,
-                ))
+                sections.append(
+                    DocumentSection(
+                        title=current_title,
+                        level=current_level,
+                        content=content,
+                        page=0,
+                        path=path,
+                    )
+                )
                 full_text_parts.append(f"## {current_title}\n{content}")
 
             current_title = text
@@ -56,19 +66,23 @@ def extract_docx_text(file_path: str) -> ParsedDocument:
     if current_title:
         content = "\n".join(current_content_parts).strip()
         path = _build_section_path(section_counter, current_level)
-        sections.append(DocumentSection(
-            title=current_title,
-            level=current_level,
-            content=content,
-            page=0,
-            path=path,
-        ))
+        sections.append(
+            DocumentSection(
+                title=current_title,
+                level=current_level,
+                content=content,
+                page=0,
+                path=path,
+            )
+        )
         full_text_parts.append(f"## {current_title}\n{content}")
 
     if not sections:
         all_text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
         if all_text.strip():
-            sections.append(DocumentSection(title="", level=0, content=all_text.strip(), page=0, path=""))
+            sections.append(
+                DocumentSection(title="", level=0, content=all_text.strip(), page=0, path="")
+            )
             full_text_parts.append(all_text.strip())
 
     return ParsedDocument(sections=sections, full_text="\n\n".join(full_text_parts))

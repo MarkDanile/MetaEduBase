@@ -7,8 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-
 # --- Datasets ---
+
 
 class DatasetCreate(BaseModel):
     name: str
@@ -45,6 +45,7 @@ class DatasetDTO(BaseModel):
 
 # --- Dataset Rows ---
 
+
 class DatasetRowDTO(BaseModel):
     id: UUID
     dataset_id: UUID
@@ -56,6 +57,7 @@ class DatasetRowDTO(BaseModel):
 
 
 # --- Tasks ---
+
 
 class TaskDTO(BaseModel):
     id: UUID

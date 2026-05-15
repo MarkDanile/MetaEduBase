@@ -45,7 +45,6 @@ def _get_sync_session():
 
 
 async def _run_in_session(coro):
-    import asyncio
     async with _get_sync_session() as session:
         try:
             result = await coro(session)
@@ -56,7 +55,13 @@ async def _run_in_session(coro):
             raise
 
 
-async def _update_task_status(session: AsyncSession, task_id: uuid.UUID, status: str, progress: int = 0, error_message: str | None = None):
+async def _update_task_status(
+    session: AsyncSession,
+    task_id: uuid.UUID,
+    status: str,
+    progress: int = 0,
+    error_message: str | None = None,
+):
     now = datetime.now(UTC).replace(tzinfo=None)
     sets = ["status = :status", "progress = :progress"]
     params = {"tid": task_id, "status": status, "progress": progress, "now": now}
@@ -73,7 +78,9 @@ async def _update_task_status(session: AsyncSession, task_id: uuid.UUID, status:
     )
 
 
-async def _create_task(session: AsyncSession, tenant_id: uuid.UUID, dataset_id: uuid.UUID, task_type: str) -> uuid.UUID:
+async def _create_task(
+    session: AsyncSession, tenant_id: uuid.UUID, dataset_id: uuid.UUID, task_type: str
+) -> uuid.UUID:
     task_id = uuid.uuid4()
     now = datetime.now(UTC).replace(tzinfo=None)
     await session.execute(
@@ -87,6 +94,7 @@ async def _create_task(session: AsyncSession, tenant_id: uuid.UUID, dataset_id: 
 
 
 # --- Task 1: Parse dataset (xlsx → rows) ---
+
 
 @shared_task(name="ds_parse")
 def ds_parse(dataset_id_str: str, tenant_id_str: str):
@@ -115,6 +123,7 @@ def ds_parse(dataset_id_str: str, tenant_id_str: str):
 
             if source_file and source_file.endswith((".xlsx", ".xls")):
                 from app.shared.parsing.xlsx_parser import extract_xlsx_rows
+
                 parsed = extract_xlsx_rows(file_path)
             else:
                 raise ValueError(f"Unsupported file type: {source_file}")
@@ -128,7 +137,14 @@ def ds_parse(dataset_id_str: str, tenant_id_str: str):
                         "INSERT INTO metaedu.dataset_rows (id, tenant_id, dataset_id, row_index, data, created_at) "
                         "VALUES (:id, :tid, :did, :idx, :data::jsonb, :now)"
                     ),
-                    {"id": row_id, "tid": tenant_id, "did": dataset_id, "idx": i, "data": json.dumps(row_data), "now": now},
+                    {
+                        "id": row_id,
+                        "tid": tenant_id,
+                        "did": dataset_id,
+                        "idx": i,
+                        "data": json.dumps(row_data),
+                        "now": now,
+                    },
                 )
 
             # Update column metadata
@@ -138,8 +154,11 @@ def ds_parse(dataset_id_str: str, tenant_id_str: str):
                     "row_count = :rcount, status = 'processed', updated_at = :now WHERE id = :did"
                 ),
                 {
-                    "cnames": json.dumps(parsed.column_names), "ctypes": json.dumps(parsed.column_types),
-                    "rcount": len(parsed.rows), "now": now, "did": dataset_id,
+                    "cnames": json.dumps(parsed.column_names),
+                    "ctypes": json.dumps(parsed.column_types),
+                    "rcount": len(parsed.rows),
+                    "now": now,
+                    "did": dataset_id,
                 },
             )
 
@@ -151,7 +170,9 @@ def ds_parse(dataset_id_str: str, tenant_id_str: str):
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
             await session.execute(
-                text("UPDATE metaedu.datasets SET status = 'failed', updated_at = :now WHERE id = :did"),
+                text(
+                    "UPDATE metaedu.datasets SET status = 'failed', updated_at = :now WHERE id = :did"
+                ),
                 {"now": datetime.now(UTC).replace(tzinfo=None), "did": dataset_id},
             )
             raise
@@ -160,6 +181,7 @@ def ds_parse(dataset_id_str: str, tenant_id_str: str):
 
 
 # --- Task 2: Embed dataset rows ---
+
 
 @shared_task(name="ds_embed")
 def ds_embed(dataset_id_str: str, tenant_id_str: str):
@@ -187,6 +209,7 @@ def ds_embed(dataset_id_str: str, tenant_id_str: str):
             api_key = settings.qwen_api_key or os.environ.get("DASHSCOPE_API_KEY", "")
             if api_key:
                 import httpx
+
                 for i, row in enumerate(rows):
                     # Build text from row data for embedding
                     text_parts = [str(v) for v in row["data"].values()]
@@ -213,8 +236,13 @@ def ds_embed(dataset_id_str: str, tenant_id_str: str):
                                     "VALUES (:id, :tid, :fid, :idx, :content, :vec::vector, :now)"
                                 ),
                                 {
-                                    "id": chunk_id, "tid": tenant_id, "fid": dataset_id,
-                                    "idx": i, "content": embed_text, "vec": vec_str, "now": now,
+                                    "id": chunk_id,
+                                    "tid": tenant_id,
+                                    "fid": dataset_id,
+                                    "idx": i,
+                                    "content": embed_text,
+                                    "vec": vec_str,
+                                    "now": now,
                                 },
                             )
                     except Exception as e:
@@ -226,7 +254,9 @@ def ds_embed(dataset_id_str: str, tenant_id_str: str):
 
             # Update kg_status
             await session.execute(
-                text("UPDATE metaedu.datasets SET kg_status = 'pending', updated_at = :now WHERE id = :did"),
+                text(
+                    "UPDATE metaedu.datasets SET kg_status = 'pending', updated_at = :now WHERE id = :did"
+                ),
                 {"now": datetime.now(UTC).replace(tzinfo=None), "did": dataset_id},
             )
 
@@ -244,6 +274,7 @@ def ds_embed(dataset_id_str: str, tenant_id_str: str):
 
 # --- Task 3: Extract knowledge graph from datasets ---
 
+
 @shared_task(name="ds_extract_kg")
 def ds_extract_kg(dataset_id_str: str, tenant_id_str: str):
     import asyncio
@@ -259,7 +290,9 @@ def ds_extract_kg(dataset_id_str: str, tenant_id_str: str):
         try:
             # Get column schema and sample data
             result = await session.execute(
-                text("SELECT column_names, column_types, name FROM metaedu.datasets WHERE id = :did"),
+                text(
+                    "SELECT column_names, column_types, name FROM metaedu.datasets WHERE id = :did"
+                ),
                 {"did": dataset_id},
             )
             ds_row = result.mappings().first()
@@ -283,7 +316,11 @@ def ds_extract_kg(dataset_id_str: str, tenant_id_str: str):
 
             if api_key:
                 import httpx
-                schema_str = json.dumps({"columns": ds_row["column_names"], "types": ds_row["column_types"]}, ensure_ascii=False)
+
+                schema_str = json.dumps(
+                    {"columns": ds_row["column_names"], "types": ds_row["column_types"]},
+                    ensure_ascii=False,
+                )
                 sample_str = json.dumps(sample_rows[:5], ensure_ascii=False)
 
                 prompt = (
@@ -333,17 +370,28 @@ def ds_extract_kg(dataset_id_str: str, tenant_id_str: str):
                             "(id, tenant_id, title, description, domain, level, path, source_dataset_id, created_at) "
                             "VALUES (:id, :tid, :title, '', 'general', 'concept', :path, :did, :now)"
                         ),
-                        {"id": node_id, "tid": tenant_id, "title": name, "path": str(node_id)[:8], "did": dataset_id, "now": datetime.now(UTC).replace(tzinfo=None)},
+                        {
+                            "id": node_id,
+                            "tid": tenant_id,
+                            "title": name,
+                            "path": str(node_id)[:8],
+                            "did": dataset_id,
+                            "now": datetime.now(UTC).replace(tzinfo=None),
+                        },
                     )
                     if vec_str:
                         await session.execute(
-                            text("UPDATE metaedu.knowledge_nodes SET embedding = :vec::vector WHERE id = :nid"),
+                            text(
+                                "UPDATE metaedu.knowledge_nodes SET embedding = :vec::vector WHERE id = :nid"
+                            ),
                             {"vec": vec_str, "nid": node_id},
                         )
 
             # Update kg_status
             await session.execute(
-                text("UPDATE metaedu.datasets SET kg_status = 'done', updated_at = :now WHERE id = :did"),
+                text(
+                    "UPDATE metaedu.datasets SET kg_status = 'done', updated_at = :now WHERE id = :did"
+                ),
                 {"now": datetime.now(UTC).replace(tzinfo=None), "did": dataset_id},
             )
 
@@ -352,7 +400,9 @@ def ds_extract_kg(dataset_id_str: str, tenant_id_str: str):
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
             await session.execute(
-                text("UPDATE metaedu.datasets SET kg_status = 'failed', updated_at = :now WHERE id = :did"),
+                text(
+                    "UPDATE metaedu.datasets SET kg_status = 'failed', updated_at = :now WHERE id = :did"
+                ),
                 {"now": datetime.now(UTC).replace(tzinfo=None), "did": dataset_id},
             )
             raise

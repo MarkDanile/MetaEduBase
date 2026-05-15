@@ -30,6 +30,7 @@ router = APIRouter()
 
 # --- Folder helpers ---
 
+
 def _folder_row_to_dto(row: dict) -> FolderDTO:
     return FolderDTO(
         id=row["id"],
@@ -61,6 +62,7 @@ def _build_tree(flat: list[dict]) -> list[FolderDTO]:
 
 
 # --- Folders ---
+
 
 @router.get("/folders", response_model=list[FolderDTO])
 async def list_folders(
@@ -138,6 +140,7 @@ async def move_folder(
 
 # --- File helpers ---
 
+
 def _file_row_to_dto(row: dict) -> FileDTO:
     return FileDTO(
         id=row["id"],
@@ -157,6 +160,7 @@ def _file_row_to_dto(row: dict) -> FileDTO:
 
 
 # --- Files ---
+
 
 @router.get("/files", response_model=list[FileDTO])
 async def list_files(
@@ -274,6 +278,7 @@ async def update_file(
 
 
 # --- Chunks ---
+
 
 @router.get("/files/{file_id}/chunks", response_model=list[ChunkDTO])
 async def list_chunks(

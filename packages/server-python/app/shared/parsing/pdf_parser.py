@@ -75,13 +75,15 @@ def extract_pdf_text(file_path: str) -> ParsedDocument:
                     if current_title:
                         content = "\n".join(current_content_parts).strip()
                         path = _build_path(section_counter, heading_level)
-                        sections.append(DocumentSection(
-                            title=current_title,
-                            level=current_level,
-                            content=content,
-                            page=current_page,
-                            path=path,
-                        ))
+                        sections.append(
+                            DocumentSection(
+                                title=current_title,
+                                level=current_level,
+                                content=content,
+                                page=current_page,
+                                path=path,
+                            )
+                        )
                         full_text_parts.append(f"## {current_title}\n{content}")
 
                     current_title = line_text
@@ -95,13 +97,15 @@ def extract_pdf_text(file_path: str) -> ParsedDocument:
     if current_title:
         content = "\n".join(current_content_parts).strip()
         path = _build_path(section_counter, current_level)
-        sections.append(DocumentSection(
-            title=current_title,
-            level=current_level,
-            content=content,
-            page=current_page,
-            path=path,
-        ))
+        sections.append(
+            DocumentSection(
+                title=current_title,
+                level=current_level,
+                content=content,
+                page=current_page,
+                path=path,
+            )
+        )
         full_text_parts.append(f"## {current_title}\n{content}")
 
     if not sections and not full_text_parts:
@@ -109,7 +113,9 @@ def extract_pdf_text(file_path: str) -> ParsedDocument:
         for page_num in range(len(doc)):
             all_text += doc[page_num].get_text() + "\n"
         if all_text.strip():
-            sections.append(DocumentSection(title="", level=0, content=all_text.strip(), page=0, path=""))
+            sections.append(
+                DocumentSection(title="", level=0, content=all_text.strip(), page=0, path="")
+            )
             full_text_parts.append(all_text.strip())
 
     doc.close()

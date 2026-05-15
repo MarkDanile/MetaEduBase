@@ -14,7 +14,7 @@ from app.shared.infrastructure.database import Base
 
 class DatasetModel(Base):
     __tablename__ = "datasets"
-    __table_args__ = ({"schema": "metaedu"})
+    __table_args__ = {"schema": "metaedu"}
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
@@ -29,17 +29,25 @@ class DatasetModel(Base):
     kg_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
-    updated_at: Mapped[datetime] = mapped_column(nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None), onupdate=lambda: datetime.now(UTC).replace(tzinfo=None))
+    created_at: Mapped[datetime] = mapped_column(
+        nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        nullable=False,
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(UTC).replace(tzinfo=None),
+    )
 
 
 class DatasetRowModel(Base):
     __tablename__ = "dataset_rows"
-    __table_args__ = ({"schema": "metaedu"})
+    __table_args__ = {"schema": "metaedu"}
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     dataset_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     row_index: Mapped[int] = mapped_column(Integer, nullable=False)
     data: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
+    created_at: Mapped[datetime] = mapped_column(
+        nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None)
+    )

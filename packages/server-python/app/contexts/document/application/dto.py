@@ -7,8 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-
 # --- Folders ---
+
 
 class FolderCreate(BaseModel):
     name: str
@@ -34,12 +34,13 @@ class FolderDTO(BaseModel):
     sort_order: int
     created_at: datetime
     updated_at: datetime
-    children: list["FolderDTO"] | None = None
+    children: list[FolderDTO] | None = None
 
     model_config = {"from_attributes": True}
 
 
 # --- Files ---
+
 
 class FileUpdate(BaseModel):
     tags: list[str] | None = None
@@ -67,6 +68,7 @@ class FileDTO(BaseModel):
 
 # --- Chunks ---
 
+
 class ChunkDTO(BaseModel):
     id: UUID
     file_id: UUID
@@ -83,6 +85,7 @@ class ChunkDTO(BaseModel):
 
 
 # --- Tasks ---
+
 
 class TaskDTO(BaseModel):
     id: UUID

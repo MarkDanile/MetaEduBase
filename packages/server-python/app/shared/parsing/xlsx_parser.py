@@ -33,11 +33,17 @@ def extract_xlsx_rows(file_path: str) -> ParsedDataset:
     second_row = next(rows_iter, None)
     if second_row:
         column_types = [_infer_type(cell) for cell in second_row]
-        row_dict = {column_names[i]: str(cell or "") for i, cell in enumerate(second_row) if i < len(column_names)}
+        row_dict = {
+            column_names[i]: str(cell or "")
+            for i, cell in enumerate(second_row)
+            if i < len(column_names)
+        }
         data_rows.append(row_dict)
 
     for row in rows_iter:
-        row_dict = {column_names[i]: str(cell or "") for i, cell in enumerate(row) if i < len(column_names)}
+        row_dict = {
+            column_names[i]: str(cell or "") for i, cell in enumerate(row) if i < len(column_names)
+        }
         data_rows.append(row_dict)
 
     wb.close()
@@ -54,6 +60,7 @@ def _infer_type(value: object) -> str:
     if isinstance(value, float):
         return "float"
     from datetime import date, datetime
+
     if isinstance(value, (date, datetime)):
         return "date"
     return "string"

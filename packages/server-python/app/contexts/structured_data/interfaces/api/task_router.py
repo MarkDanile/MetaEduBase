@@ -85,7 +85,10 @@ async def get_kg_status(
         ),
         {"tid": tid},
     )
-    return [{"id": str(row["id"]), "name": row["name"], "kg_status": row["kg_status"]} for row in result.mappings().all()]
+    return [
+        {"id": str(row["id"]), "name": row["name"], "kg_status": row["kg_status"]}
+        for row in result.mappings().all()
+    ]
 
 
 @router.get("/knowledge-graph")
@@ -110,7 +113,9 @@ async def get_knowledge_graph(
             "description": row.get("description"),
             "domain": row["domain"],
             "level": row["level"],
-            "source_dataset_id": str(row["source_dataset_id"]) if row.get("source_dataset_id") else None,
+            "source_dataset_id": str(row["source_dataset_id"])
+            if row.get("source_dataset_id")
+            else None,
         }
         for row in nodes_result.mappings().all()
     ]

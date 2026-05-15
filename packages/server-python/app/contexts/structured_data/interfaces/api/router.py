@@ -164,6 +164,13 @@ async def update_dataset(
     existing = await repo.get_by_id(did, tid)
     if not existing:
         raise HTTPException(status_code=404, detail="数据集不存在")
-    await repo.update(did, tid, name=data.name, description=data.description, tags=data.tags, sort_order=data.sort_order)
+    await repo.update(
+        did,
+        tid,
+        name=data.name,
+        description=data.description,
+        tags=data.tags,
+        sort_order=data.sort_order,
+    )
     row = await repo.get_by_id(did, tid)
     return _dataset_row_to_dto(row)

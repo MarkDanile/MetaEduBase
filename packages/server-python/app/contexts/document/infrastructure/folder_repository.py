@@ -28,7 +28,9 @@ class FolderRepository:
         row = result.mappings().first()
         return dict(row) if row else None
 
-    async def create(self, tenant_id: uuid.UUID, name: str, parent_id: uuid.UUID | None, sort_order: int) -> dict:
+    async def create(
+        self, tenant_id: uuid.UUID, name: str, parent_id: uuid.UUID | None, sort_order: int
+    ) -> dict:
         folder_id = uuid.uuid4()
         if parent_id:
             parent = await self.get_by_id(parent_id, tenant_id)
@@ -44,9 +46,26 @@ class FolderRepository:
                 "INSERT INTO metaedu.folders (id, tenant_id, name, parent_id, path, sort_order, created_at, updated_at) "
                 "VALUES (:id, :tid, :name, :pid, :path, :sort, :now, :now)"
             ),
-            {"id": folder_id, "tid": tenant_id, "name": name, "pid": parent_id, "path": path, "sort": sort_order, "now": now},
+            {
+                "id": folder_id,
+                "tid": tenant_id,
+                "name": name,
+                "pid": parent_id,
+                "path": path,
+                "sort": sort_order,
+                "now": now,
+            },
         )
-        return {"id": folder_id, "tenant_id": tenant_id, "name": name, "parent_id": parent_id, "path": path, "sort_order": sort_order, "created_at": now, "updated_at": now}
+        return {
+            "id": folder_id,
+            "tenant_id": tenant_id,
+            "name": name,
+            "parent_id": parent_id,
+            "path": path,
+            "sort_order": sort_order,
+            "created_at": now,
+            "updated_at": now,
+        }
 
     async def update(self, folder_id: uuid.UUID, tenant_id: uuid.UUID, **kwargs: object) -> None:
         sets: list[str] = []
@@ -60,11 +79,15 @@ class FolderRepository:
         sets.append("updated_at = :now")
         params["now"] = datetime.now(UTC).replace(tzinfo=None)
         await self._session.execute(
-            text(f"UPDATE metaedu.folders SET {', '.join(sets)} WHERE id = :fid AND tenant_id = :tid"),
+            text(
+                f"UPDATE metaedu.folders SET {', '.join(sets)} WHERE id = :fid AND tenant_id = :tid"
+            ),
             params,
         )
 
-    async def move(self, folder_id: uuid.UUID, tenant_id: uuid.UUID, new_parent_id: uuid.UUID | None) -> None:
+    async def move(
+        self, folder_id: uuid.UUID, tenant_id: uuid.UUID, new_parent_id: uuid.UUID | None
+    ) -> None:
         folder = await self.get_by_id(folder_id, tenant_id)
         if not folder:
             raise ValueError("文件夹不存在")

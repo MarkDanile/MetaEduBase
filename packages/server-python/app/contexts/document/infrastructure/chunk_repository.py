@@ -26,7 +26,9 @@ class ChunkRepository:
         )
         return [dict(row) for row in result.mappings().all()]
 
-    async def bulk_insert(self, tenant_id: uuid.UUID, file_id: uuid.UUID, chunks: list[dict]) -> None:
+    async def bulk_insert(
+        self, tenant_id: uuid.UUID, file_id: uuid.UUID, chunks: list[dict]
+    ) -> None:
         now = datetime.now(UTC).replace(tzinfo=None)
         for chunk in chunks:
             chunk_id = uuid.uuid4()
@@ -37,10 +39,16 @@ class ChunkRepository:
                     "VALUES (:id, :tid, :fid, :idx, :content, :stitle, :spath, :cstart, :cend, :now)"
                 ),
                 {
-                    "id": chunk_id, "tid": tenant_id, "fid": file_id, "idx": chunk["index"],
-                    "content": chunk["content"], "stitle": chunk.get("section_title"),
-                    "spath": chunk.get("section_path"), "cstart": chunk.get("char_start"),
-                    "cend": chunk.get("char_end"), "now": now,
+                    "id": chunk_id,
+                    "tid": tenant_id,
+                    "fid": file_id,
+                    "idx": chunk["index"],
+                    "content": chunk["content"],
+                    "stitle": chunk.get("section_title"),
+                    "spath": chunk.get("section_path"),
+                    "cstart": chunk.get("char_start"),
+                    "cend": chunk.get("char_end"),
+                    "now": now,
                 },
             )
 
@@ -52,7 +60,9 @@ class ChunkRepository:
 
     async def update_tsvector(self, chunk_id: uuid.UUID) -> None:
         await self._session.execute(
-            text("UPDATE metaedu.document_chunks SET content_tsvector = to_tsvector('simple', content) WHERE id = :cid"),
+            text(
+                "UPDATE metaedu.document_chunks SET content_tsvector = to_tsvector('simple', content) WHERE id = :cid"
+            ),
             {"cid": chunk_id},
         )
 

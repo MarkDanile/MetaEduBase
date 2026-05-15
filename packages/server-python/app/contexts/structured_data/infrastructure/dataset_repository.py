@@ -32,7 +32,9 @@ class DatasetRepository:
             params["status"] = status
         where = " AND ".join(conditions)
         result = await self._session.execute(
-            text(f"SELECT * FROM metaedu.datasets WHERE {where} ORDER BY sort_order, created_at DESC LIMIT :lim OFFSET :off"),
+            text(
+                f"SELECT * FROM metaedu.datasets WHERE {where} ORDER BY sort_order, created_at DESC LIMIT :lim OFFSET :off"
+            ),
             {**params, "lim": limit, "off": offset},
         )
         return [dict(row) for row in result.mappings().all()]
@@ -63,13 +65,31 @@ class DatasetRepository:
                 "VALUES (:id, :tid, :name, :desc, :sfile, :tags, 'uploaded', 'pending', 0, 0, :uid, :now, :now)"
             ),
             {
-                "id": dataset_id, "tid": tenant_id, "name": name, "desc": description,
-                "sfile": source_file, "tags": tags, "uid": created_by, "now": now,
+                "id": dataset_id,
+                "tid": tenant_id,
+                "name": name,
+                "desc": description,
+                "sfile": source_file,
+                "tags": tags,
+                "uid": created_by,
+                "now": now,
             },
         )
-        return {"id": dataset_id, "tenant_id": tenant_id, "name": name, "description": description,
-                "source_file": source_file, "tags": tags, "status": "uploaded", "kg_status": "pending",
-                "row_count": 0, "sort_order": 0, "created_by": created_by, "created_at": now, "updated_at": now}
+        return {
+            "id": dataset_id,
+            "tenant_id": tenant_id,
+            "name": name,
+            "description": description,
+            "source_file": source_file,
+            "tags": tags,
+            "status": "uploaded",
+            "kg_status": "pending",
+            "row_count": 0,
+            "sort_order": 0,
+            "created_by": created_by,
+            "created_at": now,
+            "updated_at": now,
+        }
 
     async def update(self, dataset_id: uuid.UUID, tenant_id: uuid.UUID, **kwargs: object) -> None:
         sets: list[str] = []
@@ -83,18 +103,32 @@ class DatasetRepository:
         sets.append("updated_at = :now")
         params["now"] = datetime.now(UTC).replace(tzinfo=None)
         await self._session.execute(
-            text(f"UPDATE metaedu.datasets SET {', '.join(sets)} WHERE id = :did AND tenant_id = :tid"),
+            text(
+                f"UPDATE metaedu.datasets SET {', '.join(sets)} WHERE id = :did AND tenant_id = :tid"
+            ),
             params,
         )
 
-    async def update_column_metadata(self, dataset_id: uuid.UUID, column_names: list[str], column_types: list[str], row_count: int) -> None:
+    async def update_column_metadata(
+        self,
+        dataset_id: uuid.UUID,
+        column_names: list[str],
+        column_types: list[str],
+        row_count: int,
+    ) -> None:
         now = datetime.now(UTC).replace(tzinfo=None)
         await self._session.execute(
             text(
                 "UPDATE metaedu.datasets SET column_names = :cnames::jsonb, column_types = :ctypes::jsonb, "
                 "row_count = :rcount, status = 'processed', updated_at = :now WHERE id = :did"
             ),
-            {"cnames": json.dumps(column_names), "ctypes": json.dumps(column_types), "rcount": row_count, "now": now, "did": dataset_id},
+            {
+                "cnames": json.dumps(column_names),
+                "ctypes": json.dumps(column_types),
+                "rcount": row_count,
+                "now": now,
+                "did": dataset_id,
+            },
         )
 
     async def delete(self, dataset_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
@@ -123,12 +157,16 @@ class DatasetRepository:
 
     async def count_rows(self, dataset_id: uuid.UUID, tenant_id: uuid.UUID) -> int:
         result = await self._session.execute(
-            text("SELECT COUNT(*) FROM metaedu.dataset_rows WHERE dataset_id = :did AND tenant_id = :tid"),
+            text(
+                "SELECT COUNT(*) FROM metaedu.dataset_rows WHERE dataset_id = :did AND tenant_id = :tid"
+            ),
             {"did": dataset_id, "tid": tenant_id},
         )
         return result.scalar() or 0
 
-    async def bulk_insert_rows(self, tenant_id: uuid.UUID, dataset_id: uuid.UUID, rows: list[dict]) -> None:
+    async def bulk_insert_rows(
+        self, tenant_id: uuid.UUID, dataset_id: uuid.UUID, rows: list[dict]
+    ) -> None:
         now = datetime.now(UTC).replace(tzinfo=None)
         for i, row_data in enumerate(rows):
             row_id = uuid.uuid4()
@@ -137,7 +175,14 @@ class DatasetRepository:
                     "INSERT INTO metaedu.dataset_rows (id, tenant_id, dataset_id, row_index, data, created_at) "
                     "VALUES (:id, :tid, :did, :idx, :data::jsonb, :now)"
                 ),
-                {"id": row_id, "tid": tenant_id, "did": dataset_id, "idx": i, "data": json.dumps(row_data), "now": now},
+                {
+                    "id": row_id,
+                    "tid": tenant_id,
+                    "did": dataset_id,
+                    "idx": i,
+                    "data": json.dumps(row_data),
+                    "now": now,
+                },
             )
 
     async def delete_rows(self, dataset_id: uuid.UUID, tenant_id: uuid.UUID) -> None:

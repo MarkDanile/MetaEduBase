@@ -36,7 +36,9 @@ class FileRepository:
             params["status"] = status
         where = " AND ".join(conditions)
         result = await self._session.execute(
-            text(f"SELECT * FROM metaedu.files WHERE {where} ORDER BY created_at DESC LIMIT :lim OFFSET :off"),
+            text(
+                f"SELECT * FROM metaedu.files WHERE {where} ORDER BY created_at DESC LIMIT :lim OFFSET :off"
+            ),
             {**params, "lim": limit, "off": offset},
         )
         return [dict(row) for row in result.mappings().all()]
@@ -70,15 +72,35 @@ class FileRepository:
                 "VALUES (:id, :tid, :fid, :name, :ftype, :dtype, :fsize, :skey, :tags, 'uploaded', :uid, :now, :now)"
             ),
             {
-                "id": file_id, "tid": tenant_id, "fid": folder_id, "name": filename,
-                "ftype": file_type, "dtype": doc_type, "fsize": file_size,
-                "skey": storage_key, "tags": tags, "uid": uploaded_by, "now": now,
+                "id": file_id,
+                "tid": tenant_id,
+                "fid": folder_id,
+                "name": filename,
+                "ftype": file_type,
+                "dtype": doc_type,
+                "fsize": file_size,
+                "skey": storage_key,
+                "tags": tags,
+                "uid": uploaded_by,
+                "now": now,
             },
         )
-        return {"id": file_id, "tenant_id": tenant_id, "folder_id": folder_id, "filename": filename,
-                "file_type": file_type, "doc_type": doc_type, "file_size": file_size,
-                "storage_key": storage_key, "tags": tags, "status": "uploaded",
-                "structured_data": None, "uploaded_by": uploaded_by, "created_at": now, "updated_at": now}
+        return {
+            "id": file_id,
+            "tenant_id": tenant_id,
+            "folder_id": folder_id,
+            "filename": filename,
+            "file_type": file_type,
+            "doc_type": doc_type,
+            "file_size": file_size,
+            "storage_key": storage_key,
+            "tags": tags,
+            "status": "uploaded",
+            "structured_data": None,
+            "uploaded_by": uploaded_by,
+            "created_at": now,
+            "updated_at": now,
+        }
 
     async def update(self, file_id: uuid.UUID, tenant_id: uuid.UUID, **kwargs: object) -> None:
         sets: list[str] = []
@@ -92,17 +114,28 @@ class FileRepository:
         sets.append("updated_at = :now")
         params["now"] = datetime.now(UTC).replace(tzinfo=None)
         await self._session.execute(
-            text(f"UPDATE metaedu.files SET {', '.join(sets)} WHERE id = :fid AND tenant_id = :tid"),
+            text(
+                f"UPDATE metaedu.files SET {', '.join(sets)} WHERE id = :fid AND tenant_id = :tid"
+            ),
             params,
         )
 
     async def update_status(self, file_id: uuid.UUID, tenant_id: uuid.UUID, status: str) -> None:
         await self.update(file_id, tenant_id, status=status)
 
-    async def update_structured_data(self, file_id: uuid.UUID, tenant_id: uuid.UUID, data: dict) -> None:
+    async def update_structured_data(
+        self, file_id: uuid.UUID, tenant_id: uuid.UUID, data: dict
+    ) -> None:
         await self._session.execute(
-            text("UPDATE metaedu.files SET structured_data = :data::jsonb, updated_at = :now WHERE id = :fid AND tenant_id = :tid"),
-            {"data": json.dumps(data), "fid": file_id, "tid": tenant_id, "now": datetime.now(UTC).replace(tzinfo=None)},
+            text(
+                "UPDATE metaedu.files SET structured_data = :data::jsonb, updated_at = :now WHERE id = :fid AND tenant_id = :tid"
+            ),
+            {
+                "data": json.dumps(data),
+                "fid": file_id,
+                "tid": tenant_id,
+                "now": datetime.now(UTC).replace(tzinfo=None),
+            },
         )
 
     async def delete(self, file_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
