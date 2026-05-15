@@ -9,7 +9,7 @@ from app.main import app
 from app.shared.infrastructure.database import Base, get_session
 from app.shared.infrastructure.seed import DEFAULT_ADMIN_ID, DEFAULT_TENANT_ID
 
-TEST_DB_URL = "postgresql+asyncpg://metaedu@localhost:5432/metaedu_test"
+TEST_DB_URL = "postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test"
 
 
 async def _get_test_session():
