@@ -23,3 +23,8 @@ dump.rdb
 .claude/
 *.tsbuildinfo
 Thumbs.db
+.superpowers/
+
+# Upload directory (keep .gitkeep)
+packages/server-python/uploads/*
+!packages/server-python/uploads/.gitkeep
