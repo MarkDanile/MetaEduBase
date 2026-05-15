@@ -24,7 +24,17 @@ const routes: RouteRecordRaw[] = [
       {
         path: "resource",
         name: "resource",
-        component: () => import("@/views/resource/ResourceView.vue"),
+        component: () => import("@/views/resource/ResourceLibraryView.vue"),
+      },
+      {
+        path: "resource/:id",
+        name: "file-detail",
+        component: () => import("@/views/resource/FileDetailView.vue"),
+      },
+      {
+        path: "database",
+        name: "database",
+        component: () => import("@/views/database/DatabaseView.vue"),
       },
       {
         path: "ai-chat",
