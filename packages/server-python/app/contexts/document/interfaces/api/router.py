@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 
@@ -23,7 +24,12 @@ from app.contexts.document.infrastructure.file_repository import FileRepository
 from app.contexts.document.infrastructure.folder_repository import FolderRepository
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.shared.infrastructure.database import get_session
+
+# Celery tasks — imported at module level for testability
+from app.contexts.document.application.tasks import parse_document
 from app.shared.infrastructure.tenant_context import get_tenant_id
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -225,6 +231,13 @@ async def upload_file(
         tags=tags,
         uploaded_by=uid,
     )
+
+    # Trigger document processing pipeline
+    try:
+        parse_document.delay(str(row["id"]), str(tid))
+    except Exception:
+        logger.warning("Failed to dispatch parse_document task — Celery/RabbitMQ unavailable")
+
     return _file_row_to_dto(row)
 
 

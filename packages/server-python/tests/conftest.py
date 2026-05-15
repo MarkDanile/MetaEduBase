@@ -4,12 +4,23 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
+from unittest.mock import patch
 
 from app.main import app
 from app.shared.infrastructure.database import Base, get_session
 from app.shared.infrastructure.seed import DEFAULT_ADMIN_ID, DEFAULT_TENANT_ID
 
 TEST_DB_URL = "postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test"
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def mock_celery_tasks():
+    """Patch Celery task dispatch to prevent broker connection in tests."""
+    with patch("app.contexts.document.interfaces.api.router.parse_document") as mock_doc, \
+         patch("app.contexts.structured_data.interfaces.api.router.ds_parse") as mock_ds:
+        mock_doc.delay = lambda *a, **k: None
+        mock_ds.delay = lambda *a, **k: None
+        yield
 
 
 async def _get_test_session():

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 
@@ -18,6 +19,11 @@ from app.contexts.structured_data.application.dto import (
 from app.contexts.structured_data.infrastructure.dataset_repository import DatasetRepository
 from app.shared.infrastructure.database import get_session
 from app.shared.infrastructure.tenant_context import get_tenant_id
+
+# Celery tasks — imported at module level for testability
+from app.contexts.structured_data.application.tasks import ds_parse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -91,6 +97,13 @@ async def upload_dataset(
         tags=[],
         created_by=uid,
     )
+
+    # Trigger dataset processing pipeline
+    try:
+        ds_parse.delay(str(row["id"]), str(tid))
+    except Exception:
+        logger.warning("Failed to dispatch ds_parse task — Celery/RabbitMQ unavailable")
+
     return _dataset_row_to_dto(row)
 
 

@@ -8,10 +8,28 @@
         <div class="flex items-center justify-between mb-1">
           <span class="text-[var(--text-caption)] font-medium text-[var(--color-ink)]">文件夹</span>
           <button
+            v-if="!showNewFolderInput"
             class="liquid-btn-ghost text-[var(--text-small)] px-2 py-0.5"
-            @click="showNewFolder = true"
+            @click="showNewFolderInput = true"
           >
             <Plus :size="14" /> 新建
+          </button>
+        </div>
+
+        <!-- Inline new folder input -->
+        <div v-if="showNewFolderInput" class="flex gap-1">
+          <input
+            v-model="newFolderName"
+            class="liquid-input text-[var(--text-small)] py-0.5 px-2 flex-1"
+            placeholder="文件夹名称"
+            @keyup.enter="createFolder"
+            @keyup.escape="showNewFolderInput = false; newFolderName = ''"
+          />
+          <button class="liquid-btn-primary text-[var(--text-small)] px-2 py-0.5" @click="createFolder">
+            <Check :size="14" />
+          </button>
+          <button class="liquid-btn-ghost text-[var(--text-small)] px-1 py-0.5" @click="showNewFolderInput = false; newFolderName = ''">
+            <X :size="14" />
           </button>
         </div>
 
@@ -24,7 +42,7 @@
             :class="selectedFolderId === folder.id
               ? 'bg-[var(--color-accent-bg)] text-[var(--color-accent)]'
               : 'hover:bg-[var(--color-bg-hover)] text-[var(--color-ink)]'"
-            :style="{ paddingLeft: `${(folder.path.split('.').length - 1) * 12 + 8}px` }"
+            :style="{ paddingLeft: `${8 + folder.depth * 16}px` }"
             @click="selectFolder(folder.id)"
           >
             <Folder :size="14" class="flex-shrink-0" />
@@ -82,6 +100,9 @@
             <option value="processed">已完成</option>
             <option value="failed">失败</option>
           </select>
+          <button class="liquid-btn-ghost text-[var(--text-small)] px-2 py-1" @click="loadFiles">
+            <RefreshCw :size="14" :class="{ 'animate-spin': loadingFiles }" />
+          </button>
         </div>
 
         <!-- File table -->
@@ -143,22 +164,6 @@
       </div>
     </div>
 
-    <!-- New folder dialog -->
-    <ConfirmDialog
-      v-model:open="showNewFolder"
-      title="新建文件夹"
-      :show-cancel="true"
-      confirm-text="创建"
-      @confirm="createFolder"
-    >
-      <input
-        v-model="newFolderName"
-        class="liquid-input w-full mt-2"
-        placeholder="文件夹名称"
-        @keyup.enter="createFolder"
-      />
-    </ConfirmDialog>
-
     <!-- Rename folder dialog -->
     <ConfirmDialog
       v-model:open="showRenameFolder"
@@ -204,7 +209,7 @@
 import { ref, onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import {
-  Plus, Folder, FolderOpen, FileText, Upload, Pencil, Trash2, Eye,
+  Plus, Folder, FolderOpen, FileText, Upload, Pencil, Trash2, Eye, RefreshCw, Check, X,
 } from "lucide-vue-next";
 import PageHeader from "@/components/PageHeader.vue";
 import EmptyState from "@/components/EmptyState.vue";
@@ -221,20 +226,20 @@ const toast = useToast();
 const folders = ref<FolderDTO[]>([]);
 const loadingFolders = ref(true);
 const selectedFolderId = ref<string | null>(null);
-const showNewFolder = ref(false);
+const showNewFolderInput = ref(false);
 const newFolderName = ref("");
 const showRenameFolder = ref(false);
 const renameFolderName = ref("");
 
 const flatFolders = computed(() => {
-  const result: FolderDTO[] = [];
-  function walk(nodes: FolderDTO[]) {
+  const result: (FolderDTO & { depth: number })[] = [];
+  function walk(nodes: FolderDTO[], depth: number) {
     for (const node of nodes) {
-      result.push(node);
-      if (node.children?.length) walk(node.children);
+      result.push({ ...node, depth });
+      if (node.children?.length) walk(node.children, depth + 1);
     }
   }
-  walk(folders.value);
+  walk(folders.value, 0);
   return result;
 });
 
@@ -278,7 +283,7 @@ async function createFolder() {
     });
     toast.success("文件夹已创建");
     newFolderName.value = "";
-    showNewFolder.value = false;
+    showNewFolderInput.value = false;
     await loadFolders();
   } catch {
     toast.error("创建失败");
