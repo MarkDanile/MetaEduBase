@@ -30,18 +30,66 @@
         </RouterLink>
       </nav>
 
-      <div class="px-2 pb-3 pt-3 border-t border-[var(--color-border)]">
-        <div class="flex items-center gap-2 px-2" :class="collapsed ? 'justify-center' : ''">
+      <div class="relative px-2 pb-3 pt-3 border-t border-[var(--color-border)]">
+        <button
+          @click="menuOpen = !menuOpen"
+          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--color-bg-hover)] transition-colors cursor-pointer border-none bg-none"
+          :class="collapsed ? 'justify-center' : ''"
+          :aria-label="roleLabel"
+        >
           <div class="w-7 h-7 rounded-full bg-[var(--color-accent-bg)] flex items-center justify-center text-[var(--text-micro)] font-semibold text-[var(--color-accent)] flex-shrink-0">
             {{ roleInitial }}
           </div>
-          <div v-if="!collapsed" class="flex-1 min-w-0">
-            <p class="font-medium truncate text-[var(--color-ink)]">{{ roleLabel }}</p>
+          <div v-if="!collapsed" class="flex-1 min-w-0 text-left">
+            <p class="font-medium truncate text-[var(--text-caption)] text-[var(--color-ink)]">{{ roleLabel }}</p>
           </div>
-          <button v-if="!collapsed" @click="logout" class="p-1.5 rounded-md hover:bg-[var(--color-bg-hover)] transition-colors group" title="退出登录" aria-label="退出登录">
-            <LogOut :size="14" :stroke-width="1.5" class="text-[var(--color-ink-tertiary)] group-hover:text-[var(--color-danger)] transition-colors" />
+          <ChevronUp
+            v-if="!collapsed"
+            :size="12"
+            :stroke-width="2"
+            class="text-[var(--color-ink-tertiary)] transition-transform duration-200"
+            :class="{ 'rotate-180': !menuOpen }"
+          />
+        </button>
+
+        <div
+          v-if="menuOpen"
+          class="absolute left-0 bottom-full mb-2 min-w-48 bg-[var(--surface-dialog-bg)] border border-[var(--color-border)] rounded-[var(--radius-lg)] shadow-[var(--surface-dialog-shadow)] p-2 z-[var(--z-dialog)]"
+          :style="{ backdropFilter: 'var(--surface-glass-blur)', WebkitBackdropFilter: 'var(--surface-glass-blur)' }"
+        >
+          <button class="user-menu-item" @click="menuOpen = false">
+            <User :size="15" :stroke-width="1.5" />
+            个人中心
+          </button>
+
+          <div class="user-menu-divider"></div>
+          <p class="user-menu-label">主题</p>
+          <div class="flex gap-1 px-1">
+            <button
+              v-for="t in themes"
+              :key="t.id"
+              @click="themeStore.setTheme(t.id)"
+              class="flex-1 h-7 rounded-[var(--radius-sm)] text-[10px] font-normal transition-all duration-200 border cursor-pointer"
+              :class="themeStore.activeTheme === t.id
+                ? 'border-[var(--color-accent)] bg-[var(--color-accent-bg)] text-[var(--color-accent)]'
+                : 'border-[var(--color-border-subtle)] text-[var(--color-ink-tertiary)] hover:border-[var(--color-border)] hover:text-[var(--color-ink-secondary)]'"
+            >
+              {{ t.shortLabel }}
+            </button>
+          </div>
+
+          <div class="user-menu-divider"></div>
+          <button class="user-menu-item user-menu-item-danger" @click="logout">
+            <LogOut :size="15" :stroke-width="1.5" />
+            退出登录
           </button>
         </div>
+
+        <div
+          v-if="menuOpen"
+          class="fixed inset-0 z-[calc(var(--z-dialog)-1)]"
+          @click="menuOpen = false"
+        />
       </div>
 
       <button
@@ -86,14 +134,25 @@ import {
   Settings,
   LogOut,
   ChevronLeft,
+  ChevronUp,
   Cog,
+  User,
 } from "lucide-vue-next";
+import { useThemeStore, type ThemeId } from "@/stores/theme";
 
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
+const themeStore = useThemeStore();
 const collapsed = ref(false);
 const mobileMenuOpen = ref(false);
+const menuOpen = ref(false);
+
+const themes: { id: ThemeId; label: string; shortLabel: string }[] = [
+  { id: "liquid", label: "液态玻璃", shortLabel: "液态" },
+  { id: "ink", label: "墨韵书香", shortLabel: "墨韵" },
+  { id: "navy", label: "沉稳奢华", shortLabel: "奢华" },
+];
 
 const roleLabel = computed(() => roleMap[authStore.userRole ?? ""] ?? authStore.userRole ?? "用户");
 const roleInitial = computed(() => roleLabel.value.charAt(0));
@@ -134,6 +193,50 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  border-radius: var(--radius-md);
+  font-size: var(--text-caption);
+  color: var(--color-ink-secondary);
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.user-menu-item:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-ink);
+}
+
+.user-menu-item-danger {
+  color: var(--color-danger);
+}
+
+.user-menu-item-danger:hover {
+  background: rgba(239, 68, 68, 0.06);
+  color: var(--color-danger);
+}
+
+.user-menu-divider {
+  height: 1px;
+  margin: 4px 4px;
+  background: var(--color-border-subtle);
+}
+
+.user-menu-label {
+  padding: 4px 12px 6px;
+  font-size: var(--text-micro);
+  color: var(--color-ink-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .nav-item {
   display: flex;
   align-items: center;
