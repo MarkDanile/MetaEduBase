@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
@@ -69,6 +70,21 @@ async def retry_failed_dataset_tasks(
     rows = result.mappings().all()
     if not rows:
         raise HTTPException(status_code=404, detail="没有可重试的失败任务")
+
+    # Re-dispatch Celery tasks for each failed task type
+    from app.celery_app import celery_app
+
+    task_dispatch = {
+        "ds_parse": "ds_parse",
+        "ds_embed": "ds_embed",
+        "ds_extract_kg": "ds_extract_kg",
+    }
+    for row in rows:
+        task_type = row["task_type"]
+        task_name = task_dispatch.get(task_type)
+        if task_name:
+            celery_app.send_task(task_name, args=[str(did), str(tid)])
+
     return [_task_row_to_dto(dict(row)) for row in rows]
 
 
@@ -120,10 +136,10 @@ async def get_knowledge_graph(
         for row in nodes_result.mappings().all()
     ]
 
-    # Get edges
+    # Get edges (include metadata for cross-dataset detection)
     edges_result = await session.execute(
         text(
-            "SELECT id, source_id, target_id, relation_type "
+            "SELECT id, source_id, target_id, relation_type, metadata "
             "FROM metaedu.knowledge_edges "
             "WHERE tenant_id = :tid"
         ),
@@ -135,8 +151,67 @@ async def get_knowledge_graph(
             "source_id": str(row["source_id"]),
             "target_id": str(row["target_id"]),
             "relation_type": row["relation_type"],
+            "metadata": row.get("metadata"),
         }
         for row in edges_result.mappings().all()
     ]
 
     return {"nodes": nodes, "edges": edges}
+
+
+@router.post("/knowledge-graph/rebuild")
+async def rebuild_knowledge_graph(
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+    current_user: dict = Depends(get_current_user),  # noqa: B008
+):
+    tid = get_tenant_id()
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    # Delete all knowledge edges for this tenant
+    await session.execute(
+        text("DELETE FROM metaedu.knowledge_edges WHERE tenant_id = :tid"),
+        {"tid": tid},
+    )
+    # Delete all knowledge nodes sourced from datasets
+    await session.execute(
+        text(
+            "DELETE FROM metaedu.knowledge_nodes "
+            "WHERE tenant_id = :tid AND source_dataset_id IS NOT NULL"
+        ),
+        {"tid": tid},
+    )
+    # Delete all ds_extract_kg tasks
+    await session.execute(
+        text(
+            "DELETE FROM metaedu.document_tasks "
+            "WHERE tenant_id = :tid AND task_type = 'ds_extract_kg'"
+        ),
+        {"tid": tid},
+    )
+    # Reset all datasets' kg_status
+    await session.execute(
+        text(
+            "UPDATE metaedu.datasets SET kg_status = 'pending', updated_at = :now "
+            "WHERE tenant_id = :tid"
+        ),
+        {"tid": tid, "now": now},
+    )
+
+    # Get all processed datasets
+    result = await session.execute(
+        text(
+            "SELECT id FROM metaedu.datasets "
+            "WHERE tenant_id = :tid AND status = 'processed'"
+        ),
+        {"tid": tid},
+    )
+    dataset_ids = [str(row["id"]) for row in result.mappings().all()]
+
+    # Dispatch ds_extract_kg for each dataset
+    from app.contexts.structured_data.application.tasks import ds_extract_kg
+
+    tid_str = str(tid)
+    for did in dataset_ids:
+        ds_extract_kg.delay(did, tid_str)
+
+    return {"status": "rebuilding", "dataset_count": len(dataset_ids)}

@@ -23,9 +23,9 @@ export interface KnowledgeEdgeDTO {
 }
 
 export const knowledgeApi = {
-  listNodes: (params?: { domain?: string; parent_id?: string; source_file_id?: string }) =>
+  listNodes: (params?: { domain?: string; parent_id?: string; source_file_id?: string; source_dataset_id?: string; offset?: number; limit?: number }) =>
     api.get<KnowledgeNodeDTO[]>("/knowledge/nodes", { params }),
-  listEdges: (params?: { source_file_id?: string }) =>
+  listEdges: (params?: { source_file_id?: string; source_dataset_id?: string }) =>
     api.get<KnowledgeEdgeDTO[]>("/knowledge/edges", { params }),
   getNode: (id: string) => api.get<KnowledgeNodeDTO>(`/knowledge/nodes/${id}`),
   createNode: (data: Partial<KnowledgeNodeDTO> & { title: string; domain: string; level: string }) =>

@@ -9,6 +9,8 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# Celery tasks — imported at module level for testability
+from app.celery_app import celery_app
 from app.config import settings
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.contexts.structured_data.application.dto import (
@@ -16,12 +18,10 @@ from app.contexts.structured_data.application.dto import (
     DatasetRowDTO,
     DatasetUpdate,
 )
+from app.contexts.structured_data.application.tasks import ds_parse
 from app.contexts.structured_data.infrastructure.dataset_repository import DatasetRepository
 from app.shared.infrastructure.database import get_session
 from app.shared.infrastructure.tenant_context import get_tenant_id
-
-# Celery tasks — imported at module level for testability
-from app.contexts.structured_data.application.tasks import ds_parse
 
 logger = logging.getLogger(__name__)
 
@@ -54,12 +54,14 @@ async def list_datasets(
     status: str | None = None,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
+    sort_by: str = Query(default="created_at"),
+    sort_dir: str = Query(default="desc"),
     session: AsyncSession = Depends(get_session),  # noqa: B008
     current_user: dict = Depends(get_current_user),  # noqa: B008
 ):
     tid = get_tenant_id()
     repo = DatasetRepository(session)
-    rows = await repo.list_datasets(tid, tag=tag, status=status, limit=limit, offset=offset)
+    rows = await repo.list_datasets(tid, tag=tag, status=status, limit=limit, offset=offset, sort_by=sort_by, sort_dir=sort_dir)
     return [_dataset_row_to_dto(r) for r in rows]
 
 
@@ -93,16 +95,16 @@ async def upload_dataset(
         tenant_id=tid,
         name=dataset_name,
         description=None,
-        source_file=file.filename,
+        source_file=storage_key,
         tags=[],
         created_by=uid,
     )
 
     # Trigger dataset processing pipeline
     try:
-        ds_parse.delay(str(row["id"]), str(tid))
-    except Exception:
-        logger.warning("Failed to dispatch ds_parse task — Celery/RabbitMQ unavailable")
+        celery_app.send_task("ds_parse", args=[str(row["id"]), str(tid)])
+    except Exception as e:
+        logger.warning(f"Failed to dispatch ds_parse task — {type(e).__name__}: {e}")
 
     return _dataset_row_to_dto(row)
 
@@ -160,7 +162,32 @@ async def delete_dataset(
     existing = await repo.get_by_id(did, tid)
     if not existing:
         raise HTTPException(status_code=404, detail="数据集不存在")
+
+    # Cascade delete related data
+    from sqlalchemy import text
+
+    # 1. Delete dataset rows
     await repo.delete_rows(did, tid)
+
+    # 2. Delete document chunks linked to this dataset (ds_embed stores chunks with file_id = dataset_id)
+    await session.execute(
+        text("DELETE FROM metaedu.document_chunks WHERE tenant_id = :tid AND file_id = :did"),
+        {"tid": tid, "did": did},
+    )
+
+    # 3. Delete knowledge nodes linked to this dataset
+    await session.execute(
+        text("DELETE FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_dataset_id = :did"),
+        {"tid": tid, "did": did},
+    )
+
+    # 4. Delete document tasks linked to this dataset
+    await session.execute(
+        text("DELETE FROM metaedu.document_tasks WHERE tenant_id = :tid AND dataset_id = :did"),
+        {"tid": tid, "did": did},
+    )
+
+    # 5. Delete the dataset itself
     await repo.delete(did, tid)
 
 
@@ -185,5 +212,65 @@ async def update_dataset(
         tags=data.tags,
         sort_order=data.sort_order,
     )
+    row = await repo.get_by_id(did, tid)
+    return _dataset_row_to_dto(row)
+
+
+@router.post("/datasets/{dataset_id}/reinitialize", response_model=DatasetDTO)
+async def reinitialize_dataset(
+    dataset_id: str,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+    current_user: dict = Depends(get_current_user),  # noqa: B008
+):
+    from sqlalchemy import text
+
+    tid = get_tenant_id()
+    did = uuid.UUID(dataset_id)
+    repo = DatasetRepository(session)
+    existing = await repo.get_by_id(did, tid)
+    if not existing:
+        raise HTTPException(status_code=404, detail="数据集不存在")
+
+    # 1. Delete dataset rows
+    await repo.delete_rows(did, tid)
+
+    # 2. Delete document chunks linked to this dataset
+    await session.execute(
+        text("DELETE FROM metaedu.document_chunks WHERE tenant_id = :tid AND file_id = :did"),
+        {"tid": tid, "did": did},
+    )
+
+    # 3. Delete knowledge edges linked to nodes of this dataset
+    await session.execute(
+        text(
+            "DELETE FROM metaedu.knowledge_edges WHERE source_id IN "
+            "(SELECT id FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_dataset_id = :did) "
+            "OR target_id IN "
+            "(SELECT id FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_dataset_id = :did)"
+        ),
+        {"tid": tid, "did": did},
+    )
+
+    # 4. Delete knowledge nodes linked to this dataset
+    await session.execute(
+        text("DELETE FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_dataset_id = :did"),
+        {"tid": tid, "did": did},
+    )
+
+    # 5. Delete document tasks linked to this dataset
+    await session.execute(
+        text("DELETE FROM metaedu.document_tasks WHERE tenant_id = :tid AND dataset_id = :did"),
+        {"tid": tid, "did": did},
+    )
+
+    # 6. Reset dataset status to 'uploaded' and kg_status to 'pending'
+    await repo.update(did, tid, status="uploaded", kg_status="pending", row_count=0, column_names=None, column_types=None)
+
+    # 7. Trigger ds_parse pipeline
+    try:
+        ds_parse.delay(str(did), str(tid))
+    except Exception as e:
+        logger.warning(f"Failed to dispatch ds_parse task — {type(e).__name__}: {e}")
+
     row = await repo.get_by_id(did, tid)
     return _dataset_row_to_dto(row)

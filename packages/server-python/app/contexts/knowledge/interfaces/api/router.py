@@ -51,6 +51,7 @@ def _row_to_dto(row: dict) -> KnowledgeNodeDTO:
 @router.get("/edges", response_model=list[KnowledgeEdgeDTO])
 async def list_knowledge_edges(
     source_file_id: str | None = None,
+    source_dataset_id: str | None = None,
     session: AsyncSession = Depends(get_session),  # noqa: B008
     current_user: dict = Depends(get_current_user),  # noqa: B008
 ):
@@ -58,6 +59,8 @@ async def list_knowledge_edges(
     repo = KnowledgeNodeRepository(session)
     if source_file_id:
         rows = await repo.list_edges_by_file(tid, uuid.UUID(source_file_id))
+    elif source_dataset_id:
+        rows = await repo.list_edges_by_dataset(tid, uuid.UUID(source_dataset_id))
     else:
         rows = []
     return [
@@ -78,6 +81,7 @@ async def list_knowledge_nodes(
     domain: str | None = None,
     parent_id: str | None = None,
     source_file_id: str | None = None,
+    source_dataset_id: str | None = None,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
     session: AsyncSession = Depends(get_session),  # noqa: B008
@@ -90,6 +94,7 @@ async def list_knowledge_nodes(
         domain=domain,
         parent_id=uuid.UUID(parent_id) if parent_id else None,
         source_file_id=uuid.UUID(source_file_id) if source_file_id else None,
+        source_dataset_id=uuid.UUID(source_dataset_id) if source_dataset_id else None,
         offset=offset,
         limit=limit,
     )
