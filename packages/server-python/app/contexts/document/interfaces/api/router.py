@@ -6,7 +6,7 @@ import logging
 import os
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -19,14 +19,14 @@ from app.contexts.document.application.dto import (
     FolderMove,
     FolderUpdate,
 )
+
+# Celery tasks — imported at module level for testability
+from app.contexts.document.application.tasks import parse_document
 from app.contexts.document.infrastructure.chunk_repository import ChunkRepository
 from app.contexts.document.infrastructure.file_repository import FileRepository
 from app.contexts.document.infrastructure.folder_repository import FolderRepository
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.shared.infrastructure.database import get_session
-
-# Celery tasks — imported at module level for testability
-from app.contexts.document.application.tasks import parse_document
 from app.shared.infrastructure.tenant_context import get_tenant_id
 
 logger = logging.getLogger(__name__)
@@ -160,6 +160,7 @@ def _file_row_to_dto(row: dict) -> FileDTO:
         status=row["status"],
         structured_data=row.get("structured_data"),
         uploaded_by=row["uploaded_by"],
+        uploaded_by_name=row.get("username"),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -175,6 +176,8 @@ async def list_files(
     status: str | None = None,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
+    sort_by: str = Query(default="created_at"),
+    sort_dir: str = Query(default="desc"),
     session: AsyncSession = Depends(get_session),  # noqa: B008
     current_user: dict = Depends(get_current_user),  # noqa: B008
 ):
@@ -187,6 +190,8 @@ async def list_files(
         status=status,
         limit=limit,
         offset=offset,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
     return [_file_row_to_dto(r) for r in rows]
 
@@ -194,8 +199,8 @@ async def list_files(
 @router.post("/files/upload", response_model=FileDTO, status_code=201)
 async def upload_file(
     file: UploadFile,
-    folder_id: str | None = None,
-    doc_type: str | None = None,
+    folder_id: str | None = Form(None),
+    doc_type: str | None = Form(None),
     session: AsyncSession = Depends(get_session),  # noqa: B008
     current_user: dict = Depends(get_current_user),  # noqa: B008
 ):
@@ -261,6 +266,8 @@ async def delete_file(
     session: AsyncSession = Depends(get_session),  # noqa: B008
     current_user: dict = Depends(get_current_user),  # noqa: B008
 ):
+    from sqlalchemy import text
+
     tid = get_tenant_id()
     fid = uuid.UUID(file_id)
     repo = FileRepository(session)
@@ -268,7 +275,24 @@ async def delete_file(
     existing = await repo.get_by_id(fid, tid)
     if not existing:
         raise HTTPException(status_code=404, detail="文件不存在")
+
+    # Cascade delete related data
+    # 1. Delete document chunks
     await chunk_repo.delete_by_file(fid, tid)
+
+    # 2. Delete knowledge nodes linked to this file
+    await session.execute(
+        text("DELETE FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_file_id = :fid"),
+        {"tid": tid, "fid": fid},
+    )
+
+    # 3. Delete document tasks linked to this file
+    await session.execute(
+        text("DELETE FROM metaedu.document_tasks WHERE tenant_id = :tid AND file_id = :fid"),
+        {"tid": tid, "fid": fid},
+    )
+
+    # 4. Delete the file record
     await repo.delete(fid, tid)
 
 
@@ -286,6 +310,61 @@ async def update_file(
     if not existing:
         raise HTTPException(status_code=404, detail="文件不存在")
     await repo.update(fid, tid, tags=data.tags, doc_type=data.doc_type, folder_id=data.folder_id)
+    row = await repo.get_by_id(fid, tid)
+    return _file_row_to_dto(row)
+
+
+@router.post("/files/{file_id}/reinitialize", response_model=FileDTO)
+async def reinitialize_file(
+    file_id: str,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+    current_user: dict = Depends(get_current_user),  # noqa: B008
+):
+    from sqlalchemy import text
+
+    tid = get_tenant_id()
+    fid = uuid.UUID(file_id)
+    repo = FileRepository(session)
+    chunk_repo = ChunkRepository(session)
+    existing = await repo.get_by_id(fid, tid)
+    if not existing:
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    # 1. Delete document chunks
+    await chunk_repo.delete_by_file(fid, tid)
+
+    # 2. Delete knowledge edges linked to nodes of this file
+    await session.execute(
+        text(
+            "DELETE FROM metaedu.knowledge_edges WHERE source_id IN "
+            "(SELECT id FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_file_id = :fid) "
+            "OR target_id IN "
+            "(SELECT id FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_file_id = :fid)"
+        ),
+        {"tid": tid, "fid": fid},
+    )
+
+    # 3. Delete knowledge nodes linked to this file
+    await session.execute(
+        text("DELETE FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_file_id = :fid"),
+        {"tid": tid, "fid": fid},
+    )
+
+    # 4. Delete document tasks linked to this file
+    await session.execute(
+        text("DELETE FROM metaedu.document_tasks WHERE tenant_id = :tid AND file_id = :fid"),
+        {"tid": tid, "fid": fid},
+    )
+
+    # 5. Reset file status to 'uploaded'
+    await repo.update(fid, tid, status="uploaded")
+
+    # 6. Trigger parse_document pipeline
+    try:
+        parse_document.delay(str(fid), str(tid))
+    except Exception:
+        logger.warning("Failed to dispatch parse_document task — Celery unavailable")
+
     row = await repo.get_by_id(fid, tid)
     return _file_row_to_dto(row)
 

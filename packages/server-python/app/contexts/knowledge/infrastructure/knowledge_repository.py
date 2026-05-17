@@ -17,6 +17,7 @@ class KnowledgeNodeRepository:
         domain: str | None = None,
         parent_id: uuid.UUID | None = None,
         source_file_id: uuid.UUID | None = None,
+        source_dataset_id: uuid.UUID | None = None,
         offset: int = 0,
         limit: int = 50,
     ) -> list[dict]:
@@ -35,6 +36,9 @@ class KnowledgeNodeRepository:
         if source_file_id:
             conditions.append("n.source_file_id = :sfid")
             params["sfid"] = source_file_id
+        if source_dataset_id:
+            conditions.append("n.source_dataset_id = :sdid")
+            params["sdid"] = source_dataset_id
 
         where = " AND ".join(conditions)
         result = await self._session.execute(
@@ -282,10 +286,25 @@ class KnowledgeNodeRepository:
     async def list_edges_by_file(self, tenant_id: uuid.UUID, source_file_id: uuid.UUID) -> list[dict]:
         result = await self._session.execute(
             text(
-                "SELECT ke.* FROM metaedu.knowledge_edges ke "
+                "SELECT DISTINCT ke.* FROM metaedu.knowledge_edges ke "
                 "JOIN metaedu.knowledge_nodes kn_src ON ke.source_id = kn_src.id "
-                "WHERE ke.tenant_id = :tid AND kn_src.source_file_id = :sfid"
+                "JOIN metaedu.knowledge_nodes kn_tgt ON ke.target_id = kn_tgt.id "
+                "WHERE ke.tenant_id = :tid "
+                "AND (kn_src.source_file_id = :sfid OR kn_tgt.source_file_id = :sfid)"
             ),
             {"tid": tenant_id, "sfid": source_file_id},
+        )
+        return [dict(row) for row in result.mappings().all()]
+
+    async def list_edges_by_dataset(self, tenant_id: uuid.UUID, source_dataset_id: uuid.UUID) -> list[dict]:
+        result = await self._session.execute(
+            text(
+                "SELECT DISTINCT ke.* FROM metaedu.knowledge_edges ke "
+                "JOIN metaedu.knowledge_nodes kn_src ON ke.source_id = kn_src.id "
+                "JOIN metaedu.knowledge_nodes kn_tgt ON ke.target_id = kn_tgt.id "
+                "WHERE ke.tenant_id = :tid "
+                "AND (kn_src.source_dataset_id = :sdid OR kn_tgt.source_dataset_id = :sdid)"
+            ),
+            {"tid": tenant_id, "sdid": source_dataset_id},
         )
         return [dict(row) for row in result.mappings().all()]

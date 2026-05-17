@@ -26,6 +26,7 @@ export interface FileDTO {
   status: string;
   structured_data: Record<string, unknown> | null;
   uploaded_by: string;
+  uploaded_by_name: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -77,6 +78,8 @@ export const documentApi = {
     status?: string;
     offset?: number;
     limit?: number;
+    sort_by?: string;
+    sort_dir?: string;
   }) => api.get<FileDTO[]>("/document/files", { params }),
   uploadFile: (formData: FormData) =>
     api.post<FileDTO>("/document/files/upload", formData, {
@@ -93,4 +96,5 @@ export const documentApi = {
   // Tasks
   listTasks: (fileId: string) => api.get<TaskDTO[]>(`/document/files/${fileId}/tasks`),
   retryTasks: (fileId: string) => api.post<TaskDTO[]>(`/document/files/${fileId}/retry`),
+  reinitializeFile: (fileId: string) => api.post<FileDTO>(`/document/files/${fileId}/reinitialize`),
 };

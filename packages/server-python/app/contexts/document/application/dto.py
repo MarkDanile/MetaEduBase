@@ -60,6 +60,7 @@ class FileDTO(BaseModel):
     status: str
     structured_data: dict | None
     uploaded_by: UUID
+    uploaded_by_name: str | None = None
     created_at: datetime
     updated_at: datetime
 

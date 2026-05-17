@@ -69,8 +69,8 @@ class DocumentChunkModel(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     section_title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     section_path: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    embedding = None  # Set via raw SQL — pgvector not directly mappable
-    content_tsvector = None  # Set via raw SQL
+    embedding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_tsvector: Mapped[str | None] = mapped_column(Text, nullable=True)
     char_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
     char_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

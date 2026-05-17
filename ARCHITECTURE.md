@@ -56,9 +56,22 @@ MetaEduBase/
 │   │   │   │   │   └── interfaces/api/
 │   │   │   │   │       ├── router.py                 # CRUD /search /tree
 │   │   │   │   │       └── ai_router.py              # /chat (RAG + LLM)
-│   │   │   │   └── resource/        # 资源上下文
-│   │   │   │       ├── infrastructure/models.py      # ResourceModel
-│   │   │   │       └── interfaces/api/router.py      # 上传/列表/下载/删除
+│   │   │   │   ├── document/       # 文档上下文 (文件上传/解析/分块/向量化)
+│   │   │   │   │   ├── application/
+│   │   │   │   │   │   ├── dto.py                    # FileDTO, FolderDTO, ChunkDTO, TaskDTO
+│   │   │   │   │   │   ├── file_repository.py       # 文件 CRUD (LEFT JOIN users)
+│   │   │   │   │   │   └── tasks.py                  # parse_document, chunk_document, embed_chunks, index_tsvector (Celery)
+│   │   │   │   │   ├── infrastructure/models.py     # FileModel, FolderModel, ChunkModel
+│   │   │   │   │   └── interfaces/api/router.py      # 文件夹 CRUD / 文件上传/列表/下载/删除
+│   │   │   │   ├── structured_data/  # 结构化数据上下文 (Excel 数据集 / KG 抽取)
+│   │   │   │   │   ├── application/
+│   │   │   │   │   │   ├── dto.py                    # DatasetDTO, DatasetRowDTO
+│   │   │   │   │   │   ├── dataset_repository.py     # 数据集 CRUD
+│   │   │   │   │   │   └── tasks.py                  # ds_parse, ds_embed, ds_extract_kg, ds_build_cross_dataset_edges (Celery)
+│   │   │   │   │   ├── infrastructure/models.py      # DatasetModel, DatasetRowModel
+│   │   │   │   │   └── interfaces/api/
+│   │   │   │   │       ├── router.py                 # 数据集 CRUD / 行查询 / 重初始化
+│   │   │   │   │       └── task_router.py            # 任务状态 / 重试 / KG 总览 / 重建
 │   │   │   └── shared/              # 共享基础设施
 │   │   │       ├── domain/          # DDD 基类 (Entity/AggregateRoot/Repository/ValueObject/DomainEvent)
 │   │   │       └── infrastructure/
@@ -111,17 +124,39 @@ MetaEduBase/
 |---|---|---|---|---|
 | POST | `/chat` | Bearer | RAG 问答 (embedding检索→上下文注入→LLM生成) | [ai_router.py](packages/server-python/app/contexts/knowledge/interfaces/api/ai_router.py) |
 
-### 3.4 Resource 上下文 — `/api/v1/resources`
+### 3.4 Document 上下文 — `/api/v1/documents`
 
 | 方法 | 路径 | 认证 | 功能 | 关键文件 |
 |---|---|---|---|---|
-| POST | `/upload` | Bearer | 上传资源文件 (multipart) | [router.py](packages/server-python/app/contexts/resource/interfaces/api/router.py) |
-| GET | `/` | Bearer | 列出资源 (支持 type/domain 过滤) | 同上 |
-| GET | `/{id}` | Bearer | 获取资源详情 | 同上 |
-| GET | `/{id}/download` | Bearer | 下载资源文件 | 同上 |
-| DELETE | `/{id}` | Bearer | 软删除资源 (is_deleted=true) | 同上 |
+| GET | `/folders` | Bearer | 列出文件夹树 | [router.py](packages/server-python/app/contexts/document/interfaces/api/router.py) |
+| POST | `/folders` | Bearer | 创建文件夹 | 同上 |
+| PATCH | `/folders/{id}` | Bearer | 重命名/移动文件夹 | 同上 |
+| DELETE | `/folders/{id}` | Bearer | 删除文件夹 (级联删除) | 同上 |
+| GET | `/files` | Bearer | 列出文件 (支持 folder_id/status 过滤) | 同上 |
+| POST | `/files/upload` | Bearer | 上传文件 | 同上 |
+| GET | `/files/{id}` | Bearer | 获取文件详情 | 同上 |
+| PATCH | `/files/{id}` | Bearer | 更新标签/类型/文件夹 | 同上 |
+| DELETE | `/files/{id}` | Bearer | 删除文件 (级联删除 chunks/知识节点/任务) | 同上 |
+| POST | `/files/{id}/reinitialize` | Bearer | 重新初始化 (删除 chunks 后重新解析) | 同上 |
+| GET | `/files/{id}/chunks` | Bearer | 获取文件分块列表 | 同上 |
 
-### 3.5 Health — `/api/v1/health`
+### 3.5 Structured Data 上下文 — `/api/v1/structured-data`
+
+| 方法 | 路径 | 认证 | 功能 | 关键文件 |
+|---|---|---|---|---|
+| GET | `/datasets` | Bearer | 列出数据集 | [router.py](packages/server-python/app/contexts/structured_data/interfaces/api/router.py) |
+| POST | `/datasets/upload` | Bearer | 上传 Excel/CSV 文件 | 同上 |
+| GET | `/datasets/{id}` | Bearer | 获取数据集详情 | 同上 |
+| PATCH | `/datasets/{id}` | Bearer | 更新数据集 | 同上 |
+| DELETE | `/datasets/{id}` | Bearer | 删除数据集 (级联删除) | 同上 |
+| GET | `/datasets/{id}/rows` | Bearer | 获取数据行 (分页) | 同上 |
+| GET | `/datasets/{id}/tasks` | Bearer | 获取处理任务状态 | [task_router.py](packages/server-python/app/contexts/structured_data/interfaces/api/task_router.py) |
+| POST | `/datasets/{id}/retry` | Bearer | 重试失败任务 | 同上 |
+| POST | `/datasets/{id}/reinitialize` | Bearer | 重新初始化数据集 | 同上 |
+| GET | `/knowledge-graph` | Bearer | 获取全库 KG (节点+边，含跨数据集) | 同上 |
+| POST | `/knowledge-graph/rebuild` | Bearer | 重建整个知识图谱 | 同上 |
+
+### 3.6 Health — `/api/v1/health`
 
 | 方法 | 路径 | 认证 | 功能 |
 |---|---|---|---|
@@ -135,13 +170,24 @@ MetaEduBase/
 
 ```
 tenants (1) ──< users (N)
+tenants (1) ──< files (N)                        [文件管理]
+users (1) ──< files (N)                         [uploaded_by]
+tenants (1) ──< folders (N)                    [文件夹树]
+folders (1) ──< files (N)                       [folder_id]
+tenants (1) ──< document_chunks (N)             [文档分块]
+files (1) ──< document_chunks (N)
+tenants (1) ──< document_tasks (N)              [文档处理任务]
+files (1) ──< document_tasks (N)
+tenants (1) ──< datasets (N)                    [结构化数据]
+datasets (1) ──< dataset_rows (N)
 tenants (1) ──< knowledge_nodes (N)
-tenants (1) ──< knowledge_edges (N)
-tenants (1) ──< resources (N)
-users (1) ──< resources (N)       [uploaded_by]
-knowledge_nodes (1) ──< knowledge_nodes (N)   [parent_id 自引用]
-knowledge_nodes (1) ──< knowledge_edges (N)   [source_id / target_id]
+knowledge_nodes (1) ──< knowledge_edges (N)     [source_id / target_id]
+knowledge_nodes (1) ──< knowledge_nodes (N)     [parent_id 自引用]
+datasets (1) ──< knowledge_nodes (N)             [source_dataset_id]
+files (1) ──< knowledge_nodes (N)               [source_file_id]
 ```
+
+> 注: `knowledge_nodes` 通过 `source_file_id` / `source_dataset_id` 关联源数据，`source_dataset_id IS NOT NULL` 时为数据集 KG 节点（含跨数据集虚拟代表节点）
 
 ### 4.2 表字段速查
 
@@ -203,27 +249,104 @@ knowledge_nodes (1) ──< knowledge_edges (N)   [source_id / target_id]
 
 索引: `(source_id)`, `(target_id)`
 
-#### `metaedu.resources`
+#### `metaedu.files`
 
 | 列名 | 类型 | 说明 |
 |---|---|---|
 | id | UUID PK | |
 | tenant_id | UUID FK→tenants | |
-| title | VARCHAR(300) | |
-| description | TEXT | nullable |
-| resource_type | VARCHAR(30) | document/video/image/audio/other |
-| status | VARCHAR(20) | raw/uploaded/processed |
-| domain | VARCHAR(50) | nullable |
-| knowledge_point_ids | UUID[] | ARRAY, nullable |
-| file_size | INTEGER | nullable |
-| file_type | VARCHAR(50) | nullable |
-| storage_key | VARCHAR(500) | nullable |
-| metadata | JSONB | |
+| folder_id | UUID FK→folders | nullable |
+| filename | VARCHAR(300) | |
+| file_type | VARCHAR(50) | 如 pdf/docx/xlsx |
+| doc_type | VARCHAR(50) | nullable, 文档类型 |
+| file_size | INTEGER | nullable, 字节 |
+| tags | JSONB | nullable |
+| storage_key | VARCHAR(500) | MinIO 存储路径 |
+| status | VARCHAR(20) | uploaded/processing/processed/failed |
+| structured_data | JSONB | nullable, 结构化提取结果 |
 | uploaded_by | UUID FK→users | |
-| is_deleted | BOOLEAN | 软删除标记 |
 | created_at / updated_at | TIMESTAMP | |
 
-索引: `(tenant_id, resource_type)`, `(tenant_id, domain)`
+索引: `(tenant_id)`, `(tenant_id, folder_id)`, `(tenant_id, status)`
+
+#### `metaedu.folders`
+
+| 列名 | 类型 | 说明 |
+|---|---|---|
+| id | UUID PK | |
+| tenant_id | UUID FK→tenants | |
+| parent_id | UUID FK→folders | nullable, 自引用 |
+| name | VARCHAR(200) | |
+| path | VARCHAR(500) | ltree 物化路径 |
+| sort_order | INTEGER | |
+| created_at / updated_at | TIMESTAMP | |
+
+索引: `(tenant_id)`, `(tenant_id, parent_id)`
+
+#### `metaedu.document_chunks`
+
+| 列名 | 类型 | 说明 |
+|---|---|---|
+| id | UUID PK | |
+| file_id | UUID FK→files | 或 dataset_id (dataset rows) |
+| chunk_index | INTEGER | |
+| content | TEXT | |
+| section_title | VARCHAR(300) | nullable |
+| section_path | VARCHAR(500) | nullable |
+| char_start / char_end | INTEGER | nullable |
+| has_embedding | BOOLEAN | |
+| created_at | TIMESTAMP | |
+
+索引: `(file_id)`, `(file_id, chunk_index)`
+
+#### `metaedu.document_tasks`
+
+| 列名 | 类型 | 说明 |
+|---|---|---|
+| id | UUID PK | |
+| tenant_id | UUID FK→tenants | |
+| file_id | UUID FK→files | nullable |
+| dataset_id | UUID FK→datasets | nullable |
+| task_type | VARCHAR(50) | parse/chunk/embed/index/ds_parse/ds_embed/ds_extract_kg/ds_build_cross_dataset_edges |
+| status | VARCHAR(20) | pending/running/success/failed |
+| progress | INTEGER | 0-100 |
+| error_message | TEXT | nullable |
+| label | VARCHAR(100) | UI 显示标签 |
+| started_at / completed_at | TIMESTAMP | nullable |
+| created_at | TIMESTAMP | |
+
+#### `metaedu.datasets`
+
+| 列名 | 类型 | 说明 |
+|---|---|---|
+| id | UUID PK | |
+| tenant_id | UUID FK→tenants | |
+| name | VARCHAR(200) | |
+| description | TEXT | nullable |
+| column_names | JSONB | nullable |
+| column_types | JSONB | nullable |
+| row_count | INTEGER | |
+| source_file | VARCHAR(500) | nullable, 原始上传文件路径 |
+| tags | JSONB | nullable |
+| status | VARCHAR(20) | pending/processing/processed/failed |
+| kg_status | VARCHAR(20) | pending/building/done, KG 抽取状态 |
+| sort_order | INTEGER | |
+| created_by | UUID FK→users | |
+| created_at / updated_at | TIMESTAMP | |
+
+索引: `(tenant_id)`, `(tenant_id, status)`
+
+#### `metaedu.dataset_rows`
+
+| 列名 | 类型 | 说明 |
+|---|---|---|
+| id | UUID PK | |
+| dataset_id | UUID FK→datasets | |
+| row_index | INTEGER | |
+| data | JSONB | 行数据 (列名→值) |
+| created_at | TIMESTAMP | |
+
+索引: `(dataset_id)`, `(dataset_id, row_index)`
 
 ### 4.3 枚举值
 

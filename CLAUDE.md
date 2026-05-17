@@ -234,6 +234,7 @@ When committing, sync these docs if relevant code changed:
 - `models.py` changed → update ARCHITECTURE.md DB schema section
 - `config.py` / `.env` changed → update ARCHITECTURE.md config table + README.md env vars
 - New business context → update both ARCHITECTURE.md and README.md project structure
+- Delete logic changed → update .claude/rules/dataIntegrity.md cascade delete requirements
 - Pure frontend UI changes with no API/schema impact → no doc update needed
 
 ## Spec Documents
@@ -245,5 +246,6 @@ When committing, sync these docs if relevant code changed:
 | [.claude/rules/testing.md](.claude/rules/testing.md) | Test requirements, mock strategy, coverage |
 | [.claude/rules/git-workflow.md](.claude/rules/git-workflow.md) | Branch strategy, commit conventions, PR flow |
 | [.claude/rules/security.md](.claude/rules/security.md) | Auth, injection prevention, secret handling |
+| [.claude/rules/dataIntegrity.md](.claude/rules/dataIntegrity.md) | Cascade delete, orphan data cleanup, referential integrity |
 | [.claude/rules/docs.md](.claude/rules/docs.md) | Doc structure, comment conventions |
 | [README.md](README.md) | Quick start, env requirements, deployment |

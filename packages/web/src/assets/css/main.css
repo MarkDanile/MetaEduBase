@@ -179,125 +179,125 @@
 }
 
 /* ================================================================
-   THEME 2: Ink & Paper — 墨韵书香
+   THEME 2: Ink & Paper — 墨韵书香（文人水墨）
    ================================================================ */
 :root[data-theme="ink"] {
-  /* Text */
+  /* Text — 柔和墨色 */
   --theme-ink: #1C1C1C;
   --theme-ink-secondary: #5A5954;
   --theme-ink-tertiary: #8C8A82;
   --theme-ink-inverse: #FFFFFF;
   --theme-ink-dim: #B5B1A7;
-  /* Backgrounds */
+  /* Backgrounds — 暖白宣纸色调 */
   --theme-bg-base: #FAF8F2;
   --theme-bg-warm: #F1ECE2;
   --theme-bg-elevated: #FEFDF9;
   --theme-bg-hover: #F3EFE5;
-  /* Accent — muted iron oxide / 铁锈红 */
-  --theme-accent: #AD533A;
-  --theme-accent-light: #89412E;
-  --theme-accent-bg: #FCF4F0;
-  --theme-accent-glow: #F2E6E0;
-  --theme-accent-glow-start: #B86850;
-  --theme-accent-glow-start-hover: #C47A62;
-  --theme-accent-ring: rgba(173, 83, 58, 0.1);
-  --theme-accent-sweep: rgba(173, 83, 58, 0.05);
+  /* Accent — 靛蓝（文人墨色） */
+  --theme-accent: #2563EB;
+  --theme-accent-light: #1D4ED8;
+  --theme-accent-bg: #EFF6FF;
+  --theme-accent-glow: #DBEAFE;
+  --theme-accent-glow-start: #3B82F6;
+  --theme-accent-glow-start-hover: #60A5FA;
+  --theme-accent-ring: rgba(37, 99, 235, 0.12);
+  --theme-accent-sweep: rgba(37, 99, 235, 0.06);
   /* Highlight */
-  --theme-highlight: #B07D20;
-  --theme-highlight-bg: rgba(176, 125, 32, 0.08);
+  --theme-highlight: #9333EA;
+  --theme-highlight-bg: rgba(147, 51, 234, 0.08);
   /* Tags */
   --theme-tag-green: rgba(16, 185, 129, 0.08);
   --theme-tag-green-text: #059669;
-  --theme-tag-amber: rgba(176, 125, 32, 0.08);
-  --theme-tag-amber-text: #805A14;
-  --theme-tag-blue: rgba(173, 83, 58, 0.08);
-  --theme-tag-blue-text: #AD533A;
-  --theme-tag-purple: rgba(109, 40, 217, 0.06);
-  --theme-tag-purple-text: #6D28D9;
+  --theme-tag-amber: rgba(245, 158, 11, 0.08);
+  --theme-tag-amber-text: #D97706;
+  --theme-tag-blue: rgba(37, 99, 235, 0.08);
+  --theme-tag-blue-text: #2563EB;
+  --theme-tag-purple: rgba(147, 51, 234, 0.08);
+  --theme-tag-purple-text: #9333EA;
   /* Borders */
-  --theme-border: #E3DDD2;
-  --theme-border-subtle: #EFE9DF;
-  --theme-border-accent: #AD533A;
-  /* Surfaces — solid, no glass */
+  --theme-border: #E2E8F0;
+  --theme-border-subtle: #F1F5F9;
+  --theme-border-accent: #2563EB;
+  /* Surfaces — 素雅宣纸质感 */
   --_surface-card-bg: #FEFDF9;
-  --_surface-card-border: 1px solid #E3DDD2;
+  --_surface-card-border: 1px solid #E2E8F0;
   --_surface-card-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   --_surface-card-shadow-hover: 0 4px 14px rgba(0, 0, 0, 0.06);
   --_surface-card-elevated-bg: #FEFDF9;
   --_surface-card-elevated-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
   --_surface-glass-blur: none;
   --_surface-glass-blur-light: none;
-  --_surface-sidebar-bg: #FEFDF9;
-  --_surface-input-bg: #F3EFE5;
+  --_surface-sidebar-bg: #F8FAFC;
+  --_surface-input-bg: #F1F5F9;
   --_surface-input-bg-focus: #FEFDF9;
   --_surface-dialog-bg: #FEFDF9;
-  --_surface-dialog-border: 1px solid #E3DDD2;
-  --_surface-dialog-shadow: 0 16px 48px rgba(0, 0, 0, 0.1);
+  --_surface-dialog-border: 1px solid #E2E8F0;
+  --_surface-dialog-shadow: 0 16px 48px rgba(0, 0, 0, 0.08);
   --_surface-toast-bg: #FEFDF9;
   --_surface-ghost-btn-bg: transparent;
   /* Login */
-  --_login-brand-gradient: linear-gradient(160deg, #2E2B24 0%, #423A2E 40%, #5A3E34 100%);
+  --_login-brand-gradient: linear-gradient(160deg, #1E3A5F 0%, #1E40AF 40%, #312E81 100%);
 }
 
 /* ================================================================
    THEME 3: Navy & Brass — 沉稳奢华
    ================================================================ */
 :root[data-theme="navy"] {
-  /* Text */
-  --theme-ink: #212125;
-  --theme-ink-secondary: #5D5C5E;
-  --theme-ink-tertiary: #8D8B8C;
+  /* Text — 深炭灰 */
+  --theme-ink: #334155;
+  --theme-ink-secondary: #64748B;
+  --theme-ink-tertiary: #94A3B8;
   --theme-ink-inverse: #FFFFFF;
-  --theme-ink-dim: #B6B4B2;
-  /* Backgrounds */
-  --theme-bg-base: #F7F6F2;
-  --theme-bg-warm: #EEECE6;
+  --theme-ink-dim: #CBD5E1;
+  /* Backgrounds — 冷灰白调 */
+  --theme-bg-base: #F8FAFC;
+  --theme-bg-warm: #F1F5F9;
   --theme-bg-elevated: #FFFFFF;
-  --theme-bg-hover: #F2F0EB;
-  /* Accent — aged brass / 古铜金 */
-  --theme-accent: #A0784C;
-  --theme-accent-light: #83623A;
-  --theme-accent-bg: #FCF6EF;
-  --theme-accent-glow: #F4EBDE;
-  --theme-accent-glow-start: #B89060;
-  --theme-accent-glow-start-hover: #C8A070;
-  --theme-accent-ring: rgba(160, 120, 76, 0.1);
-  --theme-accent-sweep: rgba(160, 120, 76, 0.05);
+  --theme-bg-hover: #E2E8F0;
+  /* Accent — 暗金（高端青铜） */
+  --theme-accent: #B45309;
+  --theme-accent-light: #92400E;
+  --theme-accent-bg: #FEF3C7;
+  --theme-accent-glow: #FDE68A;
+  --theme-accent-glow-start: #D97706;
+  --theme-accent-glow-start-hover: #B45309;
+  --theme-accent-ring: rgba(180, 83, 9, 0.12);
+  --theme-accent-sweep: rgba(180, 83, 9, 0.06);
   /* Highlight */
-  --theme-highlight: #A88430;
-  --theme-highlight-bg: rgba(168, 132, 48, 0.08);
+  --theme-highlight: #DC2626;
+  --theme-highlight-bg: rgba(220, 38, 38, 0.08);
   /* Tags */
   --theme-tag-green: rgba(16, 185, 129, 0.08);
   --theme-tag-green-text: #059669;
-  --theme-tag-amber: rgba(168, 132, 48, 0.08);
-  --theme-tag-amber-text: #7A5E1E;
-  --theme-tag-blue: rgba(160, 120, 76, 0.08);
-  --theme-tag-blue-text: #A0784C;
-  --theme-tag-purple: rgba(109, 40, 217, 0.06);
-  --theme-tag-purple-text: #6D28D9;
+  --theme-tag-amber: rgba(180, 83, 9, 0.08);
+  --theme-tag-amber-text: #B45309;
+  --theme-tag-blue: rgba(59, 130, 246, 0.08);
+  --theme-tag-blue-text: #2563EB;
+  --theme-tag-purple: rgba(139, 92, 246, 0.08);
+  --theme-tag-purple-text: #7C3AED;
   /* Borders */
-  --theme-border: #DFDAD1;
-  --theme-border-subtle: #ECE8E0;
-  --theme-border-accent: #A0784C;
-  /* Surfaces — solid cards, glass only on dialogs */
+  --theme-border: #CBD5E1;
+  --theme-border-subtle: #E2E8F0;
+  --theme-border-accent: #B45309;
+  /* Surfaces — 冷调极简 */
   --_surface-card-bg: #FFFFFF;
-  --_surface-card-border: 1px solid #DFDAD1;
-  --_surface-card-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-  --_surface-card-shadow-hover: 0 4px 18px rgba(0, 0, 0, 0.08);
+  --_surface-card-border: 1px solid #E2E8F0;
+  --_surface-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --_surface-card-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.08);
   --_surface-card-elevated-bg: #FFFFFF;
-  --_surface-card-elevated-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --_surface-card-elevated-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
   --_surface-glass-blur: none;
   --_surface-glass-blur-light: none;
-  --_surface-sidebar-bg: #FFFFFF;
-  --_surface-input-bg: #F2F0EB;
+  --_surface-sidebar-bg: #F8FAFC;
+  --_surface-input-bg: #F1F5F9;
   --_surface-input-bg-focus: #FFFFFF;
-  --_surface-dialog-bg: rgba(255, 255, 255, 0.92);
-  --_surface-dialog-border: 1px solid rgba(255, 255, 255, 0.9);
-  --_surface-dialog-shadow: 0 16px 48px rgba(0, 0, 0, 0.1);
+  --_surface-dialog-bg: #FFFFFF;
+  --_surface-dialog-border: 1px solid #E2E8F0;
+  --_surface-dialog-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
   --_surface-toast-bg: #FFFFFF;
   --_surface-ghost-btn-bg: transparent;
   /* Login */
-  --_login-brand-gradient: linear-gradient(160deg, #1E1F26 0%, #2B2D34 40%, #3A3C42 100%);
+  --_login-brand-gradient: linear-gradient(160deg, #1E293B 0%, #334155 40%, #475569 100%);
 }
 
 /* ================================================================
@@ -694,10 +694,18 @@
     inset: 0;
     pointer-events: none;
     opacity: 0.4;
+    transition: opacity 0.3s ease;
     background-image:
       radial-gradient(at 10% 20%, var(--color-accent-glow) 0px, transparent 50%),
       radial-gradient(at 90% 80%, var(--color-accent-glow) 0px, transparent 50%),
       radial-gradient(at 50% 50%, var(--color-bg-base) 0%, transparent 70%);
+  }
+
+  /* Disable mesh overlay for solid-card themes to avoid visual noise */
+  :root[data-theme="ink"] .mesh-bg,
+  :root[data-theme="navy"] .mesh-bg,
+  :root[data-theme="notion"] .mesh-bg {
+    opacity: 0.08;
   }
 
   .markdown-body {

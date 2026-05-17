@@ -88,7 +88,8 @@ async def _create_task(
     now = datetime.now(UTC).replace(tzinfo=None)
     await session.execute(
         text(
-            "INSERT INTO metaedu.document_tasks (id, tenant_id, file_id, task_type, status, progress, created_at) "
+            "INSERT INTO metaedu.document_tasks "
+            "(id, tenant_id, file_id, task_type, status, progress, created_at) "
             "VALUES (:id, :tid, :fid, :type, 'pending', 0, :now)"
         ),
         {"id": task_id, "tid": tenant_id, "fid": file_id, "type": task_type, "now": now},
@@ -153,10 +154,16 @@ def parse_document(file_id_str: str, tenant_id_str: str):
             # Store full_text in file's structured_data
             await session.execute(
                 text(
-                    "UPDATE metaedu.files SET structured_data = CAST(:data AS JSONB), status = 'processing', updated_at = :now WHERE id = :fid"
+                    "UPDATE metaedu.files "
+                    "SET structured_data = CAST(:data AS JSONB), "
+                    "status = 'processing', updated_at = :now "
+                    "WHERE id = :fid"
                 ),
                 {
-                    "data": json.dumps({"full_text": parsed.full_text, "section_count": len(parsed.sections)}),
+                    "data": json.dumps({
+                        "full_text": parsed.full_text,
+                        "section_count": len(parsed.sections),
+                    }),
                     "now": datetime.now(UTC).replace(tzinfo=None),
                     "fid": file_id,
                 },
@@ -172,7 +179,9 @@ def parse_document(file_id_str: str, tenant_id_str: str):
                     await _update_task_status(session, created_task_id, "failed", 0, str(e))
                     await session.execute(
                         text(
-                            "UPDATE metaedu.files SET status = 'failed', updated_at = :now WHERE id = :fid"
+                            "UPDATE metaedu.files "
+                            "SET status = 'failed', updated_at = :now "
+                            "WHERE id = :fid"
                         ),
                         {"now": datetime.now(UTC).replace(tzinfo=None), "fid": file_id},
                     )
@@ -200,7 +209,7 @@ def chunk_document(file_id_str: str, tenant_id_str: str):
     async def _do(session: AsyncSession):
         task_id = await _create_task(session, tenant_id, file_id, "chunk")
         await _update_task_status(session, task_id, "running", 0)
-        await session.commit()
+        await session.commit()  # Commit status immediately before starting heavy work
 
         try:
             # Read parsed data
@@ -238,10 +247,17 @@ def chunk_document(file_id_str: str, tenant_id_str: str):
                         continue
                     if part.startswith("## "):
                         # "## 标题\n内容" format
-                        first_newline = part.index("\n")
-                        title = part[2:first_newline].strip()
-                        content = part[first_newline + 1:].strip()
-                        sections.append(DocumentSection(title=title, level=1, content=content, page=0))
+                        first_newline = part.index("\n") if "\n" in part else -1
+                        if first_newline > 0:
+                            title = part[2:first_newline].strip()
+                            content = part[first_newline + 1:].strip()
+                        else:
+                            # Heading without content (e.g., at end of text)
+                            title = part[2:].strip()
+                            content = ""
+                        sections.append(
+                            DocumentSection(title=title, level=1, content=content, page=0)
+                        )
                     elif sections:
                         # Continuation of previous section (indented content without heading)
                         sections[-1].content += "\n" + part
@@ -255,7 +271,8 @@ def chunk_document(file_id_str: str, tenant_id_str: str):
             # Delete old chunks
             await session.execute(
                 text(
-                    "DELETE FROM metaedu.document_chunks WHERE file_id = :fid AND tenant_id = :tid"
+                    "DELETE FROM metaedu.document_chunks "
+                    "WHERE file_id = :fid AND tenant_id = :tid"
                 ),
                 {"fid": file_id, "tid": tenant_id},
             )
@@ -267,8 +284,10 @@ def chunk_document(file_id_str: str, tenant_id_str: str):
                 await session.execute(
                     text(
                         "INSERT INTO metaedu.document_chunks "
-                        "(id, tenant_id, file_id, chunk_index, content, section_title, section_path, char_start, char_end, created_at) "
-                        "VALUES (:id, :tid, :fid, :idx, :content, :stitle, :spath, :cstart, :cend, :now)"
+                        "(id, tenant_id, file_id, chunk_index, content, "
+                        "section_title, section_path, char_start, char_end, created_at) "
+                        "VALUES (:id, :tid, :fid, :idx, :content, "
+                        ":stitle, :spath, :cstart, :cend, :now)"
                     ),
                     {
                         "id": chunk_id,
@@ -291,6 +310,7 @@ def chunk_document(file_id_str: str, tenant_id_str: str):
 
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
+            await session.commit()  # Commit failure status before re-raising
             raise
 
     asyncio.run(_run_in_session(_do))
@@ -394,6 +414,7 @@ def embed_chunks(file_id_str: str, tenant_id_str: str):
 
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
+            await session.commit()  # Commit failure status before re-raising
             raise
 
     asyncio.run(_run_in_session(_do))
@@ -427,7 +448,9 @@ def index_tsvector(file_id_str: str, tenant_id_str: str):
             for chunk_id in chunk_ids:
                 await session.execute(
                     text(
-                        "UPDATE metaedu.document_chunks SET content_tsvector = to_tsvector('simple', content) WHERE id = :cid"
+                        "UPDATE metaedu.document_chunks "
+                        "SET content_tsvector = to_tsvector('simple', content) "
+                        "WHERE id = :cid"
                     ),
                     {"cid": chunk_id},
                 )
@@ -435,7 +458,9 @@ def index_tsvector(file_id_str: str, tenant_id_str: str):
             # Update file status to processed
             await session.execute(
                 text(
-                    "UPDATE metaedu.files SET status = 'processed', updated_at = :now WHERE id = :fid"
+                    "UPDATE metaedu.files "
+                    "SET status = 'processed', updated_at = :now "
+                    "WHERE id = :fid"
                 ),
                 {"now": datetime.now(UTC).replace(tzinfo=None), "fid": file_id},
             )
@@ -447,6 +472,7 @@ def index_tsvector(file_id_str: str, tenant_id_str: str):
 
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
+            await session.commit()  # Commit failure status before re-raising
             raise
 
     asyncio.run(_run_in_session(_do))
@@ -471,9 +497,11 @@ def extract_template(file_id_str: str, tenant_id_str: str):
             # Get chunks content and doc_type hint
             result = await session.execute(
                 text(
-                    "SELECT dc.content, f.doc_type FROM metaedu.document_chunks dc "
+                    "SELECT dc.content, f.doc_type "
+                    "FROM metaedu.document_chunks dc "
                     "JOIN metaedu.files f ON f.id = dc.file_id "
-                    "WHERE dc.file_id = :fid AND dc.tenant_id = :tid ORDER BY dc.chunk_index LIMIT 10"
+                    "WHERE dc.file_id = :fid AND dc.tenant_id = :tid "
+                    "ORDER BY dc.chunk_index LIMIT 10"
                 ),
                 {"fid": file_id, "tid": tenant_id},
             )
@@ -574,6 +602,7 @@ def extract_template(file_id_str: str, tenant_id_str: str):
 
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
+            await session.commit()  # Commit failure status before re-raising
             raise
 
     asyncio.run(_run_in_session(_do))
@@ -747,6 +776,7 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str):
 
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
+            await session.commit()  # Commit failure status before re-raising
             raise
 
     asyncio.run(_run_in_session(_do))

@@ -22,22 +22,31 @@ class FileRepository:
         status: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        sort_by: str = "created_at",
+        sort_dir: str = "desc",
     ) -> list[dict]:
-        conditions = ["tenant_id = :tid"]
+        conditions = ["f.tenant_id = :tid"]
         params: dict = {"tid": tenant_id}
         if folder_id is not None:
-            conditions.append("folder_id = :fid")
+            conditions.append("f.folder_id = :fid")
             params["fid"] = folder_id
         if tag:
-            conditions.append(":tag = ANY(tags)")
+            conditions.append(":tag = ANY(f.tags)")
             params["tag"] = tag
         if status:
-            conditions.append("status = :status")
+            conditions.append("f.status = :status")
             params["status"] = status
         where = " AND ".join(conditions)
+
+        allowed_sorts = {"created_at", "filename", "file_size", "updated_at"}
+        order_col = sort_by if sort_by in allowed_sorts else "created_at"
+        direction = "DESC" if sort_dir == "desc" else "ASC"
+
         result = await self._session.execute(
             text(
-                f"SELECT * FROM metaedu.files WHERE {where} ORDER BY created_at DESC LIMIT :lim OFFSET :off"
+                f"SELECT f.*, u.username FROM metaedu.files f "
+                f"LEFT JOIN metaedu.users u ON f.uploaded_by = u.id "
+                f"WHERE {where} ORDER BY {order_col} {direction} LIMIT :lim OFFSET :off"
             ),
             {**params, "lim": limit, "off": offset},
         )

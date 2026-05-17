@@ -8,257 +8,304 @@
       </template>
     </PageHeader>
 
-    <div class="flex gap-4">
+    <div class="flex gap-4" style="align-items: flex-start">
       <!-- Left panel: dataset list -->
-      <div class="w-[260px] shrink-0 flex flex-col gap-3">
-        <div class="liquid-card p-3 flex flex-col gap-2">
-          <div class="flex items-center justify-between">
-            <span class="text-[var(--text-small)] text-[var(--color-ink-tertiary)]">数据集列表</span>
-            <span class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">{{ datasets.length }} 个</span>
-          </div>
+      <div class="w-[260px] shrink-0 flex flex-col gap-2" style="max-height: calc(100vh - 80px)">
 
-          <LoadingSpinner v-if="loading" text="加载中..." />
-
-          <template v-else>
-            <EmptyState v-if="datasets.length === 0" title="暂无数据集" hint="上传 Excel 文件创建数据集" compact />
-
-            <div v-else class="flex flex-col gap-1">
+        <!-- Dataset list card -->
+        <div class="liquid-card flex flex-col overflow-hidden" style="flex: 1; min-height: 0">
+          <!-- Card header (always visible) -->
+          <div class="flex items-center justify-between flex-shrink-0 px-3 pt-3">
+            <div class="flex items-center gap-2" style="font-size: 16px">
               <button
-                v-for="ds in datasets"
-                :key="ds.id"
-                class="w-full text-left px-2 py-2 rounded-lg transition-colors text-[var(--text-caption)]"
-                :class="selectedId === ds.id
-                  ? 'bg-[var(--color-accent-bg)] text-[var(--color-accent)]'
-                  : 'hover:bg-[var(--color-bg-hover)] text-[var(--color-ink-secondary)]'"
-                @click="selectDataset(ds)"
+                class="text-[var(--color-ink-tertiary)] hover:text-[var(--color-ink-secondary)] transition-colors p-0.5"
+                @click="datasetListCollapsed = !datasetListCollapsed"
               >
-                <div class="flex items-center justify-between gap-2">
-                  <span class="truncate font-medium">{{ ds.name }}</span>
-                  <span :class="dsStatusTagClass(ds.status)" class="text-[var(--text-micro)] shrink-0">{{ dsStatusLabel(ds.status) }}</span>
-                </div>
-                <div class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)] mt-0.5">
-                  {{ ds.row_count }} 行 · {{ ds.column_names?.length ?? 0 }} 列
-                </div>
+                <ChevronRight :size="14" class="transition-transform" :class="datasetListCollapsed ? '' : 'rotate-90'" />
+              </button>
+              <span class="text-[var(--color-ink-secondary)] font-medium">数据集</span>
+              <span class="text-[var(--color-ink-secondary)]">{{ datasets.length }}</span>
+            </div>
+
+            <!-- Sort controls (only when expanded) -->
+            <div v-if="!datasetListCollapsed" class="flex items-center gap-0.5">
+              <button
+                v-for="opt in sortOptions"
+                :key="opt.value"
+                class="p-0.5 rounded transition-colors"
+                :class="sortBy === opt.value
+                  ? 'bg-[var(--color-accent-bg)] text-[var(--color-accent)]'
+                  : 'text-[var(--color-ink-secondary)] hover:bg-[var(--color-bg-hover)]'"
+                :title="opt.label"
+                @click="sortBy = opt.value; loadDatasets()"
+              >
+                <component :is="opt.icon" :size="12" />
+              </button>
+              <button
+                class="p-0.5 rounded text-[var(--color-ink-secondary)] hover:bg-[var(--color-bg-hover)] transition-colors"
+                :title="sortDir === 'asc' ? '升序' : '降序'"
+                @click="sortDir = sortDir === 'asc' ? 'desc' : 'asc'; loadDatasets()"
+              >
+                <ArrowUpNarrowWide v-if="sortDir === 'asc'" :size="12" />
+                <ArrowDownWideNarrow v-else :size="12" />
               </button>
             </div>
-          </template>
+          </div>
+
+          <!-- Content (only when expanded) -->
+          <div v-if="!datasetListCollapsed" class="px-2 pb-2 flex flex-col gap-0.5 flex-1 min-h-0 overflow-hidden">
+            <LoadingSpinner v-if="loading" text="加载中..." />
+
+            <template v-else>
+              <EmptyState v-if="datasets.length === 0" title="暂无数据集" hint="上传文件" compact />
+
+              <div v-else class="flex flex-col gap-1 overflow-y-auto min-h-0 flex-1" style="max-height: calc(100vh - 240px)">
+                <button
+                  v-for="ds in datasets"
+                  :key="ds.id"
+                  class="w-full text-left px-1.5 py-1.5 rounded transition-colors"
+                  style="font-size: 14px; line-height: 1.4"
+                  :class="!showKgOverview && selectedId === ds.id
+                    ? 'bg-[var(--color-accent-bg)] text-[var(--color-accent)]'
+                    : 'hover:bg-[var(--color-bg-hover)] text-[var(--color-ink-secondary)]'"
+                  :style="ds === datasets[0] ? 'margin-top: 4px' : ''"
+                  @click="selectDataset(ds)"
+                >
+                  <div class="flex items-center gap-1">
+                    <span class="truncate font-medium">{{ ds.name }}</span>
+                    <span class="text-[var(--color-ink-tertiary)] shrink-0" style="font-size: 12px">
+                      {{ ds.row_count }}行 × {{ ds.column_names?.length ?? 0 }}列
+                    </span>
+                    <span :class="dsStatusTagClass(ds.status)" style="font-size: 11px" class="ml-auto shrink-0">{{ dsStatusLabel(ds.status) }}</span>
+                  </div>
+                </button>
+              </div>
+            </template>
+          </div>
         </div>
 
         <!-- KG overview button -->
         <button
-          class="liquid-card p-3 flex items-center justify-between text-[var(--text-caption)] hover:bg-[var(--color-bg-hover)] transition-colors cursor-pointer"
-          @click="showKgOverview = true"
+          class="liquid-card px-3 py-2.5 flex items-center justify-between hover:bg-[var(--color-bg-hover)] transition-colors cursor-pointer flex-shrink-0"
+          style="font-size: 16px"
+          :class="{ 'bg-[var(--color-accent-bg)]': showKgOverview }"
+          @click="toggleKgOverview"
         >
           <div class="flex items-center gap-2">
-            <GitBranch :size="14" class="text-[var(--color-accent)]" />
-            <span class="text-[var(--color-ink-secondary)]">知识图谱总览</span>
+            <GitBranch :size="15" class="text-[var(--color-accent)]" />
+            <span class="text-[var(--color-ink-secondary)]" :class="{ 'text-[var(--color-accent)]': showKgOverview }">知识图谱总览</span>
           </div>
-          <ChevronRight :size="14" class="text-[var(--color-ink-tertiary)]" />
+          <ChevronRight :size="15" class="text-[var(--color-ink-tertiary)] transition-transform" :class="{ 'rotate-90': showKgOverview }" />
         </button>
       </div>
 
-      <!-- Right panel: dataset detail -->
+      <!-- Right panel: dataset detail or KG overview -->
       <div class="flex-1 min-w-0">
-        <LoadingSpinner v-if="loadingDetail" text="加载数据集..." />
-
-        <template v-else-if="selected">
-          <div class="liquid-card p-4 mb-4 flex flex-wrap items-center gap-4">
-            <div class="flex items-center gap-2">
-              <FileSpreadsheet :size="18" class="text-[var(--color-accent)]" />
-              <span class="text-[var(--text-body)] font-medium text-[var(--color-ink)]">{{ selected.name }}</span>
-            </div>
-            <span class="text-[var(--text-small)] text-[var(--color-ink-tertiary)]">
-              {{ selected.row_count }} 行 × {{ selected.column_names?.length ?? 0 }} 列
-            </span>
-            <div v-if="selected.tags?.length" class="flex gap-1">
-              <span v-for="tag in selected.tags" :key="tag" class="liquid-tag-purple text-[var(--text-micro)]">{{ tag }}</span>
-            </div>
-            <button
-              class="liquid-btn-ghost px-3 py-1.5 flex items-center gap-1.5 text-red-500 ml-auto"
-              @click="showDelete = true"
-            >
-              <Trash2 :size="14" /> 删除
-            </button>
-          </div>
-
-          <!-- Pipeline status -->
-          <div class="liquid-card p-4 mb-4">
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="text-[var(--text-section-title)] font-medium text-[var(--color-ink)]">处理流水线</h3>
-              <div class="flex items-center gap-2">
-                <span v-if="polling" class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">自动刷新中...</span>
-                <button class="liquid-btn-ghost px-2 py-1" @click="loadTasks">
-                  <RefreshCw :size="14" :class="{ 'animate-spin': loadingTasks }" />
-                </button>
-              </div>
-            </div>
-
-            <LoadingSpinner v-if="loadingTasks" text="加载任务..." />
-            <div v-else class="flex gap-1">
-              <div
-                v-for="step in DS_TASK_STEPS"
-                :key="step.type"
-                class="flex-1 flex flex-col items-center gap-1.5 py-2 px-1 rounded-lg transition-colors"
-                :class="stepBgClass(step.type)"
-              >
-                <div class="flex items-center gap-1">
-                  <component :is="stepIcon(step.type)" :size="14" />
-                  <span v-if="stepStatus(step.type) === 'running'" class="text-[var(--text-micro)] text-[var(--color-accent)]">
-                    {{ stepProgress(step.type) }}%
-                  </span>
-                </div>
-                <span class="text-[var(--text-small)] text-[var(--color-ink-secondary)]">{{ step.label }}</span>
-                <span :class="stepLabelClass(step.type)">{{ stepStatusLabel(step.type) }}</span>
-                <button
-                  v-if="stepStatus(step.type) === 'failed'"
-                  class="text-[var(--text-micro)] text-[var(--color-accent)] hover:underline"
-                  @click="retryTasks"
-                >
-                  重试
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Tabs -->
+        <!-- KG Overview mode -->
+        <template v-if="showKgOverview">
           <div class="liquid-card p-4">
-            <div class="flex gap-1 mb-4 border-b border-[var(--color-border)]">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2">
+                <GitBranch :size="18" class="text-[var(--color-accent)]" />
+                <h3 class="text-[var(--text-section-title)] font-medium text-[var(--color-ink)]">知识图谱总览</h3>
+                <span class="text-[var(--text-small)] text-[var(--color-ink-tertiary)]">
+                  {{ kgOverviewNodes.length }} 节点 · {{ kgOverviewEdges.length }} 关系
+                </span>
+              </div>
               <button
-                v-for="tab in tabs"
-                :key="tab.key"
-                class="px-4 py-2 text-[var(--text-caption)] border-b-2 transition-colors bg-none border-none cursor-pointer"
-                :class="activeTab === tab.key
-                  ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
-                  : 'border-transparent text-[var(--color-ink-tertiary)] hover:text-[var(--color-ink-secondary)]'"
-                @click="activeTab = tab.key"
+                class="liquid-btn-ghost px-3 py-1.5 flex items-center gap-1.5"
+                :disabled="rebuildingKg"
+                @click="showKgRebuildConfirm = true"
               >
-                {{ tab.label }}
+                <RefreshCw :size="14" :class="{ 'animate-spin': rebuildingKg }" />
+                <span>{{ rebuildingKg ? '重建中...' : '重新生成' }}</span>
               </button>
             </div>
 
-            <!-- Tab 1: Data preview -->
-            <div v-if="activeTab === 'preview'">
-              <LoadingSpinner v-if="loadingRows" text="加载数据..." />
-              <EmptyState v-else-if="rows.length === 0" title="暂无数据" hint="等待数据解析任务完成" />
-              <div v-else class="overflow-auto max-h-[400px]">
-                <table class="w-full text-[var(--text-caption)]">
-                  <thead>
-                    <tr class="border-b border-[var(--color-border)] text-[var(--text-small)] text-[var(--color-ink-tertiary)]">
-                      <th class="text-left py-2 px-2 font-medium">#</th>
-                      <th
-                        v-for="(col, idx) in selected.column_names"
-                        :key="idx"
-                        class="text-left py-2 px-2 font-medium"
-                      >
-                        {{ col }}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="row in rows"
-                      :key="row.id"
-                      class="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-hover)]"
-                    >
-                      <td class="py-2 px-2 text-[var(--color-ink-tertiary)]">{{ row.row_index }}</td>
-                      <td
-                        v-for="(col, idx) in selected.column_names"
-                        :key="idx"
-                        class="py-2 px-2 text-[var(--color-ink-secondary)]"
-                      >
-                        {{ formatCell(row.data[col]) }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <!-- Pagination -->
-                <div v-if="totalRows > pageSize" class="flex items-center justify-between mt-3 pt-2 border-t border-[var(--color-border)]">
-                  <span class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">
-                    共 {{ totalRows }} 行
-                  </span>
-                  <div class="flex gap-1">
-                    <button
-                      class="liquid-btn-ghost px-2 py-1 text-[var(--text-micro)]"
-                      :disabled="offset === 0"
-                      @click="changePage(-1)"
-                    >
-                      上一页
-                    </button>
-                    <button
-                      class="liquid-btn-ghost px-2 py-1 text-[var(--text-micro)]"
-                      :disabled="offset + pageSize >= totalRows"
-                      @click="changePage(1)"
-                    >
-                      下一页
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Tab 2: KG from this dataset -->
-            <div v-if="activeTab === 'kg'">
-              <LoadingSpinner v-if="loadingKg" text="加载知识图谱..." />
-              <EmptyState v-else-if="kgNodes.length === 0" title="暂无知识节点" hint="等待知识图谱抽取任务完成" />
-              <div v-else>
-                <h4 class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-2">知识节点 ({{ kgNodes.length }})</h4>
-                <div class="flex flex-wrap gap-2">
-                  <div
-                    v-for="node in kgNodes"
-                    :key="node.id"
-                    class="liquid-card px-3 py-2 flex items-center gap-2"
-                  >
-                    <GitBranch :size="12" class="text-[var(--color-accent)]" />
-                    <span class="text-[var(--text-caption)] text-[var(--color-ink)]">{{ node.title }}</span>
-                    <span class="liquid-tag-blue text-[var(--text-micro)]">{{ node.domain }}</span>
-                  </div>
-                </div>
-              </div>
+            <LoadingSpinner v-if="loadingKgOverview" text="加载知识图谱..." />
+            <EmptyState v-else-if="kgOverviewNodes.length === 0" title="暂无知识图谱" hint="从数据集构建" />
+            <div v-else class="relative">
+              <KGGraph
+                :nodes="kgOverviewNodes"
+                :edges="kgOverviewEdges"
+                :height="560"
+                @node-click="selectedOverviewKgNode = $event"
+              />
             </div>
           </div>
         </template>
 
-        <EmptyState v-else title="请选择数据集" hint="从左侧列表选择数据集查看详情" />
-      </div>
-    </div>
-
-    <!-- KG Overview Dialog -->
-    <div
-      v-if="showKgOverview"
-      class="fixed inset-0 z-[var(--z-dialog)] flex items-center justify-center"
-      role="dialog"
-      aria-modal="true"
-      @keydown.escape="showKgOverview = false"
-    >
-      <div class="absolute inset-0 bg-black/50" @click="showKgOverview = false" />
-      <div class="relative liquid-card p-6 w-[700px] max-h-[80vh] overflow-auto">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-[var(--text-page-title)] font-medium text-[var(--color-ink)]">知识图谱总览</h2>
-          <button class="liquid-btn-ghost p-1" @click="showKgOverview = false">
-            <X :size="18" />
-          </button>
-        </div>
-
-        <LoadingSpinner v-if="loadingKgOverview" text="加载知识图谱..." />
+        <!-- Dataset detail mode -->
         <template v-else>
-          <div class="mb-3">
-            <span class="text-[var(--text-small)] text-[var(--color-ink-tertiary)]">
-              {{ kgOverviewNodes.length }} 节点 · {{ kgOverviewEdges.length }} 关系
-            </span>
-          </div>
-          <EmptyState v-if="kgOverviewNodes.length === 0" title="暂无知识图谱" hint="从数据集构建" />
-          <div v-else class="flex flex-wrap gap-2">
-            <div
-              v-for="node in kgOverviewNodes"
-              :key="node.id"
-              class="liquid-card px-3 py-2 flex items-center gap-2"
-            >
-              <GitBranch :size="12" class="text-[var(--color-accent)]" />
-              <span class="text-[var(--text-caption)] text-[var(--color-ink)]">{{ node.title }}</span>
-              <span class="liquid-tag-blue text-[var(--text-micro)]">{{ node.domain }}</span>
+          <LoadingSpinner v-if="loadingDetail" text="加载数据集..." />
+
+          <template v-else-if="selected">
+            <div class="liquid-card p-4 mb-4 flex flex-wrap items-center gap-4">
+              <div class="flex items-center gap-2">
+                <FileSpreadsheet :size="18" class="text-[var(--color-accent)]" />
+                <span class="text-[var(--text-body)] font-medium text-[var(--color-ink)]">{{ selected.name }}</span>
+              </div>
+              <span class="text-[var(--text-small)] text-[var(--color-ink-tertiary)]">
+                {{ selected.row_count }} 行 × {{ selected.column_names?.length ?? 0 }} 列
+              </span>
+              <div v-if="selected.tags?.length" class="flex gap-1">
+                <span v-for="tag in selected.tags" :key="tag" class="liquid-tag-purple text-[var(--text-micro)]">{{ tag }}</span>
+              </div>
+              <button
+                class="liquid-btn-ghost px-3 py-1.5 flex items-center gap-1.5 text-red-500 ml-auto"
+                @click="showDelete = true"
+              >
+                <Trash2 :size="14" /> 删除
+              </button>
+              <button
+                class="liquid-btn-ghost px-3 py-1.5 flex items-center gap-1.5"
+                @click="reinitialize"
+              >
+                <RefreshCw :size="14" /> 重新初始化
+              </button>
             </div>
-          </div>
+
+            <!-- Pipeline status -->
+            <div class="liquid-card p-4 mb-4">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="text-[var(--text-section-title)] font-medium text-[var(--color-ink)]">处理流水线</h3>
+                <div class="flex items-center gap-2">
+                  <span v-if="polling" class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">自动刷新中...</span>
+                  <button class="liquid-btn-ghost px-2 py-1" @click="loadTasks">
+                    <RefreshCw :size="14" :class="{ 'animate-spin': loadingTasks }" />
+                  </button>
+                </div>
+              </div>
+
+              <LoadingSpinner v-if="loadingTasks" text="加载任务..." />
+              <div v-else class="flex gap-1">
+                <div
+                  v-for="step in DS_TASK_STEPS"
+                  :key="step.type"
+                  class="flex-1 flex flex-col items-center gap-1.5 py-2 px-1 rounded-lg transition-colors"
+                  :class="stepBgClass(step.type)"
+                >
+                  <div class="flex items-center gap-1">
+                    <component :is="stepIcon(step.type)" :size="14" />
+                    <span v-if="stepStatus(step.type) === 'running'" class="text-[var(--text-micro)] text-[var(--color-accent)]">
+                      {{ stepProgress(step.type) }}%
+                    </span>
+                  </div>
+                  <span class="text-[var(--text-small)] text-[var(--color-ink-secondary)]">{{ step.label }}</span>
+                  <span :class="stepLabelClass(step.type)">{{ stepStatusLabel(step.type) }}</span>
+                  <button
+                    v-if="stepStatus(step.type) === 'failed'"
+                    class="text-[var(--text-micro)] text-[var(--color-accent)] hover:underline"
+                    @click="retryTasks"
+                  >
+                    重试
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="liquid-card p-4">
+              <div class="flex gap-1 mb-4 border-b border-[var(--color-border)]">
+                <button
+                  v-for="tab in tabs"
+                  :key="tab.key"
+                  class="px-4 py-2 text-[var(--text-caption)] border-b-2 transition-colors bg-none border-none cursor-pointer relative"
+                  :class="activeTab === tab.key
+                    ? 'border-[var(--color-accent)] text-[var(--color-accent)] font-medium'
+                    : 'border-transparent text-[var(--color-ink-tertiary)] hover:text-[var(--color-ink-secondary)]'"
+                  @click="activeTab = tab.key"
+                >
+                  <span :class="activeTab === tab.key ? 'relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-[var(--color-accent)] after:rounded-t' : ''">
+                    {{ tab.label }}
+                  </span>
+                </button>
+              </div>
+
+              <!-- Tab 1: Data preview -->
+              <div v-if="activeTab === 'preview'">
+                <LoadingSpinner v-if="loadingRows" text="加载数据..." />
+                <EmptyState v-else-if="rows.length === 0" title="暂无数据" hint="等待数据解析任务完成" />
+                <div v-else class="overflow-auto max-h-[400px]">
+                  <table class="w-full text-[var(--text-caption)]">
+                    <thead>
+                      <tr class="border-b border-[var(--color-border)] text-[var(--text-small)] text-[var(--color-ink-tertiary)]">
+                        <th class="text-left py-2 px-2 font-medium">#</th>
+                        <th
+                          v-for="(col, idx) in selected.column_names"
+                          :key="idx"
+                          class="text-left py-2 px-2 font-medium"
+                        >
+                          {{ col }}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="row in rows"
+                        :key="row.id"
+                        class="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-hover)]"
+                      >
+                        <td class="py-2 px-2 text-[var(--color-ink-tertiary)]">{{ row.row_index }}</td>
+                        <td
+                          v-for="(col, idx) in selected.column_names"
+                          :key="idx"
+                          class="py-2 px-2 text-[var(--color-ink-secondary)]"
+                        >
+                          {{ formatCell(row.data[col]) }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  <!-- Pagination -->
+                  <div v-if="totalRows > pageSize" class="flex items-center justify-between mt-3 pt-2 border-t border-[var(--color-border)]">
+                    <span class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">
+                      共 {{ totalRows }} 行
+                    </span>
+                    <div class="flex gap-1">
+                      <button
+                        class="liquid-btn-ghost px-2 py-1 text-[var(--text-micro)]"
+                        :disabled="offset === 0"
+                        @click="changePage(-1)"
+                      >
+                        上一页
+                      </button>
+                      <button
+                        class="liquid-btn-ghost px-2 py-1 text-[var(--text-micro)]"
+                        :disabled="offset + pageSize >= totalRows"
+                        @click="changePage(1)"
+                      >
+                        下一页
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Tab 2: KG from this dataset -->
+              <div v-if="activeTab === 'kg'">
+                <LoadingSpinner v-if="loadingKg" text="加载知识图谱..." />
+                <EmptyState v-else-if="kgNodes.length === 0" title="暂无知识节点" hint="等待知识图谱抽取任务完成" />
+                <div v-else class="relative">
+                  <KGGraph
+                    :nodes="kgNodes"
+                    :edges="kgEdges"
+                    :height="420"
+                    @node-click="selectedKgNode = $event"
+                  />
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    <span class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">
+                      {{ kgNodes.length }} 节点 / {{ kgEdges.length }} 关系
+                    </span>
+                    <span class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">· 点击节点查看详情</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <EmptyState v-else title="请选择数据集" hint="从左侧列表选择数据集查看详情" />
         </template>
       </div>
     </div>
@@ -331,27 +378,57 @@
       :message="`确定删除数据集「${selected?.name}」？此操作不可恢复。`"
       @confirm="doDelete"
     />
+
+    <!-- KG Rebuild Confirm -->
+    <ConfirmDialog
+      v-model:open="showKgRebuildConfirm"
+      title="重新生成整个知识图谱"
+      message="将清除所有数据集的知识图谱数据并重新构建，包括跨数据集关系。此操作可能需要较长时间，确定继续吗？"
+      @confirm="doRebuildKg"
+    />
+
+    <!-- KG node detail panel (per-dataset) -->
+    <KGDetailPanel
+      :node="selectedKgNode"
+      :edges="kgEdges"
+      :nodes="kgNodes"
+      @close="selectedKgNode = null"
+    />
+
+    <!-- KG Overview node detail panel -->
+    <KGDetailPanel
+      :node="selectedOverviewKgNode"
+      :edges="kgOverviewEdges"
+      :nodes="kgOverviewNodes"
+      @close="selectedOverviewKgNode = null"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
 import {
-  Upload, FileSpreadsheet, Trash2, RefreshCw, GitBranch, ChevronRight, X,
-  Cpu,
+  Upload, FileSpreadsheet, Trash2, RefreshCw, GitBranch, ChevronRight,
+  Cpu, Clock, Type, Hash, ArrowUpNarrowWide, ArrowDownWideNarrow,
 } from "lucide-vue-next";
 import type { Component } from "vue";
 import PageHeader from "@/components/PageHeader.vue";
 import EmptyState from "@/components/EmptyState.vue";
 import LoadingSpinner from "@/components/LoadingSpinner.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
+import KGGraph from "@/components/KGGraph.vue";
+import KGDetailPanel from "@/components/KGDetailPanel.vue";
 import { useToast } from "@/composables/useToast";
 import {
   structuredDataApi,
   type DatasetDTO,
   type DatasetRowDTO,
-  type KGNode,
 } from "@/services/structured-data";
+import {
+  knowledgeApi,
+  type KnowledgeNodeDTO,
+  type KnowledgeEdgeDTO,
+} from "@/services/knowledge";
 import type { TaskDTO } from "@/services/document";
 import {
   DS_TASK_STEPS,
@@ -366,9 +443,11 @@ const datasets = ref<DatasetDTO[]>([]);
 const selected = ref<DatasetDTO | null>(null);
 const tasks = ref<TaskDTO[]>([]);
 const rows = ref<DatasetRowDTO[]>([]);
-const kgNodes = ref<KGNode[]>([]);
-const kgOverviewNodes = ref<KGNode[]>([]);
-const kgOverviewEdges = ref<unknown[]>([]);
+const kgNodes = ref<KnowledgeNodeDTO[]>([]);
+const kgEdges = ref<KnowledgeEdgeDTO[]>([]);
+const selectedKgNode = ref<KnowledgeNodeDTO | null>(null);
+const kgOverviewNodes = ref<KnowledgeNodeDTO[]>([]);
+const kgOverviewEdges = ref<KnowledgeEdgeDTO[]>([]);
 
 const loading = ref(true);
 const loadingDetail = ref(false);
@@ -381,10 +460,21 @@ const activeTab = ref("preview");
 const showDelete = ref(false);
 const showUpload = ref(false);
 const showKgOverview = ref(false);
+const showKgRebuildConfirm = ref(false);
+const datasetListCollapsed = ref(false);
+const selectedOverviewKgNode = ref<KnowledgeNodeDTO | null>(null);
+const rebuildingKg = ref(false);
 
 const offset = ref(0);
 const pageSize = 50;
 const totalRows = computed(() => selected.value?.row_count ?? 0);
+const sortBy = ref("created_at");
+const sortDir = ref("desc");
+const sortOptions = [
+  { value: "created_at", label: "按时间", icon: Clock },
+  { value: "name", label: "按名称", icon: Type },
+  { value: "row_count", label: "按数据量", icon: Hash },
+];
 
 const uploadForm = ref({ name: "", description: "", tags: "", file: null as File | null });
 const uploading = ref(false);
@@ -407,9 +497,15 @@ const selectedId = computed(() => selected.value?.id ?? null);
 async function loadDatasets() {
   loading.value = true;
   try {
-    const { data } = await structuredDataApi.listDatasets();
+    const { data } = await structuredDataApi.listDatasets({
+      sort_by: sortBy.value,
+      sort_dir: sortDir.value,
+    });
+    console.log("[DB] loadDatasets response:", data);
     datasets.value = data;
-  } catch {
+    console.log("[DB] datasets.value updated, count:", datasets.value.length);
+  } catch (e) {
+    console.error("[DB] loadDatasets error:", e);
     toast.error("加载数据集列表失败");
   } finally {
     loading.value = false;
@@ -418,9 +514,12 @@ async function loadDatasets() {
 
 // --- Select dataset ---
 async function selectDataset(ds: DatasetDTO) {
+  showKgOverview.value = false;
   selected.value = ds;
   offset.value = 0;
+  kgNodes.value = [];
   await Promise.all([loadTasks(), loadRows()]);
+  if (activeTab.value === "kg") loadKg();
 }
 
 async function loadTasks() {
@@ -456,8 +555,12 @@ async function loadKg() {
   if (!selected.value) return;
   loadingKg.value = true;
   try {
-    const { data } = await structuredDataApi.getKnowledgeGraph();
-    kgNodes.value = data.nodes.filter((n) => n.source_dataset_id === selected.value!.id);
+    const [nodesRes, edgesRes] = await Promise.all([
+      knowledgeApi.listNodes({ source_dataset_id: selected.value.id, limit: 100 }),
+      knowledgeApi.listEdges({ source_dataset_id: selected.value.id }),
+    ]);
+    kgNodes.value = nodesRes.data;
+    kgEdges.value = edgesRes.data;
   } catch {
     toast.error("加载知识图谱失败");
   } finally {
@@ -469,8 +572,26 @@ async function loadKgOverview() {
   loadingKgOverview.value = true;
   try {
     const { data } = await structuredDataApi.getKnowledgeGraph();
-    kgOverviewNodes.value = data.nodes;
-    kgOverviewEdges.value = data.edges;
+    kgOverviewNodes.value = data.nodes.map((n) => ({
+      id: n.id,
+      tenant_id: "",
+      title: n.title,
+      description: n.description,
+      domain: n.domain,
+      level: n.level,
+      parent_id: null,
+      path: null,
+      tags: [],
+      metadata: {},
+    }));
+    kgOverviewEdges.value = data.edges.map((e) => ({
+      id: e.id,
+      source_id: e.source_id,
+      target_id: e.target_id,
+      relation_type: e.relation_type,
+      weight: 1,
+      metadata: e.metadata ?? {},
+    }));
   } catch {
     toast.error("加载知识图谱总览失败");
   } finally {
@@ -512,12 +633,18 @@ async function doUpload() {
       const tags = uploadForm.value.tags.split(",").map((t) => t.trim()).filter(Boolean);
       tags.forEach((tag) => formData.append("tags", tag));
     }
-    await structuredDataApi.uploadDataset(formData);
+    const uploadRes = await structuredDataApi.uploadDataset(formData, uploadForm.value.name.trim());
+    console.log("[DB] Upload succeeded, dataset:", uploadRes.data);
     toast.success("数据集上传成功");
     showUpload.value = false;
     uploadForm.value = { name: "", description: "", tags: "", file: null };
+    // Wait for dialog unmount before loading to ensure reactivity is settled
+    await nextTick();
+    console.log("[DB] Calling loadDatasets...");
     await loadDatasets();
-  } catch {
+    console.log("[DB] loadDatasets done, datasets count:", datasets.value.length);
+  } catch (e) {
+    console.error("[DB] Upload failed:", e);
     toast.error("上传失败");
   } finally {
     uploading.value = false;
@@ -550,7 +677,47 @@ async function retryTasks() {
   }
 }
 
+async function reinitialize() {
+  if (!selected.value) return;
+  try {
+    await structuredDataApi.reinitializeDataset(selected.value.id);
+    toast.success("已开始重新初始化");
+    tasks.value = [];
+    rows.value = [];
+    kgNodes.value = [];
+    await loadTasks();
+  } catch {
+    toast.error("重新初始化失败");
+  }
+}
+
+async function doRebuildKg() {
+  rebuildingKg.value = true;
+  try {
+    await structuredDataApi.rebuildKnowledgeGraph();
+    toast.success("知识图谱重建已启动");
+    kgOverviewNodes.value = [];
+    kgOverviewEdges.value = [];
+    selectedOverviewKgNode.value = null;
+    if (selected.value) {
+      kgNodes.value = [];
+      kgEdges.value = [];
+    }
+  } catch {
+    toast.error("知识图谱重建失败");
+  } finally {
+    rebuildingKg.value = false;
+  }
+}
+
 // --- KG Overview ---
+function toggleKgOverview() {
+  showKgOverview.value = !showKgOverview.value;
+  if (showKgOverview.value && kgOverviewNodes.value.length === 0) {
+    loadKgOverview();
+  }
+}
+
 watch(showKgOverview, (val) => {
   if (val && kgOverviewNodes.value.length === 0) loadKgOverview();
 });
@@ -559,6 +726,48 @@ watch(showKgOverview, (val) => {
 watch(activeTab, () => {
   if (activeTab.value === "kg" && kgNodes.value.length === 0) loadKg();
 });
+
+// --- Auto-reload when pipeline tasks complete ---
+watch(
+  () => tasks.value.find((t) => t.task_type === "ds_parse")?.status,
+  async (status, prevStatus) => {
+    if (status === "success" && prevStatus !== "success" && selected.value) {
+      // Refresh dataset metadata (row_count updates from 0 to actual)
+      try {
+        const { data } = await structuredDataApi.getDataset(selected.value.id);
+        selected.value = data;
+        // Also update the row in the datasets list
+        const idx = datasets.value.findIndex((d) => d.id === data.id);
+        if (idx >= 0) datasets.value[idx] = data;
+      } catch (e) {
+        console.warn("[DB] refresh dataset after ds_parse failed:", e);
+      }
+      // Reload rows
+      await loadRows();
+    }
+  },
+);
+
+watch(
+  () => tasks.value.find((t) => t.task_type === "ds_extract_kg")?.status,
+  async (status, prevStatus) => {
+    if (status === "success" && prevStatus !== "success") {
+      // Update kg_status on selected dataset
+      if (selected.value) {
+        try {
+          const { data } = await structuredDataApi.getDataset(selected.value.id);
+          selected.value = data;
+        } catch (e) {
+          console.warn("[DB] refresh dataset after ds_extract_kg failed:", e);
+        }
+      }
+      // Reload KG (whether or not on KG tab — so it's ready on switch)
+      kgNodes.value = [];
+      kgEdges.value = [];
+      await loadKg();
+    }
+  },
+);
 
 // --- Pipeline helpers ---
 function taskByType(type: string) {

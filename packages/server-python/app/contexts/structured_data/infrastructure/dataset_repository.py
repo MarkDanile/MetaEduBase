@@ -21,6 +21,8 @@ class DatasetRepository:
         status: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        sort_by: str = "created_at",
+        sort_dir: str = "desc",
     ) -> list[dict]:
         conditions = ["tenant_id = :tid"]
         params: dict = {"tid": tenant_id}
@@ -31,9 +33,14 @@ class DatasetRepository:
             conditions.append("status = :status")
             params["status"] = status
         where = " AND ".join(conditions)
+
+        allowed_sorts = {"created_at", "name", "row_count", "updated_at"}
+        order_col = sort_by if sort_by in allowed_sorts else "created_at"
+        direction = "DESC" if sort_dir == "desc" else "ASC"
+
         result = await self._session.execute(
             text(
-                f"SELECT * FROM metaedu.datasets WHERE {where} ORDER BY sort_order, created_at DESC LIMIT :lim OFFSET :off"
+                f"SELECT * FROM metaedu.datasets WHERE {where} ORDER BY {order_col} {direction} LIMIT :lim OFFSET :off"
             ),
             {**params, "lim": limit, "off": offset},
         )

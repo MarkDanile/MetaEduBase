@@ -41,6 +41,10 @@ class Settings(BaseSettings):
 
     embedding_model: str = "BAAI/bge-m3"
 
+    siliconflow_base_url: str = "https://api.siliconflow.cn/v1"
+    siliconflow_embedding_model: str = "BAAI/bge-m3"
+    minimax_embedding_model: str = "emboir"
+
     ner_backend: str = "rule"
     recall_mode: str = "pg_parallel"
     fusion_backend: str = "frequency"
@@ -50,7 +54,9 @@ class Settings(BaseSettings):
     mcp_server_host: str = "0.0.0.0"
     mcp_server_port: int = 8001
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    siliconflow_api_key: str = ""
+
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()
