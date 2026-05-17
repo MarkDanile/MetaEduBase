@@ -6,6 +6,9 @@
           <button class="liquid-btn-ghost px-3 py-1.5 flex items-center gap-1.5" @click="goBack">
             <ArrowLeft :size="14" /> 返回
           </button>
+          <button class="liquid-btn-ghost px-3 py-1.5 flex items-center gap-1.5" @click="reinitialize">
+            <RefreshCw :size="14" /> 重新初始化
+          </button>
           <button
             class="liquid-btn-ghost px-3 py-1.5 flex items-center gap-1.5 text-red-500"
             @click="showDelete = true"
@@ -78,13 +81,15 @@
           <button
             v-for="tab in tabs"
             :key="tab.key"
-            class="px-4 py-2 text-[var(--text-caption)] border-b-2 transition-colors bg-none border-none cursor-pointer"
+            class="px-4 py-2 text-[var(--text-caption)] border-b-2 transition-colors bg-none border-none cursor-pointer relative"
             :class="activeTab === tab.key
-              ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
+              ? 'border-[var(--color-accent)] text-[var(--color-accent)] font-medium'
               : 'border-transparent text-[var(--color-ink-tertiary)] hover:text-[var(--color-ink-secondary)]'"
             @click="activeTab = tab.key"
           >
-            {{ tab.label }}
+            <span :class="activeTab === tab.key ? 'relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-[var(--color-accent)] after:rounded-t' : ''">
+              {{ tab.label }}
+            </span>
           </button>
         </div>
 
@@ -395,6 +400,21 @@ async function retryTasks() {
     await loadTasks();
   } catch {
     toast.error("重试失败");
+  }
+}
+
+async function reinitialize() {
+  try {
+    await documentApi.reinitializeFile(fileId.value);
+    toast.success("已开始重新初始化");
+    await loadFile();
+    await loadTasks();
+    chunks.value = [];
+    kgNodes.value = [];
+    kgEdges.value = [];
+    startPolling();
+  } catch {
+    toast.error("重新初始化失败");
   }
 }
 

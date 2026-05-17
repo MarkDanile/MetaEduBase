@@ -8,10 +8,9 @@ export const DOC_TASK_STEPS = [
   { type: "extract_kg", label: "知识图谱", icon: "GitBranch" },
 ] as const
 
-// Dataset pipeline task types (3 steps)
+// Dataset pipeline task types (2 steps — vectorization removed)
 export const DS_TASK_STEPS = [
   { type: "ds_parse", label: "数据解析", icon: "FileSpreadsheet" },
-  { type: "ds_embed", label: "向量化", icon: "Cpu" },
   { type: "ds_extract_kg", label: "知识图谱", icon: "GitBranch" },
 ] as const
 

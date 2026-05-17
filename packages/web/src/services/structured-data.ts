@@ -43,6 +43,7 @@ export interface KGEdge {
   source_id: string;
   target_id: string;
   relation_type: string;
+  metadata?: Record<string, unknown> | null;
 }
 
 // --- API ---
@@ -54,10 +55,13 @@ export const structuredDataApi = {
     status?: string;
     offset?: number;
     limit?: number;
+    sort_by?: string;
+    sort_dir?: string;
   }) => api.get<DatasetDTO[]>("/structured-data/datasets", { params }),
-  uploadDataset: (formData: FormData) =>
+  uploadDataset: (formData: FormData, name?: string) =>
     api.post<DatasetDTO>("/structured-data/datasets/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" },
+      params: name ? { name } : undefined,
     }),
   getDataset: (id: string) => api.get<DatasetDTO>(`/structured-data/datasets/${id}`),
   deleteDataset: (id: string) => api.delete(`/structured-data/datasets/${id}`),
@@ -75,6 +79,8 @@ export const structuredDataApi = {
     api.get<TaskDTO[]>(`/structured-data/datasets/${datasetId}/tasks`),
   retryTasks: (datasetId: string) =>
     api.post<TaskDTO[]>(`/structured-data/datasets/${datasetId}/retry`),
+  reinitializeDataset: (datasetId: string) =>
+    api.post<DatasetDTO>(`/structured-data/datasets/${datasetId}/reinitialize`),
 
   // Knowledge Graph
   getKgStatus: () =>
@@ -83,4 +89,8 @@ export const structuredDataApi = {
     ),
   getKnowledgeGraph: () =>
     api.get<{ nodes: KGNode[]; edges: KGEdge[] }>("/structured-data/knowledge-graph"),
+  rebuildKnowledgeGraph: () =>
+    api.post<{ status: string; dataset_count: number }>(
+      "/structured-data/knowledge-graph/rebuild",
+    ),
 };

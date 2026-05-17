@@ -41,11 +41,25 @@ app.add_middleware(
 app.include_router(identity_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(knowledge_router, prefix="/api/v1/knowledge", tags=["knowledge"])
 app.include_router(ai_router, prefix="/api/v1/ai", tags=["ai"])
-app.include_router(resource_router, prefix="/api/v1/resources", tags=["resources"])
-app.include_router(document_router, prefix="/api/v1/document", tags=["document"])
-app.include_router(document_task_router, prefix="/api/v1/document", tags=["document-tasks"])
-app.include_router(structured_data_router, prefix="/api/v1/structured-data", tags=["structured-data"])
-app.include_router(structured_data_task_router, prefix="/api/v1/structured-data", tags=["structured-data-tasks"])
+app.include_router(
+    resource_router, prefix="/api/v1/resources", tags=["resources"]
+)
+app.include_router(
+    document_router, prefix="/api/v1/document", tags=["documents"]
+)
+app.include_router(
+    document_task_router, prefix="/api/v1/document", tags=["document-tasks"]
+)
+app.include_router(
+    structured_data_router,
+    prefix="/api/v1/structured-data",
+    tags=["structured-data"],
+)
+app.include_router(
+    structured_data_task_router,
+    prefix="/api/v1/structured-data",
+    tags=["structured-data-tasks"],
+)
 
 
 @app.get("/api/v1/health")

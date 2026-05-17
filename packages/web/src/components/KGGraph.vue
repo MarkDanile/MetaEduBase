@@ -68,7 +68,10 @@ function buildGraphData() {
       id: e.id,
       source: e.source_id,
       target: e.target_id,
-      data: { relation: e.relation_type },
+      data: {
+        relation: e.relation_type,
+        cross_dataset: (e.metadata as Record<string, unknown>)?.cross_dataset === true,
+      },
       style: {
         labelText: e.relation_type,
         endArrow: true,
@@ -119,8 +122,18 @@ onMounted(() => {
     },
     edge: {
       style: {
-        stroke: "#cbd5e1",
-        lineWidth: 1,
+        stroke: (d: EdgeData) => {
+          const ed = d.data as unknown as { relation: string; cross_dataset?: boolean };
+          return ed?.cross_dataset ? "#f59e0b" : "#cbd5e1";
+        },
+        lineWidth: (d: EdgeData) => {
+          const ed = d.data as unknown as { relation: string; cross_dataset?: boolean };
+          return ed?.cross_dataset ? 2 : 1;
+        },
+        lineDash: (d: EdgeData) => {
+          const ed = d.data as unknown as { relation: string; cross_dataset?: boolean };
+          return ed?.cross_dataset ? [5, 5] : undefined;
+        },
         labelText: (d: EdgeData) => {
           const ed = d.data as unknown as { relation: string };
           return ed?.relation ?? "";
@@ -133,7 +146,10 @@ onMounted(() => {
         labelBackgroundFill: "#f8fafc",
         endArrow: true,
         endArrowSize: 4,
-        endArrowFill: "#cbd5e1",
+        endArrowFill: (d: EdgeData) => {
+          const ed = d.data as unknown as { relation: string; cross_dataset?: boolean };
+          return ed?.cross_dataset ? "#f59e0b" : "#cbd5e1";
+        },
         router: false,
       },
     },

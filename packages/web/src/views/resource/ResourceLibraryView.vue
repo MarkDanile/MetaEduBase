@@ -12,7 +12,7 @@
             class="liquid-btn-ghost text-[var(--text-small)] px-2 py-0.5"
             @click="showNewFolderInput = true"
           >
-            <Plus :size="14" /> 新建
+            <Plus :size="14" /> 
           </button>
         </div>
 
@@ -35,38 +35,81 @@
 
         <LoadingSpinner v-if="loadingFolders" text="加载中..." />
         <div v-else class="flex-1 overflow-auto space-y-0.5">
+          <!-- "全部文件" as virtual root — always first, visually a section header -->
           <button
-            v-for="folder in flatFolders"
-            :key="folder.id"
-            class="w-full text-left px-2 py-1.5 rounded-lg text-[var(--text-caption)] transition-colors flex items-center gap-1.5 border-none bg-none cursor-pointer"
-            :class="selectedFolderId === folder.id
+            class="w-full text-left px-2 py-1.5 rounded-lg text-[var(--text-caption)] font-medium transition-colors flex items-center gap-1.5 border-none bg-none cursor-pointer mb-0.5"
+            :class="!selectedFolderId
               ? 'bg-[var(--color-accent-bg)] text-[var(--color-accent)]'
-              : 'hover:bg-[var(--color-bg-hover)] text-[var(--color-ink)]'"
-            :style="{ paddingLeft: `${8 + folder.depth * 16}px` }"
-            @click="selectFolder(folder.id)"
-          >
-            <Folder :size="14" class="flex-shrink-0" />
-            <span class="truncate">{{ folder.name }}</span>
-          </button>
-          <button
-            class="w-full text-left px-2 py-1.5 rounded-lg text-[var(--text-caption)] hover:bg-[var(--color-bg-hover)] text-[var(--color-ink-secondary)] transition-colors flex items-center gap-1.5 border-none bg-none cursor-pointer"
-            :class="!selectedFolderId ? 'bg-[var(--color-accent-bg)] text-[var(--color-accent)]' : ''"
+              : 'hover:bg-[var(--color-bg-hover)] text-[var(--color-ink-secondary)]'"
+            style="padding-left: 8px"
             @click="selectFolder(null)"
           >
             <FolderOpen :size="14" class="flex-shrink-0" />
             <span>全部文件</span>
           </button>
+          <!-- Folder tree — all indented 8px more than 全部文件 -->
+          <div v-for="folder in flatFolders" :key="folder.id" class="relative group">
+            <!-- Inline rename input -->
+            <div
+              v-if="inlineRenamingFolderId === folder.id"
+              class="flex items-center gap-1"
+              :style="{ paddingLeft: `${16 + folder.depth * 16}px` }"
+            >
+              <Folder :size="14" class="flex-shrink-0 text-[var(--color-accent)]" />
+              <input
+                v-model="inlineRenamingName"
+                class="liquid-input text-[var(--text-small)] py-0.5 px-1 flex-1"
+                @keyup.enter="commitRename"
+                @keyup.escape="inlineRenamingFolderId = null"
+                @click.stop
+              />
+              <button class="liquid-btn-ghost p-0.5" @click.stop="commitRename"><Check :size="12" /></button>
+              <button class="liquid-btn-ghost p-0.5" @click.stop="inlineRenamingFolderId = null"><X :size="12" /></button>
+            </div>
+            <!-- Normal folder row -->
+            <button
+              v-else
+              class="w-full text-left px-2 py-1 rounded-lg text-[var(--text-small)] transition-colors flex items-center gap-1 border-none bg-none cursor-pointer"
+              :class="selectedFolderId === folder.id
+                ? 'bg-[var(--color-accent-bg)] text-[var(--color-accent)]'
+                : 'hover:bg-[var(--color-bg-hover)] text-[var(--color-ink)]'"
+              :style="{ paddingLeft: `${16 + folder.depth * 16}px` }"
+              @click="selectFolder(folder.id)"
+            >
+              <Folder :size="12" class="flex-shrink-0" />
+              <span class="truncate flex-1">{{ folder.name }}</span>
+            </button>
+            <!-- Three-dot menu for each folder -->
+            <button
+              v-if="inlineRenamingFolderId !== folder.id"
+              class="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 liquid-btn-ghost p-0.5 rounded"
+              style="transform: translateY(-50%)"
+              @click.stop="toggleFolderMenu(folder.id)"
+            >
+              <MoreHorizontal :size="10" />
+            </button>
+            <!-- Inline dropdown menu -->
+            <div
+              v-if="activeFolderMenu === folder.id"
+              class="absolute right-0 top-full z-10 mt-1 py-1 rounded-lg liquid-card shadow-lg border border-[var(--color-border)] min-w-[80px]"
+              @click.stop
+            >
+              <button
+                class="w-full text-left px-3 py-1 text-[var(--text-micro)] hover:bg-[var(--color-bg-hover)] flex items-center gap-2"
+                @click="startRenameFolder(folder)"
+              >
+                <Pencil :size="10" /> 重命名
+              </button>
+              <button
+                class="w-full text-left px-3 py-1 text-[var(--text-micro)] hover:bg-[var(--color-bg-hover)] text-red-500 flex items-center gap-2"
+                @click="confirmDeleteFolder(folder)"
+              >
+                <Trash2 :size="10" /> 删除
+              </button>
+            </div>
+          </div>
         </div>
 
-        <!-- Folder actions -->
-        <div v-if="selectedFolderId" class="pt-2 border-t border-[var(--color-border)] flex gap-1">
-          <button class="liquid-btn-ghost text-[var(--text-small)] px-2 py-0.5" @click="startRenameFolder">
-            <Pencil :size="12" />
-          </button>
-          <button class="liquid-btn-ghost text-[var(--text-small)] px-2 py-0.5 text-red-500" @click="confirmDeleteFolder">
-            <Trash2 :size="12" />
-          </button>
-        </div>
       </div>
 
       <!-- Right: File list -->
@@ -112,10 +155,11 @@
           <table class="w-full text-[var(--text-caption)]">
             <thead>
               <tr class="border-b border-[var(--color-border)] text-[var(--text-small)] text-[var(--color-ink-tertiary)]">
+                <th class="text-left py-2 px-2 font-medium w-10">序号</th>
                 <th class="text-left py-2 px-2 font-medium">文件名</th>
                 <th class="text-left py-2 px-2 font-medium">类型</th>
-                <th class="text-left py-2 px-2 font-medium">标签</th>
                 <th class="text-left py-2 px-2 font-medium">状态</th>
+                <th class="text-left py-2 px-2 font-medium">上传人</th>
                 <th class="text-left py-2 px-2 font-medium">大小</th>
                 <th class="text-left py-2 px-2 font-medium">上传时间</th>
                 <th class="text-right py-2 px-2 font-medium">操作</th>
@@ -123,11 +167,12 @@
             </thead>
             <tbody>
               <tr
-                v-for="file in files"
+                v-for="(file, idx) in files"
                 :key="file.id"
                 class="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-hover)] cursor-pointer transition-colors"
                 @click="goToDetail(file.id)"
               >
+                <td class="py-2.5 px-2 text-[var(--color-ink-tertiary)]">{{ idx + 1 }}</td>
                 <td class="py-2.5 px-2">
                   <div class="flex items-center gap-2">
                     <FileText :size="14" class="text-[var(--color-ink-tertiary)] flex-shrink-0" />
@@ -136,17 +181,9 @@
                 </td>
                 <td class="py-2.5 px-2 text-[var(--color-ink-secondary)]">{{ file.doc_type || file.file_type }}</td>
                 <td class="py-2.5 px-2">
-                  <div class="flex gap-1 flex-wrap">
-                    <span
-                      v-for="tag in (file.tags || []).slice(0, 2)"
-                      :key="tag"
-                      class="liquid-tag-blue text-[var(--text-micro)]"
-                    >{{ tag }}</span>
-                  </div>
-                </td>
-                <td class="py-2.5 px-2">
                   <span :class="statusTagClass(file.status)">{{ statusLabel(file.status) }}</span>
                 </td>
+                <td class="py-2.5 px-2 text-[var(--color-ink-secondary)]">{{ file.uploaded_by_name || file.uploaded_by || '-' }}</td>
                 <td class="py-2.5 px-2 text-[var(--color-ink-secondary)]">{{ formatSize(file.file_size) }}</td>
                 <td class="py-2.5 px-2 text-[var(--color-ink-secondary)]">{{ formatDate(file.created_at) }}</td>
                 <td class="py-2.5 px-2 text-right" @click.stop>
@@ -163,22 +200,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Rename folder dialog -->
-    <ConfirmDialog
-      v-model:open="showRenameFolder"
-      title="重命名文件夹"
-      :show-cancel="true"
-      confirm-text="保存"
-      @confirm="renameFolder"
-    >
-      <input
-        v-model="renameFolderName"
-        class="liquid-input w-full mt-2"
-        placeholder="新名称"
-        @keyup.enter="renameFolder"
-      />
-    </ConfirmDialog>
 
     <!-- Upload options dialog -->
     <ConfirmDialog
@@ -202,6 +223,14 @@
         </div>
       </div>
     </ConfirmDialog>
+
+    <!-- Delete file dialog -->
+    <ConfirmDialog
+      v-model:open="showDeleteDialog"
+      title="删除文件"
+      :message="`确定删除文件「${deleteTarget?.filename}」？此操作不可恢复。`"
+      @confirm="doDeleteFile"
+    />
   </div>
 </template>
 
@@ -210,6 +239,7 @@ import { ref, onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import {
   Plus, Folder, FolderOpen, FileText, Upload, Pencil, Trash2, Eye, RefreshCw, Check, X,
+  MoreHorizontal,
 } from "lucide-vue-next";
 import PageHeader from "@/components/PageHeader.vue";
 import EmptyState from "@/components/EmptyState.vue";
@@ -228,8 +258,9 @@ const loadingFolders = ref(true);
 const selectedFolderId = ref<string | null>(null);
 const showNewFolderInput = ref(false);
 const newFolderName = ref("");
-const showRenameFolder = ref(false);
-const renameFolderName = ref("");
+const activeFolderMenu = ref<string | null>(null);
+const inlineRenamingFolderId = ref<string | null>(null);
+const inlineRenamingName = ref("");
 
 const flatFolders = computed(() => {
   const result: (FolderDTO & { depth: number })[] = [];
@@ -247,6 +278,8 @@ const flatFolders = computed(() => {
 const files = ref<FileDTO[]>([]);
 const loadingFiles = ref(false);
 const filterStatus = ref("");
+const showDeleteDialog = ref(false);
+const deleteTarget = ref<FileDTO | null>(null);
 
 // --- Upload state ---
 const isDragging = ref(false);
@@ -271,7 +304,13 @@ async function loadFolders() {
 
 function selectFolder(id: string | null) {
   selectedFolderId.value = id;
+  activeFolderMenu.value = null;
+  inlineRenamingFolderId.value = null;
   loadFiles();
+}
+
+function toggleFolderMenu(id: string) {
+  activeFolderMenu.value = activeFolderMenu.value === id ? null : id;
 }
 
 async function createFolder() {
@@ -290,41 +329,46 @@ async function createFolder() {
   }
 }
 
-function startRenameFolder() {
-  const folder = flatFolders.value.find((f) => f.id === selectedFolderId.value);
-  if (folder) {
-    renameFolderName.value = folder.name;
-    showRenameFolder.value = true;
-  }
+function startRenameFolder(folder?: FolderDTO & { depth: number }) {
+  const target = folder ?? flatFolders.value.find((f) => f.id === selectedFolderId.value);
+  if (!target) return;
+  inlineRenamingFolderId.value = target.id;
+  inlineRenamingName.value = target.name;
+  activeFolderMenu.value = null;
 }
 
-async function renameFolder() {
-  if (!selectedFolderId.value || !renameFolderName.value.trim()) return;
+async function commitRename() {
+  const id = inlineRenamingFolderId.value;
+  if (!id || !inlineRenamingName.value.trim()) {
+    inlineRenamingFolderId.value = null;
+    return;
+  }
   try {
-    await documentApi.updateFolder(selectedFolderId.value, { name: renameFolderName.value.trim() });
+    await documentApi.updateFolder(id, { name: inlineRenamingName.value.trim() });
     toast.success("已重命名");
-    showRenameFolder.value = false;
+    inlineRenamingFolderId.value = null;
     await loadFolders();
   } catch {
     toast.error("重命名失败");
   }
 }
 
-function confirmDeleteFolder() {
-  if (!selectedFolderId.value) return;
-  const folder = flatFolders.value.find((f) => f.id === selectedFolderId.value);
-  if (!folder) return;
-  if (confirm(`确定删除文件夹「${folder.name}」？`)) {
-    doDeleteFolder();
+function confirmDeleteFolder(folder?: FolderDTO & { depth: number }) {
+  const target = folder ?? flatFolders.value.find((f) => f.id === selectedFolderId.value);
+  if (!target) return;
+  if (confirm(`确定删除文件夹「${target.name}」？`)) {
+    doDeleteFolder(target.id);
   }
 }
 
-async function doDeleteFolder() {
-  if (!selectedFolderId.value) return;
+async function doDeleteFolder(id?: string) {
+  const fid = id ?? selectedFolderId.value;
+  if (!fid) return;
   try {
-    await documentApi.deleteFolder(selectedFolderId.value);
+    await documentApi.deleteFolder(fid);
     toast.success("文件夹已删除");
     selectedFolderId.value = null;
+    activeFolderMenu.value = null;
     await loadFolders();
     await loadFiles();
   } catch (e: unknown) {
@@ -355,14 +399,17 @@ function goToDetail(id: string) {
 }
 
 function confirmDeleteFile(file: FileDTO) {
-  if (!confirm(`确定删除文件「${file.filename}」？`)) return;
-  doDeleteFile(file.id);
+  deleteTarget.value = file;
+  showDeleteDialog.value = true;
 }
 
-async function doDeleteFile(id: string) {
+async function doDeleteFile() {
+  if (!deleteTarget.value) return;
   try {
-    await documentApi.deleteFile(id);
+    await documentApi.deleteFile(deleteTarget.value.id);
     toast.success("文件已删除");
+    deleteTarget.value = null;
+    showDeleteDialog.value = false;
     await loadFiles();
   } catch {
     toast.error("删除失败");
