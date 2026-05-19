@@ -18,6 +18,7 @@ from app.contexts.document.application.dto import (
     FolderDTO,
     FolderMove,
     FolderUpdate,
+    TaskDTO,
 )
 
 # Celery tasks — imported at module level for testability
@@ -330,6 +331,13 @@ async def reinitialize_file(
     if not existing:
         raise HTTPException(status_code=404, detail="文件不存在")
 
+    # Guard: if file is currently processing, refuse reinitialize to avoid race condition
+    if existing["status"] == "processing":
+        raise HTTPException(
+            status_code=409,
+            detail="文件正在处理中，请等待当前任务完成后再重新初始化",
+        )
+
     # 1. Delete document chunks
     await chunk_repo.delete_by_file(fid, tid)
 
@@ -356,12 +364,23 @@ async def reinitialize_file(
         {"tid": tid, "fid": fid},
     )
 
-    # 5. Reset file status to 'uploaded'
+    # 5. Reset file status to 'uploaded' (repo.update auto-updates updated_at)
     await repo.update(fid, tid, status="uploaded")
 
-    # 6. Trigger parse_document pipeline
+    # 6. Capture the NEW updated_at AFTER the update — this is our pipeline version marker
+    result = await session.execute(
+        text("SELECT updated_at FROM metaedu.files WHERE id = :fid AND tenant_id = :tid"),
+        {"fid": fid, "tid": tid},
+    )
+    row = result.mappings().first()
+    pipeline_version = row["updated_at"] if row else None
+    pv_str = pipeline_version.isoformat() if pipeline_version else ""
+
+    logger.info("reinitialize dispatch: file=%s pipeline_version=%s", fid, pv_str)
+
+    # 7. Trigger parse_document pipeline (pass pipeline_version for stale-task detection)
     try:
-        parse_document.delay(str(fid), str(tid))
+        parse_document.delay(str(fid), str(tid), pv_str)
     except Exception:
         logger.warning("Failed to dispatch parse_document task — Celery unavailable")
 
@@ -393,6 +412,114 @@ async def list_chunks(
             char_start=r.get("char_start"),
             char_end=r.get("char_end"),
             has_embedding=r.get("has_embedding", False),
+            created_at=r["created_at"],
+        )
+        for r in rows
+    ]
+
+
+# --- Tasks ---
+
+
+_TASK_TYPE_LABELS: dict[str, str] = {
+    "parse": "文档解析",
+    "chunk": "结构切片",
+    "embed": "向量化",
+    "index_tsv": "全文索引",
+    "extract_template": "模板抽取",
+    "extract_kg": "知识图谱",
+}
+
+
+@router.get("/files/{file_id}/tasks", response_model=list[TaskDTO])
+async def list_file_tasks(
+    file_id: str,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+    current_user: dict = Depends(get_current_user),  # noqa: B008
+):
+    from sqlalchemy import text
+
+    tid = get_tenant_id()
+    fid = uuid.UUID(file_id)
+
+    result = await session.execute(
+        text(
+            "SELECT id, file_id, dataset_id, task_type, status, progress, "
+            "error_message, started_at, completed_at, created_at "
+            "FROM metaedu.document_tasks "
+            "WHERE tenant_id = :tid AND file_id = :fid "
+            "ORDER BY created_at ASC"
+        ),
+        {"tid": tid, "fid": fid},
+    )
+    rows = result.mappings().all()
+    return [
+        TaskDTO(
+            id=r["id"],
+            file_id=r["file_id"],
+            dataset_id=r["dataset_id"],
+            task_type=r["task_type"],
+            status=r["status"],
+            progress=r["progress"],
+            error_message=r["error_message"],
+            label=_TASK_TYPE_LABELS.get(r["task_type"], r["task_type"]),
+            started_at=r["started_at"],
+            completed_at=r["completed_at"],
+            created_at=r["created_at"],
+        )
+        for r in rows
+    ]
+
+
+@router.post("/files/{file_id}/retry", response_model=list[TaskDTO])
+async def retry_file_tasks(
+    file_id: str,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+    current_user: dict = Depends(get_current_user),  # noqa: B008
+):
+    from sqlalchemy import text
+
+    tid = get_tenant_id()
+    fid = uuid.UUID(file_id)
+
+    # Reset failed/pending tasks to pending
+    await session.execute(
+        text(
+            "UPDATE metaedu.document_tasks "
+            "SET status = 'pending', progress = 0, error_message = NULL "
+            "WHERE tenant_id = :tid AND file_id = :fid AND status IN ('failed', 'pending')"
+        ),
+        {"tid": tid, "fid": fid},
+    )
+    await session.commit()
+
+    # Re-dispatch the first pending task (parse_document chains to the rest)
+    await parse_document.delay(file_id, str(tid))
+
+    # Return updated tasks
+    result = await session.execute(
+        text(
+            "SELECT id, file_id, dataset_id, task_type, status, progress, "
+            "error_message, started_at, completed_at, created_at "
+            "FROM metaedu.document_tasks "
+            "WHERE tenant_id = :tid AND file_id = :fid "
+            "ORDER BY created_at ASC"
+        ),
+        {"tid": tid, "fid": fid},
+    )
+    rows = result.mappings().all()
+    return [
+        TaskDTO(
+            id=r["id"],
+            file_id=r["file_id"],
+            dataset_id=r["dataset_id"],
+            task_type=r["task_type"],
+            status=r["status"],
+            progress=r["progress"],
+            error_message=r["error_message"],
+            label=_TASK_TYPE_LABELS.get(r["task_type"], r["task_type"]),
+            started_at=r["started_at"],
+            completed_at=r["completed_at"],
             created_at=r["created_at"],
         )
         for r in rows

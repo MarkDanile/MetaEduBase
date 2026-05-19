@@ -6,10 +6,11 @@ set -euo pipefail
 #   ./dev.sh          # 启动全部服务 (幂等: 已运行的服务跳过)
 #   ./dev.sh infra    # 仅启动基础设施 (PostgreSQL / Redis / MinIO)
 #   ./dev.sh backend  # 仅重启后端 (强制重启)
-#   ./dev.sh frontend # 仅重启前端 (强制重启)
+#   ./dev.sh frontend  # 仅重启前端 (强制重启)
+#   ./dev.sh celery   # 仅启动 Celery Worker
 #   ./dev.sh stop     # 停止全部服务
 #   ./dev.sh status   # 查看运行状态
-#   ./dev.sh logs     # 查看后端日志 (logs frontend 查看前端)
+#   ./dev.sh logs     # 查看后端日志 (logs frontend/celery 查看)
 #
 # 日常开发:
 #   首次: ./dev.sh                    → 全部启动
@@ -73,6 +74,10 @@ compose_cmd() {
 
 backend_is_running() {
   curl -sf http://localhost:8000/api/v1/health >/dev/null 2>&1
+}
+
+celery_is_running() {
+  pgrep -f "celery.*worker" >/dev/null 2>&1
 }
 
 frontend_is_running() {
@@ -262,6 +267,15 @@ restart_backend() {
   if wait_for_url http://localhost:8000/api/v1/health "Backend" 30; then
     ok "后端就绪 — http://localhost:8000"
   fi
+
+  # Also restart Celery if it was running
+  if celery_is_running; then
+    log "重启 Celery Worker..."
+    pkill -f "celery.*worker" 2>/dev/null || true
+    if [[ -f "$LOG_DIR/celery.pid" ]]; then rm -f "$LOG_DIR/celery.pid"; fi
+    sleep 1
+    start_celery
+  fi
 }
 
 start_frontend() {
@@ -286,6 +300,38 @@ start_frontend() {
   fi
 }
 
+start_celery() {
+  if celery_is_running; then
+    skip "Celery Worker" "已运行"
+    return
+  fi
+
+  local redis_ok=false
+  if docker_is_available && docker ps --format '{{.Names}}' 2>/dev/null | grep -q redis; then
+    redis_ok=true
+  elif nc -z localhost 6379 2>/dev/null; then
+    redis_ok=true
+  fi
+  if [[ "$redis_ok" != "true" ]]; then
+    warn "Redis 未运行，Celery Worker 跳过（文档解析/向量化任务将不可用）"
+    warn "请先执行 ./dev.sh infra 启动 Redis"
+    return
+  fi
+
+  cd "$SERVER_DIR"
+  if [[ ! -d ".venv" ]]; then
+    log "创建 Python 虚拟环境..."
+    python3 -m venv .venv
+    .venv/bin/pip install -e ".[dev,ai]" -q
+  fi
+  log "启动 Celery Worker..."
+  .venv/bin/celery -A app.celery_app worker --loglevel=info --pool=solo \
+    > "$LOG_DIR/celery.log" 2>&1 &
+  local pid=$!
+  echo "$pid" > "$LOG_DIR/celery.pid"
+  ok "Celery Worker 已启动 (PID: $pid)"
+}
+
 stop_all() {
   log "停止服务..."
   if [[ -f "$LOG_DIR/backend.pid" ]]; then
@@ -293,6 +339,11 @@ stop_all() {
     rm -f "$LOG_DIR/backend.pid"
   fi
   pkill -f "uvicorn app.main:app" 2>/dev/null || true
+  if [[ -f "$LOG_DIR/celery.pid" ]]; then
+    kill "$(cat "$LOG_DIR/celery.pid")" 2>/dev/null || true
+    rm -f "$LOG_DIR/celery.pid"
+  fi
+  pkill -f "celery.*worker" 2>/dev/null || true
   if [[ -f "$LOG_DIR/frontend.pid" ]]; then
     kill "$(cat "$LOG_DIR/frontend.pid")" 2>/dev/null || true
     rm -f "$LOG_DIR/frontend.pid"
@@ -344,6 +395,12 @@ show_status() {
     echo "│  Backend       ❌ 未运行                      │"
   fi
 
+  if celery_is_running; then
+    echo "│  Celery Worker ✅ 运行中 (文档解析/向量化)     │"
+  else
+    echo "│  Celery Worker ❌ 未运行 (文档解析/向量化不可用) │"
+  fi
+
   if curl -sf http://localhost:3000 >/dev/null 2>&1; then
     echo "│  Frontend      ✅ 运行中 (localhost:3000)     │"
   elif curl -sf http://localhost:3001 >/dev/null 2>&1; then
@@ -390,9 +447,13 @@ main() {
     all)
       start_infra
       start_backend
+      start_celery
       start_frontend
       echo ""
       show_status
+      ;;
+    celery)
+      start_celery
       ;;
     stop)
       stop_all
@@ -406,20 +467,23 @@ main() {
         tail -f "$LOG_DIR/backend.log"
       elif [[ "$target" == "frontend" ]]; then
         tail -f "$LOG_DIR/frontend.log"
+      elif [[ "$target" == "celery" ]]; then
+        tail -f "$LOG_DIR/celery.log"
       else
-        die "未知日志目标: $target (可选: backend, frontend)"
+        die "未知日志目标: $target (可选: backend, frontend, celery)"
       fi
       ;;
     *)
-      echo "用法: $0 {all|infra|backend|frontend|stop|status|logs}"
+      echo "用法: $0 {all|infra|backend|frontend|celery|stop|status|logs}"
       echo ""
       echo "  all       启动全部服务 (幂等: 已运行则跳过)"
       echo "  infra     仅启动基础设施 (PostgreSQL/Redis/MinIO)"
       echo "  backend   重启后端"
       echo "  frontend  重启前端"
+      echo "  celery    仅启动 Celery Worker"
       echo "  stop      停止全部服务"
       echo "  status    查看运行状态"
-      echo "  logs      查看日志 (backend/frontend)"
+      echo "  logs      查看日志 (backend/frontend/celery)"
       echo ""
       echo "日常开发:"
       echo "  首次:  ./dev.sh            → 全部启动"

@@ -100,8 +100,41 @@ async def _create_task(
 # --- Task 1: Parse document ---
 
 
+def _pipeline_version_key(ts: str | None) -> str:
+    """Normalize datetime to space-separated string for comparison.
+
+    Python's datetime.isoformat() uses 'T' separator (2026-05-18T06:46:54.604460)
+    but PostgreSQL's text output uses space (2026-05-18 06:46:54.604460).
+    """
+    if not ts:
+        return ""
+    return ts.replace("T", " ").split(".")[0]
+
+
+async def _check_pipeline_stale(session: AsyncSession, file_id: uuid.UUID, pipeline_version: str) -> bool:
+    """Return True if a newer pipeline has since started (reinitialize was called)."""
+    if not pipeline_version:
+        return False
+    result = await session.execute(
+        text("SELECT updated_at FROM metaedu.files WHERE id = :fid"),
+        {"fid": file_id},
+    )
+    row = result.mappings().first()
+    if not row:
+        return True
+    current_version = str(row["updated_at"])
+    # Normalize both to space-separated, microseconds-truncated for comparison
+    is_stale = _pipeline_version_key(current_version) != _pipeline_version_key(pipeline_version)
+    if is_stale:
+        logger.info(
+            "stale-check file=%s pipeline_version=%s current_version=%s → STALE (will abort)",
+            file_id, pipeline_version, current_version,
+        )
+    return is_stale
+
+
 @shared_task(name="parse_document")
-def parse_document(file_id_str: str, tenant_id_str: str):
+def parse_document(file_id_str: str, tenant_id_str: str, pipeline_version: str = ""):
     import asyncio
 
     file_id = uuid.UUID(file_id_str)
@@ -110,7 +143,6 @@ def parse_document(file_id_str: str, tenant_id_str: str):
     async def _do(session: AsyncSession):
         created_task_id: uuid.UUID | None = None
 
-        # Get file record
         result = await session.execute(
             text("SELECT * FROM metaedu.files WHERE id = :fid AND tenant_id = :tid"),
             {"fid": file_id, "tid": tenant_id},
@@ -128,6 +160,13 @@ def parse_document(file_id_str: str, tenant_id_str: str):
         await session.commit()
 
         try:
+            # Abort if pipeline is stale (reinitialize was called)
+            if await _check_pipeline_stale(session, file_id, pipeline_version):
+                logger.info("parse_document %s: stale pipeline, aborting", file_id)
+                await _update_task_status(session, task_id, "failed", 0, "Stale: reinitialize was called")
+                await session.commit()
+                return
+
             storage_key = row["storage_key"]
             file_type = row["file_type"]
             file_path = os.path.join(settings.upload_dir, storage_key)
@@ -141,7 +180,6 @@ def parse_document(file_id_str: str, tenant_id_str: str):
 
                 parsed = extract_docx_text(file_path)
             else:
-                # Fallback: read as plain text
                 with open(file_path, encoding="utf-8", errors="ignore") as f:
                     content = f.read()
                 from app.shared.parsing.pdf_parser import DocumentSection, ParsedDocument
@@ -151,12 +189,20 @@ def parse_document(file_id_str: str, tenant_id_str: str):
                     full_text=content,
                 )
 
-            # Store full_text in file's structured_data
+            # Verify still not stale before writing
+            if await _check_pipeline_stale(session, file_id, pipeline_version):
+                logger.info("parse_document %s: stale after parsing, aborting", file_id)
+                await _update_task_status(session, task_id, "failed", 0, "Stale: reinitialize was called")
+                await session.commit()
+                return
+
+            # Store full_text in file's structured_data — NOT updated_at
+            # (only reinitialize changes updated_at, used as pipeline version marker)
             await session.execute(
                 text(
                     "UPDATE metaedu.files "
                     "SET structured_data = CAST(:data AS JSONB), "
-                    "status = 'processing', updated_at = :now "
+                    "status = 'processing' "
                     "WHERE id = :fid"
                 ),
                 {
@@ -164,14 +210,13 @@ def parse_document(file_id_str: str, tenant_id_str: str):
                         "full_text": parsed.full_text,
                         "section_count": len(parsed.sections),
                     }),
-                    "now": datetime.now(UTC).replace(tzinfo=None),
                     "fid": file_id,
                 },
             )
             await _update_task_status(session, task_id, "success", 100)
 
-            # Chain to next task
-            chunk_document.delay(file_id_str, tenant_id_str)
+            # Chain to next task (pass version forward)
+            chunk_document.delay(file_id_str, tenant_id_str, pipeline_version)
 
         except Exception as e:
             if created_task_id:
@@ -179,11 +224,9 @@ def parse_document(file_id_str: str, tenant_id_str: str):
                     await _update_task_status(session, created_task_id, "failed", 0, str(e))
                     await session.execute(
                         text(
-                            "UPDATE metaedu.files "
-                            "SET status = 'failed', updated_at = :now "
-                            "WHERE id = :fid"
+                            "UPDATE metaedu.files SET status = 'failed' WHERE id = :fid"
                         ),
-                        {"now": datetime.now(UTC).replace(tzinfo=None), "fid": file_id},
+                        {"fid": file_id},
                     )
                     await session.commit()
                 except Exception:
@@ -200,7 +243,7 @@ def parse_document(file_id_str: str, tenant_id_str: str):
 
 
 @shared_task(name="chunk_document")
-def chunk_document(file_id_str: str, tenant_id_str: str):
+def chunk_document(file_id_str: str, tenant_id_str: str, pipeline_version: str = ""):
     import asyncio
 
     file_id = uuid.UUID(file_id_str)
@@ -209,9 +252,16 @@ def chunk_document(file_id_str: str, tenant_id_str: str):
     async def _do(session: AsyncSession):
         task_id = await _create_task(session, tenant_id, file_id, "chunk")
         await _update_task_status(session, task_id, "running", 0)
-        await session.commit()  # Commit status immediately before starting heavy work
+        await session.commit()
 
         try:
+            # Abort if pipeline is stale
+            if await _check_pipeline_stale(session, file_id, pipeline_version):
+                logger.info("chunk_document %s: stale pipeline, aborting", file_id)
+                await _update_task_status(session, task_id, "failed", 0, "Stale: reinitialize was called")
+                await session.commit()
+                return
+
             # Read parsed data
             result = await session.execute(
                 text(
@@ -268,6 +318,13 @@ def chunk_document(file_id_str: str, tenant_id_str: str):
             parsed = ParsedDocument(sections=sections, full_text=full_text)
             chunks = chunk_by_structure(parsed)
 
+            # Abort if pipeline became stale while processing
+            if await _check_pipeline_stale(session, file_id, pipeline_version):
+                logger.info("chunk_document %s: stale after chunking, aborting", file_id)
+                await _update_task_status(session, task_id, "failed", 0, "Stale: reinitialize was called")
+                await session.commit()
+                return
+
             # Delete old chunks
             await session.execute(
                 text(
@@ -306,11 +363,11 @@ def chunk_document(file_id_str: str, tenant_id_str: str):
             await _update_task_status(session, task_id, "success", 100)
 
             # Chain to next task
-            embed_chunks.delay(file_id_str, tenant_id_str)
+            embed_chunks.delay(file_id_str, tenant_id_str, pipeline_version)
 
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
-            await session.commit()  # Commit failure status before re-raising
+            await session.commit()
             raise
 
     asyncio.run(_run_in_session(_do))
@@ -320,7 +377,7 @@ def chunk_document(file_id_str: str, tenant_id_str: str):
 
 
 @shared_task(name="embed_chunks")
-def embed_chunks(file_id_str: str, tenant_id_str: str):
+def embed_chunks(file_id_str: str, tenant_id_str: str, pipeline_version: str = ""):
     import asyncio
 
     file_id = uuid.UUID(file_id_str)
@@ -332,6 +389,13 @@ def embed_chunks(file_id_str: str, tenant_id_str: str):
         await session.commit()
 
         try:
+            # Abort if pipeline is stale
+            if await _check_pipeline_stale(session, file_id, pipeline_version):
+                logger.info("embed_chunks %s: stale pipeline, aborting", file_id)
+                await _update_task_status(session, task_id, "failed", 0, "Stale: reinitialize was called")
+                await session.commit()
+                return
+
             result = await session.execute(
                 text(
                     "SELECT id, content FROM metaedu.document_chunks "
@@ -347,7 +411,7 @@ def embed_chunks(file_id_str: str, tenant_id_str: str):
 
             if not chunks:
                 await _update_task_status(session, task_id, "success", 100)
-                index_tsvector.delay(file_id_str, tenant_id_str)
+                index_tsvector.delay(file_id_str, tenant_id_str, pipeline_version)
                 return
 
             # Batch embedding — SiliconFlow supports batch input
@@ -391,9 +455,9 @@ def embed_chunks(file_id_str: str, tenant_id_str: str):
                 embeddings = await batch_embed_siliconflow(texts)
 
             if not embeddings:
-                logger.warning("All embedding providers failed for all chunks")
-                await _update_task_status(session, task_id, "success", 100)
-                index_tsvector.delay(file_id_str, tenant_id_str)
+                logger.error("All embedding providers failed for all %d chunks (file=%s)", total, file_id)
+                await _update_task_status(session, task_id, "failed", 0, "Embedding API failed: MiniMax and SiliconFlow both returned no results")
+                await session.commit()
                 return
 
             # Batch update all chunks
@@ -410,11 +474,11 @@ def embed_chunks(file_id_str: str, tenant_id_str: str):
             await _update_task_status(session, task_id, "success", 100)
 
             # Chain to next task
-            index_tsvector.delay(file_id_str, tenant_id_str)
+            index_tsvector.delay(file_id_str, tenant_id_str, pipeline_version)
 
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
-            await session.commit()  # Commit failure status before re-raising
+            await session.commit()
             raise
 
     asyncio.run(_run_in_session(_do))
@@ -424,7 +488,7 @@ def embed_chunks(file_id_str: str, tenant_id_str: str):
 
 
 @shared_task(name="index_tsvector")
-def index_tsvector(file_id_str: str, tenant_id_str: str):
+def index_tsvector(file_id_str: str, tenant_id_str: str, pipeline_version: str = ""):
     import asyncio
 
     file_id = uuid.UUID(file_id_str)
@@ -436,6 +500,13 @@ def index_tsvector(file_id_str: str, tenant_id_str: str):
         await session.commit()
 
         try:
+            # Abort if pipeline is stale
+            if await _check_pipeline_stale(session, file_id, pipeline_version):
+                logger.info("index_tsvector %s: stale pipeline, aborting", file_id)
+                await _update_task_status(session, task_id, "failed", 0, "Stale: reinitialize was called")
+                await session.commit()
+                return
+
             result = await session.execute(
                 text(
                     "SELECT id FROM metaedu.document_chunks "
@@ -455,24 +526,29 @@ def index_tsvector(file_id_str: str, tenant_id_str: str):
                     {"cid": chunk_id},
                 )
 
-            # Update file status to processed
+            # Re-check staleness before updating file status to 'processed'
+            if await _check_pipeline_stale(session, file_id, pipeline_version):
+                logger.info("index_tsvector %s: stale before status update, aborting", file_id)
+                await _update_task_status(session, task_id, "failed", 0, "Stale: reinitialize was called")
+                await session.commit()
+                return
+
+            # Update file status to processed — NOT updated_at (only reinitialize changes that)
             await session.execute(
                 text(
-                    "UPDATE metaedu.files "
-                    "SET status = 'processed', updated_at = :now "
-                    "WHERE id = :fid"
+                    "UPDATE metaedu.files SET status = 'processed' WHERE id = :fid"
                 ),
-                {"now": datetime.now(UTC).replace(tzinfo=None), "fid": file_id},
+                {"fid": file_id},
             )
 
             await _update_task_status(session, task_id, "success", 100)
 
             # Always chain to extract_template (does LLM summarization if no template defined)
-            extract_template.delay(file_id_str, tenant_id_str)
+            extract_template.delay(file_id_str, tenant_id_str, pipeline_version)
 
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
-            await session.commit()  # Commit failure status before re-raising
+            await session.commit()
             raise
 
     asyncio.run(_run_in_session(_do))
@@ -482,7 +558,7 @@ def index_tsvector(file_id_str: str, tenant_id_str: str):
 
 
 @shared_task(name="extract_template")
-def extract_template(file_id_str: str, tenant_id_str: str):
+def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str = ""):
     import asyncio
 
     file_id = uuid.UUID(file_id_str)
@@ -494,6 +570,11 @@ def extract_template(file_id_str: str, tenant_id_str: str):
         await session.commit()
 
         try:
+            # Note: extract_template skips stale check — it's idempotent and runs at
+            # the end of the pipeline. The stale check (comparing updated_at) is
+            # unreliable here because upstream tasks (index_tsvector) may have
+            # already updated updated_at to mark the pipeline as done.
+
             # Get chunks content and doc_type hint
             result = await session.execute(
                 text(
@@ -520,25 +601,31 @@ def extract_template(file_id_str: str, tenant_id_str: str):
 
                 if doc_type == "教案":
                     prompt = (
-                        "请从以下教案内容中提取结构化信息，返回JSON格式：\n"
-                        "包含字段：course_name(课程名), chapter(章节), objectives(教学目标数组), "
-                        "key_points(重点数组), difficulties(难点数组), methods(教学方法数组), duration(课时)。\n\n"
+                        "请从以下教案内容中提取JSON格式的结构化信息，将所有字段翻译为中文，只返回JSON不要任何解释：\n"
+                        "字段：course_name(课程名), chapter(章节), objectives[教学目标数组], key_points[重点数组], difficulties[难点数组], methods[教学方法数组], duration(课时)\n\n"
                         f"内容：\n{chunks_text[:6000]}"
                     )
                 else:
                     prompt = (
-                        "请对以下文档内容进行结构化摘要提取，返回JSON格式：\n"
-                        "包含字段：title(文档标题/主题), summary(100字内的摘要), "
-                        "sections(主要章节列表), key_points(关键要点数组), "
-                        "keywords(关键词数组，最多5个)。\n\n"
+                        "请对以下文档内容提取结构化摘要，将所有字段翻译为中文，只返回JSON不要任何解释：\n"
+                        "字段：title(中文标题), summary(100字内中文摘要), sections[中文章节列表], key_points[中文关键要点], keywords[中文关键词最多5个]\n\n"
                         f"内容：\n{chunks_text[:6000]}"
                     )
 
                 def try_parse(content: str) -> dict:
+                    import re as regexmod
+                    # Strip MiniMax-M2 thinking tags that may appear before JSON
+                    stripped = regexmod.sub(r"<think>.*?</think>", "", content, flags=regexmod.DOTALL).strip()
+                    m = regexmod.search(r"```(?:json)?\s*(\{.*?\})\s*```", stripped, regexmod.DOTALL)
+                    if m:
+                        try:
+                            return json.loads(m.group(1))
+                        except json.JSONDecodeError:
+                            pass
                     try:
-                        json_start = content.index("{")
-                        json_end = content.rindex("}") + 1
-                        return json.loads(content[json_start:json_end])
+                        json_start = stripped.index("{")
+                        json_end = stripped.rindex("}") + 1
+                        return json.loads(stripped[json_start:json_end])
                     except (ValueError, json.JSONDecodeError):
                         return {}
 
@@ -556,20 +643,27 @@ def extract_template(file_id_str: str, tenant_id_str: str):
                 except Exception as e:
                     logger.warning(f"extract_template MiniMax failed: {e}")
 
-                # Fallback to SiliconFlow
+                # Fallback to SiliconFlow (use chat model, not embedding model)
                 if not template_data and settings.siliconflow_api_key:
                     try:
                         async with httpx.AsyncClient(timeout=60.0) as client:
                             resp = await client.post(
                                 f"{settings.siliconflow_base_url}/chat/completions",
                                 headers={"Authorization": f"Bearer {settings.siliconflow_api_key}"},
-                                json={"model": settings.siliconflow_embedding_model, "messages": [{"role": "user", "content": prompt}]},
+                                json={
+                                    "model": "Qwen/Qwen2.5-7B-Instruct",
+                                    "messages": [{"role": "user", "content": prompt}],
+                                    "temperature": 0.1,
+                                },
                             )
                             resp.raise_for_status()
                             content = resp.json()["choices"][0]["message"]["content"]
                             template_data = try_parse(content)
                     except Exception as e:
                         logger.warning(f"extract_template SiliconFlow failed: {e}")
+
+            if not template_data:
+                logger.warning("extract_template: LLM returned no template data for file=%s (chunks=%d)", file_id, len(rows))
 
             # Save to file structured_data
             result = await session.execute(
@@ -586,11 +680,10 @@ def extract_template(file_id_str: str, tenant_id_str: str):
 
             await session.execute(
                 text(
-                    "UPDATE metaedu.files SET structured_data = CAST(:data AS JSONB), updated_at = :now WHERE id = :fid"
+                    "UPDATE metaedu.files SET structured_data = CAST(:data AS JSONB) WHERE id = :fid"
                 ),
                 {
                     "data": json.dumps(existing_data),
-                    "now": datetime.now(UTC).replace(tzinfo=None),
                     "fid": file_id,
                 },
             )
@@ -598,11 +691,11 @@ def extract_template(file_id_str: str, tenant_id_str: str):
             await _update_task_status(session, task_id, "success", 100)
 
             # Chain to KG extraction
-            extract_knowledge_graph.delay(file_id_str, tenant_id_str)
+            extract_knowledge_graph.delay(file_id_str, tenant_id_str, pipeline_version)
 
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
-            await session.commit()  # Commit failure status before re-raising
+            await session.commit()
             raise
 
     asyncio.run(_run_in_session(_do))
@@ -612,7 +705,7 @@ def extract_template(file_id_str: str, tenant_id_str: str):
 
 
 @shared_task(name="extract_knowledge_graph")
-def extract_knowledge_graph(file_id_str: str, tenant_id_str: str):
+def extract_knowledge_graph(file_id_str: str, tenant_id_str: str, pipeline_version: str = ""):
     import asyncio
 
     file_id = uuid.UUID(file_id_str)
@@ -624,6 +717,10 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str):
         await session.commit()
 
         try:
+            # Note: extract_knowledge_graph skips stale check — it's idempotent and
+            # downstream. Removing the updated_at-based stale check avoids false
+            # positives from index_tsvector marking the file as processed.
+
             # Get chunks with embeddings
             result = await session.execute(
                 text(
@@ -650,9 +747,9 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str):
                     f"[{c['section_title'] or '段落'}] {c['content'][:500]}" for c in chunks
                 )
                 prompt = (
-                    "请从以下文本中提取知识实体和关系，返回JSON格式（relations中的source和target必须是entities数组中的name字段值）：\n"
-                    '{"entities": [{"name": "实体名", "type": "类型"}], '
-                    '"relations": [{"source": "实体1名称", "target": "实体2名称", "relation": "关系描述"}]}\n\n'
+                    "请从以下文本中提取知识实体和关系，将所有实体名称翻译为中文，只返回JSON不要任何解释：\n"
+                    '{"entities": [{"name": "中文实体名", "type": "类型"}], '
+                    '"relations": [{"source": "中文实体1", "target": "中文实体2", "relation": "关系描述"}]}\n\n'
                     f"文本：\n{chunks_text[:6000]}"
                 )
                 async with httpx.AsyncClient(timeout=60.0) as client:
@@ -667,13 +764,22 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str):
                     )
                     resp.raise_for_status()
                     content = resp.json()["choices"][0]["message"]["content"]
-                    try:
-                        json_start = content.index("{")
-                        json_end = content.rindex("}") + 1
-                        kg_data = json.loads(content[json_start:json_end])
-                    except (ValueError, json.JSONDecodeError):
-                        logger.warning("KG extraction MiniMax JSON parse failed, raw content: %s", content[:500])
-                        kg_data = {"entities": [], "relations": []}
+                    import re as regexmod
+                    stripped = regexmod.sub(r"<think>.*?</think>", "", content, flags=regexmod.DOTALL).strip()
+                    kg_data = {"entities": [], "relations": []}
+                    m = regexmod.search(r"```(?:json)?\s*(\{.*?\})\s*```", stripped, regexmod.DOTALL)
+                    if m:
+                        try:
+                            kg_data = json.loads(m.group(1))
+                        except json.JSONDecodeError:
+                            pass
+                    if not kg_data.get("entities"):
+                        try:
+                            json_start = stripped.index("{")
+                            json_end = stripped.rindex("}") + 1
+                            kg_data = json.loads(stripped[json_start:json_end])
+                        except (ValueError, json.JSONDecodeError):
+                            logger.warning("KG extraction JSON parse failed, raw content: %s", content[:300])
 
                 # Fallback to SiliconFlow if MiniMax returned empty
                 if not kg_data.get("entities") and settings.siliconflow_api_key:
@@ -690,9 +796,16 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str):
                             )
                             resp.raise_for_status()
                             content = resp.json()["choices"][0]["message"]["content"]
-                            json_start = content.index("{")
-                            json_end = content.rindex("}") + 1
-                            kg_data = json.loads(content[json_start:json_end])
+                            m = regexmod.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, regexmod.DOTALL)
+                            if m:
+                                kg_data = json.loads(m.group(1))
+                            else:
+                                try:
+                                    json_start = content.index("{")
+                                    json_end = content.rindex("}") + 1
+                                    kg_data = json.loads(content[json_start:json_end])
+                                except (ValueError, json.JSONDecodeError):
+                                    logger.warning("KG extraction SiliconFlow JSON parse failed: %s", content[:300])
                     except Exception as e:
                         logger.warning("KG extraction SiliconFlow fallback failed: %s", e)
 
