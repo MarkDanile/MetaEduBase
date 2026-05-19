@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-m3"
 
     siliconflow_base_url: str = "https://api.siliconflow.cn/v1"
-    siliconflow_embedding_model: str = "BAAI/bge-m3"
+    siliconflow_embedding_model: str = "Qwen/Qwen3-Embedding-8B"
     minimax_embedding_model: str = "emboir"
 
     ner_backend: str = "rule"

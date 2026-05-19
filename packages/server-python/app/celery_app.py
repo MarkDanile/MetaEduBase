@@ -19,5 +19,19 @@ celery_app.conf.update(
 
 # Manually import all tasks to ensure they are registered
 # Document tasks
+from app.contexts.document.tasks import (
+    parse_document,
+    chunk_document,
+    embed_chunks,
+    index_tsvector,
+    extract_template,
+    extract_knowledge_graph,
+)
 
 # Structured data tasks
+from app.contexts.structured_data.tasks import (
+    ds_parse,
+    ds_embed,
+    ds_extract_kg,
+    ds_build_cross_dataset_edges,
+)

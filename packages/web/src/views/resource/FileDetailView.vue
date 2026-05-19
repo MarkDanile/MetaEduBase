@@ -42,8 +42,8 @@
           <h3 class="text-[var(--text-section-title)] font-medium text-[var(--color-ink)]">处理流水线</h3>
           <div class="flex items-center gap-2">
             <span v-if="polling" class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">自动刷新中...</span>
-            <button class="liquid-btn-ghost px-2 py-1" @click="loadTasks">
-              <RefreshCw :size="14" :class="{ 'animate-spin': loadingTasks }" />
+            <button class="liquid-btn-ghost px-2 py-1" @click="refreshAll">
+              <RefreshCw :size="14" :class="{ 'animate-spin': loadingTasks || loading }" />
             </button>
           </div>
         </div>
@@ -298,6 +298,19 @@ async function loadTasks() {
   }
 }
 
+async function refreshAll() {
+  loadingTasks.value = true;
+  loading.value = true;
+  try {
+    await Promise.all([loadFile(), loadTasks()]);
+    if (activeTab.value === "chunks") await loadChunks();
+    if (activeTab.value === "kg") await loadKg();
+  } finally {
+    loadingTasks.value = false;
+    loading.value = false;
+  }
+}
+
 async function loadChunks() {
   loadingChunks.value = true;
   try {
@@ -430,24 +443,22 @@ async function doDelete() {
 
 // --- Tab data loading ---
 watch(activeTab, () => {
-  if (activeTab.value === "chunks" && chunks.value.length === 0) loadChunks();
-  if (activeTab.value === "kg" && kgNodes.value.length === 0) loadKg();
+  if (activeTab.value === "structured") loadFile();
+  if (activeTab.value === "chunks") loadChunks();
+  if (activeTab.value === "kg") loadKg();
 });
 
 // --- Auto-poll ---
 function startPolling() {
   if (pollTimer) return;
   pollTimer = setInterval(async () => {
-    if (polling.value) {
-      await loadTasks();
-    } else {
-      // All tasks finished — refresh file data to show structured_data
-      stopPolling();
-      await loadFile();
-      // Also load tab data if tab is active
-      if (activeTab.value === "chunks") await loadChunks();
-      if (activeTab.value === "kg") await loadKg();
-    }
+    await loadTasks();
+    if (polling.value) return;
+    // All tasks finished — refresh file data + all tabs
+    stopPolling();
+    await loadFile();
+    await loadChunks();
+    await loadKg();
   }, 3000);
 }
 
