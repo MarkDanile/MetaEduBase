@@ -136,7 +136,8 @@ async def get_knowledge_graph(
         for row in nodes_result.mappings().all()
     ]
 
-    # Get edges (include metadata for cross-dataset detection)
+    # Get edges (only those whose source and target both exist in the node set)
+    node_ids = {n["id"] for n in nodes}
     edges_result = await session.execute(
         text(
             "SELECT id, source_id, target_id, relation_type, metadata "
@@ -154,6 +155,7 @@ async def get_knowledge_graph(
             "metadata": row.get("metadata"),
         }
         for row in edges_result.mappings().all()
+        if str(row["source_id"]) in node_ids and str(row["target_id"]) in node_ids
     ]
 
     return {"nodes": nodes, "edges": edges}
