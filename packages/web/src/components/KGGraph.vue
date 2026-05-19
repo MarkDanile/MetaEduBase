@@ -193,12 +193,11 @@ onUnmounted(() => {
 });
 
 watch(
-  () => [props.nodes, props.edges],
+  [() => props.nodes, () => props.edges],
   () => {
     if (!graph) return;
     graph.setData(buildGraphData());
     graph.render();
   },
-  { deep: true }
 );
 </script>

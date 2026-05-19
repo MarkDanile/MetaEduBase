@@ -718,10 +718,6 @@ function toggleKgOverview() {
   }
 }
 
-watch(showKgOverview, (val) => {
-  if (val && kgOverviewNodes.value.length === 0) loadKgOverview();
-});
-
 // --- Tab data loading ---
 watch(activeTab, () => {
   if (activeTab.value === "kg" && kgNodes.value.length === 0) loadKg();
