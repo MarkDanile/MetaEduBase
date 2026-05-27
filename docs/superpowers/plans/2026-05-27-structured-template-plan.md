@@ -617,6 +617,22 @@ async def init_template_by_ai(
     # TODO: 接入 LLM 分析文档结构，生成字段定义
     # 临时返回模拟数据，后续 Task 6 实现
     raise HTTPException(status_code=501, detail="Not implemented")
+
+@router.get("/check-doc-type", response_model=dict)
+async def check_doc_type(
+    doc_type: str,
+    service: TemplateService = Depends(get_template_service),
+    current_user: dict = Depends(get_current_user),
+):
+    """检查文档类型是否已被其他模板使用，返回使用情况"""
+    tenant_id = get_tenant_id()
+    templates = await service.list(UUID(tenant_id))
+    used_by = [t for t in templates if doc_type in t["doc_types"]]
+    return {
+        "doc_type": doc_type,
+        "used": len(used_by) > 0,
+        "templates": [{"id": t["id"], "name": t["name"]} for t in used_by],
+    }
 ```
 
 - [ ] **Step 5: 注册 Router**
@@ -815,6 +831,11 @@ export const templateApi = {
       doc_type: docType,
       source_file_id: sourceFileId,
     })
+  },
+  checkDocType(docType: string) {
+    return api.get<{ doc_type: string; used: boolean; templates: { id: string; name: string }[] }>(
+      `/templates/check-doc-type?doc_type=${encodeURIComponent(docType)}`
+    )
   },
 }
 ```
