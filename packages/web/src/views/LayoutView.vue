@@ -138,6 +138,7 @@ import {
   ChevronUp,
   Cog,
   User,
+  LayoutTemplate,
 } from "lucide-vue-next";
 import { useThemeStore, type ThemeId } from "@/stores/theme";
 
@@ -167,6 +168,7 @@ const navItems: { title: string; route: string; icon: Component }[] = [
   { title: "AI 问答", route: "/ai-chat", icon: MessageSquare },
   { title: "技能编排", route: "/skill-editor", icon: Settings },
   { title: "系统管理", route: "/admin", icon: Cog },
+  { title: "数据要素模板", route: "/admin/template", icon: LayoutTemplate },
 ];
 
 function isActive(routePath: string) {
