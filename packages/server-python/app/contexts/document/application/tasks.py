@@ -19,6 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings
+from app.contexts.template.infrastructure.repository import TemplateRepositoryImpl
 
 logger = logging.getLogger(__name__)
 
@@ -590,6 +591,32 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
             chunks_text = "\n".join(row["content"] for row in rows)
             doc_type = rows[0]["doc_type"] if rows else None
 
+            # Query template by doc_type, fall back to default prompt if not found
+            template_obj = await TemplateRepositoryImpl(session).get_by_doc_type(doc_type, tenant_id) if doc_type else None
+
+            # Build prompt: use template.ai_prompt > template.fields > default
+            if template_obj and template_obj.ai_prompt:
+                prompt_template = template_obj.ai_prompt
+            elif template_obj and template_obj.fields:
+                fields_desc = ", ".join(f["key"] + (f"({f['label']})" if f.get("label") else "") for f in [f.to_dict() if hasattr(f, 'to_dict') else f for f in template_obj.fields])
+                prompt_template = (
+                    f"请从以下文档内容中提取JSON格式的结构化信息，将所有字段翻译为中文，只返回JSON不要任何解释：\n"
+                    f"字段：{fields_desc}\n\n"
+                    f"内容：\n{chunks_text[:6000]}"
+                )
+            elif doc_type == "教案":
+                prompt_template = (
+                    "请从以下教案内容中提取JSON格式的结构化信息，将所有字段翻译为中文，只返回JSON不要任何解释：\n"
+                    "字段：course_name(课程名), chapter(章节), objectives[教学目标数组], key_points[重点数组], difficulties[难点数组], methods[教学方法数组], duration(课时)\n\n"
+                    f"内容：\n{chunks_text[:6000]}"
+                )
+            else:
+                prompt_template = (
+                    "请对以下文档内容提取结构化摘要，将所有字段翻译为中文，只返回JSON不要任何解释：\n"
+                    "字段：title(中文标题), summary(100字内中文摘要), sections[中文章节列表], key_points[中文关键要点], keywords[中文关键词最多5个]\n\n"
+                    f"内容：\n{chunks_text[:6000]}"
+                )
+
             # Call LLM (MiniMax via OpenAI-compatible API)
             api_key = settings.minimax_api_key
             base_url = settings.minimax_base_url
@@ -599,18 +626,7 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
             if api_key:
                 import httpx
 
-                if doc_type == "教案":
-                    prompt = (
-                        "请从以下教案内容中提取JSON格式的结构化信息，将所有字段翻译为中文，只返回JSON不要任何解释：\n"
-                        "字段：course_name(课程名), chapter(章节), objectives[教学目标数组], key_points[重点数组], difficulties[难点数组], methods[教学方法数组], duration(课时)\n\n"
-                        f"内容：\n{chunks_text[:6000]}"
-                    )
-                else:
-                    prompt = (
-                        "请对以下文档内容提取结构化摘要，将所有字段翻译为中文，只返回JSON不要任何解释：\n"
-                        "字段：title(中文标题), summary(100字内中文摘要), sections[中文章节列表], key_points[中文关键要点], keywords[中文关键词最多5个]\n\n"
-                        f"内容：\n{chunks_text[:6000]}"
-                    )
+                prompt = prompt_template
 
                 def try_parse(content: str) -> dict:
                     import re as regexmod
