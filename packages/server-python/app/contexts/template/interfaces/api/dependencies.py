@@ -3,14 +3,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.template.application.service import TemplateService
 from app.contexts.template.infrastructure.repository import TemplateRepositoryImpl
-from app.shared.infrastructure.database import async_session
+from app.shared.infrastructure.database import get_session
 
-
-async def get_template_session() -> AsyncSession:
-    async with async_session() as session:
-        yield session
 
 def get_template_service(
-    session: AsyncSession = Depends(get_template_session),
+    session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> TemplateService:
     return TemplateService(TemplateRepositoryImpl(session))

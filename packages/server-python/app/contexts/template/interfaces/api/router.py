@@ -1,6 +1,5 @@
 from uuid import UUID
 
-from app.shared.infrastructure.tenant_context import get_tenant_id
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
@@ -13,6 +12,7 @@ from app.contexts.template.application.dto import (
 )
 from app.contexts.template.application.service import TemplateService
 from app.contexts.template.interfaces.api.dependencies import get_template_service
+from app.shared.infrastructure.tenant_context import get_tenant_id
 
 router = APIRouter(prefix="/api/v1/templates", tags=["templates"])
 

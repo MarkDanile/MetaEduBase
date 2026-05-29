@@ -12,6 +12,7 @@ from app.contexts.knowledge.interfaces.api.ai_router import router as ai_router
 from app.contexts.knowledge.interfaces.api.router import router as knowledge_router
 from app.contexts.resource.interfaces.api.router import router as resource_router
 from app.contexts.structured_data.interfaces.api.router import router as structured_data_router
+from app.contexts.template.interfaces.api.router import router as template_router
 from app.contexts.structured_data.interfaces.api.task_router import (
     router as structured_data_task_router,
 )
@@ -60,6 +61,7 @@ app.include_router(
     prefix="/api/v1/structured-data",
     tags=["structured-data-tasks"],
 )
+app.include_router(template_router)
 
 
 @app.get("/api/v1/health")
