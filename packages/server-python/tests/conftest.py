@@ -39,9 +39,12 @@ async def _get_test_session():
 @pytest_asyncio.fixture
 async def client():
     engine = create_async_engine(TEST_DB_URL, echo=False, poolclass=NullPool)
+
+    # Clean template table before test run to ensure fresh state
     async with engine.begin() as conn:
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS metaedu"))
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text("TRUNCATE TABLE metaedu.templates RESTART IDENTITY CASCADE"))
     await _ensure_seed(engine)
     await engine.dispose()
 
@@ -50,6 +53,12 @@ async def client():
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
+
+    # Clean up template table after each test to prevent data leaking between tests
+    cleanup_engine = create_async_engine(TEST_DB_URL, echo=False, poolclass=NullPool)
+    async with cleanup_engine.begin() as conn:
+        await conn.execute(text("TRUNCATE TABLE metaedu.templates RESTART IDENTITY CASCADE"))
+    await cleanup_engine.dispose()
 
 
 async def _ensure_seed(engine):
