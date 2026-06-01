@@ -100,38 +100,14 @@
             title="暂无结构化数据"
             hint="等待模板抽取任务完成"
           />
-          <div v-else class="space-y-3">
-            <div
+          <div v-else class="p-3 rounded-lg border border-[var(--color-border)] space-y-1">
+            <FieldValue
               v-for="(value, key) in templateData"
               :key="key"
-              class="p-3 rounded-lg border border-[var(--color-border)]"
-            >
-              <p class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-1">{{ templateFieldLabel(key) }}</p>
-              <!-- Table data -->
-              <TableRenderer
-                v-if="isTableData(value)"
-                :columns="(value as Record<string, unknown>).columns as any || []"
-                :rows="(value as Record<string, unknown>).rows as any || []"
-              />
-              <!-- Object data -->
-              <details v-else-if="isObjectData(value)" class="mt-1">
-                <summary class="text-[var(--text-caption)] text-[var(--color-accent)] cursor-pointer">查看详情</summary>
-                <div class="mt-2 pl-2 border-l border-[var(--panel-border)] space-y-1">
-                  <div v-for="(objVal, objKey) in (value as Record<string, unknown>)" :key="objKey">
-                    <span class="text-[var(--text-small)] text-[var(--color-ink-tertiary)]">{{ objKey }}:</span>
-                    <span class="text-[var(--text-caption)] text-[var(--color-ink)] ml-1">{{ formatValue(objVal) }}</span>
-                  </div>
-                </div>
-              </details>
-              <!-- Array data -->
-              <div v-else-if="isArrayData(value)" class="mt-1">
-                <div v-for="(item, idx) in (value as unknown[])" :key="idx" class="text-[var(--text-caption)] text-[var(--color-ink)]">
-                  {{ idx + 1 }}. {{ formatValue(item) }}
-                </div>
-              </div>
-              <!-- Primitive data -->
-              <p v-else class="text-[var(--text-caption)] text-[var(--color-ink)]">{{ formatValue(value) }}</p>
-            </div>
+              :label="templateFieldLabel(key)"
+              :value="value"
+              :depth="0"
+            />
           </div>
         </div>
 
@@ -229,7 +205,7 @@ import LoadingSpinner from "@/components/LoadingSpinner.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import KGGraph from "@/components/KGGraph.vue";
 import KGDetailPanel from "@/components/KGDetailPanel.vue";
-import TableRenderer from "@/components/TableRenderer.vue";
+import FieldValue from "./FieldValue.vue";
 import { useToast } from "@/composables/useToast";
 import { documentApi, type FileDTO, type ChunkDTO, type TaskDTO } from "@/services/document";
 import { knowledgeApi, type KnowledgeNodeDTO, type KnowledgeEdgeDTO } from "@/services/knowledge";
@@ -301,23 +277,6 @@ function isPrimitiveValue(v: unknown): boolean {
   return typeof v !== 'object' || v === null
 }
 
-function isTableData(v: unknown): boolean {
-  return typeof v === 'object' && v !== null && 'rows' in (v as Record<string, unknown>)
-}
-
-function isObjectData(v: unknown): boolean {
-  return typeof v === 'object' && v !== null && !Array.isArray(v) && !('rows' in (v as Record<string, unknown>))
-}
-
-function isArrayData(v: unknown): boolean {
-  return Array.isArray(v)
-}
-
-function formatValue(v: unknown): string {
-  if (v === null || v === undefined) return '-'
-  if (typeof v === 'string') return v || '-'
-  return JSON.stringify(v)
-}
 
 // --- Data loading ---
 async function loadFile() {

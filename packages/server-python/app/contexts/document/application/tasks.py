@@ -592,8 +592,58 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
             chunks_text = "\n".join(row["content"] for row in rows)
             doc_type = rows[0]["doc_type"] if rows else None
 
-            # Query template by doc_type, fall back to default prompt if not found
-            template_obj = await TemplateRepositoryImpl(session).get_by_doc_type(doc_type, tenant_id) if doc_type else None
+            # 匹配优先级：精确 doc_type → AI 置信度 → 通用
+            template_obj = None
+
+            # 第一层：精确 doc_type 匹配
+            if doc_type:
+                template_obj = await TemplateRepositoryImpl(session).get_by_doc_type(doc_type, tenant_id)
+
+            # 第二层：AI 置信度匹配（仅第一层未命中时触发）
+            if not template_obj:
+                all_templates = await TemplateRepositoryImpl(session).list(tenant_id)
+                if all_templates:
+                    all_doc_types = list({dt for t in all_templates for dt in t.doc_types})
+                    match_prompt = (
+                        f"文档内容摘要：{chunks_text[:500]}\n"
+                        f"可选文档类型：{all_doc_types}\n"
+                        f"请判断这份文档最适合哪种文档类型，返回格式：类型名称\\n置信度分数（0.0~1.0，如\"教案\\n0.85\"）"
+                    )
+                    try:
+                        response = (await chat(
+                            messages=[{"role": "user", "content": match_prompt}],
+                            temperature=0.0,
+                            timeout=30.0,
+                        )).strip()
+                        # 解析响应：取第一行作为类型，第二行作为置信度
+                        lines = [l.strip() for l in response.splitlines() if l.strip()]
+                        if len(lines) >= 2:
+                            matched_type = lines[0]
+                            try:
+                                confidence = float(lines[1])
+                            except ValueError:
+                                confidence = 0.0
+                        elif len(lines) == 1:
+                            matched_type = lines[0]
+                            confidence = 0.5  # 无法解析置信度时保守处理
+                        else:
+                            matched_type = ""
+                            confidence = 0.0
+
+                        if confidence >= 0.7:
+                            template_obj = next(
+                                (t for t in all_templates if matched_type in t.doc_types), None
+                            )
+                            if template_obj:
+                                logger.info("extract_template: AI matched doc_type=%r (conf=%.2f) → template=%s",
+                                            matched_type, confidence, template_obj.name)
+                            else:
+                                logger.warning("extract_template: AI matched %r (conf=%.2f) but no template found",
+                                            matched_type, confidence)
+                        else:
+                            logger.info("extract_template: AI confidence %.2f < 0.7, using generic template", confidence)
+                    except Exception as e:
+                        logger.warning("extract_template: AI template match failed: %s", e)
 
             # Build prompt: use template.ai_prompt > template.fields > default
             if template_obj and template_obj.ai_prompt:
