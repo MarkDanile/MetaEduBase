@@ -28,6 +28,41 @@
           </div>
           <span v-if="!collapsed" class="nav-label">{{ item.title }}</span>
         </RouterLink>
+
+        <!-- Admin submenu -->
+        <div class="nav-admin-section">
+          <button
+            class="nav-item nav-item-admin"
+            :class="{ 'nav-item-collapsed': collapsed }"
+            @click="adminExpanded = !adminExpanded"
+            :title="collapsed ? '系统管理' : undefined"
+          >
+            <div class="nav-icon">
+              <Cog :size="18" :stroke-width="1.5" />
+            </div>
+            <span v-if="!collapsed" class="nav-label flex-1">系统管理</span>
+            <ChevronDown
+              v-if="!collapsed"
+              :size="14"
+              :class="{ 'rotate-180': adminExpanded }"
+              class="text-[var(--color-ink-tertiary)] transition-transform"
+            />
+          </button>
+          <div v-if="adminExpanded && !collapsed" class="nav-admin-subitems">
+            <RouterLink
+              v-for="item in adminItems"
+              :key="item.route"
+              :to="item.route"
+              class="nav-item nav-item-sub"
+              :class="{ 'nav-item-active': isActive(item.route) }"
+            >
+              <div class="nav-icon">
+                <component :is="item.icon" :size="16" :stroke-width="1.5" />
+              </div>
+              <span class="nav-label">{{ item.title }}</span>
+            </RouterLink>
+          </div>
+        </div>
       </nav>
 
       <div class="relative px-2 pb-3 pt-3 border-t border-[var(--color-border)]">
@@ -167,9 +202,13 @@ const navItems: { title: string; route: string; icon: Component }[] = [
   { title: "数据库", route: "/database", icon: Database },
   { title: "AI 问答", route: "/ai-chat", icon: MessageSquare },
   { title: "技能编排", route: "/skill-editor", icon: Settings },
-  { title: "系统管理", route: "/admin", icon: Cog },
+];
+
+const adminItems = [
   { title: "数据要素模板", route: "/admin/template", icon: LayoutTemplate },
 ];
+
+const adminExpanded = ref(false);
 
 function isActive(routePath: string) {
   if (routePath === "/") return route.path === "/";
@@ -319,5 +358,28 @@ onUnmounted(() => {
   .nav-item-active .nav-icon::before {
     animation: none;
   }
+}
+
+.nav-admin-section {
+  margin-top: 2px;
+}
+
+.nav-item-admin {
+  justify-content: flex-start !important;
+}
+
+.nav-admin-subitems {
+  margin-left: 8px;
+  padding-left: 8px;
+  border-left: 1px solid var(--panel-border);
+}
+
+.nav-item-sub {
+  height: 38px !important;
+  padding-left: 12px !important;
+}
+
+.nav-item-sub .nav-icon {
+  opacity: 0.7;
 }
 </style>
