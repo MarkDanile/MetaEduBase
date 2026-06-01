@@ -29,6 +29,7 @@ def _entity_to_dto(entity: Template) -> dict:
         "doc_types": entity.doc_types,
         "fields": [f.to_dict() for f in entity.fields],
         "ai_prompt": entity.ai_prompt,
+        "ai_context": entity.ai_context,
         "source_file_id": str(entity.source_file_id) if entity.source_file_id else None,
         "created_at": entity.created_at.isoformat(),
         "updated_at": entity.updated_at.isoformat(),
@@ -54,6 +55,7 @@ class TemplateService:
             doc_types=dto.doc_types,
             fields=[_dto_to_entity(f) for f in dto.fields],
             ai_prompt=dto.ai_prompt,
+            ai_context=dto.ai_context,
             source_file_id=UUID(dto.source_file_id) if dto.source_file_id else None,
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
@@ -73,6 +75,8 @@ class TemplateService:
             existing.fields = [_dto_to_entity(f) for f in dto.fields]
         if dto.ai_prompt is not None:
             existing.ai_prompt = dto.ai_prompt
+        if dto.ai_context is not None:
+            existing.ai_context = dto.ai_context
         if dto.source_file_id is not None:
             existing.source_file_id = UUID(dto.source_file_id)
         existing.updated_at = datetime.now(UTC)

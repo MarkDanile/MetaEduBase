@@ -60,8 +60,20 @@
         <p class="text-[var(--text-small)] text-[var(--color-ink-tertiary)]">
           上传样例文档，AI 自动分析结构并生成字段定义
         </p>
-        <div class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] text-center py-8">
-          AI 初始化功能即将上线
+
+        <div>
+          <label class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-1 block">
+            补充说明（可选）
+          </label>
+          <textarea
+            v-model="form.ai_context"
+            class="liquid-input w-full resize-none"
+            rows="3"
+            placeholder="补充说明（可选）——如：课程标准模板需包含前置能力与知识基础"
+          />
+          <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)] mt-1">
+            此说明仅供 AI 参考，不会强制要求模型输出
+          </p>
         </div>
       </div>
     </div>
@@ -95,6 +107,7 @@ const form = ref({
   doc_types: [] as string[],
   fields: [] as Field[],
   ai_prompt: null as string | null,
+  ai_context: null as string | null,
   source_file_id: null as string | null,
 })
 
@@ -118,6 +131,7 @@ async function load(id: string) {
     form.value.doc_types = [...data.doc_types]
     form.value.fields = JSON.parse(JSON.stringify(data.fields))
     form.value.ai_prompt = data.ai_prompt
+    form.value.ai_context = data.ai_context
     form.value.source_file_id = data.source_file_id
   } catch {
     toast.error('加载模板失败')
@@ -140,6 +154,7 @@ async function save() {
         doc_types: form.value.doc_types,
         fields: form.value.fields,
         ai_prompt: form.value.ai_prompt,
+        ai_context: form.value.ai_context,
         source_file_id: form.value.source_file_id,
       })
       toast.success('创建成功')
@@ -149,6 +164,7 @@ async function save() {
         doc_types: form.value.doc_types,
         fields: form.value.fields,
         ai_prompt: form.value.ai_prompt,
+        ai_context: form.value.ai_context,
         source_file_id: form.value.source_file_id,
       })
       toast.success('保存成功')

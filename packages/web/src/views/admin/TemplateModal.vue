@@ -251,6 +251,7 @@ const form = ref({
   doc_types: [] as string[],
   fields: [] as Field[],
   ai_prompt: null as string | null,
+  ai_context: null as string | null,
   source_file_id: null as string | null,
 })
 
@@ -263,6 +264,7 @@ watch(() => props.open, (val) => {
       form.value.doc_types = [...props.template.doc_types]
       form.value.fields = ensureIds(props.template.fields)
       form.value.ai_prompt = props.template.ai_prompt
+      form.value.ai_context = props.template.ai_context ?? null
       form.value.source_file_id = props.template.source_file_id
     }
   }
@@ -292,6 +294,7 @@ function resetForm() {
     doc_types: [],
     fields: [],
     ai_prompt: null,
+    ai_context: null,
     source_file_id: null,
   }
   docTypeInput.value = ''
@@ -453,7 +456,7 @@ async function regenerateAI() {
   if (generating.value) return
   generating.value = true
   try {
-    const { data } = await templateApi.initByAI(aiDocType.value, form.value.source_file_id || undefined)
+    const { data } = await templateApi.initByAI(aiDocType.value, form.value.source_file_id || undefined, form.value.ai_context || undefined)
     if (data.fields && data.fields.length > 0) {
       form.value.fields = ensureIds(data.fields)
       aiGenerated.value = true
@@ -485,6 +488,7 @@ async function handleSave() {
       doc_types: form.value.doc_types,
       fields: form.value.fields,
       ai_prompt: form.value.ai_prompt,
+      ai_context: form.value.ai_context,
       source_file_id: form.value.source_file_id,
     }
 

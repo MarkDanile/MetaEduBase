@@ -13,6 +13,7 @@ class TemplateModel(Base):
     doc_types = Column(ARRAY(String(50)), nullable=False)
     fields = Column(JSONB(), nullable=False)
     ai_prompt = Column(Text, nullable=True)
+    ai_context = Column(Text, nullable=True)
     source_file_id = Column(UUID(as_uuid=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False)

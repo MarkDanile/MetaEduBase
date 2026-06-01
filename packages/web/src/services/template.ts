@@ -24,6 +24,7 @@ export interface Template {
   doc_types: string[];
   fields: Field[];
   ai_prompt: string | null;
+  ai_context: string | null;
   source_file_id: string | null;
   created_at: string;
   updated_at: string;
