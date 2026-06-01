@@ -83,7 +83,7 @@ class TemplateService:
         await self.repo.delete(template_id, tenant_id)
 
     async def init_by_ai(
-        self, doc_type: str, source_file_id: UUID | None, tenant_id: UUID
+        self, doc_type: str, source_file_id: UUID | None, tenant_id: UUID, ai_context: str | None = None
     ) -> list[dict]:
         """Use LLM to generate field definitions from doc type and optional sample document."""
         # Build context: doc type description + optional file content
@@ -128,6 +128,8 @@ class TemplateService:
             "你是一个专业的教育领域数据提取助手，擅长分析教案、课程标准、试卷等职教文档的结构，"
             "并生成准确的结构化字段定义。你的输出严格是 JSON 数组格式。"
         )
+        if ai_context:
+            system_prompt += "\n\n补充上下文：" + ai_context
 
         # Call LLM
         content = await _call_llm(system_prompt, user_prompt)

@@ -52,6 +52,7 @@ class TemplateResponse(BaseModel):
 class TemplateAIInitRequest(BaseModel):
     doc_type: str
     source_file_id: str | None = None
+    ai_context: str | None = None
 
 class TemplateAIInitResponse(BaseModel):
     fields: list[FieldDTO]

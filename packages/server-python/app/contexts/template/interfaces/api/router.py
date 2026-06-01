@@ -54,7 +54,7 @@ async def init_template_by_ai(
     source_file_uuid = UUID(dto.source_file_id) if dto.source_file_id else None
     # get_tenant_id() may return UUID or str depending on context
     tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
-    fields = await service.init_by_ai(dto.doc_type, source_file_uuid, tenant_uuid)
+    fields = await service.init_by_ai(dto.doc_type, source_file_uuid, tenant_uuid, dto.ai_context)
     # Validate and convert to FieldDTO
     validated = []
     for f in fields:
