@@ -175,6 +175,17 @@
                 </div>
               </div>
 
+              <div class="mb-4">
+                <label class="text-[11px] text-[var(--color-ink-tertiary)] mb-1.5 block">补充说明（可选）</label>
+                <textarea
+                  v-model="form.ai_context"
+                  class="liquid-input w-full resize-none text-[12px]"
+                  rows="3"
+                  placeholder="补充说明（可选）——如：课程标准模板需包含前置能力与知识基础"
+                />
+                <p class="text-[10px] text-[var(--color-ink-tertiary)] mt-1">此说明仅供 AI 参考，不会强制要求模型输出</p>
+              </div>
+
               <button
                 class="liquid-btn liquid-btn-primary w-full justify-center text-[13px] py-2"
                 :disabled="generating"
