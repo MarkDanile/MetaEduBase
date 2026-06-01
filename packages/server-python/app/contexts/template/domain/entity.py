@@ -55,10 +55,11 @@ class Template:
     name: str
     doc_types: list[str]
     fields: list[Field]
-    ai_prompt: str | None
-    source_file_id: UUID | None
-    created_at: datetime
-    updated_at: datetime
+    ai_prompt: str | None = None
+    ai_context: str | None = None
+    source_file_id: UUID | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     @classmethod
     def from_db_row(cls, row: Any) -> Template:
