@@ -209,6 +209,7 @@ import FieldValue from "./FieldValue.vue";
 import { useToast } from "@/composables/useToast";
 import { documentApi, type FileDTO, type ChunkDTO, type TaskDTO } from "@/services/document";
 import { knowledgeApi, type KnowledgeNodeDTO, type KnowledgeEdgeDTO } from "@/services/knowledge";
+import { templateApi, type Template } from "@/services/template";
 import { DOC_TASK_STEPS, TASK_STATUS_MAP, FILE_STATUS_MAP } from "@/constants/pipeline";
 
 const route = useRoute();
@@ -230,6 +231,7 @@ const loadingChunks = ref(false);
 const loadingKg = ref(false);
 const activeTab = ref("structured");
 const showDelete = ref(false);
+const templates = ref<Template[]>([]);
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 const tabs = [
@@ -247,20 +249,7 @@ const templateData = computed(() => {
 });
 
 function templateFieldLabel(key: string): string {
-  const labels: Record<string, string> = {
-    course_name: "课程名称",
-    chapter: "章节",
-    objectives: "教学目标",
-    key_points: "重点",
-    difficulties: "难点",
-    methods: "教学方法",
-    duration: "课时",
-    title: "文档标题",
-    summary: "摘要",
-    sections: "主要章节",
-    keywords: "关键词",
-  };
-  return labels[key] ?? key;
+  return getFieldLabel(key);
 }
 
 function formatTemplateValue(value: unknown): string {
@@ -342,6 +331,47 @@ async function loadKg() {
   } finally {
     loadingKg.value = false;
   }
+}
+
+async function loadTemplates() {
+  try {
+    const { data } = await templateApi.list();
+    templates.value = data;
+  } catch {
+    // Silently fail — templates are optional
+  }
+}
+
+function getFieldLabel(key: string): string {
+  // Try to find a template field with matching key
+  for (const t of templates.value) {
+    const field = t.fields.find((f) => f.key === key);
+    if (field) return field.label;
+  }
+  // Fallback to hard-coded map
+  const labels: Record<string, string> = {
+    course_name: "课程名称",
+    course_code: "课程代码",
+    semester: "授课学期",
+    department: "开课单位",
+    teacher: "主讲教师",
+    target_class: "授课班级",
+    total_hours: "课程总学时",
+    theory_hours: "理论学时",
+    practice_hours: "实践学时",
+    exam_mode: "考核方式",
+    textbook: "教材及参考书",
+    course_description: "课程简介",
+    teaching_objectives: "教学目标",
+    teaching_content_outline: "教学内容纲要",
+    teaching_schedule: "教学进度安排",
+    evaluation_plan: "课程评价方案",
+    title: "文档标题",
+    summary: "摘要",
+    sections: "主要章节",
+    keywords: "关键词",
+  };
+  return labels[key] ?? key;
 }
 
 // --- Pipeline helpers ---
@@ -476,8 +506,7 @@ function stopPolling() {
 
 // --- Init ---
 onMounted(async () => {
-  await loadFile();
-  await loadTasks();
+  await Promise.all([loadFile(), loadTasks(), loadTemplates()]);
   startPolling();
 });
 
