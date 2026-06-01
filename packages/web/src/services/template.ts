@@ -8,6 +8,7 @@ export interface TableColumn {
 }
 
 export interface Field {
+  id?: string;
   key: string;
   label: string;
   type: "text" | "textarea" | "number" | "object" | "table" | "array";
