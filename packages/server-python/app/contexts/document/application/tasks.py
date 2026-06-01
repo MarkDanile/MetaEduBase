@@ -577,10 +577,10 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
             # unreliable here because upstream tasks (index_tsvector) may have
             # already updated updated_at to mark the pipeline as done.
 
-            # Get chunks content and doc_type hint
+            # Get chunks content, doc_type, and filename
             result = await session.execute(
                 text(
-                    "SELECT dc.content, f.doc_type "
+                    "SELECT dc.content, f.doc_type, f.filename "
                     "FROM metaedu.document_chunks dc "
                     "JOIN metaedu.files f ON f.id = dc.file_id "
                     "WHERE dc.file_id = :fid AND dc.tenant_id = :tid "
@@ -591,6 +591,7 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
             rows = result.mappings().all()
             chunks_text = "\n".join(row["content"] for row in rows)
             doc_type = rows[0]["doc_type"] if rows else None
+            filename = rows[0]["filename"] if rows else ""
 
             # 匹配优先级：精确 doc_type → AI 置信度 → 通用
             template_obj = None
@@ -599,7 +600,19 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
             if doc_type:
                 template_obj = await TemplateRepositoryImpl(session).get_by_doc_type(doc_type, tenant_id)
 
-            # 第二层：AI 置信度匹配（仅第一层未命中时触发）
+            # 第二层：文件名模糊匹配（doc_type 为空时，文件名含"课程标准"等关键词）
+            if not template_obj and filename:
+                all_templates = await TemplateRepositoryImpl(session).list(tenant_id)
+                for t in all_templates:
+                    for dt in t.doc_types:
+                        if dt and dt in filename:
+                            template_obj = t
+                            logger.info("extract_template: filename match %r in doc_types → template=%s", dt, t.name)
+                            break
+                    if template_obj:
+                        break
+
+            # 第三层：AI 置信度匹配（仅前两层未命中时触发）
             if not template_obj:
                 all_templates = await TemplateRepositoryImpl(session).list(tenant_id)
                 if all_templates:
