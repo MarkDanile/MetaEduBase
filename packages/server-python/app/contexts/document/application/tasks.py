@@ -664,9 +664,6 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
                 )
 
             prompt = prompt_template
-            # Inject ai_context if template has one
-            if template_obj and getattr(template_obj, 'ai_context', None):
-                prompt += f"\n\n补充上下文（仅供参考）：{template_obj.ai_context}"
 
             def try_parse(content: str) -> dict:
                 import re as regexmod
