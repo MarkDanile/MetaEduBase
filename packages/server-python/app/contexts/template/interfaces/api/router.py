@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.contexts.template.application.dto import (
+    FieldDTO,
     TemplateAIInitRequest,
     TemplateAIInitResponse,
     TemplateCreate,
@@ -49,7 +50,19 @@ async def init_template_by_ai(
     service: TemplateService = Depends(get_template_service),
     current_user: dict = Depends(get_current_user),
 ):
-    raise HTTPException(status_code=501, detail="Not implemented")
+    tenant_id = get_tenant_id()
+    source_file_uuid = UUID(dto.source_file_id) if dto.source_file_id else None
+    # get_tenant_id() may return UUID or str depending on context
+    tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
+    fields = await service.init_by_ai(dto.doc_type, source_file_uuid, tenant_uuid)
+    # Validate and convert to FieldDTO
+    validated = []
+    for f in fields:
+        try:
+            validated.append(FieldDTO(**f))
+        except Exception:
+            pass  # Skip invalid fields
+    return TemplateAIInitResponse(fields=validated)
 
 
 @router.post("", response_model=TemplateResponse, status_code=status.HTTP_201_CREATED)
