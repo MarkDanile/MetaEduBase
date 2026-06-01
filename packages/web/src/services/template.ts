@@ -45,10 +45,11 @@ export const templateApi = {
   delete(id: string) {
     return api.delete(`/templates/${id}`);
   },
-  initByAI(docType: string, sourceFileId?: string) {
+  initByAI(docType: string, sourceFileId?: string, aiContext?: string) {
     return api.post<{ fields: Field[] }>("/templates/init-by-ai", {
       doc_type: docType,
       source_file_id: sourceFileId,
+      ai_context: aiContext,
     });
   },
   checkDocType(docType: string) {
