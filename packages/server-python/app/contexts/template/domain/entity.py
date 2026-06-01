@@ -71,6 +71,7 @@ class Template:
             doc_types=list(row.doc_types or []),
             fields=[Field.from_dict(f) for f in raw_fields],
             ai_prompt=row.ai_prompt,
+            ai_context=getattr(row, 'ai_context', None),
             source_file_id=row.source_file_id,
             created_at=row.created_at,
             updated_at=row.updated_at,

@@ -41,6 +41,7 @@ class TemplateRepositoryImpl(TemplateRepository):
             doc_types=template.doc_types,
             fields=[f.to_dict() for f in template.fields],
             ai_prompt=template.ai_prompt,
+            ai_context=template.ai_context,
             source_file_id=template.source_file_id,
             created_at=template.created_at,
             updated_at=template.updated_at,
@@ -60,6 +61,7 @@ class TemplateRepositoryImpl(TemplateRepository):
             model.doc_types = template.doc_types
             model.fields = [f.to_dict() for f in template.fields]
             model.ai_prompt = template.ai_prompt
+            model.ai_context = template.ai_context
             model.source_file_id = template.source_file_id
             model.updated_at = template.updated_at
         await self.session.flush()
