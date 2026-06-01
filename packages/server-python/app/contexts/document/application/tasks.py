@@ -651,9 +651,10 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
             elif template_obj and template_obj.fields:
                 fields_desc = ", ".join(f["key"] + (f"({f['label']})" if f.get("label") else "") for f in [f.to_dict() if hasattr(f, 'to_dict') else f for f in template_obj.fields])
                 prompt_template = (
-                    f"请从以下文档内容中提取JSON格式的结构化信息，将所有字段翻译为中文，只返回JSON不要任何解释：\n"
-                    f"字段：{fields_desc}\n\n"
-                    f"内容：\n{chunks_text[:6000]}"
+                    f"请严格根据以下字段定义，从文档内容中提取JSON格式的结构化信息：\n"
+                    f"必须使用的字段：{fields_desc}\n"
+                    f"要求：JSON的key必须与上述字段key完全一致，value从文档内容中提取，每个字段都必须有值（文档中没有的内容填写\"-\"），只返回JSON不要任何解释。\n\n"
+                    f"文档内容：\n{chunks_text[:6000]}"
                 )
             else:
                 prompt_template = (
@@ -663,6 +664,9 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
                 )
 
             prompt = prompt_template
+            # Inject ai_context if template has one
+            if template_obj and getattr(template_obj, 'ai_context', None):
+                prompt += f"\n\n补充上下文（仅供参考）：{template_obj.ai_context}"
 
             def try_parse(content: str) -> dict:
                 import re as regexmod
