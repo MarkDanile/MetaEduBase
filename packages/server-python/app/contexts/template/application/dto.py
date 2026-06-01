@@ -26,6 +26,7 @@ class TemplateCreate(BaseModel):
     doc_types: list[str]
     fields: list[FieldDTO]
     ai_prompt: str | None = None
+    ai_context: str | None = None
     source_file_id: str | None = None
 
 class TemplateUpdate(BaseModel):
@@ -33,6 +34,7 @@ class TemplateUpdate(BaseModel):
     doc_types: list[str] | None = None
     fields: list[FieldDTO] | None = None
     ai_prompt: str | None = None
+    ai_context: str | None = None
     source_file_id: str | None = None
 
 class TemplateResponse(BaseModel):
@@ -42,6 +44,7 @@ class TemplateResponse(BaseModel):
     doc_types: list[str]
     fields: list[FieldDTO]
     ai_prompt: str | None
+    ai_context: str | None
     source_file_id: str | None
     created_at: str
     updated_at: str
