@@ -364,8 +364,14 @@ async def reinitialize_file(
         {"tid": tid, "fid": fid},
     )
 
-    # 5. Reset file status to 'uploaded' (repo.update auto-updates updated_at)
-    await repo.update(fid, tid, status="uploaded")
+    # 5. Reset file status to 'uploaded' and clear structured_data (repo.update auto-updates updated_at)
+    await session.execute(
+        text(
+            "UPDATE metaedu.files SET status = 'uploaded', structured_data = NULL, updated_at = :now "
+            "WHERE id = :fid AND tenant_id = :tid"
+        ),
+        {"fid": fid, "tid": tid, "now": datetime.now(UTC).replace(tzinfo=None)},
+    )
 
     # 6. Capture the NEW updated_at AFTER the update — this is our pipeline version marker
     result = await session.execute(
