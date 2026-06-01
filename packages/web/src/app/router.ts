@@ -57,6 +57,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import("@/views/admin/TemplateListView.vue"),
         meta: { title: "数据要素模板", requiresAuth: true },
       },
+      {
+        path: "admin/template/:id",
+        name: "TemplateDetail",
+        component: () => import("@/views/admin/TemplateEditorView.vue"),
+        meta: { title: "模板详情", requiresAuth: true },
+      },
     ],
   },
 ];

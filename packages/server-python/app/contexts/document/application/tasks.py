@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.config import settings
 from app.contexts.template.infrastructure.repository import TemplateRepositoryImpl
+from app.shared.llm.chat import chat
 
 logger = logging.getLogger(__name__)
 
@@ -604,12 +605,6 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
                     f"字段：{fields_desc}\n\n"
                     f"内容：\n{chunks_text[:6000]}"
                 )
-            elif doc_type == "教案":
-                prompt_template = (
-                    "请从以下教案内容中提取JSON格式的结构化信息，将所有字段翻译为中文，只返回JSON不要任何解释：\n"
-                    "字段：course_name(课程名), chapter(章节), objectives[教学目标数组], key_points[重点数组], difficulties[难点数组], methods[教学方法数组], duration(课时)\n\n"
-                    f"内容：\n{chunks_text[:6000]}"
-                )
             else:
                 prompt_template = (
                     "请对以下文档内容提取结构化摘要，将所有字段翻译为中文，只返回JSON不要任何解释：\n"
@@ -617,66 +612,36 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
                     f"内容：\n{chunks_text[:6000]}"
                 )
 
-            # Call LLM (MiniMax via OpenAI-compatible API)
-            api_key = settings.minimax_api_key
-            base_url = settings.minimax_base_url
-            model = settings.minimax_model
+            prompt = prompt_template
 
-            template_data = {}
-            if api_key:
-                import httpx
-
-                prompt = prompt_template
-
-                def try_parse(content: str) -> dict:
-                    import re as regexmod
-                    # Strip MiniMax-M2 thinking tags that may appear before JSON
-                    stripped = regexmod.sub(r"<think>.*?</think>", "", content, flags=regexmod.DOTALL).strip()
-                    m = regexmod.search(r"```(?:json)?\s*(\{.*?\})\s*```", stripped, regexmod.DOTALL)
-                    if m:
-                        try:
-                            return json.loads(m.group(1))
-                        except json.JSONDecodeError:
-                            pass
+            def try_parse(content: str) -> dict:
+                import re as regexmod
+                # Strip MiniMax-M2 thinking tags that may appear before JSON
+                stripped = regexmod.sub(r"<think>.*?</think>", "", content, flags=regexmod.DOTALL).strip()
+                m = regexmod.search(r"```(?:json)?\s*(\{.*?\})\s*```", stripped, regexmod.DOTALL)
+                if m:
                     try:
-                        json_start = stripped.index("{")
-                        json_end = stripped.rindex("}") + 1
-                        return json.loads(stripped[json_start:json_end])
-                    except (ValueError, json.JSONDecodeError):
-                        return {}
-
-                # Try MiniMax first
+                        return json.loads(m.group(1))
+                    except json.JSONDecodeError:
+                        pass
                 try:
-                    async with httpx.AsyncClient(timeout=60.0) as client:
-                        resp = await client.post(
-                            f"{base_url}/chat/completions",
-                            headers={"Authorization": f"Bearer {api_key}"},
-                            json={"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0.1},
-                        )
-                        resp.raise_for_status()
-                        content = resp.json()["choices"][0]["message"]["content"]
-                        template_data = try_parse(content)
-                except Exception as e:
-                    logger.warning(f"extract_template MiniMax failed: {e}")
+                    json_start = stripped.index("{")
+                    json_end = stripped.rindex("}") + 1
+                    return json.loads(stripped[json_start:json_end])
+                except (ValueError, json.JSONDecodeError):
+                    return {}
 
-                # Fallback to SiliconFlow (use chat model, not embedding model)
-                if not template_data and settings.siliconflow_api_key:
-                    try:
-                        async with httpx.AsyncClient(timeout=60.0) as client:
-                            resp = await client.post(
-                                f"{settings.siliconflow_base_url}/chat/completions",
-                                headers={"Authorization": f"Bearer {settings.siliconflow_api_key}"},
-                                json={
-                                    "model": "Qwen/Qwen2.5-7B-Instruct",
-                                    "messages": [{"role": "user", "content": prompt}],
-                                    "temperature": 0.1,
-                                },
-                            )
-                            resp.raise_for_status()
-                            content = resp.json()["choices"][0]["message"]["content"]
-                            template_data = try_parse(content)
-                    except Exception as e:
-                        logger.warning(f"extract_template SiliconFlow failed: {e}")
+            # Use auto-selected provider (deepseek -> minimax -> siliconflow -> dashscope)
+            template_data: dict = {}
+            try:
+                content = await chat(
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.1,
+                    timeout=60.0,
+                )
+                template_data = try_parse(content)
+            except Exception as e:
+                logger.warning(f"extract_template LLM call failed: {e}")
 
             if not template_data:
                 logger.warning("extract_template: LLM returned no template data for file=%s (chunks=%d)", file_id, len(rows))
@@ -751,79 +716,36 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str, pipeline_versi
                 await _update_task_status(session, task_id, "success", 100)
                 return
 
-            # Call LLM to extract entities and relations (MiniMax)
-            api_key = settings.minimax_api_key
-            base_url = settings.minimax_base_url
-            model = settings.minimax_model
-
-            if api_key:
-                import httpx
-
-                chunks_text = "\n".join(
-                    f"[{c['section_title'] or '段落'}] {c['content'][:500]}" for c in chunks
-                )
-                prompt = (
-                    "请从以下文本中提取知识实体和关系，将所有实体名称翻译为中文，只返回JSON不要任何解释：\n"
-                    '{"entities": [{"name": "中文实体名", "type": "类型"}], '
-                    '"relations": [{"source": "中文实体1", "target": "中文实体2", "relation": "关系描述"}]}\n\n'
-                    f"文本：\n{chunks_text[:6000]}"
-                )
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    resp = await client.post(
-                        f"{base_url}/chat/completions",
-                        headers={"Authorization": f"Bearer {api_key}"},
-                        json={
-                            "model": model,
-                            "messages": [{"role": "user", "content": prompt}],
-                            "temperature": 0.1,
-                        },
-                    )
-                    resp.raise_for_status()
-                    content = resp.json()["choices"][0]["message"]["content"]
-                    import re as regexmod
-                    stripped = regexmod.sub(r"<think>.*?</think>", "", content, flags=regexmod.DOTALL).strip()
-                    kg_data = {"entities": [], "relations": []}
-                    m = regexmod.search(r"```(?:json)?\s*(\{.*?\})\s*```", stripped, regexmod.DOTALL)
-                    if m:
-                        try:
-                            kg_data = json.loads(m.group(1))
-                        except json.JSONDecodeError:
-                            pass
-                    if not kg_data.get("entities"):
-                        try:
-                            json_start = stripped.index("{")
-                            json_end = stripped.rindex("}") + 1
-                            kg_data = json.loads(stripped[json_start:json_end])
-                        except (ValueError, json.JSONDecodeError):
-                            logger.warning("KG extraction JSON parse failed, raw content: %s", content[:300])
-
-                # Fallback to SiliconFlow if MiniMax returned empty
-                if not kg_data.get("entities") and settings.siliconflow_api_key:
-                    try:
-                        async with httpx.AsyncClient(timeout=60.0) as client:
-                            resp = await client.post(
-                                f"{settings.siliconflow_base_url}/chat/completions",
-                                headers={"Authorization": f"Bearer {settings.siliconflow_api_key}"},
-                                json={
-                                    "model": "Qwen/Qwen3-8B",
-                                    "messages": [{"role": "user", "content": prompt}],
-                                    "temperature": 0.1,
-                                },
-                            )
-                            resp.raise_for_status()
-                            content = resp.json()["choices"][0]["message"]["content"]
-                            m = regexmod.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, regexmod.DOTALL)
-                            if m:
-                                kg_data = json.loads(m.group(1))
-                            else:
-                                try:
-                                    json_start = content.index("{")
-                                    json_end = content.rindex("}") + 1
-                                    kg_data = json.loads(content[json_start:json_end])
-                                except (ValueError, json.JSONDecodeError):
-                                    logger.warning("KG extraction SiliconFlow JSON parse failed: %s", content[:300])
-                    except Exception as e:
-                        logger.warning("KG extraction SiliconFlow fallback failed: %s", e)
+            chunks_text = "\n".join(
+                f"[{c['section_title'] or '段落'}] {c['content'][:500]}" for c in chunks
+            )
+            prompt = (
+                "请从以下文本中提取知识实体和关系，将所有实体名称翻译为中文，只返回JSON不要任何解释：\n"
+                '{"entities": [{"name": "中文实体名", "type": "类型"}], '
+                '"relations": [{"source": "中文实体1", "target": "中文实体2", "relation": "关系描述"}]}\n\n'
+                f"文本：\n{chunks_text[:6000]}"
+            )
+            content = await chat(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                timeout=60.0,
+            )
+            import re as regexmod
+            stripped = regexmod.sub(r"<think>.*?</think>", "", content, flags=regexmod.DOTALL).strip()
+            kg_data = {"entities": [], "relations": []}
+            m = regexmod.search(r"```(?:json)?\s*(\{.*?\})\s*```", stripped, regexmod.DOTALL)
+            if m:
+                try:
+                    kg_data = json.loads(m.group(1))
+                except json.JSONDecodeError:
+                    pass
+            if not kg_data.get("entities"):
+                try:
+                    json_start = stripped.index("{")
+                    json_end = stripped.rindex("}") + 1
+                    kg_data = json.loads(stripped[json_start:json_end])
+                except (ValueError, json.JSONDecodeError):
+                    logger.warning("KG extraction JSON parse failed, raw content: %s", content[:300])
 
                 # Write entities to knowledge_nodes with source tracking
                 # Build name→id map so relations can reference nodes by name
