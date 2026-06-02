@@ -662,11 +662,38 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
             if template_obj and template_obj.ai_prompt:
                 prompt_template = template_obj.ai_prompt
             elif template_obj and template_obj.fields:
-                fields_desc = ", ".join(f["key"] + (f"({f['label']})" if f.get("label") else "") for f in [f.to_dict() if hasattr(f, 'to_dict') else f for f in template_obj.fields])
+
+                def build_fields_desc(fields, indent=0):
+                    """Recursively describe nested field structure for LLM."""
+                    lines = []
+                    for f in fields:
+                        key = f.get("key", "")
+                        label = f.get("label", "")
+                        ftype = f.get("type", "text")
+                        prefix = "  " * indent
+                        if ftype == "object" and f.get("children"):
+                            children_desc = build_fields_desc(f["children"], indent + 1)
+                            lines.append(f"{prefix}{key}({label})[object型，含子字段：{children_desc}]")
+                        elif ftype == "array" and f.get("items"):
+                            item_key = f["items"][0].get("key", "item") if f["items"] else "item"
+                            lines.append(f"{prefix}{key}({label})[array型，成员为object，含字段：{item_key}]")
+                        elif ftype == "table" and f.get("columns"):
+                            col_names = ", ".join(c["key"] for c in f["columns"])
+                            lines.append(f"{prefix}{key}({label})[table型，列：{col_names}]")
+                        else:
+                            lines.append(f"{prefix}{key}({label})[{ftype}型]")
+                    return ", ".join(lines)
+
+                fields_desc = build_fields_desc([f.to_dict() if hasattr(f, "to_dict") else f for f in template_obj.fields])
                 prompt_template = (
                     f"请严格根据以下字段定义，从文档内容中提取JSON格式的结构化信息：\n"
-                    f"必须使用的字段：{fields_desc}\n"
-                    f"要求：JSON的key必须与上述字段key完全一致，value从文档内容中提取，每个字段都必须有值（文档中没有的内容填写\"-\"），只返回JSON不要任何解释。\n\n"
+                    f"字段结构说明：{fields_desc}\n"
+                    f"要求：\n"
+                    f"1. JSON的key必须与上述字段key完全一致\n"
+                    f"2. object型字段（如basic_info、teaching_objectives）的value必须是嵌套的JSON对象，包含对应的子字段\n"
+                    f"3. array型字段（如teaching_process）的value必须是JSON数组，每个成员是包含子字段的object\n"
+                    f"4. table型字段的value必须是JSON数组，每行是一个object\n"
+                    f"5. 文档中没有的内容填写\"-\"，只返回JSON不要任何解释\n\n"
                     f"文档内容：\n{chunks_text[:6000]}"
                 )
             else:
