@@ -282,13 +282,24 @@ async def delete_file(
     # 1. Delete document chunks
     await chunk_repo.delete_by_file(fid, tid)
 
-    # 2. Delete knowledge nodes linked to this file
+    # 2. Delete knowledge edges linked to nodes of this file
+    await session.execute(
+        text(
+            "DELETE FROM metaedu.knowledge_edges WHERE source_id IN "
+            "(SELECT id FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_file_id = :fid) "
+            "OR target_id IN "
+            "(SELECT id FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_file_id = :fid)"
+        ),
+        {"tid": tid, "fid": fid},
+    )
+
+    # 3. Delete knowledge nodes linked to this file
     await session.execute(
         text("DELETE FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_file_id = :fid"),
         {"tid": tid, "fid": fid},
     )
 
-    # 3. Delete document tasks linked to this file
+    # 4. Delete document tasks linked to this file
     await session.execute(
         text("DELETE FROM metaedu.document_tasks WHERE tenant_id = :tid AND file_id = :fid"),
         {"tid": tid, "fid": fid},
