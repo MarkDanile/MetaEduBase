@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据要素模板 — 原型预览 v2</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        accent: '#6366f1',
+        'accent-bg': 'rgba(99,102,241,0.08)',
+      }
+    }
+  }
+}
+</script>
+<style>
+:root {
+  --color-ink: #1a1a2e;
+  --color-ink-secondary: #374151;
+  --color-ink-tertiary: #9ca3af;
+  --color-ink-inverse: #ffffff;
+  --color-accent: #6366f1;
+  --color-accent-bg: rgba(99,102,241,0.08);
+  --interactive-hover-bg: rgba(0,0,0,0.04);
+  --interactive-active-bg: rgba(99,102,241,0.08);
+  --panel-bg: #ffffff;
+  --panel-bg-muted: #f9fafb;
+  --panel-border: #e5e7eb;
+  --panel-border-strong: #d1d5db;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --text-page-title: 24px;
+  --text-section-title: 18px;
+  --text-body: 14px;
+  --text-caption: 13px;
+  --text-small: 12px;
+  --text-micro: 11px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+body { background: #f3f4f6; color: var(--color-ink); }
+.liquid-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--radius-md); font-size: var(--text-body); font-weight: 500; cursor: pointer; border: none; transition: all .15s; }
+.liquid-btn-primary { background: var(--color-accent); color: white; }
+.liquid-btn-primary:hover { opacity: 0.9; }
+.liquid-btn-ghost { background: transparent; color: var(--color-ink-secondary); }
+.liquid-btn-ghost:hover { background: var(--interactive-hover-bg); }
+.liquid-input { width: 100%; padding: 8px 12px; border: 1px solid var(--panel-border); border-radius: var(--radius-md); font-size: var(--text-body); outline: none; background: white; transition: border-color .15s; }
+.liquid-input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }
+.liquid-tag-blue { display: inline-flex; align-items: center; padding: 2px 8px; background: rgba(99,102,241,0.1); color: #4f46e5; border-radius: 9999px; font-size: var(--text-micro); font-weight: 500; }
+.liquid-tag-green { display: inline-flex; align-items: center; padding: 2px 8px; background: rgba(16,185,129,0.1); color: #059669; border-radius: 9999px; font-size: var(--text-micro); font-weight: 500; }
+.liquid-tag-purple { display: inline-flex; align-items: center; padding: 2px 8px; background: rgba(139,92,246,0.1); color: #7c3aed; border-radius: 9999px; font-size: var(--text-micro); font-weight: 500; }
+.ui-panel { background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: var(--radius-lg); }
+.ui-panel-muted { background: var(--panel-bg-muted); }
+.ui-interactive-row { cursor: pointer; transition: background .15s; }
+.ui-interactive-row:hover { background: var(--interactive-hover-bg); }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 50; backdrop-filter: blur(2px); }
+.modal { background: white; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); max-width: 760px; width: 95vw; max-height: 90vh; overflow-y: auto; }
+.modal-header { padding: 20px 24px 16px; border-bottom: 1px solid var(--panel-border); display: flex; align-items: center; gap: 12px; }
+.modal-body { padding: 20px 24px; }
+
+/* Sidebar */
+.sidebar { width: 220px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); height: 100vh; position: fixed; left: 0; top: 0; padding: 16px 0; }
+.nav-item { display: flex; align-items: center; gap: 8px; padding: 10px 16px; color: var(--color-ink-secondary); font-size: var(--text-body); cursor: pointer; border-radius: 0; transition: all .15s; }
+.nav-item:hover { background: var(--interactive-hover-bg); }
+.nav-item.active { background: var(--interactive-active-bg); color: var(--color-accent); font-weight: 500; }
+
+/* Mockup tabs */
+.mockup-tabs { display: flex; gap: 8px; padding: 16px 24px; background: white; border-bottom: 1px solid var(--panel-border); position: sticky; top: 0; z-index: 100; }
+.mock-tab { padding: 8px 20px; border-radius: 20px; font-size: 13px; cursor: pointer; border: 1px solid var(--panel-border); background: white; color: var(--color-ink-secondary); }
+.mock-tab.active { background: var(--color-accent); color: white; border-color: var(--color-accent); }
+.mock-container { display: none; }
+.mock-container.active { display: block; }
+
+/* Step indicator */
+.step-bar { display: flex; gap: 6px; margin-bottom: 16px; }
+.step-segment { flex: 1; height: 3px; border-radius: 2px; background: var(--panel-border); }
+.step-segment.done { background: #6366f1; }
+.step-segment.active { background: #6366f1; opacity: 0.6; }
+</style>
+</head>
+<body>
+
+<!-- Mockup Tab Switcher -->
+<div class="mockup-tabs">
+  <button class="mock-tab active" onclick="switchTab('list2')">① 新建模板弹框</button>
+  <button class="mock-tab" onclick="switchTab('editor2')">② 编辑页 AI 覆盖</button>
+  <button class="mock-tab" onclick="switchTab('detail2')">③ 文件详情增强</button>
+</div>
+
+<!-- ============================================================
+     VIEW 1: 新建模板弹框（含 AI 初始化）
+     ============================================================ -->
+<div class="mock-container active" id="view-list2">
+<div style="margin-left: 220px; padding: 32px;">
+
+  <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
+    <button class="liquid-btn liquid-btn-ghost" style="padding: 8px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      返回列表
+    </button>
+    <div>
+      <h1 style="font-size: var(--text-section-title); font-weight: 600; color: var(--color-ink);">数据要素模板</h1>
+      <p style="font-size: var(--text-small); color: var(--color-ink-tertiary); margin-top: 2px;">配置各类文档的结构化抽取模板</p>
+    </div>
+    <button class="liquid-btn liquid-btn-primary" style="margin-left: auto;" onclick="document.getElementById('createModal').classList.remove('hidden')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      新建模板
+    </button>
+  </div>
+
+  <!-- Template Cards -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
+    <div class="ui-panel ui-interactive-row" style="padding: 16px; cursor: pointer;">
+      <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+        <h3 style="font-size: var(--text-body); font-weight: 500; color: var(--color-ink);">教案模板</h3>
+        <button class="liquid-btn liquid-btn-ghost" style="padding: 6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px;">
+        <span class="liquid-tag-blue">教案</span>
+      </div>
+      <p style="font-size: var(--text-small); color: var(--color-ink-tertiary);">12 个字段 · 2026-05-20</p>
+    </div>
+    <div class="ui-panel ui-interactive-row" style="padding: 16px; cursor: pointer;">
+      <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+        <h3 style="font-size: var(--text-body); font-weight: 500; color: var(--color-ink);">课程标准模板</h3>
+        <button class="liquid-btn liquid-btn-ghost" style="padding: 6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px;">
+        <span class="liquid-tag-blue">课程标准</span>
+      </div>
+      <p style="font-size: var(--text-small); color: var(--color-ink-tertiary);">8 个字段 · 2026-05-18</p>
+    </div>
+    <div class="ui-panel ui-interactive-row" style="padding: 16px; cursor: pointer;">
+      <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+        <h3 style="font-size: var(--text-body); font-weight: 500; color: var(--color-ink);">授课计划模板</h3>
+        <button class="liquid-btn liquid-btn-ghost" style="padding: 6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px;">
+        <span class="liquid-tag-blue">授课计划</span>
+      </div>
+      <p style="font-size: var(--text-small); color: var(--color-ink-tertiary);">6 个字段 · 2026-05-15</p>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ============================================================
+     CREATE MODAL (shown by default in this mockup view)
+     ============================================================ -->
+<div id="createModal" class="modal-overlay" style="display: flex;">
+  <div class="modal">
+
+    <!-- Modal Header -->
+    <div class="modal-header">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 36px; height: 36px; background: rgba(99,102,241,0.1); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        </div>
+        <div>
+          <h2 style="font-size: var(--text-section-title); font-weight: 600; color: var(--color-ink);">新建模板</h2>
+          <p style="font-size: var(--text-micro); color: var(--color-ink-tertiary); margin-top: 2px;">配置文档类型和数据抽取字段</p>
+        </div>
+      </div>
+      <button onclick="document.getElementById('createModal').classList.add('hidden')" style="margin-left: auto; background: none; border: none; cursor: pointer; padding: 6px; color: var(--color-ink-tertiary); border-radius: 6px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <!-- Step Indicator -->
+    <div style="padding: 12px 24px 0; display: flex; gap: 8px; align-items: center;">
+      <div style="display: flex; gap: 4px; flex: 1;">
+        <div class="step-segment done"></div>
+        <div class="step-segment done"></div>
+        <div class="step-segment active"></div>
+        <div class="step-segment"></div>
+      </div>
+      <span style="font-size: 11px; color: var(--color-ink-tertiary); white-space: nowrap;">Step 3 / 4</span>
+    </div>
+
+    <!-- Modal Body: AI-first creation flow -->
+    <div class="modal-body">
+      <div style="display: grid; grid-template-columns: 1fr 280px; gap: 24px;">
+
+        <!-- Left: Form fields -->
+        <div>
+          <!-- 模板名称 -->
+          <div style="margin-bottom: 20px;">
+            <label style="display: block; font-size: var(--text-small); color: var(--color-ink-tertiary); margin-bottom: 6px; font-weight: 500;">模板名称 *</label>
+            <input class="liquid-input" placeholder="例如：实训手册模板" value="实训手册模板" style="max-width: 320px;">
+          </div>
+
+          <!-- 关联文档类型 -->
+          <div style="margin-bottom: 20px;">
+            <label style="display: block; font-size: var(--text-small); color: var(--color-ink-tertiary); margin-bottom: 6px; font-weight: 500;">关联文档类型</label>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;" id="typeTags">
+              <span class="liquid-tag-blue" style="cursor: pointer;" onclick="removeType(this)">教案 ×</span>
+              <span class="liquid-tag-purple" style="cursor: pointer;" onclick="removeType(this)">授课计划 ×</span>
+              <span class="liquid-tag-green" style="cursor: pointer;" onclick="removeType(this)">实训手册 ×</span>
+              <button id="addTypeBtn" class="liquid-btn liquid-btn-ghost" style="padding: 2px 8px; font-size: 11px;" onclick="openTypeInput()">+ 添加类型</button>
+            </div>
+            <!-- 添加类型下拉 -->
+            <div id="typeInputArea" style="display: none; margin-top: 8px;">
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <input id="typeInput" class="liquid-input" placeholder="输入或选择文档类型" style="max-width: 200px; font-size: 12px; padding: 6px 10px;" onkeydown="if(event.key==='Enter')addType()">
+                <select id="typeSelect" class="liquid-input" style="max-width: 160px; font-size: 12px; padding: 6px 10px;" onchange="addTypeFromSelect()">
+                  <option value="">— 从预设选择 —</option>
+                  <option value="教案">教案</option>
+                  <option value="授课计划">授课计划</option>
+                  <option value="课程标准">课程标准</option>
+                  <option value="实训手册">实训手册</option>
+                  <option value="教学大纲">教学大纲</option>
+                  <option value="试卷">试卷</option>
+                  <option value="其他">其他</option>
+                </select>
+                <button class="liquid-btn liquid-btn-ghost" style="padding: 4px 8px; font-size: 11px;" onclick="addType()">确认</button>
+                <button class="liquid-btn liquid-btn-ghost" style="padding: 4px 8px; font-size: 11px; color: var(--color-ink-tertiary);" onclick="closeTypeInput()">取消</button>
+              </div>
+              <!-- 重复警告 -->
+              <div id="typeDuplicateWarning" style="display: none; margin-top: 8px; padding: 8px 12px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); border-radius: 8px;">
+                <div style="display: flex; gap: 8px; align-items: flex-start;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" style="flex-shrink: 0; margin-top: 1px;"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  <p id="dupWarningText" style="font-size: 11px; color: #92400e; line-height: 1.4;">文档类型「实训手册」已存在，是否继续添加？同一类型可被多个模板引用。</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 字段列表（AI-generated result） -->
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <label style="font-size: var(--text-small); color: var(--color-ink-tertiary); font-weight: 500;">字段列表</label>
+              <button class="liquid-btn liquid-btn-ghost" style="padding: 4px 10px; font-size: 12px;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                手动添加
+              </button>
+            </div>
+
+            <!-- AI 生成成功的提示 -->
+            <div style="display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: rgba(16,185,129,0.08); border-radius: 8px; margin-bottom: 10px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              <span style="font-size: 12px; color: #059669;">AI 已生成 5 个字段，可手动调整或继续添加</span>
+            </div>
+
+            <!-- Field list from AI -->
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+
+              <!-- Field: text -->
+              <div class="ui-panel" style="padding: 10px 12px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="14" y2="12"/></svg>
+                  <span style="font-size: 12px; font-weight: 500; color: var(--color-ink);">course_name</span>
+                  <span style="font-size: 11px; color: var(--color-ink-tertiary);">课程名称</span>
+                  <span class="liquid-tag-blue" style="padding: 1px 6px; font-size: 10px;">文本</span>
+                  <button style="margin-left: auto; background: none; border: none; cursor: pointer; color: var(--color-ink-tertiary); padding: 2px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Field: array (expanded) -->
+              <div class="ui-panel" style="padding: 10px 12px; border-left: 3px solid #6366f1;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                  <span style="font-size: 12px; font-weight: 500; color: var(--color-ink);">teaching_objectives</span>
+                  <span style="font-size: 11px; color: var(--color-ink-tertiary);">教学目标</span>
+                  <span style="padding: 1px 6px; font-size: 10px; background: rgba(99,102,241,0.1); color: #4f46e5; border-radius: 9999px; font-weight: 500;">数组</span>
+                  <button style="margin-left: auto; background: none; border: none; cursor: pointer; color: var(--color-ink-tertiary); padding: 2px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  </button>
+                </div>
+                <!-- Children preview -->
+                <div style="margin-top: 8px; padding-left: 12px; border-left: 2px solid var(--panel-border); display: flex; flex-wrap: wrap; gap: 6px;">
+                  <span style="font-size: 10px; background: var(--panel-bg-muted); padding: 2px 8px; border-radius: 4px; color: var(--color-ink-secondary);">type · 目标类型</span>
+                  <span style="font-size: 10px; background: var(--panel-bg-muted); padding: 2px 8px; border-radius: 4px; color: var(--color-ink-secondary);">description · 目标描述</span>
+                  <span style="font-size: 10px; color: var(--color-ink-tertiary); cursor: pointer;">+ 子字段</span>
+                </div>
+              </div>
+
+              <!-- Field: table (expanded) -->
+              <div class="ui-panel" style="padding: 10px 12px; border-left: 3px solid #10b981;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+                  <span style="font-size: 12px; font-weight: 500; color: var(--color-ink);">class_schedule</span>
+                  <span style="font-size: 11px; color: var(--color-ink-tertiary);">课时安排</span>
+                  <span style="padding: 1px 6px; font-size: 10px; background: rgba(16,185,129,0.1); color: #059669; border-radius: 9999px; font-weight: 500;">表格 · 4列</span>
+                  <button style="margin-left: auto; background: none; border: none; cursor: pointer; color: var(--color-ink-tertiary); padding: 2px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  </button>
+                </div>
+                <!-- Columns preview -->
+                <div style="margin-top: 8px; padding-left: 12px; border-left: 2px solid var(--panel-border); display: flex; flex-wrap: wrap; gap: 6px;">
+                  <span style="font-size: 10px; background: var(--panel-bg-muted); padding: 2px 8px; border-radius: 4px; color: var(--color-ink-secondary);">period · 课时</span>
+                  <span style="font-size: 10px; background: var(--panel-bg-muted); padding: 2px 8px; border-radius: 4px; color: var(--color-ink-secondary);">content · 教学内容</span>
+                  <span style="font-size: 10px; background: var(--panel-bg-muted); padding: 2px 8px; border-radius: 4px; color: var(--color-ink-secondary);">method · 教学方法</span>
+                  <span style="font-size: 10px; background: var(--panel-bg-muted); padding: 2px 8px; border-radius: 4px; color: var(--color-ink-secondary);">hours · 课时数</span>
+                  <span style="font-size: 10px; color: var(--color-ink-tertiary); cursor: pointer;">+ 列</span>
+                </div>
+              </div>
+
+              <!-- Field: object -->
+              <div class="ui-panel" style="padding: 10px 12px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                  <span style="font-size: 12px; font-weight: 500; color: var(--color-ink);">key_points</span>
+                  <span style="font-size: 11px; color: var(--color-ink-tertiary);">重点难点</span>
+                  <span style="padding: 1px 6px; font-size: 10px; background: var(--panel-bg-muted); color: var(--color-ink-secondary); border-radius: 9999px;">对象组 · 2子字段</span>
+                  <button style="margin-left: auto; background: none; border: none; cursor: pointer; color: var(--color-ink-tertiary); padding: 2px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Field: text -->
+              <div class="ui-panel" style="padding: 10px 12px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="14" y2="12"/></svg>
+                  <span style="font-size: 12px; font-weight: 500; color: var(--color-ink);">teaching_methods</span>
+                  <span style="font-size: 11px; color: var(--color-ink-tertiary);">教学方法</span>
+                  <span class="liquid-tag-blue" style="padding: 1px 6px; font-size: 10px;">多行文本</span>
+                  <button style="margin-left: auto; background: none; border: none; cursor: pointer; color: var(--color-ink-tertiary); padding: 2px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: AI panel -->
+        <div>
+          <div style="background: var(--panel-bg-muted); border-radius: 12px; padding: 16px; border: 1.5px solid rgba(99,102,241,0.25); position: relative; overflow: hidden;">
+            <!-- Top accent line -->
+            <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #6366f1, #8b5cf6);"></div>
+
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              <h3 style="font-size: var(--text-body); font-weight: 500; color: var(--color-ink);">AI 辅助配置</h3>
+            </div>
+            <p style="font-size: 11px; color: var(--color-ink-tertiary); margin-bottom: 14px;">AI 分析职教文档结构，自动生成字段定义</p>
+
+            <div style="margin-bottom: 12px;">
+              <label style="display: block; font-size: 11px; color: var(--color-ink-tertiary); margin-bottom: 5px;">文档类型名</label>
+              <input class="liquid-input" value="实训手册" style="font-size: 12px; padding: 6px 10px;">
+            </div>
+
+            <div style="margin-bottom: 14px;">
+              <label style="display: block; font-size: 11px; color: var(--color-ink-tertiary); margin-bottom: 5px;">样例文档（可选）</label>
+              <div style="border: 2px dashed var(--panel-border-strong); border-radius: var(--radius-md); padding: 12px 8px; text-align: center; cursor: pointer; background: white;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="1.5" style="margin: 0 auto 4px;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <p style="font-size: 11px; color: var(--color-ink-tertiary);">拖拽上传 PDF/DOCX</p>
+              </div>
+            </div>
+
+            <button class="liquid-btn liquid-btn-primary" style="width: 100%; justify-content: center; font-size: 13px; padding: 8px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              重新生成字段
+            </button>
+
+            <!-- Result preview -->
+            <div style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--panel-border);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: 11px; color: var(--color-ink-tertiary);">生成结果（5 个字段）</span>
+                <button style="font-size: 11px; color: #6366f1; background: none; border: none; cursor: pointer; font-weight: 500;">重新生成</button>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <div style="display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: white; border-radius: 6px; font-size: 11px;">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="14" y2="12"/></svg>
+                  course_name · 文本
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: rgba(99,102,241,0.06); border-radius: 6px; font-size: 11px;">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                  teaching_objectives · 数组
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: rgba(16,185,129,0.06); border-radius: 6px; font-size: 11px;">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
+                  class_schedule · 表格
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--panel-bg); border-radius: 6px; font-size: 11px;">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="2"><rect x="3" y="3" width="7" height="7"/></svg>
+                  key_points · 对象组
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: white; border-radius: 6px; font-size: 11px;">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="14" y2="12"/></svg>
+                  teaching_methods · 多行文本
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Modal Footer -->
+    <div style="padding: 16px 24px; border-top: 1px solid var(--panel-border); display: flex; justify-content: flex-end; gap: 10px;">
+      <button class="liquid-btn liquid-btn-ghost" onclick="document.getElementById('createModal').classList.add('hidden')">取消</button>
+      <button class="liquid-btn liquid-btn-primary" onclick="document.getElementById('createModal').classList.add('hidden')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        保存模板
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================================================
+     VIEW 2: 编辑页 AI 覆盖
+     ============================================================ -->
+<div class="mock-container" id="view-editor2">
+<div style="margin-left: 220px; padding: 32px;">
+  <div style="max-width: 1000px; display: grid; grid-template-columns: 1fr 300px; gap: 20px;">
+
+    <!-- Left: Form -->
+    <div>
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+        <button class="liquid-btn liquid-btn-ghost" style="padding: 8px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          返回
+        </button>
+        <div>
+          <h1 style="font-size: var(--text-section-title); font-weight: 600; color: var(--color-ink);">编辑模板</h1>
+          <p style="font-size: var(--text-small); color: var(--color-ink-tertiary); margin-top: 2px;">教案模板 · 已保存</p>
+        </div>
+        <div style="margin-left: auto; display: flex; gap: 8px;">
+          <button class="liquid-btn liquid-btn-ghost">取消</button>
+          <button class="liquid-btn liquid-btn-primary">保存</button>
+        </div>
+      </div>
+
+      <div class="ui-panel" style="padding: 20px;">
+        <div style="margin-bottom: 20px;">
+          <label style="display: block; font-size: var(--text-small); color: var(--color-ink-tertiary); margin-bottom: 6px;">模板名称</label>
+          <input class="liquid-input" value="教案模板" style="max-width: 320px;">
+        </div>
+        <div style="margin-bottom: 20px;">
+          <label style="display: block; font-size: var(--text-small); color: var(--color-ink-tertiary); margin-bottom: 6px;">关联文档类型</label>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+            <span class="liquid-tag-blue">教案 ×</span>
+            <button class="liquid-btn liquid-btn-ghost" style="padding: 2px 8px; font-size: 11px;">+ 添加类型</button>
+          </div>
+        </div>
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3 style="font-size: var(--text-body); font-weight: 500; color: var(--color-ink);">字段列表</h3>
+            <button class="liquid-btn liquid-btn-ghost" style="padding: 4px 10px; font-size: 12px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              添加字段
+            </button>
+          </div>
+          <p style="font-size: 11px; color: var(--color-ink-tertiary); padding: 12px; text-align: center; border: 1px dashed var(--panel-border-strong); border-radius: var(--radius-md);">
+            已有 5 个字段 · 点击展开编辑
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: AI panel -->
+    <div>
+      <div style="background: var(--panel-bg-muted); border-radius: 12px; padding: 16px; border: 1.5px solid rgba(99,102,241,0.25); position: relative; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #6366f1, #8b5cf6);"></div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          <h3 style="font-size: var(--text-body); font-weight: 500; color: var(--color-ink);">AI 重新生成</h3>
+        </div>
+        <p style="font-size: 11px; color: var(--color-ink-tertiary); margin-bottom: 14px;">用新的样例文档或类型名重新生成，可覆盖当前字段</p>
+
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-size: 11px; color: var(--color-ink-tertiary); margin-bottom: 5px;">文档类型名</label>
+          <input class="liquid-input" value="教案" style="font-size: 12px; padding: 6px 10px;">
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <label style="display: block; font-size: 11px; color: var(--color-ink-tertiary); margin-bottom: 5px;">样例文档（可选）</label>
+          <div style="border: 2px dashed var(--panel-border-strong); border-radius: var(--radius-md); padding: 12px 8px; text-align: center; cursor: pointer; background: white;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-tertiary)" stroke-width="1.5" style="margin: 0 auto 4px;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <p style="font-size: 11px; color: var(--color-ink-tertiary);">拖拽上传 PDF/DOCX</p>
+          </div>
+        </div>
+
+        <!-- Warning before overwrite -->
+        <div style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); border-radius: 8px; padding: 10px; margin-bottom: 12px;">
+          <div style="display: flex; gap: 8px; align-items: flex-start;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" style="flex-shrink: 0; margin-top: 1px;"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <p style="font-size: 11px; color: #92400e; line-height: 1.4;">重新生成将用新结果<span style="font-weight: 500;">完全覆盖</span>当前字段，请确认是否继续</p>
+          </div>
+        </div>
+
+        <button class="liquid-btn liquid-btn-primary" style="width: 100%; justify-content: center; font-size: 13px; padding: 8px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          覆盖生成
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<!-- ============================================================
+     VIEW 3: 文件详情增强
+     ============================================================ -->
+<div class="mock-container" id="view-detail2">
+<div style="margin-left: 220px; padding: 32px;">
+  <div style="max-width: 900px;">
+
+    <div class="ui-panel" style="padding: 16px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
+      <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span style="font-size: var(--text-body); font-weight: 500; color: var(--color-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">《电路基础》课程教案.pdf</span>
+      </div>
+      <span class="liquid-tag-blue">教案</span>
+      <span class="liquid-tag-green">已完成</span>
+      <span style="font-size: var(--text-micro); color: var(--color-ink-tertiary); background: var(--panel-bg-muted); padding: 2px 8px; border-radius: 9999px; margin-left: auto;">使用模板：教案模板</span>
+    </div>
+
+    <div class="ui-panel" style="padding: 16px;">
+      <h3 style="font-size: var(--text-section-title); font-weight: 500; color: var(--color-ink); margin-bottom: 16px;">结构化抽取结果</h3>
+
+      <!-- 课程名称 — text -->
+      <div style="margin-bottom: 12px;">
+        <p style="font-size: var(--text-small); color: var(--color-ink-tertiary); margin-bottom: 4px;">课程名称</p>
+        <p style="font-size: var(--text-body); color: var(--color-ink);">电路基础</p>
+      </div>
+
+      <!-- 课时安排 — table -->
+      <div style="margin-bottom: 12px;">
+        <p style="font-size: var(--text-small); color: var(--color-ink-tertiary); margin-bottom: 8px;">课时安排</p>
+        <div style="overflow-x: auto; border: 1px solid var(--panel-border); border-radius: var(--radius-md);">
+          <table style="width: 100%; font-size: var(--text-caption); border-collapse: collapse;">
+            <thead>
+              <tr style="background: var(--panel-bg-muted);">
+                <th style="padding: 8px 12px; text-align: left; color: var(--color-ink-tertiary); font-weight: 500; border-bottom: 1px solid var(--panel-border);">课时</th>
+                <th style="padding: 8px 12px; text-align: left; color: var(--color-ink-tertiary); font-weight: 500; border-bottom: 1px solid var(--panel-border);">教学内容</th>
+                <th style="padding: 8px 12px; text-align: left; color: var(--color-ink-tertiary); font-weight: 500; border-bottom: 1px solid var(--panel-border);">教学方法</th>
+                <th style="padding: 8px 12px; text-align: left; color: var(--color-ink-tertiary); font-weight: 500; border-bottom: 1px solid var(--panel-border);">课时数</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="padding: 8px 12px; color: var(--color-ink); border-bottom: 1px solid var(--panel-border);">第1课时</td>
+                <td style="padding: 8px 12px; color: var(--color-ink); border-bottom: 1px solid var(--panel-border);">课程介绍与电路基本概念</td>
+                <td style="padding: 8px 12px; color: var(--color-ink); border-bottom: 1px solid var(--panel-border);">讲授法</td>
+                <td style="padding: 8px 12px; color: var(--color-ink); border-bottom: 1px solid var(--panel-border);">2</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 12px; color: var(--color-ink); border-bottom: 1px solid var(--panel-border);">第2课时</td>
+                <td style="padding: 8px 12px; color: var(--color-ink); border-bottom: 1px solid var(--panel-border);">欧姆定律与简单电路分析</td>
+                <td style="padding: 8px 12px; color: var(--color-ink); border-bottom: 1px solid var(--panel-border);">演示法</td>
+                <td style="padding: 8px 12px; color: var(--color-ink); border-bottom: 1px solid var(--panel-border);">2</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 12px; color: var(--color-ink);">第3课时</td>
+                <td style="padding: 8px 12px; color: var(--color-ink);">基尔霍夫定律与复杂电路</td>
+                <td style="padding: 8px 12px; color: var(--color-ink);">探究法</td>
+                <td style="padding: 8px 12px; color: var(--color-ink);">2</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 教学目标 — array -->
+      <div style="margin-bottom: 12px;">
+        <p style="font-size: var(--text-small); color: var(--color-ink-tertiary); margin-bottom: 8px;">教学目标</p>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <div style="padding: 10px 12px; background: var(--panel-bg-muted); border-radius: 8px; font-size: var(--text-caption);">
+            <div style="display: flex; gap: 8px; margin-bottom: 4px;">
+              <span style="color: var(--color-ink-tertiary);">目标类型：</span>
+              <span style="color: var(--color-accent); font-weight: 500;">知识目标</span>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <span style="color: var(--color-ink-tertiary);">目标描述：</span>
+              <span>掌握电路基本概念、欧姆定律和基尔霍夫定律</span>
+            </div>
+          </div>
+          <div style="padding: 10px 12px; background: var(--panel-bg-muted); border-radius: 8px; font-size: var(--text-caption);">
+            <div style="display: flex; gap: 8px; margin-bottom: 4px;">
+              <span style="color: var(--color-ink-tertiary);">目标类型：</span>
+              <span style="color: var(--color-accent); font-weight: 500;">技能目标</span>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <span style="color: var(--color-ink-tertiary);">目标描述：</span>
+              <span>能够分析简单电路，会用万用表测量电压和电流</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 重点难点 — object (collapsible) -->
+      <div style="margin-bottom: 12px;">
+        <details style="background: var(--panel-bg-muted); border-radius: var(--radius-md); overflow: hidden;">
+          <summary style="padding: 10px 12px; font-size: var(--text-small); color: var(--color-ink-tertiary); cursor: pointer; user-select: none; list-style: none; display: flex; justify-content: space-between; align-items: center;">
+            重点难点
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition: transform .2s; transform: rotate(0deg);"><polyline points="6 9 12 15 18 9"/></svg>
+          </summary>
+          <div style="padding: 10px 12px 14px; border-top: 1px solid var(--panel-border);">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div>
+                <p style="font-size: var(--text-micro); color: var(--color-ink-tertiary); margin-bottom: 4px;">重点</p>
+                <p style="font-size: var(--text-caption); color: var(--color-ink);">欧姆定律的应用、电路分析方法</p>
+              </div>
+              <div>
+                <p style="font-size: var(--text-micro); color: var(--color-ink-tertiary); margin-bottom: 4px;">难点</p>
+                <p style="font-size: var(--text-caption); color: var(--color-ink);">复杂电路的等效变换与功率计算</p>
+              </div>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- 教学方法 — textarea -->
+      <div>
+        <p style="font-size: var(--text-small); color: var(--color-ink-tertiary); margin-bottom: 4px;">教学方法</p>
+        <p style="font-size: var(--text-caption); color: var(--color-ink); line-height: 1.6;">讲授法、演示法、探究法相结合。理论部分以讲授法为主，配合多媒体演示帮助学生理解电路原理；实践部分采用演示法，教师先示范操作再让学生动手实践；综合应用环节使用探究法，引导学生自主分析解决复杂电路问题。</p>
+      </div>
+
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+function switchTab(id) {
+  document.querySelectorAll('.mock-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.mock-container').forEach(v => v.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('view-' + id).classList.add('active');
+}
+
+// 文档类型管理
+function getExistingTypes() {
+  const tags = document.querySelectorAll('#typeTags .liquid-tag-blue, #typeTags .liquid-tag-purple, #typeTags .liquid-tag-green');
+  return Array.from(tags).map(t => t.textContent.replace(' ×', '').trim());
+}
+
+function openTypeInput() {
+  document.getElementById('typeInputArea').style.display = 'block';
+  document.getElementById('typeInput').value = '';
+  document.getElementById('typeSelect').value = '';
+  document.getElementById('typeDuplicateWarning').style.display = 'none';
+  document.getElementById('typeInput').focus();
+}
+
+function closeTypeInput() {
+  document.getElementById('typeInputArea').style.display = 'none';
+}
+
+function addType() {
+  const input = document.getElementById('typeInput');
+  const select = document.getElementById('typeSelect');
+  const value = input.value.trim() || select.value.trim();
+  if (!value) return;
+  checkAndAddType(value);
+}
+
+function addTypeFromSelect() {
+  const select = document.getElementById('typeSelect');
+  if (!select.value) return;
+  document.getElementById('typeInput').value = select.value;
+  checkAndAddType(select.value);
+  select.value = '';
+}
+
+function checkAndAddType(value) {
+  const existing = getExistingTypes();
+  const warning = document.getElementById('typeDuplicateWarning');
+  const warningText = document.getElementById('dupWarningText');
+
+  if (existing.includes(value)) {
+    warningText.textContent = `文档类型「${value}」已存在于此模板中，每个类型只能添加一次。`;
+    warning.style.display = 'block';
+    // 模拟确认后仍可添加（实际逻辑中应阻止）
+    setTimeout(() => {
+      if (confirm(`「${value}」已存在，是否确认添加？`)) {
+        doAddType(value);
+        closeTypeInput();
+      }
+    }, 300);
+    return;
+  }
+
+  // 模拟检查其他模板是否已有此类型（实际从 API 获取）
+  const usedByOther = ['课程标准'].includes(value);
+  if (usedByOther) {
+    warningText.textContent = `文档类型「${value}」已被其他模板使用。上传该类型的文档时将匹配多个模板，可手动选择或按创建时间优先。`;
+    warning.style.display = 'block';
+    setTimeout(() => {
+      if (confirm(`「${value}」已被其他模板引用，是否继续添加？`)) {
+        doAddType(value);
+        closeTypeInput();
+      }
+    }, 300);
+    return;
+  }
+
+  doAddType(value);
+  closeTypeInput();
+}
+
+function doAddType(value) {
+  const addBtn = document.getElementById('addTypeBtn');
+  const colors = ['liquid-tag-blue', 'liquid-tag-purple', 'liquid-tag-green'];
+  const newTag = document.createElement('span');
+  newTag.className = colors[Math.floor(Math.random() * colors.length)];
+  newTag.style.cssText = 'cursor: pointer;';
+  newTag.textContent = value + ' ×';
+  newTag.onclick = function() { removeType(this); };
+  addBtn.parentNode.insertBefore(newTag, addBtn);
+}
+
+function removeType(el) {
+  el.remove();
+}
+
+// 模拟初始化：页面加载时弹出类型冲突提示
+window.onload = function() {
+  // 模拟场景：添加类型时检测到重复
+  setTimeout(() => {
+    const input = document.getElementById('typeInput');
+    if (input) {
+      openTypeInput();
+      input.value = '实训手册';
+      // 模拟输入时实时检测（实际通过 @input 事件）
+    }
+  }, 1500);
+};
+</script>
+
+</body>
+</html>
