@@ -47,11 +47,17 @@ export const templateApi = {
     return api.delete(`/templates/${id}`);
   },
   initByAI(docType: string, sourceFileId?: string, aiContext?: string) {
-    return api.post<{ fields: Field[] }>("/templates/init-by-ai", {
-      doc_type: docType,
-      source_file_id: sourceFileId,
-      ai_context: aiContext,
-    });
+    return api.post<{ fields: Field[] }>(
+      "/templates/init-by-ai",
+      {
+        doc_type: docType,
+        source_file_id: sourceFileId,
+        ai_context: aiContext,
+      },
+      {
+        timeout: 120000,
+      }
+    );
   },
   checkDocType(docType: string) {
     return api.get<{ doc_type: string; used: boolean; templates: { id: string; name: string }[] }>(

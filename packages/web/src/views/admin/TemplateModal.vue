@@ -475,8 +475,15 @@ async function regenerateAI() {
     } else {
       toast.error('AI 未返回有效字段，请手动添加')
     }
-  } catch {
-    toast.error('AI 生成失败，请稍后重试')
+  } catch (error: unknown) {
+    const message = typeof error === 'object' && error && 'code' in error
+      ? String((error as { code?: unknown }).code)
+      : ''
+    if (message === 'ECONNABORTED') {
+      toast.error('AI 生成超时，请稍后重试，或上传样例文档以提高生成速度')
+    } else {
+      toast.error('AI 生成失败，请稍后重试')
+    }
   } finally {
     generating.value = false
   }
