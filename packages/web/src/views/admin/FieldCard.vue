@@ -128,7 +128,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ChevronDown, GripVertical, Trash2, Plus, X } from 'lucide-vue-next'
 import { FIELD_TYPES, COLUMN_TYPES } from '@/constants/field-types'
 import type { Field } from '@/services/template'
@@ -155,16 +155,22 @@ const emit = defineEmits<{
 
 const depth = computed(() => props.node.depth ?? 0)
 
-const expanded = ref(false)
-
 const isContainer = computed(() =>
   ['object', 'table', 'array'].includes(props.node.type)
 )
+
+const expanded = ref(!isContainer.value)
 
 function toggleExpand() {
   expanded.value = !expanded.value
   emit('toggle', props.node.id)
 }
+
+watch(isContainer, (value) => {
+  if (!value) {
+    expanded.value = true
+  }
+}, { immediate: true })
 
 const typeLabel = computed(() =>
   FIELD_TYPES.find(f => f.value === props.node.type)?.label ?? props.node.type
