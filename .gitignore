@@ -28,3 +28,4 @@ Thumbs.db
 # Upload directory (keep .gitkeep)
 packages/server-python/uploads/*
 !packages/server-python/uploads/.gitkeep
+.playwright-mcp/
