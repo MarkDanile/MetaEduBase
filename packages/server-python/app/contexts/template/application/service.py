@@ -1,8 +1,10 @@
 import json
 import logging
+import time
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from app.config import settings
 from app.contexts.template.application.dto import FieldDTO, TemplateCreate, TemplateUpdate
 from app.contexts.template.domain.entity import Field, TableColumn, Template
 from app.contexts.template.domain.repository import TemplateRepository
@@ -90,10 +92,18 @@ class TemplateService:
         self, doc_type: str, source_file_id: UUID | None, tenant_id: UUID, ai_context: str | None = None
     ) -> list[dict]:
         """Use LLM to generate field definitions from doc type and optional sample document."""
+        total_start = time.perf_counter()
+        sample_fetch_ms = 0.0
+        prompt_build_ms = 0.0
+        llm_call_ms = 0.0
+        json_parse_ms = 0.0
+
         # Build context: doc type description + optional file content
+        prompt_start = time.perf_counter()
         context_parts = [f"文档类型：{doc_type}"]
 
         if source_file_id:
+            fetch_start = time.perf_counter()
             from app.contexts.document.infrastructure.file_repository import FileRepository
             from app.shared.infrastructure.database import async_session_factory
 
@@ -103,6 +113,7 @@ class TemplateService:
                 if file and file.content:
                     content_snippet = file.content[:6000]
                     context_parts.append(f"\n样例文档内容（前6000字）：\n{content_snippet}")
+            sample_fetch_ms = (time.perf_counter() - fetch_start) * 1000
 
         user_prompt = (
             "你是一个结构化数据提取专家。你的任务是根据给定的文档类型和样例文档内容，"
@@ -134,11 +145,13 @@ class TemplateService:
         )
         if ai_context:
             system_prompt += "\n\n补充上下文：" + ai_context
+        prompt_build_ms = (time.perf_counter() - prompt_start) * 1000
 
-        # Call LLM
+        llm_start = time.perf_counter()
         content = await _call_llm(system_prompt, user_prompt)
+        llm_call_ms = (time.perf_counter() - llm_start) * 1000
 
-        # Parse response
+        parse_start = time.perf_counter()
         try:
             fields_data = json.loads(content)
             if not isinstance(fields_data, list):
@@ -146,25 +159,56 @@ class TemplateService:
         except json.JSONDecodeError:
             logger.warning(f"LLM response is not valid JSON: {content[:200]}")
             fields_data = []
+        json_parse_ms = (time.perf_counter() - parse_start) * 1000
+
+        total_ms = (time.perf_counter() - total_start) * 1000
+        logger.warning(
+            "template.init_by_ai timing doc_type=%r source_file=%s ai_context=%s fields=%d total=%.1fms fetch=%.1fms prompt=%.1fms llm=%.1fms parse=%.1fms",
+            doc_type,
+            bool(source_file_id),
+            bool(ai_context),
+            len(fields_data),
+            total_ms,
+            sample_fetch_ms,
+            prompt_build_ms,
+            llm_call_ms,
+            json_parse_ms,
+        )
 
         return fields_data
 
 
 async def _call_llm(system_prompt: str, user_prompt: str) -> str:
     from app.shared.llm.chat import chat
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
     try:
         return await chat(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
+            messages=messages,
+            provider="deepseek",
+            model="deepseek-v4-flash",
+            temperature=0.7,
+            max_tokens=3000,
+            timeout=60.0,
+        )
+    except Exception as flash_error:
+        logger.warning(f"init_by_ai flash model failed, fallback to default DeepSeek model: {flash_error}")
+
+    try:
+        return await chat(
+            messages=messages,
+            provider="deepseek",
+            model=settings.deepseek_model,
             temperature=0.7,
             max_tokens=3000,
             timeout=60.0,
         )
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"LLM call failed: {e}")
+        logger.warning(f"LLM call failed after flash→pro fallback: {e}")
         return json.dumps(_fallback_fields())
 
 
