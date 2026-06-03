@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from app.config import settings
 from app.shared.llm.protocol import (
     PROVIDER_DASHSCOPE,
     PROVIDER_DEEPSEEK,
@@ -11,12 +12,29 @@ from app.shared.llm.protocol import (
 
 logger = logging.getLogger(__name__)
 
-# Priority chain: first available wins (when no provider specified)
-PRIORITY_CHAIN = [
+_ALL_PROVIDERS = [
     PROVIDER_DEEPSEEK,
     PROVIDER_MINIMAX,
     PROVIDER_SILICONFLOW,
     PROVIDER_DASHSCOPE,
+]
+
+
+def _normalize_default_provider(name: str | None) -> str | None:
+    if not name:
+        return None
+    normalized = name.strip().lower()
+    if normalized == "qwen":
+        return PROVIDER_DASHSCOPE
+    if normalized in _ALL_PROVIDERS:
+        return normalized
+    return None
+
+
+# Priority chain: configured default first, remaining providers as fallback
+_default_provider = _normalize_default_provider(settings.llm_default_provider)
+PRIORITY_CHAIN = ([ _default_provider ] if _default_provider else []) + [
+    provider for provider in _ALL_PROVIDERS if provider != _default_provider
 ]
 
 # Lazy-loaded singletons
