@@ -81,7 +81,7 @@
 问题：应用启动会直接修改数据库，并可能掩盖迁移失败。默认种子数据也容易让开发账号误入不安全环境。
 完成标准：生产应用启动不再自动执行迁移或默认管理员种子写入；开发和测试环境仍有明确、显式、已文档化的初始化方式。
 验证方式：启动后端不会触发 Alembic 或 seed 写入；显式开发初始化命令仍能创建 schema 和默认开发管理员；准备好 schema 后健康检查仍能通过。
-备注：2026-06-04 按流程开始处理。代码侧改动已完成：移除 FastAPI 启动时的隐式迁移和 seed；移除 Alembic 失败后 fallback `create_all` 的初始化路径；新增显式开发初始化入口 `make init-dev-db` 和 `./dev.sh init-db`；默认开发 seed 需要 `ALLOW_DEFAULT_SEED=true` 显式放行；同步 README 和本地开发命令。已验证：无数据库启动健康检查和 seed opt-in 测试通过；相关 ruff 通过；测试收集 83 个。阻塞：完整 `make init-dev-db` 因本机 `localhost:5432` 无 PostgreSQL 监听未完成，测试环境可复现问题见 `TD-004`。恢复后运行 `./dev.sh init-db` 并通过后可改为 `完成`。
+备注：2026-06-04 按流程开始处理。实现提交：`291dbbc`。代码侧改动已完成：移除 FastAPI 启动时的隐式迁移和 seed；移除 Alembic 失败后 fallback `create_all` 的初始化路径；新增显式开发初始化入口 `make init-dev-db` 和 `./dev.sh init-db`；默认开发 seed 需要 `ALLOW_DEFAULT_SEED=true` 显式放行；同步 README 和本地开发命令。已验证：无数据库启动健康检查和 seed opt-in 测试通过；相关 ruff 通过；测试收集 83 个。阻塞：完整 `make init-dev-db` 因本机 `localhost:5432` 无 PostgreSQL 监听未完成，测试环境可复现问题见 `TD-004`。恢复后运行 `./dev.sh init-db` 并通过后可改为 `完成`。
 
 ### TD-002: 收敛文件清理的级联删除逻辑
 
@@ -103,7 +103,7 @@
 问题：仓库声明了 lint 门禁，但实际无法运行，导致本地和 CI 都无法强制执行这类静态检查。
 完成标准：前端 lint 能基于明确的 ESLint 配置成功运行，或者该脚本被替换为项目真实采用的质量门禁。
 验证方式：`pnpm --filter @metaedu/web lint` 退出码为 0；`pnpm --filter @metaedu/web typecheck` 仍退出码为 0。
-备注：2026-06-04 选为流程试跑任务，模式为技术债修复 + 基础设施 / 依赖 / 工具链。2026-06-04 完成。验证：`pnpm --filter @metaedu/web lint` 通过，退出码 0，仍有 9 个 warning；`pnpm --filter @metaedu/web typecheck` 通过，退出码 0。
+备注：2026-06-04 选为流程试跑任务，模式为技术债修复 + 基础设施 / 依赖 / 工具链。2026-06-04 完成。完成提交：`090242a`。验证：`pnpm --filter @metaedu/web lint` 通过，退出码 0，仍有 9 个 warning；`pnpm --filter @metaedu/web typecheck` 通过，退出码 0。
 
 ### TD-004: 让后端测试数据库环境可复现
 
@@ -191,4 +191,4 @@
 问题：lint 门禁虽然可运行，但 warning 中包含潜在 XSS 风险提示和模板可维护性问题。长期保留 warning 会削弱 lint 输出的信号质量。
 完成标准：`pnpm --filter @metaedu/web lint` 退出码为 0 且 warning 数为 0；不通过关闭核心安全规则来掩盖 `v-html` 风险。
 验证方式：`pnpm --filter @metaedu/web lint` 通过且无 warning；`pnpm --filter @metaedu/web typecheck` 通过。
-备注：2026-06-04 从 TD-003 收尾风险中拆出并开始处理。2026-06-04 完成。验证：`pnpm --filter @metaedu/web lint` 通过，退出码 0，无 warning；`pnpm --filter @metaedu/web typecheck` 通过，退出码 0。处理范围：静态 SVG `v-html` 改为 lucide 组件；AI Markdown 渲染改为阻断原始 HTML、危险链接和图片的受控边界；修复模板变量遮蔽和换行提示。
+备注：2026-06-04 从 TD-003 收尾风险中拆出并开始处理。2026-06-04 完成。完成提交：`090242a`。验证：`pnpm --filter @metaedu/web lint` 通过，退出码 0，无 warning；`pnpm --filter @metaedu/web typecheck` 通过，退出码 0。处理范围：静态 SVG `v-html` 改为 lucide 组件；AI Markdown 渲染改为阻断原始 HTML、危险链接和图片的受控边界；修复模板变量遮蔽和换行提示。
