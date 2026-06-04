@@ -192,3 +192,14 @@
 完成标准：`pnpm --filter @metaedu/web lint` 退出码为 0 且 warning 数为 0；不通过关闭核心安全规则来掩盖 `v-html` 风险。
 验证方式：`pnpm --filter @metaedu/web lint` 通过且无 warning；`pnpm --filter @metaedu/web typecheck` 通过。
 备注：2026-06-04 从 TD-003 收尾风险中拆出并开始处理。2026-06-04 完成。完成提交：`090242a`。验证：`pnpm --filter @metaedu/web lint` 通过，退出码 0，无 warning；`pnpm --filter @metaedu/web typecheck` 通过，退出码 0。处理范围：静态 SVG `v-html` 改为 lucide 组件；AI Markdown 渲染改为阻断原始 HTML、危险链接和图片的受控边界；修复模板变量遮蔽和换行提示。
+
+### TD-012: 治理后端全量 ruff 质量门禁
+
+状态：⚫ 待办
+优先级：P1
+领域：后端 / 测试 / 交付
+证据：2026-06-04 合并前验证执行 `cd packages/server-python && .venv/bin/python -m ruff check app/ tests/`，报告 162 个历史 lint 问题，覆盖 `app/celery_app.py`、`app/contexts/document/application/tasks.py`、`app/contexts/template/interfaces/api/router.py`、`tests/conftest.py` 等文件。
+问题：`packages/server-python/Makefile` 中的 `make lint` 不能作为稳定后端质量门禁运行，后续提交容易把历史 lint 噪音和新增问题混在一起。
+完成标准：后端全量 ruff 门禁可运行并退出码为 0，或者仓库明确收敛规则范围并文档化暂缓项。
+验证方式：`cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` 退出码为 0；若同步治理 mypy，则补充 `cd packages/server-python && .venv/bin/mypy app/`。
+备注：本次 TD-001 相关文件 ruff 已通过；全量 ruff 历史问题不在本次 PR 中扩大修复。
