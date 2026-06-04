@@ -8,6 +8,8 @@
 - 一个提交只表达一个原子变更。
 - 提交前必须完成与改动范围匹配的验证，并记录无法运行的原因。
 - 使用 AI IDE 或插件开发时，提交前确认 `docs/engineering/current-work.md` 状态已经同步。
+- “按流程提交代码”默认不是只创建本地 commit，而是推进完整交付链路：提交、push、PR、合并 `main`、确认合并状态。
+- 如果用户只希望停在某一步，必须明确说明，例如“只提交不 push”或“只创建 PR 不合并”。
 
 ## 分支策略
 
@@ -85,6 +87,67 @@ refactor(server): 重构知识节点服务
 4. 检查文档：如果 API、Schema、质量门禁、协作流程或架构边界变化，按 `docs/engineering/rules/docs.md` 同步文档。
 
 如果环境依赖导致完整验证不可运行，必须在最终回复和 `docs/engineering/current-work.md` 的验证状态中记录原因。
+
+## 完整交付闭环
+
+当用户要求“按照流程提交代码”“走完整 Git 流程”或“合并到 main”时，执行者必须按以下阶段推进，并在最终回复中报告每个阶段的结果。
+
+### 1. 本地提交
+
+1. 确认当前不在 `main` 上开发。
+2. 检查 `git status --short`，只暂存本任务相关文件。
+3. 运行匹配范围的验证。
+4. 同步 `docs/engineering/current-work.md` 和相关任务总账。
+5. 按原子边界创建一个或多个 Conventional Commits。
+
+### 2. Push 分支
+
+1. 确认本地工作区干净。
+2. 推送当前任务分支。
+   ```bash
+   git push -u origin <branch>
+   ```
+3. 如果远端拒绝推送，先说明原因，不要强推，除非用户明确批准。
+
+### 3. 创建 PR
+
+1. 使用当前任务标题或提交主题创建 PR。
+   ```bash
+   gh pr create --title "type(scope): description" --body "..."
+   ```
+2. PR 描述必须包含 Summary、Validation、Risks、Docs。
+3. PR 链接必须写入最终回复；如果任务卡片需要长期追踪，也写入 `current-work.md` 或对应任务总账。
+
+### 4. 合并 main
+
+1. 合并前检查 PR 状态和远端检查结果。
+   ```bash
+   gh pr checks
+   gh pr view --json state,mergeable,reviewDecision
+   ```
+2. 默认使用 Squash Merge，并删除远端任务分支。
+   ```bash
+   gh pr merge --squash --delete-branch
+   ```
+3. 如果仓库要求 Review、CI 或不同合并策略，按仓库规则执行；无法合并时记录阻塞原因。
+4. 合并完成后更新本地 `main`。
+   ```bash
+   git fetch origin
+   git checkout main
+   git pull --ff-only
+   ```
+
+### 5. 合并后确认
+
+1. 确认 PR 状态为 `MERGED`，并记录 merge commit。
+2. 确认本地 `main` 已包含合并结果。
+3. 如果使用 Squash Merge，源分支上的原始提交不会作为 `main` 的祖先提交；此时不能只用 `git merge-base --is-ancestor <source-commit> main` 判断是否合并，应以 PR 的 `MERGED` 状态和 merge commit 为准。
+4. 最终回复必须明确说明当前停在哪个阶段：
+   - 已本地提交
+   - 已 push
+   - 已创建 PR
+   - 已合并到 `main`
+   - 因何原因未完成后续阶段
 
 ## Hooks 配置
 
