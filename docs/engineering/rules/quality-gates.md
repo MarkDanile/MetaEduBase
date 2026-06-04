@@ -67,7 +67,7 @@
 
 - `pnpm --filter @metaedu/web typecheck` 当前可作为前端基础门禁。
 - `pnpm --filter @metaedu/web lint` 当前可运行，且当前无已知 warning。后续新增 warning 应在当前任务内修复，或登记为新的技术债并说明原因。
-- 后端完整 pytest 依赖 `localhost:5432/metaedu_test`；测试环境可复现问题见 `TD-004`。
+- 后端完整 pytest 依赖 `metaedu_test` 测试库；新环境运行 `./dev.sh init-test-db` 或 `cd packages/server-python && make init-test-db` 显式初始化，可通过 `TEST_DATABASE_URL` 覆盖默认连接串。
 
 ## 收尾记录模板
 
