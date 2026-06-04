@@ -112,7 +112,13 @@
 
 ## 下一批候选任务
 
-当前无候选任务。
+按风险和接力价值，本区只保留近期 1 到 3 个候选；完整技术债余量仍以 `docs/engineering/technical-debt.md` 为准。
+
+| 任务 | 状态 | 优先级 | 领域 | 下一步 |
+|------|------|--------|------|--------|
+| TD-005 拆分大型后端任务流水线文件 | 🔵 就绪 | P1 | Backend / 可维护性 | 从任务状态更新、prompt 构造、解析器分发等稳定小单元中挑一个先拆，保持行为不变。 |
+| TD-006 集中 LLM provider 和模型 fallback 策略 | 🔵 就绪 | P1 | Backend / AI | 梳理共享 LLM factory 与模板 service fallback 的差异，先抽命名明确的策略 helper。 |
+| TD-007 减少前端请求状态处理重复 | 🔵 就绪 | P2 | Frontend / 可维护性 | 选择 `DatabaseView` 或 `FileDetailView`，用 composable 或 Vue Query 收敛请求生命周期。 |
 
 ## 最近完成
 

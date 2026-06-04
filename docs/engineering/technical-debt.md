@@ -140,36 +140,36 @@
 
 ### TD-005: 拆分大型后端任务流水线文件
 
-状态：⚫ 待办
+状态：🔵 就绪
 优先级：P1
 领域：后端 / 可维护性
 证据：`packages/server-python/app/contexts/document/application/tasks.py` 约 924 行，`packages/server-python/app/contexts/structured_data/application/tasks.py` 约 707 行。
 问题：解析、抽取、状态更新、知识图谱处理和异常处理集中在大型流程文件中，小改动也容易带来回归风险。
 完成标准：至少将最稳定的横切逻辑抽成聚焦的 helper 或 service，例如任务状态更新、prompt 构造、文件派生 KG 清理、解析器分发。
 验证方式：现有后端测试通过；对被抽出的稳定单元补充聚焦测试；除重构目标外不改变业务行为。
-备注：
+备注：2026-06-05 技术债复盘后选入下一批候选任务。
 
 ### TD-006: 集中 LLM provider 和模型 fallback 策略
 
-状态：⚫ 待办
+状态：🔵 就绪
 优先级：P1
 领域：后端 / AI
 证据：`packages/server-python/app/shared/llm/factory.py:34-77` 定义 provider 优先级和可用性选择；`packages/server-python/app/contexts/template/application/service.py:181-212` 又硬编码 DeepSeek flash 到默认模型的 fallback。
 问题：模型和 provider 策略分散在共享 LLM 基础设施与业务 service 中，后续调整容易不一致。
 完成标准：模板 AI 生成使用集中化的模型/provider 策略，或使用一个命名明确的共享 helper 表达其快速模型 fallback 行为。
 验证方式：模板 AI 生成仍会优先尝试预期的快速模型，并能按预期 fallback；测试或 mock 覆盖 fallback 路径。
-备注：
+备注：2026-06-05 技术债复盘后选入下一批候选任务。
 
 ### TD-007: 减少前端请求状态处理重复
 
-状态：⚫ 待办
+状态：🔵 就绪
 优先级：P2
 领域：前端 / 可维护性
 证据：`packages/web/src/main.ts` 注册了 `VueQueryPlugin`，但 `packages/web/src/views/database/DatabaseView.vue:496-652` 等页面仍手动管理大量 loading 状态、错误提示、轮询刷新和 toast 流程。
 问题：请求生命周期逻辑在多个视图中重复，loading、刷新、错误处理行为难以保持一致。
 完成标准：选择一个高变更页面，优先 `DatabaseView` 或 `FileDetailView`，将重复请求生命周期逻辑迁移到 composable 或 Vue Query 用法中，且不改变用户可见行为。
 验证方式：前端 typecheck 和 build 通过；手动验证列表、详情、上传、重试、重新初始化和 tab 刷新流程仍正常。
-备注：
+备注：2026-06-05 技术债复盘后选入下一批候选任务。
 
 ### TD-008: 明确从 `liquid-*` 类到语义 UI 层的迁移路径
 
@@ -195,14 +195,14 @@
 
 ### TD-010: 治理生成物 `outputs/` 对工作区的污染
 
-状态：⚫ 待办
+状态：🟢 完成
 优先级：P2
 领域：交付 / 仓库卫生
 证据：`git status --short` 显示未跟踪的 `outputs/`。`find outputs -type f | wc -l` 曾报告 413 个文件。
 问题：生成物污染仓库状态和搜索结果，会让真实代码变更更难检查。
 完成标准：项目明确 `outputs/` 应该被忽略、移动，还是作为特定 artifact 工作流被有选择地跟踪。
 验证方式：正常本地工作后，`git status --short` 不再出现意外生成物噪音。
-备注：
+备注：2026-06-05 用户确认根目录 `outputs/` 文件夹无用且已删除。本次文档修改前 Codex 验证：`test -d outputs` 退出码 1；`git status --short` 无输出；`rg -n "outputs/|\\boutputs\\b" . --glob '!node_modules/**' --glob '!.git/**' --glob '!packages/server-python/.venv/**' --glob '!packages/web/node_modules/**'` 仅命中 `turbo.json` 构建输出配置、历史技术债和规则说明。补充 `.gitignore` 根目录 `outputs/` 规则，防止同类生成物再次污染工作区。
 
 ### TD-011: 治理前端 lint warning
 
