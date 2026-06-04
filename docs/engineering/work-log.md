@@ -15,6 +15,8 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-05 | TD-005 拆分大型后端任务流水线文件（抽任务生命周期 helper） | 技术债 / 重构 | [#34](https://github.com/MarkDanile/MetaEduBase/pull/34) | `e5197a5` | `docs/engineering/technical-debt.md#td-005-拆分大型后端任务流水线文件` |
+| 2026-06-05 | TD-006 集中 LLM provider 和模型 fallback 策略 | 技术债 / 重构 | [#35](https://github.com/MarkDanile/MetaEduBase/pull/35) | `042e4a9` | `docs/engineering/technical-debt.md#td-006-集中-llm-provider-和模型-fallback-策略` |
 | 2026-06-05 | DOC-008 将合并后 backfill 改为条件触发 | 文档 / 工程规范 |  |  | `docs/engineering/rules/git-workflow.md` |
 | 2026-06-05 | DOC-007 压缩 current-work 最近完成区并强化渐进式披露 | 文档 / 工程规范 | [#30](https://github.com/MarkDanile/MetaEduBase/pull/30) | `3b36023` | `docs/engineering/current-work.md` |
 | 2026-06-05 | DOC-006 修复 current-work 重复完成区标题 | 文档 / 工程规范 | [#29](https://github.com/MarkDanile/MetaEduBase/pull/29) | `7d0f427` | `docs/engineering/current-work.md` |

@@ -140,25 +140,25 @@
 
 ### TD-005: 拆分大型后端任务流水线文件
 
-状态：🔵 就绪
+状态：🟢 完成
 优先级：P1
 领域：后端 / 可维护性
 证据：`packages/server-python/app/contexts/document/application/tasks.py` 约 924 行，`packages/server-python/app/contexts/structured_data/application/tasks.py` 约 707 行。
 问题：解析、抽取、状态更新、知识图谱处理和异常处理集中在大型流程文件中，小改动也容易带来回归风险。
 完成标准：至少将最稳定的横切逻辑抽成聚焦的 helper 或 service，例如任务状态更新、prompt 构造、文件派生 KG 清理、解析器分发。
 验证方式：现有后端测试通过；对被抽出的稳定单元补充聚焦测试；除重构目标外不改变业务行为。
-备注：2026-06-05 技术债复盘后选入下一批候选任务。
+备注：2026-06-05 技术债复盘后选入下一批候选任务。2026-06-05 由 Claude Code 接手完成。Spec：`docs/specs/2026-06-05-td-005-task-lifecycle-helpers.md`；Plan：`docs/plans/2026-06-05-td-005-task-lifecycle-helpers-plan.md`。改动：新增 `app/shared/tasks/lifecycle.py` 集中 `get_sync_session` / `run_in_session` / `update_task_status` / `create_task` 四个共享 helper（公共名 + 下划线兼容别名）；`document/tasks.py` 与 `structured_data/tasks.py` 删除本地 4 个 helper 改为 import 共享版本；`create_task` 改为 keyword-only `file_id` / `dataset_id`，并校验至少一个非空；10 个调用点同步改为 keyword-only；新增 `tests/shared/test_task_lifecycle.py`（12 个测试覆盖 status 三种分支 + create_task 两种模式 + run_in_session commit/rollback + 下划线别名兼容）。唯一可观察行为变化：`update_task_status` 在 `structured_data` 路径下现在会写 `updated_at` 列（旧实现不写，与 `document` 路径不一致；本次收口是合理的对齐，PR 描述中已明确声明）。验证：`pytest tests/shared/test_task_lifecycle.py -v` → 12 passed；`pytest -q` → 126 passed in 25.34s（baseline 114 + 新增 12）；`ruff check app/ tests/` → All checks passed。行数变化：document 994 → 926，structured_data 731 → 666（合计 -133 行）。PR #34（https://github.com/MarkDanile/MetaEduBase/pull/34），merge commit `e5197a5`，完成日期 2026-06-05。
 
 ### TD-006: 集中 LLM provider 和模型 fallback 策略
 
-状态：🔵 就绪
+状态：🟢 完成
 优先级：P1
 领域：后端 / AI
 证据：`packages/server-python/app/shared/llm/factory.py:34-77` 定义 provider 优先级和可用性选择；`packages/server-python/app/contexts/template/application/service.py:181-212` 又硬编码 DeepSeek flash 到默认模型的 fallback。
 问题：模型和 provider 策略分散在共享 LLM 基础设施与业务 service 中，后续调整容易不一致。
 完成标准：模板 AI 生成使用集中化的模型/provider 策略，或使用一个命名明确的共享 helper 表达其快速模型 fallback 行为。
 验证方式：模板 AI 生成仍会优先尝试预期的快速模型，并能按预期 fallback；测试或 mock 覆盖 fallback 路径。
-备注：2026-06-05 技术债复盘后选入下一批候选任务。
+备注：2026-06-05 技术债复盘后选入下一批候选任务。2026-06-05 由 Claude Code 接手完成。Spec：`docs/specs/2026-06-05-td-006-llm-model-fallback.md`；Plan：`docs/plans/2026-06-05-td-006-llm-model-fallback-plan.md`。改动：新增 `app/shared/llm/chat_with_fallback.py` 导出 `chat_with_model_fallback` 高阶函数（在 `chat()` 之上叠加 model 维度 fallback，fast_model 失败抛 `ProviderUnavailable` 时再调 fallback_model）；`template/service.py` 删除私有 `_call_llm`（35 行），改为直接调 `chat_with_model_fallback`；新增 `tests/shared/test_chat_model_fallback.py`（6 个测试覆盖 fast 成功 / fast 失败 fallback / 两次失败抛 ProviderUnavailable / 默认 fallback_model 走 settings / 非 ProviderUnavailable 异常透传 / messages 透传）。行为不变：fast 失败 warning 日志、flash→pro 顺序、两次失败时 `json.dumps(_fallback_fields())` 业务兜底 — 全部保留。验证：`pytest tests/shared/test_chat_model_fallback.py -v` → 6 passed；`pytest -q` → 132 passed in 25.58s（baseline 126 + 新增 6）；`ruff check app/ tests/` → All checks passed。PR #35（https://github.com/MarkDanile/MetaEduBase/pull/35），merge commit `042e4a9`，完成日期 2026-06-05。TD-006-FOLLOWUP：`contexts/knowledge/interfaces/api/ai_router.py:159` 的 `_call_llm` 也重复了 provider 选择逻辑（与模型 fallback 不同的另一类问题），可作为 follow-up 单独处理。
 
 ### TD-007: 减少前端请求状态处理重复
 

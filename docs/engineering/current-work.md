@@ -108,41 +108,7 @@
 
 ## 当前进行中
 
-### TD-006: 集中 LLM provider 和模型 fallback 策略
-
-状态：🟡 进行中
-类型：重构
-领域：Backend / AI
-当前执行模式：manual
-最近接手工具：Claude Code
-分支：refactor/td-006-llm-model-fallback
-
-需求来源：
-- Spec: `docs/specs/2026-06-05-td-006-llm-model-fallback.md`
-- Plan: `docs/plans/2026-06-05-td-006-llm-model-fallback-plan.md`
-- 技术债：`docs/engineering/technical-debt.md#td-006-集中-llm-provider-和模型-fallback-策略`
-- 架构约束：`docs/engineering/rules/coding-style.md`、`docs/engineering/rules/quality-gates.md`
-
-当前进展：
-- 已完成：spec + plan 已落盘
-- 正在处理：抽 `app/shared/llm/chat_with_fallback.py` 提供 `chat_with_model_fallback` 高阶函数
-- 未完成：template/service.py 重构、测试、验证、Git 闭环
-
-下一步：
-1. 新增 `app/shared/llm/chat_with_fallback.py`
-2. 重构 `template/service.py` 改为调用新 helper
-3. 新增 `tests/shared/test_chat_model_fallback.py`
-4. 跑后端 pytest + ruff
-5. 提交 → push → PR → 合并 main
-
-验证状态：
-- 已运行：未运行（本轮刚开）
-- 未运行：pytest / ruff
-- 当前失败：无
-
-交接备注：
-- Out of scope：ai_router.py 里的 provider 选择重复（`contexts/knowledge/interfaces/api/ai_router.py:159`）属另一类问题，会在 TD-006 完成时登记为 follow-up
-- 行为不变：fast 失败 warning 日志、flash→pro 顺序、两次失败返回 `json.dumps(_fallback_fields())` 业务兜底
+当前无进行中任务。
 
 ## 下一批候选任务
 
@@ -150,9 +116,9 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| TD-006 集中 LLM provider 和模型 fallback 策略 | 🔵 就绪 | P1 | Backend / AI | 模板 service 中的 flash→pro fallback 走 chat()，需要把 fallback 抽到 factory 层，调用方只描述「快/慢/默认」意图。 |
 | TD-007 减少前端请求状态处理重复 | 🔵 就绪 | P2 | Frontend / 可维护性 | 选 `DatabaseView`，把列表 / 上传 / 重试 / 重新初始化 迁到 Vue Query（已注册 `VueQueryPlugin`），删除手写 loading/error/toast 状态机。 |
 | TD-005 拆分大型后端任务流水线文件 | 🟢 完成 | P1 | Backend / 可维护性 | 已抽出 `app/shared/tasks/lifecycle.py` 集中 4 个 helper；本轮只抽「任务生命周期」一组。剩余候选 helper（解析器分发 / prompt 构造 / KG 写入）可在下一轮重新评估。 |
+| TD-006 集中 LLM provider 和模型 fallback 策略 | 🟢 完成 | P1 | Backend / AI | 已抽出 `app/shared/llm/chat_with_fallback.py` 提供 `chat_with_model_fallback`；template service 私有 `_call_llm` 已删除。Follow-up：`ai_router.py:159` 的 provider 选择重复，可单独处理。 |
 
 ## 最近完成
 
