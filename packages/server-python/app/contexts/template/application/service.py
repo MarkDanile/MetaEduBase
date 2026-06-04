@@ -8,6 +8,8 @@ from app.config import settings
 from app.contexts.template.application.dto import FieldDTO, TemplateCreate, TemplateUpdate
 from app.contexts.template.domain.entity import Field, TableColumn, Template
 from app.contexts.template.domain.repository import TemplateRepository
+from app.shared.llm.chat_with_fallback import chat_with_model_fallback
+from app.shared.llm.protocol import ProviderUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +154,23 @@ class TemplateService:
         prompt_build_ms = (time.perf_counter() - prompt_start) * 1000
 
         llm_start = time.perf_counter()
-        content = await _call_llm(system_prompt, user_prompt)
+        try:
+            content = await chat_with_model_fallback(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                fast_provider="deepseek",
+                fast_model="deepseek-v4-flash",
+                fallback_provider="deepseek",
+                fallback_model=settings.deepseek_model,
+                temperature=0.7,
+                max_tokens=3000,
+                timeout=60.0,
+            )
+        except ProviderUnavailable as e:
+            logger.warning(f"LLM call failed after flash→pro fallback: {e}")
+            content = json.dumps(_fallback_fields())
         llm_call_ms = (time.perf_counter() - llm_start) * 1000
 
         parse_start = time.perf_counter()
@@ -182,43 +200,6 @@ class TemplateService:
         )
 
         return fields_data
-
-
-async def _call_llm(system_prompt: str, user_prompt: str) -> str:
-    from app.shared.llm.chat import chat
-
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
-    ]
-
-    try:
-        return await chat(
-            messages=messages,
-            provider="deepseek",
-            model="deepseek-v4-flash",
-            temperature=0.7,
-            max_tokens=3000,
-            timeout=60.0,
-        )
-    except Exception as flash_error:
-        logger.warning(
-            "init_by_ai flash model failed, fallback to default DeepSeek model: %s",
-            flash_error,
-        )
-
-    try:
-        return await chat(
-            messages=messages,
-            provider="deepseek",
-            model=settings.deepseek_model,
-            temperature=0.7,
-            max_tokens=3000,
-            timeout=60.0,
-        )
-    except Exception as e:
-        logger.warning(f"LLM call failed after flash→pro fallback: {e}")
-        return json.dumps(_fallback_fields())
 
 
 def _fallback_fields() -> list[dict]:

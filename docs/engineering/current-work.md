@@ -108,30 +108,30 @@
 
 ## 当前进行中
 
-### TD-005: 拆分大型后端任务流水线文件
+### TD-006: 集中 LLM provider 和模型 fallback 策略
 
 状态：🟡 进行中
 类型：重构
-领域：Backend / 可维护性
+领域：Backend / AI
 当前执行模式：manual
 最近接手工具：Claude Code
-分支：refactor/td-005-task-lifecycle-helpers
+分支：refactor/td-006-llm-model-fallback
 
 需求来源：
-- Spec: `docs/specs/2026-06-05-td-005-task-lifecycle-helpers.md`
-- Plan: `docs/plans/2026-06-05-td-005-task-lifecycle-helpers-plan.md`
-- 技术债：`docs/engineering/technical-debt.md#td-005-拆分大型后端任务流水线文件`
+- Spec: `docs/specs/2026-06-05-td-006-llm-model-fallback.md`
+- Plan: `docs/plans/2026-06-05-td-006-llm-model-fallback-plan.md`
+- 技术债：`docs/engineering/technical-debt.md#td-006-集中-llm-provider-和模型-fallback-策略`
 - 架构约束：`docs/engineering/rules/coding-style.md`、`docs/engineering/rules/quality-gates.md`
 
 当前进展：
-- 已完成：spec + plan 已落盘到 `docs/specs/` 和 `docs/plans/`
-- 正在处理：抽 `app/shared/tasks/lifecycle.py` 并替换 `document/tasks.py` + `structured_data/tasks.py` 中重复 helper
-- 未完成：测试、验证、Git 闭环
+- 已完成：spec + plan 已落盘
+- 正在处理：抽 `app/shared/llm/chat_with_fallback.py` 提供 `chat_with_model_fallback` 高阶函数
+- 未完成：template/service.py 重构、测试、验证、Git 闭环
 
 下一步：
-1. 创建 `app/shared/tasks/lifecycle.py` 集中 4 个公共 helper
-2. 重构两个 tasks.py 改为 import 共享版本
-3. 新增 `tests/shared/test_task_lifecycle.py` 覆盖 status 三种分支 + create_task 两种模式
+1. 新增 `app/shared/llm/chat_with_fallback.py`
+2. 重构 `template/service.py` 改为调用新 helper
+3. 新增 `tests/shared/test_chat_model_fallback.py`
 4. 跑后端 pytest + ruff
 5. 提交 → push → PR → 合并 main
 
@@ -141,8 +141,8 @@
 - 当前失败：无
 
 交接备注：
-- 抽一个最稳定的「任务生命周期」helper（get_sync_session / run_in_session / update_task_status / create_task）
-- `update_task_status` 统一保留 `updated_at` 列（与 document 旧实现一致；structured_data 旧实现没写，是合理的对齐收口）
+- Out of scope：ai_router.py 里的 provider 选择重复（`contexts/knowledge/interfaces/api/ai_router.py:159`）属另一类问题，会在 TD-006 完成时登记为 follow-up
+- 行为不变：fast 失败 warning 日志、flash→pro 顺序、两次失败返回 `json.dumps(_fallback_fields())` 业务兜底
 
 ## 下一批候选任务
 
@@ -150,9 +150,9 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| TD-005 拆分大型后端任务流水线文件 | 🔵 就绪 | P1 | Backend / 可维护性 | 从任务状态更新、prompt 构造、解析器分发等稳定小单元中挑一个先拆，保持行为不变。 |
-| TD-006 集中 LLM provider 和模型 fallback 策略 | 🔵 就绪 | P1 | Backend / AI | 梳理共享 LLM factory 与模板 service fallback 的差异，先抽命名明确的策略 helper。 |
-| TD-007 减少前端请求状态处理重复 | 🔵 就绪 | P2 | Frontend / 可维护性 | 选择 `DatabaseView` 或 `FileDetailView`，用 composable 或 Vue Query 收敛请求生命周期。 |
+| TD-006 集中 LLM provider 和模型 fallback 策略 | 🔵 就绪 | P1 | Backend / AI | 模板 service 中的 flash→pro fallback 走 chat()，需要把 fallback 抽到 factory 层，调用方只描述「快/慢/默认」意图。 |
+| TD-007 减少前端请求状态处理重复 | 🔵 就绪 | P2 | Frontend / 可维护性 | 选 `DatabaseView`，把列表 / 上传 / 重试 / 重新初始化 迁到 Vue Query（已注册 `VueQueryPlugin`），删除手写 loading/error/toast 状态机。 |
+| TD-005 拆分大型后端任务流水线文件 | 🟢 完成 | P1 | Backend / 可维护性 | 已抽出 `app/shared/tasks/lifecycle.py` 集中 4 个 helper；本轮只抽「任务生命周期」一组。剩余候选 helper（解析器分发 / prompt 构造 / KG 写入）可在下一轮重新评估。 |
 
 ## 最近完成
 
