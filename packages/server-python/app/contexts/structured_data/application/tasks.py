@@ -16,82 +16,16 @@ from datetime import UTC, datetime
 
 from celery import shared_task
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.shared.tasks.lifecycle import (
+    _create_task,
+    _run_in_session,
+    _update_task_status,
+)
 
 logger = logging.getLogger(__name__)
-
-
-def _get_sync_session():
-    engine = create_async_engine(settings.database_url, echo=False)
-    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-    class _SyncSession:
-        def __init__(self):
-            self._engine = engine
-            self._session: AsyncSession | None = None
-
-        async def __aenter__(self):
-            self._session = factory()
-            return self._session
-
-        async def __aexit__(self, *exc):
-            if self._session:
-                await self._session.close()
-            await self._engine.dispose()
-
-    return _SyncSession()
-
-
-async def _run_in_session(coro):
-    async with _get_sync_session() as session:
-        try:
-            result = await coro(session)
-            await session.commit()
-            return result
-        except Exception:
-            await session.rollback()
-            raise
-
-
-async def _update_task_status(
-    session: AsyncSession,
-    task_id: uuid.UUID,
-    status: str,
-    progress: int = 0,
-    error_message: str | None = None,
-):
-    now = datetime.now(UTC).replace(tzinfo=None)
-    sets = ["status = :status", "progress = :progress"]
-    params = {"tid": task_id, "status": status, "progress": progress, "now": now}
-    if status == "running" and progress == 0:
-        sets.append("started_at = :now")
-    if status in ("success", "failed"):
-        sets.append("completed_at = :now")
-    if error_message:
-        sets.append("error_message = :err")
-        params["err"] = error_message
-    await session.execute(
-        text(f"UPDATE metaedu.document_tasks SET {', '.join(sets)} WHERE id = :tid"),
-        params,
-    )
-
-
-async def _create_task(
-    session: AsyncSession, tenant_id: uuid.UUID, dataset_id: uuid.UUID, task_type: str
-) -> uuid.UUID:
-    task_id = uuid.uuid4()
-    now = datetime.now(UTC).replace(tzinfo=None)
-    await session.execute(
-        text(
-            "INSERT INTO metaedu.document_tasks "
-            "(id, tenant_id, dataset_id, task_type, status, progress, created_at) "
-            "VALUES (:id, :tid, :did, :type, 'pending', 0, :now)"
-        ),
-        {"id": task_id, "tid": tenant_id, "did": dataset_id, "type": task_type, "now": now},
-    )
-    return task_id
 
 
 # --- Task 1: Parse dataset (xlsx → rows) ---
@@ -114,7 +48,9 @@ def ds_parse(dataset_id_str: str, tenant_id_str: str):
         if not row:
             raise ValueError(f"Dataset {dataset_id} not found")
 
-        task_id = await _create_task(session, tenant_id, dataset_id, "ds_parse")
+        task_id = await _create_task(
+            session, tenant_id, dataset_id=dataset_id, task_type="ds_parse"
+        )
         await _update_task_status(session, task_id, "running", 0)
         await session.commit()
 
@@ -199,7 +135,9 @@ def ds_embed(dataset_id_str: str, tenant_id_str: str):
     tenant_id = uuid.UUID(tenant_id_str)
 
     async def _do(session: AsyncSession):
-        task_id = await _create_task(session, tenant_id, dataset_id, "ds_embed")
+        task_id = await _create_task(
+            session, tenant_id, dataset_id=dataset_id, task_type="ds_embed"
+        )
         await _update_task_status(session, task_id, "running", 0)
         await session.commit()
 
@@ -326,7 +264,9 @@ def ds_extract_kg(dataset_id_str: str, tenant_id_str: str):
     tenant_id = uuid.UUID(tenant_id_str)
 
     async def _do(session: AsyncSession):
-        task_id = await _create_task(session, tenant_id, dataset_id, "ds_extract_kg")
+        task_id = await _create_task(
+            session, tenant_id, dataset_id=dataset_id, task_type="ds_extract_kg"
+        )
         await _update_task_status(session, task_id, "running", 0)
         await session.execute(
             text(

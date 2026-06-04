@@ -108,7 +108,41 @@
 
 ## 当前进行中
 
-当前无进行中任务。
+### TD-005: 拆分大型后端任务流水线文件
+
+状态：🟡 进行中
+类型：重构
+领域：Backend / 可维护性
+当前执行模式：manual
+最近接手工具：Claude Code
+分支：refactor/td-005-task-lifecycle-helpers
+
+需求来源：
+- Spec: `docs/specs/2026-06-05-td-005-task-lifecycle-helpers.md`
+- Plan: `docs/plans/2026-06-05-td-005-task-lifecycle-helpers-plan.md`
+- 技术债：`docs/engineering/technical-debt.md#td-005-拆分大型后端任务流水线文件`
+- 架构约束：`docs/engineering/rules/coding-style.md`、`docs/engineering/rules/quality-gates.md`
+
+当前进展：
+- 已完成：spec + plan 已落盘到 `docs/specs/` 和 `docs/plans/`
+- 正在处理：抽 `app/shared/tasks/lifecycle.py` 并替换 `document/tasks.py` + `structured_data/tasks.py` 中重复 helper
+- 未完成：测试、验证、Git 闭环
+
+下一步：
+1. 创建 `app/shared/tasks/lifecycle.py` 集中 4 个公共 helper
+2. 重构两个 tasks.py 改为 import 共享版本
+3. 新增 `tests/shared/test_task_lifecycle.py` 覆盖 status 三种分支 + create_task 两种模式
+4. 跑后端 pytest + ruff
+5. 提交 → push → PR → 合并 main
+
+验证状态：
+- 已运行：未运行（本轮刚开）
+- 未运行：pytest / ruff
+- 当前失败：无
+
+交接备注：
+- 抽一个最稳定的「任务生命周期」helper（get_sync_session / run_in_session / update_task_status / create_task）
+- `update_task_status` 统一保留 `updated_at` 列（与 document 旧实现一致；structured_data 旧实现没写，是合理的对齐收口）
 
 ## 下一批候选任务
 
