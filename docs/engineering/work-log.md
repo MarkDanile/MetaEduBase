@@ -13,6 +13,7 @@
 
 | 日期 | 任务 | 类型 | PR | Merge Commit | 归档位置 |
 |------|------|------|----|--------------|----------|
+| 2026-06-05 | TD-013 收口 TD-004 测试数据库初始化安全与文档占位 | 技术债 / follow-up | [#27](https://github.com/MarkDanile/MetaEduBase/pull/27) | `8f25b20` | `docs/engineering/technical-debt.md#td-013-收口-td-004-测试数据库初始化安全与文档占位` |
 | 2026-06-04 | DOC-005 补强复核入账与候选任务选择策略 | 文档 / 工程规范 | [#25](https://github.com/MarkDanile/MetaEduBase/pull/25) | `7a4241c` | `docs/engineering/current-work.md` |
 | 2026-06-04 | TD-004 让后端测试数据库环境可复现 | 技术债 / 基础设施 | [#23](https://github.com/MarkDanile/MetaEduBase/pull/23) | `b8b34a6` | `docs/engineering/technical-debt.md#td-004-让后端测试数据库环境可复现` |
 | 2026-06-04 | DOC-003 补强跨插件计划、行为声明和 PR 范围边界规则 | 文档 / 工程规范 | [#20](https://github.com/MarkDanile/MetaEduBase/pull/20) | `3b883ea` | `docs/engineering/current-work.md` |

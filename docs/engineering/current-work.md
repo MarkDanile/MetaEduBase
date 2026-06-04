@@ -108,9 +108,17 @@
 
 ## 当前进行中
 
+当前无正在执行的任务。
+
+## 下一批候选任务
+
+当前无候选任务。
+
+## 最近完成
+
 ### TD-013: 收口 TD-004 测试数据库初始化安全与文档占位
 
-状态：🟡 进行中
+状态：🟢 完成
 类型：技术债 / follow-up
 领域：Testing / Delivery / Security
 当前执行模式：plan-do
@@ -126,28 +134,21 @@
 - 任务模式：`docs/engineering/task-modes.md#技术债修复`
 
 当前进展：
-- 已完成：Codex 复核 TD-004 后确认 3 个 follow-up 点：测试数据库名 SQL identifier 处理、legacy schema stamp 判断过宽、TD-004 plan 残留活动式占位。
-- 正在处理：开分支 `refactor/td-013-test-db-init-safety`，按 plan / 技术债完成标准修复代码与文档，并补充聚焦测试。
-- 未完成：数据库名严格校验实现、legacy stamp 收窄、聚焦测试、plan 占位清理、ruff 与 pytest 验证、PR 闭环。
+- 已完成：新增 `_validate_database_name` 白名单校验与 `DatabaseNameError` 异常；收窄 `_stamp_if_legacy_schema` 为「旧 conftest `create_all` 形态核心表全集 + 缺 alembic_version」；新增 20 个聚焦测试覆盖校验和 legacy 判定；清理 TD-004 plan 中 `<TASK-8 输出>` / `PR / merge commit 在 Git 闭环后回填` 等活动式占位，plan 头部补「交付历史」段；完成完整 Git 闭环并回填交付事实。
+- 正在处理：
+- 未完成：
 
 下一步：
-1. 在 `_ensure_database` 前增加 `_validate_database_name`，按白名单 + 安全 quote 双保险。
-2. 收窄 `_stamp_if_legacy_schema` 的 legacy 判定，避免「单表 + 缺版本」也被误判为旧 conftest 形态。
-3. 新增 `tests/shared/test_test_db_setup.py`，覆盖数据库名校验和 legacy stamp 判定。
-4. 清理 TD-004 plan 中 `<TASK-8 输出>` / `PR / merge commit 在 Git 闭环后回填` 等占位。
-5. 跑聚焦测试 + ruff，提交并推进完整 Git 闭环。
+1.
 
 验证状态：
-- 已运行：仅完成任务登记与开工分支，未修改业务代码。
-- 未运行：TD-013 的后端聚焦测试和 ruff，原因是本轮尚未动代码。
+- 已运行：`pytest tests/shared/test_test_db_setup.py -v` → 20 passed；`ruff check app/shared/infrastructure/test_db_setup.py tests/shared/test_test_db_setup.py` → All checks passed；`ruff check app/ tests/` → All checks passed；`./dev.sh init-test-db` 跑两次均退出码 0；`pytest -q` → 107 passed in 24.76s；`rg -n "<TASK|PR / merge commit 在 Git 闭环后回填|以最终回复为准|待最终确认" docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md` → CLEAN。
+- 未运行：
 - 当前失败：无。
 
 交接备注：
-- 行为变化（非「零业务逻辑变更」）：脚本将拒绝带特殊字符的数据库名；legacy stamp 仅在「业务表集合与 `Base.metadata.create_all` 形态一致」时触发；plan 文档清理为非代码改动。
-
-## 下一批候选任务
-
-当前无候选任务。
+- 行为变化（非「零业务逻辑变更」）：脚本拒绝带特殊字符的数据库名（抛 `DatabaseNameError`）；legacy stamp 仅在 12 张核心业务表全在 + 缺版本时触发；plan 文档清理为非代码改动。详细行为变化与覆盖矩阵见 PR #27 描述。
+- PR #27（https://github.com/MarkDanile/MetaEduBase/pull/27）；merge commit `8f25b20`；完成日期：2026-06-05。
 
 ## 最近完成
 

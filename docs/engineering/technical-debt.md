@@ -118,14 +118,14 @@
 
 ### TD-013: 收口 TD-004 测试数据库初始化安全与文档占位
 
-状态：🔵 就绪
+状态：🟢 完成
 优先级：P1
 领域：测试 / 交付 / 安全
 证据：`packages/server-python/app/shared/infrastructure/test_db_setup.py:56` 使用 `f'CREATE DATABASE "{url.database}"'` 拼接由 `TEST_DATABASE_URL` 控制的数据库名；`packages/server-python/app/shared/infrastructure/test_db_setup.py:109-122` 只要 `metaedu.tenants` 存在且 `metaedu.alembic_version` 不存在就 `stamp head`；`docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md` 仍有 `<TASK-8 输出>` 和 `PR / merge commit 在 Git 闭环后回填` 等模板占位。
 问题：TD-004 已让测试库初始化可复现，但初始化脚本仍有可控 SQL identifier 拼接和过宽 legacy stamp 风险；完成后的 plan 仍残留活动式占位，容易误导后续 agent 判断任务状态。
 完成标准：数据库名在 `CREATE DATABASE` 前经过严格校验或安全 quote；legacy stamp 只在确认是旧 `Base.metadata.create_all` 形态时触发，或改为不会掩盖残缺 schema 的实现；补充聚焦测试覆盖数据库名校验和 legacy stamp 判断；TD-004 plan 中不再保留活动式交付占位。
 验证方式：新增或更新的后端聚焦测试通过；`cd packages/server-python && .venv/bin/python -m ruff check app/shared/infrastructure/test_db_setup.py tests/` 退出码 0；`rg -n "<TASK|PR / merge commit 在 Git 闭环后回填|以最终回复为准|待最终确认" docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md` 不再命中活动式占位。
-备注：2026-06-04 Codex 复核 TD-004 后新增，供 Claude Code 后续 follow-up。
+备注：2026-06-04 Codex 复核 TD-004 后新增。2026-06-05 由 Claude Code 接手完成。改动：新增 `_validate_database_name`（PostgreSQL identifier 白名单）与 `DatabaseNameError` 异常，替换裸 `f-string` 拼接路径；`_stamp_if_legacy_schema` 改为基于 12 张核心业务表集合是否**全部**存在 + 缺 `alembic_version` 才 stamp 的 `_is_legacy_create_all_shape` 判定；新增 `tests/shared/test_test_db_setup.py` 覆盖 6 类合法 / 9 类非法数据库名与 5 类 legacy 形态判定；plan 头部新增「交付历史」段并把 `<TASK-8 输出>` / `PR / merge commit 在 Git 闭环后回填` 等占位替换为真实 PR #23 / merge commit `b8b34a6` / 完成日期 2026-06-04。验证：`pytest tests/shared/test_test_db_setup.py -v` → 20 passed；`ruff check app/shared/infrastructure/test_db_setup.py tests/shared/test_test_db_setup.py` → All checks passed；`ruff check app/ tests/` → All checks passed；`./dev.sh init-test-db` 跑两次均退出码 0；`pytest -q` → 107 passed in 24.76s；plan 占位 `rg` → CLEAN。PR #27（https://github.com/MarkDanile/MetaEduBase/pull/27），merge commit `8f25b20`，完成日期 2026-06-05。
 
 ### TD-005: 拆分大型后端任务流水线文件
 
