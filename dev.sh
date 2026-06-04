@@ -9,6 +9,7 @@ set -euo pipefail
 #   ./dev.sh frontend  # 仅重启前端 (强制重启)
 #   ./dev.sh celery   # 仅启动 Celery Worker
 #   ./dev.sh init-db  # 显式初始化开发数据库 (迁移 + 默认开发账号)
+#   ./dev.sh init-test-db # 显式初始化测试数据库 (建库 + 扩展 + 迁移)
 #   ./dev.sh stop     # 停止全部服务
 #   ./dev.sh status   # 查看运行状态
 #   ./dev.sh logs     # 查看后端日志 (logs frontend/celery 查看)
@@ -220,6 +221,24 @@ init_dev_db() {
   fi
   ALLOW_DEFAULT_SEED=true .venv/bin/python -m app.shared.infrastructure.dev_setup
   ok "开发数据库初始化完成"
+}
+
+init_test_db() {
+  log "初始化测试数据库 (创建库 + 扩展 + Alembic upgrade head)..."
+  start_infra
+  cd "$SERVER_DIR"
+  if [[ ! -d ".venv" ]]; then
+    log "创建 Python 虚拟环境..."
+    python3 -m venv .venv
+    log "安装后端依赖..."
+    .venv/bin/pip install -e ".[dev,ai]" -q
+  fi
+  if ! .venv/bin/python -c "import alembic" 2>/dev/null; then
+    log "安装后端依赖..."
+    .venv/bin/pip install -e ".[dev,ai]" -q
+  fi
+  .venv/bin/python -m app.shared.infrastructure.test_db_setup
+  ok "测试数据库初始化完成"
 }
 
 start_backend() {
@@ -477,6 +496,9 @@ main() {
     init-db)
       init_dev_db
       ;;
+    init-test-db)
+      init_test_db
+      ;;
     stop)
       stop_all
       ;;
@@ -496,7 +518,7 @@ main() {
       fi
       ;;
     *)
-      echo "用法: $0 {all|infra|backend|frontend|celery|init-db|stop|status|logs}"
+      echo "用法: $0 {all|infra|backend|frontend|celery|init-db|init-test-db|stop|status|logs}"
       echo ""
       echo "  all       启动全部服务 (幂等: 已运行则跳过)"
       echo "  infra     仅启动基础设施 (PostgreSQL/Redis/MinIO)"
@@ -504,6 +526,7 @@ main() {
       echo "  frontend  重启前端"
       echo "  celery    仅启动 Celery Worker"
       echo "  init-db   显式初始化开发数据库 (迁移 + 默认开发账号)"
+      echo "  init-test-db 显式初始化测试数据库 (建库 + 扩展 + 迁移)"
       echo "  stop      停止全部服务"
       echo "  status    查看运行状态"
       echo "  logs      查看日志 (backend/frontend/celery)"
