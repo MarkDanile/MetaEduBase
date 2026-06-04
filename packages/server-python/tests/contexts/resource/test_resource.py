@@ -76,7 +76,9 @@ async def test_get_resource(client: AsyncClient, auth_headers: dict):
     files = {"file": ("get_test.txt", io.BytesIO(file_content), "text/plain")}
     data = {"title": "获取测试资源", "resource_type": "document"}
 
-    upload_resp = await client.post(f"{RES_URL}/upload", headers=auth_headers, files=files, data=data)
+    upload_resp = await client.post(
+        f"{RES_URL}/upload", headers=auth_headers, files=files, data=data
+    )
     resource_id = upload_resp.json()["id"]
 
     resp = await client.get(f"{RES_URL}/{resource_id}", headers=auth_headers)
@@ -99,7 +101,9 @@ async def test_download_resource(client: AsyncClient, auth_headers: dict):
     files = {"file": ("download_test.txt", io.BytesIO(file_content), "text/plain")}
     data = {"title": "下载测试资源", "resource_type": "document"}
 
-    upload_resp = await client.post(f"{RES_URL}/upload", headers=auth_headers, files=files, data=data)
+    upload_resp = await client.post(
+        f"{RES_URL}/upload", headers=auth_headers, files=files, data=data
+    )
     resource_id = upload_resp.json()["id"]
 
     resp = await client.get(f"{RES_URL}/{resource_id}/download", headers=auth_headers)
@@ -120,7 +124,9 @@ async def test_delete_resource(client: AsyncClient, auth_headers: dict):
     files = {"file": ("delete_test.txt", io.BytesIO(file_content), "text/plain")}
     data = {"title": "待删除资源", "resource_type": "document"}
 
-    upload_resp = await client.post(f"{RES_URL}/upload", headers=auth_headers, files=files, data=data)
+    upload_resp = await client.post(
+        f"{RES_URL}/upload", headers=auth_headers, files=files, data=data
+    )
     resource_id = upload_resp.json()["id"]
 
     resp = await client.delete(f"{RES_URL}/{resource_id}", headers=auth_headers)
@@ -136,7 +142,9 @@ async def test_delete_already_deleted(client: AsyncClient, auth_headers: dict):
     files = {"file": ("dbl_del.txt", io.BytesIO(file_content), "text/plain")}
     data = {"title": "二次删除资源", "resource_type": "document"}
 
-    upload_resp = await client.post(f"{RES_URL}/upload", headers=auth_headers, files=files, data=data)
+    upload_resp = await client.post(
+        f"{RES_URL}/upload", headers=auth_headers, files=files, data=data
+    )
     resource_id = upload_resp.json()["id"]
 
     await client.delete(f"{RES_URL}/{resource_id}", headers=auth_headers)

@@ -18,7 +18,7 @@ def extract_docx_text(file_path: str) -> ParsedDocument:
     current_content_parts: list[str] = []
     section_counter: dict[int, int] = {}
 
-    _HEADING_STYLE = {
+    _heading_style = {
         "Heading 1": 1,
         "Heading 2": 2,
         "Heading 3": 3,
@@ -35,7 +35,7 @@ def extract_docx_text(file_path: str) -> ParsedDocument:
 
     for para in doc.paragraphs:
         style_name = para.style.name if para.style else ""
-        heading_level = _HEADING_STYLE.get(style_name, 0)
+        heading_level = _heading_style.get(style_name, 0)
         text = para.text.strip()
 
         if not text:

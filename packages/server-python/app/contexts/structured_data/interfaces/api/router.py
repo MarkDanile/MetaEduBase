@@ -62,7 +62,15 @@ async def list_datasets(
 ):
     tid = get_tenant_id()
     repo = DatasetRepository(session)
-    rows = await repo.list_datasets(tid, tag=tag, status=status, limit=limit, offset=offset, sort_by=sort_by, sort_dir=sort_dir)
+    rows = await repo.list_datasets(
+        tid,
+        tag=tag,
+        status=status,
+        limit=limit,
+        offset=offset,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+    )
     return [_dataset_row_to_dto(r) for r in rows]
 
 

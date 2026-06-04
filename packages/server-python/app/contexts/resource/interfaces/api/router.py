@@ -2,6 +2,7 @@ import json
 import os
 import uuid
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
@@ -60,7 +61,7 @@ async def list_resources(
 
 @router.post("/upload", status_code=201)
 async def upload_resource(
-    file: UploadFile = File(...),
+    file: Annotated[UploadFile, File(...)],
     title: str = Form(...),
     resource_type: str = Form(default="document"),
     domain: str | None = Form(default=None),

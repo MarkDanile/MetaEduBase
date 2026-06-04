@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from app.shared.llm.factory import get_provider, list_available_providers, PRIORITY_CHAIN
+from app.shared.llm.factory import PRIORITY_CHAIN, get_provider
 from app.shared.llm.protocol import ChatOptions, ProviderUnavailable
 
 logger = logging.getLogger(__name__)

@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import uuid
+from contextlib import suppress
 from datetime import UTC, datetime
 
 from celery import shared_task
@@ -113,7 +114,11 @@ def _pipeline_version_key(ts: str | None) -> str:
     return ts.replace("T", " ").split(".")[0]
 
 
-async def _check_pipeline_stale(session: AsyncSession, file_id: uuid.UUID, pipeline_version: str) -> bool:
+async def _check_pipeline_stale(
+    session: AsyncSession,
+    file_id: uuid.UUID,
+    pipeline_version: str,
+) -> bool:
     """Return True if a newer pipeline has since started (reinitialize was called)."""
     if not pipeline_version:
         return False
@@ -165,7 +170,9 @@ def parse_document(file_id_str: str, tenant_id_str: str, pipeline_version: str =
             # Abort if pipeline is stale (reinitialize was called)
             if await _check_pipeline_stale(session, file_id, pipeline_version):
                 logger.info("parse_document %s: stale pipeline, aborting", file_id)
-                await _update_task_status(session, task_id, "failed", 0, "Stale: reinitialize was called")
+                await _update_task_status(
+                    session, task_id, "failed", 0, "Stale: reinitialize was called"
+                )
                 await session.commit()
                 return
 
@@ -194,7 +201,9 @@ def parse_document(file_id_str: str, tenant_id_str: str, pipeline_version: str =
             # Verify still not stale before writing
             if await _check_pipeline_stale(session, file_id, pipeline_version):
                 logger.info("parse_document %s: stale after parsing, aborting", file_id)
-                await _update_task_status(session, task_id, "failed", 0, "Stale: reinitialize was called")
+                await _update_task_status(
+                    session, task_id, "failed", 0, "Stale: reinitialize was called"
+                )
                 await session.commit()
                 return
 
@@ -260,7 +269,9 @@ def chunk_document(file_id_str: str, tenant_id_str: str, pipeline_version: str =
             # Abort if pipeline is stale
             if await _check_pipeline_stale(session, file_id, pipeline_version):
                 logger.info("chunk_document %s: stale pipeline, aborting", file_id)
-                await _update_task_status(session, task_id, "failed", 0, "Stale: reinitialize was called")
+                await _update_task_status(
+                    session, task_id, "failed", 0, "Stale: reinitialize was called"
+                )
                 await session.commit()
                 return
 
@@ -323,7 +334,9 @@ def chunk_document(file_id_str: str, tenant_id_str: str, pipeline_version: str =
             # Abort if pipeline became stale while processing
             if await _check_pipeline_stale(session, file_id, pipeline_version):
                 logger.info("chunk_document %s: stale after chunking, aborting", file_id)
-                await _update_task_status(session, task_id, "failed", 0, "Stale: reinitialize was called")
+                await _update_task_status(
+                    session, task_id, "failed", 0, "Stale: reinitialize was called"
+                )
                 await session.commit()
                 return
 
@@ -394,7 +407,9 @@ def embed_chunks(file_id_str: str, tenant_id_str: str, pipeline_version: str = "
             # Abort if pipeline is stale
             if await _check_pipeline_stale(session, file_id, pipeline_version):
                 logger.info("embed_chunks %s: stale pipeline, aborting", file_id)
-                await _update_task_status(session, task_id, "failed", 0, "Stale: reinitialize was called")
+                await _update_task_status(
+                    session, task_id, "failed", 0, "Stale: reinitialize was called"
+                )
                 await session.commit()
                 return
 
@@ -457,13 +472,22 @@ def embed_chunks(file_id_str: str, tenant_id_str: str, pipeline_version: str = "
                 embeddings = await batch_embed_siliconflow(texts)
 
             if not embeddings:
-                logger.error("All embedding providers failed for all %d chunks (file=%s)", total, file_id)
-                await _update_task_status(session, task_id, "failed", 0, "Embedding API failed: MiniMax and SiliconFlow both returned no results")
+                logger.error(
+                    "All embedding providers failed for all %d chunks (file=%s)",
+                    total, file_id,
+                )
+                await _update_task_status(
+                    session,
+                    task_id,
+                    "failed",
+                    0,
+                    "Embedding API failed: MiniMax and SiliconFlow both returned no results",
+                )
                 await session.commit()
                 return
 
             # Batch update all chunks
-            for chunk, embedding in zip(chunks, embeddings):
+            for chunk, embedding in zip(chunks, embeddings, strict=True):
                 vec_str = "[" + ",".join(str(v) for v in embedding) + "]"
                 await session.execute(
                     text("UPDATE metaedu.document_chunks SET embedding = :vec WHERE id = :cid"),
@@ -505,7 +529,9 @@ def index_tsvector(file_id_str: str, tenant_id_str: str, pipeline_version: str =
             # Abort if pipeline is stale
             if await _check_pipeline_stale(session, file_id, pipeline_version):
                 logger.info("index_tsvector %s: stale pipeline, aborting", file_id)
-                await _update_task_status(session, task_id, "failed", 0, "Stale: reinitialize was called")
+                await _update_task_status(
+                    session, task_id, "failed", 0, "Stale: reinitialize was called"
+                )
                 await session.commit()
                 return
 
@@ -531,7 +557,9 @@ def index_tsvector(file_id_str: str, tenant_id_str: str, pipeline_version: str =
             # Re-check staleness before updating file status to 'processed'
             if await _check_pipeline_stale(session, file_id, pipeline_version):
                 logger.info("index_tsvector %s: stale before status update, aborting", file_id)
-                await _update_task_status(session, task_id, "failed", 0, "Stale: reinitialize was called")
+                await _update_task_status(
+                    session, task_id, "failed", 0, "Stale: reinitialize was called"
+                )
                 await session.commit()
                 return
 
@@ -598,7 +626,9 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
 
             # 第一层：精确 doc_type 匹配
             if doc_type:
-                template_obj = await TemplateRepositoryImpl(session).get_by_doc_type(doc_type, tenant_id)
+                template_obj = await TemplateRepositoryImpl(session).get_by_doc_type(
+                    doc_type, tenant_id
+                )
 
             # 第二层：文件名模糊匹配（doc_type 为空时，文件名含"课程标准"等关键词）
             if not template_obj and filename:
@@ -607,7 +637,10 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
                     for dt in t.doc_types:
                         if dt and dt in filename:
                             template_obj = t
-                            logger.info("extract_template: filename match %r in doc_types → template=%s", dt, t.name)
+                            logger.info(
+                                "extract_template: filename match %r in doc_types → template=%s",
+                                dt, t.name,
+                            )
                             break
                     if template_obj:
                         break
@@ -620,7 +653,8 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
                     match_prompt = (
                         f"文档内容摘要：{chunks_text[:500]}\n"
                         f"可选文档类型：{all_doc_types}\n"
-                        f"请判断这份文档最适合哪种文档类型，返回格式：类型名称\\n置信度分数（0.0~1.0，如\"教案\\n0.85\"）"
+                        "请判断这份文档最适合哪种文档类型，"
+                        '返回格式：类型名称\\n置信度分数（0.0~1.0，如"教案\\n0.85"）'
                     )
                     try:
                         response = (await chat(
@@ -629,7 +663,7 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
                             timeout=30.0,
                         )).strip()
                         # 解析响应：取第一行作为类型，第二行作为置信度
-                        lines = [l.strip() for l in response.splitlines() if l.strip()]
+                        lines = [line.strip() for line in response.splitlines() if line.strip()]
                         if len(lines) >= 2:
                             matched_type = lines[0]
                             try:
@@ -648,13 +682,23 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
                                 (t for t in all_templates if matched_type in t.doc_types), None
                             )
                             if template_obj:
-                                logger.info("extract_template: AI matched doc_type=%r (conf=%.2f) → template=%s",
-                                            matched_type, confidence, template_obj.name)
+                                logger.info(
+                                    "extract_template: AI matched doc_type=%r "
+                                    "(conf=%.2f) → template=%s",
+                                    matched_type, confidence, template_obj.name,
+                                )
                             else:
-                                logger.warning("extract_template: AI matched %r (conf=%.2f) but no template found",
-                                            matched_type, confidence)
+                                logger.warning(
+                                    "extract_template: AI matched %r (conf=%.2f) "
+                                    "but no template found",
+                                    matched_type, confidence,
+                                )
                         else:
-                            logger.info("extract_template: AI confidence %.2f < 0.7, using generic template", confidence)
+                            logger.info(
+                                "extract_template: AI confidence %.2f < 0.7, "
+                                "using generic template",
+                                confidence,
+                            )
                     except Exception as e:
                         logger.warning("extract_template: AI template match failed: %s", e)
 
@@ -684,14 +728,21 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
                             lines.append(f"{prefix}{key}({label})[{ftype}型]")
                     return ", ".join(lines)
 
-                fields_desc = build_fields_desc([f.to_dict() if hasattr(f, "to_dict") else f for f in template_obj.fields])
+                fields_desc = build_fields_desc(
+                    [
+                        f.to_dict() if hasattr(f, "to_dict") else f
+                        for f in template_obj.fields
+                    ]
+                )
                 prompt_template = (
                     f"请严格根据以下字段定义，从文档内容中提取JSON格式的结构化信息：\n"
                     f"字段结构说明：{fields_desc}\n"
                     f"要求：\n"
                     f"1. JSON的key必须与上述字段key完全一致\n"
-                    f"2. object型字段（如basic_info、teaching_objectives）的value必须是嵌套的JSON对象，包含对应的子字段\n"
-                    f"3. array型字段（如teaching_process）的value必须是JSON数组，每个成员是包含子字段的object\n"
+                    "2. object型字段（如basic_info、teaching_objectives）的"
+                    "value必须是嵌套的JSON对象，包含对应的子字段\n"
+                    "3. array型字段（如teaching_process）的value必须是JSON数组，"
+                    "每个成员是包含子字段的object\n"
                     f"4. table型字段的value必须是JSON数组，每行是一个object\n"
                     f"5. 文档中没有的内容填写\"-\"，只返回JSON不要任何解释\n\n"
                     f"文档内容：\n{chunks_text[:6000]}"
@@ -699,7 +750,9 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
             else:
                 prompt_template = (
                     "请对以下文档内容提取结构化摘要，将所有字段翻译为中文，只返回JSON不要任何解释：\n"
-                    "字段：title(中文标题), summary(100字内中文摘要), sections[中文章节列表], key_points[中文关键要点], keywords[中文关键词最多5个]\n\n"
+                    "字段：title(中文标题), summary(100字内中文摘要), "
+                    "sections[中文章节列表], key_points[中文关键要点], "
+                    "keywords[中文关键词最多5个]\n\n"
                     f"内容：\n{chunks_text[:6000]}"
                 )
 
@@ -708,7 +761,9 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
             def try_parse(content: str) -> dict:
                 import re as regexmod
                 # Strip MiniMax-M2 thinking tags that may appear before JSON
-                stripped = regexmod.sub(r"<think>.*?</think>", "", content, flags=regexmod.DOTALL).strip()
+                stripped = regexmod.sub(
+                    r"<think>.*?</think>", "", content, flags=regexmod.DOTALL
+                ).strip()
                 m = regexmod.search(r"```(?:json)?\s*(\{.*?\})\s*```", stripped, regexmod.DOTALL)
                 if m:
                     try:
@@ -735,7 +790,10 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
                 logger.warning(f"extract_template LLM call failed: {e}")
 
             if not template_data:
-                logger.warning("extract_template: LLM returned no template data for file=%s (chunks=%d)", file_id, len(rows))
+                logger.warning(
+                    "extract_template: LLM returned no template data for file=%s (chunks=%d)",
+                    file_id, len(rows),
+                )
 
             # Save to file structured_data
             result = await session.execute(
@@ -743,7 +801,11 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
                 {"fid": file_id},
             )
             existing = result.mappings().first()
-            existing_raw = existing["structured_data"] if existing and existing["structured_data"] else "{}"
+            existing_raw = (
+                existing["structured_data"]
+                if existing and existing["structured_data"]
+                else "{}"
+            )
             if isinstance(existing_raw, str):
                 existing_data = json.loads(existing_raw)
             else:
@@ -752,7 +814,9 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
 
             await session.execute(
                 text(
-                    "UPDATE metaedu.files SET structured_data = CAST(:data AS JSONB) WHERE id = :fid"
+                    "UPDATE metaedu.files "
+                    "SET structured_data = CAST(:data AS JSONB) "
+                    "WHERE id = :fid"
                 ),
                 {
                     "data": json.dumps(existing_data),
@@ -813,7 +877,8 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str, pipeline_versi
             prompt = (
                 "请从以下文本中提取知识实体和关系，将所有实体名称翻译为中文，只返回JSON不要任何解释：\n"
                 '{"entities": [{"name": "中文实体名", "type": "类型"}], '
-                '"relations": [{"source": "中文实体1", "target": "中文实体2", "relation": "关系描述"}]}\n\n'
+                '"relations": [{"source": "中文实体1", "target": "中文实体2", '
+                '"relation": "关系描述"}]}\n\n'
                 f"文本：\n{chunks_text[:6000]}"
             )
             content = await chat(
@@ -822,21 +887,23 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str, pipeline_versi
                 timeout=60.0,
             )
             import re as regexmod
-            stripped = regexmod.sub(r"<think>.*?</think>", "", content, flags=regexmod.DOTALL).strip()
+            stripped = regexmod.sub(
+                r"<think>.*?</think>", "", content, flags=regexmod.DOTALL
+            ).strip()
             kg_data = {"entities": [], "relations": []}
             m = regexmod.search(r"```(?:json)?\s*(\{.*?\})\s*```", stripped, regexmod.DOTALL)
             if m:
-                try:
+                with suppress(json.JSONDecodeError):
                     kg_data = json.loads(m.group(1))
-                except json.JSONDecodeError:
-                    pass
             if not kg_data.get("entities"):
                 try:
                     json_start = stripped.index("{")
                     json_end = stripped.rindex("}") + 1
                     kg_data = json.loads(stripped[json_start:json_end])
                 except (ValueError, json.JSONDecodeError):
-                    logger.warning("KG extraction JSON parse failed, raw content: %s", content[:300])
+                    logger.warning(
+                        "KG extraction JSON parse failed, raw content: %s", content[:300]
+                    )
 
                 # Write entities to knowledge_nodes with source tracking
                 # Build name→id map so relations can reference nodes by name
@@ -853,8 +920,10 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str, pipeline_versi
                     await session.execute(
                         text(
                             "INSERT INTO metaedu.knowledge_nodes "
-                            "(id, tenant_id, title, description, domain, level, path, source_file_id, created_at, updated_at) "
-                            "VALUES (:id, :tid, :title, '', 'education_sports', 'knowledge_point', :path, :fid, :now, :now)"
+                            "(id, tenant_id, title, description, domain, level, "
+                            "path, source_file_id, created_at, updated_at) "
+                            "VALUES (:id, :tid, :title, '', 'education_sports', "
+                            "'knowledge_point', :path, :fid, :now, :now)"
                         ),
                         {
                             "id": node_id,
@@ -894,7 +963,8 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str, pipeline_versi
                     await session.execute(
                         text(
                             "INSERT INTO metaedu.knowledge_edges "
-                            "(id, tenant_id, source_id, target_id, relation_type, weight, metadata, created_at) "
+                            "(id, tenant_id, source_id, target_id, relation_type, "
+                            "weight, metadata, created_at) "
                             "VALUES (:id, :tid, :src, :tgt, :rtype, :wt, :meta, :now)"
                         ),
                         {

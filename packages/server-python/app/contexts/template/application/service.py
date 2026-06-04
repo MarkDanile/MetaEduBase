@@ -89,7 +89,11 @@ class TemplateService:
         await self.repo.delete(template_id, tenant_id)
 
     async def init_by_ai(
-        self, doc_type: str, source_file_id: UUID | None, tenant_id: UUID, ai_context: str | None = None
+        self,
+        doc_type: str,
+        source_file_id: UUID | None,
+        tenant_id: UUID,
+        ai_context: str | None = None,
     ) -> list[dict]:
         """Use LLM to generate field definitions from doc type and optional sample document."""
         total_start = time.perf_counter()
@@ -163,7 +167,9 @@ class TemplateService:
 
         total_ms = (time.perf_counter() - total_start) * 1000
         logger.warning(
-            "template.init_by_ai timing doc_type=%r source_file=%s ai_context=%s fields=%d total=%.1fms fetch=%.1fms prompt=%.1fms llm=%.1fms parse=%.1fms",
+            "template.init_by_ai timing "
+            "doc_type=%r source_file=%s ai_context=%s fields=%d "
+            "total=%.1fms fetch=%.1fms prompt=%.1fms llm=%.1fms parse=%.1fms",
             doc_type,
             bool(source_file_id),
             bool(ai_context),
@@ -196,7 +202,10 @@ async def _call_llm(system_prompt: str, user_prompt: str) -> str:
             timeout=60.0,
         )
     except Exception as flash_error:
-        logger.warning(f"init_by_ai flash model failed, fallback to default DeepSeek model: {flash_error}")
+        logger.warning(
+            "init_by_ai flash model failed, fallback to default DeepSeek model: %s",
+            flash_error,
+        )
 
     try:
         return await chat(

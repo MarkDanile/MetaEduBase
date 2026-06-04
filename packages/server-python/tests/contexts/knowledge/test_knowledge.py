@@ -217,7 +217,12 @@ async def test_search_keyword(client: AsyncClient, auth_headers: dict):
     await client.post(
         f"{KBASE_URL}/nodes",
         headers=auth_headers,
-        json={"title": "汽车检测与维修技术", "description": "交通运输类专业", "domain": "transportation", "level": "professional"},
+        json={
+            "title": "汽车检测与维修技术",
+            "description": "交通运输类专业",
+            "domain": "transportation",
+            "level": "professional",
+        },
     )
 
     resp = await client.post(
@@ -273,7 +278,12 @@ async def test_tree_children(client: AsyncClient, auth_headers: dict):
     await client.post(
         f"{KBASE_URL}/nodes",
         headers=auth_headers,
-        json={"title": "树结构子1", "domain": "education_sports", "level": "course", "parent_id": parent_id},
+        json={
+            "title": "树结构子1",
+            "domain": "education_sports",
+            "level": "course",
+            "parent_id": parent_id,
+        },
     )
 
     resp = await client.get(

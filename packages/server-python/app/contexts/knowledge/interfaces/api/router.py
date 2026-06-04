@@ -22,8 +22,26 @@ from app.shared.infrastructure.tenant_context import get_tenant_id
 router = APIRouter()
 
 
-_VALID_DOMAINS = {"electronics_info", "smart_manufacturing", "finance_commerce", "medical_health", "education_sports", "civil_engineering", "transportation", "agriculture", "art_design", "public_service"}
-_VALID_LEVELS = {"professional", "course", "chapter", "knowledge_point", "skill_point", "operation_step"}
+_VALID_DOMAINS = {
+    "electronics_info",
+    "smart_manufacturing",
+    "finance_commerce",
+    "medical_health",
+    "education_sports",
+    "civil_engineering",
+    "transportation",
+    "agriculture",
+    "art_design",
+    "public_service",
+}
+_VALID_LEVELS = {
+    "professional",
+    "course",
+    "chapter",
+    "knowledge_point",
+    "skill_point",
+    "operation_step",
+}
 
 
 def _row_to_dto(row: dict) -> KnowledgeNodeDTO:

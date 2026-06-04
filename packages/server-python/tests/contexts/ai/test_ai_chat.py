@@ -49,16 +49,18 @@ async def test_chat_with_mock_llm(client: AsyncClient, auth_headers: dict):
     mock_http_client.__aenter__ = AsyncMock(return_value=mock_http_client)
     mock_http_client.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("app.contexts.knowledge.interfaces.api.ai_router.httpx.AsyncClient", return_value=mock_http_client):
-        with patch(
-            "app.contexts.knowledge.application.recall_service.get_embedding_vec",
-            return_value=None,
-        ):
-            resp = await client.post(
-                "/api/v1/ai/chat",
-                headers=auth_headers,
-                json={"message": "你好"},
-            )
+    with patch(
+        "app.contexts.knowledge.interfaces.api.ai_router.httpx.AsyncClient",
+        return_value=mock_http_client,
+    ), patch(
+        "app.contexts.knowledge.application.recall_service.get_embedding_vec",
+        return_value=None,
+    ):
+        resp = await client.post(
+            "/api/v1/ai/chat",
+            headers=auth_headers,
+            json={"message": "你好"},
+        )
     assert resp.status_code == 200
     data = resp.json()
     assert "reply" in data

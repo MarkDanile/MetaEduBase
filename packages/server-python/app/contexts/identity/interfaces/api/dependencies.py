@@ -1,3 +1,4 @@
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
@@ -13,8 +14,8 @@ security_scheme = HTTPBearer()
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
-    session: AsyncSession = Depends(get_session),
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security_scheme)],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> dict:
     token = credentials.credentials
     payload = decode_access_token(token)
@@ -28,7 +29,8 @@ async def get_current_user(
 
     result = await session.execute(
         text(
-            "SELECT u.id, u.tenant_id, u.username, u.role, u.domain, u.clearance_level, u.is_active "
+            "SELECT u.id, u.tenant_id, u.username, u.role, u.domain, "
+            "u.clearance_level, u.is_active "
             "FROM metaedu.users u WHERE u.id = :user_id AND u.tenant_id = :tenant_id"
         ),
         {"user_id": UUID(user_id), "tenant_id": UUID(tenant_id)},

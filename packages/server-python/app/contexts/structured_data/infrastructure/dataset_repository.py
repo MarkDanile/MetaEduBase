@@ -40,7 +40,8 @@ class DatasetRepository:
 
         result = await self._session.execute(
             text(
-                f"SELECT * FROM metaedu.datasets WHERE {where} ORDER BY {order_col} {direction} LIMIT :lim OFFSET :off"
+                f"SELECT * FROM metaedu.datasets WHERE {where} "
+                f"ORDER BY {order_col} {direction} LIMIT :lim OFFSET :off"
             ),
             {**params, "lim": limit, "off": offset},
         )
@@ -68,8 +69,11 @@ class DatasetRepository:
         await self._session.execute(
             text(
                 "INSERT INTO metaedu.datasets "
-                "(id, tenant_id, name, description, source_file, tags, status, kg_status, row_count, sort_order, created_by, created_at, updated_at) "
-                "VALUES (:id, :tid, :name, :desc, :sfile, :tags, 'uploaded', 'pending', 0, 0, :uid, :now, :now)"
+                "(id, tenant_id, name, description, source_file, tags, status, "
+                "kg_status, row_count, sort_order, created_by, created_at, "
+                "updated_at) "
+                "VALUES (:id, :tid, :name, :desc, :sfile, :tags, 'uploaded', "
+                "'pending', 0, 0, :uid, :now, :now)"
             ),
             {
                 "id": dataset_id,
@@ -111,7 +115,8 @@ class DatasetRepository:
         params["now"] = datetime.now(UTC).replace(tzinfo=None)
         await self._session.execute(
             text(
-                f"UPDATE metaedu.datasets SET {', '.join(sets)} WHERE id = :did AND tenant_id = :tid"
+                f"UPDATE metaedu.datasets SET {', '.join(sets)} "
+                "WHERE id = :did AND tenant_id = :tid"
             ),
             params,
         )
@@ -126,8 +131,12 @@ class DatasetRepository:
         now = datetime.now(UTC).replace(tzinfo=None)
         await self._session.execute(
             text(
-                "UPDATE metaedu.datasets SET column_names = :cnames::jsonb, column_types = :ctypes::jsonb, "
-                "row_count = :rcount, status = 'processed', updated_at = :now WHERE id = :did"
+                "UPDATE metaedu.datasets "
+                "SET column_names = :cnames::jsonb, "
+                "    column_types = :ctypes::jsonb, "
+                "    row_count = :rcount, status = 'processed', "
+                "    updated_at = :now "
+                "WHERE id = :did"
             ),
             {
                 "cnames": json.dumps(column_names),
@@ -156,7 +165,8 @@ class DatasetRepository:
         result = await self._session.execute(
             text(
                 "SELECT * FROM metaedu.dataset_rows "
-                "WHERE dataset_id = :did AND tenant_id = :tid ORDER BY row_index LIMIT :lim OFFSET :off"
+                "WHERE dataset_id = :did AND tenant_id = :tid "
+                "ORDER BY row_index LIMIT :lim OFFSET :off"
             ),
             {"did": dataset_id, "tid": tenant_id, "lim": limit, "off": offset},
         )
@@ -165,7 +175,8 @@ class DatasetRepository:
     async def count_rows(self, dataset_id: uuid.UUID, tenant_id: uuid.UUID) -> int:
         result = await self._session.execute(
             text(
-                "SELECT COUNT(*) FROM metaedu.dataset_rows WHERE dataset_id = :did AND tenant_id = :tid"
+                "SELECT COUNT(*) FROM metaedu.dataset_rows "
+                "WHERE dataset_id = :did AND tenant_id = :tid"
             ),
             {"did": dataset_id, "tid": tenant_id},
         )
@@ -179,7 +190,8 @@ class DatasetRepository:
             row_id = uuid.uuid4()
             await self._session.execute(
                 text(
-                    "INSERT INTO metaedu.dataset_rows (id, tenant_id, dataset_id, row_index, data, created_at) "
+                    "INSERT INTO metaedu.dataset_rows "
+                    "(id, tenant_id, dataset_id, row_index, data, created_at) "
                     "VALUES (:id, :tid, :did, :idx, :data::jsonb, :now)"
                 ),
                 {

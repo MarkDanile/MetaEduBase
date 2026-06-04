@@ -339,7 +339,9 @@ class KnowledgeNodeRepository:
         )
         return [dict(row) for row in result.mappings().all()]
 
-    async def list_edges_by_file(self, tenant_id: uuid.UUID, source_file_id: uuid.UUID) -> list[dict]:
+    async def list_edges_by_file(
+        self, tenant_id: uuid.UUID, source_file_id: uuid.UUID
+    ) -> list[dict]:
         result = await self._session.execute(
             text(
                 "SELECT DISTINCT ke.* FROM metaedu.knowledge_edges ke "
@@ -352,7 +354,9 @@ class KnowledgeNodeRepository:
         )
         return [dict(row) for row in result.mappings().all()]
 
-    async def list_edges_by_dataset(self, tenant_id: uuid.UUID, source_dataset_id: uuid.UUID) -> list[dict]:
+    async def list_edges_by_dataset(
+        self, tenant_id: uuid.UUID, source_dataset_id: uuid.UUID
+    ) -> list[dict]:
         result = await self._session.execute(
             text(
                 "SELECT DISTINCT ke.* FROM metaedu.knowledge_edges ke "

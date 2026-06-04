@@ -77,8 +77,10 @@ class FileRepository:
         await self._session.execute(
             text(
                 "INSERT INTO metaedu.files "
-                "(id, tenant_id, folder_id, filename, file_type, doc_type, file_size, storage_key, tags, status, uploaded_by, created_at, updated_at) "
-                "VALUES (:id, :tid, :fid, :name, :ftype, :dtype, :fsize, :skey, :tags, 'uploaded', :uid, :now, :now)"
+                "(id, tenant_id, folder_id, filename, file_type, doc_type, file_size, "
+                "storage_key, tags, status, uploaded_by, created_at, updated_at) "
+                "VALUES (:id, :tid, :fid, :name, :ftype, :dtype, :fsize, :skey, "
+                ":tags, 'uploaded', :uid, :now, :now)"
             ),
             {
                 "id": file_id,
@@ -137,7 +139,9 @@ class FileRepository:
     ) -> None:
         await self._session.execute(
             text(
-                "UPDATE metaedu.files SET structured_data = :data::jsonb, updated_at = :now WHERE id = :fid AND tenant_id = :tid"
+                "UPDATE metaedu.files "
+                "SET structured_data = :data::jsonb, updated_at = :now "
+                "WHERE id = :fid AND tenant_id = :tid"
             ),
             {
                 "data": json.dumps(data),

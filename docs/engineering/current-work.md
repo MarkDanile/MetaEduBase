@@ -83,7 +83,6 @@
 ## 下一批候选任务
 
 - `TD-004`：让后端测试数据库环境可复现。详见 `docs/engineering/technical-debt.md`。
-- `TD-012`：治理后端全量 ruff 质量门禁。详见 `docs/engineering/technical-debt.md`。
 
 ## 最近完成
 
@@ -119,6 +118,37 @@
 
 交接备注：
 - 已按 `docs/engineering/rules/git-workflow.md` 回读并执行完整 Git 闭环；PR 和 merge commit 以最终交付回复为准。
+
+### TD-012: 治理后端全量 ruff 质量门禁
+
+状态：🟢 完成
+类型：技术债
+领域：Backend / Testing / Delivery
+当前执行模式：plan-do
+最近接手工具：Claude Code
+分支：`refactor/td-012-ruff-quality-gate`
+
+需求来源：
+- Spec: `docs/superpowers/specs/2026-06-04-ruff-quality-gate-design.md`
+- Plan: `docs/superpowers/plans/2026-06-04-ruff-quality-gate.md`
+- 技术债：`docs/engineering/technical-debt.md#td-012-治理后端全量-ruff-质量门禁`
+- 架构约束：`docs/engineering/rules/quality-gates.md`，`docs/engineering/rules/git-workflow.md`
+
+当前进展：
+- 已完成：spec 落盘并通过 self-review 与用户复核；plan 落盘并通过 self-review；按 plan 推进 Task 1（自动修复层 + celery_app.py docstring 改写）、Task 2（E501 折行 22 个文件）、Task 3（B008 Annotated 迁移 17 处）、Task 4（其它规则 + 10 F401 noqa + 2 I001 重排）；`match_prompt` 的 `\\n → \n` 回归已修复；Task 5 端到端验证通过；状态同步。
+- 正在处理：
+- 未完成：
+
+下一步：
+1. 由主控执行 Task 7 Git 交付（commit、push、PR、merge）。
+
+验证状态：
+- 已运行：`cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` 退出码 0；`cd packages/server-python && .venv/bin/python -m pytest -q` 87 passed；Celery 10 task 注册正常。
+- 未运行：
+- 当前失败：无。
+
+交接备注：
+- PR #TBD（Task 7 由主控创建并合并）；merge commit 由主控在 Task 7 完成后回填；完成日期 2026-06-04。
 
 ### TD-002-FOLLOWUP: 收口 TD-002 流程与测试遗留
 

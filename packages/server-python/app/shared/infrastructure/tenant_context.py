@@ -6,7 +6,9 @@ _user_domain: ContextVar[str | None] = ContextVar("user_domain", default=None)
 _user_clearance: ContextVar[int] = ContextVar("user_clearance", default=0)
 
 
-def set_tenant_context(tenant_id: UUID | None, domain: str | None = None, clearance: int = 0) -> None:
+def set_tenant_context(
+    tenant_id: UUID | None, domain: str | None = None, clearance: int = 0
+) -> None:
     _tenant_id.set(tenant_id)
     _user_domain.set(domain)
     _user_clearance.set(clearance)

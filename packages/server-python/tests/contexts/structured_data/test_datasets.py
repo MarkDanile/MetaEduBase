@@ -10,7 +10,13 @@ pytestmark = pytest.mark.asyncio
 async def test_upload_dataset(client, auth_headers):
     resp = await client.post(
         "/api/v1/structured-data/datasets/upload?name=测试数据集",
-        files={"file": ("test_data.xlsx", io.BytesIO(b"fake excel"), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        files={
+            "file": (
+                "test_data.xlsx",
+                io.BytesIO(b"fake excel"),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ),
+        },
         headers=auth_headers,
     )
     assert resp.status_code == 201
