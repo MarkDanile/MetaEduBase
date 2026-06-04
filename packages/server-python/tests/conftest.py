@@ -1,4 +1,5 @@
 
+import os
 from unittest.mock import patch
 
 import pytest_asyncio
@@ -8,10 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from app.main import app
-from app.shared.infrastructure.database import Base, get_session
+from app.shared.infrastructure.database import get_session
 from app.shared.infrastructure.seed import DEFAULT_ADMIN_ID, DEFAULT_TENANT_ID
 
-TEST_DB_URL = "postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test"
+DEFAULT_TEST_DB_URL = (
+    "postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test"
+)
+TEST_DB_URL = os.environ.get("TEST_DATABASE_URL", DEFAULT_TEST_DB_URL)
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -41,10 +45,12 @@ async def _get_test_session():
 async def client():
     engine = create_async_engine(TEST_DB_URL, echo=False, poolclass=NullPool)
 
-    # Clean template table before test run to ensure fresh state
+    # Clean template table before test run to ensure fresh state.
+    # Schema/tables are expected to exist (run `./dev.sh init-test-db` or
+    # `make init-test-db` once per environment); we only ensure the schema
+    # namespace exists for older databases and reset per-test state.
     async with engine.begin() as conn:
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS metaedu"))
-        await conn.run_sync(Base.metadata.create_all)
         await conn.execute(text("TRUNCATE TABLE metaedu.templates RESTART IDENTITY CASCADE"))
     await _ensure_seed(engine)
     await engine.dispose()
