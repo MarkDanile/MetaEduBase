@@ -11,7 +11,6 @@
     <div class="flex gap-4" style="align-items: flex-start">
       <!-- Left panel: dataset list -->
       <div class="w-[260px] shrink-0 flex flex-col gap-2" style="max-height: calc(100vh - 80px)">
-
         <!-- Dataset list card -->
         <div class="liquid-card flex flex-col overflow-hidden" style="flex: 1; min-height: 0">
           <!-- Card header (always visible) -->

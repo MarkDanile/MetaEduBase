@@ -87,7 +87,7 @@ import { Plus, X } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import FieldEditor from '@/components/FieldEditor.vue'
-import { templateApi, type Template, type Field } from '@/services/template'
+import { templateApi, type Field } from '@/services/template'
 import { useToast } from '@/composables/useToast'
 
 const route = useRoute()

@@ -141,9 +141,9 @@
       class="flex-1 min-h-screen content-bg transition-all duration-300 ease-out"
       :class="collapsed ? 'ml-[60px]' : 'ml-[200px]'"
     >
-      <RouterView v-slot="{ Component, route }">
+      <RouterView v-slot="{ Component: RouteComponent, route: currentRoute }">
         <transition name="liquid-rise" mode="out-in">
-          <component :is="Component" :key="route.path" />
+          <component :is="RouteComponent" :key="currentRoute.path" />
         </transition>
       </RouterView>
     </main>
