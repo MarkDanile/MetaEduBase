@@ -36,14 +36,14 @@
                   ? 'bg-[var(--color-accent-bg)] text-[var(--color-accent)]'
                   : 'text-[var(--color-ink-secondary)] hover:bg-[var(--color-bg-hover)]'"
                 :title="opt.label"
-                @click="sortBy = opt.value; loadDatasets()"
+                @click="sortBy = opt.value; datasetsQuery.refetch()"
               >
                 <component :is="opt.icon" :size="12" />
               </button>
               <button
                 class="p-0.5 rounded text-[var(--color-ink-secondary)] hover:bg-[var(--color-bg-hover)] transition-colors"
                 :title="sortDir === 'asc' ? '升序' : '降序'"
-                @click="sortDir = sortDir === 'asc' ? 'desc' : 'asc'; loadDatasets()"
+                @click="sortDir = sortDir === 'asc' ? 'desc' : 'asc'; datasetsQuery.refetch()"
               >
                 <ArrowUpNarrowWide v-if="sortDir === 'asc'" :size="12" />
                 <ArrowDownWideNarrow v-else :size="12" />
@@ -170,7 +170,7 @@
                 <h3 class="text-[var(--text-section-title)] font-medium text-[var(--color-ink)]">处理流水线</h3>
                 <div class="flex items-center gap-2">
                   <span v-if="polling" class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">自动刷新中...</span>
-                  <button class="liquid-btn-ghost px-2 py-1" @click="loadTasks">
+                  <button class="liquid-btn-ghost px-2 py-1" @click="tasksQuery.refetch()">
                     <RefreshCw :size="14" :class="{ 'animate-spin': loadingTasks }" />
                   </button>
                 </div>
@@ -405,7 +405,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
+import { ref, computed, watch } from "vue";
 import {
   Upload, FileSpreadsheet, Trash2, RefreshCw, GitBranch, ChevronRight,
   Cpu, Clock, Type, Hash, ArrowUpNarrowWide, ArrowDownWideNarrow,
@@ -418,42 +418,37 @@ import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import KGGraph from "@/components/KGGraph.vue";
 import KGDetailPanel from "@/components/KGDetailPanel.vue";
 import { useToast } from "@/composables/useToast";
-import {
-  structuredDataApi,
-  type DatasetDTO,
-  type DatasetRowDTO,
-} from "@/services/structured-data";
-import {
-  knowledgeApi,
-  type KnowledgeNodeDTO,
-  type KnowledgeEdgeDTO,
-} from "@/services/knowledge";
+import type { DatasetDTO } from "@/services/structured-data";
+import type { KnowledgeNodeDTO, KnowledgeEdgeDTO } from "@/services/knowledge";
 import type { TaskDTO } from "@/services/document";
 import {
   DS_TASK_STEPS,
   TASK_STATUS_MAP,
   FILE_STATUS_MAP,
 } from "@/constants/pipeline";
+import {
+  useDatasetsQuery,
+  useDatasetTasksQuery,
+  useDatasetRowsQuery,
+  useDatasetKgQuery,
+  useKgOverviewQuery,
+  useUploadDatasetMutation,
+  useDeleteDatasetMutation,
+  useRetryTasksMutation,
+  useReinitializeMutation,
+  useRebuildKgMutation,
+} from "@/views/database/queries";
 
 const toast = useToast();
 
 // --- State ---
-const datasets = ref<DatasetDTO[]>([]);
 const selected = ref<DatasetDTO | null>(null);
-const tasks = ref<TaskDTO[]>([]);
-const rows = ref<DatasetRowDTO[]>([]);
-const kgNodes = ref<KnowledgeNodeDTO[]>([]);
-const kgEdges = ref<KnowledgeEdgeDTO[]>([]);
 const selectedKgNode = ref<KnowledgeNodeDTO | null>(null);
-const kgOverviewNodes = ref<KnowledgeNodeDTO[]>([]);
-const kgOverviewEdges = ref<KnowledgeEdgeDTO[]>([]);
+const selectedOverviewKgNode = ref<KnowledgeNodeDTO | null>(null);
 
-const loading = ref(true);
+// Kept for template compatibility (was a dead loading flag in the previous
+// implementation — always false). Vue Query owns actual data loading state.
 const loadingDetail = ref(false);
-const loadingTasks = ref(false);
-const loadingRows = ref(false);
-const loadingKg = ref(false);
-const loadingKgOverview = ref(false);
 
 const activeTab = ref("preview");
 const showDelete = ref(false);
@@ -461,8 +456,6 @@ const showUpload = ref(false);
 const showKgOverview = ref(false);
 const showKgRebuildConfirm = ref(false);
 const datasetListCollapsed = ref(false);
-const selectedOverviewKgNode = ref<KnowledgeNodeDTO | null>(null);
-const rebuildingKg = ref(false);
 
 const offset = ref(0);
 const pageSize = 50;
@@ -476,134 +469,93 @@ const sortOptions = [
 ];
 
 const uploadForm = ref({ name: "", description: "", tags: "", file: null as File | null });
-const uploading = ref(false);
 const fileInputRef = ref<HTMLInputElement | null>(null);
-
-let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 const tabs = [
   { key: "preview", label: "数据预览" },
   { key: "kg", label: "知识图谱(本表)" },
 ];
 
+const selectedId = computed(() => selected.value?.id ?? null);
+
+// --- Queries (Vue Query) ---
+const datasetsQuery = useDatasetsQuery(
+  computed(() => ({ sort_by: sortBy.value, sort_dir: sortDir.value })),
+);
+const datasets = computed<DatasetDTO[]>(() => datasetsQuery.data.value ?? []);
+const loading = computed(() => datasetsQuery.isLoading.value);
+
+const tasksQuery = useDatasetTasksQuery(
+  selectedId,
+  // 3s refetch while any task is running or pending; otherwise pause.
+  computed(() => 3000),
+);
+const tasks = computed<TaskDTO[]>(() => tasksQuery.data.value ?? []);
+const loadingTasks = computed(() => tasksQuery.isFetching.value);
 const polling = computed(() => tasks.value.some((t) => t.status === "running" || t.status === "pending"));
+
+const rowsQuery = useDatasetRowsQuery(
+  selectedId,
+  computed(() => ({ offset: offset.value, limit: pageSize })),
+);
+const rows = computed(() => rowsQuery.data.value ?? []);
+const loadingRows = computed(() => rowsQuery.isFetching.value);
+
+const kgQuery = useDatasetKgQuery(selectedId);
+const kgNodes = computed<KnowledgeNodeDTO[]>(() => kgQuery.data.value?.nodes ?? []);
+const kgEdges = computed<KnowledgeEdgeDTO[]>(() => kgQuery.data.value?.edges ?? []);
+const loadingKg = computed(() => kgQuery.isFetching.value);
+
+const kgOverviewQuery = useKgOverviewQuery();
+const kgOverviewNodes = computed<KnowledgeNodeDTO[]>(
+  () => (kgOverviewQuery.data.value?.nodes as unknown as KnowledgeNodeDTO[]) ?? [],
+);
+const kgOverviewEdges = computed<KnowledgeEdgeDTO[]>(
+  () => (kgOverviewQuery.data.value?.edges as unknown as KnowledgeEdgeDTO[]) ?? [],
+);
+const loadingKgOverview = computed(() => kgOverviewQuery.isFetching.value);
 
 const canUpload = computed(() => uploadForm.value.name.trim() && uploadForm.value.file);
 
-const selectedId = computed(() => selected.value?.id ?? null);
-
-// --- Load datasets ---
-async function loadDatasets() {
-  loading.value = true;
-  try {
-    const { data } = await structuredDataApi.listDatasets({
-      sort_by: sortBy.value,
-      sort_dir: sortDir.value,
-    });
-    console.log("[DB] loadDatasets response:", data);
-    datasets.value = data;
-    console.log("[DB] datasets.value updated, count:", datasets.value.length);
-  } catch (e) {
-    console.error("[DB] loadDatasets error:", e);
-    toast.error("加载数据集列表失败");
-  } finally {
-    loading.value = false;
-  }
-}
-
 // --- Select dataset ---
-async function selectDataset(ds: DatasetDTO) {
+function selectDataset(ds: DatasetDTO) {
   showKgOverview.value = false;
   selected.value = ds;
   offset.value = 0;
-  kgNodes.value = [];
-  await Promise.all([loadTasks(), loadRows()]);
-  if (activeTab.value === "kg") loadKg();
 }
 
-async function loadTasks() {
-  if (!selected.value) return;
-  loadingTasks.value = true;
-  try {
-    const { data } = await structuredDataApi.listTasks(selected.value.id);
-    tasks.value = data;
-  } catch {
-    toast.error("加载任务失败");
-  } finally {
-    loadingTasks.value = false;
-  }
-}
+// --- Mutations (Vue Query) ---
+const uploadMutation = useUploadDatasetMutation(() => {
+  toast.success("数据集上传成功");
+  showUpload.value = false;
+  uploadForm.value = { name: "", description: "", tags: "", file: null };
+});
+const uploading = computed(() => uploadMutation.isPending.value);
 
-async function loadRows() {
-  if (!selected.value) return;
-  loadingRows.value = true;
-  try {
-    const { data } = await structuredDataApi.listRows(selected.value.id, {
-      offset: offset.value,
-      limit: pageSize,
-    });
-    rows.value = data;
-  } catch {
-    toast.error("加载数据失败");
-  } finally {
-    loadingRows.value = false;
-  }
-}
+const deleteMutation = useDeleteDatasetMutation(selectedId, () => {
+  toast.success("数据集已删除");
+  selected.value = null;
+});
 
-async function loadKg() {
-  if (!selected.value) return;
-  loadingKg.value = true;
-  try {
-    const [nodesRes, edgesRes] = await Promise.all([
-      knowledgeApi.listNodes({ source_dataset_id: selected.value.id, limit: 100 }),
-      knowledgeApi.listEdges({ source_dataset_id: selected.value.id }),
-    ]);
-    kgNodes.value = nodesRes.data;
-    kgEdges.value = edgesRes.data;
-  } catch {
-    toast.error("加载知识图谱失败");
-  } finally {
-    loadingKg.value = false;
-  }
-}
+const retryMutation = useRetryTasksMutation(selectedId, () => {
+  toast.success("已重新提交任务");
+});
 
-async function loadKgOverview() {
-  loadingKgOverview.value = true;
-  try {
-    const { data } = await structuredDataApi.getKnowledgeGraph();
-    kgOverviewNodes.value = data.nodes.map((n) => ({
-      id: n.id,
-      tenant_id: "",
-      title: n.title,
-      description: n.description,
-      domain: n.domain,
-      level: n.level,
-      parent_id: null,
-      path: null,
-      tags: [],
-      metadata: {},
-    }));
-    kgOverviewEdges.value = data.edges.map((e) => ({
-      id: e.id,
-      source_id: e.source_id,
-      target_id: e.target_id,
-      relation_type: e.relation_type,
-      weight: 1,
-      metadata: e.metadata ?? {},
-    }));
-  } catch {
-    toast.error("加载知识图谱总览失败");
-  } finally {
-    loadingKgOverview.value = false;
-  }
-}
+const reinitializeMutation = useReinitializeMutation(selectedId, () => {
+  toast.success("已开始重新初始化");
+});
+
+const rebuildKgMutation = useRebuildKgMutation(selectedId, () => {
+  toast.success("知识图谱重建已启动");
+  selectedOverviewKgNode.value = null;
+});
+const rebuildingKg = computed(() => rebuildKgMutation.isPending.value);
 
 // --- Pagination ---
 function changePage(delta: number) {
   const newOffset = offset.value + delta * pageSize;
   if (newOffset < 0 || newOffset >= totalRows.value) return;
   offset.value = newOffset;
-  loadRows();
 }
 
 // --- Upload ---
@@ -618,148 +570,68 @@ function handleFileChange(e: Event) {
   }
 }
 
-async function doUpload() {
+function doUpload() {
   if (!canUpload.value) return;
-  uploading.value = true;
-  try {
-    const formData = new FormData();
-    formData.append("file", uploadForm.value.file!);
-    formData.append("name", uploadForm.value.name.trim());
-    if (uploadForm.value.description.trim()) {
-      formData.append("description", uploadForm.value.description.trim());
-    }
-    if (uploadForm.value.tags.trim()) {
-      const tags = uploadForm.value.tags.split(",").map((t) => t.trim()).filter(Boolean);
-      tags.forEach((tag) => formData.append("tags", tag));
-    }
-    const uploadRes = await structuredDataApi.uploadDataset(formData, uploadForm.value.name.trim());
-    console.log("[DB] Upload succeeded, dataset:", uploadRes.data);
-    toast.success("数据集上传成功");
-    showUpload.value = false;
-    uploadForm.value = { name: "", description: "", tags: "", file: null };
-    // Wait for dialog unmount before loading to ensure reactivity is settled
-    await nextTick();
-    console.log("[DB] Calling loadDatasets...");
-    await loadDatasets();
-    console.log("[DB] loadDatasets done, datasets count:", datasets.value.length);
-  } catch (e) {
-    console.error("[DB] Upload failed:", e);
-    toast.error("上传失败");
-  } finally {
-    uploading.value = false;
+  const formData = new FormData();
+  formData.append("file", uploadForm.value.file!);
+  formData.append("name", uploadForm.value.name.trim());
+  if (uploadForm.value.description.trim()) {
+    formData.append("description", uploadForm.value.description.trim());
   }
+  if (uploadForm.value.tags.trim()) {
+    const tags = uploadForm.value.tags.split(",").map((t) => t.trim()).filter(Boolean);
+    tags.forEach((tag) => formData.append("tags", tag));
+  }
+  uploadMutation.mutate(formData);
 }
 
-// --- Delete ---
-async function doDelete() {
-  if (!selected.value) return;
-  try {
-    await structuredDataApi.deleteDataset(selected.value.id);
-    toast.success("数据集已删除");
-    selected.value = null;
-    rows.value = [];
-    tasks.value = [];
-    await loadDatasets();
-  } catch {
-    toast.error("删除失败");
-  }
+function doDelete() {
+  if (!selectedId.value) return;
+  deleteMutation.mutate(undefined);
 }
 
-async function retryTasks() {
-  if (!selected.value) return;
-  try {
-    await structuredDataApi.retryTasks(selected.value.id);
-    toast.success("已重新提交任务");
-    await loadTasks();
-  } catch {
-    toast.error("重试失败");
-  }
+function retryTasks() {
+  if (!selectedId.value) return;
+  retryMutation.mutate(undefined);
 }
 
-async function reinitialize() {
-  if (!selected.value) return;
-  try {
-    await structuredDataApi.reinitializeDataset(selected.value.id);
-    toast.success("已开始重新初始化");
-    tasks.value = [];
-    rows.value = [];
-    kgNodes.value = [];
-    await loadTasks();
-  } catch {
-    toast.error("重新初始化失败");
-  }
+function reinitialize() {
+  if (!selectedId.value) return;
+  reinitializeMutation.mutate(undefined);
 }
 
-async function doRebuildKg() {
-  rebuildingKg.value = true;
-  try {
-    await structuredDataApi.rebuildKnowledgeGraph();
-    toast.success("知识图谱重建已启动");
-    kgOverviewNodes.value = [];
-    kgOverviewEdges.value = [];
-    selectedOverviewKgNode.value = null;
-    if (selected.value) {
-      kgNodes.value = [];
-      kgEdges.value = [];
-    }
-  } catch {
-    toast.error("知识图谱重建失败");
-  } finally {
-    rebuildingKg.value = false;
-  }
+function doRebuildKg() {
+  rebuildKgMutation.mutate(undefined);
 }
 
 // --- KG Overview ---
 function toggleKgOverview() {
   showKgOverview.value = !showKgOverview.value;
-  if (showKgOverview.value && kgOverviewNodes.value.length === 0) {
-    loadKgOverview();
-  }
 }
 
 // --- Tab data loading ---
-watch(activeTab, () => {
-  if (activeTab.value === "kg" && kgNodes.value.length === 0) loadKg();
-});
+// When switching to the kg tab, ensure the kg query is enabled by selecting
+// the dataset first; Vue Query will then refetch automatically.
 
 // --- Auto-reload when pipeline tasks complete ---
 watch(
   () => tasks.value.find((t) => t.task_type === "ds_parse")?.status,
-  async (status, prevStatus) => {
-    if (status === "success" && prevStatus !== "success" && selected.value) {
-      // Refresh dataset metadata (row_count updates from 0 to actual)
-      try {
-        const { data } = await structuredDataApi.getDataset(selected.value.id);
-        selected.value = data;
-        // Also update the row in the datasets list
-        const idx = datasets.value.findIndex((d) => d.id === data.id);
-        if (idx >= 0) datasets.value[idx] = data;
-      } catch (e) {
-        console.warn("[DB] refresh dataset after ds_parse failed:", e);
-      }
-      // Reload rows
-      await loadRows();
+  (status, prevStatus) => {
+    if (status === "success" && prevStatus !== "success") {
+      // Row count updates from 0 to actual; refresh both list and rows.
+      void datasetsQuery.refetch();
+      void rowsQuery.refetch();
     }
   },
 );
 
 watch(
   () => tasks.value.find((t) => t.task_type === "ds_extract_kg")?.status,
-  async (status, prevStatus) => {
+  (status, prevStatus) => {
     if (status === "success" && prevStatus !== "success") {
-      // Update kg_status on selected dataset
-      if (selected.value) {
-        try {
-          const { data } = await structuredDataApi.getDataset(selected.value.id);
-          selected.value = data;
-        } catch (e) {
-          console.warn("[DB] refresh dataset after ds_extract_kg failed:", e);
-        }
-      }
-      // Reload KG (whether or not on KG tab — so it's ready on switch)
-      kgNodes.value = [];
-      kgEdges.value = [];
-      await loadKg();
+      // Reload KG so it's ready on tab switch
+      void kgQuery.refetch();
+      void datasetsQuery.refetch();
     }
   },
 );
@@ -818,28 +690,8 @@ function formatCell(value: unknown): string {
   return JSON.stringify(value, null, 0);
 }
 
-// --- Polling ---
-function startPolling() {
-  if (pollTimer) return;
-  pollTimer = setInterval(() => {
-    if (polling.value) loadTasks();
-  }, 3000);
-}
-
-function stopPolling() {
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = null;
-  }
-}
-
 // --- Init ---
-onMounted(async () => {
-  await loadDatasets();
-  startPolling();
-});
+// Queries auto-fetch on first read (via useQuery); no explicit onMounted trigger
+// is required. Polling is handled by useDatasetTasksQuery.refetchInterval.
 
-onUnmounted(() => {
-  stopPolling();
-});
 </script>
