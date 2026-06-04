@@ -108,38 +108,7 @@
 
 ## 当前进行中
 
-### DOC-007: 压缩 current-work 最近完成区并强化渐进式披露
-
-状态：🟡 进行中
-类型：文档 / 工程规范
-领域：Docs / Delivery
-当前执行模式：plan-do
-最近接手工具：Codex
-分支：
-
-需求来源：
-- Spec:
-- Plan:
-- 技术债：
-- 架构约束：`docs/engineering/current-work.md`，`docs/engineering/workflow.md`，`docs/engineering/work-log.md`
-- 插件输出：
-- 任务模式：`docs/engineering/task-modes.md#通用收尾回查`
-
-当前进展：
-- 已完成：确认规则质量收益有效，但 `current-work.md` 最近完成区过长，适合做入口瘦身；已将最近完成区压缩为短摘要表，并同步 `workflow.md` / `work-log.md` 的渐进式披露规则。
-- 正在处理：
-- 未完成：
-
-下一步：
-1. 按流程提交并合并本次文档优化。
-
-验证状态：
-- 已运行：`git diff --check` 退出码 0；`rg -n "DOC-007|最近完成|短摘要|work-log|^## 当前进行中|^## 下一批候选任务|^## 最近完成|^### " docs/engineering/current-work.md docs/engineering/workflow.md docs/engineering/work-log.md` 命中预期入口、规则和区域；`wc -l docs/engineering/current-work.md docs/engineering/workflow.md docs/engineering/work-log.md` 显示 `current-work.md` 为 159 行；`git diff --name-status` 确认范围仅 3 个工程文档。
-- 未运行：业务代码测试，原因是本次仅修改工程规范文档。
-- 当前失败：无。
-
-交接备注：
-- 本任务只做规则入口瘦身，不降低开工、验证、复核入账或 Git 闭环硬门。
+当前无进行中任务。
 
 ## 下一批候选任务
 
@@ -151,8 +120,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-05 | DOC-007 压缩 current-work 最近完成区并强化渐进式披露 | 🟢 完成 | 将最近完成区压缩为 5 行短摘要，并把长期索引沉淀到 `work-log.md`。 | `docs/engineering/work-log.md` / [PR #30](https://github.com/MarkDanile/MetaEduBase/pull/30) |
 | 2026-06-05 | DOC-006 修复 current-work 重复完成区标题 | 🟢 完成 | 删除重复 `## 最近完成` 标题，恢复单一最近完成区。 | `docs/engineering/work-log.md` / [PR #29](https://github.com/MarkDanile/MetaEduBase/pull/29) |
 | 2026-06-05 | TD-014 加强测试数据库 legacy stamp 的列级形态校验 | 🟢 完成 | legacy stamp 增加关键列形态校验，降低残缺 schema 被 stamp 掩盖风险。 | `docs/engineering/technical-debt.md#td-014-加强测试数据库-legacy-stamp-的列级形态校验` / [PR #28](https://github.com/MarkDanile/MetaEduBase/pull/28) |
 | 2026-06-05 | TD-013 收口 TD-004 测试数据库初始化安全与文档占位 | 🟢 完成 | 校验测试数据库名、收窄 legacy stamp、清理 TD-004 plan 占位。 | `docs/engineering/technical-debt.md#td-013-收口-td-004-测试数据库初始化安全与文档占位` / [PR #27](https://github.com/MarkDanile/MetaEduBase/pull/27) |
 | 2026-06-04 | DOC-005 补强复核入账与候选任务选择策略 | 🟢 完成 | 明确 review 发现入账、三账一致和候选任务选择策略。 | `docs/engineering/work-log.md` / [PR #25](https://github.com/MarkDanile/MetaEduBase/pull/25) |
-| 2026-06-04 | TD-004 让后端测试数据库环境可复现 | 🟢 完成 | 新增显式测试库初始化路径，后端测试环境可复现。 | `docs/engineering/technical-debt.md#td-004-让后端测试数据库环境可复现` / [PR #23](https://github.com/MarkDanile/MetaEduBase/pull/23) |
