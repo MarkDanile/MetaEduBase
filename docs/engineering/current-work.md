@@ -129,7 +129,7 @@
 交接备注：
 - 行为变化（非「零业务逻辑变更」，已按 `docs/engineering/rules/quality-gates.md#行为变化声明检查` 显式声明）：测试 schema 由 conftest 内 `Base.metadata.create_all` 改为前置 `init-test-db`（Alembic upgrade head）；未跑 init-test-db 的环境会显式失败而非隐式建表。默认 URL 与现状一致，conftest 仍执行 `CREATE SCHEMA IF NOT EXISTS metaedu` 与 `TRUNCATE templates`。
 - 实施踩坑：旧测试库有「业务表已建好但 alembic_version 缺失」遗留状态，模块加入 `_stamp_if_legacy_schema` 自愈分支；`make_url(...)` 的 `str()` 会 mask 密码为 `***`，alembic 必须接原始连接串。spec / plan 已回写。
-- PR / merge commit 在 Git 闭环后回填。
+- PR #23（https://github.com/MarkDanile/MetaEduBase/pull/23）；merge commit `b8b34a6`；完成日期：2026-06-04。
 
 ### DOC-004: 优化完整 Git 提交流程与合并后回填规则
 

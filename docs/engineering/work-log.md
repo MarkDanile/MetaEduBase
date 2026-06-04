@@ -13,7 +13,7 @@
 
 | 日期 | 任务 | 类型 | PR | Merge Commit | 归档位置 |
 |------|------|------|----|--------------|----------|
-| 2026-06-04 | TD-004 让后端测试数据库环境可复现 | 技术债 / 基础设施 | _PR 闭环后回填_ | _闭环后回填_ | `docs/engineering/technical-debt.md#td-004-让后端测试数据库环境可复现` |
+| 2026-06-04 | TD-004 让后端测试数据库环境可复现 | 技术债 / 基础设施 | [#23](https://github.com/MarkDanile/MetaEduBase/pull/23) | `b8b34a6` | `docs/engineering/technical-debt.md#td-004-让后端测试数据库环境可复现` |
 | 2026-06-04 | DOC-003 补强跨插件计划、行为声明和 PR 范围边界规则 | 文档 / 工程规范 | [#20](https://github.com/MarkDanile/MetaEduBase/pull/20) | `3b883ea` | `docs/engineering/current-work.md` |
 | 2026-06-04 | DOC-002 强化跨 AI 提交前回查与验证声明规范 | 文档 / 工程规范 | [#16](https://github.com/MarkDanile/MetaEduBase/pull/16) | `f438307` | `docs/engineering/current-work.md` |
 | 2026-06-04 | TD-012 治理后端全量 ruff 质量门禁 | 技术债 | [#17](https://github.com/MarkDanile/MetaEduBase/pull/17) | `a4dcb2a` | `docs/engineering/technical-debt.md#td-012-治理后端全量-ruff-质量门禁` |
