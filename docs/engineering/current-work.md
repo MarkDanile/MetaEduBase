@@ -110,7 +110,7 @@
 - 未完成：
 
 下一步：
-1. 按 `docs/engineering/rules/git-workflow.md#完整交付闭环` 提交、push、创建 PR、合并 `main` 并确认本地同步。
+1. 后续让 Claude Code 按新规范处理下一个技术债，并由 Codex 复核流程执行情况。
 
 验证状态：
 - 已运行：`git diff --check` 通过；`rg -n "活文档|最终声明回查|覆盖矩阵|验证表述规范|git add|退出码非 0|历史失败|验证后最终同步" docs/engineering/current-work.md docs/engineering/workflow.md docs/engineering/rules/quality-gates.md docs/engineering/rules/git-workflow.md docs/engineering/task-modes.md` 确认新增规则落点。
@@ -118,7 +118,7 @@
 - 当前失败：无。
 
 交接备注：
-- 已按 `docs/engineering/rules/git-workflow.md` 回读并准备执行完整 Git 闭环。
+- 已按 `docs/engineering/rules/git-workflow.md` 回读并执行完整 Git 闭环；PR 和 merge commit 以最终交付回复为准。
 
 ### TD-002-FOLLOWUP: 收口 TD-002 流程与测试遗留
 
