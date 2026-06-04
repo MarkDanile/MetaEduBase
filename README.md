@@ -112,6 +112,7 @@ cd MetaEduBase
 pnpm install
 cd packages/server-python && make install && cd ../..
 
+./dev.sh init-db
 ./dev.sh
 ```
 
@@ -121,12 +122,13 @@ cd packages/server-python && make install && cd ../..
 | `./dev.sh infra` | 仅基础设施 (PG/Redis/MinIO) |
 | `./dev.sh backend` | 重启后端 |
 | `./dev.sh frontend` | 重启前端 |
+| `./dev.sh init-db` | 显式初始化开发数据库（迁移 + 默认开发账号） |
 | `./dev.sh stop` | 停止全部 |
 | `./dev.sh status` | 查看状态 |
 | `./dev.sh logs` | 查看后端日志 |
 | `./dev.sh logs frontend` | 查看前端日志 |
 
-默认账号 `admin` / `admin123`，启动后访问 http://localhost:3000
+首次执行 `./dev.sh init-db` 后会创建默认开发账号 `admin` / `admin123`，启动后访问 http://localhost:3000
 
 > 改代码后无需手动重启 — uvicorn `--reload` + Vite HMR 自动生效
 

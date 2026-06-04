@@ -8,6 +8,7 @@ set -euo pipefail
 #   ./dev.sh backend  # 仅重启后端 (强制重启)
 #   ./dev.sh frontend  # 仅重启前端 (强制重启)
 #   ./dev.sh celery   # 仅启动 Celery Worker
+#   ./dev.sh init-db  # 显式初始化开发数据库 (迁移 + 默认开发账号)
 #   ./dev.sh stop     # 停止全部服务
 #   ./dev.sh status   # 查看运行状态
 #   ./dev.sh logs     # 查看后端日志 (logs frontend/celery 查看)
@@ -201,6 +202,24 @@ start_infra() {
     ensure_db_and_user
     warn "Redis 和 MinIO 未启动 (本地开发可选，部分功能受限)"
   fi
+}
+
+init_dev_db() {
+  log "初始化开发数据库 (迁移 + 默认开发账号)..."
+  start_infra
+  cd "$SERVER_DIR"
+  if [[ ! -d ".venv" ]]; then
+    log "创建 Python 虚拟环境..."
+    python3 -m venv .venv
+    log "安装后端依赖..."
+    .venv/bin/pip install -e ".[dev,ai]" -q
+  fi
+  if ! .venv/bin/python -c "import alembic" 2>/dev/null; then
+    log "安装后端依赖..."
+    .venv/bin/pip install -e ".[dev,ai]" -q
+  fi
+  ALLOW_DEFAULT_SEED=true .venv/bin/python -m app.shared.infrastructure.dev_setup
+  ok "开发数据库初始化完成"
 }
 
 start_backend() {
@@ -416,7 +435,7 @@ show_status() {
   fi
 
   echo "├──────────────────────────────────────────────┤"
-  echo "│  默认账号: admin / admin123                   │"
+  echo "│  开发账号: admin / admin123 (需先 init-db)     │"
   echo "│  API 文档: http://localhost:8000/docs         │"
   echo "│  前端地址: http://localhost:3000              │"
   echo "│  日志目录: .dev-logs/                         │"
@@ -455,6 +474,9 @@ main() {
     celery)
       start_celery
       ;;
+    init-db)
+      init_dev_db
+      ;;
     stop)
       stop_all
       ;;
@@ -474,13 +496,14 @@ main() {
       fi
       ;;
     *)
-      echo "用法: $0 {all|infra|backend|frontend|celery|stop|status|logs}"
+      echo "用法: $0 {all|infra|backend|frontend|celery|init-db|stop|status|logs}"
       echo ""
       echo "  all       启动全部服务 (幂等: 已运行则跳过)"
       echo "  infra     仅启动基础设施 (PostgreSQL/Redis/MinIO)"
       echo "  backend   重启后端"
       echo "  frontend  重启前端"
       echo "  celery    仅启动 Celery Worker"
+      echo "  init-db   显式初始化开发数据库 (迁移 + 默认开发账号)"
       echo "  stop      停止全部服务"
       echo "  status    查看运行状态"
       echo "  logs      查看日志 (backend/frontend/celery)"

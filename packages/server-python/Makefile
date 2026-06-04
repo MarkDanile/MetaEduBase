@@ -1,4 +1,4 @@
-.PHONY: dev install migrate lint test
+.PHONY: dev install migrate init-dev-db seed-dev lint test
 
 install:
 	pip install -e ".[dev,ai]"
@@ -11,6 +11,12 @@ celery-worker:
 
 migrate:
 	alembic upgrade head
+
+init-dev-db:
+	ALLOW_DEFAULT_SEED=true python -m app.shared.infrastructure.dev_setup
+
+seed-dev:
+	ALLOW_DEFAULT_SEED=true python -m app.shared.infrastructure.seed
 
 migrate-create:
 	alembic revision --autogenerate -m "$(msg)"

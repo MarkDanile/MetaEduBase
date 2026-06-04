@@ -1,5 +1,7 @@
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -37,23 +39,23 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
-async def init_db() -> None:
-    import asyncio
-
+async def ensure_metaedu_schema() -> None:
     async with engine.begin() as conn:
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS metaedu"))
-    try:
-        from alembic import command  # noqa: I001
-        from alembic.config import Config
 
-        alembic_cfg = Config()
-        alembic_cfg.set_main_option("script_location", "alembic")
-        alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url)
 
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, command.upgrade, alembic_cfg, "head")
-        logger.info("数据库迁移完成 (alembic upgrade head)")
-    except Exception as e:
-        logger.warning(f"Alembic 迁移失败，回退到 create_all: {e}")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+async def run_migrations() -> None:
+    from alembic.config import Config
+
+    from alembic import command
+
+    await ensure_metaedu_schema()
+
+    server_root = Path(__file__).resolve().parents[3]
+    alembic_cfg = Config(str(server_root / "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", str(server_root / "alembic"))
+    alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url)
+
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, command.upgrade, alembic_cfg, "head")
+    logger.info("数据库迁移完成 (alembic upgrade head)")

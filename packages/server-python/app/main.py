@@ -1,5 +1,3 @@
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -12,23 +10,14 @@ from app.contexts.knowledge.interfaces.api.ai_router import router as ai_router
 from app.contexts.knowledge.interfaces.api.router import router as knowledge_router
 from app.contexts.resource.interfaces.api.router import router as resource_router
 from app.contexts.structured_data.interfaces.api.router import router as structured_data_router
-from app.contexts.template.interfaces.api.router import router as template_router
 from app.contexts.structured_data.interfaces.api.task_router import (
     router as structured_data_task_router,
 )
-from app.shared.infrastructure.seed import init_db_with_seed
-
-
-@asynccontextmanager
-async def lifespan(application: FastAPI):
-    await init_db_with_seed()
-    yield
-
+from app.contexts.template.interfaces.api.router import router as template_router
 
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    lifespan=lifespan,
 )
 
 app.add_middleware(
