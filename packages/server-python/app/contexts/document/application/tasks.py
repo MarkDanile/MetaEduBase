@@ -17,87 +17,18 @@ from datetime import UTC, datetime
 
 from celery import shared_task
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.contexts.template.infrastructure.repository import TemplateRepositoryImpl
 from app.shared.llm.chat import chat
+from app.shared.tasks.lifecycle import (
+    _create_task,
+    _run_in_session,
+    _update_task_status,
+)
 
 logger = logging.getLogger(__name__)
-
-
-def _get_sync_session():
-    """Create a synchronous DB session for Celery tasks (which run in their own event loop)."""
-
-    engine = create_async_engine(settings.database_url, echo=False)
-    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-    class _SyncSession:
-        def __init__(self):
-            self._engine = engine
-            self._session: AsyncSession | None = None
-
-        async def __aenter__(self):
-            self._session = factory()
-            return self._session
-
-        async def __aexit__(self, *exc):
-            if self._session:
-                await self._session.close()
-            await self._engine.dispose()
-
-    return _SyncSession()
-
-
-async def _run_in_session(coro):
-    """Run an async coroutine with a DB session, handling commit/rollback."""
-    async with _get_sync_session() as session:
-        try:
-            result = await coro(session)
-            await session.commit()
-            return result
-        except Exception:
-            await session.rollback()
-            raise
-
-
-async def _update_task_status(
-    session: AsyncSession,
-    task_id: uuid.UUID,
-    status: str,
-    progress: int = 0,
-    error_message: str | None = None,
-):
-    now = datetime.now(UTC).replace(tzinfo=None)
-    sets = ["status = :status", "progress = :progress", "updated_at = :now"]
-    params = {"tid": task_id, "status": status, "progress": progress, "now": now}
-    if status == "running" and progress == 0:
-        sets.append("started_at = :now")
-    if status in ("success", "failed"):
-        sets.append("completed_at = :now")
-    if error_message:
-        sets.append("error_message = :err")
-        params["err"] = error_message
-    await session.execute(
-        text(f"UPDATE metaedu.document_tasks SET {', '.join(sets)} WHERE id = :tid"),
-        params,
-    )
-
-
-async def _create_task(
-    session: AsyncSession, tenant_id: uuid.UUID, file_id: uuid.UUID, task_type: str
-) -> uuid.UUID:
-    task_id = uuid.uuid4()
-    now = datetime.now(UTC).replace(tzinfo=None)
-    await session.execute(
-        text(
-            "INSERT INTO metaedu.document_tasks "
-            "(id, tenant_id, file_id, task_type, status, progress, created_at) "
-            "VALUES (:id, :tid, :fid, :type, 'pending', 0, :now)"
-        ),
-        {"id": task_id, "tid": tenant_id, "fid": file_id, "type": task_type, "now": now},
-    )
-    return task_id
 
 
 # --- Task 1: Parse document ---
@@ -156,12 +87,12 @@ def parse_document(file_id_str: str, tenant_id_str: str, pipeline_version: str =
         )
         row = result.mappings().first()
         if not row:
-            task_id = await _create_task(session, tenant_id, file_id, "parse")
+            task_id = await _create_task(session, tenant_id, file_id=file_id, task_type="parse")
             await _update_task_status(session, task_id, "failed", 0, f"File {file_id} not found")
             await session.commit()
             return
 
-        task_id = await _create_task(session, tenant_id, file_id, "parse")
+        task_id = await _create_task(session, tenant_id, file_id=file_id, task_type="parse")
         created_task_id = task_id
         await _update_task_status(session, task_id, "running", 0)
         await session.commit()
@@ -261,7 +192,7 @@ def chunk_document(file_id_str: str, tenant_id_str: str, pipeline_version: str =
     tenant_id = uuid.UUID(tenant_id_str)
 
     async def _do(session: AsyncSession):
-        task_id = await _create_task(session, tenant_id, file_id, "chunk")
+        task_id = await _create_task(session, tenant_id, file_id=file_id, task_type="chunk")
         await _update_task_status(session, task_id, "running", 0)
         await session.commit()
 
@@ -399,7 +330,7 @@ def embed_chunks(file_id_str: str, tenant_id_str: str, pipeline_version: str = "
     tenant_id = uuid.UUID(tenant_id_str)
 
     async def _do(session: AsyncSession):
-        task_id = await _create_task(session, tenant_id, file_id, "embed")
+        task_id = await _create_task(session, tenant_id, file_id=file_id, task_type="embed")
         await _update_task_status(session, task_id, "running", 0)
         await session.commit()
 
@@ -521,7 +452,7 @@ def index_tsvector(file_id_str: str, tenant_id_str: str, pipeline_version: str =
     tenant_id = uuid.UUID(tenant_id_str)
 
     async def _do(session: AsyncSession):
-        task_id = await _create_task(session, tenant_id, file_id, "index_tsv")
+        task_id = await _create_task(session, tenant_id, file_id=file_id, task_type="index_tsv")
         await _update_task_status(session, task_id, "running", 0)
         await session.commit()
 
@@ -595,7 +526,9 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
     tenant_id = uuid.UUID(tenant_id_str)
 
     async def _do(session: AsyncSession):
-        task_id = await _create_task(session, tenant_id, file_id, "extract_template")
+        task_id = await _create_task(
+            session, tenant_id, file_id=file_id, task_type="extract_template"
+        )
         await _update_task_status(session, task_id, "running", 0)
         await session.commit()
 
@@ -848,7 +781,7 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str, pipeline_versi
     tenant_id = uuid.UUID(tenant_id_str)
 
     async def _do(session: AsyncSession):
-        task_id = await _create_task(session, tenant_id, file_id, "extract_kg")
+        task_id = await _create_task(session, tenant_id, file_id=file_id, task_type="extract_kg")
         await _update_task_status(session, task_id, "running", 0)
         await session.commit()
 
