@@ -11,6 +11,7 @@ import pytest
 from app.shared.infrastructure.test_db_setup import (
     _LEGACY_TABLES_FROM_CREATE_ALL,
     DatabaseNameError,
+    _has_legacy_create_all_columns,
     _is_legacy_create_all_shape,
     _validate_database_name,
 )
@@ -78,3 +79,78 @@ class TestLegacyCreateAllShape:
         # 新逻辑必须拒绝 stamp，让后续 alembic upgrade head 显式失败。
         existing = {"tenants", "users", "templates"}
         assert _is_legacy_create_all_shape(existing, missing_version=True) is False
+
+
+class TestLegacyColumnShape:
+    """INSERT 目标表（tenants / users）的关键代表列必须齐全。"""
+
+    def test_matches_when_required_columns_present(self) -> None:
+        existing = {
+            "tenants": {
+                "id", "name", "school_name", "isolation",
+                "is_active", "created_at", "updated_at",
+            },
+            "users": {
+                "id", "tenant_id", "username", "email",
+                "password_hash", "role", "clearance_level",
+                "is_active", "created_at", "updated_at",
+            },
+        }
+        assert _has_legacy_create_all_columns(existing) is True
+
+    def test_misses_when_tenants_missing_school_name(self) -> None:
+        # 真实回归：tenants 是 conftest INSERT 必填表；school_name 缺失
+        # 会让 stamp head 掩盖 INSERT 失败。
+        existing = {
+            "tenants": {"id", "name", "created_at"},  # 缺 school_name
+            "users": {
+                "id", "tenant_id", "username", "password_hash", "created_at",
+            },
+        }
+        assert _has_legacy_create_all_columns(existing) is False
+
+    def test_misses_when_users_missing_tenant_id(self) -> None:
+        # 真实回归：users.tenant_id 是 FK + NOT NULL；缺失会让 stamp head
+        # 掩盖关系完整性错误。
+        existing = {
+            "tenants": {"id", "name", "school_name", "created_at"},
+            "users": {
+                "id", "username", "password_hash", "created_at",  # 缺 tenant_id
+            },
+        }
+        assert _has_legacy_create_all_columns(existing) is False
+
+    def test_misses_when_users_missing_password_hash(self) -> None:
+        # 真实回归：users.password_hash 是 conftest INSERT 必填。
+        existing = {
+            "tenants": {"id", "name", "school_name", "created_at"},
+            "users": {
+                "id", "tenant_id", "username", "created_at",  # 缺 password_hash
+            },
+        }
+        assert _has_legacy_create_all_columns(existing) is False
+
+    def test_misses_when_only_one_required_column_dropped(self) -> None:
+        # 即使只少一个代表列也必须拒绝。
+        existing = {
+            "tenants": {
+                "id", "name", "school_name", "isolation",
+                "is_active", "updated_at",  # 缺 created_at
+            },
+            "users": {
+                "id", "tenant_id", "username", "password_hash", "created_at",
+            },
+        }
+        assert _has_legacy_create_all_columns(existing) is False
+
+    def test_treats_missing_target_table_as_inert(self) -> None:
+        # 目标表不在字典里说明连表都没建到；这种情况由表集合检查负责，
+        # 列级检查不应单独把"缺表"误判为"残缺列"。
+        existing = {"users": {
+            "id", "tenant_id", "username", "password_hash", "created_at",
+        }}
+        assert _has_legacy_create_all_columns(existing) is True
+
+    def test_returns_true_for_empty_input(self) -> None:
+        # 没有目标表的字典（schema 全新）应保持 True，让表集合检查去判定。
+        assert _has_legacy_create_all_columns({}) is True
