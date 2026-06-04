@@ -16,7 +16,7 @@
 - “按流程提交代码”默认不是只创建本地 commit，而是推进完整交付链路：提交、push、PR、合并 `main`、确认合并状态。
 - 如果用户只希望停在某一步，必须明确说明，例如“只提交不 push”或“只创建 PR 不合并”。
 - 完整交付闭环应按快速通道执行：少量固定检查、少量阶段汇报、合并后一次性收口；不得用重复回读和冗长汇报拖慢流程。
-- 最终回复不是交付事实源。合并后必须回填 PR、merge commit 和完成日期，禁止在任务文档中保留“以最终回复为准”“提交后更新”等占位。
+- 最终回复不是交付事实源。合并后必须清除任务文档中的过期状态和交付占位；PR 链接优先作为交付事实源，merge commit 默认可通过 PR 查询，只有文档占位或任务总账明确要求时才回填到仓库。
 
 ## 快速交付通道
 
@@ -29,7 +29,7 @@
 3. 范围边界：用 `git diff --name-status` 确认没有无关文件、生成物或资产清理混入。
 4. 提交链路：创建任务分支，暂存相关文件，commit，push，创建 PR。
 5. 合并检查：`gh pr view` + `gh pr checks`。如果可合并且没有阻塞，直接 squash merge。
-6. 合并后收口：确认 `main...origin/main` 干净；回填 PR、merge commit 和完成日期；如回填产生新变更，立即用最小 backfill PR 收口。
+6. 合并后收口：确认 `main...origin/main` 干净；清除交付占位，确认 PR 和完成状态已入账。只有文档仍有占位或明确要求记录 merge commit 时，才用最小 backfill PR 收口。
 
 中间只需向用户报告关键阶段：`已提交`、`PR 已创建`、`已合并 main`、`最终干净`。遇到失败、权限、网络、检查未通过或冲突时再详细说明。
 
@@ -151,7 +151,7 @@ refactor(server): 重构知识节点服务
    gh pr create --title "type(scope): description" --body "..."
    ```
 2. PR 描述必须包含 Summary、Scope、Validation、Risks、Docs。
-3. PR 链接必须写入最终回复；如果任务卡片需要长期追踪，也写入 `current-work.md` 或对应任务总账。
+3. PR 链接必须写入最终回复；如果任务文档已有 PR 占位、任务卡片需要长期追踪，或对应总账明确要求记录 PR，再写入 `current-work.md` 或对应任务总账。
 
 ### 4. 合并 main
 
@@ -177,8 +177,8 @@ refactor(server): 重构知识节点服务
 1. 确认 PR 状态为 `MERGED`，并记录 merge commit。
 2. 确认本地 `main` 已包含合并结果。
 3. 如果使用 Squash Merge，源分支上的原始提交不会作为 `main` 的祖先提交；此时不能只用 `git merge-base --is-ancestor <source-commit> main` 判断是否合并，应以 PR 的 `MERGED` 状态和 merge commit 为准。
-4. 回填仓库文档事实源：如果 `current-work.md`、`work-log.md`、`technical-debt.md` 或对应 plan 中存在 PR / merge commit / 完成日期占位，必须立即回填。禁止保留“以最终回复为准”“提交后更新”“待最终确认”等占位。
-5. 如果 merge commit 只能在合并后获得，并且回填会产生新变更，立即创建最小 backfill 提交或 PR 收口；不要把该事实只写在最终回复里。
+4. 清理仓库文档事实源：如果 `current-work.md`、`work-log.md`、`technical-debt.md` 或对应 plan 中存在 PR、完成日期或交付状态占位，必须立即回填或删除占位。禁止保留“以最终回复为准”“提交后更新”“待最终确认”等占位。
+5. merge commit 不作为所有任务的强制仓库字段；PR 链接是默认交付事实源，merge commit 可通过 `gh pr view <PR> --json mergeCommit` 查询。只有文档已存在 merge commit 占位、任务总账明确要求记录 merge commit，或审计场景需要仓库内固定记录时，才创建最小 backfill 提交或 PR 收口。
 6. 最终回复必须明确说明当前停在哪个阶段：
    - 已本地提交
    - 已 push

@@ -7,13 +7,15 @@
 - 每个已完成且需要长期追踪的任务保留一行。
 - `current-work.md` 中移出的完成任务，应在这里有索引。
 - 本文件只记录检索信息，不承载详细复盘、设计或验证输出。
-- 任务详情优先链接到对应事实源：`technical-debt.md`、`docs/specs/*`、`docs/plans/*`、PR 或 merge commit。
+- 任务详情优先链接到对应事实源：`technical-debt.md`、`docs/specs/*`、`docs/plans/*` 或 PR。
+- PR 是默认交付事实源；本表的 PR 和 merge commit 都是可选追踪字段，只有已有历史、审计需要或任务总账明确要求时记录，缺省可留空并通过 GitHub PR 查询。
 - `current-work.md` 的“最近完成”只保留短摘要；本文件保留长期检索索引，避免入口文档无限扩张。
 
 ## 索引
 
-| 日期 | 任务 | 类型 | PR | Merge Commit | 归档位置 |
-|------|------|------|----|--------------|----------|
+| 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
+|------|------|------|----|-------------------|----------|
+| 2026-06-05 | DOC-008 将合并后 backfill 改为条件触发 | 文档 / 工程规范 |  |  | `docs/engineering/rules/git-workflow.md` |
 | 2026-06-05 | DOC-007 压缩 current-work 最近完成区并强化渐进式披露 | 文档 / 工程规范 | [#30](https://github.com/MarkDanile/MetaEduBase/pull/30) | `3b36023` | `docs/engineering/current-work.md` |
 | 2026-06-05 | DOC-006 修复 current-work 重复完成区标题 | 文档 / 工程规范 | [#29](https://github.com/MarkDanile/MetaEduBase/pull/29) | `7d0f427` | `docs/engineering/current-work.md` |
 | 2026-06-05 | TD-014 加强测试数据库 legacy stamp 的列级形态校验 | 技术债 / follow-up | [#28](https://github.com/MarkDanile/MetaEduBase/pull/28) | `af7d246` | `docs/engineering/technical-debt.md#td-014-加强测试数据库-legacy-stamp-的列级形态校验` |

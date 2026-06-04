@@ -14,7 +14,7 @@
 - 每次结束开发前，必须更新任务状态、当前进展、下一步和验证结果。
 - 本文件是活文档，不是一次性日志。代码、验证或 Git 阶段发生变化后，必须回写任务卡片。
 - 进入 Git 提交前，必须最后一次回读本文件，确认状态、验证结果和下一步与实际一致。
-- 完整 Git 闭环结束后，任务卡片不得保留“以最终回复为准”“提交后更新”“待最终确认”等交付占位；PR、merge commit 和完成日期必须回填到仓库文档事实源。
+- 完整 Git 闭环结束后，任务卡片不得保留“以最终回复为准”“提交后更新”“待最终确认”等交付占位；PR 链接优先作为交付事实源，merge commit 默认可通过 PR 查询，只有文档已存在占位或任务总账明确要求时才需要回填。
 - 本文件是交接工作台，不是历史档案。只保留当前任务、近期候选和少量最近完成任务；历史索引见 `docs/engineering/work-log.md`。
 - 插件只作为执行工具使用；任务状态以本文件为准。
 - 复核、测试、PR review 或交接中发现的未解决问题，如果不会在当前任务内立即修复，必须登记到对应事实源，例如 `technical-debt.md`、bug 任务或后续 plan；需要近期接手的，再加入“下一批候选任务”。
@@ -120,8 +120,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-05 | DOC-008 将合并后 backfill 改为条件触发 | 🟢 完成 | 明确 PR 是默认交付事实源，merge commit 仅在占位或明确要求时回填。 | `docs/engineering/rules/git-workflow.md` / `docs/engineering/workflow.md` |
 | 2026-06-05 | DOC-007 压缩 current-work 最近完成区并强化渐进式披露 | 🟢 完成 | 将最近完成区压缩为 5 行短摘要，并把长期索引沉淀到 `work-log.md`。 | `docs/engineering/work-log.md` / [PR #30](https://github.com/MarkDanile/MetaEduBase/pull/30) |
 | 2026-06-05 | DOC-006 修复 current-work 重复完成区标题 | 🟢 完成 | 删除重复 `## 最近完成` 标题，恢复单一最近完成区。 | `docs/engineering/work-log.md` / [PR #29](https://github.com/MarkDanile/MetaEduBase/pull/29) |
 | 2026-06-05 | TD-014 加强测试数据库 legacy stamp 的列级形态校验 | 🟢 完成 | legacy stamp 增加关键列形态校验，降低残缺 schema 被 stamp 掩盖风险。 | `docs/engineering/technical-debt.md#td-014-加强测试数据库-legacy-stamp-的列级形态校验` / [PR #28](https://github.com/MarkDanile/MetaEduBase/pull/28) |
 | 2026-06-05 | TD-013 收口 TD-004 测试数据库初始化安全与文档占位 | 🟢 完成 | 校验测试数据库名、收窄 legacy stamp、清理 TD-004 plan 占位。 | `docs/engineering/technical-debt.md#td-013-收口-td-004-测试数据库初始化安全与文档占位` / [PR #27](https://github.com/MarkDanile/MetaEduBase/pull/27) |
-| 2026-06-04 | DOC-005 补强复核入账与候选任务选择策略 | 🟢 完成 | 明确 review 发现入账、三账一致和候选任务选择策略。 | `docs/engineering/work-log.md` / [PR #25](https://github.com/MarkDanile/MetaEduBase/pull/25) |
