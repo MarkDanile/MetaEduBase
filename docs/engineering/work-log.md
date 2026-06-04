@@ -13,6 +13,7 @@
 
 | 日期 | 任务 | 类型 | PR | Merge Commit | 归档位置 |
 |------|------|------|----|--------------|----------|
+| 2026-06-05 | DOC-006 修复 current-work 重复完成区标题 | 文档 / 工程规范 | [#29](https://github.com/MarkDanile/MetaEduBase/pull/29) | `7d0f427` | `docs/engineering/current-work.md` |
 | 2026-06-05 | TD-014 加强测试数据库 legacy stamp 的列级形态校验 | 技术债 / follow-up | [#28](https://github.com/MarkDanile/MetaEduBase/pull/28) | `af7d246` | `docs/engineering/technical-debt.md#td-014-加强测试数据库-legacy-stamp-的列级形态校验` |
 | 2026-06-05 | TD-013 收口 TD-004 测试数据库初始化安全与文档占位 | 技术债 / follow-up | [#27](https://github.com/MarkDanile/MetaEduBase/pull/27) | `8f25b20` | `docs/engineering/technical-debt.md#td-013-收口-td-004-测试数据库初始化安全与文档占位` |
 | 2026-06-04 | DOC-005 补强复核入账与候选任务选择策略 | 文档 / 工程规范 | [#25](https://github.com/MarkDanile/MetaEduBase/pull/25) | `7a4241c` | `docs/engineering/current-work.md` |

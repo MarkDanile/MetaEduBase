@@ -108,9 +108,17 @@
 
 ## 当前进行中
 
+当前无正在执行的任务。
+
+## 下一批候选任务
+
+当前无候选任务。
+
+## 最近完成
+
 ### DOC-006: 修复 current-work 重复完成区标题
 
-状态：🟡 进行中
+状态：🟢 完成
 类型：文档 / 工程规范
 领域：Docs / Delivery
 当前执行模式：plan-do
@@ -126,28 +134,21 @@
 - 任务模式：`docs/engineering/task-modes.md#通用收尾回查`
 
 当前进展：
-- 已完成：Codex 复核 TD-013 后发现 `docs/engineering/current-work.md` 出现两个 `## 最近完成` 标题。
-- 正在处理：开分支 `docs/doc-006-dedupe-recent-completed`，按通用收尾回查模式修复 current-work 区域结构。
-- 未完成：合并两个 `## 最近完成` 区为单个，验证区域顺序。
+- 已完成：删除 `docs/engineering/current-work.md` 中重复的 `## 最近完成` 标题，让 DOC-005 卡片直接跟在 TD-013 之后，形成单一最近完成区；完成完整 Git 闭环并回填交付事实。
+- 正在处理：
+- 未完成：
 
 下一步：
-1. 删除多余的 `## 最近完成` 标题，只保留一个最近完成区。
-2. 确认 TD-014、TD-013、DOC-005 等完成任务仍位于同一个最近完成区，且 current-work 区域顺序保持为「当前进行中 / 下一批候选任务 / 最近完成」。
-3. 跑区域结构 rg 验证 + 完整 Git 闭环。
+1.
 
 验证状态：
-- 已运行：仅完成任务登记与开工分支，未修改 current-work。
-- 未运行：区域结构 rg 验证，原因是本轮尚未动文件。
+- 已运行：`rg -n "^## 当前进行中|^## 下一批候选任务|^## 最近完成" docs/engineering/current-work.md` → 3 个区域头各一次（109 / 146 / 150）；`git diff --check` 无 whitespace 警告；`git diff --name-status` 范围仅 `current-work.md`。
+- 未运行：
 - 当前失败：无。
 
 交接备注：
-- 本任务是 TD-013 复核后拆出的文档结构修复，不应混入业务代码或其他技术债。
-
-## 下一批候选任务
-
-当前无候选任务。
-
-## 最近完成
+- 行为变化（文档结构变化，非业务逻辑）：删除一个二级标题，最近完成区从「连续两次出现」收敛为单次。详细行为变化与覆盖矩阵见 PR #29 描述。
+- PR #29（https://github.com/MarkDanile/MetaEduBase/pull/29）；merge commit `7d0f427`；完成日期：2026-06-05。
 
 ### TD-014: 加强测试数据库 legacy stamp 的列级形态校验
 
