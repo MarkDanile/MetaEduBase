@@ -1,6 +1,8 @@
 # TD-004 测试数据库可复现 — 实施计划
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+>
+> **交付历史（2026-06-04）：** TD-004 已通过 PR #23（merge commit `b8b34a6`）合并到 `main`。本文保留为实施步骤参考，收口时遗留的活动式交付占位（回填提示与 Task 8 输出占位）已在收口阶段回填到 `current-work.md` / `technical-debt.md` / `work-log.md`，详见最近完成记录。TD-004 的后续收口任务见 `TD-013`，由 Claude Code 接手。
 
 **Goal:** 让后端测试数据库可由 `TEST_DATABASE_URL` 配置，并提供 `./dev.sh init-test-db` / `make init-test-db` 显式启动入口，让任意新环境跑通 `cd packages/server-python && .venv/bin/python -m pytest -q`。
 
@@ -712,7 +714,7 @@ git commit -m "docs(td-004): land spec, plan, and task card"
 - `当前进展` → 简短总结：`已完成：模块新增 + conftest 改 env + Makefile/dev.sh 入口 + 文档同步 + 端到端验证`，`正在处理` / `未完成` 留空
 - `下一步：1.` 留空，第 2、3 项删掉
 - `验证状态` → 填入 Task 8 真实命令与结果（含退出码 / passed 数）
-- `交接备注` → 末尾补一行 `PR / merge commit 在 Git 闭环后回填`
+- `交接备注` → 末尾补 PR 编号、merge commit 与完成日期；2026-06-04 实际回填：`PR #23`（https://github.com/MarkDanile/MetaEduBase/pull/23）；merge commit `b8b34a6`；完成日期 `2026-06-04`。
 
 > 收尾合并后再次回填 PR 编号、merge commit 和完成日期，不得保留交付占位。
 
@@ -753,7 +755,7 @@ git commit -m "docs(current-work): mark TD-004 complete after verification"
 备注：
 ```
 
-替换为（验证结果以 Task 8 真实输出为准；下面是模板，实施时把 `<TASK-8 输出>` 替换为真实数字）：
+替换为（验证结果以 Task 8 真实输出为准；下面是模板，实施时把验证摘要替换为真实数字。2026-06-04 实际验证摘要：`./dev.sh init-test-db` 跑两次均退出码 0；`TEST_DATABASE_URL=... .venv/bin/python -m pytest tests/shared/test_health.py -q` → 2 passed；`cd packages/server-python && .venv/bin/python -m pytest -q` → 87 passed in 23.36s；`cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` → 退出码 0）：
 ```md
 ### TD-004: 让后端测试数据库环境可复现
 
@@ -764,7 +766,7 @@ git commit -m "docs(current-work): mark TD-004 complete after verification"
 问题：测试执行依赖隐式本地数据库，新环境或 CI 中很难稳定复现。
 完成标准：测试数据库 URL 可配置，并通过文档或 dev/test compose profile 提供明确的测试数据库启动方式。
 验证方式：全新环境能启动所需测试数据库，并执行 `cd packages/server-python && .venv/bin/python -m pytest -q`，无需猜测手动建库步骤。
-备注：2026-06-04 按流程开始处理。2026-06-04 完成。Spec：`docs/specs/2026-06-04-td-004-test-database-reproducibility.md`；Plan：`docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md`。改动：新增 `app/shared/infrastructure/test_db_setup.py`（asyncpg 幂等建库 + 扩展 + Alembic upgrade head）；conftest 改读 `TEST_DATABASE_URL` env 并移除 `Base.metadata.create_all`；新增 `./dev.sh init-test-db` 与 `make init-test-db`；同步 local-development、quality-gates、README。验证：<TASK-8 输出，含脚本两次幂等、env 覆盖、`pytest -q` 通过数、ruff 退出码>。PR / merge commit 在 Git 闭环后回填。
+备注：2026-06-04 按流程开始处理。2026-06-04 完成。Spec：`docs/specs/2026-06-04-td-004-test-database-reproducibility.md`；Plan：`docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md`。改动：新增 `app/shared/infrastructure/test_db_setup.py`（asyncpg 幂等建库 + 扩展 + Alembic upgrade head）；conftest 改读 `TEST_DATABASE_URL` env 并移除 `Base.metadata.create_all`；新增 `./dev.sh init-test-db` 与 `make init-test-db`；同步 local-development、quality-gates、README。验证：`./dev.sh init-test-db` 跑两次均退出码 0；`TEST_DATABASE_URL=... .venv/bin/python -m pytest tests/shared/test_health.py -q` → 2 passed；`cd packages/server-python && .venv/bin/python -m pytest -q` → 87 passed in 23.36s；`cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` → 退出码 0。PR #23（https://github.com/MarkDanile/MetaEduBase/pull/23）；merge commit `b8b34a6`；完成日期 `2026-06-04`。后续 follow-up 见 `TD-013`。
 ```
 
 - [ ] **Step 2：commit**
@@ -809,7 +811,7 @@ Run：
 ```bash
 sed -n '/TD-004/,/^###/p' docs/engineering/current-work.md | head -60
 ```
-Expected：状态 `🟢 完成`、验证结果含真实命令与退出码、无「待最终确认」类占位。
+Expected：状态 `🟢 完成`、验证结果含真实命令与退出码、整篇无未回填的交付占位。
 
 - [ ] **Step 2：push 当前分支**
 
@@ -861,7 +863,7 @@ gh pr merge --squash --delete-branch
 
 - [ ] **Step 5：回填 PR 编号 / merge commit / 完成日期**
 
-把 `docs/engineering/current-work.md`「最近完成」中的 TD-004 卡片 `交接备注` 末行、`docs/engineering/technical-debt.md` TD-004 `备注` 末段、`docs/engineering/work-log.md` 对应行的 `PR / merge commit 在 Git 闭环后回填` 替换为真实编号。
+把 `docs/engineering/current-work.md`「最近完成」中的 TD-004 卡片 `交接备注` 末行、`docs/engineering/technical-debt.md` TD-004 `备注` 末段、`docs/engineering/work-log.md` 对应行的回填占位替换为真实编号；2026-06-04 实际替换为：`PR #23`（https://github.com/MarkDanile/MetaEduBase/pull/23）；merge commit `b8b34a6`；完成日期 `2026-06-04`。
 
 Run：
 ```bash
