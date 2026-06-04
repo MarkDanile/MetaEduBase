@@ -108,39 +108,7 @@
 
 ## 当前进行中
 
-### DOC-005: 补强复核入账与候选任务选择策略
-
-状态：🟡 进行中
-类型：文档 / 工程规范
-领域：Docs / Delivery / Testing
-当前执行模式：plan-do
-最近接手工具：Codex
-分支：
-
-需求来源：
-- Spec:
-- Plan:
-- 技术债：
-- 架构约束：`docs/engineering/current-work.md`，`docs/engineering/workflow.md`，`docs/engineering/rules/quality-gates.md`，`docs/engineering/rules/git-workflow.md`
-- 插件输出：
-- 任务模式：`docs/engineering/task-modes.md#通用收尾回查`
-
-当前进展：
-- 已完成：新增 TD-013 follow-up 任务；补强复核发现入账、三账一致、候选任务选择和当前进行中区域边界规则。
-- 正在处理：按完整 Git 流程提交、push、创建 PR 并合并 main。
-- 未完成：合并后回填 PR、merge commit 和完成日期。
-
-下一步：
-1. 运行文档-only 验证和范围边界检查。
-2. 按 `docs/engineering/rules/git-workflow.md` 完成提交、PR、合并和回填。
-
-验证状态：
-- 已运行：`git diff --check` 退出码 0；`rg -n "DOC-005|TD-013|复核发现|三账一致|区域选择策略|下一批候选任务|当前进行中|PR / merge commit|以最终回复为准|待最终确认" docs/engineering/current-work.md docs/engineering/technical-debt.md docs/engineering/workflow.md docs/engineering/rules/quality-gates.md docs/engineering/rules/git-workflow.md` 命中预期规则和任务落点；`git diff --name-status` 确认范围仅为 5 个工程规范 / 任务文档。
-- 未运行：业务代码测试，原因是本次仅修改工程规范和任务登记文档。
-- 当前失败：无。
-
-交接备注：
-- 本任务回应 TD-004 / TD-012 复核中暴露的 follow-up 入账、候选任务选择和提交前三账一致问题。
+当前无正在执行的任务。
 
 ## 下一批候选任务
 
@@ -179,6 +147,40 @@
 - 本任务是 TD-004 复核后拆出的后续修复，不应混入其他技术债或无关资产清理。
 
 ## 最近完成
+
+### DOC-005: 补强复核入账与候选任务选择策略
+
+状态：🟢 完成
+类型：文档 / 工程规范
+领域：Docs / Delivery / Testing
+当前执行模式：plan-do
+最近接手工具：Codex
+分支：`codex-docs-review-intake-policy`
+
+需求来源：
+- Spec:
+- Plan:
+- 技术债：
+- 架构约束：`docs/engineering/current-work.md`，`docs/engineering/workflow.md`，`docs/engineering/rules/quality-gates.md`，`docs/engineering/rules/git-workflow.md`
+- 插件输出：
+- 任务模式：`docs/engineering/task-modes.md#通用收尾回查`
+
+当前进展：
+- 已完成：新增 TD-013 follow-up 任务；补强复核发现入账、三账一致、候选任务选择和当前进行中区域边界规则；完成完整 Git 闭环并回填交付事实。
+- 正在处理：
+- 未完成：
+
+下一步：
+1. 后续让 Claude Code 按新规范接手 TD-013，并由 Codex 复核流程执行情况。
+
+验证状态：
+- 已运行：`git diff --check` 退出码 0；`rg -n "DOC-005|TD-013|复核发现|三账一致|区域选择策略|下一批候选任务|当前进行中|PR / merge commit|以最终回复为准|待最终确认" docs/engineering/current-work.md docs/engineering/technical-debt.md docs/engineering/workflow.md docs/engineering/rules/quality-gates.md docs/engineering/rules/git-workflow.md` 命中预期规则和任务落点；`git diff --name-status` 确认范围仅为 5 个工程规范 / 任务文档；`gh pr view 25 --json state,mergeCommit,url,headRefName,baseRefName` 确认 PR #25 已合并，merge commit `7a4241c`。
+- 未运行：业务代码测试，原因是本次仅修改工程规范和任务登记文档。
+- 当前失败：无。
+
+交接备注：
+- 本任务回应 TD-004 / TD-012 复核中暴露的 follow-up 入账、候选任务选择和提交前三账一致问题。
+- PR #25（https://github.com/MarkDanile/MetaEduBase/pull/25）；merge commit `7a4241c`；完成日期：2026-06-04。
 
 ### TD-004: 让后端测试数据库环境可复现
 
@@ -314,34 +316,3 @@
 
 交接备注：
 - 已按 `docs/engineering/rules/git-workflow.md` 回读并执行完整 Git 闭环；PR #16（https://github.com/MarkDanile/MetaEduBase/pull/16）；merge commit `f438307`；完成日期：2026-06-04。
-
-### TD-012: 治理后端全量 ruff 质量门禁
-
-状态：🟢 完成
-类型：技术债
-领域：Backend / Testing / Delivery
-当前执行模式：plan-do
-最近接手工具：Claude Code
-分支：`refactor/td-012-ruff-quality-gate`
-
-需求来源：
-- Spec: `docs/superpowers/specs/2026-06-04-ruff-quality-gate-design.md`
-- Plan: `docs/superpowers/plans/2026-06-04-ruff-quality-gate.md`
-- 技术债：`docs/engineering/technical-debt.md#td-012-治理后端全量-ruff-质量门禁`
-- 架构约束：`docs/engineering/rules/quality-gates.md`，`docs/engineering/rules/git-workflow.md`
-
-当前进展：
-- 已完成：spec 落盘并通过 self-review 与用户复核；plan 落盘并通过 self-review；按 plan 推进 Task 1（自动修复层 + celery_app.py docstring 改写）、Task 2（E501 折行 22 个文件）、Task 3（B008 Annotated 迁移 17 处）、Task 4（其它规则 + 10 F401 noqa + 2 I001 重排）；`match_prompt` 的 `\\n → \n` 回归已修复；Task 5 端到端验证通过；状态同步。
-- 正在处理：
-- 未完成：
-
-下一步：
-1. 后续由 Codex 复核并决定是否需要 TD-012-FOLLOWUP。
-
-验证状态：
-- 已运行：`cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` 退出码 0；`cd packages/server-python && .venv/bin/python -m pytest -q` 87 passed；Celery 10 task 注册正常。
-- 未运行：
-- 当前失败：无。
-
-交接备注：
-- PR #17（merge commit `a4dcb2a`）；完成日期 2026-06-04。
