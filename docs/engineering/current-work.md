@@ -12,6 +12,8 @@
 - 新任务的长期 spec 默认放在 `docs/specs/*`，长期 plan 默认放在 `docs/plans/*`；`docs/superpowers/*` 仅作为历史或插件兼容来源。
 - 每次开始开发前，先和用户确认本次要执行的任务卡片，以及需要读取的全套文档。
 - 每次结束开发前，必须更新任务状态、当前进展、下一步和验证结果。
+- 本文件是活文档，不是一次性日志。代码、验证或 Git 阶段发生变化后，必须回写任务卡片。
+- 进入 Git 提交前，必须最后一次回读本文件，确认状态、验证结果和下一步与实际一致。
 - 插件只作为执行工具使用；任务状态以本文件为准。
 
 ## 状态流
@@ -25,6 +27,14 @@
 - `🟢 完成`：已验证完成，并记录提交或交付说明。
 
 任务卡片中的状态统一写成 `状态：颜色 状态名`，例如 `状态：🟡 进行中`。状态名仍是事实源，颜色只用于快速扫视。
+
+状态同步规则：
+
+- 开工时可以写 `状态：🟡 进行中`，并记录计划验证项和当前分支。
+- 代码完成但验证未完成时，状态应为 `🟣 待验证`，验证状态不得写成已通过。
+- 验证通过后，如果仍未完成用户要求的 Git 阶段，状态可以保持任务活跃，但下一步必须写清当前停留阶段。
+- 只有完成标准、验证结果和用户要求的交付阶段都已收口，才能写 `状态：🟢 完成`。
+- 提交前不得保留与事实不符的占位，例如 `验证状态：未运行`、`下一步：提交变更` 或过期的 `🟡 进行中`。
 
 ## 任务卡片模板
 
@@ -56,9 +66,9 @@
 2.
 
 验证状态：
-- 已运行：
-- 未运行：
-- 当前失败：
+- 已运行：真实执行的命令 + 结果；退出码非 0 不得写“通过”
+- 未运行：未运行的命令和原因；验证完成后不得保留占位
+- 当前失败：失败摘要；若属于历史问题，绑定对应 TD-xxx
 
 交接备注：
 -
@@ -76,6 +86,39 @@
 - `TD-012`：治理后端全量 ruff 质量门禁。详见 `docs/engineering/technical-debt.md`。
 
 ## 最近完成
+
+### DOC-002: 强化跨 AI 提交前回查与验证声明规范
+
+状态：🟢 完成
+类型：文档 / 工程规范
+领域：Docs / Delivery / Testing
+当前执行模式：plan-do
+最近接手工具：Codex
+分支：`codex-pre-submit-verification-rules`
+
+需求来源：
+- Spec:
+- Plan:
+- 技术债：
+- 架构约束：`docs/engineering/workflow.md`，`docs/engineering/rules/git-workflow.md`，`docs/engineering/rules/quality-gates.md`
+- 插件输出：
+- 任务模式：`docs/engineering/task-modes.md#通用收尾回查`
+
+当前进展：
+- 已完成：将 Claude Code 在 TD-002 / TD-002-FOLLOWUP 中暴露的状态回写、覆盖矩阵和验证表述问题沉淀为硬检查；补强 `current-work.md` 活文档规则、`workflow.md` 最终声明回查、`quality-gates.md` 覆盖矩阵和验证表述规范、`git-workflow.md` 提交前回读规则、`task-modes.md` 通用收尾回查。
+- 正在处理：
+- 未完成：
+
+下一步：
+1. 按 `docs/engineering/rules/git-workflow.md#完整交付闭环` 提交、push、创建 PR、合并 `main` 并确认本地同步。
+
+验证状态：
+- 已运行：`git diff --check` 通过；`rg -n "活文档|最终声明回查|覆盖矩阵|验证表述规范|git add|退出码非 0|历史失败|验证后最终同步" docs/engineering/current-work.md docs/engineering/workflow.md docs/engineering/rules/quality-gates.md docs/engineering/rules/git-workflow.md docs/engineering/task-modes.md` 确认新增规则落点。
+- 未运行：业务代码测试，原因是本次仅修改工程规范文档。
+- 当前失败：无。
+
+交接备注：
+- 已按 `docs/engineering/rules/git-workflow.md` 回读并准备执行完整 Git 闭环。
 
 ### TD-002-FOLLOWUP: 收口 TD-002 流程与测试遗留
 

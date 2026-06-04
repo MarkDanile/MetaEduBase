@@ -9,6 +9,7 @@
 - 提交前必须完成与改动范围匹配的验证，并记录无法运行的原因。
 - 使用 AI IDE 或插件开发时，提交前确认 `docs/engineering/current-work.md` 状态已经同步。
 - 用户要求“提交代码”“按流程提交”“走完整流程”或“合并 main”时，执行者必须在执行 git 操作前阅读本文件。
+- 进入 `git add` 前，必须最后一次回读 `docs/engineering/current-work.md`，确认任务状态、验证结果和下一步与实际一致。
 - “按流程提交代码”默认不是只创建本地 commit，而是推进完整交付链路：提交、push、PR、合并 `main`、确认合并状态。
 - 如果用户只希望停在某一步，必须明确说明，例如“只提交不 push”或“只创建 PR 不合并”。
 
@@ -84,8 +85,9 @@ refactor(server): 重构知识节点服务
 
 1. 查看工作区：确认没有无关文件、生成物或其他人的改动被混入。
 2. 运行验证：按 `docs/engineering/rules/quality-gates.md` 选择与改动范围匹配的验证。
-3. 同步状态：如果任务已登记，更新 `docs/engineering/current-work.md` 的进展、下一步和验证状态。
-4. 检查文档：如果 API、Schema、质量门禁、协作流程或架构边界变化，按 `docs/engineering/rules/docs.md` 同步文档。
+3. 同步状态：如果任务已登记，在验证后最终更新 `docs/engineering/current-work.md` 的状态、进展、下一步和验证状态。
+4. 回读声明：确认 `current-work.md`、PR 描述和最终回复中的验证结论与真实命令输出一致。退出码非 0 的命令不得写“通过”。
+5. 检查文档：如果 API、Schema、质量门禁、协作流程或架构边界变化，按 `docs/engineering/rules/docs.md` 同步文档。
 
 如果环境依赖导致完整验证不可运行，必须在最终回复和 `docs/engineering/current-work.md` 的验证状态中记录原因。
 
@@ -97,10 +99,15 @@ refactor(server): 重构知识节点服务
 
 1. 确认当前不在 `main` 上开发。
 2. 阅读本文件，并在最终回复或任务记录中说明已按本文件执行。
-3. 检查 `git status --short`，只暂存本任务相关文件。
+3. 检查 `git status --short`，确认没有无关文件、生成物或其他人的改动被混入。
 4. 运行匹配范围的验证。
-5. 同步 `docs/engineering/current-work.md` 和相关任务总账。
-6. 按原子边界创建一个或多个 Conventional Commits。
+5. 在验证后最终同步 `docs/engineering/current-work.md` 和相关任务总账：
+   - 状态不得停留在过期的 `🟡 进行中`、`🟣 待验证` 或 `验证状态：未运行`。
+   - 如果任务已验证完成，写清实际验证命令、结果和当前 Git 阶段。
+   - 如果仍有历史失败，写清失败摘要并绑定对应 `TD-xxx`。
+6. 回读 `docs/engineering/current-work.md`，确认任务卡片事实与当前代码、验证和 Git 状态一致。
+7. 只暂存本任务相关文件。
+8. 按原子边界创建一个或多个 Conventional Commits。
 
 ### 2. Push 分支
 
