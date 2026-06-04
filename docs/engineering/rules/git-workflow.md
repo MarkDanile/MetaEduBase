@@ -13,6 +13,23 @@
 - 进入 `git add` 前，必须检查 PR 范围边界，确认无关资产清理、生成物、临时文件或其他人的改动没有混入。
 - “按流程提交代码”默认不是只创建本地 commit，而是推进完整交付链路：提交、push、PR、合并 `main`、确认合并状态。
 - 如果用户只希望停在某一步，必须明确说明，例如“只提交不 push”或“只创建 PR 不合并”。
+- 完整交付闭环应按快速通道执行：少量固定检查、少量阶段汇报、合并后一次性收口；不得用重复回读和冗长汇报拖慢流程。
+- 最终回复不是交付事实源。合并后必须回填 PR、merge commit 和完成日期，禁止在任务文档中保留“以最终回复为准”“提交后更新”等占位。
+
+## 快速交付通道
+
+适用场景：文档-only、小型回填、低风险配置或单点修复，且用户要求“按流程提交”“走完整流程”。
+
+执行者应按以下压缩顺序推进：
+
+1. 入口确认：读 `docs/engineering/current-work.md` 和本文件；用 `git status --short --branch` 确认范围。
+2. 最小验证：按改动范围运行最小必要命令。文档-only 通常是 `git diff --check` + 关键 `rg`；代码改动运行相关测试或质量门禁。
+3. 范围边界：用 `git diff --name-status` 确认没有无关文件、生成物或资产清理混入。
+4. 提交链路：创建任务分支，暂存相关文件，commit，push，创建 PR。
+5. 合并检查：`gh pr view` + `gh pr checks`。如果可合并且没有阻塞，直接 squash merge。
+6. 合并后收口：确认 `main...origin/main` 干净；回填 PR、merge commit 和完成日期；如回填产生新变更，立即用最小 backfill PR 收口。
+
+中间只需向用户报告关键阶段：`已提交`、`PR 已创建`、`已合并 main`、`最终干净`。遇到失败、权限、网络、检查未通过或冲突时再详细说明。
 
 ## 分支策略
 
@@ -155,7 +172,9 @@ refactor(server): 重构知识节点服务
 1. 确认 PR 状态为 `MERGED`，并记录 merge commit。
 2. 确认本地 `main` 已包含合并结果。
 3. 如果使用 Squash Merge，源分支上的原始提交不会作为 `main` 的祖先提交；此时不能只用 `git merge-base --is-ancestor <source-commit> main` 判断是否合并，应以 PR 的 `MERGED` 状态和 merge commit 为准。
-4. 最终回复必须明确说明当前停在哪个阶段：
+4. 回填仓库文档事实源：如果 `current-work.md`、`work-log.md`、`technical-debt.md` 或对应 plan 中存在 PR / merge commit / 完成日期占位，必须立即回填。禁止保留“以最终回复为准”“提交后更新”“待最终确认”等占位。
+5. 如果 merge commit 只能在合并后获得，并且回填会产生新变更，立即创建最小 backfill 提交或 PR 收口；不要把该事实只写在最终回复里。
+6. 最终回复必须明确说明当前停在哪个阶段：
    - 已本地提交
    - 已 push
    - 已创建 PR

@@ -9,6 +9,7 @@
 - 任务状态更新必须使用 `状态：颜色 状态名` 格式；颜色图例见 `docs/engineering/current-work.md`。
 - `docs/engineering/current-work.md` 是活文档。实现、验证或 Git 阶段变化后，执行者必须同步任务卡片。
 - `docs/engineering/current-work.md` 是交接工作台，不是历史档案。完成任务超出保留窗口后，归档到对应事实源，并在 `docs/engineering/work-log.md` 保留索引。
+- 最终回复不是事实源。完整 Git 闭环完成后，PR、merge commit、完成日期等交付事实必须回填到 `current-work.md`、`work-log.md` 或对应任务总账。
 - 新任务的长期需求文档统一放在 `docs/specs/*`，实施计划统一放在 `docs/plans/*`。
 - `docs/superpowers/*` 只作为历史目录或插件兼容输出目录，不作为新任务默认事实源。
 - superpower、compound-engineering-plugin 或其他插件生成的 spec/plan 只可作为兼容输出；用于本次开发前，必须迁移或镜像到 `docs/specs/*` / `docs/plans/*`，并在任务卡片中登记原始插件输出。
@@ -78,7 +79,8 @@
 4. 如果完成技术债任务，同步更新 `docs/engineering/technical-debt.md` 的状态和备注。
 5. 如果任务完成后需要长期追踪，在 `docs/engineering/work-log.md` 增加或更新一行历史索引。
 6. 如果用户要求提交代码，必须先阅读 `docs/engineering/rules/git-workflow.md`，再按 `docs/engineering/rules/git-workflow.md#完整交付闭环` 推进提交、push、PR、合并 `main` 和合并后确认。
-7. 在最终回复中说明改动、验证结果、Git 交付阶段和未完成事项。
+7. 完整 Git 闭环结束后，检查并清除交付占位，回填 PR、merge commit 和完成日期。不得保留“以最终回复为准”“提交后更新”等占位。
+8. 在最终回复中说明改动、验证结果、Git 交付阶段和未完成事项。
 
 提交完成不等于合并完成。执行者必须明确当前停留在“已本地提交”“已 push”“已创建 PR”还是“已合并到 `main`”。如果用户没有要求完整 Git 流程，默认不要推送或合并；如果用户要求“走完整流程”，则默认推进到合并 `main`，遇到 PR 检查、Review、权限或冲突阻塞时再停下并说明原因。
 
