@@ -37,7 +37,7 @@
         <div class="flex items-center justify-between gap-4">
           <div class="flex items-center gap-3 flex-1 min-w-0">
             <div class="w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0" :class="typeIconClass(item.resource_type)">
-              <div v-html="typeIcon(item.resource_type)" />
+              <component :is="typeIcon(item.resource_type)" :size="16" :stroke-width="1.5" />
             </div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2">
@@ -137,8 +137,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from "vue";
-import { Upload, Download, Trash2 } from "lucide-vue-next";
+import { ref, reactive, computed, onMounted, type Component } from "vue";
+import {
+  File,
+  FileImage,
+  FileText,
+  Music,
+  Upload,
+  Video,
+  Download,
+  Trash2,
+} from "lucide-vue-next";
 import api from "@/services/api";
 import { domainMap, resourceTypeMap } from "@/constants/maps";
 import PageHeader from "@/components/PageHeader.vue";
@@ -183,12 +192,12 @@ const uploadForm = reactive({
 });
 
 function typeIcon(type: string) {
-  const icons: Record<string, string> = {
-    document: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
-    video: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>',
-    image: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
-    audio: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
-    other: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>',
+  const icons: Record<string, Component> = {
+    document: FileText,
+    video: Video,
+    image: FileImage,
+    audio: Music,
+    other: File,
   };
   return icons[type] ?? icons.other;
 }

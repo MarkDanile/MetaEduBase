@@ -5,7 +5,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from "vue";
 import { Graph } from "@antv/g6";
-import type { NodeData, EdgeData } from "@antv/g6";
+import type { NodeData, EdgeData, IElementEvent } from "@antv/g6";
 import type { KnowledgeNodeDTO, KnowledgeEdgeDTO } from "@/services/knowledge";
 
 export interface KGGraphProps {
@@ -179,8 +179,8 @@ onMounted(() => {
     padding: [24, 24, 24, 24],
   });
 
-  graph.on("node:click", (e: any) => {
-    const node = props.nodes.find((n) => n.id === e.id);
+  graph.on<IElementEvent>("node:click", (e) => {
+    const node = props.nodes.find((n) => n.id === String(e.target.id));
     if (node) emit("node-click", node);
   });
 

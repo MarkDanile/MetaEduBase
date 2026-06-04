@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     app_name: str = "MetaEduBase"
     app_version: str = "0.1.0"
     debug: bool = True
+    allow_default_seed: bool = False
 
     database_url: str = "postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu"
     database_url_sync: str = "postgresql://metaedu:dev_only_123@localhost:5432/metaedu"

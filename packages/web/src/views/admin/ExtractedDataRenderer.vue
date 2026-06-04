@@ -116,7 +116,7 @@
 import { ref, computed } from 'vue'
 import { ChevronDown, ChevronRight } from 'lucide-vue-next'
 import TableRenderer from '@/components/TableRenderer.vue'
-import type { Field, TableColumn } from '@/services/template'
+import type { Field } from '@/services/template'
 
 const props = defineProps<{
   field: Field

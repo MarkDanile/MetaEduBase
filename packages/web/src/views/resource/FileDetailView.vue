@@ -51,7 +51,7 @@
         <LoadingSpinner v-if="loadingTasks" text="加载任务..." />
         <div v-else class="flex gap-1">
           <div
-            v-for="(step, idx) in DOC_TASK_STEPS"
+            v-for="step in DOC_TASK_STEPS"
             :key="step.type"
             class="flex-1 flex flex-col items-center gap-1.5 py-2 px-1 rounded-lg transition-colors"
             :class="stepBgClass(step.type)"
@@ -252,21 +252,6 @@ function templateFieldLabel(key: string): string {
   return getFieldLabel(key);
 }
 
-function formatTemplateValue(value: unknown): string {
-  if (value === null || value === undefined) return "-";
-  if (typeof value === "string") return value || "-";
-  if (Array.isArray(value)) {
-    if (value.length === 0) return "-";
-    return value.map((v) => String(v)).join("、");
-  }
-  return JSON.stringify(value);
-}
-
-function isPrimitiveValue(v: unknown): boolean {
-  return typeof v !== 'object' || v === null
-}
-
-
 // --- Data loading ---
 async function loadFile() {
   loading.value = true;
@@ -428,12 +413,6 @@ function formatSize(bytes: number | null) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatJsonValue(value: unknown): string {
-  if (value === null || value === undefined) return "-";
-  if (typeof value === "string") return value;
-  return JSON.stringify(value, null, 0);
 }
 
 // --- Actions ---

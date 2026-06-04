@@ -50,6 +50,7 @@
             : 'bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-[var(--radius-lg)_var(--radius-lg)_var(--radius-lg)_4px] markdown-body'
         ]">
           <div v-if="msg.role === 'user'">{{ msg.content }}</div>
+          <!-- eslint-disable-next-line vue/no-v-html -- renderMarkdown blocks raw HTML and unsafe links before this controlled injection point. -->
           <div v-else v-html="renderMarkdown(msg.content)"></div>
           <div v-if="msg.sources && msg.sources.length > 0" class="mt-3 pt-2.5 border-t border-[var(--color-border-subtle)]">
             <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)] mb-1.5 uppercase tracking-wider">参考知识源</p>
@@ -113,7 +114,7 @@
 
 <script setup lang="ts">
 import { ref, nextTick } from "vue";
-import { Marked } from "marked";
+import { Marked, type Tokens } from "marked";
 import hljs from "highlight.js/lib/core";
 import python from "highlight.js/lib/languages/python";
 import javascript from "highlight.js/lib/languages/javascript";
@@ -141,6 +142,25 @@ hljs.registerLanguage("xml", xml);
 hljs.registerLanguage("css", css);
 hljs.registerLanguage("markdown", markdown);
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+  })[char] ?? char);
+}
+
+function isSafeLink(href: string): boolean {
+  try {
+    const url = new URL(href, window.location.origin);
+    return ["http:", "https:", "mailto:"].includes(url.protocol);
+  } catch {
+    return false;
+  }
+}
+
 const marked = new Marked({
   gfm: true,
   breaks: true,
@@ -150,7 +170,20 @@ const marked = new Marked({
       const highlighted = language
         ? hljs.highlight(text, { language }).value
         : hljs.highlightAuto(text).value;
-      return `<pre><code class="hljs${language ? ` language-${language}` : ""}">${highlighted}</code></pre>`;
+      const className = `hljs${language ? ` language-${escapeHtml(language)}` : ""}`;
+      return `<pre><code class="${className}">${highlighted}</code></pre>`;
+    },
+    html({ text }: Tokens.HTML | Tokens.Tag) {
+      return escapeHtml(text);
+    },
+    link({ href, title, tokens }: Tokens.Link) {
+      const label = this.parser.parseInline(tokens);
+      if (!isSafeLink(href)) return label;
+      const safeTitle = title ? ` title="${escapeHtml(title)}"` : "";
+      return `<a href="${escapeHtml(href)}"${safeTitle} target="_blank" rel="noopener noreferrer">${label}</a>`;
+    },
+    image({ text }: Tokens.Image) {
+      return escapeHtml(text);
     },
   },
 });
