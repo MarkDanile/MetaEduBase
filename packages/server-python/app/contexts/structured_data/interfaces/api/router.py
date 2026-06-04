@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.celery_app import celery_app
 from app.config import settings
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
+from app.contexts.structured_data.application.cleanup import cleanup_dataset_derivatives
 from app.contexts.structured_data.application.dto import (
     DatasetDTO,
     DatasetRowDTO,
@@ -163,31 +164,8 @@ async def delete_dataset(
     if not existing:
         raise HTTPException(status_code=404, detail="数据集不存在")
 
-    # Cascade delete related data
-    from sqlalchemy import text
-
-    # 1. Delete dataset rows
-    await repo.delete_rows(did, tid)
-
-    # 2. Delete document chunks linked to this dataset (ds_embed stores chunks with file_id = dataset_id)
-    await session.execute(
-        text("DELETE FROM metaedu.document_chunks WHERE tenant_id = :tid AND file_id = :did"),
-        {"tid": tid, "did": did},
-    )
-
-    # 3. Delete knowledge nodes linked to this dataset
-    await session.execute(
-        text("DELETE FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_dataset_id = :did"),
-        {"tid": tid, "did": did},
-    )
-
-    # 4. Delete document tasks linked to this dataset
-    await session.execute(
-        text("DELETE FROM metaedu.document_tasks WHERE tenant_id = :tid AND dataset_id = :did"),
-        {"tid": tid, "did": did},
-    )
-
-    # 5. Delete the dataset itself
+    # Cascade delete: rows → chunks → knowledge edges+nodes → tasks → dataset
+    await cleanup_dataset_derivatives(session, did, tid)
     await repo.delete(did, tid)
 
 
@@ -222,8 +200,6 @@ async def reinitialize_dataset(
     session: AsyncSession = Depends(get_session),  # noqa: B008
     current_user: dict = Depends(get_current_user),  # noqa: B008
 ):
-    from sqlalchemy import text
-
     tid = get_tenant_id()
     did = uuid.UUID(dataset_id)
     repo = DatasetRepository(session)
@@ -231,42 +207,13 @@ async def reinitialize_dataset(
     if not existing:
         raise HTTPException(status_code=404, detail="数据集不存在")
 
-    # 1. Delete dataset rows
-    await repo.delete_rows(did, tid)
+    # Cascade delete: rows → chunks → knowledge edges+nodes → tasks
+    await cleanup_dataset_derivatives(session, did, tid)
 
-    # 2. Delete document chunks linked to this dataset
-    await session.execute(
-        text("DELETE FROM metaedu.document_chunks WHERE tenant_id = :tid AND file_id = :did"),
-        {"tid": tid, "did": did},
-    )
-
-    # 3. Delete knowledge edges linked to nodes of this dataset
-    await session.execute(
-        text(
-            "DELETE FROM metaedu.knowledge_edges WHERE source_id IN "
-            "(SELECT id FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_dataset_id = :did) "
-            "OR target_id IN "
-            "(SELECT id FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_dataset_id = :did)"
-        ),
-        {"tid": tid, "did": did},
-    )
-
-    # 4. Delete knowledge nodes linked to this dataset
-    await session.execute(
-        text("DELETE FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_dataset_id = :did"),
-        {"tid": tid, "did": did},
-    )
-
-    # 5. Delete document tasks linked to this dataset
-    await session.execute(
-        text("DELETE FROM metaedu.document_tasks WHERE tenant_id = :tid AND dataset_id = :did"),
-        {"tid": tid, "did": did},
-    )
-
-    # 6. Reset dataset status to 'uploaded' and kg_status to 'pending'
+    # Reset dataset status to 'uploaded' and kg_status to 'pending'
     await repo.update(did, tid, status="uploaded", kg_status="pending", row_count=0, column_names=None, column_types=None)
 
-    # 7. Trigger ds_parse pipeline
+    # Trigger ds_parse pipeline
     try:
         ds_parse.delay(str(did), str(tid))
     except Exception as e:

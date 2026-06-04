@@ -68,11 +68,41 @@
 
 ## 当前进行中
 
-当前无正在执行的任务。
+### TD-002: 收敛文件清理的级联删除逻辑
+
+状态：🟣 待验证
+类型：技术债
+领域：Data Integrity / Backend
+当前执行模式：plan-do
+最近接手工具：Claude Code
+分支：
+
+需求来源：
+- Spec:
+- Plan:
+- 技术债：`docs/engineering/technical-debt.md#td-002-收敛文件清理的级联删除逻辑`
+- 架构约束：`docs/engineering/rules/data-integrity.md`
+- 任务模式：`docs/engineering/task-modes.md#技术债修复`
+
+当前进展：
+- 已完成：KnowledgeNodeRepository 新增 `delete_cascade_by_source_file` 和 `delete_cascade_by_source_dataset`；新建 DocumentTaskRepository；新建 `cleanup_file_derivatives` 和 `cleanup_dataset_derivatives` 清理函数；重构 document router 的 `delete_file` 和 `reinitialize_file`；重构 structured_data router 的 `delete_dataset`（修复 dataset 删除前未删 knowledge_edges 的 bug）和 `reinitialize_dataset`；新增 3 个回归测试验证 edges 先于 nodes 被清理。
+- 正在处理：
+- 未完成：
+
+下一步：
+1. 提交变更。
+
+验证状态：
+- 已运行：`cd packages/server-python && .venv/bin/python -m pytest -q` 通过，86 passed；`cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_cascade_cleanup.py -v` 通过，3 passed；router 中不再有 `DELETE FROM metaedu.knowledge_edges`、`DELETE FROM metaedu.knowledge_nodes`、`DELETE FROM metaedu.document_tasks` 内联 SQL；相关 ruff 通过（仅剩预先存在的 2 个长行问题，属于 TD-012 范围）。
+- 未运行：
+- 当前失败：无。
+
+交接备注：
+- 数据集删除 bug 修复是同一模式重构的自然结果：原 `delete_dataset` 删 knowledge_nodes 前未删 knowledge_edges，重构后使用 `cleanup_dataset_derivatives` 自动保证正确顺序。
 
 ## 下一批候选任务
 
-- `TD-002`：收敛文件清理的级联删除逻辑。详见 `docs/engineering/technical-debt.md`。
+（TD-002 完成后更新）
 
 ## 最近完成
 

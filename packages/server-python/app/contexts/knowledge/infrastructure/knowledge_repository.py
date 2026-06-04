@@ -208,6 +208,62 @@ class KnowledgeNodeRepository:
             {"id": node_id, "tid": tenant_id},
         )
 
+    async def delete_cascade_by_source_file(
+        self, tenant_id: uuid.UUID, source_file_id: uuid.UUID
+    ) -> None:
+        """Delete all knowledge edges then nodes associated with a source file.
+
+        Order: edges first (RESTRICT FK), then nodes.
+        """
+        # 1. Delete edges where source or target node belongs to this file
+        await self._session.execute(
+            text(
+                "DELETE FROM metaedu.knowledge_edges WHERE source_id IN "
+                "(SELECT id FROM metaedu.knowledge_nodes "
+                "WHERE tenant_id = :tid AND source_file_id = :fid) "
+                "OR target_id IN "
+                "(SELECT id FROM metaedu.knowledge_nodes "
+                "WHERE tenant_id = :tid AND source_file_id = :fid)"
+            ),
+            {"tid": tenant_id, "fid": source_file_id},
+        )
+        # 2. Delete nodes
+        await self._session.execute(
+            text(
+                "DELETE FROM metaedu.knowledge_nodes "
+                "WHERE tenant_id = :tid AND source_file_id = :fid"
+            ),
+            {"tid": tenant_id, "fid": source_file_id},
+        )
+
+    async def delete_cascade_by_source_dataset(
+        self, tenant_id: uuid.UUID, source_dataset_id: uuid.UUID
+    ) -> None:
+        """Delete all knowledge edges then nodes associated with a source dataset.
+
+        Order: edges first (RESTRICT FK), then nodes.
+        """
+        # 1. Delete edges where source or target node belongs to this dataset
+        await self._session.execute(
+            text(
+                "DELETE FROM metaedu.knowledge_edges WHERE source_id IN "
+                "(SELECT id FROM metaedu.knowledge_nodes "
+                "WHERE tenant_id = :tid AND source_dataset_id = :did) "
+                "OR target_id IN "
+                "(SELECT id FROM metaedu.knowledge_nodes "
+                "WHERE tenant_id = :tid AND source_dataset_id = :did)"
+            ),
+            {"tid": tenant_id, "did": source_dataset_id},
+        )
+        # 2. Delete nodes
+        await self._session.execute(
+            text(
+                "DELETE FROM metaedu.knowledge_nodes "
+                "WHERE tenant_id = :tid AND source_dataset_id = :did"
+            ),
+            {"tid": tenant_id, "did": source_dataset_id},
+        )
+
     async def search_semantic(
         self,
         tenant_id: uuid.UUID,
