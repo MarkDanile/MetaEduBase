@@ -108,18 +108,14 @@
 
 ## 当前进行中
 
-当前无正在执行的任务。
-
-## 下一批候选任务
-
 ### TD-013: 收口 TD-004 测试数据库初始化安全与文档占位
 
-状态：🔵 就绪
+状态：🟡 进行中
 类型：技术债 / follow-up
 领域：Testing / Delivery / Security
 当前执行模式：plan-do
-最近接手工具：Codex 复核后登记，待 Claude Code 接手
-分支：
+最近接手工具：Claude Code
+分支：`refactor/td-013-test-db-init-safety`
 
 需求来源：
 - Spec:
@@ -131,20 +127,27 @@
 
 当前进展：
 - 已完成：Codex 复核 TD-004 后确认 3 个 follow-up 点：测试数据库名 SQL identifier 处理、legacy schema stamp 判断过宽、TD-004 plan 残留活动式占位。
-- 正在处理：
-- 未完成：等待 Claude Code 接手修复。
+- 正在处理：开分支 `refactor/td-013-test-db-init-safety`，按 plan / 技术债完成标准修复代码与文档，并补充聚焦测试。
+- 未完成：数据库名严格校验实现、legacy stamp 收窄、聚焦测试、plan 占位清理、ruff 与 pytest 验证、PR 闭环。
 
 下一步：
-1. Claude Code 按 `docs/engineering/workflow.md` 开工前检查读取本任务卡片、技术债总账和相关规则。
-2. 按 TD-013 完成标准修复代码与文档，并补充聚焦测试。
+1. 在 `_ensure_database` 前增加 `_validate_database_name`，按白名单 + 安全 quote 双保险。
+2. 收窄 `_stamp_if_legacy_schema` 的 legacy 判定，避免「单表 + 缺版本」也被误判为旧 conftest 形态。
+3. 新增 `tests/shared/test_test_db_setup.py`，覆盖数据库名校验和 legacy stamp 判定。
+4. 清理 TD-004 plan 中 `<TASK-8 输出>` / `PR / merge commit 在 Git 闭环后回填` 等占位。
+5. 跑聚焦测试 + ruff，提交并推进完整 Git 闭环。
 
 验证状态：
-- 已运行：仅完成任务登记，未修改业务代码。
-- 未运行：TD-013 的后端测试和 ruff，原因是本轮只形成 follow-up 任务。
+- 已运行：仅完成任务登记与开工分支，未修改业务代码。
+- 未运行：TD-013 的后端聚焦测试和 ruff，原因是本轮尚未动代码。
 - 当前失败：无。
 
 交接备注：
-- 本任务是 TD-004 复核后拆出的后续修复，不应混入其他技术债或无关资产清理。
+- 行为变化（非「零业务逻辑变更」）：脚本将拒绝带特殊字符的数据库名；legacy stamp 仅在「业务表集合与 `Base.metadata.create_all` 形态一致」时触发；plan 文档清理为非代码改动。
+
+## 下一批候选任务
+
+当前无候选任务。
 
 ## 最近完成
 
