@@ -6,6 +6,8 @@
 
 开始任何开发任务前，先阅读 `docs/engineering/current-work.md`，确认当前任务、相关计划、架构约束、验证状态和下一步。若任务涉及 plan-do、superpower、compound-engineering-plugin 或其他 AI IDE/插件交接，继续阅读 `docs/engineering/workflow.md`，并以其中的开发前检查、开发后收尾和状态同步规则为准。
 
+使用 superpower、compound-engineering-plugin 或其他插件生成 spec/plan 时，插件目录只作为兼容输出；本次开发依据必须迁移或镜像到 `docs/specs/*` / `docs/plans/*`，并在任务卡片中记录原始插件输出。提交或 PR 前必须完成 `current-work.md` 区域同步、行为变化声明检查和 PR 范围边界检查。
+
 当任务涉及技术债记录、技术债复盘、工程治理、重构优先级或质量门禁时，先阅读 `docs/engineering/technical-debt.md`，并以其中的状态流、任务模板和复盘规范为准。
 
 ### 1. 先想后写

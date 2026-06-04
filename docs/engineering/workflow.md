@@ -8,8 +8,10 @@
 - 任务状态统一维护在 `docs/engineering/current-work.md`。
 - 任务状态更新必须使用 `状态：颜色 状态名` 格式；颜色图例见 `docs/engineering/current-work.md`。
 - `docs/engineering/current-work.md` 是活文档。实现、验证或 Git 阶段变化后，执行者必须同步任务卡片。
+- `docs/engineering/current-work.md` 是交接工作台，不是历史档案。完成任务超出保留窗口后，归档到对应事实源，并在 `docs/engineering/work-log.md` 保留索引。
 - 新任务的长期需求文档统一放在 `docs/specs/*`，实施计划统一放在 `docs/plans/*`。
 - `docs/superpowers/*` 只作为历史目录或插件兼容输出目录，不作为新任务默认事实源。
+- superpower、compound-engineering-plugin 或其他插件生成的 spec/plan 只可作为兼容输出；用于本次开发前，必须迁移或镜像到 `docs/specs/*` / `docs/plans/*`，并在任务卡片中登记原始插件输出。
 - 开发前必须明确本次任务卡片、相关计划、相关约束和验收标准。
 - 常见任务模式的开工条件、必读文档和完成标准见 `docs/engineering/task-modes.md`。
 - 开发中遵循计划，但如果发现计划与代码事实冲突，应先停下来更新计划或向用户确认。
@@ -68,21 +70,25 @@
    - 记录最近接手工具。
 3. 做一次最终声明回查：
    - 状态字段是否与实际一致。
+   - `current-work.md` 的 `当前进行中`、`下一批候选任务`、`最近完成` 是否同步。
    - 验证结果是否来自真实命令输出。
    - 测试是否覆盖完成标准中的所有等价入口。
+   - 如果声明“零业务逻辑变更”“仅格式化”或“仅 lint 修复”，是否已按 `docs/engineering/rules/quality-gates.md#行为变化声明检查` 排查行为变化信号。
    - 如果验证命令失败，是否写清失败项并绑定已有或新增的 `TD-xxx`。
 4. 如果完成技术债任务，同步更新 `docs/engineering/technical-debt.md` 的状态和备注。
-5. 如果用户要求提交代码，必须先阅读 `docs/engineering/rules/git-workflow.md`，再按 `docs/engineering/rules/git-workflow.md#完整交付闭环` 推进提交、push、PR、合并 `main` 和合并后确认。
-6. 在最终回复中说明改动、验证结果、Git 交付阶段和未完成事项。
+5. 如果任务完成后需要长期追踪，在 `docs/engineering/work-log.md` 增加或更新一行历史索引。
+6. 如果用户要求提交代码，必须先阅读 `docs/engineering/rules/git-workflow.md`，再按 `docs/engineering/rules/git-workflow.md#完整交付闭环` 推进提交、push、PR、合并 `main` 和合并后确认。
+7. 在最终回复中说明改动、验证结果、Git 交付阶段和未完成事项。
 
 提交完成不等于合并完成。执行者必须明确当前停留在“已本地提交”“已 push”“已创建 PR”还是“已合并到 `main`”。如果用户没有要求完整 Git 流程，默认不要推送或合并；如果用户要求“走完整流程”，则默认推进到合并 `main`，遇到 PR 检查、Review、权限或冲突阻塞时再停下并说明原因。
 
 ## 插件使用规则
 
-- superpower、compound-engineering-plugin 或其他插件生成的 spec/plan 可以作为任务卡片的 `Spec` 或 `Plan` 链接，但必须登记到 `docs/engineering/current-work.md`。
+- superpower、compound-engineering-plugin 或其他插件生成的 spec/plan 必须登记到 `docs/engineering/current-work.md` 的 `插件输出` 字段；任务卡片的 `Spec` / `Plan` 字段优先指向 `docs/specs/*` / `docs/plans/*` 中的规范副本。
 - 插件生成的计划不是最终事实源；最终任务状态、当前进展、验证结果和下一步必须以 `docs/engineering/current-work.md` 为准。
-- 新任务如果使用 superpower 生成到 `docs/superpowers/*`，进入开发前必须在任务卡片中明确标记为兼容来源；长期维护时优先迁入或镜像到 `docs/specs/*` / `docs/plans/*`。
-- 新任务如果使用 compound-engineering-plugin 生成到插件自己的目录，也必须在任务卡片中登记，并优先沉淀为 `docs/specs/*` / `docs/plans/*`。
+- 新任务如果使用 superpower 生成到 `docs/superpowers/*`，进入开发前必须迁入或镜像到 `docs/specs/*` / `docs/plans/*`。任务卡片的 `Spec` / `Plan` 字段指向规范目录，原始插件产物写入 `插件输出` 字段。
+- 新任务如果使用 compound-engineering-plugin 生成到插件自己的目录，也必须在任务卡片中登记，并在进入开发前迁入或镜像到 `docs/specs/*` / `docs/plans/*`。
+- 只有一次性调研草稿或用户明确要求保留在插件目录时，可以暂不迁移；此时任务卡片必须写清“兼容来源”和不迁移原因，且最终事实仍需同步到当前工作台。
 - 如果插件维护自己的任务状态，也要在收尾时同步回当前工作台。
 - 不同 AI IDE 接手时，以当前工作台为入口，而不是依赖某个插件的内部上下文。
 - `.claude/rules`、Codex 私有规则目录或其他工具私有规则目录只能作为跳转入口；共享规则事实源统一维护在 `docs/engineering/rules/`。
@@ -92,7 +98,7 @@
 使用 superpower 时，允许它继续读取或生成 `docs/superpowers/*` 下的历史文档，但执行者必须遵守以下规则：
 
 1. 开工前先读 `docs/engineering/current-work.md`，不要直接从 superpower 的 plan 开始做。
-2. 如果 superpower 生成了新 spec/plan，先把链接写入任务卡片的 `Spec` / `Plan` 字段。
-3. 如果该任务会长期维护，优先把新文档放到或迁入 `docs/specs/*` / `docs/plans/*`。
+2. 如果 superpower 生成了新 spec/plan，先迁入或镜像到 `docs/specs/*` / `docs/plans/*`，再把规范目录链接写入任务卡片的 `Spec` / `Plan` 字段。
+3. 原始 `docs/superpowers/*` 链接写入任务卡片的 `插件输出` 字段，便于追溯插件上下文。
 4. 执行完成后，同步任务状态、验证结果和下一步到 `docs/engineering/current-work.md`。
 5. 如果 superpower plan 中的要求与 `docs/engineering/rules/*` 冲突，以工程规则为准，并在继续前向用户说明冲突。

@@ -7,6 +7,7 @@
 - 新功能、较大改动、Schema/API 变更、跨 3 个以上文件的工作，优先在本目录建立 spec。
 - 插件可以参与生成或修改 spec，但目录和文件本身不绑定某个插件。
 - 历史 `docs/superpowers/specs/*` 保留为兼容来源；新任务不要因为使用 superpower 就默认继续放入该目录。
+- superpower、compound-engineering-plugin 或其他插件生成的新 spec，如果要作为本次开发依据，必须迁移或镜像到本目录；原始插件输出只登记到任务卡片的 `插件输出` 字段。
 - 每个进入开发的 spec 必须在 `docs/engineering/current-work.md` 的任务卡片中登记。
 
 ## 文件命名
