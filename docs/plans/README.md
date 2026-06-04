@@ -6,8 +6,9 @@
 
 - plan 应链接对应 spec、任务卡片或技术债编号。
 - plan 记录实施顺序、验收标准、验证方式和当前任务拆分。
-- 插件生成的计划可以先作为草稿，但进入开发前必须在 `docs/engineering/current-work.md` 中登记为任务卡片的 `Plan`。
+- 插件生成的计划可以先作为草稿，但进入开发前必须迁移或镜像到本目录，并在 `docs/engineering/current-work.md` 中登记为任务卡片的 `Plan`。
 - 历史 `docs/superpowers/plans/*` 保留为兼容来源；新任务不要因为使用 superpower 就默认继续放入该目录。
+- 原始插件计划链接登记到任务卡片的 `插件输出` 字段，用于追溯，不作为长期计划事实源。
 
 ## 文件命名
 

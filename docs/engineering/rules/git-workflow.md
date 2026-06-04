@@ -10,6 +10,7 @@
 - 使用 AI IDE 或插件开发时，提交前确认 `docs/engineering/current-work.md` 状态已经同步。
 - 用户要求“提交代码”“按流程提交”“走完整流程”或“合并 main”时，执行者必须在执行 git 操作前阅读本文件。
 - 进入 `git add` 前，必须最后一次回读 `docs/engineering/current-work.md`，确认任务状态、验证结果和下一步与实际一致。
+- 进入 `git add` 前，必须检查 PR 范围边界，确认无关资产清理、生成物、临时文件或其他人的改动没有混入。
 - “按流程提交代码”默认不是只创建本地 commit，而是推进完整交付链路：提交、push、PR、合并 `main`、确认合并状态。
 - 如果用户只希望停在某一步，必须明确说明，例如“只提交不 push”或“只创建 PR 不合并”。
 
@@ -87,7 +88,9 @@ refactor(server): 重构知识节点服务
 2. 运行验证：按 `docs/engineering/rules/quality-gates.md` 选择与改动范围匹配的验证。
 3. 同步状态：如果任务已登记，在验证后最终更新 `docs/engineering/current-work.md` 的状态、进展、下一步和验证状态。
 4. 回读声明：确认 `current-work.md`、PR 描述和最终回复中的验证结论与真实命令输出一致。退出码非 0 的命令不得写“通过”。
-5. 检查文档：如果 API、Schema、质量门禁、协作流程或架构边界变化，按 `docs/engineering/rules/docs.md` 同步文档。
+5. 行为声明：如果写“零业务逻辑变更”“仅格式化”或“仅 lint 修复”，按 `docs/engineering/rules/quality-gates.md#行为变化声明检查` 排查并记录行为变化信号。
+6. 范围边界：逐个确认待暂存文件都能追溯到本任务；无关 mockup PNG 删除、`outputs/` 生成物、工具缓存或人工清理必须拆分，或经用户确认并在 PR 中单独说明。
+7. 检查文档：如果 API、Schema、质量门禁、协作流程或架构边界变化，按 `docs/engineering/rules/docs.md` 同步文档。
 
 如果环境依赖导致完整验证不可运行，必须在最终回复和 `docs/engineering/current-work.md` 的验证状态中记录原因。
 
@@ -106,8 +109,9 @@ refactor(server): 重构知识节点服务
    - 如果任务已验证完成，写清实际验证命令、结果和当前 Git 阶段。
    - 如果仍有历史失败，写清失败摘要并绑定对应 `TD-xxx`。
 6. 回读 `docs/engineering/current-work.md`，确认任务卡片事实与当前代码、验证和 Git 状态一致。
-7. 只暂存本任务相关文件。
-8. 按原子边界创建一个或多个 Conventional Commits。
+7. 回查 PR 范围边界，逐个确认 `git diff --name-status` 中的文件都属于本任务。
+8. 只暂存本任务相关文件。
+9. 按原子边界创建一个或多个 Conventional Commits。
 
 ### 2. Push 分支
 
@@ -124,7 +128,7 @@ refactor(server): 重构知识节点服务
    ```bash
    gh pr create --title "type(scope): description" --body "..."
    ```
-2. PR 描述必须包含 Summary、Validation、Risks、Docs。
+2. PR 描述必须包含 Summary、Scope、Validation、Risks、Docs。
 3. PR 链接必须写入最终回复；如果任务卡片需要长期追踪，也写入 `current-work.md` 或对应任务总账。
 
 ### 4. 合并 main
@@ -204,9 +208,17 @@ git push --no-verify                 # 不推荐
 PR 描述至少包含：
 
 - Summary：本次改动做了什么。
+- Scope：本 PR 包含哪些文件范围；是否排除了无关变更；若包含用户明确要求的无关资产清理，必须单独列出。
 - Validation：运行了哪些验证，结果如何。
 - Risks：仍有何风险或未覆盖场景。
 - Docs：是否更新了相关文档或任务状态。
+
+## PR 范围边界
+
+- 技术债、Bug 修复和重构 PR 默认只包含本任务范围内的代码、测试和必要文档状态更新。
+- 无关资产删除、mockup PNG 清理、`outputs/` 生成物治理、工具缓存清理等不应混入技术债 PR。
+- 如果这些文件确实需要处理，优先拆成独立 PR；如果用户明确要求同 PR 处理，PR 描述必须在 Scope 中单独说明，并解释为什么不拆分。
+- 发现工作区里已有用户改动时，不要擅自暂存或回退。只暂存本任务需要的文件，并在最终回复中说明保留了哪些未处理改动。
 
 ## 注意事项
 

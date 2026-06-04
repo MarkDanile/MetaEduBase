@@ -14,6 +14,7 @@
 - 每次结束开发前，必须更新任务状态、当前进展、下一步和验证结果。
 - 本文件是活文档，不是一次性日志。代码、验证或 Git 阶段发生变化后，必须回写任务卡片。
 - 进入 Git 提交前，必须最后一次回读本文件，确认状态、验证结果和下一步与实际一致。
+- 本文件是交接工作台，不是历史档案。只保留当前任务、近期候选和少量最近完成任务；历史索引见 `docs/engineering/work-log.md`。
 - 插件只作为执行工具使用；任务状态以本文件为准。
 
 ## 状态流
@@ -35,6 +36,14 @@
 - 验证通过后，如果仍未完成用户要求的 Git 阶段，状态可以保持任务活跃，但下一步必须写清当前停留阶段。
 - 只有完成标准、验证结果和用户要求的交付阶段都已收口，才能写 `状态：🟢 完成`。
 - 提交前不得保留与事实不符的占位，例如 `验证状态：未运行`、`下一步：提交变更` 或过期的 `🟡 进行中`。
+
+## 保留策略
+
+- `当前进行中`：保留所有正在开发、阻塞或待验证任务。
+- `下一批候选任务`：最多保留 1 到 3 个近期候选；完整 backlog 回到对应总账或 plan。
+- `最近完成`：最多保留最近 5 个完成任务，或最近 2 周内仍需要交接上下文的完成任务。
+- 超出范围的完成任务应归档到对应事实源，并在 `docs/engineering/work-log.md` 保留一行索引。
+- 任务卡片只写交接所需摘要；详细设计、实施步骤、长复盘和大段验证输出分别放到 spec、plan、技术债总账、PR 描述或复盘文档。
 
 ## 任务卡片模板
 
@@ -85,6 +94,40 @@
 - `TD-004`：让后端测试数据库环境可复现。详见 `docs/engineering/technical-debt.md`。
 
 ## 最近完成
+
+### DOC-003: 补强跨插件计划、行为声明和 PR 范围边界规则
+
+状态：🟢 完成
+类型：文档 / 工程规范
+领域：Docs / Delivery / Testing
+当前执行模式：plan-do
+最近接手工具：Codex
+分支：`codex-current-work-process-hardening`
+
+需求来源：
+- Spec:
+- Plan:
+- 技术债：
+- 架构约束：`docs/engineering/workflow.md`，`docs/engineering/task-modes.md`，`docs/engineering/rules/quality-gates.md`，`docs/engineering/rules/git-workflow.md`
+- 插件输出：
+- 任务模式：`docs/engineering/task-modes.md#通用收尾回查`
+
+当前进展：
+- 已完成：补强 superpower / compound-engineering-plugin 输出迁移或镜像到 `docs/specs/*` / `docs/plans/*` 的硬规则；补强 current-work 区域同步检查；补充“零业务逻辑变更”行为变化信号检查；补充 PR 范围边界检查，防止技术债 PR 混入无关资产清理；同步 AGENTS.md / CLAUDE.md 入口提醒；按保留策略收敛最近完成区。
+- 正在处理：
+- 未完成：
+
+下一步：
+1. 后续让 Claude Code 按新规范处理下一个技术债，并由 Codex 复核流程执行情况。
+
+验证状态：
+- 已运行：`git diff --check` 通过；`rg -n "迁入|迁移|镜像|docs/specs|docs/plans|插件输出|区域同步|当前进行中|下一批候选任务|最近完成|零业务逻辑|仅格式化|仅 lint|行为变化|PR 范围|范围边界|无关资产|mockup PNG|outputs/" AGENTS.md CLAUDE.md docs/engineering/current-work.md docs/engineering/work-log.md docs/engineering/workflow.md docs/engineering/task-modes.md docs/engineering/rules/docs.md docs/engineering/rules/git-workflow.md docs/engineering/rules/quality-gates.md docs/specs/README.md docs/plans/README.md` 确认 4 条规则有入口、流程、门禁和 Git 落点；`rg -n "^## 当前进行中|^## 下一批候选任务|^## 最近完成|^### " docs/engineering/current-work.md` 确认区域同步和最近完成区数量符合保留策略；`git status --short --branch` 确认本次范围仅包含工程规范和入口文档。
+- 未运行：业务代码测试，原因是本次仅修改工程规范文档。
+- 当前失败：无。
+
+交接备注：
+- 本任务回应 TD-012 复核后识别出的跨插件计划位置、current-work 动态同步、行为声明和 PR 范围边界四类流程缺口。
+- Git 交付阶段、PR 和 merge commit 以最终交付回复为准。
 
 ### DOC-002: 强化跨 AI 提交前回查与验证声明规范
 
@@ -140,7 +183,7 @@
 - 未完成：
 
 下一步：
-1. 由主控执行 Task 7 Git 交付（commit、push、PR、merge）。
+1. 后续由 Codex 复核并决定是否需要 TD-012-FOLLOWUP。
 
 验证状态：
 - 已运行：`cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` 退出码 0；`cd packages/server-python && .venv/bin/python -m pytest -q` 87 passed；Celery 10 task 注册正常。
@@ -197,137 +240,3 @@
 
 交接备注：
 - PR #12：https://github.com/MarkDanile/MetaEduBase/pull/12；merge commit `2eb59e8`；完成日期：2026-06-04。
-
-### TD-001: 拆分应用启动时的数据库迁移与默认种子数据
-
-状态：🟢 完成
-类型：技术债 / 基础设施
-领域：Backend / Security / Delivery
-当前执行模式：plan-do
-最近接手工具：Codex
-分支：`codex/technical-debt-flow`
-
-需求来源：
-- Spec:
-- Plan:
-- 技术债：`docs/engineering/technical-debt.md#td-001-拆分应用启动时的数据库迁移与默认种子数据`
-- 架构约束：
-- 插件输出：
-- 任务模式：`docs/engineering/task-modes.md#技术债修复`，`docs/engineering/task-modes.md#基础设施--依赖--工具链`
-
-当前进展：
-- 已完成：移除 FastAPI 启动生命周期中的隐式迁移和 seed；移除 Alembic 失败后 fallback `create_all` 的初始化路径；新增显式开发初始化入口 `make init-dev-db` 和 `./dev.sh init-db`；默认开发 seed 需要 `ALLOW_DEFAULT_SEED=true` 显式放行；同步 README 和本地开发命令；补充无数据库启动健康检查和 seed opt-in 测试；完成 PostgreSQL 可用后的显式初始化、迁移状态、健康检查和后端完整测试验证。
-- 正在处理：
-- 未完成：
-
-下一步：
-1. 后续处理测试环境可复现问题时进入 `TD-004`。
-
-验证状态：
-- 已运行：`./dev.sh init-db` 通过；`curl -sf http://localhost:8000/api/v1/health` 返回 `{"status":"ok","version":"0.1.0"}`；`cd packages/server-python && .venv/bin/alembic current` 返回 `9466ea6e5d33 (head)`；`cd packages/server-python && .venv/bin/python -m pytest tests/shared/test_health.py -q` 通过，2 passed；`cd packages/server-python && .venv/bin/python -m pytest -q` 通过，83 passed；`cd packages/server-python && .venv/bin/python -m ruff check app/config.py app/main.py app/shared/infrastructure/database.py app/shared/infrastructure/seed.py app/shared/infrastructure/dev_setup.py tests/shared/test_health.py tests/shared/test_dev_seed.py` 通过。
-- 未运行：
-- 当前失败：无。
-
-交接备注：
-- 完成日期：2026-06-04；实现提交：`291dbbc`；最终验证结果见本任务卡片。
-
-### TD-011: 治理前端 lint warning
-
-状态：🟢 完成
-类型：技术债 / 基础设施
-领域：Frontend / Security / Testing / Delivery
-当前执行模式：plan-do
-最近接手工具：Codex
-分支：`codex/technical-debt-flow`
-
-需求来源：
-- Spec:
-- Plan:
-- 技术债：`docs/engineering/technical-debt.md#td-011-治理前端-lint-warning`
-- 架构约束：
-- 插件输出：
-- 任务模式：`docs/engineering/task-modes.md#技术债修复`，`docs/engineering/task-modes.md#基础设施--依赖--工具链`
-
-当前进展：
-- 已完成：将首页和资源列表的静态 SVG 字符串渲染替换为 lucide 组件；将 AI 回复 Markdown 渲染收敛为阻断原始 HTML、危险链接和图片的受控边界；修复 RouterView 插槽变量遮蔽；清理 Vue 模板换行 warning。
-- 正在处理：
-- 未完成：
-
-下一步：
-1. 后续新增 Markdown / 富文本渲染时继续遵守 `docs/engineering/rules/security.md#xss-防护`。
-
-验证状态：
-- 已运行：`pnpm --filter @metaedu/web lint` 通过，退出码 0，无 warning；`pnpm --filter @metaedu/web typecheck` 通过，退出码 0。
-- 未运行：
-- 当前失败：无。
-
-交接备注：
-- 本任务从 TD-003 收尾风险中拆出；完成日期：2026-06-04；完成提交：`090242a`。
-
-### TD-003: 让前端 lint 质量门禁可运行
-
-状态：🟢 完成
-类型：技术债 / 基础设施
-领域：Frontend / Testing / Delivery
-当前执行模式：plan-do
-最近接手工具：Codex
-分支：`codex/technical-debt-flow`
-
-需求来源：
-- Spec:
-- Plan:
-- 技术债：`docs/engineering/technical-debt.md#td-003-让前端-lint-质量门禁可运行`
-- 架构约束：
-- 插件输出：
-- 任务模式：`docs/engineering/task-modes.md#技术债修复`，`docs/engineering/task-modes.md#基础设施--依赖--工具链`
-
-当前进展：
-- 已完成：补齐前端 ESLint 依赖与 flat config；将 lint 脚本收敛到 `src/**/*.{ts,vue}`；清理阻塞 lint 的 8 个 error；同步质量门禁文档。
-- 正在处理：
-- 未完成：
-
-下一步：
-1. lint warning 已拆为 TD-011。
-
-验证状态：
-- 已运行：`pnpm --filter @metaedu/web lint` 通过，退出码 0，仍有 9 个 warning；`pnpm --filter @metaedu/web typecheck` 通过，退出码 0。
-- 未运行：
-- 当前失败：无。
-
-交接备注：
-- 采用补齐 ESLint 依赖/配置的策略；历史 warning 拆为 TD-011 继续治理；完成提交：`090242a`。
-
-### DOC-001: 统一并优化跨 AI 工程规则
-
-状态：🟢 完成
-类型：文档 / 工程规范
-领域：Docs
-当前执行模式：manual
-最近接手工具：Codex
-分支：`codex/technical-debt-flow`
-
-需求来源：
-- Spec:
-- Plan:
-- 技术债：`TD-009`
-- 架构约束：`ARCHITECTURE.md`
-- 插件输出：
-- 任务模式：`docs/engineering/task-modes.md`
-
-当前进展：
-- 已完成：统一 AGENTS.md / CLAUDE.md 入口索引；补充质量门禁、契约治理、跨 AI 工作流、技术债复盘规范和任务模式检查表；拆分 Git 流程与本地开发命令；新增插件无关的 `docs/specs` / `docs/plans` 目录规则；为 `.claude/rules` 保留兼容跳转入口。
-- 正在处理：
-- 未完成：
-
-下一步：
-1. 后续进入具体功能或技术债处理时，从本文件新增对应任务卡片。
-2. 本地启动或调试时阅读 `docs/engineering/rules/local-development.md`；提交和 PR 时阅读 `docs/engineering/rules/git-workflow.md`。
-3. 处理 API / DTO / shared schema 变更时，先阅读 `docs/engineering/rules/contracts.md`。
-
-验证状态：
-- 已运行：`rg` 检查旧规则路径、旧测试数量、旧文件名、新增规则索引、任务模式索引、superpower 兼容引用和 `docs/specs` / `docs/plans` 默认目录约定。
-- 未运行：业务代码测试，原因是本次仅修改工程规范文档。
-- 当前失败：无。
-
-交接备注：
-- `docs/engineering/*` 是共享规则事实源；工具私有目录只保留跳转入口；完成提交：`c0bac8a`。

@@ -6,6 +6,7 @@
 |------|------|------|
 | AGENTS.md / CLAUDE.md | 根目录 | AI IDE 入口与渐进式披露索引 |
 | current-work.md | docs/engineering/current-work.md | 当前开发任务入口与交接状态 |
+| work-log.md | docs/engineering/work-log.md | 已完成任务的一行式历史索引 |
 | workflow.md | docs/engineering/workflow.md | 跨 AI IDE / 插件开发流程 |
 | task-modes.md | docs/engineering/task-modes.md | 常见任务模式、类型与领域检查表 |
 | ARCHITECTURE.md | 根目录 | 系统架构详述（API/Schema/流程） |
@@ -58,6 +59,8 @@ class KnowledgeNode(AggregateRoot):
 | AI 协作流程变更 | `docs/engineering/workflow.md` + AGENTS.md + CLAUDE.md |
 | 任务模式、开工条件或验收流程变更 | `docs/engineering/task-modes.md` + `docs/engineering/workflow.md` |
 | Spec / Plan 目录约定变更 | `docs/engineering/workflow.md` + `docs/specs/README.md` + `docs/plans/README.md` |
+| 行为变化声明或验证表述规则变更 | `docs/engineering/rules/quality-gates.md` + `docs/engineering/task-modes.md` |
+| Git 提交、PR 范围或合并流程变更 | `docs/engineering/rules/git-workflow.md` + `docs/engineering/workflow.md` |
 | 纯前端 UI 变更（无 API/Schema 影响） | 无需更新 |
 
 ## 规则归属
@@ -65,6 +68,7 @@ class KnowledgeNode(AggregateRoot):
 | 内容类型 | 放置位置 |
 |----------|----------|
 | 当前开发状态、下一步、交接备注 | `docs/engineering/current-work.md` |
+| 已完成任务历史索引 | `docs/engineering/work-log.md` |
 | 跨 AI IDE / 插件流程 | `docs/engineering/workflow.md` |
 | 任务类型、领域、开工条件和验收模式 | `docs/engineering/task-modes.md` |
 | 技术债任务与定期复盘 | `docs/engineering/technical-debt.md` |
