@@ -19,6 +19,7 @@ coverage/
 .pytest_cache/
 .ruff_cache/
 .dev-logs/
+outputs/
 dump.rdb
 .claude/
 *.tsbuildinfo
