@@ -112,9 +112,75 @@
 
 ## 下一批候选任务
 
-当前无候选任务。
+### DOC-006: 修复 current-work 重复完成区标题
+
+状态：🔵 就绪
+类型：文档 / 工程规范
+领域：Docs / Delivery
+当前执行模式：plan-do
+最近接手工具：Codex 复核后登记，待 Claude Code 接手
+分支：
+
+需求来源：
+- Spec:
+- Plan:
+- 技术债：
+- 架构约束：`docs/engineering/current-work.md`，`docs/engineering/workflow.md`
+- 插件输出：
+- 任务模式：`docs/engineering/task-modes.md#通用收尾回查`
+
+当前进展：
+- 已完成：Codex 复核 TD-013 后发现 `docs/engineering/current-work.md` 出现两个 `## 最近完成` 标题。
+- 正在处理：
+- 未完成：等待 Claude Code 接手修复。
+
+下一步：
+1. 删除重复的 `## 最近完成` 标题，只保留一个最近完成区。
+2. 确认 TD-013、DOC-005、TD-004 等完成任务仍位于同一个最近完成区，且 current-work 区域顺序保持为“当前进行中 / 下一批候选任务 / 最近完成”。
+
+验证状态：
+- 已运行：仅完成任务登记，未修改业务代码。
+- 未运行：`rg -n "^## 当前进行中|^## 下一批候选任务|^## 最近完成" docs/engineering/current-work.md`，原因是本轮只形成 follow-up 任务。
+- 当前失败：无。
+
+交接备注：
+- 本任务是 TD-013 复核后拆出的文档结构修复，不应混入业务代码或其他技术债。
 
 ## 最近完成
+
+### TD-014: 加强测试数据库 legacy stamp 的列级形态校验
+
+状态：🟢 完成
+类型：技术债 / follow-up
+领域：Testing / Delivery / Data Integrity
+当前执行模式：plan-do
+最近接手工具：Claude Code
+分支：`refactor/td-014-test-db-legacy-column-shape`
+
+需求来源：
+- Spec:
+- Plan: `docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md`
+- 技术债：`docs/engineering/technical-debt.md#td-014-加强测试数据库-legacy-stamp-的列级形态校验`
+- 架构约束：`docs/engineering/rules/local-development.md`，`docs/engineering/rules/quality-gates.md`
+- 插件输出：
+- 任务模式：`docs/engineering/task-modes.md#技术债修复`
+
+当前进展：
+- 已完成：新增 `_LEGACY_REQUIRED_COLUMNS`（`tenants` / `users` 的代表列清单）与 `_has_legacy_create_all_columns` 纯函数；收紧 `_stamp_if_legacy_schema` 为「表集合齐全 + INSERT 目标表关键列齐全 + 缺 alembic_version」三件齐备才 stamp；新增 7 个聚焦测试覆盖列级判定；完成完整 Git 闭环并回填交付事实。
+- 正在处理：
+- 未完成：
+
+下一步：
+1.
+
+验证状态：
+- 已运行：`pytest tests/shared/test_test_db_setup.py -v` → 27 passed（TD-013 20 + TD-014 7）；`ruff check app/shared/infrastructure/test_db_setup.py tests/shared/test_test_db_setup.py` → All checks passed；`ruff check app/ tests/` → All checks passed；`./dev.sh init-test-db` 退出码 0；`pytest -q` → 114 passed in 23.49s。
+- 未运行：
+- 当前失败：无。
+
+交接备注：
+- 行为变化（非「零业务逻辑变更」）：legacy stamp 新增 `information_schema.columns` 查询；「表齐全 + 列缺失」分支不再 stamp + 显式日志；新增 `_has_legacy_create_all_columns` 私有 helper。详细行为变化与覆盖矩阵见 PR #28 描述。
+- PR #28（https://github.com/MarkDanile/MetaEduBase/pull/28）；merge commit `af7d246`；完成日期：2026-06-05。
 
 ### TD-013: 收口 TD-004 测试数据库初始化安全与文档占位
 

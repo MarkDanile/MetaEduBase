@@ -127,6 +127,17 @@
 验证方式：新增或更新的后端聚焦测试通过；`cd packages/server-python && .venv/bin/python -m ruff check app/shared/infrastructure/test_db_setup.py tests/` 退出码 0；`rg -n "<TASK|PR / merge commit 在 Git 闭环后回填|以最终回复为准|待最终确认" docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md` 不再命中活动式占位。
 备注：2026-06-04 Codex 复核 TD-004 后新增。2026-06-05 由 Claude Code 接手完成。改动：新增 `_validate_database_name`（PostgreSQL identifier 白名单）与 `DatabaseNameError` 异常，替换裸 `f-string` 拼接路径；`_stamp_if_legacy_schema` 改为基于 12 张核心业务表集合是否**全部**存在 + 缺 `alembic_version` 才 stamp 的 `_is_legacy_create_all_shape` 判定；新增 `tests/shared/test_test_db_setup.py` 覆盖 6 类合法 / 9 类非法数据库名与 5 类 legacy 形态判定；plan 头部新增「交付历史」段并把 `<TASK-8 输出>` / `PR / merge commit 在 Git 闭环后回填` 等占位替换为真实 PR #23 / merge commit `b8b34a6` / 完成日期 2026-06-04。验证：`pytest tests/shared/test_test_db_setup.py -v` → 20 passed；`ruff check app/shared/infrastructure/test_db_setup.py tests/shared/test_test_db_setup.py` → All checks passed；`ruff check app/ tests/` → All checks passed；`./dev.sh init-test-db` 跑两次均退出码 0；`pytest -q` → 107 passed in 24.76s；plan 占位 `rg` → CLEAN。PR #27（https://github.com/MarkDanile/MetaEduBase/pull/27），merge commit `8f25b20`，完成日期 2026-06-05。
 
+### TD-014: 加强测试数据库 legacy stamp 的列级形态校验
+
+状态：🟢 完成
+优先级：P1
+领域：测试 / 交付 / 数据一致性
+证据：`packages/server-python/app/shared/infrastructure/test_db_setup.py:127-143` 的 `_is_legacy_create_all_shape` 只检查 12 张核心表是否全部存在和 `alembic_version` 是否缺失；`packages/server-python/tests/shared/test_test_db_setup.py:56-80` 只覆盖表集合完整性，没有覆盖“表都在但关键列缺失”的残缺 schema。
+问题：TD-013 已收窄 legacy stamp 风险，但如果测试库存在“核心表全在、关键列缺失、缺 alembic_version”的残缺 schema，当前逻辑仍可能 `stamp head`，从而让后续 Alembic 跳过应暴露的结构缺陷。
+完成标准：legacy stamp 判定除了表集合外，还校验足以代表旧 `Base.metadata.create_all` 形态的关键列；关键列缺失时不执行 `stamp head`；新增测试覆盖核心表全在但关键列缺失的负例。
+验证方式：`cd packages/server-python && .venv/bin/python -m pytest tests/shared/test_test_db_setup.py -q` 退出码 0；`cd packages/server-python && .venv/bin/python -m ruff check app/shared/infrastructure/test_db_setup.py tests/shared/test_test_db_setup.py` 退出码 0；如果需要访问数据库，补充 `./dev.sh init-test-db` 幂等验证。
+备注：2026-06-05 Codex 复核 TD-013 后新增，作为严谨性 follow-up。2026-06-05 由 Claude Code 接手完成。改动：新增 `_LEGACY_REQUIRED_COLUMNS`（`tenants` / `users` 的代表列清单，覆盖 PK + FK + 业务必填 + 时间戳）；新增 `_has_legacy_create_all_columns` 纯函数；`_stamp_if_legacy_schema` 改为「表集合齐全 + INSERT 目标表关键列齐全 + 缺 alembic_version」三件齐备才 stamp，新增「表齐全 + 列缺失」分支显式日志；新增 7 个聚焦测试覆盖 tenants 缺 `school_name` / users 缺 `tenant_id` / 缺 `password_hash` / 单列缺失 / 目标表缺失时不误判 / 空输入。验证：`pytest tests/shared/test_test_db_setup.py -v` → 27 passed（TD-013 20 + TD-014 7）；`ruff check app/shared/infrastructure/test_db_setup.py tests/shared/test_test_db_setup.py` → All checks passed；`ruff check app/ tests/` → All checks passed；`./dev.sh init-test-db` 退出码 0；`pytest -q` → 114 passed in 23.49s。PR #28（https://github.com/MarkDanile/MetaEduBase/pull/28），merge commit `af7d246`，完成日期 2026-06-05。
+
 ### TD-005: 拆分大型后端任务流水线文件
 
 状态：⚫ 待办
