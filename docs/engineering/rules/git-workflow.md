@@ -1,0 +1,144 @@
+# Git Workflow — Git 工作流规范
+
+本文件只记录 Git 协作流程：分支、提交、Hooks、PR 和合并。启动服务和本地运行命令见 `docs/engineering/rules/local-development.md`；验证矩阵见 `docs/engineering/rules/quality-gates.md`。
+
+## 基本原则
+
+- 一个分支只服务一个清晰任务或一组强相关改动。
+- 一个提交只表达一个原子变更。
+- 提交前必须完成与改动范围匹配的验证，并记录无法运行的原因。
+- 使用 AI IDE 或插件开发时，提交前确认 `docs/engineering/current-work.md` 状态已经同步。
+
+## 分支策略
+
+| 分支 | 规则 | 说明 |
+|------|------|------|
+| `main` | **受保护** | 禁止直接推送，必须通过 PR 合入 |
+| `feature/*` | 临时分支 | 功能开发完成后合并删除 |
+| `fix/*` | 临时分支 | Bug 修复完成后合并删除 |
+| `refactor/*` | 临时分支 | 重构完成后合并删除 |
+| `docs/*` | 临时分支 | 文档或工程规范变更完成后合并删除 |
+
+AI IDE 如果带有自己的默认分支前缀，应在任务卡片中记录当前分支；需要进入团队协作或 PR 时，再按上表归入语义化分支。
+
+## 分支命名
+
+```text
+feature/xxx-description
+fix/xxx-description
+refactor/xxx-description
+docs/xxx-description
+```
+
+## 提交信息
+
+### Conventional Commits 格式
+```text
+type(scope): description
+```
+
+### Type 列表
+| type | 说明 |
+|------|------|
+| `feat` | 新功能 |
+| `fix` | Bug 修复 |
+| `docs` | 文档变更 |
+| `style` | 代码格式（不影响功能） |
+| `refactor` | 重构（非功能变更） |
+| `perf` | 性能优化 |
+| `test` | 测试相关 |
+| `build` | 构建系统相关 |
+| `ci` | CI/CD 相关 |
+| `chore` | 其他杂项 |
+| `revert` | 回退提交 |
+
+### Scope 列表
+| scope | 说明 |
+|-------|------|
+| `web` | 前端 |
+| `server` | 后端 |
+| `knowledge` | 知识上下文 |
+| `identity` | 认证上下文 |
+| `resource` | 资源上下文 |
+| `deploy` | 部署 |
+| `shared` | 共享代码 |
+| `mcp` | MCP 服务 |
+
+### 示例
+```text
+feat(knowledge): 添加知识点搜索功能
+fix(auth): 修复登录超时问题
+docs(readme): 更新快速开始文档
+style(web): 格式化代码
+refactor(server): 重构知识节点服务
+```
+
+提交信息应描述变更意图。标题写不下的背景、风险和验证结果放在提交正文或 PR 描述中。
+
+## 提交前检查
+
+提交前至少完成以下检查：
+
+1. 查看工作区：确认没有无关文件、生成物或其他人的改动被混入。
+2. 运行验证：按 `docs/engineering/rules/quality-gates.md` 选择与改动范围匹配的验证。
+3. 同步状态：如果任务已登记，更新 `docs/engineering/current-work.md` 的进展、下一步和验证状态。
+4. 检查文档：如果 API、Schema、质量门禁、协作流程或架构边界变化，按 `docs/engineering/rules/docs.md` 同步文档。
+
+如果环境依赖导致完整验证不可运行，必须在最终回复和 `docs/engineering/current-work.md` 的验证状态中记录原因。
+
+## Hooks 配置
+
+项目包含 `.githooks/`，但本地是否启用取决于 `git config core.hooksPath`。不要假设 hooks 已生效；提交前仍应手动运行匹配范围的验证。
+
+| Hook | 功能 |
+|------|------|
+| `pre-commit` | 对暂存的 `.py` 执行 `ruff check`，对 `.ts`/`.vue` 执行 `vue-tsc --noEmit` |
+| `commit-msg` | 校验提交信息格式是否符合 Conventional Commits |
+| `pre-push` | 拦截直接推送 main 分支 |
+
+### 跳过 Hook（谨慎使用）
+```bash
+git commit --no-verify -m "message"  # 不推荐
+git push --no-verify                 # 不推荐
+```
+
+## Pull Request 流程
+
+1. 从 `main` 创建任务分支。
+   ```bash
+   git checkout -b feature/your-feature
+   ```
+
+2. 完成开发、验证和任务状态同步。
+
+3. 提交变更。
+   ```bash
+   git add .
+   git commit -m "feat(scope): description"
+   ```
+
+4. 推送并创建 PR。
+   ```bash
+   git push -u origin feature/your-feature
+   gh pr create --title "feat(scope): description" --body "## Summary\n- ..."
+   ```
+
+5. 等待 Code Review 通过。
+
+6. 使用 **Squash Merge** 合并到 main。
+
+## PR 描述
+
+PR 描述至少包含：
+
+- Summary：本次改动做了什么。
+- Validation：运行了哪些验证，结果如何。
+- Risks：仍有何风险或未覆盖场景。
+- Docs：是否更新了相关文档或任务状态。
+
+## 注意事项
+
+- 保持提交原子性：一个提交只做一件事
+- 提交信息要描述 **why** 而不是 **what**
+- 合并前确保所有测试通过
+- 合并前确保 lint/typecheck 通过
