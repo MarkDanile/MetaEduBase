@@ -43,7 +43,9 @@ class FolderRepository:
         now = datetime.now(UTC).replace(tzinfo=None)
         await self._session.execute(
             text(
-                "INSERT INTO metaedu.folders (id, tenant_id, name, parent_id, path, sort_order, created_at, updated_at) "
+                "INSERT INTO metaedu.folders "
+                "(id, tenant_id, name, parent_id, path, sort_order, "
+                "created_at, updated_at) "
                 "VALUES (:id, :tid, :name, :pid, :path, :sort, :now, :now)"
             ),
             {

@@ -1,3 +1,5 @@
+from contextlib import suppress
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -20,19 +22,20 @@ router = APIRouter(prefix="/api/v1/templates", tags=["templates"])
 
 @router.get("", response_model=list[TemplateResponse])
 async def list_templates(
-    service: TemplateService = Depends(get_template_service),
-    current_user: dict = Depends(get_current_user),
+    service: Annotated[TemplateService, Depends(get_template_service)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     tenant_id = get_tenant_id()
     return await service.list(tenant_id)
 
 
-# NOTE: Specific routes must be defined BEFORE /{template_id} to avoid being matched as a template_id
+# NOTE: Specific routes must be defined BEFORE /{template_id}
+# to avoid being matched as a template_id
 @router.get("/check-doc-type", response_model=dict)
 async def check_doc_type(
     doc_type: str,
-    service: TemplateService = Depends(get_template_service),
-    current_user: dict = Depends(get_current_user),
+    service: Annotated[TemplateService, Depends(get_template_service)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     tenant_id = get_tenant_id()
     templates = await service.list(tenant_id)
@@ -47,8 +50,8 @@ async def check_doc_type(
 @router.post("/init-by-ai", response_model=TemplateAIInitResponse)
 async def init_template_by_ai(
     dto: TemplateAIInitRequest,
-    service: TemplateService = Depends(get_template_service),
-    current_user: dict = Depends(get_current_user),
+    service: Annotated[TemplateService, Depends(get_template_service)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     tenant_id = get_tenant_id()
     source_file_uuid = UUID(dto.source_file_id) if dto.source_file_id else None
@@ -58,18 +61,16 @@ async def init_template_by_ai(
     # Validate and convert to FieldDTO
     validated = []
     for f in fields:
-        try:
+        with suppress(Exception):
             validated.append(FieldDTO(**f))
-        except Exception:
-            pass  # Skip invalid fields
     return TemplateAIInitResponse(fields=validated)
 
 
 @router.post("", response_model=TemplateResponse, status_code=status.HTTP_201_CREATED)
 async def create_template(
     dto: TemplateCreate,
-    service: TemplateService = Depends(get_template_service),
-    current_user: dict = Depends(get_current_user),
+    service: Annotated[TemplateService, Depends(get_template_service)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     tenant_id = get_tenant_id()
     return await service.create(dto, tenant_id)
@@ -78,8 +79,8 @@ async def create_template(
 @router.get("/{template_id}", response_model=TemplateResponse)
 async def get_template(
     template_id: str,
-    service: TemplateService = Depends(get_template_service),
-    current_user: dict = Depends(get_current_user),
+    service: Annotated[TemplateService, Depends(get_template_service)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     tenant_id = get_tenant_id()
     result = await service.get(UUID(template_id), tenant_id)
@@ -92,8 +93,8 @@ async def get_template(
 async def update_template(
     template_id: str,
     dto: TemplateUpdate,
-    service: TemplateService = Depends(get_template_service),
-    current_user: dict = Depends(get_current_user),
+    service: Annotated[TemplateService, Depends(get_template_service)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     tenant_id = get_tenant_id()
     result = await service.update(UUID(template_id), dto, tenant_id)
@@ -105,8 +106,8 @@ async def update_template(
 @router.delete("/{template_id}", status_code=204)
 async def delete_template(
     template_id: str,
-    service: TemplateService = Depends(get_template_service),
-    current_user: dict = Depends(get_current_user),
+    service: Annotated[TemplateService, Depends(get_template_service)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     tenant_id = get_tenant_id()
     await service.delete(UUID(template_id), tenant_id)

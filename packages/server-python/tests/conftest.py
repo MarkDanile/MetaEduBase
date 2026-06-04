@@ -1,10 +1,11 @@
 
+from unittest.mock import patch
+
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
-from unittest.mock import patch
 
 from app.main import app
 from app.shared.infrastructure.database import Base, get_session
@@ -77,16 +78,26 @@ async def _ensure_seed(engine):
         now = datetime.now(UTC).replace(tzinfo=None)
         await session.execute(
             text(
-                "INSERT INTO metaedu.tenants (id, name, school_name, isolation, is_active, created_at, updated_at) "
+                "INSERT INTO metaedu.tenants "
+                "(id, name, school_name, isolation, is_active, created_at, updated_at) "
                 "VALUES (:id, :name, :school_name, :isolation, true, :now, :now)"
             ),
-            {"id": DEFAULT_TENANT_ID, "name": "test", "school_name": "测试学校", "isolation": "shared", "now": now},
+            {
+                "id": DEFAULT_TENANT_ID,
+                "name": "test",
+                "school_name": "测试学校",
+                "isolation": "shared",
+                "now": now,
+            },
         )
         pw_hash = bcrypt.hashpw(b"admin123", bcrypt.gensalt()).decode()
         await session.execute(
             text(
-                "INSERT INTO metaedu.users (id, tenant_id, username, email, password_hash, role, clearance_level, is_active, created_at, updated_at) "
-                "VALUES (:id, :tenant_id, :username, :email, :password_hash, :role, 5, true, :now, :now)"
+                "INSERT INTO metaedu.users "
+                "(id, tenant_id, username, email, password_hash, role, "
+                "clearance_level, is_active, created_at, updated_at) "
+                "VALUES (:id, :tenant_id, :username, :email, :password_hash, "
+                ":role, 5, true, :now, :now)"
             ),
             {
                 "id": DEFAULT_ADMIN_ID, "tenant_id": DEFAULT_TENANT_ID,

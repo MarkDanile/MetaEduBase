@@ -85,7 +85,8 @@ async def _create_task(
     now = datetime.now(UTC).replace(tzinfo=None)
     await session.execute(
         text(
-            "INSERT INTO metaedu.document_tasks (id, tenant_id, dataset_id, task_type, status, progress, created_at) "
+            "INSERT INTO metaedu.document_tasks "
+            "(id, tenant_id, dataset_id, task_type, status, progress, created_at) "
             "VALUES (:id, :tid, :did, :type, 'pending', 0, :now)"
         ),
         {"id": task_id, "tid": tenant_id, "did": dataset_id, "type": task_type, "now": now},
@@ -134,7 +135,8 @@ def ds_parse(dataset_id_str: str, tenant_id_str: str):
                 row_id = uuid.uuid4()
                 await session.execute(
                     text(
-                        "INSERT INTO metaedu.dataset_rows (id, tenant_id, dataset_id, row_index, data, created_at) "
+                        "INSERT INTO metaedu.dataset_rows "
+                        "(id, tenant_id, dataset_id, row_index, data, created_at) "
                         "VALUES (:id, :tid, :did, :idx, CAST(:data AS jsonb), :now)"
                     ),
                     {
@@ -150,8 +152,12 @@ def ds_parse(dataset_id_str: str, tenant_id_str: str):
             # Update column metadata
             await session.execute(
                 text(
-                    "UPDATE metaedu.datasets SET column_names = CAST(:cnames AS jsonb), column_types = CAST(:ctypes AS jsonb), "
-                    "row_count = :rcount, status = 'processed', updated_at = :now WHERE id = :did"
+                    "UPDATE metaedu.datasets "
+                    "SET column_names = CAST(:cnames AS jsonb), "
+                    "    column_types = CAST(:ctypes AS jsonb), "
+                    "    row_count = :rcount, status = 'processed', "
+                    "    updated_at = :now "
+                    "WHERE id = :did"
                 ),
                 {
                     "cnames": json.dumps(parsed.column_names),
@@ -171,7 +177,8 @@ def ds_parse(dataset_id_str: str, tenant_id_str: str):
             await _update_task_status(session, task_id, "failed", 0, str(e))
             await session.execute(
                 text(
-                    "UPDATE metaedu.datasets SET status = 'failed', updated_at = :now WHERE id = :did"
+                    "UPDATE metaedu.datasets SET status = 'failed', updated_at = :now "
+                    "WHERE id = :did"
                 ),
                 {"now": datetime.now(UTC).replace(tzinfo=None), "did": dataset_id},
             )
@@ -212,7 +219,8 @@ def ds_embed(dataset_id_str: str, tenant_id_str: str):
             sf_key = settings.siliconflow_api_key
             if not mm_key and not sf_key:
                 raise RuntimeError(
-                    "No embedding API key configured (MINIMAX_API_KEY or SILICONFLOW_API_KEY required)"
+                    "No embedding API key configured "
+                    "(MINIMAX_API_KEY or SILICONFLOW_API_KEY required)"
                 )
 
             import httpx
@@ -234,7 +242,10 @@ def ds_embed(dataset_id_str: str, tenant_id_str: str):
                         resp = await client.post(
                             f"{settings.siliconflow_base_url}/embeddings",
                             headers={"Authorization": f"Bearer {sf_key}"},
-                            json={"model": settings.siliconflow_embedding_model, "input": [text_in]},
+                            json={
+                                "model": settings.siliconflow_embedding_model,
+                                "input": [text_in],
+                            },
                         )
                         resp.raise_for_status()
                         return resp.json()["data"][0]["embedding"]
@@ -285,7 +296,8 @@ def ds_embed(dataset_id_str: str, tenant_id_str: str):
             # Update kg_status
             await session.execute(
                 text(
-                    "UPDATE metaedu.datasets SET kg_status = 'pending', updated_at = :now WHERE id = :did"
+                    "UPDATE metaedu.datasets SET kg_status = 'pending', "
+                    "updated_at = :now WHERE id = :did"
                 ),
                 {"now": datetime.now(UTC).replace(tzinfo=None), "did": dataset_id},
             )
@@ -318,7 +330,8 @@ def ds_extract_kg(dataset_id_str: str, tenant_id_str: str):
         await _update_task_status(session, task_id, "running", 0)
         await session.execute(
             text(
-                "UPDATE metaedu.datasets SET kg_status = 'building', updated_at = :now WHERE id = :did"
+                "UPDATE metaedu.datasets SET kg_status = 'building', "
+                "updated_at = :now WHERE id = :did"
             ),
             {"now": datetime.now(UTC).replace(tzinfo=None), "did": dataset_id},
         )
@@ -376,7 +389,8 @@ def ds_extract_kg(dataset_id_str: str, tenant_id_str: str):
                 "请从以上结构化数据中提取知识实体和关系，返回JSON格式"
                 "（relations中的source/target必须是entities数组中的name字段值）：\n"
                 '{"entities": [{"name": "实体名", "type": "类型"}], '
-                '"relations": [{"source": "实体1名称", "target": "实体2名称", "relation": "关系描述"}]}'
+                '"relations": [{"source": "实体1名称", "target": "实体2名称", '
+                '"relation": "关系描述"}]}'
             )
 
             def parse_kg_json(content: str) -> dict:
@@ -446,7 +460,9 @@ def ds_extract_kg(dataset_id_str: str, tenant_id_str: str):
                         if parsed:
                             kg_data = parsed
                         else:
-                            logger.warning("SiliconFlow KG JSON parse failed, raw: %s", content[:1000])
+                            logger.warning(
+                                "SiliconFlow KG JSON parse failed, raw: %s", content[:1000]
+                            )
                 except Exception as e:
                     logger.warning(f"SiliconFlow KG fallback failed: {e}")
 
@@ -471,8 +487,10 @@ def ds_extract_kg(dataset_id_str: str, tenant_id_str: str):
                 await session.execute(
                     text(
                         "INSERT INTO metaedu.knowledge_nodes "
-                        "(id, tenant_id, title, description, domain, level, path, source_dataset_id, created_at) "
-                        "VALUES (:id, :tid, :title, '', 'general', 'concept', :path, :did, :now)"
+                        "(id, tenant_id, title, description, domain, level, "
+                        "path, source_dataset_id, created_at) "
+                        "VALUES (:id, :tid, :title, '', 'general', 'concept', "
+                        ":path, :did, :now)"
                     ),
                     {
                         "id": node_id,
@@ -522,7 +540,8 @@ def ds_extract_kg(dataset_id_str: str, tenant_id_str: str):
             # Update kg_status
             await session.execute(
                 text(
-                    "UPDATE metaedu.datasets SET kg_status = 'done', updated_at = :now WHERE id = :did"
+                    "UPDATE metaedu.datasets SET kg_status = 'done', "
+                    "updated_at = :now WHERE id = :did"
                 ),
                 {"now": datetime.now(UTC).replace(tzinfo=None), "did": dataset_id},
             )
@@ -544,7 +563,8 @@ def ds_extract_kg(dataset_id_str: str, tenant_id_str: str):
             await _update_task_status(session, task_id, "failed", 0, str(e))
             await session.execute(
                 text(
-                    "UPDATE metaedu.datasets SET kg_status = 'failed', updated_at = :now WHERE id = :did"
+                    "UPDATE metaedu.datasets SET kg_status = 'failed', "
+                    "updated_at = :now WHERE id = :did"
                 ),
                 {"now": datetime.now(UTC).replace(tzinfo=None), "did": dataset_id},
             )
@@ -606,7 +626,7 @@ def ds_build_cross_dataset_edges(tenant_id_str: str):
 
         # Create a virtual representative node for each dataset
         now = datetime.now(UTC).replace(tzinfo=None)
-        for ds_id, ds_info in ds_map.items():
+        for _ds_id, ds_info in ds_map.items():
             # Check if virtual node already exists
             existing = await session.execute(
                 text(
@@ -631,8 +651,10 @@ def ds_build_cross_dataset_edges(tenant_id_str: str):
                 await session.execute(
                     text(
                         "INSERT INTO metaedu.knowledge_nodes "
-                        "(id, tenant_id, title, description, domain, level, source_dataset_id, created_at) "
-                        "VALUES (:id, :tid, :title, :desc, 'public_service', 'professional', :did, :now)"
+                        "(id, tenant_id, title, description, domain, level, "
+                        "source_dataset_id, created_at) "
+                        "VALUES (:id, :tid, :title, :desc, 'public_service', "
+                        "'professional', :did, :now)"
                     ),
                     {
                         "id": node_id,
@@ -682,8 +704,10 @@ def ds_build_cross_dataset_edges(tenant_id_str: str):
                     await session.execute(
                         text(
                             "INSERT INTO metaedu.knowledge_edges "
-                            "(id, tenant_id, source_id, target_id, relation_type, metadata, created_at) "
-                            "VALUES (:id, :tid, :src, :tgt, :rtype, CAST(:meta AS jsonb), :now)"
+                            "(id, tenant_id, source_id, target_id, relation_type, "
+                            "metadata, created_at) "
+                            "VALUES (:id, :tid, :src, :tgt, :rtype, "
+                            "CAST(:meta AS jsonb), :now)"
                         ),
                         {
                             "id": edge_id,

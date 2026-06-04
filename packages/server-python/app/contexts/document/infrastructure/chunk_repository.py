@@ -17,10 +17,13 @@ class ChunkRepository:
     async def list_by_file(self, file_id: uuid.UUID, tenant_id: uuid.UUID) -> list[dict]:
         result = await self._session.execute(
             text(
-                "SELECT id, tenant_id, file_id, chunk_index, content, section_title, section_path, "
+                "SELECT id, tenant_id, file_id, chunk_index, content, section_title, "
+                "section_path, "
                 "char_start, char_end, created_at, "
                 "CASE WHEN embedding IS NOT NULL THEN true ELSE false END AS has_embedding "
-                "FROM metaedu.document_chunks WHERE file_id = :fid AND tenant_id = :tid ORDER BY chunk_index"
+                "FROM metaedu.document_chunks "
+                "WHERE file_id = :fid AND tenant_id = :tid "
+                "ORDER BY chunk_index"
             ),
             {"fid": file_id, "tid": tenant_id},
         )
@@ -35,8 +38,10 @@ class ChunkRepository:
             await self._session.execute(
                 text(
                     "INSERT INTO metaedu.document_chunks "
-                    "(id, tenant_id, file_id, chunk_index, content, section_title, section_path, char_start, char_end, created_at) "
-                    "VALUES (:id, :tid, :fid, :idx, :content, :stitle, :spath, :cstart, :cend, :now)"
+                    "(id, tenant_id, file_id, chunk_index, content, section_title, "
+                    "section_path, char_start, char_end, created_at) "
+                    "VALUES (:id, :tid, :fid, :idx, :content, :stitle, "
+                    ":spath, :cstart, :cend, :now)"
                 ),
                 {
                     "id": chunk_id,
@@ -61,7 +66,9 @@ class ChunkRepository:
     async def update_tsvector(self, chunk_id: uuid.UUID) -> None:
         await self._session.execute(
             text(
-                "UPDATE metaedu.document_chunks SET content_tsvector = to_tsvector('simple', content) WHERE id = :cid"
+                "UPDATE metaedu.document_chunks "
+                "SET content_tsvector = to_tsvector('simple', content) "
+                "WHERE id = :cid"
             ),
             {"cid": chunk_id},
         )
