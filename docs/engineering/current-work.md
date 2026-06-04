@@ -127,7 +127,7 @@
 
 交接备注：
 - 本任务回应 TD-012 复核后识别出的跨插件计划位置、current-work 动态同步、行为声明和 PR 范围边界四类流程缺口。
-- Git 交付阶段、PR 和 merge commit 以最终交付回复为准。
+- PR #20（https://github.com/MarkDanile/MetaEduBase/pull/20）；merge commit `3b883ea`；完成日期：2026-06-04。
 
 ### DOC-002: 强化跨 AI 提交前回查与验证声明规范
 
