@@ -54,6 +54,22 @@ _LEGACY_TABLES_FROM_CREATE_ALL = (
     "dataset_rows",
 )
 
+# 旧 conftest 通过 `Base.metadata.create_all` 建出、并被 `_ensure_seed` 或
+# 业务测试显式 INSERT/SELECT 的几张表，其在 `create_all` 形态下必须存在的
+# 关键代表列。缺任一列即视为「表存在但残缺」schema，stamp head 会掩盖掉
+# 这种残缺，必须让后续 alembic upgrade head 显式报错。
+#
+# 列名按 PG 默认折叠小写存储；这里用小写匹配。
+#
+# 维护说明：模型加列时如该列属于"代表列"集合，需同步追加；非代表列加列
+# 不需更新此处。这是精确列全集检查 vs. 维护成本的折衷。
+_LEGACY_REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {
+    # tenants: PK + 所有 NOT NULL 字段。
+    "tenants": ("id", "name", "school_name", "created_at"),
+    # users: PK + FK + 业务必填（password_hash）+ 时间戳。
+    "users": ("id", "tenant_id", "username", "password_hash", "created_at"),
+}
+
 
 class DatabaseNameError(ValueError):
     """测试数据库名不合法，可能来自不受信的环境变量。"""
@@ -135,12 +151,37 @@ def _is_legacy_create_all_shape(
 
     只要有任一核心表缺失，就视为残缺 schema；stamp head 不会修复残缺，
     反而会掩盖问题，应让后续 `alembic upgrade head` 直接报错。
+
+    注意：此函数仅校验表集合。TD-014 起，外层 `_stamp_if_legacy_schema`
+    还会再调用 `_has_legacy_create_all_columns` 校验 INSERT 目标表的
+    关键列形态，进一步避免「表都在但关键列缺失」的残缺 schema 被 stamp
+    掩盖。
     """
     if not missing_version:
         return False
     return all(
         table in existing_tables for table in _LEGACY_TABLES_FROM_CREATE_ALL
     )
+
+
+def _has_legacy_create_all_columns(
+    existing_columns_by_table: dict[str, set[str]],
+) -> bool:
+    """判定 INSERT 目标表的关键列是否齐全。
+
+    传入 `existing_columns_by_table`：key 为表名（小写），value 为该表在
+    `information_schema.columns` 中已存在的列名集合（小写）。
+
+    返回 True 表示 `_LEGACY_REQUIRED_COLUMNS` 中所有表的代表列都已存在。
+    """
+    for table, required_columns in _LEGACY_REQUIRED_COLUMNS.items():
+        existing = existing_columns_by_table.get(table)
+        if existing is None:
+            # 表不在字典里说明连表都没建到；这种情况由表集合检查负责拦截。
+            continue
+        if not all(col in existing for col in required_columns):
+            return False
+    return True
 
 
 async def _stamp_if_legacy_schema(url, test_url_str: str) -> bool:
@@ -152,9 +193,12 @@ async def _stamp_if_legacy_schema(url, test_url_str: str) -> bool:
     为空"的状态时，stamp 到 head 让 Alembic 重新认领。新环境（业务表
     完全不存在）不触发此路径。返回 True 表示已 stamp。
 
-    「业务表已建好」需要进一步收紧为：旧 conftest 通过 `create_all` 一次
-    性建出的核心表**全部**都存在，避免「只建了部分表 + 缺版本」被误判
-    为可 stamp 而掩盖残缺 schema。
+    「业务表已建好」需要进一步收紧为：
+    1. 旧 conftest 通过 `create_all` 一次性建出的核心表**全部**都存在；
+    2. INSERT 目标表（`tenants` / `users`）的关键代表列都齐全。
+
+    任一不满足都视为残缺 schema，stamp head 不会修复残缺，反而会掩盖
+    问题，应让后续 `alembic upgrade head` 直接报错。
 
     `test_url_str` 必须传入原始连接串；不能用 `str(url)`，否则
     SQLAlchemy URL 对象会把密码 mask 成 `***`，alembic 后续连接会失败。
@@ -172,16 +216,33 @@ async def _stamp_if_legacy_schema(url, test_url_str: str) -> bool:
             "SELECT to_regclass('metaedu.alembic_version') IS NOT NULL",
         )
         # 一次性把核心业务表的实际存在性查出来，避免分别 round-trip。
-        rows = await conn.fetch(
+        table_rows = await conn.fetch(
             "SELECT tablename FROM pg_tables WHERE schemaname = 'metaedu'"
         )
-        existing_tables = {r["tablename"] for r in rows}
+        existing_tables = {r["tablename"] for r in table_rows}
+        # 列级形态校验：仅对 `_LEGACY_REQUIRED_COLUMNS` 中出现的几张 INSERT
+        # 目标表查询列名集合（PG 默认小写存储），用小写匹配。
+        legacy_target_tables = list(_LEGACY_REQUIRED_COLUMNS)
+        column_rows = await conn.fetch(
+            "SELECT table_name, column_name "
+            "FROM information_schema.columns "
+            "WHERE table_schema = 'metaedu' "
+            "AND table_name = ANY($1::text[])",
+            legacy_target_tables,
+        )
+        existing_columns_by_table: dict[str, set[str]] = {}
+        for r in column_rows:
+            existing_columns_by_table.setdefault(
+                r["table_name"], set()
+            ).add(r["column_name"])
     finally:
         await conn.close()
 
-    if _is_legacy_create_all_shape(
+    shape_ok = _is_legacy_create_all_shape(
         existing_tables, missing_version=not version_table_exists
-    ):
+    )
+    columns_ok = _has_legacy_create_all_columns(existing_columns_by_table)
+    if shape_ok and columns_ok:
         logger.info(
             "检测到遗留 schema（旧 conftest create_all 形态完整 + 缺 alembic_version），"
             "执行 stamp head"
@@ -198,6 +259,11 @@ async def _stamp_if_legacy_schema(url, test_url_str: str) -> bool:
         finally:
             settings.database_url = original
         return True
+    if shape_ok and not columns_ok:
+        logger.info(
+            "检测到「表集合齐全但 INSERT 目标表关键列缺失」的残缺 schema，"
+            "不执行 stamp head，留给 alembic upgrade head 显式报错"
+        )
     return False
 
 
