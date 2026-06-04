@@ -85,14 +85,14 @@
 
 ### TD-002: 收敛文件清理的级联删除逻辑
 
-状态：⚫ 待办
+状态：🟢 完成
 优先级：P0
 领域：数据一致性
 证据：`packages/server-python/app/contexts/document/interfaces/api/router.py:265-309` 和 `packages/server-python/app/contexts/document/interfaces/api/router.py:330-380` 都手写 SQL 删除 chunks、knowledge edges、knowledge nodes 和 document tasks。
 问题：清理顺序和清理范围重复写在 API handler 中，后续修复很容易只覆盖其中一条路径。
 完成标准：文件删除和文件重新初始化共用同一个清理 service 或 repository 函数；API handler 不再重复书写级联 SQL。
 验证方式：现有文件删除和重新初始化测试通过；新增或更新一个回归场景，验证文件派生节点关联的 knowledge edges 会先于节点被清理。
-备注：
+备注：2026-06-04 按流程开始处理。2026-06-04 完成。改动：KnowledgeNodeRepository 新增 `delete_cascade_by_source_file` 和 `delete_cascade_by_source_dataset`；新建 DocumentTaskRepository（`delete_by_file`、`delete_by_dataset`）；新建 `cleanup_file_derivatives` 和 `cleanup_dataset_derivatives` 清理函数；重构 document router 和 structured_data router 使用共享清理函数；修复 `DELETE /datasets/{dataset_id}` 删 knowledge_nodes 前未删 knowledge_edges 的 bug；新增 3 个回归测试覆盖 edges-before-nodes 清理顺序。验证：`pytest -q` 86 passed；`pytest tests/contexts/document/test_cascade_cleanup.py -v` 3 passed；router 中不再有内联级联 SQL。
 
 ### TD-003: 让前端 lint 质量门禁可运行
 

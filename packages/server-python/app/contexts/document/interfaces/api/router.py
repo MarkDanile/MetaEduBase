@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.contexts.document.application.cleanup import cleanup_file_derivatives
 from app.contexts.document.application.dto import (
     ChunkDTO,
     FileDTO,
@@ -268,44 +269,15 @@ async def delete_file(
     session: AsyncSession = Depends(get_session),  # noqa: B008
     current_user: dict = Depends(get_current_user),  # noqa: B008
 ):
-    from sqlalchemy import text
-
     tid = get_tenant_id()
     fid = uuid.UUID(file_id)
     repo = FileRepository(session)
-    chunk_repo = ChunkRepository(session)
     existing = await repo.get_by_id(fid, tid)
     if not existing:
         raise HTTPException(status_code=404, detail="文件不存在")
 
-    # Cascade delete related data
-    # 1. Delete document chunks
-    await chunk_repo.delete_by_file(fid, tid)
-
-    # 2. Delete knowledge edges linked to nodes of this file
-    await session.execute(
-        text(
-            "DELETE FROM metaedu.knowledge_edges WHERE source_id IN "
-            "(SELECT id FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_file_id = :fid) "
-            "OR target_id IN "
-            "(SELECT id FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_file_id = :fid)"
-        ),
-        {"tid": tid, "fid": fid},
-    )
-
-    # 3. Delete knowledge nodes linked to this file
-    await session.execute(
-        text("DELETE FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_file_id = :fid"),
-        {"tid": tid, "fid": fid},
-    )
-
-    # 4. Delete document tasks linked to this file
-    await session.execute(
-        text("DELETE FROM metaedu.document_tasks WHERE tenant_id = :tid AND file_id = :fid"),
-        {"tid": tid, "fid": fid},
-    )
-
-    # 4. Delete the file record
+    # Cascade delete: chunks → knowledge edges+nodes → tasks → file
+    await cleanup_file_derivatives(session, fid, tid)
     await repo.delete(fid, tid)
 
 
@@ -338,7 +310,6 @@ async def reinitialize_file(
     tid = get_tenant_id()
     fid = uuid.UUID(file_id)
     repo = FileRepository(session)
-    chunk_repo = ChunkRepository(session)
     existing = await repo.get_by_id(fid, tid)
     if not existing:
         raise HTTPException(status_code=404, detail="文件不存在")
@@ -350,33 +321,10 @@ async def reinitialize_file(
             detail="文件正在处理中，请等待当前任务完成后再重新初始化",
         )
 
-    # 1. Delete document chunks
-    await chunk_repo.delete_by_file(fid, tid)
+    # Cascade delete: chunks → knowledge edges+nodes → tasks
+    await cleanup_file_derivatives(session, fid, tid)
 
-    # 2. Delete knowledge edges linked to nodes of this file
-    await session.execute(
-        text(
-            "DELETE FROM metaedu.knowledge_edges WHERE source_id IN "
-            "(SELECT id FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_file_id = :fid) "
-            "OR target_id IN "
-            "(SELECT id FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_file_id = :fid)"
-        ),
-        {"tid": tid, "fid": fid},
-    )
-
-    # 3. Delete knowledge nodes linked to this file
-    await session.execute(
-        text("DELETE FROM metaedu.knowledge_nodes WHERE tenant_id = :tid AND source_file_id = :fid"),
-        {"tid": tid, "fid": fid},
-    )
-
-    # 4. Delete document tasks linked to this file
-    await session.execute(
-        text("DELETE FROM metaedu.document_tasks WHERE tenant_id = :tid AND file_id = :fid"),
-        {"tid": tid, "fid": fid},
-    )
-
-    # 5. Reset file status to 'uploaded' and clear structured_data (repo.update auto-updates updated_at)
+    # Reset file status to 'uploaded' and clear structured_data
     await session.execute(
         text(
             "UPDATE metaedu.files SET status = 'uploaded', structured_data = NULL, updated_at = :now "
@@ -385,7 +333,7 @@ async def reinitialize_file(
         {"fid": fid, "tid": tid, "now": datetime.now(UTC).replace(tzinfo=None)},
     )
 
-    # 6. Capture the NEW updated_at AFTER the update — this is our pipeline version marker
+    # Capture the NEW updated_at AFTER the update — this is our pipeline version marker
     result = await session.execute(
         text("SELECT updated_at FROM metaedu.files WHERE id = :fid AND tenant_id = :tid"),
         {"fid": fid, "tid": tid},
@@ -396,7 +344,7 @@ async def reinitialize_file(
 
     logger.info("reinitialize dispatch: file=%s pipeline_version=%s", fid, pv_str)
 
-    # 7. Trigger parse_document pipeline (pass pipeline_version for stale-task detection)
+    # Trigger parse_document pipeline (pass pipeline_version for stale-task detection)
     try:
         parse_document.delay(str(fid), str(tid), pv_str)
     except Exception:
