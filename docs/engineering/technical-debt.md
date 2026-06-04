@@ -116,6 +116,17 @@
 验证方式：全新环境能启动所需测试数据库，并执行 `cd packages/server-python && .venv/bin/python -m pytest -q`，无需猜测手动建库步骤。
 备注：2026-06-04 按流程开始处理。2026-06-04 完成。Spec：`docs/specs/2026-06-04-td-004-test-database-reproducibility.md`；Plan：`docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md`。改动：新增 `app/shared/infrastructure/test_db_setup.py`（asyncpg 幂等建库 + vector/ltree 扩展 + Alembic upgrade head，含 `_stamp_if_legacy_schema` 兼容遗留环境）；conftest 改读 `TEST_DATABASE_URL` env 并移除 `Base.metadata.create_all`；新增 `./dev.sh init-test-db` 与 `make init-test-db`；同步 local-development、quality-gates、README。验证：`./dev.sh init-test-db` 跑两次均退出码 0；`TEST_DATABASE_URL=... .venv/bin/python -m pytest tests/shared/test_health.py -q` → 2 passed；`cd packages/server-python && .venv/bin/python -m pytest -q` → 87 passed in 23.36s；`.venv/bin/python -m ruff check app/ tests/` 退出码 0；7 个文件 `init-test-db|TEST_DATABASE_URL` 落点齐全。PR #23（merge commit `b8b34a6`）。
 
+### TD-013: 收口 TD-004 测试数据库初始化安全与文档占位
+
+状态：🔵 就绪
+优先级：P1
+领域：测试 / 交付 / 安全
+证据：`packages/server-python/app/shared/infrastructure/test_db_setup.py:56` 使用 `f'CREATE DATABASE "{url.database}"'` 拼接由 `TEST_DATABASE_URL` 控制的数据库名；`packages/server-python/app/shared/infrastructure/test_db_setup.py:109-122` 只要 `metaedu.tenants` 存在且 `metaedu.alembic_version` 不存在就 `stamp head`；`docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md` 仍有 `<TASK-8 输出>` 和 `PR / merge commit 在 Git 闭环后回填` 等模板占位。
+问题：TD-004 已让测试库初始化可复现，但初始化脚本仍有可控 SQL identifier 拼接和过宽 legacy stamp 风险；完成后的 plan 仍残留活动式占位，容易误导后续 agent 判断任务状态。
+完成标准：数据库名在 `CREATE DATABASE` 前经过严格校验或安全 quote；legacy stamp 只在确认是旧 `Base.metadata.create_all` 形态时触发，或改为不会掩盖残缺 schema 的实现；补充聚焦测试覆盖数据库名校验和 legacy stamp 判断；TD-004 plan 中不再保留活动式交付占位。
+验证方式：新增或更新的后端聚焦测试通过；`cd packages/server-python && .venv/bin/python -m ruff check app/shared/infrastructure/test_db_setup.py tests/` 退出码 0；`rg -n "<TASK|PR / merge commit 在 Git 闭环后回填|以最终回复为准|待最终确认" docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md` 不再命中活动式占位。
+备注：2026-06-04 Codex 复核 TD-004 后新增，供 Claude Code 后续 follow-up。
+
 ### TD-005: 拆分大型后端任务流水线文件
 
 状态：⚫ 待办
