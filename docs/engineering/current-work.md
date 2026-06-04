@@ -68,9 +68,17 @@
 
 ## 当前进行中
 
+当前无正在执行的任务。
+
+## 下一批候选任务
+
+- `TD-002`：收敛文件清理的级联删除逻辑。详见 `docs/engineering/technical-debt.md`。
+
+## 最近完成
+
 ### TD-001: 拆分应用启动时的数据库迁移与默认种子数据
 
-状态：🟣 待验证
+状态：🟢 完成
 类型：技术债 / 基础设施
 领域：Backend / Security / Delivery
 当前执行模式：plan-do
@@ -86,28 +94,20 @@
 - 任务模式：`docs/engineering/task-modes.md#技术债修复`，`docs/engineering/task-modes.md#基础设施--依赖--工具链`
 
 当前进展：
-- 已完成：移除 FastAPI 启动生命周期中的隐式迁移和 seed；移除 Alembic 失败后 fallback `create_all` 的初始化路径；新增显式开发初始化入口 `make init-dev-db` 和 `./dev.sh init-db`；默认开发 seed 需要 `ALLOW_DEFAULT_SEED=true` 显式放行；同步 README 和本地开发命令；补充无数据库启动健康检查和 seed opt-in 测试。
+- 已完成：移除 FastAPI 启动生命周期中的隐式迁移和 seed；移除 Alembic 失败后 fallback `create_all` 的初始化路径；新增显式开发初始化入口 `make init-dev-db` 和 `./dev.sh init-db`；默认开发 seed 需要 `ALLOW_DEFAULT_SEED=true` 显式放行；同步 README 和本地开发命令；补充无数据库启动健康检查和 seed opt-in 测试；完成 PostgreSQL 可用后的显式初始化、迁移状态、健康检查和后端完整测试验证。
 - 正在处理：
-- 未完成：待本机 PostgreSQL 可用后验证 `make init-dev-db` 或 `./dev.sh init-db` 的完整迁移 + seed 成功路径。
+- 未完成：
 
 下一步：
-1. 启动 PostgreSQL / Docker 基础设施。
-2. 运行 `./dev.sh init-db` 或 `cd packages/server-python && make init-dev-db`。
-3. 再运行需要数据库的后端测试或至少 `tests/shared/test_health.py::test_health_check`。
+1. 后续处理测试环境可复现问题时进入 `TD-004`。
 
 验证状态：
-- 已运行：`cd packages/server-python && .venv/bin/python -m pytest tests/shared/test_health.py::test_health_check_without_database_initialization tests/shared/test_dev_seed.py -q` 通过；`cd packages/server-python && .venv/bin/python -m ruff check app/config.py app/main.py app/shared/infrastructure/database.py app/shared/infrastructure/seed.py app/shared/infrastructure/dev_setup.py tests/shared/test_health.py tests/shared/test_dev_seed.py` 通过；`cd packages/server-python && .venv/bin/python -m pytest --collect-only -q` 收集 83 个测试；导入检查输出 `MetaEduBase`。
-- 未运行：完整 `make test` 和实际 `make init-dev-db` 成功路径，原因是本机 `localhost:5432` 没有 PostgreSQL 监听。
-- 当前失败：`python -m app.shared.infrastructure.dev_setup` 在本机数据库不可用时失败，错误为 `Connect call failed ('127.0.0.1', 5432)`；对应环境可复现问题已由 `TD-004` 跟踪。
+- 已运行：`./dev.sh init-db` 通过；`curl -sf http://localhost:8000/api/v1/health` 返回 `{"status":"ok","version":"0.1.0"}`；`cd packages/server-python && .venv/bin/alembic current` 返回 `9466ea6e5d33 (head)`；`cd packages/server-python && .venv/bin/python -m pytest tests/shared/test_health.py -q` 通过，2 passed；`cd packages/server-python && .venv/bin/python -m pytest -q` 通过，83 passed；`cd packages/server-python && .venv/bin/python -m ruff check app/config.py app/main.py app/shared/infrastructure/database.py app/shared/infrastructure/seed.py app/shared/infrastructure/dev_setup.py tests/shared/test_health.py tests/shared/test_dev_seed.py` 通过。
+- 未运行：
+- 当前失败：无。
 
 交接备注：
-- 代码侧改动已完成；实现提交：`291dbbc`。当前只等待本地数据库环境做最终验收。
-
-## 下一批候选任务
-
-- `TD-002`：收敛文件清理的级联删除逻辑。详见 `docs/engineering/technical-debt.md`。
-
-## 最近完成
+- 完成日期：2026-06-04；实现提交：`291dbbc`；最终验证结果见本任务卡片。
 
 ### TD-011: 治理前端 lint warning
 

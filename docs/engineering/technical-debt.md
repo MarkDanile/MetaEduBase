@@ -74,14 +74,14 @@
 
 ### TD-001: 拆分应用启动时的数据库迁移与默认种子数据
 
-状态：🔴 阻塞
+状态：🟢 完成
 优先级：P0
 领域：安全 / 交付
 证据：`packages/server-python/app/main.py:22-25` 在应用生命周期中执行 `init_db_with_seed()`。`packages/server-python/app/shared/infrastructure/database.py:40-59` 在 Alembic 失败后回退到 `Base.metadata.create_all`。`packages/server-python/app/shared/infrastructure/seed.py:38-56` 使用 `admin123` 创建默认管理员。
 问题：应用启动会直接修改数据库，并可能掩盖迁移失败。默认种子数据也容易让开发账号误入不安全环境。
 完成标准：生产应用启动不再自动执行迁移或默认管理员种子写入；开发和测试环境仍有明确、显式、已文档化的初始化方式。
 验证方式：启动后端不会触发 Alembic 或 seed 写入；显式开发初始化命令仍能创建 schema 和默认开发管理员；准备好 schema 后健康检查仍能通过。
-备注：2026-06-04 按流程开始处理。实现提交：`291dbbc`。代码侧改动已完成：移除 FastAPI 启动时的隐式迁移和 seed；移除 Alembic 失败后 fallback `create_all` 的初始化路径；新增显式开发初始化入口 `make init-dev-db` 和 `./dev.sh init-db`；默认开发 seed 需要 `ALLOW_DEFAULT_SEED=true` 显式放行；同步 README 和本地开发命令。已验证：无数据库启动健康检查和 seed opt-in 测试通过；相关 ruff 通过；测试收集 83 个。阻塞：完整 `make init-dev-db` 因本机 `localhost:5432` 无 PostgreSQL 监听未完成，测试环境可复现问题见 `TD-004`。恢复后运行 `./dev.sh init-db` 并通过后可改为 `完成`。
+备注：2026-06-04 按流程开始处理。2026-06-04 完成。实现提交：`291dbbc`。代码侧改动：移除 FastAPI 启动时的隐式迁移和 seed；移除 Alembic 失败后 fallback `create_all` 的初始化路径；新增显式开发初始化入口 `make init-dev-db` 和 `./dev.sh init-db`；默认开发 seed 需要 `ALLOW_DEFAULT_SEED=true` 显式放行；同步 README 和本地开发命令。最终验证：`./dev.sh init-db` 通过；`curl -sf http://localhost:8000/api/v1/health` 返回 `{"status":"ok","version":"0.1.0"}`；`cd packages/server-python && .venv/bin/alembic current` 返回 `9466ea6e5d33 (head)`；`cd packages/server-python && .venv/bin/python -m pytest tests/shared/test_health.py -q` 通过，2 passed；`cd packages/server-python && .venv/bin/python -m pytest -q` 通过，83 passed；相关 ruff 通过。
 
 ### TD-002: 收敛文件清理的级联删除逻辑
 
