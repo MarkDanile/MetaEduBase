@@ -88,11 +88,44 @@
 
 ## 当前进行中
 
-当前无正在执行的任务。
+### TD-004: 让后端测试数据库环境可复现
+
+状态：🟡 进行中
+类型：技术债 / 基础设施
+领域：Testing / Delivery
+当前执行模式：plan-do
+最近接手工具：Claude Code
+分支：`refactor/td-004-test-db-reproducibility`
+
+需求来源：
+- Spec: `docs/specs/2026-06-04-td-004-test-database-reproducibility.md`
+- Plan: `docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md`
+- 技术债：`docs/engineering/technical-debt.md#td-004-让后端测试数据库环境可复现`
+- 架构约束：`docs/engineering/rules/local-development.md`，`docs/engineering/rules/quality-gates.md`
+- 插件输出：
+- 任务模式：`docs/engineering/task-modes.md#技术债修复`
+
+当前进展：
+- 已完成：spec 落盘并通过 self-review；plan 落盘并通过 self-review；任务卡片登记；分支创建
+- 正在处理：实施 Plan Task 1-7
+- 未完成：端到端验证、状态收尾、Git 闭环
+
+下一步：
+1. 按 plan 推进 Task 1-7
+2. 执行 Task 8 端到端验证
+3. 按用户要求推进 Git 闭环
+
+验证状态：
+- 已运行：
+- 未运行：完整 pytest，将在 Task 8 执行
+- 当前失败：
+
+交接备注：
+- 行为变化：测试 schema 由 conftest 内的 `Base.metadata.create_all` 改为前置 `init-test-db`（Alembic upgrade head）；未跑 init-test-db 的环境会显式失败而非隐式建表。这不是「零业务逻辑变更」，按 `docs/engineering/rules/quality-gates.md#行为变化声明检查` 在 PR 描述与最终回复中显式声明。
 
 ## 下一批候选任务
 
-- `TD-004`：让后端测试数据库环境可复现。详见 `docs/engineering/technical-debt.md`。
+当前无候选任务。
 
 ## 最近完成
 
