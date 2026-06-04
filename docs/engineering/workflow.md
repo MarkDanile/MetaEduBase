@@ -66,7 +66,7 @@
    - 更新验证状态。
    - 记录最近接手工具。
 3. 如果完成技术债任务，同步更新 `docs/engineering/technical-debt.md` 的状态和备注。
-4. 如果用户要求提交代码，按 `docs/engineering/rules/git-workflow.md#完整交付闭环` 推进提交、push、PR、合并 `main` 和合并后确认。
+4. 如果用户要求提交代码，必须先阅读 `docs/engineering/rules/git-workflow.md`，再按 `docs/engineering/rules/git-workflow.md#完整交付闭环` 推进提交、push、PR、合并 `main` 和合并后确认。
 5. 在最终回复中说明改动、验证结果、Git 交付阶段和未完成事项。
 
 提交完成不等于合并完成。执行者必须明确当前停留在“已本地提交”“已 push”“已创建 PR”还是“已合并到 `main`”。如果用户没有要求完整 Git 流程，默认不要推送或合并；如果用户要求“走完整流程”，则默认推进到合并 `main`，遇到 PR 检查、Review、权限或冲突阻塞时再停下并说明原因。

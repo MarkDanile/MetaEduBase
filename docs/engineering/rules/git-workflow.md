@@ -8,6 +8,7 @@
 - 一个提交只表达一个原子变更。
 - 提交前必须完成与改动范围匹配的验证，并记录无法运行的原因。
 - 使用 AI IDE 或插件开发时，提交前确认 `docs/engineering/current-work.md` 状态已经同步。
+- 用户要求“提交代码”“按流程提交”“走完整流程”或“合并 main”时，执行者必须在执行 git 操作前阅读本文件。
 - “按流程提交代码”默认不是只创建本地 commit，而是推进完整交付链路：提交、push、PR、合并 `main`、确认合并状态。
 - 如果用户只希望停在某一步，必须明确说明，例如“只提交不 push”或“只创建 PR 不合并”。
 
@@ -95,10 +96,11 @@ refactor(server): 重构知识节点服务
 ### 1. 本地提交
 
 1. 确认当前不在 `main` 上开发。
-2. 检查 `git status --short`，只暂存本任务相关文件。
-3. 运行匹配范围的验证。
-4. 同步 `docs/engineering/current-work.md` 和相关任务总账。
-5. 按原子边界创建一个或多个 Conventional Commits。
+2. 阅读本文件，并在最终回复或任务记录中说明已按本文件执行。
+3. 检查 `git status --short`，只暂存本任务相关文件。
+4. 运行匹配范围的验证。
+5. 同步 `docs/engineering/current-work.md` 和相关任务总账。
+6. 按原子边界创建一个或多个 Conventional Commits。
 
 ### 2. Push 分支
 
