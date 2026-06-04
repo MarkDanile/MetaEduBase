@@ -327,7 +327,9 @@ async def reinitialize_file(
     # Reset file status to 'uploaded' and clear structured_data
     await session.execute(
         text(
-            "UPDATE metaedu.files SET status = 'uploaded', structured_data = NULL, updated_at = :now "
+            "UPDATE metaedu.files "
+            "SET status = 'uploaded', structured_data = NULL, "
+            "updated_at = :now "
             "WHERE id = :fid AND tenant_id = :tid"
         ),
         {"fid": fid, "tid": tid, "now": datetime.now(UTC).replace(tzinfo=None)},

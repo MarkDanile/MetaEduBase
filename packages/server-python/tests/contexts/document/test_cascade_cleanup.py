@@ -291,3 +291,37 @@ async def test_delete_dataset_cleans_knowledge_edges_before_nodes(
 
     # 4. Verify edges and nodes are gone
     await _assert_kg_cleaned(dataset_id=dataset_id)
+
+
+async def test_reinitialize_dataset_cleans_knowledge_edges_before_nodes(
+    client, auth_headers
+):
+    """When a dataset is re-initialized, knowledge_edges referencing its
+    nodes must be removed before the nodes themselves (RESTRICT FK)."""
+    # 1. Upload a dataset
+    resp = await client.post(
+        "/api/v1/structured-data/datasets/upload",
+        files={
+            "file": (
+                "reinit_ds.csv",
+                io.BytesIO(b"col1,col2\nc,d"),
+                "text/csv",
+            )
+        },
+        headers=auth_headers,
+    )
+    assert resp.status_code == 201
+    dataset_id = uuid.UUID(resp.json()["id"])
+
+    # 2. Insert knowledge nodes + edges linked to that dataset
+    await _insert_kg_for_dataset(dataset_id, _DEFAULT_TENANT)
+
+    # 3. Reinitialize — if edges aren't deleted first, FK RESTRICT raises
+    resp = await client.post(
+        f"/api/v1/structured-data/datasets/{dataset_id}/reinitialize",
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+
+    # 4. Verify edges and nodes are gone
+    await _assert_kg_cleaned(dataset_id=dataset_id)

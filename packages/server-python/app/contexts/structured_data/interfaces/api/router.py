@@ -211,7 +211,11 @@ async def reinitialize_dataset(
     await cleanup_dataset_derivatives(session, did, tid)
 
     # Reset dataset status to 'uploaded' and kg_status to 'pending'
-    await repo.update(did, tid, status="uploaded", kg_status="pending", row_count=0, column_names=None, column_types=None)
+    await repo.update(
+        did, tid,
+        status="uploaded", kg_status="pending",
+        row_count=0, column_names=None, column_types=None,
+    )
 
     # Trigger ds_parse pipeline
     try:

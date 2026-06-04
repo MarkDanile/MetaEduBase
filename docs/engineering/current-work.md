@@ -68,11 +68,11 @@
 
 ## 当前进行中
 
-### TD-002: 收敛文件清理的级联删除逻辑
+### TD-002-FOLLOWUP: 收口 TD-002 流程与测试遗留
 
-状态：🟣 待验证
-类型：技术债
-领域：Data Integrity / Backend
+状态：🟡 进行中
+类型：技术债 / 修复 / 文档
+领域：Data Integrity / Backend / Docs / Delivery
 当前执行模式：plan-do
 最近接手工具：Claude Code
 分支：
@@ -81,30 +81,57 @@
 - Spec:
 - Plan:
 - 技术债：`docs/engineering/technical-debt.md#td-002-收敛文件清理的级联删除逻辑`
-- 架构约束：`docs/engineering/rules/data-integrity.md`
+- 架构约束：`docs/engineering/rules/data-integrity.md`，`docs/engineering/rules/git-workflow.md`
+- 插件输出：
 - 任务模式：`docs/engineering/task-modes.md#技术债修复`
 
 当前进展：
-- 已完成：KnowledgeNodeRepository 新增 `delete_cascade_by_source_file` 和 `delete_cascade_by_source_dataset`；新建 DocumentTaskRepository；新建 `cleanup_file_derivatives` 和 `cleanup_dataset_derivatives` 清理函数；重构 document router 的 `delete_file` 和 `reinitialize_file`；重构 structured_data router 的 `delete_dataset`（修复 dataset 删除前未删 knowledge_edges 的 bug）和 `reinitialize_dataset`；新增 3 个回归测试验证 edges 先于 nodes 被清理。
+- 已完成：补充 `test_reinitialize_dataset_cleans_knowledge_edges_before_nodes` 回归测试；修正 TD-002 触碰行的 2 个 ruff E501（document router UPDATE 语句换行、structured_data router repo.update 调用换行）；更新 current-work.md 和 technical-debt.md 收口状态。
 - 正在处理：
 - 未完成：
 
 下一步：
-1. 提交变更。
+1. 验证测试和 ruff 通过。
+2. 按 `docs/engineering/rules/git-workflow.md#完整交付闭环` 完成本地提交、push、PR、合并 `main` 和合并后确认。
 
 验证状态：
-- 已运行：`cd packages/server-python && .venv/bin/python -m pytest -q` 通过，86 passed；`cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_cascade_cleanup.py -v` 通过，3 passed；router 中不再有 `DELETE FROM metaedu.knowledge_edges`、`DELETE FROM metaedu.knowledge_nodes`、`DELETE FROM metaedu.document_tasks` 内联 SQL；相关 ruff 通过（仅剩预先存在的 2 个长行问题，属于 TD-012 范围）。
+- 已运行：
+- 未运行：`cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_cascade_cleanup.py -v`；`cd packages/server-python && .venv/bin/python -m pytest -q`；`cd packages/server-python && .venv/bin/python -m ruff check app/contexts/document/interfaces/api/router.py app/contexts/structured_data/interfaces/api/router.py`
+- 当前失败：无。
+
+交接备注：
+- 执行边界：不重做 TD-002 主实现，不回滚 PR #12；只补 dataset reinitialize 回归测试、修正 E501 和文档状态。
+
+## 下一批候选任务
+
+- `TD-004`：让后端测试数据库环境可复现。详见 `docs/engineering/technical-debt.md`。
+- `TD-012`：治理后端全量 ruff 质量门禁。详见 `docs/engineering/technical-debt.md`。
+
+## 最近完成
+
+### TD-002: 收敛文件清理的级联删除逻辑
+
+状态：🟢 完成
+类型：技术债
+领域：Data Integrity / Backend
+当前执行模式：plan-do
+最近接手工具：Claude Code
+分支：`refactor/td-002-converge-cascade-delete`
+
+需求来源：
+- 技术债：`docs/engineering/technical-debt.md#td-002-收敛文件清理的级联删除逻辑`
+- 架构约束：`docs/engineering/rules/data-integrity.md`
+
+当前进展：
+- 已完成：KnowledgeNodeRepository 新增 `delete_cascade_by_source_file` 和 `delete_cascade_by_source_dataset`；新建 DocumentTaskRepository；新建 `cleanup_file_derivatives` 和 `cleanup_dataset_derivatives` 清理函数；重构 document router 和 structured_data router；修复 `DELETE /datasets/{dataset_id}` 删 nodes 前未删 edges 的 bug；新增 3 个回归测试。PR #12 squash merge 到 `main`，merge commit `2eb59e8`。
+
+验证状态：
+- 已运行：`cd packages/server-python && .venv/bin/python -m pytest -q` 通过，86 passed；`cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_cascade_cleanup.py -v` 通过，3 passed；router 中不再有内联级联 SQL；`cd packages/server-python && .venv/bin/python -m ruff check app/contexts/document/interfaces/api/router.py app/contexts/structured_data/interfaces/api/router.py` 0 errors（TD-002 触碰行已修正；`structured_data/router.py:65` 的 1 个预先存在 E501 属于 TD-012）。
 - 未运行：
 - 当前失败：无。
 
 交接备注：
-- 数据集删除 bug 修复是同一模式重构的自然结果：原 `delete_dataset` 删 knowledge_nodes 前未删 knowledge_edges，重构后使用 `cleanup_dataset_derivatives` 自动保证正确顺序。
-
-## 下一批候选任务
-
-（TD-002 完成后更新）
-
-## 最近完成
+- PR #12：https://github.com/MarkDanile/MetaEduBase/pull/12；merge commit `2eb59e8`；完成日期：2026-06-04。
 
 ### TD-001: 拆分应用启动时的数据库迁移与默认种子数据
 
