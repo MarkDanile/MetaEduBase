@@ -88,9 +88,17 @@
 
 ## 当前进行中
 
+当前无正在执行的任务。
+
+## 下一批候选任务
+
+当前无候选任务。
+
+## 最近完成
+
 ### TD-004: 让后端测试数据库环境可复现
 
-状态：🟡 进行中
+状态：🟢 完成
 类型：技术债 / 基础设施
 领域：Testing / Delivery
 当前执行模式：plan-do
@@ -106,28 +114,22 @@
 - 任务模式：`docs/engineering/task-modes.md#技术债修复`
 
 当前进展：
-- 已完成：spec 落盘并通过 self-review；plan 落盘并通过 self-review；任务卡片登记；分支创建
-- 正在处理：实施 Plan Task 1-7
-- 未完成：端到端验证、状态收尾、Git 闭环
+- 已完成：spec / plan 落盘；新增 `app/shared/infrastructure/test_db_setup.py`（asyncpg 幂等建库 + 扩展 + Alembic upgrade head + 旧 schema stamp 兼容分支）；conftest 改读 `TEST_DATABASE_URL` env 并移除 `Base.metadata.create_all`；新增 `./dev.sh init-test-db` 与 `make init-test-db`；同步 local-development、quality-gates、README；端到端验证通过。
+- 正在处理：
+- 未完成：
 
 下一步：
-1. 按 plan 推进 Task 1-7
-2. 执行 Task 8 端到端验证
-3. 按用户要求推进 Git 闭环
+1.
 
 验证状态：
-- 已运行：
-- 未运行：完整 pytest，将在 Task 8 执行
-- 当前失败：
+- 已运行：`./dev.sh init-test-db` 跑两次均退出码 0；`TEST_DATABASE_URL=postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test .venv/bin/python -m pytest tests/shared/test_health.py -q` → 2 passed；`cd packages/server-python && .venv/bin/python -m pytest -q` → 87 passed in 23.36s（与 TD-012 baseline 一致）；`.venv/bin/python -m ruff check app/ tests/` → All checks passed (exit 0)；`rg -n "init-test-db|TEST_DATABASE_URL" docs/engineering/rules/{local-development,quality-gates}.md README.md packages/server-python/Makefile packages/server-python/tests/conftest.py packages/server-python/app/shared/infrastructure/test_db_setup.py dev.sh` 7 个文件全部命中。
+- 未运行：
+- 当前失败：无。
 
 交接备注：
-- 行为变化：测试 schema 由 conftest 内的 `Base.metadata.create_all` 改为前置 `init-test-db`（Alembic upgrade head）；未跑 init-test-db 的环境会显式失败而非隐式建表。这不是「零业务逻辑变更」，按 `docs/engineering/rules/quality-gates.md#行为变化声明检查` 在 PR 描述与最终回复中显式声明。
-
-## 下一批候选任务
-
-当前无候选任务。
-
-## 最近完成
+- 行为变化（非「零业务逻辑变更」，已按 `docs/engineering/rules/quality-gates.md#行为变化声明检查` 显式声明）：测试 schema 由 conftest 内 `Base.metadata.create_all` 改为前置 `init-test-db`（Alembic upgrade head）；未跑 init-test-db 的环境会显式失败而非隐式建表。默认 URL 与现状一致，conftest 仍执行 `CREATE SCHEMA IF NOT EXISTS metaedu` 与 `TRUNCATE templates`。
+- 实施踩坑：旧测试库有「业务表已建好但 alembic_version 缺失」遗留状态，模块加入 `_stamp_if_legacy_schema` 自愈分支；`make_url(...)` 的 `str()` 会 mask 密码为 `***`，alembic 必须接原始连接串。spec / plan 已回写。
+- PR / merge commit 在 Git 闭环后回填。
 
 ### DOC-004: 优化完整 Git 提交流程与合并后回填规则
 
@@ -259,27 +261,3 @@
 
 交接备注：
 - PR #17（merge commit `a4dcb2a`）；完成日期 2026-06-04。
-
-### TD-002-FOLLOWUP: 收口 TD-002 流程与测试遗留
-
-状态：🟢 完成
-类型：技术债 / 修复 / 文档
-领域：Data Integrity / Backend / Docs / Delivery
-当前执行模式：plan-do
-最近接手工具：Claude Code
-分支：`fix/td-002-followup`
-
-需求来源：
-- 技术债：`docs/engineering/technical-debt.md#td-002-收敛文件清理的级联删除逻辑`
-- 架构约束：`docs/engineering/rules/data-integrity.md`，`docs/engineering/rules/git-workflow.md`
-
-当前进展：
-- 已完成：补充 `test_reinitialize_dataset_cleans_knowledge_edges_before_nodes` 回归测试（4 个 cascade cleanup 测试总计）；修正 TD-002 触碰行的 2 个 ruff E501；修正 `current-work.md` 和 `technical-debt.md` 收口状态；强化 `git-workflow.md` 和 `workflow.md` 提交前阅读要求。PR #13 squash merge 到 `main`，merge commit `ea34271`。
-
-验证状态：
-- 已运行：`cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_cascade_cleanup.py -v` 通过，4 passed；`cd packages/server-python && .venv/bin/python -m pytest -q` 通过，87 passed；`cd packages/server-python && .venv/bin/python -m ruff check app/contexts/document/interfaces/api/router.py app/contexts/structured_data/interfaces/api/router.py` ruff 仍有 1 个历史 E501，属于 TD-012；TD-002/FOLLOWUP 触碰行未新增 ruff 问题。
-- 未运行：
-- 当前失败：无。
-
-交接备注：
-- PR #13：https://github.com/MarkDanile/MetaEduBase/pull/13；merge commit `ea34271`；完成日期：2026-06-04。
