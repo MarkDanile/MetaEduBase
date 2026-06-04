@@ -148,7 +148,7 @@
 - 当前失败：无。
 
 交接备注：
-- PR #TBD（Task 7 由主控创建并合并）；merge commit 由主控在 Task 7 完成后回填；完成日期 2026-06-04。
+- PR #17（merge commit `a4dcb2a`）；完成日期 2026-06-04。
 
 ### TD-002-FOLLOWUP: 收口 TD-002 流程与测试遗留
 
