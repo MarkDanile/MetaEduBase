@@ -68,39 +68,7 @@
 
 ## 当前进行中
 
-### TD-002-FOLLOWUP: 收口 TD-002 流程与测试遗留
-
-状态：🟡 进行中
-类型：技术债 / 修复 / 文档
-领域：Data Integrity / Backend / Docs / Delivery
-当前执行模式：plan-do
-最近接手工具：Claude Code
-分支：
-
-需求来源：
-- Spec:
-- Plan:
-- 技术债：`docs/engineering/technical-debt.md#td-002-收敛文件清理的级联删除逻辑`
-- 架构约束：`docs/engineering/rules/data-integrity.md`，`docs/engineering/rules/git-workflow.md`
-- 插件输出：
-- 任务模式：`docs/engineering/task-modes.md#技术债修复`
-
-当前进展：
-- 已完成：补充 `test_reinitialize_dataset_cleans_knowledge_edges_before_nodes` 回归测试；修正 TD-002 触碰行的 2 个 ruff E501（document router UPDATE 语句换行、structured_data router repo.update 调用换行）；更新 current-work.md 和 technical-debt.md 收口状态。
-- 正在处理：
-- 未完成：
-
-下一步：
-1. 验证测试和 ruff 通过。
-2. 按 `docs/engineering/rules/git-workflow.md#完整交付闭环` 完成本地提交、push、PR、合并 `main` 和合并后确认。
-
-验证状态：
-- 已运行：
-- 未运行：`cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_cascade_cleanup.py -v`；`cd packages/server-python && .venv/bin/python -m pytest -q`；`cd packages/server-python && .venv/bin/python -m ruff check app/contexts/document/interfaces/api/router.py app/contexts/structured_data/interfaces/api/router.py`
-- 当前失败：无。
-
-交接备注：
-- 执行边界：不重做 TD-002 主实现，不回滚 PR #12；只补 dataset reinitialize 回归测试、修正 E501 和文档状态。
+当前无正在执行的任务。
 
 ## 下一批候选任务
 
@@ -108,6 +76,30 @@
 - `TD-012`：治理后端全量 ruff 质量门禁。详见 `docs/engineering/technical-debt.md`。
 
 ## 最近完成
+
+### TD-002-FOLLOWUP: 收口 TD-002 流程与测试遗留
+
+状态：🟢 完成
+类型：技术债 / 修复 / 文档
+领域：Data Integrity / Backend / Docs / Delivery
+当前执行模式：plan-do
+最近接手工具：Claude Code
+分支：`fix/td-002-followup`
+
+需求来源：
+- 技术债：`docs/engineering/technical-debt.md#td-002-收敛文件清理的级联删除逻辑`
+- 架构约束：`docs/engineering/rules/data-integrity.md`，`docs/engineering/rules/git-workflow.md`
+
+当前进展：
+- 已完成：补充 `test_reinitialize_dataset_cleans_knowledge_edges_before_nodes` 回归测试（4 个 cascade cleanup 测试总计）；修正 TD-002 触碰行的 2 个 ruff E501；修正 `current-work.md` 和 `technical-debt.md` 收口状态；强化 `git-workflow.md` 和 `workflow.md` 提交前阅读要求。PR #13 squash merge 到 `main`，merge commit `ea34271`。
+
+验证状态：
+- 已运行：`cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_cascade_cleanup.py -v` 通过，4 passed；`cd packages/server-python && .venv/bin/python -m pytest -q` 通过，87 passed；`cd packages/server-python && .venv/bin/python -m ruff check app/contexts/document/interfaces/api/router.py app/contexts/structured_data/interfaces/api/router.py` 0 errors（`structured_data/router.py:65` 的 1 个预先存在 E501 属于 TD-012）。
+- 未运行：
+- 当前失败：无。
+
+交接备注：
+- PR #13：https://github.com/MarkDanile/MetaEduBase/pull/13；merge commit `ea34271`；完成日期：2026-06-04。
 
 ### TD-002: 收敛文件清理的级联删除逻辑
 
