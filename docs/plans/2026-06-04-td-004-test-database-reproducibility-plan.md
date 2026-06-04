@@ -35,7 +35,13 @@
 
 - [ ] **Step 1：创建模块文件**
 
+> 实施过程发现：旧环境中 conftest 用 `Base.metadata.create_all` 建过表但未写入 `metaedu.alembic_version`，直接 `alembic upgrade head` 会报 `DuplicateTableError`。脚本加入兼容分支：检测到「业务表已存在且 alembic_version 缺失」时先 `alembic stamp head` 再走正常 upgrade。新环境零开销。
+>
+> 另一处坑：`make_url(...)` 返回的 SQLAlchemy URL 对象 `str()` 时会把密码 mask 成 `***`，不能把 `str(url)` 当连接串传给 alembic，必须用原始字符串。
+
 写入以下内容（完整文件）：
+
+> 完整实现见已 commit 的 [packages/server-python/app/shared/infrastructure/test_db_setup.py](../../packages/server-python/app/shared/infrastructure/test_db_setup.py)（含 `_stamp_if_legacy_schema` 兼容分支）。下面是简化骨架，仅作为对照阅读用：
 
 ```python
 """测试数据库初始化入口。

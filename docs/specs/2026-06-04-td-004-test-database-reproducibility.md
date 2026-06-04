@@ -51,6 +51,8 @@
 
 幂等约束：脚本可反复执行；alembic upgrade head 在 schema 已 up-to-date 时是 no-op；扩展和库的创建均带 IF NOT EXISTS 或先查后建。
 
+**遗留环境兼容**：旧 `conftest.py` 通过 `Base.metadata.create_all` 直接建表，未写入 `metaedu.alembic_version`，直接 `alembic upgrade head` 会报 `DuplicateTableError`。实现上在 `_run_alembic_against` 前先检查：若业务表（以 `metaedu.tenants` 为探针）已存在但 `alembic_version` 表缺失，先 `alembic stamp head` 让 alembic 认领，再走正常 upgrade。新环境（业务表全不存在）不触发该分支，零开销。
+
 ### 3. `dev.sh init-test-db`
 
 - 新增子命令 `init-test-db`：
