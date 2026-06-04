@@ -162,14 +162,14 @@
 
 ### TD-007: 减少前端请求状态处理重复
 
-状态：🔵 就绪
+状态：🟢 完成
 优先级：P2
 领域：前端 / 可维护性
 证据：`packages/web/src/main.ts` 注册了 `VueQueryPlugin`，但 `packages/web/src/views/database/DatabaseView.vue:496-652` 等页面仍手动管理大量 loading 状态、错误提示、轮询刷新和 toast 流程。
 问题：请求生命周期逻辑在多个视图中重复，loading、刷新、错误处理行为难以保持一致。
 完成标准：选择一个高变更页面，优先 `DatabaseView` 或 `FileDetailView`，将重复请求生命周期逻辑迁移到 composable 或 Vue Query 用法中，且不改变用户可见行为。
 验证方式：前端 typecheck 和 build 通过；手动验证列表、详情、上传、重试、重新初始化和 tab 刷新流程仍正常。
-备注：2026-06-05 技术债复盘后选入下一批候选任务。
+备注：2026-06-05 技术债复盘后选入下一批候选任务。2026-06-05 由 Claude Code 接手完成。Spec：`docs/specs/2026-06-05-td-007-databaseview-vue-query.md`；Plan：`docs/plans/2026-06-05-td-007-databaseview-vue-query-plan.md`。改动：新增 `packages/web/src/views/database/queries.ts` 集中 5 个 `useQuery`（datasets / tasks / rows / kg / kgOverview）与 5 个 `useMutation`（upload / delete / retryTasks / reinitialize / rebuildKg），并集中 queryKey 树形结构；`main.ts` 注册 `QueryClient` + `QueryCache.onError` 统一 `toast.error`，替代每个 queryFn 内部的 try/catch + toast.error 重复；`DatabaseView.vue` 删除 5 个 `load*` 函数 + 5 个 mutation 函数 + 6 个 `loading*` ref + 1 个 `uploading` ref + 1 个 `rebuildingKg` ref + `pollTimer` + `startPolling` + `stopPolling` + `onMounted` 显式 `loadDatasets` + `onUnmounted` `stopPolling`；轮询改为 `useDatasetTasksQuery` 的 `refetchInterval: 3000`；watch 联动保留，内部 fetch 改为 `query.refetch()`。行为不变：列表加载 / 详情切换 / 上传 / 重试 / 重新初始化 / tab 刷新 / 轮询时机均保留；错误文案从「固定字符串」改为「query error message 兜底」是边缘可见变化（更精确）。验证：`pnpm --filter @metaedu/web typecheck` 退出码 0；`pnpm --filter @metaedu/web build` 退出码 0（DatabaseView chunk 37.6 kB / gzip 11.92 kB）；`pnpm --filter @metaedu/web lint` 退出码 0。PR #36（https://github.com/MarkDanile/MetaEduBase/pull/36），merge commit `350acd2`，完成日期 2026-06-05。TD-007-FOLLOWUP：把同样的迁移模式应用到 `FileDetailView.vue`。
 
 ### TD-008: 明确从 `liquid-*` 类到语义 UI 层的迁移路径
 

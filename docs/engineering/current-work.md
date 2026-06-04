@@ -116,7 +116,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| TD-007 减少前端请求状态处理重复 | 🔵 就绪 | P2 | Frontend / 可维护性 | 选 `DatabaseView`，把列表 / 上传 / 重试 / 重新初始化 迁到 Vue Query（已注册 `VueQueryPlugin`），删除手写 loading/error/toast 状态机。 |
+| TD-007 减少前端请求状态处理重复 | 🟢 完成 | P2 | Frontend / 可维护性 | 已迁 `DatabaseView` 的 5 个 query + 5 个 mutation + 轮询到 Vue Query。Follow-up：把同样模式应用到 `FileDetailView.vue`。 |
 | TD-005 拆分大型后端任务流水线文件 | 🟢 完成 | P1 | Backend / 可维护性 | 已抽出 `app/shared/tasks/lifecycle.py` 集中 4 个 helper；本轮只抽「任务生命周期」一组。剩余候选 helper（解析器分发 / prompt 构造 / KG 写入）可在下一轮重新评估。 |
 | TD-006 集中 LLM provider 和模型 fallback 策略 | 🟢 完成 | P1 | Backend / AI | 已抽出 `app/shared/llm/chat_with_fallback.py` 提供 `chat_with_model_fallback`；template service 私有 `_call_llm` 已删除。Follow-up：`ai_router.py:159` 的 provider 选择重复，可单独处理。 |
 
