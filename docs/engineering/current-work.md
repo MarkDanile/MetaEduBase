@@ -17,6 +17,7 @@
 - 完整 Git 闭环结束后，任务卡片不得保留“以最终回复为准”“提交后更新”“待最终确认”等交付占位；PR、merge commit 和完成日期必须回填到仓库文档事实源。
 - 本文件是交接工作台，不是历史档案。只保留当前任务、近期候选和少量最近完成任务；历史索引见 `docs/engineering/work-log.md`。
 - 插件只作为执行工具使用；任务状态以本文件为准。
+- 复核、测试、PR review 或交接中发现的未解决问题，如果不会在当前任务内立即修复，必须登记到对应事实源，例如 `technical-debt.md`、bug 任务或后续 plan；需要近期接手的，再加入“下一批候选任务”。
 
 ## 状态流
 
@@ -40,11 +41,30 @@
 
 ## 保留策略
 
-- `当前进行中`：保留所有正在开发、阻塞或待验证任务。
+- `当前进行中`：只保留正在开发、阻塞、待验证或正在走 Git 闭环的任务；一个 agent 默认只持有 1 个当前任务。
 - `下一批候选任务`：最多保留 1 到 3 个近期候选；完整 backlog 回到对应总账或 plan。
 - `最近完成`：最多保留最近 5 个完成任务，或最近 2 周内仍需要交接上下文的完成任务。
 - 超出范围的完成任务应归档到对应事实源，并在 `docs/engineering/work-log.md` 保留一行索引。
 - 任务卡片只写交接所需摘要；详细设计、实施步骤、长复盘和大段验证输出分别放到 spec、plan、技术债总账、PR 描述或复盘文档。
+
+## 区域选择策略
+
+`当前进行中` 是正在占用协作注意力的工作台，不是排期列表。任务满足以下任一条件时才放入本区：
+
+- 已经开始改代码、改文档、跑验证或走 Git 闭环。
+- 已经由用户指定为本轮要处理的任务。
+- 当前被阻塞、待验证或等待人工验收，但后续仍要继续接手。
+
+从“下一批候选任务”开工时，必须把任务移动到“当前进行中”，状态改为 `🟡 进行中`，并写清当前执行模式、最近接手工具、分支和验证计划。任务完成后，必须移出“当前进行中”，进入“最近完成”或归档到对应事实源。
+
+`下一批候选任务` 是近期接力池，不是完整 backlog。候选任务可以由 AI 在复核、测试失败、PR review 或技术债复盘中提出，但进入本区前必须满足以下条件：
+
+- 已经在对应事实源登记，例如 `technical-debt.md`、spec、plan 或 bug 任务。
+- 有明确证据、完成标准和验证方式。
+- 用户已明确选择，或该任务是当前任务直接拆出的近期 follow-up。
+- 不超过 1 到 3 个候选；超过上限时，只保留风险最高或最需要接力的任务。
+
+未达到这些条件的问题只登记到对应总账，不放入本文件；否则本文件会退化成第二个 backlog。
 
 ## 任务卡片模板
 
@@ -88,11 +108,75 @@
 
 ## 当前进行中
 
-当前无正在执行的任务。
+### DOC-005: 补强复核入账与候选任务选择策略
+
+状态：🟡 进行中
+类型：文档 / 工程规范
+领域：Docs / Delivery / Testing
+当前执行模式：plan-do
+最近接手工具：Codex
+分支：
+
+需求来源：
+- Spec:
+- Plan:
+- 技术债：
+- 架构约束：`docs/engineering/current-work.md`，`docs/engineering/workflow.md`，`docs/engineering/rules/quality-gates.md`，`docs/engineering/rules/git-workflow.md`
+- 插件输出：
+- 任务模式：`docs/engineering/task-modes.md#通用收尾回查`
+
+当前进展：
+- 已完成：新增 TD-013 follow-up 任务；补强复核发现入账、三账一致、候选任务选择和当前进行中区域边界规则。
+- 正在处理：按完整 Git 流程提交、push、创建 PR 并合并 main。
+- 未完成：合并后回填 PR、merge commit 和完成日期。
+
+下一步：
+1. 运行文档-only 验证和范围边界检查。
+2. 按 `docs/engineering/rules/git-workflow.md` 完成提交、PR、合并和回填。
+
+验证状态：
+- 已运行：`git diff --check` 退出码 0；`rg -n "DOC-005|TD-013|复核发现|三账一致|区域选择策略|下一批候选任务|当前进行中|PR / merge commit|以最终回复为准|待最终确认" docs/engineering/current-work.md docs/engineering/technical-debt.md docs/engineering/workflow.md docs/engineering/rules/quality-gates.md docs/engineering/rules/git-workflow.md` 命中预期规则和任务落点；`git diff --name-status` 确认范围仅为 5 个工程规范 / 任务文档。
+- 未运行：业务代码测试，原因是本次仅修改工程规范和任务登记文档。
+- 当前失败：无。
+
+交接备注：
+- 本任务回应 TD-004 / TD-012 复核中暴露的 follow-up 入账、候选任务选择和提交前三账一致问题。
 
 ## 下一批候选任务
 
-当前无候选任务。
+### TD-013: 收口 TD-004 测试数据库初始化安全与文档占位
+
+状态：🔵 就绪
+类型：技术债 / follow-up
+领域：Testing / Delivery / Security
+当前执行模式：plan-do
+最近接手工具：Codex 复核后登记，待 Claude Code 接手
+分支：
+
+需求来源：
+- Spec:
+- Plan: `docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md`
+- 技术债：`docs/engineering/technical-debt.md#td-013-收口-td-004-测试数据库初始化安全与文档占位`
+- 架构约束：`docs/engineering/rules/local-development.md`，`docs/engineering/rules/quality-gates.md`，`docs/engineering/rules/security.md`
+- 插件输出：
+- 任务模式：`docs/engineering/task-modes.md#技术债修复`
+
+当前进展：
+- 已完成：Codex 复核 TD-004 后确认 3 个 follow-up 点：测试数据库名 SQL identifier 处理、legacy schema stamp 判断过宽、TD-004 plan 残留活动式占位。
+- 正在处理：
+- 未完成：等待 Claude Code 接手修复。
+
+下一步：
+1. Claude Code 按 `docs/engineering/workflow.md` 开工前检查读取本任务卡片、技术债总账和相关规则。
+2. 按 TD-013 完成标准修复代码与文档，并补充聚焦测试。
+
+验证状态：
+- 已运行：仅完成任务登记，未修改业务代码。
+- 未运行：TD-013 的后端测试和 ruff，原因是本轮只形成 follow-up 任务。
+- 当前失败：无。
+
+交接备注：
+- 本任务是 TD-004 复核后拆出的后续修复，不应混入其他技术债或无关资产清理。
 
 ## 最近完成
 
