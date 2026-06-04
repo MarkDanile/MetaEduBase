@@ -8,6 +8,7 @@
 - `current-work.md` 中移出的完成任务，应在这里有索引。
 - 本文件只记录检索信息，不承载详细复盘、设计或验证输出。
 - 任务详情优先链接到对应事实源：`technical-debt.md`、`docs/specs/*`、`docs/plans/*`、PR 或 merge commit。
+- `current-work.md` 的“最近完成”只保留短摘要；本文件保留长期检索索引，避免入口文档无限扩张。
 
 ## 索引
 
