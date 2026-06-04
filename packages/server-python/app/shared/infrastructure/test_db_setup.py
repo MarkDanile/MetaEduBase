@@ -14,10 +14,13 @@ tests/conftest.py 一致。
 import asyncio
 import logging
 import os
+from pathlib import Path
 
 import asyncpg
+from alembic.config import Config
 from sqlalchemy.engine import make_url
 
+from alembic import command
 from app.config import settings
 from app.shared.infrastructure.database import run_migrations
 
@@ -108,11 +111,6 @@ async def _stamp_if_legacy_schema(url, test_url_str: str) -> bool:
         original = settings.database_url
         settings.database_url = test_url_str
         try:
-            from pathlib import Path
-
-            from alembic import command
-            from alembic.config import Config
-
             server_root = Path(__file__).resolve().parents[3]
             alembic_cfg = Config(str(server_root / "alembic.ini"))
             alembic_cfg.set_main_option("script_location", str(server_root / "alembic"))
