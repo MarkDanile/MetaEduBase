@@ -151,7 +151,7 @@ MetaEduBase/
 ## 开发
 
 ```bash
-# 后端 lint + 测试
+# 后端 lint + 测试 (首次需先 `make init-test-db` 初始化测试库)
 cd packages/server-python && make lint && make test
 
 # 前端类型检查

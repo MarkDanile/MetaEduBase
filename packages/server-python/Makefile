@@ -1,4 +1,4 @@
-.PHONY: dev install migrate init-dev-db seed-dev lint test
+.PHONY: dev install migrate init-dev-db init-test-db seed-dev lint test
 
 install:
 	pip install -e ".[dev,ai]"
@@ -14,6 +14,9 @@ migrate:
 
 init-dev-db:
 	ALLOW_DEFAULT_SEED=true python -m app.shared.infrastructure.dev_setup
+
+init-test-db:
+	python -m app.shared.infrastructure.test_db_setup
 
 seed-dev:
 	ALLOW_DEFAULT_SEED=true python -m app.shared.infrastructure.seed

@@ -11,6 +11,7 @@
 ./dev.sh frontend
 ./dev.sh celery
 ./dev.sh init-db
+./dev.sh init-test-db
 ./dev.sh stop
 ./dev.sh status
 ./dev.sh logs [backend|frontend|celery]
@@ -24,6 +25,7 @@
 | `./dev.sh frontend` | 仅重启前端 |
 | `./dev.sh celery` | 仅启动 Celery Worker |
 | `./dev.sh init-db` | 显式初始化开发数据库：执行迁移并创建默认开发账号 |
+| `./dev.sh init-test-db` | 显式初始化测试数据库：建库、安装扩展、执行 Alembic upgrade head |
 | `./dev.sh stop` | 停止全部服务 |
 | `./dev.sh status` | 查看服务状态 |
 | `./dev.sh logs [backend|frontend|celery]` | 查看指定服务日志 |
@@ -65,8 +67,29 @@ make migrate-downgrade
 |------|------|
 | `make migrate` | 执行 Alembic upgrade head |
 | `make seed-dev` | 仅写入默认开发租户 / admin，要求 schema 已迁移完成，并通过 `ALLOW_DEFAULT_SEED=true` 显式放行 |
+| `make init-test-db` | 显式初始化测试数据库：建库、安装 vector / ltree 扩展、执行 Alembic upgrade head；可通过 `TEST_DATABASE_URL` 覆盖默认连接串 |
 | `make migrate-create msg="description"` | 生成新迁移 |
 | `make migrate-downgrade` | 回滚一个迁移 |
+
+## 测试数据库
+
+后端 pytest 依赖 `metaedu_test` 库。新环境首次运行测试前需要执行一次初始化：
+
+```bash
+./dev.sh init-test-db
+# 或
+cd packages/server-python && make init-test-db
+```
+
+可通过 `TEST_DATABASE_URL` 环境变量覆盖默认连接串（默认 `postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test`，与 `tests/conftest.py` 一致）：
+
+```bash
+TEST_DATABASE_URL=postgresql+asyncpg://user:pwd@host:5432/dbname ./dev.sh init-test-db
+TEST_DATABASE_URL=postgresql+asyncpg://user:pwd@host:5432/dbname \
+  bash -c 'cd packages/server-python && .venv/bin/python -m pytest -q'
+```
+
+脚本幂等，可反复运行。
 
 ## 前端
 
