@@ -14,6 +14,7 @@ tests/conftest.py 一致。
 import asyncio
 import logging
 import os
+import re
 from pathlib import Path
 
 import asyncpg
@@ -30,6 +31,48 @@ DEFAULT_TEST_DB_URL = (
     "postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test"
 )
 
+# PostgreSQL unquoted identifier rules: start with letter/underscore,
+# continue with letters/digits/underscores, max 63 bytes.
+_DATABASE_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
+
+# 旧 conftest 通过 `Base.metadata.create_all` 在 metaedu schema 下一次性建出的
+# 业务表集合。检测到「这些表全部存在且 alembic_version 缺失」时，认为是旧
+# conftest 留下的完整 schema 形态，stamp head 让 Alembic 认领；避免把「只有
+# 几张表 + 缺版本」的残缺 schema 也误判为可 stamp。
+_LEGACY_TABLES_FROM_CREATE_ALL = (
+    "tenants",
+    "users",
+    "templates",
+    "resources",
+    "folders",
+    "files",
+    "document_chunks",
+    "document_tasks",
+    "knowledge_nodes",
+    "knowledge_edges",
+    "datasets",
+    "dataset_rows",
+)
+
+
+class DatabaseNameError(ValueError):
+    """测试数据库名不合法，可能来自不受信的环境变量。"""
+
+
+def _validate_database_name(name: str | None) -> str:
+    """校验测试数据库名符合 PostgreSQL identifier 规则。
+
+    `TEST_DATABASE_URL` 可由环境变量控制，恶意或拼错的库名不应被拼接进
+    `CREATE DATABASE`。校验失败直接抛错，避免不可控 SQL 拼接。
+    """
+    if not name:
+        raise DatabaseNameError("测试数据库名不能为空")
+    if not _DATABASE_NAME_PATTERN.match(name):
+        raise DatabaseNameError(
+            f"测试数据库名不合法：{name!r}（需匹配 ^[A-Za-z_][A-Za-z0-9_]{{0,62}}$）"
+        )
+    return name
+
 
 def _resolve_test_db_url() -> str:
     return os.environ.get("TEST_DATABASE_URL", DEFAULT_TEST_DB_URL)
@@ -37,6 +80,7 @@ def _resolve_test_db_url() -> str:
 
 async def _ensure_database(url) -> None:
     """连到 postgres 库，若目标库不存在则创建。"""
+    db_name = _validate_database_name(url.database)
     admin_conn = await asyncpg.connect(
         host=url.host,
         port=url.port or 5432,
@@ -47,26 +91,29 @@ async def _ensure_database(url) -> None:
     try:
         exists = await admin_conn.fetchval(
             "SELECT 1 FROM pg_database WHERE datname = $1",
-            url.database,
+            db_name,
         )
         if exists:
-            logger.info("测试数据库已存在：%s", url.database)
+            logger.info("测试数据库已存在：%s", db_name)
             return
         # CREATE DATABASE 不能在事务内执行；asyncpg 的 execute 默认 autocommit。
-        await admin_conn.execute(f'CREATE DATABASE "{url.database}"')
-        logger.info("已创建测试数据库：%s", url.database)
+        # 库名已通过白名单严格校验，且是 SQL identifier 而非绑定参数，故此处
+        # 仍以双引号包裹 PostgreSQL identifier；任何包含 " 的输入会先被拒绝。
+        await admin_conn.execute(f'CREATE DATABASE "{db_name}"')
+        logger.info("已创建测试数据库：%s", db_name)
     finally:
         await admin_conn.close()
 
 
 async def _ensure_extensions_and_schema(url) -> None:
     """连到测试库，幂等创建扩展与 metaedu schema。"""
+    db_name = _validate_database_name(url.database)
     conn = await asyncpg.connect(
         host=url.host,
         port=url.port or 5432,
         user=url.username,
         password=url.password,
-        database=url.database,
+        database=db_name,
     )
     try:
         await conn.execute("CREATE EXTENSION IF NOT EXISTS vector;")
@@ -75,6 +122,25 @@ async def _ensure_extensions_and_schema(url) -> None:
         logger.info("已确认扩展与 schema：vector, ltree, metaedu")
     finally:
         await conn.close()
+
+
+def _is_legacy_create_all_shape(
+    existing_tables: set[str], missing_version: bool
+) -> bool:
+    """判定当前 schema 是否属于旧 conftest 留下的完整 `create_all` 形态。
+
+    条件：
+    - `alembic_version` 表缺失（说明旧 conftest 没走过 Alembic 路径）；
+    - 旧 conftest 一次性建出的核心表**全部**都已存在。
+
+    只要有任一核心表缺失，就视为残缺 schema；stamp head 不会修复残缺，
+    反而会掩盖问题，应让后续 `alembic upgrade head` 直接报错。
+    """
+    if not missing_version:
+        return False
+    return all(
+        table in existing_tables for table in _LEGACY_TABLES_FROM_CREATE_ALL
+    )
 
 
 async def _stamp_if_legacy_schema(url, test_url_str: str) -> bool:
@@ -86,28 +152,40 @@ async def _stamp_if_legacy_schema(url, test_url_str: str) -> bool:
     为空"的状态时，stamp 到 head 让 Alembic 重新认领。新环境（业务表
     完全不存在）不触发此路径。返回 True 表示已 stamp。
 
+    「业务表已建好」需要进一步收紧为：旧 conftest 通过 `create_all` 一次
+    性建出的核心表**全部**都存在，避免「只建了部分表 + 缺版本」被误判
+    为可 stamp 而掩盖残缺 schema。
+
     `test_url_str` 必须传入原始连接串；不能用 `str(url)`，否则
     SQLAlchemy URL 对象会把密码 mask 成 `***`，alembic 后续连接会失败。
     """
+    db_name = _validate_database_name(url.database)
     conn = await asyncpg.connect(
         host=url.host,
         port=url.port or 5432,
         user=url.username,
         password=url.password,
-        database=url.database,
+        database=db_name,
     )
     try:
         version_table_exists = await conn.fetchval(
             "SELECT to_regclass('metaedu.alembic_version') IS NOT NULL",
         )
-        tenants_table_exists = await conn.fetchval(
-            "SELECT to_regclass('metaedu.tenants') IS NOT NULL",
+        # 一次性把核心业务表的实际存在性查出来，避免分别 round-trip。
+        rows = await conn.fetch(
+            "SELECT tablename FROM pg_tables WHERE schemaname = 'metaedu'"
         )
+        existing_tables = {r["tablename"] for r in rows}
     finally:
         await conn.close()
 
-    if tenants_table_exists and not version_table_exists:
-        logger.info("检测到遗留 schema（业务表已存在但缺 alembic_version），执行 stamp head")
+    if _is_legacy_create_all_shape(
+        existing_tables, missing_version=not version_table_exists
+    ):
+        logger.info(
+            "检测到遗留 schema（旧 conftest create_all 形态完整 + 缺 alembic_version），"
+            "执行 stamp head"
+        )
         original = settings.database_url
         settings.database_url = test_url_str
         try:
@@ -136,11 +214,13 @@ async def _run_alembic_against(test_url: str) -> None:
 async def init_test_database() -> None:
     test_url_str = _resolve_test_db_url()
     url = make_url(test_url_str)
+    # 显式校验一次；后续子函数也会再校验，重复但能尽早失败并产出清晰日志。
+    db_name = _validate_database_name(url.database)
     await _ensure_database(url)
     await _ensure_extensions_and_schema(url)
     await _stamp_if_legacy_schema(url, test_url_str)
     await _run_alembic_against(test_url_str)
-    logger.info("测试数据库初始化完成：%s", url.database)
+    logger.info("测试数据库初始化完成：%s", db_name)
 
 
 def main() -> None:
