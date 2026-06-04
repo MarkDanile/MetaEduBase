@@ -14,6 +14,7 @@
 - 每次结束开发前，必须更新任务状态、当前进展、下一步和验证结果。
 - 本文件是活文档，不是一次性日志。代码、验证或 Git 阶段发生变化后，必须回写任务卡片。
 - 进入 Git 提交前，必须最后一次回读本文件，确认状态、验证结果和下一步与实际一致。
+- 完整 Git 闭环结束后，任务卡片不得保留“以最终回复为准”“提交后更新”“待最终确认”等交付占位；PR、merge commit 和完成日期必须回填到仓库文档事实源。
 - 本文件是交接工作台，不是历史档案。只保留当前任务、近期候选和少量最近完成任务；历史索引见 `docs/engineering/work-log.md`。
 - 插件只作为执行工具使用；任务状态以本文件为准。
 
@@ -35,7 +36,7 @@
 - 代码完成但验证未完成时，状态应为 `🟣 待验证`，验证状态不得写成已通过。
 - 验证通过后，如果仍未完成用户要求的 Git 阶段，状态可以保持任务活跃，但下一步必须写清当前停留阶段。
 - 只有完成标准、验证结果和用户要求的交付阶段都已收口，才能写 `状态：🟢 完成`。
-- 提交前不得保留与事实不符的占位，例如 `验证状态：未运行`、`下一步：提交变更` 或过期的 `🟡 进行中`。
+- 提交前不得保留与事实不符的占位，例如 `验证状态：未运行`、`下一步：提交变更`、过期的 `🟡 进行中` 或 `PR / merge commit 以最终回复为准`。
 
 ## 保留策略
 
@@ -94,6 +95,39 @@
 - `TD-004`：让后端测试数据库环境可复现。详见 `docs/engineering/technical-debt.md`。
 
 ## 最近完成
+
+### DOC-004: 优化完整 Git 提交流程与合并后回填规则
+
+状态：🟢 完成
+类型：文档 / 工程规范
+领域：Docs / Delivery
+当前执行模式：plan-do
+最近接手工具：Codex
+分支：
+
+需求来源：
+- Spec:
+- Plan:
+- 技术债：
+- 架构约束：`docs/engineering/rules/git-workflow.md`，`docs/engineering/workflow.md`，`docs/engineering/task-modes.md`
+- 插件输出：
+- 任务模式：`docs/engineering/task-modes.md#通用收尾回查`
+
+当前进展：
+- 已完成：新增完整 Git 交付快速通道；明确合并后不得保留交付占位，必须回填 PR、merge commit 和完成日期；把中间汇报收敛为关键阶段。
+- 正在处理：
+- 未完成：
+
+下一步：
+1. 后续按快速通道执行小型文档或低风险回填提交。
+
+验证状态：
+- 已运行：`git diff --check`；`rg` 检查“快速通道”“合并后回填”“最终回复为准”等规则落点。
+- 未运行：业务代码测试，原因是本次仅修改工程规范文档。
+- 当前失败：无。
+
+交接备注：
+- 本任务回应 DOC-003 合并后回填遗漏和完整提交流程偏慢的问题。
 
 ### DOC-003: 补强跨插件计划、行为声明和 PR 范围边界规则
 
@@ -160,7 +194,7 @@
 - 当前失败：无。
 
 交接备注：
-- 已按 `docs/engineering/rules/git-workflow.md` 回读并执行完整 Git 闭环；PR 和 merge commit 以最终交付回复为准。
+- 已按 `docs/engineering/rules/git-workflow.md` 回读并执行完整 Git 闭环；PR #16（https://github.com/MarkDanile/MetaEduBase/pull/16）；merge commit `f438307`；完成日期：2026-06-04。
 
 ### TD-012: 治理后端全量 ruff 质量门禁
 
@@ -216,27 +250,3 @@
 
 交接备注：
 - PR #13：https://github.com/MarkDanile/MetaEduBase/pull/13；merge commit `ea34271`；完成日期：2026-06-04。
-
-### TD-002: 收敛文件清理的级联删除逻辑
-
-状态：🟢 完成
-类型：技术债
-领域：Data Integrity / Backend
-当前执行模式：plan-do
-最近接手工具：Claude Code
-分支：`refactor/td-002-converge-cascade-delete`
-
-需求来源：
-- 技术债：`docs/engineering/technical-debt.md#td-002-收敛文件清理的级联删除逻辑`
-- 架构约束：`docs/engineering/rules/data-integrity.md`
-
-当前进展：
-- 已完成：KnowledgeNodeRepository 新增 `delete_cascade_by_source_file` 和 `delete_cascade_by_source_dataset`；新建 DocumentTaskRepository；新建 `cleanup_file_derivatives` 和 `cleanup_dataset_derivatives` 清理函数；重构 document router 和 structured_data router；修复 `DELETE /datasets/{dataset_id}` 删 nodes 前未删 edges 的 bug；新增 3 个回归测试。PR #12 squash merge 到 `main`，merge commit `2eb59e8`。
-
-验证状态：
-- 已运行：`cd packages/server-python && .venv/bin/python -m pytest -q` 通过，86 passed；`cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_cascade_cleanup.py -v` 通过，3 passed；router 中不再有内联级联 SQL；`cd packages/server-python && .venv/bin/python -m ruff check app/contexts/document/interfaces/api/router.py app/contexts/structured_data/interfaces/api/router.py` ruff 仍有 1 个历史 E501，属于 TD-012；TD-002/FOLLOWUP 触碰行未新增 ruff 问题。
-- 未运行：
-- 当前失败：无。
-
-交接备注：
-- PR #12：https://github.com/MarkDanile/MetaEduBase/pull/12；merge commit `2eb59e8`；完成日期：2026-06-04。
