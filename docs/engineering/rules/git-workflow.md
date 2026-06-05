@@ -111,7 +111,9 @@ refactor(server): 重构知识节点服务
 6. 范围边界：逐个确认待暂存文件都能追溯到本任务；无关 mockup PNG 删除、`outputs/` 生成物、工具缓存或人工清理必须拆分，或经用户确认并在 PR 中单独说明。
 7. 复核入账：如果本轮 review、测试或人工验收发现未修复问题，确认已经新增或更新对应任务编号；需要近期接力的，确认已加入“下一批候选任务”。
 8. 三账一致：确认 `current-work.md`、对应总账、plan/spec 的状态、验证结果、PR / merge 占位和未完成项一致。
-9. 检查文档：如果 API、Schema、质量门禁、协作流程或架构边界变化，按 `docs/engineering/rules/docs.md` 同步文档。
+9. 区域窗口：确认 `current-work.md` 的“下一批候选任务”只包含 1 到 3 个未完成候选且无 `🟢 完成` 行；“最近完成”不超过 5 行。
+10. 历史计划：如果本任务或被复核任务已完成，对应 plan/spec 不得残留活动式 `- [ ]` 收尾项；未完成项必须迁成新的任务编号或明确标成 out of scope。
+11. 检查文档：如果 API、Schema、质量门禁、协作流程或架构边界变化，按 `docs/engineering/rules/docs.md` 同步文档。
 
 如果环境依赖导致完整验证不可运行，必须在最终回复和 `docs/engineering/current-work.md` 的验证状态中记录原因。
 
@@ -131,9 +133,11 @@ refactor(server): 重构知识节点服务
    - 如果仍有历史失败，写清失败摘要并绑定对应 `TD-xxx`。
 6. 回读 `docs/engineering/current-work.md`，确认任务卡片事实与当前代码、验证和 Git 状态一致。
 7. 回读对应任务总账和 plan/spec，确认三账一致；复核发现但未修复的问题必须有编号。
-8. 回查 PR 范围边界，逐个确认 `git diff --name-status` 中的文件都属于本任务。
-9. 只暂存本任务相关文件。
-10. 按原子边界创建一个或多个 Conventional Commits。
+8. 回查 `current-work.md` 区域窗口：候选区无完成项且最多 3 行，最近完成最多 5 行。
+9. 回查已完成任务 plan/spec：不得残留活动式 `- [ ]` 收尾项。
+10. 回查 PR 范围边界，逐个确认 `git diff --name-status` 中的文件都属于本任务。
+11. 只暂存本任务相关文件。
+12. 按原子边界创建一个或多个 Conventional Commits。
 
 ### 2. Push 分支
 

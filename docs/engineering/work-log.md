@@ -15,6 +15,7 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-05 | TD-021 收口已完成计划文件和候选区状态同步漏洞 | 技术债 / 文档 / 工程流程 |  |  | `docs/engineering/technical-debt.md#td-021-收口已完成计划文件和候选区状态同步漏洞` |
 | 2026-06-05 | DOC-009 生成 TD-005/006/007 follow-up 与规则补强 | 文档 / 工程规范 |  |  | `docs/engineering/technical-debt.md#td-015-修复-td-007-databaseview-vue-query-迁移后的行为回归` |
 | 2026-06-05 | TD-005 拆分大型后端任务流水线文件（抽任务生命周期 helper） | 技术债 / 重构 | [#34](https://github.com/MarkDanile/MetaEduBase/pull/34) | `e5197a5` | `docs/engineering/technical-debt.md#td-005-拆分大型后端任务流水线文件` |
 | 2026-06-05 | TD-006 集中 LLM provider 和模型 fallback 策略 | 技术债 / 重构 | [#35](https://github.com/MarkDanile/MetaEduBase/pull/35) | `042e4a9` | `docs/engineering/technical-debt.md#td-006-集中-llm-provider-和模型-fallback-策略` |
