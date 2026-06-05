@@ -239,14 +239,14 @@
 
 ### TD-016: 收敛 knowledge ai_router 的 LLM provider 选择重复逻辑
 
-状态：🔵 就绪
+状态：🟢 完成
 优先级：P1
 领域：后端 / AI / 可维护性
 证据：TD-006 已新增 `packages/server-python/app/shared/llm/chat_with_fallback.py` 并删除 template service 私有 `_call_llm`；但 `packages/server-python/app/contexts/knowledge/interfaces/api/ai_router.py:159-182` 仍在 `_call_llm` 中手写 provider 选择和 key fallback 顺序。
 问题：LLM provider 选择策略仍有第二处业务层重复实现。后续修改 provider 优先级、模型配置、无 key 提示或 httpx 调用方式时，template 与 knowledge chat 可能继续分叉。
-完成标准：`ai_router.py` 不再手写 provider if/elif 选择链，改用共享 LLM provider / chat helper 或一个命名明确的共享策略；保留“未配置 API Key 时返回中文提示”的用户可见行为；补充 mock 测试覆盖默认 provider 命中、fallback provider 命中和无 key 提示三类路径。
+完成标准：`ai_router.py` 不再手写 provider if/elif 选择链，改用共享 LLM provider / chat helper 或一个命名明确的共享策略；保留”未配置 API Key 时返回中文提示”的用户可见行为；补充 mock 测试覆盖默认 provider 命中、fallback provider 命中和无 key 提示三类路径。
 验证方式：`cd packages/server-python && .venv/bin/python -m pytest tests/shared/test_chat_model_fallback.py <新增或相关 knowledge ai_router 测试> -q` 退出码 0；`cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` 退出码 0；若完整 pytest 可运行，补充 `cd packages/server-python && .venv/bin/python -m pytest -q`。
-备注：2026-06-05 Codex 复核 TD-006 / PR #35 后将原 `TD-006-FOLLOWUP` 转为稳定编号任务。
+备注：2026-06-05 Codex 复核 TD-006 / PR #35 后将原 `TD-006-FOLLOWUP` 转为稳定编号任务。2026-06-05 由 Claude Code 接手完成。Spec：`docs/specs/2026-06-05-td-016-ai-router-provider.md`；Plan：`docs/plans/2026-06-05-td-016-ai-router-provider-plan.md`。改动：新增 `app/shared/llm/provider_resolver.py` 导出 `resolve_chat_provider()`（按 `llm_default_provider`（若在候选集）→ `minimax` → `deepseek` → `qwen` 顺序选第一个有完整配置（api_key + base_url + model 都非空）的 provider；返回 `ProviderConfig` 或 None）；`app/shared/llm/protocol.py` 新增 `ProviderConfig` dataclass；`ai_router._call_llm` 删除 5 段 if/elif 链，改为调 `resolve_chat_provider()`：config is None 时返回中文提示，拿到 config 后用其 `base_url / model / api_key` 调 httpx（保留 timeout 60s 与失败兜底文案）；新增 `tests/shared/test_provider_resolver.py`（7 个测试覆盖无 key / 默认 provider 命中 / 默认无 key 回退 / 默认值不在候选集被忽略 / 多 key 按顺序选 / provider 缺 base_url/model 不完整跳过 / 默认在候选集时挪到首位）。唯一可观察行为变化：默认 provider 没 key 时的回退顺序从「qwen → minimax → deepseek」调整为「minimax → deepseek → qwen」（qwen 从第一位 fallback 变到最后一位，与 `factory.PRIORITY_CHAIN` 思路对齐）；其他用户可见行为（中文提示 / httpx 调用 / 失败兜底）保留。验证：`pytest tests/shared/test_provider_resolver.py -v` → 7 passed；`pytest -q` → 139 passed in 26.32s（baseline 132 + 新增 7）；`ruff check app/ tests/` → All checks passed。PR #39（https://github.com/MarkDanile/MetaEduBase/pull/39），merge commit `4e6cf42`，完成日期 2026-06-05。
 
 ### TD-017: 将 Vue Query 请求生命周期治理推广到 FileDetailView
 

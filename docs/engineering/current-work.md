@@ -108,38 +108,7 @@
 
 ## 当前进行中
 
-### TD-016: 收敛 knowledge ai_router 的 LLM provider 选择重复逻辑
-
-状态：🟡 进行中
-类型：重构
-领域：Backend / AI / 可维护性
-当前执行模式：manual
-最近接手工具：Claude Code
-分支：refactor/td-016-ai-router-provider
-
-需求来源：
-- 技术债：`docs/engineering/technical-debt.md#td-016-收敛-knowledge-ai_router-的-llm-provider-选择重复逻辑`
-
-当前进展：
-- 已完成：与 TD-006 范围差异确认
-- 正在处理：起草 spec / plan
-- 未完成：开发、测试、Git 闭环
-
-下一步：
-1. 落 spec / plan
-2. 在 `app/shared/llm/` 扩展 chat helper（增加 `provider_strategy` 或 `chat_with_provider_selection`）
-3. `ai_router.py` 删除私有 `_call_llm` 改为调共享 helper
-4. 保留「无 key 中文提示」
-5. 补 mock 测试覆盖默认 provider / fallback provider / 无 key 提示
-6. 提交 → push → PR → 合并 main
-
-验证状态：
-- 已运行：未运行
-- 未运行：pytest / ruff
-- 当前失败：无
-
-交接备注：
-- 行为边界：与 TD-006 共享 chat 抽象但 ai_router 走的是「无 key 时直接返回中文提示」模式，不调 chat() 也不抛错；helper 需支持这种「无 provider 时的字符串兜底」。
+当前无进行中任务。
 
 ## 下一批候选任务
 
@@ -147,9 +116,9 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| TD-017 将 Vue Query 请求生命周期治理推广到 FileDetailView | ⚫ 待办 | P2 | Frontend / 可维护性 | 需先补全证据 / 完成标准 / 验证方式后转为 🔵 才能开工。 |
+| TD-017 将 Vue Query 请求生命周期治理推广到 FileDetailView | ⚫ 待办 | P2 | Frontend / 可维护性 | 需先补全证据 / 完成标准 / 验证方式后转为 🔵 才能开工；建议参考 `docs/engineering/matrices/td-015-databaseview-equivalence.md` 列行为矩阵，避免重复 TD-007 回归。 |
 | TD-015 修复 TD-007 DatabaseView Vue Query 迁移后的行为回归 | 🟢 完成 | P1 | Frontend / API / 可维护性 | 已修 4 个回归点：上传名称 / 轮询条件 / KG overview 懒加载 / DTO adapter；行为等价矩阵已落盘到 `docs/engineering/matrices/`。 |
-| TD-016 收敛 knowledge ai_router 的 LLM provider 选择重复逻辑 | 🟡 进行中 | P1 | Backend / AI / 可维护性 | 将 `ai_router.py` 的 provider 选择迁到共享 LLM 策略或 helper，并补 mock 测试覆盖 provider 命中、fallback 和无 key 提示。 |
+| TD-016 收敛 knowledge ai_router 的 LLM provider 选择重复逻辑 | 🟢 完成 | P1 | Backend / AI / 可维护性 | 已抽 `app/shared/llm/provider_resolver.py` 集中 provider 选择；ai_router 私有 `_call_llm` 已删。Follow-up：与 `factory.PRIORITY_CHAIN` 仍走不同顺序，可单独评估统一。 |
 
 ## 最近完成
 
