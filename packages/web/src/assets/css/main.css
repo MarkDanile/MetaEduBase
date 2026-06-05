@@ -67,6 +67,10 @@
   --surface-ghost-btn-bg: var(--_surface-ghost-btn-bg);
   --login-brand-gradient: var(--_login-brand-gradient);
 
+  /* ---- Overlay / button ripple (per-theme) ---- */
+  --overlay-bg: var(--_overlay-bg);
+  --btn-ripple: var(--_btn-ripple);
+
   /* ---- Typography (constant) ---- */
   --font-display: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
   --font-body: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
@@ -174,6 +178,9 @@
   --_surface-dialog-shadow: 0 12px 40px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.7);
   --_surface-toast-bg: rgba(255, 255, 255, 0.9);
   --_surface-ghost-btn-bg: rgba(255, 255, 255, 0.5);
+  /* Overlay / button ripple (TD-027) */
+  --_overlay-bg: rgba(0, 0, 0, 0.2);
+  --_btn-ripple: rgba(255, 255, 255, 0.25);
   /* Login */
   --_login-brand-gradient: linear-gradient(160deg, #0F172A 0%, #1E3A5F 40%, #1E40AF 100%);
 }
@@ -235,6 +242,9 @@
   --_surface-dialog-shadow: 0 16px 48px rgba(0, 0, 0, 0.08);
   --_surface-toast-bg: #FEFDF9;
   --_surface-ghost-btn-bg: transparent;
+  /* Overlay / button ripple (TD-027) */
+  --_overlay-bg: rgba(0, 0, 0, 0.2);
+  --_btn-ripple: rgba(255, 255, 255, 0.25);
   /* Login */
   --_login-brand-gradient: linear-gradient(160deg, #1E3A5F 0%, #1E40AF 40%, #312E81 100%);
 }
@@ -296,6 +306,9 @@
   --_surface-dialog-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
   --_surface-toast-bg: #FFFFFF;
   --_surface-ghost-btn-bg: transparent;
+  /* Overlay / button ripple (TD-027) */
+  --_overlay-bg: rgba(0, 0, 0, 0.2);
+  --_btn-ripple: rgba(255, 255, 255, 0.25);
   /* Login */
   --_login-brand-gradient: linear-gradient(160deg, #1E293B 0%, #334155 40%, #475569 100%);
 }
@@ -357,6 +370,9 @@
   --_surface-dialog-shadow: none;
   --_surface-toast-bg: #FFFFFF;
   --_surface-ghost-btn-bg: transparent;
+  /* Overlay / button ripple (TD-027) */
+  --_overlay-bg: rgba(0, 0, 0, 0.15);
+  --_btn-ripple: rgba(255, 255, 255, 0.25);
   /* Login */
   --_login-brand-gradient: linear-gradient(160deg, #F8FAFC 0%, #E0F7FC 100%);
 }
@@ -449,6 +465,175 @@
 
   .ui-interactive-row:hover {
     background: var(--color-bg-hover);
+  }
+
+  /* ---- ui-* atomic controls (TD-027)
+     按钮 / 输入框 / 标签 / 对话框共享类；与 ui-* 容器层同源，
+     复用现有 --color-* / --radius-* / --shadow-* / --surface-* / --duration-* token。
+     liquid-* 类作为历史兼容保留，不删不动。 ---- */
+
+  .ui-input {
+    width: 100%;
+    padding: 9px 14px;
+    background: var(--surface-input-bg);
+    backdrop-filter: var(--surface-glass-blur-light);
+    -webkit-backdrop-filter: var(--surface-glass-blur-light);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-ink);
+    font-size: 14px;
+    outline: none;
+    transition: all var(--duration-liquid) var(--ease-elastic);
+  }
+
+  .ui-input:focus {
+    background: var(--surface-input-bg-focus);
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px var(--color-accent-ring), inset 0 0 0 1px var(--color-accent-ring);
+  }
+
+  .ui-input::placeholder {
+    color: var(--color-ink-tertiary);
+  }
+
+  .ui-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 18px;
+    height: 36px;
+    font-family: var(--font-body);
+    font-size: var(--text-caption);
+    font-weight: 500;
+    letter-spacing: 0;
+    border-radius: var(--radius-md);
+    border: none;
+    cursor: pointer;
+    transition: all var(--duration-liquid) var(--ease-elastic);
+  }
+
+  .ui-btn-primary {
+    position: relative;
+    overflow: hidden;
+    background: radial-gradient(circle at 30% 30%, var(--color-accent-glow-start), var(--color-accent));
+    color: var(--color-ink-inverse);
+  }
+
+  .ui-btn-primary::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: var(--btn-ripple);
+    transform: translate(-50%, -50%);
+    transition: width 0.5s var(--ease-out), height 0.5s var(--ease-out), opacity 0.3s var(--ease-out);
+  }
+
+  .ui-btn-primary:hover {
+    background: radial-gradient(circle at 30% 30%, var(--color-accent-glow-start-hover), var(--color-accent-light));
+  }
+
+  .ui-btn-primary:active {
+    transform: scale(0.97);
+  }
+
+  .ui-btn-primary:active::after {
+    width: 220px;
+    height: 220px;
+    opacity: 0;
+  }
+
+  .ui-btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .ui-btn-ghost {
+    background: var(--surface-ghost-btn-bg);
+    backdrop-filter: var(--surface-glass-blur-light);
+    -webkit-backdrop-filter: var(--surface-glass-blur-light);
+    border: 1px solid var(--color-border);
+    color: var(--color-ink-secondary);
+  }
+
+  .ui-btn-ghost:hover {
+    background: var(--color-accent-bg);
+    color: var(--color-accent);
+    border-color: var(--color-accent);
+  }
+
+  .ui-btn-danger {
+    position: relative;
+    overflow: hidden;
+    background: var(--color-danger);
+    color: white;
+  }
+
+  .ui-btn-danger:hover {
+    background: color-mix(in srgb, var(--color-danger) 90%, black);
+  }
+
+  .ui-btn-danger:active {
+    transform: scale(0.97);
+  }
+
+  .ui-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    letter-spacing: 0;
+  }
+
+  .ui-tag-blue {
+    background: var(--color-tag-blue);
+    color: var(--color-tag-blue-text);
+  }
+
+  .ui-tag-green {
+    background: var(--color-tag-green);
+    color: var(--color-tag-green-text);
+  }
+
+  .ui-tag-amber {
+    background: var(--color-tag-amber);
+    color: var(--color-tag-amber-text);
+  }
+
+  .ui-tag-purple {
+    background: var(--color-tag-purple);
+    color: var(--color-tag-purple-text);
+  }
+
+  .ui-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--overlay-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: var(--z-dialog);
+    animation: fade-in var(--duration-instant) var(--ease-out);
+  }
+
+  .ui-dialog {
+    background: var(--surface-dialog-bg);
+    backdrop-filter: var(--surface-glass-blur);
+    -webkit-backdrop-filter: var(--surface-glass-blur);
+    border: var(--surface-dialog-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--surface-dialog-shadow);
+    padding: 24px;
+    width: 100%;
+    max-width: 440px;
+    animation: dialog-in var(--duration-liquid) var(--ease-elastic);
   }
 
   .sidebar-shell {
