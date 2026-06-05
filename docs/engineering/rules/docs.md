@@ -56,6 +56,7 @@ class KnowledgeNode(AggregateRoot):
 | 新增业务上下文 | ARCHITECTURE.md + README.md 项目结构 |
 | 删除逻辑变更 | `docs/engineering/rules/data-integrity.md` 级联删除要求 |
 | 质量门禁或验证策略变更 | `docs/engineering/rules/quality-gates.md`，必要时同步 README.md 验证说明 |
+| 工程工具脚本或门禁实现变更 | `scripts/engineering/*` + `docs/engineering/rules/quality-gates.md`；如需稳定命令入口，可保留根级 `scripts/check-*` wrapper |
 | 本地启动、依赖安装或运行命令变更 | `docs/engineering/rules/local-development.md` + README.md 快速开始 |
 | AI 协作流程变更 | `docs/engineering/workflow.md` + AGENTS.md + CLAUDE.md |
 | 任务模式、开工条件或验收流程变更 | `docs/engineering/task-modes.md` + `docs/engineering/workflow.md` |
@@ -77,6 +78,7 @@ class KnowledgeNode(AggregateRoot):
 | 长期架构、阶段路线、系统边界 | `ARCHITECTURE.md` |
 | 本地启动、依赖、迁移和常用运行命令 | `docs/engineering/rules/local-development.md` |
 | 编码、测试、安全、数据完整性等长期规则 | `docs/engineering/rules/*` |
+| 工程文档门禁、仓库治理检查等内部工具实现 | `scripts/engineering/*`；根级 `scripts/check-*` 只保留稳定兼容命令入口 |
 | API / DTO / shared schema 契约治理 | `docs/engineering/rules/contracts.md` |
 | 功能需求、产品设计、验收标准 | `docs/specs/*` |
 | 功能实施步骤、任务拆分 | `docs/plans/*` |

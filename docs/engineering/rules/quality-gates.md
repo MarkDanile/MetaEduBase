@@ -29,6 +29,8 @@
 scripts/check-engineering-docs
 ```
 
+该命令是稳定兼容入口；主实现位于 `scripts/engineering/check_engineering_docs.py`，工程文档门禁逻辑优先收敛到该目录。
+
 专项门禁按任务触发：行为变化声明、覆盖矩阵、前端请求生命周期等价矩阵、API / DTO 契约、数据完整性和 Git 合并流程仍以本文件和对应专项规则为准。
 
 ## 行为变化声明检查

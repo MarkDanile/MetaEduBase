@@ -26,7 +26,7 @@ spec / plan 进入 `docs/specs/*` 和 `docs/plans/*`。
 
 ### In scope
 
-- 新增一个工程文档检查命令或脚本，例如 `scripts/check-engineering-docs`。
+- 新增一个工程文档检查命令或脚本，例如 `scripts/check-engineering-docs`；主实现收敛到 `scripts/engineering/*`。
 - 检查 `docs/engineering/current-work.md` 的区域约束：
   - “下一批候选任务”只允许 1 到 3 个未完成候选。
   - 候选区不得出现 `🟢 完成`。
@@ -40,6 +40,7 @@ spec / plan 进入 `docs/specs/*` 和 `docs/plans/*`。
 - 将 `current-work.md` 的长规则说明迁移或压缩到更合适的规则文档，例如
   `docs/engineering/rules/workbench.md`。
 - 在 `quality-gates.md` 或 `git-workflow.md` 中引用该文档门禁命令，避免重复展开规则。
+- `scripts/*` 只作为稳定兼容入口，仓库治理工具实现优先放在 `scripts/engineering/*`。
 
 ### Out of scope
 
@@ -79,6 +80,7 @@ spec / plan 进入 `docs/specs/*` 和 `docs/plans/*`。
 ## 验收标准
 
 - 有一个固定命令可以运行工程文档门禁。
+- 工程文档门禁有聚焦的实现目录，兼容入口不会迫使执行者记住内部文件路径。
 - 该命令能发现至少以下问题类型：
   - 候选区 `🟢 完成` 行。
   - 最近完成超过 5 行。
@@ -93,6 +95,7 @@ spec / plan 进入 `docs/specs/*` 和 `docs/plans/*`。
 ## 验证方式
 
 - 运行新增工程文档门禁命令，退出码 0。
+- 直接运行 `scripts/engineering/check_engineering_docs.py`，确认与兼容入口行为一致。
 - 人工临时制造一个候选区完成行或断链，确认脚本能失败并给出可操作提示；验证后还原。
 - `rg -n "check-engineering-docs|工程文档门禁" docs/engineering AGENTS.md CLAUDE.md` 能命中新命令入口。
 - `current-work.md` 的“当前进行中 / 下一批候选任务 / 最近完成”区域仍可直接扫视当前任务。

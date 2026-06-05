@@ -7,7 +7,10 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CHECKER = REPO_ROOT / "scripts" / "check-engineering-docs"
+ENGINEERING_CHECKER = (
+    REPO_ROOT / "scripts" / "engineering" / "check_engineering_docs.py"
+)
+SCRIPT_WRAPPER = REPO_ROOT / "scripts" / "check-engineering-docs"
 
 
 def write(path: Path, content: str) -> None:
@@ -82,9 +85,11 @@ def make_minimal_docs(root: Path) -> None:
     )
 
 
-def run_checker(root: Path) -> subprocess.CompletedProcess[str]:
+def run_checker(
+    root: Path, checker: Path = ENGINEERING_CHECKER
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, str(CHECKER), "--root", str(root)],
+        [sys.executable, str(checker), "--root", str(root)],
         cwd=REPO_ROOT,
         text=True,
         capture_output=True,
@@ -96,6 +101,15 @@ def test_passes_minimal_valid_docs(tmp_path: Path) -> None:
     make_minimal_docs(tmp_path)
 
     result = run_checker(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    assert "engineering docs checks passed" in result.stdout
+
+
+def test_scripts_wrapper_delegates_to_tools_checker(tmp_path: Path) -> None:
+    make_minimal_docs(tmp_path)
+
+    result = run_checker(tmp_path, SCRIPT_WRAPPER)
 
     assert result.returncode == 0, result.stderr
     assert "engineering docs checks passed" in result.stdout

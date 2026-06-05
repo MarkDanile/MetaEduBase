@@ -11,7 +11,7 @@
 
 ### 1. 建立最小工程文档门禁
 
-- [x] 确认仓库现有脚本目录约定；如果没有 `scripts/`，新建 `scripts/check-engineering-docs`。
+- [x] 确认仓库现有脚本目录约定；主实现放到 `scripts/engineering/check_engineering_docs.py`，`scripts/check-engineering-docs` 保留兼容入口。
 - [x] 选择简单可维护的实现方式，优先使用 Python 标准库或 shell + `rg`，不引入新依赖。
 - [x] 输出格式包含文件、行号、问题和建议动作。
 
@@ -56,6 +56,7 @@
 
 - [x] 在 `docs/engineering/rules/quality-gates.md#完成门禁` 中引用工程文档门禁命令。
 - [x] 在 `docs/engineering/rules/git-workflow.md#快速交付通道` 的文档-only 验证中引用该命令。
+- [x] 在 `docs/engineering/rules/docs.md` 中记录 `scripts/engineering/*` 与 `scripts/*` 的目录边界。
 - [x] 避免重复展开脚本内部检查细节。
 
 ### 9. 验证
@@ -67,8 +68,9 @@
 
 ## 验证记录
 
-- `packages/server-python/.venv/bin/python -m pytest tests/engineering/test_check_engineering_docs.py -q`：7 passed。
-- `packages/server-python/.venv/bin/python scripts/check-engineering-docs`：退出码 0，输出 `engineering docs checks passed (1 known issue(s) allowlisted)`；allowlist 指向已登记的 TD-023。
+- `packages/server-python/.venv/bin/python -m pytest tests/engineering/test_check_engineering_docs.py -q`：8 passed，覆盖主实现与兼容 wrapper。
+- `packages/server-python/.venv/bin/python scripts/engineering/check_engineering_docs.py`：退出码 0，输出 `engineering docs checks passed (1 known issue(s) allowlisted)`。
+- `packages/server-python/.venv/bin/python scripts/check-engineering-docs`：退出码 0，输出与主实现一致；allowlist 指向已登记的 TD-023。
 - `git diff --check`：退出码 0。
 - `rg -n "check-engineering-docs|工程文档门禁|workbench.md" docs/engineering AGENTS.md CLAUDE.md`：命中新门禁入口和 workbench 规则索引。
 - 负向临时验证：在临时目录制造 `🟢 完成` 候选行和断链，脚本退出码 1，并输出具体文件、行号和建议动作。
