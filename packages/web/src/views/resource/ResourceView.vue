@@ -2,7 +2,7 @@
   <div class="p-[var(--spacing-page)] max-w-[1000px] mx-auto">
     <div class="flex items-start justify-between mb-[var(--spacing-page)] animate-slide-up">
       <PageHeader title="校本资源" subtitle="教学资源上传、解析与管理" />
-      <button @click="showUploadDialog = true" class="liquid-btn liquid-btn-primary flex-shrink-0">
+      <button @click="showUploadDialog = true" class="ui-btn ui-btn-primary flex-shrink-0">
         <Upload :size="16" :stroke-width="2" />
         上传资源
       </button>
@@ -42,8 +42,8 @@
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2">
                 <span class="font-medium text-[var(--text-body)] text-[var(--color-ink)] truncate">{{ item.title }}</span>
-                <span class="liquid-tag" :class="typeTagClass(item.resource_type)">{{ resourceTypeMap[item.resource_type] ?? item.resource_type }}</span>
-                <span v-if="item.domain" class="liquid-tag liquid-tag-green">{{ domainMap[item.domain] ?? item.domain }}</span>
+                <span class="ui-tag" :class="typeTagClass(item.resource_type)">{{ resourceTypeMap[item.resource_type] ?? item.resource_type }}</span>
+                <span v-if="item.domain" class="ui-tag ui-tag-green">{{ domainMap[item.domain] ?? item.domain }}</span>
               </div>
               <div class="flex items-center gap-3 mt-0.5 text-[var(--color-ink-tertiary)]">
                 <span v-if="item.file_size">{{ formatSize(item.file_size) }}</span>
@@ -52,11 +52,11 @@
             </div>
           </div>
           <div class="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <button @click="downloadResource(item)" class="liquid-btn liquid-btn-ghost py-1 px-2.5" aria-label="下载资源">
+            <button @click="downloadResource(item)" class="ui-btn ui-btn-ghost py-1 px-2.5" aria-label="下载资源">
               <Download :size="12" :stroke-width="2" />
               下载
             </button>
-            <button @click="confirmDeleteId = item.id" class="liquid-btn liquid-btn-ghost py-1 px-2.5 !text-[var(--color-danger)]" aria-label="删除资源">
+            <button @click="confirmDeleteId = item.id" class="ui-btn ui-btn-ghost py-1 px-2.5 !text-[var(--color-danger)]" aria-label="删除资源">
               <Trash2 :size="12" :stroke-width="2" />
               删除
             </button>
@@ -67,23 +67,23 @@
     </div>
 
     <div v-if="total > limit" class="mt-[var(--spacing-page)] flex justify-center items-center gap-4">
-      <button :disabled="offset === 0" @click="offset -= limit; loadResources()" class="liquid-btn liquid-btn-ghost disabled:opacity-30">
+      <button :disabled="offset === 0" @click="offset -= limit; loadResources()" class="ui-btn ui-btn-ghost disabled:opacity-30">
         上一页
       </button>
       <span class="text-[var(--color-ink-tertiary)]">共 {{ total }} 条</span>
-      <button :disabled="offset + limit >= total" @click="offset += limit; loadResources()" class="liquid-btn liquid-btn-ghost disabled:opacity-30">
+      <button :disabled="offset + limit >= total" @click="offset += limit; loadResources()" class="ui-btn ui-btn-ghost disabled:opacity-30">
         下一页
       </button>
     </div>
 
-    <div v-if="showUploadDialog" class="liquid-dialog-overlay" @click.self="showUploadDialog = false" @keydown.escape="showUploadDialog = false" role="dialog" aria-modal="true">
-      <div class="liquid-dialog">
+    <div v-if="showUploadDialog" class="ui-dialog-overlay" @click.self="showUploadDialog = false" @keydown.escape="showUploadDialog = false" role="dialog" aria-modal="true">
+      <div class="ui-dialog">
         <h3 class="text-[var(--text-subtitle)] font-semibold mb-5">上传资源</h3>
         <form @submit.prevent="uploadResource" class="space-y-4">
           <div>
             <label class="block font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">文件</label>
             <div
-              class="liquid-input flex items-center cursor-pointer"
+              class="ui-input flex items-center cursor-pointer"
               :class="dragOver ? 'border-[var(--color-accent)] bg-[var(--color-accent-bg)]' : ''"
               @click="fileInput?.click()"
               @dragover.prevent="dragOver = true"
@@ -102,24 +102,24 @@
           </div>
           <div>
             <label class="block font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">标题</label>
-            <input v-model="uploadForm.title" type="text" required class="liquid-input" />
+            <input v-model="uploadForm.title" type="text" required class="ui-input" />
           </div>
           <div>
             <label class="block font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">类型</label>
-            <select v-model="uploadForm.resource_type" class="liquid-input">
+            <select v-model="uploadForm.resource_type" class="ui-input">
               <option v-for="(label, key) in resourceTypeMap" :key="key" :value="key">{{ label }}</option>
             </select>
           </div>
           <div>
             <label class="block font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">专业域（可选）</label>
-            <select v-model="uploadForm.domain" class="liquid-input">
+            <select v-model="uploadForm.domain" class="ui-input">
               <option value="">不指定</option>
               <option v-for="(label, key) in domainMap" :key="key" :value="key">{{ label }}</option>
             </select>
           </div>
           <div class="flex gap-2 justify-end pt-1">
-            <button type="button" @click="showUploadDialog = false" class="liquid-btn liquid-btn-ghost">取消</button>
-            <button type="submit" :disabled="uploading" class="liquid-btn liquid-btn-primary">
+            <button type="button" @click="showUploadDialog = false" class="ui-btn ui-btn-ghost">取消</button>
+            <button type="submit" :disabled="uploading" class="ui-btn ui-btn-primary">
               {{ uploading ? "上传中..." : "上传" }}
             </button>
           </div>
@@ -215,13 +215,13 @@ function typeIconClass(type: string) {
 
 function typeTagClass(type: string) {
   const map: Record<string, string> = {
-    document: "liquid-tag-green",
-    video: "liquid-tag-amber",
-    image: "liquid-tag-purple",
-    audio: "liquid-tag-green",
-    other: "liquid-tag-blue",
+    document: "ui-tag-green",
+    video: "ui-tag-amber",
+    image: "ui-tag-purple",
+    audio: "ui-tag-green",
+    other: "ui-tag-blue",
   };
-  return map[type] ?? "liquid-tag-blue";
+  return map[type] ?? "ui-tag-blue";
 }
 
 function formatSize(bytes: number | null) {

@@ -2,7 +2,7 @@
   <div class="p-6 max-w-[1600px] mx-auto">
     <PageHeader title="数据库" subtitle="数据集管理与知识图谱构建">
       <template #extra>
-        <button class="liquid-btn-primary px-3 py-1.5 flex items-center gap-1.5" @click="showUpload = true">
+        <button class="ui-btn-primary px-3 py-1.5 flex items-center gap-1.5" @click="showUpload = true">
           <Upload :size="14" /> 上传数据集
         </button>
       </template>
@@ -112,7 +112,7 @@
                 </span>
               </div>
               <button
-                class="liquid-btn-ghost px-3 py-1.5 flex items-center gap-1.5"
+                class="ui-btn-ghost px-3 py-1.5 flex items-center gap-1.5"
                 :disabled="rebuildingKg"
                 @click="showKgRebuildConfirm = true"
               >
@@ -148,16 +148,16 @@
                 {{ selected.row_count }} 行 × {{ selected.column_names?.length ?? 0 }} 列
               </span>
               <div v-if="selected.tags?.length" class="flex gap-1">
-                <span v-for="tag in selected.tags" :key="tag" class="liquid-tag-purple text-[var(--text-micro)]">{{ tag }}</span>
+                <span v-for="tag in selected.tags" :key="tag" class="ui-tag-purple text-[var(--text-micro)]">{{ tag }}</span>
               </div>
               <button
-                class="liquid-btn-ghost px-3 py-1.5 flex items-center gap-1.5 text-red-500 ml-auto"
+                class="ui-btn-ghost px-3 py-1.5 flex items-center gap-1.5 text-red-500 ml-auto"
                 @click="showDelete = true"
               >
                 <Trash2 :size="14" /> 删除
               </button>
               <button
-                class="liquid-btn-ghost px-3 py-1.5 flex items-center gap-1.5"
+                class="ui-btn-ghost px-3 py-1.5 flex items-center gap-1.5"
                 @click="reinitialize"
               >
                 <RefreshCw :size="14" /> 重新初始化
@@ -170,7 +170,7 @@
                 <h3 class="text-[var(--text-section-title)] font-medium text-[var(--color-ink)]">处理流水线</h3>
                 <div class="flex items-center gap-2">
                   <span v-if="polling" class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">自动刷新中...</span>
-                  <button class="liquid-btn-ghost px-2 py-1" @click="tasksQuery.refetch()">
+                  <button class="ui-btn-ghost px-2 py-1" @click="tasksQuery.refetch()">
                     <RefreshCw :size="14" :class="{ 'animate-spin': loadingTasks }" />
                   </button>
                 </div>
@@ -264,14 +264,14 @@
                     </span>
                     <div class="flex gap-1">
                       <button
-                        class="liquid-btn-ghost px-2 py-1 text-[var(--text-micro)]"
+                        class="ui-btn-ghost px-2 py-1 text-[var(--text-micro)]"
                         :disabled="offset === 0"
                         @click="changePage(-1)"
                       >
                         上一页
                       </button>
                       <button
-                        class="liquid-btn-ghost px-2 py-1 text-[var(--text-micro)]"
+                        class="ui-btn-ghost px-2 py-1 text-[var(--text-micro)]"
                         :disabled="offset + pageSize >= totalRows"
                         @click="changePage(1)"
                       >
@@ -321,7 +321,7 @@
       <div class="relative ui-panel p-6 w-[480px]">
         <div class="flex items-center justify-between mb-4">
           <h2 class="text-[var(--text-page-title)] font-medium text-[var(--color-ink)]">上传数据集</h2>
-          <button class="liquid-btn-ghost p-1" @click="showUpload = false">
+          <button class="ui-btn-ghost p-1" @click="showUpload = false">
             <X :size="18" />
           </button>
         </div>
@@ -329,15 +329,15 @@
         <div class="flex flex-col gap-4">
           <div>
             <label class="block text-[var(--text-small)] text-[var(--color-ink-secondary)] mb-1">数据集名称</label>
-            <input v-model="uploadForm.name" class="liquid-input w-full" placeholder="输入数据集名称" />
+            <input v-model="uploadForm.name" class="ui-input w-full" placeholder="输入数据集名称" />
           </div>
           <div>
             <label class="block text-[var(--text-small)] text-[var(--color-ink-secondary)] mb-1">描述（可选）</label>
-            <textarea v-model="uploadForm.description" class="liquid-input w-full resize-none" rows="2" placeholder="输入描述" />
+            <textarea v-model="uploadForm.description" class="ui-input w-full resize-none" rows="2" placeholder="输入描述" />
           </div>
           <div>
             <label class="block text-[var(--text-small)] text-[var(--color-ink-secondary)] mb-1">标签（可选，多个用逗号分隔）</label>
-            <input v-model="uploadForm.tags" class="liquid-input w-full" placeholder="如：汽车维修，数据分析" />
+            <input v-model="uploadForm.tags" class="ui-input w-full" placeholder="如：汽车维修，数据分析" />
           </div>
           <div>
             <label class="block text-[var(--text-small)] text-[var(--color-ink-secondary)] mb-1">选择文件</label>
@@ -355,9 +355,9 @@
             <input ref="fileInputRef" type="file" accept=".xlsx,.xls,.csv" class="hidden" @change="handleFileChange" />
           </div>
           <div class="flex justify-end gap-2 mt-2">
-            <button class="liquid-btn-ghost px-4 py-2" @click="showUpload = false">取消</button>
+            <button class="ui-btn-ghost px-4 py-2" @click="showUpload = false">取消</button>
             <button
-              class="liquid-btn-primary px-4 py-2 flex items-center gap-1.5"
+              class="ui-btn-primary px-4 py-2 flex items-center gap-1.5"
               :disabled="!canUpload || uploading"
               @click="doUpload"
             >
@@ -675,7 +675,7 @@ function stepBgClass(type: string) {
 
 function stepLabelClass(type: string) {
   const color = TASK_STATUS_MAP[stepStatus(type)]?.color ?? "amber";
-  return `liquid-tag-${color} text-[var(--text-micro)]`;
+  return `ui-tag-${color} text-[var(--text-micro)]`;
 }
 
 // --- Status helpers ---
@@ -685,7 +685,7 @@ function dsStatusLabel(status: string) {
 
 function dsStatusTagClass(status: string) {
   const color = FILE_STATUS_MAP[status]?.color ?? "blue";
-  return `liquid-tag-${color} text-[var(--text-micro)]`;
+  return `ui-tag-${color} text-[var(--text-micro)]`;
 }
 
 function formatCell(value: unknown): string {

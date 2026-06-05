@@ -9,7 +9,7 @@
           <span class="text-[var(--text-caption)] font-medium text-[var(--color-ink)]">文件夹</span>
           <button
             v-if="!showNewFolderInput"
-            class="liquid-btn-ghost text-[var(--text-small)] px-2 py-0.5"
+            class="ui-btn-ghost text-[var(--text-small)] px-2 py-0.5"
             @click="showNewFolderInput = true"
           >
             <Plus :size="14" /> 
@@ -20,15 +20,15 @@
         <div v-if="showNewFolderInput" class="flex gap-1">
           <input
             v-model="newFolderName"
-            class="liquid-input text-[var(--text-small)] py-0.5 px-2 flex-1"
+            class="ui-input text-[var(--text-small)] py-0.5 px-2 flex-1"
             placeholder="文件夹名称"
             @keyup.enter="createFolder"
             @keyup.escape="showNewFolderInput = false; newFolderName = ''"
           />
-          <button class="liquid-btn-primary text-[var(--text-small)] px-2 py-0.5" @click="createFolder">
+          <button class="ui-btn-primary text-[var(--text-small)] px-2 py-0.5" @click="createFolder">
             <Check :size="14" />
           </button>
-          <button class="liquid-btn-ghost text-[var(--text-small)] px-1 py-0.5" @click="showNewFolderInput = false; newFolderName = ''">
+          <button class="ui-btn-ghost text-[var(--text-small)] px-1 py-0.5" @click="showNewFolderInput = false; newFolderName = ''">
             <X :size="14" />
           </button>
         </div>
@@ -58,13 +58,13 @@
               <Folder :size="14" class="flex-shrink-0 text-[var(--color-accent)]" />
               <input
                 v-model="inlineRenamingName"
-                class="liquid-input text-[var(--text-small)] py-0.5 px-1 flex-1"
+                class="ui-input text-[var(--text-small)] py-0.5 px-1 flex-1"
                 @keyup.enter="commitRename"
                 @keyup.escape="inlineRenamingFolderId = null"
                 @click.stop
               />
-              <button class="liquid-btn-ghost p-0.5" @click.stop="commitRename"><Check :size="12" /></button>
-              <button class="liquid-btn-ghost p-0.5" @click.stop="inlineRenamingFolderId = null"><X :size="12" /></button>
+              <button class="ui-btn-ghost p-0.5" @click.stop="commitRename"><Check :size="12" /></button>
+              <button class="ui-btn-ghost p-0.5" @click.stop="inlineRenamingFolderId = null"><X :size="12" /></button>
             </div>
             <!-- Normal folder row -->
             <button
@@ -82,7 +82,7 @@
             <!-- Three-dot menu for each folder -->
             <button
               v-if="inlineRenamingFolderId !== folder.id"
-              class="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 liquid-btn-ghost p-0.5 rounded"
+              class="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 ui-btn-ghost p-0.5 rounded"
               style="transform: translateY(-50%)"
               @click.stop="toggleFolderMenu(folder.id)"
             >
@@ -134,7 +134,7 @@
           <span class="text-[var(--text-small)] text-[var(--color-ink-tertiary)]">筛选:</span>
           <select
             v-model="filterStatus"
-            class="liquid-input text-[var(--text-small)] py-1 px-2 rounded"
+            class="ui-input text-[var(--text-small)] py-1 px-2 rounded"
           >
             <option value="">全部状态</option>
             <option value="uploaded">已上传</option>
@@ -142,7 +142,7 @@
             <option value="processed">已完成</option>
             <option value="failed">失败</option>
           </select>
-          <button class="liquid-btn-ghost text-[var(--text-small)] px-2 py-1" @click="loadFiles">
+          <button class="ui-btn-ghost text-[var(--text-small)] px-2 py-1" @click="loadFiles">
             <RefreshCw :size="14" :class="{ 'animate-spin': loadingFiles }" />
           </button>
         </div>
@@ -186,10 +186,10 @@
                 <td class="py-2.5 px-2 text-[var(--color-ink-secondary)]">{{ formatSize(file.file_size) }}</td>
                 <td class="py-2.5 px-2 text-[var(--color-ink-secondary)]">{{ formatDate(file.created_at) }}</td>
                 <td class="py-2.5 px-2 text-right" @click.stop>
-                  <button class="liquid-btn-ghost px-2 py-1" @click="goToDetail(file.id)">
+                  <button class="ui-btn-ghost px-2 py-1" @click="goToDetail(file.id)">
                     <Eye :size="14" />
                   </button>
-                  <button class="liquid-btn-ghost px-2 py-1 text-red-500" @click="confirmDeleteFile(file)">
+                  <button class="ui-btn-ghost px-2 py-1 text-red-500" @click="confirmDeleteFile(file)">
                     <Trash2 :size="14" />
                   </button>
                 </td>
@@ -211,14 +211,14 @@
       <div class="space-y-3 mt-2">
         <div>
           <label class="text-[var(--text-small)] text-[var(--color-ink-tertiary)]">文档类型</label>
-          <select v-model="uploadDocType" class="liquid-input w-full mt-1">
+          <select v-model="uploadDocType" class="ui-input w-full mt-1">
             <option value="">不选择</option>
             <option v-for="opt in DOC_TYPE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </select>
         </div>
         <div>
           <label class="text-[var(--text-small)] text-[var(--color-ink-tertiary)]">标签（逗号分隔）</label>
-          <input v-model="uploadTags" class="liquid-input w-full mt-1" placeholder="如: 教案, 期末考试" />
+          <input v-model="uploadTags" class="ui-input w-full mt-1" placeholder="如: 教案, 期末考试" />
         </div>
       </div>
     </ConfirmDialog>
@@ -468,7 +468,7 @@ function statusLabel(status: string) {
 
 function statusTagClass(status: string) {
   const color = FILE_STATUS_MAP[status]?.color ?? "blue";
-  return `liquid-tag-${color} text-[var(--text-micro)]`;
+  return `ui-tag-${color} text-[var(--text-micro)]`;
 }
 
 function formatSize(bytes: number | null) {

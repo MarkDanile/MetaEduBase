@@ -58,7 +58,7 @@
               <span
                 v-for="src in msg.sources"
                 :key="src.id"
-                class="liquid-tag liquid-tag-blue"
+                class="ui-tag ui-tag-blue"
               >
                 <span class="opacity-70">{{ levelMap[src.level] ?? src.level }}</span>
                 <span class="font-medium ml-0.5">{{ src.title }}</span>
@@ -94,7 +94,7 @@
           v-if="loading"
           type="button"
           @click="abortRequest"
-          class="liquid-btn liquid-btn-ghost w-10 h-10 !p-0 !rounded-[var(--radius-md)]"
+          class="ui-btn ui-btn-ghost w-10 h-10 !p-0 !rounded-[var(--radius-md)]"
           aria-label="停止生成"
         >
           <StopCircle :size="16" class="text-[var(--color-danger)]" />
@@ -103,7 +103,7 @@
           v-else
           type="submit"
           :disabled="!inputText.trim()"
-          class="liquid-btn liquid-btn-primary w-10 h-10 !p-0 !rounded-[var(--radius-md)]"
+          class="ui-btn ui-btn-primary w-10 h-10 !p-0 !rounded-[var(--radius-md)]"
         >
           <Send :size="16" :stroke-width="2" />
         </button>

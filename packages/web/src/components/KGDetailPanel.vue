@@ -10,7 +10,7 @@
       <div class="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
         <h3 class="text-[var(--text-section-title)] text-[var(--color-ink)] font-medium">节点详情</h3>
         <button
-          class="liquid-btn-ghost p-1.5 rounded-md hover:bg-[var(--color-bg-hover)]"
+          class="ui-btn-ghost p-1.5 rounded-md hover:bg-[var(--color-bg-hover)]"
           @click="$emit('close')"
         >
           <X :size="16" class="text-[var(--color-ink-tertiary)]" />
@@ -28,8 +28,8 @@
 
         <!-- Domain & Level -->
         <div class="flex gap-2 flex-wrap">
-          <span class="liquid-tag-blue text-[var(--text-micro)]">{{ domainMap[node.domain] ?? node.domain }}</span>
-          <span class="liquid-tag-purple text-[var(--text-micro)]">{{ levelMap[node.level] ?? node.level }}</span>
+          <span class="ui-tag-blue text-[var(--text-micro)]">{{ domainMap[node.domain] ?? node.domain }}</span>
+          <span class="ui-tag-purple text-[var(--text-micro)]">{{ levelMap[node.level] ?? node.level }}</span>
         </div>
 
         <!-- Description -->
@@ -42,7 +42,7 @@
         <div v-if="node.tags?.length">
           <p class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-1.5">标签</p>
           <div class="flex gap-1.5 flex-wrap">
-            <span v-for="tag in node.tags" :key="tag" class="liquid-tag-purple text-[var(--text-micro)]">{{ tag }}</span>
+            <span v-for="tag in node.tags" :key="tag" class="ui-tag-purple text-[var(--text-micro)]">{{ tag }}</span>
           </div>
         </div>
 

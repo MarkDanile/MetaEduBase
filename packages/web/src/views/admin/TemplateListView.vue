@@ -2,7 +2,7 @@
   <div class="p-6">
     <PageHeader title="数据要素模板" subtitle="配置各类文档的结构化抽取模板">
       <template #extra>
-        <button class="liquid-btn liquid-btn-primary" @click="openCreateModal">
+        <button class="ui-btn ui-btn-primary" @click="openCreateModal">
           <Plus :size="16" /> 新建模板
         </button>
       </template>
@@ -41,7 +41,7 @@
           </div>
           <div class="col-types">
             <div class="flex flex-wrap gap-1">
-              <span v-for="dt in t.doc_types" :key="dt" class="liquid-tag-blue text-[var(--text-micro)]">
+              <span v-for="dt in t.doc_types" :key="dt" class="ui-tag-blue text-[var(--text-micro)]">
                 {{ dt }}
               </span>
               <span v-if="t.doc_types.length === 0" class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">

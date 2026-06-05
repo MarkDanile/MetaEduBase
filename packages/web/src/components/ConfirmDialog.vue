@@ -2,7 +2,7 @@
   <Teleport to="body">
     <div
       v-if="open"
-      class="liquid-dialog-overlay"
+      class="ui-dialog-overlay"
       role="alertdialog"
       aria-modal="true"
       :aria-labelledby="titleId"
@@ -10,21 +10,21 @@
       @click.self="cancel"
       @keydown.escape="cancel"
     >
-      <div class="liquid-dialog" style="max-width:400px">
+      <div class="ui-dialog" style="max-width:400px">
         <h3 :id="titleId" class="text-[var(--text-subtitle)] font-semibold mb-2">{{ title }}</h3>
         <p :id="descId" class="text-[var(--text-body)] text-[var(--color-ink-secondary)] mb-[var(--spacing-section)]">{{ message }}</p>
         <div class="flex gap-2 justify-end">
           <button
             ref="cancelBtn"
-            class="liquid-btn liquid-btn-ghost"
+            class="ui-btn ui-btn-ghost"
             :disabled="submitting"
             @click="cancel"
           >
             {{ cancelText }}
           </button>
           <button
-            class="liquid-btn"
-            :class="danger ? 'liquid-btn-danger' : 'liquid-btn-primary'"
+            class="ui-btn"
+            :class="danger ? 'ui-btn-danger' : 'ui-btn-primary'"
             :disabled="submitting"
             @click="confirm"
           >

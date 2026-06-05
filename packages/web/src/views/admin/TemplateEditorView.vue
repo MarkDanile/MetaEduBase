@@ -2,7 +2,7 @@
   <div class="ui-page-shell">
     <PageHeader :title="isNew ? '新建模板' : '编辑模板'" subtitle="配置结构化数据抽取字段">
       <template #extra>
-        <button class="liquid-btn liquid-btn-primary" @click="save" :disabled="saving">
+        <button class="ui-btn ui-btn-primary" @click="save" :disabled="saving">
           保存
         </button>
       </template>
@@ -18,13 +18,13 @@
         <div class="ui-panel p-4 space-y-4">
           <div>
             <label class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-1 block">模板名称</label>
-            <input v-model="form.name" class="liquid-input w-full" placeholder="如：教案模板" />
+            <input v-model="form.name" class="ui-input w-full" placeholder="如：教案模板" />
           </div>
           <div>
             <label class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-1 block">关联文档类型</label>
-            <input v-model="docTypeInput" class="liquid-input w-full" placeholder="输入后回车添加，多个用逗号分隔" @keydown.enter.prevent="addDocType" />
+            <input v-model="docTypeInput" class="ui-input w-full" placeholder="输入后回车添加，多个用逗号分隔" @keydown.enter.prevent="addDocType" />
             <div class="flex flex-wrap gap-1 mt-2">
-              <span v-for="dt in form.doc_types" :key="dt" class="liquid-tag-blue flex items-center gap-1">
+              <span v-for="dt in form.doc_types" :key="dt" class="ui-tag-blue flex items-center gap-1">
                 {{ dt }}
                 <button @click="form.doc_types.splice(form.doc_types.indexOf(dt), 1)"><X :size="10" /></button>
               </span>
@@ -35,7 +35,7 @@
         <div class="ui-panel p-4">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-[var(--text-body)] font-medium text-[var(--color-ink)]">字段定义</h3>
-            <button class="liquid-btn-ghost text-[var(--text-small)]" @click="addField">
+            <button class="ui-btn-ghost text-[var(--text-small)]" @click="addField">
               <Plus :size="14" /> 添加字段
             </button>
           </div>
@@ -67,7 +67,7 @@
           </label>
           <textarea
             v-model="form.ai_context"
-            class="liquid-input w-full resize-none"
+            class="ui-input w-full resize-none"
             rows="3"
             placeholder="补充说明（可选）——如：课程标准模板需包含前置能力与知识基础"
           />
