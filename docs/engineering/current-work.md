@@ -14,7 +14,9 @@
 
 ## 当前进行中
 
-当前无进行中任务。
+| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
+|------|------|--------|------|----------|--------|------|
+| 暂无 | ⚫ 待办 | - | - | 当前没有已开工任务。 | 从“下一批候选任务”或用户指定任务开工。 | - |
 
 ## 下一批候选任务
 
@@ -32,8 +34,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-05 | DOC-014 刷新 README / ARCHITECTURE 项目入口文档 | 🟢 完成 | 同步入口文档中的上下文/API、测试数量、迁移/seed、RAG、LLM provider 和 `ui-*` 事实。 | `README.md` / `ARCHITECTURE.md` |
 | 2026-06-05 | DOC-013 工程文档门禁增强与 UI 迁移事实源收口 | 🟢 完成 | `scripts/check-engineering-docs` 增加技术债状态一致性、完成交付记录和工作台摘要长度检查；同步收口 TD-027 与 UI 迁移文档。 | `scripts/engineering/check_engineering_docs.py` |
 | 2026-06-05 | TD-028 业务视图与共享组件的 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 存量替换 | 🟢 完成 | 12 文件 119 处原子控件类迁到 `ui-*`，保留 `main.css` 中 `liquid-*` 兼容别名；详情见设计系统段落归档。 | [PR #61](https://github.com/MarkDanile/MetaEduBase/pull/61) |
 | 2026-06-05 | TD-027 补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类（设计系统扩展） | 🟢 完成 | `main.css` 新增 12 个 token 化 `ui-*` 原子控件类，并补 `--overlay-bg` / `--btn-ripple` 主题 token。 | [PR #59](https://github.com/MarkDanile/MetaEduBase/pull/59) |
 | 2026-06-05 | TD-026 共享组件 `liquid-card` 残留验证 | 🟢 完成 | 4 个共享组件严格 `rg "liquid-card"` 均为 0；原残留量为任务卡快照误计，后续拆为 TD-027 / TD-028。 | `docs/engineering/technical-debt.md#td-026` |
-| 2026-06-05 | TD-025 业务页面 `liquid-card` 容器统一迁移到 `ui-panel`（业务视图部分完成） | 🟢 完成 | 3 个切片完成 7 个业务页面 20 处 `liquid-card` → `ui-panel`；例外和视觉变化见技术债卡片与 PR。 | `docs/engineering/technical-debt.md#td-025` |

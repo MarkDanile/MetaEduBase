@@ -1,6 +1,6 @@
 # MetaEduBase 架构 Wiki
 
-> 本文档供 AI 辅助开发时快速定位代码，避免全盘扫描。最后更新: 2026-05-12
+> 本文档供 AI 辅助开发时快速定位代码，避免全盘扫描。最后更新: 2026-06-05
 
 ---
 
@@ -17,10 +17,12 @@ MetaEduBase（元知职教基座）是 AI-Native 职业教育知识平台，采�
 | 对象存储 | MinIO（开发环境本地存储 fallback） |
 | 认证 | JWT (python-jose + bcrypt) |
 | LLM | MiniMax M2 / DeepSeek / Qwen (OpenAI 兼容接口) |
-| Embedding | BAAI/bge-m3 via Qwen DashScope API, 1536 维 |
+| Embedding | BAAI/bge-m3 via Qwen DashScope API + SiliconFlow Qwen3-Embedding-8B / MiniMax emboir 扩展路径，1536 维 |
 | MCP Server | mcp Python SDK (stdio transport) |
-| 测试 | pytest + pytest-asyncio + httpx (NullPool 隔离) |
-| Python | 3.14 |
+| 测试 | pytest + pytest-asyncio + httpx (NullPool 隔离)，当前可收集 152 tests |
+| 前端 | Vue 3.5 + Vite 6 + Tailwind CSS 4 + Pinia 3 + Vue Query |
+| UI | `ui-*` 语义化 workspace 层，`liquid-*` 保留为兼容别名和少量品牌/装饰例外 |
+| Python | 3.12+（当前本地 .venv 为 3.14） |
 
 ---
 
@@ -28,16 +30,21 @@ MetaEduBase（元知职教基座）是 AI-Native 职业教育知识平台，采�
 
 ```
 MetaEduBase/
+├── AGENTS.md                        # 跨 AI IDE 共享入口规则
 ├── deploy/                          # 部署配置
 │   ├── docker-compose.dev.yml       # PostgreSQL(pgvector) + Redis + MinIO
 │   ├── init-db.sql                  # CREATE EXTENSION vector/ltree/uuid-ossp
 │   └── .env.example
+├── docs/                            # 工程规范 / 任务事实源 / 计划
+│   ├── engineering/                 # current-work / technical-debt / rules / work-log
+│   ├── specs/                       # 插件无关需求事实源
+│   └── plans/                       # 插件无关实施计划事实源
 ├── packages/
 │   ├── server-python/               # ★ 核心后端
 │   │   ├── app/
-│   │   │   ├── main.py              # FastAPI 入口, 路由注册, lifespan
+│   │   │   ├── main.py              # FastAPI 入口, 路由注册
 │   │   │   ├── config.py            # Settings (pydantic-settings, .env)
-│   │   │   ├── celery_app.py        # Celery 配置 (autodiscover document tasks)
+│   │   │   ├── celery_app.py        # Celery 配置 (显式注册文档/数据集任务)
 │   │   │   ├── contexts/            # ★ 业务上下文 (DDD bounded context)
 │   │   │   │   ├── identity/        # 认证上下文
 │   │   │   │   │   ├── application/auth_service.py   # 密码哈希/JWT 生成解码
@@ -59,38 +66,45 @@ MetaEduBase/
 │   │   │   │   ├── document/       # 文档上下文 (文件上传/解析/分块/向量化)
 │   │   │   │   │   ├── application/
 │   │   │   │   │   │   ├── dto.py                    # FileDTO, FolderDTO, ChunkDTO, TaskDTO
-│   │   │   │   │   │   ├── file_repository.py       # 文件 CRUD (LEFT JOIN users)
-│   │   │   │   │   │   └── tasks.py                  # parse_document, chunk_document, embed_chunks, index_tsvector (Celery)
+│   │   │   │   │   │   ├── cleanup.py                # 文件派生数据级联清理
+│   │   │   │   │   │   └── tasks.py                  # parse/chunk/embed/index/extract_template/extract_kg
 │   │   │   │   │   ├── infrastructure/models.py     # FileModel, FolderModel, ChunkModel
 │   │   │   │   │   └── interfaces/api/router.py      # 文件夹 CRUD / 文件上传/列表/下载/删除
 │   │   │   │   ├── structured_data/  # 结构化数据上下文 (Excel 数据集 / KG 抽取)
 │   │   │   │   │   ├── application/
 │   │   │   │   │   │   ├── dto.py                    # DatasetDTO, DatasetRowDTO
-│   │   │   │   │   │   ├── dataset_repository.py     # 数据集 CRUD
-│   │   │   │   │   │   └── tasks.py                  # ds_parse, ds_embed, ds_extract_kg, ds_build_cross_dataset_edges (Celery)
+│   │   │   │   │   │   ├── cleanup.py                # 数据集派生数据级联清理
+│   │   │   │   │   │   └── tasks.py                  # ds_parse/embed/extract_kg/build_edges
 │   │   │   │   │   ├── infrastructure/models.py      # DatasetModel, DatasetRowModel
 │   │   │   │   │   └── interfaces/api/
 │   │   │   │   │       ├── router.py                 # 数据集 CRUD / 行查询 / 重初始化
 │   │   │   │   │       └── task_router.py            # 任务状态 / 重试 / KG 总览 / 重建
+│   │   │   │   ├── template/        # 数据要素模板上下文
+│   │   │   │   │   ├── application/service.py        # 模板 CRUD + AI 初始化
+│   │   │   │   │   ├── infrastructure/models.py      # TemplateModel
+│   │   │   │   │   └── interfaces/api/router.py      # /api/v1/templates
+│   │   │   │   └── resource/        # 旧资源管理上下文（保留）
 │   │   │   └── shared/              # 共享基础设施
 │   │   │       ├── domain/          # DDD 基类 (Entity/AggregateRoot/Repository/ValueObject/DomainEvent)
 │   │   │       └── infrastructure/
-│   │   │           ├── database.py  # engine, get_session, init_db
+│   │   │           ├── database.py  # engine, get_session, run_migrations
+│   │   │           ├── dev_setup.py # 显式开发库迁移 + 默认 seed
 │   │   │           ├── models.py    # 统一导入所有 ORM Model (确保 metadata 注册)
-│   │   │           ├── seed.py      # 默认租户 + admin 种子数据
+│   │   │           ├── seed.py      # 默认租户 + admin 种子数据（需显式 opt-in）
 │   │   │           └── tenant_context.py # ContextVar 多租户上下文
 │   │   ├── tests/                   # ★ 测试套件
 │   │   │   ├── conftest.py          # 测试基础设施 (NullPool + 独立 test DB)
 │   │   │   ├── contexts/
-│   │   │   │   ├── identity/        # auth API + auth_service 单元测试
-│   │   │   │   ├── knowledge/       # knowledge API + embedding_service mock 测试
-│   │   │   │   ├── ai/              # AI chat + _clean_llm_output 测试
-│   │   │   │   └── resource/        # 资源 CRUD 测试
-│   │   │   └── shared/              # health check 测试
+│   │   │   │   ├── identity/ knowledge/ ai/
+│   │   │   │   ├── document/ structured_data/ template/
+│   │   │   │   └── resource/
+│   │   │   └── shared/              # LLM、解析、任务生命周期、测试库初始化等测试
 │   │   ├── .env                     # 环境变量 (不入库)
 │   │   └── pyproject.toml           # 依赖 + pytest/ruff 配置
+│   ├── web/                         # Vue 3 前端，ui-* workspace 设计系统
 │   └── mcp-server/                  # MCP Server (独立进程)
 │       └── mcp_server/main.py       # 6 个 Tool: search/tree/get/create/list_resources/generate_quiz
+├── scripts/                         # 工程门禁脚本
 └── .vscode/settings.json            # Python 解释器路径
 ```
 
@@ -124,7 +138,17 @@ MetaEduBase/
 |---|---|---|---|---|
 | POST | `/chat` | Bearer | RAG 问答 (embedding检索→上下文注入→LLM生成) | [ai_router.py](packages/server-python/app/contexts/knowledge/interfaces/api/ai_router.py) |
 
-### 3.4 Document 上下文 — `/api/v1/documents`
+### 3.4 Resource 上下文（旧资源管理）— `/api/v1/resources`
+
+| 方法 | 路径 | 认证 | 功能 | 关键文件 |
+|---|---|---|---|---|
+| GET | `/` | Bearer | 列出资源（支持类型/领域过滤） | [router.py](packages/server-python/app/contexts/resource/interfaces/api/router.py) |
+| POST | `/upload` | Bearer | 上传资源 | 同上 |
+| GET | `/{resource_id}` | Bearer | 获取资源详情 | 同上 |
+| GET | `/{resource_id}/download` | Bearer | 下载资源 | 同上 |
+| DELETE | `/{resource_id}` | Bearer | 软删除资源 | 同上 |
+
+### 3.5 Document 上下文 — `/api/v1/document`
 
 | 方法 | 路径 | 认证 | 功能 | 关键文件 |
 |---|---|---|---|---|
@@ -132,6 +156,7 @@ MetaEduBase/
 | POST | `/folders` | Bearer | 创建文件夹 | 同上 |
 | PATCH | `/folders/{id}` | Bearer | 重命名/移动文件夹 | 同上 |
 | DELETE | `/folders/{id}` | Bearer | 删除文件夹 (级联删除) | 同上 |
+| PATCH | `/folders/{id}/move` | Bearer | 移动文件夹 | 同上 |
 | GET | `/files` | Bearer | 列出文件 (支持 folder_id/status 过滤) | 同上 |
 | POST | `/files/upload` | Bearer | 上传文件 | 同上 |
 | GET | `/files/{id}` | Bearer | 获取文件详情 | 同上 |
@@ -139,8 +164,10 @@ MetaEduBase/
 | DELETE | `/files/{id}` | Bearer | 删除文件 (级联删除 chunks/知识节点/任务) | 同上 |
 | POST | `/files/{id}/reinitialize` | Bearer | 重新初始化 (删除 chunks 后重新解析) | 同上 |
 | GET | `/files/{id}/chunks` | Bearer | 获取文件分块列表 | 同上 |
+| GET | `/files/{id}/tasks` | Bearer | 获取文件处理任务 | [task_router.py](packages/server-python/app/contexts/document/interfaces/api/task_router.py) |
+| POST | `/files/{id}/retry` | Bearer | 重试失败文件任务 | 同上 |
 
-### 3.5 Structured Data 上下文 — `/api/v1/structured-data`
+### 3.6 Structured Data 上下文 — `/api/v1/structured-data`
 
 | 方法 | 路径 | 认证 | 功能 | 关键文件 |
 |---|---|---|---|---|
@@ -155,8 +182,21 @@ MetaEduBase/
 | POST | `/datasets/{id}/reinitialize` | Bearer | 重新初始化数据集 | 同上 |
 | GET | `/knowledge-graph` | Bearer | 获取全库 KG (节点+边，含跨数据集) | 同上 |
 | POST | `/knowledge-graph/rebuild` | Bearer | 重建整个知识图谱 | 同上 |
+| GET | `/knowledge-graph/status` | Bearer | 获取各数据集 KG 状态 | 同上 |
 
-### 3.6 Health — `/api/v1/health`
+### 3.7 Template 上下文 — `/api/v1/templates`
+
+| 方法 | 路径 | 认证 | 功能 | 关键文件 |
+|---|---|---|---|---|
+| GET | `` | Bearer | 列出模板 | [router.py](packages/server-python/app/contexts/template/interfaces/api/router.py) |
+| POST | `` | Bearer | 创建模板 | 同上 |
+| GET | `/check-doc-type` | Bearer | 检查文档类型是否已有模板 | 同上 |
+| POST | `/init-by-ai` | Bearer | AI 初始化模板字段 | 同上 |
+| GET | `/{template_id}` | Bearer | 获取模板详情 | 同上 |
+| PUT | `/{template_id}` | Bearer | 更新模板 | 同上 |
+| DELETE | `/{template_id}` | Bearer | 删除模板 | 同上 |
+
+### 3.8 Health — `/api/v1/health`
 
 | 方法 | 路径 | 认证 | 功能 |
 |---|---|---|---|
@@ -180,6 +220,8 @@ tenants (1) ──< document_tasks (N)              [文档处理任务]
 files (1) ──< document_tasks (N)
 tenants (1) ──< datasets (N)                    [结构化数据]
 datasets (1) ──< dataset_rows (N)
+tenants (1) ──< templates (N)                   [数据要素模板]
+tenants (1) ──< resources (N)                   [旧资源管理]
 tenants (1) ──< knowledge_nodes (N)
 knowledge_nodes (1) ──< knowledge_edges (N)     [source_id / target_id]
 knowledge_nodes (1) ──< knowledge_nodes (N)     [parent_id 自引用]
@@ -288,13 +330,15 @@ files (1) ──< knowledge_nodes (N)               [source_file_id]
 | 列名 | 类型 | 说明 |
 |---|---|---|
 | id | UUID PK | |
-| file_id | UUID FK→files | 或 dataset_id (dataset rows) |
+| tenant_id | UUID FK→tenants | |
+| file_id | UUID FK→files | |
 | chunk_index | INTEGER | |
 | content | TEXT | |
-| section_title | VARCHAR(300) | nullable |
-| section_path | VARCHAR(500) | nullable |
+| section_title | VARCHAR(200) | nullable |
+| section_path | VARCHAR(100) | nullable |
+| embedding | TEXT | nullable, 向量序列化存储 |
+| content_tsvector | TEXT | nullable, 全文索引内容 |
 | char_start / char_end | INTEGER | nullable |
-| has_embedding | BOOLEAN | |
 | created_at | TIMESTAMP | |
 
 索引: `(file_id)`, `(file_id, chunk_index)`
@@ -311,9 +355,8 @@ files (1) ──< knowledge_nodes (N)               [source_file_id]
 | status | VARCHAR(20) | pending/running/success/failed |
 | progress | INTEGER | 0-100 |
 | error_message | TEXT | nullable |
-| label | VARCHAR(100) | UI 显示标签 |
 | started_at / completed_at | TIMESTAMP | nullable |
-| created_at | TIMESTAMP | |
+| created_at / updated_at | TIMESTAMP | `updated_at` 由迁移补齐 |
 
 #### `metaedu.datasets`
 
@@ -328,7 +371,7 @@ files (1) ──< knowledge_nodes (N)               [source_file_id]
 | row_count | INTEGER | |
 | source_file | VARCHAR(500) | nullable, 原始上传文件路径 |
 | tags | JSONB | nullable |
-| status | VARCHAR(20) | pending/processing/processed/failed |
+| status | VARCHAR(20) | uploaded/processing/processed/failed |
 | kg_status | VARCHAR(20) | pending/building/done, KG 抽取状态 |
 | sort_order | INTEGER | |
 | created_by | UUID FK→users | |
@@ -341,12 +384,42 @@ files (1) ──< knowledge_nodes (N)               [source_file_id]
 | 列名 | 类型 | 说明 |
 |---|---|---|
 | id | UUID PK | |
+| tenant_id | UUID FK→tenants | |
 | dataset_id | UUID FK→datasets | |
 | row_index | INTEGER | |
 | data | JSONB | 行数据 (列名→值) |
 | created_at | TIMESTAMP | |
 
 索引: `(dataset_id)`, `(dataset_id, row_index)`
+
+#### `metaedu.templates`
+
+| 列名 | 类型 | 说明 |
+|---|---|---|
+| id | UUID PK | |
+| tenant_id | UUID FK→tenants | |
+| name | VARCHAR(100) | 模板名 |
+| doc_types | ARRAY(VARCHAR) | 适用文档类型 |
+| fields | JSONB | 字段定义 |
+| ai_prompt / ai_context | TEXT | nullable, AI 初始化上下文 |
+| source_file_id | UUID | nullable |
+| created_at / updated_at | TIMESTAMP | |
+
+#### `metaedu.resources`（旧资源管理）
+
+| 列名 | 类型 | 说明 |
+|---|---|---|
+| id | UUID PK | |
+| tenant_id | UUID FK→tenants | |
+| title / description | VARCHAR / TEXT | 资源标题与说明 |
+| resource_type / status | VARCHAR | document/video/image/audio/other；raw/uploaded/processed |
+| domain / course_id | VARCHAR / UUID | nullable |
+| knowledge_point_ids | UUID[] | nullable |
+| storage_key / file_type / file_size | VARCHAR / INTEGER | 文件定位与元信息 |
+| metadata | JSONB | 扩展元数据 |
+| uploaded_by | UUID FK→users | |
+| is_deleted | BOOLEAN | 软删除标记 |
+| created_at / updated_at | TIMESTAMP | |
 
 ### 4.3 枚举值
 
@@ -398,21 +471,29 @@ OPERATION_STEP = "operation_step"           # 操作步骤
 ```
 /chat 请求
   ↓
-get_embedding_vec(message)  ← embedding_service.py (DashScope API, 1536维)
-  ↓ 成功?
-├─ YES → SQL 语义检索: ORDER BY embedding <=> :vec::vector LIMIT 5
-│         → 获取 contexts (id, title, desc, domain, level, score)
-└─ NO  → 中文关键词拆分 (4-gram 滚动窗口, 最多8关键词)
-         → ILIKE OR 模糊匹配 title/description
+RuleBasedNER.extract(message) → 识别 domain / level / raw_entities
   ↓
-拼接 system_prompt + context_text + 用户问题
+3 通道召回 (recall_service.py)
+├─ PgVectorRecallChannel    → pgvector 相似度
+├─ PgKeywordRecallChannel   → 关键词 ILIKE
+└─ PgMetadataRecallChannel  → domain / level 结构化过滤
   ↓
-_call_llm() → 优先级: minimax → deepseek → qwen (OpenAI 兼容接口)
+FrequencyFusion.fuse() → 按出现频次 + 最佳分数融合
+  ↓
+拼接 system_prompt + channel 标注 context + 用户问题
+  ↓
+resolve_chat_provider() → 默认 provider 优先，候选: minimax / deepseek / qwen
   ↓
 _clean_llm_output() → 移除 考量...生成 / 思路...回复 / <think>...</think> 标签
   ↓
-返回 ChatResponse(reply=..., sources=[...])
+返回 ChatResponse(reply=..., sources=[channel/node_id/title/score...])
 ```
+
+关键文件:
+- [ner_service.py](packages/server-python/app/contexts/knowledge/application/ner_service.py)
+- [recall_service.py](packages/server-python/app/contexts/knowledge/application/recall_service.py)
+- [fusion_service.py](packages/server-python/app/contexts/knowledge/application/fusion_service.py)
+- [provider_resolver.py](packages/server-python/app/shared/llm/provider_resolver.py)
 
 ### 5.3 知识节点创建流程
 
@@ -434,18 +515,20 @@ INSERT INTO knowledge_nodes (含/不含 embedding 字段)
 ## 6. 上下文依赖关系
 
 ```
-identity ←── knowledge ←── resource
-   │            │
-   │            └── ai (依赖 knowledge 的 embedding_service)
-   │
-   └── 所有认证端点通过 get_current_user 依赖注入
+identity
+   ├── knowledge / ai (知识节点、RAG、shared.llm provider resolver)
+   ├── document (文件、分块、任务、模板/KG 抽取任务)
+   ├── structured_data (数据集、行、数据集 KG)
+   ├── template (数据要素模板)
+   └── resource (旧资源管理)
 ```
 
 跨上下文依赖规则:
 - **knowledge → identity**: 使用 `get_current_user` 依赖 (interfaces 层引用)
 - **ai → identity**: 同上
-- **ai → knowledge.application**: 使用 `get_embedding_vec` (embedding_service)
-- **resource → identity**: 同上
+- **ai → knowledge.application**: 使用 NER / Recall / Fusion / Embedding 服务
+- **ai → shared.llm**: 使用 provider resolver，不在 Router 中维护 provider 分支
+- **document / structured_data / template / resource → identity**: 使用认证依赖和租户上下文
 - **shared → 无依赖**: 纯基础设施层，被所有上下文依赖
 
 ---
@@ -458,9 +541,10 @@ identity ←── knowledge ←── resource
 |---|---|
 | 测试数据库 | `metaedu_test` (独立库) |
 | 连接策略 | **NullPool** — 每次请求新建连接, 避免 asyncpg 事件循环绑定问题 |
-| 数据初始化 | 每个 `client` fixture 内: CREATE SCHEMA + create_all + ensure_seed |
+| 数据初始化 | 每个环境先运行 `./dev.sh init-test-db` 或 `make init-test-db`；fixture 仅确保 schema、seed 和模板表隔离 |
 | 种子数据 | 与生产相同: 默认租户 + admin/admin123 |
 | 认证测试 | `auth_token` fixture 先 login 获取 token |
+| 外部依赖 | Celery dispatch、LLM、Embedding 等在测试中 mock，避免真实网络或 broker 依赖 |
 
 ### 7.2 测试文件→端点映射
 
@@ -468,27 +552,25 @@ identity ←── knowledge ←── resource
 tests/
 ├── conftest.py                  # client, auth_token, auth_headers fixtures
 ├── contexts/
-│   ├── identity/
-│   │   ├── test_auth.py         # 9 tests: login/register/me (API)
-│   │   └── test_auth_service.py # 5 tests: hash/verify/JWT (unit)
-│   ├── knowledge/
-│   │   ├── test_knowledge.py    # 15 tests: CRUD/search/tree (API)
-│   │   └── test_embedding_service.py # 3 tests: mock (unit)
-│   ├── ai/
-│   │   └── test_ai_chat.py      # 5 tests: auth/clean/mock_llm
-│   └── resource/
-│       └── test_resource.py     # 10 tests: upload/list/get/download/delete
+│   ├── identity/                # auth API + auth_service
+│   ├── knowledge/               # knowledge CRUD/search/tree + RAG/NER/recall/fusion
+│   ├── document/                # folders/files/chunks/tasks/reinitialize/cleanup
+│   ├── structured_data/         # datasets/rows/KG/tasks/reinitialize/cleanup
+│   ├── template/                # template CRUD + AI 初始化
+│   └── resource/                # legacy resource API
 └── shared/
-    └── test_health.py           # 1 test
+    ├── llm/                     # provider factory/resolver/protocol
+    ├── parsers/                 # 文档/表格解析
+    └── infrastructure/          # health、dev/test DB 初始化
 ```
 
-**共计: 49 tests**
+**当前可收集: 152 tests**（已用 `packages/server-python/.venv/bin/python -m pytest --collect-only -q` 验证）
 
 ### 7.3 测试注意事项
 
-- 注册测试使用 `uuid4().hex[:8]` 生成唯一用户名，避免测试间冲突
-- 搜索测试用短查询词（如"汽车"而非"汽车维修"），因为 ILIKE `%汽车维修%` 无法匹配"汽车检测与维修技术"
-- AI chat 测试用 mock 替换 `httpx.AsyncClient` 和 `get_embedding_vec`
+- 首次运行测试前初始化 `metaedu_test`，不要依赖测试 fixture 自动建完整库表
+- 注册、上传、模板等测试使用唯一值，避免测试间冲突
+- 搜索和 RAG 测试优先 mock 外部 LLM / Embedding，仅验证本地编排逻辑
 - 未认证断言使用 `status_code in (401, 403)` 兼容 HTTPBearer 行为
 
 ---
@@ -497,14 +579,19 @@ tests/
 
 | 配置项 | 环境变量 | 默认值 | 说明 |
 |---|---|---|---|
-| `database_url` | DATABASE_URL | `postgresql+asyncpg://metaedu@localhost:5432/metaedu` | 异步连接串 |
+| `database_url` | DATABASE_URL | `postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu` | 异步连接串 |
+| `database_url_sync` | DATABASE_URL_SYNC | `postgresql://metaedu:dev_only_123@localhost:5432/metaedu` | Alembic 同步连接串 |
+| `allow_default_seed` | ALLOW_DEFAULT_SEED | `false` | 是否允许默认开发 seed，需显式 opt-in |
 | `jwt_secret` | JWT_SECRET | `dev-only-change-in-production` | JWT 签名密钥 |
 | `jwt_expire_minutes` | JWT_EXPIRE_MINUTES | `1440` (24h) | Token 过期时间 |
-| `llm_default_provider` | LLM_DEFAULT_PROVIDER | `minimax` | LLM 提供商 |
+| `llm_default_provider` | LLM_DEFAULT_PROVIDER | `minimax` | Chat provider 默认候选 |
 | `minimax_api_key` | MINIMAX_API_KEY | (空) | MiniMax Token Plan Key |
 | `minimax_model` | - | `MiniMax-M2` | MiniMax 模型 |
-| `qwen_api_key` | QWEN_API_KEY / DASHSCOPE_API_KEY | (空) | 用于 Embedding |
+| `deepseek_api_key` | DEEPSEEK_API_KEY | (空) | DeepSeek Chat |
+| `qwen_api_key` | QWEN_API_KEY / DASHSCOPE_API_KEY | (空) | Qwen Chat / DashScope 兼容接口 |
 | `embedding_model` | - | `BAAI/bge-m3` | Embedding 模型 |
+| `siliconflow_embedding_model` | - | `Qwen/Qwen3-Embedding-8B` | SiliconFlow embedding 扩展路径 |
+| `ner_backend` / `recall_mode` / `fusion_backend` | - | `rule` / `pg_parallel` / `frequency` | RAG 编排策略 |
 | `minio_endpoint` | - | `localhost:9000` | MinIO 地址 |
 
 ---
@@ -513,7 +600,7 @@ tests/
 
 ### "我要加一个新的 API 端点"
 
-1. 确定属于哪个上下文 (identity/knowledge/resource 或新建)
+1. 确定属于哪个上下文 (identity/knowledge/document/structured_data/template/resource 或新建)
 2. 在 `interfaces/api/router.py` 中添加路由
 3. 如需新 DB 表: 在 `infrastructure/models.py` 添加 Model + 在 `shared/infrastructure/models.py` 注册 import
 4. 如需认证: 参数加 `current_user: dict = Depends(get_current_user)`
@@ -525,19 +612,23 @@ tests/
 
 1. 修改 `contexts/{name}/infrastructure/models.py` 中的 Model
 2. 确保 `shared/infrastructure/models.py` 有 import
-3. 运行 `python -c "from app.shared.infrastructure.database import init_db; import asyncio; asyncio.run(init_db())"` 或重启服务
-4. **注意**: 当前无 Alembic 迁移，开发环境靠 `Base.metadata.create_all`
+3. 新增 Alembic migration: `cd packages/server-python && make migrate-create msg="..."`
+4. 运行 `make migrate`、`./dev.sh init-db` 或 `./dev.sh init-test-db`
+5. 更新受影响 API / repository / tests，避免只改 ORM 不改迁移
 
 ### "我要加新的 LLM 提供商"
 
 1. 在 `config.py` 添加 `{provider}_api_key`, `{provider}_base_url`, `{provider}_model`
-2. 在 `ai_router.py` 的 `_call_llm()` 函数中添加 provider 分支
-3. 在 `.env` 中添加对应的 API Key
+2. 在 `app/shared/llm/providers/` 添加 provider 实现，并接入 `factory.py`
+3. 若要让 `/api/v1/ai/chat` 直接可见该 provider，同时更新 `provider_resolver._COMPLETENESS_FIELDS`
+4. 在 `.env` 中添加对应的 API Key；不要在 `ai_router.py` 新增 provider 分支
 
 ### "我要改 RAG 检索逻辑"
 
-- 语义检索: `ai_router.py` 的 `ai_chat()` 中的 SQL 查询
-- 关键词 fallback: 同文件中 `else` 分支的 ILIKE 查询
+- 实体识别: `knowledge/application/ner_service.py`
+- 召回通道: `knowledge/application/recall_service.py`
+- 结果融合: `knowledge/application/fusion_service.py`
+- Chat 编排 / prompt / sources: `knowledge/interfaces/api/ai_router.py`
 - Embedding 生成: `embedding_service.py` (get_embedding 函数)
 - 搜索模式控制: `KnowledgeSearchDTO.search_mode` (semantic/keyword/hybrid)
 
@@ -583,15 +674,20 @@ app/contexts/{new_context}/
 
 ## 11. 已知技术债务
 
-| 项目 | 说明 | 状态 |
-|---|---|---|
-| ~~无 Alembic 迁移~~ | ~~Schema 变更靠 `create_all`，生产需引入迁移~~ | ✅ 已修复：引入 Alembic，`init_db()` 优先 `alembic upgrade head`，兼容回退 `create_all` |
-| ~~直接 SQL 文本~~ | ~~Router 中大量 `text()` 原生 SQL，未使用 Repository 实现~~ | ✅ 已修复：引入 Repository 层（`UserRepository` / `KnowledgeNodeRepository` / `ResourceRepository`），Router 零 `text()` 调用 |
-| ~~`datetime.utcnow()`~~ | ~~全局使用已弃用 API，应改为 `datetime.now(UTC)`~~ | ✅ 已修复：全量替换为 `datetime.now(UTC)`，含 router/service/model/conftest/seed |
-| ~~`__import__("datetime")`~~ | ~~register 端点中的 hack 写法~~ | ✅ 已修复：改为顶部 `from datetime import UTC, datetime` |
-| ~~软删除未级联~~ | ~~删除 knowledge_node 时未检查/清理关联的 edges 和 resources~~ | ✅ 已修复：删除节点前先清理 edges + 软删除关联 resources |
-| ~~Celery tasks 空目录~~ | ~~`celery_app.py` autodiscover `document.application.tasks` 但目录不存在~~ | ✅ 已修复：改为 `autodiscover_tasks(["app.contexts"])`，按上下文自动发现 |
-| 前端未实现 | Vue3+Vite+Tailwind4 脚手架已搭建，但无实际页面 | ✅ 已修复：Liquid Glass 设计体系，全部页面已实现 |
+当前技术债以 [docs/engineering/technical-debt.md](docs/engineering/technical-debt.md) 为唯一总账，近期接力以 [docs/engineering/current-work.md](docs/engineering/current-work.md) 为准。架构文档只保留长期架构事实，不再维护独立任务板。
+
+已收口的历史重点包括：
+
+| 主题 | 当前状态 |
+|---|---|
+| 数据库迁移 | 已引入 Alembic；开发库通过 `./dev.sh init-db` 显式迁移 + seed，测试库通过 `./dev.sh init-test-db` / `make init-test-db` 初始化 |
+| 默认 seed | 已从应用启动流程拆出，需 `ALLOW_DEFAULT_SEED=true` 或 `dev.sh init-db` 显式触发 |
+| 级联清理 | 文件 / 数据集删除与重新初始化的派生数据清理已集中到 cleanup helper，并有回归测试覆盖 |
+| 后端 lint 门禁 | ruff 质量门禁已可全量运行 |
+| 测试数据库 | `metaedu_test` 初始化流程已文档化，测试 fixture 不再隐式承担完整库表创建 |
+| LLM provider | Chat provider 选择已集中到 `factory.py` + `provider_resolver.py` |
+| 前端请求生命周期 | 关键业务视图逐步迁到 Vue Query |
+| UI 语义层 | `ui-*` workspace 层为新代码默认样式语义；`liquid-*` 仅保留兼容别名和少量品牌/装饰例外 |
 
 ---
 
@@ -772,8 +868,9 @@ class EmbeddingService(Protocol):
 
 **阶段一（当前）**：直连 OpenAI 兼容 API（MiniMax / DeepSeek / Qwen）
 
-- `_call_llm()` 中硬编码 provider 优先级
-- 瓶颈：无 fallback 重试、无 Token 计量、无负载均衡
+- Chat 链路通过 `provider_resolver.resolve_chat_provider()` 选择默认 provider + fallback 候选
+- `factory.py` 维护 provider 实例和更宽的 provider 列表，`provider_resolver.py` 维护 `/chat` 可见的 raw config 子集
+- 瓶颈：仍缺少统一 Token 计量、负载均衡和跨业务链路的一致模型分配策略
 
 **阶段二**：LiteLLM 统一代理
 
@@ -820,28 +917,7 @@ class ObjectStorage(Protocol):
 - 覆盖率预估：60-70%（精确匹配专业名 / 课程名等有限枚举集）
 - 零新组件，纯 Python 代码实现
 
-```python
-# 阶段一实现（规划）
-class RuleBasedNER:
-    """枚举规则实体识别"""
-
-    def __init__(self):
-        self.domain_aliases: dict[str, str] = {
-            "电子信息": "electronics_info", "电子与信息": "electronics_info",
-            "智能制造": "smart_manufacturing", "财经商贸": "finance_commerce",
-            ...
-        }
-        self.level_keywords: dict[str, str] = {
-            "专业": "professional", "课程": "course",
-            "知识点": "knowledge_point", "技能点": "skill_point",
-            ...
-        }
-
-    def extract(self, query: str) -> NERResult:
-        domains = [v for k, v in self.domain_aliases.items() if k in query]
-        levels = [v for k, v in self.level_keywords.items() if k in query]
-        return NERResult(domains=domains, levels=levels, raw_entities=[])
-```
+实现位置：`app/contexts/knowledge/application/ner_service.py`，接口位于 `app/shared/domain/ner_pipeline.py`。
 
 **阶段二**：规则 + LLM 混合 NER
 
@@ -869,20 +945,7 @@ class RuleBasedNER:
 - 阶段一无图召回通道（`knowledge_edges` 1 跳查询可在阶段一后期加入）
 - 超时控制：单条 SQL `statement_timeout`
 
-```python
-# 阶段一实现（规划）
-async def parallel_recall(query: str, ner_result: NERResult) -> list[RecallResult]:
-    vector_coro = vector_recall(query_embedding, top_k=5)
-    keyword_coro = keyword_recall(query, top_k=5)
-    metadata_coro = metadata_recall(ner_result, top_k=5)
-
-    results = await asyncio.gather(
-        vector_coro, keyword_coro, metadata_coro,
-        return_exceptions=True,
-    )
-    # 收集成功通道的结果
-    ...
-```
+实现位置：`app/contexts/knowledge/application/recall_service.py`，通道接口位于 `app/shared/domain/recall_channel.py`。
 
 **阶段二**：应用层 4 通道并行 + 降级
 
@@ -905,19 +968,7 @@ async def parallel_recall(query: str, ner_result: NERResult) -> list[RecallResul
 - 通道内按原始分数排序
 - 零新组件，纯 Python 代码
 
-```python
-# 阶段一实现（规划）
-def simple_fusion(channel_results: list[list[RecallResult]]) -> list[RecallResult]:
-    freq: dict[str, int] = {}
-    by_id: dict[str, RecallResult] = {}
-    for results in channel_results:
-        for r in results:
-            if r.node_id not in by_id:
-                by_id[r.node_id] = r
-            freq[r.node_id] = freq.get(r.node_id, 0) + 1
-    sorted_ids = sorted(freq, key=lambda x: freq[x], reverse=True)
-    return [by_id[nid] for nid in sorted_ids]
-```
+实现位置：`app/contexts/knowledge/application/fusion_service.py`，融合接口位于 `app/shared/domain/result_fusion.py`。
 
 **阶段二**：RRF (Reciprocal Rank Fusion)
 
@@ -933,9 +984,9 @@ def simple_fusion(channel_results: list[list[RecallResult]]) -> list[RecallResul
 
 ### 12.4 接口抽象层预留清单
 
-以下抽象接口应在**阶段一后期（当前阶段末）**定义 Protocol，为阶段二/三切换铺路：
+以下抽象接口一部分已落地，一部分仍作为阶段二/三切换铺路：
 
-| 抽象 | 文件位置（规划） | 阶段一实现 | 阶段三实现 |
+| 抽象 | 文件位置 | 阶段一实现 | 阶段三实现 |
 |---|---|---|---|
 | `VectorStore` | `app/shared/domain/vector_store.py` | `PgVectorStore` | `MilvusVectorStore` |
 | `GraphStore` | `app/shared/domain/graph_store.py` | `LtreeGraphStore` | `Neo4jGraphStore` |
@@ -943,14 +994,14 @@ def simple_fusion(channel_results: list[list[RecallResult]]) -> list[RecallResul
 | `MediaProcessor` | `app/shared/domain/media_processor.py` | `TextOnlyProcessor` | `WhisperLLaVAProcessor` |
 | `EmbeddingService` | `app/shared/domain/embedding_service.py` | `DashScopeEmbedding` | `MultiModalEmbedding` |
 | `ObjectStorage` | `app/shared/domain/object_storage.py` | `LocalStorage` | `S3Storage` |
-| `NERPipeline` | `app/shared/domain/ner_pipeline.py` | `RuleBasedNER` | `LLMFunctionCallNER` |
-| `RecallChannel` | `app/shared/domain/recall_channel.py` | `PgRecallChannel` | `EngineRecallChannel` |
-| `ResultFusion` | `app/shared/domain/result_fusion.py` | `FrequencyFusion` | `RRFFusion + Reranker` |
+| `NERPipeline` | `app/shared/domain/ner_pipeline.py` | ✅ `RuleBasedNER` | `LLMFunctionCallNER` |
+| `RecallChannel` | `app/shared/domain/recall_channel.py` | ✅ `PgVector/Keyword/MetadataRecallChannel` | `EngineRecallChannel` |
+| `ResultFusion` | `app/shared/domain/result_fusion.py` | ✅ `FrequencyFusion` | `RRFFusion + Reranker` |
 
-所有 Protocol 通过 `config.py` 配置 + 工厂函数注入，业务代码零改动：
+已落地的 RAG Protocol 由 `settings.ner_backend` / `recall_mode` / `fusion_backend` 预留配置项承接；向量库、图数据库和对象存储 Protocol 仍属于后续演进项。
 
 ```python
-# 工厂函数模式（阶段二实现）
+# 工厂函数模式（后续阶段实现）
 def get_vector_store() -> VectorStore:
     backend = settings.vector_store_backend  # "pgvector" | "milvus" | "qdrant"
     match backend:
@@ -958,7 +1009,7 @@ def get_vector_store() -> VectorStore:
         case "milvus":   return MilvusVectorStore(...)
         case "qdrant":   return QdrantVectorStore(...)
 
-# 混合检索新增 Protocol（阶段一后期定义）
+# 混合检索 Protocol（阶段一已落地基础接口）
 class NERPipeline(Protocol):
     async def extract(self, query: str) -> NERResult: ...
 
@@ -1023,11 +1074,11 @@ def get_result_fusion() -> ResultFusion:
 | Identity 认证上下文 | ✅ 已完成 | JWT + 多租户 ContextVar |
 | Knowledge 知识图谱上下文 | ✅ 已完成 | CRUD + 知识树 + ltree 物化路径 |
 | Resource / Document 文档上下文 | ✅ 已完成 | 文件上传/下载 + MinIO 本地存储 |
-| AI Chat 基础对话 | ✅ 已完成 | 单通道向量检索 + LLM 生成 |
+| AI Chat 基础对话 | ✅ 已完成 | 规则 NER + 3 通道召回 + 频次融合 + Provider resolver |
 | 数据要素模板管理 | ✅ 已完成 | 模板 CRUD + AI 辅助配置 |
 | 文档结构化抽取 | ✅ 已完成 | 模板匹配 + JSON 结构化结果 |
 | 文档知识图谱抽取 | ✅ 已完成 | 文件级 KG 抽取与展示 |
-| Liquid Glass 设计体系 | ✅ 已完成 | 全套组件 + 5 个页面 |
+| `ui-*` 语义化 UI 体系 | ✅ 已完成 | workspace 语义层 + 4 主题；`liquid-*` 保留兼容别名和少量品牌/装饰例外 |
 | MCP Server | ✅ 已完成 | 知识库查询工具 |
 | 前端 Markdown 渲染 | ✅ 已完成 | marked + highlight.js 代码高亮 |
 
@@ -1035,10 +1086,10 @@ def get_result_fusion() -> ResultFusion:
 
 | 里程碑项 | 状态 | 说明 |
 |---|---|---|
-| NER 实体识别（枚举规则） | 🔲 待开发 | `RuleBasedNER` — 领域枚举 + 别名映射 |
-| 多源并行召回（3 通道） | 🔲 待开发 | pgvector + ILIKE + 结构化过滤，`asyncio.gather` |
-| 结果融合（频次排序） | 🔲 待开发 | 多通道取并集 + 出现频次排序 |
-| 溯源上下文组装增强 | 🔲 待开发 | `sources` 扩展为 `{channel, node_id, title, score}` |
+| NER 实体识别（枚举规则） | ✅ 已完成 | `RuleBasedNER` — 领域枚举 + 别名映射 |
+| 多源并行召回（3 通道） | ✅ 已完成 | pgvector + ILIKE + 结构化过滤 |
+| 结果融合（频次排序） | ✅ 已完成 | `FrequencyFusion` 按通道频次和最佳分数排序 |
+| 溯源上下文组装增强 | ✅ 已完成 | `sources` 含 channel / node_id / title / score |
 | 模板匹配可解释化 | 🔄 进行中 | doc_type / 文件名 / AI 置信度三层匹配，日志与表现继续收敛 |
 | 结构化抽取嵌套结构稳定性 | 🔄 进行中 | object / array / table 返回结构与模板定义一致 |
 
@@ -1049,9 +1100,9 @@ def get_result_fusion() -> ResultFusion:
 | PostgreSQL 单引擎 | ✅ 已完成 | 业务数据 + 向量 + 图谱关系共库 |
 | Celery + Redis | ✅ 已完成 | 文档 / 数据集异步任务 |
 | MinIO 单节点 | ✅ 已完成 | 对象存储，本地 fallback |
-| LLM Provider 工厂 + fallback | 🔄 进行中 | 默认 provider、fallback、局部链路模型分配继续收敛 |
-| Protocol 接口定义 | 🔲 待开发 | `NERPipeline` / `RecallChannel` / `ResultFusion` Protocol |
-| 测试回归 | 🔲 待验证 | 当前测试集全部通过 |
+| LLM Provider 工厂 + fallback | ✅ 基础完成 | `factory.py` + `provider_resolver.py` 已集中 provider 选择；统一代理和计量留到阶段二 |
+| Protocol 接口定义 | ✅ 基础完成 | `NERPipeline` / `RecallChannel` / `ResultFusion` Protocol 已落地 |
+| 测试回归 | 🔄 持续维护 | 当前可收集 152 tests；完整运行依赖 `metaedu_test` 初始化 |
 
 **阶段一完成标准**：
 - RAG 问答链路：用户输入问题 → NER 识别领域/级别 → 3 通道并行召回 → 融合排序 → LLM 带来源标注回答
