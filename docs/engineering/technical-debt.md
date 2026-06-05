@@ -96,7 +96,7 @@
 | TD-005 | 拆分大型后端任务流水线文件 | 🟢 完成 | P1 | 后端 / 可维护性 | [PR #34](https://github.com/MarkDanile/MetaEduBase/pull/34) |
 | TD-006 | 集中 LLM provider 和模型 fallback 策略 | 🟢 完成 | P1 | 后端 / AI | [PR #35](https://github.com/MarkDanile/MetaEduBase/pull/35) |
 | TD-007 | 减少前端请求状态处理重复 | 🟢 完成 | P2 | 前端 / 可维护性 | [PR #36](https://github.com/MarkDanile/MetaEduBase/pull/36) |
-| TD-008 | 明确从 `liquid-*` 类到语义 UI 层的迁移路径 | ⚫ 待办 | P2 | 前端 / 设计系统 | - |
+| TD-008 | 明确从 `liquid-*` 类到语义 UI 层的迁移路径 | 🟢 完成 | P2 | 前端 / 设计系统 | [PR #53](https://github.com/MarkDanile/MetaEduBase/pull/53) |
 | TD-009 | 减少前后端契约漂移 | ⚫ 待办 | P2 | API / 类型 | - |
 | TD-010 | 治理生成物 `outputs/` 对工作区的污染 | 🟢 完成 | P2 | 交付 / 仓库卫生 | `outputs/` 已删除 |
 | TD-011 | 治理前端 lint warning | 🟢 完成 | P1 | 前端 / 安全 / 交付 | `090242a` |
@@ -113,7 +113,7 @@
 | TD-022 | 收口早期已完成计划文件的活动式未勾选项 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | [PR #44](https://github.com/MarkDanile/MetaEduBase/pull/44) |
 | TD-023 | 收口 TD-020 文档一致性、断链与归档索引 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | `docs/engineering/current-work.md` |
 | TD-024 | 收口 TD-023 复核发现的副本文件与旧归一化表述 | 🟢 完成 | P2 | 文档 / 工程流程 / 仓库卫生 | TD-023 复核 |
-| TD-025 | 业务页面 `liquid-card` 容器统一迁移到 `ui-panel` | ⚫ 待办 | P2 | 前端 / 设计系统 | TD-008 交付记录 |
+| TD-025 | 业务页面 `liquid-card` 容器统一迁移到 `ui-panel`（业务视图部分完成） | 🟢 完成 | P2 | 前端 / 设计系统 | [PR #54](https://github.com/MarkDanile/MetaEduBase/pull/54) + [PR #55](https://github.com/MarkDanile/MetaEduBase/pull/55) + [PR #56](https://github.com/MarkDanile/MetaEduBase/pull/56) |
 
 ## 任务详情
 
@@ -403,7 +403,7 @@
 
 ### TD-025: 业务页面 `liquid-card` 容器统一迁移到 `ui-panel`
 
-状态：🟡 进行中
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -437,10 +437,12 @@
 - 4 主题（liquid / ink / navy / notion）下 `DatabaseView` / `ResourceView` / `ResourceLibraryView` 三个最高残留页面手工验收（`./dev.sh frontend` 启动后浏览器切换主题）；沙箱无浏览器时降级为 typecheck + lint + 视觉对照 `git diff` 自检。
 
 **交付记录**
-- **切片 1 完成**：接手工具 Claude Code，2026-06-05 开工、合并。`main.css` 新增 `:root[data-theme="liquid"] .ui-panel` 玻璃感覆盖（复用 `--_surface-card-bg` + `--_surface-glass-blur`），3 个页面 `liquid-card` 容器全部替换为 `ui-panel`，附加类（`group` / `animate-slide-up` / `stagger-N` / 自定义 hover）原样保留。PR #54，merge commit `558884e`。
-- **切片 2 完成**：2026-06-05，2 个业务页（`KnowledgeBaseView` 1 处 + `FileDetailView` 3 处 = 4 处）`liquid-card` → `ui-panel` 替换；保留 KBView 节点列表卡 `ring-1 ring-[var(--color-accent)] ring-offset-2` 选中态、保留 KBView `animate-slide-up` + `stagger-N` 装饰动效；保留 FileDetailView 三个面板（meta bar / pipeline status / tabs）的所有 inline token 容器与 `liquid-tag-*` / `liquid-btn-*`。
-- **任务卡残留量与实际差异说明**：TD-025 任务卡证据段记录的残留量（`DatabaseView` 23 / `ResourceView` 22 / `ResourceLibraryView` 18 / `KnowledgeBaseView` 16 / `FileDetailView` 12 / `TemplateModal` 8 / `TemplateEditorView` 6 / `AiChatView` 4 / `HomeView` 3）是 **TD-008 完成时（2026-06-05）** 的快照。实际开工时（切片 1: 2026-06-05；切片 2: 2026-06-05）的残留量为：DB 8、Resource 1、Library 3、KBView 1、FileDetail 3、Template 14、AiChat 4、HomeView 3，合计 37 处。差异原因：TD-008 完成到切片 1 开工之间没有其他人改这 5 个页面；`DatabaseView` 23→8、`ResourceView` 22→1、`ResourceLibraryView` 18→3、`KnowledgeBaseView` 16→1、`FileDetailView` 12→3 的"原快照残留量"与"实际残留量"差距可能源于任务卡编写时（TD-008 完成之前）误把页面里所有的 `liquid-*`（含 `liquid-btn-*` / `liquid-input` / `liquid-tag-*` / `liquid-dialog` / `liquid-rise-*` / `liquid-card`）都计入了"liquid-card 残留"，而非精确 grep 后的 `liquid-card` 命中数。后续切片 3 仍以 grep 实测为准，不再使用原任务卡残留量作为目标。
-- 切片 3 未开始。共享组件（`FieldEditor` / `KGDetailPanel` / `ConfirmDialog`）的 `liquid-card` 不在本次范围；如需后续接力可拆为 `TD-026` 等。
+- **切片 1 完成**（2026-06-05）：接手工具 Claude Code；`main.css` 新增 `:root[data-theme="liquid"] .ui-panel` 玻璃感覆盖（复用 `--_surface-card-bg` + `--_surface-glass-blur`），3 个页面 `liquid-card` 容器全部替换为 `ui-panel`，附加类（`group` / `animate-slide-up` / `stagger-N` / 自定义 hover）原样保留。PR #54，merge commit `558884e`。
+- **切片 2 完成**（2026-06-05）：2 个业务页（`KnowledgeBaseView` 1 处 + `FileDetailView` 3 处 = 4 处）`liquid-card` → `ui-panel` 替换；保留 KBView 节点列表卡 `ring-1 ring-[var(--color-accent)] ring-offset-2` 选中态、保留 KBView `animate-slide-up` + `stagger-N` 装饰动效；保留 FileDetailView 三个面板（meta bar / pipeline status / tabs）的所有 inline token 容器与 `liquid-tag-*` / `liquid-btn-*`。PR #55，merge commit `90763d1`。
+- **切片 3 完成**（2026-06-05）：2 个业务页（`HomeView` 3 处 + `AiChatView` 1 处 = 4 处）`liquid-card` → `ui-panel` 替换；`HomeView:10` 统计卡保留 `liquid-card-scan` 装饰动效；`coding-style.md` 显式例外清单段（6 类）记录按 TD-008 规则保持兼容的 `liquid-btn-primary` / `liquid-btn-ghost` / `liquid-input` / `liquid-tag-*` / `liquid-card-scan`（装饰） / `stagger-N` & `animate-slide-up`。PR #56，merge commit `26d4654`。
+- **任务卡残留量与实际差异说明**（已记入 coding-style.md 清单 + 切片 2/3 交付记录）：TD-025 任务卡证据段记录的残留量（`DatabaseView` 23 / `ResourceView` 22 / `ResourceLibraryView` 18 / `KnowledgeBaseView` 16 / `FileDetailView` 12 / `TemplateModal` 8 / `TemplateEditorView` 6 / `AiChatView` 4 / `HomeView` 3）是 **TD-008 完成时（2026-06-05）** 的快照。实际开工时（切片 1: 2026-06-05；切片 2: 2026-06-05；切片 3: 2026-06-05）的 grep 命中数为：DB 8、Resource 1、Library 3、KBView 1、FileDetail 3、Template 0 + 0（实测 0 处 `liquid-card`）、AiChat 1、HomeView 3，合计 20 处。`TemplateModal` / `TemplateEditorView` 实测无 `liquid-card` 残留（仅 `liquid-btn-*` / `liquid-input` / `liquid-tag-*`，按例外清单保持兼容）。差异原因：任务卡编写时把页面里所有 `liquid-*`（含 `liquid-btn-*` / `liquid-input` / `liquid-tag-*` / `liquid-dialog` / `liquid-rise-*` / `liquid-card`）都计入了"liquid-card 残留"，而非精确 grep 后的 `liquid-card` 命中数。后续 TD-026 共享组件迁移以 grep 实测为准，不再使用原任务卡残留量作为目标。
+- **TD-025 业务视图迁移整体收尾**：3 切片累计 **7 业务页面 20 处 `liquid-card` → `ui-panel`** + `HomeView` 1 处 `liquid-card-scan` 装饰保留 + 4 处 `LoginView` 例外登记。`TemplateModal` / `TemplateEditorView` 实测无 `liquid-card` 残留（仅 `liquid-btn-*` / `liquid-input` / `liquid-tag-*`）。`rg -c "liquid-card" packages/web/src/views/` 最终仅剩 `LoginView:1`（4 处 `liquid-btn-*` 等）+ `HomeView:1`（`liquid-card-scan` 装饰）；其他 7 业务视图全部 0 命中。共享组件（`FieldEditor` 12 / `KGDetailPanel` 4 / `ConfirmDialog` 5 / `KGGraph` 1 = 22 处）未在本次范围，建议拆为 `TD-026`。
+- 切片 4（文档同步）合并到切片 1-3 三个提交中：每个提交都同步 `coding-style.md` 迁移清单对应切片行；切片 3 额外追加「显式例外清单」段。
 
 ### TD-009: 减少前后端契约漂移
 
