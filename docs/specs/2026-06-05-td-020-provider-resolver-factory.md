@@ -6,7 +6,7 @@
 > 类型：技术债
 > 事实源：[technical-debt.md#td-020-统一-llm-provider-resolver-与-factory-优先级事实源](../engineering/technical-debt.md)
 > 计划：[plans/2026-06-05-td-020-provider-resolver-factory-plan.md](../plans/2026-06-05-td-020-provider-resolver-factory-plan.md)
-> 交付历史：2026-06-05 完成，PR [#46](https://github.com/MarkDanile/MetaEduBase/pull/46)，merge commit `2c15868`。路线 A：factory 暴露 `RESOLVER_PROVIDER_NAMES` 与 `resolver_default_provider()`；provider_resolver 改为薄壳复用；`qwen` 走独立 alias 域，不归一化为 `dashscope`；新增 `tests/shared/test_factory.py`。验证摘要：聚焦 pytest 20 passed；全量 pytest 152 passed；`ruff check app/ tests/` 退出码 0。零业务行为变化。
+> 交付历史：2026-06-05 完成，PR [#46](https://github.com/MarkDanile/MetaEduBase/pull/46)，merge commit `2c15868`。路线 A：factory 暴露 `RESOLVER_PROVIDER_NAMES` 与 `resolver_default_provider()`；provider_resolver 改为薄壳复用；`qwen` 走独立 alias 域，不归一化为 `dashscope`；新增 `tests/shared/test_factory.py`。验证摘要：聚焦 pytest 20 passed（`tests/shared/test_provider_resolver.py` + `tests/shared/test_factory.py`），本地全量 pytest 152 passed（执行环境为本地开发沙箱，依赖 `TEST_DATABASE_URL` 指向的 `metaedu_test`，`gh pr checks 46` 状态为 no checks reported，即 PR #46 未配置 GitHub Actions，本次 152 passed 来自本地复跑，非 CI 证据），`ruff check app/ tests/` 退出码 0。零业务行为变化。
 
 ## 1. 背景
 
@@ -69,15 +69,19 @@ RESOLVER_PROVIDER_NAMES: tuple[str, ...] = (
 def resolver_default_provider() -> str | None:
     """解析 `llm_default_provider`，并把它归一化为 resolver 期望的 alias 名。
 
-    - "qwen" 仍返回 "qwen"（resolver 子集使用 alias）。
-    - "dashscope" / "siliconflow" 不在 resolver 子集，返回 None（沿用子集顺序）。
-    - 其他在子集内的名字（"minimax" / "deepseek"）原样返回。
+    - `None` / 空 / 空白 → `None`。
+    - `minimax` / `deepseek`（任意大小写或带空白） → 归一化后小写 alias。
+    - `qwen` / `Qwen` / ` qwen ` → `"qwen"`。
+    - `dashscope` / `siliconflow` / `openai` 等不在子集 → `None`（沿用子集顺序），
+      **不**翻译为 `qwen`：因为 factory 的 `dashscope` 是 provider 实现名，
+      resolver 的 alias 是 `qwen`，强行翻译会让 `llm_default_provider="dashscope"`
+      静默退化为子集顺序，破坏 ai_router 既有行为预期。
     """
-    normalized = _normalize_default_provider(settings.llm_default_provider)
-    if normalized == PROVIDER_DASHSCOPE:
-        return "qwen"
-    if normalized in RESOLVER_PROVIDER_NAMES:
-        return normalized
+    raw = (settings.llm_default_provider or "").strip().lower()
+    if not raw:
+        return None
+    if raw in RESOLVER_PROVIDER_NAMES:
+        return raw
     return None
 ```
 
@@ -137,8 +141,8 @@ def resolve_chat_provider() -> ProviderConfig | None:
 
 | 变化 | 旧 | 新 | 风险 |
 |------|----|----|------|
-| `llm_default_provider="dashscope"` 走 fallback 路径 | 旧 resolver：直接忽略，回到 `minimax → deepseek → qwen` | 新 resolver：经 `_normalize_default_provider` → 归一化为 `dashscope` → `resolver_default_provider` 返回 `None` → 仍走子集顺序 | 无外部可观察变化 |
-| `llm_default_provider="qwen"` 命中 | 旧 resolver：挪到首位 | 新 resolver：经 `_normalize_default_provider` → 仍是 `qwen` → 挪到首位 | 无 |
+| `llm_default_provider="dashscope"` 走 fallback 路径 | 旧 resolver：直接忽略，回到 `minimax → deepseek → qwen` | 新 resolver：独立 trim/lowercase 后不在 `RESOLVER_PROVIDER_NAMES` → 返回 `None` → 仍走子集顺序 | 无外部可观察变化 |
+| `llm_default_provider="qwen"` 命中 | 旧 resolver：挪到首位 | 新 resolver：独立 trim/lowercase 后命中 `qwen` ∈ `RESOLVER_PROVIDER_NAMES` → 返回 `"qwen"` → 挪到首位 | 无 |
 | `provider_name` 字段 | `qwen` | `qwen` | 无 |
 | `base_url` / `api_key` / `model` 来源 | `settings.qwen_*` | `settings.qwen_*`（同字段） | 无 |
 | 默认 provider 缺 key 时 fallback 顺序 | `minimax → deepseek → qwen` | 同 | 无 |
@@ -148,7 +152,7 @@ def resolve_chat_provider() -> ProviderConfig | None:
 ### 4.4 命名归一化的拆分原则
 
 - `_normalize_default_provider`：factory 内部 helper，把 `qwen → dashscope`、把 `LLM_DEFAULT_PROVIDER` 环境变量里的 `Qwen` / ` DW ` 等 trim/lowercase 归一。**保持现状**。
-- `resolver_default_provider`：新公开函数，把 factory 归一化结果再翻译回 resolver 子集别名（`dashscope → qwen`）。**新加**。
+- `resolver_default_provider`：新公开函数，**不复用** `_normalize_default_provider`（因后者会把 `qwen` 翻译成 `dashscope`，落到 resolver 视角会失语）；改为独立判定：仅当 `settings.llm_default_provider` trim/lowercase 后落在 `RESOLVER_PROVIDER_NAMES` 内才返回该 alias，否则 `None`（含 `dashscope` / `siliconflow` / `openai` 等）。**新加**。
 - `_settings_for` / `_COMPLETENESS_FIELDS`：resolver 内部 helper，alias 字段 → settings 字段映射。**集中在一处**。
 
 理由：`factory` 的归一化目标名是 `dashscope`（它真有 provider 实现），resolver 的别名是 `qwen`（它只在 settings 里有字段，没有独立 provider 类）。强行让其中一方向另一方靠拢会损失语义清晰度。
