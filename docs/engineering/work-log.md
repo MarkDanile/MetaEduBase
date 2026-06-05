@@ -15,7 +15,9 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-06 | TD-029 收口 TD-009 的 shared schema 门禁与 FileDetailView 类型错误 | 技术债 / 修复 / follow-up |  |  | `docs/engineering/technical-debt.md#td-029-收口-td-009-的-shared-schema-门禁与-filedetailview-类型错误` |
 | 2026-06-06 | TD-009 减少前后端契约漂移（结构化抽取容器契约） | 技术债 / 重构 |  |  | `docs/engineering/technical-debt.md#td-009-减少前后端契约漂移` |
+| 2026-06-05 | TD-027 补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类（设计系统扩展） | 技术债 / 设计系统 | [#59](https://github.com/MarkDanile/MetaEduBase/pull/59) |  | `docs/engineering/technical-debt.md#td-027-补-ui-input-ui-btn-ui-tag-ui-dialog-共享类设计系统扩展` |
 | 2026-06-05 | TD-026 共享组件 `liquid-card` 残留验证 | 技术债 / 文档 / follow-up | [#58](https://github.com/MarkDanile/MetaEduBase/pull/58) |  | `docs/engineering/technical-debt.md#td-026-共享组件-liquid-card-残留验证` |
 | 2026-06-05 | DOC-014 刷新 README / ARCHITECTURE 项目入口文档 | 文档 / 架构 / 交接 |  |  | `README.md` / `ARCHITECTURE.md` |
 | 2026-06-05 | DOC-013 工程文档门禁增强与 UI 迁移事实源收口 | 文档 / 工程规范 / 工具链 |  |  | `scripts/engineering/check_engineering_docs.py` |

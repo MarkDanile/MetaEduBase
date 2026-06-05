@@ -101,10 +101,11 @@
             hint="等待模板抽取任务完成"
           />
           <div v-else class="p-3 rounded-lg border border-[var(--color-border)] space-y-1">
+            <!-- String(key) keeps the contract narrow if templateData ever becomes Record<string | number, unknown> (TD-029). -->
             <FieldValue
               v-for="(value, key) in templateData"
               :key="key"
-              :label="templateFieldLabel(key)"
+              :label="templateFieldLabel(String(key))"
               :value="value"
               :depth="0"
             />
