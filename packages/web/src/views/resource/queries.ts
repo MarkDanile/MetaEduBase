@@ -1,11 +1,14 @@
 // FileDetailView 请求状态封装（Vue Query）。
 //
-// 把 FileDetailView 的 `loadTasks`（GET + 轮询）+ 3 个 mutation
-// 迁到 Vue Query。`loadFile` / `loadChunks` / `loadKg` / `loadTemplates`
-// 仍由 FileDetailView 手写（不在本轮范围）。
+// 把 FileDetailView 的：
+// - `loadTasks`（GET + 轮询） + 3 个 mutation（TD-017）
+// - `loadFile` / `loadChunks` / `loadKg` / `loadTemplates`（TD-018）
+// 全部迁到 Vue Query。
 //
 // 错误处理：所有 query/mutation 失败时由 main.ts 注册的 QueryCache.onError
 // 统一 toast.error；queryFn 内部不再 try/catch。
+// 例外：`useTemplatesQuery` 内部 catch 返回 `[]`，保留"templates 是可选"
+// 的静默失败语义，不触发全局 toast。
 //
 // 成功提示：mutation 的 onSuccess 自行 toast.success 业务文案。
 
@@ -17,7 +20,18 @@ import {
   type UseMutationReturnType,
   type UseQueryReturnType,
 } from "@tanstack/vue-query";
-import { documentApi, type FileDTO, type TaskDTO } from "@/services/document";
+import {
+  documentApi,
+  type ChunkDTO,
+  type FileDTO,
+  type TaskDTO,
+} from "@/services/document";
+import {
+  knowledgeApi,
+  type KnowledgeEdgeDTO,
+  type KnowledgeNodeDTO,
+} from "@/services/knowledge";
+import { templateApi, type Template } from "@/services/template";
 
 // ---------------------------------------------------------------------------
 // Query keys
@@ -27,11 +41,25 @@ export const fileKeys = {
   all: ["files"] as const,
   detail: (id: string) => [...fileKeys.all, id, "detail"] as const,
   tasks: (id: string) => [...fileKeys.all, id, "tasks"] as const,
+  chunks: (id: string) => [...fileKeys.all, id, "chunks"] as const,
+  kg: (id: string) => [...fileKeys.all, id, "kg"] as const,
+};
+
+export const templateKeys = {
+  all: ["templates"] as const,
 };
 
 // ---------------------------------------------------------------------------
 // Queries
 // ---------------------------------------------------------------------------
+
+function useFileQuery(fileId: Ref<string>): UseQueryReturnType<FileDTO, Error> {
+  return useQuery({
+    queryKey: computed(() => fileKeys.detail(fileId.value)),
+    queryFn: () => documentApi.getFile(fileId.value).then((r) => r.data),
+    enabled: computed(() => !!fileId.value),
+  });
+}
 
 function useFileTasksQuery(
   fileId: Ref<string>,
@@ -44,6 +72,56 @@ function useFileTasksQuery(
     // Only refetch every 3s while at least one task is running or pending.
     // Returning `false` pauses polling entirely.
     refetchInterval: computed(() => (polling.value ? 3000 : false)),
+  });
+}
+
+function useFileChunksQuery(
+  fileId: Ref<string>,
+  enabled: Ref<boolean>,
+): UseQueryReturnType<ChunkDTO[], Error> {
+  return useQuery({
+    queryKey: computed(() => fileKeys.chunks(fileId.value)),
+    queryFn: () => documentApi.listChunks(fileId.value).then((r) => r.data),
+    enabled: computed(() => !!fileId.value && enabled.value),
+  });
+}
+
+interface KgBundle {
+  nodes: KnowledgeNodeDTO[];
+  edges: KnowledgeEdgeDTO[];
+}
+
+function useFileKgQuery(
+  fileId: Ref<string>,
+  enabled: Ref<boolean>,
+): UseQueryReturnType<KgBundle, Error> {
+  return useQuery({
+    queryKey: computed(() => fileKeys.kg(fileId.value)),
+    queryFn: async (): Promise<KgBundle> => {
+      const [nodesRes, edgesRes] = await Promise.all([
+        knowledgeApi.listNodes({ source_file_id: fileId.value }),
+        knowledgeApi.listEdges({ source_file_id: fileId.value }),
+      ]);
+      return { nodes: nodesRes.data, edges: edgesRes.data };
+    },
+    enabled: computed(() => !!fileId.value && enabled.value),
+  });
+}
+
+function useTemplatesQuery(): UseQueryReturnType<Template[], Error> {
+  return useQuery({
+    queryKey: templateKeys.all,
+    // Legacy `loadTemplates` silently failed; preserve that behavior by
+    // catching inside the queryFn and returning an empty array. Errors
+    // do not surface to QueryCache.onError, so the global toast handler
+    // is not triggered.
+    queryFn: async () => {
+      try {
+        return (await templateApi.list()).data;
+      } catch {
+        return [];
+      }
+    },
   });
 }
 
@@ -95,7 +173,11 @@ function useDeleteFileMutation(
 }
 
 export {
+  useFileQuery,
   useFileTasksQuery,
+  useFileChunksQuery,
+  useFileKgQuery,
+  useTemplatesQuery,
   useRetryTasksMutation,
   useReinitializeFileMutation,
   useDeleteFileMutation,

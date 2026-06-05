@@ -19,7 +19,7 @@
       </template>
     </PageHeader>
 
-    <LoadingSpinner v-if="loading" text="加载文件..." />
+    <LoadingSpinner v-if="fileQuery.isLoading.value" text="加载文件..." />
 
     <template v-else-if="file">
       <!-- File meta bar -->
@@ -43,7 +43,7 @@
           <div class="flex items-center gap-2">
             <span v-if="polling" class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">自动刷新中...</span>
             <button class="liquid-btn-ghost px-2 py-1" @click="refreshAll">
-              <RefreshCw :size="14" :class="{ 'animate-spin': loadingTasks || loading }" />
+              <RefreshCw :size="14" :class="{ 'animate-spin': loadingTasks || fileQuery.isFetching.value }" />
             </button>
           </div>
         </div>
@@ -113,7 +113,7 @@
 
         <!-- Tab 2: Chunks -->
         <div v-if="activeTab === 'chunks'">
-          <LoadingSpinner v-if="loadingChunks" text="加载切片..." />
+          <LoadingSpinner v-if="chunksQuery.isFetching.value" text="加载切片..." />
           <EmptyState v-else-if="chunks.length === 0" title="暂无切片" hint="等待切片任务完成" />
           <div v-else class="space-y-2">
             <div
@@ -152,7 +152,7 @@
 
         <!-- Tab 3: Knowledge graph -->
         <div v-if="activeTab === 'kg'">
-          <LoadingSpinner v-if="loadingKg" text="加载知识图谱..." />
+          <LoadingSpinner v-if="kgQuery.isFetching.value" text="加载知识图谱..." />
           <EmptyState v-else-if="kgNodes.length === 0" title="暂无知识节点" hint="等待知识图谱抽取任务完成" />
           <div v-else class="relative">
             <KGGraph
@@ -192,7 +192,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   ArrowLeft, FileText, Trash2, RefreshCw,
@@ -207,16 +207,22 @@ import KGGraph from "@/components/KGGraph.vue";
 import KGDetailPanel from "@/components/KGDetailPanel.vue";
 import FieldValue from "./FieldValue.vue";
 import { useToast } from "@/composables/useToast";
-import { documentApi, type FileDTO, type ChunkDTO, type TaskDTO } from "@/services/document";
-import { knowledgeApi, type KnowledgeNodeDTO, type KnowledgeEdgeDTO } from "@/services/knowledge";
-import { templateApi, type Template } from "@/services/template";
+import { type FileDTO, type ChunkDTO, type TaskDTO } from "@/services/document";
+import { type KnowledgeNodeDTO, type KnowledgeEdgeDTO } from "@/services/knowledge";
+import { type Template } from "@/services/template";
 import { DOC_TASK_STEPS, TASK_STATUS_MAP, FILE_STATUS_MAP } from "@/constants/pipeline";
 import {
+  useFileQuery,
   useFileTasksQuery,
+  useFileChunksQuery,
+  useFileKgQuery,
+  useTemplatesQuery,
   useRetryTasksMutation,
   useReinitializeFileMutation,
   useDeleteFileMutation,
+  fileKeys,
 } from "@/views/resource/queries";
+import { useQueryClient } from "@tanstack/vue-query";
 
 const route = useRoute();
 const router = useRouter();
@@ -225,17 +231,9 @@ const toast = useToast();
 const fileId = computed(() => route.params.id as string);
 
 // --- State ---
-const file = ref<FileDTO | null>(null);
-const chunks = ref<ChunkDTO[]>([]);
-const kgNodes = ref<KnowledgeNodeDTO[]>([]);
-const kgEdges = ref<KnowledgeEdgeDTO[]>([]);
 const selectedKgNode = ref<KnowledgeNodeDTO | null>(null);
-const loading = ref(true);
-const loadingChunks = ref(false);
-const loadingKg = ref(false);
 const activeTab = ref("structured");
 const showDelete = ref(false);
-const templates = ref<Template[]>([]);
 
 const tabs = [
   { key: "structured", label: "结构化抽取" },
@@ -244,6 +242,10 @@ const tabs = [
 ];
 
 // --- Queries (Vue Query) ---
+const queryClient = useQueryClient();
+const fileQuery = useFileQuery(fileId);
+const file = computed<FileDTO | null>(() => fileQuery.data.value ?? null);
+
 const tasksQuery = useFileTasksQuery(
   fileId,
   // Only refetch every 3s while at least one task is running or pending.
@@ -260,16 +262,36 @@ const polling = computed(() =>
   tasks.value.some((t) => t.status === "running" || t.status === "pending"),
 );
 
+const chunksQuery = useFileChunksQuery(
+  fileId,
+  // Lazy-load: only fetch chunks when the chunks tab is active.
+  computed(() => activeTab.value === "chunks"),
+);
+const chunks = computed<ChunkDTO[]>(() => chunksQuery.data.value ?? []);
+
+const kgQuery = useFileKgQuery(
+  fileId,
+  // Lazy-load: only fetch kg when the kg tab is active.
+  computed(() => activeTab.value === "kg"),
+);
+const kgNodes = computed<KnowledgeNodeDTO[]>(() => kgQuery.data.value?.nodes ?? []);
+const kgEdges = computed<KnowledgeEdgeDTO[]>(() => kgQuery.data.value?.edges ?? []);
+
+const templatesQuery = useTemplatesQuery();
+const templates = computed<Template[]>(() => templatesQuery.data.value ?? []);
+
 // --- Mutations (Vue Query) ---
 const retryMutation = useRetryTasksMutation(fileId, () => {
   toast.success("已重新提交任务");
 });
 const reinitializeMutation = useReinitializeFileMutation(fileId, () => {
   toast.success("已开始重新初始化");
-  // Clear stale chunks/kg data (legacy behavior).
-  chunks.value = [];
-  kgNodes.value = [];
-  kgEdges.value = [];
+  // Clear stale chunks/kg caches so the next tab switch re-fetches.
+  // The legacy behavior was to reset the local refs; with Vue Query we
+  // remove the cached entries and let the active-tab query refetch on
+  // next access.
+  queryClient.removeQueries({ queryKey: fileKeys.chunks(fileId.value) });
+  queryClient.removeQueries({ queryKey: fileKeys.kg(fileId.value) });
 });
 const deleteMutation = useDeleteFileMutation(fileId, () => {
   toast.success("文件已删除");
@@ -286,65 +308,13 @@ function templateFieldLabel(key: string): string {
   return getFieldLabel(key);
 }
 
-// --- Data loading ---
-async function loadFile() {
-  loading.value = true;
-  try {
-    const { data } = await documentApi.getFile(fileId.value);
-    file.value = data;
-  } catch {
-    toast.error("加载文件失败");
-  } finally {
-    loading.value = false;
-  }
-}
-
+// --- Data loading (Vue Query) ---
 async function refreshAll() {
-  loading.value = true;
-  try {
-    await loadFile();
-    if (activeTab.value === "chunks") await loadChunks();
-    if (activeTab.value === "kg") await loadKg();
-  } finally {
-    loading.value = false;
-  }
-}
-
-async function loadChunks() {
-  loadingChunks.value = true;
-  try {
-    const { data } = await documentApi.listChunks(fileId.value);
-    chunks.value = data;
-  } catch {
-    toast.error("加载切片失败");
-  } finally {
-    loadingChunks.value = false;
-  }
-}
-
-async function loadKg() {
-  loadingKg.value = true;
-  try {
-    const [nodesRes, edgesRes] = await Promise.all([
-      knowledgeApi.listNodes({ source_file_id: fileId.value }),
-      knowledgeApi.listEdges({ source_file_id: fileId.value }),
-    ]);
-    kgNodes.value = nodesRes.data;
-    kgEdges.value = edgesRes.data;
-  } catch {
-    toast.error("加载知识图谱失败");
-  } finally {
-    loadingKg.value = false;
-  }
-}
-
-async function loadTemplates() {
-  try {
-    const { data } = await templateApi.list();
-    templates.value = data;
-  } catch {
-    // Silently fail — templates are optional
-  }
+  await Promise.all([
+    fileQuery.refetch(),
+    chunksQuery.refetch(),
+    kgQuery.refetch(),
+  ]);
 }
 
 function getFieldLabel(key: string): string {
@@ -441,30 +411,16 @@ function goBack() {
 }
 
 // --- Tab data loading ---
-watch(activeTab, () => {
-  if (activeTab.value === "structured") loadFile();
-  if (activeTab.value === "chunks") loadChunks();
-  if (activeTab.value === "kg") loadKg();
-});
+// Tab switching is handled by the `enabled` ref on each query; switching
+// to a tab triggers a refetch via the `enabled` reactive computation. No
+// explicit watch needed.
 
-// --- Auto-refresh when tasks just finished ---
-// When the polling flag transitions true → false, the tasks query
-// (managed by Vue Query) automatically stops refetching. Replicate the
-// legacy "all-tasks-finished" refresh by manually re-fetching the
-// still-handwritten file / chunks / kg loaders.
 watch(polling, (now, prev) => {
   if (prev && !now) {
-    void loadFile();
-    if (activeTab.value === "chunks") void loadChunks();
-    if (activeTab.value === "kg") void loadKg();
+    // Tasks just finished — refresh file detail and the active tab's data.
+    void fileQuery.refetch();
+    if (activeTab.value === "chunks") void chunksQuery.refetch();
+    if (activeTab.value === "kg") void kgQuery.refetch();
   }
-});
-
-// --- Init ---
-// Queries auto-fetch on first read (via useQuery); no explicit tasks
-// trigger is required. loadFile / loadTemplates are still hand-written
-// and need an explicit onMounted call to kick off.
-onMounted(async () => {
-  await Promise.all([loadFile(), loadTemplates()]);
 });
 </script>
