@@ -61,7 +61,9 @@ cd packages/web && pnpm typecheck  # vue-tsc --noEmit
 - 跨页面共享的工作区结构（`LayoutView`、共享骨架组件）。
 - 任何与"calm workspace、token 化、不带装饰动效"目标一致的容器。
 
-提供以下 4 个共享类（`packages/web/src/assets/css/main.css` 中 `@layer components` 段）：
+提供以下 17 个共享类（`packages/web/src/assets/css/main.css` 中 `@layer components` 段）。
+
+**容器层（5 个，TD-008）**
 
 | 类 | 用途 |
 |------|------|
@@ -70,6 +72,25 @@ cd packages/web && pnpm typecheck  # vue-tsc --noEmit
 | `.ui-panel` | 通用面板容器：白底、细边框、token 化阴影、克制 hover 反馈 |
 | `.ui-toolbar` | 工具栏行：白底、细边框、12px 圆角 |
 | `.ui-interactive-row` | 列表/卡片行的统一 hover 状态机 |
+
+**原子控件层（12 个，TD-027）**
+
+| 类 | 用途 | 对应 `liquid-*` |
+|------|------|----------------|
+| `.ui-input` | 表单输入框：白底、细边框、focus 强调环 | `liquid-input` |
+| `.ui-btn` | 按钮基类：inline-flex 居中、36px 高、8px 18px 内边距、token 化字体 | `liquid-btn` |
+| `.ui-btn-primary` | 主按钮：径向渐变 + 点按泠漪、disabled 半透明 | `liquid-btn-primary` |
+| `.ui-btn-ghost` | 次按钮：白底、细边框、hover 强调色填充 | `liquid-btn-ghost` |
+| `.ui-btn-danger` | 危险按钮：danger 色背景、hover 加深 | `liquid-btn-danger` |
+| `.ui-tag` | 标签基类：inline-flex 居中、2px 8px 内边距、11px 字号 | `liquid-tag` |
+| `.ui-tag-blue` | 蓝色标签 | `liquid-tag-blue` |
+| `.ui-tag-green` | 绿色标签 | `liquid-tag-green` |
+| `.ui-tag-amber` | 琥珀色标签 | `liquid-tag-amber` |
+| `.ui-tag-purple` | 紫色标签 | `liquid-tag-purple` |
+| `.ui-dialog-overlay` | 对话框遮罩：fixed 全屏、半透明黑、`--z-dialog`、fade-in 动画 | `liquid-dialog-overlay` |
+| `.ui-dialog` | 对话框本体：白底、token 化边框阴影、dialog-in 动画 | `liquid-dialog` |
+
+**原子控件层与容器层的关系**：容器层（`ui-panel` / `ui-page-shell` 等）只表达结构，原子控件层（`ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog*`）只表达组件。两者可同时使用，例如：`<div class="ui-panel p-4"><input class="ui-input" /></div>`。
 
 **何时保留 `liquid-*`（兼容）**
 
