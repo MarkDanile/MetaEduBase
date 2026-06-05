@@ -14,15 +14,7 @@
 
 ## 当前进行中
 
-| 任务 | 状态 | 优先级 | 领域 | 下一步 |
-|------|------|--------|------|--------|
-| TD-025 业务页面 `liquid-card` 容器统一迁移到 `ui-panel` | 🟡 进行中（切片 2） | P2 | 前端 / 设计系统 | 切片 3：`TemplateModal` / `TemplateEditorView` / `AiChatView` / `HomeView` + 显式登记 `liquid-btn-*` / `liquid-input` 例外。 |
-
-| 验收 | 内容 |
-|------|------|
-| 范围（切片 2） | `KnowledgeBaseView.vue` 1 处 + `FileDetailView.vue` 3 处 = 4 处 `liquid-card` → `ui-panel` 替换 + `coding-style.md` 迁移清单切片 2 行更新。 |
-| 验证（切片 2） | `pnpm --filter @metaedu/web typecheck / lint / build` 全部退出码 0；`scripts/check-engineering-docs` 退出码 0；4 条 `rg` 断言全过（2 页面 `liquid-card` 0 残留、`ui-panel` 4 处命中、KBView 选中态 `ring-1 ring-[var(--color-accent)]` 保留、KBView 装饰动效 `animate-slide-up` + `stagger-N` 保留）。 |
-| 事实源 | `docs/engineering/rules/coding-style.md#业务页面迁移清单-td-025`（迁移清单） + `docs/engineering/technical-debt.md#td-025`（任务总账，含切片 2 交付记录 + 任务卡残留量与实际差异说明）。 |
+当前无进行中任务。
 
 ## 下一批候选任务
 
@@ -30,7 +22,16 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
+| TD-026 共享组件 `liquid-card` 残留统一迁移到 `ui-panel` | ⚫ 待办 | P3 | 前端 / 设计系统 | 按共享组件残留量（`FieldEditor` 12 / `KGDetailPanel` 4 / `ConfirmDialog` 5 / `KGGraph` 1 = 22 处）切片；TD-025 业务视图迁移已完成，本债为设计系统迁移最后一段。 |
 | TD-009 减少前后端契约漂移 | ⚫ 待办 | P2 | API / 类型 | 选高价值契约族（模板字段或任务状态），建共享 schema 检查。 |
+
+## 最近完成
+
+最近完成区只保留摘要，详细验证、行为变化、PR 描述和复盘见 `docs/engineering/work-log.md`、对应技术债总账、plan 或 PR。
+
+| 日期 | 任务 | 状态 | 摘要 | 事实源 |
+|------|------|------|------|--------|
+| 2026-06-05 | TD-025 业务页面 `liquid-card` 容器统一迁移到 `ui-panel`（业务视图部分完成） | 🟢 完成 | 3 切片累计 7 业务页面 20 处 `liquid-card` → `ui-panel`：切片 1（PR #54）：DatabaseView 8 + ResourceView 1 + ResourceLibraryView 3 = 12 处，`main.css` 加 `:root[data-theme="liquid"] .ui-panel` 玻璃感覆盖；切片 2（PR #55）：KnowledgeBaseView 1 + FileDetailView 3 = 4 处，KBView 保留选中态 `ring-1 ring-[var(--color-accent)]` 与 `animate-slide-up`+`stagger-N` 装饰动效；切片 3（PR #56）：HomeView 3 + AiChatView 1 = 4 处，HomeView 统计卡保留 `liquid-card-scan` 装饰动效，`coding-style.md` 追加显式例外清单段（`liquid-btn-primary` / `liquid-btn-ghost` / `liquid-input` / `liquid-tag-*` / `liquid-card-scan` / `stagger-N` & `animate-slide-up`）。`TemplateModal` / `TemplateEditorView` 实测无 `liquid-card` 残留。`rg -c "liquid-card" packages/web/src/views/` 最终仅剩 `LoginView:1` + `HomeView:1`，其他 7 业务视图 0 命中。`LoginView` 品牌背景按 TD-008 规则保持兼容。共享组件（`FieldEditor` / `KGDetailPanel` / `ConfirmDialog` / `KGGraph` 22 处）未在本次范围，已登记为 TD-026 候选。 | `docs/engineering/technical-debt.md#td-025` |
 
 ## 最近完成
 
