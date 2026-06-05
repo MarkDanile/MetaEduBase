@@ -116,9 +116,10 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| TD-017 将 Vue Query 请求生命周期治理推广到 FileDetailView | ⚫ 待办 | P2 | Frontend / 可维护性 | 需先补全证据 / 完成标准 / 验证方式后转为 🔵 才能开工；建议参考 `docs/engineering/matrices/td-015-databaseview-equivalence.md` 列行为矩阵，避免重复 TD-007 回归。 |
+| TD-018 FileDetailView 剩余手写 load（loadFile / loadChunks / loadKg / loadTemplates）迁到 Vue Query | ⚫ 待办 | P3 | Frontend / 可维护性 | 需先补全证据 / 完成标准 / 验证方式后转为 🔵 才能开工；可参考 `docs/engineering/matrices/td-017-filedetailview-equivalence.md` 列行为矩阵。 |
 | TD-015 修复 TD-007 DatabaseView Vue Query 迁移后的行为回归 | 🟢 完成 | P1 | Frontend / API / 可维护性 | 已修 4 个回归点：上传名称 / 轮询条件 / KG overview 懒加载 / DTO adapter；行为等价矩阵已落盘到 `docs/engineering/matrices/`。 |
 | TD-016 收敛 knowledge ai_router 的 LLM provider 选择重复逻辑 | 🟢 完成 | P1 | Backend / AI / 可维护性 | 已抽 `app/shared/llm/provider_resolver.py` 集中 provider 选择；ai_router 私有 `_call_llm` 已删。Follow-up：与 `factory.PRIORITY_CHAIN` 仍走不同顺序，可单独评估统一。 |
+| TD-017 将 Vue Query 请求生命周期治理推广到 FileDetailView | 🟢 完成 | P2 | Frontend / 可维护性 | 已迁 `loadTasks` + 3 个 mutation + 轮询到 Vue Query；`loadFile` / `loadChunks` / `loadKg` / `loadTemplates` 仍手写，列为 TD-018 follow-up。 |
 
 ## 最近完成
 

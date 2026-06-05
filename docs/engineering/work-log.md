@@ -21,6 +21,7 @@
 | 2026-06-05 | TD-007 减少前端请求状态处理重复（DatabaseView 迁到 Vue Query） | 技术债 / 重构 | [#36](https://github.com/MarkDanile/MetaEduBase/pull/36) | `350acd2` | `docs/engineering/technical-debt.md#td-007-减少前端请求状态处理重复` |
 | 2026-06-05 | TD-015 修复 TD-007 DatabaseView Vue Query 迁移后的行为回归 | 技术债 / 修复 / follow-up | [#38](https://github.com/MarkDanile/MetaEduBase/pull/38) | `f38fbbc` | `docs/engineering/technical-debt.md#td-015-修复-td-007-databaseview-vue-query-迁移后的行为回归` |
 | 2026-06-05 | TD-016 收敛 knowledge ai_router 的 LLM provider 选择重复逻辑 | 技术债 / 重构 / follow-up | [#39](https://github.com/MarkDanile/MetaEduBase/pull/39) | `4e6cf42` | `docs/engineering/technical-debt.md#td-016-收敛-knowledge-ai_router-的-llm-provider-选择重复逻辑` |
+| 2026-06-05 | TD-017 将 Vue Query 请求生命周期治理推广到 FileDetailView | 技术债 / 重构 / follow-up | [#40](https://github.com/MarkDanile/MetaEduBase/pull/40) | `5af2793` | `docs/engineering/technical-debt.md#td-017-将-vue-query-请求生命周期治理推广到-filedetailview` |
 | 2026-06-05 | DOC-008 将合并后 backfill 改为条件触发 | 文档 / 工程规范 |  |  | `docs/engineering/rules/git-workflow.md` |
 | 2026-06-05 | DOC-007 压缩 current-work 最近完成区并强化渐进式披露 | 文档 / 工程规范 | [#30](https://github.com/MarkDanile/MetaEduBase/pull/30) | `3b36023` | `docs/engineering/current-work.md` |
 | 2026-06-05 | DOC-006 修复 current-work 重复完成区标题 | 文档 / 工程规范 | [#29](https://github.com/MarkDanile/MetaEduBase/pull/29) | `7d0f427` | `docs/engineering/current-work.md` |

@@ -250,11 +250,11 @@
 
 ### TD-017: 将 Vue Query 请求生命周期治理推广到 FileDetailView
 
-状态：🔵 就绪
+状态：🟢 完成
 优先级：P2
 领域：前端 / 可维护性
 证据：TD-007 仅迁移了 `DatabaseView`；`packages/web/src/views/resource/FileDetailView.vue:223-235` 仍手写 `tasks`、`chunks`、`kgNodes`、`loading*` 和 `pollTimer`，`FileDetailView.vue:257-317` 分散维护 load / toast / error 状态，`FileDetailView.vue:465-482` 手写轮询。
 问题：前端请求生命周期重复治理只覆盖了一个高变更页面，`FileDetailView` 仍保留同类 loading、错误提示、轮询刷新和 mutation 后刷新逻辑。若直接照搬 TD-007 方案但不补行为等价矩阵，容易再次引入请求参数或轮询语义回归。
 完成标准：在 TD-015 收口后，再选择 `FileDetailView` 的一个稳定请求族迁移到 composable 或 Vue Query；迁移前先列出行为等价矩阵，至少覆盖请求参数、tab lazy-load、轮询 start / stop、mutation 后 cache invalidation、toast 文案和 loading 状态；迁移后不得改变用户可见行为，除非在任务卡片和 PR 中明确声明。
 验证方式：`pnpm --filter @metaedu/web lint`、`pnpm --filter @metaedu/web typecheck`、`pnpm --filter @metaedu/web build` 均退出码 0；通过自动化 mock、组件测试或浏览器验收确认文件详情、任务列表、切片、知识图谱、重试、重新初始化和删除流程仍符合矩阵。
-备注：2026-06-05 Codex 复核 TD-007 / PR #36 后将原 `TD-007-FOLLOWUP` 转为稳定编号任务。前置建议：先完成 TD-015，避免把已发现回归模式复制到下一页。2026-06-05 状态从 ⚫ 待办 推进为 🔵 就绪：TD-015 已收口（PR #38），满足"先完成 TD-015"前置；本次总账已有"完成标准"和"验证方式"，符合 `current-work.md` 进入就绪状态的条件。
+备注：2026-06-05 Codex 复核 TD-007 / PR #36 后将原 `TD-007-FOLLOWUP` 转为稳定编号任务。前置建议：先完成 TD-015，避免把已发现回归模式复制到下一页。2026-06-05 由 Claude Code 接手完成（TD-015 已收口，前置已满足）。Spec：`docs/specs/2026-06-05-td-017-filedetailview-vue-query.md`；Plan：`docs/plans/2026-06-05-td-017-filedetailview-vue-query-plan.md`；等价矩阵：`docs/engineering/matrices/td-017-filedetailview-equivalence.md`。改动：新增 `packages/web/src/views/resource/queries.ts` 集中 `useFileTasksQuery`（GET + 轮询）+ 3 个 mutation（`useRetryTasksMutation` / `useReinitializeFileMutation` / `useDeleteFileMutation`），集中 queryKey 树形结构；`FileDetailView.vue` 删除 `tasks` / `loadingTasks` ref + `loadTasks` / `retryTasks` / `reinitialize` / `doDelete` 函数 + `pollTimer` / `startPolling` / `stopPolling` + `onUnmounted` 清理 + `onMounted` 显式 `loadTasks` 触发；轮询改为 `useFileTasksQuery.refetchInterval` 由 `polling` 条件化（与 TD-015 fix 2 同模式）；watch `polling` 由 true→false 触发 `loadFile + loadChunks + loadKg`（这三个仍手写）；错误 toast 由 `QueryCache.onError` 统一。行为不变：列表加载 / 轮询 3s 间隔 / 仅 running/pending 时启用 / 任务全部完成时 refresh 其他资源 / 3 个 mutation 成功 toast + 后置动作（清空 chunks/kg、跳转路由）；唯一边缘可见变化是错误文案从「固定字符串」改为「query error message 兜底」。Out of scope（保留手写）：`loadFile` / `loadChunks` / `loadKg` / `loadTemplates`，可作为后续 follow-up。验证：`pnpm --filter @metaedu/web typecheck` 退出码 0；`pnpm --filter @metaedu/web build` 退出码 0；`pnpm --filter @metaedu/web lint` 退出码 0。PR #40（https://github.com/MarkDanile/MetaEduBase/pull/40），merge commit `5af2793`，完成日期 2026-06-05。
