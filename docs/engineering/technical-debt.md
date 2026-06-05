@@ -115,7 +115,7 @@
 | TD-024 | 收口 TD-023 复核发现的副本文件与旧归一化表述 | 🟢 完成 | P2 | 文档 / 工程流程 / 仓库卫生 | TD-023 复核 |
 | TD-025 | 业务页面 `liquid-card` 容器统一迁移到 `ui-panel`（业务视图部分完成） | 🟢 完成 | P2 | 前端 / 设计系统 | [PR #54](https://github.com/MarkDanile/MetaEduBase/pull/54) + [PR #55](https://github.com/MarkDanile/MetaEduBase/pull/55) + [PR #56](https://github.com/MarkDanile/MetaEduBase/pull/56) |
 | TD-026 | 共享组件 `liquid-card` 残留验证 | 🟢 完成 | P3 | 前端 / 设计系统 | [PR #58](https://github.com/MarkDanile/MetaEduBase/pull/58) |
-| TD-027 | 补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类（设计系统扩展） | ⚫ 待办 | P3 | 前端 / 设计系统 | `docs/engineering/rules/coding-style.md#迁移说明-td-008` |
+| TD-027 | 补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类（设计系统扩展） | 🟢 完成 | P3 | 前端 / 设计系统 | [PR #59](https://github.com/MarkDanile/MetaEduBase/pull/59) |
 
 ## 任务详情
 
