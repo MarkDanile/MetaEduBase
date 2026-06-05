@@ -39,9 +39,9 @@ TD-016 的 PR 描述已明确：resolver 顺序与 factory 顺序不同是"可�
 ### 3.1 目标
 
 1. 消除"两套 provider 顺序 / 命名事实源"漂移。
-2. `provider_resolver` 复用 `factory` 的归一化与顺序派生逻辑；不再写第二份 `_PROVIDER_CANDIDATES`。
+2. `provider_resolver` 复用 `factory` 暴露的 `RESOLVER_PROVIDER_NAMES` 与 `resolver_default_provider()` 两个公开事实源；不再写第二份 `_PROVIDER_CANDIDATES`。`resolver_default_provider()` 走 resolver 专用 alias 判定，**不复用** `factory._normalize_default_provider`（后者会把 `qwen` 翻译成 `dashscope`，落到 resolver 视角会失语）。
 3. `ai_router` 看到 `provider_name` 仍然为 `"qwen"`（保持当前中文提示文案 `QWEN_API_KEY` 不变）。
-4. 测试覆盖：默认 provider 命中、fallback、qwen→dashscope 归一化、provider 关键字段不完整跳过。
+4. 测试覆盖：默认 provider 命中、fallback、`resolver_default_provider()` 的 resolver alias 判定（含 `dashscope` / `siliconflow` / `openai` 等不在子集时返回 `None`）、provider 关键字段不完整跳过。注意：`qwen` / `dashscope` **不是 resolver 归一化关系**——`qwen` 是 resolver 子集 alias，`dashscope` 仅是 factory provider 实现名，resolver 不做 `qwen → dashscope` 翻译。
 5. `factory.PRIORITY_CHAIN` 与 `provider_resolver` 顺序的差异**通过命名明确的子集声明**保留，并写进 spec；不再静默分叉。
 
 ### 3.2 不目标
@@ -134,7 +134,7 @@ def resolve_chat_provider() -> ProviderConfig | None:
 
 要点：
 - 不再有第二份 `_PROVIDER_CANDIDATES`。
-- `qwen` 别名 + `dashscope` 归一化路径由 `factory.resolver_default_provider` 集中维护。
+- `qwen` alias 由 `factory.RESOLVER_PROVIDER_NAMES` 集中声明；`resolver_default_provider()` 用 resolver 专用 alias 判定（独立 trim/lowercase 后落在子集内才返回该 alias），**不**走 `dashscope` 归一化路径，也**不**复用 `factory._normalize_default_provider`。
 - `_settings_for` 把"alias 字段名"集中在一处，将来如果再扩 `RESOLVER_PROVIDER_NAMES` 只需追加。
 
 ### 4.3 可观察行为变化声明
