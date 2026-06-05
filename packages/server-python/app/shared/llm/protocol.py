@@ -17,6 +17,21 @@ class EmbedOptions:
     timeout: float = 60.0
 
 
+@dataclass
+class ProviderConfig:
+    """Resolved LLM provider configuration.
+
+    Returned by `provider_resolver.resolve_chat_provider()` so business code
+    that needs raw `base_url` / `api_key` (e.g. ai_router's direct httpx
+    call) does not have to re-derive the provider from `settings`.
+    """
+
+    provider_name: str
+    base_url: str
+    model: str
+    api_key: str
+
+
 class ProviderError(Exception):
     """General provider error."""
 

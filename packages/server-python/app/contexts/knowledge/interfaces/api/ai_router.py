@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.contexts.knowledge.application.fusion_service import FrequencyFusion
 from app.contexts.knowledge.application.ner_service import RuleBasedNER
@@ -19,6 +18,7 @@ from app.contexts.knowledge.application.recall_service import (
 from app.shared.domain.recall_channel import RecallResult
 from app.shared.infrastructure.database import get_session
 from app.shared.infrastructure.tenant_context import get_tenant_id
+from app.shared.llm.provider_resolver import resolve_chat_provider
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -157,29 +157,8 @@ async def ai_chat(
 
 
 async def _call_llm(system_prompt: str, user_content: str) -> str:
-    provider = settings.llm_default_provider
-
-    if provider == "minimax" and settings.minimax_api_key:
-        api_key = settings.minimax_api_key
-        base_url = settings.minimax_base_url
-        model = settings.minimax_model
-    elif provider == "deepseek" and settings.deepseek_api_key:
-        api_key = settings.deepseek_api_key
-        base_url = settings.deepseek_base_url
-        model = settings.deepseek_model
-    elif settings.qwen_api_key:
-        api_key = settings.qwen_api_key
-        base_url = settings.qwen_base_url
-        model = settings.qwen_model
-    elif settings.minimax_api_key:
-        api_key = settings.minimax_api_key
-        base_url = settings.minimax_base_url
-        model = settings.minimax_model
-    elif settings.deepseek_api_key:
-        api_key = settings.deepseek_api_key
-        base_url = settings.deepseek_base_url
-        model = settings.deepseek_model
-    else:
+    config = resolve_chat_provider()
+    if config is None:
         return (
             "⚠️ 尚未配置 LLM API Key，请在 .env 中设置 "
             "MINIMAX_API_KEY / DEEPSEEK_API_KEY / QWEN_API_KEY。"
@@ -189,10 +168,10 @@ async def _call_llm(system_prompt: str, user_content: str) -> str:
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
-                f"{base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}"},
+                f"{config.base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {config.api_key}"},
                 json={
-                    "model": model,
+                    "model": config.model,
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_content},
