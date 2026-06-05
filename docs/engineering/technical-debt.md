@@ -116,6 +116,7 @@
 | TD-025 | 业务页面 `liquid-card` 容器统一迁移到 `ui-panel`（业务视图部分完成） | 🟢 完成 | P2 | 前端 / 设计系统 | [PR #54](https://github.com/MarkDanile/MetaEduBase/pull/54) + [PR #55](https://github.com/MarkDanile/MetaEduBase/pull/55) + [PR #56](https://github.com/MarkDanile/MetaEduBase/pull/56) |
 | TD-026 | 共享组件 `liquid-card` 残留验证 | 🟢 完成 | P3 | 前端 / 设计系统 | [PR #58](https://github.com/MarkDanile/MetaEduBase/pull/58) |
 | TD-027 | 补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类（设计系统扩展） | 🟢 完成 | P3 | 前端 / 设计系统 | [PR #59](https://github.com/MarkDanile/MetaEduBase/pull/59) |
+| TD-028 | 业务视图与共享组件的 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 存量替换 | 🟢 完成 | P3 | 前端 / 设计系统 | [PR #61](https://github.com/MarkDanile/MetaEduBase/pull/61) |
 
 ## 任务详情
 
@@ -1068,3 +1069,43 @@
 
 **交付记录**
 - 未完成。建议开工顺序：先在 `main.css` 追加 5 类（`ui-input` / `ui-btn*` 4 类 / `ui-tag*` 5 类 / `ui-dialog*` 2 类 = 12 个类）→ 加 `liquid` 主题 `ui-btn-primary` 玻璃感覆盖 → 文档同步。业务视图与共享组件的存量替换（TD-028 候选）不在本债范围。
+
+### TD-028: 业务视图与共享组件的 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 存量替换
+
+状态：🟢 完成
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P3 |
+| 领域 | 前端 / 设计系统 |
+| 事实源 | [PR #61](https://github.com/MarkDanile/MetaEduBase/pull/61) |
+
+**证据**
+- TD-027（2026-06-05，PR #59 / merge commit `040f7ad`）落地 12 个 `ui-*` 原子控件共享类（`ui-input` / `ui-btn` 4 类 / `ui-tag` 5 类 / `ui-dialog` 2 类），与 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 是 token-for-token 1:1 镜像。
+- 业务视图与共享组件的存量 `liquid-*-atomic` 残留（`rg -c "liquid-(input|btn|tag|dialog)" packages/web/src/views/ packages/web/src/components/` 共 119 处）。
+
+**问题**
+- 业务视图与共享组件仍以 `liquid-*-atomic` 为主，`ui-*-atomic` 在业务代码里 0 处使用（TD-027 完成后已 grep 确认），设计系统迁移只完成一半。
+- 不替换存量 → `ui-*` 体系实际上没被采用；后续每次新增 UI 都会重蹈 `liquid-*` 覆辙。
+
+**完成标准**
+- 业务视图（10 个）+ 共享组件（3 个）共 13 文件中，所有 `liquid-input` / `liquid-btn` / `liquid-btn-primary` / `liquid-btn-ghost` / `liquid-btn-danger` / `liquid-tag` / `liquid-tag-blue` / `liquid-tag-green` / `liquid-tag-amber` / `liquid-tag-purple` / `liquid-dialog` / `liquid-dialog-overlay` 替换为对应的 `ui-*` 类。
+- `\`liquid-tag-${color}\`` 模板字符串（5 处）替换为 `\`ui-tag-${color}\``。
+- `LoginView` 的 `liquid-input` / `liquid-btn-*` 也参与替换；`LoginView` 品牌背景与 `--_login-brand-gradient` 仍按 TD-008 规则保持兼容。
+- 4 主题视觉不发生可观察退化（`ui-*` 与 `liquid-*` 在 `main.css` 中 byte-identical 镜像）。
+- `main.css` 中 `liquid-*` 声明保持兼容别名（不动）。
+- `HomeView` / `KGGraph` 0 处 `liquid-*` 残留（TD-025 切片 3 + 历史已清），跳过。
+
+**验证方式**
+- `pnpm --filter @metaedu/web typecheck` / `lint` / `build` 退出码 0。
+- `scripts/check-engineering-docs` 退出码 0。
+- `rg -c "ui-(input|btn|tag|dialog)" packages/web/src/views/ packages/web/src/components/` 12 文件全部 > 0；`rg -c "liquid-(input|btn|tag|dialog)" packages/web/src/views/ packages/web/src/components/` 每个文件 0 命中。
+- `rg 'ui-tag-\$\{color\}' packages/web/src/views/ packages/web/src/components/` 命中 5 处（DatabaseView 2 + FileDetailView 2 + ResourceLibraryView 1），模板字符串迁移到位。
+- 4 主题（liquid / ink / navy / notion）下业务视图与共享组件手工验收视觉不退化；沙箱无浏览器时降级为 typecheck + lint + `git diff` 自检。
+
+**交付记录**
+- 2026-06-05 完成（接手工具：Claude Code）。一次性 token-for-token 机械替换，1 个原子提交。
+  - 12 文件 119 处 `liquid-*-atomic` → `ui-*-atomic` 替换（从长到短顺序：`liquid-btn-primary/ghost/danger` → `liquid-btn` 基类 → `liquid-tag-blue/green/amber/purple` → `liquid-tag` 基类 → `liquid-input` → `liquid-dialog-overlay` → `liquid-dialog`），保证 `liquid-btn` 不被 `liquid-btn-primary` 部分覆盖。
+  - 5 处 `\`liquid-tag-${color}\`` 模板字符串（DatabaseView 2 + FileDetailView 2 + ResourceLibraryView 1）随 sed 一起替换为 `\`ui-tag-${color}\``；运行时 `color` 仅 blue/green/amber/purple（4 个都有 `ui-tag-*` 对应；`red` 走 inline `text-red-500` 不经过此模板，安全）。
+  - 排除 `HomeView`（0 处）、`KGGraph`（0 处）、`main.css`（`liquid-*` 声明保持兼容别名）、`LoginView` 品牌背景（TD-008 例外保留，仅 input/btn 参与替换）。
+- PR #61，merge commit `349c743`。
