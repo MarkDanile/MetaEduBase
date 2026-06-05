@@ -10,7 +10,7 @@
 - 开发前确认本次任务卡片，并按卡片链接渐进式读取 spec、plan、技术债或架构约束。
 - 涉及跨文件开发、计划接力、状态交接或后续继续开发时，必须登记或更新任务卡片。
 - 代码、验证或 Git 阶段变化后，必须同步任务状态、当前进展、下一步和验证结果。
-- 提交、PR、合并或声明完成前，运行 `scripts/check-engineering-docs` 并执行 `docs/engineering/rules/quality-gates.md#完成门禁`。
+- 提交、PR、合并或声明完成前，运行 `scripts/check-engineering-docs` 并执行 `docs/engineering/rules/quality-gates.md#完成门禁`；门禁主实现位于 `scripts/engineering/check_engineering_docs.py`。
 
 ## 当前进行中
 
@@ -30,7 +30,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
-| 2026-06-05 | DOC-012 工程文档自动门禁与工作台瘦身 | 🟢 完成 | 新增 `scripts/check-engineering-docs` 与 pytest 夹具；工作台详细规则迁入 `rules/workbench.md`；`current-work.md` 瘦身；`quality-gates.md` / `git-workflow.md` 接入文档门禁；首次运行修复 TD-004 历史 plan 断链。 | [Spec](../specs/2026-06-05-doc-012-engineering-doc-gates-and-workbench-slimming.md) / [Plan](../plans/2026-06-05-doc-012-engineering-doc-gates-and-workbench-slimming-plan.md) |
+| 2026-06-05 | DOC-012 工程文档自动门禁与工作台瘦身 | 🟢 完成 | 新增工程文档门禁，主实现收敛到 `scripts/engineering/check_engineering_docs.py`，`scripts/check-engineering-docs` 保留稳定兼容入口；工作台详细规则迁入 `rules/workbench.md`；首次运行修复 TD-004 历史 plan 断链。 | [Spec](../specs/2026-06-05-doc-012-engineering-doc-gates-and-workbench-slimming.md) / [Plan](../plans/2026-06-05-doc-012-engineering-doc-gates-and-workbench-slimming-plan.md) |
 | 2026-06-05 | TD-020 统一 LLM provider resolver 与 factory 优先级事实源 | 🟢 完成 | `factory` 暴露 `RESOLVER_PROVIDER_NAMES` + `resolver_default_provider()`；`provider_resolver` 改为薄壳复用 factory 事实源；新增 `tests/shared/test_factory.py` 与 2 个 resolver 用例；零业务行为变化。 | [docs/engineering/technical-debt.md#td-020-统一-llm-provider-resolver-与-factory-优先级事实源](technical-debt.md) / [PR #46](https://github.com/MarkDanile/MetaEduBase/pull/46) |
 | 2026-06-05 | DOC-011 技术债总账结构化展示优化 | 🟢 完成 | `technical-debt.md` 增加任务总览表和结构化任务卡片；长 `备注` 压缩为交付记录、事实源和验证摘要，降低扫视成本。 | `docs/engineering/technical-debt.md` |
 | 2026-06-05 | DOC-010 收敛完成门禁并瘦身重复流程规则 | 🟢 完成 | 将通用收尾检查集中到 `quality-gates.md#完成门禁` 6 项；`workflow.md`、`task-modes.md`、`git-workflow.md` 和 AI 入口文件改为引用，减少重复规则和 token 开销。 | `docs/engineering/rules/quality-gates.md#完成门禁` |
