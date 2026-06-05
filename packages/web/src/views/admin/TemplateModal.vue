@@ -32,7 +32,7 @@
                 <label class="field-label">模板名称 <span class="text-[var(--color-danger)]">*</span></label>
                 <input
                   v-model="form.name"
-                  class="liquid-input w-full"
+                  class="ui-input w-full"
                   placeholder="例如：教案模板"
                   maxlength="100"
                 />
@@ -45,7 +45,7 @@
                   <span
                     v-for="dt in form.doc_types"
                     :key="dt"
-                    class="liquid-tag-blue flex items-center gap-1"
+                    class="ui-tag-blue flex items-center gap-1"
                   >
                     {{ dt }}
                     <button @click="removeDocType(dt)" class="hover:text-[var(--color-danger)]">
@@ -56,7 +56,7 @@
                 <div class="relative">
                   <input
                     v-model="docTypeInput"
-                    class="liquid-input w-full pr-20"
+                    class="ui-input w-full pr-20"
                     placeholder="输入后回车添加"
                     @keydown.enter.prevent="addDocType"
                     @input="checkDocTypeDuplicate"
@@ -137,7 +137,7 @@
 
               <div class="mb-3">
                 <label class="text-[11px] text-[var(--color-ink-tertiary)] mb-1.5 block">文档类型名</label>
-                <input v-model="aiDocType" class="liquid-input w-full text-[12px] py-2" placeholder="如：教案" />
+                <input v-model="aiDocType" class="ui-input w-full text-[12px] py-2" placeholder="如：教案" />
               </div>
 
               <div class="mb-4">
@@ -179,7 +179,7 @@
                 <label class="text-[11px] text-[var(--color-ink-tertiary)] mb-1.5 block">补充说明（可选）</label>
                 <textarea
                   v-model="form.ai_context"
-                  class="liquid-input w-full resize-none text-[12px]"
+                  class="ui-input w-full resize-none text-[12px]"
                   rows="3"
                   placeholder="补充说明（可选）——如：课程标准模板需包含前置能力与知识基础"
                 />
@@ -187,7 +187,7 @@
               </div>
 
               <button
-                class="liquid-btn liquid-btn-primary w-full justify-center text-[13px] py-2"
+                class="ui-btn ui-btn-primary w-full justify-center text-[13px] py-2"
                 :disabled="generating"
                 @click="regenerateAI"
               >
@@ -211,8 +211,8 @@
 
         <!-- Footer -->
         <div class="modal-footer">
-          <button class="liquid-btn liquid-btn-ghost" @click="handleClose">取消</button>
-          <button class="liquid-btn liquid-btn-primary" @click="handleSave" :disabled="saving">
+          <button class="ui-btn ui-btn-ghost" @click="handleClose">取消</button>
+          <button class="ui-btn ui-btn-primary" @click="handleSave" :disabled="saving">
             <Check :size="14" />
             {{ saving ? '保存中...' : (isEdit ? '保存' : '创建模板') }}
           </button>

@@ -3,7 +3,7 @@
     <div class="flex-1 min-w-0">
       <div class="flex items-start justify-between mb-[var(--spacing-page)] animate-slide-up">
         <PageHeader title="知识库" subtitle="结构化职业教育知识体系" />
-        <button @click="showCreateDialog = true" class="liquid-btn liquid-btn-primary flex-shrink-0">
+        <button @click="showCreateDialog = true" class="ui-btn ui-btn-primary flex-shrink-0">
           <Plus :size="16" :stroke-width="2" />
           新建节点
         </button>
@@ -57,15 +57,15 @@
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2">
                 <span class="font-medium text-[var(--text-body)] text-[var(--color-ink)] truncate">{{ node.title }}</span>
-                <span class="liquid-tag liquid-tag-blue">{{ levelMap[node.level] ?? node.level }}</span>
-                <span class="liquid-tag liquid-tag-green">{{ domainMap[node.domain] ?? node.domain }}</span>
+                <span class="ui-tag ui-tag-blue">{{ levelMap[node.level] ?? node.level }}</span>
+                <span class="ui-tag ui-tag-green">{{ domainMap[node.domain] ?? node.domain }}</span>
               </div>
               <p v-if="node.description" class="text-[var(--color-ink-tertiary)] mt-0.5 truncate">{{ node.description }}</p>
             </div>
             <ChevronRight :size="14" :stroke-width="1.5" class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-[var(--color-ink-tertiary)]" />
           </div>
           <div v-if="node.tags.length > 0" class="flex gap-1.5 mt-2 ml-11 flex-wrap">
-            <span v-for="tag in node.tags" :key="tag" class="liquid-tag liquid-tag-amber">{{ tag }}</span>
+            <span v-for="tag in node.tags" :key="tag" class="ui-tag ui-tag-amber">{{ tag }}</span>
           </div>
         </div>
       </div>
@@ -100,14 +100,14 @@
           </div>
 
           <div v-if="selectedNode.tags.length > 0" class="mt-4 flex gap-1.5 flex-wrap">
-            <span v-for="tag in selectedNode.tags" :key="tag" class="liquid-tag liquid-tag-amber">{{ tag }}</span>
+            <span v-for="tag in selectedNode.tags" :key="tag" class="ui-tag ui-tag-amber">{{ tag }}</span>
           </div>
 
           <div class="mt-5 flex gap-2">
-            <button @click="drillDown(selectedNode)" class="liquid-btn liquid-btn-primary py-1.5 px-4">
+            <button @click="drillDown(selectedNode)" class="ui-btn ui-btn-primary py-1.5 px-4">
               查看子节点
             </button>
-            <button @click="confirmDeleteId = selectedNode.id" class="liquid-btn liquid-btn-ghost py-1.5 px-4 !text-[var(--color-danger)]">
+            <button @click="confirmDeleteId = selectedNode.id" class="ui-btn ui-btn-ghost py-1.5 px-4 !text-[var(--color-danger)]">
               删除
             </button>
           </div>
@@ -115,33 +115,33 @@
       </div>
     </transition>
 
-    <div v-if="showCreateDialog" class="liquid-dialog-overlay" @click.self="showCreateDialog = false" @keydown.escape="showCreateDialog = false" role="dialog" aria-modal="true">
-      <div class="liquid-dialog">
+    <div v-if="showCreateDialog" class="ui-dialog-overlay" @click.self="showCreateDialog = false" @keydown.escape="showCreateDialog = false" role="dialog" aria-modal="true">
+      <div class="ui-dialog">
         <h3 class="text-[var(--text-subtitle)] font-semibold mb-5">新建知识节点</h3>
         <form @submit.prevent="createNode" class="space-y-4">
           <div>
             <label class="block font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">标题</label>
-            <input v-model="newNode.title" type="text" required class="liquid-input" />
+            <input v-model="newNode.title" type="text" required class="ui-input" />
           </div>
           <div>
             <label class="block font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">专业域</label>
-            <select v-model="newNode.domain" class="liquid-input">
+            <select v-model="newNode.domain" class="ui-input">
               <option v-for="(label, key) in domainMap" :key="key" :value="key">{{ label }}</option>
             </select>
           </div>
           <div>
             <label class="block font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">层级</label>
-            <select v-model="newNode.level" class="liquid-input">
+            <select v-model="newNode.level" class="ui-input">
               <option v-for="(label, key) in levelMap" :key="key" :value="key">{{ label }}</option>
             </select>
           </div>
           <div>
             <label class="block font-medium text-[var(--color-ink-secondary)] mb-1 ml-0.5">描述（可选）</label>
-            <textarea v-model="newNode.description" rows="2" class="liquid-input resize-none" />
+            <textarea v-model="newNode.description" rows="2" class="ui-input resize-none" />
           </div>
           <div class="flex gap-2 justify-end pt-1">
-            <button type="button" @click="showCreateDialog = false" class="liquid-btn liquid-btn-ghost">取消</button>
-            <button type="submit" class="liquid-btn liquid-btn-primary">创建</button>
+            <button type="button" @click="showCreateDialog = false" class="ui-btn ui-btn-ghost">取消</button>
+            <button type="submit" class="ui-btn ui-btn-primary">创建</button>
           </div>
         </form>
       </div>

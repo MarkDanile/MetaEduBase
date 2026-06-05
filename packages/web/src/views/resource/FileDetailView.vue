@@ -3,14 +3,14 @@
     <PageHeader :title="file?.filename ?? '文件详情'" subtitle="处理状态与数据预览">
       <template #extra>
         <div class="flex gap-2 mt-2">
-          <button class="liquid-btn-ghost px-3 py-1.5 flex items-center gap-1.5" @click="goBack">
+          <button class="ui-btn-ghost px-3 py-1.5 flex items-center gap-1.5" @click="goBack">
             <ArrowLeft :size="14" /> 返回
           </button>
-          <button class="liquid-btn-ghost px-3 py-1.5 flex items-center gap-1.5" @click="reinitializeMutation.mutate()">
+          <button class="ui-btn-ghost px-3 py-1.5 flex items-center gap-1.5" @click="reinitializeMutation.mutate()">
             <RefreshCw :size="14" /> 重新初始化
           </button>
           <button
-            class="liquid-btn-ghost px-3 py-1.5 flex items-center gap-1.5 text-red-500"
+            class="ui-btn-ghost px-3 py-1.5 flex items-center gap-1.5 text-red-500"
             @click="showDelete = true"
           >
             <Trash2 :size="14" /> 删除
@@ -28,11 +28,11 @@
           <FileText :size="18" class="text-[var(--color-accent)]" />
           <span class="text-[var(--text-body)] font-medium text-[var(--color-ink)]">{{ file.filename }}</span>
         </div>
-        <span class="liquid-tag-blue text-[var(--text-micro)]">{{ file.doc_type || file.file_type }}</span>
+        <span class="ui-tag-blue text-[var(--text-micro)]">{{ file.doc_type || file.file_type }}</span>
         <span :class="statusTagClass(file.status)">{{ statusLabel(file.status) }}</span>
         <span class="text-[var(--text-small)] text-[var(--color-ink-tertiary)]">{{ formatSize(file.file_size) }}</span>
         <div v-if="file.tags?.length" class="flex gap-1">
-          <span v-for="tag in file.tags" :key="tag" class="liquid-tag-purple text-[var(--text-micro)]">{{ tag }}</span>
+          <span v-for="tag in file.tags" :key="tag" class="ui-tag-purple text-[var(--text-micro)]">{{ tag }}</span>
         </div>
       </div>
 
@@ -42,7 +42,7 @@
           <h3 class="text-[var(--text-section-title)] font-medium text-[var(--color-ink)]">处理流水线</h3>
           <div class="flex items-center gap-2">
             <span v-if="polling" class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">自动刷新中...</span>
-            <button class="liquid-btn-ghost px-2 py-1" @click="refreshAll">
+            <button class="ui-btn-ghost px-2 py-1" @click="refreshAll">
               <RefreshCw :size="14" :class="{ 'animate-spin': loadingTasks || fileQuery.isFetching.value }" />
             </button>
           </div>
@@ -133,7 +133,7 @@
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
                   <span
-                    :class="chunk.has_embedding ? 'liquid-tag-green' : 'liquid-tag-amber'"
+                    :class="chunk.has_embedding ? 'ui-tag-green' : 'ui-tag-amber'"
                     class="text-[var(--text-micro)]"
                   >
                     {{ chunk.has_embedding ? '已向量化' : '未向量化' }}
@@ -376,7 +376,7 @@ function stepBgClass(type: string) {
 
 function stepLabelClass(type: string) {
   const color = TASK_STATUS_MAP[stepStatus(type)]?.color ?? "amber";
-  return `liquid-tag-${color} text-[var(--text-micro)]`;
+  return `ui-tag-${color} text-[var(--text-micro)]`;
 }
 
 // --- File helpers ---
@@ -386,7 +386,7 @@ function statusLabel(status: string) {
 
 function statusTagClass(status: string) {
   const color = FILE_STATUS_MAP[status]?.color ?? "blue";
-  return `liquid-tag-${color} text-[var(--text-micro)]`;
+  return `ui-tag-${color} text-[var(--text-micro)]`;
 }
 
 function formatSize(bytes: number | null) {

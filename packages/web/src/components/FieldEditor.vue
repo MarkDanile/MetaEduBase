@@ -3,20 +3,20 @@
     <div class="grid grid-cols-[1fr_1fr_auto] gap-2 items-start">
       <div>
         <label class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-1 block">字段名</label>
-        <input v-model="local.key" class="liquid-input w-full" placeholder="field_key" />
+        <input v-model="local.key" class="ui-input w-full" placeholder="field_key" />
       </div>
       <div>
         <label class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-1 block">中文标签</label>
-        <input v-model="local.label" class="liquid-input w-full" placeholder="字段标签" />
+        <input v-model="local.label" class="ui-input w-full" placeholder="字段标签" />
       </div>
       <div>
         <label class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-1 block">类型</label>
-        <select v-model="local.type" class="liquid-input w-full">
+        <select v-model="local.type" class="ui-input w-full">
           <option v-for="ft in FIELD_TYPES" :key="ft.value" :value="ft.value">{{ ft.label }}</option>
         </select>
       </div>
       <button
-        class="liquid-btn-ghost p-1.5 !rounded-[var(--radius-sm)] mt-5"
+        class="ui-btn-ghost p-1.5 !rounded-[var(--radius-sm)] mt-5"
         @click="$emit('remove')"
       >
         <X :size="14" class="text-[var(--color-danger)]" />
@@ -25,7 +25,7 @@
 
     <div>
       <label class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-1 block">说明（可选）</label>
-      <input v-model="local.description" class="liquid-input w-full" placeholder="字段描述，供 AI 抽取参考" />
+      <input v-model="local.description" class="ui-input w-full" placeholder="字段描述，供 AI 抽取参考" />
     </div>
 
     <!-- Object: children -->
@@ -38,7 +38,7 @@
         @update:model-value="(v) => { const arr = [...childrenArr]; arr[i] = v; setChildren(arr); }"
         @remove="setChildren(childrenArr.filter((_, idx) => idx !== i))"
       />
-      <button class="liquid-btn-ghost text-[var(--text-small)]" @click="setChildren([...childrenArr, { key: '', label: '', type: 'text' }])">
+      <button class="ui-btn-ghost text-[var(--text-small)]" @click="setChildren([...childrenArr, { key: '', label: '', type: 'text' }])">
         <Plus :size="12" /> 添加子字段
       </button>
     </div>
@@ -48,17 +48,17 @@
       <p class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-2">列定义</p>
       <div class="space-y-1">
         <div v-for="(col, i) in columnsArr" :key="i" class="grid grid-cols-[1fr_1fr_auto_auto] gap-2 items-center">
-          <input v-model="col.key" class="liquid-input w-full" placeholder="列键名" />
-          <input v-model="col.label" class="liquid-input w-full" placeholder="列标签" />
-          <select v-model="col.type" class="liquid-input w-full">
+          <input v-model="col.key" class="ui-input w-full" placeholder="列键名" />
+          <input v-model="col.label" class="ui-input w-full" placeholder="列标签" />
+          <select v-model="col.type" class="ui-input w-full">
             <option v-for="ct in COLUMN_TYPES" :key="ct.value" :value="ct.value">{{ ct.label }}</option>
           </select>
-          <button class="liquid-btn-ghost p-1.5 !rounded-[var(--radius-sm)]" @click="setColumns(columnsArr.filter((_, idx) => idx !== i))">
+          <button class="ui-btn-ghost p-1.5 !rounded-[var(--radius-sm)]" @click="setColumns(columnsArr.filter((_, idx) => idx !== i))">
             <X :size="12" class="text-[var(--color-danger)]" />
           </button>
         </div>
       </div>
-      <button class="liquid-btn-ghost text-[var(--text-small)] mt-1" @click="setColumns([...columnsArr, { key: '', label: '', type: 'text' }])">
+      <button class="ui-btn-ghost text-[var(--text-small)] mt-1" @click="setColumns([...columnsArr, { key: '', label: '', type: 'text' }])">
         <Plus :size="12" /> 添加列
       </button>
     </div>
@@ -72,7 +72,7 @@
         @update:model-value="(v) => setItems([v])"
         @remove="setItems([])"
       />
-      <button v-else class="liquid-btn-ghost text-[var(--text-small)]" @click="setItems([{ key: '', label: '', type: 'text' }])">
+      <button v-else class="ui-btn-ghost text-[var(--text-small)]" @click="setItems([{ key: '', label: '', type: 'text' }])">
         <Plus :size="12" /> 添加数组项模板
       </button>
     </div>

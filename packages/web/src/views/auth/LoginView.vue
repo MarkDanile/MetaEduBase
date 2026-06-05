@@ -27,7 +27,7 @@
               <input
                 v-model="form.username"
                 type="text"
-                class="liquid-input has-left-icon"
+                class="ui-input has-left-icon"
                 placeholder="请输入用户名"
                 required
               />
@@ -41,7 +41,7 @@
               <input
                 v-model="form.password"
                 :type="showPassword ? 'text' : 'password'"
-                class="liquid-input has-left-icon has-right-icon"
+                class="ui-input has-left-icon has-right-icon"
                 placeholder="请输入密码"
                 required
               />
@@ -64,7 +64,7 @@
           <button
             type="submit"
             :disabled="loading"
-            class="liquid-btn liquid-btn-primary submit-btn"
+            class="ui-btn ui-btn-primary submit-btn"
           >
             <template v-if="loading">
               <div class="flow-line">
