@@ -401,6 +401,56 @@
    Component classes — all surface/color values via tokens
    ================================================================ */
 @layer components {
+  /* ---- Semantic workspace layer (TD-008)
+     语义化工作区层。新增/修改 UI 优先使用本层；liquid-* 作为历史兼容保留。
+     所有视觉量全部 token 化，禁止硬编码颜色/间距/z-index。 ---- */
+
+  .ui-page-shell {
+    width: 100%;
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: var(--spacing-page);
+    background: var(--color-bg-base);
+  }
+
+  .ui-page-section {
+    margin-top: var(--spacing-section);
+  }
+
+  .ui-panel {
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    transition: border-color var(--duration-fast) var(--ease-out),
+                box-shadow var(--duration-fast) var(--ease-out);
+  }
+
+  .ui-panel:hover {
+    border-color: var(--color-border);
+    box-shadow: var(--shadow-md);
+  }
+
+  .ui-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-md);
+  }
+
+  .ui-interactive-row {
+    transition: background-color var(--duration-fast) var(--ease-out),
+                color var(--duration-fast) var(--ease-out),
+                border-color var(--duration-fast) var(--ease-out);
+  }
+
+  .ui-interactive-row:hover {
+    background: var(--color-bg-hover);
+  }
+
   .sidebar-shell {
     background: var(--surface-sidebar-bg);
     backdrop-filter: var(--surface-glass-blur);
