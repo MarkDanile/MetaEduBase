@@ -845,8 +845,8 @@ gh pr create --base main --head refactor/td-004-test-db-reproducibility \
 
 ## 关联
 
-- Spec：[docs/specs/2026-06-04-td-004-test-database-reproducibility.md](docs/specs/2026-06-04-td-004-test-database-reproducibility.md)
-- Plan：[docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md](docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md)
+- Spec：[docs/specs/2026-06-04-td-004-test-database-reproducibility.md](../specs/2026-06-04-td-004-test-database-reproducibility.md)
+- Plan：[docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md](2026-06-04-td-004-test-database-reproducibility-plan.md)
 - 技术债：TD-004
 
 ## PR 范围

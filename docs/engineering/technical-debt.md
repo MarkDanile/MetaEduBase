@@ -111,6 +111,7 @@
 | TD-020 | 统一 LLM provider resolver 与 factory 优先级事实源 | 🟢 完成 | P2 | 后端 / AI / 可维护性 | [PR #46](https://github.com/MarkDanile/MetaEduBase/pull/46) |
 | TD-021 | 收口已完成计划文件和候选区状态同步漏洞 | 🟢 完成 | P1 | 文档 / 工程流程 / 跨 AI 交接 | `quality-gates.md` |
 | TD-022 | 收口早期已完成计划文件的活动式未勾选项 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | [PR #44](https://github.com/MarkDanile/MetaEduBase/pull/44) |
+| TD-023 | 收口 TD-020 文档一致性、断链与归档索引 | 🔵 就绪 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-020 复核 |
 
 ## 任务详情
 
@@ -803,3 +804,38 @@
 - 5 个早期 plan 增加交付历史；154 行行首 `- [ ]` 收口为 `- [x]`。
 - 验证摘要：目标 5 个 plan 活动式 `- [ ]` 命中 0；`交付历史` 每个 plan 至少 1 行命中。
 - 合并后复核发现 TD-022 自己的 plan 未闭合，已在 DOC-010 同批文档治理中补交付历史并收口。
+
+### TD-023: 收口 TD-020 文档一致性、断链与归档索引
+
+状态：🔵 就绪
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 文档 / 工程流程 / 跨 AI 交接 |
+| 事实源 | TD-020 复核 |
+
+**证据**
+- `docs/specs/2026-06-05-td-020-provider-resolver-factory.md:151` 描述 `resolver_default_provider()` 会把 `dashscope → qwen`，但实现 `packages/server-python/app/shared/llm/factory.py:51-74` 和测试 `packages/server-python/tests/shared/test_factory.py:71-78` 均锁定 `dashscope` 返回 `None`。
+- `docs/plans/2026-06-05-td-020-provider-resolver-factory-plan.md:5` 的 Spec 链接指向当前目录下同名文件，实际文件在 `docs/specs/`。
+- `docs/engineering/work-log.md:18` 的 TD-020 backfill 替换了原 DOC-011 索引，导致 DOC-011 从长期工作日志索引中消失。
+- `docs/engineering/technical-debt.md:738`、TD-020 spec 和 plan 顶部写有“全量 pytest 152 passed”，但当前 Codex 沙箱复跑 `cd packages/server-python && .venv/bin/python -m pytest -q` 因连接 `::1:5432` 权限失败，且 `gh pr checks 46` 显示 no checks reported；该声明缺少可复核的执行环境或 CI 证据。
+
+**问题**
+- TD-020 代码实现本身已通过聚焦验证，但交付文档存在行为描述矛盾、断链、归档索引丢失和验证声明证据不足。
+- 这些问题会误导后续 AI IDE 接手，降低跨工具交接可信度。
+
+**完成标准**
+- TD-020 spec 中 `resolver_default_provider()`、`qwen` 和 `dashscope` 的描述与实现、测试保持一致。
+- TD-020 plan 的 Spec 链接能正确跳转到 `docs/specs/2026-06-05-td-020-provider-resolver-factory.md`。
+- `docs/engineering/work-log.md` 同时保留 TD-020 和 DOC-011 的长期索引。
+- TD-020 相关文档中的全量 pytest 声明改为可复核表述：要么补充实际执行环境 / CI 证据，要么说明本地复核全量 pytest 因 PostgreSQL 连接权限未通过，并保留聚焦 pytest 与 ruff 通过事实。
+
+**验证方式**
+- `rg -n "dashscope → qwen|把 factory 归一化结果再翻译回 resolver 子集别名" docs/specs/2026-06-05-td-020-provider-resolver-factory.md` 不再命中误导描述。
+- `test -f docs/specs/2026-06-05-td-020-provider-resolver-factory.md`，并人工确认 plan 中 Spec 链接使用 `../specs/`。
+- `rg -n "TD-020|DOC-011" docs/engineering/work-log.md` 同时命中两条索引。
+- `rg -n "全量 pytest 152 passed|no checks reported|PermissionError|::1:5432" docs/engineering/technical-debt.md docs/specs/2026-06-05-td-020-provider-resolver-factory.md docs/plans/2026-06-05-td-020-provider-resolver-factory-plan.md` 的结果与实际验证证据一致，不再把当前不可复核项写成无条件通过。
+
+**交付记录**
+- 未完成。该任务是 TD-020 复核后拆出的文档一致性 follow-up，不涉及业务代码。
