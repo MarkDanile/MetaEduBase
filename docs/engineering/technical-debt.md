@@ -113,6 +113,7 @@
 | TD-022 | 收口早期已完成计划文件的活动式未勾选项 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | [PR #44](https://github.com/MarkDanile/MetaEduBase/pull/44) |
 | TD-023 | 收口 TD-020 文档一致性、断链与归档索引 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | `docs/engineering/current-work.md` |
 | TD-024 | 收口 TD-023 复核发现的副本文件与旧归一化表述 | 🟢 完成 | P2 | 文档 / 工程流程 / 仓库卫生 | TD-023 复核 |
+| TD-025 | 业务页面 `liquid-card` 容器统一迁移到 `ui-panel` | ⚫ 待办 | P2 | 前端 / 设计系统 | TD-008 交付记录 |
 
 ## 任务详情
 
@@ -332,32 +333,111 @@
 
 ### TD-008: 明确从 `liquid-*` 类到语义 UI 层的迁移路径
 
+状态：🟢 完成
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 前端 / 设计系统 |
+| 事实源 | `docs/superpowers/plans/2026-05-22-frontend-ui-foundation-redesign.md`（历史方案，不直接执行） + `docs/engineering/rules/coding-style.md`（迁移说明落地位置） |
+
+**证据**
+- `packages/web/src/assets/css/main.css:411-690` 定义了 `liquid-card / liquid-input / liquid-btn* / liquid-tag* / liquid-dialog / liquid-rise-* / content-bg`，没有 `ui-page-shell / ui-panel / ui-toolbar / ui-interactive-row` 等语义化类。
+- `packages/web/src/views/database/DatabaseView.vue`（23 处）、`resource/ResourceView.vue`（22）、`resource/ResourceLibraryView.vue`（18）、`knowledge/KnowledgeBaseView.vue`（16）、`resource/FileDetailView.vue`（12）、`admin/TemplateModal.vue`（8）、`admin/TemplateEditorView.vue`（6）、`views/auth/LoginView.vue`（4）、`ai-chat/AiChatView.vue`（4）仍以 `liquid-*` 类为主。
+- `docs/superpowers/plans/2026-05-22-frontend-ui-foundation-redesign.md`（10 个 task）已提出 `ui-*` 体系但未执行。
+- `docs/engineering/rules/coding-style.md:52` 已预告"当前代码仍以 `liquid-*` 类为主，后续会逐步迁移到语义化 `ui-*` workspace 层"。
+
+**问题**
+- 设计系统处于过渡状态，新增页面或组件容易继续在 `liquid-*` 上堆叠，风格治理成本上升。
+- `liquid-card-scan` 装饰动效、`wet-line` 装饰条等历史视觉与"calm workspace"目标不一致。
+- 缺乏明确规则：何时使用 `liquid-*`、何时使用 `ui-*`，导致跨 AI IDE 接手时各自选边。
+
+**完成标准**
+- `docs/engineering/rules/coding-style.md` 设计系统章节补一段"迁移说明"，明确 `ui-*` 语义层适用场景、`liquid-*` 保留场景、新增/修改 UI 的优先级。
+- `packages/web/src/assets/css/main.css` 追加 4 个 `ui-*` 共享类（`ui-page-shell` / `ui-panel` / `ui-toolbar` / `ui-interactive-row`），全部 token 化，不引入新硬编码。
+- 至少迁移 1 个代表性页面/组件族：本次选 `LayoutView.vue` + `PageHeader.vue` + `EmptyState.vue` 三个共享骨架组件。`LayoutView` 的 `main` 容器切到 `ui-page-shell`；`PageHeader` 去掉 `wet-line` 装饰条和 `stagger-*` 动画；`EmptyState` 改用 `ui-panel` 容器。
+- 现有 `liquid-*` 类全部保留，不删不动，作为兼容别名。
+- 4 主题视觉表现不发生可观察退化。
+
+**验证方式**
+- `cd packages/web && pnpm typecheck` 退出码 0。
+- `cd packages/web && pnpm build` 退出码 0。
+- `cd packages/web && pnpm lint` 退出码 0 且无新增 warning。
+- `scripts/check-engineering-docs` 退出码 0。
+- `rg -n "ui-page-shell|ui-panel|ui-toolbar|ui-interactive-row" packages/web/src/` 能命中 `LayoutView` / `PageHeader` / `EmptyState`。
+- `rg -n "wet-line|stagger-1" packages/web/src/components/PageHeader.vue packages/web/src/components/EmptyState.vue` 不再命中。
+- 4 主题（liquid / ink / navy / notion）下 `/`、`/admin`、`/skill-editor` 手工验收视觉无退化（按 superpowers plan 验证矩阵）。
+
+**交付记录**
+- 2026-06-05 完成（接手工具：Claude Code）。共 8 个文件变更，无业务行为变化。
+  1. `docs/engineering/rules/coding-style.md` 设计系统章节新增「迁移说明」段落：明确 5 个 `ui-*` 共享类用途、`ui-*` 优先 / `liquid-*` 兼容的边界、第一个迁移目标；新增/修改 UI 优先级清单（1. 复用 `ui-*` → 2. 复用既有局部风格 → 3. 不重复造样式 → 4. 不硬编码 → 5. 修改共享组件前查调用方）。
+  2. `packages/web/src/assets/css/main.css` 第 403 行附近 `@layer components` 段头部追加 5 个 `ui-*` 共享类（`ui-page-shell` / `ui-page-section` / `ui-panel` / `ui-toolbar` / `ui-interactive-row`），全部 token 化。
+  3. `packages/web/src/views/LayoutView.vue` 第 139-149 行 `main` 容器从 `content-bg` 切到 `ui-page-shell`，保留 `liquid-rise` 转场与 `RouterView` 不变。
+  4. `packages/web/src/components/PageHeader.vue` 重构为 `ui-page-section` 语义块：去掉 `wet-line` 装饰条 + `animate-slide-up` + `stagger-*` + `lineWidth/stagger` props（公共 API 收窄）；保留 `greeting` / `title` / `subtitle` / `extra` 4 个 slot 与 `title` / `subtitle` props。
+  5. `packages/web/src/components/EmptyState.vue` 容器从裸居中改用 `ui-panel p-6`，去掉 `animate-slide-up stagger-1`；icon 尺寸 48→40，stroke 1→1.25。
+  6. `packages/web/src/views/HomeView.vue` 第 3 行去掉 `PageHeader` 的 `:line-width="48"` 传参（公共 API 收窄的同步修复）。
+  7. `docs/engineering/current-work.md` 任务卡片登记（开工 → 完成）。
+  8. `docs/engineering/technical-debt.md` 本卡片（开工 → 完成）。
+
+- 行为变化声明（按 `quality-gates.md#行为变化声明检查`）：
+  - **可观察行为变化 1**：`PageHeader` 去掉 `wet-line` 装饰条（视觉差异：标题下方不再有渐变小条）。
+  - **可观察行为变化 2**：`PageHeader` 与 `EmptyState` 去掉 `animate-slide-up` + `stagger-*` 入场动画（视觉差异：组件挂载时不再有上滑+延迟）。
+  - **可观察行为变化 3**：`EmptyState` 加 `ui-panel` 容器（视觉差异：现在有浅色边框 + 圆角面板，与裸居中不同）。
+  - **公共 API 收窄**：`PageHeader` 删除 `lineWidth` / `stagger` props。已确认 `HomeView` 唯一外部调用方并同步修复。
+  - 4 主题视觉表现**不发生**其他可观察变化（颜色全部走 token，自动适配）。
+
+- 验证摘要（按 `quality-gates.md#完成门禁`）：
+  - 已运行：`pnpm --filter @metaedu/web typecheck` → 退出码 0（vue-tsc --noEmit 无输出）。
+  - 已运行：`pnpm --filter @metaedu/web build` → 退出码 0，✓ built in 2.92s。
+  - 已运行：`pnpm --filter @metaedu/web lint` → 退出码 0，eslint 无 warning。
+  - 已运行：`scripts/check-engineering-docs` → 退出码 0（`engineering docs checks passed`）。
+  - 已运行：`rg -n "ui-page-shell|ui-panel|ui-toolbar|ui-interactive-row" packages/web/src/` → 命中 `main.css` 定义段 + `LayoutView.vue:144` + `EmptyState.vue:2` + 2 个历史 `Template*` 视图（与本任务无关）。
+  - 已运行：`rg -n "wet-line|stagger-1|stagger-2|stagger-3|stagger-4|stagger-5" packages/web/src/components/PageHeader.vue packages/web/src/components/EmptyState.vue` → 0 命中。
+  - 已运行：`rg -n ":line-width=|:stagger=" packages/web/src/views/` → 0 命中（`PageHeader` API 收窄后无残留调用）。
+  - 已运行：`git status --short --branch` → 工作区仅 8 个文件被本任务改动，无未跟踪垃圾。
+  - 未运行：`./dev.sh frontend` + 浏览器 4 主题手工验收 — 沙箱无浏览器。
+
+- 后续接力建议（不阻塞本任务完成）：
+  - 业务页面（`DatabaseView` / `ResourceView` / `ResourceLibraryView` / `KnowledgeBaseView` / `FileDetailView`）的 `liquid-card` → `ui-panel` 迁移可以拆为后续 `TD-xxx`（P2/P3）。当前 TD-008 完成标准是"至少 1 个代表性页面/组件族"，已由 3 个共享骨架组件满足。
+  - `EmptyState` 的 `compact` prop 未声明问题在 `DatabaseView.vue:59` 仍存在（与本任务无关，是历史 prop 拼写错误）；是否登记为 `TD-xxx` 由后续判断。
+
+### TD-025: 业务页面 `liquid-card` 容器统一迁移到 `ui-panel`
+
 状态：⚫ 待办
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P2 |
 | 领域 | 前端 / 设计系统 |
-| 事实源 | `docs/superpowers/plans/2026-05-22-frontend-ui-foundation-redesign.md` |
+| 事实源 | `docs/engineering/technical-debt.md#td-008` 交付记录 + `docs/engineering/rules/coding-style.md#迁移说明-td-008` |
 
 **证据**
-- `packages/web/src/assets/css/main.css` 的组件层仍以 `liquid-*` 类为中心。
-- 历史前端 UI foundation plan 提出了语义化 `ui-*` workspace 层。
+- TD-008 完成（2026-06-05）后，`ui-page-shell` / `ui-panel` / `ui-toolbar` / `ui-interactive-row` 已落地为共享类，`coding-style.md` 迁移说明已明确"`ui-*` 优先 / `liquid-*` 兼容"。
+- 业务视图残留量（TD-008 完成时快照）：`DatabaseView.vue` 23 处、`ResourceView.vue` 22、`ResourceLibraryView.vue` 18、`KnowledgeBaseView.vue` 16、`FileDetailView.vue` 12、`TemplateModal.vue` 8、`TemplateEditorView.vue` 6、`LoginView.vue` 4（按 TD-008 规则保持兼容，本次不迁）、`AiChatView.vue` 4、`HomeView.vue` 3。
+- 共享组件残留：`FieldEditor.vue` 12、`KGDetailPanel.vue` 4、`ConfirmDialog.vue` 5、`KGGraph.vue` 1（共享组件按 TD-008 规则不在本次范围，列入后续接力）。
 
 **问题**
-- 设计系统处于过渡状态，后续页面可能混用旧类和新约定，导致风格治理成本上升。
+- 业务页面与共享组件仍以 `liquid-card` 为主，TD-008 的 `ui-panel` 规范在 `LayoutView` / `PageHeader` / `EmptyState` 落地后没有跟随到实际页面。
+- 设计系统迁移说明虽明确"优先 `ui-*`"，但缺接力任务，导致后续 AI IDE 接手时仍按"老习惯"继续堆 `liquid-card`，与新规范脱节。
+- 4 主题下页面外壳与面板在视觉上不同源（外壳走 `ui-panel`、内容走 `liquid-card`），calm workspace 目标只完成一半。
 
 **完成标准**
-- 补充简短设计系统迁移说明。
-- 明确何时使用 `liquid-*`、何时使用 `ui-*`。
-- 明确第一个迁移页面或组件族。
+- **切片 1：3 个高残留业务页面**（按当前数据：`DatabaseView` / `ResourceView` / `ResourceLibraryView`）的 `liquid-card` 容器统一替换为 `ui-panel`，行为不变；保留 hover 语义（必要时加 `ui-interactive-row`）、保留 `liquid-card-scan::after` 装饰效果在受控的卡片上不动。
+- **切片 2：2 个次高残留业务页面**（`KnowledgeBaseView` / `FileDetailView`）完成同样的 `liquid-card` → `ui-panel` 替换；保留 `ring-1 ring-[var(--color-accent)]` 等选中态的 raw token 用法。
+- **切片 3：业务页面的 `liquid-btn-*` / `liquid-input` 显式登记例外**：在 PR 描述中明确这些类按 TD-008 规则保持兼容，本次不替换。
+- **切片 4：文档同步**：`coding-style.md#迁移说明` 增补一段"业务页面迁移清单 + 进度"，把已完成页面加链接；TD-025 卡片 `交付记录` 记录每个切片的 PR / commit。
+- 不替换：`LoginView` 品牌背景 / `liquid-card-scan::after` 装饰 / `liquid-btn-*` / `liquid-input` / `liquid-tag-*` / `liquid-dialog` / `liquid-rise-*` / `wet-line`。
+- 4 主题视觉不发生可观察退化（仅容器视觉 token 切换）。
 
 **验证方式**
-- 迁移说明被本总账或 README 链接。
-- 至少一个代表性页面遵循选定约定。
+- 每个切片都跑：`cd packages/web && pnpm typecheck && pnpm lint && pnpm build`，全部退出码 0。
+- `scripts/check-engineering-docs` 退出码 0。
+- 切片完成后 `rg "liquid-card" packages/web/src/views/database/DatabaseView.vue` 等已迁入页面的命中数从原值降到 0。
+- 覆盖矩阵：每页面至少覆盖"卡片容器替换"和"hover / 选中态保留"两行；不引入新功能。
+- 4 主题（liquid / ink / navy / notion）下 `DatabaseView` / `ResourceView` / `ResourceLibraryView` 三个最高残留页面手工验收（`./dev.sh frontend` 启动后浏览器切换主题）；沙箱无浏览器时降级为 typecheck + lint + 视觉对照 `git diff` 自检。
 
 **交付记录**
-- 未完成。
+- 未完成。建议开工顺序：切片 1 → 切片 2 → 切片 3 → 切片 4。共享组件（`FieldEditor` / `KGDetailPanel` / `ConfirmDialog`）的 `liquid-card` 不在本次范围；如需后续接力可拆为 `TD-026` 等。
 
 ### TD-009: 减少前后端契约漂移
 
