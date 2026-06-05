@@ -117,6 +117,7 @@
 | TD-026 | 共享组件 `liquid-card` 残留验证 | 🟢 完成 | P3 | 前端 / 设计系统 | [PR #58](https://github.com/MarkDanile/MetaEduBase/pull/58) |
 | TD-027 | 补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类（设计系统扩展） | 🟢 完成 | P3 | 前端 / 设计系统 | [PR #59](https://github.com/MarkDanile/MetaEduBase/pull/59) |
 | TD-028 | 业务视图与共享组件的 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 存量替换 | 🟢 完成 | P3 | 前端 / 设计系统 | [PR #61](https://github.com/MarkDanile/MetaEduBase/pull/61) |
+| TD-029 | 收口 TD-009 的 shared schema 门禁与 FileDetailView 类型错误 | 🟢 完成 | P1 | 前端 / 类型 / 交付 | [Spec](../specs/2026-06-06-td-029-shared-schema-gate.md) / [Plan](../plans/2026-06-06-td-029-shared-schema-gate-plan.md) |
 
 ## 任务详情
 
@@ -475,7 +476,7 @@
 **交付记录**
 - 2026-06-06 完成（接手工具：Claude Code）。本轮选择结构化抽取结果容器作为契约族：`packages/shared` 新增 `FileStructuredDataSchema` / `FileStructuredData` / `getTemplateStructuredData`；前端 `FileDTO.structured_data` 复用 shared 类型，`FileDetailView` 读取 `template` 前通过 shared helper 窄化；后端抽出 parse/extract structured_data 写入 helper 并补聚焦测试。
 - 行为变化声明：正常 `template` object 展示不变；如果后端或历史数据把 `structured_data.template` 写成非 object，前端不再强转展示，而是按无抽取结果处理。
-- 验证摘要：`pnpm --filter @metaedu/shared typecheck` 退出码 0；`pnpm --filter @metaedu/web typecheck` 退出码 0；`pytest tests/contexts/document/test_structured_data_contract.py -q` 4 passed；`ruff check app/contexts/document/application/tasks.py tests/contexts/document/test_structured_data_contract.py` 退出码 0；`scripts/check-engineering-docs` 退出码 0。
+- 验证摘要：`pnpm --filter @metaedu/shared typecheck` 退出码 0；`pnpm --filter @metaedu/shared --filter @metaedu/web typecheck`（pnpm 并行执行，shared 由于无依赖会先于 web 完成 `tsc --noEmit`，从而填充 project reference 所需的类型信息）退出码 0；`pytest tests/contexts/document/test_structured_data_contract.py -q` 4 passed；`ruff check app/contexts/document/application/tasks.py tests/contexts/document/test_structured_data_contract.py` 退出码 0；`scripts/check-engineering-docs` 退出码 0。干净 checkout 上单独运行 `pnpm --filter @metaedu/web typecheck` 因 shared composite project reference 缺少 `dist/*.d.ts` 而报 `TS6305`；该门禁缺口已由 [TD-029](#td-029-收口-td-009-的-shared-schema-门禁与-filedetailview-类型错误) 收口。
 
 ### TD-010: 治理生成物 `outputs/` 对工作区的污染
 
@@ -1116,3 +1117,45 @@
   - 5 处 `\`liquid-tag-${color}\`` 模板字符串（DatabaseView 2 + FileDetailView 2 + ResourceLibraryView 1）随 sed 一起替换为 `\`ui-tag-${color}\``；运行时 `color` 仅 blue/green/amber/purple（4 个都有 `ui-tag-*` 对应；`red` 走 inline `text-red-500` 不经过此模板，安全）。
   - 排除 `HomeView`（0 处）、`KGGraph`（0 处）、`main.css`（`liquid-*` 声明保持兼容别名）、`LoginView` 品牌背景（TD-008 例外保留，仅 input/btn 参与替换）。
 - PR #61，merge commit `349c743`。
+
+### TD-029: 收口 TD-009 的 shared schema 门禁与 FileDetailView 类型错误
+
+状态：🟢 完成
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 前端 / 类型 / 交付 |
+| 事实源 | TD-009 复核（2026-06-06）；[PR #67](https://github.com/MarkDanile/MetaEduBase/pull/67)；[Spec](../specs/2026-06-06-td-029-shared-schema-gate.md)；[Plan](../plans/2026-06-06-td-029-shared-schema-gate-plan.md) |
+
+**证据**
+- `pnpm --filter @metaedu/web typecheck` 当前退出码 2，报 `TS6305`：`packages/shared/dist/schemas/document.d.ts` 未从 `packages/shared/src/schemas/document.ts` 构建。
+- `pnpm typecheck` 当前同样失败，说明不是单包命令误用，而是当前 monorepo 门禁真实不通过。
+- `pnpm --filter @metaedu/web build` 当前退出码 2，报相同 `TS6305`，并额外报 `packages/web/src/views/resource/FileDetailView.vue:107` 的 `TS2345`：`number` 不能传给 `templateFieldLabel(key: string)`。
+- `packages/shared/package.json` 当前没有 `build` script，`packages/shared/dist/` 也未入库；`packages/web/tsconfig.json` 通过 project reference 依赖 `../shared`。
+- TD-009 交付记录当前声明 `pnpm --filter @metaedu/web typecheck` 退出码 0，与复核时实际输出不一致。
+
+**问题**
+- TD-009 引入 shared schema 后，前端 typecheck / build 门禁没有真正打通，导致“契约治理”这一步本身破坏了交付链路。
+- `FileDetailView` 的 `template` 展示分支仍有真实类型错误，说明契约窄化后的 UI 使用点没有完全收口。
+- 验证记录把失败命令写成通过，会误导后续 AI IDE 和人工协作者对当前主分支质量状态的判断。
+
+**完成标准**
+- `pnpm --filter @metaedu/web typecheck` 退出码 0。
+- `pnpm typecheck` 退出码 0。
+- `pnpm --filter @metaedu/web build` 退出码 0。
+- shared schema 的消费方式与 workspace 构建方式一致：要么补齐 `@metaedu/shared` 的构建/声明产物链路，要么调整 imports / tsconfig，使 web 在不依赖未生成 `dist/*.d.ts` 的情况下稳定 typecheck。
+- 修复 `FileDetailView` 中 `templateFieldLabel(key)` 的类型错误，不再依赖隐式 `string` 假设。
+- 同步修正 TD-009 的交付记录与验证摘要，确保文档声明和真实命令输出一致。
+
+**验证方式**
+- `pnpm --filter @metaedu/shared typecheck`
+- `pnpm --filter @metaedu/web typecheck`
+- `pnpm typecheck`
+- `pnpm --filter @metaedu/web build`
+- `scripts/check-engineering-docs`
+
+**交付记录**
+- 2026-06-06 完成（接手工具：Claude Code）。删除 `packages/web/tsconfig.json` 中对 `../shared` 的 project reference，让 TS 通过 `@metaedu/shared` 的 `exports` 直接读 `src/*.ts`，消除 `TS6305`；`FileDetailView.vue:107` 的 `templateFieldLabel(key)` 改为 `templateFieldLabel(String(key))`，把 `v-for` 推断的 `string | number` 收敛到 `string`，并对未来 templateData 类型变化做防御；同步修正 TD-009 交付记录验证摘要表述。
+- 行为变化声明：无 runtime 行为变化；仅影响 TypeScript 编译时模块解析路径与一个 v-for key 的类型收敛。
+- 验证摘要：`pnpm --filter @metaedu/shared typecheck` 退出码 0；`pnpm --filter @metaedu/web typecheck` 退出码 0；`pnpm typecheck` 退出码 0；`pnpm --filter @metaedu/web build` 退出码 0；`pytest tests/contexts/document/test_structured_data_contract.py -q` 4 passed（TD-009 后端回归）；`scripts/check-engineering-docs` 退出码 0。
