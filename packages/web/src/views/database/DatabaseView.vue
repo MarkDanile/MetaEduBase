@@ -487,12 +487,19 @@ const loading = computed(() => datasetsQuery.isLoading.value);
 
 const tasksQuery = useDatasetTasksQuery(
   selectedId,
-  // 3s refetch while any task is running or pending; otherwise pause.
-  computed(() => 3000),
+  // TD-015 fix: only refetch every 3s while at least one task is running
+  // or pending. Returning `false` pauses polling entirely.
+  computed(() =>
+    (tasksQuery.data.value ?? []).some(
+      (t) => t.status === "running" || t.status === "pending",
+    ),
+  ),
 );
 const tasks = computed<TaskDTO[]>(() => tasksQuery.data.value ?? []);
 const loadingTasks = computed(() => tasksQuery.isFetching.value);
-const polling = computed(() => tasks.value.some((t) => t.status === "running" || t.status === "pending"));
+const polling = computed(() =>
+  tasks.value.some((t) => t.status === "running" || t.status === "pending"),
+);
 
 const rowsQuery = useDatasetRowsQuery(
   selectedId,
@@ -506,12 +513,16 @@ const kgNodes = computed<KnowledgeNodeDTO[]>(() => kgQuery.data.value?.nodes ?? 
 const kgEdges = computed<KnowledgeEdgeDTO[]>(() => kgQuery.data.value?.edges ?? []);
 const loadingKg = computed(() => kgQuery.isFetching.value);
 
-const kgOverviewQuery = useKgOverviewQuery();
+const kgOverviewQuery = useKgOverviewQuery(
+  // TD-015 fix: only fetch the overview payload when the user has
+  // expanded the panel.
+  computed(() => showKgOverview.value),
+);
 const kgOverviewNodes = computed<KnowledgeNodeDTO[]>(
-  () => (kgOverviewQuery.data.value?.nodes as unknown as KnowledgeNodeDTO[]) ?? [],
+  () => kgOverviewQuery.data.value?.nodes ?? [],
 );
 const kgOverviewEdges = computed<KnowledgeEdgeDTO[]>(
-  () => (kgOverviewQuery.data.value?.edges as unknown as KnowledgeEdgeDTO[]) ?? [],
+  () => kgOverviewQuery.data.value?.edges ?? [],
 );
 const loadingKgOverview = computed(() => kgOverviewQuery.isFetching.value);
 
@@ -582,7 +593,9 @@ function doUpload() {
     const tags = uploadForm.value.tags.split(",").map((t) => t.trim()).filter(Boolean);
     tags.forEach((tag) => formData.append("tags", tag));
   }
-  uploadMutation.mutate(formData);
+  // TD-015 fix: forward the user-supplied dataset name; the backend
+  // reads it as a query parameter.
+  uploadMutation.mutate({ formData, name: uploadForm.value.name.trim() });
 }
 
 function doDelete() {

@@ -16,9 +16,50 @@ import {
   type UseMutationReturnType,
   type UseQueryReturnType,
 } from "@tanstack/vue-query";
-import { structuredDataApi, type DatasetDTO, type DatasetRowDTO } from "@/services/structured-data";
+import { structuredDataApi, type DatasetDTO, type DatasetRowDTO, type KGNode, type KGEdge } from "@/services/structured-data";
 import { knowledgeApi, type KnowledgeEdgeDTO, type KnowledgeNodeDTO } from "@/services/knowledge";
 import type { TaskDTO } from "@/services/document";
+
+// ---------------------------------------------------------------------------
+// DTO adapters
+// ---------------------------------------------------------------------------
+
+/**
+ * Map the lightweight overview payload (`KGNode` / `KGEdge` from
+ * `structured-data.ts`) into the full DTO shapes used by `KGGraph.vue`
+ * (`KnowledgeNodeDTO` / `KnowledgeEdgeDTO` from `knowledge.ts`).
+ *
+ * The two types share identity columns (id / source_id / target_id) but
+ * differ in display metadata. We fill the missing fields with safe defaults
+ * so the consumer doesn't have to sprinkle `?? {}` or `unknown as` casts.
+ */
+function kgOverviewToDto(overview: {
+  nodes: KGNode[];
+  edges: KGEdge[];
+}): { nodes: KnowledgeNodeDTO[]; edges: KnowledgeEdgeDTO[] } {
+  return {
+    nodes: overview.nodes.map<KnowledgeNodeDTO>((n) => ({
+      id: n.id,
+      tenant_id: "",
+      title: n.title,
+      description: n.description,
+      domain: n.domain,
+      level: n.level,
+      parent_id: null,
+      path: null,
+      tags: [],
+      metadata: {},
+    })),
+    edges: overview.edges.map<KnowledgeEdgeDTO>((e) => ({
+      id: e.id,
+      source_id: e.source_id,
+      target_id: e.target_id,
+      relation_type: e.relation_type,
+      weight: 1,
+      metadata: e.metadata ?? {},
+    })),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Query keys
@@ -51,7 +92,7 @@ function useDatasetsQuery(
 
 function useDatasetTasksQuery(
   datasetId: Ref<string | null>,
-  refetchIntervalMs: Ref<number | false>,
+  polling: Ref<boolean>,
 ): UseQueryReturnType<TaskDTO[], Error> {
   return useQuery({
     queryKey: computed(() =>
@@ -62,7 +103,9 @@ function useDatasetTasksQuery(
     queryFn: () =>
       structuredDataApi.listTasks(datasetId.value as string).then((r) => r.data),
     enabled: computed(() => !!datasetId.value),
-    refetchInterval: refetchIntervalMs,
+    // TD-015 fix: only refetch every 3s while at least one task is
+    // running or pending. Returning `false` pauses polling.
+    refetchInterval: computed(() => (polling.value ? 3000 : false)),
   });
 }
 
@@ -107,7 +150,9 @@ function useDatasetKgQuery(
   });
 }
 
-function useKgOverviewQuery(): UseQueryReturnType<
+function useKgOverviewQuery(
+  enabled: Ref<boolean>,
+): UseQueryReturnType<
   { nodes: KnowledgeNodeDTO[]; edges: KnowledgeEdgeDTO[] },
   Error
 > {
@@ -115,8 +160,11 @@ function useKgOverviewQuery(): UseQueryReturnType<
     queryKey: datasetKeys.kgOverview(),
     queryFn: async () => {
       const { data } = await structuredDataApi.getKnowledgeGraph();
-      return { nodes: data.nodes, edges: data.edges };
+      return kgOverviewToDto({ nodes: data.nodes, edges: data.edges });
     },
+    // TD-015 fix: lazy-load the overview payload only when the caller
+    // explicitly enables the query (e.g. when the user expands the panel).
+    enabled,
   });
 }
 
@@ -124,13 +172,21 @@ function useKgOverviewQuery(): UseQueryReturnType<
 // Mutations
 // ---------------------------------------------------------------------------
 
+interface UploadDatasetVars {
+  formData: FormData;
+  name: string;
+}
+
 function useUploadDatasetMutation(
   onSuccess: () => void,
-): UseMutationReturnType<DatasetDTO, Error, FormData, unknown> {
+): UseMutationReturnType<DatasetDTO, Error, UploadDatasetVars, unknown> {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (formData: FormData) =>
-      structuredDataApi.uploadDataset(formData, "").then((r) => r.data),
+    // TD-015 fix: forward the user-supplied name as the second arg
+    // (the backend reads it as a query parameter). TD-007's empty string
+    // here silently dropped the dataset name and fell back to file.filename.
+    mutationFn: ({ formData, name }) =>
+      structuredDataApi.uploadDataset(formData, name).then((r) => r.data),
     onSuccess: () => {
       onSuccess();
       void qc.invalidateQueries({ queryKey: datasetKeys.all });
