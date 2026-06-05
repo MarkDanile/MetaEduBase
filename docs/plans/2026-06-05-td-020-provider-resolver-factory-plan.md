@@ -12,7 +12,7 @@
 
 ### 范围
 - `packages/server-python/app/shared/llm/factory.py`：新增 `RESOLVER_PROVIDER_NAMES` 与 `resolver_default_provider()`。
-- `packages/server-python/app/shared/llm/provider_resolver.py`：移除 `_PROVIDER_CANDIDATES` 与 `_candidate_settings`，改为复用 `factory` 的子集与归一化。
+- `packages/server-python/app/shared/llm/provider_resolver.py`：移除 `_PROVIDER_CANDIDATES` 与 `_candidate_settings`，改为复用 `factory` 公开事实源 `RESOLVER_PROVIDER_NAMES` 与 `resolver_default_provider()`（resolver 走专用 alias 判定，不复用 `factory._normalize_default_provider`）。
 - `tests/shared/test_provider_resolver.py`：扩展覆盖率。
 - `tests/shared/test_factory.py`（如不存在）：新增聚焦测试。
 - `docs/engineering/technical-debt.md` 与 `current-work.md`：状态与交付记录同步。
@@ -43,7 +43,7 @@
 - 单测见 TASK-3。
 
 风险：
-- 与 `_normalize_default_provider` 行为耦合，需避免重复实现 trim/lowercase 逻辑。优先复用 `_normalize_default_provider`，再决定是否翻译回 `qwen`。
+- 与 `_normalize_default_provider` 行为耦合：`_normalize_default_provider` 是 factory 内部 helper，会把 `qwen` 翻译成 `dashscope`，落到 resolver 视角会失语。`resolver_default_provider()` **不复用** `_normalize_default_provider`，改为独立 trim/lowercase 后落在 `RESOLVER_PROVIDER_NAMES` 内才返回该 alias（含 `dashscope` / `siliconflow` / `openai` 等不在子集 → `None`，不翻译回 `qwen`）。
 
 ### TASK-2: 重写 `provider_resolver.py`，复用 `factory` 事实源
 
