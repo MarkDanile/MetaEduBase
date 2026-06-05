@@ -8,8 +8,5 @@
     },
     "types": ["vite/client"]
   },
-  "include": ["src/**/*", "src/**/*.vue", "env.d.ts"],
-  "references": [
-    { "path": "../shared" }
-  ]
+  "include": ["src/**/*", "src/**/*.vue", "env.d.ts"]
 }
