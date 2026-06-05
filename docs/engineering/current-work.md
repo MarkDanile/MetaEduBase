@@ -14,7 +14,15 @@
 
 ## 当前进行中
 
-当前无进行中任务。
+| 任务 | 状态 | 优先级 | 领域 | 下一步 |
+|------|------|--------|------|--------|
+| TD-025 业务页面 `liquid-card` 容器统一迁移到 `ui-panel` | 🟡 进行中（切片 1） | P2 | 前端 / 设计系统 | 切片 2：`KnowledgeBaseView` / `FileDetailView` 迁移。切片 3：`TemplateModal` / `TemplateEditorView` / `AiChatView` / `HomeView` + 显式登记 `liquid-btn-*` / `liquid-input` 例外。 |
+
+| 验收 | 内容 |
+|------|------|
+| 范围（切片 1） | `main.css` 新增 `:root[data-theme="liquid"] .ui-panel` 玻璃感覆盖 + `DatabaseView.vue` / `ResourceView.vue` / `ResourceLibraryView.vue` 3 个页面 12 处 `liquid-card` → `ui-panel` 替换 + `coding-style.md` 业务页面迁移清单扩到切片 1。 |
+| 验证（切片 1） | `pnpm --filter @metaedu/web typecheck / lint / build` 全部退出码 0；`scripts/check-engineering-docs` 退出码 0；4 条 `rg` 断言全过（3 个页面 `liquid-card` 0 残留、`ui-panel` 11 处命中、ResourceView `stagger-N` 装饰动效保留、`main.css` 1154 行 `:root[data-theme="liquid"] .ui-panel` 玻璃覆盖存在）。 |
+| 事实源 | `docs/engineering/rules/coding-style.md#业务页面迁移清单-td-025`（迁移清单） + `docs/engineering/technical-debt.md#td-025`（任务总账）。 |
 
 ## 下一批候选任务
 
@@ -22,7 +30,6 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| TD-025 业务页面 `liquid-card` 容器统一迁移到 `ui-panel` | ⚫ 待办 | P2 | 前端 / 设计系统 | 切片 1：`DatabaseView` / `ResourceView` / `ResourceLibraryView` 高残留页面替换。 |
 | TD-009 减少前后端契约漂移 | ⚫ 待办 | P2 | API / 类型 | 选高价值契约族（模板字段或任务状态），建共享 schema 检查。 |
 
 ## 最近完成
