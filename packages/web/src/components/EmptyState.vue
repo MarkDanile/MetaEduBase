@@ -1,13 +1,15 @@
 <template>
-  <div class="py-12 text-center animate-slide-up stagger-1">
+  <div class="ui-panel p-6 text-center">
     <slot name="icon">
-      <FileText :size="48" :stroke-width="1" class="mx-auto mb-5 text-[var(--color-border)]" aria-hidden="true" />
+      <FileText :size="40" :stroke-width="1.25" class="mx-auto mb-4 text-[var(--color-ink-dim)]" aria-hidden="true" />
     </slot>
     <div class="max-w-[420px] mx-auto px-4">
-      <p class="text-[var(--color-ink-secondary)] text-[var(--text-body)] font-medium">{{ title }}</p>
+      <p class="text-[var(--color-ink)] text-[var(--text-body)] font-medium">{{ title }}</p>
       <p v-if="hint" class="text-[var(--color-ink-tertiary)] mt-1">{{ hint }}</p>
     </div>
-    <slot name="action" />
+    <div class="mt-4">
+      <slot name="action" />
+    </div>
   </div>
 </template>
 
