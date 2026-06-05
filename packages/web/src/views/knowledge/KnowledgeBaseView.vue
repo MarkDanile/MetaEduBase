@@ -46,7 +46,7 @@
         <div
           v-for="(node, i) in nodes"
           :key="node.id"
-          class="liquid-card p-4 cursor-pointer group animate-slide-up"
+          class="ui-panel p-4 cursor-pointer group animate-slide-up"
           :class="[`stagger-${Math.min(i + 1, 5)}`, { 'ring-1 ring-[var(--color-accent)] ring-offset-2': selectedNode?.id === node.id }]"
           @click="selectNode(node)"
         >

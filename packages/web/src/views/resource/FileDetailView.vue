@@ -23,7 +23,7 @@
 
     <template v-else-if="file">
       <!-- File meta bar -->
-      <div class="liquid-card p-4 mb-4 flex flex-wrap items-center gap-4">
+      <div class="ui-panel p-4 mb-4 flex flex-wrap items-center gap-4">
         <div class="flex items-center gap-2">
           <FileText :size="18" class="text-[var(--color-accent)]" />
           <span class="text-[var(--text-body)] font-medium text-[var(--color-ink)]">{{ file.filename }}</span>
@@ -37,7 +37,7 @@
       </div>
 
       <!-- Pipeline status -->
-      <div class="liquid-card p-4 mb-4">
+      <div class="ui-panel p-4 mb-4">
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-[var(--text-section-title)] font-medium text-[var(--color-ink)]">处理流水线</h3>
           <div class="flex items-center gap-2">
@@ -76,7 +76,7 @@
       </div>
 
       <!-- Tabs -->
-      <div class="liquid-card p-4">
+      <div class="ui-panel p-4">
         <div class="flex gap-1 mb-4 border-b border-[var(--color-border)]">
           <button
             v-for="tab in tabs"
