@@ -1,10 +1,12 @@
 # TD-020: 统一 LLM provider resolver 与 factory 优先级事实源
 
-> 状态：🔵 就绪（待 user 确认 A/B 路线后再进入开发）
+> 状态：🟢 完成
 > 优先级：P2
 > 领域：Backend / AI / 可维护性
 > 类型：技术债
 > 事实源：[technical-debt.md#td-020-统一-llm-provider-resolver-与-factory-优先级事实源](../engineering/technical-debt.md)
+> 计划：[plans/2026-06-05-td-020-provider-resolver-factory-plan.md](../plans/2026-06-05-td-020-provider-resolver-factory-plan.md)
+> 交付历史：2026-06-05 完成，PR [#46](https://github.com/MarkDanile/MetaEduBase/pull/46)，merge commit `2c15868`。路线 A：factory 暴露 `RESOLVER_PROVIDER_NAMES` 与 `resolver_default_provider()`；provider_resolver 改为薄壳复用；`qwen` 走独立 alias 域，不归一化为 `dashscope`；新增 `tests/shared/test_factory.py`。验证摘要：聚焦 pytest 20 passed；全量 pytest 152 passed；`ruff check app/ tests/` 退出码 0。零业务行为变化。
 
 ## 1. 背景
 

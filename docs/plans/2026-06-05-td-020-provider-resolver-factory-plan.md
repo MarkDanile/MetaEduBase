@@ -1,11 +1,12 @@
 # TD-020 实施计划: 统一 LLM provider resolver 与 factory 优先级事实源
 
-> 状态：⏸ 等待用户确认 spec 路线（A vs B）
+> 状态：🟢 完成
 > 任务事实源：[technical-debt.md#td-020](../engineering/technical-debt.md)
 > Spec：[specs/2026-06-05-td-020-provider-resolver-factory.md](2026-06-05-td-020-provider-resolver-factory.md)
 > 任务模式：技术债修复（plan-do 路径执行）
 > 执行模式：plan-do（spec 已落在 `docs/specs/`，本 plan 也直接落在 `docs/plans/`，无需插件目录）
-> 任务卡片：见 `docs/engineering/current-work.md`（开工时移动）
+> 任务卡片：见 `docs/engineering/current-work.md`（已归档到「最近完成」）
+> 交付历史：2026-06-05 完成，PR [#46](https://github.com/MarkDanile/MetaEduBase/pull/46)，merge commit `2c15868`。路线 A：factory 暴露 `RESOLVER_PROVIDER_NAMES` + `resolver_default_provider()`，provider_resolver 改为薄壳；`qwen` 走独立 alias 域；新增 `tests/shared/test_factory.py`（10 用例）并扩充 `test_provider_resolver.py`（9 → 11）。验证摘要：聚焦 pytest 20 passed；全量 pytest 152 passed；`ruff check app/ tests/` 退出码 0。零业务行为变化。
 
 ## 1. 范围与非目标
 

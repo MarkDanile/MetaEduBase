@@ -108,7 +108,7 @@
 | TD-017 | 将 Vue Query 请求生命周期治理推广到 FileDetailView | 🟢 完成 | P2 | 前端 / 可维护性 | [PR #40](https://github.com/MarkDanile/MetaEduBase/pull/40) |
 | TD-018 | FileDetailView 剩余手写 load 迁到 Vue Query | 🟢 完成 | P3 | 前端 / 可维护性 | [PR #41](https://github.com/MarkDanile/MetaEduBase/pull/41) |
 | TD-019 | 修复 Vue Query 轮询自引用导致的页面初始化运行时错误 | 🟢 完成 | P0 | 前端 / 运行时稳定性 / 测试 | [PR #42](https://github.com/MarkDanile/MetaEduBase/pull/42) |
-| TD-020 | 统一 LLM provider resolver 与 factory 优先级事实源 | 🔵 就绪 | P2 | 后端 / AI / 可维护性 | - |
+| TD-020 | 统一 LLM provider resolver 与 factory 优先级事实源 | 🟢 完成 | P2 | 后端 / AI / 可维护性 | [PR #46](https://github.com/MarkDanile/MetaEduBase/pull/46) |
 | TD-021 | 收口已完成计划文件和候选区状态同步漏洞 | 🟢 完成 | P1 | 文档 / 工程流程 / 跨 AI 交接 | `quality-gates.md` |
 | TD-022 | 收口早期已完成计划文件的活动式未勾选项 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | [PR #44](https://github.com/MarkDanile/MetaEduBase/pull/44) |
 
@@ -702,13 +702,13 @@
 
 ### TD-020: 统一 LLM provider resolver 与 factory 优先级事实源
 
-状态：🔵 就绪
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P2 |
 | 领域 | 后端 / AI / 可维护性 |
-| 事实源 | 当前候选任务 |
+| 事实源 | [Spec](../specs/2026-06-05-td-020-provider-resolver-factory.md), [Plan](../plans/2026-06-05-td-020-provider-resolver-factory-plan.md), [PR #46](https://github.com/MarkDanile/MetaEduBase/pull/46), merge commit `2c15868` |
 
 **证据**
 - `packages/server-python/app/shared/llm/provider_resolver.py:29` 定义 `_PROVIDER_CANDIDATES = ["minimax", "deepseek", "qwen"]`。
@@ -731,7 +731,12 @@
 - 若完整后端测试可运行，补充 `cd packages/server-python && .venv/bin/python -m pytest -q`。
 
 **交付记录**
-- 未完成。当前风险是策略漂移，低于已确认运行时崩溃类问题。
+- 2026-06-05 完成，PR #46 合并，merge commit `2c15868`。
+- 路线 A：收敛到单一事实源。`factory` 暴露 `RESOLVER_PROVIDER_NAMES` 与 `resolver_default_provider()`；`provider_resolver` 改为薄壳，仅保留 alias → `settings.<alias>_*` 字段映射。
+- `qwen` 走自己的 alias 域（不再归一化为 `dashscope`），保留 `ai_router` 中文提示文案与 `provider_name == "qwen"` 不变。
+- 新增 `tests/shared/test_factory.py`（10 用例），扩充 `tests/shared/test_provider_resolver.py`（9 → 11 用例）。
+- 验证摘要：聚焦 pytest 20 passed；全量 pytest 152 passed；`ruff check app/ tests/` 退出码 0。
+- 行为变化声明：零业务逻辑变更。函数签名、提示文案、URL 拼接、API 参数、排序顺序、错误返回均不变。
 
 ### TD-021: 收口已完成计划文件和候选区状态同步漏洞
 

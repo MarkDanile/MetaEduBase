@@ -108,39 +108,7 @@
 
 ## 当前进行中
 
-### TD-020: 统一 LLM provider resolver 与 factory 优先级事实源
-
-状态：🟡 进行中
-类型：技术债
-领域：Backend / AI / 可维护性
-当前执行模式：plan-do
-最近接手工具：Claude Code
-分支：`chore/td-020-llm-provider-factsource`
-
-需求来源：
-- Spec: [docs/specs/2026-06-05-td-020-provider-resolver-factory.md](../specs/2026-06-05-td-020-provider-resolver-factory.md)
-- Plan: [docs/plans/2026-06-05-td-020-provider-resolver-factory-plan.md](../plans/2026-06-05-td-020-provider-resolver-factory-plan.md)
-- 技术债: [docs/engineering/technical-debt.md#td-020-统一-llm-provider-resolver-与-factory-优先级事实源](technical-debt.md)
-- 架构约束: 后端 LLM 模块集中在 `packages/server-python/app/shared/llm/`
-- 任务模式: 技术债修复（按 task-modes.md#技术债修复 路由；plan-do 路径执行，因为 spec/plan 已落在 docs/ 下无需插件目录）
-
-当前进展：
-- 已完成：扫描 `factory` / `provider_resolver` / `chat` / `embed` / `chat_with_fallback` / `ai_router` / `tests/shared/test_provider_resolver.py`；spec/plan 落档；用户确认路线 A（收敛到单一事实源）与本轮一直合并 main。
-- 正在处理：TASK-1 `factory.RESOLVER_PROVIDER_NAMES` + `resolver_default_provider()`。
-- 未完成：TASK-2 重写 `provider_resolver.py`；TASK-3 测试；TASK-4 端到端验证；TASK-5 文档同步。
-
-下一步：
-1. 切分支 `chore/td-020-llm-provider-factsource` 并实现 TASK-1/2。
-2. 跑 TASK-3 单测 + TASK-4 端到端 pytest + ruff。
-3. 提交 → push → gh pr create → squash merge → 回 main 收口。
-4. 更新 `technical-debt.md` / `current-work.md` / `work-log.md` 与本 plan 顶部交付历史。
-
-验证状态：
-- 未运行：暂未跑验证（代码未改）。
-- 已运行：扫描阶段未执行 pytest / ruff，将在 TASK-4 收口。
-
-交接备注：
-- 路线 A：resolver 复用 factory 子集与归一化；零业务行为变化；中文提示文案与 provider_name 仍为 `qwen`。
+当前无进行中任务。
 
 ## 下一批候选任务
 
@@ -148,7 +116,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| （暂无；TD-020 已移至「当前进行中」） | - | - | - | - |
+| （暂无候选；完整技术债余量以 `docs/engineering/technical-debt.md` 为准） | - | - | - | - |
 
 ## 最近完成
 
@@ -156,8 +124,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-05 | TD-020 统一 LLM provider resolver 与 factory 优先级事实源 | 🟢 完成 | `factory` 暴露 `RESOLVER_PROVIDER_NAMES` + `resolver_default_provider()`；`provider_resolver` 改为薄壳复用 factory 事实源；新增 `tests/shared/test_factory.py` 与 2 个 resolver 用例；零业务行为变化。 | [docs/engineering/technical-debt.md#td-020-统一-llm-provider-resolver-与-factory-优先级事实源](technical-debt.md) / [PR #46](https://github.com/MarkDanile/MetaEduBase/pull/46) |
 | 2026-06-05 | DOC-011 技术债总账结构化展示优化 | 🟢 完成 | `technical-debt.md` 增加任务总览表和结构化任务卡片；长 `备注` 压缩为交付记录、事实源和验证摘要，降低扫视成本。 | `docs/engineering/technical-debt.md` |
 | 2026-06-05 | DOC-010 收敛完成门禁并瘦身重复流程规则 | 🟢 完成 | 将通用收尾检查集中到 `quality-gates.md#完成门禁` 6 项；`workflow.md`、`task-modes.md`、`git-workflow.md` 和 AI 入口文件改为引用，减少重复规则和 token 开销。 | `docs/engineering/rules/quality-gates.md#完成门禁` |
 | 2026-06-05 | TD-022 收口早期已完成计划文件的活动式未勾选项 | 🟢 完成 | 5 个早期 plan（TD-004/005/006/007/015）顶部补交付历史段，154 行 `- [ ]` → `- [x]`，与 TD-021 收口 TD-016/017/018/019 模式一致。 | `docs/engineering/technical-debt.md#td-022-收口早期已完成计划文件的活动式未勾选项` / [PR #44](https://github.com/MarkDanile/MetaEduBase/pull/44) |
 | 2026-06-05 | TD-021 收口已完成计划文件和候选区状态同步漏洞 | 🟢 完成 | 收口 TD-016/017/018/019 历史 plan 未勾选项；补强候选区、最近完成和已完成 plan 的提交前硬检查，并登记 TD-022。 | `docs/engineering/technical-debt.md#td-021-收口已完成计划文件和候选区状态同步漏洞` |
-| 2026-06-05 | TD-019 修复 Vue Query 轮询自引用导致的页面初始化运行时错误 | 🟢 完成 | 把 polling 派生从调用方下沉到 query hook 的 `refetchInterval: (query) => ...` 函数形式，从 `query.state.data` 派生；避开 setup 阶段 TDZ，行为完全不变。 | `docs/engineering/technical-debt.md#td-019-修复-vue-query-轮询自引用导致的页面初始化运行时错误` / [PR #42](https://github.com/MarkDanile/MetaEduBase/pull/42) |
