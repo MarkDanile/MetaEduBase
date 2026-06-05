@@ -22,8 +22,16 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| TD-008 明确从 `liquid-*` 类到语义 UI 层的迁移路径 | ⚫ 待办 | P2 | 前端 / 设计系统 | 补设计系统迁移说明 + 第一个迁移页面/组件族。 |
+| TD-025 业务页面 `liquid-card` 容器统一迁移到 `ui-panel` | ⚫ 待办 | P2 | 前端 / 设计系统 | 切片 1：`DatabaseView` / `ResourceView` / `ResourceLibraryView` 高残留页面替换。 |
 | TD-009 减少前后端契约漂移 | ⚫ 待办 | P2 | API / 类型 | 选高价值契约族（模板字段或任务状态），建共享 schema 检查。 |
+
+## 最近完成
+
+最近完成区只保留摘要，详细验证、行为变化、PR 描述和复盘见 `docs/engineering/work-log.md`、对应技术债总账、plan 或 PR。
+
+| 日期 | 任务 | 状态 | 摘要 | 事实源 |
+|------|------|------|------|--------|
+| 2026-06-05 | TD-008 明确从 `liquid-*` 类到语义 UI 层的迁移路径 | 🟢 完成 | `coding-style.md` 设计系统章节新增「迁移说明」段落（明确 `ui-*` 优先、`liquid-*` 兼容、5 个 `ui-*` 共享类用途、第一个迁移目标）；`main.css` 追加 `ui-page-shell / ui-panel / ui-toolbar / ui-interactive-row` 4 个 token 化共享类（不引入硬编码、不删 `liquid-*`）；`LayoutView` 的 `main` 容器切到 `ui-page-shell`；`PageHeader` 去掉 `wet-line` 装饰条 + `stagger-*` 动画 + `lineWidth/stagger` props（公共 API 收窄，调用方 `HomeView` 同步去掉 `:line-width`）；`EmptyState` 加 `ui-panel p-6` 容器，移除 `animate-slide-up stagger-1`。 | `docs/engineering/technical-debt.md#td-008-明确从-liquid--类到语义-ui-层的迁移路径` |
 
 ## 最近完成
 

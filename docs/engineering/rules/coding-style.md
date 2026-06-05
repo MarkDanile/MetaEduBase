@@ -51,6 +51,45 @@ cd packages/web && pnpm typecheck  # vue-tsc --noEmit
 
 当前代码仍以 `liquid-*` 类为主，后续会逐步迁移到语义化 `ui-*` workspace 层。新增或修改 UI 时，优先复用现有页面和组件的局部风格；涉及 UI foundation 迁移时，先阅读对应设计/计划文档。
 
+#### 迁移说明（TD-008）
+
+`ui-*` 语义化 workspace 层是**新约定的优先选项**，`liquid-*` 类作为**历史兼容保留**。两者并存、不互相替代。
+
+**何时使用 `ui-*`（优先）**
+
+- 新的页面外壳、面板、工具栏、交互行。
+- 跨页面共享的工作区结构（`LayoutView`、共享骨架组件）。
+- 任何与"calm workspace、token 化、不带装饰动效"目标一致的容器。
+
+提供以下 4 个共享类（`packages/web/src/assets/css/main.css` 中 `@layer components` 段）：
+
+| 类 | 用途 |
+|------|------|
+| `.ui-page-shell` | 页面外壳：`max-width: 1120px; margin: 0 auto; padding: var(--spacing-page); background: var(--color-bg-base)` |
+| `.ui-page-section` | 页面内分区：`margin-top: var(--spacing-section)` |
+| `.ui-panel` | 通用面板容器：白底、细边框、token 化阴影、克制 hover 反馈 |
+| `.ui-toolbar` | 工具栏行：白底、细边框、12px 圆角 |
+| `.ui-interactive-row` | 列表/卡片行的统一 hover 状态机 |
+
+**何时保留 `liquid-*`（兼容）**
+
+- 历史视图与组件仍大量使用，按"手术式改动"原则不主动迁移。
+- `liquid-btn-primary` / `liquid-btn-ghost` / `liquid-btn-danger` / `liquid-input` / `liquid-tag-*` / `liquid-dialog` / `liquid-card` 全部保留；未迁入 `ui-*` 的页面继续使用。
+- 装饰性 `wet-line` / `liquid-card-scan::after` / `liquid-rise-*` 动效保留；新页面不引入。
+- 登录页（`LoginView`）的品牌背景与 `brand-gradient` 不参与 workspace 迁移。
+
+**新增/修改 UI 的优先级**
+
+1. 优先复用 `ui-*` 共享类。
+2. 其次复用既有页面/组件的局部风格。
+3. 不要新增与 `ui-*` 重复的散落样式。
+4. 不要在视图文件里硬编码颜色/间距/z-index（见下方禁止项）。
+5. 修改任何共享组件（`PageHeader` / `EmptyState` / `LayoutView` / `ui-*` 类）前，先确认所有调用方并补 typecheck 验证。
+
+**第一个迁移目标**
+
+`LayoutView.vue` + `PageHeader.vue` + `EmptyState.vue` 三个共享骨架组件，作为示例（TD-008 交付）。后续页面（`DatabaseView` / `ResourceView` / `KnowledgeBaseView` / `FileDetailView` / `ResourceLibraryView`）按业务需要逐步迁移到 `ui-*`，不在本轮范围。
+
 所有颜色/间距/z-index 优先使用 CSS 变量，避免引入新的散落硬编码。
 
 **颜色：** `var(--color-ink)`, `var(--color-accent)`, `var(--color-accent-bg)`, `var(--color-accent-glow)`

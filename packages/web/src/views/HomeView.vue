@@ -1,6 +1,6 @@
 <template>
   <div class="p-[var(--spacing-page)] max-w-[1000px] mx-auto">
-    <PageHeader title="元知职教基座" subtitle="构建 · 管理 · 探索 职业教育知识体系" :line-width="48">
+    <PageHeader title="元知职教基座" subtitle="构建 · 管理 · 探索 职业教育知识体系">
       <template #greeting>
         <p class="text-[var(--color-ink-tertiary)] mb-1">{{ greeting }}，{{ roleLabel }}</p>
       </template>
