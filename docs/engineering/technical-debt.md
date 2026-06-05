@@ -437,8 +437,10 @@
 - 4 主题（liquid / ink / navy / notion）下 `DatabaseView` / `ResourceView` / `ResourceLibraryView` 三个最高残留页面手工验收（`./dev.sh frontend` 启动后浏览器切换主题）；沙箱无浏览器时降级为 typecheck + lint + 视觉对照 `git diff` 自检。
 
 **交付记录**
-- **切片 1 进行中**：接手工具 Claude Code，2026-06-05 开工。详见 `docs/engineering/current-work.md#当前进行中` TD-025 卡片。`main.css` 新增 `:root[data-theme="liquid"] .ui-panel` 玻璃感覆盖（复用 `--_surface-card-bg` + `--_surface-glass-blur`），3 个页面 `liquid-card` 容器全部替换为 `ui-panel`，附加类（`group` / `animate-slide-up` / `stagger-N` / 自定义 hover）原样保留。
-- 切片 2/3/4 未开始。共享组件（`FieldEditor` / `KGDetailPanel` / `ConfirmDialog`）的 `liquid-card` 不在本次范围；如需后续接力可拆为 `TD-026` 等。
+- **切片 1 完成**：接手工具 Claude Code，2026-06-05 开工、合并。`main.css` 新增 `:root[data-theme="liquid"] .ui-panel` 玻璃感覆盖（复用 `--_surface-card-bg` + `--_surface-glass-blur`），3 个页面 `liquid-card` 容器全部替换为 `ui-panel`，附加类（`group` / `animate-slide-up` / `stagger-N` / 自定义 hover）原样保留。PR #54，merge commit `558884e`。
+- **切片 2 完成**：2026-06-05，2 个业务页（`KnowledgeBaseView` 1 处 + `FileDetailView` 3 处 = 4 处）`liquid-card` → `ui-panel` 替换；保留 KBView 节点列表卡 `ring-1 ring-[var(--color-accent)] ring-offset-2` 选中态、保留 KBView `animate-slide-up` + `stagger-N` 装饰动效；保留 FileDetailView 三个面板（meta bar / pipeline status / tabs）的所有 inline token 容器与 `liquid-tag-*` / `liquid-btn-*`。
+- **任务卡残留量与实际差异说明**：TD-025 任务卡证据段记录的残留量（`DatabaseView` 23 / `ResourceView` 22 / `ResourceLibraryView` 18 / `KnowledgeBaseView` 16 / `FileDetailView` 12 / `TemplateModal` 8 / `TemplateEditorView` 6 / `AiChatView` 4 / `HomeView` 3）是 **TD-008 完成时（2026-06-05）** 的快照。实际开工时（切片 1: 2026-06-05；切片 2: 2026-06-05）的残留量为：DB 8、Resource 1、Library 3、KBView 1、FileDetail 3、Template 14、AiChat 4、HomeView 3，合计 37 处。差异原因：TD-008 完成到切片 1 开工之间没有其他人改这 5 个页面；`DatabaseView` 23→8、`ResourceView` 22→1、`ResourceLibraryView` 18→3、`KnowledgeBaseView` 16→1、`FileDetailView` 12→3 的"原快照残留量"与"实际残留量"差距可能源于任务卡编写时（TD-008 完成之前）误把页面里所有的 `liquid-*`（含 `liquid-btn-*` / `liquid-input` / `liquid-tag-*` / `liquid-dialog` / `liquid-rise-*` / `liquid-card`）都计入了"liquid-card 残留"，而非精确 grep 后的 `liquid-card` 命中数。后续切片 3 仍以 grep 实测为准，不再使用原任务卡残留量作为目标。
+- 切片 3 未开始。共享组件（`FieldEditor` / `KGDetailPanel` / `ConfirmDialog`）的 `liquid-card` 不在本次范围；如需后续接力可拆为 `TD-026` 等。
 
 ### TD-009: 减少前后端契约漂移
 
