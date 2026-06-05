@@ -99,8 +99,8 @@ cd packages/web && pnpm typecheck  # vue-tsc --noEmit
 | 1 | `DatabaseView` | 🟢 完成 | 8 处 | 切片 1，含 1 个上传对话框、5 个内容卡、1 个数据集列表卡、1 个 KG 总览按钮 |
 | 1 | `ResourceView` | 🟢 完成 | 1 处 | 切片 1，资源列表卡，保留 `animate-slide-up` + `stagger-N` 装饰动效 |
 | 1 | `ResourceLibraryView` | 🟢 完成 | 3 处 | 切片 1，文件夹树、文件夹右键菜单、文件列表区 |
-| 2 | `KnowledgeBaseView` | ⚫ 待办 | 16 处 | 切片 2，知识库列表与详情 |
-| 2 | `FileDetailView` | ⚫ 待办 | 12 处 | 切片 2，文件详情与抽取结果 |
+| 2 | `KnowledgeBaseView` | 🟢 完成 | 1 处 | 切片 2（任务卡残留量 16 处为 TD-008 完成时快照；切片 1 之后剩 1 处）。节点列表卡，保留 `ring-1 ring-[var(--color-accent)] ring-offset-2` 选中态、保留 `animate-slide-up` + `stagger-N` 装饰动效 |
+| 2 | `FileDetailView` | 🟢 完成 | 3 处 | 切片 2（任务卡残留量 12 处为 TD-008 完成时快照；切片 1 之后剩 3 处）。文件元信息条、流水线状态、Tab 容器；未触动 `liquid-tag-*` / `liquid-btn-*` / 各 Tab 内部的 inline token 容器 |
 | 3 | `TemplateModal` | ⚫ 待办 | 8 处 | 切片 3（业务页 `liquid-btn-*` / `liquid-input` 例外显式登记） |
 | 3 | `TemplateEditorView` | ⚫ 待办 | 6 处 | 切片 3 |
 | 3 | `AiChatView` | ⚫ 待办 | 4 处 | 切片 3 |
