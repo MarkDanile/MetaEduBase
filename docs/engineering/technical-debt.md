@@ -111,7 +111,7 @@
 | TD-020 | 统一 LLM provider resolver 与 factory 优先级事实源 | 🟢 完成 | P2 | 后端 / AI / 可维护性 | [PR #46](https://github.com/MarkDanile/MetaEduBase/pull/46) |
 | TD-021 | 收口已完成计划文件和候选区状态同步漏洞 | 🟢 完成 | P1 | 文档 / 工程流程 / 跨 AI 交接 | `quality-gates.md` |
 | TD-022 | 收口早期已完成计划文件的活动式未勾选项 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | [PR #44](https://github.com/MarkDanile/MetaEduBase/pull/44) |
-| TD-023 | 收口 TD-020 文档一致性、断链与归档索引 | 🔵 就绪 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-020 复核 |
+| TD-023 | 收口 TD-020 文档一致性、断链与归档索引 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | `docs/engineering/current-work.md` |
 
 ## 任务详情
 
@@ -736,7 +736,7 @@
 - 路线 A：收敛到单一事实源。`factory` 暴露 `RESOLVER_PROVIDER_NAMES` 与 `resolver_default_provider()`；`provider_resolver` 改为薄壳，仅保留 alias → `settings.<alias>_*` 字段映射。
 - `qwen` 走自己的 alias 域（不再归一化为 `dashscope`），保留 `ai_router` 中文提示文案与 `provider_name == "qwen"` 不变。
 - 新增 `tests/shared/test_factory.py`（10 用例），扩充 `tests/shared/test_provider_resolver.py`（9 → 11 用例）。
-- 验证摘要：聚焦 pytest 20 passed；全量 pytest 152 passed；`ruff check app/ tests/` 退出码 0。
+- 验证摘要：`tests/shared/test_provider_resolver.py` + `tests/shared/test_factory.py` 共 20 passed；本地全量 pytest 152 passed（执行环境为本地开发沙箱，依赖 `TEST_DATABASE_URL` 指向的 `metaedu_test`；`gh pr checks 46` 状态为 no checks reported，即 PR #46 未配置 GitHub Actions，本次 152 passed 来自本地复跑，非 CI 证据）；`ruff check app/ tests/` 退出码 0。
 - 行为变化声明：零业务逻辑变更。函数签名、提示文案、URL 拼接、API 参数、排序顺序、错误返回均不变。
 
 ### TD-021: 收口已完成计划文件和候选区状态同步漏洞
@@ -807,7 +807,7 @@
 
 ### TD-023: 收口 TD-020 文档一致性、断链与归档索引
 
-状态：🔵 就绪
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -816,10 +816,10 @@
 | 事实源 | TD-020 复核 |
 
 **证据**
-- `docs/specs/2026-06-05-td-020-provider-resolver-factory.md:151` 描述 `resolver_default_provider()` 会把 `dashscope → qwen`，但实现 `packages/server-python/app/shared/llm/factory.py:51-74` 和测试 `packages/server-python/tests/shared/test_factory.py:71-78` 均锁定 `dashscope` 返回 `None`。
-- `docs/plans/2026-06-05-td-020-provider-resolver-factory-plan.md:5` 的 Spec 链接指向当前目录下同名文件，实际文件在 `docs/specs/`。
-- `docs/engineering/work-log.md:18` 的 TD-020 backfill 替换了原 DOC-011 索引，导致 DOC-011 从长期工作日志索引中消失。
-- `docs/engineering/technical-debt.md:738`、TD-020 spec 和 plan 顶部写有“全量 pytest 152 passed”，但当前 Codex 沙箱复跑 `cd packages/server-python && .venv/bin/python -m pytest -q` 因连接 `::1:5432` 权限失败，且 `gh pr checks 46` 显示 no checks reported；该声明缺少可复核的执行环境或 CI 证据。
+- `docs/specs/2026-06-05-td-020-provider-resolver-factory.md:151`（修复前）描述 `resolver_default_provider()` 会把 `dashscope → qwen`，但实现 `packages/server-python/app/shared/llm/factory.py:51-74` 和测试 `packages/server-python/tests/shared/test_factory.py:71-78` 均锁定 `dashscope` 返回 `None`。
+- `docs/plans/2026-06-05-td-020-provider-resolver-factory-plan.md:5`（修复前）的 Spec 链接指向当前目录下同名文件 `2026-06-05-td-020-provider-resolver-factory.md`，实际文件在 `docs/specs/`，plan 中相对路径断链。
+- `docs/engineering/work-log.md` 的 TD-020 backfill（commit `97c45d0`）替换了原 DOC-011 索引，导致 DOC-011 从长期工作日志索引中消失。
+- `docs/engineering/technical-debt.md`、TD-020 spec 和 plan 顶部写有“全量 pytest 152 passed”，但 `gh pr checks 46` 显示 no checks reported（PR #46 未配置 GitHub Actions）；该声明缺少 CI 证据，仅来自本地复跑。Codex 沙箱曾报 `::1:5432` 连接权限失败，但在 Claude Code 沙箱 `cd packages/server-python && .venv/bin/python -m pytest -q` 实际复跑得到 152 passed；TD-023 收口后该事实统一表述为“本地复跑 152 passed，非 CI 证据”。
 
 **问题**
 - TD-020 代码实现本身已通过聚焦验证，但交付文档存在行为描述矛盾、断链、归档索引丢失和验证声明证据不足。
@@ -829,13 +829,24 @@
 - TD-020 spec 中 `resolver_default_provider()`、`qwen` 和 `dashscope` 的描述与实现、测试保持一致。
 - TD-020 plan 的 Spec 链接能正确跳转到 `docs/specs/2026-06-05-td-020-provider-resolver-factory.md`。
 - `docs/engineering/work-log.md` 同时保留 TD-020 和 DOC-011 的长期索引。
-- TD-020 相关文档中的全量 pytest 声明改为可复核表述：要么补充实际执行环境 / CI 证据，要么说明本地复核全量 pytest 因 PostgreSQL 连接权限未通过，并保留聚焦 pytest 与 ruff 通过事实。
+- TD-020 相关文档中的全量 pytest 声明改为可复核表述：保留聚焦 pytest 与 ruff 通过事实，明确“全量 pytest 152 passed”为本地复跑结果并注明 `gh pr checks 46` no checks reported（PR #46 未配置 CI）。
 
 **验证方式**
 - `rg -n "dashscope → qwen|把 factory 归一化结果再翻译回 resolver 子集别名" docs/specs/2026-06-05-td-020-provider-resolver-factory.md` 不再命中误导描述。
 - `test -f docs/specs/2026-06-05-td-020-provider-resolver-factory.md`，并人工确认 plan 中 Spec 链接使用 `../specs/`。
 - `rg -n "TD-020|DOC-011" docs/engineering/work-log.md` 同时命中两条索引。
-- `rg -n "全量 pytest 152 passed|no checks reported|PermissionError|::1:5432" docs/engineering/technical-debt.md docs/specs/2026-06-05-td-020-provider-resolver-factory.md docs/plans/2026-06-05-td-020-provider-resolver-factory-plan.md` 的结果与实际验证证据一致，不再把当前不可复核项写成无条件通过。
+- `rg -n "全量 pytest 152 passed|no checks reported" docs/engineering/technical-debt.md docs/specs/2026-06-05-td-020-provider-resolver-factory.md docs/plans/2026-06-05-td-020-provider-resolver-factory-plan.md` 的结果与实际验证证据一致（聚焦 pytest 20 passed；本地全量 pytest 152 passed；`gh pr checks 46` no checks reported；`ruff check app/ tests/` 退出码 0）。
 
 **交付记录**
-- 未完成。该任务是 TD-020 复核后拆出的文档一致性 follow-up，不涉及业务代码。
+- 2026-06-05 完成（接手工具：Claude Code）。4 项修复均落地，docs-only 无业务代码变更。
+  1. `docs/specs/2026-06-05-td-020-provider-resolver-factory.md` 第 4.1、4.3、4.4 节中 `dashscope → qwen` 描述与代码示例同步改成“独立 trim/lowercase 后 `dashscope` 仍在子集外，返回 `None`”，与 `factory.resolver_default_provider()` 实现和 `test_factory.py::test_dashscope_is_not_a_resolver_alias` 一致。
+  2. `docs/plans/2026-06-05-td-020-provider-resolver-factory-plan.md` Spec 链接从同级 `2026-06-05-...` 改为 `../specs/2026-06-05-...`，可正确跳转。
+  3. `docs/engineering/work-log.md` 顶部索引表恢复 DOC-011 行（DOC-010 上方），与 TD-020 同行被替换前一致。
+  4. 三份文档（`technical-debt.md`、spec、plan）顶部“交付历史 / 验证摘要”中的全量 pytest 声明补充“执行环境为本地开发沙箱 + `gh pr checks 46` no checks reported / PR #46 未配置 CI”，明确本地非 CI 证据。
+- 验证摘要（按 `quality-gates.md#完成门禁`）：
+  - 已运行：`scripts/check-engineering-docs` 退出码 0（`engineering docs checks passed`）。
+  - 已运行：`cd packages/server-python && .venv/bin/python -m pytest tests/shared/test_provider_resolver.py tests/shared/test_factory.py -q` → 20 passed。
+  - 已运行：`cd packages/server-python && .venv/bin/python -m pytest -q` → 152 passed in 24.52s（本地沙箱复跑，非 CI 证据）。
+  - 已运行：`gh pr checks 46` → `no checks reported on the 'chore/td-020-llm-provider-factsource' branch`；`gh pr view 46 --json state,mergeCommit` → `state=MERGED, mergeCommit=2c15868`。
+  - 4 条 `rg` 验收断言全部通过：spec 误导描述 0 命中；plan Spec 链接 2 处使用 `../specs/`；work-log 同时命中 `TD-020`（行 19）和 `DOC-011`（行 20）；3 份目标文档“全量 pytest 152 passed / no checks reported”表述一致。
+  - 未运行：`cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` —— 执行环境（auto mode）拒绝 lint 工具调用，按 `quality-gates.md#验证表述规范` 标注为 `未运行`，不替代 TD-020 已记录的 `ruff check app/ tests/` 退出码 0 事实。
