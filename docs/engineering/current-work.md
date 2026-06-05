@@ -108,44 +108,7 @@
 
 ## 当前进行中
 
-### TD-019: 修复 Vue Query 轮询自引用导致的页面初始化运行时错误
-
-状态：🟡 进行中
-类型：技术债
-领域：Frontend / 运行时稳定性 / 测试
-当前执行模式：manual
-最近接手工具：Claude Code
-分支：fix/td-019-vue-query-self-reference
-
-需求来源：
-- Spec: `docs/specs/2026-06-05-td-019-vue-query-self-reference.md`
-- Plan: `docs/plans/2026-06-05-td-019-vue-query-self-reference-plan.md`
-- 技术债: `docs/engineering/technical-debt.md#td-019-修复-vue-query-轮询自引用导致的页面初始化运行时错误`
-- 等价矩阵: `docs/engineering/matrices/td-019-vue-query-self-reference-equivalence.md`
-- 架构约束：`docs/engineering/rules/quality-gates.md#前端请求生命周期等价矩阵`
-- 任务模式：技术债修复
-
-当前进展：
-- 已完成：编写 spec/plan/矩阵；最小 Vue 复现脚本确认 TDZ；改写 `useDatasetTasksQuery` / `useFileTasksQuery` 内部 `refetchInterval` 为函数形式（从 `query.state.data` 派生 polling）；调用方删除 polling 参数
-- 正在处理：跑前端 typecheck / lint / build + smoke 验证
-- 未完成：完整 Git 闭环（提交 / push / PR / squash merge / 收口）
-
-下一步：
-1. 暂存本任务相关文件并提交
-2. push 与创建 PR
-3. 检查 `gh pr checks` 通过
-4. squash merge
-5. 收口 current-work.md / technical-debt.md / work-log.md
-
-验证状态：
-- 已运行：`pnpm --filter @metaedu/web typecheck` → 退出码 0；`pnpm --filter @metaedu/web lint` → 退出码 0；`pnpm --filter @metaedu/web build` → 退出码 0；最小 Vue 复现脚本对照验证 → 修复前 `ReferenceError: Cannot access 'tasksQuery' before initialization`、修复后 setup 正常完成且 `refetchInterval = 3000`（启用轮询）
-- 未运行：完整浏览器 / 端到端 Vue Test Utils 套件（仓库暂无 vitest 配置）
-- 当前失败：无
-
-交接备注：
-- 修复方式：把"是否轮询"判断从调用方（页面）下沉到 query hook 内部，基于 `refetchInterval: (query) => ...` 函数形式从 `query.state.data` 派生；该函数在每次 fetch 完成后被 Vue Query 调用，**不参与 setup 阶段的同步评估**，从而避开 TDZ
-- 行为不变：3s 轮询仅在存在 running/pending 任务时启用；模板 `polling` computed 由 `tasksQuery` 声明之后独立定义，引用 `tasksQuery.data.value` 不构成 TDZ
-- 端到端 smoke 已写入 PR 描述的复现脚本
+当前无进行中任务。
 
 ## 下一批候选任务
 
@@ -162,6 +125,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-05 | TD-019 修复 Vue Query 轮询自引用导致的页面初始化运行时错误 | 🟢 完成 | 把 polling 派生从调用方下沉到 query hook 的 `refetchInterval: (query) => ...` 函数形式，从 `query.state.data` 派生；避开 setup 阶段 TDZ，行为完全不变。 | `docs/engineering/technical-debt.md#td-019-修复-vue-query-轮询自引用导致的页面初始化运行时错误` / [PR #42](https://github.com/MarkDanile/MetaEduBase/pull/42) |
 | 2026-06-05 | DOC-009 生成 TD-005/006/007 follow-up 与规则补强 | 🟢 完成 | 新增 TD-015/016/017，补前端请求生命周期等价矩阵、DTO adapter 和 follow-up 稳定编号规则。 | `docs/engineering/technical-debt.md` / `docs/engineering/rules/quality-gates.md` |
 | 2026-06-05 | DOC-008 将合并后 backfill 改为条件触发 | 🟢 完成 | 明确 PR 是默认交付事实源，merge commit 仅在占位或明确要求时回填。 | `docs/engineering/rules/git-workflow.md` / `docs/engineering/workflow.md` |
 | 2026-06-05 | DOC-007 压缩 current-work 最近完成区并强化渐进式披露 | 🟢 完成 | 将最近完成区压缩为 5 行短摘要，并把长期索引沉淀到 `work-log.md`。 | `docs/engineering/work-log.md` / [PR #30](https://github.com/MarkDanile/MetaEduBase/pull/30) |

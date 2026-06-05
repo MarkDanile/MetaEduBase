@@ -272,14 +272,14 @@
 
 ### TD-019: 修复 Vue Query 轮询自引用导致的页面初始化运行时错误
 
-状态：🔵 就绪
+状态：🟢 完成
 优先级：P0
 领域：前端 / 运行时稳定性 / 测试
 证据：`packages/web/src/views/database/DatabaseView.vue:488-497` 和 `packages/web/src/views/resource/FileDetailView.vue:249-258` 在 `useDatasetTasksQuery()` / `useFileTasksQuery()` 的参数中传入 `computed(() => tasksQuery.data.value...)`，但 `tasksQuery` 自身仍在初始化；最小 Vue Query 复现脚本输出 `ReferenceError: Cannot access 'q' before initialization`。`pnpm --filter @metaedu/web lint`、`typecheck`、`build` 均可通过，说明现有静态门禁没有捕获该运行时问题。
 问题：任务轮询条件依赖尚未完成初始化的 query 变量，页面 setup 阶段可能直接崩溃。该问题来自 TD-015 / TD-017 / TD-018 的 Vue Query 迁移模式，如果不补运行时 smoke 或组合式函数回归测试，后续类似迁移仍可能复制同类错误。
-完成标准：`DatabaseView` 和 `FileDetailView` 的 query 初始化参数不再引用正在声明的 query 变量；轮询条件改为独立的 ref/computed、query 创建后的派生状态，或在 composable 内部以不会触发 TDZ 的方式处理；保留“仅存在 running / pending 任务时 3s 轮询”的用户可见行为；补充或记录能覆盖两个页面 setup 的 smoke / mount / 浏览器验证。
-验证方式：`pnpm --filter @metaedu/web lint`、`pnpm --filter @metaedu/web typecheck`、`pnpm --filter @metaedu/web build` 均退出码 0；通过浏览器或组件 smoke 打开 / 挂载 `DatabaseView` 与 `FileDetailView`，确认页面初始化不抛 ReferenceError；`rg -n "tasksQuery\\.data\\.value" packages/web/src/views/database/DatabaseView.vue packages/web/src/views/resource/FileDetailView.vue` 不再命中 query 初始化参数内的自引用。
-备注：2026-06-05 Codex 复核 TD-016 / TD-017 / TD-018 后新增。该任务优先于继续扩大 Vue Query 迁移范围。
+完成标准：`DatabaseView` 和 `FileDetailView` 的 query 初始化参数不再引用正在声明的 query 变量；轮询条件改为独立的 ref/computed、query 创建后的派生状态，或在 composable 内部以不会触发 TDZ 的方式处理；保留”仅存在 running / pending 任务时 3s 轮询”的用户可见行为；补充或记录能覆盖两个页面 setup 的 smoke / mount / 浏览器验证。
+验证方式：`pnpm --filter @metaedu/web lint`、`pnpm --filter @metaedu/web typecheck`、`pnpm --filter @metaedu/web build` 均退出码 0；通过浏览器或组件 smoke 打开 / 挂载 `DatabaseView` 与 `FileDetailView`，确认页面初始化不抛 ReferenceError；`rg -n “tasksQuery\\.data\\.value” packages/web/src/views/database/DatabaseView.vue packages/web/src/views/resource/FileDetailView.vue` 不再命中 query 初始化参数内的自引用。
+备注：2026-06-05 Codex 复核 TD-016 / TD-017 / TD-018 后新增。2026-06-05 由 Claude Code 接手完成。Spec：`docs/specs/2026-06-05-td-019-vue-query-self-reference.md`；Plan：`docs/plans/2026-06-05-td-019-vue-query-self-reference-plan.md`；等价矩阵：`docs/engineering/matrices/td-019-vue-query-self-reference-equivalence.md`。改动：把”是否轮询”判断从调用方（页面）下沉到 query hook 内部；`useDatasetTasksQuery` / `useFileTasksQuery` 的 `refetchInterval` 改用函数形式 `(query) => hasActive ? 3000 : false`，从 `query.state.data` 派生 `hasActive`；函数在每次 fetch 完成后被 Vue Query 调用，**不参与 setup 阶段的同步评估**，从而避开 TDZ；调用方 `DatabaseView` / `FileDetailView` 删除 `polling` 参数；模板 `polling` 改用 `tasksQuery` 声明之后独立定义的 computed（依赖 `tasksQuery.data.value`，但因 `tasksQuery` 已声明完成，不构成 TDZ）。行为不变：3s 轮询仅在存在 running/pending 任务时启用；模板 `polling` 提示；`watch(polling)` true→false 触发对应 query refetch；mutation 行为全部保留。验证：`pnpm --filter @metaedu/web typecheck` 退出码 0；`pnpm --filter @metaedu/web build` 退出码 0；`pnpm --filter @metaedu/web lint` 退出码 0；最小 Vue 复现脚本对照验证：修复前 `ReferenceError: Cannot access 'tasksQuery' before initialization`、修复后 setup 正常完成且 `refetchInterval = 3000`（启用轮询）；`rg -n “tasksQuery\.data\.value” packages/web/src/views/database/DatabaseView.vue packages/web/src/views/resource/FileDetailView.vue` 只命中声明后的 `tasks` computed 行（符合预期）。PR #42（https://github.com/MarkDanile/MetaEduBase/pull/42），merge commit `387d8f8`，完成日期 2026-06-05。
 
 ### TD-020: 统一 LLM provider resolver 与 factory 优先级事实源
 
