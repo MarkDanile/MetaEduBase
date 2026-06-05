@@ -2,6 +2,8 @@
 
 ## 任务入口
 
+> **交付历史（2026-06-05）：** TD-022 已通过 PR #44（merge commit `f33c19c`）合并到 `main`，并在合并后回填 `current-work.md`、`technical-debt.md` 和 `work-log.md`。本文保留为历史实施计划；下方清单按最终交付状态收口，真实交付事实以 `docs/engineering/technical-debt.md#td-022-收口早期已完成计划文件的活动式未勾选项` 和 PR #44 为准。
+
 - Spec: `docs/specs/2026-06-05-td-022-close-early-plan-checkboxes.md`
 - 技术债: `docs/engineering/technical-debt.md#td-022-收口早期已完成计划文件的活动式未勾选项`
 - 任务卡片: `docs/engineering/current-work.md` 的 TD-022 卡片
@@ -18,45 +20,45 @@
 
 ### 2. 收口 `docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md`
 
-- [ ] 确认顶部已有「交付历史」段（实际在第 5 行已有，不上移）
-- [ ] 全部 `- [ ]` 改为 `- [x]`
-- [ ] **保留** PR 描述模板内的 `<TASK-8 输出>` 占位
+- [x] 确认顶部已有「交付历史」段（实际在第 5 行已有，不上移）
+- [x] 全部 `- [ ]` 改为 `- [x]`
+- [x] **保留** PR 描述模板内的 `<TASK-8 输出>` 占位
 
 ### 3. 收口 `docs/plans/2026-06-05-td-005-task-lifecycle-helpers-plan.md`
 
-- [ ] 顶部插入「交付历史（2026-06-05）」段（PR #34, `e5197a5`）
-- [ ] 全部 `- [ ]` 改为 `- [x]`
+- [x] 顶部插入「交付历史（2026-06-05）」段（PR #34, `e5197a5`）
+- [x] 全部 `- [ ]` 改为 `- [x]`
 
 ### 4. 收口 `docs/plans/2026-06-05-td-006-llm-model-fallback-plan.md`
 
-- [ ] 顶部插入「交付历史（2026-06-05）」段（PR #35, `042e4a9`）
-- [ ] 全部 `- [ ]` 改为 `- [x]`
+- [x] 顶部插入「交付历史（2026-06-05）」段（PR #35, `042e4a9`）
+- [x] 全部 `- [ ]` 改为 `- [x]`
 
 ### 5. 收口 `docs/plans/2026-06-05-td-007-databaseview-vue-query-plan.md`
 
-- [ ] 顶部插入「交付历史（2026-06-05）」段（PR #36, `350acd2`）
-- [ ] 全部 `- [ ]` 改为 `- [x]`
+- [x] 顶部插入「交付历史（2026-06-05）」段（PR #36, `350acd2`）
+- [x] 全部 `- [ ]` 改为 `- [x]`
 
 ### 6. 收口 `docs/plans/2026-06-05-td-015-databaseview-regressions-plan.md`
 
-- [ ] 顶部插入「交付历史（2026-06-05）」段（PR #38, `f38fbbc`）
-- [ ] 全部 `- [ ]` 改为 `- [x]`
+- [x] 顶部插入「交付历史（2026-06-05）」段（PR #38, `f38fbbc`）
+- [x] 全部 `- [ ]` 改为 `- [x]`
 
 ### 7. 验证
 
-- [ ] `rg -n "^- \[ \]" docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md docs/plans/2026-06-05-td-005-task-lifecycle-helpers-plan.md docs/plans/2026-06-05-td-006-llm-model-fallback-plan.md docs/plans/2026-06-05-td-007-databaseview-vue-query-plan.md docs/plans/2026-06-05-td-015-databaseview-regressions-plan.md` 命中 0 行
-- [ ] `rg -n "^- \[x\]" ...` 命中行数符合预期（> 0）
-- [ ] `rg -n "交付历史" ...` 5 个 plan 各自至少 1 行命中
+- [x] `rg -n "^- \[ \]" docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md docs/plans/2026-06-05-td-005-task-lifecycle-helpers-plan.md docs/plans/2026-06-05-td-006-llm-model-fallback-plan.md docs/plans/2026-06-05-td-007-databaseview-vue-query-plan.md docs/plans/2026-06-05-td-015-databaseview-regressions-plan.md` 命中 0 行
+- [x] `rg -n "^- \[x\]" ...` 命中行数符合预期（> 0）
+- [x] `rg -n "交付历史" ...` 5 个 plan 各自至少 1 行命中
 
 ### 8. Git 闭环
 
-- [ ] 分支：`docs/td-022-close-early-plan-checkboxes`（已建）
-- [ ] 提交：`docs(engineering): TD-022 close remaining - [ ] in early completed plans`
-- [ ] push：`git push -u origin docs/td-022-close-early-plan-checkboxes`
-- [ ] PR：`gh pr create ...` Summary / Scope / Validation / Risks / Docs
-- [ ] 检查 `gh pr checks` 通过
-- [ ] squash merge：`gh pr merge --squash --delete-branch`
-- [ ] 回填 `current-work.md` 最近完成 + `technical-debt.md` 备注 + `work-log.md` 索引
+- [x] 分支：`docs/td-022-close-early-plan-checkboxes`（已建）
+- [x] 提交：`docs(engineering): TD-022 close remaining - [ ] in early completed plans`
+- [x] push：`git push -u origin docs/td-022-close-early-plan-checkboxes`
+- [x] PR：`gh pr create ...` Summary / Scope / Validation / Risks / Docs
+- [x] 检查 `gh pr checks`：无 checks reported，文档 PR 已继续合并
+- [x] squash merge：`gh pr merge --squash --delete-branch`
+- [x] 回填 `current-work.md` 最近完成 + `technical-debt.md` 备注 + `work-log.md` 索引
 
 ## 任务拆分
 

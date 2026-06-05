@@ -4,11 +4,11 @@
 
 **Tradeoff:** 谨慎优先于速度。对于简单任务，请自行判断。
 
-开始任何开发任务前，先阅读 `docs/engineering/current-work.md`，确认当前任务、相关计划、架构约束、验证状态和下一步。若任务涉及 plan-do、superpower、compound-engineering-plugin 或其他 AI IDE/插件交接，继续阅读 `docs/engineering/workflow.md`，并以其中的开发前检查、开发后收尾和状态同步规则为准。
+开始任何开发任务前，先阅读 `docs/engineering/current-work.md`，确认当前任务、相关计划、架构约束、验证状态和下一步。若任务涉及 plan-do、superpower、compound-engineering-plugin 或其他 AI IDE/插件交接，继续阅读 `docs/engineering/workflow.md`。
 
-使用 superpower、compound-engineering-plugin 或其他插件生成 spec/plan 时，插件目录只作为兼容输出；本次开发依据必须迁移或镜像到 `docs/specs/*` / `docs/plans/*`，并在任务卡片中记录原始插件输出。提交或 PR 前必须完成 `current-work.md` 区域同步、行为变化声明检查和 PR 范围边界检查。
+使用 superpower、compound-engineering-plugin 或其他插件生成 spec/plan 时，插件目录只作为兼容输出；本次开发依据必须迁移或镜像到 `docs/specs/*` / `docs/plans/*`，并在任务卡片中记录原始插件输出。
 
-完整 Git 闭环按 `docs/engineering/rules/git-workflow.md#快速交付通道` 执行，保持少量固定检查和少量阶段汇报。合并后必须清除过期状态和交付占位；PR 链接是默认交付事实源，只有文档占位、任务总账或审计要求明确需要时才回填 merge commit，禁止把最终回复当作事实源。
+提交、PR、合并或声明任务完成前，执行 `docs/engineering/rules/quality-gates.md#完成门禁`；完整 Git 闭环按 `docs/engineering/rules/git-workflow.md#快速交付通道` 执行。PR 链接是默认交付事实源，禁止把最终回复当作事实源。
 
 当任务涉及技术债记录、技术债复盘、工程治理、重构优先级或质量门禁时，先阅读 `docs/engineering/technical-debt.md`，并以其中的状态流、任务模板和复盘规范为准。
 
@@ -80,7 +80,7 @@
 | [coding-style.md](docs/engineering/rules/coding-style.md) | Naming, formatting, design tokens, shared components |
 | [testing.md](docs/engineering/rules/testing.md) | Fixtures, mock strategy, coverage |
 | [local-development.md](docs/engineering/rules/local-development.md) | 本地启动、依赖、迁移和常用运行命令 |
-| [quality-gates.md](docs/engineering/rules/quality-gates.md) | 验证矩阵、门禁状态、收尾记录模板 |
+| [quality-gates.md](docs/engineering/rules/quality-gates.md) | 验证矩阵、完成门禁、收尾记录模板 |
 | [contracts.md](docs/engineering/rules/contracts.md) | API / DTO / shared schema 契约变更规则 |
 | [git-workflow.md](docs/engineering/rules/git-workflow.md) | Branches, commits, PR flow |
 | [security.md](docs/engineering/rules/security.md) | Auth, injection prevention, secrets |

@@ -15,6 +15,8 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-05 | DOC-011 技术债总账结构化展示优化 | 文档 / 工程规范 |  |  | `docs/engineering/technical-debt.md` |
+| 2026-06-05 | DOC-010 收敛完成门禁并瘦身重复流程规则 | 文档 / 工程规范 |  |  | `docs/engineering/rules/quality-gates.md#完成门禁` |
 | 2026-06-05 | TD-021 收口已完成计划文件和候选区状态同步漏洞 | 技术债 / 文档 / 工程流程 |  |  | `docs/engineering/technical-debt.md#td-021-收口已完成计划文件和候选区状态同步漏洞` |
 | 2026-06-05 | TD-022 收口早期已完成计划文件的活动式未勾选项 | 技术债 / 文档 / 工程流程 / follow-up | [#44](https://github.com/MarkDanile/MetaEduBase/pull/44) | `f33c19c` | `docs/engineering/technical-debt.md#td-022-收口早期已完成计划文件的活动式未勾选项` |
 | 2026-06-05 | DOC-009 生成 TD-005/006/007 follow-up 与规则补强 | 文档 / 工程规范 |  |  | `docs/engineering/technical-debt.md#td-015-修复-td-007-databaseview-vue-query-迁移后的行为回归` |
