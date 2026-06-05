@@ -75,19 +75,7 @@
    - 更新已完成、未完成和下一步。
    - 更新验证状态。
    - 记录最近接手工具。
-3. 做一次最终声明回查：
-   - 状态字段是否与实际一致。
-   - `current-work.md` 的 `当前进行中`、`下一批候选任务`、`最近完成` 是否同步。
-   - `下一批候选任务` 是否只包含 1 到 3 个未完成候选，且没有 `🟢 完成` 行；已完成项必须移入“最近完成”或归档到对应事实源。
-   - `最近完成` 是否不超过 5 行；超出窗口的完成项必须移入 `docs/engineering/work-log.md` 或对应事实源。
-   - 验证结果是否来自真实命令输出。
-   - 测试是否覆盖完成标准中的所有等价入口。
-   - 如果声明“零业务逻辑变更”“仅格式化”或“仅 lint 修复”，是否已按 `docs/engineering/rules/quality-gates.md#行为变化声明检查` 排查行为变化信号。
-   - 如果验证命令失败，是否写清失败项并绑定已有或新增的 `TD-xxx`。
-   - 复核发现但未修复的问题是否已经登记到对应总账；近期需要接手的是否进入“下一批候选任务”。
-   - `current-work.md`、对应任务总账、plan/spec 三处事实是否一致，没有一个文件显示完成、另一个文件仍显示待处理。
-   - 已完成任务对应的 plan 是否已标为历史计划，且不再残留活动式 `- [ ]` 收尾项；若保留未完成项，必须明确标成后续任务编号。
-   - 如果是前端 composable、Vue Query、请求 service 或轮询重构，是否已按 `docs/engineering/rules/quality-gates.md#前端请求生命周期等价矩阵` 回查请求参数、enabled / lazy-load、轮询、invalidation、toast 和 DTO adapter。
+3. 执行 `docs/engineering/rules/quality-gates.md#完成门禁`。如果任务触发行为变化声明、覆盖矩阵、前端请求生命周期、API / DTO 契约或数据完整性风险，再读取对应专项规则。
 4. 如果完成技术债任务，同步更新 `docs/engineering/technical-debt.md` 的状态和备注。
 5. 如果任务完成后需要长期追踪，在 `docs/engineering/work-log.md` 增加或更新一行历史索引。
 6. 如果任务进入 `current-work.md` 的“最近完成”，只保留一行短摘要和事实源链接；不要复制完整任务卡片。

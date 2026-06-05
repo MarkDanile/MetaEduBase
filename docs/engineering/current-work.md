@@ -124,9 +124,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-05 | DOC-011 技术债总账结构化展示优化 | 🟢 完成 | `technical-debt.md` 增加任务总览表和结构化任务卡片；长 `备注` 压缩为交付记录、事实源和验证摘要，降低扫视成本。 | `docs/engineering/technical-debt.md` |
+| 2026-06-05 | DOC-010 收敛完成门禁并瘦身重复流程规则 | 🟢 完成 | 将通用收尾检查集中到 `quality-gates.md#完成门禁` 6 项；`workflow.md`、`task-modes.md`、`git-workflow.md` 和 AI 入口文件改为引用，减少重复规则和 token 开销。 | `docs/engineering/rules/quality-gates.md#完成门禁` |
 | 2026-06-05 | TD-022 收口早期已完成计划文件的活动式未勾选项 | 🟢 完成 | 5 个早期 plan（TD-004/005/006/007/015）顶部补交付历史段，154 行 `- [ ]` → `- [x]`，与 TD-021 收口 TD-016/017/018/019 模式一致。 | `docs/engineering/technical-debt.md#td-022-收口早期已完成计划文件的活动式未勾选项` / [PR #44](https://github.com/MarkDanile/MetaEduBase/pull/44) |
 | 2026-06-05 | TD-021 收口已完成计划文件和候选区状态同步漏洞 | 🟢 完成 | 收口 TD-016/017/018/019 历史 plan 未勾选项；补强候选区、最近完成和已完成 plan 的提交前硬检查，并登记 TD-022。 | `docs/engineering/technical-debt.md#td-021-收口已完成计划文件和候选区状态同步漏洞` |
 | 2026-06-05 | TD-019 修复 Vue Query 轮询自引用导致的页面初始化运行时错误 | 🟢 完成 | 把 polling 派生从调用方下沉到 query hook 的 `refetchInterval: (query) => ...` 函数形式，从 `query.state.data` 派生；避开 setup 阶段 TDZ，行为完全不变。 | `docs/engineering/technical-debt.md#td-019-修复-vue-query-轮询自引用导致的页面初始化运行时错误` / [PR #42](https://github.com/MarkDanile/MetaEduBase/pull/42) |
-| 2026-06-05 | DOC-009 生成 TD-005/006/007 follow-up 与规则补强 | 🟢 完成 | 新增 TD-015/016/017，补前端请求生命周期等价矩阵、DTO adapter 和 follow-up 稳定编号规则。 | `docs/engineering/technical-debt.md` / `docs/engineering/rules/quality-gates.md` |
-| 2026-06-05 | DOC-008 将合并后 backfill 改为条件触发 | 🟢 完成 | 明确 PR 是默认交付事实源，merge commit 仅在占位或明确要求时回填。 | `docs/engineering/rules/git-workflow.md` / `docs/engineering/workflow.md` |
-| 2026-06-05 | DOC-007 压缩 current-work 最近完成区并强化渐进式披露 | 🟢 完成 | 将最近完成区压缩为 5 行短摘要，并把长期索引沉淀到 `work-log.md`。 | `docs/engineering/work-log.md` / [PR #30](https://github.com/MarkDanile/MetaEduBase/pull/30) |
