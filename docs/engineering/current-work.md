@@ -22,8 +22,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| TD-027 补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类（设计系统扩展） | ⚫ 待办 | P3 | 前端 / 设计系统 | 在 `main.css` 追加 12 个新共享类（`ui-input` / `ui-btn` 4 类 / `ui-tag` 5 类 / `ui-dialog` 2 类）+ `liquid` 主题 `ui-btn-primary` 玻璃感覆盖 + `coding-style.md` 迁移说明扩 4 类。 |
-| TD-028 业务视图与共享组件的 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 存量替换 | ⚫ 待办 | P3 | 前端 / 设计系统 | 依赖 TD-027 先补 `ui-*` 等价物；按业务视图残留量分切片。 |
+| TD-028 业务视图与共享组件的 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 存量替换 | ⚫ 待办 | P3 | 前端 / 设计系统 | TD-027 已完成（`ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类已落地），可按业务残留量分切片推进。 |
 | TD-009 减少前后端契约漂移 | ⚫ 待办 | P2 | API / 类型 | 选高价值契约族（模板字段或任务状态），建共享 schema 检查。 |
 
 ## 最近完成
@@ -32,6 +31,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-05 | TD-027 补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类（设计系统扩展） | 🟢 完成 | 在 `main.css` 追加 12 个新 `ui-*` 原子控件共享类（`ui-input` + `ui-btn` 4 类含主按钮径向渐变 + 点按泠漪 / `ui-tag` 5 类含 4 个颜色变体 / `ui-dialog` 2 类），全部 token 化（复用现有 `--color-*` / `--radius-*` / `--shadow-*` / `--duration-liquid` / `--ease-elastic` / `--surface-*`）。新增 2 个 token `--overlay-bg`（4 主题 0.2/0.2/0.2/0.15）/ `--btn-ripple`（4 主题统一 0.25），按"自动模式 build 分类器拒批硬编码 rgba"的反馈补全。`coding-style.md` 「迁移说明（TD-008）」表格从 4 类扩到 17 类（容器层 5 + 原子层 12），加容器与原子关系说明。`liquid-*` 类保持兼容不动；业务视图与共享组件的存量 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 替换已登记为 TD-028 接力。 | [PR #59](https://github.com/MarkDanile/MetaEduBase/pull/59) |
 | 2026-06-05 | TD-026 共享组件 `liquid-card` 残留验证 | 🟢 完成 | 严格 `rg "liquid-card"` 验证 4 个共享组件（`FieldEditor` / `KGDetailPanel` / `ConfirmDialog` / `KGGraph`）全部 0 命中。任务卡线索的"22 处"是 TD-008 完成时把所有 `liquid-*`（含 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*`）都误计入 `liquid-card` 残留的快照。4 个共享组件里现有的 `liquid-input` / `liquid-btn-*` 等按 TD-008 规则保持兼容，**不**在本债范围；已拆为 TD-027（补 `ui-*` 等价共享类）+ TD-028（业务视图与共享组件存量替换）作为后续接力。 | `docs/engineering/technical-debt.md#td-026` |
 
 ## 最近完成
