@@ -8,10 +8,10 @@
 |------|------|
 | 后端 | FastAPI + SQLAlchemy 2 (async) + Pydantic v2 |
 | 数据库 | PostgreSQL 16 + pgvector (1536维) + ltree |
-| 前端 | Vue 3.5 + Vite 6 + Tailwind CSS 4 + Pinia 3 |
+| 前端 | Vue 3.5 + Vite 6 + Tailwind CSS 4 + Pinia 3 + Vue Query |
 | 认证 | JWT (python-jose + bcrypt) + ContextVar 多租户 |
 | LLM | MiniMax M2 / DeepSeek / Qwen (OpenAI-compatible) |
-| Embedding | MiniMax emboir / SiliconFlow Qwen/Qwen3-Embedding-8B |
+| Embedding | BAAI/bge-m3 via Qwen DashScope API + SiliconFlow Qwen3-Embedding-8B / MiniMax emboir 扩展路径 |
 | 缓存/队列 | Redis 7 + Celery 5 |
 | 存储 | MinIO (本地文件系统降级) |
 
@@ -27,8 +27,8 @@ packages/
 │   │   ├── structured_data/  # 数据库（数据集/行/知识图谱）
 │   │   ├── template/   # 数据要素模板
 │   │   └── resource/   # 旧资源管理（保留）
-│   └── tests/          # 后端测试套件（当前 pytest 可收集 81 tests）
-├── web/               # Vue 3 前端
+│   └── tests/          # 后端测试套件（当前 pytest 可收集 152 tests）
+├── web/               # Vue 3 前端（ui-* workspace 语义层）
 └── mcp-server/       # MCP 服务
 ```
 
@@ -96,7 +96,7 @@ LLM 降级链: minimax → deepseek → qwen
 
 **Auth 依赖注入**: `current_user: dict = Depends(get_current_user)`，定义在 `contexts/identity/interfaces/api/dependencies.py`
 
-**ORM 模型注册**: 所有模型必须在 `app/shared/infrastructure/models.py` 中 import，否则 `create_all` / Alembic 找不到表
+**ORM 模型注册**: 所有模型必须在 `app/shared/infrastructure/models.py` 中 import，否则 Alembic migration 和 metadata 注册找不到表
 
 **知识节点路径**: `parent_id` → 查父 `path` → 拼接 `{parent_path}.{node_id[:8]}`。无父节点时 `path = node_id[:8]`
 

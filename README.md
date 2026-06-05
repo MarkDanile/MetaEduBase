@@ -10,7 +10,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-面向职业院校的 AI-Native 知识管理平台。RAG 检索增强生成 · 层级知识图谱 · 多租户架构
+面向职业院校的 AI-Native 知识管理平台。RAG 检索增强生成 · 层级知识图谱 · 文档/数据集处理管道 · 多租户架构
 
 </div>
 
@@ -19,11 +19,14 @@
 ## 特性
 
 - **层级知识图谱** — ltree 树形结构，专业→课程→章节→知识点四级钻取
-- **RAG 智能问答** — pgvector 向量检索 + 语义/关键词/混合搜索 + LLM 生成，回答附带溯源
+- **RAG 智能问答** — pgvector 向量检索 + 关键词 fallback + 多 Provider LLM 生成，回答附带溯源
+- **资源库与数据集管道** — 文件夹/文件上传、解析、分块、向量化、全文索引、Excel/CSV 数据集与 KG 抽取
+- **数据要素模板** — 模板 CRUD、文档类型检查、AI 初始化模板字段
 - **多租户隔离** — JWT + ContextVar 行级隔离
-- **Liquid Glass UI** — 教育行业定制毛玻璃设计体系
+- **语义化 UI 体系** — `ui-*` workspace 组件层 + 4 主题，`liquid-*` 保留为兼容别名
 - **MCP 工具集成** — 6 个开箱即用的知识操作 Tool
 - **一键启动** — `./dev.sh` 幂等启动，已运行服务自动跳过
+- **跨 AI IDE 工程规范** — `AGENTS.md` + `docs/engineering/*` 统一任务、计划、质量门禁和 Git 闭环
 
 ## 技术架构
 
@@ -34,22 +37,19 @@
 │  │ 登录      │ 知识库     │ AI 问答   │ 资源库    │ 数据库       │ 技能编辑    │ 系统管理   ││
 │  │ /login   │ /knowledge│ /ai-chat  │ /resource │ /database   │ /skill     │ /admin    ││
 │  └──────────┴───────────┴──────────┴──────────┴──────────────┴────────────┴────────────┘│
-│  Vite 6 · Tailwind CSS 4 · Pinia 3 · Vue Router · Radix Vue    │
-│  Liquid Glass 毛玻璃设计体系 · lucide-vue-next 图标              │
+│  Vite 6 · Tailwind CSS 4 · Pinia 3 · Vue Query · Vue Router    │
+│  ui-* 语义化 workspace 层 · 4 主题 · lucide-vue-next 图标        │
 ├──────────────────────────────────────────────────────────────────┤
 │  API 网关  FastAPI + JWT 认证 + CORS + 多租户 ContextVar         │
 ├──────────────────────────────────────────────────────────────────┤
 │  业务层  DDD 分层架构 (Application / Domain / Infrastructure)     │
-│  ┌────────────┬──────────────┬──────────────┬──────────────────┐│
-│  │ 身份上下文   │ 知识上下文     │ 资源上下文    │ AI 问答上下文    ││
-│  │ identity   │ knowledge    │ resource     │ ai (RAG)        ││
-│  │            │              │              │                 ││
-│  │ · 登录/注册  │ · 节点 CRUD   │ · 文件上传    │ · 向量检索       ││
-│  │ · JWT 签发  │ · 树形遍历    │ · 下载/删除   │ · Embedding     ││
-│  │ · RBAC 权限 │ · 语义搜索    │ · 软删除      │ · LLM 生成      ││
-│  └────────────┴──────────────┴──────────────┴──────────────────┘│
+│  ┌──────────┬──────────┬──────────┬──────────────┬────────────┐│
+│  │ identity │ knowledge│ document │ structured   │ template   ││
+│  │ 登录/JWT │ 知识图谱  │ 文件管道  │ 数据集/KG     │ 数据模板    ││
+│  └──────────┴──────────┴──────────┴──────────────┴────────────┘│
+│  resource 旧资源管理上下文保留；AI Chat 复用 knowledge + shared LLM │
 ├──────────────────────────────────────────────────────────────────┤
-│  共享基础设施  SQLAlchemy 2 (async) · Alembic 迁移 · 种子数据      │
+│  共享基础设施  SQLAlchemy 2 async · Alembic 迁移 · 显式 dev seed   │
 ├──────────────────────────────────────────────────────────────────┤
 │  中间件 / 存储层                                                   │
 │  ┌──────────────────┬───────────────────┬───────────────────────┐│
@@ -60,8 +60,8 @@
 │  └──────────────────┴───────────────────┴───────────────────────┘│
 ├──────────────────────────────────────────────────────────────────┤
 │  AI / LLM 层                                                      │
-│  MiniMax M2 (默认) · DeepSeek · Qwen  │  Embedding: bge-m3      │
-│  MCP 工具服务器 (6 个知识操作 Tool)        │  DashScope API         │
+│  Chat: MiniMax M2 / DeepSeek / Qwen  │ Embedding: bge-m3 / Qwen3│
+│  Provider resolver + fallback       │ MCP 工具服务器 (6 tools)  │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -136,14 +136,20 @@ cd packages/server-python && make install && cd ../..
 
 ```
 MetaEduBase/
+├── AGENTS.md                  # 跨 AI IDE 统一入口规则
 ├── deploy/                    # 部署配置 (Docker Compose + Dockerfile + Nginx)
+├── docs/                      # 工程规范、spec、plan、技术债和工作台
+│   ├── engineering/           # current-work / technical-debt / rules / work-log
+│   ├── specs/                 # 插件无关需求事实源
+│   └── plans/                 # 插件无关实施计划事实源
 ├── packages/
 │   ├── server-python/         # 后端 (FastAPI + SQLAlchemy 2 + DDD 分层)
-│   │   ├── app/contexts/      #   业务上下文 (identity / knowledge / resource)
-│   │   └── tests/             #   测试套件 (49 tests)
-│   ├── web/                   # 前端 (Vue 3 + Tailwind 4 + Liquid Glass)
+│   │   ├── app/contexts/      #   identity / knowledge / document / structured_data / template / resource
+│   │   └── tests/             #   pytest 测试套件（当前可收集 152 tests）
+│   ├── web/                   # 前端 (Vue 3 + Tailwind 4 + ui-* workspace)
 │   ├── shared/                # 前后端共享 TypeScript 类型
 │   └── mcp-server/            # MCP 工具服务器
+├── scripts/                   # 工程门禁脚本（如 check-engineering-docs）
 ├── dev.sh                     # 一键开发启动脚本
 └── ARCHITECTURE.md            # 完整架构文档
 ```
@@ -154,8 +160,13 @@ MetaEduBase/
 # 后端 lint + 测试 (首次需先 `make init-test-db` 初始化测试库)
 cd packages/server-python && make lint && make test
 
-# 前端类型检查
-cd packages/web && npx vue-tsc --noEmit
+# 前端 lint / 类型检查 / build
+pnpm --filter @metaedu/web lint
+pnpm --filter @metaedu/web typecheck
+pnpm --filter @metaedu/web build
+
+# 工程文档门禁
+scripts/check-engineering-docs
 
 # API 文档 (启动后端后访问)
 open http://localhost:8000/docs
