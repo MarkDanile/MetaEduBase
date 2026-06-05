@@ -97,7 +97,7 @@
 | TD-006 | 集中 LLM provider 和模型 fallback 策略 | 🟢 完成 | P1 | 后端 / AI | [PR #35](https://github.com/MarkDanile/MetaEduBase/pull/35) |
 | TD-007 | 减少前端请求状态处理重复 | 🟢 完成 | P2 | 前端 / 可维护性 | [PR #36](https://github.com/MarkDanile/MetaEduBase/pull/36) |
 | TD-008 | 明确从 `liquid-*` 类到语义 UI 层的迁移路径 | 🟢 完成 | P2 | 前端 / 设计系统 | [PR #53](https://github.com/MarkDanile/MetaEduBase/pull/53) |
-| TD-009 | 减少前后端契约漂移 | ⚫ 待办 | P2 | API / 类型 | - |
+| TD-009 | 减少前后端契约漂移 | 🟢 完成 | P2 | API / 类型 | [Spec](../specs/2026-06-05-td-009-structured-data-contract.md) / [Plan](../plans/2026-06-05-td-009-structured-data-contract-plan.md) |
 | TD-010 | 治理生成物 `outputs/` 对工作区的污染 | 🟢 完成 | P2 | 交付 / 仓库卫生 | `outputs/` 已删除 |
 | TD-011 | 治理前端 lint warning | 🟢 完成 | P1 | 前端 / 安全 / 交付 | `090242a` |
 | TD-012 | 治理后端全量 ruff 质量门禁 | 🟢 完成 | P1 | 后端 / 测试 / 交付 | [PR #17](https://github.com/MarkDanile/MetaEduBase/pull/17) |
@@ -449,13 +449,13 @@
 
 ### TD-009: 减少前后端契约漂移
 
-状态：⚫ 待办
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P2 |
 | 领域 | API / 类型 |
-| 事实源 | `docs/engineering/rules/contracts.md` |
+| 事实源 | `docs/engineering/rules/contracts.md`；[Spec](../specs/2026-06-05-td-009-structured-data-contract.md)；[Plan](../plans/2026-06-05-td-009-structured-data-contract-plan.md) |
 
 **证据**
 - `packages/shared` 中存在 Zod schemas 和共享 TypeScript 类型。
@@ -473,7 +473,9 @@
 - 所选契约族出现字段不匹配时，能被测试、生成类型或 schema 校验捕获。
 
 **交付记录**
-- 未完成。
+- 2026-06-06 完成（接手工具：Claude Code）。本轮选择结构化抽取结果容器作为契约族：`packages/shared` 新增 `FileStructuredDataSchema` / `FileStructuredData` / `getTemplateStructuredData`；前端 `FileDTO.structured_data` 复用 shared 类型，`FileDetailView` 读取 `template` 前通过 shared helper 窄化；后端抽出 parse/extract structured_data 写入 helper 并补聚焦测试。
+- 行为变化声明：正常 `template` object 展示不变；如果后端或历史数据把 `structured_data.template` 写成非 object，前端不再强转展示，而是按无抽取结果处理。
+- 验证摘要：`pnpm --filter @metaedu/shared typecheck` 退出码 0；`pnpm --filter @metaedu/web typecheck` 退出码 0；`pytest tests/contexts/document/test_structured_data_contract.py -q` 4 passed；`ruff check app/contexts/document/application/tasks.py tests/contexts/document/test_structured_data_contract.py` 退出码 0；`scripts/check-engineering-docs` 退出码 0。
 
 ### TD-010: 治理生成物 `outputs/` 对工作区的污染
 

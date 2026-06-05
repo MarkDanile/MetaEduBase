@@ -15,6 +15,8 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-06 | TD-009 减少前后端契约漂移（结构化抽取容器契约） | 技术债 / 重构 |  |  | `docs/engineering/technical-debt.md#td-009-减少前后端契约漂移` |
+| 2026-06-05 | TD-026 共享组件 `liquid-card` 残留验证 | 技术债 / 文档 / follow-up | [#58](https://github.com/MarkDanile/MetaEduBase/pull/58) |  | `docs/engineering/technical-debt.md#td-026-共享组件-liquid-card-残留验证` |
 | 2026-06-05 | DOC-014 刷新 README / ARCHITECTURE 项目入口文档 | 文档 / 架构 / 交接 |  |  | `README.md` / `ARCHITECTURE.md` |
 | 2026-06-05 | DOC-013 工程文档门禁增强与 UI 迁移事实源收口 | 文档 / 工程规范 / 工具链 |  |  | `scripts/engineering/check_engineering_docs.py` |
 | 2026-06-05 | TD-023 收口 TD-020 文档一致性、断链与归档索引 | 文档 / 工程流程 / 跨 AI 交接 / follow-up |  |  | `docs/engineering/technical-debt.md#td-023-收口-td-020-文档一致性-断链与归档索引` |
