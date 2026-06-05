@@ -8,6 +8,11 @@
 5. 多个 provider 都有 key，按顺序选第一个
 6. provider 缺 base_url / model 等不完整 → 跳过
 7. 默认 provider 在候选集里时挪到顺序首位
+8. 默认 provider 大小写 / 空白变体（`Qwen`、` deepseek `）应等价于小写
+9. 默认 provider 是 `dashscope` → 仍走子集顺序（不归一化为 `qwen`）
+
+`factory.resolver_default_provider` 与 `RESOLVER_PROVIDER_NAMES` 的
+覆盖见 `tests/shared/test_factory.py`。
 """
 
 from __future__ import annotations
@@ -15,6 +20,7 @@ from __future__ import annotations
 import pytest
 
 from app.shared.llm import provider_resolver
+from app.shared.llm.factory import RESOLVER_PROVIDER_NAMES
 from app.shared.llm.provider_resolver import resolve_chat_provider
 
 
@@ -143,3 +149,37 @@ class TestResolveChatProvider:
         cfg = resolve_chat_provider()
         assert cfg is not None
         assert cfg.provider_name == "qwen"
+
+    def test_default_qwen_uppercase_with_whitespace_is_normalized(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # "Qwen" / " qwen " / "QWEN" should all move qwen to the front
+        # just like the lowercased form.
+        _set_settings(
+            monkeypatch,
+            llm_default_provider="  Qwen  ",
+            minimax_api_key="mm-key",
+            qwen_api_key="qwen-key",
+        )
+        cfg = resolve_chat_provider()
+        assert cfg is not None
+        assert cfg.provider_name == "qwen"
+
+    def test_provider_name_is_always_a_resolver_alias(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Whichever provider wins, its `provider_name` must be one of the
+        # resolver aliases; never "dashscope", never a factory-internal
+        # name.
+        _set_settings(
+            monkeypatch,
+            llm_default_provider="dashscope",
+            minimax_api_key="mm-key",
+            deepseek_api_key="ds-key",
+            qwen_api_key="qwen-key",
+        )
+        cfg = resolve_chat_provider()
+        assert cfg is not None
+        assert cfg.provider_name in RESOLVER_PROVIDER_NAMES
+        assert cfg.provider_name != "dashscope"
+
