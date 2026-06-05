@@ -21,7 +21,9 @@ coverage/
 .dev-logs/
 outputs/
 dump.rdb
-.claude/
+.claude/*
+!.claude/rules/
+!.claude/rules/*.md
 *.tsbuildinfo
 Thumbs.db
 .superpowers/
