@@ -228,14 +228,14 @@
 
 ### TD-015: 修复 TD-007 DatabaseView Vue Query 迁移后的行为回归
 
-状态：🔵 就绪
+状态：🟢 完成
 优先级：P1
 领域：前端 / API / 可维护性
-证据：`packages/web/src/views/database/queries.ts:132-133` 调用 `structuredDataApi.uploadDataset(formData, "")`，而后端 `packages/server-python/app/contexts/structured_data/interfaces/api/router.py:77-83` 仍通过 query 参数接收 `name`，`router.py:101` 才用 `name or file.filename` 生成数据集名称；`packages/web/src/views/database/DatabaseView.vue:488-492` 注释写“仅 running / pending 时 3s refetch”，实际传入 `computed(() => 3000)`，选中数据集后会一直轮询；`DatabaseView.vue:509` 无条件创建 `useKgOverviewQuery()`，`queries.ts:110-120` 没有 `enabled` 条件，页面进入时就请求 `/structured-data/knowledge-graph`；`DatabaseView.vue:510-515` 使用 `unknown as KnowledgeNodeDTO[] / KnowledgeEdgeDTO[]` 掩盖 `structured-data.ts` 中轻量 `KGNode / KGEdge` 与 `knowledge.ts` 中完整 `KnowledgeNodeDTO / KnowledgeEdgeDTO` 的契约差异。
+证据：`packages/web/src/views/database/queries.ts:132-133` 调用 `structuredDataApi.uploadDataset(formData, “”)`，而后端 `packages/server-python/app/contexts/structured_data/interfaces/api/router.py:77-83` 仍通过 query 参数接收 `name`，`router.py:101` 才用 `name or file.filename` 生成数据集名称；`packages/web/src/views/database/DatabaseView.vue:488-492` 注释写”仅 running / pending 时 3s refetch”，实际传入 `computed(() => 3000)`，选中数据集后会一直轮询；`DatabaseView.vue:509` 无条件创建 `useKgOverviewQuery()`，`queries.ts:110-120` 没有 `enabled` 条件，页面进入时就请求 `/structured-data/knowledge-graph`；`DatabaseView.vue:510-515` 使用 `unknown as KnowledgeNodeDTO[] / KnowledgeEdgeDTO[]` 掩盖 `structured-data.ts` 中轻量 `KGNode / KGEdge` 与 `knowledge.ts` 中完整 `KnowledgeNodeDTO / KnowledgeEdgeDTO` 的契约差异。
 问题：TD-007 的 lint、typecheck 和 build 通过，但没有覆盖请求参数、轮询条件、懒加载时机和 DTO 形态等行为等价点；这会造成数据集上传名称丢失、后台请求增多，以及前端契约漂移被类型断言掩盖。
 完成标准：上传数据集时保留用户填写的 trim 后名称，或后端明确支持并测试 multipart form 中的 `name` 字段；任务轮询只在存在 `running` 或 `pending` 任务时启用，无任务运行时暂停；KG overview 只在用户展开总览时请求，或在产品层明确说明需要预加载并记录验证；KG overview 使用明确 DTO 或 adapter，不再用 `unknown as` 掩盖轻量图谱返回；补充行为等价矩阵覆盖请求参数、enabled / lazy-load、polling、cache invalidation、toast 和 loading 状态。
 验证方式：`pnpm --filter @metaedu/web lint`、`pnpm --filter @metaedu/web typecheck`、`pnpm --filter @metaedu/web build` 均退出码 0；通过自动化 mock、组件测试或浏览器 / DevTools 验收确认：上传请求携带正确 `name`；无 `running` / `pending` 任务时不继续 3s 请求任务列表；未展开 KG overview 时不请求 `/structured-data/knowledge-graph`；overview DTO 不再依赖 `unknown as`。
-备注：2026-06-05 Codex 复核 TD-007 / PR #36 后新增，作为优先修复的前端回归 follow-up。
+备注：2026-06-05 Codex 复核 TD-007 / PR #36 后新增，作为优先修复的前端回归 follow-up。2026-06-05 由 Claude Code 接手完成。Spec：`docs/specs/2026-06-05-td-015-databaseview-regressions.md`；Plan：`docs/plans/2026-06-05-td-015-databaseview-regressions-plan.md`；等价矩阵：`docs/engineering/matrices/td-015-databaseview-equivalence.md`。改动：`useUploadDatasetMutation` 改为接收 `{ formData, name }` 并透传给 service（用户填的名称不再被空字符串覆盖）；`useDatasetTasksQuery` 的 `refetchInterval` 改为 `computed(() => polling.value ? 3000 : false)`，无活跃任务时停止轮询；`useKgOverviewQuery` 新增 `enabled` 参数，DatabaseView 传 `computed(() => showKgOverview.value)` 实现懒加载；新增 `kgOverviewToDto` adapter 显式补齐 `tenant_id` / `parent_id` / `path` / `tags` / `metadata` / `weight` 等缺省字段（与旧 `loadKgOverview` 580-593 行一致），删除 `as unknown as KnowledgeNodeDTO[]` 断言。验证：`pnpm --filter @metaedu/web typecheck` 退出码 0；`pnpm --filter @metaedu/web build` 退出码 0；`pnpm --filter @metaedu/web lint` 退出码 0。PR #38（https://github.com/MarkDanile/MetaEduBase/pull/38），merge commit `f38fbbc`，完成日期 2026-06-05。
 
 ### TD-016: 收敛 knowledge ai_router 的 LLM provider 选择重复逻辑
 
