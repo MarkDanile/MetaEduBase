@@ -1031,13 +1031,13 @@
 
 ### TD-027: 补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类（设计系统扩展）
 
-状态：⚫ 待办
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P3 |
 | 领域 | 前端 / 设计系统 |
-| 事实源 | `docs/engineering/rules/coding-style.md#迁移说明-td-008` + `docs/engineering/technical-debt.md#td-026` 交付记录 |
+| 事实源 | [PR #59](https://github.com/MarkDanile/MetaEduBase/pull/59) |
 
 **证据**
 - TD-008（2026-06-05）建立 `ui-page-shell` / `ui-page-section` / `ui-panel` / `ui-toolbar` / `ui-interactive-row` 5 个共享类，但**没有** button / input / tag / dialog 的对应物。
@@ -1068,7 +1068,12 @@
 - 4 主题（liquid / ink / navy / notion）下 `LoginView`（仅 `liquid-input` / `liquid-btn-primary` 实际显示）手工验收视觉不退化。
 
 **交付记录**
-- 未完成。建议开工顺序：先在 `main.css` 追加 5 类（`ui-input` / `ui-btn*` 4 类 / `ui-tag*` 5 类 / `ui-dialog*` 2 类 = 12 个类）→ 加 `liquid` 主题 `ui-btn-primary` 玻璃感覆盖 → 文档同步。业务视图与共享组件的存量替换（TD-028 候选）不在本债范围。
+- 2026-06-05 完成（接手工具：Claude Code），PR #59，merge commit `040f7ad`。
+  - `packages/web/src/assets/css/main.css` 新增 12 个 `ui-*` 原子控件共享类：`ui-input`、`ui-btn` / `ui-btn-primary` / `ui-btn-ghost` / `ui-btn-danger`、`ui-tag` / 4 个颜色变体、`ui-dialog-overlay` / `ui-dialog`。
+  - 新增 `--overlay-bg` / `--btn-ripple` 主题 token，避免 `ui-*` 类复制历史 `rgba(...)` 硬编码。
+  - `docs/engineering/rules/coding-style.md` 同步扩展迁移说明，明确容器层与原子控件层的关系。
+  - 业务视图与共享组件存量替换已拆到 TD-028 并完成。
+  - 验证摘要：`pnpm --filter @metaedu/web typecheck` / `lint` / `build` 退出码 0；`scripts/check-engineering-docs` 退出码 0。
 
 ### TD-028: 业务视图与共享组件的 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 存量替换
 

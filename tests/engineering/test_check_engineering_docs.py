@@ -168,6 +168,24 @@ def test_fails_when_recent_completed_exceeds_five_rows(tmp_path: Path) -> None:
     assert "最近完成最多 5 行" in result.stderr
 
 
+def test_fails_when_recent_completed_summary_is_too_long(tmp_path: Path) -> None:
+    make_minimal_docs(tmp_path)
+    current_work = tmp_path / "docs/engineering/current-work.md"
+    current_work.write_text(
+        current_work.read_text(encoding="utf-8").replace(
+            "已完成。",
+            "这是一段过长的最近完成摘要，" * 20,
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_checker(tmp_path)
+
+    assert result.returncode == 1
+    assert "最近完成摘要过长" in result.stderr
+
+
 def test_fails_when_completed_plan_has_active_checkbox(tmp_path: Path) -> None:
     make_minimal_docs(tmp_path)
     plan = tmp_path / "docs/plans/example-plan.md"
@@ -250,3 +268,73 @@ def test_fails_when_full_pytest_passed_claim_has_no_evidence(tmp_path: Path) -> 
 
     assert result.returncode == 1
     assert "验证通过声明缺少可复核证据" in result.stderr
+
+
+def test_fails_when_debt_overview_and_detail_status_diverge(
+    tmp_path: Path,
+) -> None:
+    make_minimal_docs(tmp_path)
+    debt = tmp_path / "docs/engineering/technical-debt.md"
+    debt.write_text(
+        textwrap.dedent(
+            """
+            # 技术债总账
+
+            ## 任务总览
+
+            | 编号 | 任务 | 状态 | 优先级 | 领域 | 事实源 |
+            |------|------|------|--------|------|--------|
+            | TD-001 | 示例任务 | 🟢 完成 | P2 | Docs | PR #1 |
+
+            ## 任务详情
+
+            ### TD-001: 示例任务
+
+            状态：⚫ 待办
+
+            **交付记录**
+            - 未完成。
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+    result = run_checker(tmp_path)
+
+    assert result.returncode == 1
+    assert "技术债总览和详情状态不一致" in result.stderr
+
+
+def test_fails_when_completed_debt_detail_still_says_unfinished(
+    tmp_path: Path,
+) -> None:
+    make_minimal_docs(tmp_path)
+    debt = tmp_path / "docs/engineering/technical-debt.md"
+    debt.write_text(
+        textwrap.dedent(
+            """
+            # 技术债总账
+
+            ## 任务总览
+
+            | 编号 | 任务 | 状态 | 优先级 | 领域 | 事实源 |
+            |------|------|------|--------|------|--------|
+            | TD-001 | 示例任务 | 🟢 完成 | P2 | Docs | PR #1 |
+
+            ## 任务详情
+
+            ### TD-001: 示例任务
+
+            状态：🟢 完成
+
+            **交付记录**
+            - 未完成。
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+    result = run_checker(tmp_path)
+
+    assert result.returncode == 1
+    assert "完成任务的交付记录仍写未完成" in result.stderr

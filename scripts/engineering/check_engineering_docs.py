@@ -16,6 +16,8 @@ DOC_GLOBS = (
     "docs/plans/*.md",
 )
 
+CURRENT_WORK_RECENT_SUMMARY_LIMIT = 220
+
 KNOWN_ISSUES = (
     (
         "docs/plans/2026-06-05-td-020-provider-resolver-factory-plan.md",
@@ -99,10 +101,27 @@ def table_rows(body: list[tuple[int, str]]) -> list[tuple[int, str]]:
     return rows
 
 
+def split_table_row(row: str) -> list[str]:
+    return [cell.strip() for cell in row.strip().strip("|").split("|")]
+
+
 def check_current_work(root: Path) -> list[Issue]:
     path = root / "docs/engineering/current-work.md"
     lines = read_lines(path)
     issues: list[Issue] = []
+
+    for title in ("当前进行中", "下一批候选任务", "最近完成"):
+        count = sum(1 for line in lines if line.strip() == f"## {title}")
+        if count > 1:
+            issues.append(
+                Issue(
+                    path,
+                    1,
+                    "current-work",
+                    f"“{title}”区域不得重复。",
+                    "合并重复区域，current-work.md 只保留一个对应标题。",
+                )
+            )
 
     candidate_start, candidate_body = section(lines, "下一批候选任务")
     if candidate_start == -1:
@@ -162,6 +181,134 @@ def check_current_work(root: Path) -> list[Issue]:
                     "最旧完成项应归档到 work-log 或对应事实源。",
                 )
             )
+        for line_no, row in recent:
+            cells = split_table_row(row)
+            if len(cells) < 5:
+                continue
+            summary = cells[3]
+            if len(summary) > CURRENT_WORK_RECENT_SUMMARY_LIMIT:
+                issues.append(
+                    Issue(
+                        path,
+                        line_no,
+                        "current-work",
+                        "最近完成摘要过长。",
+                        "current-work.md 只保留短摘要；详细交付事实归档到 work-log、技术债总账或 PR。",
+                    )
+                )
+
+    return issues
+
+
+DETAIL_HEADING_RE = re.compile(r"^### (TD-\d{3}):")
+STATUS_LINE_RE = re.compile(r"^状态：(.+)$")
+
+
+@dataclass(frozen=True)
+class DebtDetail:
+    line: int
+    status: str | None
+    body: list[tuple[int, str]]
+
+
+def parse_debt_overview(lines: list[str]) -> dict[str, tuple[int, str]]:
+    _start, body = section(lines, "任务总览")
+    overview: dict[str, tuple[int, str]] = {}
+    for line_no, row in table_rows(body):
+        cells = split_table_row(row)
+        if len(cells) < 3 or not re.fullmatch(r"TD-\d{3}", cells[0]):
+            continue
+        overview[cells[0]] = (line_no, cells[2])
+    return overview
+
+
+def parse_debt_details(lines: list[str]) -> dict[str, DebtDetail]:
+    details: dict[str, DebtDetail] = {}
+    headings: list[tuple[str, int]] = []
+    for line_no, line in enumerate(lines, start=1):
+        match = DETAIL_HEADING_RE.match(line)
+        if match:
+            headings.append((match.group(1), line_no))
+
+    for index, (task_id, heading_line) in enumerate(headings):
+        next_line = headings[index + 1][1] if index + 1 < len(headings) else len(lines) + 1
+        body = [
+            (line_no, lines[line_no - 1])
+            for line_no in range(heading_line + 1, next_line)
+        ]
+        status: str | None = None
+        for _line_no, line in body:
+            status_match = STATUS_LINE_RE.match(line.strip())
+            if status_match:
+                status = status_match.group(1).strip()
+                break
+        details[task_id] = DebtDetail(heading_line, status, body)
+    return details
+
+
+def delivery_record_lines(detail: DebtDetail) -> list[tuple[int, str]]:
+    record: list[tuple[int, str]] = []
+    in_record = False
+    for line_no, line in detail.body:
+        stripped = line.strip()
+        if stripped == "**交付记录**":
+            in_record = True
+            continue
+        if in_record and stripped.startswith("**") and stripped.endswith("**"):
+            break
+        if in_record:
+            record.append((line_no, line))
+    return record
+
+
+def check_technical_debt(root: Path) -> list[Issue]:
+    path = root / "docs/engineering/technical-debt.md"
+    lines = read_lines(path)
+    issues: list[Issue] = []
+    overview = parse_debt_overview(lines)
+    details = parse_debt_details(lines)
+
+    for task_id, (line_no, overview_status) in overview.items():
+        detail = details.get(task_id)
+        if detail is None or detail.status is None:
+            continue
+        if detail.status != overview_status:
+            issues.append(
+                Issue(
+                    path,
+                    line_no,
+                    "technical-debt-status",
+                    f"技术债总览和详情状态不一致：{task_id} 总览为 {overview_status}，详情为 {detail.status}。",
+                    "同步任务总览表和对应任务详情的 `状态：` 字段。",
+                )
+            )
+
+    for task_id, detail in details.items():
+        if detail.status != "🟢 完成":
+            continue
+        record = delivery_record_lines(detail)
+        if not record:
+            issues.append(
+                Issue(
+                    path,
+                    detail.line,
+                    "technical-debt-delivery",
+                    f"{task_id} 已完成但缺少交付记录。",
+                    "补充完成日期、PR / commit 或验证摘要。",
+                )
+            )
+            continue
+        for line_no, line in record:
+            if "未完成" in line:
+                issues.append(
+                    Issue(
+                        path,
+                        line_no,
+                        "technical-debt-delivery",
+                        f"{task_id} 完成任务的交付记录仍写未完成。",
+                        "将交付记录回填为完成日期、PR / commit 和验证摘要。",
+                    )
+                )
 
     return issues
 
@@ -327,6 +474,7 @@ def check_validation_claims(root: Path) -> list[Issue]:
 def run_checks(root: Path) -> tuple[list[Issue], list[Issue]]:
     issues: list[Issue] = []
     issues.extend(check_current_work(root))
+    issues.extend(check_technical_debt(root))
     issues.extend(check_completed_plans(root))
     issues.extend(check_markdown_links(root))
     issues.extend(check_work_log_append_only(root))
