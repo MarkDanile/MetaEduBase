@@ -1,4 +1,5 @@
 import api from "./api";
+import type { FileStructuredData } from "@metaedu/shared/schemas/document";
 
 // --- Types ---
 
@@ -24,7 +25,7 @@ export interface FileDTO {
   file_size: number | null;
   tags: string[] | null;
   status: string;
-  structured_data: Record<string, unknown> | null;
+  structured_data: FileStructuredData | null;
   uploaded_by: string;
   uploaded_by_name: string | null;
   created_at: string;

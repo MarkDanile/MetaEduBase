@@ -208,6 +208,7 @@ import KGDetailPanel from "@/components/KGDetailPanel.vue";
 import FieldValue from "./FieldValue.vue";
 import { useToast } from "@/composables/useToast";
 import { type FileDTO, type ChunkDTO, type TaskDTO } from "@/services/document";
+import { getTemplateStructuredData } from "@metaedu/shared/schemas/document";
 import { type KnowledgeNodeDTO, type KnowledgeEdgeDTO } from "@/services/knowledge";
 import { type Template } from "@/services/template";
 import { DOC_TASK_STEPS, TASK_STATUS_MAP, FILE_STATUS_MAP } from "@/constants/pipeline";
@@ -290,10 +291,7 @@ const deleteMutation = useDeleteFileMutation(fileId, () => {
 });
 
 // --- Structured data helpers ---
-const templateData = computed(() => {
-  if (!file.value?.structured_data) return null;
-  return (file.value.structured_data as Record<string, unknown>)["template"] as Record<string, unknown> | null ?? null;
-});
+const templateData = computed(() => getTemplateStructuredData(file.value?.structured_data));
 
 function templateFieldLabel(key: string): string {
   return getFieldLabel(key);
