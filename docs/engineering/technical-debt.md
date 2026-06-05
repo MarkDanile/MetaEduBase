@@ -864,7 +864,7 @@
 
 **证据**
 - `git status --short --branch` 在 `main...origin/main` 上显示未跟踪文件 `scripts/engineering/check_engineering_docs 2.py`。
-- `shasum -a 256 scripts/engineering/check_engineering_docs.py “scripts/engineering/check_engineering_docs 2.py”` 显示两个文件哈希一致，说明它是正式文档门禁实现的重复副本。
+- `shasum -a 256 scripts/engineering/check_engineering_docs.py "scripts/engineering/check_engineering_docs 2.py"` 显示两个文件哈希一致，说明它是正式文档门禁实现的重复副本。
 - `docs/specs/2026-06-05-td-020-provider-resolver-factory.md:42` 仍写 `provider_resolver` 复用 `factory` 的”归一化”逻辑；实际 `resolver_default_provider()` 不复用 `_normalize_default_provider`。
 - `docs/specs/2026-06-05-td-020-provider-resolver-factory.md:44` 仍写 `qwen→dashscope` 归一化测试覆盖，但 resolver 语义是 `qwen` 保持 alias，`dashscope` 不是 resolver alias。
 - `docs/specs/2026-06-05-td-020-provider-resolver-factory.md:137` 仍写 `dashscope` 归一化路径由 `factory.resolver_default_provider` 集中维护，容易与后文”`dashscope` 返回 `None`”冲突。
@@ -882,7 +882,7 @@
 
 **验证方式**
 - `git status --short --branch` 不显示 `scripts/engineering/check_engineering_docs 2.py`。
-- `rg -n “复用 .*归一化|qwen→dashscope|dashscope → qwen|dashscope.*归一化路径|翻译回 \`qwen\`” docs/specs/2026-06-05-td-020-provider-resolver-factory.md docs/plans/2026-06-05-td-020-provider-resolver-factory-plan.md` 不再命中旧误导表述；若命中 factory 内部 `_normalize_default_provider` 的历史现状说明，必须语义明确为 factory 内部行为，不是 resolver 行为。
+- `rg -n "复用 .*归一化|qwen→dashscope|dashscope → qwen|dashscope.*归一化路径|翻译回 \`qwen\`" docs/specs/2026-06-05-td-020-provider-resolver-factory.md docs/plans/2026-06-05-td-020-provider-resolver-factory-plan.md` 不再命中旧误导表述；若命中 factory 内部 `_normalize_default_provider` 的历史现状说明，必须语义明确为 factory 内部行为，不是 resolver 行为。
 - `scripts/check-engineering-docs` 退出码 0。
 - `git diff --name-status` 只包含文档和副本清理相关变更，不包含业务代码。
 
@@ -897,7 +897,7 @@
 - 验证摘要（按 `quality-gates.md#完成门禁`）：
   - 已运行：`scripts/check-engineering-docs` 退出码 0（`engineering docs checks passed`）。
   - 已运行：`git status --short --branch` 不再包含 `scripts/engineering/check_engineering_docs 2.py`（已 `rm`）。
-  - 已运行：`rg -n “复用 .*归一化|qwen→dashscope|dashscope → qwen|dashscope.*归一化路径|翻译回 \`qwen\`” docs/specs/2026-06-05-td-020-provider-resolver-factory.md docs/plans/2026-06-05-td-020-provider-resolver-factory-plan.md` 命中 2 行（spec L137、plan L46），均为 factory 内部 `_normalize_default_provider` 行为说明且明确为”不”走 / “不”复用 / “不”翻译回的反向表述，符合”白名单例外”约束。
+  - 已运行：`rg -n "复用 .*归一化|qwen→dashscope|dashscope → qwen|dashscope.*归一化路径|翻译回 \`qwen\`" docs/specs/2026-06-05-td-020-provider-resolver-factory.md docs/plans/2026-06-05-td-020-provider-resolver-factory-plan.md` 命中 2 行（spec L137、plan L46），均为 factory 内部 `_normalize_default_provider` 行为说明且明确为"不"走 / "不"复用 / "不"翻译回的反向表述，符合"白名单例外"约束。
   - 已运行：`test -f docs/specs/2026-06-05-td-020-provider-resolver-factory.md` → 退出码 0。
   - 已运行：`git diff --name-status` 仅包含 4 个文档变更（`docs/engineering/current-work.md`、`docs/engineering/technical-debt.md`、`docs/plans/2026-06-05-td-020-provider-resolver-factory-plan.md`、`docs/specs/2026-06-05-td-020-provider-resolver-factory.md`），无业务代码变更。
   - 未运行：lint / 业务测试 —— TD-024 任务范围是 docs-only + 副本清理，按 `quality-gates.md#验证表述规范` 不强制后端 lint 或 pytest 复跑。
