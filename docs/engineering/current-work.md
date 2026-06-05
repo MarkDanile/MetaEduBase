@@ -116,9 +116,9 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| TD-007 减少前端请求状态处理重复 | 🟢 完成 | P2 | Frontend / 可维护性 | 已迁 `DatabaseView` 的 5 个 query + 5 个 mutation + 轮询到 Vue Query。Follow-up：把同样模式应用到 `FileDetailView.vue`。 |
-| TD-005 拆分大型后端任务流水线文件 | 🟢 完成 | P1 | Backend / 可维护性 | 已抽出 `app/shared/tasks/lifecycle.py` 集中 4 个 helper；本轮只抽「任务生命周期」一组。剩余候选 helper（解析器分发 / prompt 构造 / KG 写入）可在下一轮重新评估。 |
-| TD-006 集中 LLM provider 和模型 fallback 策略 | 🟢 完成 | P1 | Backend / AI | 已抽出 `app/shared/llm/chat_with_fallback.py` 提供 `chat_with_model_fallback`；template service 私有 `_call_llm` 已删除。Follow-up：`ai_router.py:159` 的 provider 选择重复，可单独处理。 |
+| TD-015 修复 TD-007 DatabaseView Vue Query 迁移后的行为回归 | 🔵 就绪 | P1 | Frontend / API / 可维护性 | 优先修复上传名称丢失、轮询条件、KG overview 懒加载和 `unknown as` DTO 掩盖；开工前读取 `technical-debt.md#td-015` 并画行为等价矩阵。 |
+| TD-016 收敛 knowledge ai_router 的 LLM provider 选择重复逻辑 | 🔵 就绪 | P1 | Backend / AI / 可维护性 | 将 `ai_router.py` 的 provider 选择迁到共享 LLM 策略或 helper，并补 mock 测试覆盖 provider 命中、fallback 和无 key 提示。 |
+| TD-017 将 Vue Query 请求生命周期治理推广到 FileDetailView | ⚫ 待办 | P2 | Frontend / 可维护性 | 建议等 TD-015 收口后再启动；迁移前先列行为等价矩阵，避免复制 TD-007 的请求参数、轮询和懒加载回归。 |
 
 ## 最近完成
 
@@ -126,8 +126,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-05 | DOC-009 生成 TD-005/006/007 follow-up 与规则补强 | 🟢 完成 | 新增 TD-015/016/017，补前端请求生命周期等价矩阵、DTO adapter 和 follow-up 稳定编号规则。 | `docs/engineering/technical-debt.md` / `docs/engineering/rules/quality-gates.md` |
 | 2026-06-05 | DOC-008 将合并后 backfill 改为条件触发 | 🟢 完成 | 明确 PR 是默认交付事实源，merge commit 仅在占位或明确要求时回填。 | `docs/engineering/rules/git-workflow.md` / `docs/engineering/workflow.md` |
 | 2026-06-05 | DOC-007 压缩 current-work 最近完成区并强化渐进式披露 | 🟢 完成 | 将最近完成区压缩为 5 行短摘要，并把长期索引沉淀到 `work-log.md`。 | `docs/engineering/work-log.md` / [PR #30](https://github.com/MarkDanile/MetaEduBase/pull/30) |
 | 2026-06-05 | DOC-006 修复 current-work 重复完成区标题 | 🟢 完成 | 删除重复 `## 最近完成` 标题，恢复单一最近完成区。 | `docs/engineering/work-log.md` / [PR #29](https://github.com/MarkDanile/MetaEduBase/pull/29) |
 | 2026-06-05 | TD-014 加强测试数据库 legacy stamp 的列级形态校验 | 🟢 完成 | legacy stamp 增加关键列形态校验，降低残缺 schema 被 stamp 掩盖风险。 | `docs/engineering/technical-debt.md#td-014-加强测试数据库-legacy-stamp-的列级形态校验` / [PR #28](https://github.com/MarkDanile/MetaEduBase/pull/28) |
-| 2026-06-05 | TD-013 收口 TD-004 测试数据库初始化安全与文档占位 | 🟢 完成 | 校验测试数据库名、收窄 legacy stamp、清理 TD-004 plan 占位。 | `docs/engineering/technical-debt.md#td-013-收口-td-004-测试数据库初始化安全与文档占位` / [PR #27](https://github.com/MarkDanile/MetaEduBase/pull/27) |

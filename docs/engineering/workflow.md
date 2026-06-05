@@ -16,6 +16,7 @@
 - superpower、compound-engineering-plugin 或其他插件生成的 spec/plan 只可作为兼容输出；用于本次开发前，必须迁移或镜像到 `docs/specs/*` / `docs/plans/*`，并在任务卡片中登记原始插件输出。
 - 开发前必须明确本次任务卡片、相关计划、相关约束和验收标准。
 - 常见任务模式的开工条件、必读文档和完成标准见 `docs/engineering/task-modes.md`。
+- 用户未指定执行模式时，按 `docs/engineering/task-modes.md#默认模式路由` 自动判断；复杂新需求默认优先走 superpower 生成 spec/plan，小改动默认走 plan-do。
 - 开发中遵循计划，但如果发现计划与代码事实冲突，应先停下来更新计划或向用户确认。
 - 开发后必须运行与改动范围匹配的验证，并更新任务进度状态。
 - 复核、测试、PR review 或交接中发现的问题必须形成闭环：立即修复，或登记到对应任务总账；不得只停留在最终回复、聊天记录或插件内部状态。
@@ -58,6 +59,7 @@
 - 如果发现新的技术债，只记录到 `docs/engineering/technical-debt.md`，不要顺手修复，除非它阻塞当前任务。
 - 如果计划需要调整，先更新任务卡片的 `交接备注` 或相关 plan，再继续执行。
 - 如果发现的是当前任务的后续遗留，优先在原任务备注中说明关系，并用新的稳定编号登记为 follow-up，例如 `TD-xxx`；需要近期接力时，再同步到 `current-work.md` 的“下一批候选任务”。
+- 复核或验收发现的问题不得只写成 `TD-xxx-FOLLOWUP` 备注长期悬挂；如果需要后续执行，必须转为稳定编号任务，并补齐证据、完成标准和验证方式。
 
 ## 开发后收尾
 
@@ -82,6 +84,7 @@
    - 如果验证命令失败，是否写清失败项并绑定已有或新增的 `TD-xxx`。
    - 复核发现但未修复的问题是否已经登记到对应总账；近期需要接手的是否进入“下一批候选任务”。
    - `current-work.md`、对应任务总账、plan/spec 三处事实是否一致，没有一个文件显示完成、另一个文件仍显示待处理。
+   - 如果是前端 composable、Vue Query、请求 service 或轮询重构，是否已按 `docs/engineering/rules/quality-gates.md#前端请求生命周期等价矩阵` 回查请求参数、enabled / lazy-load、轮询、invalidation、toast 和 DTO adapter。
 4. 如果完成技术债任务，同步更新 `docs/engineering/technical-debt.md` 的状态和备注。
 5. 如果任务完成后需要长期追踪，在 `docs/engineering/work-log.md` 增加或更新一行历史索引。
 6. 如果任务进入 `current-work.md` 的“最近完成”，只保留一行短摘要和事实源链接；不要复制完整任务卡片。

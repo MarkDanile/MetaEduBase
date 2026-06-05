@@ -8,7 +8,7 @@
 
 使用 superpower、compound-engineering-plugin 或其他插件生成 spec/plan 时，插件目录只作为兼容输出；本次开发依据必须迁移或镜像到 `docs/specs/*` / `docs/plans/*`，并在任务卡片中记录原始插件输出。提交或 PR 前必须完成 `current-work.md` 区域同步、行为变化声明检查和 PR 范围边界检查。
 
-完整 Git 闭环按 `docs/engineering/rules/git-workflow.md#快速交付通道` 执行，保持少量固定检查和少量阶段汇报。合并后必须回填 PR、merge commit 和完成日期，禁止把最终回复当作事实源。
+完整 Git 闭环按 `docs/engineering/rules/git-workflow.md#快速交付通道` 执行，保持少量固定检查和少量阶段汇报。合并后必须清除过期状态和交付占位；PR 链接是默认交付事实源，只有文档占位、任务总账或审计要求明确需要时才回填 merge commit，禁止把最终回复当作事实源。
 
 当任务涉及技术债记录、技术债复盘、工程治理、重构优先级或质量门禁时，先阅读 `docs/engineering/technical-debt.md`，并以其中的状态流、任务模板和复盘规范为准。
 

@@ -54,6 +54,21 @@
 
 如果矩阵中某格不适合自动化测试，必须记录手动验收方式或明确原因。回归测试的目标是锁定正确行为，不只验证本次暴露 bug 的路径。
 
+### 前端请求生命周期等价矩阵
+
+前端重构如果涉及 composable、Vue Query、请求 service、轮询、loading / error 状态或 mutation 后刷新，提交前必须额外检查行为等价矩阵。矩阵至少包含以下行：
+
+| 检查项 | 旧行为 | 新行为 | 验证 |
+|--------|--------|--------|------|
+| 请求参数 | query/body/formData 字段、默认值 | 是否完全一致 | mock、DevTools 或测试 |
+| lazy-load / enabled | 页面进入、tab 展开、选中项变化时何时请求 | 是否完全一致 | mock、DevTools 或测试 |
+| 轮询条件 | start、pause、stop、unmount 清理 | 是否完全一致 | fake timer、mock 或手动验收 |
+| mutation 刷新 | invalidation、refetch、选中项更新 | 是否完全一致 | mock、DevTools 或测试 |
+| UI 状态 | loading、disabled、toast、错误文案、重试入口 | 是否完全一致 | 组件测试或手动验收 |
+| DTO / adapter | 后端真实响应形态和页面展示类型 | 是否显式转换 | typecheck + 代码检查 |
+
+lint、typecheck 和 build 只证明基础静态质量，不证明上述行为等价。若存在已知缺口，必须绑定到任务编号；不得在 PR 或任务卡片中写“行为不变”。
+
 ## 复核发现入账
 
 当 code review、PR review、Codex / Claude Code 交叉复核、测试失败分析或人工验收发现问题时，按以下顺序处理：

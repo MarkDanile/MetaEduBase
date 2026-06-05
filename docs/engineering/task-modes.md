@@ -61,6 +61,24 @@
 
 用户不需要记住完整流程。后续可以使用短句启动任务，执行者必须自动映射到本文件对应模式，并按 `docs/engineering/current-work.md` 登记或更新任务卡片。
 
+## 默认模式路由
+
+用户不必指定 `plan-do`、`superpower` 或其他插件模式。除非用户明确指定模式，执行者必须根据任务特征自动选择：
+
+| 任务特征 | 默认模式 | 文档要求 |
+|----------|----------|----------|
+| 单文件或小范围文案 / 样式 / 配置调整，风险低且验收清楚 | plan-do | 可不新建 spec/plan；需要交接时登记 `current-work.md` |
+| 明确 bug、可复现错误、回归或线上异常 | bug fix / TDD | 登记 `BUG-xxx` 或当前任务卡片；优先补复现测试或手动验收步骤 |
+| 已有 `TD-xxx` 或明确是技术债治理 | technical-debt | 读取并更新 `technical-debt.md`；必要时同步 `current-work.md` |
+| 跨 3 个以上文件、复杂 UI 流程、新 API、新数据模型、权限 / 多租户 / 数据一致性变化 | superpower 优先 | 必须产出或更新 `docs/specs/*` 和 `docs/plans/*`，再进入开发 |
+| 架构方向、方案选择、未知成本或需要比较多种路线 | spike / 调研 | 先产出调研结论、推荐方案和后续 plan，不直接改业务代码 |
+| 明确只改变结构、不改变行为 | refactor | 明确行为边界和验证方式；不得混入新功能 |
+| 数据迁移、发布、CI/CD、依赖升级 | infrastructure / release | 明确目标环境、回滚方式和验证矩阵 |
+
+用户显式指定模式时，以用户指定为准，例如“用 superpower 规划”“不要写代码，只出 plan”“不用 superpower，直接小改”“只提交不合并”。如果自动判断不确定，执行者只问 1 个澄清问题；否则直接按默认模式推进。
+
+大需求默认走 `superpower` 时，插件输出仍不是长期事实源：spec 必须迁移或镜像到 `docs/specs/*`，plan 必须迁移或镜像到 `docs/plans/*`，原始插件输出登记到任务卡片的 `插件输出` 字段。
+
 | 用户说法 | 执行者应理解为 | 必须动作 |
 |----------|----------------|----------|
 | `按流程处理 TD-xxx` | 技术债修复 | 读取 `current-work.md`、`technical-debt.md` 和相关 rules；确认 `TD-xxx` 完成标准和验证方式 |
@@ -72,6 +90,8 @@
 | `按流程处理数据迁移/发布: ...` | 数据迁移 / 发布 | 明确目标环境、数据影响、upgrade 路径和回滚方式 |
 
 如果用户只说“按流程处理这个问题”，执行者必须先判断任务类型和领域；判断不确定时，先用一句话说明不确定点并请用户确认。
+
+用户也可以直接说需求本身，例如“给课程增加批量导入能力”。执行者必须先自动判断任务类型、领域和默认模式；如果判断为复杂新需求，应先进入 spec/plan，不要直接改代码。
 
 如果用户明确指定插件，例如 superpower 或 compound-engineering-plugin，执行者仍必须以 `docs/engineering/current-work.md` 为入口，确认规范副本在 `docs/specs/*` / `docs/plans/*`，并把插件输出登记到任务卡片。
 
@@ -176,6 +196,20 @@
 - 用户可见行为不变。
 - 相关测试或手动验收前后通过。
 - 当前工作台记录重构范围、验证结果和未覆盖风险。
+
+### 前端请求生命周期重构
+
+当重构涉及 composable、Vue Query、请求 service、轮询、loading / error 状态或 mutation 后刷新时，不能只依赖 lint、typecheck 和 build 判断行为不变。开工前必须列出行为等价矩阵，并在收尾时逐项回查。
+
+矩阵至少覆盖：
+- 请求参数、query/body/formData 字段和默认值。
+- query `enabled` 条件、tab lazy-load、页面进入时是否预取。
+- 轮询开始、暂停、停止和组件卸载清理条件。
+- mutation 成功后的 cache invalidation、选中项刷新和列表刷新。
+- loading、disabled、toast、错误文案和重试入口。
+- DTO 形态和 adapter；不得用 `unknown as SomeDTO` 掩盖后端响应与前端展示类型不一致。
+
+如果某一项刻意改变，必须在任务卡片、plan 或 PR 中写成可观察行为变化，并补充对应验证。
 
 ## Spike / 调研
 

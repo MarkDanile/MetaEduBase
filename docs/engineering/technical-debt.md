@@ -225,3 +225,36 @@
 完成标准：后端全量 ruff 门禁可运行并退出码为 0，或者仓库明确收敛规则范围并文档化暂缓项。
 验证方式：`cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` 退出码为 0；若同步治理 mypy，则补充 `cd packages/server-python && .venv/bin/mypy app/`。
 备注：2026-06-04 按流程开始处理。2026-06-04 完成。PR #17（merge commit `a4dcb2a`）。改动：spec 落盘到 `docs/superpowers/specs/2026-06-04-ruff-quality-gate-design.md`；plan 落盘到 `docs/superpowers/plans/2026-06-04-ruff-quality-gate.md`；自动修复 3 个 I001 + 1 个 F401（chat.py）；手工修复 107 E501（22 个文件）+ 17 B008（Annotated 迁移）+ 2 SIM105 + 1 B007 + 1 B905 + 1 E741 + 1 N806 + 1 SIM117 + 1 UP046 + 10 F401 noqa（celery task 注册）+ 2 I001 重排；`match_prompt` 中 `\\n → \n` 回归已修复（LLM prompt 字符串）。验证：`cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` 退出码 0；`cd packages/server-python && .venv/bin/python -m pytest -q` 87 passed（含 87 个测试 baseline 与 TD-002-FOLLOWUP 一致）。Celery 10 个 task 仍正确注册。`Repository[T](ABC)` PEP 695 语法被 `app.contexts.knowledge.domain.repositories` 消费并 import 成功。
+
+### TD-015: 修复 TD-007 DatabaseView Vue Query 迁移后的行为回归
+
+状态：🔵 就绪
+优先级：P1
+领域：前端 / API / 可维护性
+证据：`packages/web/src/views/database/queries.ts:132-133` 调用 `structuredDataApi.uploadDataset(formData, "")`，而后端 `packages/server-python/app/contexts/structured_data/interfaces/api/router.py:77-83` 仍通过 query 参数接收 `name`，`router.py:101` 才用 `name or file.filename` 生成数据集名称；`packages/web/src/views/database/DatabaseView.vue:488-492` 注释写“仅 running / pending 时 3s refetch”，实际传入 `computed(() => 3000)`，选中数据集后会一直轮询；`DatabaseView.vue:509` 无条件创建 `useKgOverviewQuery()`，`queries.ts:110-120` 没有 `enabled` 条件，页面进入时就请求 `/structured-data/knowledge-graph`；`DatabaseView.vue:510-515` 使用 `unknown as KnowledgeNodeDTO[] / KnowledgeEdgeDTO[]` 掩盖 `structured-data.ts` 中轻量 `KGNode / KGEdge` 与 `knowledge.ts` 中完整 `KnowledgeNodeDTO / KnowledgeEdgeDTO` 的契约差异。
+问题：TD-007 的 lint、typecheck 和 build 通过，但没有覆盖请求参数、轮询条件、懒加载时机和 DTO 形态等行为等价点；这会造成数据集上传名称丢失、后台请求增多，以及前端契约漂移被类型断言掩盖。
+完成标准：上传数据集时保留用户填写的 trim 后名称，或后端明确支持并测试 multipart form 中的 `name` 字段；任务轮询只在存在 `running` 或 `pending` 任务时启用，无任务运行时暂停；KG overview 只在用户展开总览时请求，或在产品层明确说明需要预加载并记录验证；KG overview 使用明确 DTO 或 adapter，不再用 `unknown as` 掩盖轻量图谱返回；补充行为等价矩阵覆盖请求参数、enabled / lazy-load、polling、cache invalidation、toast 和 loading 状态。
+验证方式：`pnpm --filter @metaedu/web lint`、`pnpm --filter @metaedu/web typecheck`、`pnpm --filter @metaedu/web build` 均退出码 0；通过自动化 mock、组件测试或浏览器 / DevTools 验收确认：上传请求携带正确 `name`；无 `running` / `pending` 任务时不继续 3s 请求任务列表；未展开 KG overview 时不请求 `/structured-data/knowledge-graph`；overview DTO 不再依赖 `unknown as`。
+备注：2026-06-05 Codex 复核 TD-007 / PR #36 后新增，作为优先修复的前端回归 follow-up。
+
+### TD-016: 收敛 knowledge ai_router 的 LLM provider 选择重复逻辑
+
+状态：🔵 就绪
+优先级：P1
+领域：后端 / AI / 可维护性
+证据：TD-006 已新增 `packages/server-python/app/shared/llm/chat_with_fallback.py` 并删除 template service 私有 `_call_llm`；但 `packages/server-python/app/contexts/knowledge/interfaces/api/ai_router.py:159-182` 仍在 `_call_llm` 中手写 provider 选择和 key fallback 顺序。
+问题：LLM provider 选择策略仍有第二处业务层重复实现。后续修改 provider 优先级、模型配置、无 key 提示或 httpx 调用方式时，template 与 knowledge chat 可能继续分叉。
+完成标准：`ai_router.py` 不再手写 provider if/elif 选择链，改用共享 LLM provider / chat helper 或一个命名明确的共享策略；保留“未配置 API Key 时返回中文提示”的用户可见行为；补充 mock 测试覆盖默认 provider 命中、fallback provider 命中和无 key 提示三类路径。
+验证方式：`cd packages/server-python && .venv/bin/python -m pytest tests/shared/test_chat_model_fallback.py <新增或相关 knowledge ai_router 测试> -q` 退出码 0；`cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` 退出码 0；若完整 pytest 可运行，补充 `cd packages/server-python && .venv/bin/python -m pytest -q`。
+备注：2026-06-05 Codex 复核 TD-006 / PR #35 后将原 `TD-006-FOLLOWUP` 转为稳定编号任务。
+
+### TD-017: 将 Vue Query 请求生命周期治理推广到 FileDetailView
+
+状态：⚫ 待办
+优先级：P2
+领域：前端 / 可维护性
+证据：TD-007 仅迁移了 `DatabaseView`；`packages/web/src/views/resource/FileDetailView.vue:223-235` 仍手写 `tasks`、`chunks`、`kgNodes`、`loading*` 和 `pollTimer`，`FileDetailView.vue:257-317` 分散维护 load / toast / error 状态，`FileDetailView.vue:465-482` 手写轮询。
+问题：前端请求生命周期重复治理只覆盖了一个高变更页面，`FileDetailView` 仍保留同类 loading、错误提示、轮询刷新和 mutation 后刷新逻辑。若直接照搬 TD-007 方案但不补行为等价矩阵，容易再次引入请求参数或轮询语义回归。
+完成标准：在 TD-015 收口后，再选择 `FileDetailView` 的一个稳定请求族迁移到 composable 或 Vue Query；迁移前先列出行为等价矩阵，至少覆盖请求参数、tab lazy-load、轮询 start / stop、mutation 后 cache invalidation、toast 文案和 loading 状态；迁移后不得改变用户可见行为，除非在任务卡片和 PR 中明确声明。
+验证方式：`pnpm --filter @metaedu/web lint`、`pnpm --filter @metaedu/web typecheck`、`pnpm --filter @metaedu/web build` 均退出码 0；通过自动化 mock、组件测试或浏览器验收确认文件详情、任务列表、切片、知识图谱、重试、重新初始化和删除流程仍符合矩阵。
+备注：2026-06-05 Codex 复核 TD-007 / PR #36 后将原 `TD-007-FOLLOWUP` 转为稳定编号任务。前置建议：先完成 TD-015，避免把已发现回归模式复制到下一页。
