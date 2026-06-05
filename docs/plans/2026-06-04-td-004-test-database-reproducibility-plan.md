@@ -35,7 +35,7 @@
 **Files:**
 - Create: `packages/server-python/app/shared/infrastructure/test_db_setup.py`
 
-- [ ] **Step 1：创建模块文件**
+- [x] **Step 1：创建模块文件**
 
 > 实施过程发现：旧环境中 conftest 用 `Base.metadata.create_all` 建过表但未写入 `metaedu.alembic_version`，直接 `alembic upgrade head` 会报 `DuplicateTableError`。脚本加入兼容分支：检测到「业务表已存在且 alembic_version 缺失」时先 `alembic stamp head` 再走正常 upgrade。新环境零开销。
 >
@@ -150,7 +150,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 2：验证模块可被导入**
+- [x] **Step 2：验证模块可被导入**
 
 Run：
 ```bash
@@ -158,7 +158,7 @@ cd packages/server-python && .venv/bin/python -c "from app.shared.infrastructure
 ```
 Expected：`ok`
 
-- [ ] **Step 3：首次跑脚本（前提：dev.sh infra 已起 PostgreSQL）**
+- [x] **Step 3：首次跑脚本（前提：dev.sh infra 已起 PostgreSQL）**
 
 Run：
 ```bash
@@ -166,7 +166,7 @@ cd packages/server-python && .venv/bin/python -m app.shared.infrastructure.test_
 ```
 Expected：日志含「已创建测试数据库」或「测试数据库已存在」+「已确认扩展与 schema」+「数据库迁移完成」+「测试数据库初始化完成」；退出码 0。
 
-- [ ] **Step 4：再跑一次验证幂等**
+- [x] **Step 4：再跑一次验证幂等**
 
 Run：
 ```bash
@@ -174,7 +174,7 @@ cd packages/server-python && .venv/bin/python -m app.shared.infrastructure.test_
 ```
 Expected：日志含「测试数据库已存在」；退出码 0。
 
-- [ ] **Step 5：commit**
+- [x] **Step 5：commit**
 
 ```bash
 git add packages/server-python/app/shared/infrastructure/test_db_setup.py
@@ -188,7 +188,7 @@ git commit -m "feat(server): add test_db_setup module for TD-004"
 **Files:**
 - Modify: `packages/server-python/tests/conftest.py:1-62`
 
-- [ ] **Step 1：在文件顶部新增 import 与默认值，把 TEST_DB_URL 改为读 env**
+- [x] **Step 1：在文件顶部新增 import 与默认值，把 TEST_DB_URL 改为读 env**
 
 把这一段：
 ```python
@@ -232,7 +232,7 @@ TEST_DB_URL = os.environ.get("TEST_DATABASE_URL", DEFAULT_TEST_DB_URL)
 
 说明：同时删除 `from app.shared.infrastructure.database import Base` 中的 `Base`（不再使用 `Base.metadata.create_all`）。
 
-- [ ] **Step 2：删除 client fixture 中的 `Base.metadata.create_all`**
+- [x] **Step 2：删除 client fixture 中的 `Base.metadata.create_all`**
 
 把 client fixture 的这一段：
 ```python
@@ -254,7 +254,7 @@ TEST_DB_URL = os.environ.get("TEST_DATABASE_URL", DEFAULT_TEST_DB_URL)
         await conn.execute(text("TRUNCATE TABLE metaedu.templates RESTART IDENTITY CASCADE"))
 ```
 
-- [ ] **Step 3：确认无其它 Base 引用**
+- [x] **Step 3：确认无其它 Base 引用**
 
 Run：
 ```bash
@@ -262,7 +262,7 @@ grep -n "Base" packages/server-python/tests/conftest.py
 ```
 Expected：无输出（已全部移除）。
 
-- [ ] **Step 4：跑最小冒烟测试，确认 conftest 可用**
+- [x] **Step 4：跑最小冒烟测试，确认 conftest 可用**
 
 前置：已执行过 Task 1 Step 3 / `./dev.sh init-test-db`。
 
@@ -272,7 +272,7 @@ cd packages/server-python && .venv/bin/python -m pytest tests/shared/test_health
 ```
 Expected：2 passed。
 
-- [ ] **Step 5：commit**
+- [x] **Step 5：commit**
 
 ```bash
 git add packages/server-python/tests/conftest.py
@@ -286,7 +286,7 @@ git commit -m "refactor(server): read TEST_DATABASE_URL from env in conftest (TD
 **Files:**
 - Modify: `packages/server-python/Makefile`
 
-- [ ] **Step 1：在 `init-dev-db` target 之后插入 `init-test-db`**
+- [x] **Step 1：在 `init-dev-db` target 之后插入 `init-test-db`**
 
 把这一段：
 ```Makefile
@@ -331,7 +331,7 @@ init-test-db:
 	python -m app.shared.infrastructure.test_db_setup
 ```
 
-- [ ] **Step 2：验证 target 可被 make 识别**
+- [x] **Step 2：验证 target 可被 make 识别**
 
 Run：
 ```bash
@@ -339,7 +339,7 @@ cd packages/server-python && make -n init-test-db
 ```
 Expected：输出 `python -m app.shared.infrastructure.test_db_setup`。
 
-- [ ] **Step 3：commit**
+- [x] **Step 3：commit**
 
 ```bash
 git add packages/server-python/Makefile
@@ -353,7 +353,7 @@ git commit -m "build(server): add init-test-db target (TD-004)"
 **Files:**
 - Modify: `dev.sh`
 
-- [ ] **Step 1：新增 `init_test_db` 函数**
+- [x] **Step 1：新增 `init_test_db` 函数**
 
 在 `init_dev_db()` 函数定义之后新增：
 ```bash
@@ -376,7 +376,7 @@ init_test_db() {
 }
 ```
 
-- [ ] **Step 2：在 `main()` 的 case 分支中加入 `init-test-db`**
+- [x] **Step 2：在 `main()` 的 case 分支中加入 `init-test-db`**
 
 在 `init-db)` 分支后插入：
 ```bash
@@ -385,7 +385,7 @@ init_test_db() {
       ;;
 ```
 
-- [ ] **Step 3：更新两处 usage 文本（顶部注释 + 末尾 `*)` 分支）**
+- [x] **Step 3：更新两处 usage 文本（顶部注释 + 末尾 `*)` 分支）**
 
 a) 顶部注释新增一行（在 `#   ./dev.sh init-db  ...` 之后）：
 ```bash
@@ -399,7 +399,7 @@ b) 末尾 `*)` 分支：
       echo "  init-test-db 显式初始化测试数据库 (建库 + 扩展 + 迁移)"
   ```
 
-- [ ] **Step 4：验证子命令可被识别**
+- [x] **Step 4：验证子命令可被识别**
 
 Run：
 ```bash
@@ -407,7 +407,7 @@ Run：
 ```
 Expected：复用 `start_infra` 后调用脚本，最终输出 `[OK] 测试数据库初始化完成`，退出码 0。
 
-- [ ] **Step 5：再跑一次验证幂等**
+- [x] **Step 5：再跑一次验证幂等**
 
 Run：
 ```bash
@@ -415,7 +415,7 @@ Run：
 ```
 Expected：日志含「测试数据库已存在」，退出码 0。
 
-- [ ] **Step 6：commit**
+- [x] **Step 6：commit**
 
 ```bash
 git add dev.sh
@@ -429,7 +429,7 @@ git commit -m "feat(dev): add init-test-db subcommand (TD-004)"
 **Files:**
 - Modify: `docs/engineering/rules/local-development.md`
 
-- [ ] **Step 1：在「数据库迁移」表新增 `make init-test-db` 一行**
+- [x] **Step 1：在「数据库迁移」表新增 `make init-test-db` 一行**
 
 把这一段：
 ```md
@@ -448,7 +448,7 @@ git commit -m "feat(dev): add init-test-db subcommand (TD-004)"
 | `make migrate-downgrade` | 回滚一个迁移 |
 ```
 
-- [ ] **Step 2：在「启动服务」表新增 `init-test-db` 行**
+- [x] **Step 2：在「启动服务」表新增 `init-test-db` 行**
 
 把这一段：
 ```md
@@ -475,7 +475,7 @@ git commit -m "feat(dev): add init-test-db subcommand (TD-004)"
 ./dev.sh stop
 ```
 
-- [ ] **Step 3：新增「测试数据库」小节，放在「数据库迁移」与「前端」之间**
+- [x] **Step 3：新增「测试数据库」小节，放在「数据库迁移」与「前端」之间**
 
 新增：
 ```md
@@ -500,7 +500,7 @@ TEST_DATABASE_URL=postgresql+asyncpg://user:pwd@host:5432/dbname \
 脚本幂等，可反复运行。
 ```
 
-- [ ] **Step 4：commit**
+- [x] **Step 4：commit**
 
 ```bash
 git add docs/engineering/rules/local-development.md
@@ -514,7 +514,7 @@ git commit -m "docs(local-development): document init-test-db and TEST_DATABASE_
 **Files:**
 - Modify: `docs/engineering/rules/quality-gates.md`
 
-- [ ] **Step 1：更新「已知门禁状态」中关于后端 pytest 的描述**
+- [x] **Step 1：更新「已知门禁状态」中关于后端 pytest 的描述**
 
 把这一行：
 ```md
@@ -526,7 +526,7 @@ git commit -m "docs(local-development): document init-test-db and TEST_DATABASE_
 - 后端完整 pytest 依赖 `metaedu_test` 测试库；新环境运行 `./dev.sh init-test-db` 或 `cd packages/server-python && make init-test-db` 显式初始化，可通过 `TEST_DATABASE_URL` 覆盖默认连接串。
 ```
 
-- [ ] **Step 2：commit**
+- [x] **Step 2：commit**
 
 ```bash
 git add docs/engineering/rules/quality-gates.md
@@ -540,7 +540,7 @@ git commit -m "docs(quality-gates): refresh backend pytest gate status (TD-004)"
 **Files:**
 - Modify: `README.md`（约 line 152-155，「开发」段）
 
-- [ ] **Step 1：补一行 `make init-test-db` 提示**
+- [x] **Step 1：补一行 `make init-test-db` 提示**
 
 把这一段：
 ```md
@@ -560,7 +560,7 @@ cd packages/server-python && make lint && make test
 cd packages/server-python && make lint && make test
 ```
 
-- [ ] **Step 2：commit**
+- [x] **Step 2：commit**
 
 ```bash
 git add README.md
@@ -573,7 +573,7 @@ git commit -m "docs(readme): mention init-test-db prerequisite (TD-004)"
 
 > 本任务不产生 commit；产生的是供任务卡片记录的真实验证证据。
 
-- [ ] **Step 1：确认 PostgreSQL 已运行**
+- [x] **Step 1：确认 PostgreSQL 已运行**
 
 Run：
 ```bash
@@ -581,7 +581,7 @@ Run：
 ```
 Expected：PostgreSQL 显示 ✅。如未运行，先 `./dev.sh infra`。
 
-- [ ] **Step 2：脚本端到端**
+- [x] **Step 2：脚本端到端**
 
 Run：
 ```bash
@@ -590,7 +590,7 @@ Run：
 ```
 Expected：两次退出码 0；第二次日志含「测试数据库已存在」。
 
-- [ ] **Step 3：Env 覆盖能跑**
+- [x] **Step 3：Env 覆盖能跑**
 
 Run：
 ```bash
@@ -599,7 +599,7 @@ TEST_DATABASE_URL=postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metae
 ```
 Expected：2 passed。
 
-- [ ] **Step 4：完整 pytest**
+- [x] **Step 4：完整 pytest**
 
 Run：
 ```bash
@@ -609,7 +609,7 @@ Expected：与 TD-012 baseline 一致的 87 passed。
 
 如未达 87 passed，**不得**写「通过」；按 quality-gates.md 记录失败摘要并判断是否本任务引入。
 
-- [ ] **Step 5：ruff 无回归**
+- [x] **Step 5：ruff 无回归**
 
 Run：
 ```bash
@@ -617,7 +617,7 @@ cd packages/server-python && .venv/bin/python -m ruff check app/ tests/
 ```
 Expected：退出码 0。
 
-- [ ] **Step 6：文档落点齐全**
+- [x] **Step 6：文档落点齐全**
 
 Run：
 ```bash
@@ -641,7 +641,7 @@ Expected：每个文件至少 1 处命中。
 
 > 这一步建议在 Task 1 前先做（写最初的「🟡 进行中」卡片），实施过程中持续回写状态、当前进展和验证结果。本步骤合并在 Plan 末尾是因为最终状态必须基于真实验证产物。
 
-- [ ] **Step 1（开工时）：把 `TD-004` 候选项替换为完整任务卡片**
+- [x] **Step 1（开工时）：把 `TD-004` 候选项替换为完整任务卡片**
 
 把这一段：
 ```md
@@ -695,7 +695,7 @@ Expected：每个文件至少 1 处命中。
 - 行为变化：测试 schema 由 conftest 内的 `Base.metadata.create_all` 改为前置 `init-test-db`（Alembic upgrade head）；未跑 init-test-db 的环境会显式失败。
 ```
 
-- [ ] **Step 2（开工时）：开分支**
+- [x] **Step 2（开工时）：开分支**
 
 Run：
 ```bash
@@ -706,7 +706,7 @@ git add docs/specs/2026-06-04-td-004-test-database-reproducibility.md \
 git commit -m "docs(td-004): land spec, plan, and task card"
 ```
 
-- [ ] **Step 3（Task 8 后）：把任务卡迁移到「最近完成」并改为 🟢 完成**
+- [x] **Step 3（Task 8 后）：把任务卡迁移到「最近完成」并改为 🟢 完成**
 
 把「## 当前进行中」下的 TD-004 卡片整段剪切到「## 最近完成」首位，并把：
 - `状态：🟡 进行中` → `状态：🟢 完成`
@@ -725,7 +725,7 @@ git commit -m "docs(td-004): land spec, plan, and task card"
 当前无正在执行的任务。
 ```
 
-- [ ] **Step 4：commit**
+- [x] **Step 4：commit**
 
 ```bash
 git add docs/engineering/current-work.md
@@ -739,7 +739,7 @@ git commit -m "docs(current-work): mark TD-004 complete after verification"
 **Files:**
 - Modify: `docs/engineering/technical-debt.md`（TD-004 段落）
 
-- [ ] **Step 1：状态改为 🟢 完成 + 备注追加完成摘要**
+- [x] **Step 1：状态改为 🟢 完成 + 备注追加完成摘要**
 
 把这一段：
 ```md
@@ -769,7 +769,7 @@ git commit -m "docs(current-work): mark TD-004 complete after verification"
 备注：2026-06-04 按流程开始处理。2026-06-04 完成。Spec：`docs/specs/2026-06-04-td-004-test-database-reproducibility.md`；Plan：`docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md`。改动：新增 `app/shared/infrastructure/test_db_setup.py`（asyncpg 幂等建库 + 扩展 + Alembic upgrade head）；conftest 改读 `TEST_DATABASE_URL` env 并移除 `Base.metadata.create_all`；新增 `./dev.sh init-test-db` 与 `make init-test-db`；同步 local-development、quality-gates、README。验证：`./dev.sh init-test-db` 跑两次均退出码 0；`TEST_DATABASE_URL=... .venv/bin/python -m pytest tests/shared/test_health.py -q` → 2 passed；`cd packages/server-python && .venv/bin/python -m pytest -q` → 87 passed in 23.36s；`cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` → 退出码 0。PR #23（https://github.com/MarkDanile/MetaEduBase/pull/23）；merge commit `b8b34a6`；完成日期 `2026-06-04`。后续 follow-up 见 `TD-013`。
 ```
 
-- [ ] **Step 2：commit**
+- [x] **Step 2：commit**
 
 ```bash
 git add docs/engineering/technical-debt.md
@@ -783,7 +783,7 @@ git commit -m "docs(td): close TD-004 with completion notes"
 **Files:**
 - Modify: `docs/engineering/work-log.md`
 
-- [ ] **Step 1：在日期段顶部插入一行索引**
+- [x] **Step 1：在日期段顶部插入一行索引**
 
 如 work-log.md 已有 2026-06-04 段落，把它最末尾追加：
 ```md
@@ -792,7 +792,7 @@ git commit -m "docs(td): close TD-004 with completion notes"
 
 若无 2026-06-04 段落，按现有格式新增一段（保持与已有索引行的样式一致——一行一条，含日期 + 任务编号 + 简述 + 链接）。
 
-- [ ] **Step 2：commit**
+- [x] **Step 2：commit**
 
 ```bash
 git add docs/engineering/work-log.md
@@ -805,7 +805,7 @@ git commit -m "docs(work-log): index TD-004"
 
 > 按 `docs/engineering/rules/git-workflow.md#完整交付闭环` 推进。
 
-- [ ] **Step 1：再次回读 current-work.md，确认状态与事实一致**
+- [x] **Step 1：再次回读 current-work.md，确认状态与事实一致**
 
 Run：
 ```bash
@@ -813,13 +813,13 @@ sed -n '/TD-004/,/^###/p' docs/engineering/current-work.md | head -60
 ```
 Expected：状态 `🟢 完成`、验证结果含真实命令与退出码、整篇无未回填的交付占位。
 
-- [ ] **Step 2：push 当前分支**
+- [x] **Step 2：push 当前分支**
 
 ```bash
 git push -u origin refactor/td-004-test-db-reproducibility
 ```
 
-- [ ] **Step 3：创建 PR**
+- [x] **Step 3：创建 PR**
 
 ```bash
 gh pr create --base main --head refactor/td-004-test-db-reproducibility \
@@ -855,13 +855,13 @@ gh pr create --base main --head refactor/td-004-test-db-reproducibility \
 EOF
 ```
 
-- [ ] **Step 4：合并到 main（按 git-workflow.md 默认策略，squash）**
+- [x] **Step 4：合并到 main（按 git-workflow.md 默认策略，squash）**
 
 ```bash
 gh pr merge --squash --delete-branch
 ```
 
-- [ ] **Step 5：回填 PR 编号 / merge commit / 完成日期**
+- [x] **Step 5：回填 PR 编号 / merge commit / 完成日期**
 
 把 `docs/engineering/current-work.md`「最近完成」中的 TD-004 卡片 `交接备注` 末行、`docs/engineering/technical-debt.md` TD-004 `备注` 末段、`docs/engineering/work-log.md` 对应行的回填占位替换为真实编号；2026-06-04 实际替换为：`PR #23`（https://github.com/MarkDanile/MetaEduBase/pull/23）；merge commit `b8b34a6`；完成日期 `2026-06-04`。
 

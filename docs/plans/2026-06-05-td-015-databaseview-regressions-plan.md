@@ -1,5 +1,7 @@
 # TD-015 修复 TD-007 DatabaseView Vue Query 迁移后的行为回归 — Plan
 
+> **交付历史（2026-06-05）：** TD-015 已通过 PR #38（merge commit `f38fbbc`）合并到 `main`。本文保留为历史实施计划；下方清单已按最终交付状态收口，真实交付事实以 `docs/engineering/technical-debt.md#td-015-修复-td-007-databaseview-vue-query-迁移后的行为回归` 和 PR #38 为准。
+
 ## 任务入口
 
 - Spec: `docs/specs/2026-06-05-td-015-databaseview-regressions.md`
@@ -13,63 +15,63 @@
 ### 1. 修复 upload 名称丢失（回归点 1）
 
 - [x] spec/plan 起草
-- [ ] 确认后端 `router.py:80` 的 `name` 是 query 参数（不是 form 字段）
-- [ ] 修改 `useUploadDatasetMutation` 签名：接收 `{ formData: FormData; name: string }`
-- [ ] mutationFn 改为 `structuredDataApi.uploadDataset(formData, name)`
-- [ ] 修改 `DatabaseView.vue:doUpload`：把 name 作为第二参传给 `uploadMutation.mutate({ formData, name })`
+- [x] 确认后端 `router.py:80` 的 `name` 是 query 参数（不是 form 字段）
+- [x] 修改 `useUploadDatasetMutation` 签名：接收 `{ formData: FormData; name: string }`
+- [x] mutationFn 改为 `structuredDataApi.uploadDataset(formData, name)`
+- [x] 修改 `DatabaseView.vue:doUpload`：把 name 作为第二参传给 `uploadMutation.mutate({ formData, name })`
 
 **验证点**：`rg -n "uploadDataset\(formData, \"\"\)\|uploadDataset\(formData, ''\)" packages/web/` 命中 0。
 
 ### 2. 修复轮询未条件化（回归点 2）
 
-- [ ] 修改 `useDatasetTasksQuery` 签名：增加 `polling: Ref<boolean>` 参数
-- [ ] `refetchInterval` 改为 `computed(() => polling.value ? 3000 : false)`
-- [ ] 修改 `DatabaseView.vue`：传 `polling` ref（已有的 `polling` computed）
+- [x] 修改 `useDatasetTasksQuery` 签名：增加 `polling: Ref<boolean>` 参数
+- [x] `refetchInterval` 改为 `computed(() => polling.value ? 3000 : false)`
+- [x] 修改 `DatabaseView.vue`：传 `polling` ref（已有的 `polling` computed）
 
 **验证点**：typecheck 通过；`polling` 计算在无任务运行时不再触发 3s 间隔。
 
 ### 3. 修复 KG overview 不懒加载（回归点 3）
 
-- [ ] 修改 `useKgOverviewQuery` 签名：增加 `enabled: Ref<boolean>` 参数
-- [ ] `enabled: enabled` 透传给 useQuery
-- [ ] 修改 `DatabaseView.vue`：传 `computed(() => showKgOverview.value)`
+- [x] 修改 `useKgOverviewQuery` 签名：增加 `enabled: Ref<boolean>` 参数
+- [x] `enabled: enabled` 透传给 useQuery
+- [x] 修改 `DatabaseView.vue`：传 `computed(() => showKgOverview.value)`
 
 **验证点**：typecheck 通过；`showKgOverview.value === false` 时不发请求。
 
 ### 4. 用 DTO adapter 替换 `unknown as`（回归点 4）
 
-- [ ] 在 `queries.ts` 加 `kgOverviewToDto(overview)` 函数
-- [ ] 字段映射（参考原 `loadKgOverview` 旧实现的 580-593 行）：
+- [x] 在 `queries.ts` 加 `kgOverviewToDto(overview)` 函数
+- [x] 字段映射（参考原 `loadKgOverview` 旧实现的 580-593 行）：
   - nodes: id / tenant_id="" / title / description / domain / level /
     parent_id=null / path=null / tags=[] / metadata={}
   - edges: id / source_id / target_id / relation_type / weight=1 /
     metadata=raw ?? {}
-- [ ] `useKgOverviewQuery` 加 `select: kgOverviewToDto` 选项
-- [ ] 修改 `DatabaseView.vue`：删除 `as unknown as KnowledgeNodeDTO[]`
+- [x] `useKgOverviewQuery` 加 `select: kgOverviewToDto` 选项
+- [x] 修改 `DatabaseView.vue`：删除 `as unknown as KnowledgeNodeDTO[]`
 
 **验证点**：typecheck 通过；`rg -n "unknown as Knowledge" packages/web/src/views/database/` 命中 0。
 
 ### 5. 写行为等价矩阵
 
-- [ ] 新增 `docs/engineering/matrices/td-015-databaseview-equivalence.md`
-- [ ] 矩阵覆盖：上传请求参数 / 轮询条件 / KG overview 懒加载 / DTO 转换
-- [ ] 每格列「TD-007 前 / TD-007 后（PR #36） / TD-015 修复后」
+- [x] 新增 `docs/engineering/matrices/td-015-databaseview-equivalence.md`
+- [x] 矩阵覆盖：上传请求参数 / 轮询条件 / KG overview 懒加载 / DTO 转换
+- [x] 每格列「TD-007 前 / TD-007 后（PR #36） / TD-015 修复后」
 
 ### 6. 验证
 
-- [ ] `cd packages/web && pnpm --filter @metaedu/web typecheck` 退出码 0
-- [ ] `cd packages/web && pnpm --filter @metaedu/web build` 退出码 0
-- [ ] `cd packages/web && pnpm --filter @metaedu/web lint` 退出码 0
+- [x] `cd packages/web && pnpm --filter @metaedu/web typecheck` 退出码 0
+- [x] `cd packages/web && pnpm --filter @metaedu/web build` 退出码 0
+- [x] `cd packages/web && pnpm --filter @metaedu/web lint` 退出码 0
 
 ### 7. Git 闭环
 
-- [ ] 分支：`git checkout -b fix/td-015-databaseview-regressions`
-- [ ] 提交：`fix(web): TD-015 restore DatabaseView behaviors lost in TD-007`
-- [ ] push：`git push -u origin fix/td-015-databaseview-regressions`
-- [ ] PR：`gh pr create ...` Summary / Scope / Validation / Risks / Docs
-- [ ] 检查 `gh pr checks` 通过
-- [ ] squash merge：`gh pr merge --squash --delete-branch`
-- [ ] 回填 `current-work.md` 最近完成 + `technical-debt.md` 备注 + `work-log.md` 索引
+- [x] 分支：`git checkout -b fix/td-015-databaseview-regressions`
+- [x] 提交：`fix(web): TD-015 restore DatabaseView behaviors lost in TD-007`
+- [x] push：`git push -u origin fix/td-015-databaseview-regressions`
+- [x] PR：`gh pr create ...` Summary / Scope / Validation / Risks / Docs
+- [x] 检查 `gh pr checks` 通过
+- [x] squash merge：`gh pr merge --squash --delete-branch`
+- [x] 回填 `current-work.md` 最近完成 + `technical-debt.md` 备注 + `work-log.md` 索引
 
 ## 任务拆分
 

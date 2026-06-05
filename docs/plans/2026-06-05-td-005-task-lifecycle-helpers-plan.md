@@ -1,5 +1,7 @@
 # TD-005 抽取后端任务生命周期 helper — Plan
 
+> **交付历史（2026-06-05）：** TD-005 已通过 PR #34（merge commit `e5197a5`）合并到 `main`。本文保留为历史实施计划；下方清单已按最终交付状态收口，真实交付事实以 `docs/engineering/technical-debt.md#td-005-拆分大型后端任务流水线文件` 和 PR #34 为准。
+
 ## 任务入口
 
 - Spec: `docs/specs/2026-06-05-td-005-task-lifecycle-helpers.md`
@@ -13,8 +15,8 @@
 ### 1. 新增共享 helper 模块
 
 - [x] spec/plan 起草（已在 `docs/specs/` 和本文件）
-- [ ] 创建 `packages/server-python/app/shared/tasks/__init__.py`（空包）
-- [ ] 创建 `packages/server-python/app/shared/tasks/lifecycle.py`：
+- [x] 创建 `packages/server-python/app/shared/tasks/__init__.py`（空包）
+- [x] 创建 `packages/server-python/app/shared/tasks/lifecycle.py`：
   - 公共函数：`get_sync_session`、`run_in_session`、`update_task_status`、`create_task`
   - 兼容别名：`_get_sync_session` / `_run_in_session` / `_update_task_status` / `_create_task`
   - `create_task` 接受 keyword-only `file_id` / `dataset_id`，至少一个非空
@@ -23,26 +25,26 @@
 
 ### 2. 重构 `document/tasks.py`
 
-- [ ] 在文件顶部加入 `from app.shared.tasks.lifecycle import (get_sync_session, run_in_session, update_task_status as _update_task_status, create_task as _create_task)`
-- [ ] 删除本地 `_get_sync_session`（21 行）
-- [ ] 删除本地 `_run_in_session`（10 行）
-- [ ] 删除本地 `_update_task_status`（22 行）
-- [ ] 删除本地 `_create_task`（14 行）
-- [ ] 确认所有调用点（`_update_task_status(...)`、`_create_task(...)`、`_run_in_session(...)`、`_get_sync_session()`）不需要改
+- [x] 在文件顶部加入 `from app.shared.tasks.lifecycle import (get_sync_session, run_in_session, update_task_status as _update_task_status, create_task as _create_task)`
+- [x] 删除本地 `_get_sync_session`（21 行）
+- [x] 删除本地 `_run_in_session`（10 行）
+- [x] 删除本地 `_update_task_status`（22 行）
+- [x] 删除本地 `_create_task`（14 行）
+- [x] 确认所有调用点（`_update_task_status(...)`、`_create_task(...)`、`_run_in_session(...)`、`_get_sync_session()`）不需要改
 
 **验证点**：本地 `_get_*` / `_update_*` / `_create_*` 定义全部消失；`rg` 校验。
 
 ### 3. 重构 `structured_data/tasks.py`
 
-- [ ] 同上：引入共享 import、删除 4 个本地 helper（38 行）
-- [ ] 确认所有调用点不需要改
+- [x] 同上：引入共享 import、删除 4 个本地 helper（38 行）
+- [x] 确认所有调用点不需要改
 
 **验证点**：与上面一致。
 
 ### 4. 编写 `tests/shared/test_task_lifecycle.py`
 
-- [ ] 用 `conftest.py` 的 `TEST_DATABASE_URL` 和 `async_session_factory` 风格
-- [ ] 覆盖矩阵：
+- [x] 用 `conftest.py` 的 `TEST_DATABASE_URL` 和 `async_session_factory` 风格
+- [x] 覆盖矩阵：
   - `update_task_status` status=running, progress=0 → 写 `started_at`，不写 `completed_at`
   - `update_task_status` status=running, progress>0 → 不写 `started_at`，不写 `completed_at`
   - `update_task_status` status=success → 写 `completed_at`
@@ -58,21 +60,21 @@
 
 ### 5. 验证
 
-- [ ] `cd packages/server-python && .venv/bin/python -m pytest tests/shared/test_task_lifecycle.py -v` 退出码 0
-- [ ] `cd packages/server-python && .venv/bin/python -m pytest -q` 退出码 0（baseline 114+ passed）
-- [ ] `cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` 退出码 0
-- [ ] `rg -n "def _get_sync_session|def _run_in_session|def _update_task_status|def _create_task" packages/server-python/app/contexts/` 仍可命中 0 行（仅共享模块保留）
+- [x] `cd packages/server-python && .venv/bin/python -m pytest tests/shared/test_task_lifecycle.py -v` 退出码 0
+- [x] `cd packages/server-python && .venv/bin/python -m pytest -q` 退出码 0（baseline 114+ passed）
+- [x] `cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` 退出码 0
+- [x] `rg -n "def _get_sync_session|def _run_in_session|def _update_task_status|def _create_task" packages/server-python/app/contexts/` 仍可命中 0 行（仅共享模块保留）
 
 ### 6. Git 闭环
 
-- [ ] 同步 `docs/engineering/current-work.md` 任务卡片状态：进行中 → 待验证 → 完成
-- [ ] 创建分支：`git checkout -b refactor/td-005-task-lifecycle-helpers`
-- [ ] 暂存并提交：`refactor(server): extract task lifecycle helpers from pipeline tasks`
-- [ ] push：`git push -u origin refactor/td-005-task-lifecycle-helpers`
-- [ ] 创建 PR：`gh pr create --title "refactor(server): TD-005 extract task lifecycle helpers" --body "..."`
-- [ ] 检查 `gh pr checks` 通过
-- [ ] squash merge：`gh pr merge --squash --delete-branch`
-- [ ] 回填 `docs/engineering/current-work.md` 最近完成区 + `docs/engineering/technical-debt.md` 备注 + `docs/engineering/work-log.md` 索引
+- [x] 同步 `docs/engineering/current-work.md` 任务卡片状态：进行中 → 待验证 → 完成
+- [x] 创建分支：`git checkout -b refactor/td-005-task-lifecycle-helpers`
+- [x] 暂存并提交：`refactor(server): extract task lifecycle helpers from pipeline tasks`
+- [x] push：`git push -u origin refactor/td-005-task-lifecycle-helpers`
+- [x] 创建 PR：`gh pr create --title "refactor(server): TD-005 extract task lifecycle helpers" --body "..."`
+- [x] 检查 `gh pr checks` 通过
+- [x] squash merge：`gh pr merge --squash --delete-branch`
+- [x] 回填 `docs/engineering/current-work.md` 最近完成区 + `docs/engineering/technical-debt.md` 备注 + `docs/engineering/work-log.md` 索引
 
 ## 任务拆分（按 plan-do 步骤）
 

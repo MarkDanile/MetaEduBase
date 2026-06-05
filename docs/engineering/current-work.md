@@ -108,7 +108,41 @@
 
 ## 当前进行中
 
-当前无进行中任务。
+### TD-022: 收口早期已完成计划文件的活动式未勾选项
+
+状态：🟡 进行中
+类型：技术债
+领域：Docs / 工程流程 / 跨 AI 交接
+当前执行模式：manual
+最近接手工具：Claude Code
+分支：docs/td-022-close-early-plan-checkboxes
+
+需求来源：
+- 技术债: `docs/engineering/technical-debt.md#td-022-收口早期已完成计划文件的活动式未勾选项`
+- 架构约束：`docs/engineering/rules/quality-gates.md#行为变化声明检查`、`docs/engineering/workflow.md`
+- 任务模式：技术债修复（文档卫生）
+
+当前进展：
+- 已完成：探索范围（5 个 plan 共约 130+ 个未勾选项）；分析 TD-021 已收口 plan 的处理模式（改 `- [ ]` 为 `- [x]` + 顶部添加交付历史段）
+- 正在处理：写 spec/plan，然后批量收口 5 个 plan
+- 未完成：走完整 Git 流程
+
+下一步：
+1. 写 spec/plan
+2. 收口 5 个 plan：td-004 / td-005 / td-006 / td-007 / td-015
+3. 跑 rg 验证不再命中
+4. 提交、push、PR、squash merge
+5. 收口 current-work.md / technical-debt.md / work-log.md
+
+验证状态：
+- 已运行：`rg -n "^- \[ \]" docs/plans/` 命中 5 个 plan 约 130+ 行
+- 未运行：未运行；本任务为文档-only，按 `quality-gates.md#验证矩阵` 文档-only 改动至少检查链接、编号和任务状态
+- 当前失败：无
+
+交接备注：
+- 处理方式：参考 TD-021 已收口 plan（TD-016/017/018/019），把每个 plan 顶部的「交付历史」段补全为真实 PR / merge commit / 完成日期；把所有未勾选步骤改为 `- [x]`；保留 plan 文档本身作为历史实施参考
+- 范围：仅收口 5 个 plan 的未勾选项；不动代码或任何事实源；不动已勾选行；不动 verification / 风险 / 任务拆分等说明段
+- 范围边界：不动 TD-004 plan 中的 `<TASK-8 输出>` 占位（已由 TD-013 收口过）和 PR 描述模板里的占位
 
 ## 下一批候选任务
 
@@ -117,7 +151,6 @@
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
 | TD-020 统一 LLM provider resolver 与 factory 优先级事实源 | 🔵 就绪 | P2 | Backend / AI / 可维护性 | 统一 provider 顺序、命名归一化和 qwen/dashscope 映射的事实源或 adapter。 |
-| TD-022 收口早期已完成计划文件的活动式未勾选项 | 🔵 就绪 | P2 | Docs / 工程流程 / 跨 AI 交接 | 收口 TD-004/005/006/007/015 早期历史 plan 的未勾选项，避免已完成任务被误判为未完成。 |
 
 ## 最近完成
 
