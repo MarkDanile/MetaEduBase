@@ -52,6 +52,7 @@
 - API 调用优先集中在 `packages/web/src/services/*`，页面组件不直接散落 `api.get/post`，除非是历史代码或一次性内部页面。
 - Service DTO 应表达后端真实响应，不要为了页面展示随意改名字段。
 - 页面展示需要的派生字段应在 composable、adapter 或 computed 中生成，不反向污染 API DTO。
+- 不要使用 `unknown as SomeDTO` 或双重断言掩盖后端响应与前端 DTO 不一致。确有必要跨类型转换时，新增命名明确的 adapter，并在 adapter 中处理默认值、字段缺失和类型差异。
 - 任务状态、文件状态、知识图谱状态等有限集合，不要在多个页面重复手写字符串判断；优先复用 constants 或 shared schema。
 
 ## 后端响应约束
