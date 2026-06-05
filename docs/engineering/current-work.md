@@ -108,41 +108,7 @@
 
 ## 当前进行中
 
-### TD-022: 收口早期已完成计划文件的活动式未勾选项
-
-状态：🟡 进行中
-类型：技术债
-领域：Docs / 工程流程 / 跨 AI 交接
-当前执行模式：manual
-最近接手工具：Claude Code
-分支：docs/td-022-close-early-plan-checkboxes
-
-需求来源：
-- 技术债: `docs/engineering/technical-debt.md#td-022-收口早期已完成计划文件的活动式未勾选项`
-- 架构约束：`docs/engineering/rules/quality-gates.md#行为变化声明检查`、`docs/engineering/workflow.md`
-- 任务模式：技术债修复（文档卫生）
-
-当前进展：
-- 已完成：探索范围（5 个 plan 共约 130+ 个未勾选项）；分析 TD-021 已收口 plan 的处理模式（改 `- [ ]` 为 `- [x]` + 顶部添加交付历史段）
-- 正在处理：写 spec/plan，然后批量收口 5 个 plan
-- 未完成：走完整 Git 流程
-
-下一步：
-1. 写 spec/plan
-2. 收口 5 个 plan：td-004 / td-005 / td-006 / td-007 / td-015
-3. 跑 rg 验证不再命中
-4. 提交、push、PR、squash merge
-5. 收口 current-work.md / technical-debt.md / work-log.md
-
-验证状态：
-- 已运行：`rg -n "^- \[ \]" docs/plans/` 命中 5 个 plan 约 130+ 行
-- 未运行：未运行；本任务为文档-only，按 `quality-gates.md#验证矩阵` 文档-only 改动至少检查链接、编号和任务状态
-- 当前失败：无
-
-交接备注：
-- 处理方式：参考 TD-021 已收口 plan（TD-016/017/018/019），把每个 plan 顶部的「交付历史」段补全为真实 PR / merge commit / 完成日期；把所有未勾选步骤改为 `- [x]`；保留 plan 文档本身作为历史实施参考
-- 范围：仅收口 5 个 plan 的未勾选项；不动代码或任何事实源；不动已勾选行；不动 verification / 风险 / 任务拆分等说明段
-- 范围边界：不动 TD-004 plan 中的 `<TASK-8 输出>` 占位（已由 TD-013 收口过）和 PR 描述模板里的占位
+当前无进行中任务。
 
 ## 下一批候选任务
 
@@ -158,6 +124,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-05 | TD-022 收口早期已完成计划文件的活动式未勾选项 | 🟢 完成 | 5 个早期 plan（TD-004/005/006/007/015）顶部补交付历史段，154 行 `- [ ]` → `- [x]`，与 TD-021 收口 TD-016/017/018/019 模式一致。 | `docs/engineering/technical-debt.md#td-022-收口早期已完成计划文件的活动式未勾选项` / [PR #44](https://github.com/MarkDanile/MetaEduBase/pull/44) |
 | 2026-06-05 | TD-021 收口已完成计划文件和候选区状态同步漏洞 | 🟢 完成 | 收口 TD-016/017/018/019 历史 plan 未勾选项；补强候选区、最近完成和已完成 plan 的提交前硬检查，并登记 TD-022。 | `docs/engineering/technical-debt.md#td-021-收口已完成计划文件和候选区状态同步漏洞` |
 | 2026-06-05 | TD-019 修复 Vue Query 轮询自引用导致的页面初始化运行时错误 | 🟢 完成 | 把 polling 派生从调用方下沉到 query hook 的 `refetchInterval: (query) => ...` 函数形式，从 `query.state.data` 派生；避开 setup 阶段 TDZ，行为完全不变。 | `docs/engineering/technical-debt.md#td-019-修复-vue-query-轮询自引用导致的页面初始化运行时错误` / [PR #42](https://github.com/MarkDanile/MetaEduBase/pull/42) |
 | 2026-06-05 | DOC-009 生成 TD-005/006/007 follow-up 与规则补强 | 🟢 完成 | 新增 TD-015/016/017，补前端请求生命周期等价矩阵、DTO adapter 和 follow-up 稳定编号规则。 | `docs/engineering/technical-debt.md` / `docs/engineering/rules/quality-gates.md` |

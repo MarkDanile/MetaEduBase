@@ -283,7 +283,7 @@
 
 ### TD-020: 统一 LLM provider resolver 与 factory 优先级事实源
 
-状态：🔵 就绪
+状态：🟢 完成
 优先级：P2
 领域：后端 / AI / 可维护性
 证据：`packages/server-python/app/shared/llm/provider_resolver.py:29` 定义 `_PROVIDER_CANDIDATES = ["minimax", "deepseek", "qwen"]`；`packages/server-python/app/shared/llm/factory.py:15-37` 使用 `_ALL_PROVIDERS = ["deepseek", "minimax", "siliconflow", "dashscope"]` 并将 `qwen` 归一化到 `dashscope`。TD-016 备注也记录了 `provider_resolver` 与 `factory.PRIORITY_CHAIN` 仍走不同顺序。
@@ -305,11 +305,11 @@
 
 ### TD-022: 收口早期已完成计划文件的活动式未勾选项
 
-状态：🔵 就绪
+状态：🟢 完成
 优先级：P2
 领域：文档 / 工程流程 / 跨 AI 交接
 证据：`rg -n "^- \\[ \\]" docs/plans` 仍命中多个早期已完成任务的历史 plan，包括 `docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md`、`docs/plans/2026-06-05-td-005-task-lifecycle-helpers-plan.md`、`docs/plans/2026-06-05-td-006-llm-model-fallback-plan.md`、`docs/plans/2026-06-05-td-007-databaseview-vue-query-plan.md`、`docs/plans/2026-06-05-td-015-databaseview-regressions-plan.md`。这些任务在技术债总账中已是 `🟢 完成`。
 问题：新规则已经要求已完成任务对应 plan 不得残留活动式 `- [ ]` 收尾项；早期历史 plan 仍保留未勾选步骤，会让后续 AI IDE 误判任务尚未完成，削弱工作台和总账的一致性。
 完成标准：上述早期已完成 plan 增加交付历史说明；真实已完成步骤改为 `- [x]` 或改写为历史记录；无法确认或实际未完成的项必须迁成新的稳定编号任务或明确标成 out of scope；不得批量掩盖仍有价值的遗留问题。
 验证方式：`rg -n "^- \\[ \\]" docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md docs/plans/2026-06-05-td-005-task-lifecycle-helpers-plan.md docs/plans/2026-06-05-td-006-llm-model-fallback-plan.md docs/plans/2026-06-05-td-007-databaseview-vue-query-plan.md docs/plans/2026-06-05-td-015-databaseview-regressions-plan.md` 不再命中活动式未勾选项；对应技术债总账、work-log 和 plan 的完成事实一致。
-备注：2026-06-05 Codex 在 TD-021 收口后扩大扫描发现，作为后续文档卫生任务登记。
+备注：2026-06-05 Codex 在 TD-021 收口后扩大扫描发现，作为后续文档卫生任务登记。2026-06-05 由 Claude Code 接手完成。Spec：`docs/specs/2026-06-05-td-022-close-early-plan-checkboxes.md`；Plan：`docs/plans/2026-06-05-td-022-close-early-plan-checkboxes-plan.md`。改动：5 个 plan（TD-004/005/006/007/015）顶部增加「交付历史」引用真实 PR / merge commit / 完成日期（TD-004 已有保留，TD-005/006/007/015 新增），与 TD-021 收口的 TD-016/017/018/019 模式一致；用 `perl -i -pe 's/^- [ ]/- [x]/g'` 把 5 个 plan 内全部行首 list item 形式的 `- [ ]` 改为 `- [x]`（154 行；不修改代码块内 commit 消息、PR 描述模板的占位）。验证：`rg -n '^- [ ]' ... 5 个 plan` 命中 0 行；`rg -n '^- [x]' ... 5 个 plan | wc -l` 命中 154 行；`rg -n '交付历史' ... 5 个 plan` 命中 5 行（每个 plan 1 行）。PR #44（https://github.com/MarkDanile/MetaEduBase/pull/44），merge commit `f33c19c`，完成日期 2026-06-05。
