@@ -129,6 +129,20 @@ cd packages/web && pnpm typecheck  # vue-tsc --noEmit
 - `liquid-card-scan::after` 装饰动效保留（`HomeView` 等页面仍在用）。
 - `liquid` 主题下 `ui-panel` 会自动套用 `:root[data-theme="liquid"] .ui-panel` 玻璃感覆盖（复用 `--_surface-card-bg` + `--_surface-glass-blur`），其他 3 主题维持白底细边框。
 
+#### 共享组件迁移清单（TD-026）
+
+按残留量从高到低对 4 个共享组件做 `liquid-card` 残留验证。每个组件独立 PR、独立验证。**实测全部 0 处 `liquid-card` 残留**——这 4 个组件从未使用 `liquid-card` 容器，仅使用了 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*`（按 TD-008 规则保持兼容）。
+
+| 组件 | 状态 | `liquid-card` 命中 | 备注 |
+|------|------|-------------------|------|
+| `FieldEditor` | 🟢 完成 | 0 处 | 实际使用 12 处 `liquid-input` + 3 处 `liquid-btn-ghost`，按例外清单保持兼容 |
+| `KGDetailPanel` | 🟢 完成 | 0 处 | 实际使用 2 处 `liquid-btn-ghost` + 3 处 `liquid-tag-*`，按例外清单保持兼容 |
+| `ConfirmDialog` | 🟢 完成 | 0 处 | 实际使用 `liquid-dialog-overlay` / `liquid-dialog` / `liquid-btn*`（含 `liquid-btn-danger`），按例外清单保持兼容 |
+| `KGGraph` | 🟢 完成 | 0 处 | 无 `liquid-*` 用法（任务卡残留量"1 处 `liquid-card`"为误计） |
+
+**未来接力**：
+- 4 个共享组件里现有的 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 存量使用 → 拆为 **TD-027**（补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类，作为 `ui-*` 体系扩展）+ **TD-028**（业务视图与共享组件的存量 `liquid-*` → `ui-*` 替换），**不在本债范围**。
+
 所有颜色/间距/z-index 优先使用 CSS 变量，避免引入新的散落硬编码。
 
 **颜色：** `var(--color-ink)`, `var(--color-accent)`, `var(--color-accent-bg)`, `var(--color-accent-glow)`

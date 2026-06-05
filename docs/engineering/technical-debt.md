@@ -114,6 +114,8 @@
 | TD-023 | 收口 TD-020 文档一致性、断链与归档索引 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | `docs/engineering/current-work.md` |
 | TD-024 | 收口 TD-023 复核发现的副本文件与旧归一化表述 | 🟢 完成 | P2 | 文档 / 工程流程 / 仓库卫生 | TD-023 复核 |
 | TD-025 | 业务页面 `liquid-card` 容器统一迁移到 `ui-panel`（业务视图部分完成） | 🟢 完成 | P2 | 前端 / 设计系统 | [PR #54](https://github.com/MarkDanile/MetaEduBase/pull/54) + [PR #55](https://github.com/MarkDanile/MetaEduBase/pull/55) + [PR #56](https://github.com/MarkDanile/MetaEduBase/pull/56) |
+| TD-026 | 共享组件 `liquid-card` 残留验证 | 🟢 完成 | P3 | 前端 / 设计系统 | [PR #58](https://github.com/MarkDanile/MetaEduBase/pull/58) |
+| TD-027 | 补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类（设计系统扩展） | ⚫ 待办 | P3 | 前端 / 设计系统 | `docs/engineering/rules/coding-style.md#迁移说明-td-008` |
 
 ## 任务详情
 
@@ -986,3 +988,83 @@
   - 已运行：`test -f docs/specs/2026-06-05-td-020-provider-resolver-factory.md` → 退出码 0。
   - 已运行：`git diff --name-status` 仅包含 4 个文档变更（`docs/engineering/current-work.md`、`docs/engineering/technical-debt.md`、`docs/plans/2026-06-05-td-020-provider-resolver-factory-plan.md`、`docs/specs/2026-06-05-td-020-provider-resolver-factory.md`），无业务代码变更。
   - 未运行：lint / 业务测试 —— TD-024 任务范围是 docs-only + 副本清理，按 `quality-gates.md#验证表述规范` 不强制后端 lint 或 pytest 复跑。
+
+### TD-026: 共享组件 `liquid-card` 残留验证
+
+状态：🟢 完成
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P3 |
+| 领域 | 前端 / 设计系统 |
+| 事实源 | [PR #58](https://github.com/MarkDanile/MetaEduBase/pull/58) |
+
+**证据**
+- TD-025 完成（2026-06-05）后，业务视图的 `liquid-card` 已全部迁到 `ui-panel`（除 `LoginView` 品牌背景与 `HomeView` 1 处 `liquid-card-scan` 装饰保留外）。
+- 任务卡线索的"4 个共享组件 22 处 `liquid-card` 残留"源于 TD-008 完成时的快照，把 `liquid-card` 与 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 都计入了同一类。
+- `rg -n "liquid-card" packages/web/src/components/FieldEditor.vue packages/web/src/components/KGDetailPanel.vue packages/web/src/components/ConfirmDialog.vue packages/web/src/components/KGGraph.vue` 实测：**0 命中**。
+
+**问题**
+- 任务卡残留量与实际不符的规律在 TD-025 切片 1/2/3 已经出现 3 次（`TemplateModal` / `TemplateEditorView` 实测 0 处），TD-026 共享组件同样：写 22 处、实测 0 处。
+- 如果不验证就按原任务卡 22 处直接动手，会强行"扩大设计系统范围"去替换 4 个共享组件里的 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` —— 这些类没有 `ui-*` 等价物，需要先扩设计系统（已拆为 TD-027）。
+
+**完成标准**
+- 严格按 `rg` 验证 4 个共享组件（`FieldEditor` / `KGDetailPanel` / `ConfirmDialog` / `KGGraph`）的 `liquid-card` 命中数为 0。
+- 任务卡总览表与详情段状态从 `⚫ 待办` / 缺失 改为 `🟢 完成`。
+- `coding-style.md` 迁移清单加 4 个共享组件行（标记 `🟢 完成`、备注"实测 0 处 `liquid-card`，本组件未使用 `liquid-card` 容器"）。
+- `current-work.md` 当前进行中清空；下一批候选加上 TD-027。
+- 4 个共享组件里现有的 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 仍按 TD-008 规则保持兼容（不在本债范围；留给 TD-027 启动时再决定是否替换）。
+
+**验证方式**
+- `rg -n "liquid-card" packages/web/src/components/FieldEditor.vue packages/web/src/components/KGDetailPanel.vue packages/web/src/components/ConfirmDialog.vue packages/web/src/components/KGGraph.vue` → 0 命中。
+- `rg -c "liquid-card" packages/web/src/components/` → 每个文件 0 命中。
+- `pnpm --filter @metaedu/web typecheck` / `lint` / `build` 退出码 0（本 PR 不改业务代码，但保持基线）。
+- `scripts/check-engineering-docs` 退出码 0。
+
+**交付记录**
+- 2026-06-05 完成（接手工具：Claude Code）。docs-only PR，0 业务代码变更。
+  1. `docs/engineering/technical-debt.md` 任务总览表新增 TD-026（🟢 完成）/ TD-027（⚫ 待办）两行；任务详情区追加 TD-026 任务卡（包含证据、问题、完成标准、验证方式、交付记录）和 TD-027 任务卡（新债登记，包含完成标准、验证方式）。
+  2. `docs/engineering/rules/coding-style.md` 业务页面迁移清单（原表格）后追加"共享组件迁移清单"小节，列出 4 个共享组件与"实测 0 处 `liquid-card`"的说明。
+  3. `docs/engineering/current-work.md` 当前进行中清空；下一批候选任务加 TD-027；最近完成区追加 TD-026 一行。
+- 验证摘要：4 条 `rg` 断言全过；`pnpm typecheck / lint / build` 退出码 0；`scripts/check-engineering-docs` 退出码 0；`git diff --name-status` 仅包含 3 个 docs 文件。
+
+### TD-027: 补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类（设计系统扩展）
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P3 |
+| 领域 | 前端 / 设计系统 |
+| 事实源 | `docs/engineering/rules/coding-style.md#迁移说明-td-008` + `docs/engineering/technical-debt.md#td-026` 交付记录 |
+
+**证据**
+- TD-008（2026-06-05）建立 `ui-page-shell` / `ui-page-section` / `ui-panel` / `ui-toolbar` / `ui-interactive-row` 5 个共享类，但**没有** button / input / tag / dialog 的对应物。
+- TD-025 / TD-026 业务视图与共享组件里的 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 仍按例外清单保持兼容。
+- 4 个共享组件（`FieldEditor` 12 处 `liquid-input` + 3 处 `liquid-btn-ghost` / `KGDetailPanel` 2 处 `liquid-btn-ghost` + 3 处 `liquid-tag-*` / `ConfirmDialog` 4 处 `liquid-btn/dialog*` / `KGGraph` 1 处 `liquid-card` —— 但 `KGGraph` 的 `liquid-card` 实测 0 命中，仅有 1 处 `liquid-card` 提及在任务卡中）与 9 个业务视图里的存量使用，是设计系统迁移的下一段路径。
+
+**问题**
+- `ui-*` 体系目前只有"容器"层（`ui-page-shell` / `ui-panel` 等），没有"原子"层（button / input / tag / dialog）。如果后续要做"全 `ui-*` 化"或"未来业务视图逐步替换 `liquid-input` / `liquid-btn-*` 等"，需要先把这 4 类原子控件补齐。
+- 4 个共享组件继续用 `liquid-input` / `liquid-btn-*` 是历史"兼容例外"妥协，不是设计系统目标状态。
+
+**完成标准**
+- **最小范围（必选）**：仅在 `main.css` 追加以下共享类（不替换业务视图与共享组件里的存量使用）：
+  - `ui-input`：替代 `liquid-input`；复用现有 `--color-*` / `--radius-*` / `--shadow-*` / `--duration-*` token。
+  - `ui-btn` / `ui-btn-primary` / `ui-btn-ghost` / `ui-btn-danger`：替代 `liquid-btn*`；token 化；`ui-btn-primary` 在 `liquid` 主题下走 `:root[data-theme="liquid"] .ui-btn-primary` 玻璃感覆盖（与 `ui-panel` 切片 1 行为一致）。
+  - `ui-tag` / `ui-tag-blue` / `ui-tag-green` / `ui-tag-amber` / `ui-tag-purple`：替代 `liquid-tag*`；5 个变体。
+  - `ui-dialog` / `ui-dialog-overlay`：替代 `liquid-dialog*`。
+- 4 主题视觉表现不发生可观察退化（`ui-*` 颜色全部 token 化、自动适配）。
+- `liquid-*` 类全部保留作为兼容别名（不删不动）。
+- 不替换业务视图与共享组件里的存量 `liquid-input` / `liquid-btn-*` 等（这部分留 TD-028 接力）。
+- `coding-style.md#迁移说明` 增补 4 类 `ui-*` 共享类用途、`ui-*` 优先 / `liquid-*` 兼容的边界、新增/修改 UI 的优先级（与 TD-008 同结构）。
+- `scripts/check-engineering-docs` 退出码 0。
+
+**验证方式**
+- `pnpm --filter @metaedu/web typecheck` / `lint` / `build` 退出码 0。
+- `rg -n "ui-input|ui-btn|ui-tag|ui-dialog" packages/web/src/assets/css/main.css` 命中新增类定义。
+- `rg -n "ui-(input|btn|tag|dialog)" packages/web/src/views/ packages/web/src/components/` → 0 命中（本债不替换存量）。
+- `rg -n "liquid-(input|btn|primary|ghost|danger|tag|dialog)" packages/web/src/` 仍命中存量（保持兼容）。
+- 4 主题（liquid / ink / navy / notion）下 `LoginView`（仅 `liquid-input` / `liquid-btn-primary` 实际显示）手工验收视觉不退化。
+
+**交付记录**
+- 未完成。建议开工顺序：先在 `main.css` 追加 5 类（`ui-input` / `ui-btn*` 4 类 / `ui-tag*` 5 类 / `ui-dialog*` 2 类 = 12 个类）→ 加 `liquid` 主题 `ui-btn-primary` 玻璃感覆盖 → 文档同步。业务视图与共享组件的存量替换（TD-028 候选）不在本债范围。
