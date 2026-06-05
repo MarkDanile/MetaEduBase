@@ -250,11 +250,11 @@
 
 ### TD-017: 将 Vue Query 请求生命周期治理推广到 FileDetailView
 
-状态：⚫ 待办
+状态：🔵 就绪
 优先级：P2
 领域：前端 / 可维护性
 证据：TD-007 仅迁移了 `DatabaseView`；`packages/web/src/views/resource/FileDetailView.vue:223-235` 仍手写 `tasks`、`chunks`、`kgNodes`、`loading*` 和 `pollTimer`，`FileDetailView.vue:257-317` 分散维护 load / toast / error 状态，`FileDetailView.vue:465-482` 手写轮询。
 问题：前端请求生命周期重复治理只覆盖了一个高变更页面，`FileDetailView` 仍保留同类 loading、错误提示、轮询刷新和 mutation 后刷新逻辑。若直接照搬 TD-007 方案但不补行为等价矩阵，容易再次引入请求参数或轮询语义回归。
 完成标准：在 TD-015 收口后，再选择 `FileDetailView` 的一个稳定请求族迁移到 composable 或 Vue Query；迁移前先列出行为等价矩阵，至少覆盖请求参数、tab lazy-load、轮询 start / stop、mutation 后 cache invalidation、toast 文案和 loading 状态；迁移后不得改变用户可见行为，除非在任务卡片和 PR 中明确声明。
 验证方式：`pnpm --filter @metaedu/web lint`、`pnpm --filter @metaedu/web typecheck`、`pnpm --filter @metaedu/web build` 均退出码 0；通过自动化 mock、组件测试或浏览器验收确认文件详情、任务列表、切片、知识图谱、重试、重新初始化和删除流程仍符合矩阵。
-备注：2026-06-05 Codex 复核 TD-007 / PR #36 后将原 `TD-007-FOLLOWUP` 转为稳定编号任务。前置建议：先完成 TD-015，避免把已发现回归模式复制到下一页。
+备注：2026-06-05 Codex 复核 TD-007 / PR #36 后将原 `TD-007-FOLLOWUP` 转为稳定编号任务。前置建议：先完成 TD-015，避免把已发现回归模式复制到下一页。2026-06-05 状态从 ⚫ 待办 推进为 🔵 就绪：TD-015 已收口（PR #38），满足"先完成 TD-015"前置；本次总账已有"完成标准"和"验证方式"，符合 `current-work.md` 进入就绪状态的条件。

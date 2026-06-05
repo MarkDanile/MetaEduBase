@@ -6,7 +6,7 @@
           <button class="liquid-btn-ghost px-3 py-1.5 flex items-center gap-1.5" @click="goBack">
             <ArrowLeft :size="14" /> 返回
           </button>
-          <button class="liquid-btn-ghost px-3 py-1.5 flex items-center gap-1.5" @click="reinitialize">
+          <button class="liquid-btn-ghost px-3 py-1.5 flex items-center gap-1.5" @click="reinitializeMutation.mutate()">
             <RefreshCw :size="14" /> 重新初始化
           </button>
           <button
@@ -67,7 +67,7 @@
             <button
               v-if="stepStatus(step.type) === 'failed'"
               class="text-[var(--text-micro)] text-[var(--color-accent)] hover:underline"
-              @click="retryTasks"
+              @click="retryMutation.mutate()"
             >
               重试
             </button>
@@ -178,7 +178,7 @@
       v-model:open="showDelete"
       title="删除文件"
       :message="`确定删除文件「${file?.filename}」？此操作不可恢复。`"
-      @confirm="doDelete"
+      @confirm="deleteMutation.mutate()"
     />
 
     <!-- KG node detail panel -->
@@ -192,7 +192,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   ArrowLeft, FileText, Trash2, RefreshCw,
@@ -211,6 +211,12 @@ import { documentApi, type FileDTO, type ChunkDTO, type TaskDTO } from "@/servic
 import { knowledgeApi, type KnowledgeNodeDTO, type KnowledgeEdgeDTO } from "@/services/knowledge";
 import { templateApi, type Template } from "@/services/template";
 import { DOC_TASK_STEPS, TASK_STATUS_MAP, FILE_STATUS_MAP } from "@/constants/pipeline";
+import {
+  useFileTasksQuery,
+  useRetryTasksMutation,
+  useReinitializeFileMutation,
+  useDeleteFileMutation,
+} from "@/views/resource/queries";
 
 const route = useRoute();
 const router = useRouter();
@@ -220,19 +226,16 @@ const fileId = computed(() => route.params.id as string);
 
 // --- State ---
 const file = ref<FileDTO | null>(null);
-const tasks = ref<TaskDTO[]>([]);
 const chunks = ref<ChunkDTO[]>([]);
 const kgNodes = ref<KnowledgeNodeDTO[]>([]);
 const kgEdges = ref<KnowledgeEdgeDTO[]>([]);
 const selectedKgNode = ref<KnowledgeNodeDTO | null>(null);
 const loading = ref(true);
-const loadingTasks = ref(false);
 const loadingChunks = ref(false);
 const loadingKg = ref(false);
 const activeTab = ref("structured");
 const showDelete = ref(false);
 const templates = ref<Template[]>([]);
-let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 const tabs = [
   { key: "structured", label: "结构化抽取" },
@@ -240,7 +243,38 @@ const tabs = [
   { key: "kg", label: "知识图谱" },
 ];
 
-const polling = computed(() => tasks.value.some((t) => t.status === "running" || t.status === "pending"));
+// --- Queries (Vue Query) ---
+const tasksQuery = useFileTasksQuery(
+  fileId,
+  // Only refetch every 3s while at least one task is running or pending.
+  // Returning `false` pauses polling.
+  computed(() =>
+    (tasksQuery.data.value ?? []).some(
+      (t) => t.status === "running" || t.status === "pending",
+    ),
+  ),
+);
+const tasks = computed<TaskDTO[]>(() => tasksQuery.data.value ?? []);
+const loadingTasks = computed(() => tasksQuery.isFetching.value);
+const polling = computed(() =>
+  tasks.value.some((t) => t.status === "running" || t.status === "pending"),
+);
+
+// --- Mutations (Vue Query) ---
+const retryMutation = useRetryTasksMutation(fileId, () => {
+  toast.success("已重新提交任务");
+});
+const reinitializeMutation = useReinitializeFileMutation(fileId, () => {
+  toast.success("已开始重新初始化");
+  // Clear stale chunks/kg data (legacy behavior).
+  chunks.value = [];
+  kgNodes.value = [];
+  kgEdges.value = [];
+});
+const deleteMutation = useDeleteFileMutation(fileId, () => {
+  toast.success("文件已删除");
+  router.push("/resource");
+});
 
 // --- Structured data helpers ---
 const templateData = computed(() => {
@@ -265,27 +299,13 @@ async function loadFile() {
   }
 }
 
-async function loadTasks() {
-  loadingTasks.value = true;
-  try {
-    const { data } = await documentApi.listTasks(fileId.value);
-    tasks.value = data;
-  } catch {
-    toast.error("加载任务失败");
-  } finally {
-    loadingTasks.value = false;
-  }
-}
-
 async function refreshAll() {
-  loadingTasks.value = true;
   loading.value = true;
   try {
-    await Promise.all([loadFile(), loadTasks()]);
+    await loadFile();
     if (activeTab.value === "chunks") await loadChunks();
     if (activeTab.value === "kg") await loadKg();
   } finally {
-    loadingTasks.value = false;
     loading.value = false;
   }
 }
@@ -420,41 +440,6 @@ function goBack() {
   router.push("/resource");
 }
 
-async function retryTasks() {
-  try {
-    await documentApi.retryTasks(fileId.value);
-    toast.success("已重新提交任务");
-    await loadTasks();
-  } catch {
-    toast.error("重试失败");
-  }
-}
-
-async function reinitialize() {
-  try {
-    await documentApi.reinitializeFile(fileId.value);
-    toast.success("已开始重新初始化");
-    await loadFile();
-    await loadTasks();
-    chunks.value = [];
-    kgNodes.value = [];
-    kgEdges.value = [];
-    startPolling();
-  } catch {
-    toast.error("重新初始化失败");
-  }
-}
-
-async function doDelete() {
-  try {
-    await documentApi.deleteFile(fileId.value);
-    toast.success("文件已删除");
-    router.push("/resource");
-  } catch {
-    toast.error("删除失败");
-  }
-}
-
 // --- Tab data loading ---
 watch(activeTab, () => {
   if (activeTab.value === "structured") loadFile();
@@ -462,34 +447,24 @@ watch(activeTab, () => {
   if (activeTab.value === "kg") loadKg();
 });
 
-// --- Auto-poll ---
-function startPolling() {
-  if (pollTimer) return;
-  pollTimer = setInterval(async () => {
-    await loadTasks();
-    if (polling.value) return;
-    // All tasks finished — refresh file data + all tabs
-    stopPolling();
-    await loadFile();
-    await loadChunks();
-    await loadKg();
-  }, 3000);
-}
-
-function stopPolling() {
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = null;
+// --- Auto-refresh when tasks just finished ---
+// When the polling flag transitions true → false, the tasks query
+// (managed by Vue Query) automatically stops refetching. Replicate the
+// legacy "all-tasks-finished" refresh by manually re-fetching the
+// still-handwritten file / chunks / kg loaders.
+watch(polling, (now, prev) => {
+  if (prev && !now) {
+    void loadFile();
+    if (activeTab.value === "chunks") void loadChunks();
+    if (activeTab.value === "kg") void loadKg();
   }
-}
-
-// --- Init ---
-onMounted(async () => {
-  await Promise.all([loadFile(), loadTasks(), loadTemplates()]);
-  startPolling();
 });
 
-onUnmounted(() => {
-  stopPolling();
+// --- Init ---
+// Queries auto-fetch on first read (via useQuery); no explicit tasks
+// trigger is required. loadFile / loadTemplates are still hand-written
+// and need an explicit onMounted call to kick off.
+onMounted(async () => {
+  await Promise.all([loadFile(), loadTemplates()]);
 });
 </script>
