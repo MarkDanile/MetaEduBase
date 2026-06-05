@@ -485,16 +485,7 @@ const datasetsQuery = useDatasetsQuery(
 const datasets = computed<DatasetDTO[]>(() => datasetsQuery.data.value ?? []);
 const loading = computed(() => datasetsQuery.isLoading.value);
 
-const tasksQuery = useDatasetTasksQuery(
-  selectedId,
-  // TD-015 fix: only refetch every 3s while at least one task is running
-  // or pending. Returning `false` pauses polling entirely.
-  computed(() =>
-    (tasksQuery.data.value ?? []).some(
-      (t) => t.status === "running" || t.status === "pending",
-    ),
-  ),
-);
+const tasksQuery = useDatasetTasksQuery(selectedId);
 const tasks = computed<TaskDTO[]>(() => tasksQuery.data.value ?? []);
 const loadingTasks = computed(() => tasksQuery.isFetching.value);
 const polling = computed(() =>
