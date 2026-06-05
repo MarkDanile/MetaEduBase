@@ -49,7 +49,7 @@ cd packages/web && pnpm typecheck  # vue-tsc --noEmit
 
 ### 设计系统
 
-当前代码仍以 `liquid-*` 类为主，后续会逐步迁移到语义化 `ui-*` workspace 层。新增或修改 UI 时，优先复用现有页面和组件的局部风格；涉及 UI foundation 迁移时，先阅读对应设计/计划文档。
+当前业务视图和共享组件优先使用语义化 `ui-*` workspace 层；`liquid-*` 类保留为历史兼容别名和少量品牌/装饰例外。新增或修改 UI 时，优先复用 `ui-*` 共享类；涉及 UI foundation 迁移时，先阅读对应设计/计划文档。
 
 #### 迁移说明（TD-008）
 
@@ -60,6 +60,7 @@ cd packages/web && pnpm typecheck  # vue-tsc --noEmit
 - 新的页面外壳、面板、工具栏、交互行。
 - 跨页面共享的工作区结构（`LayoutView`、共享骨架组件）。
 - 任何与"calm workspace、token 化、不带装饰动效"目标一致的容器。
+- 表单输入、按钮、标签和对话框等跨页面原子控件。
 
 提供以下 17 个共享类（`packages/web/src/assets/css/main.css` 中 `@layer components` 段）。
 
@@ -94,8 +95,8 @@ cd packages/web && pnpm typecheck  # vue-tsc --noEmit
 
 **何时保留 `liquid-*`（兼容）**
 
-- 历史视图与组件仍大量使用，按"手术式改动"原则不主动迁移。
-- `liquid-btn-primary` / `liquid-btn-ghost` / `liquid-btn-danger` / `liquid-input` / `liquid-tag-*` / `liquid-dialog` / `liquid-card` 全部保留；未迁入 `ui-*` 的页面继续使用。
+- `liquid-*` 在 `main.css` 中保留为兼容别名，避免历史页面或外部引用被破坏。
+- `liquid-card` / `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 不作为新增代码的默认选择；业务视图和共享组件已通过 TD-025 / TD-028 迁到 `ui-*`。
 - 装饰性 `wet-line` / `liquid-card-scan::after` / `liquid-rise-*` 动效保留；新页面不引入。
 - 登录页（`LoginView`）的品牌背景与 `brand-gradient` 不参与 workspace 迁移。
 
@@ -109,7 +110,7 @@ cd packages/web && pnpm typecheck  # vue-tsc --noEmit
 
 **第一个迁移目标**
 
-`LayoutView.vue` + `PageHeader.vue` + `EmptyState.vue` 三个共享骨架组件，作为示例（TD-008 交付）。后续页面（`DatabaseView` / `ResourceView` / `KnowledgeBaseView` / `FileDetailView` / `ResourceLibraryView`）按业务需要逐步迁移到 `ui-*`，不在本轮范围。
+`LayoutView.vue` + `PageHeader.vue` + `EmptyState.vue` 三个共享骨架组件已作为 TD-008 示例交付；业务页面容器层已由 TD-025 迁到 `ui-panel`，原子控件层已由 TD-027 / TD-028 迁到 `ui-*`。
 
 #### 业务页面迁移清单（TD-025）
 
@@ -127,42 +128,37 @@ cd packages/web && pnpm typecheck  # vue-tsc --noEmit
 | 3 | `AiChatView` | 🟢 完成 | 1 处 | 切片 3（任务卡残留量 4 处为 TD-008 完成时快照；实测 1 处 `liquid-card` 残留）。快速问题按钮卡 |
 | 3 | `HomeView` | 🟢 完成 | 3 处 | 切片 3（任务卡残留量 3 处相符）。统计卡 / 导航模块卡 / 右侧活动区；统计卡保留 `liquid-card-scan` + `animationDelay` 装饰动效 |
 | 例外 | `LoginView` | 🚫 保持兼容 | 0 处 | 品牌背景与 `--_login-brand-gradient`，按 TD-008 规则不参与 workspace 迁移 |
-| 后续 | 共享组件 `FieldEditor` / `KGDetailPanel` / `ConfirmDialog` / `KGGraph` 的 `liquid-card` 残留 | ⚫ 待办 | 22 处 | TD-026 候选 |
+| 后续 | 共享组件 `FieldEditor` / `KGDetailPanel` / `ConfirmDialog` / `KGGraph` 的 `liquid-card` 残留 | 🟢 完成 | 0 处 | TD-026 实测 0 命中，原 22 处为快照误计 |
 
-**切片 3 显式例外清单（按 TD-025 切片 3 完成标准）**
+**历史例外与后续收口**
 
-下列类在 4 个业务页面（`TemplateModal` / `TemplateEditorView` / `AiChatView` / `HomeView`）上保持兼容、不替换：
+TD-025 切片 3 曾显式保留以下例外；其中原子控件类已在 TD-027 / TD-028 收口为 `ui-*`，装饰与品牌类仍保留兼容：
 
-| 例外类 | 涉及文件 | 出现位置示例 | 理由 |
-|--------|----------|--------------|------|
-| `liquid-btn-primary` | `TemplateModal` / `TemplateEditorView` / `AiChatView` | 主要操作按钮（创建、提交、上传等） | TD-008 规则：主按钮保持兼容，与 `ui-panel` 容器混用不冲突 |
-| `liquid-btn-ghost` | `TemplateModal` / `TemplateEditorView` / `AiChatView` | 次要操作按钮（取消、关闭等） | TD-008 规则：ghost 按钮保持兼容 |
-| `liquid-input` | `TemplateModal` / `TemplateEditorView` | 表单输入（标题、字段、标签等） | TD-008 规则：输入框保持兼容 |
-| `liquid-tag-*` | `TemplateModal` / `TemplateEditorView` / `AiChatView` | 状态标签、资源类型标签 | TD-008 规则：标签保持兼容 |
-| `liquid-card-scan` | `HomeView` | 统计卡装饰动效（`::after` 扫描线 + `animationDelay` 错峰） | TD-008 规则：装饰动效保留；`ui-panel` 提供容器、`liquid-card-scan` 仅提供装饰 |
-| `stagger-N` / `animate-slide-up` | `HomeView` / `KnowledgeBaseView`（切片 2 已记） / `ResourceView`（切片 1 已记） | 列表行入场动画 | 装饰动效保留 |
+| 类别 | 状态 | 说明 |
+|------|------|------|
+| `liquid-btn-*` / `liquid-input` / `liquid-tag-*` / `liquid-dialog*` | 🟢 已收口 | TD-027 建 `ui-*` 等价类，TD-028 完成业务视图与共享组件存量替换 |
+| `liquid-card-scan` | 🚫 保持兼容 | `HomeView` 统计卡装饰动效；`ui-panel` 提供容器，`liquid-card-scan` 仅提供装饰 |
+| `stagger-N` / `animate-slide-up` | 🚫 保持兼容 | 历史入场动画，后续只在明确视觉需求下保留 |
+| `LoginView` 品牌背景 | 🚫 保持兼容 | `login-card liquid-card` 与 `--_login-brand-gradient` 不参与 workspace 迁移 |
 
 迁移规则：
 
 - `liquid-card` 容器直接替换为 `ui-panel`，附加类（`group` / `animate-slide-up` / `stagger-N` / `liquid-card-scan` / 自定义 hover）原样保留。
-- 业务页面的 `liquid-btn-primary` / `liquid-btn-ghost` / `liquid-input` / `liquid-tag-*` 按 TD-008 规则保持兼容，**不替换**。
+- 业务页面和共享组件的按钮、输入框、标签、对话框优先使用 `ui-btn-*` / `ui-input` / `ui-tag-*` / `ui-dialog*`。
 - `LoginView` 品牌背景不参与迁移。
 - `liquid-card-scan::after` 装饰动效保留（`HomeView` 等页面仍在用）。
 - `liquid` 主题下 `ui-panel` 会自动套用 `:root[data-theme="liquid"] .ui-panel` 玻璃感覆盖（复用 `--_surface-card-bg` + `--_surface-glass-blur`），其他 3 主题维持白底细边框。
 
 #### 共享组件迁移清单（TD-026）
 
-按残留量从高到低对 4 个共享组件做 `liquid-card` 残留验证。每个组件独立 PR、独立验证。**实测全部 0 处 `liquid-card` 残留**——这 4 个组件从未使用 `liquid-card` 容器，仅使用了 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*`（按 TD-008 规则保持兼容）。
+按残留量从高到低对 4 个共享组件做 `liquid-card` 残留验证。每个组件独立 PR、独立验证。**实测全部 0 处 `liquid-card` 残留**——这 4 个组件从未使用 `liquid-card` 容器；其原子控件类已在 TD-028 后迁到 `ui-*`。
 
 | 组件 | 状态 | `liquid-card` 命中 | 备注 |
 |------|------|-------------------|------|
-| `FieldEditor` | 🟢 完成 | 0 处 | 实际使用 12 处 `liquid-input` + 3 处 `liquid-btn-ghost`，按例外清单保持兼容 |
-| `KGDetailPanel` | 🟢 完成 | 0 处 | 实际使用 2 处 `liquid-btn-ghost` + 3 处 `liquid-tag-*`，按例外清单保持兼容 |
-| `ConfirmDialog` | 🟢 完成 | 0 处 | 实际使用 `liquid-dialog-overlay` / `liquid-dialog` / `liquid-btn*`（含 `liquid-btn-danger`），按例外清单保持兼容 |
+| `FieldEditor` | 🟢 完成 | 0 处 | 原子控件已由 TD-028 迁到 `ui-input` / `ui-btn-ghost` |
+| `KGDetailPanel` | 🟢 完成 | 0 处 | 原子控件已由 TD-028 迁到 `ui-btn-ghost` / `ui-tag-*` |
+| `ConfirmDialog` | 🟢 完成 | 0 处 | 原子控件已由 TD-028 迁到 `ui-dialog*` / `ui-btn*` |
 | `KGGraph` | 🟢 完成 | 0 处 | 无 `liquid-*` 用法（任务卡残留量"1 处 `liquid-card`"为误计） |
-
-**未来接力**：
-- 4 个共享组件里现有的 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 存量使用 → 拆为 **TD-027**（补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类，作为 `ui-*` 体系扩展）+ **TD-028**（业务视图与共享组件的存量 `liquid-*` → `ui-*` 替换），**不在本债范围**。
 
 所有颜色/间距/z-index 优先使用 CSS 变量，避免引入新的散落硬编码。
 

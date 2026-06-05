@@ -15,6 +15,7 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-05 | DOC-013 工程文档门禁增强与 UI 迁移事实源收口 | 文档 / 工程规范 / 工具链 |  |  | `scripts/engineering/check_engineering_docs.py` |
 | 2026-06-05 | TD-023 收口 TD-020 文档一致性、断链与归档索引 | 文档 / 工程流程 / 跨 AI 交接 / follow-up |  |  | `docs/engineering/technical-debt.md#td-023-收口-td-020-文档一致性-断链与归档索引` |
 | 2026-06-05 | DOC-012 工程文档自动门禁与工作台瘦身 | 文档 / 工程规范 / 工具链 |  |  | `docs/plans/2026-06-05-doc-012-engineering-doc-gates-and-workbench-slimming-plan.md` |
 | 2026-06-05 | TD-020 统一 LLM provider resolver 与 factory 优先级事实源 | 技术债 / 重构 | [#46](https://github.com/MarkDanile/MetaEduBase/pull/46) | `2c15868` | `docs/engineering/technical-debt.md#td-020-统一-llm-provider-resolver-与-factory-优先级事实源` |
