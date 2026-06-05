@@ -7,7 +7,7 @@
     </PageHeader>
 
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-[var(--spacing-page)] animate-slide-up stagger-1">
-      <div v-for="(stat, i) in stats" :key="stat.label" class="liquid-card liquid-card-scan p-4" :style="{ animationDelay: (i * 1.5 + 6) + 's' }">
+      <div v-for="(stat, i) in stats" :key="stat.label" class="ui-panel liquid-card-scan p-4" :style="{ animationDelay: (i * 1.5 + 6) + 's' }">
         <div class="flex items-center gap-2.5 mb-2">
           <div class="w-8 h-8 rounded-lg flex items-center justify-center" :class="stat.bgClass">
             <component :is="stat.icon" :size="16" :stroke-width="1.5" :class="stat.iconClass" />
@@ -28,7 +28,7 @@
             v-for="item in navItems"
             :key="item.route"
             :to="item.route"
-            class="liquid-card p-4 group"
+            class="ui-panel p-4 group"
           >
             <div class="flex items-center gap-3">
               <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" :class="item.bgClass">
@@ -47,7 +47,7 @@
       </div>
 
       <div class="lg:col-span-2 animate-slide-up stagger-3">
-        <div class="liquid-card p-5 space-y-5">
+        <div class="ui-panel p-5 space-y-5">
           <div>
             <h2 class="text-[var(--text-subtitle)] font-semibold mb-3">快捷操作</h2>
             <div class="space-y-1.5">
