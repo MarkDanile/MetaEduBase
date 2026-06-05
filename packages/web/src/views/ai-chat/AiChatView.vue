@@ -26,7 +26,7 @@
               v-for="q in quickQuestions"
               :key="q"
               @click="sendQuick(q)"
-              class="text-left p-3 liquid-card text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
+              class="text-left p-3 ui-panel text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
             >
               {{ q }}
             </button>
