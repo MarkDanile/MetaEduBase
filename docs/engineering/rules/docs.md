@@ -9,6 +9,7 @@
 | work-log.md | docs/engineering/work-log.md | 已完成任务的一行式历史索引 |
 | workflow.md | docs/engineering/workflow.md | 跨 AI IDE / 插件开发流程 |
 | task-modes.md | docs/engineering/task-modes.md | 常见任务模式、类型与领域检查表 |
+| workbench.md | docs/engineering/rules/workbench.md | 当前工作台状态流、保留策略和任务卡片模板 |
 | ARCHITECTURE.md | 根目录 | 系统架构详述（API/Schema/流程） |
 | README.md | 根目录 | 快速开始、环境要求、部署总览 |
 | docs/specs/* | 目录 | 插件无关的功能需求、产品设计、验收标准 |
@@ -71,6 +72,7 @@ class KnowledgeNode(AggregateRoot):
 | 已完成任务历史索引 | `docs/engineering/work-log.md` |
 | 跨 AI IDE / 插件流程 | `docs/engineering/workflow.md` |
 | 任务类型、领域、开工条件和验收模式 | `docs/engineering/task-modes.md` |
+| 当前工作台状态流、保留策略和任务卡片模板 | `docs/engineering/rules/workbench.md` |
 | 技术债任务与定期复盘 | `docs/engineering/technical-debt.md` |
 | 长期架构、阶段路线、系统边界 | `ARCHITECTURE.md` |
 | 本地启动、依赖、迁移和常用运行命令 | `docs/engineering/rules/local-development.md` |

@@ -23,6 +23,12 @@
 5. 工作台：`当前进行中` 只保留活跃任务；`下一批候选任务` 只保留 1 到 3 个未完成候选；`最近完成` 最多 5 行。
 6. 入账：复核、测试或验收发现但未修复的问题，必须进入对应事实源；需要近期接力时再加入“下一批候选任务”。
 
+文档、规则、spec、plan、任务状态或交接信息发生变化时，额外运行：
+
+```bash
+scripts/check-engineering-docs
+```
+
 专项门禁按任务触发：行为变化声明、覆盖矩阵、前端请求生命周期等价矩阵、API / DTO 契约、数据完整性和 Git 合并流程仍以本文件和对应专项规则为准。
 
 ## 行为变化声明检查
@@ -49,8 +55,8 @@
 | 前端 Vue/TS | `pnpm --filter @metaedu/web lint` + `pnpm --filter @metaedu/web typecheck` | `pnpm --filter @metaedu/web build`、浏览器手动验证 |
 | API / DTO / Schema | 后端相关测试 + 前端 typecheck；涉及 shared 时运行 `pnpm --filter @metaedu/shared typecheck` | 契约测试或手动接口验证；契约规则见 `docs/engineering/rules/contracts.md` |
 | 数据库迁移 | Alembic upgrade 路径 + 相关 repository/API 测试 | downgrade 路径 |
-| 文档-only | `rg` 检查路径/编号/旧引用，人工阅读关键段落 | 无 |
-| AI 协作规则 | 检查 AGENTS.md、CLAUDE.md、current-work/workflow 索引一致 | 跨工具入口 dry run |
+| 文档-only | `scripts/check-engineering-docs` + `git diff --check` | 人工阅读关键段落 |
+| AI 协作规则 | `scripts/check-engineering-docs`；检查 AGENTS.md、CLAUDE.md、current-work/workflow 索引一致 | 跨工具入口 dry run |
 
 ## 覆盖矩阵
 

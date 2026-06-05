@@ -21,7 +21,7 @@
 执行者应按以下压缩顺序推进：
 
 1. 入口确认：读 `docs/engineering/current-work.md` 和本文件；用 `git status --short --branch` 确认范围。
-2. 最小验证：按改动范围运行最小必要命令。文档-only 通常是 `git diff --check` + 关键 `rg`；代码改动运行相关测试或质量门禁。
+2. 最小验证：按改动范围运行最小必要命令。文档-only 通常是 `scripts/check-engineering-docs` + `git diff --check`；代码改动运行相关测试或质量门禁。
 3. 范围边界：用 `git diff --name-status` 确认没有无关文件、生成物或资产清理混入。
 4. 提交链路：创建任务分支，暂存相关文件，commit，push，创建 PR。
 5. 合并检查：`gh pr view` + `gh pr checks`。如果可合并且没有阻塞，直接 squash merge。
