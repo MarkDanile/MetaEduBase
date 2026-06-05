@@ -31,7 +31,7 @@
       <div
         v-for="(item, i) in items"
         :key="item.id"
-        class="liquid-card p-4 group animate-slide-up"
+        class="ui-panel p-4 group animate-slide-up"
         :class="[`stagger-${Math.min(i + 1, 5)}`]"
       >
         <div class="flex items-center justify-between gap-4">

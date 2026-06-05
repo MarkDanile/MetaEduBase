@@ -403,13 +403,13 @@
 
 ### TD-025: 业务页面 `liquid-card` 容器统一迁移到 `ui-panel`
 
-状态：⚫ 待办
+状态：🟡 进行中
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P2 |
 | 领域 | 前端 / 设计系统 |
-| 事实源 | `docs/engineering/technical-debt.md#td-008` 交付记录 + `docs/engineering/rules/coding-style.md#迁移说明-td-008` |
+| 事实源 | `docs/engineering/technical-debt.md#td-008` 交付记录 + `docs/engineering/rules/coding-style.md#迁移说明-td-008` + `docs/engineering/rules/coding-style.md#业务页面迁移清单-td-025` |
 
 **证据**
 - TD-008 完成（2026-06-05）后，`ui-page-shell` / `ui-panel` / `ui-toolbar` / `ui-interactive-row` 已落地为共享类，`coding-style.md` 迁移说明已明确"`ui-*` 优先 / `liquid-*` 兼容"。
@@ -437,7 +437,8 @@
 - 4 主题（liquid / ink / navy / notion）下 `DatabaseView` / `ResourceView` / `ResourceLibraryView` 三个最高残留页面手工验收（`./dev.sh frontend` 启动后浏览器切换主题）；沙箱无浏览器时降级为 typecheck + lint + 视觉对照 `git diff` 自检。
 
 **交付记录**
-- 未完成。建议开工顺序：切片 1 → 切片 2 → 切片 3 → 切片 4。共享组件（`FieldEditor` / `KGDetailPanel` / `ConfirmDialog`）的 `liquid-card` 不在本次范围；如需后续接力可拆为 `TD-026` 等。
+- **切片 1 进行中**：接手工具 Claude Code，2026-06-05 开工。详见 `docs/engineering/current-work.md#当前进行中` TD-025 卡片。`main.css` 新增 `:root[data-theme="liquid"] .ui-panel` 玻璃感覆盖（复用 `--_surface-card-bg` + `--_surface-glass-blur`），3 个页面 `liquid-card` 容器全部替换为 `ui-panel`，附加类（`group` / `animate-slide-up` / `stagger-N` / 自定义 hover）原样保留。
+- 切片 2/3/4 未开始。共享组件（`FieldEditor` / `KGDetailPanel` / `ConfirmDialog`）的 `liquid-card` 不在本次范围；如需后续接力可拆为 `TD-026` 等。
 
 ### TD-009: 减少前后端契约漂移
 

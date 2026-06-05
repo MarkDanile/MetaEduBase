@@ -12,7 +12,7 @@
       <!-- Left panel: dataset list -->
       <div class="w-[260px] shrink-0 flex flex-col gap-2" style="max-height: calc(100vh - 80px)">
         <!-- Dataset list card -->
-        <div class="liquid-card flex flex-col overflow-hidden" style="flex: 1; min-height: 0">
+        <div class="ui-panel flex flex-col overflow-hidden" style="flex: 1; min-height: 0">
           <!-- Card header (always visible) -->
           <div class="flex items-center justify-between flex-shrink-0 px-3 pt-3">
             <div class="flex items-center gap-2" style="font-size: 16px">
@@ -85,7 +85,7 @@
 
         <!-- KG overview button -->
         <button
-          class="liquid-card px-3 py-2.5 flex items-center justify-between hover:bg-[var(--color-bg-hover)] transition-colors cursor-pointer flex-shrink-0"
+          class="ui-panel px-3 py-2.5 flex items-center justify-between hover:bg-[var(--color-bg-hover)] transition-colors cursor-pointer flex-shrink-0"
           style="font-size: 16px"
           :class="{ 'bg-[var(--color-accent-bg)]': showKgOverview }"
           @click="toggleKgOverview"
@@ -102,7 +102,7 @@
       <div class="flex-1 min-w-0">
         <!-- KG Overview mode -->
         <template v-if="showKgOverview">
-          <div class="liquid-card p-4">
+          <div class="ui-panel p-4">
             <div class="flex items-center justify-between mb-3">
               <div class="flex items-center gap-2">
                 <GitBranch :size="18" class="text-[var(--color-accent)]" />
@@ -139,7 +139,7 @@
           <LoadingSpinner v-if="loadingDetail" text="加载数据集..." />
 
           <template v-else-if="selected">
-            <div class="liquid-card p-4 mb-4 flex flex-wrap items-center gap-4">
+            <div class="ui-panel p-4 mb-4 flex flex-wrap items-center gap-4">
               <div class="flex items-center gap-2">
                 <FileSpreadsheet :size="18" class="text-[var(--color-accent)]" />
                 <span class="text-[var(--text-body)] font-medium text-[var(--color-ink)]">{{ selected.name }}</span>
@@ -165,7 +165,7 @@
             </div>
 
             <!-- Pipeline status -->
-            <div class="liquid-card p-4 mb-4">
+            <div class="ui-panel p-4 mb-4">
               <div class="flex items-center justify-between mb-3">
                 <h3 class="text-[var(--text-section-title)] font-medium text-[var(--color-ink)]">处理流水线</h3>
                 <div class="flex items-center gap-2">
@@ -204,7 +204,7 @@
             </div>
 
             <!-- Tabs -->
-            <div class="liquid-card p-4">
+            <div class="ui-panel p-4">
               <div class="flex gap-1 mb-4 border-b border-[var(--color-border)]">
                 <button
                   v-for="tab in tabs"
@@ -318,7 +318,7 @@
       @keydown.escape="showUpload = false"
     >
       <div class="absolute inset-0 bg-black/50" @click="showUpload = false" />
-      <div class="relative liquid-card p-6 w-[480px]">
+      <div class="relative ui-panel p-6 w-[480px]">
         <div class="flex items-center justify-between mb-4">
           <h2 class="text-[var(--text-page-title)] font-medium text-[var(--color-ink)]">上传数据集</h2>
           <button class="liquid-btn-ghost p-1" @click="showUpload = false">

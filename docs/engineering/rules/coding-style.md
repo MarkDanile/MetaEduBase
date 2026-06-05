@@ -90,6 +90,32 @@ cd packages/web && pnpm typecheck  # vue-tsc --noEmit
 
 `LayoutView.vue` + `PageHeader.vue` + `EmptyState.vue` 三个共享骨架组件，作为示例（TD-008 交付）。后续页面（`DatabaseView` / `ResourceView` / `KnowledgeBaseView` / `FileDetailView` / `ResourceLibraryView`）按业务需要逐步迁移到 `ui-*`，不在本轮范围。
 
+#### 业务页面迁移清单（TD-025）
+
+按业务残留量从高到低分切片迁移。每个切片独立 PR、独立验证。
+
+| 切片 | 页面 | 状态 | 残留量（迁入前） | 备注 |
+|------|------|------|------------------|------|
+| 1 | `DatabaseView` | 🟢 完成 | 8 处 | 切片 1，含 1 个上传对话框、5 个内容卡、1 个数据集列表卡、1 个 KG 总览按钮 |
+| 1 | `ResourceView` | 🟢 完成 | 1 处 | 切片 1，资源列表卡，保留 `animate-slide-up` + `stagger-N` 装饰动效 |
+| 1 | `ResourceLibraryView` | 🟢 完成 | 3 处 | 切片 1，文件夹树、文件夹右键菜单、文件列表区 |
+| 2 | `KnowledgeBaseView` | ⚫ 待办 | 16 处 | 切片 2，知识库列表与详情 |
+| 2 | `FileDetailView` | ⚫ 待办 | 12 处 | 切片 2，文件详情与抽取结果 |
+| 3 | `TemplateModal` | ⚫ 待办 | 8 处 | 切片 3（业务页 `liquid-btn-*` / `liquid-input` 例外显式登记） |
+| 3 | `TemplateEditorView` | ⚫ 待办 | 6 处 | 切片 3 |
+| 3 | `AiChatView` | ⚫ 待办 | 4 处 | 切片 3 |
+| 3 | `HomeView` | ⚫ 待办 | 3 处 | 切片 3，保留 `stagger-1/2/3` 装饰动效 |
+| 例外 | `LoginView` | 🚫 保持兼容 | 4 处 | 品牌背景与 `--_login-brand-gradient`，按 TD-008 规则不参与 workspace 迁移 |
+| 后续 | 共享组件 `FieldEditor` / `KGDetailPanel` / `ConfirmDialog` / `KGGraph` 的 `liquid-card` 残留 | ⚫ 待办 | 22 处 | TD-026 候选 |
+
+迁移规则：
+
+- `liquid-card` 容器直接替换为 `ui-panel`，附加类（`group` / `animate-slide-up` / `stagger-N` / 自定义 hover）原样保留。
+- 业务页面的 `liquid-btn-primary` / `liquid-btn-ghost` / `liquid-input` / `liquid-tag-*` 按 TD-008 规则保持兼容，**不替换**。
+- `LoginView` 品牌背景不参与迁移。
+- `liquid-card-scan::after` 装饰动效保留（`HomeView` 等页面仍在用）。
+- `liquid` 主题下 `ui-panel` 会自动套用 `:root[data-theme="liquid"] .ui-panel` 玻璃感覆盖（复用 `--_surface-card-bg` + `--_surface-glass-blur`），其他 3 主题维持白底细边框。
+
 所有颜色/间距/z-index 优先使用 CSS 变量，避免引入新的散落硬编码。
 
 **颜色：** `var(--color-ink)`, `var(--color-accent)`, `var(--color-accent-bg)`, `var(--color-accent-glow)`
