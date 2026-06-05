@@ -1145,3 +1145,14 @@
     display: none;
   }
 }
+
+/* ================================================================
+   TD-025: ui-panel 在 liquid 主题下保留玻璃感
+   复用 liquid 主题已声明的 --_surface-card-bg / --_surface-glass-blur，
+   仅覆盖背景与模糊，不重定义边框/阴影/hover（这些仍走 ui-panel 默认）。
+   ================================================================ */
+:root[data-theme="liquid"] .ui-panel {
+  background: var(--_surface-card-bg);
+  backdrop-filter: var(--_surface-glass-blur);
+  -webkit-backdrop-filter: var(--_surface-glass-blur);
+}
