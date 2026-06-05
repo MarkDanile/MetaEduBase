@@ -47,3 +47,54 @@
 | 2026-06-04 | TD-011 治理前端 lint warning | 技术债 / 基础设施 |  | `090242a` | `docs/engineering/technical-debt.md#td-011-治理前端-lint-warning` |
 | 2026-06-04 | TD-003 让前端 lint 质量门禁可运行 | 技术债 / 基础设施 |  | `090242a` | `docs/engineering/technical-debt.md#td-003-让前端-lint-质量门禁可运行` |
 | 2026-06-04 | DOC-001 统一并优化跨 AI 工程规则 | 文档 / 工程规范 |  | `c0bac8a` | `docs/engineering/workflow.md` |
+
+## 段落归档
+
+当一段工作由多个连续 PR / 任务组成、并构成一个相对独立的工程主题时，在此用一节记录总览，避免单行索引表把段落切碎。详细事实仍以对应 PR、merge commit、`technical-debt.md` 任务卡、`coding-style.md` 迁移说明为准。
+
+### 2026-06-05 设计系统迁移：`liquid-*` → `ui-*`
+
+一段连贯的 5 任务工作，把前端样式体系从「以 `liquid-*` 类为中心」迁移到「`ui-*` 优先 / `liquid-*` 兼容」。完成「calm workspace / token 化 / 不带装饰动效」的统一目标。
+
+**任务链与 PR**：
+
+| # | 任务 | 切片 | PR | Merge Commit | 关键事实 |
+|---|------|------|-----|--------------|----------|
+| 1 | TD-008 明确从 `liquid-*` 类到语义 UI 层的迁移路径 | 共享骨架 | [#53](https://github.com/MarkDanile/MetaEduBase/pull/53) | `1f32e4a` | 5 个 `ui-*` 容器层共享类（`ui-page-shell` / `ui-page-section` / `ui-panel` / `ui-toolbar` / `ui-interactive-row`）+ 3 个共享骨架组件迁移（`LayoutView` / `PageHeader` / `EmptyState`）；建立迁移规范（`coding-style.md#迁移说明-td-008`） |
+| 2 | TD-025 业务页面 `liquid-card` 容器统一迁移到 `ui-panel` | 业务视图（3 切片） | [#54](https://github.com/MarkDanile/MetaEduBase/pull/54) + [#55](https://github.com/MarkDanile/MetaEduBase/pull/55) + [#56](https://github.com/MarkDanile/MetaEduBase/pull/56) | `558884e` + `90763d1` + `26d4654` | 7 业务页面 20 处 `liquid-card` → `ui-panel`；`liquid` 主题下 `ui-panel` 加玻璃感覆盖（`main.css` 行 1154） |
+| 3 | TD-026 共享组件 `liquid-card` 残留验证 | 零代码收口 | [#58](https://github.com/MarkDanile/MetaEduBase/pull/58) | `7735046` | 严格 `rg "liquid-card"` 验证 4 个共享组件 0 命中；任务卡残留量 22 处为 TD-008 快照误计 |
+| 4 | TD-027 补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类 | 设计系统扩展 | [#59](https://github.com/MarkDanile/MetaEduBase/pull/59) | `040f7ad` | 12 个 `ui-*` 原子层共享类（`ui-input` / `ui-btn` 4 类 / `ui-tag` 5 类 / `ui-dialog` 2 类）+ 2 个新 token（`--overlay-bg` / `--btn-ripple`，4 主题分别给值） |
+| 5 | TD-028 业务视图与共享组件的 `liquid-*-atomic` 存量替换 | 机械批量替换 | [#61](https://github.com/MarkDanile/MetaEduBase/pull/61) | `349c743` | 12 文件 119 处 `liquid-input` / `liquid-btn*` / `liquid-tag*` / `liquid-dialog*` → `ui-*` + 5 处 `\`liquid-tag-${color}\`` 模板字符串迁移 |
+
+**段落级 PR（状态回填）**：[#57](https://github.com/MarkDanile/MetaEduBase/pull/57) (TD-008/TD-025 状态回填) + [#60](https://github.com/MarkDanile/MetaEduBase/pull/60) (TD-027 状态回填) + [#62](https://github.com/MarkDanile/MetaEduBase/pull/62) (TD-028 状态回填)。
+
+**最终成果**：
+- `ui-*` 容器层（5）+ 原子层（12）= **17 个共享类**，全部 token 化复用现有 `--color-*` / `--radius-*` / `--shadow-*` / `--duration-*` / `--ease-*` / `--surface-*` token
+- 业务视图与共享组件 100% 切到 `ui-*`（容器 + 原子）
+- 4 主题（liquid / ink / navy / notion）视觉不发生可观察退化（除 `liquid-card:hover` 上浮取消、`wet-line` 装饰条移除、`animate-slide-up` 入场动画移除、`liquid-card-scan` 装饰保留等已声明的有意行为变化外）
+- `liquid-*` 类全部保留为兼容别名（`main.css` 中），无破坏性删除
+- `LoginView` 品牌背景 / `liquid-card` / `liquid-card-scan` 装饰动效按 TD-008 规则保持兼容
+
+**过程中的关键决策**（按"先想后写 + 用户确认"原则）：
+- TD-008 范围：ui-panel 玻璃感覆盖在 liquid 主题下加；其他 3 主题维持白底细边框
+- TD-025 切片 1：保留 `liquid-card-scan` 装饰动效；保留 `animate-slide-up` + `stagger-N`
+- TD-025 切片 3：保留 `HomeView` `liquid-card-scan` 装饰；`coding-style.md` 显式登记 6 类例外（`liquid-btn-primary` / `liquid-btn-ghost` / `liquid-input` / `liquid-tag-*` / `liquid-card-scan` / `stagger-N` & `animate-slide-up`）
+- TD-026 路径选择：用户从三选项中选"实测收口"（任务卡残留量与实际不符规律已在 TD-025 切片 2/3 出现 3 次）；设计系统扩展拆为 TD-027（补类）+ TD-028（替换）
+- TD-027 自动模式 build 拒批硬编码 rgba → 用户选"确实抽 2 个新 token" → 补 `--overlay-bg` / `--btn-ripple` 4 主题分别给值
+- TD-027 用户选择 ui-btn-primary 保留装饰（点按泠漪）+ 动效节奏与 liquid-* 一致 + 5 个 ui-tag 变体
+- TD-028 一次完成 119 处（杠杆最大）；LoginView 也迁（仅 input/btn，品牌背景仍例外）；零差异
+
+**复盘 / 经验**：
+1. **任务卡残留量与实际不符的规律在 TD-025 切片 2/3 + TD-026 反复出现**（4 次：TemplateModal 8→0、TemplateEditorView 6→0、FieldEditor 12→0、KGDetailPanel 4→0、ConfirmDialog 5→0、KGGraph 1→0）。任务卡编写时把页面里所有 `liquid-*` 类（`liquid-btn-*` / `liquid-input` / `liquid-tag-*` / `liquid-dialog*` / `liquid-card`）都误计入 `liquid-card` 残留。后续技术债应明确"以 `rg` 实测为准，不使用任务卡原残留量"作为新债编写约定。
+2. **从长到短的 sed 替换顺序是机械替换的安全保证**（`liquid-btn-primary` → `liquid-btn` 基类 → `liquid-tag-blue/green/amber/purple` → `liquid-tag` 基类 → `liquid-input` → `liquid-dialog-overlay` → `liquid-dialog`），保证子串不被父串吞掉。
+3. **token 化与命名一致性是设计系统扩展的前提**。TD-027 在 PR #59 第一次提交时，`ui-dialog-overlay` 与 `ui-btn-primary::after` 仍使用硬编码 `rgba(0, 0, 0, 0.2)` 与 `rgba(255, 255, 255, 0.25)`（从 `liquid-*` 1:1 复制），自动模式 build 分类器拒批后必须补 `--overlay-bg` / `--btn-ripple` 2 个新 token（4 主题分别给值）。事后看，TD-008 应在建 `ui-panel` 玻璃覆盖时同步补 2 个 token，但当时是"`ui-panel` 单独覆盖"未扩到 4 类。**建议把 `--overlay-bg` / `--btn-ripple` 路径在 `coding-style.md` 写明"任何 `ui-*` 新类必须在 main.css 中以 token 形式引用颜色，不允许硬编码 rgba"**——但本工作已通过 TD-027 满足此约束。
+4. **状态回填 PR 是 docs-only 的"小 PR"模式**。3 个状态回填 PR（#57、#60、#62）每次 2-3 个文件 + 1 个原子提交，专门把 `current-work.md` 候选区清理 + 最近完成区追加 + `technical-debt.md` 总览表状态修正，保持 `quality-gates.md#完成门禁#3`（状态不自相矛盾）。这种 PR 没有代码变更但对跨 AI 交接极重要。
+5. **`liquid-*` 作为兼容别名长期保留是设计系统迁移的正确策略**。5 个任务全部完成，但 `main.css` 中 `liquid-*` 类未删除（也不应该删）；新增 `ui-*` 体系与 `liquid-*` 1:1 镜像，纯属"新约定优先"+"历史兼容保留"的并存模式。后续 AI IDE 接手时只需遵循 `coding-style.md#迁移说明-td-008` 即可。
+
+**未来接力**：
+- TD-009 减少前后端契约漂移（P2，API / 类型）：选高价值契约族（模板字段或任务状态），建共享 schema 检查。
+
+**主要文档事实源**：
+- 迁移规范：[docs/engineering/rules/coding-style.md#迁移说明-td-008](rules/coding-style.md)
+- 任务清单：[docs/engineering/rules/coding-style.md#业务页面迁移清单-td-025](rules/coding-style.md) + [docs/engineering/rules/coding-style.md#共享组件迁移清单-td-026](rules/coding-style.md)
+- 任务总账：5 个 TD 任务卡（[TD-008](technical-debt.md) / [TD-025](technical-debt.md) / [TD-026](technical-debt.md) / [TD-027](technical-debt.md) / [TD-028](technical-debt.md)）
