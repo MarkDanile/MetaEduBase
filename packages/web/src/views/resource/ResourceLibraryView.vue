@@ -4,7 +4,7 @@
 
     <div class="flex gap-4 mt-4" style="min-height: calc(100vh - 200px)">
       <!-- Left: Folder tree -->
-      <div class="w-[240px] flex-shrink-0 liquid-card p-3 flex flex-col gap-2">
+      <div class="w-[240px] flex-shrink-0 ui-panel p-3 flex flex-col gap-2">
         <div class="flex items-center justify-between mb-1">
           <span class="text-[var(--text-caption)] font-medium text-[var(--color-ink)]">文件夹</span>
           <button
@@ -91,7 +91,7 @@
             <!-- Inline dropdown menu -->
             <div
               v-if="activeFolderMenu === folder.id"
-              class="absolute right-0 top-full z-10 mt-1 py-1 rounded-lg liquid-card shadow-lg border border-[var(--color-border)] min-w-[80px]"
+              class="absolute right-0 top-full z-10 mt-1 py-1 rounded-lg ui-panel shadow-lg border border-[var(--color-border)] min-w-[80px]"
               @click.stop
             >
               <button
@@ -112,7 +112,7 @@
       </div>
 
       <!-- Right: File list -->
-      <div class="flex-1 liquid-card p-4 flex flex-col gap-3">
+      <div class="flex-1 ui-panel p-4 flex flex-col gap-3">
         <!-- Upload area -->
         <div
           class="border-2 border-dashed border-[var(--color-border)] rounded-xl p-4 text-center transition-colors cursor-pointer"
