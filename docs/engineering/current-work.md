@@ -22,7 +22,8 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| TD-026 共享组件 `liquid-card` 残留统一迁移到 `ui-panel` | ⚫ 待办 | P3 | 前端 / 设计系统 | 按共享组件残留量（`FieldEditor` 12 / `KGDetailPanel` 4 / `ConfirmDialog` 5 / `KGGraph` 1 = 22 处）切片；TD-025 业务视图迁移已完成，本债为设计系统迁移最后一段。 |
+| TD-027 补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类（设计系统扩展） | ⚫ 待办 | P3 | 前端 / 设计系统 | 在 `main.css` 追加 12 个新共享类（`ui-input` / `ui-btn` 4 类 / `ui-tag` 5 类 / `ui-dialog` 2 类）+ `liquid` 主题 `ui-btn-primary` 玻璃感覆盖 + `coding-style.md` 迁移说明扩 4 类。 |
+| TD-028 业务视图与共享组件的 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 存量替换 | ⚫ 待办 | P3 | 前端 / 设计系统 | 依赖 TD-027 先补 `ui-*` 等价物；按业务视图残留量分切片。 |
 | TD-009 减少前后端契约漂移 | ⚫ 待办 | P2 | API / 类型 | 选高价值契约族（模板字段或任务状态），建共享 schema 检查。 |
 
 ## 最近完成
@@ -31,7 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
-| 2026-06-05 | TD-025 业务页面 `liquid-card` 容器统一迁移到 `ui-panel`（业务视图部分完成） | 🟢 完成 | 3 切片累计 7 业务页面 20 处 `liquid-card` → `ui-panel`：切片 1（PR #54）：DatabaseView 8 + ResourceView 1 + ResourceLibraryView 3 = 12 处，`main.css` 加 `:root[data-theme="liquid"] .ui-panel` 玻璃感覆盖；切片 2（PR #55）：KnowledgeBaseView 1 + FileDetailView 3 = 4 处，KBView 保留选中态 `ring-1 ring-[var(--color-accent)]` 与 `animate-slide-up`+`stagger-N` 装饰动效；切片 3（PR #56）：HomeView 3 + AiChatView 1 = 4 处，HomeView 统计卡保留 `liquid-card-scan` 装饰动效，`coding-style.md` 追加显式例外清单段（`liquid-btn-primary` / `liquid-btn-ghost` / `liquid-input` / `liquid-tag-*` / `liquid-card-scan` / `stagger-N` & `animate-slide-up`）。`TemplateModal` / `TemplateEditorView` 实测无 `liquid-card` 残留。`rg -c "liquid-card" packages/web/src/views/` 最终仅剩 `LoginView:1` + `HomeView:1`，其他 7 业务视图 0 命中。`LoginView` 品牌背景按 TD-008 规则保持兼容。共享组件（`FieldEditor` / `KGDetailPanel` / `ConfirmDialog` / `KGGraph` 22 处）未在本次范围，已登记为 TD-026 候选。 | `docs/engineering/technical-debt.md#td-025` |
+| 2026-06-05 | TD-026 共享组件 `liquid-card` 残留验证 | 🟢 完成 | 严格 `rg "liquid-card"` 验证 4 个共享组件（`FieldEditor` / `KGDetailPanel` / `ConfirmDialog` / `KGGraph`）全部 0 命中。任务卡线索的"22 处"是 TD-008 完成时把所有 `liquid-*`（含 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*`）都误计入 `liquid-card` 残留的快照。4 个共享组件里现有的 `liquid-input` / `liquid-btn-*` 等按 TD-008 规则保持兼容，**不**在本债范围；已拆为 TD-027（补 `ui-*` 等价共享类）+ TD-028（业务视图与共享组件存量替换）作为后续接力。 | `docs/engineering/technical-debt.md#td-026` |
 
 ## 最近完成
 
