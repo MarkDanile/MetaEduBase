@@ -1,5 +1,7 @@
 # TD-007 收敛 DatabaseView 请求状态到 Vue Query — Plan
 
+> **交付历史（2026-06-05）：** TD-007 已通过 PR #36（merge commit `350acd2`）合并到 `main`。本文保留为历史实施计划；下方清单已按最终交付状态收口，真实交付事实以 `docs/engineering/technical-debt.md#td-007-减少前端请求状态处理重复` 和 PR #36 为准。
+
 ## 任务入口
 
 - Spec: `docs/specs/2026-06-05-td-007-databaseview-vue-query.md`
@@ -19,8 +21,8 @@
 
 ### 2. 改造 `main.ts`：注册 queryClient 与全局 onError
 
-- [ ] 引入 `QueryClient` / `QueryCache` / `VueQueryPlugin`
-- [ ] 构造 `queryClient`：
+- [x] 引入 `QueryClient` / `QueryCache` / `VueQueryPlugin`
+- [x] 构造 `queryClient`：
   ```typescript
   const queryClient = new QueryClient({
     queryCache: new QueryCache({
@@ -28,63 +30,63 @@
     }),
   });
   ```
-- [ ] `app.use(VueQueryPlugin, { queryClient })`
-- [ ] 确认 import 路径：`@tanstack/vue-query` 与 `useToast` 都在 web 包
+- [x] `app.use(VueQueryPlugin, { queryClient })`
+- [x] 确认 import 路径：`@tanstack/vue-query` 与 `useToast` 都在 web 包
 
 **验证点**：`pnpm --filter @metaedu/web typecheck` 通过。
 
 ### 3. 新增 `packages/web/src/views/database/queries.ts`
 
-- [ ] 集中 `datasetKeys` 树形 query key
-- [ ] 集中 `useDatasetsQuery` / `useDatasetTasksQuery` / `useDatasetRowsQuery` /
+- [x] 集中 `datasetKeys` 树形 query key
+- [x] 集中 `useDatasetsQuery` / `useDatasetTasksQuery` / `useDatasetRowsQuery` /
   `useDatasetKgQuery` / `useKgOverviewQuery` 五个 useQuery 封装
-- [ ] 集中 `useUploadDatasetMutation` / `useDeleteDatasetMutation` /
+- [x] 集中 `useUploadDatasetMutation` / `useDeleteDatasetMutation` /
   `useRetryTasksMutation` / `useReinitializeMutation` / `useRebuildKgMutation`
   五个 useMutation 封装
-- [ ] 所有 query 的 queryFn 调对应的 `structuredDataApi` / `knowledgeApi`，
+- [x] 所有 query 的 queryFn 调对应的 `structuredDataApi` / `knowledgeApi`，
   返回 `.data`（不再返回 axios response）
-- [ ] 错误统一交给 `QueryCache.onError` 处理，query 内部不重复 toast
+- [x] 错误统一交给 `QueryCache.onError` 处理，query 内部不重复 toast
 
 **验证点**：文件可以被 `DatabaseView.vue` import；typecheck 通过。
 
 ### 4. 重构 `DatabaseView.vue`
 
-- [ ] 删除 6 个 `loading*` ref、1 个 `uploading` ref、1 个 `rebuildingKg` ref
-- [ ] 删除 5 个 `load*` 函数（loadDatasets / loadTasks / loadRows / loadKg /
+- [x] 删除 6 个 `loading*` ref、1 个 `uploading` ref、1 个 `rebuildingKg` ref
+- [x] 删除 5 个 `load*` 函数（loadDatasets / loadTasks / loadRows / loadKg /
   loadKgOverview）
-- [ ] 删除 5 个 mutation 函数（doUpload / doDelete / retryTasks /
+- [x] 删除 5 个 mutation 函数（doUpload / doDelete / retryTasks /
   reinitialize / doRebuildKg）
-- [ ] 删除 `pollTimer` / `startPolling` / `stopPolling`（替换为
+- [x] 删除 `pollTimer` / `startPolling` / `stopPolling`（替换为
   `useDatasetTasksQuery` 的 `refetchInterval`）
-- [ ] 引入 5 个 `useXxxQuery` + 5 个 `useXxxMutation` 替换
-- [ ] `loading` 等模板内 `v-if` 改为读 `query.isLoading.value` /
+- [x] 引入 5 个 `useXxxQuery` + 5 个 `useXxxMutation` 替换
+- [x] `loading` 等模板内 `v-if` 改为读 `query.isLoading.value` /
   `query.isFetching.value` / `mutation.isPending.value`
-- [ ] watch 联动保留：内部 fetch 改为 `query.refetch()` 或
+- [x] watch 联动保留：内部 fetch 改为 `query.refetch()` 或
   `mutation.mutate()`
-- [ ] `onMounted` 移除显式 `loadDatasets()`（`useDatasetsQuery` 自动触发）
-- [ ] `onUnmounted` 移除 `stopPolling()`（Vue Query 自动清理）
-- [ ] `selectDataset` 改为只 set `selectedId.value`，由 query 自动重 fetch
+- [x] `onMounted` 移除显式 `loadDatasets()`（`useDatasetsQuery` 自动触发）
+- [x] `onUnmounted` 移除 `stopPolling()`（Vue Query 自动清理）
+- [x] `selectDataset` 改为只 set `selectedId.value`，由 query 自动重 fetch
 
 **验证点**：typecheck / build / lint 通过；模板内的 `v-if="loading"` 等
 数据绑定全部有来源；行为不变。
 
 ### 5. 验证
 
-- [ ] `cd packages/web && pnpm --filter @metaedu/web typecheck` 退出码 0
-- [ ] `cd packages/web && pnpm --filter @metaedu/web build` 退出码 0
-- [ ] `cd packages/web && pnpm --filter @metaedu/web lint` 退出码 0（无新增 warning）
-- [ ] 手动核对模板中 v-if 数据源全部对应到 query/mutation 状态
+- [x] `cd packages/web && pnpm --filter @metaedu/web typecheck` 退出码 0
+- [x] `cd packages/web && pnpm --filter @metaedu/web build` 退出码 0
+- [x] `cd packages/web && pnpm --filter @metaedu/web lint` 退出码 0（无新增 warning）
+- [x] 手动核对模板中 v-if 数据源全部对应到 query/mutation 状态
 
 ### 6. Git 闭环
 
-- [ ] 同步 `docs/engineering/current-work.md` 任务卡片状态
-- [ ] 分支：`git checkout -b refactor/td-007-databaseview-vue-query`
-- [ ] 提交：`refactor(web): TD-007 migrate DatabaseView requests to Vue Query`
-- [ ] push：`git push -u origin refactor/td-007-databaseview-vue-query`
-- [ ] PR：`gh pr create ...` Summary / Scope / Validation / Risks / Docs
-- [ ] 检查 `gh pr checks` 通过
-- [ ] squash merge：`gh pr merge --squash --delete-branch`
-- [ ] 回填 `current-work.md` 最近完成 + `technical-debt.md` 备注 + `work-log.md` 索引
+- [x] 同步 `docs/engineering/current-work.md` 任务卡片状态
+- [x] 分支：`git checkout -b refactor/td-007-databaseview-vue-query`
+- [x] 提交：`refactor(web): TD-007 migrate DatabaseView requests to Vue Query`
+- [x] push：`git push -u origin refactor/td-007-databaseview-vue-query`
+- [x] PR：`gh pr create ...` Summary / Scope / Validation / Risks / Docs
+- [x] 检查 `gh pr checks` 通过
+- [x] squash merge：`gh pr merge --squash --delete-branch`
+- [x] 回填 `current-work.md` 最近完成 + `technical-debt.md` 备注 + `work-log.md` 索引
 
 ## 任务拆分
 

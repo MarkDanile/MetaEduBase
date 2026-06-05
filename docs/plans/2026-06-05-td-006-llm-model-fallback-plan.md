@@ -1,5 +1,7 @@
 # TD-006 集中 LLM provider / 模型 fallback 策略 — Plan
 
+> **交付历史（2026-06-05）：** TD-006 已通过 PR #35（merge commit `042e4a9`）合并到 `main`。本文保留为历史实施计划；下方清单已按最终交付状态收口，真实交付事实以 `docs/engineering/technical-debt.md#td-006-集中-llm-provider-和模型-fallback-策略` 和 PR #35 为准。
+
 ## 任务入口
 
 - Spec: `docs/specs/2026-06-05-td-006-llm-model-fallback.md`
@@ -13,8 +15,8 @@
 ### 1. 新增 `app/shared/llm/chat_with_fallback.py`
 
 - [x] spec/plan 起草
-- [ ] 新建 `app/shared/llm/chat_with_fallback.py`，导出 `chat_with_model_fallback`
-- [ ] 函数签名：
+- [x] 新建 `app/shared/llm/chat_with_fallback.py`，导出 `chat_with_model_fallback`
+- [x] 函数签名：
   ```python
   async def chat_with_model_fallback(
       messages: list[dict],
@@ -28,7 +30,7 @@
       timeout: float = 60.0,
   ) -> str
   ```
-- [ ] 实现：
+- [x] 实现：
   1. 先 `chat(messages, provider=fast_provider, model=fast_model, ...)`
   2. 失败时 `logger.warning("init_by_ai flash model failed, fallback to default DeepSeek model: %s", err)` 然后
      `chat(messages, provider=fallback_provider, model=fallback_model or settings.deepseek_model, ...)`
@@ -38,8 +40,8 @@
 
 ### 2. 重构 `template/service.py`
 
-- [ ] 删除私有 `_call_llm` 函数（35 行）
-- [ ] `init_by_ai` 中把 `content = await _call_llm(system_prompt, user_prompt)` 改为：
+- [x] 删除私有 `_call_llm` 函数（35 行）
+- [x] `init_by_ai` 中把 `content = await _call_llm(system_prompt, user_prompt)` 改为：
   ```python
   from app.shared.llm.chat_with_fallback import chat_with_model_fallback
   try:
@@ -58,13 +60,13 @@
       logger.warning(f"LLM call failed after flash→pro fallback: {e}")
       content = json.dumps(_fallback_fields())
   ```
-- [ ] 保留 `_fallback_fields()` 函数（仍需要兜底）
+- [x] 保留 `_fallback_fields()` 函数（仍需要兜底）
 
 **验证点**：template/service.py 中 `_call_llm` 定义消失；调用点改为新 helper。
 
 ### 3. 编写 `tests/shared/test_chat_model_fallback.py`
 
-- [ ] mock `app.shared.llm.chat_with_fallback.chat`（被新 helper 调用的底层），
+- [x] mock `app.shared.llm.chat_with_fallback.chat`（被新 helper 调用的底层），
   验证：
   - fast 成功 → helper 调一次 chat 返回 fast 结果，logger.warning 未被调用
   - fast 抛 `ProviderUnavailable` → helper 调第二次 chat 返回 fallback 结果，logger.warning 被调用一次
@@ -77,21 +79,21 @@
 
 ### 4. 验证
 
-- [ ] `pytest tests/shared/test_chat_model_fallback.py -v` 退出码 0
-- [ ] `pytest -q` 退出码 0（baseline 126+ passed）
-- [ ] `ruff check app/ tests/` 退出码 0
-- [ ] `rg -n "def _call_llm" packages/server-python/app/contexts/template/` 命中 0 行
+- [x] `pytest tests/shared/test_chat_model_fallback.py -v` 退出码 0
+- [x] `pytest -q` 退出码 0（baseline 126+ passed）
+- [x] `ruff check app/ tests/` 退出码 0
+- [x] `rg -n "def _call_llm" packages/server-python/app/contexts/template/` 命中 0 行
 
 ### 5. Git 闭环
 
-- [ ] 同步 `docs/engineering/current-work.md` 任务卡片状态
-- [ ] 分支：`git checkout -b refactor/td-006-llm-model-fallback`
-- [ ] 提交：`refactor(server): TD-006 centralize LLM model fallback for template service`
-- [ ] push：`git push -u origin refactor/td-006-llm-model-fallback`
-- [ ] PR：`gh pr create ...` Summary / Scope / Validation / Risks / Docs
-- [ ] 检查 `gh pr checks` 通过
-- [ ] squash merge：`gh pr merge --squash --delete-branch`
-- [ ] 回填 `current-work.md` 最近完成 + `technical-debt.md` 备注 + `work-log.md` 索引
+- [x] 同步 `docs/engineering/current-work.md` 任务卡片状态
+- [x] 分支：`git checkout -b refactor/td-006-llm-model-fallback`
+- [x] 提交：`refactor(server): TD-006 centralize LLM model fallback for template service`
+- [x] push：`git push -u origin refactor/td-006-llm-model-fallback`
+- [x] PR：`gh pr create ...` Summary / Scope / Validation / Risks / Docs
+- [x] 检查 `gh pr checks` 通过
+- [x] squash merge：`gh pr merge --squash --delete-branch`
+- [x] 回填 `current-work.md` 最近完成 + `technical-debt.md` 备注 + `work-log.md` 索引
 
 ## 任务拆分
 
