@@ -71,6 +71,31 @@ async def _check_pipeline_stale(
     return is_stale
 
 
+def _build_parsed_structured_data(full_text: str, section_count: int) -> dict[str, object]:
+    """Build the stable structured_data container written by parse_document."""
+    return {"full_text": full_text, "section_count": section_count}
+
+
+def _merge_template_structured_data(
+    existing: object,
+    template_data: dict[str, object],
+) -> dict[str, object]:
+    """Merge template extraction output into the structured_data container."""
+    if not isinstance(template_data, dict):
+        raise TypeError("template_data must be a dict")
+
+    if isinstance(existing, str):
+        existing = json.loads(existing)
+
+    if isinstance(existing, dict):
+        merged: dict[str, object] = dict(existing)
+    else:
+        merged = {}
+
+    merged["template"] = dict(template_data)
+    return merged
+
+
 @shared_task(name="parse_document")
 def parse_document(file_id_str: str, tenant_id_str: str, pipeline_version: str = ""):
     import asyncio
@@ -148,10 +173,12 @@ def parse_document(file_id_str: str, tenant_id_str: str, pipeline_version: str =
                     "WHERE id = :fid"
                 ),
                 {
-                    "data": json.dumps({
-                        "full_text": parsed.full_text,
-                        "section_count": len(parsed.sections),
-                    }),
+                    "data": json.dumps(
+                        _build_parsed_structured_data(
+                            parsed.full_text,
+                            len(parsed.sections),
+                        )
+                    ),
                     "fid": file_id,
                 },
             )
@@ -739,11 +766,7 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
                 if existing and existing["structured_data"]
                 else "{}"
             )
-            if isinstance(existing_raw, str):
-                existing_data = json.loads(existing_raw)
-            else:
-                existing_data = dict(existing_raw)
-            existing_data["template"] = template_data
+            existing_data = _merge_template_structured_data(existing_raw, template_data)
 
             await session.execute(
                 text(
