@@ -277,9 +277,9 @@
 领域：前端 / 运行时稳定性 / 测试
 证据：`packages/web/src/views/database/DatabaseView.vue:488-497` 和 `packages/web/src/views/resource/FileDetailView.vue:249-258` 在 `useDatasetTasksQuery()` / `useFileTasksQuery()` 的参数中传入 `computed(() => tasksQuery.data.value...)`，但 `tasksQuery` 自身仍在初始化；最小 Vue Query 复现脚本输出 `ReferenceError: Cannot access 'q' before initialization`。`pnpm --filter @metaedu/web lint`、`typecheck`、`build` 均可通过，说明现有静态门禁没有捕获该运行时问题。
 问题：任务轮询条件依赖尚未完成初始化的 query 变量，页面 setup 阶段可能直接崩溃。该问题来自 TD-015 / TD-017 / TD-018 的 Vue Query 迁移模式，如果不补运行时 smoke 或组合式函数回归测试，后续类似迁移仍可能复制同类错误。
-完成标准：`DatabaseView` 和 `FileDetailView` 的 query 初始化参数不再引用正在声明的 query 变量；轮询条件改为独立的 ref/computed、query 创建后的派生状态，或在 composable 内部以不会触发 TDZ 的方式处理；保留”仅存在 running / pending 任务时 3s 轮询”的用户可见行为；补充或记录能覆盖两个页面 setup 的 smoke / mount / 浏览器验证。
-验证方式：`pnpm --filter @metaedu/web lint`、`pnpm --filter @metaedu/web typecheck`、`pnpm --filter @metaedu/web build` 均退出码 0；通过浏览器或组件 smoke 打开 / 挂载 `DatabaseView` 与 `FileDetailView`，确认页面初始化不抛 ReferenceError；`rg -n “tasksQuery\\.data\\.value” packages/web/src/views/database/DatabaseView.vue packages/web/src/views/resource/FileDetailView.vue` 不再命中 query 初始化参数内的自引用。
-备注：2026-06-05 Codex 复核 TD-016 / TD-017 / TD-018 后新增。2026-06-05 由 Claude Code 接手完成。Spec：`docs/specs/2026-06-05-td-019-vue-query-self-reference.md`；Plan：`docs/plans/2026-06-05-td-019-vue-query-self-reference-plan.md`；等价矩阵：`docs/engineering/matrices/td-019-vue-query-self-reference-equivalence.md`。改动：把”是否轮询”判断从调用方（页面）下沉到 query hook 内部；`useDatasetTasksQuery` / `useFileTasksQuery` 的 `refetchInterval` 改用函数形式 `(query) => hasActive ? 3000 : false`，从 `query.state.data` 派生 `hasActive`；函数在每次 fetch 完成后被 Vue Query 调用，**不参与 setup 阶段的同步评估**，从而避开 TDZ；调用方 `DatabaseView` / `FileDetailView` 删除 `polling` 参数；模板 `polling` 改用 `tasksQuery` 声明之后独立定义的 computed（依赖 `tasksQuery.data.value`，但因 `tasksQuery` 已声明完成，不构成 TDZ）。行为不变：3s 轮询仅在存在 running/pending 任务时启用；模板 `polling` 提示；`watch(polling)` true→false 触发对应 query refetch；mutation 行为全部保留。验证：`pnpm --filter @metaedu/web typecheck` 退出码 0；`pnpm --filter @metaedu/web build` 退出码 0；`pnpm --filter @metaedu/web lint` 退出码 0；最小 Vue 复现脚本对照验证：修复前 `ReferenceError: Cannot access 'tasksQuery' before initialization`、修复后 setup 正常完成且 `refetchInterval = 3000`（启用轮询）；`rg -n “tasksQuery\.data\.value” packages/web/src/views/database/DatabaseView.vue packages/web/src/views/resource/FileDetailView.vue` 只命中声明后的 `tasks` computed 行（符合预期）。PR #42（https://github.com/MarkDanile/MetaEduBase/pull/42），merge commit `387d8f8`，完成日期 2026-06-05。
+完成标准：`DatabaseView` 和 `FileDetailView` 的 query 初始化参数不再引用正在声明的 query 变量；轮询条件改为独立的 ref/computed、query 创建后的派生状态，或在 composable 内部以不会触发 TDZ 的方式处理；保留“仅存在 running / pending 任务时 3s 轮询”的用户可见行为；补充或记录能覆盖两个页面 setup 的 smoke / mount / 浏览器验证。
+验证方式：`pnpm --filter @metaedu/web lint`、`pnpm --filter @metaedu/web typecheck`、`pnpm --filter @metaedu/web build` 均退出码 0；通过浏览器或组件 smoke 打开 / 挂载 `DatabaseView` 与 `FileDetailView`，确认页面初始化不抛 ReferenceError；`rg -n "tasksQuery\\.data\\.value" packages/web/src/views/database/DatabaseView.vue packages/web/src/views/resource/FileDetailView.vue` 不再命中 query 初始化参数内的自引用。
+备注：2026-06-05 Codex 复核 TD-016 / TD-017 / TD-018 后新增。2026-06-05 由 Claude Code 接手完成。Spec：`docs/specs/2026-06-05-td-019-vue-query-self-reference.md`；Plan：`docs/plans/2026-06-05-td-019-vue-query-self-reference-plan.md`；等价矩阵：`docs/engineering/matrices/td-019-vue-query-self-reference-equivalence.md`。改动：把“是否轮询”判断从调用方（页面）下沉到 query hook 内部；`useDatasetTasksQuery` / `useFileTasksQuery` 的 `refetchInterval` 改用函数形式 `(query) => hasActive ? 3000 : false`，从 `query.state.data` 派生 `hasActive`；函数在每次 fetch 完成后被 Vue Query 调用，**不参与 setup 阶段的同步评估**，从而避开 TDZ；调用方 `DatabaseView` / `FileDetailView` 删除 `polling` 参数；模板 `polling` 改用 `tasksQuery` 声明之后独立定义的 computed（依赖 `tasksQuery.data.value`，但因 `tasksQuery` 已声明完成，不构成 TDZ）。行为不变：3s 轮询仅在存在 running/pending 任务时启用；模板 `polling` 提示；`watch(polling)` true→false 触发对应 query refetch；mutation 行为全部保留。验证：`pnpm --filter @metaedu/web typecheck` 退出码 0；`pnpm --filter @metaedu/web build` 退出码 0；`pnpm --filter @metaedu/web lint` 退出码 0；最小 Vue 复现脚本对照验证：修复前 `ReferenceError: Cannot access 'tasksQuery' before initialization`、修复后 setup 正常完成且 `refetchInterval = 3000`（启用轮询）；`rg -n "tasksQuery\\.data\\.value" packages/web/src/views/database/DatabaseView.vue packages/web/src/views/resource/FileDetailView.vue` 只命中声明后的 `tasks` computed 行（符合预期）。PR #42（https://github.com/MarkDanile/MetaEduBase/pull/42），merge commit `387d8f8`，完成日期 2026-06-05。
 
 ### TD-020: 统一 LLM provider resolver 与 factory 优先级事实源
 
@@ -294,11 +294,22 @@
 
 ### TD-021: 收口已完成计划文件和候选区状态同步漏洞
 
-状态：🔵 就绪
+状态：🟢 完成
 优先级：P1
 领域：文档 / 工程流程 / 跨 AI 交接
 证据：2026-06-05 复核发现 `docs/engineering/current-work.md` 的“下一批候选任务”曾保留 TD-015 / TD-016 / TD-017 / TD-018 等已完成行，违反“候选区最多 1 到 3 个近期未完成候选”的保留策略；`docs/plans/2026-06-05-td-016-ai-router-provider-plan.md:20-68`、`docs/plans/2026-06-05-td-017-filedetailview-vue-query-plan.md:17-66`、`docs/plans/2026-06-05-td-018-filedetailview-remaining-plan.md:21-61` 仍有大量未勾选的 `- [ ]`，但对应 TD 已完成并合并。
 问题：current-work 候选区混入完成任务会把“近期接力池”变成历史索引；已完成 plan 保留未勾选步骤会让后续 AI IDE 误判任务尚未完成，增加跨工具交接成本。
 完成标准：TD-016 / TD-017 / TD-018 的 plan 文件补齐交付历史或勾选真实已完成步骤，并明确保留为历史计划；`current-work.md` 候选区只保留 1 到 3 个未完成且已登记的近期候选，不保留 `🟢 完成` 行；在规则中增加提交前硬检查：候选区不得出现完成任务，已完成 plan 不得残留活动式未勾选收尾项。
 验证方式：`rg -n "^- \\[ \\]" docs/plans/2026-06-05-td-016-ai-router-provider-plan.md docs/plans/2026-06-05-td-017-filedetailview-vue-query-plan.md docs/plans/2026-06-05-td-018-filedetailview-remaining-plan.md` 不再命中活动式未勾选项；`docs/engineering/current-work.md` 的“下一批候选任务”表中无 `🟢 完成` 行且总数不超过 3；相关规则文档能检索到候选区完成任务清理检查。
-备注：2026-06-05 Codex 复核 TD-016 / TD-017 / TD-018 与用户反馈后新增。登记时已先把 `current-work.md` 候选区恢复为近期未完成候选；计划文件和规则硬检查仍留给该任务处理。
+备注：2026-06-05 Codex 复核 TD-016 / TD-017 / TD-018 与用户反馈后新增。2026-06-05 由 Codex 收口完成。改动：TD-016 / TD-017 / TD-018 / TD-019 历史 plan 增加交付历史并勾选真实已完成项；`current-work.md` 候选区只保留未完成近期候选，最近完成压回 5 行；`workflow.md`、`task-modes.md`、`quality-gates.md` 和 `git-workflow.md` 增加候选区、最近完成和已完成 plan 的提交前硬检查。验证：`rg -n "^- \\[ \\]" docs/plans/2026-06-05-td-016-ai-router-provider-plan.md docs/plans/2026-06-05-td-017-filedetailview-vue-query-plan.md docs/plans/2026-06-05-td-018-filedetailview-remaining-plan.md docs/plans/2026-06-05-td-019-vue-query-self-reference-plan.md` 不再命中；`current-work.md` 候选区无 `🟢 完成` 行且总数 2；最近完成区总数 5。后续发现 TD-004 / TD-005 / TD-006 / TD-007 / TD-015 等早期已完成 plan 仍有活动式未勾选项，已登记为 TD-022。
+
+### TD-022: 收口早期已完成计划文件的活动式未勾选项
+
+状态：🔵 就绪
+优先级：P2
+领域：文档 / 工程流程 / 跨 AI 交接
+证据：`rg -n "^- \\[ \\]" docs/plans` 仍命中多个早期已完成任务的历史 plan，包括 `docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md`、`docs/plans/2026-06-05-td-005-task-lifecycle-helpers-plan.md`、`docs/plans/2026-06-05-td-006-llm-model-fallback-plan.md`、`docs/plans/2026-06-05-td-007-databaseview-vue-query-plan.md`、`docs/plans/2026-06-05-td-015-databaseview-regressions-plan.md`。这些任务在技术债总账中已是 `🟢 完成`。
+问题：新规则已经要求已完成任务对应 plan 不得残留活动式 `- [ ]` 收尾项；早期历史 plan 仍保留未勾选步骤，会让后续 AI IDE 误判任务尚未完成，削弱工作台和总账的一致性。
+完成标准：上述早期已完成 plan 增加交付历史说明；真实已完成步骤改为 `- [x]` 或改写为历史记录；无法确认或实际未完成的项必须迁成新的稳定编号任务或明确标成 out of scope；不得批量掩盖仍有价值的遗留问题。
+验证方式：`rg -n "^- \\[ \\]" docs/plans/2026-06-04-td-004-test-database-reproducibility-plan.md docs/plans/2026-06-05-td-005-task-lifecycle-helpers-plan.md docs/plans/2026-06-05-td-006-llm-model-fallback-plan.md docs/plans/2026-06-05-td-007-databaseview-vue-query-plan.md docs/plans/2026-06-05-td-015-databaseview-regressions-plan.md` 不再命中活动式未勾选项；对应技术债总账、work-log 和 plan 的完成事实一致。
+备注：2026-06-05 Codex 在 TD-021 收口后扩大扫描发现，作为后续文档卫生任务登记。

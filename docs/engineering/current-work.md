@@ -116,8 +116,8 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| TD-021 收口已完成计划文件和候选区状态同步漏洞 | 🔵 就绪 | P1 | Docs / 工程流程 / 跨 AI 交接 | 收口 TD-016/017/018 plan 未勾选项，并把“候选区不得出现完成任务”固化为提交前硬检查。 |
 | TD-020 统一 LLM provider resolver 与 factory 优先级事实源 | 🔵 就绪 | P2 | Backend / AI / 可维护性 | 统一 provider 顺序、命名归一化和 qwen/dashscope 映射的事实源或 adapter。 |
+| TD-022 收口早期已完成计划文件的活动式未勾选项 | 🔵 就绪 | P2 | Docs / 工程流程 / 跨 AI 交接 | 收口 TD-004/005/006/007/015 早期历史 plan 的未勾选项，避免已完成任务被误判为未完成。 |
 
 ## 最近完成
 
@@ -125,9 +125,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-05 | TD-021 收口已完成计划文件和候选区状态同步漏洞 | 🟢 完成 | 收口 TD-016/017/018/019 历史 plan 未勾选项；补强候选区、最近完成和已完成 plan 的提交前硬检查，并登记 TD-022。 | `docs/engineering/technical-debt.md#td-021-收口已完成计划文件和候选区状态同步漏洞` |
 | 2026-06-05 | TD-019 修复 Vue Query 轮询自引用导致的页面初始化运行时错误 | 🟢 完成 | 把 polling 派生从调用方下沉到 query hook 的 `refetchInterval: (query) => ...` 函数形式，从 `query.state.data` 派生；避开 setup 阶段 TDZ，行为完全不变。 | `docs/engineering/technical-debt.md#td-019-修复-vue-query-轮询自引用导致的页面初始化运行时错误` / [PR #42](https://github.com/MarkDanile/MetaEduBase/pull/42) |
 | 2026-06-05 | DOC-009 生成 TD-005/006/007 follow-up 与规则补强 | 🟢 完成 | 新增 TD-015/016/017，补前端请求生命周期等价矩阵、DTO adapter 和 follow-up 稳定编号规则。 | `docs/engineering/technical-debt.md` / `docs/engineering/rules/quality-gates.md` |
 | 2026-06-05 | DOC-008 将合并后 backfill 改为条件触发 | 🟢 完成 | 明确 PR 是默认交付事实源，merge commit 仅在占位或明确要求时回填。 | `docs/engineering/rules/git-workflow.md` / `docs/engineering/workflow.md` |
 | 2026-06-05 | DOC-007 压缩 current-work 最近完成区并强化渐进式披露 | 🟢 完成 | 将最近完成区压缩为 5 行短摘要，并把长期索引沉淀到 `work-log.md`。 | `docs/engineering/work-log.md` / [PR #30](https://github.com/MarkDanile/MetaEduBase/pull/30) |
-| 2026-06-05 | DOC-006 修复 current-work 重复完成区标题 | 🟢 完成 | 删除重复 `## 最近完成` 标题，恢复单一最近完成区。 | `docs/engineering/work-log.md` / [PR #29](https://github.com/MarkDanile/MetaEduBase/pull/29) |
-| 2026-06-05 | TD-014 加强测试数据库 legacy stamp 的列级形态校验 | 🟢 完成 | legacy stamp 增加关键列形态校验，降低残缺 schema 被 stamp 掩盖风险。 | `docs/engineering/technical-debt.md#td-014-加强测试数据库-legacy-stamp-的列级形态校验` / [PR #28](https://github.com/MarkDanile/MetaEduBase/pull/28) |

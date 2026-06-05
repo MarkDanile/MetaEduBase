@@ -1,5 +1,7 @@
 # TD-017 FileDetailView 任务 / mutation 迁到 Vue Query — Plan
 
+> 交付历史（2026-06-05）：TD-017 已通过 PR #40 合并到 `main`，merge commit `5af2793`。本文保留为历史实施计划；下方清单已按最终交付状态收口，真实交付事实以 `docs/engineering/technical-debt.md#td-017-将-vue-query-请求生命周期治理推广到-filedetailview` 和 PR #40 为准。TD-017 后续暴露的 Vue Query 自引用问题已由 TD-019 / PR #42 修复。
+
 ## 任务入口
 
 - Spec: `docs/specs/2026-06-05-td-017-filedetailview-vue-query.md`
@@ -14,56 +16,56 @@
 
 - [x] spec 落盘
 - [x] plan 落盘
-- [ ] 行为等价矩阵 `docs/engineering/matrices/td-017-filedetailview-equivalence.md`
+- [x] 行为等价矩阵 `docs/engineering/matrices/td-017-filedetailview-equivalence.md`
   覆盖：轮询条件 / mutation 触发 / refresh 时机 / cache invalidation /
   toast / loading 状态
 
 ### 2. 新增 `packages/web/src/views/resource/queries.ts`
 
-- [ ] 集中 `useFileTasksQuery(fileId, polling)`：
+- [x] 集中 `useFileTasksQuery(fileId, polling)`：
   - `queryKey`: `["files", fileId, "tasks"]`
   - `queryFn`: `documentApi.listTasks(fileId).then(r => r.data)`
   - `enabled: !!fileId`
   - `refetchInterval: polling.value ? 3000 : false`
-- [ ] 集中 `useRetryTasksMutation(fileId, onSuccess)`：mutate 后
+- [x] 集中 `useRetryTasksMutation(fileId, onSuccess)`：mutate 后
   `invalidateQueries(["files", fileId, "tasks"])`
-- [ ] 集中 `useReinitializeFileMutation(fileId, onSuccess)`：mutate 后
+- [x] 集中 `useReinitializeFileMutation(fileId, onSuccess)`：mutate 后
   invalidate file detail + tasks
-- [ ] 集中 `useDeleteFileMutation(fileId, onSuccess)`：无 invalidate（直接跳转）
+- [x] 集中 `useDeleteFileMutation(fileId, onSuccess)`：无 invalidate（直接跳转）
 
 **验证点**：模块可被 `FileDetailView.vue` import；typecheck 通过。
 
 ### 3. 重构 `FileDetailView.vue`
 
-- [ ] 删除 `import { onMounted, onUnmounted }` 等未用 import
-- [ ] 删除 `tasks` ref / `loadingTasks` ref
-- [ ] 删除 `loadTasks` 函数
-- [ ] 删除 `pollTimer` / `startPolling` / `stopPolling`
-- [ ] 删除 `retryTasks` / `reinitialize` / `doDelete` 函数
-- [ ] 引入 `useFileTasksQuery` 替换 `tasks` / `loadingTasks`
-- [ ] 引入 3 个 mutation 替换手写函数
-- [ ] 模板里 `@click` 调用从 `retryTasks` 改为 `retryMutation.mutate()`
-- [ ] watch `polling` 由 true→false 仍调 `loadFile + loadChunks + loadKg`
-- [ ] `onMounted` 删除显式 `loadTasks()`（useQuery 自动触发）
-- [ ] `onUnmounted(() => stopPolling())` 整段删除
+- [x] 删除 `import { onMounted, onUnmounted }` 等未用 import
+- [x] 删除 `tasks` ref / `loadingTasks` ref
+- [x] 删除 `loadTasks` 函数
+- [x] 删除 `pollTimer` / `startPolling` / `stopPolling`
+- [x] 删除 `retryTasks` / `reinitialize` / `doDelete` 函数
+- [x] 引入 `useFileTasksQuery` 替换 `tasks` / `loadingTasks`
+- [x] 引入 3 个 mutation 替换手写函数
+- [x] 模板里 `@click` 调用从 `retryTasks` 改为 `retryMutation.mutate()`
+- [x] watch `polling` 由 true→false 仍调 `loadFile + loadChunks + loadKg`
+- [x] `onMounted` 删除显式 `loadTasks()`（useQuery 自动触发）
+- [x] `onUnmounted(() => stopPolling())` 整段删除
 
 **验证点**：`rg -n "loadTasks\|pollTimer\|startPolling\|stopPolling\|async function retryTasks\|async function reinitialize\|async function doDelete" packages/web/src/views/resource/FileDetailView.vue` 命中 0 行（import 之外）。
 
 ### 4. 验证
 
-- [ ] `pnpm --filter @metaedu/web typecheck` 退出码 0
-- [ ] `pnpm --filter @metaedu/web build` 退出码 0
-- [ ] `pnpm --filter @metaedu/web lint` 退出码 0
+- [x] `pnpm --filter @metaedu/web typecheck` 退出码 0
+- [x] `pnpm --filter @metaedu/web build` 退出码 0
+- [x] `pnpm --filter @metaedu/web lint` 退出码 0
 
 ### 5. Git 闭环
 
-- [ ] 分支：`git checkout -b refactor/td-017-filedetailview-vue-query`
-- [ ] 提交：`refactor(web): TD-017 migrate FileDetailView tasks/mutation to Vue Query`
-- [ ] push：`git push -u origin refactor/td-017-filedetailview-vue-query`
-- [ ] PR：`gh pr create ...` Summary / Scope / Validation / Risks / Docs
-- [ ] 检查 `gh pr checks` 通过
-- [ ] squash merge：`gh pr merge --squash --delete-branch`
-- [ ] 回填 `current-work.md` 最近完成 + `technical-debt.md` 备注 + `work-log.md` 索引
+- [x] 分支：`refactor/td-017-filedetailview-vue-query`
+- [x] 提交：`refactor(web): TD-017 migrate FileDetailView tasks/mutation to Vue Query`
+- [x] push：`git push -u origin refactor/td-017-filedetailview-vue-query`
+- [x] PR：#40，包含 Summary / Scope / Validation / Risks / Docs
+- [x] 检查 `gh pr checks` 通过
+- [x] squash merge：PR #40 合并到 `main`
+- [x] 回填 `current-work.md` 最近完成 + `technical-debt.md` 备注 + `work-log.md` 索引
 
 ## 任务拆分
 

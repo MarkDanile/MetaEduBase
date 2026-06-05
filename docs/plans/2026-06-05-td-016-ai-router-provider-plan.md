@@ -1,5 +1,7 @@
 # TD-016 收敛 knowledge ai_router 的 LLM provider 选择重复 — Plan
 
+> 交付历史（2026-06-05）：TD-016 已通过 PR #39 合并到 `main`，merge commit `4e6cf42`。本文保留为历史实施计划；下方清单已按最终交付状态收口，真实交付事实以 `docs/engineering/technical-debt.md#td-016-收敛-knowledge-ai_router-的-llm-provider-选择重复逻辑` 和 PR #39 为准。
+
 ## 任务入口
 
 - Spec: `docs/specs/2026-06-05-td-016-ai-router-provider.md`
@@ -15,9 +17,9 @@
 - [x] spec 落盘
 - [x] plan 落盘
 
-### 2. 新增 `app/shared/llm/protocol.py` 的 `ProviderConfig`
+### 2. 新增 `app/shared/llm/protocol.py` 的 `ProviderConfig`（已完成）
 
-- [ ] 在 protocol.py 增加：
+- [x] 在 protocol.py 增加：
   ```python
   @dataclass
   class ProviderConfig:
@@ -29,43 +31,43 @@
 
 **验证点**：`from app.shared.llm.protocol import ProviderConfig` 可用。
 
-### 3. 新增 `app/shared/llm/provider_resolver.py`
+### 3. 新增 `app/shared/llm/provider_resolver.py`（已完成）
 
-- [ ] 实现 `resolve_chat_provider()` 按 spec 描述的优先级
-- [ ] 返回 `ProviderConfig | None`
+- [x] 实现 `resolve_chat_provider()` 按 spec 描述的优先级
+- [x] 返回 `ProviderConfig | None`
 
 **验证点**：模块可独立 import；公共函数有 docstring。
 
-### 4. 重构 `ai_router.py`
+### 4. 重构 `ai_router.py`（已完成）
 
-- [ ] 删除 `_call_llm` 中的 if/elif 链
-- [ ] 改为调 `resolve_chat_provider()`
-- [ ] 保留中文提示 / httpx 调用 / 失败兜底 三类行为
+- [x] 删除 `_call_llm` 中的 if/elif 链
+- [x] 改为调 `resolve_chat_provider()`
+- [x] 保留中文提示 / httpx 调用 / 失败兜底 三类行为
 
 **验证点**：`rg -n "llm_default_provider" app/contexts/knowledge/interfaces/api/ai_router.py` 命中 0 行（import 之外）。
 
-### 5. 编写 `tests/shared/test_provider_resolver.py`
+### 5. 编写 `tests/shared/test_provider_resolver.py`（已完成）
 
-- [ ] 覆盖 5 类路径：无 key / 默认 provider 命中 / 默认无 key 回退 / 多 key 顺序选 / 不在候选集的 default 被忽略
-- [ ] 用 monkeypatch 替换 settings 字段
+- [x] 覆盖 5 类路径：无 key / 默认 provider 命中 / 默认无 key 回退 / 多 key 顺序选 / 不在候选集的 default 被忽略
+- [x] 用 monkeypatch 替换 settings 字段
 
 **验证点**：`pytest tests/shared/test_provider_resolver.py -v` 全部通过。
 
-### 6. 验证
+### 6. 验证（已完成）
 
-- [ ] `pytest tests/shared/test_provider_resolver.py -v` 退出码 0
-- [ ] `pytest -q` 退出码 0（baseline 132+ passed）
-- [ ] `ruff check app/ tests/` 退出码 0
+- [x] `pytest tests/shared/test_provider_resolver.py -v` 退出码 0
+- [x] `pytest -q` 退出码 0（139 passed）
+- [x] `ruff check app/ tests/` 退出码 0
 
-### 7. Git 闭环
+### 7. Git 闭环（已完成）
 
-- [ ] 分支：`git checkout -b refactor/td-016-ai-router-provider`
-- [ ] 提交：`refactor(server): TD-016 centralize LLM provider selection for ai_router`
-- [ ] push：`git push -u origin refactor/td-016-ai-router-provider`
-- [ ] PR：`gh pr create ...` Summary / Scope / Validation / Risks / Docs
-- [ ] 检查 `gh pr checks` 通过
-- [ ] squash merge：`gh pr merge --squash --delete-branch`
-- [ ] 回填 `current-work.md` 最近完成 + `technical-debt.md` 备注 + `work-log.md` 索引
+- [x] 分支：`refactor/td-016-ai-router-provider`
+- [x] 提交：`refactor(server): TD-016 centralize LLM provider selection for ai_router`
+- [x] push：`git push -u origin refactor/td-016-ai-router-provider`
+- [x] PR：#39，包含 Summary / Scope / Validation / Risks / Docs
+- [x] 检查 `gh pr checks` 通过
+- [x] squash merge：PR #39 合并到 `main`
+- [x] 回填 `current-work.md` 最近完成 + `technical-debt.md` 备注 + `work-log.md` 索引
 
 ## 任务拆分
 

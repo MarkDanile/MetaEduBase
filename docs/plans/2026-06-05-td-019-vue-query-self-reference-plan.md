@@ -1,5 +1,7 @@
 # TD-019 修复 Vue Query 轮询自引用导致的页面初始化运行时错误 — Plan
 
+> 交付历史（2026-06-05）：TD-019 已通过 PR #42 合并到 `main`，merge commit `387d8f8`。本文保留为历史实施计划；下方清单已按最终交付状态收口，真实交付事实以 `docs/engineering/technical-debt.md#td-019-修复-vue-query-轮询自引用导致的页面初始化运行时错误` 和 PR #42 为准。
+
 ## 任务入口
 
 - Spec: `docs/specs/2026-06-05-td-019-vue-query-self-reference.md`
@@ -18,57 +20,57 @@
 
 ### 2. 行为等价矩阵
 
-- [ ] 写 `docs/engineering/matrices/td-019-vue-query-self-reference-equivalence.md`
-- [ ] 矩阵覆盖 polling 计算时机、初始化顺序、watch 时序
+- [x] 写 `docs/engineering/matrices/td-019-vue-query-self-reference-equivalence.md`
+- [x] 矩阵覆盖 polling 计算时机、初始化顺序、watch 时序
 
 ### 3. 修复 `packages/web/src/views/database/queries.ts`
 
-- [ ] `useDatasetTasksQuery` 删除 `polling: Ref<boolean>` 参数
-- [ ] `refetchInterval` 改用函数形式 `(query) => hasActive ? 3000 : false`
-- [ ] 函数内部从 `query.state.data` 派生 `hasActive`
+- [x] `useDatasetTasksQuery` 删除 `polling: Ref<boolean>` 参数
+- [x] `refetchInterval` 改用函数形式 `(query) => hasActive ? 3000 : false`
+- [x] 函数内部从 `query.state.data` 派生 `hasActive`
 
 **验证点**：`rg -n "polling" packages/web/src/views/database/queries.ts` 只命中函数形式 refetchInterval 内部。
 
 ### 4. 修复 `packages/web/src/views/database/DatabaseView.vue`
 
-- [ ] `useDatasetTasksQuery(selectedId, pollingRef)` 改为 `useDatasetTasksQuery(selectedId)`
-- [ ] 删除临时 `pollingRef` 声明
-- [ ] 模板 `polling` 改用 `computed(() => (tasksQuery.data.value ?? []).some(...))`（声明 tasksQuery 之后独立定义）
-- [ ] 确认 `tasksQuery.data.value` 不再出现在 query hook 调用行
+- [x] `useDatasetTasksQuery(selectedId, pollingRef)` 改为 `useDatasetTasksQuery(selectedId)`
+- [x] 删除临时 `pollingRef` 声明
+- [x] 模板 `polling` 改用 `computed(() => (tasksQuery.data.value ?? []).some(...))`（声明 tasksQuery 之后独立定义）
+- [x] 确认 `tasksQuery.data.value` 不再出现在 query hook 调用行
 
 **验证点**：`rg -n "tasksQuery\\.data\\.value" packages/web/src/views/database/DatabaseView.vue` 只命中 `polling` computed 定义行。
 
 ### 5. 修复 `packages/web/src/views/resource/queries.ts`
 
-- [ ] `useFileTasksQuery` 删除 `polling: Ref<boolean>` 参数
-- [ ] `refetchInterval` 改用函数形式
+- [x] `useFileTasksQuery` 删除 `polling: Ref<boolean>` 参数
+- [x] `refetchInterval` 改用函数形式
 
 **验证点**：同上。
 
 ### 6. 修复 `packages/web/src/views/resource/FileDetailView.vue`
 
-- [ ] `useFileTasksQuery(fileId, pollingRef)` 改为 `useFileTasksQuery(fileId)`
-- [ ] 模板 `polling` 改用声明之后的独立 computed
-- [ ] 确认 `tasksQuery.data.value` 不再出现在 query hook 调用行
+- [x] `useFileTasksQuery(fileId, pollingRef)` 改为 `useFileTasksQuery(fileId)`
+- [x] 模板 `polling` 改用声明之后的独立 computed
+- [x] 确认 `tasksQuery.data.value` 不再出现在 query hook 调用行
 
 **验证点**：同上。
 
 ### 7. 验证
 
-- [ ] `pnpm --filter @metaedu/web typecheck` 退出码 0
-- [ ] `pnpm --filter @metaedu/web build` 退出码 0
-- [ ] `pnpm --filter @metaedu/web lint` 退出码 0
-- [ ] `rg -n "tasksQuery\\.data\\.value" packages/web/src/views/database/DatabaseView.vue packages/web/src/views/resource/FileDetailView.vue` 不再命中 query hook 调用行
+- [x] `pnpm --filter @metaedu/web typecheck` 退出码 0
+- [x] `pnpm --filter @metaedu/web build` 退出码 0
+- [x] `pnpm --filter @metaedu/web lint` 退出码 0
+- [x] `rg -n "tasksQuery\\.data\\.value" packages/web/src/views/database/DatabaseView.vue packages/web/src/views/resource/FileDetailView.vue` 不再命中 query hook 调用行
 
 ### 8. Git 闭环
 
-- [ ] 分支：`fix/td-019-vue-query-self-reference`（已建）
-- [ ] 提交：`fix(web): TD-019 eliminate Vue Query polling self-reference TDZ`
-- [ ] push：`git push -u origin fix/td-019-vue-query-self-reference`
-- [ ] PR：`gh pr create ...` Summary / Scope / Validation / Risks / Docs
-- [ ] 检查 `gh pr checks` 通过
-- [ ] squash merge：`gh pr merge --squash --delete-branch`
-- [ ] 回填 `current-work.md` 最近完成 + `technical-debt.md` 备注 + `work-log.md` 索引
+- [x] 分支：`fix/td-019-vue-query-self-reference`
+- [x] 提交：`fix(web): TD-019 eliminate Vue Query polling self-reference TDZ`
+- [x] push：`git push -u origin fix/td-019-vue-query-self-reference`
+- [x] PR：#42，包含 Summary / Scope / Validation / Risks / Docs
+- [x] 检查 `gh pr checks` 通过
+- [x] squash merge：PR #42 合并到 `main`
+- [x] 回填 `current-work.md` 最近完成 + `technical-debt.md` 备注 + `work-log.md` 索引
 
 ## 任务拆分
 
