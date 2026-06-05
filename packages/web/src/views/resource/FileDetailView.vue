@@ -246,16 +246,7 @@ const queryClient = useQueryClient();
 const fileQuery = useFileQuery(fileId);
 const file = computed<FileDTO | null>(() => fileQuery.data.value ?? null);
 
-const tasksQuery = useFileTasksQuery(
-  fileId,
-  // Only refetch every 3s while at least one task is running or pending.
-  // Returning `false` pauses polling.
-  computed(() =>
-    (tasksQuery.data.value ?? []).some(
-      (t) => t.status === "running" || t.status === "pending",
-    ),
-  ),
-);
+const tasksQuery = useFileTasksQuery(fileId);
 const tasks = computed<TaskDTO[]>(() => tasksQuery.data.value ?? []);
 const loadingTasks = computed(() => tasksQuery.isFetching.value);
 const polling = computed(() =>

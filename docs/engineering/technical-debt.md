@@ -269,3 +269,36 @@
 完成标准：4 个手写 load（loadFile / loadChunks / loadKg / loadTemplates）迁到 Vue Query（`packages/web/src/views/resource/queries.ts` 扩展）；3 个 `loading*` ref 全部由 query.isLoading / isFetching 派生；`watch(activeTab)` / `refreshAll` / watch `polling` 由 true→false 全部改为 `query.refetch()`；`loadTemplates` 静默失败行为保留；迁移前先列行为等价矩阵覆盖请求参数、tab lazy-load、轮询触发 refresh、cache invalidation、toast 和 loading 状态；迁移后用户可见行为不变。
 验证方式：`pnpm --filter @metaedu/web lint`、`typecheck`、`build` 均退出码 0；行为等价矩阵覆盖 4 个 load × 3 阶段（手写 / TD-018 修复后）；通过浏览器或 DevTools 验收确认文件详情、切片、知识图谱、模板标签、tab 切换、刷新按钮、任务完成触发刷新等流程仍正常。
 备注：2026-06-05 TD-017 完成时登记的 follow-up。FileDetailView 是 TD-007 之后第二个完成 Vue Query 迁移的前端页面，迁完后前端 Vue Query 治理范围基本到位；剩余仅小页面或新页面按需使用。2026-06-05 由 Claude Code 接手完成。Spec：`docs/specs/2026-06-05-td-018-filedetailview-remaining.md`；Plan：`docs/plans/2026-06-05-td-018-filedetailview-remaining-plan.md`；等价矩阵：`docs/engineering/matrices/td-018-filedetailview-remaining-equivalence.md`。改动：扩展 `packages/web/src/views/resource/queries.ts` 增加 4 个 query hook（`useFileQuery` / `useFileChunksQuery`（按 `activeTab === "chunks"` 懒加载） / `useFileKgQuery`（按 `activeTab === "kg"` 懒加载） / `useTemplatesQuery`（queryFn 内 catch 返回 `[]` 保留"templates 是可选"的静默失败语义，不触发全局 toast））；`fileKeys` 扩展 `detail / chunks / kg`，新增顶层 `templateKeys.all`；`FileDetailView.vue` 删除 4 个手写 load 函数 + 3 个 `loading*` ref + 3 个 service API import（仅保留 type imports）；`refreshAll` 改用 `query.refetch()`；`watch(activeTab)` 删除（query enabled 由 activeTab 派生，自动触发 refetch）；`onMounted` 删除（useQuery 自动触发）；`reinitializeMutation.onSuccess` 改为 `queryClient.removeQueries` 清空 chunks / kg 缓存（旧实现是清空本地 ref）；模板里 4 处 `<LoadingSpinner v-if="...">` 改用 `query.isFetching.value` / `query.isLoading.value`。行为不变：文件详情加载 / 切片懒加载 / KG 懒加载 / 模板加载 / 刷新按钮 / tab 切换 / 轮询停止后 refresh / `loadTemplates` 静默失败全部保留；唯一边缘可见变化是 loadFile / loadChunks / loadKg 的错误文案从「固定字符串」改为「query error message 兜底」。验证：`pnpm --filter @metaedu/web typecheck` 退出码 0；`pnpm --filter @metaedu/web build` 退出码 0；`pnpm --filter @metaedu/web lint` 退出码 0。PR #41（https://github.com/MarkDanile/MetaEduBase/pull/41），merge commit `8ad15e6`，完成日期 2026-06-05。
+
+### TD-019: 修复 Vue Query 轮询自引用导致的页面初始化运行时错误
+
+状态：🔵 就绪
+优先级：P0
+领域：前端 / 运行时稳定性 / 测试
+证据：`packages/web/src/views/database/DatabaseView.vue:488-497` 和 `packages/web/src/views/resource/FileDetailView.vue:249-258` 在 `useDatasetTasksQuery()` / `useFileTasksQuery()` 的参数中传入 `computed(() => tasksQuery.data.value...)`，但 `tasksQuery` 自身仍在初始化；最小 Vue Query 复现脚本输出 `ReferenceError: Cannot access 'q' before initialization`。`pnpm --filter @metaedu/web lint`、`typecheck`、`build` 均可通过，说明现有静态门禁没有捕获该运行时问题。
+问题：任务轮询条件依赖尚未完成初始化的 query 变量，页面 setup 阶段可能直接崩溃。该问题来自 TD-015 / TD-017 / TD-018 的 Vue Query 迁移模式，如果不补运行时 smoke 或组合式函数回归测试，后续类似迁移仍可能复制同类错误。
+完成标准：`DatabaseView` 和 `FileDetailView` 的 query 初始化参数不再引用正在声明的 query 变量；轮询条件改为独立的 ref/computed、query 创建后的派生状态，或在 composable 内部以不会触发 TDZ 的方式处理；保留“仅存在 running / pending 任务时 3s 轮询”的用户可见行为；补充或记录能覆盖两个页面 setup 的 smoke / mount / 浏览器验证。
+验证方式：`pnpm --filter @metaedu/web lint`、`pnpm --filter @metaedu/web typecheck`、`pnpm --filter @metaedu/web build` 均退出码 0；通过浏览器或组件 smoke 打开 / 挂载 `DatabaseView` 与 `FileDetailView`，确认页面初始化不抛 ReferenceError；`rg -n "tasksQuery\\.data\\.value" packages/web/src/views/database/DatabaseView.vue packages/web/src/views/resource/FileDetailView.vue` 不再命中 query 初始化参数内的自引用。
+备注：2026-06-05 Codex 复核 TD-016 / TD-017 / TD-018 后新增。该任务优先于继续扩大 Vue Query 迁移范围。
+
+### TD-020: 统一 LLM provider resolver 与 factory 优先级事实源
+
+状态：🔵 就绪
+优先级：P2
+领域：后端 / AI / 可维护性
+证据：`packages/server-python/app/shared/llm/provider_resolver.py:29` 定义 `_PROVIDER_CANDIDATES = ["minimax", "deepseek", "qwen"]`；`packages/server-python/app/shared/llm/factory.py:15-37` 使用 `_ALL_PROVIDERS = ["deepseek", "minimax", "siliconflow", "dashscope"]` 并将 `qwen` 归一化到 `dashscope`。TD-016 备注也记录了 `provider_resolver` 与 `factory.PRIORITY_CHAIN` 仍走不同顺序。
+问题：TD-016 删除了 `ai_router` 内部 provider if/elif 链，但新增的 resolver 和既有 factory 仍是两套 provider 顺序 / 命名事实源。后续调整默认 provider、qwen / dashscope 映射或 fallback 顺序时，knowledge chat 与共享 LLM client 仍可能分叉。
+完成标准：provider 顺序、provider 命名归一化和 key/base_url/model 完整性检查有一个共享事实源，或有命名明确且测试覆盖的 adapter 说明为什么 knowledge chat 与 factory 不同；不再出现互相矛盾的硬编码 provider 顺序；补充测试覆盖默认 provider、qwen / dashscope 映射、fallback 顺序和 provider 配置不完整时的跳过逻辑。
+验证方式：`cd packages/server-python && .venv/bin/python -m pytest tests/shared/test_provider_resolver.py <新增或调整的 LLM factory/provider 测试> -q` 退出码 0；`cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` 退出码 0；若完整后端测试可运行，补充 `cd packages/server-python && .venv/bin/python -m pytest -q`。
+备注：2026-06-05 Codex 复核 TD-016 后新增。优先级低于 TD-019，因为当前风险主要是策略漂移，不是已确认页面崩溃。
+
+### TD-021: 收口已完成计划文件和候选区状态同步漏洞
+
+状态：🔵 就绪
+优先级：P1
+领域：文档 / 工程流程 / 跨 AI 交接
+证据：2026-06-05 复核发现 `docs/engineering/current-work.md` 的“下一批候选任务”曾保留 TD-015 / TD-016 / TD-017 / TD-018 等已完成行，违反“候选区最多 1 到 3 个近期未完成候选”的保留策略；`docs/plans/2026-06-05-td-016-ai-router-provider-plan.md:20-68`、`docs/plans/2026-06-05-td-017-filedetailview-vue-query-plan.md:17-66`、`docs/plans/2026-06-05-td-018-filedetailview-remaining-plan.md:21-61` 仍有大量未勾选的 `- [ ]`，但对应 TD 已完成并合并。
+问题：current-work 候选区混入完成任务会把“近期接力池”变成历史索引；已完成 plan 保留未勾选步骤会让后续 AI IDE 误判任务尚未完成，增加跨工具交接成本。
+完成标准：TD-016 / TD-017 / TD-018 的 plan 文件补齐交付历史或勾选真实已完成步骤，并明确保留为历史计划；`current-work.md` 候选区只保留 1 到 3 个未完成且已登记的近期候选，不保留 `🟢 完成` 行；在规则中增加提交前硬检查：候选区不得出现完成任务，已完成 plan 不得残留活动式未勾选收尾项。
+验证方式：`rg -n "^- \\[ \\]" docs/plans/2026-06-05-td-016-ai-router-provider-plan.md docs/plans/2026-06-05-td-017-filedetailview-vue-query-plan.md docs/plans/2026-06-05-td-018-filedetailview-remaining-plan.md` 不再命中活动式未勾选项；`docs/engineering/current-work.md` 的“下一批候选任务”表中无 `🟢 完成` 行且总数不超过 3；相关规则文档能检索到候选区完成任务清理检查。
+备注：2026-06-05 Codex 复核 TD-016 / TD-017 / TD-018 与用户反馈后新增。登记时已先把 `current-work.md` 候选区恢复为近期未完成候选；计划文件和规则硬检查仍留给该任务处理。

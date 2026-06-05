@@ -92,7 +92,6 @@ function useDatasetsQuery(
 
 function useDatasetTasksQuery(
   datasetId: Ref<string | null>,
-  polling: Ref<boolean>,
 ): UseQueryReturnType<TaskDTO[], Error> {
   return useQuery({
     queryKey: computed(() =>
@@ -103,9 +102,24 @@ function useDatasetTasksQuery(
     queryFn: () =>
       structuredDataApi.listTasks(datasetId.value as string).then((r) => r.data),
     enabled: computed(() => !!datasetId.value),
-    // TD-015 fix: only refetch every 3s while at least one task is
-    // running or pending. Returning `false` pauses polling.
-    refetchInterval: computed(() => (polling.value ? 3000 : false)),
+    // TD-019 fix: derive the polling signal from `query.state.data`
+    // inside Vue Query, not from a `polling` ref passed in by the
+    // caller. The previous approach passed a `computed(() =>
+    // tasksQuery.data.value ...)` from the page; because Vue Query
+    // synchronously evaluates `refetchInterval` during `useQuery()`
+    // to build a `watchEffect`, the closure would try to read
+    // `tasksQuery` while it was still in the `const` initializer and
+    // hit a `ReferenceError: Cannot access 'tasksQuery' before
+    // initialization`. Using the function form defers the read until
+    // after the first fetch completes, which is exactly the same
+    // moment a caller-driven `computed` would have re-evaluated.
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const hasActive =
+        Array.isArray(data) &&
+        data.some((t) => t.status === "running" || t.status === "pending");
+      return hasActive ? 3000 : false;
+    },
   });
 }
 

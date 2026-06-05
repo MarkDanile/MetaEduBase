@@ -63,15 +63,29 @@ function useFileQuery(fileId: Ref<string>): UseQueryReturnType<FileDTO, Error> {
 
 function useFileTasksQuery(
   fileId: Ref<string>,
-  polling: Ref<boolean>,
 ): UseQueryReturnType<TaskDTO[], Error> {
   return useQuery({
     queryKey: computed(() => fileKeys.tasks(fileId.value)),
     queryFn: () => documentApi.listTasks(fileId.value).then((r) => r.data),
     enabled: computed(() => !!fileId.value),
-    // Only refetch every 3s while at least one task is running or pending.
-    // Returning `false` pauses polling entirely.
-    refetchInterval: computed(() => (polling.value ? 3000 : false)),
+    // TD-019 fix: derive the polling signal from `query.state.data`
+    // inside Vue Query, not from a `polling` ref passed in by the
+    // caller. The previous approach passed a `computed(() =>
+    // tasksQuery.data.value ...)` from the page; because Vue Query
+    // synchronously evaluates `refetchInterval` during `useQuery()`
+    // to build a `watchEffect`, the closure would try to read
+    // `tasksQuery` while it was still in the `const` initializer and
+    // hit a `ReferenceError: Cannot access 'tasksQuery' before
+    // initialization`. Using the function form defers the read until
+    // after the first fetch completes, which is exactly the same
+    // moment a caller-driven `computed` would have re-evaluated.
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const hasActive =
+        Array.isArray(data) &&
+        data.some((t) => t.status === "running" || t.status === "pending");
+      return hasActive ? 3000 : false;
+    },
   });
 }
 

@@ -108,7 +108,44 @@
 
 ## 当前进行中
 
-当前无进行中任务。
+### TD-019: 修复 Vue Query 轮询自引用导致的页面初始化运行时错误
+
+状态：🟡 进行中
+类型：技术债
+领域：Frontend / 运行时稳定性 / 测试
+当前执行模式：manual
+最近接手工具：Claude Code
+分支：fix/td-019-vue-query-self-reference
+
+需求来源：
+- Spec: `docs/specs/2026-06-05-td-019-vue-query-self-reference.md`
+- Plan: `docs/plans/2026-06-05-td-019-vue-query-self-reference-plan.md`
+- 技术债: `docs/engineering/technical-debt.md#td-019-修复-vue-query-轮询自引用导致的页面初始化运行时错误`
+- 等价矩阵: `docs/engineering/matrices/td-019-vue-query-self-reference-equivalence.md`
+- 架构约束：`docs/engineering/rules/quality-gates.md#前端请求生命周期等价矩阵`
+- 任务模式：技术债修复
+
+当前进展：
+- 已完成：编写 spec/plan/矩阵；最小 Vue 复现脚本确认 TDZ；改写 `useDatasetTasksQuery` / `useFileTasksQuery` 内部 `refetchInterval` 为函数形式（从 `query.state.data` 派生 polling）；调用方删除 polling 参数
+- 正在处理：跑前端 typecheck / lint / build + smoke 验证
+- 未完成：完整 Git 闭环（提交 / push / PR / squash merge / 收口）
+
+下一步：
+1. 暂存本任务相关文件并提交
+2. push 与创建 PR
+3. 检查 `gh pr checks` 通过
+4. squash merge
+5. 收口 current-work.md / technical-debt.md / work-log.md
+
+验证状态：
+- 已运行：`pnpm --filter @metaedu/web typecheck` → 退出码 0；`pnpm --filter @metaedu/web lint` → 退出码 0；`pnpm --filter @metaedu/web build` → 退出码 0；最小 Vue 复现脚本对照验证 → 修复前 `ReferenceError: Cannot access 'tasksQuery' before initialization`、修复后 setup 正常完成且 `refetchInterval = 3000`（启用轮询）
+- 未运行：完整浏览器 / 端到端 Vue Test Utils 套件（仓库暂无 vitest 配置）
+- 当前失败：无
+
+交接备注：
+- 修复方式：把"是否轮询"判断从调用方（页面）下沉到 query hook 内部，基于 `refetchInterval: (query) => ...` 函数形式从 `query.state.data` 派生；该函数在每次 fetch 完成后被 Vue Query 调用，**不参与 setup 阶段的同步评估**，从而避开 TDZ
+- 行为不变：3s 轮询仅在存在 running/pending 任务时启用；模板 `polling` computed 由 `tasksQuery` 声明之后独立定义，引用 `tasksQuery.data.value` 不构成 TDZ
+- 端到端 smoke 已写入 PR 描述的复现脚本
 
 ## 下一批候选任务
 
@@ -116,11 +153,8 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| TD-008 明确从 `liquid-*` 类到语义 UI 层的迁移路径 | ⚫ 待办 | P2 | Frontend / 设计系统 | 需先补全证据 / 完成标准 / 验证方式后转为 🔵 才能开工。 |
-| TD-015 修复 TD-007 DatabaseView Vue Query 迁移后的行为回归 | 🟢 完成 | P1 | Frontend / API / 可维护性 | 已修 4 个回归点：上传名称 / 轮询条件 / KG overview 懒加载 / DTO adapter；行为等价矩阵已落盘到 `docs/engineering/matrices/`。 |
-| TD-016 收敛 knowledge ai_router 的 LLM provider 选择重复逻辑 | 🟢 完成 | P1 | Backend / AI / 可维护性 | 已抽 `app/shared/llm/provider_resolver.py` 集中 provider 选择；ai_router 私有 `_call_llm` 已删。Follow-up：与 `factory.PRIORITY_CHAIN` 仍走不同顺序，可单独评估统一。 |
-| TD-017 将 Vue Query 请求生命周期治理推广到 FileDetailView | 🟢 完成 | P2 | Frontend / 可维护性 | 已迁 `loadTasks` + 3 个 mutation + 轮询到 Vue Query。 |
-| TD-018 FileDetailView 剩余手写 load 迁到 Vue Query | 🟢 完成 | P3 | Frontend / 可维护性 | 已迁 `loadFile` / `loadChunks` / `loadKg` / `loadTemplates` 4 个手写 load；FileDetailView 完成 Vue Query 全量迁移。 |
+| TD-021 收口已完成计划文件和候选区状态同步漏洞 | 🔵 就绪 | P1 | Docs / 工程流程 / 跨 AI 交接 | 收口 TD-016/017/018 plan 未勾选项，并把“候选区不得出现完成任务”固化为提交前硬检查。 |
+| TD-020 统一 LLM provider resolver 与 factory 优先级事实源 | 🔵 就绪 | P2 | Backend / AI / 可维护性 | 统一 provider 顺序、命名归一化和 qwen/dashscope 映射的事实源或 adapter。 |
 
 ## 最近完成
 
