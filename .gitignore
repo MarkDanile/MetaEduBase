@@ -27,6 +27,7 @@ dump.rdb
 *.tsbuildinfo
 Thumbs.db
 .superpowers/
+.codegraph/
 
 # Upload directory (keep .gitkeep)
 packages/server-python/uploads/*
