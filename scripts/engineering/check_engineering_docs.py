@@ -10,31 +10,36 @@ from pathlib import Path
 
 
 DOC_GLOBS = (
-    "docs/engineering/*.md",
-    "docs/engineering/rules/*.md",
-    "docs/specs/*.md",
-    "docs/plans/*.md",
+    "docs/*.md",
+    "docs/03-engineering-governance/*.md",
+    "docs/03-engineering-governance/03-retrospectives/*.md",
+    "docs/03-engineering-governance/01-rules/*.md",
+    "docs/01-product-planning/*.md",
+    "docs/01-product-planning/*/*.md",
+    "docs/02-delivery-plans/01-specs/*.md",
+    "docs/02-delivery-plans/02-plans/*.md",
 )
 
 CURRENT_WORK_RECENT_SUMMARY_LIMIT = 220
+LEGACY_DOC_ROOT_NAMES = ("engineering", "specs", "plans", "product", "superpowers")
 
 KNOWN_ISSUES = (
     (
-        "docs/plans/2026-06-05-td-020-provider-resolver-factory-plan.md",
+        "docs/02-delivery-plans/02-plans/2026-06-05-td-020-provider-resolver-factory-plan.md",
         "markdown-link",
         "TD-023",
     ),
     (
-        "docs/specs/2026-06-05-td-020-provider-resolver-factory.md",
+        "docs/02-delivery-plans/01-specs/2026-06-05-td-020-provider-resolver-factory.md",
         "validation-claim",
         "TD-023",
     ),
     (
-        "docs/plans/2026-06-05-td-020-provider-resolver-factory-plan.md",
+        "docs/02-delivery-plans/02-plans/2026-06-05-td-020-provider-resolver-factory-plan.md",
         "validation-claim",
         "TD-023",
     ),
-    ("docs/engineering/technical-debt.md", "validation-claim", "TD-023"),
+    ("docs/03-engineering-governance/technical-debt.md", "validation-claim", "TD-023"),
 )
 
 
@@ -106,7 +111,7 @@ def split_table_row(row: str) -> list[str]:
 
 
 def check_current_work(root: Path) -> list[Issue]:
-    path = root / "docs/engineering/current-work.md"
+    path = root / "docs/03-engineering-governance/current-work.md"
     lines = read_lines(path)
     issues: list[Issue] = []
 
@@ -200,6 +205,24 @@ def check_current_work(root: Path) -> list[Issue]:
     return issues
 
 
+def check_legacy_doc_roots(root: Path) -> list[Issue]:
+    issues: list[Issue] = []
+    for name in LEGACY_DOC_ROOT_NAMES:
+        path = root / "docs" / name
+        if not path.exists():
+            continue
+        issues.append(
+            Issue(
+                path,
+                1,
+                "legacy-doc-root",
+                f"旧顶层文档目录仍存在：`docs/{name}`。",
+                "迁移或镜像到编号目录；历史 superpower 输出只能保留在 90-compat-legacy 下。",
+            )
+        )
+    return issues
+
+
 DETAIL_HEADING_RE = re.compile(r"^### (TD-\d{3}):")
 STATUS_LINE_RE = re.compile(r"^状态：(.+)$")
 
@@ -262,7 +285,7 @@ def delivery_record_lines(detail: DebtDetail) -> list[tuple[int, str]]:
 
 
 def check_technical_debt(root: Path) -> list[Issue]:
-    path = root / "docs/engineering/technical-debt.md"
+    path = root / "docs/03-engineering-governance/technical-debt.md"
     lines = read_lines(path)
     issues: list[Issue] = []
     overview = parse_debt_overview(lines)
@@ -324,7 +347,7 @@ def allowed_active_checkbox(line: str) -> bool:
 
 def check_completed_plans(root: Path) -> list[Issue]:
     issues: list[Issue] = []
-    for path in sorted((root / "docs/plans").glob("*.md")):
+    for path in sorted((root / "docs/02-delivery-plans/02-plans").glob("*.md")):
         text = path.read_text(encoding="utf-8")
         if not is_completed_plan(text):
             continue
@@ -400,7 +423,7 @@ def check_markdown_links(root: Path) -> list[Issue]:
 def git_diff_work_log(root: Path) -> str:
     try:
         result = subprocess.run(
-            ["git", "diff", "--unified=0", "--", "docs/engineering/work-log.md"],
+            ["git", "diff", "--unified=0", "--", "docs/03-engineering-governance/work-log.md"],
             cwd=root,
             text=True,
             capture_output=True,
@@ -414,7 +437,7 @@ def git_diff_work_log(root: Path) -> str:
 
 
 def check_work_log_append_only(root: Path) -> list[Issue]:
-    path = root / "docs/engineering/work-log.md"
+    path = root / "docs/03-engineering-governance/work-log.md"
     diff = git_diff_work_log(root)
     issues: list[Issue] = []
     for diff_line in diff.splitlines():
@@ -473,6 +496,7 @@ def check_validation_claims(root: Path) -> list[Issue]:
 
 def run_checks(root: Path) -> tuple[list[Issue], list[Issue]]:
     issues: list[Issue] = []
+    issues.extend(check_legacy_doc_roots(root))
     issues.extend(check_current_work(root))
     issues.extend(check_technical_debt(root))
     issues.extend(check_completed_plans(root))
