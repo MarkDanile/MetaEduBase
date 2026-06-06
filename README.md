@@ -46,29 +46,32 @@ MetaEduBase 面向职业教育场景，围绕知识资产的采集、处理、�
 | 你想了解 | 先读这里 |
 |----------|----------|
 | 系统目标、边界、上下文、关键流程 | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| 架构实现约束、上下文目录、跨模块边界 | [docs/engineering/rules/architecture.md](docs/engineering/rules/architecture.md) |
-| 本地启动、测试库初始化、常用命令 | [docs/engineering/rules/local-development.md](docs/engineering/rules/local-development.md) |
-| 测试策略与环境约束 | [docs/engineering/rules/testing.md](docs/engineering/rules/testing.md) |
-| API / DTO / shared schema 契约规则 | [docs/engineering/rules/contracts.md](docs/engineering/rules/contracts.md) |
+| 架构实现约束、上下文目录、跨模块边界 | [docs/03-engineering-governance/01-rules/architecture.md](docs/03-engineering-governance/01-rules/architecture.md) |
+| 本地启动、测试库初始化、常用命令 | [docs/03-engineering-governance/01-rules/local-development.md](docs/03-engineering-governance/01-rules/local-development.md) |
+| 测试策略与环境约束 | [docs/03-engineering-governance/01-rules/testing.md](docs/03-engineering-governance/01-rules/testing.md) |
+| API / DTO / shared schema 契约规则 | [docs/03-engineering-governance/01-rules/contracts.md](docs/03-engineering-governance/01-rules/contracts.md) |
 
 ### 工程协作
 
 | 你要做什么 | 先读这里 |
 |------------|----------|
-| 接手当前任务、看交接状态 | [docs/engineering/current-work.md](docs/engineering/current-work.md) |
-| 理解跨 IDE / 插件协作方式 | [docs/engineering/workflow.md](docs/engineering/workflow.md) |
-| 按任务类型选择开工与验收方式 | [docs/engineering/task-modes.md](docs/engineering/task-modes.md) |
-| 查看技术债总账与优先级 | [docs/engineering/technical-debt.md](docs/engineering/technical-debt.md) |
-| 查看完成门禁与验证矩阵 | [docs/engineering/rules/quality-gates.md](docs/engineering/rules/quality-gates.md) |
-| 了解 Git 提交、PR 与合并流程 | [docs/engineering/rules/git-workflow.md](docs/engineering/rules/git-workflow.md) |
+| 接手当前任务、看交接状态 | [docs/03-engineering-governance/current-work.md](docs/03-engineering-governance/current-work.md) |
+| 理解跨 IDE / 插件协作方式 | [docs/03-engineering-governance/workflow.md](docs/03-engineering-governance/workflow.md) |
+| 按任务类型选择开工与验收方式 | [docs/03-engineering-governance/task-modes.md](docs/03-engineering-governance/task-modes.md) |
+| 查看技术债总账与优先级 | [docs/03-engineering-governance/technical-debt.md](docs/03-engineering-governance/technical-debt.md) |
+| 查看完成门禁与验证矩阵 | [docs/03-engineering-governance/01-rules/quality-gates.md](docs/03-engineering-governance/01-rules/quality-gates.md) |
+| 了解 Git 提交、PR 与合并流程 | [docs/03-engineering-governance/01-rules/git-workflow.md](docs/03-engineering-governance/01-rules/git-workflow.md) |
 
 ### 需求与计划事实源
 
 | 文档类型 | 位置 |
 |----------|------|
-| 长期需求 / 验收标准 | [docs/specs/](docs/specs/README.md) |
-| 长期实施计划 / 任务拆分 | [docs/plans/](docs/plans/README.md) |
-| 历史 superpower 兼容输出 | `docs/superpowers/*` |
+| 文档体系总入口 | [docs/](docs/README.md) |
+| 产品路线图、迭代和需求池 | [docs/01-product-planning/](docs/01-product-planning/README.md) |
+| 已进入交付的需求 / 验收标准 | [docs/02-delivery-plans/01-specs/](docs/02-delivery-plans/01-specs/README.md) |
+| 已进入交付的实施计划 / 任务拆分 | [docs/02-delivery-plans/02-plans/](docs/02-delivery-plans/02-plans/README.md) |
+| 复盘、根因和纠正动作 | [docs/03-engineering-governance/03-retrospectives/](docs/03-engineering-governance/03-retrospectives/README.md) |
+| 历史 superpower 兼容输出 | `docs/90-compat-legacy/superpowers/*` |
 
 ## 快速开始
 
@@ -79,7 +82,7 @@ MetaEduBase 面向职业教育场景，围绕知识资产的采集、处理、�
 - pnpm 9+
 - PostgreSQL、Redis 和对象存储的本地开发环境
 
-如果你不确定如何准备本地依赖，直接阅读 [docs/engineering/rules/local-development.md](docs/engineering/rules/local-development.md)。那里是运行命令和环境说明的事实源。
+如果你不确定如何准备本地依赖，直接阅读 [docs/03-engineering-governance/01-rules/local-development.md](docs/03-engineering-governance/01-rules/local-development.md)。那里是运行命令和环境说明的事实源。
 
 ### 最短启动路径
 
@@ -98,7 +101,7 @@ cd packages/server-python && make install && cd ../..
 - Web: `http://localhost:3000`
 - API Docs: `http://localhost:8000/docs`
 
-默认开发账号、测试库初始化、日志查看、分服务启动和其他命令统一见 [docs/engineering/rules/local-development.md](docs/engineering/rules/local-development.md)。
+默认开发账号、测试库初始化、日志查看、分服务启动和其他命令统一见 [docs/03-engineering-governance/01-rules/local-development.md](docs/03-engineering-governance/01-rules/local-development.md)。
 
 ## 开发与 AI 协作入口
 
@@ -106,19 +109,19 @@ cd packages/server-python && make install && cd ../..
 
 开始任何开发任务前：
 
-1. 先读 [docs/engineering/current-work.md](docs/engineering/current-work.md)
-2. 若涉及交接、plan-do、superpower 或其他 AI IDE，再读 [docs/engineering/workflow.md](docs/engineering/workflow.md)
-3. 若任务属于技术债，继续读 [docs/engineering/technical-debt.md](docs/engineering/technical-debt.md)
+1. 先读 [docs/03-engineering-governance/current-work.md](docs/03-engineering-governance/current-work.md)
+2. 若涉及交接、plan-do、superpower 或其他 AI IDE，再读 [docs/03-engineering-governance/workflow.md](docs/03-engineering-governance/workflow.md)
+3. 若任务属于技术债，继续读 [docs/03-engineering-governance/technical-debt.md](docs/03-engineering-governance/technical-debt.md)
 
-`AGENTS.md`、`CLAUDE.md` 和其他 IDE 兼容目录都应把共享规则指回 `docs/engineering/*`，而不是各自维护第二份事实源。
+`AGENTS.md`、`CLAUDE.md` 和其他 IDE 兼容目录都应把共享规则指回 `docs/03-engineering-governance/*`，而不是各自维护第二份事实源。
 
 ## 部署与运行细节
 
 - 容器与部署配置位于 `deploy/`
-- 本地启动与测试命令见 `docs/engineering/rules/local-development.md`
-- 质量门禁与收尾要求见 `docs/engineering/rules/quality-gates.md`
+- 本地启动与测试命令见 `docs/03-engineering-governance/01-rules/local-development.md`
+- 质量门禁与收尾要求见 `docs/03-engineering-governance/01-rules/quality-gates.md`
 
-顶层文档只保留稳定入口。高频变化的命令、门禁和实现细节，统一收敛到 `docs/engineering/*` 和代码本身。
+顶层文档只保留稳定入口。高频变化的命令、门禁和实现细节，统一收敛到 `docs/03-engineering-governance/*` 和代码本身。
 
 ## License
 
