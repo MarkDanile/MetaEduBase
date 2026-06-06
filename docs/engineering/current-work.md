@@ -34,8 +34,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-06 | DOC-017 Contracts / Task Modes 长期化重构 | 🟢 完成 | `contracts.md` 收敛为长期契约治理文档，`task-modes.md` 收敛为任务模式入口文档；保留稳定锚点并同步索引描述。 | [Spec](../specs/2026-06-06-doc-017-contracts-task-modes-long-lived.md) / [Plan](../plans/2026-06-06-doc-017-contracts-task-modes-long-lived-plan.md) |
+| 2026-06-06 | DOC-016 Testing / Local Development 长期化重构 | 🟢 完成 | `testing.md` 改为长期测试策略文档，`local-development.md` 改为本地开发入口文档；同步索引描述收口稳定入口与文档边界。 | [Spec](../specs/2026-06-06-doc-016-testing-local-development-long-lived.md) / [Plan](../plans/2026-06-06-doc-016-testing-local-development-long-lived-plan.md) |
+| 2026-06-06 | DOC-015 README / ARCHITECTURE 长期化重构 | 🟢 完成 | 根目录入口文档改为“稳定入口 + 架构地图”，移除顶层易变 inventory；同步 `docs.md` 与 `architecture.md` 收口文档边界。 | [Spec](../specs/2026-06-06-doc-015-long-lived-entry-docs.md) / [Plan](../plans/2026-06-06-doc-015-long-lived-entry-docs-plan.md) |
 | 2026-06-06 | TD-029 收口 TD-009 的 shared schema 门禁与 FileDetailView 类型错误 | 🟢 完成 | 去掉 web 对 shared 的 project reference + `FileDetailView` v-for key 用 `String(...)` 收敛 + TD-009 验证摘要校正。 | [Spec](../specs/2026-06-06-td-029-shared-schema-gate.md) / [Plan](../plans/2026-06-06-td-029-shared-schema-gate-plan.md) |
 | 2026-06-06 | TD-009 减少前后端契约漂移 | 🟢 完成 | 结构化抽取结果容器契约显式化：shared schema/type/helper、前端 template 窄化、后端写入 shape 测试。 | [Spec](../specs/2026-06-05-td-009-structured-data-contract.md) / [Plan](../plans/2026-06-05-td-009-structured-data-contract-plan.md) |
-| 2026-06-05 | DOC-014 刷新 README / ARCHITECTURE 项目入口文档 | 🟢 完成 | 同步入口文档中的上下文/API、测试数量、迁移/seed、RAG、LLM provider 和 `ui-*` 事实。 | `README.md` / `ARCHITECTURE.md` |
-| 2026-06-05 | DOC-013 工程文档门禁增强与 UI 迁移事实源收口 | 🟢 完成 | `scripts/check-engineering-docs` 增加技术债状态一致性、完成交付记录和工作台摘要长度检查；同步收口 TD-027 与 UI 迁移文档。 | `scripts/engineering/check_engineering_docs.py` |
-| 2026-06-05 | TD-028 业务视图与共享组件的 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 存量替换 | 🟢 完成 | 12 文件 119 处原子控件类迁到 `ui-*`，保留 `main.css` 中 `liquid-*` 兼容别名；详情见设计系统段落归档。 | [PR #61](https://github.com/MarkDanile/MetaEduBase/pull/61) |

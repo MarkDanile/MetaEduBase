@@ -1,74 +1,166 @@
-# Testing — 测试规范
+# Testing — 测试策略
 
-## 测试配置
+本文件记录 MetaEduBase 的长期测试策略：测试分层、环境隔离、稳定入口、mock 边界和常见约束。它不是一次性测试报告，也不记录固定测试数量。
 
-| 项目 | 配置 |
-|------|------|
-| 测试数据库 | `metaedu_test` (独立库) |
-| 连接策略 | **NullPool** — 每次请求新建连接，避免 asyncpg 事件循环绑定问题 |
-| 数据初始化 | 每个 `client` fixture 内：`CREATE SCHEMA` + `create_all` + `ensure_seed` |
-| 种子数据 | 测试环境默认租户 + admin/admin123 |
+## 这份文档回答什么
 
-## 测试文件结构
+- 自动化测试主要放在哪里
+- 运行测试前需要什么环境
+- 什么场景该跑什么验证
+- 哪些依赖应该 mock，哪些应该跑真实集成
+- 测试文档什么时候需要更新
 
-```
-tests/
-├── conftest.py
-├── contexts/
-│   ├── ai/
-│   ├── document/
-│   ├── identity/
-│   ├── knowledge/
-│   ├── resource/
-│   ├── structured_data/
-│   └── template/
-└── shared/
-```
+如果你要看具体门禁命令组合，继续读 `docs/engineering/rules/quality-gates.md`。如果你要初始化测试库或运行本地命令，继续读 `docs/engineering/rules/local-development.md`。
 
-当前 `pytest --collect-only -q` 可收集 81 个测试。不要在规则中手写固定测试数量；数量变化时以 pytest 收集结果为准。
+## 测试目标
 
-## Mock 策略
+这个项目的测试首先服务三件事：
 
-| 外部依赖 | Mock 方式 |
-|----------|-----------|
-| LLM API | Mock `httpx.AsyncClient` 和 `get_embedding_vec` |
-| Embedding API | Mock `embedding_service.py` 中的 `get_embedding_vec` |
-| 数据库 | 使用 NullPool + 独立测试数据库 |
+1. 锁定核心业务行为，避免回归
+2. 保护高风险边界，例如多租户、异步任务、数据清理和契约变更
+3. 让 AI 或人工接手时能快速验证改动没有明显破坏已有行为
 
-### Mock 示例
-```python
-@pytest.fixture
-def mock_llm():
-    with patch("httpx.AsyncClient") as mock:
-        mock.return_value.__aenter__.return_value.post.return_value.json.return_value = {
-            "choices": [{"message": {"content": "Mock response"}}]
-        }
-        yield mock
-```
+测试不是为了追求固定数字，而是为了覆盖风险最高的路径。
 
-## 测试规则
+## 当前测试重心
 
-| 规则 | 说明 |
-|------|------|
-| 唯一用户名 | 使用 `uuid4().hex[:8]` 生成，避免测试间冲突 |
-| 短查询词 | 搜索测试用短查询词（如"汽车"而非"汽车维修"） |
-| 未认证断言 | `status_code in (401, 403)` 兼容 HTTPBearer 行为 |
-| 认证测试 | `auth_token` fixture 先 login 获取 token |
+当前仓库的自动化测试重心在后端 `pytest` 套件，主要覆盖：
 
-## 运行测试
+- 认证与鉴权
+- 知识库与搜索
+- 文档与数据集处理相关 API
+- 异步任务生命周期
+- LLM provider / fallback 等共享逻辑
+- 测试数据库初始化与 seed 安全边界
+
+前端当前仍以 `lint`、`typecheck`、`build` 和必要的手动验收为主。若未来引入前端自动化测试基建，再更新本文件。
+
+## 测试分层
+
+### 1. 共享逻辑测试
+
+放在 `packages/server-python/tests/shared`，用于覆盖：
+
+- provider 选择与 fallback
+- 测试库初始化逻辑
+- seed 安全边界
+- 任务生命周期 helper
+- 健康检查等跨上下文能力
+
+### 2. 上下文测试
+
+放在 `packages/server-python/tests/contexts/*`，按 bounded context 组织，优先覆盖：
+
+- API 成功路径
+- 关键失败路径
+- 权限 / 未认证路径
+- 删除、重试、重新初始化等高风险状态流
+
+### 3. 契约与回归测试
+
+当一次改动影响：
+
+- API / DTO / shared schema
+- 多个等价入口
+- 同一状态流的多个对象类型
+- 清理 / 重试 / 重建等生命周期动作
+
+应补最小回归测试或覆盖矩阵，而不是只验证当前暴露 bug 的那一条路径。
+
+## 测试环境原则
+
+### 测试数据库独立
+
+后端集成测试默认使用独立测试库，不应复用开发库。测试库的初始化入口见 `local-development.md`。
+
+### 连接隔离优先
+
+测试环境默认使用 `NullPool` 风格的隔离连接策略，避免异步连接池把问题藏起来，也避免事件循环绑定带来的污染。
+
+### schema 与 seed 显式受控
+
+- 测试库 schema 应由稳定初始化入口准备
+- 测试 seed 只服务测试环境
+- 开发 seed 与测试 seed 的边界必须明确，避免把开发默认数据误带入测试或生产路径
+
+## 稳定测试入口
+
+常用稳定入口如下：
 
 ```bash
 cd packages/server-python && make test
+cd packages/server-python && make lint
+cd packages/server-python && .venv/bin/pytest path/to/test_file.py -v
+cd packages/server-python && .venv/bin/pytest -v -k "keyword"
 ```
 
-当前集成测试依赖本机 PostgreSQL `metaedu_test`。如果数据库不可用，先运行不依赖数据库的单元测试或相关 `--collect-only`，并把环境阻塞记录到 `docs/engineering/current-work.md`。
+当任务涉及：
 
-## 覆盖率要求
+- 后端行为变更：优先跑相关 `pytest`
+- lint 风险：补跑 `make lint`
+- API / DTO / shared schema：同时参考 `quality-gates.md` 的契约门禁
 
-- **目标**：核心业务逻辑测试覆盖率 ≥ 80%
-- **必须覆盖**：
-  - 认证流程（login/register/me）
-  - CRUD 操作（创建/查询/更新/删除）
-  - 搜索功能（语义/关键词/混合）
-  - RAG 流程（embedding + LLM 调用）
-  - 边界条件（空输入、超长输入、无权限访问）
+不要在规则文档里手写固定测试数量。数量变化时，以 `pytest --collect-only` 或实际执行输出为准。
+
+## Mock 边界
+
+### 适合 mock 的依赖
+
+- 外部 LLM / embedding 服务
+- Celery 投递与 broker 连接
+- 难以稳定复现的第三方网络依赖
+
+### 尽量跑真实集成的依赖
+
+- 数据库读写
+- Repository / ORM 查询行为
+- 多租户上下文传播
+- 删除、重试、重新初始化等生命周期逻辑
+
+原则是：把不稳定的外部世界 mock 掉，把系统自己的真实行为尽量测到。
+
+## 常见测试约束
+
+| 约束 | 说明 |
+|------|------|
+| 唯一测试数据 | 避免用户名、名称等可唯一字段在测试间冲突 |
+| 未认证断言 | 兼容框架实际返回的 `401/403` 边界，但不要模糊权限语义 |
+| 搜索相关断言 | 优先断言行为与结果集合，不依赖脆弱的排序偶然性 |
+| 状态流断言 | 优先验证状态迁移、派生数据和副作用，而不是只看 HTTP 200 |
+| 回归修复 | 优先补能锁住正确行为的测试，而不是只补 bug 暴露点 |
+
+## 覆盖重点
+
+以下类型的改动应优先考虑补测试或补覆盖矩阵：
+
+- 多租户隔离
+- 数据完整性 / 级联清理
+- 异步任务状态流
+- 契约与 shared schema
+- LLM provider / fallback
+- 删除、重试、重新初始化
+
+覆盖率可以作为观察指标，但不是这份规则文档里的长期事实源。与其维护一个很快过时的数字，不如明确哪些风险必须被覆盖。
+
+## 环境阻塞时怎么处理
+
+如果测试因为数据库、依赖或环境原因无法运行：
+
+1. 先运行最相关的最小验证
+2. 在 `current-work.md` 记录阻塞命令、失败摘要和影响范围
+3. 如果缺口会影响当前交付判断，不能写“通过”
+4. 必要时把环境问题入账为技术债或 follow-up
+
+不要只写“未测试”。
+
+## 何时更新本文件
+
+只有下面这些变化值得更新 `testing.md`：
+
+- 新增或切换主要测试框架
+- 改变测试分层策略
+- 改变测试数据库 / 隔离原则
+- 改变 mock 边界或稳定入口
+- 前端自动化测试成为正式门禁
+
+如果只是测试数量变化、某个文件新增若干用例，通常不更新本文件。

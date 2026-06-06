@@ -72,16 +72,16 @@
 |------|---------|
 | [current-work.md](docs/engineering/current-work.md) | 当前开发工作台、任务入口、交接状态 |
 | [workflow.md](docs/engineering/workflow.md) | 跨 AI IDE / 插件开发流程、计划来源、收尾规范 |
-| [task-modes.md](docs/engineering/task-modes.md) | 常见任务模式、类型与领域的开工与验收检查表 |
+| [task-modes.md](docs/engineering/task-modes.md) | 任务模式入口、默认模式路由与各模式完成标准 |
 | [technical-debt.md](docs/engineering/technical-debt.md) | 技术债总账、定期复盘规范、任务状态流 |
 | [specs/README.md](docs/specs/README.md) | 插件无关的需求、设计和验收标准目录约定 |
 | [plans/README.md](docs/plans/README.md) | 插件无关的实施计划和任务拆分目录约定 |
-| [architecture.md](docs/engineering/rules/architecture.md) | Tech stack, DDD contexts, API endpoints, DB schema, core flows |
+| [architecture.md](docs/engineering/rules/architecture.md) | 架构实现约束、上下文划分、核心流转与修改边界 |
 | [coding-style.md](docs/engineering/rules/coding-style.md) | Naming, formatting, design tokens, shared components |
-| [testing.md](docs/engineering/rules/testing.md) | Fixtures, mock strategy, coverage |
-| [local-development.md](docs/engineering/rules/local-development.md) | 本地启动、依赖、迁移和常用运行命令 |
+| [testing.md](docs/engineering/rules/testing.md) | 测试策略、环境隔离、稳定入口与 mock 边界 |
+| [local-development.md](docs/engineering/rules/local-development.md) | 本地开发入口、场景化命令与数据库初始化边界 |
 | [quality-gates.md](docs/engineering/rules/quality-gates.md) | 验证矩阵、完成门禁、收尾记录模板 |
-| [contracts.md](docs/engineering/rules/contracts.md) | API / DTO / shared schema 契约变更规则 |
+| [contracts.md](docs/engineering/rules/contracts.md) | 契约所有权、变更边界、同步步骤与验证基线 |
 | [git-workflow.md](docs/engineering/rules/git-workflow.md) | Branches, commits, PR flow |
 | [security.md](docs/engineering/rules/security.md) | Auth, injection prevention, secrets |
 | [data-integrity.md](docs/engineering/rules/data-integrity.md) | Cascade delete, orphan cleanup |
