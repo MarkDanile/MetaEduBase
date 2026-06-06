@@ -15,6 +15,9 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-06 | DOC-017 Contracts / Task Modes 长期化重构 | 文档 / 工作流 / AI 协作 |  |  | `docs/specs/2026-06-06-doc-017-contracts-task-modes-long-lived.md` |
+| 2026-06-06 | DOC-016 Testing / Local Development 长期化重构 | 文档 / 测试 / Developer Experience |  |  | `docs/specs/2026-06-06-doc-016-testing-local-development-long-lived.md` |
+| 2026-06-06 | DOC-015 README / ARCHITECTURE 长期化重构 | 文档 / 架构 / AI 协作 |  |  | `docs/specs/2026-06-06-doc-015-long-lived-entry-docs.md` |
 | 2026-06-06 | TD-029 收口 TD-009 的 shared schema 门禁与 FileDetailView 类型错误 | 技术债 / 修复 / follow-up |  |  | `docs/engineering/technical-debt.md#td-029-收口-td-009-的-shared-schema-门禁与-filedetailview-类型错误` |
 | 2026-06-06 | TD-009 减少前后端契约漂移（结构化抽取容器契约） | 技术债 / 重构 |  |  | `docs/engineering/technical-debt.md#td-009-减少前后端契约漂移` |
 | 2026-06-05 | TD-027 补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类（设计系统扩展） | 技术债 / 设计系统 | [#59](https://github.com/MarkDanile/MetaEduBase/pull/59) |  | `docs/engineering/technical-debt.md#td-027-补-ui-input-ui-btn-ui-tag-ui-dialog-共享类设计系统扩展` |

@@ -8,10 +8,10 @@
 | current-work.md | docs/engineering/current-work.md | 当前开发任务入口与交接状态 |
 | work-log.md | docs/engineering/work-log.md | 已完成任务的一行式历史索引 |
 | workflow.md | docs/engineering/workflow.md | 跨 AI IDE / 插件开发流程 |
-| task-modes.md | docs/engineering/task-modes.md | 常见任务模式、类型与领域检查表 |
+| task-modes.md | docs/engineering/task-modes.md | 任务模式入口、默认模式路由与各模式完成标准 |
 | workbench.md | docs/engineering/rules/workbench.md | 当前工作台状态流、保留策略和任务卡片模板 |
-| ARCHITECTURE.md | 根目录 | 系统架构详述（API/Schema/流程） |
-| README.md | 根目录 | 快速开始、环境要求、部署总览 |
+| ARCHITECTURE.md | 根目录 | 长期架构地图：系统边界、上下文划分、关键流转、质量属性 |
+| README.md | 根目录 | 项目入口：能力概览、仓库导航、最小启动路径 |
 | docs/specs/* | 目录 | 插件无关的功能需求、产品设计、验收标准 |
 | docs/plans/* | 目录 | 插件无关的实施计划、任务拆分、验收步骤 |
 | docs/superpowers/* | 目录 | 历史 superpower 文档或兼容输出，不作为新任务默认目录 |
@@ -47,17 +47,17 @@ class KnowledgeNode(AggregateRoot):
 
 | 文件变更 | 必须同步更新 |
 |----------|--------------|
-| `router.py` | ARCHITECTURE.md API 端点表 |
-| `models.py` | ARCHITECTURE.md 数据库 Schema |
-| `config.py` / `.env` | ARCHITECTURE.md 配置项速查 + README.md 环境变量 |
+| `router.py` / API 请求响应语义 | `docs/engineering/rules/contracts.md`；只有系统边界或关键流程变化时才更新 `ARCHITECTURE.md` |
+| `models.py` / migration / 数据所有权 | `docs/engineering/rules/contracts.md`、`docs/engineering/rules/data-integrity.md`；只有上下文边界变化时才更新 `ARCHITECTURE.md` |
+| `config.py` / `.env` / 运行命令 | `docs/engineering/rules/local-development.md`；只有最短启动路径变化时才更新 `README.md` |
 | `main.css` | `docs/engineering/rules/coding-style.md` 设计 Token |
-| API 请求/响应 DTO、前端 service 类型、shared schema | `docs/engineering/rules/contracts.md`，必要时更新 ARCHITECTURE.md API 端点表 |
-| 新增页面 | ARCHITECTURE.md 页面清单 |
+| API 请求/响应 DTO、前端 service 类型、shared schema | `docs/engineering/rules/contracts.md`；只有共享契约策略或系统级流转变化时才更新 `ARCHITECTURE.md` |
+| 新增页面 | 通常无需更新顶层文档；只有影响仓库导航或系统结构时才更新 `README.md` / `ARCHITECTURE.md` |
 | 新增业务上下文 | ARCHITECTURE.md + README.md 项目结构 |
 | 删除逻辑变更 | `docs/engineering/rules/data-integrity.md` 级联删除要求 |
-| 质量门禁或验证策略变更 | `docs/engineering/rules/quality-gates.md`，必要时同步 README.md 验证说明 |
+| 质量门禁或验证策略变更 | `docs/engineering/rules/quality-gates.md`；通常不更新顶层文档 |
 | 工程工具脚本或门禁实现变更 | `scripts/engineering/*` + `docs/engineering/rules/quality-gates.md`；如需稳定命令入口，可保留根级 `scripts/check-*` wrapper |
-| 本地启动、依赖安装或运行命令变更 | `docs/engineering/rules/local-development.md` + README.md 快速开始 |
+| 本地启动、依赖安装或运行命令变更 | `docs/engineering/rules/local-development.md`；只有最短启动路径变化时再同步 `README.md` |
 | AI 协作流程变更 | `docs/engineering/workflow.md` + AGENTS.md + CLAUDE.md |
 | 任务模式、开工条件或验收流程变更 | `docs/engineering/task-modes.md` + `docs/engineering/workflow.md` |
 | Spec / Plan 目录约定变更 | `docs/engineering/workflow.md` + `docs/specs/README.md` + `docs/plans/README.md` |
@@ -75,8 +75,9 @@ class KnowledgeNode(AggregateRoot):
 | 任务类型、领域、开工条件和验收模式 | `docs/engineering/task-modes.md` |
 | 当前工作台状态流、保留策略和任务卡片模板 | `docs/engineering/rules/workbench.md` |
 | 技术债任务与定期复盘 | `docs/engineering/technical-debt.md` |
-| 长期架构、阶段路线、系统边界 | `ARCHITECTURE.md` |
-| 本地启动、依赖、迁移和常用运行命令 | `docs/engineering/rules/local-development.md` |
+| 长期架构、系统边界、关键流转、质量属性、演进方向 | `ARCHITECTURE.md` |
+| 项目入口、能力概览、仓库导航、最小启动路径 | `README.md` |
+| 本地开发入口、数据库初始化与常见开发命令 | `docs/engineering/rules/local-development.md` |
 | 编码、测试、安全、数据完整性等长期规则 | `docs/engineering/rules/*` |
 | 工程文档门禁、仓库治理检查等内部工具实现 | `scripts/engineering/*`；根级 `scripts/check-*` 只保留稳定兼容命令入口 |
 | API / DTO / shared schema 契约治理 | `docs/engineering/rules/contracts.md` |
@@ -86,16 +87,24 @@ class KnowledgeNode(AggregateRoot):
 
 如果新内容不明显属于某个规则，先放到 `docs/engineering/current-work.md` 的任务卡片备注或新建对应 spec/plan；不要塞进 `ARCHITECTURE.md` 或入口文件。
 
-## README.md 结构
+## 顶层文档原则
+
+- 顶层文档优先记录稳定内容，不追逐高频变化事实。
+- API 清单、数据库字段、固定测试数量、一次性迁移命令不要堆进 `README.md` 或 `ARCHITECTURE.md`。
+- 如果某段内容更新频率高于“系统边界变化”，它大概率不属于 `ARCHITECTURE.md`。
+- 如果某段内容只是帮助启动或找入口，而不是解释系统边界，它更可能属于 `README.md`。
+
+## README.md 推荐结构
 
 ```
 # Project Name
-> 简短描述
+> 项目定位
 
+## 核心能力
+## 系统快照
+## 仓库导航
 ## 快速开始
-## 环境要求
-## 目录结构
-## 部署
+## 开发与协作入口
 ```
 
 ## 注释禁止项

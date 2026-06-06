@@ -1,126 +1,112 @@
-# Architecture — 系统架构
+# Architecture — 架构实现约束
 
-> 详细文档见 [ARCHITECTURE.md](../../../ARCHITECTURE.md)
+> 长期架构地图见 [ARCHITECTURE.md](../../../ARCHITECTURE.md)。本文件补充实现侧约束、代码定位方式和修改边界。
 
-## 技术栈
+## 本文件关注什么
 
-| 层级 | 技术 |
-|------|------|
-| 后端 | FastAPI + SQLAlchemy 2 (async) + Pydantic v2 |
-| 数据库 | PostgreSQL 16 + pgvector (1536维) + ltree |
-| 前端 | Vue 3.5 + Vite 6 + Tailwind CSS 4 + Pinia 3 + Vue Query |
-| 认证 | JWT (python-jose + bcrypt) + ContextVar 多租户 |
-| LLM | MiniMax M2 / DeepSeek / Qwen (OpenAI-compatible) |
-| Embedding | BAAI/bge-m3 via Qwen DashScope API + SiliconFlow Qwen3-Embedding-8B / MiniMax emboir 扩展路径 |
-| 缓存/队列 | Redis 7 + Celery 5 |
-| 存储 | MinIO (本地文件系统降级) |
+- 代码层面的上下文划分与目录定位
+- 跨模块实现约束
+- 什么时候应该更新 `ARCHITECTURE.md`
+- 新增上下文、端点、模型时的最小检查项
 
-## 包结构
+不在这里维护全量 API 表、数据库字段清单或固定测试数量。
 
-```
-packages/
-├── server-python/       # FastAPI 后端
-│   ├── app/contexts/   # DDD 业务上下文
-│   │   ├── identity/    # 认证
-│   │   ├── knowledge/  # 知识图谱
-│   │   ├── document/   # 资源库（文件/文件夹/切片/管道）
-│   │   ├── structured_data/  # 数据库（数据集/行/知识图谱）
-│   │   ├── template/   # 数据要素模板
-│   │   └── resource/   # 旧资源管理（保留）
-│   └── tests/          # 后端测试套件（当前 pytest 可收集 152 tests）
-├── web/               # Vue 3 前端（ui-* workspace 语义层）
-└── mcp-server/       # MCP 服务
-```
+## 系统结构速查
 
-## DDD 分层
+| 区域 | 位置 | 说明 |
+|------|------|------|
+| Web App | `packages/web` | Vue 前端应用与页面交互 |
+| Backend | `packages/server-python/app` | FastAPI、领域服务、任务编排、数据访问 |
+| Tests | `packages/server-python/tests` | 后端 pytest 套件 |
+| Shared | `packages/shared` | 前端共享 schema / type / helper |
+| MCP Server | `packages/mcp-server` | 外部 AI 工具接入层 |
 
-每个上下文四层结构：
+## 后端上下文结构
 
-```
-application/    # DTO (Pydantic) + 服务函数 + Celery 任务
-domain/         # 实体、Repository 接口、枚举
-infrastructure/ # SQLAlchemy ORM 模型 + Repository 实现
-interfaces/api/ # FastAPI 路由 + 依赖注入
+后端默认按 bounded context 组织：
+
+```text
+app/contexts/{context}/
+├── application/        # DTO、service、任务编排
+├── domain/             # 实体、值对象、仓储接口、领域规则
+├── infrastructure/     # ORM model、仓储实现、外部适配
+└── interfaces/api/     # router、依赖注入、响应映射
 ```
 
-## API 端点
+当前长期存在的上下文包括：
 
-| 前缀 | 上下文 | 主要端点 |
-|------|--------|----------|
-| `/api/v1/auth` | 认证 | login, register, /me |
-| `/api/v1/knowledge` | 知识 | CRUD, search, tree |
-| `/api/v1/document` | 资源库 | folders, files, chunks, tasks |
-| `/api/v1/structured-data` | 数据库 | datasets, rows, kg |
-| `/api/v1/ai` | AI | /chat (RAG) |
-| `/api/v1/templates` | 模板 | CRUD, AI 初始化, doc_type 检查 |
+- `identity`
+- `knowledge`
+- `document`
+- `structured_data`
+- `template`
+- `resource`（历史兼容上下文）
 
-详见 [ARCHITECTURE.md](../../../ARCHITECTURE.md) 第 3 节
+## 长期实现约束
 
-## 数据库 Schema
+### 1. Router 保持轻量
 
-- **Schema**：`metaedu`
-- **隔离**：所有表 `tenant_id` 列 + ContextVar 多租户隔离
-- **向量**：pgvector 1536 维，HNSW 索引
-- **全文**：tsvector (simple 分词器)
-- **层级**：ltree 物化路径
+router 负责认证、参数解析、异常映射和响应映射；复杂业务流程优先放到 application service 或 repository，不要把业务编排堆在路由层。
 
-详见 [ARCHITECTURE.md](../../../ARCHITECTURE.md) 第 4 节
+### 2. 多租户隔离是默认前提
 
-## 核心流程
+所有查询、写入和后台任务都必须带着租户边界思考。不要把隔离逻辑留给调用方“自己记得做”。
 
-### 认证流程
-```
-请求 → HTTPBearer → get_current_user() → decode_token() → 验证用户 → 返回 current_user
-```
+### 3. 模型注册必须完整
 
-### 多租户隔离
-```
-get_current_user() → set_tenant_context(tenant_id, domain, clearance) → get_tenant_id()
-```
-ContextVar 在 `app/shared/infrastructure/tenant_context.py`。**所有 DB 查询必须包含 `tenant_id` 过滤。**
+新增 ORM model 时，除了定义 model 和 migration，还要确保共享模型注册入口可见；否则迁移和 metadata 装配会不完整。
 
-### RAG 问答流程
-```
-用户问题 → Embedding → 3路并行召回 (pgvector + ILIKE + structured metadata)
-→ FrequencyFusion → LLM 生成 + 来源引用 → 返回回答
-LLM 降级链: minimax → deepseek → qwen
-```
+### 4. 异步任务要有清理边界
 
-### 文档处理管道
-```
-上传 → parse → chunk → embed → index_tsv → extract_template → extract_kg
-```
-详见 [PRD](../../superpowers/specs/2026-05-15-document-pipeline-design.md)
+文档 / 数据集等异步处理链路在删除、重试、重新初始化时必须有一致的派生数据清理与重建策略。
 
-## 关键跨文件模式
+### 5. 契约变更要显式同步
 
-**Auth 依赖注入**: `current_user: dict = Depends(get_current_user)`，定义在 `contexts/identity/interfaces/api/dependencies.py`
+API DTO、前端 service DTO、shared schema/type 之间有任意一处变化时，按 `docs/engineering/rules/contracts.md` 同步，而不是只在某一端静默修改。
 
-**ORM 模型注册**: 所有模型必须在 `app/shared/infrastructure/models.py` 中 import，否则 Alembic migration 和 metadata 注册找不到表
+## 详细事实源在哪里
 
-**知识节点路径**: `parent_id` → 查父 `path` → 拼接 `{parent_path}.{node_id[:8]}`。无父节点时 `path = node_id[:8]`
+| 你想查的内容 | 去哪里看 |
+|--------------|----------|
+| 系统边界、关键流转、质量属性 | `ARCHITECTURE.md` |
+| API / DTO / shared schema 规则 | `docs/engineering/rules/contracts.md` |
+| 本地启动和常用命令 | `docs/engineering/rules/local-development.md` |
+| 测试策略 | `docs/engineering/rules/testing.md` |
+| 数据完整性与级联清理 | `docs/engineering/rules/data-integrity.md` |
+| 当前任务与交接状态 | `docs/engineering/current-work.md` |
+| 实际接口清单 | router、Pydantic DTO、OpenAPI 文档 |
+| 实际数据模型 | SQLAlchemy models、Alembic migrations |
 
-**架构文档不是任务板**: `ARCHITECTURE.md` 维护长期架构、阶段约束和里程碑；当前任务状态统一维护在 `docs/engineering/current-work.md`。
+## 何时更新 ARCHITECTURE.md
 
-## 新增 API 端点步骤
+只有下面这些变化，才应该同步顶层 `ARCHITECTURE.md`：
 
-1. 确定上下文（或在 `app/contexts/` 下新建）
-2. 在 `interfaces/api/router.py` 添加路由
-3. 新 DB 表 → 在 `infrastructure/models.py` 添加 Model + Alembic migration + 在 `shared/infrastructure/models.py` import
-4. 需要认证 → `current_user: dict = Depends(get_current_user)`
-5. 需要租户隔离 → `get_tenant_id()`
-6. 在 `app/main.py` 中 `app.include_router()`
-7. 在 `tests/contexts/` 添加测试
+- 新增、删除或重定义 bounded context
+- 改变核心运行单元或主要集成关系
+- 改变系统级关键流程
+- 改变长期质量属性或数据所有权边界
 
-新增端点时避免在 router 中沉积复杂业务逻辑。Router 负责认证、参数解析和响应映射；业务流程优先放在 application service 或 repository 中。
+如果只是新增端点、字段、索引、表、命令或局部实现细节，不更新 `ARCHITECTURE.md`，改对应事实源即可。
 
-## 新增业务上下文
+## 新增 API / 模型 / 上下文的最小检查项
 
-```
-app/contexts/{new_context}/
-├── application/        # DTO + Service + Tasks
-├── domain/             # Entity + Repository interface
-├── infrastructure/     # ORM Model + Repository
-└── interfaces/api/     # Router
-```
-然后在 `main.py` 注册 router，在 `shared/infrastructure/models.py` import model。
+### 新增 API
+
+1. 先确认属于哪个 context。
+2. router 只承载入口职责，不沉积复杂业务编排。
+3. 认证、租户边界和错误语义保持一致。
+4. 同步相关 DTO / shared schema / 前端 service。
+5. 补相关测试与验证记录。
+
+### 新增模型或迁移
+
+1. 明确数据归属属于哪个 context。
+2. 同步 migration、model 注册和数据完整性约束。
+3. 如果影响删除、重试、重新初始化流程，补清理验证。
+4. 若只是局部结构变化，不更新顶层架构文档。
+
+### 新增业务上下文
+
+1. 使用统一的 `application / domain / infrastructure / interfaces` 目录骨架。
+2. 在 `ARCHITECTURE.md` 更新新的系统边界与职责。
+3. 在必要时更新 `README.md` 的仓库导航或系统快照。
