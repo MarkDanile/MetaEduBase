@@ -1,6 +1,6 @@
 # REQ-003 P1 RAG 质量链路验收与回归测试 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 为 P1 RAG 链路（NER / 3 通道召回 / 频次融合 / sources 结构）补齐可复现的回归测试，让轨道 B 四项"待验证"翻为验证结论。
 
@@ -35,7 +35,7 @@
 - Create: `packages/server-python/tests/contexts/ai/test_rule_based_ner.py`
 - Test: 同上
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `tests/contexts/ai/test_rule_based_ner.py`：
 
@@ -99,22 +99,22 @@ def test_rule_based_ner_satisfies_protocol():
     assert isinstance(ner, NERPipeline)
 ```
 
-- [ ] **Step 2: 跑测试，预期至少 1 条失败**
+- [x] **Step 2: 跑测试，预期至少 1 条失败**
 
 Run: `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai/test_rule_based_ner.py -v`
 Expected: 7 项中至少 1 项失败（文件刚创建），或全部通过说明 NER 实现已对齐。**记录实际结果。**
 
-- [ ] **Step 3: 不写实现 — 只确认测试本身写对**
+- [x] **Step 3: 不写实现 — 只确认测试本身写对**
 
 如果步骤 2 出现"无法导入"类错误，调整 import 路径后回到 Step 2。
 **任务 1 不修改任何业务代码。**
 
-- [ ] **Step 4: 跑测试，预期全部通过**
+- [x] **Step 4: 跑测试，预期全部通过**
 
 Run: `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai/test_rule_based_ner.py -v`
 Expected: `7 passed`
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 cd /Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase
@@ -130,7 +130,7 @@ git commit -m "test(ai): add RuleBasedNER regression coverage (REQ-003 AC-1/AC-2
 - Create: `packages/server-python/tests/contexts/ai/test_frequency_fusion.py`
 - Test: 同上
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `tests/contexts/ai/test_frequency_fusion.py`：
 
@@ -206,12 +206,12 @@ def test_fuse_channel_field_lists_all_source_channels():
     assert channels == {"vector", "keyword", "metadata"}
 ```
 
-- [ ] **Step 2: 跑测试，预期至少 1 条失败**
+- [x] **Step 2: 跑测试，预期至少 1 条失败**
 
 Run: `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai/test_frequency_fusion.py -v`
 Expected: `5 passed` 或失败项被记录。**特别注意 `test_fuse_channel_field_lists_all_source_channels`——若现有实现未做 set 去重，按 spec 风险段放宽断言到"含全部来源（允许重复）"并入账 TD，不改业务代码。**
 
-- [ ] **Step 3: 若 Step 2 触发了 spec 风险段**
+- [x] **Step 3: 若 Step 2 触发了 spec 风险段**
 
 不动 `fusion_service.py`。在 `docs/03-engineering-governance/technical-debt.md` 新增条目 `TD-031 FrequencyFusion.channel 拼接去重` 描述证据（测试名 + 实际输出），然后放宽对应断言为：
 
@@ -223,12 +223,12 @@ Expected: `5 passed` 或失败项被记录。**特别注意 `test_fuse_channel_f
 
 重新跑测试通过后，继续 Step 4。
 
-- [ ] **Step 4: 跑测试，预期全部通过**
+- [x] **Step 4: 跑测试，预期全部通过**
 
 Run: `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai/test_frequency_fusion.py -v`
 Expected: `5 passed`
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 cd /Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase
@@ -244,7 +244,7 @@ git commit -m "test(ai): add FrequencyFusion regression coverage (REQ-003 AC-3/4
 - Create: `packages/server-python/tests/contexts/ai/test_recall_channels_contract.py`
 - Test: 同上
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `tests/contexts/ai/test_recall_channels_contract.py`：
 
@@ -293,19 +293,19 @@ async def test_channel_recall_signature_accepts_required_args(cls):
         assert required in params, f"{cls.__name__}.recall missing {required}"
 ```
 
-- [ ] **Step 2: 跑测试，预期至少 1 条失败**
+- [x] **Step 2: 跑测试，预期至少 1 条失败**
 
 Run: `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai/test_recall_channels_contract.py -v`
 Expected: 9 项中至少 1 项失败（文件刚创建），记录实际结果。
 
-- [ ] **Step 3: 不改业务代码**
+- [x] **Step 3: 不改业务代码**
 
-- [ ] **Step 4: 跑测试，预期全部通过**
+- [x] **Step 4: 跑测试，预期全部通过**
 
 Run: `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai/test_recall_channels_contract.py -v`
 Expected: `9 passed`
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 cd /Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase
@@ -323,7 +323,7 @@ git commit -m "test(ai): add 3-channel RecallChannel contract tests (REQ-003 AC-
 
 > **本任务不依赖 PostgreSQL 可达**：通过直接 patch `_ner` / 三个 `_channel` 模块级单例与 `httpx.AsyncClient` 来构造端到端场景。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `tests/contexts/ai/test_ai_chat_rag_e2e.py`：
 
@@ -527,21 +527,21 @@ async def test_ai_chat_fuses_duplicate_node_id_across_channels():
     assert set(shared_src["channel"].split(",")) == {"vector", "keyword"}
 ```
 
-- [ ] **Step 2: 跑测试，预期至少 1 条失败**
+- [x] **Step 2: 跑测试，预期至少 1 条失败**
 
 Run: `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai/test_ai_chat_rag_e2e.py -v`
 Expected: 3 项中至少 1 项失败（文件刚创建），记录实际结果。
 
-- [ ] **Step 3: 不改业务代码**
+- [x] **Step 3: 不改业务代码**
 
 如遇 `RuleBasedNER` 在 dependency override 下未生效或 import 路径错，按提示调整 import 与 `patch.object` 路径，回 Step 2。
 
-- [ ] **Step 4: 跑测试，预期全部通过**
+- [x] **Step 4: 跑测试，预期全部通过**
 
 Run: `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai/test_ai_chat_rag_e2e.py -v`
 Expected: `3 passed`
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 cd /Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase
@@ -557,14 +557,14 @@ git commit -m "test(ai): add ai_chat e2e RAG coverage incl. sources structure (R
 - Modify: `docs/01-product-planning/02-milestones/01-validation-phase.md`
 - Modify: `docs/01-product-planning/04-backlog.md`
 
-- [ ] **Step 1: 全量验证（AC-10）**
+- [x] **Step 1: 全量验证（AC-10）**
 
 Run: `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai tests/contexts/knowledge -q`
 Expected: 全部通过（包含 Task 1-4 全部用例 + 既有 knowledge 测试）。**实际退出码 0 才算通过。**
 
 如果失败：先回到对应任务修测试 / 调实现 / 入账 TD；不要直接关闭。
 
-- [ ] **Step 2: 编辑 `01-validation-phase.md` 轨道 B**
+- [x] **Step 2: 编辑 `01-validation-phase.md` 轨道 B**
 
 把"实现事实 / 验证证据"分栏里以下 4 行的"验证结论"由"待验证"改为具体结论，并新增"测试文件"列：
 
@@ -575,18 +575,18 @@ Expected: 全部通过（包含 Task 1-4 全部用例 + 既有 knowledge 测试�
 
 如果 Task 2 Step 3 触发了 `TD-031`，在对应行的"说明"栏追加"channel 拼接去重行为入账 TD-031"。
 
-- [ ] **Step 3: 编辑 `04-backlog.md` REQ-003 行**
+- [x] **Step 3: 编辑 `04-backlog.md` REQ-003 行**
 
 - 状态：`Candidate` → `Done`（如果 AC-1~10 全通过，且未触发任何 TD 阻断）
 - 状态：`Candidate` → `Blocked`（如触发阻断级 TD），并在"下一步"列写明阻塞 ID
 - "下一步"列改为："已建 spec/plan；2026-W23 迭代内完成回归测试并回填验证"
 
-- [ ] **Step 4: 工程文档门禁**
+- [x] **Step 4: 工程文档门禁**
 
 Run: `cd /Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase && scripts/check-engineering-docs`
 Expected: 退出码 0。若失败按脚本提示修（典型：状态/链接/编号漂移）。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 cd /Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase
@@ -594,6 +594,34 @@ git add docs/01-product-planning/02-milestones/01-validation-phase.md \
         docs/01-product-planning/04-backlog.md
 git commit -m "docs(REQ-003): close P1 RAG quality gate; backfill validation evidence"
 ```
+
+---
+
+## 交付记录
+
+状态：🟢 完成
+
+- 2026-06-07~2026-06-08 完成（工具：Claude Code / subagent-driven-development）。
+- 5 个任务按 subagent-driven 顺序派发，每任务 implementer + spec reviewer + code quality reviewer 三轮验证，全部 ✅ Approved；中途触发的"plan verbatim 偏离"由 spec reviewer 判定为可接受，理由保留在评审记录里。
+- 提交链路（依时间顺序）：
+
+| 任务 | Commit | 内容 |
+|------|--------|------|
+| Task 1 | `b429cbf` | `test_rule_based_ner.py` 7 用例（AC-1/AC-2） |
+| Task 2 | `c76d7f5` | `test_frequency_fusion.py` 5 用例（AC-3/4/5），TD-031 风险路径未触发 |
+| Task 3 | `bccde6d` | `test_recall_channels_contract.py` 9 用例（AC-6），存在 1 处 plan 偏离（`lstrip("_")` 容纳下划线参数） |
+| Task 4 | `8e064a6` | `test_ai_chat_rag_e2e.py` 3 用例（AC-7/8/9） |
+| Task 5 | `3bf8c10` | 验证 + 文档回填（轨道 B 4 行 + Backlog REQ-003 状态 + 初次 TD 入账） |
+| 收尾 | `d31b036` | 跟踪 spec/plan 文件，重命名 `TD-RAG-001/002` → `TD-030/031`（遵循 `technical-debt.md` 维护规则的连续编号），同步 Backlog 引用 |
+| 收尾 | （本次） | plan 闭环：`- [ ]` → `- [x]`（25 项），补 `## 交付记录` 段 |
+
+- 验证摘要：
+  - `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai tests/contexts/knowledge -q` 退出码 0，`48 passed`（含 4 个新文件的 24 个用例 + 既有 24 个）。
+  - `scripts/check-engineering-docs` 退出码 0。
+  - 业务代码改动：0；仅新增 4 个测试文件与文档改动。
+- 行为变化声明：无 runtime 行为变化。
+- 后续接力：端到端 PostgreSQL 集成验收在 REQ-006；`RecallChannel` Protocol vs concrete 形参漂移入账 `TD-030`。
+- 相关 spec：`docs/02-delivery-plans/01-specs/2026-W23-req-003-rag-quality-gate.md`。
 
 ---
 
