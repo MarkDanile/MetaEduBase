@@ -1,0 +1,105 @@
+# P1: 阶段一 — 验证期
+
+Status: Doing
+Current: Yes
+External:
+
+## Goal
+
+在 **PostgreSQL 单引擎 + 最少基础设施依赖** 前提下，验证两条核心产品链路：
+
+1. RAG 问答链路：用户提问 -> 多源召回 -> 融合排序 -> LLM 回答。
+2. 文档抽取链路：文档上传 -> 模板匹配 -> 结构化抽取 / 知识图谱抽取。
+
+阶段一的核心判断不是“功能数量最多”，而是证明平台的知识资产处理闭环可用，并且在不扩张基础设施的情况下具备最小质量能力。
+
+## Retrieval Architecture
+
+阶段一的“3 通道召回”是 **PostgreSQL 单引擎验证版**，不是最终行业形态的“向量库 + 图数据库 + Elasticsearch”三件套。当前目标是在最少基础设施下验证 RAG 链路、抽象接口和降级能力。
+
+| 通道 | 当前实现 | 查询对象 | 目标 | 非目标 |
+|------|----------|----------|------|--------|
+| Vector | `PgVectorRecallChannel` | `knowledge_nodes.embedding` + pgvector `<=>` | 验证语义召回能进入问答上下文 | 不引入 Milvus / Qdrant |
+| Keyword | `PgKeywordRecallChannel` | `knowledge_nodes.title` / `description` + `ILIKE` | 用最简单全文兜底补充语义召回 | 不引入 Elasticsearch，不做中文分词 |
+| Metadata | `PgMetadataRecallChannel` | `RuleBasedNER` 输出的 `domain` / `level` 过滤 | 用职教领域枚举和层级信息提高召回相关性 | 不做图遍历，不查询 `knowledge_edges` |
+
+编排方式：
+
+- `ai_chat` 先执行 `RuleBasedNER.extract`，得到领域和层级。
+- 三个 PostgreSQL 通道通过 `asyncio.gather` 并行执行。
+- 单通道失败由 `_run_channel` 捕获并降级为空结果，避免单通道故障拖垮整体问答。
+- `FrequencyFusion` 按“出现通道数优先，其次最佳分数”融合排序。
+- `sources` 从融合结果生成，返回 `id` / `title` / `domain` / `level` / `score` / `channel`。
+
+阶段一的关键交付不是召回质量达到最终形态，而是：RAG 链路可演示、`RecallChannel` / `ResultFusion` 抽象已落地、后续能按阶段替换为更强通道。
+
+## Tracks
+
+### 轨道 A：产品能力
+
+| 里程碑项 | 状态 | 说明 |
+|---|---|---|
+| 基础架构搭建 | Done | FastAPI + Vue3 + PostgreSQL + pgvector |
+| Identity 认证上下文 | Done | JWT + 多租户 ContextVar |
+| Knowledge 知识图谱上下文 | Done | CRUD + 知识树 + ltree 物化路径 |
+| Resource / Document 文档上下文 | Done | 文件上传/下载 + MinIO 本地存储 |
+| AI Chat 基础对话 | Done | 规则 NER + 3 通道召回 + 频次融合 + Provider resolver |
+| 数据要素模板管理 | Done | 模板 CRUD + AI 辅助配置 |
+| 文档结构化抽取 | Done | 模板匹配 + JSON 结构化结果 |
+| 文档知识图谱抽取 | Done | 文件级 KG 抽取与展示 |
+| `ui-*` 语义化 UI 体系 | Done | workspace 语义层 + 4 主题；`liquid-*` 保留兼容别名和少量品牌/装饰例外 |
+| MCP Server | Done | 知识库查询工具 |
+| 前端 Markdown 渲染 | Done | marked + highlight.js 代码高亮 |
+
+### 轨道 B：检索 / 抽取质量
+
+本轨道采用“实现事实 / 验证证据”分栏口径：代码存在只能证明已实现，必须有测试或端到端验收证据后，才可关闭阶段一质量项。
+
+| 里程碑项 | 实现事实 | 验证结论 | 说明 |
+|---|---|---|---|
+| NER 实体识别（枚举规则） | 已实现 | 待验证 | `RuleBasedNER` 已落地；CodeGraph 显示 `RuleBasedNER.extract` 当前无覆盖测试。 |
+| 多源并行召回（3 通道） | 已实现 | 待验证 | PostgreSQL 内 vector / keyword / metadata 三通道已落地；不是图谱召回或 ES 全文检索。缺少直接回归和端到端召回验收。 |
+| 结果融合（频次排序） | 已实现 | 待验证 | `FrequencyFusion` 已落地；缺少重复节点、通道频次、最佳分数排序的直接测试。 |
+| 溯源上下文组装增强 | 已实现 | 待验证 | `ai_chat` 返回 `sources`，含 channel / node_id / title / score；现有测试只断言存在 `sources` 字段，不验证结构和内容。 |
+| 模板匹配可解释化 | 未完成 | 待收口 | doc_type / 文件名 / AI 置信度三层匹配代码存在；日志、置信度表现和真实业务文档验收仍需收敛。 |
+| 结构化抽取嵌套结构稳定性 | 未完成 | 待收口 | 模板 CRUD 可保存 object / array / table；抽取结果按模板结构落盘的样例回归仍缺失。 |
+
+### 轨道 C：基础设施
+
+| 里程碑项 | 状态 | 说明 |
+|---|---|---|
+| PostgreSQL 单引擎 | Done | 业务数据 + 向量 + 图谱关系共库 |
+| Celery + Redis | Done | 文档 / 数据集异步任务 |
+| MinIO 单节点 | Done | 对象存储，本地 fallback |
+| LLM Provider 工厂 + fallback | Done | `factory.py` + `provider_resolver.py` 已集中 provider 选择；统一代理和计量留到阶段二 |
+| Protocol 接口定义 | Done | `NERPipeline` / `RecallChannel` / `ResultFusion` Protocol 已落地 |
+| 测试回归 | Ongoing | 完整运行依赖 `metaedu_test` 初始化；质量门禁持续维护 |
+
+## Completion Criteria
+
+- RAG 问答链路可完成：用户输入问题 -> NER 识别领域 / 级别 -> 3 通道并行召回 -> 融合排序 -> LLM 带来源标注回答。
+- 阶段一 3 通道限定为 PostgreSQL 内 vector / keyword / metadata；图谱关系召回、ES 全文检索和独立向量库属于后续阶段。
+- 文档抽取链路可完成：上传文档 -> 命中模板 -> 输出结构化结果 / 知识图谱结果。
+- 回归测试和质量门禁可复现运行。
+- 无新增基础设施依赖，仍以 PostgreSQL / Redis / MinIO 为主。
+- P1 关闭前，轨道 B 的“待验证 / 待收口”项必须通过测试或演示验收，并把结果回填到本文件、迭代文件和 Backlog。
+
+## Open Items
+
+| ID | 状态 | 说明 | 归属 |
+|----|------|------|------|
+| REQ-001 | Idea | 知识资产处理链路的产品化验收视图 | `docs/01-product-planning/04-backlog.md` |
+| REQ-002 | Idea | 模板化结构抽取能力的配置与复用体验 | `docs/01-product-planning/04-backlog.md` |
+| REQ-003 | Candidate | P1 RAG 质量链路验收与回归测试 | `docs/01-product-planning/04-backlog.md` |
+| REQ-004 | Candidate | 模板匹配可解释化收口 | `docs/01-product-planning/04-backlog.md` |
+| REQ-005 | Candidate | 结构化抽取嵌套结构稳定性验收 | `docs/01-product-planning/04-backlog.md` |
+| REQ-006 | Candidate | P1 知识资产处理链路最终演示验收 | `docs/01-product-planning/04-backlog.md` |
+
+## Evidence
+
+- 历史规划：`git show bf6429c:ARCHITECTURE.md`
+- 文档处理管道：`docs/90-compat-legacy/superpowers/specs/2026-05-15-document-pipeline-design.md`
+- 模板结构抽取：`docs/90-compat-legacy/superpowers/specs/2026-05-27-structured-template-design.md`
+- 工程交付记录：`docs/03-engineering-governance/work-log.md`
+- 2026-06-07 复核命令：`.venv/bin/python -m pytest tests/contexts/ai/test_ai_chat.py tests/contexts/knowledge/test_knowledge.py tests/contexts/document/test_structured_data_contract.py tests/contexts/template/test_template.py -q`
+- 2026-06-07 复核结果：`7 passed, 27 errors`；错误原因为本机 PostgreSQL `localhost:5432` 连接失败，不能证明 P1 集成验收通过。
