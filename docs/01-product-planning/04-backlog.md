@@ -16,7 +16,7 @@
 |----|------|------|--------|--------|------|--------|----------|
 | REQ-001 | REQ | Idea | P2 | P1 | 知识资产处理链路的产品化验收视图 | 澄清目标用户、核心场景和验收指标 |  |
 | REQ-002 | REQ | Idea | P2 | P1 / P2 | 模板化结构抽取能力的配置与复用体验 | 从历史 superpower 计划中提炼需求边界 |  |
-| REQ-003 | REQ | Candidate | P1 | P1 | P1 RAG 质量链路验收与回归测试 | 为 NER、3 通道召回、频次融合和 sources 结构建立可复现验证 |  |
+| REQ-003 | REQ | Done | P1 | P1 | P1 RAG 质量链路验收与回归测试 | 为 NER、3 通道召回、频次融合和 sources 结构建立可复现验证 | 已建 spec/plan（[Spec](../02-delivery-plans/01-specs/2026-W23-req-003-rag-quality-gate.md) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-003-rag-quality-gate-plan.md)）；2026-W23 迭代内完成 4 个回归测试文件、4 项轨道 B 验证翻结论。端到端 PG 集成由 REQ-006 接力；Protocol-vs-concrete drift 入账 TD-RAG-002。 |  |
 | REQ-004 | REQ | Candidate | P1 | P1 | 模板匹配可解释化收口 | 用真实业务文档验证 doc_type、文件名、AI 置信度三层匹配和日志表现 |  |
 | REQ-005 | REQ | Candidate | P1 | P1 | 结构化抽取嵌套结构稳定性验收 | 建立 object / array / table 抽取结果按模板结构落盘的样例回归 |  |
 | REQ-006 | REQ | Candidate | P1 | P1 | P1 知识资产处理链路最终演示验收 | 组织上传、解析、抽取、图谱、RAG 问答和来源展示的阶段一闭环验收 |  |

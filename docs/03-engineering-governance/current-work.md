@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| 暂无 | ⚫ 待办 | - | - | 当前没有已开工任务。 | 从“下一批候选任务”或用户指定任务开工。 | - |
+| REQ-003 P1 RAG 质量链路验收与回归测试 | 🔵 进行中 | P1 | Product / Backend / AI / Testing | spec/plan 已落盘（5 任务：NER 单测 → 融合单测 → 通道契约 → 端到端 → 验证+回填），覆盖 AC-1~AC-11。[Spec](../02-delivery-plans/01-specs/2026-W23-req-003-rag-quality-gate.md) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-003-rag-quality-gate-plan.md) | 按用户选定的执行方式（subagent-driven / inline）开始 Task 1。 | `pytest tests/contexts/ai tests/contexts/knowledge -q` 退出码 0；`scripts/check-engineering-docs` 退出码 0。 |
 
 ## 下一批候选任务
 
@@ -24,7 +24,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| REQ-003 P1 RAG 质量链路验收与回归测试 | ⚫ 候选 | P1 | Product / Backend / AI / Testing | 按 `docs/01-product-planning/03-iterations/2026-W23-p1-final-gap-closure.md` 建立 NER、召回、融合、sources 验证。 |
+| REQ-003 P1 RAG 质量链路验收与回归测试 | 🔵 候选 | P1 | Product / Backend / AI / Testing | spec/plan 已就位；本轮从候选升级为进行中，按 [2026-W23 迭代](../01-product-planning/03-iterations/2026-W23-p1-final-gap-closure.md) 推进。 | |
 | REQ-004 模板匹配可解释化收口 | ⚫ 候选 | P1 | Product / Document / AI | 用真实业务文档验证三层模板匹配和日志表现。 |
 | REQ-005 结构化抽取嵌套结构稳定性验收 | ⚫ 候选 | P1 | Product / Document / Contract | 建立 object / array / table 抽取结果样例回归。 |
 

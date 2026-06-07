@@ -57,10 +57,10 @@ External:
 
 | 里程碑项 | 实现事实 | 验证结论 | 说明 |
 |---|---|---|---|
-| NER 实体识别（枚举规则） | 已实现 | 待验证 | `RuleBasedNER` 已落地；CodeGraph 显示 `RuleBasedNER.extract` 当前无覆盖测试。 |
-| 多源并行召回（3 通道） | 已实现 | 待验证 | PostgreSQL 内 vector / keyword / metadata 三通道已落地；不是图谱召回或 ES 全文检索。缺少直接回归和端到端召回验收。 |
-| 结果融合（频次排序） | 已实现 | 待验证 | `FrequencyFusion` 已落地；缺少重复节点、通道频次、最佳分数排序的直接测试。 |
-| 溯源上下文组装增强 | 已实现 | 待验证 | `ai_chat` 返回 `sources`，含 channel / node_id / title / score；现有测试只断言存在 `sources` 字段，不验证结构和内容。 |
+| NER 实体识别（枚举规则） | 已实现 | 已通过 `tests/contexts/ai/test_rule_based_ner.py` 7 用例（AC-1/AC-2） | `RuleBasedNER` 已落地；测试覆盖空查询、领域枚举、层级枚举、混合枚举和空 ner_result 边界。 |
+| 多源并行召回（3 通道） | 已实现 | 已通过 `tests/contexts/ai/test_recall_channels_contract.py` 9 项契约用例（AC-6）；端到端 PG 集成待 `metaedu_test` 可达后由 REQ-006 补 | PostgreSQL 内 vector / keyword / metadata 三通道已落地；不是图谱召回或 ES 全文检索。契约层（形参 / `name` / 返回类型 / 空实现）已锁定。 |
+| 结果融合（频次排序） | 已实现 | 已通过 `tests/contexts/ai/test_frequency_fusion.py` 5 用例（AC-3/AC-4/AC-5） | `FrequencyFusion` 已落地；测试覆盖通道频次优先、最佳分数排序、空输入和单通道降级。 |
+| 溯源上下文组装增强 | 已实现 | 已通过 `tests/contexts/ai/test_ai_chat_rag_e2e.py` 3 项端到端用例（AC-7/AC-8/AC-9） | `ai_chat` 返回 `sources`，含 channel / node_id / title / score；e2e 用例覆盖空召回回退、单通道去重、LLM 失败兜底文案。 |
 | 模板匹配可解释化 | 未完成 | 待收口 | doc_type / 文件名 / AI 置信度三层匹配代码存在；日志、置信度表现和真实业务文档验收仍需收敛。 |
 | 结构化抽取嵌套结构稳定性 | 未完成 | 待收口 | 模板 CRUD 可保存 object / array / table；抽取结果按模板结构落盘的样例回归仍缺失。 |
 

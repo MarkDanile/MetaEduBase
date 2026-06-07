@@ -119,6 +119,7 @@
 | TD-027 | 补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类（设计系统扩展） | 🟢 完成 | P3 | 前端 / 设计系统 | [PR #59](https://github.com/MarkDanile/MetaEduBase/pull/59) |
 | TD-028 | 业务视图与共享组件的 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 存量替换 | 🟢 完成 | P3 | 前端 / 设计系统 | [PR #61](https://github.com/MarkDanile/MetaEduBase/pull/61) |
 | TD-029 | 收口 TD-009 的 shared schema 门禁与 FileDetailView 类型错误 | 🟢 完成 | P1 | 前端 / 类型 / 交付 | [Spec](../02-delivery-plans/01-specs/2026-06-06-td-029-shared-schema-gate.md) / [Plan](../02-delivery-plans/02-plans/2026-06-06-td-029-shared-schema-gate-plan.md) |
+| TD-RAG-002 | RecallChannel Protocol vs concrete signature drift on parameter names | ⚫ 待办 | P3 | 后端 / 测试 | REQ-003 / 2026-W23 iteration |
 
 ## 任务详情
 
@@ -1160,3 +1161,43 @@
 - 2026-06-06 完成（接手工具：Claude Code）。删除 `packages/web/tsconfig.json` 中对 `../shared` 的 project reference，让 TS 通过 `@metaedu/shared` 的 `exports` 直接读 `src/*.ts`，消除 `TS6305`；`FileDetailView.vue:107` 的 `templateFieldLabel(key)` 改为 `templateFieldLabel(String(key))`，把 `v-for` 推断的 `string | number` 收敛到 `string`，并对未来 templateData 类型变化做防御；同步修正 TD-009 交付记录验证摘要表述。
 - 行为变化声明：无 runtime 行为变化；仅影响 TypeScript 编译时模块解析路径与一个 v-for key 的类型收敛。
 - 验证摘要：`pnpm --filter @metaedu/shared typecheck` 退出码 0；`pnpm --filter @metaedu/web typecheck` 退出码 0；`pnpm typecheck` 退出码 0；`pnpm --filter @metaedu/web build` 退出码 0；`pytest tests/contexts/document/test_structured_data_contract.py -q` 4 passed（TD-009 后端回归）；`scripts/check-engineering-docs` 退出码 0。
+
+### TD-RAG-002: RecallChannel Protocol vs concrete signature drift on parameter names
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P3 |
+| 领域 | 后端 / 测试 |
+| 事实源 | REQ-003 / 2026-W23 iteration（commit `bccde6d`） |
+
+**证据**
+- Protocol 声明：`packages/server-python/app/shared/domain/recall_channel.py:22-32` `RecallChannel.recall` 形参为 `query: str, ner_result: NERResult, tenant_id: str, top_k: int = 5`，**不**含 `session: AsyncSession`。
+- 具体类 1：`packages/server-python/app/contexts/knowledge/application/recall_service.py:23-30` `PgVectorRecallChannel.recall` 形参为 `query: str, _ner_result: NERResult, tenant_id: str, session: AsyncSession, top_k: int = 5`。
+- 具体类 2：`packages/server-python/app/contexts/knowledge/application/recall_service.py:67-74` `PgKeywordRecallChannel.recall` 形参为 `query: str, _ner_result: NERResult, tenant_id: str, session: AsyncSession, top_k: int = 5`。
+- 具体类 3：`packages/server-python/app/contexts/knowledge/application/recall_service.py:124-131` `PgMetadataRecallChannel.recall` 形参为 `_query: str, ner_result: NERResult, tenant_id: str, session: AsyncSession, top_k: int = 5`。
+- 遮蔽漂移的契约测试：`packages/server-python/tests/contexts/ai/test_recall_channels_contract.py:40` 使用 `{p.lstrip("_") for p in sig.parameters}`，对下划线前缀做了归一化；无此 `lstrip` 退路，测试会在下划线命名的参数上失败。计划原文是 `list(sig.parameters)`，实现采用了 `lstrip` 退路（被 spec compliance reviewer 判定为可接受）。
+
+**问题**
+- Protocol 形参与三个具体类的形参存在两层漂移：① 下划线前缀（`ner_result` vs `_ner_result` / `query` vs `_query`）；② 是否包含 `session: AsyncSession`（Protocol 没有；具体类有）。
+- 若后续加 `runtime_checkable` 严格检查或 `mypy --strict-override` / `pyright` 严格契约校验，漂移会让 Protocol 与具体类不再互相满足。
+- 契约测试使用 `lstrip("_")` 退路把漂移遮蔽，掩盖了真实漂移。
+- Protocol 的契约本身不够清晰：调用方按 Protocol 推不出还要再传 `session`，也无法预期哪些参数允许下划线前缀。
+
+**完成标准**
+- 选择以下任一路线并落地（不允许“靠 `lstrip` 继续遮蔽”）：
+  - 路线 A（推荐）：把具体类的形参改成 Protocol 同形参（`query` / `ner_result` 不加下划线、`session: AsyncSession` 显式纳入 Protocol），同时调用方按新 Protocol 传 `session`。
+  - 路线 B：把 Protocol 形参改成 `_query` / `_ner_result` 下划线风格 + 显式 `session`，承认“具体类的下划线是私有约定”并由 Protocol 显式声明。
+- 无论哪条路线，`packages/server-python/tests/contexts/ai/test_recall_channels_contract.py:40` 都要去掉 `lstrip("_")` 退路，改回 `set(sig.parameters)`（或 `{p for p in sig.parameters}`）并继续通过。
+- `app/shared/domain/recall_channel.py` 的 Protocol 注释说明 `session` 的来源（注入 vs 调用方传入），避免再次漂移。
+
+**验证方式**
+- `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai/test_recall_channels_contract.py -v` 退出码 0，且不依赖 `lstrip("_")` 退路（grep `lstrip` 在该文件 0 命中）。
+- `RecallChannel` Protocol 形参与三个具体类形参一致（modulo 默认值）。
+- `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai tests/contexts/knowledge -q` 退出码 0（无回归）。
+- `cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` 退出码 0。
+
+**交付记录**
+- 2026-06-07 由 REQ-003 Task 5 收口时入账（commit 即将入）。任务详情见 `docs/02-delivery-plans/01-specs/2026-W23-req-003-rag-quality-gate.md` 与 `docs/02-delivery-plans/02-plans/2026-W23-req-003-rag-quality-gate-plan.md`。
+- 编号说明：本债沿用 `TD-RAG-xxx` 子序列（命名空间按 RAG 链路），不复用 `TD-030` 序号；不修改既有 `TD-001`-`TD-029` 编号。
