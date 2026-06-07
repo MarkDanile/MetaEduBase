@@ -34,8 +34,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-07 | DOC-026 移除 CodeGraph 工具选择范围约束 | 🟢 完成 | 删除 `local-development.md` 中 CodeGraph / `rg` 使用范围章节，`workflow.md` 改为中性工具选择表述。 | [Local Development](01-rules/local-development.md) / [Workflow](workflow.md) |
+| 2026-06-07 | DOC-025 补回 ARCHITECTURE 系统架构图与新路径索引 | 🟢 完成 | 在长期架构地图中补回稳定 Mermaid 系统架构图，并把旧 docs 路径索引修正为新分层目录。 | [ARCHITECTURE](../../ARCHITECTURE.md) |
 | 2026-06-07 | DOC-023 补齐 Claude / Trae 流程级跳转入口 | 🟢 完成 | `.claude/rules` 与 `.trae/rules` 增加 currentWork、workflow、taskModes、technicalDebt、productPlanning、deliveryPlans 轻量入口，仍不复制规则正文。 | [Workflow](workflow.md) / [Docs Rules](01-rules/docs.md) |
 | 2026-06-07 | DOC-022 复核技术债到交付闭环与插件输出门禁 | 🟢 完成 | 补强 TD 到 spec/plan 的判定、规划层与交付层边界、superpower/插件输出路径规则，并让文档门禁阻断旧 docs 路径复活。 | [Workflow](workflow.md) / [Quality Gates](01-rules/quality-gates.md) |
 | 2026-06-07 | DOC-021 docs 子层目录编号排序 | 🟢 完成 | 规划层、交付层和工程治理子目录按阅读顺序编号；核心工程入口文件保持稳定名称。 | [Docs](../README.md) / [Planning](../01-product-planning/README.md) |
-| 2026-06-07 | DOC-020 docs 分层目录完全迁移 | 🟢 完成 | `docs/` 改为语义编号四层目录，迁移旧文档路径并更新 AI 入口、规则索引和文档门禁。 | [Docs](../README.md) / [Rules](01-rules/docs.md) |
-| 2026-06-07 | DOC-019 建立产品规划层与复盘入口 | 🟢 完成 | 新增 `docs/01-product-planning/*` 四层规划入口与 `retrospectives` 复盘入口，并同步工作流、任务模式和文档门禁。 | [Product](../01-product-planning/README.md) / [Retro](03-retrospectives/README.md) |

@@ -19,7 +19,7 @@
 - 开发前必须明确本次任务卡片、相关计划、相关约束和验收标准。
 - 常见任务模式的开工条件、必读文档和完成标准见 `docs/03-engineering-governance/task-modes.md`。
 - 用户未指定执行模式时，按 `docs/03-engineering-governance/task-modes.md#默认模式路由` 自动判断；复杂新需求默认优先走 superpower 生成 spec/plan，小改动默认走 plan-do。
-- 代码探索和文本搜索按 `docs/03-engineering-governance/01-rules/local-development.md#代码探索与搜索工具选择` 执行：结构问题优先 `CodeGraph`，文本问题优先 `rg`。
+- 代码探索和文本搜索可使用当前 AI IDE 可用工具；最终判断仍以代码事实、验证结果和仓库事实源记录为准。
 - 开发中遵循计划，但如果发现计划与代码事实冲突，应先停下来更新计划或向用户确认。
 - 开发后必须运行与改动范围匹配的验证，并更新任务进度状态。
 - 复核、测试、PR review 或交接中发现的问题必须形成闭环：立即修复，或登记到对应任务总账；系统性问题进入 `docs/03-engineering-governance/03-retrospectives/*` 并转成 `REQ` / `BUG` / `TD` / `DOC` / `OPS`；不得只停留在最终回复、聊天记录或插件内部状态。

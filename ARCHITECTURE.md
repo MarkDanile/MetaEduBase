@@ -42,11 +42,46 @@ MetaEduBase 是面向职业教育场景的 AI Native 知识基座。它把知识
 
 ### 2.5 顶层文档只保留稳定信息
 
-顶层文档服务于长期理解与快速接手，不应该成为实现细节的镜像。易变事实应回到 `docs/engineering/rules/*`、`docs/specs/*`、`docs/plans/*` 与代码本身。
+顶层文档服务于长期理解与快速接手，不应该成为实现细节的镜像。易变事实应回到 `docs/03-engineering-governance/01-rules/*`、`docs/02-delivery-plans/01-specs/*`、`docs/02-delivery-plans/02-plans/*` 与代码本身。
 
 ## 3. 系统分解
 
-### 3.1 运行单元
+### 3.1 系统架构图
+
+```mermaid
+flowchart LR
+    User[用户 / 教学团队] --> Web[Web App<br/>packages/web]
+    AITools[AI IDE / 外部工具] --> MCP[MCP Server<br/>packages/mcp-server]
+
+    Web --> API[Backend API<br/>packages/server-python]
+    MCP --> API
+
+    API --> Identity[Identity<br/>认证与租户上下文]
+    API --> Knowledge[Knowledge<br/>知识树 / 搜索 / 问答]
+    API --> Document[Document<br/>文件与文档处理]
+    API --> Structured[Structured Data<br/>数据集与图谱构建]
+    API --> Template[Template<br/>数据要素模板]
+
+    API --> Worker[Async Workers<br/>Celery tasks]
+    Worker --> Document
+    Worker --> Structured
+    Worker --> Knowledge
+
+    API --> Shared[Shared Contracts<br/>packages/shared]
+    Web --> Shared
+
+    Identity --> Store[(PostgreSQL)]
+    Knowledge --> Store
+    Document --> Store
+    Structured --> Store
+    Template --> Store
+    Worker --> Redis[(Redis)]
+    Document --> ObjectStore[(Object Storage)]
+```
+
+这张图只表达长期稳定的运行单元、领域上下文和主要依赖，不表达具体 API、表结构或任务函数。
+
+### 3.2 运行单元
 
 | 单元 | 位置 | 责任 |
 |------|------|------|
@@ -57,7 +92,7 @@ MetaEduBase 是面向职业教育场景的 AI Native 知识基座。它把知识
 | MCP Server | `packages/mcp-server` | 给外部 AI 工具提供知识操作能力 |
 | Infrastructure | `deploy/` + 本地环境 | 数据库、缓存、对象存储、容器运行环境 |
 
-### 3.2 技术角色划分
+### 3.3 技术角色划分
 
 - 前端负责界面状态、交互编排和用户反馈，不承担核心领域规则。
 - 后端负责领域规则、权限、租户上下文、异步任务触发和数据一致性。
@@ -159,13 +194,15 @@ MetaEduBase 是面向职业教育场景的 AI Native 知识基座。它把知识
 
 | 问题 | 事实源 |
 |------|--------|
-| 本地启动、测试库初始化、常用命令 | `docs/engineering/rules/local-development.md` |
-| API / DTO / shared schema 规则 | `docs/engineering/rules/contracts.md` |
-| 测试策略与验证入口 | `docs/engineering/rules/testing.md` + `docs/engineering/rules/quality-gates.md` |
-| 当前任务、交接状态、下一步 | `docs/engineering/current-work.md` |
-| 技术债、优先级与完成标准 | `docs/engineering/technical-debt.md` |
-| 长期需求与验收标准 | `docs/specs/*` |
-| 实施计划与拆分步骤 | `docs/plans/*` |
+| 文档体系、规划层、交付层和工程治理层入口 | `docs/README.md` |
+| 产品路线图、里程碑、迭代和需求池 | `docs/01-product-planning/*` |
+| 本地启动、测试库初始化、常用命令 | `docs/03-engineering-governance/01-rules/local-development.md` |
+| API / DTO / shared schema 规则 | `docs/03-engineering-governance/01-rules/contracts.md` |
+| 测试策略与验证入口 | `docs/03-engineering-governance/01-rules/testing.md` + `docs/03-engineering-governance/01-rules/quality-gates.md` |
+| 当前任务、交接状态、下一步 | `docs/03-engineering-governance/current-work.md` |
+| 技术债、优先级与完成标准 | `docs/03-engineering-governance/technical-debt.md` |
+| 长期需求与验收标准 | `docs/02-delivery-plans/01-specs/*` |
+| 实施计划与拆分步骤 | `docs/02-delivery-plans/02-plans/*` |
 | 部署配置 | `deploy/` |
 | 实际接口定义 | 后端 router、Pydantic DTO、运行中的 OpenAPI 文档 |
 | 实际数据模型 | SQLAlchemy models、Alembic migrations、数据完整性规则 |
