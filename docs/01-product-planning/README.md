@@ -10,11 +10,13 @@
 | Milestones | `docs/01-product-planning/02-milestones/*` | 单个里程碑详情；只在需要展开时创建 |
 | Iteration | `docs/01-product-planning/03-iterations/*` | 当前和近期 1 到 2 个迭代；不做长期历史档案 |
 | Backlog | `docs/01-product-planning/04-backlog.md` | 需求、Bug、技术债、文档和运营任务索引；不写完整 PRD |
+| AI Applications | `docs/01-product-planning/06-ai-applications/*` | 真实 AI 应用组合、应用广场和学校场景验证包；不写交付计划 |
 | Delivery | `docs/02-delivery-plans/01-specs/*` / `docs/02-delivery-plans/02-plans/*` / `docs/03-engineering-governance/current-work.md` | 进入交付后的需求、计划和当前执行状态 |
 
 ## 使用规则
 
 - 需求池只记录清单和少量判断；详细需求进入 `docs/01-product-planning/05-requirements/REQ-xxx.md`。
+- `docs/01-product-planning/06-ai-applications/*` 只管理应用组合视角。应用验证业务价值，P1 / P2 / P3 里程碑验证底座成熟度，两者是双轴关系。
 - 已准备开发的复杂需求，再迁入或镜像到 `docs/02-delivery-plans/01-specs/*` 和 `docs/02-delivery-plans/02-plans/*`；进入交付后，以交付层 spec / plan 为开发依据。
 - `docs/03-engineering-governance/current-work.md` 只记录当前执行窗口，不承载长期需求池。
 - 外部系统如云效、Jira、TAPD 可写入 `External:` 字段；当前仓库 Markdown 仍是 AI IDE 交接事实源。
@@ -38,6 +40,7 @@
 | 类型 | 示例 | 说明 |
 |------|------|------|
 | REQ | `REQ-001` | 产品需求或能力建设 |
+| APP | `APP-001` | 真实 AI 应用组合或应用广场条目 |
 | BUG | `BUG-001` | 缺陷、回归、异常 |
 | TD | `TD-001` | 技术债，详情仍以 `docs/03-engineering-governance/technical-debt.md` 为准 |
 | DOC | `DOC-001` | 文档、流程、规则治理 |

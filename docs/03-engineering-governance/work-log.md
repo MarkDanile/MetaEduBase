@@ -15,6 +15,10 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-07 | DOC-030 建立真实 AI 应用组合轻量规划入口 | 文档 / 产品规划 / AI 应用组合 |  |  | `docs/01-product-planning/06-ai-applications/README.md` / `docs/01-product-planning/04-backlog.md` |
+| 2026-06-07 | DOC-029 明确 P1/P2/P3 检索架构演进边界 | 文档 / 产品规划 / 架构 |  |  | `docs/01-product-planning/02-milestones/01-validation-phase.md` / `docs/01-product-planning/02-milestones/02-growth-phase.md` / `docs/01-product-planning/02-milestones/03-scale-phase.md` |
+| 2026-06-07 | DOC-028 复核 P1 验证期并建立最终查漏补缺迭代 | 文档 / 产品规划 / 复核 |  |  | `docs/01-product-planning/02-milestones/01-validation-phase.md` / `docs/01-product-planning/03-iterations/2026-W23-p1-final-gap-closure.md` |
+| 2026-06-07 | DOC-027 恢复产品规划三阶段里程碑结构 | 文档 / 产品规划 |  |  | `docs/01-product-planning/01-roadmap.md` / `docs/01-product-planning/02-milestones/` |
 | 2026-06-07 | DOC-026 移除 CodeGraph 工具选择范围约束 | 文档 / 工程治理 / 工具链 |  |  | `docs/03-engineering-governance/01-rules/local-development.md` / `docs/03-engineering-governance/workflow.md` |
 | 2026-06-07 | DOC-025 补回 ARCHITECTURE 系统架构图与新路径索引 | 文档 / 架构 / 工程治理 |  |  | `ARCHITECTURE.md` |
 | 2026-06-07 | DOC-023 补齐 Claude / Trae 流程级跳转入口 | 文档 / 工程治理 / AI 协作 |  |  | `.claude/rules/currentWork.md` / `.trae/rules/currentWork.md` |
