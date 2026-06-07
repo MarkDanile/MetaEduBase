@@ -15,6 +15,8 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-07 | DOC-026 移除 CodeGraph 工具选择范围约束 | 文档 / 工程治理 / 工具链 |  |  | `docs/03-engineering-governance/01-rules/local-development.md` / `docs/03-engineering-governance/workflow.md` |
+| 2026-06-07 | DOC-025 补回 ARCHITECTURE 系统架构图与新路径索引 | 文档 / 架构 / 工程治理 |  |  | `ARCHITECTURE.md` |
 | 2026-06-07 | DOC-023 补齐 Claude / Trae 流程级跳转入口 | 文档 / 工程治理 / AI 协作 |  |  | `.claude/rules/currentWork.md` / `.trae/rules/currentWork.md` |
 | 2026-06-07 | DOC-022 复核技术债到交付闭环与插件输出门禁 | 文档 / 工程治理 / AI 协作 |  |  | `docs/03-engineering-governance/workflow.md` / `docs/03-engineering-governance/01-rules/quality-gates.md` |
 | 2026-06-07 | DOC-021 docs 子层目录编号排序 | 文档 / 工程治理 / AI 协作 |  |  | `docs/01-product-planning/README.md` / `docs/02-delivery-plans/README.md` / `docs/03-engineering-governance/README.md` |

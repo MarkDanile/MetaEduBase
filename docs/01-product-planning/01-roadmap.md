@@ -11,6 +11,7 @@
 | M3 前端设计系统与多主题语义层 | Doing | 用 `ui-*` 语义层收敛历史 `liquid-*` 样式，稳定跨页面体验。 | `docs/03-engineering-governance/work-log.md#2026-06-05-设计系统迁移liquid--ui-` |
 | M4 工程治理与跨 AI 工作流 | Doing | 让 Codex、Claude Code、superpower、Trae 等工具共享同一套事实源、规则和交付闭环。 | `docs/03-engineering-governance/workflow.md` / `docs/03-engineering-governance/01-rules/*` |
 | M5 架构演进与技术债收敛 | Candidate | 持续降低契约漂移、测试环境、数据完整性和大文件复杂度风险。 | `docs/03-engineering-governance/technical-debt.md` |
+| M6 工程协作规则模板化 | Future | 当本项目规则经过长期实践验证后，抽象为可迁移的工程协作规则模板包，支持快速应用到新项目。 | `docs/01-product-planning/04-backlog.md#backlog` |
 
 ## 路线图规则
 
