@@ -119,7 +119,7 @@
 | TD-027 | 补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类（设计系统扩展） | 🟢 完成 | P3 | 前端 / 设计系统 | [PR #59](https://github.com/MarkDanile/MetaEduBase/pull/59) |
 | TD-028 | 业务视图与共享组件的 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 存量替换 | 🟢 完成 | P3 | 前端 / 设计系统 | [PR #61](https://github.com/MarkDanile/MetaEduBase/pull/61) |
 | TD-029 | 收口 TD-009 的 shared schema 门禁与 FileDetailView 类型错误 | 🟢 完成 | P1 | 前端 / 类型 / 交付 | [Spec](../02-delivery-plans/01-specs/2026-06-06-td-029-shared-schema-gate.md) / [Plan](../02-delivery-plans/02-plans/2026-06-06-td-029-shared-schema-gate-plan.md) |
-| TD-RAG-002 | RecallChannel Protocol vs concrete signature drift on parameter names | ⚫ 待办 | P3 | 后端 / 测试 | REQ-003 / 2026-W23 iteration |
+| TD-030 | RecallChannel Protocol vs concrete signature drift on parameter names | ⚫ 待办 | P3 | 后端 / 测试 | REQ-003 / 2026-W23 iteration |
 
 ## 任务详情
 
@@ -1162,7 +1162,7 @@
 - 行为变化声明：无 runtime 行为变化；仅影响 TypeScript 编译时模块解析路径与一个 v-for key 的类型收敛。
 - 验证摘要：`pnpm --filter @metaedu/shared typecheck` 退出码 0；`pnpm --filter @metaedu/web typecheck` 退出码 0；`pnpm typecheck` 退出码 0；`pnpm --filter @metaedu/web build` 退出码 0；`pytest tests/contexts/document/test_structured_data_contract.py -q` 4 passed（TD-009 后端回归）；`scripts/check-engineering-docs` 退出码 0。
 
-### TD-RAG-002: RecallChannel Protocol vs concrete signature drift on parameter names
+### TD-030: RecallChannel Protocol vs concrete signature drift on parameter names
 
 状态：⚫ 待办
 
@@ -1199,5 +1199,4 @@
 - `cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` 退出码 0。
 
 **交付记录**
-- 2026-06-07 由 REQ-003 Task 5 收口时入账（commit 即将入）。任务详情见 `docs/02-delivery-plans/01-specs/2026-W23-req-003-rag-quality-gate.md` 与 `docs/02-delivery-plans/02-plans/2026-W23-req-003-rag-quality-gate-plan.md`。
-- 编号说明：本债沿用 `TD-RAG-xxx` 子序列（命名空间按 RAG 链路），不复用 `TD-030` 序号；不修改既有 `TD-001`-`TD-029` 编号。
+- 2026-06-07 由 REQ-003 Task 5 收口时入账（commit `3bf8c10`）。任务详情见 `docs/02-delivery-plans/01-specs/2026-W23-req-003-rag-quality-gate.md` 与 `docs/02-delivery-plans/02-plans/2026-W23-req-003-rag-quality-gate-plan.md`。
