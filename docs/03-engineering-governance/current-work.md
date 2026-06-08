@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| TD-032 治理超大源码文件并建立文件规模拆分原则（切片 1-3 已合并；切片 4 实施中） | 🟡 进行中 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 切片 1 已通过 [PR #92](https://github.com/MarkDanile/MetaEduBase/pull/92)（merge `3de4de5`）合并到 main；切片 2 已通过 [PR #93](https://github.com/MarkDanile/MetaEduBase/pull/93)（merge `7e468fb`）合并到 main；切片 3 已通过 [PR #94](https://github.com/MarkDanile/MetaEduBase/pull/94)（merge `5beb938`）合并到 main | 切片 4：拆 `DatabaseView.vue` 701 + `TemplateModal.vue` 665 → 各自 1 个瘦身主入口 + 8 个聚焦子组件；TD-032 整体收口 | 切片 1-3 见 PR 链接 + 验证摘要；切片 4 spec / plan 已落仓，分支 `refactor/td-032-slice-4-frontend-views` |
+| 暂无 | ⚫ 待办 | - | - | 当前没有已开工任务。 | 从“下一批候选任务”或用户指定任务开工。 | - |
 
 ## 下一批候选任务
 
@@ -35,7 +35,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
-| 2026-06-08 | DOC-040 登记超大源码文件治理技术债 | 🟢 完成 | 新增 `TD-032` 记录超过 500/1000 行源码文件治理债务；补充新增/重构业务源码默认 `<=500` 行、超大文件先给结构再写代码的开发原则。 | [Technical Debt](technical-debt.md#td-032-治理超大源码文件并建立文件规模拆分原则) / [Coding Style](01-rules/coding-style.md#文件规模与职责边界) |
+| 2026-06-08 | TD-032 4 切片整体收口 | 🟢 完成 | 切片 1-4 全部合并。 | [Technical Debt](technical-debt.md#td-032-治理超大源码文件并建立文件规模拆分原则) |
 | 2026-06-08 | DOC-039 增强工程文档脚本门禁 | 🟢 完成 | `scripts/check-engineering-docs` 新增稳定编号、Backlog Done 入账、入口同步和脚本候选清单反查；测试基线迁到新 docs 目录并补 5 个回归用例。 | [Quality Gates](01-rules/quality-gates.md) / `scripts/engineering/check_engineering_docs.py` / `tests/engineering/test_check_engineering_docs.py` / [Backlog](../01-product-planning/04-backlog.md) |
 | 2026-06-08 | DOC-038 恢复基础工程原则为单一事实源 | 🟢 完成 | 新增 `engineering-principles.md`，入口和 IDE 兼容规则只保留链接，恢复先想后写、极简主义、手术式改动和目标驱动原则。 | [Engineering Principles](01-rules/engineering-principles.md) / `AGENTS.md` / `CLAUDE.md` / [Backlog](../01-product-planning/04-backlog.md) |
 | 2026-06-08 | DOC-037 规则入口瘦身与脚本门禁候选清单整理 | 🟢 完成 | 压缩 `AGENTS.md` / `CLAUDE.md` 为导航入口；确认 `.claude/rules/*` 与 `.trae/rules/*` 保持跳转入口；新增脚本门禁候选清单；不改业务代码。 | `AGENTS.md` / `CLAUDE.md` / [Quality Gates](01-rules/quality-gates.md) / [Backlog](../01-product-planning/04-backlog.md) |

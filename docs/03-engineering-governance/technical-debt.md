@@ -121,7 +121,7 @@
 | TD-029 | 收口 TD-009 的 shared schema 门禁与 FileDetailView 类型错误 | 🟢 完成 | P1 | 前端 / 类型 / 交付 | [Spec](../02-delivery-plans/01-specs/2026-06-06-td-029-shared-schema-gate.md) / [Plan](../02-delivery-plans/02-plans/2026-06-06-td-029-shared-schema-gate-plan.md) |
 | TD-030 | RecallChannel Protocol vs concrete signature drift on parameter names | ⚫ 待办 | P3 | 后端 / 测试 | REQ-003 / 2026-W23 iteration |
 | TD-031 | RAG 质量测试文件的预存 ruff 警告 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) |
-| TD-032 | 治理超大源码文件并建立文件规模拆分原则 | 🔵 就绪 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 2026-06-08 源码行数扫描 |
+| TD-032 | 治理超大源码文件并建立文件规模拆分原则 | 🟢 完成 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 2026-06-08 源码行数扫描 |
 
 ## 任务详情
 
@@ -1238,7 +1238,7 @@
 
 ### TD-032: 治理超大源码文件并建立文件规模拆分原则
 
-状态：🔵 就绪
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -1283,3 +1283,8 @@
   - 验证（cwd=packages/server-python）：`pytest tests/shared/ tests/contexts/document/ tests/contexts/structured_data/ -q` → **55 passed**（12 + 36 + 7）；`ruff check app/ tests/` → All checks passed!（12 I001 由 `ruff --fix` 自动修）；`python -c "from app.contexts.X.application.tasks import (...)"` 4/4 外部 import 路径 OK；`scripts/check-engineering-docs` 退出码 0；`gh pr checks 94` no checks reported（PR #94 未配置 CI；本地门禁已通过）。
   - 实施时 3 处小修正（spec 末尾"实施记录"段已记录）：`__init__.py` re-export 2 helper / `extract_template.py` 顶部 logger name 硬编码 / `test_extract_template_selection.py` 物理读路径跟随包形式。3 处均零业务逻辑变化。
   - 后续切片 4（`DatabaseView.vue` 701 + `TemplateModal.vue` 665 抽子组件）仍未开工。任务整体保持 `🔵 就绪`，待切片 4 全部交付后改为 `🟢 完成`。
+- 2026-06-08 切片 4 已合并：[PR #95](https://github.com/MarkDanile/MetaEduBase/pull/95)，merge commit `d4d2720`。
+  - 落地 12 个文件（2 改 10 新）：`DatabaseView.vue` 701 → 320（-54%）+ 6 个聚焦子组件（`DatasetListPanel` 132 / `KgOverviewPanel` 52 / `DatasetDetailMetaBar` 40 / `PipelineStatusPanel` 101 / `DatasetTabsPanel` 139 / `UploadDatasetDialog` 116）；`TemplateModal.vue` 665 → 333（-50%）+ 2 个聚焦子组件（`TemplateFormFields` 255 / `TemplateAiPanel` 207）；spec / plan / `current-work.md` 任务卡。
+  - 验证（cwd=packages/web）：`pnpm typecheck` 退出码 0（零输出）；`pnpm lint` 退出码 0（零 warning）；`pnpm build` 退出码 0，✓ built in 2.72s；`DatabaseView.js` 28.45 kB（vs baseline 25.22 kB，+13%）；`TemplateListView.js` 27.63 kB（vs baseline 25.44 kB，+9%）；`scripts/check-engineering-docs` 退出码 0。
+  - 实施时 5 处小修正（与切片 1-3 经验一致）：`v-model` 改 `:value + @input` 显式 emit 链（4 处） + `PipelineStatusPanel` helper 改"脚本级闭包捕获 tasks" + `UploadDatasetDialog` hidden input 用 ref + `.click()` 内部触发 + `TemplateFormFields.ensureIds` dead code 移除 + `TemplateAiPanel` 独立实现 ensureIds。零业务逻辑变化。
+  - 任务整体进入收口：1 切片（1）后端 tasks 拆分 + 1 切片（2）工程脚本拆分 + 1 切片（3）业务后端 tasks 拆分 + 1 切片（4）前端视图拆分。**TD-032 整体收口**：4 切片全部合并，TD-032 状态改为 `🟢 完成`。
