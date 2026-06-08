@@ -1292,3 +1292,9 @@
   - 更新 `docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md`：「合规样例」段扩展 5 项（`TemplateModal.vue` 333 / `DatabaseView.vue` 320 / `chunker.py` 320 / `ResourceView.vue` 305 / `AiChatView.vue` 304）；「500 行附近高风险候选」段新增 `FileDetailView.vue` 416（新出现接近 500 候选）；新增「切片 5+ 候选清单」段（`document/router.py` 494 P2 + `ResourceLibraryView.vue` 490 P2 + `FileDetailView.vue` 416 P3 + `main.css` 1343 P3）；「扫描历史」段追加本次回写条目。
   - 验证：`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0；`git diff --name-status` 仅包含 `td-032-source-file-sizes.md` + `current-work.md` 两文件。
   - 任务整体保持 `🟢 完成`；切片 5+ 候选需独立 spec / plan 启动（本回写仅登记，不启动新切片）。
+- 2026-06-08 切片 5 已合并：[PR #96](https://github.com/MarkDanile/MetaEduBase/pull/96)，merge commit `4b03064`。
+  - 落地 9 个文件（1 改 8 新）：`document/interfaces/api/router.py` 494 → 29 行（-94%）+ 4 个聚焦子 router `folders.py` 123 / `files.py` 231 / `chunks.py` 43 / `tasks.py` 121；spec / plan / `current-work.md` 任务卡 / `backlog.md` 登记 DOC-041 候选。
+  - 验证（cwd=packages/server-python）：`pytest tests/shared/ tests/contexts/document/ tests/contexts/structured_data/ -q` → **115 passed**（沙箱本次连到 metaedu_test 数据库；baseline 55 仅含 3 个子目录，本次全量覆盖）；`ruff check app/ tests/` → All checks passed!（5 I001 已手工修正：4 个子 router 文件 + 主 router 删 1 个空行 + `parse_document` import 注释缩短避开 line-length 100）；import 探针 all import OK（`router as document_router` + `parse_document` + 4 个子 router 模块）；`@router.*` endpoint 数 13 个（与 baseline 一致）。
+  - 实施时 3 处小修正（与切片 1-4 经验一致）：`router.py:16` 顶层 re-export `parse_document` 让 `patch()` 仍工作 / 4 个子 router 文件中 `from sqlalchemy import text` 保留函数内 import / 4 个子 router 文件双空行收紧。
+  - **pre-existing 重复路由**（`router.py` 与 `task_router.py` 各定义 `GET /files/{file_id}/tasks` + `POST /files/{file_id}/retry`）**不**在本切片处理；已登记为 `DOC-041` 候选（`docs/01-product-planning/04-backlog.md`），由独立 spec / plan 启动清理。
+  - 任务整体保持 `🟢 完成`；TD-032 切片 1-5 全部合并。

@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| TD-032 切片 5：拆分 `document/interfaces/api/router.py` 494 → 主入口 + 4 子 router | 🟡 进行中 | P2 | 可维护性 / 后端 / FastAPI | spec / plan 已落仓；分支 `refactor/td-032-slice-5-document-router`；实施盘点发现 pre-existing 重复路由（router.py 与 task_router.py 都注册 `GET /files/{file_id}/tasks` + `POST /files/{file_id}/retry`）已登记为 DOC-041 候选 | 实施拆 4 子 router + 精简 router.py + 跑 pytest/ruff + commit/push/PR/merge | spec 期间 baseline pytest 55/55 passed;`ruff check app/ tests/` All checks passed! |
+| 暂无 | ⚫ 待办 | - | - | 当前没有已开工任务。 | 从“下一批候选任务”或用户指定任务开工。 | - |
 
 ## 下一批候选任务
 
@@ -35,8 +35,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-08 | TD-032 切片 5：拆分 document/router.py 494 → 5 个聚焦子 router | 🟢 完成 | router.py 494 → 29（-94%）+ 4 子 router（folders 123 / files 231 / chunks 43 / tasks 121）。`pytest` 115 passed + `ruff` All checks passed! + import 探针 all OK。pre-existing 重复路由（router.py 与 task_router.py）登记为 DOC-041 候选。 | [PR #96](https://github.com/MarkDanile/MetaEduBase/pull/96) / [Baseline](02-baselines/td-032-source-file-sizes.md) / [Backlog](../01-product-planning/04-backlog.md) |
 | 2026-06-08 | TD-032 baseline 刷新（切片 1-4 收口后回写） | 🟢 完成 | 5 项合规样例扩展 + 新增 `FileDetailView.vue` 416 候选 + 「切片 5+ 候选清单」段（router 494 P2 / LibraryView 490 P2 / FileDetailView 416 P3 / main.css 1343 P3）。 | [Baseline](02-baselines/td-032-source-file-sizes.md) |
 | 2026-06-08 | TD-032 4 切片整体收口 | 🟢 完成 | 切片 1-4 全部合并。 | [Technical Debt](technical-debt.md#td-032-治理超大源码文件并建立文件规模拆分原则) |
 | 2026-06-08 | DOC-039 增强工程文档脚本门禁 | 🟢 完成 | `scripts/check-engineering-docs` 新增稳定编号、Backlog Done 入账、入口同步和脚本候选清单反查；测试基线迁到新 docs 目录并补 5 个回归用例。 | [Quality Gates](01-rules/quality-gates.md) / `scripts/engineering/check_engineering_docs.py` / `tests/engineering/test_check_engineering_docs.py` / [Backlog](../01-product-planning/04-backlog.md) |
 | 2026-06-08 | DOC-038 恢复基础工程原则为单一事实源 | 🟢 完成 | 新增 `engineering-principles.md`，入口和 IDE 兼容规则只保留链接，恢复先想后写、极简主义、手术式改动和目标驱动原则。 | [Engineering Principles](01-rules/engineering-principles.md) / `AGENTS.md` / `CLAUDE.md` / [Backlog](../01-product-planning/04-backlog.md) |
-| 2026-06-08 | DOC-037 规则入口瘦身与脚本门禁候选清单整理 | 🟢 完成 | 压缩 `AGENTS.md` / `CLAUDE.md` 为导航入口；确认 `.claude/rules/*` 与 `.trae/rules/*` 保持跳转入口；新增脚本门禁候选清单；不改业务代码。 | `AGENTS.md` / `CLAUDE.md` / [Quality Gates](01-rules/quality-gates.md) / [Backlog](../01-product-planning/04-backlog.md) |
