@@ -20,7 +20,7 @@ def write(path: Path, content: str) -> None:
 
 def make_minimal_docs(root: Path) -> None:
     write(
-        root / "docs/engineering/current-work.md",
+        root / "docs/03-engineering-governance/current-work.md",
         """
         # 当前开发工作台
 
@@ -38,11 +38,11 @@ def make_minimal_docs(root: Path) -> None:
 
         | 日期 | 任务 | 状态 | 摘要 | 事实源 |
         |------|------|------|------|--------|
-        | 2026-06-05 | DOC-001 示例完成 | 🟢 完成 | 已完成。 | docs/engineering/work-log.md |
+        | 2026-06-05 | DOC-001 示例完成 | 🟢 完成 | 已完成。 | docs/03-engineering-governance/work-log.md |
         """,
     )
     write(
-        root / "docs/engineering/work-log.md",
+        root / "docs/03-engineering-governance/work-log.md",
         """
         # 工程工作日志索引
 
@@ -50,11 +50,11 @@ def make_minimal_docs(root: Path) -> None:
 
         | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
         |------|------|------|----|-------------------|----------|
-        | 2026-06-05 | DOC-001 示例完成 | 文档 |  |  | `docs/engineering/current-work.md` |
+        | 2026-06-05 | DOC-001 示例完成 | 文档 |  |  | `docs/03-engineering-governance/current-work.md` |
         """,
     )
     write(
-        root / "docs/engineering/technical-debt.md",
+        root / "docs/03-engineering-governance/technical-debt.md",
         """
         # 技术债总账
 
@@ -66,21 +66,37 @@ def make_minimal_docs(root: Path) -> None:
         """,
     )
     write(
-        root / "docs/specs/example.md",
+        root / "docs/02-delivery-plans/01-specs/example.md",
         """
         # Example Spec
 
-        See [work log](../engineering/work-log.md).
+        See [work log](../../03-engineering-governance/work-log.md).
         """,
     )
     write(
-        root / "docs/plans/example-plan.md",
+        root / "docs/02-delivery-plans/02-plans/example-plan.md",
         """
         # Example Plan
 
         > 状态：🔵 就绪
 
         - [ ] 未完成计划项。
+        """,
+    )
+    write(
+        root / "AGENTS.md",
+        """
+        # AGENTS.md
+
+        本文件是跨 AI IDE 的仓库入口，只保留导航和开工顺序。规则正文以 `docs/` 下的事实源为准，不在入口文件复制第二份。
+        """,
+    )
+    write(
+        root / "CLAUDE.md",
+        """
+        # CLAUDE.md
+
+        本文件是 Claude Code 的仓库入口，只保留导航和开工顺序。规则正文以 `docs/` 下的事实源为准，不在入口文件复制第二份。
         """,
     )
 
@@ -117,7 +133,7 @@ def test_scripts_wrapper_delegates_to_tools_checker(tmp_path: Path) -> None:
 
 def test_fails_when_candidate_contains_completed_task(tmp_path: Path) -> None:
     make_minimal_docs(tmp_path)
-    current_work = tmp_path / "docs/engineering/current-work.md"
+    current_work = tmp_path / "docs/03-engineering-governance/current-work.md"
     current_work.write_text(
         current_work.read_text(encoding="utf-8").replace("🔵 就绪", "🟢 完成", 1),
         encoding="utf-8",
@@ -132,9 +148,9 @@ def test_fails_when_candidate_contains_completed_task(tmp_path: Path) -> None:
 
 def test_fails_when_recent_completed_exceeds_five_rows(tmp_path: Path) -> None:
     make_minimal_docs(tmp_path)
-    current_work = tmp_path / "docs/engineering/current-work.md"
+    current_work = tmp_path / "docs/03-engineering-governance/current-work.md"
     rows = "\n".join(
-        f"| 2026-06-05 | DOC-00{i} 示例完成 | 🟢 完成 | 已完成。 | docs/engineering/work-log.md |"
+        f"| 2026-06-05 | DOC-00{i} 示例完成 | 🟢 完成 | 已完成。 | docs/03-engineering-governance/work-log.md |"
         for i in range(1, 7)
     )
     current_work.write_text(
@@ -170,7 +186,7 @@ def test_fails_when_recent_completed_exceeds_five_rows(tmp_path: Path) -> None:
 
 def test_fails_when_recent_completed_summary_is_too_long(tmp_path: Path) -> None:
     make_minimal_docs(tmp_path)
-    current_work = tmp_path / "docs/engineering/current-work.md"
+    current_work = tmp_path / "docs/03-engineering-governance/current-work.md"
     current_work.write_text(
         current_work.read_text(encoding="utf-8").replace(
             "已完成。",
@@ -188,7 +204,7 @@ def test_fails_when_recent_completed_summary_is_too_long(tmp_path: Path) -> None
 
 def test_fails_when_completed_plan_has_active_checkbox(tmp_path: Path) -> None:
     make_minimal_docs(tmp_path)
-    plan = tmp_path / "docs/plans/example-plan.md"
+    plan = tmp_path / "docs/02-delivery-plans/02-plans/example-plan.md"
     plan.write_text(
         plan.read_text(encoding="utf-8").replace("状态：🔵 就绪", "状态：🟢 完成"),
         encoding="utf-8",
@@ -203,11 +219,11 @@ def test_fails_when_completed_plan_has_active_checkbox(tmp_path: Path) -> None:
 def test_fails_when_markdown_link_target_is_missing(tmp_path: Path) -> None:
     make_minimal_docs(tmp_path)
     write(
-        tmp_path / "docs/specs/broken.md",
+        tmp_path / "docs/02-delivery-plans/01-specs/broken.md",
         """
         # Broken
 
-        See [missing](../engineering/missing.md).
+        See [missing](../../03-engineering-governance/missing.md).
         """,
     )
 
@@ -236,7 +252,7 @@ def test_fails_when_work_log_index_row_is_deleted(tmp_path: Path) -> None:
         check=True,
         capture_output=True,
     )
-    work_log = tmp_path / "docs/engineering/work-log.md"
+    work_log = tmp_path / "docs/03-engineering-governance/work-log.md"
     work_log.write_text(
         "\n".join(
             line
@@ -256,7 +272,7 @@ def test_fails_when_work_log_index_row_is_deleted(tmp_path: Path) -> None:
 def test_fails_when_full_pytest_passed_claim_has_no_evidence(tmp_path: Path) -> None:
     make_minimal_docs(tmp_path)
     write(
-        tmp_path / "docs/specs/claim.md",
+        tmp_path / "docs/02-delivery-plans/01-specs/claim.md",
         """
         # Claim
 
@@ -274,7 +290,7 @@ def test_fails_when_debt_overview_and_detail_status_diverge(
     tmp_path: Path,
 ) -> None:
     make_minimal_docs(tmp_path)
-    debt = tmp_path / "docs/engineering/technical-debt.md"
+    debt = tmp_path / "docs/03-engineering-governance/technical-debt.md"
     debt.write_text(
         textwrap.dedent(
             """
@@ -309,7 +325,7 @@ def test_fails_when_completed_debt_detail_still_says_unfinished(
     tmp_path: Path,
 ) -> None:
     make_minimal_docs(tmp_path)
-    debt = tmp_path / "docs/engineering/technical-debt.md"
+    debt = tmp_path / "docs/03-engineering-governance/technical-debt.md"
     debt.write_text(
         textwrap.dedent(
             """
@@ -338,3 +354,107 @@ def test_fails_when_completed_debt_detail_still_says_unfinished(
 
     assert result.returncode == 1
     assert "完成任务的交付记录仍写未完成" in result.stderr
+
+
+def test_fails_when_new_followup_id_is_used(tmp_path: Path) -> None:
+    make_minimal_docs(tmp_path)
+    write(
+        tmp_path / "docs/02-delivery-plans/01-specs/followup.md",
+        """
+        # Followup
+
+        后续任务：TD-999-FOLLOWUP。
+        """,
+    )
+
+    result = run_checker(tmp_path)
+
+    assert result.returncode == 1
+    assert "发现临时 follow-up 编号" in result.stderr
+
+
+def test_fails_when_done_backlog_task_has_no_index_or_fact_source(
+    tmp_path: Path,
+) -> None:
+    make_minimal_docs(tmp_path)
+    write(
+        tmp_path / "docs/01-product-planning/04-backlog.md",
+        """
+        # Product Backlog
+
+        ## Backlog
+
+        | ID | 类型 | 状态 | 优先级 | 里程碑 | 摘要 | 下一步 | External |
+        |----|------|------|--------|--------|------|--------|----------|
+        | DOC-999 | DOC | 🟢 Done | P2 | P3 | 示例完成任务 | 已完成 |  |
+        """,
+    )
+
+    result = run_checker(tmp_path)
+
+    assert result.returncode == 1
+    assert "缺少 work-log 或明确事实源" in result.stderr
+
+
+def test_fails_when_agents_and_claude_entries_drift(tmp_path: Path) -> None:
+    make_minimal_docs(tmp_path)
+    agents = tmp_path / "AGENTS.md"
+    agents.write_text(
+        agents.read_text(encoding="utf-8") + "\n额外入口规则正文。\n",
+        encoding="utf-8",
+    )
+
+    result = run_checker(tmp_path)
+
+    assert result.returncode == 1
+    assert "AGENTS.md 与 CLAUDE.md 的导航内容不一致" in result.stderr
+
+
+def test_fails_when_ide_rule_entry_contains_body_text(tmp_path: Path) -> None:
+    make_minimal_docs(tmp_path)
+    write(
+        tmp_path / ".claude/rules/quality-gates.md",
+        """
+        # Quality Gates
+
+        本文件仅作为 Claude Code 的兼容入口。
+
+        共享规则事实源已迁移到：
+
+        `docs/03-engineering-governance/01-rules/quality-gates.md`
+
+        请以该文件为准，不要在 `.claude/rules/` 中维护第二份规则正文。
+
+        ## 重复规则正文
+
+        这里不应该复制完整规则。
+        """,
+    )
+
+    result = run_checker(tmp_path)
+
+    assert result.returncode == 1
+    assert "IDE 兼容规则入口过长" in result.stderr
+
+
+def test_fails_when_implemented_gate_candidate_has_no_script_mapping(
+    tmp_path: Path,
+) -> None:
+    make_minimal_docs(tmp_path)
+    write(
+        tmp_path / "docs/03-engineering-governance/01-rules/quality-gates.md",
+        """
+        # Quality Gates
+
+        ## 脚本门禁候选清单
+
+        | 候选门禁 | 当前状态 | 触发价值 |
+        |----------|----------|----------|
+        | 未登记的新脚本门禁 | 已实现 | 示例 |
+        """,
+    )
+
+    result = run_checker(tmp_path)
+
+    assert result.returncode == 1
+    assert "脚本门禁候选标为已实现" in result.stderr

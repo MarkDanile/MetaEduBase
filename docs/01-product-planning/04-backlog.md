@@ -48,6 +48,7 @@
 | DOC-036 | DOC | 🟢 Done | P2 | P1 | 收口 DOC-034 遗留的 REQ-008 spec 前文旧口径 | 已修 `2026-W23-req-008-req-004-quality-follow-up.md` 第 21 行，把 `教案\nabc` 的期望统一为 `layer == "L3"` + `template is None` + below threshold；不改代码。 | [Spec](../02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md) |
 | DOC-037 | DOC | 🟢 Done | P2 | P3 | 规则入口瘦身与脚本门禁候选清单整理 | 已压缩 `AGENTS.md` / `CLAUDE.md` 为导航入口；确认 `.claude/rules/*` 与 `.trae/rules/*` 仍为跳转入口；新增脚本门禁候选清单；不改业务代码。 | [Quality Gates](../03-engineering-governance/01-rules/quality-gates.md) |
 | DOC-038 | DOC | 🟢 Done | P2 | P3 | 恢复基础工程原则为单一事实源 | 新增 `engineering-principles.md`，入口和 IDE 兼容规则只做链接，避免 DOC-037 瘦身后丢失“先想后写 / 极简主义 / 手术式改动 / 目标驱动”。 | [Engineering Principles](../03-engineering-governance/01-rules/engineering-principles.md) |
+| DOC-039 | DOC | 🟢 Done | P2 | P3 | 增强工程文档脚本门禁 | 将稳定编号、Done 入账、入口同步和脚本候选清单反查纳入 `scripts/check-engineering-docs`，并补工程脚本回归测试。 | [Quality Gates](../03-engineering-governance/01-rules/quality-gates.md) |
 
 ## 状态迁移
 
