@@ -22,6 +22,12 @@ DOC_GLOBS = (
 
 CURRENT_WORK_RECENT_SUMMARY_LIMIT = 220
 LEGACY_DOC_ROOT_NAMES = ("engineering", "specs", "plans", "product", "superpowers")
+TASK_ID_RE = re.compile(r"\b(?:REQ|TD|DOC|BUG|APP)-\d{3}\b")
+REQ_ID_RE = re.compile(r"\bREQ-\d{3}\b")
+DELIVERY_PLACEHOLDER_RE = re.compile(
+    r"(即将入|待提交|提交后更新|以最终回复为准|待最终确认)"
+)
+NORMATIVE_PLACEHOLDER_RE = re.compile(r"(不得|禁止|不能|不要|例如|示例|占位)")
 
 KNOWN_ISSUES = (
     (
@@ -202,6 +208,197 @@ def check_current_work(root: Path) -> list[Issue]:
                     )
                 )
 
+    return issues
+
+
+def parse_current_work_completed_ids(root: Path) -> list[tuple[str, int]]:
+    path = root / "docs/03-engineering-governance/current-work.md"
+    lines = read_lines(path)
+    _recent_start, recent_body = section(lines, "最近完成")
+    completed: list[tuple[str, int]] = []
+    for line_no, row in table_rows(recent_body):
+        cells = split_table_row(row)
+        if len(cells) < 3 or "完成" not in cells[2]:
+            continue
+        task_match = TASK_ID_RE.search(cells[1])
+        if task_match:
+            completed.append((task_match.group(0), line_no))
+    return completed
+
+
+def check_recent_completed_work_log(root: Path) -> list[Issue]:
+    current_path = root / "docs/03-engineering-governance/current-work.md"
+    work_log_path = root / "docs/03-engineering-governance/work-log.md"
+    work_log_text = work_log_path.read_text(encoding="utf-8") if work_log_path.exists() else ""
+    issues: list[Issue] = []
+
+    for task_id, line_no in parse_current_work_completed_ids(root):
+        if task_id in work_log_text:
+            continue
+        issues.append(
+            Issue(
+                current_path,
+                line_no,
+                "current-work-work-log",
+                f"最近完成任务 {task_id} 缺少 work-log 索引。",
+                "在 docs/03-engineering-governance/work-log.md 增加一行索引，或从最近完成移出。",
+            )
+        )
+
+    return issues
+
+
+def normalize_status(status: str) -> str:
+    clean = re.sub(r"[⚪⚫🔵🟡🔴🟣🟢]", "", status).strip()
+    mapping = {
+        "待澄清": "Idea",
+        "待计划": "Candidate",
+        "候选": "Candidate",
+        "就绪": "Ready",
+        "进行中": "Doing",
+        "待验证": "Doing",
+        "阻塞": "Blocked",
+        "完成": "Done",
+        "已完成": "Done",
+    }
+    return mapping.get(clean, clean)
+
+
+def collect_backlog_req_statuses(root: Path) -> dict[str, list[tuple[Path, int, str]]]:
+    path = root / "docs/01-product-planning/04-backlog.md"
+    lines = read_lines(path)
+    _start, body = section(lines, "Backlog")
+    statuses: dict[str, list[tuple[Path, int, str]]] = {}
+    for line_no, row in table_rows(body):
+        cells = split_table_row(row)
+        if len(cells) < 3 or not REQ_ID_RE.fullmatch(cells[0]):
+            continue
+        statuses.setdefault(cells[0], []).append((path, line_no, normalize_status(cells[2])))
+    return statuses
+
+
+def collect_requirement_file_statuses(root: Path) -> dict[str, list[tuple[Path, int, str]]]:
+    statuses: dict[str, list[tuple[Path, int, str]]] = {}
+    req_root = root / "docs/01-product-planning/05-requirements"
+    for path in sorted(req_root.glob("REQ-*.md")):
+        task_match = REQ_ID_RE.search(path.name)
+        if not task_match:
+            continue
+        task_id = task_match.group(0)
+        for line_no, line in enumerate(read_lines(path), start=1):
+            match = re.match(r"^Status:\s*(.+)$", line.strip())
+            if not match:
+                continue
+            statuses.setdefault(task_id, []).append(
+                (path, line_no, normalize_status(match.group(1)))
+            )
+            break
+    return statuses
+
+
+def collect_iteration_req_statuses(root: Path) -> dict[str, list[tuple[Path, int, str]]]:
+    statuses: dict[str, list[tuple[Path, int, str]]] = {}
+    iteration_root = root / "docs/01-product-planning/03-iterations"
+    for path in sorted(iteration_root.glob("*.md")):
+        for line_no, row in table_rows(list(enumerate(read_lines(path), start=1))):
+            cells = split_table_row(row)
+            if len(cells) < 3 or not REQ_ID_RE.fullmatch(cells[0]):
+                continue
+            statuses.setdefault(cells[0], []).append((path, line_no, normalize_status(cells[2])))
+    return statuses
+
+
+def collect_milestone_req_statuses(root: Path) -> dict[str, list[tuple[Path, int, str]]]:
+    statuses: dict[str, list[tuple[Path, int, str]]] = {}
+    milestone_root = root / "docs/01-product-planning/02-milestones"
+    for path in sorted(milestone_root.glob("*.md")):
+        for line_no, row in table_rows(list(enumerate(read_lines(path), start=1))):
+            cells = split_table_row(row)
+            if len(cells) < 2 or not REQ_ID_RE.fullmatch(cells[0]):
+                continue
+            statuses.setdefault(cells[0], []).append((path, line_no, normalize_status(cells[1])))
+    return statuses
+
+
+def collect_current_work_req_statuses(root: Path) -> dict[str, list[tuple[Path, int, str]]]:
+    path = root / "docs/03-engineering-governance/current-work.md"
+    lines = read_lines(path)
+    statuses: dict[str, list[tuple[Path, int, str]]] = {}
+    for title in ("当前进行中", "下一批候选任务", "最近完成"):
+        _start, body = section(lines, title)
+        for line_no, row in table_rows(body):
+            cells = split_table_row(row)
+            if len(cells) < 2:
+                continue
+            task_match = REQ_ID_RE.search(cells[0] if title != "最近完成" else cells[1])
+            if not task_match:
+                continue
+            status_cell = cells[1] if title != "最近完成" else cells[2]
+            statuses.setdefault(task_match.group(0), []).append(
+                (path, line_no, normalize_status(status_cell))
+            )
+    return statuses
+
+
+def merge_status_maps(
+    *maps: dict[str, list[tuple[Path, int, str]]],
+) -> dict[str, list[tuple[Path, int, str]]]:
+    merged: dict[str, list[tuple[Path, int, str]]] = {}
+    for status_map in maps:
+        for task_id, entries in status_map.items():
+            merged.setdefault(task_id, []).extend(entries)
+    return merged
+
+
+def check_req_status_consistency(root: Path) -> list[Issue]:
+    statuses = merge_status_maps(
+        collect_backlog_req_statuses(root),
+        collect_requirement_file_statuses(root),
+        collect_iteration_req_statuses(root),
+        collect_milestone_req_statuses(root),
+        collect_current_work_req_statuses(root),
+    )
+    issues: list[Issue] = []
+
+    for task_id, entries in sorted(statuses.items()):
+        unique_statuses = {status for _path, _line_no, status in entries}
+        if len(unique_statuses) <= 1:
+            continue
+        detail = ", ".join(
+            f"{rel(path, root)}:{line_no}={status}"
+            for path, line_no, status in entries
+        )
+        first_path, first_line, _first_status = entries[0]
+        issues.append(
+            Issue(
+                first_path,
+                first_line,
+                "req-status-consistency",
+                f"{task_id} 在产品规划层和工程工作台中的状态不一致：{detail}",
+                "关闭或推进 REQ 任务时，同步 Backlog、Requirement、Iteration、Milestone 和 current-work。",
+            )
+        )
+
+    return issues
+
+
+def check_delivery_placeholders(root: Path) -> list[Issue]:
+    issues: list[Issue] = []
+    for path in iter_doc_files(root):
+        for line_no, line in enumerate(read_lines(path), start=1):
+            if not DELIVERY_PLACEHOLDER_RE.search(line):
+                continue
+            if NORMATIVE_PLACEHOLDER_RE.search(line):
+                continue
+            issues.append(
+                Issue(
+                    path,
+                    line_no,
+                    "delivery-placeholder",
+                    "交付事实源中残留提交或最终回复占位。",
+                    "回填真实 PR / commit / 验证结果，或删除过期占位。",
+                )
+            )
     return issues
 
 
@@ -498,10 +695,13 @@ def run_checks(root: Path) -> tuple[list[Issue], list[Issue]]:
     issues: list[Issue] = []
     issues.extend(check_legacy_doc_roots(root))
     issues.extend(check_current_work(root))
+    issues.extend(check_recent_completed_work_log(root))
+    issues.extend(check_req_status_consistency(root))
     issues.extend(check_technical_debt(root))
     issues.extend(check_completed_plans(root))
     issues.extend(check_markdown_links(root))
     issues.extend(check_work_log_append_only(root))
+    issues.extend(check_delivery_placeholders(root))
     issues.extend(check_validation_claims(root))
 
     active: list[Issue] = []
