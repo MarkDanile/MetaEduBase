@@ -310,11 +310,14 @@ def test_logging_branches_match_production_code() -> None:
     """Guard against the caplog helper drifting from the production log strings."""
     from pathlib import Path
 
-    tasks_py = (
+    # TD-032 切片 3 拆分后,`extract_template` 任务迁到 `tasks/extract_template.py`;
+    # 该测试读源码以白盒断言日志分支,改读新物理文件。任务卡 §"业务行为零变化"承诺
+    # 不变;仅测试读取路径跟随包形式调整。
+    extract_template_py = (
         Path(__file__).resolve().parents[3]
-        / "app" / "contexts" / "document" / "application" / "tasks.py"
+        / "app" / "contexts" / "document" / "application" / "tasks" / "extract_template.py"
     )
-    text = tasks_py.read_text(encoding="utf-8")
+    text = extract_template_py.read_text(encoding="utf-8")
     expected = [
         "template.select layer=L1 doc_type=%r filename=%r → template=%s id=%s",
         "template.select layer=L2 matched_doc_type=%r filename=%r → template=%s id=%s",
@@ -324,4 +327,4 @@ def test_logging_branches_match_production_code() -> None:
         "template.select layer=none reason=%r doc_type=%r filename=%r",
     ]
     for needle in expected:
-        assert needle in text, f"tasks.py missing log message: {needle!r}"
+        assert needle in text, f"extract_template.py missing log message: {needle!r}"

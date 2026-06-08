@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| TD-032 治理超大源码文件并建立文件规模拆分原则（切片 1-2 已合并；切片 3-4 待开工） | 🟡 进行中 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 切片 1 已通过 [PR #92](https://github.com/MarkDanile/MetaEduBase/pull/92)（merge `3de4de5`）合并到 main；切片 2 已通过 [PR #93](https://github.com/MarkDanile/MetaEduBase/pull/93)（merge `7e468fb`）合并到 main：`check_engineering_docs.py` 1003 → 72 行 + 8 个聚焦 `checks/*.py` 模块 | 切片 3（`document/tasks.py` + `structured_data/tasks.py` 走 TD-005 模式）和切片 4（`DatabaseView.vue` + `TemplateModal.vue` 抽子组件）各自独立 spec / plan / PR | 切片 1：`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0；`gh pr checks 92` no checks reported。切片 2：`scripts/check-engineering-docs` 退出码 0；`pytest tests/engineering/test_check_engineering_docs.py` 16/16 passed；`gh pr checks 93` no checks reported |
+| TD-032 治理超大源码文件并建立文件规模拆分原则（切片 1-2 已合并；切片 3-4 待开工） | 🟡 进行中 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 切片 1 已通过 [PR #92](https://github.com/MarkDanile/MetaEduBase/pull/92)（merge `3de4de5`）合并到 main；切片 2 已通过 [PR #93](https://github.com/MarkDanile/MetaEduBase/pull/93)（merge `7e468fb`）合并到 main：`check_engineering_docs.py` 1003 → 72 行 + 8 个聚焦 `checks/*.py` 模块；切片 3 spec / plan 已落仓，分支 `refactor/td-032-slice-3-backend-tasks` | 切片 3：拆 `document/tasks.py` 929 + `structured_data/tasks.py` 671 → 各自 1 个包 + N 个聚焦子模块；切片 4（`DatabaseView.vue` + `TemplateModal.vue` 抽子组件）单独 spec / plan | 切片 1：`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0；`gh pr checks 92` no checks reported。切片 2：`scripts/check-engineering-docs` 退出码 0；`pytest tests/engineering/test_check_engineering_docs.py` 16/16 passed；`gh pr checks 93` no checks reported |
 
 ## 下一批候选任务
 
