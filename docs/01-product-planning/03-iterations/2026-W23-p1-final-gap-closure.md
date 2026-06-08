@@ -12,7 +12,7 @@ Goal: 关闭阶段一验证期剩余缺口，重点验证轨道 B：检索 / 抽
 | REQ-004 | REQ | Candidate | 模板匹配可解释化收口 | doc_type、文件名、AI 置信度三层匹配具备可观测日志和至少一组真实业务文档验收记录。 |
 | REQ-005 | REQ | Candidate | 结构化抽取嵌套结构稳定性验收 | object / array / table 抽取结果按模板结构落盘，并有样例回归锁定。 |
 | REQ-006 | REQ | Candidate | P1 知识资产处理链路最终演示验收 | 能演示上传、解析、模板抽取、知识图谱、RAG 问答和来源展示的完整闭环。 |
-| REQ-007 | REQ | Doing | REQ-003 复盘缺口的 RAG 质量链路收口 | 5 个 AC：AC-1 补 3 通道 fake rows 行为级测试；AC-2 修正 P1 / 迭代 / Backlog / current-work 状态矛盾；AC-3 修正 P1 轨道 B 过度验证声明；AC-4 清理 `test_ai_chat_rag_e2e.py` 死代码；AC-5 全量验证命令可复现。 |
+| REQ-007 | REQ | Done | REQ-003 复盘缺口的 RAG 质量链路收口 | 5 AC 全部收口（AC-1 行为级测试 / AC-2 状态同步 / AC-3 过度声明 / AC-4 e2e 死代码 / AC-5 验证声明真实）；[PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) 已合并。 |
 
 ## Out of Scope
 

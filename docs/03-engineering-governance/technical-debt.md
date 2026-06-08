@@ -1230,4 +1230,6 @@
 - `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai/ -q` 全绿。
 
 **交付记录**
-- 2026-06-08 由 REQ-007 Task 4 收口时入账并修复（commit `fcf9c4f` 即将入）。任务详情见 `docs/01-product-planning/05-requirements/REQ-007-req-003-rag-quality-gate-follow-up.md` 与 `docs/02-delivery-plans/02-plans/2026-W23-req-007-rag-quality-gate-follow-up-plan.md`。
+- 2026-06-08 由 REQ-007 Task 4 收口时入账并修复，随 [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) 合并到 `main`（merge commit `45db478b`）。任务详情见 `docs/01-product-planning/05-requirements/REQ-007-req-003-rag-quality-gate-follow-up.md` 与 `docs/02-delivery-plans/02-plans/2026-W23-req-007-rag-quality-gate-follow-up-plan.md`。
+- 行为变化声明：无；`ruff check --fix` 是 `[*]` 标记的自动修复，仅删除 1 行 `import pytest` + 1 行 import 排序，无业务代码或测试行为变化。
+- 验证摘要：`cd packages/server-python && .venv/bin/python -m ruff check tests/contexts/ai/` 退出码 0（`All checks passed!`）；`cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai/ -q` 38 passed。

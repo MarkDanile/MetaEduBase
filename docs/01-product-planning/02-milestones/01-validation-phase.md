@@ -94,7 +94,7 @@ External:
 | REQ-004 | Candidate | 模板匹配可解释化收口 | `docs/01-product-planning/04-backlog.md` |
 | REQ-005 | Candidate | 结构化抽取嵌套结构稳定性验收 | `docs/01-product-planning/04-backlog.md` |
 | REQ-006 | Candidate | P1 知识资产处理链路最终演示验收 | `docs/01-product-planning/04-backlog.md` |
-| REQ-007 | Doing | REQ-003 复盘缺口的 RAG 质量链路收口（行为级测试 + e2e 死代码清理 + 状态同步 + 过度验证声明修正） | `docs/01-product-planning/04-backlog.md` |
+| REQ-007 | Done | REQ-003 复盘缺口的 RAG 质量链路收口（5 AC 全部由 [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) 关闭：行为级测试 + e2e 死代码清理 + 状态同步 + 过度验证声明修正 + 验证声明真实） | `docs/01-product-planning/04-backlog.md` |
 
 ## Evidence
 

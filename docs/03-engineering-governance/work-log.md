@@ -15,6 +15,8 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-08 | REQ-007 收口 REQ-003 RAG 质量链路验收缺口 | 需求 / 测试 / follow-up | [#75](https://github.com/MarkDanile/MetaEduBase/pull/75) | `45db478` | `docs/01-product-planning/05-requirements/REQ-007-req-003-rag-quality-gate-follow-up.md` / `docs/02-delivery-plans/02-plans/2026-W23-req-007-rag-quality-gate-follow-up-plan.md` |
+| 2026-06-08 | REQ-003 P1 RAG 质量链路验收与回归测试 | 需求 / 测试 / P1 收口 | [#74](https://github.com/MarkDanile/MetaEduBase/pull/74) | `337238b` | `docs/02-delivery-plans/01-specs/2026-W23-req-003-rag-quality-gate.md` / `docs/02-delivery-plans/02-plans/2026-W23-req-003-rag-quality-gate-plan.md` |
 | 2026-06-07 | DOC-030 建立真实 AI 应用组合轻量规划入口 | 文档 / 产品规划 / AI 应用组合 |  |  | `docs/01-product-planning/06-ai-applications/README.md` / `docs/01-product-planning/04-backlog.md` |
 | 2026-06-07 | DOC-029 明确 P1/P2/P3 检索架构演进边界 | 文档 / 产品规划 / 架构 |  |  | `docs/01-product-planning/02-milestones/01-validation-phase.md` / `docs/01-product-planning/02-milestones/02-growth-phase.md` / `docs/01-product-planning/02-milestones/03-scale-phase.md` |
 | 2026-06-07 | DOC-028 复核 P1 验证期并建立最终查漏补缺迭代 | 文档 / 产品规划 / 复核 |  |  | `docs/01-product-planning/02-milestones/01-validation-phase.md` / `docs/01-product-planning/03-iterations/2026-W23-p1-final-gap-closure.md` |
@@ -119,3 +121,30 @@
 - 迁移规范：[docs/03-engineering-governance/01-rules/coding-style.md#迁移说明-td-008](01-rules/coding-style.md)
 - 任务清单：[docs/03-engineering-governance/01-rules/coding-style.md#业务页面迁移清单-td-025](01-rules/coding-style.md) + [docs/03-engineering-governance/01-rules/coding-style.md#共享组件迁移清单-td-026](01-rules/coding-style.md)
 - 任务总账：5 个 TD 任务卡（[TD-008](technical-debt.md) / [TD-025](technical-debt.md) / [TD-026](technical-debt.md) / [TD-027](technical-debt.md) / [TD-028](technical-debt.md)）
+
+### 2026-06-08 REQ-003 / REQ-007 P1 RAG 质量链路收口
+
+一段连贯的 2 任务工作：先按 REQ-003 收口 P1 验证期 RAG 质量链路（4 块验收），再按 REQ-007 收口 REQ-003 复盘发现的几类缺口（5 AC）。本段落用于承载需要长期追踪的验证声明与环境区分事实，避免 `current-work.md` 摘要膨胀。
+
+**任务链与 PR**：
+
+| # | 任务 | 切片 | PR | Merge Commit | 关键事实 |
+|---|------|------|-----|--------------|----------|
+| 1 | REQ-003 P1 RAG 质量链路验收与回归测试 | 4 测试文件 + 5 AC | [#74](https://github.com/MarkDanile/MetaEduBase/pull/74) | `337238b` | 24 个新测试用例覆盖 NER / 融合 / 3 通道契约 / ai_chat e2e；轨道 B 4 行翻结论；Protocol-vs-concrete drift 入账 `TD-030` |
+| 2 | REQ-007 收口 REQ-003 RAG 质量链路验收缺口 | 5 AC 收口 | [#75](https://github.com/MarkDanile/MetaEduBase/pull/75) | `45db478b` | 1 个新行为级测试文件（9 用例：fake rows + SQL 参数绑定 + 空输入早退）；e2e 死代码 -35 行；P1 / 迭代 / Backlog / current-work 状态同步；P1 轨道 B 4 行过度验证声明改写；`TD-031` ruff 预存警告入账并自动修复 |
+
+**验证声明（按环境区分）**：
+
+- **CLAUDE.md 本地环境（mock-based 路径，当前可复现）**：
+  - `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai/ -q` → `5 个测试文件 38/38 passed`，exit 0。
+  - `cd packages/server-python && .venv/bin/python -m ruff check tests/contexts/ai/` → `All checks passed!` exit 0。
+  - REQ-007 引入的所有 4 个新测试文件均走 mock（`AsyncMock` + `MagicMock`），**不依赖 PostgreSQL**，因此当前环境可复现。
+  - `scripts/check-engineering-docs` → `engineering docs checks passed` exit 0。
+
+- **Codex / 依赖 PG 集成测试的环境（不可复现部分）**：
+  - `tests/contexts/ai` 之外的某些测试（如 `test_ai_chat.py::test_chat_with_mock_llm` 等依赖 `client` fixture 的用例）需要 `metaedu_test` 库。
+  - 本机 `metaedu_test` 不可达（迭代卡 Review 段已记录），跑 `tests/contexts/ai/test_ai_chat.py` 的 5 个用例会出现 DB 连接错误。
+  - **这不在 REQ-007 验收范围**——REQ-007 的 5 个 AC 都用 mock 路径。端到端 PostgreSQL 集成验收由 **REQ-006** 接力，要求先修复本机 DB 连通性。
+
+**复盘 → 流程改进**：
+- 验证结果**必须区分执行环境**（如本段），不得把不同环境跑出的 `38 passed` 与 `DB connection error` 直接等同或互相覆盖。这是 REQ-003 复盘中的"当前环境与 PR body 的测试结果不一致"信号直接教训，复盘文件当前未在仓库内跟踪。
