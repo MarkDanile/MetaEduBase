@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| TD-032 治理超大源码文件并建立文件规模拆分原则（切片 1：基线 + 原则 + 任务卡） | 🟡 进行中 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | spec / plan / 基线文件 / `coding-style.md` 段尾扩写均已落仓；分支 `refactor/td-032-large-source-files` | 切片 1 验证 → 走完整 Git 闭环（提交 / push / PR / 合并 main）；后续切片 2-4 各自独立 spec / plan | `scripts/check-engineering-docs` 退出码 0；`git diff --name-status` 仅包含本任务文件 |
+| TD-032 治理超大源码文件并建立文件规模拆分原则（切片 2-4 待开工；切片 1 已合并） | 🟡 进行中 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 切片 1 已通过 [PR #92](https://github.com/MarkDanile/MetaEduBase/pull/92)（merge `3de4de5`）合并到 main；建立行数基线 + `coding-style.md` 段尾扩写 3 个小节 | 切片 2（`check_engineering_docs.py` 拆分）单独 spec / plan；切片 3-4 视切片 2 收口后再排 | 切片 1：`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0；`gh pr checks 92` no checks reported（PR #92 未配置 CI；本地门禁已通过） |
 
 ## 下一批候选任务
 
@@ -26,7 +26,6 @@
 |------|------|--------|------|--------|
 | REQ-005 结构化抽取嵌套结构稳定性验收 | ⚫ 候选 | P1 | Product / Document / Contract | 建立 object / array / table 抽取结果样例回归。 |
 | REQ-006 P1 知识资产处理链路最终演示验收 | ⚫ 候选 | P1 | Product / Document / AI / Testing | 先修复本机 `metaedu_test` 连通性，再组织上传/解析/抽取/图谱/RAG 问答/来源展示的端到端演示。 |
-| TD-032 切片 2：拆分 `scripts/engineering/check_engineering_docs.py`（>1000 行） | ⚫ 候选 | P2 | 工程治理 / 后端工具链 | 单独 spec / plan；按检查类型拆 `checks/*.py`，主文件 ≤600 行。 |
 
 ## 最近完成
 

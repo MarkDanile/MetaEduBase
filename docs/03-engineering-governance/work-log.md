@@ -16,6 +16,7 @@
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
 | 2026-06-08 | DOC-040 登记超大源码文件治理技术债 | 文档 / 工程治理 / 技术债 / 代码可维护性 |  |  | `docs/03-engineering-governance/technical-debt.md#td-032-治理超大源码文件并建立文件规模拆分原则` / `docs/03-engineering-governance/01-rules/coding-style.md#文件规模与职责边界` |
+| 2026-06-08 | TD-032 治理超大源码文件并建立文件规模拆分原则（切片 1：基线 + 原则 + 任务卡） | 技术债 / 工程治理 / 重构 | [#92](https://github.com/MarkDanile/MetaEduBase/pull/92) | `3de4de5` | `docs/02-delivery-plans/01-specs/2026-06-08-td-032-large-source-files.md` / `docs/02-delivery-plans/02-plans/2026-06-08-td-032-large-source-files-plan.md` / `docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md` |
 | 2026-06-08 | DOC-039 增强工程文档脚本门禁 | 文档 / 工程治理 / 门禁脚本 / 测试 |  |  | `scripts/engineering/check_engineering_docs.py` / `tests/engineering/test_check_engineering_docs.py` / `docs/03-engineering-governance/01-rules/quality-gates.md` |
 | 2026-06-08 | DOC-038 恢复基础工程原则为单一事实源 | 文档 / 工程治理 / 规则入口 / 基础原则 |  |  | `docs/03-engineering-governance/01-rules/engineering-principles.md` / `AGENTS.md` / `CLAUDE.md` / `.claude/rules/engineeringPrinciples.md` / `.trae/rules/engineeringPrinciples.md` |
 | 2026-06-08 | DOC-037 规则入口瘦身与脚本门禁候选清单整理 | 文档 / 工程治理 / 规则瘦身 / 门禁候选 |  |  | `AGENTS.md` / `CLAUDE.md` / `docs/03-engineering-governance/01-rules/quality-gates.md` / `.claude/rules/` / `.trae/rules/` |

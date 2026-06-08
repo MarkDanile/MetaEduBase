@@ -1270,4 +1270,7 @@
 - `scripts/check-engineering-docs` 通过。
 
 **交付记录**
-- 未完成。2026-06-08 已推送到 `current-work.md` 下一批候选任务，后续按重构切片开工。
+- 2026-06-08 切片 1 已合并：[PR #92](https://github.com/MarkDanile/MetaEduBase/pull/92)，merge commit `3de4de5`。
+  - 落地 5 个文件（2 改 3 新）：spec / plan / 行数基线 / `coding-style.md#文件规模与职责边界` 段尾扩写 3 个小节 / `current-work.md` 任务卡升级；零业务代码变更。
+  - 验证：`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0；`gh pr checks 92` no checks reported（PR #92 未配置 GitHub Actions；本地门禁已通过）。
+  - 后续切片 2-4（>1000 工程脚本 / >500 后端 tasks / >500 前端视图）由各自独立 spec / plan 承载；任务整体待全部切片交付后改为 `🟢 完成`。
