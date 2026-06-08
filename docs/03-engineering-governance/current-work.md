@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| TD-032 治理超大源码文件并建立文件规模拆分原则（切片 2-4 待开工；切片 1 已合并） | 🟡 进行中 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 切片 1 已通过 [PR #92](https://github.com/MarkDanile/MetaEduBase/pull/92)（merge `3de4de5`）合并到 main；建立行数基线 + `coding-style.md` 段尾扩写 3 个小节 | 切片 2（`check_engineering_docs.py` 拆分）单独 spec / plan；切片 3-4 视切片 2 收口后再排 | 切片 1：`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0；`gh pr checks 92` no checks reported（PR #92 未配置 CI；本地门禁已通过） |
+| TD-032 治理超大源码文件并建立文件规模拆分原则（切片 2-4 待开工；切片 1 已合并） | 🟡 进行中 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 切片 1 已通过 [PR #92](https://github.com/MarkDanile/MetaEduBase/pull/92)（merge `3de4de5`）合并到 main；建立行数基线 + `coding-style.md` 段尾扩写 3 个小节 | 切片 2（`check_engineering_docs.py` 拆分）单独 spec / plan；切片 3-4 视切片 2 收口后再排 | 切片 1：`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0；`gh pr checks 92` no checks reported（PR #92 未配置 CI；本地门禁已通过）。切片 2 spec / plan 已落仓；分支 `refactor/td-032-slice-2-check-engineering-docs`；主文件 1003 → 72 行；8 个聚焦模块共 1051 行；`pytest tests/engineering/test_check_engineering_docs.py` 16/16 passed |
 
 ## 下一批候选任务
 

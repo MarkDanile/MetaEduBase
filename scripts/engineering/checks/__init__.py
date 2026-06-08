@@ -1,0 +1,53 @@
+"""Engineering docs check 注册表。
+
+按 `docs/02-delivery-plans/01-specs/2026-06-08-td-032-slice-2-check-engineering-docs-split.md`
+约定的顺序导出 15 个 `check_*` 函数 + `KNOWN_CHECKS` 元组。`KNOWN_CHECKS` 的顺序
+与原 `run_checks` 中 `issues.extend(...)` 完全一致，避免 issue 报告顺序变化。
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from pathlib import Path
+
+from ._common import Issue
+from .current_work import check_current_work, check_recent_completed_work_log
+from .entry_sync import check_entry_sync
+from .gate_candidates import check_scripted_gate_candidates
+from .links_paths import (
+    check_legacy_doc_roots,
+    check_markdown_links,
+    check_work_log_append_only,
+)
+from .placeholders_claims import (
+    check_delivery_placeholders,
+    check_validation_claims,
+)
+from .product_planning import (
+    check_product_planning_status_icons,
+    check_req_status_consistency,
+)
+from .task_ids import check_backlog_done_index, check_followup_ids
+from .technical_debt import check_completed_plans, check_technical_debt
+
+
+KNOWN_CHECKS: tuple[Callable[[Path], list[Issue]], ...] = (
+    check_legacy_doc_roots,
+    check_current_work,
+    check_recent_completed_work_log,
+    check_req_status_consistency,
+    check_product_planning_status_icons,
+    check_followup_ids,
+    check_backlog_done_index,
+    check_entry_sync,
+    check_technical_debt,
+    check_completed_plans,
+    check_markdown_links,
+    check_work_log_append_only,
+    check_delivery_placeholders,
+    check_validation_claims,
+    check_scripted_gate_candidates,
+)
+
+
+__all__ = ["KNOWN_CHECKS", "Issue"]
