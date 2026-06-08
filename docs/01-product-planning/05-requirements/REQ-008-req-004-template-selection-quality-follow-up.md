@@ -1,6 +1,6 @@
 # REQ-008: 收口 REQ-004 验收证据与质量门禁缺口
 
-Status: ⚫ Candidate
+Status: 🟢 Done
 Parent: REQ-004
 Milestone: P1
 Iteration: 2026-W23 P1 最终查漏补缺

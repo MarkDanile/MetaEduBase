@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-008 收口 REQ-004 验收证据与质量门禁缺口 | 🟡 进行中 | P1 | Product / Document / Testing | 修 5 项 ruff 失败（E501/UP035/I001）+ 4 分支 `template.select layer=...` caplog 断言 + 2 条 L3 解析失败 / 空响应用例。 | [Spec](../02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-008-req-004-quality-follow-up-plan.md) / [Requirement](../01-product-planning/05-requirements/REQ-008-req-004-template-selection-quality-follow-up.md) |
+| REQ-008 收口 REQ-004 验收证据与质量门禁缺口 | 🟡 进行中 | P1 | Product / Document / Testing | Task 1+2 本地已 commit（29fa1d0 ruff 清零 + 54a0a1c caplog + L3 边角 + 漂移保护）；Task 3 文档回填（Backlog / Iteration / Milestone）已落本地。验证：ruff 退出码 0；pytest 16 passed；待 push + PR + 合并 main + 收尾回填 PR 链接。 | [Spec](../02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-008-req-004-quality-follow-up-plan.md) / [Requirement](../01-product-planning/05-requirements/REQ-008-req-004-template-selection-quality-follow-up.md) |
 
 ## 下一批候选任务
 
