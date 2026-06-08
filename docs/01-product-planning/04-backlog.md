@@ -37,6 +37,7 @@
 | REQ-006 | REQ | ⚫ Candidate | P1 | P1 | P1 知识资产处理链路最终演示验收 | 组织上传、解析、抽取、图谱、RAG 问答和来源展示的阶段一闭环验收 |  |
 | REQ-007 | REQ | 🟢 Done | P1 | P1 | REQ-003 复盘缺口的 RAG 质量链路收口 | 补 3 通道 fake rows 行为级测试，修正 P1 / 迭代状态矛盾和过度验证声明，清理 e2e 测试漂移 | 已建 [Plan](../02-delivery-plans/02-plans/2026-W23-req-007-rag-quality-gate-follow-up-plan.md)；5 AC 全部收口（[PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75)）。TD-031 ruff 预存问题入账并修复。 |
 | REQ-008 | REQ | 🟢 Done | P1 | P1 | 收口 REQ-004 验收证据与质量门禁缺口 | 已建 [Spec](../02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-008-req-004-quality-follow-up-plan.md)；修 5 项 ruff 失败（E501/UP035/I001）+ 4 分支 `template.select layer=...` caplog 断言 + 2 条 L3 解析失败 / 空响应用例 + 1 条生产代码漂移保护；行为不变（折行 + import 来源等价）；[PR #79](https://github.com/MarkDanile/MetaEduBase/pull/79) 已合并。 | [Requirement](05-requirements/REQ-008-req-004-template-selection-quality-follow-up.md) |
+| REQ-009 | REQ | ⚪ Idea | P2 | P1 / P2 | 开源 AI 平台能力对标与可插拔融合预演 | 后续 Shaping 时评估 RAGFlow、Dify、Nuwax、Pi、LangGraph、LlamaIndex / Haystack 等项目，明确哪些能力接入、对标或只借鉴 | [Requirement](05-requirements/REQ-009-ai-platform-benchmark-and-adapter-strategy.md) |
 | APP-001 | APP | ⚫ Candidate | P1 | P1 / P2 | 课程能力图谱智能体工具 | 优先进入 Shaping，明确课程样例、能力点 schema、图谱验收指标和首个最小闭环 |  |
 | APP-002 | APP | ⚫ Candidate | P1 | P2 | 智能预习规划与导学智能体 | 等 APP-001 能力图谱最小闭环明确后，塑形学情诊断、预习任务和资源推送 |  |
 | APP-003 | APP | ⚫ Candidate | P2 | P2 / P3 | 个性化学习资源推荐智能体 | 等资源类型、学生画像和能力图谱关联策略明确后塑形 |  |
