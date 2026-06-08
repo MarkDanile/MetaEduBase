@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| 暂无 | ⚫ 待办 | - | - | 当前没有已开工任务。 | 从“下一批候选任务”或用户指定任务开工。 | - |
+| TD-032 切片 5：拆分 `document/interfaces/api/router.py` 494 → 主入口 + 4 子 router | 🟡 进行中 | P2 | 可维护性 / 后端 / FastAPI | spec / plan 已落仓；分支 `refactor/td-032-slice-5-document-router`；实施盘点发现 pre-existing 重复路由（router.py 与 task_router.py 都注册 `GET /files/{file_id}/tasks` + `POST /files/{file_id}/retry`）已登记为 DOC-041 候选 | 实施拆 4 子 router + 精简 router.py + 跑 pytest/ruff + commit/push/PR/merge | spec 期间 baseline pytest 55/55 passed;`ruff check app/ tests/` All checks passed! |
 
 ## 下一批候选任务
 
