@@ -33,9 +33,9 @@
 
 | 文件 | 行数 | 状态 | 例外 / 拆分说明 |
 |------|------|------|-----------------|
-| `packages/server-python/app/contexts/document/application/tasks.py` | 929 | ⚪ 待切片 | Celery 任务编排 + 业务步骤混在一起；TD-032 切片 3 单独 spec / plan 走 TD-005 模式，横切 helper 抽到 `app/shared/tasks/lifecycle.py` 等 |
+| `packages/server-python/app/contexts/document/application/tasks.py` | 0 (0) → tasks/ 包 1000 行 | 🟢 已拆分 | 切片 3 已合并 ([PR #94](https://github.com/MarkDanile/MetaEduBase/pull/94) / merge `5beb938`)：原 929 行单文件拆为 `tasks/` 包（9 文件，27-217 行/个）：`__init__.py` re-export 6 task + 2 helper；`pipeline_guard.py`（53 行）+ `extract_template_prompts.py`（88 行）+ 6 个 task 子文件（`parse.py` 138 / `chunk.py` 160 / `embed.py` 145 / `index.py` 94 / `extract_template.py` 217 / `extract_knowledge_graph.py` 178）；所有子文件 ≤500 行；`@shared_task(name=...)` 10 个名字全部 byte-equivalent；`app/shared/tasks/lifecycle.py`（TD-005 产物）未动；`app/contexts/document/tasks.py` Celery autodiscover 代理未动；55 个 pytest 聚焦测试 0 改动通过 |
 | `packages/web/src/views/database/DatabaseView.vue` | 701 | ⚪ 待切片 | 单视图承担列表 / 上传 / 任务 / KG 总览 / 多个 tab；TD-032 切片 4 单独 spec / plan 抽子组件（meta bar / pipeline status / tab content / KG 概览） |
-| `packages/server-python/app/contexts/structured_data/application/tasks.py` | 671 | ⚪ 待切片 | Celery 任务编排 + 业务步骤混在一起；与 document 路径复用同一套横切 helper（TD-005 既有模式） |
+| `packages/server-python/app/contexts/structured_data/application/tasks.py` | 0 (0) → tasks/ 包 746 行 | 🟢 已拆分 | 切片 3 已合并 ([PR #94](https://github.com/MarkDanile/MetaEduBase/pull/94) / merge `5beb938`)：原 671 行单文件拆为 `tasks/` 包（5 文件，23-282 行/个）：`__init__.py` re-export 4 task + 4 个 task 子文件（`ds_parse.py` 118 / `ds_embed.py` 149 / `ds_extract_kg.py` 282 / `ds_cross_dataset_edges.py` 174）；所有子文件 ≤500 行；`@shared_task(name=...)` 4 个名字全部 byte-equivalent；`app/shared/tasks/lifecycle.py` 未动；`app/contexts/structured_data/tasks.py` Celery autodiscover 代理未动 |
 | `packages/web/src/views/admin/TemplateModal.vue` | 665 | ⚪ 待切片 | 模板编辑对话框承担字段编辑 / 预览 / 操作按钮；TD-032 切片 4 单独 spec / plan 抽子组件 |
 
 ### 500 行附近高风险候选
