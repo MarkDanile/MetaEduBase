@@ -9,7 +9,7 @@ Goal: 关闭阶段一验证期剩余缺口，重点验证轨道 B：检索 / 抽
 | ID | 类型 | 状态 | 摘要 | 验收 |
 |----|------|------|------|------|
 | REQ-003 | REQ | Done | P1 RAG 质量链路验收与回归测试 | 覆盖 NER、3 通道召回、频次融合、sources 结构；相关测试可复现运行。 |
-| REQ-004 | REQ | Candidate | 模板匹配可解释化收口 | doc_type、文件名、AI 置信度三层匹配具备可观测日志和至少一组真实业务文档验收记录。 |
+| REQ-004 | REQ | Done | 模板匹配可解释化收口 | 9 条分支回归通过（`tests/contexts/document/test_extract_template_selection.py`）；3 层匹配抽到 `app/contexts/document/application/template_selector.py`；4 分支统一 `template.select layer=...` 日志；[PR #77](https://github.com/MarkDanile/MetaEduBase/pull/77) 已合并。 |
 | REQ-005 | REQ | Candidate | 结构化抽取嵌套结构稳定性验收 | object / array / table 抽取结果按模板结构落盘，并有样例回归锁定。 |
 | REQ-006 | REQ | Candidate | P1 知识资产处理链路最终演示验收 | 能演示上传、解析、模板抽取、知识图谱、RAG 问答和来源展示的完整闭环。 |
 | REQ-007 | REQ | Done | REQ-003 复盘缺口的 RAG 质量链路收口 | 5 AC 全部收口（AC-1 行为级测试 / AC-2 状态同步 / AC-3 过度声明 / AC-4 e2e 死代码 / AC-5 验证声明真实）；[PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) 已合并。 |
