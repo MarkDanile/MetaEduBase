@@ -5,11 +5,12 @@
 ## 开工顺序
 
 1. 先读 `docs/03-engineering-governance/current-work.md`，确认当前任务、候选任务、验证状态和下一步。
-2. 只要会修改仓库文件，先确认不在 `main`；若在 `main`，按 `docs/03-engineering-governance/01-rules/git-workflow.md#开发前分支门禁` 创建任务分支后再改文件。
-3. 按任务类型进入 `docs/03-engineering-governance/task-modes.md`，再渐进式读取对应 spec、plan、技术债、需求或架构约束。
-4. 涉及 plan-do、superpower、compound-engineering-plugin 或其他 AI IDE/插件交接时，读取 `docs/03-engineering-governance/workflow.md`。
-5. 使用插件生成 spec/plan 时，插件目录只作为兼容输出；交付依据必须迁移或镜像到 `docs/02-delivery-plans/01-specs/*` / `docs/02-delivery-plans/02-plans/*`。
-6. 提交、PR、合并或声明完成前，执行 `docs/03-engineering-governance/01-rules/quality-gates.md#完成门禁`；完整 Git 闭环按 `docs/03-engineering-governance/01-rules/git-workflow.md#快速交付通道`。
+2. 默认工程判断标准见 `docs/03-engineering-governance/01-rules/engineering-principles.md`。
+3. 只要会修改仓库文件，先确认不在 `main`；若在 `main`，按 `docs/03-engineering-governance/01-rules/git-workflow.md#开发前分支门禁` 创建任务分支后再改文件。
+4. 按任务类型进入 `docs/03-engineering-governance/task-modes.md`，再渐进式读取对应 spec、plan、技术债、需求或架构约束。
+5. 涉及 plan-do、superpower、compound-engineering-plugin 或其他 AI IDE/插件交接时，读取 `docs/03-engineering-governance/workflow.md`。
+6. 使用插件生成 spec/plan 时，插件目录只作为兼容输出；交付依据必须迁移或镜像到 `docs/02-delivery-plans/01-specs/*` / `docs/02-delivery-plans/02-plans/*`。
+7. 提交、PR、合并或声明完成前，执行 `docs/03-engineering-governance/01-rules/quality-gates.md#完成门禁`；完整 Git 闭环按 `docs/03-engineering-governance/01-rules/git-workflow.md#快速交付通道`。
 
 ## 核心事实源
 
@@ -30,6 +31,7 @@
 
 | File | Content |
 |------|---------|
+| [engineering-principles.md](docs/03-engineering-governance/01-rules/engineering-principles.md) | 基础工程判断标准：先想后写、极简主义、手术式改动、目标驱动 |
 | [architecture.md](docs/03-engineering-governance/01-rules/architecture.md) | 架构实现约束、上下文划分、核心流转与修改边界 |
 | [coding-style.md](docs/03-engineering-governance/01-rules/coding-style.md) | 命名、格式、设计系统、共享组件 |
 | [testing.md](docs/03-engineering-governance/01-rules/testing.md) | 测试策略、环境隔离、稳定入口与 mock 边界 |
