@@ -121,7 +121,7 @@
 | TD-029 | 收口 TD-009 的 shared schema 门禁与 FileDetailView 类型错误 | 🟢 完成 | P1 | 前端 / 类型 / 交付 | [Spec](../02-delivery-plans/01-specs/2026-06-06-td-029-shared-schema-gate.md) / [Plan](../02-delivery-plans/02-plans/2026-06-06-td-029-shared-schema-gate-plan.md) |
 | TD-030 | RecallChannel Protocol vs concrete signature drift on parameter names | ⚫ 待办 | P3 | 后端 / 测试 | REQ-003 / 2026-W23 iteration |
 | TD-031 | RAG 质量测试文件的预存 ruff 警告 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) |
-| TD-032 | 治理超大源码文件并建立文件规模拆分原则 | ⚫ 待办 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 2026-06-08 源码行数扫描 |
+| TD-032 | 治理超大源码文件并建立文件规模拆分原则 | 🔵 就绪 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 2026-06-08 源码行数扫描 |
 
 ## 任务详情
 
@@ -1238,7 +1238,7 @@
 
 ### TD-032: 治理超大源码文件并建立文件规模拆分原则
 
-状态：⚫ 待办
+状态：🔵 就绪
 
 | 字段 | 内容 |
 |------|------|
@@ -1270,4 +1270,4 @@
 - `scripts/check-engineering-docs` 通过。
 
 **交付记录**
-- 未完成。2026-06-08 已登记债务与后续开发原则，本任务后续按重构切片进入 `就绪`。
+- 未完成。2026-06-08 已推送到 `current-work.md` 下一批候选任务，后续按重构切片开工。
