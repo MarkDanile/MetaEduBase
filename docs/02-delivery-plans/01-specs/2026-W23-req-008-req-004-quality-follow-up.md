@@ -38,7 +38,7 @@ REQ-004 模板匹配可解释化已通过 PR #77 合并（`select_template` 纯�
 | AC-2 | L1 日志可观测 | `caplog` 断言：L1 命中时，logger 输出包含 `template.select layer=L1` 的 INFO 记录 | 缺日志 / 字段缺失 |
 | AC-3 | L2 日志可观测 | `caplog` 断言：L2 命中时输出包含 `template.select layer=L2` 的 INFO 记录 | 字段缺失 |
 | AC-4 | L3 命中日志可观测 | `caplog` 断言：L3 命中时输出包含 `template.select layer=L3` 且包含 `confidence=0.92` 片段的 INFO 记录 | 缺日志 |
-| AC-5 | L3 解析失败覆盖 | 新增用例：AI 返回 `"教案\nabc"`（`float()` 失败）→ `layer == "none"`（0.0 < 0.7 阈值）；reason 含 `AI confidence below threshold` 或解析失败语义（与现有契约一致） | 用例缺失 / 走错分支 |
+| AC-5 | L3 解析失败覆盖 | 新增用例：AI 返回 `"教案\nabc"`（`float("abc")` 失败）→ `confidence == 0.0`、`layer == "L3"`、`template is None`、`reason` 含 `below threshold`（0.0 < 0.7 阈值；命中 L3 但 confidence 不足，模板不返回） | 用例缺失 / 走错分支 |
 | AC-6 | L3 空响应覆盖 | 新增用例：AI 返回 `""`（零行）→ `layer == "none"`、`reason == "AI returned empty response"` | 用例缺失 |
 | AC-7 | 9 条 → 12 条回归 | `tests/contexts/document/test_extract_template_selection.py` 至少 12 条用例全部通过（9 旧 + 2 解析覆盖 + 1 共享 caplog 参数化或独立用例） | 任一不通过 |
 | AC-8 | pytest 可复现 | `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_extract_template_selection.py -q` 退出码 0 | 退出码非 0 |
@@ -69,8 +69,7 @@ REQ-004 模板匹配可解释化已通过 PR #77 合并（`select_template` 纯�
 
 `select_template` 行为契约不在本 spec 范围。AC-5 / AC-6 仅补"对外可观察行为"测试，不改实现：
 
-- 解析失败：响应为 `"教案\nabc"` 时，`float("abc")` 抛 `ValueError`，现实现 `confidence = 0.0`、`template_obj` 存在 → `layer == "L3"` + `confidence < threshold` 路径，**但** `matched_type` 已在 `lines[0] = "教案"`、模板存在 → 命中 → `layer == "L3"`、`template` 返回 L1 等价 Template，`reason == "AI confidence match"`（0.0 < 0.7）。  
-  实施时再确认实际分支；若当前实现将 `"教案\nabc"` 解析为 `layer == "L3"` + `confidence=0.0` + `template` 命中 → 测试断言这一行为并写明，避免和 spec "4 个分支各有一行"的口径混淆。
+- 解析失败：响应为 `"教案\nabc"` 时，`float("abc")` 抛 `ValueError`，现实现 `confidence = 0.0`、`template_obj` 存在 → `layer == "L3"` + `confidence < threshold` 路径：`matched_type` 已在 `lines[0] = "教案"`、模板存在 → L3 命中 → `template` 返回 L1 等价 Template，但 `0.0 < 0.7`，因此选择器最终返回 `(None, "L3", 0.0, ..., "AI confidence below threshold")`。本 spec AC-5 锁定这一行为；`layer == "none"` 是早期口径误写，与实现和 `test_l3_ai_confidence_unparseable_falls_back_to_zero` 不一致。
 - 空响应：响应为 `""` 时 `lines == []` → 现实现返回 `(None, "none", "", None, "AI returned empty response")`。测试断言该 reason。
 
 ## 文件计划
