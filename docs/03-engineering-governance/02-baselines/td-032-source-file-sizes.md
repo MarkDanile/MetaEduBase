@@ -27,7 +27,7 @@
 | 文件 | 行数 | 状态 | 例外 / 拆分说明 |
 |------|------|------|-----------------|
 | `packages/web/src/assets/css/main.css` | 1343 | 🔵 例外已登记 | 历史兼容样式（4 主题 token + `liquid-*` 兼容别名 + `ui-*` 设计系统 + 基础 reset），与设计系统 token 化强耦合；后续切片按 CSS 分模块构建（按 token / 组件 / 主题分文件）收敛 |
-| `scripts/engineering/check_engineering_docs.py` | 1003 | ⚪ 待切片 | 文档门禁主实现，承担多种检查类型；TD-032 切片 2 单独 spec / plan 拆为 `checks/*.py` + 入口聚合，目标主文件 ≤600 行 |
+| `scripts/engineering/check_engineering_docs.py` | 72 | 🟢 已拆分 | 切片 2 已合并 ([PR #93](https://github.com/MarkDanile/MetaEduBase/pull/93) / merge `7e468fb`)：原 1003 行单文件拆为入口主文件 72 行 + 8 个聚焦 `checks/*.py` 模块（38-233 行）+ `checks/__init__.py` 注册表 `KNOWN_CHECKS`；入口脚本 `scripts/check-engineering-docs` (17 行 `runpy.run_path`) 不动；16 个 pytest 行为零变化 |
 
 ### >500 行业务 / 工程源码
 

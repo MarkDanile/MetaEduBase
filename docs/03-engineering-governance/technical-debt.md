@@ -1274,3 +1274,7 @@
   - 落地 5 个文件（2 改 3 新）：spec / plan / 行数基线 / `coding-style.md#文件规模与职责边界` 段尾扩写 3 个小节 / `current-work.md` 任务卡升级；零业务代码变更。
   - 验证：`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0；`gh pr checks 92` no checks reported（PR #92 未配置 GitHub Actions；本地门禁已通过）。
   - 后续切片 2-4（>1000 工程脚本 / >500 后端 tasks / >500 前端视图）由各自独立 spec / plan 承载；任务整体待全部切片交付后改为 `🟢 完成`。
+- 2026-06-08 切片 2 已合并：[PR #93](https://github.com/MarkDanile/MetaEduBase/pull/93)，merge commit `7e468fb`。
+  - 落地 13 个文件（1 改 12 新）：入口主文件 `scripts/engineering/check_engineering_docs.py` 1003 → 72 行 + 8 个聚焦 `checks/*.py` 模块（38-233 行/个）+ `checks/__init__.py` 注册表 + spec / plan / `current-work.md` 任务卡刷新。
+  - 验证：`python scripts/engineering/check_engineering_docs.py --root .` 退出码 0，stdout `engineering docs checks passed`；`scripts/check-engineering-docs` 退出码 0，stdout `engineering docs checks passed`；`pytest tests/engineering/test_check_engineering_docs.py -v` 16 passed；`git diff --check` 退出码 0；`gh pr checks 93` no checks reported（PR #93 未配置 CI；本地门禁已通过）。
+  - 后续切片 3-4 仍未开工：后端 `document|tasks.py` + `structured_data|tasks.py` 走 TD-005 模式；前端 `DatabaseView.vue` + `TemplateModal.vue` 抽子组件。任务整体保持 `🔵 就绪`，待全部切片交付后改为 `🟢 完成`。
