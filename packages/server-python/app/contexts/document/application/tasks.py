@@ -581,86 +581,57 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
             doc_type = rows[0]["doc_type"] if rows else None
             filename = rows[0]["filename"] if rows else ""
 
-            # 匹配优先级：精确 doc_type → AI 置信度 → 通用
-            template_obj = None
+            # 匹配优先级：L1 精确 doc_type → L2 文件名 → L3 AI 置信度
+            # 抽到 template_selector.select_template 以便单测与可观测日志
+            from app.contexts.document.application.template_selector import (
+                select_template,
+            )
 
-            # 第一层：精确 doc_type 匹配
-            if doc_type:
-                template_obj = await TemplateRepositoryImpl(session).get_by_doc_type(
-                    doc_type, tenant_id
+            all_templates = await TemplateRepositoryImpl(session).list(tenant_id)
+            selection = await select_template(
+                chunks_text=chunks_text,
+                doc_type=doc_type,
+                filename=filename or "",
+                templates=all_templates,
+                ai_chat=lambda prompt: chat(
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                    timeout=30.0,
+                ),
+            )
+            template_obj = selection.template
+
+            if selection.layer == "L1":
+                logger.info(
+                    "template.select layer=L1 doc_type=%r filename=%r → template=%s id=%s",
+                    doc_type, filename, template_obj.name, template_obj.id,
                 )
-
-            # 第二层：文件名模糊匹配（doc_type 为空时，文件名含"课程标准"等关键词）
-            if not template_obj and filename:
-                all_templates = await TemplateRepositoryImpl(session).list(tenant_id)
-                for t in all_templates:
-                    for dt in t.doc_types:
-                        if dt and dt in filename:
-                            template_obj = t
-                            logger.info(
-                                "extract_template: filename match %r in doc_types → template=%s",
-                                dt, t.name,
-                            )
-                            break
-                    if template_obj:
-                        break
-
-            # 第三层：AI 置信度匹配（仅前两层未命中时触发）
-            if not template_obj:
-                all_templates = await TemplateRepositoryImpl(session).list(tenant_id)
-                if all_templates:
-                    all_doc_types = list({dt for t in all_templates for dt in t.doc_types})
-                    match_prompt = (
-                        f"文档内容摘要：{chunks_text[:500]}\n"
-                        f"可选文档类型：{all_doc_types}\n"
-                        "请判断这份文档最适合哪种文档类型，"
-                        '返回格式：类型名称\\n置信度分数（0.0~1.0，如"教案\\n0.85"）'
-                    )
-                    try:
-                        response = (await chat(
-                            messages=[{"role": "user", "content": match_prompt}],
-                            temperature=0.0,
-                            timeout=30.0,
-                        )).strip()
-                        # 解析响应：取第一行作为类型，第二行作为置信度
-                        lines = [line.strip() for line in response.splitlines() if line.strip()]
-                        if len(lines) >= 2:
-                            matched_type = lines[0]
-                            try:
-                                confidence = float(lines[1])
-                            except ValueError:
-                                confidence = 0.0
-                        elif len(lines) == 1:
-                            matched_type = lines[0]
-                            confidence = 0.5  # 无法解析置信度时保守处理
-                        else:
-                            matched_type = ""
-                            confidence = 0.0
-
-                        if confidence >= 0.7:
-                            template_obj = next(
-                                (t for t in all_templates if matched_type in t.doc_types), None
-                            )
-                            if template_obj:
-                                logger.info(
-                                    "extract_template: AI matched doc_type=%r "
-                                    "(conf=%.2f) → template=%s",
-                                    matched_type, confidence, template_obj.name,
-                                )
-                            else:
-                                logger.warning(
-                                    "extract_template: AI matched %r (conf=%.2f) "
-                                    "but no template found",
-                                    matched_type, confidence,
-                                )
-                        else:
-                            logger.info(
-                                "extract_template: AI confidence %.2f < 0.7, "
-                                "using generic template",
-                                confidence,
-                            )
-                    except Exception as e:
-                        logger.warning("extract_template: AI template match failed: %s", e)
+            elif selection.layer == "L2":
+                logger.info(
+                    "template.select layer=L2 matched_doc_type=%r filename=%r → template=%s id=%s",
+                    selection.matched_type, filename, template_obj.name, template_obj.id,
+                )
+            elif selection.layer == "L3" and template_obj is not None:
+                logger.info(
+                    "template.select layer=L3 matched_doc_type=%r confidence=%.2f → template=%s id=%s",
+                    selection.matched_type, selection.confidence,
+                    template_obj.name, template_obj.id,
+                )
+            elif selection.layer == "L3" and selection.confidence is not None:
+                logger.info(
+                    "template.select layer=L3 confidence=%.2f < threshold doc_type=%r — using generic",
+                    selection.confidence, selection.matched_type,
+                )
+            elif selection.layer == "none" and selection.matched_type:
+                logger.warning(
+                    "template.select layer=none reason=%r doc_type=%r confidence=%.2f",
+                    selection.reason, selection.matched_type, selection.confidence or 0.0,
+                )
+            else:
+                logger.warning(
+                    "template.select layer=none reason=%r doc_type=%r filename=%r",
+                    selection.reason, doc_type, filename,
+                )
 
             # Build prompt: use template.ai_prompt > template.fields > default
             if template_obj and template_obj.ai_prompt:
