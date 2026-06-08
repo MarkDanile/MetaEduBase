@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| 暂无 | ⚫ 待办 | - | - | 当前没有已开工任务。 | 从“下一批候选任务”或用户指定任务开工。 | - |
+| TD-032 baseline 刷新（切片 1-4 收口后回写） | 🟡 进行中 | P3 | 工程治理 | 切片 1-4 全部合并后行数重扫；`td-032-source-file-sizes.md` 已写：合规样例扩展 5 项 / 新增 `FileDetailView.vue` 416 候选 / 新增「切片 5+ 候选清单」段（router 494 + LibraryView 490 + FileDetailView 416 + main.css 1343） | 任务卡登记 → commit + push → backfill 4 处 docs | `scripts/check-engineering-docs` 退出码 0 |
 
 ## 下一批候选任务
 

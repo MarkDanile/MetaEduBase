@@ -42,8 +42,20 @@
 
 | 文件 | 行数 | 状态 | 例外 / 拆分说明 |
 |------|------|------|-----------------|
-| `packages/server-python/app/contexts/document/interfaces/api/router.py` | 494 | ⚪ 待切片 | 单一 router 聚合多 endpoint；候选按 `resource_type` / `action` 拆 `*_router.py` 子文件，主 router 暴露 namespace。具体切片在切片 3 之后视情安排 |
-| `packages/web/src/views/resource/ResourceLibraryView.vue` | 490 | ⚪ 待切片 | 资源库视图承担文件树 / 右键菜单 / 列表区；候选抽子组件。具体切片在切片 4 之后视情安排 |
+| `packages/server-python/app/contexts/document/interfaces/api/router.py` | 494 | ⚪ 待切片 | 单一 router 聚合多 endpoint；候选按 `resource_type` / `action` 拆 `*_router.py` 子文件，主 router 暴露 namespace。建议作为切片 5。 |
+| `packages/web/src/views/resource/ResourceLibraryView.vue` | 490 | ⚪ 待切片 | 资源库视图承担文件树 / 右键菜单 / 列表区；候选抽子组件（文件夹树 / 列表区 / 上传 / 标签筛选）。建议作为切片 6。 |
+| `packages/web/src/views/resource/FileDetailView.vue` | 416 | ⚪ 待切片（**新出现**） | 文件详情视图承担 meta bar / pipeline status / tab content；切片 1-4 期间未触及，TD-008 / TD-025 累积效果让 `FileDetailView` 从 <500 接近当前 416。建议作为切片 7（与切片 4 DatabaseView 模板一致：抽子组件）。 |
+
+### 切片 5+ 候选清单（待开工）
+
+| 优先级 | 候选文件 | 当前行数 | 建议路径 |
+|--------|----------|----------|----------|
+| P2 | `packages/server-python/app/contexts/document/interfaces/api/router.py` | 494 | 沿用切片 3 风格：按 endpoint 分类抽 `*_router.py` 子文件 |
+| P2 | `packages/web/src/views/resource/ResourceLibraryView.vue` | 490 | 沿用切片 4 风格：抽子组件（文件夹树 / 列表区 / 上传 / 标签筛选） |
+| P3 | `packages/web/src/views/resource/FileDetailView.vue` | 416 | 沿用切片 4 风格：抽子组件（meta bar / pipeline status / tab content） |
+| P3 | `packages/web/src/assets/css/main.css` | 1343 | **设计系统级别**重构：按 `tokens.css` / `components/ui-*.css` / `themes/liquid-ink-navy-notion.css` 拆子模块，Vite import 回主入口；不在 TD-032 治理周期内独立完成，需要与设计系统/产品方协同 |
+
+> 切片 5+ 需新建独立 spec / plan，**不**在切片 1-4 计划文件 [2026-06-08-td-032-large-source-files-plan.md](../../02-delivery-plans/02-plans/2026-06-08-td-032-large-source-files-plan.md) 范围。
 
 ### 合规样例（≤500 行，证明原则可被满足）
 
@@ -52,6 +64,11 @@
 | `packages/web/src/views/LayoutView.vue` | 387 | 🟢 已合规 | 共享骨架组件，按 TD-008 / TD-025 已收敛 |
 | `packages/web/src/views/auth/LoginView.vue` | 377 | 🟢 已合规 | 品牌背景例外保留，文件规模符合原则 |
 | `packages/web/src/views/admin/FieldCard.vue` | 368 | 🟢 已合规 | 共享字段卡组件，TD-028 后规模合理 |
+| `packages/web/src/views/admin/TemplateModal.vue` | 333 | 🟢 已合规（**切片 4 收口**） | 主入口 + 2 子组件；规模 ≤500 |
+| `packages/web/src/views/database/DatabaseView.vue` | 320 | 🟢 已合规（**切片 4 收口**） | 主入口 + 6 子组件；规模 ≤500 |
+| `packages/server-python/app/shared/parsing/chunker.py` | 320 | 🟢 已合规 | TD-005 范围外的共享解析模块，规模合理 |
+| `packages/web/src/views/resource/ResourceView.vue` | 305 | 🟢 已合规 | 资源视图，TD-025 切片 1 收口 |
+| `packages/web/src/views/ai-chat/AiChatView.vue` | 304 | 🟢 已合规 | AI 聊天视图，TD-025 切片 1 收口 |
 | `docs/03-engineering-governance/01-rules/coding-style.md` | n/a | 🟢 已合规 | 规则文档，规模可被维护 |
 
 > 行数随交付滚动；本表只列"治理后仍在 ≤500 的代表性共享 / 入口文件"作为基线对照。
@@ -66,3 +83,4 @@
 ## 扫描历史
 
 - 2026-06-08：与 `technical-debt.md#td-032` 证据段同步，基线建立。
+- 2026-06-08（切片 4 收口后回写）：5 个 >500 / 500 附近文件全部转 `🟢 已拆分` 或维持 `⚪ 待切片` 标记；新增 `FileDetailView.vue` 416 为 500 附近候选；新增「切片 5+ 候选清单」段；扩展「合规样例」段加入 `TemplateModal.vue` 333 / `DatabaseView.vue` 320 / `chunker.py` 320 / `ResourceView.vue` 305 / `AiChatView.vue` 304。本次回写由 DOC-xxx 任务承接。
