@@ -1,0 +1,68 @@
+# TD-032 源码文件行数基线
+
+本文件是 TD-032 治理超大源码文件的**行数事实源**。与 `technical-debt.md#td-032` 证据段
+互为镜像：本文件给"清单 + 状态 + 拆分说明"，技术债总账给"任务卡 + 完成标准 + 验证
+方式"。每切片交付后必须回写本文件。
+
+## 维护规则
+
+- 扫描命令（与 `technical-debt.md#td-032` 证据段一致）：
+
+  ```bash
+  rg --files packages scripts tests -g '*.py' -g '*.ts' -g '*.tsx' -g '*.vue' -g '*.css' -g '*.scss' \
+    | xargs wc -l | sort -nr | head -40
+  ```
+
+- 4 档分组：>1000 / >500 / 500 附近 / 合规样例。
+- 每行至少有 1 句「例外 / 拆分说明」；例外也要写「后续切片计划」，不允许长期 `🔵`。
+- 每切片交付后必须回写本文件：状态变化 / 行数变化 / 新增文件；不允许连续 2 个复盘周期
+  无更新。
+- 行数与 `technical-debt.md#td-032` 证据段如有差异，以本文件最近一次扫描为准，并在
+  末尾「扫描历史」段记录。
+
+## 文件清单
+
+### >1000 行（必须明确例外或拆分计划）
+
+| 文件 | 行数 | 状态 | 例外 / 拆分说明 |
+|------|------|------|-----------------|
+| `packages/web/src/assets/css/main.css` | 1343 | 🔵 例外已登记 | 历史兼容样式（4 主题 token + `liquid-*` 兼容别名 + `ui-*` 设计系统 + 基础 reset），与设计系统 token 化强耦合；后续切片按 CSS 分模块构建（按 token / 组件 / 主题分文件）收敛 |
+| `scripts/engineering/check_engineering_docs.py` | 1003 | ⚪ 待切片 | 文档门禁主实现，承担多种检查类型；TD-032 切片 2 单独 spec / plan 拆为 `checks/*.py` + 入口聚合，目标主文件 ≤600 行 |
+
+### >500 行业务 / 工程源码
+
+| 文件 | 行数 | 状态 | 例外 / 拆分说明 |
+|------|------|------|-----------------|
+| `packages/server-python/app/contexts/document/application/tasks.py` | 929 | ⚪ 待切片 | Celery 任务编排 + 业务步骤混在一起；TD-032 切片 3 单独 spec / plan 走 TD-005 模式，横切 helper 抽到 `app/shared/tasks/lifecycle.py` 等 |
+| `packages/web/src/views/database/DatabaseView.vue` | 701 | ⚪ 待切片 | 单视图承担列表 / 上传 / 任务 / KG 总览 / 多个 tab；TD-032 切片 4 单独 spec / plan 抽子组件（meta bar / pipeline status / tab content / KG 概览） |
+| `packages/server-python/app/contexts/structured_data/application/tasks.py` | 671 | ⚪ 待切片 | Celery 任务编排 + 业务步骤混在一起；与 document 路径复用同一套横切 helper（TD-005 既有模式） |
+| `packages/web/src/views/admin/TemplateModal.vue` | 665 | ⚪ 待切片 | 模板编辑对话框承担字段编辑 / 预览 / 操作按钮；TD-032 切片 4 单独 spec / plan 抽子组件 |
+
+### 500 行附近高风险候选
+
+| 文件 | 行数 | 状态 | 例外 / 拆分说明 |
+|------|------|------|-----------------|
+| `packages/server-python/app/contexts/document/interfaces/api/router.py` | 494 | ⚪ 待切片 | 单一 router 聚合多 endpoint；候选按 `resource_type` / `action` 拆 `*_router.py` 子文件，主 router 暴露 namespace。具体切片在切片 3 之后视情安排 |
+| `packages/web/src/views/resource/ResourceLibraryView.vue` | 490 | ⚪ 待切片 | 资源库视图承担文件树 / 右键菜单 / 列表区；候选抽子组件。具体切片在切片 4 之后视情安排 |
+
+### 合规样例（≤500 行，证明原则可被满足）
+
+| 文件 | 行数 | 状态 | 备注 |
+|------|------|------|------|
+| `packages/web/src/views/LayoutView.vue` | 387 | 🟢 已合规 | 共享骨架组件，按 TD-008 / TD-025 已收敛 |
+| `packages/web/src/views/auth/LoginView.vue` | 377 | 🟢 已合规 | 品牌背景例外保留，文件规模符合原则 |
+| `packages/web/src/views/admin/FieldCard.vue` | 368 | 🟢 已合规 | 共享字段卡组件，TD-028 后规模合理 |
+| `docs/03-engineering-governance/01-rules/coding-style.md` | n/a | 🟢 已合规 | 规则文档，规模可被维护 |
+
+> 行数随交付滚动；本表只列"治理后仍在 ≤500 的代表性共享 / 入口文件"作为基线对照。
+
+## 治理节奏
+
+- 复盘频率：与 `technical-debt.md#定期复盘规范` 一致（每周或每两周一次）。
+- 复盘必读：1) 本文件；2) `technical-debt.md#td-032`；3) 最近一次扫描输出。
+- 复盘输出：把 1-3 个 `⚪ 待切片` 推进到具体切片的 spec / plan，或升级为 `🔵 例外已登记`
+  并写明「后续切片计划」。
+
+## 扫描历史
+
+- 2026-06-08：与 `technical-debt.md#td-032` 证据段同步，基线建立。
