@@ -120,6 +120,8 @@
 | TD-028 | 业务视图与共享组件的 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 存量替换 | 🟢 完成 | P3 | 前端 / 设计系统 | [PR #61](https://github.com/MarkDanile/MetaEduBase/pull/61) |
 | TD-029 | 收口 TD-009 的 shared schema 门禁与 FileDetailView 类型错误 | 🟢 完成 | P1 | 前端 / 类型 / 交付 | [Spec](../02-delivery-plans/01-specs/2026-06-06-td-029-shared-schema-gate.md) / [Plan](../02-delivery-plans/02-plans/2026-06-06-td-029-shared-schema-gate-plan.md) |
 | TD-030 | RecallChannel Protocol vs concrete signature drift on parameter names | ⚫ 待办 | P3 | 后端 / 测试 | REQ-003 / 2026-W23 iteration |
+| TD-031 | RAG 质量测试文件的预存 ruff 警告 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) |
+| TD-032 | 治理超大源码文件并建立文件规模拆分原则 | ⚫ 待办 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 2026-06-08 源码行数扫描 |
 
 ## 任务详情
 
@@ -1233,3 +1235,39 @@
 - 2026-06-08 由 REQ-007 Task 4 收口时入账并修复，随 [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) 合并到 `main`（merge commit `45db478b`）。任务详情见 `docs/01-product-planning/05-requirements/REQ-007-req-003-rag-quality-gate-follow-up.md` 与 `docs/02-delivery-plans/02-plans/2026-W23-req-007-rag-quality-gate-follow-up-plan.md`。
 - 行为变化声明：无；`ruff check --fix` 是 `[*]` 标记的自动修复，仅删除 1 行 `import pytest` + 1 行 import 排序，无业务代码或测试行为变化。
 - 验证摘要：`cd packages/server-python && .venv/bin/python -m ruff check tests/contexts/ai/` 退出码 0（`All checks passed!`）；`cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai/ -q` 38 passed。
+
+### TD-032: 治理超大源码文件并建立文件规模拆分原则
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 |
+| 事实源 | 2026-06-08 源码行数扫描 |
+
+**证据**
+- 扫描命令：`rg --files packages scripts tests -g '*.py' -g '*.ts' -g '*.tsx' -g '*.vue' -g '*.css' -g '*.scss' | xargs wc -l | sort -nr | head -40`。
+- 当前超过 1000 行：`packages/web/src/assets/css/main.css` 1343 行；`scripts/engineering/check_engineering_docs.py` 1003 行。
+- 当前超过 500 行的业务或工程源码：`packages/server-python/app/contexts/document/application/tasks.py` 929 行；`packages/web/src/views/database/DatabaseView.vue` 701 行；`packages/server-python/app/contexts/structured_data/application/tasks.py` 671 行；`packages/web/src/views/admin/TemplateModal.vue` 665 行。
+- 500 行附近的高风险候选：`packages/server-python/app/contexts/document/interfaces/api/router.py` 494 行；`packages/web/src/views/resource/ResourceLibraryView.vue` 490 行。
+
+**问题**
+- 超大单文件会显著增加阅读成本、变更冲突概率和回归风险，后续 AI IDE 或人工接手时也更容易遗漏状态、职责边界和验证范围。
+- 多职责逻辑集中在同一文件，会削弱测试切片、复用边界和代码审查质量。
+- 若继续在超过 500 行或 1000 行的文件上叠加功能，技术债会随需求迭代持续放大。
+
+**完成标准**
+- 建立超大源码文件基线清单，并明确哪些属于业务源码、工程脚本、历史兼容样式或可接受例外。
+- 对超过 1000 行的文件优先拆分或登记例外原因；后续不得继续在这些文件中堆叠新职责。
+- 对超过 500 行的业务源码按职责拆分，或在任务卡 / plan 中说明暂缓拆分原因和后续切片。
+- 大需求或跨模块开发进入实现前，先给目标目录和文件结构，再生成代码。
+- `coding-style.md` 中的文件规模与拆分原则被后续开发遵循。
+
+**验证方式**
+- 重跑源码行数扫描命令，确认目标文件行数下降或例外已登记。
+- 被拆分模块对应的 `ruff` / `mypy` / `typecheck` / 单元测试或行为验收通过。
+- `scripts/check-engineering-docs` 通过。
+
+**交付记录**
+- 未完成。2026-06-08 已登记债务与后续开发原则，本任务后续按重构切片进入 `就绪`。
