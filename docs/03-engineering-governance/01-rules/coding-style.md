@@ -9,6 +9,29 @@
 - 修改已有超大文件时，优先抽出稳定小单元；如果本次无法拆分，至少不要继续扩大职责边界。
 - 例外必须可解释：生成文件、lockfile、快照、静态大数据、数据库迁移、历史兼容样式和明确登记的工程脚本可以不受 500 行目标约束。
 - 超大文件治理作为技术债登记和复盘，见 `docs/03-engineering-governance/technical-debt.md#td-032-治理超大源码文件并建立文件规模拆分原则`。
+- 行数事实源与拆分状态：见 `docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md`。每切片交付后必须回写该基线。
+
+### 拆分层级（TD-032）
+
+按"职责 → 边界"提供可选拆法；不强制所有超大文件走同一套执行，但拆分方案至少要能解释为什么这样拆：
+
+| 场景 | 推荐拆法 | 适用例子 |
+|------|----------|----------|
+| Celery 任务文件（任务编排 + 业务步骤混在一起） | 横切 helper 抽到 `app/shared/tasks/`；任务编排只负责拼装步骤 | `document/tasks.py`、`structured_data/tasks.py` |
+| Router 聚合多个 endpoint | 按 `resource_type` 或 `action` 拆 `*_router.py` 子文件，主 router 暴露 namespace | `document/router.py` |
+| 单一 Vue 视图承载多个独立 tab / 区块 | 把稳定区块（meta bar、pipeline status、tab content）抽成子组件；视图只剩编排 | `DatabaseView.vue`、`ResourceLibraryView.vue`、`TemplateModal.vue` |
+| 大型 Python service 同时承担编排与基础设施调用 | 编排逻辑保留在 service；基础设施调用按 `repository` / `client` 拆出 | 与 TD-005 / TD-006 经验一致 |
+| CSS / 工程脚本 | 拆模块文件 + 入口聚合；或拆配置与执行 | `main.css`（按 token / 组件 / 主题分文件） / `check_engineering_docs.py`（按检查类型分文件） |
+
+### 开发顺序硬约束（TD-032）
+
+大需求或跨模块开发进入实现前，**必须**先在 spec / plan 中给出目标目录和文件结构（含每个新文件预计承担什么、是否有横切 helper、是否需要把现有超大文件再切一档），再生成代码。如果发现 spec / plan 阶段没有给出文件结构，回退到 plan 阶段补完再开始写代码。
+
+### 治理与切片记录（TD-032）
+
+- 事实源：`docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md`。
+- 复盘频率与 `technical-debt.md#定期复盘规范` 一致；复盘输出至少要把 1-3 个 `⚪ 待切片` 推进到具体切片的 spec / plan，或升级为 `🔵 例外已登记` 并写明「后续切片计划」。
+- 切片交付后必须回写基线：状态变化 / 行数变化 / 新增文件；不允许连续 2 个复盘周期无更新。
 
 ## Python (后端)
 
