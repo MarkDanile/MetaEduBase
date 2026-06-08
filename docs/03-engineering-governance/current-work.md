@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-008 收口 REQ-004 验收证据与质量门禁缺口 | 🟡 进行中 | P1 | Product / Document / Testing | Task 1+2 本地已 commit（29fa1d0 ruff 清零 + 54a0a1c caplog + L3 边角 + 漂移保护）；Task 3 文档回填（Backlog / Iteration / Milestone）已落本地。验证：ruff 退出码 0；pytest 16 passed；待 push + PR + 合并 main + 收尾回填 PR 链接。 | [Spec](../02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-008-req-004-quality-follow-up-plan.md) / [Requirement](../01-product-planning/05-requirements/REQ-008-req-004-template-selection-quality-follow-up.md) |
+| 暂无 | ⚫ 待办 | - | - | 当前没有已开工任务。 | 从“下一批候选任务”或用户指定任务开工。 | - |
 
 ## 下一批候选任务
 
@@ -35,8 +35,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-08 | REQ-008 收口 REQ-004 验收证据与质量门禁缺口 | 🟢 完成 | 5 项 ruff 清零（E501/UP035/I001）+ 4 分支 `template.select layer=...` 日志 caplog 断言 + 2 条 L3 解析失败 / 空响应用例 + 1 条生产代码漂移保护；行为不变（折行 + import 来源等价）。 | [PR #79](https://github.com/MarkDanile/MetaEduBase/pull/79) / `docs/02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md` / `docs/02-delivery-plans/02-plans/2026-W23-req-008-req-004-quality-follow-up-plan.md` / `docs/01-product-planning/05-requirements/REQ-008-req-004-template-selection-quality-follow-up.md` / `docs/01-product-planning/02-milestones/01-validation-phase.md` |
 | 2026-06-08 | DOC-033 开发前分支门禁前移与产品规划状态可视化 | 🟢 完成 | 将“会改文件先切任务分支”前移到开工入口；产品规划状态统一为颜色图标，并新增脚本门禁防止裸状态回退。 | [Git Workflow](01-rules/git-workflow.md) / [Workflow](workflow.md) / [Backlog](../01-product-planning/04-backlog.md) / [Script](../../scripts/engineering/check_engineering_docs.py) |
 | 2026-06-08 | REQ-004 模板匹配可解释化收口 | 🟢 完成 | 抽 `select_template` 纯函数 + 9 条分支回归 + 4 分支统一 `template.select` 日志；行为不变：3 层优先级 / 阈值 0.7 保持。详细验证摘要见 work-log 索引行。 | [PR #77](https://github.com/MarkDanile/MetaEduBase/pull/77) / `docs/02-delivery-plans/01-specs/2026-W23-req-004-template-match-explainability.md` / `docs/02-delivery-plans/02-plans/2026-W23-req-004-template-match-explainability-plan.md` / `docs/01-product-planning/02-milestones/01-validation-phase.md` |
 | 2026-06-08 | DOC-031 补强 REQ follow-up 分流与跨事实源状态门禁 | 🟢 完成 | 增加 follow-up 类型分流规则，完成门禁明确 REQ 状态组回查，脚本检查 Backlog / Requirement / Iteration / Milestone / current-work 状态漂移、最近完成 work-log 索引和交付占位。 | [Rules](task-modes.md) / [Quality Gates](01-rules/quality-gates.md) / [Script](../../scripts/engineering/check_engineering_docs.py) |
 | 2026-06-08 | REQ-007 收口 REQ-003 RAG 质量链路验收缺口 | 🟢 完成 | 5 AC 全部收口（行为级测试 / 状态同步 / 过度声明 / e2e 死代码 / 验证声明真实）。详细验证摘要与本地环境 vs Codex 集成环境差异见 work-log 索引行。 | [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) / [Requirement](../01-product-planning/05-requirements/REQ-007-req-003-rag-quality-gate-follow-up.md) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-007-rag-quality-gate-follow-up-plan.md) / [P1](../01-product-planning/02-milestones/01-validation-phase.md) |
-| 2026-06-08 | REQ-003 P1 RAG 质量链路验收与回归测试 | 🟢 完成 | 4 个新测试文件（24 用例）覆盖 NER / 融合 / 3 通道契约 / ai_chat e2e；轨道 B 4 行翻结论；Backlog REQ-003 推 Done；Protocol-vs-concrete drift 入账 TD-030。 | [PR #74](https://github.com/MarkDanile/MetaEduBase/pull/74) / [Spec](../02-delivery-plans/01-specs/2026-W23-req-003-rag-quality-gate.md) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-003-rag-quality-gate-plan.md) / [P1](../01-product-planning/02-milestones/01-validation-phase.md) |
