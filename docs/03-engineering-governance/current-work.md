@@ -36,5 +36,6 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-08 | DOC-031 补强 REQ follow-up 分流与跨事实源状态门禁 | 🟢 完成 | 增加 follow-up 类型分流规则，完成门禁明确 REQ 状态组回查，脚本检查 Backlog / Requirement / Iteration / Milestone / current-work 状态漂移、最近完成 work-log 索引和交付占位。 | [Rules](task-modes.md) / [Quality Gates](01-rules/quality-gates.md) / [Script](../../scripts/engineering/check_engineering_docs.py) |
 | 2026-06-08 | REQ-007 收口 REQ-003 RAG 质量链路验收缺口 | 🟢 完成 | 5 AC 全部收口（行为级测试 / 状态同步 / 过度声明 / e2e 死代码 / 验证声明真实）。详细验证摘要与本地环境 vs Codex 集成环境差异见 work-log 索引行。 | [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) / [Requirement](../01-product-planning/05-requirements/REQ-007-req-003-rag-quality-gate-follow-up.md) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-007-rag-quality-gate-follow-up-plan.md) / [P1](../01-product-planning/02-milestones/01-validation-phase.md) |
 | 2026-06-08 | REQ-003 P1 RAG 质量链路验收与回归测试 | 🟢 完成 | 4 个新测试文件（24 用例）覆盖 NER / 融合 / 3 通道契约 / ai_chat e2e；轨道 B 4 行翻结论；Backlog REQ-003 推 Done；Protocol-vs-concrete drift 入账 TD-030。 | [PR #74](https://github.com/MarkDanile/MetaEduBase/pull/74) / [Spec](../02-delivery-plans/01-specs/2026-W23-req-003-rag-quality-gate.md) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-003-rag-quality-gate-plan.md) / [P1](../01-product-planning/02-milestones/01-validation-phase.md) |
