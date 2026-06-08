@@ -35,8 +35,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-08 | DOC-039 增强工程文档脚本门禁 | 🟢 完成 | `scripts/check-engineering-docs` 新增稳定编号、Backlog Done 入账、入口同步和脚本候选清单反查；测试基线迁到新 docs 目录并补 5 个回归用例。 | [Quality Gates](01-rules/quality-gates.md) / `scripts/engineering/check_engineering_docs.py` / `tests/engineering/test_check_engineering_docs.py` / [Backlog](../01-product-planning/04-backlog.md) |
 | 2026-06-08 | DOC-038 恢复基础工程原则为单一事实源 | 🟢 完成 | 新增 `engineering-principles.md`，入口和 IDE 兼容规则只保留链接，恢复先想后写、极简主义、手术式改动和目标驱动原则。 | [Engineering Principles](01-rules/engineering-principles.md) / `AGENTS.md` / `CLAUDE.md` / [Backlog](../01-product-planning/04-backlog.md) |
 | 2026-06-08 | DOC-037 规则入口瘦身与脚本门禁候选清单整理 | 🟢 完成 | 压缩 `AGENTS.md` / `CLAUDE.md` 为导航入口；确认 `.claude/rules/*` 与 `.trae/rules/*` 保持跳转入口；新增脚本门禁候选清单；不改业务代码。 | `AGENTS.md` / `CLAUDE.md` / [Quality Gates](01-rules/quality-gates.md) / [Backlog](../01-product-planning/04-backlog.md) |
 | 2026-06-08 | DOC-036 收口 DOC-034 遗留的 REQ-008 spec 前文旧口径 | 🟢 完成 | 修正 REQ-008 spec 第 21 行 `教案\nabc` 的旧 `layer == "none"` 表述，统一为 `layer == "L3"` + `template is None` + below threshold；不改代码。 | `docs/02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md` / `docs/01-product-planning/04-backlog.md` |
 | 2026-06-08 | DOC-035 建立任务评审评分卡与复盘数据口径 | 🟢 完成 | 新增 100 分评分卡、评审输出模板、follow-up 分流、规则改进判断和复盘指标口径，用于后续跨 AI IDE 评审。 | [Review Scorecard](01-rules/review-scorecard.md) / [Quality Gates](01-rules/quality-gates.md) / [Retrospectives](03-retrospectives/README.md) |
-| 2026-06-08 | DOC-034 修正 spec AC-5 与实际测试行为不一致 | 🟢 完成 | 修正 `2026-W23-req-008-req-004-quality-follow-up.md` AC-5 期望与「选择器契约（不变）」段，对齐 `test_l3_ai_confidence_unparseable_falls_back_to_zero` 锁定的 `layer == "L3"` + `template is None` + below threshold；不改代码。 | [PR #83](https://github.com/MarkDanile/MetaEduBase/pull/83) / `docs/02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md` / `docs/01-product-planning/04-backlog.md` |

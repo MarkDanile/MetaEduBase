@@ -15,6 +15,7 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-08 | DOC-039 增强工程文档脚本门禁 | 文档 / 工程治理 / 门禁脚本 / 测试 |  |  | `scripts/engineering/check_engineering_docs.py` / `tests/engineering/test_check_engineering_docs.py` / `docs/03-engineering-governance/01-rules/quality-gates.md` |
 | 2026-06-08 | DOC-038 恢复基础工程原则为单一事实源 | 文档 / 工程治理 / 规则入口 / 基础原则 |  |  | `docs/03-engineering-governance/01-rules/engineering-principles.md` / `AGENTS.md` / `CLAUDE.md` / `.claude/rules/engineeringPrinciples.md` / `.trae/rules/engineeringPrinciples.md` |
 | 2026-06-08 | DOC-037 规则入口瘦身与脚本门禁候选清单整理 | 文档 / 工程治理 / 规则瘦身 / 门禁候选 |  |  | `AGENTS.md` / `CLAUDE.md` / `docs/03-engineering-governance/01-rules/quality-gates.md` / `.claude/rules/` / `.trae/rules/` |
 | 2026-06-08 | DOC-036 收口 DOC-034 遗留的 REQ-008 spec 前文旧口径 | 文档 / 验收口径修正 / follow-up |  |  | `docs/02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md` / `docs/01-product-planning/04-backlog.md` |

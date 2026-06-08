@@ -43,6 +43,28 @@ DELIVERY_PLACEHOLDER_RE = re.compile(
     r"(即将入|待提交|提交后更新|以最终回复为准|待最终确认)"
 )
 NORMATIVE_PLACEHOLDER_RE = re.compile(r"(不得|禁止|不能|不要|例如|示例|占位)")
+FOLLOWUP_ID_RE = re.compile(r"\b(?:REQ|TD)-\d{3}-FOLLOWUP\b")
+LEGACY_FOLLOWUP_REFS = frozenset(
+    {
+        ("docs/02-delivery-plans/01-specs/2026-06-05-td-006-llm-model-fallback.md", "TD-006-FOLLOWUP"),
+        ("docs/02-delivery-plans/01-specs/2026-06-05-td-007-databaseview-vue-query.md", "TD-007-FOLLOWUP"),
+        ("docs/03-engineering-governance/technical-debt.md", "TD-002-FOLLOWUP"),
+        ("docs/03-engineering-governance/work-log.md", "TD-002-FOLLOWUP"),
+    }
+)
+BACKLOG_DONE_TYPES = frozenset({"REQ", "DOC", "BUG", "APP"})
+SCRIPTED_GATE_CANDIDATES = frozenset(
+    {
+        "`current-work.md` 最近完成最多 5 行",
+        "`current-work.md` 下一批候选最多 3 行，且不允许 `🟢 完成`",
+        "已完成任务不得残留 `未运行`、`待提交`、`以最终回复为准` 等占位",
+        "禁止把 `REQ-xxx-FOLLOWUP` / `TD-xxx-FOLLOWUP` 作为长期任务编号",
+        "`Done` 任务在 Backlog / current-work / work-log 之间有最小索引闭环",
+        "旧 docs 路径残留检查",
+        "Markdown 相对链接存在性检查",
+        "AGENTS.md / CLAUDE.md 与 IDE 兼容入口同步检查",
+    }
+)
 
 KNOWN_ISSUES = (
     (
@@ -479,6 +501,158 @@ def check_delivery_placeholders(root: Path) -> list[Issue]:
     return issues
 
 
+def check_followup_ids(root: Path) -> list[Issue]:
+    issues: list[Issue] = []
+    for path in iter_doc_files(root):
+        for line_no, line in enumerate(read_lines(path), start=1):
+            for match in FOLLOWUP_ID_RE.finditer(line):
+                task_id = match.group(0)
+                if (rel(path, root), task_id) in LEGACY_FOLLOWUP_REFS:
+                    continue
+                issues.append(
+                    Issue(
+                        path,
+                        line_no,
+                        "stable-task-id",
+                        f"发现临时 follow-up 编号：{task_id}。",
+                        "需要长期执行的 follow-up 应改为新的稳定编号，例如 REQ-007、TD-031 或 DOC-039。",
+                    )
+                )
+    return issues
+
+
+def collect_backlog_done_tasks(root: Path) -> list[tuple[Path, int, str, str, str]]:
+    path = root / "docs/01-product-planning/04-backlog.md"
+    lines = read_lines(path)
+    _start, body = section(lines, "Backlog")
+    tasks: list[tuple[Path, int, str, str, str]] = []
+    for line_no, row in table_rows(body):
+        cells = split_table_row(row)
+        if len(cells) < 8:
+            continue
+        task_id, task_type, status = cells[0], cells[1], cells[2]
+        if not TASK_ID_RE.fullmatch(task_id):
+            continue
+        if task_type not in BACKLOG_DONE_TYPES:
+            continue
+        if normalize_status(status) != "Done":
+            continue
+        tasks.append((path, line_no, task_id, task_type, cells[7]))
+    return tasks
+
+
+def has_fact_source(external: str) -> bool:
+    return bool(external.strip()) and (
+        "[" in external or "PR" in external or "http://" in external or "https://" in external
+    )
+
+
+def check_backlog_done_index(root: Path) -> list[Issue]:
+    work_log_path = root / "docs/03-engineering-governance/work-log.md"
+    work_log_text = work_log_path.read_text(encoding="utf-8") if work_log_path.exists() else ""
+    issues: list[Issue] = []
+    for path, line_no, task_id, _task_type, external in collect_backlog_done_tasks(root):
+        if task_id in work_log_text or has_fact_source(external):
+            continue
+        issues.append(
+            Issue(
+                path,
+                line_no,
+                "backlog-done-index",
+                f"Backlog 中已完成任务 {task_id} 缺少 work-log 或明确事实源。",
+                "补充 docs/03-engineering-governance/work-log.md 索引，或在 Backlog External 列链接 PR/spec/plan/事实源。",
+            )
+        )
+    return issues
+
+
+def normalize_entry_lines(path: Path) -> list[str]:
+    normalized: list[str] = []
+    for line in read_lines(path):
+        if line.strip() in {"# AGENTS.md", "# CLAUDE.md"}:
+            normalized.append("# ENTRY.md")
+        elif line.startswith("本文件是"):
+            normalized.append(
+                "本文件是 AI IDE 的仓库入口，只保留导航和开工顺序。"
+                "规则正文以 `docs/` 下的事实源为准，不在入口文件复制第二份。"
+            )
+        else:
+            normalized.append(line)
+    return normalized
+
+
+def check_entry_sync(root: Path) -> list[Issue]:
+    agents_path = root / "AGENTS.md"
+    claude_path = root / "CLAUDE.md"
+    issues: list[Issue] = []
+
+    if normalize_entry_lines(agents_path) != normalize_entry_lines(claude_path):
+        issues.append(
+            Issue(
+                claude_path,
+                1,
+                "entry-sync",
+                "AGENTS.md 与 CLAUDE.md 的导航内容不一致。",
+                "入口文件应只保留导航；除标题和适配说明外，开工顺序与规则索引保持同步。",
+            )
+        )
+
+    for rules_dir in (root / ".claude/rules", root / ".trae/rules"):
+        if not rules_dir.exists():
+            continue
+        for path in sorted(rules_dir.glob("*.md")):
+            lines = read_lines(path)
+            text = "\n".join(lines)
+            if len(lines) > 12:
+                issues.append(
+                    Issue(
+                        path,
+                        1,
+                        "entry-sync",
+                        "IDE 兼容规则入口过长。",
+                        "`.claude/rules` 和 `.trae/rules` 只保留事实源跳转，不复制规则正文。",
+                    )
+                )
+                continue
+            if "兼容入口" in text and "事实源" in text and "不要在" in text:
+                continue
+            issues.append(
+                Issue(
+                    path,
+                    1,
+                    "entry-sync",
+                    "IDE 兼容规则入口缺少标准跳转说明。",
+                    "使用兼容入口模板：说明事实源路径，并声明不要在 IDE 私有目录维护第二份规则正文。",
+                )
+            )
+
+    return issues
+
+
+def check_scripted_gate_candidates(root: Path) -> list[Issue]:
+    path = root / "docs/03-engineering-governance/01-rules/quality-gates.md"
+    lines = read_lines(path)
+    _start, body = section(lines, "脚本门禁候选清单")
+    issues: list[Issue] = []
+    for line_no, row in table_rows(body):
+        cells = split_table_row(row)
+        if len(cells) < 2 or "已实现" not in cells[1]:
+            continue
+        candidate = cells[0]
+        if candidate in SCRIPTED_GATE_CANDIDATES:
+            continue
+        issues.append(
+            Issue(
+                path,
+                line_no,
+                "scripted-gate-candidate",
+                f"脚本门禁候选标为已实现，但脚本未登记反查：{candidate}",
+                "要么补充对应脚本检查和 SCRIPTED_GATE_CANDIDATES 映射，要么把状态改为候选或部分实现。",
+            )
+        )
+    return issues
+
+
 def check_legacy_doc_roots(root: Path) -> list[Issue]:
     issues: list[Issue] = []
     for name in LEGACY_DOC_ROOT_NAMES:
@@ -775,12 +949,16 @@ def run_checks(root: Path) -> tuple[list[Issue], list[Issue]]:
     issues.extend(check_recent_completed_work_log(root))
     issues.extend(check_req_status_consistency(root))
     issues.extend(check_product_planning_status_icons(root))
+    issues.extend(check_followup_ids(root))
+    issues.extend(check_backlog_done_index(root))
+    issues.extend(check_entry_sync(root))
     issues.extend(check_technical_debt(root))
     issues.extend(check_completed_plans(root))
     issues.extend(check_markdown_links(root))
     issues.extend(check_work_log_append_only(root))
     issues.extend(check_delivery_placeholders(root))
     issues.extend(check_validation_claims(root))
+    issues.extend(check_scripted_gate_candidates(root))
 
     active: list[Issue] = []
     known: list[Issue] = []
