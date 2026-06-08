@@ -5,44 +5,11 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.contexts.knowledge.application.fusion_service import FrequencyFusion
 from app.contexts.knowledge.application.ner_service import RuleBasedNER
-from app.contexts.knowledge.application.recall_service import (
-    PgKeywordRecallChannel,
-    PgMetadataRecallChannel,
-    PgVectorRecallChannel,
-)
 from app.contexts.knowledge.interfaces.api import ai_router
-from app.shared.domain.ner_pipeline import NERResult
 from app.shared.domain.recall_channel import RecallResult
 
-
 # --- helpers ---------------------------------------------------------------
-
-class _FakeRow(dict):
-    pass
-
-
-def _row(node_id: str, score: float | None = None):
-    r = _FakeRow()
-    r["id"] = node_id
-    r["title"] = f"title-{node_id}"
-    r["description"] = f"desc-{node_id}"
-    r["domain"] = "smart_manufacturing"
-    r["level"] = "course"
-    r["path"] = None
-    if score is not None:
-        r["score"] = score
-    return r
-
-
-def _session_with_rows(rows):
-    result = MagicMock()
-    result.mappings.return_value.all.return_value = rows
-    execute = AsyncMock(return_value=result)
-    session = MagicMock()
-    session.execute = execute
-    return session
 
 
 def _build_app():
@@ -78,8 +45,6 @@ def _mock_llm_response(content: str = "这是AI的回答"):
 
 @pytest.mark.asyncio
 async def test_ai_chat_degrades_when_one_channel_raises():
-    session = _session_with_rows([_row("n1", 0.9)])
-
     async def vector_ok(*_a, **_k):
         return [RecallResult(
             node_id="n1", title="t", description=None,
