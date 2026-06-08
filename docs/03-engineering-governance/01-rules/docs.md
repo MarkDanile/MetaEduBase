@@ -9,6 +9,7 @@
 | work-log.md | docs/03-engineering-governance/work-log.md | 已完成任务的一行式历史索引 |
 | workflow.md | docs/03-engineering-governance/workflow.md | 跨 AI IDE / 插件开发流程 |
 | task-modes.md | docs/03-engineering-governance/task-modes.md | 任务模式入口、默认模式路由与各模式完成标准 |
+| engineering-principles.md | docs/03-engineering-governance/01-rules/engineering-principles.md | 跨 AI IDE 共用的基础工程判断标准 |
 | workbench.md | docs/03-engineering-governance/01-rules/workbench.md | 当前工作台状态流、保留策略和任务卡片模板 |
 | ARCHITECTURE.md | 根目录 | 长期架构地图：系统边界、上下文划分、关键流转、质量属性 |
 | README.md | 根目录 | 项目入口：能力概览、仓库导航、最小启动路径 |
@@ -62,6 +63,7 @@ class KnowledgeNode(AggregateRoot):
 | 本地启动、依赖安装或运行命令变更 | `docs/03-engineering-governance/01-rules/local-development.md`；只有最短启动路径变化时再同步 `README.md` |
 | AI 协作流程变更 | `docs/03-engineering-governance/workflow.md` + AGENTS.md + CLAUDE.md |
 | 任务模式、开工条件或验收流程变更 | `docs/03-engineering-governance/task-modes.md` + `docs/03-engineering-governance/workflow.md` |
+| 基础工程原则变更 | `docs/03-engineering-governance/01-rules/engineering-principles.md` + AGENTS.md + CLAUDE.md |
 | Spec / Plan 目录约定变更 | `docs/03-engineering-governance/workflow.md` + `docs/02-delivery-plans/01-specs/README.md` + `docs/02-delivery-plans/02-plans/README.md` |
 | 产品路线图、需求池或迭代规则变更 | `docs/01-product-planning/README.md` + `docs/01-product-planning/01-roadmap.md` 或 `docs/01-product-planning/04-backlog.md`；必要时同步 `docs/03-engineering-governance/workflow.md` |
 | 插件输出路径或跨 IDE 交付规则变更 | `docs/03-engineering-governance/workflow.md` + `docs/02-delivery-plans/README.md` + AGENTS.md + CLAUDE.md |
@@ -77,6 +79,7 @@ class KnowledgeNode(AggregateRoot):
 | 当前开发状态、下一步、交接备注 | `docs/03-engineering-governance/current-work.md` |
 | 已完成任务历史索引 | `docs/03-engineering-governance/work-log.md` |
 | 跨 AI IDE / 插件流程 | `docs/03-engineering-governance/workflow.md` |
+| 基础工程判断标准 | `docs/03-engineering-governance/01-rules/engineering-principles.md` |
 | 任务类型、领域、开工条件和验收模式 | `docs/03-engineering-governance/task-modes.md` |
 | 当前工作台状态流、保留策略和任务卡片模板 | `docs/03-engineering-governance/01-rules/workbench.md` |
 | 技术债任务与定期复盘 | `docs/03-engineering-governance/technical-debt.md` |
