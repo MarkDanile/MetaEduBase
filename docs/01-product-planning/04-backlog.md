@@ -20,7 +20,7 @@
 | REQ-004 | REQ | Candidate | P1 | P1 | 模板匹配可解释化收口 | 用真实业务文档验证 doc_type、文件名、AI 置信度三层匹配和日志表现 |  |
 | REQ-005 | REQ | Candidate | P1 | P1 | 结构化抽取嵌套结构稳定性验收 | 建立 object / array / table 抽取结果按模板结构落盘的样例回归 |  |
 | REQ-006 | REQ | Candidate | P1 | P1 | P1 知识资产处理链路最终演示验收 | 组织上传、解析、抽取、图谱、RAG 问答和来源展示的阶段一闭环验收 |  |
-| REQ-007 | REQ | Candidate | P1 | P1 | REQ-003 复盘缺口的 RAG 质量链路收口 | 补 3 通道 fake rows 行为级测试，修正 P1 / 迭代状态矛盾和过度验证声明，清理 e2e 测试漂移 | 已建 plan（[Plan](../02-delivery-plans/02-plans/2026-W23-req-007-rag-quality-gate-follow-up-plan.md)），迭代内推进中。 |
+| REQ-007 | REQ | Done | P1 | P1 | REQ-003 复盘缺口的 RAG 质量链路收口 | 补 3 通道 fake rows 行为级测试，修正 P1 / 迭代状态矛盾和过度验证声明，清理 e2e 测试漂移 | 已建 [Plan](../02-delivery-plans/02-plans/2026-W23-req-007-rag-quality-gate-follow-up-plan.md)；4 AC 全部收口（[PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75)）。TD-031 ruff 预存问题入账并修复。 |
 | APP-001 | APP | Candidate | P1 | P1 / P2 | 课程能力图谱智能体工具 | 优先进入 Shaping，明确课程样例、能力点 schema、图谱验收指标和首个最小闭环 |  |
 | APP-002 | APP | Candidate | P1 | P2 | 智能预习规划与导学智能体 | 等 APP-001 能力图谱最小闭环明确后，塑形学情诊断、预习任务和资源推送 |  |
 | APP-003 | APP | Candidate | P2 | P2 / P3 | 个性化学习资源推荐智能体 | 等资源类型、学生画像和能力图谱关联策略明确后塑形 |  |

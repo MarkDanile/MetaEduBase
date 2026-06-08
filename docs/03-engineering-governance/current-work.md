@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-007 REQ-003 复盘缺口的 RAG 质量链路收口 | 🔵 进行中 | P1 | AI / Testing / Docs | 已建 `2026-W23-req-007-rag-quality-gate-follow-up-plan.md`；Task 1 行为级测试文件 `test_recall_channels_behavior.py` 已提交（9 用例）；Task 2 e2e 死代码清理已完成；Task 3 状态同步（本次提交）已完成。 | Task 4 Step 1-2 修正 P1 轨道 B 4 行”验证结论”列过度声明；Task 4 Step 3-4 全量验证（4 测试文件 + ruff + docs gate）。 | `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai/{test_rule_based_ner,test_frequency_fusion,test_recall_channels_contract,test_recall_channels_behavior,test_ai_chat_rag_e2e}.py -q` |
+| 暂无 | ⚫ 待办 | - | - | 当前没有已开工任务。 | 从“下一批候选任务”或用户指定任务开工。 | - |
 
 ## 下一批候选任务
 
@@ -36,8 +36,5 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-08 | REQ-007 收口 REQ-003 RAG 质量链路验收缺口 | 🟢 完成 | 4 AC 全部收口：补 3 通道 fake rows 行为级测试 9 用例（`test_recall_channels_behavior.py`）；清理 e2e 死代码 -35 行；修正 P1 / 迭代 / Backlog / current-work 状态矛盾；修正 P1 轨道 B 4 行过度验证声明；TD-031 ruff 预存问题入账并修复。 | [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) / [Requirement](../01-product-planning/05-requirements/REQ-007-req-003-rag-quality-gate-follow-up.md) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-007-rag-quality-gate-follow-up-plan.md) / [P1](../01-product-planning/02-milestones/01-validation-phase.md) |
 | 2026-06-08 | REQ-003 P1 RAG 质量链路验收与回归测试 | 🟢 完成 | 4 个新测试文件（24 用例）覆盖 NER / 融合 / 3 通道契约 / ai_chat e2e；轨道 B 4 行翻结论；Backlog REQ-003 推 Done；Protocol-vs-concrete drift 入账 TD-030。 | [PR #74](https://github.com/MarkDanile/MetaEduBase/pull/74) / [Spec](../02-delivery-plans/01-specs/2026-W23-req-003-rag-quality-gate.md) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-003-rag-quality-gate-plan.md) / [P1](../01-product-planning/02-milestones/01-validation-phase.md) |
-| 2026-06-07 | DOC-030 建立真实 AI 应用组合轻量规划入口 | 🟢 完成 | 新增 `06-ai-applications` 记录四个学校真实 AI 应用，明确应用组合与 P1/P2/P3 底座路线双轴协同；Backlog 增加 APP-001 到 APP-004。 | [AI Applications](../01-product-planning/06-ai-applications/README.md) / [Backlog](../01-product-planning/04-backlog.md) |
-| 2026-06-07 | DOC-029 明确 P1/P2/P3 检索架构演进边界 | 🟢 完成 | P1 三通道明确为 PostgreSQL 内 vector / keyword / metadata；P2 写清 PostgreSQL 增强和第 4 图谱关系通道；P3 再进入向量库 / 图数据库 / ES 多引擎形态。 | [P1](../01-product-planning/02-milestones/01-validation-phase.md) / [P2](../01-product-planning/02-milestones/02-growth-phase.md) / [P3](../01-product-planning/02-milestones/03-scale-phase.md) |
-| 2026-06-07 | DOC-028 复核 P1 验证期并建立最终查漏补缺迭代 | 🟢 完成 | 轨道 B 改为实现事实 / 验证证据分栏；新增 REQ-003 到 REQ-006，并建立 P1 final gap closure 迭代。 | [P1](../01-product-planning/02-milestones/01-validation-phase.md) / [Iteration](../01-product-planning/03-iterations/2026-W23-p1-final-gap-closure.md) |
-| 2026-06-07 | DOC-027 恢复产品规划三阶段里程碑结构 | 🟢 完成 | `01-roadmap.md` 收敛为阶段一/二/三；`02-milestones` 增加三阶段详情，并按产品能力 / 检索与抽取质量 / 基础设施三轨道组织。 | [Roadmap](../01-product-planning/01-roadmap.md) / [Milestones](../01-product-planning/02-milestones/README.md) |
