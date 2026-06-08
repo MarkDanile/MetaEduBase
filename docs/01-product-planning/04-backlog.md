@@ -44,6 +44,7 @@
 | APP-004 | APP | ⚫ Candidate | P2 | P2 | 智能复习规划与巩固智能体 | 等学习记录、知识点掌握状态和微测验机制明确后塑形 |  |
 | DOC-019 | DOC | 🟢 Done | P1 | P1 | 建立产品规划层和复盘入口 | 已同步规则索引，验证通过后归档到工作日志 |  |
 | DOC-024 | DOC | ⚪ Idea | P2 | P3 | 工程协作规则模板化：将成熟的跨 AI IDE 规则、docs 分层、质量门禁和任务闭环抽象成可复用模板包 | 等本项目规则经过更多实践验证后，进入 Shaping，明确模板仓库边界、项目适配层和版本化策略 |  |
+| DOC-034 | DOC | ⚫ Candidate | P2 | P1 | 修正 REQ-008 spec AC-5 与实际测试行为不一致 | 将 `2026-W23-req-008-req-004-quality-follow-up.md` 中 AC-5 的 `layer == "none"` 口径修为实际实现与测试的 `layer == "L3"`、`template is None`、`reason` 含 below threshold；不改代码 |  |
 
 ## 状态迁移
 

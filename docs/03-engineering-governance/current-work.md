@@ -24,6 +24,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
+| DOC-034 修正 spec AC-5 与实际测试行为不一致 | ⚫ 候选 | P2 | Docs / Product / Testing | 修正 REQ-008 spec AC-5 的 `教案\nabc` 期望，从 `layer == "none"` 改为实际测试锁定的 `layer == "L3"` + `template is None` + below threshold。 |
 | REQ-005 结构化抽取嵌套结构稳定性验收 | ⚫ 候选 | P1 | Product / Document / Contract | 建立 object / array / table 抽取结果样例回归。 |
 | REQ-006 P1 知识资产处理链路最终演示验收 | ⚫ 候选 | P1 | Product / Document / AI / Testing | 先修复本机 `metaedu_test` 连通性，再组织上传/解析/抽取/图谱/RAG 问答/来源展示的端到端演示。 |
 
