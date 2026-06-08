@@ -90,10 +90,11 @@ External:
 |----|------|------|------|
 | REQ-001 | Idea | 知识资产处理链路的产品化验收视图 | `docs/01-product-planning/04-backlog.md` |
 | REQ-002 | Idea | 模板化结构抽取能力的配置与复用体验 | `docs/01-product-planning/04-backlog.md` |
-| REQ-003 | Candidate | P1 RAG 质量链路验收与回归测试 | `docs/01-product-planning/04-backlog.md` |
+| REQ-003 | Done | P1 RAG 质量链路验收与回归测试（已由 PR #74 关闭，验收缺口由 REQ-007 承接） | `docs/01-product-planning/04-backlog.md` |
 | REQ-004 | Candidate | 模板匹配可解释化收口 | `docs/01-product-planning/04-backlog.md` |
 | REQ-005 | Candidate | 结构化抽取嵌套结构稳定性验收 | `docs/01-product-planning/04-backlog.md` |
 | REQ-006 | Candidate | P1 知识资产处理链路最终演示验收 | `docs/01-product-planning/04-backlog.md` |
+| REQ-007 | Doing | REQ-003 复盘缺口的 RAG 质量链路收口（行为级测试 + e2e 死代码清理 + 状态同步 + 过度验证声明修正） | `docs/01-product-planning/04-backlog.md` |
 
 ## Evidence
 
