@@ -1,6 +1,6 @@
 # REQ-007: 收口 REQ-003 RAG 质量链路验收缺口
 
-Status: Done
+Status: 🟢 Done
 Priority: P1
 Milestone: P1
 Parent: REQ-003

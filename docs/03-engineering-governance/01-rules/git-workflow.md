@@ -6,6 +6,7 @@
 
 - 一个分支只服务一个清晰任务或一组强相关改动。
 - 一个提交只表达一个原子变更。
+- 任何会修改仓库文件的任务，必须在修改 `current-work.md`、spec、plan、代码或测试前先切到语义化任务分支；`main` 只允许只读检查。
 - 提交前必须完成与改动范围匹配的验证，并记录无法运行的原因。
 - 用户要求“提交代码”“按流程提交”“走完整流程”或“合并 main”时，执行者必须在执行 git 操作前阅读本文件。
 - 进入 `git add` 前，必须完成 `docs/03-engineering-governance/01-rules/quality-gates.md#完成门禁`。
@@ -20,10 +21,10 @@
 
 执行者应按以下压缩顺序推进：
 
-1. 入口确认：读 `docs/03-engineering-governance/current-work.md` 和本文件；用 `git status --short --branch` 确认范围。
+1. 入口确认：读 `docs/03-engineering-governance/current-work.md` 和本文件；用 `git status --short --branch` 确认已经在任务分支，若仍在 `main`，先创建语义化分支再改文件。
 2. 最小验证：按改动范围运行最小必要命令。文档-only 通常是 `scripts/check-engineering-docs` + `git diff --check`；该命令是兼容入口，主实现归 `scripts/engineering/check_engineering_docs.py`。
 3. 范围边界：用 `git diff --name-status` 确认没有无关文件、生成物或资产清理混入。
-4. 提交链路：创建任务分支，暂存相关文件，commit，push，创建 PR。
+4. 提交链路：暂存相关文件，commit，push，创建 PR。
 5. 合并检查：`gh pr view` + `gh pr checks`。如果可合并且没有阻塞，直接 squash merge。
 6. 合并后收口：确认 `main...origin/main` 干净；清除交付占位，确认 PR 和完成状态已入账。只有文档仍有占位或明确要求记录 merge commit 时，才用最小 backfill PR 收口。
 
@@ -40,6 +41,14 @@
 | `docs/*` | 临时分支 | 文档或工程规范变更完成后合并删除 |
 
 AI IDE 如果带有自己的默认分支前缀，应在任务卡片中记录当前分支；需要进入团队协作或 PR 时，再按上表归入语义化分支。
+
+## 开发前分支门禁
+
+- 会修改仓库文件的任务，先执行 `git status --short --branch`。
+- 如果当前在 `main`，先从最新 `main` 创建任务分支，再更新工作台、生成 spec / plan 或改代码。
+- 文档-only、状态回填、backfill commit、规则修订和脚本门禁同样适用；它们也是仓库变更。
+- 只有纯问答、只读评审、只读调研可以不切分支。
+- 如果已经在 `main` 上产生改动，停止继续提交；先向用户说明，并用新分支承接这些改动后再走 PR。
 
 ## 分支命名
 

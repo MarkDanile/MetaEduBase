@@ -15,6 +15,7 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-08 | DOC-033 开发前分支门禁前移与产品规划状态可视化 | 文档 / 工程治理 / 产品规划 / 门禁脚本 |  |  | `docs/03-engineering-governance/01-rules/git-workflow.md` / `docs/03-engineering-governance/workflow.md` / `docs/01-product-planning/04-backlog.md` / `scripts/engineering/check_engineering_docs.py` |
 | 2026-06-08 | REQ-004 模板匹配可解释化收口 | 需求 / 重构 / 测试 / P1 轨道 B 翻结论 | [#77](https://github.com/MarkDanile/MetaEduBase/pull/77) | `2e6d097` | `docs/02-delivery-plans/01-specs/2026-W23-req-004-template-match-explainability.md` / `docs/02-delivery-plans/02-plans/2026-W23-req-004-template-match-explainability-plan.md` |
 | 2026-06-08 | DOC-031 补强 REQ follow-up 分流与跨事实源状态门禁 | 文档 / 工程治理 / 门禁脚本 |  |  | `docs/03-engineering-governance/task-modes.md` / `scripts/engineering/check_engineering_docs.py` / `docs/03-engineering-governance/03-retrospectives/2026-06-08-req-003-delivery-flow.md` |
 | 2026-06-08 | REQ-007 收口 REQ-003 RAG 质量链路验收缺口 | 需求 / 测试 / follow-up | [#75](https://github.com/MarkDanile/MetaEduBase/pull/75) | `45db478` | `docs/01-product-planning/05-requirements/REQ-007-req-003-rag-quality-gate-follow-up.md` / `docs/02-delivery-plans/02-plans/2026-W23-req-007-rag-quality-gate-follow-up-plan.md` |

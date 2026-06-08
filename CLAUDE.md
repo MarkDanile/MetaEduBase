@@ -6,6 +6,8 @@
 
 开始任何开发任务前，先阅读 `docs/03-engineering-governance/current-work.md`，确认当前任务、相关计划、架构约束、验证状态和下一步。若任务涉及 plan-do、superpower、compound-engineering-plugin 或其他 AI IDE/插件交接，继续阅读 `docs/03-engineering-governance/workflow.md`。
 
+只要任务会修改仓库文件，先确认当前不在 `main`；若在 `main`，按 `docs/03-engineering-governance/01-rules/git-workflow.md#开发前分支门禁` 创建任务分支后，再更新工作台、spec、plan 或代码。
+
 使用 superpower、compound-engineering-plugin 或其他插件生成 spec/plan 时，不要假设插件能自动识别仓库新路径；本次开发依据必须迁移或镜像到 `docs/02-delivery-plans/01-specs/*` / `docs/02-delivery-plans/02-plans/*`，并在任务卡片中记录原始插件输出。
 
 提交、PR、合并或声明任务完成前，执行 `docs/03-engineering-governance/01-rules/quality-gates.md#完成门禁`；完整 Git 闭环按 `docs/03-engineering-governance/01-rules/git-workflow.md#快速交付通道` 执行。PR 链接是默认交付事实源，禁止把最终回复当作事实源。

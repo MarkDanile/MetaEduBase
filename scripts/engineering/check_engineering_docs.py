@@ -24,6 +24,21 @@ CURRENT_WORK_RECENT_SUMMARY_LIMIT = 220
 LEGACY_DOC_ROOT_NAMES = ("engineering", "specs", "plans", "product", "superpowers")
 TASK_ID_RE = re.compile(r"\b(?:REQ|TD|DOC|BUG|APP)-\d{3}\b")
 REQ_ID_RE = re.compile(r"\bREQ-\d{3}\b")
+PRODUCT_STATUS_ICON_RE = re.compile(r"^[⚪⚫🔵🟡🔴🟣🟢]\s+")
+PRODUCT_STATUS_NAMES = frozenset(
+    {
+        "Idea",
+        "Candidate",
+        "Shaping",
+        "Ready",
+        "Planned",
+        "Doing",
+        "Blocked",
+        "Done",
+        "Dropped",
+        "Future",
+    }
+)
 DELIVERY_PLACEHOLDER_RE = re.compile(
     r"(即将入|待提交|提交后更新|以最终回复为准|待最终确认)"
 )
@@ -262,6 +277,68 @@ def normalize_status(status: str) -> str:
         "已完成": "Done",
     }
     return mapping.get(clean, clean)
+
+
+def is_product_status(status: str) -> bool:
+    return normalize_status(status) in PRODUCT_STATUS_NAMES
+
+
+def has_product_status_icon(status: str) -> bool:
+    return bool(PRODUCT_STATUS_ICON_RE.match(status.strip()))
+
+
+def check_product_planning_status_icons(root: Path) -> list[Issue]:
+    product_root = root / "docs/01-product-planning"
+    issues: list[Issue] = []
+
+    for path in sorted(product_root.glob("**/*.md")):
+        status_column: int | None = None
+        for line_no, line in enumerate(read_lines(path), start=1):
+            stripped = line.strip()
+
+            status_line = re.match(r"^Status:\s*(.+)$", stripped)
+            if status_line:
+                status = status_line.group(1).strip()
+                if status and is_product_status(status) and not has_product_status_icon(status):
+                    issues.append(
+                        Issue(
+                            path,
+                            line_no,
+                            "product-status-icon",
+                            "产品规划状态缺少颜色图标。",
+                            "使用 `颜色 状态名` 格式，例如 `⚫ Candidate` 或 `🟢 Done`。",
+                        )
+                    )
+                continue
+
+            if not stripped.startswith("|"):
+                status_column = None
+                continue
+            if set(stripped.replace("|", "").replace("-", "").replace(" ", "")) == set():
+                continue
+
+            cells = split_table_row(stripped)
+            if "状态" in cells:
+                status_column = cells.index("状态")
+                continue
+            if status_column is None or len(cells) <= status_column:
+                continue
+
+            status = cells[status_column].strip()
+            if not status or status == "-":
+                continue
+            if is_product_status(status) and not has_product_status_icon(status):
+                issues.append(
+                    Issue(
+                        path,
+                        line_no,
+                        "product-status-icon",
+                        "产品规划表格状态缺少颜色图标。",
+                        "使用 `颜色 状态名` 格式，例如 `⚫ Candidate` 或 `🟢 Done`。",
+                    )
+                )
+
+    return issues
 
 
 def collect_backlog_req_statuses(root: Path) -> dict[str, list[tuple[Path, int, str]]]:
@@ -697,6 +774,7 @@ def run_checks(root: Path) -> tuple[list[Issue], list[Issue]]:
     issues.extend(check_current_work(root))
     issues.extend(check_recent_completed_work_log(root))
     issues.extend(check_req_status_consistency(root))
+    issues.extend(check_product_planning_status_icons(root))
     issues.extend(check_technical_debt(root))
     issues.extend(check_completed_plans(root))
     issues.extend(check_markdown_links(root))
