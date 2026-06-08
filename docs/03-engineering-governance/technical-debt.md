@@ -1288,3 +1288,7 @@
   - 验证（cwd=packages/web）：`pnpm typecheck` 退出码 0（零输出）；`pnpm lint` 退出码 0（零 warning）；`pnpm build` 退出码 0，✓ built in 2.72s；`DatabaseView.js` 28.45 kB（vs baseline 25.22 kB，+13%）；`TemplateListView.js` 27.63 kB（vs baseline 25.44 kB，+9%）；`scripts/check-engineering-docs` 退出码 0。
   - 实施时 5 处小修正（与切片 1-3 经验一致）：`v-model` 改 `:value + @input` 显式 emit 链（4 处） + `PipelineStatusPanel` helper 改"脚本级闭包捕获 tasks" + `UploadDatasetDialog` hidden input 用 ref + `.click()` 内部触发 + `TemplateFormFields.ensureIds` dead code 移除 + `TemplateAiPanel` 独立实现 ensureIds。零业务逻辑变化。
   - 任务整体进入收口：1 切片（1）后端 tasks 拆分 + 1 切片（2）工程脚本拆分 + 1 切片（3）业务后端 tasks 拆分 + 1 切片（4）前端视图拆分。**TD-032 整体收口**：4 切片全部合并，TD-032 状态改为 `🟢 完成`。
+- 2026-06-08 切片 1-4 收口后回写 baseline（commit `200e342`）：
+  - 更新 `docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md`：「合规样例」段扩展 5 项（`TemplateModal.vue` 333 / `DatabaseView.vue` 320 / `chunker.py` 320 / `ResourceView.vue` 305 / `AiChatView.vue` 304）；「500 行附近高风险候选」段新增 `FileDetailView.vue` 416（新出现接近 500 候选）；新增「切片 5+ 候选清单」段（`document/router.py` 494 P2 + `ResourceLibraryView.vue` 490 P2 + `FileDetailView.vue` 416 P3 + `main.css` 1343 P3）；「扫描历史」段追加本次回写条目。
+  - 验证：`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0；`git diff --name-status` 仅包含 `td-032-source-file-sizes.md` + `current-work.md` 两文件。
+  - 任务整体保持 `🟢 完成`；切片 5+ 候选需独立 spec / plan 启动（本回写仅登记，不启动新切片）。

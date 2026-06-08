@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| TD-032 baseline 刷新（切片 1-4 收口后回写） | 🟡 进行中 | P3 | 工程治理 | 切片 1-4 全部合并后行数重扫；`td-032-source-file-sizes.md` 已写：合规样例扩展 5 项 / 新增 `FileDetailView.vue` 416 候选 / 新增「切片 5+ 候选清单」段（router 494 + LibraryView 490 + FileDetailView 416 + main.css 1343） | 任务卡登记 → commit + push → backfill 4 处 docs | `scripts/check-engineering-docs` 退出码 0 |
+| 暂无 | ⚫ 待办 | - | - | 当前没有已开工任务。 | 从“下一批候选任务”或用户指定任务开工。 | - |
 
 ## 下一批候选任务
 
@@ -35,8 +35,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-08 | TD-032 baseline 刷新（切片 1-4 收口后回写） | 🟢 完成 | 5 项合规样例扩展 + 新增 `FileDetailView.vue` 416 候选 + 「切片 5+ 候选清单」段（router 494 P2 / LibraryView 490 P2 / FileDetailView 416 P3 / main.css 1343 P3）。 | [Baseline](02-baselines/td-032-source-file-sizes.md) |
 | 2026-06-08 | TD-032 4 切片整体收口 | 🟢 完成 | 切片 1-4 全部合并。 | [Technical Debt](technical-debt.md#td-032-治理超大源码文件并建立文件规模拆分原则) |
 | 2026-06-08 | DOC-039 增强工程文档脚本门禁 | 🟢 完成 | `scripts/check-engineering-docs` 新增稳定编号、Backlog Done 入账、入口同步和脚本候选清单反查；测试基线迁到新 docs 目录并补 5 个回归用例。 | [Quality Gates](01-rules/quality-gates.md) / `scripts/engineering/check_engineering_docs.py` / `tests/engineering/test_check_engineering_docs.py` / [Backlog](../01-product-planning/04-backlog.md) |
 | 2026-06-08 | DOC-038 恢复基础工程原则为单一事实源 | 🟢 完成 | 新增 `engineering-principles.md`，入口和 IDE 兼容规则只保留链接，恢复先想后写、极简主义、手术式改动和目标驱动原则。 | [Engineering Principles](01-rules/engineering-principles.md) / `AGENTS.md` / `CLAUDE.md` / [Backlog](../01-product-planning/04-backlog.md) |
 | 2026-06-08 | DOC-037 规则入口瘦身与脚本门禁候选清单整理 | 🟢 完成 | 压缩 `AGENTS.md` / `CLAUDE.md` 为导航入口；确认 `.claude/rules/*` 与 `.trae/rules/*` 保持跳转入口；新增脚本门禁候选清单；不改业务代码。 | `AGENTS.md` / `CLAUDE.md` / [Quality Gates](01-rules/quality-gates.md) / [Backlog](../01-product-planning/04-backlog.md) |
-| 2026-06-08 | DOC-036 收口 DOC-034 遗留的 REQ-008 spec 前文旧口径 | 🟢 完成 | 修正 REQ-008 spec 第 21 行 `教案\nabc` 的旧 `layer == "none"` 表述，统一为 `layer == "L3"` + `template is None` + below threshold；不改代码。 | `docs/02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md` / `docs/01-product-planning/04-backlog.md` |
