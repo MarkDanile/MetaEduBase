@@ -1200,3 +1200,34 @@
 
 **交付记录**
 - 2026-06-07 由 REQ-003 Task 5 收口时入账（commit `3bf8c10`）。任务详情见 `docs/02-delivery-plans/01-specs/2026-W23-req-003-rag-quality-gate.md` 与 `docs/02-delivery-plans/02-plans/2026-W23-req-003-rag-quality-gate-plan.md`。
+
+### TD-031: RAG 质量测试文件的预存 ruff 警告
+
+状态：🟢 完成
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 后端 / 测试 / 质量门禁 |
+| 事实源 | REQ-007 Task 4 复核 |
+
+**证据**
+- `packages/server-python/tests/contexts/ai/test_frequency_fusion.py:1` 存在 F401：`import pytest` 未使用（REQ-003 PR #74 留下的预存问题）。
+- `packages/server-python/tests/contexts/ai/test_recall_channels_contract.py:1` 存在 I001：import 块未按 ruff 规则排序（REQ-003 PR #74 留下的预存问题）。
+- 两个问题均带 `[*]` 标记，`ruff check --fix` 可自动修复。
+
+**问题**
+- 仓库 `docs/03-engineering-governance/01-rules/coding-style.md` 与 `quality-gates.md#完成门禁` 期望 `ruff check` 在改动范围内通过；遗留警告会让 `scripts/check-engineering-docs` 之外的本地 ruff 检查产生噪声。
+- 这两个文件**不是 REQ-007 引入的**，但落到 REQ-007 的 AC-3"测试覆盖描述准确"边界——描述准确的门禁干净也是描述准确的一部分。
+
+**完成标准**
+- `cd packages/server-python && .venv/bin/python -m ruff check tests/contexts/ai/` 退出码 0。
+- `pytest tests/contexts/ai/` 全绿。
+- 2 个测试文件改动幅度仅 -1 / -1 行（`pytest` import 删除 + import 块重排），无业务代码或行为变化。
+
+**验证方式**
+- `cd packages/server-python && .venv/bin/python -m ruff check tests/contexts/ai/` 退出码 0。
+- `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai/ -q` 全绿。
+
+**交付记录**
+- 2026-06-08 由 REQ-007 Task 4 收口时入账并修复（commit `fcf9c4f` 即将入）。任务详情见 `docs/01-product-planning/05-requirements/REQ-007-req-003-rag-quality-gate-follow-up.md` 与 `docs/02-delivery-plans/02-plans/2026-W23-req-007-rag-quality-gate-follow-up-plan.md`。

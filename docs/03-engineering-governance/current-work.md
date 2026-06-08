@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| 暂无 | ⚫ 待办 | - | - | 当前没有已开工任务。 | 从“下一批候选任务”或用户指定任务开工。 | - |
+| REQ-007 REQ-003 复盘缺口的 RAG 质量链路收口 | 🔵 进行中 | P1 | AI / Testing / Docs | 已建 `2026-W23-req-007-rag-quality-gate-follow-up-plan.md`；Task 1 行为级测试文件 `test_recall_channels_behavior.py` 已提交（9 用例）；Task 2 e2e 死代码清理已完成；Task 3 状态同步（本次提交）已完成。 | Task 4 Step 1-2 修正 P1 轨道 B 4 行”验证结论”列过度声明；Task 4 Step 3-4 全量验证（4 测试文件 + ruff + docs gate）。 | `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai/{test_rule_based_ner,test_frequency_fusion,test_recall_channels_contract,test_recall_channels_behavior,test_ai_chat_rag_e2e}.py -q` |
 
 ## 下一批候选任务
 
