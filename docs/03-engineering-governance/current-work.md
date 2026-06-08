@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| 暂无 | ⚫ 待办 | - | - | 当前没有已开工任务。 | 从“下一批候选任务”或用户指定任务开工。 | - |
+| REQ-008 收口 REQ-004 验收证据与质量门禁缺口 | 🟡 进行中 | P1 | Product / Document / Testing | Task 1+2 本地已 commit（29fa1d0 ruff 清零 + 54a0a1c caplog + L3 边角 + 漂移保护）；Task 3 文档回填（Backlog / Iteration / Milestone）已落本地。验证：ruff 退出码 0；pytest 16 passed；待 push + PR + 合并 main + 收尾回填 PR 链接。 | [Spec](../02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-008-req-004-quality-follow-up-plan.md) / [Requirement](../01-product-planning/05-requirements/REQ-008-req-004-template-selection-quality-follow-up.md) |
 
 ## 下一批候选任务
 
@@ -24,7 +24,6 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| REQ-008 收口 REQ-004 验收证据与质量门禁缺口 | ⚫ 候选 | P1 | Product / Document / Testing | 修复 REQ-004 相关 ruff 失败，补 `template.select layer=...` 日志验收和 L3 解析失败 / 空响应覆盖。 |
 | REQ-005 结构化抽取嵌套结构稳定性验收 | ⚫ 候选 | P1 | Product / Document / Contract | 建立 object / array / table 抽取结果样例回归。 |
 | REQ-006 P1 知识资产处理链路最终演示验收 | ⚫ 候选 | P1 | Product / Document / AI / Testing | 先修复本机 `metaedu_test` 连通性，再组织上传/解析/抽取/图谱/RAG 问答/来源展示的端到端演示。 |
 
