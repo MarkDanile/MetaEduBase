@@ -8,7 +8,6 @@ from app.contexts.knowledge.application.recall_service import (
     PgVectorRecallChannel,
 )
 
-
 EXPECTED_NAMES = {
     PgVectorRecallChannel: "vector",
     PgKeywordRecallChannel: "keyword",

@@ -1,4 +1,3 @@
-import pytest
 
 from app.contexts.knowledge.application.fusion_service import FrequencyFusion
 from app.shared.domain.recall_channel import RecallResult
