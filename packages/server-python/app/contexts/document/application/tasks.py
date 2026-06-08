@@ -612,14 +612,22 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
                     selection.matched_type, filename, template_obj.name, template_obj.id,
                 )
             elif selection.layer == "L3" and template_obj is not None:
+                msg = (
+                    "template.select layer=L3 matched_doc_type=%r "
+                    "confidence=%.2f → template=%s id=%s"
+                )
                 logger.info(
-                    "template.select layer=L3 matched_doc_type=%r confidence=%.2f → template=%s id=%s",
+                    msg,
                     selection.matched_type, selection.confidence,
                     template_obj.name, template_obj.id,
                 )
             elif selection.layer == "L3" and selection.confidence is not None:
+                msg = (
+                    "template.select layer=L3 confidence=%.2f < threshold "
+                    "doc_type=%r — using generic"
+                )
                 logger.info(
-                    "template.select layer=L3 confidence=%.2f < threshold doc_type=%r — using generic",
+                    msg,
                     selection.confidence, selection.matched_type,
                 )
             elif selection.layer == "none" and selection.matched_type:

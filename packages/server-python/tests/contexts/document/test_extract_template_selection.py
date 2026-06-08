@@ -6,7 +6,7 @@ These tests intentionally avoid the DB and HTTP layer: they construct
 
 from __future__ import annotations
 
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
 import pytest
@@ -16,7 +16,6 @@ from app.contexts.document.application.template_selector import (
     select_template,
 )
 from app.contexts.template.domain.entity import Template
-
 
 # --- helpers ---------------------------------------------------------------
 
