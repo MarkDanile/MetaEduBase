@@ -45,6 +45,7 @@
 | DOC-019 | DOC | 🟢 Done | P1 | P1 | 建立产品规划层和复盘入口 | 已同步规则索引，验证通过后归档到工作日志 |  |
 | DOC-024 | DOC | ⚪ Idea | P2 | P3 | 工程协作规则模板化：将成熟的跨 AI IDE 规则、docs 分层、质量门禁和任务闭环抽象成可复用模板包 | 等本项目规则经过更多实践验证后，进入 Shaping，明确模板仓库边界、项目适配层和版本化策略 |  |
 | DOC-034 | DOC | 🟢 Done | P2 | P1 | 修正 REQ-008 spec AC-5 与实际测试行为不一致 | AC-5 期望由 `layer == "none"` 修为 `layer == "L3"` + `template is None` + `reason` 含 below threshold；「选择器契约（不变）」段同步改写为与实现和 `test_l3_ai_confidence_unparseable_falls_back_to_zero` 一致；不改代码。 | [Spec](../02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md) / [PR #83](https://github.com/MarkDanile/MetaEduBase/pull/83) |
+| DOC-036 | DOC | 🟢 Done | P2 | P1 | 收口 DOC-034 遗留的 REQ-008 spec 前文旧口径 | 已修 `2026-W23-req-008-req-004-quality-follow-up.md` 第 21 行，把 `教案\nabc` 的期望统一为 `layer == "L3"` + `template is None` + below threshold；不改代码。 | [Spec](../02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md) |
 
 ## 状态迁移
 

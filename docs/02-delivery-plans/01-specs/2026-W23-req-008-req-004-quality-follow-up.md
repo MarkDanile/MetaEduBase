@@ -18,7 +18,7 @@ REQ-004 模板匹配可解释化已通过 PR #77 合并（`select_template` 纯�
 - 修复 `packages/server-python/app/contexts/document/application/template_selector.py:16` 的 UP035（`Awaitable` / `Callable` 改从 `collections.abc` 导入）。
 - 修复 `packages/server-python/tests/contexts/document/test_extract_template_selection.py:7,9` 的 I001 + UP035（import 块重排 + 改 `collections.abc`）。
 - 在同一测试文件新增 caplog 断言：4 个分支（L1 / L2 / L3 命中 / L3 未命中 / none）的 `template.select layer=...` 日志可观测。
-- 在同一测试文件新增 2 条用例：L3 confidence 解析失败（`教案\nabc`）→ `confidence == 0.0`、`layer == "none"`（因 0.0 < 0.7 阈值）；L3 空响应（`""`）→ `layer == "none"`、`reason == "AI returned empty response"`。
+- 在同一测试文件新增 2 条用例：L3 confidence 解析失败（`教案\nabc`）→ `confidence == 0.0`、`layer == "L3"`、`template is None`、`reason` 含 `below threshold`（命中 L3 但 0.0 < 0.7 阈值，模板不返回）；L3 空响应（`""`）→ `layer == "none"`、`reason == "AI returned empty response"`。
 - 文档回填：Backlog REQ-008 状态推进；Iteration / Milestone（轨道 B 模板匹配可解释化行追加补强标记）；`current-work.md` 当前进行中 / 最近完成。
 - 验证：相关 ruff 退出码 0；测试全绿；`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0。
 

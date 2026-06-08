@@ -15,6 +15,7 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-08 | DOC-036 收口 DOC-034 遗留的 REQ-008 spec 前文旧口径 | 文档 / 验收口径修正 / follow-up |  |  | `docs/02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md` / `docs/01-product-planning/04-backlog.md` |
 | 2026-06-08 | DOC-035 建立任务评审评分卡与复盘数据口径 | 文档 / 工程治理 / 复盘 / 评分卡 |  |  | `docs/03-engineering-governance/01-rules/review-scorecard.md` / `docs/03-engineering-governance/03-retrospectives/README.md` |
 | 2026-06-08 | DOC-034 修正 REQ-008 spec AC-5 与实际测试行为不一致 | 文档 / 验收口径修正 / follow-up | [#83](https://github.com/MarkDanile/MetaEduBase/pull/83) | `cfdbb23` | `docs/02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md` / `docs/01-product-planning/04-backlog.md` |
 | 2026-06-08 | REQ-008 收口 REQ-004 验收证据与质量门禁缺口 | 需求 / follow-up / 质量门禁 | [#79](https://github.com/MarkDanile/MetaEduBase/pull/79) | `302ec2d` | `docs/01-product-planning/05-requirements/REQ-008-req-004-template-selection-quality-follow-up.md` / `docs/02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md` / `docs/02-delivery-plans/02-plans/2026-W23-req-008-req-004-quality-follow-up-plan.md` |
