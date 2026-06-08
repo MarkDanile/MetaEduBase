@@ -17,6 +17,7 @@
 - superpower、compound-engineering-plugin 或其他插件生成的 spec/plan 只可作为兼容输出；用于本次开发前，必须迁移或镜像到 `docs/02-delivery-plans/01-specs/*` / `docs/02-delivery-plans/02-plans/*`，并在任务卡片中登记原始插件输出。
 - 不能假设插件会自动遵守仓库新路径。生成前要在提示词中明确规范输出路径；生成后运行文档门禁，确认没有重新出现旧顶层文档入口。
 - 开发前必须明确本次任务卡片、相关计划、相关约束和验收标准。
+- 会修改仓库文件的任务，必须先确认当前不在 `main`；若在 `main`，先按 `docs/03-engineering-governance/01-rules/git-workflow.md#开发前分支门禁` 创建任务分支，再更新工作台、spec、plan 或代码。
 - 常见任务模式的开工条件、必读文档和完成标准见 `docs/03-engineering-governance/task-modes.md`。
 - 用户未指定执行模式时，按 `docs/03-engineering-governance/task-modes.md#默认模式路由` 自动判断；复杂新需求默认优先走 superpower 生成 spec/plan，小改动默认走 plan-do。
 - 代码探索和文本搜索可使用当前 AI IDE 可用工具；最终判断仍以代码事实、验证结果和仓库事实源记录为准。
@@ -29,7 +30,8 @@
 每次开发任务开始前，执行者必须：
 
 1. 阅读 `docs/03-engineering-governance/current-work.md`，确认本次任务卡片。
-2. 按任务卡片链接读取相关文档：
+2. 如果本次会修改仓库文件，用 `git status --short --branch` 确认已在语义化任务分支；若仍在 `main`，先切分支，再改任何文件。
+3. 按任务卡片链接读取相关文档：
    - 功能需求优先读取对应 `docs/02-delivery-plans/01-specs/*`。
    - 未进入交付的新需求、里程碑或迭代安排读取 `docs/01-product-planning/*`。
    - 实施步骤优先读取对应 `docs/02-delivery-plans/02-plans/*`。
@@ -37,9 +39,9 @@
    - 技术债读取 `docs/03-engineering-governance/technical-debt.md`。
    - 架构边界读取 `ARCHITECTURE.md` 的相关章节。
    - API、DTO、前后端类型或 shared schema 变更读取 `docs/03-engineering-governance/01-rules/contracts.md`。
-3. 和用户确认本次执行范围、完成标准和验证方式。
-4. 将任务状态更新为 `进行中`，并记录最近接手工具和当前执行模式。
-5. 如果任务来自 `docs/03-engineering-governance/current-work.md` 的“下一批候选任务”，开工前必须移动到“当前进行中”，并保留候选来源和本轮验证计划。
+4. 和用户确认本次执行范围、完成标准和验证方式。
+5. 将任务状态更新为 `进行中`，并记录最近接手工具、当前执行模式和当前分支。
+6. 如果任务来自 `docs/03-engineering-governance/current-work.md` 的“下一批候选任务”，开工前必须移动到“当前进行中”，并保留候选来源和本轮验证计划。
 
 很小的即时修复或纯问答可以不新增任务卡片，但执行者仍应在最终回复中说明验证结果。只要任务涉及跨文件修改、计划接力、状态交接或后续继续开发，就必须登记到当前工作台。
 

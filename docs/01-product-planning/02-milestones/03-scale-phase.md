@@ -1,6 +1,6 @@
 # P3: 阶段三 — 规模化
 
-Status: Future
+Status: ⚪ Future
 Current: No
 External:
 
@@ -74,11 +74,11 @@ External:
 
 | ID | 状态 | 说明 | 归属 |
 |----|------|------|------|
-| DOC-024 | Idea | 工程协作规则模板化，等本项目规则经过更多实践后进入 Shaping | `docs/01-product-planning/04-backlog.md` |
-| P3-VECTOR | Future | Milvus / Qdrant 独立向量库 | 待触发指标成立 |
-| P3-GRAPH | Future | Neo4j 知识图谱引擎 | 待触发指标成立 |
-| P3-SEARCH | Future | Elasticsearch 全文搜索集群 | 待触发指标成立 |
-| P3-OBS | Future | Prometheus + Grafana 全链路监控 | 待触发指标成立 |
+| DOC-024 | ⚪ Idea | 工程协作规则模板化，等本项目规则经过更多实践后进入 Shaping | `docs/01-product-planning/04-backlog.md` |
+| P3-VECTOR | ⚪ Future | Milvus / Qdrant 独立向量库 | 待触发指标成立 |
+| P3-GRAPH | ⚪ Future | Neo4j 知识图谱引擎 | 待触发指标成立 |
+| P3-SEARCH | ⚪ Future | Elasticsearch 全文搜索集群 | 待触发指标成立 |
+| P3-OBS | ⚪ Future | Prometheus + Grafana 全链路监控 | 待触发指标成立 |
 
 ## Evidence
 

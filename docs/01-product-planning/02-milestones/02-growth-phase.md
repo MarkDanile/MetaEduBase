@@ -1,6 +1,6 @@
 # P2: 阶段二 — 增长期
 
-Status: Candidate
+Status: ⚫ Candidate
 Current: No
 External:
 
@@ -70,11 +70,11 @@ External:
 
 | ID | 状态 | 说明 | 归属 |
 |----|------|------|------|
-| REQ-002 | Idea | 模板化结构抽取能力的配置与复用体验，阶段一可塑形，阶段二继续沉淀模板族和抽取质量 | `docs/01-product-planning/04-backlog.md` |
-| P2-SEARCH | Candidate | PostgreSQL tsvector + 中文分词搜索增强 | 待进入 backlog |
-| P2-NER | Candidate | LLM 混合 NER | 待进入 backlog |
-| P2-RRF | Candidate | RRF 融合排序 | 待进入 backlog |
-| P2-INFRA | Candidate | Redis 缓存 / RabbitMQ / LiteLLM / MinIO 集群按瓶颈择一推进 | 待进入 backlog |
+| REQ-002 | ⚪ Idea | 模板化结构抽取能力的配置与复用体验，阶段一可塑形，阶段二继续沉淀模板族和抽取质量 | `docs/01-product-planning/04-backlog.md` |
+| P2-SEARCH | ⚫ Candidate | PostgreSQL tsvector + 中文分词搜索增强 | 待进入 backlog |
+| P2-NER | ⚫ Candidate | LLM 混合 NER | 待进入 backlog |
+| P2-RRF | ⚫ Candidate | RRF 融合排序 | 待进入 backlog |
+| P2-INFRA | ⚫ Candidate | Redis 缓存 / RabbitMQ / LiteLLM / MinIO 集群按瓶颈择一推进 | 待进入 backlog |
 
 ## Evidence
 

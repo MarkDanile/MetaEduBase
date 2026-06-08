@@ -34,13 +34,14 @@
 
 ## 通用入口
 
-每次进入开发前，至少确认这 5 件事：
+每次进入开发前，至少确认这 6 件事：
 
 1. 任务卡片已登记到 `docs/03-engineering-governance/current-work.md`，或当前任务足够小且不需要交接。
 2. 任务卡片包含本次范围、相关文档、完成标准和验证方式。
-3. 当前执行模式已标记为 `plan-do`、`superpower`、`compound-engineering` 或 `manual`。
-4. 如果插件生成了 spec / plan，规范副本已迁移或镜像到 `docs/02-delivery-plans/01-specs/*` / `docs/02-delivery-plans/02-plans/*`。
-5. 开发结束后会回写状态、验证结果和下一步。
+3. 只要会修改仓库文件，已按 `git-workflow.md#开发前分支门禁` 确认当前不在 `main`；这个检查早于更新工作台、spec、plan 或代码。
+4. 当前执行模式已标记为 `plan-do`、`superpower`、`compound-engineering` 或 `manual`。
+5. 如果插件生成了 spec / plan，规范副本已迁移或镜像到 `docs/02-delivery-plans/01-specs/*` / `docs/02-delivery-plans/02-plans/*`。
+6. 开发结束后会回写状态、验证结果和下一步。
 
 ## 通用收尾回查
 

@@ -1,6 +1,6 @@
 # P1: 阶段一 — 验证期
 
-Status: Doing
+Status: 🟡 Doing
 Current: Yes
 External:
 
@@ -39,17 +39,17 @@ External:
 
 | 里程碑项 | 状态 | 说明 |
 |---|---|---|
-| 基础架构搭建 | Done | FastAPI + Vue3 + PostgreSQL + pgvector |
-| Identity 认证上下文 | Done | JWT + 多租户 ContextVar |
-| Knowledge 知识图谱上下文 | Done | CRUD + 知识树 + ltree 物化路径 |
-| Resource / Document 文档上下文 | Done | 文件上传/下载 + MinIO 本地存储 |
-| AI Chat 基础对话 | Done | 规则 NER + 3 通道召回 + 频次融合 + Provider resolver |
-| 数据要素模板管理 | Done | 模板 CRUD + AI 辅助配置 |
-| 文档结构化抽取 | Done | 模板匹配 + JSON 结构化结果 |
-| 文档知识图谱抽取 | Done | 文件级 KG 抽取与展示 |
-| `ui-*` 语义化 UI 体系 | Done | workspace 语义层 + 4 主题；`liquid-*` 保留兼容别名和少量品牌/装饰例外 |
-| MCP Server | Done | 知识库查询工具 |
-| 前端 Markdown 渲染 | Done | marked + highlight.js 代码高亮 |
+| 基础架构搭建 | 🟢 Done | FastAPI + Vue3 + PostgreSQL + pgvector |
+| Identity 认证上下文 | 🟢 Done | JWT + 多租户 ContextVar |
+| Knowledge 知识图谱上下文 | 🟢 Done | CRUD + 知识树 + ltree 物化路径 |
+| Resource / Document 文档上下文 | 🟢 Done | 文件上传/下载 + MinIO 本地存储 |
+| AI Chat 基础对话 | 🟢 Done | 规则 NER + 3 通道召回 + 频次融合 + Provider resolver |
+| 数据要素模板管理 | 🟢 Done | 模板 CRUD + AI 辅助配置 |
+| 文档结构化抽取 | 🟢 Done | 模板匹配 + JSON 结构化结果 |
+| 文档知识图谱抽取 | 🟢 Done | 文件级 KG 抽取与展示 |
+| `ui-*` 语义化 UI 体系 | 🟢 Done | workspace 语义层 + 4 主题；`liquid-*` 保留兼容别名和少量品牌/装饰例外 |
+| MCP Server | 🟢 Done | 知识库查询工具 |
+| 前端 Markdown 渲染 | 🟢 Done | marked + highlight.js 代码高亮 |
 
 ### 轨道 B：检索 / 抽取质量
 
@@ -68,12 +68,12 @@ External:
 
 | 里程碑项 | 状态 | 说明 |
 |---|---|---|
-| PostgreSQL 单引擎 | Done | 业务数据 + 向量 + 图谱关系共库 |
-| Celery + Redis | Done | 文档 / 数据集异步任务 |
-| MinIO 单节点 | Done | 对象存储，本地 fallback |
-| LLM Provider 工厂 + fallback | Done | `factory.py` + `provider_resolver.py` 已集中 provider 选择；统一代理和计量留到阶段二 |
-| Protocol 接口定义 | Done | `NERPipeline` / `RecallChannel` / `ResultFusion` Protocol 已落地 |
-| 测试回归 | Ongoing | 完整运行依赖 `metaedu_test` 初始化；质量门禁持续维护 |
+| PostgreSQL 单引擎 | 🟢 Done | 业务数据 + 向量 + 图谱关系共库 |
+| Celery + Redis | 🟢 Done | 文档 / 数据集异步任务 |
+| MinIO 单节点 | 🟢 Done | 对象存储，本地 fallback |
+| LLM Provider 工厂 + fallback | 🟢 Done | `factory.py` + `provider_resolver.py` 已集中 provider 选择；统一代理和计量留到阶段二 |
+| Protocol 接口定义 | 🟢 Done | `NERPipeline` / `RecallChannel` / `ResultFusion` Protocol 已落地 |
+| 测试回归 | 🟡 Doing | 完整运行依赖 `metaedu_test` 初始化；质量门禁持续维护 |
 
 ## Completion Criteria
 
@@ -88,13 +88,14 @@ External:
 
 | ID | 状态 | 说明 | 归属 |
 |----|------|------|------|
-| REQ-001 | Idea | 知识资产处理链路的产品化验收视图 | `docs/01-product-planning/04-backlog.md` |
-| REQ-002 | Idea | 模板化结构抽取能力的配置与复用体验 | `docs/01-product-planning/04-backlog.md` |
-| REQ-003 | Done | P1 RAG 质量链路验收与回归测试（已由 PR #74 关闭，验收缺口由 REQ-007 承接） | `docs/01-product-planning/04-backlog.md` |
-| REQ-004 | Done | 模板匹配可解释化收口（3 层抽到 `select_template` + 9 条分支回归 + 4 分支统一 `template.select` 日志） | `docs/01-product-planning/04-backlog.md` |
-| REQ-005 | Candidate | 结构化抽取嵌套结构稳定性验收 | `docs/01-product-planning/04-backlog.md` |
-| REQ-006 | Candidate | P1 知识资产处理链路最终演示验收 | `docs/01-product-planning/04-backlog.md` |
-| REQ-007 | Done | REQ-003 复盘缺口的 RAG 质量链路收口（5 AC 全部由 [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) 关闭：行为级测试 + e2e 死代码清理 + 状态同步 + 过度验证声明修正 + 验证声明真实） | `docs/01-product-planning/04-backlog.md` |
+| REQ-001 | ⚪ Idea | 知识资产处理链路的产品化验收视图 | `docs/01-product-planning/04-backlog.md` |
+| REQ-002 | ⚪ Idea | 模板化结构抽取能力的配置与复用体验 | `docs/01-product-planning/04-backlog.md` |
+| REQ-003 | 🟢 Done | P1 RAG 质量链路验收与回归测试（已由 PR #74 关闭，验收缺口由 REQ-007 承接） | `docs/01-product-planning/04-backlog.md` |
+| REQ-004 | 🟢 Done | 模板匹配可解释化收口（主要代码和测试由 PR #77 关闭；验收证据与质量门禁缺口由 REQ-008 承接） | `docs/01-product-planning/04-backlog.md` |
+| REQ-005 | ⚫ Candidate | 结构化抽取嵌套结构稳定性验收 | `docs/01-product-planning/04-backlog.md` |
+| REQ-006 | ⚫ Candidate | P1 知识资产处理链路最终演示验收 | `docs/01-product-planning/04-backlog.md` |
+| REQ-007 | 🟢 Done | REQ-003 复盘缺口的 RAG 质量链路收口（5 AC 全部由 [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) 关闭：行为级测试 + e2e 死代码清理 + 状态同步 + 过度验证声明修正 + 验证声明真实） | `docs/01-product-planning/04-backlog.md` |
+| REQ-008 | ⚫ Candidate | 收口 REQ-004 验收证据与质量门禁缺口 | `docs/01-product-planning/04-backlog.md` |
 
 ## Evidence
 
