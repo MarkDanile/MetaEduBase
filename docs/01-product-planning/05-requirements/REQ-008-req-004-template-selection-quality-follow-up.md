@@ -12,6 +12,15 @@ REQ-004 已通过 PR #77 合并，完成模板匹配可解释化的主要代码�
 
 复核发现该需求仍有验收证据与质量门禁缺口，属于原需求验收收口问题，应作为 `REQ` follow-up 继续处理，而不是改开技术债。
 
+## 验收与交付
+
+- [PR #79](https://github.com/MarkDanile/MetaEduBase/pull/79) `docs(REQ-008): close REQ-004 acceptance evidence & quality gate gaps` 已合并（merge commit `302ec2d`）。
+- 5 项 ruff 失败（E501/UP035/I001）清零；任务范围：3 个文件（`tasks.py` 折行 2 处 + `template_selector.py` import 来源 + `test_extract_template_selection.py` import 块重排）。
+- 4 分支 `template.select layer=...` 日志 caplog 断言（参数化 4 case：L1 / L2 / L3 命中 / none）。
+- 2 条 L3 边角用例：`教案\nabc` 解析失败 → `confidence=0.0 < 0.7` → `layer=L3` + `template=None`；空响应 `""` → `layer=none` + `reason="AI returned empty response"`。
+- 1 条生产代码漂移保护：文本扫描 `tasks.py` 包含 6 段 `template.select` 日志字符串。
+- 行为不变（折行 + import 来源等价 + 测试新增）。
+
 ## 证据
 
 - `ruff` 当前在 REQ-004 相关文件仍失败：
