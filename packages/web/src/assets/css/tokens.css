@@ -1,0 +1,119 @@
+@theme {
+  /* ---- Text (per-theme) ---- */
+  --color-ink: var(--theme-ink);
+  --color-ink-secondary: var(--theme-ink-secondary);
+  --color-ink-tertiary: var(--theme-ink-tertiary);
+  --color-ink-inverse: var(--theme-ink-inverse);
+  --color-ink-dim: var(--theme-ink-dim);
+
+  /* ---- Backgrounds (per-theme) ---- */
+  --color-bg-base: var(--theme-bg-base);
+  --color-bg-warm: var(--theme-bg-warm);
+  --color-bg-elevated: var(--theme-bg-elevated);
+  --color-bg-hover: var(--theme-bg-hover);
+
+  /* ---- Accent (per-theme) ---- */
+  --color-accent: var(--theme-accent);
+  --color-accent-light: var(--theme-accent-light);
+  --color-accent-bg: var(--theme-accent-bg);
+  --color-accent-glow: var(--theme-accent-glow);
+  --color-accent-glow-start: var(--theme-accent-glow-start);
+  --color-accent-glow-start-hover: var(--theme-accent-glow-start-hover);
+  --color-accent-ring: var(--theme-accent-ring);
+  --color-accent-sweep: var(--theme-accent-sweep);
+
+  /* ---- Highlight (per-theme) ---- */
+  --color-highlight: var(--theme-highlight);
+  --color-highlight-bg: var(--theme-highlight-bg);
+
+  /* ---- Tags (per-theme) ---- */
+  --color-tag-green: var(--theme-tag-green);
+  --color-tag-green-text: var(--theme-tag-green-text);
+  --color-tag-amber: var(--theme-tag-amber);
+  --color-tag-amber-text: var(--theme-tag-amber-text);
+  --color-tag-blue: var(--theme-tag-blue);
+  --color-tag-blue-text: var(--theme-tag-blue-text);
+  --color-tag-purple: var(--theme-tag-purple);
+  --color-tag-purple-text: var(--theme-tag-purple-text);
+
+  /* ---- Borders (per-theme) ---- */
+  --color-border: var(--theme-border);
+  --color-border-subtle: var(--theme-border-subtle);
+  --color-border-accent: var(--theme-border-accent);
+
+  /* ---- Semantic (constant across themes) ---- */
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
+
+  /* ---- Surface / glass behavior tokens ---- */
+  --surface-card-bg: var(--_surface-card-bg);
+  --surface-card-border: var(--_surface-card-border);
+  --surface-card-shadow: var(--_surface-card-shadow);
+  --surface-card-shadow-hover: var(--_surface-card-shadow-hover);
+  --surface-card-elevated-bg: var(--_surface-card-elevated-bg);
+  --surface-card-elevated-shadow: var(--_surface-card-elevated-shadow);
+  --surface-glass-blur: var(--_surface-glass-blur);
+  --surface-glass-blur-light: var(--_surface-glass-blur-light);
+  --surface-sidebar-bg: var(--_surface-sidebar-bg);
+  --surface-input-bg: var(--_surface-input-bg);
+  --surface-input-bg-focus: var(--_surface-input-bg-focus);
+  --surface-dialog-bg: var(--_surface-dialog-bg);
+  --surface-dialog-border: var(--_surface-dialog-border);
+  --surface-dialog-shadow: var(--_surface-dialog-shadow);
+  --surface-toast-bg: var(--_surface-toast-bg);
+  --surface-ghost-btn-bg: var(--_surface-ghost-btn-bg);
+  --login-brand-gradient: var(--_login-brand-gradient);
+
+  /* ---- Overlay / button ripple (per-theme) ---- */
+  --overlay-bg: var(--_overlay-bg);
+  --btn-ripple: var(--_btn-ripple);
+
+  /* ---- Typography (constant) ---- */
+  --font-display: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+
+  /* ---- Radii (constant) ---- */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* ---- Shadows (constant) ---- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 2px 12px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.06);
+
+  /* ---- Easing (constant) ---- */
+  --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-elastic: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ---- Durations (constant) ---- */
+  --duration-instant: 80ms;
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+  --duration-liquid: 300ms;
+
+  /* ---- Type scale (constant) ---- */
+  --text-page-title: 24px;
+  --text-section-title: 18px;
+  --text-subtitle: 16px;
+  --text-body: 14px;
+  --text-caption: 13px;
+  --text-small: 12px;
+  --text-micro: 11px;
+
+  /* ---- Spacing (constant) ---- */
+  --spacing-page: 32px;
+  --spacing-section: 24px;
+  --spacing-card: 16px;
+
+  /* ---- Z-index (constant) ---- */
+  --z-sidebar: 10;
+  --z-drawer: 30;
+  --z-dialog: 40;
+  --z-toast: 50;
+}

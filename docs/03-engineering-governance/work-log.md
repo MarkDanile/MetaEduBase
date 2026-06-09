@@ -15,6 +15,7 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-09 | TD-033 拆分 `main.css` 设计系统级 CSS 模块 | 技术债 / 重构 / 前端 CSS / 设计系统 |  |  | `docs/03-engineering-governance/technical-debt.md#td-033` / `docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md` |
 | 2026-06-09 | DOC-044 修正工程治理目录编号重复 | 文档 / 工程治理 / 目录结构 |  |  | `docs/03-engineering-governance/README.md` / `docs/03-engineering-governance/02-baselines/` / `docs/03-engineering-governance/03-matrices/` / `docs/03-engineering-governance/04-retrospectives/` |
 | 2026-06-09 | DOC-043 登记 TD-032 评审 follow-up 与规则改进 | 文档 / 工程治理 / 评审 / follow-up |  |  | `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/01-rules/review-scorecard.md` / `docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md` |
 | 2026-06-08 | DOC-040 登记超大源码文件治理技术债 | 文档 / 工程治理 / 技术债 / 代码可维护性 |  |  | `docs/03-engineering-governance/technical-debt.md#td-032-治理超大源码文件并建立文件规模拆分原则` / `docs/03-engineering-governance/01-rules/coding-style.md#文件规模与职责边界` |

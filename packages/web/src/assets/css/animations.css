@@ -1,0 +1,86 @@
+/* ================================================================
+   Animations, stagger delays, transitions, and reduced-motion
+   ================================================================ */
+@layer components {
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      transform: scale(0.98) translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  @keyframes slide-up {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-slide-up {
+    animation: slide-up var(--duration-normal) var(--ease-out) both;
+  }
+
+  .stagger-1 { animation-delay: 30ms; }
+  .stagger-2 { animation-delay: 60ms; }
+  .stagger-3 { animation-delay: 90ms; }
+  .stagger-4 { animation-delay: 120ms; }
+  .stagger-5 { animation-delay: 150ms; }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+  }
+
+  .liquid-rise-enter-active {
+    transition: opacity var(--duration-liquid) var(--ease-elastic),
+                transform var(--duration-liquid) var(--ease-elastic),
+                filter var(--duration-liquid) var(--ease-elastic);
+  }
+
+  .liquid-rise-leave-active {
+    transition: opacity var(--duration-fast) var(--ease-out),
+                filter var(--duration-fast) var(--ease-out);
+  }
+
+  .liquid-rise-enter-from {
+    opacity: 0;
+    transform: scale(0.96);
+    filter: blur(4px);
+  }
+
+  .liquid-rise-leave-to {
+    opacity: 0;
+    filter: blur(4px);
+  }
+
+  @keyframes scan-line {
+    0%, 100% { left: -100%; }
+    50% { left: 100%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-slide-up { animation: none; }
+    .animate-spin { animation: none; }
+    .liquid-rise-enter-active,
+    .liquid-rise-leave-active { transition: none; }
+    .liquid-card-scan::after { animation: none; }
+    .liquid-btn-primary::after { transition: none; }
+    .liquid-dialog-overlay { animation: none; }
+    .liquid-dialog { animation: none; }
+    .toast-item { animation: none; }
+    .markdown-body blockquote::after { animation: none; }
+  }
+}

@@ -122,7 +122,7 @@
 | TD-030 | RecallChannel Protocol vs concrete signature drift on parameter names | ⚫ 待办 | P3 | 后端 / 测试 | REQ-003 / 2026-W23 iteration |
 | TD-031 | RAG 质量测试文件的预存 ruff 警告 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) |
 | TD-032 | 治理超大源码文件并建立文件规模拆分原则 | 🟢 完成 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 2026-06-08 源码行数扫描 |
-| TD-033 | 拆分 `main.css` 设计系统级 CSS 模块 | 🔵 就绪 | P2 | 前端 / 设计系统 / 可维护性 | [行数基线](02-baselines/td-032-source-file-sizes.md) |
+| TD-033 | 拆分 `main.css` 设计系统级 CSS 模块 | 🟢 完成 | P2 | 前端 / 设计系统 / 可维护性 | [行数基线](02-baselines/td-032-source-file-sizes.md) |
 
 ## 任务详情
 
@@ -1312,7 +1312,7 @@
 
 ### TD-033: 拆分 `main.css` 设计系统级 CSS 模块
 
-状态：🔵 就绪
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -1354,4 +1354,22 @@
 - 人工复核 `main.css` 只承担入口聚合职责；拆出 CSS 模块均有单一职责，且公开类名 / CSS 变量未被无计划删除。
 
 **交付记录**
-- 未完成。建议由独立 spec / plan 承接，避免与 TD-032 已完成切片混写。
+- 2026-06-09 完成（接手工具：Claude Code）。纯机械拆分，零 CSS 字节变化（无类名重命名、无 `liquid-*` 删除、无 CSS 变量重命名）。
+  - `main.css` 1343 → 9 行（`@import` 入口聚合）：`@import "tailwindcss"` + 8 个模块 `@import`。
+  - 8 个 CSS 模块（全部 ≤500 行）：
+    1. `tokens.css` 119 行：`@theme` token 块（颜色 / surface / 排版 / 间距 / z-index）。
+    2. `themes.css` 256 行：4 套 `:root[data-theme="..."]` CSS 变量（liquid / ink / navy / notion）。
+    3. `base.css` 35 行：`@layer base` reset（body / heading / selection）。
+    4. `components.css` 281 行：`@layer components` — `ui-*` 容器层（`ui-page-shell` / `ui-panel` / `ui-toolbar` / `ui-interactive-row`）+ `ui-*` 原子控件（`ui-input` / `ui-btn*` / `ui-tag*` / `ui-dialog*`）+ `sidebar-shell` + `liquid-card*` 兼容别名 + `liquid-card-scan` + liquid `ui-panel` 玻璃感覆盖。
+    5. `compat-liquid.css` 313 行：`@layer components` — `liquid-input` / `liquid-btn*` / `liquid-tag*` / `liquid-dialog*` 兼容别名 + `:root[data-theme="notion"]` 的 `liquid-*` 主题覆盖（`liquid-card` / `liquid-btn*` / `liquid-input` / `liquid-tag*` / `liquid-dialog*` / `sidebar-shell` / `nav-item*` / `content-bg` / `animate-slide-up` / `stagger-*` / `liquid-rise*` / `liquid-card-scan::after` / `markdown-body blockquote::after`）。
+    6. `animations.css` 86 行：`@layer components` — `@keyframes fade-in` / `dialog-in` / `slide-up` / `pulse-dot` / `scan-line` + `stagger-*` 延迟 + `liquid-rise-*` 转场 + `@media (prefers-reduced-motion: reduce)` 全局降级。
+    7. `markdown.css` 214 行：`@layer components` — `content-bg` / `mesh-bg` + theme mesh 降级 + `.markdown-body` 全套（p / h1-h6 / strong / em / a / ul / ol / li / blockquote + `highlight-sweep` keyframe / code / pre / table / hr / img）+ `tabular-nums` / `wet-line`。
+    8. `toast.css` 52 行：`@layer components` — `toast-container` / `toast-item` + 4 toast variant + `@keyframes toast-in` + `toast-leave-*`。
+  - 验证摘要（按 `quality-gates.md#完成门禁`）：
+    - 已运行：`pnpm --filter @metaedu/web typecheck` → 退出码 0（零输出）。
+    - 已运行：`pnpm --filter @metaedu/web lint` → 退出码 0（零输出）。
+    - 已运行：`pnpm --filter @metaedu/web build` → 退出码 0，✓ built in 3.34s。
+    - 已运行：`python3 scripts/check-engineering-docs` → 退出码 0（`engineering docs checks passed`）。
+    - 已运行：`git diff --check` → 退出码 0。
+    - 人工复核：`main.css` 仅 9 行 `@import`；8 个模块文件职责单一；`tokens.css` 仅 `@theme`、`themes.css` 仅 4 `data-theme` 块、`base.css` 仅 `@layer base`、`components.css` 仅 `ui-*` + `liquid-card*`、`compat-liquid.css` 仅 `liquid-*` 兼容 + notion 覆盖、`animations.css` 仅 keyframes + reduced-motion、`markdown.css` 仅 `.markdown-body` + 装饰背景、`toast.css` 仅 toast 系统。
+  - 行为变化声明：零。纯机械拆分 — `main.css` 的内容完整 1:1 按职责分配到 8 个子文件，import 顺序保证 CSS 级联等价；类名、CSS 变量、`@keyframes` 名称、token 值全部不变；Tailwind v4 `@import` 在 `@import "tailwindcss"` 之后导入子模块，Vite 构建产物 CSS 等价。
