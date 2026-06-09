@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends
@@ -15,6 +16,8 @@ from app.shared.infrastructure.database import get_session
 from app.shared.infrastructure.tenant_context import get_tenant_id
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 
 @router.get("/files/{file_id}/tasks", response_model=list[TaskDTO])
@@ -79,8 +82,22 @@ async def retry_file_tasks(
     )
     await session.commit()
 
-    # Re-dispatch the first pending task (parse_document chains to the rest)
-    await parse_document.delay(file_id, str(tid))
+    # Re-dispatch the first pending task (parse_document chains to the rest).
+    # `parse_document` is a synchronous @shared_task; `.delay()` is also
+    # synchronous and returns an AsyncResult (not awaitable). Awaiting it
+    # raises `TypeError` and turns broker outages into a 500. Use the
+    # current `files.updated_at` as the pipeline_version marker so the
+    # worker can detect a concurrent reinitialize and abort cleanly.
+    try:
+        result = await session.execute(
+            text("SELECT updated_at FROM metaedu.files WHERE id = :fid AND tenant_id = :tid"),
+            {"fid": fid, "tid": tid},
+        )
+        row = result.mappings().first()
+        pipeline_version = row["updated_at"].isoformat() if row and row["updated_at"] else ""
+        parse_document.delay(str(fid), str(tid), pipeline_version)
+    except Exception:
+        logger.warning("Failed to dispatch parse_document task — Celery/RabbitMQ unavailable")
 
     # Return updated tasks
     result = await session.execute(
