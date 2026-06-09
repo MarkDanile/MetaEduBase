@@ -122,6 +122,7 @@
 | TD-030 | RecallChannel Protocol vs concrete signature drift on parameter names | ⚫ 待办 | P3 | 后端 / 测试 | REQ-003 / 2026-W23 iteration |
 | TD-031 | RAG 质量测试文件的预存 ruff 警告 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) |
 | TD-032 | 治理超大源码文件并建立文件规模拆分原则 | 🟢 完成 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 2026-06-08 源码行数扫描 |
+| TD-033 | 拆分 `main.css` 设计系统级 CSS 模块 | 🔵 就绪 | P2 | 前端 / 设计系统 / 可维护性 | [行数基线](02-baselines/td-032-source-file-sizes.md) |
 
 ## 任务详情
 
@@ -1308,3 +1309,49 @@
   - 验证（cwd=packages/web）：`pnpm typecheck` 退出码 0（零输出）；`pnpm lint` 退出码 0（零 warning）；`pnpm build` 退出码 0，✓ built in 3.00s；`scripts/check-engineering-docs` 退出码 0。
   - 实施时 3 处小修正（与切片 4 / 切片 6 经验一致）：`v-model` 改 `:value + @input` 显式 emit 链 + 子组件内部 helper（templateFieldLabel/getFieldLabel + labels 回退硬编码表）迁到 `FileTabsPanel` 内部 + `stepBgClass`/`stepIcon` 等 5 helper 迁到 `FileDetailPipelineStatusPanel` 内部（独立于切片 4 `PipelineStatusPanel` 因 document 5 步 vs structured_data 4 步 pipeline 不可复用）。
   - **TD-032 整体最终收口**：7 切片全部合并；500 附近全部拆分到位（document/router.py 29 / ResourceLibraryView 286 / FileDetailView 181）；仅 `main.css` 1343 保留 `🔵 例外已登记`（设计系统级别重构，TD-032 周期外）。
+
+### TD-033: 拆分 `main.css` 设计系统级 CSS 模块
+
+状态：🔵 就绪
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 前端 / 设计系统 / 可维护性 |
+| 事实源 | [TD-032 行数基线](02-baselines/td-032-source-file-sizes.md)；`docs/03-engineering-governance/01-rules/coding-style.md#文件规模与职责边界` |
+
+**证据**
+- `packages/web/src/assets/css/main.css` 当前 1343 行，是 TD-032 收口后唯一仍超过 1000 行的源码文件。
+- `main.css` 同时承载 Tailwind `@theme` token、4 套主题变量、surface / glass token、`ui-*` 设计系统类、`liquid-*` 兼容别名、动画、基础样式和历史装饰类。
+- [TD-032 行数基线](02-baselines/td-032-source-file-sizes.md) 已将它登记为设计系统级例外，并注明后续应按 token / 组件 / 主题拆分。
+
+**问题**
+- 单文件承载设计 token、主题、组件类和兼容层，后续任何 UI 变更都容易在同一文件产生冲突。
+- `ui-*` 与 `liquid-*` 兼容语义已经稳定，继续在一个 1000+ 行文件里追加样式会削弱可读性和审查质量。
+- 该文件是设计系统事实源之一，若没有模块边界，后续 AI IDE 更容易把视觉重设、兼容类清理和纯机械拆分混在一个 PR 中。
+
+**完成标准**
+- 开工前先建立独立 spec / plan，明确目标 CSS 文件树、每个文件职责和 import 顺序。
+- 推荐首个切片只做机械拆分，不做视觉重设、不删除 `liquid-*` 兼容别名、不重命名公开 CSS custom properties。
+- `main.css` 收敛为入口聚合文件，目标不超过 200 行；拆出的 CSS 模块单文件默认不超过 500 行。
+- 建议目标结构按职责拆分，例如：
+  - `packages/web/src/assets/css/main.css`：Tailwind import + 模块 import 聚合。
+  - `packages/web/src/assets/css/tokens.css`：`@theme` token 和常量 token。
+  - `packages/web/src/assets/css/themes.css`：4 套 `data-theme` 变量。
+  - `packages/web/src/assets/css/base.css`：全局基础样式、body、scrollbar 等。
+  - `packages/web/src/assets/css/components.css`：`ui-*` 设计系统类。
+  - `packages/web/src/assets/css/compat-liquid.css`：`liquid-*` 兼容别名和历史装饰类。
+  - `packages/web/src/assets/css/animations.css`：动画和 transition 工具类。
+- 拆分后 4 个主题、`ui-*` 类、`liquid-*` 兼容类和现有页面视觉行为保持等价。
+- 回写 [TD-032 行数基线](02-baselines/td-032-source-file-sizes.md)：更新 `main.css` 状态、拆出文件行数、验证结果和扫描历史。
+
+**验证方式**
+- `cd packages/web && pnpm typecheck` 退出码 0。
+- `cd packages/web && pnpm lint` 退出码 0。
+- `cd packages/web && pnpm build` 退出码 0。
+- `scripts/check-engineering-docs` 退出码 0。
+- `git diff --check` 退出码 0。
+- 人工复核 `main.css` 只承担入口聚合职责；拆出 CSS 模块均有单一职责，且公开类名 / CSS 变量未被无计划删除。
+
+**交付记录**
+- 未完成。建议由独立 spec / plan 承接，避免与 TD-032 已完成切片混写。

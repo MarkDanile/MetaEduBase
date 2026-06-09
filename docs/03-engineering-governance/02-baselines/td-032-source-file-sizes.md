@@ -29,7 +29,7 @@
 
 | 文件 | 行数 | 状态 | 例外 / 拆分说明 |
 |------|------|------|-----------------|
-| `packages/web/src/assets/css/main.css` | 1343 | 🔵 例外已登记 | 历史兼容样式（4 主题 token + `liquid-*` 兼容别名 + `ui-*` 设计系统 + 基础 reset），与设计系统 token 化强耦合；后续切片按 CSS 分模块构建（按 token / 组件 / 主题分文件）收敛 |
+| `packages/web/src/assets/css/main.css` | 1343 | 🔵 TD-033 就绪 | 历史兼容样式（4 主题 token + `liquid-*` 兼容别名 + `ui-*` 设计系统 + 基础 reset），与设计系统 token 化强耦合；已登记 [TD-033](../technical-debt.md#td-033-拆分-maincss-设计系统级-css-模块)，后续按 CSS 分模块构建（按 token / 组件 / 主题 / 兼容层分文件）收敛 |
 | `scripts/engineering/check_engineering_docs.py` | 72 | 🟢 已拆分 | 切片 2 已合并 ([PR #93](https://github.com/MarkDanile/MetaEduBase/pull/93) / merge `7e468fb`)：原 1003 行单文件拆为入口主文件 72 行 + 8 个聚焦 `checks/*.py` 模块（38-233 行）+ `checks/__init__.py` 注册表 `KNOWN_CHECKS`；入口脚本 `scripts/check-engineering-docs` (17 行 `runpy.run_path`) 不动；16 个 pytest 行为零变化 |
 
 ### >500 行业务 / 工程源码
@@ -53,7 +53,7 @@
 
 | 优先级 | 候选文件 | 当前行数 | 建议路径 |
 |--------|----------|----------|----------|
-| P3 | `packages/web/src/assets/css/main.css` | 1343 | **设计系统级别**重构：按 `tokens.css` / `components/ui-*.css` / `themes/liquid-ink-navy-notion.css` 拆子模块，Vite import 回主入口；不在 TD-032 治理周期内独立完成，需要与设计系统/产品方协同 |
+| P2 | `packages/web/src/assets/css/main.css` | 1343 | 已登记为 [TD-033](../technical-debt.md#td-033-拆分-maincss-设计系统级-css-模块)：按 `tokens.css` / `themes.css` / `base.css` / `components.css` / `compat-liquid.css` / `animations.css` 拆子模块，Vite import 回主入口；不在 TD-032 已完成周期内混写 |
 
 > 切片 5+ 需新建独立 spec / plan，**不**在切片 1-4 计划文件 [2026-06-08-td-032-large-source-files-plan.md](../../02-delivery-plans/02-plans/2026-06-08-td-032-large-source-files-plan.md) 范围。
 
@@ -85,3 +85,4 @@
 - 2026-06-08：与 `technical-debt.md#td-032` 证据段同步，基线建立。
 - 2026-06-08（切片 4 收口后回写）：5 个 >500 / 500 附近文件全部转 `🟢 已拆分` 或维持 `⚪ 待切片` 标记；新增 `FileDetailView.vue` 416 为 500 附近候选；新增「切片 5+ 候选清单」段；扩展「合规样例」段加入 `TemplateModal.vue` 333 / `DatabaseView.vue` 320 / `chunker.py` 320 / `ResourceView.vue` 305 / `AiChatView.vue` 304。本次回写由 DOC-xxx 任务承接。
 - 2026-06-09（TD-032 评审后回写）：扫描命令改为 `rg --files -0 ... | xargs -0 wc -l`，并显式排除 `.venv` / `uploads` / `node_modules` / `dist`，避免本地未跟踪文件或带空格路径污染行数基线；脚本化候选入账 `DOC-042`。
+- 2026-06-09：`main.css` 设计系统级 CSS 模块化从 TD-032 例外转为独立就绪任务 `TD-033`。
