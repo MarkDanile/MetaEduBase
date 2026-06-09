@@ -29,7 +29,7 @@
 
 | 文件 | 行数 | 状态 | 例外 / 拆分说明 |
 |------|------|------|-----------------|
-| `packages/web/src/assets/css/main.css` | 1343 | 🔵 TD-033 就绪 | 历史兼容样式（4 主题 token + `liquid-*` 兼容别名 + `ui-*` 设计系统 + 基础 reset），与设计系统 token 化强耦合；已登记 [TD-033](../technical-debt.md#td-033-拆分-maincss-设计系统级-css-模块)，后续按 CSS 分模块构建（按 token / 组件 / 主题 / 兼容层分文件）收敛 |
+| `packages/web/src/assets/css/main.css` | 9 | 🟢 已拆分 | TD-033 完成：原 1343 行单文件拆为入口 `main.css`（9 行 `@import` 聚合）+ 8 个模块文件：`tokens.css`（119 行 `@theme` token） / `themes.css`（256 行 4 主题变量） / `base.css`（35 行 `@layer base` reset） / `components.css`（281 行 `ui-*` + `liquid-card*` + `sidebar-shell` + liquid `ui-panel` 覆盖） / `compat-liquid.css`（313 行 `liquid-input/btn/tag/dialog` + Notion 主题 `liquid-*` 覆盖） / `animations.css`（86 行 `@keyframes` + `stagger-*` + `liquid-rise` + `reduced-motion`） / `markdown.css`（214 行 `.markdown-body` + `content-bg` + `mesh-bg` + `wet-line`） / `toast.css`（52 行 `.toast-container` + `.toast-item`）；全部 ≤500 行；零 CSS 字节变化（纯机械拆分） |
 | `scripts/engineering/check_engineering_docs.py` | 72 | 🟢 已拆分 | 切片 2 已合并 ([PR #93](https://github.com/MarkDanile/MetaEduBase/pull/93) / merge `7e468fb`)：原 1003 行单文件拆为入口主文件 72 行 + 8 个聚焦 `checks/*.py` 模块（38-233 行）+ `checks/__init__.py` 注册表 `KNOWN_CHECKS`；入口脚本 `scripts/check-engineering-docs` (17 行 `runpy.run_path`) 不动；16 个 pytest 行为零变化 |
 
 ### >500 行业务 / 工程源码
@@ -49,13 +49,13 @@
 | `packages/web/src/views/resource/ResourceLibraryView.vue` | 286 | 🟢 已拆分 | 切片 6 已合并 ([PR #97](https://github.com/MarkDanile/MetaEduBase/pull/97) / merge `6728151`)：原 490 行单文件拆为 `views/resource/` 包 4 文件：`ResourceLibraryView.vue` 286 行（主入口：19 ref + 7 编排函数 + 3 子组件标签 + 删除文件 ConfirmDialog + `flatFolders` computed + `onMounted`）；3 个聚焦子组件 `FolderTreePanel.vue` 142 / `FileListPanel.vue` 160 / `UploadOptionsDialog.vue` 51（每个 ≤200 行）；`fileInput` ref 在 `FileListPanel` 内部持有（沿用切片 4 模式）；emit 名 kebab-case 化（`update:new-folder-name` / `update:inline-renaming-name` / `update:filter-status` / `update:doc-type`）匹配 `vue/v-on-event-hyphenation` lint 规则；7 个 `documentApi.*` 调用（listFolders / createFolder / updateFolder / deleteFolder / listFiles / uploadFile / deleteFile）仍由 ResourceLibraryView 编排；`router.ts:27` lazy import 仍解析；`pnpm typecheck / lint / build` 3 项全过 |
 | `packages/web/src/views/resource/FileDetailView.vue` | 181 | 🟢 已拆分 | 切片 7 已合并 ([PR #98](https://github.com/MarkDanile/MetaEduBase/pull/98) / merge `3e7f827`)：原 416 行单文件拆为 `views/resource/` 包 4 文件：`FileDetailView.vue` 181 行（主入口：顶层 state + 5 Vue Query 编排 + 3 mutation + 3 子组件标签 + 删除/返回 action + watch(polling)）；3 个聚焦子组件 `FileMetaBar.vue` 41 / `FileDetailPipelineStatusPanel.vue` 97 / `FileTabsPanel.vue` 171（每个 ≤200 行）；所有 helper（statusLabel / statusTagClass / formatSize / templateFieldLabel / getFieldLabel + stepIcon/stepBgClass 6 helper）迁到对应子组件内部；emit 名 kebab-case 化（update:active-tab / node-click）；`router.ts:32` lazy import 仍解析；`views/resource/queries.ts` 8 composable 不动 |
 
-### 切片 5+ 候选清单（待开工 — 500 附近已全部收口，仅 >1000 例外保留）
+### 切片 5+ 候选清单（已全部收口）
 
-| 优先级 | 候选文件 | 当前行数 | 建议路径 |
-|--------|----------|----------|----------|
-| P2 | `packages/web/src/assets/css/main.css` | 1343 | 已登记为 [TD-033](../technical-debt.md#td-033-拆分-maincss-设计系统级-css-模块)：按 `tokens.css` / `themes.css` / `base.css` / `components.css` / `compat-liquid.css` / `animations.css` 拆子模块，Vite import 回主入口；不在 TD-032 已完成周期内混写 |
+| 优先级 | 候选文件 | 当前行数 | 状态 |
+|--------|----------|----------|------|
+| - | ~~全部完成~~ | - | TD-032 7 切片 + TD-033（`main.css` 模块化）全部合并，500 附近已全部拆分到位 |
 
-> 切片 5+ 需新建独立 spec / plan，**不**在切片 1-4 计划文件 [2026-06-08-td-032-large-source-files-plan.md](../../02-delivery-plans/02-plans/2026-06-08-td-032-large-source-files-plan.md) 范围。
+> TD-033 完成后的 8 个 CSS 子模块 + main.css 入口均 ≤500 行，TD-032 整体目标达成。
 
 ### 合规样例（≤500 行，证明原则可被满足）
 
@@ -86,3 +86,4 @@
 - 2026-06-08（切片 4 收口后回写）：5 个 >500 / 500 附近文件全部转 `🟢 已拆分` 或维持 `⚪ 待切片` 标记；新增 `FileDetailView.vue` 416 为 500 附近候选；新增「切片 5+ 候选清单」段；扩展「合规样例」段加入 `TemplateModal.vue` 333 / `DatabaseView.vue` 320 / `chunker.py` 320 / `ResourceView.vue` 305 / `AiChatView.vue` 304。本次回写由 DOC-xxx 任务承接。
 - 2026-06-09（TD-032 评审后回写）：扫描命令改为 `rg --files -0 ... | xargs -0 wc -l`，并显式排除 `.venv` / `uploads` / `node_modules` / `dist`，避免本地未跟踪文件或带空格路径污染行数基线；脚本化候选入账 `DOC-042`。
 - 2026-06-09：`main.css` 设计系统级 CSS 模块化从 TD-032 例外转为独立就绪任务 `TD-033`。
+- 2026-06-09：TD-033 完成（此 commit）：`main.css` 1343 → 9 行（`@import` 入口）+ 8 个 CSS 模块（全部 ≤500 行）；零 CSS 字节变化（纯机械拆分）；TD-032 >1000 / >500 / 500 附近全部收口。

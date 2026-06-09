@@ -1,0 +1,313 @@
+/* ================================================================
+   liquid-* 兼容别名 — TD-008 / TD-027 / TD-028 保留为历史兼容
+   所有 liquid-* 类与对应的 ui-* 类是 token-for-token 1:1 镜像，
+   不删不动，保持向后兼容。
+   ================================================================ */
+@layer components {
+  .liquid-input {
+    width: 100%;
+    padding: 9px 14px;
+    background: var(--surface-input-bg);
+    backdrop-filter: var(--surface-glass-blur-light);
+    -webkit-backdrop-filter: var(--surface-glass-blur-light);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-ink);
+    font-size: 14px;
+    outline: none;
+    transition: all var(--duration-liquid) var(--ease-elastic);
+  }
+
+  .liquid-input:focus {
+    background: var(--surface-input-bg-focus);
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px var(--color-accent-ring), inset 0 0 0 1px var(--color-accent-ring);
+  }
+
+  .liquid-input::placeholder {
+    color: var(--color-ink-tertiary);
+  }
+
+  .liquid-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 18px;
+    height: 36px;
+    font-family: var(--font-body);
+    font-size: var(--text-caption);
+    font-weight: 500;
+    letter-spacing: 0;
+    border-radius: var(--radius-md);
+    border: none;
+    cursor: pointer;
+    transition: all var(--duration-liquid) var(--ease-elastic);
+  }
+
+  .liquid-btn-primary {
+    position: relative;
+    overflow: hidden;
+    background: radial-gradient(circle at 30% 30%, var(--color-accent-glow-start), var(--color-accent));
+    color: var(--color-ink-inverse);
+  }
+
+  .liquid-btn-primary::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.25);
+    transform: translate(-50%, -50%);
+    transition: width 0.5s var(--ease-out), height 0.5s var(--ease-out), opacity 0.3s var(--ease-out);
+  }
+
+  .liquid-btn-primary:hover {
+    background: radial-gradient(circle at 30% 30%, var(--color-accent-glow-start-hover), var(--color-accent-light));
+  }
+
+  .liquid-btn-primary:active {
+    transform: scale(0.97);
+  }
+
+  .liquid-btn-primary:active::after {
+    width: 220px;
+    height: 220px;
+    opacity: 0;
+  }
+
+  .liquid-btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .liquid-btn-ghost {
+    background: var(--surface-ghost-btn-bg);
+    backdrop-filter: var(--surface-glass-blur-light);
+    -webkit-backdrop-filter: var(--surface-glass-blur-light);
+    border: 1px solid var(--color-border);
+    color: var(--color-ink-secondary);
+  }
+
+  .liquid-btn-ghost:hover {
+    background: var(--color-accent-bg);
+    color: var(--color-accent);
+    border-color: var(--color-accent);
+  }
+
+  .liquid-btn-danger {
+    position: relative;
+    overflow: hidden;
+    background: var(--color-danger);
+    color: white;
+  }
+
+  .liquid-btn-danger:hover {
+    background: color-mix(in srgb, var(--color-danger) 90%, black);
+  }
+
+  .liquid-btn-danger:active {
+    transform: scale(0.97);
+  }
+
+  .liquid-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    letter-spacing: 0;
+  }
+
+  .liquid-tag-blue {
+    background: var(--color-tag-blue);
+    color: var(--color-tag-blue-text);
+  }
+
+  .liquid-tag-green {
+    background: var(--color-tag-green);
+    color: var(--color-tag-green-text);
+  }
+
+  .liquid-tag-amber {
+    background: var(--color-tag-amber);
+    color: var(--color-tag-amber-text);
+  }
+
+  .liquid-tag-purple {
+    background: var(--color-tag-purple);
+    color: var(--color-tag-purple-text);
+  }
+
+  .liquid-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: var(--z-dialog);
+    animation: fade-in var(--duration-instant) var(--ease-out);
+  }
+
+  .liquid-dialog {
+    background: var(--surface-dialog-bg);
+    backdrop-filter: var(--surface-glass-blur);
+    -webkit-backdrop-filter: var(--surface-glass-blur);
+    border: var(--surface-dialog-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--surface-dialog-shadow);
+    padding: 24px;
+    width: 100%;
+    max-width: 440px;
+    animation: dialog-in var(--duration-liquid) var(--ease-elastic);
+  }
+}
+
+/* ================================================================
+   Notion Theme Overrides — 豆包极简冷白风适配
+   ================================================================ */
+:root[data-theme="notion"] {
+  /* 卡片：纯白底 + 极浅灰边框，hover 微妙底色变化 */
+  .liquid-card {
+    border: 1px solid #E5E7EB;
+    box-shadow: none;
+    transition: border-color var(--duration-fast) var(--ease-out),
+                background-color var(--duration-fast) var(--ease-out);
+  }
+
+  .liquid-card:hover {
+    border-color: #D1D5DB;
+    background: #FAFBFC;
+    transform: none;
+    box-shadow: none;
+  }
+
+  .liquid-card-elevated {
+    border: 1px solid #E5E7EB;
+    box-shadow: none;
+  }
+
+  /* 主按钮：低饱和青蓝，纯色无渐变 */
+  .liquid-btn-primary {
+    background: #0EA5C9;
+    border-radius: var(--radius-md);
+  }
+
+  .liquid-btn-primary::after {
+    display: none;
+  }
+
+  .liquid-btn-primary:hover {
+    background: #0891B2;
+  }
+
+  /* 幽灵按钮：细边框灰字 */
+  .liquid-btn-ghost {
+    border: 1px solid #E5E7EB;
+    color: #6B7280;
+    border-radius: var(--radius-md);
+    background: transparent;
+  }
+
+  .liquid-btn-ghost:hover {
+    background: #F8F9FA;
+    border-color: #D1D5DB;
+    color: #0EA5C9;
+  }
+
+  /* 输入框：纯白底 + 极浅灰边框 */
+  .liquid-input {
+    border-radius: var(--radius-md);
+    border: 1px solid #E5E7EB;
+    background: #FFFFFF;
+  }
+
+  .liquid-input:focus {
+    border-color: #0EA5C9;
+    box-shadow: 0 0 0 3px rgba(14, 165, 201, 0.1);
+  }
+
+  /* 标签：小圆角低饱和 */
+  .liquid-tag {
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    padding: 2px 8px;
+  }
+
+  /* 弹窗：纯白底 + 极浅灰边框 */
+  .liquid-dialog-overlay {
+    background: rgba(0, 0, 0, 0.15);
+  }
+
+  .liquid-dialog {
+    border: 1px solid #E5E7EB;
+    box-shadow: none;
+    border-radius: var(--radius-lg);
+  }
+
+  /* 侧边栏：浅灰白背景 + 右侧细分割线 */
+  .sidebar-shell {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: #F8F9FA;
+    border-right: 1px solid #E5E7EB;
+  }
+
+  /* 导航项：柔和灰调 */
+  .nav-item {
+    border-radius: var(--radius-md);
+    color: #6B7280;
+  }
+
+  .nav-item:hover {
+    background: #F4F5F7;
+    color: #1F1F1F;
+  }
+
+  .nav-item-active {
+    background: #E0F7FC;
+    color: #0EA5C9;
+  }
+
+  .nav-item-active .nav-icon::before {
+    display: none;
+  }
+
+  /* 内容区背景：纯白 */
+  .content-bg {
+    background-color: #FFFFFF;
+    background-image: none;
+  }
+
+  /* 禁用装饰动效 */
+  .animate-slide-up {
+    animation: none;
+  }
+
+  .stagger-1, .stagger-2, .stagger-3, .stagger-4, .stagger-5 {
+    animation-delay: 0ms;
+  }
+
+  .liquid-rise-enter-active,
+  .liquid-rise-leave-active {
+    transition: opacity var(--duration-fast) var(--ease-out);
+  }
+
+  .liquid-rise-enter-from,
+  .liquid-rise-leave-to {
+    opacity: 0;
+    transform: none;
+    filter: none;
+  }
+
+  .liquid-card-scan::after,
+  .markdown-body blockquote::after {
+    display: none;
+  }
+}

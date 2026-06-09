@@ -1,0 +1,35 @@
+/* ================================================================
+   Base layer
+   ================================================================ */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    font-family: var(--font-body);
+    color: var(--color-ink);
+    background-color: var(--color-bg-base);
+    line-height: 1.6;
+    letter-spacing: 0;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.4;
+  }
+
+  input, textarea, select {
+    font-family: var(--font-body);
+  }
+
+  ::selection {
+    background: var(--color-accent-bg);
+    color: var(--color-accent);
+  }
+}
