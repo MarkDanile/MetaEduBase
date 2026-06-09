@@ -36,7 +36,7 @@
 | AC-6 | 无命中日志 | L1 / L2 / L3 都未命中时输出 `template.select layer=none reason=...` 的 WARNING | 完全无日志 |
 | AC-7 | 9 条回归用例 | `tests/contexts/document/test_extract_template_selection.py` 至少 9 条用例全部通过 | 任一不通过 |
 | AC-8 | 命令可复现 | `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_extract_template_selection.py -q` 退出码 0 | 退出码非 0 |
-| AC-9 | 文档回填 | 轨道 B "模板匹配可解释化"行由"未完成 / 待收口"翻为"已通过 N 用例"结论；Backlog REQ-004 状态 `Candidate` → `Done` | 未回填 |
+| AC-9 | 文档回填 | 轨道 B "模板匹配可解释化"行由"未完成 / 待收口"翻为"已通过 N 用例"结论；Backlog REQ-004 状态 `Candidate` → `Done` | 轨道 B "模板匹配可解释化"行仍写"未完成 / 待收口"，或 Backlog REQ-004 状态非 `Done` |
 | AC-10 | 工程门禁 | `scripts/check-engineering-docs` 退出码 0 | 退出码非 0 |
 
 ## 接口与依赖
@@ -138,4 +138,4 @@ async def select_template(
 |----|------|------|
 | REQ-005 | 结构化抽取嵌套结构稳定性验收 | 单独 task |
 | REQ-006 | 端到端 PG + 真实 LLM 演示验收 | 单独 task |
-| TD-??? | 若 L3 解析行为在测试中发现未文档化的边角（如响应为空但 confidence 解析成功），入账 | 触发现入账 |
+| TD-030（已锁定） | L3 解析行为已在 REQ-008（`tests/contexts/document/test_extract_template_selection.py` 12+ 用例）覆盖：空响应 / 解析失败 0.0 落入低于阈值 / LLM 异常分支；若后续发现未文档化边角（如响应为空但 confidence 解析成功），按 `docs/03-engineering-governance/technical-debt.md` 入账并分配新 `TD-xxx` 编号 | 已由 REQ-008 覆盖；触发现入账 |

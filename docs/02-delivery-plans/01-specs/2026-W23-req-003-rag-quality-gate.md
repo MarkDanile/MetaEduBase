@@ -38,7 +38,7 @@
 | AC-8 | `sources` 字段结构 | 端到端 mock LLM 时，`sources` 列表每个元素具备 `id/title/domain/level/score/channel`，无多余字段 | 字段缺失或多余 |
 | AC-9 | 端到端融合行为 | 多通道同 `node_id` 在 `sources` 里只出现一次，`channel` 含多通道名 | 重复或单通道 |
 | AC-10 | 命令可复现 | `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai tests/contexts/knowledge -q` 退出码 0 | 退出码非 0 |
-| AC-11 | 文档回填 | `01-validation-phase.md` 轨道 B 四项由"待验证"翻为具体验证结论（指向测试文件/命令）；Backlog REQ-003 状态推到 `Done` 或明确 `Blocked` 原因 | 未回填 |
+| AC-11 | 文档回填 | `01-validation-phase.md` 轨道 B 四项由"待验证"翻为具体验证结论（指向测试文件/命令）；Backlog REQ-003 状态推到 `Done` 或明确 `Blocked` 原因 | `01-validation-phase.md` 轨道 B 仍为"待验证"，或 Backlog REQ-003 非 `Done` 且无 `Blocked` 原因 |
 
 ## 接口与依赖
 
@@ -84,6 +84,6 @@
 | ID | 说明 | 归属 |
 |----|------|------|
 | REQ-006 | 端到端 PG 集成验收（要求 `metaedu_test` 可达） | 单独 task |
-| TD-??? | 如 AC-5 触发的 `FrequencyFusion.channel` 重复/去重行为 | 触发现入账 |
+| TD-030（已锁定） | AC-5 触发的 `FrequencyFusion.channel` 重复/去重行为已被 AC-9 验证（`sources` 同 `node_id` 仅出现一次，`channel` 含多通道名）；若后续发现新行为触发出新债，按 `docs/03-engineering-governance/technical-debt.md` 入账并分配新 `TD-xxx` 编号 | 已由 AC-9 验证；触发现入账 |
 | REQ-004 | 模板匹配可解释化 | 单独 task |
 | REQ-005 | 结构化抽取嵌套结构稳定性 | 单独 task |

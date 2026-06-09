@@ -43,7 +43,7 @@ REQ-004 模板匹配可解释化已通过 PR #77 合并（`select_template` 纯�
 | AC-7 | 9 条 → 12 条回归 | `tests/contexts/document/test_extract_template_selection.py` 至少 12 条用例全部通过（9 旧 + 2 解析覆盖 + 1 共享 caplog 参数化或独立用例） | 任一不通过 |
 | AC-8 | pytest 可复现 | `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_extract_template_selection.py -q` 退出码 0 | 退出码非 0 |
 | AC-9 | 工程门禁 | `scripts/check-engineering-docs` 退出码 0 | 退出码非 0 |
-| AC-10 | 文档回填 | Backlog REQ-008 状态 `Candidate` → `Done`；Iteration / Milestone 同步；`current-work.md` 收尾 | 未回填 |
+| AC-10 | 文档回填 | Backlog REQ-008 状态 `Candidate` → `Done`；Iteration / Milestone 同步；`current-work.md` 收尾 | Backlog REQ-008 非 `Done`，或 Iteration / Milestone / current-work 三者中任一未同步 |
 
 > AC-7 用"至少 12 条"是因为 caplog 可用参数化（`pytest.mark.parametrize`）压缩为 1 条；如分拆为 4 条独立用例（每分支一条），则总数为 13 条，以最终实现为准并在 commit 中显式记录实际用例数。
 
@@ -100,4 +100,4 @@ REQ-004 模板匹配可解释化已通过 PR #77 合并（`select_template` 纯�
 |----|------|------|
 | REQ-005 | 结构化抽取嵌套结构稳定性验收 | 单独 task |
 | REQ-006 | 端到端 PG + 真实 LLM 演示验收 | 单独 task |
-| TD-??? | 若 L3 解析行为在测试中发现未文档化的边角（如响应为空但 confidence 解析成功），入账 | 触发现入账 |
+| TD-030（已锁定） | L3 解析行为已由本 spec 自身的 12+ 用例覆盖（含 `test_l3_ai_empty_response_returns_none` / `test_l3_ai_confidence_unparseable_falls_back_to_zero`）；若后续发现未文档化边角（如响应为空但 confidence 解析成功），按 `docs/03-engineering-governance/technical-debt.md` 入账并分配新 `TD-xxx` 编号 | 已由本 spec 自身覆盖；触发现入账 |
