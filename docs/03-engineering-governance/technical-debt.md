@@ -1298,3 +1298,8 @@
   - 实施时 3 处小修正（与切片 1-4 经验一致）：`router.py:16` 顶层 re-export `parse_document` 让 `patch()` 仍工作 / 4 个子 router 文件中 `from sqlalchemy import text` 保留函数内 import / 4 个子 router 文件双空行收紧。
   - **pre-existing 重复路由**（`router.py` 与 `task_router.py` 各定义 `GET /files/{file_id}/tasks` + `POST /files/{file_id}/retry`）**不**在本切片处理；已登记为 `DOC-041` 候选（`docs/01-product-planning/04-backlog.md`），由独立 spec / plan 启动清理。
   - 任务整体保持 `🟢 完成`；TD-032 切片 1-5 全部合并。
+- 2026-06-09 切片 6 已合并：[PR #97](https://github.com/MarkDanile/MetaEduBase/pull/97)，merge commit `6728151`。
+  - 落地 6 个文件（1 改 5 新）：`ResourceLibraryView.vue` 490 → 286 行（-42%）+ 3 个聚焦子组件（`FolderTreePanel.vue` 142 / `FileListPanel.vue` 160 / `UploadOptionsDialog.vue` 51）；spec / plan / `current-work.md` 任务卡。
+  - 验证（cwd=packages/web）：`pnpm typecheck` 退出码 0（零输出）；`pnpm lint` 退出码 0（零 warning；emit 名 kebab-case 化后无 `vue/v-on-event-hyphenation` 警告）；`pnpm build` 退出码 0，✓ built in 3.04s；`scripts/check-engineering-docs` 退出码 0。
+  - 实施时 5 处小修正（与切片 4 / 切片 5 经验一致）：`v-model` 改 `:value + @input` 显式 emit 链（4 处 `v-model`）+ `fileInput` ref 在 `FileListPanel` 内部持有（沿用切片 4 `UploadDatasetDialog` 模式）+ emit 名 kebab-case 化（`update:new-folder-name` / `update:inline-renaming-name` / `update:filter-status` / `update:doc-type`）+ `flatFolders` computed 保留在主入口（避免子组件重复 walk 递归）+ `@click.stop` 在 menu 面板保持（避免事件冒泡到外层 button）。
+  - 任务整体保持 `🟢 完成`；TD-032 切片 1-6 全部合并。
