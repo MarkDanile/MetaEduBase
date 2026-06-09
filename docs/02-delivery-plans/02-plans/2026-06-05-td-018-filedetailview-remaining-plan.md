@@ -20,7 +20,7 @@
 
 ### 2. 行为等价矩阵
 
-- [x] 写 `docs/03-engineering-governance/02-matrices/td-018-filedetailview-remaining-equivalence.md`
+- [x] 写 `docs/03-engineering-governance/03-matrices/td-018-filedetailview-remaining-equivalence.md`
 - [x] 矩阵覆盖 4 个 load × 3 阶段（手写 / TD-018 修复后）
 
 ### 3. 扩展 `packages/web/src/views/resource/queries.ts`

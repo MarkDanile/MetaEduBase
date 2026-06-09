@@ -69,7 +69,7 @@ ReferenceError。
     tasks via reactive store）。最简方案：**轮询由 query 内部 derive**，
     即由 `useDatasetTasksQuery` 内部根据 `data` 自驱轮询。
 - `packages/web/src/views/resource/queries.ts` / `FileDetailView.vue`：同上
-- 新增等价矩阵：`docs/03-engineering-governance/02-matrices/td-019-vue-query-self-reference-equivalence.md`
+- 新增等价矩阵：`docs/03-engineering-governance/03-matrices/td-019-vue-query-self-reference-equivalence.md`
   覆盖 polling 计算时机、初始化顺序、watch 时序
 
 ### Out of scope
@@ -176,7 +176,7 @@ const polling = computed(() =>
    `useFileTasksQuery` 调用参数中**不再引用正在声明的 `tasksQuery`**
 2. `refetchInterval` 改用函数形式，由 query 内部从 `query.state.data` 派生
 3. 模板 `polling` computed 仍由调用方暴露（基于 `tasksQuery.data.value`）
-4. 行为等价矩阵 `docs/03-engineering-governance/02-matrices/td-019-vue-query-self-reference-equivalence.md`
+4. 行为等价矩阵 `docs/03-engineering-governance/03-matrices/td-019-vue-query-self-reference-equivalence.md`
    覆盖 polling 计算时机、初始化顺序、watch 时序
 5. `rg -n "tasksQuery\\.data\\.value" packages/web/src/views/database/DatabaseView.vue packages/web/src/views/resource/FileDetailView.vue`
    不再命中 query hook 调用行（声明之后的 computed `polling` 是允许的）

@@ -643,7 +643,7 @@
 |------|------|
 | 优先级 | P1 |
 | 领域 | 前端 / API / 可维护性 |
-| 事实源 | [Spec](../02-delivery-plans/01-specs/2026-06-05-td-015-databaseview-regressions.md), [Plan](../02-delivery-plans/02-plans/2026-06-05-td-015-databaseview-regressions-plan.md), [等价矩阵](02-matrices/td-015-databaseview-equivalence.md), [PR #38](https://github.com/MarkDanile/MetaEduBase/pull/38), merge commit `f38fbbc` |
+| 事实源 | [Spec](../02-delivery-plans/01-specs/2026-06-05-td-015-databaseview-regressions.md), [Plan](../02-delivery-plans/02-plans/2026-06-05-td-015-databaseview-regressions-plan.md), [等价矩阵](03-matrices/td-015-databaseview-equivalence.md), [PR #38](https://github.com/MarkDanile/MetaEduBase/pull/38), merge commit `f38fbbc` |
 
 **证据**
 - TD-007 后上传数据集名称可能被空字符串覆盖。
@@ -708,7 +708,7 @@
 |------|------|
 | 优先级 | P2 |
 | 领域 | 前端 / 可维护性 |
-| 事实源 | [Spec](../02-delivery-plans/01-specs/2026-06-05-td-017-filedetailview-vue-query.md), [Plan](../02-delivery-plans/02-plans/2026-06-05-td-017-filedetailview-vue-query-plan.md), [等价矩阵](02-matrices/td-017-filedetailview-equivalence.md), [PR #40](https://github.com/MarkDanile/MetaEduBase/pull/40), merge commit `5af2793` |
+| 事实源 | [Spec](../02-delivery-plans/01-specs/2026-06-05-td-017-filedetailview-vue-query.md), [Plan](../02-delivery-plans/02-plans/2026-06-05-td-017-filedetailview-vue-query-plan.md), [等价矩阵](03-matrices/td-017-filedetailview-equivalence.md), [PR #40](https://github.com/MarkDanile/MetaEduBase/pull/40), merge commit `5af2793` |
 
 **证据**
 - TD-007 仅迁移了 `DatabaseView`。
@@ -740,7 +740,7 @@
 |------|------|
 | 优先级 | P3 |
 | 领域 | 前端 / 可维护性 |
-| 事实源 | [Spec](../02-delivery-plans/01-specs/2026-06-05-td-018-filedetailview-remaining.md), [Plan](../02-delivery-plans/02-plans/2026-06-05-td-018-filedetailview-remaining-plan.md), [等价矩阵](02-matrices/td-018-filedetailview-remaining-equivalence.md), [PR #41](https://github.com/MarkDanile/MetaEduBase/pull/41), merge commit `8ad15e6` |
+| 事实源 | [Spec](../02-delivery-plans/01-specs/2026-06-05-td-018-filedetailview-remaining.md), [Plan](../02-delivery-plans/02-plans/2026-06-05-td-018-filedetailview-remaining-plan.md), [等价矩阵](03-matrices/td-018-filedetailview-remaining-equivalence.md), [PR #41](https://github.com/MarkDanile/MetaEduBase/pull/41), merge commit `8ad15e6` |
 
 **证据**
 - TD-017 后 FileDetailView 仍有 `loadFile`、`loadChunks`、`loadKg`、`loadTemplates` 四个手写 load。
@@ -772,7 +772,7 @@
 |------|------|
 | 优先级 | P0 |
 | 领域 | 前端 / 运行时稳定性 / 测试 |
-| 事实源 | [Spec](../02-delivery-plans/01-specs/2026-06-05-td-019-vue-query-self-reference.md), [Plan](../02-delivery-plans/02-plans/2026-06-05-td-019-vue-query-self-reference-plan.md), [等价矩阵](02-matrices/td-019-vue-query-self-reference-equivalence.md), [PR #42](https://github.com/MarkDanile/MetaEduBase/pull/42), merge commit `387d8f8` |
+| 事实源 | [Spec](../02-delivery-plans/01-specs/2026-06-05-td-019-vue-query-self-reference.md), [Plan](../02-delivery-plans/02-plans/2026-06-05-td-019-vue-query-self-reference-plan.md), [等价矩阵](03-matrices/td-019-vue-query-self-reference-equivalence.md), [PR #42](https://github.com/MarkDanile/MetaEduBase/pull/42), merge commit `387d8f8` |
 
 **证据**
 - `DatabaseView` 和 `FileDetailView` 在 query 初始化参数中引用正在声明的 query 变量。

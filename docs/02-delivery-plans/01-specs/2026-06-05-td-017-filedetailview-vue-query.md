@@ -41,7 +41,7 @@ reinitialize / delete）迁到 Vue Query。`loadFile` / `loadChunks` / `loadKg`
     三个仍手写，但轮询停止条件改用 Vue Query 状态）
   - 错误 toast 改由 `QueryCache.onError` 统一处理（main.ts 已注册）
   - 成功 toast 保留在 mutation `onSuccess` 回调内
-- 行为等价矩阵 `docs/03-engineering-governance/02-matrices/td-017-filedetailview-equivalence.md`
+- 行为等价矩阵 `docs/03-engineering-governance/03-matrices/td-017-filedetailview-equivalence.md`
   覆盖：轮询条件 / mutation 触发 / refresh 时机 / cache invalidation / toast /
   loading 状态。
 

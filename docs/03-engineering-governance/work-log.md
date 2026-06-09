@@ -15,6 +15,7 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-09 | DOC-044 修正工程治理目录编号重复 | 文档 / 工程治理 / 目录结构 |  |  | `docs/03-engineering-governance/README.md` / `docs/03-engineering-governance/02-baselines/` / `docs/03-engineering-governance/03-matrices/` / `docs/03-engineering-governance/04-retrospectives/` |
 | 2026-06-09 | DOC-043 登记 TD-032 评审 follow-up 与规则改进 | 文档 / 工程治理 / 评审 / follow-up |  |  | `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/01-rules/review-scorecard.md` / `docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md` |
 | 2026-06-08 | DOC-040 登记超大源码文件治理技术债 | 文档 / 工程治理 / 技术债 / 代码可维护性 |  |  | `docs/03-engineering-governance/technical-debt.md#td-032-治理超大源码文件并建立文件规模拆分原则` / `docs/03-engineering-governance/01-rules/coding-style.md#文件规模与职责边界` |
 | 2026-06-08 | TD-032 治理超大源码文件并建立文件规模拆分原则（切片 1：基线 + 原则 + 任务卡） | 技术债 / 工程治理 / 重构 | [#92](https://github.com/MarkDanile/MetaEduBase/pull/92) | `3de4de5` | `docs/02-delivery-plans/01-specs/2026-06-08-td-032-large-source-files.md` / `docs/02-delivery-plans/02-plans/2026-06-08-td-032-large-source-files-plan.md` / `docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md` |
@@ -30,12 +31,12 @@
 | 2026-06-08 | DOC-038 恢复基础工程原则为单一事实源 | 文档 / 工程治理 / 规则入口 / 基础原则 |  |  | `docs/03-engineering-governance/01-rules/engineering-principles.md` / `AGENTS.md` / `CLAUDE.md` / `.claude/rules/engineeringPrinciples.md` / `.trae/rules/engineeringPrinciples.md` |
 | 2026-06-08 | DOC-037 规则入口瘦身与脚本门禁候选清单整理 | 文档 / 工程治理 / 规则瘦身 / 门禁候选 |  |  | `AGENTS.md` / `CLAUDE.md` / `docs/03-engineering-governance/01-rules/quality-gates.md` / `.claude/rules/` / `.trae/rules/` |
 | 2026-06-08 | DOC-036 收口 DOC-034 遗留的 REQ-008 spec 前文旧口径 | 文档 / 验收口径修正 / follow-up |  |  | `docs/02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md` / `docs/01-product-planning/04-backlog.md` |
-| 2026-06-08 | DOC-035 建立任务评审评分卡与复盘数据口径 | 文档 / 工程治理 / 复盘 / 评分卡 |  |  | `docs/03-engineering-governance/01-rules/review-scorecard.md` / `docs/03-engineering-governance/03-retrospectives/README.md` |
+| 2026-06-08 | DOC-035 建立任务评审评分卡与复盘数据口径 | 文档 / 工程治理 / 复盘 / 评分卡 |  |  | `docs/03-engineering-governance/01-rules/review-scorecard.md` / `docs/03-engineering-governance/04-retrospectives/README.md` |
 | 2026-06-08 | DOC-034 修正 REQ-008 spec AC-5 与实际测试行为不一致 | 文档 / 验收口径修正 / follow-up | [#83](https://github.com/MarkDanile/MetaEduBase/pull/83) | `cfdbb23` | `docs/02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md` / `docs/01-product-planning/04-backlog.md` |
 | 2026-06-08 | REQ-008 收口 REQ-004 验收证据与质量门禁缺口 | 需求 / follow-up / 质量门禁 | [#79](https://github.com/MarkDanile/MetaEduBase/pull/79) | `302ec2d` | `docs/01-product-planning/05-requirements/REQ-008-req-004-template-selection-quality-follow-up.md` / `docs/02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md` / `docs/02-delivery-plans/02-plans/2026-W23-req-008-req-004-quality-follow-up-plan.md` |
 | 2026-06-08 | DOC-033 开发前分支门禁前移与产品规划状态可视化 | 文档 / 工程治理 / 产品规划 / 门禁脚本 |  |  | `docs/03-engineering-governance/01-rules/git-workflow.md` / `docs/03-engineering-governance/workflow.md` / `docs/01-product-planning/04-backlog.md` / `scripts/engineering/check_engineering_docs.py` |
 | 2026-06-08 | REQ-004 模板匹配可解释化收口 | 需求 / 重构 / 测试 / P1 轨道 B 翻结论 | [#77](https://github.com/MarkDanile/MetaEduBase/pull/77) | `2e6d097` | `docs/02-delivery-plans/01-specs/2026-W23-req-004-template-match-explainability.md` / `docs/02-delivery-plans/02-plans/2026-W23-req-004-template-match-explainability-plan.md` |
-| 2026-06-08 | DOC-031 补强 REQ follow-up 分流与跨事实源状态门禁 | 文档 / 工程治理 / 门禁脚本 |  |  | `docs/03-engineering-governance/task-modes.md` / `scripts/engineering/check_engineering_docs.py` / `docs/03-engineering-governance/03-retrospectives/2026-06-08-req-003-delivery-flow.md` |
+| 2026-06-08 | DOC-031 补强 REQ follow-up 分流与跨事实源状态门禁 | 文档 / 工程治理 / 门禁脚本 |  |  | `docs/03-engineering-governance/task-modes.md` / `scripts/engineering/check_engineering_docs.py` / `docs/03-engineering-governance/04-retrospectives/2026-06-08-req-003-delivery-flow.md` |
 | 2026-06-08 | REQ-007 收口 REQ-003 RAG 质量链路验收缺口 | 需求 / 测试 / follow-up | [#75](https://github.com/MarkDanile/MetaEduBase/pull/75) | `45db478` | `docs/01-product-planning/05-requirements/REQ-007-req-003-rag-quality-gate-follow-up.md` / `docs/02-delivery-plans/02-plans/2026-W23-req-007-rag-quality-gate-follow-up-plan.md` |
 | 2026-06-08 | REQ-003 P1 RAG 质量链路验收与回归测试 | 需求 / 测试 / P1 收口 | [#74](https://github.com/MarkDanile/MetaEduBase/pull/74) | `337238b` | `docs/02-delivery-plans/01-specs/2026-W23-req-003-rag-quality-gate.md` / `docs/02-delivery-plans/02-plans/2026-W23-req-003-rag-quality-gate-plan.md` |
 | 2026-06-07 | DOC-030 建立真实 AI 应用组合轻量规划入口 | 文档 / 产品规划 / AI 应用组合 |  |  | `docs/01-product-planning/06-ai-applications/README.md` / `docs/01-product-planning/04-backlog.md` |
@@ -48,7 +49,7 @@
 | 2026-06-07 | DOC-022 复核技术债到交付闭环与插件输出门禁 | 文档 / 工程治理 / AI 协作 |  |  | `docs/03-engineering-governance/workflow.md` / `docs/03-engineering-governance/01-rules/quality-gates.md` |
 | 2026-06-07 | DOC-021 docs 子层目录编号排序 | 文档 / 工程治理 / AI 协作 |  |  | `docs/01-product-planning/README.md` / `docs/02-delivery-plans/README.md` / `docs/03-engineering-governance/README.md` |
 | 2026-06-07 | DOC-020 docs 分层目录完全迁移 | 文档 / 工程治理 / AI 协作 |  |  | `docs/README.md` / `docs/03-engineering-governance/01-rules/docs.md` |
-| 2026-06-07 | DOC-019 建立产品规划层与复盘入口 | 文档 / 产品规划 / 工程治理 / AI 协作 |  |  | `docs/01-product-planning/README.md` / `docs/03-engineering-governance/03-retrospectives/README.md` |
+| 2026-06-07 | DOC-019 建立产品规划层与复盘入口 | 文档 / 产品规划 / 工程治理 / AI 协作 |  |  | `docs/01-product-planning/README.md` / `docs/03-engineering-governance/04-retrospectives/README.md` |
 | 2026-06-06 | DOC-018 增补 CodeGraph / `rg` 工具选择基线 | 文档 / 工具链 / AI 协作 |  |  | `docs/03-engineering-governance/01-rules/local-development.md#代码探索与搜索工具选择` |
 | 2026-06-06 | DOC-017 Contracts / Task Modes 长期化重构 | 文档 / 工作流 / AI 协作 |  |  | `docs/02-delivery-plans/01-specs/2026-06-06-doc-017-contracts-task-modes-long-lived.md` |
 | 2026-06-06 | DOC-016 Testing / Local Development 长期化重构 | 文档 / 测试 / Developer Experience |  |  | `docs/02-delivery-plans/01-specs/2026-06-06-doc-016-testing-local-development-long-lived.md` |
@@ -168,4 +169,4 @@
   - **这不在 REQ-007 验收范围**——REQ-007 的 5 个 AC 都用 mock 路径。端到端 PostgreSQL 集成验收由 **REQ-006** 接力，要求先修复本机 DB 连通性。
 
 **复盘 → 流程改进**：
-- 验证结果**必须区分执行环境**（如本段），不得把不同环境跑出的 `38 passed` 与 `DB connection error` 直接等同或互相覆盖。该信号已归档到 [REQ-003 / REQ-007 交付流程复盘](03-retrospectives/2026-06-08-req-003-delivery-flow.md)。
+- 验证结果**必须区分执行环境**（如本段），不得把不同环境跑出的 `38 passed` 与 `DB connection error` 直接等同或互相覆盖。该信号已归档到 [REQ-003 / REQ-007 交付流程复盘](04-retrospectives/2026-06-08-req-003-delivery-flow.md)。

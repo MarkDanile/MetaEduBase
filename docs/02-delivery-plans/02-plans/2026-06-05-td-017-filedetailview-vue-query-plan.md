@@ -16,7 +16,7 @@
 
 - [x] spec 落盘
 - [x] plan 落盘
-- [x] 行为等价矩阵 `docs/03-engineering-governance/02-matrices/td-017-filedetailview-equivalence.md`
+- [x] 行为等价矩阵 `docs/03-engineering-governance/03-matrices/td-017-filedetailview-equivalence.md`
   覆盖：轮询条件 / mutation 触发 / refresh 时机 / cache invalidation /
   toast / loading 状态
 
