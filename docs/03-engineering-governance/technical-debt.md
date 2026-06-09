@@ -119,7 +119,7 @@
 | TD-027 | 补 `ui-input` / `ui-btn-*` / `ui-tag-*` / `ui-dialog` 共享类（设计系统扩展） | 🟢 完成 | P3 | 前端 / 设计系统 | [PR #59](https://github.com/MarkDanile/MetaEduBase/pull/59) |
 | TD-028 | 业务视图与共享组件的 `liquid-input` / `liquid-btn-*` / `liquid-tag-*` / `liquid-dialog*` 存量替换 | 🟢 完成 | P3 | 前端 / 设计系统 | [PR #61](https://github.com/MarkDanile/MetaEduBase/pull/61) |
 | TD-029 | 收口 TD-009 的 shared schema 门禁与 FileDetailView 类型错误 | 🟢 完成 | P1 | 前端 / 类型 / 交付 | [Spec](../02-delivery-plans/01-specs/2026-06-06-td-029-shared-schema-gate.md) / [Plan](../02-delivery-plans/02-plans/2026-06-06-td-029-shared-schema-gate-plan.md) |
-| TD-030 | RecallChannel Protocol vs concrete signature drift on parameter names | ⚫ 待办 | P3 | 后端 / 测试 | REQ-003 / 2026-W23 iteration |
+| TD-030 | RecallChannel Protocol vs concrete signature drift on parameter names | 🟢 完成 | P3 | 后端 / 测试 | REQ-003 / 2026-W23 iteration / [PR #139](https://github.com/MarkDanile/MetaEduBase/pull/139) (`a934981`) |
 | TD-031 | RAG 质量测试文件的预存 ruff 警告 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) |
 | TD-032 | 治理超大源码文件并建立文件规模拆分原则 | 🟢 完成 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 2026-06-08 源码行数扫描 |
 | TD-033 | 拆分 `main.css` 设计系统级 CSS 模块 | 🟢 完成 | P2 | 前端 / 设计系统 / 可维护性 | [PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103) (`25ca165`) + [行数基线](02-baselines/td-032-source-file-sizes.md) |
@@ -1175,7 +1175,7 @@
 
 ### TD-030: RecallChannel Protocol vs concrete signature drift on parameter names
 
-状态：⚫ 待办
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -1210,6 +1210,12 @@
 - `cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` 退出码 0。
 
 **交付记录**
+- 2026-06-10 完成（接手工具：Claude Code）。选任务卡推荐路线 A：`RecallChannel` Protocol 显式包含 `session: AsyncSession`，3 个具体类去除下划线前缀（`_query` → `query` / `_ner_result` → `ner_result`），契约测试去掉 `lstrip("_")` 退路并新增 `test_channel_recall_signature_matches_protocol` 严格校验 Protocol 形参与具体形参一致（modulo 默认值）。调用方 `app/contexts/knowledge/interfaces/api/ai_router.py:85` 已按 5 参数形式传 `session`，无需改动。[PR #139](https://github.com/MarkDanile/MetaEduBase/pull/139)（merge `a934981`）。
+  - `app/shared/domain/recall_channel.py` Protocol 新增 `session` 形参 + `AsyncSession` import + docstring 说明 `session` 由调用方注入（与现有 RAG 链路事务一致性约束一致）。
+  - `app/contexts/knowledge/application/recall_service.py` 三个具体类去下划线前缀，3 行机械修改。
+  - `tests/contexts/ai/test_recall_channels_contract.py` 新增 `test_channel_recall_signature_matches_protocol` 参数化 3 用例；保留 `test_channel_recall_signature_accepts_required_args` 作为最小覆盖。
+- 验证摘要：`pytest tests/contexts/ai/test_recall_channels_contract.py -v` → 12 passed（基线 9 + 新增 3）；`pytest tests/contexts/ai tests/contexts/knowledge -q` → 60 passed；`pytest tests/ -q` → **228 passed**（基线 222 + 3）；`ruff check app/ tests/` → All checks passed!；`rg -n "lstrip" ...` → 0 命中（任务卡验证方式）；`scripts/check-engineering-docs` → engineering docs checks passed；`git diff --check` 干净。
+- 行为变化声明：仅形参命名（去下划线前缀）与 Protocol 增 `session`；运行时行为不变；调用方签名已对齐无需改动。
 - 2026-06-07 由 REQ-003 Task 5 收口时入账（commit `3bf8c10`）。任务详情见 `docs/02-delivery-plans/01-specs/2026-W23-req-003-rag-quality-gate.md` 与 `docs/02-delivery-plans/02-plans/2026-W23-req-003-rag-quality-gate-plan.md`。
 
 ### TD-031: RAG 质量测试文件的预存 ruff 警告
