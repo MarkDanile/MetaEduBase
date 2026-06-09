@@ -24,7 +24,6 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| REQ-005 结构化抽取嵌套结构稳定性验收 | ⚫ 候选 | P1 | Product / Document / Contract | 建立 object / array / table 抽取结果样例回归。 |
 | REQ-006 P1 知识资产处理链路最终演示验收 | ⚫ 候选 | P1 | Product / Document / AI / Testing | 先修复本机 `metaedu_test` 连通性，再组织上传/解析/抽取/图谱/RAG 问答/来源展示的端到端演示。 |
 
 ## 最近完成
@@ -35,8 +34,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-09 | REQ-005 结构化抽取嵌套结构稳定性验收 | 🟢 完成 | 为 `extract_template_prompts` 补 11 条 object / array / table 嵌套回归用例；锁定 `build_fields_desc` 嵌套描述 / `try_parse` 嵌套 JSON 与 think 剥离 / `_merge_template_structured_data` 浅拷贝契约；轨道 B 翻结论。0 业务代码改动。 | [Spec](../02-delivery-plans/01-specs/2026-W23-req-005-structured-extraction-regression.md) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-005-structured-extraction-regression-plan.md) |
 | 2026-06-09 | BUG-002 修复登录后主面板外边距巨大、内容显示容器过小 | 🟢 完成 | 移除 `ui-page-shell` 的 `max-width: 1120px; margin: 0 auto`，保留 width/padding/background；消除与各 View 自带 max-w 嵌套冲突。`pnpm typecheck / lint / build` 退出 0；`check-engineering-docs` passed。 | [Work Log](work-log.md) / [Backlog](../01-product-planning/04-backlog.md) / [PR #107](https://github.com/MarkDanile/MetaEduBase/pull/107) (`76fe2d2`) |
 | 2026-06-09 | DOC-045 修正 TD-033 CSS 拆分交付声明与追踪证据 | 🟢 完成 | 弱化 TD-033 任务卡 4 处"零 CSS 字节变化 / build output identical"过强声明；6 处事实源补 `PR #103` / `25ca165` 追踪；显式登记 TD-033 未建 spec / plan 的处置方式（事后不补建）。docs-only，`check-engineering-docs` 退出码 0。 | [Work Log](work-log.md) / [TD-033 Delivery Record](technical-debt.md#td-033) / [PR #106](https://github.com/MarkDanile/MetaEduBase/pull/106) |
 | 2026-06-09 | DOC-048 增加评审高分质量校准规则 | 🟢 完成 | 最近 5 条评审平均分 >92 时，阶段复盘必须抽查评分是否偏宽；发现问题需在评分总账标记并登记 follow-up。 | [Review Scorecard](01-rules/review-scorecard.md#高分质量校准) / [Retrospectives](04-retrospectives/README.md) |
 | 2026-06-09 | DOC-047 建立评审评分总账与落盘规则 | 🟢 完成 | 新增评审评分总账，回填 TD-033 评分 81；复杂评审后必须把总分、follow-up、流程扣分点和规则改进结论落盘。 | [Review Score Log](04-retrospectives/review-score-log.md) / [Review Scorecard](01-rules/review-scorecard.md) |
-| 2026-06-09 | DOC-046 修正 P1 轨道 B 检索 / 抽取质量展示 | 🟢 完成 | 给轨道 B 增加可视化状态列，保留“实现事实 / 验证结论”证据分栏；不改变真实验收结论。 | [P1 Milestone](../01-product-planning/02-milestones/01-validation-phase.md#轨道-b检索--抽取质量) |
