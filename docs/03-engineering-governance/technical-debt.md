@@ -123,16 +123,16 @@
 | TD-031 | RAG 质量测试文件的预存 ruff 警告 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) |
 | TD-032 | 治理超大源码文件并建立文件规模拆分原则 | 🟢 完成 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 2026-06-08 源码行数扫描 |
 | TD-033 | 拆分 `main.css` 设计系统级 CSS 模块 | 🟢 完成 | P2 | 前端 / 设计系统 / 可维护性 | [PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103) (`25ca165`) + [行数基线](02-baselines/td-032-source-file-sizes.md) |
-| TD-034 | `build_fields_desc` 在 `array + items=[]` 时丢失"成员为 object"提示 | 🟢 完成 | P3 | 后端 / LLM 抽取 / 可维护性 | REQ-005 / [PR #142](https://github.com/MarkDanile/MetaEduBase/pull/142) (`1e9a012`) |
+| TD-034 | `build_fields_desc` 在 `array + items=[]` 时丢失"成员为 object"提示 | 🟢 完成 | P3 | 后端 / LLM 抽取 / 可维护性 | REQ-005 / [PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143) (`3077047` squash merge；代码随 DOC-042 一并合入 main；原 PR #142 已于 2026-06-10 由 DOC-055 关闭为 superseded，commit `1e9a012` 未独立合并) |
 | TD-035 | 收口 REQ-005 新增测试文件 ruff 质量门禁 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | REQ-005 review / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) |
 | TD-036 | `metaedu_test` 库 `document_tasks.updated_at` 列缺失（alembic 003 迁移与测试库 schema drift） | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | REQ-006 Stage 1 探查 / [PR #122](https://github.com/MarkDanile/MetaEduBase/pull/122) (`2780ff1`) |
 | TD-037 | e2e 脚本无法直接走真实 Celery：沙箱无 Redis broker 时需 mock `chunk_document.delay` + patch `broker_url=memory://` | 🟢 完成 | P3 | 后端 / 测试 / 基础设施 | REQ-006 Stage 1 探查 / [PR #130](https://github.com/MarkDanile/MetaEduBase/pull/130) (`9419c4e`) |
 | TD-038 | alembic 006 迁移用 `gin` operator class（`USING gin (doc_types gin)`），在全新 DB 上 `UndefinedObjectError` 阻塞 `alembic upgrade head` | 🟢 完成 | P2 | 后端 / 迁移 / 质量门禁 | TD-036 探查（并入 PR #122 一并修复） |
-| DOC-051 | 一次性收口历史 plan 残留 TBD / `TD-???` / `未回填` 占位 | ⚫ 待办 | P2 | 文档 / 工程流程 / 跨 AI 交接 | REQ-003 / REQ-004 / REQ-008 plan 残留占位扫描 |
+| DOC-051 | 一次性收口历史 plan 残留 TBD / `TD-???` / `未回填` 占位 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | REQ-003 / REQ-004 / REQ-008 plan 残留占位扫描 / [PR #124](https://github.com/MarkDanile/MetaEduBase/pull/124) (`d7a2ca7`) / DOC-055 收口跨事实源状态 |
 | DOC-052 | 清理 `scripts/engineering/checks/_common.py` 中 `KNOWN_ISSUES` 残留的 TD-023 历史白名单 | 🟢 完成 | P3 | 文档 / 工程流程 / 跨 AI 交接 | 2026-06-09 全仓债务盘查 / [PR #128](https://github.com/MarkDanile/MetaEduBase/pull/128) (`3f39ec0`) |
 | DOC-045 | 修正 TD-033 CSS 拆分交付声明与追踪证据 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-033 review / [#137](https://github.com/MarkDanile/MetaEduBase/pull/137) (`b815942`) |
 | DOC-042 | 脚本化 TD-032 行数基线扫描 | 🟢 完成 | P2 | 文档 / 工程治理 / 工程脚本 | [Baseline](02-baselines/td-032-source-file-sizes.md) / [PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143) |
-| DOC-055 | 收口 DOC-042 / TD-034 PR 范围混入与事实源漂移 | 🔵 就绪 | P1 | 文档 / 工程流程 / 质量门禁 | DOC-042 review / [Review Score Log](04-retrospectives/review-score-log.md) |
+| DOC-055 | 收口 DOC-042 / TD-034 PR 范围混入与事实源漂移 | 🟢 完成 | P1 | 文档 / 工程流程 / 质量门禁 | DOC-042 review / [Review Score Log](04-retrospectives/review-score-log.md) |
 
 ## 任务详情
 
@@ -1406,7 +1406,7 @@
 |------|------|
 | 优先级 | P3 |
 | 领域 | 后端 / LLM 抽取 / 可维护性 |
-| 事实源 | REQ-005（[Spec](../02-delivery-plans/01-specs/2026-W23-req-005-structured-extraction-regression.md#ac-2) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-005-structured-extraction-regression-plan.md)） / [PR #142](https://github.com/MarkDanile/MetaEduBase/pull/142) (`1e9a012`) |
+| 事实源 | REQ-005（[Spec](../02-delivery-plans/01-specs/2026-W23-req-005-structured-extraction-regression.md#ac-2) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-005-structured-extraction-regression-plan.md)） / [PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143) (`3077047` squash merge；DOC-055 收口后由该 PR 承接，原 PR #142 已 close 为 superseded) |
 
 **证据**
 - 生产代码：`packages/server-python/app/contexts/document/application/tasks/extract_template_prompts.py:60-62`：
@@ -1440,7 +1440,7 @@
 - `git diff --check` 退出码 0。
 
 **交付记录**
-- 2026-06-10 完成（接手工具：Claude Code）。选路线 A：`f.get("items")` 改为 `f.get("items") is not None` 的真值检查，`items=[]` 时进入 array 分支并 fallback 到 `item_key = "item"`，保留"成员为object"提示。`elif ftype == "array" and f.get("items")` 简化为 `elif ftype == "array"`。[PR #142](https://github.com/MarkDanile/MetaEduBase/pull/142)（commit `1e9a012`）。
+- 2026-06-10 完成（接手工具：Claude Code）。选路线 A：`f.get("items")` 改为 `f.get("items") is not None` 的真值检查，`items=[]` 时进入 array 分支并 fallback 到 `item_key = "item"`，保留"成员为object"提示。`elif ftype == "array" and f.get("items")` 简化为 `elif ftype == "array"`。代码变更随 [PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143)（squash merge `3077047`，DOC-042 行数扫描脚本）一并合入 main；原 [PR #142](https://github.com/MarkDanile/MetaEduBase/pull/142)（commit `1e9a012`）未独立合并，于 2026-06-10 由 DOC-055 关闭为 superseded。
   - `app/contexts/document/application/tasks/extract_template_prompts.py`：2 行逻辑修改 + docstring 更新（3 种 items 状态契约说明 + TD-034 引用）。
   - `tests/contexts/document/test_extract_template_prompts.py`：`test_build_fields_desc_array_without_items_falls_back_to_bare_type` → `test_build_fields_desc_array_without_items_falls_back_to_item_key`，期望从 `[array型]` 更新为 `[array型，成员为object，含字段：item]`。
 - 行为变化声明：`items=[]` 的 array 字段 prompt 描述从 `[array型]` 变为 `[array型，成员为object，含字段：item]`，LLM 将收到更强的结构化提示（这正是 TD-034 的修复目标）。
@@ -1602,6 +1602,34 @@
 **交付记录**
 - 2026-06-09 与 TD-036 一并在 [PR #122](https://github.com/MarkDanile/MetaEduBase/pull/122) (`2780ff1`) 修复。代码变更点:`alembic/versions/006_add_templates.py`（删 `postgresql_ops` + 注释指向 TD-036/TD-038）+ `app/shared/infrastructure/test_db_setup.py`（加 btree_gin 扩展）。验证见 TD-036 交付记录。
 
+### DOC-051: 一次性收口历史 plan 残留 TBD / `TD-???` / `未回填` 占位
+
+状态：🟢 完成（DOC-055 收口）
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 文档 / 工程流程 / 跨 AI 交接 |
+| 事实源 | REQ-003 / REQ-004 / REQ-008 plan 残留占位扫描 / [PR #124](https://github.com/MarkDanile/MetaEduBase/pull/124) (`d7a2ca7`) |
+
+**证据**
+- 2026-06-09 评审（Codex 复评 PR #124，分数 74）发现：`docs/03-engineering-governance/technical-debt.md` 总览表中 DOC-051 仍为 `⚫ 待办`，与 Backlog / current-work / work-log 的 🟢 完成态不一致。
+- 主任务本体（占位替换 + plan 链接回填）已通过 PR #124 (`d7a2ca7`) 完成，本任务卡的 12 处占位替换与 3 个 plan 链接回填事实保持。
+
+**问题**
+- DOC-051 跨事实源状态漂移会让后续 AI IDE 接手时按 `technical-debt.md` 总览表误判任务未完成，从而二次开 PR 重复替换。
+
+**完成标准**
+- `technical-debt.md` 总览表 DOC-051 行状态与 Backlog / current-work / work-log 一致为 `🟢 完成`。
+- 本任务卡（DOC-055 收口）补完 DOC-051 详情区。
+
+**验证方式**
+- `rg -n "DOC-051" docs/03-engineering-governance/technical-debt.md` 显示总览表行 + 详情区均含 `🟢 完成`。
+- `scripts/check-engineering-docs` 退出码 0。
+
+**交付记录**
+- 2026-06-10 完成（接手工具：Claude Code）。仅 `technical-debt.md` 总览表 DOC-051 行状态 `⚫ 待办` → `🟢 完成`，并在事实源列补 PR #124 + DOC-055 收口标注；本任务详情区同步新建。Backlog / current-work / work-log 早已是 `🟢 完成`，无需调整。零业务代码变更。
+
 ### DOC-045: 修正 TD-033 CSS 拆分交付声明与追踪证据
 
 状态：🟢 完成
@@ -1694,17 +1722,17 @@
 
 ### DOC-055: 收口 DOC-042 / TD-034 PR 范围混入与事实源漂移
 
-状态：🔵 就绪
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P1 |
 | 领域 | 文档 / 工程流程 / 质量门禁 |
-| 事实源 | DOC-042 review / [Review Score Log](04-retrospectives/review-score-log.md) / [PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143) |
+| 事实源 | DOC-042 review / [Review Score Log](04-retrospectives/review-score-log.md) / [PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143) / [PR #142](https://github.com/MarkDanile/MetaEduBase/pull/142) (closed as superseded) |
 
 **证据**
 - DOC-042 的合并 PR #143 是 `MERGED`，但文件列表混入 TD-034 的生产代码和测试文件：`packages/server-python/app/contexts/document/application/tasks/extract_template_prompts.py`、`packages/server-python/tests/contexts/document/test_extract_template_prompts.py`。
-- TD-034 的事实源仍指向 [PR #142](https://github.com/MarkDanile/MetaEduBase/pull/142) / commit `1e9a012`，但 `gh pr view 142` 显示 `state=OPEN`、`mergeCommit=null`。
+- TD-034 的事实源原指向 [PR #142](https://github.com/MarkDanile/MetaEduBase/pull/142) / commit `1e9a012`，但 `gh pr view 142` 显示 `state=OPEN`、`mergeCommit=null`。
 - `scripts/scan-source-sizes --diff` 当前输出 2 个差异：`extract_template_prompts.py` 88 -> 93，`test_extract_template_prompts.py` 263 -> 261，说明 DOC-042 交付记录里的 `(no differences from baseline)` 已不再成立。
 - DOC-051 在 `docs/01-product-planning/04-backlog.md`、`current-work.md`、`work-log.md` 均为完成态，但 `technical-debt.md` 总览仍为 `⚫ 待办`。
 - DOC-051 把 3 处 `TD-???` 占位统一替换为 `TD-030（已锁定）`，其中至少部分语义与 `TD-030: RecallChannel Protocol vs concrete signature drift` 不一致。
@@ -1730,4 +1758,21 @@
 - `git diff --check` 退出码 0。
 
 **交付记录**
-- 未完成。2026-06-10 由 DOC-042 评审登记为 follow-up。
+- 2026-06-10 完成（接手工具：Claude Code）。跨 4 处事实源、3 个 spec / 1 个任务总账 / 1 个行数基线共 7 处变更；零业务代码变更。任务交付原子拆分如下：
+  1. **PR #142 关闭**：原 `OPEN` 状态，TD-034 的代码修复实际已通过 PR #143 squash merge (`3077047`) 合入 main，PR #142 已 close 为 `superseded`，关闭评论引用 PR #143 与 DOC-055。
+  2. **TD-034 事实源统一修正**：`docs/03-engineering-governance/technical-debt.md` 总览表行、详情区 `事实源` 字段、`交付记录` 段首句共 3 处把 `PR #142 (commit 1e9a012)` 替换为 `PR #143 (squash merge 3077047)`，并补注"代码随 DOC-042 一并合入；原 PR #142 已 close 为 superseded"；`docs/03-engineering-governance/work-log.md` TD-034 行同步。
+  3. **source-sizes baseline 刷新**：`bash scripts/scan-source-sizes --refresh` 把 DOC-042 收口时漏掉的 2 个差异（`extract_template_prompts.py` 88→93、`test_extract_template_prompts.py` 263→261）写回 `source-sizes-baseline.json`，`--diff` 恢复 `(no differences from baseline)`；`td-032-source-file-sizes.md` 「扫描历史」段去重 3 条重复 `--refresh` 记录为 1 条带 DOC-055 上下文条目，明确"本轮 refresh 吸收 PR #143 squash merge 时带入的 TD-034 代码行数变化"。
+  4. **DOC-051 跨事实源状态同步**：`technical-debt.md` 总览表 DOC-051 行 `⚫ 待办` → `🟢 完成`，事实源列补 PR #124 (`d7a2ca7`) + DOC-055 收口标注；新建 DOC-051 详情任务卡（证据段引用 Codex 复评 74 分评审结论）。
+  5. **3 处 `TD-030（已锁定）` 占位逐条核对**：`docs/02-delivery-plans/01-specs/2026-W23-req-003-rag-quality-gate.md:87`（FrequencyFusion.channel 重复/去重，AC-9 已覆盖）、`:req-004-template-match-explainability.md:141`（L3 解析行为，REQ-008 12+ 用例已覆盖）、`:req-008-req-004-quality-follow-up.md:103`（L3 解析行为，本 spec 自身 12+ 用例已覆盖）三处"不在范围 / 后续任务"表中 `ID` 列 `TD-030（已锁定）` → `TD-030（已锁定） → 占位说明`，`归属` 列加注 `（不属于 TD-030）`。判断依据：3 处本质是"边界已由 AC/用例覆盖，触发现入账"的占位声明句，技术债总账中 `TD-030` 实际是 `RecallChannel Protocol vs concrete signature drift`（已收口），语义不重叠；改为"占位说明"保留防退化语义但不误导后续 AI IDE 按编号对照技术债总账。
+- 行为变化声明：零业务逻辑变更；零后端 / 前端代码变更；零脚本功能变更（仅 baseline 数据 + 文档同步）。
+- 验证摘要（按 `quality-gates.md#完成门禁`）：
+  - `gh pr view 142 --json state,mergeCommit` → `state=CLOSED, mergeCommit=null`（superseded）。
+  - `gh pr view 143 --json state,mergeCommit` → `state=MERGED, mergeCommit.oid=3077047e4a41d07062e6be7ee4b550d94afbff49`。
+  - `gh pr view 144 --json state,mergeCommit` → `state=MERGED, mergeCommit.oid=6acc552db8f9d43267ac05211b7f985c5acb9b64`（DOC-042 review follow-up）。
+  - `bash scripts/scan-source-sizes --diff` → `(no differences from baseline)`（原 2 个差异已吸收）。
+  - `rg -n "PR #142|1e9a012" docs/03-engineering-governance/technical-debt.md docs/03-engineering-governance/work-log.md` → 多处命中，但均以"原 PR #142 / commit `1e9a012` 已 close 为 superseded / 由 DOC-055 关闭"语境出现，是历史溯源说明而不是"TD-034 唯一事实源指向 #142"；TD-034 总览表行 / 详情区 `事实源` 字段 / 详情区 `交付记录` 段首句已统一为 `#143 / 3077047`。
+  - `rg -n "TD-030（已锁定）" docs/02-delivery-plans/01-specs/` → 3 行命中，3 行均带 `→ 占位说明` 与 `（不属于 TD-030）` 标注。
+  - `rg -n "DOC-051" docs/03-engineering-governance/technical-debt.md` → 总览表行 `🟢 完成` + 详情区 `🟢 完成`（DOC-055 收口）双命中。
+  - `python3 scripts/check-engineering-docs` → 退出码 0（`engineering docs checks passed`）。
+  - `git diff --check` → 退出码 0。
+  - 未运行：lint / pytest —— DOC-055 范围是 docs-only + 状态收口 + baseline refresh，按 `quality-gates.md#验证表述规范` 不强制后端 lint / pytest 复跑。

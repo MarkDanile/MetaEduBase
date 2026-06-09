@@ -146,7 +146,7 @@
   },
   {
     "path": "packages/server-python/tests/contexts/document/test_extract_template_prompts.py",
-    "lines": 263,
+    "lines": 261,
     "language": "Python"
   },
   {
@@ -520,6 +520,11 @@
     "language": "Python"
   },
   {
+    "path": "packages/server-python/app/contexts/document/application/tasks/extract_template_prompts.py",
+    "lines": 93,
+    "language": "Python"
+  },
+  {
     "path": "packages/server-python/app/contexts/document/application/tasks/index.py",
     "lines": 93,
     "language": "Python"
@@ -532,11 +537,6 @@
   {
     "path": "packages/server-python/tests/shared/test_factory.py",
     "lines": 90,
-    "language": "Python"
-  },
-  {
-    "path": "packages/server-python/app/contexts/document/application/tasks/extract_template_prompts.py",
-    "lines": 88,
     "language": "Python"
   },
   {

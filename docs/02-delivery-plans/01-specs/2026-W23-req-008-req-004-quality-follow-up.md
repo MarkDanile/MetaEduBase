@@ -100,4 +100,4 @@ REQ-004 模板匹配可解释化已通过 PR #77 合并（`select_template` 纯�
 |----|------|------|
 | REQ-005 | 结构化抽取嵌套结构稳定性验收 | 单独 task |
 | REQ-006 | 端到端 PG + 真实 LLM 演示验收 | 单独 task |
-| TD-030（已锁定） | L3 解析行为已由本 spec 自身的 12+ 用例覆盖（含 `test_l3_ai_empty_response_returns_none` / `test_l3_ai_confidence_unparseable_falls_back_to_zero`）；若后续发现未文档化边角（如响应为空但 confidence 解析成功），按 `docs/03-engineering-governance/technical-debt.md` 入账并分配新 `TD-xxx` 编号 | 已由本 spec 自身覆盖；触发现入账 |
+| TD-030（已锁定） → 占位说明 | L3 解析行为已由本 spec 自身的 12+ 用例覆盖（含 `test_l3_ai_empty_response_returns_none` / `test_l3_ai_confidence_unparseable_falls_back_to_zero`）；若后续发现未文档化边角（如响应为空但 confidence 解析成功），按 `docs/03-engineering-governance/technical-debt.md` 入账并分配新 `TD-xxx` 编号 | 已由本 spec 自身覆盖；触发现入账（不属于 TD-030） |
