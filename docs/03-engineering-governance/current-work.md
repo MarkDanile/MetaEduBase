@@ -26,7 +26,7 @@
 |------|------|--------|------|--------|
 | REQ-005 结构化抽取嵌套结构稳定性验收 | ⚫ 候选 | P1 | Product / Document / Contract | 建立 object / array / table 抽取结果样例回归。 |
 | REQ-006 P1 知识资产处理链路最终演示验收 | ⚫ 候选 | P1 | Product / Document / AI / Testing | 先修复本机 `metaedu_test` 连通性，再组织上传/解析/抽取/图谱/RAG 问答/来源展示的端到端演示。 |
-| BUG-001 修正 document retry endpoint 的 Celery dispatch 语义 | ⚫ 候选 | P1 | Backend / Celery / API / Testing | 修正 `retry_file_tasks` 中 `await parse_document.delay(...)`，并补 `POST /files/{file_id}/retry` 行为测试。 |
+| TD-033 拆分 `main.css` 设计系统级 CSS 模块 | 🔵 就绪 | P2 | Frontend / Design System / 可维护性 | 开工前先建独立 spec / plan；首切片只做 CSS 模块化机械拆分，不做视觉重设或删除兼容类。 |
 
 ## 最近完成
 
