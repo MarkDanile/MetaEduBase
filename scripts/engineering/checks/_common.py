@@ -58,24 +58,7 @@ SCRIPTED_GATE_CANDIDATES: frozenset[str] = frozenset(
     }
 )
 
-KNOWN_ISSUES: tuple[tuple[str, str, str], ...] = (
-    (
-        "docs/02-delivery-plans/02-plans/2026-06-05-td-020-provider-resolver-factory-plan.md",
-        "markdown-link",
-        "TD-023",
-    ),
-    (
-        "docs/02-delivery-plans/01-specs/2026-06-05-td-020-provider-resolver-factory.md",
-        "validation-claim",
-        "TD-023",
-    ),
-    (
-        "docs/02-delivery-plans/02-plans/2026-06-05-td-020-provider-resolver-factory-plan.md",
-        "validation-claim",
-        "TD-023",
-    ),
-    ("docs/03-engineering-governance/technical-debt.md", "validation-claim", "TD-023"),
-)
+KNOWN_ISSUES: tuple[tuple[str, str, str], ...] = ()
 
 LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 
