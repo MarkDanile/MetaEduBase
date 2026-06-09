@@ -16,6 +16,7 @@
 | 日期 | 类型 | 任务 | PR | 总分 | 结论 | 必修 follow-up | 流程扣分点 | 规则 / 脚本改进 | 评审人 |
 |------|------|------|----|------|------|----------------|------------|------------------|--------|
 | 2026-06-09 | Original | BUG-002 修复登录后主面板外边距巨大、内容显示容器过小 | [#107](https://github.com/MarkDanile/MetaEduBase/pull/107) | 89 | 良好；代码可关闭，用户补充确认显示校验已通过 | 无 | PR / Backlog / current-work 已记录静态门禁和产物 CSS，但未沉淀具体视口、截图或手动验收场景；视觉 bug 的验收证据可评审性不足 | 不新增规则；现有 Bug 修复模式已要求自动化测试或手动验收，本次记录为执行偏差 | Codex |
+| 2026-06-09 | Original | REQ-005 结构化抽取嵌套结构稳定性验收 | [#109](https://github.com/MarkDanile/MetaEduBase/pull/109) | 76 | 可接受；核心回归测试有效，但新增测试 ruff 与完成态文档需 follow-up 收口 | TD-035 / DOC-049 | 新增测试未跑或未过 ruff；spec / plan 残留 `未回填`、`TD-???`、`TBD`；AC-8 浅拷贝口径与测试不一致 | 已登记 TD-035 / DOC-049；DOC-049 评估把完成态占位扫描加入文档门禁 | Codex |
 | 2026-06-09 | Original | TD-033 拆分 `main.css` 设计系统级 CSS 模块 | [#103](https://github.com/MarkDanile/MetaEduBase/pull/103) | 81 | 良好；代码可关闭，事实声明与追踪证据需修正 | DOC-045 | 未建独立 spec / plan；“零 CSS 字节变化 / build output identical”声明过强；work-log 未补 PR / merge commit | 不新增长规则；由 DOC-045 修正事实源，后续若复发再脚本化 | Codex |
 | 2026-06-09 | Backfilled | TD-032 治理超大源码文件并建立文件规模拆分原则 | [#100](https://github.com/MarkDanile/MetaEduBase/pull/100) | 78 | 可接受；7 个切片基本完成，但评审发现 retry endpoint 和行数扫描脚本化缺口 | BUG-001 / DOC-042 | 复杂多切片任务完成后仍有行为缺口和手工基线扫描；需要评审后补任务 | 已通过 DOC-043 / PR #100 登记 follow-up，并补强复杂评审必须输出完整评分卡 | Codex |
 | 2026-06-09 | Backfilled | REQ-007 收口 REQ-003 RAG 质量链路验收缺口 | [#75](https://github.com/MarkDanile/MetaEduBase/pull/75) | 88 | 良好；5 个 AC 收口，验证声明比 REQ-003 更真实 | 无 | 端到端 PG 集成仍交由 REQ-006；TD-030 signature drift 仍开放 | 不新增规则；REQ follow-up 分流和验证声明口径已由 DOC-031 形成基线 | Codex |
@@ -26,12 +27,12 @@
 
 | 指标 | 当前值 | 说明 |
 |------|--------|------|
-| 已记录评审数 | 6 | 2 条 Original + 4 条 Backfilled。 |
-| 平均评分 | 82 | `总分` 平均值；样本含回溯评分。 |
-| 一次关闭率 | 33% | 评分 >= 80 且无必修 follow-up 的任务数 / 已记录评审数。 |
-| 返工率 | 67% | 有必修 follow-up 的任务数 / 已记录评审数。 |
-| 流程违规率 | 83% | 存在事实源、spec / plan、PR、验证声明或状态同步扣分的任务数 / 已记录评审数。 |
-| 规则转化率 | 33% | TD-032 / REQ-008 相关问题已转为规则、文档或脚本门禁改进；BUG-002 暂不新增规则。 |
+| 已记录评审数 | 7 | 3 条 Original + 4 条 Backfilled。 |
+| 平均评分 | 81 | `总分` 平均值；样本含回溯评分。 |
+| 一次关闭率 | 29% | 评分 >= 80 且无必修 follow-up 的任务数 / 已记录评审数。 |
+| 返工率 | 71% | 有必修 follow-up 的任务数 / 已记录评审数。 |
+| 流程违规率 | 86% | 存在事实源、spec / plan、PR、验证声明或状态同步扣分的任务数 / 已记录评审数。 |
+| 规则转化率 | 43% | TD-032 / REQ-008 / REQ-005 相关问题已转为规则、文档或脚本门禁改进；BUG-002 暂不新增规则。 |
 
 > 样本量不足时，本表只用于追踪单任务事实，不用于趋势判断。
 

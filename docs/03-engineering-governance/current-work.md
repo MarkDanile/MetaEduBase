@@ -25,6 +25,8 @@
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
 | REQ-006 P1 知识资产处理链路最终演示验收 | ⚫ 候选 | P1 | Product / Document / AI / Testing | 先修复本机 `metaedu_test` 连通性，再组织上传/解析/抽取/图谱/RAG 问答/来源展示的端到端演示。 |
+| TD-035 收口结构化抽取新增测试文件 ruff 质量门禁 | ⚫ 候选 | P2 | Backend / Testing / Quality Gate | 修复 `test_extract_template_prompts.py` 的 I001 / SIM300，不改业务代码，并重跑 ruff + 单文件 pytest。 |
+| DOC-049 收口结构化抽取完成态占位与验证声明漂移 | ⚫ 候选 | P2 | Docs / Governance / Delivery | 修正对应 spec/plan 残留占位、AC-8 浅拷贝口径和 document 测试范围描述；评估脚本门禁补强。 |
 
 ## 最近完成
 
