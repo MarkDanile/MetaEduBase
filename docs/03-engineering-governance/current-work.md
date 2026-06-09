@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| 暂无 | ⚫ 待办 | - | - | 当前没有已开工任务。 | 从“下一批候选任务”或用户指定任务开工。 | - |
+| REQ-006 P1 知识资产处理链路最终演示验收 | 🟣 Shaping | P1 | Product / Document / AI / Testing | 已建 spec / plan 骨架（`feat/req-006-p1-final-demo` 分支）；Backlog 状态 `⚫ Candidate` → `🟣 Shaping`；`metaedu_test` 已恢复（W23 复核 4 文件 34 passed in 9.86s）；Stage 1 待实施（端到端脚本 + UI 手册）。 | Stage 1：探查现有 fixture → 写 `tests/e2e/test_p1_demo.py` 6 步串联 → 写 `req-006-p1-final-demo-ui.md` 手册 → ruff + 门禁 + commit。Stage 2：轨道 B / W23 / Backlog / current-work / work-log 文档回填。 | `scripts/check-engineering-docs` 退出码 0（塑形已收口） |
 
 ## 下一批候选任务
 
@@ -24,7 +24,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| REQ-006 P1 知识资产处理链路最终演示验收 | ⚫ 候选 | P1 | Product / Document / AI / Testing | 先修复本机 `metaedu_test` 连通性，再组织上传/解析/抽取/图谱/RAG 问答/来源展示的端到端演示。 |
+| 暂无（REQ-006 已在当前进行中区） | - | - | - | 从工作台或用户指定任务开工。 |
 
 ## 最近完成
 
