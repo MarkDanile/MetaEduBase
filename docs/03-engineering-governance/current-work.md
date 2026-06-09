@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| 暂无 | ⚫ 待办 | - | - | 当前没有已开工任务。 | 从“下一批候选任务”或用户指定任务开工。 | - |
+| DOC-041 清理 document_router 与 document_task_router 重复路由 | 🟡 进行中 | P2 | 后端 / FastAPI / 交付 | plan 已审批；分支 `chore/doc-041-dedup-document-task-router` | 删 task_router.py 73 行 + 统一 tasks.py label 来源 + 从 main.py 移除 document_task_router 挂载 + 跑 pytest/ruff + commit/push/PR/merge/backfill | `pytest` 55-115 passed;`ruff check` All checks passed!;`scripts/check-engineering-docs` 退出码 0 |
 
 ## 下一批候选任务
 

@@ -4,7 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 import app.shared.infrastructure.models  # noqa: F401
 from app.config import settings
 from app.contexts.document.interfaces.api.router import router as document_router
-from app.contexts.document.interfaces.api.task_router import router as document_task_router
 from app.contexts.identity.interfaces.api.router import router as identity_router
 from app.contexts.knowledge.interfaces.api.ai_router import router as ai_router
 from app.contexts.knowledge.interfaces.api.router import router as knowledge_router
@@ -36,9 +35,6 @@ app.include_router(
 )
 app.include_router(
     document_router, prefix="/api/v1/document", tags=["documents"]
-)
-app.include_router(
-    document_task_router, prefix="/api/v1/document", tags=["document-tasks"]
 )
 app.include_router(
     structured_data_router,

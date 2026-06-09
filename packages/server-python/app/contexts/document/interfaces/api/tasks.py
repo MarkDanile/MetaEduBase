@@ -9,19 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.document.application.dto import TaskDTO
 from app.contexts.document.application.tasks import parse_document
+from app.contexts.document.domain.entities import TASK_TYPE_LABELS
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.shared.infrastructure.database import get_session
 from app.shared.infrastructure.tenant_context import get_tenant_id
-
-_TASK_TYPE_LABELS: dict[str, str] = {
-    "parse": "文档解析",
-    "chunk": "结构切片",
-    "embed": "向量化",
-    "index_tsv": "全文索引",
-    "extract_template": "模板抽取",
-    "extract_kg": "知识图谱",
-}
-
 
 router = APIRouter()
 
@@ -57,7 +48,7 @@ async def list_file_tasks(
             status=r["status"],
             progress=r["progress"],
             error_message=r["error_message"],
-            label=_TASK_TYPE_LABELS.get(r["task_type"], r["task_type"]),
+            label=TASK_TYPE_LABELS.get(r["task_type"], r["task_type"]),
             started_at=r["started_at"],
             completed_at=r["completed_at"],
             created_at=r["created_at"],
@@ -112,7 +103,7 @@ async def retry_file_tasks(
             status=r["status"],
             progress=r["progress"],
             error_message=r["error_message"],
-            label=_TASK_TYPE_LABELS.get(r["task_type"], r["task_type"]),
+            label=TASK_TYPE_LABELS.get(r["task_type"], r["task_type"]),
             started_at=r["started_at"],
             completed_at=r["completed_at"],
             created_at=r["created_at"],
