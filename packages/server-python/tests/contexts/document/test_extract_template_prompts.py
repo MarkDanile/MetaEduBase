@@ -26,7 +26,6 @@ from app.contexts.document.application.tasks.extract_template_prompts import (
 )
 from app.contexts.template.domain.entity import Field, TableColumn
 
-
 # --- AC-1: build_fields_desc on object nesting -----------------------------
 
 
@@ -98,7 +97,7 @@ def test_build_fields_desc_array_uses_first_item_key() -> None:
     desc = build_fields_desc([f.to_dict() for f in fields])
 
     # array 行只声明"成员为object，含字段：step"，不展开 step 内部 children
-    assert "teaching_process(教学过程)[array型，成员为object，含字段：step]" == desc
+    assert desc == "teaching_process(教学过程)[array型，成员为object，含字段：step]"
 
 
 def test_build_fields_desc_array_without_items_falls_back_to_bare_type() -> None:
@@ -114,7 +113,7 @@ def test_build_fields_desc_array_without_items_falls_back_to_bare_type() -> None
 
     desc = build_fields_desc([f.to_dict() for f in fields])
 
-    assert "empty_array(空数组)[array型]" == desc
+    assert desc == "empty_array(空数组)[array型]"
 
 
 # --- AC-3: build_fields_desc on table nesting ------------------------------
@@ -136,7 +135,7 @@ def test_build_fields_desc_table_lists_columns_in_order() -> None:
 
     desc = build_fields_desc([f.to_dict() for f in fields])
 
-    assert "assessment(评价)[table型，列：criterion, score, remark]" == desc
+    assert desc == "assessment(评价)[table型，列：criterion, score, remark]"
 
 
 # --- AC-4: build_fields_desc on mixed nesting ------------------------------

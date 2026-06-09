@@ -124,7 +124,7 @@
 | TD-032 | 治理超大源码文件并建立文件规模拆分原则 | 🟢 完成 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 2026-06-08 源码行数扫描 |
 | TD-033 | 拆分 `main.css` 设计系统级 CSS 模块 | 🟢 完成 | P2 | 前端 / 设计系统 / 可维护性 | [PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103) (`25ca165`) + [行数基线](02-baselines/td-032-source-file-sizes.md) |
 | TD-034 | `build_fields_desc` 在 `array + items=[]` 时丢失"成员为 object"提示 | ⚫ 待办 | P3 | 后端 / LLM 抽取 / 可维护性 | REQ-005 / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) (`4773741`) |
-| TD-035 | 收口 REQ-005 新增测试文件 ruff 质量门禁 | ⚫ 待办 | P2 | 后端 / 测试 / 质量门禁 | REQ-005 review / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) |
+| TD-035 | 收口 REQ-005 新增测试文件 ruff 质量门禁 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | REQ-005 review / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) |
 
 ## 任务详情
 
@@ -1423,7 +1423,7 @@
 
 ### TD-035: 收口 REQ-005 新增测试文件 ruff 质量门禁
 
-状态：⚫ 待办
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -1455,4 +1455,7 @@
 - `git diff --check` 退出码 0。
 
 **交付记录**
-- 暂无。任务在 2026-06-09 由 REQ-005 评审触发登记。
+- 2026-06-09 完成（接手工具：Claude Code）。PR #TBD（合并后回填）。仅 `packages/server-python/tests/contexts/document/test_extract_template_prompts.py` 1 个文件变更。
+  - `ruff check --fix` 4 个错误全部自动修复（1 个 I001 + 3 个 SIM300），共 4 行实质变化：1 个多余空行删除（I001 顺带处理）+ 3 处 Yoda 条件 `assert A == B` 翻转为 `assert B == A`（assertion 语义等价）。
+  - 行为变化声明：无；纯语法糖（assertion 顺序、import 块格式），pytest 11 passed 完全保持。
+  - 验证摘要：`ruff check tests/contexts/document/test_extract_template_prompts.py` 退出码 0（`All checks passed!`）；`pytest tests/contexts/document/test_extract_template_prompts.py -q` 11 passed；`ruff check app/ tests/` 退出码 0（无其他历史 ruff 问题引入）；`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0；`git diff --name-status` 仅 1 个文件。
