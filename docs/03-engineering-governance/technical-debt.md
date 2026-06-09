@@ -123,6 +123,7 @@
 | TD-031 | RAG 质量测试文件的预存 ruff 警告 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) |
 | TD-032 | 治理超大源码文件并建立文件规模拆分原则 | 🟢 完成 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 2026-06-08 源码行数扫描 |
 | TD-033 | 拆分 `main.css` 设计系统级 CSS 模块 | 🟢 完成 | P2 | 前端 / 设计系统 / 可维护性 | [PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103) (`25ca165`) + [行数基线](02-baselines/td-032-source-file-sizes.md) |
+| TD-034 | `build_fields_desc` 在 `array + items=[]` 时丢失"成员为 object"提示 | ⚫ 待办 | P3 | 后端 / LLM 抽取 / 可维护性 | REQ-005 / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) (`4773741`) |
 
 ## 任务详情
 
@@ -1374,3 +1375,47 @@
     - 已运行：`git diff --check` → 退出码 0。
     - 人工复核：`main.css` 仅 9 行 `@import`；8 个模块文件职责单一；`tokens.css` 仅 `@theme`、`themes.css` 仅 4 `data-theme` 块、`base.css` 仅 `@layer base`、`components.css` 仅 `ui-*` + `liquid-card*`、`compat-liquid.css` 仅 `liquid-*` 兼容 + notion 覆盖、`animations.css` 仅 keyframes + reduced-motion、`markdown.css` 仅 `.markdown-body` + 装饰背景、`toast.css` 仅 toast 系统。
   - 行为变化声明：按 `quality-gates.md#行为变化声明检查` 的 7 类信号自查无变化（类名、CSS 变量、`@keyframes` 名称、token 值、import 顺序、主题结构、动画语义全部不变）；Vite 产物 CSS 应等价（基于 import 顺序与级联分析推断，未做 hash / diff 机械对比；本任务未做）。原 commit message / PR 描述中的"zero CSS byte changes / build output identical"为推断性表述，由 DOC-045 弱化为可复核范围。
+
+### TD-034: `build_fields_desc` 在 `array + items=[]` 时丢失"成员为 object"提示
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P3 |
+| 领域 | 后端 / LLM 抽取 / 可维护性 |
+| 事实源 | REQ-005（[Spec](../02-delivery-plans/01-specs/2026-W23-req-005-structured-extraction-regression.md#ac-2) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-005-structured-extraction-regression-plan.md)） / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) (merge `4773741`) |
+
+**证据**
+- 生产代码：`packages/server-python/app/contexts/document/application/tasks/extract_template_prompts.py:60-62`：
+  ```python
+  elif ftype == "array" and f.get("items"):
+      item_key = f["items"][0].get("key", "item") if f["items"] else "item"
+      lines.append(f"{prefix}{key}({label})[array型，成员为object，含字段：{item_key}]")
+  ```
+  `f.get("items")` 对空 list（`[]`）为 falsy，**直接跳到 else 分支**输出 `[array型]`，丢失"成员为object"提示。
+- 回归测试：`packages/server-python/tests/contexts/document/test_extract_template_prompts.py::test_build_fields_desc_array_without_items_falls_back_to_bare_type` 已锁定该行为：输入 `Field(type="array", items=[])` → 输出 `empty_array(空数组)[array型]`（无"成员为object"后缀）。
+- 业务影响：当用户在模板编辑器配置一个"声明为 array 但 items 字段暂未填写"的字段时，LLM 拿到的 prompt 描述会从"[array型，成员为object，含字段：item]"降级为"[array型]"，可能导致 LLM 把 array 字段当成字符串返回（如 `"steps": "导入 讲授 总结"` 而非 `"steps": [{"step": "..."}]`），污染下游 `_merge_template_structured_data` 的浅拷贝契约与 KG 抽取。
+
+**问题**
+- "array 必含 items"是 LLM 抽取契约的一部分（详见 `extract_template_prompts.py:144-147` 的 prompt 段："array型字段（如teaching_process）的value必须是JSON数组，每个成员是包含子字段的object"）；`build_fields_desc` 的输出本应是 LLM 抽取契约的可执行提示。
+- 当前 `f.get("items")` 的 falsy 兜底把"items 暂未填写"和"items 故意为空"两种情况混为同一种输出，模糊了"模板字段未配齐"的信号。
+- REQ-005 的 11 条回归虽然锁定了现状，但现状本身偏离 spec 设计的"L1 → L2 → L3 抽取契约"目的。
+
+**完成标准**
+- 选择以下任一路线并落地（不强制立即动手；本 TD 主要目的是把问题记入总账并形成决策）：
+  - **路线 A（推荐）**：把生产代码的判断从 `f.get("items")` 改为显式 `f.get("items") is not None`；当 `items=[]` 时输出 `key(label)[array型，成员为object，含字段：item]`（fallback 到 "item"），并在 prompt 段强调 "如果未配置 items 字段，请返回空数组 `[]`"。同时更新回归测试期望。
+  - **路线 B**：把"array 必含 items"提到模板校验层（`init_by_ai` / Template API Pydantic schema），在创建/更新时拒绝 `type="array"` + `items=[]` 的模板，从源头杜绝模糊信号；`build_fields_desc` 维持现状。
+  - **路线 C（保守）**：在 `build_fields_desc` 输出 `[array型]` 后追加注释"（未配置 items，默认推断为 string 数组）"，显式告诉 LLM 当前 array 退化为字符串数组；LLM 行为可预测但契约更弱。
+- 无论哪条路线，必须更新 `packages/server-python/tests/contexts/document/test_extract_template_prompts.py::test_build_fields_desc_array_without_items_falls_back_to_bare_type` 的期望或拆分为更精确的测试。
+- 更新 `extract_template_prompts.py` docstring 描述 array + items 三种状态的契约。
+
+**验证方式**
+- `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_extract_template_prompts.py -q` 退出码 0，回归期望已更新。
+- 选路线 A 时需跑 `tests/contexts/document -q` 确认无其他回归。
+- 选路线 B 时需补 Pydantic schema 校验测试（参考 `tests/contexts/template/test_template.py` 的 `Field.from_dict` 路径）。
+- `scripts/check-engineering-docs` 退出码 0。
+- `git diff --check` 退出码 0。
+
+**交付记录**
+- 暂无。任务在 2026-06-09 由 REQ-005 实施中触发登记。
