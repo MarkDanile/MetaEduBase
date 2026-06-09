@@ -26,6 +26,7 @@
 |------|------|--------|------|--------|
 | REQ-005 结构化抽取嵌套结构稳定性验收 | ⚫ 候选 | P1 | Product / Document / Contract | 建立 object / array / table 抽取结果样例回归。 |
 | REQ-006 P1 知识资产处理链路最终演示验收 | ⚫ 候选 | P1 | Product / Document / AI / Testing | 先修复本机 `metaedu_test` 连通性，再组织上传/解析/抽取/图谱/RAG 问答/来源展示的端到端演示。 |
+| BUG-001 修正 document retry endpoint 的 Celery dispatch 语义 | ⚫ 候选 | P1 | Backend / Celery / API / Testing | 修正 `retry_file_tasks` 中 `await parse_document.delay(...)`，并补 `POST /files/{file_id}/retry` 行为测试。 |
 
 ## 最近完成
 
@@ -35,8 +36,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-09 | DOC-043 登记 TD-032 评审 follow-up 与规则改进 | 🟢 完成 | 登记 `BUG-001` retry endpoint follow-up 与 `DOC-042` 行数扫描脚本化候选；补强复杂任务评审必须输出完整评分卡；TD-032 基线扫描改为 `-0 / xargs -0` 并排除本地环境目录。 | [Backlog](../01-product-planning/04-backlog.md) / [Review Scorecard](01-rules/review-scorecard.md) / [TD-032 Baseline](02-baselines/td-032-source-file-sizes.md) |
 | 2026-06-09 | DOC-041 清理 document_router 与 document_task_router 重复路由 | 🟢 完成 | 删 task_router.py 73 行 + 统一 tasks.py label 来源 + main.py 删 3 行。`pytest` 115 passed,`ruff` All checks passed!,main.py startup 仅 1 份 endpoint。 | [PR #99](https://github.com/MarkDanile/MetaEduBase/pull/99) |
 | 2026-06-09 | TD-032 切片 7：拆分 FileDetailView.vue 416 → 4 文件 | 🟢 完成 | FileDetailView 181 (-57%) + 3 子组件 (FileMetaBar 41 / PipelineStatusPanel 97 / FileTabsPanel 171)。TD-032 7 切片全部收口,500 附近全部拆分到位。 | [PR #98](https://github.com/MarkDanile/MetaEduBase/pull/98) / [Baseline](02-baselines/td-032-source-file-sizes.md) |
 | 2026-06-09 | TD-032 切片 6：拆分 ResourceLibraryView.vue 490 → 4 文件 | 🟢 完成 | ResourceLibraryView 286 (-42%) + 3 子组件 (FolderTreePanel 142 / FileListPanel 160 / UploadOptionsDialog 51)。`v-model` 改 `:value + @input` 显式 emit 链;emit 名 kebab-case 化。`pnpm typecheck / lint / build` 3 项全过。 | [PR #97](https://github.com/MarkDanile/MetaEduBase/pull/97) / [Baseline](02-baselines/td-032-source-file-sizes.md) |
 | 2026-06-08 | TD-032 切片 5：拆分 document/router.py 494 → 5 个聚焦子 router | 🟢 完成 | router.py 494 → 29（-94%）+ 4 子 router（folders 123 / files 231 / chunks 43 / tasks 121）。`pytest` 115 passed + `ruff` All checks passed! + import 探针 all OK。pre-existing 重复路由（router.py 与 task_router.py）登记为 DOC-041 候选。 | [PR #96](https://github.com/MarkDanile/MetaEduBase/pull/96) / [Baseline](02-baselines/td-032-source-file-sizes.md) / [Backlog](../01-product-planning/04-backlog.md) |
-| 2026-06-08 | TD-032 baseline 刷新（切片 1-4 收口后回写） | 🟢 完成 | 5 项合规样例扩展 + 新增 `FileDetailView.vue` 416 候选 + 「切片 5+ 候选清单」段。 | [Baseline](02-baselines/td-032-source-file-sizes.md) |

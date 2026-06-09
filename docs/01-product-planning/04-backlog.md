@@ -42,7 +42,9 @@
 | APP-002 | APP | ⚫ Candidate | P1 | P2 | 智能预习规划与导学智能体 | 等 APP-001 能力图谱最小闭环明确后，塑形学情诊断、预习任务和资源推送 |  |
 | APP-003 | APP | ⚫ Candidate | P2 | P2 / P3 | 个性化学习资源推荐智能体 | 等资源类型、学生画像和能力图谱关联策略明确后塑形 |  |
 | APP-004 | APP | ⚫ Candidate | P2 | P2 | 智能复习规划与巩固智能体 | 等学习记录、知识点掌握状态和微测验机制明确后塑形 |  |
+| BUG-001 | BUG | ⚫ Candidate | P1 | P1 | 修正 document retry endpoint 的 Celery dispatch 语义 | `retry_file_tasks` 当前仍 `await parse_document.delay(...)`，需改为正确派发语义并补 `POST /files/{file_id}/retry` 行为测试 | `packages/server-python/app/contexts/document/interfaces/api/tasks.py:83` |
 | DOC-041 | DOC | 🟢 Done | P2 | P1 | 清理 document router 与 task_router 重复路由 | [PR #99](https://github.com/MarkDanile/MetaEduBase/pull/99) 已合并：删 task_router.py 73 行 + 统一 tasks.py label 来源（`TASK_TYPE_LABELS` from `domain.entities`）+ main.py 删 3 行 import + include_router。启动仅 1 份 endpoint。 |  |
+| DOC-042 | DOC | ⚫ Candidate | P2 | P3 | 脚本化 TD-032 行数基线扫描 | 将 TD-032 手工 `rg --files ... | xargs wc -l` 扫描固化为稳健命令或脚本，排除 `.venv` / `uploads` / `node_modules` 并支持空格路径 | [Baseline](../03-engineering-governance/02-baselines/td-032-source-file-sizes.md) |
 | DOC-019 | DOC | 🟢 Done | P1 | P1 | 建立产品规划层和复盘入口 | 已同步规则索引，验证通过后归档到工作日志 |  |
 | DOC-024 | DOC | ⚪ Idea | P2 | P3 | 工程协作规则模板化：将成熟的跨 AI IDE 规则、docs 分层、质量门禁和任务闭环抽象成可复用模板包 | 等本项目规则经过更多实践验证后，进入 Shaping，明确模板仓库边界、项目适配层和版本化策略 |  |
 | DOC-034 | DOC | 🟢 Done | P2 | P1 | 修正 REQ-008 spec AC-5 与实际测试行为不一致 | AC-5 期望由 `layer == "none"` 修为 `layer == "L3"` + `template is None` + `reason` 含 below threshold；「选择器契约（不变）」段同步改写为与实现和 `test_l3_ai_confidence_unparseable_falls_back_to_zero` 一致；不改代码。 | [Spec](../02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md) / [PR #83](https://github.com/MarkDanile/MetaEduBase/pull/83) |

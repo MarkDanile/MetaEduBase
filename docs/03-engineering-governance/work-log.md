@@ -15,6 +15,7 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-09 | DOC-043 登记 TD-032 评审 follow-up 与规则改进 | 文档 / 工程治理 / 评审 / follow-up |  |  | `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/01-rules/review-scorecard.md` / `docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md` |
 | 2026-06-08 | DOC-040 登记超大源码文件治理技术债 | 文档 / 工程治理 / 技术债 / 代码可维护性 |  |  | `docs/03-engineering-governance/technical-debt.md#td-032-治理超大源码文件并建立文件规模拆分原则` / `docs/03-engineering-governance/01-rules/coding-style.md#文件规模与职责边界` |
 | 2026-06-08 | TD-032 治理超大源码文件并建立文件规模拆分原则（切片 1：基线 + 原则 + 任务卡） | 技术债 / 工程治理 / 重构 | [#92](https://github.com/MarkDanile/MetaEduBase/pull/92) | `3de4de5` | `docs/02-delivery-plans/01-specs/2026-06-08-td-032-large-source-files.md` / `docs/02-delivery-plans/02-plans/2026-06-08-td-032-large-source-files-plan.md` / `docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md` |
 | 2026-06-08 | TD-032 治理超大源码文件并建立文件规模拆分原则（切片 2：拆分 `check_engineering_docs.py` 1003 → 72） | 技术债 / 重构 / 工程脚本 | [#93](https://github.com/MarkDanile/MetaEduBase/pull/93) | `7e468fb` | `docs/02-delivery-plans/01-specs/2026-06-08-td-032-slice-2-check-engineering-docs-split.md` / `docs/02-delivery-plans/02-plans/2026-06-08-td-032-slice-2-check-engineering-docs-split-plan.md` |
