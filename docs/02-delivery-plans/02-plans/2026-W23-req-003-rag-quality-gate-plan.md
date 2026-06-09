@@ -640,7 +640,7 @@ git commit -m "docs(REQ-003): close P1 RAG quality gate; backfill validation evi
 
 无缺口。
 
-**Placeholder scan:** 全任务均含完整代码与命令，无 TBD。
+**Placeholder scan:** 交付记录段已 2026-06-09 由 [PR #74](https://github.com/MarkDanile/MetaEduBase/pull/74) 合并（merge commit `337238b`）后回填；本 plan 文件本身无残留 `TBD` / `TD-???` / `未回填` 占位（spec 文件 `2026-W23-req-003-rag-quality-gate.md` 的 `TD-???` / `未回填` 已由 DOC-051 替换为 TD-030 编号与具体失败条件描述）。
 
 **Type consistency:**
 

@@ -45,7 +45,7 @@ scripts/check-engineering-docs
 | Backlog、current-work、work-log、technical-debt 中任务 ID 唯一且状态不冲突 | 候选 / 部分实现 | 降低跨事实源状态漂移 |
 | 禁止把 `REQ-xxx-FOLLOWUP` / `TD-xxx-FOLLOWUP` 作为长期任务编号 | 已实现 | 保持稳定编号和可检索历史 |
 | `Done` 任务在 Backlog / current-work / work-log 之间有最小索引闭环 | 已实现 | 防止任务关闭后事实源缺失 |
-| spec / plan 中 `TBD` / `TD-???` / `未回填` 等占位关键词扫描 | 候选 / DOC-049 评估后未立即实现 | 防止完成态文档残留未回填占位；推迟原因：当前 `2026-W23-req-003-rag-quality-gate-plan.md` 与 `2026-W23-req-008-req-004-quality-follow-up-plan.md` 仍有 5 处 TBD，若立即实现门禁会一次性拦截失败，需先建独立 `DOC-xxx` 一次性收口历史 TBD 再启用。 |
+| spec / plan 中 `TBD` / `TD-???` / `未回填` 等占位关键词扫描 | 候选 / DOC-051 已解锁阻塞(2026-06-09)，扫描脚本实现待独立任务 | 防止完成态文档残留未回填占位。历史阻塞：`2026-W23-req-003/004/008-rag-quality-gate-plan.md` 与 3 个 spec 共 12 处占位已由 DOC-051 (PR #124) 一次性收口；下一步可单独立项 `DOC-xxx` 实施 `scripts/engineering/checks/` 下的占位扫描脚本并接入 `scripts/check-engineering-docs`。 |
 | 旧 docs 路径残留检查 | 已实现 | 防止目录迁移后链接回退 |
 | Markdown 相对链接存在性检查 | 已实现 | 防止文档迁移或重命名后断链 |
 | AGENTS.md / CLAUDE.md 与 IDE 兼容入口同步检查 | 已实现 | 防止入口规则漂移或 IDE 私有规则复制正文 |

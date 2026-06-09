@@ -433,13 +433,13 @@ git commit -m "test(document): assert template.select logs and cover L3 parse/em
 
 `docs/01-product-planning/03-iterations/2026-W23-p1-iteration.md`：在"P1 最终查漏补缺"区追加一行：
 
-> - REQ-008 收口 REQ-004 验收证据与质量门禁缺口（PR #TBD，merge commit TBD）—— 5 项 ruff 失败清零 + 4 分支 `template.select` 日志 caplog 断言 + L3 解析失败 / 空响应覆盖。
+> - REQ-008 收口 REQ-004 验收证据与质量门禁缺口（[PR #79](https://github.com/MarkDanile/MetaEduBase/pull/79)，merge commit `302ec2d`）—— 5 项 ruff 失败清零 + 4 分支 `template.select` 日志 caplog 断言 + L3 解析失败 / 空响应覆盖。
 
 - [x] **Step 3: 轨道 B 模板匹配可解释化行追加补强证据**
 
 `docs/01-product-planning/02-milestones/01-validation-phase.md` 轨道 B 表格 "模板匹配可解释化" 行的"验证结论"列由原"已通过 9 项用例"扩为：
 
-> 已通过 `tests/contexts/document/test_extract_template_selection.py` 12 项用例（9 旧分支回归 + 1 漂移保护 + 2 L3 边角）：L1 精确 / L2 文件名 / L3 AI 命中 / L3 低于阈值 / L3 单行默认 0.5 / L3 命中未配置 / L3 LLM 异常 / 空 doc_type 文件名 / L1 优先级高于 L2 L3 / 解析失败 0.0 落入低于阈值 / 空响应 `AI returned empty response` / 4 分支 `template.select layer=...` 日志可观测。REQ-008（PR #TBD）补强 ruff 5 项清零 + L3 解析失败 / 空响应覆盖 + caplog 断言；端到端 PG 集成待 REQ-006。
+> 已通过 `tests/contexts/document/test_extract_template_selection.py` 12 项用例（9 旧分支回归 + 1 漂移保护 + 2 L3 边角）：L1 精确 / L2 文件名 / L3 AI 命中 / L3 低于阈值 / L3 单行默认 0.5 / L3 命中未配置 / L3 LLM 异常 / 空 doc_type 文件名 / L1 优先级高于 L2 L3 / 解析失败 0.0 落入低于阈值 / 空响应 `AI returned empty response` / 4 分支 `template.select layer=...` 日志可观测。REQ-008（[PR #79](https://github.com/MarkDanile/MetaEduBase/pull/79) / `302ec2d`）补强 ruff 5 项清零 + L3 解析失败 / 空响应覆盖 + caplog 断言；端到端 PG 集成待 REQ-006。
 
 - [x] **Step 4: current-work 收尾**
 
@@ -481,9 +481,9 @@ git commit -m "docs(REQ-008): backfill validation evidence; close 3 acceptance g
 
 | 任务 | Commit | 内容 |
 |------|--------|------|
-| Task 1 | TBD | 3 文件 ruff 修复（AC-1） |
-| Task 2 | TBD | caplog 4 分支 + 2 条 L3 边角 + 漂移保护（AC-2~AC-7, AC-8） |
-| Task 3 | TBD | 文档回填（AC-9, AC-10） |
+| Task 1 | `29fa1d0`（squash-merged into [PR #79](https://github.com/MarkDanile/MetaEduBase/pull/79) / `302ec2d`） | 3 文件 ruff 修复（AC-1） |
+| Task 2 | `54a0a1c`（squash-merged into [PR #79](https://github.com/MarkDanile/MetaEduBase/pull/79) / `302ec2d`） | caplog 4 分支 + 2 条 L3 边角 + 漂移保护（AC-2~AC-7, AC-8） |
+| Task 3 | `c236216`（squash-merged into [PR #79](https://github.com/MarkDanile/MetaEduBase/pull/79) / `302ec2d`） | 文档回填（AC-9, AC-10） |
 
 - 验证摘要（以最终真实命令输出为准）：
   - `pytest tests/contexts/document/test_extract_template_selection.py -v` → 12 passed（9 旧 + 1 参数化 4 case 合并计 1 + 1 漂移保护 + 1 解析失败 + 1 空响应 = 13；参数化 4 case 也可拆 4 条独立用例，**以 pytest -v 实际输出为准并在 commit 显式记录**）。
@@ -511,7 +511,7 @@ git commit -m "docs(REQ-008): backfill validation evidence; close 3 acceptance g
 | AC-9 | Task 3 Step 5 |
 | AC-10 | Task 3 Step 1-4 |
 
-**Placeholder scan:** TBD 仅出现在 commit / PR 链接字段，合并后立即回填。
+**Placeholder scan:** 已完成 2026-06-09 DOC-051 收口：交付记录表中 3 个 commit + PR #79 + merge `302ec2d` 全部回填；Step 2 / Step 3 引用也已替换为 `PR #79` / `302ec2d`。
 
 **Type consistency:**
 

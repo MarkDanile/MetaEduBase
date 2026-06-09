@@ -568,9 +568,8 @@ git commit -m "docs(REQ-004): close template match explainability gap; backfill 
 
 | 任务 | Commit | 内容 |
 |------|--------|------|
-| Task 1+2 | TBD | `template_selector.py` + 9 条回归测试（AC-1 / AC-7 / AC-8） |
-| Task 3 | TBD | `tasks.py` 三层片段调用新选择器 + 统一 `template.select` 日志（AC-3~AC-6） |
-| Task 4 | TBD | 文档回填（轨道 B 翻结论 + Backlog REQ-004 Done + current-work 最近完成） |
+| Task 1+2 | `2e6d097` ([PR #77](https://github.com/MarkDanile/MetaEduBase/pull/77)) | `template_selector.py` + 9 条回归测试（AC-1 / AC-7 / AC-8）；`tasks.py` 三层片段调用新选择器 + 统一 `template.select` 日志（AC-3~AC-6） |
+| Task 3 | `d8e9bcb` | 文档回填（轨道 B 翻结论 + Backlog REQ-004 Done + current-work 最近完成） |
 
 - 验证摘要：
   - `pytest tests/contexts/document/test_extract_template_selection.py -q` → `9 passed`
