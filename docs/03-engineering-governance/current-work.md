@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| DOC-045 修正 TD-033 CSS 拆分交付声明与追踪证据 | 🟡 进行中 | P2 | Docs / Governance / Review | 已在 `docs/doc-045-td-033-claim-correction` 分支打 docs-only 补丁；待合并。 | `scripts/check-engineering-docs` + `git diff --check` 通过后创建 PR。 | `check-engineering-docs` 退出码 0；`git diff --check` 退出码 0。 |
+| 暂无 | ⚫ 待办 | - | - | 当前没有已开工任务。 | 从“下一批候选任务”或用户指定任务开工。 | - |
 
 ## 下一批候选任务
 
@@ -35,8 +35,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-09 | DOC-045 修正 TD-033 CSS 拆分交付声明与追踪证据 | 🟢 完成 | 弱化 TD-033 任务卡 4 处"零 CSS 字节变化 / build output identical"过强声明；6 处事实源补 `PR #103` / `25ca165` 追踪；显式登记 TD-033 未建 spec / plan 的处置方式（事后不补建）。docs-only，`check-engineering-docs` 退出码 0。 | [Work Log](work-log.md) / [TD-033 Delivery Record](technical-debt.md#td-033) / [PR #106](https://github.com/MarkDanile/MetaEduBase/pull/106) |
 | 2026-06-09 | DOC-048 增加评审高分质量校准规则 | 🟢 完成 | 最近 5 条评审平均分 >92 时，阶段复盘必须抽查评分是否偏宽；发现问题需在评分总账标记并登记 follow-up。 | [Review Scorecard](01-rules/review-scorecard.md#高分质量校准) / [Retrospectives](04-retrospectives/README.md) |
 | 2026-06-09 | DOC-047 建立评审评分总账与落盘规则 | 🟢 完成 | 新增评审评分总账，回填 TD-033 评分 81；复杂评审后必须把总分、follow-up、流程扣分点和规则改进结论落盘。 | [Review Score Log](04-retrospectives/review-score-log.md) / [Review Scorecard](01-rules/review-scorecard.md) |
 | 2026-06-09 | DOC-046 修正 P1 轨道 B 检索 / 抽取质量展示 | 🟢 完成 | 给轨道 B 增加可视化状态列，保留“实现事实 / 验证结论”证据分栏；不改变真实验收结论。 | [P1 Milestone](../01-product-planning/02-milestones/01-validation-phase.md#轨道-b检索--抽取质量) |
 | 2026-06-09 | TD-033 拆分 `main.css` 设计系统级 CSS 模块 | 🟢 完成 | 纯机械拆分：`main.css` 1343 → 9 行（`@import` 入口）+ 8 个模块文件（≤500 行/个）；以 `pnpm typecheck / lint / build` 退出码 0 + `git diff --check` 退出码 0 为依据（Vite 产物未做 hash / diff 对比）。`check-engineering-docs` 通过。 | [Technical Debt](technical-debt.md#td-033) / [TD-032 Baseline](02-baselines/td-032-source-file-sizes.md) / [PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103) (`25ca165`) |
-| 2026-06-09 | DOC-044 修正工程治理目录编号重复 | 🟢 完成 | 保留基线目录编号 02；矩阵目录改为编号 03；复盘目录改为编号 04；同步工程治理入口、规则、脚本扫描范围和历史链接。 | [Engineering Governance](README.md) / [Docs Rule](01-rules/docs.md) |
