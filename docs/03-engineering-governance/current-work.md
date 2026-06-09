@@ -26,7 +26,6 @@
 |------|------|--------|------|--------|
 | TD-037 e2e 沙箱无 Redis broker 适配 | ⚫ 候选 | P3 | Backend / 测试 / 基础设施 | 选路线 A（独立 e2e Celery app fixture with `memory://` broker）或路线 B（`init-test-db` 启 dev Redis），把 `chunk_document.delay` 等 mock 集中到 `mock_pipeline_chain` fixture；CI 端补 `e2e-real` 标记；详情见 [TD-037](../03-engineering-governance/technical-debt.md#td-037)。 |
 | DOC-052 清理 `scripts/engineering/checks/_common.py` 中 `KNOWN_ISSUES` 残留的 TD-023 历史白名单 | ⚫ 候选 | P3 | Docs / Governance | TD-023 任务已结案（PR 未配置 CI / 本地门禁已通过）；其 `KNOWN_ISSUES` 4 条白名单（`td-020-*` plan 2 条 + `td-020-*` spec 1 条 + `td-023` 1 条）已无拦截价值，长期保留会掩盖新漂移；逐条评估能否删除；删除后跑 `scripts/check-engineering-docs` 退出码 0。 |
-| DOC-054 收口 review-score-log PR 字段与倒排顺序一致性 | ⚫ 候选 | P2 | Docs / Governance / Review | 修正 `review-score-log.md`：DOC-049 行 `本 PR` → PR #113；按"最新评审置顶"重新整理同日登记顺序；同步 Metrics Snapshot 计数（当前表已超过 7 条）；运行 `scripts/check-engineering-docs` + `git diff --check`。 |
 
 ## 最近完成
 
@@ -36,6 +35,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-09 | DOC-054 收口 review-score-log PR 字段与倒排顺序一致性 | 🟢 完成 | 修 3 处漂移：DOC-049 评审 `本 PR` → PR #113 `6cf6c20`；Score Log 重排（7 Original 按评审对象 PR merge 时间倒序，3 Backfilled 按 PR merge 日期 2026-06-08 单独列倒序）；Metrics Snapshot 全量重算（10 条 / 82.6 / 40% / 60% / 100% / 90%）。 | [Work Log](work-log.md) / [PR #126](https://github.com/MarkDanile/MetaEduBase/pull/126) (`2d6efd3`) |
 | 2026-06-09 | DOC-051 一次性收口 W23 P1 历史 spec/plan 占位 | 🟢 完成 | 12 处占位一次性替换（3 spec `TD-???` → `TD-030（已锁定）`+ 2 `未回填` → 具体失败条件；3 plan commit / PR 链接回填到 `337238b` / `2e6d097`+`d8e9bcb` / `29fa1d0`+`54a0a1c`+`c236216`=`PR #79` `302ec2d`）；W23 迭代卡 PG 行 + `quality-gates.md` 占位扫描候选阻塞解除。 | [Work Log](work-log.md) / [PR #124](https://github.com/MarkDanile/MetaEduBase/pull/124) (`d7a2ca7`) |
 | 2026-06-09 | TD-036 / TD-038 修复全新测试库 `alembic upgrade head` 卡在 006 的根因 | 🟢 完成 | 修 006 `gin` ops + `init-test-db` 加 `btree_gin` + `_ensure_critical_columns` 防御 check。`DROP DATABASE metaedu_test && init-test-db` 一次到 head。 | [Work Log](work-log.md) / [PR #122](https://github.com/MarkDanile/MetaEduBase/pull/122) (`2780ff1`) |
 | 2026-06-09 | BUG-001 修正 document retry endpoint 的 Celery dispatch 语义 | 🟢 完成 | 修 `POST /files/{file_id}/retry` 三处缺陷（去 `await`、补 `pipeline_version`、加 `try/except` 兜 broker 抖动），3 条新回归用例，`pytest tests/ -q` 222 passed。 | [Work Log](work-log.md) / [PR #120](https://github.com/MarkDanile/MetaEduBase/pull/120) (`c24f3e9`) |
