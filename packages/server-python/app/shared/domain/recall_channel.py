@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.shared.domain.ner_pipeline import NERResult
 
@@ -20,6 +21,17 @@ class RecallResult(BaseModel):
 
 @runtime_checkable
 class RecallChannel(Protocol):
+    """召回通道契约。
+
+    实现者必须严格按本 Protocol 形参命名（含 ``session``），下游契约测试
+    （``tests/contexts/ai/test_recall_channels_contract.py``）用 ``set(sig.parameters)``
+    与本 Protocol 严格对齐（不依赖下划线前缀做兼容）。
+
+    ``session`` 由调用方注入（参见 ``app/contexts/knowledge/interfaces/api/ai_router.py``），
+    实现者不要再在内部 ``async_sessionmaker()`` 重新打开连接，以保持与现有 RAG
+    链路（同一 session 内可读取知识图谱或文档 chunks 上下文）的事务一致性。
+    """
+
     @property
     def name(self) -> str: ...
 
@@ -28,5 +40,6 @@ class RecallChannel(Protocol):
         query: str,
         ner_result: NERResult,
         tenant_id: str,
+        session: AsyncSession,
         top_k: int = 5,
     ) -> list[RecallResult]: ...

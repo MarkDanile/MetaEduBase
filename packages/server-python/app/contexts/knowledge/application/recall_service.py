@@ -23,7 +23,7 @@ class PgVectorRecallChannel:
     async def recall(
         self,
         query: str,
-        _ner_result: NERResult,
+        ner_result: NERResult,
         tenant_id: str,
         session: AsyncSession,
         top_k: int = 5,
@@ -67,7 +67,7 @@ class PgKeywordRecallChannel:
     async def recall(
         self,
         query: str,
-        _ner_result: NERResult,
+        ner_result: NERResult,
         tenant_id: str,
         session: AsyncSession,
         top_k: int = 5,
@@ -123,7 +123,7 @@ class PgMetadataRecallChannel:
 
     async def recall(
         self,
-        _query: str,
+        query: str,
         ner_result: NERResult,
         tenant_id: str,
         session: AsyncSession,
