@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| 暂无 | ⚫ 待办 | - | - | 当前没有已开工任务。 | 从“下一批候选任务”或用户指定任务开工。 | - |
+| BUG-002 修复登录后主面板外边距巨大、内容区过小 | 🟡 进行中 | P1 | Frontend | TD-008 引入的 `ui-page-shell`（max-width 1120px + margin auto）在 LayoutView 包裹 RouterView，与各 View 自带 max-w 嵌套冲突，导致大屏巨大外边距、宽屏 1600 视图被卡到 1120。修复：移除 max-width: 1120px; margin: 0 auto，保留 width/padding/background。`pnpm typecheck` / `pnpm lint` / `pnpm build` 退出 0；产物 CSS 确认 `ui-page-shell{width:100%;padding:var(--spacing-page);background:var(--color-bg-base)}`。 | 创建 PR、合并到 main、回填工作日志 | 见 [Backlog](../01-product-planning/04-backlog.md) |
 
 ## 下一批候选任务
 
