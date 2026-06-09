@@ -92,6 +92,12 @@
 | `按流程修复这个 BUG: ...` | Bug 修复 | 登记或更新 `BUG-xxx`；明确复现步骤、期望行为和验证方式 |
 | `按流程规划这个需求: ...` | 产品规划 / 需求塑形 | 登记或更新 `docs/01-product-planning/04-backlog.md`；必要时新建 `docs/01-product-planning/05-requirements/REQ-xxx.md` |
 | `按流程开发这个新需求: ...` | 新需求开发 | 判断是否需要 spec/plan；需要时进入 `docs/02-delivery-plans/01-specs/*` 和 `docs/02-delivery-plans/02-plans/*` |
+| `按流程评审 REQ-xxx / BUG-xxx / TD-xxx / DOC-xxx` | 任务评审 | 读取任务事实源、PR / diff 和 `review-scorecard.md`；输出问题、评分、follow-up 分流和规则改进判断；触发落盘条件时更新 `review-score-log.md` |
+| `按流程提交` / `按流程走完整 Git 闭环` | 交付闭环 | 读取 `git-workflow.md`；默认推进 commit、push、PR、合并 `main` 和最终 clean check；阻塞时明确停在哪一阶段 |
+| `按流程复盘 XXX` | 复盘 / 根因分析 | 区分实现问题、规则缺口、工具习惯和需求塑形不足；只在问题可复现或反复出现时登记 follow-up、规则或脚本改进 |
+| `按流程复核 P1` / `按流程收口当前迭代` | 阶段 / 迭代收口 | 对齐 Roadmap、Milestone、Iteration、Backlog、current-work 和 TD 总账；列出未完成项、阻塞项和下一批候选任务 |
+| `按流程规划 APP-xxx` / `按流程塑形应用：...` | AI 应用组合规划 | 先更新 AI Applications 与 Backlog；必要时进入 Requirement Shaping；不得直接跳过需求塑形进入实现 |
+| `按流程登记这个想法/问题：...` | 只登记不实现 | 按性质归入 `REQ` / `BUG` / `TD` / `DOC` / `OPS`；补证据、完成标准和验证方式；不默认进入开发 |
 | `按流程重构 XXX` | 重构 | 明确行为边界和验证方式；不得混入新功能 |
 | `按流程调研 XXX` | Spike / 调研 | 明确问题、时间盒和预期产出 |
 | `按流程处理工具链/依赖/CI 问题: ...` | 基础设施 / 依赖 / 工具链 | 明确影响范围、兼容性风险和回滚方式 |

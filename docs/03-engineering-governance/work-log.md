@@ -15,6 +15,7 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-09 | DOC-053 补齐高频流程启动语入口 | 文档 / 工程治理 / 任务模式 / AI 协作 |  |  | `docs/03-engineering-governance/task-modes.md#常见启动语` / `docs/03-engineering-governance/current-work.md` |
 | 2026-06-09 | DOC-050 优化 current-work 最近完成窗口与评分总账排序 | 文档 / 工程治理 / 工作台 / 评分总账 / 门禁脚本 |  |  | `docs/03-engineering-governance/current-work.md` / `docs/03-engineering-governance/01-rules/workbench.md#保留策略` / `docs/03-engineering-governance/01-rules/quality-gates.md#完成门禁` / `docs/03-engineering-governance/04-retrospectives/review-score-log.md` / `scripts/engineering/checks/current_work.py` |
 | 2026-06-09 | TD-035 收口 REQ-005 新增测试文件 ruff 质量门禁 | 技术债 / 后端 / 测试 / ruff 修复 |  |  | `packages/server-python/tests/contexts/document/test_extract_template_prompts.py` / `docs/03-engineering-governance/technical-debt.md#td-035` |
 | 2026-06-09 | REQ-006 Stage 1.0 端到端脚本 + UI 演示手册骨架 | 需求 / 后端 / e2e / Celery 沙箱适配 / 文档 |  |  | `packages/server-python/tests/e2e/test_p1_demo.py` / `docs/03-engineering-governance/03-matrices/req-006-p1-final-demo-ui.md` / `docs/03-engineering-governance/technical-debt.md#td-036` / `docs/03-engineering-governance/technical-debt.md#td-037` |
