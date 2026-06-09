@@ -25,7 +25,7 @@
 | 2026-06-09 | Backfilled | TD-032 治理超大源码文件并建立文件规模拆分原则 | [#100](https://github.com/MarkDanile/MetaEduBase/pull/100) | 78 | 可接受；7 个切片基本完成，但评审发现 retry endpoint 和行数扫描脚本化缺口 | BUG-001 / DOC-042 | 复杂多切片任务完成后仍有行为缺口和手工基线扫描；需要评审后补任务 | 已通过 DOC-043 / PR #100 登记 follow-up，并补强复杂评审必须输出完整评分卡 | Codex |
 | 2026-06-08 | Backfilled | DOC-034 修正 REQ-008 spec AC-5 与测试行为不一致 | [#83](https://github.com/MarkDanile/MetaEduBase/pull/83) | 74 | 可接受；核心文案修正正确，但门禁被无关 DOC-035 链接阻塞且未在本 PR 内闭合 | DOC-036 | 只修 AC-5，未同步前文旧口径；`scripts/check-engineering-docs` 当时未通过，只以范围无关解释 | DOC-036 已补前文旧口径；此类问题应优先让文档门禁恢复通过再合并 | Codex |
 | 2026-06-08 | Backfilled | REQ-008 收口 REQ-004 验收证据与质量门禁缺口 | [#79](https://github.com/MarkDanile/MetaEduBase/pull/79) | 84 | 良好；测试与 ruff 缺口收口，但仍出现后续 spec 文案漂移 | DOC-034 / DOC-036 | current-work 在途状态存在特殊解释；后续发现 AC-5 和前文口径仍需二次修正 | 已由 DOC-034 / DOC-036 修正文档口径；后续 REQ 关闭需跨事实源回查 | Codex |
-| 2026-06-08 | Backfilled | REQ-007 收口 REQ-003 RAG 质量链路验收缺口 | [#75](https://github.com/MarkDanile/MetaEduBase/pull/75) | 88 | 良好；5 个 AC 收口，验证声明比 REQ-003 更真实 | 无 | 端到端 PG 集成仍交由 REQ-006；TD-030 signature drift 仍开放 | 不新增规则；REQ follow-up 分流和验证声明口径已由 DOC-031 形成基线 | Codex |
+| 2026-06-08 | Backfilled | REQ-007 收口 REQ-003 RAG 质量链路验收缺口 | [#75](https://github.com/MarkDanile/MetaEduBase/pull/75) | 88 | 良好；5 个 AC 收口，验证声明比 REQ-003 更真实 | 无 | 端到端 PG 集成仍交由 REQ-006；TD-030 signature drift 后由 PR #139 (merge `a934981`, 2026-06-10) 收口 | 不新增规则；REQ follow-up 分流和验证声明口径已由 DOC-031 形成基线 | Codex |
 
 ## Metrics Snapshot
 
