@@ -24,8 +24,8 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| BUG-001 修正 `document retry endpoint` 的 Celery dispatch 语义 | ⚫ 候选 | P1 | Backend / Celery | 读 `packages/server-python/app/contexts/document/interfaces/api/tasks.py:83` + 上下游；写复现 e2e / 集成测试；修 dispatch + 补 `POST /files/{file_id}/retry` 行为测试；ruff + pytest 门禁；按 `task-modes.md#bug 修复` 模式不开 spec / plan。 |
 | TD-036 修复 `metaedu_test.document_tasks.updated_at` 列缺失 | ⚫ 候选 | P2 | Backend / 测试 / 质量门禁 | 先复现：`DROP DATABASE metaedu_test && ./dev.sh init-test-db && pytest tests/e2e/ -q`；按 alembic 003 迁移契约评估：补列 vs 修迁移；写防御性 `_ensure_critical_columns` 接入 `init-test-db` 流程；pytest 门禁。 |
+| DOC-051 一次性收口历史 plan 残留 TBD / `TD-???` / `未回填` 占位 | ⚫ 候选 | P2 | Docs / Governance | 5 处 TBD + 3 处 `TD-???` + 2 处 `未回填` → 替换为稳定编号/具体描述；同步 W23 迭代卡 Review 段 PG 历史失败声明；解锁 `quality-gates.md#脚本门禁候选清单` 中"完成态占位扫描"从候选转已实现。 |
 | DOC-054 收口 review-score-log PR 字段与倒排顺序一致性 | ⚫ 候选 | P2 | Docs / Governance / Review | 修正 `review-score-log.md`：DOC-049 行 `本 PR` → PR #113；按"最新评审置顶"重新整理同日登记顺序；同步 Metrics Snapshot 计数（当前表已超过 7 条）；运行 `scripts/check-engineering-docs` + `git diff --check`。 |
 
 ## 最近完成
@@ -36,6 +36,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-09 | BUG-001 修正 document retry endpoint 的 Celery dispatch 语义 | 🟢 完成 | 修 `POST /files/{file_id}/retry` 三处缺陷（去 `await`、补 `pipeline_version`、加 `try/except` 兜 broker 抖动），3 条新回归用例，`pytest tests/ -q` 222 passed。 | [Work Log](work-log.md) / [PR #120](https://github.com/MarkDanile/MetaEduBase/pull/120) (`c24f3e9`) |
 | 2026-06-09 | DOC-053 补齐高频流程启动语入口 | 🟢 完成 | 在 `task-modes.md#常见启动语` 增补评审、完整 Git 闭环、复盘、阶段收口、APP 应用塑形和只登记不实现等短启动语；保持入口文件只导航、不复制长规则。 | [Task Modes](task-modes.md#常见启动语) / [Work Log](work-log.md) |
 | 2026-06-09 | DOC-050 优化 current-work 最近完成窗口与评分总账排序 | 🟢 完成 | 最近完成窗口从 5 行改为 20 行，超过后批量归档到 12-15 行；评分总账明确最新评审置顶；文档门禁脚本和测试同步。 | [Work Log](work-log.md) / [Workbench](01-rules/workbench.md#保留策略) / [Review Score Log](04-retrospectives/review-score-log.md) |
 | 2026-06-09 | TD-035 收口 REQ-005 新增测试文件 ruff 质量门禁 | 🟢 完成 | `ruff check --fix` 自动修 1 个 I001 + 3 个 SIM300（assertion 顺序翻转 + 1 行多余空行）；pytest 11 passed 不变；ruff app/ tests/ 全过。 | [TD-035 Delivery Record](technical-debt.md#td-035) |
