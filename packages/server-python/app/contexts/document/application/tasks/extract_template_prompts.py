@@ -44,7 +44,12 @@ def build_fields_desc(fields: list[Any], indent: int = 0) -> str:
 
     Schema:
       - object型 + children: "(label)[object型，含子字段：…]"
-      - array型 + items: "(label)[array型，成员为object，含字段：…]"
+      - array型: "(label)[array型，成员为object，含字段：…]"
+        - items present and non-empty → uses first item's key
+        - items absent or empty → fallback key "item"
+        - The "成员为object" hint is always emitted for array型 because the
+          LLM prompt contract requires "每个成员是包含子字段的object".
+          See TD-034.
       - table型 + columns: "(label)[table型，列：…]"
       - 其他: "(label)[type型]"
     """
@@ -57,8 +62,8 @@ def build_fields_desc(fields: list[Any], indent: int = 0) -> str:
         if ftype == "object" and f.get("children"):
             children_desc = build_fields_desc(f["children"], indent + 1)
             lines.append(f"{prefix}{key}({label})[object型，含子字段：{children_desc}]")
-        elif ftype == "array" and f.get("items"):
-            item_key = f["items"][0].get("key", "item") if f["items"] else "item"
+        elif ftype == "array":
+            item_key = f["items"][0].get("key", "item") if f.get("items") else "item"
             lines.append(f"{prefix}{key}({label})[array型，成员为object，含字段：{item_key}]")
         elif ftype == "table" and f.get("columns"):
             col_names = ", ".join(c["key"] for c in f["columns"])
