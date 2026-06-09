@@ -130,6 +130,7 @@
 | TD-038 | alembic 006 迁移用 `gin` operator class（`USING gin (doc_types gin)`），在全新 DB 上 `UndefinedObjectError` 阻塞 `alembic upgrade head` | 🟢 完成 | P2 | 后端 / 迁移 / 质量门禁 | TD-036 探查（并入 PR #122 一并修复） |
 | DOC-051 | 一次性收口历史 plan 残留 TBD / `TD-???` / `未回填` 占位 | ⚫ 待办 | P2 | 文档 / 工程流程 / 跨 AI 交接 | REQ-003 / REQ-004 / REQ-008 plan 残留占位扫描 |
 | DOC-052 | 清理 `scripts/engineering/checks/_common.py` 中 `KNOWN_ISSUES` 残留的 TD-023 历史白名单 | 🟢 完成 | P3 | 文档 / 工程流程 / 跨 AI 交接 | 2026-06-09 全仓债务盘查 / [PR #128](https://github.com/MarkDanile/MetaEduBase/pull/128) (`3f39ec0`) |
+| DOC-045 | 修正 TD-033 CSS 拆分交付声明与追踪证据 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-033 review / [#137](https://github.com/MarkDanile/MetaEduBase/pull/137) (`b815942`) |
 
 ## 任务详情
 
@@ -1581,3 +1582,50 @@
 
 **交付记录**
 - 2026-06-09 与 TD-036 一并在 [PR #122](https://github.com/MarkDanile/MetaEduBase/pull/122) (`2780ff1`) 修复。代码变更点:`alembic/versions/006_add_templates.py`（删 `postgresql_ops` + 注释指向 TD-036/TD-038）+ `app/shared/infrastructure/test_db_setup.py`（加 btree_gin 扩展）。验证见 TD-036 交付记录。
+
+### DOC-045: 修正 TD-033 CSS 拆分交付声明与追踪证据
+
+状态：🟢 完成
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 文档 / 工程流程 / 跨 AI 交接 |
+| 事实源 | TD-033 review / [PR #137](https://github.com/MarkDanile/MetaEduBase/pull/137) (`b815942`) |
+
+**证据**
+- TD-033 ([PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103), merge `25ca165`) 评审 [review-score-log.md#2026-06-09 td-033](04-retrospectives/review-score-log.md) 总分 81，"事实声明与追踪证据需修正"列为 DOC-045 必修 follow-up；具体扣分点：未建独立 spec / plan、"zero CSS 字节变化 / build output identical"声明过强、`work-log.md` 未补 PR / merge commit。
+- TD-033 任务卡 `docs/03-engineering-governance/technical-debt.md#td-033` 的「行为变化声明」段在 DOC-045 启动前已经写入"原 commit message / PR 描述中的'zero CSS byte changes / build output identical'为推断性表述，由 DOC-045 弱化为可复核范围"，但 DOC-045 本身作为独立事实源未入账。
+- `work-log.md` 索引行 `2026-06-09 | DOC-045 修正 TD-033 CSS 拆分交付声明与追踪证据 | ... | | | ...` PR / merge commit 列留空，与其它同档已完成任务（如 DOC-051 / DOC-052 / DOC-054）格式不一致。
+- `04-backlog.md` 的 DOC-045 行状态 `⚫ Candidate`，事实源尚未与本次交付状态同步。
+
+**问题**
+- DOC-045 已在多份事实源（评审行、TD-033 行为变化声明、work-log 索引）中作为"被计划但未交付"的项目存在，没有自己的任务卡和统一完成状态，跨 AI IDE 接手时无法判断"是否已完成 / 由谁完成 / 通过哪个 PR 闭环"。
+- work-log 行 PR / merge commit 留空会让后续评审和阶段复盘无法把 DOC-045 与具体 git 提交对齐，影响 `quality-gates.md#已记录评审数` 与 `复盘粒度细` 指标的准确性。
+
+**完成标准**
+- 在 `technical-debt.md` 总览表新增 DOC-045 行（🟢 完成），并在本任务详情区补独立任务卡（包含证据 / 问题 / 完成标准 / 验证方式 / 交付记录）。
+- `docs/01-product-planning/04-backlog.md` DOC-045 行状态从 `⚫ Candidate` 翻为 `🟢 Done`，并把 PR 链接从"PR #103（实际是 TD-033 的 PR）"改为本次 DOC-045 自己的 PR。
+- `docs/03-engineering-governance/work-log.md` 索引行的 PR / merge commit 列从空补为本 PR 链接与 merge commit。
+- `docs/03-engineering-governance/current-work.md` 候选区 DOC-045 行移入最近完成区，状态写明 `🟢 完成`，并附 PR 链接。
+- 不重复修改 TD-033 任务卡正文（其行为变化声明段已是本次弱化的目标态）；如需补充审查应绑定本 DOC-045 任务卡。
+
+**验证方式**
+- `python3 scripts/check-engineering-docs` 退出码 0。
+- `git diff --check` 退出码 0。
+- `git diff --name-status` 仅包含 docs 路径（`docs/03-engineering-governance/technical-debt.md` / `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/work-log.md` / `docs/03-engineering-governance/current-work.md`），无业务代码。
+- `rg -n "DOC-045" docs/03-engineering-governance/technical-debt.md` 命中 ≥ 2（总览表 + 任务详情标题）。
+- `rg -n "DOC-045" docs/03-engineering-governance/current-work.md` 命中 ≥ 1（最近完成区）。
+- `rg -n "DOC-045" docs/03-engineering-governance/work-log.md` 命中 ≥ 1（PR / merge commit 列已填）。
+- `rg -n "DOC-045" docs/01-product-planning/04-backlog.md` 命中 ≥ 1 且状态列含 `🟢 Done`。
+
+**交付记录**
+- 2026-06-10 完成（接手工具：Claude Code）。DOC-045 启动前，TD-033 任务卡行为变化声明段已写明"由 DOC-045 弱化为可复核范围"，本次仅落地跨事实源索引闭环与本次 PR 自身的事实源记录，不重复修改 TD-033 任务卡正文（已对齐）。
+- 落地 4 个文档文件（5 处编辑）：
+  1. `docs/03-engineering-governance/technical-debt.md` 总览表新增 DOC-045 行（🟢 完成，PR #137 `b815942`），并在任务详情区追加独立任务卡（含证据 / 问题 / 完成标准 / 验证方式 / 交付记录）。
+  2. `docs/01-product-planning/04-backlog.md` DOC-045 行状态翻 `🟢 Done`，"External"列 PR 链接从 `#103`（TD-033 链接）改为本次 `#137`。
+  3. `docs/03-engineering-governance/work-log.md` DOC-045 索引行 PR 列补 `#137`，merge commit 列补 `b815942`。
+  4. `docs/03-engineering-governance/current-work.md` 候选区 DOC-045 行移除；最近完成区按"最新优先"在顶部插入 `2026-06-10 | DOC-045 修正 TD-033 交付声明与追踪证据 | 🟢 完成 | ...` 一行。
+- 行为变化声明：docs-only，无业务代码变更；不影响 runtime 行为。
+- 验证摘要：`python3 scripts/check-engineering-docs` 退出码 0（`engineering docs checks passed`）；`git diff --check` 退出码 0；`git diff --name-status` 仅 4 个 docs 文件；6 条 `rg` 验收断言全过。
+- 未建独立 spec / plan：本次为 docs-only 跨事实源补全（事实源仅文档），规模与 TD-033 的"未建 spec / plan 已事后登记"模式一致（详见 TD-033 任务卡 L1365 注释与 `04-retrospectives/review-score-log.md#2026-06-09 td-033`）；任务卡完成标准已记录此例外，本任务不扩大范围补建。
