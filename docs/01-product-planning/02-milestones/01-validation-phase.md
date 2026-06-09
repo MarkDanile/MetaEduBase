@@ -95,7 +95,7 @@ External:
 | REQ-003 | 🟢 Done | P1 RAG 质量链路验收与回归测试（已由 PR #74 关闭，验收缺口由 REQ-007 承接） | `docs/01-product-planning/04-backlog.md` |
 | REQ-004 | 🟢 Done | 模板匹配可解释化收口（主要代码和测试由 PR #77 关闭；验收证据与质量门禁缺口由 REQ-008 承接） | `docs/01-product-planning/04-backlog.md` |
 | REQ-005 | 🟢 Done | 结构化抽取嵌套结构稳定性验收（`tests/contexts/document/test_extract_template_prompts.py` 11 项用例，object / array / table 嵌套回归；0 业务代码改动） | `docs/01-product-planning/04-backlog.md` |
-| REQ-006 | 🟣 Shaping | P1 知识资产处理链路最终演示验收（spec / plan 骨架已建；Stage 1 待实施：端到端脚本 + UI 手册；`metaedu_test` 已恢复） | `docs/01-product-planning/04-backlog.md` |
+| REQ-006 | 🟡 Doing | P1 知识资产处理链路最终演示验收（Stage 1.0 收口：e2e 3 步 + UI 手册骨架；Stage 1.5 待实施 AC-3 ~ AC-6；Stage 2 待翻 `🟢 Done`） | `docs/01-product-planning/04-backlog.md` |
 | REQ-007 | 🟢 Done | REQ-003 复盘缺口的 RAG 质量链路收口（5 AC 全部由 [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) 关闭：行为级测试 + e2e 死代码清理 + 状态同步 + 过度验证声明修正 + 验证声明真实） | `docs/01-product-planning/04-backlog.md` |
 | REQ-008 | 🟢 Done | 收口 REQ-004 验收证据与质量门禁缺口（5 项 ruff 清零 + 4 分支 caplog 断言 + L3 解析失败 / 空响应覆盖 + 漂移保护；[PR #79](https://github.com/MarkDanile/MetaEduBase/pull/79)） | `docs/01-product-planning/04-backlog.md` |
 
