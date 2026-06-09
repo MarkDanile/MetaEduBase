@@ -25,7 +25,6 @@
 |------|------|--------|------|--------|
 | REQ-001 知识资产处理链路的产品化验收视图 | 🟣 Shaping | P2 | 需求 / 产品化验收 | 澄清目标用户、核心场景和验收指标 |
 | REQ-002 模板化结构抽取能力的配置与复用体验 | 🟣 Shaping | P2 | 需求 / 结构抽取 / 配置体验 | 从历史 superpower 计划中提炼需求边界 |
-| DOC-055 收口 DOC-042 / TD-034 PR 范围混入与事实源漂移 | 🔵 就绪 | P1 | 文档 / 工程流程 / 质量门禁 | 核对 PR #142/#143、行数基线 diff、DOC-051 状态和 `TD-030（已锁定）` 映射 |
 
 ## 最近完成
 
@@ -35,6 +34,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-10 | DOC-055 收口 DOC-042 / TD-034 PR 范围混入与事实源漂移 | 🟢 完成 | PR #142 closed (superseded by PR #143) + TD-034 事实源统一为 PR #143/3077047 + `source-sizes --diff` 恢复 clean + DOC-051 跨事实源状态同步为 `🟢 完成` + 3 处 `TD-030（已锁定）` 占位改为 `占位说明`。docs-only，4 事实源 + 3 spec + 1 baseline 共 8 文件。 | [DOC-055](technical-debt.md#doc-055) / [Work Log](work-log.md) / [PR #142 (closed)](https://github.com/MarkDanile/MetaEduBase/pull/142) |
 | 2026-06-10 | DOC-042 脚本化 TD-032 行数基线扫描 | 🟢 完成 | `scripts/scan-source-sizes` + `--refresh` + 门禁 `source-size-over-limit`；19 pytest passed；ruff 全过；check-engineering-docs 通过。 | [DOC-042](technical-debt.md#doc-042) / [Work Log](work-log.md) / [PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143) |
 | 2026-06-10 | TD-034 `build_fields_desc` 在 `array + items=[]` 时丢失"成员为object"提示 | 🟢 完成 | 路线 A：`f.get("items")` → `f.get("items") is not None`，保留"成员为object"提示；pytest 50 passed，ruff 全过。 | [TD-034](technical-debt.md#td-034) / [Work Log](work-log.md) / [PR #142](https://github.com/MarkDanile/MetaEduBase/pull/142) |
 | 2026-06-10 | DOC-045 修正 TD-033 CSS 拆分交付声明与追踪证据 | 🟢 完成 | technical-debt 总览表 + 独立任务卡 + Backlog 行翻 Done + work-log 补 PR/commit + 候选区移出。docs-only，4 文件，6 条 `rg` 验收全过。 | [DOC-045](technical-debt.md#doc-045) / [Work Log](work-log.md) / [PR #137](https://github.com/MarkDanile/MetaEduBase/pull/137) |

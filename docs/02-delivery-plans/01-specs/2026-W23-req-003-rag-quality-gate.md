@@ -84,6 +84,6 @@
 | ID | 说明 | 归属 |
 |----|------|------|
 | REQ-006 | 端到端 PG 集成验收（要求 `metaedu_test` 可达） | 单独 task |
-| TD-030（已锁定） | AC-5 触发的 `FrequencyFusion.channel` 重复/去重行为已被 AC-9 验证（`sources` 同 `node_id` 仅出现一次，`channel` 含多通道名）；若后续发现新行为触发出新债，按 `docs/03-engineering-governance/technical-debt.md` 入账并分配新 `TD-xxx` 编号 | 已由 AC-9 验证；触发现入账 |
+| TD-030（已锁定） → 占位说明 | AC-5 触发的 `FrequencyFusion.channel` 重复/去重行为已被 AC-9 验证（`sources` 同 `node_id` 仅出现一次，`channel` 含多通道名）；若后续发现新行为触发出新债，按 `docs/03-engineering-governance/technical-debt.md` 入账并分配新 `TD-xxx` 编号 | 已由 AC-9 验证；触发现入账（不属于 TD-030） |
 | REQ-004 | 模板匹配可解释化 | 单独 task |
 | REQ-005 | 结构化抽取嵌套结构稳定性 | 单独 task |

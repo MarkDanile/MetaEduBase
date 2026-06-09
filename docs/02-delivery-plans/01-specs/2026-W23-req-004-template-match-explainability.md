@@ -138,4 +138,4 @@ async def select_template(
 |----|------|------|
 | REQ-005 | 结构化抽取嵌套结构稳定性验收 | 单独 task |
 | REQ-006 | 端到端 PG + 真实 LLM 演示验收 | 单独 task |
-| TD-030（已锁定） | L3 解析行为已在 REQ-008（`tests/contexts/document/test_extract_template_selection.py` 12+ 用例）覆盖：空响应 / 解析失败 0.0 落入低于阈值 / LLM 异常分支；若后续发现未文档化边角（如响应为空但 confidence 解析成功），按 `docs/03-engineering-governance/technical-debt.md` 入账并分配新 `TD-xxx` 编号 | 已由 REQ-008 覆盖；触发现入账 |
+| TD-030（已锁定） → 占位说明 | L3 解析行为已在 REQ-008（`tests/contexts/document/test_extract_template_selection.py` 12+ 用例）覆盖：空响应 / 解析失败 0.0 落入低于阈值 / LLM 异常分支；若后续发现未文档化边角（如响应为空但 confidence 解析成功），按 `docs/03-engineering-governance/technical-debt.md` 入账并分配新 `TD-xxx` 编号 | 已由 REQ-008 覆盖；触发现入账（不属于 TD-030） |
