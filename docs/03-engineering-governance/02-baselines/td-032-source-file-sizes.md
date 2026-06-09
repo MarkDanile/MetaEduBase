@@ -29,7 +29,7 @@
 
 | 文件 | 行数 | 状态 | 例外 / 拆分说明 |
 |------|------|------|-----------------|
-| `packages/web/src/assets/css/main.css` | 9 | 🟢 已拆分 | TD-033 完成：原 1343 行单文件拆为入口 `main.css`（9 行 `@import` 聚合）+ 8 个模块文件：`tokens.css`（119 行 `@theme` token） / `themes.css`（256 行 4 主题变量） / `base.css`（35 行 `@layer base` reset） / `components.css`（281 行 `ui-*` + `liquid-card*` + `sidebar-shell` + liquid `ui-panel` 覆盖） / `compat-liquid.css`（313 行 `liquid-input/btn/tag/dialog` + Notion 主题 `liquid-*` 覆盖） / `animations.css`（86 行 `@keyframes` + `stagger-*` + `liquid-rise` + `reduced-motion`） / `markdown.css`（214 行 `.markdown-body` + `content-bg` + `mesh-bg` + `wet-line`） / `toast.css`（52 行 `.toast-container` + `.toast-item`）；全部 ≤500 行；零 CSS 字节变化（纯机械拆分） |
+| `packages/web/src/assets/css/main.css` | 9 | 🟢 已拆分 | TD-033 完成（[PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103) / merge `25ca165`）：原 1343 行单文件拆为入口 `main.css`（9 行 `@import` 聚合）+ 8 个模块文件：`tokens.css`（119 行 `@theme` token） / `themes.css`（256 行 4 主题变量） / `base.css`（35 行 `@layer base` reset） / `components.css`（281 行 `ui-*` + `liquid-card*` + `sidebar-shell` + liquid `ui-panel` 覆盖） / `compat-liquid.css`（313 行 `liquid-input/btn/tag/dialog` + Notion 主题 `liquid-*` 覆盖） / `animations.css`（86 行 `@keyframes` + `stagger-*` + `liquid-rise` + `reduced-motion`） / `markdown.css`（214 行 `.markdown-body` + `content-bg` + `mesh-bg` + `wet-line`） / `toast.css`（52 行 `.toast-container` + `.toast-item`）；全部 ≤500 行；以 `pnpm typecheck / lint / build` 退出码 0 + `git diff --check` 退出码 0 为依据（Vite 产物 CSS diff / hash 未做机械对比，"build output identical" 仅基于 import 顺序与级联分析推断，详见 DOC-045） |
 | `scripts/engineering/check_engineering_docs.py` | 72 | 🟢 已拆分 | 切片 2 已合并 ([PR #93](https://github.com/MarkDanile/MetaEduBase/pull/93) / merge `7e468fb`)：原 1003 行单文件拆为入口主文件 72 行 + 8 个聚焦 `checks/*.py` 模块（38-233 行）+ `checks/__init__.py` 注册表 `KNOWN_CHECKS`；入口脚本 `scripts/check-engineering-docs` (17 行 `runpy.run_path`) 不动；16 个 pytest 行为零变化 |
 
 ### >500 行业务 / 工程源码
@@ -86,4 +86,4 @@
 - 2026-06-08（切片 4 收口后回写）：5 个 >500 / 500 附近文件全部转 `🟢 已拆分` 或维持 `⚪ 待切片` 标记；新增 `FileDetailView.vue` 416 为 500 附近候选；新增「切片 5+ 候选清单」段；扩展「合规样例」段加入 `TemplateModal.vue` 333 / `DatabaseView.vue` 320 / `chunker.py` 320 / `ResourceView.vue` 305 / `AiChatView.vue` 304。本次回写由 DOC-xxx 任务承接。
 - 2026-06-09（TD-032 评审后回写）：扫描命令改为 `rg --files -0 ... | xargs -0 wc -l`，并显式排除 `.venv` / `uploads` / `node_modules` / `dist`，避免本地未跟踪文件或带空格路径污染行数基线；脚本化候选入账 `DOC-042`。
 - 2026-06-09：`main.css` 设计系统级 CSS 模块化从 TD-032 例外转为独立就绪任务 `TD-033`。
-- 2026-06-09：TD-033 完成（此 commit）：`main.css` 1343 → 9 行（`@import` 入口）+ 8 个 CSS 模块（全部 ≤500 行）；零 CSS 字节变化（纯机械拆分）；TD-032 >1000 / >500 / 500 附近全部收口。
+- 2026-06-09：TD-033 完成（[PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103) / merge `25ca165`）：`main.css` 1343 → 9 行（`@import` 入口）+ 8 个 CSS 模块（全部 ≤500 行）；以 `pnpm typecheck / lint / build` 退出码 0 与 `git diff --check` 退出码 0 为依据（Vite 产物未做 hash / diff 机械对比，详见 DOC-045）；TD-032 >1000 / >500 / 500 附近全部收口。
