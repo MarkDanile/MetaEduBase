@@ -124,6 +124,7 @@
 | TD-032 | 治理超大源码文件并建立文件规模拆分原则 | 🟢 完成 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 2026-06-08 源码行数扫描 |
 | TD-033 | 拆分 `main.css` 设计系统级 CSS 模块 | 🟢 完成 | P2 | 前端 / 设计系统 / 可维护性 | [PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103) (`25ca165`) + [行数基线](02-baselines/td-032-source-file-sizes.md) |
 | TD-034 | `build_fields_desc` 在 `array + items=[]` 时丢失"成员为 object"提示 | ⚫ 待办 | P3 | 后端 / LLM 抽取 / 可维护性 | REQ-005 / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) (`4773741`) |
+| TD-035 | 收口 REQ-005 新增测试文件 ruff 质量门禁 | ⚫ 待办 | P2 | 后端 / 测试 / 质量门禁 | REQ-005 review / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) |
 
 ## 任务详情
 
@@ -1419,3 +1420,39 @@
 
 **交付记录**
 - 暂无。任务在 2026-06-09 由 REQ-005 实施中触发登记。
+
+### TD-035: 收口 REQ-005 新增测试文件 ruff 质量门禁
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 后端 / 测试 / 质量门禁 |
+| 事实源 | REQ-005 评审 / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) |
+
+**证据**
+- REQ-005 新增 `packages/server-python/tests/contexts/document/test_extract_template_prompts.py`，单文件测试通过：`cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_extract_template_prompts.py -q` → `11 passed`。
+- 但同一文件 ruff 不通过：`cd packages/server-python && .venv/bin/python -m ruff check tests/contexts/document/test_extract_template_prompts.py` 报 4 个可修复问题：
+  - `I001` import block 未排序：`tests/contexts/document/test_extract_template_prompts.py:18`
+  - `SIM300` Yoda condition：`tests/contexts/document/test_extract_template_prompts.py:101`
+  - `SIM300` Yoda condition：`tests/contexts/document/test_extract_template_prompts.py:117`
+  - `SIM300` Yoda condition：`tests/contexts/document/test_extract_template_prompts.py:139`
+
+**问题**
+- REQ-005 是测试补齐任务，但新增测试文件本身没有满足 Python lint 质量门禁。
+- PR #109 的验证记录覆盖了 pytest、工程文档门禁和 `git diff --check`，但未记录 ruff 是否运行；后续同类测试补齐任务容易出现"测试可跑，但质量门禁不干净"的缺口。
+
+**完成标准**
+- 修复 `test_extract_template_prompts.py` 的 `I001` / `SIM300`，不改变测试语义。
+- 不改业务代码。
+- 如修复过程中发现更多历史 ruff 问题，只处理本文件或另行登记，不扩大范围。
+
+**验证方式**
+- `cd packages/server-python && .venv/bin/python -m ruff check tests/contexts/document/test_extract_template_prompts.py` 退出码 0。
+- `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_extract_template_prompts.py -q` 退出码 0。
+- `scripts/check-engineering-docs` 退出码 0。
+- `git diff --check` 退出码 0。
+
+**交付记录**
+- 暂无。任务在 2026-06-09 由 REQ-005 评审触发登记。
