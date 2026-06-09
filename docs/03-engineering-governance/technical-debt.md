@@ -1455,7 +1455,7 @@
 - `git diff --check` 退出码 0。
 
 **交付记录**
-- 2026-06-09 完成（接手工具：Claude Code）。PR #TBD（合并后回填）。仅 `packages/server-python/tests/contexts/document/test_extract_template_prompts.py` 1 个文件变更。
+- 2026-06-09 完成（接手工具：Claude Code）。[PR #114](https://github.com/MarkDanile/MetaEduBase/pull/114) 已合并。仅 `packages/server-python/tests/contexts/document/test_extract_template_prompts.py` 1 个文件核心变更 + 4 个 docs 同步。
   - `ruff check --fix` 4 个错误全部自动修复（1 个 I001 + 3 个 SIM300），共 4 行实质变化：1 个多余空行删除（I001 顺带处理）+ 3 处 Yoda 条件 `assert A == B` 翻转为 `assert B == A`（assertion 语义等价）。
   - 行为变化声明：无；纯语法糖（assertion 顺序、import 块格式），pytest 11 passed 完全保持。
   - 验证摘要：`ruff check tests/contexts/document/test_extract_template_prompts.py` 退出码 0（`All checks passed!`）；`pytest tests/contexts/document/test_extract_template_prompts.py -q` 11 passed；`ruff check app/ tests/` 退出码 0（无其他历史 ruff 问题引入）；`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0；`git diff --name-status` 仅 1 个文件。
