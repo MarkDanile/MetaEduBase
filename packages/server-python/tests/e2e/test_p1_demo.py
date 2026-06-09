@@ -1,48 +1,22 @@
-"""End-to-end P1 demo for REQ-006 (Stage 1.0: 3 steps).
+"""End-to-end P1 demo for REQ-006 (Stage 1.5: 6 steps).
 
-This module exercises the first three steps of the P1 acceptance loop
-on a real PostgreSQL ``metaedu_test`` database. It is intended to grow
-into the full 6-step e2e acceptance (AC-1 ~ AC-6 of
-``docs/02-delivery-plans/01-specs/2026-W23-req-006-p1-final-demo.md``);
-this PR only ships steps 1-3 to keep the change reviewable. Steps 4-6
-(extract_template / KG / RAG / sources) are intentionally deferred to a
-follow-up Stage 1.5 PR.
+Stage 1.0 (PR #117) shipped the first three steps.  Stage 1.5 adds:
 
-What this file locks today (Stage 1.0):
+* AC-3  Template extract (extract_template via Celery ``.delay`` + sync fallback).
+* AC-4  Knowledge graph (extract_knowledge_graph ditto).
+* AC-5  RAG chat (``POST /api/v1/ai/chat`` with stubbed channels + LLM).
+* AC-6  Sources field shape (covered inside AC-5).
 
-  * AC-1  Upload: ``POST /api/v1/document/files/upload`` returns a
-    ``file_id`` with status ``uploaded`` and the file lands in MinIO.
-  * AC-2a Parse dispatch: ``parse_document(file_id, tenant_id)`` is
-    invoked synchronously on a worker thread (the ``@shared_task``
-    decorator's body still runs the real pipeline; the thread is
-    needed to escape pytest-asyncio's running event loop because the
-    task body uses ``asyncio.run`` internally).
-  * AC-2b Parse outcome: the file transitions to status ``parsed`` and
-    ``structured_data`` gains ``full_text`` / ``section_count`` keys.
-  * AC-2c Idempotency: a second invocation must not regress status and
-    must keep ``structured_data`` populated.
+Broker: Redis (``./dev.sh infra``).  AC-3 / AC-4 dispatch through the
+real ``.delay()``, then invoke synchronously so the e2e can verify
+the result without a running Celery worker.  LLM calls for extract
+tasks are not mocked (they need a real API key); the assertions
+focus on the dispatch path and the structured_data / knowledge_nodes
+read-back.
 
-Conventions:
-
-  * Reuses ``tests/conftest.py`` fixtures: ``client`` (httpx
-    ASGITransport against the real FastAPI app) and ``auth_headers``
-    (Bearer token from the seeded super-admin).
-  * The autouse ``mock_celery_tasks`` in ``conftest.py`` is bypassed by
-    importing the task function via its canonical path and calling it
-    on a worker thread. The task body opens its own engine against the
-    production ``settings.database_url``; we monkey-patch that to
-    ``TEST_DATABASE_URL`` for the duration of the call so the
-    e2e test never writes to the dev ``metaedu`` database.
-  * No external services required beyond PostgreSQL ``metaedu_test``.
-    LLM calls (handled by the extract step) are not exercised here.
-
-Environment:
-
-  * ``TEST_DATABASE_URL`` (default
-    ``postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test``)
-    must be reachable.
-  * The schema and seed rows are expected to exist (run
-    ``./dev.sh init-test-db`` once per environment).
+Test database: ``TEST_DATABASE_URL`` defaults to
+``postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test``.
+Run ``./dev.sh init-test-db`` once per environment.
 """
 
 from __future__ import annotations
@@ -50,8 +24,11 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import io
+import os
 import uuid
+from datetime import UTC, datetime
 
+import asyncpg
 import pytest
 
 from app.config import settings
@@ -69,24 +46,12 @@ def _run_parse_in_worker(file_id: str, tenant_id: str) -> None:
 
     The task body uses ``asyncio.run`` internally; running it from
     pytest-asyncio (which already owns the main event loop) would
-    raise ``RuntimeError: asyncio.run() cannot be called from a
-    running event loop``. The worker thread is loop-free so
-    ``asyncio.run`` can spin up its own.
+    raise ``RuntimeError``. The worker thread is loop-free.
 
-    We also:
-
-    * Rewrite ``settings.database_url`` to the test database URL
-      for the duration of the call so the task writes to
-      ``metaedu_test`` instead of the dev ``metaedu`` DB.
-    * Patch the Celery broker / result backend to ``memory://`` so
-      importing the Celery app in environments without Redis (CI
-      sandboxes, dev laptops without docker infra) does not crash
-      with ``kombu.exceptions.OperationalError: Connection refused``.
-      The task body does not call ``.delay()`` directly; it chains
-      into ``chunk_document.delay(...)`` on parse success, so we
-      additionally patch ``chunk_document.delay`` to a no-op.
+    We also rewrite ``settings.database_url`` to the test DB, switch
+    the Celery broker to ``memory://``, and silence
+    ``chunk_document.delay`` so the parse runs without Redis.
     """
-    import os
     from unittest.mock import patch
 
     from app.celery_app import celery_app
@@ -118,6 +83,65 @@ def _run_parse_async(file_id: str, tenant_id: str) -> None:
         future.result(timeout=120)
 
 
+def _run_task_in_worker(task_func, file_id: str, tenant_id: str) -> None:
+    """Invoke a Celery task body synchronously on a worker thread.
+
+    Shared helper for ``extract_template`` and ``extract_knowledge_graph``.
+    Rewrites ``settings.database_url`` to the test DB, switches the
+    Celery broker to ``memory://``, and silences downstream ``.delay``
+    calls so the task body does not try to chain via the broker from
+    the worker thread (the caller already dispatched via Redis).
+    """
+    from app.celery_app import celery_app
+    from app.contexts.document.application.tasks import (
+        extract_knowledge_graph,
+        extract_template,
+        index_tsvector,
+    )
+
+    original_url = settings.database_url
+    original_broker = celery_app.conf.broker_url
+    original_backend = celery_app.conf.result_backend
+    test_url = os.environ.get(
+        "TEST_DATABASE_URL",
+        "postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test",
+    )
+    try:
+        settings.database_url = test_url
+        celery_app.conf.broker_url = "memory://"
+        celery_app.conf.result_backend = "cache+memory://"
+        saved_delays: dict[str, object] = {}
+        for task_obj in [
+            extract_template,
+            extract_knowledge_graph,
+            index_tsvector,
+        ]:
+            saved_delays[id(task_obj)] = task_obj.delay
+            task_obj.delay = lambda *_a, **_k: None  # type: ignore[method-assign]
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                future = ex.submit(task_func, file_id, tenant_id)
+                future.result(timeout=120)
+        finally:
+            for task_obj in [
+                extract_template,
+                extract_knowledge_graph,
+                index_tsvector,
+            ]:
+                task_obj.delay = saved_delays[id(task_obj)]  # type: ignore[method-assign]
+    finally:
+        settings.database_url = original_url
+        celery_app.conf.broker_url = original_broker
+        celery_app.conf.result_backend = original_backend
+async def _run_task_async(
+    task_func, file_id: str, tenant_id: str
+) -> None:
+    """Async wrapper around ``_run_task_in_worker``."""
+    await asyncio.to_thread(
+        _run_task_in_worker, task_func, file_id, tenant_id
+    )
+
+
 async def _ensure_test_db_columns() -> None:
     """Defensive column check for the e2e suite.
 
@@ -130,10 +154,6 @@ async def _ensure_test_db_columns() -> None:
     manually-DROPPED test DB without re-running init-test-db) so the e2e
     suite never fails on environment drift; production DBs are untouched.
     """
-    import os
-
-    import asyncpg
-
     raw = os.environ.get(
         "TEST_DATABASE_URL",
         "postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test",
@@ -149,7 +169,42 @@ async def _ensure_test_db_columns() -> None:
         await conn.close()
 
 
-# --- AC-1: upload ----------------------------------------------------------
+async def _seed_document_chunks(
+    file_id: uuid.UUID, tenant_id: uuid.UUID, content: str
+) -> int:
+    """Insert rows into ``document_chunks`` for the test file.
+
+    The real ``chunk_document`` task requires ``pgvector``, which is
+    not available in this e2e environment, so we seed chunks directly
+    via SQL to provide input for ``extract_template``.
+    """
+    raw = os.environ.get(
+        "TEST_DATABASE_URL",
+        "postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test",
+    )
+    dsn = raw.replace("postgresql+asyncpg://", "postgresql://")
+    conn = await asyncpg.connect(dsn)
+    try:
+        now = datetime.now(UTC).replace(tzinfo=None)
+        await conn.execute(
+            "DELETE FROM metaedu.document_chunks "
+            "WHERE file_id = $1 AND tenant_id = $2",
+            file_id, tenant_id,
+        )
+        await conn.execute(
+            "INSERT INTO metaedu.document_chunks "
+            "(id, tenant_id, file_id, chunk_index, content, "
+            "section_title, section_path, char_start, char_end, created_at) "
+            "VALUES ($1, $2, $3, 0, $4, $5, $6, 0, $7, $8)",
+            uuid.uuid4(), tenant_id, file_id,
+            content, "教学目标", "教学目标", len(content), now,
+        )
+        return 1
+    finally:
+        await conn.close()
+
+
+# --- AC-1: upload ---------------------------------------------------------
 
 
 async def test_p1_demo_step1_upload(client, auth_headers):
@@ -170,21 +225,13 @@ async def test_p1_demo_step1_upload(client, auth_headers):
     return data["id"]
 
 
-# --- AC-2a + AC-2b: parse --------------------------------------------------
+# --- AC-2: parse ----------------------------------------------------------
 
 
 async def test_p1_demo_step2_parse(client, auth_headers):
-    """AC-2: ``parse_document`` writes ``structured_data`` and lands
-    the file in the ``processing`` state (the pipeline's mid-state;
-    ``parsed`` is reached only after ``chunk_document`` finishes, which
-    is patched to a no-op in this e2e so the e2e stays Redis-free).
-    """
+    """AC-2: ``parse_document`` writes ``full_text`` / ``section_count``."""
     file_id = await test_p1_demo_step1_upload(client, auth_headers)
 
-    # parse_document is decorated with @shared_task; calling it
-    # directly on a worker thread bypasses the Celery broker while
-    # still executing the real pipeline body (and lands writes on
-    # ``metaedu_test`` via the test_database_url override).
     await asyncio.to_thread(
         _run_parse_async, str(file_id), str(DEFAULT_TENANT_ID)
     )
@@ -205,17 +252,14 @@ async def test_p1_demo_step2_parse(client, auth_headers):
     return file_id, structured
 
 
-# --- AC-2c: parse idempotency ---------------------------------------------
+# --- AC-2c: parse idempotency --------------------------------------------
 
 
 async def test_p1_demo_step2b_parse_idempotent(
     client, auth_headers
 ):
     """AC-2c: a second parse must not regress status or clear structured_data."""
-
-    file_id, _ = await test_p1_demo_step2_parse(
-        client, auth_headers
-    )
+    file_id, _ = await test_p1_demo_step2_parse(client, auth_headers)
 
     await asyncio.to_thread(
         _run_parse_async, str(file_id), str(DEFAULT_TENANT_ID)
@@ -228,3 +272,198 @@ async def test_p1_demo_step2b_parse_idempotent(
     data = resp.json()
     assert data["status"] in ("processing", "parsed")
     assert data.get("structured_data"), "structured_data must persist"
+
+
+# --- AC-3: template extract ----------------------------------------------
+
+
+async def test_p1_demo_step3_template_extract(
+    client, auth_headers
+):
+    """AC-3: ``extract_template`` writes ``structured_data.template``.
+
+    Creates a demo template, seeds document_chunks, dispatches
+    ``extract_template.delay()`` through Redis, then invokes
+    synchronously to verify the result.
+    """
+    from app.contexts.document.application.tasks.extract_template import (
+        extract_template,
+    )
+
+    file_id, _ = await test_p1_demo_step2_parse(client, auth_headers)
+
+    # Seed a doc_type-matching template (L1 path).
+    template_payload = {
+        "name": "中学数学教案_Stage1.5",
+        "doc_types": ["教案"],
+        "fields": [
+            {
+                "key": "basic_info",
+                "label": "基本信息",
+                "type": "object",
+                "description": "教学基本信息",
+                "children": [
+                    {"key": "title", "label": "标题", "type": "text"},
+                    {"key": "subject", "label": "学科", "type": "text"},
+                ],
+            },
+            {
+                "key": "teaching_objectives",
+                "label": "教学目标",
+                "type": "array",
+                "items": [
+                    {"key": "item", "label": "目标项", "type": "text"},
+                ],
+            },
+        ],
+    }
+    resp = await client.post(
+        "/api/v1/templates", json=template_payload, headers=auth_headers,
+    )
+    assert resp.status_code == 201, resp.text
+
+    # Seed chunks (skip chunk_document to avoid pgvector).
+    chunks = await _seed_document_chunks(
+        file_id, DEFAULT_TENANT_ID,
+        "## 教学目标\n理解函数。\n\n## 教学过程\n讲解例题。\n\n## 教学评价\n课堂练习。",
+    )
+    assert chunks == 1
+
+    # Dispatch through real Redis broker.
+    extract_template.delay(str(file_id), str(DEFAULT_TENANT_ID))
+
+    # Also invoke synchronously so the e2e can verify the result.
+    await _run_task_async(
+        extract_template, str(file_id), str(DEFAULT_TENANT_ID)
+    )
+
+    resp = await client.get(
+        f"/api/v1/document/files/{file_id}", headers=auth_headers
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    structured = data.get("structured_data") or {}
+    template = structured.get("template")
+    assert template, (
+        f"structured_data.template must be present for file {file_id}, "
+        f"got {list(structured.keys())}"
+    )
+    if isinstance(template, dict) and "basic_info" in template:
+        assert isinstance(template["basic_info"], dict), template
+    return file_id
+
+
+# --- AC-4: knowledge graph -----------------------------------------------
+
+
+async def test_p1_demo_step4_kg_extract(
+    client, auth_headers
+):
+    """AC-4: ``extract_knowledge_graph`` writes ``knowledge_nodes``."""
+    from app.contexts.document.application.tasks.extract_knowledge_graph import (
+        extract_knowledge_graph,
+    )
+
+    file_id = await test_p1_demo_step3_template_extract(
+        client, auth_headers
+    )
+
+    extract_knowledge_graph.delay(str(file_id), str(DEFAULT_TENANT_ID))
+    await _run_task_async(
+        extract_knowledge_graph, str(file_id), str(DEFAULT_TENANT_ID)
+    )
+
+    resp = await client.get(
+        f"/api/v1/knowledge/nodes?source_file_id={file_id}",
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    nodes = resp.json()
+    assert isinstance(nodes, list)
+    assert len(nodes) >= 1, (
+        f"expected >=1 knowledge_nodes for file {file_id}, got {nodes!r}"
+    )
+    for node in nodes:
+        if node.get("source_file_id") is not None:
+            assert node.get("source_file_id") == str(file_id)
+    return file_id
+
+
+# --- AC-5 + AC-6: RAG chat + sources field shape ------------------------
+
+
+async def test_p1_demo_step5_ai_chat(
+    client, auth_headers
+):
+    """AC-5 + AC-6: ``POST /api/v1/ai/chat`` returns non-empty ``reply``
+    and ``sources``; each source entry carries the full schema."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.contexts.knowledge.application.ner_service import RuleBasedNER
+    from app.contexts.knowledge.interfaces.api import ai_router
+    from app.shared.domain.recall_channel import RecallResult
+
+    file_id = await test_p1_demo_step4_kg_extract(
+        client, auth_headers
+    )
+    _ = file_id  # used in kg_extract, kept for breadcrumbs
+
+    async def _vector_stub(_query, _ner_result, _tenant_id,
+                           _session, _top_k=5):
+        _ = (_query, _ner_result, _tenant_id, _session, _top_k)
+        return [RecallResult(
+            node_id="kg-node-1",
+            title="教学目标",
+            description="理解函数",
+            domain="education_sports",
+            level="knowledge_point",
+            score=0.92,
+            channel="vector",
+            path="kg-1",
+        )]
+
+    async def _keyword_stub(*_a, **_k):
+        _ = (_a, _k)
+        return []
+
+    async def _metadata_stub(*_a, **_k):
+        _ = (_a, _k)
+        return []
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "choices": [{"message": {"content": "基于知识图谱的回答"}}]
+    }
+    mock_response.raise_for_status = MagicMock()
+    mock_client = MagicMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch.object(ai_router, "_vector_channel", SimpleNamespace(
+        name="vector", recall=_vector_stub,
+    )), patch.object(ai_router, "_keyword_channel", SimpleNamespace(
+        name="keyword", recall=_keyword_stub,
+    )), patch.object(ai_router, "_metadata_channel", SimpleNamespace(
+        name="metadata", recall=_metadata_stub,
+    )), patch.object(ai_router, "_ner", RuleBasedNER()), \
+         patch(
+             "app.contexts.knowledge.interfaces.api.ai_router.httpx.AsyncClient",
+             return_value=mock_client,
+         ):
+        resp = await client.post(
+            "/api/v1/ai/chat",
+            json={"message": "教学目标是什么?", "context_window": 3},
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data.get("reply"), "reply must be non-empty"
+    sources = data.get("sources") or []
+    assert len(sources) >= 1, f"expected >=1 sources, got {sources!r}"
+    for src in sources:
+        for field in ("id", "title", "channel", "score"):
+            assert field in src, f"source item missing {field!r}: {src!r}"
+    assert any(s["channel"] == "vector" for s in sources), sources
