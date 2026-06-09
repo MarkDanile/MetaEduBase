@@ -6,11 +6,14 @@
 
 ## 维护规则
 
-- 扫描命令（与 `technical-debt.md#td-032` 证据段一致）：
+- 扫描命令（与 `technical-debt.md#td-032` 证据段一致；使用 `-0` / `xargs -0` 支持空格路径，
+  并排除本地环境、上传文件和构建产物）：
 
   ```bash
-  rg --files packages scripts tests -g '*.py' -g '*.ts' -g '*.tsx' -g '*.vue' -g '*.css' -g '*.scss' \
-    | xargs wc -l | sort -nr | head -40
+  rg --files -0 packages scripts tests \
+    -g '*.py' -g '*.ts' -g '*.tsx' -g '*.vue' -g '*.css' -g '*.scss' \
+    -g '!**/.venv/**' -g '!**/uploads/**' -g '!**/node_modules/**' -g '!**/dist/**' \
+    | xargs -0 wc -l | sort -nr | head -40
   ```
 
 - 4 档分组：>1000 / >500 / 500 附近 / 合规样例。
@@ -81,3 +84,4 @@
 
 - 2026-06-08：与 `technical-debt.md#td-032` 证据段同步，基线建立。
 - 2026-06-08（切片 4 收口后回写）：5 个 >500 / 500 附近文件全部转 `🟢 已拆分` 或维持 `⚪ 待切片` 标记；新增 `FileDetailView.vue` 416 为 500 附近候选；新增「切片 5+ 候选清单」段；扩展「合规样例」段加入 `TemplateModal.vue` 333 / `DatabaseView.vue` 320 / `chunker.py` 320 / `ResourceView.vue` 305 / `AiChatView.vue` 304。本次回写由 DOC-xxx 任务承接。
+- 2026-06-09（TD-032 评审后回写）：扫描命令改为 `rg --files -0 ... | xargs -0 wc -l`，并显式排除 `.venv` / `uploads` / `node_modules` / `dist`，避免本地未跟踪文件或带空格路径污染行数基线；脚本化候选入账 `DOC-042`。

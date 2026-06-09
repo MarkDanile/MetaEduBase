@@ -1247,7 +1247,7 @@
 | 事实源 | 2026-06-08 源码行数扫描 |
 
 **证据**
-- 扫描命令：`rg --files packages scripts tests -g '*.py' -g '*.ts' -g '*.tsx' -g '*.vue' -g '*.css' -g '*.scss' | xargs wc -l | sort -nr | head -40`。
+- 扫描命令：`rg --files -0 packages scripts tests -g '*.py' -g '*.ts' -g '*.tsx' -g '*.vue' -g '*.css' -g '*.scss' -g '!**/.venv/**' -g '!**/uploads/**' -g '!**/node_modules/**' -g '!**/dist/**' | xargs -0 wc -l | sort -nr | head -40`。
 - 当前超过 1000 行：`packages/web/src/assets/css/main.css` 1343 行；`scripts/engineering/check_engineering_docs.py` 1003 行。
 - 当前超过 500 行的业务或工程源码：`packages/server-python/app/contexts/document/application/tasks.py` 929 行；`packages/web/src/views/database/DatabaseView.vue` 701 行；`packages/server-python/app/contexts/structured_data/application/tasks.py` 671 行；`packages/web/src/views/admin/TemplateModal.vue` 665 行。
 - 500 行附近的高风险候选：`packages/server-python/app/contexts/document/interfaces/api/router.py` 494 行；`packages/web/src/views/resource/ResourceLibraryView.vue` 490 行。
