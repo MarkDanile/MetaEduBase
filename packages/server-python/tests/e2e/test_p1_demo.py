@@ -208,9 +208,14 @@ async def test_p1_demo_step2_parse(client, auth_headers):
 # --- AC-2c: parse idempotency ---------------------------------------------
 
 
-async def test_p1_demo_step2b_parse_idempotent(client, auth_headers):
+async def test_p1_demo_step2b_parse_idempotent(
+    client, auth_headers
+):
     """AC-2c: a second parse must not regress status or clear structured_data."""
-    file_id, _ = await test_p1_demo_step2_parse(client, auth_headers)
+
+    file_id, _ = await test_p1_demo_step2_parse(
+        client, auth_headers
+    )
 
     await asyncio.to_thread(
         _run_parse_async, str(file_id), str(DEFAULT_TENANT_ID)
