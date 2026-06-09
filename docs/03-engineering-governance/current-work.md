@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| 暂无 | ⚫ 待办 | - | - | 当前没有已开工任务。 | 从“下一批候选任务”或用户指定任务开工。 | - |
+| TD-032 切片 6：拆分 `ResourceLibraryView.vue` 490 → 主入口 + 3 个聚焦子组件 | 🟡 进行中 | P2 | 可维护性 / 前端 / Vue | spec / plan 已落仓；分支 `refactor/td-032-slice-6-resource-library-view`；baseline `pnpm typecheck/lint/build` 3 项全过 | 实施 3 个子组件（`FolderTreePanel` / `FileListPanel` / `UploadOptionsDialog`）+ 精简主入口 + 跑验证 + commit/push/PR/merge | 切片 4 经验：`v-model` 改 `:value + @input` 显式 emit 链;`fileInput` ref 在 `FileListPanel` 内部持有 |
 
 ## 下一批候选任务
 
