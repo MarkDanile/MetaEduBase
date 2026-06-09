@@ -125,6 +125,8 @@
 | TD-033 | 拆分 `main.css` 设计系统级 CSS 模块 | 🟢 完成 | P2 | 前端 / 设计系统 / 可维护性 | [PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103) (`25ca165`) + [行数基线](02-baselines/td-032-source-file-sizes.md) |
 | TD-034 | `build_fields_desc` 在 `array + items=[]` 时丢失"成员为 object"提示 | ⚫ 待办 | P3 | 后端 / LLM 抽取 / 可维护性 | REQ-005 / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) (`4773741`) |
 | TD-035 | 收口 REQ-005 新增测试文件 ruff 质量门禁 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | REQ-005 review / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) |
+| TD-036 | `metaedu_test` 库 `document_tasks.updated_at` 列缺失（alembic 003 迁移与测试库 schema drift） | ⚫ 待办 | P2 | 后端 / 测试 / 质量门禁 | REQ-006 Stage 1 探查 |
+| TD-037 | e2e 脚本无法直接走真实 Celery：沙箱无 Redis broker 时需 mock `chunk_document.delay` + patch `broker_url=memory://` | ⚫ 待办 | P3 | 后端 / 测试 / 基础设施 | REQ-006 Stage 1 探查 |
 
 ## 任务详情
 
@@ -1459,3 +1461,76 @@
   - `ruff check --fix` 4 个错误全部自动修复（1 个 I001 + 3 个 SIM300），共 4 行实质变化：1 个多余空行删除（I001 顺带处理）+ 3 处 Yoda 条件 `assert A == B` 翻转为 `assert B == A`（assertion 语义等价）。
   - 行为变化声明：无；纯语法糖（assertion 顺序、import 块格式），pytest 11 passed 完全保持。
   - 验证摘要：`ruff check tests/contexts/document/test_extract_template_prompts.py` 退出码 0（`All checks passed!`）；`pytest tests/contexts/document/test_extract_template_prompts.py -q` 11 passed；`ruff check app/ tests/` 退出码 0（无其他历史 ruff 问题引入）；`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0；`git diff --name-status` 仅 1 个文件。
+
+### TD-036: `metaedu_test` 库 `document_tasks.updated_at` 列缺失（alembic 003 迁移与测试库 schema drift）
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 后端 / 测试 / 质量门禁 |
+| 事实源 | REQ-006 Stage 1 探查（`feat/req-006-stage-1-e2e`） |
+
+**证据**
+- alembic head：`9466ea6e5d33`（`packages/server-python/alembic/versions/`），003 迁移 `003_add_updated_at_to_document_tasks.py:19-24` 显式 `op.add_column("document_tasks", sa.Column("updated_at", sa.DateTime(), nullable=True), schema="metaedu")`。
+- `metaedu_test` 库实际列：`['id', 'tenant_id', 'file_id', 'dataset_id', 'task_type', 'status', 'progress', 'error_message', 'started_at', 'completed_at', 'created_at']` — **缺 `updated_at`**。
+- 生产代码契约：`packages/server-python/app/shared/tasks/lifecycle.py:101` `update_task_status` 无差别写 `updated_at`。
+- 触发失败：`UPDATE metaedu.document_tasks SET status = $1, progress = $2, updated_at = $3, started_at = $3 WHERE id = $4` → `UndefinedColumnError: column "updated_at" of relation "document_tasks" does not exist`。
+- `files` 表有 `updated_at`（002 迁移加的），003 迁移应该已经 apply；但实际 schema 缺列 → 这是测试库与 alembic head 的真实 drift，需查 alembic upgrade 历史是否曾 downgrade 过 003。
+
+**问题**
+- 后端生产代码与测试库 schema 漂移；任何 e2e 脚本走 `parse_document` / `extract_template` / 其他 Celery 任务都会卡在这一步。
+- `./dev.sh init-test-db` 跑 `alembic upgrade head` 不能修复——head 已是 003 之后；说明列从未被加入（或者被回退过）。
+- 影响：所有依赖 `metaedu_test` 的 e2e 集成测试（含 REQ-006 端到端脚本）都受影响。
+
+**完成标准**
+- 修复 `metaedu_test` 库 `document_tasks.updated_at` 列：手工 `ALTER TABLE metaedu.document_tasks ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP` 验证有效。
+- 在 `init-test-db` 流程加入 `_ensure_critical_columns` 防御性 check：初始化完成后对照 production schema 校验关键列存在，缺则提示运行修复 SQL（不要 silently 修复，避免掩盖 alembic 真实 drift）。
+- 如发现 alembic 003 迁移本身有 bug（downgrade 误删 / upgrade 失败回滚），修复迁移并补数据回归测试。
+- `tests/e2e/test_p1_demo.py` 移除对 `ADD COLUMN IF NOT EXISTS` 的依赖；e2e 脚本可裸跑 `init-test-db` 完成后即通过。
+
+**验证方式**
+- `cd packages/server-python && .venv/bin/python -m pytest tests/e2e/test_p1_demo.py -q` 退出码 0。
+- `./dev.sh init-test-db` 一次后无需手工 `ALTER TABLE`。
+- 复现：`DROP DATABASE metaedu_test && ./dev.sh init-test-db && pytest tests/e2e/test_p1_demo.py -q` → 3 passed，无手动修补。
+
+**交付记录**
+- 暂无。任务在 2026-06-09 REQ-006 Stage 1 实施中触发登记（绕路通过手工 `ALTER TABLE` 验证 e2e 主体可跑）。
+
+### TD-037: e2e 脚本无法直接走真实 Celery：沙箱无 Redis broker 时需 mock `chunk_document.delay` + patch `broker_url=memory://`
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P3 |
+| 领域 | 后端 / 测试 / 基础设施 |
+| 事实源 | REQ-006 Stage 1 探查（`feat/req-006-stage-1-e2e`） |
+
+**证据**
+- 沙箱配置：`packages/server-python/app/celery_app.py:31-35` 显式 `broker="redis://localhost:6379/1", backend="redis://localhost:6379/2"`。
+- REQ-006 e2e 路径：直接调 `parse_document(file_id, tenant_id)`（同步执行 task body）时，task body 内部 `chunk_document.delay(...)` 触发 broker 连接 → `kombu.exceptions.OperationalError: [Errno 61] Connection refused`。
+- 沙箱无 Redis（`./dev.sh status` 默认 `infra` 模式 `docker`；沙箱可能未启动 docker infra）。
+- 临时绕路（REQ-006 e2e 已采用）：`celery_app.conf.broker_url = "memory://"; celery_app.conf.result_backend = "cache+memory://"; patch.object(chunk_mod.chunk_document, "delay", lambda *_a, **_k: None)`。
+
+**问题**
+- "端到端" e2e 实际是"半端到端"：parse 真实跑、chunk 链被 mock 掉。Stage 1.5 要继续推进 6 步闭环时，每一步都可能撞到不同 chain 的 broker 调用。
+- `memory://` broker 在沙箱中可用但不可跨进程；CI 必须有 Redis 才能跑真实 e2e。
+- `init-test-db` 不启动 broker；e2e 脚本默认 broker patch 与 Celery app 共享 `celery_app` 单例，多 e2e 测试并发可能互相影响 broker 状态。
+
+**完成标准**
+- 选择以下任一路线并落地：
+  - 路线 A（推荐）：在 `tests/e2e/conftest.py` 中为 e2e 目录提供独立 Celery app fixture（broker / backend 默认 `memory://`），所有 e2e 脚本共用，避免污染全局 `celery_app`。
+  - 路线 B：在 `init-test-db` 后启动一个 `docker run -d --rm -p 6379:6379 redis:7-alpine` 的开发 Redis，e2e 脚本走真实 broker；沙箱无 docker 时降级到 `memory://`。
+- Stage 1.5 实施时把 `chunk_document.delay` / `embed_chunks.delay` / `extract_template.delay` / `extract_knowledge_graph.delay` 的 mock 集中到一个 fixture（如 `mock_pipeline_chain`），避免每个测试都重复 patch。
+- CI 端补一个 `e2e-real` 标记，依赖真实 Redis；本地默认 `e2e-mock`。
+
+**验证方式**
+- `cd packages/server-python && .venv/bin/python -m pytest tests/e2e/ -q` 退出码 0，**不依赖本机 Redis**。
+- 路线 A 选定时：`celery_app.conf.broker_url` 在 e2e 跑完后仍为 `redis://...`（未被 e2e 改写污染）。
+- 路线 B 选定时：`docker ps` 显示本地 redis 容器；`pytest tests/e2e/ -q` 不修改 `celery_app.conf`。
+- `scripts/check-engineering-docs` 退出码 0。
+
+**交付记录**
+- 暂无。任务在 2026-06-09 REQ-006 Stage 1 实施中触发登记（绕路通过 worker thread + broker patch 让 e2e 主体可跑；待 Stage 1.5 推进时把 patch 集中化）。

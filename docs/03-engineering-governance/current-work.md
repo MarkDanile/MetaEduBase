@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-006 P1 知识资产处理链路最终演示验收 | 🟣 Shaping | P1 | Product / Document / AI / Testing | 已建 spec / plan 骨架（`feat/req-006-p1-final-demo` 分支）；Backlog 状态 `⚫ Candidate` → `🟣 Shaping`；`metaedu_test` 已恢复（W23 复核 4 文件 34 passed in 9.86s）；Stage 1 待实施（端到端脚本 + UI 手册）。 | Stage 1：探查现有 fixture → 写 `tests/e2e/test_p1_demo.py` 6 步串联 → 写 `req-006-p1-final-demo-ui.md` 手册 → ruff + 门禁 + commit。Stage 2：轨道 B / W23 / Backlog / current-work / work-log 文档回填。 | `scripts/check-engineering-docs` 退出码 0（塑形已收口） |
+| REQ-006 P1 知识资产处理链路最终演示验收 | 🟡 进行中 | P1 | Product / Document / AI / Testing | Stage 1.0 收口：`feat/req-006-stage-1-e2e` 分支已建 `tests/e2e/test_p1_demo.py` 3 步 e2e 脚本（`test_p1_demo_step1_upload` / `step2_parse` / `step2b_parse_idempotent` 共 3 passed）+ UI 演示手册骨架（`req-006-p1-final-demo-ui.md` 6 步截图位 + 4 主题验收降级）。Stage 1 探查发现 2 个新债：TD-036 `metaedu_test.document_tasks.updated_at` 缺失（alembic 003 漂移，e2e 自带 `ALTER TABLE IF NOT EXISTS` 兜底）；TD-037 e2e 沙箱无 Redis 时需 mock `chunk_document.delay` + patch `broker_url=memory://`。 | Stage 1.5：接入 `extract_template` / KG / RAG / sources 渲染（AC-3 ~ AC-6 字段层）；Stage 1.5 收口后 Stage 2 翻 `🟢 Done`：轨道 B / W23 / Backlog / current-work / work-log 文档回填。 | `pytest tests/e2e/test_p1_demo.py -q` 3 passed；`ruff check tests/e2e/test_p1_demo.py` All checks passed!；`ruff check app/ tests/` All checks passed!；`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0 |
 
 ## 下一批候选任务
 
