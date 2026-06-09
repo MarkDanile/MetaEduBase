@@ -1217,6 +1217,13 @@
 - 验证摘要：`pytest tests/contexts/ai/test_recall_channels_contract.py -v` → 12 passed（基线 9 + 新增 3）；`pytest tests/contexts/ai tests/contexts/knowledge -q` → 60 passed；`pytest tests/ -q` → **228 passed**（基线 222 + 3）；`ruff check app/ tests/` → All checks passed!；`rg -n "lstrip" ...` → 0 命中（任务卡验证方式）；`scripts/check-engineering-docs` → engineering docs checks passed；`git diff --check` 干净。
 - 行为变化声明：仅形参命名（去下划线前缀）与 Protocol 增 `session`；运行时行为不变；调用方签名已对齐无需改动。
 - 2026-06-07 由 REQ-003 Task 5 收口时入账（commit `3bf8c10`）。任务详情见 `docs/02-delivery-plans/01-specs/2026-W23-req-003-rag-quality-gate.md` 与 `docs/02-delivery-plans/02-plans/2026-W23-req-003-rag-quality-gate-plan.md`。
+- 2026-06-10 跨事实源状态收口（PR #140）：技术债总览/详情翻 🟢 完成；Backlog REQ-003 行 "Protocol-vs-concrete drift 入账 TD-030" → 已收口 [PR #139](https://github.com/MarkDanile/MetaEduBase/pull/139)；work-log REQ-003 详情行同步；review-score-log REQ-007 行扣分点 "TD-030 signature drift 仍开放" → 已收口。
+
+**已知限制 / 后续接力（出账）**
+- DOC-051 ([PR #124](https://github.com/MarkDanile/MetaEduBase/pull/124)) 把 3 个 spec 的 `TD-???` 占位统一替换为 `TD-030（已锁定）` 字符串，但三处实际语义不同：
+  - `docs/02-delivery-plans/01-specs/2026-W23-req-003-rag-quality-gate.md:87` "FrequencyFusion.channel 重复/去重" 实为 AC-9 覆盖范围，与 RecallChannel signature drift 无关；
+  - `docs/02-delivery-plans/01-specs/2026-W23-req-004-template-match-explainability.md:141` 与 `2026-W23-req-008-req-004-quality-follow-up.md:103` "L3 解析行为 / 空响应 / confidence 解析失败" 实为 REQ-008 spec 自身覆盖范围。
+- 这3 处 "TD-030（已锁定）" 字面与本次收口的 `TD-030: RecallChannel Protocol vs concrete signature drift` 不是同一债；但已落在同一编号上，会误导后续 AI IDE 按"TD-030"去对照技术债总账时找不到对应事实。建议由独立 `DOC-xxx` 处理：(a) 重新核对 3 处占位的真实语义债；(b) 按需分配新 `TD-xxx` 编号或直接删除无效占位行；(c) 同步 `check_delivery_placeholders` 脚本补强"占位 → 编号"映射校验。本 TD-030 收口范围不含此项，仅登记发现。
 
 ### TD-031: RAG 质量测试文件的预存 ruff 警告
 

@@ -173,7 +173,7 @@
 
 | # | 任务 | 切片 | PR | Merge Commit | 关键事实 |
 |---|------|------|-----|--------------|----------|
-| 1 | REQ-003 P1 RAG 质量链路验收与回归测试 | 4 测试文件 + 5 AC | [#74](https://github.com/MarkDanile/MetaEduBase/pull/74) | `337238b` | 24 个新测试用例覆盖 NER / 融合 / 3 通道契约 / ai_chat e2e；轨道 B 4 行翻结论；Protocol-vs-concrete drift 入账 `TD-030` |
+| 1 | REQ-003 P1 RAG 质量链路验收与回归测试 | 4 测试文件 + 5 AC | [#74](https://github.com/MarkDanile/MetaEduBase/pull/74) | `337238b` | 24 个新测试用例覆盖 NER / 融合 / 3 通道契约 / ai_chat e2e；轨道 B 4 行翻结论；Protocol-vs-concrete drift 由 [TD-030](technical-debt.md#td-030) / [PR #139](https://github.com/MarkDanile/MetaEduBase/pull/139) (merge `a934981`) 于 2026-06-10 收口 |
 | 2 | REQ-007 收口 REQ-003 RAG 质量链路验收缺口 | 5 AC 收口 | [#75](https://github.com/MarkDanile/MetaEduBase/pull/75) | `45db478b` | 1 个新行为级测试文件（9 用例：fake rows + SQL 参数绑定 + 空输入早退）；e2e 死代码 -35 行；P1 / 迭代 / Backlog / current-work 状态同步；P1 轨道 B 4 行过度验证声明改写；`TD-031` ruff 预存警告入账并自动修复 |
 
 **验证声明（按环境区分）**：
