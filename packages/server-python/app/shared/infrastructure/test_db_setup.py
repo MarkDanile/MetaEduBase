@@ -122,7 +122,14 @@ async def _ensure_database(url) -> None:
 
 
 async def _ensure_extensions_and_schema(url) -> None:
-    """连到测试库，幂等创建扩展与 metaedu schema。"""
+    """连到测试库，幂等创建扩展与 metaedu schema。
+
+    `btree_gin` 扩展在全新测试库上被 alembic 006 隐式使用（templates 表
+    的 `ix_templates_doc_types` 用 `USING gin`）。该扩展不在 PG 默认
+    image 中预装，必须在 `alembic upgrade head` 之前幂等创建，否则全新
+    测试库会卡在 006 升不到 head，003 的 `add_column updated_at` 也就
+    永远跑不到 —— 这正是 TD-036 / TD-038 的根因。
+    """
     db_name = _validate_database_name(url.database)
     conn = await asyncpg.connect(
         host=url.host,
@@ -134,8 +141,9 @@ async def _ensure_extensions_and_schema(url) -> None:
     try:
         await conn.execute("CREATE EXTENSION IF NOT EXISTS vector;")
         await conn.execute("CREATE EXTENSION IF NOT EXISTS ltree;")
+        await conn.execute("CREATE EXTENSION IF NOT EXISTS btree_gin;")
         await conn.execute("CREATE SCHEMA IF NOT EXISTS metaedu;")
-        logger.info("已确认扩展与 schema：vector, ltree, metaedu")
+        logger.info("已确认扩展与 schema：vector, ltree, btree_gin, metaedu")
     finally:
         await conn.close()
 
@@ -277,6 +285,50 @@ async def _run_alembic_against(test_url: str) -> None:
         settings.database_url = original
 
 
+async def _ensure_critical_columns(url) -> list[str]:
+    """校验 alembic 已声明的关键列是否就位；漂移时返回需要手工修复的列。
+
+    历史背景（TD-036）：006 迁移在全新 DB 上因 `gin` operator class 错误
+    阻塞 `alembic upgrade head`，导致 003 的 `add_column updated_at` 永远
+    跑不到。修 006 + 修 `init-test-db` 加 `btree_gin` 扩展后，alembic 应
+    能跑到 head，所有关键列应就位。如果这个 check 命中漂移，说明
+    `init-test-db` 在某个历史时刻被绕过（手工 `DROP COLUMN` / 残缺 dump
+    / 其它迁移回退），不再 silently 修复 —— 这是 TD-036 完成标准第 2
+    条明确要求的行为（"不要 silently 修复，避免掩盖 alembic 真实 drift"）。
+
+    返回值是"需要补但 init-test-db 拒绝补"的列名列表；调用方决定是
+    raise 还是只记 warning。
+    """
+    db_name = _validate_database_name(url.database)
+    conn = await asyncpg.connect(
+        host=url.host,
+        port=url.port or 5432,
+        user=url.username,
+        password=url.password,
+        database=db_name,
+    )
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT table_name, column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'metaedu'
+              AND ((table_name = 'document_tasks' AND column_name = 'updated_at')
+                   OR (table_name = 'files' AND column_name = 'updated_at'))
+            ORDER BY table_name, column_name
+            """
+        )
+        found: set[tuple[str, str]] = {(r["table_name"], r["column_name"]) for r in rows}
+        expected: set[tuple[str, str]] = {
+            ("document_tasks", "updated_at"),
+            ("files", "updated_at"),
+        }
+        missing = sorted(expected - found)
+        return [f"{t}.{c}" for t, c in missing]
+    finally:
+        await conn.close()
+
+
 async def init_test_database() -> None:
     test_url_str = _resolve_test_db_url()
     url = make_url(test_url_str)
@@ -286,6 +338,19 @@ async def init_test_database() -> None:
     await _ensure_extensions_and_schema(url)
     await _stamp_if_legacy_schema(url, test_url_str)
     await _run_alembic_against(test_url_str)
+    missing = await _ensure_critical_columns(url)
+    if missing:
+        logger.warning(
+            "init-test-db: alembic 已跑到 head，但以下关键列仍然缺失：%s。\n"
+            "  可能原因：残缺 dump / 手工 DROP / 迁移被回退。\n"
+            "  不要在本流程 silently ALTER —— 那会掩盖 alembic 真实 drift。\n"
+            "  修复 SQL 示例：\n"
+            "    ALTER TABLE metaedu.document_tasks "
+            "ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;\n"
+            "    ALTER TABLE metaedu.files "
+            "ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;",
+            ", ".join(missing),
+        )
     logger.info("测试数据库初始化完成：%s", db_name)
 
 

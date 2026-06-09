@@ -121,12 +121,14 @@ def _run_parse_async(file_id: str, tenant_id: str) -> None:
 async def _ensure_test_db_columns() -> None:
     """Defensive column check for the e2e suite.
 
-    REQ-006 e2e needs ``document_tasks.updated_at`` to be present.
-    alembic 003 already adds it, but the long-running ``metaedu_test``
-    database in the dev sandbox drifted and is missing the column;
-    see TD-036. Until TD-036 lands, this helper makes the e2e
-    suite self-healing by issuing an idempotent ``ALTER TABLE`` once
-    per process. Production DBs are untouched.
+    TD-036 closes the root cause (006 migration `gin` operator class bug +
+    missing `btree_gin` extension in `init-test-db`): on a fresh test DB
+    built with `python -m app.shared.infrastructure.test_db_setup`,
+    `document_tasks.updated_at` is created by alembic 003. The defensive
+    `ADD COLUMN IF NOT EXISTS` below stays in place as a belt-and-suspenders
+    guard against operator mistakes (someone running pytest against a
+    manually-DROPPED test DB without re-running init-test-db) so the e2e
+    suite never fails on environment drift; production DBs are untouched.
     """
     import os
 
