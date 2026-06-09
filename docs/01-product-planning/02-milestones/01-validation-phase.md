@@ -60,11 +60,11 @@ External:
 | 里程碑项 | 状态 | 实现事实 | 验证结论 | 说明 |
 |---|---|---|---|---|
 | NER 实体识别（枚举规则） | 🟢 Done | 已实现 | 已通过 `tests/contexts/ai/test_rule_based_ner.py` 7 用例（AC-1/AC-2） | `RuleBasedNER` 已落地；测试覆盖域别名 / 关键词 / 全角 / 大小写 / 未知 query / dataclass / 协议；未覆盖空字符串 query。 |
-| 多源并行召回（3 通道） | 🟡 待集成验收 | 已实现 | 已通过 `test_recall_channels_contract.py` 9 用例（AC-6）+ `test_recall_channels_behavior.py` 9 用例（AC-1 行为级）；端到端 PG 集成待 REQ-006 | PostgreSQL 内 vector / keyword / metadata 三通道已落地；不是图谱召回或 ES 全文检索。契约层（形参 / `name` / 返回类型 / 空实现）已锁定；行为层覆盖各通道 tenant / topk / embedding / keywords / NER 信号缺失时的回退。 |
+| 多源并行召回（3 通道） | 🟢 Done | 已实现 | 已通过 `test_recall_channels_contract.py` 9 用例 + `test_recall_channels_behavior.py` 9 用例；端到端 PG 集成已由 REQ-006 Stage 1.5 收口（6 步 e2e 含 RAG chat + sources 字段层）。 | PostgreSQL 内 vector / keyword / metadata 三通道已落地。 |
 | 结果融合（频次排序） | 🟢 Done | 已实现 | 已通过 `tests/contexts/ai/test_frequency_fusion.py` 5 用例（AC-3/AC-4/AC-5） | `FrequencyFusion` 已落地；测试覆盖通道频次优先、最佳分数排序、空输入和单通道降级。 |
-| 溯源上下文组装增强 | 🟡 待补边界 | 已实现 | 已通过 `tests/contexts/ai/test_ai_chat_rag_e2e.py` 3 用例（AC-7 单通道失败降级 / AC-8 sources 字段集 / AC-9 跨通道去重）；未覆盖空召回回退与 LLM 失败兜底文案 | `ai_chat` 返回 `sources`，含 channel / node_id / title / score；e2e 用例覆盖单通道异常降级、sources 字段集、跨通道去重；空召回（`fused = []`）与 `_call_llm` 异常兜底文案尚无对应测试。 |
-| 模板匹配可解释化 | 🟡 待集成验收 | 已实现 | 已通过 `tests/contexts/document/test_extract_template_selection.py` 16 项用例（9 旧分支回归 + 4 caplog 参数化 L1/L2/L3/none 日志可观测 + 1 L3 confidence 解析失败 0.0 < 阈值 + 1 L3 空响应 `AI returned empty response` + 1 生产代码漂移保护）：L1 精确 / L2 文件名 / L3 AI 命中 / L3 低于阈值 / L3 单行默认 0.5 / L3 命中未配置 / L3 LLM 异常 / 空 doc_type 文件名 / L1 优先级高于 L2 L3。3 层匹配已抽到 `app/contexts/document/application/template_selector.py`，4 个分支各输出统一 `template.select layer=...` 日志；端到端 PG 集成待 REQ-006。REQ-008（[PR #79](https://github.com/MarkDanile/MetaEduBase/pull/79)）收口 ruff 5 项清零 + L3 解析失败 / 空响应覆盖 + caplog 断言 + 漂移保护。 | 选择器纯函数可单测；3 层优先级与阈值 0.7 不变。 |
-| 结构化抽取嵌套结构稳定性 | 🟢 Done | 已实现 | 已通过 `tests/contexts/document/test_extract_template_prompts.py` 11 项用例（AC-1~AC-8）：`build_fields_desc` 覆盖 object 单层 / 2 层嵌套 / array 含 items / array 空 items 降级到 bare type / table 列顺序 / object+array+table+text 混合；`try_parse` 覆盖 markdown fence 含 object+array+table 三层嵌套 / `<think>` 标签剥离后再解析 / 坏 JSON 降级 / 未闭合 fence 降级；`_merge_template_structured_data` 锁定浅拷贝契约（外层新 dict、内嵌 list/dict 同引用）。`array + items=[]` 走 bare-type 分支是当前既定行为，已被回归锁定。端到端 PG + 真实 LLM 演示待 REQ-006。 | object / array / table 嵌套抽取链路可纯函数回归，无需 LLM / DB；0 业务代码改动。 |
+| 溯源上下文组装增强 | 🟡 待补边界 | 已实现 | 已通过 `tests/contexts/ai/test_ai_chat_rag_e2e.py` 3 用例（AC-7 单通道失败降级 / AC-8 sources 字段集 / AC-9 跨通道去重）；空召回与 LLM 失败兜底文案仍无测试。 | `ai_chat` 返回 `sources`，含 channel / node_id / title / score。 |
+| 模板匹配可解释化 | 🟢 Done | 已实现 | 已通过 `tests/contexts/document/test_extract_template_selection.py` 16 项用例；端到端 PG 集成已由 REQ-006 Stage 1.5 收口（template extract + structured_data.template 验证）。REQ-008 / REQ-004 收口完成。 | 选择器纯函数可单测；3 层优先级与阈值 0.7 不变。 |
+| 结构化抽取嵌套结构稳定性 | 🟢 Done | 已实现 | 已通过 `tests/contexts/document/test_extract_template_prompts.py` 11 项用例（AC-1~AC-8）；端到端 PG + 真实 LLM 演示已由 REQ-006 Stage 1.5 收口。 | object / array / table 嵌套抽取链路可纯函数回归；0 业务代码改动。 |
 
 ### 轨道 C：基础设施
 
@@ -95,7 +95,7 @@ External:
 | REQ-003 | 🟢 Done | P1 RAG 质量链路验收与回归测试（已由 PR #74 关闭，验收缺口由 REQ-007 承接） | `docs/01-product-planning/04-backlog.md` |
 | REQ-004 | 🟢 Done | 模板匹配可解释化收口（主要代码和测试由 PR #77 关闭；验收证据与质量门禁缺口由 REQ-008 承接） | `docs/01-product-planning/04-backlog.md` |
 | REQ-005 | 🟢 Done | 结构化抽取嵌套结构稳定性验收（`tests/contexts/document/test_extract_template_prompts.py` 11 项用例，object / array / table 嵌套回归；0 业务代码改动） | `docs/01-product-planning/04-backlog.md` |
-| REQ-006 | 🟡 Doing | P1 知识资产处理链路最终演示验收（Stage 1.0 收口：e2e 3 步 + UI 手册骨架；Stage 1.5 待实施 AC-3 ~ AC-6；Stage 2 待翻 `🟢 Done`） | `docs/01-product-planning/04-backlog.md` |
+| REQ-006 | 🟢 Done | P1 知识资产处理链路最终演示验收（Stage 1.0 3 步 + Stage 1.5 6 步 e2e 全通过；TD-036 / TD-037 已修复；文档回填完毕） | `docs/01-product-planning/04-backlog.md` |
 | REQ-007 | 🟢 Done | REQ-003 复盘缺口的 RAG 质量链路收口（5 AC 全部由 [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) 关闭：行为级测试 + e2e 死代码清理 + 状态同步 + 过度验证声明修正 + 验证声明真实） | `docs/01-product-planning/04-backlog.md` |
 | REQ-008 | 🟢 Done | 收口 REQ-004 验收证据与质量门禁缺口（5 项 ruff 清零 + 4 分支 caplog 断言 + L3 解析失败 / 空响应覆盖 + 漂移保护；[PR #79](https://github.com/MarkDanile/MetaEduBase/pull/79)） | `docs/01-product-planning/04-backlog.md` |
 

@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-006 P1 知识资产处理链路最终演示验收 | 🟡 进行中 | P1 | Product / Document / AI / Testing | Stage 1.0（PR #117）+ 1.5（PR #132）收口：e2e 6 步全通过（upload / parse / idempotent / template / KG / RAG chat with sources）+ UI 手册骨架；TD-036（PR #122）+ TD-037（PR #130）已修复。 | Stage 2：翻 🟢 Done（轨道 B / W23 / Backlog / current-work / work-log 文档回填）。 | `pytest tests/e2e/test_p1_demo.py -v` 6 passed (Stage 1.5)；`pytest tests/ -q` 225 passed；`ruff check app/ tests/` All checks passed!；`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0 |
+| REQ-006 P1 知识资产处理链路最终演示验收 | 🟢 完成 | P1 | Product / Document / AI / Testing | Stage 1.0（PR #117）+ 1.5（PR #132）→ 6 步 e2e 全通过；TD-036 / TD-037 已修复；Stage 2 文档回填完成。 |  | `pytest tests/e2e/test_p1_demo.py -v` 6 passed；`pytest tests/ -q` 225 passed；`ruff check app/ tests/` All checks passed!；`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0 |
 
 ## 下一批候选任务
 
@@ -33,7 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
-| 2026-06-10 | REQ-006 Stage 1.5 — e2e 6 步全通过 | 🟢 完成 | `test_p1_demo.py` 扩展 AC-3 template / AC-4 KG / AC-5+AC-6 RAG+sources 3 步。`pytest tests/ -q` 225 passed。 | [Work Log](work-log.md) / [PR #132](https://github.com/MarkDanile/MetaEduBase/pull/132) (`a39f7a3`) |
+| 2026-06-10 | REQ-006 Stage 2 — 🟢 Done（6 步 e2e + 文档回填完毕） | 🟢 完成 | 轨道 B / W23 / Backlog / current-work / work-log / iteration 同步，P1 验证期从"代码已实现"上升到"端到端跑通"。 | [Work Log](work-log.md) / [PR #132](https://github.com/MarkDanile/MetaEduBase/pull/132) |
 | 2026-06-10 | TD-037 收口 e2e 沙箱 Redis broker（路线 B） | 🟢 完成 | 建 `tests/e2e/conftest.py`，恢复 Stage 1.0 基线。 | [Work Log](work-log.md) / [PR #130](https://github.com/MarkDanile/MetaEduBase/pull/130) (`9419c4e`) |
 | 2026-06-09 | DOC-052 清理 `_common.py` `KNOWN_ISSUES` 残留的 TD-023 历史白名单 | 🟢 完成 | 删 4 条 TD-023 白名单；脚本验证 4 个文件当前走 `EVIDENCE_RE` 路径，删除前后 `active=0, known=0`，门禁退出码 0 保持。 | [Work Log](work-log.md) / [PR #128](https://github.com/MarkDanile/MetaEduBase/pull/128) (`3f39ec0`) |
 | 2026-06-09 | DOC-054 收口 review-score-log PR 字段与倒排顺序一致性 | 🟢 完成 | 修 3 处漂移：DOC-049 评审 `本 PR` → PR #113 `6cf6c20`；Score Log 重排（7 Original 按评审对象 PR merge 时间倒序，3 Backfilled 按 PR merge 日期 2026-06-08 单独列倒序）；Metrics Snapshot 全量重算（10 条 / 82.6 / 40% / 60% / 100% / 90%）。 | [Work Log](work-log.md) / [PR #126](https://github.com/MarkDanile/MetaEduBase/pull/126) (`2d6efd3`) |
