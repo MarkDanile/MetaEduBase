@@ -129,7 +129,7 @@
 | TD-037 | e2e 脚本无法直接走真实 Celery：沙箱无 Redis broker 时需 mock `chunk_document.delay` + patch `broker_url=memory://` | ⚫ 待办 | P3 | 后端 / 测试 / 基础设施 | REQ-006 Stage 1 探查 |
 | TD-038 | alembic 006 迁移用 `gin` operator class（`USING gin (doc_types gin)`），在全新 DB 上 `UndefinedObjectError` 阻塞 `alembic upgrade head` | 🟢 完成 | P2 | 后端 / 迁移 / 质量门禁 | TD-036 探查（并入 PR #122 一并修复） |
 | DOC-051 | 一次性收口历史 plan 残留 TBD / `TD-???` / `未回填` 占位 | ⚫ 待办 | P2 | 文档 / 工程流程 / 跨 AI 交接 | REQ-003 / REQ-004 / REQ-008 plan 残留占位扫描 |
-| DOC-052 | 清理 `scripts/engineering/checks/_common.py` 中 `KNOWN_ISSUES` 残留的 TD-023 历史白名单 | ⚫ 待办 | P3 | 文档 / 工程流程 / 跨 AI 交接 | 2026-06-09 全仓债务盘查 |
+| DOC-052 | 清理 `scripts/engineering/checks/_common.py` 中 `KNOWN_ISSUES` 残留的 TD-023 历史白名单 | 🟢 完成 | P3 | 文档 / 工程流程 / 跨 AI 交接 | 2026-06-09 全仓债务盘查 / [PR #128](https://github.com/MarkDanile/MetaEduBase/pull/128) (`3f39ec0`) |
 
 ## 任务详情
 
