@@ -24,7 +24,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| TD-036 修复 `metaedu_test.document_tasks.updated_at` 列缺失 | ⚫ 候选 | P2 | Backend / 测试 / 质量门禁 | 先复现：`DROP DATABASE metaedu_test && ./dev.sh init-test-db && pytest tests/e2e/ -q`；按 alembic 003 迁移契约评估：补列 vs 修迁移；写防御性 `_ensure_critical_columns` 接入 `init-test-db` 流程；pytest 门禁。 |
+| TD-037 e2e 沙箱无 Redis broker 适配 | ⚫ 候选 | P3 | Backend / 测试 / 基础设施 | 选路线 A（独立 e2e Celery app fixture with `memory://` broker）或路线 B（`init-test-db` 启 dev Redis），把 `chunk_document.delay` 等 mock 集中到 `mock_pipeline_chain` fixture；CI 端补 `e2e-real` 标记；详情见 [TD-037](../03-engineering-governance/technical-debt.md#td-037)。 |
 | DOC-051 一次性收口历史 plan 残留 TBD / `TD-???` / `未回填` 占位 | ⚫ 候选 | P2 | Docs / Governance | 5 处 TBD + 3 处 `TD-???` + 2 处 `未回填` → 替换为稳定编号/具体描述；同步 W23 迭代卡 Review 段 PG 历史失败声明；解锁 `quality-gates.md#脚本门禁候选清单` 中"完成态占位扫描"从候选转已实现。 |
 | DOC-054 收口 review-score-log PR 字段与倒排顺序一致性 | ⚫ 候选 | P2 | Docs / Governance / Review | 修正 `review-score-log.md`：DOC-049 行 `本 PR` → PR #113；按"最新评审置顶"重新整理同日登记顺序；同步 Metrics Snapshot 计数（当前表已超过 7 条）；运行 `scripts/check-engineering-docs` + `git diff --check`。 |
 
@@ -36,6 +36,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-09 | TD-036 / TD-038 修复全新测试库 `alembic upgrade head` 卡在 006 的根因 | 🟢 完成 | 修 006 `gin` ops + `init-test-db` 加 `btree_gin` + `_ensure_critical_columns` 防御 check。`DROP DATABASE metaedu_test && init-test-db` 一次到 head。 | [Work Log](work-log.md) / [PR #122](https://github.com/MarkDanile/MetaEduBase/pull/122) (`2780ff1`) |
 | 2026-06-09 | BUG-001 修正 document retry endpoint 的 Celery dispatch 语义 | 🟢 完成 | 修 `POST /files/{file_id}/retry` 三处缺陷（去 `await`、补 `pipeline_version`、加 `try/except` 兜 broker 抖动），3 条新回归用例，`pytest tests/ -q` 222 passed。 | [Work Log](work-log.md) / [PR #120](https://github.com/MarkDanile/MetaEduBase/pull/120) (`c24f3e9`) |
 | 2026-06-09 | DOC-053 补齐高频流程启动语入口 | 🟢 完成 | 在 `task-modes.md#常见启动语` 增补评审、完整 Git 闭环、复盘、阶段收口、APP 应用塑形和只登记不实现等短启动语；保持入口文件只导航、不复制长规则。 | [Task Modes](task-modes.md#常见启动语) / [Work Log](work-log.md) |
 | 2026-06-09 | DOC-050 优化 current-work 最近完成窗口与评分总账排序 | 🟢 完成 | 最近完成窗口从 5 行改为 20 行，超过后批量归档到 12-15 行；评分总账明确最新评审置顶；文档门禁脚本和测试同步。 | [Work Log](work-log.md) / [Workbench](01-rules/workbench.md#保留策略) / [Review Score Log](04-retrospectives/review-score-log.md) |

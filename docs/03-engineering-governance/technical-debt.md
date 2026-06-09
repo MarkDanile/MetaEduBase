@@ -125,8 +125,9 @@
 | TD-033 | 拆分 `main.css` 设计系统级 CSS 模块 | 🟢 完成 | P2 | 前端 / 设计系统 / 可维护性 | [PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103) (`25ca165`) + [行数基线](02-baselines/td-032-source-file-sizes.md) |
 | TD-034 | `build_fields_desc` 在 `array + items=[]` 时丢失"成员为 object"提示 | ⚫ 待办 | P3 | 后端 / LLM 抽取 / 可维护性 | REQ-005 / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) (`4773741`) |
 | TD-035 | 收口 REQ-005 新增测试文件 ruff 质量门禁 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | REQ-005 review / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) |
-| TD-036 | `metaedu_test` 库 `document_tasks.updated_at` 列缺失（alembic 003 迁移与测试库 schema drift） | ⚫ 待办 | P2 | 后端 / 测试 / 质量门禁 | REQ-006 Stage 1 探查 |
+| TD-036 | `metaedu_test` 库 `document_tasks.updated_at` 列缺失（alembic 003 迁移与测试库 schema drift） | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | REQ-006 Stage 1 探查 / [PR #122](https://github.com/MarkDanile/MetaEduBase/pull/122) (`2780ff1`) |
 | TD-037 | e2e 脚本无法直接走真实 Celery：沙箱无 Redis broker 时需 mock `chunk_document.delay` + patch `broker_url=memory://` | ⚫ 待办 | P3 | 后端 / 测试 / 基础设施 | REQ-006 Stage 1 探查 |
+| TD-038 | alembic 006 迁移用 `gin` operator class（`USING gin (doc_types gin)`），在全新 DB 上 `UndefinedObjectError` 阻塞 `alembic upgrade head` | 🟢 完成 | P2 | 后端 / 迁移 / 质量门禁 | TD-036 探查（并入 PR #122 一并修复） |
 | DOC-051 | 一次性收口历史 plan 残留 TBD / `TD-???` / `未回填` 占位 | ⚫ 待办 | P2 | 文档 / 工程流程 / 跨 AI 交接 | REQ-003 / REQ-004 / REQ-008 plan 残留占位扫描 |
 | DOC-052 | 清理 `scripts/engineering/checks/_common.py` 中 `KNOWN_ISSUES` 残留的 TD-023 历史白名单 | ⚫ 待办 | P3 | 文档 / 工程流程 / 跨 AI 交接 | 2026-06-09 全仓债务盘查 |
 
@@ -1466,7 +1467,8 @@
 
 ### TD-036: `metaedu_test` 库 `document_tasks.updated_at` 列缺失（alembic 003 迁移与测试库 schema drift）
 
-状态：⚫ 待办
+状态：🟢 完成
+（实际根因是 alembic 006 的 `gin` operator class 错误，详见 TD-038 与 PR #122 `2780ff1`。）
 
 | 字段 | 内容 |
 |------|------|
@@ -1498,7 +1500,12 @@
 - 复现：`DROP DATABASE metaedu_test && ./dev.sh init-test-db && pytest tests/e2e/test_p1_demo.py -q` → 3 passed，无手动修补。
 
 **交付记录**
-- 暂无。任务在 2026-06-09 REQ-006 Stage 1 实施中触发登记（绕路通过手工 `ALTER TABLE` 验证 e2e 主体可跑）。
+- 2026-06-09 PR #122 (`2780ff1`) 完成。根因不是 alembic 003 本身,而是 alembic 006 用 `postgresql_ops={"doc_types": "gin"}` 触发 `UndefinedObjectError: operator class "gin" does not exist for access method "gin"`,在全新 DB 上阻塞 `alembic upgrade head`,导致 003 的 `add_column updated_at` 永远跑不到。修复:
+  - `alembic/versions/006_add_templates.py` 去掉 `gin` 字面 ops,改用默认 `array_ops`(追加注释指回 TD-036 / TD-038)。
+  - `app/shared/infrastructure/test_db_setup._ensure_extensions_and_schema` 幂等 `CREATE EXTENSION IF NOT EXISTS btree_gin`。
+  - 新增 `_ensure_critical_columns`,在 `init_test_database` 末尾对 `document_tasks.updated_at` / `files.updated_at` 做 post-upgrade 校验;漂移时 `logger.warning` + 给出修复 SQL,**不** silently ALTER(对齐任务卡完成标准第 2 条)。
+  - `tests/e2e/test_p1_demo._ensure_test_db_columns` docstring 刷新为"TODO 036 closes the root cause";`ADD COLUMN IF NOT EXISTS` 兜底保留作 belt-and-suspenders。
+- 验证摘要:`DROP DATABASE metaedu_test && python -m app.shared.infrastructure.test_db_setup` 一次成功(无需手工 ALTER),`alembic_version = 9466ea6e5d33`(head),`document_tasks` 列含 `updated_at`,`ix_templates_doc_types` 为 `USING gin (doc_types)`;`pytest tests/e2e/test_p1_demo.py -q` 3 passed;`pytest tests/ -q` 222 passed;`ruff check app/ tests/` 退出码 0;`scripts/check-engineering-docs` 退出码 0;`git diff --check` 退出码 0;幂等二次 `init-test-db` 无 already exists / 无 re-run。范围:`git diff --name-status` 仅 3 文件(006 迁移 + test_db_setup + e2e docstring)。详见 [PR #122](https://github.com/MarkDanile/MetaEduBase/pull/122) (`2780ff1`)。
 
 ### TD-037: e2e 脚本无法直接走真实 Celery：沙箱无 Redis broker 时需 mock `chunk_document.delay` + patch `broker_url=memory://`
 
@@ -1536,3 +1543,41 @@
 
 **交付记录**
 - 暂无。任务在 2026-06-09 REQ-006 Stage 1 实施中触发登记（绕路通过 worker thread + broker patch 让 e2e 主体可跑；待 Stage 1.5 推进时把 patch 集中化）。
+
+### TD-038: alembic 006 迁移用 `gin` operator class（`USING gin (doc_types gin)`），在全新 DB 上 `UndefinedObjectError` 阻塞 `alembic upgrade head`
+
+状态：🟢 完成
+（并入 [PR #122](https://github.com/MarkDanile/MetaEduBase/pull/122) `2780ff1` 一并修复；交付摘要见 TD-036 交付记录段。）
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 后端 / 迁移 / 质量门禁 |
+| 事实源 | TD-036 探查 |
+
+**证据**
+- `packages/server-python/alembic/versions/006_add_templates.py:33` `op.create_index("ix_templates_doc_types", "templates", ["doc_types"], postgresql_using="gin", postgresql_ops={"doc_types": "gin"})`。
+- SQLAlchemy 字面翻译为 `USING gin (doc_types gin)`，PG 实际只暴露 `array_ops`（内置）和 btree_gin 的具名 ops（`timestamp_ops` / `text_ops` 等），无名为 `gin` 的 opclass。
+- 全新 `metaedu_test` 上 `alembic upgrade head` 失败：
+  ```
+  UndefinedObjectError: operator class "gin" does not exist for access method "gin"
+  [SQL: CREATE INDEX ix_templates_doc_types ON templates USING gin (doc_types gin)]
+  ```
+- 已存在 `ix_templates_doc_types` 的库（早期 dev 库、prod）不重跑 create_index，所以未暴露问题；只有全新 DB 命中。
+
+**问题**
+- 任何使用 `python -m app.shared.infrastructure.test_db_setup` 的全新环境，会卡在 006，永远升不到 head。
+- 连锁影响：003 的 `add_column updated_at` 永远跑不到 → `document_tasks` 缺列 → 任何 Celery 任务触发 `update_task_status` 即 `UndefinedColumnError`。这正是 TD-036 描述的现象。
+- `make setup-db` 在 dev 库上不会重装 btree_gin，所以即便未来再加 `USING gin (xxx gin)` 也会重蹈覆辙。
+
+**完成标准**
+- 修 006 迁移：删除 `postgresql_ops={"doc_types": "gin"}`，让默认 `array_ops` 生效；保留 `postgresql_using="gin"`。
+- `init-test-db._ensure_extensions_and_schema` 幂等 `CREATE EXTENSION IF NOT EXISTS btree_gin`，防未来 gin-on-scalar 迁移再次阻塞。
+- 注释里点回本任务和 TD-036。
+
+**验证方式**
+- `DROP DATABASE metaedu_test && python -m app.shared.infrastructure.test_db_setup` 一次成功，alembic 走到 head (`9466ea6e5d33`)。
+- `ix_templates_doc_types` 实际为 `USING gin (doc_types)`，无 `gin` 字面。
+
+**交付记录**
+- 2026-06-09 与 TD-036 一并在 [PR #122](https://github.com/MarkDanile/MetaEduBase/pull/122) (`2780ff1`) 修复。代码变更点:`alembic/versions/006_add_templates.py`（删 `postgresql_ops` + 注释指向 TD-036/TD-038）+ `app/shared/infrastructure/test_db_setup.py`（加 btree_gin 扩展）。验证见 TD-036 交付记录。
