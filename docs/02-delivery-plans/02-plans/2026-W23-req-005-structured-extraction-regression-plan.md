@@ -18,7 +18,7 @@
 
 | 文件 | 职责 | 验收点 |
 |------|------|--------|
-| `tests/contexts/document/test_extract_template_prompts.py` (新建) | 8+ 条用例，覆盖 build_fields_desc / try_parse / _merge_template_structured_data 在 object / array / table 嵌套形态上的契约 | AC-1 ~ AC-9 |
+| `tests/contexts/document/test_extract_template_prompts.py` (新建) | 11 条用例，覆盖 build_fields_desc / try_parse / _merge_template_structured_data 在 object / array / table 嵌套形态上的契约 | AC-1 ~ AC-8 |
 | `docs/01-product-planning/02-milestones/01-validation-phase.md` (修改) | 轨道 B 翻结论 | AC-10 |
 | `docs/01-product-planning/04-backlog.md` (修改) | REQ-005 状态 → Done | AC-10 |
 | `docs/03-engineering-governance/current-work.md` (修改) | 当前进行中清空 + 最近完成加一行 | AC-10 |
@@ -28,7 +28,7 @@
 
 ---
 
-## Task 1: 8+ 条嵌套形态回归测试
+## Task 1: 11 条嵌套形态回归测试
 
 **Files:**
 - Create: `packages/server-python/tests/contexts/document/test_extract_template_prompts.py`
@@ -321,7 +321,6 @@ Expected: `ok`（如 `.venv` 不可用，记录原因；测试已自动验证 im
 
 Run: `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document -q`
 Expected: 既有用例（含 `test_structured_data_contract.py` 4 条） + 新增 11 条全通过；如出现 PostgreSQL 连接错误，记录为 `历史失败`，不阻塞 AC-9（不依赖 DB）。
-
 - [x] **Step 6: 提交**
 
 ```bash
@@ -412,16 +411,16 @@ git commit -m "docs(REQ-005): close structured extraction regression gap; backfi
 
 | 任务 | Commit | 内容 |
 |------|--------|------|
-| Task 1 | TBD | `test_extract_template_prompts.py` 11 条 object/array/table 嵌套回归（AC-1~AC-9） |
-| Task 2 | TBD | 文档回填（轨道 B 翻结论 + Backlog REQ-005 Done + current-work 最近完成 + work-log 单行） |
+| Task 1 | `4773741` | `test_extract_template_prompts.py` 11 条 object/array/table 嵌套回归（AC-1~AC-8） |
+| Task 2 | DOC-049 (本 PR) | 文档回填收口：AC-8 浅拷贝口径与测试对齐 / `未回填` → 失败条件描述 / `TD-???` → TD-034 / plan.md TBD / `8+` / `12 新增` 计数修正 / document 测试范围描述修正；评估把完成态占位扫描加入 `scripts/check-engineering-docs`（见 [Backlog](../../01-product-planning/04-backlog.md#doc-049)）。 |
 
-- 验证摘要：
-  - `pytest tests/contexts/document/test_extract_template_prompts.py -q` → `11 passed`
-  - `pytest tests/contexts/document -q` → 既有 4 条 contract + 12 新增全通过（DB 依赖用例按 `历史失败` 记录，不阻塞）
+- 验证摘要（按 `quality-gates.md#完成门禁`，DOC-049 收口时复跑）：
+  - `pytest tests/contexts/document/test_extract_template_prompts.py -q` → `11 passed`（与 PR #109 锁定一致，本 PR 不改测试与业务代码）
   - `scripts/check-engineering-docs` → 退出码 0
   - `git diff --check` → 退出码 0
-- 行为变化声明：无（0 业务代码改动）。
-- 后续接力：端到端 PG + 真实 LLM 演示由 REQ-006 承接。
+  - `git diff --name-status` → 仅包含 4 个 docs 文件 + 1 个 scripts（无业务代码）
+- 行为变化声明：无（0 业务代码改动；0 测试代码改动；仅 spec / plan / 脚本门禁 / 任务总账与工作台同步）。
+- 后续接力：端到端 PG + 真实 LLM 演示由 REQ-006 承接。`array + items=[]` 走 bare-type 分支的现状已入账 TD-034，本 PR 不在范围。
 
 ---
 
@@ -443,7 +442,7 @@ git commit -m "docs(REQ-005): close structured extraction regression gap; backfi
 | AC-10 | Task 2 Step 2-5 文档回填 |
 | AC-11 | Task 2 Step 6 工程门禁 |
 
-**Placeholder scan:** 全任务含完整代码与命令，无 TBD。
+**Placeholder scan:** Task 1 / Task 2 步骤均已勾选；`scripts/check-engineering-docs` 退出码 0（DOC-049 收口后）；`TBD` / `未回填` / `TD-???` 全部清空（见上"提交链路"段）。
 
 **Type consistency:**
 

@@ -34,9 +34,9 @@
 | AC-5 | `try_parse` 解析嵌套 object / array / table | 输入含 ```json fenced JSON ```，且 JSON 内含 object（`basic_info`）、array（`teaching_process`）、table（`assessment`）三层嵌套时，输出对象**保持原嵌套结构**（`isinstance(v, dict) / list` 验证）。 | 嵌套被拍平 / list 元素不是 dict / table 行丢失 |
 | AC-6 | `try_parse` 容错 think 标签后再解析 | 输入前缀包含 `<think>...</think>` 后接 markdown fence，输出对象结构与去掉 think 后的解析结果一致（验证 think 剥离不影响嵌套结构）。 | think 标签未剥离导致 `json_start` 找不到 `{` |
 | AC-7 | `try_parse` 嵌套失败降级 | 输入形如 `{` 不闭合的坏 JSON，输出 `{}`（不抛异常、不污染既有 `template` 容器）。 | 抛 `JSONDecodeError` / 返回部分片段 |
-| AC-8 | `_merge_template_structured_data` 在嵌套输入上保持浅拷贝 | 传入 `template_data` 含 `{"teaching_process": [{"step": "1"}]}`，返回对象 `merged["template"]["teaching_process"]` 是**新 list**（与入参 `is` 不等），但**列表元素 dict 仍是同一引用**（现有浅拷贝契约）。 | 改成深拷贝或共享引用 / 顺序错乱 |
+| AC-8 | `_merge_template_structured_data` 在嵌套输入上保持浅拷贝 | 现有实现为 `merged["template"] = dict(template_data)`：`merged["template"]` 是 `dict(template_data)` 创建的新 dict（与入参 `template_data is not`），但**内嵌 list / dict 仍是同一引用**（Python 浅拷贝契约）。验证入参 `template_data = {"teaching_process": [{"step": "1"}], "assessment": [{"criterion": "理解", "score": 4}]}` 时，`merged["template"] is not template_data` 但 `merged["template"]["teaching_process"] is template_data["teaching_process"]`，`merged["template"]["teaching_process"][0] is template_data["teaching_process"][0]`；同时 `merged["full_text"]` / `merged["section_count"]` 等既有字段保留。 | 改成深拷贝、改为共享外层引用，或内嵌 list / dict 出现新对象引用 |
 | AC-9 | 命令可复现 | `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_extract_template_prompts.py -q` 退出码 0；新文件至少 8 条用例（AC-1~AC-8）。 | 退出码非 0 / 用例数不足 |
-| AC-10 | 文档回填 | 轨道 B "结构化抽取嵌套结构稳定性"行由"未完成 / 待收口"翻为"已通过 N 用例"结论；Backlog REQ-005 状态 `Candidate` → `Done`；`current-work.md` / `work-log.md` 同步。 | 未回填 |
+| AC-10 | 文档回填 | 轨道 B "结构化抽取嵌套结构稳定性"行由"未完成 / 待收口"翻为"已通过 N 用例"结论；Backlog REQ-005 状态 `Candidate` → `Done`；`current-work.md` / `work-log.md` 同步。 | 状态未翻、Backlog 未置 Done、任一事实源未同步 |
 | AC-11 | 工程门禁 | `scripts/check-engineering-docs` 退出码 0。 | 退出码非 0 |
 
 ## 接口与依赖
@@ -88,4 +88,4 @@
 | ID | 说明 | 归属 |
 |----|------|------|
 | REQ-006 | 端到端 PG + 真实 LLM 演示验收 | 单独 task |
-| TD-??? | 若 LLM 实际响应在 object / array / table 嵌套形态上偏离本 spec 锁定的契约（如 `try_parse` 把数组元素拍平成字符串），入账 | 触发现入账 |
+| TD-034 | 若 LLM 实际响应在 object / array / table 嵌套形态上偏离本 spec 锁定的契约（如 `try_parse` 把数组元素拍平成字符串），入账 | REQ-005 评审触发 |
