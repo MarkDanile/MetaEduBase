@@ -131,6 +131,7 @@
 | DOC-051 | 一次性收口历史 plan 残留 TBD / `TD-???` / `未回填` 占位 | ⚫ 待办 | P2 | 文档 / 工程流程 / 跨 AI 交接 | REQ-003 / REQ-004 / REQ-008 plan 残留占位扫描 |
 | DOC-052 | 清理 `scripts/engineering/checks/_common.py` 中 `KNOWN_ISSUES` 残留的 TD-023 历史白名单 | 🟢 完成 | P3 | 文档 / 工程流程 / 跨 AI 交接 | 2026-06-09 全仓债务盘查 / [PR #128](https://github.com/MarkDanile/MetaEduBase/pull/128) (`3f39ec0`) |
 | DOC-045 | 修正 TD-033 CSS 拆分交付声明与追踪证据 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-033 review / [#137](https://github.com/MarkDanile/MetaEduBase/pull/137) (`b815942`) |
+| DOC-042 | 脚本化 TD-032 行数基线扫描 | 🟡 进行中 | P2 | 文档 / 工程治理 / 工程脚本 | [Baseline](02-baselines/td-032-source-file-sizes.md) |
 
 ## 任务详情
 
@@ -1646,3 +1647,36 @@
 - 行为变化声明：docs-only，无业务代码变更；不影响 runtime 行为。
 - 验证摘要：`python3 scripts/check-engineering-docs` 退出码 0（`engineering docs checks passed`）；`git diff --check` 退出码 0；`git diff --name-status` 仅 4 个 docs 文件；6 条 `rg` 验收断言全过。
 - 未建独立 spec / plan：本次为 docs-only 跨事实源补全（事实源仅文档），规模与 TD-033 的"未建 spec / plan 已事后登记"模式一致（详见 TD-033 任务卡 L1365 注释与 `04-retrospectives/review-score-log.md#2026-06-09 td-033`）；任务卡完成标准已记录此例外，本任务不扩大范围补建。
+
+### DOC-042: 脚本化 TD-032 行数基线扫描
+
+状态：🟡 进行中
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 文档 / 工程治理 / 工程脚本 |
+| 事实源 | [Baseline](02-baselines/td-032-source-file-sizes.md) / `docs/01-product-planning/04-backlog.md` |
+
+**证据**
+- TD-032 行数基线扫描依赖手工命令 `rg --files -0 packages scripts tests -g '*.py' -g '*.ts' -g '*.tsx' -g '*.vue' -g '*.css' -g '*.scss' -g '!**/.venv/**' -g '!**/uploads/**' -g '!**/node_modules/**' -g '!**/dist/**' | xargs -0 wc -l | sort -nr | head -40`。
+- 手工命令在文件路径含空格时可能出错；每次复盘需人工重跑并手动对比。
+- `docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md` 是当前唯一行数快照，但无法自动刷新。
+
+**问题**
+- 行数扫描不可复现、不可自动对比，TD-032 复盘依赖人工操作。
+- 缺少脚本化扫描意味着后续无法在 `check-engineering-docs` 或 CI 中自动检测文件规模回归。
+
+**完成标准**
+- 将手工扫描命令固化为稳健脚本（如 `scripts/scan-source-sizes`），排除 `.venv` / `uploads` / `node_modules` / `dist` 并正确处理含空格路径。
+- 脚本支持 `--json` 输出和 `--diff` 对比上次基线。
+- 输出可被 `td-032-source-file-sizes.md` 引用或自动刷新。
+- `scripts/check-engineering-docs` 退出码 0。
+
+**验证方式**
+- `scripts/scan-source-sizes` 幂等运行，输出与手工命令一致。
+- `scripts/scan-source-sizes --diff` 能检测新增超大文件或行数增长。
+- `scripts/check-engineering-docs` 退出码 0。
+
+**交付记录**
+- 暂无。

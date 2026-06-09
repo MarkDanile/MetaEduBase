@@ -90,8 +90,8 @@ External:
 
 | ID | 状态 | 说明 | 归属 |
 |----|------|------|------|
-| REQ-001 | ⚪ Idea | 知识资产处理链路的产品化验收视图 | `docs/01-product-planning/04-backlog.md` |
-| REQ-002 | ⚪ Idea | 模板化结构抽取能力的配置与复用体验 | `docs/01-product-planning/04-backlog.md` |
+| REQ-001 | 🟣 Shaping | 知识资产处理链路的产品化验收视图 | `docs/01-product-planning/04-backlog.md` |
+| REQ-002 | 🟣 Shaping | 模板化结构抽取能力的配置与复用体验 | `docs/01-product-planning/04-backlog.md` |
 | REQ-003 | 🟢 Done | P1 RAG 质量链路验收与回归测试（已由 PR #74 关闭，验收缺口由 REQ-007 承接） | `docs/01-product-planning/04-backlog.md` |
 | REQ-004 | 🟢 Done | 模板匹配可解释化收口（主要代码和测试由 PR #77 关闭；验收证据与质量门禁缺口由 REQ-008 承接） | `docs/01-product-planning/04-backlog.md` |
 | REQ-005 | 🟢 Done | 结构化抽取嵌套结构稳定性验收（`tests/contexts/document/test_extract_template_prompts.py` 11 项用例，object / array / table 嵌套回归；0 业务代码改动） | `docs/01-product-planning/04-backlog.md` |
