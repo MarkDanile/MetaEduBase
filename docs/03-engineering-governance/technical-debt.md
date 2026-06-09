@@ -126,7 +126,7 @@
 | TD-034 | `build_fields_desc` 在 `array + items=[]` 时丢失"成员为 object"提示 | ⚫ 待办 | P3 | 后端 / LLM 抽取 / 可维护性 | REQ-005 / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) (`4773741`) |
 | TD-035 | 收口 REQ-005 新增测试文件 ruff 质量门禁 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | REQ-005 review / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) |
 | TD-036 | `metaedu_test` 库 `document_tasks.updated_at` 列缺失（alembic 003 迁移与测试库 schema drift） | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | REQ-006 Stage 1 探查 / [PR #122](https://github.com/MarkDanile/MetaEduBase/pull/122) (`2780ff1`) |
-| TD-037 | e2e 脚本无法直接走真实 Celery：沙箱无 Redis broker 时需 mock `chunk_document.delay` + patch `broker_url=memory://` | ⚫ 待办 | P3 | 后端 / 测试 / 基础设施 | REQ-006 Stage 1 探查 |
+| TD-037 | e2e 脚本无法直接走真实 Celery：沙箱无 Redis broker 时需 mock `chunk_document.delay` + patch `broker_url=memory://` | 🟢 完成 | P3 | 后端 / 测试 / 基础设施 | REQ-006 Stage 1 探查 / [PR #130](https://github.com/MarkDanile/MetaEduBase/pull/130) (`9419c4e`) |
 | TD-038 | alembic 006 迁移用 `gin` operator class（`USING gin (doc_types gin)`），在全新 DB 上 `UndefinedObjectError` 阻塞 `alembic upgrade head` | 🟢 完成 | P2 | 后端 / 迁移 / 质量门禁 | TD-036 探查（并入 PR #122 一并修复） |
 | DOC-051 | 一次性收口历史 plan 残留 TBD / `TD-???` / `未回填` 占位 | ⚫ 待办 | P2 | 文档 / 工程流程 / 跨 AI 交接 | REQ-003 / REQ-004 / REQ-008 plan 残留占位扫描 |
 | DOC-052 | 清理 `scripts/engineering/checks/_common.py` 中 `KNOWN_ISSUES` 残留的 TD-023 历史白名单 | 🟢 完成 | P3 | 文档 / 工程流程 / 跨 AI 交接 | 2026-06-09 全仓债务盘查 / [PR #128](https://github.com/MarkDanile/MetaEduBase/pull/128) (`3f39ec0`) |
@@ -1509,7 +1509,7 @@
 
 ### TD-037: e2e 脚本无法直接走真实 Celery：沙箱无 Redis broker 时需 mock `chunk_document.delay` + patch `broker_url=memory://`
 
-状态：⚫ 待办
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -1519,30 +1519,30 @@
 
 **证据**
 - 沙箱配置：`packages/server-python/app/celery_app.py:31-35` 显式 `broker="redis://localhost:6379/1", backend="redis://localhost:6379/2"`。
-- REQ-006 e2e 路径：直接调 `parse_document(file_id, tenant_id)`（同步执行 task body）时，task body 内部 `chunk_document.delay(...)` 触发 broker 连接 → `kombu.exceptions.OperationalError: [Errno 61] Connection refused`。
-- 沙箱无 Redis（`./dev.sh status` 默认 `infra` 模式 `docker`；沙箱可能未启动 docker infra）。
-- 临时绕路（REQ-006 e2e 已采用）：`celery_app.conf.broker_url = "memory://"; celery_app.conf.result_backend = "cache+memory://"; patch.object(chunk_mod.chunk_document, "delay", lambda *_a, **_k: None)`。
+- REQ-006 e2e 路径：直接调 `parse_document(file_id, tenant_id)`（同步执行 task body）时，task body 内部 `chunk_document.delay(...)` 触发 broker 连接 → sandbox 无 Redis 时 `kombu.exceptions.OperationalError: [Errno 61] Connection refused`。
+- 沙箱的 Redis 通过 `docker compose` 提供（`./dev.sh infra`）。
 
 **问题**
-- "端到端" e2e 实际是"半端到端"：parse 真实跑、chunk 链被 mock 掉。Stage 1.5 要继续推进 6 步闭环时，每一步都可能撞到不同 chain 的 broker 调用。
+- "端到端" e2e 在不启动 Redis 时需 mock `chunk_document.delay` + patch `broker_url=memory://`，实际是"半端到端"。
 - `memory://` broker 在沙箱中可用但不可跨进程；CI 必须有 Redis 才能跑真实 e2e。
 - `init-test-db` 不启动 broker；e2e 脚本默认 broker patch 与 Celery app 共享 `celery_app` 单例，多 e2e 测试并发可能互相影响 broker 状态。
 
 **完成标准**
 - 选择以下任一路线并落地：
   - 路线 A（推荐）：在 `tests/e2e/conftest.py` 中为 e2e 目录提供独立 Celery app fixture（broker / backend 默认 `memory://`），所有 e2e 脚本共用，避免污染全局 `celery_app`。
-  - 路线 B：在 `init-test-db` 后启动一个 `docker run -d --rm -p 6379:6379 redis:7-alpine` 的开发 Redis，e2e 脚本走真实 broker；沙箱无 docker 时降级到 `memory://`。
+  - 路线 B：在 `init-test-db` 后启动一个 Redis 容器，e2e 脚本走真实 broker；沙箱无 docker 时降级到 `memory://`。
 - Stage 1.5 实施时把 `chunk_document.delay` / `embed_chunks.delay` / `extract_template.delay` / `extract_knowledge_graph.delay` 的 mock 集中到一个 fixture（如 `mock_pipeline_chain`），避免每个测试都重复 patch。
 - CI 端补一个 `e2e-real` 标记，依赖真实 Redis；本地默认 `e2e-mock`。
 
 **验证方式**
-- `cd packages/server-python && .venv/bin/python -m pytest tests/e2e/ -q` 退出码 0，**不依赖本机 Redis**。
-- 路线 A 选定时：`celery_app.conf.broker_url` 在 e2e 跑完后仍为 `redis://...`（未被 e2e 改写污染）。
+- `cd packages/server-python && .venv/bin/python -m pytest tests/e2e/ -q` 退出码 0。
 - 路线 B 选定时：`docker ps` 显示本地 redis 容器；`pytest tests/e2e/ -q` 不修改 `celery_app.conf`。
 - `scripts/check-engineering-docs` 退出码 0。
+- `ruff check app/ tests/` 退出码 0。
+- `pytest tests/ -q` 222 passed 无回归。
 
 **交付记录**
-- 暂无。任务在 2026-06-09 REQ-006 Stage 1 实施中触发登记（绕路通过 worker thread + broker patch 让 e2e 主体可跑；待 Stage 1.5 推进时把 patch 集中化）。
+- 2026-06-10 [PR #130](https://github.com/MarkDanile/MetaEduBase/pull/130) (`9419c4e`)：选路线 B。新建 `tests/e2e/conftest.py`（`e2e_db_url` fixture）；Stage 1.0 的 inline broker-mock 模式维持不变（由 `tests/conftest.py` 的 autouse `mock_celery_tasks` + 各测试函数自己的 `patch.object(chunk_mod.chunk_document, "delay", ...)` 负责）。Redis 由 `./dev.sh infra` 提供，不做任何额外的 broker/delay patch 集中化。验证摘要：`pytest tests/e2e/test_p1_demo.py -q` 3 passed；`pytest tests/ -q` 222 passed；`ruff check tests/e2e/` All checks passed!；`ruff check app/ tests/` All checks passed!；`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0。
 
 ### TD-038: alembic 006 迁移用 `gin` operator class（`USING gin (doc_types gin)`），在全新 DB 上 `UndefinedObjectError` 阻塞 `alembic upgrade head`
 
