@@ -23,6 +23,9 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
+| TD-030 RecallChannel Protocol vs concrete signature drift | ⚫ 待办 | P3 | 后端 / 测试 | 切 `fix/td-030-recall-channel-signature` 分支；按任务卡选定路线 A（Protocol 含 `session`、去除下划线）或路线 B（Protocol 显式下划线 + `session`），去掉 `test_recall_channels_contract.py:40` 的 `lstrip("_")` 退路 |
+| TD-034 `build_fields_desc` 在 `array + items=[]` 时丢失"成员为 object"提示 | ⚫ 待办 | P3 | 后端 / LLM 抽取 / 可维护性 | 切 `fix/td-034-array-items-empty` 分支；按任务卡选定路线 A / B / C，更新 `test_extract_template_prompts.py::test_build_fields_desc_array_without_items_falls_back_to_bare_type` 期望并补 prompt docstring |
+| DOC-045 修正 TD-033 CSS 拆分交付声明与追踪证据 | ⚫ 待办 | P2 | 文档 / 工程流程 | 切 `docs/doc-045-td-033-claim-followup` 分支；将 TD-033 交付记录中"zero CSS byte changes / build output identical"弱化为"无计划行为变化 + 构建和人工复核证据"，补 work-log.md PR #103 / merge commit 索引，记录未建 spec/plan 的处置方式 |
 
 ## 最近完成
 
