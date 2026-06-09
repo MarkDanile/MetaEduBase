@@ -15,6 +15,7 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-10 | TD-037 收口 e2e 沙箱 Redis broker（路线 B） | 技术债 / 后端 / e2e / 基础设施 / Celery | [#130](https://github.com/MarkDanile/MetaEduBase/pull/130) | `9419c4e` | `docs/03-engineering-governance/technical-debt.md#td-037` / `docs/03-engineering-governance/current-work.md` / `packages/server-python/tests/e2e/conftest.py` / `packages/server-python/tests/e2e/test_p1_demo.py` |
 | 2026-06-09 | DOC-053 补齐高频流程启动语入口 | 文档 / 工程治理 / 任务模式 / AI 协作 |  |  | `docs/03-engineering-governance/task-modes.md#常见启动语` / `docs/03-engineering-governance/current-work.md` |
 | 2026-06-09 | DOC-052 清理 `_common.py` `KNOWN_ISSUES` 残留的 TD-023 历史白名单 | 文档 / 工程治理 / 工程脚本 / 跨 AI 交接 / 白名单收口 | [#128](https://github.com/MarkDanile/MetaEduBase/pull/128) | `3f39ec0` | `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/technical-debt.md#doc-052` / `docs/03-engineering-governance/current-work.md` / `scripts/engineering/checks/_common.py` |
 | 2026-06-09 | DOC-054 收口 review-score-log PR 字段与倒排顺序一致性 | 文档 / 工程治理 / 复盘 / 评分总账 / 跨事实源 | [#126](https://github.com/MarkDanile/MetaEduBase/pull/126) | `2d6efd3` | `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/04-retrospectives/review-score-log.md` / `docs/03-engineering-governance/current-work.md` |
