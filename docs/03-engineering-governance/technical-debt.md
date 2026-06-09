@@ -122,7 +122,7 @@
 | TD-030 | RecallChannel Protocol vs concrete signature drift on parameter names | ⚫ 待办 | P3 | 后端 / 测试 | REQ-003 / 2026-W23 iteration |
 | TD-031 | RAG 质量测试文件的预存 ruff 警告 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) |
 | TD-032 | 治理超大源码文件并建立文件规模拆分原则 | 🟢 完成 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 2026-06-08 源码行数扫描 |
-| TD-033 | 拆分 `main.css` 设计系统级 CSS 模块 | 🟢 完成 | P2 | 前端 / 设计系统 / 可维护性 | [行数基线](02-baselines/td-032-source-file-sizes.md) |
+| TD-033 | 拆分 `main.css` 设计系统级 CSS 模块 | 🟢 完成 | P2 | 前端 / 设计系统 / 可维护性 | [PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103) (`25ca165`) + [行数基线](02-baselines/td-032-source-file-sizes.md) |
 
 ## 任务详情
 
@@ -1318,7 +1318,7 @@
 |------|------|
 | 优先级 | P2 |
 | 领域 | 前端 / 设计系统 / 可维护性 |
-| 事实源 | [TD-032 行数基线](02-baselines/td-032-source-file-sizes.md)；`docs/03-engineering-governance/01-rules/coding-style.md#文件规模与职责边界` |
+| 事实源 | [TD-032 行数基线](02-baselines/td-032-source-file-sizes.md)；`docs/03-engineering-governance/01-rules/coding-style.md#文件规模与职责边界`；[PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103) (merge `25ca165`) |
 
 **证据**
 - `packages/web/src/assets/css/main.css` 当前 1343 行，是 TD-032 收口后唯一仍超过 1000 行的源码文件。
@@ -1354,7 +1354,8 @@
 - 人工复核 `main.css` 只承担入口聚合职责；拆出 CSS 模块均有单一职责，且公开类名 / CSS 变量未被无计划删除。
 
 **交付记录**
-- 2026-06-09 完成（接手工具：Claude Code）。纯机械拆分，零 CSS 字节变化（无类名重命名、无 `liquid-*` 删除、无 CSS 变量重命名）。
+- 2026-06-09 完成（接手工具：Claude Code）。纯机械拆分，**以 `pnpm typecheck / lint / build` 退出码 0 与 `git diff --check` 退出码 0 为依据**（无类名重命名、无 `liquid-*` 删除、无 CSS 变量重命名）。[PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103)（merge `25ca165`）合并到 `main`。
+  > **未建独立 spec / plan**：任务卡完成标准要求"开工前先建立独立 spec / plan"，但本任务未执行。事后不再补建（成本 > 收益），本事实已在 `docs/03-engineering-governance/04-retrospectives/review-score-log.md` 的 DOC-045 follow-up 中登记；后续同类任务须按 `git-workflow.md#开发前分支门禁` 切分支后先建 spec / plan。
   - `main.css` 1343 → 9 行（`@import` 入口聚合）：`@import "tailwindcss"` + 8 个模块 `@import`。
   - 8 个 CSS 模块（全部 ≤500 行）：
     1. `tokens.css` 119 行：`@theme` token 块（颜色 / surface / 排版 / 间距 / z-index）。
@@ -1372,4 +1373,4 @@
     - 已运行：`python3 scripts/check-engineering-docs` → 退出码 0（`engineering docs checks passed`）。
     - 已运行：`git diff --check` → 退出码 0。
     - 人工复核：`main.css` 仅 9 行 `@import`；8 个模块文件职责单一；`tokens.css` 仅 `@theme`、`themes.css` 仅 4 `data-theme` 块、`base.css` 仅 `@layer base`、`components.css` 仅 `ui-*` + `liquid-card*`、`compat-liquid.css` 仅 `liquid-*` 兼容 + notion 覆盖、`animations.css` 仅 keyframes + reduced-motion、`markdown.css` 仅 `.markdown-body` + 装饰背景、`toast.css` 仅 toast 系统。
-  - 行为变化声明：零。纯机械拆分 — `main.css` 的内容完整 1:1 按职责分配到 8 个子文件，import 顺序保证 CSS 级联等价；类名、CSS 变量、`@keyframes` 名称、token 值全部不变；Tailwind v4 `@import` 在 `@import "tailwindcss"` 之后导入子模块，Vite 构建产物 CSS 等价。
+  - 行为变化声明：按 `quality-gates.md#行为变化声明检查` 的 7 类信号自查无变化（类名、CSS 变量、`@keyframes` 名称、token 值、import 顺序、主题结构、动画语义全部不变）；Vite 产物 CSS 应等价（基于 import 顺序与级联分析推断，未做 hash / diff 机械对比；本任务未做）。原 commit message / PR 描述中的"zero CSS byte changes / build output identical"为推断性表述，由 DOC-045 弱化为可复核范围。
