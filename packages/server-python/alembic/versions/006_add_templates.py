@@ -30,7 +30,22 @@ def upgrade() -> None:
         sa.UniqueConstraint("tenant_id", "name", name="uq_templates_tenant_name"),
     )
     op.create_index("ix_templates_tenant_id", "templates", ["tenant_id"])
-    op.create_index("ix_templates_doc_types", "templates", ["doc_types"], postgresql_using="gin", postgresql_ops={"doc_types": "gin"})
+    # `doc_types` is an ARRAY(String) — use the default `array_ops` operator
+    # class for `gin`. The previous `postgresql_ops={"doc_types": "gin"}`
+    # literally rendered `USING gin (doc_types gin)`, which references a
+    # `gin` operator class that does not exist (PG exposes `array_ops` and
+    # btree_gin's own classes, neither of which is named `gin`). On a fresh
+    # database that never had a previous broken `ix_templates_doc_types`
+    # installed, the migration raised
+    # `UndefinedObjectError: operator class "gin" does not exist` and
+    # `alembic upgrade head` could not proceed, which in turn blocked 003's
+    # `updated_at` add_column and was the root cause of TD-036.
+    op.create_index(
+        "ix_templates_doc_types",
+        "templates",
+        ["doc_types"],
+        postgresql_using="gin",
+    )
 
 def downgrade() -> None:
     op.drop_table("templates")
