@@ -16,7 +16,6 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| TD-034 `build_fields_desc` 在 `array + items=[]` 时丢失"成员为object"提示 | 🟡 进行中 | P3 | 后端 / LLM 抽取 / 可维护性 | 代码修复完成（路线 A），11 测试通过 + ruff + check-engineering-docs | 更新文档 → commit → push → PR | `pytest tests/contexts/document/ -q` 50 passed；ruff 全过 |
 
 ## 下一批候选任务
 
@@ -33,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-10 | TD-034 `build_fields_desc` 在 `array + items=[]` 时丢失"成员为object"提示 | 🟢 完成 | 路线 A：`f.get("items")` → `f.get("items") is not None`，保留"成员为object"提示；pytest 50 passed，ruff 全过。 | [TD-034](technical-debt.md#td-034) / [Work Log](work-log.md) / [PR #142](https://github.com/MarkDanile/MetaEduBase/pull/142) |
 | 2026-06-10 | DOC-045 修正 TD-033 CSS 拆分交付声明与追踪证据 | 🟢 完成 | technical-debt 总览表 + 独立任务卡 + Backlog 行翻 Done + work-log 补 PR/commit + 候选区移出。docs-only，4 文件，6 条 `rg` 验收全过。 | [DOC-045](technical-debt.md#doc-045) / [Work Log](work-log.md) / [PR #137](https://github.com/MarkDanile/MetaEduBase/pull/137) |
 | 2026-06-10 | TD-030 RecallChannel Protocol vs concrete signature drift 收口（路线 A） | 🟢 完成 | Protocol 增 `session`，3 具体类去下划线前缀，契约测试去 `lstrip` 退路并新增 3 用例。pytest 228 passed（+3），ruff 干净。 | [TD-030](technical-debt.md#td-030) / [Work Log](work-log.md) / [PR #139](https://github.com/MarkDanile/MetaEduBase/pull/139) |
 | 2026-06-10 | REQ-006 🟢 Done（Stage 1.0 → 1.5 → 2 完整交付） | 🟢 完成 | 6 步 e2e 闭环（225 passed），轨道 B / W23 / Backlog 同步 Done。 | [Work Log](work-log.md) / [PR #117](https://github.com/MarkDanile/MetaEduBase/pull/117) / [PR #132](https://github.com/MarkDanile/MetaEduBase/pull/132) |
