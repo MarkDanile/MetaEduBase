@@ -491,3 +491,55 @@ def test_fails_when_implemented_gate_candidate_has_no_script_mapping(
 
     assert result.returncode == 1
     assert "脚本门禁候选标为已实现" in result.stderr
+
+
+def test_source_size_no_large_files_passes(tmp_path: Path) -> None:
+    """No files >1000 lines → gate passes."""
+    make_minimal_docs(tmp_path)
+    # Create a small source file so the scan has something to look at.
+    write(tmp_path / "packages" / "server-python" / "app" / "small.py", "x = 1\n")
+    write(
+        tmp_path / "docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md",
+        """
+        # TD-032 源码文件行数基线
+
+        ## 文件清单
+
+        ### >1000 行
+
+        | 文件 | 行数 | 状态 | 例外 / 拆分说明 |
+        |------|------|------|-----------------|
+        """,
+    )
+
+    result = run_checker(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    assert "engineering docs checks passed" in result.stdout
+
+
+def test_source_size_unregistered_large_file_fails(tmp_path: Path) -> None:
+    """A file >1000 lines not registered in baseline → gate fails."""
+    make_minimal_docs(tmp_path)
+    # Create a large source file.
+    large_content = "\n".join(["x = 1"] * 1001) + "\n"
+    write(tmp_path / "packages" / "server-python" / "app" / "huge.py", large_content)
+    write(
+        tmp_path / "docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md",
+        """
+        # TD-032 源码文件行数基线
+
+        ## 文件清单
+
+        ### >1000 行
+
+        | 文件 | 行数 | 状态 | 例外 / 拆分说明 |
+        |------|------|------|-----------------|
+        """,
+    )
+
+    result = run_checker(tmp_path)
+
+    assert result.returncode == 1
+    assert "huge.py" in result.stderr
+    assert "超过 1000 行硬限制" in result.stderr

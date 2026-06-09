@@ -123,7 +123,7 @@
 | TD-031 | RAG 质量测试文件的预存 ruff 警告 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) |
 | TD-032 | 治理超大源码文件并建立文件规模拆分原则 | 🟢 完成 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 2026-06-08 源码行数扫描 |
 | TD-033 | 拆分 `main.css` 设计系统级 CSS 模块 | 🟢 完成 | P2 | 前端 / 设计系统 / 可维护性 | [PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103) (`25ca165`) + [行数基线](02-baselines/td-032-source-file-sizes.md) |
-| TD-034 | `build_fields_desc` 在 `array + items=[]` 时丢失"成员为 object"提示 | ⚫ 待办 | P3 | 后端 / LLM 抽取 / 可维护性 | REQ-005 / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) (`4773741`) |
+| TD-034 | `build_fields_desc` 在 `array + items=[]` 时丢失"成员为 object"提示 | 🟢 完成 | P3 | 后端 / LLM 抽取 / 可维护性 | REQ-005 / [PR #142](https://github.com/MarkDanile/MetaEduBase/pull/142) (`1e9a012`) |
 | TD-035 | 收口 REQ-005 新增测试文件 ruff 质量门禁 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | REQ-005 review / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) |
 | TD-036 | `metaedu_test` 库 `document_tasks.updated_at` 列缺失（alembic 003 迁移与测试库 schema drift） | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | REQ-006 Stage 1 探查 / [PR #122](https://github.com/MarkDanile/MetaEduBase/pull/122) (`2780ff1`) |
 | TD-037 | e2e 脚本无法直接走真实 Celery：沙箱无 Redis broker 时需 mock `chunk_document.delay` + patch `broker_url=memory://` | 🟢 完成 | P3 | 后端 / 测试 / 基础设施 | REQ-006 Stage 1 探查 / [PR #130](https://github.com/MarkDanile/MetaEduBase/pull/130) (`9419c4e`) |
@@ -131,6 +131,7 @@
 | DOC-051 | 一次性收口历史 plan 残留 TBD / `TD-???` / `未回填` 占位 | ⚫ 待办 | P2 | 文档 / 工程流程 / 跨 AI 交接 | REQ-003 / REQ-004 / REQ-008 plan 残留占位扫描 |
 | DOC-052 | 清理 `scripts/engineering/checks/_common.py` 中 `KNOWN_ISSUES` 残留的 TD-023 历史白名单 | 🟢 完成 | P3 | 文档 / 工程流程 / 跨 AI 交接 | 2026-06-09 全仓债务盘查 / [PR #128](https://github.com/MarkDanile/MetaEduBase/pull/128) (`3f39ec0`) |
 | DOC-045 | 修正 TD-033 CSS 拆分交付声明与追踪证据 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-033 review / [#137](https://github.com/MarkDanile/MetaEduBase/pull/137) (`b815942`) |
+| DOC-042 | 脚本化 TD-032 行数基线扫描 | 🟢 完成 | P2 | 文档 / 工程治理 / 工程脚本 | [Baseline](02-baselines/td-032-source-file-sizes.md) / [PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143) |
 
 ## 任务详情
 
@@ -1398,13 +1399,13 @@
 
 ### TD-034: `build_fields_desc` 在 `array + items=[]` 时丢失"成员为 object"提示
 
-状态：⚫ 待办
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P3 |
 | 领域 | 后端 / LLM 抽取 / 可维护性 |
-| 事实源 | REQ-005（[Spec](../02-delivery-plans/01-specs/2026-W23-req-005-structured-extraction-regression.md#ac-2) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-005-structured-extraction-regression-plan.md)） / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) (merge `4773741`) |
+| 事实源 | REQ-005（[Spec](../02-delivery-plans/01-specs/2026-W23-req-005-structured-extraction-regression.md#ac-2) / [Plan](../02-delivery-plans/02-plans/2026-W23-req-005-structured-extraction-regression-plan.md)） / [PR #142](https://github.com/MarkDanile/MetaEduBase/pull/142) (`1e9a012`) |
 
 **证据**
 - 生产代码：`packages/server-python/app/contexts/document/application/tasks/extract_template_prompts.py:60-62`：
@@ -1438,7 +1439,11 @@
 - `git diff --check` 退出码 0。
 
 **交付记录**
-- 暂无。任务在 2026-06-09 由 REQ-005 实施中触发登记。
+- 2026-06-10 完成（接手工具：Claude Code）。选路线 A：`f.get("items")` 改为 `f.get("items") is not None` 的真值检查，`items=[]` 时进入 array 分支并 fallback 到 `item_key = "item"`，保留"成员为object"提示。`elif ftype == "array" and f.get("items")` 简化为 `elif ftype == "array"`。[PR #142](https://github.com/MarkDanile/MetaEduBase/pull/142)（commit `1e9a012`）。
+  - `app/contexts/document/application/tasks/extract_template_prompts.py`：2 行逻辑修改 + docstring 更新（3 种 items 状态契约说明 + TD-034 引用）。
+  - `tests/contexts/document/test_extract_template_prompts.py`：`test_build_fields_desc_array_without_items_falls_back_to_bare_type` → `test_build_fields_desc_array_without_items_falls_back_to_item_key`，期望从 `[array型]` 更新为 `[array型，成员为object，含字段：item]`。
+- 行为变化声明：`items=[]` 的 array 字段 prompt 描述从 `[array型]` 变为 `[array型，成员为object，含字段：item]`，LLM 将收到更强的结构化提示（这正是 TD-034 的修复目标）。
+- 验证摘要：`pytest tests/contexts/document/test_extract_template_prompts.py -q` 11 passed；`pytest tests/contexts/document/ -q` 50 passed；`ruff check app/contexts/document/application/tasks/extract_template_prompts.py tests/contexts/document/test_extract_template_prompts.py` → All checks passed!；`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0。
 
 ### TD-035: 收口 REQ-005 新增测试文件 ruff 质量门禁
 
@@ -1642,3 +1647,46 @@
 - 行为变化声明：docs-only，无业务代码变更；不影响 runtime 行为。
 - 验证摘要：`python3 scripts/check-engineering-docs` 退出码 0（`engineering docs checks passed`）；`git diff --check` 退出码 0；`git diff --name-status` 仅 4 个 docs 文件；6 条 `rg` 验收断言全过。
 - 未建独立 spec / plan：本次为 docs-only 跨事实源补全（事实源仅文档），规模与 TD-033 的"未建 spec / plan 已事后登记"模式一致（详见 TD-033 任务卡 L1365 注释与 `04-retrospectives/review-score-log.md#2026-06-09 td-033`）；任务卡完成标准已记录此例外，本任务不扩大范围补建。
+
+### DOC-042: 脚本化 TD-032 行数基线扫描
+
+状态：🟢 完成
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 文档 / 工程治理 / 工程脚本 |
+| 事实源 | [Baseline](02-baselines/td-032-source-file-sizes.md) / `docs/01-product-planning/04-backlog.md` |
+
+**证据**
+- TD-032 行数基线扫描依赖手工命令 `rg --files -0 packages scripts tests -g '*.py' -g '*.ts' -g '*.tsx' -g '*.vue' -g '*.css' -g '*.scss' -g '!**/.venv/**' -g '!**/uploads/**' -g '!**/node_modules/**' -g '!**/dist/**' | xargs -0 wc -l | sort -nr | head -40`。
+- 手工命令在文件路径含空格时可能出错；每次复盘需人工重跑并手动对比。
+- `docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md` 是当前唯一行数快照，但无法自动刷新。
+
+**问题**
+- 行数扫描不可复现、不可自动对比，TD-032 复盘依赖人工操作。
+- 缺少脚本化扫描意味着后续无法在 `check-engineering-docs` 或 CI 中自动检测文件规模回归。
+
+**完成标准**
+- 将手工扫描命令固化为稳健脚本（如 `scripts/scan-source-sizes`），排除 `.venv` / `uploads` / `node_modules` / `dist` 并正确处理含空格路径。
+- 脚本支持 `--json` 输出和 `--diff` 对比上次基线。
+- 输出可被 `td-032-source-file-sizes.md` 引用或自动刷新。
+- `scripts/check-engineering-docs` 退出码 0。
+
+**验证方式**
+- `scripts/scan-source-sizes` 幂等运行，输出与手工命令一致。
+- `scripts/scan-source-sizes --diff` 能检测新增超大文件或行数增长。
+- `scripts/check-engineering-docs` 退出码 0。
+
+**交付记录**
+- 2026-06-10 完成（接手工具：Claude Code）。将手工 `rg --files -0 | xargs -0 wc -l` 扫描命令固化为 Python 脚本，避免空格路径问题和手动复跑。[PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143)。
+  - 新增 `scripts/engineering/scan_source_sizes.py`（335 行）：`scan_source_files` / `load_baseline` / `save_baseline` / `diff_baseline` / `refresh_sizes_md` / `format_text|json|diff` / `main`；支持 `--threshold` / `--json` / `--diff` / `--refresh`。
+  - 新增 `scripts/scan-source-sizes` shell 入口（5 行 `runpy.run_path` 模式与 `check-engineering-docs` 一致）。
+  - 新增 `scripts/engineering/checks/source_sizes.py` 门禁检查 `check_source_size_hard_limit`：扫描所有源码文件，仅在 >1000 行且未在 `td-032-source-file-sizes.md` 中标记 🟢/已拆分/已合规 时报错。
+  - 注册到 `checks/__init__.py` 的 `KNOWN_CHECKS`；`SCRIPTED_GATE_CANDIDATES` 加 `"源码文件超过 1000 行硬限制检查"`。
+  - `quality-gates.md` 候选清单新增对应行。
+  - `td-032-source-file-sizes.md` 维护规则段更新扫描命令为脚本化形式（保留手工命令为历史参考）。
+  - 新增 `docs/03-engineering-governance/02-baselines/source-sizes-baseline.json`（git 跟踪的机器可读基线）。
+  - `tests/engineering/test_check_engineering_docs.py` 新增 2 条测试：无 >1000 行文件 → 0 issues；未登记的 >1000 行文件 → 1 issue。
+- 行为变化声明：门禁新增一项检查 `source-size-over-limit`，仅在出现 >1000 行且未登记的文件时报告，不改变现有 15 项检查行为；扫描脚本是新增命令，不替换既有手工命令（保留为历史参考）。
+- 验证摘要：`scripts/scan-source-sizes --threshold 300` 列出 18 个 ≥300 行的文件（最高 `tests/engineering/test_check_engineering_docs.py` 545 行 Python）；`--diff` 输出 `(no differences from baseline)`；`pytest tests/engineering/ -q` 19 passed（基线 17 + 新增 2）；`ruff check scripts/engineering/scan_source_sizes.py scripts/engineering/checks/source_sizes.py scripts/engineering/checks/__init__.py scripts/engineering/checks/_common.py` → All checks passed!；`python3 scripts/check-engineering-docs` → engineering docs checks passed（17 + 2 测试通过且门禁无 issue）；`git diff --check` 退出码 0。

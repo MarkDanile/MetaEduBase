@@ -100,20 +100,18 @@ def test_build_fields_desc_array_uses_first_item_key() -> None:
     assert desc == "teaching_process(教学过程)[array型，成员为object，含字段：step]"
 
 
-def test_build_fields_desc_array_without_items_falls_back_to_bare_type() -> None:
-    # Production `build_fields_desc` checks `f.get("items")`; an empty list is
-    # falsy and falls through to the bare-type branch instead of the
-    # "含字段：item" branch. This test locks that observable behavior so
-    # any future refactor that flips the branch must update this test
-    # intentionally (spec risk: prompts for empty-items arrays lose the
-    # "成员为object" hint).
+def test_build_fields_desc_array_without_items_falls_back_to_item_key() -> None:
+    # TD-034 (Route A): ``f.get("items") is not None`` replaces the old falsy
+    # check so that ``items=[]`` still enters the array branch and falls back
+    # to the generic key "item".  This preserves the "成员为object" hint for
+    # LLM, avoiding the degradation to bare ``[array型]``.
     fields = [
         Field(key="empty_array", label="空数组", type="array", items=[]),
     ]
 
     desc = build_fields_desc([f.to_dict() for f in fields])
 
-    assert desc == "empty_array(空数组)[array型]"
+    assert desc == "empty_array(空数组)[array型，成员为object，含字段：item]"
 
 
 # --- AC-3: build_fields_desc on table nesting ------------------------------
