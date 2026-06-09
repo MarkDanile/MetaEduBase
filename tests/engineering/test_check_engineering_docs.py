@@ -146,12 +146,12 @@ def test_fails_when_candidate_contains_completed_task(tmp_path: Path) -> None:
     assert "current-work.md" in result.stderr
 
 
-def test_fails_when_recent_completed_exceeds_five_rows(tmp_path: Path) -> None:
+def test_fails_when_recent_completed_exceeds_twenty_rows(tmp_path: Path) -> None:
     make_minimal_docs(tmp_path)
     current_work = tmp_path / "docs/03-engineering-governance/current-work.md"
     rows = "\n".join(
         f"| 2026-06-05 | DOC-00{i} 示例完成 | 🟢 完成 | 已完成。 | docs/03-engineering-governance/work-log.md |"
-        for i in range(1, 7)
+        for i in range(1, 22)
     )
     current_work.write_text(
         textwrap.dedent(
@@ -181,7 +181,7 @@ def test_fails_when_recent_completed_exceeds_five_rows(tmp_path: Path) -> None:
     result = run_checker(tmp_path)
 
     assert result.returncode == 1
-    assert "最近完成最多 5 行" in result.stderr
+    assert "最近完成最多 20 行" in result.stderr
 
 
 def test_fails_when_recent_completed_summary_is_too_long(tmp_path: Path) -> None:

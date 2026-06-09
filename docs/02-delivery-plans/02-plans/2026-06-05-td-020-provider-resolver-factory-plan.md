@@ -103,7 +103,7 @@ cd packages/server-python && .venv/bin/python -m ruff check app/ tests/
 - `docs/03-engineering-governance/current-work.md`：
   - 从 `下一批候选任务` 移走 TD-020。
   - 在 `最近完成` 增加一行摘要，事实源指向 `technical-debt.md#td-020`。
-  - 如果 `最近完成` 超过 5 行，最旧一行迁到 `docs/03-engineering-governance/work-log.md`。
+  - 如果 `最近完成` 超过 `docs/03-engineering-governance/01-rules/workbench.md#保留策略` 定义的当前窗口上限，按该规则批量归档最旧记录。
 - `docs/03-engineering-governance/work-log.md`：增加一行索引，指向 PR 与 spec。
 - `docs/02-delivery-plans/01-specs/2026-06-05-td-020-provider-resolver-factory.md` 与本 plan 顶部补"交付历史"段，参考 DOC-010 收口规范。
 

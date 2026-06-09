@@ -24,6 +24,7 @@ DOC_GLOBS: tuple[str, ...] = (
     "docs/02-delivery-plans/02-plans/*.md",
 )
 
+CURRENT_WORK_RECENT_LIMIT = 20
 CURRENT_WORK_RECENT_SUMMARY_LIMIT = 220
 LEGACY_DOC_ROOT_NAMES: tuple[str, ...] = (
     "engineering",
@@ -46,7 +47,7 @@ LEGACY_FOLLOWUP_REFS: frozenset[tuple[str, str]] = frozenset(
 BACKLOG_DONE_TYPES: frozenset[str] = frozenset({"REQ", "DOC", "BUG", "APP"})
 SCRIPTED_GATE_CANDIDATES: frozenset[str] = frozenset(
     {
-        "`current-work.md` 最近完成最多 5 行",
+        "`current-work.md` 最近完成最多 20 行",
         "`current-work.md` 下一批候选最多 3 行，且不允许 `🟢 完成`",
         "已完成任务不得残留 `未运行`、`待提交`、`以最终回复为准` 等占位",
         "禁止把 `REQ-xxx-FOLLOWUP` / `TD-xxx-FOLLOWUP` 作为长期任务编号",

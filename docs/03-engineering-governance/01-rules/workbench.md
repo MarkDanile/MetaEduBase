@@ -40,8 +40,9 @@
 
 - `当前进行中`：只保留正在开发、阻塞、待验证或正在走 Git 闭环的任务；一个 agent 默认只持有 1 个当前任务。
 - `下一批候选任务`：最多保留 1 到 3 个近期候选；完整 backlog 回到对应总账或 plan。
-- `最近完成`：最多保留最近 5 个完成任务摘要；详细交付事实回到 `docs/03-engineering-governance/work-log.md`、对应总账、plan 或 PR。
-- 超出范围的完成任务应归档到对应事实源，并在 `docs/03-engineering-governance/work-log.md` 保留一行索引。
+- `最近完成`：默认最多保留最近 20 个完成任务摘要；详细交付事实回到 `docs/03-engineering-governance/work-log.md`、对应总账、plan 或 PR。
+- `最近完成` 超过 20 行时再批量归档最旧记录，建议一次性压回 12 到 15 行左右；不要每完成一个任务就做单条搬运。
+- 超出窗口的完成任务应归档到对应事实源，并在 `docs/03-engineering-governance/work-log.md` 保留一行索引。
 
 ## 区域选择策略
 
