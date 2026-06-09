@@ -25,7 +25,7 @@
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
 | TD-037 e2e 沙箱无 Redis broker 适配 | ⚫ 候选 | P3 | Backend / 测试 / 基础设施 | 选路线 A（独立 e2e Celery app fixture with `memory://` broker）或路线 B（`init-test-db` 启 dev Redis），把 `chunk_document.delay` 等 mock 集中到 `mock_pipeline_chain` fixture；CI 端补 `e2e-real` 标记；详情见 [TD-037](../03-engineering-governance/technical-debt.md#td-037)。 |
-| DOC-051 一次性收口历史 plan 残留 TBD / `TD-???` / `未回填` 占位 | ⚫ 候选 | P2 | Docs / Governance | 5 处 TBD + 3 处 `TD-???` + 2 处 `未回填` → 替换为稳定编号/具体描述；同步 W23 迭代卡 Review 段 PG 历史失败声明；解锁 `quality-gates.md#脚本门禁候选清单` 中"完成态占位扫描"从候选转已实现。 |
+| DOC-052 清理 `scripts/engineering/checks/_common.py` 中 `KNOWN_ISSUES` 残留的 TD-023 历史白名单 | ⚫ 候选 | P3 | Docs / Governance | TD-023 任务已结案（PR 未配置 CI / 本地门禁已通过）；其 `KNOWN_ISSUES` 4 条白名单（`td-020-*` plan 2 条 + `td-020-*` spec 1 条 + `td-023` 1 条）已无拦截价值，长期保留会掩盖新漂移；逐条评估能否删除；删除后跑 `scripts/check-engineering-docs` 退出码 0。 |
 | DOC-054 收口 review-score-log PR 字段与倒排顺序一致性 | ⚫ 候选 | P2 | Docs / Governance / Review | 修正 `review-score-log.md`：DOC-049 行 `本 PR` → PR #113；按"最新评审置顶"重新整理同日登记顺序；同步 Metrics Snapshot 计数（当前表已超过 7 条）；运行 `scripts/check-engineering-docs` + `git diff --check`。 |
 
 ## 最近完成
@@ -36,6 +36,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-09 | DOC-051 一次性收口 W23 P1 历史 spec/plan 占位 | 🟢 完成 | 12 处占位一次性替换（3 spec `TD-???` → `TD-030（已锁定）`+ 2 `未回填` → 具体失败条件；3 plan commit / PR 链接回填到 `337238b` / `2e6d097`+`d8e9bcb` / `29fa1d0`+`54a0a1c`+`c236216`=`PR #79` `302ec2d`）；W23 迭代卡 PG 行 + `quality-gates.md` 占位扫描候选阻塞解除。 | [Work Log](work-log.md) / [PR #124](https://github.com/MarkDanile/MetaEduBase/pull/124) (`d7a2ca7`) |
 | 2026-06-09 | TD-036 / TD-038 修复全新测试库 `alembic upgrade head` 卡在 006 的根因 | 🟢 完成 | 修 006 `gin` ops + `init-test-db` 加 `btree_gin` + `_ensure_critical_columns` 防御 check。`DROP DATABASE metaedu_test && init-test-db` 一次到 head。 | [Work Log](work-log.md) / [PR #122](https://github.com/MarkDanile/MetaEduBase/pull/122) (`2780ff1`) |
 | 2026-06-09 | BUG-001 修正 document retry endpoint 的 Celery dispatch 语义 | 🟢 完成 | 修 `POST /files/{file_id}/retry` 三处缺陷（去 `await`、补 `pipeline_version`、加 `try/except` 兜 broker 抖动），3 条新回归用例，`pytest tests/ -q` 222 passed。 | [Work Log](work-log.md) / [PR #120](https://github.com/MarkDanile/MetaEduBase/pull/120) (`c24f3e9`) |
 | 2026-06-09 | DOC-053 补齐高频流程启动语入口 | 🟢 完成 | 在 `task-modes.md#常见启动语` 增补评审、完整 Git 闭环、复盘、阶段收口、APP 应用塑形和只登记不实现等短启动语；保持入口文件只导航、不复制长规则。 | [Task Modes](task-modes.md#常见启动语) / [Work Log](work-log.md) |
