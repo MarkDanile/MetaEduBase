@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ._common import (
+    CURRENT_WORK_RECENT_LIMIT,
     CURRENT_WORK_RECENT_SUMMARY_LIMIT,
     Issue,
     read_lines,
@@ -101,14 +102,14 @@ def check_current_work(root: Path) -> list[Issue]:
         )
     else:
         recent = table_rows(recent_body)
-        if len(recent) > 5:
+        if len(recent) > CURRENT_WORK_RECENT_LIMIT:
             issues.append(
                 Issue(
                     path,
-                    recent[5][0],
+                    recent[CURRENT_WORK_RECENT_LIMIT][0],
                     "current-work",
-                    "最近完成最多 5 行。",
-                    "最旧完成项应归档到 work-log 或对应事实源。",
+                    f"最近完成最多 {CURRENT_WORK_RECENT_LIMIT} 行。",
+                    "超过窗口后批量归档最旧完成项到 work-log 或对应事实源。",
                 )
             )
         for line_no, row in recent:

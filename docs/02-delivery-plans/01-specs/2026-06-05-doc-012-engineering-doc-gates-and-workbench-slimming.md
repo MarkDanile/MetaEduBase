@@ -83,7 +83,7 @@ spec / plan 进入 `docs/02-delivery-plans/01-specs/*` 和 `docs/02-delivery-pla
 - 工程文档门禁有聚焦的实现目录，兼容入口不会迫使执行者记住内部文件路径。
 - 该命令能发现至少以下问题类型：
   - 候选区 `🟢 完成` 行。
-  - 最近完成超过 5 行。
+  - 最近完成超过 `docs/03-engineering-governance/01-rules/workbench.md#保留策略` 定义的当前窗口上限。
   - 已完成 plan 残留活动式 `- [ ]`。
   - 相对 Markdown 链接断裂。
   - `work-log.md` 近期索引被删除或替换。
