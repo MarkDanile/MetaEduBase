@@ -123,7 +123,7 @@
 | TD-031 | RAG 质量测试文件的预存 ruff 警告 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) |
 | TD-032 | 治理超大源码文件并建立文件规模拆分原则 | 🟢 完成 | P2 | 可维护性 / 架构 / 前端 / 后端 / 工程治理 | 2026-06-08 源码行数扫描 |
 | TD-033 | 拆分 `main.css` 设计系统级 CSS 模块 | 🟢 完成 | P2 | 前端 / 设计系统 / 可维护性 | [PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103) (`25ca165`) + [行数基线](02-baselines/td-032-source-file-sizes.md) |
-| TD-034 | `build_fields_desc` 在 `array + items=[]` 时丢失"成员为 object"提示 | ⚫ 待办 | P3 | 后端 / LLM 抽取 / 可维护性 | REQ-005 / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) (`4773741`) |
+| TD-034 | `build_fields_desc` 在 `array + items=[]` 时丢失"成员为 object"提示 | 🟡 进行中 | P3 | 后端 / LLM 抽取 / 可维护性 | REQ-005 / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) (`4773741`) |
 | TD-035 | 收口 REQ-005 新增测试文件 ruff 质量门禁 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | REQ-005 review / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) |
 | TD-036 | `metaedu_test` 库 `document_tasks.updated_at` 列缺失（alembic 003 迁移与测试库 schema drift） | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | REQ-006 Stage 1 探查 / [PR #122](https://github.com/MarkDanile/MetaEduBase/pull/122) (`2780ff1`) |
 | TD-037 | e2e 脚本无法直接走真实 Celery：沙箱无 Redis broker 时需 mock `chunk_document.delay` + patch `broker_url=memory://` | 🟢 完成 | P3 | 后端 / 测试 / 基础设施 | REQ-006 Stage 1 探查 / [PR #130](https://github.com/MarkDanile/MetaEduBase/pull/130) (`9419c4e`) |
@@ -1398,7 +1398,7 @@
 
 ### TD-034: `build_fields_desc` 在 `array + items=[]` 时丢失"成员为 object"提示
 
-状态：⚫ 待办
+状态：🟡 进行中
 
 | 字段 | 内容 |
 |------|------|

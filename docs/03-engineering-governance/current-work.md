@@ -16,6 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
+| TD-034 `build_fields_desc` 在 `array + items=[]` 时丢失"成员为object"提示 | 🟡 进行中 | P3 | 后端 / LLM 抽取 / 可维护性 | 代码修复完成（路线 A），11 测试通过 + ruff + check-engineering-docs | 更新文档 → commit → push → PR | `pytest tests/contexts/document/ -q` 50 passed；ruff 全过 |
 
 ## 下一批候选任务
 
@@ -23,7 +24,6 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| TD-034 `build_fields_desc` 在 `array + items=[]` 时丢失"成员为 object"提示 | ⚫ 待办 | P3 | 后端 / LLM 抽取 / 可维护性 | 切 `fix/td-034-array-items-empty` 分支；按任务卡选定路线 A / B / C，更新 `test_extract_template_prompts.py::test_build_fields_desc_array_without_items_falls_back_to_bare_type` 期望并补 prompt docstring |
 
 ## 最近完成
 
