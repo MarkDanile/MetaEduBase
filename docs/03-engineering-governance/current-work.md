@@ -35,8 +35,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-09 | TD-032 切片 7：拆分 FileDetailView.vue 416 → 4 文件 | 🟢 完成 | FileDetailView 181 (-57%) + 3 子组件 (FileMetaBar 41 / PipelineStatusPanel 97 / FileTabsPanel 171)。TD-032 7 切片全部收口,500 附近全部拆分到位。 | [PR #98](https://github.com/MarkDanile/MetaEduBase/pull/98) / [Baseline](02-baselines/td-032-source-file-sizes.md) |
 | 2026-06-09 | TD-032 切片 6：拆分 ResourceLibraryView.vue 490 → 4 文件 | 🟢 完成 | ResourceLibraryView 286 (-42%) + 3 子组件 (FolderTreePanel 142 / FileListPanel 160 / UploadOptionsDialog 51)。`v-model` 改 `:value + @input` 显式 emit 链;emit 名 kebab-case 化。`pnpm typecheck / lint / build` 3 项全过。 | [PR #97](https://github.com/MarkDanile/MetaEduBase/pull/97) / [Baseline](02-baselines/td-032-source-file-sizes.md) |
 | 2026-06-08 | TD-032 切片 5：拆分 document/router.py 494 → 5 个聚焦子 router | 🟢 完成 | router.py 494 → 29（-94%）+ 4 子 router（folders 123 / files 231 / chunks 43 / tasks 121）。`pytest` 115 passed + `ruff` All checks passed! + import 探针 all OK。pre-existing 重复路由（router.py 与 task_router.py）登记为 DOC-041 候选。 | [PR #96](https://github.com/MarkDanile/MetaEduBase/pull/96) / [Baseline](02-baselines/td-032-source-file-sizes.md) / [Backlog](../01-product-planning/04-backlog.md) |
-| 2026-06-08 | TD-032 baseline 刷新（切片 1-4 收口后回写） | 🟢 完成 | 5 项合规样例扩展 + 新增 `FileDetailView.vue` 416 候选 + 「切片 5+ 候选清单」段（router 494 P2 / LibraryView 490 P2 / FileDetailView 416 P3 / main.css 1343 P3）。 | [Baseline](02-baselines/td-032-source-file-sizes.md) |
+| 2026-06-08 | TD-032 baseline 刷新（切片 1-4 收口后回写） | 🟢 完成 | 5 项合规样例扩展 + 新增 `FileDetailView.vue` 416 候选 + 「切片 5+ 候选清单」段。 | [Baseline](02-baselines/td-032-source-file-sizes.md) |
 | 2026-06-08 | TD-032 4 切片整体收口 | 🟢 完成 | 切片 1-4 全部合并。 | [Technical Debt](technical-debt.md#td-032-治理超大源码文件并建立文件规模拆分原则) |
-| 2026-06-08 | DOC-039 增强工程文档脚本门禁 | 🟢 完成 | `scripts/check-engineering-docs` 新增稳定编号、Backlog Done 入账、入口同步和脚本候选清单反查；测试基线迁到新 docs 目录并补 5 个回归用例。 | [Quality Gates](01-rules/quality-gates.md) / `scripts/engineering/check_engineering_docs.py` / `tests/engineering/test_check_engineering_docs.py` / [Backlog](../01-product-planning/04-backlog.md) |

@@ -1303,3 +1303,8 @@
   - 验证（cwd=packages/web）：`pnpm typecheck` 退出码 0（零输出）；`pnpm lint` 退出码 0（零 warning；emit 名 kebab-case 化后无 `vue/v-on-event-hyphenation` 警告）；`pnpm build` 退出码 0，✓ built in 3.04s；`scripts/check-engineering-docs` 退出码 0。
   - 实施时 5 处小修正（与切片 4 / 切片 5 经验一致）：`v-model` 改 `:value + @input` 显式 emit 链（4 处 `v-model`）+ `fileInput` ref 在 `FileListPanel` 内部持有（沿用切片 4 `UploadDatasetDialog` 模式）+ emit 名 kebab-case 化（`update:new-folder-name` / `update:inline-renaming-name` / `update:filter-status` / `update:doc-type`）+ `flatFolders` computed 保留在主入口（避免子组件重复 walk 递归）+ `@click.stop` 在 menu 面板保持（避免事件冒泡到外层 button）。
   - 任务整体保持 `🟢 完成`；TD-032 切片 1-6 全部合并。
+- 2026-06-09 切片 7 已合并：[PR #98](https://github.com/MarkDanile/MetaEduBase/pull/98)，merge commit `3e7f827`。
+  - 落地 4 个文件（1 改 3 新）：`FileDetailView.vue` 416 → 181 行（-57%）+ 3 个聚焦子组件（`FileMetaBar.vue` 41 / `FileDetailPipelineStatusPanel.vue` 97 / `FileTabsPanel.vue` 171）。
+  - 验证（cwd=packages/web）：`pnpm typecheck` 退出码 0（零输出）；`pnpm lint` 退出码 0（零 warning）；`pnpm build` 退出码 0，✓ built in 3.00s；`scripts/check-engineering-docs` 退出码 0。
+  - 实施时 3 处小修正（与切片 4 / 切片 6 经验一致）：`v-model` 改 `:value + @input` 显式 emit 链 + 子组件内部 helper（templateFieldLabel/getFieldLabel + labels 回退硬编码表）迁到 `FileTabsPanel` 内部 + `stepBgClass`/`stepIcon` 等 5 helper 迁到 `FileDetailPipelineStatusPanel` 内部（独立于切片 4 `PipelineStatusPanel` 因 document 5 步 vs structured_data 4 步 pipeline 不可复用）。
+  - **TD-032 整体最终收口**：7 切片全部合并；500 附近全部拆分到位（document/router.py 29 / ResourceLibraryView 286 / FileDetailView 181）；仅 `main.css` 1343 保留 `🔵 例外已登记`（设计系统级别重构，TD-032 周期外）。
