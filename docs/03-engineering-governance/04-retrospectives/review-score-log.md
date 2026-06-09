@@ -16,6 +16,19 @@
 
 | 日期 | 类型 | 任务 | PR | 总分 | 结论 | 必修 follow-up | 流程扣分点 | 规则 / 脚本改进 | 评审人 |
 |------|------|------|----|------|------|----------------|------------|------------------|--------|
+| 2026-06-10 | Original | DOC-042 脚本化 TD-032 行数基线扫描 | [#143](https://github.com/MarkDanile/MetaEduBase/pull/143) | 72 | 可接受；行数扫描脚本、门禁和测试价值明确，但 PR 混入 TD-034 行为变更且 `--diff` 合并后不干净 | DOC-055 | PR #143 包含 `extract_template_prompts.py` 行为变更；TD-034 事实源指向仍 OPEN 的 PR #142；`scripts/scan-source-sizes --diff` 报 2 个文件与基线不一致 | 已登记 DOC-055；建议补 source-size baseline diff clean 检查和 PR 范围边界复核 | Codex |
+| 2026-06-10 | Original | DOC-045 修正 TD-033 CSS 拆分交付声明与追踪证据 | [#137](https://github.com/MarkDanile/MetaEduBase/pull/137) | 86 | 良好；TD-033 交付声明与追踪证据已跨事实源补齐 | 无 | 无 | 不新增规则；本次为 DOC-045 自身收口 | Codex |
+| 2026-06-10 | Original | TD-030 RecallChannel Protocol vs concrete signature drift 收口 | [#139](https://github.com/MarkDanile/MetaEduBase/pull/139) | 82 | 良好；代码契约与测试收口，但复核发现 DOC-051 的占位映射误归因未独立入账 | DOC-055 | 3 处 `TD-030（已锁定）` 实际语义可能不属于 TD-030；需回查 DOC-051 占位替换 | 已登记 DOC-055 | Codex |
+| 2026-06-10 | Original | REQ-006 P1 知识资产处理链路最终演示验收 | [#132](https://github.com/MarkDanile/MetaEduBase/pull/132) | 88 | 良好；6 步 e2e 与 P1 轨道 B / W23 / Backlog 状态基本闭环 | 无 | 多 PR / Stage 链路依赖 work-log 接力，但最终事实源已同步 | 不新增规则 | Codex |
+| 2026-06-10 | Original | TD-037 收口 e2e Redis broker（路线 B） | [#130](https://github.com/MarkDanile/MetaEduBase/pull/130) | 87 | 良好；e2e 沙箱 broker 问题收口，Stage 1.0 基线恢复 | 无 | 无 | 不新增规则 | Codex |
+| 2026-06-10 | Original | DOC-051 一次性收口 W23 P1 历史 spec/plan 占位 | [#124](https://github.com/MarkDanile/MetaEduBase/pull/124) | 74 | 可接受；主目标完成，但 technical-debt 状态漂移且 `TD-???` 统一映射为 TD-030 存在误归因风险 | DOC-055 | `technical-debt.md` 总览仍为 `⚫ 待办`；3 处占位被写成 `TD-030（已锁定）` 但语义不清 | 已登记 DOC-055；建议补占位编号映射校验 | Codex |
+| 2026-06-10 | Original | TD-036 / TD-038 修复全新测试库 alembic upgrade head 阻塞 | [#122](https://github.com/MarkDanile/MetaEduBase/pull/122) | 86 | 良好；迁移阻塞根因和测试库 schema drift 已收口 | 无 | 无 | 不新增规则 | Codex |
+| 2026-06-10 | Original | DOC-052 清理 KNOWN_ISSUES TD-023 历史白名单 | [#128](https://github.com/MarkDanile/MetaEduBase/pull/128) | 89 | 良好；白名单删除前后 active/known 均为 0，门禁一致性证据充分 | 无 | 无 | 不新增规则 | Codex |
+| 2026-06-10 | Original | BUG-001 修正 document retry endpoint Celery dispatch | [#120](https://github.com/MarkDanile/MetaEduBase/pull/120) | 88 | 良好；retry dispatch 语义、pipeline_version 和 broker 兜底均有回归测试 | 无 | 无 | 不新增规则 | Codex |
+| 2026-06-10 | Original | DOC-054 收口 review-score-log PR / 倒排 / Metrics | [#126](https://github.com/MarkDanile/MetaEduBase/pull/126) | 91 | 优秀；评分总账 PR 字段、倒排顺序和 Metrics Snapshot 已收口 | 无 | 无 | 不新增规则 | Codex |
+| 2026-06-10 | Original | DOC-053 补齐高频流程启动语入口 | [#119](https://github.com/MarkDanile/MetaEduBase/pull/119) | 88 | 良好；常见启动语覆盖评审、Git 闭环、复盘、阶段收口和只登记不实现 | 无 | 无 | 不新增规则 | Codex |
+| 2026-06-10 | Original | DOC-050 优化 current-work 最近完成窗口与评分总账排序 | [#112](https://github.com/MarkDanile/MetaEduBase/pull/112) | 86 | 良好；最近完成窗口与评分总账排序规则已落地，后续漂移由 DOC-054 收口 | 无 | 评分总账排序 / Metrics 漂移已由 DOC-054 修正 | 不新增规则；DOC-054 已完成 | Codex |
+| 2026-06-10 | Original | TD-035 收口 REQ-005 新增测试文件 ruff 质量门禁（Codex 复评） | [#114](https://github.com/MarkDanile/MetaEduBase/pull/114) | 93 | 优秀；ruff 与 pytest 证据充分，行为风险低 | 无 | 无 | 不新增规则 | Codex |
 | 2026-06-09 | Original | REQ-006 Stage 1.0 端到端脚本 + UI 演示手册骨架 | [#117](https://github.com/MarkDanile/MetaEduBase/pull/117) | 78 | 可接受；e2e 3 步通过，但探查暴露出 2 个独立债（TD-036 schema drift / TD-037 Celery broker 缺），本 PR 不在范围 | TD-036 / TD-037 | e2e 脚本自带 `ALTER TABLE IF NOT EXISTS` 兜底 + mock `chunk_document.delay` + `broker_url=memory://` 让沙箱可跑；生产代码契约未变 | 不新增规则；”沙箱无 Redis 仍可跑 e2e”是已存在 `_run_in_session` 设计带来的临时绕路，TD-037 集中收口 | Claude Code |
 | 2026-06-09 | Original | TD-035 收口 REQ-005 新增测试文件 ruff 质量门禁 | [#114](https://github.com/MarkDanile/MetaEduBase/pull/114) | 92 | 良好；`ruff check --fix` 自动修 4 个可修复问题，pytest 11 passed 完全保持 | 无 | `ruff check app/ tests/` 全过确认未引入其他回归 | 不新增规则；与 TD-031 ruff 修复模式一致，列入既有 ruff 收口范式 | Claude Code |
 | 2026-06-09 | Original | DOC-049 收口结构化抽取完成态占位与验证声明漂移 | [#113](https://github.com/MarkDanile/MetaEduBase/pull/113) | 86 | 良好；spec/plan 占位与 AC-8 浅拷贝口径已对齐到 11 条真实用例输出 | 无 | Backlog 中曾误用 `PR #TBD` 占位回填后即删除（违反”完成态不得残留 TBD”原则），改为”合并后回填 PR 链接” | 候选门禁”完成态占位扫描”已登记 `quality-gates.md#脚本门禁候选清单`，推迟实施（REQ-003 / REQ-008 仍有 TBD，需独立 DOC-xxx 一次性收口） | Claude Code |
@@ -31,12 +44,12 @@
 
 | 指标 | 当前值 | 说明 |
 |------|--------|------|
-| 已记录评审数 | 10 | 7 条 Original（2026-06-09 当日评审）+ 3 条 Backfilled（回溯 2026-06-08 merge 的 PR）。 |
-| 平均评分 | 82.6 | 10 条 `总分` 算术平均（76+92+78+86+89+81+78+74+84+88）/ 10；7 条 Original 子均 84.7。 |
-| 一次关闭率 | 40% | 评分 ≥ 80 且无必修 follow-up 的任务数 / 已记录评审数 = 4/10（行 2 / 3 / 5 / 10）。 |
-| 返工率 | 60% | 有必修 follow-up 的任务数 / 已记录评审数 = 6/10（行 1 / 4 / 6 / 7 / 8 / 9）。 |
-| 流程违规率 | 100% | `流程扣分点` 列非 `无` 的任务数 / 已记录评审数 = 10/10；说明本表所有评审都至少标了一个扣分点 —— 不是”违规严重”，而是”复盘粒度细”，跟踪时与扣分点内容一并读。 |
-| 规则转化率 | 90% | `规则 / 脚本改进` 列非 `不新增规则` 的任务数 / 已记录评审数 = 9/10；唯一未触发转化的为 BUG-002 视觉 bug 验收证据问题。 |
+| 已记录评审数 | 23 | 19 条 Original + 4 条 Backfilled。2026-06-10 新增 13 条 Codex 复评记录。 |
+| 平均评分 | 84.2 | 23 条 `总分` 算术平均；本轮新增评审总分 1110，累计总分 1936。 |
+| 一次关闭率 | 61% | 评分 ≥ 80 且无必修 follow-up 的任务数 / 已记录评审数 = 14/23。 |
+| 返工率 | 39% | 有必修 follow-up 的任务数 / 已记录评审数 = 9/23。 |
+| 流程扣分率 | 61% | `流程扣分点` 列非 `无` 的任务数 / 已记录评审数 = 14/23；这里表示有可复盘流程信号，不等同于严重违规。 |
+| 规则转化率 | 52% | 形成规则、脚本或 follow-up 改进的评审数 / 已记录评审数 = 12/23。 |
 
 > 样本量不足时，本表只用于追踪单任务事实，不用于趋势判断。
 
