@@ -15,6 +15,8 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-09 | DOC-047 建立评审评分总账与落盘规则 | 文档 / 工程治理 / 评审 / 复盘数据 |  |  | `docs/03-engineering-governance/04-retrospectives/review-score-log.md` / `docs/03-engineering-governance/01-rules/review-scorecard.md` |
+| 2026-06-09 | DOC-046 修正 P1 轨道 B 检索 / 抽取质量展示 | 文档 / 产品规划 / 里程碑展示 |  |  | `docs/01-product-planning/02-milestones/01-validation-phase.md#轨道-b检索--抽取质量` |
 | 2026-06-09 | TD-033 拆分 `main.css` 设计系统级 CSS 模块 | 技术债 / 重构 / 前端 CSS / 设计系统 |  |  | `docs/03-engineering-governance/technical-debt.md#td-033` / `docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md` |
 | 2026-06-09 | DOC-044 修正工程治理目录编号重复 | 文档 / 工程治理 / 目录结构 |  |  | `docs/03-engineering-governance/README.md` / `docs/03-engineering-governance/02-baselines/` / `docs/03-engineering-governance/03-matrices/` / `docs/03-engineering-governance/04-retrospectives/` |
 | 2026-06-09 | DOC-043 登记 TD-032 评审 follow-up 与规则改进 | 文档 / 工程治理 / 评审 / follow-up |  |  | `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/01-rules/review-scorecard.md` / `docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md` |
