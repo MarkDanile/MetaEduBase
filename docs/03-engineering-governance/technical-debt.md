@@ -132,6 +132,7 @@
 | DOC-052 | 清理 `scripts/engineering/checks/_common.py` 中 `KNOWN_ISSUES` 残留的 TD-023 历史白名单 | 🟢 完成 | P3 | 文档 / 工程流程 / 跨 AI 交接 | 2026-06-09 全仓债务盘查 / [PR #128](https://github.com/MarkDanile/MetaEduBase/pull/128) (`3f39ec0`) |
 | DOC-045 | 修正 TD-033 CSS 拆分交付声明与追踪证据 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-033 review / [#137](https://github.com/MarkDanile/MetaEduBase/pull/137) (`b815942`) |
 | DOC-042 | 脚本化 TD-032 行数基线扫描 | 🟢 完成 | P2 | 文档 / 工程治理 / 工程脚本 | [Baseline](02-baselines/td-032-source-file-sizes.md) / [PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143) |
+| DOC-055 | 收口 DOC-042 / TD-034 PR 范围混入与事实源漂移 | 🔵 就绪 | P1 | 文档 / 工程流程 / 质量门禁 | DOC-042 review / [Review Score Log](04-retrospectives/review-score-log.md) |
 
 ## 任务详情
 
@@ -1690,3 +1691,43 @@
   - `tests/engineering/test_check_engineering_docs.py` 新增 2 条测试：无 >1000 行文件 → 0 issues；未登记的 >1000 行文件 → 1 issue。
 - 行为变化声明：门禁新增一项检查 `source-size-over-limit`，仅在出现 >1000 行且未登记的文件时报告，不改变现有 15 项检查行为；扫描脚本是新增命令，不替换既有手工命令（保留为历史参考）。
 - 验证摘要：`scripts/scan-source-sizes --threshold 300` 列出 18 个 ≥300 行的文件（最高 `tests/engineering/test_check_engineering_docs.py` 545 行 Python）；`--diff` 输出 `(no differences from baseline)`；`pytest tests/engineering/ -q` 19 passed（基线 17 + 新增 2）；`ruff check scripts/engineering/scan_source_sizes.py scripts/engineering/checks/source_sizes.py scripts/engineering/checks/__init__.py scripts/engineering/checks/_common.py` → All checks passed!；`python3 scripts/check-engineering-docs` → engineering docs checks passed（17 + 2 测试通过且门禁无 issue）；`git diff --check` 退出码 0。
+
+### DOC-055: 收口 DOC-042 / TD-034 PR 范围混入与事实源漂移
+
+状态：🔵 就绪
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 文档 / 工程流程 / 质量门禁 |
+| 事实源 | DOC-042 review / [Review Score Log](04-retrospectives/review-score-log.md) / [PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143) |
+
+**证据**
+- DOC-042 的合并 PR #143 是 `MERGED`，但文件列表混入 TD-034 的生产代码和测试文件：`packages/server-python/app/contexts/document/application/tasks/extract_template_prompts.py`、`packages/server-python/tests/contexts/document/test_extract_template_prompts.py`。
+- TD-034 的事实源仍指向 [PR #142](https://github.com/MarkDanile/MetaEduBase/pull/142) / commit `1e9a012`，但 `gh pr view 142` 显示 `state=OPEN`、`mergeCommit=null`。
+- `scripts/scan-source-sizes --diff` 当前输出 2 个差异：`extract_template_prompts.py` 88 -> 93，`test_extract_template_prompts.py` 263 -> 261，说明 DOC-042 交付记录里的 `(no differences from baseline)` 已不再成立。
+- DOC-051 在 `docs/01-product-planning/04-backlog.md`、`current-work.md`、`work-log.md` 均为完成态，但 `technical-debt.md` 总览仍为 `⚫ 待办`。
+- DOC-051 把 3 处 `TD-???` 占位统一替换为 `TD-030（已锁定）`，其中至少部分语义与 `TD-030: RecallChannel Protocol vs concrete signature drift` 不一致。
+
+**问题**
+- DOC-042 是工程脚本 / 基线门禁任务，PR 混入 TD-034 行为变更后，任务范围边界和交付事实不再清晰。
+- TD-034 的实际合并路径、PR 状态和任务总账记录不一致，后续 AI IDE 可能误判任务是否已关闭。
+- 行数基线脚本刚建立就出现 `--diff` 不干净，会削弱 TD-032 文件规模治理的可信度。
+- DOC-051 的状态和编号映射漂移会污染后续占位扫描与技术债追踪。
+
+**完成标准**
+- TD-034 的事实源明确指向实际合并 PR / merge commit；若 PR #142 保留 OPEN，需在任务卡和 work-log 中解释 PR #142 与 PR #143 的关系。
+- DOC-042 的交付记录修正为真实状态：要么刷新 `source-sizes-baseline.json` 并说明原因，要么记录当前 `--diff` 差异是 TD-034 混入造成的待处理状态。
+- `scripts/scan-source-sizes --diff` 在收口后输出 `(no differences from baseline)`，或任务卡明确记录差异仍存在且绑定后续任务。
+- DOC-051 在 Backlog / current-work / work-log / technical-debt 的状态一致。
+- 3 处 `TD-030（已锁定）` 已逐条核对：保留、改成正确 `TD-xxx`，或移除误导性编号，并在必要时补脚本门禁候选。
+
+**验证方式**
+- `gh pr view 142 --json number,state,url,mergeCommit,title` 与 `gh pr view 143 --json number,state,url,mergeCommit,title` 输出已被记录或引用。
+- `scripts/scan-source-sizes --diff` 输出符合完成标准。
+- `rg -n "DOC-051|TD-030（已锁定）" docs/01-product-planning docs/02-delivery-plans docs/03-engineering-governance` 的结果与任务结论一致。
+- `scripts/check-engineering-docs` 退出码 0。
+- `git diff --check` 退出码 0。
+
+**交付记录**
+- 未完成。2026-06-10 由 DOC-042 评审登记为 follow-up。
