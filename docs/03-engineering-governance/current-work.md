@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| BUG-002 修复登录后主面板外边距巨大、内容区过小 | 🟡 进行中 | P1 | Frontend | TD-008 引入的 `ui-page-shell`（max-width 1120px + margin auto）在 LayoutView 包裹 RouterView，与各 View 自带 max-w 嵌套冲突，导致大屏巨大外边距、宽屏 1600 视图被卡到 1120。修复：移除 max-width: 1120px; margin: 0 auto，保留 width/padding/background。`pnpm typecheck` / `pnpm lint` / `pnpm build` 退出 0；产物 CSS 确认 `ui-page-shell{width:100%;padding:var(--spacing-page);background:var(--color-bg-base)}`。 | 创建 PR、合并到 main、回填工作日志 | 见 [Backlog](../01-product-planning/04-backlog.md) |
+| 暂无 | ⚫ 待办 | - | - | 当前没有已开工任务。 | 从“下一批候选任务”或用户指定任务开工。 | - |
 
 ## 下一批候选任务
 
@@ -35,8 +35,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-09 | BUG-002 修复登录后主面板外边距巨大、内容显示容器过小 | 🟢 完成 | 移除 `ui-page-shell` 的 `max-width: 1120px; margin: 0 auto`，保留 width/padding/background；消除与各 View 自带 max-w 嵌套冲突。`pnpm typecheck / lint / build` 退出 0；`check-engineering-docs` passed。 | [Work Log](work-log.md) / [Backlog](../01-product-planning/04-backlog.md) / [PR #107](https://github.com/MarkDanile/MetaEduBase/pull/107) (`76fe2d2`) |
 | 2026-06-09 | DOC-045 修正 TD-033 CSS 拆分交付声明与追踪证据 | 🟢 完成 | 弱化 TD-033 任务卡 4 处"零 CSS 字节变化 / build output identical"过强声明；6 处事实源补 `PR #103` / `25ca165` 追踪；显式登记 TD-033 未建 spec / plan 的处置方式（事后不补建）。docs-only，`check-engineering-docs` 退出码 0。 | [Work Log](work-log.md) / [TD-033 Delivery Record](technical-debt.md#td-033) / [PR #106](https://github.com/MarkDanile/MetaEduBase/pull/106) |
 | 2026-06-09 | DOC-048 增加评审高分质量校准规则 | 🟢 完成 | 最近 5 条评审平均分 >92 时，阶段复盘必须抽查评分是否偏宽；发现问题需在评分总账标记并登记 follow-up。 | [Review Scorecard](01-rules/review-scorecard.md#高分质量校准) / [Retrospectives](04-retrospectives/README.md) |
 | 2026-06-09 | DOC-047 建立评审评分总账与落盘规则 | 🟢 完成 | 新增评审评分总账，回填 TD-033 评分 81；复杂评审后必须把总分、follow-up、流程扣分点和规则改进结论落盘。 | [Review Score Log](04-retrospectives/review-score-log.md) / [Review Scorecard](01-rules/review-scorecard.md) |
 | 2026-06-09 | DOC-046 修正 P1 轨道 B 检索 / 抽取质量展示 | 🟢 完成 | 给轨道 B 增加可视化状态列，保留“实现事实 / 验证结论”证据分栏；不改变真实验收结论。 | [P1 Milestone](../01-product-planning/02-milestones/01-validation-phase.md#轨道-b检索--抽取质量) |
-| 2026-06-09 | TD-033 拆分 `main.css` 设计系统级 CSS 模块 | 🟢 完成 | 纯机械拆分：`main.css` 1343 → 9 行（`@import` 入口）+ 8 个模块文件（≤500 行/个）；以 `pnpm typecheck / lint / build` 退出码 0 + `git diff --check` 退出码 0 为依据（Vite 产物未做 hash / diff 对比）。`check-engineering-docs` 通过。 | [Technical Debt](technical-debt.md#td-033) / [TD-032 Baseline](02-baselines/td-032-source-file-sizes.md) / [PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103) (`25ca165`) |
