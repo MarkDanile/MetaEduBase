@@ -6,8 +6,16 @@
 
 ## 维护规则
 
-- 扫描命令（与 `technical-debt.md#td-032` 证据段一致；使用 `-0` / `xargs -0` 支持空格路径，
-  并排除本地环境、上传文件和构建产物）：
+- 扫描命令（DOC-042 脚本化后以 ``scripts/scan-source-sizes`` 为准）：
+
+  ```bash
+  # 脚本化扫描（推荐）
+  scripts/scan-source-sizes --threshold 500
+  scripts/scan-source-sizes --diff           # 与上次基线对比
+  scripts/scan-source-sizes --refresh        # 刷新 JSON 基线 + Markdown 行数列
+  ```
+
+  历史手工命令（仅供参考，已被脚本替代）：
 
   ```bash
   rg --files -0 packages scripts tests \
@@ -81,6 +89,8 @@
   并写明「后续切片计划」。
 
 ## 扫描历史
+- 2026-06-10：`scripts/scan-source-sizes --refresh` 自动刷新行数列。
+- 2026-06-10：`scripts/scan-source-sizes --refresh` 自动刷新行数列。
 
 - 2026-06-08：与 `technical-debt.md#td-032` 证据段同步，基线建立。
 - 2026-06-08（切片 4 收口后回写）：5 个 >500 / 500 附近文件全部转 `🟢 已拆分` 或维持 `⚪ 待切片` 标记；新增 `FileDetailView.vue` 416 为 500 附近候选；新增「切片 5+ 候选清单」段；扩展「合规样例」段加入 `TemplateModal.vue` 333 / `DatabaseView.vue` 320 / `chunker.py` 320 / `ResourceView.vue` 305 / `AiChatView.vue` 304。本次回写由 DOC-xxx 任务承接。

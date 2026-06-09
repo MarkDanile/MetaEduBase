@@ -27,6 +27,7 @@ from .product_planning import (
     check_product_planning_status_icons,
     check_req_status_consistency,
 )
+from .source_sizes import check_source_size_hard_limit
 from .task_ids import check_backlog_done_index, check_followup_ids
 from .technical_debt import check_completed_plans, check_technical_debt
 
@@ -47,6 +48,7 @@ KNOWN_CHECKS: tuple[Callable[[Path], list[Issue]], ...] = (
     check_delivery_placeholders,
     check_validation_claims,
     check_scripted_gate_candidates,
+    check_source_size_hard_limit,
 )
 
 

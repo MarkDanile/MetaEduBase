@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Source file size scanner for TD-032 baseline management.
+# See DOC-042 / docs/03-engineering-governance/technical-debt.md#doc-042
+set -euo pipefail
+REPO="$(cd "$(dirname "$0")"/.. && pwd)"
+exec python3 -m scripts.engineering.scan_source_sizes --root "$REPO" "$@"

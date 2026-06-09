@@ -131,7 +131,7 @@
 | DOC-051 | 一次性收口历史 plan 残留 TBD / `TD-???` / `未回填` 占位 | ⚫ 待办 | P2 | 文档 / 工程流程 / 跨 AI 交接 | REQ-003 / REQ-004 / REQ-008 plan 残留占位扫描 |
 | DOC-052 | 清理 `scripts/engineering/checks/_common.py` 中 `KNOWN_ISSUES` 残留的 TD-023 历史白名单 | 🟢 完成 | P3 | 文档 / 工程流程 / 跨 AI 交接 | 2026-06-09 全仓债务盘查 / [PR #128](https://github.com/MarkDanile/MetaEduBase/pull/128) (`3f39ec0`) |
 | DOC-045 | 修正 TD-033 CSS 拆分交付声明与追踪证据 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-033 review / [#137](https://github.com/MarkDanile/MetaEduBase/pull/137) (`b815942`) |
-| DOC-042 | 脚本化 TD-032 行数基线扫描 | 🟡 进行中 | P2 | 文档 / 工程治理 / 工程脚本 | [Baseline](02-baselines/td-032-source-file-sizes.md) |
+| DOC-042 | 脚本化 TD-032 行数基线扫描 | 🟢 完成 | P2 | 文档 / 工程治理 / 工程脚本 | [Baseline](02-baselines/td-032-source-file-sizes.md) / [PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143) |
 
 ## 任务详情
 
@@ -1650,7 +1650,7 @@
 
 ### DOC-042: 脚本化 TD-032 行数基线扫描
 
-状态：🟡 进行中
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -1679,4 +1679,14 @@
 - `scripts/check-engineering-docs` 退出码 0。
 
 **交付记录**
-- 暂无。
+- 2026-06-10 完成（接手工具：Claude Code）。将手工 `rg --files -0 | xargs -0 wc -l` 扫描命令固化为 Python 脚本，避免空格路径问题和手动复跑。[PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143)。
+  - 新增 `scripts/engineering/scan_source_sizes.py`（335 行）：`scan_source_files` / `load_baseline` / `save_baseline` / `diff_baseline` / `refresh_sizes_md` / `format_text|json|diff` / `main`；支持 `--threshold` / `--json` / `--diff` / `--refresh`。
+  - 新增 `scripts/scan-source-sizes` shell 入口（5 行 `runpy.run_path` 模式与 `check-engineering-docs` 一致）。
+  - 新增 `scripts/engineering/checks/source_sizes.py` 门禁检查 `check_source_size_hard_limit`：扫描所有源码文件，仅在 >1000 行且未在 `td-032-source-file-sizes.md` 中标记 🟢/已拆分/已合规 时报错。
+  - 注册到 `checks/__init__.py` 的 `KNOWN_CHECKS`；`SCRIPTED_GATE_CANDIDATES` 加 `"源码文件超过 1000 行硬限制检查"`。
+  - `quality-gates.md` 候选清单新增对应行。
+  - `td-032-source-file-sizes.md` 维护规则段更新扫描命令为脚本化形式（保留手工命令为历史参考）。
+  - 新增 `docs/03-engineering-governance/02-baselines/source-sizes-baseline.json`（git 跟踪的机器可读基线）。
+  - `tests/engineering/test_check_engineering_docs.py` 新增 2 条测试：无 >1000 行文件 → 0 issues；未登记的 >1000 行文件 → 1 issue。
+- 行为变化声明：门禁新增一项检查 `source-size-over-limit`，仅在出现 >1000 行且未登记的文件时报告，不改变现有 15 项检查行为；扫描脚本是新增命令，不替换既有手工命令（保留为历史参考）。
+- 验证摘要：`scripts/scan-source-sizes --threshold 300` 列出 18 个 ≥300 行的文件（最高 `tests/engineering/test_check_engineering_docs.py` 545 行 Python）；`--diff` 输出 `(no differences from baseline)`；`pytest tests/engineering/ -q` 19 passed（基线 17 + 新增 2）；`ruff check scripts/engineering/scan_source_sizes.py scripts/engineering/checks/source_sizes.py scripts/engineering/checks/__init__.py scripts/engineering/checks/_common.py` → All checks passed!；`python3 scripts/check-engineering-docs` → engineering docs checks passed（17 + 2 测试通过且门禁无 issue）；`git diff --check` 退出码 0。

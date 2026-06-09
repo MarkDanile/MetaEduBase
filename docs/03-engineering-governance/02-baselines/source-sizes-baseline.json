@@ -1,0 +1,1332 @@
+[
+  {
+    "path": "tests/engineering/test_check_engineering_docs.py",
+    "lines": 545,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/e2e/test_p1_demo.py",
+    "lines": 469,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/LayoutView.vue",
+    "lines": 387,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/web/src/views/auth/LoginView.vue",
+    "lines": 377,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/contexts/knowledge/infrastructure/knowledge_repository.py",
+    "lines": 370,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/admin/FieldCard.vue",
+    "lines": 368,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/shared/infrastructure/test_db_setup.py",
+    "lines": 363,
+    "language": "Python"
+  },
+  {
+    "path": "scripts/engineering/scan_source_sizes.py",
+    "lines": 356,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/shared/test_task_lifecycle.py",
+    "lines": 334,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/admin/TemplateModal.vue",
+    "lines": 333,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/document/test_extract_template_selection.py",
+    "lines": 330,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/document/test_cascade_cleanup.py",
+    "lines": 327,
+    "language": "Python"
+  },
+  {
+    "path": "packages/mcp-server/mcp_server/main.py",
+    "lines": 325,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/parsing/chunker.py",
+    "lines": 320,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/database/DatabaseView.vue",
+    "lines": 320,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/web/src/auto-imports.d.ts",
+    "lines": 314,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/web/src/assets/css/compat-liquid.css",
+    "lines": 313,
+    "language": "CSS"
+  },
+  {
+    "path": "packages/web/src/views/resource/ResourceView.vue",
+    "lines": 305,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/web/src/views/ai-chat/AiChatView.vue",
+    "lines": 304,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/knowledge/test_knowledge.py",
+    "lines": 293,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/database/queries.ts",
+    "lines": 292,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/web/src/views/admin/TemplateListView.vue",
+    "lines": 291,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/web/src/views/admin/ExtractedDataRenderer.vue",
+    "lines": 289,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/web/src/views/resource/ResourceLibraryView.vue",
+    "lines": 286,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/application/tasks/ds_extract_kg.py",
+    "lines": 281,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/assets/css/components.css",
+    "lines": 279,
+    "language": "CSS"
+  },
+  {
+    "path": "packages/web/src/views/knowledge/KnowledgeBaseView.vue",
+    "lines": 279,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/contexts/knowledge/interfaces/api/router.py",
+    "lines": 275,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/ai/test_recall_channels_behavior.py",
+    "lines": 268,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/document/test_extract_template_prompts.py",
+    "lines": 263,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/assets/css/themes.css",
+    "lines": 256,
+    "language": "CSS"
+  },
+  {
+    "path": "packages/web/src/views/admin/TemplateFormFields.vue",
+    "lines": 255,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/web/src/views/HomeView.vue",
+    "lines": 252,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/interfaces/api/router.py",
+    "lines": 235,
+    "language": "Python"
+  },
+  {
+    "path": "scripts/engineering/checks/product_planning.py",
+    "lines": 233,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/interfaces/api/files.py",
+    "lines": 231,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/interfaces/api/task_router.py",
+    "lines": 219,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/application/tasks/extract_template.py",
+    "lines": 216,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/assets/css/markdown.css",
+    "lines": 214,
+    "language": "CSS"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/infrastructure/dataset_repository.py",
+    "lines": 211,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/template/application/service.py",
+    "lines": 210,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/admin/TemplateAiPanel.vue",
+    "lines": 207,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/web/src/components/KGGraph.vue",
+    "lines": 203,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/web/src/views/resource/queries.ts",
+    "lines": 198,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/server-python/app/contexts/knowledge/interfaces/api/ai_router.py",
+    "lines": 188,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/resource/FieldValue.vue",
+    "lines": 187,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/tests/shared/test_provider_resolver.py",
+    "lines": 185,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/admin/TemplateEditorView.vue",
+    "lines": 185,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/web/src/views/resource/FileDetailView.vue",
+    "lines": 181,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/application/tasks/extract_knowledge_graph.py",
+    "lines": 176,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/knowledge/application/recall_service.py",
+    "lines": 173,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/application/tasks/ds_cross_dataset_edges.py",
+    "lines": 173,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/template/test_template.py",
+    "lines": 173,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/resource/FileTabsPanel.vue",
+    "lines": 171,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/contexts/resource/interfaces/api/router.py",
+    "lines": 169,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/tasks/lifecycle.py",
+    "lines": 167,
+    "language": "Python"
+  },
+  {
+    "path": "scripts/engineering/checks/_common.py",
+    "lines": 164,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/ai/test_ai_chat_rag_e2e.py",
+    "lines": 162,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/resource/FileListPanel.vue",
+    "lines": 160,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/application/tasks/chunk.py",
+    "lines": 159,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/infrastructure/file_repository.py",
+    "lines": 158,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/resource/infrastructure/resource_repository.py",
+    "lines": 156,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/shared/test_test_db_setup.py",
+    "lines": 156,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/alembic/versions/002_add_source_tracking_and_new_tables.py",
+    "lines": 154,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/resource/test_resource.py",
+    "lines": 153,
+    "language": "Python"
+  },
+  {
+    "path": "scripts/engineering/checks/current_work.py",
+    "lines": 153,
+    "language": "Python"
+  },
+  {
+    "path": "scripts/engineering/checks/technical_debt.py",
+    "lines": 150,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/application/tasks/ds_embed.py",
+    "lines": 148,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/shared/test_chat_model_fallback.py",
+    "lines": 147,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/application/tasks/embed.py",
+    "lines": 144,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/application/template_selector.py",
+    "lines": 143,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/resource/FolderTreePanel.vue",
+    "lines": 142,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/web/src/views/database/DatasetTabsPanel.vue",
+    "lines": 139,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/application/tasks/parse.py",
+    "lines": 138,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/database/DatasetListPanel.vue",
+    "lines": 132,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/shared/parsing/pdf_parser.py",
+    "lines": 130,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/interfaces/api/tasks.py",
+    "lines": 129,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/conftest.py",
+    "lines": 129,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/llm/factory.py",
+    "lines": 126,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/admin/FieldItem.vue",
+    "lines": 126,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/web/src/components/FieldEditor.vue",
+    "lines": 125,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/interfaces/api/folders.py",
+    "lines": 123,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/document/test_tasks_router.py",
+    "lines": 122,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/alembic/versions/001_initial_baseline.py",
+    "lines": 120,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/assets/css/tokens.css",
+    "lines": 119,
+    "language": "CSS"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/application/tasks/ds_parse.py",
+    "lines": 117,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/infrastructure/folder_repository.py",
+    "lines": 116,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/database/UploadDatasetDialog.vue",
+    "lines": 116,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/contexts/template/interfaces/api/router.py",
+    "lines": 113,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/components/KGDetailPanel.vue",
+    "lines": 111,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/identity/test_auth.py",
+    "lines": 108,
+    "language": "Python"
+  },
+  {
+    "path": "scripts/engineering/checks/links_paths.py",
+    "lines": 108,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/infrastructure/seed.py",
+    "lines": 105,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/application/dto.py",
+    "lines": 104,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/document/test_folders.py",
+    "lines": 103,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/services/document.ts",
+    "lines": 101,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/web/src/views/database/PipelineStatusPanel.vue",
+    "lines": 101,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/infrastructure/models.py",
+    "lines": 97,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/resource/FileDetailPipelineStatusPanel.vue",
+    "lines": 97,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/contexts/knowledge/application/ner_service.py",
+    "lines": 96,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/parsing/docx_parser.py",
+    "lines": 96,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/components/ConfirmDialog.vue",
+    "lines": 96,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/web/src/services/structured-data.ts",
+    "lines": 96,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/structured_data/test_datasets.py",
+    "lines": 95,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/application/tasks/index.py",
+    "lines": 93,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/identity/interfaces/api/router.py",
+    "lines": 91,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/shared/test_factory.py",
+    "lines": 90,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/application/tasks/extract_template_prompts.py",
+    "lines": 88,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/knowledge/infrastructure/models.py",
+    "lines": 87,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/app/router.ts",
+    "lines": 86,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/web/src/assets/css/animations.css",
+    "lines": 86,
+    "language": "CSS"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/document/test_files.py",
+    "lines": 85,
+    "language": "Python"
+  },
+  {
+    "path": "scripts/engineering/checks/task_ids.py",
+    "lines": 85,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/llm/provider_resolver.py",
+    "lines": 82,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/infrastructure/chunk_repository.py",
+    "lines": 80,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/llm/chat_with_fallback.py",
+    "lines": 79,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/template/domain/entity.py",
+    "lines": 78,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/application/dto.py",
+    "lines": 75,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/template/infrastructure/repository.py",
+    "lines": 75,
+    "language": "Python"
+  },
+  {
+    "path": "scripts/engineering/check_engineering_docs.py",
+    "lines": 72,
+    "language": "Python"
+  },
+  {
+    "path": "scripts/engineering/checks/source_sizes.py",
+    "lines": 71,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/llm/chat.py",
+    "lines": 70,
+    "language": "Python"
+  },
+  {
+    "path": "scripts/engineering/checks/entry_sync.py",
+    "lines": 70,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/ai/test_frequency_fusion.py",
+    "lines": 68,
+    "language": "Python"
+  },
+  {
+    "path": "scripts/engineering/checks/placeholders_claims.py",
+    "lines": 68,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/alembic/env.py",
+    "lines": 67,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/ai/test_ai_chat.py",
+    "lines": 67,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/services/template.ts",
+    "lines": 67,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/server-python/app/shared/parsing/xlsx_parser.py",
+    "lines": 66,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/config.py",
+    "lines": 63,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/identity/infrastructure/user_repository.py",
+    "lines": 61,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/knowledge/application/dto.py",
+    "lines": 61,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/infrastructure/database.py",
+    "lines": 61,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/llm/providers/base.py",
+    "lines": 60,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/template/application/dto.py",
+    "lines": 58,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/ai/test_recall_channels_contract.py",
+    "lines": 58,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/identity/infrastructure/models.py",
+    "lines": 57,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/ai/test_rule_based_ner.py",
+    "lines": 57,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/document/test_structured_data_contract.py",
+    "lines": 57,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/knowledge/test_embedding_service.py",
+    "lines": 56,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/llm/providers/siliconflow.py",
+    "lines": 55,
+    "language": "Python"
+  },
+  {
+    "path": "scripts/engineering/checks/__init__.py",
+    "lines": 55,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/main.py",
+    "lines": 54,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/infrastructure/models.py",
+    "lines": 53,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/application/tasks/pipeline_guard.py",
+    "lines": 52,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/assets/css/toast.css",
+    "lines": 52,
+    "language": "CSS"
+  },
+  {
+    "path": "packages/web/src/views/database/KgOverviewPanel.vue",
+    "lines": 52,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/alembic/versions/006_add_templates.py",
+    "lines": 51,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/knowledge/application/fusion_service.py",
+    "lines": 51,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/resource/UploadOptionsDialog.vue",
+    "lines": 51,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/contexts/resource/infrastructure/models.py",
+    "lines": 50,
+    "language": "Python"
+  },
+  {
+    "path": "packages/shared/src/schemas/user.ts",
+    "lines": 49,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/server-python/app/contexts/identity/interfaces/api/dependencies.py",
+    "lines": 48,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/constants/pipeline.ts",
+    "lines": 48,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/server-python/app/shared/llm/protocol.py",
+    "lines": 47,
+    "language": "Python"
+  },
+  {
+    "path": "packages/shared/src/schemas/knowledge.ts",
+    "lines": 47,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/shared/src/schemas/resource.ts",
+    "lines": 47,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/web/src/constants/maps.ts",
+    "lines": 47,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/server-python/app/celery_app.py",
+    "lines": 46,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/domain/recall_channel.py",
+    "lines": 45,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/identity/test_auth_service.py",
+    "lines": 44,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/interfaces/api/chunks.py",
+    "lines": 43,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/knowledge/domain/entities/knowledge_node.py",
+    "lines": 42,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/knowledge/domain/repositories.py",
+    "lines": 42,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/resource/FileMetaBar.vue",
+    "lines": 41,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/shared/llm/embed.py",
+    "lines": 40,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/database/DatasetDetailMetaBar.vue",
+    "lines": 40,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/web/src/services/knowledge.ts",
+    "lines": 39,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/web/src/stores/auth.ts",
+    "lines": 39,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/application/tasks/__init__.py",
+    "lines": 38,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/domain/entities.py",
+    "lines": 38,
+    "language": "Python"
+  },
+  {
+    "path": "scripts/engineering/checks/gate_candidates.py",
+    "lines": 38,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/components/TableRenderer.vue",
+    "lines": 36,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/alembic/versions/004_add_chunk_vectors.py",
+    "lines": 35,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/assets/css/base.css",
+    "lines": 35,
+    "language": "CSS"
+  },
+  {
+    "path": "packages/web/vite.config.ts",
+    "lines": 35,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/web/src/services/api.ts",
+    "lines": 34,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/infrastructure/task_repository.py",
+    "lines": 33,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/knowledge/application/embedding_service.py",
+    "lines": 33,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/composables/useToast.ts",
+    "lines": 33,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/application/cleanup.py",
+    "lines": 32,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/infrastructure/tenant_context.py",
+    "lines": 32,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/llm/providers/dashscope.py",
+    "lines": 32,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/llm/providers/deepseek.py",
+    "lines": 32,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/llm/providers/minimax.py",
+    "lines": 32,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/domain/entities.py",
+    "lines": 31,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/components/ToastContainer.vue",
+    "lines": 31,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/alembic/versions/005_add_knowledge_node_embedding.py",
+    "lines": 29,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/interfaces/api/router.py",
+    "lines": 29,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/identity/application/auth_service.py",
+    "lines": 29,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/main.ts",
+    "lines": 29,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/server-python/alembic/versions/003_add_updated_at_to_document_tasks.py",
+    "lines": 28,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/e2e/conftest.py",
+    "lines": 27,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/application/cleanup.py",
+    "lines": 26,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/domain/entity.py",
+    "lines": 26,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/components/PageHeader.vue",
+    "lines": 26,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/alembic/versions/9466ea6e5d33_add_ai_context_column_to_templates_table.py",
+    "lines": 25,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/infrastructure/models.py",
+    "lines": 25,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/stores/theme.ts",
+    "lines": 25,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/server-python/app/contexts/template/domain/repository.py",
+    "lines": 24,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/shared/test_health.py",
+    "lines": 24,
+    "language": "Python"
+  },
+  {
+    "path": "packages/shared/src/schemas/document.ts",
+    "lines": 23,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/web/src/components/EmptyState.vue",
+    "lines": 23,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/application/tasks/__init__.py",
+    "lines": 22,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/infrastructure/dev_setup.py",
+    "lines": 21,
+    "language": "Python"
+  },
+  {
+    "path": "packages/shared/src/types/api.ts",
+    "lines": 20,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/web/src/services/auth.ts",
+    "lines": 20,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/server-python/app/contexts/template/infrastructure/models.py",
+    "lines": 19,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/domain/repository.py",
+    "lines": 19,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/components/LoadingSpinner.vue",
+    "lines": 19,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/tasks.py",
+    "lines": 18,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/shared/test_parsing.py",
+    "lines": 18,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/domain/events.py",
+    "lines": 16,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/domain/ner_pipeline.py",
+    "lines": 16,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/constants/field-types.ts",
+    "lines": 16,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/tasks.py",
+    "lines": 14,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/domain/result_fusion.py",
+    "lines": 14,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/components.d.ts",
+    "lines": 14,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/web/src/app/App.vue",
+    "lines": 13,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/app/contexts/template/interfaces/api/dependencies.py",
+    "lines": 12,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/views/admin/AdminView.vue",
+    "lines": 11,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/web/src/views/skill/SkillEditorView.vue",
+    "lines": 11,
+    "language": "Vue"
+  },
+  {
+    "path": "packages/server-python/tests/shared/test_dev_seed.py",
+    "lines": 9,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/src/assets/css/main.css",
+    "lines": 9,
+    "language": "CSS"
+  },
+  {
+    "path": "packages/server-python/app/contexts/knowledge/domain/__init__.py",
+    "lines": 8,
+    "language": "Python"
+  },
+  {
+    "path": "packages/web/env.d.ts",
+    "lines": 7,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/server-python/app/shared/domain/__init__.py",
+    "lines": 6,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/domain/value_object.py",
+    "lines": 5,
+    "language": "Python"
+  },
+  {
+    "path": "packages/shared/src/types/tenant.ts",
+    "lines": 5,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/shared/src/schemas/index.ts",
+    "lines": 4,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/shared/src/types/index.ts",
+    "lines": 2,
+    "language": "TypeScript"
+  },
+  {
+    "path": "packages/server-python/app/contexts/__init__.py",
+    "lines": 1,
+    "language": "Python"
+  },
+  {
+    "path": "packages/mcp-server/mcp_server/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/application/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/domain/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/infrastructure/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/interfaces/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/document/interfaces/api/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/application/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/domain/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/infrastructure/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/interfaces/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/structured_data/interfaces/api/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/template/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/template/application/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/template/domain/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/template/infrastructure/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/template/interfaces/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/contexts/template/interfaces/api/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/llm/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/llm/providers/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/parsing/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/app/shared/tasks/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/ai/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/document/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/identity/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/knowledge/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/resource/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/contexts/structured_data/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/e2e/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "packages/server-python/tests/shared/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  },
+  {
+    "path": "scripts/engineering/__init__.py",
+    "lines": 0,
+    "language": "Python"
+  }
+]

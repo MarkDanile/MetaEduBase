@@ -49,6 +49,7 @@ scripts/check-engineering-docs
 | 旧 docs 路径残留检查 | 已实现 | 防止目录迁移后链接回退 |
 | Markdown 相对链接存在性检查 | 已实现 | 防止文档迁移或重命名后断链 |
 | AGENTS.md / CLAUDE.md 与 IDE 兼容入口同步检查 | 已实现 | 防止入口规则漂移或 IDE 私有规则复制正文 |
+| 源码文件超过 1000 行硬限制检查 | 已实现 | 防止超大文件无登记回归（DOC-042） |
 | PR 描述必须包含 Summary / Scope / Validation / Risks / Docs | 候选 / 可放 CI | 让 PR 成为默认交付事实源 |
 | spec / requirement 中编号、AC 数量、摘要计数一致 | 候选 | 防止“全部收口”“N 个 AC”与源文件不一致 |
 | 声明“零业务逻辑变更”时检查行为变化关键词和 diff 信号 | 候选 | 防止重构或 lint PR 隐含行为变化 |

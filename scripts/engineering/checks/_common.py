@@ -55,6 +55,7 @@ SCRIPTED_GATE_CANDIDATES: frozenset[str] = frozenset(
         "旧 docs 路径残留检查",
         "Markdown 相对链接存在性检查",
         "AGENTS.md / CLAUDE.md 与 IDE 兼容入口同步检查",
+        "源码文件超过 1000 行硬限制检查",
     }
 )
 
