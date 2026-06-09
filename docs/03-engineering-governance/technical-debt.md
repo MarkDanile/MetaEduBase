@@ -127,6 +127,8 @@
 | TD-035 | 收口 REQ-005 新增测试文件 ruff 质量门禁 | 🟢 完成 | P2 | 后端 / 测试 / 质量门禁 | REQ-005 review / [PR #109](https://github.com/MarkDanile/MetaEduBase/pull/109) |
 | TD-036 | `metaedu_test` 库 `document_tasks.updated_at` 列缺失（alembic 003 迁移与测试库 schema drift） | ⚫ 待办 | P2 | 后端 / 测试 / 质量门禁 | REQ-006 Stage 1 探查 |
 | TD-037 | e2e 脚本无法直接走真实 Celery：沙箱无 Redis broker 时需 mock `chunk_document.delay` + patch `broker_url=memory://` | ⚫ 待办 | P3 | 后端 / 测试 / 基础设施 | REQ-006 Stage 1 探查 |
+| DOC-051 | 一次性收口历史 plan 残留 TBD / `TD-???` / `未回填` 占位 | ⚫ 待办 | P2 | 文档 / 工程流程 / 跨 AI 交接 | REQ-003 / REQ-004 / REQ-008 plan 残留占位扫描 |
+| DOC-052 | 清理 `scripts/engineering/checks/_common.py` 中 `KNOWN_ISSUES` 残留的 TD-023 历史白名单 | ⚫ 待办 | P3 | 文档 / 工程流程 / 跨 AI 交接 | 2026-06-09 全仓债务盘查 |
 
 ## 任务详情
 

@@ -24,7 +24,9 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| 暂无（REQ-006 已在当前进行中区） | - | - | - | 从工作台或用户指定任务开工。 |
+| BUG-001 修正 `document retry endpoint` 的 Celery dispatch 语义 | ⚫ 候选 | P1 | Backend / Celery | 读 `packages/server-python/app/contexts/document/interfaces/api/tasks.py:83` + 上下游；写复现 e2e / 集成测试；修 dispatch + 补 `POST /files/{file_id}/retry` 行为测试；ruff + pytest 门禁；按 `task-modes.md#bug 修复` 模式不开 spec / plan。 |
+| TD-036 修复 `metaedu_test.document_tasks.updated_at` 列缺失 | ⚫ 候选 | P2 | Backend / 测试 / 质量门禁 | 先复现：`DROP DATABASE metaedu_test && ./dev.sh init-test-db && pytest tests/e2e/ -q`；按 alembic 003 迁移契约评估：补列 vs 修迁移；写防御性 `_ensure_critical_columns` 接入 `init-test-db` 流程；pytest 门禁。 |
+| DOC-051 收口历史 plan 残留 TBD / `TD-???` / `未回填` 占位 | ⚫ 候选 | P2 | Docs / Governance | 一次性清理 5 处 TBD（REQ-003 plan `无 TBD` 自相矛盾声明 / REQ-004 plan 3 处 / REQ-008 plan 4 处）+ 3 处 `TD-???` → TD-030 稳定编号 + 1 处 `未回填` → 失败条件描述；解锁 `quality-gates.md#脚本门禁候选清单` 中"完成态占位扫描"从候选转已实现。 |
 
 ## 最近完成
 
