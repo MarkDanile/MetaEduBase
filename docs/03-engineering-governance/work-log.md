@@ -15,6 +15,7 @@
 
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
+| 2026-06-09 | REQ-005 结构化抽取嵌套结构稳定性验收 | 需求 / 测试 / P1 轨道 B 翻结论 |  |  | `docs/01-product-planning/02-milestones/01-validation-phase.md#轨道-b检索--抽取质量` / `docs/01-product-planning/04-backlog.md` / `docs/02-delivery-plans/01-specs/2026-W23-req-005-structured-extraction-regression.md` / `docs/02-delivery-plans/02-plans/2026-W23-req-005-structured-extraction-regression-plan.md` / `packages/server-python/tests/contexts/document/test_extract_template_prompts.py` |
 | 2026-06-09 | BUG-002 修复登录后主面板外边距巨大、内容显示容器过小 | Bug 修复 / 前端 / CSS / 容器布局 | [#107](https://github.com/MarkDanile/MetaEduBase/pull/107) | `76fe2d2` | `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/current-work.md` / `packages/web/src/assets/css/components.css` |
 | 2026-06-09 | DOC-045 修正 TD-033 CSS 拆分交付声明与追踪证据 | 文档 / 工程治理 / 事实源修正 / follow-up |  |  | `docs/03-engineering-governance/04-retrospectives/review-score-log.md#td-033` / `docs/03-engineering-governance/technical-debt.md#td-033` / `docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md` / `docs/03-engineering-governance/current-work.md` |
 | 2026-06-09 | DOC-048 增加评审高分质量校准规则 | 文档 / 工程治理 / 评审 / 复盘数据 |  |  | `docs/03-engineering-governance/01-rules/review-scorecard.md#高分质量校准` / `docs/03-engineering-governance/04-retrospectives/README.md` |

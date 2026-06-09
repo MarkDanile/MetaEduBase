@@ -10,7 +10,7 @@ Goal: 关闭阶段一验证期剩余缺口，重点验证轨道 B：检索 / 抽
 |----|------|------|------|------|
 | REQ-003 | REQ | 🟢 Done | P1 RAG 质量链路验收与回归测试 | 覆盖 NER、3 通道召回、频次融合、sources 结构；相关测试可复现运行。 |
 | REQ-004 | REQ | 🟢 Done | 模板匹配可解释化收口 | 主要代码与测试已由 [PR #77](https://github.com/MarkDanile/MetaEduBase/pull/77) 合并；复核发现的验收证据与质量门禁缺口由 REQ-008 承接。 |
-| REQ-005 | REQ | ⚫ Candidate | 结构化抽取嵌套结构稳定性验收 | object / array / table 抽取结果按模板结构落盘，并有样例回归锁定。 |
+| REQ-005 | REQ | 🟢 Done | 结构化抽取嵌套结构稳定性验收 | 已建 spec/plan；为 `extract_template_prompts` 补 11 条 object / array / table 嵌套回归用例；轨道 B 翻结论；0 业务代码改动。 |
 | REQ-006 | REQ | ⚫ Candidate | P1 知识资产处理链路最终演示验收 | 能演示上传、解析、模板抽取、知识图谱、RAG 问答和来源展示的完整闭环。 |
 | REQ-007 | REQ | 🟢 Done | REQ-003 复盘缺口的 RAG 质量链路收口 | 5 AC 全部收口（AC-1 行为级测试 / AC-2 状态同步 / AC-3 过度声明 / AC-4 e2e 死代码 / AC-5 验证声明真实）；[PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) 已合并。 |
 | REQ-008 | REQ | 🟢 Done | 收口 REQ-004 验收证据与质量门禁缺口 | ruff 5 项清零（E501/UP035/I001）；4 分支 `template.select layer=...` 日志 caplog 断言；2 条 L3 解析失败 / 空响应用例；1 条生产代码漂移保护；行为不变。[PR #79](https://github.com/MarkDanile/MetaEduBase/pull/79) 已合并。 |
