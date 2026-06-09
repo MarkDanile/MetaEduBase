@@ -81,12 +81,21 @@ def check_work_log_append_only(root: Path) -> list[Issue]:
     path = root / "docs/03-engineering-governance/work-log.md"
     diff = git_diff_work_log(root)
     issues: list[Issue] = []
+    added_task_ids: set[str] = set()
+    for diff_line in diff.splitlines():
+        if not diff_line.startswith("+|"):
+            continue
+        if "任务" in diff_line and "类型" in diff_line:
+            continue
+        added_task_ids.update(re.findall(r"\b(?:TD|DOC|BUG)-\d{3}\b", diff_line))
+
     for diff_line in diff.splitlines():
         if not diff_line.startswith("-|"):
             continue
         if "任务" in diff_line and "类型" in diff_line:
             continue
-        if re.search(r"\b(?:TD|DOC|BUG)-\d{3}\b", diff_line):
+        removed_task_ids = set(re.findall(r"\b(?:TD|DOC|BUG)-\d{3}\b", diff_line))
+        if removed_task_ids and removed_task_ids.isdisjoint(added_task_ids):
             issues.append(
                 Issue(
                     path,

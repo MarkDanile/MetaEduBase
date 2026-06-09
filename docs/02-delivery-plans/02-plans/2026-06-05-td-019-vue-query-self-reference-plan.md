@@ -20,7 +20,7 @@
 
 ### 2. 行为等价矩阵
 
-- [x] 写 `docs/03-engineering-governance/02-matrices/td-019-vue-query-self-reference-equivalence.md`
+- [x] 写 `docs/03-engineering-governance/03-matrices/td-019-vue-query-self-reference-equivalence.md`
 - [x] 矩阵覆盖 polling 计算时机、初始化顺序、watch 时序
 
 ### 3. 修复 `packages/web/src/views/database/queries.ts`

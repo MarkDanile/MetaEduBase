@@ -16,7 +16,9 @@
 | docs/01-product-planning/* | 目录 | 产品规划、路线图、迭代、需求池和可塑形需求 |
 | docs/02-delivery-plans/01-specs/* | 目录 | 插件无关的功能需求、产品设计、验收标准 |
 | docs/02-delivery-plans/02-plans/* | 目录 | 插件无关的实施计划、任务拆分、验收步骤 |
-| docs/03-engineering-governance/03-retrospectives/* | 目录 | 复盘、根因分析和纠正动作索引 |
+| docs/03-engineering-governance/02-baselines/* | 目录 | 工程基线、扫描结果和治理事实源 |
+| docs/03-engineering-governance/03-matrices/* | 目录 | 行为等价矩阵和验证矩阵 |
+| docs/03-engineering-governance/04-retrospectives/* | 目录 | 复盘、根因分析和纠正动作索引 |
 | docs/90-compat-legacy/superpowers/* | 目录 | 历史 superpower 文档或兼容输出，不作为新任务默认目录 |
 | docs/03-engineering-governance/01-rules/* | 目录 | 跨 AI IDE / 插件共享的专项规范事实源 |
 
@@ -67,7 +69,7 @@ class KnowledgeNode(AggregateRoot):
 | Spec / Plan 目录约定变更 | `docs/03-engineering-governance/workflow.md` + `docs/02-delivery-plans/01-specs/README.md` + `docs/02-delivery-plans/02-plans/README.md` |
 | 产品路线图、需求池或迭代规则变更 | `docs/01-product-planning/README.md` + `docs/01-product-planning/01-roadmap.md` 或 `docs/01-product-planning/04-backlog.md`；必要时同步 `docs/03-engineering-governance/workflow.md` |
 | 插件输出路径或跨 IDE 交付规则变更 | `docs/03-engineering-governance/workflow.md` + `docs/02-delivery-plans/README.md` + AGENTS.md + CLAUDE.md |
-| 复盘、根因分析或纠正动作规则变更 | `docs/03-engineering-governance/03-retrospectives/README.md` + 对应 `REQ` / `BUG` / `TD` / `DOC` / `OPS` 事实源 |
+| 复盘、根因分析或纠正动作规则变更 | `docs/03-engineering-governance/04-retrospectives/README.md` + 对应 `REQ` / `BUG` / `TD` / `DOC` / `OPS` 事实源 |
 | 行为变化声明或验证表述规则变更 | `docs/03-engineering-governance/01-rules/quality-gates.md` + `docs/03-engineering-governance/task-modes.md` |
 | Git 提交、PR 范围或合并流程变更 | `docs/03-engineering-governance/01-rules/git-workflow.md` + `docs/03-engineering-governance/workflow.md` |
 | 纯前端 UI 变更（无 API/Schema 影响） | 无需更新 |
@@ -84,7 +86,9 @@ class KnowledgeNode(AggregateRoot):
 | 当前工作台状态流、保留策略和任务卡片模板 | `docs/03-engineering-governance/01-rules/workbench.md` |
 | 技术债任务与定期复盘 | `docs/03-engineering-governance/technical-debt.md` |
 | 产品路线图、里程碑、迭代和需求池 | `docs/01-product-planning/*` |
-| 复盘、根因分析和纠正动作追踪 | `docs/03-engineering-governance/03-retrospectives/*` |
+| 工程基线、扫描结果和治理事实源 | `docs/03-engineering-governance/02-baselines/*` |
+| 行为等价矩阵和验证矩阵 | `docs/03-engineering-governance/03-matrices/*` |
+| 复盘、根因分析和纠正动作追踪 | `docs/03-engineering-governance/04-retrospectives/*` |
 | 长期架构、系统边界、关键流转、质量属性、演进方向 | `ARCHITECTURE.md` |
 | 项目入口、能力概览、仓库导航、最小启动路径 | `README.md` |
 | 本地开发入口、数据库初始化与常见开发命令 | `docs/03-engineering-governance/01-rules/local-development.md` |

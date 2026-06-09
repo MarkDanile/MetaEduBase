@@ -20,7 +20,7 @@
 - 已准备开发的复杂需求，再迁入或镜像到 `docs/02-delivery-plans/01-specs/*` 和 `docs/02-delivery-plans/02-plans/*`；进入交付后，以交付层 spec / plan 为开发依据。
 - `docs/03-engineering-governance/current-work.md` 只记录当前执行窗口，不承载长期需求池。
 - 外部系统如云效、Jira、TAPD 可写入 `External:` 字段；当前仓库 Markdown 仍是 AI IDE 交接事实源。
-- 复盘、失败、Review 或交接发现的问题，进入 `docs/03-engineering-governance/03-retrospectives/*`，并转成可跟踪的 `REQ` / `BUG` / `TD` / `DOC` / `OPS` 条目。
+- 复盘、失败、Review 或交接发现的问题，进入 `docs/03-engineering-governance/04-retrospectives/*`，并转成可跟踪的 `REQ` / `BUG` / `TD` / `DOC` / `OPS` 条目。
 
 ## 状态流
 

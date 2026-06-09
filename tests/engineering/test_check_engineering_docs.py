@@ -269,6 +269,39 @@ def test_fails_when_work_log_index_row_is_deleted(tmp_path: Path) -> None:
     assert "work-log.md 默认只新增索引" in result.stderr
 
 
+def test_allows_work_log_index_row_path_migration(tmp_path: Path) -> None:
+    make_minimal_docs(tmp_path)
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test",
+            "commit",
+            "-m",
+            "initial",
+        ],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    work_log = tmp_path / "docs/03-engineering-governance/work-log.md"
+    work_log.write_text(
+        work_log.read_text(encoding="utf-8").replace(
+            "docs/03-engineering-governance/current-work.md",
+            "docs/03-engineering-governance/README.md",
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_checker(tmp_path)
+
+    assert "work-log.md 默认只新增索引" not in result.stderr
+
+
 def test_fails_when_full_pytest_passed_claim_has_no_evidence(tmp_path: Path) -> None:
     make_minimal_docs(tmp_path)
     write(

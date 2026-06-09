@@ -42,7 +42,7 @@
   - `refetchInterval` 在 `polling=true/false` 时返回值
   - `useKgOverviewQuery` 在 `enabled=true/false` 时是否发起请求
   - `kgOverviewToDto` adapter 转换正确性
-- 写行为等价矩阵 `docs/03-engineering-governance/02-matrices/td-015-databaseview-equivalence.md`
+- 写行为等价矩阵 `docs/03-engineering-governance/03-matrices/td-015-databaseview-equivalence.md`
   覆盖：上传请求参数、轮询条件、KG overview 懒加载、DTO 转换、cache
   invalidation、toast、loading 状态。
 

@@ -12,8 +12,9 @@
 | [technical-debt.md](technical-debt.md) | 技术债总账和优先级 |
 | [work-log.md](work-log.md) | 已完成任务的一行式历史索引 |
 | [01-rules](01-rules/docs.md) | 长期工程规则；基础原则见 [engineering-principles.md](01-rules/engineering-principles.md) |
-| [02-matrices](02-matrices/) | 行为等价矩阵和验证矩阵 |
-| [03-retrospectives](03-retrospectives/README.md) | 复盘、根因分析和纠正动作 |
+| [02-baselines](02-baselines/) | 工程基线、扫描结果和治理事实源 |
+| [03-matrices](03-matrices/) | 行为等价矩阵和验证矩阵 |
+| [04-retrospectives](04-retrospectives/README.md) | 复盘、根因分析和纠正动作 |
 
 ## 使用规则
 

@@ -52,7 +52,7 @@ refresh 等）。
     触发，保留以兼容未来 mount 时序）
   - `loadTemplates` 的静默失败行为：通过 `enabled: false` + 不挂载 /
     `onError` 内不 toast 来保留
-- 行为等价矩阵 `docs/03-engineering-governance/02-matrices/td-018-filedetailview-remaining-equivalence.md`
+- 行为等价矩阵 `docs/03-engineering-governance/03-matrices/td-018-filedetailview-remaining-equivalence.md`
   覆盖 4 个 load × 3 阶段（手写 / TD-018 修复后）
 
 ### Out of scope

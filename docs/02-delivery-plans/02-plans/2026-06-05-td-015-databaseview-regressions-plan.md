@@ -53,7 +53,7 @@
 
 ### 5. 写行为等价矩阵
 
-- [x] 新增 `docs/03-engineering-governance/02-matrices/td-015-databaseview-equivalence.md`
+- [x] 新增 `docs/03-engineering-governance/03-matrices/td-015-databaseview-equivalence.md`
 - [x] 矩阵覆盖：上传请求参数 / 轮询条件 / KG overview 懒加载 / DTO 转换
 - [x] 每格列「TD-007 前 / TD-007 后（PR #36） / TD-015 修复后」
 

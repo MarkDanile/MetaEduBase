@@ -14,7 +14,9 @@ from pathlib import Path
 DOC_GLOBS: tuple[str, ...] = (
     "docs/*.md",
     "docs/03-engineering-governance/*.md",
-    "docs/03-engineering-governance/03-retrospectives/*.md",
+    "docs/03-engineering-governance/02-baselines/*.md",
+    "docs/03-engineering-governance/03-matrices/*.md",
+    "docs/03-engineering-governance/04-retrospectives/*.md",
     "docs/03-engineering-governance/01-rules/*.md",
     "docs/01-product-planning/*.md",
     "docs/01-product-planning/*/*.md",
