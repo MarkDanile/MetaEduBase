@@ -26,7 +26,6 @@
 |------|------|--------|------|--------|
 | REQ-010 P1 真实 RAG 证据治理与 AI Chat 溯源体验 | 🟣 Shaping | P1 | RAG / AI Chat / Evidence / UX | 澄清 EvidenceItem 模型、chunk / KG / metadata / structured_data 证据关联、来源编号和参考文件列表交互，再进入 spec / plan |
 | REQ-001 知识资产处理链路的产品化验收视图 | 🟣 Shaping | P2 | 需求 / 产品化验收 | 澄清目标用户、核心场景和验收指标 |
-| TD-042 模板复用后端集成测试在 PG 实例下验证（`test_template_reuse.py` 8 条用例） | ⚫ 待办 | P2 | 后端 / 测试 / 交付 | 详看 `technical-debt.md#td-042`；是 REQ-002-2 follow-up（[PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159)），需本地 PG + `make migrate/downgrade` + 8 条用例全绿 |
 
 ## 最近完成
 
@@ -36,6 +35,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-10 | TD-042 模板复用后端集成测试在 PG 实例下验证 | 🟢 完成 | 真 PG 跑通 `make migrate` 升 007 / `downgrade` / `init-test-db`；reuse 8 条 pytest + 模板目录回归均通过；顺带修 007 迁移 inline FK + asyncpg 反射 PK 缺陷。详见 technical-debt 总账与 work-log。[PR TBD] | [TD-042](technical-debt.md#td-042) |
 | 2026-06-10 | TD-041 FieldCard 递归渲染嵌套字段 + 嵌套拖拽 | 🟢 完成 | 新建 FieldList.vue 递归组件；FieldCard 递归渲染 children/items + 同层拖拽；修 removeColumn/copySubtree bug。[PR #161](https://github.com/MarkDanile/MetaEduBase/pull/161) | [TD-041](technical-debt.md#td-041) / [Spec](../02-delivery-plans/01-specs/2026-06-10-td-041-field-card-recursive-rendering.md) / [PR #161](https://github.com/MarkDanile/MetaEduBase/pull/161) |
 | 2026-06-10 | REQ-002-1 模板配置效率（编辑器 UX） | 🟢 完成 | 纯前端 UX：vuedraggable 拖拽 root 层 + 子树复制 + 撤销 toast + 折叠/展开 + 搜索过滤（30+ 阈值）+ normalize_status 脚本修复。AC-2/AC-3 嵌套拖拽部分完成（留 follow-up）。[PR #158](https://github.com/MarkDanile/MetaEduBase/pull/158) squash merge。 | [Spec](../02-delivery-plans/01-specs/2026-06-10-req-002-1-template-config-ux.md) / [Plan](../02-delivery-plans/02-plans/2026-06-10-req-002-1-template-config-ux-plan.md) / [PR #158](https://github.com/MarkDanile/MetaEduBase/pull/158) |
 | 2026-06-10 | REQ-002-2 模板复用机制 | 🟢 完成 | 6 端点 + template_versions 表 + 版本快照 + 3 新组件 + 导入导出；8 条测试。[PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) | [Spec](../02-delivery-plans/01-specs/2026-06-10-req-002-2-template-reuse.md) / [PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) |

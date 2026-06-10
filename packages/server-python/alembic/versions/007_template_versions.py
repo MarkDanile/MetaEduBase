@@ -18,6 +18,19 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # NOTE: SA inspector (asyncpg) does not surface the primary key as a
+    # "unique constraint" when creating FKs, so any FK referencing
+    # metaedu.templates.id must either (a) be added via raw SQL, which asyncpg
+    # ALSO mishandles (its FK parser looks for explicit UNIQUE constraints
+    # only and does not fall back to PK unique indexes), or (b) have the
+    # referenced column covered by an explicit UNIQUE constraint.
+    # We choose (b): add an explicit unique constraint on templates.id in
+    # the same migration. PG allows UNIQUE and PRIMARY KEY to coexist on the
+    # same column (the UNIQUE is logically redundant but technically valid).
+    # See TD-042 for the investigation.
+    op.create_unique_constraint(
+        'uq_templates_id', 'templates', ['id'], schema='metaedu'
+    )
     op.create_table(
         'template_versions',
         sa.Column('id', UUID(), nullable=False, server_default=sa.text('gen_random_uuid()')),
@@ -42,3 +55,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table('template_versions')
+    op.drop_constraint('uq_templates_id', 'templates', schema='metaedu', type_='unique')
