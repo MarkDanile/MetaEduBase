@@ -6,6 +6,9 @@ from app.config import settings
 from app.contexts.document.interfaces.api.router import router as document_router
 from app.contexts.identity.interfaces.api.router import router as identity_router
 from app.contexts.knowledge.interfaces.api.ai_router import router as ai_router
+from app.contexts.knowledge.interfaces.api.graph_retrieve_router import (
+    router as graph_retrieve_router,
+)
 from app.contexts.knowledge.interfaces.api.router import router as knowledge_router
 from app.contexts.resource.interfaces.api.router import router as resource_router
 from app.contexts.structured_data.interfaces.api.router import router as structured_data_router
@@ -29,6 +32,11 @@ app.add_middleware(
 
 app.include_router(identity_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(knowledge_router, prefix="/api/v1/knowledge", tags=["knowledge"])
+app.include_router(
+    graph_retrieve_router,
+    prefix="/api/v1/knowledge",
+    tags=["knowledge-graph"],
+)
 app.include_router(ai_router, prefix="/api/v1/ai", tags=["ai"])
 app.include_router(
     resource_router, prefix="/api/v1/resources", tags=["resources"]
