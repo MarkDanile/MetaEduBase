@@ -16,7 +16,23 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| TD-040 `FileTabsPanel.spec.ts` Vue 单元测试覆盖 AC-11 / AC-12 | 🟡 进行中 | P2 | 前端 / 测试 / 交付 | 2026-06-10 并行批次实施完成（spec 158 行 / 6 测试 / 全门禁绿），worktree 现场暂挂未走 Git 闭环。 | Integrator 在 worktree `.claude/worktrees/td-040-filtabspanel-vitest-coverage`（当前分支名 `worktree-agent-a9cfdaec8741f103c` 待 rename）执行 `git add` → `git commit`（message 候选：`feat(web): TD-040 FileTabsPanel.spec.ts vitest 覆盖 AC-11/AC-12 + 引入 vitest`）→ `git push` → PR → 合并 `main`。 | commit / push / PR / merge 完成后状态翻 `🟢 完成`；`python3 scripts/check-engineering-docs` + `git diff --check` 退出码 0。 |
+
+### 批次 `td-039+td-040` 收口记录
+
+- 状态：🟢 收口（2026-06-10）
+- 任务：TD-039（6 键保留集合 TS 端抽常量 + spec 落地）+ TD-040（`FileTabsPanel.spec.ts` Vue 单元测试覆盖 AC-11 / AC-12）。
+- 集成负责人：本会话。
+- 探查结论：
+  - **TD-039** agent 探查发现后端 Python import 路径 `metaedu.shared.schemas.document` 不可达（仓库无顶层 `metaedu` Python 包、`packages/shared/` 是 TS-only pnpm workspace 包、0 处 `import metaedu.shared.*` 命中）。按 hard rule 正确 STOP，未发明新路径。
+  - **TD-040** agent 探查发现 vitest / @vue/test-utils / jsdom 全部缺失，安装成本 ~3.7s 低，GO 决策；6 个 test case（5 AC-12 + 1 AC-11 加固）全过。
+- 决策（按用户拍板）：
+  - TD-039 拆为前端收窄版（保留卡号 `TD-039`，原标题调整为 "TS 端 + spec 落地"）+ 新建 `TD-043` 承接后端 Python 路径接入。
+  - TD-040 暂挂（暂不进 main），worktree 现场保留；后续批次接力 commit / PR。
+- 后续接力：
+  - **TD-040 接力**：按上面"当前进行中"表的"下一步"执行 Git 闭环。
+  - **TD-039 接力**：从 `main` 切新分支实施 TS 端 + spec 落地（与 TD-040 rebase 后合入，避免文件级冲突）。
+  - **TD-043 接力**：先按 `task-modes.md#spike--调研` 跑 spike，对比 codegen（路线 A）/ namespace shim（路线 B）/ Node 子进程读取（路线 C），输出推荐后再进入实现。
 
 ## 下一批候选任务
 

@@ -133,10 +133,11 @@
 | DOC-045 | 修正 TD-033 CSS 拆分交付声明与追踪证据 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-033 review / [#137](https://github.com/MarkDanile/MetaEduBase/pull/137) (`b815942`) |
 | DOC-042 | 脚本化 TD-032 行数基线扫描 | 🟢 完成 | P2 | 文档 / 工程治理 / 工程脚本 | [Baseline](02-baselines/td-032-source-file-sizes.md) / [PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143) |
 | DOC-055 | 收口 DOC-042 / TD-034 PR 范围混入与事实源漂移 | 🟢 完成 | P1 | 文档 / 工程流程 / 质量门禁 | DOC-042 review / [Review Score Log](04-retrospectives/review-score-log.md) |
-| TD-039 | 6 键保留集合（`id` / `version` / `layer` / `matched_type` / `confidence` / `reason`）抽到 `@metaedu/shared/schemas/document` 作为 single source of truth | ⚫ 待办 | P3 | 前端 / 后端 / API | REQ-002-3 code review / 当前 `FileTabsPanel.vue:159-166` 与后端 `extract_template_prompts.py:19-22` 各自硬编码 |
-| TD-040 | `FileTabsPanel.spec.ts` Vue 单元测试覆盖 AC-11（6 键过滤）/ AC-12（card 渲染 / 老数据隐藏 / layer none 分支 / version 为 null） | ⚫ 待办 | P2 | 前端 / 测试 / 交付 | REQ-002-3 code review / 当前仅靠 `data-testid="template-source-meta"` 无 Vue-level 锁 |
+| TD-039 | 6 键保留集合在 TS 端抽到 `@metaedu/shared/schemas/document` + spec 单一来源落地 | ⚫ 待办 | P3 | 前端 / 共享 schema / 文档 | REQ-002-3 code review / 当前 `FileTabsPanel.vue:159-166` 硬编码 + spec 文字再列 1 次 / 后端 Python import 路径接入拆为 [TD-043](#td-043-打通后端-python-对-shared-schemasdocument-的-import-路径) |
+| TD-040 | `FileTabsPanel.spec.ts` Vue 单元测试覆盖 AC-11（6 键过滤）/ AC-12（card 渲染 / 老数据隐藏 / layer none 分支 / version 为 null） | 🟡 进行中 | P2 | 前端 / 测试 / 交付 | REQ-002-3 code review / 2026-06-10 并行批次 `td-039+td-040` 已完成 Phase 1 探查（vitest/@vue/test-utils/jsdom 缺失）+ Phase 2 实施（6 测试通过 / 全门禁绿），worktree `td-040-filtabspanel-vitest-coverage` 暂挂未进 Git 闭环 |
 | TD-041 | FieldCard 递归渲染嵌套字段 + object children / array items 嵌套拖拽 | 🟢 完成 | P2 | 前端 / 架构 / 交付 | [PR #161](https://github.com/MarkDanile/MetaEduBase/pull/161) / [Spec](../02-delivery-plans/01-specs/2026-06-10-td-041-field-card-recursive-rendering.md) |
 | TD-042 | REQ-002-2 后端集成测试在 PG 实例下验证（`test_template_reuse.py` 8 条用例） | 🟢 完成 | P2 | 后端 / 测试 / 交付 | REQ-002-2 交付时沙箱无 PG / [PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) / 修 007 迁移 inline FK 在 asyncpg 反射下的 PK 解析缺陷 / [PR TBD] |
+| TD-043 | 打通后端 Python 对 `shared/schemas/document` 的 import 路径 | ⚫ 待办 | P2 | 后端 / 共享 schema / 基础设施 | 2026-06-10 并行批次 `td-039+td-040` 拆出（原属 TD-039 范围）/ 仓库无顶层 `metaedu` Python 包、`packages/shared/` 是 TS-only pnpm workspace 包，0 处 `import metaedu.shared.*` 命中 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 
 ## 任务详情
@@ -1782,53 +1783,56 @@
   - `git diff --check` → 退出码 0。
   - 未运行：lint / pytest —— DOC-055 范围是 docs-only + 状态收口 + baseline refresh，按 `quality-gates.md#验证表述规范` 不强制后端 lint / pytest 复跑。
 
-### TD-039: 6 键保留集合抽到 `@metaedu/shared/schemas/document` 作为 single source of truth
+### TD-039: 6 键保留集合在 TS 端抽到 `@metaedu/shared/schemas/document` + spec 单一来源落地
 
 状态：⚫ 待办
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P3 |
-| 领域 | 前端 / 后端 / API / 共享 schema |
+| 领域 | 前端 / 共享 schema / 文档 |
 | 事实源 | REQ-002-3 code review of Tasks 6+7（M-2） / [PR TBD] |
+| 范围拆分 | 本卡 = 原 TD-039 收窄版（TS 端 + spec 落地）；后端 Python 路径接入拆为独立 [TD-043](#td-043-打通后端-python-对-shared-schemasdocument-的-import-路径) |
 
 **证据**
 - `packages/web/src/views/resource/FileTabsPanel.vue:159-166` 硬编码 6 键 `RESERVED_META_KEYS`。
-- `packages/server-python/app/contexts/document/application/tasks/extract_template_prompts.py:19-20` 硬编码同 6 键 `_TEMPLATE_META_KEYS`。
 - 后端 spec `docs/02-delivery-plans/01-specs/2026-06-10-req-002-3-template-source-tracking.md:23` 文字再列 1 次。
-- 三处任意一处扩展保留键（如 REQ-002-4 引入 `schema_version` 字段后，前端可能想加 `tenant_id` 隔离），其余两处不自动跟上。
+- TS 端这两处重复实现，single source of truth 缺失；后续子任务（REQ-002-1 / REQ-002-2 / REQ-002-4 / 任何 schema 演进）容易在某一处漏改，触发 contract 漂移。
+- 后端 `extract_template_prompts.py:19-20` 的同 6 键重复问题仍存在，由 [TD-043](#td-043-打通后端-python-对-shared-schemasdocument-的-import-路径) 独立处理（Python import 路径接入是跨语言基础设施工程，不应混入本卡）。
 
 **问题**
-- 保留键契约在前 / 后端 / 文档三处重复实现，single source of truth 缺失。
-- 后续子任务（REQ-002-1 / REQ-002-2 / REQ-002-4 / 任何 schema 演进）容易在某一处漏改，触发 contract 漂移。
+- TS 端保留键契约在前端代码 + spec 文档两处重复实现。
+- 后端 Python import 路径未打通（仓库无顶层 `metaedu` Python 包、`packages/shared/` 是 TS-only pnpm workspace 包）；把后端 import swap 塞进本卡需要顺手新建 `metaedu/` Python namespace shim，那是另一类工作。
 
-**完成标准**
+**完成标准（TS 端）**
 - 在 `packages/shared/src/schemas/document.ts`（已存在的 Zod schema 旁）导出 `TEMPLATE_META_RESERVED_KEYS: ReadonlySet<string>` 常量（命名沿用既有 helper 如 `getTemplateStructuredData`）。
-- 后端 `extract_template_prompts.py` 从 `metaedu.shared.schemas.document` import 常量替换硬编码（共享 schema 包打通后端 / 前端 import 路径）。
-- 前端 `FileTabsPanel.vue` 改为 `import { TEMPLATE_META_RESERVED_KEYS } from '@metaedu/shared/schemas/document'`。
-- spec 文字列表改为"见 `TEMPLATE_META_RESERVED_KEYS`"。
+- 前端 `FileTabsPanel.vue` 改为 `import { TEMPLATE_META_RESERVED_KEYS } from '@metaedu/shared/schemas/document'`，删除本地硬编码 6 键 Set。
+- spec `docs/02-delivery-plans/01-specs/2026-06-10-req-002-3-template-source-tracking.md:23` 文字列表改为"见 `TEMPLATE_META_RESERVED_KEYS`"。
 - `rg -n "id|version|layer|matched_type|confidence|reason" packages/web/src/views/resource/FileTabsPanel.vue | grep "new Set\|(\"id\""` → 0 命中。
+- `packages/web/src/views/resource/FileTabsPanel.spec.ts`（如已合入，依赖 TD-040 合并顺序）继续锁当前行为；本卡不得为了 import 调整而修改测试断言。
 
 **验证方式**
 - `pnpm typecheck` 退出码 0（前端仍能 import 共享 schema 包的 string-only 常量）。
-- `pnpm lint` 退出码 0（`@metaedu/web#lint`，与本任务直接相关；`@metaedu/shared#lint` 仍受 ESLint v10 基础设施阻塞，已记为独立 follow-up）。
-- `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_structured_data_contract.py tests/contexts/document/test_extract_template_prompts.py -q` 仍 21 passed（不破坏既有 AC-1 ~ AC-5 / AC-9）。
-- `rg -rn "RESERVED_META_KEYS|TEMPLATE_META_KEYS|6 个保留键" packages/ docs/02-delivery-plans/` 输出 1 个常量声明 + 1 个常量引用，0 个硬编码。
+- `pnpm --filter @metaedu/web lint` 退出码 0。
+- `rg -rn "RESERVED_META_KEYS|6 个保留键" packages/web/ docs/02-delivery-plans/` 输出 1 个常量声明 + 1 个常量引用，0 个 TS 端硬编码。
+  - 注意：本卡不再要求"0 个硬编码"覆盖 `packages/server-python/` —— 那是 TD-043 的范围。
 - `python3 scripts/check-engineering-docs` 退出码 0。
 - `git diff --check` 退出码 0。
 
 **交付记录**
 - 未完成。
+- 2026-06-10：原 TD-039 范围（前端 + 后端 + spec）经并行批次 `td-039+td-040` 实施探查，发现后端 Python import 路径 `metaedu.shared.schemas.document` 不可达（仓库无顶层 `metaedu` Python 包，`packages/shared/` 是 TS-only pnpm workspace 包，0 处 `import metaedu.shared.*` 命中）。按"只修该技术债定义的范围"原则，本卡收窄为 TS 端 + spec 落地；后端 Python 接入拆为新 TD-043，并行批次中本卡未产出代码改动（agent A 在 worktree `td-039-shared-meta-keys` 上干净退出）。
 
 ### TD-040: `FileTabsPanel.spec.ts` Vue 单元测试覆盖 AC-11 / AC-12
 
-状态：⚫ 待办
+状态：🟡 进行中
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P2 |
 | 领域 | 前端 / 测试 / 交付 / 质量门禁 |
-| 事实源 | REQ-002-3 code review of Tasks 6+7（I-2） / [PR TBD] |
+| 事实源 | REQ-002-3 code review of Tasks 6+7（I-2） / 2026-06-10 并行批次 `td-039+td-040` 实施完成 / Git 闭环暂挂 |
+| 工作分支 | `td-040-filtabspanel-vitest-coverage`（worktree 现场保留，未提交 / 未推） |
 
 **证据**
 - 当前 `FileTabsPanel.vue` 的 AC-11（6 键保留键过滤）与 AC-12（`template.id` 存在 → 显示溯源元信息卡；不存在 → 隐藏；`layer === "none"` 分支显示 `reason`）只能靠读代码 + `pnpm typecheck / lint` 验证。
@@ -1841,24 +1845,34 @@
 - 测试基础设施（vitest / @vue/test-utils）项目内尚无可参照用法，需要先评估引入成本（与 `td-031` / `td-035` 类似的"质量门禁"债务）。
 
 **完成标准**
-- 评估 `packages/web` 当前测试基础设施状态（`vitest` / `@vue/test-utils` 是否已安装；若未安装，给出最小引入方案）。
-- 新增 `packages/web/src/views/resource/FileTabsPanel.spec.ts`，至少覆盖：
+- [x] 评估 `packages/web` 当前测试基础设施状态（2026-06-10 并行批次 Phase 1 探查完成：vitest / @vue/test-utils / jsdom 全部缺失；无既有 spec 文件；安装成本低 ~3.7s；root package.json 与 lockfile 策略不受影响；GO 决策）。
+- [x] 新增 `packages/web/src/views/resource/FileTabsPanel.spec.ts`（158 行 / 6 个 test case）：
   1. 给定 `structuredData.template = { id: "x", version: 1, layer: "L1", title: "..." }`：渲染 6 个保留键之外的字段；`data-testid="template-source-meta"` 元素存在并显示 `x` / `1` / `L1`。
   2. 给定 `structuredData.template = { id: "x", layer: "none", reason: "" }`：card 显示 `x` / `-` / `无匹配模板`。
   3. 给定 `structuredData.template = { title: "..." }`（老数据）：card 不渲染；过滤后 1 个字段。
   4. 给定 `structuredData.template = {}`（仅含保留键）：`EmptyState` 显示。
   5. 给定 `structuredData = null`：card 不渲染 + EmptyState 显示。
-- `pnpm test` 退出码 0；上述 5 个用例全过。
+  6. **额外加固（超出完成标准最低要求，符合 AC-11 精神）**：显式断言"6 键全部不出现在渲染 DOM 中"—— 锁 AC-11 的字段过滤契约。
+- [x] `pnpm --filter @metaedu/web test` 退出码 0；6 个 test case 全过。
+- [ ] **未完成**：工作分支 `td-040-filtabspanel-vitest-coverage` 尚未 commit / push / PR / merge。当前 worktree 名 `worktree-agent-a9cfdaec8741f103c`（auto-generated），需 integrator rename 到正式分支名后再走提交。本卡状态保持 `🟡 进行中`，不进 `🟢 完成` 直至 Git 闭环收口。
 
 **验证方式**
-- `pnpm test` 输出含 5 个新 test_ 名称，全过。
-- `pnpm typecheck` + `pnpm lint`（`@metaedu/web#lint`）退出码 0。
-- `rg -n "data-testid=\"template-source-meta\"" packages/web/src/` → 1 处定义 + 1 处测试断言。
+- `pnpm --filter @metaedu/web test` 退出码 0，6 test names 可见。
+- `pnpm --filter @metaedu/web typecheck` 退出码 0。
+- `pnpm --filter @metaedu/web lint` 退出码 0（`@metaedu/web#lint` 与 TD-039 备注的 `@metaedu/shared#lint` 阻塞无关联；本任务范围内绿色）。
+- `rg -n "data-testid=\"template-source-meta\"" packages/web/src/` → 1 处定义 + 5 处测试断言。
 - `python3 scripts/check-engineering-docs` 退出码 0。
 - `git diff --check` 退出码 0。
 
 **交付记录**
-- 未完成。
+- 2026-06-10：并行批次 `td-039+td-040` 中 Phase 1 探查 + Phase 2 实施完成；worktree 在 `.claude/worktrees/td-040-filtabspanel-vitest-coverage` 暂挂，**未走 Git 闭环**（未 commit / push / PR / merge）。状态 `🟡 进行中` 而非 `🟢 完成`，原因：workbench.md#状态同步规则第 36 行规定"代码完成但验证未完成时，状态应为 `🟣 待验证`"；本卡代码已实现并通过全部验证，但未走完 commit → push → PR → merge 闭环，按用户拍板的 (H) 暂挂方案保留现场，由后续批次接力 commit / PR。
+- 实施细节：
+  - 新增 `packages/web/vitest.config.ts`（14 行；vue plugin + @ alias + jsdom env；与 `vite.config.ts` 并存未合并）。
+  - `packages/web/package.json` +4 行（vitest ^2.1.0 / @vue/test-utils ^2.4.6 / jsdom devDeps + `test: "vitest run"` script）。
+  - `pnpm-lock.yaml` 增量 ~1170 行（lock 住 vitest / @vue/test-utils / jsdom 及 transitive deps）。
+  - spec 文件内维护 `RESERVED_META_KEYS` 局部副本（与 `FileTabsPanel.vue:159-166` 字面量一致），不依赖 TD-039 才会引入的 `@metaedu/shared` 常量；TD-039 合并后可作为 follow-up 把 import 统一掉。
+- 后续接力：commit message 候选 `feat(web): TD-040 FileTabsPanel.spec.ts vitest 覆盖 AC-11/AC-12 + 引入 vitest`；PR title 候选 `feat(web): TD-040 FileTabsPanel.spec.ts vitest 覆盖 AC-11/AC-12`。
+- 长期 follow-up（不阻塞本卡）：vitest 是仓库内首次前端单测基建，若后续测试用例增多，可考虑抽共享 `setup` 文件、把 `vitest.config.ts` 与 `vite.config.ts` 合并、或迁移到 vitest workspace 模式。
 
 ### DOC-056: `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚的算法 bug
 
@@ -1983,3 +1997,50 @@
   - 验证摘要：dev 库 / test 库 两条迁移链路均经过 `upgrade → downgrade → upgrade` 循环验证；8 条 reuse + 9 条模板既有测试 + 全量 ruff 三条全过；零业务代码变更。
   - 未运行：浏览器手测（沙箱无浏览器；与本任务范围无关——本任务仅后端集成测试）。
   - 后续接力建议（不阻塞本任务完成）：在 PR review 时同步给 `app/contexts/template/application/service.py` 等使用 SQLAlchemy metadata 引用 `templates.id` 的位置加注释，说明"FK 引用 templates.id 依赖显式 uq_templates_id 约束"。
+
+### TD-043: 打通后端 Python 对 `shared/schemas/document` 的 import 路径
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 后端 / 共享 schema / 基础设施 |
+| 事实源 | 2026-06-10 并行批次 `td-039+td-040` 拆出（原属 TD-039 范围） / 关联 [TD-039](#td-039-6-键保留集合在-ts-端抽到-metaedusharedschemasdocument--spec-单一来源落地) |
+| 父任务 | [TD-039](technical-debt.md#td-039-6-键保留集合在-ts-端抽到-metaedusharedschemasdocument--spec-单一来源落地)（范围拆分说明） |
+
+**证据**
+- 2026-06-10 并行批次 `td-039+td-040` 中，TD-039 agent 探查发现：仓库无顶层 `metaedu` Python 包；`packages/shared/` 是 TS-only pnpm workspace 包（`name: "@metaedu/shared"`，无 `__init__.py`、无 Python build）；`packages/server-python/pyproject.toml` 的 `tool.setuptools.packages.find` 只包含 `app*`；全仓 `grep "import metaedu.shared"` 0 命中。
+- 后端 `packages/server-python/app/contexts/document/application/tasks/extract_template_prompts.py:19-20` 硬编码 6 键 `_TEMPLATE_META_KEYS` 仍存在。
+- TD-039 收窄为 TS 端 + spec 落地后，本卡承接后端 Python 路径接入。
+
+**问题**
+- 后端 Python 端没有可达路径 import 共享 schema 常量；后端 `_TEMPLATE_META_KEYS` 与 TS 端 `TEMPLATE_META_RESERVED_KEYS` 仍是物理两个副本，contract drift 风险未消除。
+- 后续子任务（REQ-002-4 引入 `schema_version` / 任何 schema 演进）扩展保留键时，后端不会自动跟上。
+
+**完成标准（候选路线，spike 后定稿）**
+
+> 本卡范围跨语言 + 跨包结构，属高风险技术债，进入实现前必须先做 spike 评估三条候选路线并选一：
+
+- **路线 A：TS 端 codegen**
+  - 在 `packages/shared/` 新增构建脚本（例 `scripts/codegen/shared-schemas.ts`），从 Zod schema 派生 string-only 常量（`TEMPLATE_META_RESERVED_KEYS`）并 emit Python 文件到 `packages/server-python/app/shared/schemas/document.py`。
+  - 后端 import 路径 `from app.shared.schemas.document import TEMPLATE_META_RESERVED_KEYS`。
+  - codegen 接入 `pnpm build` / `pre-commit` / CI 链路，确保 TS schema 变化时 Python 副本同步。
+- **路线 B：Python 端 `metaedu/` namespace shim + 手动维护**
+  - 新建 `packages/server-python/metaedu/shared/schemas/document.py`（与 `app/` 同级），`pyproject.toml` `tool.setuptools.packages.find` 扩为同时包含 `app*` 与 `metaedu*`。
+  - Python 文件手工维护 6 键集合副本。
+  - 风险：物理上仍是两份源，codegen / linter 需补断言"两份列表内容必须一致"。
+- **路线 C：把后端常量反向引用 TS runtime 评估**
+  - 用 Python 调 Node 子进程读取 `packages/shared/src/schemas/document.ts` 的导出（不推荐，CI 链路脆弱、运行期依赖过重）。
+
+**默认推荐路线 A**：从契约稳定性 + 单点修改成本看，codegen 是唯一真"single source of truth"路径。**实现前先按 `task-modes.md#spike--调研` 跑 spike**，对比三条路线的时间盒 / 风险 / 维护成本，输出推荐 + 拒选理由，再进入实现。
+
+**验证方式（路线 A 落地后）**
+- `pnpm typecheck` 退出码 0（codegen 脚本与共享 schema 同步）。
+- `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_structured_data_contract.py tests/contexts/document/test_extract_template_prompts.py -q` 仍 21 passed。
+- `rg -rn "RESERVED_META_KEYS|TEMPLATE_META_KEYS|6 个保留键" packages/` 输出 1 个常量声明（TS 端）+ 1 个 codegen 引用（codegen 脚本）+ 1 个 Python 副本（codegen 产物），0 个手写硬编码。
+- `python3 scripts/check-engineering-docs` 退出码 0。
+- `git diff --check` 退出码 0。
+
+**交付记录**
+- 2026-06-10：TD-039 范围拆分登记（本卡从原 TD-039 拆出，承接后端 Python 路径接入）。
