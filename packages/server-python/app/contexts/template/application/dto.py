@@ -36,6 +36,8 @@ class TemplateUpdate(BaseModel):
     ai_prompt: str | None = None
     ai_context: str | None = None
     source_file_id: str | None = None
+    # REQ-002-4: explicit schema_version bump override
+    force_schema_bump: bool = False
 
 class TemplateResponse(BaseModel):
     id: str
@@ -48,6 +50,11 @@ class TemplateResponse(BaseModel):
     source_file_id: str | None
     created_at: str
     updated_at: str
+    # REQ-002-4
+    schema_version: int
+    is_deprecated: bool
+    deprecated_at: str | None
+    deprecated_reason: str | None
 
 class TemplateAIInitRequest(BaseModel):
     doc_type: str
@@ -96,3 +103,8 @@ class TemplateExportResponse(BaseModel):
     template: dict
     schema_version: int
     exported_at: str
+
+
+# REQ-002-4: deprecation request DTO
+class DeprecateTemplateRequest(BaseModel):
+    reason: str = PydanticField(..., min_length=1, max_length=500)

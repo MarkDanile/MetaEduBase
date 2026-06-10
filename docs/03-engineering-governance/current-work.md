@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| REQ-002-4 模板可维护性（schema_version 演进 + 容器互转二次确认 + deprecated + 命名规范） | 🟡 进行中 | P2 | Backend / Frontend / Data Integrity / API | 已建 spec + plan（[Spec](../02-delivery-plans/01-specs/2026-06-10-req-002-4-template-maintainability.md) / [Plan](../02-delivery-plans/02-plans/2026-06-10-req-002-4-template-maintainability-plan.md)）；superpower 模式跨 backend + frontend；分支 `feature/req-002-4-template-maintainability`；强依赖 REQ-002-1/2/3 + TD-041 均已合并。4 字段迁移 `008_template_schema_version` 已对 `metaedu` + `metaedu_test` 库 apply（可上可下）；后端 entity/models/dto/repository/service/router 4 字段 + force_schema_bump + DeprecateTemplateRequest 落地；破坏性变更检测算法（容器互转 / 删字段 / 改 key → schema_version += 1，拖拽顺序不递增）；`_validate_fields` 扩 6 键保留键校验；`deprecate` / `undeprecate` / `list_with_filter(include_deprecated)` 服务方法到位；`select_template` L1/L2/L3 跳过 deprecated；`test_template_maintainability.py` 16 条新用例全过；既有 17 条 REQ-002-1/2 测试 + 16 条 select_template 测试 + 其它全过（89/89）。前端：template.ts 加 deprecate/undeprecate API + 4 字段类型；TemplateListView 弃用按钮 + 确认对话框（reason 必填）+ 弃用 badge + 浅色背景 + 删除线；TemplateEditorView 顶部 schema_version 显示 + 弃用/恢复按钮 + 3 个二次确认对话框（type 互转 / 删字段 / 弃用）+ field.key 实时校验（保留键 / 非法字符 / 同层重复 → 红框）+ 保存按钮 hasValidationErrors 时禁用 + force_schema_bump 在破坏性确认后随 save payload 发送。typecheck 0 错（FileTabsPanel.spec.ts vitest 报错与本任务无关），lint 净通过。 | 跑 check-engineering-docs 门禁、scan-source-sizes 源文件基线、init pytest 后端测试、git add/commit/Push/PR | 后端：alembic upgrade 008 + init-test-db 已跑；pytest `tests/contexts/template tests/contexts/document` 89/89 passed。前端：typecheck 0 错（除 1 个已存在 vitest 类型）、lint 净通过。Task 1~10 已完成；待 Task 11 工程门禁与 Git 闭环。 |
 
 ## 下一批候选任务
 

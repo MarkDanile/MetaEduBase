@@ -20,6 +20,7 @@
           :expanded-ids="expandedIds"
           :matched-ids="matchedIds"
           :search-query="searchQuery"
+          :key-error-message="getErrorForFieldId(node.id ?? '')"
           :class="{ 'dimmed': searchQuery && !matchedIds.has(node.id ?? '') }"
           @toggle="emit('toggle', $event)"
           @update="emit('update')"
@@ -45,12 +46,14 @@ defineOptions({ name: 'FieldList' })
 
 const MAX_DEPTH = 5
 
-defineProps<{
+const props = defineProps<{
   fields: Field[]
   depth: number
   expandedIds: Set<string>
   matchedIds: Set<string>
   searchQuery?: string
+  // REQ-002-4: error message map (id → message) from parent
+  fieldErrors?: Record<string, string>
 }>()
 
 const emit = defineEmits<{
@@ -64,6 +67,11 @@ const emit = defineEmits<{
   'copySubtree': [id: string]
   'toggle': [id: string]
 }>()
+
+function getErrorForFieldId(id: string): string {
+  if (!id) return ''
+  return props.fieldErrors?.[id] ?? ''
+}
 
 function onDragEnd() {
   // vuedraggable mutates the array via :list; emit update so parent syncs

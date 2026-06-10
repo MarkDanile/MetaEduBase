@@ -9,7 +9,26 @@
         <button v-if="!isNew" class="ui-btn ui-btn-ghost" @click="onExport">
           <Download :size="14" /> 导出 JSON
         </button>
-        <button class="ui-btn ui-btn-primary" @click="save" :disabled="saving">
+        <!-- REQ-002-4: schema_version display + restore button (edit mode) -->
+        <span v-if="!isNew && form.schema_version" class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] flex items-center px-2">
+          schema_version: {{ form.schema_version }}
+        </span>
+        <button
+          v-if="!isNew && form.is_deprecated"
+          class="ui-btn ui-btn-ghost"
+          @click="onUndeprecate"
+          :disabled="undeprecating"
+        >
+          <RotateCcw :size="14" /> 恢复使用
+        </button>
+        <button
+          v-else-if="!isNew && !form.is_deprecated"
+          class="ui-btn ui-btn-ghost"
+          @click="onDeprecateFromEditor"
+        >
+          <ArchiveX :size="14" /> 弃用
+        </button>
+        <button class="ui-btn ui-btn-primary" @click="save" :disabled="saving || hasValidationErrors">
           保存
         </button>
       </template>
@@ -42,6 +61,75 @@
       :template-id="route.params.id as string"
       @rolled-back="onRolledBack"
     />
+
+    <!-- REQ-002-4: destructive type change confirmation -->
+    <Teleport to="body">
+      <div v-if="pendingTypeChange" class="modal-mask" @click.self="onCancelChangeType">
+        <div class="modal-panel">
+          <h3 class="text-[var(--text-body)] font-medium text-[var(--color-ink)] mb-2">
+            破坏性变更确认
+          </h3>
+          <p class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-4">
+            此操作将把字段类型从
+            <span class="font-medium text-[var(--color-ink)]">{{ pendingTypeChange.oldType }}</span>
+            改为
+            <span class="font-medium text-[var(--color-ink)]">{{ pendingTypeChange.newType }}</span>。
+            已有抽取结果中该字段会失配，且会触发 schema_version 自增。是否继续？
+          </p>
+          <div class="flex justify-end gap-2">
+            <button class="ui-btn ui-btn-ghost" @click="onCancelChangeType">取消</button>
+            <button class="ui-btn ui-btn-primary" @click="onConfirmChangeType">确认继续</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- REQ-002-4: field delete confirmation -->
+      <div v-if="pendingRemove" class="modal-mask" @click.self="onCancelRemoveField">
+        <div class="modal-panel">
+          <h3 class="text-[var(--text-body)] font-medium text-[var(--color-ink)] mb-2">
+            破坏性变更确认
+          </h3>
+          <p class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-4">
+            删除字段后，已有抽取结果中该字段会被裁剪，且会触发 schema_version 自增。是否继续？
+          </p>
+          <div class="flex justify-end gap-2">
+            <button class="ui-btn ui-btn-ghost" @click="onCancelRemoveField">取消</button>
+            <button class="ui-btn ui-btn-primary" @click="onConfirmRemoveField">确认删除</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- REQ-002-4: deprecate from editor dialog -->
+      <div v-if="pendingDeprecate" class="modal-mask" @click.self="onCancelDeprecate">
+        <div class="modal-panel">
+          <h3 class="text-[var(--text-body)] font-medium text-[var(--color-ink)] mb-2">
+            弃用模板
+          </h3>
+          <p class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-3">
+            弃用后该模板将不再被新文档自动匹配。
+          </p>
+          <label class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-1 block">
+            弃用原因 <span class="text-[var(--color-danger)]">*</span>
+          </label>
+          <textarea
+            v-model="deprecateReasonInput"
+            class="ui-input w-full resize-none"
+            rows="3"
+            placeholder="如：使用率低，已被新模板替代"
+          />
+          <div class="flex justify-end gap-2 mt-4">
+            <button class="ui-btn ui-btn-ghost" @click="onCancelDeprecate">取消</button>
+            <button
+              class="ui-btn ui-btn-primary"
+              :disabled="!deprecateReasonInput.trim() || deprecating"
+              @click="onConfirmDeprecate"
+            >
+              确认弃用
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <div v-if="loading" class="flex justify-center py-12">
       <LoadingSpinner text="加载中..." />
@@ -79,13 +167,15 @@
             ref="fieldItemRef"
             :model-value="form.fields"
             :search-query="searchQuery"
+            :field-errors-by-id="fieldErrorMap"
             @update:model-value="onFieldsChange"
             @add-root="addField"
             @add-child="onAddChild"
             @add-column="onAddColumn"
-            @remove="onFieldRemove"
+            @remove="onRequestRemoveField"
             @remove-column="onRemoveColumn"
             @update="syncFields"
+            @change-type="onRequestChangeType"
           />
           <p v-else class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] text-center py-4">
             暂无字段，点击上方按钮添加
@@ -122,7 +212,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { X, History, Download } from 'lucide-vue-next'
+import { X, History, Download, ArchiveX, RotateCcw } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import FieldItem from '@/views/admin/FieldItem.vue'
@@ -149,7 +239,33 @@ const form = ref({
   ai_prompt: null as string | null,
   ai_context: null as string | null,
   source_file_id: null as string | null,
+  // REQ-002-4
+  schema_version: 1,
+  is_deprecated: false,
+  deprecated_at: null as string | null,
+  deprecated_reason: null as string | null,
 })
+
+// REQ-002-4: state for confirm-on-destructive-change dialog
+interface PendingTypeChange {
+  id: string
+  oldType: Field['type']
+  newType: Field['type']
+}
+const pendingTypeChange = ref<PendingTypeChange | null>(null)
+
+interface PendingRemove {
+  id: string
+}
+const pendingRemove = ref<PendingRemove | null>(null)
+
+interface PendingDeprecate {
+  reason: string
+}
+const pendingDeprecate = ref<PendingDeprecate | null>(null)
+const deprecateReasonInput = ref('')
+const deprecating = ref(false)
+const undeprecating = ref(false)
 
 // ─── REQ-002-1: Undo stack (single undo) ──────────────────────────────────────
 interface DeletedField {
@@ -246,6 +362,124 @@ function onFieldRemove(id: string) {
   }
 }
 
+// REQ-002-4: Remove with destructive-change confirmation
+function onRequestRemoveField(id: string) {
+  pendingRemove.value = { id }
+}
+
+// REQ-002-4: commit / cancel pending destructive type change
+function onRequestChangeType(id: string, newType: Field['type']) {
+  const node = findNode(form.value.fields, id)
+  if (!node) return
+  const oldType = node.type
+  if (oldType === newType) return
+  const isContainerMutual = (
+    ['object', 'table', 'array'].includes(oldType) &&
+    ['object', 'table', 'array'].includes(newType)
+  )
+  const isContainerFromLeaf = (
+    !['object', 'table', 'array'].includes(oldType) &&
+    ['object', 'table', 'array'].includes(newType)
+  )
+  const isLeafFromContainer = (
+    ['object', 'table', 'array'].includes(oldType) &&
+    !['object', 'table', 'array'].includes(newType)
+  )
+  // Container ⇄ container OR container ⇄ leaf → destructive
+  if (isContainerMutual || isContainerFromLeaf || isLeafFromContainer) {
+    // Apply the change in the form so the UI updates, then prompt the user
+    // (REQ-002-1 / spec risk #1: confirm MUST be shown after a visible
+    // change so the user understands what's at stake).
+    node.type = newType
+    syncFields()
+    pendingTypeChange.value = { id, oldType, newType }
+  } else {
+    // leaf ⇄ leaf (text ⇄ textarea ⇄ number): no confirmation needed
+    node.type = newType
+    syncFields()
+  }
+}
+
+function onConfirmChangeType() {
+  // Already applied in onRequestChangeType; just mark force_schema_bump
+  // so the next save bumps schema_version (AC-17).
+  forceSchemaBump.value = true
+  pendingTypeChange.value = null
+}
+
+function onCancelChangeType() {
+  if (!pendingTypeChange.value) return
+  const node = findNode(form.value.fields, pendingTypeChange.value.id)
+  if (node) {
+    node.type = pendingTypeChange.value.oldType
+    syncFields()
+  }
+  pendingTypeChange.value = null
+  toast.info('已取消类型变更')
+}
+
+function onConfirmRemoveField() {
+  if (!pendingRemove.value) return
+  const id = pendingRemove.value.id
+  pendingRemove.value = null
+  forceSchemaBump.value = true
+  onFieldRemove(id)
+}
+
+function onCancelRemoveField() {
+  pendingRemove.value = null
+  toast.info('已取消删除')
+}
+
+// REQ-002-4: deprecate / undeprecate from editor
+function onDeprecateFromEditor() {
+  deprecateReasonInput.value = ''
+  pendingDeprecate.value = { reason: '' }
+}
+
+async function onConfirmDeprecate() {
+  const reason = deprecateReasonInput.value.trim()
+  if (!reason) {
+    toast.error('请填写弃用原因')
+    return
+  }
+  deprecating.value = true
+  try {
+    const { data } = await templateApi.deprecate(route.params.id as string, { reason })
+    form.value.is_deprecated = data.is_deprecated
+    form.value.deprecated_at = data.deprecated_at
+    form.value.deprecated_reason = data.deprecated_reason
+    pendingDeprecate.value = null
+    toast.success('已弃用')
+  } catch {
+    toast.error('弃用失败')
+  } finally {
+    deprecating.value = false
+  }
+}
+
+function onCancelDeprecate() {
+  pendingDeprecate.value = null
+}
+
+async function onUndeprecate() {
+  undeprecating.value = true
+  try {
+    const { data } = await templateApi.undeprecate(route.params.id as string)
+    form.value.is_deprecated = data.is_deprecated
+    form.value.deprecated_at = data.deprecated_at
+    form.value.deprecated_reason = data.deprecated_reason
+    toast.success('已恢复使用')
+  } catch {
+    toast.error('恢复失败')
+  } finally {
+    undeprecating.value = false
+  }
+}
+
+// REQ-002-4: force schema_version bump on next save
+const forceSchemaBump = ref(false)
+
 function undoRemove() {
   if (undoTimer) clearTimeout(undoTimer)
   undoTimer = null
@@ -328,6 +562,67 @@ function syncFields() {
   form.value.fields = [...form.value.fields]
 }
 
+// REQ-002-4: field naming validation (recursive)
+const _RESERVED_META_KEYS = new Set([
+  'id', 'version', 'layer', 'matched_type', 'confidence', 'reason',
+])
+const _FIELD_KEY_RE = /^[a-z][a-z0-9_]*$/
+
+interface FieldKeyError {
+  path: string  // e.g. "fields[0].key" or "fields[0].children[1].key"
+  message: string
+}
+
+function validateFields(fields: Field[], parentPath = 'fields'): FieldKeyError[] {
+  const errors: FieldKeyError[] = []
+  const seen: Set<string> = new Set()
+  for (let i = 0; i < fields.length; i++) {
+    const f = fields[i]
+    const path = `${parentPath}[${i}].key`
+    if (f.key) {
+      if (_RESERVED_META_KEYS.has(f.key)) {
+        errors.push({ path, message: `「${f.key}」是保留字段名` })
+      } else if (!_FIELD_KEY_RE.test(f.key)) {
+        errors.push({ path, message: 'key 必须以小写字母开头，仅含小写字母、数字、下划线' })
+      }
+      if (seen.has(f.key)) {
+        errors.push({ path, message: `同层 key 重复：${f.key}` })
+      }
+      seen.add(f.key)
+    }
+    if (f.children) {
+      errors.push(...validateFields(f.children, `${parentPath}[${i}].children`))
+    }
+    if (f.items) {
+      errors.push(...validateFields(f.items, `${parentPath}[${i}].items`))
+    }
+  }
+  return errors
+}
+
+const fieldKeyErrors = computed<FieldKeyError[]>(() =>
+  validateFields(form.value.fields)
+)
+const hasValidationErrors = computed(() => fieldKeyErrors.value.length > 0)
+
+const fieldErrorMap = computed<Record<string, string>>(() => {
+  const map: Record<string, string> = {}
+  function walk(fields: Field[], parentPath: string) {
+    for (let i = 0; i < fields.length; i++) {
+      const f = fields[i]
+      if (f.id) {
+        const path = `${parentPath}[${i}].key`
+        const err = fieldKeyErrors.value.find(e => e.path === path)
+        if (err) map[f.id] = err.message
+      }
+      if (f.children) walk(f.children, `${parentPath}[${i}].children`)
+      if (f.items) walk(f.items, `${parentPath}[${i}].items`)
+    }
+  }
+  walk(form.value.fields, 'fields')
+  return map
+})
+
 function addDocType() {
   const val = docTypeInput.value.trim()
   if (val && !form.value.doc_types.includes(val)) {
@@ -346,6 +641,11 @@ async function load(id: string) {
     form.value.ai_prompt = data.ai_prompt
     form.value.ai_context = data.ai_context
     form.value.source_file_id = data.source_file_id
+    // REQ-002-4
+    form.value.schema_version = data.schema_version ?? 1
+    form.value.is_deprecated = data.is_deprecated ?? false
+    form.value.deprecated_at = data.deprecated_at ?? null
+    form.value.deprecated_reason = data.deprecated_reason ?? null
   } catch {
     toast.error('加载模板失败')
     router.push('/admin/template')
@@ -368,6 +668,10 @@ async function save() {
     toast.error('请填写模板名称')
     return
   }
+  if (hasValidationErrors.value) {
+    toast.error('字段命名校验未通过，请修正后保存')
+    return
+  }
   saving.value = true
   try {
     if (isNew.value) {
@@ -381,14 +685,22 @@ async function save() {
       })
       toast.success('创建成功')
     } else {
-      await templateApi.update(route.params.id as string, {
+      const payload: Record<string, unknown> = {
         name: form.value.name,
         doc_types: form.value.doc_types,
         fields: form.value.fields,
         ai_prompt: form.value.ai_prompt,
         ai_context: form.value.ai_context,
         source_file_id: form.value.source_file_id,
-      })
+      }
+      // REQ-002-4: if the user confirmed a destructive type change or
+      // a field removal, send force_schema_bump=true so the server
+      // bumps schema_version (AC-8 / AC-17 / AC-18).
+      if (forceSchemaBump.value) {
+        payload.force_schema_bump = true
+        forceSchemaBump.value = false
+      }
+      await templateApi.update(route.params.id as string, payload as never)
       toast.success('保存成功')
     }
     router.push('/admin/template')
@@ -430,4 +742,23 @@ onMounted(() => {
   cursor: pointer;
 }
 .undo-toast-btn:hover { opacity: 0.9; }
+
+/* REQ-002-4: shared modal styles */
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-panel {
+  background: white;
+  border-radius: 12px;
+  padding: 20px 24px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+}
 </style>

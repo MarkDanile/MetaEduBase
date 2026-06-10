@@ -28,6 +28,17 @@ from app.shared.llm.protocol import ProviderUnavailable
 logger = logging.getLogger(__name__)
 
 
+# REQ-002-4: reserved meta keys (REQ-002-3 contract). Field.key must NOT
+# collide with these or downstream `structured_data["template"]` merge
+# would shadow extracted field data.
+_RESERVED_META_KEYS = frozenset(
+    {"id", "version", "layer", "matched_type", "confidence", "reason"}
+)
+_FIELD_KEY_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+_CONTAINER_TYPES = frozenset({"object", "table", "array"})
+_LEAF_TYPES = frozenset({"text", "textarea", "number"})
+
+
 def _dto_to_entity(dto: FieldDTO) -> Field:
     return Field(
         key=dto.key,
@@ -51,7 +62,64 @@ def _entity_to_dto(entity: Template) -> dict:
         "source_file_id": str(entity.source_file_id) if entity.source_file_id else None,
         "created_at": entity.created_at.isoformat(),
         "updated_at": entity.updated_at.isoformat(),
+        # REQ-002-4
+        "schema_version": entity.schema_version,
+        "is_deprecated": entity.is_deprecated,
+        "deprecated_at": entity.deprecated_at.isoformat() if entity.deprecated_at else None,
+        "deprecated_reason": entity.deprecated_reason,
     }
+
+
+def _detect_destructive_changes(
+    old_fields: list[dict], new_fields: list[dict]
+) -> bool:
+    """REQ-002-4 AC-5/6/7: Detect changes that must bump ``schema_version``.
+
+    Returns True if ANY of:
+      * any field is deleted (path in old but not in new)
+      * any container type changes (object ⇄ table ⇄ array), including
+        container ⇄ leaf
+      * any leaf field's key is renamed (path differs at any level)
+
+    Position-only reordering (REQ-002-1 drag) is intentionally ignored —
+    flattening by path is order-insensitive.
+    """
+
+    def _flatten(fields: list[dict], prefix: str = "") -> dict[str, str]:
+        out: dict[str, str] = {}
+        for f in fields:
+            key = f.get("key", "")
+            path = f"{prefix}.{key}" if prefix else key
+            out[path] = f.get("type", "text")
+            children = f.get("children") or []
+            if children:
+                out.update(_flatten(children, path + ".children"))
+            items = f.get("items") or []
+            if items:
+                out.update(_flatten(items, path + ".items"))
+        return out
+
+    old_map = _flatten(old_fields)
+    new_map = _flatten(new_fields)
+
+    # 1. Deletion: path in old but missing in new
+    if set(old_map) - set(new_map):
+        return True
+
+    # 2. Type change: any path with a different type
+    for path, old_type in old_map.items():
+        new_type = new_map.get(path)
+        if new_type is None:
+            continue  # already covered as deletion
+        if old_type == new_type:
+            continue
+        # Any type change involving a container is destructive.
+        if old_type in _CONTAINER_TYPES or new_type in _CONTAINER_TYPES:
+            return True
+        # Leaf ⇄ leaf (text/textarea/number) is non-destructive.
+
+    return False
+
 
 class TemplateService:
     def __init__(self, repo: TemplateRepository):
@@ -66,6 +134,8 @@ class TemplateService:
         return _entity_to_dto(template) if template else None
 
     async def create(self, dto: TemplateCreate, tenant_id: UUID) -> dict:
+        # REQ-002-4: validate field naming before persisting
+        self._validate_fields([f.model_dump() for f in dto.fields])
         template = Template(
             id=uuid4(),
             tenant_id=tenant_id,
@@ -77,6 +147,11 @@ class TemplateService:
             source_file_id=UUID(dto.source_file_id) if dto.source_file_id else None,
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
+            # REQ-002-4 defaults
+            schema_version=1,
+            is_deprecated=False,
+            deprecated_at=None,
+            deprecated_reason=None,
         )
         await self.repo.create(template)
         return _entity_to_dto(template)
@@ -85,11 +160,22 @@ class TemplateService:
         existing = await self.repo.get(template_id, tenant_id)
         if not existing:
             return None
+        # REQ-002-4: detect destructive field changes BEFORE applying
+        # (snapshot is taken from the persisted entity, ignoring position
+        # changes from drag-reorder, per AC-4 / spec risk #7).
+        if dto.fields is not None:
+            old_fields_raw = [f.to_dict() for f in existing.fields]
+            new_fields_raw = [f.model_dump() for f in dto.fields]
+            is_destructive = _detect_destructive_changes(old_fields_raw, new_fields_raw)
+            if is_destructive or dto.force_schema_bump:
+                existing.schema_version = (existing.schema_version or 1) + 1
         if dto.name is not None:
             existing.name = dto.name
         if dto.doc_types is not None:
             existing.doc_types = dto.doc_types
         if dto.fields is not None:
+            # REQ-002-4: validate field naming + reserved keys (AC-12/13/14)
+            self._validate_fields([f.model_dump() for f in dto.fields])
             existing.fields = [_dto_to_entity(f) for f in dto.fields]
         if dto.ai_prompt is not None:
             existing.ai_prompt = dto.ai_prompt
@@ -100,11 +186,50 @@ class TemplateService:
         existing.updated_at = datetime.now(UTC)
         await self.repo.update(existing)
         # REQ-002-2 AC-3: write version snapshot in same transaction
+        # REQ-002-4: snapshot stores the (possibly bumped) schema_version
         await self._write_version_snapshot(existing)
         return _entity_to_dto(existing)
 
     async def delete(self, template_id: UUID, tenant_id: UUID) -> None:
         await self.repo.delete(template_id, tenant_id)
+
+    # REQ-002-4: deprecation + deconstruction detection
+    async def deprecate(self, template_id: UUID, reason: str, tenant_id: UUID) -> dict | None:
+        existing = await self.repo.get(template_id, tenant_id)
+        if not existing:
+            return None
+        existing.is_deprecated = True
+        existing.deprecated_at = datetime.now(UTC)
+        existing.deprecated_reason = reason
+        existing.updated_at = datetime.now(UTC)
+        await self.repo.update(existing)
+        # AC-9: deprecate also writes a version snapshot (REQ-002-2
+        # consistency) but does NOT bump schema_version (per spec risk #6
+        # — deprecation is a lifecycle event, not a field-shape change).
+        await self._write_version_snapshot(existing)
+        return _entity_to_dto(existing)
+
+    async def undeprecate(self, template_id: UUID, tenant_id: UUID) -> dict | None:
+        existing = await self.repo.get(template_id, tenant_id)
+        if not existing:
+            return None
+        existing.is_deprecated = False
+        existing.deprecated_at = None
+        existing.deprecated_reason = None
+        existing.updated_at = datetime.now(UTC)
+        await self.repo.update(existing)
+        await self._write_version_snapshot(existing)
+        return _entity_to_dto(existing)
+
+    async def list_with_filter(
+        self, tenant_id: UUID, include_deprecated: bool = False
+    ) -> list[dict]:
+        """List templates with optional include_deprecated (AC: list_templates query)."""
+        templates = await self.repo.list(tenant_id)
+        result = [_entity_to_dto(t) for t in templates]
+        if not include_deprecated:
+            result = [t for t in result if not t["is_deprecated"]]
+        return result
 
     # REQ-002-2: clone / version / export / import
 
@@ -128,7 +253,8 @@ class TemplateService:
             fields=[f.to_dict() for f in template.fields],
             ai_prompt=template.ai_prompt,
             ai_context=template.ai_context,
-            schema_version=1,
+            # REQ-002-4: snapshot stores the current schema_version
+            schema_version=template.schema_version or 1,
             snapshot_at=datetime.now(UTC),
         )
         await version_repo.create(self._session, snapshot)
@@ -140,7 +266,10 @@ class TemplateService:
         original = await self.repo.get(template_id, tenant_id)
         if not original:
             return None
+        # REQ-002-4: validate cloned fields (in case original accumulated
+        # bad keys via older code paths or external import).
         cloned_fields = copy.deepcopy([f.to_dict() for f in original.fields])
+        self._validate_fields(cloned_fields)
         cloned = Template(
             id=uuid4(),
             tenant_id=tenant_id,
@@ -152,6 +281,11 @@ class TemplateService:
             source_file_id=UUID(dto.source_file_id) if dto.source_file_id else None,
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
+            # REQ-002-4: clone starts fresh — schema_version resets to 1
+            schema_version=1,
+            is_deprecated=False,
+            deprecated_at=None,
+            deprecated_reason=None,
         )
         await self.repo.create(cloned)
         return _entity_to_dto(cloned)
@@ -237,7 +371,9 @@ class TemplateService:
                 f"(payload={payload_schema}, current={current_schema})"
             )
 
-        # AC-9 / AC-10: field key regex + sibling uniqueness
+        # AC-9 / AC-10: field key regex + sibling uniqueness + REQ-002-4
+        # reserved-key + recursive validation. _validate_fields already
+        # walks children/items, so a single call covers the whole tree.
         self._validate_fields(dto.template.get("fields", []))
 
         name = dto.name_override or dto.template["name"]
@@ -252,24 +388,42 @@ class TemplateService:
             source_file_id=None,
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
+            # REQ-002-4
+            schema_version=1,
+            is_deprecated=False,
+            deprecated_at=None,
+            deprecated_reason=None,
         )
         await self.repo.create(template)
         return _entity_to_dto(template)
 
     def _validate_fields(self, fields: list, parent_key: str = "") -> None:
-        """AC-9 / AC-10: Recursively validate key naming and sibling uniqueness."""
+        """AC-9 / AC-10 / REQ-002-4 AC-12~AC-14: Recursively validate key
+        naming, sibling uniqueness, and reserved-meta-key collision.
+
+        Raises ``ValueError`` on the first violation; router maps to 422.
+        """
         seen: set[str] = set()
         for f in fields:
             key = f.get("key", "")
-            if not re.match(r"^[a-z][a-z0-9_]*$", key):
+            # REQ-002-4 AC-14: reserved meta key collision must be rejected
+            if key in _RESERVED_META_KEYS:
+                raise ValueError(
+                    f"field key {key!r} is reserved (REQ-002-3 meta key — "
+                    f"conflicts with structured_data['template'] merge)"
+                )
+            # AC-9: snake_case pattern
+            if not _FIELD_KEY_RE.match(key):
                 raise ValueError(
                     f"field key must match ^[a-z][a-z0-9_]*$ (got {key!r})"
                 )
+            # AC-10: sibling uniqueness
             if key in seen:
                 raise ValueError(
                     f"sibling field keys must be unique (duplicate {key!r})"
                 )
             seen.add(key)
+            # Recurse into children / items (REQ-002-4 risk #5)
             if f.get("children"):
                 self._validate_fields(f["children"], key)
             if f.get("items"):

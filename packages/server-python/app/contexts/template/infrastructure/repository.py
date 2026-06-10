@@ -45,6 +45,11 @@ class TemplateRepositoryImpl(TemplateRepository):
             source_file_id=template.source_file_id,
             created_at=template.created_at,
             updated_at=template.updated_at,
+            # REQ-002-4
+            schema_version=template.schema_version,
+            is_deprecated=template.is_deprecated,
+            deprecated_at=template.deprecated_at,
+            deprecated_reason=template.deprecated_reason,
         )
         self.session.add(model)
         await self.session.flush()
@@ -64,6 +69,11 @@ class TemplateRepositoryImpl(TemplateRepository):
             model.ai_context = template.ai_context
             model.source_file_id = template.source_file_id
             model.updated_at = template.updated_at
+            # REQ-002-4
+            model.schema_version = template.schema_version
+            model.is_deprecated = template.is_deprecated
+            model.deprecated_at = template.deprecated_at
+            model.deprecated_reason = template.deprecated_reason
         await self.session.flush()
         return template
 

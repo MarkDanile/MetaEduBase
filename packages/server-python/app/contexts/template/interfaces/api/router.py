@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.contexts.template.application.dto import (
     CloneTemplateRequest,
+    DeprecateTemplateRequest,
     FieldDTO,
     ImportTemplateRequest,
     TemplateAIInitRequest,
@@ -29,9 +30,12 @@ router = APIRouter(prefix="/api/v1/templates", tags=["templates"])
 async def list_templates(
     service: Annotated[TemplateService, Depends(get_template_service)],
     current_user: Annotated[dict, Depends(get_current_user)],
+    # REQ-002-4: include_deprecated filter (default false hides deprecated)
+    include_deprecated: bool = False,
 ):
     tenant_id = get_tenant_id()
-    return await service.list(tenant_id)
+    tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
+    return await service.list_with_filter(tenant_uuid, include_deprecated=include_deprecated)
 
 
 # NOTE: Specific routes must be defined BEFORE /{template_id}
@@ -78,7 +82,11 @@ async def create_template(
     current_user: Annotated[dict, Depends(get_current_user)],
 ):
     tenant_id = get_tenant_id()
-    return await service.create(dto, tenant_id)
+    tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
+    try:
+        return await service.create(dto, tenant_uuid)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
 
 
 @router.get("/{template_id}", response_model=TemplateResponse)
@@ -102,7 +110,11 @@ async def update_template(
     current_user: Annotated[dict, Depends(get_current_user)],
 ):
     tenant_id = get_tenant_id()
-    result = await service.update(UUID(template_id), dto, tenant_id)
+    tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
+    try:
+        result = await service.update(UUID(template_id), dto, tenant_uuid)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
     if not result:
         raise HTTPException(status_code=404, detail="Template not found")
     return result
@@ -160,7 +172,10 @@ async def clone_template(
 ):
     tenant_id = get_tenant_id()
     tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
-    result = await service.clone(UUID(template_id), dto, tenant_uuid)
+    try:
+        result = await service.clone(UUID(template_id), dto, tenant_uuid)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
     if not result:
         raise HTTPException(status_code=404, detail="Template not found")
     return result
@@ -227,6 +242,40 @@ async def export_template(
     tenant_id = get_tenant_id()
     tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
     result = await service.export_template(UUID(template_id), tenant_uuid)
+    if not result:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return result
+
+
+# REQ-002-4: deprecation endpoints
+# NOTE: must be defined BEFORE /{template_id} catch-all but since they
+# use POST .../{id}/deprecate, they are unique paths and order is safe.
+
+
+@router.post("/{template_id}/deprecate", response_model=TemplateResponse)
+async def deprecate_template(
+    template_id: str,
+    dto: DeprecateTemplateRequest,
+    service: Annotated[TemplateService, Depends(get_template_service)],
+    current_user: Annotated[dict, Depends(get_current_user)],
+):
+    tenant_id = get_tenant_id()
+    tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
+    result = await service.deprecate(UUID(template_id), dto.reason, tenant_uuid)
+    if not result:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return result
+
+
+@router.post("/{template_id}/undeprecate", response_model=TemplateResponse)
+async def undeprecate_template(
+    template_id: str,
+    service: Annotated[TemplateService, Depends(get_template_service)],
+    current_user: Annotated[dict, Depends(get_current_user)],
+):
+    tenant_id = get_tenant_id()
+    tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
+    result = await service.undeprecate(UUID(template_id), tenant_uuid)
     if not result:
         raise HTTPException(status_code=404, detail="Template not found")
     return result

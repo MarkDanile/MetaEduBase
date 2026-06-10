@@ -47,11 +47,19 @@ async def select_template(
     ``ai_chat(prompt)`` is expected to return a string of the form
     ``"<doc_type>\\n<confidence 0..1>"``. Any deviation is folded into
     a ``"none"`` result with a descriptive ``reason`` — the caller logs it.
+
+    REQ-002-4: deprecated templates (is_deprecated=True) are filtered out
+    of L1/L2/L3 candidates. If all matching templates are deprecated, the
+    selection falls through to ``"none"`` (or ``"L3"`` with low confidence)
+    so callers don't fail when a doc_type has only deprecated coverage.
     """
+
+    # REQ-002-4: filter out deprecated templates from selection
+    active_templates = [t for t in templates if not getattr(t, "is_deprecated", False)]
 
     # --- L1: exact doc_type match -----------------------------------------
     if doc_type:
-        for t in templates:
+        for t in active_templates:
             if doc_type in (t.doc_types or []):
                 return SelectionResult(
                     template=t,
@@ -63,7 +71,7 @@ async def select_template(
 
     # --- L2: filename substring match -------------------------------------
     if filename:
-        for t in templates:
+        for t in active_templates:
             for dt in t.doc_types or []:
                 if dt and dt in filename:
                     return SelectionResult(
@@ -75,13 +83,13 @@ async def select_template(
                     )
 
     # --- L3: AI confidence match ------------------------------------------
-    if not templates:
+    if not active_templates:
         return SelectionResult(
             template=None, layer="none", matched_type="",
             confidence=None, reason="no templates registered",
         )
 
-    all_doc_types = sorted({dt for t in templates for dt in (t.doc_types or []) if dt})
+    all_doc_types = sorted({dt for t in active_templates for dt in (t.doc_types or []) if dt})
     if not all_doc_types:
         return SelectionResult(
             template=None, layer="none", matched_type="",
@@ -119,8 +127,9 @@ async def select_template(
     else:
         confidence = 0.5  # single line: default mid confidence
 
+    # REQ-002-4: L3 only picks from active (non-deprecated) templates
     template_obj = next(
-        (t for t in templates if matched_type in (t.doc_types or [])),
+        (t for t in active_templates if matched_type in (t.doc_types or [])),
         None,
     )
 
