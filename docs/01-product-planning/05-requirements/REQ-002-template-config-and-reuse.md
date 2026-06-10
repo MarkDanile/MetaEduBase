@@ -1,6 +1,6 @@
 # REQ-002: 模板化结构抽取能力的配置与复用体验
 
-Status: 🟣 Shaping
+Status: 🔵 Ready
 Priority: P2
 Milestone: P1 / P2
 External:
@@ -42,19 +42,29 @@ REQ-002 的核心目标是把模板的**配置效率 + 复用机制 + 可观测�
    - 大模板浏览：在 30+ 字段的模板里支持"折叠/展开全部子树"和"按 label / key 搜索字段"。
 
 2. **复用机制**
-   - **跨租户 / 跨学期复制模板**：从已存在模板"另存为新模板"，保留 fields 嵌套结构与 ai_context，仅允许覆盖 name + doc_types + source_file_id。
-   - **模板版本快照**：在模板上保存"历史版本"（每次 update 写一条 version 记录），允许列表中查看最近 N 个版本并"回滚到该版本"。
-   - **模板导入 / 导出**：导出 JSON 模板定义（含嵌套 fields + ai_context），跨实例粘贴 JSON 即可重建模板。
+   - **同租户复制模板**：从已存在模板"另存为新模板"，保留 fields 嵌套结构与 ai_context，仅允许覆盖 name + doc_types + source_file_id（Q1 决议：仅同租户；跨租户在 P2 起另议，依赖权限与审计约束设计）。
+   - **模板版本快照**：每次 update 追加 version 记录，全量保留 + 分页查看，不做超限清理（Q2 决议：全量保留 + 分页；存储成本由模板上下文负责，不引入外部归档）。
+   - **模板导入 / 导出**：导出 JSON 模板定义（含嵌套 fields + ai_context + schema_version），跨实例粘贴 JSON 即可重建模板；导入时校验 schema_version，不匹配则提示用户手动确认。
 
 3. **可观测性**
-   - **抽取结果溯源**：在 `structured_data["template"]` 旁补充 `template_id` / `template_version` / `match_layer`，让"该文档究竟用了哪个模板哪个版本"成为可查事实。
+   - **抽取结果溯源**：在 `structured_data["template"]` 内扩展字段为 `{id, version, layer, ...data}`（Q3 决议：扩 template 字段），让"该文档究竟用了哪个模板哪个版本、命中哪一层"成为可查事实；旧 contract 测试需要随子任务同步对齐。
    - **模板使用率**：在 TemplateListView 展示"该模板关联的文档数、最近一次抽取时间、平均字段填充率"，让"哪些模板被冷落"可见。
    - **模板与 doc_type 命中统计**：在 Backend 增加 `GET /api/v1/templates/usage-stats` 端点，按模板聚合 doc_type 覆盖文档数。
+   - **字段填充率定义**（Q4 决议：可配置）：默认统计窗口近 30 天，默认口径只看叶子字段（text/textarea/number），UI 允许在"窗口（7d/30d/90d/全部）× 口径（叶子/全量）"两轴切换。
 
 4. **可维护性**
    - **模板与 doc_type 一致性**：单一 doc_type 仍只允许一个活跃模板占用（沿用 `check-doc-type`），但允许"标记 deprecated" 老模板，避免被新文档误命中。
-   - **schema 演进策略**：模板字段类型 / 嵌套结构 / columns 定义的破坏性变更必须经过 schema 版本字段校验，避免旧抽取结果字段错位。
+   - **schema 演进策略**（Q6 决议：text/textarea/number 内可改，其余需 schema_version 递增 + 二次确认）：
+     - 叶子类型互转（text ⇄ textarea ⇄ number）允许直接保存，schema_version 不递增。
+     - object ⇄ table ⇄ array 互转、删除容器字段、删除叶子字段、修改叶子字段 key：必须 `schema_version += 1` 且 UI 二次确认（影响范围提示：现有抽取结果里的该字段会被裁剪/失配）。
+     - 新增字段（任意类型）允许，schema_version 不递增。
    - **模板字段命名规范**：校验 `key` 必须是 `^[a-z][a-z0-9_]*$`，禁止与已有字段 key 重复（同一层），避免抽取后端解析失败。
+
+5. **配置效率（编辑器能力补齐）**
+   - **拖拽排序**（Q5 决议：root + object 子字段 + array 项模板三层）：root 层 / object children / array items 都允许拖拽；不需要持久化到 ai_context，仅影响 fields 数组顺序。
+   - **字段引用与复制**：在 object / array 子树上支持"复制子树"，减少重复字段定义。
+   - **字段删除可逆**：删除字段时提示影响范围（已有抽取结果里的该字段会被裁剪），并支持 1 步撤销（站内 toast 撤销 / 软删除均可）。
+   - **大模板浏览**：在 30+ 字段的模板里支持"折叠/展开全部子树"和"按 label / key 搜索字段"。
 
 ### 不包含
 
@@ -66,46 +76,57 @@ REQ-002 明确不包含以下事项，避免范围蔓延：
 - 不做模板的权限分级（谁能改 / 谁能用）；现有登录 + 租户隔离即满足 P1 / P2 需求。
 - 不做模板的"模板市场"或对外发布，跨租户复制限制在"由用户在 UI 显式发起"。
 - 不把模板与 RAG 召回 / KG 抽取耦合；REQ-002 只动模板上下文，不动 knowledge / rag 上下文。
+- 不在 P1 做跨租户复制（Q1 决议：P1 仅同租户；跨租户在 P2 起再评估权限与审计约束）。
 
 ## 验收（建议拆为多个 REQ 子任务 / 单独 PR）
 
-REQ-002 是塑形阶段的 Shaping 条目，验收标准随子任务展开。在塑形阶段必须明确的边界：
+REQ-002 的塑形期已完成澄清（见「决策记录」段），可拆分为 4 个子任务进入开发。每个子任务验收必须满足以下边界：
 
 | 边界 | 要求 |
 |------|------|
+| 决议一致性 | 子任务实现不得偏离「决策记录」段决议；如需偏离，必须先回到本 requirement 修订决议并走独立 follow-up |
 | 验收口径 | 子任务必须给出 N 条验收点（参考 REQ-005 的 AC-1 ~ AC-11 写法），不能只写"完成模板配置" |
 | 行为变化声明 | 若涉及业务代码改动，每个子任务必须明确写出"行为不变 / 行为变化点列表" |
 | 复用边界 | 子任务不得把 RAG / KG / 文档解析上下文的功能"顺手"加进来；越界改动按 follow-up 登记 |
-| 测试要求 | 涉及编辑器交互的子任务必须至少 1 条 e2e 或可视化回归（puppeteer / playwright / 手测截图任选其一） |
-| 文档同步 | 子任务完成后必须同步 TemplateListView / TemplateEditorView / TemplateAiPanel 的内嵌说明与 docstring |
+| 测试要求 | 涉及编辑器交互的子任务（REQ-002-1）必须至少 1 条 e2e 或可视化回归（puppeteer / playwright / 手测截图任选其一）；涉及 contract 扩展的子任务（REQ-002-3）必须回归 REQ-005 / REQ-006 相关断言 |
+| 文档同步 | 子任务完成后必须同步 TemplateListView / TemplateEditorView / TemplateAiPanel / ExtractedDataRenderer 的内嵌说明与 docstring |
+| 依赖顺序 | REQ-002-3 必须先于 REQ-002-1 / REQ-002-2 / REQ-002-4 进入开发（`structured_data["template"]` 字段扩展是后续 contract 基线） |
 
-## 待回答问题（塑形期必须澄清）
+## 决策记录（2026-06-10 塑形澄清）
 
-1. **复用范围**：跨租户 / 跨学期"复制模板"是 P1 必备还是 P2 必备？若 P1 必备，需要哪些权限与审计约束？
-2. **模板版本快照**：保留全部历史版本还是只保留最近 N 条？超限后的清理策略？
-3. **抽取结果回写**：`template_id` / `template_version` 是补写到现有 `structured_data["template"]` 旁还是另起一个字段（如 `template_meta`）？需要 REQ-006 / 文档上下文协作配合，避免旧字段被新结构覆盖。
-4. **字段填充率**：以什么指标定义"字段填充率"（非空字段数 / 总字段数？叶子字段 vs 容器字段？）？统计窗口（近 7 天 / 30 天 / 全部）？
-5. **拖拽排序**：仅 root 层还是包含 object 子字段 / array 项模板？拖拽后的状态是否需要持久化到 ai_context 或独立字段？
-6. **schema 演进**：字段类型变化（text → table）是否允许？破坏性变更（删字段）是否需要两步确认？
+| # | 问题 | 决议 | 影响范围 |
+|---|------|------|----------|
+| Q1 | 复用范围：跨租户 / 跨学期"复制模板"在 P1 / P2 哪个阶段必备？ | **P1 仅同租户复制**；跨租户在 P2 起再评估权限与审计约束。 | 复用机制子任务；不需要新建权限分级 / 审计表。 |
+| Q2 | 版本快照：保留多少条历史？超限清理策略？ | **全量保留 + 分页**，不做超限清理。 | 模板版本表全量增长；UI 需提供分页；存储由 PostgreSQL JSONB 承担。 |
+| Q3 | 抽取结果回写：template_id / template_version 补写到哪里？ | **扩 `structured_data["template"]` 字段**：结构变为 `{id, version, layer, ...data}`。 | 涉及 REQ-005 contract 测试与 REQ-006 e2e 断言同步对齐；document 上下文需要新增字段写入逻辑。 |
+| Q4 | 字段填充率指标定义与统计窗口？ | **可配置**：默认近 30 天 + 叶子字段非空率；UI 允许在"窗口（7d/30d/90d/全部）× 口径（叶子/全量）"两轴切换。 | 模板使用率子任务需提供后端聚合端点 + 前端切换控件。 |
+| Q5 | 拖拽排序允许哪些层？是否持久化到 ai_context？ | **root + object 子字段 + array 项模板三层**均可拖；**不持久化到 ai_context**，仅影响 fields 数组顺序。 | 配置效率子任务；vuedraggable 已在依赖里，需集成到 FieldItem 树。 |
+| Q6 | schema 演进约束？ | **text/textarea/number 内可改（schema_version 不递增）**；其余破坏性变更（容器互转、删字段、改叶子 key）必须 `schema_version += 1` + UI 二次确认。 | 可维护性子任务；template entity / DTO 新增 `schema_version` 字段；前端 editor 增加"破坏性变更"二次确认弹窗。 |
+
+这些决议是 REQ-002 子任务拆分的边界条件。任何子任务在实现时若与上述决议冲突，必须先回到本 requirement 修订决议（新建 REQ-xxx follow-up 或直接修订本文件），不得"实现顺手"改变决议。
 
 ## 下一步
 
-REQ-002 当前处于塑形阶段，下一步按以下顺序推进：
+REQ-002 已完成塑形（Shaping → Ready 过渡），下一步按以下顺序推进：
 
-1. **塑形收口（当前 PR 范围内）**
-   - 沉淀本 requirement 文件为后续 spec / plan 的入口。
-   - 把 backlog `下一步` 从"从历史 superpower计划中提炼需求边界"改为"完成塑形并拆分为子任务列表"。
-   - 在 current-work `下一批候选任务` 维持 Shaping 不变；候选状态未变。
-
-2. **子任务拆分（Shaping → Ready 过渡时）**
-   - 把"配置效率 / 复用机制 / 可观测性 / 可维护性"四块拆为独立子任务（建议编号 REQ-002-1 ~ REQ-002-4 或独立新 ID，由用户/团队约定）。
+1. **子任务拆分**（立即可做）：
+   - 把"配置效率 / 复用机制 / 可观测性 / 可维护性"四块拆为独立子任务。**建议子任务编号**（具体由用户在 backlog 创建时确认）：
+     - **REQ-002-1 配置效率**：拖拽排序（Q5）+ 字段引用与复制 + 字段删除可逆 + 大模板浏览。
+     - **REQ-002-2 复用机制**：同租户复制模板（Q1）+ 模板版本快照（Q2）+ JSON 导入导出。
+     - **REQ-002-3 可观测性**：抽取结果溯源字段扩展（Q3）+ 模板使用率展示 + 字段填充率可配置（Q4）+ `usage-stats` 端点。
+     - **REQ-002-4 可维护性**：schema_version 字段 + 容器互转 / 删字段二次确认（Q6）+ deprecated 标记 + 字段命名规范校验。
    - 每子任务先建 spec（在 `docs/02-delivery-plans/01-specs/`）+ plan（在 `docs/02-delivery-plans/02-plans/`），再进入开发。
-   - 涉及跨 backend + frontend + 数据迁移的子任务按 `superpower` 模式跑；纯前端编辑器补齐可按 `plan-do` 模式。
+   - 涉及跨 backend + frontend + 数据迁移的子任务（REQ-002-2 / REQ-002-3 / REQ-002-4）按 `superpower` 模式跑；纯前端编辑器补齐（REQ-002-1）可按 `plan-do` 模式。
 
-3. **明确依赖与边界**
+2. **依赖与边界**：
+   - **REQ-002-3（可观测性）必须先于** REQ-002-1 / REQ-002-2 / REQ-002-4 进入开发：因为 `structured_data["template"]` 字段扩展（Q3）会影响后续子任务的 contract 测试基线。
    - 与 REQ-006（P1 演示验收）保持独立：REQ-002 子任务不得为了"演示好看"而扩大范围。
    - 与 `check-engineering-docs` / 质量门禁脚本保持同步：每个子任务的"行为变化声明"必须能通过门禁扫描。
-   - 与 memory 中 `next-phase-roadmap.md` 提到的"结构化抽取模板页面"对齐：REQ-002 的子任务优先满足"模板页面"路线图。
+   - 与 memory 中 `next-phase-roadmap.md` 提到的"结构化抽取模板页面"对齐：REQ-002-1 / REQ-002-2 优先满足"模板页面"路线图。
+
+3. **里程碑归属**：
+   - REQ-002-1 / REQ-002-3 → P2 阶段（与 milestone 02-growth-phase 对齐）。
+   - REQ-002-2 / REQ-002-4 → P2 / P3 视迭代容量决定。
 
 ## 历史事实源
 
