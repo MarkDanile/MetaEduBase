@@ -135,6 +135,7 @@
 | DOC-055 | 收口 DOC-042 / TD-034 PR 范围混入与事实源漂移 | 🟢 完成 | P1 | 文档 / 工程流程 / 质量门禁 | DOC-042 review / [Review Score Log](04-retrospectives/review-score-log.md) |
 | TD-039 | 6 键保留集合（`id` / `version` / `layer` / `matched_type` / `confidence` / `reason`）抽到 `@metaedu/shared/schemas/document` 作为 single source of truth | ⚫ 待办 | P3 | 前端 / 后端 / API | REQ-002-3 code review / 当前 `FileTabsPanel.vue:159-166` 与后端 `extract_template_prompts.py:19-22` 各自硬编码 |
 | TD-040 | `FileTabsPanel.spec.ts` Vue 单元测试覆盖 AC-11（6 键过滤）/ AC-12（card 渲染 / 老数据隐藏 / layer none 分支 / version 为 null） | ⚫ 待办 | P2 | 前端 / 测试 / 交付 | REQ-002-3 code review / 当前仅靠 `data-testid="template-source-meta"` 无 Vue-level 锁 |
+| DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 
 ## 任务详情
 
@@ -1856,3 +1857,44 @@
 
 **交付记录**
 - 未完成。
+
+### DOC-056: `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚的算法 bug
+
+状态：🟢 完成
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 文档 / 工程脚本 / 质量门禁 |
+| 事实源 | REQ-002-3 收口 / [PR TBD] |
+
+**证据**
+- `scripts/engineering/checks/_common.py:37` `REQ_ID_RE = re.compile(r"\bREQ-\d{3}\b")`：`\b` 在数字与 `-` 之间是 word boundary，导致 `REQ-002-3` 在 `search` / `match` 时匹到 `REQ-002`。
+- `scripts/engineering/checks/product_planning.py:135` `REQ_ID_RE.search(path.name)`：把 requirement 文件名聚到父任务。
+- `scripts/engineering/checks/product_planning.py:184` `REQ_ID_RE.search(cells[0] if ... else cells[1])`：把 current-work "最近完成" / "当前进行中" 任务列的子任务聚到父任务。
+- 触发条件：父任务状态 ≠ 子任务状态时报警；2026-06-10 REQ-002-3 子任务翻 Done 时首次暴露（见 PR #154 提交注释中绕过说明）。
+- REQ-006 子任务链（REQ-006 / REQ-006-1）此前未撞是因为子任务状态一直与父任务保持同步。
+
+**问题**
+- `check_req_status_consistency` 报警是 false-positive，导致后续维护者不敢对子任务状态单独维护。
+- 当前合 main 仍存在此 bug 时，正确处理"父任务链收口"的方式只能是手动同步 4 处事实源 + 绕过 `current-work` 的"最近完成"区。
+
+**完成标准**
+- `REQ_ID_RE` 扩展为 `\bREQ-\d{3}(?:-\d+)?(?![-\d])`：识别 `REQ-NNN` 与 `REQ-NNN-K` 为不同 task id；不允许向后接续 `-数字`。
+- 新增 `test_parent_and_child_req_with_different_status_do_not_collide` regression：父任务 Ready + 子任务 Done 不再报警。
+- 仓库 `python3 scripts/check-engineering-docs` 在 REQ-002 / REQ-002-3 当前状态（父 Ready / 子 Done）下 rc=0。
+
+**验证方式**
+- `python3 -m pytest tests/engineering/test_check_engineering_docs.py -v` → 20 passed（19 既有 + 1 新增）。
+- `python3 scripts/check-engineering-docs` → `engineering docs checks passed` rc=0。
+- `git diff --check` clean。
+- 行为边界检查：`fullmatch("REQ-002-3-extra")` → 0 命中（保留 `-\d+` 末端的字边界）；`fullmatch("REQ-00233")` → 0 命中（5 位数父任务不误匹为 4 位子任务）。
+
+**交付记录**
+- 2026-06-10 完成（接手工具：Claude Code）。代码 + 测试 + 状态同步 3 文件共 +5 / -3 行；零业务代码改动。原子拆分：
+  1. `scripts/engineering/checks/_common.py`：`REQ_ID_RE` 模式扩为 `\bREQ-\d{3}(?:-\d+)?(?![-\d])`，允许 `REQ-NNN-K` 子任务格式；保留 `\b` 起始以避免误匹 `XREQ-002-3`；`(?![-\d])` 防止 `REQ-002-3` 回退到 `REQ-002`。
+  2. `tests/engineering/test_check_engineering_docs.py`：新增 `test_parent_and_child_req_with_different_status_do_not_collide`，通过 minimal docs 模拟 backlog / milestone / current-work 三处父子状态不一致场景；测试同时在修脚本前 failing、修脚本后 passing。
+  3. `docs/03-engineering-governance/current-work.md`：删除"当前进行中"区 REQ-002-3 残留 Ready 行（PR #153 merge 时残留，PR #154 撤回"最近完成"行时未触及此行；该行是脚本修复后暴露的真实不一致）。
+- 行为变化声明：脚本逻辑收紧（更精确的 task_id 匹配），对 0 业务代码 / 0 API 行为有影响；仅影响 `check-engineering-docs` 跨事实源状态一致性 check。
+- 验证摘要：脚本修复后自动暴露 main `current-work.md:19` 的 REQ-002-3 残留行；删除该行后 `check-engineering-docs` rc=0 恢复。
+- 顺带说明：TD-039 / TD-040（REQ-002-3 code review follow-up）保持 ⚫ 待办。
