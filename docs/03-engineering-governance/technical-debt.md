@@ -133,6 +133,8 @@
 | DOC-045 | 修正 TD-033 CSS 拆分交付声明与追踪证据 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-033 review / [#137](https://github.com/MarkDanile/MetaEduBase/pull/137) (`b815942`) |
 | DOC-042 | 脚本化 TD-032 行数基线扫描 | 🟢 完成 | P2 | 文档 / 工程治理 / 工程脚本 | [Baseline](02-baselines/td-032-source-file-sizes.md) / [PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143) |
 | DOC-055 | 收口 DOC-042 / TD-034 PR 范围混入与事实源漂移 | 🟢 完成 | P1 | 文档 / 工程流程 / 质量门禁 | DOC-042 review / [Review Score Log](04-retrospectives/review-score-log.md) |
+| TD-039 | 6 键保留集合（`id` / `version` / `layer` / `matched_type` / `confidence` / `reason`）抽到 `@metaedu/shared/schemas/document` 作为 single source of truth | ⚫ 待办 | P3 | 前端 / 后端 / API | REQ-002-3 code review / 当前 `FileTabsPanel.vue:159-166` 与后端 `extract_template_prompts.py:19-22` 各自硬编码 |
+| TD-040 | `FileTabsPanel.spec.ts` Vue 单元测试覆盖 AC-11（6 键过滤）/ AC-12（card 渲染 / 老数据隐藏 / layer none 分支 / version 为 null） | ⚫ 待办 | P2 | 前端 / 测试 / 交付 | REQ-002-3 code review / 当前仅靠 `data-testid="template-source-meta"` 无 Vue-level 锁 |
 
 ## 任务详情
 
@@ -1776,3 +1778,81 @@
   - `python3 scripts/check-engineering-docs` → 退出码 0（`engineering docs checks passed`）。
   - `git diff --check` → 退出码 0。
   - 未运行：lint / pytest —— DOC-055 范围是 docs-only + 状态收口 + baseline refresh，按 `quality-gates.md#验证表述规范` 不强制后端 lint / pytest 复跑。
+
+### TD-039: 6 键保留集合抽到 `@metaedu/shared/schemas/document` 作为 single source of truth
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P3 |
+| 领域 | 前端 / 后端 / API / 共享 schema |
+| 事实源 | REQ-002-3 code review of Tasks 6+7（M-2） / [PR TBD] |
+
+**证据**
+- `packages/web/src/views/resource/FileTabsPanel.vue:159-166` 硬编码 6 键 `RESERVED_META_KEYS`。
+- `packages/server-python/app/contexts/document/application/tasks/extract_template_prompts.py:19-20` 硬编码同 6 键 `_TEMPLATE_META_KEYS`。
+- 后端 spec `docs/02-delivery-plans/01-specs/2026-06-10-req-002-3-template-source-tracking.md:23` 文字再列 1 次。
+- 三处任意一处扩展保留键（如 REQ-002-4 引入 `schema_version` 字段后，前端可能想加 `tenant_id` 隔离），其余两处不自动跟上。
+
+**问题**
+- 保留键契约在前 / 后端 / 文档三处重复实现，single source of truth 缺失。
+- 后续子任务（REQ-002-1 / REQ-002-2 / REQ-002-4 / 任何 schema 演进）容易在某一处漏改，触发 contract 漂移。
+
+**完成标准**
+- 在 `packages/shared/src/schemas/document.ts`（已存在的 Zod schema 旁）导出 `TEMPLATE_META_RESERVED_KEYS: ReadonlySet<string>` 常量（命名沿用既有 helper 如 `getTemplateStructuredData`）。
+- 后端 `extract_template_prompts.py` 从 `metaedu.shared.schemas.document` import 常量替换硬编码（共享 schema 包打通后端 / 前端 import 路径）。
+- 前端 `FileTabsPanel.vue` 改为 `import { TEMPLATE_META_RESERVED_KEYS } from '@metaedu/shared/schemas/document'`。
+- spec 文字列表改为"见 `TEMPLATE_META_RESERVED_KEYS`"。
+- `rg -n "id|version|layer|matched_type|confidence|reason" packages/web/src/views/resource/FileTabsPanel.vue | grep "new Set\|(\"id\""` → 0 命中。
+
+**验证方式**
+- `pnpm typecheck` 退出码 0（前端仍能 import 共享 schema 包的 string-only 常量）。
+- `pnpm lint` 退出码 0（`@metaedu/web#lint`，与本任务直接相关；`@metaedu/shared#lint` 仍受 ESLint v10 基础设施阻塞，已记为独立 follow-up）。
+- `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_structured_data_contract.py tests/contexts/document/test_extract_template_prompts.py -q` 仍 21 passed（不破坏既有 AC-1 ~ AC-5 / AC-9）。
+- `rg -rn "RESERVED_META_KEYS|TEMPLATE_META_KEYS|6 个保留键" packages/ docs/02-delivery-plans/` 输出 1 个常量声明 + 1 个常量引用，0 个硬编码。
+- `python3 scripts/check-engineering-docs` 退出码 0。
+- `git diff --check` 退出码 0。
+
+**交付记录**
+- 未完成。
+
+### TD-040: `FileTabsPanel.spec.ts` Vue 单元测试覆盖 AC-11 / AC-12
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 前端 / 测试 / 交付 / 质量门禁 |
+| 事实源 | REQ-002-3 code review of Tasks 6+7（I-2） / [PR TBD] |
+
+**证据**
+- 当前 `FileTabsPanel.vue` 的 AC-11（6 键保留键过滤）与 AC-12（`template.id` 存在 → 显示溯源元信息卡；不存在 → 隐藏；`layer === "none"` 分支显示 `reason`）只能靠读代码 + `pnpm typecheck / lint` 验证。
+- `data-testid="template-source-meta"` 已在 `FileTabsPanel.vue:25` 留好接口，但无消费方。
+- 后端 Tasks 3+4 用 6 条 pytest 锁定 AC-1 ~ AC-5 / AC-9；前端 AC-11 / AC-12 缺对偶测试。
+- 后续 PR 改动 `FileTabsPanel.vue` 时，CI 仅能拦截 type / lint 错误，无法拦截"6 键被错误渲染"或"card 在老数据下误显示"。
+
+**问题**
+- AC-11 / AC-12 是 spec-level 验收点，缺乏 Vue-level 自动化测试。
+- 测试基础设施（vitest / @vue/test-utils）项目内尚无可参照用法，需要先评估引入成本（与 `td-031` / `td-035` 类似的"质量门禁"债务）。
+
+**完成标准**
+- 评估 `packages/web` 当前测试基础设施状态（`vitest` / `@vue/test-utils` 是否已安装；若未安装，给出最小引入方案）。
+- 新增 `packages/web/src/views/resource/FileTabsPanel.spec.ts`，至少覆盖：
+  1. 给定 `structuredData.template = { id: "x", version: 1, layer: "L1", title: "..." }`：渲染 6 个保留键之外的字段；`data-testid="template-source-meta"` 元素存在并显示 `x` / `1` / `L1`。
+  2. 给定 `structuredData.template = { id: "x", layer: "none", reason: "" }`：card 显示 `x` / `-` / `无匹配模板`。
+  3. 给定 `structuredData.template = { title: "..." }`（老数据）：card 不渲染；过滤后 1 个字段。
+  4. 给定 `structuredData.template = {}`（仅含保留键）：`EmptyState` 显示。
+  5. 给定 `structuredData = null`：card 不渲染 + EmptyState 显示。
+- `pnpm test` 退出码 0；上述 5 个用例全过。
+
+**验证方式**
+- `pnpm test` 输出含 5 个新 test_ 名称，全过。
+- `pnpm typecheck` + `pnpm lint`（`@metaedu/web#lint`）退出码 0。
+- `rg -n "data-testid=\"template-source-meta\"" packages/web/src/` → 1 处定义 + 1 处测试断言。
+- `python3 scripts/check-engineering-docs` 退出码 0。
+- `git diff --check` 退出码 0。
+
+**交付记录**
+- 未完成。
