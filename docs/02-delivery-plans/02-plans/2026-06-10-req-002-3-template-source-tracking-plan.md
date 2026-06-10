@@ -12,8 +12,7 @@
   - `meta` 必须含 `id` / `version` / `layer` 三个核心键才写入，否则回退旧行为 + WARNING 日志。
   - `extract_template` Celery 任务在 template_obj 非 None 且 selection.layer in {"L1", "L2", "L3"} 时构造 meta 并传入。
 - **前端**：
-  - `ExtractedDataRenderer.vue` 过滤 6 个保留键（不渲染为字段）。
-  - `FileDetailView.vue` 模板抽取 Tab 顶部新增溯源元信息卡（老数据不显示）。
+  - `FileTabsPanel.vue` 结构化 Tab 过滤 6 个保留键（不渲染为字段） + 顶部新增溯源元信息卡（老数据不显示）。**注**：原计划为 `ExtractedDataRenderer.vue` / `FileDetailView.vue`，实现前验证 `FileTabsPanel.vue` 才是热路径（其使用 `FieldValue.vue` 按 `Object.keys(template)` 驱动）。`ExtractedDataRenderer.vue` 在本任务范围外。
 
 **Tech Stack:** Python 3.11+ / pytest 8.3+ / FastAPI / Vue 3 + TypeScript / Vue Query / Tailwind。
 
@@ -35,8 +34,7 @@
 | `tests/contexts/document/test_structured_data_contract.py`（修改） | 4 条既有断言按新 shape 更新 + 新增 ≥2 条 meta 路径断言 | AC-8 |
 | `tests/contexts/document/test_extract_template_prompts.py`（修改） | 新增 ≥1 条 meta + 嵌套浅拷贝组合用例 | AC-9 |
 | `tests/e2e/test_p1_demo.py`（修改） | AC-3 步骤新增 `id` / `layer` 断言 | AC-10 |
-| `packages/web/src/views/admin/ExtractedDataRenderer.vue`（修改） | 递归渲染 data 时过滤保留键 | AC-11 |
-| `packages/web/src/views/resource/FileDetailView.vue`（修改） | 模板抽取 Tab 顶部新增溯源元信息卡 | AC-12 |
+| `packages/web/src/views/resource/FileTabsPanel.vue`（修改） | 结构化 Tab 过滤保留键 + 顶部新增溯源元信息卡 | AC-11 + AC-12 |
 | `docs/01-product-planning/02-milestones/01-validation-phase.md`（修改） | Open Items 加 REQ-002-3 行 | AC-16 |
 | `docs/01-product-planning/02-milestones/02-growth-phase.md`（修改） | Open Items 加 REQ-002-3 行 | AC-16 |
 | `docs/01-product-planning/04-backlog.md`（修改） | 新建 REQ-002-3 行 | AC-16 |

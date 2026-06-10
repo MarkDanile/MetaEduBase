@@ -28,9 +28,7 @@
 - **e2e 同步**：
   - `packages/server-python/tests/e2e/test_p1_demo.py` AC-3 步骤（`test_p1_demo_step3_template_extract`）：在 `assert template, ...` 后新增对 `template["id"]` / `template["layer"]` 的存在性 + 类型断言（不验证具体值，避免 demo 数据漂移）。
 - **前端渲染兼容**：
-  - `packages/web/src/views/admin/ExtractedDataRenderer.vue`：在递归渲染 data 时，过滤掉保留键（`id` / `version` / `layer` / `matched_type` / `confidence` / `reason`），让用户只看到 LLM 抽取字段。
-  - `packages/web/src/components/TableRenderer.vue`：无需修改（只接受 `columns` + `rows` 入参，不过滤 `data`）。
-  - `packages/web/src/views/resource/FileDetailView.vue` 模板抽取 Tab：在 `ExtractedDataRenderer` 上方新增一个"溯源元信息"小卡（只读），显示 `id` / `version` / `layer` / `matched_type` / `confidence`；`reason` 仅在 `layer === "none"` 时显示。
+  - `packages/web/src/views/resource/FileTabsPanel.vue`：在结构化 Tab 渲染 `structured_data.template` 时过滤掉保留键（`id` / `version` / `layer` / `matched_type` / `confidence` / `reason`），让用户只看到 LLM 抽取字段；并在 Tab 顶部新增一个"溯源元信息"小卡（只读），显示 `id` / `version` / `layer` / `matched_type` / `confidence`；`reason` 仅在 `layer === "none"` 时显示。**实际修改目标在派发阶段确认**：原计划为 `ExtractedDataRenderer.vue` / `FileDetailView.vue`，控制器实现前验证 `FileTabsPanel.vue` 才是结构化 Tab 热路径（其使用 `FieldValue.vue` 按 `Object.keys(template)` 驱动）。`ExtractedDataRenderer.vue` 在本任务范围外、不修改。
 - **API 契约同步**：
   - `FileDTO.structured_data` 的 OpenAPI / 类型定义（`packages/web/src/services/document.ts` 等）：无需修改 schema，因为 `structured_data` 已经是 `Record<string, any>` 类型；只在 contract 测试中固定新 shape。
 - **文档回填**：
@@ -68,8 +66,8 @@
 | AC-8 | 既有 contract 测试同步对齐 | `tests/contexts/document/test_structured_data_contract.py` 中 4 条 `_merge_template_structured_data` 既有断言按新 shape 更新：`template == {"id": ..., "version": ..., "layer": ..., ...data}`；不修改业务行为；不删除任何断言（仅更新等价值）。 | 删除既有断言 / 既有断言 shape 仍指向旧契约 |
 | AC-9 | 既有 extract_template_prompts 测试同步 | `tests/contexts/document/test_extract_template_prompts.py` AC-8（嵌套浅拷贝）至少 1 条用例显式覆盖 meta + 嵌套 data 的组合，确保浅拷贝契约在 meta 路径下不破。 | 缺少 meta + 嵌套组合用例 |
 | AC-10 | e2e P1 demo 同步 | `tests/e2e/test_p1_demo.py::test_p1_demo_step3_template_extract` 在已有 `assert template, ...` 之后新增：`assert "id" in template and "layer" in template and isinstance(template["id"], str) and template["layer"] in {"L1", "L2", "L3"}`；保留 AC-3 既有断言（`basic_info` 子结构）。 | 删了既有断言 / 新断言失败 |
-| AC-11 | 前端 ExtractedDataRenderer 过滤保留键 | 渲染 `structured_data.template` 时，`id` / `version` / `layer` / `matched_type` / `confidence` / `reason` 6 个保留键不出现在字段列表中（即用户只看到 `template_data` 字段）。 | 保留键被当作字段渲染（出现 input/textarea 占位） |
-| AC-12 | 前端 FileDetailView 模板抽取 Tab 新增溯源元信息卡 | 当 `template.id` 存在时，Tab 顶部显示一行只读元信息：`模板 ID: <id> · 版本: <version or '-'> · 命中: <layer>`；`layer === "none"` 时改为显示 `未命中模板: <reason>`。当 `template.id` 不存在（layer none / 老数据）时不显示该卡。 | 老数据下显示空 ID / 命中卡始终显示 |
+| AC-11 | 前端 `FileTabsPanel` 结构化 Tab 过滤保留键 | 渲染 `structured_data.template` 时，`id` / `version` / `layer` / `matched_type` / `confidence` / `reason` 6 个保留键不出现在字段列表中（即用户只看到 `template_data` 字段）。 | 保留键被当作字段渲染（出现 input/textarea 占位） |
+| AC-12 | 前端 `FileTabsPanel` 结构化 Tab 新增溯源元信息卡 | 当 `template.id` 存在时，Tab 顶部显示一行只读元信息：`模板 ID: <id> · 版本: <version or '-'> · 命中: <layer>`；`layer === "none"` 时改为显示 `未命中模板: <reason>`。当 `template.id` 不存在（layer none / 老数据）时不显示该卡。 | 老数据下显示空 ID / 命中卡始终显示 |
 | AC-13 | 回归命令可复现 | `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/document/test_structured_data_contract.py tests/contexts/document/test_extract_template_prompts.py tests/contexts/document/test_extract_template_selection.py tests/contexts/template/test_template.py tests/e2e/test_p1_demo.py -q` 全部通过（pytest exit 0）。 | 任一文件失败 |
 | AC-14 | 前端 typecheck + lint | `cd packages/web && pnpm typecheck` 退出码 0；`pnpm lint` 退出码 0。 | 退出码非 0 |
 | AC-15 | 工程门禁 | `python3 scripts/check-engineering-docs` 退出码 0；`git diff --check` 干净。 | 退出码非 0 |
@@ -81,8 +79,7 @@
 
 - `packages/server-python/app/contexts/document/application/tasks/extract_template_prompts.py:_merge_template_structured_data`（扩展签名 + 接受 meta）
 - `packages/server-python/app/contexts/document/application/tasks/extract_template.py:extract_template`（在落盘前构造 meta 并传入；template_obj 为 None / layer == "none" 时不传）
-- `packages/web/src/views/admin/ExtractedDataRenderer.vue`（过滤保留键）
-- `packages/web/src/views/resource/FileDetailView.vue`（在 Tab 顶部新增溯源元信息卡）
+- `packages/web/src/views/resource/FileTabsPanel.vue`（过滤保留键 + 在结构化 Tab 顶部新增溯源元信息卡；`FieldValue.vue` 保持纯组件不感知保留键）
 
 测试 / 改动文件：
 
@@ -91,8 +88,7 @@
 - 修改：`packages/server-python/tests/contexts/document/test_structured_data_contract.py`（AC-8）
 - 修改：`packages/server-python/tests/contexts/document/test_extract_template_prompts.py`（AC-9）
 - 修改：`packages/server-python/tests/e2e/test_p1_demo.py`（AC-10）
-- 修改：`packages/web/src/views/admin/ExtractedDataRenderer.vue`（AC-11）
-- 修改：`packages/web/src/views/resource/FileDetailView.vue`（AC-12）
+- 修改：`packages/web/src/views/resource/FileTabsPanel.vue`（AC-11 + AC-12）
 - 修改：`docs/01-product-planning/02-milestones/01-validation-phase.md`（AC-16）
 - 修改：`docs/01-product-planning/02-milestones/02-growth-phase.md`（AC-16）
 - 修改：`docs/01-product-planning/04-backlog.md`（AC-16，新建 REQ-002-3 行）
@@ -104,8 +100,7 @@
 
 - `packages/server-python/app/contexts/document/application/tasks/extract_template_prompts.py`（_merge_template_structured_data 签名 + meta 合并逻辑）
 - `packages/server-python/app/contexts/document/application/tasks/extract_template.py`（在 `_merge_template_structured_data` 调用前构造 meta）
-- `packages/web/src/views/admin/ExtractedDataRenderer.vue`（过滤保留键）
-- `packages/web/src/views/resource/FileDetailView.vue`（溯源元信息卡）
+- `packages/web/src/views/resource/FileTabsPanel.vue`（过滤保留键 + 溯源元信息卡）
 
 测试改动：
 
@@ -141,8 +136,8 @@
 | `extract_template` 日志 | 新增"meta ignored unknown key" / "meta incomplete, falling back"两种 WARNING（频率低，仅在 misuse / 缺失时） |
 | `select_template` / 模板匹配优先级 / L3 阈值 | 不变 |
 | `extract_template` prompt 构造 / LLM 调用 / JSON 解析 / Celery chain / `extract_knowledge_graph` 接力 | 不变 |
-| 前端 ExtractedDataRenderer 字段渲染 | 过滤 6 个保留键（不渲染为字段） |
-| 前端 FileDetailView 模板抽取 Tab | 新增溯源元信息卡（仅显示，老数据不显示） |
+| 前端 `FileTabsPanel` 结构化 Tab 字段渲染 | 过滤 6 个保留键（不渲染为字段） |
+| 前端 `FileTabsPanel` 结构化 Tab 顶部溯源元信息卡 | 新增只读元信息卡（仅在 `template.id` 存在时显示，老数据不显示） |
 | `FileDTO.structured_data` 类型 | 不变（已是 `Record<string, any>`） |
 | 数据库 schema | 不变（沿用 JSONB） |
 | API 契约 | 不变 |
