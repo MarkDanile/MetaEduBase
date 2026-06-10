@@ -24,8 +24,8 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
+| REQ-011 AI 应用广场与应用注册中心 | 🟣 Shaping | P1 | Product / AI Apps / Frontend / API | 澄清应用注册模型、独立应用路由、权限可见性、首个接入应用和切片顺序，再进入 spec / plan |
 | REQ-010 P1 真实 RAG 证据治理与 AI Chat 溯源体验 | 🟣 Shaping | P1 | RAG / AI Chat / Evidence / UX | 澄清 EvidenceItem 模型、chunk / KG / metadata / structured_data 证据关联、来源编号和参考文件列表交互，再进入 spec / plan |
-| REQ-001 知识资产处理链路的产品化验收视图 | 🟣 Shaping | P2 | 需求 / 产品化验收 | 澄清目标用户、核心场景和验收指标 |
 
 ## 最近完成
 
