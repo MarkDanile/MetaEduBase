@@ -136,7 +136,7 @@
 | TD-039 | 6 键保留集合（`id` / `version` / `layer` / `matched_type` / `confidence` / `reason`）抽到 `@metaedu/shared/schemas/document` 作为 single source of truth | ⚫ 待办 | P3 | 前端 / 后端 / API | REQ-002-3 code review / 当前 `FileTabsPanel.vue:159-166` 与后端 `extract_template_prompts.py:19-22` 各自硬编码 |
 | TD-040 | `FileTabsPanel.spec.ts` Vue 单元测试覆盖 AC-11（6 键过滤）/ AC-12（card 渲染 / 老数据隐藏 / layer none 分支 / version 为 null） | ⚫ 待办 | P2 | 前端 / 测试 / 交付 | REQ-002-3 code review / 当前仅靠 `data-testid="template-source-meta"` 无 Vue-level 锁 |
 | TD-041 | FieldCard 递归渲染嵌套字段 + object children / array items 嵌套拖拽 | 🟢 完成 | P2 | 前端 / 架构 / 交付 | [PR #161](https://github.com/MarkDanile/MetaEduBase/pull/161) / [Spec](../02-delivery-plans/01-specs/2026-06-10-td-041-field-card-recursive-rendering.md) |
-| TD-042 | REQ-002-2 后端集成测试在 PG 实例下验证（`test_template_reuse.py` 8 条用例） | ⚫ 待办 | P2 | 后端 / 测试 / 交付 | REQ-002-2 交付时沙箱无 PG / [PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) |
+| TD-042 | REQ-002-2 后端集成测试在 PG 实例下验证（`test_template_reuse.py` 8 条用例） | 🟢 完成 | P2 | 后端 / 测试 / 交付 | REQ-002-2 交付时沙箱无 PG / [PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) / 修 007 迁移 inline FK 在 asyncpg 反射下的 PK 解析缺陷 / [PR TBD] |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 
 ## 任务详情
@@ -1945,7 +1945,7 @@
 
 ### TD-042: REQ-002-2 后端集成测试在 PG 实例下验证
 
-状态：⚫ 待办
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -1973,4 +1973,13 @@
 - `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/template -q` 全绿。
 
 **交付记录**
-- 未完成。
+- 2026-06-10 完成（接手工具：Claude Code）。在真 PG（`deploy-postgres-1`，pgvector/pgvector:pg16，监听 5432）下完成三条完成标准 + 顺带修 007 迁移 inline FK 在 asyncpg 反射下的 PK 解析缺陷。
+  - **007 迁移 inline FK 修复**：`alembic/versions/007_template_versions.py` 在 `op.create_table` 之前先 `op.create_unique_constraint('uq_templates_id', 'templates', ['id'], schema='metaedu')` 给 `templates.id` 加显式 unique 约束；downgrade 顺序：`op.drop_table('template_versions')` → `op.drop_constraint('uq_templates_id', ...)`。根因：SQLAlchemy 2.0 + asyncpg 反射 `get_unique_constraints` 不返回 PK，inline `ForeignKeyConstraint(['template_id'], ['metaedu.templates.id'])` 编译时报"there is no unique constraint matching given keys"。PG 自身接受 FK 引用 PK（raw SQL 验证通过），但 asyncpg 走自己的 FK 解析路径不查 PK unique index，必须显式 unique。
+  - **make migrate 升级成功**（cwd=packages/server-python）：`alembic upgrade head` → dev 库 `metaedu.alembic_version=007_template_versions`，`metaedu.template_versions` 表 11 列含 PK / `uq_template_versions_template_version` unique / `fk_template_versions_template_id` ON DELETE CASCADE / `fk_template_versions_tenant_id` / 2 index。rc=0。
+  - **make migrate-downgrade 回退成功**：`alembic downgrade -1` → dev 库 `version_num=9466ea6e5d33`，`template_versions` 表 drop，`uq_templates_id` drop。rc=0。**再升回 head** 验证完整循环：dev 库回到 `007_template_versions`，所有约束回归，rc=0。
+  - **init-test-db + 8 条 pytest 全绿**：`python -m app.shared.infrastructure.test_db_setup` → test 库 `metaedu_test.alembic_version` 从 `9466ea6e5d33` 升到 `007_template_versions`（走 `init_test_database` 内部 `_run_alembic_against(test_url_str)`，URL 覆盖为 test 库）。`pytest tests/contexts/template/test_template_reuse.py -v` → 8 passed（`test_clone_creates_deep_copy` / `test_clone_rejects_cross_tenant` / `test_update_writes_version_snapshot` / `test_list_versions_pagination` / `test_rollback_restores_snapshot` / `test_export_and_import_round_trip` / `test_import_rejects_invalid_key` / `test_import_rejects_duplicate_sibling_keys`），rc=0。
+  - **回归**：`pytest tests/contexts/template -q` → 17 passed（8 reuse + 9 既有用例），rc=0。`ruff check app/ tests/` → All checks passed!，rc=0。
+  - 行为变化声明：1) 新增约束 `metaedu.templates.uq_templates_id`（与 PK 并存，PG 允许且不冲突；不改变任何写入路径语义，仅作为 FK 反射的"匹配目标"）；2) `test_db_setup` 幂等初始化 test 库到 head。零业务代码、零 API 行为变化。
+  - 验证摘要：dev 库 / test 库 两条迁移链路均经过 `upgrade → downgrade → upgrade` 循环验证；8 条 reuse + 9 条模板既有测试 + 全量 ruff 三条全过；零业务代码变更。
+  - 未运行：浏览器手测（沙箱无浏览器；与本任务范围无关——本任务仅后端集成测试）。
+  - 后续接力建议（不阻塞本任务完成）：在 PR review 时同步给 `app/contexts/template/application/service.py` 等使用 SQLAlchemy metadata 引用 `templates.id` 的位置加注释，说明"FK 引用 templates.id 依赖显式 uq_templates_id 约束"。
