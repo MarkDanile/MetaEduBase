@@ -4,7 +4,7 @@
 
 ## 开工顺序
 
-1. 先读 `docs/03-engineering-governance/current-work.md`，确认当前任务、候选任务、验证状态和下一步。
+1. 先读 `docs/03-engineering-governance/current-work.md`，确认当前任务、候选任务、验证状态和下一步；如果本轮会修改工作台或任务状态，同时读 `docs/03-engineering-governance/01-rules/workbench.md`。
 2. 默认工程判断标准见 `docs/03-engineering-governance/01-rules/engineering-principles.md`。
 3. 只要会修改仓库文件，先确认不在 `main`；若在 `main`，按 `docs/03-engineering-governance/01-rules/git-workflow.md#开发前分支门禁` 创建任务分支后再改文件。
 4. 按任务类型进入 `docs/03-engineering-governance/task-modes.md`，再渐进式读取对应 spec、plan、技术债、需求或架构约束。

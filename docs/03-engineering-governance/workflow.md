@@ -7,6 +7,7 @@
 - 仓库文档是事实源，插件是执行工具。
 - 任务状态统一维护在 `docs/03-engineering-governance/current-work.md`。
 - 任务状态更新必须使用 `状态：颜色 状态名` 格式；颜色图例见 `docs/03-engineering-governance/current-work.md`。
+- 修改 `docs/03-engineering-governance/current-work.md` 或任务状态前，必须读取 `docs/03-engineering-governance/01-rules/workbench.md`。
 - `docs/03-engineering-governance/current-work.md` 是活文档。实现、验证或 Git 阶段变化后，执行者必须同步任务卡片。
 - `docs/03-engineering-governance/current-work.md` 是交接工作台，不是历史档案。完成任务超出保留窗口后，归档到对应事实源，并在 `docs/03-engineering-governance/work-log.md` 保留索引。
 - `docs/03-engineering-governance/current-work.md` 的“最近完成”只保留短摘要；详细验证输出、行为变化、复盘和 PR 进入 `docs/03-engineering-governance/work-log.md`、对应总账、plan 或 PR。
@@ -29,7 +30,7 @@
 
 每次开发任务开始前，执行者必须：
 
-1. 阅读 `docs/03-engineering-governance/current-work.md`，确认本次任务卡片。
+1. 阅读 `docs/03-engineering-governance/current-work.md`，确认本次任务卡片；如果需要更新工作台或任务状态，同时读取 `docs/03-engineering-governance/01-rules/workbench.md`。
 2. 如果本次会修改仓库文件，用 `git status --short --branch` 确认已在语义化任务分支；若仍在 `main`，先切分支，再改任何文件。
 3. 按任务卡片链接读取相关文档：
    - 功能需求优先读取对应 `docs/02-delivery-plans/01-specs/*`。
@@ -68,6 +69,29 @@
 - 如果发现的是当前任务的后续遗留，优先在原任务备注中说明关系，并按 `docs/03-engineering-governance/task-modes.md#follow-up-分流` 建立新的稳定编号；需要近期接力时，再同步到 `current-work.md` 的“下一批候选任务”。
 - 复核或验收发现的问题不得只写成 `TD-xxx-FOLLOWUP` 备注长期悬挂；如果需要后续执行，必须转为稳定编号任务，并补齐证据、完成标准和验证方式。
 
+## 并行开发模式
+
+并行开发只在用户明确触发时启用，例如“按并行模式处理 REQ-A 和 REQ-B”。默认仍是单任务闭环。
+
+并行批次开工前，协调者必须先完成并行可行性评估：
+
+- 列出每个任务的 agent、分支、推荐 worktree / clone、允许修改范围和禁止修改范围。
+- 标明共享契约、共享 DTO / schema、共享 migration、共享页面和可能冲突文件。
+- 规定合并顺序：先合 contract / 低风险 / 基础 PR，再合依赖 PR。
+- 指定集成负责人，负责最终回填 `current-work.md`、Backlog、milestone、work-log 和 review-score-log。
+
+并行开发期间，各 agent 应减少对全局事实源的高频修改：
+
+- 过程状态优先写入各自 plan、PR body 或任务专属文档。
+- `current-work.md` 可只记录一个并行批次入口，避免多个 agent 反复改同一区域。
+- 如果必须修改全局文档，先确认不会覆盖其他 agent 的状态；合并前必须从最新 `main` 同步一次。
+
+并行批次结束后，由集成负责人统一执行：
+
+- 完整验证和跨 PR 行为回归检查。
+- 当前工作台、Backlog、milestone、work-log 的状态收口。
+- 任务评审评分、follow-up 分流和规则改进判断。
+
 ## 开发后收尾
 
 每次开发任务结束前，执行者必须：
@@ -77,7 +101,7 @@
    - 后端改动优先运行相关 pytest；如果依赖数据库或环境不可用，记录失败原因。
    - 文档-only 改动至少检查链接、编号和任务状态。
    - 具体验证矩阵以 `docs/03-engineering-governance/01-rules/quality-gates.md` 为准。
-2. 更新 `docs/03-engineering-governance/current-work.md`：
+2. 按 `docs/03-engineering-governance/01-rules/workbench.md` 更新 `docs/03-engineering-governance/current-work.md`：
    - 更新状态。
    - 更新已完成、未完成和下一步。
    - 更新验证状态。
