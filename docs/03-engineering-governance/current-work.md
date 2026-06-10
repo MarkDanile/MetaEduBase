@@ -6,7 +6,7 @@
 
 ## 使用规则
 
-- 本文件只保留当前任务、近期候选和少量最近完成任务；详细规则见 `docs/03-engineering-governance/01-rules/workbench.md`。
+- 本文件只保留当前任务、近期候选和少量最近完成任务；任何修改本文件或任务状态前，必须先读 `docs/03-engineering-governance/01-rules/workbench.md`。
 - 开发前确认本次任务卡片，并按卡片链接渐进式读取 spec、plan、技术债或架构约束。
 - 涉及跨文件开发、计划接力、状态交接或后续继续开发时，必须登记或更新任务卡片。
 - 代码、验证或 Git 阶段变化后，必须同步任务状态、当前进展、下一步和验证结果。
@@ -39,6 +39,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-10 | DOC-058 强化工作台规则渐进式披露入口 | 🟢 完成 | 将 `workbench.md` 从索引可见提升为“修改工作台或任务状态前必读”：入口、工作台自身、workflow、task-modes 和 Claude/Trae 兼容跳转同步补强。 | [Workbench](01-rules/workbench.md#使用规则) / [Workflow](workflow.md#开发前检查) / [Task Modes](task-modes.md#通用入口) |
+| 2026-06-10 | DOC-057 建立并行开发模式与集成收口规则 | 🟢 完成 | 默认单任务闭环不变；新增用户显式触发的并行模式，要求可行性评估、独立分支/worktree、文件边界、合并顺序和集成者统一回填。 | [Task Modes](task-modes.md#并行开发模式) / [Workflow](workflow.md#并行开发模式) / [Workbench](01-rules/workbench.md#并行批次边界) / [Git Workflow](01-rules/git-workflow.md#并行分支规则) |
 | 2026-06-10 | DOC-056 收口 `check_req_status_consistency` 父 / 子任务混聚 bug | 🟢 完成 | `REQ_ID_RE` 扩为 `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` regression（20 passed）。`check-engineering-docs` rc=0。 | [DOC-056](technical-debt.md#doc-056) / [Work Log](work-log.md) / [PR #155](https://github.com/MarkDanile/MetaEduBase/pull/155) |
 | 2026-06-10 | REQ-002-3 模板抽取结果溯源字段扩展 | 🟢 完成 | 后端 `_merge_template_structured_data` 接受可选 `meta`（6 键白名单）+ `extract_template` 落盘 6 键溯源；前端 `FileTabsPanel` 过滤保留键 + 溯源元信息卡。pytest 71 passed + 全门禁过。follow-up：TD-039 / TD-040。 | [Work Log](work-log.md) / [PR #153](https://github.com/MarkDanile/MetaEduBase/pull/153) / [PR #154](https://github.com/MarkDanile/MetaEduBase/pull/154) |
 | 2026-06-10 | DOC-055 收口 DOC-042 / TD-034 PR 范围混入与事实源漂移 | 🟢 完成 | PR #142 closed (superseded by PR #143) + TD-034 事实源统一为 PR #143/3077047 + `source-sizes --diff` 恢复 clean + DOC-051 跨事实源状态同步为 `🟢 完成` + 3 处 `TD-030（已锁定）` 占位改为 `占位说明`。docs-only，4 事实源 + 3 spec + 1 baseline 共 8 文件。 | [DOC-055](technical-debt.md#doc-055) / [Work Log](work-log.md) / [PR #142 (closed)](https://github.com/MarkDanile/MetaEduBase/pull/142) |
@@ -57,4 +59,3 @@
 | 2026-06-09 | DOC-050 优化 current-work 最近完成窗口与评分总账排序 | 🟢 完成 | 窗口 5→20 行；评分总账最新评审置顶；门禁脚本同步。 | [Work Log](work-log.md) |
 | 2026-06-09 | TD-035 收口 REQ-005 新增测试文件 ruff 质量门禁 | 🟢 完成 | `ruff check --fix` 修 1 I001 + 3 SIM300；pytest 11 passed 不变；`ruff check app/ tests/` 退出码 0。 | [TD-035](technical-debt.md#td-035) |
 | 2026-06-09 | DOC-049 收口结构化抽取完成态占位与验证声明漂移 | 🟢 完成 | 修正 AC-8 浅拷贝 / AC-10 失败条件 / TD-???；plan TBD 回填；候选门禁登记。 | [Backlog](../01-product-planning/04-backlog.md) |
-| 2026-06-09 | REQ-005 结构化抽取嵌套结构稳定性验收 | 🟢 完成 | 11 条对象/数组/表格嵌套回归；轨道 B 翻结论。0 业务代码改动。 | [Spec](../02-delivery-plans/01-specs/2026-W23-req-005-structured-extraction-regression.md) |

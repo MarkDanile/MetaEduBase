@@ -36,7 +36,7 @@
 
 每次进入开发前，至少确认这 6 件事：
 
-1. 任务卡片已登记到 `docs/03-engineering-governance/current-work.md`，或当前任务足够小且不需要交接。
+1. 任务卡片已登记到 `docs/03-engineering-governance/current-work.md`，或当前任务足够小且不需要交接；如果本轮会修改工作台或任务状态，先读 `docs/03-engineering-governance/01-rules/workbench.md`。
 2. 任务卡片包含本次范围、相关文档、完成标准和验证方式。
 3. 只要会修改仓库文件，已按 `git-workflow.md#开发前分支门禁` 确认当前不在 `main`；这个检查早于更新工作台、spec、plan 或代码。
 4. 当前执行模式已标记为 `plan-do`、`superpower`、`compound-engineering` 或 `manual`。
@@ -92,6 +92,7 @@
 | `按流程修复这个 BUG: ...` | Bug 修复 | 登记或更新 `BUG-xxx`；明确复现步骤、期望行为和验证方式 |
 | `按流程规划这个需求: ...` | 产品规划 / 需求塑形 | 登记或更新 `docs/01-product-planning/04-backlog.md`；必要时新建 `docs/01-product-planning/05-requirements/REQ-xxx.md` |
 | `按流程开发这个新需求: ...` | 新需求开发 | 判断是否需要 spec/plan；需要时进入 `docs/02-delivery-plans/01-specs/*` 和 `docs/02-delivery-plans/02-plans/*` |
+| `按并行模式处理 REQ-A 和 REQ-B` | 多 agent 并行开发批次 | 先做并行可行性评估，列出任务依赖、共享契约、冲突文件、分支/worktree、合并顺序和集成负责人；只有低耦合任务才进入并行 |
 | `按流程评审 REQ-xxx / BUG-xxx / TD-xxx / DOC-xxx` | 任务评审 | 读取任务事实源、PR / diff 和 `review-scorecard.md`；输出问题、评分、follow-up 分流和规则改进判断；触发落盘条件时更新 `review-score-log.md` |
 | `按流程提交` / `按流程走完整 Git 闭环` | 交付闭环 | 读取 `git-workflow.md`；默认推进 commit、push、PR、合并 `main` 和最终 clean check；阻塞时明确停在哪一阶段 |
 | `按流程复盘 XXX` | 复盘 / 根因分析 | 区分实现问题、规则缺口、工具习惯和需求塑形不足；只在问题可复现或反复出现时登记 follow-up、规则或脚本改进 |
@@ -102,6 +103,27 @@
 | `按流程调研 XXX` | Spike / 调研 | 明确问题、时间盒和预期产出 |
 | `按流程处理工具链/依赖/CI 问题: ...` | 基础设施 / 依赖 / 工具链 | 明确影响范围、兼容性风险和回滚方式 |
 | `按流程处理数据迁移/发布: ...` | 数据迁移 / 发布 | 明确目标环境、数据影响、upgrade 路径和回滚方式 |
+
+## 并行开发模式
+
+适用：用户明确要求多个 AI IDE / agent 同时开发低耦合任务，例如 `按并行模式处理 REQ-002-1 和 REQ-002-2`。默认开发仍按单任务闭环执行；没有用户明确触发时，不自动启用并行模式。
+
+开工前必须先输出并行可行性评估，至少包含：
+
+- 任务 ID、执行 agent、分支名和推荐 worktree / clone。
+- 允许修改文件范围和禁止修改文件范围。
+- 共享契约、共享数据迁移、共享 UI 页面或共享 DTO。
+- 预计冲突点、合并顺序和集成负责人。
+- 不适合并行时的串行替代顺序。
+
+以下情况默认不建议并行，除非用户明确接受冲突成本：
+
+- 多个任务会修改同一大页面、同一 DTO / schema、同一 migration 或同一核心抽象。
+- 共享 contract 还未稳定，需要先做 contract-first 小 PR。
+- 多个 agent 都需要高频修改 `current-work.md`、Backlog、milestone 或 work-log。
+- 后合任务无法在提交前同步最新 `main` 并处理冲突。
+
+并行开发默认采用：契约先行、文件边界、短分支、小 PR、集成者统一收口。各 agent 的具体实现仍需满足对应任务模式的完成标准。
 
 ## 技术债修复
 
