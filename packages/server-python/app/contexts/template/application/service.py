@@ -116,7 +116,8 @@ class TemplateService:
     async def _write_version_snapshot(self, template: Template) -> None:
         """Write a version snapshot for the template (same transaction)."""
         version_repo = TemplateVersionRepositoryImpl()
-        next_version_number = (await version_repo.max_version_number(self._session, template.id)) + 1
+        max_ver = await version_repo.max_version_number(self._session, template.id)
+        next_version_number = max_ver + 1
         snapshot = TemplateVersion(
             id=uuid4(),
             template_id=template.id,
@@ -132,7 +133,9 @@ class TemplateService:
         )
         await version_repo.create(self._session, snapshot)
 
-    async def clone(self, template_id: UUID, dto: CloneTemplateRequest, tenant_id: UUID) -> dict | None:
+    async def clone(
+        self, template_id: UUID, dto: CloneTemplateRequest, tenant_id: UUID
+    ) -> dict | None:
         """AC-1: Deep copy a template within the same tenant."""
         original = await self.repo.get(template_id, tenant_id)
         if not original:

@@ -137,7 +137,7 @@ async def import_template(
     try:
         result = await service.import_template(dto, tenant_uuid)
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from None
     # AC-8: schema_version warning header
     payload_schema = dto.template.get("schema_version", 1)
     if payload_schema > 1:
@@ -147,7 +147,11 @@ async def import_template(
     return result
 
 
-@router.post("/{template_id}/clone", response_model=TemplateResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{template_id}/clone",
+    response_model=TemplateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def clone_template(
     template_id: str,
     dto: CloneTemplateRequest,
