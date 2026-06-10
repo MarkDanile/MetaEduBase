@@ -3,9 +3,9 @@
     <!-- Card header -->
     <div class="card-header" :style="{ paddingLeft: `${depth * 20 + 12}px` }">
       <!-- Drag handle -->
-      <div class="drag-handle" title="拖拽排序">
+      <button class="drag-handle" title="拖拽排序" aria-label="拖拽排序">
         <GripVertical :size="14" class="text-[var(--color-ink-tertiary)]" />
-      </div>
+      </button>
 
       <!-- Label + key -->
       <div class="card-title" @click="isContainer && toggleExpand()">
@@ -21,6 +21,11 @@
       <!-- Expand chevron -->
       <button v-if="isContainer" class="expand-btn" @click.stop="toggleExpand()">
         <ChevronDown :size="14" class="text-[var(--color-ink-tertiary)]" />
+      </button>
+
+      <!-- Copy subtree -->
+      <button class="action-btn" @click.stop="emit('copySubtree', node.id)" title="复制子树" aria-label="复制子树">
+        <Copy :size="14" />
       </button>
 
       <!-- Delete -->
@@ -129,7 +134,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ChevronDown, GripVertical, Trash2, Plus, X } from 'lucide-vue-next'
+import { ChevronDown, GripVertical, Trash2, Plus, Copy, X } from 'lucide-vue-next'
 import { FIELD_TYPES, COLUMN_TYPES } from '@/constants/field-types'
 import type { Field } from '@/services/template'
 
@@ -151,6 +156,7 @@ const emit = defineEmits<{
   'addChild': [parentId: string]
   'addColumn': [parentId: string]
   'removeColumn': [parentId: string, colIndex: number]
+  'copySubtree': [id: string]
 }>()
 
 const depth = computed(() => props.node.depth ?? 0)
@@ -204,7 +210,12 @@ const typeLabel = computed(() =>
   padding: 2px;
   border-radius: 4px;
   flex-shrink: 0;
+  background: none;
+  border: none;
+  display: inline-flex;
+  align-items: center;
 }
+.drag-handle:active { cursor: grabbing; }
 .drag-handle:hover { background: var(--interactive-hover-bg); }
 
 .card-title {
@@ -259,6 +270,13 @@ const typeLabel = computed(() =>
   border-radius: 4px; flex-shrink: 0;
 }
 .delete-btn:hover { color: var(--color-danger); background: rgba(239,68,68,0.08); }
+
+.action-btn {
+  background: none; border: none; cursor: pointer; padding: 4px;
+  display: flex; align-items: center; color: var(--color-ink-tertiary);
+  border-radius: 4px; flex-shrink: 0;
+}
+.action-btn:hover { color: var(--color-accent); background: var(--color-accent-bg); }
 
 /* ── Detail ── */
 .card-detail {
