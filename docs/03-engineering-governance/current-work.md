@@ -16,6 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
+| REQ-002-3 模板抽取结果溯源字段扩展 | 🔵 Ready | P2 | Backend / Frontend / 可观测性 | spec + plan 已建（[Spec](../02-delivery-plans/01-specs/2026-06-10-req-002-3-template-source-tracking.md) / [Plan](../02-delivery-plans/02-plans/2026-06-10-req-002-3-template-source-tracking-plan.md)）；分支 `feat/req-002-3-template-source-tracking`；后端 contract 扩展 + e2e 同步 + 前端溯源卡分 8 个 task 落地。 | Task 1-2 后端代码 → Task 3-5 测试 → Task 6-7 前端 → Task 8 文档；AC-1 ~ AC-5 / AC-8 / AC-9 是核心 | 待运行：`pytest tests/contexts/document tests/contexts/template tests/e2e` + `pnpm typecheck` + `pnpm lint` + `scripts/check-engineering-docs` |
 
 ## 下一批候选任务
 
@@ -23,8 +24,9 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| REQ-002 模板化结构抽取能力的配置与复用体验 | 🔵 Ready | P2 | 需求 / 结构抽取 / 配置体验 | 塑形已收口（[Requirement 中的决策记录 Q1~Q6](../01-product-planning/05-requirements/REQ-002-template-config-and-reuse.md#决策记录2026-06-10-塑形澄清)）；子任务拆分已建议在 requirement「下一步」段：先建 REQ-002-3 contract 扩展子任务再批量开发；当前 PR 不进入实现，等用户选择首个执行的子任务 |
 | REQ-001 知识资产处理链路的产品化验收视图 | 🟣 Shaping | P2 | 需求 / 产品化验收 | 澄清目标用户、核心场景和验收指标 |
+
+注：REQ-002 父任务（[Requirement](../01-product-planning/05-requirements/REQ-002-template-config-and-reuse.md)）及其子任务链（REQ-002-3 / REQ-002-1 / REQ-002-2 / REQ-002-4）均已在 backlog / milestone 中登记；本表只保留最近需接力的任务，避免与 backlog 重复维护状态。
 
 ## 最近完成
 
