@@ -187,7 +187,22 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
                 if existing and existing["structured_data"]
                 else "{}"
             )
-            existing_data = _merge_template_structured_data(existing_raw, template_data)
+            # REQ-002-3: 当命中模板（L1/L2/L3）时构造溯源 meta；layer == "none" 不传
+            meta: dict[str, object] | None = None
+            if (
+                template_obj is not None
+                and selection.layer in ("L1", "L2", "L3")
+            ):
+                meta = {
+                    "id": str(template_obj.id),
+                    "version": getattr(template_obj, "schema_version", None),
+                    "layer": selection.layer,
+                    "matched_type": selection.matched_type,
+                    "confidence": selection.confidence,
+                    "reason": selection.reason,
+                }
+
+            existing_data = _merge_template_structured_data(existing_raw, template_data, meta)
 
             await session.execute(
                 text(
