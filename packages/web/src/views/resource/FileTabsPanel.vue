@@ -19,14 +19,14 @@
     <!-- Tab 1: Structured extraction -->
     <div v-if="activeTab === 'structured'">
       <EmptyState
-        v-if="!templateData || Object.keys(templateData).length === 0"
+        v-if="!filteredTemplateData || Object.keys(filteredTemplateData).length === 0"
         title="暂无结构化数据"
         hint="等待模板抽取任务完成"
       />
       <div v-else class="p-3 rounded-lg border border-[var(--color-border)] space-y-1">
         <!-- String(key) keeps the contract narrow if templateData ever becomes Record<string | number, unknown> (TD-029). -->
         <FieldValue
-          v-for="(value, key) in templateData"
+          v-for="(value, key) in filteredTemplateData"
           :key="key"
           :label="templateFieldLabel(String(key))"
           :value="value"
@@ -131,6 +131,28 @@ const tabs = [
 ];
 
 const templateData = computed(() => getTemplateStructuredData(props.structuredData as Parameters<typeof getTemplateStructuredData>[0]));
+
+// REQ-002-3 AC-11: 6 个溯源保留键不入字段列表（用户在 Tab 1 只看到 LLM 抽取字段）。
+const RESERVED_META_KEYS: ReadonlySet<string> = new Set([
+  "id",
+  "version",
+  "layer",
+  "matched_type",
+  "confidence",
+  "reason",
+]);
+
+const filteredTemplateData = computed<Record<string, unknown>>(() => {
+  const t = templateData.value;
+  if (!t || typeof t !== "object") return {};
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(t)) {
+    if (!RESERVED_META_KEYS.has(k)) {
+      out[k] = v;
+    }
+  }
+  return out;
+});
 
 // --- Structured data helpers (private to this component) ---
 function templateFieldLabel(key: string): string {
