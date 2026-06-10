@@ -134,7 +134,7 @@
 | DOC-042 | 脚本化 TD-032 行数基线扫描 | 🟢 完成 | P2 | 文档 / 工程治理 / 工程脚本 | [Baseline](02-baselines/td-032-source-file-sizes.md) / [PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143) |
 | DOC-055 | 收口 DOC-042 / TD-034 PR 范围混入与事实源漂移 | 🟢 完成 | P1 | 文档 / 工程流程 / 质量门禁 | DOC-042 review / [Review Score Log](04-retrospectives/review-score-log.md) |
 | TD-039 | 6 键保留集合在 TS 端抽到 `@metaedu/shared/schemas/document` + spec 单一来源落地 | ⚫ 待办 | P3 | 前端 / 共享 schema / 文档 | REQ-002-3 code review / 当前 `FileTabsPanel.vue:159-166` 硬编码 + spec 文字再列 1 次 / 后端 Python import 路径接入拆为 [TD-043](#td-043-打通后端-python-对-shared-schemasdocument-的-import-路径) |
-| TD-040 | `FileTabsPanel.spec.ts` Vue 单元测试覆盖 AC-11（6 键过滤）/ AC-12（card 渲染 / 老数据隐藏 / layer none 分支 / version 为 null） | 🟡 进行中 | P2 | 前端 / 测试 / 交付 | REQ-002-3 code review / 2026-06-10 并行批次 `td-039+td-040` 已完成 Phase 1 探查（vitest/@vue/test-utils/jsdom 缺失）+ Phase 2 实施（6 测试通过 / 全门禁绿），worktree `td-040-filtabspanel-vitest-coverage` 暂挂未进 Git 闭环 |
+| TD-040 | `FileTabsPanel.spec.ts` Vue 单元测试覆盖 AC-11（6 键过滤）/ AC-12（card 渲染 / 老数据隐藏 / layer none 分支 / version 为 null） | 🟢 完成 | P2 | 前端 / 测试 / 交付 | REQ-002-3 code review / [PR #167](https://github.com/MarkDanile/MetaEduBase/pull/167) (`c1cc0c9` squash merge) / 引入 vitest + @vue/test-utils + jsdom 首次前端单测基建 / 6 测试通过（5 AC-12 + 1 AC-11 加固）|
 | TD-041 | FieldCard 递归渲染嵌套字段 + object children / array items 嵌套拖拽 | 🟢 完成 | P2 | 前端 / 架构 / 交付 | [PR #161](https://github.com/MarkDanile/MetaEduBase/pull/161) / [Spec](../02-delivery-plans/01-specs/2026-06-10-td-041-field-card-recursive-rendering.md) |
 | TD-042 | REQ-002-2 后端集成测试在 PG 实例下验证（`test_template_reuse.py` 8 条用例） | 🟢 完成 | P2 | 后端 / 测试 / 交付 | REQ-002-2 交付时沙箱无 PG / [PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) / 修 007 迁移 inline FK 在 asyncpg 反射下的 PK 解析缺陷 / [PR TBD] |
 | TD-043 | 打通后端 Python 对 `shared/schemas/document` 的 import 路径 | ⚫ 待办 | P2 | 后端 / 共享 schema / 基础设施 | 2026-06-10 并行批次 `td-039+td-040` 拆出（原属 TD-039 范围）/ 仓库无顶层 `metaedu` Python 包、`packages/shared/` 是 TS-only pnpm workspace 包，0 处 `import metaedu.shared.*` 命中 |
@@ -1825,14 +1825,14 @@
 
 ### TD-040: `FileTabsPanel.spec.ts` Vue 单元测试覆盖 AC-11 / AC-12
 
-状态：🟡 进行中
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P2 |
 | 领域 | 前端 / 测试 / 交付 / 质量门禁 |
-| 事实源 | REQ-002-3 code review of Tasks 6+7（I-2） / 2026-06-10 并行批次 `td-039+td-040` 实施完成 / Git 闭环暂挂 |
-| 工作分支 | `td-040-filtabspanel-vitest-coverage`（worktree 现场保留，未提交 / 未推） |
+| 事实源 | REQ-002-3 code review of Tasks 6+7（I-2） / 2026-06-10 PR #167 squash merge（merge commit `c1cc0c9`） |
+| 工作分支 | `td-040-filtabspanel-vitest-coverage`（worktree `.claude/worktrees/agent-a9cfdaec8741f103c` 现场保留待后续清理） |
 
 **证据**
 - 当前 `FileTabsPanel.vue` 的 AC-11（6 键保留键过滤）与 AC-12（`template.id` 存在 → 显示溯源元信息卡；不存在 → 隐藏；`layer === "none"` 分支显示 `reason`）只能靠读代码 + `pnpm typecheck / lint` 验证。
