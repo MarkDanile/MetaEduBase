@@ -24,9 +24,9 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| TD-041 FieldCard 递归渲染嵌套字段 + 嵌套拖拽 | ⚫ 待办 | P2 | 前端 / 架构 | 详看 `technical-debt.md#td-041`；需 FieldCard 自引用递归渲染 + vuedraggable 包裹 children/items |
 | REQ-010 P1 真实 RAG 证据治理与 AI Chat 溯源体验 | 🟣 Shaping | P1 | RAG / AI Chat / Evidence / UX | 澄清 EvidenceItem 模型、chunk / KG / metadata / structured_data 证据关联、来源编号和参考文件列表交互，再进入 spec / plan |
 | REQ-001 知识资产处理链路的产品化验收视图 | 🟣 Shaping | P2 | 需求 / 产品化验收 | 澄清目标用户、核心场景和验收指标 |
+| TD-042 模板复用后端集成测试在 PG 实例下验证（`test_template_reuse.py` 8 条用例） | ⚫ 待办 | P2 | 后端 / 测试 / 交付 | 详看 `technical-debt.md#td-042`；是 REQ-002-2 follow-up（[PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159)），需本地 PG + `make migrate/downgrade` + 8 条用例全绿 |
 
 注：REQ-002 父任务（[Requirement](../01-product-planning/05-requirements/REQ-002-template-config-and-reuse.md)）及其子任务链（REQ-002-3 / REQ-002-1 / REQ-002-2 / REQ-002-4）均已在 backlog / milestone 中登记；本表只保留最近需接力的任务，避免与 backlog 重复维护状态。
 
