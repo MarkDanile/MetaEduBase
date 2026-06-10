@@ -18,6 +18,29 @@
 
     <!-- Tab 1: Structured extraction -->
     <div v-if="activeTab === 'structured'">
+      <!-- REQ-002-3 AC-12: 溯源元信息卡（仅在 template.id 存在时显示；老数据 / layer none 不显示） -->
+      <div
+        v-if="templateMeta"
+        class="p-3 mb-3 rounded-lg border border-[var(--color-border)] flex flex-wrap gap-3 text-[var(--text-small)]"
+        data-testid="template-source-meta"
+      >
+        <span>
+          <span class="text-[var(--color-ink-tertiary)]">模板 ID：</span>
+          <code class="text-[var(--color-ink)]">{{ templateMeta.id }}</code>
+        </span>
+        <span>
+          <span class="text-[var(--color-ink-tertiary)]">版本：</span>
+          <span class="text-[var(--color-ink)]">{{ templateMeta.version ?? '-' }}</span>
+        </span>
+        <span v-if="templateMeta.layer !== 'none'">
+          <span class="text-[var(--color-ink-tertiary)]">命中：</span>
+          <span class="text-[var(--color-ink)] font-medium">{{ templateMeta.layer }}</span>
+        </span>
+        <span v-else>
+          <span class="text-[var(--color-ink-tertiary)]">未命中：</span>
+          <span class="text-[var(--color-ink)]">{{ templateMeta.reason || '无匹配模板' }}</span>
+        </span>
+      </div>
       <EmptyState
         v-if="!filteredTemplateData || Object.keys(filteredTemplateData).length === 0"
         title="暂无结构化数据"
@@ -152,6 +175,37 @@ const filteredTemplateData = computed<Record<string, unknown>>(() => {
     }
   }
   return out;
+});
+
+// REQ-002-3 AC-12: 溯源元信息卡数据源。注意：这里直接读 props.structuredData.template，
+// 故意不走 getTemplateStructuredData() 那个 helper —— 因为 Task 6 已经在 v-for 之前
+// 过滤了保留键，共享同一个 helper 会让"取保留键用于卡渲染"和"过滤保留键用于字段渲染"
+// 互相打架；独立读 props 既能拿到保留键，也明确表达"渲染元信息卡是另一条数据通路"。
+type TemplateMeta = {
+  id: string;
+  version: number | null;
+  layer: string;
+  matched_type: string | null;
+  confidence: number | null;
+  reason: string | null;
+};
+
+const templateMeta = computed<TemplateMeta | null>(() => {
+  const sd = props.structuredData as
+    | { template?: Record<string, unknown> | null }
+    | null
+    | undefined;
+  const t = sd?.template;
+  if (!t || typeof t !== "object") return null;
+  if (!("id" in t) || t.id == null) return null;
+  return {
+    id: String(t.id),
+    version: (t.version as number | null | undefined) ?? null,
+    layer: (t.layer as string | undefined) ?? "none",
+    matched_type: (t.matched_type as string | null | undefined) ?? null,
+    confidence: (t.confidence as number | null | undefined) ?? null,
+    reason: (t.reason as string | null | undefined) ?? null,
+  };
 });
 
 // --- Structured data helpers (private to this component) ---
