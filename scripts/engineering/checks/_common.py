@@ -34,7 +34,12 @@ LEGACY_DOC_ROOT_NAMES: tuple[str, ...] = (
     "superpowers",
 )
 TASK_ID_RE = re.compile(r"\b(?:REQ|TD|DOC|BUG|APP)-\d{3}\b")
-REQ_ID_RE = re.compile(r"\bREQ-\d{3}\b")
+# REQ-NNN (parent) and REQ-NNN-K (child subtask) are distinct task ids.
+# DOC-056: prior `\bREQ-\d{3}\b` matched `REQ-002` inside `REQ-002-3`,
+# causing `check_req_status_consistency` to merge parent/child statuses.
+# The trailing `(?![-\d])` prevents backtracking into a parent prefix
+# while still allowing whitespace / `.md` / end-of-string after the id.
+REQ_ID_RE = re.compile(r"\bREQ-\d{3}(?:-\d+)?(?![-\d])")
 FOLLOWUP_ID_RE = re.compile(r"\b(?:REQ|TD)-\d{3}-FOLLOWUP\b")
 LEGACY_FOLLOWUP_REFS: frozenset[tuple[str, str]] = frozenset(
     {

@@ -543,3 +543,70 @@ def test_source_size_unregistered_large_file_fails(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert "huge.py" in result.stderr
     assert "超过 1000 行硬限制" in result.stderr
+
+
+def test_parent_and_child_req_with_different_status_do_not_collide(
+    tmp_path: Path,
+) -> None:
+    """REQ-002 (parent) and REQ-002-3 (child) with different statuses must not
+    trip `req-status-consistency` (DOC-056).
+
+    Prior to DOC-056, `REQ_ID_RE.search` matched `REQ-002` inside `REQ-002-3`
+    and merged both into the same status set, causing false-positive
+    `状态不一致` warnings whenever a child task status diverged from its
+    parent. After the fix, parent and child are kept as separate task ids.
+    """
+    make_minimal_docs(tmp_path)
+    write(
+        tmp_path / "docs/01-product-planning/04-backlog.md",
+        """
+        # Product Backlog
+
+        ## Backlog
+
+        | ID | 类型 | 状态 | 优先级 | 里程碑 | 摘要 | 下一步 | External |
+        |----|------|------|--------|--------|------|--------|----------|
+        | REQ-002 | REQ | 🔵 Ready | P2 | P2 | 父任务 | 待子任务链 |  |
+        | REQ-002-3 | REQ | 🟢 Done | P2 | P2 | 子任务 | 已完成 |  |
+        """,
+    )
+    write(
+        tmp_path / "docs/01-product-planning/02-milestones/example.md",
+        """
+        # Example Milestone
+
+        | ID | 状态 | 标题 | 事实源 |
+        |----|------|------|------|
+        | REQ-002 | 🔵 Ready | 父任务 | - |
+        | REQ-002-3 | 🟢 Done | 子任务 | - |
+        """,
+    )
+    write(
+        tmp_path / "docs/03-engineering-governance/current-work.md",
+        """
+        # 当前开发工作台
+
+        ## 当前进行中
+
+        | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
+        |------|------|--------|------|----------|--------|------|
+        | REQ-002 父任务 | 🔵 Ready | P2 | Docs | 待子任务链 | 等子任务 | - |
+
+        ## 下一批候选任务
+
+        | 任务 | 状态 | 优先级 | 领域 | 下一步 |
+        |------|------|--------|------|--------|
+        | 候选示例 | ⚫ Candidate | P3 | Docs | 调研。 |
+
+        ## 最近完成
+
+        | 日期 | 任务 | 状态 | 摘要 | 事实源 |
+        |------|------|------|------|------|
+        | 2026-06-10 | REQ-002-3 子任务 | 🟢 Done | 已完成。 | docs/03-engineering-governance/work-log.md |
+        """,
+    )
+
+    result = run_checker(tmp_path)
+
+    assert "状态不一致" not in result.stderr, result.stderr
+    assert "req-status-consistency" not in result.stderr, result.stderr
