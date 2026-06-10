@@ -10,7 +10,7 @@
     >
       <template #item="{ element: node, index: i }">
         <FieldCard
-          :node="{ ...node, id: node.id ?? crypto.randomUUID(), depth: 0 }"
+          :node="{ ...node, id: node.id || genId(), depth: 0 }"
           :parent-nodes="modelValue"
           :class="{ 'dimmed': searchQuery && !isNodeMatched(node) }"
           @toggle="toggleExpand"
@@ -37,7 +37,6 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-// @ts-expect-error vuedraggable lacks strict Vue 3 type declarations
 import draggable from 'vuedraggable'
 import { Plus } from 'lucide-vue-next'
 import type { Field } from '@/services/template'
@@ -57,6 +56,12 @@ const emit = defineEmits<{
   'removeColumn': [parentId: string, colIndex: number]
   'update': []
 }>()
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+let _idCounter = 0
+function genId(): string {
+  return `f_${Date.now()}_${++_idCounter}`
+}
 
 // ─── Expand state ─────────────────────────────────────────────────────────────
 const expandedIds = ref(new Set<string>())
@@ -167,8 +172,9 @@ function onCopySubtree(index: number) {
   let n = 1
   while (siblingKeys.includes(`${original.key ?? 'field'}_copy_${n}`)) n++
   copy.key = `${original.key ?? 'field'}_copy_${n}`
-  props.modelValue.splice(index + 1, 0, copy)
-  emit('update:modelValue', [...props.modelValue])
+  const updated = [...props.modelValue]
+  updated.splice(index + 1, 0, copy)
+  emit('update:modelValue', updated)
   emit('update')
 }
 </script>

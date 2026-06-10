@@ -107,7 +107,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Plus, X } from 'lucide-vue-next'
+import { X } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import FieldItem from '@/views/admin/FieldItem.vue'
@@ -250,7 +250,7 @@ function undoRemove() {
 
 function findAndRemove(fields: Field[], id: string): DeletedField | null {
   for (let i = 0; i < fields.length; i++) {
-    if (fields[i].id === id || (fields[i] as any).key === id) {
+    if (fields[i].id === id || fields[i].key === id) {
       const f = fields[i]
       fields.splice(i, 1)
       return { field: f, parentKey: null, index: i }
