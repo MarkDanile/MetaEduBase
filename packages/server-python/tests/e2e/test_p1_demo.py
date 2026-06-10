@@ -350,6 +350,17 @@ async def test_p1_demo_step3_template_extract(
     )
     if isinstance(template, dict) and "basic_info" in template:
         assert isinstance(template["basic_info"], dict), template
+    # REQ-002-3: 溯源元数据
+    assert "id" in template and isinstance(template["id"], str), (
+        f"structured_data.template.id must be present and a string, got {template.get('id')!r}"
+    )
+    assert "layer" in template and template["layer"] in {"L1", "L2", "L3"}, (
+        f"structured_data.template.layer must be one of L1/L2/L3, got {template.get('layer')!r}"
+    )
+    # version 可为 None（REQ-002-4 未完成时）或 int
+    assert "version" in template, (
+        "structured_data.template.version must be present (None if REQ-002-4 not yet done)"
+    )
     return file_id
 
 
