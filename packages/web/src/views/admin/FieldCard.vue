@@ -48,12 +48,21 @@
         </div>
         <div class="detail-row">
           <label class="detail-label">键名</label>
-          <input
-            :value="node.key"
-            class="detail-input detail-input--mono"
-            placeholder="snake_case"
-            @input="emit('updateField', node.id, 'key', ($event.target as HTMLInputElement).value)"
-          />
+          <div class="flex flex-col">
+            <input
+              :value="node.key"
+              class="detail-input detail-input--mono"
+              :class="{ 'detail-input--error': keyErrorMessage }"
+              placeholder="snake_case"
+              @input="emit('updateField', node.id, 'key', ($event.target as HTMLInputElement).value)"
+            />
+            <span
+              v-if="keyErrorMessage"
+              class="text-[var(--text-micro)] text-[var(--color-danger)] mt-0.5"
+            >
+              {{ keyErrorMessage }}
+            </span>
+          </div>
         </div>
         <div class="detail-row">
           <label class="detail-label">说明</label>
@@ -118,6 +127,7 @@
           :expanded-ids="expandedIds"
           :matched-ids="matchedIds"
           :search-query="searchQuery"
+          :field-errors="fieldErrors"
           @update="emit('update')"
           @remove="emit('remove', $event)"
           @update-field="(id: string, f: 'key' | 'label' | 'description', v: string) => emit('updateField', id, f, v)"
@@ -148,6 +158,7 @@
           :expanded-ids="expandedIds"
           :matched-ids="matchedIds"
           :search-query="searchQuery"
+          :field-errors="fieldErrors"
           @update="emit('update')"
           @remove="emit('remove', $event)"
           @update-field="(id: string, f: 'key' | 'label' | 'description', v: string) => emit('updateField', id, f, v)"
@@ -183,6 +194,10 @@ const props = defineProps<{
   expandedIds: Set<string>
   matchedIds: Set<string>
   searchQuery?: string
+  // REQ-002-4: per-field error message for the key input
+  keyErrorMessage?: string
+  // REQ-002-4: pass-through error map for nested FieldList
+  fieldErrors?: Record<string, string>
 }>()
 
 const emit = defineEmits<{
@@ -347,6 +362,8 @@ const typeLabel = computed(() =>
 }
 .detail-input:focus { outline: none; border-color: var(--color-accent); }
 .detail-input--mono { font-family: monospace; }
+.detail-input--error { border-color: var(--color-danger); background: rgba(239, 68, 68, 0.04); }
+.detail-input--error:focus { border-color: var(--color-danger); }
 
 .detail-select {
   padding: 4px 8px;

@@ -34,6 +34,7 @@
           v-for="(t, i) in templates"
           :key="t.id"
           class="list-row"
+          :class="{ 'is-deprecated': t.is_deprecated }"
           @click="openEditModal(t)"
         >
           <div class="col-num">
@@ -41,6 +42,10 @@
           </div>
           <div class="col-name">
             <span class="row-name">{{ t.name }}</span>
+            <!-- REQ-002-4: 已弃用 badge -->
+            <span v-if="t.is_deprecated" class="ui-tag-grey text-[var(--text-micro)] ml-2" title="已弃用">
+              已弃用
+            </span>
           </div>
           <div class="col-types">
             <div class="flex flex-wrap gap-1">
@@ -64,6 +69,15 @@
             </button>
             <button class="op-btn" @click="openCloneDialog(t)" title="复制">
               <Copy :size="14" class="text-[var(--color-ink-tertiary)]" />
+            </button>
+            <!-- REQ-002-4: 弃用按钮（仅未弃用时显示） -->
+            <button
+              v-if="!t.is_deprecated"
+              class="op-btn"
+              @click="openDeprecateDialog(t)"
+              title="弃用"
+            >
+              <ArchiveX :size="14" class="text-[var(--color-ink-tertiary)]" />
             </button>
             <button class="op-btn danger" @click="confirmDelete(t)" title="删除">
               <Trash2 :size="14" class="text-[var(--color-danger)]" />
@@ -102,13 +116,42 @@
       v-model:open="showImport"
       @imported="onImported"
     />
+
+    <!-- REQ-002-4: deprecate dialog (inline to keep the diff minimal) -->
+    <Teleport to="body">
+      <div v-if="showDeprecate" class="modal-mask" @click.self="showDeprecate = false">
+        <div class="modal-panel">
+          <h3 class="text-[var(--text-body)] font-medium text-[var(--color-ink)] mb-2">
+            弃用模板
+          </h3>
+          <p class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-3">
+            弃用后该模板将不再被新文档自动匹配。确定要弃用「{{ deprecateTarget?.name }}」？
+          </p>
+          <label class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-1 block">
+            弃用原因 <span class="text-[var(--color-danger)]">*</span>
+          </label>
+          <textarea
+            v-model="deprecateReason"
+            class="ui-input w-full resize-none"
+            rows="3"
+            placeholder="如：使用率低，已被新模板替代"
+          />
+          <div class="flex justify-end gap-2 mt-4">
+            <button class="ui-btn ui-btn-ghost" @click="showDeprecate = false">取消</button>
+            <button class="ui-btn ui-btn-primary" :disabled="!deprecateReason.trim() || deprecating" @click="doDeprecate">
+              确认弃用
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, Trash2, Pencil, Copy, Upload } from 'lucide-vue-next'
+import { Plus, Trash2, Pencil, Copy, Upload, ArchiveX } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
@@ -131,6 +174,12 @@ const showImport = ref(false)
 const selectedTemplate = ref<Template | null>(null)
 const deleteTarget = ref<Template | null>(null)
 const cloneSource = ref<Template | null>(null)
+
+// REQ-002-4: deprecate dialog state
+const showDeprecate = ref(false)
+const deprecateTarget = ref<Template | null>(null)
+const deprecateReason = ref('')
+const deprecating = ref(false)
 
 function countFields(fields: Field[]): number {
   let count = 0
@@ -196,6 +245,30 @@ function onSaved() {
   loadTemplates()
 }
 
+// REQ-002-4: deprecate flow
+function openDeprecateDialog(t: Template) {
+  deprecateTarget.value = t
+  deprecateReason.value = ''
+  showDeprecate.value = true
+}
+
+async function doDeprecate() {
+  if (!deprecateTarget.value || !deprecateReason.value.trim()) return
+  deprecating.value = true
+  try {
+    await templateApi.deprecate(deprecateTarget.value.id, {
+      reason: deprecateReason.value.trim(),
+    })
+    toast.success('已弃用')
+    showDeprecate.value = false
+    await loadTemplates()
+  } catch {
+    toast.error('弃用失败')
+  } finally {
+    deprecating.value = false
+  }
+}
+
 async function loadTemplates() {
   loading.value = true
   try {
@@ -252,6 +325,49 @@ onMounted(() => {
 
 .list-row:hover {
   background: #f9fafb;
+}
+
+/* REQ-002-4: deprecated row visual */
+.list-row.is-deprecated {
+  background: #f3f4f6;
+  opacity: 0.85;
+}
+.list-row.is-deprecated:hover {
+  background: #e5e7eb;
+}
+.list-row.is-deprecated .row-name {
+  color: var(--color-ink-tertiary);
+  text-decoration: line-through;
+  text-decoration-color: rgba(0, 0, 0, 0.25);
+}
+.ui-tag-grey {
+  display: inline-flex;
+  align-items: center;
+  background: #e5e7eb;
+  color: #6b7280;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* REQ-002-4: deprecate modal */
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-panel {
+  background: white;
+  border-radius: 12px;
+  padding: 20px 24px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
 }
 
 .col-num {

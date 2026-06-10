@@ -8,6 +8,7 @@
       :expanded-ids="expandedIds"
       :matched-ids="matchedIds"
       :search-query="searchQuery"
+      :field-errors="fieldErrorsById"
       @update="onUpdate"
       @remove="emit('remove', $event)"
       @update-field="onUpdateField"
@@ -37,6 +38,8 @@ import FieldList from './FieldList.vue'
 const props = defineProps<{
   modelValue: Field[]
   searchQuery?: string
+  // REQ-002-4: error map (id → message) for per-field key input
+  fieldErrorsById?: Record<string, string>
 }>()
 
 const emit = defineEmits<{

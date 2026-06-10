@@ -28,6 +28,11 @@ export interface Template {
   source_file_id: string | null;
   created_at: string;
   updated_at: string;
+  // REQ-002-4: schema evolution + deprecation
+  schema_version: number;
+  is_deprecated: boolean;
+  deprecated_at: string | null;
+  deprecated_reason: string | null;
 }
 
 // REQ-002-2: clone / version / export types
@@ -65,21 +70,34 @@ export interface TemplateExport {
   exported_at: string;
 }
 
+// REQ-002-4: deprecation + schema bump types
+export interface DeprecateRequest {
+  reason: string;
+}
+
 export const templateApi = {
-  list() {
-    return api.get<Template[]>("/templates");
+  list(includeDeprecated = false) {
+    const qs = includeDeprecated ? "?include_deprecated=true" : "";
+    return api.get<Template[]>(`/templates${qs}`);
   },
   get(id: string) {
     return api.get<Template>(`/templates/${id}`);
   },
-  create(data: Omit<Template, "id" | "created_at" | "updated_at">) {
+  create(data: Omit<Template, "id" | "created_at" | "updated_at" | "schema_version" | "is_deprecated" | "deprecated_at" | "deprecated_reason">) {
     return api.post<Template>("/templates", data);
   },
-  update(id: string, data: Partial<Template>) {
+  update(id: string, data: Partial<Template> & { force_schema_bump?: boolean }) {
     return api.put<Template>(`/templates/${id}`, data);
   },
   delete(id: string) {
     return api.delete(`/templates/${id}`);
+  },
+  // REQ-002-4: deprecation lifecycle
+  deprecate(id: string, data: DeprecateRequest) {
+    return api.post<Template>(`/templates/${id}/deprecate`, data);
+  },
+  undeprecate(id: string) {
+    return api.post<Template>(`/templates/${id}/undeprecate`);
   },
   initByAI(docType: string, sourceFileId?: string, aiContext?: string) {
     return api.post<{ fields: Field[] }>(
