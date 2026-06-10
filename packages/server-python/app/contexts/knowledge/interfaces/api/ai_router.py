@@ -8,12 +8,32 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
+from app.contexts.knowledge.application.ai_chat_service import (
+    AIChatService,
+)
+from app.contexts.knowledge.application.ai_chat_service import (
+    ChatRequest as ServiceChatRequest,
+)
+from app.contexts.knowledge.application.ai_chat_service import (
+    ChatResponse as ServiceChatResponse,
+)
+from app.contexts.knowledge.application.evidence_fusion import SimpleFrequencyFusion
 from app.contexts.knowledge.application.fusion_service import FrequencyFusion
 from app.contexts.knowledge.application.ner_service import RuleBasedNER
 from app.contexts.knowledge.application.recall_service import (
     PgKeywordRecallChannel,
     PgMetadataRecallChannel,
     PgVectorRecallChannel,
+)
+from app.contexts.knowledge.domain.evidence import EvidenceItem
+from app.contexts.knowledge.infrastructure.retrievers.pg_chunk_vector_retriever import (
+    PgChunkVectorRetriever,
+)
+from app.contexts.knowledge.infrastructure.retrievers.pg_graph_retriever import (
+    PgGraphRetriever,
+)
+from app.contexts.knowledge.infrastructure.retrievers.pg_metadata_filter import (
+    PgMetadataFilter,
 )
 from app.shared.domain.recall_channel import RecallResult
 from app.shared.infrastructure.database import get_session
@@ -28,6 +48,14 @@ _vector_channel = PgVectorRecallChannel()
 _keyword_channel = PgKeywordRecallChannel()
 _metadata_channel = PgMetadataRecallChannel()
 _fusion = FrequencyFusion()
+
+# REQ-010 Slice 3 — new evidence-aware AI Chat service (default PG adapters).
+_evidence_service = AIChatService(
+    chunk_retriever=PgChunkVectorRetriever(),
+    graph_retriever=PgGraphRetriever(),
+    metadata_filter=PgMetadataFilter(),
+    evidence_fusion=SimpleFrequencyFusion(),
+)
 
 
 def _clean_llm_output(content: str) -> str:
@@ -55,6 +83,17 @@ class SourceItem(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     sources: list[SourceItem]
+
+
+class EvidenceChatResponse(BaseModel):
+    """REQ-010 Slice 3 — new /chat/evidence endpoint response shape.
+
+    Uses `EvidenceItem` (unified evidence DTO) instead of node-shaped
+    `SourceItem`. Frontend evidence card consumes this directly.
+    """
+
+    reply: str
+    sources: list[EvidenceItem]
 
 
 def _recall_to_source(r: RecallResult) -> SourceItem:
@@ -169,6 +208,40 @@ async def ai_chat(
     return ChatResponse(
         reply=reply,
         sources=[_recall_to_source(r) for r in fused],
+    )
+
+
+@router.post("/chat/evidence", response_model=EvidenceChatResponse)
+async def ai_chat_evidence(
+    data: ChatRequest,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+    _current_user: dict = Depends(get_current_user),  # noqa: B008
+):
+    """REQ-010 Slice 3 — evidence-aware AI Chat endpoint.
+
+    Uses `AIChatService` (Slice 3) which depends on ChunkRetriever /
+    GraphRetriever / MetadataFilter / EvidenceFusion abstractions. P1 default
+    PostgreSQL adapters; LLM prompt is built from `EvidenceItem` list with
+    [1] / [2] citation numbering. `sources` field is `list[EvidenceItem]`
+    (chunk / knowledge_node / knowledge_edge / structured_field).
+
+    Old `/chat` endpoint (node-shaped SourceItem) is preserved for backward
+    compat; deprecation scheduled for a later iteration.
+    """
+    tid = str(get_tenant_id())
+
+    result: ServiceChatResponse = await _evidence_service.chat(
+        ServiceChatRequest(
+            message=data.message,
+            context_window=data.context_window,
+        ),
+        tenant_id=tid,
+        session=session,
+    )
+
+    return EvidenceChatResponse(
+        reply=result.reply,
+        sources=result.sources,
     )
 
 
