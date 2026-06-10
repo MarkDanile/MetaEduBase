@@ -135,6 +135,8 @@
 | DOC-055 | 收口 DOC-042 / TD-034 PR 范围混入与事实源漂移 | 🟢 完成 | P1 | 文档 / 工程流程 / 质量门禁 | DOC-042 review / [Review Score Log](04-retrospectives/review-score-log.md) |
 | TD-039 | 6 键保留集合（`id` / `version` / `layer` / `matched_type` / `confidence` / `reason`）抽到 `@metaedu/shared/schemas/document` 作为 single source of truth | ⚫ 待办 | P3 | 前端 / 后端 / API | REQ-002-3 code review / 当前 `FileTabsPanel.vue:159-166` 与后端 `extract_template_prompts.py:19-22` 各自硬编码 |
 | TD-040 | `FileTabsPanel.spec.ts` Vue 单元测试覆盖 AC-11（6 键过滤）/ AC-12（card 渲染 / 老数据隐藏 / layer none 分支 / version 为 null） | ⚫ 待办 | P2 | 前端 / 测试 / 交付 | REQ-002-3 code review / 当前仅靠 `data-testid="template-source-meta"` 无 Vue-level 锁 |
+| TD-041 | FieldCard 递归渲染嵌套字段 + object children / array items 嵌套拖拽 | ⚫ 待办 | P2 | 前端 / 架构 / 交付 | REQ-002-1 AC-2/AC-3 部分完成 / [PR #158](https://github.com/MarkDanile/MetaEduBase/pull/158) |
+| TD-042 | REQ-002-2 后端集成测试在 PG 实例下验证（`test_template_reuse.py` 8 条用例） | ⚫ 待办 | P2 | 后端 / 测试 / 交付 | REQ-002-2 交付时沙箱无 PG / [PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 
 ## 任务详情
@@ -1898,3 +1900,75 @@
 - 行为变化声明：脚本逻辑收紧（更精确的 task_id 匹配），对 0 业务代码 / 0 API 行为有影响；仅影响 `check-engineering-docs` 跨事实源状态一致性 check。
 - 验证摘要：脚本修复后自动暴露 main `current-work.md:19` 的 REQ-002-3 残留行；删除该行后 `check-engineering-docs` rc=0 恢复。
 - 顺带说明：TD-039 / TD-040（REQ-002-3 code review follow-up）保持 ⚫ 待办。
+
+### TD-041: FieldCard 递归渲染嵌套字段 + object children / array items 嵌套拖拽
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 前端 / 架构 / 交付 |
+| 事实源 | REQ-002-1 AC-2/AC-3 部分完成 / [PR #158](https://github.com/MarkDanile/MetaEduBase/pull/158) |
+
+**证据**
+- REQ-002-1（PR #158）实现了 root 层 vuedraggable 拖拽排序，但 AC-2（object 子字段拖拽）和 AC-3（array items 拖拽）仅部分完成。
+- `FieldCard.vue` 渲染 object / array 类型字段的展开详情时，**不渲染 `node.children` / `node.items`**——只有空态占位和"添加子字段"按钮，没有 `v-for` 迭代子字段。
+- `FieldItem.vue` 仅在 root 层用 `<draggable :list="modelValue">` 包裹顶层 FieldCard 列表；组件树是**扁平**的（一层 draggable 列表），而数据树是**嵌套**的（Field 包含 `children?: Field[]` 和 `items?: Field[]`）。
+- 当前架构下，object 子字段和 array items 在 UI 上不可见，也无法被拖拽排序。
+
+**问题**
+- REQ-002-1 spec 的 AC-2 / AC-3 明确要求 object 子字段和 array items 可拖拽排序，但当前实现因组件架构限制未达到。
+- 嵌套字段在 UI 上不可见，用户无法直接查看和操作 object 的子字段列表或 array 的成员模板。
+- 后续 REQ-002-4（容器互转二次确认）也需要嵌套字段的可见性。
+
+**完成标准**
+- `FieldCard.vue` 在 object 类型展开后，用 `<draggable :list="node.children">` 递归渲染 `FieldCard` 列表，使子字段可见且可拖拽排序。
+- `FieldCard.vue` 在 array 类型展开后，用 `<draggable :list="node.items">` 递归渲染 `FieldCard` 列表，使成员模板可见且可拖拽排序。
+- 递归 FieldCard 正确传递 `depth`（用于缩进）和事件冒泡（`remove` / `updateField` / `changeType` / `addChild` / `addColumn` / `removeColumn` / `copySubtree`）。
+- 嵌套拖拽后 `template.fields` 的嵌套数组顺序与 UI 拖拽一致（保存后 reload 验证）。
+- 不引入跨层级拖拽（vuedraggable `group` 跨级拖拽属于更复杂的 follow-up）。
+- `pnpm typecheck` + `pnpm lint` 退出码 0。
+- `scripts/check-engineering-docs` 退出码 0。
+- REQ-002-1 spec AC-2 / AC-3 标记为完整完成。
+
+**验证方式**
+- `cd packages/web && pnpm typecheck && pnpm lint` 退出码 0。
+- `scripts/check-engineering-docs` 退出码 0。
+- 手测：打开含 object + array 字段的模板，展开 object → 子字段可见 → 拖拽子字段改变顺序 → 保存 → reload 确认顺序持久化。
+- 手测：展开 array → 成员模板可见 → 拖拽改变顺序 → 保存 → reload 确认顺序。
+
+**交付记录**
+- 未完成。
+
+### TD-042: REQ-002-2 后端集成测试在 PG 实例下验证
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 后端 / 测试 / 交付 |
+| 事实源 | REQ-002-2 交付时沙箱无 PG / [PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) |
+
+**证据**
+- `tests/contexts/template/test_template_reuse.py` 新增 8 条后端测试用例（clone / cross-tenant / version snapshot / pagination / rollback / import round-trip / key validation / duplicate sibling keys），但执行环境无 PG 实例，集成测试未实际运行。
+- `packages/server-python/alembic/versions/007_template_versions.py` 迁移文件已提交但未在真实 DB 上执行 `make migrate`。
+- `ruff check app/ tests/` + `import` 冒烟测试通过，证明代码语法正确，但功能正确性需集成测试验证。
+
+**问题**
+- REQ-002-2 的 6 个新端点 + version 快照 + 回滚逻辑未在真实 PG 环境下验证，可能存在运行时错误（如迁移不兼容、事务边界、并发 version_number）。
+- 未验证 AC-20（DB 迁移可复现：upgrade / downgrade 成功）。
+
+**完成标准**
+- `make migrate` 升级成功；`make migrate-downgrade` 回退成功。
+- `pytest tests/contexts/template/test_template_reuse.py -q` 全部通过。
+- `pytest tests/contexts/template -q` 全部通过（回归）。
+
+**验证方式**
+- `cd packages/server-python && make migrate && make migrate-downgrade` 成功。
+- `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/template/test_template_reuse.py -q` 全绿。
+- `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/template -q` 全绿。
+
+**交付记录**
+- 未完成。
