@@ -5,6 +5,7 @@ internal JSON container shape written by parse/extract tasks.
 """
 
 import json
+import logging
 
 import pytest
 
@@ -86,7 +87,6 @@ def test_merge_template_structured_data_writes_meta_at_top() -> None:
 
 def test_merge_template_structured_data_ignores_unknown_meta_keys(caplog) -> None:
     """REQ-002-3 AC-3: 未知 meta 键被忽略 + WARNING 日志。"""
-    import logging
     existing = {"full_text": "正文"}
     template = {"title": "课程"}
     meta = {"id": "tmpl-1", "version": 1, "layer": "L1", "foo": "bar"}
@@ -100,7 +100,6 @@ def test_merge_template_structured_data_ignores_unknown_meta_keys(caplog) -> Non
 
 def test_merge_template_structured_data_meta_incomplete_falls_back(caplog) -> None:
     """REQ-002-3 AC-4: meta 缺核心键时回退旧 shape + WARNING 日志。"""
-    import logging
     existing = {"full_text": "正文"}
     template = {"title": "课程"}
 
