@@ -12,26 +12,10 @@
 - 代码、验证或 Git 阶段变化后，必须同步任务状态、当前进展、下一步和验证结果。
 - 提交、PR、合并或声明完成前，运行 `scripts/check-engineering-docs` 并执行 `docs/03-engineering-governance/01-rules/quality-gates.md#完成门禁`；门禁主实现位于 `scripts/engineering/check_engineering_docs.py`。
 
-## 并行批次：REQ-002-1 + REQ-002-2
-
-| 项 | 内容 |
-|----|------|
-| 批次名称 | REQ-002-1 + REQ-002-2 并行开发 |
-| 包含任务 | REQ-002-1（纯前端 UX）+ REQ-002-2（后端 + 前端复用） |
-| 合并顺序 | REQ-002-1 先合 → REQ-002-2 rebase 后补 TemplateEditorView 集成再合 |
-| 集成负责人 | 主会话（统一回填 current-work / work-log / 评分） |
-
-| 任务 | Agent | 分支 | 修改范围 | 禁止修改 | 预计冲突点 |
-|------|-------|------|----------|----------|-----------|
-| REQ-002-1 | Agent A (worktree) | `feature/req-002-1-template-config-ux` | FieldCard / FieldItem / TemplateEditorView / FieldEditor + 文档 | 后端全部 + TemplateListView + template.ts | TemplateEditorView（REQ-002-2 也需修改，已约定 REQ-002-2 跳过） |
-| REQ-002-2 | Agent B (worktree) | `feature/req-002-2-template-reuse` | 后端 template context 全部 + template.ts + CloneTemplateDialog / VersionHistoryPanel / ImportTemplateDialog + TemplateListView + 文档 | **TemplateEditorView**（推迟到 REQ-002-1 合并后执行 Task 12） | TemplateEditorView（已约定跳过）+ current-work（集成者统一回填） |
-
 ## 当前进行中
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-002-1 模板配置效率（编辑器 UX） | 🟡 进行中（并行 Agent A） | P2 | Frontend | 并行批次已启动；Agent A 在 worktree 中执行 plan Task 1-8 | vuedraggable + 复制子树 + 撤销 + 搜索实现 + 验证 | 待运行：`pnpm typecheck` + `pnpm lint` + `scripts/check-engineering-docs` |
-| REQ-002-2 模板复用机制 | 🟡 进行中（并行 Agent B） | P2 | Backend / Frontend | 并行批次已启动；Agent B 在 worktree 中执行 plan Task 1-11 + 13（跳过 Task 12 TemplateEditorView） | 后端 6 端点 + 版本快照 + 前端复制/导入/版本组件 + 验证 | 待运行：`make migrate` + `pytest tests/contexts/template` + `pnpm typecheck` + `pnpm lint` + `scripts/check-engineering-docs` |
 | REQ-002-4 模板可维护性 | 🔵 Ready | P2 | Backend / Frontend | spec + plan 已建（[Spec](../02-delivery-plans/01-specs/2026-06-10-req-002-4-template-maintainability.md) / [Plan](../02-delivery-plans/02-plans/2026-06-10-req-002-4-template-maintainability-plan.md)）；分支 `docs/req-002-4-template-maintainability`（仅 spec/plan，尚未实现）；4 个新 DB 字段 + 2 个新端点 + 破坏性变更检测 + 字段命名校验 + 前端二次确认。 | 业务代码实现（Task 1-5 后端 + Task 6 测试 + Task 7-9 前端 + Task 10-11 文档+回归） | 待运行：`make migrate` + `pytest tests/contexts/template tests/contexts/document` + `pnpm typecheck` + `pnpm lint` + `scripts/check-engineering-docs` |
 
 ## 下一批候选任务
@@ -53,7 +37,9 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
-| 2026-06-10 | DOC-058 强化工作台规则渐进式披露入口 | 🟢 完成 | 将 `workbench.md` 从索引可见提升为“修改工作台或任务状态前必读”：入口、工作台自身、workflow、task-modes 和 Claude/Trae 兼容跳转同步补强。 | [Workbench](01-rules/workbench.md#使用规则) / [Workflow](workflow.md#开发前检查) / [Task Modes](task-modes.md#通用入口) |
+| 2026-06-10 | REQ-002-1 模板配置效率（编辑器 UX） | 🟢 完成 | 纯前端 UX：vuedraggable 拖拽 root 层 + 子树复制 + 撤销 toast + 折叠/展开 + 搜索过滤（30+ 阈值）+ normalize_status 脚本修复。AC-2/AC-3 嵌套拖拽部分完成（留 follow-up）。[PR #158](https://github.com/MarkDanile/MetaEduBase/pull/158) squash merge。 | [Spec](../02-delivery-plans/01-specs/2026-06-10-req-002-1-template-config-ux.md) / [Plan](../02-delivery-plans/02-plans/2026-06-10-req-002-1-template-config-ux-plan.md) / [PR #158](https://github.com/MarkDanile/MetaEduBase/pull/158) |
+| 2026-06-10 | REQ-002-2 模板复用机制 | 🟢 完成 | 6 端点 + template_versions 表 + 版本快照 + 3 新组件 + 导入导出；8 条测试。[PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) | [Spec](../02-delivery-plans/01-specs/2026-06-10-req-002-2-template-reuse.md) / [PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) |
+| 2026-06-10 | DOC-058 强化工作台规则渐进式披露入口 | 🟢 完成 | 将 `workbench.md` 从索引可见提升为”修改工作台或任务状态前必读”：入口、工作台自身、workflow、task-modes 和 Claude/Trae 兼容跳转同步补强。 | [Workbench](01-rules/workbench.md#使用规则) / [Workflow](workflow.md#开发前检查) / [Task Modes](task-modes.md#通用入口) |
 | 2026-06-10 | DOC-057 建立并行开发模式与集成收口规则 | 🟢 完成 | 默认单任务闭环不变；新增用户显式触发的并行模式，要求可行性评估、独立分支/worktree、文件边界、合并顺序和集成者统一回填。 | [Task Modes](task-modes.md#并行开发模式) / [Workflow](workflow.md#并行开发模式) / [Workbench](01-rules/workbench.md#并行批次边界) / [Git Workflow](01-rules/git-workflow.md#并行分支规则) |
 | 2026-06-10 | DOC-056 收口 `check_req_status_consistency` 父 / 子任务混聚 bug | 🟢 完成 | `REQ_ID_RE` 扩为 `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` regression（20 passed）。`check-engineering-docs` rc=0。 | [DOC-056](technical-debt.md#doc-056) / [Work Log](work-log.md) / [PR #155](https://github.com/MarkDanile/MetaEduBase/pull/155) |
 | 2026-06-10 | REQ-002-3 模板抽取结果溯源字段扩展 | 🟢 完成 | 后端 `_merge_template_structured_data` 接受可选 `meta`（6 键白名单）+ `extract_template` 落盘 6 键溯源；前端 `FileTabsPanel` 过滤保留键 + 溯源元信息卡。pytest 71 passed + 全门禁过。follow-up：TD-039 / TD-040。 | [Work Log](work-log.md) / [PR #153](https://github.com/MarkDanile/MetaEduBase/pull/153) / [PR #154](https://github.com/MarkDanile/MetaEduBase/pull/154) |
@@ -61,15 +47,9 @@
 | 2026-06-10 | DOC-042 脚本化 TD-032 行数基线扫描 | 🟢 完成 | `scripts/scan-source-sizes` + `--refresh` + 门禁 `source-size-over-limit`；19 pytest passed；ruff 全过；check-engineering-docs 通过。 | [DOC-042](technical-debt.md#doc-042) / [Work Log](work-log.md) / [PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143) |
 | 2026-06-10 | TD-034 `build_fields_desc` 在 `array + items=[]` 时丢失"成员为object"提示 | 🟢 完成 | 路线 A：`f.get("items")` → `f.get("items") is not None`，保留"成员为object"提示；pytest 50 passed，ruff 全过。 | [TD-034](technical-debt.md#td-034) / [Work Log](work-log.md) / [PR #142](https://github.com/MarkDanile/MetaEduBase/pull/142) |
 | 2026-06-10 | DOC-045 修正 TD-033 CSS 拆分交付声明与追踪证据 | 🟢 完成 | technical-debt 总览表 + 独立任务卡 + Backlog 行翻 Done + work-log 补 PR/commit + 候选区移出。docs-only，4 文件，6 条 `rg` 验收全过。 | [DOC-045](technical-debt.md#doc-045) / [Work Log](work-log.md) / [PR #137](https://github.com/MarkDanile/MetaEduBase/pull/137) |
-| 2026-06-10 | TD-030 RecallChannel Protocol vs concrete signature drift 收口（路线 A） | 🟢 完成 | Protocol 增 `session`，3 具体类去下划线前缀，契约测试去 `lstrip` 退路并新增 3 用例。pytest 228 passed（+3），ruff 干净。 | [TD-030](technical-debt.md#td-030) / [Work Log](work-log.md) / [PR #139](https://github.com/MarkDanile/MetaEduBase/pull/139) |
-| 2026-06-10 | REQ-006 🟢 Done（Stage 1.0 → 1.5 → 2 完整交付） | 🟢 完成 | 6 步 e2e 闭环（225 passed），轨道 B / W23 / Backlog 同步 Done。 | [Work Log](work-log.md) / [PR #117](https://github.com/MarkDanile/MetaEduBase/pull/117) / [PR #132](https://github.com/MarkDanile/MetaEduBase/pull/132) |
+| 2026-06-10 | TD-030 RecallChannel Protocol vs concrete signature drift 收口（路线 A） | 🟢 完成 | Protocol 增 `session`，3 具体类去下划线前缀，契约测试去 `lstrip` 退路并新增 3 用例。pytest 228 passed。 | [TD-030](technical-debt.md#td-030) / [Work Log](work-log.md) / [PR #139](https://github.com/MarkDanile/MetaEduBase/pull/139) |
+| 2026-06-10 | REQ-006 Stage 1.0 → 1.5 → 2 完整交付 | 🟢 完成 | 6 步 e2e 闭环（225 passed），轨道 B / W23 / Backlog 同步 Done。 | [Work Log](work-log.md) / [PR #117](https://github.com/MarkDanile/MetaEduBase/pull/117) / [PR #132](https://github.com/MarkDanile/MetaEduBase/pull/132) |
 | 2026-06-10 | TD-037 收口 e2e Redis broker（路线 B） | 🟢 完成 | 建 `tests/e2e/conftest.py`，恢复 Stage 1.0 基线。 | [Work Log](work-log.md) / [PR #130](https://github.com/MarkDanile/MetaEduBase/pull/130) |
-| 2026-06-09 | DOC-051 一次性收口 W23 P1 历史 spec/plan 占位 | 🟢 完成 | 12 处占位替换 + 3 plan 链接回填，W23 迭代卡 PG 行更新，占位扫描候选解除。 | [Work Log](work-log.md) / [PR #124](https://github.com/MarkDanile/MetaEduBase/pull/124) |
-| 2026-06-09 | TD-036 / TD-038 修复全新测试库 alembic upgrade head 阻塞 | 🟢 完成 | 修 006 gin ops + init-test-db btree_gin + _ensure_critical_columns 防御 check。 | [Work Log](work-log.md) / [PR #122](https://github.com/MarkDanile/MetaEduBase/pull/122) |
-| 2026-06-09 | DOC-052 清理 KNOWN_ISSUES TD-023 历史白名单 | 🟢 完成 | 删 4 条白名单；脚本验证删除前后 active=0 known=0 门禁一致。 | [Work Log](work-log.md) / [PR #128](https://github.com/MarkDanile/MetaEduBase/pull/128) |
-| 2026-06-09 | BUG-001 修正 document retry endpoint Celery dispatch | 🟢 完成 | 去 await + pipeline_version + try/except；3 条新回归用例。 | [Work Log](work-log.md) / [PR #120](https://github.com/MarkDanile/MetaEduBase/pull/120) |
-| 2026-06-09 | DOC-054 收口 review-score-log PR / 倒排 / Metrics | 🟢 完成 | DOC-049 行 本 PR → PR #113；Score Log 10 条倒排；Metrics 全量重算（10 / 82.6 / 40% / 60% / 100% / 90%）。 | [Work Log](work-log.md) / [PR #126](https://github.com/MarkDanile/MetaEduBase/pull/126) |
-| 2026-06-09 | DOC-053 补齐高频流程启动语入口 | 🟢 完成 | `task-modes.md#常见启动语` 增补评审 / Git 闭环 / 复盘 / 阶段收口等短启动语。 | [Work Log](work-log.md) |
-| 2026-06-09 | DOC-050 优化 current-work 最近完成窗口与评分总账排序 | 🟢 完成 | 窗口 5→20 行；评分总账最新评审置顶；门禁脚本同步。 | [Work Log](work-log.md) |
-| 2026-06-09 | TD-035 收口 REQ-005 新增测试文件 ruff 质量门禁 | 🟢 完成 | `ruff check --fix` 修 1 I001 + 3 SIM300；pytest 11 passed 不变；`ruff check app/ tests/` 退出码 0。 | [TD-035](technical-debt.md#td-035) |
-| 2026-06-09 | DOC-049 收口结构化抽取完成态占位与验证声明漂移 | 🟢 完成 | 修正 AC-8 浅拷贝 / AC-10 失败条件 / TD-???；plan TBD 回填；候选门禁登记。 | [Backlog](../01-product-planning/04-backlog.md) |
+| 2026-06-10 | DOC-051 一次性收口 W23 P1 历史 spec/plan 占位 | 🟢 完成 | 12 处占位替换 + 3 plan 链接回填。 | [Work Log](work-log.md) / [PR #124](https://github.com/MarkDanile/MetaEduBase/pull/124) |
+| 2026-06-10 | TD-036 / TD-038 修复全新测试库 alembic upgrade head 阻塞 | 🟢 完成 | 修 006 gin ops + init-test-db btree_gin + 防御 check。 | [Work Log](work-log.md) / [PR #122](https://github.com/MarkDanile/MetaEduBase/pull/122) |
+| 2026-06-10 | BUG-001 修正 document retry endpoint Celery dispatch | 🟢 完成 | 去 await + pipeline_version + try/except；3 条新回归。 | [Work Log](work-log.md) / [PR #120](https://github.com/MarkDanile/MetaEduBase/pull/120) |
