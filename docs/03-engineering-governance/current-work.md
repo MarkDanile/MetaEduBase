@@ -12,12 +12,26 @@
 - 代码、验证或 Git 阶段变化后，必须同步任务状态、当前进展、下一步和验证结果。
 - 提交、PR、合并或声明完成前，运行 `scripts/check-engineering-docs` 并执行 `docs/03-engineering-governance/01-rules/quality-gates.md#完成门禁`；门禁主实现位于 `scripts/engineering/check_engineering_docs.py`。
 
+## 并行批次：REQ-002-1 + REQ-002-2
+
+| 项 | 内容 |
+|----|------|
+| 批次名称 | REQ-002-1 + REQ-002-2 并行开发 |
+| 包含任务 | REQ-002-1（纯前端 UX）+ REQ-002-2（后端 + 前端复用） |
+| 合并顺序 | REQ-002-1 先合 → REQ-002-2 rebase 后补 TemplateEditorView 集成再合 |
+| 集成负责人 | 主会话（统一回填 current-work / work-log / 评分） |
+
+| 任务 | Agent | 分支 | 修改范围 | 禁止修改 | 预计冲突点 |
+|------|-------|------|----------|----------|-----------|
+| REQ-002-1 | Agent A (worktree) | `feature/req-002-1-template-config-ux` | FieldCard / FieldItem / TemplateEditorView / FieldEditor + 文档 | 后端全部 + TemplateListView + template.ts | TemplateEditorView（REQ-002-2 也需修改，已约定 REQ-002-2 跳过） |
+| REQ-002-2 | Agent B (worktree) | `feature/req-002-2-template-reuse` | 后端 template context 全部 + template.ts + CloneTemplateDialog / VersionHistoryPanel / ImportTemplateDialog + TemplateListView + 文档 | **TemplateEditorView**（推迟到 REQ-002-1 合并后执行 Task 12） | TemplateEditorView（已约定跳过）+ current-work（集成者统一回填） |
+
 ## 当前进行中
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-002-1 模板配置效率（编辑器 UX） | 🔵 Ready | P2 | Frontend | spec + plan 已建（[Spec](../02-delivery-plans/01-specs/2026-06-10-req-002-1-template-config-ux.md) / [Plan](../02-delivery-plans/02-plans/2026-06-10-req-002-1-template-config-ux-plan.md)）；纯前端 0 后端改动；PR #149 已 merge。 | 业务代码实现（Task 1-5 前端 vuedraggable + 复制 + 撤销 + 搜索） | 待运行：`pnpm typecheck` + `pnpm lint` + `scripts/check-engineering-docs` |
-| REQ-002-2 模板复用机制 | 🔵 Ready | P2 | Backend / Frontend | spec + plan 已建（[Spec](../02-delivery-plans/01-specs/2026-06-10-req-002-2-template-reuse.md) / [Plan](../02-delivery-plans/02-plans/2026-06-10-req-002-2-template-reuse-plan.md)）；分支 `docs/req-002-2-template-reuse`（仅 spec/plan，尚未实现）；6 个新端点 + 1 张新表（template_versions）+ 3 个新组件。 | 业务代码实现（Task 1-5 后端 + Task 6 测试 + Task 7-12 前端 + Task 13 文档） | 待运行：`make migrate` + `pytest tests/contexts/template` + `pnpm typecheck` + `pnpm lint` + `scripts/check-engineering-docs` |
+| REQ-002-1 模板配置效率（编辑器 UX） | 🟡 进行中（并行 Agent A） | P2 | Frontend | 并行批次已启动；Agent A 在 worktree 中执行 plan Task 1-8 | vuedraggable + 复制子树 + 撤销 + 搜索实现 + 验证 | 待运行：`pnpm typecheck` + `pnpm lint` + `scripts/check-engineering-docs` |
+| REQ-002-2 模板复用机制 | 🟡 进行中（并行 Agent B） | P2 | Backend / Frontend | 并行批次已启动；Agent B 在 worktree 中执行 plan Task 1-11 + 13（跳过 Task 12 TemplateEditorView） | 后端 6 端点 + 版本快照 + 前端复制/导入/版本组件 + 验证 | 待运行：`make migrate` + `pytest tests/contexts/template` + `pnpm typecheck` + `pnpm lint` + `scripts/check-engineering-docs` |
 | REQ-002-4 模板可维护性 | 🔵 Ready | P2 | Backend / Frontend | spec + plan 已建（[Spec](../02-delivery-plans/01-specs/2026-06-10-req-002-4-template-maintainability.md) / [Plan](../02-delivery-plans/02-plans/2026-06-10-req-002-4-template-maintainability-plan.md)）；分支 `docs/req-002-4-template-maintainability`（仅 spec/plan，尚未实现）；4 个新 DB 字段 + 2 个新端点 + 破坏性变更检测 + 字段命名校验 + 前端二次确认。 | 业务代码实现（Task 1-5 后端 + Task 6 测试 + Task 7-9 前端 + Task 10-11 文档+回归） | 待运行：`make migrate` + `pytest tests/contexts/template tests/contexts/document` + `pnpm typecheck` + `pnpm lint` + `scripts/check-engineering-docs` |
 
 ## 下一批候选任务
