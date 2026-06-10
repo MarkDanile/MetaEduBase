@@ -259,3 +259,28 @@ def test_merge_template_structured_data_shallow_copies_nested_template() -> None
     # 既有字段不丢
     assert merged["full_text"] == "正文"
     assert merged["section_count"] == 1
+
+
+# --- REQ-002-3: meta + 嵌套浅拷贝组合 --------------------------------------
+
+
+def test_merge_template_structured_data_with_meta_preserves_nested_shallow_copy() -> None:
+    """REQ-002-3 AC-9: meta 存在时，嵌套 list / dict 仍浅拷贝（外层新 dict）。"""
+    template_data = {
+        "basic_info": {"subject": "语文", "grade": "高一"},
+        "teaching_process": [{"step": "导入", "duration": 5}],
+        "assessment": [{"criterion": "理解", "score": 4}],
+    }
+    meta = {"id": "tmpl-1", "version": 1, "layer": "L1"}
+
+    merged = _merge_template_structured_data({}, template_data, meta)
+
+    # 浅拷贝契约
+    assert merged["template"] is not template_data
+    assert merged["template"]["basic_info"] is template_data["basic_info"]
+    assert merged["template"]["teaching_process"] is template_data["teaching_process"]
+    assert merged["template"]["teaching_process"][0] is template_data["teaching_process"][0]
+    assert merged["template"]["assessment"] is template_data["assessment"]
+    # 核心键写入
+    assert merged["template"]["id"] == "tmpl-1"
+    assert merged["template"]["layer"] == "L1"
