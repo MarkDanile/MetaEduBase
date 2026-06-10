@@ -20,7 +20,7 @@
     <div v-if="activeTab === 'structured'">
       <!-- REQ-002-3 AC-12: 溯源元信息卡（仅在 template.id 存在时显示；老数据 / layer none 不显示） -->
       <div
-        v-if="templateMeta"
+        v-if="templateMeta !== null"
         class="p-3 mb-3 rounded-lg border border-[var(--color-border)] flex flex-wrap gap-3 text-[var(--text-small)]"
         data-testid="template-source-meta"
       >
@@ -197,9 +197,9 @@ const templateMeta = computed<TemplateMeta | null>(() => {
     | undefined;
   const t = sd?.template;
   if (!t || typeof t !== "object") return null;
-  if (!("id" in t) || t.id == null) return null;
+  if (!("id" in t) || typeof t.id !== "string" || t.id === "") return null;
   return {
-    id: String(t.id),
+    id: t.id,
     version: (t.version as number | null | undefined) ?? null,
     layer: (t.layer as string | undefined) ?? "none",
     matched_type: (t.matched_type as string | null | undefined) ?? null,
