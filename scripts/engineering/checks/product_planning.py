@@ -39,6 +39,8 @@ PRODUCT_STATUS_NAMES: frozenset[str] = frozenset(
 
 def normalize_status(status: str) -> str:
     clean = re.sub(r"[⚪⚫🔵🟡🔴🟣🟢]", "", status).strip()
+    # Strip parenthetical annotations like "进行中（并行 Agent A）" → "进行中"
+    clean = re.sub(r"[（(][^）)]*[）)]", "", clean).strip()
     mapping = {
         "待澄清": "Idea",
         "待计划": "Candidate",
