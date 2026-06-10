@@ -2,6 +2,9 @@
   <div class="p-6">
     <PageHeader title="数据要素模板" subtitle="配置各类文档的结构化抽取模板">
       <template #extra>
+        <button class="ui-btn ui-btn-ghost" @click="showImport = true">
+          <Upload :size="14" /> 导入模板
+        </button>
         <button class="ui-btn ui-btn-primary" @click="openCreateModal">
           <Plus :size="16" /> 新建模板
         </button>
@@ -59,6 +62,9 @@
             <button class="op-btn" @click="openEditModal(t)" title="编辑">
               <Pencil :size="14" class="text-[var(--color-ink-tertiary)]" />
             </button>
+            <button class="op-btn" @click="openCloneDialog(t)" title="复制">
+              <Copy :size="14" class="text-[var(--color-ink-tertiary)]" />
+            </button>
             <button class="op-btn danger" @click="confirmDelete(t)" title="删除">
               <Trash2 :size="14" class="text-[var(--color-danger)]" />
             </button>
@@ -82,28 +88,49 @@
       danger
       @confirm="doDelete"
     />
+
+    <!-- Clone Dialog -->
+    <CloneTemplateDialog
+      v-if="cloneSource"
+      v-model:open="showClone"
+      :source="cloneSource"
+      @cloned="onCloned"
+    />
+
+    <!-- Import Dialog -->
+    <ImportTemplateDialog
+      v-model:open="showImport"
+      @imported="onImported"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { Plus, Trash2, Pencil } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
+import { Plus, Trash2, Pencil, Copy, Upload } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import CloneTemplateDialog from '@/components/CloneTemplateDialog.vue'
+import ImportTemplateDialog from '@/components/ImportTemplateDialog.vue'
 import TemplateModal from './TemplateModal.vue'
 import { templateApi, type Template, type Field } from '@/services/template'
 import { useToast } from '@/composables/useToast'
 
+const router = useRouter()
 const toast = useToast()
 
 const templates = ref<Template[]>([])
 const loading = ref(false)
 const showModal = ref(false)
 const showDelete = ref(false)
+const showClone = ref(false)
+const showImport = ref(false)
 const selectedTemplate = ref<Template | null>(null)
 const deleteTarget = ref<Template | null>(null)
+const cloneSource = ref<Template | null>(null)
 
 function countFields(fields: Field[]): number {
   let count = 0
@@ -151,6 +178,20 @@ async function doDelete() {
   }
 }
 
+function openCloneDialog(t: Template) {
+  cloneSource.value = t
+  showClone.value = true
+}
+
+function onCloned(newId: string) {
+  router.push(`/admin/template/${newId}`)
+}
+
+function onImported(newId: string) {
+  loadTemplates()
+  router.push(`/admin/template/${newId}`)
+}
+
 function onSaved() {
   loadTemplates()
 }
@@ -183,7 +224,7 @@ onMounted(() => {
 
 .list-header {
   display: grid;
-  grid-template-columns: 56px 1fr 200px 80px 120px 80px;
+  grid-template-columns: 56px 1fr 200px 80px 120px 100px;
   gap: 0;
   padding: 10px 16px;
   background: #f8f9fa;
@@ -196,7 +237,7 @@ onMounted(() => {
 
 .list-row {
   display: grid;
-  grid-template-columns: 56px 1fr 200px 80px 120px 80px;
+  grid-template-columns: 56px 1fr 200px 80px 120px 100px;
   gap: 0;
   padding: 12px 16px;
   border-bottom: 1px solid #f3f4f6;

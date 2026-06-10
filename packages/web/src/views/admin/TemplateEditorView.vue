@@ -2,6 +2,13 @@
   <div class="ui-page-shell">
     <PageHeader :title="isNew ? '新建模板' : '编辑模板'" subtitle="配置结构化数据抽取字段">
       <template #extra>
+        <!-- REQ-002-2: Version history + export (edit mode only) -->
+        <button v-if="!isNew" class="ui-btn ui-btn-ghost" @click="showVersionHistory = !showVersionHistory">
+          <History :size="14" /> 版本历史
+        </button>
+        <button v-if="!isNew" class="ui-btn ui-btn-ghost" @click="onExport">
+          <Download :size="14" /> 导出 JSON
+        </button>
         <button class="ui-btn ui-btn-primary" @click="save" :disabled="saving">
           保存
         </button>
@@ -28,6 +35,13 @@
       <span>已删除字段「{{ deletedStack[0].field.key || deletedStack[0].field.label }}」，5 秒内可撤销</span>
       <button class="undo-toast-btn" @click="undoRemove">撤销</button>
     </div>
+
+    <!-- REQ-002-2: Version history panel -->
+    <VersionHistoryPanel
+      v-if="showVersionHistory && !isNew"
+      :template-id="route.params.id as string"
+      @rolled-back="onRolledBack"
+    />
 
     <div v-if="loading" class="flex justify-center py-12">
       <LoadingSpinner text="加载中..." />
@@ -107,10 +121,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { X } from 'lucide-vue-next'
+import { X, History, Download } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import FieldItem from '@/views/admin/FieldItem.vue'
+import VersionHistoryPanel from '@/components/VersionHistoryPanel.vue'
 import { templateApi, type Field } from '@/services/template'
 import { useToast } from '@/composables/useToast'
 
@@ -280,6 +295,31 @@ function findFieldByKey(fields: Field[], key: string): Field | null {
     }
   }
   return null
+}
+
+// ─── REQ-002-2: Version history + export ────────────────────────────────────
+const showVersionHistory = ref(false)
+
+async function onExport() {
+  try {
+    const { data } = await templateApi.export(route.params.id as string)
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${data.template.name}_${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success('导出成功')
+  } catch {
+    toast.error('导出失败')
+  }
+}
+
+function onRolledBack() {
+  showVersionHistory.value = false
+  load(route.params.id as string)
+  toast.info('已回滚，页面已刷新')
 }
 
 function syncFields() {

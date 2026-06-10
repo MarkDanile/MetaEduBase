@@ -56,3 +56,43 @@ class TemplateAIInitRequest(BaseModel):
 
 class TemplateAIInitResponse(BaseModel):
     fields: list[FieldDTO]
+
+
+# REQ-002-2: clone / import / version / export DTOs
+
+
+class CloneTemplateRequest(BaseModel):
+    name: str = PydanticField(..., max_length=100)
+    doc_types: list[str]
+    source_file_id: str | None = None
+
+
+class ImportTemplateRequest(BaseModel):
+    template: dict
+    name_override: str | None = None
+
+
+class TemplateVersionResponse(BaseModel):
+    version_number: int
+    name: str
+    snapshot_at: str
+    schema_version: int
+    doc_types: list[str]
+
+
+class TemplateVersionDetailResponse(BaseModel):
+    version_number: int
+    name: str
+    doc_types: list[str]
+    fields: list[FieldDTO]
+    ai_prompt: str | None
+    ai_context: str | None
+    schema_version: int
+    snapshot_at: str
+
+
+class TemplateExportResponse(BaseModel):
+    format: str
+    template: dict
+    schema_version: int
+    exported_at: str

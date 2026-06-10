@@ -1,13 +1,27 @@
+import copy
 import json
 import logging
+import re
 import time
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.config import settings
-from app.contexts.template.application.dto import FieldDTO, TemplateCreate, TemplateUpdate
+from app.contexts.template.application.dto import (
+    CloneTemplateRequest,
+    FieldDTO,
+    ImportTemplateRequest,
+    TemplateCreate,
+    TemplateUpdate,
+)
 from app.contexts.template.domain.entity import Field, TableColumn, Template
 from app.contexts.template.domain.repository import TemplateRepository
+from app.contexts.template.domain.template_version import TemplateVersion
+from app.contexts.template.infrastructure.template_version_repository import (
+    TemplateVersionRepositoryImpl,
+)
 from app.shared.llm.chat_with_fallback import chat_with_model_fallback
 from app.shared.llm.protocol import ProviderUnavailable
 
@@ -85,10 +99,181 @@ class TemplateService:
             existing.source_file_id = UUID(dto.source_file_id)
         existing.updated_at = datetime.now(UTC)
         await self.repo.update(existing)
+        # REQ-002-2 AC-3: write version snapshot in same transaction
+        await self._write_version_snapshot(existing)
         return _entity_to_dto(existing)
 
     async def delete(self, template_id: UUID, tenant_id: UUID) -> None:
         await self.repo.delete(template_id, tenant_id)
+
+    # REQ-002-2: clone / version / export / import
+
+    @property
+    def _session(self) -> AsyncSession:
+        """Access the underlying DB session from the repo for version writes."""
+        return self.repo.session  # type: ignore[attr-defined]
+
+    async def _write_version_snapshot(self, template: Template) -> None:
+        """Write a version snapshot for the template (same transaction)."""
+        version_repo = TemplateVersionRepositoryImpl()
+        max_ver = await version_repo.max_version_number(self._session, template.id)
+        next_version_number = max_ver + 1
+        snapshot = TemplateVersion(
+            id=uuid4(),
+            template_id=template.id,
+            tenant_id=template.tenant_id,
+            version_number=next_version_number,
+            name=template.name,
+            doc_types=template.doc_types,
+            fields=[f.to_dict() for f in template.fields],
+            ai_prompt=template.ai_prompt,
+            ai_context=template.ai_context,
+            schema_version=1,
+            snapshot_at=datetime.now(UTC),
+        )
+        await version_repo.create(self._session, snapshot)
+
+    async def clone(
+        self, template_id: UUID, dto: CloneTemplateRequest, tenant_id: UUID
+    ) -> dict | None:
+        """AC-1: Deep copy a template within the same tenant."""
+        original = await self.repo.get(template_id, tenant_id)
+        if not original:
+            return None
+        cloned_fields = copy.deepcopy([f.to_dict() for f in original.fields])
+        cloned = Template(
+            id=uuid4(),
+            tenant_id=tenant_id,
+            name=dto.name,
+            doc_types=dto.doc_types,
+            fields=[Field.from_dict(f) for f in cloned_fields],
+            ai_prompt=original.ai_prompt,
+            ai_context=original.ai_context,
+            source_file_id=UUID(dto.source_file_id) if dto.source_file_id else None,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        await self.repo.create(cloned)
+        return _entity_to_dto(cloned)
+
+    async def list_versions(
+        self, template_id: UUID, tenant_id: UUID, limit: int, offset: int
+    ) -> list[dict]:
+        """AC-4: List version snapshots (paginated, desc)."""
+        version_repo = TemplateVersionRepositoryImpl()
+        versions = await version_repo.list(self._session, template_id, tenant_id, limit, offset)
+        return [
+            {
+                "version_number": v.version_number,
+                "name": v.name,
+                "snapshot_at": v.snapshot_at.isoformat(),
+                "schema_version": v.schema_version,
+                "doc_types": v.doc_types,
+            }
+            for v in versions
+        ]
+
+    async def get_version(
+        self, template_id: UUID, tenant_id: UUID, version_number: int
+    ) -> dict | None:
+        """AC-4: Get a single version snapshot detail."""
+        version_repo = TemplateVersionRepositoryImpl()
+        v = await version_repo.get(self._session, template_id, tenant_id, version_number)
+        if not v:
+            return None
+        return {
+            "version_number": v.version_number,
+            "name": v.name,
+            "doc_types": v.doc_types,
+            "fields": v.fields,
+            "ai_prompt": v.ai_prompt,
+            "ai_context": v.ai_context,
+            "schema_version": v.schema_version,
+            "snapshot_at": v.snapshot_at.isoformat(),
+        }
+
+    async def rollback(
+        self, template_id: UUID, version_number: int, tenant_id: UUID
+    ) -> dict | None:
+        """AC-5: Restore template from a version snapshot (writes new version)."""
+        version = await self.get_version(template_id, tenant_id, version_number)
+        if not version:
+            return None
+        update_dto = TemplateUpdate(
+            name=version["name"],
+            doc_types=version["doc_types"],
+            fields=version["fields"],
+            ai_prompt=version["ai_prompt"],
+            ai_context=version["ai_context"],
+        )
+        return await self.update(template_id, update_dto, tenant_id)
+
+    async def export_template(self, template_id: UUID, tenant_id: UUID) -> dict | None:
+        """AC-6/AC-7: Export template as metaedu-template-v1 format."""
+        template = await self.repo.get(template_id, tenant_id)
+        if not template:
+            return None
+        return {
+            "format": "metaedu-template-v1",
+            "template": {
+                "name": template.name,
+                "doc_types": template.doc_types,
+                "fields": [f.to_dict() for f in template.fields],
+                "ai_prompt": template.ai_prompt,
+                "ai_context": template.ai_context,
+            },
+            "schema_version": 1,
+            "exported_at": datetime.now(UTC).isoformat(),
+        }
+
+    async def import_template(self, dto: ImportTemplateRequest, tenant_id: UUID) -> dict:
+        """AC-8/AC-9/AC-10: Import template from JSON payload."""
+        # AC-8: schema_version compatibility check
+        current_schema = 1
+        payload_schema = dto.template.get("schema_version", current_schema)
+        if payload_schema < current_schema:
+            raise ValueError(
+                f"Cannot import template with older schema "
+                f"(payload={payload_schema}, current={current_schema})"
+            )
+
+        # AC-9 / AC-10: field key regex + sibling uniqueness
+        self._validate_fields(dto.template.get("fields", []))
+
+        name = dto.name_override or dto.template["name"]
+        template = Template(
+            id=uuid4(),
+            tenant_id=tenant_id,
+            name=name,
+            doc_types=dto.template.get("doc_types", []),
+            fields=[Field.from_dict(f) for f in dto.template.get("fields", [])],
+            ai_prompt=dto.template.get("ai_prompt"),
+            ai_context=dto.template.get("ai_context"),
+            source_file_id=None,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        await self.repo.create(template)
+        return _entity_to_dto(template)
+
+    def _validate_fields(self, fields: list, parent_key: str = "") -> None:
+        """AC-9 / AC-10: Recursively validate key naming and sibling uniqueness."""
+        seen: set[str] = set()
+        for f in fields:
+            key = f.get("key", "")
+            if not re.match(r"^[a-z][a-z0-9_]*$", key):
+                raise ValueError(
+                    f"field key must match ^[a-z][a-z0-9_]*$ (got {key!r})"
+                )
+            if key in seen:
+                raise ValueError(
+                    f"sibling field keys must be unique (duplicate {key!r})"
+                )
+            seen.add(key)
+            if f.get("children"):
+                self._validate_fields(f["children"], key)
+            if f.get("items"):
+                self._validate_fields(f["items"], key)
 
     async def init_by_ai(
         self,
