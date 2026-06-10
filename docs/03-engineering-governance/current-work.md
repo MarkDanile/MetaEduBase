@@ -16,7 +16,8 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-002-3 模板抽取结果溯源字段扩展 | 🔵 Ready | P2 | Backend / Frontend / 可观测性 | spec + plan 已建（[Spec](../02-delivery-plans/01-specs/2026-06-10-req-002-3-template-source-tracking.md) / [Plan](../02-delivery-plans/02-plans/2026-06-10-req-002-3-template-source-tracking-plan.md)）；分支 `feat/req-002-3-template-source-tracking`；后端 contract 扩展 + e2e 同步 + 前端溯源卡分 8 个 task 落地。 | Task 1-2 后端代码 → Task 3-5 测试 → Task 6-7 前端 → Task 8 文档；AC-1 ~ AC-5 / AC-8 / AC-9 是核心 | 待运行：`pytest tests/contexts/document tests/contexts/template tests/e2e` + `pnpm typecheck` + `pnpm lint` + `scripts/check-engineering-docs` |
+| REQ-002-3 模板抽取结果溯源字段扩展 | 🔵 Ready | P2 | Backend / Frontend / 可观测性 | spec + plan 已建（[Spec](../02-delivery-plans/01-specs/2026-06-10-req-002-3-template-source-tracking.md) / [Plan](../02-delivery-plans/02-plans/2026-06-10-req-002-3-template-source-tracking-plan.md)）；分支 `feat/req-002-3-template-source-tracking`（已 merge #148）；后端 contract 扩展 + e2e 同步 + 前端溯源卡分 8 个 task 待进入开发。 | 业务代码实现（Task 1-2 后端 → Task 3-5 测试 → Task 6-7 前端 → Task 8 文档） | 待运行：`pytest tests/contexts/document tests/contexts/template tests/e2e` + `pnpm typecheck` + `pnpm lint` + `scripts/check-engineering-docs` |
+| REQ-002-1 模板配置效率（编辑器 UX） | 🔵 Ready | P2 | Frontend | spec + plan 已建（[Spec](../02-delivery-plans/01-specs/2026-06-10-req-002-1-template-config-ux.md) / [Plan](../02-delivery-plans/02-plans/2026-06-10-req-002-1-template-config-ux-plan.md)）；纯前端 0 后端改动，分支 `docs/req-002-1-template-config-ux`（仅 spec/plan，尚未实现）。 | 业务代码实现（Task 1-5 前端 vuedraggable + 复制 + 撤销 + 搜索） | 待运行：`pnpm typecheck` + `pnpm lint` + `scripts/check-engineering-docs` |
 
 ## 下一批候选任务
 
