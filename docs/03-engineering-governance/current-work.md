@@ -28,8 +28,6 @@
 | REQ-001 知识资产处理链路的产品化验收视图 | 🟣 Shaping | P2 | 需求 / 产品化验收 | 澄清目标用户、核心场景和验收指标 |
 | TD-042 模板复用后端集成测试在 PG 实例下验证（`test_template_reuse.py` 8 条用例） | ⚫ 待办 | P2 | 后端 / 测试 / 交付 | 详看 `technical-debt.md#td-042`；是 REQ-002-2 follow-up（[PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159)），需本地 PG + `make migrate/downgrade` + 8 条用例全绿 |
 
-注：REQ-002 父任务（[Requirement](../01-product-planning/05-requirements/REQ-002-template-config-and-reuse.md)）及其子任务链（REQ-002-3 / REQ-002-1 / REQ-002-2 / REQ-002-4）均已在 backlog / milestone 中登记；本表只保留最近需接力的任务，避免与 backlog 重复维护状态。
-
 ## 最近完成
 
 最近完成区默认最多保留 20 行（按 `docs/03-engineering-governance/01-rules/workbench.md#保留策略` 强约束）。超过 20 行时再批量归档最旧记录，建议一次性压回 12 到 15 行左右；不要每完成一个任务就做单条搬运。本表只承担"近期完成窗口"的角色，详细验证、行为变化、PR 描述和复盘见 `docs/03-engineering-governance/work-log.md`、对应技术债总账、plan 或 PR。
