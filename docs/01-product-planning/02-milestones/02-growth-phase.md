@@ -71,6 +71,7 @@ External:
 | ID | 状态 | 说明 | 归属 |
 |----|------|------|------|
 | REQ-002 | 🔵 Ready | 模板化结构抽取能力的配置与复用体验，阶段一可塑形，阶段二继续沉淀模板族和抽取质量 | [Requirement](../05-requirements/REQ-002-template-config-and-reuse.md) / [Backlog](../04-backlog.md) |
+| REQ-002-3 | 🔵 Ready | 模板抽取结果溯源字段扩展（template.{id, version, layer}） | [Spec](../../02-delivery-plans/01-specs/2026-06-10-req-002-3-template-source-tracking.md) / [Backlog](../04-backlog.md) |
 | P2-SEARCH | ⚫ Candidate | PostgreSQL tsvector + 中文分词搜索增强 | 待进入 backlog |
 | P2-NER | ⚫ Candidate | LLM 混合 NER | 待进入 backlog |
 | P2-RRF | ⚫ Candidate | RRF 融合排序 | 待进入 backlog |
