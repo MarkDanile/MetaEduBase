@@ -135,7 +135,7 @@
 | DOC-055 | 收口 DOC-042 / TD-034 PR 范围混入与事实源漂移 | 🟢 完成 | P1 | 文档 / 工程流程 / 质量门禁 | DOC-042 review / [Review Score Log](04-retrospectives/review-score-log.md) |
 | TD-039 | 6 键保留集合（`id` / `version` / `layer` / `matched_type` / `confidence` / `reason`）抽到 `@metaedu/shared/schemas/document` 作为 single source of truth | ⚫ 待办 | P3 | 前端 / 后端 / API | REQ-002-3 code review / 当前 `FileTabsPanel.vue:159-166` 与后端 `extract_template_prompts.py:19-22` 各自硬编码 |
 | TD-040 | `FileTabsPanel.spec.ts` Vue 单元测试覆盖 AC-11（6 键过滤）/ AC-12（card 渲染 / 老数据隐藏 / layer none 分支 / version 为 null） | ⚫ 待办 | P2 | 前端 / 测试 / 交付 | REQ-002-3 code review / 当前仅靠 `data-testid="template-source-meta"` 无 Vue-level 锁 |
-| TD-041 | FieldCard 递归渲染嵌套字段 + object children / array items 嵌套拖拽 | 🟣 待验证 | P2 | 前端 / 架构 / 交付 | REQ-002-1 AC-2/AC-3 部分完成 / [PR #158](https://github.com/MarkDanile/MetaEduBase/pull/158) / [Spec](../02-delivery-plans/01-specs/2026-06-10-td-041-field-card-recursive-rendering.md) |
+| TD-041 | FieldCard 递归渲染嵌套字段 + object children / array items 嵌套拖拽 | 🟢 完成 | P2 | 前端 / 架构 / 交付 | [PR #161](https://github.com/MarkDanile/MetaEduBase/pull/161) / [Spec](../02-delivery-plans/01-specs/2026-06-10-td-041-field-card-recursive-rendering.md) |
 | TD-042 | REQ-002-2 后端集成测试在 PG 实例下验证（`test_template_reuse.py` 8 条用例） | ⚫ 待办 | P2 | 后端 / 测试 / 交付 | REQ-002-2 交付时沙箱无 PG / [PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 
@@ -1903,7 +1903,7 @@
 
 ### TD-041: FieldCard 递归渲染嵌套字段 + object children / array items 嵌套拖拽
 
-状态：🟣 待验证
+状态：🟢 完成
 
 **证据**
 - REQ-002-1（PR #158）实现了 root 层 vuedraggable 拖拽排序，但 AC-2（object 子字段拖拽）和 AC-3（array items 拖拽）仅部分完成。
@@ -1933,7 +1933,7 @@
 - 手测：展开 array → 成员模板可见 → 拖拽改变顺序 → 保存 → reload 确认顺序。
 
 **交付记录**
-- 代码已实现，待手测验证和 PR 合并。分支 `feature/td-041-recursive-field-rendering`。
+- 2026-06-10 完成（接手工具：Claude Code）。[PR #161](https://github.com/MarkDanile/MetaEduBase/pull/161) (squash merge commit `9d41b1e`) 合并到 main。
   - 新建 `packages/web/src/views/admin/FieldList.vue`：递归 draggable + FieldCard 包裹组件；props: fields, depth, expandedIds, matchedIds, searchQuery；MAX_DEPTH=5 守卫；CSS 嵌套缩进（margin-left + border-left）。
   - 修改 `packages/web/src/views/admin/FieldCard.vue`：新增 expandedIds/matchedIds/searchQuery props；expanded 从 local ref 改为 computed（从 expandedIds 读取）；object 子字段和 array items 区域替换为 FieldList 递归渲染；chevron 添加 rotate-180 动画。
   - 修改 `packages/web/src/views/admin/FieldItem.vue`：root 层改用 FieldList；新增 matchedIds computed；修 copySubtree 支持任意深度（新增 findNodeAndParent helper + 新 ID 分配）；修 removeColumn 事件 relay（不再硬编码 colIndex=0）；新增 collapseAll 方法（供父组件 template ref 调用）；defineExpose 暴露 collapseAll。
