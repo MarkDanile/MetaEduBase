@@ -73,7 +73,7 @@ import { X, Upload, Check } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
 import { templateApi } from '@/services/template'
 
-const props = defineProps<{ open: boolean }>()
+defineProps<{ open: boolean }>()
 const emit = defineEmits<{
   'update:open': [val: boolean]
   'imported': [newId: string]
