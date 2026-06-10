@@ -20,7 +20,7 @@
 
       <!-- Expand chevron -->
       <button v-if="isContainer" class="expand-btn" @click.stop="toggleExpand()">
-        <ChevronDown :size="14" class="text-[var(--color-ink-tertiary)]" />
+        <ChevronDown :size="14" class="text-[var(--color-ink-tertiary)]" :class="{ 'rotate-180': expanded }" />
       </button>
 
       <!-- Copy subtree -->
@@ -103,28 +103,62 @@
         </div>
       </div>
 
-      <!-- Object children -->
-      <div v-if="node.type === 'object'" class="sub-section" :style="{ paddingLeft: `${depth * 20 + 12}px` }">
-        <div class="sub-header">
+      <!-- Object children — recursive FieldList -->
+      <div v-if="node.type === 'object'" class="sub-section">
+        <div class="sub-header" :style="{ paddingLeft: `${depth * 20 + 12}px` }">
           <span class="sub-title">子字段</span>
           <button class="sub-add-btn" @click="emit('addChild', node.id)">
             <Plus :size="11" /> 添加子字段
           </button>
         </div>
-        <div v-if="!node.children?.length" class="sub-empty">
+        <FieldList
+          v-if="node.children?.length"
+          :fields="node.children"
+          :depth="depth + 1"
+          :expanded-ids="expandedIds"
+          :matched-ids="matchedIds"
+          :search-query="searchQuery"
+          @update="emit('update')"
+          @remove="emit('remove', $event)"
+          @update-field="(id: string, f: 'key' | 'label' | 'description', v: string) => emit('updateField', id, f, v)"
+          @change-type="(id: string, t: Field['type']) => emit('changeType', id, t)"
+          @add-child="emit('addChild', $event)"
+          @add-column="emit('addColumn', $event)"
+          @remove-column="(parentId: string, ci: number) => emit('removeColumn', parentId, ci)"
+          @copy-subtree="emit('copySubtree', $event)"
+          @toggle="emit('toggle', $event)"
+        />
+        <div v-else class="sub-empty" :style="{ paddingLeft: `${depth * 20 + 12}px` }">
           暂无子字段，点击上方添加
         </div>
       </div>
 
-      <!-- Array items -->
-      <div v-if="node.type === 'array'" class="sub-section" :style="{ paddingLeft: `${depth * 20 + 12}px` }">
-        <div class="sub-header">
+      <!-- Array items — recursive FieldList -->
+      <div v-if="node.type === 'array'" class="sub-section">
+        <div class="sub-header" :style="{ paddingLeft: `${depth * 20 + 12}px` }">
           <span class="sub-title">数组成员模板</span>
           <button class="sub-add-btn" @click="emit('addChild', node.id)">
             <Plus :size="11" /> 添加字段
           </button>
         </div>
-        <div v-if="!node.items?.length" class="sub-empty">
+        <FieldList
+          v-if="node.items?.length"
+          :fields="node.items"
+          :depth="depth + 1"
+          :expanded-ids="expandedIds"
+          :matched-ids="matchedIds"
+          :search-query="searchQuery"
+          @update="emit('update')"
+          @remove="emit('remove', $event)"
+          @update-field="(id: string, f: 'key' | 'label' | 'description', v: string) => emit('updateField', id, f, v)"
+          @change-type="(id: string, t: Field['type']) => emit('changeType', id, t)"
+          @add-child="emit('addChild', $event)"
+          @add-column="emit('addColumn', $event)"
+          @remove-column="(parentId: string, ci: number) => emit('removeColumn', parentId, ci)"
+          @copy-subtree="emit('copySubtree', $event)"
+          @toggle="emit('toggle', $event)"
+        />
+        <div v-else class="sub-empty" :style="{ paddingLeft: `${depth * 20 + 12}px` }">
           暂无成员，点击上方添加
         </div>
       </div>
@@ -133,10 +167,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { ChevronDown, GripVertical, Trash2, Plus, Copy, X } from 'lucide-vue-next'
 import { FIELD_TYPES, COLUMN_TYPES } from '@/constants/field-types'
 import type { Field } from '@/services/template'
+import FieldList from './FieldList.vue'
 
 interface FieldNode extends Field {
   id: string
@@ -145,6 +180,9 @@ interface FieldNode extends Field {
 
 const props = defineProps<{
   node: FieldNode
+  expandedIds: Set<string>
+  matchedIds: Set<string>
+  searchQuery?: string
 }>()
 
 const emit = defineEmits<{
@@ -165,18 +203,11 @@ const isContainer = computed(() =>
   ['object', 'table', 'array'].includes(props.node.type)
 )
 
-const expanded = ref(!isContainer.value)
+const expanded = computed(() => props.expandedIds.has(props.node.id))
 
 function toggleExpand() {
-  expanded.value = !expanded.value
   emit('toggle', props.node.id)
 }
-
-watch(isContainer, (value) => {
-  if (!value) {
-    expanded.value = true
-  }
-}, { immediate: true })
 
 const typeLabel = computed(() =>
   FIELD_TYPES.find(f => f.value === props.node.type)?.label ?? props.node.type
@@ -261,6 +292,7 @@ const typeLabel = computed(() =>
 .expand-btn {
   background: none; border: none; cursor: pointer; padding: 2px;
   display: flex; align-items: center; border-radius: 4px; flex-shrink: 0;
+  transition: transform 0.2s ease;
 }
 .expand-btn:hover { background: var(--interactive-hover-bg); }
 
@@ -383,4 +415,6 @@ const typeLabel = computed(() =>
   color: var(--color-ink-tertiary); border-radius: 4px; display: flex; align-items: center;
 }
 .col-del-btn:hover { color: var(--color-danger); }
+
+.rotate-180 { transform: rotate(180deg); }
 </style>

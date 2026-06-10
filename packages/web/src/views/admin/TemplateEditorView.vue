@@ -76,6 +76,7 @@
           </div>
           <FieldItem
             v-if="form.fields.length > 0"
+            ref="fieldItemRef"
             :model-value="form.fields"
             :search-query="searchQuery"
             @update:model-value="onFieldsChange"
@@ -162,6 +163,7 @@ let undoTimer: ReturnType<typeof setTimeout> | null = null
 // ─── REQ-002-1: Collapse + search ─────────────────────────────────────────────
 const allCollapsed = ref(false)
 const searchQuery = ref('')
+const fieldItemRef = ref<InstanceType<typeof FieldItem> | null>(null)
 
 const totalFields = computed(() => {
   function count(fields: Field[]): number {
@@ -177,7 +179,7 @@ const totalFields = computed(() => {
 
 function toggleAllCollapse() {
   allCollapsed.value = !allCollapsed.value
-  window.dispatchEvent(new CustomEvent('field-card-toggle-all', { detail: { collapsed: allCollapsed.value } }))
+  fieldItemRef.value?.collapseAll(allCollapsed.value)
 }
 
 // ─── Field operations ─────────────────────────────────────────────────────────

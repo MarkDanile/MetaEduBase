@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-002-4 模板可维护性 | 🔵 Ready | P2 | Backend / Frontend | spec + plan 已建（[Spec](../02-delivery-plans/01-specs/2026-06-10-req-002-4-template-maintainability.md) / [Plan](../02-delivery-plans/02-plans/2026-06-10-req-002-4-template-maintainability-plan.md)）；分支 `docs/req-002-4-template-maintainability`（仅 spec/plan，尚未实现）；4 个新 DB 字段 + 2 个新端点 + 破坏性变更检测 + 字段命名校验 + 前端二次确认。 | 业务代码实现（Task 1-5 后端 + Task 6 测试 + Task 7-9 前端 + Task 10-11 文档+回归） | 待运行：`make migrate` + `pytest tests/contexts/template tests/contexts/document` + `pnpm typecheck` + `pnpm lint` + `scripts/check-engineering-docs` |
+| TD-041 FieldCard 递归渲染嵌套字段 + 嵌套拖拽 | 🟣 待验证 | P2 | 前端 / 架构 | 所有代码已实现：FieldList.vue 递归组件 + FieldCard 递归渲染 + FieldItem 重构 + removeColumn/copySubtree bug 修复 + toggleAllCollapse 修复；typecheck + lint + build + check-engineering-docs 均通过。 | 手测验证 + 提交 PR | 已运行：`pnpm typecheck` 0 / `pnpm lint` 0 / `pnpm build` 0 / `scripts/check-engineering-docs` 0 / `git diff --check` 0；未运行：浏览器手测（沙箱无浏览器） |
 
 ## 下一批候选任务
 
