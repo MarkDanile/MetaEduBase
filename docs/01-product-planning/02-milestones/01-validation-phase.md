@@ -99,6 +99,7 @@ External:
 | REQ-006 | 🟢 Done | P1 知识资产处理链路最终演示验收（Stage 1.0 3 步 + Stage 1.5 6 步 e2e 全通过；TD-036 / TD-037 已修复；文档回填完毕） | `docs/01-product-planning/04-backlog.md` |
 | REQ-007 | 🟢 Done | REQ-003 复盘缺口的 RAG 质量链路收口（5 AC 全部由 [PR #75](https://github.com/MarkDanile/MetaEduBase/pull/75) 关闭：行为级测试 + e2e 死代码清理 + 状态同步 + 过度验证声明修正 + 验证声明真实） | `docs/01-product-planning/04-backlog.md` |
 | REQ-008 | 🟢 Done | 收口 REQ-004 验收证据与质量门禁缺口（5 项 ruff 清零 + 4 分支 caplog 断言 + L3 解析失败 / 空响应覆盖 + 漂移保护；[PR #79](https://github.com/MarkDanile/MetaEduBase/pull/79)） | `docs/01-product-planning/04-backlog.md` |
+| REQ-010 | 🟣 Shaping | P1 真实 RAG 证据治理与 AI Chat 溯源体验：把多源召回统一到可追溯证据单元，确保 LLM 上下文以 chunk / 结构化字段 / 可回源知识关系为核心，而不是只给知识点标题。 | [Requirement](../05-requirements/REQ-010-p1-rag-evidence-governance.md) / `docs/01-product-planning/04-backlog.md` |
 
 ## Evidence
 

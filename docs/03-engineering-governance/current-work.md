@@ -27,6 +27,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
+| REQ-010 P1 真实 RAG 证据治理与 AI Chat 溯源体验 | 🟣 Shaping | P1 | RAG / AI Chat / Evidence / UX | 澄清 EvidenceItem 模型、chunk / KG / metadata / structured_data 证据关联、来源编号和参考文件列表交互，再进入 spec / plan |
 | REQ-001 知识资产处理链路的产品化验收视图 | 🟣 Shaping | P2 | 需求 / 产品化验收 | 澄清目标用户、核心场景和验收指标 |
 
 注：REQ-002 父任务（[Requirement](../01-product-planning/05-requirements/REQ-002-template-config-and-reuse.md)）及其子任务链（REQ-002-3 / REQ-002-1 / REQ-002-2 / REQ-002-4）均已在 backlog / milestone 中登记；本表只保留最近需接力的任务，避免与 backlog 重复维护状态。
