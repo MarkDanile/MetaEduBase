@@ -1865,15 +1865,25 @@
 - `git diff --check` 退出码 0。
 
 **交付记录**
-- 2026-06-10：并行批次 `td-039+td-040` 中 Phase 1 探查 + Phase 2 实施完成；worktree 在 `.claude/worktrees/td-040-filtabspanel-vitest-coverage` 暂挂，**未走 Git 闭环**（未 commit / push / PR / merge）。状态 `🟡 进行中` 而非 `🟢 完成`，原因：workbench.md#状态同步规则第 36 行规定"代码完成但验证未完成时，状态应为 `🟣 待验证`"；本卡代码已实现并通过全部验证，但未走完 commit → push → PR → merge 闭环，按用户拍板的 (H) 暂挂方案保留现场，由后续批次接力 commit / PR。
-- 实施细节：
-  - 新增 `packages/web/vitest.config.ts`（14 行；vue plugin + @ alias + jsdom env；与 `vite.config.ts` 并存未合并）。
-  - `packages/web/package.json` +4 行（vitest ^2.1.0 / @vue/test-utils ^2.4.6 / jsdom devDeps + `test: "vitest run"` script）。
-  - `pnpm-lock.yaml` 增量 ~1170 行（lock 住 vitest / @vue/test-utils / jsdom 及 transitive deps）。
-  - spec 文件内维护 `RESERVED_META_KEYS` 局部副本（与 `FileTabsPanel.vue:159-166` 字面量一致），不依赖 TD-039 才会引入的 `@metaedu/shared` 常量；TD-039 合并后可作为 follow-up 把 import 统一掉。
-- 后续接力：commit message 候选 `feat(web): TD-040 FileTabsPanel.spec.ts vitest 覆盖 AC-11/AC-12 + 引入 vitest`；PR title 候选 `feat(web): TD-040 FileTabsPanel.spec.ts vitest 覆盖 AC-11/AC-12`。
-- 长期 follow-up（不阻塞本卡）：vitest 是仓库内首次前端单测基建，若后续测试用例增多，可考虑抽共享 `setup` 文件、把 `vitest.config.ts` 与 `vite.config.ts` 合并、或迁移到 vitest workspace 模式。
-
+- 2026-06-10 完成（接手工具：Claude Code；agent B 平行批次 in worktree `.claude/worktrees/agent-a9cfdaec8741f103c`，分支名 `worktree-agent-a9cfdaec8741f103c`，本 PR 合入前由 integrator rename 为 `td-040-filtabspanel-vitest-coverage`）。PR 描述中已声明 commit `edb4a08` 在 rebase 到 main `f0841f4` 时合并 main 引入的"TD-039 拆分 + TD-043 新建"元数据，冲突点仅在 TD-040 详细卡交付记录区（本节），手写合并保留 agent B 第一手实施细节 + 状态字段保持 `🟡 进行中` 直到合并后由 integrator 翻 `🟢 完成`。
+  - 5 个文件变更（2 改 3 新 1 文档）：
+    1. `packages/web/package.json`：`devDependencies` 新增 `vitest ^2.1.0` / `@vue/test-utils ^2.4.6` / `jsdom ^29.1.1`；`scripts` 新增 `test: "vitest run"`。
+    2. `pnpm-lock.yaml`：与上述 3 个新增 devDep 同步锁定。
+    3. `packages/web/vitest.config.ts`（NEW，14 行）：`vitest/config` + `@vitejs/plugin-vue` + `@` alias（与 `vite.config.ts` 对齐）+ `test.environment: "jsdom"`。零业务代码改动；不触碰 `vite.config.ts` 以保持开发 / 构建配置稳定。
+    4. `packages/web/src/views/resource/FileTabsPanel.spec.ts`（NEW，163 行 / 6 个测试）：覆盖 TD-040 任务卡 5 个验收点（AC-12 case 1-5）+ 1 个 AC-11 字段过滤断言。6 键保留集合在测试文件内维护局部副本（`RESERVED_META_KEYS`），与 `FileTabsPanel.vue:159-166` 字面量保持一致；TD-039 合并后应改为 import `@metaedu/shared` 的 `TEMPLATE_META_RESERVED_KEYS`，并在交付记录里登记。
+    5. `docs/03-engineering-governance/technical-debt.md`（本卡片交付记录）。
+  - 行为变化声明：零。`FileTabsPanel.vue` 未被本任务改动；`vitest.config.ts` 是新增，不影响 `vite build` / `vite dev` / `vue-tsc` 链路；新增 `test` script 是新命令，不会被现有 CI / 门禁自动触发。
+  - 验证摘要（cwd=packages/web）：`pnpm test` 退出码 0，6 passed in 19ms（verbose 输出 6 个 test 名：AC-11 / AC-12 case 1-5）；`pnpm typecheck` 退出码 0（零输出）；`pnpm lint` 退出码 0（零 warning）；`rg -n "data-testid="template-source-meta"" packages/web/src/` → 1 定义（`FileTabsPanel.vue:25`）+ 5 测试断言（`FileTabsPanel.spec.ts` 5 处 `.find(...)` / `.exists()` 引用，与 5 个 AC-12 case 一一对应）；`python3 scripts/check-engineering-docs` 退出码 0（`engineering docs checks passed`）；`git diff --check` 退出码 0。
+  - Phase 1 探查记录（与 `td-031` / `td-035` 同结构）：
+    - `vitest` / `@vue/test-utils` / `jsdom` 探查时**未**在 `packages/web/devDependencies`；`pnpm-lock.yaml` 也无相关条目。
+    - 仓库内**无**任何 `*.spec.ts` / `*.test.ts` 文件（`packages/web/src/` 与全仓均 0 命中），属于引入"首次前端单测"基建的债。
+    - `pnpm --filter @metaedu/web lint` 在 install 完成后 rc=0（ESLint v10 对 `@metaedu/web#lint` **不**阻塞；与 TD-039 备注"@metaedu/shared#lint 仍受 ESLint v10 阻塞"无关联）。
+    - `pnpm add -D vitest@^2.1.0 @vue/test-utils@^2.4.6 jsdom` 在沙箱中 3.7s 完成，无网络 / lockfile 冲突；root `pnpm-workspace.yaml` 与根 `package.json` **未**被改动。
+  - 已知限制 / 后续接力：
+    - 本债不替换 `FileTabsPanel.vue:159-166` 的硬编码 6 键集合（TD-039 范围）；测试在 spec 文件内维护 `RESERVED_META_KEYS` 局部副本。TD-039 合并后，本 spec 应改为 `import { TEMPLATE_META_RESERVED_KEYS } from '@metaedu/shared/schemas/document'`，并在交付记录登记。任务卡备注已写明。
+    - vitest 引入是**首次**前端单测基建。若后续需要 e2e / DOM 集成测试，本债未触达；可拆为独立 `TD-xxx`（"前端单测基线 + 共享测试 setup 文件"）。
+    - `vitest.config.ts` 与 `vite.config.ts` 各自维护一份 `plugins([vue()])` + `resolve.alias` 是当前最小化做法（避免在 `vite.config.ts` 内加 `/// <reference types="vitest" />` + `test:` block 干扰 dev / build 链路）。若后续测试用例增多或需要共享 setup 文件，可考虑合并为 `defineConfig` + `vitest` 三斜线指令。
+    - ESLint v10 状态：本任务因 `vue-tsc + vue-eslint-parser` 已稳定，未触发 v10 阻塞。`@metaedu/shared#lint` 的 v10 阻塞（TD-039 备注）**不**在本债范围。
 ### DOC-056: `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚的算法 bug
 
 状态：🟢 完成
