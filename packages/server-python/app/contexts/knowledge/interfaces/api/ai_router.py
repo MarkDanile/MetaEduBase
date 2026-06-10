@@ -137,6 +137,22 @@ async def ai_chat(
                 context_text += f"：{ctx.description}"
             context_text += f" (来源: {channel_label})\n"
 
+    # REQ-010 diagnostic log (Slice 1): query, NER, candidate counts, fusion
+    # outcome, and prompt summary. No LLM full prompt — only first 200 chars
+    # to keep logs lean. See plan Slice 1 "证据模型 + 诊断日志".
+    logger.info(
+        "ai_chat: query=%r ner_domains=%r ner_levels=%r "
+        "vector=%d keyword=%d metadata=%d fused=%d prompt_chars=%d",
+        data.message[:120],
+        ner_result.domains,
+        ner_result.levels,
+        len(vector_results),
+        len(keyword_results),
+        len(metadata_results),
+        len(fused),
+        len(context_text),
+    )
+
     system_prompt = (
         "你是 MetaEduBase 元知职教基座的 AI 助手，专注于职业教育领域的知识问答。"
         "请基于提供的知识库上下文进行回答，如果上下文不足以回答问题，请如实说明。"
