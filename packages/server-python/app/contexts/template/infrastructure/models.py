@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import declarative_base
 
@@ -17,6 +17,11 @@ class TemplateModel(Base):
     source_file_id = Column(UUID(as_uuid=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False)
+    # REQ-002-4: schema evolution + deprecation
+    schema_version = Column(Integer, nullable=False, default=1, server_default="1")
+    is_deprecated = Column(Boolean, nullable=False, default=False, server_default="false")
+    deprecated_at = Column(DateTime(timezone=True), nullable=True)
+    deprecated_reason = Column(Text, nullable=True)
 
 
 class TemplateVersionModel(Base):

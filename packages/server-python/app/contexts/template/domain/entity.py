@@ -60,6 +60,11 @@ class Template:
     source_file_id: UUID | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    # REQ-002-4: schema evolution + deprecation
+    schema_version: int = 1
+    is_deprecated: bool = False
+    deprecated_at: datetime | None = None
+    deprecated_reason: str | None = None
 
     @classmethod
     def from_db_row(cls, row: Any) -> Template:
@@ -75,4 +80,8 @@ class Template:
             source_file_id=row.source_file_id,
             created_at=row.created_at,
             updated_at=row.updated_at,
+            schema_version=getattr(row, 'schema_version', 1) or 1,
+            is_deprecated=bool(getattr(row, 'is_deprecated', False)),
+            deprecated_at=getattr(row, 'deprecated_at', None),
+            deprecated_reason=getattr(row, 'deprecated_reason', None),
         )
