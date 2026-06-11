@@ -146,6 +146,9 @@
 | TD-049 | `tests/conftest.py` `sys.path.insert` 块导致 8 个 E402 pre-existing（TD-012 收口后遗留） | ⚫ 待办 | P3 | 后端 / 测试 / 质量门禁 / 工程治理 | TD-046 PR #187 收口时确认 `ruff check app/ tests/` 报 8 个 E402 errors 全部在 `tests/conftest.py:13-20`（imports not at top of file）。根因 L11 插入 `sys.path.insert(0, _REPO_ROOT)` 块（注释"REQ-010: ensure repo root on sys.path so tests can import scripts.ai.*"）违反 E402。修复：把 `_REPO_ROOT` + `sys.path` 块挪到 `tests/_paths.py`（新建），conftest.py 改为 `from tests._paths import *`。0 行为变化预期（`scripts.ai.*` 仍可 import）。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | ⚫ 待办 | P3 | 文档 / 工程脚本 / 质量门禁 | TD-048 切片 1 复核时（2026-06-11）跑 `scripts/check-engineering-docs` 发现 1 个 pre-existing `validation-claim` 提示：current-work.md:38 TD-050 摘要行 "全量 pytest 336 passed + 1 skipped 零回归" 缺 Command / Result / Environment / CI / `gh pr checks` / `退出码 0` 之类的可复核证据。脚本检查项 `scripts/engineering/checks/placeholders_claims.py::check_validation_claims` 看前 2 行 + 后 2 行窗口内 `EVIDENCE_RE` 是否命中。该摘要本身非虚假（PR #194 确实合并），但缺"可复核证据 → 退出码 0"格式属历史债。修复：把"全量 pytest 336 passed"改写为"`pytest -q` → 336 passed + 1 skipped，退出码 0，PR #194 / merge `5719c38`"格式（带 Command / Result / PR checks 字段）。同时扫 L40 / L42 / L43 / L44 / L45 等同档历史最近完成行。后续 commit 摘要一律使用该格式收尾。 |
+| DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | ⚫ 待办 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：本债违反 `quality-gates.md#完成门禁#3` 状态不自相矛盾。当前 `workbench.md#状态同步规则` 隐含"未走完 Git 阶段不得翻完成"，但没明确"任务分支未合 main 视为未走完 Git 阶段"；`git-workflow.md#完整交付闭环` 没把"`gh pr view <PR>` state=MERGED"作为翻完成的硬条件。修复：在 `workbench.md#状态同步规则` 末尾追加 1 段明确规则；在 `git-workflow.md#完整交付闭环` 把"PR 已合并"列入阶段汇报的硬条件之一；与现有 6 条状态同步规则并列。`scripts/check-engineering-docs` 仍能退出码 0（不改脚本），但本债落地后人工 / AI IDE 接手 TD-xxx 任务时规则清晰。 |
+| DOC-059 | 新建 `check_task_completion_pr_consistency` 脚本扫"完成声明 → PR 状态"语义一致性 | ⚫ 待办 | P2 | 工程脚本 / 质量门禁 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：本债违反"`gh pr list --state merged` 是否真存在 PR"语义一致性。当前 `scripts/engineering/checks/` 的 `_common.py` / `current_work.py` 等检查只覆盖"最近完成行数 ≤ 20"、"候选区不混入完成"等结构性约束，**没有**扫"任务卡片声明完成 vs `gh pr list --state merged` 是否真存在 PR"。修复：在 `scripts/engineering/checks/_common.py` 加 `check_task_completion_pr_consistency(technical_debt_path, work_log_path, current_work_path)` 函数 + `scripts/engineering/checks/task_pr_consistency.py`（新建，参考 `placeholders_claims.py` 风格）+ `scripts/engineering/check_engineering_docs.py` 主入口注册新 check。函数：扫 3 份文档的 `🟢 完成` 任务 ID（正则 `\b(TD|DOC|REQ)-\d{3}(?:-\d+)?\b`），对每个 ID 跑 `gh pr list --state merged --search <ID> --json number`；缺失则报 1 个 `task-pr-consistency` issue。运行时：CI 跑（PR 提交时）/ 本地手工跑（`scripts/check-engineering-docs`）。注：脚本可被 `gh` 网络限制阻塞——本机离线 / 沙箱无网络时降级为"已扫 ID 但跳过 PR 校验"并写明 `未运行: gh pr list 受网络限制`。 |
+| DOC-060 | 增强 `scripts/engineering/checks/` 任务卡 vs 代码语义校验（任务卡残留量 + 任务卡完成状态 2 类不符） | ⚫ 待办 | P2 | 工程脚本 / 质量门禁 | TD-025 / TD-026 / TD-032 已出现"任务卡残留量实测不符"问题（任务卡 22 处实测 0 处），TD-048 出现"任务卡完成状态与代码 / PR 实际不符"问题（详见 [`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）——两类不符都来自"任务卡 → 实际代码 / PR"的强校验缺失。修复：在 `scripts/engineering/checks/` 加 `check_task_card_claim_vs_code(task_id, claim_pattern, target_files)` 通用函数（参考 `_common.py` 现有 `KNOWN_ISSUES` 模式）+ 2 个具体 check：(a) `task_card_stale_completion`：扫技术债总账中状态为 `🟢 完成` 但代码 / PR 不存在的 ID（与 DOC-059 互补：DOC-059 扫 PR 缺失；本 check 扫代码 / 声明不一致）；(b) `task_card_stale_residual`：扫技术债总账"残留量声明"（如 "23 处 `liquid-card`"）vs `rg` 实测命中数。落地后接 `scripts/check-engineering-docs` 主入口。本债与 DOC-059 协同：DOC-059 偏 PR 维度（`gh pr list`），DOC-060 偏代码 / 声明维度（`rg`）；都补"任务卡 → 实际状态"强校验缺口。 |
 
 ## 任务详情
 
@@ -1985,6 +1988,141 @@
 **交付记录**
 
 - 2026-06-11 入账（接手工具：Claude Code），由 TD-048 切片 1 复核时同步登记。任务卡在 `docs/03-engineering-governance/technical-debt.md#doc-057`；具体修复待独立 PR 收口（建议走 1 个 docs-only PR 单独合并，避免与 TD-048 切片 1 PR 范围混合）。
+
+### DOC-058: 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md）
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 文档 / 工程流程 / 跨 AI 交接 |
+| 事实源 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账 |
+
+**证据**
+
+- TD-048 commit `23a54b1` 落到分支 `chore/td-048-remove-sourceitem-legacy-contract` 但未合 main；同日 `current-work.md` 写"🟢 完成 / 319 passed + 1 skipped 零回归" + `work-log.md` L21 写"归档位置: ... `chore/td-048-remove-sourceitem-legacy-contract` (1 commit)"——三份事实源互斥。
+- `docs/03-engineering-governance/01-rules/workbench.md#状态同步规则` 当前 5 条规则（"开工时可以写 🟡 进行中" / "代码完成但验证未完成时，状态应为 🟣 待验证" / "验证通过后，... 状态可以保持任务活跃" / "只有完成标准、验证结果和用户要求的交付阶段都已收口，才能写 🟢 完成" / "提交前不得保留与事实不符的占位"）均隐含"未走完 Git 阶段不得翻完成"，但**没**明确"任务分支未合 main 视为未走完 Git 阶段"。
+- `docs/03-engineering-governance/01-rules/git-workflow.md#完整交付闭环` 6 个阶段（本地提交 / push / 创建 PR / 合并 main / 合并后确认 / 最终回复）也没把"`gh pr view <PR>` state=MERGED"作为翻完成的硬条件。
+
+**问题**
+
+- "任务分支未合 main" 与 "🟢 完成" 的等价规则仅在经验层面共享（按 git-workflow 流程的常识推论），未在 `workbench.md` / `git-workflow.md` 显式写出。
+- 后续 AI IDE 接手 TD-xxx 任务时，按现有规则"完成标准 + 验证结果 + 交付阶段都已收口"——但**"交付阶段都已收口"**这一条因没显式挂钩"PR 已合 main"，在 commit 推到分支未合 main 时仍可能误判为"完成"。
+- TD-048 漂移回退是真实教训证据；不加显式规则，类似漂移会复发。
+
+**完成标准**
+
+- 在 `docs/03-engineering-governance/01-rules/workbench.md#状态同步规则` 末尾追加 1 段明确规则："任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED 才允许翻完成；如需标记任务已实现但未走完 PR 闭环，使用 🟣 待验证 而非 🟢 完成。"
+- 在 `docs/03-engineering-governance/01-rules/git-workflow.md#完整交付闭环` 6 阶段后追加 1 段："翻完成前的硬条件——`gh pr view <PR>` state=MERGED（squash / merge commit 任一）；`gh pr checks` 无阻塞（PR 未配 CI 时该检查项跳过）；本地 `main` 已 pull --ff-only 同步合并结果。"把"`gh pr view <PR>` state=MERGED"列入阶段汇报的硬条件之一。
+- 在 `docs/03-engineering-governance/01-rules/quality-gates.md#完成门禁` 第 3 条"状态"项补充"任务分支未合 main 视为未走完 Git 阶段"（如尚未写明）。
+- 不改 `scripts/check-engineering-docs`（DOC-059 负责脚本维度，本债纯文档规则）。
+- `scripts/check-engineering-docs` 退出码 0（本债不动脚本）。
+- `git diff --check` 干净。
+- 跨事实源同步：3 个 docs 文件变更；work-log 索引行追加 DOC-058 行（如本次合并时落地）。
+
+**验证方式**
+
+- `rg -n "任务分支未合 main|gh pr view .PR. state 必须为 MERGED" docs/03-engineering-governance/01-rules/workbench.md docs/03-engineering-governance/01-rules/git-workflow.md` 命中 ≥ 2 处（workbench.md 1 段 + git-workflow.md 1 段）。
+- `rg -n "PR 已合 main|state=MERGED" docs/03-engineering-governance/01-rules/quality-gates.md` 命中 ≥ 1 处。
+- `python3 scripts/check-engineering-docs` → `engineering docs checks passed` 退出码 0（Result: 退出码 0；本机沙箱复跑，非 CI 证据）。
+- `python3 -m pytest tests/engineering/test_check_engineering_docs.py -v` → 既有测试不退化（Result: 退出码 0）。
+- `git diff --check` clean。
+
+**交付记录**
+
+- 2026-06-11 入账（接手工具：Claude Code），由 TD-048 收口 3 切片 3 PR 合 main（[PR #196](https://github.com/MarkDanile/MetaEduBase/pull/196) + [PR #197](https://github.com/MarkDanile/MetaEduBase/pull/197) + [PR #198](https://github.com/MarkDanile/MetaEduBase/pull/198)）后登记。具体规则修订待独立 PR 收口（建议走 1 个 docs-only PR 单独合并，避免与 TD-048 切片 3 PR 范围混合）。
+
+### DOC-059: 新建 `check_task_completion_pr_consistency` 脚本扫"完成声明 → PR 状态"语义一致性
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 工程脚本 / 质量门禁 |
+| 事实源 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账 |
+
+**证据**
+
+- `docs/03-engineering-governance/01-rules/quality-gates.md#完成门禁#3` "状态"要求"`current-work.md`、对应总账、Backlog、Requirement、Iteration、Milestone、plan/spec 的状态、验证结果和未完成项不互相矛盾"，但**没**有脚本执行反向校验。
+- 当前 `scripts/engineering/checks/_common.py`（KNOWN_ISSUES 64 行 + Issue 抽象）+ `current_work.py` / `placeholders_claims.py` / `source_sizes.py` 等 check 模块共覆盖："最近完成行数 ≤ 20" / "候选区不混入完成" / "占位 / 验证声明族" / "超大源码文件"——**没**覆盖"任务卡片声明完成 vs `gh pr list --state merged` 是否真存在 PR"。
+- TD-048 commit `23a54b1` 落到分支但未合 main 时，本债语义一致性门禁应报 1 个 `task-pr-consistency` issue；现有 8 个 check 都没捕获。
+
+**问题**
+
+- 任务卡片的"完成"声明目前依赖人工撰写者自觉对齐 PR 状态；TD-048 漂移回退是"撰写者把本地 commit 误等价为完成"的真实证据。
+- 缺一个"扫三份文档的 `🟢 完成` 任务 ID → `gh pr list --state merged --search <ID>` 校验"的反向检查。
+- DOC-058 仅补文档规则（人工 / AI IDE 自觉遵守），本债补脚本门禁（CI 强制）。
+
+**完成标准**
+
+- 在 `scripts/engineering/checks/_common.py` 加 `check_task_completion_pr_consistency(technical_debt_path, work_log_path, current_work_path) -> list[Issue]` 函数（参考 `check_delivery_placeholders` / `check_validation_claims` 风格返回 `Issue(path, line_no, code, message, suggestion)`）。
+- 新建 `scripts/engineering/checks/task_pr_consistency.py`（参考 `placeholders_claims.py` 结构），导出 `check(root: Path) -> list[Issue]` 函数调用 `_common.check_task_completion_pr_consistency` + 扫 3 份文档（`docs/03-engineering-governance/technical-debt.md` / `docs/03-engineering-governance/work-log.md` / `docs/03-engineering-governance/current-work.md`）。
+- 函数实现：正则 `\b(TD|DOC|REQ)-\d{3}(?:-\d+)?\b` 扫 3 份文档中所有 `🟢 完成` / `状态: 🟢 完成` 行，提取任务 ID；对每个 ID 跑 `gh pr list --state merged --search <ID> --json number`（shell subprocess 包装 `subprocess.run` + timeout 10s）；缺失则报 1 个 `task-pr-consistency` issue，path = 文档路径，line_no = 任务卡行号，message = "任务卡片声明完成但 `gh pr list --state merged --search <ID>` 0 命中"，suggestion = "复核任务是否真的已合并 main，或回退到 🟡 进行中 / 🟣 待验证"。
+- 在 `scripts/engineering/check_engineering_docs.py` 主入口注册新 check（参考现有 8 个 check 的注册模式）。
+- 新增测试 `tests/engineering/test_check_engineering_docs.py::test_task_pr_consistency` 锁定 3 个场景：声明完成 + PR 真实存在 → 0 命中；声明完成 + PR 缺失 → 1 命中；声明未完成（🟡 / 🟣）→ 0 命中（不扫）。mock 掉 `subprocess.run` 以避免真跑 gh。
+- `gh` 不可用 / 网络阻塞时：catch `subprocess.TimeoutExpired` / `FileNotFoundError`，issue 报"未运行: gh pr list 受网络限制"而非 `task-pr-consistency`（按 `quality-gates.md#验证表述规范` 的 `未运行` 分支）。
+- `scripts/check-engineering-docs` 退出码 0（无新失败项）；CI 跑通时该 check 启用；本地沙箱无网络时降级为 `未运行` 提示。
+- 跨事实源同步：技术债总账任务卡交付记录补 PR 链接 + merge commit；work-log 索引行追加 DOC-059 行（落地后）。
+
+**验证方式**
+
+- `python3 scripts/check-engineering-docs` → `engineering docs checks passed` 退出码 0（Result: 退出码 0；本机沙箱复跑，非 CI 证据）。
+- `python3 -m pytest tests/engineering/test_check_engineering_docs.py -v` → 既有 + 新增测试全过（Result: 退出码 0）。
+- `git diff --check` clean。
+- 在临时文档写 1 个声明完成但无 PR 的假任务卡（如 `TD-999`），跑 `python3 scripts/check-engineering-docs` → 退出码 1 且 issue 报 1 个 `task-pr-consistency`；删假任务卡后恢复 0。
+- `rg -n "check_task_completion_pr_consistency|task_pr_consistency" scripts/engineering/` 命中 ≥ 2 处（`_common.py` + `task_pr_consistency.py`）。
+
+**交付记录**
+
+- 2026-06-11 入账（接手工具：Claude Code），由 TD-048 收口 3 切片 3 PR 合 main（[PR #196](https://github.com/MarkDanile/MetaEduBase/pull/196) + [PR #197](https://github.com/MarkDanile/MetaEduBase/pull/197) + [PR #198](https://github.com/MarkDanile/MetaEduBase/pull/198)）后登记。具体脚本实施待独立 PR 收口。
+
+### DOC-060: 增强 `scripts/engineering/checks/` 任务卡 vs 代码语义校验（任务卡残留量 + 任务卡完成状态 2 类不符）
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 工程脚本 / 质量门禁 |
+| 事实源 | TD-025 / TD-026 / TD-032 / TD-048 教训入账（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退) 教训 4） |
+
+**证据**
+
+- TD-025 任务卡残留量与实际不符规律出现 3 次（`TemplateModal` 8 → 0 / `TemplateEditorView` 6 → 0 / `FieldEditor` 12 → 0 / `KGDetailPanel` 4 → 0 / `ConfirmDialog` 5 → 0 / `KGGraph` 1 → 0）。任务卡编写时把页面里所有 `liquid-*` 类都误计入 `liquid-card` 残留。
+- TD-026（PR #58）按任务卡"22 处"动手却实测 0 命中；如果不验证就按原任务卡直接动手会强行"扩大设计系统范围"去替换其他无关类。
+- TD-048 出现新类不符——"任务卡完成状态与代码 / PR 实际不符"（任务卡未写 🟢 完成时 `current-work.md` 已写"🟢 完成"）。
+- 两类不符都来自"任务卡 → 实际状态"强校验缺失。DOC-059 偏 PR 维度（`gh pr list`），本债偏代码 / 声明维度（`rg` 实测）。
+
+**问题**
+
+- 任务卡"残留量声明"（如 "X 处 `liquid-card`"、"Y 个测试文件"）目前无脚本反向校验；TD-025 / TD-026 反复出现"写 22 处 / 实测 0 处"。
+- 任务卡"完成状态"与代码 / 文档事实漂移目前无脚本反向校验；TD-048 出现"main 仍含旧契约但任务卡写已完成"。
+- DOC-059 只补 PR 维度；代码 / 声明维度仍缺。
+
+**完成标准**
+
+- 在 `scripts/engineering/checks/_common.py` 加 `check_task_card_claim_vs_code(task_id, claim_pattern, target_files) -> list[Issue]` 通用函数（参考 `KNOWN_ISSUES` 模式 + `Issue` 抽象）。
+- 新建 `scripts/engineering/checks/task_card_claims.py`（参考 `placeholders_claims.py` 结构），导出 2 个 check：
+  - `check_task_card_stale_completion(root)`：扫技术债总账 `technical-debt.md` 中 `状态: 🟢 完成` 的任务 ID + 对应"交付记录"段的 PR 链接（正则 `\[#\d+\]` 或 `PR #\d+`），与 `gh pr view <PR> --json state` 校验 state=MERGED（用 `subprocess.run` + timeout）。缺失或 state != MERGED 则报 `task-card-stale-completion` issue。注：本 check 与 DOC-059 互补：DOC-059 扫"PR 不存在"；本 check 扫"PR 不在 MERGED 状态"。
+  - `check_task_card_stale_residual(root)`：扫技术债总账"残留量声明"模式（正则 `(?:命中|残留|约|共)?\s*\d+\s*处`），定位声明所在任务卡 → 在该任务卡 `事实源` 字段 / `证据` 段提取 `target_files` 与 `claim_pattern` → 跑 `rg -c <claim_pattern> <target_files>` 实测命中数 → 命中数与声明数偏差 > 0 则报 `task-card-stale-residual` issue。允许白名单（`_common.KNOWN_ISSUES` 拓展）。
+- 在 `scripts/engineering/check_engineering_docs.py` 主入口注册 2 个新 check。
+- 新增测试 `tests/engineering/test_check_engineering_docs.py::test_task_card_stale_completion` + `test_task_card_stale_residual` 各 1 个锁定。
+- `scripts/check-engineering-docs` 退出码 0（默认白名单覆盖已有任务卡）；新增"假残留量声明"任务卡验证会报 1 个 issue（与 DOC-059 的"假完成"验证同款模式）。
+- 跨事实源同步：技术债总账任务卡交付记录补 PR 链接 + merge commit；work-log 索引行追加 DOC-060 行（落地后）。
+
+**验证方式**
+
+- `python3 scripts/check-engineering-docs` → `engineering docs checks passed` 退出码 0（Result: 退出码 0；本机沙箱复跑，非 CI 证据）。
+- `python3 -m pytest tests/engineering/test_check_engineering_docs.py -v` → 既有 + 新增测试全过（Result: 退出码 0）。
+- `git diff --check` clean。
+- 临时写 1 个含"X 处 `liquid-card`"声明但 `rg -c liquid-card <files>` = 0 命中 的假任务卡，跑脚本应报 `task-card-stale-residual`；删假任务卡后恢复 0。
+- `rg -n "check_task_card_claim_vs_code|task_card_claims" scripts/engineering/` 命中 ≥ 2 处。
+
+**交付记录**
+
+- 2026-06-11 入账（接手工具：Claude Code），由 TD-048 收口 3 切片 3 PR 合 main（[PR #196](https://github.com/MarkDanile/MetaEduBase/pull/196) + [PR #197](https://github.com/MarkDanile/MetaEduBase/pull/197) + [PR #198](https://github.com/MarkDanile/MetaEduBase/pull/198)）后登记。具体脚本实施待独立 PR 收口。
 
 ### TD-041: FieldCard 递归渲染嵌套字段 + object children / array items 嵌套拖拽
 
