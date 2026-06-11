@@ -19,11 +19,12 @@ export function parseFileStructuredData(value: unknown): FileStructuredData | nu
 }
 
 /**
- * 6 reserved meta keys that are injected by the backend extract_template task
- * and MUST be filtered from the field list in the UI (AC-11).
- * These must stay in sync with the backend `_TEMPLATE_META_KEYS` in
- * `packages/server-python/app/contexts/document/application/tasks/extract_template_prompts.py`.
- * Single source of truth: this constant. Backend sync is tracked in TD-043.
+ * 6 reserved meta keys injected by the backend extract_template task.
+ * MUST be filtered from the field list in the UI (REQ-002-3 AC-11).
+ * Single source of truth for both TS and Python — synced via
+ * `scripts/codegen/gen_shared_schemas.py` → `packages/server-python/app/shared/schemas/document.py`.
+ * When adding/removing keys: update this file, then re-run the codegen script
+ * and commit the generated Python file.
  */
 export const TEMPLATE_META_RESERVED_KEYS: ReadonlySet<string> = new Set([
   "id",

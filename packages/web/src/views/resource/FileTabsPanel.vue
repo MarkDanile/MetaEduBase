@@ -163,7 +163,8 @@ const tabs = [
 const templateData = computed(() => getTemplateStructuredData(props.structuredData as Parameters<typeof getTemplateStructuredData>[0]));
 
 // REQ-002-3 AC-11: 6 个溯源保留键不入字段列表（用户在 Tab 1 只看到 LLM 抽取字段）。
-// Single source of truth: TEMPLATE_META_RESERVED_KEYS from @metaedu/shared/schemas/document (TD-039).
+// Single source of truth: TEMPLATE_META_RESERVED_KEYS from @metaedu/shared/schemas/document.
+// Python codegen path tracked in TD-043.
 const filteredTemplateData = computed<Record<string, unknown>>(() => {
   const t = templateData.value;
   if (!t || typeof t !== "object") return {};
