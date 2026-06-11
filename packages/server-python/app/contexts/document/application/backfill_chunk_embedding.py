@@ -94,14 +94,15 @@ async def backfill_chunk_embedding(
                 if dry_run:
                     stats.updated += 1
                     continue
-                # Use to_tsvector('simple', content) — language agnostic,
-                # suitable for Chinese mixed with English; P2 may upgrade
-                # to a Chinese-specific tokenizer.
+                # Use to_tsvector('chinese_zh', content) — Chinese-aware
+                # (zhparser + SCWS dict, TD-047/3 P2-SEARCH 切片 3).
+                # Falls back to simple-style behavior on pure ASCII (SCWS treats
+                # ASCII tokens as 'e' / 'l' / etc., still indexed under simple mapping).
                 await session.execute(
                     text(
                         "UPDATE metaedu.document_chunks "
                         "SET embedding = :emb, "
-                        "    content_tsvector = to_tsvector('simple', :content) "
+                        "    content_tsvector = to_tsvector('chinese_zh', :content) "
                         "WHERE id = :id AND tenant_id = :tid"
                     ),
                     {
