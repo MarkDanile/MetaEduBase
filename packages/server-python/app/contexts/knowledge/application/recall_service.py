@@ -36,6 +36,7 @@ class PgVectorRecallChannel:
         result = await session.execute(
             text(
                 "SELECT n.id, n.title, n.description, n.domain, n.level, n.path, "
+                "n.source_file_id, n.source_chunk_id, "
                 "1 - (n.embedding <=> :vec::vector) AS score "
                 "FROM metaedu.knowledge_nodes n "
                 "WHERE n.tenant_id = :tid AND n.embedding IS NOT NULL "
@@ -55,6 +56,8 @@ class PgVectorRecallChannel:
                 score=round(float(row["score"]), 4),
                 channel=self.name,
                 path=row.get("path"),
+                source_file_id=row.get("source_file_id"),
+                source_chunk_id=row.get("source_chunk_id"),
             ))
         return results
 
@@ -93,7 +96,8 @@ class PgKeywordRecallChannel:
         where_clause = " OR ".join(conditions)
         result = await session.execute(
             text(
-                "SELECT n.id, n.title, n.description, n.domain, n.level, n.path "
+                "SELECT n.id, n.title, n.description, n.domain, n.level, n.path, "
+                "n.source_file_id, n.source_chunk_id "
                 "FROM metaedu.knowledge_nodes n "
                 f"WHERE n.tenant_id = :tid AND ({where_clause}) "
                 "LIMIT :lim"
@@ -112,6 +116,8 @@ class PgKeywordRecallChannel:
                 score=round(1.0 - idx * 0.05, 4),
                 channel=self.name,
                 path=row.get("path"),
+                source_file_id=row.get("source_file_id"),
+                source_chunk_id=row.get("source_chunk_id"),
             ))
         return results
 
@@ -150,7 +156,8 @@ class PgMetadataRecallChannel:
         where_clause = " AND ".join(conditions)
         result = await session.execute(
             text(
-                "SELECT n.id, n.title, n.description, n.domain, n.level, n.path "
+                "SELECT n.id, n.title, n.description, n.domain, n.level, n.path, "
+                "n.source_file_id, n.source_chunk_id "
                 "FROM metaedu.knowledge_nodes n "
                 f"WHERE {where_clause} "
                 "ORDER BY n.created_at DESC LIMIT :lim"
@@ -169,5 +176,7 @@ class PgMetadataRecallChannel:
                 score=round(0.8 - idx * 0.04, 4),
                 channel=self.name,
                 path=row.get("path"),
+                source_file_id=row.get("source_file_id"),
+                source_chunk_id=row.get("source_chunk_id"),
             ))
         return results

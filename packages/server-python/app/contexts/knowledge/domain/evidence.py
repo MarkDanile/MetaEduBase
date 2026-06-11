@@ -78,6 +78,10 @@ class EvidenceItem(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     score: float | None = None
     channels: list[str] = Field(default_factory=list)
+    # TD-050: 仅 source_type=="knowledge_node" 时填充；与 chunk_id 同值
+    # (chunk_id 承载该 node 的 source_chunk_id)。其他 source_type 时为 None。
+    # 不参与 evidence_id 派生（详见 spec §3.1 末尾「AC-3 解读说明」）。
+    source_chunk_id: uuid.UUID | None = None
 
     @model_validator(mode="after")
     def _ensure_evidence_id(self) -> EvidenceItem:
