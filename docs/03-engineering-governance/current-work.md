@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| TD-047 中文分词回填 ILIKE 限制（spike 已验证路线 A 可行，能力边界已探明，待写 spec / plan） | 🟡 进行中 | P2 | 后端 / RAG / 全文检索 | 路线 A 已 spike 验证：`pgvector/pgvector:pg16` + SCWS 1.2.3（`/usr/local/lib/libscws.so.1.1.0`）+ zhparser 2.4（`/usr/lib/postgresql/16/lib/zhparser.so`）+ `CREATE TEXT SEARCH CONFIGURATION chinese_zh (PARSER = zhparser)` + `plainto_tsquery('chinese_zh', :title)` 全部跑通。**能力边界（4 场景实测）**：① 字面命中（"中华人民共和国" / "智能制造" 在 chunk 中）→ ILIKE 命中 → to_tsquery 同样命中（**零回归**）；② 顺序错乱 / 拆字（"智能制造" vs chunk 中"智能化制造"）→ ILIKE 失败 → to_tsquery **也失败**（SCWS 词表外新词不归一化）；③ 多 token 标题（"中华人民共和国建国初期" → 拆 "中华人民共和国" / "建国" / "初期"）→ chunk 含同样 token → to_tsquery 命中；④ 同义 / 翻译 / 抽象（"抗日战争" vs chunk 中"抗战"）→ ILIKE 失败 → to_tsquery **也失败**（SCWS 词表不连接同义词）。**结论**：zhparser 对 TD-047 覆盖率提升有上限（仅解"字面命中 + 拆字 + 多 token 共享"），**不**解"同义 / 翻译 / 抽象"语义匹配（这与任务卡"中文实体、翻译实体、抽象能力点和同义表达"描述的限制**部分对不上**——本任务只能解其中部分）。预期覆盖率提升需要 dev 库真 PG 跑 backfill 实测才知道具体数字。**镜像改动路径**：dev 镜像 + Dockerfile.backend 加 SCWS 1.2.3 编译 + zhparser 编译（PGDG 不提供预编译包，只能从 GitHub 源码）；**已知外部源** xunsearch.com（SCWS）+ github.com/amutu/zhparser（zhparser 源码）。**沙箱测速**：清华源 + 阿里云 PGDG 镜像后 apt 拉包 429 kB/s（vs 之前 18.2 kB/s，24× 提速）；SCWS 编译 <1 min，zhparser 编译 <1 min，**冷 build 总开销 <3 min**（编译期）；Dockerfile 优化：multi-stage 把 gcc / make 留在 builder，runtime 镜像只留 .so / .h，**最终运行时镜像增量 <20MB**。 | 写 `docs/02-delivery-plans/01-specs/2026-06-11-td-047-zhparser-chinese-tsvector.md` + 对应 plan；6 切片原子提交；起手切片 1（Dockerfile.backend multi-stage 改造 + 重建 dev 镜像）。 | 沙箱已跑：`CREATE EXTENSION zhparser` 成功 extversion=2.4；`CREATE TEXT SEARCH CONFIGURATION chinese_zh` 成功；4 场景 SQL 实测结论如"当前进展"列所述。`pytest -q` 319 passed + 1 skipped（TD-048 收口后基线）。 |
 
 ## 下一批候选任务
 
@@ -24,9 +24,9 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| REQ-012 RAG 多路召回与知识图谱证据链收口 | 🟣 Shaping | P1 | RAG / AI Chat / Evidence / KG | 详看 [Requirement](../01-product-planning/05-requirements/REQ-012-rag-retrieval-and-kg-evidence-chain-follow-up.md)；这是 REQ-010 质量 follow-up 的正式稳定编号。下一步按流程建立 spec / plan，明确 TD-047 是否作为前置依赖，并用真实样例验证 AI Chat evidence 链路。 |
-| TD-047 中文分词回填 ILIKE 限制（P2-SEARCH 技术债入口） | ⚫ 待办 | P2 | 后端 / RAG / 全文检索 | 详看 `technical-debt.md#td-047`；该债务由 TD-046 数据回填批次拆出，但本质对应 P2 里程碑 `P2-SEARCH`：PostgreSQL `tsvector` + 中文分词搜索增强。开工时以 TD-047 为任务事实源，P2-SEARCH 只做规划归属。 |
-| TD-048 `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口） | ⚫ 待办 | P3 | 后端 / API 契约 / 文档 | 详看 `technical-debt.md#td-048`；低于 TD-047 优先级，等待 MCP / 第三方消费方稳定后调研外部使用，再删除旧 `/ai/chat` node-shaped 契约。 |
+| REQ-012 RAG 多路召回与知识图谱证据链收口 | 🟣 Shaping | P1 | RAG / AI Chat / Evidence / KG | 详看 [Requirement](../01-product-planning/05-requirements/REQ-012-rag-retrieval-and-kg-evidence-chain-follow-up.md)；REQ-010 质量 follow-up 的正式稳定编号。TD-047 路线已锁 zhparser + tsvector，REQ-012 启动时把 TD-047 收口路径写进前置依赖，并用真实样例验证 AI Chat evidence 链路。 |
+| TD-049 `tests/conftest.py` 8 E402 pre-existing（TD-012 收口后遗留） | ⚫ 待办 | P3 | 后端 / 测试 / 质量门禁 / 工程治理 | 详看 `technical-debt.md#td-049`；8 个 E402 全在 `tests/conftest.py:13-20`，根因 L11 `sys.path.insert` 块；修复方案已记（挪到新建 `tests/_paths.py`）。低风险，下一批可独立 PR。 |
+| TD-050 spec / 代码错位校正（`EvidenceItem` 缺 `source_chunk_id` 字段） | ⚫ 待办 | P3 | 后端 / RAG / API 契约 / 文档 | 详看 `technical-debt.md#td-050`；本债由 TD-048 收口时出账：原需求 spec 写了 `source_chunk_id` 字段但 P1 阶段代码未实现。下一步：选路线 A（实施：`EvidenceItem` 加 `source_chunk_id: uuid.UUID \| None = None`）或路线 B（spec 校正）。由用户后续安排开发。 |
 
 ## 最近完成
 
