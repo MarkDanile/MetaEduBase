@@ -110,16 +110,16 @@ curl -s "http://localhost:8000/api/v1/knowledge/overview?file_id=$FILE_ID" \
 | query 选择 | 用能命中 KG 节点的 query（如"智能制造专业的核心课程"） | 实际 query： |
 | 召回 | 3 通道至少 1 通道命中 | Stage 1.5 跑通后断言 `sources` ≥ 1 |
 | answer | 非空 + 引用 sources 上下文 | 实际输出： |
-| sources 字段 | `[{id, title, domain, level, score, channel}]`（按 ai_router 实现） | 实际输出： |
+| sources 字段 | `[{evidence_id, source_type, title, score, channels, ...}]`（REQ-010 EvidenceItem） | 实际输出： |
 | 4 主题 | ai_chat 视图在 4 主题下视觉一致 | 截图： |
 
 降级（curl 截图）：
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/ai/chat \
+curl -X POST http://localhost:8000/api/v1/ai/chat/evidence \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
-    -d '{"message": "智能制造专业的核心课程"}' | jq '.answer, .sources'
+    -d '{"message": "智能制造专业的核心课程"}' | jq '.reply, .sources'
 ```
 
 ---

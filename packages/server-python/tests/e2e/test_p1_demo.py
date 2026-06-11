@@ -4,7 +4,9 @@ Stage 1.0 (PR #117) shipped the first three steps.  Stage 1.5 adds:
 
 * AC-3  Template extract (extract_template via Celery ``.delay`` + sync fallback).
 * AC-4  Knowledge graph (extract_knowledge_graph ditto).
-* AC-5  RAG chat (``POST /api/v1/ai/chat`` with stubbed channels + LLM).
+* AC-5  RAG chat (``POST /api/v1/ai/chat/evidence`` with stubbed
+        evidence service + LLM). TD-048: legacy ``/api/v1/ai/chat``
+        (node-shaped SourceItem) endpoint was removed.
 * AC-6  Sources field shape (covered inside AC-5).
 
 Broker: Redis (``./dev.sh infra``).  AC-3 / AC-4 dispatch through the
@@ -406,65 +408,46 @@ async def test_p1_demo_step4_kg_extract(
 async def test_p1_demo_step5_ai_chat(
     client, auth_headers
 ):
-    """AC-5 + AC-6: ``POST /api/v1/ai/chat`` returns non-empty ``reply``
-    and ``sources``; each source entry carries the full schema."""
-    from types import SimpleNamespace
+    """AC-5 + AC-6: ``POST /api/v1/ai/chat/evidence`` returns non-empty
+    ``reply`` and ``sources``; each source entry carries the unified
+    EvidenceItem schema. TD-048: legacy ``/api/v1/ai/chat`` endpoint
+    (node-shaped SourceItem) was removed; e2e migrated to evidence path.
+    """
+    import uuid
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    from app.contexts.knowledge.application.ner_service import RuleBasedNER
-    from app.contexts.knowledge.interfaces.api import ai_router
-    from app.shared.domain.recall_channel import RecallResult
+    from app.contexts.knowledge.domain.evidence import EvidenceItem
 
     file_id = await test_p1_demo_step4_kg_extract(
         client, auth_headers
     )
     _ = file_id  # used in kg_extract, kept for breadcrumbs
 
-    async def _vector_stub(_query, _ner_result, _tenant_id,
-                           _session, _top_k=5):
-        _ = (_query, _ner_result, _tenant_id, _session, _top_k)
-        return [RecallResult(
-            node_id="kg-node-1",
-            title="教学目标",
-            description="理解函数",
-            domain="education_sports",
-            level="knowledge_point",
-            score=0.92,
-            channel="vector",
-            path="kg-1",
-        )]
+    fake_evidence = EvidenceItem(
+        evidence_id="ev-kg-node-1",
+        source_type="knowledge_node",
+        file_id=uuid.UUID("44444444-4444-4444-4444-444444444444"),
+        node_id=uuid.UUID("55555555-5555-5555-5555-555555555555"),
+        title="教学目标",
+        snippet="理解函数",
+        score=0.92,
+        channels=["vector"],
+    )
 
-    async def _keyword_stub(*_a, **_k):
-        _ = (_a, _k)
-        return []
+    fake_service = MagicMock()
+    fake_service.chat = AsyncMock(
+        return_value=MagicMock(
+            reply="基于知识图谱的回答",
+            sources=[fake_evidence],
+        ),
+    )
 
-    async def _metadata_stub(*_a, **_k):
-        _ = (_a, _k)
-        return []
-
-    mock_response = MagicMock()
-    mock_response.json.return_value = {
-        "choices": [{"message": {"content": "基于知识图谱的回答"}}]
-    }
-    mock_response.raise_for_status = MagicMock()
-    mock_client = MagicMock()
-    mock_client.post = AsyncMock(return_value=mock_response)
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
-
-    with patch.object(ai_router, "_vector_channel", SimpleNamespace(
-        name="vector", recall=_vector_stub,
-    )), patch.object(ai_router, "_keyword_channel", SimpleNamespace(
-        name="keyword", recall=_keyword_stub,
-    )), patch.object(ai_router, "_metadata_channel", SimpleNamespace(
-        name="metadata", recall=_metadata_stub,
-    )), patch.object(ai_router, "_ner", RuleBasedNER()), \
-         patch(
-             "app.contexts.knowledge.interfaces.api.ai_router.httpx.AsyncClient",
-             return_value=mock_client,
-         ):
+    with patch(
+        "app.contexts.knowledge.interfaces.api.ai_router._evidence_service",
+        new=fake_service,
+    ):
         resp = await client.post(
-            "/api/v1/ai/chat",
+            "/api/v1/ai/chat/evidence",
             json={"message": "教学目标是什么?", "context_window": 3},
             headers=auth_headers,
         )
@@ -475,6 +458,6 @@ async def test_p1_demo_step5_ai_chat(
     sources = data.get("sources") or []
     assert len(sources) >= 1, f"expected >=1 sources, got {sources!r}"
     for src in sources:
-        for field in ("id", "title", "channel", "score"):
+        for field in ("evidence_id", "source_type", "title", "score", "channels"):
             assert field in src, f"source item missing {field!r}: {src!r}"
-    assert any(s["channel"] == "vector" for s in sources), sources
+    assert any("vector" in s["channels"] for s in sources), sources
