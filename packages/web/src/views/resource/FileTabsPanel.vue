@@ -65,8 +65,14 @@
       <div v-else class="space-y-2">
         <div
           v-for="chunk in chunks"
+          :id="`chunk-${chunk.id}`"
           :key="chunk.id"
-          class="p-3 rounded-lg border border-[var(--color-border)] hover:bg-[var(--color-bg-hover)]"
+          class="p-3 rounded-lg border transition-colors duration-700"
+          :class="
+            chunk.id === highlightChunkId
+              ? 'border-[var(--color-accent)] bg-[var(--color-accent-bg)]'
+              : 'border-[var(--color-border)] hover:bg-[var(--color-bg-hover)]'
+          "
         >
           <div class="flex items-start justify-between gap-3 mb-1">
             <div class="flex items-center gap-2">
@@ -140,6 +146,7 @@ const props = defineProps<{
   kgEdges: KnowledgeEdgeDTO[];
   kgLoading: boolean;
   structuredData: unknown;
+  highlightChunkId?: string | null;
 }>();
 
 const emit = defineEmits<{
