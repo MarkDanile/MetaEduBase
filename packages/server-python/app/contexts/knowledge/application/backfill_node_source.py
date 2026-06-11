@@ -61,9 +61,21 @@ async def _find_chunk_for_node(
     file_id: uuid.UUID | None,
     node_title: str,
 ) -> uuid.UUID | None:
-    """Find the first chunk in the same file whose content contains node_title.
+    """Find the first chunk in the same file whose content's Chinese-tsvector
+    matches the node title tsquery (TD-047 切片 4).
 
-    Returns None when no file_id is known or no chunk contains the title.
+    Uses ``to_tsvector('chinese_zh', content) @@ plainto_tsquery('chinese_zh', :title)``
+    (replaces TD-046 era's byte-level ``ILIKE '%{title}%'``). ``plainto_tsquery``
+    auto-escapes title input — no manual SQL escape needed; bind param via
+    ``:title`` parameter for defense-in-depth.
+
+    Coverage edges:
+    - 标题逐字命中 chunk: tsquery 拆 token 后 chunk 同样 token → 命中 (与旧 ILIKE 等价)
+    - 标题在 chunk 中拆字 / 多 token 共享: 升级命中 (旧 ILIKE 失败的场景)
+    - 同义 / 翻译 / 抽象语义匹配: **仍不命中** (SCWS 词表不连接同义词；REQ-012 后续 embedding 召回)
+    - 空标题 / 标题被 SCWS 切成空 tsquery: 返回 None → 业务侧 ``file_only`` 兜底
+
+    Returns None when no file_id is known, title is empty, or no chunk matches.
     """
     if file_id is None or not node_title:
         return None
@@ -71,13 +83,14 @@ async def _find_chunk_for_node(
         text(
             "SELECT id FROM metaedu.document_chunks "
             "WHERE tenant_id = :tid AND file_id = :fid "
-            "AND content ILIKE :pattern "
+            "AND to_tsvector('chinese_zh', content) "
+            "    @@ plainto_tsquery('chinese_zh', :title) "
             "ORDER BY chunk_index LIMIT 1"
         ),
         {
             "tid": tenant_id,
             "fid": file_id,
-            "pattern": f"%{node_title}%",
+            "title": node_title,
         },
     )
     row = result.first()
