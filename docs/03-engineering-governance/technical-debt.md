@@ -140,7 +140,7 @@
 | TD-043 | 打通后端 Python 对 `shared/schemas/document` 的 import 路径 | 🟢 完成 | P2 | 后端 / 共享 schema / 基础设施 | 2026-06-10 并行批次 `td-039+td-040` 拆出（原属 TD-039 范围）/ [PR #185](https://github.com/MarkDanile/MetaEduBase/pull/185) |
 | TD-044 | REQ-010 P1 RAG 证据治理与 AI Chat 溯源体验跨事实源状态收口 + 历史数据基线建立 | 🟢 完成 | P1 | RAG / AI Chat / Evidence / UX / 跨事实源同步 | REQ-010 8 个 Slice 收口（Slice 1-6 历史 PR + [Slice 7 PR #181](https://github.com/MarkDanile/MetaEduBase/pull/181) + [Slice 8 PR #183](https://github.com/MarkDanile/MetaEduBase/pull/183)）；建立 P1 RAG 基线：node_source_chunk 0% / chunk_embedding 100% / chunk_tsvector 93.55% / file_metadata 0% |
 | TD-045 | `ai_chat_service._call_llm` 漏 await（Slice 3 真实业务 bug） | 🟢 完成 | P1 | 后端 / AI Chat / 运行时 | REQ-010 Slice 8 端到端 e2e 触发；`def _call_llm` → `async def _call_llm` + `await _call_llm(...)` + `await self._call_llm(...)` / [PR #184](https://github.com/MarkDanile/MetaEduBase/pull/184) |
-| TD-046 | P1 RAG 数据债批次：跑 3 个 backfill + 写 idempotency 测试 + 跨事实源收口 | 🟢 完成 | P1 | RAG / AI Chat / 数据完整性 / 跨事实源同步 | REQ-010 P1 RAG 基线 (TD-044)：node_source_chunk 0% / chunk_embedding 100% / chunk_tsvector 93.55% / file_metadata 0%。基于 Slice 6 已就位的 3 个 backfill 命令 + CLI，跑历史数据回填 + 写 pytest idempotency 锁 + 跨 5 事实源收口 + 拆 TD-047/048 独立 follow-up / [PR TBD] |
+| TD-046 | P1 RAG 数据债批次：跑 3 个 backfill + 写 idempotency 测试 + 跨事实源收口 | 🟢 完成 | P1 | RAG / AI Chat / 数据完整性 / 跨事实源同步 | REQ-010 P1 RAG 基线 (TD-044)：node_source_chunk 0% / chunk_embedding 100% / chunk_tsvector 93.55% / file_metadata 0%。基于 Slice 6 已就位的 3 个 backfill 命令 + CLI，跑历史数据回填 + 写 pytest idempotency 锁 + 跨 5 事实源收口 + 拆 TD-047/048 独立 follow-up / [PR #187](https://github.com/MarkDanile/MetaEduBase/pull/187) |
 | TD-047 | 中文分词回填 ILIKE 限制（P1 数据债衍生） | ⚫ 待办 | P2 | 后端 / RAG / 全文检索 | 当前 `backfill_knowledge_node_source._find_chunk_for_node` 用 `ILIKE '%{node_title}%'` 字节级 substring 匹配，中文 node 需 chunk content 含同字符串才匹上，匹不上则 file_only 退化。Milestone Link: P2-SEARCH — PostgreSQL `tsvector` + 中文分词搜索增强。需引入 zhparser / SCWS / jieba 等中文分词扩展或切换到 pg_trgm 三字符 trigram 索引。TD-046 批次 backfill_knowledge_node_source 跑后统计 `skipped_file_only` 若 >70% 则需立即解决。 |
 | TD-048 | `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口） | ⚫ 待办 | P3 | 后端 / API 契约 / 文档 | 当前 `ai_router.py:83-87` SourceItem + ChatResponse 保留向后兼容（REQ-009 / Slice 3 决策）。等 MCP / 第三方消费方稳定后再删。下轮启动时建独立任务卡 + 调研外部消费方使用情况。 |
 | TD-049 | `tests/conftest.py` `sys.path.insert` 块导致 8 个 E402 pre-existing（TD-012 收口后遗留） | ⚫ 待办 | P3 | 后端 / 测试 / 质量门禁 / 工程治理 | TD-046 PR #187 收口时确认 `ruff check app/ tests/` 报 8 个 E402 errors 全部在 `tests/conftest.py:13-20`（imports not at top of file）。根因 L11 插入 `sys.path.insert(0, _REPO_ROOT)` 块（注释"REQ-010: ensure repo root on sys.path so tests can import scripts.ai.*"）违反 E402。修复：把 `_REPO_ROOT` + `sys.path` 块挪到 `tests/_paths.py`（新建），conftest.py 改为 `from tests._paths import *`。0 行为变化预期（`scripts.ai.*` 仍可 import）。 |
@@ -2210,7 +2210,7 @@
 |------|------|
 | 优先级 | P1 |
 | 领域 | RAG / AI Chat / 数据完整性 / 跨事实源同步 |
-| 事实源 | REQ-010 P1 RAG 基线 (TD-044) / [PR TBD] |
+| 事实源 | REQ-010 P1 RAG 基线 (TD-044) / [PR #187](https://github.com/MarkDanile/MetaEduBase/pull/187) |
 
 **背景**
 
@@ -2344,7 +2344,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 |------|------|
 | 优先级 | P3 |
 | 领域 | 后端 / 测试 / 质量门禁 / 工程治理 |
-| 事实源 | TD-046 PR #187 收口时确认 / [PR TBD] |
+| 事实源 | TD-046 [PR #187](https://github.com/MarkDanile/MetaEduBase/pull/187) 收口时确认 |
 
 **证据**
 
