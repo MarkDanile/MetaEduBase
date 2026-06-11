@@ -2389,7 +2389,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-050: `EvidenceItem` 缺 `source_chunk_id` 字段 / spec 与实现错位
 
-状态：🔵 就绪
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -2463,7 +2463,31 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 **交付记录**
 
-- 未完成（截止 2026-06-11 路线拍板 + 债项定义补全；实施待补 plan + 走 PR）。
+- 2026-06-11 完成（接手工具：Claude Code）。3 切片 3 PR 全部合入 main：
+  - PR-1 [#193](https://github.com/MarkDanile/MetaEduBase/pull/193) — docs-only 同步（L40 EvidenceItem 字段清单 + §3.1 末尾"AC-3 解读说明" + REQ-010 plan Step 3.4 同步注 + Follow-up FU-F + 债项卡补全 + spec / plan 落地 + workbench 状态），merge commit `fa09f78`。
+  - PR-2 [#194](https://github.com/MarkDanile/MetaEduBase/pull/194) — 业务代码 + pytest（4 业务文件改 + 2 pytest 文件 / 10 新 pytest），merge commit `5719c38`。
+  - PR-3（docs/td-050-slice-3-cross-source-closure）— 跨事实源收口（本卡 / current-work / work-log / backlog / validation-phase）。
+- 验证摘要（按 `quality-gates.md#完成门禁`）：
+  - 17 passed in 0.04s（聚焦 pytest：5 evidence_model 新 + 5 pg_graph_retriever 新 + 7 evidence_model baseline）
+  - 116 passed in 7.31s（TD-030 baseline knowledge + ai 集合零回归；plan §9 预期 60，实际 116）
+  - **336 passed, 1 skipped in 169.18s**（全量 pytest；326 baseline + 10 新 TD-050 pytest + 0 regression；plan §9 预期 328）
+  - `ruff check app/ tests/` → 8 errors（全部在 `tests/conftest.py:13-20`，TD-049 pre-existing；本债 0 新增）
+  - `check-engineering-docs` → `engineering docs checks passed`，rc=0
+  - `git diff --check` → clean
+  - `rg -n "source_chunk_id" packages/server-python/app/` → 命中：3 SQL SELECT + 3 RecallResult 写入 + 2 PgGraphRetriever 构造 + 1 EvidenceItem model 字段 = 9 处新增
+  - `rg -n "filled in Slice 5" packages/server-python/app/` → 0 命中（已删旧注释）
+  - `gh pr checks 193` + `gh pr checks 194` → no checks reported（PR 未配 CI；按 TD-046 / TD-020 范式明示）
+- 行为变化声明（按 `quality-gates.md#行为变化声明检查`）：
+  - `POST /api/v1/ai/chat` 的 `sources`（`EvidenceItem[]`）在 node 类型 evidence 上同时含 `chunk_id` / `source_chunk_id`（同值）和 `file_id`（可能非空）；从 P1 `None` 变可能非空（数据驱动，dev 库 81.91% 节点有值）。
+  - 前端 AI Chat `AiChatView` 的 `[N]` chip 渲染：node 类型 evidence 现在可跳 `/resource/files/:fileId?chunk=:chunkId`（之前只跳 `KnowledgeBaseView` 节点详情）。
+  - 公共 API 变化：`EvidenceItem` 字段定义新增 1 个可选字段 `source_chunk_id: uuid.UUID | None = None`（向后兼容，默认 None）。`RecallResult` 字段定义新增 2 个可选字段 `source_file_id` / `source_chunk_id`（向后兼容，默认 None）。`RecallChannel` Protocol 形参不变（TD-030 契约测试不破）。
+  - 数据库 / migration：0 schema 变更。
+  - 不动 `SourceItem` 旧契约 / MCP tool / `RRFFusion` 占位实现 / `FrequencyFusion` 行为。
+- 跨事实源收口：5 事实源（technical-debt / current-work / work-log / backlog / validation-phase）状态一致。
+- 后续接力：
+  - **REQ-012** 启动时把"TD-047 + TD-050 已收口"作为前置依赖写进 spec，直接进入 RAG 链路收口工作。
+  - **P2 / P3 Neo4j / GraphRAG adapter 升级** 复用本任务的"双字段透传"模式。
+  - **TD-048 `SourceItem` 旧字段 deprecation 窗口** 仍按 deprecation period 保留。
 
 ### TD-049: `tests/conftest.py` `sys.path.insert` 块导致 8 个 E402 pre-existing
 
