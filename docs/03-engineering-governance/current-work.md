@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-011 AI 应用广场与应用注册中心 | 🟡 Doing | P1 | AI Apps / Frontend / API / Backend / Data Model | Slice 1 PR #174 已合并；Slice 2 PR #175 已合并；Slice 3 PR #178 已合并（管理列表 + 编辑页）；框架页占位已完成，Slice 4 待完善 Token 端点展示 | Slice 4 可选（框架页已占位，Token 端点展示） | PR #174 ✅ / PR #175 ✅ / PR #178 ✅ |
+| REQ-010 P1 真实 RAG 证据治理与 AI Chat 溯源体验 | 🔵 就绪 | P1 | RAG / AI Chat / Evidence / UX / MCP / KG 视图 | spec + plan 已落档；用户确认后建 `feature/req-010-rag-evidence` 任务分支，从 EvidenceItem + EvidenceFusion Protocol + 诊断日志开始 Slice 1 | 用户确认后建分支进入 Slice 1 | docs-only 塑形，spec / plan 已落档 |
 
 ## 下一批候选任务
 
@@ -24,7 +24,6 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| REQ-010 P1 真实 RAG 证据治理与 AI Chat 溯源体验 | 🔵 就绪 | P1 | RAG / AI Chat / Evidence / UX / MCP / KG 视图 | 用户确认后按 plan 进入 Slice 1 实施：建 `feature/req-010-rag-evidence` 任务分支，从 EvidenceItem + EvidenceFusion Protocol + 诊断日志开始 |
 
 ## 最近完成
 
@@ -34,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-11 | REQ-011 AI 应用广场与应用注册中心 | 🟢 完成 | 4 Slice 全部完成：数据模型 + API CRUD（#174）+ 前端路由/菜单/广场列表/详情页（#175）+ 管理列表/编辑页（#178）+ 分享页/Token 端点（#179）；APP-001~004 种子数据就绪。 | [Spec](../02-delivery-plans/01-specs/2026-06-11-req-011-ai-app-marketplace.md) / [Plan](../02-delivery-plans/02-plans/2026-06-11-req-011-ai-app-marketplace-plan.md) / PR #174/#175/#178/#179 |
 | 2026-06-10 | REQ-002-4 模板可维护性 | 🟢 完成 | schema_version 演进 + 容器互转二次确认 + deprecated 标记 + 6 键保留键校验。16 条新 pytest + 89/89 全过；前端弃用 UI + 二次确认 + 红框校验。REQ-002 子任务链收口。 | [Spec](../02-delivery-plans/01-specs/2026-06-10-req-002-4-template-maintainability.md) / [Plan](../02-delivery-plans/02-plans/2026-06-10-req-002-4-template-maintainability-plan.md) / [PR #170](https://github.com/MarkDanile/MetaEduBase/pull/170) (merge `e8fd5474`) |
 | 2026-06-10 | TD-042 模板复用后端集成测试在 PG 实例下验证 | 🟢 完成 | 真 PG 跑通 `make migrate` 升 007 / `downgrade` / `init-test-db`；reuse 8 条 pytest + 模板目录回归均通过；顺带修 007 迁移 inline FK + asyncpg 反射 PK 缺陷。详见 technical-debt 总账与 work-log。[PR TBD] | [TD-042](technical-debt.md#td-042) |
 | 2026-06-10 | TD-041 FieldCard 递归渲染嵌套字段 + 嵌套拖拽 | 🟢 完成 | 新建 FieldList.vue 递归组件；FieldCard 递归渲染 children/items + 同层拖拽；修 removeColumn/copySubtree bug。[PR #161](https://github.com/MarkDanile/MetaEduBase/pull/161) | [TD-041](technical-debt.md#td-041) / [Spec](../02-delivery-plans/01-specs/2026-06-10-td-041-field-card-recursive-rendering.md) / [PR #161](https://github.com/MarkDanile/MetaEduBase/pull/161) |
