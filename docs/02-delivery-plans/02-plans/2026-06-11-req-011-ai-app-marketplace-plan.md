@@ -255,5 +255,5 @@ psql -c "SELECT code, name, status FROM ai_applications ORDER BY sort_order;"
 |------|-------|----------|-----|
 | 2026-06-11 | Slice 1 | 数据模型 + 迁移 + Service + API CRUD + 种子数据 | [PR #174](https://github.com/MarkDanile/MetaEduBase/pull/174) (squash merge `fcd8d80`) |
 | 2026-06-11 | Slice 2 | 前端路由 + 菜单 + 广场列表 + 详情页 + 框架页占位 | [PR #175](https://github.com/MarkDanile/MetaEduBase/pull/175) (squash merge) |
-| TBD | Slice 3 | 前端管理 + 编辑页 | TBD |
+| 2026-06-11 | Slice 3 | 前端管理列表 + 编辑页 | [PR #178](https://github.com/MarkDanile/MetaEduBase/pull/178) (squash merge) |
 | TBD | Slice 4 | 独立应用框架页 + Token 端点 | TBD |
