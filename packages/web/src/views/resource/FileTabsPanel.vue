@@ -132,7 +132,7 @@ import EmptyState from "@/components/EmptyState.vue";
 import LoadingSpinner from "@/components/LoadingSpinner.vue";
 import KGGraph from "@/components/KGGraph.vue";
 import FieldValue from "./FieldValue.vue";
-import { getTemplateStructuredData } from "@metaedu/shared/schemas/document";
+import { getTemplateStructuredData, TEMPLATE_META_RESERVED_KEYS } from "@metaedu/shared/schemas/document";
 import type { ChunkDTO } from "@/services/document";
 import type { Template } from "@/services/template";
 import type { KnowledgeNodeDTO, KnowledgeEdgeDTO } from "@/services/knowledge";
@@ -163,21 +163,14 @@ const tabs = [
 const templateData = computed(() => getTemplateStructuredData(props.structuredData as Parameters<typeof getTemplateStructuredData>[0]));
 
 // REQ-002-3 AC-11: 6 个溯源保留键不入字段列表（用户在 Tab 1 只看到 LLM 抽取字段）。
-const RESERVED_META_KEYS: ReadonlySet<string> = new Set([
-  "id",
-  "version",
-  "layer",
-  "matched_type",
-  "confidence",
-  "reason",
-]);
-
+// Single source of truth: TEMPLATE_META_RESERVED_KEYS from @metaedu/shared/schemas/document.
+// Python codegen path tracked in TD-043.
 const filteredTemplateData = computed<Record<string, unknown>>(() => {
   const t = templateData.value;
   if (!t || typeof t !== "object") return {};
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(t)) {
-    if (!RESERVED_META_KEYS.has(k)) {
+    if (!TEMPLATE_META_RESERVED_KEYS.has(k)) {
       out[k] = v;
     }
   }

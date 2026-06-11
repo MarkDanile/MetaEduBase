@@ -14,10 +14,13 @@ import logging
 import re
 from typing import Any
 
+from app.shared.schemas.document import TEMPLATE_META_RESERVED_KEYS
+
 logger = logging.getLogger("app.contexts.document.application.tasks")
 
 # REQ-002-3: meta key whitelist for `_merge_template_structured_data`.
-_TEMPLATE_META_KEYS = ("id", "version", "layer", "matched_type", "confidence", "reason")
+# Single source of truth: scripts/codegen/gen_shared_schemas.py → app/shared/schemas/document.py
+_TEMPLATE_META_KEYS = tuple(TEMPLATE_META_RESERVED_KEYS)
 # Core keys whose absence triggers a fallback to the legacy shape (AC-4).
 _TEMPLATE_META_CORE_KEYS = ("id", "version", "layer")
 

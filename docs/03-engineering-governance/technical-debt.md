@@ -137,7 +137,7 @@
 | TD-040 | `FileTabsPanel.spec.ts` Vue 单元测试覆盖 AC-11（6 键过滤）/ AC-12（card 渲染 / 老数据隐藏 / layer none 分支 / version 为 null） | 🟢 完成 | P2 | 前端 / 测试 / 交付 | REQ-002-3 code review / [PR #167](https://github.com/MarkDanile/MetaEduBase/pull/167) (`c1cc0c9` squash merge) / 引入 vitest + @vue/test-utils + jsdom 首次前端单测基建 / 6 测试通过（5 AC-12 + 1 AC-11 加固）|
 | TD-041 | FieldCard 递归渲染嵌套字段 + object children / array items 嵌套拖拽 | 🟢 完成 | P2 | 前端 / 架构 / 交付 | [PR #161](https://github.com/MarkDanile/MetaEduBase/pull/161) / [Spec](../02-delivery-plans/01-specs/2026-06-10-td-041-field-card-recursive-rendering.md) |
 | TD-042 | REQ-002-2 后端集成测试在 PG 实例下验证（`test_template_reuse.py` 8 条用例） | 🟢 完成 | P2 | 后端 / 测试 / 交付 | REQ-002-2 交付时沙箱无 PG / [PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) / 修 007 迁移 inline FK 在 asyncpg 反射下的 PK 解析缺陷 / [PR TBD] |
-| TD-043 | 打通后端 Python 对 `shared/schemas/document` 的 import 路径 | ⚫ 待办 | P2 | 后端 / 共享 schema / 基础设施 | 2026-06-10 并行批次 `td-039+td-040` 拆出（原属 TD-039 范围）/ 仓库无顶层 `metaedu` Python 包、`packages/shared/` 是 TS-only pnpm workspace 包，0 处 `import metaedu.shared.*` 命中 |
+| TD-043 | 打通后端 Python 对 `shared/schemas/document` 的 import 路径 | 🟢 完成 | P2 | 后端 / 共享 schema / 基础设施 | 2026-06-10 并行批次 `td-039+td-040` 拆出（原属 TD-039 范围）/ [PR TBD] |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 
 ## 任务详情
@@ -2010,7 +2010,7 @@
 
 ### TD-043: 打通后端 Python 对 `shared/schemas/document` 的 import 路径
 
-状态：⚫ 待办
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -2053,4 +2053,24 @@
 - `git diff --check` 退出码 0。
 
 **交付记录**
+- 2026-06-11 完成（接手工具：Claude Code）。**Spike 结论**：路线 A（TS codegen）为唯一推荐，因物理上只维护一份 TS 源，codegen 产物自动同步，零额外 CI 链路复杂度。路线 B 拒选（物理两份源）；路线 C 拒选（CI 脆弱）。原子变更 6 文件：
+  1. `packages/shared/src/schemas/document.ts`（NEW export）：新增 `TEMPLATE_META_RESERVED_KEYS: ReadonlySet<string>` + JSDoc 说明 TD-043 codegen 路径。
+  2. `scripts/codegen/gen_shared_schemas.py`（NEW）：Python codegen 脚本，从 `document.ts` 提取 `TEMPLATE_META_RESERVED_KEYS` 并 emit `app/shared/schemas/document.py`。
+  3. `packages/server-python/app/shared/schemas/__init__.py`（NEW）：Python namespace package init。
+  4. `packages/server-python/app/shared/schemas/document.py`（NEW，codegen 产物）：Python frozenset 副本。
+  5. `packages/server-python/app/shared/__init__.py`（NEW）：parent namespace init。
+  6. `packages/server-python/app/contexts/document/application/tasks/extract_template_prompts.py`：删除硬编码 `_TEMPLATE_META_KEYS` tuple；改为 `from app.shared.schemas.document import TEMPLATE_META_RESERVED_KEYS`。
+  7. `packages/server-python/pyproject.toml`：`tool.setuptools.packages.find.include` 扩为 `["app*", "app.shared.schemas"]`。
+  8. `packages/web/src/views/resource/FileTabsPanel.vue`（同 TD-039 scope）：删除本地 `RESERVED_META_KEYS` Set，改为 import TS 共享常量。
+- 行为变化声明：零业务行为变化。后端 `_TEMPLATE_META_KEYS` 从手写 tuple 改为引用 codegen 产物 frozenset，结果等价。
+- 验证摘要：
+  - `pnpm --filter @metaedu/web typecheck` → EXIT:0 ✅
+  - `pnpm --filter @metaedu/web lint` → EXIT:0 ✅
+  - `python -c "from app.shared.schemas.document import TEMPLATE_META_RESERVED_KEYS; print(TEMPLATE_META_RESERVED_KEYS)"` → `frozenset({'id', 'version', 'layer', ...})` ✅
+  - `ruff check app/shared/schemas/ app/contexts/document/application/tasks/extract_template_prompts.py scripts/codegen/gen_shared_schemas.py` → All checks passed ✅
+  - `check-engineering-docs` → EXIT:0 ✅
+  - `git diff --check` → EXIT:0 ✅
+- 已知限制：
+  - pytest 在 main（当前分支基线）有 `TypeError: 'function' object is not subscriptable` in `TemplateService`（`-> list[dict]:` 行），是 **pre-existing issue**，与本卡无关联。
+  - codegen 尚未接入 `pnpm build` / pre-commit 链路；扩展保留键时需手动 re-run `python scripts/codegen/gen_shared_schemas.py` 后 commit 产物。可拆 follow-up。
 - 2026-06-10：TD-039 范围拆分登记（本卡从原 TD-039 拆出，承接后端 Python 路径接入）。

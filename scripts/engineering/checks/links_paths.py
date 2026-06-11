@@ -70,9 +70,11 @@ def git_diff_work_log(root: Path) -> str:
             capture_output=True,
             check=False,
         )
-    except (FileNotFoundError, OSError):
+    except (FileNotFoundError, OSError, UnicodeDecodeError):
         return ""
     if result.returncode not in (0, 1):
+        return ""
+    if result.stdout is None:
         return ""
     return result.stdout
 
