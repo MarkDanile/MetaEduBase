@@ -1,6 +1,9 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    # TD-047 切片 1: 走 metaedu/postgres-zhparser:pg16 镜像（含 zhparser + SCWS）
+    # 生产部署推荐：从 registry 拉 metaedu/postgres-zhparser:pg16（运维先把镜像推上去）
+    # 如需在生产 compose 现场 build：注释 image 字段、保留 build 段（生产容器内 build 会拉 apt 包 + 编译，5-10 min）
+    image: metaedu/postgres-zhparser:pg16
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-metaedu}

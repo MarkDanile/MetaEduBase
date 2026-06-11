@@ -1,6 +1,12 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    # TD-047 切片 1: 走 metaedu/postgres-zhparser:pg16 镜像（含 zhparser + SCWS）
+    # build 从 Dockerfile.postgres 构出；冷 build 首次会拉 apt 包 + 编译 SCWS + 编译 zhparser，5-10 min
+    # builder 阶段从 host deploy/cache/ 离线拷贝 SCWS tarball + zhparser 源码（无需外网）
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.postgres
+    image: metaedu/postgres-zhparser:pg16
     ports:
       - "5432:5432"
     environment:

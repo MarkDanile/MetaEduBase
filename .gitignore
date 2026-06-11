@@ -33,3 +33,8 @@ Thumbs.db
 packages/server-python/uploads/*
 !packages/server-python/uploads/.gitkeep
 .playwright-mcp/
+
+# TD-047: offline cache for SCWS 1.2.3 + zhparser source tarballs
+# (used by deploy/Dockerfile.postgres builder stage; rebuilt from upstream
+# on demand via scripts/engineering/refresh_td047_cache.sh if/when upstream revs)
+deploy/cache/
