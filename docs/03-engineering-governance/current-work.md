@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| TD-048 `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口） | 🟡 进行中 | P3 | 后端 / API 契约 / 文档 | 切片 1 docs-only 修事实源（修工作台"假完成"声明 + technical-debt 状态从 ⚫ 待办翻 🟡 进行中 + work-log 索引行加 ⚠️ 占位标注）。**注意**：之前 current-work L40 / work-log L21 写"2026-06-11 已完成"是事实源漂移——commit `23a54b1 chore(rag): TD-048` 在分支 `chore/td-048-remove-sourceitem-legacy-contract` 上但 `main` 未合；`rg` 命中 `ai_router.py:73 SourceItem / :83 ChatResponse / :88 EvidenceChatResponse / :99-100 _recall_to_source / :130 @router.post('/chat')` 全部还在 main；`gh pr list` 查不到任何 TD-048 PR。本次回退到真实状态。 | 切片 1 commit + push + PR (docs-only)；切片 2 在 `docs/td-048-reconciliation-and-closure` 上基于 23a54b1 cherry-pick + 重跑 pytest/ruff/typecheck + 补 spec/plan + PR；切片 3 docs-only 跨事实源收口。 | 待切片 1 跑 `scripts/check-engineering-docs` 退出码 0 + `git diff --check` 干净。 |
+| （空） | | | | | | |
 
 ## 下一批候选任务
 
@@ -35,6 +35,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-11 | TD-048 `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口） | 🟢 完成 | 3 切片 3 PR 收口：PR-1 docs-only 修事实源（#196，merge `ba7f441`，修工作台假完成 + technical-debt 翻 🟡 + work-log L21 加 ⚠️ 标注 + 入账 DOC-057）+ PR-2 业务代码（#197，merge `760d147`，4 业务文件 + 1 矩阵 + 2 新建 spec/plan）+ PR-3 docs-only 跨事实源收口（本 PR）。mock-based pytest 47 passed 零回归（沙箱无 PG，全量 pytest 由 CI 接力）；ruff 8 个 TD-049 pre-existing 兼容；DOC-057 pre-existing validation-claim 提示由独立 PR 收口。 | [TD-048](technical-debt.md#td-048) / [Spec](../02-delivery-plans/01-specs/2026-06-11-td-048-sourceitem-deprecation-removal.md) / [Plan](../02-delivery-plans/02-plans/2026-06-11-td-048-sourceitem-deprecation-removal-plan.md) / PR #196 + #197 |
 | 2026-06-11 | TD-050 `EvidenceItem` 缺 `source_chunk_id` 字段 / spec 与实现错位（路线 A2） | 🟢 完成 | 3 切片 3 PR 收口：PR-1 docs-only 同步（#193） + PR-2 业务代码 + pytest（#194，4 业务文件 + 2 pytest 文件 / 10 新 pytest） + PR-3 docs-only 跨事实源收口（本 PR）。全量 pytest 336 passed + 1 skipped 零回归；ruff 8 个 TD-049 pre-existing 兼容；Recall Protocol 形参不变。 | [TD-050](technical-debt.md#td-050-evidenceitem-缺-source_chunk_id-字段--spec-与实现错位) / [Spec](../02-delivery-plans/01-specs/2026-06-11-td-050-evidence-item-source-chunk-id-pass-through.md) / [Plan](../02-delivery-plans/02-plans/2026-06-11-td-050-evidence-item-source-chunk-id-pass-through-plan.md) / PR #193 + #194 |
 | 2026-06-11 | TD-047 中文分词回填 ILIKE 限制（路线 A zhparser + tsvector） | 🟢 完成 | 6 切片 5 commit 收口：zhparser + chinese_zh + plainto_tsquery；dev 库 70/252 file_only → chunk_resolved（总覆盖率 74.95% → 81.91%，+6.96 pct）；runtime 镜像增量 23MB。 | [TD-047](technical-debt.md#td-047-中文分词回填-iliike-限制p1-数据债衍生) / [Spec](../02-delivery-plans/01-specs/2026-06-11-td-047-zhparser-chinese-tsvector.md) / [Plan](../02-delivery-plans/02-plans/2026-06-11-td-047-zhparser-chinese-tsvector-plan.md) |
 | 2026-06-11 | DOC-060 针对全部评审评分做阶段复盘 | 🟢 完成 | 基于 40 条评分记录完成阶段复盘：平均分 84.8，一次关闭率 60%，返工率 40%，流程扣分率约 63%；结论是 Harness 已有价值，但需求类 AC、真实数据验证和多事实源收口仍是重点。 | [Retrospective](04-retrospectives/2026-06-11-review-score-retrospective.md) / [Review Score Log](04-retrospectives/review-score-log.md) |
