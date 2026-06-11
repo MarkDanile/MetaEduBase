@@ -188,3 +188,108 @@ def test_backfill_stats_as_dict() -> None:
         "skipped_file_only": 2,
         "failed": 1,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TD-047 切片 5: zhparser + chinese_zh 切换后的覆盖矩阵
+# 验证 _find_chunk_for_node 已切到 plainto_tsquery + bind param 防 SQL 注入。
+# 不依赖真 PG（mock SQL 执行 + 参数捕获），运行环境无 zhparser 也能跑。
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+async def test_find_chunk_for_node_uses_plainto_tsquery_sql() -> None:
+    """TD-047 AC-4: SQL 已切到 to_tsvector + plainto_tsquery, 不再用 ILIKE。"""
+
+    tenant = uuid.uuid4()
+    fid = uuid.uuid4()
+    captured_sql: list[str] = []
+
+    session = MagicMock()
+
+    async def execute(stmt, params=None):
+        captured_sql.append(str(stmt))
+        r = MagicMock()
+        r.first.return_value = None  # 让 _find_chunk_for_node 返回 None, 不影响
+        return r
+
+    session.execute = AsyncMock(side_effect=execute)
+    await _find_chunk_for_node(session, tenant, fid, "中华人民共和国")
+
+    assert len(captured_sql) == 1
+    sql = captured_sql[0]
+    assert "to_tsvector('chinese_zh', content)" in sql
+    assert "plainto_tsquery('chinese_zh', :title)" in sql
+    assert "ILIKE" not in sql
+    assert ":pattern" not in sql
+
+
+async def test_find_chunk_for_node_binds_title_not_pattern() -> None:
+    """TD-047 AC-4: bind param 用 :title; 不再 :pattern (ILIKE 拼字符串)."""
+
+    tenant = uuid.uuid4()
+    fid = uuid.uuid4()
+    captured_params: list[dict] = []
+
+    session = MagicMock()
+
+    async def execute(stmt, params=None):
+        captured_params.append(params or {})
+        r = MagicMock()
+        r.first.return_value = None
+        return r
+
+    session.execute = AsyncMock(side_effect=execute)
+    await _find_chunk_for_node(session, tenant, fid, "智能制造")
+
+    assert len(captured_params) == 1
+    params = captured_params[0]
+    assert params["title"] == "智能制造"
+    assert "pattern" not in params
+    # 旧 ILIKE 形式 f"%{node_title}%" 不应再出现
+    assert "%智能制造%" not in str(params.values())
+
+
+async def test_find_chunk_for_node_sql_injection_safe() -> None:
+    """TD-047 AC-4: node_title 含 SQL 关键字 / 单引号 / 特殊字符 → 安全 bind, 不报错。"""
+
+    tenant = uuid.uuid4()
+    fid = uuid.uuid4()
+    session = MagicMock()
+
+    async def execute(stmt, params=None):
+        r = MagicMock()
+        r.first.return_value = None
+        return r
+
+    session.execute = AsyncMock(side_effect=execute)
+
+    # plainto_tsquery 自动转义; bind param 防 SQL 注入二重保险
+    dangerous_titles = [
+        "'; DROP TABLE knowledge_nodes; --",
+        "标题' OR '1'='1",
+        "标题\\x00null byte",
+        "中文 + English mixed | with operators & special !@#$%",
+    ]
+    for title in dangerous_titles:
+        # 不抛异常即可
+        result = await _find_chunk_for_node(session, tenant, fid, title)
+        assert result is None  # mock 返回 None, 行为可预期
+
+
+async def test_find_chunk_for_node_empty_title_returns_none() -> None:
+    """TD-047 AC-4: 空 node_title → None (与旧 ILIKE 兜底行为一致, 不发 SQL)。"""
+
+    tenant = uuid.uuid4()
+    fid = uuid.uuid4()
+    session = MagicMock()
+
+    async def execute(stmt, params=None):
+        r = MagicMock()
+        r.first.return_value = None
+        return r
+
+    session.execute = AsyncMock(side_effect=execute)
+
+    result = await _find_chunk_for_node(session, tenant, fid, "")
+    assert result is None
+    assert not session.execute.called  # 空标题不应发 SQL
