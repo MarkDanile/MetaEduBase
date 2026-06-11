@@ -2387,6 +2387,84 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 - `scripts/check-engineering-docs`
 - `git diff --check`
 
+### TD-050: `EvidenceItem` 缺 `source_chunk_id` 字段 / spec 与实现错位
+
+状态：🔵 就绪
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P3 |
+| 领域 | 后端 / RAG / API 契约 / 文档 |
+| 事实源 | REQ-010 spec [§3.1 AC-3](../02-delivery-plans/01-specs/2026-06-10-req-010-rag-evidence-governance.md#ac-3) + [plan Step 3.1](../02-delivery-plans/02-plans/2026-06-10-req-010-rag-evidence-governance-plan.md#step-31-pggraphretriever-改造) + TD-048 收口时由 user 登记。Spec / plan / 候选路线在 [TD-050 spec](../02-delivery-plans/01-specs/2026-06-11-td-050-evidence-item-source-chunk-id-pass-through.md)；路线 A2 已拍板（2026-06-11） |
+
+**证据**
+
+- spec [§3.1 AC-3](../02-delivery-plans/01-specs/2026-06-10-req-010-rag-evidence-governance.md)（"EvidenceItem 返回字段包含 `file_id` / `chunk_id`（chunk 类型）或 `node_id` + `source_chunk_id`（node 类型）"）要求：node 类型 evidence 同时含 `node_id` + `source_chunk_id`。
+- spec §3.1 L40 `EvidenceItem` 字段清单：`evidence_id` / `source_type` / `file_id` / `chunk_id` / `node_id` / `edge_id` / `structured_path` / `title` / `content` / `snippet` / `metadata` / `score` / `channels` —— **无** `source_chunk_id` 字段。
+- 现行实现 [`packages/server-python/app/contexts/knowledge/domain/evidence.py:61-80`](../../packages/server-python/app/contexts/knowledge/domain/evidence.py) 与 spec L40 字段清单一致：未声明 `source_chunk_id`。
+- plan [Step 3.1](../02-delivery-plans/02-plans/2026-06-10-req-010-rag-evidence-governance-plan.md) 把 spec L40 缺字段的语义解读为"node 类型 evidence 用 `chunk_id` 字段承载 `knowledge_nodes.source_chunk_id`"（原话：`EvidenceItem(source_type="knowledge_node", file_id=node.source_file_id, chunk_id=node.source_chunk_id, ...)`）。
+- 数据层 [`knowledge_nodes.source_chunk_id` 列](../../packages/server-python/app/contexts/knowledge/infrastructure/models.py) 已存在；TD-046 ([PR #187](https://github.com/MarkDanile/MetaEduBase/pull/187)) 跑完 `node-source-chunk` backfill 后覆盖率 74.95%（剩 182 个 `file_only`，由 TD-047 路线 A 进一步升到 81.91%）。
+- 但召回层 [`PgVectorRecallChannel` / `PgKeywordRecallChannel` / `PgMetadataRecallChannel`](../../packages/server-python/app/contexts/knowledge/application/recall_service.py)（L36-44 / L94-101 / L151-158）三条 SQL 全部未 `SELECT n.source_file_id` / `n.source_chunk_id`。
+- 契约层 [`RecallResult`](../../packages/server-python/app/shared/domain/recall_channel.py)（L11-19）字段：`node_id` / `title` / `description` / `domain` / `level` / `score` / `channel` / `path` —— **无** `source_file_id` / `source_chunk_id`。
+- 编排层 [`PgGraphRetriever.retrieve`](../../packages/server-python/app/contexts/knowledge/infrastructure/retrievers/pg_graph_retriever.py)（L51-71 / L80-99）显式写 `file_id=None, chunk_id=None`，并注释 `knowledge_nodes.source_file_id not surfaced in RecallResult; filled in Slice 5` —— 表明这条数据通路在 P1 阶段**始终未打通**。
+- 综合：spec AC-3 文字有歧义（"node 类型含 `node_id` + `source_chunk_id`" 究竟指"应同时存在两个字段"还是"`chunk_id` 即 source_chunk_id 的载体"未明确），plan 选择后者解读（`chunk_id` 承载），但 plan 期望的 SQL join 也没写。**结果是 node 类型 evidence 的 `file_id` / `chunk_id` 永远是 `None`**，AI Chat `[1] / [2]` 引用在前端 evidence card 渲染时无法跳到具体 chunk（[AC-5](../01-product-planning/05-requirements/REQ-010-p1-rag-evidence-governance.md) 依赖 `chunk_id` 拼 `/resource/files/:fileId?chunk=:chunkId`）。
+
+**问题**
+
+- spec 字段清单（L40）与 AC-3 文字（L100）口径不一致：L40 漏 `source_chunk_id`、L100 要求 `node_id + source_chunk_id`。
+- 跨 3 层（SQL → RecallResult → PgGraphRetriever）数据断链，node 类型 evidence 的溯源信息到达不了前端。
+- 后续按 [REQ-012 RAG 多路召回与知识图谱证据链收口](../01-product-planning/05-requirements/REQ-012-rag-retrieval-and-kg-evidence-chain-follow-up.md) 启动时，本债是 REQ-012 启动的前置依赖（REQ-012 候选 [backlog / requirements] 已点名）。
+
+**路线**
+
+**A2**（用户 2026-06-11 拍板）。详见 [TD-050 spec §3.2 / §4](../02-delivery-plans/01-specs/2026-06-11-td-050-evidence-item-source-chunk-id-pass-through.md)：
+
+- A1 全部（3 个 recall SQL 加列 + `RecallResult` 加 2 字段 + `PgGraphRetriever` 让 `chunk_id` / `file_id` 透传 + 1 个透传 pytest）
+- + `EvidenceItem` 新增 `source_chunk_id: uuid.UUID | None = None` 字段
+- + `PgGraphRetriever` 同步写 `chunk_id` 与 `source_chunk_id`（node 类型时双写；chunk 类型时 `source_chunk_id=None`）
+- + REQ-010 实施 spec L40 字段清单追加 `source_chunk_id`
+- + 1 个新 pytest（`source_chunk_id` 字段访问测试）
+- + spec 实施 spec §3.1 末尾追加"AC-3 解读说明"（解释 node 类型双字段关系）
+
+**完成标准**
+
+详见 [TD-050 spec §5.2](../02-delivery-plans/01-specs/2026-06-11-td-050-evidence-item-source-chunk-id-pass-through.md)。摘要：
+
+- 业务代码改动 8 个文件（详见 plan）：
+  1. `app/contexts/knowledge/application/recall_service.py` —— 3 处 SQL 加列（`n.source_file_id, n.source_chunk_id`） + 3 处 `RecallResult` 构造同步写入
+  2. `app/shared/domain/recall_channel.py` —— `RecallResult` 加 `source_file_id` / `source_chunk_id` 字段
+  3. `app/contexts/knowledge/domain/evidence.py` —— `EvidenceItem` 加 `source_chunk_id: uuid.UUID | None = None` 字段
+  4. `app/contexts/knowledge/infrastructure/retrievers/pg_graph_retriever.py` —— 2 处 `EvidenceItem(source_type="knowledge_node", ...)` 同时写 `chunk_id` / `source_chunk_id` / `file_id` / `source_file_id`（4 字段对齐）；移除 `filled in Slice 5` 旧注释
+- 新 pytest 2 条（见 [TD-050 spec §5.2.3](../02-delivery-plans/01-specs/2026-06-11-td-050-evidence-item-source-chunk-id-pass-through.md)）：
+  1. `tests/contexts/knowledge/test_pg_graph_retriever_source_pass_through.py` —— 透传测试（验证 `file_id` / `chunk_id` / `source_file_id` / `source_chunk_id` 在 node 类型下都非空）
+  2. `tests/contexts/knowledge/test_evidence_item_source_chunk_id.py`（或追加到 `test_evidence_item.py`）—— 字段访问测试（`EvidenceItem(source_type="knowledge_node", source_chunk_id=...)`；`source_type="chunk"` 时 `source_chunk_id=None`）
+- 文档同步 2 个文件：
+  1. `docs/02-delivery-plans/01-specs/2026-06-10-req-010-rag-evidence-governance.md` §3.1 L40 字段清单追加 `source_chunk_id`；§3.1 末尾追加"AC-3 解读说明"
+  2. `docs/02-delivery-plans/02-plans/2026-06-10-req-010-rag-evidence-governance-plan.md` Step 3.4 同步注 + Follow-up 段新增 FU-F（"source_chunk_id 不参与 evidence_id 派生"）
+  3. **不动** `docs/03-engineering-governance/01-rules/contracts.md`（按 [contracts.md §"何时更新本文件" L98-99](01-rules/contracts.md) 规则：具体接口加字段不更新本文件）
+
+**验证方式**
+
+详见 [TD-050 spec §5.2.4](../02-delivery-plans/01-specs/2026-06-11-td-050-evidence-item-source-chunk-id-pass-through.md)。摘要：
+
+- `cd packages/server-python && .venv/bin/python -m pytest -q` → 326 passed + 1 skipped，零回归（TD-047 baseline）
+- `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/knowledge/test_pg_graph_retriever_source_pass_through.py tests/contexts/knowledge/test_evidence_item_source_chunk_id.py -v` → 2+ passed
+- `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai tests/contexts/knowledge -q` → 60 passed，零回归（TD-030 baseline）
+- `cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` → rc=0（保留 8 个 TD-049 pre-existing 兼容记录，本债 0 新增）
+- `scripts/check-engineering-docs` → rc=0
+- `git diff --check` → clean
+- `rg -n "source_chunk_id" packages/server-python/app/` → 命中：3 处 SQL SELECT + 3 处 RecallResult 写入 + 2 处 PgGraphRetriever 构造（同时写 `chunk_id` 与 `source_chunk_id`）+ 1 处 EvidenceItem model 字段 = 9 处新增（外加 2 个新 pytest 文件）
+- 行为变化声明（按 `quality-gates.md#行为变化声明检查`）：
+  - `POST /api/v1/ai/chat` 的 `sources`（`EvidenceItem[]`）在 node 类型 evidence 上同时含 `chunk_id` / `source_chunk_id`（同值）和 `file_id` / `source_file_id`（同值）；从 P1 `None` 变可能非空（数据驱动，dev 库 81.91% 节点有值）。
+  - 前端 AI Chat `AiChatView` 的 `[N]` chip 渲染：node 类型 evidence 现在可跳 `/resource/files/:fileId?chunk=:chunkId`（之前只跳 `KnowledgeBaseView` 节点详情）。
+  - 公共 API 变化：`EvidenceItem` 字段定义新增 1 个可选字段 `source_chunk_id`（向后兼容，默认 `None`；`RecallChannel` Protocol 形参不变）。
+  - 数据库 / migration：0 schema 变更。
+  - 不动 `SourceItem` 旧契约 / MCP tool / `RRFFusion` 占位实现 / `FrequencyFusion` 行为。
+
+**交付记录**
+
+- 未完成（截止 2026-06-11 路线拍板 + 债项定义补全；实施待补 plan + 走 PR）。
+
 ### TD-049: `tests/conftest.py` `sys.path.insert` 块导致 8 个 E402 pre-existing
 
 状态：⚫ 待办

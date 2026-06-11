@@ -37,9 +37,9 @@
 ### 包含 — Backend
 
 - **证据模型**：
-  - 新建 `EvidenceItem`（pydantic BaseModel）：`evidence_id` / `source_type` (`chunk` / `knowledge_node` / `knowledge_edge` / `structured_field`) / `file_id` / `chunk_id` / `node_id` / `edge_id` / `structured_path` / `title` / `content` / `snippet` / `metadata` (dict) / `score` / `channels` (list[str])。
+  - 新建 `EvidenceItem`（pydantic BaseModel）：`evidence_id` / `source_type` (`chunk` / `knowledge_node` / `knowledge_edge` / `structured_field`) / `file_id` / `chunk_id` / `node_id` / `edge_id` / `structured_path` / `title` / `content` / `snippet` / `metadata` (dict) / `score` / `channels` (list[str]) / `source_chunk_id` (uuid.UUID | None, 默认 None; 仅 `source_type=="knowledge_node"` 时与 `chunk_id` 同值, 其余 source_type 必须 None; 不参与 `evidence_id` 派生; 详见 §3.1 末尾「AC-3 解读说明」)。
   - 新建 `EvidenceFusion` Protocol + `SimpleFrequencyFusion` 实现 + `RRFFusion` 占位实现。
-  - 现有 `RecallResult` / `RecallChannel` 保留为"knowledge node-shaped" 旧契约；新增 `ChunkRecallChannel` / `KeywordChunkRecallChannel` / `MetadataFileRecallChannel` 三个 PostgreSQL adapter；adapter 内部把 chunk / metadata 命中映射成 `EvidenceItem`。
+  - 现有 `RecallResult` / `RecallChannel` 保留为"knowledge node-shaped" 旧契约；新增 `ChunkRecallChannel` / `KeywordChunkRecallChannel` / `MetadataFileRecallChannel` 三个 PostgreSQL adapter；adapter 内部把 chunk / metadata 命中映射成 `EvidenceItem`。`RecallResult` 内部扩展 `source_file_id` / `source_chunk_id` 字段（与 `EvidenceItem` 字段一一对应；`RecallChannel` Protocol 形参不变）。
 - **retriever 抽象**：
   - 新建 `ChunkRetriever` Protocol：P1 由 `PgChunkVectorRetriever` / `PgChunkKeywordRetriever` 实现。
   - 新建 `GraphRetriever` Protocol：P1 由 `PgGraphRetriever` 实现，节点结果尽量回填 `source_chunk_id` / `source_file_id`。
@@ -81,6 +81,17 @@
 
 - 见上文 3 个 `backfill_*` 管理命令。
 - 验证脚本 `scripts/ai/evidence_coverage_report.py`：输出 `node_source_chunk` / `chunk_embedding` / `chunk_tsvector` / `file_metadata` 覆盖率。
+
+### AC-3 解读说明（TD-050 收口时同步）
+
+> 本节由 TD-050 spec [§3.1](../01-specs/2026-06-11-td-050-evidence-item-source-chunk-id-pass-through.md) 引出；本 spec L40 字段清单已按本节规则更新。
+
+- `EvidenceItem.source_chunk_id` 字段仅在 `source_type == "knowledge_node"` 时填充（与 `chunk_id` 同值；`chunk_id` 字段承载该 node 的 `knowledge_nodes.source_chunk_id` 引用，详见 plan Step 3.1）。
+- `source_type == "chunk"` / `"knowledge_edge"` / `"structured_field"` 时 `source_chunk_id` **必须**为 `None`（不与"该 evidence 指向原文切片"的语义混淆）。
+- `source_chunk_id` **不**参与 `evidence_id` 派生（`_derive_evidence_id` 不引用 `source_chunk_id`；避免同一 chunk 被多条 `knowledge_node` 共享时 `evidence_id` 冲突）。
+- 与 `RecallResult.source_chunk_id` 字段一一对应：`RecallResult` 内部加 `source_file_id` / `source_chunk_id` 字段（`source_file_id` **不**进 `EvidenceItem` model，仅在 `RecallResult` 与 `PgGraphRetriever` 内部用，最终写入 `EvidenceItem.file_id`）。
+- `evidence_id` 派生规则（4 类 `source_type`）保持稳定；`source_chunk_id` 是"附加溯源"信息，不影响 `evidence_id` 唯一性。
+- P2 / P3 升级到 Neo4j / GraphRAG 时复用本节规则；`source_chunk_id` 字段名是稳定契约（详见 TD-050 spec §3.2 / §4 路线 A2 理由）。
 
 ### 不包含
 

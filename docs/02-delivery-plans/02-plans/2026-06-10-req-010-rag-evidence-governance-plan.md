@@ -130,6 +130,7 @@
 - [ ] **Step 3.4 — PgGraphRetriever**
   - 沿用现有 `PgVectorRecallChannel` / `PgKeywordRecallChannel`（knowledge_nodes 视角），但返回 `EvidenceItem(source_type="knowledge_node", file_id=node.source_file_id, chunk_id=node.source_chunk_id, ...)`
   - 关键：INSERT 时已写 `source_chunk_id`（Slice 5），所以这里能直接读
+  - **TD-050 收口时同步**：返回 `EvidenceItem` 时同步写 `source_chunk_id` 字段（与 `chunk_id` 同值）；详见 [TD-050 spec §3.1 末尾「AC-3 解读说明」](../01-specs/2026-06-10-req-010-rag-evidence-governance.md#ac-3-解读说明td-050-收口时同步) 与 [TD-050 plan §4 Step 2.5](../02-plans/2026-06-11-td-050-evidence-item-source-chunk-id-pass-through-plan.md#step-25-pggraphretriever-改-2-处)。`RecallResult` 内部加 `source_file_id` / `source_chunk_id` 字段（`RecallChannel` Protocol 形参不变，契约测试不破）
 
 - [ ] **Step 3.5 — ai_router 接入新接口**
   - 依赖注入：构造函数接受 `chunk_retriever: ChunkRetriever` / `graph_retriever: GraphRetriever` / `metadata_filter: MetadataFilter` / `evidence_fusion: EvidenceFusion`
@@ -367,6 +368,7 @@
 - **FU-C**：KG 抽取按 chunk 切片后调用次数上升，做 Celery 批量 / 并行优化 — 登记 TD-xxx
 - **FU-D**：`source_chunk_id` 模糊匹配的 "file_only" 节点后续人工细化流程 — 登记 OPS-xxx 或文档
 - **FU-E**：`SourceItem` 旧字段下个迭代删除（等 MCP / 第三方消费方稳定后再删）
+- **FU-F**（TD-050 收口时新增）：`source_chunk_id` 不参与 `evidence_id` 派生，否则同一 chunk 被多条 `knowledge_node` 共享时冲突 — `_derive_evidence_id` 函数显式不引用 `source_chunk_id`；单元测试覆盖两条 node 共享同一 chunk 时 `evidence_id` 仍唯一。详见 [TD-050 spec §3.1 末尾「AC-3 解读说明」](../01-specs/2026-06-10-req-010-rag-evidence-governance.md#ac-3-解读说明td-050-收口时同步)
 
 ## 完成门禁（按 quality-gates.md）
 

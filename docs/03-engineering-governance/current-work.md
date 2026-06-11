@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| TD-050 `EvidenceItem` 缺 `source_chunk_id` 字段 / spec 与实现错位 | 🟡 进行中 | P3 | 后端 / RAG / API 契约 / 文档 | **路线 A2 已拍板**（用户 2026-06-11）：A1 全部 + `EvidenceItem` 新增 `source_chunk_id` 字段 + 双写 `chunk_id` / `source_chunk_id`。债项卡 `🔵 就绪`、spec [§4 推荐理由](../02-delivery-plans/01-specs/2026-06-11-td-050-evidence-item-source-chunk-id-pass-through.md) 重写为 A2。**未动业务代码**（路线拍板 docs-only 第一阶段）。分支 `chore/td-050-evidence-item-source-chunk-id-pass-through` 已建。 | 1. 写 plan [§5.2 路线 A2 细化切片](../02-delivery-plans/01-specs/2026-06-11-td-050-evidence-item-source-chunk-id-pass-through.md) → 2. 在 dev 库跑 SQL 验证 `knowledge_nodes.source_file_id` / `source_chunk_id` 数据存在（预计 81.91% 节点有值）→ 3. 业务代码 8 文件改动（3 SQL + RecallResult + EvidenceItem + PgGraphRetriever + contracts.md）→ 4. 写 2 个新 pytest（透传 + 字段访问）→ 5. 同步 REQ-010 spec L40 + spec §3.1 末尾"AC-3 解读说明" + plan Step 3.1 注 → 6. 跑全量后端 pytest + ruff + check-engineering-docs → 7. 提交 + PR。 | 文档-only 第一阶段已完成：technical-debt 任务卡补全（状态 `🔵 就绪`）；spec 三路线对比写完 + 推荐路线 A2 理由重写；workbench 当前进行中行登记。**未运行**后端 pytest / ruff（业务代码未动，按路线 A2 切片执行）。**未提交** commit（用户未显式触发提交；按 git-workflow "按流程提交" 才推进到 commit / push / PR）。 |
 
 ## 下一批候选任务
 
@@ -24,9 +24,9 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| REQ-012 RAG 多路召回与知识图谱证据链收口 | 🟣 Shaping | P1 | RAG / AI Chat / Evidence / KG | 详看 [Requirement](../01-product-planning/05-requirements/REQ-012-rag-retrieval-and-kg-evidence-chain-follow-up.md)；REQ-010 质量 follow-up 的正式稳定编号。**TD-047 已收口**（zhparser + chinese_zh，剩 182 file_only 节点属 embedding 召回范围），REQ-012 启动时把"TD-047 已收口"作为前置依赖写进 spec，直接进入 RAG 链路收口工作。 |
+| REQ-012 RAG 多路召回与知识图谱证据链收口 | 🟣 Shaping | P1 | RAG / AI Chat / Evidence / KG | 详看 [Requirement](../01-product-planning/05-requirements/REQ-012-rag-retrieval-and-kg-evidence-chain-follow-up.md)；REQ-010 质量 follow-up 的正式稳定编号。**TD-047 已收口**（zhparser + chinese_zh，剩 182 file_only 节点属 embedding 召回范围），**TD-050 是 REQ-012 启动的前置依赖**（node 类型 evidence 需透传 source_chunk_id 才能在 RAG 链路收口里完整给 embedding 召回用）。REQ-012 启动时把"TD-047 + TD-050 已收口"作为前置依赖写进 spec，直接进入 RAG 链路收口工作。 |
 | TD-049 `tests/conftest.py` 8 E402 pre-existing（TD-012 收口后遗留） | ⚫ 待办 | P3 | 后端 / 测试 / 质量门禁 / 工程治理 | 详看 `technical-debt.md#td-049`；8 个 E402 全在 `tests/conftest.py:13-20`，根因 L11 `sys.path.insert` 块；修复方案已记（挪到新建 `tests/_paths.py`）。低风险，下一批可独立 PR。 |
-| TD-050 spec / 代码错位校正（`EvidenceItem` 缺 `source_chunk_id` 字段） | ⚫ 待办 | P3 | 后端 / RAG / API 契约 / 文档 | 详看 `technical-debt.md#td-050`；本债由 TD-048 收口时出账：原需求 spec 写了 `source_chunk_id` 字段但 P1 阶段代码未实现。下一步：选路线 A（实施：`EvidenceItem` 加 `source_chunk_id: uuid.UUID \| None = None`）或路线 B（spec 校正）。由用户后续安排开发。 |
+| （TD-050 已移出候选区，进入"当前进行中"） | | | | |
 
 ## 最近完成
 
