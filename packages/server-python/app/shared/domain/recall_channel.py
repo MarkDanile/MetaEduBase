@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel
@@ -17,6 +18,11 @@ class RecallResult(BaseModel):
     score: float | None = None
     channel: str = ""
     path: str | None = None
+    # TD-050: knowledge_nodes.source_file_id / source_chunk_id 透传字段
+    # 始终 optional (None)；当前仅在 `node` 类证据时为非 None
+    # (随 P1 RecallChannel 实现演进)。`RecallChannel` Protocol 形参不变。
+    source_file_id: uuid.UUID | None = None
+    source_chunk_id: uuid.UUID | None = None
 
 
 @runtime_checkable

@@ -1,10 +1,13 @@
 """`PgGraphRetriever` — knowledge graph adapter (P1: PG + SQL).
 
 REQ-010 Slice 3 — 包装现有 `PgVectorRecallChannel` + `PgKeywordRecallChannel`
-(knowledge_nodes) 但返回 `EvidenceItem(source_type="knowledge_node")`；P1
-阶段实现尽量回填 `source_chunk_id` / `source_file_id`（Slice 5 KG 抽取按
-chunk 切片后才有；本 Slice 如未填则 file_id 设 source_file_id、chunk_id
-留空）。
+(knowledge_nodes) 但返回 `EvidenceItem(source_type="knowledge_node")`。
+
+TD-050 收口时把 `knowledge_nodes.source_file_id` / `source_chunk_id` 透传给
+`EvidenceItem.file_id` / `chunk_id`，并同步写 `EvidenceItem.source_chunk_id`
+字段（与 `chunk_id` 同值；详见
+`docs/02-delivery-plans/01-specs/2026-06-10-req-010-rag-evidence-governance.md`
+§3.1 末尾「AC-3 解读说明」）。
 
 P2 / P3 可升级到 Neo4j / GraphRAG 风格索引。
 """
@@ -53,9 +56,9 @@ class PgGraphRetriever:
                     EvidenceItem(
                         evidence_id="",
                         source_type="knowledge_node",
-                        file_id=None,  # P1: knowledge_nodes.source_file_id not
-                                       # surfaced in RecallResult; filled in Slice 5
-                        chunk_id=None,
+                        file_id=r.source_file_id,        # TD-050: 由 RecallResult 透传
+                        chunk_id=r.source_chunk_id,      # TD-050: 由 RecallResult 透传
+                        source_chunk_id=r.source_chunk_id,  # TD-050: 与 chunk_id 同值
                         node_id=r.node_id,
                         title=r.title or "",
                         content=r.description or "",
@@ -82,8 +85,9 @@ class PgGraphRetriever:
                     EvidenceItem(
                         evidence_id="",
                         source_type="knowledge_node",
-                        file_id=None,
-                        chunk_id=None,
+                        file_id=r.source_file_id,        # TD-050: 由 RecallResult 透传
+                        chunk_id=r.source_chunk_id,      # TD-050: 由 RecallResult 透传
+                        source_chunk_id=r.source_chunk_id,  # TD-050: 与 chunk_id 同值
                         node_id=r.node_id,
                         title=r.title or "",
                         content=r.description or "",

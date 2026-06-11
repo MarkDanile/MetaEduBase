@@ -127,3 +127,106 @@ def test_evidence_item_default_channels_is_empty_list() -> None:
     )
     assert item.channels == []
     assert item.metadata == {}
+
+
+# --- TD-050: EvidenceItem.source_chunk_id 字段访问与派生回归 ---
+
+
+def test_evidence_item_knowledge_node_supports_source_chunk_id() -> None:
+    """TD-050: knowledge_node 类型允许直接传 source_chunk_id 字段。
+
+    与 chunk_id 同值；knowledge_node 类型 evidence 的"原文切片溯源"
+    即 source_chunk_id。
+    """
+    fid = uuid.uuid4()
+    nid = uuid.uuid4()
+    scid = uuid.uuid4()
+    item = EvidenceItem(
+        evidence_id="",
+        source_type="knowledge_node",
+        file_id=fid,
+        chunk_id=scid,
+        source_chunk_id=scid,
+        node_id=nid,
+        title="node title",
+        content="desc",
+    )
+    assert item.source_chunk_id == scid
+    assert item.chunk_id == scid  # 双字段同值
+    assert item.evidence_id == f"knowledge_node:{fid}:{nid}"
+
+
+def test_evidence_item_chunk_source_chunk_id_must_be_none() -> None:
+    """TD-050: chunk 类型 evidence 不携带 source_chunk_id（语义无关）。"""
+    fid = uuid.uuid4()
+    cid = uuid.uuid4()
+    item = EvidenceItem(
+        evidence_id="",
+        source_type="chunk",
+        file_id=fid,
+        chunk_id=cid,
+        title="section",
+        content="content",
+    )
+    assert item.source_chunk_id is None
+
+
+def test_evidence_item_edge_source_chunk_id_must_be_none() -> None:
+    """TD-050: knowledge_edge 类型 evidence 不携带 source_chunk_id。"""
+    eid = uuid.uuid4()
+    item = EvidenceItem(
+        evidence_id="",
+        source_type="knowledge_edge",
+        edge_id=eid,
+        title="edge",
+    )
+    assert item.source_chunk_id is None
+
+
+def test_evidence_item_structured_field_source_chunk_id_must_be_none() -> None:
+    """TD-050: structured_field 类型 evidence 不携带 source_chunk_id。"""
+    fid = uuid.uuid4()
+    item = EvidenceItem(
+        evidence_id="",
+        source_type="structured_field",
+        file_id=fid,
+        structured_path="template.basic_info.course_name",
+        title="course_name",
+        content="智能制造",
+    )
+    assert item.source_chunk_id is None
+
+
+def test_evidence_id_unique_when_two_nodes_share_same_chunk() -> None:
+    """TD-050: source_chunk_id 不参与 evidence_id 派生。
+
+    同一 chunk 被多条 knowledge_node 共享时，各 node evidence_id 仍唯一。
+    """
+    fid = uuid.uuid4()
+    scid = uuid.uuid4()
+    nid_a = uuid.uuid4()
+    nid_b = uuid.uuid4()
+    item_a = EvidenceItem(
+        evidence_id="",
+        source_type="knowledge_node",
+        file_id=fid,
+        chunk_id=scid,
+        source_chunk_id=scid,
+        node_id=nid_a,
+        title="node A",
+        content="desc A",
+    )
+    item_b = EvidenceItem(
+        evidence_id="",
+        source_type="knowledge_node",
+        file_id=fid,
+        chunk_id=scid,
+        source_chunk_id=scid,
+        node_id=nid_b,
+        title="node B",
+        content="desc B",
+    )
+    assert item_a.source_chunk_id == item_b.source_chunk_id
+    assert item_a.evidence_id == f"knowledge_node:{fid}:{nid_a}"
+    assert item_b.evidence_id == f"knowledge_node:{fid}:{nid_b}"
+    assert item_a.evidence_id != item_b.evidence_id
