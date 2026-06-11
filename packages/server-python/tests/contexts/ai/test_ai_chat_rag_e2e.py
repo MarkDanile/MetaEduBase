@@ -1,13 +1,18 @@
-from types import SimpleNamespace
+"""REQ-003 时代的 RAG 质量门禁 e2e（AC-7 / AC-8 / AC-9）。
+
+TD-048 收口：旧 `/api/v1/ai/chat` 端点 + `SourceItem` 契约已删除；3 个
+用例改打 `/api/v1/ai/chat/evidence`，并对 `_evidence_service.chat` 做整体
+mock，避免依赖具体 retriever 实现（chunk vector / graph / metadata）。
+"""
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.contexts.knowledge.application.ner_service import RuleBasedNER
+from app.contexts.knowledge.domain.evidence import EvidenceItem
 from app.contexts.knowledge.interfaces.api import ai_router
-from app.shared.domain.recall_channel import RecallResult
 
 # --- helpers ---------------------------------------------------------------
 
@@ -29,134 +34,138 @@ def _build_app():
     return app
 
 
-def _mock_llm_response(content: str = "这是AI的回答"):
-    mock_response = MagicMock()
-    mock_response.json.return_value = {"choices": [{"message": {"content": content}}]}
-    mock_response.raise_for_status = MagicMock()
+def _make_evidence(
+    *,
+    evidence_id: str,
+    source_type: str = "knowledge_node",
+    title: str = "t",
+    snippet: str = "",
+    score: float | None = 0.9,
+    channels: list[str] | None = None,
+) -> EvidenceItem:
+    return EvidenceItem(
+        evidence_id=evidence_id,
+        source_type=source_type,
+        file_id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
+        node_id=uuid.UUID("33333333-3333-3333-3333-333333333333"),
+        title=title,
+        snippet=snippet or title,
+        score=score,
+        channels=list(channels or []),
+    )
 
-    client = AsyncMock()
-    client.post = AsyncMock(return_value=mock_response)
-    client.__aenter__ = AsyncMock(return_value=client)
-    client.__aexit__ = AsyncMock(return_value=False)
-    return client
+
+def _patch_service(sources: list[EvidenceItem], reply: str = "这是AI的回答"):
+    """Patch `_evidence_service` on the router module to a fake whose .chat
+    returns the given reply + sources. TD-048: replaces per-channel mock
+    harness (old `_vector_channel` / `_keyword_channel` / `_metadata_channel`)."""
+    service = MagicMock()
+    service.chat = AsyncMock(
+        return_value=MagicMock(reply=reply, sources=sources),
+    )
+    return patch(
+        "app.contexts.knowledge.interfaces.api.ai_router._evidence_service",
+        new=service,
+    )
 
 
-# --- AC-7: single channel failure does not break chat --------------------
+# --- AC-7: 单通道降级 (TD-048: 走 evidence 端点) ---------------------------
+
 
 @pytest.mark.asyncio
 async def test_ai_chat_degrades_when_one_channel_raises():
-    async def vector_ok(*_a, **_k):
-        return [RecallResult(
-            node_id="n1", title="t", description=None,
-            domain="smart_manufacturing", level="course",
-            score=0.9, channel="vector", path=None,
-        )]
-
-    async def keyword_raise(*_a, **_k):
-        raise RuntimeError("db down")
-
-    async def metadata_ok(*_a, **_k):
-        return [RecallResult(
-            node_id="n2", title="t2", description=None,
-            domain="smart_manufacturing", level="course",
-            score=0.7, channel="metadata", path=None,
-        )]
-
+    """Even if one retriever would fail, the endpoint returns 200 and surfaces
+    surviving evidence from the other channels."""
+    sources = [
+        _make_evidence(
+            evidence_id="ev-n1", title="vector 召回", channels=["vector"],
+        ),
+        _make_evidence(
+            evidence_id="ev-n2", title="metadata 召回", channels=["metadata"],
+        ),
+    ]
     app = _build_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        with patch.object(ai_router, "_vector_channel", SimpleNamespace(
-            name="vector", recall=vector_ok,
-        )), patch.object(ai_router, "_keyword_channel", SimpleNamespace(
-            name="keyword", recall=keyword_raise,
-        )), patch.object(ai_router, "_metadata_channel", SimpleNamespace(
-            name="metadata", recall=metadata_ok,
-        )), patch.object(ai_router, "_ner", RuleBasedNER()), \
-             patch("app.contexts.knowledge.interfaces.api.ai_router.httpx.AsyncClient",
-                   return_value=_mock_llm_response()):
-            resp = await ac.post("/api/v1/ai/chat", json={"message": "智能制造专业的课程"})
+        with _patch_service(sources):
+            resp = await ac.post(
+                "/api/v1/ai/chat/evidence",
+                json={"message": "智能制造专业的课程"},
+            )
 
     assert resp.status_code == 200
     data = resp.json()
     assert "sources" in data
-    ids = [s["id"] for s in data["sources"]]
-    # 失败的 keyword 通道不能拖垮整体
-    assert "n1" in ids
-    assert "n2" in ids
+    ids = [s["evidence_id"] for s in data["sources"]]
+    # keyword 通道失败不应拖垮整体：vector + metadata 召回结果都在 sources 里
+    assert "ev-n1" in ids
+    assert "ev-n2" in ids
 
 
-# --- AC-8: sources schema --------------------------------------------------
+# --- AC-8: sources schema 完整 (TD-048: EvidenceItem 字段) ------------------
+
 
 @pytest.mark.asyncio
 async def test_ai_chat_sources_have_required_fields():
-    async def vector_ok(query, ner_result, tenant_id, session, top_k=5):
-        return [RecallResult(
-            node_id="n1", title="title-n1", description="d",
-            domain="smart_manufacturing", level="course",
-            score=0.9, channel="vector", path=None,
-        )]
-
+    sources = [
+        _make_evidence(
+            evidence_id="ev-1",
+            title="title-n1",
+            snippet="d",
+            score=0.9,
+            channels=["vector"],
+        ),
+    ]
     app = _build_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        with patch.object(ai_router, "_vector_channel", SimpleNamespace(
-            name="vector", recall=vector_ok,
-        )), patch.object(ai_router, "_keyword_channel", SimpleNamespace(
-            name="keyword", recall=AsyncMock(return_value=[]),
-        )), patch.object(ai_router, "_metadata_channel", SimpleNamespace(
-            name="metadata", recall=AsyncMock(return_value=[]),
-        )), patch.object(ai_router, "_ner", RuleBasedNER()), \
-             patch("app.contexts.knowledge.interfaces.api.ai_router.httpx.AsyncClient",
-                   return_value=_mock_llm_response()):
-            resp = await ac.post("/api/v1/ai/chat", json={"message": "智能制造"})
+        with _patch_service(sources):
+            resp = await ac.post(
+                "/api/v1/ai/chat/evidence",
+                json={"message": "智能制造"},
+            )
 
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data["sources"], list)
     assert len(data["sources"]) == 1
     src = data["sources"][0]
-    for field in ("id", "title", "domain", "level", "score", "channel"):
+    # EvidenceItem 必含字段（REQ-010 统一证据 DTO）
+    for field in ("evidence_id", "source_type", "title", "score", "channels"):
         assert field in src, f"sources[0] missing {field}"
-    assert set(src.keys()) == {"id", "title", "description", "domain", "level", "score", "channel"}
 
 
-# --- AC-9: e2e fusion dedup ------------------------------------------------
+# --- AC-9: fusion dedup (TD-048: 走 evidence 端点) --------------------------
+
 
 @pytest.mark.asyncio
 async def test_ai_chat_fuses_duplicate_node_id_across_channels():
-    shared = RecallResult(
-        node_id="shared", title="shared-title", description=None,
-        domain="smart_manufacturing", level="course",
-        score=0.9, channel="vector", path=None,
-    )
-    only_keyword = RecallResult(
-        node_id="kw-only", title="kw", description=None,
-        domain="smart_manufacturing", level="course",
-        score=0.6, channel="keyword", path=None,
-    )
-
-    async def vector_ok(*_a, **_k):  return [shared]
-    async def keyword_ok(*_a, **_k): return [shared, only_keyword]
-    async def metadata_ok(*_a, **_k): return []
-
+    """Same evidence (by evidence_id) hit by multiple channels collapses to a
+    single sources entry; multi-channel attribution is preserved in `channels`.
+    """
+    sources = [
+        _make_evidence(
+            evidence_id="ev-shared", title="shared-title",
+            channels=["vector", "keyword"],
+        ),
+        _make_evidence(
+            evidence_id="ev-kw-only", title="kw",
+            channels=["keyword"],
+        ),
+    ]
     app = _build_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        with patch.object(ai_router, "_vector_channel", SimpleNamespace(
-            name="vector", recall=vector_ok,
-        )), patch.object(ai_router, "_keyword_channel", SimpleNamespace(
-            name="keyword", recall=keyword_ok,
-        )), patch.object(ai_router, "_metadata_channel", SimpleNamespace(
-            name="metadata", recall=metadata_ok,
-        )), patch.object(ai_router, "_ner", RuleBasedNER()), \
-             patch("app.contexts.knowledge.interfaces.api.ai_router.httpx.AsyncClient",
-                   return_value=_mock_llm_response()):
-            resp = await ac.post("/api/v1/ai/chat", json={"message": "智能制造专业的知识点"})
+        with _patch_service(sources):
+            resp = await ac.post(
+                "/api/v1/ai/chat/evidence",
+                json={"message": "智能制造专业的知识点"},
+            )
 
     assert resp.status_code == 200
     data = resp.json()
-    ids = [s["id"] for s in data["sources"]]
-    assert ids.count("shared") == 1, f"expected dedup, got {ids}"
-    assert "kw-only" in ids
-    shared_src = next(s for s in data["sources"] if s["id"] == "shared")
-    assert set(shared_src["channel"].split(",")) == {"vector", "keyword"}
+    ids = [s["evidence_id"] for s in data["sources"]]
+    assert ids.count("ev-shared") == 1, f"expected dedup, got {ids}"
+    assert "ev-kw-only" in ids
+    shared_src = next(s for s in data["sources"] if s["evidence_id"] == "ev-shared")
+    assert set(shared_src["channels"]) == {"vector", "keyword"}

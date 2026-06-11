@@ -1,8 +1,13 @@
+"""TD-048: 旧 /ai/chat 端点 + SourceItem 契约已被删除；
+测试改打 /ai/chat/evidence 并断言 EvidenceItem 形状。
+"""
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
 
+from app.contexts.knowledge.domain.evidence import EvidenceItem
 from app.contexts.knowledge.interfaces.api.ai_router import _clean_llm_output
 
 
@@ -27,10 +32,26 @@ async def test_clean_llm_output_another_tag_pair():
     assert "实际" in cleaned
 
 
+def _fake_evidence_service(reply: str = "这是AI的回答", sources: list[EvidenceItem] | None = None):
+    """Build a fake AIChatService whose .chat() returns the given reply/sources.
+
+    TD-048: replaces the legacy `_vector_channel` / `_keyword_channel` mock
+    harness. The evidence endpoint routes through `_evidence_service.chat`
+    (REQ-010 Slice 3), so we stub the service directly.
+    """
+    if sources is None:
+        sources = []
+    service = MagicMock()
+    service.chat = AsyncMock(
+        return_value=MagicMock(reply=reply, sources=sources),
+    )
+    return service
+
+
 @pytest.mark.asyncio
 async def test_chat_requires_auth(client: AsyncClient):
     resp = await client.post(
-        "/api/v1/ai/chat",
+        "/api/v1/ai/chat/evidence",
         json={"message": "测试消息"},
     )
     assert resp.status_code in (401, 403)
@@ -38,26 +59,27 @@ async def test_chat_requires_auth(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_chat_with_mock_llm(client: AsyncClient, auth_headers: dict):
-    mock_response = MagicMock()
-    mock_response.json.return_value = {
-        "choices": [{"message": {"content": "这是AI的回答"}}]
-    }
-    mock_response.raise_for_status = MagicMock()
-
-    mock_http_client = AsyncMock()
-    mock_http_client.post = AsyncMock(return_value=mock_response)
-    mock_http_client.__aenter__ = AsyncMock(return_value=mock_http_client)
-    mock_http_client.__aexit__ = AsyncMock(return_value=False)
-
+    fake_service = _fake_evidence_service(
+        reply="这是AI的回答",
+        sources=[
+            EvidenceItem(
+                evidence_id="ev-1",
+                source_type="knowledge_node",
+                file_id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
+                node_id=uuid.UUID("22222222-2222-2222-2222-222222222222"),
+                title="教学目标",
+                snippet="理解函数",
+                score=0.92,
+                channels=["vector"],
+            ),
+        ],
+    )
     with patch(
-        "app.contexts.knowledge.interfaces.api.ai_router.httpx.AsyncClient",
-        return_value=mock_http_client,
-    ), patch(
-        "app.contexts.knowledge.application.recall_service.get_embedding_vec",
-        return_value=None,
+        "app.contexts.knowledge.interfaces.api.ai_router._evidence_service",
+        new=fake_service,
     ):
         resp = await client.post(
-            "/api/v1/ai/chat",
+            "/api/v1/ai/chat/evidence",
             headers=auth_headers,
             json={"message": "你好"},
         )
