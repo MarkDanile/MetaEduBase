@@ -1991,7 +1991,7 @@
 **交付记录**
 
 - 2026-06-11 入账（接手工具：Claude Code），由 TD-048 切片 1 复核时同步登记。任务卡在 `docs/03-engineering-governance/technical-debt.md#doc-057`；具体修复待独立 PR 收口（建议走 1 个 docs-only PR 单独合并，避免与 TD-048 切片 1 PR 范围混合）。
-- 2026-06-12 收口（接手工具：Claude Code），1 docs-only PR（[PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) / merge commit `TBD` / 分支 `docs/doc-057-validation-claim-evidence`）。完成要点：原"current-work.md:38 TD-050 摘要缺可复核证据"的 1 个 pre-existing `validation-claim` 提示在 main 上已自然消除（DOC-058 PR #202 / TD-049 PR #200 等历史任务合 main 时补齐了 evidence）；本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行 + current-work 当前进行中翻完成。`scripts/check-engineering-docs` 退出码 1（6 条 pre-existing 警告与本任务无关，本任务新增 0 警告）；`git diff --check` clean；0 业务代码 / 0 测试代码 / 0 脚本变更。跨事实源同步见 work-log 索引行（落地后追加）。
+- 2026-06-12 收口（接手工具：Claude Code），1 docs-only PR（[PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) / merge commit `f1a8bd0` / 分支 `docs/doc-057-validation-claim-evidence`）。完成要点：原"current-work.md:38 TD-050 摘要缺可复核证据"的 1 个 pre-existing `validation-claim` 提示在 main 上已自然消除（DOC-058 PR #202 / TD-049 PR #200 等历史任务合 main 时补齐了 evidence）；本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行 + current-work 当前进行中翻完成。`scripts/check-engineering-docs` 退出码 1（6 条 pre-existing 警告与本任务无关，本任务新增 0 警告）；`git diff --check` clean；0 业务代码 / 0 测试代码 / 0 脚本变更。跨事实源同步见 work-log 索引行（落地后追加）。
 
 ### DOC-058: 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md）
 
