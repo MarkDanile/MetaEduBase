@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| DOC-057 历史"验证通过声明缺可复核证据"格式收口 | 🟡 进行中 | P3 | 文档 / 工程脚本 / 质量门禁 | 分支 `docs/doc-057-validation-claim-evidence` 已建（from `main` 76252d9）；任务卡详见 [technical-debt.md#doc-057](technical-debt.md#doc-057)。修复项（current-work.md L37-L40 evidence 已自然 OK）在 main 上已满足；本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行 + 跨事实源同步。`scripts/check-engineering-docs` baseline 退出码 1（含 3 条"最近完成摘要过长"pre-existing + 3 条"Markdown 链接目标不存在"pre-existing，与本任务无关，本任务不动）。 | 1. 改 technical-debt.md 任务卡状态 + 交付记录；2. 改 work-log.md 加索引行；3. 跑门禁 / git diff --check；4. commit + push + 开 PR；5. 合 main + 按翻完成硬条件收口 | 待跑：docs-only 改动后 `python3 scripts/check-engineering-docs` 退出码不新增失败项 + `git diff --check` clean |
 
 ## 下一批候选任务
 
