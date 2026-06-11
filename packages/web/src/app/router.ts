@@ -63,6 +63,50 @@ const routes: RouteRecordRaw[] = [
         component: () => import("@/views/admin/TemplateEditorView.vue"),
         meta: { title: "模板详情", requiresAuth: true },
       },
+      // AI 应用广场
+      {
+        path: "ai-apps",
+        name: "AiAppsMarketplace",
+        component: () => import("@/views/ai-apps/AiAppsMarketplaceView.vue"),
+        meta: { title: "AI 应用广场", requiresAuth: true },
+      },
+      {
+        path: "ai-apps/admin",
+        name: "AiAppsAdmin",
+        component: () => import("@/views/ai-apps/AiAppsAdminView.vue"),
+        meta: { title: "应用管理", requiresAuth: true },
+      },
+      {
+        path: "ai-apps/:code",
+        name: "AiAppDetail",
+        component: () => import("@/views/ai-apps/AiAppDetailView.vue"),
+        meta: { title: "应用详情", requiresAuth: true },
+      },
+      // 独立应用框架页
+      {
+        path: "apps/course-capability-map",
+        name: "AppCourseCapabilityMap",
+        component: () => import("@/views/apps/AppPlaceholderView.vue"),
+        meta: { title: "课程能力图谱", requiresAuth: true },
+      },
+      {
+        path: "apps/preview-guide",
+        name: "AppPreviewGuide",
+        component: () => import("@/views/apps/AppPlaceholderView.vue"),
+        meta: { title: "智能预习导学", requiresAuth: true },
+      },
+      {
+        path: "apps/resource-recommendation",
+        name: "AppResourceRecommendation",
+        component: () => import("@/views/apps/AppPlaceholderView.vue"),
+        meta: { title: "资源推荐", requiresAuth: true },
+      },
+      {
+        path: "apps/review-planner",
+        name: "AppReviewPlanner",
+        component: () => import("@/views/apps/AppPlaceholderView.vue"),
+        meta: { title: "复习巩固", requiresAuth: true },
+      },
     ],
   },
 ];

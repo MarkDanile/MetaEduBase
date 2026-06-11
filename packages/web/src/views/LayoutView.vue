@@ -29,6 +29,41 @@
           <span v-if="!collapsed" class="nav-label">{{ item.title }}</span>
         </RouterLink>
 
+        <!-- AI Apps submenu -->
+        <div class="nav-admin-section">
+          <button
+            class="nav-item nav-item-admin"
+            :class="{ 'nav-item-collapsed': collapsed }"
+            @click="appsExpanded = !appsExpanded"
+            :title="collapsed ? 'AI 应用' : undefined"
+          >
+            <div class="nav-icon">
+              <Bot :size="18" :stroke-width="1.5" />
+            </div>
+            <span v-if="!collapsed" class="nav-label flex-1">AI 应用</span>
+            <ChevronDown
+              v-if="!collapsed"
+              :size="14"
+              :class="{ 'rotate-180': appsExpanded }"
+              class="text-[var(--color-ink-tertiary)] transition-transform"
+            />
+          </button>
+          <div v-if="appsExpanded && !collapsed" class="nav-admin-subitems">
+            <RouterLink
+              v-for="item in aiAppItems"
+              :key="item.route"
+              :to="item.route"
+              class="nav-item nav-item-sub"
+              :class="{ 'nav-item-active': isActive(item.route) }"
+            >
+              <div class="nav-icon">
+                <component :is="item.icon" :size="16" :stroke-width="1.5" />
+              </div>
+              <span class="nav-label">{{ item.title }}</span>
+            </RouterLink>
+          </div>
+        </div>
+
         <!-- Admin submenu -->
         <div class="nav-admin-section">
           <button
@@ -176,6 +211,8 @@ import {
   Cog,
   User,
   LayoutTemplate,
+  Bot,
+  ChevronDown,
 } from "lucide-vue-next";
 import { useThemeStore, type ThemeId } from "@/stores/theme";
 
@@ -211,6 +248,12 @@ const adminItems = [
 ];
 
 const adminExpanded = ref(false);
+const appsExpanded = ref(false);
+
+const aiAppItems = [
+  { title: "应用广场", route: "/ai-apps", icon: Bot },
+  { title: "应用管理", route: "/ai-apps/admin", icon: Bot },
+];
 
 function isActive(routePath: string) {
   if (routePath === "/") return route.path === "/";
