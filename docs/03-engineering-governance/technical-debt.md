@@ -143,6 +143,7 @@
 | TD-046 | P1 RAG 数据债批次：跑 3 个 backfill + 写 idempotency 测试 + 跨事实源收口 | 🟢 完成 | P1 | RAG / AI Chat / 数据完整性 / 跨事实源同步 | REQ-010 P1 RAG 基线 (TD-044)：node_source_chunk 0% / chunk_embedding 100% / chunk_tsvector 93.55% / file_metadata 0%。基于 Slice 6 已就位的 3 个 backfill 命令 + CLI，跑历史数据回填 + 写 pytest idempotency 锁 + 跨 5 事实源收口 + 拆 TD-047/048 独立 follow-up / [PR TBD] |
 | TD-047 | 中文分词回填 ILIKE 限制（P1 数据债衍生） | ⚫ 待办 | P2 | 后端 / RAG / 全文检索 | 当前 `backfill_knowledge_node_source._find_chunk_for_node` 用 `ILIKE '%{node_title}%'` 字节级 substring 匹配，中文 node 需 chunk content 含同字符串才匹上，匹不上则 file_only 退化。需引入 zhparser / SCWS / jieba 等中文分词扩展或切换到 pg_trgm 三字符 trigram 索引。TD-046 批次 backfill_knowledge_node_source 跑后统计 `skipped_file_only` 若 >70% 则需立即解决。 |
 | TD-048 | `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口） | ⚫ 待办 | P3 | 后端 / API 契约 / 文档 | 当前 `ai_router.py:83-87` SourceItem + ChatResponse 保留向后兼容（REQ-009 / Slice 3 决策）。等 MCP / 第三方消费方稳定后再删。下轮启动时建独立任务卡 + 调研外部消费方使用情况。 |
+| TD-049 | `tests/conftest.py` `sys.path.insert` 块导致 8 个 E402 pre-existing（TD-012 收口后遗留） | ⚫ 待办 | P3 | 后端 / 测试 / 质量门禁 / 工程治理 | TD-046 PR #187 收口时确认 `ruff check app/ tests/` 报 8 个 E402 errors 全部在 `tests/conftest.py:13-20`（imports not at top of file）。根因 L11 插入 `sys.path.insert(0, _REPO_ROOT)` 块（注释"REQ-010: ensure repo root on sys.path so tests can import scripts.ai.*"）违反 E402。修复：把 `_REPO_ROOT` + `sys.path` 块挪到 `tests/_paths.py`（新建），conftest.py 改为 `from tests._paths import *`。0 行为变化预期（`scripts.ai.*` 仍可 import）。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 
 ## 任务详情
@@ -2267,3 +2268,65 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 **交付记录**
 - 2026-06-11 完成（接手工具：Claude Code）。3 个 backfill 命令在 dev 库真跑（754 + 25 + 100 updated）+ 17 个 Slice 6 pytest idempotency 覆盖全过 + P1 RAG 基线 4 指标重写 + 拆 2 个独立 follow-up（TD-047 / TD-048）+ 跨 5 事实源状态同步。0 业务代码改动。
+### TD-049: `tests/conftest.py` `sys.path.insert` 块导致 8 个 E402 pre-existing
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P3 |
+| 领域 | 后端 / 测试 / 质量门禁 / 工程治理 |
+| 事实源 | TD-046 PR #187 收口时确认 / [PR TBD] |
+
+**证据**
+
+- TD-046 ([PR #187](https://github.com/MarkDanile/MetaEduBase/pull/187)) 收口时跑 `ruff check app/ tests/` 报 8 个 pre-existing errors 全部在 `tests/conftest.py`：
+  ```
+  E402 Module level import not at top of file
+    --> tests/conftest.py:13:1
+  E402 Module level import not at top of file
+    --> tests/conftest.py:14:1
+  E402 Module level import not at top of file
+    --> tests/conftest.py:15:1
+  ... (8 处)
+  ```
+- 根因（`tests/conftest.py:1-20`）：L11 显式 `sys.path.insert(0, _REPO_ROOT)` 块，注释 `REQ-010: ensure repo root is on sys.path so tests can import scripts.ai.*`，导致 L13+ 所有 module-level import 违反 ruff E402（"Module level import not at top of file"）。
+- 历史：TD-012 ([PR #17](https://github.com/MarkDanile/MetaEduBase/pull/17)) 收口时 `ruff check app/ tests/` rc=0，但 conftest.py 此处 E402 持续被 `[]` `noqa` 豁免或被忽略。TD-012 收口后**未**单独跟进这一处。
+
+**问题**
+
+- 任何 `ruff check app/ tests/` 全量门禁都失败 8 个 pre-existing 错（当前 `scripts/check-engineering-docs` 不报 ruff，但 `make lint` / 未来 CI 加 ruff 必失败）。
+- 8 个 E402 阻塞后端 ruff 全绿门禁，CI 启 ruff check 时会把整个 PR 门禁 fail。
+- 阻塞"代码可被脚本化门禁扫描覆盖"目标（[quality-gates.md 脚本门禁候选清单](01-rules/quality-gates.md#脚本门禁候选清单)）。
+
+**完成标准**
+
+- 选定方案（路线 A：拆块）：
+  1. 新建 `packages/server-python/tests/_paths.py`：包含 `_REPO_ROOT` 计算 + `sys.path.insert(0, _REPO_ROOT)` 调用（一次性 side effect）。
+  2. `packages/server-python/tests/conftest.py` L1-L12 删除 `sys.path` 块；改为 `from tests._paths import *` 作为 L1 import（保持 module-level import at top of file 顺序）。
+  3. `packages/server-python/tests/__init__.py`（如不存在）创建为空文件使 `from tests._paths import *` 可解析。
+  4. `tests/_paths.py` 自身 import 顺序仍需注意（顶部仅 stdlib import；插入 sys.path 在所有 import 之后）。
+- `ruff check app/ tests/` rc=0。
+- `pytest tests/ -q` 零回归（319 passed + 1 skipped 保持）。
+- `scripts/check-engineering-docs.py` rc=0。
+- `git diff --check` clean。
+- 0 业务代码变化（仅拆 conftest.py 局部 + 新建 `_paths.py`）。
+- 注释保留对 REQ-010 scripts.ai.* import 用途的说明。
+
+**验证方式**
+
+- `cd packages/server-python && .venv/bin/python -m ruff check app/ tests/` → 0 errors
+- `cd packages/server-python && .venv/bin/python -m pytest tests/ -q` → 319 passed + 1 skipped, 零回归
+- 验证 `scripts.ai.*` 仍可从测试代码 import（e2e 测试 / tests/contexts/ai/test_ai_chat_rag_e2e.py 等已 import 该模块，应无破坏）
+- `python3 scripts/check-engineering-docs.py` → engineering docs checks passed, rc=0
+- `git diff --check` → clean
+
+**不接受的备选方案**
+
+- **路线 B（添加 `# noqa: E402` 到 8 个 import 行）**：8 个 noqa 标记散落，掩盖真实 lint 错误信号，反而让 ruff 局部失效（质量下降）。本任务不选。
+- **路线 C（改用 pytest plugin / `pytest11_entry_points`）**：侵入 pytest 加载机制，超出本债范围（属于 pytest 工程而非测试局部债）。本任务不选。
+- **路线 D（改用 `conftest.py` 文件名前缀让 pytest 先加载它再 import 兄弟）**：pytest 已有 `conftest.py` 加载机制，无法在 conftest.py 之前插入。技术不可行。
+
+**交付记录**
+
+- 未完成（截止 2026-06-11 登记）。
