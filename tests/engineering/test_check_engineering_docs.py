@@ -113,6 +113,30 @@ def run_checker(
     )
 
 
+def run_checker_inproc(root: Path) -> "subprocess.CompletedProcess[str]":
+    """DOC-060: 在 pytest 进程内直接调 check_engineering_docs.main，
+    让 `unittest.mock.patch` 能影响子 check（subprocess 隔离 mock 不生效）。
+    返回的 CompletedProcess 与 run_checker 形状一致（returncode + stdout + stderr）。"""
+    import io
+    import contextlib
+    from scripts.engineering.check_engineering_docs import main as _main
+
+    buf_out = io.StringIO()
+    buf_err = io.StringIO()
+    rc = 1
+    with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+        try:
+            rc = _main(["--root", str(root)])
+        except SystemExit as e:
+            rc = e.code if isinstance(e.code, int) else 1
+    return subprocess.CompletedProcess(
+        args=["inproc", "--root", str(root)],
+        returncode=rc,
+        stdout=buf_out.getvalue(),
+        stderr=buf_err.getvalue(),
+    )
+
+
 def test_passes_minimal_valid_docs(tmp_path: Path) -> None:
     make_minimal_docs(tmp_path)
 
@@ -611,3 +635,107 @@ def test_parent_and_child_req_with_different_status_do_not_collide(
 
     assert "状态不一致" not in result.stderr, result.stderr
     assert "req-status-consistency" not in result.stderr, result.stderr
+
+
+# DOC-060: 任务卡 vs 代码 / 声明语义校验。`_common.check_task_card_claim_vs_code`
+# 通用函数 + `scripts/engineering/checks/task_card_claims.py` 注册 2 个 check。
+# 任务卡 L2115 明确要求"新增测试 test_task_card_stale_completion +
+# test_task_card_stale_residual 各 1 个锁定"。本测试通过 minimal docs 模拟
+# 假完成 / 假残留量场景，验证脚本能精确捕获并报告对应的
+# task-card-stale-* issue；白名单（KNOWN_ISSUES）通过 mock 掉让 issue 暴露。
+def test_fails_when_completed_debt_card_uses_open_pr_state(tmp_path: Path) -> None:
+    """DOC-060: 已完成任务卡 PR 实际 state != MERGED 时报
+    `task-card-stale-completion` issue。"""
+    from unittest.mock import patch
+
+    from scripts.engineering.checks import _common
+
+    make_minimal_docs(tmp_path)
+    debt = tmp_path / "docs/03-engineering-governance/technical-debt.md"
+    debt.write_text(
+        textwrap.dedent(
+            """
+            # 技术债总账
+
+            ## 任务总览
+
+            | 编号 | 任务 | 状态 | 优先级 | 领域 | 事实源 |
+            |------|------|------|--------|------|--------|
+            | TD-001 | 测试任务 | 🟢 完成 | P2 | Docs | - |
+
+            ### TD-001: 测试任务
+
+            状态：🟢 完成
+
+            **交付记录**
+
+            - 2026-06-12 收口 [PR #99](https://github.com/MarkDanile/MetaEduBase/pull/99)
+            """
+        ).lstrip()
+    )
+
+    # mock `is_known` 永远返回 False（绕过 KNOWN_ISSUES 白名单），
+    # 并把 `check_gh_pr_state` 强制返回 OPEN 状态。
+    # 注：用 run_checker_inproc 走 pytest 进程内调用，让 mock 生效；
+    # 普通 run_checker 走 subprocess.run 会与子进程 mock 隔离。
+    with patch.object(_common, "is_known", return_value=False), \
+         patch.object(
+             _common,
+             "check_gh_pr_state",
+             return_value=("OPEN", ""),
+         ):
+        result = run_checker_inproc(tmp_path)
+
+    # 退码 1（active issue 存在）；stderr 含 task-card-stale-completion。
+    assert result.returncode == 1, result.stderr
+    assert "task-card-stale-completion" in result.stderr or "MERGED" in result.stderr
+    assert "TD-001" in result.stderr
+    assert "PR #99" in result.stderr or "#99" in result.stderr
+
+
+def test_fails_when_residual_count_claim_diverges_from_ripgrep(tmp_path: Path) -> None:
+    """DOC-060: 残留量声明与 `rg -c` 实测命中数偏差时报
+    `task-card-stale-residual` issue。"""
+    from unittest.mock import patch
+
+    from scripts.engineering.checks import _common
+
+    make_minimal_docs(tmp_path)
+    debt = tmp_path / "docs/03-engineering-governance/technical-debt.md"
+    debt.write_text(
+        textwrap.dedent(
+            """
+            # 技术债总账
+
+            ## 任务总览
+
+            | 编号 | 任务 | 状态 | 优先级 | 领域 | 事实源 |
+            |------|------|------|--------|------|--------|
+            | TD-001 | 测试任务 | 🟢 完成 | P2 | Docs | - |
+
+            ### TD-001: 测试任务
+
+            状态：🟢 完成
+
+            **事实源**
+
+            - 目标文件 `docs/03-engineering-governance/technical-debt.md`
+            - 残留量声明：23 处 `liquid-card`
+            """
+        ).lstrip()
+    )
+
+    # mock `is_known` 返回 False（绕白名单），让 check_engineering_docs 报 issue。
+    # 沙箱下 `rg` 不可用，python fallback 仍能跑出真实命中数 1（technical-debt.md
+    # 第 1 次出现 "liquid-card" 就是 L10 的 claim 行自身）。
+    # 走 inproc 调用，让 mock 生效。
+    with patch.object(_common, "is_known", return_value=False):
+        result = run_checker_inproc(tmp_path)
+
+    # 退码 1；stderr 含 task-card-stale-residual。
+    assert result.returncode == 1, result.stderr
+    # print_issue 用 issue.message，code 不直接出现在 stderr。
+    # 验证 message 含关键标识："残留量声明" + 声明值 23 + 实测值 1。
+    assert "残留量声明" in result.stderr
+    assert "23" in result.stderr
+    assert "TD-001" in result.stderr
