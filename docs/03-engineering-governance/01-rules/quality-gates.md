@@ -24,6 +24,7 @@
 6. 工作台：`当前进行中` 只保留活跃任务；`下一批候选任务` 只保留 1 到 3 个未完成候选；`最近完成` 最多 20 行，超过后必须批量归档到只保留最新 12 行。
 7. 入账：复核、测试或验收发现但未修复的问题，必须进入对应事实源；需要近期接力时再加入“下一批候选任务”。
 8. 插件输出：如使用 superpower、compound-engineering-plugin 或其他插件，任务卡片的 `Spec` / `Plan` 必须指向 `docs/02-delivery-plans/01-specs/*` / `docs/02-delivery-plans/02-plans/*`；原始插件路径只能写入 `插件输出`。
+9. 收口提交方式：工作台状态变更（`🟡 → 🟢` 翻牌、`当前进行中 → 最近完成` 移入）、`docs/03-engineering-governance/*` / `docs/02-delivery-plans/*` 事实源 standalone commit，必须以 PR 形式落地；**不得**以 `git push origin main` 直推。合规判断以 `git-workflow.md#main-直推禁令` 文字规则为准，**不**以 push 是否被远端接受为准。违规后的处置路径见 `git-workflow.md#违反与回退`。
 
 文档、规则、spec、plan、任务状态或交接信息发生变化时，额外运行：
 
