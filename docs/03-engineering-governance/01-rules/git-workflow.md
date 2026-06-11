@@ -197,6 +197,36 @@ refactor(server): 重构知识节点服务
    - 已合并到 `main`
    - 因何原因未完成后续阶段
 
+### main 直推禁令
+
+不论仓库的 `main` 是否实际配置了 GitHub branch protection / pre-push hook / 任何服务端约束，**agent 不得以 `git push origin main` 直接推送任何 commit**。完成门禁的合规判断以本文件 + `quality-gates.md` 文字规则为准，**不**以 push 是否被远端接受为准。
+
+适用场景（不限于）：
+
+- 工作台状态变更（`🟡 → 🟢` 翻牌、`当前进行中 → 最近完成` 移入）。
+- 文档初版同步（在 PR 中未及追加的 workbench 状态、`technical-debt.md` 任务卡交付记录）。
+- 任何对 `docs/03-engineering-governance/*` 或 `docs/02-delivery-plans/*` 事实源文件的 standalone commit。
+
+补救路径见下文 `## 违反与回退`。
+
+## 违反与回退
+
+当 agent 误把 commit 直推到 `main`（违反 [完整交付闭环](#完整交付闭环) 与上文 `main 直推禁令`），按以下两种路径处置；agent 在用户未明确选择前不得擅自抹掉已发布历史。
+
+### 路径 A：`revert` + 走 PR 重新收口（推荐）
+
+1. 在 `main` 上 `git revert --no-edit <违规 commit hash>`，生成一个 revert commit。
+2. `git push origin main`（这一步只 push revert，不算新违规；revert 本身就是纠错）。
+3. 切新分支 `chore/<task-id>-<scope>-replay`，把要在违规 commit 中落地的改动**重新整理**（一般就是复制违规 commit 的 diff）。
+4. 走完整 PR 流程（push + `gh pr create` + squash merge）。
+5. PR 描述的 `Risks` 段必须说明："本 PR 修复合并后收口缺失；违规直推 commit 留 main 历史作教训"。
+
+### 路径 B：`git reset --hard` + force push（**强烈不推荐**）
+
+仅当用户明确批准且**所有协作者**已就位时使用。`git reset --hard <违规前 commit>` + `git push --force origin main` 改写已发布历史；任何基于旧历史的本地 clone / fork / 协作者 worktree 都会进入 divergent 状态。
+
+agent 不得擅自选择路径 B；如需使用，必须先在最终回复中明确说明风险并取得用户确认。
+
 ## Hooks 配置
 
 项目包含 `.githooks/`，但本地是否启用取决于 `git config core.hooksPath`。不要假设 hooks 已生效；提交前仍应手动运行匹配范围的验证。
