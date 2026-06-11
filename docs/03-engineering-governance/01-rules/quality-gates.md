@@ -18,7 +18,7 @@
 
 1. 范围：`git diff --name-status` 或 PR Scope 只包含本任务；无关资产、生成物、缓存或人工清理不得混入。
 2. 验证：验证结论来自真实命令输出或明确验收场景；退出码非 0 不得写“通过”。
-3. 状态：`current-work.md`、对应总账、Backlog、Requirement、Iteration、Milestone、plan/spec 的状态、验证结果和未完成项不互相矛盾；关闭 `REQ-xxx` 时必须把产品规划层和工程工作台作为同一组事实源回查。
+3. 状态：`current-work.md`、对应总账、Backlog、Requirement、Iteration、Milestone、plan/spec 的状态、验证结果和未完成项不互相矛盾；关闭 `REQ-xxx` 时必须把产品规划层和工程工作台作为同一组事实源回查。**任务分支未合 main 视为未走完 Git 阶段**——若工作台 / 总账 / work-log 写 `🟢 完成` 而 `gh pr view <PR>` state 不是 MERGED，则视为状态自相矛盾、不得翻完成。详细硬条件见 [`git-workflow.md#完整交付闭环#翻完成前硬条件`](git-workflow.md#翻完成前硬条件) 与 [`workbench.md#状态同步规则`](workbench.md#状态同步规则)。
 4. 计数：摘要中写“全部收口”“N 个 AC / 用例 / 文件 / 任务”时，必须回到 Requirement、Plan 或测试输出逐条核对；不得凭记忆或二手摘要填写。
 5. 文档：已完成任务不得残留活动式 `- [ ]`、`未运行`、`待提交`、`以最终回复为准` 等过期占位；保留未完成项时必须绑定后续任务编号或标明 out of scope。
 6. 工作台：`当前进行中` 只保留活跃任务；`下一批候选任务` 只保留 1 到 3 个未完成候选；`最近完成` 最多 20 行，超过后必须批量归档到只保留最新 12 行。

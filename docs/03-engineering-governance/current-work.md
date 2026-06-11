@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| DOC-058 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md + quality-gates.md） | 🟡 进行中 | P2 | 文档 / 工程流程 / 跨 AI 交接 | 分支 `docs/doc-058-branch-merge-required-to-complete` 已建（base `58c332c`）；3 规则文件待改：workbench.md 末尾追加 1 段"任务分支未合 main 不得翻完成"硬规则；git-workflow.md"完整交付闭环" 6 阶段后追加"翻完成前硬条件"段；quality-gates.md 完成门禁第 3 条"状态"项补"任务分支未合 main 视为未走完 Git 阶段" | 改 3 文件 → `scripts/check-engineering-docs` → `pytest tests/engineering/test_check_engineering_docs.py` → `git diff --check` → 提交 → push → 开 PR → 合 main → 翻 🟢 | 待跑 |
 
 ## 下一批候选任务
 
