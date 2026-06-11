@@ -133,12 +133,12 @@
 | DOC-045 | 修正 TD-033 CSS 拆分交付声明与追踪证据 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-033 review / [#137](https://github.com/MarkDanile/MetaEduBase/pull/137) (`b815942`) |
 | DOC-042 | 脚本化 TD-032 行数基线扫描 | 🟢 完成 | P2 | 文档 / 工程治理 / 工程脚本 | [Baseline](02-baselines/td-032-source-file-sizes.md) / [PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143) |
 | DOC-055 | 收口 DOC-042 / TD-034 PR 范围混入与事实源漂移 | 🟢 完成 | P1 | 文档 / 工程流程 / 质量门禁 | DOC-042 review / [Review Score Log](04-retrospectives/review-score-log.md) |
-| TD-039 | 6 键保留集合在 TS 端抽到 `@metaedu/shared/schemas/document` + spec 单一来源落地 | 🟢 完成 | P3 | 前端 / 共享 schema / 文档 | REQ-002-3 code review / [PR TBD] / TD-043 承接后端 Python 路径接入 |
+| TD-039 | 6 键保留集合在 TS 端抽到 `@metaedu/shared/schemas/document` + spec 单一来源落地 | 🟢 完成 | P3 | 前端 / 共享 schema / 文档 | REQ-002-3 code review / [PR #182](https://github.com/MarkDanile/MetaEduBase/pull/182) |
 | TD-040 | `FileTabsPanel.spec.ts` Vue 单元测试覆盖 AC-11（6 键过滤）/ AC-12（card 渲染 / 老数据隐藏 / layer none 分支 / version 为 null） | 🟢 完成 | P2 | 前端 / 测试 / 交付 | REQ-002-3 code review / [PR #167](https://github.com/MarkDanile/MetaEduBase/pull/167) (`c1cc0c9` squash merge) / 引入 vitest + @vue/test-utils + jsdom 首次前端单测基建 / 6 测试通过（5 AC-12 + 1 AC-11 加固）|
 | TD-041 | FieldCard 递归渲染嵌套字段 + object children / array items 嵌套拖拽 | 🟢 完成 | P2 | 前端 / 架构 / 交付 | [PR #161](https://github.com/MarkDanile/MetaEduBase/pull/161) / [Spec](../02-delivery-plans/01-specs/2026-06-10-td-041-field-card-recursive-rendering.md) |
-| TD-042 | REQ-002-2 后端集成测试在 PG 实例下验证（`test_template_reuse.py` 8 条用例） | 🟢 完成 | P2 | 后端 / 测试 / 交付 | REQ-002-2 交付时沙箱无 PG / [PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) / 修 007 迁移 inline FK 在 asyncpg 反射下的 PK 解析缺陷 / [PR TBD] |
-| TD-043 | 打通后端 Python 对 `shared/schemas/document` 的 import 路径 | ⚫ 待办 | P2 | 后端 / 共享 schema / 基础设施 | 2026-06-10 并行批次 `td-039+td-040` 拆出（原属 TD-039 范围）/ 仓库无顶层 `metaedu` Python 包、`packages/shared/` 是 TS-only pnpm workspace 包，0 处 `import metaedu.shared.*` 命中 |
-| TD-044 | REQ-010 P1 RAG 证据治理与 AI Chat 溯源体验跨事实源状态收口 + 历史数据基线建立 | 🟢 完成 | P1 | RAG / AI Chat / Evidence / UX / 跨事实源同步 | REQ-010 8 个 Slice 收口（Slice 1-6 历史 PR + [Slice 7 PR #181](https://github.com/MarkDanile/MetaEduBase/pull/181) + Slice 8 PR TBD）；建立 P1 RAG 基线：node_source_chunk 0% / chunk_embedding 100% / chunk_tsvector 93.55% / file_metadata 0% |
+| TD-042 | REQ-002-2 后端集成测试在 PG 实例下验证（`test_template_reuse.py` 8 条用例） | 🟢 完成 | P2 | 后端 / 测试 / 交付 | REQ-002-2 交付时沙箱无 PG / [PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) / 修 007 迁移 inline FK 在 asyncpg 反射下的 PK 解析缺陷（并入 [PR #122](https://github.com/MarkDanile/MetaEduBase/pull/122)） |
+| TD-043 | 打通后端 Python 对 `shared/schemas/document` 的 import 路径 | 🟢 完成 | P2 | 后端 / 共享 schema / 基础设施 | 2026-06-10 并行批次 `td-039+td-040` 拆出（原属 TD-039 范围）/ [PR #185](https://github.com/MarkDanile/MetaEduBase/pull/185) |
+| TD-044 | REQ-010 P1 RAG 证据治理与 AI Chat 溯源体验跨事实源状态收口 + 历史数据基线建立 | 🟢 完成 | P1 | RAG / AI Chat / Evidence / UX / 跨事实源同步 | REQ-010 8 个 Slice 收口（Slice 1-6 历史 PR + [Slice 7 PR #181](https://github.com/MarkDanile/MetaEduBase/pull/181) + [Slice 8 PR #183](https://github.com/MarkDanile/MetaEduBase/pull/183)）；建立 P1 RAG 基线：node_source_chunk 0% / chunk_embedding 100% / chunk_tsvector 93.55% / file_metadata 0% |
 | TD-045 | `ai_chat_service._call_llm` 漏 await（Slice 3 真实业务 bug） | 🟢 完成 | P1 | 后端 / AI Chat / 运行时 | REQ-010 Slice 8 端到端 e2e 触发；`def _call_llm` → `async def _call_llm` + `await _call_llm(...)` + `await self._call_llm(...)` / [PR #184](https://github.com/MarkDanile/MetaEduBase/pull/184) |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 
@@ -1793,7 +1793,7 @@
 |------|------|
 | 优先级 | P3 |
 | 领域 | 前端 / 共享 schema / 文档 |
-| 事实源 | REQ-002-3 code review of Tasks 6+7（M-2） / [PR TBD] |
+| 事实源 | REQ-002-3 code review of Tasks 6+7（M-2） / [PR #182](https://github.com/MarkDanile/MetaEduBase/pull/182) |
 | 范围拆分 | 本卡 = 原 TD-039 收窄版（TS 端 + spec 落地）；后端 Python 路径接入拆为独立 [TD-043](#td-043-打通后端-python-对-shared-schemasdocument-的-import-路径) |
 
 **证据**
@@ -1903,7 +1903,7 @@
 |------|------|
 | 优先级 | P2 |
 | 领域 | 文档 / 工程脚本 / 质量门禁 |
-| 事实源 | REQ-002-3 收口 / [PR TBD] |
+| 事实源 | REQ-002-3 code review of Tasks 6+7（I-2） / [PR #167](https://github.com/MarkDanile/MetaEduBase/pull/167) |
 
 **证据**
 - `scripts/engineering/checks/_common.py:37` `REQ_ID_RE = re.compile(r"\bREQ-\d{3}\b")`：`\b` 在数字与 `-` 之间是 word boundary，导致 `REQ-002-3` 在 `search` / `match` 时匹到 `REQ-002`。
@@ -2074,7 +2074,7 @@
 |------|------|
 | 优先级 | P1 |
 | 领域 | RAG / AI Chat / Evidence / UX / 跨事实源同步 |
-| 事实源 | REQ-010 8 个 Slice 收口（Slice 1-6 历史 PR + [Slice 7 PR #181](https://github.com/MarkDanile/MetaEduBase/pull/181) + Slice 8 PR TBD） |
+| 事实源 | REQ-010 8 个 Slice 收口（Slice 1-6 历史 PR + [Slice 7 PR #181](https://github.com/MarkDanile/MetaEduBase/pull/181) + [Slice 8 PR #183](https://github.com/MarkDanile/MetaEduBase/pull/183)） |
 
 **Slice 收口总览**
 
@@ -2088,7 +2088,7 @@
 | 5 | KG 抽取按 chunk 切片 + `source_chunk_id` 写入 | 历史 PR |
 | 6 | 3 个 backfill 管理命令 + `evidence_coverage_report.py` | 历史 PR |
 | 7 | AI Chat 前端溯源体验（[N] 改写 + EvidenceCard + chunk 锚点） | [PR #181](https://github.com/MarkDanile/MetaEduBase/pull/181) |
-| 8 | 智能制造样例 e2e + 跨事实源状态收口 | PR TBD（本 PR） |
+| 8 | 智能制造样例 e2e + 跨事实源状态收口 | [PR #183](https://github.com/MarkDanile/MetaEduBase/pull/183) |
 
 **P1 RAG 基线**（2026-06-10 跑 `python scripts/ai/evidence_coverage_report.py` 输出）
 
@@ -2158,7 +2158,7 @@
 |------|------|
 | 优先级 | P1 |
 | 领域 | 后端 / AI Chat / 运行时 |
-| 事实源 | REQ-010 Slice 8 端到端 e2e 触发 / [PR TBD] |
+| 事实源 | REQ-010 Slice 8 端到端 e2e 触发 / [PR #184](https://github.com/MarkDanile/MetaEduBase/pull/184) |
 
 **证据**
 - `app/contexts/knowledge/application/ai_chat_service.py:164` `def _call_llm(self, system_prompt, user_content) -> str:` 是 sync def；但函数体 L171 调 `ai_router._call_llm`（async def, `ai_router.py:248`）未 await。
