@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import app.shared.infrastructure.models  # noqa: F401
 from app.config import settings
+from app.contexts.ai_app.interfaces.api.router import router as ai_app_router
 from app.contexts.document.interfaces.api.router import router as document_router
 from app.contexts.identity.interfaces.api.router import router as identity_router
 from app.contexts.knowledge.interfaces.api.ai_router import router as ai_router
@@ -47,6 +48,7 @@ app.include_router(
     tags=["structured-data-tasks"],
 )
 app.include_router(template_router)
+app.include_router(ai_app_router, prefix="/api/v1/ai-apps", tags=["ai-apps"])
 
 
 @app.get("/api/v1/health")

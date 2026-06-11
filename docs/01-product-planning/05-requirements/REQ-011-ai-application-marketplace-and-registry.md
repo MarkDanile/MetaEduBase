@@ -1,6 +1,6 @@
 # REQ-011: AI 应用广场与应用注册中心
 
-Status: 🟣 Shaping
+Status: 🔵 Ready
 Priority: P1
 Milestone: P2 / P3
 Owner: TBD
@@ -92,21 +92,24 @@ Parent: APP-001 / APP-002 / APP-003 / APP-004
 ```text
 ai_applications
 - id
-- code
+- code                        # 稳定编号，如 APP-001 / course-capability-map
 - name
 - description
 - category
 - icon
-- status
-- visibility
-- entry_type
-- route_path
-- external_url
-- config_schema
-- required_capabilities
+- status                      # Draft | Published | Disabled | Archived
+- visibility                  # internal | role_limited | public
+- entry_type                  # internal_route | external_url | embedded | api
+- route_path                  # 应用独立访问路由
+- external_url                # 外部跳转地址
+- config_schema               # Pydantic 强类型配置模型（JSON 列存）
+- required_capabilities       # 底座依赖声明
 - owner
 - version
 - sort_order
+- tenant_id                   # 租户隔离（visibility=租户级时生效）
+- share_token                 # 分享链接 token（public 应用生成）
+- api_token                   # API 暴露 token（entry_type=api 时生成）
 - created_at
 - updated_at
 ```
@@ -116,13 +119,16 @@ ai_applications
 - `code` 使用稳定编号或 slug，例如 `APP-001` / `course-capability-map`。
 - `route_path` 支持应用独立访问。
 - `entry_type` 预留内部路由、外部链接、嵌入和 API 能力。
-- `visibility` 预留外部发布与角色可见性。
-- `config_schema` 允许不同应用拥有不同配置。
+- `visibility` 支持角色级和租户级两级可见性，由 `tenant_id` 协同控制。
+- `config_schema` 强类型 Pydantic model，不只存原始 JSON。
 - `required_capabilities` 声明底座依赖，例如 RAG、KG、学生画像、资源推荐、微测验。
+- `share_token` / `api_token` 支持外部发布时的分享链接和 API token 暴露。
 
 ## 页面规划
 
-菜单新增：`AI 应用广场`
+菜单新增：`AI 应用`（顶级独立菜单，其下包含广场入口和管理入口）
+
+> **决策：** Q3 确认采用独立菜单方案。应用广场（用户入口）和应用管理（管理员入口）作为 `AI 应用` 菜单的两个子菜单。
 
 ### 应用广场
 
@@ -148,15 +154,15 @@ ai_applications
 ## 路由建议
 
 ```text
-/ai-apps
-/ai-apps/:code
-/ai-apps/manage
-/ai-apps/manage/:id
+/ai-apps                          # 广场（用户视角）
+/ai-apps/:code                   # 应用详情
+/ai-apps/admin                   # 应用管理列表（管理员）
+/ai-apps/admin/:id               # 应用编辑
 
-/apps/course-capability-map
-/apps/preview-guide
-/apps/resource-recommendation
-/apps/review-planner
+/apps/course-capability-map      # APP-001 独立路由
+/apps/preview-guide              # APP-002 独立路由
+/apps/resource-recommendation    # APP-003 独立路由
+/apps/review-planner             # APP-004 独立路由
 ```
 
 `/ai-apps/*` 是广场与管理入口；`/apps/*` 是独立应用入口。应用也可以从广场进入这些独立路由。
@@ -220,17 +226,21 @@ ai_applications
 
 本项目第一阶段只吸收“应用注册、展示、入口和发布状态”这些稳定模式，不复制完整平台复杂度。
 
-## 开放问题
+## 决策记录（2026-06-11）
 
-- APP-001 是否作为首个 Published / Pilot 应用进入广场。
-- AI 应用是否需要租户级可见性，还是先只做角色级可见性。
-- 应用管理是否放在系统管理子菜单，还是作为广场内的管理 Tab。
-- `config_schema` 第一版是否只存 JSON，还是引入强类型配置模型。
-- 对外发布是否需要独立域名、分享链接或 API token。
+| # | 问题 | 决策 | 说明 |
+|---|------|------|------|
+| Q1 | APP-001 是否作为首个 Pilot 应用 | **A）是，Published/Pilot** | APP-001 课程能力图谱作为首个 Pilot 应用进入广场 |
+| Q2 | 可见性粒度 | **B）支持租户级隔离** | visibility 字段支持 tenant_id + role 两级可见性控制 |
+| Q3 | 应用管理入口 | **C）独立菜单** | 新增 `AI 应用` 顶级菜单，应用管理作为其子菜单 |
+| Q4 | config_schema 方案 | **B）强类型配置模型** | 引入 `AppConfig` 等 Pydantic model，不只存原始 JSON |
+| Q5 | 对外发布预留 | **B + C）分享链接 + API token** | 同时预留分享链接和 API token 暴露能力 |
+
+## 开放问题
 
 ## 后续链接
 
 - AI Applications: `docs/01-product-planning/06-ai-applications/README.md`
 - Backlog: `docs/01-product-planning/04-backlog.md#backlog`
-- Spec:
-- Plan:
+- Spec: `docs/02-delivery-plans/01-specs/2026-06-11-req-011-ai-app-marketplace.md`
+- Plan: `docs/02-delivery-plans/02-plans/2026-06-11-req-011-ai-app-marketplace-plan.md`

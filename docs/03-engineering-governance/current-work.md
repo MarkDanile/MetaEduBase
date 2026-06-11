@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-010 P1 真实 RAG 证据治理与 AI Chat 溯源体验 | 🔵 就绪 | P1 | RAG / AI Chat / Evidence / UX / MCP / KG 视图 | 塑形完成：spec + plan 已落到 `docs/02-delivery-plans/01-specs/2026-06-10-req-010-rag-evidence-governance.md` / `docs/02-delivery-plans/02-plans/2026-06-10-req-010-rag-evidence-governance-plan.md`；3 项关键决策已确认（Q1 KG 按 chunk 切片 / Q2 跳文件详情 + chunk 锚点 / Q3 + Q4 接口 + 业务代码同步迁 MCP / KG 视图） | 用户确认后按 plan 进入 Slice 1 实施：建 `feature/req-010-rag-evidence` 任务分支，从 EvidenceItem + EvidenceFusion Protocol + 诊断日志开始 | docs-only 塑形，无代码改动；spec / plan 已落档可走 review |
+| REQ-011 AI 应用广场与应用注册中心 | 🟡 Doing | P1 | AI Apps / Frontend / API / Backend / Data Model | Slice 1 已完成并提交 PR（commit `fcd8d80`）；DB `ai_applications` 表 + APP-001~004 种子数据已就绪；待 PR #TBD 合并后继续 Slice 2 | 等待 PR 合并后进入 Slice 2（前端路由 + 菜单 + 广场列表）；后续 Slice 3（管理页）+ Slice 4（框架页） | ruff ✅ / alembic upgrade ✅ / engineering docs ✅ |
 
 ## 下一批候选任务
 
@@ -24,7 +24,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| REQ-011 AI 应用广场与应用注册中心 | 🟣 Shaping | P1 | Product / AI Apps / Frontend / API | 澄清应用注册模型、独立应用路由、权限可见性、首个接入应用和切片顺序，再进入 spec / plan |
+| REQ-010 P1 真实 RAG 证据治理与 AI Chat 溯源体验 | 🔵 就绪 | P1 | RAG / AI Chat / Evidence / UX / MCP / KG 视图 | 用户确认后按 plan 进入 Slice 1 实施：建 `feature/req-010-rag-evidence` 任务分支，从 EvidenceItem + EvidenceFusion Protocol + 诊断日志开始 |
 
 ## 最近完成
 
