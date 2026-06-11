@@ -1955,7 +1955,7 @@
 | 领域 | 文档 / 工程脚本 / 质量门禁 |
 | 事实源 | TD-048 切片 1 复核时（2026-06-11）跑 `scripts/check-engineering-docs` 报 1 个 pre-existing `validation-claim` 提示；脚本检查项 `scripts/engineering/checks/placeholders_claims.py::check_validation_claims` |
 | 交付 PR | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
-| Merge Commit | `TBD` (PR #204 待合) |
+| Merge Commit | `f1a8bd0` (squash merge) |
 
 **证据**
 
