@@ -1,0 +1,133 @@
+# syntax=docker/dockerfile:1.7
+#
+# TD-047: zhparser + SCWS 中文分词 PG 扩展镜像
+#
+# Builder 阶段：
+#   - 在 pgvector/pgvector:pg16 基础上装 build-essential / libpq-dev
+#   - 从 deploy/cache/ 离线编译 SCWS 1.2.3 + zhparser（git rev pinned）
+#   - 不依赖外网（除非 cache 缺失时才走 xunsearch.com + github.com）
+#
+# Runtime 阶段：
+#   - 复用 pgvector/pgvector:pg16 基础镜像
+#   - 只 COPY .so / control / dict 文件（无 gcc / make / dev headers）
+#   - 体积增量 < 50MB（spike 实测：libscws.so ~5MB + zhparser.so ~200KB + 词典 ~10MB）
+#
+# 验证：
+#   docker run --rm metaedu/postgres-zhparser:pg16 pg_config --version
+#   → PostgreSQL 16.x (Debian ...)
+
+ARG PG_BASE=pgvector/pgvector:pg16
+ARG ZHPARSER_REF=39b38b453c6fe568adfe42af6361020b9ae4033b
+
+# ──────────────────────────── Builder stage ────────────────────────────
+FROM ${PG_BASE} AS builder
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+# 1a. 换 apt 源到清华 + 阿里云 PGDG（spike 验证：429 kB/s vs 默认源 18.2 kB/s，提速 24×）
+#     必须分两步：base 镜像无 ca-certificates → 第一步走 http 国内源装 ca-cert → 第二步 sed 切 https
+#     PGDG 必须带 [signed-by=/usr/local/share/keyrings/postgres.gpg.asc]（base 镜像自带 keyring），
+#     否则 apt update 报 NO_PUBKEY 7FCC7D46ACCC4CF8 卡住。
+RUN set -eux \
+    && cp /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list.d/debian.sources.bak 2>/dev/null || true \
+    && cp /etc/apt/sources.list.d/pgdg.list /etc/apt/sources.list.d/pgdg.list.bak 2>/dev/null || true \
+    && printf 'Types: deb\nURIs: http://mirrors.tuna.tsinghua.edu.cn/debian\nSuites: bookworm bookworm-updates\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n\nTypes: deb\nURIs: http://mirrors.tuna.tsinghua.edu.cn/debian-security\nSuites: bookworm-security\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n' > /etc/apt/sources.list.d/debian.sources \
+    && printf 'deb [signed-by=/usr/local/share/keyrings/postgres.gpg.asc] http://mirrors.aliyun.com/postgresql/repos/apt bookworm-pgdg main 16\n' > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && sed -i 's|http://mirrors.tuna.tsinghua.edu.cn|https://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources \
+    && sed -i 's|http://mirrors.aliyun.com|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update
+
+# 1b. Build 工具链
+RUN apt-get install -y --no-install-recommends \
+        build-essential \
+        postgresql-server-dev-16 \
+        bzip2 \
+        git \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. SCWS 1.2.3：优先从 host 离线 cache 拷贝；cache 缺失时从 xunsearch.com 拉
+#    cache 由 `deploy/cache/scws-1.2.3.tar.bz2` 提供（485KB，TD-047 切片 1 验证过）
+COPY deploy/cache/scws-1.2.3.tar.bz2 /tmp/scws-1.2.3.tar.bz2
+RUN cd /tmp \
+    && tar -xf scws-1.2.3.tar.bz2 \
+    && cd scws-1.2.3 \
+    && ./configure --prefix=/usr/local \
+    && make -j2 \
+    && make install \
+    && ldconfig \
+    && cd /tmp && rm -rf scws-1.2.3 scws-1.2.3.tar.bz2
+
+# 3. zhparser：优先从 host 离线 cache 拷贝（git rev pinned by tarball）
+#    cache 由 `deploy/cache/zhparser.tar.gz` 提供（含 zhparser.control / Makefile / *.sql / *.c）
+COPY deploy/cache/zhparser.tar.gz /tmp/zhparser.tar.gz
+ARG ZHPARSER_REF
+RUN cd /tmp \
+    && tar -xzf zhparser.tar.gz \
+    && cd zhparser \
+    && SCWS_HOME=/usr/local make \
+    && SCWS_HOME=/usr/local make install \
+    && cd /tmp && rm -rf zhparser zhparser.tar.gz
+
+# 验证产物（fail-fast：build 阶段确保产物在位）
+RUN test -f /usr/local/lib/libscws.so.1.1.0 \
+    && test -f /usr/local/include/scws/scws.h \
+    && test -f /usr/lib/postgresql/16/lib/zhparser.so \
+    && test -f /usr/share/postgresql/16/extension/zhparser.control \
+    && test -f /usr/share/postgresql/16/tsearch_data/dict.utf8.xdb \
+    && test -f /usr/share/postgresql/16/tsearch_data/rules.utf8.ini
+
+# ──────────────────────────── Runtime stage ────────────────────────────
+FROM ${PG_BASE} AS runtime
+
+# 4. 仅 COPY runtime 所需文件（无 dev headers / 无 build 工具链）
+COPY --from=builder /usr/local/lib/libscws.so.1.1.0   /usr/local/lib/libscws.so.1.1.0
+COPY --from=builder /usr/local/lib/libscws.so.1       /usr/local/lib/libscws.so.1
+COPY --from=builder /usr/local/lib/libscws.so         /usr/local/lib/libscws.so
+COPY --from=builder /usr/local/lib/libscws.la         /usr/local/lib/libscws.la
+COPY --from=builder /usr/local/include/scws/          /usr/local/include/scws/
+
+COPY --from=builder /usr/lib/postgresql/16/lib/zhparser.so \
+                                                        /usr/lib/postgresql/16/lib/zhparser.so
+COPY --from=builder /usr/share/postgresql/16/extension/zhparser.control \
+                                                        /usr/share/postgresql/16/extension/zhparser.control
+COPY --from=builder /usr/share/postgresql/16/extension/zhparser--1.0.sql \
+                                                        /usr/share/postgresql/16/extension/zhparser--1.0.sql
+COPY --from=builder /usr/share/postgresql/16/extension/zhparser--unpackaged--1.0.sql \
+                                                        /usr/share/postgresql/16/extension/zhparser--unpackaged--1.0.sql
+COPY --from=builder /usr/share/postgresql/16/extension/zhparser--1.0--2.0.sql \
+                                                        /usr/share/postgresql/16/extension/zhparser--1.0--2.0.sql
+COPY --from=builder /usr/share/postgresql/16/extension/zhparser--2.0.sql \
+                                                        /usr/share/postgresql/16/extension/zhparser--2.0.sql
+COPY --from=builder /usr/share/postgresql/16/extension/zhparser--2.0--2.1.sql \
+                                                        /usr/share/postgresql/16/extension/zhparser--2.0--2.1.sql
+COPY --from=builder /usr/share/postgresql/16/extension/zhparser--2.1.sql \
+                                                        /usr/share/postgresql/16/extension/zhparser--2.1.sql
+COPY --from=builder /usr/share/postgresql/16/extension/zhparser--2.1--2.2.sql \
+                                                        /usr/share/postgresql/16/extension/zhparser--2.1--2.2.sql
+COPY --from=builder /usr/share/postgresql/16/extension/zhparser--2.2.sql \
+                                                        /usr/share/postgresql/16/extension/zhparser--2.2.sql
+COPY --from=builder /usr/share/postgresql/16/extension/zhparser--2.3.sql \
+                                                        /usr/share/postgresql/16/extension/zhparser--2.3.sql
+COPY --from=builder /usr/share/postgresql/16/extension/zhparser--2.3--2.4.sql \
+                                                        /usr/share/postgresql/16/extension/zhparser--2.3--2.4.sql
+COPY --from=builder /usr/share/postgresql/16/extension/zhparser--2.4.sql \
+                                                        /usr/share/postgresql/16/extension/zhparser--2.4.sql
+
+COPY --from=builder /usr/share/postgresql/16/tsearch_data/dict.utf8.xdb \
+                                                        /usr/share/postgresql/16/tsearch_data/dict.utf8.xdb
+COPY --from=builder /usr/share/postgresql/16/tsearch_data/rules.utf8.ini \
+                                                        /usr/share/postgresql/16/tsearch_data/rules.utf8.ini
+
+# 5. 刷新动态链接缓存
+RUN ldconfig
+
+# 6. 验证 runtime 产物在位（fail-fast：runtime 阶段确保 COPY 成功）
+RUN test -f /usr/local/lib/libscws.so.1.1.0 \
+    && test -f /usr/lib/postgresql/16/lib/zhparser.so \
+    && test -f /usr/share/postgresql/16/extension/zhparser.control \
+    && test -f /usr/share/postgresql/16/tsearch_data/dict.utf8.xdb
+
+# 默认 ENTRYPOINT / CMD 继承自 pgvector/pgvector:pg16
+# (postgres 自带 docker-entrypoint.sh)

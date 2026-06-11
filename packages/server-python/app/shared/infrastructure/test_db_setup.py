@@ -142,6 +142,12 @@ async def _ensure_extensions_and_schema(url) -> None:
         await conn.execute("CREATE EXTENSION IF NOT EXISTS vector;")
         await conn.execute("CREATE EXTENSION IF NOT EXISTS ltree;")
         await conn.execute("CREATE EXTENSION IF NOT EXISTS btree_gin;")
+        # TD-047 切片 5: 可选启用 zhparser (需镜像层预装, metaedu/postgres-zhparser:pg16)
+        # 默认 false 不强制 (沙箱 / CI 无 zhparser 镜像时不阻塞 test 库初始化)
+        # CI 配 METAEDU_TEST_ENABLE_ZHPARSER=true 时强制启用, 触发中文 tsvector 测试
+        if os.environ.get("METAEDU_TEST_ENABLE_ZHPARSER", "false").lower() == "true":
+            await conn.execute("CREATE EXTENSION IF NOT EXISTS zhparser;")
+            logger.info("已启用 zhparser 扩展 (METAEDU_TEST_ENABLE_ZHPARSER=true)")
         await conn.execute("CREATE SCHEMA IF NOT EXISTS metaedu;")
         logger.info("已确认扩展与 schema：vector, ltree, btree_gin, metaedu")
     finally:

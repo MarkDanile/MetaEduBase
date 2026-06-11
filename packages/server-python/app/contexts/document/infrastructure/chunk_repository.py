@@ -67,7 +67,7 @@ class ChunkRepository:
         await self._session.execute(
             text(
                 "UPDATE metaedu.document_chunks "
-                "SET content_tsvector = to_tsvector('simple', content) "
+                "SET content_tsvector = to_tsvector('chinese_zh', content) "
                 "WHERE id = :cid"
             ),
             {"cid": chunk_id},

@@ -55,7 +55,7 @@ def index_tsvector(file_id_str: str, tenant_id_str: str, pipeline_version: str =
                 await session.execute(
                     text(
                         "UPDATE metaedu.document_chunks "
-                        "SET content_tsvector = to_tsvector('simple', content) "
+                        "SET content_tsvector = to_tsvector('chinese_zh', content) "
                         "WHERE id = :cid"
                     ),
                     {"cid": chunk_id},
