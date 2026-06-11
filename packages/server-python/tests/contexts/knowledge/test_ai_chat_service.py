@@ -16,7 +16,7 @@ GraphRetriever / MetadataFilter / EvidenceFusion 抽象，测试用 fake 实现
 from __future__ import annotations
 
 import uuid
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from app.contexts.knowledge.application.ai_chat_service import (
     AIChatService,
@@ -82,7 +82,7 @@ async def test_ai_chat_service_returns_chunk_evidence_in_sources() -> None:
         evidence_fusion=fusion,
     )
 
-    with patch.object(service, "_call_llm", return_value="ok"):
+    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
         result = await service.chat(
             ServiceChatRequest(message="hi", context_window=3),
             session=SESSION,  # type: ignore[arg-type]
@@ -104,7 +104,7 @@ async def test_ai_chat_prompt_contains_chunk_content() -> None:
 
     captured: dict = {}
 
-    def fake_llm(self, system: str, user: str) -> str:
+    async def fake_llm(self, system: str, user: str) -> str:
         captured["user"] = user
         return "ok"
 
@@ -137,7 +137,7 @@ async def test_ai_chat_prompt_citation_numbers_match_sources_order() -> None:
 
     captured: dict = {}
 
-    def fake_llm(self, system: str, user: str) -> str:
+    async def fake_llm(self, system: str, user: str) -> str:
         captured["user"] = user
         return "ok"
 
@@ -171,7 +171,7 @@ async def test_ai_chat_no_evidence_returns_fallback() -> None:
 
     captured: dict = {}
 
-    def fake_llm(self, system: str, user: str) -> str:
+    async def fake_llm(self, system: str, user: str) -> str:
         captured["user"] = user
         return "未找到足够参考来源：知识库中暂无与该问题相关的内容。"
 
@@ -209,7 +209,7 @@ async def test_ai_chat_evidence_filter_drops_low_score() -> None:
         evidence_fusion=SimpleFrequencyFusion(),
         min_evidence_score=0.3,
     )
-    with patch.object(service, "_call_llm", return_value="ok"):
+    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
         result = await service.chat(
             ServiceChatRequest(message="hi", context_window=5),
             session=SESSION,  # type: ignore[arg-type]
@@ -236,7 +236,7 @@ async def test_ai_chat_combines_chunk_and_node_evidence() -> None:
         metadata_filter=FakeMetadataFilter(),
         evidence_fusion=SimpleFrequencyFusion(),
     )
-    with patch.object(service, "_call_llm", return_value="ok"):
+    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
         result = await service.chat(
             ServiceChatRequest(message="hi", context_window=3),
             session=SESSION,  # type: ignore[arg-type]
