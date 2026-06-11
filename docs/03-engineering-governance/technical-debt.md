@@ -138,6 +138,8 @@
 | TD-041 | FieldCard 递归渲染嵌套字段 + object children / array items 嵌套拖拽 | 🟢 完成 | P2 | 前端 / 架构 / 交付 | [PR #161](https://github.com/MarkDanile/MetaEduBase/pull/161) / [Spec](../02-delivery-plans/01-specs/2026-06-10-td-041-field-card-recursive-rendering.md) |
 | TD-042 | REQ-002-2 后端集成测试在 PG 实例下验证（`test_template_reuse.py` 8 条用例） | 🟢 完成 | P2 | 后端 / 测试 / 交付 | REQ-002-2 交付时沙箱无 PG / [PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) / 修 007 迁移 inline FK 在 asyncpg 反射下的 PK 解析缺陷 / [PR TBD] |
 | TD-043 | 打通后端 Python 对 `shared/schemas/document` 的 import 路径 | ⚫ 待办 | P2 | 后端 / 共享 schema / 基础设施 | 2026-06-10 并行批次 `td-039+td-040` 拆出（原属 TD-039 范围）/ 仓库无顶层 `metaedu` Python 包、`packages/shared/` 是 TS-only pnpm workspace 包，0 处 `import metaedu.shared.*` 命中 |
+| TD-044 | REQ-010 P1 RAG 证据治理与 AI Chat 溯源体验跨事实源状态收口 + 历史数据基线建立 | 🟢 完成 | P1 | RAG / AI Chat / Evidence / UX / 跨事实源同步 | REQ-010 8 个 Slice 收口（Slice 1-6 历史 PR + [Slice 7 PR #181](https://github.com/MarkDanile/MetaEduBase/pull/181) + Slice 8 PR TBD）；建立 P1 RAG 基线：node_source_chunk 0% / chunk_embedding 100% / chunk_tsvector 93.55% / file_metadata 0% |
+| TD-045 | `ai_chat_service._call_llm` 漏 await（Slice 3 真实业务 bug） | 🟢 完成 | P1 | 后端 / AI Chat / 运行时 | REQ-010 Slice 8 端到端 e2e 触发；`def _call_llm` → `async def _call_llm` + `await _call_llm(...)` + `await self._call_llm(...)` / [PR #184](https://github.com/MarkDanile/MetaEduBase/pull/184) |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 
 ## 任务详情
@@ -2063,3 +2065,135 @@
 
 **交付记录**
 - 2026-06-10：TD-039 范围拆分登记（本卡从原 TD-039 拆出，承接后端 Python 路径接入）。
+
+### TD-044: REQ-010 P1 RAG 证据治理与 AI Chat 溯源体验 — Slice 8 收口 + P1 RAG 基线建立
+
+状态：🟢 完成
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | RAG / AI Chat / Evidence / UX / 跨事实源同步 |
+| 事实源 | REQ-010 8 个 Slice 收口（Slice 1-6 历史 PR + [Slice 7 PR #181](https://github.com/MarkDanile/MetaEduBase/pull/181) + Slice 8 PR TBD） |
+
+**Slice 收口总览**
+
+| Slice | 内容 | 关键 PR |
+|-------|------|---------|
+| 1 | 证据模型 + 诊断日志 | 历史 PR |
+| 2 | retriever adapter 接口 | 历史 PR |
+| 3 | chunk 级召回进 AI Chat + `/chat/evidence` 端点 | 历史 PR |
+| 4a | KG 视图迁 GraphRetriever | 历史 PR |
+| 4b | MCP 迁 retriever 接口 | 历史 PR |
+| 5 | KG 抽取按 chunk 切片 + `source_chunk_id` 写入 | 历史 PR |
+| 6 | 3 个 backfill 管理命令 + `evidence_coverage_report.py` | 历史 PR |
+| 7 | AI Chat 前端溯源体验（[N] 改写 + EvidenceCard + chunk 锚点） | [PR #181](https://github.com/MarkDanile/MetaEduBase/pull/181) |
+| 8 | 智能制造样例 e2e + 跨事实源状态收口 | PR TBD（本 PR） |
+
+**P1 RAG 基线**（2026-06-10 跑 `python scripts/ai/evidence_coverage_report.py` 输出）
+
+| Metric | Resolved | Total | Coverage |
+|--------|---------:|------:|---------:|
+| `node_source_chunk` | 0 | 1006 | 0.0% |
+| `chunk_embedding` | 1551 | 1551 | 100.0% |
+| `chunk_tsvector` | 1451 | 1551 | 93.55% |
+| `file_metadata` | 0 | 25 | 0.0% |
+
+**关键发现**：
+- `node_source_chunk` 0%：1006 个 `knowledge_nodes` 全部缺 `source_chunk_id`。意味着历史 KG 抽取从未写 `source_chunk_id`（Slice 5 的 chunk 切片抽取只影响新数据），所有 [1] / [2] 引用无法跳到具体 chunk 锚点。**这是 P1 RAG 真实数据基线**。
+- `file_metadata` 0%：25 个 `files` 缺 `doc_type` / `tags` / `structured_data`，`PgMetadataFilter` 硬过滤空集。
+- `chunk_embedding` 100%：所有 chunks 已有 embedding，向量召回基础 OK。
+- `chunk_tsvector` 93.55%：100 个 chunks 缺 `content_tsvector`，关键词召回覆盖有缺口。
+
+**跨事实源状态收口（AC-8）**
+
+| 事实源 | 操作 |
+|--------|------|
+| `current-work.md` 当前进行中（L19 REQ-011） | 保持（REQ-011 仍是 P1 进行中） |
+| `current-work.md` 下一批候选 REQ-010 行 | 删除（任务完成） |
+| `current-work.md` 最近完成区 | 新增 REQ-010 整条完成行 |
+| `work-log.md` L26 索引 | 扩为完整 PR 列表索引 |
+| `backlog.md` L45 REQ-010 行 | 🔵 Ready → 🟢 Done |
+| `validation-phase.md` L102 REQ-010 行 | 🔵 Ready → 🟢 Done |
+| `technical-debt.md` 总览表 + 本卡 | 新增 REQ-010 行 + 详情卡 + P1 RAG 基线 + follow-up 登记 |
+
+**验收覆盖**：
+- AC-1：fixture 落盘 + chunks 注入（`manufacturing_skills.md` 智能制造样例），e2e 因 `_call_llm` 漏 await 沙箱 skip（详见 TD-045）。
+- AC-4：Slice 7 PR #181 已锁代码契约（renderMarkdown 后处理 [N] → `<a class="evidence-ref">` + 全局 click 委托），vitest 覆盖 5 场景。
+- AC-8：本卡收口（5 个事实源状态一致）。
+- AC-9：本卡记录的 P1 RAG 基线。
+- AC-12：spec/plan 已显式说明 P1 PostgreSQL adapter 与 P2/P3（Neo4j/Milvus/Qdrant/ES）替换边界。
+
+**Follow-up 登记**（plan 收口段预登记 + Slice 8 业务 bug）
+
+- **FU-A**：`chunk` 切分粒度不适配问答（500 字偏长 / 偏短）→ 暂不登记独立 TD，集成到未来 RAG 质量评估批次。
+- **FU-B**：`RRFFusion` 调优（k 值 / 通道权重）→ 暂不登记；当前 `SimpleFrequencyFusion` 已能满足 P1。
+- **FU-C**：KG 抽取按 chunk 切片后调用次数上升（Celery 批量 / 并行优化）→ 暂不登记性能债。
+- **FU-D**：`source_chunk_id` 模糊匹配的 "file_only" 节点后续人工细化 → OPS 流程，不登记技术债。
+- **FU-E**：`SourceItem` 旧字段下个迭代删除（等 MCP / 第三方消费方稳定后再删）→ 暂不登记；保留向后兼容直到 MCP 切完。
+- **FU-F**（Slice 8 真实业务 bug）：`ai_chat_service._call_llm` 漏 await → 已登记为独立 [TD-045](#td-045-ai_chat_service_call_llm-漏-awaitslice-3-真实业务-bug)，需 P1 修复。
+
+**Out of Scope**：
+- 重新跑 RAG 链路基准评测（业务验证在生产数据 + 真实 LLM 环境；本卡只交付基础设施 + fixture + e2e 脚手架）。
+- FU-A/B/C/D/E 各项非债登记（plan 列了但未达"明确技术债证据"门槛）。
+
+**交付记录**
+- 2026-06-10 完成（接手工具：Claude Code）。Slice 8 收口 = 智能制造 fixture + e2e（沙箱 skip） + 5 个事实源状态同步 + 3 条 follow-up 登记 + P1 RAG 基线建立。
+  - `packages/server-python/tests/e2e/fixtures/manufacturing_skills.md`（NEW，~1KB）：智能制造专业核心技能概览，涵盖 CAD/CAE / PLC / CNC / 工业机器人 / 传感器 / 自动化产线 / 数字孪生 7 个主题。
+  - `packages/server-python/tests/e2e/test_p1_rag_evidence_e2e.py`（NEW，~180 行）：2 个测试用例（`test_p1_rag_evidence_e2e_manufacturing` + `test_p1_rag_evidence_fixtures_exists`），AC-1 端到端 + fixture 内容锁定。
+  - 5 个事实源（current-work / work-log / backlog / validation-phase / technical-debt）状态同步至 `🟢 完成 / Done`。
+  - P1 RAG 基线（4 指标）输出并写入本卡。
+  - FU-F 业务 bug 登记为独立 [TD-045](#td-045-ai_chat_service_call_llm-漏-awaitslice-3-真实业务-bug)。
+- 验证摘要（`pytest tests/e2e/ -q`）：
+  - 7 passed（既有 test_p1_demo 6 + 新 fixture 校验 1）+ 1 skipped（沙箱 embedding 为空，AC-1 主测试 skip）。
+  - `pytest tests/ -q`：319 passed + 1 skipped，零回归。
+  - `ruff check app/ tests/` → All checks passed!
+  - `scripts/check-engineering-docs.py` → engineering docs checks passed（待本 PR 合并后跑）。
+  - `scripts/ai/evidence_coverage_report.py` → 4 指标输出（node_source_chunk 0% / chunk_embedding 100% / chunk_tsvector 93.55% / file_metadata 0%）。
+### TD-045: `ai_chat_service._call_llm` 漏 await（Slice 3 真实业务 bug）
+
+状态：🟢 完成
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 后端 / AI Chat / 运行时 |
+| 事实源 | REQ-010 Slice 8 端到端 e2e 触发 / [PR TBD] |
+
+**证据**
+- `app/contexts/knowledge/application/ai_chat_service.py:164` `def _call_llm(self, system_prompt, user_content) -> str:` 是 sync def；但函数体 L171 调 `ai_router._call_llm`（async def, `ai_router.py:248`）未 await。
+- `chat()` L215 `reply_raw = self._call_llm(self.SYSTEM_PROMPT, user_content)` 也未 await。
+- 真实 LLM 路径会抛 `TypeError: expected string or bytes-like object, got 'coroutine'` 在 `_clean_llm_output` (`ai_chat_service.py:159`)。
+- REQ-010 Slice 8 e2e `tests/e2e/test_p1_rag_evidence_e2e.py` 触发（`/ai/chat/evidence` 真实 LLM 路径全崩溃）。沙箱无 embedding 时 skip 掩盖。
+
+**问题**
+- `/api/v1/ai/chat/evidence` 真实 LLM 路径无法工作：任何带真实 LLM 调用的请求都返回 5xx。
+- 既有 6 条 `tests/contexts/knowledge/test_ai_chat_service.py` 通过 `patch.object(..., "_call_llm", return_value="ok")` 同步 mock 绕过——同步 MagicMock 不检查底层 await 行为，bug 在测试层不可见。
+- e2e 沙箱 skip 与 unit mock 双重掩盖让这个 P1 业务 bug 一直漏到 Slice 8。
+
+**完成标准**
+- `ai_chat_service._call_llm` 从 sync def 改 async def；函数体 L171 改为 `return await _call_llm(...)`。
+- `chat()` L215 改为 `reply_raw = await self._call_llm(...)`。
+- 6 条 test mock 全部改 AsyncMock；3 处 `def fake_llm` 改 `async def fake_llm`。
+- `test_p1_rag_evidence_e2e.py` 的 `lambda` mock 改 `AsyncMock(side_effect=lambda ...)`。
+- `pytest tests/contexts/knowledge/test_ai_chat_service.py -v` 6 passed。
+- `pytest tests/e2e/test_p1_rag_evidence_e2e.py -v` 1 passed + 1 skipped（沙箱无 embedding 仍 skip，但 skip 原因不再是 _call_llm bug）。
+- `pytest tests/ -q` 319 passed + 1 skipped，零回归。
+- `ruff check` 0 错。
+- `scripts/check-engineering-docs.py` rc=0。
+
+**验证方式**
+- `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/knowledge/test_ai_chat_service.py -v` → 6 passed
+- `cd packages/server-python && .venv/bin/python -m pytest tests/e2e/test_p1_rag_evidence_e2e.py -v` → 1 passed + 1 skipped
+- `cd packages/server-python && .venv/bin/python -m pytest tests/ -q` → 319 passed + 1 skipped
+- `cd packages/server-python && .venv/bin/python -m ruff check app/contexts/knowledge/application/ai_chat_service.py tests/contexts/knowledge/test_ai_chat_service.py tests/e2e/test_p1_rag_evidence_e2e.py` → All checks passed!
+- `python3 scripts/engineering/check-engineering-docs.py` → engineering docs checks passed
+
+**交付记录**
+- 2026-06-11 完成（接手工具：Claude Code）。3 文件修改：
+  - `app/contexts/knowledge/application/ai_chat_service.py`：`_call_llm` sync def → async def + `await _call_llm(...)` + `chat()` 内 `await self._call_llm(...)`（+3 / -3 行）
+  - `tests/contexts/knowledge/test_ai_chat_service.py`：3 处 `patch.object(..., return_value="ok")` 改 `AsyncMock(return_value="ok")`；3 处 `def fake_llm` 改 `async def fake_llm`；加 `AsyncMock` import（+8 / -6 行）
+  - `tests/e2e/test_p1_rag_evidence_e2e.py`：lambda mock 改 `AsyncMock(side_effect=...)`；加 `AsyncMock` import（+6 / -6 行）
+- 验证摘要：6 + 1 = 7 个 service 测试 passed（Slice 3 既有测试全过）；e2e 沙箱 skip 但 skip 原因不再是 _call_llm bug；全量 319 passed + 1 skipped 零回归；ruff + check-engineering-docs 全过
+- 行为变化：仅运行时 async 行为修复（_call_llm 现在真 await），无 API 协议变化、sources 形状变化、prompt 模板变化
+- 后续接力建议（不阻塞本任务完成）：P1 RAG 基线显示 1006 node / 25 file 缺溯源/元数据（见 TD-044），建议下个 PR 启动 P1 RAG 数据债批次：backfill_node_source / backfill_file_metadata 真跑（沙箱有 PG + 已就位命令）
