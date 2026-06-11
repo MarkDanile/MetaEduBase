@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-011 AI 应用广场与应用注册中心 | 🟡 Doing | P1 | AI Apps / Frontend / API / Backend / Data Model | Slice 1 PR #174 已合并（squash `fcd8d80`）；DB `ai_applications` 表 + APP-001~004 种子数据就绪；待进入 Slice 2（前端路由 + 菜单 + 广场列表页） | Slice 2 前端路由 + 菜单 + 广场列表页；后续 Slice 3（管理页）+ Slice 4（框架页） | PR #174 ✅ / ruff ✅ / alembic upgrade ✅ |
+| REQ-011 AI 应用广场与应用注册中心 | 🟡 Doing | P1 | AI Apps / Frontend / API / Backend / Data Model | Slice 1 PR #174 已合并；Slice 2 PR #175 已合并（前端路由 + 菜单 + 广场列表 + 详情页 + 框架页）；待进入 Slice 3（应用管理列表 + 编辑页） | Slice 3 应用管理列表 + 编辑页；后续 Slice 4（框架页完善） | PR #174 ✅ / PR #175 ✅ / pnpm lint+build ✅ |
 
 ## 下一批候选任务
 
