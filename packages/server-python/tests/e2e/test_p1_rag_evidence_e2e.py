@@ -135,7 +135,7 @@ async def test_p1_rag_evidence_e2e_manufacturing(client, auth_headers):
     # 用 patch 把 ai_router._call_llm 替换为 sync stub, 绕过 Slice 3 漏
     # await 的 bug, 让 e2e 仍能验证 /chat/evidence 端点 (AC-1/AC-4)。
     from contextlib import ExitStack
-    from unittest.mock import patch
+    from unittest.mock import AsyncMock, patch
 
     from app.contexts.knowledge.interfaces.api import ai_router as ai_router_mod
 
@@ -144,10 +144,12 @@ async def test_p1_rag_evidence_e2e_manufacturing(client, auth_headers):
         patch.object(
             ai_router_mod,
             "_call_llm",
-            lambda sys_prompt, user_content: (
-                f"基于 [1] 的回答：智能制造专业需要掌握 CAD、CAE、PLC 编程、"
-                f"数控机床、工业机器人、传感器、自动化生产线与数字孪生等技能 [2]。\n"
-                f"\n（{user_content}）"
+            AsyncMock(
+                side_effect=lambda sys_prompt, user_content: (
+                    f"基于 [1] 的回答：智能制造专业需要掌握 CAD、CAE、PLC 编程、"
+                    f"数控机床、工业机器人、传感器、自动化生产线与数字孪生等技能 [2]。\n"
+                    f"\n（{user_content}）"
+                )
             ),
         )
     )

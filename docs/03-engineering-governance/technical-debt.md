@@ -139,7 +139,7 @@
 | TD-042 | REQ-002-2 后端集成测试在 PG 实例下验证（`test_template_reuse.py` 8 条用例） | 🟢 完成 | P2 | 后端 / 测试 / 交付 | REQ-002-2 交付时沙箱无 PG / [PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) / 修 007 迁移 inline FK 在 asyncpg 反射下的 PK 解析缺陷 / [PR TBD] |
 | TD-043 | 打通后端 Python 对 `shared/schemas/document` 的 import 路径 | ⚫ 待办 | P2 | 后端 / 共享 schema / 基础设施 | 2026-06-10 并行批次 `td-039+td-040` 拆出（原属 TD-039 范围）/ 仓库无顶层 `metaedu` Python 包、`packages/shared/` 是 TS-only pnpm workspace 包，0 处 `import metaedu.shared.*` 命中 |
 | TD-044 | REQ-010 P1 RAG 证据治理与 AI Chat 溯源体验跨事实源状态收口 + 历史数据基线建立 | 🟢 完成 | P1 | RAG / AI Chat / Evidence / UX / 跨事实源同步 | REQ-010 8 个 Slice 收口（Slice 1-6 历史 PR + [Slice 7 PR #181](https://github.com/MarkDanile/MetaEduBase/pull/181) + Slice 8 PR TBD）；建立 P1 RAG 基线：node_source_chunk 0% / chunk_embedding 100% / chunk_tsvector 93.55% / file_metadata 0% |
-| TD-045 | `ai_chat_service._call_llm` 漏 await（Slice 3 真实业务 bug） | ⚫ 待办 | P1 | 后端 / AI Chat / 运行时 | REQ-010 Slice 8 端到端 e2e 触发：`TypeError: expected string or bytes-like object, got 'coroutine'` 在 `_clean_llm_output` / `ai_chat_service.py:159`；根因 `_call_llm(self, system_prompt, user_content)` 是 sync def 但调用 `ai_router._call_llm`（async）未 await。`/api/v1/ai/chat/evidence` 真实 LLM 路径全崩溃；e2e 沙箱 skip 掩盖。修复：sync def → async def + chat() 内 `await self._call_llm(...)` |
+| TD-045 | `ai_chat_service._call_llm` 漏 await（Slice 3 真实业务 bug） | 🟢 完成 | P1 | 后端 / AI Chat / 运行时 | REQ-010 Slice 8 端到端 e2e 触发；`def _call_llm` → `async def _call_llm` + `await _call_llm(...)` + `await self._call_llm(...)` / [PR TBD] |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 
 ## 任务详情
@@ -2141,3 +2141,50 @@
   - `ruff check app/ tests/` → All checks passed!
   - `scripts/check-engineering-docs.py` → engineering docs checks passed（待本 PR 合并后跑）。
   - `scripts/ai/evidence_coverage_report.py` → 4 指标输出（node_source_chunk 0% / chunk_embedding 100% / chunk_tsvector 93.55% / file_metadata 0%）。
+### TD-045: `ai_chat_service._call_llm` 漏 await（Slice 3 真实业务 bug）
+
+状态：🟢 完成
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 后端 / AI Chat / 运行时 |
+| 事实源 | REQ-010 Slice 8 端到端 e2e 触发 / [PR TBD] |
+
+**证据**
+- `app/contexts/knowledge/application/ai_chat_service.py:164` `def _call_llm(self, system_prompt, user_content) -> str:` 是 sync def；但函数体 L171 调 `ai_router._call_llm`（async def, `ai_router.py:248`）未 await。
+- `chat()` L215 `reply_raw = self._call_llm(self.SYSTEM_PROMPT, user_content)` 也未 await。
+- 真实 LLM 路径会抛 `TypeError: expected string or bytes-like object, got 'coroutine'` 在 `_clean_llm_output` (`ai_chat_service.py:159`)。
+- REQ-010 Slice 8 e2e `tests/e2e/test_p1_rag_evidence_e2e.py` 触发（`/ai/chat/evidence` 真实 LLM 路径全崩溃）。沙箱无 embedding 时 skip 掩盖。
+
+**问题**
+- `/api/v1/ai/chat/evidence` 真实 LLM 路径无法工作：任何带真实 LLM 调用的请求都返回 5xx。
+- 既有 6 条 `tests/contexts/knowledge/test_ai_chat_service.py` 通过 `patch.object(..., "_call_llm", return_value="ok")` 同步 mock 绕过——同步 MagicMock 不检查底层 await 行为，bug 在测试层不可见。
+- e2e 沙箱 skip 与 unit mock 双重掩盖让这个 P1 业务 bug 一直漏到 Slice 8。
+
+**完成标准**
+- `ai_chat_service._call_llm` 从 sync def 改 async def；函数体 L171 改为 `return await _call_llm(...)`。
+- `chat()` L215 改为 `reply_raw = await self._call_llm(...)`。
+- 6 条 test mock 全部改 AsyncMock；3 处 `def fake_llm` 改 `async def fake_llm`。
+- `test_p1_rag_evidence_e2e.py` 的 `lambda` mock 改 `AsyncMock(side_effect=lambda ...)`。
+- `pytest tests/contexts/knowledge/test_ai_chat_service.py -v` 6 passed。
+- `pytest tests/e2e/test_p1_rag_evidence_e2e.py -v` 1 passed + 1 skipped（沙箱无 embedding 仍 skip，但 skip 原因不再是 _call_llm bug）。
+- `pytest tests/ -q` 319 passed + 1 skipped，零回归。
+- `ruff check` 0 错。
+- `scripts/check-engineering-docs.py` rc=0。
+
+**验证方式**
+- `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/knowledge/test_ai_chat_service.py -v` → 6 passed
+- `cd packages/server-python && .venv/bin/python -m pytest tests/e2e/test_p1_rag_evidence_e2e.py -v` → 1 passed + 1 skipped
+- `cd packages/server-python && .venv/bin/python -m pytest tests/ -q` → 319 passed + 1 skipped
+- `cd packages/server-python && .venv/bin/python -m ruff check app/contexts/knowledge/application/ai_chat_service.py tests/contexts/knowledge/test_ai_chat_service.py tests/e2e/test_p1_rag_evidence_e2e.py` → All checks passed!
+- `python3 scripts/engineering/check-engineering-docs.py` → engineering docs checks passed
+
+**交付记录**
+- 2026-06-11 完成（接手工具：Claude Code）。3 文件修改：
+  - `app/contexts/knowledge/application/ai_chat_service.py`：`_call_llm` sync def → async def + `await _call_llm(...)` + `chat()` 内 `await self._call_llm(...)`（+3 / -3 行）
+  - `tests/contexts/knowledge/test_ai_chat_service.py`：3 处 `patch.object(..., return_value="ok")` 改 `AsyncMock(return_value="ok")`；3 处 `def fake_llm` 改 `async def fake_llm`；加 `AsyncMock` import（+8 / -6 行）
+  - `tests/e2e/test_p1_rag_evidence_e2e.py`：lambda mock 改 `AsyncMock(side_effect=...)`；加 `AsyncMock` import（+6 / -6 行）
+- 验证摘要：6 + 1 = 7 个 service 测试 passed（Slice 3 既有测试全过）；e2e 沙箱 skip 但 skip 原因不再是 _call_llm bug；全量 319 passed + 1 skipped 零回归；ruff + check-engineering-docs 全过
+- 行为变化：仅运行时 async 行为修复（_call_llm 现在真 await），无 API 协议变化、sources 形状变化、prompt 模板变化
+- 后续接力建议（不阻塞本任务完成）：P1 RAG 基线显示 1006 node / 25 file 缺溯源/元数据（见 TD-044），建议下个 PR 启动 P1 RAG 数据债批次：backfill_node_source / backfill_file_metadata 真跑（沙箱有 PG + 已就位命令）
