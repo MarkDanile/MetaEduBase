@@ -77,6 +77,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: "应用管理", requiresAuth: true },
       },
       {
+        path: "ai-apps/admin/:id",
+        name: "AiAppEdit",
+        component: () => import("@/views/ai-apps/AiAppEditView.vue"),
+        meta: { title: "编辑应用", requiresAuth: true },
+      },
+      {
         path: "ai-apps/:code",
         name: "AiAppDetail",
         component: () => import("@/views/ai-apps/AiAppDetailView.vue"),
