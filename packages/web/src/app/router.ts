@@ -8,6 +8,12 @@ const routes: RouteRecordRaw[] = [
     meta: { guest: true },
   },
   {
+    path: "/share/:token",
+    name: "share",
+    component: () => import("@/views/share/ShareView.vue"),
+    meta: { guest: true },
+  },
+  {
     path: "/",
     component: () => import("@/views/LayoutView.vue"),
     children: [
