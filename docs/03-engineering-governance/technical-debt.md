@@ -141,7 +141,7 @@
 | TD-044 | REQ-010 P1 RAG 证据治理与 AI Chat 溯源体验跨事实源状态收口 + 历史数据基线建立 | 🟢 完成 | P1 | RAG / AI Chat / Evidence / UX / 跨事实源同步 | REQ-010 8 个 Slice 收口（Slice 1-6 历史 PR + [Slice 7 PR #181](https://github.com/MarkDanile/MetaEduBase/pull/181) + [Slice 8 PR #183](https://github.com/MarkDanile/MetaEduBase/pull/183)）；建立 P1 RAG 基线：node_source_chunk 0% / chunk_embedding 100% / chunk_tsvector 93.55% / file_metadata 0% |
 | TD-045 | `ai_chat_service._call_llm` 漏 await（Slice 3 真实业务 bug） | 🟢 完成 | P1 | 后端 / AI Chat / 运行时 | REQ-010 Slice 8 端到端 e2e 触发；`def _call_llm` → `async def _call_llm` + `await _call_llm(...)` + `await self._call_llm(...)` / [PR #184](https://github.com/MarkDanile/MetaEduBase/pull/184) |
 | TD-046 | P1 RAG 数据债批次：跑 3 个 backfill + 写 idempotency 测试 + 跨事实源收口 | 🟢 完成 | P1 | RAG / AI Chat / 数据完整性 / 跨事实源同步 | REQ-010 P1 RAG 基线 (TD-044)：node_source_chunk 0% / chunk_embedding 100% / chunk_tsvector 93.55% / file_metadata 0%。基于 Slice 6 已就位的 3 个 backfill 命令 + CLI，跑历史数据回填 + 写 pytest idempotency 锁 + 跨 5 事实源收口 + 拆 TD-047/048 独立 follow-up / [PR TBD] |
-| TD-047 | 中文分词回填 ILIKE 限制（P1 数据债衍生） | ⚫ 待办 | P2 | 后端 / RAG / 全文检索 | 当前 `backfill_knowledge_node_source._find_chunk_for_node` 用 `ILIKE '%{node_title}%'` 字节级 substring 匹配，中文 node 需 chunk content 含同字符串才匹上，匹不上则 file_only 退化。需引入 zhparser / SCWS / jieba 等中文分词扩展或切换到 pg_trgm 三字符 trigram 索引。TD-046 批次 backfill_knowledge_node_source 跑后统计 `skipped_file_only` 若 >70% 则需立即解决。 |
+| TD-047 | 中文分词回填 ILIKE 限制（P1 数据债衍生） | ⚫ 待办 | P2 | 后端 / RAG / 全文检索 | 当前 `backfill_knowledge_node_source._find_chunk_for_node` 用 `ILIKE '%{node_title}%'` 字节级 substring 匹配，中文 node 需 chunk content 含同字符串才匹上，匹不上则 file_only 退化。Milestone Link: P2-SEARCH — PostgreSQL `tsvector` + 中文分词搜索增强。需引入 zhparser / SCWS / jieba 等中文分词扩展或切换到 pg_trgm 三字符 trigram 索引。TD-046 批次 backfill_knowledge_node_source 跑后统计 `skipped_file_only` 若 >70% 则需立即解决。 |
 | TD-048 | `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口） | ⚫ 待办 | P3 | 后端 / API 契约 / 文档 | 当前 `ai_router.py:83-87` SourceItem + ChatResponse 保留向后兼容（REQ-009 / Slice 3 决策）。等 MCP / 第三方消费方稳定后再删。下轮启动时建独立任务卡 + 调研外部消费方使用情况。 |
 | TD-049 | `tests/conftest.py` `sys.path.insert` 块导致 8 个 E402 pre-existing（TD-012 收口后遗留） | ⚫ 待办 | P3 | 后端 / 测试 / 质量门禁 / 工程治理 | TD-046 PR #187 收口时确认 `ruff check app/ tests/` 报 8 个 E402 errors 全部在 `tests/conftest.py:13-20`（imports not at top of file）。根因 L11 插入 `sys.path.insert(0, _REPO_ROOT)` 块（注释"REQ-010: ensure repo root on sys.path so tests can import scripts.ai.*"）违反 E402。修复：把 `_REPO_ROOT` + `sys.path` 块挪到 `tests/_paths.py`（新建），conftest.py 改为 `from tests._paths import *`。0 行为变化预期（`scripts.ai.*` 仍可 import）。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
@@ -2268,6 +2268,74 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 **交付记录**
 - 2026-06-11 完成（接手工具：Claude Code）。3 个 backfill 命令在 dev 库真跑（754 + 25 + 100 updated）+ 17 个 Slice 6 pytest idempotency 覆盖全过 + P1 RAG 基线 4 指标重写 + 拆 2 个独立 follow-up（TD-047 / TD-048）+ 跨 5 事实源状态同步。0 业务代码改动。
+
+### TD-047: 中文分词回填 ILIKE 限制（P1 数据债衍生）
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 后端 / RAG / 全文检索 |
+| 事实源 | TD-046 数据回填批次 / P2-SEARCH |
+| Milestone Link | P2-SEARCH — PostgreSQL `tsvector` + 中文分词搜索增强 |
+
+**证据**
+
+- TD-046 backfill 真跑后，`node_source_chunk` 从 0% 提升到 74.95%，但仍有 252 / 1006 个节点退化为 `file_only`。
+- `backfill_knowledge_node_source._find_chunk_for_node` 使用 `ILIKE '%{node_title}%'` 子串匹配，中文节点标题必须在 chunk 原文中以同字面量出现才可命中。
+- P2 里程碑已规划 `P2-SEARCH`：PostgreSQL `tsvector` + 中文分词搜索增强；本任务是该规划项的技术债入口。
+
+**问题**
+
+中文实体、翻译实体、抽象能力点和同义表达不一定以同字面量出现在 chunk 中，导致 KG node 到原文 chunk 的证据链只能退化为 file 级来源，影响 AI Chat 的图谱证据质量。
+
+**完成标准**
+
+- 选定并落地中文全文检索路线，候选包括 zhparser / SCWS / jieba 外部预分词 / pg_trgm。
+- `node-source-chunk` 回填不再只依赖字节级 `ILIKE` 子串匹配。
+- 重新跑相关 backfill 后，`node_source_chunk` 覆盖率有明确提升目标和实际结果记录。
+- P2-SEARCH 与 TD-047 保持交叉引用，不另建重复 Backlog 项。
+
+**验证**
+
+- `python -m app.cli.backfill node-source-chunk --dry-run`
+- `python -m app.cli.backfill node-source-chunk`
+- `python scripts/ai/evidence_coverage_report.py`
+- 覆盖 `_find_chunk_for_node` 或替代检索实现的中文匹配回归测试。
+
+### TD-048: `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口）
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P3 |
+| 领域 | 后端 / API 契约 / 文档 |
+| 事实源 | REQ-010 Slice 3 兼容决策 / TD-046 follow-up |
+
+**证据**
+
+- `ai_router.py` 仍保留旧 `/ai/chat` 的 `SourceItem` / `ChatResponse` node-shaped 契约，用于向后兼容。
+- 前端默认已切到 `/ai/chat/evidence`，但 MCP / 第三方消费方是否仍依赖旧契约尚未确认。
+
+**问题**
+
+旧契约长期保留会增加 AI Chat 双路径维护成本，也容易让后续实现继续误用 node-shaped sources，而不是统一 evidence DTO。
+
+**完成标准**
+
+- 调研 MCP / 第三方消费方 / 前端是否仍调用旧 `/ai/chat`。
+- 若无外部依赖，删除旧 `SourceItem` / `ChatResponse` 或明确 deprecation 版本窗口。
+- 若仍有依赖，记录迁移计划和兼容截止条件。
+
+**验证**
+
+- `rg -n "/ai/chat|/chat\"|SourceItem|ChatResponse" packages docs`
+- 后端 AI Chat 相关测试通过。
+- `scripts/check-engineering-docs`
+- `git diff --check`
+
 ### TD-049: `tests/conftest.py` `sys.path.insert` 块导致 8 个 E402 pre-existing
 
 状态：⚫ 待办

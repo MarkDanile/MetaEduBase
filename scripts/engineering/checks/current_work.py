@@ -109,7 +109,7 @@ def check_current_work(root: Path) -> list[Issue]:
                     recent[CURRENT_WORK_RECENT_LIMIT][0],
                     "current-work",
                     f"最近完成最多 {CURRENT_WORK_RECENT_LIMIT} 行。",
-                    "超过窗口后批量归档最旧完成项到 work-log 或对应事实源。",
+                    "超过窗口后批量归档，只保留最新 12 行；不要每次只移动 1 行。",
                 )
             )
         for line_no, row in recent:

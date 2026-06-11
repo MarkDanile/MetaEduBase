@@ -182,6 +182,7 @@ def test_fails_when_recent_completed_exceeds_twenty_rows(tmp_path: Path) -> None
 
     assert result.returncode == 1
     assert "最近完成最多 20 行" in result.stderr
+    assert "只保留最新 12 行" in result.stderr
 
 
 def test_fails_when_recent_completed_summary_is_too_long(tmp_path: Path) -> None:
