@@ -24,6 +24,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
+| TD-049 `tests/conftest.py` 8 个 E402 pre-existing（TD-012 收口后遗留） | ⚫ 待办 | P3 | 后端 / 测试 / 质量门禁 | 详看 `technical-debt.md#td-049`；`sys.path.insert(0, _REPO_ROOT)` 块违反 E402。修复：把 `_REPO_ROOT` 块挪到 `tests/_paths.py`（新建），conftest.py 改 `from tests._paths import *`。0 行为变化预期。 |
 
 ## 最近完成
 
