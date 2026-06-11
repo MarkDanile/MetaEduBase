@@ -133,7 +133,7 @@
 | DOC-045 | 修正 TD-033 CSS 拆分交付声明与追踪证据 | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-033 review / [#137](https://github.com/MarkDanile/MetaEduBase/pull/137) (`b815942`) |
 | DOC-042 | 脚本化 TD-032 行数基线扫描 | 🟢 完成 | P2 | 文档 / 工程治理 / 工程脚本 | [Baseline](02-baselines/td-032-source-file-sizes.md) / [PR #143](https://github.com/MarkDanile/MetaEduBase/pull/143) |
 | DOC-055 | 收口 DOC-042 / TD-034 PR 范围混入与事实源漂移 | 🟢 完成 | P1 | 文档 / 工程流程 / 质量门禁 | DOC-042 review / [Review Score Log](04-retrospectives/review-score-log.md) |
-| TD-039 | 6 键保留集合在 TS 端抽到 `@metaedu/shared/schemas/document` + spec 单一来源落地 | ⚫ 待办 | P3 | 前端 / 共享 schema / 文档 | REQ-002-3 code review / 当前 `FileTabsPanel.vue:159-166` 硬编码 + spec 文字再列 1 次 / 后端 Python import 路径接入拆为 [TD-043](#td-043-打通后端-python-对-shared-schemasdocument-的-import-路径) |
+| TD-039 | 6 键保留集合在 TS 端抽到 `@metaedu/shared/schemas/document` + spec 单一来源落地 | 🟢 完成 | P3 | 前端 / 共享 schema / 文档 | REQ-002-3 code review / [PR TBD] / TD-043 承接后端 Python 路径接入 |
 | TD-040 | `FileTabsPanel.spec.ts` Vue 单元测试覆盖 AC-11（6 键过滤）/ AC-12（card 渲染 / 老数据隐藏 / layer none 分支 / version 为 null） | 🟢 完成 | P2 | 前端 / 测试 / 交付 | REQ-002-3 code review / [PR #167](https://github.com/MarkDanile/MetaEduBase/pull/167) (`c1cc0c9` squash merge) / 引入 vitest + @vue/test-utils + jsdom 首次前端单测基建 / 6 测试通过（5 AC-12 + 1 AC-11 加固）|
 | TD-041 | FieldCard 递归渲染嵌套字段 + object children / array items 嵌套拖拽 | 🟢 完成 | P2 | 前端 / 架构 / 交付 | [PR #161](https://github.com/MarkDanile/MetaEduBase/pull/161) / [Spec](../02-delivery-plans/01-specs/2026-06-10-td-041-field-card-recursive-rendering.md) |
 | TD-042 | REQ-002-2 后端集成测试在 PG 实例下验证（`test_template_reuse.py` 8 条用例） | 🟢 完成 | P2 | 后端 / 测试 / 交付 | REQ-002-2 交付时沙箱无 PG / [PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) / 修 007 迁移 inline FK 在 asyncpg 反射下的 PK 解析缺陷 / [PR TBD] |
@@ -1787,7 +1787,7 @@
 
 ### TD-039: 6 键保留集合在 TS 端抽到 `@metaedu/shared/schemas/document` + spec 单一来源落地
 
-状态：⚫ 待办
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -1822,8 +1822,17 @@
 - `git diff --check` 退出码 0。
 
 **交付记录**
-- 未完成。
-- 2026-06-10：原 TD-039 范围（前端 + 后端 + spec）经并行批次 `td-039+td-040` 实施探查，发现后端 Python import 路径 `metaedu.shared.schemas.document` 不可达（仓库无顶层 `metaedu` Python 包，`packages/shared/` 是 TS-only pnpm workspace 包，0 处 `import metaedu.shared.*` 命中）。按"只修该技术债定义的范围"原则，本卡收窄为 TS 端 + spec 落地；后端 Python 接入拆为新 TD-043，并行批次中本卡未产出代码改动（agent A 在 worktree `td-039-shared-meta-keys` 上干净退出）。
+- 2026-06-11 完成（接手工具：Claude Code）。原子变更 2 文件：
+  1. `packages/shared/src/schemas/document.ts`（NEW export）：在 Zod schema 旁新增 `TEMPLATE_META_RESERVED_KEYS: ReadonlySet<string>` 导出，含 JSDoc 说明 TD-043 为后端同步方。
+  2. `packages/web/src/views/resource/FileTabsPanel.vue`（2 处）：删除本地硬编码 `RESERVED_META_KEYS` Set + comment；import 改从 `@metaedu/shared/schemas/document` 引入 `TEMPLATE_META_RESERVED_KEYS`；`filteredTemplateData` 计算属性中引用点同步替换。
+- 行为变化声明：零。`FileTabsPanel.vue` 行为不变（仅 refactor 常量来源）；`FileTabsPanel.spec.ts` 继续持有局部 `n` 字面量（TD-040 已说明该 spec 内副本待 TD-039 合并后改为 import）。
+- 验证摘要：
+  - `pnpm --filter @metaedu/web typecheck` → EXIT:0 ✅
+  - `pnpm --filter @metaedu/web lint` → EXIT:0 ✅
+  - `rg -rn "RESERVED_META_KEYS" packages/web/src/views/resource/FileTabsPanel.vue` → 0 命中（硬编码已清除）✅
+  - `/d/Program\ Files/Python313/python scripts/check-engineering-docs` → EXIT:0 ✅
+  - `git diff --check` → EXIT:0 ✅
+- 2026-06-10：原 TD-039 范围（前端 + 后端 + spec）经并行批次 `td-039+td-040` 实施探查，发现后端 Python import 路径 `metaedu.shared.schemas.document` 不可达（仓库无顶层 `metaedu` Python 包，`packages/shared/` 是 TS-only pnpm workspace 包，0 处 `import metaedu.shared.*` 命中）。按"只修该技术债定义的范围"原则，本卡收窄为 TS 端 + spec 落地；后端 Python 接入拆为新 TD-043。
 
 ### TD-040: `FileTabsPanel.spec.ts` Vue 单元测试覆盖 AC-11 / AC-12
 
