@@ -14,7 +14,7 @@
       </div>
     </header>
 
-    <div ref="chatContainer" class="flex-1 overflow-y-auto px-[var(--spacing-page)] py-6 space-y-4">
+    <div ref="chatContainer" class="flex-1 overflow-y-auto px-[var(--spacing-page)] py-6 space-y-4" @click="onChatClick">
       <EmptyState
         v-if="messages.length === 0"
         title="欢迎使用 AI 问答"
@@ -51,19 +51,29 @@
         ]">
           <div v-if="msg.role === 'user'">{{ msg.content }}</div>
           <!-- eslint-disable-next-line vue/no-v-html -- renderMarkdown blocks raw HTML and unsafe links before this controlled injection point. -->
-          <div v-else v-html="renderMarkdown(msg.content)"></div>
-          <div v-if="msg.sources && msg.sources.length > 0" class="mt-3 pt-2.5 border-t border-[var(--color-border-subtle)]">
-            <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)] mb-1.5 uppercase tracking-wider">参考知识源</p>
-            <div class="flex flex-wrap gap-1.5">
-              <span
-                v-for="src in msg.sources"
-                :key="src.id"
-                class="ui-tag ui-tag-blue"
-              >
-                <span class="opacity-70">{{ levelMap[src.level] ?? src.level }}</span>
-                <span class="font-medium ml-0.5">{{ src.title }}</span>
-                <span v-if="src.score" class="opacity-50 ml-0.5">{{ (src.score * 100).toFixed(0) }}%</span>
-              </span>
+          <div v-else v-html="renderMarkdown(msg.content, msg.sources)"></div>
+          <!-- REQ-010 AC-5/AC-6: 渲染证据来源列表 + 无证据 banner -->
+          <div
+            v-if="msg.role === 'assistant' && (!msg.sources || msg.sources.length === 0)"
+            class="mt-3 pt-2.5 border-t border-[var(--color-border-subtle)]"
+          >
+            <p class="text-[var(--text-micro)] text-[var(--color-warning)] uppercase tracking-wider">
+              ⚠️ 参考资料不足
+            </p>
+            <p class="text-[var(--text-caption)] text-[var(--color-ink-tertiary)] mt-1">
+              本次回答未引用证据，建议补充提问或提供更多资料。
+            </p>
+          </div>
+          <div v-else-if="msg.sources && msg.sources.length > 0" class="mt-3 pt-2.5 border-t border-[var(--color-border-subtle)]">
+            <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)] mb-1.5 uppercase tracking-wider">参考来源</p>
+            <div class="space-y-1.5">
+              <EvidenceCard
+                v-for="(src, idx) in msg.sources"
+                :key="src.evidence_id"
+                :index="idx + 1"
+                :evidence="src"
+                @open-file="openEvidenceFile"
+              />
             </div>
           </div>
         </div>
@@ -126,10 +136,12 @@ import xml from "highlight.js/lib/languages/xml";
 import css from "highlight.js/lib/languages/css";
 import markdown from "highlight.js/lib/languages/markdown";
 import { MessageSquare, StopCircle, Send } from "lucide-vue-next";
-import { levelMap } from "@/constants/maps";
 import api from "@/services/api";
 import EmptyState from "@/components/EmptyState.vue";
 import LoadingSpinner from "@/components/LoadingSpinner.vue";
+import EvidenceCard from "@/components/EvidenceCard.vue";
+import type { EvidenceItem } from "@/types/evidence";
+import { replaceEvidenceReferences } from "./evidenceReferences";
 
 hljs.registerLanguage("python", python);
 hljs.registerLanguage("javascript", javascript);
@@ -188,14 +200,21 @@ const marked = new Marked({
   },
 });
 
-function renderMarkdown(content: string): string {
-  return marked.parse(content) as string;
+function renderMarkdown(content: string, sources?: EvidenceItem[]): string {
+  // REQ-010 AC-4: 在 marked 渲染之后再改写 [1] / [2] 引用编号为可点击
+  // evidence-ref 链接。marked 自定义 html() tokenizer 会 escape 我们的
+  // 注入字符串，所以必须后处理才能保留 <a> 标签。
+  // 数字必须 <= sources.length 才改写；越界或 sources 为空时保持原样。
+  // 实际改写逻辑抽到 evidenceReferences.ts 以便 spec 独立测试
+  // （<script setup> 不能 ES module export）。
+  const html = marked.parse(content) as string;
+  return replaceEvidenceReferences(html, sources);
 }
 
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
-  sources?: { id: string; title: string; domain: string; level: string; score?: number; channel?: string }[];
+  sources?: EvidenceItem[];
 }
 
 const messages = ref<ChatMessage[]>([]);
@@ -240,9 +259,15 @@ async function sendMessage() {
   scrollToBottom();
 
   try {
-    const { data } = await api.post("/ai/chat", { message: text }, {
-      signal: abortController.value.signal,
-    });
+    // REQ-010 Slice 7: 改用 /ai/chat/evidence (返回 EvidenceItem[])。
+    // 旧 /ai/chat 端点保留向后兼容；前端默认走 evidence-aware 入口。
+    const { data } = await api.post(
+      "/ai/chat/evidence",
+      { message: text, context_window: 5 },
+      {
+        signal: abortController.value.signal,
+      }
+    );
     messages.value.push({
       role: "assistant",
       content: data.reply,
@@ -270,6 +295,44 @@ async function sendMessage() {
 
 function abortRequest() {
   abortController.value?.abort();
+}
+
+function openEvidenceFile(evidence: EvidenceItem) {
+  // REQ-010 AC-5: 跳到文件详情页 + chunk 锚点
+  if (evidence.file_id) {
+    const params = new URLSearchParams();
+    if (evidence.chunk_id) params.set("chunk", evidence.chunk_id);
+    const qs = params.toString();
+    const url = `/resource/files/${evidence.file_id}${qs ? "?" + qs : ""}`;
+    window.location.href = url;
+  }
+}
+
+// REQ-010 AC-4: chatContainer 全局 click 委托捕获 .evidence-ref 元素
+// （renderMarkdown 后处理注入），按 data-ref 调 openEvidenceFileByIndex。
+function onChatClick(event: MouseEvent) {
+  const target = event.target as HTMLElement | null;
+  if (!target) return;
+  const refEl = target.closest<HTMLElement>(".evidence-ref");
+  if (!refEl) return;
+  const refStr = refEl.dataset.ref;
+  if (!refStr) return;
+  const ref = parseInt(refStr, 10);
+  if (Number.isNaN(ref) || ref < 1) return;
+  event.preventDefault();
+  openEvidenceFileByIndex(ref);
+}
+
+function openEvidenceFileByIndex(idx: number) {
+  // 从最近一条 assistant 消息的 sources 里取
+  const lastAssistant = [...messages.value]
+    .reverse()
+    .find((m) => m.role === "assistant");
+  if (!lastAssistant || !lastAssistant.sources) return;
+  const evidence = lastAssistant.sources[idx - 1];
+  if (evidence) {
+    openEvidenceFile(evidence);
+  }
 }
 
 function sendQuick(q: string) {

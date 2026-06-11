@@ -37,6 +37,7 @@
         :templates="templates"
         :chunks="chunks"
         :chunks-loading="chunksQuery.isFetching.value"
+        :highlight-chunk-id="highlightChunkId"
         :kg-nodes="kgNodes"
         :kg-edges="kgEdges"
         :kg-loading="kgQuery.isFetching.value"
@@ -102,6 +103,37 @@ const fileId = computed(() => route.params.id as string);
 const selectedKgNode = ref<KnowledgeNodeDTO | null>(null);
 const activeTab = ref("structured");
 const showDelete = ref(false);
+
+// REQ-010 AC-15: ?chunk= query → 自动滚到对应 chunk + 高亮 3s
+const highlightChunkId = ref<string | null>(null);
+
+function scrollToChunk(chunkId: string) {
+  highlightChunkId.value = chunkId;
+  activeTab.value = "chunks";
+  // wait for chunks to load + DOM to update
+  setTimeout(() => {
+    const el = document.getElementById(`chunk-${chunkId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, 300);
+  // clear highlight after 3s
+  setTimeout(() => {
+    if (highlightChunkId.value === chunkId) {
+      highlightChunkId.value = null;
+    }
+  }, 3000);
+}
+
+watch(
+  () => route.query.chunk,
+  (newChunk) => {
+    if (newChunk && typeof newChunk === "string") {
+      scrollToChunk(newChunk);
+    }
+  },
+  { immediate: true }
+);
 
 // --- Queries (Vue Query) ---
 const queryClient = useQueryClient();
