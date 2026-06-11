@@ -161,14 +161,14 @@ class AIChatService:
         content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL)
         return content.strip()
 
-    def _call_llm(self, system_prompt: str, user_content: str) -> str:
+    async def _call_llm(self, system_prompt: str, user_content: str) -> str:
         """HTTP call to LLM provider via ai_router._call_llm.
 
         This is overridden in tests. Kept thin so the service stays pure.
         """
         from app.contexts.knowledge.interfaces.api.ai_router import _call_llm
 
-        return _call_llm(system_prompt, user_content)
+        return await _call_llm(system_prompt, user_content)
 
     async def chat(
         self,
@@ -213,7 +213,7 @@ class AIChatService:
             else f"学生问题：{request.message}"
         )
 
-        reply_raw = self._call_llm(self.SYSTEM_PROMPT, user_content)
+        reply_raw = await self._call_llm(self.SYSTEM_PROMPT, user_content)
         reply = self._clean_llm_output(reply_raw)
 
         return ChatResponse(reply=reply, sources=fused)
