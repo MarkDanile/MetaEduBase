@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| TD-050 `EvidenceItem` 缺 `source_chunk_id` 字段 / spec 与实现错位 | 🟡 进行中 | P3 | 后端 / RAG / API 契约 / 文档 | **路线 A2 已拍板**（用户 2026-06-11）：A1 全部 + `EvidenceItem` 新增 `source_chunk_id` 字段 + 双写 `chunk_id` / `source_chunk_id`。债项卡 `🔵 就绪`、spec [§4 推荐理由](../02-delivery-plans/01-specs/2026-06-11-td-050-evidence-item-source-chunk-id-pass-through.md) 重写为 A2。**未动业务代码**（路线拍板 docs-only 第一阶段）。分支 `chore/td-050-evidence-item-source-chunk-id-pass-through` 已建。 | 1. 写 plan [§5.2 路线 A2 细化切片](../02-delivery-plans/01-specs/2026-06-11-td-050-evidence-item-source-chunk-id-pass-through.md) → 2. 在 dev 库跑 SQL 验证 `knowledge_nodes.source_file_id` / `source_chunk_id` 数据存在（预计 81.91% 节点有值）→ 3. 业务代码 8 文件改动（3 SQL + RecallResult + EvidenceItem + PgGraphRetriever + contracts.md）→ 4. 写 2 个新 pytest（透传 + 字段访问）→ 5. 同步 REQ-010 spec L40 + spec §3.1 末尾"AC-3 解读说明" + plan Step 3.1 注 → 6. 跑全量后端 pytest + ruff + check-engineering-docs → 7. 提交 + PR。 | 文档-only 第一阶段已完成：technical-debt 任务卡补全（状态 `🔵 就绪`）；spec 三路线对比写完 + 推荐路线 A2 理由重写；workbench 当前进行中行登记。**未运行**后端 pytest / ruff（业务代码未动，按路线 A2 切片执行）。**未提交** commit（用户未显式触发提交；按 git-workflow "按流程提交" 才推进到 commit / push / PR）。 |
+| （空） | | | | | | |
 
 ## 下一批候选任务
 
@@ -24,9 +24,8 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| REQ-012 RAG 多路召回与知识图谱证据链收口 | 🟣 Shaping | P1 | RAG / AI Chat / Evidence / KG | 详看 [Requirement](../01-product-planning/05-requirements/REQ-012-rag-retrieval-and-kg-evidence-chain-follow-up.md)；REQ-010 质量 follow-up 的正式稳定编号。**TD-047 已收口**（zhparser + chinese_zh，剩 182 file_only 节点属 embedding 召回范围），**TD-050 是 REQ-012 启动的前置依赖**（node 类型 evidence 需透传 source_chunk_id 才能在 RAG 链路收口里完整给 embedding 召回用）。REQ-012 启动时把"TD-047 + TD-050 已收口"作为前置依赖写进 spec，直接进入 RAG 链路收口工作。 |
+| REQ-012 RAG 多路召回与知识图谱证据链收口 | 🟣 Shaping | P1 | RAG / AI Chat / Evidence / KG | 详看 [Requirement](../01-product-planning/05-requirements/REQ-012-rag-retrieval-and-kg-evidence-chain-follow-up.md)；REQ-010 质量 follow-up 的正式稳定编号。**TD-047 + TD-050 均已收口**（zhparser + chinese_zh 全文检索升级 + node 类型 evidence 透传 source_chunk_id）；REQ-012 启动时把"TD-047 + TD-050 已收口"作为前置依赖写进 spec，直接进入 RAG 链路收口工作。 |
 | TD-049 `tests/conftest.py` 8 E402 pre-existing（TD-012 收口后遗留） | ⚫ 待办 | P3 | 后端 / 测试 / 质量门禁 / 工程治理 | 详看 `technical-debt.md#td-049`；8 个 E402 全在 `tests/conftest.py:13-20`，根因 L11 `sys.path.insert` 块；修复方案已记（挪到新建 `tests/_paths.py`）。低风险，下一批可独立 PR。 |
-| （TD-050 已移出候选区，进入"当前进行中"） | | | | |
 
 ## 最近完成
 
@@ -36,6 +35,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-11 | TD-050 `EvidenceItem` 缺 `source_chunk_id` 字段 / spec 与实现错位（路线 A2） | 🟢 完成 | 3 切片 3 PR 收口：PR-1 docs-only 同步（#193） + PR-2 业务代码 + pytest（#194，4 业务文件 + 2 pytest 文件 / 10 新 pytest） + PR-3 docs-only 跨事实源收口（本 PR）。全量 pytest 336 passed + 1 skipped 零回归；ruff 8 个 TD-049 pre-existing 兼容；Recall Protocol 形参不变。 | [TD-050](technical-debt.md#td-050-evidenceitem-缺-source_chunk_id-字段--spec-与实现错位) / [Spec](../02-delivery-plans/01-specs/2026-06-11-td-050-evidence-item-source-chunk-id-pass-through.md) / [Plan](../02-delivery-plans/02-plans/2026-06-11-td-050-evidence-item-source-chunk-id-pass-through-plan.md) / PR #193 + #194 |
 | 2026-06-11 | TD-047 中文分词回填 ILIKE 限制（路线 A zhparser + tsvector） | 🟢 完成 | 6 切片 5 commit 收口：zhparser + chinese_zh + plainto_tsquery；dev 库 70/252 file_only → chunk_resolved（总覆盖率 74.95% → 81.91%，+6.96 pct）；runtime 镜像增量 23MB。 | [TD-047](technical-debt.md#td-047-中文分词回填-iliike-限制p1-数据债衍生) / [Spec](../02-delivery-plans/01-specs/2026-06-11-td-047-zhparser-chinese-tsvector.md) / [Plan](../02-delivery-plans/02-plans/2026-06-11-td-047-zhparser-chinese-tsvector-plan.md) |
 | 2026-06-11 | TD-048 `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口） | 🟢 完成 | 删 ai_router.py 旧 SourceItem/ChatResponse/_recall_to_source/ai_chat handler/`@router.post('/chat')`；迁 3 测试 + 1 docs 矩阵到 evidence 端点；319 passed + 1 skipped 零回归。分支 `chore/td-048-remove-sourceitem-legacy-contract`。 | [TD-048](technical-debt.md#td-048-sourceitem-旧字段下个迭代删除契约-deprecation-窗口) |
 | 2026-06-11 | DOC-060 针对全部评审评分做阶段复盘 | 🟢 完成 | 基于 40 条评分记录完成阶段复盘：平均分 84.8，一次关闭率 60%，返工率 40%，流程扣分率约 63%；结论是 Harness 已有价值，但需求类 AC、真实数据验证和多事实源收口仍是重点。 | [Retrospective](04-retrospectives/2026-06-11-review-score-retrospective.md) / [Review Score Log](04-retrospectives/review-score-log.md) |
