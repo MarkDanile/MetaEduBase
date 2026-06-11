@@ -139,7 +139,7 @@
 | TD-042 | REQ-002-2 后端集成测试在 PG 实例下验证（`test_template_reuse.py` 8 条用例） | 🟢 完成 | P2 | 后端 / 测试 / 交付 | REQ-002-2 交付时沙箱无 PG / [PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) / 修 007 迁移 inline FK 在 asyncpg 反射下的 PK 解析缺陷 / [PR TBD] |
 | TD-043 | 打通后端 Python 对 `shared/schemas/document` 的 import 路径 | ⚫ 待办 | P2 | 后端 / 共享 schema / 基础设施 | 2026-06-10 并行批次 `td-039+td-040` 拆出（原属 TD-039 范围）/ 仓库无顶层 `metaedu` Python 包、`packages/shared/` 是 TS-only pnpm workspace 包，0 处 `import metaedu.shared.*` 命中 |
 | TD-044 | REQ-010 P1 RAG 证据治理与 AI Chat 溯源体验跨事实源状态收口 + 历史数据基线建立 | 🟢 完成 | P1 | RAG / AI Chat / Evidence / UX / 跨事实源同步 | REQ-010 8 个 Slice 收口（Slice 1-6 历史 PR + [Slice 7 PR #181](https://github.com/MarkDanile/MetaEduBase/pull/181) + Slice 8 PR TBD）；建立 P1 RAG 基线：node_source_chunk 0% / chunk_embedding 100% / chunk_tsvector 93.55% / file_metadata 0% |
-| TD-045 | `ai_chat_service._call_llm` 漏 await（Slice 3 真实业务 bug） | 🟢 完成 | P1 | 后端 / AI Chat / 运行时 | REQ-010 Slice 8 端到端 e2e 触发；`def _call_llm` → `async def _call_llm` + `await _call_llm(...)` + `await self._call_llm(...)` / [PR TBD] |
+| TD-045 | `ai_chat_service._call_llm` 漏 await（Slice 3 真实业务 bug） | 🟢 完成 | P1 | 后端 / AI Chat / 运行时 | REQ-010 Slice 8 端到端 e2e 触发；`def _call_llm` → `async def _call_llm` + `await _call_llm(...)` + `await self._call_llm(...)` / [PR #184](https://github.com/MarkDanile/MetaEduBase/pull/184) |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 
 ## 任务详情
