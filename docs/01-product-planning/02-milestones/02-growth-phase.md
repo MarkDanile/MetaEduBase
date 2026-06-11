@@ -75,7 +75,7 @@ External:
 | REQ-002-1 | 🟢 完成 | 模板配置效率（编辑器 UX：拖拽三层 / 子树复制 / 撤销 / 大模板浏览） | [Spec](../../02-delivery-plans/01-specs/2026-06-10-req-002-1-template-config-ux.md) / [Backlog](../04-backlog.md) / [PR #158](https://github.com/MarkDanile/MetaEduBase/pull/158) |
 | REQ-002-2 | 🟢 完成 | 模板复用机制（同租户复制 / 全量版本快照 / JSON 导入导出） | [Spec](../../02-delivery-plans/01-specs/2026-06-10-req-002-2-template-reuse.md) / [Backlog](../04-backlog.md) / [PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) |
 | REQ-002-4 | 🟢 完成 | 模板可维护性（schema_version 演进 + 容器互转二次确认 + deprecated + 命名规范） | [Spec](../../02-delivery-plans/01-specs/2026-06-10-req-002-4-template-maintainability.md) / [Backlog](../04-backlog.md) / [PR #170](https://github.com/MarkDanile/MetaEduBase/pull/170) |
-| P2-SEARCH | ⚫ Candidate | PostgreSQL tsvector + 中文分词搜索增强 | 技术债入口：[TD-047](../../03-engineering-governance/technical-debt.md#td-047)。TD-047 由 TD-046 数据回填批次拆出，是本里程碑项的近期执行入口；本行只保留规划归属，不新增重复 Backlog 项。 |
+| P2-SEARCH | 🟡 Shaping | PostgreSQL tsvector + 中文分词搜索增强 | 技术债入口 [TD-047](../../03-engineering-governance/technical-debt.md#td-047) 已收口（PR #192）：metaedu/postgres-zhparser:pg16 镜像 + chinese_zh 文本搜索配置 + plainto_tsquery，dev 库真跑 backfill 覆盖率 74.95% → 81.91%（+6.96 pct）。剩 182 个 file_only 节点属 REQ-012 后续 embedding 召回范围。基础设施 Ready，召回链路集成 pending → Shaping 中间态。 |
 | P2-NER | ⚫ Candidate | LLM 混合 NER | 待进入 backlog |
 | P2-RRF | ⚫ Candidate | RRF 融合排序 | 待进入 backlog |
 | P2-INFRA | ⚫ Candidate | Redis 缓存 / RabbitMQ / LiteLLM / MinIO 集群按瓶颈择一推进 | 待进入 backlog |
