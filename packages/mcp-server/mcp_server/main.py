@@ -169,6 +169,36 @@ async def list_tools() -> list[Tool]:
                 "required": ["knowledge_point_ids"],
             },
         ),
+        # REQ-010 Slice 4b — MCP RAG 工具，调后端 /ai/chat/evidence + /knowledge/graph/retrieve
+        # 新接口（ChunkRetriever / GraphRetriever）入口。旧 knowledge_search 工具保留
+        # 向后兼容；P2 阶段把旧工具也迁过来。
+        Tool(
+            name="rag_query_evidence",
+            description="REQ-010 RAG 证据化问答：基于原文切片 + 知识节点的证据化 RAG，"
+            "返回带 [1]/[2] 引用编号的回答 + EvidenceItem[] 来源列表（chunk / "
+            "knowledge_node / structured_field）。",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "自然语言问题"},
+                    "context_window": {"type": "integer", "description": "上下文窗口大小（每通道 top_k）", "default": 5},
+                },
+                "required": ["query"],
+            },
+        ),
+        Tool(
+            name="graph_retrieve",
+            description="REQ-010 knowledge graph 检索入口（走 GraphRetriever 接口），"
+            "返回 EvidenceItem[] 包含 source_type=knowledge_node。",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "自然语言检索词"},
+                    "top_k": {"type": "integer", "description": "返回条数", "default": 5},
+                },
+                "required": ["query"],
+            },
+        ),
     ]
 
 
@@ -187,6 +217,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             return await _list_resources(arguments)
         if name == "generate_quiz":
             return await _generate_quiz(arguments)
+        # REQ-010 Slice 4b — new RAG / graph retrieve tools
+        if name == "rag_query_evidence":
+            return await _rag_query_evidence(arguments)
+        if name == "graph_retrieve":
+            return await _graph_retrieve(arguments)
     except httpx.HTTPStatusError as e:
         return [TextContent(type="text", text=f"API 错误: {e.response.status_code} - {e.response.text}")]
     except Exception as e:
@@ -314,6 +349,81 @@ async def _generate_quiz(args: dict) -> list[TextContent]:
     )
 
     return [TextContent(type="text", text=prompt)]
+
+
+# REQ-010 Slice 4b — new MCP RAG tools calling the new evidence-aware endpoints.
+_SOURCE_TYPE_CN = {
+    "chunk": "原文切片",
+    "knowledge_node": "知识节点",
+    "knowledge_edge": "知识关系",
+    "structured_field": "结构化字段",
+}
+
+
+async def _rag_query_evidence(args: dict) -> list[TextContent]:
+    query = args["query"]
+    context_window = args.get("context_window", 5)
+
+    result = await _api_post(
+        "/ai/chat/evidence",
+        {"message": query, "context_window": context_window},
+    )
+    reply = result.get("reply", "")
+    sources = result.get("sources", []) or []
+
+    if not sources:
+        return [
+            TextContent(
+                type="text",
+                text=f"⚠️ 未找到足够参考来源。\n\n{reply or '（AI 未生成回答）'}",
+            )
+        ]
+
+    output = f"{reply}\n\n📚 参考来源（{len(sources)} 条）：\n"
+    for i, src in enumerate(sources, 1):
+        stype = _SOURCE_TYPE_CN.get(src.get("source_type", ""), src.get("source_type", ""))
+        title = src.get("title") or src.get("structured_path") or "未命名"
+        score = src.get("score")
+        channels = ",".join(src.get("channels", []) or [])
+        eid = src.get("evidence_id", "")
+        output += f"[{i}] {stype}：{title}"
+        if score is not None:
+            output += f" | 分数：{score:.2f}"
+        if channels:
+            output += f" | 命中：{channels}"
+        if eid:
+            output += f" | evidence_id={eid}"
+        output += "\n"
+    return [TextContent(type="text", text=output)]
+
+
+async def _graph_retrieve(args: dict) -> list[TextContent]:
+    query = args["query"]
+    top_k = args.get("top_k", 5)
+
+    result = await _api_post(
+        "/knowledge/graph/retrieve",
+        {"query": query, "top_k": top_k},
+    )
+    items = result.get("items", []) or []
+    if not items:
+        return [TextContent(type="text", text=f"未找到与「{query}」相关的知识节点")]
+
+    output = f"🔍 GraphRetriever 检索「{query}」共找到 {len(items)} 条：\n\n"
+    for i, item in enumerate(items, 1):
+        score = item.get("score")
+        channels = ",".join(item.get("channels", []) or [])
+        eid = item.get("evidence_id", "")
+        title = item.get("title", "")
+        output += f"{i}. {title}"
+        if score is not None:
+            output += f" | 分数：{score:.2f}"
+        if channels:
+            output += f" | 命中：{channels}"
+        if eid:
+            output += f" | evidence_id={eid}"
+        output += "\n"
+    return [TextContent(type="text", text=output)]
 
 
 async def main():
