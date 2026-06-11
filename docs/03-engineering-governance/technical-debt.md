@@ -142,9 +142,10 @@
 | TD-045 | `ai_chat_service._call_llm` 漏 await（Slice 3 真实业务 bug） | 🟢 完成 | P1 | 后端 / AI Chat / 运行时 | REQ-010 Slice 8 端到端 e2e 触发；`def _call_llm` → `async def _call_llm` + `await _call_llm(...)` + `await self._call_llm(...)` / [PR #184](https://github.com/MarkDanile/MetaEduBase/pull/184) |
 | TD-046 | P1 RAG 数据债批次：跑 3 个 backfill + 写 idempotency 测试 + 跨事实源收口 | 🟢 完成 | P1 | RAG / AI Chat / 数据完整性 / 跨事实源同步 | REQ-010 P1 RAG 基线 (TD-044)：node_source_chunk 0% / chunk_embedding 100% / chunk_tsvector 93.55% / file_metadata 0%。基于 Slice 6 已就位的 3 个 backfill 命令 + CLI，跑历史数据回填 + 写 pytest idempotency 锁 + 跨 5 事实源收口 + 拆 TD-047/048 独立 follow-up / [PR #187](https://github.com/MarkDanile/MetaEduBase/pull/187) |
 | TD-047 | 中文分词回填 ILIKE 限制（P1 数据债衍生） | 🟢 完成 | P2 | 后端 / RAG / 全文检索 | 路线 A: zhparser + SCWS + tsvector + plainto_tsquery (spike 验证 + 6 切片收口)。dev 库真跑 backfill: 70/252 节点 file_only -> chunk_resolved; 总覆盖率 74.95% -> 81.91% (+6.96 pct); 剩 182 file_only 属 REQ-012 后续 embedding 召回范围。runtime 镜像增量 23MB。`chore/td-047-zhparser-chinese-tsvector` 分支 5 commit。 | [PR #192](https://github.com/MarkDanile/MetaEduBase/pull/192) |
-| TD-048 | `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口） | ⚫ 待办 | P3 | 后端 / API 契约 / 文档 | 当前 `ai_router.py:83-87` SourceItem + ChatResponse 保留向后兼容（REQ-009 / Slice 3 决策）。等 MCP / 第三方消费方稳定后再删。下轮启动时建独立任务卡 + 调研外部消费方使用情况。 |
+| TD-048 | `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口） | 🟡 进行中 | P3 | 后端 / API 契约 / 文档 | 切片 1 docs-only 修事实源（2026-06-11）：之前 current-work L40 + work-log L21 写"已完成"是事实源漂移——`commit 23a54b1 chore(rag): TD-048 remove SourceItem legacy contract` 在分支 `chore/td-048-remove-sourceitem-legacy-contract` 上但 `main` 未合；`rg` 命中 `ai_router.py:73 SourceItem / :83 ChatResponse / :88 EvidenceChatResponse / :99-100 _recall_to_source / :130 @router.post('/chat')` 全部还在 main；`gh pr list` 查不到任何 TD-048 PR。本次回退到真实状态，分支 `docs/td-048-reconciliation-and-closure` 上 3 切片重新走完整收口（PR-1 docs-only 修事实源；PR-2 业务代码基于 23a54b1 重跑 pytest/ruff/typecheck；PR-3 docs-only 跨事实源收口）。原 REQ-009 / Slice 3 决策保留（迁移 3 测试 + 1 矩阵到 evidence 端点）。 |
 | TD-049 | `tests/conftest.py` `sys.path.insert` 块导致 8 个 E402 pre-existing（TD-012 收口后遗留） | ⚫ 待办 | P3 | 后端 / 测试 / 质量门禁 / 工程治理 | TD-046 PR #187 收口时确认 `ruff check app/ tests/` 报 8 个 E402 errors 全部在 `tests/conftest.py:13-20`（imports not at top of file）。根因 L11 插入 `sys.path.insert(0, _REPO_ROOT)` 块（注释"REQ-010: ensure repo root on sys.path so tests can import scripts.ai.*"）违反 E402。修复：把 `_REPO_ROOT` + `sys.path` 块挪到 `tests/_paths.py`（新建），conftest.py 改为 `from tests._paths import *`。0 行为变化预期（`scripts.ai.*` 仍可 import）。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
+| DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | ⚫ 待办 | P3 | 文档 / 工程脚本 / 质量门禁 | TD-048 切片 1 复核时（2026-06-11）跑 `scripts/check-engineering-docs` 发现 1 个 pre-existing `validation-claim` 提示：current-work.md:38 TD-050 摘要行 "全量 pytest 336 passed + 1 skipped 零回归" 缺 Command / Result / Environment / CI / `gh pr checks` / `退出码 0` 之类的可复核证据。脚本检查项 `scripts/engineering/checks/placeholders_claims.py::check_validation_claims` 看前 2 行 + 后 2 行窗口内 `EVIDENCE_RE` 是否命中。该摘要本身非虚假（PR #194 确实合并），但缺"可复核证据 → 退出码 0"格式属历史债。修复：把"全量 pytest 336 passed"改写为"`pytest -q` → 336 passed + 1 skipped，退出码 0，PR #194 / merge `5719c38`"格式（带 Command / Result / PR checks 字段）。同时扫 L40 / L42 / L43 / L44 / L45 等同档历史最近完成行。后续 commit 摘要一律使用该格式收尾。 |
 
 ## 任务详情
 
@@ -1940,6 +1941,51 @@
 - 验证摘要：脚本修复后自动暴露 main `current-work.md:19` 的 REQ-002-3 残留行；删除该行后 `check-engineering-docs` rc=0 恢复。
 - 顺带说明：TD-039 / TD-040（REQ-002-3 code review follow-up）保持 ⚫ 待办。
 
+### DOC-057: `current-work.md` L38 / L40 等历史最近完成行"验证通过声明缺可复核证据"格式缺口
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P3 |
+| 领域 | 文档 / 工程脚本 / 质量门禁 |
+| 事实源 | TD-048 切片 1 复核时（2026-06-11）跑 `scripts/check-engineering-docs` 报 1 个 pre-existing `validation-claim` 提示；脚本检查项 `scripts/engineering/checks/placeholders_claims.py::check_validation_claims` |
+
+**证据**
+
+- `scripts/check-engineering-docs` 报：`docs/03-engineering-governance/current-work.md:38: 验证通过声明缺少可复核证据。 建议：补充 Command / Result / Environment / CI 证据，或改写为未运行/当前环境不可运行。` 退出码 1。
+- L38 是 TD-050 摘要行 `... 全量 pytest 336 passed + 1 skipped 零回归；ruff 8 个 TD-049 pre-existing 兼容；Recall Protocol 形参不变。`
+- 脚本看该行前 2 行 + 后 2 行窗口内是否命中 `EVIDENCE_RE`（`Command:|Result:|Environment:|CI|PR checks|gh pr checks|退出码\s*0|\`[^`]*(pytest|ruff)[^`]*\``）—— 实际窗口是表格行结构，无 `Command:` / `退出码 0` 之类可复核证据。
+- 同类历史摘要行（`rg -n "全量\s+pytest\s+\d+\s+passed" docs/03-engineering-governance/current-work.md` 实际命中 0 行——TD-050 摘要用的是"全量 pytest 336 passed"无 `\s+` 强制间隔，但被 `VALIDATION_CLAIM_RE` 命中——表明"全量 pytest + 数字 + passed"在最近完成摘要里是常见 pattern）需一并扫：
+  - L40 / L42 / L43 / L44 / L45 / L46 / L47 / L48 / L49 / L50 等 2026-06-10 / 2026-06-11 历史最近完成行（grep 实际"passed"出现行做扫）。
+- TD-050 / TD-047 / TD-046 / TD-043 / TD-039 / TD-040 / TD-045 / REQ-010 / REQ-002-3 / REQ-006 / DOC-058 / DOC-057 等历史完成行在 `事实源` 列已带 `PR #xxx` 链接，但脚本窗口（仅看 ±2 行）不跨过表格列边界，无法识别表格内链接。
+
+**问题**
+
+- `scripts/check-engineering-docs` 是 `git-workflow.md#提交前检查` 与 `quality-gates.md#完成门禁#2` 引用的稳定兼容入口；它的退出码是判断"docs-only 改动是否通过最小验证"的硬指标。
+- pre-existing `validation-claim` 提示让所有 docs-only PR 都被门禁挡住，必须先修历史债才能继续 PR 流。
+- 该缺口是"任务卡 → 实际代码"强校验缺失的同类问题（与 TD-025 / TD-026 / TD-032 残留量与实际不符规律同源；TD-048 漂移回退时也撞上）；门禁脚本与人工撰写口径不一致（"通过"声明在 `passed` 强匹配上无证据要求）。
+
+**完成标准**
+
+- 把 `current-work.md` L38 TD-050 摘要"全量 pytest 336 passed + 1 skipped 零回归；ruff 8 个 TD-049 pre-existing 兼容；Recall Protocol 形参不变。" 改写为带 `Command:` / `Result:` / `PR checks` / `退出码 0` 字段的格式，例如："Command: `cd packages/server-python && .venv/bin/python -m pytest -q` → 336 passed + 1 skipped；`ruff check app/ tests/` → 退出码 0（保留 8 个 TD-049 E402 pre-existing）。Result: PR #193 / #194 / #195 全部 MERGED；`gh pr checks 194` no checks reported（PR 未配 CI，本地为非 CI 证据）。"
+- 扫 `current-work.md` L40-L50 同档历史最近完成行的"passed"声明，逐行加 `Command:` / `Result:` / `PR checks` 字段，或把"通过声明"改写为"未运行 / 当前环境不可运行"。
+- 不改 `current-work.md` 行数过多（避免"最近完成 20 行保留"规则被触发），优先用单格内 inline 格式（如 `Command: pytest -q → passed`）而非新起行。
+- `scripts/check-engineering-docs` 退出码 0。
+- `git diff --check` 干净。
+- 跨事实源同步：技术债总账任务卡交付记录补 PR 链接 + merge commit；work-log 索引行（DOC-057 当前不在 work-log 索引行表中，落地后追加）；下一步候选区（按 workbench 规则不应把 DOC-057 候选入工作台，本任务可走"开 PR → 合 main → 收口"完整闭环不入候选区）。
+
+**验证方式**
+
+- `python3 scripts/check-engineering-docs` → `engineering docs checks passed` 退出码 0（Result: 退出码 0；本机沙箱复跑，非 CI 证据）。
+- `python3 -m pytest tests/engineering/test_check_engineering_docs.py -v` → 既有测试不退化即可（Result: 退出码 0）。
+- `git diff --check` clean。
+- `rg -n "全量\s+pytest\s+\d+\s+passed|pytest\s+\d+\s+passed" docs/03-engineering-governance/current-work.md` 命中的每一行窗口内（前 2 + 后 2）至少有 1 处 `Command:|Result:|Environment:|CI|PR checks|gh pr checks|退出码\s*0|\`[^`]*(pytest|ruff)[^`]*\`` 命中。
+
+**交付记录**
+
+- 2026-06-11 入账（接手工具：Claude Code），由 TD-048 切片 1 复核时同步登记。任务卡在 `docs/03-engineering-governance/technical-debt.md#doc-057`；具体修复待独立 PR 收口（建议走 1 个 docs-only PR 单独合并，避免与 TD-048 切片 1 PR 范围混合）。
+
 ### TD-041: FieldCard 递归渲染嵌套字段 + object children / array items 嵌套拖拽
 
 状态：🟢 完成
@@ -2357,35 +2403,51 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-048: `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口）
 
-状态：⚫ 待办
+状态：🟡 进行中
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P3 |
 | 领域 | 后端 / API 契约 / 文档 |
-| 事实源 | REQ-010 Slice 3 兼容决策 / TD-046 follow-up |
+| 事实源 | REQ-010 Slice 3 兼容决策 / TD-046 follow-up / TD-048 收口未合 main 状态复核（2026-06-11） |
 
 **证据**
 
-- `ai_router.py` 仍保留旧 `/ai/chat` 的 `SourceItem` / `ChatResponse` node-shaped 契约，用于向后兼容。
-- 前端默认已切到 `/ai/chat/evidence`，但 MCP / 第三方消费方是否仍依赖旧契约尚未确认。
+- `packages/server-python/app/contexts/knowledge/interfaces/api/ai_router.py:73 class SourceItem(BaseModel)` 仍存在（L73-80）。
+- 同文件 `:83 class ChatResponse(BaseModel): reply / sources: list[SourceItem]` 仍存在（L83-85）。
+- 同文件 `:88 class EvidenceChatResponse` 注释自承"REQ-010 Slice 3 — new /chat/evidence endpoint response shape. Uses `EvidenceItem` instead of node-shaped `SourceItem`"（L88-96）。
+- 同文件 `:99-108 def _recall_to_source(r: RecallResult) -> SourceItem` 仍存在。
+- 同文件 `:130-180 @router.post('/chat', response_model=ChatResponse) / async def ai_chat(...)` 旧端点 handler 仍存在（commit `23a54b1` 准备删的代码全在）。
+- 业务链路现状：前端 `AiChatView` 已切到 `/ai/chat/evidence`（REQ-010 Slice 3/7），MCP `rag_query_evidence` 也走 evidence 端点（23a54b1 commit message 自承）；旧 `/ai/chat` 端点无业务消费方。
+- `git log --all --oneline | grep TD-048`：`23a54b1 chore(rag): TD-048 remove SourceItem legacy contract` 在分支 `chore/td-048-remove-sourceitem-legacy-contract` 上但 `main` 未合；`git show --stat 23a54b1` 显示改了 10 个文件（`ai_router.py` -147 + `test_ai_chat.py` + `test_ai_chat_rag_e2e.py` + `test_p1_demo.py` + 4 个 docs + current-work + technical-debt）。
+- `gh pr list --state all --search "TD-048 OR SourceItem"` 返回 0 条 PR（main 上 0 个 TD-048 相关 PR 已开 / 已合）。
 
 **问题**
 
-旧契约长期保留会增加 AI Chat 双路径维护成本，也容易让后续实现继续误用 node-shaped sources，而不是统一 evidence DTO。
+1. 旧 `/ai/chat` + `SourceItem` / `ChatResponse` / `_recall_to_source` 是 REQ-009 / Slice 3 决策的"向后兼容窗口"，但 AI Chat 业务消费方（前端 + MCP）已全部切到 evidence 端点；向后兼容窗口已无业务消费方。
+2. 23a54b1 commit 落地的代码改动本可一次性收口（"0 业务逻辑变化" + 测试迁移），但 commit 在 `chore/td-048-remove-sourceitem-legacy-contract` 分支上没合 main，导致 `main` 上的 `ai_router.py` 仍包含旧契约。
+3. 状态漂移链：2026-06-11 当天 `current-work.md` 写"🟢 完成 / 319 passed + 1 skipped 零回归" + `work-log.md` L21 写"技术债 / 后端 / API 契约 / 文档 / deprecation 收口 / 归档位置: ... `chore/td-048-remove-sourceitem-legacy-contract` (1 commit)"，但 `technical-debt.md` 任务总览表与本卡仍写 `⚫ 待办 / P3`、代码 `rg` 仍命中 5 处旧契约——三份事实源互斥。
+4. 不修正会让后续 AI IDE / 协作者按"已完成"信息忽略旧契约问题，继续在 `ai_router.py` 上做依赖旧端点的改动（例如修 `_recall_to_source` 的提示文案），而 main 上代码实际未变。
 
 **完成标准**
 
-- 调研 MCP / 第三方消费方 / 前端是否仍调用旧 `/ai/chat`。
-- 若无外部依赖，删除旧 `SourceItem` / `ChatResponse` 或明确 deprecation 版本窗口。
-- 若仍有依赖，记录迁移计划和兼容截止条件。
+- 切片 1（docs-only 修事实源，本卡落地）：`current-work.md` "最近完成" 删除假完成行 + 移入"当前进行中"；`technical-debt.md` 任务总览表与本卡状态翻 🟡 进行中；`work-log.md` L21 索引行加 ⚠️ 占位标注 + 在归档段补复盘段。`scripts/check-engineering-docs` 退出码 0；`git diff --check` 干净；`git diff --name-status` 仅包含 3 个 docs 文件。
+- 切片 2（业务代码）：在 `docs/td-048-reconciliation-and-closure` 分支上基于 23a54b1 cherry-pick 业务代码 + 测试 + 矩阵变更到 main；补 spec/plan（`docs/02-delivery-plans/01-specs/2026-06-11-td-048-sourceitem-deprecation-removal.md` + `02-plans/2026-06-11-td-048-sourceitem-deprecation-removal-plan.md`）；重跑 `pytest -q`（或聚焦 `tests/contexts/ai/ + tests/e2e/test_p1_demo.py`）确认零回归；`ruff check app/ tests/` 退出码 0（保留 8 个 TD-049 pre-existing）；`rg` 命中 `ai_router.py` 的 `SourceItem / ChatResponse / _recall_to_source / @router.post('/chat')` 全部 0 命中。
+- 切片 3（docs-only 跨事实源收口）：合并切片 2 后 `current-work.md` "最近完成" 加回 TD-048 + 收口 `当前进行中` 卡；`technical-debt.md` 任务总览表与本卡翻 🟢 完成 + 补交付记录（PR 链接 + commit + 验证摘要）；`work-log.md` L21 索引行去掉 ⚠️ 标注、补 PR / merge commit 字段；在 Backlog / workbench 补强"任务分支未合 main 不得标完成"规则。
+- 跨切片硬性约束：合并切片 2 前必须确认 `gh pr view` 显示 `mergeable=true` + `gh pr checks` 无阻塞；遵循 `git-workflow.md#完整交付闭环` 的 squash merge + delete-branch + 后续 main 同步。
 
 **验证**
 
-- `rg -n "/ai/chat|/chat\"|SourceItem|ChatResponse" packages docs`
-- 后端 AI Chat 相关测试通过。
-- `scripts/check-engineering-docs`
-- `git diff --check`
+- 切片 1：`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0；`rg -n "SourceItem|ChatResponse|_recall_to_source|@router.post\\('/chat'\\)" packages/server-python/app/contexts/knowledge/interfaces/api/ai_router.py` 5 处命中仍在 main（切片 1 故意不删代码）。
+- 切片 2：合并前 `pytest tests/contexts/ai/ tests/e2e/test_p1_demo.py -q` 退出码 0；`ruff check app/ tests/` 退出码 0（8 个 TD-049 E402 兼容）；合并后 `rg -n "SourceItem|class ChatResponse|_recall_to_source|@router.post\\('/chat'\\)" packages/server-python/app/contexts/knowledge/interfaces/api/ai_router.py` 0 命中；`gh pr view <PR>` state=MERGED。
+- 切片 3：`rg -n "TD-048" docs/03-engineering-governance/{current-work,technical-debt,work-log}.md` 3 文件全部命中且状态一致（current-work 最近完成 / technical-debt 🟢 完成 / work-log 索引无 ⚠️ 标注）；`scripts/check-engineering-docs` 退出码 0。
+
+**交付记录**
+
+- 切片 1（2026-06-11 接手工具：Claude Code）：docs-only 修正三份事实源，0 业务代码变更。修改 3 个文件（`current-work.md` + `technical-debt.md` L145 总览表与 L2358-2390 任务卡 + `work-log.md` L21 索引行加 ⚠️ 标注 + 归档段加复盘段）。分支 `docs/td-048-reconciliation-and-closure`（PR-1）。
+- 切片 2（待开工）：业务代码收口，PR-2。
+- 切片 3（待开工）：docs-only 跨事实源收口，PR-3。
+- **教训入账（给后续 AI IDE）**：任务分支未合 main 不得在 `current-work.md` / `work-log.md` 标"已完成"；合并闭环必须经 `gh pr view` 确认 state=MERGED + `gh pr checks` 通过，才允许翻 `🟢 完成`。本债违反此规则导致三份事实源漂移，违背 `quality-gates.md#完成门禁#3` 状态不自相矛盾。
 
 ### TD-050: `EvidenceItem` 缺 `source_chunk_id` 字段 / spec 与实现错位
 
