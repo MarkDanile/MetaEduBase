@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-011 AI 应用广场与应用注册中心 | 🟡 Doing | P1 | AI Apps / Frontend / API / Backend / Data Model | spec + plan 已落档；5 项决策已确认（Q1 APP-001 Published/Pilot / Q2 租户级可见性 / Q3 独立菜单 / Q4 强类型配置 / Q5 share_token+api_token）；Slice 1：建任务分支，从数据模型 + 迁移 + Service + API CRUD 入手 | 建 `feature/req-011-ai-app-marketplace` 任务分支，执行 Slice 1（Task 1.1–1.6） | docs-only 塑形，无代码改动；spec / plan 已落档可走 review |
+| REQ-011 AI 应用广场与应用注册中心 | 🟡 Doing | P1 | AI Apps / Frontend / API / Backend / Data Model | Slice 1 已完成并提交 PR（commit `fcd8d80`）；DB `ai_applications` 表 + APP-001~004 种子数据已就绪；待 PR #TBD 合并后继续 Slice 2 | 等待 PR 合并后进入 Slice 2（前端路由 + 菜单 + 广场列表）；后续 Slice 3（管理页）+ Slice 4（框架页） | ruff ✅ / alembic upgrade ✅ / engineering docs ✅ |
 
 ## 下一批候选任务
 
