@@ -197,6 +197,17 @@ refactor(server): 重构知识节点服务
    - 已合并到 `main`
    - 因何原因未完成后续阶段
 
+### 翻完成前硬条件
+
+`状态：🟢 完成` 写回工作台 / 任务总账 / work-log 之前，**必须**满足以下硬条件；任意一条不满足都不得翻完成：
+
+1. `gh pr view <PR> --json state` 的 `state` 字段为 `MERGED`（squash / merge commit 任一即可）。
+2. `gh pr checks` 无阻塞（PR 未配 CI 时该项跳过，但需在工作台记录"PR 未配 CI"）。
+3. 本地 `main` 已 `git pull --ff-only` 同步合并结果（`git log --oneline origin/main | head -1` 包含该 PR 的 merge commit）。
+4. 当前任务的 commit `git merge-base --is-ancestor <source-commit> main` 为 true（squash merge 场景下以 PR 的 `MERGED` 状态和 merge commit 为准，详见上文 5 合并后确认 #3）。
+
+本段与 [`workbench.md#状态同步规则`](workbench.md#workbench--当前工作台规范) 同源，是 git-workflow 视角的硬条件；workbench 是工作台视角的同步规则。完成门禁的 `状态` 校验（`quality-gates.md#完成门禁#3`）会把"任务分支未合 main 视为未走完 Git 阶段"作为不矛盾判据之一。教训证据见 [`technical-debt.md#doc-058`](../technical-debt.md#doc-058)（TD-048 漂移回退：commit `23a54b1` 落到分支但未合 main，三份事实源写"完成"互斥）。
+
 ### main 直推禁令
 
 不论仓库的 `main` 是否实际配置了 GitHub branch protection / pre-push hook / 任何服务端约束，**agent 不得以 `git push origin main` 直接推送任何 commit**。完成门禁的合规判断以本文件 + `quality-gates.md` 文字规则为准，**不**以 push 是否被远端接受为准。
