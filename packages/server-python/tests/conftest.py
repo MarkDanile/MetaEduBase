@@ -1,14 +1,8 @@
-
-import os
-import sys
-from unittest.mock import patch
-
 # REQ-010: ensure repo root is on sys.path so tests can import scripts.ai.*
-_REPO_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..")
-)
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
+# The sys.path side effect lives in tests._paths; importing it here keeps
+# conftest.py itself free of module-level statements that break E402.
+import os
+from unittest.mock import patch
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -19,6 +13,7 @@ from sqlalchemy.pool import NullPool
 from app.main import app
 from app.shared.infrastructure.database import get_session
 from app.shared.infrastructure.seed import DEFAULT_ADMIN_ID, DEFAULT_TENANT_ID
+from tests._paths import _REPO_ROOT  # noqa: F401  (re-exported for fixtures)
 
 DEFAULT_TEST_DB_URL = (
     "postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test"

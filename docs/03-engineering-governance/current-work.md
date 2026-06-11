@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| TD-049 `tests/conftest.py` 8 E402 pre-existing（TD-012 收口后遗留） | 🟡 进行中 | P3 | 后端 / 测试 / 质量门禁 / 工程治理 | 分支 `chore/td-049-conftest-sys-path-move`；ruff 复跑确认 8 个 E402 全在 `tests/conftest.py:13,14,15,16,17,19,20,21`（根因 L7-L11 `sys.path.insert` 块；任务卡 L13-20 描述，行号 1 行偏差，事实以 ruff 实测为准）。`tests/__init__.py` 已存在，`from tests._paths import *` 方案直接可用；唯一 `scripts.ai.*` 消费方为 `tests/engineering/test_evidence_coverage_report.py:12`。 | (1) 新建 `packages/server-python/tests/_paths.py` 持有 `_REPO_ROOT` + `sys.path.insert` 副作用；(2) conftest.py 改为 `from tests._paths import *`；(3) `ruff check app/ tests/` 退出码 0；(4) `pytest --collect-only tests/engineering` 仍能 import `scripts.ai.evidence_coverage_report`。 | 详看 [TD-049](technical-debt.md#td-049) |
 
 ## 下一批候选任务
 
@@ -25,7 +25,6 @@
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
 | REQ-012 RAG 多路召回与知识图谱证据链收口 | 🟣 Shaping | P1 | RAG / AI Chat / Evidence / KG | 详看 [Requirement](../01-product-planning/05-requirements/REQ-012-rag-retrieval-and-kg-evidence-chain-follow-up.md)；REQ-010 质量 follow-up 的正式稳定编号。**TD-047 + TD-050 均已收口**（zhparser + chinese_zh 全文检索升级 + node 类型 evidence 透传 source_chunk_id）；REQ-012 启动时把"TD-047 + TD-050 已收口"作为前置依赖写进 spec，直接进入 RAG 链路收口工作。 |
-| TD-049 `tests/conftest.py` 8 E402 pre-existing（TD-012 收口后遗留） | ⚫ 待办 | P3 | 后端 / 测试 / 质量门禁 / 工程治理 | 详看 `technical-debt.md#td-049`；8 个 E402 全在 `tests/conftest.py:13-20`，根因 L11 `sys.path.insert` 块；修复方案已记（挪到新建 `tests/_paths.py`）。低风险，下一批可独立 PR。 |
 
 ## 最近完成
 
