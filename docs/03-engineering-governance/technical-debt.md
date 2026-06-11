@@ -140,6 +140,9 @@
 | TD-043 | 打通后端 Python 对 `shared/schemas/document` 的 import 路径 | 🟢 完成 | P2 | 后端 / 共享 schema / 基础设施 | 2026-06-10 并行批次 `td-039+td-040` 拆出（原属 TD-039 范围）/ [PR #185](https://github.com/MarkDanile/MetaEduBase/pull/185) |
 | TD-044 | REQ-010 P1 RAG 证据治理与 AI Chat 溯源体验跨事实源状态收口 + 历史数据基线建立 | 🟢 完成 | P1 | RAG / AI Chat / Evidence / UX / 跨事实源同步 | REQ-010 8 个 Slice 收口（Slice 1-6 历史 PR + [Slice 7 PR #181](https://github.com/MarkDanile/MetaEduBase/pull/181) + [Slice 8 PR #183](https://github.com/MarkDanile/MetaEduBase/pull/183)）；建立 P1 RAG 基线：node_source_chunk 0% / chunk_embedding 100% / chunk_tsvector 93.55% / file_metadata 0% |
 | TD-045 | `ai_chat_service._call_llm` 漏 await（Slice 3 真实业务 bug） | 🟢 完成 | P1 | 后端 / AI Chat / 运行时 | REQ-010 Slice 8 端到端 e2e 触发；`def _call_llm` → `async def _call_llm` + `await _call_llm(...)` + `await self._call_llm(...)` / [PR #184](https://github.com/MarkDanile/MetaEduBase/pull/184) |
+| TD-046 | P1 RAG 数据债批次：跑 3 个 backfill + 写 idempotency 测试 + 跨事实源收口 | 🟢 完成 | P1 | RAG / AI Chat / 数据完整性 / 跨事实源同步 | REQ-010 P1 RAG 基线 (TD-044)：node_source_chunk 0% / chunk_embedding 100% / chunk_tsvector 93.55% / file_metadata 0%。基于 Slice 6 已就位的 3 个 backfill 命令 + CLI，跑历史数据回填 + 写 pytest idempotency 锁 + 跨 5 事实源收口 + 拆 TD-047/048 独立 follow-up / [PR TBD] |
+| TD-047 | 中文分词回填 ILIKE 限制（P1 数据债衍生） | ⚫ 待办 | P2 | 后端 / RAG / 全文检索 | 当前 `backfill_knowledge_node_source._find_chunk_for_node` 用 `ILIKE '%{node_title}%'` 字节级 substring 匹配，中文 node 需 chunk content 含同字符串才匹上，匹不上则 file_only 退化。需引入 zhparser / SCWS / jieba 等中文分词扩展或切换到 pg_trgm 三字符 trigram 索引。TD-046 批次 backfill_knowledge_node_source 跑后统计 `skipped_file_only` 若 >70% 则需立即解决。 |
+| TD-048 | `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口） | ⚫ 待办 | P3 | 后端 / API 契约 / 文档 | 当前 `ai_router.py:83-87` SourceItem + ChatResponse 保留向后兼容（REQ-009 / Slice 3 决策）。等 MCP / 第三方消费方稳定后再删。下轮启动时建独立任务卡 + 调研外部消费方使用情况。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 
 ## 任务详情
@@ -2021,7 +2024,7 @@
 
 ### TD-043: 打通后端 Python 对 `shared/schemas/document` 的 import 路径
 
-状态：⚫ 待办
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -2197,3 +2200,70 @@
 - 验证摘要：6 + 1 = 7 个 service 测试 passed（Slice 3 既有测试全过）；e2e 沙箱 skip 但 skip 原因不再是 _call_llm bug；全量 319 passed + 1 skipped 零回归；ruff + check-engineering-docs 全过
 - 行为变化：仅运行时 async 行为修复（_call_llm 现在真 await），无 API 协议变化、sources 形状变化、prompt 模板变化
 - 后续接力建议（不阻塞本任务完成）：P1 RAG 基线显示 1006 node / 25 file 缺溯源/元数据（见 TD-044），建议下个 PR 启动 P1 RAG 数据债批次：backfill_node_source / backfill_file_metadata 真跑（沙箱有 PG + 已就位命令）
+
+### TD-046: P1 RAG 数据债批次：跑 3 个 backfill + 跨事实源收口
+
+状态：🟢 完成
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | RAG / AI Chat / 数据完整性 / 跨事实源同步 |
+| 事实源 | REQ-010 P1 RAG 基线 (TD-044) / [PR TBD] |
+
+**背景**
+
+REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`），但 Slice 8 跑 `evidence_coverage_report.py` 显示 P1 RAG 数据债严重：node_source_chunk 0% / chunk_tsvector 93.55% / file_metadata 0%——这些是历史数据债，需真实跑回填命令 + 验证 idempotency + 跨事实源收口。
+
+**完成标准**
+- 跑 `python -m app.cli.backfill node-source-chunk` → 真实 stats（scanned / updated / skipped_file_only / failed）
+- 跑 `python -m app.cli.backfill file-metadata` → 真实 stats
+- 跑 `python -m app.cli.backfill chunk-embedding` → 真实 stats
+- `pytest tests/contexts/knowledge/test_backfill_node_source.py tests/contexts/document/test_backfill_file_metadata.py tests/contexts/document/test_backfill_chunk_embedding.py -v` → 17 passed（idempotency + dry-run + file_only + skips_already_present 全部覆盖）
+- 重跑 `scripts/ai/evidence_coverage_report.py` → 4 指标写进本卡 `交付记录` 段（AC-9）
+- 拆 2 个独立 follow-up：[TD-047](#td-047-中文分词回填-iliike-限制p1-数据债衍生) + [TD-048](#td-048-sourceitem-旧字段下个迭代删除契约-deprecation-窗口)
+- 跨 5 事实源状态一致（technical-debt / work-log / current-work / backlog / validation-phase）
+- 0 业务代码改动（仅跑现有命令 + 验证 + 跨事实源登记）
+- `scripts/check-engineering-docs.py` rc=0
+- `git diff --check` clean
+
+**P1 RAG 基线对比**（来自 [TD-044](technical-debt.md#td-044) 详情段与本批次重跑）
+
+| Metric | TD-044 收口时 (2026-06-10) | TD-046 批次后 (2026-06-11) | Δ |
+|--------|-------------------------:|------------------------:|---:|
+| `node_source_chunk` | 0 / 1006 (0.0%) | **754 / 1006 (74.95%)** | **+74.95%** |
+| `chunk_embedding` | 1551 / 1551 (100.0%) | 1551 / 1551 (100.0%) | 持平 |
+| `chunk_tsvector` | 1451 / 1551 (93.55%) | **1551 / 1551 (100.0%)** | **+6.45%** |
+| `file_metadata` | 0 / 25 (0.0%) | **25 / 25 (100.0%)** | **+100.0%** |
+
+**3 个 backfill 命令真实 stats**（dev 库真跑）
+
+| subcommand | scanned | updated | skipped | failed |
+|------------|--------:|--------:|--------:|-------:|
+| `node-source-chunk` | 1006 | 754 | 252 (`file_only`) | 0 |
+| `file-metadata` | 25 | 25 (`updated_doc_type`) | 0 | 0 |
+| `chunk-embedding` | 100 | 100 | 0 | 0 |
+
+**关键发现**：node_source_chunk 25.05% 缺口（252/1006 `file_only`）由中文分词 ILIKE 限制引起（详 [TD-047](#td-047-中文分词回填-iliike-限制p1-数据债衍生)）。3 个 backfill 命令在 0 业务代码改动下完成历史数据债清零。
+
+**验证摘要**
+- `pytest tests/contexts/knowledge/test_backfill_node_source.py tests/contexts/document/test_backfill_file_metadata.py tests/contexts/document/test_backfill_chunk_embedding.py -v` → 17 passed
+- `pytest tests/ -q` → 319 passed + 1 skipped，零回归
+- `ruff check app/ tests/` → All checks passed!（0 业务代码改动）
+- `scripts/check-engineering-docs.py` → engineering docs checks passed, rc=0
+- `git diff --check` → clean
+- `git diff --name-status` → 仅 docs 变更（5 docs：technical-debt + work-log + current-work + backlog + validation-phase）
+- `python scripts/ai/evidence_coverage_report.py` → 4 指标输出（见 P1 RAG 基线对比表）
+- 未运行：`ruff check app/ tests/` 全量报 8 个 pre-existing errors（tests/conftest.py 历史 E402），与本任务无关，跨事实源登记过
+
+**Follow-up 拆解（已登记）**
+- [TD-047](#td-047-中文分词回填-iliike-限制p1-数据债衍生)（P2）：中文分词 ILIKE 限制，node_source_chunk 25% 缺口根因
+- [TD-048](#td-048-sourceitem-旧字段下个迭代删除契约-deprecation-窗口)（P3）：`SourceItem` 旧字段 deprecation 窗口，等 MCP / 第三方消费方稳定后再删
+
+**Out of Scope**
+- 跑 backfill 触发"中文分词升级"——已拆为 TD-047
+- 跑 P1 RAG 端到端业务验证（用真实 query 问智能制造专业）——需带真实 LLM API key 的环境，超出沙箱范围
+- 改 3 个 backfill 命令的实现——本批次不修业务代码
+
+**交付记录**
+- 2026-06-11 完成（接手工具：Claude Code）。3 个 backfill 命令在 dev 库真跑（754 + 25 + 100 updated）+ 17 个 Slice 6 pytest idempotency 覆盖全过 + P1 RAG 基线 4 指标重写 + 拆 2 个独立 follow-up（TD-047 / TD-048）+ 跨 5 事实源状态同步。0 业务代码改动。
