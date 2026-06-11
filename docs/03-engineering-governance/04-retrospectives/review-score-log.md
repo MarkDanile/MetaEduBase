@@ -16,6 +16,23 @@
 
 | 日期 | 类型 | 任务 | PR | 总分 | 结论 | 必修 follow-up | 流程扣分点 | 规则 / 脚本改进 | 评审人 |
 |------|------|------|----|------|------|----------------|------------|------------------|--------|
+| 2026-06-11 | Original | DOC-059 点名任务入口解析门禁与最近完成固定裁剪规则 | [#189](https://github.com/MarkDanile/MetaEduBase/pull/189) / [#190](https://github.com/MarkDanile/MetaEduBase/pull/190) | 91 | 优秀；把“点名任务不在工作台直接开干”和“最近完成单条搬运”两个高频流程缺口收敛为短门禁 + 脚本提示，并用 PR #190 清理合并后占位 | 无 | PR #189 合并后才发现 REQ-010 / TD-046 `PR TBD` 占位，已用最小 PR #190 backfill；说明完成门禁仍需要合并后占位扫描 | 规则已落实到 task-modes / workflow / workbench / quality-gates，并同步脚本提示；不新增规则 | Codex |
+| 2026-06-11 | Original | TD-046 P1 RAG 数据债批次（3 个 backfill 真跑 + 跨事实源收口） | [#187](https://github.com/MarkDanile/MetaEduBase/pull/187) | 82 | 良好；真实 PG 回填把 P1 RAG 数据基线从严重缺口推进到可量化状态，但仍留下中文 file_only、旧 SourceItem 契约和 E402 测试基建债 | REQ-012 / TD-047 / TD-048 / TD-049 | 完成态曾残留 `PR TBD` 占位；`ruff check app/ tests/` 仍有 pre-existing E402，需明确写成历史失败而不是“全量通过”；数据质量仍是部分改善不是完整闭环 | follow-up 已稳定入账；DOC-059 已把合并后占位清理和工作台入口收紧 | Codex |
+| 2026-06-11 | Original | TD-043 打通后端 Python 对 `@metaedu/shared/schemas/document` 的 import 路径（路线 A codegen） | [#185](https://github.com/MarkDanile/MetaEduBase/pull/185) | 88 | 良好；用 codegen 路线解决 Python 无法直接 import TS shared schema 的边界，保持后端常量来源可同步 | 无 | 无 | 不新增规则；这是 TD-039 拆分后的合理工程化收口 | Codex |
+| 2026-06-11 | Original | TD-039 6 键保留集合在 TS 端抽到 `@metaedu/shared/schemas/document` + spec 单一来源落地 | [#182](https://github.com/MarkDanile/MetaEduBase/pull/182) | 84 | 良好；前端 TS 单一来源收口有效，但原任务中后端 Python 路径不可达，必须拆 TD-043 才完整 | TD-043（已完成） | 原范围在实施中被收窄，说明跨语言 shared schema 设计在计划阶段没有完全识别；幸好拆分和事实源说明清楚 | 不新增规则；现有契约 / follow-up 分流足够 | Codex |
+| 2026-06-11 | Original | REQ-010 P1 RAG 证据治理与 AI Chat 溯源体验 | [#181](https://github.com/MarkDanile/MetaEduBase/pull/181) / [#183](https://github.com/MarkDanile/MetaEduBase/pull/183) / [#184](https://github.com/MarkDanile/MetaEduBase/pull/184) / [#187](https://github.com/MarkDanile/MetaEduBase/pull/187) | 80 | 良好但边界很紧；AI Chat 溯源体验、证据模型和基线建立可关闭，但真实 RAG 质量仍暴露召回证据链、数据初始化和 LLM async bug | TD-045 / TD-046 / REQ-012 | 多 Slice 交付依赖后续 PR 才补齐关键 bug 和数据债；P1 RAG 基线仍显示 node_source_chunk / file_metadata 历史缺口；工作日志只写 Slice 7 PR 容易低估真实交付链 | 已由 TD-045 / TD-046 / REQ-012 分流；不再新增规则 | Codex |
+| 2026-06-11 | Original | REQ-011 AI 应用广场与应用注册中心 | [#174](https://github.com/MarkDanile/MetaEduBase/pull/174) / [#175](https://github.com/MarkDanile/MetaEduBase/pull/175) / [#178](https://github.com/MarkDanile/MetaEduBase/pull/178) / [#179](https://github.com/MarkDanile/MetaEduBase/pull/179) | 86 | 良好；数据模型、API、广场、管理和分享页 4 Slice 形成可用应用注册中心雏形 | 无 | work-log 行标题仍偏“规划”，与实际 4 Slice 实现交付不完全一致；但 Backlog / current-work / plan 已给出真实实现链路 | 不新增规则；下次同类多 Slice 应让 work-log 标题直接反映“实现交付” | Codex |
+| 2026-06-11 | Original | REQ-002-4 模板可维护性 | [#170](https://github.com/MarkDanile/MetaEduBase/pull/170) | 90 | 优秀；schema_version、deprecated、容器互转二次确认、保留键校验和测试都较完整，REQ-002 子任务链收口质量高 | 无 | 无 | 不新增规则 | Codex |
+| 2026-06-11 | Original | TD-042 模板复用后端集成测试在 PG 实例下验证 | [#164](https://github.com/MarkDanile/MetaEduBase/pull/164) / [#122](https://github.com/MarkDanile/MetaEduBase/pull/122) | 88 | 良好；补真 PG 集成验证，并顺带修 007 inline FK / asyncpg 反射 PK 缺陷，降低模板复用运行时风险 | 无 | 无 | 不新增规则 | Codex |
+| 2026-06-11 | Original | TD-041 FieldCard 递归渲染嵌套字段 + 嵌套拖拽 | [#161](https://github.com/MarkDanile/MetaEduBase/pull/161) | 88 | 良好；用递归组件补齐 REQ-002-1 遗留的 object children / array items 嵌套拖拽能力，并修 removeColumn / copySubtree bug | 无 | 无 | 不新增规则 | Codex |
+| 2026-06-11 | Original | REQ-002-1 模板配置效率（编辑器 UX） | [#158](https://github.com/MarkDanile/MetaEduBase/pull/158) | 78 | 可接受；拖拽、子树复制、撤销和搜索过滤提升明显，但 AC-2 / AC-3 嵌套拖拽未完整收口，需要 TD-041 接力 | TD-041（已完成） | 原需求完成态中保留了实质验收缺口，后续才由技术债补齐；说明 UI 复杂交互 AC 需要更早做覆盖矩阵 | 不新增规则；TD-041 已完成接力 | Codex |
+| 2026-06-11 | Original | REQ-002-2 模板复用机制 | [#159](https://github.com/MarkDanile/MetaEduBase/pull/159) | 80 | 良好但有条件；6 端点、版本快照和导入导出主功能可关闭，但交付时真 PG 集成验证缺口由 TD-042 接力 | TD-042（已完成） | 运行时数据库兼容性未在原任务内证明，后续通过 TD-042 才修正迁移 / 反射问题 | 不新增规则；现有数据库集成验证规则足够，问题是执行时环境未覆盖 | Codex |
+| 2026-06-11 | Original | DOC-058 强化工作台规则渐进式披露入口 | 无 | 84 | 良好；把 workbench.md 提升为修改工作台前必读，改善 CC 遗漏状态更新的问题 | DOC-059（已完成） | 仍未覆盖“点名任务不在工作台时先入场”的入口解析缺口，后续由 DOC-059 补齐 | DOC-059 已完成；不新增规则 | Codex |
+| 2026-06-11 | Original | TD-040 FileTabsPanel.spec.ts Vue 单元测试覆盖 AC-11 / AC-12 + vitest 基建 | [#167](https://github.com/MarkDanile/MetaEduBase/pull/167) | 87 | 良好；补前端单测基建并锁定 FileTabsPanel 溯源展示关键 AC，提升前端 contract 可回归性 | 无 | 测试文件初期维护本地保留键副本，依赖 TD-039 后续统一来源；该风险已在 TD-039/TD-043 链条中收口 | 不新增规则 | Codex |
+| 2026-06-11 | Original | DOC-057 建立并行开发模式与集成收口规则 | 无 | 87 | 良好；明确并行触发、分支/worktree、文件边界和集成者统一回填，符合后续多 agent 协作需要 | 无 | 无 | 不新增规则；需要实践后再判断是否脚本化 | Codex |
+| 2026-06-11 | Original | DOC-056 收口 `check_req_status_consistency` 父 / 子任务混聚 bug | [#155](https://github.com/MarkDanile/MetaEduBase/pull/155) | 90 | 优秀；正则修复有明确 regression test，直接解决 REQ 父子任务状态误合并的脚本门禁 bug | 无 | 无 | 不新增规则 | Codex |
+| 2026-06-11 | Original | REQ-002-3 模板抽取结果溯源字段扩展 | [#153](https://github.com/MarkDanile/MetaEduBase/pull/153) / [#154](https://github.com/MarkDanile/MetaEduBase/pull/154) | 85 | 良好；后端 meta 落盘、前端溯源卡和 e2e 形成主链路，但 6 键保留集合重复和前端单测缺口需 TD-039 / TD-040 接力 | TD-039 / TD-040 / TD-043 | Contract 扩展后仍留前后端常量漂移风险和 Vue 单测缺口，后续由 3 个技术债分解收口 | follow-up 已完成或入账；不新增规则 | Codex |
+| 2026-06-11 | Original | TD-045 `ai_chat_service._call_llm` 漏 await 业务 bug 修复 | [#184](https://github.com/MarkDanile/MetaEduBase/pull/184) | 89 | 良好；修复真实 async 运行时 bug，并用 service 测试 / e2e 触发路径验证，直接提升 REQ-010 可用性 | 无 | 无 | 不新增规则 | Codex |
 | 2026-06-10 | Original | DOC-042 脚本化 TD-032 行数基线扫描 | [#143](https://github.com/MarkDanile/MetaEduBase/pull/143) | 72 | 可接受；行数扫描脚本、门禁和测试价值明确，但 PR 混入 TD-034 行为变更且 `--diff` 合并后不干净 | DOC-055 | PR #143 包含 `extract_template_prompts.py` 行为变更；TD-034 事实源指向仍 OPEN 的 PR #142；`scripts/scan-source-sizes --diff` 报 2 个文件与基线不一致 | 已登记 DOC-055；建议补 source-size baseline diff clean 检查和 PR 范围边界复核 | Codex |
 | 2026-06-10 | Original | DOC-045 修正 TD-033 CSS 拆分交付声明与追踪证据 | [#137](https://github.com/MarkDanile/MetaEduBase/pull/137) | 86 | 良好；TD-033 交付声明与追踪证据已跨事实源补齐 | 无 | 无 | 不新增规则；本次为 DOC-045 自身收口 | Codex |
 | 2026-06-10 | Original | TD-030 RecallChannel Protocol vs concrete signature drift 收口 | [#139](https://github.com/MarkDanile/MetaEduBase/pull/139) | 82 | 良好；代码契约与测试收口，但复核发现 DOC-051 的占位映射误归因未独立入账 | DOC-055 | 3 处 `TD-030（已锁定）` 实际语义可能不属于 TD-030；需回查 DOC-051 占位替换 | 已登记 DOC-055 | Codex |
@@ -44,12 +61,12 @@
 
 | 指标 | 当前值 | 说明 |
 |------|--------|------|
-| 已记录评审数 | 23 | 19 条 Original + 4 条 Backfilled。2026-06-10 新增 13 条 Codex 复评记录。 |
-| 平均评分 | 84.2 | 23 条 `总分` 算术平均；本轮新增评审总分 1110，累计总分 1936。 |
-| 一次关闭率 | 61% | 评分 ≥ 80 且无必修 follow-up 的任务数 / 已记录评审数 = 14/23。 |
-| 返工率 | 39% | 有必修 follow-up 的任务数 / 已记录评审数 = 9/23。 |
-| 流程扣分率 | 61% | `流程扣分点` 列非 `无` 的任务数 / 已记录评审数 = 14/23；这里表示有可复盘流程信号，不等同于严重违规。 |
-| 规则转化率 | 52% | 形成规则、脚本或 follow-up 改进的评审数 / 已记录评审数 = 12/23。 |
+| 已记录评审数 | 40 | 36 条 Original + 4 条 Backfilled。2026-06-11 新增 17 条 Codex 复评记录。 |
+| 平均评分 | 84.8 | 40 条 `总分` 算术平均；本轮新增评审总分 1457，累计总分 3393。 |
+| 一次关闭率 | 60% | 评分 ≥ 80 且无必修 follow-up 的任务数 / 已记录评审数 = 24/40。 |
+| 返工率 | 40% | 有必修 follow-up 的任务数 / 已记录评审数 = 16/40。 |
+| 流程扣分率 | 63% | `流程扣分点` 列非 `无` 的任务数 / 已记录评审数 = 25/40；这里表示有可复盘流程信号，不等同于严重违规。 |
+| 规则转化率 | 48% | 形成规则、脚本或 follow-up 改进的评审数 / 已记录评审数 = 19/40。 |
 
 > 样本量不足时，本表只用于追踪单任务事实，不用于趋势判断。
 
