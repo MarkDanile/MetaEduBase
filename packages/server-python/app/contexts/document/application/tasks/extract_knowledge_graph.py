@@ -22,6 +22,24 @@ from app.shared.tasks.lifecycle import (
 logger = logging.getLogger(__name__)
 
 
+def find_chunk_for_entity(
+    chunks: list[dict], entity_name: str
+) -> uuid.UUID | None:
+    """REQ-010 Slice 5: find the first chunk whose `content` contains
+    `entity_name` (substring match, case-sensitive).
+
+    Returns the chunk's id (UUID) or None when no chunk contains the name.
+    Used as a heuristic for KG entity→chunk traceability when the LLM does
+    not explicitly tag the entity with a chunk_index.
+    """
+    if not entity_name:
+        return None
+    for c in chunks:
+        if entity_name and entity_name in (c["content"] or ""):
+            return c["id"]
+    return None
+
+
 @shared_task(name="extract_knowledge_graph")
 def extract_knowledge_graph(file_id_str: str, tenant_id_str: str, pipeline_version: str = ""):
     import asyncio
@@ -87,6 +105,13 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str, pipeline_versi
                         "KG extraction JSON parse failed, raw content: %s", content[:300]
                     )
 
+                # REQ-010 Slice 5 — KG 抽取按 chunk 切片：每条 entity 写入时尝试
+                # 在 chunks 中模糊匹配（content 包含 entity name），把首个匹配
+                # chunk 的 id 写入 source_chunk_id；匹配失败则只保留
+                # source_file_id，标记 node_source_resolution='file_only'。
+                # 历史 / e2e 行为：source_file_id 必填不变（plan Slice 5 Step 5.4）。
+                # (find_chunk_for_entity 在模块级，供测试直接 import。)
+
                 # Write entities to knowledge_nodes with source tracking
                 # Build name→id map so relations can reference nodes by name
                 node_name_map: dict[str, uuid.UUID] = {}
@@ -99,13 +124,18 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str, pipeline_versi
                     # Store normalized forms too
                     node_name_map[name.strip().strip('"')] = node_id
 
+                    # REQ-010 Slice 5: 找首个包含 entity name 的 chunk
+                    resolved_chunk_id = find_chunk_for_entity(chunks, name)
+                    resolution = "chunk_resolved" if resolved_chunk_id else "file_only"
+
                     await session.execute(
                         text(
                             "INSERT INTO metaedu.knowledge_nodes "
                             "(id, tenant_id, title, description, domain, level, "
-                            "path, source_file_id, created_at, updated_at) "
+                            "path, source_file_id, source_chunk_id, "
+                            "node_source_resolution, created_at, updated_at) "
                             "VALUES (:id, :tid, :title, '', 'education_sports', "
-                            "'knowledge_point', :path, :fid, :now, :now)"
+                            "'knowledge_point', :path, :fid, :scid, :res, :now, :now)"
                         ),
                         {
                             "id": node_id,
@@ -113,6 +143,8 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str, pipeline_versi
                             "title": name,
                             "path": str(node_id)[:8],
                             "fid": file_id,
+                            "scid": resolved_chunk_id,
+                            "res": resolution,
                             "now": datetime.now(UTC).replace(tzinfo=None),
                         },
                     )
