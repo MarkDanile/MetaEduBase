@@ -43,6 +43,20 @@
 5. 如果插件生成了 spec / plan，规范副本已迁移或镜像到 `docs/02-delivery-plans/01-specs/*` / `docs/02-delivery-plans/02-plans/*`。
 6. 开发结束后会回写状态、验证结果和下一步。
 
+### 任务入口解析门禁
+
+用户说 `按流程处理 XXX`、`开发 XXX` 或 `修复 XXX` 时，先定位 `XXX` 的事实源，再决定能否进入实现：
+
+| `XXX` 所在位置 | 执行动作 |
+|----------------|----------|
+| `current-work.md` | 按工作台任务卡片执行；如果在“下一批候选任务”，开工前先移入“当前进行中”。 |
+| `technical-debt.md` | 以 `TD-xxx` 为任务事实源；会修改仓库文件时，先切任务分支，再把任务登记到 `current-work.md` 的“当前进行中”。 |
+| `04-backlog.md` 或 `05-requirements/*` | 先检查状态；`Idea` / `Candidate` / `Shaping` 只做塑形，`Ready` 或已有交付依据后再进入 spec / plan / current-work。 |
+| `01-roadmap.md`、`02-milestones/*` 或 `03-iterations/*` | 这些是规划信号，不是执行票据；必须先映射为稳定 `REQ` / `TD` / `DOC` / `BUG` 任务，再进入工作台。 |
+| 找不到稳定编号 | 先登记到对应事实源并补证据、完成标准和验证方式；不得直接改业务代码。 |
+
+入口解析不扩大任务范围。`current-work.md` 只记录当前执行和近期接力，完整需求池、技术债余量和里程碑规划仍回到各自事实源。
+
 ## 通用收尾回查
 
 每次进入提交、PR 或声明完成前，必须执行 `docs/03-engineering-governance/01-rules/quality-gates.md#完成门禁`。如果任务触发专项风险，再补读对应专项门禁：

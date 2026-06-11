@@ -30,7 +30,7 @@
 
 每次开发任务开始前，执行者必须：
 
-1. 阅读 `docs/03-engineering-governance/current-work.md`，确认本次任务卡片；如果需要更新工作台或任务状态，同时读取 `docs/03-engineering-governance/01-rules/workbench.md`。
+1. 阅读 `docs/03-engineering-governance/current-work.md`，确认本次任务卡片；如果用户点名的任务不在工作台，先按 `docs/03-engineering-governance/task-modes.md#任务入口解析门禁` 定位事实源；如果需要更新工作台或任务状态，同时读取 `docs/03-engineering-governance/01-rules/workbench.md`。
 2. 如果本次会修改仓库文件，用 `git status --short --branch` 确认已在语义化任务分支；若仍在 `main`，先切分支，再改任何文件。
 3. 按任务卡片链接读取相关文档：
    - 功能需求优先读取对应 `docs/02-delivery-plans/01-specs/*`。
@@ -42,7 +42,7 @@
    - API、DTO、前后端类型或 shared schema 变更读取 `docs/03-engineering-governance/01-rules/contracts.md`。
 4. 和用户确认本次执行范围、完成标准和验证方式。
 5. 将任务状态更新为 `进行中`，并记录最近接手工具、当前执行模式和当前分支。
-6. 如果任务来自 `docs/03-engineering-governance/current-work.md` 的“下一批候选任务”，开工前必须移动到“当前进行中”，并保留候选来源和本轮验证计划。
+6. 如果任务来自 `docs/03-engineering-governance/current-work.md` 的“下一批候选任务”或外部事实源，开工前必须移动或登记到“当前进行中”，并保留候选来源、事实源链接和本轮验证计划。
 
 很小的即时修复或纯问答可以不新增任务卡片，但执行者仍应在最终回复中说明验证结果。只要任务涉及跨文件修改、计划接力、状态交接或后续继续开发，就必须登记到当前工作台。
 
