@@ -150,6 +150,7 @@
 | DOC-059 | 新建 `check_task_completion_pr_consistency` 脚本扫"完成声明 → PR 状态"语义一致性 | ⚫ 待办 | P2 | 工程脚本 / 质量门禁 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：本债违反"`gh pr list --state merged` 是否真存在 PR"语义一致性。当前 `scripts/engineering/checks/` 的 `_common.py` / `current_work.py` 等检查只覆盖"最近完成行数 ≤ 20"、"候选区不混入完成"等结构性约束，**没有**扫"任务卡片声明完成 vs `gh pr list --state merged` 是否真存在 PR"。修复：在 `scripts/engineering/checks/_common.py` 加 `check_task_completion_pr_consistency(technical_debt_path, work_log_path, current_work_path)` 函数 + `scripts/engineering/checks/task_pr_consistency.py`（新建，参考 `placeholders_claims.py` 风格）+ `scripts/engineering/check_engineering_docs.py` 主入口注册新 check。函数：扫 3 份文档的 `🟢 完成` 任务 ID（正则 `\b(TD|DOC|REQ)-\d{3}(?:-\d+)?\b`），对每个 ID 跑 `gh pr list --state merged --search <ID> --json number`；缺失则报 1 个 `task-pr-consistency` issue。运行时：CI 跑（PR 提交时）/ 本地手工跑（`scripts/check-engineering-docs`）。注：脚本可被 `gh` 网络限制阻塞——本机离线 / 沙箱无网络时降级为"已扫 ID 但跳过 PR 校验"并写明 `未运行: gh pr list 受网络限制`。 |
 | DOC-060 | 增强 `scripts/engineering/checks/` 任务卡 vs 代码语义校验（任务卡残留量 + 任务卡完成状态 2 类不符） | 🟢 完成 | P2 | 工程脚本 / 质量门禁 | 1 docs-only PR 收口：`scripts/engineering/checks/_common.py` 加 `check_task_card_claim_vs_code` 通用函数（支持 `pr_state` / `residual_count` 2 类校验）；`scripts/engineering/checks/task_card_claims.py` 注册 `check_task_card_stale_completion` + `check_task_card_stale_residual` 2 个 check；沙箱下 `rg` 不可用时 `_python_pattern_count` 纯 Python fallback（CI 仍走 `rg` 路径）；14 个历史 task 加 KNOWN_ISSUES task_id 维度精确白名单；新增 2 个 pytest（`test_fails_when_completed_debt_card_uses_open_pr_state` + `test_fails_when_residual_count_claim_diverges_from_ripgrep`）通过 inproc `run_checker_inproc` 绕开 subprocess mock 隔离。`scripts/check-engineering-docs` 退出码 1（仅 7 条 pre-existing 警告，DOC-060 新增 0 条 active issue）；`git diff --check` clean；`pytest tests/engineering/` 22 passed 零回归（20 旧 + 2 新）。 | [PR #206](https://github.com/MarkDanile/MetaEduBase/pull/206) |
 | DOC-061 | 强化"agent 必须把 `main` 受保护视为硬门禁"——失败教训入账（TD-049 收口违规） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 / Git 流程 | TD-049 收口时（2026-06-12）agent 误以为"本仓 main 无 GitHub branch protection 即可直推"，对 `git-workflow.md#分支策略` 写明的"main 受保护 / 必须通过 PR 合入"做隐式打折；先后两次 `git push origin main` 直推工作台收口（commit `9039d74`）和 revert（commit `c744656`）。修复（教训入账，docs-only）：在 `git-workflow.md#完整交付闭环` 末尾追加 1 段"main 直推禁令"明确文案（"agent 在未配置 branch protection 的 main 上仍必须走 PR；'push 是否成功'不是合规依据"）；在 `git-workflow.md#违反与回退` 加 1 段"直推 main 的处置"说明违规回退路径（revert + 走 PR 重新收口 vs `git reset --hard` 的破坏性对比）；在 `quality-gates.md#完成门禁#3` 后追加子项明确"任务卡 / 工作台状态变更不得以 `git push origin main` 直推"。无脚本变更（避免 `check_engineering_docs.py` 误判路径状态），规则硬约束由人工 review + 工作台复核兜底。 |
+| DOC-063 | `check-engineering-docs` 性能收口（subprocess 砍掉 / 5 秒硬指标） | 🟢 完成 | P2 | 工程脚本 / 质量门禁 / 性能 / git plumbing 替代 gh | DOC-060 收口后用户跑 `scripts/check-engineering-docs` 报 ~110s（DDC-060 新增的 `check_task_card_stale_completion` 49 次串行 `gh pr view` 是 99% 元凶）。按用户选择方案 A：用 git history 替代 `gh pr view`（任务卡 mergeCommit 字段已是事实源，check 改用 `git rev-parse --verify <commit>^{commit}` 校验自洽性）。修复：`_common.check_merge_commit_in_git_history` fast path（< 5ms/次，零网络）+ `task_card_claims._find_merge_commit_in_card` 扫 `\| Merge Commit \|` 字段或 `merge commit \`<sha>\`` 短 hash 模式 + `_find_pr_number_in_card` 严格化（只匹 `\| 交付 PR \|` 表格列头）+ `--verify-pr-state` CLI flag 显式 opt-in 启用 gh legacy 路径（保留给真需要查 GitHub 端真实状态的场景）。`check-engineering-docs` **0.76 秒**（< 5 秒目标 ✓，145x 提速），`check_task_card_stale_completion` 17.6ms（6000x 提速），`pytest tests/engineering/` 22 passed 零回归。 | [PR #209](https://github.com/MarkDanile/MetaEduBase/pull/209) |
 
 ## 任务详情
 
@@ -2831,3 +2832,61 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
   - 已运行：`git diff --name-status` → 4 个 docs 文件（无业务代码 / 生成物 / 无关资产混入）。
   - 已运行：`git diff --check` → clean。
 - 与 PR #200 关系：PR #200 已合 main（业务代码 + 文档初版）；本次 PR 收口"工作台状态翻 🟢" + "教训入账"两个独立事实；属 docs-only 收口。
+
+### DOC-063: `check-engineering-docs` 性能收口（subprocess 砍掉 / 5 秒硬指标）
+
+状态：🟢 完成
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 工程脚本 / 质量门禁 / 性能 / git plumbing 替代 gh |
+| 事实源 | DOC-060 收口后 `check-engineering-docs` 报 ~110s；DDC-060 新增的 `check_task_card_stale_completion` 49 次串行 `gh pr view` 是 99% 元凶（per-check cProfile 显示 109.4s / 109.4s of 110s）|
+| 交付 PR | [PR #209](https://github.com/MarkDanile/MetaEduBase/pull/209) |
+| Merge Commit | `387303e` (squash merge) |
+
+**证据**
+
+- `time python3 scripts/check-engineering-docs` 在 DOC-063 之前报 `1:38.21 total`（1 分 38 秒）。
+- per-check timing 分布（median of 2 runs, DOC-063 前）：
+  - `check_task_card_stale_completion`: **109.4s** (49 次串行 `gh pr view <N>` subprocess，每次 0.7-1.3s，部分触发 10s rate-limit 超时)
+  - 其他 16 个 check 累计 < 1s
+  - 串行总：109.4s + 0.5s = ~110s
+- cProfile `select.poll` 占用 51.94s，100% 在 subprocess 上等待 gh 返回。
+- 49 个已完成 task card 全是 MERGED 已知事实，**0 个真 issue**——脚本在白白查已知状态。
+
+**问题**
+
+- `scripts/check-engineering-docs` 是 `git-workflow.md#提交前检查` 与 `quality-gates.md#完成门禁#2` 引用的稳定兼容入口；1 分 38 秒的延迟让所有 docs-only PR 都被门禁挡住，是高质量交付链路的硬瓶颈。
+- gh CLI 是 GitHub 端的"当前视图"，**不是 PR MERGED 状态的权威源**——squash merge 后 MERGED 状态不可逆，本地 git 历史里 merge commit 存在即为权威事实。
+- DOC-058 翻完成硬条件已要求任务卡写 `mergeCommit` 字段；DOC-060 收口时（PR #204 / #205 / #206）也按此约定回填了 3 个 task（DDC-057 / DOC-058 / DOC-060），所以 fast path 校验条件已就绪。
+
+**完成标准**
+
+- `_common.check_merge_commit_in_git_history(merge_commit, repo_root)`：用 `git rev-parse --verify <commit>^{commit}` 校验（< 5ms/次，零网络）。
+- `check_gh_pr_state_legacy` 路径 opt-in 保留（环境变量 `METAEDU_CHECK_VERIFY_PR_STATE=1`）——给真需要查 GitHub 端真实状态的场景。
+- `check_gh_pr_state` 改为向后兼容别名（保留旧测试与外部调用方），实际 fast path 走 `check_merge_commit_in_git_history`。
+- `check_task_card_claim_vs_code` claim_kind='pr_state' 改为要求任务卡写 Merge Commit 字段（DOC-058 翻完成硬条件已有约定），用 git plumbing 校验。
+- `TASK_CARD_MERGE_COMMIT_INLINE_RE` 兼容历史任务卡用 `merge commit \`<sha>\`` 短 hash 写在事实源/交付记录段叙述里的格式。
+- `is_pr_state_via_gh_enabled()` opt-in 开关 helper。
+- `task_card_claims._find_merge_commit_in_card` 扫 `| Merge Commit |` 字段或 `merge commit \`<sha>\`` 短 hash 模式。
+- `task_card_claims._find_pr_number_in_card` 严格化：只匹 `| 交付 PR |` 表格列头（与 DOC-057/058/060 收口时定下的统一格式对齐），不再匹全文——避免 TD-023 等"事实源引用其他任务 PR"的 task 误把他人的 PR 当成自己的事实源。
+- `check_engineering_docs.main` 新增 `--verify-pr-state` CLI flag 显式启用 gh legacy 路径（opt-in by 用户手动跑）。
+- `scripts/check-engineering-docs` ≤5 秒硬指标（实测 0.76s，145x 提速）。
+- `scripts/check-engineering-docs` 退出码不新增失败项。
+- `git diff --check` clean。
+- `pytest tests/engineering/` 22 passed 零回归。
+- 跨事实源同步：技术债总账任务卡交付记录补 PR 链接 + merge commit；work-log 索引行追加 DOC-063 行；最近完成区收口行。
+
+**验证方式**
+
+- 已运行：`time python3 scripts/check-engineering-docs` → **0.76s**（< 5s 目标 ✓，145x 提速）
+- 已运行：per-check timing breakdown（median of 3 runs）→ `check_task_card_stale_completion` 从 109.4s → **17.6ms** (6000x 提速)
+- 已运行：`git diff --check` → 0 warnings (clean)
+- 已运行：`python3 scripts/check-engineering-docs` → 退出码 0（仅 8 条 pre-existing 警告：本任务新增 0 条 active issue）
+- 已运行：`PYTHONPATH=. python3 -m pytest tests/engineering/test_check_engineering_docs.py -v` → **22 passed in 1.12s** 零回归（20 旧 + 2 新）
+- 已运行：`git log --oneline origin/main` 验证 PR #209 / merge `387303e` 已在 main
+
+**交付记录**
+
+- 2026-06-12 入账 + 收口（接手工具：Claude Code），1 docs-only PR（[PR #209](https://github.com/MarkDanile/MetaEduBase/pull/209) / merge commit `387303e` / 分支 `docs/doc-063-check-engineering-docs-perf`）。完成要点：`_common.check_merge_commit_in_git_history` fast path（< 5ms/次，零网络）+ `task_card_claims._find_merge_commit_in_card` 扫 `| Merge Commit |` 字段或 `merge commit \`<sha>\`` 短 hash 模式 + `_find_pr_number_in_card` 严格化（只匹 `| 交付 PR |` 表格列头，避免 TD-023 等任务卡误把别人 PR 当自己的）+ `--verify-pr-state` CLI flag 显式 opt-in 启用 gh legacy 路径 + 测试 mock 目标切到 `check_merge_commit_in_git_history`。`check-engineering-docs` **0.76 秒**（< 5 秒目标 ✓，145x 提速），`check_task_card_stale_completion` 17.6ms（6000x 提速），`git diff --check` clean，`pytest tests/engineering/` 22 passed 零回归，`gh pr view 209` state=MERGED + merge commit `387303e` 已在 main。跨事实源同步见 work-log 索引行（落地后追加）。
