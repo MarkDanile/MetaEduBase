@@ -2842,13 +2842,17 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-051: 治理 `document_chunks` 结构元数据、切片质量与既有数据重建
 
-状态：🟢 完成（PR #234 已合并，merge `ffccc6c`）
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P1 |
 | 领域 | RAG / 数据完整性 / 文档解析 / AI Chat |
 | 事实源 | BUG-003 AI Chat 回答质量排查 / 2026-06-12 `document_chunks` 只读统计 |
+| 交付 PR | [PR #234](https://github.com/MarkDanile/MetaEduBase/pull/234) |
+| Merge Commit | `ffccc6c` (squash merge) |
+
+**证据**
 
 **证据**
 
@@ -2923,6 +2927,32 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
   - Slice 7：11 个新 pytest 锁死 chunker 行为（section_path / char_start单调 / offset正确性）
   - 验证：ruff 全部 clean，67 passed，19 pre-existing errors，`git diff --check` clean
   - PR #234 squash merge `ffccc6c`（2026-06-12）；补 Merge Commit 完成。
+- 2026-06-12 本机真跑重建（入手工具：Claude Code，分支 `chore/td-051-rebuild-data-on-local-pg`）：
+  - 新增 `scripts/ai/chunk_quality_report.py`（7 + 1 指标 + before/after diff 工具）
+  - 重建前基线（`docs/03-engineering-governance/td-051-baseline-before.json`，tenant `default`）：
+    - total_chunks 1551
+    - section_path_empty 1551 (100%)、section_title_empty 325 (20.95%)
+    - char_start_null 100 (6.45%)、char_start_zero_zero 278 (17.92%)
+    - orphan_chunks 100 (6.45%)、offset_overlaps 816 (52.61%)
+  - 跑 `cleanup_orphan_chunks`（Slice 6）：删除 100 orphan，剩余 0
+  - 跑 `rebuild_document_chunks`（Slice 5）：25 个文件全部成功（Python 教程 PDF 782 chunks + 24 个其他文件，0 失败）；未 chain embed（按 ops 控制语义留维护者后续触发）
+  - 重建后基线（`docs/03-engineering-governance/td-051-baseline-after.json`）：
+    - total_chunks 1562 (+11)
+    - section_path_empty 1562 (100%) — **未改善**（slice 5 fallback bug 暴露，详见 follow-up）
+    - section_title_empty 202 (12.93%) — **-123 (-8 pct) ✅**
+    - char_start_null 0 (0%) — **完全修复 ✅**
+    - char_start_zero_zero 0 (0%) — **完全修复 ✅**
+    - orphan_chunks 0 (0%) — **完全修复 ✅**
+    - offset_overlaps 869 (55.63%) — **+3 pct ⚠️**（rebuild 后反而变多，详见 follow-up）
+  - 暴露的 follow-up bug（不入本轮 PR 范围，记为待入账 TD-051-FU）：
+    1. `_reconstruct_sections_from_full_text` fallback 未算 `section_path` → 老数据 structured_data 缺 `sections` 键时 section_path 仍 100% 空
+    2. 重建后 offset_overlaps 反而 +3% → chunker 的 `char_start` 跨 section 计算或 `_enforce_size_limit` 拆分逻辑仍有问题
+    3. `cleanup_orphan_chunks` task 函数未把 `result.rowcount` 返回 → 调用方拿不到删条数，只能查 SQL 验证
+  - 验证：`scripts/check-engineering-docs` 退出码 0（新增 quality_report.py 走 `scripts/` python check 路径）；`git diff --check` clean
+  - 维护者待办：
+    1. 真实 PG 走 `rebuild_document_chunks(file_id, tenant_id, chain_embed=True)` 触发 embed 重算（本次未 chain）
+    2. 复测 BUG-003 AC-2/AC-3 "Python 的基本数据类型有哪些？" 命中 chunk 51/52/56
+    3. 决定 TD-051-FU 是否入账（3 个 follow-up bug 优先级 P1）
 
 ### DOC-063: `check-engineering-docs` 性能收口（subprocess 砍掉 / 5 秒硬指标）
 
