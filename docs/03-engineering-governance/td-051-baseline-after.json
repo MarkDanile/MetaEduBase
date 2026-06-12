@@ -1,0 +1,40 @@
+{
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "total_chunks": 1562,
+  "section_path_empty": 1562,
+  "section_title_empty": 202,
+  "char_start_null": 0,
+  "char_start_zero_zero": 0,
+  "orphan_chunks": 0,
+  "length_buckets": [
+    {
+      "bucket": "<100",
+      "count": 57
+    },
+    {
+      "bucket": "100-199",
+      "count": 145
+    },
+    {
+      "bucket": "200-349",
+      "count": 295
+    },
+    {
+      "bucket": "350-499",
+      "count": 912
+    },
+    {
+      "bucket": "500-799",
+      "count": 96
+    },
+    {
+      "bucket": "800-1199",
+      "count": 24
+    },
+    {
+      "bucket": ">=1200",
+      "count": 33
+    }
+  ],
+  "offset_overlaps": 869
+}
