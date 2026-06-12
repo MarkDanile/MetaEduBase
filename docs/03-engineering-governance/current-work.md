@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| TD-052 `check-engineering-docs` 秒级反馈优化 | 🟣 待验证 | P2 | 工程脚本 / 质量门禁 / 性能 | 分支 `docs/td-052-check-docs-incremental-source-size`：默认 source size 改为增量扫，`--full` 保留全量扫；DOC-059 PR 兜底检查改为一次 git log 批量匹配；新增 `--timing`。 | 提交 PR 并合并 main；合并后回填 TD-052 完成状态和 work-log。 | 已运行：`packages/server-python/.venv/bin/python -m pytest tests/engineering/test_check_engineering_docs.py -q` → 29 passed；`packages/server-python/.venv/bin/ruff check ...` → All checks passed；`scripts/check-engineering-docs` → 0.35s / exit 0；`scripts/check-engineering-docs --full --timing` → 0.89s / exit 0；`git diff --check` → exit 0。 |
+| （空） | | | | | | |
 
 ## 下一批候选任务
 
@@ -32,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-12 | TD-052 `check-engineering-docs` 秒级反馈优化 | 🟢 完成 | PR #232 已合并：默认 source size 增量扫，`--full` 保留全量审计，`--timing` 输出耗时；git log 兜底批量化。默认门禁 0.36s。 | [TD-052](technical-debt.md#td-052-check-engineering-docs-秒级反馈优化增量-source-size--批量-git-log--timing) / [PR #232](https://github.com/MarkDanile/MetaEduBase/pull/232)（merge `2d3697c`） |
 | 2026-06-12 | BUG-003 AI Chat 体验与回答质量回归（5 修复合片 + 入口切片 + 6 工作台同步 PR 收口） | 🟢 完成 | 12 PR 合 main：fix1~5 全切片 + 入口 + 6 同步。7 AC 全部覆盖（AC-1 ~ AC-7）。 | [Bug](../01-product-planning/05-requirements/BUG-003-ai-chat-ux-and-answer-quality-regression.md) / [Spec](../02-delivery-plans/01-specs/2026-06-12-bug-003-ai-chat-regression.md) / [Plan](../02-delivery-plans/02-plans/2026-06-12-bug-003-ai-chat-regression-plan.md) / [PR #219+#221+#223+#225+#227+#229](https://github.com/MarkDanile/MetaEduBase/pulls?q=is%3Apr+is%3Amerged+bug-003) |
 | 2026-06-12 | BUG-003 fix5 frontend fallback（AC-4 IME 兼容） | 🟢 完成 | PR #229 已合并：textarea @compositionstart/end + onEnterKey 包装（composing=true 早 return）+ data-testid=chat-input。6 新增 vitest（source 字符串契约回归锁）。 | [Plan §切片 5](../02-delivery-plans/02-plans/2026-06-12-bug-003-ai-chat-regression-plan.md#切片-5pr-bug-003-5-frontend-fallbackime-兼容) / [PR #229](https://github.com/MarkDanile/MetaEduBase/pull/229)（merge `b1e3e50`）/ 分支 `fix/bug-003-ai-chat-regression-fix5`（已删） |
 | 2026-06-12 | BUG-003 fix4 frontend file open（AC-5） | 🟢 完成 | PR #227 已合并：openFileUrl.ts helper（buildFileOpenUrl + openInNewTab）；openFile 改隐藏 <a target=_blank>.click() 替代 window.location.href；openEvidenceFile 缺 file_id 时 console.warn 降级。10 新增 vitest。 | [Plan §切片 4](../02-delivery-plans/02-plans/2026-06-12-bug-003-ai-chat-regression-plan.md#切片-4pr-bug-003-4-frontend-file-open) / [PR #227](https://github.com/MarkDanile/MetaEduBase/pull/227)（merge `2c2ac39`）/ 分支 `fix/bug-003-ai-chat-regression-fix4`（已删） |

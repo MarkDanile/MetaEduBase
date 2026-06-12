@@ -145,7 +145,7 @@
 | TD-048 | `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口） | 🟢 完成 | P3 | 后端 / API 契约 / 文档 | 3 切片 3 PR 收口：PR-1 docs-only 修事实源（[#196](https://github.com/MarkDanile/MetaEduBase/pull/196)，merge `ba7f441`）+ PR-2 业务代码（[#197](https://github.com/MarkDanile/MetaEduBase/pull/197)，merge `760d147`，4 业务文件 + 1 矩阵 + 2 新建 spec/plan）+ PR-3 docs-only 跨事实源收口（本 PR）。`ai_router.py` 旧 `SourceItem` / `ChatResponse` / `_recall_to_source` / `@router.post('/chat')` 全 0 命中；mock-based pytest 47 passed 零回归（沙箱无 PG，全量 pytest 由 CI 接力）；ruff 8 个 TD-049 pre-existing 兼容；DOC-057 pre-existing validation-claim 提示由独立 PR 收口。 |
 | TD-049 | `tests/conftest.py` `sys.path.insert` 块导致 8 个 E402 pre-existing（TD-012 收口后遗留） | 🟢 完成 | P3 | 后端 / 测试 / 质量门禁 / 工程治理 | TD-046 PR #187 收口时确认 `ruff check app/ tests/` 报 8 个 E402 errors 全部在 `tests/conftest.py:13-20`（imports not at top of file）。根因 L11 插入 `sys.path.insert(0, _REPO_ROOT)` 块（注释"REQ-010: ensure repo root on sys.path so tests can import scripts.ai.*"）违反 E402。修复：把 `_REPO_ROOT` + `sys.path` 块挪到 `tests/_paths.py`（新建），conftest.py 改为 `from tests._paths import *`。0 行为变化预期（`scripts.ai.*` 仍可 import）。分支 `chore/td-049-conftest-sys-path-move`；ruff 复跑确认实际命中 8 个 E402 行号 `13,14,15,16,17,19,20,21`（任务卡 L13-20 描述 +1 行偏差，事实以 ruff 实测为准）；`pytest --collect-only tests/engineering` 仍能 import `scripts.ai.evidence_coverage_report`；`pytest tests/engineering/test_evidence_coverage_report.py -v` → 4 passed, exit 0；mock-based 219 passed in 26.21s exit 0 零回归；`scripts/engineering/check_engineering_docs.py` exit 0（4 条 pre-existing 警告属于 TD-048 收口后的历史债，与本债无关）。 |
 | TD-051 | 治理 `document_chunks` 结构元数据、切片质量与既有数据重建 | ⚫ 待办 | P1 | RAG / 数据完整性 / 文档解析 / AI Chat | BUG-003 排查：`section_path` 100% 空、`section_title` 约 21% 空、`char_start/end` 不可信、100 条 orphan chunks；改完切片策略后必须重建已入库数据。 |
-| TD-052 | `check-engineering-docs` 秒级反馈优化（增量 source size + 批量 git log + timing） | 🟣 待验证 | P2 | 工程脚本 / 质量门禁 / 性能 | 本机实测默认门禁从 1.6-1.7s 降至 0.35s；`--full` 保留全量审计约 0.89s。待 PR 合并 main 后翻完成。 |
+| TD-052 | `check-engineering-docs` 秒级反馈优化（增量 source size + 批量 git log + timing） | 🟢 完成 | P2 | 工程脚本 / 质量门禁 / 性能 | [PR #232](https://github.com/MarkDanile/MetaEduBase/pull/232) 已合并：默认门禁 0.36s；`--full` 保留全量审计 0.94s；新增 `--timing`。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -3018,13 +3018,15 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-052: `check-engineering-docs` 秒级反馈优化（增量 source size + 批量 git log + timing）
 
-状态：🟣 待验证
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P2 |
 | 领域 | 工程脚本 / 质量门禁 / 性能 |
 | 事实源 | 用户反馈 `scripts/check-engineering-docs` 在规则叠加后变慢；2026-06-12 Codex profiling 显示 `source_sizes` 全量扫约 568ms，`task_pr_consistency` 串行 61 次 `git log --grep` 约 798ms。 |
+| 交付 PR | [PR #232](https://github.com/MarkDanile/MetaEduBase/pull/232) |
+| Merge Commit | `2d3697c` (squash merge) |
 
 **证据**
 
@@ -3053,4 +3055,4 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 **交付记录**
 
-- 2026-06-12 实施中（接手工具：Codex），分支 `docs/td-052-check-docs-incremental-source-size`。当前未合 main，状态保持 `🟣 待验证`；PR 合并后回填交付 PR / merge commit 并翻完成。
+- 2026-06-12 入账 + 收口（接手工具：Codex），1 PR（[PR #232](https://github.com/MarkDanile/MetaEduBase/pull/232) / merge commit `2d3697c` / 分支 `docs/td-052-check-docs-incremental-source-size`）。完成要点：`source_size_hard_limit` 默认改为 changed-only，`--full` 保留全量扫；`task_pr_consistency` 从 61 次串行 `git log --grep` 改为一次 git log 后内存匹配；新增 `--timing`。`scripts/check-engineering-docs` 默认 `real 0.36`，`--full` `real 0.94`；29 个工程测试通过；ruff 相关文件通过。
