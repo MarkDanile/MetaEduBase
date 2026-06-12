@@ -158,6 +158,7 @@ import type { DocumentSource, DocumentSourceChunk, EvidenceChatResponse, Evidenc
 import { deriveDocumentSourcesFromEvidence } from "./documentSources";
 import { findEvidenceForMessage } from "./evidenceNavigation";
 import { replaceEvidenceReferences } from "./evidenceReferences";
+import { buildFileOpenUrl, openInNewTab } from "./openFileUrl";
 
 hljs.registerLanguage("python", python);
 hljs.registerLanguage("javascript", javascript);
@@ -339,16 +340,19 @@ function abortRequest() {
 }
 
 function openFile(fileId: string, chunkId?: string | null) {
-  const params = new URLSearchParams();
-  if (chunkId) params.set("chunk", chunkId);
-  const qs = params.toString();
-  window.location.href = `/resource/files/${fileId}${qs ? "?" + qs : ""}`;
+  // BUG-003 fix4 AC-5: 改用隐藏 <a target="_blank">.click() 替代
+  // window.location.href 整页跳转，避免丢失 AI Chat 上下文。
+  const url = buildFileOpenUrl(fileId, chunkId);
+  openInNewTab(url);
 }
 
 function openEvidenceFile(evidence: EvidenceItem) {
-  // REQ-010 AC-5: 跳到文件详情页 + chunk 锚点
+  // REQ-010 AC-5: 跳到文件详情页 + chunk 锚点。
+  // BUG-003 fix4: evidence 无 file_id 时降级（不要拼无意义 URL）。
   if (evidence.file_id) {
     openFile(evidence.file_id, evidence.chunk_id);
+  } else {
+    console.warn("[AiChatView] evidence has no file_id, skip openFile:", evidence.evidence_id);
   }
 }
 
