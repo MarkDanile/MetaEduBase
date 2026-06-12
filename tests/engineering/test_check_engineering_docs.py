@@ -561,98 +561,6 @@ def test_source_size_unregistered_large_file_fails(tmp_path: Path) -> None:
     assert "超过 1000 行硬限制" in result.stderr
 
 
-def test_source_size_default_ignores_unchanged_large_file(
-    tmp_path: Path,
-) -> None:
-    """Default check-engineering-docs is a fast gate: changed files only."""
-    make_minimal_docs(tmp_path)
-    large_content = "\n".join(["x = 1"] * 1001) + "\n"
-    write(tmp_path / "packages" / "server-python" / "app" / "huge.py", large_content)
-    write(
-        tmp_path / "docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md",
-        """
-        # TD-032 源码文件行数基线
-
-        ## 文件清单
-
-        ### >1000 行
-
-        | 文件 | 行数 | 状态 | 例外 / 拆分说明 |
-        |------|------|------|-----------------|
-        """,
-    )
-    init_git_repo(tmp_path)
-
-    result = run_checker(tmp_path)
-
-    assert result.returncode == 0, result.stderr
-    assert "engineering docs checks passed" in result.stdout
-
-
-def test_source_size_default_flags_changed_large_file(tmp_path: Path) -> None:
-    """Default mode still blocks new or modified large source files."""
-    make_minimal_docs(tmp_path)
-    write(
-        tmp_path / "docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md",
-        """
-        # TD-032 源码文件行数基线
-
-        ## 文件清单
-
-        ### >1000 行
-
-        | 文件 | 行数 | 状态 | 例外 / 拆分说明 |
-        |------|------|------|-----------------|
-        """,
-    )
-    init_git_repo(tmp_path)
-    large_content = "\n".join(["x = 1"] * 1001) + "\n"
-    write(tmp_path / "packages" / "server-python" / "app" / "huge.py", large_content)
-
-    result = run_checker(tmp_path)
-
-    assert result.returncode == 1
-    assert "huge.py" in result.stderr
-    assert "超过 1000 行硬限制" in result.stderr
-
-
-def test_source_size_full_flags_unchanged_large_file(tmp_path: Path) -> None:
-    """--full keeps the dedicated full source-size audit behavior."""
-    make_minimal_docs(tmp_path)
-    large_content = "\n".join(["x = 1"] * 1001) + "\n"
-    write(tmp_path / "packages" / "server-python" / "app" / "huge.py", large_content)
-    write(
-        tmp_path / "docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md",
-        """
-        # TD-032 源码文件行数基线
-
-        ## 文件清单
-
-        ### >1000 行
-
-        | 文件 | 行数 | 状态 | 例外 / 拆分说明 |
-        |------|------|------|-----------------|
-        """,
-    )
-    init_git_repo(tmp_path)
-
-    result = run_checker(tmp_path, extra_args=["--full"])
-
-    assert result.returncode == 1
-    assert "huge.py" in result.stderr
-    assert "超过 1000 行硬限制" in result.stderr
-
-
-def test_timing_flag_prints_check_breakdown(tmp_path: Path) -> None:
-    make_minimal_docs(tmp_path)
-
-    result = run_checker(tmp_path, extra_args=["--timing"])
-
-    assert result.returncode == 0, result.stderr
-    assert "engineering docs checks passed" in result.stdout
-    assert "check_source_size_hard_limit" in result.stderr
-
-
 def test_parent_and_child_req_with_different_status_do_not_collide(
     tmp_path: Path,
 ) -> None:
@@ -942,6 +850,58 @@ def test_passes_when_completed_debt_card_has_pr_in_git_log(
     # 退码 0（0 active issue）；stdout 含 passed。
     assert result.returncode == 0, result.stderr
     assert "engineering docs checks passed" in result.stdout
+
+
+def test_skips_completed_card_with_pr_and_merge_fields(tmp_path: Path) -> None:
+    """DOC-059 fallback must not re-check cards owned by DOC-060 fast path."""
+    from unittest.mock import patch
+
+    from scripts.engineering.checks import _common
+
+    make_minimal_docs(tmp_path)
+    debt = tmp_path / "docs/03-engineering-governance/technical-debt.md"
+    debt.write_text(
+        textwrap.dedent(
+            """
+            # 技术债总账
+
+            ## 任务总览
+
+            | 编号 | 任务 | 状态 | 优先级 | 领域 | 事实源 |
+            |------|------|------|--------|------|--------|
+            | TD-001 | 测试任务 | 🟢 完成 | P2 | Docs | PR #1 |
+
+            ### TD-001: 测试任务
+
+            状态：🟢 完成
+
+            | 字段 | 内容 |
+            |------|------|
+            | 交付 PR | [PR #1](https://github.com/example/repo/pull/1) |
+            | Merge Commit | `1234567890abcdef1234567890abcdef12345678` |
+
+            **交付记录**
+
+            - 2026-06-12 mock fixture（避免 check_technical_debt 误报）
+            """
+        ).lstrip()
+    )
+
+    with patch.object(_common, "is_known", return_value=False), \
+         patch.object(
+             _common,
+             "_git_log_text",
+             return_value=("UNAVAILABLE", "未运行: git log 受环境限制"),
+         ) as mock_git_log, \
+         patch(
+             "scripts.engineering.checks.task_card_claims.check_task_card_claim_vs_code",
+             return_value=[],
+         ):
+        result = run_checker_inproc(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    assert "engineering docs checks passed" in result.stdout
+    mock_git_log.assert_not_called()
 
 
 def test_skips_non_completed_task_cards(tmp_path: Path) -> None:

@@ -509,6 +509,19 @@ def check_task_completion_pr_consistency_fallback(
                 i += 1
                 continue
 
+            # DOC-059 is only the fallback for cards without explicit PR /
+            # merge fields. Cards with those fields are handled by DOC-060's
+            # faster `check_merge_commit_in_git_history` path.
+            card_preview = "\n".join(lines[i : min(n, i + 13)])
+            has_pr_or_merge_field = re.search(
+                r"^\|\s*(?:交付 PR|Merge Commit)\s*\|",
+                card_preview,
+                flags=re.MULTILINE,
+            )
+            if has_pr_or_merge_field:
+                i += 1
+                continue
+
             completed_cards.append((path, status_line, task_id))
             i += 1
 
