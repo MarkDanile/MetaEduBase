@@ -1,6 +1,6 @@
 # TD-048 `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口）— Spec
 
-> Spec 入口：TD-048（技术债事实源 [`docs/03-engineering-governance/technical-debt.md#td-048`](../../../03-engineering-governance/technical-debt.md#td-048-sourceitem-旧字段下个迭代删除契约-deprecation-窗口)）。本文件是 deprecation 收口的验收口径与边界的事实源；实施拆分见 [`2026-06-11-td-048-sourceitem-deprecation-removal-plan.md`](../02-plans/2026-06-11-td-048-sourceitem-deprecation-removal-plan.md)。
+> Spec 入口：TD-048（技术债事实源 [`docs/03-engineering-governance/technical-debt.md#td-048`](../../03-engineering-governance/technical-debt.md#td-048-sourceitem-旧字段下个迭代删除契约-deprecation-窗口)）。本文件是 deprecation 收口的验收口径与边界的事实源；实施拆分见 [`2026-06-11-td-048-sourceitem-deprecation-removal-plan.md`](../02-plans/2026-06-11-td-048-sourceitem-deprecation-removal-plan.md)。
 > 规划归属：REQ-010 P1 RAG 证据治理（[spec §3.1 AC-3](../01-specs/2026-06-10-req-010-rag-evidence-governance.md#ac-3)）。
 > 前置依赖：REQ-010 Slice 3 / 7（EvidenceChatResponse + AiChatView 切到 `/ai/chat/evidence`）已完成；MCP `rag_query_evidence` 已切到 evidence 端点（commit `23a54b1` 自承）。
 > 后续接力：TD-050（EvidenceItem 缺 `source_chunk_id` 字段）独立 PR。
@@ -88,8 +88,8 @@ REQ-009 / REQ-010 Slice 3 决策：AI Chat 端点从 `/ai/chat`（返回 `Source
 
 ## 关联事实源
 
-- 任务卡：[`docs/03-engineering-governance/technical-debt.md#td-048`](../../../03-engineering-governance/technical-debt.md#td-048-sourceitem-旧字段下个迭代删除契约-deprecation-窗口)
-- 复盘（漂移回退）：[`docs/03-engineering-governance/work-log.md#2026-06-11-td-048-事实源漂移回退`](../../../03-engineering-governance/work-log.md#2026-06-11-td-048-事实源漂移回退)
+- 任务卡：[`docs/03-engineering-governance/technical-debt.md#td-048`](../../03-engineering-governance/technical-debt.md#td-048-sourceitem-旧字段下个迭代删除契约-deprecation-窗口)
+- 复盘（漂移回退）：[`docs/03-engineering-governance/work-log.md#2026-06-11-td-048-事实源漂移回退`](../../03-engineering-governance/work-log.md#2026-06-11-td-048-事实源漂移回退)
 - 切片 1 PR：[#196](https://github.com/MarkDanile/MetaEduBase/pull/196) `ba7f441`
 - 原始未合 commit：`23a54b1`（分支 `chore/td-048-remove-sourceitem-legacy-contract` 已删）作为切片 2 cherry-pick 来源
 - 上游决策：REQ-009 / REQ-010 Slice 3（[`spec §3.1 AC-3`](../01-specs/2026-06-10-req-010-rag-evidence-governance.md#ac-3)）
