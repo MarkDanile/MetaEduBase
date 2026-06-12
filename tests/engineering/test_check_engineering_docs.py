@@ -742,4 +742,162 @@ def test_fails_when_residual_count_claim_diverges_from_ripgrep(tmp_path: Path) -
     # 验证 message 含关键标识："残留量声明" + 声明值 23 + 实测值 1。
     assert "残留量声明" in result.stderr
     assert "23" in result.stderr
+
+
+# DOC-059: 任务卡完成 → PR 真实存在兜底校验。`_common.check_task_completion_pr_consistency_fallback`
+# 通用函数 + `scripts/engineering/checks/task_pr_consistency.py` 注册 1 个 check。
+# 任务卡 L2071 原计划走 `gh pr list --state merged --search <ID>`，DOC-060（PR #206）+ DOC-063（PR #209）
+# 已将该路径演化为 git plumbing fast path。DOC-059 收口时调整为 git log 兜底：本函数专扫"任务卡
+# 🟢 完成但任务卡里既没写 PR 编号、也没写 Merge Commit 字段"的兜底维度（DOC-060 在 L225-227 显式
+# skip 这种卡"等 DOC-059 报"；DOC-059 收口后改为由两层门禁独立报警）。
+# 本测试通过 minimal docs 模拟 3 个场景：兜底命中失败 / 命中成功 / 非完成状态不扫；
+# mock 隔离使用 `run_checker_inproc` 走 pytest 进程内（DOC-060 同款模式）。
+def test_fails_when_completed_debt_card_uses_git_log_fallback_unavailable(
+    tmp_path: Path,
+) -> None:
+    """DOC-059 AC-1: 任务卡完成但无 PR 字段 + git log 兜底不可用时报
+    `task-pr-consistency-fallback-unavailable` issue。"""
+    from unittest.mock import patch
+
+    from scripts.engineering.checks import _common
+
+    make_minimal_docs(tmp_path)
+    debt = tmp_path / "docs/03-engineering-governance/technical-debt.md"
+    debt.write_text(
+        textwrap.dedent(
+            """
+            # 技术债总账
+
+            ## 任务总览
+
+            | 编号 | 任务 | 状态 | 优先级 | 领域 | 事实源 |
+            |------|------|------|--------|------|--------|
+            | TD-001 | 测试任务 | 🟢 完成 | P2 | Docs | - |
+
+            ### TD-001: 测试任务
+
+            状态：🟢 完成
+
+            本任务卡无 `| 交付 PR |` 也无 `| Merge Commit |` 字段。
+
+            **交付记录**
+
+            - 2026-06-12 mock fixture（避免 check_technical_debt 误报）
+            """
+        ).lstrip()
+    )
+
+    # mock `is_known` 永远返回 False（绕过 KNOWN_ISSUES 白名单），
+    # 并把 `_git_log_grep` 强制返回 UNAVAILABLE 模拟"git log 受环境限制"。
+    # 走 inproc 调用，让 mock 生效。
+    with patch.object(_common, "is_known", return_value=False), \
+         patch.object(
+             _common,
+             "_git_log_grep",
+             return_value=("UNAVAILABLE", "未运行: git log 受环境限制"),
+         ):
+        result = run_checker_inproc(tmp_path)
+
+    # 退码 1（active issue 存在）；stderr 含 task-pr-consistency-fallback-unavailable。
+    assert result.returncode == 1, result.stderr
     assert "TD-001" in result.stderr
+    # 关键标识：PR 字段缺失 + git log 未运行。
+    assert "git log" in result.stderr
+    assert "PR" in result.stderr or "交付" in result.stderr
+
+
+def test_passes_when_completed_debt_card_has_pr_in_git_log(
+    tmp_path: Path,
+) -> None:
+    """DOC-059 AC-2: 任务卡无 PR 字段但 git log 命中关键字 → 0 issue 通过。"""
+    from unittest.mock import patch
+
+    from scripts.engineering.checks import _common
+
+    make_minimal_docs(tmp_path)
+    debt = tmp_path / "docs/03-engineering-governance/technical-debt.md"
+    debt.write_text(
+        textwrap.dedent(
+            """
+            # 技术债总账
+
+            ## 任务总览
+
+            | 编号 | 任务 | 状态 | 优先级 | 领域 | 事实源 |
+            |------|------|------|--------|------|--------|
+            | TD-001 | 测试任务 | 🟢 完成 | P2 | Docs | - |
+
+            ### TD-001: 测试任务
+
+            状态：🟢 完成
+
+            本任务卡无 `| 交付 PR |` 字段但 git log 能搜到 TD-001 关键字。
+
+            **交付记录**
+
+            - 2026-06-12 mock fixture（避免 check_technical_debt 误报）
+            """
+        ).lstrip()
+    )
+
+    # mock `_git_log_grep` 返回 OK + 命中 1 行（说明 commit 真实存在）。
+    # 同时 mock DOC-060 的 `check_task_card_claim_vs_code` 函数返回空列表，
+    # 避免 task_card_stale_completion 报 stale-completion-unavailable（让
+    # DOC-059 单独验证 git log 兜底路径）。
+    with patch.object(_common, "is_known", return_value=False), \
+         patch.object(
+             _common,
+             "_git_log_grep",
+             return_value=("OK", 1),
+         ), \
+         patch(
+             "scripts.engineering.checks.task_card_claims.check_task_card_claim_vs_code",
+             return_value=[],
+         ):
+        result = run_checker_inproc(tmp_path)
+
+    # 退码 0（0 active issue）；stdout 含 passed。
+    assert result.returncode == 0, result.stderr
+    assert "engineering docs checks passed" in result.stdout
+
+
+def test_skips_non_completed_task_cards(tmp_path: Path) -> None:
+    """DOC-059 AC-3: 非完成状态（🟡 / 🟣 / 🔵 等）不扫，git log 不会被触发。"""
+    from unittest.mock import patch
+
+    from scripts.engineering.checks import _common
+
+    make_minimal_docs(tmp_path)
+    debt = tmp_path / "docs/03-engineering-governance/technical-debt.md"
+    debt.write_text(
+        textwrap.dedent(
+            """
+            # 技术债总账
+
+            ## 任务总览
+
+            | 编号 | 任务 | 状态 | 优先级 | 领域 | 事实源 |
+            |------|------|------|--------|------|--------|
+            | TD-001 | 进行中任务 | 🟡 进行中 | P2 | Docs | - |
+
+            ### TD-001: 进行中任务
+
+            状态：🟡 进行中
+            """
+        ).lstrip()
+    )
+
+    # mock `_git_log_grep` 返回 UNAVAILABLE——如果误触发会报 1 个 issue。
+    # 期望：根本不调用 `_git_log_grep`，因此也不报 issue。
+    with patch.object(_common, "is_known", return_value=False), \
+         patch.object(
+             _common,
+             "_git_log_grep",
+             return_value=("UNAVAILABLE", "未运行: git log 受环境限制"),
+         ) as mock_git_log:
+        result = run_checker_inproc(tmp_path)
+
+    # 退码 0（0 active issue）；mock 未被调用。
+    assert result.returncode == 0, result.stderr
+    assert "engineering docs checks passed" in result.stdout
+    mock_git_log.assert_not_called()
