@@ -22,7 +22,9 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| TD-051-FU 3 follow-up：rebuild fallback section_path + offset overlap + cleanup return | ⚫ 待办 | P1 | RAG / 数据完整性 | 详见 technical-debt.md TD-051 详情段"暴露的 follow-up bug"：① `_reconstruct_sections_from_full_text` fallback 未算 section_path ② 重建后 offset_overlaps +3% ③ `cleanup_orphan_chunks` task 未返回 rowcount。建议入账为 TD-053 跟踪。 |
+| TD-053 `rebuild_document_chunks` fallback 未算 section_path | ⚪ 待澄清 | P1 | RAG / 数据完整性 / 文档解析 | 已在 `technical-debt.md` 详情段登记（证据 / AC / 验证 / 交付记录三要素齐全）。下一步：补 pytest 锁死 fallback path 非空 + 跑 1 个老数据 file 验证。 |
+| TD-054 重建后 offset_overlaps 反而 +3% | ⚪ 待澄清 | P1 | RAG / 数据完整性 / 文档解析 | 已在 `technical-debt.md` 详情段登记。下一步：先判断是设计性 neighbor overlap 还是 off-by-one bug——看 `chunker.py` 顶部注释和 `_enforce_size_limit` 实现。 |
+| TD-055 `cleanup_orphan_chunks` task 未返回 rowcount | ⚪ 待澄清 | P1 | 后端 / Celery / 运维可观测性 | 已在 `technical-debt.md` 详情段登记。下一步：修 `_run_in_session` 吞返回值的实现，pytest 锁死 `cleanup_orphan_chunks(tid_str)` 返回 int；顺便审计其他 task 是否同样问题。 |
 
 ## 最近完成
 
