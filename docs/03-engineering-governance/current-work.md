@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| REQ-012 RAG 多路召回与知识图谱证据链收口 | 🔵 就绪 | P1 | RAG / AI Chat / Evidence / KG / Frontend | Requirement 已补硬决策：底部参考来源一级必须是文档，chunk 只作为文档下命中片段；新增 spec / plan，覆盖 chunk keyword 接入、metadata filter 返回值生效、graph 回源 chunk、当前消息 `[N]` 点击和文档级来源 UI。 | 由 CC 或下一执行者按 [Spec](../02-delivery-plans/01-specs/2026-06-12-req-012-rag-retrieval-document-sources.md) / [Plan](../02-delivery-plans/02-plans/2026-06-12-req-012-rag-retrieval-document-sources-plan.md) 开发；建议先做 Slice 1 backend retrieval + metadata filter，再做文档级来源 DTO 和前端 UI。 | Docs-only 规划已验证：`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0。 |
 
 ## 下一批候选任务
 
@@ -24,7 +24,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| REQ-012 RAG 多路召回与知识图谱证据链收口 | 🟣 Shaping | P1 | RAG / AI Chat / Evidence / KG | 详看 [Requirement](../01-product-planning/05-requirements/REQ-012-rag-retrieval-and-kg-evidence-chain-follow-up.md)；REQ-010 质量 follow-up 的正式稳定编号。**TD-047 + TD-050 均已收口**（zhparser + chinese_zh 全文检索升级 + node 类型 evidence 透传 source_chunk_id）；REQ-012 启动时把"TD-047 + TD-050 已收口"作为前置依赖写进 spec，直接进入 RAG 链路收口工作。 |
+| （空） | | | | |
 
 ## 最近完成
 
