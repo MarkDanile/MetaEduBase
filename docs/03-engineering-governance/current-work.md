@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| DOC-063 `check-engineering-docs` 性能收口（subprocess 砍掉 / 5 秒硬指标） | 🟡 进行中 | P2 | 工程脚本 / 质量门禁 | DOC-057 / DOC-060 收口后用户跑 `scripts/check-engineering-docs` 报 ~110s（DDC-060 新增的 `check_task_card_stale_completion` 49 次串行 `gh pr view` 是 99% 元凶）。已确定方案 A：用 git history 替代 `gh pr view`（任务卡 mergeCommit 字段已是事实源，check 改用 `git rev-parse` 校验自洽性）。预期 `check-engineering-docs` 从 ~110s → ≤5s（250x 提速）。当前在 `main`（merge commit `819d025`），需按 git-workflow.md#开发前分支门禁 切到任务分支后再动文件。 | 1. 开分支 `docs/doc-063-check-engineering-docs-perf`；2. 改 `_common.py`（`check_task_card_claim_vs_code` claim_kind=pr_state 分支改用 git rev-parse 校验 mergeCommit）+ 任务卡 L1949-1992 补 mergeCommit 字段 + 5 个 PR 慢速 verify 路径保留为 `--verify-pr-state` 显式开关；3. 跑 per-check timing 复测 + 门禁；4. commit + push + 开 PR；5. 合 main + 收口 | 待跑：docs-only + 1 个脚本变更后 `python3 scripts/check-engineering-docs` ≤5s 退出码不新增失败项 + `git diff --check` clean + `pytest tests/engineering/` 22 passed |
 
 ## 下一批候选任务
 

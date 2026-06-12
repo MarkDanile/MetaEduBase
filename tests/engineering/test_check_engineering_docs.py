@@ -667,30 +667,34 @@ def test_fails_when_completed_debt_card_uses_open_pr_state(tmp_path: Path) -> No
 
             状态：🟢 完成
 
-            **交付记录**
-
-            - 2026-06-12 收口 [PR #99](https://github.com/MarkDanile/MetaEduBase/pull/99)
+            | 交付 PR | [PR #99](https://github.com/MarkDanile/MetaEduBase/pull/99) |
+            | Merge Commit | `1234567890abcdef1234567890abcdef12345678` (squash merge) |
             """
         ).lstrip()
     )
 
+    # DOC-063: 默认走 git plumbing 校验（`git rev-parse --verify <merge_commit>`）。
     # mock `is_known` 永远返回 False（绕过 KNOWN_ISSUES 白名单），
-    # 并把 `check_gh_pr_state` 强制返回 OPEN 状态。
+    # 并把 `check_merge_commit_in_git_history` 强制返回 NOT_MERGED 状态
+    # 模拟"任务卡 PR 链接存在但 merge commit 不在 git 历史"场景。
     # 注：用 run_checker_inproc 走 pytest 进程内调用，让 mock 生效；
     # 普通 run_checker 走 subprocess.run 会与子进程 mock 隔离。
     with patch.object(_common, "is_known", return_value=False), \
          patch.object(
              _common,
-             "check_gh_pr_state",
-             return_value=("OPEN", ""),
+             "check_merge_commit_in_git_history",
+             return_value=("NOT_MERGED", "mock: merge commit 不在 git 历史"),
          ):
         result = run_checker_inproc(tmp_path)
 
-    # 退码 1（active issue 存在）；stderr 含 task-card-stale-completion。
+    # 退码 1（active issue 存在）；stderr 含 git rev-parse 校验 NOT_MERGED 描述。
+    # 注：check_engineering_docs.print_issue 用 issue.message 输出，
+    # issue.code 不会进 stderr，所以这里断言 message 关键词。
     assert result.returncode == 1, result.stderr
-    assert "task-card-stale-completion" in result.stderr or "MERGED" in result.stderr
+    assert "git rev-parse 校验" in result.stderr
     assert "TD-001" in result.stderr
     assert "PR #99" in result.stderr or "#99" in result.stderr
+    assert "NOT_MERGED" in result.stderr
 
 
 def test_fails_when_residual_count_claim_diverges_from_ripgrep(tmp_path: Path) -> None:
