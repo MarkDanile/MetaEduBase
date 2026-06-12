@@ -417,6 +417,41 @@ def _git_log_grep(
     return ("OK", hits)
 
 
+def _git_log_text(repo_root: Path | None = None) -> tuple[str, str]:
+    """Return `(status, detail)` for one full git-log read.
+
+    `status="OK"` returns the combined commit subject/body text.  The caller can
+    match every task id in memory instead of spawning `git log --grep` once per
+    completed task card.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "log", "--all", "--format=%s%n%b"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=DOC_059_GIT_LOG_TIMEOUT_S,
+            check=False,
+        )
+    except FileNotFoundError:
+        return ("UNAVAILABLE", "未运行: git CLI 不可用 (FileNotFoundError)")
+    except subprocess.TimeoutExpired:
+        return (
+            "UNAVAILABLE",
+            f"未运行: git log 超时 ({DOC_059_GIT_LOG_TIMEOUT_S}s)",
+        )
+    if proc.returncode == 128:
+        return (
+            "UNAVAILABLE",
+            "未运行: 当前目录不是 git 仓库（git log 退出 128）",
+        )
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip().splitlines()
+        hint = stderr[-1] if stderr else f"exit={proc.returncode}"
+        return ("UNAVAILABLE", f"未运行: git log 失败 ({hint})")
+    return ("OK", proc.stdout or "")
+
+
 def check_task_completion_pr_consistency_fallback(
     technical_debt_path: Path,
     work_log_path: Path,
@@ -437,17 +472,14 @@ def check_task_completion_pr_consistency_fallback(
        `### TD-NNN` 形式）。
     2. 向后扫到 `状态：🟢 完成` 行（窗口 1-6 行，与 DOC-060
        `_parse_done_task_cards` 同款）。
-    3. 命中后报 `task-pr-consistency-fallback` issue。
-    4. 沙箱降级：UNAVAILABLE 按 `quality-gates.md#验证表述规范` 的 `未运行`
+    3. 一次读取 git log，然后在内存里按 task_id 匹配。
+    4. 0 命中时报 `task-pr-consistency-fallback` issue。
+    5. 沙箱降级：UNAVAILABLE 按 `quality-gates.md#验证表述规范` 的 `未运行`
        分支放过，不视为硬失败。
-
-    性能预算：当前 main 上 63 个 🟢 完成任务卡 × 5s timeout 上限 = 上界 315s，
-    但 git log --grep 在本地 < 1s/次；CI 上（Linux）更快。63 次串行实测
-    < 5s。如有性能问题，后续可加 LRU cache（按 ID 缓存 git log 结果），
-    但首版不引入。
     """
     issues: list[Issue] = []
     DOC_059_HEADER_RE = re.compile(r"^###\s+((?:TD|DOC|REQ)-\d{3}(?:-\d+)?)\s*[:：]")
+    completed_cards: list[tuple[Path, int, str]] = []
 
     for path in (technical_debt_path, work_log_path, current_work_path):
         if not path.exists():
@@ -477,31 +509,36 @@ def check_task_completion_pr_consistency_fallback(
                 i += 1
                 continue
 
-            status, detail = _git_log_grep(task_id, repo_root=repo_root)
-            if status == "UNAVAILABLE":
-                issues.append(
-                    Issue(
-                        path,
-                        status_line,
-                        "task-pr-consistency-fallback-unavailable",
-                        f"{task_id}: 任务卡片声明完成但 git log 兜底未运行，{detail}（PR 编号 / Merge Commit 字段也未提供，无法走 DOC-060 fast path）",
-                        "在任务卡『交付 PR』段下补 `| 交付 PR |` + `| Merge Commit |` 字段让 DOC-060 接管；或在 KNOWN_ISSUES 跳过本任务。",
-                    )
-                )
-            else:
-                # status == "OK"
-                hits = detail if isinstance(detail, int) else 0
-                if hits == 0:
-                    issues.append(
-                        Issue(
-                            path,
-                            status_line,
-                            "task-pr-consistency-fallback",
-                            f"{task_id}: 任务卡片声明完成但 git history 无该 ID 关键字命中（0 commit，PR 编号 / Merge Commit 字段也未提供）",
-                            "复核任务是否真的已合并 main；在任务卡『交付 PR』段下补 `| 交付 PR |` + `| Merge Commit |` 字段；或在 KNOWN_ISSUES 跳过本任务。",
-                        )
-                    )
+            completed_cards.append((path, status_line, task_id))
             i += 1
+
+    if not completed_cards:
+        return issues
+
+    git_status, git_detail = _git_log_text(repo_root=repo_root)
+    git_log_text = git_detail if git_status == "OK" else ""
+
+    for path, status_line, task_id in completed_cards:
+        if git_status == "UNAVAILABLE":
+            issues.append(
+                Issue(
+                    path,
+                    status_line,
+                    "task-pr-consistency-fallback-unavailable",
+                    f"{task_id}: 任务卡片声明完成但 git log 兜底未运行，{git_detail}（PR 编号 / Merge Commit 字段也未提供，无法走 DOC-060 fast path）",
+                    "在任务卡『交付 PR』段下补 `| 交付 PR |` + `| Merge Commit |` 字段让 DOC-060 接管；或在 KNOWN_ISSUES 跳过本任务。",
+                )
+            )
+        elif task_id not in git_log_text:
+            issues.append(
+                Issue(
+                    path,
+                    status_line,
+                    "task-pr-consistency-fallback",
+                    f"{task_id}: 任务卡片声明完成但 git history 无该 ID 关键字命中（0 commit，PR 编号 / Merge Commit 字段也未提供）",
+                    "复核任务是否真的已合并 main；在任务卡『交付 PR』段下补 `| 交付 PR |` + `| Merge Commit |` 字段；或在 KNOWN_ISSUES 跳过本任务。",
+                )
+            )
     return issues
 
 

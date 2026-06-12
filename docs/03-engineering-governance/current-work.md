@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| TD-052 `check-engineering-docs` 秒级反馈优化 | 🟣 待验证 | P2 | 工程脚本 / 质量门禁 / 性能 | 分支 `docs/td-052-check-docs-incremental-source-size`：默认 source size 改为增量扫，`--full` 保留全量扫；DOC-059 PR 兜底检查改为一次 git log 批量匹配；新增 `--timing`。 | 提交 PR 并合并 main；合并后回填 TD-052 完成状态和 work-log。 | 已运行：`packages/server-python/.venv/bin/python -m pytest tests/engineering/test_check_engineering_docs.py -q` → 29 passed；`packages/server-python/.venv/bin/ruff check ...` → All checks passed；`scripts/check-engineering-docs` → 0.35s / exit 0；`scripts/check-engineering-docs --full --timing` → 0.89s / exit 0；`git diff --check` → exit 0。 |
 
 ## 下一批候选任务
 

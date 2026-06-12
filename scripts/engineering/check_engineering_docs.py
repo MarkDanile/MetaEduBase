@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from time import perf_counter
 from pathlib import Path
 
 
@@ -21,12 +22,34 @@ if str(_REPO_ROOT) not in sys.path:
 
 from scripts.engineering.checks import KNOWN_CHECKS, Issue  # noqa: E402
 from scripts.engineering.checks._common import is_known  # noqa: E402
+from scripts.engineering.checks.source_sizes import (  # noqa: E402
+    check_source_size_hard_limit,
+)
 
 
-def run_checks(root: Path) -> tuple[list[Issue], list[Issue]]:
+def run_checks(
+    root: Path,
+    *,
+    full_source_size_scan: bool = False,
+    collect_timing: bool = False,
+) -> tuple[list[Issue], list[Issue], list[tuple[str, float, int]]]:
     issues: list[Issue] = []
+    timings: list[tuple[str, float, int]] = []
     for check in KNOWN_CHECKS:
-        issues.extend(check(root))
+        start = perf_counter()
+        if check is check_source_size_hard_limit:
+            check_issues = check(root, full=full_source_size_scan)
+        else:
+            check_issues = check(root)
+        if collect_timing:
+            timings.append(
+                (
+                    f"{check.__module__}.{check.__name__}",
+                    (perf_counter() - start) * 1000,
+                    len(check_issues),
+                )
+            )
+        issues.extend(check_issues)
     active: list[Issue] = []
     known: list[Issue] = []
     for issue in issues:
@@ -34,7 +57,7 @@ def run_checks(root: Path) -> tuple[list[Issue], list[Issue]]:
             known.append(issue)
         else:
             active.append(issue)
-    return active, known
+    return active, known, timings
 
 
 def print_issue(issue: Issue, root: Path) -> None:
@@ -57,6 +80,19 @@ def main(argv: list[str] | None = None) -> int:
             "可能超时）。默认走 `git rev-parse` 校验任务卡 mergeCommit 字段（< 5ms/次，零网络）。"
         ),
     )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help=(
+            "运行全量审计模式。默认模式为快速门禁，其中源码行数硬限制只检查本次变更文件；"
+            "--full 会对 packages/scripts/tests 做全量 source size 扫描。"
+        ),
+    )
+    parser.add_argument(
+        "--timing",
+        action="store_true",
+        help="输出每个 engineering docs check 的耗时明细到 stderr。",
+    )
     args = parser.parse_args(argv)
 
     if args.verify_pr_state:
@@ -65,7 +101,17 @@ def main(argv: list[str] | None = None) -> int:
         os.environ["METAEDU_CHECK_VERIFY_PR_STATE"] = "1"
 
     root = Path(args.root).resolve()
-    active, known = run_checks(root)
+    active, known, timings = run_checks(
+        root,
+        full_source_size_scan=args.full,
+        collect_timing=args.timing,
+    )
+
+    if args.timing:
+        for name, elapsed_ms, issue_count in sorted(
+            timings, key=lambda row: row[1], reverse=True
+        ):
+            sys.stderr.write(f"{elapsed_ms:8.2f} ms  {issue_count:3d} issues  {name}\n")
 
     for issue in active:
         print_issue(issue, root)
