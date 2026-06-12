@@ -151,6 +151,7 @@
 | DOC-060 | 增强 `scripts/engineering/checks/` 任务卡 vs 代码语义校验（任务卡残留量 + 任务卡完成状态 2 类不符） | 🟢 完成 | P2 | 工程脚本 / 质量门禁 | 1 docs-only PR 收口：`scripts/engineering/checks/_common.py` 加 `check_task_card_claim_vs_code` 通用函数（支持 `pr_state` / `residual_count` 2 类校验）；`scripts/engineering/checks/task_card_claims.py` 注册 `check_task_card_stale_completion` + `check_task_card_stale_residual` 2 个 check；沙箱下 `rg` 不可用时 `_python_pattern_count` 纯 Python fallback（CI 仍走 `rg` 路径）；14 个历史 task 加 KNOWN_ISSUES task_id 维度精确白名单；新增 2 个 pytest（`test_fails_when_completed_debt_card_uses_open_pr_state` + `test_fails_when_residual_count_claim_diverges_from_ripgrep`）通过 inproc `run_checker_inproc` 绕开 subprocess mock 隔离。`scripts/check-engineering-docs` 退出码 1（仅 7 条 pre-existing 警告，DOC-060 新增 0 条 active issue）；`git diff --check` clean；`pytest tests/engineering/` 22 passed 零回归（20 旧 + 2 新）。 | [PR #206](https://github.com/MarkDanile/MetaEduBase/pull/206) |
 | DOC-061 | 强化"agent 必须把 `main` 受保护视为硬门禁"——失败教训入账（TD-049 收口违规） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 / Git 流程 | TD-049 收口时（2026-06-12）agent 误以为"本仓 main 无 GitHub branch protection 即可直推"，对 `git-workflow.md#分支策略` 写明的"main 受保护 / 必须通过 PR 合入"做隐式打折；先后两次 `git push origin main` 直推工作台收口（commit `9039d74`）和 revert（commit `c744656`）。修复（教训入账，docs-only）：在 `git-workflow.md#完整交付闭环` 末尾追加 1 段"main 直推禁令"明确文案（"agent 在未配置 branch protection 的 main 上仍必须走 PR；'push 是否成功'不是合规依据"）；在 `git-workflow.md#违反与回退` 加 1 段"直推 main 的处置"说明违规回退路径（revert + 走 PR 重新收口 vs `git reset --hard` 的破坏性对比）；在 `quality-gates.md#完成门禁#3` 后追加子项明确"任务卡 / 工作台状态变更不得以 `git push origin main` 直推"。无脚本变更（避免 `check_engineering_docs.py` 误判路径状态），规则硬约束由人工 review + 工作台复核兜底。 |
 | DOC-063 | `check-engineering-docs` 性能收口（subprocess 砍掉 / 5 秒硬指标） | 🟢 完成 | P2 | 工程脚本 / 质量门禁 / 性能 / git plumbing 替代 gh | DOC-060 收口后用户跑 `scripts/check-engineering-docs` 报 ~110s（DDC-060 新增的 `check_task_card_stale_completion` 49 次串行 `gh pr view` 是 99% 元凶）。按用户选择方案 A：用 git history 替代 `gh pr view`（任务卡 mergeCommit 字段已是事实源，check 改用 `git rev-parse --verify <commit>^{commit}` 校验自洽性）。修复：`_common.check_merge_commit_in_git_history` fast path（< 5ms/次，零网络）+ `task_card_claims._find_merge_commit_in_card` 扫 `\| Merge Commit \|` 字段或 `merge commit \`<sha>\`` 短 hash 模式 + `_find_pr_number_in_card` 严格化（只匹 `\| 交付 PR \|` 表格列头）+ `--verify-pr-state` CLI flag 显式 opt-in 启用 gh legacy 路径（保留给真需要查 GitHub 端真实状态的场景）。`check-engineering-docs` **0.76 秒**（< 5 秒目标 ✓，145x 提速），`check_task_card_stale_completion` 17.6ms（6000x 提速），`pytest tests/engineering/` 22 passed 零回归。 | [PR #209](https://github.com/MarkDanile/MetaEduBase/pull/209) |
+| DOC-064 | pre-existing 警告收口（`check-engineering-docs` 退出码 1 → 0） | 🟢 完成 | P3 | 文档 / 工程治理 / 工作台 / 链接路径 | DOC-063 收口后 `check-engineering-docs` 报 0.74s 但退出码 1（8 条 pre-existing 警告）。2 类警告：① current-work.md L37-L41 五条"最近完成"行摘要超 `CURRENT_WORK_RECENT_SUMMARY_LIMIT=220`（247-555 字符，根因：我前几个收口没遵守 workbench.md "短摘要 + work-log 详情"约定）；② spec/2026-06-11-td-048-sourceitem-deprecation-removal.md 三处 markdown 链接用 `../../../` 路径层级错（spec 在 `01-specs/` 4 段深，正确只需 2 个 `..`）。修复：current-work.md 5 行重写为 ≤ 220 字符（短摘要 + PR + work-log 回链）；spec 3 路径 `../../../` → `../../`。`check-engineering-docs` 0.77 秒 + 退出码 0（用户要求），`git diff --check` clean，`pytest tests/engineering/` 22 passed 零回归。 | [PR #211](https://github.com/MarkDanile/MetaEduBase/pull/211) |
 
 ## 任务详情
 
@@ -2890,3 +2891,47 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 **交付记录**
 
 - 2026-06-12 入账 + 收口（接手工具：Claude Code），1 docs-only PR（[PR #209](https://github.com/MarkDanile/MetaEduBase/pull/209) / merge commit `387303e` / 分支 `docs/doc-063-check-engineering-docs-perf`）。完成要点：`_common.check_merge_commit_in_git_history` fast path（< 5ms/次，零网络）+ `task_card_claims._find_merge_commit_in_card` 扫 `| Merge Commit |` 字段或 `merge commit \`<sha>\`` 短 hash 模式 + `_find_pr_number_in_card` 严格化（只匹 `| 交付 PR |` 表格列头，避免 TD-023 等任务卡误把别人 PR 当自己的）+ `--verify-pr-state` CLI flag 显式 opt-in 启用 gh legacy 路径 + 测试 mock 目标切到 `check_merge_commit_in_git_history`。`check-engineering-docs` **0.76 秒**（< 5 秒目标 ✓，145x 提速），`check_task_card_stale_completion` 17.6ms（6000x 提速），`git diff --check` clean，`pytest tests/engineering/` 22 passed 零回归，`gh pr view 209` state=MERGED + merge commit `387303e` 已在 main。跨事实源同步见 work-log 索引行（落地后追加）。
+
+### DOC-064: pre-existing 警告收口（`check-engineering-docs` 退出码 1 → 0）
+
+状态：🟢 完成
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P3 |
+| 领域 | 文档 / 工程治理 / 工作台 / 链接路径 |
+| 事实源 | DOC-063 收口后 `check-engineering-docs` 报 0.74s 但退出码 1（8 条 pre-existing 警告：5 条"最近完成摘要过长" + 3 条"Markdown 链接目标不存在"）|
+| 交付 PR | [PR #211](https://github.com/MarkDanile/MetaEduBase/pull/211) |
+| Merge Commit | `e6f9ea9` (squash merge) |
+
+**证据**
+
+- `python3 scripts/check-engineering-docs` 在 DOC-063 收口后报：5 条"最近完成摘要过长"（current-work.md L37-L41，摘要 247-555 字符 > 220 字符限制）+ 3 条"Markdown 链接目标不存在"（spec/2026-06-11-td-048-sourceitem-deprecation-removal.md L3/L91/L92，路径 `../../../` 解析后到 `/Users/strony/Desktop/...MetaEduBase/03-engineering-governance/...` 不存在）。
+- 退出码 1。stdout `engineering docs checks passed (N known issue(s) allowlisted)` 但仍 exit 1（按 `check_engineering_docs.py:60` "if active: return 1"）。
+
+**问题**
+
+- 8 条 pre-existing 警告让 `check-engineering-docs` 退出码 1，挡住所有依赖 `set -e` 的 docs-only PR 流（CI / 提交前校验都视非 0 为失败）。
+- DOC-057 / DOC-058 / DOC-060 / DOC-063 / TD-049 收口时把"完整事件链"塞到单格摘要（247-555 字符），是 workbench.md "短摘要 + work-log 详情"约定的违反。
+- spec 路径错误是历史债（沿用错误路径已久）。
+
+**完成标准**
+
+- current-work.md L37-L41 五条"最近完成"行重写为 ≤ 220 字符（短摘要 + PR 链接 + work-log 索引行回链）。
+- spec/2026-06-11-td-048-sourceitem-deprecation-removal.md 三处 `../../../` → `../../` 修对路径层级。
+- `python3 scripts/check-engineering-docs` 退出码 0。
+- `git diff --check` clean。
+- `pytest tests/engineering/` 22 passed 零回归。
+- 跨事实源同步：技术债总账任务卡交付记录补 PR 链接 + merge commit；work-log 索引行追加 DOC-064 行；最近完成区收口行。
+
+**验证方式**
+
+- 已运行：`time python3 scripts/check-engineering-docs` → **0.77 秒**（< 5 秒目标 ✓）
+- 已运行：`python3 scripts/check-engineering-docs` → 退出码 **0**（用户要求），stdout `engineering docs checks passed (28 known issue(s) allowlisted)`，0 active issue
+- 已运行：`git diff --check` → 0 warnings (clean)
+- 已运行：`PYTHONPATH=. python3 -m pytest tests/engineering/` → 22 passed 零回归
+- 已运行：`gh pr view 211 --json state,mergeCommit` → state=MERGED, mergeCommit=`e6f9ea9`
+
+**交付记录**
+
+- 2026-06-12 入账 + 收口（接手工具：Claude Code），1 docs-only PR（[PR #211](https://github.com/MarkDanile/MetaEduBase/pull/211) / merge commit `e6f9ea9` / 分支 `docs/doc-064-pre-existing-warning-cleanup`）。完成要点：current-work.md L37-L41 五条"最近完成"行重写为 ≤ 220 字符（DOC-057/058/060/063 + TD-049 短摘要 + work-log 回链）；spec/2026-06-11-td-048-sourceitem-deprecation-removal.md 三处 `../../../` → `../../` 修对路径层级（spec 在 `01-specs/` 4 段深，正确只需 2 个 `..`）。`check-engineering-docs` **0.77 秒**（< 5 秒目标 ✓），stdout `engineering docs checks passed (28 known issue(s) allowlisted)`，退出码 **0**（用户要求），`git diff --check` clean，`pytest tests/engineering/` 22 passed 零回归，`gh pr view 211` state=MERGED + merge commit `e6f9ea9` 已在 main。跨事实源同步见 work-log 索引行（落地后追加）。
