@@ -145,6 +145,9 @@
 | TD-048 | `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口） | 🟢 完成 | P3 | 后端 / API 契约 / 文档 | 3 切片 3 PR 收口：PR-1 docs-only 修事实源（[#196](https://github.com/MarkDanile/MetaEduBase/pull/196)，merge `ba7f441`）+ PR-2 业务代码（[#197](https://github.com/MarkDanile/MetaEduBase/pull/197)，merge `760d147`，4 业务文件 + 1 矩阵 + 2 新建 spec/plan）+ PR-3 docs-only 跨事实源收口（本 PR）。`ai_router.py` 旧 `SourceItem` / `ChatResponse` / `_recall_to_source` / `@router.post('/chat')` 全 0 命中；mock-based pytest 47 passed 零回归（沙箱无 PG，全量 pytest 由 CI 接力）；ruff 8 个 TD-049 pre-existing 兼容；DOC-057 pre-existing validation-claim 提示由独立 PR 收口。 |
 | TD-049 | `tests/conftest.py` `sys.path.insert` 块导致 8 个 E402 pre-existing（TD-012 收口后遗留） | 🟢 完成 | P3 | 后端 / 测试 / 质量门禁 / 工程治理 | TD-046 PR #187 收口时确认 `ruff check app/ tests/` 报 8 个 E402 errors 全部在 `tests/conftest.py:13-20`（imports not at top of file）。根因 L11 插入 `sys.path.insert(0, _REPO_ROOT)` 块（注释"REQ-010: ensure repo root on sys.path so tests can import scripts.ai.*"）违反 E402。修复：把 `_REPO_ROOT` + `sys.path` 块挪到 `tests/_paths.py`（新建），conftest.py 改为 `from tests._paths import *`。0 行为变化预期（`scripts.ai.*` 仍可 import）。分支 `chore/td-049-conftest-sys-path-move`；ruff 复跑确认实际命中 8 个 E402 行号 `13,14,15,16,17,19,20,21`（任务卡 L13-20 描述 +1 行偏差，事实以 ruff 实测为准）；`pytest --collect-only tests/engineering` 仍能 import `scripts.ai.evidence_coverage_report`；`pytest tests/engineering/test_evidence_coverage_report.py -v` → 4 passed, exit 0；mock-based 219 passed in 26.21s exit 0 零回归；`scripts/engineering/check_engineering_docs.py` exit 0（4 条 pre-existing 警告属于 TD-048 收口后的历史债，与本债无关）。 |
 | TD-051 | 治理 `document_chunks` 结构元数据、切片质量与既有数据重建 | 🟢 完成 | P1 | RAG / 数据完整性 / 文档解析 / AI Chat | PR #234 已合并（merge `ffccc6c`）；7 个 slice 合 1 PR；AC-1~AC-7 全部覆盖。 |
+| TD-053 | `rebuild_document_chunks` fallback 未算 `section_path` → 老数据走 fallback 时 section_path 仍 100% 空 | ⚪ 待澄清 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：`scripts/ai/chunk_quality_report.py` 重建后基线 section_path_empty 1562/1562（100%）与重建前持平。 |
+| TD-054 | 重建后 `offset_overlaps` 反而 +3% → chunker 跨 section `char_start` 计算或 `_enforce_size_limit` 拆分逻辑仍有问题 | ⚪ 待澄清 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：重建前 816（52.61%）→ 重建后 869（55.63%）。`chunker._enforce_size_limit` 拆分后子 chunk 继承父 chunk offset 的边界条件可能错位。 |
+| TD-055 | `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数 | ⚪ 待澄清 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-051 本机重建（PR #235）暴露：直接调 `cleanup_orphan_chunks(tid_str)` 返回 None（应返回 deleted count），运维只能查 SQL 二次验证。 |
 | TD-052 | `check-engineering-docs` 秒级反馈优化（增量 source size + 批量 git log + timing） | 🟢 完成 | P2 | 工程脚本 / 质量门禁 / 性能 | [PR #232](https://github.com/MarkDanile/MetaEduBase/pull/232) 已合并：默认门禁 0.36s；`--full` 保留全量审计 0.94s；新增 `--timing`。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
@@ -2953,6 +2956,143 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
     1. 真实 PG 走 `rebuild_document_chunks(file_id, tenant_id, chain_embed=True)` 触发 embed 重算（本次未 chain）
     2. 复测 BUG-003 AC-2/AC-3 "Python 的基本数据类型有哪些？" 命中 chunk 51/52/56
     3. 决定 TD-051-FU 是否入账（3 个 follow-up bug 优先级 P1）
+
+### TD-053: `rebuild_document_chunks` fallback 未算 `section_path` → 老数据走 fallback 时 section_path 仍 100% 空
+
+状态：⚪ 待澄清
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | RAG / 数据完整性 / 文档解析 |
+| 事实源 | TD-051 本机重建（PR #235）`scripts/ai/chunk_quality_report.py` 重建后基线 section_path_empty 1562/1562（100%）与重建前持平，预期改善但未变 |
+
+**证据**
+
+- 代码路径：`packages/server-python/app/contexts/document/application/tasks/rebuild_chunks.py:176-209` `_reconstruct_sections_from_full_text`：
+  - 仅构造 `DocumentSection(title, level, content, page)`，**未传 `path` 字段**
+  - 重建的 chunk 走 `chunk_by_structure(parsed, section_offset=sec_offset)` → `c.section_path = sec.path`（L111）→ `sec.path == ""` → chunk.section_path 仍空
+- 对比正常路径：L78-89 从 `structured_data["sections"]` 重建时 `path=s.get("path", "") or ""` 显式传 `path` 字段——但 TD-051 之前入库的 `structured_data` 没有 `sections` 键（仅 `full_text` + `section_count`），所以老数据全部走 fallback
+- 本机 `metaedu.document_chunks` 重建后基线（PR #235 baseline JSON）：
+  - total_chunks 1562
+  - section_path_empty **1562 (100%)**（重建前 1551/1551 100%，**0 改善**）
+  - 期望：section_path 应接近 0%（按 chunks 真实归属 section 比例）
+
+**问题**
+
+- 老数据 `structured_data` 缺 `sections` 键时，`rebuild_document_chunks` 走 fallback 不能恢复 section_path
+- 重建对 section_path 治理 0 效果，AI Chat 引用 / chunk 定位 / neighbor expansion 仍缺稳定基础
+- 唯一让 section_path 填回的方法：先重跑 `parse_document` 重新生成 `structured_data["sections"]`（依赖原始 PDF/DOCX 文件可读 + parse 任务能跑通），再调 `rebuild_document_chunks`
+
+**完成标准**
+
+- `rebuild_document_chunks` 在 fallback 路径下也能合理填 `section_path`：
+  - 选项 A（推荐）：让 fallback 也基于"标题 ## 切分"生成层次化 path（如 `0/0`、`0/1`、`1/0`），至少保证非空
+  - 选项 B：fallback 路径下 `section_path = ""` 但 `section_title` 用 first heading；明确文档"无法恢复原 path" 状态，并在报告里标
+- 重建后 `chunk_quality_report.py` section_path_empty 比率下降到 20% 以下（与 section_title_empty 12.93% 接近）
+- 不引入新业务 bug：保持 0 业务代码回归（除 `_reconstruct_sections_from_full_text` 本身的 path 生成）
+
+**验证方式**
+
+- pytest 锁死：fallback 路径下 `_reconstruct_sections_from_full_text` 返回的 `DocumentSection` 含 `path` 字段且非空
+- 真 PG：跑 1 个老数据 file（无 `sections` 键）的 `rebuild_document_chunks` → `chunk_quality_report.py` 该 file 的 section_path 改善
+- 全量基线对比：跑 25 文件重建 → `td-051-baseline-after.json` section_path_empty 应下降到 ≤ 20%
+- `ruff check` clean / `git diff --check` clean / `scripts/check-engineering-docs` 退出码 0
+
+**交付记录**
+
+- 2026-06-12 登记（入手工具：Claude Code / TD-051 本机重建期间发现）。本次只入账，不实现。
+
+### TD-054: 重建后 `offset_overlaps` 反而 +3% → chunker 跨 section `char_start` 计算或 `_enforce_size_limit` 拆分逻辑仍有问题
+
+状态：⚪ 待澄清
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | RAG / 数据完整性 / 文档解析 |
+| 事实源 | TD-051 本机重建（PR #235）`scripts/ai/chunk_quality_report.py` 重建前 816 (52.61%) → 重建后 869 (55.63%) |
+
+**证据**
+
+- 代码路径：`packages/server-python/app/shared/parsing/chunker.py:_enforce_size_limit`（PR #234 Slice 3 修复"传递 char_start/char_end 到子 chunk"）——但本机重建后 overlap 反而变多，怀疑边界条件未完全覆盖
+- 重叠检测逻辑（PR #235 新增）`scripts/ai/chunk_quality_report.py`：
+  - `LEAD(char_start) OVER (PARTITION BY file_id ORDER BY chunk_index) AS next_cs`
+  - `WHERE next_cs IS NOT NULL AND next_cs < char_end`（next chunk starts before prev ends）
+- 真 PG 数据（PR #235 baseline JSON）：
+  - 重建前 816/1551 (52.61%)
+  - 重建后 869/1562 (55.63%)
+  - Δ +53 (+3.02 pct)
+- 实际案例：Python 教程 PDF (file_id=7e12fdce-..., 782 chunks) 重建后 char_start 全填，但跨 section 边界 overlap 数量待具体定位
+
+**问题**
+
+- 重建不仅没减少 overlap 反而**增加**——说明 chunker 修复（PR #234 Slice 3）不完整
+- 3 种可能真因（不限于）：
+  1. `section_offset` 累加逻辑（PR #235 rebuild_chunks.py L97-104）有 off-by-one：`"\n\n"` 分隔符 + title 长度计算可能错位
+  2. `_enforce_size_limit` 拆分时 `char_start` 算成子 chunk 内容起点，但**子 chunk 内容起点 ≠ 父 chunk 内拆分位置**（因为多字节字符 / chunk 边界 trim 影响）
+  3. `chunk_by_structure` 内部对 section 边界处理有 overlap 设计（保留 N 字符 overlap 以增强 neighbor 检索），不算 bug 但需要明确预期
+
+**完成标准**
+
+- 真 PG 跑全 25 文件 `rebuild_document_chunks` 后，`offset_overlaps` 比率 ≤ 重建前 816/1551 (52.61%)
+- 不引入新 bug：保持 char_start_null / char_start_zero_zero / orphan_chunks 0% 修复成果不退化
+- 明确 overlap 语义：如果设计上需要"保留 100~200 字符 neighbor overlap"，在 `chunker.py` 顶部注释 + spec 文档化；不能既说"零 overlap"又实际 overlap
+
+**验证方式**
+
+- pytest 锁死：跨 section 切分时下一 section 第一个 chunk 的 char_start ≥ 上一 section 最后一个 chunk 的 char_end（无跨 section overlap）
+- pytest 锁死：`_enforce_size_limit` 拆分后子 chunk char_start = 父 chunk char_start + 子 chunk 起点偏移
+- 真 PG：跑 25 文件重建 → `chunk_quality_report.py` offset_overlaps 比率改善
+- 对 Python 教程 PDF (782 chunks) 抽样 5 个跨 section 边界 chunk 对，手工 SQL 验证 char_start/char_end 与 content 实际位置一致
+- `ruff check` clean / `git diff --check` clean / `scripts/check-engineering-docs` 退出码 0
+
+**交付记录**
+
+- 2026-06-12 登记（入手工具：Claude Code / TD-051 本机重建期间发现）。本次只入账，不实现。
+
+### TD-055: `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数
+
+状态：⚪ 待澄清
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 后端 / Celery 任务 / 运维可观测性 |
+| 事实源 | TD-051 本机重建（PR #235）直接调 `cleanup_orphan_chunks(tid_str)` 返回 None，运维只能查 SQL 二次验证 |
+
+**证据**
+
+- 代码路径：`packages/server-python/app/contexts/document/application/tasks/rebuild_chunks.py:212-239`：
+  - L233 `deleted = result.rowcount`
+  - L237 `return deleted`
+  - 但 L239 `asyncio.run(_run_in_session(_do))` —— `_run_in_session` 内部把 `_do` 的返回值**吞掉**（只 commit 不 return），所以 `cleanup_orphan_chunks(tid_str)` 实际拿到 `None`
+- 对比 `rebuild_document_chunks`：L173 `asyncio.run(_run_in_session(_do))` 同样吞返回值——但 rebuild 写日志，cleanup 只在 logger.info 写删条数，外部拿不到
+- 本机真跑（PR #235）：调 `cleanup_orphan_chunks('00000000-0000-0000-0000-000000000001')` 返回 None；后续要查 SQL `SELECT COUNT(*) FROM document_chunks c WHERE NOT EXISTS (SELECT 1 FROM files f WHERE f.id = c.file_id)` 二次确认
+
+**问题**
+
+- Celery task 走 `.delay()` 时 `.get()` 能拿到 task return；但直接调函数（包括运维脚本 / 测试）拿不到
+- 运维调用方必须自己写 SQL 验证——**违反"单一信息源"原则**
+- 类似问题可能存在于其他 task（如 `parse_document` / `chunk_document` / `embed_chunks`），但 TD-051 路径只暴露了 `cleanup_orphan_chunks`
+
+**完成标准**
+
+- `cleanup_orphan_chunks` 函数返回 `int`（删条数）
+- 直接调用方 `cleanup_orphan_chunks('00000000-0000-0000-0000-000000000001').return_value` 或 `.get()` 拿到整数
+- Celery `.delay()` 链式仍能拿到整数
+- 抽样检查其他 `_run_in_session` 调用的 task：是否也存在相同问题；如果有，建独立 follow-up 任务跟踪
+
+**验证方式**
+
+- pytest 锁死：`cleanup_orphan_chunks(tid_str).return_value == expected_deleted_count`（mock `_run_in_session` 或用真实 DB 状态）
+- 端到端：调 `cleanup_orphan_chunks(tid_str)` 后拿返回值，断言 `>= 0`
+- 现有 25 文件重建 / cleanup_orphan_chunks 端到端测试（如有）继续通过
+- `ruff check` clean / `git diff --check` clean / `scripts/check-engineering-docs` 退出码 0
+
+**交付记录**
+
+- 2026-06-12 登记（入手工具：Claude Code / TD-051 本机重建期间发现）。本次只入账，不实现。
 
 ### DOC-063: `check-engineering-docs` 性能收口（subprocess 砍掉 / 5 秒硬指标）
 
