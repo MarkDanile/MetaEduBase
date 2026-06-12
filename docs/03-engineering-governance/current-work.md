@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| DOC-064 pre-existing 警告收口（`check-engineering-docs` 退出码 1 → 0） | 🟡 进行中 | P3 | 文档 / 工程治理 | DOC-063 收口后 `check-engineering-docs` 报 0.74s 但退出码 1（8 条 pre-existing 警告）。当前在分支 `docs/doc-064-pre-existing-warning-cleanup`。2 类警告：① current-work.md L37-L41 "最近完成摘要过长"（5 条，DOC-057/058/060/063 + TD-049 收口时塞超 220 字符摘要进单格）；② spec/2026-06-11-td-048-sourceitem-deprecation-removal.md L3/L91/L92 "Markdown 链接目标不存在"（3 条，路径少 1 个 `../`——spec 在 docs/02-delivery-plans/01-specs/ 4 段深，`../../../` 只到 02-delivery-plans/，应 `../../../../`）。修复方案：① 把每条"最近完成"行重写为 ≤ 220 字符（短摘要 + work-log 链接）；② spec 3 个链接 `../../../` → `../../../../`。 | 1. 改 current-work.md 5 行短摘要 + spec 3 路径；2. 跑门禁 / git diff --check / pytest；3. commit + push + 开 PR；4. 合 main + 按翻完成硬条件收口 | 待跑：`python3 scripts/check-engineering-docs` 退出码 0 + `git diff --check` clean + `pytest tests/engineering/` 22 passed |
+| （空） | | | | | | |
 
 ## 下一批候选任务
 
@@ -34,7 +34,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
-| 2026-06-12 | DOC-063 `check-engineering-docs` 性能收口（subprocess 砍掉 / 5 秒硬指标） | 🟢 完成 | 1 PR（#209 / merge `387303e`）：`_common.check_merge_commit_in_git_history` 用 `git rev-parse` 替代 49 次串行 `gh pr view`。1:38.21 → **0.76s**（145x 提速），22 pytest passed 零回归。完整记录见 [work-log](work-log.md)。 | [DOC-063](technical-debt.md#doc-063) / PR #209（merge `387303e`） |
+| 2026-06-12 | DOC-064 pre-existing 警告收口（`check-engineering-docs` 退出码 1 → 0） | 🟢 完成 | 1 docs-only PR（#211 / merge `e6f9ea9`）：2 类修复——① current-work.md L37-L41 五条"最近完成"行重写为 ≤ 220 字符（短摘要 + work-log 回链）；② spec 路径 `../../../` → `../../` 修对层级。0.77 秒 + 退出码 **0** + 22 pytest passed 零回归。 | [DOC-064](technical-debt.md#doc-064) / PR #211（merge `e6f9ea9`） |
 | 2026-06-12 | DOC-057 历史"验证通过声明缺可复核证据"格式收口（technical-debt 总账版） | 🟢 完成 | 1 PR（#204 / merge `f1a8bd0`）：修复要求在 main 上已自然满足（历史任务合 main 时补齐了 `gh pr view` / `退出码 0` 命中），本轮按任务卡交付项收口：技术债总账 L148 翻 🟢 + L1948 任务卡补 PR 链接 + work-log 索引行追加。`git diff --check` clean；0 业务代码变更；`gh pr view 204` state=MERGED。 | [DOC-057](technical-debt.md#doc-057) / PR #204（merge `f1a8bd0`） |
 | 2026-06-12 | DOC-058 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则 | 🟢 完成 | 1 PR（#202 / merge `8b0ceb8`）：3 个规则文件（workbench + git-workflow + quality-gates）追加硬规则段。`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；20 pytest passed 零回归；`git diff --check` clean；0 业务代码 / 0 测试代码 / 0 脚本变更。 | [DOC-058](technical-debt.md#doc-058) / PR #202（merge `8b0ceb8`） |
 | 2026-06-12 | TD-049 `tests/conftest.py` `sys.path.insert` 块导致 8 E402 pre-existing | 🟢 完成 | 新建 `tests/_paths.py` 持有 sys.path 副作用；`tests/conftest.py` 改为 `from tests._paths import _REPO_ROOT`，ruff E402 + I001 全消除。`pytest tests/engineering/test_evidence_coverage_report.py -v` 4 passed；mock-based 子集 219 passed。 | [TD-049](technical-debt.md#td-049) / PR #200（merge `cfad2b4`） |
