@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | fix1 + fix2 + fix3 已合 main（PR #221 / #223 / #225 / merge `237b108` / `6bdcdd6` / `36aba14`）。准备推 fix4 frontend file open。 | 切 `fix/bug-003-ai-chat-regression-fix4` 推 PR-BUG-003-4（`openFile` 改新标签 + 保留 `?chunk=` 锚点 + evidence 缺失降级 + marked link 对齐）。 | fix1：340 pytest / 0 回归；fix2：34 vitest / 0 回归；fix3：39 vitest / 0 回归；e2e 未跑。 |
+| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | fix4 frontend file open 实现完成：抽出 `openFileUrl.ts`（`buildFileOpenUrl` + `openInNewTab`）；`AiChatView.openFile` 改用隐藏 `<a target=_blank>.click()` 替代 `window.location.href` 整页跳转；`openEvidenceFile` 缺 file_id 时 `console.warn` 降级。`vitest 49/49 / typecheck / lint` 全过 / 0 回归。 | push fix4 + 创建 PR-BUG-003-4 → 维护者合 main 后人工补 AC-5 截图 → 推 fix5 frontend fallback（中文 IME 兼容 + loading 错误态）。 | fix1：340 pytest / 0 回归；fix2：34 vitest / 0 回归；fix3：39 vitest / 0 回归；fix4：49 vitest / 0 回归；e2e 未跑。 |
 
 ## 下一批候选任务
 
