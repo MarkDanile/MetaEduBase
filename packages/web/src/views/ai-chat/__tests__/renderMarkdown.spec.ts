@@ -31,6 +31,12 @@ describe("replaceEvidenceReferences (REQ-010 AC-4)", () => {
     expect(out).toContain('<a class="evidence-ref" data-ref="2" href="#evidence-2">[2]</a>');
   });
 
+  it("传入 messageId 时写入 data-message-id", () => {
+    const html = "<p>请参考 [1]。</p>";
+    const out = replaceEvidenceReferences(html, makeSources(1), "assistant-1");
+    expect(out).toContain('data-message-id="assistant-1"');
+  });
+
   it("[3] 越界时保持字面 [3]", () => {
     const html = "<p>请参考 [1]、[2]、[3] 来源。</p>";
     const out = replaceEvidenceReferences(html, makeSources(2));

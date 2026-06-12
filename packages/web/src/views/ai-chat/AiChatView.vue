@@ -35,8 +35,8 @@
       </EmptyState>
 
       <div
-        v-for="(msg, i) in messages"
-        :key="i"
+        v-for="msg in messages"
+        :key="msg.id"
         :class="['flex', msg.role === 'user' ? 'justify-end' : 'justify-start']"
       >
         <div v-if="msg.role === 'assistant'" class="w-7 h-7 rounded-full bg-[var(--color-accent-bg)] flex items-center justify-center flex-shrink-0 mr-2.5 mt-1">
@@ -51,7 +51,7 @@
         ]">
           <div v-if="msg.role === 'user'">{{ msg.content }}</div>
           <!-- eslint-disable-next-line vue/no-v-html -- renderMarkdown blocks raw HTML and unsafe links before this controlled injection point. -->
-          <div v-else v-html="renderMarkdown(msg.content, msg.sources)"></div>
+          <div v-else v-html="renderMarkdown(msg.content, msg.sources, msg.id)"></div>
           <!-- REQ-010 AC-5/AC-6: 渲染证据来源列表 + 无证据 banner -->
           <div
             v-if="msg.role === 'assistant' && (!msg.sources || msg.sources.length === 0)"
@@ -66,11 +66,23 @@
           </div>
           <div v-else-if="msg.sources && msg.sources.length > 0" class="mt-3 pt-2.5 border-t border-[var(--color-border-subtle)]">
             <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)] mb-1.5 uppercase tracking-wider">参考来源</p>
-            <div class="space-y-1.5">
+            <DocumentSourceList
+              v-if="msg.document_sources_view.length > 0"
+              :sources="msg.document_sources_view"
+              @open-document="openDocumentSource"
+              @open-chunk="openDocumentSourceChunk"
+            />
+            <div
+              v-if="unattributedSources(msg).length > 0"
+              class="mt-2 space-y-1.5"
+            >
+              <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">
+                补充证据 / 来源待细化
+              </p>
               <EvidenceCard
-                v-for="(src, idx) in msg.sources"
+                v-for="(src, idx) in unattributedSources(msg)"
                 :key="src.evidence_id"
-                :index="idx + 1"
+                :index="evidenceIndex(msg, src, idx)"
                 :evidence="src"
                 @open-file="openEvidenceFile"
               />
@@ -140,7 +152,10 @@ import api from "@/services/api";
 import EmptyState from "@/components/EmptyState.vue";
 import LoadingSpinner from "@/components/LoadingSpinner.vue";
 import EvidenceCard from "@/components/EvidenceCard.vue";
-import type { EvidenceItem } from "@/types/evidence";
+import DocumentSourceList from "@/components/DocumentSourceList.vue";
+import type { DocumentSource, DocumentSourceChunk, EvidenceChatResponse, EvidenceItem } from "@/types/evidence";
+import { deriveDocumentSourcesFromEvidence } from "./documentSources";
+import { findEvidenceForMessage } from "./evidenceNavigation";
 import { replaceEvidenceReferences } from "./evidenceReferences";
 
 hljs.registerLanguage("python", python);
@@ -200,7 +215,7 @@ const marked = new Marked({
   },
 });
 
-function renderMarkdown(content: string, sources?: EvidenceItem[]): string {
+function renderMarkdown(content: string, sources?: EvidenceItem[], messageId?: string): string {
   // REQ-010 AC-4: 在 marked 渲染之后再改写 [1] / [2] 引用编号为可点击
   // evidence-ref 链接。marked 自定义 html() tokenizer 会 escape 我们的
   // 注入字符串，所以必须后处理才能保留 <a> 标签。
@@ -208,13 +223,16 @@ function renderMarkdown(content: string, sources?: EvidenceItem[]): string {
   // 实际改写逻辑抽到 evidenceReferences.ts 以便 spec 独立测试
   // （<script setup> 不能 ES module export）。
   const html = marked.parse(content) as string;
-  return replaceEvidenceReferences(html, sources);
+  return replaceEvidenceReferences(html, sources, messageId);
 }
 
 interface ChatMessage {
+  id: string;
   role: "user" | "assistant";
   content: string;
   sources?: EvidenceItem[];
+  document_sources?: DocumentSource[];
+  document_sources_view: DocumentSource[];
 }
 
 const messages = ref<ChatMessage[]>([]);
@@ -229,6 +247,13 @@ const quickQuestions = [
   "电路基础课程包含哪些知识点？",
   "智能制造专业需要哪些技能？",
 ];
+
+let messageSeq = 0;
+
+function nextMessageId(role: ChatMessage["role"]): string {
+  messageSeq += 1;
+  return `${role}-${Date.now()}-${messageSeq}`;
+}
 
 function scrollToBottom() {
   nextTick(() => {
@@ -251,7 +276,12 @@ async function sendMessage() {
   const text = inputText.value.trim();
   if (!text || loading.value) return;
 
-  messages.value.push({ role: "user", content: text });
+  messages.value.push({
+    id: nextMessageId("user"),
+    role: "user",
+    content: text,
+    document_sources_view: [],
+  });
   inputText.value = "";
   if (inputEl.value) inputEl.value.style.height = "auto";
   loading.value = true;
@@ -261,29 +291,39 @@ async function sendMessage() {
   try {
     // REQ-010 Slice 7: 改用 /ai/chat/evidence (返回 EvidenceItem[])。
     // 旧 /ai/chat 端点保留向后兼容；前端默认走 evidence-aware 入口。
-    const { data } = await api.post(
+    const { data } = await api.post<EvidenceChatResponse>(
       "/ai/chat/evidence",
       { message: text, context_window: 5 },
       {
         signal: abortController.value.signal,
       }
     );
+    const documentSources = data.document_sources?.length
+      ? data.document_sources
+      : deriveDocumentSourcesFromEvidence(data.sources);
     messages.value.push({
+      id: nextMessageId("assistant"),
       role: "assistant",
       content: data.reply,
       sources: data.sources,
+      document_sources: data.document_sources,
+      document_sources_view: documentSources,
     });
   } catch (e: unknown) {
     if ((e as Error).name === "CanceledError" || (e as Error).name === "AbortError") {
       messages.value.push({
+        id: nextMessageId("assistant"),
         role: "assistant",
         content: "（已停止生成）",
+        document_sources_view: [],
       });
     } else {
       const err = e as { response?: { data?: { detail?: string } } };
       messages.value.push({
+        id: nextMessageId("assistant"),
         role: "assistant",
         content: `请求失败: ${err.response?.data?.detail ?? "网络错误"}`,
+        document_sources_view: [],
       });
     }
   } finally {
@@ -297,15 +337,35 @@ function abortRequest() {
   abortController.value?.abort();
 }
 
+function openFile(fileId: string, chunkId?: string | null) {
+  const params = new URLSearchParams();
+  if (chunkId) params.set("chunk", chunkId);
+  const qs = params.toString();
+  window.location.href = `/resource/files/${fileId}${qs ? "?" + qs : ""}`;
+}
+
 function openEvidenceFile(evidence: EvidenceItem) {
   // REQ-010 AC-5: 跳到文件详情页 + chunk 锚点
   if (evidence.file_id) {
-    const params = new URLSearchParams();
-    if (evidence.chunk_id) params.set("chunk", evidence.chunk_id);
-    const qs = params.toString();
-    const url = `/resource/files/${evidence.file_id}${qs ? "?" + qs : ""}`;
-    window.location.href = url;
+    openFile(evidence.file_id, evidence.chunk_id);
   }
+}
+
+function openDocumentSource(source: DocumentSource) {
+  openFile(source.file_id);
+}
+
+function openDocumentSourceChunk(source: DocumentSource, chunk: DocumentSourceChunk) {
+  openFile(source.file_id, chunk.chunk_id);
+}
+
+function unattributedSources(message: ChatMessage): EvidenceItem[] {
+  return (message.sources ?? []).filter((source) => !source.file_id);
+}
+
+function evidenceIndex(message: ChatMessage, source: EvidenceItem, fallbackIdx: number): number {
+  const idx = message.sources?.findIndex((item) => item.evidence_id === source.evidence_id) ?? -1;
+  return idx >= 0 ? idx + 1 : fallbackIdx + 1;
 }
 
 // REQ-010 AC-4: chatContainer 全局 click 委托捕获 .evidence-ref 元素
@@ -320,16 +380,11 @@ function onChatClick(event: MouseEvent) {
   const ref = parseInt(refStr, 10);
   if (Number.isNaN(ref) || ref < 1) return;
   event.preventDefault();
-  openEvidenceFileByIndex(ref);
+  openEvidenceFileByIndex(refEl.dataset.messageId, ref);
 }
 
-function openEvidenceFileByIndex(idx: number) {
-  // 从最近一条 assistant 消息的 sources 里取
-  const lastAssistant = [...messages.value]
-    .reverse()
-    .find((m) => m.role === "assistant");
-  if (!lastAssistant || !lastAssistant.sources) return;
-  const evidence = lastAssistant.sources[idx - 1];
+function openEvidenceFileByIndex(messageId: string | undefined, idx: number) {
+  const evidence = findEvidenceForMessage(messages.value, messageId, idx);
   if (evidence) {
     openEvidenceFile(evidence);
   }

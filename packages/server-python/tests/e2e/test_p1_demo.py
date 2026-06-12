@@ -196,8 +196,14 @@ async def _seed_document_chunks(
         await conn.execute(
             "INSERT INTO metaedu.document_chunks "
             "(id, tenant_id, file_id, chunk_index, content, "
-            "section_title, section_path, char_start, char_end, created_at) "
-            "VALUES ($1, $2, $3, 0, $4, $5, $6, 0, $7, $8)",
+            "section_title, section_path, char_start, char_end, created_at, "
+            "content_tsvector) "
+            "VALUES ($1, $2, $3, 0, $4, $5, $6, 0, $7, $8, "
+            "to_tsvector(COALESCE("
+            "  (SELECT oid::regconfig FROM pg_catalog.pg_ts_config "
+            "   WHERE cfgname = 'chinese_zh' LIMIT 1), "
+            "  'pg_catalog.simple'::regconfig"
+            "), $4))",
             uuid.uuid4(), tenant_id, file_id,
             content, "教学目标", "教学目标", len(content), now,
         )

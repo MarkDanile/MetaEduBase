@@ -98,6 +98,29 @@
 - 更新 `current-work.md`、Backlog、Requirement、spec、plan、work-log。
 - 如发现独立技术债，按 `TD-xxx` 入账，不在 REQ-012 内顺手扩大范围。
 
+## Implementation Notes — 2026-06-12
+
+- Slice 1：已新增 `CompositeChunkRetriever`，`ai_router._evidence_service` 注入 `PgChunkVectorRetriever` + `PgChunkKeywordRetriever`；metadata filter 返回值进入 fusion 前候选集。
+- Slice 2：`AIChatService` 对 `knowledge_node` evidence 通过 `source_chunk_id` / `chunk_id` 回查 `document_chunks.content`，prompt context 使用回源 chunk 原文。
+- Slice 3：新增后端 `DocumentSource` / `DocumentSourceChunk` DTO，`/ai/chat/evidence` 返回 `document_sources`。
+- Slice 4：前端新增 `DocumentSourceList`，`[N]` 引用按当前 assistant message id 查 sources；底部参考来源改为文档级列表，无法归因的 evidence 单独显示为“补充证据 / 来源待细化”。
+- Slice 5：`PgChunkKeywordRetriever` 优先走 `content_tsvector`，兼容历史 test DB 中 `content_tsvector` 为 `TEXT` 的情况（显式 `::tsvector`）；缺 `chinese_zh` 配置或 tsvector 无命中时受控降级到 `ILIKE` fallback，并以 `metadata.search_mode` 标记。
+
+## Validation Results — 2026-06-12
+
+- `cd packages/server-python && .venv/bin/python -m ruff check app/contexts/knowledge tests/contexts/knowledge/test_ai_chat_service.py tests/contexts/knowledge/retrievers/test_pg_metadata_filter.py tests/contexts/knowledge/retrievers/test_pg_chunk_keyword_retriever.py tests/e2e/test_p1_rag_evidence_e2e.py tests/e2e/test_p1_demo.py` → 退出码 0。
+- `cd packages/server-python && .venv/bin/python -m compileall app/contexts/knowledge tests/contexts/knowledge/test_ai_chat_service.py tests/contexts/knowledge/retrievers/test_pg_metadata_filter.py tests/contexts/knowledge/retrievers/test_pg_chunk_keyword_retriever.py tests/e2e/test_p1_rag_evidence_e2e.py tests/e2e/test_p1_demo.py -q` → 退出码 0。
+- `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/knowledge/test_ai_chat_service.py tests/contexts/knowledge/retrievers/test_pg_metadata_filter.py tests/contexts/knowledge/retrievers/test_pg_chunk_keyword_retriever.py tests/contexts/knowledge/retrievers/test_metadata_filter_contract.py tests/contexts/knowledge/test_evidence_model.py tests/contexts/knowledge/test_evidence_fusion.py tests/contexts/knowledge/test_pg_graph_retriever_source_pass_through.py tests/contexts/ai/test_ai_chat_rag_e2e.py -q` → 45 passed。
+- `cd packages/server-python && .venv/bin/python -m pytest tests/contexts/ai/test_ai_chat.py tests/contexts/knowledge/test_graph_retrieve_endpoint.py -q` → 8 passed（需访问本机 PostgreSQL；沙箱内同命令因 `::1:5432 PermissionError` 失败）。
+- `cd packages/server-python && .venv/bin/python -m pytest tests/e2e/test_p1_rag_evidence_e2e.py -q -rs` → 2 passed（需访问本机 PostgreSQL）。
+- `cd packages/server-python && .venv/bin/python -m pytest tests/e2e/test_p1_demo.py -q` → 6 passed（需访问本机 PostgreSQL）。
+- `pnpm --filter @metaedu/web test` → 30 passed。
+- `pnpm --filter @metaedu/web lint` → 退出码 0。
+- `pnpm --filter @metaedu/web typecheck` → 退出码 0。
+- `cd packages/server-python && .venv/bin/python ../../scripts/ai/evidence_coverage_report.py` → 退出码 0；输出 `node_source_chunk 824/1006 (81.91%)`、`chunk_embedding 1551/1551 (100.0%)`、`chunk_tsvector 1551/1551 (100.0%)`、`file_metadata 25/25 (100.0%)`；有 asyncpg close event-loop warning。
+- `scripts/check-engineering-docs` → 退出码 0（31 known issues allowlisted）。
+- `git diff --check` → 退出码 0。
+
 ## Suggested Branch / PR Strategy
 
 - `feat/req-012-rag-retrieval-document-sources`

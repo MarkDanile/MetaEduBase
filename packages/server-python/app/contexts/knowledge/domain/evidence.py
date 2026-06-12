@@ -96,3 +96,34 @@ class EvidenceItem(BaseModel):
             self.structured_path,
         )
         return self
+
+
+class DocumentSourceChunk(BaseModel):
+    """A matched chunk shown under a document-level citation source."""
+
+    evidence_index: int
+    chunk_id: uuid.UUID | None = None
+    chunk_index: int | None = None
+    title: str | None = None
+    snippet: str = ""
+    score: float | None = None
+    channels: list[str] = Field(default_factory=list)
+
+
+class DocumentSource(BaseModel):
+    """Document-level reference source for AI Chat.
+
+    `EvidenceItem[]` remains the inline citation sequence. `DocumentSource[]`
+    groups those evidence items by file so the UI can display references as
+    documents, with matched chunks nested underneath.
+    """
+
+    file_id: uuid.UUID
+    title: str
+    file_name: str | None = None
+    doc_type: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    best_score: float | None = None
+    channels: list[str] = Field(default_factory=list)
+    evidence_indices: list[int] = Field(default_factory=list)
+    chunks: list[DocumentSourceChunk] = Field(default_factory=list)

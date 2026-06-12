@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-012 RAG 多路召回与知识图谱证据链收口 | 🔵 就绪 | P1 | RAG / AI Chat / Evidence / KG / Frontend | Requirement 已补硬决策：底部参考来源一级必须是文档，chunk 只作为文档下命中片段；新增 spec / plan，覆盖 chunk keyword 接入、metadata filter 返回值生效、graph 回源 chunk、当前消息 `[N]` 点击和文档级来源 UI。 | 由 CC 或下一执行者按 [Spec](../02-delivery-plans/01-specs/2026-06-12-req-012-rag-retrieval-document-sources.md) / [Plan](../02-delivery-plans/02-plans/2026-06-12-req-012-rag-retrieval-document-sources-plan.md) 开发；建议先做 Slice 1 backend retrieval + metadata filter，再做文档级来源 DTO 和前端 UI。 | Docs-only 规划已验证：`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0。 |
+| REQ-012 RAG 多路召回与知识图谱证据链收口 | 🟡 进行中 | P1 | RAG / AI Chat / Evidence / KG / Frontend | 实现与验证已完成，仍在分支 `feat/req-012-rag-retrieval-document-sources`；已接入 vector + keyword chunk 复合召回、metadata filter 返回值、graph 回源 chunk、`document_sources`、当前消息 `[N]` 点击和文档级来源 UI。 | 走完整 Git 闭环：最终 diff review、commit、push、PR、merge main；合并后再翻 `🟢 完成` 并回填 work-log。 | 已运行：后端 ruff 0、compileall 0、mock pytest 45 passed；PG API 8 passed；P1 RAG E2E 2 passed；P1 demo 6 passed；web test 30 passed、lint 0、typecheck 0；coverage report 81.91% / 100% / 100% / 100%，退出码 0 但有 asyncpg close warning；docs check 0；diff check 0。 |
 
 ## 下一批候选任务
 

@@ -1,11 +1,20 @@
 # REQ-012: RAG 多路召回与知识图谱证据链收口
 
-Status: 🔵 Ready
+Status: 🟡 Doing
 Priority: P1
 Milestone: P1 / P2
 Parent: REQ-010
 Alias: REQ-010 质量 follow-up
 Source: AI Chat 问答质量复核 / TD-046 数据回填结果 / TD-047 / TD-050 / P2-SEARCH 规划校准
+
+## 当前交付状态
+
+2026-06-12：Codex 已在分支 `feat/req-012-rag-retrieval-document-sources` 完成实现和验证，等待完整 Git 闭环后才能翻 `🟢 Done`。
+
+- 已实现：chunk vector + keyword 复合召回、metadata filter 返回值参与融合、graph evidence 回源 `document_chunks`、`DocumentSource` / `DocumentSourceChunk` DTO、`/ai/chat/evidence.document_sources`、当前消息 `[N]` 点击绑定、文档级参考来源 UI、无 `file_id` evidence 的“补充证据 / 来源待细化”展示。
+- 检索口径：keyword 通道优先使用 `content_tsvector` + 可用的 `chinese_zh` 配置；测试库或未初始化环境缺中文配置 / tsvector 无命中时，受控降级到 `ILIKE` fallback，并在 evidence metadata 标记 `search_mode`。
+- 已验证：后端 ruff 0、compileall 0、mock pytest 45 passed、PG API 8 passed、P1 RAG E2E 2 passed、P1 demo 6 passed；前端 test 30 passed、lint 0、typecheck 0；`scripts/check-engineering-docs` 0；`git diff --check` 0。
+- 覆盖率：`scripts/ai/evidence_coverage_report.py` 输出 `node_source_chunk 824/1006 (81.91%)`、`chunk_embedding 1551/1551 (100.0%)`、`chunk_tsvector 1551/1551 (100.0%)`、`file_metadata 25/25 (100.0%)`；脚本退出码 0，但关闭 asyncpg 连接时有 event loop warning。
 
 ## 背景
 

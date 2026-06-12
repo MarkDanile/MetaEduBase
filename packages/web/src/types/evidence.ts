@@ -27,7 +27,30 @@ export interface EvidenceItem {
   channels: string[];
 }
 
+export interface DocumentSourceChunk {
+  evidence_index: number;
+  chunk_id?: string | null;
+  chunk_index?: number | null;
+  title?: string | null;
+  snippet: string;
+  score?: number | null;
+  channels: string[];
+}
+
+export interface DocumentSource {
+  file_id: string;
+  title: string;
+  file_name?: string | null;
+  doc_type?: string | null;
+  tags: string[];
+  best_score?: number | null;
+  channels: string[];
+  evidence_indices: number[];
+  chunks: DocumentSourceChunk[];
+}
+
 export interface EvidenceChatResponse {
   reply: string;
   sources: EvidenceItem[];
+  document_sources?: DocumentSource[];
 }

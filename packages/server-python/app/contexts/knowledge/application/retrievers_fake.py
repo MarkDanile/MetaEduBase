@@ -90,6 +90,7 @@ class FakeMetadataFilter:
 
     def __init__(self) -> None:
         self.calls: list[dict] = []
+        self.return_value: list[EvidenceItem] | None = None
 
     async def filter(
         self,
@@ -105,4 +106,6 @@ class FakeMetadataFilter:
                 "candidate_count": len(candidates),
             }
         )
+        if self.return_value is not None:
+            return list(self.return_value)
         return list(candidates)

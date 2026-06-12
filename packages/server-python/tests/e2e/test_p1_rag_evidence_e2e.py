@@ -62,8 +62,14 @@ async def _seed_document_chunks(
         await conn.execute(
             "INSERT INTO metaedu.document_chunks "
             "(id, tenant_id, file_id, chunk_index, content, "
-            "section_title, section_path, char_start, char_end, created_at) "
-            "VALUES ($1, $2, $3, 0, $4, $5, $6, 0, $7, $8)",
+            "section_title, section_path, char_start, char_end, created_at, "
+            "content_tsvector) "
+            "VALUES ($1, $2, $3, 0, $4, $5, $6, 0, $7, $8, "
+            "to_tsvector(COALESCE("
+            "  (SELECT oid::regconfig FROM pg_catalog.pg_ts_config "
+            "   WHERE cfgname = 'chinese_zh' LIMIT 1), "
+            "  'pg_catalog.simple'::regconfig"
+            "), $4))",
             uuid.uuid4(), tenant_id, file_id,
             content, "智能制造专业核心技能", "1", len(content), now,
         )
@@ -208,4 +214,3 @@ async def test_p1_rag_evidence_fixtures_exists():
     keywords = ["CAD", "PLC", "数控", "机器人", "传感器", "自动化", "数字孪生"]
     missing = [k for k in keywords if k not in text]
     assert not missing, f"fixture missing keywords: {missing}"
-
