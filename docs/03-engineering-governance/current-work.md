@@ -24,7 +24,8 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| （空） | | | | |
+| BUG-003 AI Chat 体验与回答质量回归 | 🔵 Ready | P1 | AI Chat / RAG / Frontend / Evidence | 先复现首屏输入框、兜底问题刷新、引用链接不可读和 Python 基本数据类型回答质量问题；按 [Bug](../01-product-planning/05-requirements/BUG-003-ai-chat-ux-and-answer-quality-regression.md) 验收标准执行。 |
+| TD-051 治理 `document_chunks` 结构元数据、切片质量与既有数据重建 | ⚫ 待办 | P1 | RAG / 数据完整性 / 文档解析 / AI Chat | 先基于 [TD-051](technical-debt.md#td-051-治理-document_chunks-结构元数据切片质量与既有数据重建) 做 spec/plan；完成必须覆盖切片策略修正和已入库数据重建。 |
 
 ## 最近完成
 

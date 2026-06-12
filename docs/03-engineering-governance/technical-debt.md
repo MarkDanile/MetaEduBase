@@ -144,6 +144,7 @@
 | TD-047 | 中文分词回填 ILIKE 限制（P1 数据债衍生） | 🟢 完成 | P2 | 后端 / RAG / 全文检索 | 路线 A: zhparser + SCWS + tsvector + plainto_tsquery (spike 验证 + 6 切片收口)。dev 库真跑 backfill: 70/252 节点 file_only -> chunk_resolved; 总覆盖率 74.95% -> 81.91% (+6.96 pct); 剩 182 file_only 属 REQ-012 后续 embedding 召回范围。runtime 镜像增量 23MB。`chore/td-047-zhparser-chinese-tsvector` 分支 5 commit。 | [PR #192](https://github.com/MarkDanile/MetaEduBase/pull/192) |
 | TD-048 | `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口） | 🟢 完成 | P3 | 后端 / API 契约 / 文档 | 3 切片 3 PR 收口：PR-1 docs-only 修事实源（[#196](https://github.com/MarkDanile/MetaEduBase/pull/196)，merge `ba7f441`）+ PR-2 业务代码（[#197](https://github.com/MarkDanile/MetaEduBase/pull/197)，merge `760d147`，4 业务文件 + 1 矩阵 + 2 新建 spec/plan）+ PR-3 docs-only 跨事实源收口（本 PR）。`ai_router.py` 旧 `SourceItem` / `ChatResponse` / `_recall_to_source` / `@router.post('/chat')` 全 0 命中；mock-based pytest 47 passed 零回归（沙箱无 PG，全量 pytest 由 CI 接力）；ruff 8 个 TD-049 pre-existing 兼容；DOC-057 pre-existing validation-claim 提示由独立 PR 收口。 |
 | TD-049 | `tests/conftest.py` `sys.path.insert` 块导致 8 个 E402 pre-existing（TD-012 收口后遗留） | 🟢 完成 | P3 | 后端 / 测试 / 质量门禁 / 工程治理 | TD-046 PR #187 收口时确认 `ruff check app/ tests/` 报 8 个 E402 errors 全部在 `tests/conftest.py:13-20`（imports not at top of file）。根因 L11 插入 `sys.path.insert(0, _REPO_ROOT)` 块（注释"REQ-010: ensure repo root on sys.path so tests can import scripts.ai.*"）违反 E402。修复：把 `_REPO_ROOT` + `sys.path` 块挪到 `tests/_paths.py`（新建），conftest.py 改为 `from tests._paths import *`。0 行为变化预期（`scripts.ai.*` 仍可 import）。分支 `chore/td-049-conftest-sys-path-move`；ruff 复跑确认实际命中 8 个 E402 行号 `13,14,15,16,17,19,20,21`（任务卡 L13-20 描述 +1 行偏差，事实以 ruff 实测为准）；`pytest --collect-only tests/engineering` 仍能 import `scripts.ai.evidence_coverage_report`；`pytest tests/engineering/test_evidence_coverage_report.py -v` → 4 passed, exit 0；mock-based 219 passed in 26.21s exit 0 零回归；`scripts/engineering/check_engineering_docs.py` exit 0（4 条 pre-existing 警告属于 TD-048 收口后的历史债，与本债无关）。 |
+| TD-051 | 治理 `document_chunks` 结构元数据、切片质量与既有数据重建 | ⚫ 待办 | P1 | RAG / 数据完整性 / 文档解析 / AI Chat | BUG-003 排查：`section_path` 100% 空、`section_title` 约 21% 空、`char_start/end` 不可信、100 条 orphan chunks；改完切片策略后必须重建已入库数据。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -2837,6 +2838,80 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
   - 已运行：`git diff --name-status` → 4 个 docs 文件（无业务代码 / 生成物 / 无关资产混入）。
   - 已运行：`git diff --check` → clean。
 - 与 PR #200 关系：PR #200 已合 main（业务代码 + 文档初版）；本次 PR 收口"工作台状态翻 🟢" + "教训入账"两个独立事实；属 docs-only 收口。
+
+### TD-051: 治理 `document_chunks` 结构元数据、切片质量与既有数据重建
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | RAG / 数据完整性 / 文档解析 / AI Chat |
+| 事实源 | BUG-003 AI Chat 回答质量排查 / 2026-06-12 `document_chunks` 只读统计 |
+
+**证据**
+
+- 代码路径：
+  - `parse_document` 解析 PDF / DOCX 后只把 `full_text` 和 `section_count` 放入 `files.structured_data`，没有保留 parser 原始 `sections`、页码、层级和 path。
+  - `chunk_document` 再从 `full_text` 里按 `## 标题` 反向重建 sections，导致原始 `DocumentSection.path` / page / level 等信息丢失。
+  - `chunk_by_structure._enforce_size_limit` 拆超长 chunk 时，新建子 chunk 没继承真实 `char_start` / `char_end`，默认变为 0。
+- 本机 `metaedu.document_chunks` 只读统计（tenant `default`）：
+  - 总 chunk：`1551`
+  - `section_path` 空：`1551 / 1551`（100%）
+  - `section_title` 空：`325 / 1551`（约 21%）
+  - `char_start` / `char_end` 为 null：各 `100`
+  - `char_start = 0 AND char_end = 0`：`278`
+  - orphan chunks：`100` 条，对应 `document_chunks.file_id` 找不到 `files.id`
+  - 长度分布：`<100` 字 121 条，`100-199` 字 87 条，`200-349` 字 221 条，`350-499` 字 822 条，`500-799` 字 233 条，`800-1199` 字 39 条，`>=1200` 字 28 条。
+- Python 教程样例：
+  - `Python教程-廖雪峰-2025-06-16.pdf` chunk 43-56 都属于“数据类型和变量”，但 `section_path` 全空，`char_start/end` 出现重叠、回退和 `0/0`，不能作为真实全文定位依据。
+
+**问题**
+
+- `document_chunks` 的结构元数据不可信，导致 AI Chat 引用、chunk 定位、neighbor expansion、KG 回源和文档详情高亮都缺稳定基础。
+- 当前 chunk 长度主体集中在 350-499 字，长度并非唯一问题；更严重的是结构路径缺失、偏移不准、孤儿数据和过短噪声 chunk。
+- 只修召回 / prompt 不足以长期提升 RAG 质量；如果底层 chunk 数据继续脏，上层 evidence pipeline 会持续在错误或过窄上下文上打补丁。
+- 改完切片策略后，如果不对已入库数据重建 / 回填，AI Chat 仍会命中旧 chunk。
+
+**完成标准**
+
+- 保存 parser 原始 sections：
+  - `files.structured_data` 或等价事实源中保留 `sections`，至少包含 title、level、path、page、content 和可计算偏移所需信息。
+  - `chunk_document` 不再只从 `full_text` 反向猜 section。
+- 修复 chunk 结构元数据：
+  - 新生成 chunk 的 `section_title`、`section_path`、`char_start`、`char_end` 可解释、可验证。
+  - 拆超长 chunk 时保留或重算正确偏移。
+  - `section_path` 不再全空；对确实无法解析章节的文档，要有明确 fallback 值或质量报告标记。
+- 治理切片策略：
+  - 评估并明确 P1 推荐 chunk size / overlap / min chunk size / max chunk size。
+  - 评估是否引入 parent-child chunk、neighbor expansion 或“命中 chunk + 前后相邻 chunk”打包策略；如果不实现，需写明推迟到哪个 P2 / P3 任务。
+- 治理历史数据：
+  - 提供可重复的数据重建入口，支持对已入库文件重跑 parse -> chunk -> embed -> tsvector -> KG 回源所需步骤。
+  - 重建前记录基线：空字段率、长度分布、orphan chunks、offset 单调性、Python 样例命中情况。
+  - 重建后记录结果，证明旧 `document_chunks` 已按新策略重新生成；不能只改未来新上传文件。
+  - 清理或隔离 orphan chunks，避免继续污染检索。
+- 与 BUG-003 协同：
+  - BUG-003 可先修 AI Chat 可用性；TD-051 是数据地基治理，完成后应复测“Python 的基本数据类型有哪些？”。
+
+**验证方式**
+
+- 新增或扩展 chunker / parser / chunk task 单元测试：
+  - section path 保留。
+  - char_start / char_end 单调且覆盖 chunk 内容。
+  - oversized split 后 offset 正确。
+  - min chunk / overlap 策略符合预期。
+- 新增或扩展数据质量报告脚本或命令：
+  - 输出 `section_title` 空值率、`section_path` 空值率、`char_start/end` null / `0/0` 比例、orphan chunks、长度桶、offset 重叠数量。
+- 在本机 PG 上执行一次真实重建或可控样本重建，并记录前后指标。
+- 根据改动范围运行：
+  - 后端相关 pytest。
+  - `ruff check` 相关文件。
+  - `scripts/check-engineering-docs`
+  - `git diff --check`
+
+**交付记录**
+
+- 2026-06-12 登记（接手工具：Codex）。本次只入账，不实现；后续执行必须覆盖“策略修正 + 已入库数据重建”两段。
 
 ### DOC-063: `check-engineering-docs` 性能收口（subprocess 砍掉 / 5 秒硬指标）
 
