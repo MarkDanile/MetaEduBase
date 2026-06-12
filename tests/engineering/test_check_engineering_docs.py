@@ -101,11 +101,33 @@ def make_minimal_docs(root: Path) -> None:
     )
 
 
+def init_git_repo(root: Path) -> None:
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test",
+            "commit",
+            "-m",
+            "initial",
+        ],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+
+
 def run_checker(
-    root: Path, checker: Path = ENGINEERING_CHECKER
+    root: Path,
+    checker: Path = ENGINEERING_CHECKER,
+    extra_args: list[str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, str(checker), "--root", str(root)],
+        [sys.executable, str(checker), "--root", str(root), *(extra_args or [])],
         cwd=REPO_ROOT,
         text=True,
         capture_output=True,
@@ -113,7 +135,9 @@ def run_checker(
     )
 
 
-def run_checker_inproc(root: Path) -> "subprocess.CompletedProcess[str]":
+def run_checker_inproc(
+    root: Path, extra_args: list[str] | None = None
+) -> "subprocess.CompletedProcess[str]":
     """DOC-060: 在 pytest 进程内直接调 check_engineering_docs.main，
     让 `unittest.mock.patch` 能影响子 check（subprocess 隔离 mock 不生效）。
     返回的 CompletedProcess 与 run_checker 形状一致（returncode + stdout + stderr）。"""
@@ -126,7 +150,7 @@ def run_checker_inproc(root: Path) -> "subprocess.CompletedProcess[str]":
     rc = 1
     with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
         try:
-            rc = _main(["--root", str(root)])
+            rc = _main(["--root", str(root), *(extra_args or [])])
         except SystemExit as e:
             rc = e.code if isinstance(e.code, int) else 1
     return subprocess.CompletedProcess(
@@ -260,23 +284,7 @@ def test_fails_when_markdown_link_target_is_missing(tmp_path: Path) -> None:
 
 def test_fails_when_work_log_index_row_is_deleted(tmp_path: Path) -> None:
     make_minimal_docs(tmp_path)
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(
-        [
-            "git",
-            "-c",
-            "user.email=test@example.com",
-            "-c",
-            "user.name=Test",
-            "commit",
-            "-m",
-            "initial",
-        ],
-        cwd=tmp_path,
-        check=True,
-        capture_output=True,
-    )
+    init_git_repo(tmp_path)
     work_log = tmp_path / "docs/03-engineering-governance/work-log.md"
     work_log.write_text(
         "\n".join(
@@ -296,23 +304,7 @@ def test_fails_when_work_log_index_row_is_deleted(tmp_path: Path) -> None:
 
 def test_allows_work_log_index_row_path_migration(tmp_path: Path) -> None:
     make_minimal_docs(tmp_path)
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(
-        [
-            "git",
-            "-c",
-            "user.email=test@example.com",
-            "-c",
-            "user.name=Test",
-            "commit",
-            "-m",
-            "initial",
-        ],
-        cwd=tmp_path,
-        check=True,
-        capture_output=True,
-    )
+    init_git_repo(tmp_path)
     work_log = tmp_path / "docs/03-engineering-governance/work-log.md"
     work_log.write_text(
         work_log.read_text(encoding="utf-8").replace(
@@ -544,9 +536,8 @@ def test_source_size_no_large_files_passes(tmp_path: Path) -> None:
 
 
 def test_source_size_unregistered_large_file_fails(tmp_path: Path) -> None:
-    """A file >1000 lines not registered in baseline → gate fails."""
+    """Without git metadata, the gate falls back to a full scan."""
     make_minimal_docs(tmp_path)
-    # Create a large source file.
     large_content = "\n".join(["x = 1"] * 1001) + "\n"
     write(tmp_path / "packages" / "server-python" / "app" / "huge.py", large_content)
     write(
@@ -568,6 +559,98 @@ def test_source_size_unregistered_large_file_fails(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert "huge.py" in result.stderr
     assert "超过 1000 行硬限制" in result.stderr
+
+
+def test_source_size_default_ignores_unchanged_large_file(
+    tmp_path: Path,
+) -> None:
+    """Default check-engineering-docs is a fast gate: changed files only."""
+    make_minimal_docs(tmp_path)
+    large_content = "\n".join(["x = 1"] * 1001) + "\n"
+    write(tmp_path / "packages" / "server-python" / "app" / "huge.py", large_content)
+    write(
+        tmp_path / "docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md",
+        """
+        # TD-032 源码文件行数基线
+
+        ## 文件清单
+
+        ### >1000 行
+
+        | 文件 | 行数 | 状态 | 例外 / 拆分说明 |
+        |------|------|------|-----------------|
+        """,
+    )
+    init_git_repo(tmp_path)
+
+    result = run_checker(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    assert "engineering docs checks passed" in result.stdout
+
+
+def test_source_size_default_flags_changed_large_file(tmp_path: Path) -> None:
+    """Default mode still blocks new or modified large source files."""
+    make_minimal_docs(tmp_path)
+    write(
+        tmp_path / "docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md",
+        """
+        # TD-032 源码文件行数基线
+
+        ## 文件清单
+
+        ### >1000 行
+
+        | 文件 | 行数 | 状态 | 例外 / 拆分说明 |
+        |------|------|------|-----------------|
+        """,
+    )
+    init_git_repo(tmp_path)
+    large_content = "\n".join(["x = 1"] * 1001) + "\n"
+    write(tmp_path / "packages" / "server-python" / "app" / "huge.py", large_content)
+
+    result = run_checker(tmp_path)
+
+    assert result.returncode == 1
+    assert "huge.py" in result.stderr
+    assert "超过 1000 行硬限制" in result.stderr
+
+
+def test_source_size_full_flags_unchanged_large_file(tmp_path: Path) -> None:
+    """--full keeps the dedicated full source-size audit behavior."""
+    make_minimal_docs(tmp_path)
+    large_content = "\n".join(["x = 1"] * 1001) + "\n"
+    write(tmp_path / "packages" / "server-python" / "app" / "huge.py", large_content)
+    write(
+        tmp_path / "docs/03-engineering-governance/02-baselines/td-032-source-file-sizes.md",
+        """
+        # TD-032 源码文件行数基线
+
+        ## 文件清单
+
+        ### >1000 行
+
+        | 文件 | 行数 | 状态 | 例外 / 拆分说明 |
+        |------|------|------|-----------------|
+        """,
+    )
+    init_git_repo(tmp_path)
+
+    result = run_checker(tmp_path, extra_args=["--full"])
+
+    assert result.returncode == 1
+    assert "huge.py" in result.stderr
+    assert "超过 1000 行硬限制" in result.stderr
+
+
+def test_timing_flag_prints_check_breakdown(tmp_path: Path) -> None:
+    make_minimal_docs(tmp_path)
+
+    result = run_checker(tmp_path, extra_args=["--timing"])
+
+    assert result.returncode == 0, result.stderr
+    assert "engineering docs checks passed" in result.stdout
+    assert "check_source_size_hard_limit" in result.stderr
 
 
 def test_parent_and_child_req_with_different_status_do_not_collide(
@@ -788,12 +871,12 @@ def test_fails_when_completed_debt_card_uses_git_log_fallback_unavailable(
     )
 
     # mock `is_known` 永远返回 False（绕过 KNOWN_ISSUES 白名单），
-    # 并把 `_git_log_grep` 强制返回 UNAVAILABLE 模拟"git log 受环境限制"。
+    # 并把 `_git_log_text` 强制返回 UNAVAILABLE 模拟"git log 受环境限制"。
     # 走 inproc 调用，让 mock 生效。
     with patch.object(_common, "is_known", return_value=False), \
          patch.object(
              _common,
-             "_git_log_grep",
+             "_git_log_text",
              return_value=("UNAVAILABLE", "未运行: git log 受环境限制"),
          ):
         result = run_checker_inproc(tmp_path)
@@ -840,15 +923,15 @@ def test_passes_when_completed_debt_card_has_pr_in_git_log(
         ).lstrip()
     )
 
-    # mock `_git_log_grep` 返回 OK + 命中 1 行（说明 commit 真实存在）。
+    # mock `_git_log_text` 返回 OK + 含任务 ID 的日志文本（说明 commit 真实存在）。
     # 同时 mock DOC-060 的 `check_task_card_claim_vs_code` 函数返回空列表，
     # 避免 task_card_stale_completion 报 stale-completion-unavailable（让
     # DOC-059 单独验证 git log 兜底路径）。
     with patch.object(_common, "is_known", return_value=False), \
          patch.object(
              _common,
-             "_git_log_grep",
-             return_value=("OK", 1),
+             "_git_log_text",
+             return_value=("OK", "docs: close TD-001"),
          ), \
          patch(
              "scripts.engineering.checks.task_card_claims.check_task_card_claim_vs_code",
@@ -887,12 +970,12 @@ def test_skips_non_completed_task_cards(tmp_path: Path) -> None:
         ).lstrip()
     )
 
-    # mock `_git_log_grep` 返回 UNAVAILABLE——如果误触发会报 1 个 issue。
-    # 期望：根本不调用 `_git_log_grep`，因此也不报 issue。
+    # mock `_git_log_text` 返回 UNAVAILABLE——如果误触发会报 1 个 issue。
+    # 期望：根本不调用 `_git_log_text`，因此也不报 issue。
     with patch.object(_common, "is_known", return_value=False), \
          patch.object(
              _common,
-             "_git_log_grep",
+             "_git_log_text",
              return_value=("UNAVAILABLE", "未运行: git log 受环境限制"),
          ) as mock_git_log:
         result = run_checker_inproc(tmp_path)
