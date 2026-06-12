@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | fix1+fix2+fix3+fix4 已合 main（PR #221/#223/#225/#227 / merge `237b108`/`6bdcdd6`/`36aba14`/`2c2ac39`）。准备推 fix5 frontend fallback。 | 切 `fix/bug-003-ai-chat-regression-fix5` 推 PR-BUG-003-5（中文 IME 兼容 + loading 错误态 + 兜底问题行为契约）。 | fix1：340 pytest / 0 回归；fix2：34 vitest；fix3：39 vitest；fix4：49 vitest；e2e 未跑。 |
+| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | fix5 frontend fallback 实现完成：textarea 加 @compositionstart/end 追踪 IME composing；@keydown.enter 改 onEnterKey 包装，composing=true 时不触发 sendMessage；textarea 加 data-testid="chat-input"。`vitest 55/55 / typecheck / lint` 全过 / 0 回归。 | push fix5 + 创建 PR-BUG-003-5 → 维护者合 main 后人工补 AC-4 兜底刷新 / 中文 IME 验收 → 整体收口（翻 BUG-003 🟢 完成）。 | fix1：340 pytest / 0 回归；fix2：34 vitest；fix3：39 vitest；fix4：49 vitest；fix5：55 vitest；e2e 未跑。 |
 
 ## 下一批候选任务
 

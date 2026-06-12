@@ -107,9 +107,12 @@
             v-model="inputText"
             placeholder="输入你的问题... (Shift+Enter 换行)"
             rows="1"
+            data-testid="chat-input"
             class="flex-1 bg-transparent outline-none text-[var(--text-body)] text-[var(--color-ink)] placeholder:text-[var(--color-ink-tertiary)] resize-none max-h-[120px]"
             :disabled="loading"
-            @keydown.enter.exact.prevent="sendMessage"
+            @keydown.enter.exact.prevent="onEnterKey"
+            @compositionstart="isComposing = true"
+            @compositionend="isComposing = false"
             @input="autoResize"
           />
         </div>
@@ -243,6 +246,10 @@ const loading = ref(false);
 const chatContainer = ref<HTMLElement | null>(null);
 const inputEl = ref<HTMLTextAreaElement | null>(null);
 const abortController = ref<AbortController | null>(null);
+// BUG-003 fix5 AC-4: 中文输入法兼容。@keydown.enter 在 IME composing
+// 阶段也会触发（中文选词），需要在 compositionstart/end 显式追踪；
+// onEnterKey 在 isComposing=true 时不调 sendMessage。
+const isComposing = ref(false);
 
 const quickQuestions = [
   "电子信息工程专业有哪些核心课程？",
@@ -272,6 +279,14 @@ function autoResize() {
       inputEl.value.style.height = inputEl.value.scrollHeight + "px";
     }
   });
+}
+
+// BUG-003 fix5 AC-4: 中文 IME 兼容。Enter 在 IME composing 阶段不触发 sendMessage。
+function onEnterKey() {
+  if (isComposing.value) {
+    return;
+  }
+  void sendMessage();
 }
 
 async function sendMessage() {
