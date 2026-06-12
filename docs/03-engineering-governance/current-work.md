@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | fix1 backend evidence pipeline 已合 main（PR #221 / merge `237b108`）：`PgChunkVectorRetriever` embedding 空降级 keyword + 3 pytest。准备推 fix2 frontend layout。 | 切 `fix/bug-003-ai-chat-regression-fix2` 推 PR-BUG-003-2（frontend layout：首屏输入框固定可见 + small viewport 兼容 + 新增 vitest 组件测试）。 | fix1：340 pytest passed / 0 回归；ruff clean；e2e 跳过（依赖真 PG）。 |
+| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | fix2 frontend layout 实现完成：根容器 `h-[100dvh]` + 输入区 `sticky bottom-0 z-10` + 聊天容器 `pb-[88px]` + design token `bg-[var(--color-bg)]`；4 新增 vitest（class 契约回归锁，jsdom 不真实 layout）；`vitest 34/34 / typecheck 0 错 / lint clean`；`0 回归`；准备 push PR-BUG-003-2。 | push fix2 分支 + 创建 PR-BUG-003-2 → 维护者合 main 后人工补 AC-1 视口截图（1366×768 / 1024×600 / 360×640）→ 推 fix3 frontend reference UI。 | fix1：340 pytest / 0 回归；fix2：34 vitest / typecheck / lint 全过 / 0 回归；e2e 未跑（依赖真 PG）。 |
 
 ## 下一批候选任务
 
