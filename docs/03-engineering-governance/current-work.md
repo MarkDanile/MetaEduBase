@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | fix4 frontend file open 实现完成：抽出 `openFileUrl.ts`（`buildFileOpenUrl` + `openInNewTab`）；`AiChatView.openFile` 改用隐藏 `<a target=_blank>.click()` 替代 `window.location.href` 整页跳转；`openEvidenceFile` 缺 file_id 时 `console.warn` 降级。`vitest 49/49 / typecheck / lint` 全过 / 0 回归。 | push fix4 + 创建 PR-BUG-003-4 → 维护者合 main 后人工补 AC-5 截图 → 推 fix5 frontend fallback（中文 IME 兼容 + loading 错误态）。 | fix1：340 pytest / 0 回归；fix2：34 vitest / 0 回归；fix3：39 vitest / 0 回归；fix4：49 vitest / 0 回归；e2e 未跑。 |
+| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | fix1+fix2+fix3+fix4 已合 main（PR #221/#223/#225/#227 / merge `237b108`/`6bdcdd6`/`36aba14`/`2c2ac39`）。准备推 fix5 frontend fallback。 | 切 `fix/bug-003-ai-chat-regression-fix5` 推 PR-BUG-003-5（中文 IME 兼容 + loading 错误态 + 兜底问题行为契约）。 | fix1：340 pytest / 0 回归；fix2：34 vitest；fix3：39 vitest；fix4：49 vitest；e2e 未跑。 |
 
 ## 下一批候选任务
 
@@ -32,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-12 | BUG-003 fix4 frontend file open（AC-5） | 🟢 完成 | PR #227 已合并：openFileUrl.ts helper（buildFileOpenUrl + openInNewTab）；openFile 改隐藏 <a target=_blank>.click() 替代 window.location.href；openEvidenceFile 缺 file_id 时 console.warn 降级。10 新增 vitest。BUG-003 整体任务仍 🟡 进行中。 | [Plan §切片 4](../02-delivery-plans/02-plans/2026-06-12-bug-003-ai-chat-regression-plan.md#切片-4pr-bug-003-4-frontend-file-open) / [PR #227](https://github.com/MarkDanile/MetaEduBase/pull/227)（merge `2c2ac39`）/ 分支 `fix/bug-003-ai-chat-regression-fix4`（已删） |
 | 2026-06-12 | BUG-003 fix3 frontend reference UI（AC-6 + AC-4 quickQuestion） | 🟢 完成 | PR #225 已合并：DocumentSourceList 视觉强化 + chunk 按钮 aria-label + quickQuestion type=button 显式化。5 新增 vitest。BUG-003 整体任务仍 🟡 进行中。 | [Plan §切片 3](../02-delivery-plans/02-plans/2026-06-12-bug-003-ai-chat-regression-plan.md#切片-3pr-bug-003-3-frontend-reference-ui) / [PR #225](https://github.com/MarkDanile/MetaEduBase/pull/225)（merge `36aba14`）/ 分支 `fix/bug-003-ai-chat-regression-fix3`（已删） |
 | 2026-06-12 | BUG-003 fix2 frontend layout（AC-1） | 🟢 完成 | PR #223 已合并：根容器 h-screen → h-[100dvh]、聊天容器 pb-[88px]、输入区 wrapper sticky bottom-0 z-10 + bg-[var(--color-bg)]；4 新增 vitest（class 契约回归锁）。BUG-003 整体任务仍 🟡 进行中。 | [Plan §切片 2](../02-delivery-plans/02-plans/2026-06-12-bug-003-ai-chat-regression-plan.md#切片-2pr-bug-003-2-frontend-layout) / [PR #223](https://github.com/MarkDanile/MetaEduBase/pull/223)（merge `6bdcdd6`）/ 分支 `fix/bug-003-ai-chat-regression-fix2`（已删） |
 | 2026-06-12 | BUG-003 fix1 backend evidence pipeline | 🟢 完成 | PR #221 已合并：PgChunkVectorRetriever embedding 空时降级到 tsvector + ILIKE keyword 路径；channels 标记 [vector, keyword]、metadata 含 embedding_fallback=True 和 search_mode；3 新增 pytest（mock-based）。BUG-003 整体任务仍 🟡 进行中。 | [Spec](../02-delivery-plans/01-specs/2026-06-12-bug-003-ai-chat-regression.md) / [Plan §切片 1](../02-delivery-plans/02-plans/2026-06-12-bug-003-ai-chat-regression-plan.md#切片-1pr-bug-003-1-backend-evidence-pipeline) / [PR #221](https://github.com/MarkDanile/MetaEduBase/pull/221)（merge `237b108`）/ 分支 `fix/bug-003-ai-chat-regression-fix1`（已删） |
