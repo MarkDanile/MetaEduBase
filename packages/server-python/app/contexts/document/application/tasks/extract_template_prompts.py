@@ -25,9 +25,21 @@ _TEMPLATE_META_KEYS = tuple(TEMPLATE_META_RESERVED_KEYS)
 _TEMPLATE_META_CORE_KEYS = ("id", "version", "layer")
 
 
-def _build_parsed_structured_data(full_text: str, section_count: int) -> dict[str, object]:
-    """Build the stable structured_data container written by parse_document."""
-    return {"full_text": full_text, "section_count": section_count}
+def _build_parsed_structured_data(
+    full_text: str,
+    section_count: int,
+    sections: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    """Build the stable structured_data container written by parse_document.
+
+    sections: list of section dicts from ParsedDocument.sections, each containing
+    title, level, path, page, content. When None (legacy path), only full_text
+    and section_count are stored.
+    """
+    result: dict[str, object] = {"full_text": full_text, "section_count": section_count}
+    if sections is not None:
+        result["sections"] = sections
+    return result
 
 
 def _merge_template_structured_data(

@@ -26,6 +26,27 @@ def test_build_parsed_structured_data_uses_stable_container_keys() -> None:
     assert isinstance(data["section_count"], int)
 
 
+def test_build_parsed_structured_data_sections_optional() -> None:
+    """TD-051: sections=None (legacy) must not add 'sections' key."""
+    data = _build_parsed_structured_data("## 第一章\n内容", 3)
+    assert "sections" not in data
+
+
+def test_build_parsed_structured_data_includes_sections() -> None:
+    """TD-051: when sections is provided, it is stored verbatim."""
+    sections = [
+        {"title": "第一章", "level": 1, "path": "1", "page": 0, "content": "内容"},
+        {"title": "第二章", "level": 1, "path": "2", "page": 1, "content": "内容2"},
+    ]
+    data = _build_parsed_structured_data("## 第一章\n内容\n\n## 第二章\n内容2", 2, sections)
+
+    assert "sections" in data
+    assert data["sections"] == sections
+    assert len(data["sections"]) == 2
+    assert data["sections"][0]["path"] == "1"
+    assert data["sections"][1]["title"] == "第二章"
+
+
 def test_merge_template_structured_data_preserves_parse_fields() -> None:
     # REQ-002-3: this test pins the legacy meta=None shape. The helper now
     # accepts an optional ``meta`` kwarg, but omitting it (or passing None)

@@ -93,6 +93,17 @@ def parse_document(file_id_str: str, tenant_id_str: str, pipeline_version: str =
 
             # Store full_text in file's structured_data — NOT updated_at
             # (only reinitialize changes updated_at, used as pipeline version marker)
+            # TD-051: preserve parser sections so chunk_document can read them directly
+            sections_data: list[dict[str, object]] = [
+                {
+                    "title": s.title,
+                    "level": s.level,
+                    "path": s.path,
+                    "page": s.page,
+                    "content": s.content,
+                }
+                for s in parsed.sections
+            ]
             await session.execute(
                 text(
                     "UPDATE metaedu.files "
@@ -105,6 +116,7 @@ def parse_document(file_id_str: str, tenant_id_str: str, pipeline_version: str =
                         _build_parsed_structured_data(
                             parsed.full_text,
                             len(parsed.sections),
+                            sections_data,
                         )
                     ),
                     "fid": file_id,
