@@ -33,6 +33,7 @@ from .task_card_claims import (
     check_task_card_stale_residual,
 )
 from .task_ids import check_backlog_done_index, check_followup_ids
+from .task_pr_consistency import check as check_task_pr_consistency
 from .technical_debt import check_completed_plans, check_technical_debt
 
 
@@ -53,10 +54,15 @@ KNOWN_CHECKS: tuple[Callable[[Path], list[Issue]], ...] = (
     check_validation_claims,
     check_scripted_gate_candidates,
     check_source_size_hard_limit,
-    # DOC-060: 任务卡 vs 代码 / 声明语义校验。DOC-059 偏 PR 维度，
+    # DOC-060: 任务卡 vs 代码 / 声明语义校验。DOC-059 偏 PR 兜底维度，
     # DOC-060 偏代码 / 声明维度，互补覆盖"任务卡 → 实际状态"强校验缺口。
     check_task_card_stale_completion,
     check_task_card_stale_residual,
+    # DOC-059: 兜底扫『任务卡 🟢 完成但未写 PR 编号 / Merge Commit 字段』，
+    # 用 `git log --grep <ID>` 路径。任务卡 L2071 原 `gh pr list --search`
+    # 路径已被 DOC-060/063 改用 git plumbing 取代；DOC-059 调整实现为 git
+    # log 兜底（DOC-060 显式 skip "无 PR 字段"卡、本债补这个口子）。
+    check_task_pr_consistency,
 )
 
 

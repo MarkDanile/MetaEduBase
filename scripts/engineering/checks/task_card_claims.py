@@ -28,7 +28,6 @@ from ._common import (
     TASK_CARD_MERGE_COMMIT_RE,
     TASK_CARD_PR_REF_RE,
     check_task_card_claim_vs_code,
-    iter_doc_files,
     read_lines,
 )
 
@@ -223,7 +222,15 @@ def check_task_card_stale_completion(root: Path) -> list[Issue]:
     for task_id, start_line, body in _parse_done_task_cards(debt_path):
         pr_number = _find_pr_number_in_card(body)
         if pr_number is None:
-            # DOC-059 负责"PR 不存在"；本 check 跳过，等 DOC-059 报。
+            # DOC-059 收口后改为"任务卡未写 `| 交付 PR |` 字段"由 DOC-059 兜底
+            # 报警（`task-pr-consistency-fallback` / `-unavailable`）。DOC-060 不再
+            # 报 `task-card-stale-completion-unavailable`，避免两层门禁重复报
+            # 14 个历史 task（DOC-060 收口时只对 `task-card-stale-residual*`
+            # code 加 task_id 维度 KNOWN_ISSUES 白名单；松绑后会暴露
+            # `task-card-stale-completion-unavailable` 缺口）。两层门禁分工：
+            # - DOC-060：任务卡写了 `| 交付 PR |` 但 PR 状态不符（合并后被 revert
+            #   / force-push 等极端场景）；
+            # - DOC-059：任务卡完成但根本没写 PR 字段——git log 兜底扫。
             continue
         merge_commit = _find_merge_commit_in_card(body)
         sub_issues = check_task_card_claim_vs_code(

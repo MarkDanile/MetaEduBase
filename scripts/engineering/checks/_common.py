@@ -139,6 +139,92 @@ KNOWN_ISSUES: tuple[tuple[str, str, str], ...] = (
         "task-card-stale-residual-unavailable",
         "DOC-060 历史债：TD-050 任务卡未按 DOC-060 模板补 target_files / claim_pattern",
     ),
+    # DOC-059 历史债：14 个老 task 状态写 `🟢 完成` 但任务卡里既没写
+    # `| 交付 PR |` 也没写 `| Merge Commit |` 字段，且 git log --grep <ID>
+    # 命中 0 行（pre-2026 老 commit message 不带 ID 关键字）。DOC-059 收口
+    # 时统一加白名单，避免门禁退回历史债；后续由独立 PR 决定是否补字段。
+    # 白名单匹配规则：path = "docs/03-engineering-governance/technical-debt.md"
+    # + message 以 "TD-XXX:" 开头 → 视为 known。
+    (
+        "docs/03-engineering-governance/technical-debt.md#TD-001",
+        "task-pr-consistency-fallback",
+        "DOC-059 历史债：TD-001 任务卡未写 PR 字段，git log 兜底 0 命中",
+    ),
+    (
+        "docs/03-engineering-governance/technical-debt.md#TD-002",
+        "task-pr-consistency-fallback",
+        "DOC-059 历史债：TD-002 任务卡未写 PR 字段，git log 兜底 0 命中",
+    ),
+    (
+        "docs/03-engineering-governance/technical-debt.md#TD-003",
+        "task-pr-consistency-fallback",
+        "DOC-059 历史债：TD-003 任务卡未写 PR 字段，git log 兜底 0 命中",
+    ),
+    (
+        "docs/03-engineering-governance/technical-debt.md#TD-004",
+        "task-pr-consistency-fallback",
+        "DOC-059 历史债：TD-004 任务卡未写 PR 字段，git log 兜底 0 命中",
+    ),
+    (
+        "docs/03-engineering-governance/technical-debt.md#TD-005",
+        "task-pr-consistency-fallback",
+        "DOC-059 历史债：TD-005 任务卡未写 PR 字段，git log 兜底 0 命中",
+    ),
+    (
+        "docs/03-engineering-governance/technical-debt.md#TD-006",
+        "task-pr-consistency-fallback",
+        "DOC-059 历史债：TD-006 任务卡未写 PR 字段，git log 兜底 0 命中",
+    ),
+    (
+        "docs/03-engineering-governance/technical-debt.md#TD-007",
+        "task-pr-consistency-fallback",
+        "DOC-059 历史债：TD-007 任务卡未写 PR 字段，git log 兜底 0 命中",
+    ),
+    (
+        "docs/03-engineering-governance/technical-debt.md#TD-008",
+        "task-pr-consistency-fallback",
+        "DOC-059 历史债：TD-008 任务卡未写 PR 字段，git log 兜底 0 命中",
+    ),
+    (
+        "docs/03-engineering-governance/technical-debt.md#TD-009",
+        "task-pr-consistency-fallback",
+        "DOC-059 历史债：TD-009 任务卡未写 PR 字段，git log 兜底 0 命中",
+    ),
+    (
+        "docs/03-engineering-governance/technical-debt.md#TD-010",
+        "task-pr-consistency-fallback",
+        "DOC-059 历史债：TD-010 任务卡未写 PR 字段，git log 兜底 0 命中",
+    ),
+    (
+        "docs/03-engineering-governance/technical-debt.md#TD-011",
+        "task-pr-consistency-fallback",
+        "DOC-059 历史债：TD-011 任务卡未写 PR 字段，git log 兜底 0 命中",
+    ),
+    (
+        "docs/03-engineering-governance/technical-debt.md#DOC-051",
+        "task-pr-consistency-fallback",
+        "DOC-059 历史债：DOC-051 任务卡未写 PR 字段，git log 兜底 0 命中",
+    ),
+    (
+        "docs/03-engineering-governance/technical-debt.md#DOC-045",
+        "task-pr-consistency-fallback",
+        "DOC-059 历史债：DOC-045 任务卡未写 PR 字段，git log 兜底 0 命中",
+    ),
+    (
+        "docs/03-engineering-governance/technical-debt.md#DOC-042",
+        "task-pr-consistency-fallback",
+        "DOC-059 历史债：DOC-042 任务卡未写 PR 字段，git log 兜底 0 命中",
+    ),
+    (
+        "docs/03-engineering-governance/technical-debt.md#DOC-055",
+        "task-pr-consistency-fallback",
+        "DOC-059 历史债：DOC-055 任务卡未写 PR 字段，git log 兜底 0 命中",
+    ),
+    (
+        "docs/03-engineering-governance/technical-debt.md#DOC-056",
+        "task-pr-consistency-fallback",
+        "DOC-059 历史债：DOC-056 任务卡未写 PR 字段，git log 兜底 0 命中",
+    ),
 )
 
 LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
@@ -263,10 +349,166 @@ def should_skip_link(target: str) -> bool:
     )
 
 
+# DOC-059: 兜底扫『任务卡 🟢 完成但未写 PR 编号 / Merge Commit 字段』，
+# 用 `git log --grep <ID>` 检查 git history 是否含任务 ID 关键字。
+# 任务卡 L2071 原计划走 `gh pr list --state merged --search <ID>` 路径，
+# DOC-060（PR #206）+ DOC-063（PR #209）已将该路径演化为 git plumbing fast
+# path；DOC-059 收口时调整为 git log 兜底（DOC-060 已用
+# `check_merge_commit_in_git_history` 覆盖『任务卡写明 PR 编号 + mergeCommit』
+# 维度；本函数专扫『任务卡 🟢 完成但任务卡里既没写 PR 编号、也没写 Merge
+# Commit 字段』的兜底维度）。
+DOC_059_TASK_ID_RE = re.compile(r"\b(?:TD|DOC|REQ)-\d{3}(?:-\d+)?\b")
+DOC_059_DONE_STATUS_RE = re.compile(r"状态[:：]\s*🟢\s*完成")
+DOC_059_GIT_LOG_TIMEOUT_S = 5
+
+
+def _git_log_grep(
+    task_id: str, repo_root: Path | None = None
+) -> tuple[str, int | str]:
+    """DOC-059: 对单个任务 ID 跑 `git log --oneline --all --grep <task_id>`
+    检查 git history 是否含任务 ID 关键字（commit message / body）。
+
+    返回 `(status, detail)`：
+    - `status = "OK"` 时 `detail` 是命中行数（int，0 也算 OK 但调用方视为可疑）；
+    - `status = "UNAVAILABLE"` 时 `detail` 是 `未运行: <原因>` 文本（git 不在
+      PATH / 不是 git 仓库 / 超时等），按 `quality-gates.md#验证表述规范` 的
+      `未运行` 分支处理。
+
+    沙箱回退：本函数只走 `subprocess.run` 一条路径（与
+    `check_merge_commit_in_git_history` 同款），无 Python fallback——git log
+    的"匹配 commit message"语义在 Python 里无等价实现。
+
+    性能：单次 git log --grep 在本地仓库 < 1s（沙箱实测）；CI 上（Linux）更快。
+    """
+    try:
+        proc = subprocess.run(
+            [
+                "git",
+                "log",
+                "--oneline",
+                "--all",
+                f"--grep={task_id}",
+            ],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=DOC_059_GIT_LOG_TIMEOUT_S,
+            check=False,
+        )
+    except FileNotFoundError:
+        return ("UNAVAILABLE", "未运行: git CLI 不可用 (FileNotFoundError)")
+    except subprocess.TimeoutExpired:
+        return (
+            "UNAVAILABLE",
+            f"未运行: git log 超时 ({DOC_059_GIT_LOG_TIMEOUT_S}s)",
+        )
+    if proc.returncode not in {0, 128}:
+        stderr = (proc.stderr or "").strip().splitlines()
+        hint = stderr[-1] if stderr else f"exit={proc.returncode}"
+        return ("UNAVAILABLE", f"未运行: git log 失败 ({hint})")
+    # exit=128 通常是 not a git repository；按"未运行"语义放过。
+    if proc.returncode == 128:
+        return (
+            "UNAVAILABLE",
+            "未运行: 当前目录不是 git 仓库（git log 退出 128）",
+        )
+    # 命中行数 = stdout 非空行数。
+    hits = sum(1 for line in (proc.stdout or "").splitlines() if line.strip())
+    return ("OK", hits)
+
+
+def check_task_completion_pr_consistency_fallback(
+    technical_debt_path: Path,
+    work_log_path: Path,
+    current_work_path: Path,
+    *,
+    repo_root: Path,
+) -> list[Issue]:
+    """DOC-059: git log 兜底路径。
+
+    任务卡 L2071 原计划走 `gh pr list --state merged --search <ID>`（49+ 次
+    串行 gh，DOC-063 已重构成 git plumbing fast path）。DOC-059 收口时调整
+    实现为 git log 兜底：DOC-060 已用 `check_merge_commit_in_git_history`
+    覆盖『任务卡写明 PR 编号 + mergeCommit』维度；本函数专扫『任务卡 🟢 完成
+    但任务卡里既没写 PR 编号、也没写 Merge Commit 字段』的兜底维度。
+
+    算法：
+    1. 扫 3 份文档的 `### XXX: ...` 头，记录 task_id + 起始行（task-modes.md
+       `### TD-NNN` 形式）。
+    2. 向后扫到 `状态：🟢 完成` 行（窗口 1-6 行，与 DOC-060
+       `_parse_done_task_cards` 同款）。
+    3. 命中后报 `task-pr-consistency-fallback` issue。
+    4. 沙箱降级：UNAVAILABLE 按 `quality-gates.md#验证表述规范` 的 `未运行`
+       分支放过，不视为硬失败。
+
+    性能预算：当前 main 上 63 个 🟢 完成任务卡 × 5s timeout 上限 = 上界 315s，
+    但 git log --grep 在本地 < 1s/次；CI 上（Linux）更快。63 次串行实测
+    < 5s。如有性能问题，后续可加 LRU cache（按 ID 缓存 git log 结果），
+    但首版不引入。
+    """
+    issues: list[Issue] = []
+    DOC_059_HEADER_RE = re.compile(r"^###\s+((?:TD|DOC|REQ)-\d{3}(?:-\d+)?)\s*[:：]")
+
+    for path in (technical_debt_path, work_log_path, current_work_path):
+        if not path.exists():
+            continue
+        lines = read_lines(path)
+        n = len(lines)
+        i = 0
+        while i < n:
+            header_match = DOC_059_HEADER_RE.match(lines[i])
+            if not header_match:
+                i += 1
+                continue
+            task_id = header_match.group(1)
+            # 找后续 1-6 行窗口内的"状态：🟢 完成"行（DOC-060 同款算法）。
+            status_line = -1
+            for offset in range(1, 7):
+                if i + offset >= n:
+                    break
+                if DOC_059_HEADER_RE.match(lines[i + offset]):
+                    break
+                if "### " in lines[i + offset] and "### " != lines[i + offset][:4]:
+                    break
+                if DOC_059_DONE_STATUS_RE.search(lines[i + offset]):
+                    status_line = i + offset + 1
+                    break
+            if status_line == -1:
+                i += 1
+                continue
+
+            status, detail = _git_log_grep(task_id, repo_root=repo_root)
+            if status == "UNAVAILABLE":
+                issues.append(
+                    Issue(
+                        path,
+                        status_line,
+                        "task-pr-consistency-fallback-unavailable",
+                        f"{task_id}: 任务卡片声明完成但 git log 兜底未运行，{detail}（PR 编号 / Merge Commit 字段也未提供，无法走 DOC-060 fast path）",
+                        "在任务卡『交付 PR』段下补 `| 交付 PR |` + `| Merge Commit |` 字段让 DOC-060 接管；或在 KNOWN_ISSUES 跳过本任务。",
+                    )
+                )
+            else:
+                # status == "OK"
+                hits = detail if isinstance(detail, int) else 0
+                if hits == 0:
+                    issues.append(
+                        Issue(
+                            path,
+                            status_line,
+                            "task-pr-consistency-fallback",
+                            f"{task_id}: 任务卡片声明完成但 git history 无该 ID 关键字命中（0 commit，PR 编号 / Merge Commit 字段也未提供）",
+                            "复核任务是否真的已合并 main；在任务卡『交付 PR』段下补 `| 交付 PR |` + `| Merge Commit |` 字段；或在 KNOWN_ISSUES 跳过本任务。",
+                        )
+                    )
+            i += 1
+    return issues
+
+
 # DOC-060: 任务卡 vs 代码 / 声明语义校验的通用工具。
-# 与 DOC-059 (`check_task_completion_pr_consistency`) 互补：
-# - DOC-059 扫"PR 不存在"（直接查 `gh pr list --state merged`）；
-# - 本函数扫"PR 存在但 merge commit 不在 git 历史"或"残留量声明 vs `rg` 实测命中数偏差"。
+# 与 DOC-059 (`check_task_completion_pr_consistency_fallback`) 互补：
+# - DOC-060 扫"任务卡写明 PR 编号 / mergeCommit" + 校验 git rev-parse；
+# - DOC-059 兜底扫"任务卡完成但未写 PR 字段"。
 # 不强依赖 `gh` / `rg`：调用方需要时再决定是否触发 `subprocess`。
 TASK_CARD_PR_REF_RE = re.compile(
     r"\[#(\d+)\]\(https://github\.com/[^)]+/pull/(\d+)\)|PR\s*#(\d+)"
