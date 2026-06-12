@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | 分支 `fix/bug-003-ai-chat-regression`；30 分钟复现切片完成：代码审阅 + 已有排查记录确认 4 个子问题真因候选；准备提交 docs-only 入口 PR（工作台状态 + BUG 文档追加复现记录 + 5 合片 spec/plan 草案）。 | 提 PR 收口首切片；后续 4-5 个修复合片按 Plan 走。 | docs-only：未跑业务命令；`scripts/check-engineering-docs` 待跑。 |
+| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | 分支 `fix/bug-003-ai-chat-regression`；30 分钟复现切片完成：代码审阅 + 已有排查记录确认 4 个子问题真因候选；docs-only 入口 PR #219 已创建（4 文件 / 344+ / 4-）。 | 合并 PR #219 → 推 PR-BUG-003-1（backend evidence pipeline）→ 后续 4 个修复合片按 Plan 走。 | docs-only：已跑 `scripts/check-engineering-docs` 退出码 0；`git diff --check` clean；0 业务代码。 |
 
 ## 下一批候选任务
 
