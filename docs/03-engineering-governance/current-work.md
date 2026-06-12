@@ -14,7 +14,9 @@
 
 ## 当前进行中
 
-（空）
+| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
+|------|------|--------|------|----------|--------|------|
+| P2-NER LLM 混合 NER Shaping | ⚪ 待澄清 | P1 | RAG / AI / 检索 | backlog 条目已建（P2-NER）；milestone 上下文已读 | 按 P2-NER Shaping 产出 Requirement spec；澄清触发条件、LLM 调用时机、NER 输出 schema、集成方式 | 待产出 |
 
 ## 下一批候选任务
 
