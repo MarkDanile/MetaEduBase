@@ -16,7 +16,6 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| DOC-059 新建 `check_task_completion_pr_consistency` 兜底脚本扫『任务卡完成 → PR 真实存在』语义一致性 | 🟡 进行中 | P2 | 工程脚本 / 质量门禁 | 用户 2026-06-12 点名按流程执行；分支 `docs/doc-059-pr-consistency-fallback` 已切。任务卡 L2071 原 `gh pr list` 路径已被 DOC-060/063 改用 git plumbing 取代；本轮调整实现为 git log --grep <ID> 兜底（DOC-060 显式 skip "无 PR 字段"卡、本债补这个口子）。 | PR-A：写 spec → 3 个 pytest（红）→ `_common.py` 加 `check_task_completion_pr_consistency_fallback` + `_git_log_grep` → 新建 `task_pr_consistency.py` → `__init__.py` 注册 → 修 `task_card_claims.py` 解除循环占位 → pytest 25 passed → push + PR + squash merge。PR-B：docs-only 跨事实源收口（technical-debt 翻 🟢 + work-log + current-work）。 | 待运行（pytest + check-engineering-docs）。 |
 | REQ-012 RAG 多路召回与知识图谱证据链收口 | 🔵 就绪 | P1 | RAG / AI Chat / Evidence / KG / Frontend | Requirement 已补硬决策：底部参考来源一级必须是文档，chunk 只作为文档下命中片段；新增 spec / plan，覆盖 chunk keyword 接入、metadata filter 返回值生效、graph 回源 chunk、当前消息 `[N]` 点击和文档级来源 UI。 | 由 CC 或下一执行者按 [Spec](../02-delivery-plans/01-specs/2026-06-12-req-012-rag-retrieval-document-sources.md) / [Plan](../02-delivery-plans/02-plans/2026-06-12-req-012-rag-retrieval-document-sources-plan.md) 开发；建议先做 Slice 1 backend retrieval + metadata filter，再做文档级来源 DTO 和前端 UI。 | Docs-only 规划已验证：`scripts/check-engineering-docs` 退出码 0；`git diff --check` 退出码 0。 |
 
 ## 下一批候选任务
@@ -35,6 +34,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-12 | DOC-059 新建 `check_task_completion_pr_consistency_fallback` 兜底脚本扫『任务卡完成 → PR 真实存在』 | 🟢 完成 | 2 PR 收口（PR-A 业务脚本 + PR-B docs-only）：git log 兜底扫『任务卡完成但无 PR 字段』；14 个 task_id 维度 KNOWN_ISSUES 白名单；25 pytest 零回归。 | [DOC-059](technical-debt.md#doc-059) / PR #214（merge `e29497e`） |
 | 2026-06-12 | DOC-064 pre-existing 警告收口（`check-engineering-docs` 退出码 1 → 0） | 🟢 完成 | 1 docs-only PR（#211 / merge `e6f9ea9`）：2 类修复——① current-work.md L37-L41 五条"最近完成"行重写为 ≤ 220 字符（短摘要 + work-log 回链）；② spec 路径 `../../../` → `../../` 修对层级。0.77 秒 + 退出码 **0** + 22 pytest passed 零回归。 | [DOC-064](technical-debt.md#doc-064) / PR #211（merge `e6f9ea9`） |
 | 2026-06-12 | DOC-057 历史"验证通过声明缺可复核证据"格式收口（technical-debt 总账版） | 🟢 完成 | 1 PR（#204 / merge `f1a8bd0`）：修复要求在 main 上已自然满足（历史任务合 main 时补齐了 `gh pr view` / `退出码 0` 命中），本轮按任务卡交付项收口：技术债总账 L148 翻 🟢 + L1948 任务卡补 PR 链接 + work-log 索引行追加。`git diff --check` clean；0 业务代码变更；`gh pr view 204` state=MERGED。 | [DOC-057](technical-debt.md#doc-057) / PR #204（merge `f1a8bd0`） |
 | 2026-06-12 | DOC-058 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则 | 🟢 完成 | 1 PR（#202 / merge `8b0ceb8`）：3 个规则文件（workbench + git-workflow + quality-gates）追加硬规则段。`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；20 pytest passed 零回归；`git diff --check` clean；0 业务代码 / 0 测试代码 / 0 脚本变更。 | [DOC-058](technical-debt.md#doc-058) / PR #202（merge `8b0ceb8`） |
