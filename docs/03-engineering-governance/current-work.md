@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| TD-051 本机数据重建 + chunk quality 报告 | 🟡 进行中 | P1 | RAG / 数据完整性 / 文档解析 / AI Chat | 已写 `scripts/ai/chunk_quality_report.py`（7+1 指标 + before/after diff）；已采重建前基线（1551 chunks / section_path 100% 空 / char_start 100 个 null / orphan 100）；`cleanup_orphan_chunks` 删 100 orphan；`rebuild_document_chunks` 跑 25 文件全成功。重建后基线：char_start / char_end / orphan 全 0；section_title 325→202（-8%）；section_path 仍未改善（slice 5 fallback bug）+ offset_overlaps 反而 +3%（chunker bug）。技术债总账交付记录已追加。 | push 分支 + 创建 PR → 维护者合 main 后人工补 chain_embed=True + BUG-003 AC-2/AC-3 复测。 | 重建后基线 1562 chunks / 0 回归 / 25 文件 0 失败 / 3 follow-up bug 暴露（待入账 TD-051-FU）。 |
+| （空） | | | | | | |
 
 ## 下一批候选任务
 
