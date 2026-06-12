@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-screen">
+  <div class="flex flex-col h-[100dvh]">
     <header class="px-[var(--spacing-page)] py-3 border-b border-[var(--color-border)] animate-slide-up">
       <div class="flex items-center gap-3">
         <div class="w-8 h-8 rounded-[var(--radius-md)] bg-[var(--color-accent-bg)] flex items-center justify-center relative overflow-hidden icon-glow">
@@ -14,7 +14,7 @@
       </div>
     </header>
 
-    <div ref="chatContainer" class="flex-1 overflow-y-auto px-[var(--spacing-page)] py-6 space-y-4" @click="onChatClick">
+    <div ref="chatContainer" class="flex-1 overflow-y-auto px-[var(--spacing-page)] py-6 pb-[88px] space-y-4" @click="onChatClick">
       <EmptyState
         v-if="messages.length === 0"
         title="欢迎使用 AI 问答"
@@ -98,7 +98,7 @@
       <LoadingSpinner v-if="loading" text="检索中" />
     </div>
 
-    <div class="px-[var(--spacing-page)] py-3 border-t border-[var(--color-border)]">
+    <div class="sticky bottom-0 z-10 px-[var(--spacing-page)] py-3 border-t border-[var(--color-border)] bg-[var(--color-bg)]">
       <form @submit.prevent="sendMessage" class="flex gap-2.5 items-end">
         <div class="flex-1 bg-[var(--color-bg-warm)] border border-[var(--color-border)] rounded-[var(--radius-md)] px-4 py-2.5 flex items-center transition-all duration-200 focus-within:border-[var(--color-accent)] focus-within:shadow-[0_0_0_2px_var(--color-accent-bg)]">
           <textarea
