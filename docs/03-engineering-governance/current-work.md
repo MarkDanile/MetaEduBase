@@ -16,15 +16,12 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | 分支 `fix/bug-003-ai-chat-regression`；30 分钟复现切片完成：代码审阅 + 已有排查记录确认 4 个子问题真因候选；docs-only 入口 PR #219 已创建（4 文件 / 344+ / 4-）。 | 合并 PR #219 → 推 PR-BUG-003-1（backend evidence pipeline）→ 后续 4 个修复合片按 Plan 走。 | docs-only：已跑 `scripts/check-engineering-docs` 退出码 0；`git diff --check` clean；0 业务代码。 |
 
 ## 下一批候选任务
 
-按风险和接力价值，本区只保留近期 1 到 3 个候选；完整技术债余量仍以 `docs/03-engineering-governance/technical-debt.md` 为准。
-
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| BUG-003 AI Chat 体验与回答质量回归 | 🔵 Ready | P1 | AI Chat / RAG / Frontend / Evidence | 先复现首屏输入框、兜底问题刷新、引用链接不可读和 Python 基本数据类型回答质量问题；按 [Bug](../01-product-planning/05-requirements/BUG-003-ai-chat-ux-and-answer-quality-regression.md) 验收标准执行。 |
 | TD-051 治理 `document_chunks` 结构元数据、切片质量与既有数据重建 | ⚫ 待办 | P1 | RAG / 数据完整性 / 文档解析 / AI Chat | 先基于 [TD-051](technical-debt.md#td-051-治理-document_chunks-结构元数据切片质量与既有数据重建) 做 spec/plan；完成必须覆盖切片策略修正和已入库数据重建。 |
 
 ## 最近完成
