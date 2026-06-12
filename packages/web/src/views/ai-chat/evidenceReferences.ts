@@ -21,7 +21,8 @@ import type { EvidenceItem } from "@/types/evidence";
 
 export function replaceEvidenceReferences(
   html: string,
-  sources?: EvidenceItem[]
+  sources?: EvidenceItem[],
+  messageId?: string
 ): string {
   if (!sources || sources.length === 0) {
     return html;
@@ -31,6 +32,7 @@ export function replaceEvidenceReferences(
     if (Number.isNaN(idx) || idx < 1 || idx > sources.length) {
       return match;
     }
-    return `<a class="evidence-ref" data-ref="${idx}" href="#evidence-${idx}">[${idx}]</a>`;
+    const messageAttr = messageId ? ` data-message-id="${messageId}"` : "";
+    return `<a class="evidence-ref" data-ref="${idx}"${messageAttr} href="#evidence-${idx}">[${idx}]</a>`;
   });
 }

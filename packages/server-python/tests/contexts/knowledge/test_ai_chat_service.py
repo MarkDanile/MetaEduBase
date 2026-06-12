@@ -24,6 +24,9 @@ from app.contexts.knowledge.application.ai_chat_service import (
 from app.contexts.knowledge.application.ai_chat_service import (
     ChatRequest as ServiceChatRequest,
 )
+from app.contexts.knowledge.application.composite_retriever import (
+    CompositeChunkRetriever,
+)
 from app.contexts.knowledge.application.evidence_fusion import (
     SimpleFrequencyFusion,
 )
@@ -34,7 +37,45 @@ from app.contexts.knowledge.application.retrievers_fake import (
 )
 from app.contexts.knowledge.domain.evidence import EvidenceItem
 
-SESSION = object()  # stand-in for AsyncSession (fake retriever doesn't use it)
+
+class _FakeRows:
+    def __init__(self, rows: list[dict]) -> None:
+        self._rows = rows
+
+    def all(self) -> list[dict]:
+        return self._rows
+
+
+class _FakeResult:
+    def __init__(self, rows: list[dict]) -> None:
+        self._rows = rows
+
+    def mappings(self) -> _FakeRows:
+        return _FakeRows(self._rows)
+
+
+class FakeSession:
+    def __init__(
+        self,
+        *,
+        files: list[dict] | None = None,
+        chunks: list[dict] | None = None,
+    ) -> None:
+        self.files = files or []
+        self.chunks = chunks or []
+        self.statements: list[str] = []
+
+    async def execute(self, stmt, params=None):  # noqa: ANN001
+        stmt_text = str(stmt)
+        self.statements.append(stmt_text)
+        if "FROM metaedu.files" in stmt_text:
+            return _FakeResult(self.files)
+        if "FROM metaedu.document_chunks" in stmt_text:
+            return _FakeResult(self.chunks)
+        return _FakeResult([])
+
+
+SESSION = FakeSession()
 
 
 def _chunk_evidence(file_id, idx, score=0.9, content="long " * 20 + "content") -> EvidenceItem:
@@ -60,6 +101,25 @@ def _node_evidence(file_id, idx, score=0.6) -> EvidenceItem:
         title=f"node-{idx}",
         content="node desc",
         score=score,
+    )
+
+
+def _session_for_file(
+    file_id: uuid.UUID,
+    *,
+    filename: str = "Python 操作指南.pdf",
+    doc_type: str = "操作指南",
+    tags: list[str] | None = None,
+) -> FakeSession:
+    return FakeSession(
+        files=[
+            {
+                "id": file_id,
+                "filename": filename,
+                "doc_type": doc_type,
+                "tags": tags or ["python"],
+            }
+        ]
     )
 
 
@@ -245,3 +305,164 @@ async def test_ai_chat_combines_chunk_and_node_evidence() -> None:
     types = {s.source_type for s in result.sources}
     assert "chunk" in types
     assert "knowledge_node" in types
+
+
+async def test_composite_chunk_retriever_calls_vector_and_keyword() -> None:
+    """REQ-012 AC-1: chunk vector + keyword retriever both enter candidates."""
+    fid = uuid.uuid4()
+    vector_chunk = _chunk_evidence(fid, 1, score=0.9, content="vector content " * 20)
+    keyword_chunk = _chunk_evidence(fid, 2, score=0.8, content="keyword content " * 20)
+
+    vector = FakeChunkRetriever()
+    vector.return_value = [vector_chunk]
+    keyword = FakeChunkRetriever()
+    keyword.return_value = [keyword_chunk]
+    graph = FakeGraphRetriever()
+    graph.return_value = []
+
+    service = AIChatService(
+        chunk_retriever=CompositeChunkRetriever([vector, keyword]),
+        graph_retriever=graph,
+        metadata_filter=FakeMetadataFilter(),
+        evidence_fusion=SimpleFrequencyFusion(),
+    )
+
+    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+        result = await service.chat(
+            ServiceChatRequest(message="Python 基本数据类型", context_window=3),
+            session=_session_for_file(fid),  # type: ignore[arg-type]
+        )
+
+    assert len(vector.calls) == 1
+    assert len(keyword.calls) == 1
+    assert {src.evidence_id for src in result.sources} == {
+        vector_chunk.evidence_id,
+        keyword_chunk.evidence_id,
+    }
+
+
+async def test_metadata_filter_return_value_affects_fusion_input() -> None:
+    """REQ-012 AC-2: metadata filter 的返回值必须进入 fusion。"""
+    fid = uuid.uuid4()
+    keep = _chunk_evidence(fid, 1, score=0.9, content="keep content " * 20)
+    drop = _chunk_evidence(fid, 2, score=0.8, content="drop content " * 20)
+
+    chunk_retriever = FakeChunkRetriever()
+    chunk_retriever.return_value = [keep, drop]
+    metadata_filter = FakeMetadataFilter()
+    metadata_filter.return_value = [keep]
+
+    service = AIChatService(
+        chunk_retriever=chunk_retriever,
+        graph_retriever=FakeGraphRetriever(),
+        metadata_filter=metadata_filter,
+        evidence_fusion=SimpleFrequencyFusion(),
+    )
+
+    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+        result = await service.chat(
+            ServiceChatRequest(message="hi", context_window=3),
+            session=_session_for_file(fid),  # type: ignore[arg-type]
+        )
+
+    assert [src.evidence_id for src in result.sources] == [keep.evidence_id]
+    assert metadata_filter.calls[0]["candidate_count"] == 2
+
+
+async def test_graph_evidence_hydrates_prompt_from_source_chunk() -> None:
+    """REQ-012 AC-4: graph evidence 有 source_chunk_id 时 prompt 使用 chunk 原文。"""
+    fid = uuid.uuid4()
+    cid = uuid.uuid4()
+    node = EvidenceItem(
+        evidence_id="",
+        source_type="knowledge_node",
+        file_id=fid,
+        chunk_id=cid,
+        source_chunk_id=cid,
+        node_id=uuid.uuid4(),
+        title="Python 数据类型",
+        content="node desc",
+        snippet="node desc",
+        score=0.9,
+        channels=["vector"],
+    )
+    graph = FakeGraphRetriever()
+    graph.return_value = [node]
+    chunk_text = "Python 的基本数据类型包括数字、字符串、列表、元组、字典和集合。"
+    session = FakeSession(
+        files=[{"id": fid, "filename": "Python 操作指南.pdf", "doc_type": "指南", "tags": []}],
+        chunks=[
+            {
+                "id": cid,
+                "file_id": fid,
+                "chunk_index": 7,
+                "content": chunk_text,
+                "section_title": "基本数据类型",
+                "section_path": "1.2",
+            }
+        ],
+    )
+
+    captured: dict = {}
+
+    async def fake_llm(self, system: str, user: str) -> str:
+        captured["user"] = user
+        return "ok"
+
+    service = AIChatService(
+        chunk_retriever=FakeChunkRetriever(),
+        graph_retriever=graph,
+        metadata_filter=FakeMetadataFilter(),
+        evidence_fusion=SimpleFrequencyFusion(),
+    )
+    with patch.object(AIChatService, "_call_llm", fake_llm):
+        result = await service.chat(
+            ServiceChatRequest(message="Python 有哪些基本数据类型？", context_window=3),
+            session=session,  # type: ignore[arg-type]
+        )
+
+    assert chunk_text in captured["user"]
+    assert result.sources[0].metadata["content_source"] == "document_chunk"
+    assert result.sources[0].metadata["chunk_index"] == 7
+
+
+async def test_document_sources_group_by_file_and_skip_unattributed_graph() -> None:
+    """REQ-012 AC-7/AC-9: 底部来源按文档聚合，无 file_id 不伪装为文档。"""
+    fid = uuid.uuid4()
+    chunk_a = _chunk_evidence(fid, 1, score=0.9, content="content A " * 20)
+    chunk_b = _chunk_evidence(fid, 2, score=0.7, content="content B " * 20)
+    orphan_graph = EvidenceItem(
+        evidence_id="",
+        source_type="knowledge_node",
+        file_id=None,
+        node_id=uuid.uuid4(),
+        title="来源待细化节点",
+        content="node desc",
+        score=0.95,
+        channels=["graph"],
+    )
+
+    chunk_retriever = FakeChunkRetriever()
+    chunk_retriever.return_value = [chunk_a, chunk_b]
+    graph = FakeGraphRetriever()
+    graph.return_value = [orphan_graph]
+
+    service = AIChatService(
+        chunk_retriever=chunk_retriever,
+        graph_retriever=graph,
+        metadata_filter=FakeMetadataFilter(),
+        evidence_fusion=SimpleFrequencyFusion(),
+    )
+    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+        result = await service.chat(
+            ServiceChatRequest(message="hi", context_window=3),
+            session=_session_for_file(fid),  # type: ignore[arg-type]
+        )
+
+    assert len(result.document_sources) == 1
+    doc = result.document_sources[0]
+    assert doc.file_id == fid
+    assert doc.title == "Python 操作指南.pdf"
+    assert len(doc.chunks) == 2
+    assert doc.evidence_indices == [2, 3]
+    assert all(chunk.chunk_id is not None for chunk in doc.chunks)

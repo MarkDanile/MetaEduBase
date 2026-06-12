@@ -3,7 +3,7 @@ import re
 
 import httpx
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
@@ -16,6 +16,9 @@ from app.contexts.knowledge.application.ai_chat_service import (
 from app.contexts.knowledge.application.ai_chat_service import (
     ChatResponse as ServiceChatResponse,
 )
+from app.contexts.knowledge.application.composite_retriever import (
+    CompositeChunkRetriever,
+)
 from app.contexts.knowledge.application.evidence_fusion import SimpleFrequencyFusion
 from app.contexts.knowledge.application.fusion_service import FrequencyFusion
 from app.contexts.knowledge.application.recall_service import (
@@ -23,7 +26,10 @@ from app.contexts.knowledge.application.recall_service import (
     PgMetadataRecallChannel,
     PgVectorRecallChannel,
 )
-from app.contexts.knowledge.domain.evidence import EvidenceItem
+from app.contexts.knowledge.domain.evidence import DocumentSource, EvidenceItem
+from app.contexts.knowledge.infrastructure.retrievers.pg_chunk_keyword_retriever import (
+    PgChunkKeywordRetriever,
+)
 from app.contexts.knowledge.infrastructure.retrievers.pg_chunk_vector_retriever import (
     PgChunkVectorRetriever,
 )
@@ -47,7 +53,12 @@ _fusion = FrequencyFusion()
 
 # REQ-010 Slice 3 — evidence-aware AI Chat service (default PG adapters).
 _evidence_service = AIChatService(
-    chunk_retriever=PgChunkVectorRetriever(),
+    chunk_retriever=CompositeChunkRetriever(
+        [
+            PgChunkVectorRetriever(),
+            PgChunkKeywordRetriever(),
+        ]
+    ),
     graph_retriever=PgGraphRetriever(),
     metadata_filter=PgMetadataFilter(),
     evidence_fusion=SimpleFrequencyFusion(),
@@ -77,6 +88,7 @@ class EvidenceChatResponse(BaseModel):
 
     reply: str
     sources: list[EvidenceItem]
+    document_sources: list[DocumentSource] = Field(default_factory=list)
 
 
 @router.post("/chat/evidence", response_model=EvidenceChatResponse)
@@ -107,6 +119,11 @@ async def ai_chat_evidence(
     return EvidenceChatResponse(
         reply=result.reply,
         sources=result.sources,
+        document_sources=(
+            getattr(result, "document_sources", [])
+            if isinstance(getattr(result, "document_sources", []), list)
+            else []
+        ),
     )
 
 
