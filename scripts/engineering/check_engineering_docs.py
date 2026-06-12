@@ -49,7 +49,20 @@ def print_issue(issue: Issue, root: Path) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Check engineering docs gates.")
     parser.add_argument("--root", default=".", help="Repository root to inspect.")
+    parser.add_argument(
+        "--verify-pr-state",
+        action="store_true",
+        help=(
+            "DOC-063: opt-in 启用 `gh pr view` 校验 PR 真实状态（慢速，~1s/次，"
+            "可能超时）。默认走 `git rev-parse` 校验任务卡 mergeCommit 字段（< 5ms/次，零网络）。"
+        ),
+    )
     args = parser.parse_args(argv)
+
+    if args.verify_pr_state:
+        # 触发 task_card_claims 的 gh 路径（DOC-063 legacy）。
+        import os
+        os.environ["METAEDU_CHECK_VERIFY_PR_STATE"] = "1"
 
     root = Path(args.root).resolve()
     active, known = run_checks(root)

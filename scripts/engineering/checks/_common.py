@@ -266,26 +266,93 @@ def should_skip_link(target: str) -> bool:
 # DOC-060: 任务卡 vs 代码 / 声明语义校验的通用工具。
 # 与 DOC-059 (`check_task_completion_pr_consistency`) 互补：
 # - DOC-059 扫"PR 不存在"（直接查 `gh pr list --state merged`）；
-# - 本函数扫"PR 存在但 state != MERGED"或"残留量声明 vs `rg` 实测命中数偏差"。
+# - 本函数扫"PR 存在但 merge commit 不在 git 历史"或"残留量声明 vs `rg` 实测命中数偏差"。
 # 不强依赖 `gh` / `rg`：调用方需要时再决定是否触发 `subprocess`。
 TASK_CARD_PR_REF_RE = re.compile(
     r"\[#(\d+)\]\(https://github\.com/[^)]+/pull/(\d+)\)|PR\s*#(\d+)"
 )
+# DOC-060 任务卡里通常会写 `| Merge Commit | `<sha>` |` 字段；本正则从
+# 任务卡 body 里抽出 merge commit hash（40-char hex）。
+TASK_CARD_MERGE_COMMIT_RE = re.compile(
+    r"\|\s*Merge Commit\s*\|\s*`([0-9a-f]{6,40})`"
+)
+# DOC-063 兼容：很多历史任务卡 `事实源` 字段写 `merge commit `<sha>``（短 hash）
+# 而非独立 `Merge Commit` 行；本正则抓事实源字段里嵌的短 hash。
+TASK_CARD_MERGE_COMMIT_INLINE_RE = re.compile(
+    r"merge commit\s+`?([0-9a-f]{6,40})`?"
+)
 GH_PR_VIEW_TIMEOUT_S = 10
+# DOC-063: 默认校验 PR 真实状态用 git plumbing（< 5ms/次，零网络）。
+# `--verify-pr-state` 显式 CLI 开关切到 `check_gh_pr_state_legacy`（慢速但
+# 校验 GitHub 端状态），opt-in。
+PR_STATE_VERIFY_VIA_GH = False  # 默认 False；由 CLI 开关覆盖
 
 
-def check_gh_pr_state(
+def is_pr_state_via_gh_enabled() -> bool:
+    """DOC-063: CLI 开关 `--verify-pr-state` 控制 `check_task_card_stale_completion`
+    走 `check_gh_pr_state_legacy`（慢速但查 GitHub 端），默认 False 走
+    `check_merge_commit_in_git_history`（快速，零网络）。
+    """
+    import os
+
+    return os.environ.get("METAEDU_CHECK_VERIFY_PR_STATE") == "1"
+
+
+def _merge_commit_unavailable_detail(pr_number: int | None, repo_root: Path | None) -> str:
+    """DOC-063: 任务卡缺 Merge Commit 字段时，给出明确"为什么用 git 路径需要
+    mergeCommit"的说明，避免外部调用方困惑。"""
+    return "DOC-063 fast path 要求任务卡写 Merge Commit 字段（`git rev-parse` 校验）"
+
+
+def check_merge_commit_in_git_history(
+    merge_commit: str, repo_root: Path | None = None
+) -> tuple[str, str]:
+    """DOC-063: 用 `git rev-parse --verify <commit>` 校验 merge commit 是否
+    真实存在于 git 历史中（squash merge 后会作为独立 commit 进入 main，
+    本地 git 即可查，无网络依赖）。
+
+    返回 `(status, detail)`：
+    - `status = "MERGED"` 时 merge commit 存在，`detail` 是空字符串；
+    - `status = "UNAVAILABLE"` 时 `detail` 是 `未运行: <原因>` 文本（git 不在
+      PATH / 不是 git 仓库 / merge commit 40 字符不合法等），按
+      `quality-gates.md#验证表述规范` 的 `未运行` 分支处理。
+    - `status = "NOT_MERGED"` 时 merge commit 在 git 历史里但 hash 与 `git
+      log` 检索不符（理论上 squash merge 后 MERGED 状态不可逆，这种情况
+      极少；保留用于未来 rebase / force-push 场景）。
+    """
+    sha = merge_commit.strip()
+    if not re.match(r"^[0-9a-f]{6,40}$", sha):
+        return ("UNAVAILABLE", f"未运行: merge commit 哈希 {sha!r} 不合法")
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "--verify", f"{sha}^{{commit}}"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except FileNotFoundError:
+        return ("UNAVAILABLE", "未运行: git CLI 不可用 (FileNotFoundError)")
+    except subprocess.TimeoutExpired:
+        return ("UNAVAILABLE", "未运行: git rev-parse 超时 (5s)")
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip().splitlines()
+        hint = stderr[-1] if stderr else f"exit={proc.returncode}"
+        return ("UNAVAILABLE", f"未运行: git rev-parse 失败 ({hint})")
+    return ("MERGED", "")
+
+
+def _is_valid_oid(merge_commit: str) -> bool:
+    return bool(re.match(r"^[0-9a-f]{6,40}$", merge_commit.strip()))
+
+
+def check_gh_pr_state_legacy(
     pr_number: int, repo_root: Path | None = None
 ) -> tuple[str, str]:
-    """对单个 PR 调 `gh pr view <N> --json state` 校验。
-
-    返回 `(state, detail)`：
-    - `state in {"MERGED", "OPEN", "CLOSED"}` 时 `state` 是 gh 返回的 state，
-      `detail` 是空字符串；
-    - `gh` 不可用 / 网络阻塞 / 超时时 `state = "UNAVAILABLE"`，
-      `detail` 是 `未运行: <原因>` 文本（按 `quality-gates.md#验证表述规范`
-      的 `未运行` 分支），不抛异常。
-    - `repo_root` 仅用于控制 cwd；调用方不传时使用当前 cwd。
+    """DOC-063 保留的 legacy 路径：对单个 PR 调 `gh pr view <N> --json state` 校验。
+    默认不调用；opt-in by `--verify-pr-state` CLI flag（环境变量
+    `METAEDU_CHECK_VERIFY_PR_STATE=1`）。
     """
     try:
         proc = subprocess.run(
@@ -320,6 +387,30 @@ def check_gh_pr_state(
     if state not in {"MERGED", "OPEN", "CLOSED"}:
         return ("UNAVAILABLE", f"未运行: gh pr view 返回未知 state={state!r}")
     return (state, "")
+
+
+# DOC-063 向后兼容别名：保留 `check_gh_pr_state` 名字给历史调用方，行为
+# 默认改为 `check_merge_commit_in_git_history`（要 PR 号 → 任务卡 mergeCommit
+# 自查）。legacy gh 路径在 `check_gh_pr_state_legacy` 单独保留。
+def check_gh_pr_state(
+    pr_number: int, repo_root: Path | None = None
+) -> tuple[str, str]:
+    """DOC-063: 默认 `check_merge_commit_in_git_history` 路径（fast）。
+
+    保留 `pr_number` 形参仅为向后兼容；实际查的是任务卡对应 PR 的
+    mergeCommit 字段（由 `task_card_claims` 提取）。如启用
+    `METAEDU_CHECK_VERIFY_PR_STATE=1`，则走 `check_gh_pr_state_legacy`
+    （慢速但查 GitHub 端真实状态）。
+    """
+    if is_pr_state_via_gh_enabled():
+        return check_gh_pr_state_legacy(pr_number, repo_root=repo_root)
+    # fast path：pr_number 形参不直接使用（mergeCommit 在调用方传进来）。
+    # 保留 `pr_number` 形参仅为不破坏现有测试与外部调用方。
+    return (
+        "UNAVAILABLE",
+        f"未运行: pr_number={pr_number} 的 merge_commit 需在调用方传入，"
+        f"本函数 fast path 不查 gh",
+    )
 
 
 def check_ripgrep_count(
@@ -419,14 +510,18 @@ def check_task_card_claim_vs_code(
     target_files: list[Path] | None = None,
     pr_number: int | None = None,
     claim_pattern: str | None = None,
+    merge_commit: str | None = None,
     *,
     repo_root: Path,
 ) -> list[Issue]:
     """DOC-060 通用工具：校验任务卡的"声明值"是否与代码 / PR 实际一致。
 
     `claim_kind` 决定走哪条子校验：
-    - `"pr_state"`：要求 `pr_number` 必填；`gh pr view <pr_number> --json state`
-      期望返回 `"MERGED"`。其他 state / `UNAVAILABLE` 各自报对应 issue。
+    - `"pr_state"`：DOC-063 改为要求 `merge_commit` 必填；用 git plumbing
+      (`git rev-parse --verify <commit>^{commit}`) 校验 merge commit 真实
+      存在。`pr_number` 形参仅保留向后兼容（旧测试用），不再作为 fast 路径
+      的输入。如启用 `METAEDU_CHECK_VERIFY_PR_STATE=1`，opt-in 走 gh 路径
+      `check_gh_pr_state_legacy`。
     - `"residual_count"`：要求 `claim_pattern` 必填 + `target_files` 非空；
       `rg -c` 命中数与 `declared_value`（数字字符串）严格相等才通过。
       `target_files` 中如果某个相对路径在 repo_root 不存在，按
@@ -438,25 +533,33 @@ def check_task_card_claim_vs_code(
     """
     issues: list[Issue] = []
     if claim_kind == "pr_state":
-        if pr_number is None:
+        if merge_commit is None:
+            # DOC-063: pr_state fast path 要求任务卡写 mergeCommit。
+            # 任务卡没写 mergeCommit 字段时按"未运行"语义放过，让人类补字段
+            # 后再跑（不强行报 stale-completion 误报）。
             issues.append(
                 Issue(
                     Path("<DOC-060>"),
                     0,
-                    "task-card-stale-completion",
-                    f"{task_id}: claim_kind=pr_state 但 pr_number 缺失",
-                    "补 PR 编号，或改用 claim_kind=residual_count。",
+                    "task-card-stale-completion-unavailable",
+                    f"{task_id}: 任务卡 PR #{pr_number} 缺 Merge Commit 字段，{_merge_commit_unavailable_detail(pr_number, repo_root)}",
+                    "在任务卡『交付 PR』段下补 `| Merge Commit | `<sha>` |` 字段；或 opt-in 启用 gh 路径（`METAEDU_CHECK_VERIFY_PR_STATE=1`）。",
                 )
             )
             return issues
-        state, detail = check_gh_pr_state(pr_number, repo_root=repo_root)
+        if is_pr_state_via_gh_enabled() and pr_number is not None:
+            state, detail = check_gh_pr_state_legacy(pr_number, repo_root=repo_root)
+        else:
+            state, detail = check_merge_commit_in_git_history(
+                merge_commit, repo_root=repo_root
+            )
         if state == "UNAVAILABLE":
             issues.append(
                 Issue(
                     Path("<DOC-060>"),
                     0,
                     "task-card-stale-completion-unavailable",
-                    f"{task_id}: 任务卡声明 PR #{pr_number} 状态，{detail}",
+                    f"{task_id}: 任务卡声明 PR #{pr_number}（merge_commit={merge_commit[:10]}…）状态，{detail}",
                     f"复核 PR #{pr_number} 状态后重跑；或在本 check 维护 KNOWN_ISSUES 临时跳过。",
                 )
             )
@@ -466,8 +569,8 @@ def check_task_card_claim_vs_code(
                     Path("<DOC-060>"),
                     0,
                     "task-card-stale-completion",
-                    f"{task_id}: 任务卡声明完成（PR #{pr_number}），但 `gh pr view` state={state!r}（期望 MERGED）",
-                    f"复核 PR #{pr_number} 是否真的已合 main；若已合并但 `gh` 缓存过期，重跑一次。",
+                    f"{task_id}: 任务卡声明完成（PR #{pr_number}），但 git rev-parse 校验 merge commit={merge_commit} 状态={state!r}（期望 MERGED）",
+                    f"复核 PR #{pr_number} 是否真的已合 main；若已合并但 `git` 缓存过期，重跑一次。",
                 )
             )
         return issues

@@ -24,6 +24,8 @@ from pathlib import Path
 
 from ._common import (
     Issue,
+    TASK_CARD_MERGE_COMMIT_INLINE_RE,
+    TASK_CARD_MERGE_COMMIT_RE,
     TASK_CARD_PR_REF_RE,
     check_task_card_claim_vs_code,
     iter_doc_files,
@@ -47,16 +49,49 @@ CARD_END_RE = re.compile(r"^###\s+(?!$)|\Z")
 
 
 def _find_pr_number_in_card(card_body: list[str]) -> int | None:
-    """从任务卡正文（含 交付 PR / 交付记录 / 证据 / 完成标准 段）提取
-    第一个 PR 编号。优先匹配 `[#NNN](...pull/NNN)` 形式（带链接）；
-    次选 `PR #NNN` 形式。
+    """DOC-063: 从任务卡正文提取"任务卡自己的"PR 编号。
+
+    严格匹配 `| 交付 PR |` 表格行（DOC-057 / DOC-058 / DOC-060 收口时统一
+    字段格式），不再匹全文。理由：DOC-023 等任务卡"事实源"段引用了
+    别人的 PR #46，匹全文会把别人的 PR 当成"自己的 PR"，让 check 误把
+    别人的 merge commit 当成自己的事实源。
+
+    表格行格式：`| 交付 PR | [PR #NNN](https://...pull/NNN) |`
     """
     for line in card_body:
+        # 仅匹"交付 PR"段（表格列头）
+        if not re.search(r"\|\s*交付 PR\s*\|", line):
+            continue
         m = TASK_CARD_PR_REF_RE.search(line)
         if m:
             for group in m.groups():
                 if group and group.isdigit():
                     return int(group)
+    return None
+
+
+def _find_merge_commit_in_card(card_body: list[str]) -> str | None:
+    """DOC-063: 从任务卡正文提取 merge commit sha。
+
+    优先级（DOC-063 兼容性）：
+    1. 显式 `| Merge Commit | `<sha>` |` 字段（DOC-057 / DOC-060 收口时回填的格式）
+    2. `事实源` 字段里嵌的 `merge commit `<sha>`` 短 hash（历史债，许多
+       历史任务卡用这种格式写 PR 链接 + 短 hash）
+    3. 交付记录段叙述里出现的 `merge commit `<sha>`` 模式
+
+    按 task-modes.md#任务入口解析门禁 + DOC-058 翻完成硬条件约定，任务卡
+    写明 PR 编号 + mergeCommit 是事实源；本函数扫 body 内 Markdown 表格行
+    + 叙述行提取 sha，返回 6-40 字符 hex。"""
+    # 1. 显式 `| Merge Commit |` 字段
+    for line in card_body:
+        m = TASK_CARD_MERGE_COMMIT_RE.search(line)
+        if m:
+            return m.group(1)
+    # 2. 事实源 / 交付记录 / 任何位置里的 `merge commit <sha>`
+    for line in card_body:
+        m = TASK_CARD_MERGE_COMMIT_INLINE_RE.search(line)
+        if m:
+            return m.group(1)
     return None
 
 
@@ -175,8 +210,13 @@ def _parse_residual_claim(
 
 
 def check_task_card_stale_completion(root: Path) -> list[Issue]:
-    """扫 technical-debt.md 中所有 `状态：🟢 完成` 任务卡，提取 PR 编号，
-    调 `_common.check_task_card_claim_vs_code(claim_kind='pr_state')` 校验。
+    """DOC-063: 扫 technical-debt.md 中所有 `状态：🟢 完成` 任务卡，提取 PR
+    编号 + Merge Commit 字段，调
+    `_common.check_task_card_claim_vs_code(claim_kind='pr_state')` 校验。
+
+    优先用 git plumbing（`git rev-parse --verify <commit>^{commit}`，< 5ms/次）
+    校验任务卡写的 mergeCommit 哈希是否真实存在；opt-in `--verify-pr-state`
+    走 `check_gh_pr_state_legacy` 慢速但查 GitHub 端真实状态。
     """
     issues: list[Issue] = []
     debt_path = root / TECHNICAL_DEBT_PATH_PARTS[0]
@@ -185,11 +225,13 @@ def check_task_card_stale_completion(root: Path) -> list[Issue]:
         if pr_number is None:
             # DOC-059 负责"PR 不存在"；本 check 跳过，等 DOC-059 报。
             continue
+        merge_commit = _find_merge_commit_in_card(body)
         sub_issues = check_task_card_claim_vs_code(
             task_id=task_id,
             claim_kind="pr_state",
             declared_value="MERGED",
             pr_number=pr_number,
+            merge_commit=merge_commit,
             repo_root=root,
         )
         for issue in sub_issues:
