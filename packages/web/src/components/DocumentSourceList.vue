@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-2">
+  <div class="space-y-2 border-l-2 border-[var(--color-accent)] pl-3" data-testid="document-source-list">
     <div
       v-for="source in sources"
       :key="source.file_id"
@@ -61,6 +61,8 @@
           v-for="chunk in source.chunks"
           :key="`${source.file_id}-${chunk.evidence_index}-${chunk.chunk_id ?? 'no-chunk'}`"
           type="button"
+          data-testid="document-source-chunk"
+          aria-label="定位到该 chunk"
           class="w-full text-left p-2 rounded-[var(--radius-sm)] bg-[var(--color-bg-elevated)] border border-[var(--color-border-subtle)] hover:border-[var(--color-accent)]"
           @click="$emit('open-chunk', source, chunk)"
         >

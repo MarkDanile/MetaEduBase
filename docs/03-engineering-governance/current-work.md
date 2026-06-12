@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | fix1 backend + fix2 frontend layout 已合 main（PR #221 / merge `237b108`、PR #223 / merge `6bdcdd6`）。准备推 fix3 frontend reference UI。 | 切 `fix/bug-003-ai-chat-regression-fix3` 推 PR-BUG-003-3（DocumentSourceList 视觉强化 + quickQuestion button type 显式化）。 | fix1：340 pytest / 0 回归；fix2：34 vitest / typecheck / lint / 0 回归；e2e 未跑（依赖真 PG）。 |
+| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | fix3 frontend reference UI 实现完成：DocumentSourceList 外层容器加 `border-l-2 accent pl-3` + `data-testid="document-source-list"`；chunk 按钮加 `data-testid="document-source-chunk"` + `aria-label="定位到该 chunk"`；AiChatView quickQuestion 按钮加 `type="button"`。`vitest 39/39 / typecheck / lint` 全过 / 0 回归。 | push fix3 + 创建 PR-BUG-003-3 → 维护者合 main 后人工补 AC-6 截图 → 推 fix4 frontend file open。 | fix1：340 pytest / 0 回归；fix2：34 vitest / 0 回归；fix3：39 vitest / 0 回归；e2e 未跑。 |
 
 ## 下一批候选任务
 
