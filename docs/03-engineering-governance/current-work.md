@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | 分支 `fix/bug-003-ai-chat-regression`；30 分钟复现切片完成 + 入口 PR #219 已合 main（merge `d29437b`）；4 子问题真因候选已记录；5 个修复合片（PR-BUG-003-1 ~ -5）spec/plan 落地。 | 切 `fix/bug-003-ai-chat-regression-fix1` 推 PR-BUG-003-1（backend evidence pipeline：chunk vector embedding 降级 + asyncio gather 串行）。 | docs-only：已跑 `scripts/check-engineering-docs` 退出码 0；`git diff --check` clean；0 业务代码。PR #219 merge commit `d29437b` 已落 origin/main。 |
+| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | PR-BUG-003-1 实现完成：`PgChunkVectorRetriever` embedding 空时降级到 tsvector + ILIKE keyword 路径；新增 3 pytest（mock-based）；`340 passed / 0 回归`；`ruff check` 全过。分支 `fix/bug-003-ai-chat-regression-fix1` 准备 push。 | push fix1 分支 + 创建 PR-BUG-003-1 → 本地 PG 真跑 `curl /ai/chat/evidence "Python 基本数据类型"` 补 AC-2/AC-3 真实数据 → 合 main → 推 fix2（frontend layout）。 | pytest 340/340 通过；ruff clean；e2e 未跑（依赖真 PG + embedding service）。 |
 
 ## 下一批候选任务
 
