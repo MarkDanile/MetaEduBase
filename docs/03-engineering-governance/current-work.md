@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | 分支 `fix/bug-003-ai-chat-regression`；30 分钟复现切片完成：代码审阅 + 已有排查记录确认 4 个子问题真因候选；docs-only 入口 PR #219 已创建（4 文件 / 344+ / 4-）。 | 合并 PR #219 → 推 PR-BUG-003-1（backend evidence pipeline）→ 后续 4 个修复合片按 Plan 走。 | docs-only：已跑 `scripts/check-engineering-docs` 退出码 0；`git diff --check` clean；0 业务代码。 |
+| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | 分支 `fix/bug-003-ai-chat-regression`；30 分钟复现切片完成 + 入口 PR #219 已合 main（merge `d29437b`）；4 子问题真因候选已记录；5 个修复合片（PR-BUG-003-1 ~ -5）spec/plan 落地。 | 切 `fix/bug-003-ai-chat-regression-fix1` 推 PR-BUG-003-1（backend evidence pipeline：chunk vector embedding 降级 + asyncio gather 串行）。 | docs-only：已跑 `scripts/check-engineering-docs` 退出码 0；`git diff --check` clean；0 业务代码。PR #219 merge commit `d29437b` 已落 origin/main。 |
 
 ## 下一批候选任务
 
@@ -32,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-12 | BUG-003 入口切片（repro evidence + 5-fix plan） | 🟢 完成 | docs-only PR #219 收口：工作台状态登记 + BUG 文档「2026-06-12 复现切片记录」段（4 子问题真因候选）+ spec/plan 拆分 PR-BUG-003-1 ~ -5。BUG-003 整体任务仍 🟡 进行中。 | [Bug](../01-product-planning/05-requirements/BUG-003-ai-chat-ux-and-answer-quality-regression.md) / [Spec](../02-delivery-plans/01-specs/2026-06-12-bug-003-ai-chat-regression.md) / [Plan](../02-delivery-plans/02-plans/2026-06-12-bug-003-ai-chat-regression-plan.md) / [PR #219](https://github.com/MarkDanile/MetaEduBase/pull/219)（merge `d29437b`） |
 | 2026-06-12 | REQ-012 RAG 多路召回与知识图谱证据链收口 | 🟢 完成 | PR #216 已合并：接入 vector + keyword chunk 复合召回、metadata filter 生效、graph 回源 chunk、`document_sources`、当前消息 `[N]` 点击和文档级来源 UI。 | [Requirement](../01-product-planning/05-requirements/REQ-012-rag-retrieval-and-kg-evidence-chain-follow-up.md) / [Plan](../02-delivery-plans/02-plans/2026-06-12-req-012-rag-retrieval-document-sources-plan.md) / [PR #216](https://github.com/MarkDanile/MetaEduBase/pull/216)（merge `5c5ad81`） |
 | 2026-06-12 | DOC-059 新建 `check_task_completion_pr_consistency_fallback` 兜底脚本扫『任务卡完成 → PR 真实存在』 | 🟢 完成 | 2 PR 收口（PR-A 业务脚本 + PR-B docs-only）：git log 兜底扫『任务卡完成但无 PR 字段』；14 个 task_id 维度 KNOWN_ISSUES 白名单；25 pytest 零回归。 | [DOC-059](technical-debt.md#doc-059) / PR #214（merge `e29497e`） |
 | 2026-06-12 | DOC-064 pre-existing 警告收口（`check-engineering-docs` 退出码 1 → 0） | 🟢 完成 | 1 docs-only PR（#211 / merge `e6f9ea9`）：2 类修复——① current-work.md L37-L41 五条"最近完成"行重写为 ≤ 220 字符（短摘要 + work-log 回链）；② spec 路径 `../../../` → `../../` 修对层级。0.77 秒 + 退出码 **0** + 22 pytest passed 零回归。 | [DOC-064](technical-debt.md#doc-064) / PR #211（merge `e6f9ea9`） |
