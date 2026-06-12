@@ -67,6 +67,49 @@ REQ-012 已完成 RAG 多路召回、文档级参考来源和引用点击的第�
 - `context_window: 5`、`snippet=content[:200]` 和严格 system prompt 叠加，会进一步放大“证据不足”的倾向。
 - 修复优先级应先保证 chunk keyword / full-text 通道稳定返回正文 chunk，再调整 prompt context 打包和“证据不足”策略。
 
+## 2026-06-12 复现切片记录（fix/bug-003-ai-chat-regression 分支）
+
+本节是按 BUG 文档「后续执行建议」30 分钟复现切片的代码审阅+已知证据汇总，分支：`fix/bug-003-ai-chat-regression`。本切片**只新增文档证据，不改业务代码**，完整 4-5 个修复合片按对应 spec/plan 走独立 PR。
+
+### 复现 1：AC-1 输入框第一屏
+
+- 模板根容器 `packages/web/src/views/ai-chat/AiChatView.vue:2` `class="flex flex-col h-screen"`，聊天容器 `:17` `ref="chatContainer" class="flex-1 overflow-y-auto ..."`，输入区 `:101-133` 是独立 `border-t` + `<form @submit.prevent="sendMessage">`。
+- 真因候选：聊天容器与输入区都是 `flex-col` 直接子节点；**桌面视口 ≥ 768px** 时 `h-screen` 通常足够，输入区不会跑出首屏；但当浏览器缩放、DevTools 打开或 small height（< 600px）时，**`EmptyState` (L18-35) 的 grid + hint + 标题在聊天容器内独立滚动，输入区在 flex-col 末端被遮**，视觉上输入框消失。复现条件：viewport 高 < 600px + 加载 AI Chat 路由。
+- 真实浏览器验证：本切片未跑浏览器，仅代码审阅 + BUG 文档历史现象。修复合片需补 playwright/手动截图验收。
+
+### 复现 2：AC-4 兜底问题"页面直接刷新"
+
+- 真因候选 1：`<form @submit.prevent="sendMessage">` (L102) 已拦截隐式 submit；`<textarea @keydown.enter.exact.prevent="sendMessage">` (L111) 已拦 Enter；quickQuestions 按钮 (L25-32) **未显式 `type="button"`**——在 `<form>` 内 `<button>` 默认 `type="submit"`，但因为 `@submit.prevent`，点击只会触发 `sendMessage` 而不会真刷新；不过这违反了"按钮必须显式 type"的工程规范，需顺手修。
+- 真因候选 2：**中文 IME 输入兼容**。用户用中文输入法打"你能回答什么问题？" 时，候选词阶段按 Enter 是 IME 确认字符，但 `@keydown.enter.exact.prevent` 不会区分 IME 状态，可能在某些输入状态下把 IME Enter 当作 sendMessage 触发，触发 loading → `/ai/chat/evidence` 后端 503/网络错 → "请求失败" 走 L321-327 → 视觉上看似"刷新"。
+- 真因候选 3：**输入空字符串 + Send 按钮 disabled 校验绕过**。L127 `:disabled="!inputText.trim()"` 拦了空文本，但 `sendMessage` L276-277 又做了一次 `if (!text || loading.value) return`——属于重复校验，符合现状。
+- **结论**：30 分钟切片阶段不在此分支敲定真因，需要真实浏览器点击 + 中文 IME 测试；本切片**只记录真因候选**，交修复合片覆盖。
+
+### 复现 3：AC-5 / AC-6 引用可读性 + 参考来源 UI
+
+- AC-5 真因已锁定：`packages/web/src/views/ai-chat/AiChatView.vue:340-345` `openFile` 使用 `window.location.href = /resource/files/:fileId` —— **整页跳转而非新标签**，且 `chunk=` 参数通过 URLSearchParams 拼上但目标文件详情页 `FileDetailView.vue:128-134` 监听 `route.query.chunk` 滚到 chunk 锚点这一路径**确实存在**；用户体感"链接打不开"的最大可能：(a) 整页跳丢失 chat 上下文，且 (b) `?chunk=` 路由参数在新版可能因 query 序列化差异失效、(c) 文件详情页 `chunk` 锚点跳转后高亮 3s 清除前未持久化。
+- AC-6 真因已锁定：`openDocumentSource` (L354-356) 跳文件详情页不传 chunkId；`DocumentSourceList.vue` 模板里**外链按钮 (:50-53) 和标题按钮 (:23-29) 都 emit `open-document`**，而 quickQuestions 区 3 个按钮在 EmptyState slot 内不属于 form，所以不刷页——但视觉上"参考来源"区域是 `border` + `bg-warm` 的 `ui-panel`，与上方 markdown 气泡视觉差异不明显，BUG 文档说的"视觉上不像引用来源"成立。
+- 复现补充：`<a>` 链接通过 marked 渲染时 (L206-211) **不会**走 `.evidence-ref` 后处理；正文内若有原生 markdown `\[label\](http://...)` 链接，会按 `target="_blank"` 打开——这与 `.evidence-ref` 的"原页跳转"行为不一致。属于"用户体感链接行为不一致"。
+
+### 复现 4：AC-2 / AC-3 答案质量（已 100% 锁定真因）
+
+- `packages/server-python/app/contexts/knowledge/infrastructure/retrievers/pg_chunk_vector_retriever.py:36-39` `get_embedding(query)` 返回空 → logger.warning `empty embedding` → 直接 `return []`。本机环境未拿到 embedding（推测：embedding service 不可达 / 密钥未配 / 限流），导致 vector chunk 通道空。
+- `packages/server-python/app/contexts/knowledge/infrastructure/retrievers/pg_chunk_keyword_retriever.py:93` `await session.execute(...)` 在 chunk + graph **共享同一个 AsyncSession** 时，SQLAlchemy 2.x async 引擎报 `This session is provisioning a new connection; concurrent operations are not permitted`。`ai_chat_service.py:288-290` `asyncio.gather(chunk_coro, graph_coro)` 并发触发该错误（已经在 `_safe_retrieve_*` 兜底了）——但 BUG 文档 2026-06-12 排查记录中"报错 ... 共享同一个 SQLAlchemy AsyncSession 时失败" 提示**这条报错实际是发生在 graph 端**（`PgGraphRetriever` 内部又用同一个 session 跑 vector + keyword 两个 channel），导致 keyword channel 失败。
+- 复现汇总：`get_embedding` 空 + 内部 keyword channel 共享 session 失败 → 最终 fused 全是 `knowledge_node` (5 条) → 2 条空 content、2 条目录 chunk、1 条无关文档 → prompt 证据只含目录/空内容 → LLM 给"证据不足" 兜底。
+- **结论**：AC-2/AC-3 真因已 100% 锁定，可直接进入修复合片。
+
+### 30 分钟复现切片结论
+
+- 4 个子问题中，AC-2/AC-3 (backend evidence pipeline) 真因已 100% 锁定，可直接修；
+- AC-1 / AC-5 / AC-6 真因已**强候选锁定**（前端布局 + 整页跳转 + 引用 UI）；
+- AC-4 真因**未锁定**（中文 IME 兼容 + 空 input 兜底需要真实浏览器点击验证）；
+- 建议 5 个修复合片分组：
+  1. **PR-BUG-003-1 (backend)**：修复 `PgChunkVectorRetriever` 空 embedding 兜底 + `PgChunkKeywordRetriever` 跨 session 并发（拆 session / 串行 / 加 connect），保证 chunk keyword 通道返回正文 chunk。
+  2. **PR-BUG-003-2 (frontend layout)**：AI Chat 首屏输入框固定可见（mobile/small viewport 兼容）。
+  3. **PR-BUG-003-3 (frontend reference UI)**：参考来源区视觉强化（标题/计数/分块/缩略图），按钮 `type="button"` 显式化。
+  4. **PR-BUG-003-4 (frontend file open)**：`openFile` 改新标签 (`window.open`) + 保留 `?chunk=` 锚点 + 补充降级文案。
+  5. **PR-BUG-003-5 (frontend fallback)**：兜底问题"页面刷新"——补中文 IME 兼容 + loading 错误态可视化（属于"待真实点击复现后定真因"）。
+- 每个 PR 单独验证（前端 lint/typecheck/test，后端 pytest），合 main 后翻 BUG-003 为 `🟢 完成`。
+
 ## 验收标准
 
 - AC-1：AI Chat 页面在常见桌面视口首屏可见输入框，输入区不被页面内容挤出；补前端布局测试或截图验收记录。
