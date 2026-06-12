@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | PR-BUG-003-1 实现完成：`PgChunkVectorRetriever` embedding 空时降级到 tsvector + ILIKE keyword 路径；新增 3 pytest（mock-based）；`340 passed / 0 回归`；`ruff check` 全过。分支 `fix/bug-003-ai-chat-regression-fix1` 准备 push。 | push fix1 分支 + 创建 PR-BUG-003-1 → 本地 PG 真跑 `curl /ai/chat/evidence "Python 基本数据类型"` 补 AC-2/AC-3 真实数据 → 合 main → 推 fix2（frontend layout）。 | pytest 340/340 通过；ruff clean；e2e 未跑（依赖真 PG + embedding service）。 |
+| BUG-003 AI Chat 体验与回答质量回归（修复） | 🟡 进行中 | P1 | AI Chat / RAG / Frontend / Evidence | fix1 backend evidence pipeline 已合 main（PR #221 / merge `237b108`）：`PgChunkVectorRetriever` embedding 空降级 keyword + 3 pytest。准备推 fix2 frontend layout。 | 切 `fix/bug-003-ai-chat-regression-fix2` 推 PR-BUG-003-2（frontend layout：首屏输入框固定可见 + small viewport 兼容 + 新增 vitest 组件测试）。 | fix1：340 pytest passed / 0 回归；ruff clean；e2e 跳过（依赖真 PG）。 |
 
 ## 下一批候选任务
 
@@ -32,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-12 | BUG-003 fix1 backend evidence pipeline | 🟢 完成 | PR #221 已合并：PgChunkVectorRetriever embedding 空时降级到 tsvector + ILIKE keyword 路径；channels 标记 [vector, keyword]、metadata 含 embedding_fallback=True 和 search_mode；3 新增 pytest（mock-based）。BUG-003 整体任务仍 🟡 进行中。 | [Spec](../02-delivery-plans/01-specs/2026-06-12-bug-003-ai-chat-regression.md) / [Plan §切片 1](../02-delivery-plans/02-plans/2026-06-12-bug-003-ai-chat-regression-plan.md#切片-1pr-bug-003-1-backend-evidence-pipeline) / [PR #221](https://github.com/MarkDanile/MetaEduBase/pull/221)（merge `237b108`）/ 分支 `fix/bug-003-ai-chat-regression-fix1`（已删） |
 | 2026-06-12 | BUG-003 入口切片（repro evidence + 5-fix plan） | 🟢 完成 | docs-only PR #219 收口：工作台状态登记 + BUG 文档「2026-06-12 复现切片记录」段（4 子问题真因候选）+ spec/plan 拆分 PR-BUG-003-1 ~ -5。BUG-003 整体任务仍 🟡 进行中。 | [Bug](../01-product-planning/05-requirements/BUG-003-ai-chat-ux-and-answer-quality-regression.md) / [Spec](../02-delivery-plans/01-specs/2026-06-12-bug-003-ai-chat-regression.md) / [Plan](../02-delivery-plans/02-plans/2026-06-12-bug-003-ai-chat-regression-plan.md) / [PR #219](https://github.com/MarkDanile/MetaEduBase/pull/219)（merge `d29437b`） |
 | 2026-06-12 | REQ-012 RAG 多路召回与知识图谱证据链收口 | 🟢 完成 | PR #216 已合并：接入 vector + keyword chunk 复合召回、metadata filter 生效、graph 回源 chunk、`document_sources`、当前消息 `[N]` 点击和文档级来源 UI。 | [Requirement](../01-product-planning/05-requirements/REQ-012-rag-retrieval-and-kg-evidence-chain-follow-up.md) / [Plan](../02-delivery-plans/02-plans/2026-06-12-req-012-rag-retrieval-document-sources-plan.md) / [PR #216](https://github.com/MarkDanile/MetaEduBase/pull/216)（merge `5c5ad81`） |
 | 2026-06-12 | DOC-059 新建 `check_task_completion_pr_consistency_fallback` 兜底脚本扫『任务卡完成 → PR 真实存在』 | 🟢 完成 | 2 PR 收口（PR-A 业务脚本 + PR-B docs-only）：git log 兜底扫『任务卡完成但无 PR 字段』；14 个 task_id 维度 KNOWN_ISSUES 白名单；25 pytest 零回归。 | [DOC-059](technical-debt.md#doc-059) / PR #214（merge `e29497e`） |
