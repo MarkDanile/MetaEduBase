@@ -11,6 +11,8 @@ from celery import shared_task
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.shared.parsing.chunker import Chunk, chunk_by_structure
+from app.shared.parsing.pdf_parser import DocumentSection, ParsedDocument
 from app.shared.tasks.lifecycle import (
     _create_task,
     _run_in_session,
@@ -63,42 +65,85 @@ def chunk_document(file_id_str: str, tenant_id_str: str, pipeline_version: str =
                 raise ValueError("No parsed data found for file")
 
             full_text = sd.get("full_text", "") or ""
-            from app.shared.parsing.chunker import chunk_by_structure
-            from app.shared.parsing.pdf_parser import DocumentSection, ParsedDocument
 
-            # Reconstruct sections from full_text (which has markdown ## headings)
-            # Format: "## 标题\n内容\n\n## 标题2\n内容2"
-            sections = []
-            if full_text:
-                # Split on ## headings (at line start only)
-                import re
-                parts = re.split(r'\n(?=##\s)', full_text)
-                for part in parts:
-                    part = part.strip()
-                    if not part:
-                        continue
-                    if part.startswith("## "):
-                        # "## 标题\n内容" format
-                        first_newline = part.index("\n") if "\n" in part else -1
-                        if first_newline > 0:
-                            title = part[2:first_newline].strip()
-                            content = part[first_newline + 1:].strip()
+            # TD-051: Prefer structured_data["sections"] (new path) over regex
+            # reconstruction (legacy). When sections exist, use them directly so
+            # section.path / page / level are preserved. When absent (old files
+            # uploaded before this fix), fall back to the regex reconstruction.
+            raw_sections = sd.get("sections")
+            if raw_sections:
+                # New path: deserialize from structured_data
+                sections = [
+                    DocumentSection(
+                        title=s.get("title", "") or "",
+                        level=s.get("level", 0) or 0,
+                        content=s.get("content", "") or "",
+                        page=s.get("page", 0) or 0,
+                        path=s.get("path", "") or "",
+                    )
+                    for s in raw_sections
+                ]
+            else:
+                # Legacy path: reconstruct sections from full_text via regex
+                sections = []
+                if full_text:
+                    import re
+                    parts = re.split(r'\n(?=##\s)', full_text)
+                    for part in parts:
+                        part = part.strip()
+                        if not part:
+                            continue
+                        if part.startswith("## "):
+                            first_newline = part.index("\n") if "\n" in part else -1
+                            if first_newline > 0:
+                                title = part[2:first_newline].strip()
+                                content = part[first_newline + 1:].strip()
+                            else:
+                                title = part[2:].strip()
+                                content = ""
+                            sections.append(
+                                DocumentSection(title=title, level=1, content=content, page=0)
+                            )
+                        elif sections:
+                            sections[-1].content += "\n" + part
                         else:
-                            # Heading without content (e.g., at end of text)
-                            title = part[2:].strip()
-                            content = ""
-                        sections.append(
-                            DocumentSection(title=title, level=1, content=content, page=0)
-                        )
-                    elif sections:
-                        # Continuation of previous section (indented content without heading)
-                        sections[-1].content += "\n" + part
-                    else:
-                        # No heading at all, treat as first section
-                        sections.append(DocumentSection(title="", level=0, content=part, page=0))
+                            sections.append(
+                                DocumentSection(title="", level=0, content=part, page=0)
+                            )
 
-            parsed = ParsedDocument(sections=sections, full_text=full_text)
-            chunks = chunk_by_structure(parsed)
+            # TD-051: compute the absolute offset of each section's content within
+            # full_text so that char_start/char_end are globally correct (not
+            # reset to 0 at each section boundary).
+            #
+            # full_text is built as: "## title\ncontent" (titled) or "content" (no title)
+            # per section, joined with "\n\n".  We walk through sections sequentially
+            # to find each one's starting position.
+            section_offsets: list[int] = []
+            cursor = 0
+            for sec in sections:
+                section_offsets.append(cursor)
+                if sec.title:
+                    # "## title\ncontent\n\n"
+                    cursor += 4 + len(sec.title) + 1 + len(sec.content)
+                else:
+                    cursor += len(sec.content)
+                cursor += 2  # "\n\n" separator (over-count on last section is harmless)
+
+            # Process each section independently with its correct offset so
+            # char_start/char_end are globally monotonic across the full_text.
+            all_chunks: list[Chunk] = []
+            for sec, sec_offset in zip(sections, section_offsets, strict=False):
+                parsed = ParsedDocument(sections=[sec], full_text=sec.content)
+                section_chunks = chunk_by_structure(parsed, section_offset=sec_offset)
+                # Re-index relative to the full document
+                for c in section_chunks:
+                    c.section_path = sec.path
+                all_chunks.extend(section_chunks)
+
+            # Re-index chunks globally
+            for i, c in enumerate(all_chunks):
+                c.index = i
+            chunks = all_chunks
 
             # Abort if pipeline became stale while processing
             if await _check_pipeline_stale(session, file_id, pipeline_version):

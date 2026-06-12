@@ -14,15 +14,11 @@
 
 ## 当前进行中
 
-| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
-|------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+（空）
 
 ## 下一批候选任务
 
-| 任务 | 状态 | 优先级 | 领域 | 下一步 |
-|------|------|--------|------|--------|
-| TD-051 治理 `document_chunks` 结构元数据、切片质量与既有数据重建 | ⚫ 待办 | P1 | RAG / 数据完整性 / 文档解析 / AI Chat | 先基于 [TD-051](technical-debt.md#td-051-治理-document_chunks-结构元数据切片质量与既有数据重建) 做 spec/plan；完成必须覆盖切片策略修正和已入库数据重建。 |
+（空）
 
 ## 最近完成
 
@@ -32,6 +28,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-12 | TD-051 `document_chunks` 结构元数据治理 + 历史数据重建 | 🟡 进行中 | 7 slice 全完成；PR #234 已提交待 merge；67 passed，ruff clean。 | [Spec](../02-delivery-plans/01-specs/2026-06-12-td-051-document-chunks-metadata-governance.md) / [Plan](../02-delivery-plans/02-plans/2026-06-12-td-051-document-chunks-metadata-governance-plan.md) / [PR #234](https://github.com/MarkDanile/MetaEduBase/pull/234) |
 | 2026-06-12 | TD-052 `check-engineering-docs` 秒级反馈优化 | 🟢 完成 | PR #232 已合并：默认 source size 增量扫，`--full` 保留全量审计，`--timing` 输出耗时；git log 兜底批量化。默认门禁 0.36s。 | [TD-052](technical-debt.md#td-052-check-engineering-docs-秒级反馈优化增量-source-size--批量-git-log--timing) / [PR #232](https://github.com/MarkDanile/MetaEduBase/pull/232)（merge `2d3697c`） |
 | 2026-06-12 | BUG-003 AI Chat 体验与回答质量回归（5 修复合片 + 入口切片 + 6 工作台同步 PR 收口） | 🟢 完成 | 12 PR 合 main：fix1~5 全切片 + 入口 + 6 同步。7 AC 全部覆盖（AC-1 ~ AC-7）。 | [Bug](../01-product-planning/05-requirements/BUG-003-ai-chat-ux-and-answer-quality-regression.md) / [Spec](../02-delivery-plans/01-specs/2026-06-12-bug-003-ai-chat-regression.md) / [Plan](../02-delivery-plans/02-plans/2026-06-12-bug-003-ai-chat-regression-plan.md) / [PR #219+#221+#223+#225+#227+#229](https://github.com/MarkDanile/MetaEduBase/pulls?q=is%3Apr+is%3Amerged+bug-003) |
 | 2026-06-12 | BUG-003 fix5 frontend fallback（AC-4 IME 兼容） | 🟢 完成 | PR #229 已合并：textarea @compositionstart/end + onEnterKey 包装（composing=true 早 return）+ data-testid=chat-input。6 新增 vitest（source 字符串契约回归锁）。 | [Plan §切片 5](../02-delivery-plans/02-plans/2026-06-12-bug-003-ai-chat-regression-plan.md#切片-5pr-bug-003-5-frontend-fallbackime-兼容) / [PR #229](https://github.com/MarkDanile/MetaEduBase/pull/229)（merge `b1e3e50`）/ 分支 `fix/bug-003-ai-chat-regression-fix5`（已删） |

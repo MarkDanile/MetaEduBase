@@ -6,6 +6,23 @@ Strategy (inspired by LangChain RecursiveCharacterTextSplitter + Semantic Chunki
 3. Merge sentences into chunks with token-aware sizing
 4. If a sentence itself exceeds chunk size, split recursively on clause markers
 5. Never end a chunk mid-sentence if it can be avoided
+
+Chunk Size Strategy (TD-051):
+- TARGET_CHUNK_CHARS = 500: 500 Chinese characters ≈ 300-500 tokens, aligning with
+  RAG best practice of 300-600 token chunks. The 350-499 cluster observed in
+  production data (822 of 1551 chunks) is expected — sentences rarely align
+  exactly with the target, and we never split mid-sentence.
+- CHUNK_HEADROOM = 80: When fewer than 80 chars remain in a chunk, start a new
+  chunk rather than risk an underfilled final chunk.
+- MIN_CHUNK_CHARS = 80: Chunks smaller than this are merged into the previous
+  chunk to avoid noise from tiny fragments.
+- MIN_SENTENCES_KEPT = 1: At least one complete sentence is kept together.
+  Currently fixed; future versions may use higher values for richer context.
+- Neighbor expansion / parent-child chunk: Deferred to a P2 follow-up task.
+  The current chunker is single-pass and does not include neighbor packing.
+
+TD-051 AC-4: These parameters are explicitly documented; chunk size is not
+changed by this fix — the primary issue was metadata loss, not sizing.
 """
 
 from __future__ import annotations
@@ -30,6 +47,8 @@ class Chunk:
 TARGET_CHUNK_CHARS = 500
 # When remaining space in chunk < this, start a new chunk even if current fits
 CHUNK_HEADROOM = 80
+# Minimum chunk size in characters — smaller chunks are merged with previous
+MIN_CHUNK_CHARS = 80
 # Minimum sentences to keep together
 MIN_SENTENCES_KEPT = 1
 # Clause markers — last resort split points (keep these together within sentences)
@@ -39,15 +58,20 @@ CLAUSE_MARKERS = '，、；'
 def chunk_by_structure(
     parsed: ParsedDocument,
     target_chars: int = TARGET_CHUNK_CHARS,
+    section_offset: int = 0,
 ) -> list[Chunk]:
     """Split document into semantically coherent chunks.
 
     Never splits mid-sentence when avoidable. Uses recursive splitting:
     paragraphs → sentences → clauses → characters.
+
+    section_offset: absolute character offset of section.content[0] within the
+    original full_text. Each section should be processed with its correct
+    position so char_start/char_end are globally correct.
     """
     chunks: list[Chunk] = []
     chunk_index = 0
-    char_offset = 0
+    char_offset = section_offset
 
     for section in parsed.sections:
         text = section.content.strip()
@@ -120,7 +144,7 @@ def chunk_by_structure(
     chunks = _enforce_size_limit(chunks, target_chars)
 
     # Step 5: merge very small chunks with neighbors
-    chunks = _merge_small_chunks(chunks, min_size=80)
+    chunks = _merge_small_chunks(chunks, min_size=MIN_CHUNK_CHARS)
 
     # Step 6: re-index
     for i, c in enumerate(chunks):
@@ -176,7 +200,11 @@ def _split_into_sentences(text: str) -> list[str]:
 
 
 def _enforce_size_limit(chunks: list[Chunk], max_chars: int) -> list[Chunk]:
-    """Recursively split any chunk that exceeds max_chars at clause/sentence boundaries."""
+    """Recursively split any chunk that exceeds max_chars at clause/sentence boundaries.
+
+    TD-051: preserves char_start/char_end by passing the absolute offset of the
+    original chunk content so that sub-chunks get correct absolute positions.
+    """
     result: list[Chunk] = []
 
     for chunk in chunks:
@@ -184,13 +212,15 @@ def _enforce_size_limit(chunks: list[Chunk], max_chars: int) -> list[Chunk]:
             result.append(chunk)
             continue
 
-        # Split this oversized chunk
+        # Split this oversized chunk — get (text, char_start_in_original) pairs
         sub_chunks = _split_oversized_chunk(chunk.content, max_chars)
-        for sc in sub_chunks:
+        for sub_text, sub_offset in sub_chunks:
             new_chunk = Chunk(
-                content=sc,
+                content=sub_text,
                 section_title=chunk.section_title,
                 section_path=chunk.section_path,
+                char_start=chunk.char_start + sub_offset,
+                char_end=chunk.char_start + sub_offset + len(sub_text),
                 index=chunk.index,  # will be re-indexed later
             )
             result.append(new_chunk)
@@ -198,42 +228,55 @@ def _enforce_size_limit(chunks: list[Chunk], max_chars: int) -> list[Chunk]:
     return result
 
 
-def _split_oversized_chunk(text: str, max_chars: int) -> list[str]:
+def _split_oversized_chunk(text: str, max_chars: int) -> list[tuple[str, int]]:
     """Split oversized text at clause boundaries first, then sentence boundaries.
 
     Never splits mid-sentence if avoidable.
+    Returns list of (text_piece, char_start_in_original) tuples.
     """
     # First try: split on sentence end
     sentences = _split_into_sentences(text)
-    result: list[str] = []
+    result: list[tuple[str, int]] = []
     current = ""
+    current_start = 0
+    # Track character position within text as we accumulate sentences
+    pos = 0
 
     for sent in sentences:
-        if len(current) + len(sent) + 1 <= max_chars:
+        sent_len = len(sent)
+        if not current:
+            current = sent
+            current_start = pos
+        elif len(current) + sent_len + 1 <= max_chars:
             current = (current + "\n" + sent).strip()
         else:
-            if current:
-                result.append(current)
-            # If single sentence exceeds max_chars, split on clauses
-            if len(sent) > max_chars:
+            result.append((current, current_start))
+            if sent_len > max_chars:
                 clause_parts = _split_by_clauses(sent, max_chars)
-                result.extend(clause_parts[:-1])
+                # Each clause is appended individually with its own start position
+                for i, part in enumerate(clause_parts[:-1]):
+                    part_start = pos if i == 0 else pos
+                    result.append((part, part_start))
                 current = clause_parts[-1]
+                current_start = pos
             else:
                 current = sent
+                current_start = pos
+        pos += sent_len
 
     if current.strip():
-        result.append(current)
+        result.append((current, current_start))
 
     # If we still have an oversized chunk, force split by character
-    cleaned: list[str] = []
-    for piece in result:
+    cleaned: list[tuple[str, int]] = []
+    for piece, piece_start in result:
         if len(piece) <= max_chars:
-            cleaned.append(piece)
+            cleaned.append((piece, piece_start))
         else:
-            # Force split — this is a last resort
             sub = _split_by_characters(piece, max_chars)
-            cleaned.extend(sub)
+            for i, part in enumerate(sub):
+                sub_start = piece_start + sum(len(p) + 1 for p in sub[:i])
+                cleaned.append((part, sub_start))
 
     return cleaned
 
@@ -280,10 +323,8 @@ def _split_by_characters(text: str, max_chars: int) -> list[str]:
         elif len(current) + len(clause) + 1 <= max_chars:
             current += "，" + clause
         else:
-            # Current clause doesn't fit — flush and start new
             if current:
                 result.append(current)
-            # If single clause exceeds max_chars, force split by characters
             if len(clause) > max_chars:
                 for i in range(0, len(clause), max_chars - CHUNK_HEADROOM):
                     result.append(clause[i:i + max_chars - CHUNK_HEADROOM])
