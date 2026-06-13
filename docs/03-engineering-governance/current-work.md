@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| DOC-065 规则瘦身、任务池插入规则与开工硬门禁收口 | 🟡 进行中 | P1 | 文档 / 工程治理 / 跨 AI 协作 | 已建分支 `docs/doc-061-rules-slimming-task-pools`；`DOC-061` 已被历史任务占用，本轮顺延为 `DOC-065`；已压缩 11 份规则 / 流程文件，并补开工三连、禁止绕过门禁、任务池插入规则。 | 提交、push、创建 PR、合并 main；PR merge 后再翻 `🟢 完成` 并回填 work-log / 总账交付记录。 | 已运行：`scripts/check-engineering-docs` → passed (31 known issue(s) allowlisted)；`git diff --check` → 0；`wc -l ...` → `01-rules/*.md` 全部 ≤ 99 行，`task-modes.md` 91 行，`workflow.md` 81 行。 |
 
 ## 下一批候选任务
 
