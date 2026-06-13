@@ -57,6 +57,7 @@ SCRIPTED_GATE_CANDIDATES: frozenset[str] = frozenset(
         "已完成任务不得残留 `未运行`、`待提交`、`以最终回复为准` 等占位",
         "禁止把 `REQ-xxx-FOLLOWUP` / `TD-xxx-FOLLOWUP` 作为长期任务编号",
         "`Done` 任务在 Backlog / current-work / work-log 之间有最小索引闭环",
+        "Backlog / technical-debt 主表最新编号必须位于同前缀最后",
         "旧 docs 路径残留检查",
         "Markdown 相对链接存在性检查",
         "AGENTS.md / CLAUDE.md 与 IDE 兼容入口同步检查",

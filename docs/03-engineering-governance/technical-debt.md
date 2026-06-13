@@ -145,11 +145,11 @@
 | TD-048 | `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口） | 🟢 完成 | P3 | 后端 / API 契约 / 文档 | 3 切片 3 PR 收口：PR-1 docs-only 修事实源（[#196](https://github.com/MarkDanile/MetaEduBase/pull/196)，merge `ba7f441`）+ PR-2 业务代码（[#197](https://github.com/MarkDanile/MetaEduBase/pull/197)，merge `760d147`，4 业务文件 + 1 矩阵 + 2 新建 spec/plan）+ PR-3 docs-only 跨事实源收口（本 PR）。`ai_router.py` 旧 `SourceItem` / `ChatResponse` / `_recall_to_source` / `@router.post('/chat')` 全 0 命中；mock-based pytest 47 passed 零回归（沙箱无 PG，全量 pytest 由 CI 接力）；ruff 8 个 TD-049 pre-existing 兼容；DOC-057 pre-existing validation-claim 提示由独立 PR 收口。 |
 | TD-049 | `tests/conftest.py` `sys.path.insert` 块导致 8 个 E402 pre-existing（TD-012 收口后遗留） | 🟢 完成 | P3 | 后端 / 测试 / 质量门禁 / 工程治理 | TD-046 PR #187 收口时确认 `ruff check app/ tests/` 报 8 个 E402 errors 全部在 `tests/conftest.py:13-20`（imports not at top of file）。根因 L11 插入 `sys.path.insert(0, _REPO_ROOT)` 块（注释"REQ-010: ensure repo root on sys.path so tests can import scripts.ai.*"）违反 E402。修复：把 `_REPO_ROOT` + `sys.path` 块挪到 `tests/_paths.py`（新建），conftest.py 改为 `from tests._paths import *`。0 行为变化预期（`scripts.ai.*` 仍可 import）。分支 `chore/td-049-conftest-sys-path-move`；ruff 复跑确认实际命中 8 个 E402 行号 `13,14,15,16,17,19,20,21`（任务卡 L13-20 描述 +1 行偏差，事实以 ruff 实测为准）；`pytest --collect-only tests/engineering` 仍能 import `scripts.ai.evidence_coverage_report`；`pytest tests/engineering/test_evidence_coverage_report.py -v` → 4 passed, exit 0；mock-based 219 passed in 26.21s exit 0 零回归；`scripts/engineering/check_engineering_docs.py` exit 0（4 条 pre-existing 警告属于 TD-048 收口后的历史债，与本债无关）。 |
 | TD-051 | 治理 `document_chunks` 结构元数据、切片质量与既有数据重建 | 🟢 完成 | P1 | RAG / 数据完整性 / 文档解析 / AI Chat | PR #234 已合并（merge `ffccc6c`）；7 个 slice 合 1 PR；AC-1~AC-7 全部覆盖。 |
+| TD-052 | `check-engineering-docs` 秒级反馈优化（增量 source size + 批量 git log + timing） | 🟢 完成 | P2 | 工程脚本 / 质量门禁 / 性能 | [PR #232](https://github.com/MarkDanile/MetaEduBase/pull/232) 已合并：默认门禁 0.36s；`--full` 保留全量审计 0.94s；新增 `--timing`。 |
 | TD-053 | `rebuild_document_chunks` fallback 未算 `section_path` → 老数据走 fallback 时 section_path 仍 100% 空 | 🟢 完成 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：`scripts/ai/chunk_quality_report.py` 重建后基线 section_path_empty 1562/1562（100%）与重建前持平。 |
 | TD-054 | 重建后 `offset_overlaps` 反而 +3% → chunker 跨 section `char_start` 计算或 `_enforce_size_limit` 拆分逻辑仍有问题 | ⚪ 待澄清 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：重建前 816（52.61%）→ 重建后 869（55.63%）。`chunker._enforce_size_limit` 拆分后子 chunk 继承父 chunk offset 的边界条件可能错位。 |
 | TD-055 | `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-051 本机重建（PR #235）暴露：直接调 `cleanup_orphan_chunks(tid_str)` 返回 None（应返回 deleted count），运维只能查 SQL 二次验证。 |
 | TD-056 | TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | ⚪ 待澄清 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-055 修复时审计：rebuild_chunks.py:173 `rebuild_document_chunks` 同样 `asyncio.run(_run_in_session(_do))` 未接返回值，但 rebuild 通过 logger.info 写 chunk 数量掩盖了。需扫描所有 `_run_in_session` 调用点。 |
-| TD-052 | `check-engineering-docs` 秒级反馈优化（增量 source size + 批量 git log + timing） | 🟢 完成 | P2 | 工程脚本 / 质量门禁 / 性能 | [PR #232](https://github.com/MarkDanile/MetaEduBase/pull/232) 已合并：默认门禁 0.36s；`--full` 保留全量审计 0.94s；新增 `--timing`。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -159,6 +159,7 @@
 | DOC-063 | `check-engineering-docs` 性能收口（subprocess 砍掉 / 5 秒硬指标） | 🟢 完成 | P2 | 工程脚本 / 质量门禁 / 性能 / git plumbing 替代 gh | DOC-060 收口后用户跑 `scripts/check-engineering-docs` 报 ~110s（DDC-060 新增的 `check_task_card_stale_completion` 49 次串行 `gh pr view` 是 99% 元凶）。按用户选择方案 A：用 git history 替代 `gh pr view`（任务卡 mergeCommit 字段已是事实源，check 改用 `git rev-parse --verify <commit>^{commit}` 校验自洽性）。修复：`_common.check_merge_commit_in_git_history` fast path（< 5ms/次，零网络）+ `task_card_claims._find_merge_commit_in_card` 扫 `\| Merge Commit \|` 字段或 `merge commit \`<sha>\`` 短 hash 模式 + `_find_pr_number_in_card` 严格化（只匹 `\| 交付 PR \|` 表格列头）+ `--verify-pr-state` CLI flag 显式 opt-in 启用 gh legacy 路径（保留给真需要查 GitHub 端真实状态的场景）。`check-engineering-docs` **0.76 秒**（< 5 秒目标 ✓，145x 提速），`check_task_card_stale_completion` 17.6ms（6000x 提速），`pytest tests/engineering/` 22 passed 零回归。 | [PR #209](https://github.com/MarkDanile/MetaEduBase/pull/209) |
 | DOC-064 | pre-existing 警告收口（`check-engineering-docs` 退出码 1 → 0） | 🟢 完成 | P3 | 文档 / 工程治理 / 工作台 / 链接路径 | DOC-063 收口后 `check-engineering-docs` 报 0.74s 但退出码 1（8 条 pre-existing 警告）。2 类警告：① current-work.md L37-L41 五条"最近完成"行摘要超 `CURRENT_WORK_RECENT_SUMMARY_LIMIT=220`（247-555 字符，根因：我前几个收口没遵守 workbench.md "短摘要 + work-log 详情"约定）；② spec/2026-06-11-td-048-sourceitem-deprecation-removal.md 三处 markdown 链接用 `../../../` 路径层级错（spec 在 `01-specs/` 4 段深，正确只需 2 个 `..`）。修复：current-work.md 5 行重写为 ≤ 220 字符（短摘要 + PR + work-log 回链）；spec 3 路径 `../../../` → `../../`。`check-engineering-docs` 0.77 秒 + 退出码 0（用户要求），`git diff --check` clean，`pytest tests/engineering/` 22 passed 零回归。 | [PR #211](https://github.com/MarkDanile/MetaEduBase/pull/211) |
 | DOC-065 | 规则瘦身、任务池插入规则与开工硬门禁收口 | 🟢 完成 | P1 | 文档 / 工程治理 / 跨 AI 协作 | PR #244 merged `6c31fe5`：压缩规则、补开工三连、禁止绕过门禁、统一任务池索引与插入顺序。 |
+| DOC-066 | 任务池主表插入顺序门禁 | 🟡 进行中 | P2 | 文档 / 工程脚本 / 任务池 / 质量门禁 | 用户要求“确保不要让任务再插入到中间”；本任务将 Backlog / technical-debt 主表最新编号位置脚本化。 |
 
 ## 任务详情
 
@@ -198,6 +199,43 @@
 **交付记录**
 
 - 2026-06-13 收口（接手工具：Codex），docs-only PR #244 / merge commit `6c31fe5`。完成要点：`git-workflow.md` 304 → 93 行，`task-modes.md` 341 → 91 行；所有 `01-rules/*.md` 均 ≤ 99 行；补“开工三连”、禁止修改门禁脚本 / `KNOWN_ISSUES` 绕过当前失败、任务池索引与插入顺序规则。验证：`scripts/check-engineering-docs` 通过，`git diff --check` 通过，行数检查通过。
+
+### DOC-066: 任务池主表插入顺序门禁
+
+状态：🟡 进行中
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 文档 / 工程脚本 / 任务池 / 质量门禁 |
+| 事实源 | 用户要求“确保不要让任务再插入到中间”。 |
+
+**证据**
+
+- 现有规则只写了“新增条目追加”，但没有脚本门禁。
+- `04-backlog.md` 曾出现最新 DOC 行后仍跟历史 DOC 行；`technical-debt.md` 总览曾出现 `TD-052` 位于 `TD-056` 后。
+
+**问题**
+
+- 大模型容易把新任务插到可见位置或中间区域，后续查找和增量编辑会越来越不稳定。
+
+**完成标准**
+
+- `workflow.md` / `docs.md` 明确 Backlog 和 technical-debt 主表新增编号必须位于同前缀最后。
+- `scripts/check-engineering-docs` 能拦截 Backlog / technical-debt 主表中“最新编号后仍有较小编号”的情况。
+- 补工程脚本测试覆盖 Backlog 和 technical-debt 两个主表。
+- 修正当前主表中的必要顺序漂移。
+
+**验证方式**
+
+- `python3 -m pytest tests/engineering/test_check_engineering_docs.py -q`
+- `scripts/check-engineering-docs`
+- `packages/server-python/.venv/bin/python -m ruff check scripts/engineering/checks/task_order.py scripts/engineering/checks/__init__.py scripts/engineering/checks/_common.py tests/engineering/test_check_engineering_docs.py`
+- `git diff --check`
+
+**交付记录**
+
+- 2026-06-13 进行中（接手工具：Codex）：已补 `check_task_pool_order`，注册进 `scripts/check-engineering-docs`；规则同步到 `workflow.md` / `docs.md` / `quality-gates.md`；修正当前 Backlog `DOC-065` 与 technical-debt `TD-052` 主表顺序漂移。验证：`packages/server-python/.venv/bin/python -m pytest tests/engineering/test_check_engineering_docs.py -q` → 28 passed；`scripts/check-engineering-docs --timing` → passed；`ruff check ...` → All checks passed；`git diff --check` → clean。等待 PR 收口后翻完成。
 
 ### TD-001: 拆分应用启动时的数据库迁移与默认种子数据
 

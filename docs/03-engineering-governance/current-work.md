@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| DOC-066 任务池主表插入顺序门禁 | 🟡 进行中 | P2 | 文档 / 工程脚本 / 任务池 | 分支 `docs/doc-066-task-pool-insertion-gate`；已补规则、`check_task_pool_order` 门禁和 2 条回归测试。 | 推进 Git 闭环；PR merged 后回填完成状态。 | 已运行：`packages/server-python/.venv/bin/python -m pytest tests/engineering/test_check_engineering_docs.py -q` exit 0；`scripts/check-engineering-docs --timing` exit 0；`ruff check ...` exit 0；`git diff --check` exit 0。 |
 
 ## 下一批候选任务
 
