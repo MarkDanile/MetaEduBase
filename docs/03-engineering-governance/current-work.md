@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| TD-055 `cleanup_orphan_chunks` task 未返回 rowcount | 🟡 进行中 | P1 | 后端 / Celery 任务 / 运维可观测性 | 切 `fix/td-055-cleanup-orphan-chunks-return-rowcount`；已读 `lifecycle.py`（`run_in_session` 已 `return await coro(session)`） + `rebuild_chunks.py`（L239 `asyncio.run(_run_in_session(_do))` 未接返回值）。真因：函数外层 `asyncio.run` 调用未 `return`。 | 写 mock-based pytest 锁死 `cleanup_orphan_chunks(tid_str)` 返回 int → 实现修 1 行 `return asyncio.run(...)` → GREEN → 推 PR。 | mock-based pytest + ruff + git diff --check + scripts/check-engineering-docs。 |
+| （空） | | | | | | |
 
 ## 下一批候选任务
 
@@ -24,7 +24,7 @@
 |------|------|--------|------|--------|
 | TD-053 `rebuild_document_chunks` fallback 未算 section_path | ⚪ 待澄清 | P1 | RAG / 数据完整性 / 文档解析 | 已在 `technical-debt.md` 详情段登记（证据 / AC / 验证 / 交付记录三要素齐全）。下一步：补 pytest 锁死 fallback path 非空 + 跑 1 个老数据 file 验证。 |
 | TD-054 重建后 offset_overlaps 反而 +3% | ⚪ 待澄清 | P1 | RAG / 数据完整性 / 文档解析 | 已在 `technical-debt.md` 详情段登记。下一步：先判断是设计性 neighbor overlap 还是 off-by-one bug——看 `chunker.py` 顶部注释和 `_enforce_size_limit` 实现。 |
-| TD-055 `cleanup_orphan_chunks` task 未返回 rowcount | ⚪ 待澄清 | P1 | 后端 / Celery / 运维可观测性 | 已在 `technical-debt.md` 详情段登记。下一步：修 `_run_in_session` 吞返回值的实现，pytest 锁死 `cleanup_orphan_chunks(tid_str)` 返回 int；顺便审计其他 task 是否同样问题。 |
+| TD-056 TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | ⚪ 待澄清 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-055 修复合片审计发现 `rebuild_document_chunks`（rebuild_chunks.py:173）同样吞返回值。已在 `technical-debt.md` 详情段登记。下一步：grep 全仓 `asyncio.run(_run_in_session(`，每个调用点补 `return`。 |
 
 ## 最近完成
 
