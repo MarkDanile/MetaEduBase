@@ -1,341 +1,91 @@
 # Task Modes — 任务模式入口
 
-本文件用于把常见开发工作接入同一套流程。它关注的是“这类任务该怎么开工、该读什么、怎样算完成”，不是重复展开完整工作流。跨 AI IDE / 插件交接流程仍以 `docs/03-engineering-governance/workflow.md` 为主。
+本文件负责把用户启动语路由到正确流程。详细 Git、验证、工作台规则分别见 `01-rules/git-workflow.md`、`01-rules/quality-gates.md`、`01-rules/workbench.md`。
 
-## 类型与领域
+## 开工硬门禁
 
-任务卡片继续使用“两层分类”：
+用户说 `按流程处理 XXX`、`开发 XXX`、`修复 XXX` 时，第一步不是实现，而是完成开工三连：
 
-### 类型
+1. 读 `docs/03-engineering-governance/current-work.md`。
+2. 若会修改文件，运行 `git status --short --branch`；在 `main` 时先建任务分支。
+3. 按下方“任务入口解析门禁”定位事实源；需要改工作台或任务状态时，先读 `01-rules/workbench.md`。
 
-- `功能`
-- `修复`
-- `技术债`
-- `重构`
-- `调研`
-- `基础设施`
-- `数据迁移`
-- `发布`
-- `文档`
+完成三连前，不得直接读取目标任务详情并开始改代码。目标是避免跨 IDE / Windows 环境把“按流程”误解为“直接开干”。
 
-### 领域
-
-- `Frontend`
-- `Backend`
-- `API`
-- `Data Integrity`
-- `Security`
-- `Testing`
-- `Delivery`
-- `AI`
-- `Docs`
-
-安全问题作为高优先级领域处理，不单独成为任务模式。
-
-## 通用入口
-
-每次进入开发前，至少确认这 6 件事：
-
-1. 任务卡片已登记到 `docs/03-engineering-governance/current-work.md`，或当前任务足够小且不需要交接；如果本轮会修改工作台或任务状态，先读 `docs/03-engineering-governance/01-rules/workbench.md`。
-2. 任务卡片包含本次范围、相关文档、完成标准和验证方式。
-3. 只要会修改仓库文件，已按 `git-workflow.md#开发前分支门禁` 确认当前不在 `main`；这个检查早于更新工作台、spec、plan 或代码。
-4. 当前执行模式已标记为 `plan-do`、`superpower`、`compound-engineering` 或 `manual`。
-5. 如果插件生成了 spec / plan，规范副本已迁移或镜像到 `docs/02-delivery-plans/01-specs/*` / `docs/02-delivery-plans/02-plans/*`。
-6. 开发结束后会回写状态、验证结果和下一步。
-
-### 任务入口解析门禁
-
-用户说 `按流程处理 XXX`、`开发 XXX` 或 `修复 XXX` 时，先定位 `XXX` 的事实源，再决定能否进入实现：
+## 任务入口解析门禁
 
 | `XXX` 所在位置 | 执行动作 |
 |----------------|----------|
-| `current-work.md` | 按工作台任务卡片执行；如果在“下一批候选任务”，开工前先移入“当前进行中”。 |
-| `technical-debt.md` | 以 `TD-xxx` 为任务事实源；会修改仓库文件时，先切任务分支，再把任务登记到 `current-work.md` 的“当前进行中”。 |
-| `04-backlog.md` 或 `05-requirements/*` | 先检查状态；`Idea` / `Candidate` / `Shaping` 只做塑形，`Ready` 或已有交付依据后再进入 spec / plan / current-work。 |
-| `01-roadmap.md`、`02-milestones/*` 或 `03-iterations/*` | 这些是规划信号，不是执行票据；必须先映射为稳定 `REQ` / `TD` / `DOC` / `BUG` 任务，再进入工作台。 |
-| 找不到稳定编号 | 先登记到对应事实源并补证据、完成标准和验证方式；不得直接改业务代码。 |
-
-入口解析不扩大任务范围。`current-work.md` 只记录当前执行和近期接力，完整需求池、技术债余量和里程碑规划仍回到各自事实源。
-
-## 通用收尾回查
-
-每次进入提交、PR 或声明完成前，必须执行 `docs/03-engineering-governance/01-rules/quality-gates.md#完成门禁`。如果任务触发专项风险，再补读对应专项门禁：
-
-- 覆盖多个等价入口、对象类型、状态流或端点：使用覆盖矩阵
-- 声明“零业务逻辑变更”“仅 lint 修复”等：执行行为变化声明检查
-- 涉及 composable、Vue Query、轮询或 mutation 刷新：执行前端请求生命周期等价矩阵
-- 涉及 API / DTO / shared schema：读取 `docs/03-engineering-governance/01-rules/contracts.md`
-
-这一步必须发生在验证完成后、`git add` 前。
-
-## Follow-up 分流
-
-复核、验收、测试失败或交接发现的问题，必须按问题性质建立稳定编号，不使用 `REQ-xxx-FOLLOWUP`、`TD-xxx-FOLLOWUP` 作为长期任务编号。
-
-| 问题性质 | 任务类型 | 处理方式 |
-|----------|----------|----------|
-| 原需求验收缺口、验收口径过强、真实业务场景未闭环 | `REQ-xxx` | 新建或继续需求任务，并写 `Parent:` 指向来源需求 |
-| 用户可见错误、回归、异常或线上 / 本地 bug | `BUG-xxx` | 记录复现路径、期望行为和验证方式 |
-| 代码结构、测试基础设施、质量门禁、可维护性问题 | `TD-xxx` | 进入技术债总账，补证据、完成标准和验证方式 |
-| 规则、文档、流程、事实源状态漂移或脚本门禁问题 | `DOC-xxx` | 进入工程治理记录，并优先补规则或自动检查 |
-
-进入 `Ready` 或 `Done` 前，follow-up 必须有证据、完成标准和验证方式；否则只能保持待澄清或候选状态。
+| `current-work.md` | 按任务卡片执行；候选任务开工前先移入“当前进行中”。 |
+| `technical-debt.md` | 以 `TD-xxx` 为事实源；进入实现前登记到工作台。 |
+| `04-backlog.md` / `05-requirements/*` | `Idea` / `Candidate` / `Shaping` 只塑形；`Ready` 或已有 spec/plan 后再实现。 |
+| Roadmap / Milestone / Iteration | 只是规划信号；先映射为 `REQ` / `TD` / `DOC` / `BUG`，再进工作台。 |
+| 找不到稳定编号 | 先登记事实源，补证据、完成标准、验证方式；不得直接改业务代码。 |
 
 ## 默认模式路由
 
-用户不必显式说 `plan-do`、`superpower` 或其他模式。除非用户明确指定，否则按任务特征自动选择：
-
-| 任务特征 | 默认模式 | 文档要求 |
+| 任务特征 | 默认模式 | 交付要求 |
 |----------|----------|----------|
-| 单文件或小范围文案 / 样式 / 配置调整，风险低且验收清楚 | `plan-do` | 可不新建 spec/plan；需要交接时登记工作台 |
-| 明确 bug、可复现错误、回归或线上异常 | `bug fix / TDD` | 登记 `BUG-xxx` 或当前任务卡片；优先补复现测试或手动验收步骤 |
-| 已有 `TD-xxx` 或明确是技术债治理 | `technical-debt` | 读取并更新 `technical-debt.md`；必要时同步工作台 |
-| 新想法、里程碑拆解、需求池整理或尚未塑形的新需求 | `product planning` | 先进入 `docs/01-product-planning/04-backlog.md` 或 `docs/01-product-planning/05-requirements/*`，暂不直接开发 |
-| 跨 3 个以上文件、复杂 UI、新 API、新数据模型、权限 / 多租户 / 数据一致性变化 | `superpower` 优先 | 先产出或更新 `docs/02-delivery-plans/01-specs/*` 和 `docs/02-delivery-plans/02-plans/*`，再进入开发 |
-| 架构方向、方案选择、未知成本或需要比较路线 | `spike / 调研` | 先产出调研结论和推荐方案，不直接改业务代码 |
-| 明确只改变结构、不改变行为 | `refactor` | 明确行为边界和验证方式 |
-| 数据迁移、发布、CI/CD、依赖升级 | `infrastructure / release` | 明确目标环境、回滚方式和验证矩阵 |
+| 小范围文案 / 样式 / 配置 | plan-do | 可不新建 spec/plan；需要交接时登记工作台。 |
+| 明确 bug、回归、异常 | bug fix | 记录复现、期望、验证；优先补测试或手动验收。 |
+| `TD-xxx` 或维护性治理 | technical-debt | 读技术债总账；高风险先补 spec/plan。 |
+| 新想法、里程碑、需求池 | product planning | 进入 Backlog / Requirement，不直接开发。 |
+| 跨 3 个以上文件、新 API、新数据模型、复杂 UI | superpower / plan-do | 先产出 spec/plan，再实现。 |
+| 架构方向、技术选型、未知成本 | spike | 输出取舍和下一步，不默认改主路径。 |
+| 结构优化但行为不变 | refactor | 明确行为边界和验证方式。 |
+| CI/CD、依赖、脚本、发布、迁移 | infrastructure / release | 明确环境、回滚、验证矩阵。 |
 
-如果自动判断不确定，只问 1 个澄清问题；否则直接按默认模式推进。
+## 常见启动语
 
-### 常见启动语
+| 用户说法 | 必须动作 |
+|----------|----------|
+| `按流程处理 TD-xxx` | 开工三连；读技术债总账；确认完成标准和验证方式。 |
+| `按流程修复这个 BUG` | 登记 / 更新 `BUG-xxx`；写复现路径、期望行为、验证方式。 |
+| `按流程规划这个需求` | 更新 Backlog；必要时新建 Requirement；不直接实现。 |
+| `按流程开发这个新需求` | 判断是否需要 spec/plan；复杂需求先塑形。 |
+| `按流程评审 XXX` | 读事实源、PR/diff、`review-scorecard.md`；输出评分、follow-up、规则改进判断。 |
+| `按流程提交` / `完整 Git 闭环` | 读 `git-workflow.md`；推进 commit / push / PR / merge / clean check。 |
+| `按流程复盘 XXX` | 区分实现问题、规则缺口、工具习惯、需求塑形不足；必要时登记 follow-up。 |
+| `按流程复核 P1` / `收口当前迭代` | 对齐 Roadmap、Milestone、Iteration、Backlog、current-work、TD。 |
+| `按流程规划 APP-xxx` | 更新 AI Applications 与 Backlog；进入 Requirement Shaping，不直接实现。 |
+| `按流程登记这个想法/问题` | 分类入 `REQ` / `BUG` / `TD` / `DOC` / `OPS`；只登记不默认开发。 |
+| `按并行模式处理 A 和 B` | 先做并行可行性评估；低耦合才并行。 |
 
-| 用户说法 | 执行者应理解为 | 必须动作 |
-|----------|----------------|----------|
-| `按流程处理 TD-xxx` | 技术债修复 | 读取 `current-work.md`、`technical-debt.md` 和相关规则；确认完成标准与验证方式 |
-| `按流程修复这个 BUG: ...` | Bug 修复 | 登记或更新 `BUG-xxx`；明确复现步骤、期望行为和验证方式 |
-| `按流程规划这个需求: ...` | 产品规划 / 需求塑形 | 登记或更新 `docs/01-product-planning/04-backlog.md`；必要时新建 `docs/01-product-planning/05-requirements/REQ-xxx.md` |
-| `按流程开发这个新需求: ...` | 新需求开发 | 判断是否需要 spec/plan；需要时进入 `docs/02-delivery-plans/01-specs/*` 和 `docs/02-delivery-plans/02-plans/*` |
-| `按并行模式处理 REQ-A 和 REQ-B` | 多 agent 并行开发批次 | 先做并行可行性评估，列出任务依赖、共享契约、冲突文件、分支/worktree、合并顺序和集成负责人；只有低耦合任务才进入并行 |
-| `按流程评审 REQ-xxx / BUG-xxx / TD-xxx / DOC-xxx` | 任务评审 | 读取任务事实源、PR / diff 和 `review-scorecard.md`；输出问题、评分、follow-up 分流和规则改进判断；触发落盘条件时更新 `review-score-log.md` |
-| `按流程提交` / `按流程走完整 Git 闭环` | 交付闭环 | 读取 `git-workflow.md`；默认推进 commit、push、PR、合并 `main` 和最终 clean check；阻塞时明确停在哪一阶段 |
-| `按流程复盘 XXX` | 复盘 / 根因分析 | 区分实现问题、规则缺口、工具习惯和需求塑形不足；只在问题可复现或反复出现时登记 follow-up、规则或脚本改进 |
-| `按流程复核 P1` / `按流程收口当前迭代` | 阶段 / 迭代收口 | 对齐 Roadmap、Milestone、Iteration、Backlog、current-work 和 TD 总账；列出未完成项、阻塞项和下一批候选任务 |
-| `按流程规划 APP-xxx` / `按流程塑形应用：...` | AI 应用组合规划 | 先更新 AI Applications 与 Backlog；必要时进入 Requirement Shaping；不得直接跳过需求塑形进入实现 |
-| `按流程登记这个想法/问题：...` | 只登记不实现 | 按性质归入 `REQ` / `BUG` / `TD` / `DOC` / `OPS`；补证据、完成标准和验证方式；不默认进入开发 |
-| `按流程重构 XXX` | 重构 | 明确行为边界和验证方式；不得混入新功能 |
-| `按流程调研 XXX` | Spike / 调研 | 明确问题、时间盒和预期产出 |
-| `按流程处理工具链/依赖/CI 问题: ...` | 基础设施 / 依赖 / 工具链 | 明确影响范围、兼容性风险和回滚方式 |
-| `按流程处理数据迁移/发布: ...` | 数据迁移 / 发布 | 明确目标环境、数据影响、upgrade 路径和回滚方式 |
+## Follow-up 分流
+
+| 问题性质 | 任务类型 | 事实源 |
+|----------|----------|--------|
+| 原需求验收缺口、真实业务场景未闭环 | `REQ-xxx` | Backlog / Requirement |
+| 用户可见错误、回归、异常 | `BUG-xxx` | Requirement 或 Backlog |
+| 代码结构、测试基础设施、可维护性 | `TD-xxx` | `technical-debt.md` |
+| 规则、文档、流程、状态漂移、脚本门禁 | `DOC-xxx` | work-log、规则或脚本 |
+
+不使用 `REQ-xxx-FOLLOWUP`、`TD-xxx-FOLLOWUP` 作为长期编号。进入 `Ready` / `Done` 前必须有证据、完成标准和验证方式。
+
+## 模式完成标准
+
+| 模式 | 完成标准 |
+|------|----------|
+| technical-debt | `TD-xxx` 完成标准满足；验证已执行或记录阻塞；工作台和总账同步。 |
+| bug fix | 复现路径不再失败；自动化或手动验收通过；同类入口已检查。 |
+| 新需求开发 | spec AC 满足或记录未完成项；plan 状态更新；必要文档同步。 |
+| product planning | 有稳定编号、状态、优先级、下一步；长内容进入 requirement/spec/plan。 |
+| refactor | 用户可见行为不变；相关验证通过；行为风险说明清楚。 |
+| spike | 回答开工问题；给出推荐 / 不推荐方案和下一步。 |
+| infrastructure / release | 受影响命令、迁移、发布或回滚路径可复现；风险记录清楚。 |
 
 ## 并行开发模式
 
-适用：用户明确要求多个 AI IDE / agent 同时开发低耦合任务，例如 `按并行模式处理 REQ-002-1 和 REQ-002-2`。默认开发仍按单任务闭环执行；没有用户明确触发时，不自动启用并行模式。
+默认不并行。用户明确触发时，开工前列出任务 ID、agent、分支、推荐 worktree / clone、允许修改范围、禁止修改范围、共享契约、预计冲突点、合并顺序和集成负责人。
 
-开工前必须先输出并行可行性评估，至少包含：
+以下情况默认不并行：同一大页面、同一 DTO / schema、同一 migration、同一核心抽象、同一全局事实源需要高频修改。并行期间少改 `current-work.md`；由集成者统一回填状态、评分和 follow-up。
 
-- 任务 ID、执行 agent、分支名和推荐 worktree / clone。
-- 允许修改文件范围和禁止修改文件范围。
-- 共享契约、共享数据迁移、共享 UI 页面或共享 DTO。
-- 预计冲突点、合并顺序和集成负责人。
-- 不适合并行时的串行替代顺序。
+## 禁止绕过门禁
 
-以下情况默认不建议并行，除非用户明确接受冲突成本：
+当前任务因门禁失败时，禁止修改门禁脚本、`KNOWN_ISSUES`、忽略列表、检查阈值或 CI 配置来让本任务通过。若认为门禁本身错误，停止当前任务，单独登记 `DOC` / `TD`，独立 PR 处理。
 
-- 多个任务会修改同一大页面、同一 DTO / schema、同一 migration 或同一核心抽象。
-- 共享 contract 还未稳定，需要先做 contract-first 小 PR。
-- 多个 agent 都需要高频修改 `current-work.md`、Backlog、milestone 或 work-log。
-- 后合任务无法在提交前同步最新 `main` 并处理冲突。
+## 通用收尾回查
 
-并行开发默认采用：契约先行、文件边界、短分支、小 PR、集成者统一收口。各 agent 的具体实现仍需满足对应任务模式的完成标准。
+提交、PR、合并或声明完成前，执行 `quality-gates.md#完成门禁`。触发专项风险时补读对应规则：API / DTO 读 `contracts.md`；数据一致性读 `data-integrity.md`；测试策略读 `testing.md`；Git 阶段读 `git-workflow.md`。
 
-## 技术债修复
-
-适用：处理 `docs/03-engineering-governance/technical-debt.md` 中的 `TD-xxx`。
-
-必读：
-
-- `docs/03-engineering-governance/current-work.md`
-- `docs/03-engineering-governance/technical-debt.md`
-- 相关领域规则
-- 必要时读 `ARCHITECTURE.md`
-
-执行原则：
-
-- 只修复该技术债定义的范围
-- 发现新技术债时入账，不顺手扩范围
-- 多个等价入口受影响时，补覆盖矩阵
-- 低风险、单点技术债可直接以 TD 卡片为计划；跨 3 个以上文件、涉及 API / Schema / 数据一致性 / 安全 / 前端行为等高风险技术债，先补 `docs/02-delivery-plans/01-specs/*` 和 `docs/02-delivery-plans/02-plans/*`，再进入实现
-
-完成标准：
-
-- `TD-xxx` 的完成标准满足
-- 验证已执行或明确记录阻塞原因
-- `current-work.md` 与 `technical-debt.md` 状态同步
-
-## Bug 修复
-
-适用：修复可复现错误、回归、异常或线上 / 本地问题。
-
-必读：
-
-- `docs/03-engineering-governance/current-work.md`
-- 来源功能对应的 spec / plan（如有）
-- 相关领域规则
-
-执行原则：
-
-- 优先补可复现测试；不适合自动化时记录手动验收步骤
-- 修复范围只覆盖该 bug 和必要邻接代码
-- 如果暴露系统性问题，新增技术债，不把大重构混入 bug fix
-
-完成标准：
-
-- 复现路径不再失败
-- 自动化测试或手动验收通过
-- 如影响同类端点或状态流，已确认等价路径
-
-## 新需求开发
-
-适用：新增功能、较大 UI / 流程改造、新 API、新数据模型或跨模块能力。
-
-必读：
-
-- `docs/03-engineering-governance/current-work.md`
-- 如果需求来自路线图、迭代或需求池，读取对应 `docs/01-product-planning/*`
-- 对应 `docs/02-delivery-plans/01-specs/*`
-- 对应 `docs/02-delivery-plans/02-plans/*`
-- 必要时读 `ARCHITECTURE.md`
-- 涉及 API / DTO / shared schema 时读 `docs/03-engineering-governance/01-rules/contracts.md`
-
-执行原则：
-
-- 先完成核心路径，再扩展边界场景
-- 新功能不得绕过认证、多租户、数据完整性和质量门禁规则
-- 复杂需求先有 spec / plan，再进入实现
-- 需求仍处于 `Idea` / `Candidate` / `Shaping` 时，不直接开发；先完成需求塑形并进入 `Ready`
-
-完成标准：
-
-- spec 验收标准满足，或明确记录未完成项
-- plan 状态更新
-- 相关验证按 `quality-gates.md` 执行
-- 必要文档已同步
-
-## 产品规划 / 需求塑形
-
-适用：里程碑规划、迭代拆解、需求池整理、需求价值和边界尚未明确的工作。
-
-必读：
-
-- `docs/01-product-planning/README.md`
-- `docs/01-product-planning/01-roadmap.md`
-- `docs/01-product-planning/04-backlog.md`
-- 必要时读 `ARCHITECTURE.md`
-
-执行原则：
-
-- 先记录清单和判断，不把所有细节塞进单个文档
-- 只有值得塑形的需求才新建 `docs/01-product-planning/05-requirements/REQ-xxx.md`
-- 已准备交付的复杂需求再迁入或镜像到 `docs/02-delivery-plans/01-specs/*` 和 `docs/02-delivery-plans/02-plans/*`
-- 外部项目管理系统编号写入 `External`，不替代仓库编号
-
-完成标准：
-
-- 需求或任务有稳定编号、状态、优先级和下一步
-- 需要详细说明的条目已有 requirement、spec 或 plan 链接
-- 不需要继续的条目标记为 `Dropped` 并说明原因
-
-## 重构
-
-适用：改善代码结构、拆分模块、抽取稳定单元、降低复杂度，但不改变用户可见行为。
-
-必读：
-
-- `docs/03-engineering-governance/current-work.md`
-- 相关领域规则
-- 如涉及模块边界，读 `ARCHITECTURE.md`
-
-执行原则：
-
-- 明确重构目标和不变的行为边界
-- 不把新功能混入重构
-- 不顺手清理与目标无关的历史问题
-- 优先先抽稳定小单元，再做更大结构调整
-
-完成标准：
-
-- 用户可见行为不变
-- 相关测试或手动验收前后通过
-- 当前工作台记录重构范围、验证结果和未覆盖风险
-
-### 前端请求生命周期重构
-
-如果重构涉及 composable、Vue Query、请求 service、轮询、loading / error 状态或 mutation 后刷新，不能只依赖 lint、typecheck 和 build 判断行为不变。应按 `quality-gates.md` 中的前端请求生命周期等价矩阵逐项回查。
-
-## Spike / 调研
-
-适用：方案不确定、技术选型、风险验证、性能假设验证或插件 / 工具评估。
-
-必读：
-
-- `docs/03-engineering-governance/current-work.md`
-- 已有 spec / plan 或架构约束
-- 必要的第三方官方文档
-
-执行原则：
-
-- 明确要回答的问题、时间盒和停止条件
-- 可做原型，但默认不直接进入主路径
-- 结论必须说明取舍、风险和推荐下一步
-
-完成标准：
-
-- 回答了开工时的问题
-- 输出推荐方案与不推荐方案理由
-- 后续任务已登记或明确不继续
-
-## 基础设施 / 依赖 / 工具链
-
-适用：依赖升级、构建配置、lint / typecheck、CI、dev server、脚本、包管理、工作区卫生。
-
-必读：
-
-- `docs/03-engineering-governance/current-work.md`
-- `docs/03-engineering-governance/01-rules/local-development.md`
-- `docs/03-engineering-governance/01-rules/quality-gates.md`
-- 必要时读 `docs/03-engineering-governance/01-rules/git-workflow.md`
-
-执行原则：
-
-- 优先让现有命令更可复现，不引入不必要的新工具
-- 关注锁文件、兼容性和回滚成本
-- 命令变化必须同步文档
-
-完成标准：
-
-- 受影响命令或门禁可运行，或明确记录阻塞原因
-- 相关文档已更新
-- 当前工作台记录验证命令和影响范围
-
-## 数据迁移 / 发布
-
-适用：数据库 schema 变更、数据修正、上线前准备、hotfix、回滚或发布后验证。
-
-必读：
-
-- `docs/03-engineering-governance/current-work.md`
-- `docs/03-engineering-governance/01-rules/data-integrity.md`
-- 必要时读 `docs/03-engineering-governance/01-rules/contracts.md`
-- `docs/03-engineering-governance/01-rules/quality-gates.md`
-- 必要时读 `ARCHITECTURE.md`
-
-执行原则：
-
-- 明确目标环境、数据影响和风险
-- 明确 upgrade 路径；高风险变更补充 downgrade 或补救方案
-- 涉及安全或数据一致性的任务，优先级高于体验和风格治理
-
-完成标准：
-
-- migration、发布步骤或回滚步骤可复现
-- 数据一致性检查或相关验收通过
-- 当前工作台记录执行结果、验证结果和剩余风险
-
-## 试跑复盘
-
-每次按某种模式走完整流程后，建议在任务卡片 `交接备注` 里记 3 件事：
-
-- 哪一步顺畅
-- 哪一步仍不清晰
-- 是否需要补规则、拆规则或补示例
+验证声明必须写命令、退出结果、范围、环境；不能把主观判断包装成“通过”。

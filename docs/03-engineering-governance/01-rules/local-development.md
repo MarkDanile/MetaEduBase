@@ -1,190 +1,53 @@
 # Local Development — 本地开发入口
 
-本文件记录 MetaEduBase 的本地开发主入口、常见场景命令、数据库初始化边界和环境阻塞记录方式。它服务的是“如何稳定进入开发状态”，而不是解释脚本内部实现细节。
-
-Git 流程见 `docs/03-engineering-governance/01-rules/git-workflow.md`，验证矩阵见 `docs/03-engineering-governance/01-rules/quality-gates.md`。
-
-## 这份文档回答什么
-
-- 本地开发优先从哪个命令入口开始
-- 常见开发场景对应哪些稳定命令
-- 开发库和测试库分别如何初始化
-- 后端 / 前端 / shared 常用命令是什么
-- 环境出问题时该怎么记录
+本文件记录稳定本地入口。Git 流程见 `git-workflow.md`；验证矩阵见 `quality-gates.md`。
 
 ## 主入口原则
 
-### 优先使用稳定入口，而不是临时手拼命令
+- 启动和管理本地开发环境：优先 `./dev.sh`。
+- 后端局部开发、迁移、测试、lint：优先 `packages/server-python/Makefile`。
+- 前端和 shared 包：优先 `pnpm --filter ...`。
+- 如果稳定入口能完成任务，不优先依赖一次性手拼命令。
 
-仓库对本地开发提供两个长期稳定入口：
+## 常见命令
 
-1. 根目录 `./dev.sh`
-2. `packages/server-python/Makefile`
+| 目标 | 命令 |
+|------|------|
+| 初始化开发库 | `./dev.sh init-db` |
+| 启动完整环境 | `./dev.sh` |
+| 基础设施 | `./dev.sh infra` / `./dev.sh status` |
+| 单服务 | `./dev.sh backend` / `frontend` / `celery` |
+| 日志 / 停止 | `./dev.sh logs` / `./dev.sh stop` |
+| 后端安装 | `cd packages/server-python && make install` |
+| 后端开发 | `cd packages/server-python && make dev` |
+| 后端 lint / test | `cd packages/server-python && make lint` / `make test` |
+| 迁移 | `make migrate` / `make migrate-create msg=\"...\"` / `make migrate-downgrade` |
+| 前端 | `pnpm --filter @metaedu/web dev` / `lint` / `typecheck` / `build` |
+| shared | `pnpm --filter @metaedu/shared typecheck` |
 
-默认优先级：
+## 数据库边界
 
-- 启动和管理本地开发环境：优先 `./dev.sh`
-- 后端局部开发、迁移、测试和 lint：优先 `Makefile`
-- 前端和 shared 包命令：优先 `pnpm --filter ...`
-
-## 常见开发场景
-
-### 1. 启动完整本地开发环境
-
-```bash
-./dev.sh init-db
-./dev.sh
-```
-
-适用场景：
-
-- 新环境首次进入项目
-- 开发库尚未初始化
-- 需要启动基础设施 + 后端 + 前端
-
-### 2. 只启动或恢复基础设施
-
-```bash
-./dev.sh infra
-./dev.sh status
-```
-
-适用场景：
-
-- PostgreSQL / Redis / 对象存储尚未启动
-- 想先确认基础设施状态，再决定是否启动应用层
-
-### 3. 重启单个开发服务
-
-```bash
-./dev.sh backend
-./dev.sh frontend
-./dev.sh celery
-```
-
-适用场景：
-
-- 单独重启后端
-- 单独重启前端
-- 启动或恢复 Celery worker
-
-### 4. 停止或查看日志
-
-```bash
-./dev.sh stop
-./dev.sh logs
-./dev.sh logs frontend
-./dev.sh logs celery
-```
-
-适用场景：
-
-- 结束开发会话
-- 定位服务未启动、端口未监听或运行时错误
-
-## 开发数据库与测试数据库
-
-### 开发数据库
-
-开发数据库是本地开发环境使用的业务库，初始化入口：
-
-```bash
-./dev.sh init-db
-# 或
-cd packages/server-python && make init-dev-db
-```
-
-这里会执行迁移，并在显式允许的前提下准备默认开发 seed。开发 seed 与测试 seed 是两条不同边界，不要混用。
-
-### 测试数据库
-
-测试数据库只服务后端测试，初始化入口：
-
-```bash
-./dev.sh init-test-db
-# 或
-cd packages/server-python && make init-test-db
-```
-
-适用场景：
-
-- 新环境首次运行后端测试
-- 测试库需要重新准备
-- 切换到新的测试连接串
-
-测试库连接串可通过 `TEST_DATABASE_URL` 覆盖。具体连接值属于运行时事实，不建议在规则文档里反复维护多份。
-
-## 后端常用命令
-
-```bash
-cd packages/server-python
-make install
-make dev
-make lint
-make test
-make migrate
-make seed-dev
-make migrate-create msg="description"
-make migrate-downgrade
-```
-
-建议理解为三个层次：
-
-- 依赖与运行：`make install`、`make dev`
-- 质量验证：`make lint`、`make test`
-- 数据库演进：`make migrate`、`make seed-dev`、`make migrate-create`、`make migrate-downgrade`
-
-## 前端与 shared 常用命令
-
-### 前端
-
-```bash
-pnpm --filter @metaedu/web dev
-pnpm --filter @metaedu/web lint
-pnpm --filter @metaedu/web typecheck
-pnpm --filter @metaedu/web build
-```
-
-### shared
-
-```bash
-pnpm --filter @metaedu/shared typecheck
-```
-
-当任务涉及 shared schema / type 变更时，通常至少要跑 shared typecheck 和前端 typecheck。
-
-## 如何选择命令
-
-| 目标 | 优先入口 |
-|------|----------|
-| 启动完整开发环境 | `./dev.sh` |
-| 初始化开发数据库 | `./dev.sh init-db` 或 `make init-dev-db` |
-| 初始化测试数据库 | `./dev.sh init-test-db` 或 `make init-test-db` |
-| 后端局部开发 | `make dev` / `make test` / `make lint` |
-| 前端局部开发 | `pnpm --filter @metaedu/web ...` |
-| shared 契约验证 | `pnpm --filter @metaedu/shared typecheck` |
-
-如果一个需求能通过稳定入口完成，不优先依赖一次性手拼命令。
+- 开发库初始化：`./dev.sh init-db` 或 `make init-dev-db`。
+- 测试库初始化：`./dev.sh init-test-db` 或 `make init-test-db`。
+- 测试库只服务测试，不复用开发库；连接串可用 `TEST_DATABASE_URL` 覆盖。
+- 开发 seed 与测试 seed 边界必须清楚，不把开发默认数据带入测试或生产判断。
 
 ## 环境阻塞记录
 
-如果命令因为本地依赖、数据库、端口占用或缺失配置无法运行，不要只写“失败”。必须记录：
+命令因本地依赖、数据库、端口、权限或配置失败时，不写“未测试”一笔带过。必须记录：
 
-- 命令
-- 失败摘要
-- 推断原因
-- 是否影响当前交付
-- 后续恢复步骤或对应任务编号
+- 命令。
+- 退出结果或失败摘要。
+- 推断原因。
+- 是否影响当前交付。
+- 后续恢复步骤或对应任务编号。
 
-这类记录应同步到 `docs/03-engineering-governance/current-work.md`，必要时入账到技术债或 follow-up。
+这类记录同步到 `current-work.md`，必要时入账为技术债或 follow-up。
+
+## 代码探索与搜索工具选择
+
+可使用当前 AI IDE 可用的 CodeGraph、`rg`、Read、IDE 索引等工具。工具选择由任务和可用性决定；工具输出不替代测试、typecheck、代码审查或人工验收。
 
 ## 何时更新本文件
 
-只有下面这些变化值得更新 `local-development.md`：
-
-- 新增或替换稳定开发入口
-- 常见开发场景的推荐命令发生变化
-- 开发库 / 测试库初始化边界发生变化
-- workspace 包结构变化导致常用命令入口改变
-
-如果只是脚本内部实现细节、临时排障过程或偶发本机问题，通常不更新本文件。
+仅当稳定开发入口、开发库 / 测试库初始化边界、workspace 包结构或常见命令入口变化时更新。脚本内部实现、临时排障和单机偶发问题不更新本文件。
