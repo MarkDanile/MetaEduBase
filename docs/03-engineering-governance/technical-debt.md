@@ -158,19 +158,21 @@
 | DOC-061 | 强化"agent 必须把 `main` 受保护视为硬门禁"——失败教训入账（TD-049 收口违规） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 / Git 流程 | TD-049 收口时（2026-06-12）agent 误以为"本仓 main 无 GitHub branch protection 即可直推"，对 `git-workflow.md#分支策略` 写明的"main 受保护 / 必须通过 PR 合入"做隐式打折；先后两次 `git push origin main` 直推工作台收口（commit `9039d74`）和 revert（commit `c744656`）。修复（教训入账，docs-only）：在 `git-workflow.md#完整交付闭环` 末尾追加 1 段"main 直推禁令"明确文案（"agent 在未配置 branch protection 的 main 上仍必须走 PR；'push 是否成功'不是合规依据"）；在 `git-workflow.md#违反与回退` 加 1 段"直推 main 的处置"说明违规回退路径（revert + 走 PR 重新收口 vs `git reset --hard` 的破坏性对比）；在 `quality-gates.md#完成门禁#3` 后追加子项明确"任务卡 / 工作台状态变更不得以 `git push origin main` 直推"。无脚本变更（避免 `check_engineering_docs.py` 误判路径状态），规则硬约束由人工 review + 工作台复核兜底。 |
 | DOC-063 | `check-engineering-docs` 性能收口（subprocess 砍掉 / 5 秒硬指标） | 🟢 完成 | P2 | 工程脚本 / 质量门禁 / 性能 / git plumbing 替代 gh | DOC-060 收口后用户跑 `scripts/check-engineering-docs` 报 ~110s（DDC-060 新增的 `check_task_card_stale_completion` 49 次串行 `gh pr view` 是 99% 元凶）。按用户选择方案 A：用 git history 替代 `gh pr view`（任务卡 mergeCommit 字段已是事实源，check 改用 `git rev-parse --verify <commit>^{commit}` 校验自洽性）。修复：`_common.check_merge_commit_in_git_history` fast path（< 5ms/次，零网络）+ `task_card_claims._find_merge_commit_in_card` 扫 `\| Merge Commit \|` 字段或 `merge commit \`<sha>\`` 短 hash 模式 + `_find_pr_number_in_card` 严格化（只匹 `\| 交付 PR \|` 表格列头）+ `--verify-pr-state` CLI flag 显式 opt-in 启用 gh legacy 路径（保留给真需要查 GitHub 端真实状态的场景）。`check-engineering-docs` **0.76 秒**（< 5 秒目标 ✓，145x 提速），`check_task_card_stale_completion` 17.6ms（6000x 提速），`pytest tests/engineering/` 22 passed 零回归。 | [PR #209](https://github.com/MarkDanile/MetaEduBase/pull/209) |
 | DOC-064 | pre-existing 警告收口（`check-engineering-docs` 退出码 1 → 0） | 🟢 完成 | P3 | 文档 / 工程治理 / 工作台 / 链接路径 | DOC-063 收口后 `check-engineering-docs` 报 0.74s 但退出码 1（8 条 pre-existing 警告）。2 类警告：① current-work.md L37-L41 五条"最近完成"行摘要超 `CURRENT_WORK_RECENT_SUMMARY_LIMIT=220`（247-555 字符，根因：我前几个收口没遵守 workbench.md "短摘要 + work-log 详情"约定）；② spec/2026-06-11-td-048-sourceitem-deprecation-removal.md 三处 markdown 链接用 `../../../` 路径层级错（spec 在 `01-specs/` 4 段深，正确只需 2 个 `..`）。修复：current-work.md 5 行重写为 ≤ 220 字符（短摘要 + PR + work-log 回链）；spec 3 路径 `../../../` → `../../`。`check-engineering-docs` 0.77 秒 + 退出码 0（用户要求），`git diff --check` clean，`pytest tests/engineering/` 22 passed 零回归。 | [PR #211](https://github.com/MarkDanile/MetaEduBase/pull/211) |
-| DOC-065 | 规则瘦身、任务池插入规则与开工硬门禁收口 | 🟡 进行中 | P1 | 文档 / 工程治理 / 跨 AI 协作 | Windows / Claude Code 复盘暴露开工规则未硬执行和试图绕过门禁；同时规则正文过长。目标：压缩规则、补开工三连、禁止绕过门禁、统一任务池索引与插入顺序。 |
+| DOC-065 | 规则瘦身、任务池插入规则与开工硬门禁收口 | 🟢 完成 | P1 | 文档 / 工程治理 / 跨 AI 协作 | PR #244 merged `6c31fe5`：压缩规则、补开工三连、禁止绕过门禁、统一任务池索引与插入顺序。 |
 
 ## 任务详情
 
 ### DOC-065: 规则瘦身、任务池插入规则与开工硬门禁收口
 
-状态：🟡 进行中
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P1 |
 | 领域 | 文档 / 工程治理 / 跨 AI 协作 |
 | 事实源 | 用户复盘 Windows / Claude Code 未按开工顺序执行；同时规则文件膨胀，`git-workflow.md`、`task-modes.md` 等超过 100 行。 |
+| 交付 PR | [PR #244](https://github.com/MarkDanile/MetaEduBase/pull/244) |
+| Merge Commit | `6c31fe5` (squash merge) |
 
 **证据**
 
@@ -188,13 +190,14 @@
 
 **验证方式**
 
-- `scripts/check-engineering-docs`
-- `git diff --check`
-- `wc -l docs/03-engineering-governance/01-rules/*.md docs/03-engineering-governance/task-modes.md docs/03-engineering-governance/workflow.md`
+- 已运行：`scripts/check-engineering-docs` → `engineering docs checks passed (31 known issue(s) allowlisted)`，exit 0。
+- 已运行：`git diff --check` → exit 0。
+- 已运行：`wc -l docs/03-engineering-governance/01-rules/*.md docs/03-engineering-governance/task-modes.md docs/03-engineering-governance/workflow.md` → `01-rules/*.md` 全部 ≤ 99 行，`task-modes.md` 91 行，`workflow.md` 81 行。
+- 已运行：`gh pr view 244 --json state,mergeCommit` → state=`MERGED`，merge commit `6c31fe5`。
 
 **交付记录**
 
-- 进行中。
+- 2026-06-13 收口（接手工具：Codex），docs-only PR #244 / merge commit `6c31fe5`。完成要点：`git-workflow.md` 304 → 93 行，`task-modes.md` 341 → 91 行；所有 `01-rules/*.md` 均 ≤ 99 行；补“开工三连”、禁止修改门禁脚本 / `KNOWN_ISSUES` 绕过当前失败、任务池索引与插入顺序规则。验证：`scripts/check-engineering-docs` 通过，`git diff --check` 通过，行数检查通过。
 
 ### TD-001: 拆分应用启动时的数据库迁移与默认种子数据
 
