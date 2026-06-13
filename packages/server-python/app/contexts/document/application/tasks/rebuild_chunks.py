@@ -236,4 +236,9 @@ def cleanup_orphan_chunks(tenant_id_str: str):
         )
         return deleted
 
-    asyncio.run(_run_in_session(_do))
+    # TD-055: capture asyncio.run's return value so direct (non-Celery)
+    # callers see the deleted count instead of None. `_do` returns the
+    # SQL DELETE rowcount; `run_in_session` already passes it through;
+    # the previous outer `asyncio.run(_run_in_session(_do))` call dropped
+    # it on the floor.
+    return asyncio.run(_run_in_session(_do))
