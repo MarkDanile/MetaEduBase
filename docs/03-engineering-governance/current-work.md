@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| DOC-067 分布式临时编号与正式任务编号归并规则 | 🟡 进行中 | P2 | 文档 / 工程脚本 / 任务池 / 跨设备协作 | 分支 `docs/doc-067-draft-id-rule`；已补 `DRAFT-YYYYMMDD-HHMM-XXXX` 临时来源规则和主表门禁。 | 提交、创建 PR、合并 main 后回填完成态。 | `pytest ...test_check_engineering_docs.py ...test_task_draft_ids.py -q` 30 passed；`scripts/check-engineering-docs` passed；ruff passed；`git diff --check` clean。 |
 
 ## 下一批候选任务
 

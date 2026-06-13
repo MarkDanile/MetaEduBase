@@ -1,4 +1,4 @@
-"""Task ID 卫生族：`check_followup_ids` / `check_backlog_done_index`."""
+"""Task ID 卫生族：follow-up / draft id / Backlog done index."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ._common import (
     BACKLOG_DONE_TYPES,
+    DRAFT_ID_RE,
     FOLLOWUP_ID_RE,
     Issue,
     LEGACY_FOLLOWUP_REFS,
@@ -37,6 +38,54 @@ def check_followup_ids(root: Path) -> list[Issue]:
                         "需要长期执行的 follow-up 应改为新的稳定编号，例如 REQ-007、TD-031 或 DOC-039。",
                     )
                 )
+    return issues
+
+
+def check_draft_ids_not_formal_tasks(root: Path) -> list[Issue]:
+    """DRAFT ids are allowed as Origin text, not as formal task keys."""
+
+    table_specs = (
+        (
+            root / "docs/01-product-planning/04-backlog.md",
+            "Backlog",
+            "Backlog ID",
+        ),
+        (
+            root / "docs/03-engineering-governance/technical-debt.md",
+            "任务总览",
+            "technical-debt 编号",
+        ),
+        (
+            root / "docs/03-engineering-governance/current-work.md",
+            "当前进行中",
+            "current-work 任务",
+        ),
+        (
+            root / "docs/03-engineering-governance/current-work.md",
+            "下一批候选任务",
+            "current-work 候选任务",
+        ),
+    )
+    issues: list[Issue] = []
+    for path, section_title, label in table_specs:
+        lines = read_lines(path)
+        _start, body = section(lines, section_title)
+        for line_no, row in table_rows(body):
+            cells = split_table_row(row)
+            if not cells:
+                continue
+            first_cell = cells[0].split()[0]
+            if not DRAFT_ID_RE.fullmatch(first_cell):
+                continue
+            issues.append(
+                Issue(
+                    path,
+                    line_no,
+                    "draft-task-id",
+                    f"{label} 使用了临时编号 {first_cell} 作为正式任务主键。",
+                    "先归并为 REQ / BUG / TD / DOC / APP 正式编号；DRAFT 只保留在 Origin / 来源字段。",
+                )
+            )
     return issues
 
 

@@ -48,6 +48,7 @@
 - `04-backlog.md`：产品 / 需求 / BUG / APP / DOC 索引，不写长 PRD；新增条目追加到对应主表，长内容进 Requirement / spec / plan。
 - `technical-debt.md`：技术债总账；任务编号稳定，新增条目追加到总览和详情；长交付细节进 PR / work-log。
 - 主表新增编号必须放在同前缀最后；不要把新编号插入历史编号中间。
+- 多电脑或并行窗口临时登记用 `DRAFT-YYYYMMDD-HHMM-XXXX`；进入主表前归并为 `REQ` / `BUG` / `TD` / `DOC` / `APP` 正式编号，DRAFT 只留在来源字段。
 - `work-log.md`、`review-score-log.md`：长期日志，最新在上。
 - `current-work.md`：当前工作台，不是完整 backlog；只保留当前、候选和最近完成窗口。
 - `workflow.md`：流程规则，不记录任务流水。
