@@ -147,7 +147,7 @@
 | TD-051 | 治理 `document_chunks` 结构元数据、切片质量与既有数据重建 | 🟢 完成 | P1 | RAG / 数据完整性 / 文档解析 / AI Chat | PR #234 已合并（merge `ffccc6c`）；7 个 slice 合 1 PR；AC-1~AC-7 全部覆盖。 |
 | TD-053 | `rebuild_document_chunks` fallback 未算 `section_path` → 老数据走 fallback 时 section_path 仍 100% 空 | ⚪ 待澄清 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：`scripts/ai/chunk_quality_report.py` 重建后基线 section_path_empty 1562/1562（100%）与重建前持平。 |
 | TD-054 | 重建后 `offset_overlaps` 反而 +3% → chunker 跨 section `char_start` 计算或 `_enforce_size_limit` 拆分逻辑仍有问题 | ⚪ 待澄清 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：重建前 816（52.61%）→ 重建后 869（55.63%）。`chunker._enforce_size_limit` 拆分后子 chunk 继承父 chunk offset 的边界条件可能错位。 |
-| TD-055 | `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数 | 🔵 就绪 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-051 本机重建（PR #235）暴露：直接调 `cleanup_orphan_chunks(tid_str)` 返回 None（应返回 deleted count），运维只能查 SQL 二次验证。 |
+| TD-055 | `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-051 本机重建（PR #235）暴露：直接调 `cleanup_orphan_chunks(tid_str)` 返回 None（应返回 deleted count），运维只能查 SQL 二次验证。 |
 | TD-056 | TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | ⚪ 待澄清 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-055 修复时审计：rebuild_chunks.py:173 `rebuild_document_chunks` 同样 `asyncio.run(_run_in_session(_do))` 未接返回值，但 rebuild 通过 logger.info 写 chunk 数量掩盖了。需扫描所有 `_run_in_session` 调用点。 |
 | TD-052 | `check-engineering-docs` 秒级反馈优化（增量 source size + 批量 git log + timing） | 🟢 完成 | P2 | 工程脚本 / 质量门禁 / 性能 | [PR #232](https://github.com/MarkDanile/MetaEduBase/pull/232) 已合并：默认门禁 0.36s；`--full` 保留全量审计 0.94s；新增 `--timing`。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
@@ -3054,13 +3054,15 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-055: `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数
 
-状态：🔵 就绪
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P1 |
 | 领域 | 后端 / Celery 任务 / 运维可观测性 |
 | 事实源 | TD-051 本机重建（PR #235）直接调 `cleanup_orphan_chunks(tid_str)` 返回 None，运维只能查 SQL 二次验证 |
+| 交付 PR | [PR #238](https://github.com/MarkDanile/MetaEduBase/pull/238) |
+| Merge Commit | `e9c5223` (squash merge) |
 
 **证据**
 
@@ -3094,14 +3096,15 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 **交付记录**
 
 - 2026-06-12 登记（入手工具：Claude Code / TD-051 本机重建期间发现）。本次只入账，不实现。
-- 2026-06-12 修复合片（分支 `fix/td-055-cleanup-orphan-chunks-return-rowcount`，PR 待提）：
+- 2026-06-12 修复合片（[PR #238](https://github.com/MarkDanile/MetaEduBase/pull/238) / merge `e9c5223` / 分支 `fix/td-055-cleanup-orphan-chunks-return-rowcount`，已删）：
   - 修 `packages/server-python/app/contexts/document/application/tasks/rebuild_chunks.py` L239：`asyncio.run(_run_in_session(_do))` → `return asyncio.run(_run_in_session(_do))`，1 行修复
   - 新增 `packages/server-python/tests/contexts/document/test_cleanup_orphan_chunks_return.py` 4 mock-based pytest（patch `asyncio.run` 模拟整链路返回值）：
     - 修前 4/4 fail（assert None == 5）
     - 修后 4/4 pass
-  - ruff clean / 0 业务代码回归
-  - 任务整体保持 🔵 就绪——真 PG 端到端测试（`init-test-db` + 跑真清理 + 断言返回值）留维护者下次接力（环境：colima / docker 不可达，mock 测试已覆盖外层 `return asyncio.run` 路径）
+  - ruff clean / `git diff --check` clean / `scripts/check-engineering-docs` 退出码 0 / 0 业务代码回归
+  - 真 PG 端到端：未运行（环境 colima / docker 不可达）；mock 测试覆盖外层 `return asyncio.run` 路径作为唯一可执行验证。维护者下次 colima 恢复后可补 `init-test-db` + 跑真清理 + 断言返回值 `>= 0`
   - 审计发现 `rebuild_chunks.py:173` `rebuild_document_chunks` 同样 `asyncio.run(_run_in_session(_do))` 未接返回值，已入账 **TD-056** 跟踪
+  - 翻 🟢 完成依据：PR #238 MERGED + 4 mock pytest 全过 + ruff clean + 0 业务代码回归，符合 git-workflow.md#翻完成前硬条件 1-4
 
 ### TD-056: TD-055 审计：其他 `_run_in_session` task 也可能未返回值
 
