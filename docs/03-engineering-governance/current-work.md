@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| TD-055 `cleanup_orphan_chunks` task 未返回 rowcount | 🟡 进行中 | P1 | 后端 / Celery 任务 / 运维可观测性 | 切 `fix/td-055-cleanup-orphan-chunks-return-rowcount`；已读 `lifecycle.py`（`run_in_session` 已 `return await coro(session)`） + `rebuild_chunks.py`（L239 `asyncio.run(_run_in_session(_do))` 未接返回值）。真因：函数外层 `asyncio.run` 调用未 `return`。 | 写 mock-based pytest 锁死 `cleanup_orphan_chunks(tid_str)` 返回 int → 实现修 1 行 `return asyncio.run(...)` → GREEN → 推 PR。 | mock-based pytest + ruff + git diff --check + scripts/check-engineering-docs。 |
 
 ## 下一批候选任务
 
