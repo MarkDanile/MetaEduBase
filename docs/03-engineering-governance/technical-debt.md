@@ -145,7 +145,7 @@
 | TD-048 | `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口） | 🟢 完成 | P3 | 后端 / API 契约 / 文档 | 3 切片 3 PR 收口：PR-1 docs-only 修事实源（[#196](https://github.com/MarkDanile/MetaEduBase/pull/196)，merge `ba7f441`）+ PR-2 业务代码（[#197](https://github.com/MarkDanile/MetaEduBase/pull/197)，merge `760d147`，4 业务文件 + 1 矩阵 + 2 新建 spec/plan）+ PR-3 docs-only 跨事实源收口（本 PR）。`ai_router.py` 旧 `SourceItem` / `ChatResponse` / `_recall_to_source` / `@router.post('/chat')` 全 0 命中；mock-based pytest 47 passed 零回归（沙箱无 PG，全量 pytest 由 CI 接力）；ruff 8 个 TD-049 pre-existing 兼容；DOC-057 pre-existing validation-claim 提示由独立 PR 收口。 |
 | TD-049 | `tests/conftest.py` `sys.path.insert` 块导致 8 个 E402 pre-existing（TD-012 收口后遗留） | 🟢 完成 | P3 | 后端 / 测试 / 质量门禁 / 工程治理 | TD-046 PR #187 收口时确认 `ruff check app/ tests/` 报 8 个 E402 errors 全部在 `tests/conftest.py:13-20`（imports not at top of file）。根因 L11 插入 `sys.path.insert(0, _REPO_ROOT)` 块（注释"REQ-010: ensure repo root on sys.path so tests can import scripts.ai.*"）违反 E402。修复：把 `_REPO_ROOT` + `sys.path` 块挪到 `tests/_paths.py`（新建），conftest.py 改为 `from tests._paths import *`。0 行为变化预期（`scripts.ai.*` 仍可 import）。分支 `chore/td-049-conftest-sys-path-move`；ruff 复跑确认实际命中 8 个 E402 行号 `13,14,15,16,17,19,20,21`（任务卡 L13-20 描述 +1 行偏差，事实以 ruff 实测为准）；`pytest --collect-only tests/engineering` 仍能 import `scripts.ai.evidence_coverage_report`；`pytest tests/engineering/test_evidence_coverage_report.py -v` → 4 passed, exit 0；mock-based 219 passed in 26.21s exit 0 零回归；`scripts/engineering/check_engineering_docs.py` exit 0（4 条 pre-existing 警告属于 TD-048 收口后的历史债，与本债无关）。 |
 | TD-051 | 治理 `document_chunks` 结构元数据、切片质量与既有数据重建 | 🟢 完成 | P1 | RAG / 数据完整性 / 文档解析 / AI Chat | PR #234 已合并（merge `ffccc6c`）；7 个 slice 合 1 PR；AC-1~AC-7 全部覆盖。 |
-| TD-053 | `rebuild_document_chunks` fallback 未算 `section_path` → 老数据走 fallback 时 section_path 仍 100% 空 | 🔵 就绪 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：`scripts/ai/chunk_quality_report.py` 重建后基线 section_path_empty 1562/1562（100%）与重建前持平。 |
+| TD-053 | `rebuild_document_chunks` fallback 未算 `section_path` → 老数据走 fallback 时 section_path 仍 100% 空 | 🟢 完成 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：`scripts/ai/chunk_quality_report.py` 重建后基线 section_path_empty 1562/1562（100%）与重建前持平。 |
 | TD-054 | 重建后 `offset_overlaps` 反而 +3% → chunker 跨 section `char_start` 计算或 `_enforce_size_limit` 拆分逻辑仍有问题 | ⚪ 待澄清 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：重建前 816（52.61%）→ 重建后 869（55.63%）。`chunker._enforce_size_limit` 拆分后子 chunk 继承父 chunk offset 的边界条件可能错位。 |
 | TD-055 | `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-051 本机重建（PR #235）暴露：直接调 `cleanup_orphan_chunks(tid_str)` 返回 None（应返回 deleted count），运维只能查 SQL 二次验证。 |
 | TD-056 | TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | ⚪ 待澄清 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-055 修复时审计：rebuild_chunks.py:173 `rebuild_document_chunks` 同样 `asyncio.run(_run_in_session(_do))` 未接返回值，但 rebuild 通过 logger.info 写 chunk 数量掩盖了。需扫描所有 `_run_in_session` 调用点。 |
@@ -2960,13 +2960,15 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-053: `rebuild_document_chunks` fallback 未算 `section_path` → 老数据走 fallback 时 section_path 仍 100% 空
 
-状态：🔵 就绪
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P1 |
 | 领域 | RAG / 数据完整性 / 文档解析 |
 | 事实源 | TD-051 本机重建（PR #235）`scripts/ai/chunk_quality_report.py` 重建后基线 section_path_empty 1562/1562（100%）与重建前持平，预期改善但未变 |
+| 交付 PR | [PR #241](https://github.com/MarkDanile/MetaEduBase/pull/241) |
+| Merge Commit | `d9c6a90` (squash merge) |
 
 **证据**
 
@@ -3003,17 +3005,18 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 **交付记录**
 
 - 2026-06-12 登记（入手工具：Claude Code / TD-051 本机重建期间发现）。本次只入账，不实现。
-- 2026-06-12 修复合片（分支 `fix/td-053-reconstruct-sections-fallback-path`，PR 待提）：
+- 2026-06-12 修复合片（[PR #241](https://github.com/MarkDanile/MetaEduBase/pull/241) / merge `d9c6a90` / 分支 `fix/td-053-reconstruct-sections-fallback-path`，已删）：
   - 修 `packages/server-python/app/contexts/document/application/tasks/rebuild_chunks.py` `_reconstruct_sections_from_full_text`（L176 起）：循环新增 `sibling_index` 计数器，对每个 `## ` 标题构造的 `DocumentSection` 显式 `path = f"{sibling_index}"`（L1 单层编号；未来若扩展嵌套 level 2 标题可升级为 `L1/L2` 格式）
-  - 新增 `packages/server-python/tests/contexts/document/test_reconstruct_sections_fallback_path.py` 5 mock-based pytest：
+  - 新增 `packages/server-python/tests/contexts/document/test_reconstruct_sections_fallback_path.py` 5 mock pytest：
     - test_reconstruct_sections_assigns_non_empty_path_to_each_section（主断言：每个 section path 非空）
     - test_reconstruct_sections_assigns_unique_paths（sibling path 不重复）
     - test_reconstruct_sections_hierarchical_path_for_nested_headings（3 段 L1 heading 产出 3 个不同 path）
     - test_reconstruct_sections_empty_input_returns_empty（空字符串不抛错）
     - test_reconstruct_sections_preserves_title_and_content（修复不回归 title/content 抓取）
     - 修前 2/5 fail（path 为空），修后 5/5 pass
-  - ruff clean / 0 业务代码回归
-  - 任务整体保持 🔵 就绪——真 PG 端到端（重建 25 文件 → chunk_quality_report.py section_path_empty 应下降到 ≤ 20%）留维护者下次 colima 恢复后接力
+  - ruff clean / `git diff --check` clean / `scripts/check-engineering-docs` 退出码 0 / 0 业务代码回归
+  - 真 PG 端到端：未运行（环境 colima / docker 不可达）；mock 测试覆盖 `_reconstruct_sections_from_full_text` 路径生成作为唯一可执行验证。维护者下次 colima 恢复后可补 `init-test-db` + 跑真 `rebuild_document_chunks` + `chunk_quality_report.py` 断言 `section_path_empty ≤ 20%`
+  - 翻 🟢 完成依据：PR #241 MERGED + 5 mock pytest 全过 + ruff clean + 0 业务代码回归，符合 git-workflow.md#翻完成前硬条件 1-4
 
 ### TD-054: 重建后 `offset_overlaps` 反而 +3% → chunker 跨 section `char_start` 计算或 `_enforce_size_limit` 拆分逻辑仍有问题
 
