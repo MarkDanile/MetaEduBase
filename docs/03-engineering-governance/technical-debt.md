@@ -160,20 +160,21 @@
 | DOC-064 | pre-existing 警告收口（`check-engineering-docs` 退出码 1 → 0） | 🟢 完成 | P3 | 文档 / 工程治理 / 工作台 / 链接路径 | DOC-063 收口后 `check-engineering-docs` 报 0.74s 但退出码 1（8 条 pre-existing 警告）。2 类警告：① current-work.md L37-L41 五条"最近完成"行摘要超 `CURRENT_WORK_RECENT_SUMMARY_LIMIT=220`（247-555 字符，根因：我前几个收口没遵守 workbench.md "短摘要 + work-log 详情"约定）；② spec/2026-06-11-td-048-sourceitem-deprecation-removal.md 三处 markdown 链接用 `../../../` 路径层级错（spec 在 `01-specs/` 4 段深，正确只需 2 个 `..`）。修复：current-work.md 5 行重写为 ≤ 220 字符（短摘要 + PR + work-log 回链）；spec 3 路径 `../../../` → `../../`。`check-engineering-docs` 0.77 秒 + 退出码 0（用户要求），`git diff --check` clean，`pytest tests/engineering/` 22 passed 零回归。 | [PR #211](https://github.com/MarkDanile/MetaEduBase/pull/211) |
 | DOC-065 | 规则瘦身、任务池插入规则与开工硬门禁收口 | 🟢 完成 | P1 | 文档 / 工程治理 / 跨 AI 协作 | PR #244 merged `6c31fe5`：压缩规则、补开工三连、禁止绕过门禁、统一任务池索引与插入顺序。 |
 | DOC-066 | 任务池主表插入顺序门禁 | 🟢 完成 | P2 | 文档 / 工程脚本 / 任务池 / 质量门禁 | PR #246 merged `4a58906`：Backlog / technical-debt 主表最新编号位置已脚本化。 |
-| DOC-067 | 分布式临时编号与正式任务编号归并规则 | 🟡 进行中 | P2 | 文档 / 工程脚本 / 任务池 / 跨设备协作 | 分支 `docs/doc-067-draft-id-rule`：保留正式短编号，`DRAFT-*` 只作临时来源，主表门禁已实现中。 |
+| DOC-067 | 分布式临时编号与正式任务编号归并规则 | 🟢 完成 | P2 | 文档 / 工程脚本 / 任务池 / 跨设备协作 | PR #248 merged `9bf177b`：保留正式短编号，`DRAFT-*` 只作临时来源，主表门禁已实现。 |
 
 ## 任务详情
 
 ### DOC-067: 分布式临时编号与正式任务编号归并规则
 
-状态：🟡 进行中
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P2 |
 | 领域 | 文档 / 工程脚本 / 任务池 / 跨设备协作 |
 | 事实源 | 用户讨论：多台电脑同时登记任务时，纯递增编号可能重复；同时希望正式任务编号保持短、可读、可检索。 |
-| 工作分支 | `docs/doc-067-draft-id-rule` |
+| 交付 PR | [PR #248](https://github.com/MarkDanile/MetaEduBase/pull/248) |
+| Merge Commit | `9bf177b` (squash merge) |
 
 **证据**
 
@@ -200,7 +201,7 @@
 
 **交付记录**
 
-- 进行中。已验证：`packages/server-python/.venv/bin/python -m pytest tests/engineering/test_check_engineering_docs.py tests/engineering/test_task_draft_ids.py -q` → 30 passed；`scripts/check-engineering-docs` → passed；`packages/server-python/.venv/bin/python -m ruff check scripts/engineering/checks/_common.py scripts/engineering/checks/task_ids.py scripts/engineering/checks/__init__.py tests/engineering/test_check_engineering_docs.py tests/engineering/test_task_draft_ids.py` → passed；`git diff --check` → clean。
+- 2026-06-13 完成（接手工具：Codex），PR #248 / merge commit `9bf177b`。完成要点：正式任务编号继续使用短格式；`DRAFT-YYYYMMDD-HHMM-XXXX` 只作为多电脑 / 离线临时来源；Backlog、technical-debt、current-work 主表首列使用 `DRAFT-*` 会被 `scripts/check-engineering-docs` 拦截。验证：`packages/server-python/.venv/bin/python -m pytest tests/engineering/test_check_engineering_docs.py tests/engineering/test_task_draft_ids.py -q` → 30 passed；`scripts/check-engineering-docs` → passed；`packages/server-python/.venv/bin/python -m ruff check scripts/engineering/checks/_common.py scripts/engineering/checks/task_ids.py scripts/engineering/checks/__init__.py tests/engineering/test_check_engineering_docs.py tests/engineering/test_task_draft_ids.py` → passed；`git diff --check` → clean。
 
 ### DOC-065: 规则瘦身、任务池插入规则与开工硬门禁收口
 
