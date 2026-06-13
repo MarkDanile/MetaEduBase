@@ -944,3 +944,55 @@ def test_skips_non_completed_task_cards(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert "engineering docs checks passed" in result.stdout
     mock_git_log.assert_not_called()
+
+
+def test_fails_when_newest_backlog_id_is_inserted_before_older_row(
+    tmp_path: Path,
+) -> None:
+    make_minimal_docs(tmp_path)
+    write(
+        tmp_path / "docs/01-product-planning/04-backlog.md",
+        """
+        # Product Backlog
+
+        ## Backlog
+
+        | ID | 类型 | 状态 | 优先级 | 里程碑 | 摘要 | 下一步 | External |
+        |----|------|------|--------|--------|------|--------|----------|
+        | DOC-002 | DOC | ⚫ Candidate | P2 | P3 | 新任务 | 下一步 |  |
+        | DOC-001 | DOC | ⚫ Candidate | P2 | P3 | 旧任务 | 下一步 |  |
+        """,
+    )
+
+    result = run_checker(tmp_path)
+
+    assert result.returncode == 1
+    assert "task-pool-order" in result.stderr or "最新编号" in result.stderr
+    assert "DOC-002" in result.stderr
+    assert "DOC-001" in result.stderr
+
+
+def test_fails_when_newest_technical_debt_id_is_inserted_before_older_row(
+    tmp_path: Path,
+) -> None:
+    make_minimal_docs(tmp_path)
+    write(
+        tmp_path / "docs/03-engineering-governance/technical-debt.md",
+        """
+        # 技术债总账
+
+        ## 任务总览
+
+        | 编号 | 任务 | 状态 | 优先级 | 领域 | 事实源 |
+        |------|------|------|--------|------|--------|
+        | TD-002 | 新技术债 | ⚫ 待办 | P2 | Docs | - |
+        | TD-001 | 旧技术债 | ⚫ 待办 | P2 | Docs | - |
+        """,
+    )
+
+    result = run_checker(tmp_path)
+
+    assert result.returncode == 1
+    assert "最新编号" in result.stderr
+    assert "TD-002" in result.stderr
+    assert "TD-001" in result.stderr

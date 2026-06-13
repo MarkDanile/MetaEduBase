@@ -70,7 +70,6 @@
 | DOC-058 | DOC | 🟢 Done | P2 | P3 | 强化工作台规则渐进式披露入口 | 将 `workbench.md` 从规则索引提升为“修改工作台或任务状态前必读”，同步入口、workflow、task-modes 和 Claude/Trae 兼容跳转，减少 CC 遗漏 current-work 状态更新。 | [Workbench](../03-engineering-governance/01-rules/workbench.md#使用规则) / [Workflow](../03-engineering-governance/workflow.md#开发前检查) |
 | DOC-059 | DOC | 🟢 Done | P2 | P3 | 点名任务入口解析门禁与最近完成固定裁剪规则 | 新增 `task-modes.md#任务入口解析门禁`，明确 `按流程处理 XXX` 先定位 current-work / TD / Backlog / Requirement / Milestone 事实源；Milestone 只做规划信号，进入实现前必须映射稳定任务编号并登记工作台。最近完成区超过 20 行时固定裁剪为最新 12 行，禁止单条搬运。 | [Task Modes](../03-engineering-governance/task-modes.md#任务入口解析门禁) / [Workbench](../03-engineering-governance/01-rules/workbench.md#保留策略) |
 | DOC-060 | DOC | 🟢 Done | P2 | P3 | 针对全部评审评分做阶段复盘 | 基于 40 条 review score 记录复盘平均分、一次关闭率、返工率、流程扣分率、低分簇和下一阶段观察指标；不新增规则，作为阶段趋势分析事实源。 | [Retrospective](../03-engineering-governance/04-retrospectives/2026-06-11-review-score-retrospective.md) / [Review Score Log](../03-engineering-governance/04-retrospectives/review-score-log.md) |
-| DOC-065 | DOC | 🟢 Done | P1 | P3 | 规则瘦身、任务池插入规则与开工硬门禁收口 | PR #244 merged：压缩工程规则为硬门禁 + 跳转；补 Windows / Claude Code 开工三连、禁止绕过门禁、任务池索引与插入顺序。 | [Technical Debt](../03-engineering-governance/technical-debt.md#doc-065) / [PR #244](https://github.com/MarkDanile/MetaEduBase/pull/244) |
 | DOC-019 | DOC | 🟢 Done | P1 | P1 | 建立产品规划层和复盘入口 | 已同步规则索引，验证通过后归档到工作日志 |  |
 | DOC-024 | DOC | ⚪ Idea | P2 | P3 | 工程协作规则模板化：将成熟的跨 AI IDE 规则、docs 分层、质量门禁和任务闭环抽象成可复用模板包 | 等本项目规则经过更多实践验证后，进入 Shaping，明确模板仓库边界、项目适配层和版本化策略 |  |
 | DOC-034 | DOC | 🟢 Done | P2 | P1 | 修正 REQ-008 spec AC-5 与实际测试行为不一致 | AC-5 期望由 `layer == "none"` 修为 `layer == "L3"` + `template is None` + `reason` 含 below threshold；「选择器契约（不变）」段同步改写为与实现和 `test_l3_ai_confidence_unparseable_falls_back_to_zero` 一致；不改代码。 | [Spec](../02-delivery-plans/01-specs/2026-W23-req-008-req-004-quality-follow-up.md) / [PR #83](https://github.com/MarkDanile/MetaEduBase/pull/83) |
@@ -78,6 +77,8 @@
 | DOC-037 | DOC | 🟢 Done | P2 | P3 | 规则入口瘦身与脚本门禁候选清单整理 | 已压缩 `AGENTS.md` / `CLAUDE.md` 为导航入口；确认 `.claude/rules/*` 与 `.trae/rules/*` 仍为跳转入口；新增脚本门禁候选清单；不改业务代码。 | [Quality Gates](../03-engineering-governance/01-rules/quality-gates.md) |
 | DOC-038 | DOC | 🟢 Done | P2 | P3 | 恢复基础工程原则为单一事实源 | 新增 `engineering-principles.md`，入口和 IDE 兼容规则只做链接，避免 DOC-037 瘦身后丢失“先想后写 / 极简主义 / 手术式改动 / 目标驱动”。 | [Engineering Principles](../03-engineering-governance/01-rules/engineering-principles.md) |
 | DOC-039 | DOC | 🟢 Done | P2 | P3 | 增强工程文档脚本门禁 | 将稳定编号、Done 入账、入口同步和脚本候选清单反查纳入 `scripts/check-engineering-docs`，并补工程脚本回归测试。 | [Quality Gates](../03-engineering-governance/01-rules/quality-gates.md) |
+| DOC-065 | DOC | 🟢 Done | P1 | P3 | 规则瘦身、任务池插入规则与开工硬门禁收口 | PR #244 merged：压缩工程规则为硬门禁 + 跳转；补 Windows / Claude Code 开工三连、禁止绕过门禁、任务池索引与插入顺序。 | [Technical Debt](../03-engineering-governance/technical-debt.md#doc-065) / [PR #244](https://github.com/MarkDanile/MetaEduBase/pull/244) |
+| DOC-066 | DOC | 🟡 Doing | P2 | P3 | 任务池主表插入顺序门禁 | 将 Backlog / technical-debt 主表“新编号必须在同前缀最后”脚本化，防止后续新任务插入历史编号中间。 | [Technical Debt](../03-engineering-governance/technical-debt.md#doc-066) |
 
 ## 状态迁移
 
