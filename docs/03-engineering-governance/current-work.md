@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| DOC-066 任务池主表插入顺序门禁 | 🟡 进行中 | P2 | 文档 / 工程脚本 / 任务池 | 分支 `docs/doc-066-task-pool-insertion-gate`；已补规则、`check_task_pool_order` 门禁和 2 条回归测试。 | 推进 Git 闭环；PR merged 后回填完成状态。 | 已运行：`packages/server-python/.venv/bin/python -m pytest tests/engineering/test_check_engineering_docs.py -q` exit 0；`scripts/check-engineering-docs --timing` exit 0；`ruff check ...` exit 0；`git diff --check` exit 0。 |
+| （空） | | | | | | |
 
 ## 下一批候选任务
 
@@ -33,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-13 | DOC-066 任务池主表插入顺序门禁 | 🟢 完成 | PR #246 merged `4a58906`；新增 `check_task_pool_order`，防止 Backlog / technical-debt 新编号插入历史编号中间。 | [Technical Debt](technical-debt.md#doc-066) / [PR #246](https://github.com/MarkDanile/MetaEduBase/pull/246) |
 | 2026-06-13 | DOC-065 规则瘦身、任务池插入规则与开工硬门禁收口 | 🟢 完成 | PR #244 merged `6c31fe5`；规则文件全部 ≤100 行，`task-modes.md` 91 行；补开工三连、禁止绕过门禁、任务池插入规则。 | [Technical Debt](technical-debt.md#doc-065) / [PR #244](https://github.com/MarkDanile/MetaEduBase/pull/244) |
 | 2026-06-12 | TD-051 `document_chunks` 结构元数据治理 + 历史数据重建 | 🟢 完成 | PR #234 squash merge `ffccc6c`；7 slice 合 1 PR；AC-1~AC-7 全部覆盖；67 passed，ruff clean。 | [Spec](../02-delivery-plans/01-specs/2026-06-12-td-051-document-chunks-metadata-governance.md) / [Plan](../02-delivery-plans/02-plans/2026-06-12-td-051-document-chunks-metadata-governance-plan.md) / [PR #234](https://github.com/MarkDanile/MetaEduBase/pull/234)（merge `ffccc6c`） |
 | 2026-06-12 | TD-052 `check-engineering-docs` 秒级反馈优化 | 🟢 完成 | PR #232 已合并：默认 source size 增量扫，`--full` 保留全量审计，`--timing` 输出耗时；git log 兜底批量化。默认门禁 0.36s。 | [TD-052](technical-debt.md#td-052-check-engineering-docs-秒级反馈优化增量-source-size--批量-git-log--timing) / [PR #232](https://github.com/MarkDanile/MetaEduBase/pull/232)（merge `2d3697c`） |

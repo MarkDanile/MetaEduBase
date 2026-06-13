@@ -159,7 +159,7 @@
 | DOC-063 | `check-engineering-docs` 性能收口（subprocess 砍掉 / 5 秒硬指标） | 🟢 完成 | P2 | 工程脚本 / 质量门禁 / 性能 / git plumbing 替代 gh | DOC-060 收口后用户跑 `scripts/check-engineering-docs` 报 ~110s（DDC-060 新增的 `check_task_card_stale_completion` 49 次串行 `gh pr view` 是 99% 元凶）。按用户选择方案 A：用 git history 替代 `gh pr view`（任务卡 mergeCommit 字段已是事实源，check 改用 `git rev-parse --verify <commit>^{commit}` 校验自洽性）。修复：`_common.check_merge_commit_in_git_history` fast path（< 5ms/次，零网络）+ `task_card_claims._find_merge_commit_in_card` 扫 `\| Merge Commit \|` 字段或 `merge commit \`<sha>\`` 短 hash 模式 + `_find_pr_number_in_card` 严格化（只匹 `\| 交付 PR \|` 表格列头）+ `--verify-pr-state` CLI flag 显式 opt-in 启用 gh legacy 路径（保留给真需要查 GitHub 端真实状态的场景）。`check-engineering-docs` **0.76 秒**（< 5 秒目标 ✓，145x 提速），`check_task_card_stale_completion` 17.6ms（6000x 提速），`pytest tests/engineering/` 22 passed 零回归。 | [PR #209](https://github.com/MarkDanile/MetaEduBase/pull/209) |
 | DOC-064 | pre-existing 警告收口（`check-engineering-docs` 退出码 1 → 0） | 🟢 完成 | P3 | 文档 / 工程治理 / 工作台 / 链接路径 | DOC-063 收口后 `check-engineering-docs` 报 0.74s 但退出码 1（8 条 pre-existing 警告）。2 类警告：① current-work.md L37-L41 五条"最近完成"行摘要超 `CURRENT_WORK_RECENT_SUMMARY_LIMIT=220`（247-555 字符，根因：我前几个收口没遵守 workbench.md "短摘要 + work-log 详情"约定）；② spec/2026-06-11-td-048-sourceitem-deprecation-removal.md 三处 markdown 链接用 `../../../` 路径层级错（spec 在 `01-specs/` 4 段深，正确只需 2 个 `..`）。修复：current-work.md 5 行重写为 ≤ 220 字符（短摘要 + PR + work-log 回链）；spec 3 路径 `../../../` → `../../`。`check-engineering-docs` 0.77 秒 + 退出码 0（用户要求），`git diff --check` clean，`pytest tests/engineering/` 22 passed 零回归。 | [PR #211](https://github.com/MarkDanile/MetaEduBase/pull/211) |
 | DOC-065 | 规则瘦身、任务池插入规则与开工硬门禁收口 | 🟢 完成 | P1 | 文档 / 工程治理 / 跨 AI 协作 | PR #244 merged `6c31fe5`：压缩规则、补开工三连、禁止绕过门禁、统一任务池索引与插入顺序。 |
-| DOC-066 | 任务池主表插入顺序门禁 | 🟡 进行中 | P2 | 文档 / 工程脚本 / 任务池 / 质量门禁 | 用户要求“确保不要让任务再插入到中间”；本任务将 Backlog / technical-debt 主表最新编号位置脚本化。 |
+| DOC-066 | 任务池主表插入顺序门禁 | 🟢 完成 | P2 | 文档 / 工程脚本 / 任务池 / 质量门禁 | PR #246 merged `4a58906`：Backlog / technical-debt 主表最新编号位置已脚本化。 |
 
 ## 任务详情
 
@@ -202,13 +202,15 @@
 
 ### DOC-066: 任务池主表插入顺序门禁
 
-状态：🟡 进行中
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P2 |
 | 领域 | 文档 / 工程脚本 / 任务池 / 质量门禁 |
 | 事实源 | 用户要求“确保不要让任务再插入到中间”。 |
+| 交付 PR | [PR #246](https://github.com/MarkDanile/MetaEduBase/pull/246) |
+| Merge Commit | `4a58906` (squash merge) |
 
 **证据**
 
@@ -235,7 +237,7 @@
 
 **交付记录**
 
-- 2026-06-13 进行中（接手工具：Codex）：已补 `check_task_pool_order`，注册进 `scripts/check-engineering-docs`；规则同步到 `workflow.md` / `docs.md` / `quality-gates.md`；修正当前 Backlog `DOC-065` 与 technical-debt `TD-052` 主表顺序漂移。验证：`packages/server-python/.venv/bin/python -m pytest tests/engineering/test_check_engineering_docs.py -q` → 28 passed；`scripts/check-engineering-docs --timing` → passed；`ruff check ...` → All checks passed；`git diff --check` → clean。等待 PR 收口后翻完成。
+- 2026-06-13 完成（接手工具：Codex），PR #246 / merge commit `4a58906`。已补 `check_task_pool_order`，注册进 `scripts/check-engineering-docs`；规则同步到 `workflow.md` / `docs.md` / `quality-gates.md`；修正当前 Backlog `DOC-065` 与 technical-debt `TD-052` 主表顺序漂移。验证：`packages/server-python/.venv/bin/python -m pytest tests/engineering/test_check_engineering_docs.py -q` → 28 passed；`scripts/check-engineering-docs --timing` → passed；`ruff check ...` → All checks passed；`git diff --check` → clean。
 
 ### TD-001: 拆分应用启动时的数据库迁移与默认种子数据
 
