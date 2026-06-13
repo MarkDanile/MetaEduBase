@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| DOC-067 分布式临时编号与正式任务编号归并规则 | 🟡 进行中 | P2 | 文档 / 工程脚本 / 任务池 / 跨设备协作 | 分支 `docs/doc-067-draft-id-rule`；已补 `DRAFT-YYYYMMDD-HHMM-XXXX` 临时来源规则和主表门禁。 | 提交、创建 PR、合并 main 后回填完成态。 | `pytest ...test_check_engineering_docs.py ...test_task_draft_ids.py -q` 30 passed；`scripts/check-engineering-docs` passed；ruff passed；`git diff --check` clean。 |
+| （空） | | | | | | |
 
 ## 下一批候选任务
 
@@ -33,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-13 | DOC-067 分布式临时编号与正式任务编号归并规则 | 🟢 完成 | PR #248 merged `9bf177b`；正式编号保持短格式，`DRAFT-*` 只作临时来源，并加主表门禁。 | [Technical Debt](technical-debt.md#doc-067) / [PR #248](https://github.com/MarkDanile/MetaEduBase/pull/248) |
 | 2026-06-13 | DOC-066 任务池主表插入顺序门禁 | 🟢 完成 | PR #246 merged `4a58906`；新增 `check_task_pool_order`，防止 Backlog / technical-debt 新编号插入历史编号中间。 | [Technical Debt](technical-debt.md#doc-066) / [PR #246](https://github.com/MarkDanile/MetaEduBase/pull/246) |
 | 2026-06-13 | DOC-065 规则瘦身、任务池插入规则与开工硬门禁收口 | 🟢 完成 | PR #244 merged `6c31fe5`；规则文件全部 ≤100 行，`task-modes.md` 91 行；补开工三连、禁止绕过门禁、任务池插入规则。 | [Technical Debt](technical-debt.md#doc-065) / [PR #244](https://github.com/MarkDanile/MetaEduBase/pull/244) |
 | 2026-06-12 | TD-051 `document_chunks` 结构元数据治理 + 历史数据重建 | 🟢 完成 | PR #234 squash merge `ffccc6c`；7 slice 合 1 PR；AC-1~AC-7 全部覆盖；67 passed，ruff clean。 | [Spec](../02-delivery-plans/01-specs/2026-06-12-td-051-document-chunks-metadata-governance.md) / [Plan](../02-delivery-plans/02-plans/2026-06-12-td-051-document-chunks-metadata-governance-plan.md) / [PR #234](https://github.com/MarkDanile/MetaEduBase/pull/234)（merge `ffccc6c`） |
