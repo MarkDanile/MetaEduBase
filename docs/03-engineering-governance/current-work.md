@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| TD-053 `rebuild_document_chunks` fallback 未算 section_path | 🟡 进行中 | P1 | RAG / 数据完整性 / 文档解析 | 切 `fix/td-053-reconstruct-sections-fallback-path`；已读 `_reconstruct_sections_from_full_text`（L176-209）只构造 `DocumentSection(title, level, content, page)` 未传 `path` → 走 fallback 时 `sec.path == ""` → chunk.section_path 仍空。按完成标准选项 A（推荐）：让 fallback 生成层次化 path（如 `0/0`、`0/1`、`1/0`）。 | 写 RED pytest 锁死 fallback 返回 DocumentSection 含非空 path → 实现修 `_reconstruct_sections_from_full_text` → GREEN → 推 PR。 | mock pytest（`DocumentSection` 构造后 `path` 非空 + 层次化 + 不同 heading level 编号正确）+ ruff + git diff --check + scripts/check-engineering-docs。真 PG 端到端留维护者（colima / docker 不可达）。 |
 
 ## 下一批候选任务
 
