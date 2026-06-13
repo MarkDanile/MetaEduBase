@@ -79,6 +79,7 @@
 | DOC-039 | DOC | 🟢 Done | P2 | P3 | 增强工程文档脚本门禁 | 将稳定编号、Done 入账、入口同步和脚本候选清单反查纳入 `scripts/check-engineering-docs`，并补工程脚本回归测试。 | [Quality Gates](../03-engineering-governance/01-rules/quality-gates.md) |
 | DOC-065 | DOC | 🟢 Done | P1 | P3 | 规则瘦身、任务池插入规则与开工硬门禁收口 | PR #244 merged：压缩工程规则为硬门禁 + 跳转；补 Windows / Claude Code 开工三连、禁止绕过门禁、任务池索引与插入顺序。 | [Technical Debt](../03-engineering-governance/technical-debt.md#doc-065) / [PR #244](https://github.com/MarkDanile/MetaEduBase/pull/244) |
 | DOC-066 | DOC | 🟢 Done | P2 | P3 | 任务池主表插入顺序门禁 | PR #246 merged：将 Backlog / technical-debt 主表“新编号必须在同前缀最后”脚本化，防止后续新任务插入历史编号中间。 | [Technical Debt](../03-engineering-governance/technical-debt.md#doc-066) / [PR #246](https://github.com/MarkDanile/MetaEduBase/pull/246) |
+| DOC-067 | DOC | 🟡 Doing | P2 | P3 | 分布式临时编号与正式任务编号归并规则 | 保持正式任务编号短格式；多电脑 / 离线临时登记使用 `DRAFT-YYYYMMDD-HHMM-XXXX`，进入主表前归并为正式编号。 | [Technical Debt](../03-engineering-governance/technical-debt.md#doc-067) |
 
 ## 状态迁移
 

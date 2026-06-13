@@ -41,6 +41,7 @@ scripts/check-engineering-docs
 | 已完成任务不得残留 `未运行`、`待提交`、`以最终回复为准` 等占位 | 已实现 / 持续补强 | 防止完成态漂移 |
 | Backlog、current-work、work-log、technical-debt 中任务 ID 唯一且状态不冲突 | 候选 / 部分实现 | 降低跨事实源漂移 |
 | 禁止把 `REQ-xxx-FOLLOWUP` / `TD-xxx-FOLLOWUP` 作为长期任务编号 | 已实现 | 保持稳定检索 |
+| `DRAFT-*` 临时编号不得作为正式任务池主键 | 已实现 | 支持多电脑登记但不污染长期编号 |
 | `Done` 任务在 Backlog / current-work / work-log 之间有最小索引闭环 | 已实现 | 防止关闭后事实源缺失 |
 | Backlog / technical-debt 主表最新编号必须位于同前缀最后 | 已实现 | 防止新任务插入历史编号中间 |
 | spec / plan 中 `TBD` / `TD-???` / `未回填` 扫描 | 候选 | 防止完成态残留占位 |

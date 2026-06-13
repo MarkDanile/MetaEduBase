@@ -38,6 +38,7 @@
 - Backlog、technical-debt、work-log、review-score-log 只做索引和摘要，不承载长设计。
 - `work-log.md` 和 `review-score-log.md` 最新在上。
 - Backlog 和 technical-debt 新增条目按稳定编号追加到同前缀最后，不插入历史编号中间。
+- `DRAFT-*` 只作分布式临时编号来源，不作为 Backlog、technical-debt 或 current-work 主键。
 - 详细内容进入 requirement、spec、plan、PR 或 retrospective。
 
 ## 注释规范

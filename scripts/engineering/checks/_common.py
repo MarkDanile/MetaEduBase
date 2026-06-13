@@ -41,6 +41,7 @@ TASK_ID_RE = re.compile(r"\b(?:REQ|TD|DOC|BUG|APP)-\d{3}\b")
 # while still allowing whitespace / `.md` / end-of-string after the id.
 REQ_ID_RE = re.compile(r"\bREQ-\d{3}(?:-\d+)?(?![-\d])")
 FOLLOWUP_ID_RE = re.compile(r"\b(?:REQ|TD)-\d{3}-FOLLOWUP\b")
+DRAFT_ID_RE = re.compile(r"^DRAFT-\d{8}-\d{4}-[A-Z0-9]{4,8}$")
 LEGACY_FOLLOWUP_REFS: frozenset[tuple[str, str]] = frozenset(
     {
         ("docs/02-delivery-plans/01-specs/2026-06-05-td-006-llm-model-fallback.md", "TD-006-FOLLOWUP"),
@@ -56,6 +57,7 @@ SCRIPTED_GATE_CANDIDATES: frozenset[str] = frozenset(
         "`current-work.md` 下一批候选最多 3 行，且不允许 `🟢 完成`",
         "已完成任务不得残留 `未运行`、`待提交`、`以最终回复为准` 等占位",
         "禁止把 `REQ-xxx-FOLLOWUP` / `TD-xxx-FOLLOWUP` 作为长期任务编号",
+        "`DRAFT-*` 临时编号不得作为正式任务池主键",
         "`Done` 任务在 Backlog / current-work / work-log 之间有最小索引闭环",
         "Backlog / technical-debt 主表最新编号必须位于同前缀最后",
         "旧 docs 路径残留检查",

@@ -21,6 +21,7 @@
 | `04-backlog.md` / `05-requirements/*` | `Idea` / `Candidate` / `Shaping` 只塑形；`Ready` 或已有 spec/plan 后再实现。 |
 | Roadmap / Milestone / Iteration | 只是规划信号；先映射为 `REQ` / `TD` / `DOC` / `BUG`，再进工作台。 |
 | 找不到稳定编号 | 先登记事实源，补证据、完成标准、验证方式；不得直接改业务代码。 |
+| 多电脑 / 离线临时想法 | 可先用 `DRAFT-YYYYMMDD-HHMM-XXXX` 记录来源；进工作台或主表前必须归并为正式编号。 |
 
 ## 默认模式路由
 

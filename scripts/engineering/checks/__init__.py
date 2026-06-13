@@ -32,7 +32,11 @@ from .task_card_claims import (
     check_task_card_stale_completion,
     check_task_card_stale_residual,
 )
-from .task_ids import check_backlog_done_index, check_followup_ids
+from .task_ids import (
+    check_backlog_done_index,
+    check_draft_ids_not_formal_tasks,
+    check_followup_ids,
+)
 from .task_order import check_task_pool_order
 from .task_pr_consistency import check as check_task_pr_consistency
 from .technical_debt import check_completed_plans, check_technical_debt
@@ -45,6 +49,7 @@ KNOWN_CHECKS: tuple[Callable[[Path], list[Issue]], ...] = (
     check_req_status_consistency,
     check_product_planning_status_icons,
     check_followup_ids,
+    check_draft_ids_not_formal_tasks,
     check_backlog_done_index,
     check_task_pool_order,
     check_entry_sync,
