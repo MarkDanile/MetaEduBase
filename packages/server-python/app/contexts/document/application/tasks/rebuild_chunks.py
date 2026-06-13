@@ -178,6 +178,13 @@ def _reconstruct_sections_from_full_text(full_text: str) -> list[DocumentSection
 
     Mirrors the legacy chunk_document section reconstruction.
     Used when structured_data has no sections key (files uploaded before TD-051).
+
+    TD-053: also synthesizes a hierarchical `path` (e.g. "0/0", "0/1", "1/0")
+    per level-1 heading index, so legacy data gets meaningful paths
+    instead of the default DocumentSection.path = "". The path format
+    is "L1_index" — single-level because the regex only matches "## "
+    (level 1); a future enhancement to detect nested headings would
+    extend this to "L1/L2/...".
     """
     import re
 
@@ -186,6 +193,7 @@ def _reconstruct_sections_from_full_text(full_text: str) -> list[DocumentSection
         return sections
 
     parts = re.split(r'\n(?=##\s)', full_text)
+    sibling_index = 0
     for part in parts:
         part = part.strip()
         if not part:
@@ -198,13 +206,21 @@ def _reconstruct_sections_from_full_text(full_text: str) -> list[DocumentSection
             else:
                 title = part[2:].strip()
                 content = ""
+            # TD-053: synthesise a non-empty hierarchical path for legacy data.
+            # Format: "<sibling_index>" (level-1 only since regex matches "## ").
+            path = f"{sibling_index}"
             sections.append(
-                DocumentSection(title=title, level=1, content=content, page=0)
+                DocumentSection(
+                    title=title, level=1, content=content, page=0, path=path
+                )
             )
+            sibling_index += 1
         elif sections:
             sections[-1].content += "\n" + part
         else:
-            sections.append(DocumentSection(title="", level=0, content=part, page=0))
+            sections.append(
+                DocumentSection(title="", level=0, content=part, page=0, path="")
+            )
 
     return sections
 
