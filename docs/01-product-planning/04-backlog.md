@@ -78,7 +78,7 @@
 | DOC-038 | DOC | 🟢 Done | P2 | P3 | 恢复基础工程原则为单一事实源 | 新增 `engineering-principles.md`，入口和 IDE 兼容规则只做链接，避免 DOC-037 瘦身后丢失“先想后写 / 极简主义 / 手术式改动 / 目标驱动”。 | [Engineering Principles](../03-engineering-governance/01-rules/engineering-principles.md) |
 | DOC-039 | DOC | 🟢 Done | P2 | P3 | 增强工程文档脚本门禁 | 将稳定编号、Done 入账、入口同步和脚本候选清单反查纳入 `scripts/check-engineering-docs`，并补工程脚本回归测试。 | [Quality Gates](../03-engineering-governance/01-rules/quality-gates.md) |
 | DOC-065 | DOC | 🟢 Done | P1 | P3 | 规则瘦身、任务池插入规则与开工硬门禁收口 | PR #244 merged：压缩工程规则为硬门禁 + 跳转；补 Windows / Claude Code 开工三连、禁止绕过门禁、任务池索引与插入顺序。 | [Technical Debt](../03-engineering-governance/technical-debt.md#doc-065) / [PR #244](https://github.com/MarkDanile/MetaEduBase/pull/244) |
-| DOC-066 | DOC | 🟡 Doing | P2 | P3 | 任务池主表插入顺序门禁 | 将 Backlog / technical-debt 主表“新编号必须在同前缀最后”脚本化，防止后续新任务插入历史编号中间。 | [Technical Debt](../03-engineering-governance/technical-debt.md#doc-066) |
+| DOC-066 | DOC | 🟢 Done | P2 | P3 | 任务池主表插入顺序门禁 | PR #246 merged：将 Backlog / technical-debt 主表“新编号必须在同前缀最后”脚本化，防止后续新任务插入历史编号中间。 | [Technical Debt](../03-engineering-governance/technical-debt.md#doc-066) / [PR #246](https://github.com/MarkDanile/MetaEduBase/pull/246) |
 
 ## 状态迁移
 
