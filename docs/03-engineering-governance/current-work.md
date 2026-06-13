@@ -22,7 +22,6 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| TD-053 `rebuild_document_chunks` fallback 未算 section_path | ⚪ 待澄清 | P1 | RAG / 数据完整性 / 文档解析 | 已在 `technical-debt.md` 详情段登记（证据 / AC / 验证 / 交付记录三要素齐全）。下一步：补 pytest 锁死 fallback path 非空 + 跑 1 个老数据 file 验证。 |
 | TD-054 重建后 offset_overlaps 反而 +3% | ⚪ 待澄清 | P1 | RAG / 数据完整性 / 文档解析 | 已在 `technical-debt.md` 详情段登记。下一步：先判断是设计性 neighbor overlap 还是 off-by-one bug——看 `chunker.py` 顶部注释和 `_enforce_size_limit` 实现。 |
 | TD-056 TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | ⚪ 待澄清 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-055 修复合片审计发现 `rebuild_document_chunks`（rebuild_chunks.py:173）同样吞返回值。已在 `technical-debt.md` 详情段登记。下一步：grep 全仓 `asyncio.run(_run_in_session(`，每个调用点补 `return`。 |
 
