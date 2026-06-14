@@ -160,6 +160,7 @@
 | TD-064 | ds_extract_kg 返 KG entity/relation counts dict | 🟢 完成 | P1 | 后端 / Structured Data / KG | TD-057 slice 8：ds_extract_kg._do 返 `{"entities": len(name_to_node_id), "relations": len(kg_data.get("relations", []))}` dict；outer 补 `return`。caller 拿到实体数 + 关系数。 | [PR #273](https://github.com/MarkDanile/MetaEduBase/pull/273) (merge `8bb8b82`) |
 | TD-065 | ds_embed 返 embedded count int | 🟢 完成 | P1 | 后端 / Structured Data / Embedding | TD-057 slice 9：ds_embed._do 返 `success_count` int；outer 补 `return`。 | [PR #275](https://github.com/MarkDanile/MetaEduBase/pull/275) (merge `f878303`) |
 | TD-066 | ds_cross_dataset_edges 返 cross dataset edges count | 🟢 完成 | P1 | 后端 / Structured Data / KG | TD-057 9 个 follow-up 列表（commit 49a964a 父任务总账）包含的"剩 6 个 follow-up"收口候选（实际只定义了 8 个 TD-058~TD-065，TD-066 是 parent 总账描述中预留的下一个 `_do` 编号）。`ds_cross_dataset_edges._do` 是 structured_data pipeline 最后一步（chain 由 ds_extract_kg 触发），caller 拿到新建跨数据集边数后可直接评估跨数据集 KG 链接构建质量。 | [PR #280](https://github.com/MarkDanile/MetaEduBase/pull/280) (merge `c343de7`) |
+| TD-067 | LLM 抽取 `teaching_plan` / `practice_links` 失败返 `-` | 🔵 就绪 | P2 | 后端 / 模板抽取 / LLM prompt | 2026-06-14 全链路评估人才培养方案文件复测：模板 `人才培养方案` 期望 `teaching_plan: array[semester]` 38 课程 × 6 学期课时表 + `practice_links: table` 实践环节；LLM 返 `-`（未抽取）。`curriculum_system: array[course]` 38 门课正确抽取、`basic_info` 5 字段准 — 抽取链路"懂简单数组，不懂嵌套课时表"。需在 `extract_template_prompts.py` 补 few-shot 示例（教学进程表 + 实践环节表）。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -3206,6 +3207,11 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
     - 修前 1/5 fail（overlap 暴露 prev=[4,16) curr=[4,…）；修后 5/5 pass
   - ruff clean / `git diff --check` clean / `scripts/check-engineering-docs` 退出码 0
   - 任务整体保持 🔵 就绪——真 PG 跑 25 文件 rebuild + `chunk_quality_report.py` offset_overlaps ≤ 52.61% 留维护者下次接力（colima / docker 当前可达）
+- 2026-06-14 复测（入手工具：Claude Code / 全链路评估人才培养方案文件）：**未修复，复测进一步恶化**。样本 `01-人才培养方案环境监测技术专业.pdf` (file_id=58370650-..., 28 chunks)：
+  - `section_path_empty = 28/28 (100%)` —— 与历史基线持平；`section_path` / `section_title` 修复仍未生效
+  - `offset_overlaps = 23/28 (82.14%)` —— vs 历史基线 55.63% / 52.61% 进一步恶化 +26.51~29.51 pct
+  - 推测真因：PR #234 Slice 3 修复只覆盖 `_enforce_size_limit` 拆分传递 char_start，**未覆盖 `_enforce_size_limit` 之前**的 `chunk_by_structure` 阶段在切 section 时是否生成本身就 overlap（22/28 overlap 接近全部 chunks → 几乎每对都 overlap，强烈暗示问题在更上游或拆分逻辑本身）
+  - 任务优先级 P1 不变；建议下个 PR 重新定位：先看 28 chunks 实际 offset 序列再下结论
 
 ### TD-055: `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数
 
@@ -3924,3 +3930,59 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
   - ruff clean / `git diff --check` clean
   - TD-066 翻完成依据：PR #280 state=MERGED + merge commit `c343de7` 已在 main + 4 mock pytest 全过 + ruff clean + 0 业务代码回归
   - 任务整体保持 🟢 完成——真 PG 端到端留维护者
+
+### TD-067: LLM 抽取 `teaching_plan` / `practice_links` 失败返 `-`
+
+状态：🔵 就绪
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 后端 / 模板抽取 / LLM prompt |
+| 事实源 | 2026-06-14 全链路评估人才培养方案文件（`01-人才培养方案环境监测技术专业.pdf`）时复测发现：模板 `人才培养方案`（id=50070278-...）期望 `teaching_plan: array[semester]` 含 38 课程 × 6 学期课时表 + `practice_links: table` 实践环节 6 项；LLM 实际抽取后 `teaching_plan = "-"` + `practice_links = "-"`。同时 `curriculum_system: array[course]` 38 门课**正确**抽取、`basic_info` 5 字段**准确**——说明抽取链路"懂简单数组（课程名列表），不懂嵌套课时表 + 表格"。 |
+
+**证据**
+
+- 模板字段定义（`packages/server-python/app/contexts/document/application/tasks/extract_template_prompts.py` + templates 表）：
+  - `curriculum_system: array` `items.object { course: text }` —— 38 课程名字符串列表已抽出
+  - `teaching_plan: array` `items.object { semester: object { ... 周课时 ... } }` —— 嵌套 6 学期 × 38 课程表
+  - `practice_links: table` 实践环节分类表（社会实践 / 劳动 / 实训 / 综合实训 / 顶岗实习）
+- 真 PG 抽取结果（`structured_data.template` JSON 完整 dump）：
+  - `curriculum_system: 38 items` ✓
+  - `teaching_plan: "-"` ❌
+  - `practice_links: "-"` ❌
+  - `degree_requirements: { gpa: "-", min_credits: "-", english_level: "-", other_requirements: "-" }` ⚠️（本 PDF 文本中"总学时 3000~3300 / 总学分 ≥170"实际有，但 LLM 未抽到）
+  - `graduation_requirements: "-"` ⚠️（PDF 十七节"毕业要求"实际有，但 LLM 抽到 "-"，只在"学位要求"区分下不准确）
+- PDF 实际章节（来自 `full_text`）：
+  - 八、课程设置与要求——含 5 子表（公共基础课 / 专业核心课 / 方向课 / 选修课 / 顶岗实习）
+  - 九、教学进程总体安排——含 (二) 教学进程安排（**6 学期课时分配表**）+ (三) 独立设置的实践性教学安排表
+  - 十六、学习评价 + 十七、毕业要求
+
+**问题**
+
+- LLM 抽取 prompt 未给出"嵌套课时表" / "实践环节表" 模板示例，遇到复杂 schema 退化为 `-`。
+- 简单字段（`basic_info: object` 5 字段、单个文本 `training_objective: textarea`、简单数组 `curriculum_system`）**抽取正确**。
+- 复杂字段（嵌套 `array[object]`，`table` 多行多列）**抽取失败**。
+- 用户视觉上"抽取完成"（`status: processed`）但实际数据缺——**比完全失败更具误导性**。
+
+**完成标准**
+
+- `extract_template_prompts.py` 增加 2~3 个 few-shot 示例：
+  - 例 1：嵌套 `array[object]` 课时表（semester / course / hours 格式）
+  - 例 2：`table` 多行多列（如实践环节表）
+  - 例 3：`object` 多字段（如 `degree_requirements` 4 字段）
+- 重新上传同 1 个 PDF → 真 PG 查 `teaching_plan` / `practice_links` / `degree_requirements` 至少 2/3 不为 `-`
+- 1 mock pytest 锁死新 prompt（snapshot 关键示例存在）
+- 不引入新 bug：保持现有 38 课程列表 + basic_info 5 字段抽取正确不回归
+
+**验证方式**
+
+- 真 PG：上传 1 个含课时表的 PDF → 查 `teaching_plan` 包含 6 个 semester 元素
+- 真 PG：上传 1 个含实践环节表的 PDF → 查 `practice_links` 包含 ≥ 3 行
+- `pytest` 全 mock-based 414+ 仍 pass
+- `ruff clean` / `git diff --check clean` / `check-engineering-docs` 退出码 0
+
+**交付记录**
+
+- 2026-06-14 登记（入手工具：Claude Code / 全链路评估人才培养方案文件）。本次只入账总览 + 详情段；未提 PR、未修业务代码 / prompt。
+- 实际修复留维护者下个 PR；任务卡就绪（事实源 / 证据 / 完成标准 / 验证方式齐全）。
