@@ -16,13 +16,12 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| BUG-004 `document_tasks` 级联删除部分失效 | 🟢 完成 | P2 | 后端 / 数据完整性 / 文档上下文 | PR #251 squash merge `ce23ed2`：3 个 repo delete 返 int + CleanupReport dataclass + 真 PG 跑 cleanup_orphan_tasks 删 1178 orphan tasks（1178 -> 0）+ check_orphans.py 4 表扫描全 0；3 mock pytest 锁死行为契约。 | 0（BUG-004 收口） | 真 PG cleanup_orphan_tasks dry-run 1178 / 跑后 0；check_orphans.py 输出 0/4 表 orphan；ruff clean；3 mock pytest 全过；0 业务代码回归。 |
+| TD-054 重建后 offset_overlaps 反而 +3% | 🟡 进行中 | P1 | RAG / 数据完整性 / 文档解析 | 切 `fix/td-054-chunker-offset-overlap-bug`；已读 `chunker.py:_split_oversized_chunk` L231-281 发现 3 个 off-by-one bug：L257-261 clause_part 重复 `pos` 值（应为 `pos + 累加 clause 长度`）；L278 `+1` 错（sub 串之间无分隔符）；L255 当句子超 max_chars 时所有 clause 子串共享同一 char_start。按 TD-054 完成标准 pytest 锁死行为 + ruff + git diff --check。 | 写 RED pytest 锁死 `_split_oversized_chunk` 输出 (text, char_start_in_original) 顺序 + 连续 → 实现修 → GREEN → 推 PR。 | mock-based pytest（`_split_oversized_chunk` 输出） + ruff + git diff --check + scripts/check-engineering-docs。真 PG 跑 25 文件 rebuild → chunk_quality_report.py offset_overlaps ≤ 52.61% 留维护者（colima / docker 当前可达，下一次切片可跑）。 |
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| TD-054 重建后 offset_overlaps 反而 +3% | ⚪ 待澄清 | P1 | RAG / 数据完整性 / 文档解析 | 已在 `technical-debt.md` 详情段登记。下一步：先判断是设计性 neighbor overlap 还是 off-by-one bug——看 `chunker.py` 顶部注释和 `_enforce_size_limit` 实现。 |
 | TD-056 TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | ⚪ 待澄清 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-055 修复合片审计发现 `rebuild_document_chunks`（rebuild_chunks.py:173）同样吞返回值。已在 `technical-debt.md` 详情段登记。下一步：grep 全仓 `asyncio.run(_run_in_session(`，每个调用点补 `return`。 |
 
 ## 最近完成

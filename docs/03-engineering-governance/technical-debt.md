@@ -147,7 +147,7 @@
 | TD-051 | 治理 `document_chunks` 结构元数据、切片质量与既有数据重建 | 🟢 完成 | P1 | RAG / 数据完整性 / 文档解析 / AI Chat | PR #234 已合并（merge `ffccc6c`）；7 个 slice 合 1 PR；AC-1~AC-7 全部覆盖。 |
 | TD-052 | `check-engineering-docs` 秒级反馈优化（增量 source size + 批量 git log + timing） | 🟢 完成 | P2 | 工程脚本 / 质量门禁 / 性能 | [PR #232](https://github.com/MarkDanile/MetaEduBase/pull/232) 已合并：默认门禁 0.36s；`--full` 保留全量审计 0.94s；新增 `--timing`。 |
 | TD-053 | `rebuild_document_chunks` fallback 未算 `section_path` → 老数据走 fallback 时 section_path 仍 100% 空 | 🟢 完成 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：`scripts/ai/chunk_quality_report.py` 重建后基线 section_path_empty 1562/1562（100%）与重建前持平。 |
-| TD-054 | 重建后 `offset_overlaps` 反而 +3% → chunker 跨 section `char_start` 计算或 `_enforce_size_limit` 拆分逻辑仍有问题 | ⚪ 待澄清 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：重建前 816（52.61%）→ 重建后 869（55.63%）。`chunker._enforce_size_limit` 拆分后子 chunk 继承父 chunk offset 的边界条件可能错位。 |
+| TD-054 | 重建后 `offset_overlaps` 反而 +3% → chunker 跨 section `char_start` 计算或 `_enforce_size_limit` 拆分逻辑仍有问题 | 🔵 就绪 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：重建前 816（52.61%）→ 重建后 869（55.63%）。`chunker._enforce_size_limit` 拆分后子 chunk 继承父 chunk offset 的边界条件可能错位。 |
 | TD-055 | `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-051 本机重建（PR #235）暴露：直接调 `cleanup_orphan_chunks(tid_str)` 返回 None（应返回 deleted count），运维只能查 SQL 二次验证。 |
 | TD-056 | TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | ⚪ 待澄清 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-055 修复时审计：rebuild_chunks.py:173 `rebuild_document_chunks` 同样 `asyncio.run(_run_in_session(_do))` 未接返回值，但 rebuild 通过 logger.info 写 chunk 数量掩盖了。需扫描所有 `_run_in_session` 调用点。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
@@ -3138,7 +3138,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-054: 重建后 `offset_overlaps` 反而 +3% → chunker 跨 section `char_start` 计算或 `_enforce_size_limit` 拆分逻辑仍有问题
 
-状态：⚪ 待澄清
+状态：🔵 就绪
 
 | 字段 | 内容 |
 |------|------|
@@ -3183,6 +3183,19 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 **交付记录**
 
 - 2026-06-12 登记（入手工具：Claude Code / TD-051 本机重建期间发现）。本次只入账，不实现。
+- 2026-06-12 修复合片（分支 `fix/td-054-chunker-offset-overlap-bug`，PR 待提）：
+  - 修 `packages/server-python/app/shared/parsing/chunker.py:_split_oversized_chunk` 3 个 off-by-one bug：
+    - L257-261 clause_part 重复 `pos` 值（修：用 `clause_cursor = pos; for part in clause_parts[:-1]: result.append((part, clause_cursor)); clause_cursor += len(part)`）
+    - L278 sub_start 加 1 错（修：`_split_by_characters` 不插入分隔符，去掉 +1，用 `sub_cursor = piece_start; for part in sub: ...; sub_cursor += len(part)`）
+  - 新增 `packages/server-python/tests/shared/test_chunker_offset_overlap_td054.py` 5 mock-based pytest（用 `itertools.pairwise` 避免 B905 strict 警告）：
+    - test_split_returns_strictly_monotonic_starts（主断言：char_start 单调）
+    - test_split_returns_non_overlapping_pairs（regression lock：pair 互不重叠）
+    - test_split_concatenating_pieces_reconstructs_text（pieces 拼回原文本）
+    - test_split_handles_short_text_without_splitting（短文本不切）
+    - test_split_oversized_sentence_produces_distinct_starts（regression lock for duplicate-pos bug）
+    - 修前 1/5 fail（overlap 暴露 prev=[4,16) curr=[4,…）；修后 5/5 pass
+  - ruff clean / `git diff --check` clean / `scripts/check-engineering-docs` 退出码 0
+  - 任务整体保持 🔵 就绪——真 PG 跑 25 文件 rebuild + `chunk_quality_report.py` offset_overlaps ≤ 52.61% 留维护者下次接力（colima / docker 当前可达）
 
 ### TD-055: `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数
 
