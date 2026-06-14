@@ -136,9 +136,16 @@ def embed_chunks(file_id_str: str, tenant_id_str: str, pipeline_version: str = "
 
             index_tsvector.delay(file_id_str, tenant_id_str, pipeline_version)
 
+            # TD-059 fix: return the embedded chunk count so the
+            # outer `asyncio.run(_run_in_session(_do))` call (L150)
+            # can propagate the int back to the caller. Same
+            # pattern as TD-055 / TD-056 / TD-057 slice 1 / TD-058.
+            return len(chunks)
+
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
             await session.commit()
             raise
 
-    asyncio.run(_run_in_session(_do))
+    # TD-059 fix: capture asyncio.run's return value.
+    return asyncio.run(_run_in_session(_do))

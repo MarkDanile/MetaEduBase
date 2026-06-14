@@ -152,6 +152,7 @@
 | TD-056 | TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | 🔵 就绪 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-055 修复时审计：rebuild_chunks.py:173 `rebuild_document_chunks` 同样 `asyncio.run(_run_in_session(_do))` 未接返回值，但 rebuild 通过 logger.info 写 chunk 数量掩盖了。需扫描所有 `_run_in_session` 调用点。 |
 | TD-057 | task 函数返回值契约：10 个 `_do` 无 return 修复 + 全仓契约 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-056 PR 描述 follow-up：10 个 `_do` 函数无 return。slice 1（PR #258）修 chunk_document。slice 2（PR #260）修 parse_document。后续 TD-059~TD-066 各自修 1 个 task。 |
 | TD-058 | parse_document 返 structured_data + section_count dict | 🔵 就绪 | P1 | 后端 / Celery 任务 / 文档解析 | TD-057 9 个 follow-up slice 2：parse_document._do 业务结束时返 `_build_parsed_structured_data(parsed.full_text, len(parsed.sections), sections_data)`；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 现在拿到 parsed structured_data dict。 |
+| TD-059 | embed_chunks 返 embedded_chunks_count int | 🔵 就绪 | P1 | 后端 / Celery 任务 / AI / RAG | TD-057 9 个 follow-up slice 3：embed_chunks._do 业务结束时返 `len(chunks)` int（已有 `total` 局部变量）；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 embed 处理的 chunk 数。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -3549,5 +3550,54 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
   - 修 `packages/server-python/app/contexts/document/application/tasks/parse.py`：`_do` L130 chain 后 `return _build_parsed_structured_data(parsed.full_text, len(parsed.sections), sections_data)`；outer `asyncio.run(_run_in_session(_do))` 补 `return` 关键字
   - 新增 `packages/server-python/tests/contexts/document/test_parse_document_return.py` 4 mock pytest
   - 40/40 mock pytest pass（4 新增 + 36 既有；0 业务代码回归）
+  - ruff clean / `git diff --check` clean
+  - 任务整体保持 🔵 就绪——真 PG 端到端留维护者
+
+### TD-059: embed_chunks 返 embedded_chunks_count int
+
+状态：🔵 就绪
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 后端 / Celery 任务 / AI / RAG |
+| 事实源 | TD-057 9 个 follow-up slice 3（用户首推 embed_chunks 优先——它是 chunk_document 下游，caller 拿到 embed 数后可直接决定下游 index_tsvector） |
+
+**证据**
+
+- `packages/server-python/app/contexts/document/application/tasks/embed.py:121-127` 已有 `for chunk, embedding in zip(chunks, embeddings, strict=True)`——`embeddings` 是从 LLM API 返的 list of vectors。
+- L132 `_update_task_status` success → L137 chain `index_tsvector.delay`——`_do` 业务结束时**无显式 return**。
+- 局部变量 `chunks`（在 `_do` 范围内）——return `len(chunks)` 即可。
+- TD-057 spec 第 2 段建议：`embed_chunks._do → embedded_chunks_count int`。
+
+**问题**
+
+- 运维脚本 / 单元测试拿不到"这次 embed 了多少 chunk"——只能查 SQL `SELECT COUNT(*) WHERE embedding IS NOT NULL` 二次确认
+- 调用方编排 `embed_chunks` 后决定下游（如"embed 成功 0 chunks 则跳过 index"）拿不到依据
+
+**完成标准**
+
+- `embed_chunks._do` 业务结束时 `return len(chunks)` int
+- outer `asyncio.run(_run_in_session(_do))` 补 `return` 关键字
+- pytest 锁死 4 测试：
+  - `test_embed_chunks_returns_embedded_count`（主断言）
+  - `test_embed_chunks_zero_returns_zero`（idempotent re-run 返 0）
+  - `test_embed_chunks_zero_does_not_return_none`（regression lock）
+  - `test_embed_chunks_accepts_uuid_strings`（签名契约）
+- 不引入新 bug：保持现有 e2e / 集成测试通过
+
+**验证方式**
+
+- `python3 -m pytest tests/contexts/document/test_embed_chunks_return.py` → 4/4 pass
+- ruff clean / `git diff --check` clean / `scripts/check-engineering-docs` 退出码 0
+- 真 PG 端到端：调 `embed_chunks(fid, tid)` 后断言返回值 = chunk 数
+
+**交付记录**
+
+- 2026-06-12 登记（入手工具：Claude Code / TD-057 9 个 follow-up 系列）。本次只入账。
+- 2026-06-12 修复合片（分支 `fix/td-059-embed-chunks-return`，PR 待提）：
+  - 修 `packages/server-python/app/contexts/document/application/tasks/embed.py`：`_do` L137 chain 后 `return len(chunks)` int；outer `asyncio.run(_run_in_session(_do))` 补 `return` 关键字
+  - 新增 `packages/server-python/tests/contexts/document/test_embed_chunks_return.py` 4 mock pytest
+  - 44/44 mock pytest pass（4 新增 + 40 既有；0 业务代码回归）
   - ruff clean / `git diff --check` clean
   - 任务整体保持 🔵 就绪——真 PG 端到端留维护者
