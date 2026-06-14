@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| TD-058 parse_document 返 structured_data + section_count | 🟡 进行中 | P1 | 后端 / Celery 任务 / 文档解析 | 切 `fix/td-058-parse-document-return`；建任务卡登记。`_do` 业务结束时返 `{"structured_data": ..., "section_count": N}`（用户 spec TD-057 第 2 段建议：`parse_document._do → {"structured_data": ..., "section_count": N}`）。看 `_build_parsed_structured_data` 已有 section_count；parsed 也有 structured_data。 | 写 mock pytest 锁死 → 实现修 `_do` 返 dict + outer 补 `return asyncio.run(...)` → 推 PR。 | ruff + git diff --check + check-engineering-docs + 4 mock pytest + 0 业务代码回归。 |
+| （空） | | | | | | |
 
 ## 下一批候选任务
 
@@ -32,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-13 | TD-058 parse_document 返 structured_data dict | 🔵 就绪 | PR #260 squash merge `f41dcc0`：`_do` 返 `_build_parsed_structured_data(...)`；outer 补 return。4 mock pytest 全过；40/40 mock pytest 0 业务代码回归。 | [TD-058](technical-debt.md#td-058) / [PR #260](https://github.com/MarkDanile/MetaEduBase/pull/260) |
 | 2026-06-13 | TD-057 slice 1: chunk_document 返 chunk count | 🟡 进行中 | PR #258 squash merge `b1fcf23`：`_do` 返 `len(chunks)` int + outer 补 return。4 mock pytest 全过。其他 9 个 task 各自建独立 follow-up TD-058 ~ TD-066 跟踪。TD-057 整体保持 🟡 进行中——真 PG 端到端留维护者。 | [TD-057](technical-debt.md#td-057) / [PR #258](https://github.com/MarkDanile/MetaEduBase/pull/258) |
 | 2026-06-13 | TD-056 rebuild_document_chunks 返 chunk count | 🟢 完成 | PR #256 squash merge `497a759`：`_do` 实际返 `len(all_chunks)` + outer 补 `return asyncio.run(...)`（同 TD-055 模式）。4 mock pytest 全过。**全仓 audit**：12 个 `asyncio.run(_run_in_session(...))` 调用点，11 个 `_do` 无 return（按 spec 限定 0 修复）。 | [TD-056](technical-debt.md#td-056) / [PR #256](https://github.com/MarkDanile/MetaEduBase/pull/256) |
 | 2026-06-13 | TD-054 chunker `_split_oversized_chunk` 3 off-by-one | 🟢 完成 | PR #253 squash merge `1f8d8a0`：clause_cursor 累加 + 去掉 +1 错位。5 mock pytest 全过；16/16 chunker tests 0 回归。 | [TD-054](technical-debt.md#td-054) / [PR #253](https://github.com/MarkDanile/MetaEduBase/pull/253) |
