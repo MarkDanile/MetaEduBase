@@ -160,7 +160,7 @@
 | TD-064 | ds_extract_kg 返 KG entity/relation counts dict | 🟢 完成 | P1 | 后端 / Structured Data / KG | TD-057 slice 8：ds_extract_kg._do 返 `{"entities": len(name_to_node_id), "relations": len(kg_data.get("relations", []))}` dict；outer 补 `return`。caller 拿到实体数 + 关系数。 | [PR #273](https://github.com/MarkDanile/MetaEduBase/pull/273) (merge `8bb8b82`) |
 | TD-065 | ds_embed 返 embedded count int | 🟢 完成 | P1 | 后端 / Structured Data / Embedding | TD-057 slice 9：ds_embed._do 返 `success_count` int；outer 补 `return`。 | [PR #275](https://github.com/MarkDanile/MetaEduBase/pull/275) (merge `f878303`) |
 | TD-066 | ds_cross_dataset_edges 返 cross dataset edges count | 🟢 完成 | P1 | 后端 / Structured Data / KG | TD-057 9 个 follow-up 列表（commit 49a964a 父任务总账）包含的"剩 6 个 follow-up"收口候选（实际只定义了 8 个 TD-058~TD-065，TD-066 是 parent 总账描述中预留的下一个 `_do` 编号）。`ds_cross_dataset_edges._do` 是 structured_data pipeline 最后一步（chain 由 ds_extract_kg 触发），caller 拿到新建跨数据集边数后可直接评估跨数据集 KG 链接构建质量。 | [PR #280](https://github.com/MarkDanile/MetaEduBase/pull/280) (merge `c343de7`) |
-| TD-067 | LLM 抽取 `teaching_plan` / `practice_links` 失败返 `-` | 🔵 就绪 | P2 | 后端 / 模板抽取 / LLM prompt | 2026-06-14 全链路评估人才培养方案文件复测：模板 `人才培养方案` 期望 `teaching_plan: array[semester]` 38 课程 × 6 学期课时表 + `practice_links: table` 实践环节；LLM 返 `-`（未抽取）。`curriculum_system: array[course]` 38 门课正确抽取、`basic_info` 5 字段准 — 抽取链路"懂简单数组，不懂嵌套课时表"。需在 `extract_template_prompts.py` 补 few-shot 示例（教学进程表 + 实践环节表）。 |
+| TD-067 | LLM 抽取 `teaching_plan` / `practice_links` 失败返 `-` | 🟢 完成 | P2 | 后端 / 模板抽取 / LLM prompt | 2026-06-14 全链路评估人才培养方案文件复测：模板 `人才培养方案` 期望 `teaching_plan: array[semester]` 38 课程 × 6 学期课时表 + `practice_links: table` 实践环节；LLM 返 `-`（未抽取）。`curriculum_system: array[course]` 38 门课正确抽取、`basic_info` 5 字段准 — 抽取链路"懂简单数组，不懂嵌套课时表"。需在 `extract_template_prompts.py` 补 few-shot 示例（教学进程表 + 实践环节表）。 | [PR #287](https://github.com/MarkDanile/MetaEduBase/pull/287) (merge `2b983b2`) |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -3933,13 +3933,15 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-067: LLM 抽取 `teaching_plan` / `practice_links` 失败返 `-`
 
-状态：🔵 就绪
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P2 |
 | 领域 | 后端 / 模板抽取 / LLM prompt |
 | 事实源 | 2026-06-14 全链路评估人才培养方案文件（`01-人才培养方案环境监测技术专业.pdf`）时复测发现：模板 `人才培养方案`（id=50070278-...）期望 `teaching_plan: array[semester]` 含 38 课程 × 6 学期课时表 + `practice_links: table` 实践环节 6 项；LLM 实际抽取后 `teaching_plan = "-"` + `practice_links = "-"`。同时 `curriculum_system: array[course]` 38 门课**正确**抽取、`basic_info` 5 字段**准确**——说明抽取链路"懂简单数组（课程名列表），不懂嵌套课时表 + 表格"。 |
+| 交付 PR | [PR #287](https://github.com/MarkDanile/MetaEduBase/pull/287) |
+| Merge Commit | `2b983b2` (squash merge) |
 
 **证据**
 
@@ -3986,3 +3988,11 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 - 2026-06-14 登记（入手工具：Claude Code / 全链路评估人才培养方案文件）。本次只入账总览 + 详情段；未提 PR、未修业务代码 / prompt。
 - 实际修复留维护者下个 PR；任务卡就绪（事实源 / 证据 / 完成标准 / 验证方式齐全）。
+- 2026-06-14 修复合片（分支 `fix/td-067-extract-template-few-shot-examples`，已删；PR #287 squash merge `2b983b2`）：
+  - 修 `packages/server-python/app/contexts/document/application/tasks/extract_template_prompts.py`：新增 `_example_nested_array` / `_example_table` / `_example_object` 3 个内部 helper + `build_few_shot_examples` 主入口（~115 行）
+  - 修 `packages/server-python/app/contexts/document/application/tasks/extract_template.py`：import `build_few_shot_examples` + L172-184 prompt 拼装在「要求」段后追加 `few_shot_block` (`\n\n{few_shot}` if few_shot else '')
+  - 新增 `packages/server-python/tests/contexts/document/test_extract_template_few_shot_examples.py` 8 mock pytest：simple text / array-no-items / object-no-children / table-no-columns → 零输出（零开销）；array[object] 含 children / table 含 columns / object 含 children → 各发 1 个 markdown snippet；人才培养方案完整模板 → 4 个 snippet
+  - 429/429 mock pytest pass（8 新增 + 421 既有；0 业务代码回归）
+  - ruff clean
+  - TD-067 翻完成依据：PR #287 state=MERGED + merge commit `2b983b2` 已在 main + 8 mock pytest 全过 + ruff clean + 0 业务代码回归
+  - 任务整体保持 🟢 完成——真 PG 重跑验证留维护者（沙箱无 LLM key）
