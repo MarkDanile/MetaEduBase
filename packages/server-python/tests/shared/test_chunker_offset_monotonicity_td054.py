@@ -66,26 +66,33 @@ def test_chunk_offsets_strictly_monotonic_within_section() -> None:
 
 # === Test 2: local_offset only advances on new chunk ===
 def test_local_offset_advances_only_on_new_chunk() -> None:
-    """Short sentences merged into last chunk must not advance local_offset.
+    """After merge branches fire, new chunks must still be non-overlapping.
 
     Regression lock: 旧逻辑 char_offset += sent_len + 1 在合并分支也执行，
     让下一个新建 chunk 的 char_start 偏低。修复后合并分支 local_offset 不变。
 
-    Fixture: 3 long sentences, each 600 chars, target=500 → forces 3 separate
-    chunks (each sentence alone exceeds target, merge branch never fires).
-    Validates local_offset advances exactly by len(sentence) per new chunk.
+    Fixture: 2 small sentences merge into 1 chunk (via L124 branch);
+    1 long sentence triggers L132 "small+long" merge; then 1 more long
+    sentence forces a NEW chunk via else branch. After _enforce_size_limit
+    splits the merged chunk back, we may see 3 chunks (short, long1, long2).
+    The key invariant: NO consecutive overlap.
+    target_chars=200.
     """
-    sentence = "长句" + "内容" * 100 + "结束。"  # ~205 chars
-    text = sentence * 3
+    short1 = "短句一。"  # 4 chars
+    short2 = "短句二。"  # 4 chars
+    long1 = "长句" + "内容" * 100 + "结束。"  # ~205 chars
+    long2 = "又长句" + "内容" * 100 + "结束。"  # ~207 chars
+    text = short1 + short2 + long1 + long2
     parsed = _parsed(text)
 
     chunks = chunk_by_structure(parsed, target_chars=200)
 
+    # Critical: NO consecutive overlap. Bug pre-fix would have
+    # chunk[1].char_start < chunk[0].char_end (e.g. cs=9 vs ce=10).
     assert len(chunks) >= 2, f"expected ≥2 chunks, got {len(chunks)}"
-    assert len(chunks[0].content) > 0
     for prev, curr in zip(chunks, chunks[1:], strict=False):
         assert curr.char_start >= prev.char_end, (
-            f"overlap: prev=[{prev.char_start},{prev.char_end}) "
+            f"overlap after merge: prev=[{prev.char_start},{prev.char_end}) "
             f"curr=[{curr.char_start},{curr.char_end})"
         )
 
