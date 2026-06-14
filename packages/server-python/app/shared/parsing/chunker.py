@@ -71,7 +71,11 @@ def chunk_by_structure(
     """
     chunks: list[Chunk] = []
     chunk_index = 0
-    char_offset = section_offset
+    # TD-054 round 2 fix: 重命名 char_offset → local_offset, 语义改为
+    # "已累积的 chunk 实际长度"（绝对偏移 = section_offset + 局部偏移）。
+    # 旧 char_offset 在合并分支也 + sent_len + 1, 且 _enforce_size_limit
+    # 拆分后未校准, 导致 offset_overlaps 恶化 52.61% → 82.14%。
+    local_offset = section_offset
 
     for section in parsed.sections:
         text = section.content.strip()
@@ -104,12 +108,14 @@ def chunk_by_structure(
                             content=sentence,
                             section_title=section.title,
                             section_path=section.path,
-                            char_start=char_offset,
-                            char_end=char_offset + sent_len,
+                            char_start=local_offset,
+                            char_end=local_offset + sent_len,
                             index=chunk_index,
                         )
                     )
-                    char_offset += sent_len + 1
+                    # TD-054 fix: 仅在新建 chunk 时累加真实 chunk 长度,
+                    # 去掉 phantom +1 (sentence 间分隔符不固定)
+                    local_offset += sent_len
                     chunk_index += 1
                 else:
                     last = chunks[-1]
@@ -132,12 +138,13 @@ def chunk_by_structure(
                                     content=sentence,
                                     section_title=section.title,
                                     section_path=section.path,
-                                    char_start=char_offset,
-                                    char_end=char_offset + sent_len,
+                                    char_start=local_offset,
+                                    char_end=local_offset + sent_len,
                                     index=chunk_index,
                                 )
                             )
-                            char_offset += sent_len + 1
+                            # TD-054 fix: 新建 chunk 时累加真实长度
+                            local_offset += sent_len
                             chunk_index += 1
 
     # Step 4: enforce chunk size hard limit by recursively splitting oversized chunks
