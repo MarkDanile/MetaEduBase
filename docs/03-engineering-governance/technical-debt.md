@@ -150,6 +150,7 @@
 | TD-054 | 重建后 `offset_overlaps` 反而 +3% → chunker 跨 section `char_start` 计算或 `_enforce_size_limit` 拆分逻辑仍有问题 | 🔵 就绪 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：重建前 816（52.61%）→ 重建后 869（55.63%）。`chunker._enforce_size_limit` 拆分后子 chunk 继承父 chunk offset 的边界条件可能错位。 |
 | TD-055 | `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-051 本机重建（PR #235）暴露：直接调 `cleanup_orphan_chunks(tid_str)` 返回 None（应返回 deleted count），运维只能查 SQL 二次验证。 |
 | TD-056 | TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | 🔵 就绪 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-055 修复时审计：rebuild_chunks.py:173 `rebuild_document_chunks` 同样 `asyncio.run(_run_in_session(_do))` 未接返回值，但 rebuild 通过 logger.info 写 chunk 数量掩盖了。需扫描所有 `_run_in_session` 调用点。 |
+| TD-057 | task 函数返回值契约：10 个 `_do` 无 return 修复 + 全仓契约 | 🟡 进行中 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-056 PR 描述 follow-up：全仓 audit 后 10 个 `_do` 函数（parse_document / chunk_document / embed_chunks / index_tsvector / extract_template / extract_knowledge_graph / ds_parse / ds_extract_kg / ds_embed / ds_cross_dataset_edges）`asyncio.run(_run_in_session(_do))` 调用点处 `_do` 内部无 return——caller 拿不到任何值。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -3450,3 +3451,54 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 **交付记录**
 
 - 2026-06-12 入账 + 收口（接手工具：Codex），1 PR（[PR #232](https://github.com/MarkDanile/MetaEduBase/pull/232) / merge commit `2d3697c` / 分支 `docs/td-052-check-docs-incremental-source-size`）。完成要点：`source_size_hard_limit` 默认改为 changed-only，`--full` 保留全量扫；`task_pr_consistency` 从 61 次串行 `git log --grep` 改为一次 git log 后内存匹配；新增 `--timing`。`scripts/check-engineering-docs` 默认 `real 0.36`，`--full` `real 0.94`；29 个工程测试通过；ruff 相关文件通过。
+
+### TD-057: task 函数返回值契约：10 个 `_do` 无 return 修复 + 全仓契约
+
+状态：🟡 进行中
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 后端 / Celery 任务 / 运维可观测性 |
+| 事实源 | TD-056 PR 描述 follow-up：全仓 audit 后 10 个 `_do` 函数（parse_document / chunk_document / embed_chunks / index_tsvector / extract_template / extract_knowledge_graph / ds_parse / ds_extract_kg / ds_embed / ds_cross_dataset_edges）`asyncio.run(_run_in_session(_do))` 调用点处 `_do` 内部无 return——caller 拿不到任何值 |
+
+**证据**
+
+- TD-056 PR #256 描述 follow-up 段：12 个 `asyncio.run(_run_in_session(...))` 调用点；除 `cleanup_orphan_chunks`（TD-055 已修）和 `rebuild_document_chunks`（TD-056 已修），剩余 10 个调用点 `_do` 函数无 return。
+- `packages/server-python/app/contexts/document/application/tasks/` 7 个文件 + `structured_data/application/tasks/` 4 个文件。
+- 现实现模式：每个 `_do` 业务结束时**无显式 return**（部分用 `logger.info` 写结果，部分直接结束）——`asyncio.run(_run_in_session(_do))` 拿到 None 返回。
+- 这不是 bug（没断言会失败），但**功能性契约缺失**——运维脚本 / 单元测试 / 跨调用方拿不到任务业务结果。
+
+**问题**
+
+- 运维脚本（如 `scripts/ai/check_orphans.py` 类）调 Celery task 时拿不到"成功处理了多少 chunk" / "extract 了多少 kg node"——只能查 SQL 二次确认
+- 单元测试 / 集成测试拿不到 task 业务结果，只能验 task 副作用（DB 状态）
+- 跨调用方编排 task 链时拿不到"上游产了多少数据"做下游决策
+
+**完成标准**
+
+- 每个 `_do` 函数按业务返有意义值（int counts / dict 详细 / None 表示无业务结果）：
+  - `parse_document._do` → `{"structured_data": ..., "section_count": N}` 或 None
+  - `chunk_document._do` → `len(chunks)` int（**本 PR 修**）
+  - `embed_chunks._do` → `embedded_chunks_count` int
+  - `index_tsvector._do` → `indexed_chunks_count` int
+  - `extract_template._do` → `extracted_fields_count` int
+  - `extract_knowledge_graph._do` → `{"nodes": N, "edges": M}` dict
+  - `ds_parse._do` → `parsed_count` int
+  - `ds_extract_kg._do` → `kg_count` int
+  - `ds_embed._do` → `embedded_count` int
+  - `ds_cross_dataset_edges._do` → `edge_count` int
+- 每个 outer `asyncio.run(_run_in_session(_do))` 补 `return` 关键字（同 TD-055/TD-056 模式）
+- pytest 锁死：每 task 1 个 mock test 文件（最少 1 个 `test_*_returns_*_count` + 1 个 `test_*_zero_returns_zero` + 1 个 `test_*_zero_does_not_return_none` + 1 个 `test_*_accepts_uuid_strings`）
+- 不引入新 bug：保持现有 e2e / 集成测试通过（如 `test_p1_demo.py` / `test_p1_rag_evidence_e2e.py`）
+
+**验证方式**
+
+- pytest 锁死 10 个 task × 4 测试 = 40 个新 pytest 全过
+- ruff clean / `git diff --check` clean / `scripts/check-engineering-docs` 退出码 0
+- 真 PG 端到端：调任一 task（如 `chunk_document` 真调用）后断言返回值 = chunk 数
+
+**交付记录**
+
+- 2026-06-12 登记（入手工具：Claude Code / TD-056 PR 描述 follow-up）。本次只入账。
+- 2026-06-12 修复合片进行中（分支 `fix/td-057-task-function-return-contracts`）：本 PR 修 `chunk_document._do` 返 `len(chunks)` int（4 mock pytest 全过）。**其他 9 个 task 修复合片按 git-workflow.md#PR 范围边界原则独立建 follow-up TD-058 ~ TD-066 跟踪**——避免大 PR。
