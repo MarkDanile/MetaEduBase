@@ -149,3 +149,134 @@ def try_parse(content: str) -> dict:
         return json.loads(stripped[json_start:json_end])
     except (ValueError, json.JSONDecodeError):
         return {}
+
+
+# TD-067: few-shot examples for nested-schema LLM extraction.
+# The LLM successfully extracts simple types (object/text/array of strings)
+# but returns "-" for complex shapes (array[object], table, object[children]).
+# These examples anchor the schema and output format.
+#
+# The output is a stable Markdown string injected into the prompt after
+# the "要求" rules. Each example is a small, hand-curated JSON snippet
+# matching the field's expected shape (truncated where natural).
+
+
+def _example_nested_array(field: dict[str, Any]) -> str:
+    """Few-shot for `array[object]` fields (e.g. teaching_plan).
+
+    Outer key is the field's own key (so the LLM can see the field name);
+    inner key is `items[0].key` (the per-element shape).
+    """
+    field_key = field.get("key", "array_field")
+    items = field.get("items") or []
+    item_obj = items[0] if items else {}
+    item_key = item_obj.get("key", "item")
+    children = item_obj.get("children") or []
+    if children:
+        first_child = children[0]
+        if first_child.get("type") == "object" and first_child.get("children"):
+            sub_lines = ", ".join(
+                f'"{sc.get("key", "?")}": "<值>"'
+                for sc in first_child["children"][:3]
+            )
+            inner = (
+                f'"<{item_key}>": [\n'
+                f'    {{"{first_child.get("key", "?")}": {{{sub_lines}}}}},\n'
+                f'    {{"{first_child.get("key", "?")}": {{{sub_lines}}}}}\n'
+                f'  ]'
+            )
+        else:
+            child_lines = ", ".join(
+                f'"{c.get("key", "?")}": "<{c.get("label", c.get("key", "?"))}>"'
+                for c in children
+            )
+            inner = (
+                f'"<{item_key}>": [\n'
+                f'    {{{child_lines}}},\n'
+                f'    {{{child_lines}}}\n'
+                f'  ]'
+            )
+    else:
+        inner = (
+            f'"<{item_key}>": [\n'
+            f'    {{}},\n'
+            f'    {{}}\n'
+            f'  ]'
+        )
+    return (
+        f'示例（嵌套 array）：\n```json\n{{\n'
+        f'  "<{field_key}>": {inner}\n'
+        f'}}\n```\n'
+    )
+
+
+def _example_table(field: dict[str, Any]) -> str:
+    """Few-shot for `table` fields (e.g. practice_links)."""
+    field_key = field.get("key", "table_field")
+    columns = field.get("columns") or []
+    if columns:
+        col_keys = [c.get("key", "?") for c in columns]
+        col_obj = ", ".join(f'"{k}": "<值>"' for k in col_keys)
+    else:
+        col_obj = '"col1": "<值>", "col2": "<值>"'
+    return (
+        f'示例（table 表格）：\n```json\n{{\n'
+        f'  "<{field_key}>": [\n'
+        f'    {{{col_obj}}},\n'
+        f'    {{{col_obj}}}\n'
+        f'  ]\n'
+        f'}}\n```\n'
+    )
+
+
+def _example_object(field: dict[str, Any]) -> str:
+    """Few-shot for `object` fields with children (e.g. degree_requirements)."""
+    field_key = field.get("key", "object_field")
+    children = field.get("children") or []
+    if children:
+        child_lines = ", ".join(
+            f'"{c.get("key", "?")}": "<{c.get("label", c.get("key", "?"))}>"'
+            for c in children
+        )
+    else:
+        child_lines = '"key": "<值>"'
+    return (
+        f'示例（object 多字段）：\n```json\n{{\n'
+        f'  "<{field_key}>": {{{child_lines}}}\n'
+        f'}}\n```\n'
+    )
+
+
+def build_few_shot_examples(fields: list[Any]) -> str:
+    """TD-067: Build few-shot JSON examples for nested schema fields.
+
+    Scans ``fields`` (list of field dicts from ``Field.to_dict()``) and
+    emits one Markdown snippet per complex-shape field. Simple text/array
+    fields (no items, no children, no columns) are skipped — the LLM
+    already handles those correctly.
+
+    Returns an empty string when no complex field is present (zero overhead
+    for simple templates).
+
+    Output format (joined with blank lines):
+
+        示例（嵌套 array）：
+        ```json
+        { ... }
+        ```
+
+        示例（table 表格）：
+        ```json
+        { ... }
+        ```
+    """
+    snippets: list[str] = []
+    for f in fields:
+        ftype = f.get("type", "")
+        if ftype == "array" and f.get("items"):
+            snippets.append(_example_nested_array(f))
+        elif ftype == "table" and f.get("columns"):
+            snippets.append(_example_table(f))
+        elif ftype == "object" and f.get("children"):
+            snippets.append(_example_object(f))
+    return "\n".join(snippets)
