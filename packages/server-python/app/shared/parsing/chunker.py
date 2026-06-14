@@ -253,12 +253,19 @@ def _split_oversized_chunk(text: str, max_chars: int) -> list[tuple[str, int]]:
             result.append((current, current_start))
             if sent_len > max_chars:
                 clause_parts = _split_by_clauses(sent, max_chars)
-                # Each clause is appended individually with its own start position
-                for i, part in enumerate(clause_parts[:-1]):
-                    part_start = pos if i == 0 else pos
-                    result.append((part, part_start))
+                # TD-054 fix: each clause part gets a distinct
+                # char_start, computed by accumulating prior part
+                # lengths from the sentence's start position.
+                # Previously this branch assigned `pos` to every part,
+                # causing multiple sub-pieces to share the same
+                # char_start and triggering the offset_overlaps
+                # regression in the TD-051 quality report.
+                clause_cursor = pos
+                for part in clause_parts[:-1]:
+                    result.append((part, clause_cursor))
+                    clause_cursor += len(part)
                 current = clause_parts[-1]
-                current_start = pos
+                current_start = clause_cursor
             else:
                 current = sent
                 current_start = pos
@@ -274,9 +281,15 @@ def _split_oversized_chunk(text: str, max_chars: int) -> list[tuple[str, int]]:
             cleaned.append((piece, piece_start))
         else:
             sub = _split_by_characters(piece, max_chars)
-            for i, part in enumerate(sub):
-                sub_start = piece_start + sum(len(p) + 1 for p in sub[:i])
-                cleaned.append((part, sub_start))
+            # TD-054 fix: `_split_by_characters` returns substrings
+            # with NO separator between them — so accumulate prior
+            # lengths WITHOUT the +1 phantom separator. Previously
+            # the +1 caused sub-iteration start positions to drift
+            # and create overlap.
+            sub_cursor = piece_start
+            for part in sub:
+                cleaned.append((part, sub_cursor))
+                sub_cursor += len(part)
 
     return cleaned
 
