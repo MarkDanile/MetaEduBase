@@ -170,4 +170,8 @@ def ds_build_cross_dataset_edges(tenant_id_str: str):
 
         logger.info("Cross-dataset edges created: %d", edges_created)
 
-    asyncio.run(_run_in_session(_do))
+        # TD-066 fix: return the created edge count
+        return edges_created
+
+    # TD-066 fix: capture asyncio.run's return value.
+    return asyncio.run(_run_in_session(_do))
