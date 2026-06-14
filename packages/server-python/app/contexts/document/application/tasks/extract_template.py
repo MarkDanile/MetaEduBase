@@ -223,9 +223,16 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
 
             extract_knowledge_graph.delay(file_id_str, tenant_id_str, pipeline_version)
 
+            # TD-061 fix: return the extracted-field count so the
+            # outer `asyncio.run(_run_in_session(_do))` call (L231)
+            # can propagate the int back to the caller. Same
+            # pattern as TD-055/056/057/058/059/060.
+            return len(template_data)
+
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
             await session.commit()
             raise
 
-    asyncio.run(_run_in_session(_do))
+    # TD-061 fix: capture asyncio.run's return value.
+    return asyncio.run(_run_in_session(_do))
