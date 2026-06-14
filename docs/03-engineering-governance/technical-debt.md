@@ -150,7 +150,8 @@
 | TD-054 | 重建后 `offset_overlaps` 反而 +3% → chunker 跨 section `char_start` 计算或 `_enforce_size_limit` 拆分逻辑仍有问题 | 🔵 就绪 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：重建前 816（52.61%）→ 重建后 869（55.63%）。`chunker._enforce_size_limit` 拆分后子 chunk 继承父 chunk offset 的边界条件可能错位。 |
 | TD-055 | `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-051 本机重建（PR #235）暴露：直接调 `cleanup_orphan_chunks(tid_str)` 返回 None（应返回 deleted count），运维只能查 SQL 二次验证。 |
 | TD-056 | TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | 🔵 就绪 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-055 修复时审计：rebuild_chunks.py:173 `rebuild_document_chunks` 同样 `asyncio.run(_run_in_session(_do))` 未接返回值，但 rebuild 通过 logger.info 写 chunk 数量掩盖了。需扫描所有 `_run_in_session` 调用点。 |
-| TD-057 | task 函数返回值契约：10 个 `_do` 无 return 修复 + 全仓契约 | 🟡 进行中 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-056 PR 描述 follow-up：全仓 audit 后 10 个 `_do` 函数（parse_document / chunk_document / embed_chunks / index_tsvector / extract_template / extract_knowledge_graph / ds_parse / ds_extract_kg / ds_embed / ds_cross_dataset_edges）`asyncio.run(_run_in_session(_do))` 调用点处 `_do` 内部无 return——caller 拿不到任何值。 |
+| TD-057 | task 函数返回值契约：10 个 `_do` 无 return 修复 + 全仓契约 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-056 PR 描述 follow-up：10 个 `_do` 函数无 return。slice 1（PR #258）修 chunk_document。slice 2（PR #260）修 parse_document。后续 TD-059~TD-066 各自修 1 个 task。 |
+| TD-058 | parse_document 返 structured_data + section_count dict | 🔵 就绪 | P1 | 后端 / Celery 任务 / 文档解析 | TD-057 9 个 follow-up slice 2：parse_document._do 业务结束时返 `_build_parsed_structured_data(parsed.full_text, len(parsed.sections), sections_data)`；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 现在拿到 parsed structured_data dict。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -3454,7 +3455,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-057: task 函数返回值契约：10 个 `_do` 无 return 修复 + 全仓契约
 
-状态：🟡 进行中
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -3502,3 +3503,51 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 - 2026-06-12 登记（入手工具：Claude Code / TD-056 PR 描述 follow-up）。本次只入账。
 - 2026-06-12 修复合片进行中（分支 `fix/td-057-task-function-return-contracts`）：本 PR 修 `chunk_document._do` 返 `len(chunks)` int（4 mock pytest 全过）。**其他 9 个 task 修复合片按 git-workflow.md#PR 范围边界原则独立建 follow-up TD-058 ~ TD-066 跟踪**——避免大 PR。
+
+### TD-058: parse_document 返 structured_data + section_count dict
+
+状态：🔵 就绪
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 后端 / Celery 任务 / 文档解析 |
+| 事实源 | TD-057 9 个 follow-up slice 1 拆解：parse_document 优先级高（用户首推；它是后续 chunk_document 上游，caller 拿到 dict 后可直接决定下游 chunks） |
+
+**证据**
+
+- `packages/server-python/app/contexts/document/application/tasks/parse.py:115-121` 已有 `_build_parsed_structured_data(parsed.full_text, len(parsed.sections), sections_data)` 调用——L125 update task success 后 L130 chain to chunk——`_do` 业务结束时**无显式 return**——`asyncio.run` 返 None。
+- `extract_template_prompts._build_parsed_structured_data(full_text, section_count, sections=None)` 返 `dict[str, object]`——内部有 `full_text` / `section_count` / `sections` 键（TD-009 契约）。
+- TD-057 spec 第 2 段建议：`parse_document._do → {"structured_data": ..., "section_count": N} 或 None`——但已有 caller 写盘的 `structured_data` 已含 `section_count`——直接返整 dict 更简单。
+
+**问题**
+
+- 运维脚本 / 单元测试 / 跨调用方拿不到"这次 parse 产了多少 sections"——只能查 SQL 二次确认
+- 调用方编排 `parse_document` 后决定下游行为（如"0 sections 则跳过 chunk_document"）拿不到依据
+
+**完成标准**
+
+- `parse_document._do` 业务结束时 `return _build_parsed_structured_data(parsed.full_text, len(parsed.sections), sections_data)`
+- outer `asyncio.run(_run_in_session(_do))` 补 `return` 关键字
+- pytest 锁死 4 测试：
+  - `test_parse_document_returns_structured_data_dict`（主断言）
+  - `test_parse_document_dict_has_required_keys`（TD-009 契约：full_text + section_count）
+  - `test_parse_document_does_not_return_none`（regression lock）
+  - `test_parse_document_accepts_uuid_strings`（签名契约）
+- 不引入新 bug：保持现有 `test_p1_demo.py` / `test_p1_rag_evidence_e2e.py` 通过
+
+**验证方式**
+
+- `python3 -m pytest tests/contexts/document/test_parse_document_return.py` → 4/4 pass
+- ruff clean / `git diff --check` clean / `scripts/check-engineering-docs` 退出码 0
+- 真 PG 端到端：调 `parse_document(fid, tid)` 后断言返回值 = dict 且含 `full_text` / `section_count` 键
+
+**交付记录**
+
+- 2026-06-12 登记（入手工具：Claude Code / TD-057 slice 1 follow-up）。本次只入账。
+- 2026-06-12 修复合片（分支 `fix/td-058-parse-document-return`，PR 待提）：
+  - 修 `packages/server-python/app/contexts/document/application/tasks/parse.py`：`_do` L130 chain 后 `return _build_parsed_structured_data(parsed.full_text, len(parsed.sections), sections_data)`；outer `asyncio.run(_run_in_session(_do))` 补 `return` 关键字
+  - 新增 `packages/server-python/tests/contexts/document/test_parse_document_return.py` 4 mock pytest
+  - 40/40 mock pytest pass（4 新增 + 36 既有；0 业务代码回归）
+  - ruff clean / `git diff --check` clean
+  - 任务整体保持 🔵 就绪——真 PG 端到端留维护者

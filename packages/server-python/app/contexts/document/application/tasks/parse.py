@@ -129,6 +129,17 @@ def parse_document(file_id_str: str, tenant_id_str: str, pipeline_version: str =
 
             chunk_document.delay(file_id_str, tenant_id_str, pipeline_version)
 
+            # TD-058 fix: return the parsed structured_data dict so the
+            # outer `asyncio.run(_run_in_session(_do))` call (L148)
+            # can propagate it back to the caller. Previously this
+            # function returned None — silently swallowed the result.
+            # Same pattern as TD-055 / TD-056 / TD-057.
+            return _build_parsed_structured_data(
+                parsed.full_text,
+                len(parsed.sections),
+                sections_data,
+            )
+
         except Exception as e:
             if created_task_id:
                 try:
@@ -145,6 +156,7 @@ def parse_document(file_id_str: str, tenant_id_str: str, pipeline_version: str =
             raise
 
     try:
-        asyncio.run(_run_in_session(_do))
+        # TD-058 fix: capture asyncio.run's return value.
+        return asyncio.run(_run_in_session(_do))
     except Exception:
         raise  # Celery will mark task as FAILED
