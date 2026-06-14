@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| TD-063 ds_parse 返 parsed row count | 🟡 进行中 | P1 | 后端 / Structured Data | 切 `fix/td-063-ds-parse-return`；4 mock pytest 全过；40/40 mock pytest 0 回归。 | push + PR → merge。 | mock pytest + ruff + check-engineering-docs。 |
 
 ## 下一批候选任务
 

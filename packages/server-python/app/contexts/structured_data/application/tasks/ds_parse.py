@@ -97,10 +97,14 @@ def ds_parse(dataset_id_str: str, tenant_id_str: str):
 
             await _update_task_status(session, task_id, "success", 100)
 
-            # Chain directly to KG extraction (vectorization skipped — KG uses raw row samples)
+            # Chain directly to KG extraction
             from .ds_extract_kg import ds_extract_kg
 
             ds_extract_kg.delay(dataset_id_str, tenant_id_str)
+
+            # TD-063 fix: return len(parsed.rows) so caller knows
+            # how many rows were parsed.
+            return len(parsed.rows)
 
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
@@ -114,4 +118,5 @@ def ds_parse(dataset_id_str: str, tenant_id_str: str):
             await session.commit()  # Commit failure status before re-raising
             raise
 
-    asyncio.run(_run_in_session(_do))
+    # TD-063 fix: capture asyncio.run's return value.
+    return asyncio.run(_run_in_session(_do))
