@@ -210,13 +210,17 @@ class KnowledgeNodeRepository:
 
     async def delete_cascade_by_source_file(
         self, tenant_id: uuid.UUID, source_file_id: uuid.UUID
-    ) -> None:
+    ) -> int:
         """Delete all knowledge edges then nodes associated with a source file.
 
         Order: edges first (RESTRICT FK), then nodes.
+
+        BUG-004: returns the combined (edges + nodes) deleted count so
+        the caller (e.g. cleanup_file_derivatives) can verify the
+        cascade actually ran.
         """
         # 1. Delete edges where source or target node belongs to this file
-        await self._session.execute(
+        edges_result = await self._session.execute(
             text(
                 "DELETE FROM metaedu.knowledge_edges WHERE source_id IN "
                 "(SELECT id FROM metaedu.knowledge_nodes "
@@ -227,14 +231,17 @@ class KnowledgeNodeRepository:
             ),
             {"tid": tenant_id, "fid": source_file_id},
         )
+        edges_deleted = edges_result.rowcount or 0
         # 2. Delete nodes
-        await self._session.execute(
+        nodes_result = await self._session.execute(
             text(
                 "DELETE FROM metaedu.knowledge_nodes "
                 "WHERE tenant_id = :tid AND source_file_id = :fid"
             ),
             {"tid": tenant_id, "fid": source_file_id},
         )
+        nodes_deleted = nodes_result.rowcount or 0
+        return edges_deleted + nodes_deleted
 
     async def delete_cascade_by_source_dataset(
         self, tenant_id: uuid.UUID, source_dataset_id: uuid.UUID

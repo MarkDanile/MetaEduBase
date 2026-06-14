@@ -73,8 +73,16 @@ class ChunkRepository:
             {"cid": chunk_id},
         )
 
-    async def delete_by_file(self, file_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
-        await self._session.execute(
+    async def delete_by_file(self, file_id: uuid.UUID, tenant_id: uuid.UUID) -> int:
+        """Delete all chunks for a file. Returns the number of rows deleted.
+
+        BUG-004: returning the rowcount lets the caller (e.g.
+        cleanup_file_derivatives) verify the cascade actually ran.
+        Previously this returned None — silently swallowed delete
+        failures, leaving orphan rows in the DB.
+        """
+        result = await self._session.execute(
             text("DELETE FROM metaedu.document_chunks WHERE file_id = :fid AND tenant_id = :tid"),
             {"fid": file_id, "tid": tenant_id},
         )
+        return result.rowcount or 0
