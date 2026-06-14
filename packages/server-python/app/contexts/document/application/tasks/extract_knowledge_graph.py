@@ -200,9 +200,16 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str, pipeline_versi
 
             await _update_task_status(session, task_id, "success", 100)
 
+            # TD-062 fix: return the KG extraction summary so the
+            # outer `asyncio.run(_run_in_session(_do))` call can
+            # propagate it back to the caller. Returns a dict
+            # with the count of inserted nodes and edges.
+            return {"nodes": len(node_name_map), "edges": edges_inserted}
+
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
             await session.commit()  # Commit failure status before re-raising
             raise
 
-    asyncio.run(_run_in_session(_do))
+    # TD-062 fix: capture asyncio.run's return value.
+    return asyncio.run(_run_in_session(_do))

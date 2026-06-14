@@ -155,6 +155,7 @@
 | TD-059 | embed_chunks 返 embedded_chunks_count int | 🔵 就绪 | P1 | 后端 / Celery 任务 / AI / RAG | TD-057 9 个 follow-up slice 3：embed_chunks._do 业务结束时返 `len(chunks)` int（已有 `total` 局部变量）；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 embed 处理的 chunk 数。 |
 | TD-060 | index_tsvector 返 indexed_chunks_count int | 🔵 就绪 | P1 | 后端 / Celery 任务 / RAG / tsvector | TD-057 9 个 follow-up slice 4：index_tsvector._do 业务结束时返 `len(chunk_ids)` int；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 indexed chunk 数。 |
 | TD-061 | extract_template 返 extracted_fields_count int | 🔵 就绪 | P1 | 后端 / Celery 任务 / 模板抽取 / LLM | TD-057 9 个 follow-up slice 5：extract_template._do 业务结束时返 `len(template_data)` int（LLM 抽取的字段 dict 长度）；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 extract 出的字段数。 |
+| TD-062 | extract_knowledge_graph 返 `{"nodes": N, "edges": M}` dict | 🔵 就绪 | P1 | 后端 / Celery 任务 / RAG / KG | TD-057 9 个 follow-up slice 6：extract_knowledge_graph._do 业务结束时返 `{"nodes": len(node_name_map), "edges": edges_inserted}` dict；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 KG 节点数/边数。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -3683,5 +3684,36 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
   - 修 `packages/server-python/app/contexts/document/application/tasks/extract_template.py`：`_do` chain 后 `return len(template_data)` int；outer `asyncio.run(_run_in_session(_do))` 补 `return`
   - 新增 `packages/server-python/tests/contexts/document/test_extract_template_return.py` 4 mock pytest
   - 52/52 mock pytest pass（4 新增 + 48 既有；0 业务代码回归）
+  - ruff clean / `git diff --check` clean
+  - 任务整体保持 🔵 就绪——真 PG 端到端留维护者
+
+### TD-062: extract_knowledge_graph 返 `{"nodes": N, "edges": M}` dict
+
+状态：🔵 就绪
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 后端 / Celery 任务 / RAG / KG |
+| 事实源 | TD-057 9 个 follow-up slice 6：extract_knowledge_graph 是 extract_template 下游（pipeline step 6 of 6），caller 拿到 KG 节点数/边数后可直接评估提取质量 |
+
+**证据**
+
+- `packages/server-python/app/contexts/document/application/tasks/extract_knowledge_graph.py:115-195` KG 节点/边批量插入逻辑——L197 logger.info 写 `%d nodes, %d edges inserted` 但**无显式 return**
+- `node_name_map` 是实体名→节点 ID 映射（L152 构造），`len(node_name_map)` 是节点数；`edges_inserted` 是成功插入的边数（L195 累加）
+
+**完成标准**
+
+- `extract_knowledge_graph._do` 业务结束时 `return {"nodes": len(node_name_map), "edges": edges_inserted}` dict
+- outer `asyncio.run(_run_in_session(_do))` 补 `return`
+- 4 mock pytest 锁死
+
+**交付记录**
+
+- 2026-06-12 登记（入手工具：Claude Code / TD-057 9 个 follow-up 系列）。本次只入账。
+- 2026-06-12 修复合片（分支 `fix/td-062-extract-kg-return`，PR 待提）：
+  - 修 `packages/server-python/app/contexts/document/application/tasks/extract_knowledge_graph.py`：`_do` 业务结束时 `return {"nodes": len(node_name_map), "edges": edges_inserted}` dict；outer `asyncio.run(_run_in_session(_do))` 补 `return`
+  - 新增 `packages/server-python/tests/contexts/document/test_extract_knowledge_graph_return.py` 4 mock pytest
+  - 56/56 mock pytest pass（4 新增 + 52 既有；0 业务代码回归）
   - ruff clean / `git diff --check` clean
   - 任务整体保持 🔵 就绪——真 PG 端到端留维护者
