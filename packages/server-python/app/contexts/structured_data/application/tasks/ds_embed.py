@@ -140,9 +140,13 @@ def ds_embed(dataset_id_str: str, tenant_id_str: str):
 
             ds_extract_kg.delay(dataset_id_str, tenant_id_str)
 
+            # TD-065 fix: return the embedded count
+            return success_count
+
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
             await session.commit()  # Commit failure status before re-raising
             raise
 
-    asyncio.run(_run_in_session(_do))
+    # TD-065 fix: capture asyncio.run's return value.
+    return asyncio.run(_run_in_session(_do))
