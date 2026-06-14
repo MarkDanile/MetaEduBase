@@ -150,7 +150,7 @@
 | TD-054 | 重建后 `offset_overlaps` 反而 +3% → chunker 跨 section `char_start` 计算或 `_enforce_size_limit` 拆分逻辑仍有问题 | 🔵 就绪 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：重建前 816（52.61%）→ 重建后 869（55.63%）。`chunker._enforce_size_limit` 拆分后子 chunk 继承父 chunk offset 的边界条件可能错位。 |
 | TD-055 | `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-051 本机重建（PR #235）暴露：直接调 `cleanup_orphan_chunks(tid_str)` 返回 None（应返回 deleted count），运维只能查 SQL 二次验证。 |
 | TD-056 | TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | 🔵 就绪 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-055 修复时审计：rebuild_chunks.py:173 `rebuild_document_chunks` 同样 `asyncio.run(_run_in_session(_do))` 未接返回值，但 rebuild 通过 logger.info 写 chunk 数量掩盖了。需扫描所有 `_run_in_session` 调用点。 |
-| TD-057 | task 函数返回值契约：10 个 `_do` 无 return 修复 + 全仓契约 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-056 PR 描述 follow-up：10 个 `_do` 函数无 return。slice 1（PR #258）修 chunk_document。slice 2（PR #260）修 parse_document。后续 TD-059~TD-066 各自修 1 个 task。 |
+| TD-057 | task 函数返回值契约：10 个 `_do` 无 return 修复 + 全仓契约 | 🟡 进行中 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-056 PR 描述 follow-up：10 个 `_do` 函数无 return。slice 1~4 已完工（chunk_document #258、parse_document #260、embed_chunks #262、index_tsvector #264）。剩 6 个 follow-up TD-061 ~ TD-066 待修。 |
 | TD-058 | parse_document 返 structured_data + section_count dict | 🔵 就绪 | P1 | 后端 / Celery 任务 / 文档解析 | TD-057 9 个 follow-up slice 2：parse_document._do 业务结束时返 `_build_parsed_structured_data(parsed.full_text, len(parsed.sections), sections_data)`；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 现在拿到 parsed structured_data dict。 |
 | TD-059 | embed_chunks 返 embedded_chunks_count int | 🔵 就绪 | P1 | 后端 / Celery 任务 / AI / RAG | TD-057 9 个 follow-up slice 3：embed_chunks._do 业务结束时返 `len(chunks)` int（已有 `total` 局部变量）；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 embed 处理的 chunk 数。 |
 | TD-060 | index_tsvector 返 indexed_chunks_count int | 🔵 就绪 | P1 | 后端 / Celery 任务 / RAG / tsvector | TD-057 9 个 follow-up slice 4：index_tsvector._do 业务结束时返 `len(chunk_ids)` int；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 indexed chunk 数。 |
@@ -3457,7 +3457,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-057: task 函数返回值契约：10 个 `_do` 无 return 修复 + 全仓契约
 
-状态：🟢 完成
+状态：🟡 进行中
 
 | 字段 | 内容 |
 |------|------|
