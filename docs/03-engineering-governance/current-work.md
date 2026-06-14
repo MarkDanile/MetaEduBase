@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| BUG-004 `document_tasks` 级联删除部分失效 → 1178 orphan tasks 指向已删 file | ⚪ 待澄清 | P2 | 后端 / 数据完整性 / 文档上下文 | 切 `docs/bug-004-orphan-tasks-after-file-delete`；真 PG 诊断：删 25 个 file 后，chunks / kg_nodes / kg_edges 全清（`cleanup_file_derivatives` 跑过），但 `document_tasks` 留 1178 / 1203 (97.9%) orphan（跨 790 distinct file_ids，跨 4 天 2026-06-08 ~ 2026-06-12）——非本次删除导致，可能是历史 session 残留或直接 SQL 删除。 | 建 BUG-004 需求文件（复现路径 + 期望 + 验收标准） → 登记到工作台 → 入 `🔵 Ready` → 修复合片：1 SQL 清 orphan + 1 行 commit verify + pytest 锁死"未来不再发生" | 真 PG 跑 SQL + 端到端：删 1 个新 file → verify tasks 0 orphan |
+| BUG-004 `document_tasks` 级联删除部分失效 | 🟢 完成 | P2 | 后端 / 数据完整性 / 文档上下文 | PR #251 squash merge `ce23ed2`：3 个 repo delete 返 int + CleanupReport dataclass + 真 PG 跑 cleanup_orphan_tasks 删 1178 orphan tasks（1178 -> 0）+ check_orphans.py 4 表扫描全 0；3 mock pytest 锁死行为契约。 | 0（BUG-004 收口） | 真 PG cleanup_orphan_tasks dry-run 1178 / 跑后 0；check_orphans.py 输出 0/4 表 orphan；ruff clean；3 mock pytest 全过；0 业务代码回归。 |
 
 ## 下一批候选任务
 
