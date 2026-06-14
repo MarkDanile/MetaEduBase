@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| TD-057 task 函数返回值契约：10 个 `_do` 无 return 修复 + 全仓契约 | 🟡 进行中 | P1 | 后端 / Celery 任务 / 运维可观测性 | 切 `fix/td-057-task-function-return-contracts`；建任务卡登记。审计 10 个调用点：parse_document / chunk_document / embed_chunks / index_tsvector / extract_template / extract_knowledge_graph / ds_parse / ds_extract_kg / ds_embed / ds_cross_dataset_edges。每个 `_do` 应按业务返有意义 int（chunks / nodes / tasks 数等）。 | 写技术债总账详情段 → 10 个 `_do` 按业务实现 return + outer 补 `return asyncio.run(...)` + mock pytest 锁死 → 推 PR。 | ruff + git diff --check + check-engineering-docs + 10 个 mock pytest 锁死（每 task 1 个）+ 0 业务代码回归。 |
 
 ## 下一批候选任务
 
