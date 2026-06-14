@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| TD-065 ds_embed 返 embedded count | 🟡 进行中 | P1 | 后端 / Structured Data | 切 `fix/td-065`；4 mock pytest 全过。 | push + PR → merge。 | mock pytest + ruff。 |
+| （空） | | | | | | |
 
 ## 下一批候选任务
 
@@ -32,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-13 | TD-065 ds_embed 返 embedded count | 🔵 就绪 | PR #275 squash merge `f878303`：`_do` 返 `success_count` int + outer 补 return。4 mock pytest 全过；44/44 mock pytest 0 业务代码回归。 | [TD-065](technical-debt.md#td-065) / [PR #275](https://github.com/MarkDanile/MetaEduBase/pull/275) |
 | 2026-06-13 | TD-064 ds_extract_kg 返 KG entity/relation counts | 🔵 就绪 | PR #273 squash merge `8bb8b82`：`_do` 返 `{"entities": N, "relations": M}` dict + outer 补 return。4 mock pytest 全过；12/12 mock pytest 0 业务代码回归。 | [TD-064](technical-debt.md#td-064) / [PR #273](https://github.com/MarkDanile/MetaEduBase/pull/273) |
 | 2026-06-13 | TD-063 ds_parse 返 parsed row count | 🔵 就绪 | PR #271 squash merge `86bd88c`：`_do` 返 `len(parsed.rows)` int + outer 补 return。4 mock pytest 全过；40/40 mock pytest 0 业务代码回归。 | [TD-063](technical-debt.md#td-063) / [PR #271](https://github.com/MarkDanile/MetaEduBase/pull/271) |
 | 2026-06-13 | TD-062 extract_knowledge_graph 返 KG 概要 dict | 🔵 就绪 | PR #269 squash merge `855a4c7`：`_do` 返 `{"nodes": len(node_name_map), "edges": edges_inserted}` dict + outer 补 return。4 mock pytest 全过；56/56 mock pytest 0 业务代码回归。 | [TD-062](technical-debt.md#td-062) / [PR #269](https://github.com/MarkDanile/MetaEduBase/pull/269) |
