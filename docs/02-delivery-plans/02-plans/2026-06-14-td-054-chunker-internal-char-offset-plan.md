@@ -611,7 +611,7 @@ git checkout -b docs/td-054-r2-post-merge main
 在"最近完成"表格顶部追加：
 
 ```markdown
-| 2026-06-14 | TD-054 chunker 内部 char_offset 跟踪修复（round 2）| 🟢 完成 | PR #289 squash merge：chunker.py L74/L112/L140 3 处 char_offset 累加 bug。local_offset 仅新建 chunk 累加 + 合并分支不前进 + 去 phantom +1。5 mock pytest 锁单调性 + 429+ mock pytest 0 业务代码回归。 | [TD-054](technical-debt.md#td-054) / [PR #289](https://github.com/MarkDanile/MetaEduBase/pull/289) |
+| 2026-06-14 | TD-054 chunker 内部 char_offset 跟踪修复（round 2）| 🟢 完成 | PR #289 squash merge：chunker.py L74/L112/L140 3 处 char_offset 累加 bug。local_offset 仅新建 chunk 累加 + 合并分支不前进 + 去 phantom +1。5 mock pytest 锁单调性 + 429+ mock pytest 0 业务代码回归。 | [TD-054](../../03-engineering-governance/technical-debt.md#td-054) / [PR #289](https://github.com/MarkDanile/MetaEduBase/pull/289) |
 ```
 
 **滚动约束**：删除"最近完成"表格最末行（必须保留 ≤ 12 数据行）。

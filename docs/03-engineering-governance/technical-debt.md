@@ -147,7 +147,7 @@
 | TD-051 | 治理 `document_chunks` 结构元数据、切片质量与既有数据重建 | 🟢 完成 | P1 | RAG / 数据完整性 / 文档解析 / AI Chat | PR #234 已合并（merge `ffccc6c`）；7 个 slice 合 1 PR；AC-1~AC-7 全部覆盖。 |
 | TD-052 | `check-engineering-docs` 秒级反馈优化（增量 source size + 批量 git log + timing） | 🟢 完成 | P2 | 工程脚本 / 质量门禁 / 性能 | [PR #232](https://github.com/MarkDanile/MetaEduBase/pull/232) 已合并：默认门禁 0.36s；`--full` 保留全量审计 0.94s；新增 `--timing`。 |
 | TD-053 | `rebuild_document_chunks` fallback 未算 `section_path` → 老数据走 fallback 时 section_path 仍 100% 空 | 🟢 完成 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：`scripts/ai/chunk_quality_report.py` 重建后基线 section_path_empty 1562/1562（100%）与重建前持平。 |
-| TD-054 | 重建后 `offset_overlaps` 反而 +3% → chunker 跨 section `char_start` 计算或 `_enforce_size_limit` 拆分逻辑仍有问题 | 🔵 就绪 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：重建前 816（52.61%）→ 重建后 869（55.63%）。`chunker._enforce_size_limit` 拆分后子 chunk 继承父 chunk offset 的边界条件可能错位。 |
+| TD-054 | 重建后 `offset_overlaps` 反而 +3% → chunker 跨 section `char_start` 计算或 `_enforce_size_limit` 拆分逻辑仍有问题 | 🟢 完成 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：重建前 816（52.61%）→ 重建后 869（55.63%）。`chunker._enforce_size_limit` 拆分后子 chunk 继承父 chunk offset 的边界条件可能错位。TD-054 复测（2026-06-14 人才培养方案 28 chunks）offset_overlaps 进一步恶化到 23/28 (82.14%)，暴露主循环合并分支 local_offset 未同步 + `_split_oversized_chunk` pos 跟踪同类 bug。[PR #289](https://github.com/MarkDanile/MetaEduBase/pull/289) + [PR #290](https://github.com/MarkDanile/MetaEduBase/pull/290) 已 squash merge；真 PG 复测 offset_overlaps 0/28 (0.00%) 远超目标 ≤ 52.61%。 |
 | TD-055 | `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-051 本机重建（PR #235）暴露：直接调 `cleanup_orphan_chunks(tid_str)` 返回 None（应返回 deleted count），运维只能查 SQL 二次验证。 |
 | TD-056 | TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | 🔵 就绪 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-055 修复时审计：rebuild_chunks.py:173 `rebuild_document_chunks` 同样 `asyncio.run(_run_in_session(_do))` 未接返回值，但 rebuild 通过 logger.info 写 chunk 数量掩盖了。需扫描所有 `_run_in_session` 调用点。 |
 | TD-057 | task 函数返回值契约：10 个 `_do` 无 return 修复 + 全仓契约 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-056 PR 描述 follow-up：10 个 `_do` 函数无 return。10 个 follow-up PR #258/#260/#262/#264/#267/#269/#271/#273/#275/#280 全部 MERGED；414/414 mock pytest pass 零回归。 | [PR #258](https://github.com/MarkDanile/MetaEduBase/pull/258) (slice 1) + [PR #280](https://github.com/MarkDanile/MetaEduBase/pull/280) (TD-066) |
@@ -3149,7 +3149,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-054: 重建后 `offset_overlaps` 反而 +3% → chunker 跨 section `char_start` 计算或 `_enforce_size_limit` 拆分逻辑仍有问题
 
-状态：🔵 就绪
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -3212,6 +3212,23 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
   - `offset_overlaps = 23/28 (82.14%)` —— vs 历史基线 55.63% / 52.61% 进一步恶化 +26.51~29.51 pct
   - 推测真因：PR #234 Slice 3 修复只覆盖 `_enforce_size_limit` 拆分传递 char_start，**未覆盖 `_enforce_size_limit` 之前**的 `chunk_by_structure` 阶段在切 section 时是否生成本身就 overlap（22/28 overlap 接近全部 chunks → 几乎每对都 overlap，强烈暗示问题在更上游或拆分逻辑本身）
   - 任务优先级 P1 不变；建议下个 PR 重新定位：先看 28 chunks 实际 offset 序列再下结论
+- 2026-06-14 round 2 修复合片（[PR #289](https://github.com/MarkDanile/MetaEduBase/pull/289) / merge `4c7f9ce` / 分支 `fix/td-054-chunker-internal-char-offset-tracking`，已删）：
+  - 修 `packages/server-python/app/shared/parsing/chunker.py` `chunk_by_structure` 主循环的 char_offset 累加 bug：L74 char_offset → local_offset 重命名 + 6 行注释；L112 / L140 += sent_len + 1 → += sent_len；合并分支（L121 / L128）local_offset 不前进 = 修复核心。
+  - 新增 `packages/server-python/tests/shared/test_chunker_offset_monotonicity_td054.py` 5 mock pytest 锁单调性。
+  - 修前 3/5 fail，修后 5/5 pass（mock 测）。
+  - 真 PG 复测：**未改善**（仍 23/28 = 82.14%）。原因：真因不止是 += sent_len + 1，主循环合并分支更新 last.char_end 但不前进 local_offset 是另一类 bug，_split_oversized_chunk 内部 pos 跟踪也有同类 bug。诊断后登记 round 3。
+- 2026-06-14 round 3 修复合片（[PR #290](https://github.com/MarkDanile/MetaEduBase/pull/290) / merge `a4932d2` / 分支 `fix/td-054-chunker-local-offset-sync-round-3`，已删）：
+  - 修 `chunk_by_structure` 主循环 else 分支：`local_offset = last.char_end` 同步 —— 修复核心（合并后下个新建 chunk 的 char_start 正确）
+  - 修 `_split_oversized_chunk` `pos` 跟踪：合并分支后 `pos = current_start + len(current)` 同步；旧的 `pos += sent_len` 改按分支各自维护（first chunk / else / clause 三个分支）
+  - 修 test 2 fixture：4 句（短+短+长+长）同时覆盖 L124 合并 + L132 small+long 合并 + else 新建 3 条路径
+  - 5/5 新 mock pytest + 5/5 round 1 mock pytest = 10/10 累计 pass
+  - 439 mock pytest 0 业务代码回归（3 pre-existing e2e SQLAlchemy 失败无关）
+  - ruff clean / check-engineering-docs exit 0 / git diff --check clean
+  - **真 PG 复测（人才培养方案 28 chunks）**：
+    - offset_overlaps: 23/28 (82.14%) → **0/28 (0.00%)** ✓ 远超目标 ≤ 52.61%
+    - char_start_null: 0/0 / char_start_zero_zero: 0/0 / orphan_chunks: 0/0
+    - section_path_empty: 28/28（TD-053 衍生，未退化）
+  - 翻 🟢 完成依据：PR #289 + #290 MERGED + 10 mock pytest 全过 + 439 pytest 0 回归 + 真 PG 复测 offset_overlaps 0/28 + ruff clean，符合 git-workflow.md#翻完成前硬条件 1-4
 
 ### TD-055: `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数
 
