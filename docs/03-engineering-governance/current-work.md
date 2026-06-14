@@ -16,7 +16,9 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| BUG-005 `parse` 完成后未回写 `files.doc_type` / `template_id` | 🔵 就绪 | P1 | 后端 / 模板抽取 / 模板溯源 | 5 字段齐全需求卡入账；dev 库 1/1 `files.doc_type=NULL` 复现。`files.template_id` 字段不存在需 alembic 迁移。 | 用户下个 PR 修：alembic 迁移 + parse.py 1~3 行回写 + 1 mock pytest + 历史 1 条数据 backfill | 重新上传 1 PDF → 查 files.doc_type / template_id 已填充；evidence_coverage `file_metadata` > 0% |
+| TD-067 LLM 抽取 `teaching_plan` / `practice_links` 返 `-` | 🔵 就绪 | P2 | 后端 / 模板抽取 / LLM prompt | 38 课程列表 / basic_info 准；嵌套课时表 + 实践环节表 + degree_requirements 全 `-`。 | 用户下个 PR 修：`extract_template_prompts.py` 补 2~3 个 few-shot 示例（嵌套 array / table / 多字段 object） | 重新上传 1 PDF → teaching_plan 含 6 semester / practice_links ≥ 3 行 |
+| TD-054 chunker section_path 100% 空 + offset_overlaps 82% 恶化 | 🔵 就绪 | P1 | 后端 / RAG / chunker | 2026-06-14 复测：28 chunks / section_path_empty 100% / offset_overlaps 82.14%（vs 历史 52.61~55.63% 进一步恶化 +26.51~29.51 pct）。 | 用户下个 PR 修：先看 28 chunks 实际 offset 序列定位真因；PR #234 Slice 3 修复只覆盖 `_enforce_size_limit` 拆分，**未覆盖** `chunk_by_structure` 阶段 | 真 PG 重建后 offset_overlaps ≤ 重建前 52.61% |
 
 ## 下一批候选任务
 
