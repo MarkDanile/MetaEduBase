@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| TD-061 extract_template 返 extracted_fields_count | 🟡 进行中 | P1 | 后端 / Celery 任务 / 模板抽取 / LLM | 切 `fix/td-061-extract-template-return`；`_do` 返 `len(template_data)` int + outer 补 return；4 mock pytest 全过；52/52 mock pytest 0 回归。 | push + PR → merge → 工作台同步。 | mock pytest + ruff + check-engineering-docs + 0 业务代码回归。 |
 
 ## 下一批候选任务
 
