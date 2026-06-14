@@ -150,7 +150,7 @@
 | TD-054 | 重建后 `offset_overlaps` 反而 +3% → chunker 跨 section `char_start` 计算或 `_enforce_size_limit` 拆分逻辑仍有问题 | 🔵 就绪 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：重建前 816（52.61%）→ 重建后 869（55.63%）。`chunker._enforce_size_limit` 拆分后子 chunk 继承父 chunk offset 的边界条件可能错位。 |
 | TD-055 | `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-051 本机重建（PR #235）暴露：直接调 `cleanup_orphan_chunks(tid_str)` 返回 None（应返回 deleted count），运维只能查 SQL 二次验证。 |
 | TD-056 | TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | 🔵 就绪 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-055 修复时审计：rebuild_chunks.py:173 `rebuild_document_chunks` 同样 `asyncio.run(_run_in_session(_do))` 未接返回值，但 rebuild 通过 logger.info 写 chunk 数量掩盖了。需扫描所有 `_run_in_session` 调用点。 |
-| TD-057 | task 函数返回值契约：10 个 `_do` 无 return 修复 + 全仓契约 | 🟡 进行中 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-056 PR 描述 follow-up：10 个 `_do` 函数无 return。slice 1~4 已完工（chunk_document #258、parse_document #260、embed_chunks #262、index_tsvector #264）。剩 6 个 follow-up TD-061 ~ TD-066 待修。 |
+| TD-057 | task 函数返回值契约：10 个 `_do` 无 return 修复 + 全仓契约 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-056 PR 描述 follow-up：10 个 `_do` 函数无 return。10 个 follow-up PR #258/#260/#262/#264/#267/#269/#271/#273/#275/#280 全部 MERGED；414/414 mock pytest pass 零回归。 | [PR #258](https://github.com/MarkDanile/MetaEduBase/pull/258) (slice 1) + [PR #280](https://github.com/MarkDanile/MetaEduBase/pull/280) (TD-066) |
 | TD-058 | parse_document 返 structured_data + section_count dict | 🟢 完成 | P1 | 后端 / Celery 任务 / 文档解析 | TD-057 9 个 follow-up slice 2：parse_document._do 业务结束时返 `_build_parsed_structured_data(parsed.full_text, len(parsed.sections), sections_data)`；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 现在拿到 parsed structured_data dict。 | [PR #260](https://github.com/MarkDanile/MetaEduBase/pull/260) (merge `f41dcc0`) |
 | TD-059 | embed_chunks 返 embedded_chunks_count int | 🟢 完成 | P1 | 后端 / Celery 任务 / AI / RAG | TD-057 9 个 follow-up slice 3：embed_chunks._do 业务结束时返 `len(chunks)` int（已有 `total` 局部变量）；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 embed 处理的 chunk 数。 | [PR #262](https://github.com/MarkDanile/MetaEduBase/pull/262) (merge `683652d`) |
 | TD-060 | index_tsvector 返 indexed_chunks_count int | 🟢 完成 | P1 | 后端 / Celery 任务 / RAG / tsvector | TD-057 9 个 follow-up slice 4：index_tsvector._do 业务结束时返 `len(chunk_ids)` int；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 indexed chunk 数。 | [PR #264](https://github.com/MarkDanile/MetaEduBase/pull/264) (merge `4ca3582`) |
@@ -3463,13 +3463,14 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-057: task 函数返回值契约：10 个 `_do` 无 return 修复 + 全仓契约
 
-状态：🟡 进行中
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P1 |
 | 领域 | 后端 / Celery 任务 / 运维可观测性 |
 | 事实源 | TD-056 PR 描述 follow-up：全仓 audit 后 10 个 `_do` 函数（parse_document / chunk_document / embed_chunks / index_tsvector / extract_template / extract_knowledge_graph / ds_parse / ds_extract_kg / ds_embed / ds_cross_dataset_edges）`asyncio.run(_run_in_session(_do))` 调用点处 `_do` 内部无 return——caller 拿不到任何值 |
+| 交付 PR | [PR #258](https://github.com/MarkDanile/MetaEduBase/pull/258) (slice 1) + [PR #260](https://github.com/MarkDanile/MetaEduBase/pull/260) (TD-058) + [PR #262](https://github.com/MarkDanile/MetaEduBase/pull/262) (TD-059) + [PR #264](https://github.com/MarkDanile/MetaEduBase/pull/264) (TD-060) + [PR #267](https://github.com/MarkDanile/MetaEduBase/pull/267) (TD-061) + [PR #269](https://github.com/MarkDanile/MetaEduBase/pull/269) (TD-062) + [PR #271](https://github.com/MarkDanile/MetaEduBase/pull/271) (TD-063) + [PR #273](https://github.com/MarkDanile/MetaEduBase/pull/273) (TD-064) + [PR #275](https://github.com/MarkDanile/MetaEduBase/pull/275) (TD-065) + [PR #280](https://github.com/MarkDanile/MetaEduBase/pull/280) (TD-066) |
 
 **证据**
 
@@ -3511,6 +3512,9 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 - 2026-06-12 登记（入手工具：Claude Code / TD-056 PR 描述 follow-up）。本次只入账。
 - 2026-06-12 修复合片进行中（分支 `fix/td-057-task-function-return-contracts`）：本 PR 修 `chunk_document._do` 返 `len(chunks)` int（4 mock pytest 全过）。**其他 9 个 task 修复合片按 git-workflow.md#PR 范围边界原则独立建 follow-up TD-058 ~ TD-066 跟踪**——避免大 PR。
+- 2026-06-13 全部 9 个 follow-up 完工（TD-058 ~ TD-066 共 10 个 PR #258/#260/#262/#264/#267/#269/#271/#273/#275/#280 squash merge）：`asyncio.run(_run_in_session(_do))` 全部补 `return` 关键字 + 每个 `_do` 业务结束时按业务返 int / dict（详 TD-058~TD-066 详情段）；414/414 mock pytest pass 零回归；ruff clean。
+- TD-057 翻完成依据：10 个 follow-up PR 全部 state=MERGED（merge commit `b1fcf23` / `f41dcc0` / `683652d` / `4ca3582` / `c6fd467` / `855a4c7` / `86bd88c` / `8bb8b82` / `f878303` / `c343de7` 已在 main）+ 10 × 4 mock pytest = 40 新 pytest 全过 + ruff clean + 0 业务代码回归
+- 任务整体保持 🟢 完成——真 PG 端到端留维护者
 
 ### TD-058: parse_document 返 structured_data + section_count dict
 
