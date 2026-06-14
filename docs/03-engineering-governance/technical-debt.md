@@ -151,10 +151,11 @@
 | TD-055 | `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-051 本机重建（PR #235）暴露：直接调 `cleanup_orphan_chunks(tid_str)` 返回 None（应返回 deleted count），运维只能查 SQL 二次验证。 |
 | TD-056 | TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | 🔵 就绪 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-055 修复时审计：rebuild_chunks.py:173 `rebuild_document_chunks` 同样 `asyncio.run(_run_in_session(_do))` 未接返回值，但 rebuild 通过 logger.info 写 chunk 数量掩盖了。需扫描所有 `_run_in_session` 调用点。 |
 | TD-057 | task 函数返回值契约：10 个 `_do` 无 return 修复 + 全仓契约 | 🟡 进行中 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-056 PR 描述 follow-up：10 个 `_do` 函数无 return。slice 1~4 已完工（chunk_document #258、parse_document #260、embed_chunks #262、index_tsvector #264）。剩 6 个 follow-up TD-061 ~ TD-066 待修。 |
-| TD-058 | parse_document 返 structured_data + section_count dict | 🔵 就绪 | P1 | 后端 / Celery 任务 / 文档解析 | TD-057 9 个 follow-up slice 2：parse_document._do 业务结束时返 `_build_parsed_structured_data(parsed.full_text, len(parsed.sections), sections_data)`；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 现在拿到 parsed structured_data dict。 |
-| TD-059 | embed_chunks 返 embedded_chunks_count int | 🔵 就绪 | P1 | 后端 / Celery 任务 / AI / RAG | TD-057 9 个 follow-up slice 3：embed_chunks._do 业务结束时返 `len(chunks)` int（已有 `total` 局部变量）；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 embed 处理的 chunk 数。 |
-| TD-060 | index_tsvector 返 indexed_chunks_count int | 🔵 就绪 | P1 | 后端 / Celery 任务 / RAG / tsvector | TD-057 9 个 follow-up slice 4：index_tsvector._do 业务结束时返 `len(chunk_ids)` int；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 indexed chunk 数。 |
-| TD-061 | extract_template 返 extracted_fields_count int | 🔵 就绪 | P1 | 后端 / Celery 任务 / 模板抽取 / LLM | TD-057 9 个 follow-up slice 5：extract_template._do 业务结束时返 `len(template_data)` int（LLM 抽取的字段 dict 长度）；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 extract 出的字段数。 |
+| TD-058 | parse_document 返 structured_data + section_count dict | 🟢 完成 | P1 | 后端 / Celery 任务 / 文档解析 | TD-057 9 个 follow-up slice 2：parse_document._do 业务结束时返 `_build_parsed_structured_data(parsed.full_text, len(parsed.sections), sections_data)`；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 现在拿到 parsed structured_data dict。 | [PR #260](https://github.com/MarkDanile/MetaEduBase/pull/260) (merge `f41dcc0`) |
+| TD-059 | embed_chunks 返 embedded_chunks_count int | 🟢 完成 | P1 | 后端 / Celery 任务 / AI / RAG | TD-057 9 个 follow-up slice 3：embed_chunks._do 业务结束时返 `len(chunks)` int（已有 `total` 局部变量）；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 embed 处理的 chunk 数。 | [PR #262](https://github.com/MarkDanile/MetaEduBase/pull/262) (merge `683652d`) |
+| TD-060 | index_tsvector 返 indexed_chunks_count int | 🟢 完成 | P1 | 后端 / Celery 任务 / RAG / tsvector | TD-057 9 个 follow-up slice 4：index_tsvector._do 业务结束时返 `len(chunk_ids)` int；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 indexed chunk 数。 | [PR #264](https://github.com/MarkDanile/MetaEduBase/pull/264) (merge `4ca3582`) |
+| TD-061 | extract_template 返 extracted_fields_count int | 🟢 完成 | P1 | 后端 / Celery 任务 / 模板抽取 / LLM | TD-057 9 个 follow-up slice 5：extract_template._do 业务结束时返 `len(template_data)` int（LLM 抽取的字段 dict 长度）；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 extract 出的字段数。 | [PR #267](https://github.com/MarkDanile/MetaEduBase/pull/267) (merge `c6fd467`) |
+| TD-062 | extract_knowledge_graph 返 `{"nodes": N, "edges": M}` dict | 🟢 完成 | P1 | 后端 / Celery 任务 / RAG / KG | TD-057 9 个 follow-up slice 6：extract_knowledge_graph._do 业务结束时返 `{"nodes": len(node_name_map), "edges": edges_inserted}` dict；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 KG 节点数 + 边数。 | [PR #269](https://github.com/MarkDanile/MetaEduBase/pull/269) (merge `855a4c7`) |
 | TD-063 | ds_parse 返 parsed row count int | 🔵 就绪 | P1 | 后端 / Structured Data / 文档解析 | TD-057 9 个 follow-up slice 7：ds_parse._do 返 `len(parsed.rows)` int；outer 补 `return asyncio.run(...)`。caller 知道 parsed 了多少行。 |
 | TD-064 | ds_extract_kg 返 KG entity/relation counts dict | 🔵 就绪 | P1 | 后端 / Structured Data / KG | TD-057 slice 8。 |
 | TD-065 | ds_embed 返 embedded count int | 🟢 完成 | P1 | 后端 / Structured Data / Embedding | TD-057 slice 9：ds_embed._do 返 `success_count` int；outer 补 `return`。 | [PR #275](https://github.com/MarkDanile/MetaEduBase/pull/275) (merge `f878303`) |
@@ -3512,13 +3513,15 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-058: parse_document 返 structured_data + section_count dict
 
-状态：🔵 就绪
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P1 |
 | 领域 | 后端 / Celery 任务 / 文档解析 |
 | 事实源 | TD-057 9 个 follow-up slice 1 拆解：parse_document 优先级高（用户首推；它是后续 chunk_document 上游，caller 拿到 dict 后可直接决定下游 chunks） |
+| 交付 PR | [PR #260](https://github.com/MarkDanile/MetaEduBase/pull/260) |
+| Merge Commit | `f41dcc0` (squash merge) |
 
 **证据**
 
@@ -3551,22 +3554,25 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 **交付记录**
 
 - 2026-06-12 登记（入手工具：Claude Code / TD-057 slice 1 follow-up）。本次只入账。
-- 2026-06-12 修复合片（分支 `fix/td-058-parse-document-return`，PR 待提）：
+- 2026-06-13 修复合片（分支 `fix/td-058-parse-document-return`，已删；PR #260 squash merge `f41dcc0`）：
   - 修 `packages/server-python/app/contexts/document/application/tasks/parse.py`：`_do` L130 chain 后 `return _build_parsed_structured_data(parsed.full_text, len(parsed.sections), sections_data)`；outer `asyncio.run(_run_in_session(_do))` 补 `return` 关键字
   - 新增 `packages/server-python/tests/contexts/document/test_parse_document_return.py` 4 mock pytest
   - 40/40 mock pytest pass（4 新增 + 36 既有；0 业务代码回归）
   - ruff clean / `git diff --check` clean
-  - 任务整体保持 🔵 就绪——真 PG 端到端留维护者
+  - TD-058 翻完成依据：PR #260 state=MERGED + merge commit `f41dcc0` 已在 main + 4 mock pytest 全过 + ruff clean + 0 业务代码回归
+  - 任务整体保持 🟢 完成——真 PG 端到端留维护者
 
 ### TD-059: embed_chunks 返 embedded_chunks_count int
 
-状态：🔵 就绪
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P1 |
 | 领域 | 后端 / Celery 任务 / AI / RAG |
 | 事实源 | TD-057 9 个 follow-up slice 3（用户首推 embed_chunks 优先——它是 chunk_document 下游，caller 拿到 embed 数后可直接决定下游 index_tsvector） |
+| 交付 PR | [PR #262](https://github.com/MarkDanile/MetaEduBase/pull/262) |
+| Merge Commit | `683652d` (squash merge) |
 
 **证据**
 
@@ -3600,22 +3606,25 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 **交付记录**
 
 - 2026-06-12 登记（入手工具：Claude Code / TD-057 9 个 follow-up 系列）。本次只入账。
-- 2026-06-12 修复合片（分支 `fix/td-059-embed-chunks-return`，PR 待提）：
+- 2026-06-13 修复合片（分支 `fix/td-059-embed-chunks-return`，已删；PR #262 squash merge `683652d`）：
   - 修 `packages/server-python/app/contexts/document/application/tasks/embed.py`：`_do` L137 chain 后 `return len(chunks)` int；outer `asyncio.run(_run_in_session(_do))` 补 `return` 关键字
   - 新增 `packages/server-python/tests/contexts/document/test_embed_chunks_return.py` 4 mock pytest
   - 44/44 mock pytest pass（4 新增 + 40 既有；0 业务代码回归）
   - ruff clean / `git diff --check` clean
-  - 任务整体保持 🔵 就绪——真 PG 端到端留维护者
+  - TD-059 翻完成依据：PR #262 state=MERGED + merge commit `683652d` 已在 main + 4 mock pytest 全过 + ruff clean + 0 业务代码回归
+  - 任务整体保持 🟢 完成——真 PG 端到端留维护者
 
 ### TD-060: index_tsvector 返 indexed_chunks_count int
 
-状态：🔵 就绪
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P1 |
 | 领域 | 后端 / Celery 任务 / RAG / tsvector |
 | 事实源 | TD-057 9 个 follow-up slice 4 拆解：index_tsvector 是 embed_chunks 下游（pipeline step 4 of 6），caller 拿到 indexed chunk 数后可直接决定下游 extract_template |
+| 交付 PR | [PR #264](https://github.com/MarkDanile/MetaEduBase/pull/264) |
+| Merge Commit | `4ca3582` (squash merge) |
 
 **证据**
 
@@ -3642,22 +3651,25 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 **交付记录**
 
 - 2026-06-12 登记（入手工具：Claude Code / TD-057 9 个 follow-up 系列）。本次只入账。
-- 2026-06-12 修复合片（分支 `fix/td-060-index-tsvector-return`，PR 待提）：
+- 2026-06-13 修复合片（分支 `fix/td-060-index-tsvector-return`，已删；PR #264 squash merge `4ca3582`）：
   - 修 `packages/server-python/app/contexts/document/application/tasks/index.py`：`_do` chain 后 `return len(chunk_ids)` int；outer `asyncio.run(_run_in_session(_do))` 补 `return`
   - 新增 `packages/server-python/tests/contexts/document/test_index_tsvector_return.py` 4 mock pytest
   - 48/48 mock pytest pass（4 新增 + 44 既有；0 业务代码回归）
   - ruff clean / `git diff --check` clean
-  - 任务整体保持 🔵 就绪——真 PG 端到端留维护者
+  - TD-060 翻完成依据：PR #264 state=MERGED + merge commit `4ca3582` 已在 main + 4 mock pytest 全过 + ruff clean + 0 业务代码回归
+  - 任务整体保持 🟢 完成——真 PG 端到端留维护者
 
 ### TD-061: extract_template 返 extracted_fields_count int
 
-状态：🔵 就绪
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P1 |
 | 领域 | 后端 / Celery 任务 / 模板抽取 / LLM |
 | 事实源 | TD-057 9 个 follow-up slice 5：extract_template 是 index_tsvector 下游（pipeline step 5 of 6），caller 拿到字段数后可直接决定下游 KG 抽取 |
+| 交付 PR | [PR #267](https://github.com/MarkDanile/MetaEduBase/pull/267) |
+| Merge Commit | `c6fd467` (squash merge) |
 
 **证据**
 
@@ -3682,22 +3694,25 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 **交付记录**
 
 - 2026-06-12 登记（入手工具：Claude Code / TD-057 9 个 follow-up 系列）。本次只入账。
-- 2026-06-12 修复合片（分支 `fix/td-061-extract-template-return`，PR 待提）：
+- 2026-06-13 修复合片（分支 `fix/td-061-extract-template-return`，已删；PR #267 squash merge `c6fd467`）：
   - 修 `packages/server-python/app/contexts/document/application/tasks/extract_template.py`：`_do` chain 后 `return len(template_data)` int；outer `asyncio.run(_run_in_session(_do))` 补 `return`
   - 新增 `packages/server-python/tests/contexts/document/test_extract_template_return.py` 4 mock pytest
   - 52/52 mock pytest pass（4 新增 + 48 既有；0 业务代码回归）
   - ruff clean / `git diff --check` clean
-  - 任务整体保持 🔵 就绪——真 PG 端到端留维护者
+  - TD-061 翻完成依据：PR #267 state=MERGED + merge commit `c6fd467` 已在 main + 4 mock pytest 全过 + ruff clean + 0 业务代码回归
+  - 任务整体保持 🟢 完成——真 PG 端到端留维护者
 
 ### TD-062: extract_knowledge_graph 返 `{"nodes": N, "edges": M}` dict
 
-状态：🔵 就绪
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P1 |
 | 领域 | 后端 / Celery 任务 / RAG / KG |
 | 事实源 | TD-057 9 个 follow-up slice 6：extract_knowledge_graph 是 extract_template 下游（pipeline step 6 of 6），caller 拿到 KG 节点数/边数后可直接评估提取质量 |
+| 交付 PR | [PR #269](https://github.com/MarkDanile/MetaEduBase/pull/269) |
+| Merge Commit | `855a4c7` (squash merge) |
 
 **证据**
 
@@ -3713,12 +3728,13 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 **交付记录**
 
 - 2026-06-12 登记（入手工具：Claude Code / TD-057 9 个 follow-up 系列）。本次只入账。
-- 2026-06-12 修复合片（分支 `fix/td-062-extract-kg-return`，PR 待提）：
+- 2026-06-13 修复合片（分支 `fix/td-062-extract-kg-return`，已删；PR #269 squash merge `855a4c7`）：
   - 修 `packages/server-python/app/contexts/document/application/tasks/extract_knowledge_graph.py`：`_do` 业务结束时 `return {"nodes": len(node_name_map), "edges": edges_inserted}` dict；outer `asyncio.run(_run_in_session(_do))` 补 `return`
   - 新增 `packages/server-python/tests/contexts/document/test_extract_knowledge_graph_return.py` 4 mock pytest
   - 56/56 mock pytest pass（4 新增 + 52 既有；0 业务代码回归）
   - ruff clean / `git diff --check` clean
-  - 任务整体保持 🔵 就绪——真 PG 端到端留维护者
+  - TD-062 翻完成依据：PR #269 state=MERGED + merge commit `855a4c7` 已在 main + 4 mock pytest 全过 + ruff clean + 0 业务代码回归
+  - 任务整体保持 🟢 完成——真 PG 端到端留维护者
 
 ### TD-065: ds_embed 返 embedded count int
 
