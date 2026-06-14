@@ -27,6 +27,41 @@ from .extract_template_prompts import (
 logger = logging.getLogger("app.contexts.document.application.tasks")
 
 
+async def _update_files_doc_type(
+    session: AsyncSession,
+    file_id: uuid.UUID,
+    template_obj: object | None,
+    matched_type: str,
+    layer: str,
+) -> None:
+    """BUG-005 fix: 回写 files.doc_type + files.template_id.
+
+    在 L1/L2/L3 命中模板时同步回写 files 表的 doc_type + template_id 字段，
+    保证 ResourceLibrary doc_type 筛选、跨文件模板统计、evidence_coverage
+    `file_metadata` 指标可用。L3(低置信度, template_obj=None) / layer=none
+    时跳过——保持 NULL。
+
+    在调用方 UPDATE structured_data 同一事务内调用，确保一致。
+    """
+    if template_obj is None or layer not in ("L1", "L2", "L3"):
+        return
+    template_uuid = getattr(template_obj, "id", None)
+    if template_uuid is None:
+        return
+    await session.execute(
+        text(
+            "UPDATE metaedu.files "
+            "SET doc_type = :dt, template_id = :tid "
+            "WHERE id = :fid"
+        ),
+        {
+            "dt": matched_type,
+            "tid": template_uuid,
+            "fid": file_id,
+        },
+    )
+
+
 @shared_task(name="extract_template")
 def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str = ""):
     import asyncio
@@ -214,6 +249,14 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
                     "data": json.dumps(existing_data),
                     "fid": file_id,
                 },
+            )
+
+            # BUG-005 fix: 回写 files.doc_type + files.template_id
+            # (与上方 UPDATE structured_data 同一事务)。
+            # L1 / L2 / L3 命中时回写；L3(低置信度, template_obj=None)
+            # 或 layer=none 时跳过。
+            await _update_files_doc_type(
+                session, file_id, template_obj, selection.matched_type, selection.layer
             )
 
             await _update_task_status(session, task_id, "success", 100)
