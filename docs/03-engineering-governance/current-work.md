@@ -16,7 +16,6 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| BUG-005 `parse` 完成后未回写 `files.doc_type` / `template_id` | 🔵 就绪 | P1 | 后端 / 模板抽取 / 模板溯源 | 5 字段齐全需求卡入账；dev 库 1/1 `files.doc_type=NULL` 复现。`files.template_id` 字段不存在需 alembic 迁移。 | 用户下个 PR 修：alembic 迁移 + parse.py 1~3 行回写 + 1 mock pytest + 历史 1 条数据 backfill | 重新上传 1 PDF → 查 files.doc_type / template_id 已填充；evidence_coverage `file_metadata` > 0% |
 | TD-067 LLM 抽取 `teaching_plan` / `practice_links` 返 `-` | 🔵 就绪 | P2 | 后端 / 模板抽取 / LLM prompt | 38 课程列表 / basic_info 准；嵌套课时表 + 实践环节表 + degree_requirements 全 `-`。 | 用户下个 PR 修：`extract_template_prompts.py` 补 2~3 个 few-shot 示例（嵌套 array / table / 多字段 object） | 重新上传 1 PDF → teaching_plan 含 6 semester / practice_links ≥ 3 行 |
 | TD-054 chunker section_path 100% 空 + offset_overlaps 82% 恶化 | 🔵 就绪 | P1 | 后端 / RAG / chunker | 2026-06-14 复测：28 chunks / section_path_empty 100% / offset_overlaps 82.14%（vs 历史 52.61~55.63% 进一步恶化 +26.51~29.51 pct）。 | 用户下个 PR 修：先看 28 chunks 实际 offset 序列定位真因；PR #234 Slice 3 修复只覆盖 `_enforce_size_limit` 拆分，**未覆盖** `chunk_by_structure` 阶段 | 真 PG 重建后 offset_overlaps ≤ 重建前 52.61% |
 
@@ -34,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-14 | BUG-005 `parse` 完成后未回写 `files.doc_type` / `template_id` | 🟢 完成 | PR #285 squash merge `df94203`：alembic 011 + extract_template helper + 7 mock pytest 全过。dev 库 `evidence_coverage file_metadata 0% → 100%`；421/421 pytest 0 业务代码回归。 | [BUG-005](../01-product-planning/05-requirements/BUG-005-files-doc-type-not-backfilled.md) / [PR #285](https://github.com/MarkDanile/MetaEduBase/pull/285) |
 | 2026-06-13 | TD-057 task 函数返回值契约（10 个 `_do` 修复合片系列） | 🟢 完成 | 10 follow-up PR #258/#260/#262/#264/#267/#269/#271/#273/#275/#280 全部 MERGED；414/414 mock pytest 0 业务代码回归。 | [TD-057](technical-debt.md#td-057) / [PR #258](https://github.com/MarkDanile/MetaEduBase/pull/258) (slice 1) + [PR #280](https://github.com/MarkDanile/MetaEduBase/pull/280) (TD-066) |
 | 2026-06-13 | TD-066 ds_build_cross_dataset_edges 返 edge count | 🟢 完成 | PR #280 squash merge `c343de7`：`_do` 返 `edges_created` int + outer 补 return。4 mock pytest 全过；414/414 mock pytest 0 业务代码回归。 | [TD-066](technical-debt.md#td-066) / [PR #280](https://github.com/MarkDanile/MetaEduBase/pull/280) |
 | 2026-06-13 | TD-065 ds_embed 返 embedded count | 🟢 完成 | PR #275 squash merge `f878303`：`_do` 返 `success_count` int + outer 补 return。4 mock pytest 全过；44/44 mock pytest 0 业务代码回归。 | [TD-065](technical-debt.md#td-065) / [PR #275](https://github.com/MarkDanile/MetaEduBase/pull/275) |
@@ -45,4 +45,3 @@
 | 2026-06-13 | TD-059 embed_chunks 返 chunk count | 🟢 完成 | PR #262 squash merge `683652d`：`_do` 返 `len(chunks)` int + outer 补 return。4 mock pytest 全过；44/44 mock pytest 0 业务代码回归。 | [TD-059](technical-debt.md#td-059) / [PR #262](https://github.com/MarkDanile/MetaEduBase/pull/262) |
 | 2026-06-13 | TD-058 parse_document 返 structured_data dict | 🟢 完成 | PR #260 squash merge `f41dcc0`：`_do` 返 `_build_parsed_structured_data(...)`；outer 补 return。4 mock pytest 全过；40/40 mock pytest 0 业务代码回归。 | [TD-058](technical-debt.md#td-058) / [PR #260](https://github.com/MarkDanile/MetaEduBase/pull/260) |
 | 2026-06-13 | TD-056 rebuild_document_chunks 返 chunk count | 🟢 完成 | PR #256 squash merge `497a759`：`_do` 实际返 `len(all_chunks)` + outer 补 `return asyncio.run(...)`（同 TD-055 模式）。4 mock pytest 全过。**全仓 audit**：12 个 `asyncio.run(_run_in_session(...))` 调用点，11 个 `_do` 无 return（按 spec 限定 0 修复）。 | [TD-056](technical-debt.md#td-056) / [PR #256](https://github.com/MarkDanile/MetaEduBase/pull/256) |
-| 2026-06-13 | TD-054 chunker `_split_oversized_chunk` 3 off-by-one | 🟢 完成 | PR #253 squash merge `1f8d8a0`：clause_cursor 累加 + 去掉 +1 错位。5 mock pytest 全过；16/16 chunker tests 0 回归。 | [TD-054](technical-debt.md#td-054) / [PR #253](https://github.com/MarkDanile/MetaEduBase/pull/253) |
