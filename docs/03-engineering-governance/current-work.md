@@ -32,6 +32,11 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-13 | TD-054 chunker `_split_oversized_chunk` 3 off-by-one | 🟢 完成 | PR #253 squash merge `1f8d8a0`：clause_cursor 累加 + 去掉 +1 错位。5 mock pytest 全过；16/16 chunker tests 0 回归。 | [TD-054](technical-debt.md#td-054) / [PR #253](https://github.com/MarkDanile/MetaEduBase/pull/253) |
+| 2026-06-13 | BUG-004 cleanup_orphan_chunks 返 rowcount + 清 1178 orphan | 🟢 完成 | PR #251 squash merge `ce23ed2`：3 repo 返 int + CleanupReport + 真 PG 删 1178 → 0 + check_orphans.py 4 表扫描。 | [BUG-004](../01-product-planning/05-requirements/BUG-004-orphan-tasks-after-file-delete.md) / [PR #251](https://github.com/MarkDanile/MetaEduBase/pull/251) |
+| 2026-06-13 | TD-053 fallback 合成 section_path | 🟢 完成 | PR #241 squash merge `d9c6a90`：sibling_index 累加。5 mock pytest 全过。 | [TD-053](technical-debt.md#td-053) / [PR #241](https://github.com/MarkDanile/MetaEduBase/pull/241) |
+| 2026-06-13 | TD-055 cleanup_orphan_chunks 返 rowcount（1 行修复） | 🟢 完成 | PR #238 squash merge `e9c5223`：asyncio.run → return asyncio.run。4 mock pytest 全过。审计发现 TD-056。 | [TD-055](technical-debt.md#td-055) / [PR #238](https://github.com/MarkDanile/MetaEduBase/pull/238) |
+| 2026-06-12 | BUG-003 AI Chat 体验回归（5 修复合片 + 入口 + 6 工作台同步 PR 收口） | 🟢 完成 | 12 PR 全部合 main：fix1~5 修复合片（backend embedding 降级 / layout 100dvh / reference UI / file open 新标签 / IME 兼容）。7 AC 全部覆盖。 | [BUG-003](../01-product-planning/05-requirements/BUG-003-ai-chat-ux-and-answer-quality-regression.md) / [PR #219+#221+#223+#225+#227+#229](https://github.com/MarkDanile/MetaEduBase/pulls?q=is%3Apr+is%3Amerged+bug-003) |
 | 2026-06-13 | DOC-067 分布式临时编号与正式任务编号归并规则 | 🟢 完成 | PR #248 merged `9bf177b`；正式编号保持短格式，`DRAFT-*` 只作临时来源，并加主表门禁。 | [Technical Debt](technical-debt.md#doc-067) / [PR #248](https://github.com/MarkDanile/MetaEduBase/pull/248) |
 | 2026-06-13 | DOC-066 任务池主表插入顺序门禁 | 🟢 完成 | PR #246 merged `4a58906`；新增 `check_task_pool_order`，防止 Backlog / technical-debt 新编号插入历史编号中间。 | [Technical Debt](technical-debt.md#doc-066) / [PR #246](https://github.com/MarkDanile/MetaEduBase/pull/246) |
 | 2026-06-13 | DOC-065 规则瘦身、任务池插入规则与开工硬门禁收口 | 🟢 完成 | PR #244 merged `6c31fe5`；规则文件全部 ≤100 行，`task-modes.md` 91 行；补开工三连、禁止绕过门禁、任务池插入规则。 | [Technical Debt](technical-debt.md#doc-065) / [PR #244](https://github.com/MarkDanile/MetaEduBase/pull/244) |
