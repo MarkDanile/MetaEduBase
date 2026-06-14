@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| TD-061 extract_template 返 extracted_fields_count | 🟡 进行中 | P1 | 后端 / Celery 任务 / 模板抽取 / LLM | 切 `fix/td-061-extract-template-return`；`_do` 返 `len(template_data)` int + outer 补 return；4 mock pytest 全过；52/52 mock pytest 0 回归。 | push + PR → merge → 工作台同步。 | mock pytest + ruff + check-engineering-docs + 0 业务代码回归。 |
+| （空） | | | | | | |
 
 ## 下一批候选任务
 
@@ -32,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-13 | TD-061 extract_template 返 extracted field count | 🔵 就绪 | PR #267 squash merge `c6fd467`：`_do` 返 `len(template_data)` int + outer 补 return。4 mock pytest 全过；52/52 mock pytest 0 业务代码回归。 | [TD-061](technical-debt.md#td-061) / [PR #267](https://github.com/MarkDanile/MetaEduBase/pull/267) |
 | 2026-06-13 | TD-060 index_tsvector 返 chunk count | 🔵 就绪 | PR #264 squash merge `4ca3582`：`_do` 返 `len(chunk_ids)` int + outer 补 return。4 mock pytest 全过；48/48 mock pytest 0 业务代码回归。 | [TD-060](technical-debt.md#td-060) / [PR #264](https://github.com/MarkDanile/MetaEduBase/pull/264) |
 | 2026-06-13 | TD-059 embed_chunks 返 chunk count | 🔵 就绪 | PR #262 squash merge `683652d`：`_do` 返 `len(chunks)` int + outer 补 return。4 mock pytest 全过；44/44 mock pytest 0 业务代码回归。 | [TD-059](technical-debt.md#td-059) / [PR #262](https://github.com/MarkDanile/MetaEduBase/pull/262) |
 | 2026-06-13 | TD-058 parse_document 返 structured_data dict | 🔵 就绪 | PR #260 squash merge `f41dcc0`：`_do` 返 `_build_parsed_structured_data(...)`；outer 补 return。4 mock pytest 全过；40/40 mock pytest 0 业务代码回归。 | [TD-058](technical-debt.md#td-058) / [PR #260](https://github.com/MarkDanile/MetaEduBase/pull/260) |
