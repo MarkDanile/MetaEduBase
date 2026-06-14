@@ -156,8 +156,8 @@
 | TD-060 | index_tsvector 返 indexed_chunks_count int | 🟢 完成 | P1 | 后端 / Celery 任务 / RAG / tsvector | TD-057 9 个 follow-up slice 4：index_tsvector._do 业务结束时返 `len(chunk_ids)` int；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 indexed chunk 数。 | [PR #264](https://github.com/MarkDanile/MetaEduBase/pull/264) (merge `4ca3582`) |
 | TD-061 | extract_template 返 extracted_fields_count int | 🟢 完成 | P1 | 后端 / Celery 任务 / 模板抽取 / LLM | TD-057 9 个 follow-up slice 5：extract_template._do 业务结束时返 `len(template_data)` int（LLM 抽取的字段 dict 长度）；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 extract 出的字段数。 | [PR #267](https://github.com/MarkDanile/MetaEduBase/pull/267) (merge `c6fd467`) |
 | TD-062 | extract_knowledge_graph 返 `{"nodes": N, "edges": M}` dict | 🟢 完成 | P1 | 后端 / Celery 任务 / RAG / KG | TD-057 9 个 follow-up slice 6：extract_knowledge_graph._do 业务结束时返 `{"nodes": len(node_name_map), "edges": edges_inserted}` dict；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 KG 节点数 + 边数。 | [PR #269](https://github.com/MarkDanile/MetaEduBase/pull/269) (merge `855a4c7`) |
-| TD-063 | ds_parse 返 parsed row count int | 🔵 就绪 | P1 | 后端 / Structured Data / 文档解析 | TD-057 9 个 follow-up slice 7：ds_parse._do 返 `len(parsed.rows)` int；outer 补 `return asyncio.run(...)`。caller 知道 parsed 了多少行。 |
-| TD-064 | ds_extract_kg 返 KG entity/relation counts dict | 🔵 就绪 | P1 | 后端 / Structured Data / KG | TD-057 slice 8。 |
+| TD-063 | ds_parse 返 parsed row count int | 🟢 完成 | P1 | 后端 / Structured Data / 文档解析 | TD-057 9 个 follow-up slice 7：ds_parse._do 返 `len(parsed.rows)` int；outer 补 `return asyncio.run(...)`。caller 知道 parsed 了多少行。 | [PR #271](https://github.com/MarkDanile/MetaEduBase/pull/271) (merge `86bd88c`) |
+| TD-064 | ds_extract_kg 返 KG entity/relation counts dict | 🟢 完成 | P1 | 后端 / Structured Data / KG | TD-057 slice 8：ds_extract_kg._do 返 `{"entities": len(name_to_node_id), "relations": len(kg_data.get("relations", []))}` dict；outer 补 `return`。caller 拿到实体数 + 关系数。 | [PR #273](https://github.com/MarkDanile/MetaEduBase/pull/273) (merge `8bb8b82`) |
 | TD-065 | ds_embed 返 embedded count int | 🟢 完成 | P1 | 后端 / Structured Data / Embedding | TD-057 slice 9：ds_embed._do 返 `success_count` int；outer 补 `return`。 | [PR #275](https://github.com/MarkDanile/MetaEduBase/pull/275) (merge `f878303`) |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
@@ -3780,4 +3780,96 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
   - 44/44 mock pytest pass（4 新增 + 40 既有；0 业务代码回归）
   - ruff clean / `git diff --check` clean
   - TD-065 翻完成依据：PR #275 state=MERGED + merge commit `f878303` 已在 main + 4 mock pytest 全过 + ruff clean + 0 业务代码回归
+  - 任务整体保持 🟢 完成——真 PG 端到端留维护者
+
+### TD-063: ds_parse 返 parsed row count int
+
+状态：🟢 完成
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 后端 / Structured Data / 文档解析 |
+| 事实源 | TD-057 9 个 follow-up slice 7：ds_parse 是 structured_data pipeline 第二步（chain → ds_extract_kg），caller 拿到 parsed 行数后可直接评估下游 KG 抽取工作量 |
+| 交付 PR | [PR #271](https://github.com/MarkDanile/MetaEduBase/pull/271) |
+| Merge Commit | `86bd88c` (squash merge) |
+
+**证据**
+
+- `packages/server-python/app/contexts/structured_data/application/tasks/ds_parse.py:97-101` 已有 `parsed` 局部变量（_do 内 execute SELECT raw + 写 parsed.rows）——L103 chain `ds_extract_kg.delay` 后 `_do` 业务结束**无显式 return**。
+- outer L107 `asyncio.run(_run_in_session(_do))` 同样无 `return`——caller 拿到 None。
+
+**问题**
+
+- 调用方拿不到成功 parse 的行数；运维只能查 SQL `metaedu.dataset_rows WHERE dataset_id = ...` 二次确认。
+- 失败兜底逻辑（`raise RuntimeError(...)` 在 raw 数据为空时）只校验"空数据"，不暴露"成功 parse N 行"。
+
+**完成标准**
+
+- `ds_parse._do` 业务结束时 `return len(parsed.rows)` int
+- outer `asyncio.run(_run_in_session(_do))` 补 `return` 关键字
+- 4 mock pytest 锁死
+- 不引入新 bug
+
+**验证方式**
+
+- `python3 -m pytest tests/contexts/document/test_ds_parse_return.py` → 4/4 pass
+- ruff clean / `git diff --check` clean / `scripts/check-engineering-docs` 退出码 0
+- 真 PG 端到端：调 `ds_parse.delay(...)` 断言返回值 = parsed 行数
+
+**交付记录**
+
+- 2026-06-13 登记（入手工具：Claude Code / TD-057 9 个 follow-up 系列）。本次只入账。
+- 2026-06-13 修复合片（分支 `fix/td-063-ds-parse-return`，已删；PR #271 squash merge `86bd88c`）：
+  - 修 `packages/server-python/app/contexts/structured_data/application/tasks/ds_parse.py`：`_do` chain `ds_extract_kg.delay` 后 `return len(parsed.rows)` int；outer `asyncio.run(_run_in_session(_do))` 补 `return`，同 TD-055~TD-062 / TD-065 模式
+  - 新增 `packages/server-python/tests/contexts/document/test_ds_parse_return.py` 4 mock pytest
+  - 40/40 mock pytest pass（4 新增 + 36 既有；0 业务代码回归）
+  - ruff clean / `git diff --check` clean
+  - TD-063 翻完成依据：PR #271 state=MERGED + merge commit `86bd88c` 已在 main + 4 mock pytest 全过 + ruff clean + 0 业务代码回归
+  - 任务整体保持 🟢 完成——真 PG 端到端留维护者
+
+### TD-064: ds_extract_kg 返 KG entity/relation counts dict
+
+状态：🟢 完成
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 后端 / Structured Data / KG |
+| 事实源 | TD-057 9 个 follow-up slice 8：ds_extract_kg 是 structured_data pipeline 第三步（chain → ds_build_cross_dataset_edges），caller 拿到 KG 实体/关系数后可直接评估 KG 构建质量 |
+| 交付 PR | [PR #273](https://github.com/MarkDanile/MetaEduBase/pull/273) |
+| Merge Commit | `8bb8b82` (squash merge) |
+
+**证据**
+
+- `packages/server-python/app/contexts/structured_data/application/tasks/ds_extract_kg.py:266-268` 已有 `name_to_node_id` 局部变量（L152 构造，实体名→节点 ID 映射）+ `kg_data.get("relations", [])` 是 LLM 抽取的关系列表——业务结束时**无显式 return**。
+- outer L281 `asyncio.run(_run_in_session(_do))` 同样无 `return`——caller 拿到 None。
+
+**问题**
+
+- 调用方拿不到 KG 实体/关系数；运维只能查 SQL `metaedu.kg_nodes` / `metaedu.kg_edges` 二次确认。
+- 失败兜底逻辑只校验 LLM 异常，不暴露"成功 N 实体 / M 关系"。
+
+**完成标准**
+
+- `ds_extract_kg._do` 业务结束时 `return {"entities": len(name_to_node_id), "relations": len(kg_data.get("relations", []))}` dict
+- outer `asyncio.run(_run_in_session(_do))` 补 `return` 关键字
+- 4 mock pytest 锁死
+- 不引入新 bug
+
+**验证方式**
+
+- `python3 -m pytest tests/contexts/document/test_ds_extract_kg_return.py` → 4/4 pass
+- ruff clean / `git diff --check` clean / `scripts/check-engineering-docs` 退出码 0
+- 真 PG 端到端：调 `ds_extract_kg.delay(...)` 断言返回值 = `{"entities": N, "relations": M}` dict
+
+**交付记录**
+
+- 2026-06-13 登记（入手工具：Claude Code / TD-057 9 个 follow-up 系列）。本次只入账。
+- 2026-06-13 修复合片（分支 `fix/td-064-ds-extract-kg-return`，已删；PR #273 squash merge `8bb8b82`）：
+  - 修 `packages/server-python/app/contexts/structured_data/application/tasks/ds_extract_kg.py`：`_do` chain `ds_build_cross_dataset_edges.delay` 后 `return {"entities": len(name_to_node_id), "relations": len(kg_data.get("relations", []))}` dict；outer `asyncio.run(_run_in_session(_do))` 补 `return`，同 TD-055~TD-063 / TD-065 模式
+  - 新增 `packages/server-python/tests/contexts/document/test_ds_extract_kg_return.py` 4 mock pytest
+  - 12/12 mock pytest pass（4 新增 + 8 既有；0 业务代码回归）
+  - ruff clean / `git diff --check` clean
+  - TD-064 翻完成依据：PR #273 state=MERGED + merge commit `8bb8b82` 已在 main + 4 mock pytest 全过 + ruff clean + 0 业务代码回归
   - 任务整体保持 🟢 完成——真 PG 端到端留维护者
