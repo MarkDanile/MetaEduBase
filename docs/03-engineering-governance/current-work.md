@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| TD-059 embed_chunks 返 embedded_chunks_count | 🟡 进行中 | P1 | 后端 / Celery 任务 / AI / RAG | 切 `fix/td-059-embed-chunks-return`；建任务卡登记。`_do` 业务结束时返 `embedded_chunks_count` int（用户指定 TD-057 9 个 follow-up slice 2 优先）。看 `embed.py` 有 `total` 局部变量（L120 上下）。 | 写 mock pytest 锁死 → 实现修 `_do` 返 total + outer 补 `return asyncio.run(...)` → 推 PR。 | ruff + git diff --check + check-engineering-docs + 4 mock pytest + 0 业务代码回归。 |
 
 ## 下一批候选任务
 
