@@ -159,6 +159,13 @@ def rebuild_document_chunks(
                 chain_embed,
             )
 
+            # TD-056 fix: return the chunk count so the outer
+            # `asyncio.run(_run_in_session(_do))` call (L180) can
+            # propagate the int back to the caller. Previously this
+            # function returned None — silently swallowed the result.
+            # Now `asyncio.run(...)` returns the int (reb chunks).
+            return len(all_chunks)
+
             # Optionally chain to embed
             if chain_embed:
                 from .embed import embed_chunks
@@ -170,7 +177,13 @@ def rebuild_document_chunks(
             await session.commit()
             raise
 
-    asyncio.run(_run_in_session(_do))
+    # TD-056 fix: capture asyncio.run's return value so direct
+    # (non-Celery) callers see the rebuilt chunk count instead
+    # of None. `_do` returns len(all_chunks); `run_in_session`
+    # already passes it through; the previous outer
+    # `asyncio.run(_run_in_session(_do))` call discarded the
+    # return on the floor.
+    return asyncio.run(_run_in_session(_do))
 
 
 def _reconstruct_sections_from_full_text(full_text: str) -> list[DocumentSection]:

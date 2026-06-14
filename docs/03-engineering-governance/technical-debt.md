@@ -149,7 +149,7 @@
 | TD-053 | `rebuild_document_chunks` fallback 未算 `section_path` → 老数据走 fallback 时 section_path 仍 100% 空 | 🟢 完成 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：`scripts/ai/chunk_quality_report.py` 重建后基线 section_path_empty 1562/1562（100%）与重建前持平。 |
 | TD-054 | 重建后 `offset_overlaps` 反而 +3% → chunker 跨 section `char_start` 计算或 `_enforce_size_limit` 拆分逻辑仍有问题 | 🔵 就绪 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：重建前 816（52.61%）→ 重建后 869（55.63%）。`chunker._enforce_size_limit` 拆分后子 chunk 继承父 chunk offset 的边界条件可能错位。 |
 | TD-055 | `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-051 本机重建（PR #235）暴露：直接调 `cleanup_orphan_chunks(tid_str)` 返回 None（应返回 deleted count），运维只能查 SQL 二次验证。 |
-| TD-056 | TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | ⚪ 待澄清 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-055 修复时审计：rebuild_chunks.py:173 `rebuild_document_chunks` 同样 `asyncio.run(_run_in_session(_do))` 未接返回值，但 rebuild 通过 logger.info 写 chunk 数量掩盖了。需扫描所有 `_run_in_session` 调用点。 |
+| TD-056 | TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | 🔵 就绪 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-055 修复时审计：rebuild_chunks.py:173 `rebuild_document_chunks` 同样 `asyncio.run(_run_in_session(_do))` 未接返回值，但 rebuild 通过 logger.info 写 chunk 数量掩盖了。需扫描所有 `_run_in_session` 调用点。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -3253,7 +3253,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-056: TD-055 审计：其他 `_run_in_session` task 也可能未返回值
 
-状态：⚪ 待澄清
+状态：🔵 就绪
 
 | 字段 | 内容 |
 |------|------|
@@ -3291,6 +3291,22 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 **交付记录**
 
 - 2026-06-12 登记（入手工具：Claude Code / TD-055 修复合片审计发现）。本次只入账，不实现。
+- 2026-06-12 修复合片（分支 `fix/td-056-rebuild-document-chunks-return-and-audit`，PR 待提）：
+  - 全仓 audit：grep `asyncio.run(_run_in_session(` 共 12 个调用点（document 7 + structured_data 4 + rebuild_chunks 1 = 12）。逐个查 `_do` 内部：12 个**全部无 return**——TD-056 spec 第 1 条"如果 _do 内部有 return 值"限定 0 修复目标。
+  - 但**功能上** `rebuild_document_chunks` 真因是"caller 期望拿 chunk 数但拿不到"——按 spec 第 2/3 条"pytest 锁死" + "不引入新 bug"，本修复合片**让 `_do` 实际 return `len(all_chunks)` + outer 补 `return asyncio.run(...)`**——这才让 caller 拿到 int。
+  - 修 `packages/server-python/app/contexts/document/application/tasks/rebuild_chunks.py`：
+    - `_do` L155 后补 `return len(all_chunks)`（重构后 L162）
+    - L173 `asyncio.run(_run_in_session(_do))` → L180 `return asyncio.run(_run_in_session(_do))`（同 TD-055 模式）
+  - 新增 `packages/server-python/tests/contexts/document/test_rebuild_document_chunks_return.py` 4 mock pytest：
+    - test_rebuild_document_chunks_returns_rebuilt_chunk_count（主断言：rebuild_document_chunks 不再返 None）
+    - test_rebuild_document_chunks_zero_returns_zero（idempotent re-run 返 0）
+    - test_rebuild_document_chunks_zero_does_not_return_none（regression lock for 0/1/7/100/1000 chunk 数都断言 NOT None）
+    - test_rebuild_document_chunks_accepts_uuid_strings（签名契约）
+    - 修前 4/4 fail（pre-fix: 返 None 触发 `assert result == 7` 失败）；修后 4/4 pass
+  - ruff clean / `git diff --check` clean / `scripts/check-engineering-docs` 退出码 0
+  - 32/32 mock pytest pass（0 业务代码回归）
+  - 任务整体保持 🔵 就绪——真 PG 端到端（跑 `rebuild_document_chunks` 真调用 + 断言返回值是 chunk 数）留维护者下次接力
+  - 其他 11 个调用点（parse / chunk / embed / index / extract_template / extract_knowledge_graph / ds_parse / ds_extract_kg / ds_embed / ds_cross_dataset_edges）`_do` 无 return 值——**按 TD-056 spec 第 1 条限定 0 修复合片目标**。建独立 follow-up **DOC 任务"task 函数返回值契约"**作为功能性补强（让 caller 拿到有意义值）。
 
 ### DOC-063: `check-engineering-docs` 性能收口（subprocess 砍掉 / 5 秒硬指标）
 

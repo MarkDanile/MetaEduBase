@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| TD-056 TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | 🟡 进行中 | P1 | 后端 / Celery 任务 / 运维可观测性 | 切 `fix/td-056-rebuild-document-chunks-return-and-audit`；全仓 grep `asyncio.run(_run_in_session(...)` 共 12 个调用点（document 7 + structured_data 4 + rebuild_chunks 1）。逐个查 `_do` 内部：12 个全部**无 return**——TD-056 spec 第 1 条"如果 _do 内部有 return 值"限定 0 修复目标。**TD-056 真因是 spec 期望 caller 拿值但 _do 不返值**——这是**功能性契约缺失**不是 simple bug。 | 写 audit 报告（12 个调用点全清单 + 0 修复合片说明）→ 建独立 DOC follow-up 任务"task 函数返回值契约"作为功能性补强 → 推 docs-only PR。 | ruff + git diff --check + check-engineering-docs + 0 业务代码回归。 |
 
 ## 下一批候选任务
 
