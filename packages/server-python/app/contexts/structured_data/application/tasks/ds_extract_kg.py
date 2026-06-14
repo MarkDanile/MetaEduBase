@@ -253,7 +253,7 @@ def ds_extract_kg(dataset_id_str: str, tenant_id_str: str):
 
             await _update_task_status(session, task_id, "success", 100)
 
-            # Check if all datasets' KG extraction is done — trigger cross-dataset edges
+            # Check if all datasets' KG extraction is done -- trigger cross-dataset edges
             pending = await session.execute(
                 text(
                     "SELECT COUNT(*) FROM metaedu.datasets "
@@ -265,6 +265,9 @@ def ds_extract_kg(dataset_id_str: str, tenant_id_str: str):
                 from .ds_cross_dataset_edges import ds_build_cross_dataset_edges
 
                 ds_build_cross_dataset_edges.delay(str(tenant_id))
+
+            # TD-064 fix: return KG count (entities + relations)
+            return {"entities": len(name_to_node_id), "relations": len(kg_data.get("relations", []))}
 
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
@@ -278,4 +281,5 @@ def ds_extract_kg(dataset_id_str: str, tenant_id_str: str):
             await session.commit()  # Commit failure status before re-raising
             raise
 
-    asyncio.run(_run_in_session(_do))
+    # TD-064 fix: capture asyncio.run's return value.
+    return asyncio.run(_run_in_session(_do))
