@@ -157,7 +157,7 @@
 | TD-061 | extract_template 返 extracted_fields_count int | 🔵 就绪 | P1 | 后端 / Celery 任务 / 模板抽取 / LLM | TD-057 9 个 follow-up slice 5：extract_template._do 业务结束时返 `len(template_data)` int（LLM 抽取的字段 dict 长度）；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 extract 出的字段数。 |
 | TD-063 | ds_parse 返 parsed row count int | 🔵 就绪 | P1 | 后端 / Structured Data / 文档解析 | TD-057 9 个 follow-up slice 7：ds_parse._do 返 `len(parsed.rows)` int；outer 补 `return asyncio.run(...)`。caller 知道 parsed 了多少行。 |
 | TD-064 | ds_extract_kg 返 KG entity/relation counts dict | 🔵 就绪 | P1 | 后端 / Structured Data / KG | TD-057 slice 8。 |
-| TD-065 | ds_embed 返 embedded count int | 🔵 就绪 | P1 | 后端 / Structured Data / Embedding | TD-057 slice 9：ds_embed._do 返 `success_count` int；outer 补 `return`。 |
+| TD-065 | ds_embed 返 embedded count int | 🟢 完成 | P1 | 后端 / Structured Data / Embedding | TD-057 slice 9：ds_embed._do 返 `success_count` int；outer 补 `return`。 | [PR #275](https://github.com/MarkDanile/MetaEduBase/pull/275) (merge `f878303`) |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -3719,3 +3719,49 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
   - 56/56 mock pytest pass（4 新增 + 52 既有；0 业务代码回归）
   - ruff clean / `git diff --check` clean
   - 任务整体保持 🔵 就绪——真 PG 端到端留维护者
+
+### TD-065: ds_embed 返 embedded count int
+
+状态：🟢 完成
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 后端 / Structured Data / Embedding |
+| 事实源 | TD-057 9 个 follow-up slice 9：ds_embed 是 structured_data pipeline 最后一步（chain → ds_extract_kg），caller 拿到成功 embed 的行数后可直接评估向量覆盖率 |
+| 交付 PR | [PR #275](https://github.com/MarkDanile/MetaEduBase/pull/275) |
+| Merge Commit | `f878303` (squash merge) |
+
+**证据**
+
+- `packages/server-python/app/contexts/structured_data/application/tasks/ds_embed.py:87-119` `success_count = 0` 累加 + L119 每次成功 insert chunk + update embedding 后 `success_count += 1`——业务结束时局部变量已存在但**无显式 return**。
+- L141 `ds_extract_kg.delay(dataset_id_str, tenant_id_str)` chain 后 `_do` 业务结束，outer L152 `asyncio.run(_run_in_session(_do))` 同样无 `return`——caller 拿到 None。
+
+**问题**
+
+- 调用方拿不到成功 embed 的行数；运维只能查 SQL `metaedu.document_chunks WHERE embedding IS NOT NULL` 二次确认。
+- 失败兜底逻辑（`if rows and success_count == 0: raise RuntimeError(...)`）只校验"全失败"，不暴露"部分成功"。
+
+**完成标准**
+
+- `ds_embed._do` 业务结束时 `return success_count` int
+- outer `asyncio.run(_run_in_session(_do))` 补 `return` 关键字
+- 4 mock pytest 锁死
+- 不引入新 bug
+
+**验证方式**
+
+- `python3 -m pytest tests/contexts/document/test_ds_embed_return.py` → 4/4 pass
+- ruff clean / `git diff --check` clean / `scripts/check-engineering-docs` 退出码 0
+- 真 PG 端到端：调 `ds_embed.delay(...)` 断言返回值 = 成功 embed 行数
+
+**交付记录**
+
+- 2026-06-13 登记（入手工具：Claude Code / TD-057 9 个 follow-up 系列）。本次只入账。
+- 2026-06-13 修复合片（分支 `fix/td-065-ds-embed-return`，已删；PR #275 squash merge `f878303`）：
+  - 修 `packages/server-python/app/contexts/structured_data/application/tasks/ds_embed.py`：`_do` chain `ds_extract_kg.delay` 后 `return success_count` int；outer `asyncio.run(_run_in_session(_do))` 补 `return`，同 TD-055~TD-064 模式
+  - 新增 `packages/server-python/tests/contexts/document/test_ds_embed_return.py` 4 mock pytest
+  - 44/44 mock pytest pass（4 新增 + 40 既有；0 业务代码回归）
+  - ruff clean / `git diff --check` clean
+  - TD-065 翻完成依据：PR #275 state=MERGED + merge commit `f878303` 已在 main + 4 mock pytest 全过 + ruff clean + 0 业务代码回归
+  - 任务整体保持 🟢 完成——真 PG 端到端留维护者
