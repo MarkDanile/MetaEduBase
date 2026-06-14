@@ -159,7 +159,7 @@
 | TD-063 | ds_parse 返 parsed row count int | 🟢 完成 | P1 | 后端 / Structured Data / 文档解析 | TD-057 9 个 follow-up slice 7：ds_parse._do 返 `len(parsed.rows)` int；outer 补 `return asyncio.run(...)`。caller 知道 parsed 了多少行。 | [PR #271](https://github.com/MarkDanile/MetaEduBase/pull/271) (merge `86bd88c`) |
 | TD-064 | ds_extract_kg 返 KG entity/relation counts dict | 🟢 完成 | P1 | 后端 / Structured Data / KG | TD-057 slice 8：ds_extract_kg._do 返 `{"entities": len(name_to_node_id), "relations": len(kg_data.get("relations", []))}` dict；outer 补 `return`。caller 拿到实体数 + 关系数。 | [PR #273](https://github.com/MarkDanile/MetaEduBase/pull/273) (merge `8bb8b82`) |
 | TD-065 | ds_embed 返 embedded count int | 🟢 完成 | P1 | 后端 / Structured Data / Embedding | TD-057 slice 9：ds_embed._do 返 `success_count` int；outer 补 `return`。 | [PR #275](https://github.com/MarkDanile/MetaEduBase/pull/275) (merge `f878303`) |
-| TD-066 | ds_cross_dataset_edges 返 cross dataset edges count | 🔵 就绪 | P1 | 后端 / Structured Data / KG | TD-057 9 个 follow-up 列表（commit 49a964a 父任务总账）包含的"剩 6 个 follow-up"收口候选（实际只定义了 8 个 TD-058~TD-065，TD-066 是 parent 总账描述中预留的下一个 `_do` 编号）。`ds_cross_dataset_edges._do` 是 structured_data pipeline 最后一步（chain 由 ds_extract_kg 触发），caller 拿到新建跨数据集边数后可直接评估跨数据集 KG 链接构建质量。 |
+| TD-066 | ds_cross_dataset_edges 返 cross dataset edges count | 🟢 完成 | P1 | 后端 / Structured Data / KG | TD-057 9 个 follow-up 列表（commit 49a964a 父任务总账）包含的"剩 6 个 follow-up"收口候选（实际只定义了 8 个 TD-058~TD-065，TD-066 是 parent 总账描述中预留的下一个 `_do` 编号）。`ds_cross_dataset_edges._do` 是 structured_data pipeline 最后一步（chain 由 ds_extract_kg 触发），caller 拿到新建跨数据集边数后可直接评估跨数据集 KG 链接构建质量。 | [PR #280](https://github.com/MarkDanile/MetaEduBase/pull/280) (merge `c343de7`) |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -3877,27 +3877,29 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-066: ds_cross_dataset_edges 返 cross dataset edges count
 
-状态：🔵 就绪
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P1 |
 | 领域 | 后端 / Structured Data / KG |
 | 事实源 | TD-057 9 个 follow-up 列表的预留编号（commit 49a964a 父任务总账描述"剩 6 个 follow-up TD-061 ~ TD-066 待修"——实际只定义 8 个 TD-058~TD-065；TD-066 = TD-057 follow-up 链上游未追踪的最后一个 `_do` 函数）。`ds_cross_dataset_edges._do` 是 structured_data pipeline 跨数据集 KG 链接构建步骤（由 ds_extract_kg chain 触发）——caller 拿到新建跨数据集边数后可直接评估跨数据集 KG 链接构建质量。 |
+| 交付 PR | [PR #280](https://github.com/MarkDanile/MetaEduBase/pull/280) |
+| Merge Commit | `c343de7` (squash merge) |
 
 **证据**
 
-- `packages/server-python/app/contexts/structured_data/application/tasks/ds_cross_dataset_edges.py:47` `async def _do(session: AsyncSession)` 业务主体——末尾 L160+ 批量 insert cross-dataset edges（推测）——`_do` 业务结束时**无显式 return**。
-- outer 推测 `asyncio.run(_run_in_session(_do))` 同样无 `return`——caller 拿到 None。
+- `packages/server-python/app/contexts/structured_data/application/tasks/ds_cross_dataset_edges.py:47-171` `async def _do(session: AsyncSession)` 业务主体——L112 `edges_created = 0` 累加 + L169 每次成功 insert cross-dataset edge 后 `edges_created += 1`——L171 `logger.info("Cross-dataset edges created: %d", edges_created)` 业务结束**无显式 return**。
+- outer L173 `asyncio.run(_run_in_session(_do))` 同样无 `return`——caller 拿到 None。
 
 **问题**
 
 - 调用方拿不到新建跨数据集边数；运维只能查 SQL `metaedu.kg_cross_dataset_edges` 二次确认。
-- 失败兜底逻辑不暴露"成功 N 条边"。
+- 早 return 路径（L57 `if not datasets: return`）和正常完成路径都无显式 return——caller 无法区分"0 边"和"未完成"。
 
 **完成标准**
 
-- `ds_cross_dataset_edges._do` 业务结束时 `return <edge_count>` int（具体行号待实际读源码确认；return 形参可参考 TD-065 `success_count` 模式）
+- `ds_build_cross_dataset_edges._do` 业务结束时 `return edges_created` int
 - outer `asyncio.run(_run_in_session(_do))` 补 `return` 关键字
 - 4 mock pytest 锁死
 - 不引入新 bug
@@ -3906,9 +3908,15 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 - `python3 -m pytest tests/contexts/document/test_ds_cross_dataset_edges_return.py` → 4/4 pass
 - ruff clean / `git diff --check` clean / `scripts/check-engineering-docs` 退出码 0
-- 真 PG 端到端：调 `ds_cross_dataset_edges.delay(...)` 断言返回值 = 边数
+- 真 PG 端到端：调 `ds_build_cross_dataset_edges.delay(...)` 断言返回值 = 边数
 
 **交付记录**
 
 - 2026-06-13 登记（入手工具：Claude Code / TD-057 9 个 follow-up 列表收口）。本次只入账总览 + 详情段；未提 PR、未修业务代码。
-- 实际状态：未修；任务卡就绪，等下个 PR 收口。
+- 2026-06-13 修复合片（分支 `fix/td-066-ds-cross-dataset-edges-return`，已删；PR #280 squash merge `c343de7`）：
+  - 修 `packages/server-python/app/contexts/structured_data/application/tasks/ds_cross_dataset_edges.py`：`_do` L171 logger.info 后 `return edges_created` int；outer L173 `asyncio.run(_run_in_session(_do))` 补 `return`，同 TD-055~TD-065 模式
+  - 新增 `packages/server-python/tests/contexts/document/test_ds_cross_dataset_edges_return.py` 4 mock pytest
+  - 414/414 mock pytest pass（4 新增 + 410 既有；0 业务代码回归）
+  - ruff clean / `git diff --check` clean
+  - TD-066 翻完成依据：PR #280 state=MERGED + merge commit `c343de7` 已在 main + 4 mock pytest 全过 + ruff clean + 0 业务代码回归
+  - 任务整体保持 🟢 完成——真 PG 端到端留维护者
