@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| TD-057 task 函数返回值契约：10 个 `_do` 无 return 修复 + 全仓契约 | 🟡 进行中 | P1 | 后端 / Celery 任务 / 运维可观测性 | 切 `fix/td-057-task-function-return-contracts`；建任务卡登记。审计 10 个调用点：parse_document / chunk_document / embed_chunks / index_tsvector / extract_template / extract_knowledge_graph / ds_parse / ds_extract_kg / ds_embed / ds_cross_dataset_edges。每个 `_do` 应按业务返有意义 int（chunks / nodes / tasks 数等）。 | 写技术债总账详情段 → 10 个 `_do` 按业务实现 return + outer 补 `return asyncio.run(...)` + mock pytest 锁死 → 推 PR。 | ruff + git diff --check + check-engineering-docs + 10 个 mock pytest 锁死（每 task 1 个）+ 0 业务代码回归。 |
+| （空） | | | | | | |
 
 ## 下一批候选任务
 
@@ -32,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-13 | TD-057 slice 1: chunk_document 返 chunk count | 🟡 进行中 | PR #258 squash merge `b1fcf23`：`_do` 返 `len(chunks)` int + outer 补 return。4 mock pytest 全过。其他 9 个 task 各自建独立 follow-up TD-058 ~ TD-066 跟踪。TD-057 整体保持 🟡 进行中——真 PG 端到端留维护者。 | [TD-057](technical-debt.md#td-057) / [PR #258](https://github.com/MarkDanile/MetaEduBase/pull/258) |
 | 2026-06-13 | TD-056 rebuild_document_chunks 返 chunk count | 🟢 完成 | PR #256 squash merge `497a759`：`_do` 实际返 `len(all_chunks)` + outer 补 `return asyncio.run(...)`（同 TD-055 模式）。4 mock pytest 全过。**全仓 audit**：12 个 `asyncio.run(_run_in_session(...))` 调用点，11 个 `_do` 无 return（按 spec 限定 0 修复）。 | [TD-056](technical-debt.md#td-056) / [PR #256](https://github.com/MarkDanile/MetaEduBase/pull/256) |
 | 2026-06-13 | TD-054 chunker `_split_oversized_chunk` 3 off-by-one | 🟢 完成 | PR #253 squash merge `1f8d8a0`：clause_cursor 累加 + 去掉 +1 错位。5 mock pytest 全过；16/16 chunker tests 0 回归。 | [TD-054](technical-debt.md#td-054) / [PR #253](https://github.com/MarkDanile/MetaEduBase/pull/253) |
 | 2026-06-13 | BUG-004 cleanup_orphan_chunks 返 rowcount + 清 1178 orphan | 🟢 完成 | PR #251 squash merge `ce23ed2`：3 repo 返 int + CleanupReport + 真 PG 删 1178 → 0 + check_orphans.py 4 表扫描。 | [BUG-004](../01-product-planning/05-requirements/BUG-004-orphan-tasks-after-file-delete.md) / [PR #251](https://github.com/MarkDanile/MetaEduBase/pull/251) |
