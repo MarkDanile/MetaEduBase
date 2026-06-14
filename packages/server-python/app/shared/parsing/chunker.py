@@ -133,6 +133,16 @@ def chunk_by_structure(
                             last.content += "\n" + sentence
                             last.char_end = last.char_start + len(last.content)
                         else:
+                            # TD-054 round 2 fix: merge branches (L126 / L133)
+                            # update last.char_end but do NOT advance
+                            # local_offset. Before creating a new chunk we
+                            # must sync local_offset to last.char_end so the
+                            # new chunk's char_start is correct (>= last
+                            # chunk's actual end). Previously local_offset
+                            # stayed at the stale value from when `last` was
+                            # first created, causing overlaps when merge
+                            # branches fired.
+                            local_offset = last.char_end
                             chunks.append(
                                 Chunk(
                                     content=sentence,
@@ -254,8 +264,14 @@ def _split_oversized_chunk(text: str, max_chars: int) -> list[tuple[str, int]]:
         if not current:
             current = sent
             current_start = pos
+            pos += sent_len
         elif len(current) + sent_len + 1 <= max_chars:
             current = (current + "\n" + sent).strip()
+            # TD-054 round 2 fix: pos is total of individual sentence lengths,
+            # but `current` is the merged group. After a merge, advance pos
+            # to current_start + len(current) so the next sentence's
+            # char_start (via `current_start = pos`) is correct.
+            pos = current_start + len(current)
         else:
             result.append((current, current_start))
             if sent_len > max_chars:
@@ -273,10 +289,11 @@ def _split_oversized_chunk(text: str, max_chars: int) -> list[tuple[str, int]]:
                     clause_cursor += len(part)
                 current = clause_parts[-1]
                 current_start = clause_cursor
+                pos = clause_cursor + len(clause_parts[-1])
             else:
                 current = sent
                 current_start = pos
-        pos += sent_len
+                pos += sent_len
 
     if current.strip():
         result.append((current, current_start))
