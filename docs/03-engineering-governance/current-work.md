@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （空） | | | | | | |
+| TD-060 index_tsvector 返 indexed_chunks_count | 🟡 进行中 | P1 | 后端 / Celery 任务 / RAG / tsvector | 切 `fix/td-060-index-tsvector-return`；`_do` 返 `len(chunk_ids)` int + outer 补 return；4 mock pytest 全过；48/48 mock pytest 0 回归。 | push + PR → merge → 工作台同步。 | mock pytest + ruff + check-engineering-docs + 0 业务代码回归。 |
 
 ## 下一批候选任务
 

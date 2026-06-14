@@ -85,9 +85,16 @@ def index_tsvector(file_id_str: str, tenant_id_str: str, pipeline_version: str =
 
             extract_template.delay(file_id_str, tenant_id_str, pipeline_version)
 
+            # TD-060 fix: return the indexed chunk count so the
+            # outer `asyncio.run(_run_in_session(_do))` call can
+            # propagate the int back to the caller. Same pattern
+            # as TD-055 / TD-056 / TD-057 / TD-058 / TD-059.
+            return len(chunk_ids)
+
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))
             await session.commit()
             raise
 
-    asyncio.run(_run_in_session(_do))
+    # TD-060 fix: capture asyncio.run's return value.
+    return asyncio.run(_run_in_session(_do))
