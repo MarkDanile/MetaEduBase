@@ -1,4 +1,4 @@
-# BUG-006: 资源库展示与抽取 3 类残留问题（前端字段名 / pdf_parser section / TD-067 nested 回归）
+# BUG-006: 资源库展示与抽取 5 类残留问题（前端字段名 / pdf_parser section / TD-067 nested / KG limit 不一致 / 返回按钮）
 
 Status: 🔵 Ready
 Priority: P1
@@ -50,6 +50,30 @@ PR #287 的 `build_few_shot_examples` 已对前 3 类 emit examples（[test_extr
 - schema 描述层级太深（teaching_plan: array→object→object→text 4 层）需更明确的引导
 - table 类型的 fewshot 示例与实际页面布局不匹配（实际是横版课时表，example 是纵版）
 
+### 4. 资源库 → 文件详情 → 知识图谱 tab 在节点数 > 50 时白屏
+
+真因（2026-06-15 浏览器 console 复现）：
+- 后端 `/api/v1/knowledge/nodes` 默认 `limit=50`（[router.py:104](../../../packages/server-python/app/contexts/knowledge/interfaces/api/router.py#L104) `limit: int = Query(default=50, ge=1, le=100)`）
+- 后端 `/api/v1/knowledge/edges` **无 limit**（返回该 file 所有边）
+- 前端 `useFileKgQuery` 调 `listNodes({ source_file_id })` 不传 `limit` → 用 50 默认值
+- 教案文件 65 节点，被截断 15 个；其中 1 个被截断节点（`提灯天使`）作为某条边的 target
+- g6 渲染时 `setData(nodes=50, edges=64)` 遇到 edge target 不在 nodes 列表 → 抛 `Error: Node not found for id: e25a8f15-...` → **整个 KG 容器一片白**
+
+复现条件：任何 KG 节点数 > 50 的文件（已确认教案 65 节点；课程标准 70 节点；人才培养方案 58 节点也会触发，之前看似正常是因为前 50 个节点恰好涵盖了所有边的两端）
+
+后端 hard limit `le=100`，所以单纯前端传 limit=200 也会被拒。
+
+### 5. 资源库 → 文件详情页"返回"按钮点击无效
+
+`FileDetailView.vue:196-198` 的 `goBack()` 调用 `router.push("/resource")`，与同文件 L183 删除后跳转用同一行代码（已知正常工作）。点击"返回"按钮无效但点击"删除"后能跳转 → 推测：
+
+- "返回"按钮被其他元素遮挡（z-index / overlay 问题）
+- 浏览器端有未捕获 promise reject 阻塞了事件冒泡
+- Vue Query polling 的 `refetch` 拦截了路由切换
+- PageHeader extra slot 的 flex 布局在某些视口下点击区错位
+
+需浏览器 DevTools 实地排查（点击时观察 Console error / Network 是否触发新请求 / URL 是否改变）。
+
 ## 复现路径
 
 ### 复现 #1（前端字段名）
@@ -86,21 +110,57 @@ WHERE id = '<file_id>' AND doc_type = '人才培养方案';
 -- 实际: 全部 '-' 或子字段全 '-'
 ```
 
+### 复现 #4（KG > 50 节点白屏）
+
+1. 上传任一抽取后 KG 节点数 > 50 的文件（教案 65 / 课程标准 70 等）
+2. 资源库 → 文件详情 → 切到"知识图谱" tab
+3. 浏览器 DevTools → Console 出现 `Error: Node not found for id: <uuid>`
+4. KG 容器一片白（图谱完全没渲染）
+
+SQL 验证条件：
+```sql
+SELECT COUNT(*) FROM metaedu.knowledge_nodes WHERE source_file_id = '<file_id>';
+-- 当 > 50 时必现
+```
+
+### 复现 #5（返回按钮无效）
+
+1. 资源库 → 任一文件详情页
+2. 点击页头"返回"按钮
+3. 期望：跳回资源库列表（`/resource`）
+4. 实际：URL 不变（或变了但页面没切），与同页面"删除"按钮跳转用同一行 `router.push("/resource")` 不一致
+
+需 DevTools 复现：Console 是否有 error / Network 是否有阻塞请求 / URL 是否在点击瞬间变化。
+
 ## 期望行为
 
 1. **前端字段名**：模板抽取 tab 渲染 `field.label`，保留 `field.key` 作为内部 anchor / DOM id
 2. **pdf_parser section**：识别中文「一、二、三、（一）（二）」等编号标题；多章节文档 `structured_data.sections` 长度 ≥ 5；每个 section 至少 `title` 非空
 3. **TD-067 nested**：`teaching_plan` / `practice_links` / `degree_requirements` / `graduation_requirements` 4 个字段在人才培养方案样本上至少 1 个抽取成功（其余记录 LLM 返 `-` 的原始响应供后续优化）
+4. **KG > 50 节点**：上传任一节点数 > 50 的文件后，KG tab 必须能渲染所有节点 + 边；不出现 `Node not found` console error
+5. **返回按钮**：资源库文件详情页点击"返回"必须跳回 `/resource` 列表（与"删除后跳转"行为一致）
 
 ## 怀疑点
 
 1. **#1 前端字段名**：`packages/web/src/components/.../FieldCard*.vue` 或 `FileTabsPanel.vue` 模板抽取展示组件渲染 `{{ field.key }}` 而非 `{{ field.label }}`（具体文件需 git grep 定位）
-2. **#2 pdf_parser**：`pdf_parser.py` 的 section 识别正则只匹配 `^##\s+|^#\s+` 等英文 heading，没匹配中文编号 `^[一二三四五六七八九十]、` 或 `^（[一二三四五六七八九十]）` 模式
+2. **#2 pdf_parser**：`pdf_parser.py:69-74` 用纯字号 + bold 检测 heading（`_HEADING_SIZES = {22:1, 18:2, 15:3, 13:4}`），中文非粗体普通字号标题（如人才培养方案 / 教案）全部漏检；课程标准 PDF 字号大且粗体所以正常。需补「中文章节正则模式」（`^[一二三四五六七八九十]、` / `^（[一二三四五六七八九十]）` / `^第[一二三四五六七八九十]+[章节部分]`）作为字号 heuristic 的补充，或扫描行文本统计正则模式频次 ≥3 时优先按正则切分
 3. **#3 TD-067 nested**：
    - 检查 prompt 实际生成内容（`extract_template.py` 的 `prompt_template` 拼装位置 + `chunks_text[:6000]` 截断是否把 fewshot 挤掉）
    - 检查 LLM 真实返回（task log 应该 caplog 记录原始响应）
    - 抽样人工读 prompt 看 fewshot 示例是否对 nested schema 真的清晰
    - 考虑切换更强模型（如 GPT-4o → 当前可能用了较弱的本地模型）
+4. **#4 KG limit 不一致**：
+   - 后端 `/nodes` 默认 `limit=50`、上限 `le=100`（[router.py:104](../../../packages/server-python/app/contexts/knowledge/interfaces/api/router.py#L104)）
+   - 后端 `/edges` 无 limit（[router.py:69](../../../packages/server-python/app/contexts/knowledge/interfaces/api/router.py#L69)）→ 双方契约不对齐
+   - 前端 `useFileKgQuery` 不传 limit（[queries.ts:116](../../../packages/web/src/views/resource/queries.ts#L116)）→ 用默认 50
+   - 推荐修复路径（最干净）：后端新增 `GET /knowledge/files/{file_id}/kg-bundle` 端点原子返回 `{nodes, edges}` 且保证 nodes 完整 + edges 两端都在 nodes 列表
+   - Quick fix（5 行）：后端 `le=100` → `le=2000`；前端 `useFileKgQuery` 传 `limit=2000`；前端 `KGGraph.vue` 渲染前 filter 掉 source/target 不在 nodes 列表的边
+5. **#5 返回按钮**：
+   - 同文件 L183 删除后跳转用同一行 `router.push("/resource")`、行为正常 → 排除路由本身问题
+   - 可能 `<button>` 被 PageHeader extra slot flex 布局下其他元素遮挡（z-index）
+   - 可能 Vue Query polling 的 `refetch` 在文件详情页活跃，拦截事件循环
+   - 可能 click 事件监听被全局 axios interceptor 异常吞掉
+   - 需 DevTools 复现 + 加 `console.log("goBack click")` 排查事件是否触发
 
 ## 完成标准
 
@@ -108,21 +168,30 @@ WHERE id = '<file_id>' AND doc_type = '人才培养方案';
   - 前端字段名展示中文 label（人工 review 前端 → 应至少 90% 字段名是中文，10% 容错给历史模板未填 label 的字段）
   - SQL 查询 `section_count >= 5` AND `first_section_title != ''`
   - SQL 查询人才培养方案 4 个嵌套字段中至少 1 个非 `-`
+- 上传任一节点数 > 50 的文件后：
+  - 资源库 KG tab 不出现 `Node not found` console error
+  - 图谱完整渲染（节点数 = 后端 source_file_id 过滤总数）
+- 资源库文件详情页点击"返回"必须跳回 `/resource` 列表
 - 自动化测试：
   - 前端：`FieldCard.spec.ts` 加 `renders label not key` 用例
+  - 前端：`KGGraph.spec.ts` 加「edges 引用未知 node 时不抛错」用例
+  - 前端：`FileDetailView.spec.ts` 加「点击返回按钮触发 router.push("/resource")」用例
   - 后端：`tests/shared/test_pdf_parser.py` 加「中文一二三标题识别」用例（`test_chinese_chapter_heading_identified`）
-  - 后端：`tests/contexts/document/test_extract_template_nested_recovery.py` 加「人才培养方案样本」mock 用例验证 prompt 含 fewshot 段（已有的 [test_extract_template_few_shot_examples.py](../../../packages/server-python/tests/contexts/document/test_extract_template_few_shot_examples.py) 已锁 helper，本任务锁端到端集成）
+  - 后端：`tests/contexts/document/test_extract_template_nested_recovery.py` 加「人才培养方案样本」mock 用例验证 prompt 含 fewshot 段
+  - 后端：`tests/contexts/knowledge/test_router.py` 加「`/nodes` 接受 `limit=2000`」契约用例
 
 ## 验证方式
 
-- `pnpm test web -- FieldCard` 用例覆盖 label-vs-key 渲染
-- `cd packages/server-python && .venv/bin/python -m pytest tests/shared/test_pdf_parser.py tests/contexts/document/test_extract_template_nested_recovery.py -v`
-- 真 PG dev 库重新上传 1 个人才培养方案 + 1 个教案后跑 3 个 SQL 确认 3 类指标改善
+- `pnpm test web -- FieldCard KGGraph FileDetailView` 用例覆盖 #1 / #4 / #5 前端
+- `cd packages/server-python && .venv/bin/python -m pytest tests/shared/test_pdf_parser.py tests/contexts/document/test_extract_template_nested_recovery.py tests/contexts/knowledge/test_router.py -v`
+- 真 PG dev 库重新上传 1 个人才培养方案 + 1 个教案 + 1 个课程标准后：
+  - 跑 5 个 SQL 确认 5 类指标改善
+  - 浏览器手工 review：① 字段名中文 ② KG tab 不白屏（教案 / 课程标准） ③ 返回按钮跳转
 - `ruff check app/ tests/` clean / `git diff --check` clean / `scripts/check-engineering-docs` exit 0
 
 ## 不在范围
 
-- KG 节点未绑文件（实测 58/58 已绑，worker 重启后自然修复）
+- KG 节点未绑文件（实测 worker 重启后自然修复，145→338 全绑）
 - chunk_quality_report `offset_overlaps` 0%（已由 TD-054 R3 PR #290 修复，本次复测 0/28）
 - `files.doc_type` / `template_id` 回写（已由 BUG-005 PR #285 修复）
 - `curriculum_system` array[course] 单层抽取（已由 TD-067 PR #287 修复）
@@ -139,8 +208,10 @@ WHERE id = '<file_id>' AND doc_type = '人才培养方案';
 
 ## 拆分建议（实现时）
 
-3 类问题独立性强、修复路径不重叠，建议拆 3 个 PR 分别开发：
+5 类问题独立性强、修复路径不重叠，建议拆 5 个 PR 分别开发：
 
-1. **PR-1（前端，最简）**：BUG-006 #1 字段名 label 渲染 + Vue 单测（≤ 50 行 vue 代码 + 30 行 test）
-2. **PR-2（后端 pdf_parser）**：BUG-006 #2 中文章节标题识别 + 真 PG 复测验收
-3. **PR-3（后端 prompt 调优 / 模型切换）**：BUG-006 #3 TD-067 nested 回归（先 spike 看 LLM 真实返回，再决定改 prompt 还是切模型）
+1. **PR-1（前端字段名 label）**：BUG-006 #1 字段名 label 渲染 + Vue 单测（≤ 50 行 vue + 30 行 test）
+2. **PR-2（后端 pdf_parser 中文章节）**：BUG-006 #2 中文标题识别 + 真 PG 复测验收
+3. **PR-3（后端 prompt 调优 / TD-067 nested）**：先 spike 看 LLM 真实返回，再决定改 prompt 还是切模型
+4. **PR-4（KG limit 不一致）**：后端新增 kg-bundle 端点 OR le=2000 + 前端传 limit=2000 + 渲染前 filter dangling edges + 3 端测试
+5. **PR-5（前端返回按钮）**：DevTools 排查 → 修对应根因 + Vue 单测
