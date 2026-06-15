@@ -1,6 +1,6 @@
 # BUG-006: 资源库展示与抽取 5 类残留问题（前端字段名 / pdf_parser section / TD-067 nested / KG limit 不一致 / 返回按钮）
 
-Status: 🔵 Ready
+Status: 🟢 Done
 Priority: P1
 Milestone: P1 RAG 治理 / 资源库 UX
 Source: 2026-06-15 用户重新上传 `01-人才培养方案环境监测技术专业.pdf` 后审查发现（用户 + Claude Code 真 PG 复测）
@@ -202,9 +202,9 @@ SELECT COUNT(*) FROM metaedu.knowledge_nodes WHERE source_file_id = '<file_id>';
 
 - ✅ **#1 前端字段名英文** — [PR #297](https://github.com/MarkDanile/MetaEduBase/pull/297) (squash `0d2f88f`) 已合并：抽取 `getTemplateFieldLabel` 到 `utils/templateLabels.ts` 公共模块；3 轮迭代（round 1 修 children + dot-path；round 2 修 items / columns + keyPath 数组；round 2.5 修 multi-template ambiguity）覆盖 object 子字段 / array item / table column 三类嵌套；`FieldValue.vue` 加 `keyPath` + `templates` + `arrayItemSchema` 3 个 optional prop 传递嵌套 context；arrayItemSchema computed 消除双编号布局；9 vitest 用例（4 + 3 + 2）锁 3 类不变量；64/64 frontend tests 0 回归；浏览器手测 3 文件 95%+ 字段名中文 + 数组项布局干净。
 - ✅ **#4 KG > 50 节点白屏** — [PR #295](https://github.com/MarkDanile/MetaEduBase/pull/295) (squash `6bbab5b`) 已合并：新增 `GET /api/v1/knowledge/files/{file_id}/kg-bundle` 原子端点保证 edges.source/target 都在 nodes 列表（SQL 双端 IN 过滤）；`file_id: uuid.UUID` 签名让 FastAPI 自动校验非法 UUID 返 422；3 PG-based pytest 锁不变量（基础 / dangling 过滤 / 空 bundle）；前端 `useFileKgQuery` 切新端点；真 PG dev 库复测 4/4 PASS（教案 65+64 / 课程标准 70+62 / 人才培养方案 58+29 / 空文件 200 / 非法 UUID 422）；437 mock pytest 0 业务代码回归。
-- 🔵 #2 pdf_parser 不识中文章节（待开发）
-- 🔵 #3 TD-067 nested 回归（待开发）
-- 🔵 #5 返回按钮无效（待开发）
+- ✅ **#2 pdf_parser 不识中文章节** — [PR #299](https://github.com/MarkDanile/MetaEduBase/pull/299) (squash `bd7b109`) 已合并：新增 `_detect_chinese_heading_level` + 5 类正则模式（第X章/编/部/分、第X节、一/二/三、（一）（二）、(一)(二)）作为 font-size+bold 的 fallback；11/11 新 pytest + 448/448 全量 mock pytest 0 回归。
+- ✅ **#3 TD-067 nested 回归** — [PR #300](https://github.com/MarkDanile/MetaEduBase/pull/300) (squash `ac99efc`) 已合并：`build_fields_desc` 递归展开 array items children；few-shot 前移到文档内容之前；`_example_nested_array` 用真实 key + 递归子项；`chunks_text` 截断 6000→10000。22/22 prompt tests + 439/439 全量 mock pytest 0 回归。
+- ✅ **#5 返回按钮无效** — [PR #301](https://github.com/MarkDanile/MetaEduBase/pull/301) (squash `17d2d48`) 已合并：`goBack()` 改用 `router.replace("/resource")` 避免 Vue Query polling 竞态；3 个按钮加 `type="button"`。4/4 新 vitest + 68/68 全量 frontend tests 0 回归。
 
 ## 关联
 
@@ -216,10 +216,12 @@ SELECT COUNT(*) FROM metaedu.knowledge_nodes WHERE source_file_id = '<file_id>';
 
 ## 拆分建议（实现时）
 
-5 类问题独立性强、修复路径不重叠，建议拆 5 个 PR 分别开发：
+5 类问题独立性强、修复路径不重叠，建议拆 5 个 PR 分别开发（已全部完成）：
 
-1. **PR-1（前端字段名 label）**：BUG-006 #1 字段名 label 渲染 + Vue 单测（≤ 50 行 vue + 30 行 test）
-2. **PR-2（后端 pdf_parser 中文章节）**：BUG-006 #2 中文标题识别 + 真 PG 复测验收
-3. **PR-3（后端 prompt 调优 / TD-067 nested）**：先 spike 看 LLM 真实返回，再决定改 prompt 还是切模型
-4. **PR-4（KG limit 不一致）**：后端新增 kg-bundle 端点 OR le=2000 + 前端传 limit=2000 + 渲染前 filter dangling edges + 3 端测试
-5. **PR-5（前端返回按钮）**：DevTools 排查 → 修对应根因 + Vue 单测
+1. **PR-1（前端字段名 label）**：[PR #297](https://github.com/MarkDanile/MetaEduBase/pull/297) ✅ 字段名 label 渲染 + Vue 单测
+2. **PR-2（后端 pdf_parser 中文章节）**：[PR #299](https://github.com/MarkDanile/MetaEduBase/pull/299) ✅ 中文标题识别 + mock pytest 验证
+3. **PR-3（后端 prompt 调优 / TD-067 nested）**：[PR #300](https://github.com/MarkDanile/MetaEduBase/pull/300) ✅ 嵌套 schema 描述 + few-shot 前移 + 截断扩展
+4. **PR-4（KG limit 不一致）**：[PR #295](https://github.com/MarkDanile/MetaEduBase/pull/295) ✅ kg-bundle 原子端点
+5. **PR-5（前端返回按钮）**：[PR #301](https://github.com/MarkDanile/MetaEduBase/pull/301) ✅ router.replace 避免 Vue Query 竞态
+
+合并顺序：docs/bug-006-1-post-merge → #299 → #300 → #301，main 全部 squash merge。
