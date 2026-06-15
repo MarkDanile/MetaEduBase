@@ -2,14 +2,8 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
-
-
-@dataclass
-class HeadingBlock:
-    level: int  # 1-6
-    text: str
-    page: int
 
 
 @dataclass
@@ -28,6 +22,29 @@ class ParsedDocument:
 
 
 _HEADING_SIZES = {22: 1, 18: 2, 15: 3, 13: 4}
+
+# Chinese numbered heading patterns — used as fallback when font-size+bold
+# heuristics miss unstyled headings common in Chinese educational PDFs.
+_CHINESE_HEADING_PATTERNS: list[tuple[re.Pattern[str], int]] = [
+    # 第X章/编/部/分 — formal chapter-level headings
+    (re.compile(r"^第[一二三四五六七八九十百千]+[章编部分]"), 1),
+    # 第X节 — formal section-level headings
+    (re.compile(r"^第[一二三四五六七八九十百千]+节"), 2),
+    # 一、二、三、... — Chinese numeral + comma (chapter level)
+    (re.compile(r"^[一二三四五六七八九十]+、"), 1),
+    # （一）（二）... — full-width parenthesized Chinese numeral
+    (re.compile(r"^（[一二三四五六七八九十]+）"), 2),
+    # (一)(二)... — half-width parenthesized Chinese numeral
+    (re.compile(r"^\([一二三四五六七八九十]+\)"), 2),
+]
+
+
+def _detect_chinese_heading_level(text: str) -> int:
+    """Return heading level (1-4) if *text* starts with a Chinese heading pattern, else 0."""
+    for pattern, level in _CHINESE_HEADING_PATTERNS:
+        if pattern.match(text):
+            return level
+    return 0
 
 
 def extract_pdf_text(file_path: str) -> ParsedDocument:
@@ -65,13 +82,23 @@ def extract_pdf_text(file_path: str) -> ParsedDocument:
                 if not line_text:
                     continue
 
+                # Primary: font-size + bold heuristic
                 heading_level = 0
                 for size, lvl in _HEADING_SIZES.items():
                     if max_font_size >= size:
                         heading_level = lvl
                         break
 
-                if heading_level > 0 and is_bold and len(line_text) < 200:
+                is_heading = heading_level > 0 and is_bold and len(line_text) < 200
+
+                # Fallback: Chinese numbered heading patterns
+                if not is_heading:
+                    regex_level = _detect_chinese_heading_level(line_text)
+                    if regex_level > 0 and len(line_text) < 200:
+                        heading_level = regex_level
+                        is_heading = True
+
+                if is_heading:
                     if current_title:
                         content = "\n".join(current_content_parts).strip()
                         path = _build_path(section_counter, heading_level)
