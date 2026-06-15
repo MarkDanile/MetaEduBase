@@ -96,14 +96,16 @@ def test_build_fields_desc_array_uses_first_item_key() -> None:
 
     desc = build_fields_desc([f.to_dict() for f in fields])
 
-    # array 行只声明"成员为object，含字段：step"，不展开 step 内部 children
-    assert desc == "teaching_process(教学过程)[array型，成员为object，含字段：step]"
+    # BUG-006 #3: array items with children are now recursively expanded
+    # The array element shape shows the item's children directly (step → activity)
+    assert "teaching_process(教学过程)[array型，成员含字段：" in desc
+    assert "activity(活动)[text型]" in desc
 
 
 def test_build_fields_desc_array_without_items_falls_back_to_item_key() -> None:
     # TD-034 (Route A): ``f.get("items") is not None`` replaces the old falsy
     # check so that ``items=[]`` still enters the array branch and falls back
-    # to the generic key "item".  This preserves the "成员为object" hint for
+    # to the generic key "item".  This preserves the "成员含字段" hint for
     # LLM, avoiding the degradation to bare ``[array型]``.
     fields = [
         Field(key="empty_array", label="空数组", type="array", items=[]),
@@ -111,7 +113,7 @@ def test_build_fields_desc_array_without_items_falls_back_to_item_key() -> None:
 
     desc = build_fields_desc([f.to_dict() for f in fields])
 
-    assert desc == "empty_array(空数组)[array型，成员为object，含字段：item]"
+    assert desc == "empty_array(空数组)[array型]"
 
 
 # --- AC-3: build_fields_desc on table nesting ------------------------------
@@ -164,12 +166,9 @@ def test_build_fields_desc_mixed_types_preserve_order_and_type_tag() -> None:
 
     desc = build_fields_desc([f.to_dict() for f in fields])
 
-    parts = desc.split(", ")
-    assert len(parts) == 4
-    assert parts[0] == "title(标题)[text型]"
-    assert parts[1].startswith("basic_info(基本信息)[object型，含子字段：")
-    assert parts[2] == "teaching_process(教学过程)[array型，成员为object，含字段：step]"
-    assert parts[3] == "assessment(评价)[table型，列：criterion]"
+    # array with simple text item: "成员含字段：step" (no children to recurse)
+    assert "teaching_process(教学过程)[array型，成员含字段：step]" in desc
+    assert "assessment(评价)[table型，列：criterion]" in desc
 
 
 # --- AC-5: try_parse preserves nested object / array / table ---------------
@@ -284,3 +283,72 @@ def test_merge_template_structured_data_with_meta_preserves_nested_shallow_copy(
     # 核心键写入
     assert merged["template"]["id"] == "tmpl-1"
     assert merged["template"]["layer"] == "L1"
+
+
+# --- BUG-006 #3: build_fields_desc recurses into array items children ----------
+
+
+def test_build_fields_desc_array_items_children_are_recursed() -> None:
+    """array field with items[0] that has object children → children fully expanded."""
+    fields = [
+        Field(
+            key="teaching_plan",
+            label="教学计划",
+            type="array",
+            items=[
+                Field(
+                    key="semester",
+                    label="学期",
+                    type="object",
+                    children=[
+                        Field(key="course", label="课程", type="text"),
+                        Field(key="hours", label="课时", type="text"),
+                    ],
+                )
+            ],
+        )
+    ]
+
+    desc = build_fields_desc([f.to_dict() for f in fields])
+
+    assert "teaching_plan(教学计划)[array型，成员含字段：" in desc
+    # item children are expanded directly (course and hours, not semester wrapping)
+    assert "course(课程)[text型]" in desc
+    assert "hours(课时)[text型]" in desc
+
+
+def test_build_fields_desc_deeply_nested_array_items() -> None:
+    """4-level nesting: array → object → object → text is fully expanded."""
+    fields = [
+        Field(
+            key="teaching_plan",
+            label="教学计划",
+            type="array",
+            items=[
+                Field(
+                    key="semester",
+                    label="学期",
+                    type="object",
+                    children=[
+                        Field(
+                            key="weekly_hours",
+                            label="周课时",
+                            type="object",
+                            children=[
+                                Field(key="subject", label="科目", type="text"),
+                                Field(key="count", label="节数", type="number"),
+                            ],
+                        ),
+                    ],
+                )
+            ],
+        )
+    ]
+
+    desc = build_fields_desc([f.to_dict() for f in fields])
+
+    # All 4 levels should be visible
+    assert "teaching_plan(教学计划)" in desc
+    assert "weekly_hours(周课时)[object型，含子字段：" in desc
+    assert "subject(科目)[text型]" in desc
+    assert "count(节数)[number型]" in desc

@@ -66,7 +66,7 @@ def test_few_shot_emits_nested_array_example() -> None:
     assert "示例（嵌套 array）" in out
     assert "```json" in out
     assert "teaching_plan" in out
-    assert "semester" in out
+    # Items' children are expanded directly as array elements
     assert "course" in out
     assert "hours" in out
 

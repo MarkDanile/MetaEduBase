@@ -186,8 +186,9 @@ def extract_template(file_id_str: str, tenant_id_str: str, pipeline_version: str
                     "3. array型字段（如teaching_process）的value必须是JSON数组，"
                     "每个成员是包含子字段的object\n"
                     f"4. table型字段的value必须是JSON数组，每行是一个object\n"
-                    f"5. 文档中没有的内容填写\"-\"，只返回JSON不要任何解释\n\n"
-                    f"文档内容：\n{chunks_text[:6000]}{few_shot_block}"
+                    f"5. 文档中没有的内容填写\"-\"，只返回JSON不要任何解释\n"
+                    f"{few_shot_block}\n\n"
+                    f"文档内容：\n{chunks_text[:10000]}"
                 )
             else:
                 prompt_template = (

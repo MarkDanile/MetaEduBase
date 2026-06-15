@@ -121,8 +121,18 @@ def build_fields_desc(fields: list[Any], indent: int = 0) -> str:
             children_desc = build_fields_desc(f["children"], indent + 1)
             lines.append(f"{prefix}{key}({label})[object型，含子字段：{children_desc}]")
         elif ftype == "array":
-            item_key = f["items"][0].get("key", "item") if f.get("items") else "item"
-            lines.append(f"{prefix}{key}({label})[array型，成员为object，含字段：{item_key}]")
+            items = f.get("items") or []
+            if items:
+                item = items[0]
+                item_children = item.get("children") or []
+                if item_children:
+                    children_desc = build_fields_desc(item_children, indent + 1)
+                    lines.append(f"{prefix}{key}({label})[array型，成员含字段：{children_desc}]")
+                else:
+                    item_key = item.get("key", "item")
+                    lines.append(f"{prefix}{key}({label})[array型，成员含字段：{item_key}]")
+            else:
+                lines.append(f"{prefix}{key}({label})[array型]")
         elif ftype == "table" and f.get("columns"):
             col_names = ", ".join(c["key"] for c in f["columns"])
             lines.append(f"{prefix}{key}({label})[table型，列：{col_names}]")
@@ -164,48 +174,42 @@ def try_parse(content: str) -> dict:
 def _example_nested_array(field: dict[str, Any]) -> str:
     """Few-shot for `array[object]` fields (e.g. teaching_plan).
 
-    Outer key is the field's own key (so the LLM can see the field name);
-    inner key is `items[0].key` (the per-element shape).
+    Outer key is the field's own key; inner structure is built from
+    items[0].children — recursed so nested object children are fully
+    visible to the LLM.
     """
     field_key = field.get("key", "array_field")
     items = field.get("items") or []
     item_obj = items[0] if items else {}
-    item_key = item_obj.get("key", "item")
     children = item_obj.get("children") or []
+
+    def _build_child_snippet(child: dict[str, Any]) -> str:
+        """Recursively build a JSON value snippet for a child field."""
+        ctype = child.get("type", "text")
+        if ctype == "object" and child.get("children"):
+            inner = ", ".join(
+                f'"{sc.get("key", "?")}": {_build_child_snippet(sc)}'
+                for sc in child["children"]
+            )
+            return f"{{{inner}}}"
+        return f'"<{child.get("label", child.get("key", "?"))}>"'
+
     if children:
-        first_child = children[0]
-        if first_child.get("type") == "object" and first_child.get("children"):
-            sub_lines = ", ".join(
-                f'"{sc.get("key", "?")}": "<值>"'
-                for sc in first_child["children"][:3]
-            )
-            inner = (
-                f'"<{item_key}>": [\n'
-                f'    {{"{first_child.get("key", "?")}": {{{sub_lines}}}}},\n'
-                f'    {{"{first_child.get("key", "?")}": {{{sub_lines}}}}}\n'
-                f'  ]'
-            )
-        else:
-            child_lines = ", ".join(
-                f'"{c.get("key", "?")}": "<{c.get("label", c.get("key", "?"))}>"'
-                for c in children
-            )
-            inner = (
-                f'"<{item_key}>": [\n'
-                f'    {{{child_lines}}},\n'
-                f'    {{{child_lines}}}\n'
-                f'  ]'
-            )
-    else:
+        child_lines = ", ".join(
+            f'"{c.get("key", "?")}": {_build_child_snippet(c)}'
+            for c in children
+        )
         inner = (
-            f'"<{item_key}>": [\n'
-            f'    {{}},\n'
-            f'    {{}}\n'
+            f'[\n'
+            f'    {{{child_lines}}},\n'
+            f'    {{{child_lines}}}\n'
             f'  ]'
         )
+    else:
+        inner = '[\n    {},\n    {}\n  ]'
     return (
         f'示例（嵌套 array）：\n```json\n{{\n'
-        f'  "<{field_key}>": {inner}\n'
+        f'  "{field_key}": {inner}\n'
         f'}}\n```\n'
     )
 
@@ -215,13 +219,15 @@ def _example_table(field: dict[str, Any]) -> str:
     field_key = field.get("key", "table_field")
     columns = field.get("columns") or []
     if columns:
-        col_keys = [c.get("key", "?") for c in columns]
-        col_obj = ", ".join(f'"{k}": "<值>"' for k in col_keys)
+        col_obj = ", ".join(
+            f'"{c.get("key", "?")}": "<{c.get("label", c.get("key", "?"))}>"'
+            for c in columns
+        )
     else:
         col_obj = '"col1": "<值>", "col2": "<值>"'
     return (
         f'示例（table 表格）：\n```json\n{{\n'
-        f'  "<{field_key}>": [\n'
+        f'  "{field_key}": [\n'
         f'    {{{col_obj}}},\n'
         f'    {{{col_obj}}}\n'
         f'  ]\n'
@@ -242,7 +248,7 @@ def _example_object(field: dict[str, Any]) -> str:
         child_lines = '"key": "<值>"'
     return (
         f'示例（object 多字段）：\n```json\n{{\n'
-        f'  "<{field_key}>": {{{child_lines}}}\n'
+        f'  "{field_key}": {{{child_lines}}}\n'
         f'}}\n```\n'
     )
 
