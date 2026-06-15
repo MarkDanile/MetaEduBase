@@ -59,3 +59,11 @@ class KnowledgeEdgeDTO(BaseModel):
     relation_type: str
     weight: float
     metadata: dict[str, Any]
+
+
+class KgBundleDTO(BaseModel):
+    """BUG-006 #4: 原子返回某文件的 KG nodes + edges, 保证 edges 的
+    source_id / target_id 都在 nodes 列表中 (双端 IN 过滤 SQL 实现)."""
+
+    nodes: list[KnowledgeNodeDTO]
+    edges: list[KnowledgeEdgeDTO]

@@ -112,11 +112,11 @@ function useFileKgQuery(
   return useQuery({
     queryKey: computed(() => fileKeys.kg(fileId.value)),
     queryFn: async (): Promise<KgBundle> => {
-      const [nodesRes, edgesRes] = await Promise.all([
-        knowledgeApi.listNodes({ source_file_id: fileId.value }),
-        knowledgeApi.listEdges({ source_file_id: fileId.value }),
-      ]);
-      return { nodes: nodesRes.data, edges: edgesRes.data };
+      // BUG-006 #4 fix: 改用原子端点保证 edges.source/target 都在 nodes 列表
+      // 旧路径 listNodes(limit=50) + listEdges(无 limit) 在 > 50 节点时
+      // g6 抛 'Node not found' 整图白屏
+      const { data } = await knowledgeApi.getFileKgBundle(fileId.value);
+      return { nodes: data.nodes, edges: data.edges };
     },
     enabled: computed(() => !!fileId.value && enabled.value),
   });

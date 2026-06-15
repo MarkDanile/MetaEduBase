@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.contexts.knowledge.application.dto import (
+    KgBundleDTO,
     KnowledgeEdgeDTO,
     KnowledgeNodeCreate,
     KnowledgeNodeDTO,
@@ -92,6 +93,43 @@ async def list_knowledge_edges(
         )
         for row in rows
     ]
+
+
+@router.get(
+    "/files/{file_id}/kg-bundle",
+    response_model=KgBundleDTO,
+    summary="原子返回某文件的 KG nodes + edges (保证一致性)",
+)
+async def get_file_kg_bundle(
+    file_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+    current_user: dict = Depends(get_current_user),  # noqa: B008
+):
+    """BUG-006 #4 fix: 原子返回 KG bundle, 保证 edges.source/target 都在 nodes 列表.
+
+    旧端点 /nodes (limit=50) + /edges (OR 语义) 不一致, 节点数 > 50 时
+    g6 渲染会抛 'Node not found'. 本端点用单查询事务 + 双端 IN 过滤
+    保证强一致性, 适用于资源库文件详情 KG tab.
+
+    file_id 用 uuid.UUID 类型注解, FastAPI 自动校验, 非法 UUID 返 422
+    (而非内部 ValueError → 500).
+    """
+    tid = get_tenant_id()
+    repo = KnowledgeNodeRepository(session)
+    nodes_rows, edges_rows = await repo.get_kg_bundle_for_file(tid, file_id)
+    nodes = [_row_to_dto(r) for r in nodes_rows]
+    edges = [
+        KnowledgeEdgeDTO(
+            id=row["id"],
+            source_id=row["source_id"],
+            target_id=row["target_id"],
+            relation_type=row["relation_type"],
+            weight=row["weight"],
+            metadata=row.get("metadata", {}),
+        )
+        for row in edges_rows
+    ]
+    return KgBundleDTO(nodes=nodes, edges=edges)
 
 
 @router.get("/nodes", response_model=list[KnowledgeNodeDTO])
