@@ -200,8 +200,8 @@ SELECT COUNT(*) FROM metaedu.knowledge_nodes WHERE source_file_id = '<file_id>';
 
 ## 子项进度
 
+- ✅ **#1 前端字段名英文** — [PR #297](https://github.com/MarkDanile/MetaEduBase/pull/297) (squash `0d2f88f`) 已合并：抽取 `getTemplateFieldLabel` 到 `utils/templateLabels.ts` 公共模块；3 轮迭代（round 1 修 children + dot-path；round 2 修 items / columns + keyPath 数组；round 2.5 修 multi-template ambiguity）覆盖 object 子字段 / array item / table column 三类嵌套；`FieldValue.vue` 加 `keyPath` + `templates` + `arrayItemSchema` 3 个 optional prop 传递嵌套 context；arrayItemSchema computed 消除双编号布局；9 vitest 用例（4 + 3 + 2）锁 3 类不变量；64/64 frontend tests 0 回归；浏览器手测 3 文件 95%+ 字段名中文 + 数组项布局干净。
 - ✅ **#4 KG > 50 节点白屏** — [PR #295](https://github.com/MarkDanile/MetaEduBase/pull/295) (squash `6bbab5b`) 已合并：新增 `GET /api/v1/knowledge/files/{file_id}/kg-bundle` 原子端点保证 edges.source/target 都在 nodes 列表（SQL 双端 IN 过滤）；`file_id: uuid.UUID` 签名让 FastAPI 自动校验非法 UUID 返 422；3 PG-based pytest 锁不变量（基础 / dangling 过滤 / 空 bundle）；前端 `useFileKgQuery` 切新端点；真 PG dev 库复测 4/4 PASS（教案 65+64 / 课程标准 70+62 / 人才培养方案 58+29 / 空文件 200 / 非法 UUID 422）；437 mock pytest 0 业务代码回归。
-- 🔵 #1 前端字段名英文（待开发）
 - 🔵 #2 pdf_parser 不识中文章节（待开发）
 - 🔵 #3 TD-067 nested 回归（待开发）
 - 🔵 #5 返回按钮无效（待开发）
