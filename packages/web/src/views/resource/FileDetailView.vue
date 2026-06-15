@@ -3,13 +3,14 @@
     <PageHeader :title="file?.filename ?? '文件详情'" subtitle="处理状态与数据预览">
       <template #extra>
         <div class="flex gap-2 mt-2">
-          <button class="ui-btn-ghost px-3 py-1.5 flex items-center gap-1.5" @click="goBack">
+          <button type="button" class="ui-btn-ghost px-3 py-1.5 flex items-center gap-1.5" @click="goBack">
             <ArrowLeft :size="14" /> 返回
           </button>
-          <button class="ui-btn-ghost px-3 py-1.5 flex items-center gap-1.5" @click="reinitializeMutation.mutate()">
+          <button type="button" class="ui-btn-ghost px-3 py-1.5 flex items-center gap-1.5" @click="reinitializeMutation.mutate()">
             <RefreshCw :size="14" /> 重新初始化
           </button>
           <button
+            type="button"
             class="ui-btn-ghost px-3 py-1.5 flex items-center gap-1.5 text-red-500"
             @click="showDelete = true"
           >
@@ -194,7 +195,7 @@ async function refreshAll() {
 
 // --- Actions ---
 function goBack() {
-  router.push("/resource");
+  router.replace("/resource");
 }
 
 // --- Tab data loading ---
