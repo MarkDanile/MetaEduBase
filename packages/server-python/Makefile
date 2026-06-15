@@ -7,7 +7,7 @@ dev:
 	uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 celery-worker:
-	celery -A app.celery_app worker --loglevel=info
+	python scripts/celery_worker_dev.py
 
 migrate:
 	alembic upgrade head

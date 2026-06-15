@@ -16,7 +16,7 @@ set -euo pipefail
 #
 # 日常开发:
 #   首次: ./dev.sh                    → 全部启动
-#   改代码: 无需操作 (--reload / HMR 自动生效)
+#   改代码: FastAPI 自动 (--reload) / Celery 自动 (--autoreload) / 前端 HMR 自动
 #   重启后端: ./dev.sh backend         → 仅重启后端
 #   下班: ./dev.sh stop               → 停止全部
 #
@@ -363,7 +363,7 @@ start_celery() {
     .venv/bin/pip install -e ".[dev,ai]" -q
   fi
   log "启动 Celery Worker..."
-  .venv/bin/celery -A app.celery_app worker --loglevel=info --pool=solo \
+  .venv/bin/python scripts/celery_worker_dev.py \
     > "$LOG_DIR/celery.log" 2>&1 &
   local pid=$!
   echo "$pid" > "$LOG_DIR/celery.pid"
