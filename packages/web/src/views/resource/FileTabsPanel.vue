@@ -51,7 +51,7 @@
         <FieldValue
           v-for="(value, key) in filteredTemplateData"
           :key="key"
-          :label="templateFieldLabel(String(key))"
+          :label="getFieldLabel(String(key))"
           :value="value"
           :depth="0"
         />
@@ -133,6 +133,7 @@ import LoadingSpinner from "@/components/LoadingSpinner.vue";
 import KGGraph from "@/components/KGGraph.vue";
 import FieldValue from "./FieldValue.vue";
 import { getTemplateStructuredData, TEMPLATE_META_RESERVED_KEYS } from "@metaedu/shared/schemas/document";
+import { getTemplateFieldLabel } from "@/utils/templateLabels";
 import type { ChunkDTO } from "@/services/document";
 import type { Template } from "@/services/template";
 import type { KnowledgeNodeDTO, KnowledgeEdgeDTO } from "@/services/knowledge";
@@ -209,39 +210,8 @@ const templateMeta = computed<TemplateMeta | null>(() => {
 });
 
 // --- Structured data helpers (private to this component) ---
-function templateFieldLabel(key: string): string {
-  return getFieldLabel(key);
-}
-
-function getFieldLabel(key: string): string {
-  // Try to find a template field with matching key
-  for (const t of props.templates) {
-    const field = t.fields.find((f) => f.key === key);
-    if (field) return field.label;
-  }
-  // Fallback to hard-coded map
-  const labels: Record<string, string> = {
-    course_name: "课程名称",
-    course_code: "课程代码",
-    semester: "授课学期",
-    department: "开课单位",
-    teacher: "主讲教师",
-    target_class: "授课班级",
-    total_hours: "课程总学时",
-    theory_hours: "理论学时",
-    practice_hours: "实践学时",
-    exam_mode: "考核方式",
-    textbook: "教材及参考书",
-    course_description: "课程简介",
-    teaching_objectives: "教学目标",
-    teaching_content_outline: "教学内容纲要",
-    teaching_schedule: "教学进度安排",
-    evaluation_plan: "课程评价方案",
-    title: "文档标题",
-    summary: "摘要",
-    sections: "主要章节",
-    keywords: "关键词",
-  };
-  return labels[key] ?? key;
+// BUG-006 #1: 委托给 utils/templateLabels.ts 公共模块 (含 children 递归 + dot-path)
+function getFieldLabel(key: string, prefix: string = ""): string {
+  return getTemplateFieldLabel(props.templates, key, prefix);
 }
 </script>
