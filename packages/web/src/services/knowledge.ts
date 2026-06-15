@@ -22,11 +22,20 @@ export interface KnowledgeEdgeDTO {
   metadata: Record<string, unknown>;
 }
 
+// BUG-006 #4: 原子返回某文件 KG bundle, 保证 edges.source/target 都在 nodes 列表
+export interface KgBundleDTO {
+  nodes: KnowledgeNodeDTO[];
+  edges: KnowledgeEdgeDTO[];
+}
+
 export const knowledgeApi = {
   listNodes: (params?: { domain?: string; parent_id?: string; source_file_id?: string; source_dataset_id?: string; offset?: number; limit?: number }) =>
     api.get<KnowledgeNodeDTO[]>("/knowledge/nodes", { params }),
   listEdges: (params?: { source_file_id?: string; source_dataset_id?: string }) =>
     api.get<KnowledgeEdgeDTO[]>("/knowledge/edges", { params }),
+  // BUG-006 #4: 原子返回某文件 KG bundle (edges.source/target 都在 nodes 列表)
+  getFileKgBundle: (fileId: string) =>
+    api.get<KgBundleDTO>(`/knowledge/files/${fileId}/kg-bundle`),
   getNode: (id: string) => api.get<KnowledgeNodeDTO>(`/knowledge/nodes/${id}`),
   createNode: (data: Partial<KnowledgeNodeDTO> & { title: string; domain: string; level: string }) =>
     api.post<KnowledgeNodeDTO>("/knowledge/nodes", data),
