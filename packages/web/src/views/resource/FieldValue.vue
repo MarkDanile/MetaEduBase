@@ -19,10 +19,10 @@
         <FieldValue
           v-for="(childVal, childKey) in objectValue"
           :key="String(childKey)"
-          :label="templates && fieldKey
-            ? getTemplateFieldLabel(templates, String(childKey), fieldKey)
+          :label="templates
+            ? getTemplateFieldLabelByPath(templates, [...(keyPath ?? []), String(childKey)])
             : String(childKey)"
-          :field-key="fieldKey ? `${fieldKey}.${String(childKey)}` : String(childKey)"
+          :key-path="[...(keyPath ?? []), String(childKey)]"
           :templates="templates"
           :value="childVal"
           :depth="depth + 1"
@@ -51,7 +51,7 @@
             <template v-if="isObjectOrArray(item)">
               <FieldValue
                 :label="String(idx + 1)"
-                :field-key="fieldKey"
+                :key-path="[...(keyPath ?? [])]"
                 :templates="templates"
                 :value="item"
                 :depth="depth + 2"
@@ -68,16 +68,16 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { ChevronDown, ChevronRight } from 'lucide-vue-next';
-import { getTemplateFieldLabel } from '@/utils/templateLabels';
+import { getTemplateFieldLabelByPath } from '@/utils/templateLabels';
 import type { Template } from '@/services/template';
 
 const props = defineProps<{
   label: string;
   value: unknown;
   depth?: number;
-  // BUG-006 #1: nested 字段 label 解析需要 父字段 key (构建 dot-path)
-  // + 当前 templates 列表 (查 children.label)
-  fieldKey?: string;
+  // BUG-006 #1 round 2: nested 字段 label 解析需要完整 keyPath 数组
+  // (覆盖 object children / array item / table column)
+  keyPath?: string[];
   templates?: ReadonlyArray<Template>;
 }>();
 

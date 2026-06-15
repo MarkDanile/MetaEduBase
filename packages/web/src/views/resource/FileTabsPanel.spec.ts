@@ -261,4 +261,106 @@ describe("BUG-006 #1: 模板字段 label 渲染", () => {
     expect(wrapper.text()).toContain("数学");
     expect(wrapper.text()).not.toContain("course_name:");
   });
+
+  it("renders array item field label (course_content[].module_name)", () => {
+    // Mock 模板: course_content (array) → items[0].key='module_name' label='模块/项目名称'
+    const templates: Template[] = [
+      {
+        id: "t3", name: "课程标准", doc_types: ["课程标准"],
+        ai_prompt: null, ai_context: null, source_file_id: null,
+        created_at: "2026-01-01", updated_at: "2026-01-01",
+        schema_version: 1, is_deprecated: false, deprecated_at: null, deprecated_reason: null,
+        fields: [
+          {
+            key: "course_content", label: "课程内容", type: "array",
+            items: [
+              { key: "module_name", label: "模块/项目名称", type: "text" },
+              { key: "teaching_content", label: "教学内容", type: "textarea" },
+            ],
+          },
+        ],
+      },
+    ];
+    const structuredData = {
+      template: {
+        course_content: [{ module_name: "项目一 水环境监测基础" }],
+      },
+    };
+    const wrapper = mountFileTabsPanel(structuredData, templates);
+
+    expect(wrapper.text()).toContain("模块/项目名称");
+    expect(wrapper.text()).toContain("项目一 水环境监测基础");
+    expect(wrapper.text()).not.toContain("module_name:");
+  });
+
+  it("renders array item nested object label (teaching_process[].step_name)", () => {
+    // Mock 模板: teaching_process (array) → items[0] object with children
+    const templates: Template[] = [
+      {
+        id: "t4", name: "教案", doc_types: ["教案"],
+        ai_prompt: null, ai_context: null, source_file_id: null,
+        created_at: "2026-01-01", updated_at: "2026-01-01",
+        schema_version: 1, is_deprecated: false, deprecated_at: null, deprecated_reason: null,
+        fields: [
+          {
+            key: "teaching_process", label: "教学过程", type: "array",
+            items: [
+              {
+                key: "step", type: "object", label: "环节",
+                children: [
+                  { key: "step_name", label: "环节名称", type: "text" },
+                  { key: "teacher_activity", label: "教师活动", type: "textarea" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const structuredData = {
+      template: {
+        teaching_process: [
+          { step_name: "课前任务", teacher_activity: "发布预习任务" },
+        ],
+      },
+    };
+    const wrapper = mountFileTabsPanel(structuredData, templates);
+
+    expect(wrapper.text()).toContain("环节名称");
+    expect(wrapper.text()).toContain("课前任务");
+    expect(wrapper.text()).not.toContain("step_name:");
+  });
+
+  it("renders table column label (graduation_requirements[].requirement_id)", () => {
+    // Mock 模板: graduation_requirements (table) → columns[].key='requirement_id' label='编号'
+    const templates: Template[] = [
+      {
+        id: "t5", name: "人才培养方案", doc_types: ["人才培养方案"],
+        ai_prompt: null, ai_context: null, source_file_id: null,
+        created_at: "2026-01-01", updated_at: "2026-01-01",
+        schema_version: 1, is_deprecated: false, deprecated_at: null, deprecated_reason: null,
+        fields: [
+          {
+            key: "graduation_requirements", label: "毕业要求", type: "table",
+            columns: [
+              { key: "requirement_id", label: "编号", type: "text" },
+              { key: "requirement_content", label: "要求内容", type: "textarea" },
+            ],
+          },
+        ],
+      },
+    ];
+    const structuredData = {
+      template: {
+        graduation_requirements: [
+          { requirement_id: "G1", requirement_content: "完成所有必修课" },
+        ],
+      },
+    };
+    const wrapper = mountFileTabsPanel(structuredData, templates);
+
+    expect(wrapper.text()).toContain("编号");
+    expect(wrapper.text()).toContain("G1");
+    expect(wrapper.text()).not.toContain("requirement_id:");
+  });
 });
