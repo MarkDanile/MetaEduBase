@@ -208,6 +208,46 @@ class KnowledgeNodeRepository:
             {"id": node_id, "tid": tenant_id},
         )
 
+    async def get_kg_bundle_for_file(
+        self, tenant_id: uuid.UUID, file_id: uuid.UUID
+    ) -> tuple[list[dict], list[dict]]:
+        """BUG-006 #4 fix: 原子返回 (nodes, edges) 保证 edges 的 source/target
+        都在 nodes 列表中。
+
+        与 list_nodes (limit=50) + list_edges_by_file (OR 语义) 不同：
+        - nodes 无 limit (按文件查天然有上界, dev max=70)
+        - edges 用双端 IN 过滤 (AND 语义), 跨文件 edge 不会泄漏进来
+        """
+        nodes_r = await self._session.execute(
+            text(
+                "SELECT * FROM metaedu.knowledge_nodes "
+                "WHERE tenant_id = :tid AND source_file_id = :fid "
+                "ORDER BY created_at"
+            ),
+            {"tid": tenant_id, "fid": file_id},
+        )
+        nodes = [dict(row) for row in nodes_r.mappings().all()]
+
+        edges_r = await self._session.execute(
+            text(
+                "SELECT * FROM metaedu.knowledge_edges "
+                "WHERE tenant_id = :tid "
+                "AND source_id IN ("
+                "  SELECT id FROM metaedu.knowledge_nodes "
+                "  WHERE tenant_id = :tid AND source_file_id = :fid"
+                ") "
+                "AND target_id IN ("
+                "  SELECT id FROM metaedu.knowledge_nodes "
+                "  WHERE tenant_id = :tid AND source_file_id = :fid"
+                ") "
+                "ORDER BY created_at"
+            ),
+            {"tid": tenant_id, "fid": file_id},
+        )
+        edges = [dict(row) for row in edges_r.mappings().all()]
+
+        return nodes, edges
+
     async def delete_cascade_by_source_file(
         self, tenant_id: uuid.UUID, source_file_id: uuid.UUID
     ) -> int:
