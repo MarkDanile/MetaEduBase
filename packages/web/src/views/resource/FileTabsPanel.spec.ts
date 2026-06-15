@@ -363,4 +363,108 @@ describe("BUG-006 #1: 模板字段 label 渲染", () => {
     expect(wrapper.text()).toContain("G1");
     expect(wrapper.text()).not.toContain("requirement_id:");
   });
+
+  it("resolves leaf label across multiple templates with overlapping top-level fields (BUG-006 #1 round 2 partial-failure regression)", () => {
+    // Setup: two templates both have a top-level `basic_info` field, but
+    // only the second has a `degree` child. The algorithm must try all
+    // matching top-level candidates, not break on the first one.
+    const templates: Template[] = [
+      {
+        id: "legacy-tpl", name: "人才培养方案（历史版本）", doc_types: ["人才培养方案"],
+        ai_prompt: null, ai_context: null, source_file_id: null,
+        created_at: "2026-01-01", updated_at: "2026-01-01",
+        schema_version: 1, is_deprecated: true, deprecated_at: "2026-02-01",
+        deprecated_reason: null,
+        fields: [
+          {
+            key: "basic_info", label: "基本信息", type: "object",
+            children: [
+              { key: "major_name", label: "专业名称", type: "text" },
+              { key: "educational_system", label: "学制", type: "text" },
+              { key: "training_level", label: "培养层次", type: "text" },
+              { key: "enrollment_object", label: "招生对象", type: "text" },
+              // NO `degree` child — this is the legacy schema.
+            ],
+          },
+        ],
+      },
+      {
+        id: "current-tpl", name: "人才培养方案", doc_types: ["人才培养方案"],
+        ai_prompt: null, ai_context: null, source_file_id: null,
+        created_at: "2026-03-01", updated_at: "2026-03-01",
+        schema_version: 2, is_deprecated: false, deprecated_at: null,
+        deprecated_reason: null,
+        fields: [
+          {
+            key: "basic_info", label: "基本信息", type: "object",
+            children: [
+              { key: "major_name", label: "专业名称", type: "text" },
+              { key: "educational_system", label: "学制", type: "text" },
+              { key: "degree", label: "授予学位", type: "text" },
+              { key: "training_level", label: "培养层次", type: "text" },
+              { key: "enrollment_object", label: "招生对象", type: "text" },
+            ],
+          },
+        ],
+      },
+    ];
+    const structuredData = {
+      template: {
+        basic_info: {
+          major_name: "环境监测技术",
+          educational_system: "3 年",
+          degree: "工学学士",
+          training_level: "高职",
+          enrollment_object: "普通高中毕业生",
+        },
+      },
+    };
+    const wrapper = mountFileTabsPanel(structuredData, templates);
+
+    expect(wrapper.text()).toContain("授予学位");
+    expect(wrapper.text()).toContain("工学学士");
+    expect(wrapper.text()).not.toContain("basic_info.degree");
+    expect(wrapper.text()).not.toContain("degree:");
+  });
+
+  it("renders array item label as items[0] schema label not index (BUG-006 #1 round 2 layout regression)", () => {
+    // Setup: array field with items[0].key='course' label='课程'.
+    // The visual should be: array-item-index "1" (from outer array-item span),
+    // then "课程: value" (from recursive FieldValue using items[0] schema).
+    // NOT "1. 1. 课程: value".
+    const templates: Template[] = [
+      {
+        id: "t", name: "人才培养方案", doc_types: ["人才培养方案"],
+        ai_prompt: null, ai_context: null, source_file_id: null,
+        created_at: "2026-01-01", updated_at: "2026-01-01",
+        schema_version: 1, is_deprecated: false, deprecated_at: null,
+        deprecated_reason: null,
+        fields: [
+          {
+            key: "curriculum_system", label: "课程体系", type: "array",
+            items: [
+              { key: "course", label: "课程", type: "text" },
+            ],
+          },
+        ],
+      },
+    ];
+    const structuredData = {
+      template: {
+        curriculum_system: [{ course: "数学" }, { course: "语文" }],
+      },
+    };
+    const wrapper = mountFileTabsPanel(structuredData, templates);
+
+    // The array index "1" should appear (from the array-item span).
+    expect(wrapper.text()).toContain("1");
+    expect(wrapper.text()).toContain("2");
+    // The schema-resolved "课程" label should appear once per item.
+    expect(wrapper.text()).toContain("课程");
+    // The value "数学" should appear (separately from the label).
+    expect(wrapper.text()).toContain("数学");
+    // CRITICAL: the raw "course" key should NOT appear as a label,
+    // because the algorithm resolves it to "课程".
+    expect(wrapper.text()).not.toContain("course:");
+  });
 });

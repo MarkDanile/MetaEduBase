@@ -2,14 +2,14 @@
   <div class="field-item" :class="'depth-' + depth">
     <!-- Primitive -->
     <div v-if="isPrimitive" class="field-primitive">
-      <span class="field-label">{{ label }}</span>
+      <span v-if="label" class="field-label">{{ label }}</span>
       <span class="field-value">{{ displayValue }}</span>
     </div>
 
     <!-- Object -->
     <div v-else-if="isObject" class="field-object">
       <div class="field-group-header" @click="expanded = !expanded">
-        <span class="field-label">{{ label }}</span>
+        <span v-if="label" class="field-label">{{ label }}</span>
         <span class="field-toggle">
           <component :is="expanded ? ChevronDown : ChevronRight" :size="12" />
           <span class="text-xs" style="color: var(--color-ink-tertiary)">{{ expanded ? '收起' : '展开' }}</span>
@@ -49,9 +49,15 @@
           <span class="array-index">{{ idx + 1 }}</span>
           <div class="array-content">
             <template v-if="isObjectOrArray(item)">
+              <!-- BUG-006 #1 round 2: 递归 FieldValue 不再重复显示 idx+1
+                (外层 array-index 已经显示), 而是用 array 字段 schema 里
+                items[0] 的 label (e.g. "课程"). 视觉上从 "1. 1. 课程: value"
+                变成 "1 课程: value".
+                keyPath 保持父 array 的 keyPath, 这样 child FieldValue 构造
+                [...keyPath, childKey] 路径才能找到 items[0] 的子字段. -->
               <FieldValue
-                :label="String(idx + 1)"
-                :key-path="[...(keyPath ?? [])]"
+                :label="arrayItemSchema?.label ?? ''"
+                :key-path="keyPath ?? []"
                 :templates="templates"
                 :value="item"
                 :depth="depth + 2"
@@ -68,7 +74,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { ChevronDown, ChevronRight } from 'lucide-vue-next';
-import { getTemplateFieldLabelByPath } from '@/utils/templateLabels';
+import { getTemplateFieldLabelByPath, findFieldNode, type KeyedNode } from '@/utils/templateLabels';
 import type { Template } from '@/services/template';
 
 const props = defineProps<{
@@ -122,6 +128,28 @@ function formatPrimitive(v: unknown): string {
   if (typeof v === 'number') return String(v);
   return JSON.stringify(v);
 }
+
+/**
+ * BUG-006 #1 round 2: 解析 array 字段 items[0] 的 schema (key + label),
+ * 用来给数组项的递归 FieldValue 提供正确的 label 和 keyPath.
+ *
+ * 没有 schema 上下文 (templates 未传 / keyPath 为空 / 字段不是 array)
+ * 时返回 null, 数组项递归 FieldValue 会回退到空 label + 空 keyPath
+ * (外层 array-index span 已经显示了索引, 不需要再重复).
+ */
+const arrayItemSchema = computed<{ key: string; label: string } | null>(() => {
+  if (!props.templates || !props.keyPath || props.keyPath.length === 0) return null;
+  const topKey = props.keyPath[props.keyPath.length - 1];
+  if (!topKey) return null;
+  for (const t of props.templates) {
+    const found = findFieldNode(t.fields as ReadonlyArray<KeyedNode>, topKey);
+    if (found && Array.isArray(found.items) && found.items.length > 0) {
+      const item0 = found.items[0];
+      if (item0) return { key: item0.key, label: item0.label };
+    }
+  }
+  return null;
+});
 </script>
 
 <style scoped>

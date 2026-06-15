@@ -7,11 +7,11 @@
 // 3. dot-path 不支持 (basic_info.major_name 找不到 label)
 // 4. hard-coded map 只列 18 个 legacy course 模板 key
 //
-// 5 步查找顺序 (优先级递减):
+// 3 步查找顺序 (优先级递减, BUG-006 #1 round 2 follow-up):
 //   1. 沿 keyPath 走 schema 树 (children / items[0].key / items[0].children / columns)
-//   2. keyPath.length === 1 时, 走老 dot-path + 全树递归 (兼容)
-//   3. hard-coded map (legacy course 模板)
-//   4. fallback: return keyPath.join(".")
+//      try ALL matching top-level candidates across templates (multi-template 兼容)
+//   2. keyPath 最后一个 segment 全树递归 (兼容 keyPath 顺序不一致 / schema drift)
+//   3. hard-coded map (legacy course 模板) + fallback: return keyPath.join(".")
 
 import type { Template, Field } from "@/services/template";
 
@@ -41,8 +41,9 @@ const HARDCODED_LABELS: Readonly<Record<string, string>> = {
 };
 
 /** 最小可遍历节点: 有 key + label, 可选 children / items 嵌套.
- * Field 满足, TableColumn 满足 (无 children/items, 找 leaf 即可). */
-interface KeyedNode {
+ * Field 满足, TableColumn 满足 (无 children/items, 找 leaf 即可).
+ * 导出给 FieldValue.vue 用, 用来描述 findFieldNode 的入参 shape. */
+export interface KeyedNode {
   key: string;
   label: string;
   children?: ReadonlyArray<KeyedNode>;
@@ -73,8 +74,9 @@ function flattenCandidates(node: Field): KeyedNode[] {
   return out;
 }
 
-/** 在 KeyedNode 树中查找 targetKey 对应的节点. 递归 children, items, items[0].children. */
-function findFieldNode(
+/** 在 KeyedNode 树中查找 targetKey 对应的节点. 递归 children, items, items[0].children.
+ * 导出给 FieldValue.vue 用, 用来查 array 字段的 items[0] schema (key + label). */
+export function findFieldNode(
   fields: ReadonlyArray<KeyedNode>,
   targetKey: string,
 ): KeyedNode | null {
@@ -102,9 +104,16 @@ function findFieldNode(
  * BUG-006 #1 round 2: 沿 keyPath 走 templates schema 树, 找到对应 FieldNode.
  * 支持 object (children), array (items[0].key + items[0].children), table (columns).
  *
+ * Multi-template semantics (BUG-006 #1 round 2 follow-up):
+ * 多个 templates 可能都有同名 top-level field (e.g. `basic_info` 同时存在于
+ * 教案 / 授课计划 / 人才培养方案). 算法必须 try ALL matching top-level candidates,
+ * 不能在第一个匹配就 break — 因为后续 segment 可能只在某个 template 的子树里
+ * (schema drift / 教学秘书多次调整后).
+ *
  * @param keyPath e.g. ["basic_info", "major_name"] / ["course_content", "module_name"]
  *                / ["graduation_requirements", "requirement_id"]
- * @returns FieldNode at the path, or null if any segment is missing
+ * @returns FieldNode at the path, or null if any segment is missing across all
+ *          matching candidates
  */
 function getFieldNodeAtPath(
   templates: ReadonlyArray<Pick<Template, "fields">>,
@@ -112,32 +121,34 @@ function getFieldNodeAtPath(
 ): Field | null {
   if (keyPath.length === 0) return null;
 
-  // Find keyPath[0] at top-level
-  let current: Field | null = null;
+  // BUG-006 #1 round 2 fix: try ALL matching top-level fields across
+  // templates, not just the first. The previous `for...break` early-exit
+  // caused multi-template ambiguity (multiple templates with a `basic_info`
+  // field; only the first one's children are checked, missing fields
+  // that exist in a later template's schema) to silently fail.
+  const topLevelCandidates: Field[] = [];
   for (const t of templates) {
-    const found = t.fields.find((f) => f.key === keyPath[0]);
-    if (found) {
-      current = found;
-      break;
+    for (const f of t.fields) {
+      if (f.key === keyPath[0]) topLevelCandidates.push(f);
     }
   }
-  if (!current) return null;
+  if (topLevelCandidates.length === 0) return null;
 
-  // Walk the rest of the path
-  for (let i = 1; i < keyPath.length; i++) {
-    const seg = keyPath[i];
-    if (!seg) return null;
-    const next = findFieldNode(flattenCandidates(current), seg);
-    if (!next) return null;
-    // next 可能是 TableColumn (只用来取 label, 不会再深入), 也可能是 Field.
-    // 这里需要把 next 当作 Field 继续走 keyPath[i+1..], 但 TableColumn 没有
-    // children / items / columns, 所以如果后面还有 path segment, 下一轮
-    // flattenCandidates 会得到 [], 走不下去 — 这是正确的: table 列下不会有
-    // 嵌套.
-    current = next as Field;
+  // Walk the rest of the path against each candidate; return the first hit.
+  for (const top of topLevelCandidates) {
+    let current: Field = top;
+    let found = true;
+    for (let i = 1; i < keyPath.length; i++) {
+      const seg = keyPath[i];
+      if (!seg) { found = false; break; }
+      const next = findFieldNode(flattenCandidates(current), seg);
+      if (!next) { found = false; break; }
+      current = next as Field;
+    }
+    if (found) return current;
   }
 
-  return current;
+  return null;
 }
 
 /**
@@ -154,22 +165,24 @@ export function getTemplateFieldLabelByPath(
   templates: ReadonlyArray<Pick<Template, "fields">>,
   keyPath: ReadonlyArray<string>,
 ): string {
-  // 1. 沿 keyPath 走 schema 树
+  // 1. 沿 keyPath 走 schema 树 (now tries all matching templates)
   const node = getFieldNodeAtPath(templates, keyPath);
   if (node) return node.label;
 
-  // 2. keyPath.length === 1 时, 走老全树递归 (兼容)
-  if (keyPath.length === 1) {
-    const key = keyPath[0]!;
+  // 2. Whole-tree search for the LAST segment as a leaf, across all
+  // templates. BUG-006 #1 round 2: previously only ran for length === 1.
+  // Multi-template ambiguity + schema drift meant step 1 could fail for
+  // some leaves even when they exist in another template's schema.
+  const last = keyPath[keyPath.length - 1];
+  if (last) {
     for (const t of templates) {
-      const found = findFieldNode(t.fields as ReadonlyArray<KeyedNode>, key);
+      const found = findFieldNode(t.fields as ReadonlyArray<KeyedNode>, last);
       if (found) return found.label;
     }
   }
 
   // 3. hard-coded map fallback (legacy course 模板)
-  const last = keyPath[keyPath.length - 1] ?? "";
-  return HARDCODED_LABELS[last] ?? keyPath.join(".");
+  return HARDCODED_LABELS[last ?? ""] ?? keyPath.join(".");
 }
 
 /**
