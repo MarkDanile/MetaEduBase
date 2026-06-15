@@ -853,3 +853,130 @@ git checkout main && git pull --ff-only
 - Hard-coded map 保留 → legacy course 模板继续中文化
 - FieldValue 是 admin 也在用（TemplateEditor），但只读 props 不修改 → 兼容
 - TypeScript 类型层强制 FieldNode 形状不变量
+
+---
+
+## Round 2 Extension（用户真 PG 复测发现 3 类嵌套子表字段仍走英文）
+
+### 真因补充
+
+| 字段 | 模板 schema 位置 | 实测 | 应示 |
+|------|---------|------|------|
+| `course_content[].module_name` | 课程标准 `fields[?].items[0].key` | `module_name: 项目一` | `模块/项目名称: 项目一` |
+| `teaching_process[].step_name` | 教案 `fields[?].items[0].children[0]` | `step_name: 课前任务` | `环节名称: 课前任务` |
+| `curriculum_system[].course` | 人才培养方案 `fields[?].items[0].key` | `course: 职业生涯与规划` | `课程: 职业生涯与规划` |
+
+Round 1 修复只覆盖 `field.children[]`（object 子字段），**不覆盖 `field.items[]`（array item 模板）和 `field.columns[]`（table 列定义）**。需用 `keyPath: string[]` 数组描述 schema 路径替代 `prefix: string` dot-path。
+
+### Round 2 任务清单（Tasks 9-12）
+
+### Task 9: 拪展 templateLabels.ts 接受 keyPath: string[]
+
+**Files:**
+- Modify: `packages/web/src/utils/templateLabels.ts`
+
+新增 / 修改：
+
+```typescript
+// 新增函数: 沿 keyPath 走 templates schema 树, 找到对应 FieldNode
+function getFieldNodeAtPath(
+  templates: ReadonlyArray<Pick<Template, "fields">>,
+  keyPath: ReadonlyArray<string>,
+): Field | null {
+  if (keyPath.length === 0) return null;
+  // step 1: 找 keyPath[0] in top-level fields
+  let current: Field | null = null;
+  for (const t of templates) {
+    const found = t.fields.find((f) => f.key === keyPath[0]);
+    if (found) {
+      current = found;
+      break;
+    }
+  }
+  if (!current) return null;
+  // step 2+: 沿 keyPath 走 children / items / columns
+  for (let i = 1; i < keyPath.length; i++) {
+    const seg = keyPath[i];
+    const next = findLabelInFields([current], seg);
+    if (!next) return null;
+    current = next;
+  }
+  return current;
+}
+
+// 增强主函数: 接受 keyPath 数组 (优先, 新 API)
+export function getTemplateFieldLabelByPath(
+  templates: ReadonlyArray<Pick<Template, "fields">>,
+  keyPath: ReadonlyArray<string>,
+): string {
+  // 1. 沿 keyPath 走 schema 树
+  const node = getFieldNodeAtPath(templates, keyPath);
+  if (node) return node.label;
+
+  // 2. keyPath.length === 1 时, 走老 dot-path + children 递归 (兼容)
+  if (keyPath.length === 1) {
+    const key = keyPath[0];
+    for (const t of templates) {
+      const found = findLabelInFields(t.fields, key);
+      if (found) return found.label;
+    }
+  }
+
+  // 3. hard-coded map fallback
+  const last = keyPath[keyPath.length - 1] ?? "";
+  return HARDCODED_LABELS[last] ?? keyPath.join(".");
+}
+
+// 保留老 API (FileTabsPanel 顶层调用)
+export function getTemplateFieldLabel(
+  templates: ReadonlyArray<Pick<Template, "fields">>,
+  key: string,
+  prefix: string = "",
+): string {
+  if (prefix) {
+    return getTemplateFieldLabelByPath(templates, [...prefix.split("."), key]);
+  }
+  return getTemplateFieldLabelByPath(templates, [key]);
+}
+```
+
+### Task 10: FieldValue 改 prop 名称 fieldKey: string → keyPath: string[]
+
+**Files:**
+- Modify: `packages/web/src/views/resource/FieldValue.vue`
+
+props 改名 `fieldKey?: string` → `keyPath?: string[]`。
+- object 分支嵌套 FieldValue 调用：`:key-path="keyPath ? [...keyPath, String(childKey)] : [String(childKey)]"`
+- array 分支嵌套 FieldValue 调用：`:key-path="keyPath ? [...keyPath, String(idx + 1)] : [String(idx + 1)]"`
+- 保留 array 渲染时 label = `String(idx+1)`（无需变，item label 含义本来就是"第 N 项"；schema 中 items[0] 内的字段是子 FieldValue 的事情）
+
+### Task 11: FileTabsPanel 顶层 FieldValue 调用改用 `:key-path` (而非 `:field-key`)
+
+**Files:**
+- Modify: `packages/web/src/views/resource/FileTabsPanel.vue` (L51-58)
+
+`:field-key="String(key)"` → `:key-path="[String(key)]"`
++ 包装函数 `getFieldLabel` 仍用老 API (单层 key)
+
+### Task 12: 4 vitest 用例更新 + 3 新增 array/table 子字段用例
+
+**Files:**
+- Modify: `packages/web/src/views/resource/FileTabsPanel.spec.ts`
+
+调整 mount helper 接受新 API（top-level 直接传 templates，仍用老 getFieldLabel 走顶层）。
+
+**保留 4 个原用例**（仍走顶层 key 渲染） + **新增 3 个**：
+- `"renders array item field label"` — 传 templates 含 `course_content` (array)，结构化数据含 `course_content: [{module_name: "X"}]`，断言渲染"模块/项目名称"
+- `"renders array item nested object label"` — 传 templates 含 `teaching_process` (array of object)，结构化数据含 `teaching_process: [{step_name: "X"}]`，断言渲染"环节名称"
+- `"renders table column label"` — 传 templates 含 `graduation_requirements` (table)，结构化数据含 `graduation_requirements: [{requirement_id: "1"}]`，断言渲染"编号"
+
+### Round 2 验证
+
+- 修改后 pnpm typecheck / lint / test 全 pass
+- 浏览器手测 3 文件 90%+ 字段名中文（包括嵌套子表）
+- 现有 6 个 TD-040 测试 + round 1 4 个测试 = 10 个保留用例 + round 2 3 个新 = 13 个 FileTabsPanel 用例全过
+
+### Round 2 任务依赖
+
+- Task 9 (utils 升级) → Task 10 (FieldValue prop 改) → Task 11 (FileTabsPanel 顶层调用改) → Task 12 (test)
+- Task 12 同时依赖 Tasks 9-11 (要等所有上游完成)
