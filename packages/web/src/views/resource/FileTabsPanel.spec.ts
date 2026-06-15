@@ -26,16 +26,18 @@ import type { KnowledgeNodeDTO, KnowledgeEdgeDTO } from "@/services/knowledge";
 // TD-039 未合并前的局部副本：与 FileTabsPanel.vue:159-166 字面量一致。
 const RESERVED_META_KEYS = ["id", "version", "layer", "matched_type", "confidence", "reason"] as const;
 
-function mountFileTabsPanel(structuredData: unknown) {
-  // 默认 props：聚焦于结构化抽取 tab；其他 tab 的数据留空以避免无关噪声。
+function mountFileTabsPanel(
+  structuredData: unknown,
+  templates: Template[] = [],
+) {
+  // 默认 props: 聚焦于结构化抽取 tab; 其他 tab 的数据留空以避免无关噪声.
   const emptyChunks: ChunkDTO[] = [];
   const emptyNodes: KnowledgeNodeDTO[] = [];
   const emptyEdges: KnowledgeEdgeDTO[] = [];
-  const emptyTemplates: Template[] = [];
   return mount(FileTabsPanel, {
     props: {
       activeTab: "structured",
-      templates: emptyTemplates,
+      templates,
       chunks: emptyChunks,
       chunksLoading: false,
       kgNodes: emptyNodes,
@@ -154,5 +156,109 @@ describe("FileTabsPanel.vue (TD-040 AC-11 / AC-12)", () => {
       expect(wrapper.text()).toContain("暂无结构化数据");
       expect(wrapper.findAll(".field-primitive")).toHaveLength(0);
     });
+  });
+});
+
+describe("BUG-006 #1: 模板字段 label 渲染", () => {
+  it("renders top-level field label not key", () => {
+    // Mock 模板 fields: {key: "title", label: "标题", type: "text"}
+    const templates: Template[] = [
+      {
+        id: "t1",
+        name: "教案",
+        doc_types: ["教案"],
+        ai_prompt: null,
+        ai_context: null,
+        source_file_id: null,
+        created_at: "2026-01-01",
+        updated_at: "2026-01-01",
+        // REQ-002-4: schema_version + deprecation fields (Template interface requires)
+        schema_version: 1,
+        is_deprecated: false,
+        deprecated_at: null,
+        deprecated_reason: null,
+        fields: [
+          { key: "title", label: "标题", type: "text" },
+        ],
+      },
+    ];
+    const structuredData = { template: { title: "数学教案" } };
+    const wrapper = mountFileTabsPanel(structuredData, templates);
+
+    // 断言: 渲染 "标题" 不含 "title:" 文本
+    expect(wrapper.text()).toContain("标题");
+    expect(wrapper.text()).toContain("数学教案");
+    expect(wrapper.text()).not.toContain("title:");
+  });
+
+  it("renders nested object field label via dot-path", () => {
+    // Mock 模板 fields: basic_info 嵌套 major_name / degree
+    const templates: Template[] = [
+      {
+        id: "t2",
+        name: "人才培养方案",
+        doc_types: ["人才培养方案"],
+        ai_prompt: null,
+        ai_context: null,
+        source_file_id: null,
+        created_at: "2026-01-01",
+        updated_at: "2026-01-01",
+        schema_version: 1,
+        is_deprecated: false,
+        deprecated_at: null,
+        deprecated_reason: null,
+        fields: [
+          {
+            key: "basic_info",
+            label: "基本信息",
+            type: "object",
+            children: [
+              { key: "major_name", label: "专业名称", type: "text" },
+              { key: "degree", label: "学位", type: "text" },
+            ],
+          },
+        ],
+      },
+    ];
+    const structuredData = {
+      template: {
+        basic_info: { major_name: "环境监测技术", degree: "-" },
+      },
+    };
+    const wrapper = mountFileTabsPanel(structuredData, templates);
+
+    // 断言: 父 "基本信息" + 子 "专业名称" / "学位" 都渲染
+    expect(wrapper.text()).toContain("基本信息");
+    expect(wrapper.text()).toContain("专业名称");
+    expect(wrapper.text()).toContain("环境监测技术");
+    expect(wrapper.text()).toContain("学位");
+    // 关键: 不含原始 key
+    expect(wrapper.text()).not.toContain("major_name:");
+    expect(wrapper.text()).not.toContain("degree:");
+  });
+
+  it("falls back to key when label not configured", () => {
+    const templates: Template[] = [];  // 模板空
+    const structuredData = {
+      template: { some_unconfigured_key: "X" },
+    };
+    const wrapper = mountFileTabsPanel(structuredData, templates);
+
+    // 接受 fallback: 字段名显示原始 key (不抛错)
+    expect(wrapper.text()).toContain("some_unconfigured_key");
+    expect(wrapper.text()).toContain("X");
+  });
+
+  it("falls back to hard-coded map for legacy course keys", () => {
+    const templates: Template[] = [];  // 模板空, 但 hard-coded map 兜底
+    const structuredData = {
+      template: { course_name: "数学" },
+    };
+    const wrapper = mountFileTabsPanel(structuredData, templates);
+
+    // 断言: 即使模板无 fields, 走 hard-coded map 仍能显示 "课程名称"
+    expect(wrapper.text()).toContain("课程名称");
+    expect(wrapper.text()).toContain("数学");
+    expect(wrapper.text()).not.toContain("course_name:");
   });
 });

@@ -48,10 +48,13 @@
       />
       <div v-else class="p-3 rounded-lg border border-[var(--color-border)] space-y-1">
         <!-- String(key) keeps the contract narrow if templateData ever becomes Record<string | number, unknown> (TD-029). -->
+        <!-- BUG-006 #1: 顶层传 templates + field-key 让 FieldValue 递归子时能查 children.label + 走 dot-path -->
         <FieldValue
           v-for="(value, key) in filteredTemplateData"
           :key="key"
           :label="getFieldLabel(String(key))"
+          :field-key="String(key)"
+          :templates="templates"
           :value="value"
           :depth="0"
         />
