@@ -198,6 +198,14 @@ SELECT COUNT(*) FROM metaedu.knowledge_nodes WHERE source_file_id = '<file_id>';
 - 任何 alembic schema 改动
 - 切换 LLM 模型（属运维决策，不在本 BUG 范围）
 
+## 子项进度
+
+- ✅ **#4 KG > 50 节点白屏** — [PR #295](https://github.com/MarkDanile/MetaEduBase/pull/295) (squash `6bbab5b`) 已合并：新增 `GET /api/v1/knowledge/files/{file_id}/kg-bundle` 原子端点保证 edges.source/target 都在 nodes 列表（SQL 双端 IN 过滤）；`file_id: uuid.UUID` 签名让 FastAPI 自动校验非法 UUID 返 422；3 PG-based pytest 锁不变量（基础 / dangling 过滤 / 空 bundle）；前端 `useFileKgQuery` 切新端点；真 PG dev 库复测 4/4 PASS（教案 65+64 / 课程标准 70+62 / 人才培养方案 58+29 / 空文件 200 / 非法 UUID 422）；437 mock pytest 0 业务代码回归。
+- 🔵 #1 前端字段名英文（待开发）
+- 🔵 #2 pdf_parser 不识中文章节（待开发）
+- 🔵 #3 TD-067 nested 回归（待开发）
+- 🔵 #5 返回按钮无效（待开发）
+
 ## 关联
 
 - BUG-005（doc_type 回写，已 Done）
