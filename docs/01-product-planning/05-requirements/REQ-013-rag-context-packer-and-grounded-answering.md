@@ -11,7 +11,7 @@ External:
 
 | Date | What | Details |
 |------|------|---------|
-| 2026-06-16 | Slice 1-4 | PR #305 open：新增 `context_packer.py`（ContextPacker / PackedContext / PackedContextBlock / ContextPackingOptions / is_toc_like_chunk）；`AIChatService` 集成；ChunkRepository 扩展；17 mock tests 100% pass。Slice 5 真实 PG 样例待 backfill。 |
+| 2026-06-16 | Slice 1-4 | PR #305 merged：新增 `context_packer.py`（ContextPacker / PackedContext / PackedContextBlock / ContextPackingOptions / is_toc_like_chunk）；`AIChatService` 集成；ChunkRepository 扩展；17 mock tests 100% pass。Slice 5 真实 PG 样例待 backfill，已统一分流到 REQ-014。PR #306 已补跨事实源状态同步。 |
 
 ## Problem
 
