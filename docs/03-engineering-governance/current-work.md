@@ -22,7 +22,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| （无 — 下一批候选任务空） | | | | |
+| BUG-007 pdf_parser sections path 错乱 | 🔵 Ready | P2 | 后端 / pdf_parser | 修复 font-size + 中文正则 level 混用 + 补非标题黑名单 + 补 mock fixture 测试 |
 
 ## 最近完成
 
