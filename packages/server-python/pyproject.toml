@@ -21,6 +21,7 @@ dependencies = [
     "pymupdf>=1.25.0",
     "python-docx>=1.1.0",
     "openpyxl>=3.1.0",
+    "structlog>=24.1.0",
 ]
 
 [project.optional-dependencies]

@@ -14,7 +14,9 @@
 
 ## 当前进行中
 
-（无 — REQ-014 翻完成；下批任务由下个会话补登候选区）
+| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
+|------|------|--------|------|----------|--------|------|
+| BUG-008 Context Packer 引入 structlog 依赖但 pyproject 未声明 — backend 重启 import 失败 | 🟡 进行中 | P1 | P1 RAG 治理 / 依赖 | `fix/bug-008-structlog-dep` 分支；pyproject.toml 加 `structlog>=24.1.0`；venv 装 `structlog-26.1.0`；`context_packer` import 验证 OK；478 mock pytest 0 业务代码回归 | 完成门禁 + commit + push + PR + squash merge | `python -c "from app.contexts.knowledge.application.context_packer import ContextPacker"` 退出 0；mock pytest 478 passed |
 
 ## 下一批候选任务
 
