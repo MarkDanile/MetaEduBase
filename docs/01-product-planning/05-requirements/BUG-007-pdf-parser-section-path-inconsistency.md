@@ -1,6 +1,6 @@
 # BUG-007: pdf_parser 中 sections 段 path 计算错乱（font-size + 中文正则 level 混用）
 
-Status: 🔵 Ready
+Status: 🟢 Done (PR #303 merged)
 Priority: P2
 Milestone: P1 RAG 治理 / 资源库 UX
 Source: 2026-06-16 用户重新上传 4 份文件真 PG 复测时发现（用户 + Claude Code 真 PG 审计）

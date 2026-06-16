@@ -1,6 +1,6 @@
 # REQ-013: RAG Context Packer 与回答 grounding 增强
 
-Status: 🟡 In Review (PR #305)
+Status: 🟢 Done (PR #305 merged)
 Priority: P1
 Milestone: P2
 Parent: REQ-012

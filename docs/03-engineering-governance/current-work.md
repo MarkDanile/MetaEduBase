@@ -16,13 +16,12 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-013 RAG Context Packer 与回答 grounding 增强 | 🟡 进行中 | P2 | 后端 / RAG / grounding | Slice 1-4 完成：context_packer.py 新建、neighbor/section/graph expansion 实现、TOC guard、prompt builder 接入；17 个 mock 测试 100% 通过 | Slice 5 真实样例验收（PG 环境阻塞，待 backfill）；提交 PR |
+| （无 — 当前进行中为空） | | | | | | |
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| BUG-007 pdf_parser sections path 错乱 | 🔵 Ready | P2 | 后端 / pdf_parser | 修复 font-size + 中文正则 level 混用 + 补非标题黑名单 + 补 mock fixture 测试 |
 
 ## 最近完成
 
@@ -32,6 +31,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-16 | REQ-013 RAG Context Packer 与回答 grounding 增强 | 🟢 完成 | PR #305 squash merge：context_packer.py 新建、neighbor/section/graph expansion、TOC guard、prompt builder 接入；17 mock tests 100% pass。Slice 5 真实 PG 样例待 backfill。 | [REQ-013](../01-product-planning/05-requirements/REQ-013-rag-context-packer-and-grounded-answering.md) / [Spec](../02-delivery-plans/01-specs/2026-06-16-req-013-rag-context-packer.md) / [PR #305](https://github.com/MarkDanile/MetaEduBase/pull/305) |
+| 2026-06-16 | BUG-007 pdf_parser sections path 错乱（font-size + 中文正则 level 混用）| 🟢 完成 | PR #303 squash merge：section path 改用 docling counters 算法 + 非标题黑名单补全。mock tests pass。 | [BUG-007](../01-product-planning/05-requirements/BUG-007-pdf-parser-section-path-inconsistency.md) / [PR #303](https://github.com/MarkDanile/MetaEduBase/pull/303) |
 | 2026-06-15 | BUG-006 #5 文件详情页返回按钮（router.replace + type=button）| 🟢 完成 | PR #301 squash merge：goBack 改用 router.replace 避免 Vue Query polling 竞态；3 按钮加 type=button。4 vitest + 68/68 frontend 0 回归。 | [BUG-006 #5](../01-product-planning/05-requirements/BUG-006-resource-library-display-and-section-meta-and-kg-link.md) / [PR #301](https://github.com/MarkDanile/MetaEduBase/pull/301) |
 | 2026-06-15 | BUG-006 #3 嵌套 schema 描述 + few-shot 前移 + 截断扩展 | 🟢 完成 | PR #300 squash merge：build_fields_desc 递归 array items children；few-shot 前移到文档内容前；_example 用真实 key + 递归子项；chunks_text 6000→10000。22/22 prompt tests + 439/439 全量 0 回归。 | [BUG-006 #3](../01-product-planning/05-requirements/BUG-006-resource-library-display-and-section-meta-and-kg-link.md) / [PR #300](https://github.com/MarkDanile/MetaEduBase/pull/300) |
 | 2026-06-15 | BUG-006 #2 pdf_parser 中文章节标题（正则 fallback）| 🟢 完成 | PR #299 squash merge：新增 _detect_chinese_heading_level + 5 类正则模式作为 font-size+bold fallback。11/11 新 pytest + 448/448 全量 0 回归。 | [BUG-006 #2](../01-product-planning/05-requirements/BUG-006-resource-library-display-and-section-meta-and-kg-link.md) / [PR #299](https://github.com/MarkDanile/MetaEduBase/pull/299) |
