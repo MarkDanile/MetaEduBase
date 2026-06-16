@@ -16,13 +16,12 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （无 — 当前进行中为空） | | | | | | |
+| REQ-013 RAG Context Packer 与回答 grounding 增强 | 🟡 进行中 | P2 | 后端 / RAG / grounding | Slice 1-4 完成：context_packer.py 新建、neighbor/section/graph expansion 实现、TOC guard、prompt builder 接入；17 个 mock 测试 100% 通过 | Slice 5 真实样例验收（PG 环境阻塞，待 backfill）；提交 PR |
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| REQ-013 RAG Context Packer 与回答 grounding 增强 | 🔵 Ready | P2 | 后端 / RAG / grounding | 按 spec/plan 开工，优先做 chunk 邻居扩展、section fallback、TOC guard 和 prompt packing |
 | BUG-007 pdf_parser sections path 错乱 | 🔵 Ready | P2 | 后端 / pdf_parser | 修复 font-size + 中文正则 level 混用 + 补非标题黑名单 + 补 mock fixture 测试 |
 
 ## 最近完成

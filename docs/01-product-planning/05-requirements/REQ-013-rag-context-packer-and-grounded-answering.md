@@ -1,11 +1,17 @@
 # REQ-013: RAG Context Packer 与回答 grounding 增强
 
-Status: 🔵 Ready
+Status: 🟡 In Review (PR #305)
 Priority: P1
 Milestone: P2
 Parent: REQ-012
 Related: P2-SEARCH / P2-RRF / BUG-007 / TD-054
 External:
+
+## Delivery Record
+
+| Date | What | Details |
+|------|------|---------|
+| 2026-06-16 | Slice 1-4 | PR #305 open：新增 `context_packer.py`（ContextPacker / PackedContext / PackedContextBlock / ContextPackingOptions / is_toc_like_chunk）；`AIChatService` 集成；ChunkRepository 扩展；17 mock tests 100% pass。Slice 5 真实 PG 样例待 backfill。 |
 
 ## Problem
 
