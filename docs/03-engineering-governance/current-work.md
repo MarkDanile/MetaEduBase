@@ -14,9 +14,7 @@
 
 ## 当前进行中
 
-| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
-|------|------|--------|------|----------|--------|------|
-| BUG-008 Context Packer 引入 structlog 依赖但 pyproject 未声明 — backend 重启 import 失败 | 🟡 进行中 | P1 | P1 RAG 治理 / 依赖 | `fix/bug-008-structlog-dep` 分支；pyproject.toml 加 `structlog>=24.1.0`；venv 装 `structlog-26.1.0`；`context_packer` import 验证 OK；478 mock pytest 0 业务代码回归 | 完成门禁 + commit + push + PR + squash merge | `python -c "from app.contexts.knowledge.application.context_packer import ContextPacker"` 退出 0；mock pytest 478 passed |
+（无 — BUG-008 翻完成；下批任务由下个会话补登候选区）
 
 ## 下一批候选任务
 
@@ -32,7 +30,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
-| 2026-06-16 | REQ-014 RAG 真实 PG 样例、数据回填与回答 grounding 验收 | 🟢 完成 | PR #308 squash merge（merge commit `86f2f05`）：spec + plan + 一次性验收脚本 `scripts/validate_real_pg_rag.py`（5 子命令）+ 占位报告 + 跨事实源同步。塑形 + tooling 收口；follow-up：下个 PR 跑真 PG 5 子命令（dev 库 + LLM key）→ 报告填充 + BUG-006/007 "真 PG 复测"字段。 | [REQ-014](../01-product-planning/05-requirements/REQ-014-rag-real-pg-grounding-and-data-backfill-validation.md) / [Spec](../02-delivery-plans/01-specs/2026-06-16-req-014-rag-real-pg-grounding-validation.md) / [Plan](../02-delivery-plans/02-plans/2026-06-16-req-014-rag-real-pg-grounding-validation-plan.md) / [PR #308](https://github.com/MarkDanile/MetaEduBase/pull/308) |
+| 2026-06-17 | BUG-008 Context Packer 引入 structlog 依赖但 pyproject 未声明 | 🟢 完成 | PR #310 merge `65c67f58`：pyproject + `structlog>=24.1.0`；478 pytest 0 业务代码回归 | [BUG-008](../01-product-planning/05-requirements/BUG-008-context-packer-structlog-dep-missing.md) / [PR #310](https://github.com/MarkDanile/MetaEduBase/pull/310) |
+| 2026-06-16 | REQ-014 RAG 真实 PG 样例、数据回填与回答 grounding 验收 | 🟢 完成 | PR #308 merge `86f2f05`：spec + plan + 5-子命令验收脚本 + 占位报告 | [REQ-014](../01-product-planning/05-requirements/REQ-014-rag-real-pg-grounding-and-data-backfill-validation.md) / [PR #308](https://github.com/MarkDanile/MetaEduBase/pull/308) |
 | 2026-06-16 | REQ-013 RAG Context Packer 与回答 grounding 增强 | 🟢 完成 | PR #305 squash merge：context_packer.py 新建、neighbor/section/graph expansion、TOC guard、prompt builder 接入；17 mock tests 100% pass。Slice 5 真实 PG 样例待 backfill。 | [REQ-013](../01-product-planning/05-requirements/REQ-013-rag-context-packer-and-grounded-answering.md) / [Spec](../02-delivery-plans/01-specs/2026-06-16-req-013-rag-context-packer.md) / [PR #305](https://github.com/MarkDanile/MetaEduBase/pull/305) |
 | 2026-06-16 | BUG-007 pdf_parser sections path 错乱（font-size + 中文正则 level 混用）| 🟢 完成 | PR #303 squash merge：section path 改用 docling counters 算法 + 非标题黑名单补全。mock tests pass。 | [BUG-007](../01-product-planning/05-requirements/BUG-007-pdf-parser-section-path-inconsistency.md) / [PR #303](https://github.com/MarkDanile/MetaEduBase/pull/303) |
 | 2026-06-15 | BUG-006 #5 文件详情页返回按钮（router.replace + type=button）| 🟢 完成 | PR #301 squash merge：goBack 改用 router.replace 避免 Vue Query polling 竞态；3 按钮加 type=button。4 vitest + 68/68 frontend 0 回归。 | [BUG-006 #5](../01-product-planning/05-requirements/BUG-006-resource-library-display-and-section-meta-and-kg-link.md) / [PR #301](https://github.com/MarkDanile/MetaEduBase/pull/301) |
