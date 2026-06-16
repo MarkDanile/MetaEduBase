@@ -10,7 +10,7 @@ Goal: 在 REQ-012 多路 evidence 骨架之上，补齐召回后上下文组装�
 |----|------|------|------|------|
 | REQ-013 | REQ | 🟢 Done | RAG Context Packer 与回答 grounding 增强 | PR #305 已合并；命中 chunk 后按相邻 chunk / 同 section 组装 prompt。真实 PG 样例与最终 grounding 验收转入 REQ-014。 |
 | BUG-007 | BUG | 🔵 Ready | pdf_parser sections path 错乱 | 修复 section path 计算，降低后续 section expansion 依赖坏 metadata 的风险。 |
-| REQ-014 | REQ | 🟡 Doing | RAG 真实 PG 样例、数据回填与回答 grounding 验收 | spec + plan + 一次性验收脚本 `scripts/validate_real_pg_rag.py` 已就位；下个会话跑真 PG 5 子命令生成报告；不修 BUG-006/007 实现 |
+| REQ-014 | REQ | 🟢 Done | RAG 真实 PG 样例、数据回填与回答 grounding 验收 | PR #308 squash merge：spec + plan + 一次性验收脚本 + 占位报告 + 跨事实源同步。follow-up：下个 PR 跑真 PG |
 
 ## Out of Scope
 
