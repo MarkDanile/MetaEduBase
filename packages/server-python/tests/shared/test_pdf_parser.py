@@ -8,6 +8,7 @@ import fitz as _real_fitz
 
 from app.shared.parsing.pdf_parser import (
     _detect_chinese_heading_level,
+    _is_non_heading,
     extract_pdf_text,
 )
 
@@ -173,3 +174,115 @@ class TestChineseChapterHeadingIdentified:
         assert result.sections[1].level == 2
         assert result.sections[2].title == "（二）能力目标"
         assert result.sections[2].level == 2
+
+
+# ---------------------------------------------------------------------------
+# BUG-007: non-heading blacklist + hierarchical path stack
+# ---------------------------------------------------------------------------
+
+
+class TestIsNonHeading:
+    """BUG-007: filter dates / room numbers / pure digits out of heading detection."""
+
+    def test_date_is_non_heading(self) -> None:
+        assert _is_non_heading("2021 年1 月8 日") is True
+        assert _is_non_heading("2021年1月8日") is True
+        assert _is_non_heading("2021-1-8") is True
+        assert _is_non_heading("2021.1.8") is True
+
+    def test_room_or_class_number_is_non_heading(self) -> None:
+        assert _is_non_heading("18 环测1 班") is True
+        assert _is_non_heading("21计算机1班") is True
+        assert _is_non_heading("108") is True  # pure number
+        assert _is_non_heading("1234") is True
+
+    def test_normal_text_is_not_non_heading(self) -> None:
+        assert _is_non_heading("一、专业名称与代码") is False
+        assert _is_non_heading("学期授课计划") is False
+        assert _is_non_heading("本专业培养德智体美劳全面发展的人才") is False
+        assert _is_non_heading("附件1：授课计划") is False
+
+
+class TestPathStack:
+    """BUG-007: hierarchical path stack (docling / unstructured.io convention)."""
+
+    def _run(self, lines: list[dict]) -> list:
+        mock_doc = _mock_fitz_doc([lines])
+        with patch.object(_real_fitz, "open", return_value=mock_doc):
+            return extract_pdf_text("/fake/path.pdf").sections
+
+    def test_path_stack_handles_mixed_heuristics(self) -> None:
+        """BUG-007 scenario: font-size+regex mix in one PDF.
+
+        Sequence: 附件1 (font level 3) → 学期授课计划 (font level 2) →
+        18 环测1 班 (font level 4 but blacklisted as room number) →
+        2021 年1 月8 日 (font level 4 but blacklisted as date) →
+        一、编制说明 (regex level 1) → 二、授课计划 (regex level 1).
+        After popping the font-size-only noise, the path stack should
+        produce consistent paths for the Chinese regex headings.
+        """
+        lines = [
+            _make_line([_make_span("附件1：授课计划", size=15.0, font="SimHei-Bold")]),
+            _make_line([_make_span("学期授课计划", size=22.0, font="SimHei")]),  # no bold
+            _make_line([_make_span("18 环测1 班", size=14.1, font="SimHei-Bold")]),
+            _make_line([_make_span("2021 年1 月8 日", size=14.1, font="SimHei-Bold")]),
+            _make_line([_make_span("一、编制说明", size=12.0, font="SimSun")]),
+            _make_line([_make_span("项目二.水中物理指标的检测", size=9.0, font="SimSun")]),
+            _make_line([_make_span("二、授课计划", size=12.0, font="SimSun")]),
+        ]
+        sections = self._run(lines)
+        # 3 headings: 附件1 + 一、编制说明 + 二、授课计划
+        titles = [s.title for s in sections]
+        assert "附件1：授课计划" in titles
+        assert "一、编制说明" in titles
+        assert "二、授课计划" in titles
+        # 18 环测1 班 / 2021年1月8日 应该被黑名单过滤
+        assert "18 环测1 班" not in titles
+        assert "2021 年1 月8 日" not in titles
+        # All detected headings should have non-empty path
+        for s in sections:
+            assert s.path, f"Section {s.title!r} has empty path"
+
+    def test_path_stack_decrease_then_increase(self) -> None:
+        """Level 1 → 2 → 2 → 1 — path should reflect hierarchy strictly."""
+        lines = [
+            _make_line([_make_span("一、章", size=12.0, font="SimSun")]),  # level 1
+            _make_line([_make_span("（一）子节", size=12.0, font="SimSun")]),  # level 2
+            _make_line([_make_span("（二）子节", size=12.0, font="SimSun")]),  # level 2
+            _make_line([_make_span("二、章", size=12.0, font="SimSun")]),  # level 1
+        ]
+        sections = self._run(lines)
+        # 4 headings: 一、章 / （一）子节 / （二）子节 / 二、章
+        assert [s.title for s in sections] == [
+            "一、章",
+            "（一）子节",
+            "（二）子节",
+            "二、章",
+        ]
+        # Paths:
+        # 一、章 (L1) → "1"
+        # （一）子节 (L2) → "1.1"  (sibling under 一、章)
+        # （二）子节 (L2) → "1.2"  (sibling, count=2)
+        # 二、章 (L1) → "2"  (L2 popped from stack on decrease)
+        assert [s.path for s in sections] == ["1", "1.1", "1.2", "2"]
+        assert [s.level for s in sections] == [1, 2, 2, 1]
+
+    def test_existing_path_values_for_known_pdf(self) -> None:
+        """Sanity check: the 人才培养方案 PDF (known to have many Chinese headings)
+        still produces non-empty paths for all sections after BUG-007 fix.
+        """
+        import os
+
+        # Locate the PDF in the dev uploads directory.
+        candidate_paths = [
+            "/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase/packages/server-python/uploads/00000000-0000-0000-0000-000000000001/de7aa081442842ed8ac65cdec3a28e1b_01-人才培养方案环境监测技术专业.pdf",
+        ]
+        pdf_path = next((p for p in candidate_paths if os.path.exists(p)), None)
+        if pdf_path is None:
+            # Test is skipped if the known fixture is not present locally
+            import pytest
+            pytest.skip("人才培养方案 PDF fixture not present in this environment")
+        result = extract_pdf_text(pdf_path)
+        assert len(result.sections) > 5, f"Expected > 5 sections, got {len(result.sections)}"
+        for s in result.sections:
+            assert s.path, f"Section {s.title!r} has empty path after BUG-007 fix"
