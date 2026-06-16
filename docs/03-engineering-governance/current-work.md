@@ -22,6 +22,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
+| REQ-013 RAG Context Packer 与回答 grounding 增强 | 🔵 Ready | P2 | 后端 / RAG / grounding | 按 spec/plan 开工，优先做 chunk 邻居扩展、section fallback、TOC guard 和 prompt packing |
 | BUG-007 pdf_parser sections path 错乱 | 🔵 Ready | P2 | 后端 / pdf_parser | 修复 font-size + 中文正则 level 混用 + 补非标题黑名单 + 补 mock fixture 测试 |
 
 ## 最近完成

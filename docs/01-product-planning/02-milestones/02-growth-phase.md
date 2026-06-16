@@ -41,6 +41,7 @@ External:
 | LLM 混合 NER | 规则未命中时调用 LLM 提取实体 |
 | 4 通道并行召回 | 新增图谱关系召回通道（PostgreSQL `knowledge_edges`） |
 | RRF 融合排序 | Reciprocal Rank Fusion + 可配置通道权重 |
+| Context Packer / 回答 grounding | 命中 chunk 后回扩相邻 chunk / 同 section，为 LLM 组装足够的原文上下文 |
 | 抽取 schema 稳定化 | 让模板字段、嵌套结构、抽取结果更强约束 |
 
 ### 轨道 C：基础设施
@@ -76,6 +77,7 @@ External:
 | REQ-002-2 | 🟢 完成 | 模板复用机制（同租户复制 / 全量版本快照 / JSON 导入导出） | [Spec](../../02-delivery-plans/01-specs/2026-06-10-req-002-2-template-reuse.md) / [Backlog](../04-backlog.md) / [PR #159](https://github.com/MarkDanile/MetaEduBase/pull/159) |
 | REQ-002-4 | 🟢 完成 | 模板可维护性（schema_version 演进 + 容器互转二次确认 + deprecated + 命名规范） | [Spec](../../02-delivery-plans/01-specs/2026-06-10-req-002-4-template-maintainability.md) / [Backlog](../04-backlog.md) / [PR #170](https://github.com/MarkDanile/MetaEduBase/pull/170) |
 | P2-SEARCH | 🟡 Shaping | PostgreSQL tsvector + 中文分词搜索增强 | 技术债入口 [TD-047](../../03-engineering-governance/technical-debt.md#td-047) 已收口（PR #192）：metaedu/postgres-zhparser:pg16 镜像 + chinese_zh 文本搜索配置 + plainto_tsquery，dev 库真跑 backfill 覆盖率 74.95% → 81.91%（+6.96 pct）。剩 182 个 file_only 节点属 REQ-012 后续 embedding 召回范围。基础设施 Ready，召回链路集成 pending → Shaping 中间态。 |
+| REQ-013 | 🔵 Ready | RAG Context Packer 与回答 grounding 增强 | REQ-012 已收口但仍存在“只命中目录证据”的回答现象；本项承接 chunk 邻居扩展、section fallback、TOC guard 和 prompt packing。 | [Requirement](../05-requirements/REQ-013-rag-context-packer-and-grounded-answering.md) / [Spec](../../02-delivery-plans/01-specs/2026-06-16-req-013-rag-context-packer.md) / [Plan](../../02-delivery-plans/02-plans/2026-06-16-req-013-rag-context-packer-plan.md) |
 | P2-NER | ⚫ Candidate | LLM 混合 NER | 待进入 backlog |
 | P2-RRF | ⚫ Candidate | RRF 融合排序 | 待进入 backlog |
 | P2-INFRA | ⚫ Candidate | Redis 缓存 / RabbitMQ / LiteLLM / MinIO 集群按瓶颈择一推进 | 待进入 backlog |

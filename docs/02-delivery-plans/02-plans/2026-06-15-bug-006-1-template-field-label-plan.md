@@ -772,7 +772,7 @@ git checkout -b docs/bug-006-1-post-merge main
 在 `docs/03-engineering-governance/current-work.md` 顶部追加 1 行（如果已 ≥ 12 行则删最末 1 行）：
 
 ```markdown
-| 2026-06-15 | BUG-006 #1 模板抽取页面字段名渲染 label（递归 children + dot-path）| 🟢 完成 | PR #<NUMBER> squash merge：抽 getTemplateFieldLabel 到 utils/templateLabels.ts 5 步查找；FieldValue.vue 加 fieldKey + templates optional prop。4 vitest + 55+ frontend tests 0 回归。 | [BUG-006 #1](../01-product-planning/05-requirements/BUG-006-resource-library-display-and-section-meta-and-kg-link.md) / [PR #<NUMBER>](https://github.com/MarkDanile/MetaEduBase/pull/<NUMBER>) |
+| 2026-06-15 | BUG-006 #1 模板抽取页面字段名渲染 label（递归 children + dot-path）| 🟢 完成 | PR #<NUMBER> squash merge：抽 getTemplateFieldLabel 到 utils/templateLabels.ts 5 步查找；FieldValue.vue 加 fieldKey + templates optional prop。4 vitest + 55+ frontend tests 0 回归。 | [BUG-006 #1](../../01-product-planning/05-requirements/BUG-006-resource-library-display-and-section-meta-and-kg-link.md) / [PR #<NUMBER>](https://github.com/MarkDanile/MetaEduBase/pull/<NUMBER>) |
 ```
 
 **摘要 ≤ 220 字符**：上方约 195 字符，OK。
