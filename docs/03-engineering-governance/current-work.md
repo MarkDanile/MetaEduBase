@@ -16,13 +16,13 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| （无 — 当前进行中为空） | | | | | | |
+| REQ-014 RAG 真实 PG 样例、数据回填与回答 grounding 验收 | 🟡 进行中 | P1 | P2 / RAG / AI Chat / 数据回填 | `feature/req-014-rag-real-pg-grounding-validation` 分支；plan-do 模式。spec + plan + 验收脚本 `scripts/validate_real_pg_rag.py` 已写完；下个会话跑真 PG 5 个子命令生成报告 | 下次会话：选 3-5 样例 file_id（example.json → 真 samples.json）+ 跑 backfill/ask/bug007/bug006/report + 跨事实源同步 + PR merge | `python -m py_compile scripts/validate_real_pg_rag.py` 退出 0；脚本 `--help` 5 子命令正常；待真 PG AC 收口 |
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| REQ-014 RAG 真实 PG 样例、数据回填与回答 grounding 验收 | 🟡 Shaping | P1 | P2 / RAG / AI Chat / 数据回填 | 基于 [Requirement](../01-product-planning/05-requirements/REQ-014-rag-real-pg-grounding-and-data-backfill-validation.md) 先生成 spec/plan，再执行真实 PG 样例 backfill 与问答验收。 |
+| （无 — 候选区待当前任务推进后补登下一批） | | | | |
 
 ## 最近完成
 

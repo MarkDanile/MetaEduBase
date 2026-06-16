@@ -38,3 +38,8 @@ packages/server-python/uploads/*
 # (used by deploy/Dockerfile.postgres builder stage; rebuilt from upstream
 # on demand via scripts/engineering/refresh_td047_cache.sh if/when upstream revs)
 deploy/cache/
+
+# REQ-014 real PG validation samples (dev DB file_ids / live questions)
+# .example variant is committed; the real file is gitignored.
+scripts/validate_real_pg_rag_samples.json
+scripts/*.intermediate.json
