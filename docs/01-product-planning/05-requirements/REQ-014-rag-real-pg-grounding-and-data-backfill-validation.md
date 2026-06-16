@@ -1,6 +1,6 @@
 # REQ-014: RAG 真实 PG 样例、数据回填与回答 grounding 验收
 
-Status: 🟡 Shaping
+Status: 🟡 Doing
 Priority: P1
 Milestone: P2
 Parent: REQ-013

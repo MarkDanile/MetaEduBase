@@ -1,0 +1,45 @@
+{
+  "samples": [
+    {
+      "category": "python_tutorial",
+      "label": "Python 教程 PDF",
+      "file_id": null,
+      "expected_doc_type": null
+    },
+    {
+      "category": "training_program",
+      "label": "人才培养方案 PDF",
+      "file_id": null,
+      "expected_doc_type": "人才培养方案"
+    },
+    {
+      "category": "course_standard",
+      "label": "课程标准 / 教案 PDF",
+      "file_id": null,
+      "expected_doc_type": null
+    }
+  ],
+  "questions": [
+    {
+      "id": "Q1",
+      "text": "python 的基本数据类型有哪些？",
+      "expected_category": "python_tutorial"
+    },
+    {
+      "id": "Q2",
+      "text": "<TBD: 人才培养方案具体问题；由执行者从 dev 库 files 选一个文件后填入>",
+      "expected_category": "training_program"
+    },
+    {
+      "id": "Q3",
+      "text": "<TBD: 课程标准具体问题；执行者填入>",
+      "expected_category": "course_standard"
+    },
+    {
+      "id": "Q4",
+      "text": "<TBD: 故意无答案问题，如 '量子计算的量子纠缠原理是什么？'；执行者填入>",
+      "expected_category": null
+    }
+  ],
+  "output_report_path": "docs/02-delivery-plans/01-specs/2026-06-16-req-014-rag-real-pg-grounding-validation-report.md"
+}
