@@ -28,6 +28,11 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.contexts.knowledge.application.context_packer import (
+    ContextPacker,
+    ContextPackingOptions,
+    PackedContext,
+)
 from app.contexts.knowledge.application.ner_service import RuleBasedNER
 from app.contexts.knowledge.application.retrievers import (
     ChunkRetriever,
@@ -81,6 +86,8 @@ class AIChatService:
         evidence_fusion: Any,
         ner_pipeline: Any | None = None,
         min_evidence_score: float = 0.3,
+        context_packer: ContextPacker | None = None,
+        context_packing_options: ContextPackingOptions | None = None,
     ) -> None:
         self.chunk_retriever = chunk_retriever
         self.graph_retriever = graph_retriever
@@ -88,6 +95,8 @@ class AIChatService:
         self.evidence_fusion = evidence_fusion
         self.ner_pipeline = ner_pipeline or RuleBasedNER()
         self.min_evidence_score = min_evidence_score
+        self._context_packer = context_packer
+        self._packing_opts = context_packing_options or ContextPackingOptions()
 
     @staticmethod
     def _normalize_candidate_channels(
@@ -310,24 +319,45 @@ class AIChatService:
             logger.warning("graph retrieval failed: %s", e)
             return []
 
-    def _build_prompt_context(self, fused: list[EvidenceItem]) -> str:
-        """Build 「参考证据」 prompt segment with [1] / [2] numbering."""
-        if not fused:
+    def _build_prompt_context(self, packed: PackedContext) -> str:
+        """Build 「参考证据」 prompt segment with [1] / [2] numbering.
+
+        Uses PackedContext.blocks[] for content (neighbor-expanded / section-expanded).
+        Citation numbering follows block.evidence_index to stay consistent with
+        the evidence[] citation sequence the caller sees in sources.
+        """
+        if not packed.blocks:
             return ""
         ctx = "\n\n参考证据：\n"
-        for idx, ev in enumerate(fused, 1):
-            source_label = self._evidence_source_label(ev)
-            title_part = ev.title or ev.structured_path or ev.evidence_id
-            content = ev.snippet or ev.content or ""
-            channels = ",".join(ev.channels) if ev.channels else "—"
+        for block in packed.blocks:
+            evidence_idx = block.evidence_index
+            # Look up the original EvidenceItem for stable source label
+            ev = (
+                packed.evidence[evidence_idx - 1]
+                if evidence_idx <= len(packed.evidence)
+                else None
+            )
+            source_label = (
+                self._evidence_source_label(ev)
+                if ev else block.source_type
+            )
+            title_part = block.title or (ev.title if ev else block.evidence_index)
+            channels = ",".join(block.channels) if block.channels else "—"
+            expansion_tag = (
+                f" [{block.expansion_type}]"
+                if block.expansion_type != "hit"
+                else ""
+            )
             ctx += (
-                f"[{idx}] 来源: {source_label} | 标题: {title_part} | "
-                f"命中: {channels}\n{content}\n"
+                f"[{evidence_idx}] 来源: {source_label}{expansion_tag} | "
+                f"标题: {title_part} | 命中: {channels}\n{block.content}\n"
             )
         return ctx
 
     @staticmethod
-    def _evidence_source_label(ev: EvidenceItem) -> str:
+    def _evidence_source_label(ev: EvidenceItem | None) -> str:
+        if ev is None:
+            return "unknown"
         if ev.source_type == "chunk":
             return "chunk"
         if ev.source_type == "knowledge_node":
@@ -375,6 +405,47 @@ class AIChatService:
         # Filter by min score; if all dropped, keep empty fused (fallback path).
         fused = [e for e in fused if e.score is None or e.score >= self.min_evidence_score]
         fused = await self._hydrate_graph_chunks(fused, tenant_id, session)
+
+        # REQ-013: context packing — expand fused evidence with neighbors / section
+        channel_top_k = {ch: len(items) for ch, items in channel_results.items()}
+        if self._context_packer is not None:
+            packed = await self._context_packer.pack(
+                fused,
+                channel_top_k=channel_top_k,
+            )
+        else:
+            # No packer injected — build a minimal PackedContext for _build_prompt_context
+            from app.contexts.knowledge.application.context_packer import (
+                PackedContext,
+                PackedContextBlock,
+                PackedContextDiagnostics,
+            )
+
+            packed = PackedContext(
+                blocks=[
+                    PackedContextBlock(
+                        evidence_index=i + 1,
+                        file_id=ev.file_id,
+                        chunk_ids=[ev.chunk_id] if ev.chunk_id else [],
+                        source_type=ev.source_type,
+                        title=ev.title or "",
+                        section_title=ev.metadata.get("section_title"),
+                        section_path=ev.metadata.get("section_path"),
+                        content=ev.content or ev.snippet or "",
+                        channels=ev.channels,
+                        score=ev.score,
+                        is_toc_like=False,
+                        expansion_type="hit",
+                    )
+                    for i, ev in enumerate(fused)
+                ],
+                evidence=fused,
+                diagnostics=PackedContextDiagnostics(
+                    fused_count=len(fused),
+                    channel_top_k=channel_top_k,
+                ),
+            )
+
         document_sources = await self._build_document_sources(fused, tenant_id, session)
 
         # REQ-012 diagnostic log: channel labels may be vector/keyword/graph,
@@ -409,7 +480,7 @@ class AIChatService:
             len(fused),
         )
 
-        context_text = self._build_prompt_context(fused)
+        context_text = self._build_prompt_context(packed)
         user_content = (
             f"{context_text}\n\n学生问题：{request.message}"
             if context_text
