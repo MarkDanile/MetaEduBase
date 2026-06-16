@@ -112,4 +112,5 @@ BUG-006 #2 (PR #299) 已合并 — `pdf_parser.py` 新增 `_detect_chinese_headi
 - 2026-06-16 登记（用户重新上传 4 份文件后真 PG 复测发现）。
 - 本 BUG 5 字段齐全（事实源 / 证据 / 复现 / 期望 / 怀疑点），按 bug fix 模式入账 🔵 Ready。
 - 关联债：BUG-006 #2 (PR #299)、TD-053、TD-051。
-- 实际修复留维护者下个 PR。
+- 2026-06-16 修复合片已合并：PR #303 / merge `31fc4f0`，`pdf_parser.py` section path 改用 docling counters 算法并补非标题黑名单；mock tests pass。
+- 真实 PG reparse / backfill 与 AI Chat 样例综合验收已统一分流到 REQ-014。

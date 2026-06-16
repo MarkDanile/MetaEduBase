@@ -22,6 +22,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
+| REQ-014 RAG 真实 PG 样例、数据回填与回答 grounding 验收 | 🟡 Shaping | P1 | P2 / RAG / AI Chat / 数据回填 | 基于 [Requirement](../01-product-planning/05-requirements/REQ-014-rag-real-pg-grounding-and-data-backfill-validation.md) 先生成 spec/plan，再执行真实 PG 样例 backfill 与问答验收。 |
 
 ## 最近完成
 

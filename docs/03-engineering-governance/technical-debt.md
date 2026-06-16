@@ -149,7 +149,7 @@
 | TD-053 | `rebuild_document_chunks` fallback 未算 `section_path` → 老数据走 fallback 时 section_path 仍 100% 空 | 🟢 完成 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：`scripts/ai/chunk_quality_report.py` 重建后基线 section_path_empty 1562/1562（100%）与重建前持平。 |
 | TD-054 | 重建后 `offset_overlaps` 反而 +3% → chunker 跨 section `char_start` 计算或 `_enforce_size_limit` 拆分逻辑仍有问题 | 🟢 完成 | P1 | RAG / 数据完整性 / 文档解析 | TD-051 本机重建（PR #235）暴露：重建前 816（52.61%）→ 重建后 869（55.63%）。`chunker._enforce_size_limit` 拆分后子 chunk 继承父 chunk offset 的边界条件可能错位。TD-054 复测（2026-06-14 人才培养方案 28 chunks）offset_overlaps 进一步恶化到 23/28 (82.14%)，暴露主循环合并分支 local_offset 未同步 + `_split_oversized_chunk` pos 跟踪同类 bug。[PR #289](https://github.com/MarkDanile/MetaEduBase/pull/289) + [PR #290](https://github.com/MarkDanile/MetaEduBase/pull/290) 已 squash merge；真 PG 复测 offset_overlaps 0/28 (0.00%) 远超目标 ≤ 52.61%。 |
 | TD-055 | `cleanup_orphan_chunks` task 未把 `result.rowcount` 返回 → 调用方拿不到删条数 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-051 本机重建（PR #235）暴露：直接调 `cleanup_orphan_chunks(tid_str)` 返回 None（应返回 deleted count），运维只能查 SQL 二次验证。 |
-| TD-056 | TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | 🔵 就绪 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-055 修复时审计：rebuild_chunks.py:173 `rebuild_document_chunks` 同样 `asyncio.run(_run_in_session(_do))` 未接返回值，但 rebuild 通过 logger.info 写 chunk 数量掩盖了。需扫描所有 `_run_in_session` 调用点。 |
+| TD-056 | TD-055 审计：其他 `_run_in_session` task 也可能未返回值 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | PR #256 已修 `rebuild_document_chunks` 返回 chunk count 并完成全仓 audit；剩余 10 个 `_do` 返回值契约已拆入 TD-057~TD-066 并全部收口。 |
 | TD-057 | task 函数返回值契约：10 个 `_do` 无 return 修复 + 全仓契约 | 🟢 完成 | P1 | 后端 / Celery 任务 / 运维可观测性 | TD-056 PR 描述 follow-up：10 个 `_do` 函数无 return。10 个 follow-up PR #258/#260/#262/#264/#267/#269/#271/#273/#275/#280 全部 MERGED；414/414 mock pytest pass 零回归。 | [PR #258](https://github.com/MarkDanile/MetaEduBase/pull/258) (slice 1) + [PR #280](https://github.com/MarkDanile/MetaEduBase/pull/280) (TD-066) |
 | TD-058 | parse_document 返 structured_data + section_count dict | 🟢 完成 | P1 | 后端 / Celery 任务 / 文档解析 | TD-057 9 个 follow-up slice 2：parse_document._do 业务结束时返 `_build_parsed_structured_data(parsed.full_text, len(parsed.sections), sections_data)`；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 现在拿到 parsed structured_data dict。 | [PR #260](https://github.com/MarkDanile/MetaEduBase/pull/260) (merge `f41dcc0`) |
 | TD-059 | embed_chunks 返 embedded_chunks_count int | 🟢 完成 | P1 | 后端 / Celery 任务 / AI / RAG | TD-057 9 个 follow-up slice 3：embed_chunks._do 业务结束时返 `len(chunks)` int（已有 `total` 局部变量）；outer 补 `return asyncio.run(_run_in_session(_do))`。caller 拿到 embed 处理的 chunk 数。 | [PR #262](https://github.com/MarkDanile/MetaEduBase/pull/262) (merge `683652d`) |
@@ -3286,7 +3286,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-056: TD-055 审计：其他 `_run_in_session` task 也可能未返回值
 
-状态：🔵 就绪
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -3338,7 +3338,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
     - 修前 4/4 fail（pre-fix: 返 None 触发 `assert result == 7` 失败）；修后 4/4 pass
   - ruff clean / `git diff --check` clean / `scripts/check-engineering-docs` 退出码 0
   - 32/32 mock pytest pass（0 业务代码回归）
-  - 任务整体保持 🔵 就绪——真 PG 端到端（跑 `rebuild_document_chunks` 真调用 + 断言返回值是 chunk 数）留维护者下次接力
+  - TD-056 本体已随 PR #256 完成；真 PG 端到端（跑 `rebuild_document_chunks` 真调用 + 断言返回值是 chunk 数）留维护者抽样接力，不阻塞任务关闭。
   - 其他 11 个调用点（parse / chunk / embed / index / extract_template / extract_knowledge_graph / ds_parse / ds_extract_kg / ds_embed / ds_cross_dataset_edges）`_do` 无 return 值——**按 TD-056 spec 第 1 条限定 0 修复合片目标**。建独立 follow-up **DOC 任务"task 函数返回值契约"**作为功能性补强（让 caller 拿到有意义值）。
 
 ### DOC-063: `check-engineering-docs` 性能收口（subprocess 砍掉 / 5 秒硬指标）
