@@ -1,6 +1,6 @@
 # REQ-017: P2 RRF / Weighted RRF 融合排序
 
-Status: 🟣 Shaping
+Status: 🔵 Ready
 Priority: P0
 Milestone: P2
 Source: P2-RRF Open Item
