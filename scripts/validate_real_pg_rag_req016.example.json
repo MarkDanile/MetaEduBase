@@ -1,0 +1,61 @@
+{
+  "description": "REQ-016 LLM Hybrid NER 真实 PG 验收样本",
+  "samples": [
+    {
+      "category": "python_tutorial",
+      "label": "Python 教程 PDF",
+      "file_id": null
+    },
+    {
+      "category": "training_program",
+      "label": "人才培养方案 PDF",
+      "file_id": null
+    }
+  ],
+  "questions": [
+    {
+      "id": "Q1_python_func_param",
+      "text": "Python 函数的参数要怎么理解最好",
+      "expected_category": "python_tutorial",
+      "query_understanding_expected": {
+        "method": "llm",
+        "confidence_gt": 0.5,
+        "expanded_terms_not_empty": true,
+        "trigger_reason": "rule_miss_and_long_query"
+      }
+    },
+    {
+      "id": "Q2_course_quality",
+      "text": "这门课的教学做得好不好？",
+      "expected_category": "training_program",
+      "query_understanding_expected": {
+        "method": "llm",
+        "confidence_gt": 0.5,
+        "expanded_terms_not_empty": true,
+        "trigger_reason": "rule_miss_and_long_query"
+      }
+    },
+    {
+      "id": "Q3_template_doc",
+      "text": "查找模板配置相关的文档",
+      "expected_category": "training_program",
+      "query_understanding_expected": {
+        "method": "llm",
+        "confidence_gt": 0.5,
+        "expanded_terms_not_empty": true,
+        "trigger_reason": "rule_miss_and_long_query"
+      }
+    },
+    {
+      "id": "Q4_rule_hit",
+      "text": "电子信息专业课程",
+      "expected_category": "training_program",
+      "query_understanding_expected": {
+        "method": "rule",
+        "trigger_reason": "rule_hit",
+        "llm_called": false
+      }
+    }
+  ],
+  "output_report_path": "docs/02-delivery-plans/01-specs/2026-06-17-req-016-llm-hybrid-ner-validation-report.md"
+}

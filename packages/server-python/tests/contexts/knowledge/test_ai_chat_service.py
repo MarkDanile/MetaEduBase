@@ -808,3 +808,40 @@ async def test_diagnostics_query_understanding_populated_for_rule_miss_long_quer
     assert "Python" in qu_diag["core_terms"]
     assert "parameter" in qu_diag["expanded_terms"]
     assert qu_diag["normalized_query"] == "Python 函数参数"
+
+
+async def test_expanded_query_appears_in_retriever_trace() -> None:
+    """REQ-016 Slice 4: expanded_query from LLM QU is visible in retrieval_topn diagnostics."""
+    from app.contexts.knowledge.application.hybrid_ner_service import (
+        HybridQueryUnderstandingService,
+    )
+    from app.contexts.knowledge.application.retrievers_fake import (
+        FakeChunkRetriever,
+    )
+
+    fid = uuid.uuid4()
+    chunk = _chunk_evidence(fid, 1, score=0.9, content="Python 函数参数调用示例。" * 5)
+
+    chunk_retriever = FakeChunkRetriever()
+    chunk_retriever.return_value = [chunk]
+
+    mock_llm = MagicMock(return_value='{"normalized_query":"Python 函数参数","core_terms":["Python","函数参数"],"expanded_terms":["parameter","参数传递"],"entities":["Python"],"filters":{},"confidence":0.85,"reason":"编程语言"}')
+    hybrid_ner = HybridQueryUnderstandingService(llm_provider=mock_llm)
+
+    service = AIChatService(
+        chunk_retriever=chunk_retriever,
+        graph_retriever=FakeGraphRetriever(),
+        metadata_filter=FakeMetadataFilter(),
+        evidence_fusion=SimpleFrequencyFusion(),
+        ner_pipeline=hybrid_ner,
+    )
+    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+        result = await service.chat(
+            ServiceChatRequest(message="Python 函数的参数要怎么理解最好", context_window=3),
+            session=_session_for_file(fid),  # type: ignore[arg-type]
+        )
+
+    # LLM QU was triggered
+    assert result.diagnostics["query_understanding"]["method"] == "llm"
+    # expanded_terms from mock LLM response
+    assert "parameter" in result.diagnostics["query_understanding"]["expanded_terms"]
