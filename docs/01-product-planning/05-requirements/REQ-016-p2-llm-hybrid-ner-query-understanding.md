@@ -53,4 +53,6 @@ Related: BUG-010 / REQ-017 / REQ-018
 | 日期 | 动作 | 事实 |
 |------|------|------|
 | 2026-06-17 | Shaping 完成 | spec + plan 产出，PR #327 squash merge |
-| 2026-06-17 | Shaping 收口 | spec（[Spec](../../02-delivery-plans/01-specs/2026-06-17-req-016-llm-hybrid-ner.md)）/ plan（[Plan](../../02-delivery-plans/02-plans/2026-06-17-req-016-llm-hybrid-ner-plan.md)）/ PR #327 已合并 |
+| 2026-06-17 | Shaping 收口 | spec + plan + PR #327 已合并 |
+| 2026-06-17 | Slice 1 收口 | HybridQueryUnderstandingService 骨架 + schema + 9 mock tests，PR #328 merge |
+| 2026-06-17 | Slice 2 收口 | AIChatService diagnostics 扩展 + router 注入，PR #329 merge，58 tests 0 回归 |

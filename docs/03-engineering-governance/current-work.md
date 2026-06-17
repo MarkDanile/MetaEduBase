@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-016 P2 LLM 混合 NER / Query Understanding | 🟡 进行中 | P0 | NER / Query Understanding / AI Chat | Slice 1 PR #328 已合并：HybridQueryUnderstandingService 骨架 + schema + 9 mock tests 全部通过。Slice 2：接入 AIChatService + diagnostics 扩展。 | Slice 2：注入 HybridQueryUnderstandingService 到 AIChatService，diagnostics 含 query_understanding trace | PR #328 合并后无回归 |
+| REQ-016 P2 LLM 混合 NER / Query Understanding | 🟡 进行中 | P0 | NER / Query Understanding / AI Chat | Slice 1 PR #328 已合并：HybridQueryUnderstandingService 骨架 + 9 mock tests。Slice 2 PR #329 已合并：AIChatService diagnostics 扩展 + router 注入；58 tests 0 回归。Slice 3：expanded_terms 流经 retrievers。 | Slice 3：expanded_terms 流经 retrievers（需确认 retrievers 是否已支持 ner_result 扩展） | PR #329 合并后 58 tests 0 回归 |
 | REQ-017 RRF / Weighted RRF 融合排序收口 | 🟡 进行中 | P0 | RAG / Ranking / AI Chat | Slice 1-3 PR #325 已合并：配置入口 + fusion diagnostics + 通道降级。Slice 4（真实 PG 样例 RRF 排序分析）待 REQ-015 PG 环境 backfill | Slice 4：RRF 排序分析脚本；依赖 REQ-015 真实 PG 环境 | 待 REQ-015 backfill |
 
 ## 下一批候选任务
