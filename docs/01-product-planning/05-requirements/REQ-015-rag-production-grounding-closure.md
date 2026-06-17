@@ -12,6 +12,7 @@ External:
 | Date | What | Details |
 |------|------|---------|
 | 2026-06-17 | Production wiring + mock regression | 已把生产 AI Chat endpoint 改为按请求注入 `ContextPacker(ChunkRepository(session), tenant_id)`；默认融合切到 `RRFFusion` 并支持 weighted RRF；`AIChatService` 返回 diagnostics；`validate_real_pg_rag.py` 对齐真实接口字段、认证 token、当前 `metaedu.*` schema、`document_chunks` section 统计和 BUG-006 / BUG-007 真实复测入口；新增 Python 基本数据类型 packed context 行为回归，并锁定 hit block 优先使用 `document_chunks.content` 完整正文。验证：40 focused pytest passed；`test_ai_chat.py` 5 passed；ruff passed；`py_compile scripts/validate_real_pg_rag.py` passed；web typecheck / docs gate / diff check passed。真 PG 样例仍需 dev DB + LLM key 后执行，不能视为已通过。 |
+| 2026-06-17 | Real dev validation without external LLM | 已启动真实 dev DB、后端服务，并用开发账号获取真实 JWT。`backfill` / `bug007` / `bug006` / `report` 非外发验收通过运行，报告见 [REQ-015 validation report](../../02-delivery-plans/01-specs/2026-06-17-req-015-rag-production-grounding-validation-report.md)。截停在 LLM 前的真实链路发现：样例数据完整，但生产编排仍未把 Python 数据类型正文 chunk 放入 prompt；根因分流到 [BUG-009](BUG-009-ai-chat-rag-retrieval-context-pipeline-real-pg-failure.md)。外部 LLM 调用会发送 dev 文档内容到第三方 provider，本次因安全风险未执行，需用户显式批准。 |
 
 ## Problem
 

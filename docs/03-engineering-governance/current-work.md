@@ -21,7 +21,7 @@
 领域：Backend / RAG / AI Chat / P2
 当前执行模式：plan-do
 最近接手工具：Codex
-分支：req-015-rag-grounding-closure
+分支：codex/req-015-real-dev-validation
 
 需求来源：
 - Requirement: [REQ-015](../01-product-planning/05-requirements/REQ-015-rag-production-grounding-closure.md)
@@ -29,16 +29,16 @@
 - Plan: [2026-06-17-req-015-rag-production-grounding-closure-plan.md](../02-delivery-plans/02-plans/2026-06-17-req-015-rag-production-grounding-closure-plan.md)
 - Milestone: [P2 增长期](../01-product-planning/02-milestones/02-growth-phase.md)
 
-当前进展：代码与本地可验证项已收口：endpoint 按请求注入 `ContextPacker`，默认融合切到 `RRFFusion`，`AIChatService` 返回 diagnostics，`validate_real_pg_rag.py` 对齐真实接口字段、鉴权 token、当前 `metaedu.*` schema、`document_chunks` section 统计和 BUG-006 / BUG-007 复测入口，并补“Python 基本数据类型”packed context 行为回归。
-下一步：在 dev DB + 后端服务 + `AI_CHAT_AUTH_TOKEN` + LLM key 可用时执行真 PG 样例：`backfill` / `ask` / `bug007` / `bug006` / `report`，并按结果决定是否翻完成或拆 BUG / TD。
-验证状态：已运行 `packages/server-python/.venv/bin/python -m pytest packages/server-python/tests/contexts/ai/test_ai_chat_router_req015.py packages/server-python/tests/contexts/knowledge/test_evidence_fusion.py packages/server-python/tests/contexts/knowledge/test_context_packer.py packages/server-python/tests/contexts/knowledge/test_ai_chat_service.py -q` → 40 passed；`packages/server-python/.venv/bin/python -m pytest packages/server-python/tests/contexts/ai/test_ai_chat.py -q`（允许连接本机 PG）→ 5 passed；`packages/server-python/.venv/bin/python -m py_compile scripts/validate_real_pg_rag.py` → 0；targeted ruff → 0；`pnpm --filter @metaedu/web typecheck` → 0；`scripts/check-engineering-docs` → 0；`git diff --check` → 0；`validate_real_pg_rag.py report` dry-run → 0。未跑真 PG 样例（需要 dev DB + 后端服务 + `AI_CHAT_AUTH_TOKEN` + LLM key）。
-交接备注：不要把本任务提前翻 🟢 完成；真实 PG 样例和报告填充完成前只能保持进行中或待验证。
+当前进展：代码与本地可验证项已收口；真实 dev DB + 后端服务 + dev JWT 非外发验收已跑，样例数据完整，BUG-006 / BUG-007 真 PG 复测脚本可运行。截停在 LLM 前的生产编排仍未把“Python 基本数据类型”正文 chunk 放入 prompt，已拆 [BUG-009](../01-product-planning/05-requirements/BUG-009-ai-chat-rag-retrieval-context-pipeline-real-pg-failure.md)。
+下一步：优先处理 BUG-009；修复后重跑 REQ-015 样例。外部 LLM `ask` 会把 dev 文档切片发到第三方 provider，需要用户显式批准后再跑。
+验证状态：已运行 `packages/server-python/.venv/bin/python -m pytest packages/server-python/tests/contexts/ai/test_ai_chat_router_req015.py packages/server-python/tests/contexts/knowledge/test_evidence_fusion.py packages/server-python/tests/contexts/knowledge/test_context_packer.py packages/server-python/tests/contexts/knowledge/test_ai_chat_service.py -q` → 40 passed；`packages/server-python/.venv/bin/python -m pytest packages/server-python/tests/contexts/ai/test_ai_chat.py -q`（允许连接本机 PG）→ 5 passed；真实 dev DB：`validate_real_pg_rag.py backfill/bug007/bug006/report` → exit 0；prompt 前截停验收：真实数据存在 chunk 54/55/61/64，但 `PROMPT_HAS_BASIC_TYPES=False`。外部 LLM `ask` 未运行（第三方外发风险需显式批准）。
+交接备注：不要把 REQ-015 翻 🟢 完成；当前关闭条件被 BUG-009 阻塞。
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| （无 — 候选区待当前任务推进后补登下一批） | | | | |
+| BUG-009 AI Chat 真实 PG 链路未把相关正文 chunk 送入 prompt | 🔵 Ready | P0 | Backend / RAG / AI Chat / P2 | 修共享 `AsyncSession` 并发、RRF 阈值、目录/简介降权和正文 chunk 升权；修后重跑 REQ-015 样例。 |
 
 ## 最近完成
 
