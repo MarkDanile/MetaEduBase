@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import os
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from app.contexts.knowledge.application.ai_chat_service import AIChatService
 from app.contexts.knowledge.application.context_packer import ContextPacker
 from app.contexts.knowledge.application.evidence_fusion import RRFFusion
 from app.contexts.knowledge.domain.evidence import EvidenceItem
 from app.contexts.knowledge.interfaces.api.ai_router import (
+    _RRF_DEFAULT_WEIGHTS,
     _build_evidence_service,
     _get_rrf_channel_weights,
-    _RRF_DEFAULT_WEIGHTS,
 )
 
 
