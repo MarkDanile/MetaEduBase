@@ -219,6 +219,43 @@ class AIChatService:
             )
         return traced
 
+    def _enrich_fusion_diagnostics(
+        self,
+        packed: PackedContext,
+        channel_results: dict[str, list[EvidenceItem]],
+        fused: list[EvidenceItem],
+    ) -> PackedContext:
+        """REQ-017 Slice 2: populate RRF fusion diagnostics.
+
+        Fills fusion_method / rrf_k / rrf_weights_used / fusion_scores /
+        channel_ranks on packed.diagnostics.
+        """
+        fusion = self.evidence_fusion
+        diag = packed.diagnostics
+
+        # Identify fusion type
+        fusion_name = fusion.__class__.__name__
+        diag.fusion_method = fusion_name
+
+        # RRF-specific fields
+        if hasattr(fusion, "k"):
+            diag.rrf_k = fusion.k  # type: ignore[attr-defined]
+        if hasattr(fusion, "channel_weights"):
+            diag.rrf_weights_used = dict(fusion.channel_weights or {})  # type: ignore[attr-defined]
+
+        # channel_ranks: channel -> evidence_id -> rank (1-based)
+        channel_ranks: dict[str, dict[str, int]] = {}
+        for ch, items in channel_results.items():
+            channel_ranks[ch] = {
+                it.evidence_id: rank + 1 for rank, it in enumerate(items)
+            }
+        diag.channel_ranks = channel_ranks
+
+        # fusion_scores: evidence_id -> score from fusion output
+        diag.fusion_scores = {e.evidence_id: e.score for e in fused}
+
+        return packed
+
     async def _hydrate_graph_chunks(
         self,
         fused: list[EvidenceItem],
@@ -553,6 +590,11 @@ class AIChatService:
                     channel_top_k=channel_top_k,
                 ),
             )
+
+        # REQ-017 Slice 2: populate RRF fusion diagnostics
+        packed = self._enrich_fusion_diagnostics(
+            packed, channel_results, fused
+        )
 
         document_sources = await self._build_document_sources(fused, tenant_id, session)
 
