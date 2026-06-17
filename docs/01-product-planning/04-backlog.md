@@ -92,7 +92,7 @@
 | DOC-065 | DOC | 🟢 Done | P1 | P3 | 规则瘦身、任务池插入规则与开工硬门禁收口 | PR #244 merged：压缩工程规则为硬门禁 + 跳转；补 Windows / Claude Code 开工三连、禁止绕过门禁、任务池索引与插入顺序。 | [Technical Debt](../03-engineering-governance/technical-debt.md#doc-065) / [PR #244](https://github.com/MarkDanile/MetaEduBase/pull/244) |
 | DOC-066 | DOC | 🟢 Done | P2 | P3 | 任务池主表插入顺序门禁 | PR #246 merged：将 Backlog / technical-debt 主表“新编号必须在同前缀最后”脚本化，防止后续新任务插入历史编号中间。 | [Technical Debt](../03-engineering-governance/technical-debt.md#doc-066) / [PR #246](https://github.com/MarkDanile/MetaEduBase/pull/246) |
 | DOC-067 | DOC | 🟢 Done | P2 | P3 | 分布式临时编号与正式任务编号归并规则 | PR #248 merged：正式任务编号保持短格式，`DRAFT-YYYYMMDD-HHMM-XXXX` 只作临时来源；主表门禁已实现。 | [Technical Debt](../03-engineering-governance/technical-debt.md#doc-067) / [PR #248](https://github.com/MarkDanile/MetaEduBase/pull/248) |
-| DOC-069 | DOC | 🟡 Doing | P0 | P2 | P2 阶段正式启动与重点任务规划 | 本轮将 Roadmap / P1 / P2 / W25 迭代 / Backlog / current-work 对齐到“正式进入 P2”，并把 P2-NER / P2-RRF / 4 通道召回映射为 REQ-016 / REQ-017 / REQ-018。 | [P2 Milestone](02-milestones/02-growth-phase.md) |
+| DOC-069 | DOC | 🟢 Done | P0 | P2 | P2 阶段正式启动与重点任务规划 | PR #320 squash merge `33c132f`：Roadmap / P1 / P2 / W25 迭代 / Backlog / current-work 已对齐到“正式进入 P2”，并把 P2-NER / P2-RRF / 4 通道召回映射为 REQ-016 / REQ-017 / REQ-018。 | [P2 Milestone](02-milestones/02-growth-phase.md) / [PR #320](https://github.com/MarkDanile/MetaEduBase/pull/320) |
 
 ## 状态迁移
 
