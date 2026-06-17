@@ -14,9 +14,7 @@
 
 ## 当前进行中
 
-| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
-|------|------|--------|------|----------|--------|------|
-| P2-SEARCH 收口（中文 tsvector 增强）| 🟡 进行中 | P2 | P2 / RAG / 全文检索 | `docs/p2-search-closure-sync` 分支；milestone `02-growth-phase.md:79` 翻 `🟢 Done`；technical-debt.md:2686 同步收口说明；证据链：TD-047 PR #192 + REQ-012 PR #216（retriever 切 chinese_zh + plainto_tsquery）+ REQ-014 PR #308 + REQ-015 PR #314 端到端验收 | 跑 `scripts/check-engineering-docs` + commit + push + PR + squash merge + 翻 Done 后同步回 backlog/work-log | milestone 状态一致；门禁通过 |
+暂无。
 
 ## 下一批候选任务
 
@@ -32,6 +30,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-17 | P2-SEARCH PostgreSQL tsvector + 中文分词搜索增强 | 🟢 完成 | PR #318 merge `7d2a826` 收口：TD-047 PR #192（基础设施）+ REQ-012 PR #216（运行时检索切 chinese_zh + plainto_tsquery）+ REQ-014 PR #308 + REQ-015 PR #314（端到端验收） | [Milestone P2](../01-product-planning/02-milestones/02-growth-phase.md) / [TD-047](technical-debt.md#td-047) / [PR #318](https://github.com/MarkDanile/MetaEduBase/pull/318) |
 | 2026-06-17 | BUG-010 AI Chat 自然问法未稳定命中函数参数正文 chunk | 🟢 完成 | PR #316 merge `b753d3a`：确定性 query normalizer + 函数参数术语拆分回归已合并，A/B 等价问法共享核心检索词 | [BUG-010](../01-product-planning/05-requirements/BUG-010-ai-chat-query-normalizer-function-parameter-question.md) / [PR #316](https://github.com/MarkDanile/MetaEduBase/pull/316) |
 | 2026-06-17 | REQ-015 RAG 生产链路 grounding 与真实验收收口 | 🟢 完成 | PR #314 merge `4d78667`：生产 RAG 默认链路、真实 dev DB、授权 DeepSeek ask 与状态事实源已收口 | [REQ-015](../01-product-planning/05-requirements/REQ-015-rag-production-grounding-closure.md) / [PR #314](https://github.com/MarkDanile/MetaEduBase/pull/314) |
 | 2026-06-17 | BUG-009 AI Chat 真实 PG 链路未把相关正文 chunk 送入 prompt | 🟢 完成 | PR #314 merge `4d78667`：修 AsyncSession 顺序检索、RRF 阈值、lexical supplement 排序和 TOC 邻居识别 | [BUG-009](../01-product-planning/05-requirements/BUG-009-ai-chat-rag-retrieval-context-pipeline-real-pg-failure.md) / [PR #314](https://github.com/MarkDanile/MetaEduBase/pull/314) |
