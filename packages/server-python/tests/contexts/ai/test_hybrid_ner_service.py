@@ -125,6 +125,19 @@ async def test_extract_llm_failure_falls_back_to_rule() -> None:
     assert "network error" in result.trigger_reason
 
 
+async def test_extract_llm_populates_expanded_query_for_retrieval() -> None:
+    """REQ-016 Slice 3: LLM QU result sets expanded_query for keyword/vector retrieval."""
+    mock_llm = MagicMock(return_value='{"normalized_query":"Python 函数参数","core_terms":["Python","函数参数"],"expanded_terms":["parameter","参数传递","返回值"],"entities":["Python"],"filters":{},"confidence":0.85,"reason":"编程语言"}')
+    service = HybridQueryUnderstandingService(llm_provider=mock_llm)
+
+    result = await service.extract("Python 函数的参数要怎么理解最好")
+
+    # expanded_query should be space-joined expanded_terms
+    assert result.expanded_query == "parameter 参数传递 返回值"
+    assert result.query_understanding is not None
+    assert "parameter" in result.query_understanding.expanded_terms
+
+
 # ---------------------------------------------------------------------------
 # AC-1: Output fields are complete
 # ---------------------------------------------------------------------------

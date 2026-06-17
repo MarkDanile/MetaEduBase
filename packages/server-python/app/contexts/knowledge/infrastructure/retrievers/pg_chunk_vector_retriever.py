@@ -52,11 +52,14 @@ class PgChunkVectorRetriever:
         top_k: int = 5,
         file_filter: list[str] | None = None,
     ) -> list[EvidenceItem]:
-        embedding = await get_embedding(query)
+        # REQ-016 Slice 3: augment embedding query with LLM expanded terms
+        expanded_query = getattr(ner_result, "expanded_query", "") or ""
+        embedding_text = f"{query} {expanded_query}".strip() if expanded_query else query
+        embedding = await get_embedding(embedding_text)
         if not embedding:
             logger.warning("pg_chunk_vector: empty embedding for query=%r", query[:60])
             return await self._fallback_keyword_search(
-                query, tenant_id, session, top_k=top_k, file_filter=file_filter
+                query, ner_result, tenant_id, session, top_k=top_k, file_filter=file_filter
             )
 
         vec_str = "[" + ",".join(f"{v:.6f}" for v in embedding) + "]"
@@ -107,6 +110,7 @@ class PgChunkVectorRetriever:
     async def _fallback_keyword_search(
         self,
         query: str,
+        ner_result: NERResult,
         tenant_id: str,
         session: AsyncSession,
         *,
@@ -114,11 +118,22 @@ class PgChunkVectorRetriever:
         file_filter: list[str] | None,
     ) -> list[EvidenceItem]:
         """BUG-003 AC-2/AC-3 降级路径：embedding 不可达时复用 tsvector +
-        ILIKE keyword 检索。结果 channels 标记为 `["vector", "keyword"]`，
+        ILIKE keyword 检索。REQ-016 Slice 3：同时使用 expanded_query。
+        结果 channels 标记为 `["vector", "keyword"]`，
         metadata 含 `embedding_fallback=True` 以让上层 UI 区分"原 vector 通道"
         vs "降级 keyword 通道"（仅在 matrix / audit 场景需要）。
         """
         keywords = _tokenize(query)
+        expanded_query = getattr(ner_result, "expanded_query", "") or ""
+        if expanded_query:
+            expanded_keywords = _tokenize(expanded_query)
+            seen: set[str] = set()
+            merged: list[str] = []
+            for kw in keywords + expanded_keywords:
+                if kw not in seen:
+                    seen.add(kw)
+                    merged.append(kw)
+            keywords = merged
         if not keywords:
             return []
 
