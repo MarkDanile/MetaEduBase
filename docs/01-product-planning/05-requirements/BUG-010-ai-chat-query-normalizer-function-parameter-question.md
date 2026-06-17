@@ -1,6 +1,6 @@
 # BUG-010: AI Chat 自然问法未稳定命中函数参数正文 chunk
 
-Status: 🟡 Doing
+Status: 🟢 Done
 Priority: P0
 Milestone: P2
 Source: 用户复测 AI Chat 问答 A/B 差异
@@ -10,6 +10,7 @@ Related: BUG-009 / REQ-015 / P2-NER / P2-SEARCH
 
 | Date | What | Details |
 |------|------|---------|
+| 2026-06-17 | PR merged | [PR #316](https://github.com/MarkDanile/MetaEduBase/pull/316) squash merge `b753d3a`；BUG-010 状态事实源回填到 Backlog、P2 Milestone、current-work 和 work-log。 |
 | 2026-06-17 | Deterministic query normalizer slice | `keyword_query.tokenize_query()` 增强弱意图词清理和函数参数术语扩展；A 问法稳定产出 `python / 函数参数 / 函数 / 参数 / 默认参数 / 可变参数 / 关键字参数 / 命名关键字参数 / 参数组合`，B 问法保留 `python / 函数 / 参数`。新增 3 条 tokenizer / ranking 回归测试，证明函数参数正文 chunk 排在泛化 Python 简介 chunk 前。 |
 
 ## Problem
@@ -53,3 +54,4 @@ B 能正确回答默认参数、可变参数、关键字参数、命名关键字
 
 - Backlog: `docs/01-product-planning/04-backlog.md`
 - Current Work: `docs/03-engineering-governance/current-work.md`
+- PR: <https://github.com/MarkDanile/MetaEduBase/pull/316>

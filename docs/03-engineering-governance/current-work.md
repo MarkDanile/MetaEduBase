@@ -14,23 +14,7 @@
 
 ## 当前进行中
 
-### BUG-010: AI Chat 自然问法未稳定命中函数参数正文 chunk
-
-状态：🟡 进行中
-类型：BUG
-领域：Backend / RAG / AI Chat / P2
-当前执行模式：bug fix
-最近接手工具：Codex
-分支：fix/bug-010-query-normalizer
-
-需求来源：
-- Requirement: [BUG-010](../01-product-planning/05-requirements/BUG-010-ai-chat-query-normalizer-function-parameter-question.md)
-- Milestone: [P2 增长期](../01-product-planning/02-milestones/02-growth-phase.md)
-
-当前进展：已实现确定性 query normalizer + 函数参数术语拆分：A 问法稳定产出 `python / 函数参数 / 函数 / 参数 / 默认参数 / 可变参数 / 关键字参数 / 命名关键字参数 / 参数组合`，并去除 `帮我 / 关于函数参数方面 / 知识` 噪声；B 问法保留 `python / 函数 / 参数`。
-下一步：跑工程文档门禁和提交前检查；PR 合并前保持进行中。
-验证状态：`packages/server-python/.venv/bin/python -m pytest packages/server-python/tests/contexts/knowledge/retrievers/test_pg_chunk_keyword_retriever.py -q` → 8 passed；BUG-009 相关聚焦回归 → 53 passed；ruff focused files → passed。
-交接备注：本任务是 P2-NER 之前的确定性小切片，不关闭 P2 里程碑里的 LLM 混合 NER 规划项。
+暂无。
 
 ## 下一批候选任务
 
@@ -46,6 +30,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-17 | BUG-010 AI Chat 自然问法未稳定命中函数参数正文 chunk | 🟢 完成 | PR #316 merge `b753d3a`：确定性 query normalizer + 函数参数术语拆分回归已合并，A/B 等价问法共享核心检索词 | [BUG-010](../01-product-planning/05-requirements/BUG-010-ai-chat-query-normalizer-function-parameter-question.md) / [PR #316](https://github.com/MarkDanile/MetaEduBase/pull/316) |
 | 2026-06-17 | REQ-015 RAG 生产链路 grounding 与真实验收收口 | 🟢 完成 | PR #314 merge `4d78667`：生产 RAG 默认链路、真实 dev DB、授权 DeepSeek ask 与状态事实源已收口 | [REQ-015](../01-product-planning/05-requirements/REQ-015-rag-production-grounding-closure.md) / [PR #314](https://github.com/MarkDanile/MetaEduBase/pull/314) |
 | 2026-06-17 | BUG-009 AI Chat 真实 PG 链路未把相关正文 chunk 送入 prompt | 🟢 完成 | PR #314 merge `4d78667`：修 AsyncSession 顺序检索、RRF 阈值、lexical supplement 排序和 TOC 邻居识别 | [BUG-009](../01-product-planning/05-requirements/BUG-009-ai-chat-rag-retrieval-context-pipeline-real-pg-failure.md) / [PR #314](https://github.com/MarkDanile/MetaEduBase/pull/314) |
 | 2026-06-17 | BUG-008 Context Packer 引入 structlog 依赖但 pyproject 未声明 | 🟢 完成 | PR #310 merge `65c67f58`：pyproject + `structlog>=24.1.0`；478 pytest 0 业务代码回归 | [BUG-008](../01-product-planning/05-requirements/BUG-008-context-packer-structlog-dep-missing.md) / [PR #310](https://github.com/MarkDanile/MetaEduBase/pull/310) |
