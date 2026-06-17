@@ -19,7 +19,6 @@ fake 注入。
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import re
@@ -165,6 +164,15 @@ class AIChatService:
             for channel in channels:
                 channel_results.setdefault(channel, []).append(item)
         return channel_results
+
+    @staticmethod
+    def _uses_absolute_score_threshold(evidence_fusion: Any) -> bool:
+        """Only absolute-score fusion should be filtered by min_evidence_score.
+
+        RRF returns raw reciprocal-rank scores (typically around 0.0x), so the
+        historical absolute threshold would wipe out valid evidence.
+        """
+        return getattr(evidence_fusion, "score_semantics", "absolute") == "absolute"
 
     @staticmethod
     def _trace_evidence(items: list[EvidenceItem]) -> list[RetrievalTraceItem]:
@@ -376,14 +384,14 @@ class AIChatService:
         session: AsyncSession,
         top_k: int,
     ) -> dict[str, list[EvidenceItem]]:
-        chunk_coro = self._safe_retrieve_chunk(
+        # IMPORTANT: SQLAlchemy AsyncSession forbids concurrent operations on
+        # the same session object. Run the chunk and graph retrievers in
+        # sequence so the production chain stays stable on real PG.
+        chunk_results = await self._safe_retrieve_chunk(
             message, ner_result, tenant_id, session, top_k=top_k
         )
-        graph_coro = self._safe_retrieve_graph(
+        graph_results = await self._safe_retrieve_graph(
             message, ner_result, tenant_id, session, top_k=top_k
-        )
-        chunk_results, graph_results = await asyncio.gather(
-            chunk_coro, graph_coro, return_exceptions=False
         )
 
         raw_candidates = (chunk_results or []) + (graph_results or [])
@@ -494,8 +502,16 @@ class AIChatService:
 
         fused = self.evidence_fusion.fuse(channel_results, top_k=min(top_k * 2, 15))
 
-        # Filter by min score; if all dropped, keep empty fused (fallback path).
-        fused = [e for e in fused if e.score is None or e.score >= self.min_evidence_score]
+        # Filter only when the fusion emits absolute scores. RRF/raw reciprocal
+        # rank scores are intentionally small and must not be wiped out by the
+        # historical 0.3 threshold.
+        if self.min_evidence_score > 0 and self._uses_absolute_score_threshold(
+            self.evidence_fusion
+        ):
+            fused = [
+                e for e in fused
+                if e.score is None or e.score >= self.min_evidence_score
+            ]
         fused = await self._hydrate_graph_chunks(fused, tenant_id, session)
 
         # REQ-013: context packing — expand fused evidence with neighbors / section

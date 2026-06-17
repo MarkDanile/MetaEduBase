@@ -29,16 +29,35 @@
 - Plan: [2026-06-17-req-015-rag-production-grounding-closure-plan.md](../02-delivery-plans/02-plans/2026-06-17-req-015-rag-production-grounding-closure-plan.md)
 - Milestone: [P2 增长期](../01-product-planning/02-milestones/02-growth-phase.md)
 
-当前进展：代码与本地可验证项已收口；真实 dev DB + 后端服务 + dev JWT 非外发验收已跑，样例数据完整，BUG-006 / BUG-007 真 PG 复测脚本可运行。截停在 LLM 前的生产编排仍未把“Python 基本数据类型”正文 chunk 放入 prompt，已拆 [BUG-009](../01-product-planning/05-requirements/BUG-009-ai-chat-rag-retrieval-context-pipeline-real-pg-failure.md)。
-下一步：优先处理 BUG-009；修复后重跑 REQ-015 样例。外部 LLM `ask` 会把 dev 文档切片发到第三方 provider，需要用户显式批准后再跑。
-验证状态：已运行 `packages/server-python/.venv/bin/python -m pytest packages/server-python/tests/contexts/ai/test_ai_chat_router_req015.py packages/server-python/tests/contexts/knowledge/test_evidence_fusion.py packages/server-python/tests/contexts/knowledge/test_context_packer.py packages/server-python/tests/contexts/knowledge/test_ai_chat_service.py -q` → 40 passed；`packages/server-python/.venv/bin/python -m pytest packages/server-python/tests/contexts/ai/test_ai_chat.py -q`（允许连接本机 PG）→ 5 passed；真实 dev DB：`validate_real_pg_rag.py backfill/bug007/bug006/report` → exit 0；prompt 前截停验收：真实数据存在 chunk 54/55/61/64，但 `PROMPT_HAS_BASIC_TYPES=False`。外部 LLM `ask` 未运行（第三方外发风险需显式批准）。
-交接备注：不要把 REQ-015 翻 🟢 完成；当前关闭条件被 BUG-009 阻塞。
+当前进展：代码与本地可验证项已收口；真实 dev DB + 后端服务 + dev JWT 非外发验收已跑，样例数据完整，BUG-006 / BUG-007 真 PG 复测脚本可运行。BUG-009 已修复 prompt 前证据链：`fusion_topN[1]` 命中 Python 教程 chunk 54 `数据类型和变量`，packed context 含基本数据类型正文。用户明确授权后，完整 DeepSeek ask 已通过。
+下一步：完成 BUG-009 提交、PR、合并；合并后再按事实源收口 REQ-015。
+验证状态：已运行 `packages/server-python/.venv/bin/python -m pytest packages/server-python/tests/contexts/ai/test_ai_chat_router_req015.py packages/server-python/tests/contexts/knowledge/test_evidence_fusion.py packages/server-python/tests/contexts/knowledge/test_context_packer.py packages/server-python/tests/contexts/knowledge/test_ai_chat_service.py -q` → 40 passed；`packages/server-python/.venv/bin/python -m pytest packages/server-python/tests/contexts/ai/test_ai_chat.py -q`（允许连接本机 PG）→ 5 passed；真实 dev DB：`validate_real_pg_rag.py backfill/bug007/bug006/report` → exit 0；BUG-009 修复后 prompt 前截停验收：`PROMPT_HAS_BASIC_TYPES=True`、`PROMPT_HAS_CHUNK_54_CONTENT=True`、`PROMPT_HAS_BOOL_CONTENT=True`。LLM provider 无业务内容连通性：DeepSeek 返回 `OK`。用户授权后完整外部 ask：login HTTP 200，`POST /api/v1/ai/chat/evidence` HTTP 200，回答包含 `int` / `float` / `str` / `bool` / `None` 与引用，不再兜底“未找到足够参考来源”。
+交接备注：不要把 REQ-015 翻 🟢 完成；等待 BUG-009 PR 合并后统一关闭。
+
+### BUG-009: AI Chat 真实 PG 链路未把相关正文 chunk 送入 prompt
+
+状态：🟡 进行中
+类型：BUG
+领域：Backend / RAG / AI Chat / P2
+当前执行模式：plan-do
+最近接手工具：Codex
+分支：codex/bug-009-rag-context-pipeline
+
+需求来源：
+- Requirement: [BUG-009](../01-product-planning/05-requirements/BUG-009-ai-chat-rag-retrieval-context-pipeline-real-pg-failure.md)
+- Blocker of: [REQ-015](../01-product-planning/05-requirements/REQ-015-rag-production-grounding-closure.md)
+- Milestone: [P2 增长期](../01-product-planning/02-milestones/02-growth-phase.md)
+
+当前进展：已修共享 `AsyncSession` 并发召回、RRF rank 分数过滤、keyword / vector fallback 的 lexical supplement 排序、邻居 TOC 识别。真实 dev DB prompt 前截停验收已确认 `fusion_topN[1]` 命中 chunk 54 `数据类型和变量`，packed context 含整数 / 浮点数 / 字符串 / 布尔值证据。用户明确授权后，完整 DeepSeek ask 已通过。
+下一步：提交、创建 PR、合并 main；PR merge 后再把 BUG-009 翻 🟢 完成。
+验证状态：50 个后端聚焦测试通过；ruff 通过；`scripts/check-engineering-docs` 通过；`git diff --check` 通过；真实 dev DB prompt 前截停通过；DeepSeek provider 无业务内容连通性返回 `OK`；完整外部 ask HTTP 200，回答包含基本数据类型列表、引用和文档级来源。
+交接备注：本次外部 ask 已基于用户显式授权执行；后续新增真实外发样例仍需重新确认授权边界。
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| BUG-009 AI Chat 真实 PG 链路未把相关正文 chunk 送入 prompt | 🔵 Ready | P0 | Backend / RAG / AI Chat / P2 | 修共享 `AsyncSession` 并发、RRF 阈值、目录/简介降权和正文 chunk 升权；修后重跑 REQ-015 样例。 |
+| 暂无 | - | - | - | 先完成当前 BUG-009 与 REQ-015 验收闭环。 |
 
 ## 最近完成
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,26 +36,22 @@ class CompositeChunkRetriever:
         top_k: int = 5,
         file_filter: list[str] | None = None,
     ) -> list[EvidenceItem]:
-        tasks = [
-            retriever.retrieve(
-                query,
-                ner_result,
-                tenant_id,
-                session,
-                top_k=top_k,
-                file_filter=file_filter,
-            )
-            for retriever in self.retrievers
-        ]
-        raw_results = await asyncio.gather(*tasks, return_exceptions=True)
-
         items: list[EvidenceItem] = []
-        for retriever, result in zip(self.retrievers, raw_results, strict=True):
-            if isinstance(result, Exception):
+        for retriever in self.retrievers:
+            try:
+                result = await retriever.retrieve(
+                    query,
+                    ner_result,
+                    tenant_id,
+                    session,
+                    top_k=top_k,
+                    file_filter=file_filter,
+                )
+            except Exception as e:  # noqa: BLE001
                 logger.warning(
                     "chunk retriever %s failed: %s",
                     getattr(retriever, "name", retriever.__class__.__name__),
-                    result,
+                    e,
                 )
                 continue
             items.extend(result)

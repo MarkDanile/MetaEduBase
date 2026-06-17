@@ -41,6 +41,8 @@ class SimpleFrequencyFusion:
     升级为 `EvidenceItem`。`channels` 字段合并后按字典序排序，UI 渲染稳定。
     """
 
+    score_semantics = "absolute"
+
     def fuse(
         self,
         channel_results: dict[str, list[EvidenceItem]],
@@ -88,6 +90,8 @@ class RRFFusion:
     k=60 是 RRF 原始论文默认；`channel_weights` 支持 weighted RRF，
     未配置的通道权重默认为 1.0。
     """
+
+    score_semantics = "rank"
 
     def __init__(self, k: int = 60, channel_weights: dict[str, float] | None = None) -> None:
         self.k = k

@@ -15,6 +15,7 @@ GraphRetriever / MetadataFilter / EvidenceFusion 抽象，测试用 fake 实现
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from unittest.mock import AsyncMock, patch
 
@@ -30,8 +31,10 @@ from app.contexts.knowledge.application.context_packer import (
     ContextPackingOptions,
 )
 from app.contexts.knowledge.application.evidence_fusion import (
+    RRFFusion,
     SimpleFrequencyFusion,
 )
+from app.contexts.knowledge.application.ner_service import RuleBasedNER
 from app.contexts.knowledge.application.retrievers_fake import (
     FakeChunkRetriever,
     FakeGraphRetriever,
@@ -112,6 +115,34 @@ class FakeChunkRepo:
 
 
 SESSION = FakeSession()
+
+
+class _OrderedChunkRetriever(FakeChunkRetriever):
+    def __init__(self, name: str, order: list[str], item: EvidenceItem) -> None:
+        super().__init__()
+        self.name = name
+        self._order = order
+        self._item = item
+
+    async def retrieve(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        self._order.append(f"{self.name}:start")
+        await asyncio.sleep(0)
+        self._order.append(f"{self.name}:end")
+        return [self._item]
+
+
+class _OrderedGraphRetriever(FakeGraphRetriever):
+    def __init__(self, name: str, order: list[str], item: EvidenceItem | None = None) -> None:
+        super().__init__()
+        self.name = name
+        self._order = order
+        self._item = item
+
+    async def retrieve(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        self._order.append(f"{self.name}:start")
+        await asyncio.sleep(0)
+        self._order.append(f"{self.name}:end")
+        return [self._item] if self._item is not None else []
 
 
 def _chunk_evidence(file_id, idx, score=0.9, content="long " * 20 + "content") -> EvidenceItem:
@@ -315,6 +346,38 @@ async def test_ai_chat_evidence_filter_drops_low_score() -> None:
     assert result.sources[0].score == 0.8
 
 
+async def test_ai_chat_keeps_rrf_rank_scores_below_absolute_threshold() -> None:
+    """BUG-009: RRF rank scores are ~0.03 and must not be filtered by 0.3."""
+    fid = uuid.uuid4()
+    chunk = _chunk_evidence(
+        fid,
+        1,
+        score=0.95,
+        content="Python 的基本数据类型包括整数、浮点数、字符串和布尔值。" * 2,
+    )
+
+    chunk_retriever = FakeChunkRetriever()
+    chunk_retriever.return_value = [chunk]
+
+    service = AIChatService(
+        chunk_retriever=chunk_retriever,
+        graph_retriever=FakeGraphRetriever(),
+        metadata_filter=FakeMetadataFilter(),
+        evidence_fusion=RRFFusion(),
+        min_evidence_score=0.3,
+    )
+    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+        result = await service.chat(
+            ServiceChatRequest(message="python 的基本数据类型有哪些？", context_window=3),
+            session=_session_for_file(fid),  # type: ignore[arg-type]
+        )
+
+    assert len(result.sources) == 1
+    assert result.sources[0].score is not None
+    assert result.sources[0].score < 0.3
+    assert "整数" in result.diagnostics["prompt_preview"]
+
+
 async def test_ai_chat_combines_chunk_and_node_evidence() -> None:
     """多源召回：chunk + knowledge_node 都进入 sources。"""
     fid = uuid.uuid4()
@@ -375,6 +438,57 @@ async def test_composite_chunk_retriever_calls_vector_and_keyword() -> None:
         vector_chunk.evidence_id,
         keyword_chunk.evidence_id,
     }
+
+
+async def test_composite_chunk_retriever_runs_retrievers_sequentially() -> None:
+    """BUG-009: retrievers share one AsyncSession, so they must not overlap."""
+    fid = uuid.uuid4()
+    order: list[str] = []
+    vector_chunk = _chunk_evidence(fid, 1, score=0.9, content="vector content " * 20)
+    keyword_chunk = _chunk_evidence(fid, 2, score=0.8, content="keyword content " * 20)
+
+    retriever = CompositeChunkRetriever(
+        [
+            _OrderedChunkRetriever("vector", order, vector_chunk),
+            _OrderedChunkRetriever("keyword", order, keyword_chunk),
+        ]
+    )
+
+    result = await retriever.retrieve(
+        "Python 基本数据类型",
+        ner_result=await RuleBasedNER().extract("Python 基本数据类型"),
+        tenant_id="default",
+        session=_session_for_file(fid),  # type: ignore[arg-type]
+        top_k=3,
+    )
+
+    assert order == ["vector:start", "vector:end", "keyword:start", "keyword:end"]
+    assert [item.evidence_id for item in result] == [
+        vector_chunk.evidence_id,
+        keyword_chunk.evidence_id,
+    ]
+
+
+async def test_ai_chat_service_runs_chunk_then_graph_sequentially() -> None:
+    """BUG-009: chunk and graph retrievers also share the request AsyncSession."""
+    fid = uuid.uuid4()
+    order: list[str] = []
+    chunk = _chunk_evidence(fid, 1, score=0.9, content="chunk content " * 20)
+    node = _node_evidence(fid, 1, score=0.7)
+
+    service = AIChatService(
+        chunk_retriever=_OrderedChunkRetriever("chunk", order, chunk),
+        graph_retriever=_OrderedGraphRetriever("graph", order, node),
+        metadata_filter=FakeMetadataFilter(),
+        evidence_fusion=SimpleFrequencyFusion(),
+    )
+    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+        await service.chat(
+            ServiceChatRequest(message="Python 基本数据类型", context_window=3),
+            session=_session_for_file(fid),  # type: ignore[arg-type]
+        )
+
+    assert order == ["chunk:start", "chunk:end", "graph:start", "graph:end"]
 
 
 async def test_metadata_filter_return_value_affects_fusion_input() -> None:
