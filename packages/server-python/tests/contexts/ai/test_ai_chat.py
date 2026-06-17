@@ -43,7 +43,7 @@ def _fake_evidence_service(reply: str = "这是AI的回答", sources: list[Evide
         sources = []
     service = MagicMock()
     service.chat = AsyncMock(
-        return_value=MagicMock(reply=reply, sources=sources),
+        return_value=MagicMock(reply=reply, sources=sources, diagnostics={"query": "你好"}),
     )
     return service
 
@@ -87,3 +87,4 @@ async def test_chat_with_mock_llm(client: AsyncClient, auth_headers: dict):
     data = resp.json()
     assert "reply" in data
     assert "sources" in data
+    assert data["diagnostics"]["query"] == "你好"

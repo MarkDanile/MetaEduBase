@@ -18,14 +18,16 @@ from __future__ import annotations
 import uuid
 from unittest.mock import AsyncMock, patch
 
-from app.contexts.knowledge.application.ai_chat_service import (
-    AIChatService,
-)
+from app.contexts.knowledge.application.ai_chat_service import AIChatService
 from app.contexts.knowledge.application.ai_chat_service import (
     ChatRequest as ServiceChatRequest,
 )
 from app.contexts.knowledge.application.composite_retriever import (
     CompositeChunkRetriever,
+)
+from app.contexts.knowledge.application.context_packer import (
+    ContextPacker,
+    ContextPackingOptions,
 )
 from app.contexts.knowledge.application.evidence_fusion import (
     SimpleFrequencyFusion,
@@ -73,6 +75,40 @@ class FakeSession:
         if "FROM metaedu.document_chunks" in stmt_text:
             return _FakeResult(self.chunks)
         return _FakeResult([])
+
+
+class FakeChunkRepo:
+    def __init__(self, chunks: dict[uuid.UUID, list[dict]]) -> None:
+        self.chunks = chunks
+
+    async def get_chunks_by_file_and_indices(
+        self,
+        file_id: uuid.UUID,
+        indices: list[int],
+        tenant_id: uuid.UUID,
+    ) -> dict[int, dict]:
+        rows = {row["chunk_index"]: row for row in self.chunks.get(file_id, [])}
+        return {i: rows[i] for i in indices if i in rows}
+
+    async def get_chunk_by_id(self, chunk_id: uuid.UUID, tenant_id: uuid.UUID) -> dict | None:
+        for rows in self.chunks.values():
+            for row in rows:
+                if row["id"] == chunk_id:
+                    return row
+        return None
+
+    async def get_chunks_by_file_and_section(
+        self,
+        file_id: uuid.UUID,
+        section_path: str,
+        tenant_id: uuid.UUID,
+        *,
+        limit: int = 12,
+    ) -> list[dict]:
+        return [
+            row for row in self.chunks.get(file_id, [])
+            if row.get("section_path") == section_path
+        ][:limit]
 
 
 SESSION = FakeSession()
@@ -424,6 +460,81 @@ async def test_graph_evidence_hydrates_prompt_from_source_chunk() -> None:
     assert chunk_text in captured["user"]
     assert result.sources[0].metadata["content_source"] == "document_chunk"
     assert result.sources[0].metadata["chunk_index"] == 7
+
+
+async def test_context_packer_diagnostics_include_python_body_context() -> None:
+    """REQ-015: Python regression checks packed content, not only response shape."""
+    tenant_id = uuid.uuid4()
+    fid = uuid.uuid4()
+    hit_cid = uuid.uuid4()
+    body_cid = uuid.uuid4()
+    hit = EvidenceItem(
+        evidence_id="",
+        source_type="chunk",
+        file_id=fid,
+        chunk_id=hit_cid,
+        title="数据类型和变量",
+        content="本节介绍 Python 数据类型。",
+        snippet="本节介绍 Python 数据类型。",
+        score=0.9,
+        channels=["keyword"],
+        metadata={"chunk_index": 3, "section_path": "1.1", "section_title": "数据类型和变量"},
+    )
+    chunks = {
+        fid: [
+            {
+                "id": hit_cid,
+                "file_id": fid,
+                "chunk_index": 3,
+                "content": "本节介绍 Python 数据类型。",
+                "section_title": "数据类型和变量",
+                "section_path": "1.1",
+            },
+            {
+                "id": body_cid,
+                "file_id": fid,
+                "chunk_index": 8,
+                "content": (
+                    "Python 的基本数据类型包括 int、float、str、bool、"
+                    "list、tuple、dict 和 set。"
+                ),
+                "section_title": "数据类型和变量",
+                "section_path": "1.1",
+            },
+        ]
+    }
+    chunk_retriever = FakeChunkRetriever()
+    chunk_retriever.return_value = [hit]
+
+    captured: dict = {}
+
+    async def fake_llm(self, system: str, user: str) -> str:
+        captured["user"] = user
+        return "Python 的基本数据类型包括 int、float、str、bool、list、tuple、dict 和 set。[1]"
+
+    service = AIChatService(
+        chunk_retriever=chunk_retriever,
+        graph_retriever=FakeGraphRetriever(),
+        metadata_filter=FakeMetadataFilter(),
+        evidence_fusion=SimpleFrequencyFusion(),
+        context_packer=ContextPacker(
+            FakeChunkRepo(chunks),
+            tenant_id,
+            ContextPackingOptions(neighbor_window=0, max_blocks=8, max_chars=4000),
+        ),
+    )
+    with patch.object(AIChatService, "_call_llm", fake_llm):
+        result = await service.chat(
+            ServiceChatRequest(message="python 的基本数据类型有哪些？", context_window=3),
+            tenant_id=str(tenant_id),
+            session=_session_for_file(fid),  # type: ignore[arg-type]
+        )
+
+    assert "int、float、str、bool" in captured["user"]
+    packed_blocks = result.diagnostics["packed_blocks"]
+    assert any(block["expansion_type"] == "section" for block in packed_blocks)
+    assert any("int、float、str、bool" in block["content"] for block in packed_blocks)
+    assert result.diagnostics["retrieval_topn"]["keyword"][0]["title"] == "数据类型和变量"
 
 
 async def test_document_sources_group_by_file_and_skip_unattributed_graph() -> None:

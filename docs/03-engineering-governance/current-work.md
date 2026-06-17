@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-（无 — BUG-008 翻完成；下批任务由下个会话补登候选区）
+### REQ-015: RAG 生产链路 grounding 与真实验收收口
+
+状态：🟣 待验证
+类型：REQ
+领域：Backend / RAG / AI Chat / P2
+当前执行模式：plan-do
+最近接手工具：Codex
+分支：req-015-rag-grounding-closure
+
+需求来源：
+- Requirement: [REQ-015](../01-product-planning/05-requirements/REQ-015-rag-production-grounding-closure.md)
+- Spec: [2026-06-17-req-015-rag-production-grounding-closure.md](../02-delivery-plans/01-specs/2026-06-17-req-015-rag-production-grounding-closure.md)
+- Plan: [2026-06-17-req-015-rag-production-grounding-closure-plan.md](../02-delivery-plans/02-plans/2026-06-17-req-015-rag-production-grounding-closure-plan.md)
+- Milestone: [P2 增长期](../01-product-planning/02-milestones/02-growth-phase.md)
+
+当前进展：代码与本地可验证项已收口：endpoint 按请求注入 `ContextPacker`，默认融合切到 `RRFFusion`，`AIChatService` 返回 diagnostics，`validate_real_pg_rag.py` 对齐真实接口字段、鉴权 token、当前 `metaedu.*` schema、`document_chunks` section 统计和 BUG-006 / BUG-007 复测入口，并补“Python 基本数据类型”packed context 行为回归。
+下一步：在 dev DB + 后端服务 + `AI_CHAT_AUTH_TOKEN` + LLM key 可用时执行真 PG 样例：`backfill` / `ask` / `bug007` / `bug006` / `report`，并按结果决定是否翻完成或拆 BUG / TD。
+验证状态：已运行 `packages/server-python/.venv/bin/python -m pytest packages/server-python/tests/contexts/ai/test_ai_chat_router_req015.py packages/server-python/tests/contexts/knowledge/test_evidence_fusion.py packages/server-python/tests/contexts/knowledge/test_context_packer.py packages/server-python/tests/contexts/knowledge/test_ai_chat_service.py -q` → 40 passed；`packages/server-python/.venv/bin/python -m pytest packages/server-python/tests/contexts/ai/test_ai_chat.py -q`（允许连接本机 PG）→ 5 passed；`packages/server-python/.venv/bin/python -m py_compile scripts/validate_real_pg_rag.py` → 0；targeted ruff → 0；`pnpm --filter @metaedu/web typecheck` → 0；`scripts/check-engineering-docs` → 0；`git diff --check` → 0；`validate_real_pg_rag.py report` dry-run → 0。未跑真 PG 样例（需要 dev DB + 后端服务 + `AI_CHAT_AUTH_TOKEN` + LLM key）。
+交接备注：不要把本任务提前翻 🟢 完成；真实 PG 样例和报告填充完成前只能保持进行中或待验证。
 
 ## 下一批候选任务
 

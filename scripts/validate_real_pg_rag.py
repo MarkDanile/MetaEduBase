@@ -11,13 +11,16 @@ REQ-014 真实 PG 验收脚本（一次性，不进 CI / pytest）。
 
 使用：
   python scripts/validate_real_pg_rag.py backfill \\
-      --samples scripts/validate_real_pg_rag_samples.json \\
+      --samples scripts/validate_real_pg_rag_samples.example.json \\
       --out docs/02-delivery-plans/01-specs/2026-06-16-req-014-rag-real-pg-grounding-validation-report.md
+
+  真库验收时复制 example 并填入 dev 库 file_id；真实 samples 文件不进 git。
 
 环境变量：
   DATABASE_URL:        postgresql+asyncpg://user:pass@host:port/db
   AI_CHAT_BASE_URL:    http://localhost:8000
   AI_CHAT_TENANT_ID:   <tenant uuid>
+  AI_CHAT_AUTH_TOKEN:  real user JWT for authenticated API calls
   LLM_PROVIDER:        deepseek / openai / ...
   LLM_API_KEY:         ...
 """
@@ -34,7 +37,9 @@ from pathlib import Path
 from typing import Any
 
 
-REQUIRED_ENV = ("DATABASE_URL", "AI_CHAT_BASE_URL", "AI_CHAT_TENANT_ID")
+DB_REQUIRED_ENV = ("DATABASE_URL",)
+HTTP_REQUIRED_ENV = ("AI_CHAT_BASE_URL", "AI_CHAT_TENANT_ID", "AI_CHAT_AUTH_TOKEN")
+REPORT_ENV = DB_REQUIRED_ENV + HTTP_REQUIRED_ENV
 
 
 # -----------------------------
@@ -237,18 +242,25 @@ def _load_samples(path: Path) -> tuple[list[SampleSpec], list[QuestionSpec]]:
     return samples, questions
 
 
-def _check_env() -> None:
+def _check_env(keys: tuple[str, ...] = REPORT_ENV) -> None:
     """缺环境变量时报告为空报告占位（不退出）。子命令可显式调用 _require_env。"""
-    missing = [k for k in REQUIRED_ENV if not os.environ.get(k)]
+    missing = [k for k in keys if not os.environ.get(k)]
     if missing:
         print(f"WARN: 缺环境变量 {missing}（仅占位报告 / dry-run）", file=sys.stderr)
 
 
-def _require_env() -> None:
-    missing = [k for k in REQUIRED_ENV if not os.environ.get(k)]
+def _require_env(keys: tuple[str, ...]) -> None:
+    missing = [k for k in keys if not os.environ.get(k)]
     if missing:
         print(f"ERROR: 缺少环境变量: {missing}", file=sys.stderr)
         sys.exit(2)
+
+
+def _auth_headers(tenant_id: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {os.environ['AI_CHAT_AUTH_TOKEN']}",
+        "X-Tenant-Id": tenant_id,
+    }
 
 
 def _intermediate_path(out: str, name: str, override: str | None = None) -> Path:
@@ -272,44 +284,67 @@ async def _scan_file_state(engine, file_id: str) -> dict[str, Any]:
         sys.exit(2)
     async with engine.begin() as conn:
         file_row = (await conn.execute(
-            text("SELECT id, parse_status, doc_type, template_id FROM files WHERE id = :fid"),
+            text(
+                "SELECT id, status, doc_type, template_id "
+                "FROM metaedu.files WHERE id = :fid"
+            ),
             {"fid": file_id},
         )).mappings().first()
-        chunks = (await conn.execute(
-            text("SELECT count(*) FROM chunks WHERE file_id = :fid"),
+        chunk_state = (await conn.execute(
+            text(
+                "SELECT count(*) AS total, "
+                "count(*) FILTER (WHERE embedding IS NOT NULL) AS embeddings, "
+                "count(*) FILTER (WHERE content_tsvector IS NOT NULL) AS tsvectors, "
+                "count(*) FILTER (WHERE section_title IS NOT NULL AND section_title <> '') AS section_titles, "
+                "count(*) FILTER (WHERE section_path IS NOT NULL AND section_path <> '') AS section_paths, "
+                "count(*) FILTER (WHERE char_start IS NOT NULL AND char_end IS NOT NULL) AS char_offsets "
+                "FROM metaedu.document_chunks WHERE file_id = :fid"
+            ),
             {"fid": file_id},
-        )).scalar_one()
-        embeddings = (await conn.execute(
-            text("SELECT count(*) FROM chunk_embeddings WHERE chunk_id IN "
-                 "(SELECT id FROM chunks WHERE file_id = :fid)"),
-            {"fid": file_id},
-        )).scalar_one()
-        tsvectors = (await conn.execute(
-            text("SELECT count(*) FROM chunk_tsvectors WHERE chunk_id IN "
-                 "(SELECT id FROM chunks WHERE file_id = :fid)"),
-            {"fid": file_id},
-        )).scalar_one()
+        )).mappings().first()
         kg_nodes = (await conn.execute(
-            text("SELECT count(*) FROM knowledge_nodes WHERE file_id = :fid"),
+            text("SELECT count(*) FROM metaedu.knowledge_nodes WHERE source_file_id = :fid"),
+            {"fid": file_id},
+        )).scalar_one()
+        kg_chunk_resolved = (await conn.execute(
+            text(
+                "SELECT count(*) FROM metaedu.knowledge_nodes "
+                "WHERE source_file_id = :fid AND source_chunk_id IS NOT NULL"
+            ),
             {"fid": file_id},
         )).scalar_one()
         kg_edges = (await conn.execute(
-            text("SELECT count(*) FROM knowledge_edges WHERE source_node_id IN "
-                 "(SELECT id FROM knowledge_nodes WHERE file_id = :fid)"),
+            text(
+                "SELECT count(*) FROM metaedu.knowledge_edges "
+                "WHERE source_id IN ("
+                "  SELECT id FROM metaedu.knowledge_nodes WHERE source_file_id = :fid"
+                ")"
+            ),
             {"fid": file_id},
         )).scalar_one()
     return {
         "file": dict(file_row) if file_row else None,
-        "chunks": chunks,
-        "embeddings": embeddings,
-        "tsvectors": tsvectors,
+        "chunks": int(chunk_state["total"] if chunk_state else 0),
+        "embeddings": int(chunk_state["embeddings"] if chunk_state else 0),
+        "tsvectors": int(chunk_state["tsvectors"] if chunk_state else 0),
+        "section_titles": int(chunk_state["section_titles"] if chunk_state else 0),
+        "section_paths": int(chunk_state["section_paths"] if chunk_state else 0),
+        "char_offsets": int(chunk_state["char_offsets"] if chunk_state else 0),
         "kg_nodes": kg_nodes,
+        "kg_chunk_resolved": kg_chunk_resolved,
         "kg_edges": kg_edges,
     }
 
 
-async def _maybe_reparse_or_reinit(engine, file_id: str) -> tuple[list[str], list[int]]:
-    """如 parse_status 失败 / 缺失 → 标注需要 reinitialize；实际 HTTP 由调用方完成。"""
+async def _maybe_reparse_or_reinit(
+    engine,
+    file_id: str,
+    *,
+    run_reinitialize: bool,
+    base_url: str,
+    tenant_id: str,
+) -> tuple[list[str], list[int]]:
+    """如状态失败 / 缺失，记录或执行 reinitialize。默认 dry-run。"""
     try:
         from sqlalchemy import text
     except ImportError:
@@ -318,12 +353,27 @@ async def _maybe_reparse_or_reinit(engine, file_id: str) -> tuple[list[str], lis
     codes: list[int] = []
     async with engine.begin() as conn:
         st = (await conn.execute(
-            text("SELECT parse_status FROM files WHERE id = :fid"),
+            text("SELECT status FROM metaedu.files WHERE id = :fid"),
             {"fid": file_id},
         )).scalar_one_or_none()
-    if st in (None, "failed", "pending"):
-        cmds.append(f"POST /api/v1/files/{file_id}/reinitialize (待调用方执行)")
-        codes.append(0)
+    if st in (None, "failed", "error", "pending", "uploaded"):
+        cmd = f"POST /api/v1/files/{file_id}/reinitialize"
+        if not run_reinitialize:
+            cmds.append(f"{cmd} (dry-run; pass --run-reinitialize to execute)")
+            codes.append(0)
+            return cmds, codes
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post(
+                    f"{base_url.rstrip('/')}/api/v1/files/{file_id}/reinitialize",
+                    headers=_auth_headers(tenant_id),
+                )
+                cmds.append(cmd)
+                codes.append(resp.status_code)
+        except Exception as e:  # noqa: BLE001
+            cmds.append(f"{cmd} (failed: {type(e).__name__}: {e})")
+            codes.append(1)
     return cmds, codes
 
 
@@ -335,14 +385,20 @@ async def _scan_sections(engine, file_id: str) -> dict[str, Any]:
                 "abnormal_path_count": 0, "chinese_title_count": 0}
     async with engine.begin() as conn:
         rows = (await conn.execute(
-            text("SELECT id, level, title, path FROM document_sections "
-                 "WHERE file_id = :fid ORDER BY level, path"),
+            text(
+                "SELECT id, chunk_index, section_title AS title, section_path AS path "
+                "FROM metaedu.document_chunks "
+                "WHERE file_id = :fid "
+                "ORDER BY chunk_index"
+            ),
             {"fid": file_id},
         )).mappings().all()
     empty_path = sum(1 for r in rows if not r["path"] or not str(r["path"]).strip())
-    abnormal = sum(1 for r in rows if r["path"] and (
-        str(r["path"]).count("/") != max(0, (r["level"] or 1) - 1)
-    ))
+    abnormal = sum(
+        1
+        for r in rows
+        if r["path"] and str(r["path"]).strip().lower() in {"?", "null", "undefined"}
+    )
     chinese_titles = sum(
         1 for r in rows
         if r["title"] and any("一" <= ch <= "鿿" for ch in str(r["title"]))
@@ -366,8 +422,8 @@ async def _call_ai_chat_evidence(question: str, tenant_id: str,
     async with httpx.AsyncClient(timeout=60.0) as client:
         r = await client.post(
             f"{base_url.rstrip('/')}/api/v1/ai/chat/evidence",
-            json={"question": question, "top_k": 8},
-            headers={"X-Tenant-Id": tenant_id},
+            json={"message": question, "context_window": 8},
+            headers=_auth_headers(tenant_id),
         )
         r.raise_for_status()
         return r.json()
@@ -378,12 +434,13 @@ def _summarize_ask_response(resp: dict[str, Any]) -> AskResult:
     retrieval_topn = diag.get("retrieval_topn", {}) or {}
     fusion_topn = diag.get("fusion_topn", []) or []
     packed = diag.get("packed_blocks", []) or []
-    final_answer = resp.get("answer", "") or ""
+    final_answer = resp.get("reply", "") or resp.get("answer", "") or ""
     document_sources = resp.get("document_sources", []) or []
     evidence_indices = [
-        ev.get("index") for ev in (resp.get("evidence") or [])
+        i
+        for i, ev in enumerate((resp.get("sources") or resp.get("evidence") or []), start=1)
         if ev.get("index") is not None
-    ]
+    ] or list(range(1, len(resp.get("sources") or []) + 1))
     section_fallback = bool(diag.get("section_fallback", False))
     return AskResult(
         question_id="",
@@ -435,27 +492,50 @@ async def _verify_bug006_subs(engine, samples: list[SampleSpec],
     try:
         async with engine.begin() as conn:
             tpl = (await conn.execute(
-                text("SELECT id, schema FROM templates WHERE layer = 'L1' "
-                     "AND tenant_id = :tid LIMIT 1"),
+                text(
+                    "SELECT id, name, fields FROM metaedu.templates "
+                    "WHERE tenant_id = :tid "
+                    "ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST "
+                    "LIMIT 1"
+                ),
                 {"tid": tenant_id},
             )).mappings().first()
         if tpl:
-            schema_raw = tpl["schema"]
-            schema = schema_raw if isinstance(schema_raw, dict) else json.loads(schema_raw)
-            fields = schema.get("fields", []) if isinstance(schema, dict) else []
-            labels_ok = all(
-                isinstance(f.get("label", ""), str) and f["label"] for f in fields
+            fields_raw = tpl["fields"]
+            fields = (
+                fields_raw
+                if isinstance(fields_raw, list)
+                else json.loads(fields_raw or "[]")
             )
+
+            def labels_present(items: list[dict]) -> bool:
+                for item in items:
+                    if not isinstance(item.get("label", ""), str) or not item["label"]:
+                        return False
+                    for child_key in ("children", "items"):
+                        children = item.get(child_key) or []
+                        if isinstance(children, list) and not labels_present(children):
+                            return False
+                    columns = item.get("columns") or []
+                    if isinstance(columns, list) and not labels_present(columns):
+                        return False
+                return True
+
+            labels_ok = isinstance(fields, list) and labels_present(fields)
             results.append(Bug006SubResult(
                 sub_id="#1", title="模板字段名 label（递归 children + keyPath）",
-                verification=f"templates L1 取 1 个，断言 fields.label 非空（共 {len(fields)} 字段）",
+                verification=(
+                    f"templates 取最新 1 个 `{tpl['name']}`，"
+                    f"递归断言 fields / children / items / columns label 非空"
+                    f"（顶层 {len(fields) if isinstance(fields, list) else 0} 字段）"
+                ),
                 conclusion="✅" if labels_ok else "❌",
             ))
         else:
             results.append(Bug006SubResult(
                 sub_id="#1", title="模板字段名 label",
-                verification="无 L1 模板；跳过", conclusion="⏭",
-                notes="dev 库无 L1 模板",
+                verification="无模板；跳过", conclusion="⏭",
+                notes="dev 库无模板",
             ))
     except Exception as e:
         results.append(Bug006SubResult(
@@ -498,9 +578,13 @@ async def _verify_bug006_subs(engine, samples: list[SampleSpec],
             row = (await conn.execute(
                 text(
                     "SELECT f.id AS file_id, "
-                    "(SELECT count(*) FROM knowledge_nodes WHERE file_id = f.id) AS nodes "
-                    "FROM files f WHERE f.tenant_id = :tid "
-                    "AND EXISTS (SELECT 1 FROM knowledge_nodes WHERE file_id = f.id) "
+                    "(SELECT count(*) FROM metaedu.knowledge_nodes "
+                    " WHERE source_file_id = f.id) AS nodes "
+                    "FROM metaedu.files f WHERE f.tenant_id = :tid "
+                    "AND EXISTS ("
+                    "  SELECT 1 FROM metaedu.knowledge_nodes "
+                    "  WHERE source_file_id = f.id"
+                    ") "
                     "ORDER BY nodes DESC LIMIT 1"
                 ),
                 {"tid": tenant_id},
@@ -509,7 +593,7 @@ async def _verify_bug006_subs(engine, samples: list[SampleSpec],
             async with httpx.AsyncClient(timeout=30.0) as client:
                 r = await client.get(
                     f"{base_url.rstrip('/')}/api/v1/knowledge/files/{row['file_id']}/kg-bundle",
-                    headers={"X-Tenant-Id": tenant_id},
+                    headers=_auth_headers(tenant_id),
                 )
             results.append(Bug006SubResult(
                 sub_id="#4", title="KG > 50 节点 kg-bundle",
@@ -549,9 +633,13 @@ async def _create_engine():
 
 
 async def cmd_backfill(args: argparse.Namespace) -> int:
-    _require_env()
+    _require_env(DB_REQUIRED_ENV)
+    if args.run_reinitialize:
+        _require_env(HTTP_REQUIRED_ENV)
     samples, _ = _load_samples(Path(args.samples))
     engine = await _create_engine()
+    base_url = os.environ.get("AI_CHAT_BASE_URL", "")
+    tenant_id = os.environ.get("AI_CHAT_TENANT_ID", "")
     results: list[BackfillResult] = []
     try:
         for s in samples:
@@ -562,7 +650,13 @@ async def cmd_backfill(args: argparse.Namespace) -> int:
                 ))
                 continue
             before = await _scan_file_state(engine, s.file_id)
-            cmds, codes = await _maybe_reparse_or_reinit(engine, s.file_id)
+            cmds, codes = await _maybe_reparse_or_reinit(
+                engine,
+                s.file_id,
+                run_reinitialize=args.run_reinitialize,
+                base_url=base_url,
+                tenant_id=tenant_id,
+            )
             after = await _scan_file_state(engine, s.file_id)
             results.append(BackfillResult(
                 file_id=s.file_id, label=s.label,
@@ -581,7 +675,7 @@ async def cmd_backfill(args: argparse.Namespace) -> int:
 
 
 async def cmd_ask(args: argparse.Namespace) -> int:
-    _require_env()
+    _require_env(HTTP_REQUIRED_ENV)
     _, questions = _load_samples(Path(args.samples))
     base_url = os.environ["AI_CHAT_BASE_URL"]
     tenant_id = os.environ["AI_CHAT_TENANT_ID"]
@@ -611,7 +705,9 @@ async def cmd_ask(args: argparse.Namespace) -> int:
 
 
 async def cmd_bug007(args: argparse.Namespace) -> int:
-    _require_env()
+    _require_env(DB_REQUIRED_ENV)
+    if args.run_reinitialize:
+        _require_env(HTTP_REQUIRED_ENV)
     samples, _ = _load_samples(Path(args.samples))
     engine = await _create_engine()
     results: list[Bug007Result] = []
@@ -619,7 +715,13 @@ async def cmd_bug007(args: argparse.Namespace) -> int:
         for s in samples:
             if not s.file_id or ("pdf" not in s.label.lower()):
                 continue
-            await _maybe_reparse_or_reinit(engine, s.file_id)
+            await _maybe_reparse_or_reinit(
+                engine,
+                s.file_id,
+                run_reinitialize=args.run_reinitialize,
+                base_url=os.environ.get("AI_CHAT_BASE_URL", ""),
+                tenant_id=os.environ.get("AI_CHAT_TENANT_ID", ""),
+            )
             st = await _scan_sections(engine, s.file_id)
             results.append(Bug007Result(
                 file_id=s.file_id,
@@ -642,7 +744,7 @@ async def cmd_bug007(args: argparse.Namespace) -> int:
 
 
 async def cmd_bug006(args: argparse.Namespace) -> int:
-    _require_env()
+    _require_env(DB_REQUIRED_ENV + HTTP_REQUIRED_ENV)
     samples, _ = _load_samples(Path(args.samples))
     engine = await _create_engine()
     try:
@@ -675,10 +777,16 @@ def _summarize_ac(backfill, ask, bug007, bug006) -> dict[str, str]:
     summary["AC-2"] = "✅" if all(a.get("ac2_pass") for a in ask) else "❌" if ask else "⏳（待跑）"
     summary["AC-3"] = "✅" if all(a.get("ac3_pass") for a in ask) else "❌" if ask else "⏳（待跑）"
     summary["AC-4"] = "✅" if all(b.get("pass_") for b in bug007) else "❌" if bug007 else "⏳（待跑）"
-    summary["AC-5"] = (
-        "✅" if bug006 and all(s.get("conclusion", "").startswith("✅") for s in bug006)
-        else "❌" if bug006 else "⏳（待跑）"
-    )
+    if not bug006:
+        summary["AC-5"] = "⏳（待跑）"
+    else:
+        conclusions = [s.get("conclusion", "") for s in bug006]
+        if any(c.startswith("❌") for c in conclusions):
+            summary["AC-5"] = "❌"
+        elif any(c in {"手动", "见 bug007 章节"} or c.startswith("⏭") for c in conclusions):
+            summary["AC-5"] = "⏳（含手动或复用 bug007 子项）"
+        else:
+            summary["AC-5"] = "✅"
     summary["AC-6"] = "⏳（由 report 阶段人工归因后翻牌）"
     summary["AC-7"] = "⏳（由 PR 阶段同步验证）"
     summary["AC-8"] = "⏳（由 PR 阶段门禁验证）"
@@ -732,6 +840,8 @@ def _build_parser() -> argparse.ArgumentParser:
                        help="Markdown 报告输出路径")
         p.add_argument("--intermediate", default=None,
                        help="中间 JSON 路径（默认 <out>.<name>.intermediate.json）")
+        p.add_argument("--run-reinitialize", action="store_true",
+                       help="仅 backfill / bug007 使用：实际调用 reinitialize；默认只记录建议命令")
         p.set_defaults(_fn=fn)
     return parser
 

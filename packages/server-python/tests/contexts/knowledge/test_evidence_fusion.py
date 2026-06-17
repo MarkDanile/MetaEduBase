@@ -147,6 +147,22 @@ def test_rrf_fusion_dedupes_by_evidence_id() -> None:
     assert sorted(fused[0].channels) == ["keyword", "vector"]
 
 
+def test_weighted_rrf_channel_weight_changes_rank() -> None:
+    fid = uuid.uuid4()
+    vector_first = _chunk_with_id(fid, uuid.uuid4(), 1, 0.9)
+    keyword_first = _chunk_with_id(fid, uuid.uuid4(), 2, 0.8)
+
+    fused = RRFFusion(k=60, channel_weights={"keyword": 5.0}).fuse(
+        {
+            "vector": [vector_first, keyword_first],
+            "keyword": [keyword_first, vector_first],
+        },
+        top_k=2,
+    )
+
+    assert fused[0].evidence_id == keyword_first.evidence_id
+
+
 def test_evidence_fusion_protocol_accepts_both_implementations() -> None:
     """Both fusion classes are usable as EvidenceFusion Protocol."""
     f1: EvidenceFusion = SimpleFrequencyFusion()
