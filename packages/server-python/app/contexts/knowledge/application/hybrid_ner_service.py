@@ -119,20 +119,24 @@ class HybridQueryUnderstandingService:
         """Parse LLM JSON output into HybridQueryUnderstandingResult."""
         try:
             data = json.loads(llm_response)
+            expanded_terms = data.get("expanded_terms", [])
             qu = QueryUnderstandingResult(
                 method="llm",
                 confidence=data.get("confidence", 0.5),
                 normalized_query=data.get("normalized_query", query),
                 core_terms=data.get("core_terms", []),
-                expanded_terms=data.get("expanded_terms", []),
+                expanded_terms=expanded_terms,
                 entities=data.get("entities", []),
                 filters=data.get("filters", {}),
                 raw_llm_output=llm_response,
             )
+            # REQ-016 Slice 3: feed expanded_terms back as expanded_query for retrieval
+            expanded_query = " ".join(expanded_terms) if expanded_terms else ""
             return HybridQueryUnderstandingResult(
                 domains=[],
                 levels=[],
                 raw_entities=[],
+                expanded_query=expanded_query,
                 query_understanding=qu,
                 trigger_reason="rule_miss_and_long_query",
             )

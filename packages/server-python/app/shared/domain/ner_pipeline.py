@@ -9,6 +9,7 @@ class NERResult(BaseModel):
     domains: list[str] = []
     levels: list[str] = []
     raw_entities: list[str] = []
+    expanded_query: str = ""  # REQ-016 Slice 3: LLM QU expanded terms for retrieval
 
 
 @runtime_checkable
