@@ -93,7 +93,7 @@
 | DOC-066 | DOC | 🟢 Done | P2 | P3 | 任务池主表插入顺序门禁 | PR #246 merged：将 Backlog / technical-debt 主表“新编号必须在同前缀最后”脚本化，防止后续新任务插入历史编号中间。 | [Technical Debt](../03-engineering-governance/technical-debt.md#doc-066) / [PR #246](https://github.com/MarkDanile/MetaEduBase/pull/246) |
 | DOC-067 | DOC | 🟢 Done | P2 | P3 | 分布式临时编号与正式任务编号归并规则 | PR #248 merged：正式任务编号保持短格式，`DRAFT-YYYYMMDD-HHMM-XXXX` 只作临时来源；主表门禁已实现。 | [Technical Debt](../03-engineering-governance/technical-debt.md#doc-067) / [PR #248](https://github.com/MarkDanile/MetaEduBase/pull/248) |
 | DOC-069 | DOC | 🟢 Done | P0 | P2 | P2 阶段正式启动与重点任务规划 | PR #320 squash merge `33c132f`：Roadmap / P1 / P2 / W25 迭代 / Backlog / current-work 已对齐到“正式进入 P2”，并把 P2-NER / P2-RRF / 4 通道召回映射为 REQ-016 / REQ-017 / REQ-018。 | [P2 Milestone](02-milestones/02-growth-phase.md) / [PR #320](https://github.com/MarkDanile/MetaEduBase/pull/320) |
-| DOC-070 | DOC | 🟡 Doing | P1 | P2 | AtomAIBase 项目定位与 README 对外介绍升级 | README、根包描述和顶层架构定位已完成首轮升级；README 对外介绍保持泛行业定位；PR 未合并前保持 Doing。后续可单独规划截图资产、README 英文版和全仓历史名称迁移。 | [Current Work](../03-engineering-governance/current-work.md) |
+| DOC-070 | DOC | 🟢 Done | P1 | P2 | AtomAIBase 项目定位与 README 对外介绍升级 | PR #322 squash merge `e72852b`：README 改为 AtomAIBase 开源项目主页结构，覆盖定位、能力、应用场景、架构图、快速开始、技术栈、路线图和文档导航；根包描述和 `ARCHITECTURE.md` 顶层定位同步。对外介绍保持泛行业定位；截图资产、README 英文版和全仓历史名称迁移留后续任务。 | [PR #322](https://github.com/MarkDanile/MetaEduBase/pull/322) / [Work Log](../03-engineering-governance/work-log.md) |
 
 ## 状态迁移
 

@@ -14,22 +14,7 @@
 
 ## 当前进行中
 
-### DOC-070: AtomAIBase 项目定位与 README 对外介绍升级
-
-状态：🟡 进行中
-类型：DOC
-领域：Branding / README / Product Positioning
-当前执行模式：plan-do
-最近接手工具：Codex
-分支：docs/atom-ai-base-readme
-
-需求来源：
-- Backlog: [DOC-070](../01-product-planning/04-backlog.md)
-
-当前进展：已完成 README 对外介绍重写，采用项目主页结构呈现 AtomAIBase 定位、核心能力、适用场景、架构图、快速开始、技术栈、路线图和文档入口；已同步根 `package.json` 描述与 `ARCHITECTURE.md` 顶层定位。本轮不做全仓历史文档重命名。
-下一步：按需提交 PR；后续可单独规划截图资产、README 英文版和全仓历史名称迁移。
-验证状态：已运行 `scripts/check-engineering-docs` 退出码 0（31 known issues allowlisted）；`git diff --check` 退出码 0。
-交接备注：README 对外介绍保持泛行业定位；历史文档和真实仓库路径仍按后续任务渐进迁移。
+暂无。
 
 ## 下一批候选任务
 
@@ -47,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-17 | DOC-070 AtomAIBase 项目定位与 README 对外介绍升级 | 🟢 完成 | PR #322 squash merge `e72852b`：README 改为 AtomAIBase 开源项目主页结构；根包描述和顶层架构定位同步；对外介绍保持泛行业定位 | [Backlog](../01-product-planning/04-backlog.md) / [PR #322](https://github.com/MarkDanile/MetaEduBase/pull/322) |
 | 2026-06-17 | DOC-069 P2 阶段正式启动与重点任务规划 | 🟢 完成 | PR #320 merge `33c132f`：P1 Done、P2 Doing；REQ-016/017/018 入账并完成代码事实校准 | [P2 Milestone](../01-product-planning/02-milestones/02-growth-phase.md) / [PR #320](https://github.com/MarkDanile/MetaEduBase/pull/320) |
 | 2026-06-17 | P2-SEARCH PostgreSQL tsvector + 中文分词搜索增强 | 🟢 完成 | PR #318 merge `7d2a826` 收口：TD-047 PR #192（基础设施）+ REQ-012 PR #216（运行时检索切 chinese_zh + plainto_tsquery）+ REQ-014 PR #308 + REQ-015 PR #314（端到端验收） | [Milestone P2](../01-product-planning/02-milestones/02-growth-phase.md) / [TD-047](technical-debt.md#td-047) / [PR #318](https://github.com/MarkDanile/MetaEduBase/pull/318) |
 | 2026-06-17 | BUG-010 AI Chat 自然问法未稳定命中函数参数正文 chunk | 🟢 完成 | PR #316 merge `b753d3a`：确定性 query normalizer + 函数参数术语拆分回归已合并，A/B 等价问法共享核心检索词 | [BUG-010](../01-product-planning/05-requirements/BUG-010-ai-chat-query-normalizer-function-parameter-question.md) / [PR #316](https://github.com/MarkDanile/MetaEduBase/pull/316) |
