@@ -725,3 +725,86 @@ async def test_ai_chat_service_continues_when_one_channel_fails() -> None:
     # Should still get a valid response despite graph channel failure
     assert len(result.sources) == 1
     assert result.sources[0].evidence_id == chunk.evidence_id
+
+
+# ---------------------------------------------------------------------------
+# REQ-016 Slice 2 — query understanding diagnostics
+# ---------------------------------------------------------------------------
+
+
+async def test_diagnostics_contains_query_understanding_when_hybrid_ner_used() -> None:
+    """REQ-016 AC-6: diagnostics includes query_understanding trace when HybridQueryUnderstandingResult is used."""
+    from app.contexts.knowledge.application.hybrid_ner_service import (
+        HybridQueryUnderstandingService,
+    )
+
+    fid = uuid.uuid4()
+    chunk = _chunk_evidence(fid, 1, score=0.9, content="电子信息专业的课程包括电路基础和信号系统。" * 5)
+
+    chunk_retriever = FakeChunkRetriever()
+    chunk_retriever.return_value = [chunk]
+
+    # HybridQueryUnderstandingService with no-op LLM (rule-hit path, no LLM call)
+    hybrid_ner = HybridQueryUnderstandingService(llm_provider=MagicMock())
+
+    service = AIChatService(
+        chunk_retriever=chunk_retriever,
+        graph_retriever=FakeGraphRetriever(),
+        metadata_filter=FakeMetadataFilter(),
+        evidence_fusion=SimpleFrequencyFusion(),
+        ner_pipeline=hybrid_ner,
+    )
+    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+        result = await service.chat(
+            ServiceChatRequest(message="电子信息专业课程", context_window=3),
+            session=_session_for_file(fid),  # type: ignore[arg-type]
+        )
+
+    # query_understanding should be in diagnostics (even when method=rule)
+    assert "query_understanding" in result.diagnostics
+    qu_diag = result.diagnostics["query_understanding"]
+    assert qu_diag["method"] == "rule"
+    assert qu_diag["trigger_reason"] == "rule_hit"
+
+
+async def test_diagnostics_query_understanding_populated_for_rule_miss_long_query() -> None:
+    """REQ-016 AC-6: rule-miss long query populates expanded_terms in diagnostics."""
+    from app.contexts.knowledge.application.hybrid_ner_service import (
+        HybridQueryUnderstandingService,
+    )
+    from app.contexts.knowledge.application.query_understanding import (
+        QueryUnderstandingResult,
+    )
+
+    fid = uuid.uuid4()
+    chunk = _chunk_evidence(fid, 1, score=0.9, content="Python 函数参数调用和返回值处理。" * 5)
+
+    chunk_retriever = FakeChunkRetriever()
+    chunk_retriever.return_value = [chunk]
+
+    # Mock LLM to return structured QU output
+    mock_llm = MagicMock(return_value='{"normalized_query":"Python 函数参数","core_terms":["Python","函数参数"],"expanded_terms":["parameter","参数传递","返回值"],"entities":["Python"],"filters":{},"confidence":0.85,"reason":"编程语言学习"}')
+    hybrid_ner = HybridQueryUnderstandingService(llm_provider=mock_llm)
+
+    service = AIChatService(
+        chunk_retriever=chunk_retriever,
+        graph_retriever=FakeGraphRetriever(),
+        metadata_filter=FakeMetadataFilter(),
+        evidence_fusion=SimpleFrequencyFusion(),
+        ner_pipeline=hybrid_ner,
+    )
+    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+        result = await service.chat(
+            # Long enough to trigger LLM and no rule match
+            ServiceChatRequest(message="Python 函数的参数要怎么理解最好", context_window=3),
+            session=_session_for_file(fid),  # type: ignore[arg-type]
+        )
+
+    assert "query_understanding" in result.diagnostics
+    qu_diag = result.diagnostics["query_understanding"]
+    assert qu_diag["method"] == "llm"
+    assert qu_diag["confidence"] == 0.85
+    assert qu_diag["trigger_reason"] == "rule_miss_and_long_query"
+    assert "Python" in qu_diag["core_terms"]
+    assert "parameter" in qu_diag["expanded_terms"]
+    assert qu_diag["normalized_query"] == "Python 函数参数"

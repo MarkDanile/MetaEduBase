@@ -80,9 +80,22 @@ def _get_rrf_channel_weights() -> dict[str, float]:
 
 
 # REQ-010 Slice 3 — evidence-aware AI Chat service (default PG adapters).
-def _build_evidence_service(session: AsyncSession, tenant_id: str) -> AIChatService:
+def _build_evidence_service(
+    session: AsyncSession, tenant_id: str, *, use_hybrid_ner: bool = True
+) -> AIChatService:
     tenant_uuid = tenant_id if isinstance(tenant_id, uuid.UUID) else uuid.UUID(str(tenant_id))
     rrf_weights = _get_rrf_channel_weights()
+
+    # Lazy import to avoid circular dependency with hybrid_ner_service → ai_router
+    if use_hybrid_ner:
+        from app.contexts.knowledge.application.hybrid_ner_service import (
+            HybridQueryUnderstandingService,
+        )
+
+        ner_pipeline = HybridQueryUnderstandingService()
+    else:
+        ner_pipeline = None
+
     return AIChatService(
         chunk_retriever=CompositeChunkRetriever(
             [
@@ -93,6 +106,7 @@ def _build_evidence_service(session: AsyncSession, tenant_id: str) -> AIChatServ
         graph_retriever=PgGraphRetriever(),
         metadata_filter=PgMetadataFilter(),
         evidence_fusion=RRFFusion(channel_weights=rrf_weights),
+        ner_pipeline=ner_pipeline,
         context_packer=ContextPacker(ChunkRepository(session), tenant_uuid),
     )
 
