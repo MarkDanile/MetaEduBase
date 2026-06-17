@@ -1,6 +1,6 @@
 # BUG-009: AI Chat 真实 PG 链路未把相关正文 chunk 送入 prompt
 
-Status: 🟡 Doing
+Status: 🟢 Done
 Priority: P0
 Milestone: P2
 Source: REQ-015 真实 dev DB 验收
@@ -12,6 +12,7 @@ Related: REQ-012 / REQ-013 / REQ-014 / REQ-015 / BUG-003 / P2-SEARCH / P2-RRF
 |------|------|---------|
 | 2026-06-17 | Retrieval pipeline fix + prompt-before-LLM validation | 修复共享 `AsyncSession` 并发召回、RRF rank 分数被旧绝对阈值清空、keyword / vector fallback 只在 tsvector 为空时才补 lexical 候选、邻居目录块未识别等问题。真实 dev DB 截停验收：`fusion_topN[1]` 为 chunk 54 `数据类型和变量`，packed context 含“能够直接处理的数据类型有以下几种”、浮点数与布尔值；`PROMPT_HAS_BASIC_TYPES=True`。LLM provider resolver 当前选 `deepseek / deepseek-v4-pro`，无业务内容 `OK` 连通性测试通过。 |
 | 2026-06-17 | Full external ask validation authorized by user | 用户明确授权将本次 dev DB 检索切片和 prompt context 发送给 `DeepSeek / deepseek-v4-pro` 做 BUG-009 真实 ask 验收。临时启动当前分支后端 `127.0.0.1:8012`，登录 + `POST /api/v1/ai/chat/evidence` 均返回 HTTP 200。回答不再出现“未找到足够参考来源”，包含整数 `int`、浮点数 `float`、字符串 `str`、布尔值 `bool`、空值 `None`，并带 `[1]` / `[2]` 引用；`sources=11`，`document_sources[0]` 为 `Python教程-廖雪峰-2025-06-16.pdf`。 |
+| 2026-06-17 | PR merged | [PR #314](https://github.com/MarkDanile/MetaEduBase/pull/314) 已 squash merge，merge commit `4d78667`。 |
 
 ## Problem
 

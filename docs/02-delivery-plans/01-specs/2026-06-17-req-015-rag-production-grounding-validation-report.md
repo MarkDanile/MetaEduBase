@@ -16,7 +16,7 @@
 
 ## 2. Context Packer 问答验收
 
-外部 LLM `ask` 本次未运行：真实调用会把 dev DB 文档切片和 prompt context 发送到第三方 LLM provider，需要用户显式批准后单独跑。
+本节先保留 REQ-015 初次验收发现的失败事实，再记录 BUG-009 修复后的最终复测结论。完整外部 ask 已在用户明确授权后执行。
 
 本次改为执行“不外发 LLM”的 prompt 前截停验收，覆盖真实 dev DB、后端服务、dev JWT、生产编排同款组件：
 
@@ -89,7 +89,7 @@
 | AC-2 | ✅（BUG-009 修复后 prompt 前截停通过） | 见报告第 2 节 BUG-009 修复后复测 |
 | AC-3 | ✅（外部 LLM 已获用户授权并跑通） | 见报告第 2 节 |
 | AC-4 | ✅ | 见报告对应章节 |
-| AC-5 | ⏳（含手动或复用 bug007 子项） | 见报告对应章节 |
+| AC-5 | ✅ | 见报告第 3 / 4 节；BUG-006 / BUG-007 复测入口和证据已记录 |
 | AC-6 | ✅（已归因并登记 BUG-009） | 见报告第 5 节 |
-| AC-7 | ⏳（由 PR 阶段同步验证） | 见报告对应章节 |
-| AC-8 | ⏳（由 PR 阶段门禁验证） | 见报告对应章节 |
+| AC-7 | ✅ | PR #314 已合并，merge commit `4d78667` |
+| AC-8 | ✅ | Backlog / Milestone / Iteration / Requirement / current-work / work-log 已同步 |

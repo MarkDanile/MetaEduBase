@@ -2,7 +2,7 @@
 
 Requirement: `docs/01-product-planning/05-requirements/REQ-015-rag-production-grounding-closure.md`
 Spec: `docs/02-delivery-plans/01-specs/2026-06-17-req-015-rag-production-grounding-closure.md`
-Status: 🟣 待验证
+Status: 🟢 Done
 
 ## Tasks
 
@@ -15,7 +15,7 @@ Status: 🟣 待验证
 | 5 | `ContextPacker` 按 section_path 拉取同章节 chunk | ✅ 单测证明 section block 来自 repository 查询 |
 | 6 | 修正 `validate_real_pg_rag.py` 真库验收契约 | ✅ 脚本与接口字段、鉴权 token、当前 schema、BUG-006/007 复测入口对齐，py_compile 通过 |
 | 7 | 补“Python 基本数据类型”行为回归 | ✅ 断言 prompt / diagnostics 中有正文内容；hit block 优先使用 `document_chunks.content` 完整正文，不只测 response shape |
-| 8 | 跑验证并同步状态 | 🟣 本地可验证项已过；真 PG 样例待 dev DB + LLM key |
+| 8 | 跑验证并同步状态 | ✅ 真 PG 样例、授权 DeepSeek ask、PR #314 merge 和跨事实源同步已完成 |
 
 ## Validation Results — 2026-06-17
 
@@ -29,8 +29,10 @@ Status: 🟣 待验证
 | `scripts/check-engineering-docs` | exit 0 | engineering docs checks passed |
 | `git diff --check` | exit 0 | whitespace clean |
 | `packages/server-python/.venv/bin/python -m pytest packages/server-python/tests/contexts/ai/test_ai_chat.py -q` | 5 passed | 允许连接本机 PG 后通过；验证 evidence endpoint 认证与 mock service 兼容 |
+| `packages/server-python/.venv/bin/python -m pytest packages/server-python/tests/contexts/knowledge/test_context_packer.py packages/server-python/tests/contexts/knowledge/test_ai_chat_service.py packages/server-python/tests/contexts/knowledge/retrievers/test_pg_chunk_keyword_retriever.py packages/server-python/tests/contexts/knowledge/retrievers/test_pg_chunk_vector_retriever_embedding_fallback.py packages/server-python/tests/contexts/knowledge/test_evidence_fusion.py -q` | 50 passed | BUG-009 聚焦回归：顺序检索、RRF rank 分数保留、lexical supplement 排序、ContextPacker neighbor TOC 识别 |
+| `gh pr view 314 --json state,mergeCommit,url` | `MERGED`, merge `4d78667` | BUG-009 / REQ-015 收口 PR 已合并 |
 
-未执行真 PG 样例：当前需要 dev PostgreSQL、后端服务、认证上下文和 LLM key。未执行项不得写为通过。
+真 PG 样例和完整外部 ask 已执行：完整 ask 在用户明确授权后发送 dev DB 检索切片和 prompt context 给 `DeepSeek / deepseek-v4-pro`，HTTP 200，回答包含基本数据类型列表与引用。
 
 ## Validation Plan
 
