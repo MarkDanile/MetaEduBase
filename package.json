@@ -1,8 +1,8 @@
 {
-  "name": "metaedu-base",
+  "name": "atom-ai-base",
   "version": "0.1.0",
   "private": true,
-  "description": "MetaEduBase - AI Native 职业教育知识基座",
+  "description": "AtomAIBase - 面向行业 AI 应用的知识与数据原子能力底座",
   "scripts": {
     "dev": "./dev.sh all",
     "dev:infra": "./dev.sh infra",
