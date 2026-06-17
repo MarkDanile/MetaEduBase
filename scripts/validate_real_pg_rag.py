@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-REQ-014 真实 PG 验收脚本（一次性，不进 CI / pytest）。
+RAG 真实 PG 验收脚本（一次性，不进 CI / pytest）。
 
 子命令：
 - backfill: 扫描样例文件状态 + 按需补齐
@@ -35,6 +35,12 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SERVER_PYTHON = REPO_ROOT / "packages" / "server-python"
+if str(SERVER_PYTHON) not in sys.path:
+    sys.path.insert(0, str(SERVER_PYTHON))
 
 
 DB_REQUIRED_ENV = ("DATABASE_URL",)
@@ -131,7 +137,7 @@ class ValidationReport:
 
 def _render_markdown(report: ValidationReport) -> str:
     lines: list[str] = []
-    lines.append(f"# REQ-014 真实 PG 验收报告 — {report.generated_at[:10]}")
+    lines.append(f"# RAG 真实 PG 验收报告 — {report.generated_at[:10]}")
     lines.append("")
     lines.append("## 环境")
     lines.append(f"- DB: `{report.db_url}`")
@@ -147,8 +153,8 @@ def _render_markdown(report: ValidationReport) -> str:
     for r in report.backfill_results:
         lines.append(
             f"| `{r.file_id}` | {r.label} | "
-            f"{json.dumps(r.before, ensure_ascii=False)} | "
-            f"{json.dumps(r.after, ensure_ascii=False)} | "
+            f"{json.dumps(r.before, ensure_ascii=False, default=str)} | "
+            f"{json.dumps(r.after, ensure_ascii=False, default=str)} | "
             f"{'; '.join(r.commands) or '-'} | {','.join(str(c) for c in r.exit_codes) or '-'} |"
         )
     lines.append("")
@@ -160,8 +166,8 @@ def _render_markdown(report: ValidationReport) -> str:
     for r in report.ask_results:
         lines.append(f"### {r.question_id}: {r.question_text}")
         lines.append("")
-        lines.append(f"- 各通道 topN: `{json.dumps(r.retrieval_topn, ensure_ascii=False)[:500]}`")
-        lines.append(f"- fusion topN: `{json.dumps(r.fusion_topn, ensure_ascii=False)[:500]}`")
+        lines.append(f"- 各通道 topN: `{json.dumps(r.retrieval_topn, ensure_ascii=False, default=str)[:500]}`")
+        lines.append(f"- fusion topN: `{json.dumps(r.fusion_topn, ensure_ascii=False, default=str)[:500]}`")
         lines.append(f"- packed blocks: {len(r.packed_blocks)} 个")
         for i, b in enumerate(r.packed_blocks, 1):
             content_preview = (b.get("content") or "")[:120]
@@ -172,7 +178,7 @@ def _render_markdown(report: ValidationReport) -> str:
             )
         lines.append(f"- section_fallback: {r.section_fallback}")
         lines.append(f"- 最终回答（前 500 字）: {r.final_answer[:500]}")
-        lines.append(f"- document_sources: `{json.dumps(r.document_sources, ensure_ascii=False)[:500]}`")
+        lines.append(f"- document_sources: `{json.dumps(r.document_sources, ensure_ascii=False, default=str)[:500]}`")
         lines.append(f"- evidence_indices: {r.evidence_indices}")
         lines.append(f"- AC-2: {'✅' if r.ac2_pass else '❌'} | AC-3: {'✅' if r.ac3_pass else '❌'}")
         lines.append("")
@@ -268,6 +274,11 @@ def _intermediate_path(out: str, name: str, override: str | None = None) -> Path
     path = Path(p)
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _json_dumps(data: Any) -> str:
+    """Serialize real DB values such as UUID / datetime in validation reports."""
+    return json.dumps(data, ensure_ascii=False, indent=2, default=str)
 
 
 # -----------------------------
@@ -559,10 +570,10 @@ async def _verify_bug006_subs(engine, samples: list[SampleSpec],
             "key": "outer", "label": "外层", "type": "object",
             "children": [{"key": "inner", "label": "内层", "type": "string"}],
         }])
-        has_inner = isinstance(desc, str) and "内层" in desc and "outer.inner" in desc
+        has_inner = isinstance(desc, str) and "outer(外层)" in desc and "inner(内层)" in desc
         results.append(Bug006SubResult(
             sub_id="#3", title="嵌套 schema 描述 + few-shot 前移 + 截断扩展",
-            verification="直接调用 build_fields_desc，断言嵌套路径出现",
+            verification="直接调用 build_fields_desc，断言嵌套子字段递归出现",
             conclusion="✅" if has_inner else "❌",
             notes=desc[:80] if isinstance(desc, str) else "",
         ))
@@ -667,7 +678,7 @@ async def cmd_backfill(args: argparse.Namespace) -> int:
         await engine.dispose()
     p = _intermediate_path(args.out, "backfill", args.intermediate)
     p.write_text(
-        json.dumps([asdict(r) for r in results], ensure_ascii=False, indent=2),
+        _json_dumps([asdict(r) for r in results]),
         encoding="utf-8",
     )
     print(f"backfill done. intermediate: {p}")
@@ -697,7 +708,7 @@ async def cmd_ask(args: argparse.Namespace) -> int:
         results.append(ask)
     p = _intermediate_path(args.out, "ask", args.intermediate)
     p.write_text(
-        json.dumps([asdict(r) for r in results], ensure_ascii=False, indent=2),
+        _json_dumps([asdict(r) for r in results]),
         encoding="utf-8",
     )
     print(f"ask done. intermediate: {p}")
@@ -736,7 +747,7 @@ async def cmd_bug007(args: argparse.Namespace) -> int:
         await engine.dispose()
     p = _intermediate_path(args.out, "bug007", args.intermediate)
     p.write_text(
-        json.dumps([asdict(r) for r in results], ensure_ascii=False, indent=2),
+        _json_dumps([asdict(r) for r in results]),
         encoding="utf-8",
     )
     print(f"bug007 done. intermediate: {p}")
@@ -757,7 +768,7 @@ async def cmd_bug006(args: argparse.Namespace) -> int:
         await engine.dispose()
     p = _intermediate_path(args.out, "bug006", args.intermediate)
     p.write_text(
-        json.dumps([asdict(r) for r in subs], ensure_ascii=False, indent=2),
+        _json_dumps([asdict(r) for r in subs]),
         encoding="utf-8",
     )
     print(f"bug006 done. intermediate: {p}")
@@ -774,8 +785,12 @@ def _load_intermediate(out: str, name: str) -> list[dict[str, Any]]:
 def _summarize_ac(backfill, ask, bug007, bug006) -> dict[str, str]:
     summary: dict[str, str] = {}
     summary["AC-1"] = "✅" if backfill else "❌（无 backfill 数据）"
-    summary["AC-2"] = "✅" if all(a.get("ac2_pass") for a in ask) else "❌" if ask else "⏳（待跑）"
-    summary["AC-3"] = "✅" if all(a.get("ac3_pass") for a in ask) else "❌" if ask else "⏳（待跑）"
+    if not ask:
+        summary["AC-2"] = "⏳（待跑）"
+        summary["AC-3"] = "⏳（待跑）"
+    else:
+        summary["AC-2"] = "✅" if all(a.get("ac2_pass") for a in ask) else "❌"
+        summary["AC-3"] = "✅" if all(a.get("ac3_pass") for a in ask) else "❌"
     summary["AC-4"] = "✅" if all(b.get("pass_") for b in bug007) else "❌" if bug007 else "⏳（待跑）"
     if not bug006:
         summary["AC-5"] = "⏳（待跑）"
