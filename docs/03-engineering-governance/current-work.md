@@ -14,13 +14,15 @@
 
 ## 当前进行中
 
-暂无。
+| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
+|------|------|--------|------|----------|--------|------|
+| P2-SEARCH 收口（中文 tsvector 增强）| 🟡 进行中 | P2 | P2 / RAG / 全文检索 | `docs/p2-search-closure-sync` 分支；milestone `02-growth-phase.md:79` 翻 `🟢 Done`；technical-debt.md:2686 同步收口说明；证据链：TD-047 PR #192 + REQ-012 PR #216（retriever 切 chinese_zh + plainto_tsquery）+ REQ-014 PR #308 + REQ-015 PR #314 端到端验收 | 跑 `scripts/check-engineering-docs` + commit + push + PR + squash merge + 翻 Done 后同步回 backlog/work-log | milestone 状态一致；门禁通过 |
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| 暂无 | - | - | - | 待用户选择下一项任务。 |
+| 暂无 | - | - | - | 当前 P2-SEARCH 收口中；下批任务待用户选择 |
 
 ## 最近完成
 
