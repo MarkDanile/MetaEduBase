@@ -14,23 +14,7 @@
 
 ## 当前进行中
 
-### DOC-069: P2 阶段正式启动与重点任务规划
-
-状态：🟡 进行中
-类型：DOC
-领域：Product Planning / P2 / RAG / AI Chat
-当前执行模式：product planning
-最近接手工具：Codex
-分支：docs/p2-phase-entry-planning
-
-需求来源：
-- Roadmap: [Product Roadmap](../01-product-planning/01-roadmap.md)
-- Milestone: [P2 Growth Phase](../01-product-planning/02-milestones/02-growth-phase.md)
-
-当前进展：已将 P1 / P2 阶段状态切换为 P1 Done、P2 Doing；已把 P2-NER / P2-RRF / 4 通道召回映射为 REQ-016 / REQ-017 / REQ-018，并放入工作台候选区；REQ-016 / REQ-017 / REQ-018 已完成事实源修正。
-下一步：完成 docs-only 闭环提交与合并；PR 合并前保持进行中。
-验证状态：`scripts/check-engineering-docs` 通过；`git diff --check` 通过。
-交接备注：建议后续优先按 REQ-018 塑形，确认 `knowledge_edges` graph edge recall 如何回源 chunk / section。
+暂无。
 
 ## 下一批候选任务
 
@@ -48,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-17 | DOC-069 P2 阶段正式启动与重点任务规划 | 🟢 完成 | PR #320 merge `33c132f`：P1 Done、P2 Doing；REQ-016/017/018 入账并完成代码事实校准 | [P2 Milestone](../01-product-planning/02-milestones/02-growth-phase.md) / [PR #320](https://github.com/MarkDanile/MetaEduBase/pull/320) |
 | 2026-06-17 | P2-SEARCH PostgreSQL tsvector + 中文分词搜索增强 | 🟢 完成 | PR #318 merge `7d2a826` 收口：TD-047 PR #192（基础设施）+ REQ-012 PR #216（运行时检索切 chinese_zh + plainto_tsquery）+ REQ-014 PR #308 + REQ-015 PR #314（端到端验收） | [Milestone P2](../01-product-planning/02-milestones/02-growth-phase.md) / [TD-047](technical-debt.md#td-047) / [PR #318](https://github.com/MarkDanile/MetaEduBase/pull/318) |
 | 2026-06-17 | BUG-010 AI Chat 自然问法未稳定命中函数参数正文 chunk | 🟢 完成 | PR #316 merge `b753d3a`：确定性 query normalizer + 函数参数术语拆分回归已合并，A/B 等价问法共享核心检索词 | [BUG-010](../01-product-planning/05-requirements/BUG-010-ai-chat-query-normalizer-function-parameter-question.md) / [PR #316](https://github.com/MarkDanile/MetaEduBase/pull/316) |
 | 2026-06-17 | REQ-015 RAG 生产链路 grounding 与真实验收收口 | 🟢 完成 | PR #314 merge `4d78667`：生产 RAG 默认链路、真实 dev DB、授权 DeepSeek ask 与状态事实源已收口 | [REQ-015](../01-product-planning/05-requirements/REQ-015-rag-production-grounding-closure.md) / [PR #314](https://github.com/MarkDanile/MetaEduBase/pull/314) |
