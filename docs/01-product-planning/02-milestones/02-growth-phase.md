@@ -1,12 +1,16 @@
 # P2: 阶段二 — 增长期
 
-Status: ⚫ Candidate
-Current: No
+Status: 🟡 Doing
+Current: Yes
 External:
 
 ## Goal
 
 在不引入过早复杂度的前提下，提升召回质量、抽取质量与系统稳定性。阶段二不以“替换所有基础设施”为目标，而是在阶段一产品链路成立后，对真实瓶颈做有边界的增强。
+
+## Phase Entry
+
+2026-06-17 正式进入 P2 增长期。当前阶段优先围绕真实 AI Chat 质量问题推进：先补齐检索理解、4 通道召回、融合排序和上下文组装，再视指标决定是否引入 ES / Milvus / Neo4j 等阶段三能力。
 
 ## Retrieval Architecture
 
@@ -83,9 +87,19 @@ External:
 | REQ-015 | 🟢 完成 | RAG 生产链路 grounding 与真实验收收口 | PR #314 squash merge `4d78667`：BUG-009 修复后真 dev DB prompt 前证据链已恢复；用户授权后完整 DeepSeek ask 已通过。 | [Requirement](../05-requirements/REQ-015-rag-production-grounding-closure.md) / [Spec](../../02-delivery-plans/01-specs/2026-06-17-req-015-rag-production-grounding-closure.md) / [Plan](../../02-delivery-plans/02-plans/2026-06-17-req-015-rag-production-grounding-closure-plan.md) / [Report](../../02-delivery-plans/01-specs/2026-06-17-req-015-rag-production-grounding-validation-report.md) / [PR #314](https://github.com/MarkDanile/MetaEduBase/pull/314) |
 | BUG-009 | 🟢 完成 | AI Chat 真实 PG 链路未把相关正文 chunk 送入 prompt | PR #314 squash merge `4d78667`：修共享 `AsyncSession` 并发、RRF 阈值、lexical supplement 排序和邻居 TOC 识别；prompt 前和完整 ask 真实验收均通过。 | [Bug](../05-requirements/BUG-009-ai-chat-rag-retrieval-context-pipeline-real-pg-failure.md) / [Backlog](../04-backlog.md) / [PR #314](https://github.com/MarkDanile/MetaEduBase/pull/314) |
 | BUG-010 | 🟢 完成 | AI Chat 自然问法未稳定命中函数参数正文 chunk | PR #316 squash merge `b753d3a`：P2-NER 前置确定性切片已收口；LLM 混合 NER / Query Understanding 后续仍保留为 P2 能力演进。 | [Bug](../05-requirements/BUG-010-ai-chat-query-normalizer-function-parameter-question.md) / [Backlog](../04-backlog.md) / [PR #316](https://github.com/MarkDanile/MetaEduBase/pull/316) |
-| P2-NER | ⚫ Candidate | LLM 混合 NER | 待进入 backlog |
-| P2-RRF | ⚫ Candidate | RRF 融合排序 | 待进入 backlog |
-| P2-INFRA | ⚫ Candidate | Redis 缓存 / RabbitMQ / LiteLLM / MinIO 集群按瓶颈择一推进 | 待进入 backlog |
+| REQ-016 | 🟣 Shaping | P2-NER：规则 NER + deterministic normalizer 已在代码里，后续新增 LLM Query Understanding schema、低置信触发策略、trace 和真实问法回归；不要把 LLM NER 当作所有检索问题的唯一解。 | [Requirement](../05-requirements/REQ-016-p2-llm-hybrid-ner-query-understanding.md) / [Backlog](../04-backlog.md) |
+| REQ-017 | 🟣 Shaping | P2-RRF：RRF 已实现并默认接入 evidence AI Chat；后续收口 weighted RRF 生产配置、4 通道接入后的排序验收、trace 和真实样例回归。 | [Requirement](../05-requirements/REQ-017-p2-rrf-weighted-fusion.md) / [Backlog](../04-backlog.md) |
+| REQ-018 | 🟣 Shaping | P2-RECALL-4：chunk vector / chunk keyword / metadata / graph node 已有基础；后续新增独立 PostgreSQL `knowledge_edges` 图谱关系召回通道，并确保关系只做扩展线索，最终必须回到 chunk / section 证据。 | [Requirement](../05-requirements/REQ-018-p2-four-channel-graph-edge-recall.md) / [Backlog](../04-backlog.md) |
+| P2-EXTRACT | ⚫ Candidate | 抽取 schema 稳定化：继续沉淀模板字段、嵌套结构、抽取结果契约和真实样例回归；优先承接 REQ-002 及其子任务后的实际缺口。 | [Backlog](../04-backlog.md) |
+| P2-INFRA | ⚫ Candidate | Redis 缓存 / RabbitMQ / LiteLLM / MinIO 集群按瓶颈择一推进；只有出现稳定性、成本、吞吐或可观测瓶颈时进入 Backlog。 | 待进入 backlog |
+
+## Suggested Next Focus
+
+| 顺序 | 任务 | 为什么先做 |
+|------|------|------------|
+| 1 | REQ-018 P2-RECALL-4 | 先补独立 `knowledge_edges` 关系通道，再把四通道并行召回验收清楚。 |
+| 2 | REQ-017 P2-RRF | RRF 基础已在生产链路中，等 REQ-018 通道边界明确后收口 weighted 配置和 4 通道排序验收。 |
+| 3 | REQ-016 P2-NER | 在有 trace、召回和排序基线后再引入 LLM Query Understanding，更容易判断它解决的是实体理解问题还是召回排序问题。 |
 
 ## Evidence
 

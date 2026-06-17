@@ -1,6 +1,6 @@
 # Iteration 2026-W25: P2 RAG 质量增强
 
-Status: 🟡 Planned
+Status: 🟡 Doing
 Dates: 2026-W25
 Goal: 在 REQ-012 多路 evidence 骨架之上，补齐召回后上下文组装、排序演进和真实问答 grounding，优先解决“资料库有正文但回答证据不足”的问题。
 
@@ -13,6 +13,9 @@ Goal: 在 REQ-012 多路 evidence 骨架之上，补齐召回后上下文组装�
 | REQ-014 | REQ | 🟢 Done | RAG 真实 PG 样例、数据回填与回答 grounding 验收 | PR #308 squash merge：spec + plan + 一次性验收脚本 + 占位报告 + 跨事实源同步。follow-up：下个 PR 跑真 PG |
 | REQ-015 | REQ | 🟢 Done | RAG 生产链路 grounding 与真实验收收口 | PR #314 merge `4d78667`：BUG-009 修复后真 dev DB prompt 前 context 已拿到 Python 正文；用户授权后完整 DeepSeek ask 已通过。 |
 | BUG-009 | BUG | 🟢 Done | AI Chat 真实 PG 链路未把相关正文 chunk 送入 prompt | PR #314 merge `4d78667`：已修共享 `AsyncSession` 并发、RRF 阈值、lexical supplement 排序和邻居 TOC 识别；prompt 前和完整 ask 真实验收均通过。 |
+| REQ-018 | REQ | 🟣 Shaping | P2 4 通道并行召回与图谱关系召回 | 先补独立 `knowledge_edges` relation recall，确认关系命中后能回源 chunk / section。 |
+| REQ-017 | REQ | 🟣 Shaping | P2 RRF / Weighted RRF 融合排序收口 | RRF 已默认接入；在 REQ-018 通道边界明确后收口 weighted 配置、4 通道排序验收和真实样例回归。 |
+| REQ-016 | REQ | 🟣 Shaping | P2 LLM 混合 NER / Query Understanding | 在 trace / 召回 / 排序基线稳定后推进，判断问题属于实体理解还是召回排序。 |
 
 ## Out of Scope
 
@@ -30,3 +33,4 @@ Goal: 在 REQ-012 多路 evidence 骨架之上，补齐召回后上下文组装�
 | REQ-014 只完成 tooling，生产链路仍缺 ContextPacker 注入和 diagnostics | 当前需要把机制真正接入默认 AI Chat endpoint，并让脚本能读到 trace | REQ-015 |
 | REQ-015 真实样例截停在 prompt 前仍缺正文 chunk | BUG-009 已把瓶颈收口：`fusion_topN[1]` 命中 `数据类型和变量` 正文，packed context 含基本类型证据，完整 DeepSeek ask 回答正确 | BUG-009 / REQ-015 已由 PR #314 收口 |
 | P2 已有 PostgreSQL tsvector 基础 | 当前先用既有 PostgreSQL 能力提升质量，不急于换 ES / Milvus / Neo4j | P2-SEARCH / REQ-013；P2-RRF 仍留在里程碑 Open Items，待真实瓶颈明确后再映射稳定任务编号 |
+| P2 正式进入增长期 | 重点不再是证明 P1 闭环存在，而是提升真实问答质量和可解释检索链路 | REQ-018 -> REQ-017 -> REQ-016 |

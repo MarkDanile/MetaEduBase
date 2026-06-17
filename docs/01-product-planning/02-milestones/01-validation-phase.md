@@ -1,7 +1,7 @@
 # P1: 阶段一 — 验证期
 
-Status: 🟡 Doing
-Current: Yes
+Status: 🟢 Done
+Current: No
 External:
 
 ## Goal
@@ -85,6 +85,10 @@ External:
 - 回归测试和质量门禁可复现运行。
 - 无新增基础设施依赖，仍以 PostgreSQL / Redis / MinIO 为主。
 - P1 关闭前，轨道 B 的“待验证 / 待收口”项必须通过测试或演示验收，并把结果回填到本文件、迭代文件和 Backlog。
+
+## Closure Note
+
+2026-06-17 正式关闭 P1 并进入 P2。P1 的目标是证明 PostgreSQL 单引擎下的知识资产处理闭环可用；后续继续出现的召回质量、排序质量、上下文丰富度和基础设施增强，进入 P2 增长期管理。
 
 ## Open Items
 

@@ -14,13 +14,31 @@
 
 ## 当前进行中
 
-暂无。
+### DOC-069: P2 阶段正式启动与重点任务规划
+
+状态：🟡 进行中
+类型：DOC
+领域：Product Planning / P2 / RAG / AI Chat
+当前执行模式：product planning
+最近接手工具：Codex
+分支：docs/p2-phase-entry-planning
+
+需求来源：
+- Roadmap: [Product Roadmap](../01-product-planning/01-roadmap.md)
+- Milestone: [P2 Growth Phase](../01-product-planning/02-milestones/02-growth-phase.md)
+
+当前进展：已将 P1 / P2 阶段状态切换为 P1 Done、P2 Doing；已把 P2-NER / P2-RRF / 4 通道召回映射为 REQ-016 / REQ-017 / REQ-018，并放入工作台候选区；REQ-016 / REQ-017 / REQ-018 已完成事实源修正。
+下一步：完成 docs-only 闭环提交与合并；PR 合并前保持进行中。
+验证状态：`scripts/check-engineering-docs` 通过；`git diff --check` 通过。
+交接备注：建议后续优先按 REQ-018 塑形，确认 `knowledge_edges` graph edge recall 如何回源 chunk / section。
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| 暂无 | - | - | - | 当前 P2-SEARCH 收口中；下批任务待用户选择 |
+| [REQ-018](../01-product-planning/05-requirements/REQ-018-p2-four-channel-graph-edge-recall.md) P2 4 通道并行召回与图谱关系召回 | 🟣 Shaping | P0 | RAG / Graph / AI Chat / P2 | 建议下一步优先塑形 spec/plan：确认独立 `knowledge_edges` recall 如何回源 chunk / section。 |
+| [REQ-017](../01-product-planning/05-requirements/REQ-017-p2-rrf-weighted-fusion.md) P2 RRF / Weighted RRF 融合排序收口 | 🟣 Shaping | P0 | RAG / Ranking / AI Chat / P2 | RRF 已默认接入；在 REQ-018 边界明确后进入 spec/plan，重点补 weighted 配置、4 通道排序验收和真实样例回归。 |
+| [REQ-016](../01-product-planning/05-requirements/REQ-016-p2-llm-hybrid-ner-query-understanding.md) P2 LLM 混合 NER / Query Understanding | 🟣 Shaping | P0 | NER / Query Understanding / AI Chat / P2 | 在 trace / 召回 / 排序基线清楚后推进，优先定义 schema、触发条件和真实问法回归。 |
 
 ## 最近完成
 
