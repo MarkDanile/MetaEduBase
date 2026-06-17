@@ -183,6 +183,17 @@ class ChunkRepositoryInterface:
         """Fetch a single chunk row by its primary key id."""
         ...
 
+    async def get_chunks_by_file_and_section(
+        self,
+        file_id: uuid.UUID,
+        section_path: str,
+        tenant_id: uuid.UUID,
+        *,
+        limit: int = 12,
+    ) -> list[dict]:
+        """Fetch chunks in one section for parent-section expansion."""
+        ...
+
 
 class ContextPacker:
     """Expand fused evidence into a richer context."""
@@ -270,15 +281,35 @@ class ContextPacker:
                     fid, missing, self._tenant_id,
                 )
                 file_chunks[fid].update(rows)
+            hit_row = file_chunks.get(fid, {}).get(chunk_idx)
+            hit_cid = hit_row.get("id") if hit_row else cid
+            if hit_cid:
+                seen_chunk_keys.add((fid, hit_cid))
 
             # Hit block
             blocks.append(self._make_block(
-                idx, fid, [cid] if cid else [],
+                idx, fid, [hit_cid] if hit_cid else [],
                 "chunk",
-                title=ev.title or "",
-                section_title=ev.metadata.get("section_title"),
-                section_path=ev.metadata.get("section_path"),
-                content=ev.content,
+                title=(
+                    hit_row.get("section_title")
+                    if hit_row and hit_row.get("section_title")
+                    else ev.title or ""
+                ),
+                section_title=(
+                    hit_row.get("section_title")
+                    if hit_row
+                    else ev.metadata.get("section_title")
+                ),
+                section_path=(
+                    hit_row.get("section_path")
+                    if hit_row
+                    else ev.metadata.get("section_path")
+                ),
+                content=(
+                    hit_row.get("content", "")
+                    if hit_row
+                    else ev.content
+                ),
                 channels=ev.channels,
                 score=ev.score,
                 is_toc_like=(idx in toc_indices),
@@ -293,6 +324,8 @@ class ContextPacker:
                 if not row:
                     continue
                 n_cid = row.get("id")
+                if n_cid:
+                    seen_chunk_keys.add((fid, n_cid))
                 blocks.append(self._make_block(
                     idx, fid, [n_cid] if n_cid else [],
                     "chunk",
@@ -380,6 +413,8 @@ class ContextPacker:
                 if not row:
                     continue
                 n_cid = row.get("id")
+                if n_cid:
+                    seen_chunk_keys.add((fid, n_cid))
                 blocks.append(self._make_block(
                     idx, fid, [n_cid] if n_cid else [],
                     "chunk",
@@ -402,32 +437,37 @@ class ContextPacker:
         # Fallback: if section_path is empty/missing, skip (chunk_index
         # neighbors already handled in Phase 1).
         # ------------------------------------------------------------------
-        sections_to_expand: dict[tuple[uuid.UUID, str], list[int]] = {}
+        sections_to_expand: dict[tuple[uuid.UUID, str], int] = {}
+        for idx, ev in enumerate(evidence, 1):
+            fid = ev.file_id
+            if fid is None:
+                continue
+            sp = ev.metadata.get("section_path") or ""
+            if sp and sp not in ("?", "null", "undefined"):
+                sections_to_expand.setdefault((fid, sp), idx)
         for fid, f_chunks in file_chunks.items():
             for row in f_chunks.values():
                 sp = row.get("section_path") or ""
                 if sp and sp not in ("?", "null", "undefined"):
-                    sections_to_expand.setdefault((fid, sp), []).append(
-                        row["chunk_index"],
-                    )
+                    sections_to_expand.setdefault((fid, sp), 1)
 
-        for (fid, section_path), indices in sections_to_expand.items():
-            if not indices:
-                continue
-            # Fetch all chunks from this section that aren't already loaded
-            existing = set(file_chunks.get(fid, {}).keys())
-            all_indices = sorted(set(indices))
-            missing = [i for i in all_indices if i not in existing]
-            if missing:
-                rows = await self._chunk_repo.get_chunks_by_file_and_indices(
-                    fid, missing, self._tenant_id,
-                )
-                if fid not in file_chunks:
-                    file_chunks[fid] = {}
-                file_chunks[fid].update(rows)
+        for (fid, section_path), evidence_index in sections_to_expand.items():
+            rows = await self._chunk_repo.get_chunks_by_file_and_section(
+                fid,
+                section_path,
+                self._tenant_id,
+                limit=self._opts.max_blocks * 2,
+            )
+            if fid not in file_chunks:
+                file_chunks[fid] = {}
+            for row in rows:
+                file_chunks[fid][row["chunk_index"]] = row
 
             # Add section expansion blocks for chunks we don't already have
-            for row in file_chunks.get(fid, {}).values():
+            for row in sorted(
+                file_chunks.get(fid, {}).values(),
+                key=lambda item: item.get("chunk_index", 0),
+            ):
                 sp = row.get("section_path") or ""
                 if sp != section_path:
                     continue
@@ -440,7 +480,7 @@ class ContextPacker:
                 if n_cid:
                     seen_chunk_keys.add(key)  # type: ignore[arg-type]
                 blocks.append(self._make_block(
-                    evidence_index=0,  # section blocks are not tied to a specific evidence
+                    evidence_index=evidence_index,
                     file_id=fid,
                     chunk_ids=[n_cid] if n_cid else [],
                     source_type="chunk",
@@ -586,11 +626,12 @@ async def expand_graph_evidence(
     tenant_id: uuid.UUID,
     options: ContextPackingOptions,
 ) -> list[EvidenceItem]:
-    """Fetch source chunks for knowledge_node evidence that has source_chunk_id.
+    """Backward-compatible wrapper for graph source expansion.
 
-    This is the Slice 3 extension point. For now, return evidence unchanged.
+    New code should call `ContextPacker.pack()` directly. This helper keeps the
+    old extension point importable while delegating the actual graph-to-chunk
+    expansion to the packer implementation.
     """
-    # TODO Slice 3: when ev.source_type == "knowledge_node" and ev.source_chunk_id
-    # is set, fetch the corresponding document_chunks row and replace the
-    # node's content with the chunk content (preserving node metadata for citation).
-    return evidence
+    packer = ContextPacker(chunk_repo, tenant_id, options)
+    packed = await packer.pack(evidence)
+    return packed.evidence

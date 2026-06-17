@@ -20,11 +20,13 @@ fake 注入。
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -60,6 +62,47 @@ class ChatResponse:
     reply: str
     sources: list[EvidenceItem] = field(default_factory=list)
     document_sources: list[DocumentSource] = field(default_factory=list)
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+
+
+class RetrievalTraceItem(BaseModel):
+    index: int
+    evidence_id: str
+    source_type: str
+    title: str
+    file_id: str | None = None
+    chunk_id: str | None = None
+    source_chunk_id: str | None = None
+    score: float | None = None
+    channels: list[str] = Field(default_factory=list)
+    snippet: str = ""
+
+
+class PackedBlockTraceItem(BaseModel):
+    evidence_index: int
+    file_id: str | None = None
+    chunk_ids: list[str] = Field(default_factory=list)
+    source_type: str
+    title: str
+    section_title: str | None = None
+    section_path: str | None = None
+    chars: int
+    content: str
+    channels: list[str] = Field(default_factory=list)
+    score: float | None = None
+    is_toc_like: bool = False
+    expansion_type: str
+
+
+class AIChatDiagnostics(BaseModel):
+    query: str
+    retrieval_topn: dict[str, list[RetrievalTraceItem]] = Field(default_factory=dict)
+    fusion_topn: list[RetrievalTraceItem] = Field(default_factory=list)
+    packed_blocks: list[PackedBlockTraceItem] = Field(default_factory=list)
+    prompt_preview: str = ""
+    packed: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = {"extra": "forbid"}
 
 
 class AIChatService:
@@ -122,6 +165,51 @@ class AIChatService:
             for channel in channels:
                 channel_results.setdefault(channel, []).append(item)
         return channel_results
+
+    @staticmethod
+    def _trace_evidence(items: list[EvidenceItem]) -> list[RetrievalTraceItem]:
+        traced: list[RetrievalTraceItem] = []
+        for index, item in enumerate(items, start=1):
+            traced.append(
+                RetrievalTraceItem(
+                    index=index,
+                    evidence_id=item.evidence_id,
+                    source_type=item.source_type,
+                    title=item.title,
+                    file_id=str(item.file_id) if item.file_id else None,
+                    chunk_id=str(item.chunk_id) if item.chunk_id else None,
+                    source_chunk_id=(
+                        str(item.source_chunk_id) if item.source_chunk_id else None
+                    ),
+                    score=item.score,
+                    channels=list(item.channels or []),
+                    snippet=(item.snippet or item.content or "")[:240],
+                )
+            )
+        return traced
+
+    @staticmethod
+    def _trace_packed_blocks(packed: PackedContext) -> list[PackedBlockTraceItem]:
+        traced: list[PackedBlockTraceItem] = []
+        for block in packed.blocks:
+            traced.append(
+                PackedBlockTraceItem(
+                    evidence_index=block.evidence_index,
+                    file_id=str(block.file_id) if block.file_id else None,
+                    chunk_ids=[str(cid) for cid in block.chunk_ids],
+                    source_type=block.source_type,
+                    title=block.title,
+                    section_title=block.section_title,
+                    section_path=block.section_path,
+                    chars=len(block.content),
+                    content=block.content[:500],
+                    channels=list(block.channels or []),
+                    score=block.score,
+                    is_toc_like=block.is_toc_like,
+                    expansion_type=block.expansion_type,
+                )
+            )
+        return traced
 
     async def _hydrate_graph_chunks(
         self,
@@ -399,6 +487,10 @@ class AIChatService:
         channel_results = await self._retrieve(
             request.message, ner_result, tenant_id, session, top_k
         )
+        retrieval_topn = {
+            channel: self._trace_evidence(items)
+            for channel, items in channel_results.items()
+        }
 
         fused = self.evidence_fusion.fuse(channel_results, top_k=min(top_k * 2, 15))
 
@@ -481,6 +573,18 @@ class AIChatService:
         )
 
         context_text = self._build_prompt_context(packed)
+        diagnostics_model = AIChatDiagnostics(
+            query=request.message,
+            retrieval_topn=retrieval_topn,
+            fusion_topn=self._trace_evidence(fused),
+            packed_blocks=self._trace_packed_blocks(packed),
+            prompt_preview=context_text[:1200],
+            packed=packed.diagnostics.model_dump(mode="json"),
+        )
+        logger.info(
+            "ai_chat_trace: %s",
+            json.dumps(diagnostics_model.model_dump(mode="json"), ensure_ascii=False),
+        )
         user_content = (
             f"{context_text}\n\n学生问题：{request.message}"
             if context_text
@@ -494,4 +598,5 @@ class AIChatService:
             reply=reply,
             sources=fused,
             document_sources=document_sources,
+            diagnostics=diagnostics_model.model_dump(mode="json"),
         )

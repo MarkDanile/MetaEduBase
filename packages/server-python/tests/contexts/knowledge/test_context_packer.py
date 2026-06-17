@@ -52,6 +52,21 @@ class FakeChunkRepo:
                     return row
         return None
 
+    async def get_chunks_by_file_and_section(
+        self,
+        file_id: uuid.UUID,
+        section_path: str,
+        tenant_id: uuid.UUID,
+        *,
+        limit: int = 12,
+    ) -> list[dict]:
+        if file_id not in self._chunks:
+            return []
+        return [
+            row for row in self._chunks[file_id]
+            if row.get("section_path") == section_path
+        ][:limit]
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -239,6 +254,24 @@ async def test_neighbor_expansion_includes_adjacent_chunks(
 
 
 @pytest.mark.asyncio
+async def test_hit_block_uses_full_repository_chunk_content(
+    fid, tenant_id, body_chunk, neighbor_chunks
+) -> None:
+    """Hit block must come from document_chunks.content, not a shortened snippet."""
+    snippet_only = body_chunk.model_copy(deep=True)
+    snippet_only.content = "Python 数据类型目录片段"
+
+    repo = FakeChunkRepo(neighbor_chunks)
+    packer = ContextPacker(repo, tenant_id)
+
+    packed = await packer.pack([snippet_only])
+
+    hit_block = next(b for b in packed.blocks if b.expansion_type == "hit")
+    assert "Python 的基本数据类型包括数字" in hit_block.content
+    assert "目录片段" not in hit_block.content
+
+
+@pytest.mark.asyncio
 async def test_neighbor_expansion_never_requests_negative_index(
     fid, tenant_id, neighbor_chunks
 ) -> None:
@@ -399,7 +432,8 @@ async def test_graph_evidence_fetches_source_chunk_and_neighbors(fid, tenant_id)
         ]
     }
     repo = FakeChunkRepo(db_chunks)
-    packer = ContextPacker(repo, tenant_id)
+    opts = ContextPackingOptions(neighbor_window=0, max_blocks=8, max_chars=4000)
+    packer = ContextPacker(repo, tenant_id, options=opts)
 
     # Knowledge node evidence pointing to source chunk
     node_ev = EvidenceItem(
@@ -480,7 +514,8 @@ async def test_section_expansion_adds_same_section_chunks(fid, tenant_id) -> Non
         ]
     }
     repo = FakeChunkRepo(db_chunks)
-    packer = ContextPacker(repo, tenant_id)
+    opts = ContextPackingOptions(neighbor_window=0, max_blocks=8, max_chars=4000)
+    packer = ContextPacker(repo, tenant_id, options=opts)
 
     # Evidence points to chunk_index=3 (section_path="1.1")
     chunk_ev = EvidenceItem(
@@ -501,6 +536,50 @@ async def test_section_expansion_adds_same_section_chunks(fid, tenant_id) -> Non
     assert len(section_blocks) >= 1
     section_contents = " ".join(b.content for b in section_blocks)
     assert "数字类型包括" in section_contents
+
+
+@pytest.mark.asyncio
+async def test_section_expansion_fetches_parent_section_beyond_neighbors(fid, tenant_id) -> None:
+    """Section expansion must fetch same-section chunks beyond neighbor window."""
+    far_cid = uuid.uuid4()
+    db_chunks = {
+        fid: [
+            {
+                "chunk_index": 3,
+                "id": uuid.uuid4(),
+                "content": "Python 变量不需要声明类型。",
+                "section_title": "基本数据类型",
+                "section_path": "1.1",
+            },
+            {
+                "chunk_index": 9,
+                "id": far_cid,
+                "content": "整数 int、浮点 float、字符串 str、布尔 bool 都属于基础类型。",
+                "section_title": "基本数据类型",
+                "section_path": "1.1",
+            },
+        ]
+    }
+    repo = FakeChunkRepo(db_chunks)
+    opts = ContextPackingOptions(neighbor_window=0, max_blocks=8, max_chars=4000)
+    packer = ContextPacker(repo, tenant_id, options=opts)
+
+    chunk_ev = EvidenceItem(
+        evidence_id="",
+        source_type="chunk",
+        file_id=fid,
+        chunk_id=db_chunks[fid][0]["id"],
+        title="基本数据类型",
+        content=db_chunks[fid][0]["content"],
+        score=0.9,
+        metadata={"chunk_index": 3, "section_path": "1.1", "section_title": "基本数据类型"},
+    )
+
+    packed = await packer.pack([chunk_ev])
+
+    section_blocks = [b for b in packed.blocks if b.expansion_type == "section"]
+    assert any(far_cid in block.chunk_ids for block in section_blocks)
+    assert "整数 int" in "\n".join(block.content for block in section_blocks)
 
 
 @pytest.mark.asyncio
@@ -534,4 +613,3 @@ async def test_section_expansion_skips_bad_section_path(fid, tenant_id) -> None:
     packed = await packer.pack([chunk_ev])
     # Should not crash; section expansion skipped
     assert packed.diagnostics.sections_fallback_triggered is False
-

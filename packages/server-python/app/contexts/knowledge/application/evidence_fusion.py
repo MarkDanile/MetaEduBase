@@ -82,15 +82,16 @@ class SimpleFrequencyFusion:
 
 
 class RRFFusion:
-    """Reciprocal Rank Fusion — P2 调优占位实现。
+    """Reciprocal Rank Fusion — P2 默认融合实现。
 
     公式：`score(e) = sum_over_channels(1 / (k + rank_in_channel))`。
-    k=60 是 RRF 原始论文默认；P1 阶段先暴露为可用实现，等 P2 真实样例
-    验证再调 k 值与通道权重。
+    k=60 是 RRF 原始论文默认；`channel_weights` 支持 weighted RRF，
+    未配置的通道权重默认为 1.0。
     """
 
-    def __init__(self, k: int = 60) -> None:
+    def __init__(self, k: int = 60, channel_weights: dict[str, float] | None = None) -> None:
         self.k = k
+        self.channel_weights = channel_weights or {}
 
     def fuse(
         self,
@@ -102,9 +103,10 @@ class RRFFusion:
         channels: dict[str, set[str]] = {}
 
         for ch_name, results in channel_results.items():
+            weight = self.channel_weights.get(ch_name, 1.0)
             for rank, r in enumerate(results, start=1):
                 eid = r.evidence_id
-                agg_score[eid] = agg_score.get(eid, 0.0) + 1.0 / (self.k + rank)
+                agg_score[eid] = agg_score.get(eid, 0.0) + weight / (self.k + rank)
                 channels.setdefault(eid, set()).add(ch_name)
                 if eid not in by_id:
                     by_id[eid] = r.model_copy()

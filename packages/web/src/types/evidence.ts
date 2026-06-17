@@ -53,4 +53,5 @@ export interface EvidenceChatResponse {
   reply: string;
   sources: EvidenceItem[];
   document_sources?: DocumentSource[];
+  diagnostics?: Record<string, unknown>;
 }

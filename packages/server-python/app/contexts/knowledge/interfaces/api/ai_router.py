@@ -1,11 +1,13 @@
 import logging
 import re
+import uuid
 
 import httpx
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.contexts.document.infrastructure.chunk_repository import ChunkRepository
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.contexts.knowledge.application.ai_chat_service import (
     AIChatService,
@@ -19,7 +21,8 @@ from app.contexts.knowledge.application.ai_chat_service import (
 from app.contexts.knowledge.application.composite_retriever import (
     CompositeChunkRetriever,
 )
-from app.contexts.knowledge.application.evidence_fusion import SimpleFrequencyFusion
+from app.contexts.knowledge.application.context_packer import ContextPacker
+from app.contexts.knowledge.application.evidence_fusion import RRFFusion
 from app.contexts.knowledge.application.fusion_service import FrequencyFusion
 from app.contexts.knowledge.application.recall_service import (
     PgKeywordRecallChannel,
@@ -52,17 +55,25 @@ _metadata_channel = PgMetadataRecallChannel()
 _fusion = FrequencyFusion()
 
 # REQ-010 Slice 3 — evidence-aware AI Chat service (default PG adapters).
-_evidence_service = AIChatService(
-    chunk_retriever=CompositeChunkRetriever(
-        [
-            PgChunkVectorRetriever(),
-            PgChunkKeywordRetriever(),
-        ]
-    ),
-    graph_retriever=PgGraphRetriever(),
-    metadata_filter=PgMetadataFilter(),
-    evidence_fusion=SimpleFrequencyFusion(),
-)
+def _build_evidence_service(session: AsyncSession, tenant_id: str) -> AIChatService:
+    tenant_uuid = tenant_id if isinstance(tenant_id, uuid.UUID) else uuid.UUID(str(tenant_id))
+    return AIChatService(
+        chunk_retriever=CompositeChunkRetriever(
+            [
+                PgChunkVectorRetriever(),
+                PgChunkKeywordRetriever(),
+            ]
+        ),
+        graph_retriever=PgGraphRetriever(),
+        metadata_filter=PgMetadataFilter(),
+        evidence_fusion=RRFFusion(),
+        context_packer=ContextPacker(ChunkRepository(session), tenant_uuid),
+    )
+
+
+# Test seam only: production builds the service per request so ContextPacker can
+# use the request-bound session and tenant. Existing tests may patch this value.
+_evidence_service: AIChatService | None = None
 
 
 def _clean_llm_output(content: str) -> str:
@@ -89,6 +100,7 @@ class EvidenceChatResponse(BaseModel):
     reply: str
     sources: list[EvidenceItem]
     document_sources: list[DocumentSource] = Field(default_factory=list)
+    diagnostics: dict = Field(default_factory=dict)
 
 
 @router.post("/chat/evidence", response_model=EvidenceChatResponse)
@@ -105,9 +117,11 @@ async def ai_chat_evidence(
     [1] / [2] citation numbering. `sources` field is `list[EvidenceItem]`
     (chunk / knowledge_node / knowledge_edge / structured_field).
     """
-    tid = str(get_tenant_id())
+    tenant_value = get_tenant_id() or _current_user.get("tenant_id")
+    tid = str(tenant_value)
 
-    result: ServiceChatResponse = await _evidence_service.chat(
+    service = _evidence_service or _build_evidence_service(session, tid)
+    result: ServiceChatResponse = await service.chat(
         ServiceChatRequest(
             message=data.message,
             context_window=data.context_window,
@@ -123,6 +137,11 @@ async def ai_chat_evidence(
             getattr(result, "document_sources", [])
             if isinstance(getattr(result, "document_sources", []), list)
             else []
+        ),
+        diagnostics=(
+            getattr(result, "diagnostics", {})
+            if isinstance(getattr(result, "diagnostics", {}), dict)
+            else {}
         ),
     )
 

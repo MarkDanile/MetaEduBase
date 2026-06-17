@@ -71,6 +71,29 @@ class ChunkRepository:
         rows = result.mappings().all()
         return dict(rows[0]) if rows else None
 
+    async def get_chunks_by_file_and_section(
+        self,
+        file_id: uuid.UUID,
+        section_path: str,
+        tenant_id: uuid.UUID,
+        *,
+        limit: int = 12,
+    ) -> list[dict]:
+        """Fetch chunks from one stable section path, ordered for prompt packing."""
+        result = await self._session.execute(
+            text(
+                "SELECT id, tenant_id, file_id, chunk_index, content, section_title, "
+                "section_path, char_start, char_end, created_at, "
+                "CASE WHEN embedding IS NOT NULL THEN true ELSE false END AS has_embedding "
+                "FROM metaedu.document_chunks "
+                "WHERE file_id = :fid AND tenant_id = :tid AND section_path = :spath "
+                "ORDER BY chunk_index "
+                "LIMIT :lim"
+            ),
+            {"fid": file_id, "tid": tenant_id, "spath": section_path, "lim": limit},
+        )
+        return [dict(row) for row in result.mappings().all()]
+
     async def bulk_insert(
         self, tenant_id: uuid.UUID, file_id: uuid.UUID, chunks: list[dict]
     ) -> None:
