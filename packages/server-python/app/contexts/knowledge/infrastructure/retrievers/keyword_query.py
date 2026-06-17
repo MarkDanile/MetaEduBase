@@ -8,6 +8,10 @@ _LATIN_TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9_+#.\-]{1,}", re.IGNORECASE)
 _CJK_RUN_RE = re.compile(r"[\u4e00-\u9fff]{2,}")
 
 _QUESTION_STOP_PHRASES = (
+    "帮我介绍一下",
+    "帮我介绍下",
+    "介绍一下",
+    "介绍下",
     "有哪些",
     "是什么",
     "什么是",
@@ -18,6 +22,11 @@ _QUESTION_STOP_PHRASES = (
     "需要",
     "请问",
     "请",
+    "帮我",
+    "关于",
+    "方面",
+    "知识",
+    "中",
     "一下",
     "介绍",
     "说明",
@@ -27,6 +36,13 @@ _QUESTION_STOP_PHRASES = (
 )
 
 _IMPORTANT_CJK_TERMS = (
+    "函数参数",
+    "函数",
+    "默认参数",
+    "可变参数",
+    "关键字参数",
+    "命名关键字参数",
+    "参数组合",
     "基本数据类型",
     "数据类型",
     "能力图谱",
@@ -38,7 +54,25 @@ _IMPORTANT_CJK_TERMS = (
     "资源推荐",
     "复习规划",
     "智能制造",
+    "知识点",
 )
+
+_TERM_EXPANSIONS: dict[str, tuple[str, ...]] = {
+    "函数参数": (
+        "函数",
+        "参数",
+        "默认参数",
+        "可变参数",
+        "关键字参数",
+        "命名关键字参数",
+        "参数组合",
+    ),
+    "默认参数": ("参数",),
+    "可变参数": ("参数",),
+    "关键字参数": ("参数",),
+    "命名关键字参数": ("参数", "关键字参数"),
+    "参数组合": ("参数",),
+}
 
 
 def tokenize_query(query: str, *, limit: int = 12) -> list[str]:
@@ -51,6 +85,10 @@ def tokenize_query(query: str, *, limit: int = 12) -> list[str]:
     candidates: list[str] = []
 
     candidates.extend(_LATIN_TOKEN_RE.findall(normalized))
+    for term in _IMPORTANT_CJK_TERMS:
+        if term in normalized:
+            candidates.append(term)
+            candidates.extend(_TERM_EXPANSIONS.get(term, ()))
 
     cleaned = normalized
     for phrase in _QUESTION_STOP_PHRASES:
@@ -62,6 +100,7 @@ def tokenize_query(query: str, *, limit: int = 12) -> list[str]:
         for term in _IMPORTANT_CJK_TERMS:
             if term in run:
                 candidates.append(term)
+                candidates.extend(_TERM_EXPANSIONS.get(term, ()))
         if len(run) > 8:
             candidates.extend([run[:4], run[-4:]])
 
