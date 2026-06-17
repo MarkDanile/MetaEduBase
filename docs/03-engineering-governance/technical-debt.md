@@ -2683,7 +2683,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 - **后续接力**：
   - **REQ-012**（Shaping）启动时把 TD-047 已收口结果作为前置依赖，不在 REQ-012 spec 里复述本任务细节
-  - **P2-SEARCH** 里程碑（`02-milestones/02-growth-phase.md:78`）Candidate → Shaping 由下一次复盘同步
+  - **P2-SEARCH** 里程碑（`02-milestones/02-growth-phase.md:79`）已收口 — TD-047 PR #192 基础设施 + REQ-012 PR #216 运行时检索切 `chinese_zh` + REQ-014 / REQ-015 端到端验收；状态 `🟢 Done`。
   - **TD-049**（E402 pre-existing）独立 PR 收口；**TD-050**（`EvidenceItem` 缺 `source_chunk_id` 字段）独立 PR
 
 ### TD-048: `SourceItem` 旧字段下个迭代删除（契约 deprecation 窗口）
