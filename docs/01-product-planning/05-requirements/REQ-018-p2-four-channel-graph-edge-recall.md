@@ -50,3 +50,10 @@ Related: REQ-012 / REQ-013 / REQ-017
 
 - Backlog: `docs/01-product-planning/04-backlog.md`
 - Milestone: `docs/01-product-planning/02-milestones/02-growth-phase.md`
+
+## Delivery Record
+
+| 日期 | 动作 | 事实 |
+|------|------|------|
+| 2026-06-18 | Shaping 完成 | spec + plan 产出，PR #332 squash merge |
+| 2026-06-18 | Shaping 收口 | spec + plan + PR #332 已合并 |
