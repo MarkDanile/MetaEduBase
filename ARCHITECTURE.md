@@ -1,6 +1,6 @@
-# MetaEduBase Architecture
+# AtomAIBase Architecture
 
-本文档是 MetaEduBase 的长期架构地图。
+本文档是 AtomAIBase 的长期架构地图。
 
 它回答的是这些问题：
 
@@ -13,7 +13,7 @@
 
 ## 1. 系统定位
 
-MetaEduBase 是面向职业教育场景的 AI Native 知识基座。它把知识管理、文档处理、结构化数据处理和 AI 问答放在同一个多租户系统里，目标是让学校或教学团队能够围绕同一套知识资产持续沉淀、检索、加工和复用。
+AtomAIBase 是面向行业 AI 应用开发的知识与数据原子能力底座。它把知识管理、文档处理、结构化数据处理、知识图谱和 AI 问答放在同一个多租户系统里，目标是让团队能够围绕同一套知识资产持续沉淀、检索、加工和复用。
 
 系统不是单一聊天应用，也不是单纯的文件管理器。它更接近一个围绕“知识资产生命周期”搭建的平台：
 
@@ -50,7 +50,7 @@ MetaEduBase 是面向职业教育场景的 AI Native 知识基座。它把知识
 
 ```mermaid
 flowchart LR
-    User[用户 / 教学团队] --> Web[Web App<br/>packages/web]
+    User[用户 / 业务团队] --> Web[Web App<br/>packages/web]
     AITools[AI IDE / 外部工具] --> MCP[MCP Server<br/>packages/mcp-server]
 
     Web --> API[Backend API<br/>packages/server-python]

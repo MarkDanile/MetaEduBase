@@ -14,7 +14,22 @@
 
 ## 当前进行中
 
-暂无。
+### DOC-070: AtomAIBase 项目定位与 README 对外介绍升级
+
+状态：🟡 进行中
+类型：DOC
+领域：Branding / README / Product Positioning
+当前执行模式：plan-do
+最近接手工具：Codex
+分支：docs/atom-ai-base-readme
+
+需求来源：
+- Backlog: [DOC-070](../01-product-planning/04-backlog.md)
+
+当前进展：已完成 README 对外介绍重写，采用项目主页结构呈现 AtomAIBase 定位、核心能力、适用场景、架构图、快速开始、技术栈、路线图和文档入口；已同步根 `package.json` 描述与 `ARCHITECTURE.md` 顶层定位。本轮不做全仓历史文档重命名。
+下一步：按需提交 PR；后续可单独规划截图资产、README 英文版和全仓历史名称迁移。
+验证状态：已运行 `scripts/check-engineering-docs` 退出码 0（31 known issues allowlisted）；`git diff --check` 退出码 0。
+交接备注：README 对外介绍保持泛行业定位；历史文档和真实仓库路径仍按后续任务渐进迁移。
 
 ## 下一批候选任务
 
