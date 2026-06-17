@@ -47,3 +47,10 @@ Related: BUG-010 / REQ-017 / REQ-018
 
 - Backlog: `docs/01-product-planning/04-backlog.md`
 - Milestone: `docs/01-product-planning/02-milestones/02-growth-phase.md`
+
+## Delivery Record
+
+| 日期 | 动作 | 事实 |
+|------|------|------|
+| 2026-06-17 | Shaping 完成 | spec + plan 产出，PR #327 squash merge |
+| 2026-06-17 | Shaping 收口 | spec（[Spec](../02-delivery-plans/01-specs/2026-06-17-req-016-llm-hybrid-ner.md)）/ plan（[Plan](../02-delivery-plans/02-plans/2026-06-17-req-016-llm-hybrid-ner-plan.md)）/ PR #327 已合并 |
