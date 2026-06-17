@@ -14,14 +14,16 @@
 
 ## 当前进行中
 
-暂无。
+| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
+|------|------|--------|------|----------|--------|------|
+| REQ-017 RRF / Weighted RRF 融合排序收口 | 🟡 进行中 | P0 | RAG / Ranking / AI Chat | Shaping 完成（spec + plan 已 merge）；Slice 1-4 待实现 | Slice 1：配置入口与环境变量；确认 AIChatService.__init__ 是否支持 evidence_fusion 参数化 | 待验证 |
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| [REQ-018](../01-product-planning/05-requirements/REQ-018-p2-four-channel-graph-edge-recall.md) P2 4 通道并行召回与图谱关系召回 | 🟣 Shaping | P0 | RAG / Graph / AI Chat / P2 | 建议下一步优先塑形 spec/plan：确认独立 `knowledge_edges` recall 如何回源 chunk / section。 |
-| [REQ-016](../01-product-planning/05-requirements/REQ-016-p2-llm-hybrid-ner-query-understanding.md) P2 LLM 混合 NER / Query Understanding | 🟣 Shaping | P0 | NER / Query Understanding / AI Chat / P2 | 在 trace / 召回 / 排序基线清楚后推进，优先定义 schema、触发条件和真实问法回归。 |
+| REQ-018 P2 4 通道并行召回与图谱关系召回 | 🟣 Shaping | P0 | RAG / Graph / AI Chat / P2 | 建议下一步优先塑形 spec/plan |
+| REQ-016 P2 LLM 混合 NER / Query Understanding | 🟣 Shaping | P0 | NER / Query Understanding / AI Chat / P2 | 在 trace / 召回 / 排序基线清楚后推进 |
 
 ## 最近完成
 

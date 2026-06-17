@@ -1,4 +1,6 @@
+import json
 import logging
+import os
 import re
 import uuid
 
@@ -54,9 +56,33 @@ _keyword_channel = PgKeywordRecallChannel()
 _metadata_channel = PgMetadataRecallChannel()
 _fusion = FrequencyFusion()
 
+# REQ-017 Slice 1 — weighted RRF defaults.
+# Override with RRF_CHANNEL_WEIGHTS env var (JSON dict).
+_RRF_DEFAULT_WEIGHTS: dict[str, float] = {
+    "vector": 1.0,
+    "keyword": 1.0,
+    "graph_node": 0.5,
+}
+
+
+def _get_rrf_channel_weights() -> dict[str, float]:
+    """Read RRF_CHANNEL_WEIGHTS from environment, fall back to defaults."""
+    raw = os.environ.get("RRF_CHANNEL_WEIGHTS", "")
+    if not raw:
+        return _RRF_DEFAULT_WEIGHTS.copy()
+    try:
+        parsed: dict[str, float] = json.loads(raw)
+        # Merge with defaults so unspecified channels get the default weight
+        return {**_RRF_DEFAULT_WEIGHTS, **parsed}
+    except (json.JSONDecodeError, TypeError, ValueError):
+        logger.warning("RRF_CHANNEL_WEIGHTS=%r parse failed, using defaults", raw)
+        return _RRF_DEFAULT_WEIGHTS.copy()
+
+
 # REQ-010 Slice 3 — evidence-aware AI Chat service (default PG adapters).
 def _build_evidence_service(session: AsyncSession, tenant_id: str) -> AIChatService:
     tenant_uuid = tenant_id if isinstance(tenant_id, uuid.UUID) else uuid.UUID(str(tenant_id))
+    rrf_weights = _get_rrf_channel_weights()
     return AIChatService(
         chunk_retriever=CompositeChunkRetriever(
             [
@@ -66,7 +92,7 @@ def _build_evidence_service(session: AsyncSession, tenant_id: str) -> AIChatServ
         ),
         graph_retriever=PgGraphRetriever(),
         metadata_filter=PgMetadataFilter(),
-        evidence_fusion=RRFFusion(),
+        evidence_fusion=RRFFusion(channel_weights=rrf_weights),
         context_packer=ContextPacker(ChunkRepository(session), tenant_uuid),
     )
 

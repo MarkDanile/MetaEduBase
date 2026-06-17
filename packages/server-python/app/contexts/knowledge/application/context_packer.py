@@ -148,6 +148,18 @@ class PackedContextDiagnostics(BaseModel):
     toc_blocks_count: int = 0
     sections_fallback_triggered: bool = False
     graph_chunks_fetched: int = 0
+    # REQ-017 Slice 2 — RRF fusion diagnostics
+    fusion_method: str = Field(default="unknown")
+    rrf_k: int | None = Field(default=None)
+    rrf_weights_used: dict[str, float] = Field(default_factory=dict)
+    fusion_scores: dict[str, float] = Field(
+        default_factory=dict,
+        description="evidence_id -> RRF score (for RRF fusion) or raw score",
+    )
+    channel_ranks: dict[str, dict[str, int]] = Field(
+        default_factory=dict,
+        description="channel -> evidence_id -> rank (1-based)",
+    )
 
 
 class PackedContext(BaseModel):
