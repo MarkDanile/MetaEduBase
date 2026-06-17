@@ -6,8 +6,8 @@
 
 | 里程碑阶段 | 状态 | 阶段目标 | 详情 |
 |------------|------|----------|------|
-| P1 阶段一：验证期 | 🟡 Doing | 在 PostgreSQL 单引擎 + 最少基础设施依赖下，验证 RAG 问答链路和文档抽取链路。 | [P1 Validation Phase](02-milestones/01-validation-phase.md) |
-| P2 阶段二：增长期 | ⚫ Candidate | 在不引入过早复杂度的前提下，提升召回质量、抽取质量与系统稳定性。 | [P2 Growth Phase](02-milestones/02-growth-phase.md) |
+| P1 阶段一：验证期 | 🟢 Done | 在 PostgreSQL 单引擎 + 最少基础设施依赖下，验证 RAG 问答链路和文档抽取链路。 | [P1 Validation Phase](02-milestones/01-validation-phase.md) |
+| P2 阶段二：增长期 | 🟡 Doing | 在不引入过早复杂度的前提下，提升召回质量、抽取质量与系统稳定性。 | [P2 Growth Phase](02-milestones/02-growth-phase.md) |
 | P3 阶段三：规模化 | ⚪ Future | 按容量、性能、可用性和质量瓶颈触发升级，逐项演进到多引擎、多模态和可观测能力。 | [P3 Scale Phase](02-milestones/03-scale-phase.md) |
 
 ## 路线图规则
