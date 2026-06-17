@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from unittest.mock import AsyncMock, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.contexts.knowledge.application.ai_chat_service import AIChatService
 from app.contexts.knowledge.application.ai_chat_service import (
@@ -691,3 +692,36 @@ async def test_document_sources_group_by_file_and_skip_unattributed_graph() -> N
     assert len(doc.chunks) == 2
     assert doc.evidence_indices == [2, 3]
     assert all(chunk.chunk_id is not None for chunk in doc.chunks)
+
+
+async def test_ai_chat_service_continues_when_one_channel_fails() -> None:
+    """REQ-017 Slice 3: one channel raising does not break the entire answer."""
+    fid = uuid.uuid4()
+    chunk = _chunk_evidence(fid, 1, score=0.9, content="Python 基本数据类型包括整数和浮点数。" * 10)
+
+    # Working chunk retriever
+    good_retriever = FakeChunkRetriever()
+    good_retriever.return_value = [chunk]
+
+    # Graph retriever that always raises — channel-level degradation
+    async def graph_raises(*args: Any, **kwargs: Any) -> list[EvidenceItem]:
+        raise RuntimeError("graph channel down")
+
+    failing_graph: Any = MagicMock()
+    failing_graph.retrieve = graph_raises
+
+    service = AIChatService(
+        chunk_retriever=good_retriever,
+        graph_retriever=failing_graph,
+        metadata_filter=FakeMetadataFilter(),
+        evidence_fusion=SimpleFrequencyFusion(),
+    )
+    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+        result = await service.chat(
+            ServiceChatRequest(message="Python 基本数据类型有哪些？", context_window=3),
+            session=_session_for_file(fid),  # type: ignore[arg-type]
+        )
+
+    # Should still get a valid response despite graph channel failure
+    assert len(result.sources) == 1
+    assert result.sources[0].evidence_id == chunk.evidence_id
