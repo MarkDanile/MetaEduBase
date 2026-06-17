@@ -21,7 +21,6 @@
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
 | [REQ-018](../01-product-planning/05-requirements/REQ-018-p2-four-channel-graph-edge-recall.md) P2 4 通道并行召回与图谱关系召回 | 🟣 Shaping | P0 | RAG / Graph / AI Chat / P2 | 建议下一步优先塑形 spec/plan：确认独立 `knowledge_edges` recall 如何回源 chunk / section。 |
-| [REQ-017](../01-product-planning/05-requirements/REQ-017-p2-rrf-weighted-fusion.md) P2 RRF / Weighted RRF 融合排序收口 | 🟣 Shaping | P0 | RAG / Ranking / AI Chat / P2 | RRF 已默认接入；在 REQ-018 边界明确后进入 spec/plan，重点补 weighted 配置、4 通道排序验收和真实样例回归。 |
 | [REQ-016](../01-product-planning/05-requirements/REQ-016-p2-llm-hybrid-ner-query-understanding.md) P2 LLM 混合 NER / Query Understanding | 🟣 Shaping | P0 | NER / Query Understanding / AI Chat / P2 | 在 trace / 召回 / 排序基线清楚后推进，优先定义 schema、触发条件和真实问法回归。 |
 
 ## 最近完成
