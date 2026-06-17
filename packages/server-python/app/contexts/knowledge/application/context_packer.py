@@ -335,7 +335,10 @@ class ContextPacker:
                     content=row.get("content", ""),
                     channels=ev.channels,
                     score=ev.score,
-                    is_toc_like=False,
+                    is_toc_like=is_toc_like_chunk(
+                        row.get("section_title") or "",
+                        row.get("content", ""),
+                    ),
                     expansion_type="neighbor",
                 ))
 
@@ -424,7 +427,10 @@ class ContextPacker:
                     content=row.get("content", ""),
                     channels=ev.channels,
                     score=ev.score,
-                    is_toc_like=False,
+                    is_toc_like=is_toc_like_chunk(
+                        row.get("section_title") or "",
+                        row.get("content", ""),
+                    ),
                     expansion_type="neighbor",
                 ))
 

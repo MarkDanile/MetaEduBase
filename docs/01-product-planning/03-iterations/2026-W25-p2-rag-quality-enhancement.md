@@ -11,8 +11,8 @@ Goal: 在 REQ-012 多路 evidence 骨架之上，补齐召回后上下文组装�
 | REQ-013 | REQ | 🟢 Done | RAG Context Packer 与回答 grounding 增强 | PR #305 已合并；命中 chunk 后按相邻 chunk / 同 section 组装 prompt。真实 PG 样例与最终 grounding 验收转入 REQ-014。 |
 | BUG-007 | BUG | 🔵 Ready | pdf_parser sections path 错乱 | 修复 section path 计算，降低后续 section expansion 依赖坏 metadata 的风险。 |
 | REQ-014 | REQ | 🟢 Done | RAG 真实 PG 样例、数据回填与回答 grounding 验收 | PR #308 squash merge：spec + plan + 一次性验收脚本 + 占位报告 + 跨事实源同步。follow-up：下个 PR 跑真 PG |
-| REQ-015 | REQ | 🟣 待验证 | RAG 生产链路 grounding 与真实验收收口 | 真 dev DB + 后端 + dev JWT 已跑；样例数据完整但 prompt 前 context 仍未拿到 Python 正文，不能关闭。 |
-| BUG-009 | BUG | 🔵 Ready | AI Chat 真实 PG 链路未把相关正文 chunk 送入 prompt | 修共享 `AsyncSession` 并发、RRF 阈值、目录/简介降权和正文 chunk 升权；修后再跑 REQ-015 样例。 |
+| REQ-015 | REQ | 🟣 待验证 | RAG 生产链路 grounding 与真实验收收口 | BUG-009 修复后真 dev DB prompt 前 context 已拿到 Python 正文；用户授权后完整 DeepSeek ask 已通过，等待 BUG-009 PR 合并后关闭。 |
+| BUG-009 | BUG | 🟡 Doing | AI Chat 真实 PG 链路未把相关正文 chunk 送入 prompt | 已修共享 `AsyncSession` 并发、RRF 阈值、lexical supplement 排序和邻居 TOC 识别；prompt 前和完整 ask 真实验收均通过，等待 PR 合并。 |
 
 ## Out of Scope
 
@@ -28,5 +28,5 @@ Goal: 在 REQ-012 多路 evidence 骨架之上，补齐召回后上下文组装�
 | section metadata 近期仍有 path 错乱问题 | Context Packer 首版必须有 chunk_index fallback，不能强依赖 section_path | BUG-007 / REQ-013 |
 | REQ-013 / BUG-007 合并后仍缺真实 PG 样例 backfill | 当前需要把机制测试推进到真实样例和最终回答验收 | REQ-014 |
 | REQ-014 只完成 tooling，生产链路仍缺 ContextPacker 注入和 diagnostics | 当前需要把机制真正接入默认 AI Chat endpoint，并让脚本能读到 trace | REQ-015 |
-| REQ-015 真实样例截停在 prompt 前仍缺正文 chunk | 当前瓶颈不是 LLM，而是检索编排、RRF 阈值和 fallback 排序 | BUG-009 |
+| REQ-015 真实样例截停在 prompt 前仍缺正文 chunk | BUG-009 已把瓶颈收口：`fusion_topN[1]` 命中 `数据类型和变量` 正文，packed context 含基本类型证据，完整 DeepSeek ask 回答正确 | BUG-009 待 PR 合并 |
 | P2 已有 PostgreSQL tsvector 基础 | 当前先用既有 PostgreSQL 能力提升质量，不急于换 ES / Milvus / Neo4j | P2-SEARCH / REQ-013；P2-RRF 仍留在里程碑 Open Items，待真实瓶颈明确后再映射稳定任务编号 |

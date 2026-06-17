@@ -89,7 +89,13 @@ async def test_embedding_empty_falls_back_to_ilike_keyword() -> None:
     # 降级路径必须明确 channels 含 keyword
     assert "keyword" in item.channels
     # 降级 path 在 metadata 里记录 search_mode 以便后续审计
-    assert item.metadata.get("search_mode") in {"ilike_fallback", "tsvector"}
+    assert item.metadata.get("search_mode") in {"lexical", "hybrid", "tsvector"}
+    assert any("toc_penalty" in stmt for stmt in session.statements)
+    assert any("lexical_score" in stmt for stmt in session.statements)
+    assert any(
+        "ORDER BY toc_penalty ASC, lexical_score DESC" in stmt
+        for stmt in session.statements
+    )
 
 
 async def test_embedding_empty_logs_warning(caplog) -> None:

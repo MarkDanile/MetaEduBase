@@ -15,7 +15,6 @@ BUG-003 (AC-2/AC-3) — 当 `get_embedding` 返回 None（API key 缺失 / 限�
 from __future__ import annotations
 
 import logging
-import re
 import uuid
 
 from sqlalchemy import text
@@ -23,24 +22,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.knowledge.application.embedding_service import get_embedding
 from app.contexts.knowledge.domain.evidence import EvidenceItem
+from app.contexts.knowledge.infrastructure.retrievers.keyword_query import (
+    bind_keyword_params,
+    ilike_conditions,
+    lexical_score_sql,
+    merge_ranked_rows,
+    toc_penalty_sql,
+    tokenize_query,
+)
 from app.shared.domain.ner_pipeline import NERResult
 
 logger = logging.getLogger(__name__)
 
 
-# 与 `PgChunkKeywordRetriever._tokenize` 同一分词策略；保留本地副本避免
-# 引入 `infrastructure → application` 反向依赖。后续如统一分词策略，把
-# 这一段迁到 `app/shared/domain/` 共享。
 def _tokenize(query: str) -> list[str]:
-    raw_words = re.split(r"[，。？、！\s,?.!]+", query[:80])
-    keywords: list[str] = []
-    for w in raw_words:
-        if len(w) >= 2:
-            keywords.append(w)
-        if len(w) > 6:
-            for i in range(0, len(w) - 1, 2):
-                keywords.append(w[i:i + 4])
-    return list(dict.fromkeys(keywords))[:8]
+    return tokenize_query(query)
 
 
 class PgChunkVectorRetriever:
@@ -128,6 +124,9 @@ class PgChunkVectorRetriever:
 
         tsquery = " ".join(keywords)
         params: dict = {"tid": tenant_id, "query": tsquery, "lim": top_k}
+        param_names = bind_keyword_params(keywords, params)
+        lexical_score = lexical_score_sql(param_names)
+        toc_penalty = toc_penalty_sql()
 
         if file_filter:
             placeholders = ", ".join(f":f{i}" for i in range(len(file_filter)))
@@ -154,51 +153,62 @@ class PgChunkVectorRetriever:
                 ") "
                 "SELECT c.id, c.file_id, c.chunk_index, c.content, "
                 "c.section_title, c.section_path, "
-                "ts_rank_cd(c.content_tsvector::tsvector, keyword_query.query) AS keyword_rank "
+                "ts_rank_cd(c.content_tsvector::tsvector, keyword_query.query) AS keyword_rank, "
+                f"{lexical_score} AS lexical_score, "
+                f"{toc_penalty} AS toc_penalty "
                 "FROM metaedu.document_chunks c, keyword_query "
                 "WHERE c.tenant_id = :tid "
                 "AND c.content_tsvector IS NOT NULL "
                 "AND numnode(keyword_query.query) > 0 "
                 "AND c.content_tsvector::tsvector @@ keyword_query.query "
                 f"{file_where} "
-                "ORDER BY keyword_rank DESC, c.chunk_index LIMIT :lim"
+                "ORDER BY toc_penalty ASC, lexical_score DESC, keyword_rank DESC, "
+                "c.chunk_index LIMIT :lim"
             ),
             params,
         )
         rows = list(result.mappings().all())
-        if rows:
-            return self._to_evidence_items(rows, search_mode="tsvector")
 
         fallback_params = {**params}
-        ilike_conditions: list[str] = []
-        for i, kw in enumerate(keywords):
-            fallback_params[f"kw{i}"] = f"%{kw}%"
-            ilike_conditions.append(
-                f"(c.content ILIKE :kw{i} OR COALESCE(c.section_title, '') ILIKE :kw{i})"
-            )
+        fallback_param_names = bind_keyword_params(keywords, fallback_params)
+        fallback_conditions = ilike_conditions(fallback_param_names)
+        fallback_lexical_score = lexical_score_sql(fallback_param_names)
+        fallback_toc_penalty = toc_penalty_sql()
         fallback_result = await session.execute(
             text(
                 "SELECT c.id, c.file_id, c.chunk_index, c.content, "
-                "c.section_title, c.section_path, 0.0 AS keyword_rank "
+                "c.section_title, c.section_path, 0.0 AS keyword_rank, "
+                f"{fallback_lexical_score} AS lexical_score, "
+                f"{fallback_toc_penalty} AS toc_penalty "
                 "FROM metaedu.document_chunks c "
                 "WHERE c.tenant_id = :tid "
-                f"AND ({' OR '.join(ilike_conditions)}) "
+                f"AND ({' OR '.join(fallback_conditions)}) "
                 f"{file_where} "
-                "ORDER BY c.chunk_index LIMIT :lim"
+                "ORDER BY toc_penalty ASC, lexical_score DESC, c.chunk_index LIMIT :lim"
             ),
             fallback_params,
         )
+        lexical_rows = list(fallback_result.mappings().all())
+        if rows or lexical_rows:
+            merged = merge_ranked_rows(rows, lexical_rows, limit=top_k)
+            return self._to_evidence_items(merged)
+
         return self._to_evidence_items(
-            list(fallback_result.mappings().all()),
+            lexical_rows,
             search_mode="ilike_fallback",
         )
 
     @staticmethod
-    def _to_evidence_items(rows: list[dict], *, search_mode: str) -> list[EvidenceItem]:
+    def _to_evidence_items(
+        rows: list[dict],
+        *,
+        search_mode: str | None = None,
+    ) -> list[EvidenceItem]:
         items: list[EvidenceItem] = []
         for idx, row in enumerate(rows):
             content = row["content"] or ""
             keyword_rank = float(row.get("keyword_rank") or 0.0)
+            row_search_mode = search_mode or row.get("_search_mode") or "unknown"
             items.append(
                 EvidenceItem(
                     evidence_id="",
@@ -214,7 +224,9 @@ class PgChunkVectorRetriever:
                         "section_path": row["section_path"],
                         "chunk_index": row["chunk_index"],
                         "keyword_rank": keyword_rank,
-                        "search_mode": search_mode,
+                        "lexical_score": float(row.get("lexical_score") or 0.0),
+                        "toc_penalty": int(row.get("toc_penalty") or 0),
+                        "search_mode": row_search_mode,
                         "embedding_fallback": True,
                     },
                 )

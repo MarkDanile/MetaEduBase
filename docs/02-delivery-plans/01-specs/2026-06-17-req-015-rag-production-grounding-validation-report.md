@@ -31,6 +31,30 @@
 
 结论：当前失败发生在 LLM 之前，不是“模型不聪明”。真实数据可用，但生产检索编排、RRF 阈值和 fallback 排序仍会让 prompt 缺正文证据；已登记 [BUG-009](../../01-product-planning/05-requirements/BUG-009-ai-chat-rag-retrieval-context-pipeline-real-pg-failure.md)。
 
+### BUG-009 修复后复测（2026-06-17）
+
+本节记录 BUG-009 当前分支上的 prompt 前截停验收，不发送 dev DB 文档切片到外部 LLM。
+
+| 检查项 | 结果 | 证据 |
+|--------|------|------|
+| 共享 `AsyncSession` 并发错误 | ✅ 已消除 | `AIChatService` 先跑 chunk 再跑 graph；`CompositeChunkRetriever` 先跑 vector 再跑 keyword。真实 dev DB 截停验证未再出现 `concurrent operations are not permitted`。 |
+| RRF evidence 保留 | ✅ | `RRFFusion` 标记 `score_semantics="rank"`；`min_evidence_score=0.3` 不再过滤 rank 分数。真实 fusion topN 保留分数约 `0.04` 的 evidence。 |
+| “Python 基本数据类型”topN | ✅ | `fusion_topN[1]` 为 chunk 54 `数据类型和变量`，snippet 含“在Python中，能够直接处理的数据类型有以下几种”。 |
+| packed context 正文证据 | ✅ | packed blocks 包含 chunk 54 / 55 / 61 / 64 相邻或同 section 正文，prompt 命中“能够直接处理的数据类型有以下几种”、浮点数、布尔值。 |
+| 文档级来源 | ✅ | `document_sources[0]` 为 `Python教程-廖雪峰-2025-06-16.pdf`，evidence indices 包含 `[1, 2, 3, 4, 5]`。 |
+| LLM provider 连通性 | ✅ | Resolver 当前选择 `deepseek / deepseek-v4-pro`；无业务内容 `请只回复 OK` 连通性测试返回 `OK`。 |
+| 完整外部 ask | ✅ | 用户明确授权后，当前分支临时后端 `127.0.0.1:8012` 跑真实 HTTP ask；登录 HTTP 200，AI Chat HTTP 200。回答包含整数 `int`、浮点数 `float`、字符串 `str`、布尔值 `bool`、空值 `None`，并带引用；未出现“未找到足够参考来源”。 |
+
+完整 ask 摘要：
+
+- Query：`Python 的 基本数据类型有哪些？`
+- Provider：`DeepSeek / deepseek-v4-pro`
+- HTTP：login `200`；`POST /api/v1/ai/chat/evidence` `200`
+- `sources`：11
+- `document_sources[0]`：`Python教程-廖雪峰-2025-06-16.pdf`
+- `fusion_topN[1]`：chunk 54 `数据类型和变量`
+- 回答摘录：列出整数 `int`、浮点数 `float`、字符串 `str`、布尔值 `bool`、空值 `None`，并说明列表、字典等更复杂数据类型。
+
 ## 3. BUG-007 真 PG reparse 复测
 
 | file_id | label | section_count | empty_path | abnormal_path | chinese_title | 结论 |
@@ -54,15 +78,16 @@
 | 现象 | 归因 | 新 REQ / BUG / TD |
 |------|------|-------------------|
 | “python 的基本数据类型有哪些？”真实样例仍无法在 prompt 前拿到正文 chunk | 生产检索编排共享 `AsyncSession` 并发失败；RRF 分数被旧绝对阈值清空；keyword fallback 目录 / 简介优先 | [BUG-009](../../01-product-planning/05-requirements/BUG-009-ai-chat-rag-retrieval-context-pipeline-real-pg-failure.md) |
-| 外部 LLM 真实 `ask` 未执行 | 会把 dev DB 文档切片和 prompt context 发送到第三方 LLM provider，需要用户显式批准 | 暂不新增任务；修 BUG-009 后按需人工批准重跑 |
+| 初次验收未执行外部 LLM 真实 `ask` | 会把 dev DB 文档切片和 prompt context 发送到第三方 LLM provider，需要用户显式批准 | 修 BUG-009 后，用户明确授权完整 ask，结果已通过 |
+| BUG-009 修复后 prompt 前链路已恢复 | 检索编排、RRF 阈值、lexical supplement 排序和邻居 TOC 识别已修；真实 dev DB prompt 前验收通过 | 用户明确授权后完整外部 ask 已通过 |
 
 ## 6. AC 收口
 
 | AC | 状态 | 证据 |
 |----|------|------|
 | AC-1 | ✅ | 见报告对应章节 |
-| AC-2 | ❌（prompt 前截停失败） | 见报告第 2 节 |
-| AC-3 | ⏳（外部 LLM 未授权运行） | 见报告第 2 节 |
+| AC-2 | ✅（BUG-009 修复后 prompt 前截停通过） | 见报告第 2 节 BUG-009 修复后复测 |
+| AC-3 | ✅（外部 LLM 已获用户授权并跑通） | 见报告第 2 节 |
 | AC-4 | ✅ | 见报告对应章节 |
 | AC-5 | ⏳（含手动或复用 bug007 子项） | 见报告对应章节 |
 | AC-6 | ✅（已归因并登记 BUG-009） | 见报告第 5 节 |

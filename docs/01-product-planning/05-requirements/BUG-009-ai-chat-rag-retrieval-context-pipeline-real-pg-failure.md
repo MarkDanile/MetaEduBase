@@ -1,10 +1,17 @@
 # BUG-009: AI Chat 真实 PG 链路未把相关正文 chunk 送入 prompt
 
-Status: 🔵 Ready
+Status: 🟡 Doing
 Priority: P0
 Milestone: P2
 Source: REQ-015 真实 dev DB 验收
 Related: REQ-012 / REQ-013 / REQ-014 / REQ-015 / BUG-003 / P2-SEARCH / P2-RRF
+
+## Delivery Record
+
+| Date | What | Details |
+|------|------|---------|
+| 2026-06-17 | Retrieval pipeline fix + prompt-before-LLM validation | 修复共享 `AsyncSession` 并发召回、RRF rank 分数被旧绝对阈值清空、keyword / vector fallback 只在 tsvector 为空时才补 lexical 候选、邻居目录块未识别等问题。真实 dev DB 截停验收：`fusion_topN[1]` 为 chunk 54 `数据类型和变量`，packed context 含“能够直接处理的数据类型有以下几种”、浮点数与布尔值；`PROMPT_HAS_BASIC_TYPES=True`。LLM provider resolver 当前选 `deepseek / deepseek-v4-pro`，无业务内容 `OK` 连通性测试通过。 |
+| 2026-06-17 | Full external ask validation authorized by user | 用户明确授权将本次 dev DB 检索切片和 prompt context 发送给 `DeepSeek / deepseek-v4-pro` 做 BUG-009 真实 ask 验收。临时启动当前分支后端 `127.0.0.1:8012`，登录 + `POST /api/v1/ai/chat/evidence` 均返回 HTTP 200。回答不再出现“未找到足够参考来源”，包含整数 `int`、浮点数 `float`、字符串 `str`、布尔值 `bool`、空值 `None`，并带 `[1]` / `[2]` 引用；`sources=11`，`document_sources[0]` 为 `Python教程-廖雪峰-2025-06-16.pdf`。 |
 
 ## Problem
 
@@ -35,7 +42,16 @@ REQ-015 不外发 LLM 的 prompt 前截停验收结论：
 - 顺序检索对照中，keyword fallback 可返回结果，但排序优先命中目录 / 简介 chunk；chunk 54 / 55 / 61 未进入 top 8。
 - `ContextPacker` 只能围绕错误命中扩展，最终 `PROMPT_HAS_BASIC_TYPES=False`。
 
-外部 LLM 调用本次未执行：真实调用会把 dev DB 文档切片和 prompt context 发送到外部 LLM provider，需要用户显式批准后单独跑。
+REQ-015 初次验收阶段未执行外部 LLM 调用：真实调用会把 dev DB 文档切片和 prompt context 发送到外部 LLM provider，需要用户显式批准后单独跑；修复后完整 ask 已在用户明确授权下通过。
+
+修复后复测结论：
+
+- 生产编排同款 service + 真实 dev DB + fake LLM 截停：不再出现共享 `AsyncSession` 并发查询错误。
+- `RRFFusion` 默认路径保留 rank 分数 evidence，不再被 `min_evidence_score=0.3` 清空。
+- keyword / vector fallback 采用 tsvector + lexical supplement 合并排序；“Python 的 基本数据类型有哪些？”top1 命中 chunk 54 `数据类型和变量`。
+- packed context / prompt preview 包含“在Python中，能够直接处理的数据类型有以下几种”、浮点数、布尔值等正文证据。
+- `document_sources` 按文档聚合，来源包含 `Python教程-廖雪峰-2025-06-16.pdf`。
+- LLM provider 连通性用无业务内容 `OK` 测通；完整外部 `ask` 经用户明确授权后已跑通。
 
 ## Scope
 
@@ -69,6 +85,8 @@ REQ-015 不外发 LLM 的 prompt 前截停验收结论：
 
 - 真实 dev DB + 后端服务 + dev JWT。
 - 不外发 LLM 的 prompt 前截停验收：记录 query、各通道 topN、RRF topN、packed blocks、prompt preview。
+- 无业务内容 LLM provider 连通性测试：`deepseek / deepseek-v4-pro` 返回 `OK`。
+- 完整外部 `ask`：用户明确授权后已运行；HTTP 200，回答包含基本数据类型列表、引用和文档来源，不再兜底为“未找到足够参考来源”。
 - 相关后端 pytest。
 - `scripts/check-engineering-docs`
 - `git diff --check`
