@@ -16,13 +16,12 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
+| REQ-018 P2 4 通道并行召回与图谱关系召回 | 🔵 Ready | P0 | RAG / Graph / AI Chat | Shaping 完成：spec + plan 已产出（[Spec](../02-delivery-plans/01-specs/2026-06-18-req-018-p2-four-channel-graph-edge-recall.md) / [Plan](../02-delivery-plans/02-plans/2026-06-18-req-018-p2-four-channel-graph-edge-recall-plan.md) / [PR #332](https://github.com/MarkDanile/MetaEduBase/pull/332)）。Slice 1 等待开工。 | Slice 1：PgEdgeRetriever 骨架 + recall channel contract | — |
 | REQ-017 RRF / Weighted RRF 融合排序收口 | 🟡 进行中 | P0 | RAG / Ranking / AI Chat | Slice 1-3 PR #325 已合并：配置入口 + fusion diagnostics + 通道降级。Slice 4（真实 PG 样例 RRF 排序分析）待 REQ-015 PG 环境 backfill | Slice 4：RRF 排序分析脚本；依赖 REQ-015 真实 PG 环境 | 待 REQ-015 backfill |
 
 ## 下一批候选任务
 
-| 任务 | 状态 | 优先级 | 领域 | 下一步 |
-|------|------|--------|------|--------|
-| REQ-018 P2 4 通道并行召回与图谱关系召回 | 🟣 Shaping | P0 | RAG / Graph / AI Chat / P2 | 建议下一步优先塑形 spec/plan |
+（暂无）
 
 ## 最近完成
 
