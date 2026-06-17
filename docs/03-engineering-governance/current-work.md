@@ -14,7 +14,23 @@
 
 ## 当前进行中
 
-暂无当前进行中任务。
+### BUG-010: AI Chat 自然问法未稳定命中函数参数正文 chunk
+
+状态：🟡 进行中
+类型：BUG
+领域：Backend / RAG / AI Chat / P2
+当前执行模式：bug fix
+最近接手工具：Codex
+分支：fix/bug-010-query-normalizer
+
+需求来源：
+- Requirement: [BUG-010](../01-product-planning/05-requirements/BUG-010-ai-chat-query-normalizer-function-parameter-question.md)
+- Milestone: [P2 增长期](../01-product-planning/02-milestones/02-growth-phase.md)
+
+当前进展：已实现确定性 query normalizer + 函数参数术语拆分：A 问法稳定产出 `python / 函数参数 / 函数 / 参数 / 默认参数 / 可变参数 / 关键字参数 / 命名关键字参数 / 参数组合`，并去除 `帮我 / 关于函数参数方面 / 知识` 噪声；B 问法保留 `python / 函数 / 参数`。
+下一步：跑工程文档门禁和提交前检查；PR 合并前保持进行中。
+验证状态：`packages/server-python/.venv/bin/python -m pytest packages/server-python/tests/contexts/knowledge/retrievers/test_pg_chunk_keyword_retriever.py -q` → 8 passed；BUG-009 相关聚焦回归 → 53 passed；ruff focused files → passed。
+交接备注：本任务是 P2-NER 之前的确定性小切片，不关闭 P2 里程碑里的 LLM 混合 NER 规划项。
 
 ## 下一批候选任务
 
