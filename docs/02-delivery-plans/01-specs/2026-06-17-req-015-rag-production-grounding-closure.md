@@ -1,7 +1,7 @@
 # REQ-015 RAG 生产链路 grounding 与真实验收收口 — Spec
 
 Requirement: `docs/01-product-planning/05-requirements/REQ-015-rag-production-grounding-closure.md`
-Status: 🟡 Doing
+Status: 🟢 Done
 
 ## Goal
 

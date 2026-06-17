@@ -14,50 +14,13 @@
 
 ## 当前进行中
 
-### REQ-015: RAG 生产链路 grounding 与真实验收收口
-
-状态：🟣 待验证
-类型：REQ
-领域：Backend / RAG / AI Chat / P2
-当前执行模式：plan-do
-最近接手工具：Codex
-分支：codex/req-015-real-dev-validation
-
-需求来源：
-- Requirement: [REQ-015](../01-product-planning/05-requirements/REQ-015-rag-production-grounding-closure.md)
-- Spec: [2026-06-17-req-015-rag-production-grounding-closure.md](../02-delivery-plans/01-specs/2026-06-17-req-015-rag-production-grounding-closure.md)
-- Plan: [2026-06-17-req-015-rag-production-grounding-closure-plan.md](../02-delivery-plans/02-plans/2026-06-17-req-015-rag-production-grounding-closure-plan.md)
-- Milestone: [P2 增长期](../01-product-planning/02-milestones/02-growth-phase.md)
-
-当前进展：代码与本地可验证项已收口；真实 dev DB + 后端服务 + dev JWT 非外发验收已跑，样例数据完整，BUG-006 / BUG-007 真 PG 复测脚本可运行。BUG-009 已修复 prompt 前证据链：`fusion_topN[1]` 命中 Python 教程 chunk 54 `数据类型和变量`，packed context 含基本数据类型正文。用户明确授权后，完整 DeepSeek ask 已通过。
-下一步：完成 BUG-009 提交、PR、合并；合并后再按事实源收口 REQ-015。
-验证状态：已运行 `packages/server-python/.venv/bin/python -m pytest packages/server-python/tests/contexts/ai/test_ai_chat_router_req015.py packages/server-python/tests/contexts/knowledge/test_evidence_fusion.py packages/server-python/tests/contexts/knowledge/test_context_packer.py packages/server-python/tests/contexts/knowledge/test_ai_chat_service.py -q` → 40 passed；`packages/server-python/.venv/bin/python -m pytest packages/server-python/tests/contexts/ai/test_ai_chat.py -q`（允许连接本机 PG）→ 5 passed；真实 dev DB：`validate_real_pg_rag.py backfill/bug007/bug006/report` → exit 0；BUG-009 修复后 prompt 前截停验收：`PROMPT_HAS_BASIC_TYPES=True`、`PROMPT_HAS_CHUNK_54_CONTENT=True`、`PROMPT_HAS_BOOL_CONTENT=True`。LLM provider 无业务内容连通性：DeepSeek 返回 `OK`。用户授权后完整外部 ask：login HTTP 200，`POST /api/v1/ai/chat/evidence` HTTP 200，回答包含 `int` / `float` / `str` / `bool` / `None` 与引用，不再兜底“未找到足够参考来源”。
-交接备注：不要把 REQ-015 翻 🟢 完成；等待 BUG-009 PR 合并后统一关闭。
-
-### BUG-009: AI Chat 真实 PG 链路未把相关正文 chunk 送入 prompt
-
-状态：🟡 进行中
-类型：BUG
-领域：Backend / RAG / AI Chat / P2
-当前执行模式：plan-do
-最近接手工具：Codex
-分支：codex/bug-009-rag-context-pipeline
-
-需求来源：
-- Requirement: [BUG-009](../01-product-planning/05-requirements/BUG-009-ai-chat-rag-retrieval-context-pipeline-real-pg-failure.md)
-- Blocker of: [REQ-015](../01-product-planning/05-requirements/REQ-015-rag-production-grounding-closure.md)
-- Milestone: [P2 增长期](../01-product-planning/02-milestones/02-growth-phase.md)
-
-当前进展：已修共享 `AsyncSession` 并发召回、RRF rank 分数过滤、keyword / vector fallback 的 lexical supplement 排序、邻居 TOC 识别。真实 dev DB prompt 前截停验收已确认 `fusion_topN[1]` 命中 chunk 54 `数据类型和变量`，packed context 含整数 / 浮点数 / 字符串 / 布尔值证据。用户明确授权后，完整 DeepSeek ask 已通过。
-下一步：提交、创建 PR、合并 main；PR merge 后再把 BUG-009 翻 🟢 完成。
-验证状态：50 个后端聚焦测试通过；ruff 通过；`scripts/check-engineering-docs` 通过；`git diff --check` 通过；真实 dev DB prompt 前截停通过；DeepSeek provider 无业务内容连通性返回 `OK`；完整外部 ask HTTP 200，回答包含基本数据类型列表、引用和文档级来源。
-交接备注：本次外部 ask 已基于用户显式授权执行；后续新增真实外发样例仍需重新确认授权边界。
+暂无当前进行中任务。
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 |
 |------|------|--------|------|--------|
-| 暂无 | - | - | - | 先完成当前 BUG-009 与 REQ-015 验收闭环。 |
+| 暂无 | - | - | - | 待用户选择下一项任务。 |
 
 ## 最近完成
 
@@ -67,6 +30,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-17 | REQ-015 RAG 生产链路 grounding 与真实验收收口 | 🟢 完成 | PR #314 merge `4d78667`：生产 RAG 默认链路、真实 dev DB、授权 DeepSeek ask 与状态事实源已收口 | [REQ-015](../01-product-planning/05-requirements/REQ-015-rag-production-grounding-closure.md) / [PR #314](https://github.com/MarkDanile/MetaEduBase/pull/314) |
+| 2026-06-17 | BUG-009 AI Chat 真实 PG 链路未把相关正文 chunk 送入 prompt | 🟢 完成 | PR #314 merge `4d78667`：修 AsyncSession 顺序检索、RRF 阈值、lexical supplement 排序和 TOC 邻居识别 | [BUG-009](../01-product-planning/05-requirements/BUG-009-ai-chat-rag-retrieval-context-pipeline-real-pg-failure.md) / [PR #314](https://github.com/MarkDanile/MetaEduBase/pull/314) |
 | 2026-06-17 | BUG-008 Context Packer 引入 structlog 依赖但 pyproject 未声明 | 🟢 完成 | PR #310 merge `65c67f58`：pyproject + `structlog>=24.1.0`；478 pytest 0 业务代码回归 | [BUG-008](../01-product-planning/05-requirements/BUG-008-context-packer-structlog-dep-missing.md) / [PR #310](https://github.com/MarkDanile/MetaEduBase/pull/310) |
 | 2026-06-16 | REQ-014 RAG 真实 PG 样例、数据回填与回答 grounding 验收 | 🟢 完成 | PR #308 merge `86f2f05`：spec + plan + 5-子命令验收脚本 + 占位报告 | [REQ-014](../01-product-planning/05-requirements/REQ-014-rag-real-pg-grounding-and-data-backfill-validation.md) / [PR #308](https://github.com/MarkDanile/MetaEduBase/pull/308) |
 | 2026-06-16 | REQ-013 RAG Context Packer 与回答 grounding 增强 | 🟢 完成 | PR #305 squash merge：context_packer.py 新建、neighbor/section/graph expansion、TOC guard、prompt builder 接入；17 mock tests 100% pass。Slice 5 真实 PG 样例待 backfill。 | [REQ-013](../01-product-planning/05-requirements/REQ-013-rag-context-packer-and-grounded-answering.md) / [Spec](../02-delivery-plans/01-specs/2026-06-16-req-013-rag-context-packer.md) / [PR #305](https://github.com/MarkDanile/MetaEduBase/pull/305) |

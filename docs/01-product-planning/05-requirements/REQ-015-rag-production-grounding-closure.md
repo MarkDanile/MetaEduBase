@@ -1,6 +1,6 @@
 # REQ-015: RAG 生产链路 grounding 与真实验收收口
 
-Status: 🟣 待验证
+Status: 🟢 Done
 Priority: P0
 Milestone: P2
 Parent: REQ-013 / REQ-014
@@ -15,6 +15,7 @@ External:
 | 2026-06-17 | Real dev validation without external LLM | 已启动真实 dev DB、后端服务，并用开发账号获取真实 JWT。`backfill` / `bug007` / `bug006` / `report` 非外发验收通过运行，报告见 [REQ-015 validation report](../../02-delivery-plans/01-specs/2026-06-17-req-015-rag-production-grounding-validation-report.md)。截停在 LLM 前的真实链路发现：样例数据完整，但生产编排仍未把 Python 数据类型正文 chunk 放入 prompt；根因分流到 [BUG-009](BUG-009-ai-chat-rag-retrieval-context-pipeline-real-pg-failure.md)。外部 LLM 调用会发送 dev 文档内容到第三方 provider，本次因安全风险未执行，需用户显式批准。 |
 | 2026-06-17 | BUG-009 prompt-before-LLM fix validated | BUG-009 已修复检索编排与排序：真实 dev DB 截停验收中 `fusion_topN[1]` 命中 chunk 54 `数据类型和变量`，packed context 含“能够直接处理的数据类型有以下几种”、浮点数与布尔值；`document_sources` 聚合到 Python 教程文档。LLM provider resolver 选 `deepseek / deepseek-v4-pro`，无业务内容 `OK` 连通性测试通过。 |
 | 2026-06-17 | Full external ask authorized and passed | 用户明确授权后，用当前分支临时后端 `127.0.0.1:8012` 跑真实 HTTP ask：登录 HTTP 200，`/api/v1/ai/chat/evidence` HTTP 200。DeepSeek 回答列出整数 `int`、浮点数 `float`、字符串 `str`、布尔值 `bool`、空值 `None`，含引用，不再出现“未找到足够参考来源”。`fusion_topN[1]` 仍为 chunk 54 `数据类型和变量`，`document_sources[0]` 为 Python 教程。 |
+| 2026-06-17 | PR merged and facts closed | [PR #314](https://github.com/MarkDanile/MetaEduBase/pull/314) 已 squash merge，merge commit `4d78667`；Backlog / Milestone / Iteration / current-work / work-log 已同步。 |
 
 ## Problem
 
