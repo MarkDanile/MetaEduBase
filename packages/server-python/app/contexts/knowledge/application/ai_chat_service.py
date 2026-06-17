@@ -100,6 +100,7 @@ class AIChatDiagnostics(BaseModel):
     packed_blocks: list[PackedBlockTraceItem] = Field(default_factory=list)
     prompt_preview: str = ""
     packed: dict[str, Any] = Field(default_factory=dict)
+    query_understanding: dict | None = None  # REQ-016 Slice 2
 
     model_config = {"extra": "forbid"}
 
@@ -631,6 +632,21 @@ class AIChatService:
         )
 
         context_text = self._build_prompt_context(packed)
+        # REQ-016 Slice 2: include query_understanding trace when available
+        qu = getattr(ner_result, "query_understanding", None)
+        query_understanding_diag: dict[str, Any] | None = None
+        if qu is not None:
+            query_understanding_diag = {
+                "method": qu.method,
+                "confidence": qu.confidence,
+                "normalized_query": qu.normalized_query,
+                "core_terms": qu.core_terms,
+                "expanded_terms": qu.expanded_terms,
+                "entities": qu.entities,
+                "filters": qu.filters,
+                "trigger_reason": getattr(ner_result, "trigger_reason", None),
+            }
+
         diagnostics_model = AIChatDiagnostics(
             query=request.message,
             retrieval_topn=retrieval_topn,
@@ -638,6 +654,7 @@ class AIChatService:
             packed_blocks=self._trace_packed_blocks(packed),
             prompt_preview=context_text[:1200],
             packed=packed.diagnostics.model_dump(mode="json"),
+            query_understanding=query_understanding_diag,
         )
         logger.info(
             "ai_chat_trace: %s",
