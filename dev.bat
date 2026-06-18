@@ -47,7 +47,7 @@ goto usage
         python -m venv "%SERVER_DIR%\.venv"
     )
     powershell -Command "Write-Host '[MetaEdu] Starting backend on port 8000...' -ForegroundColor Cyan"
-    start /b "" "%VENV_PY%" -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 > "%LOG_DIR%\backend.log" 2>&1
+    start /b "" cmd /c "cd /d "%SERVER_DIR% && "%VENV_PY%" -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 > "%LOG_DIR%\backend.log" 2>&1"
     for /l %%i in (1,1,20) do (
         curl -sf http://localhost:8000/api/v1/health >nul 2>&1
         if %errorlevel%==0 goto backend_ready
@@ -93,7 +93,7 @@ goto usage
         python -m venv "%SERVER_DIR%\.venv"
     )
     powershell -Command "Write-Host '[MetaEdu] Starting Celery Worker...' -ForegroundColor Cyan"
-    start /b "" "%VENV_PY%" -m celery -A app.celery_app worker --loglevel=info --pool=solo > "%LOG_DIR%\celery.log" 2>&1
+    start /b "" cmd /c "cd /d "%SERVER_DIR% && ""%VENV_PY%"" -m celery -A app.celery_app worker --loglevel=info --pool=solo 2>> ""%LOG_DIR%\celery.log"" 1>> ""%LOG_DIR%\celery.log"""
     powershell -Command "Write-Host '[OK] Celery Worker started' -ForegroundColor Green"
     exit /b 0
 

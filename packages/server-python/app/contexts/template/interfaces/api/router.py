@@ -1,8 +1,10 @@
-from contextlib import suppress
+import logging
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+
+_logger = logging.getLogger(__name__)
 
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.contexts.template.application.dto import (
@@ -62,17 +64,21 @@ async def init_template_by_ai(
     service: Annotated[TemplateService, Depends(get_template_service)],
     current_user: Annotated[dict, Depends(get_current_user)],
 ):
-    tenant_id = get_tenant_id()
-    source_file_uuid = UUID(dto.source_file_id) if dto.source_file_id else None
-    # get_tenant_id() may return UUID or str depending on context
-    tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
-    fields = await service.init_by_ai(dto.doc_type, source_file_uuid, tenant_uuid, dto.ai_context)
-    # Validate and convert to FieldDTO
-    validated = []
-    for f in fields:
-        with suppress(Exception):
-            validated.append(FieldDTO(**f))
-    return TemplateAIInitResponse(fields=validated)
+    try:
+        tenant_id = get_tenant_id()
+        source_file_uuid = UUID(dto.source_file_id) if dto.source_file_id else None
+        tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
+        fields = await service.init_by_ai(dto.doc_type, source_file_uuid, tenant_uuid, dto.ai_context)
+        validated = []
+        for f in fields:
+            try:
+                validated.append(FieldDTO(**f))
+            except Exception as e:
+                _logger.warning("FieldDTO validation failed for field=%r: %s", f, e)
+        return TemplateAIInitResponse(fields=validated)
+    except Exception as e:
+        _logger.error("init_template_by_ai unexpected error: %s", e, exc_info=True)
+        raise
 
 
 @router.post("", response_model=TemplateResponse, status_code=status.HTTP_201_CREATED)
