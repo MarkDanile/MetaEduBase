@@ -16,7 +16,6 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| DOC-072 工程规则阶段复盘与 follow-up 登记 | 🟡 进行中 | P0 | Governance / Rules / Review / Follow-up | 分支 `codex/rules-retro-followups`；正在复盘 DOC-057~DOC-071 后的规则执行效果，并登记规则收紧 follow-up | 完成复盘文档、Backlog 与候选区登记；运行文档门禁；提交 PR 并合并 | 待运行 |
 
 ## 下一批候选任务
 
@@ -34,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-18 | DOC-072 工程规则阶段复盘与 follow-up 登记 | 🟢 完成 | PR #352 squash merge `e776fb6`：复盘 DOC-057~DOC-071 后的规则执行效果，登记 DOC-073 门禁防绕过和 DOC-074 AI/RAG 完成态口径收紧，并放入工作台候选区 | [Retro](04-retrospectives/2026-06-18-rules-stage-retrospective.md) / [PR #352](https://github.com/MarkDanile/MetaEduBase/pull/352) |
 | 2026-06-18 | DOC-071 最近完成任务与 P2 里程碑评审收口 | 🟢 完成 | PR #350 squash merge `325ac35`：评审 DOC-069 后近期完成任务，重点复核 P2-SEARCH、BUG-009/010、REQ-016/017/018，修正 P2 状态漂移、补评分总账，并登记 REQ-024 作为 P2 真实验收补强 | [Review](04-retrospectives/2026-06-18-p2-recent-completion-review.md) / [REQ-024](../01-product-planning/05-requirements/REQ-024-p2-real-validation-query-understanding-and-graph-edge.md) / [PR #350](https://github.com/MarkDanile/MetaEduBase/pull/350) |
 | 2026-06-18 | REQ-023 登录页左侧品牌面大胆蓝色视觉加强 | 🟢 完成 | PR #345 squash merge `9d02ba6`：登录页左侧由轻浅蓝调整为深浅蓝品牌面，增加网格、斜向光带和底部圆弧层次；右侧表单和登录后工作区未扩散 | [REQ-023](../01-product-planning/05-requirements/REQ-023-bolder-login-brand-panel.md) / [PR #345](https://github.com/MarkDanile/MetaEduBase/pull/345) |
 | 2026-06-18 | REQ-022 登录页品牌氛围与工作区画布白灰层级优化 | 🟢 完成 | PR #343 squash merge `4c9d3a8`：登录页左侧增加浅蓝渐变、细网格和能力标签；登录后主工作区画布改为柔和白灰，卡片保持白色层级；前端 typecheck/lint/build + `/login` light smoke 通过 | [REQ-022](../01-product-planning/05-requirements/REQ-022-login-brand-and-workspace-canvas-polish.md) / [PR #343](https://github.com/MarkDanile/MetaEduBase/pull/343) |
