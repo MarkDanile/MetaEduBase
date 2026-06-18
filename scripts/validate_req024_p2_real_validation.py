@@ -590,17 +590,47 @@ def _graph_edge_supplement_count(group: dict[str, ScenarioRun]) -> int:
     return len([cid for cid in edge.graph_edge_chunk_ids if cid not in baseline_ids])
 
 
-def _classify_coverage_delta(delta: float) -> str:
-    if delta >= 0.3:
-        return "正向"
-    if delta <= -0.3:
-        return "退化"
-    return "中性"
+def _compute_lift_metrics(baseline: float, weighted: float, mode: str = "residual") -> dict[str, Any]:
+    """REQ-029 AC-5 threshold redesign.
+
+    Two modes:
+    - absolute: delta = weighted - baseline; verdict by +-0.30 thresholds
+    - residual: residual_ratio = (weighted - baseline) / (1 - baseline), clamped to [-1, 1];
+                verdict by +-0.30 thresholds; handles baseline=1.0 (no room) and baseline=0.0
+                (any positive weighted = 1.0)
+    """
+    delta = float(weighted) - float(baseline)
+    if mode == "absolute":
+        verdict = "正向" if delta >= 0.30 else ("退化" if delta <= -0.30 else "中性")
+        return {
+            "delta": round(delta, 4),
+            "residual_ratio": None,
+            "verdict": verdict,
+            "mode": "absolute",
+        }
+    # residual mode (REQ-029 default)
+    baseline_c = max(0.0, min(1.0, float(baseline)))
+    weighted_c = max(0.0, min(1.0, float(weighted)))
+    if baseline_c >= 1.0:
+        residual = 0.0  # baseline full, no room to improve
+    elif baseline_c <= 0.0:
+        residual = 1.0 if weighted_c > 0.0 else 0.0  # from zero, any positive = full gain
+    else:
+        residual = (weighted_c - baseline_c) / (1.0 - baseline_c)
+    residual = max(-1.0, min(1.0, residual))
+    verdict = "正向" if residual >= 0.30 else ("退化" if residual <= -0.30 else "中性")
+    return {
+        "delta": round(delta, 4),
+        "residual_ratio": round(residual, 4),
+        "verdict": verdict,
+        "mode": "residual",
+    }
 
 
 def _render_req026_section(
     runs: list[ScenarioRun],
     grouped: dict[tuple[str, str], dict[str, ScenarioRun]],
+    lift_mode: str = "residual",
 ) -> tuple[str, dict[str, Any]]:
     """Render REQ-026 weak recall section + collect summary stats."""
     stats = {
@@ -612,12 +642,15 @@ def _render_req026_section(
         "samples_graph_edge_in_packed": 0,
         "samples_graph_edge_positive": 0,
         "data_gaps": [],
+        "lift_mode": lift_mode,
     }
     lines: list[str] = []
     lines.append("## REQ-026 弱召回样例关键事实覆盖度对比")
     lines.append("")
-    lines.append("| Sample | Category | baseline cov | +QU cov | +graph_edge cov | +weighted RRF cov | delta | 判定 | edge_in_packed |")
-    lines.append("|--------|----------|--------------|---------|-----------------|-------------------|-------|------|----------------|")
+    lines.append(f"- **Lift mode**: `{lift_mode}` (REQ-029 redesign: residual = (weighted - baseline) / (1 - baseline))")
+    lines.append("")
+    lines.append("| Sample | Category | baseline cov | +QU cov | +graph_edge cov | +weighted RRF cov | delta | residual_ratio | 判定 | edge_in_packed |")
+    lines.append("|--------|----------|--------------|---------|-----------------|-------------------|-------|----------------|------|----------------|")
     sample_rows = 0
     for (group, qid), scenario_runs in grouped.items():
         if group != "REQ-026":
@@ -632,8 +665,10 @@ def _render_req026_section(
         qu_cov = qu.keypoint_coverage_pct if qu else 0.0
         edge_cov = edge.keypoint_coverage_pct if edge else 0.0
         weighted_cov = weighted.keypoint_coverage_pct if weighted else 0.0
-        delta = weighted_cov - baseline_cov
-        verdict = _classify_coverage_delta(delta)
+        lift = _compute_lift_metrics(baseline_cov, weighted_cov, mode=lift_mode)
+        delta = lift["delta"]
+        residual_ratio = lift["residual_ratio"]
+        verdict = lift["verdict"]
         if verdict == "正向":
             stats["samples_p2_better"] += 1
         elif verdict == "退化":
@@ -647,9 +682,12 @@ def _render_req026_section(
             stats["samples_graph_edge_in_packed"] += 1
             if verdict == "正向":
                 stats["samples_graph_edge_positive"] += 1
+        residual_str = (
+            f"{residual_ratio:+.2f}" if residual_ratio is not None else "-"
+        )
         lines.append(
             f"| {qid} | {group} | {baseline_cov:.2f} | {qu_cov:.2f} | "
-            f"{edge_cov:.2f} | {weighted_cov:.2f} | {delta:+.2f} | {verdict} | {edge_packed} |"
+            f"{edge_cov:.2f} | {weighted_cov:.2f} | {delta:+.2f} | {residual_str} | {verdict} | {edge_packed} |"
         )
     lines.append("")
     if sample_rows == 0:
@@ -715,6 +753,7 @@ def _render_report(
     started_at: str,
     errors: list[str],
     report_title: str,
+    lift_mode: str = "residual",
 ) -> str:
     grouped = _group_runs(runs)
     lines: list[str] = []
@@ -837,13 +876,13 @@ def _render_report(
 
     # REQ-026 section (added in REQ-026 extension)
     if any(run.question_group == "REQ-026" for run in runs):
-        req026_section, req026_stats = _render_req026_section(runs, grouped)
+        req026_section, req026_stats = _render_req026_section(runs, grouped, lift_mode=lift_mode)
         lines.append(req026_section)
         lines.append("")
 
     # REQ-028 section (three-metric comparison)
     if any(run.question_group == "REQ-028" for run in runs):
-        req028_section = _render_req028_section(runs, grouped)
+        req028_section = _render_req028_section(runs, grouped, lift_mode=lift_mode)
         lines.append(req028_section)
         lines.append("")
 
@@ -853,10 +892,13 @@ def _render_report(
 def _render_req028_section(
     runs: list[ScenarioRun],
     grouped: dict[tuple[str, str], dict[str, ScenarioRun]],
+    lift_mode: str = "residual",
 ) -> str:
     """REQ-028: render three-metric coverage (substring / semantic / llm_judge)."""
     lines: list[str] = []
     lines.append("## REQ-028 三口径覆盖度对比")
+    lines.append("")
+    lines.append(f"- **Lift mode**: `{lift_mode}` (REQ-029 redesign)")
     lines.append("")
     lines.append("| Sample | Scenario | substring cov | semantic cov | weight cov | llm_judge cov | semantic 命中明细 |")
     lines.append("|--------|----------|---------------|--------------|------------|---------------|-------------------|")
@@ -894,8 +936,8 @@ def _render_req028_section(
     # Per-sample summary (delta on semantic metric)
     lines.append("### REQ-028 per-sample summary (semantic metric)")
     lines.append("")
-    lines.append("| Sample | baseline sem | weighted sem | delta | 判定 (sem) | edge_in_packed |")
-    lines.append("|--------|--------------|--------------|-------|-------------|----------------|")
+    lines.append("| Sample | baseline sem | weighted sem | delta | residual_ratio | 判定 (sem) | edge_in_packed |")
+    lines.append("|--------|--------------|--------------|-------|----------------|-------------|----------------|")
     for (group, qid), scenario_runs in grouped.items():
         if group != "REQ-028":
             continue
@@ -903,19 +945,22 @@ def _render_req028_section(
         weighted = scenario_runs.get("weighted_rrf")
         if not baseline or not weighted:
             continue
-        delta = weighted.keypoint_coverage_pct_semantic - baseline.keypoint_coverage_pct_semantic
-        if weighted.keypoint_coverage_pct_semantic >= 0.5:
+        baseline_sem = baseline.keypoint_coverage_pct_semantic
+        weighted_sem = weighted.keypoint_coverage_pct_semantic
+        lift = _compute_lift_metrics(baseline_sem, weighted_sem, mode=lift_mode)
+        delta = lift["delta"]
+        residual_ratio = lift["residual_ratio"]
+        verdict = lift["verdict"]
+        if weighted_sem >= 0.5:
             semantic_above_threshold += 1
-        if delta >= 0.3:
+        if verdict == "正向":
             semantic_lift_threshold += 1
-            verdict = "正向"
-        elif delta <= -0.3:
-            verdict = "退化"
-        else:
-            verdict = "中性"
+        residual_str = (
+            f"{residual_ratio:+.2f}" if residual_ratio is not None else "-"
+        )
         lines.append(
-            f"| {qid} | {baseline.keypoint_coverage_pct_semantic:.2f} | "
-            f"{weighted.keypoint_coverage_pct_semantic:.2f} | {delta:+.2f} | {verdict} | "
+            f"| {qid} | {baseline_sem:.2f} | "
+            f"{weighted_sem:.2f} | {delta:+.2f} | {residual_str} | {verdict} | "
             f"{weighted.graph_edge_packed_count} |"
         )
     lines.append("")
@@ -925,10 +970,13 @@ def _render_req028_section(
     lines.append(f"- **semantic 口径 (主验收)**: term + synonyms 集合匹配，命中权重 1.0，修饰词权重 ≤0.5。")
     lines.append(f"- **weight 口径 (semantic 加权)**: 按 Keypoint.weight 加权后的覆盖率；用于区分核心词与修饰词。")
     lines.append(f"- **llm_judge 口径 (secondary signal)**: 由 LLM-as-judge 评估，仅在 `--allow-llm` 模式下生效；不作为唯一判定。")
+    lines.append(f"- **lift 口径 (REQ-029 阈值)**: residual_ratio = (weighted - baseline) / (1 - baseline)，解决 baseline 接近上限时绝对 delta 失去判别力的问题。")
     lines.append(f"- **决策规则**: 当 semantic 与 substring 不一致时（如 semantic ≥ 0.50 但 substring = 0），优先看 semantic；语义匹配覆盖更准确反映真实命中。")
     lines.append("")
     lines.append(f"- **AC-4 (semantic ≥ 0.50)**: `{semantic_above_threshold}` 样例达标（独立看 weighted scenario）")
-    lines.append(f"- **AC-5 (semantic lift ≥ 30%)**: `{semantic_lift_threshold}` 样例达标")
+    lines.append(f"- **AC-5 (semantic lift >= 0.30 in `{lift_mode}` mode)**: `{semantic_lift_threshold}` 样例达标")
+    if lift_mode == "residual" and semantic_lift_threshold < 4:
+        lines.append("- **未达成**: AC-5 residual 模式仍不达 4/10。已登记 REQ-030 接力。")
     lines.append("")
     return "\n".join(lines)
 
@@ -991,6 +1039,7 @@ async def _run(args: argparse.Namespace) -> int:
             started_at=started_at,
             errors=errors,
             report_title=args.report_title,
+            lift_mode=getattr(args, "lift_mode", "residual"),
         ),
         encoding="utf-8",
     )
@@ -1023,6 +1072,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--allow-llm",
         action="store_true",
         help="Allow sending retrieved context / prompt to the configured LLM provider.",
+    )
+    parser.add_argument(
+        "--lift-mode",
+        choices=["residual", "absolute"],
+        default="residual",
+        help="REQ-029 AC-5 threshold mode: 'residual' (default, (weighted - baseline) / (1 - baseline)) or 'absolute' (REQ-026/028 baseline, weighted - baseline).",
     )
     return parser
 

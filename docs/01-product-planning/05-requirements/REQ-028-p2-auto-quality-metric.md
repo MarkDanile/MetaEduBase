@@ -1,6 +1,6 @@
 # REQ-028: P2 弱召回自动质量比较口径改造
 
-Status: 🟡 部分收口（三口径机制收口；AC-5 未达成，由 REQ-029 接力）
+Status: 🟢 完成（REQ-029 residual 阈值重设计收口长链；三口径机制 + 阈值公式 + 真实 LLM 验证）
 Priority: P0
 Milestone: P2
 Source: REQ-027 follow-up

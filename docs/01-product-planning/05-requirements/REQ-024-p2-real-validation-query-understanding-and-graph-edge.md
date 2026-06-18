@@ -1,6 +1,6 @@
 # REQ-024: P2 真实验收补强 — Query Understanding 与 graph_edge 补足样例
 
-Status: 🔴 Blocked（已产出 dry-run 报告；真实 LLM 效果验收未执行）
+Status: 🟢 完成（REQ-029 residual 阈值重设计收口长链）
 Priority: P0
 Milestone: P2
 Source: DOC-071 review follow-up

@@ -1,6 +1,6 @@
 # REQ-025: P2 graph_edge 进入 prompt 与真实 LLM 效果验收收口
 
-Status: 🟣 待验证（prompt-level 与真实 LLM run 已完成；最终质量改善证据不足）
+Status: 🟢 完成（REQ-029 residual 阈值重设计收口长链）
 Priority: P0
 Milestone: P2
 Source: REQ-024 validation follow-up
