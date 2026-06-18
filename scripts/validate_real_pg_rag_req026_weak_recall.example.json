@@ -1,0 +1,96 @@
+{
+  "description": "REQ-026 P2 RAG 弱召回样例集 — 用于自动质量比较",
+  "samples": [
+    {
+      "category": "python_tutorial",
+      "label": "Python 教程 PDF",
+      "file_id": "358bd704-d223-4228-8935-3a6e1b3e699f",
+      "expected_doc_type": "课程标准"
+    },
+    {
+      "category": "training_program",
+      "label": "人才培养方案 PDF",
+      "file_id": "93101825-eb59-442f-838b-3c3b9894051f",
+      "expected_doc_type": "人才培养方案"
+    },
+    {
+      "category": "course_standard",
+      "label": "课程标准 / 教案 PDF",
+      "file_id": "132a8cfd-d1d1-429e-9871-68aab82f5ec3",
+      "expected_doc_type": "课程标准"
+    }
+  ],
+  "questions": [
+    {
+      "id": "Q1_decorator_concept",
+      "text": "Python 装饰器是什么？它解决了什么问题？",
+      "expected_category": "python_tutorial",
+      "expected_keypoints": [
+        "装饰器",
+        "函数",
+        "wrapper",
+        "语法糖",
+        "@"
+      ],
+      "weak_recall_reason": "装饰器是高级特性，关键词召回可能只命中基础函数章节",
+      "evaluation_focus": "graph_edge + context packing 价值"
+    },
+    {
+      "id": "Q2_generator_iterator_relationship",
+      "text": "Python 生成器和迭代器有什么关系？",
+      "expected_category": "python_tutorial",
+      "expected_keypoints": [
+        "生成器",
+        "迭代器",
+        "yield",
+        "iter",
+        "next"
+      ],
+      "weak_recall_reason": "两个概念跨章节，关键词召回容易只覆盖其中一个",
+      "evaluation_focus": "graph_edge 跨章节关联价值"
+    },
+    {
+      "id": "Q3_default_param_pitfall",
+      "text": "Python 函数默认参数的坑是什么？",
+      "expected_category": "python_tutorial",
+      "expected_keypoints": [
+        "默认参数",
+        "可变对象",
+        "list",
+        "None",
+        "不变对象"
+      ],
+      "weak_recall_reason": "自然问法不命中关键词，必须靠 Query Understanding 扩展",
+      "evaluation_focus": "Query Understanding 价值"
+    },
+    {
+      "id": "Q4_prerequisite_knowledge_for_course",
+      "text": "学习水环境监测这门课需要哪些先导知识？",
+      "expected_category": "training_program",
+      "expected_keypoints": [
+        "化学",
+        "生物",
+        "基础",
+        "先导",
+        "前置"
+      ],
+      "weak_recall_reason": "跨课程先导知识，靠 graph_edge 才能命中",
+      "evaluation_focus": "graph_edge 关系召回价值"
+    },
+    {
+      "id": "Q5_course_target_summary",
+      "text": "请总结环境监测技术专业的课程目标。",
+      "expected_category": "course_standard",
+      "expected_keypoints": [
+        "环境监测",
+        "培养目标",
+        "职业能力",
+        "课程体系",
+        "评价"
+      ],
+      "weak_recall_reason": "总结型问法，关键词召回片段化",
+      "evaluation_focus": "context packing + weighted RRF 价值"
+    }
+  ],
+  "output_report_path": "docs/02-delivery-plans/01-specs/2026-06-18-req-026-rag-effect-comparison-validation-report.md"
+}
