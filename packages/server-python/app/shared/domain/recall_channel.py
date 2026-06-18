@@ -23,6 +23,8 @@ class RecallResult(BaseModel):
     # (随 P1 RecallChannel 实现演进)。`RecallChannel` Protocol 形参不变。
     source_file_id: uuid.UUID | None = None
     source_chunk_id: uuid.UUID | None = None
+    # REQ-018: edge recall — edge id when this result came from a knowledge edge
+    edge_id: uuid.UUID | None = None
 
 
 @runtime_checkable
