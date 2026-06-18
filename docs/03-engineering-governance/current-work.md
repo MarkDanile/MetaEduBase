@@ -16,7 +16,6 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-023 登录页左侧品牌面大胆蓝色视觉加强 | 🟡 进行中 | P1 | Frontend / Theme / Login | 分支 `codex/req-022-login-brand-bolder`；登录页左侧已改为更大胆的蓝色品牌面，右侧表单和工作区白灰层级未扩散 | 提交 PR 并合并；合并后回填 Done / work-log / 最近完成 | typecheck / lint / build / check-engineering-docs / diff check 通过；`/login` light 浏览器 smoke 通过 |
 | REQ-018 P2 4 通道并行召回与图谱关系召回 | 🟢 完成 | P0 | RAG / Graph / AI Chat | Slice 1+2+3 PR #333/#334/#335 已合并：PgEdgeRetriever骨架 + 4通道注入 + trace/dedup 验证通过；Slice 4 待 dev DB knowledge_edges 数据 | Slice 4：真实PG验收报告（依赖 dev DB 有边数据） | — |
 | REQ-017 RRF / Weighted RRF 融合排序收口 | 🟡 进行中 | P0 | RAG / Ranking / AI Chat | Slice 1-3 PR #325 已合并：配置入口 + fusion diagnostics + 通道降级。Slice 4（真实 PG 样例 RRF 排序分析）待 REQ-015 PG 环境 backfill | Slice 4：RRF 排序分析脚本；依赖 REQ-015 真实 PG 环境 | 待 REQ-015 backfill |
 
@@ -32,6 +31,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-18 | REQ-023 登录页左侧品牌面大胆蓝色视觉加强 | 🟢 完成 | PR #345 squash merge `9d02ba6`：登录页左侧由轻浅蓝调整为深浅蓝品牌面，增加网格、斜向光带和底部圆弧层次；右侧表单和登录后工作区未扩散 | [REQ-023](../01-product-planning/05-requirements/REQ-023-bolder-login-brand-panel.md) / [PR #345](https://github.com/MarkDanile/MetaEduBase/pull/345) |
 | 2026-06-18 | REQ-022 登录页品牌氛围与工作区画布白灰层级优化 | 🟢 完成 | PR #343 squash merge `4c9d3a8`：登录页左侧增加浅蓝渐变、细网格和能力标签；登录后主工作区画布改为柔和白灰，卡片保持白色层级；前端 typecheck/lint/build + `/login` light smoke 通过 | [REQ-022](../01-product-planning/05-requirements/REQ-022-login-brand-and-workspace-canvas-polish.md) / [PR #343](https://github.com/MarkDanile/MetaEduBase/pull/343) |
 | 2026-06-18 | BUG-011 数据要素模板 AI 生成 500 与 chat_with_model_fallback ValueError 处理缺陷 | 🟢 完成 | PR #342 squash merge：DeepSeek Key 已写入 .env；`chat_with_fallback.py` fast attempt 捕获 ValueError 降级至 fallback，fallback 的 ValueError 保持传播；6 fallback tests + 91 template tests 通过；待服务重启后重测 | [BUG-011](../01-product-planning/05-requirements/BUG-011-template-init-by-ai-500-and-valueerror-handling.md) / [PR #342](https://github.com/MarkDanile/MetaEduBase/pull/342) |
 | 2026-06-18 | REQ-021 浅色主题加入克制蓝色点缀 | 🟢 完成 | PR #340 squash merge `5a13c3a`：主按钮改克制蓝色语义 token，Logo / 登录页品牌 mark 改中性底 + 蓝色小图标，设计规则明确蓝色为唯一交互点缀；前端 typecheck/lint/build + `/login` light smoke 通过 | [REQ-021](../01-product-planning/05-requirements/REQ-021-blue-accent-visual-polish.md) / [PR #340](https://github.com/MarkDanile/MetaEduBase/pull/340) |
