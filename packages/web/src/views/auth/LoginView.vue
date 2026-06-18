@@ -3,12 +3,8 @@
     <div class="brand-side">
       <div class="brand-noise"></div>
       <div class="brand-content">
-        <div class="brand-logo">
-          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-            <rect x="1" y="1" width="46" height="46" rx="12" fill="var(--color-bg-elevated)"/>
-            <rect x="1" y="1" width="46" height="46" rx="12" stroke="var(--color-border)" stroke-width="1"/>
-            <text x="24" y="33" text-anchor="middle" fill="var(--color-ink)" font-size="22" font-weight="700" font-family="system-ui, sans-serif">元</text>
-          </svg>
+        <div class="brand-logo app-brand-mark">
+          <BookOpen :size="22" :stroke-width="1.8" />
         </div>
         <h1 class="brand-title">元知职教基座</h1>
         <p class="brand-subtitle">AI Native · 职业教育知识基座</p>
@@ -83,7 +79,7 @@
 <script setup lang="ts">
 import { ref, reactive } from "vue";
 import { useRouter } from "vue-router";
-import { User, Lock, Eye, EyeOff } from "lucide-vue-next";
+import { User, Lock, Eye, EyeOff, BookOpen } from "lucide-vue-next";
 import { useAuthStore } from "@/stores/auth";
 import { authApi } from "@/services/auth";
 
@@ -125,8 +121,19 @@ async function handleLogin() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--login-brand-gradient);
+  background: var(--login-brand-bg);
+  border-right: 1px solid var(--login-brand-border);
   overflow: hidden;
+}
+
+.brand-side::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--login-brand-accent);
 }
 
 .brand-noise {
@@ -144,11 +151,10 @@ async function handleLogin() {
 }
 
 .brand-logo {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-lg);
   margin-bottom: 20px;
-}
-
-.brand-logo svg {
-  filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.10));
 }
 
 .brand-title {

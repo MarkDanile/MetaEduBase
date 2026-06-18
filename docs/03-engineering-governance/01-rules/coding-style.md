@@ -34,6 +34,10 @@
 
 - 新增或修改业务 UI 优先使用语义化 `ui-*` workspace 层。
 - 产品主视觉只保留 `light` / `dark` 两套 Codex / Trae-like 中性 AI Workspace 主题：白灰 / 深灰底、细分割线、低阴影、极少强调色。
+- 蓝色是唯一交互点缀色，用于主按钮、链接、焦点、选中态、tab underline 和少量 active icon；禁止新增第三套品牌色或大面积彩色背景。
+- 绿色只保留给成功 / 完成等语义状态，不作为品牌色、主按钮色或导航高亮色。
+- 主按钮必须使用 `--button-primary-*` token；禁止把近黑色主文本色或 `--color-ink` 用作浅色主题主按钮背景。
+- 系统 Logo / brand mark 使用中性底、细边框和小面积交互点缀色；禁止黑色实心块或大面积蓝色块。
 - `paper` / `liquid` / `ink` / `navy` / `notion` 仅作为历史兼容入口映射到浅色主题；不得新增普通用户可切换的第三套主题。
 - 共享组件优先复用：`PageHeader`、`EmptyState`、`ConfirmDialog`、`LoadingSpinner`、`ToastContainer`。
 - 危险操作必须使用 `ConfirmDialog`，禁止点击即执行。

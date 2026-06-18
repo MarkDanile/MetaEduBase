@@ -24,9 +24,9 @@
   --theme-bg-hover: #F1F3F4;
 
   /* Accent */
-  --theme-accent: #1F2328;
-  --theme-accent-light: #343941;
-  --theme-accent-bg: #EDEFF2;
+  --theme-accent: #2563EB;
+  --theme-accent-light: #1D4ED8;
+  --theme-accent-bg: rgba(37, 99, 235, 0.08);
   --theme-accent-glow: #EEF0F3;
   --theme-accent-glow-start: #DADDE2;
   --theme-accent-glow-start-hover: #CFD4DC;
@@ -50,7 +50,7 @@
   /* Borders */
   --theme-border: #DADCE0;
   --theme-border-subtle: #EDEFF2;
-  --theme-border-accent: #C7CCD4;
+  --theme-border-accent: #BFD0F8;
 
   /* Surfaces */
   --_surface-card-bg: #FFFFFF;
@@ -70,12 +70,25 @@
   --_surface-toast-bg: #FFFFFF;
   --_surface-ghost-btn-bg: transparent;
 
+  /* Buttons / brand marks */
+  --_button-primary-bg: #2563EB;
+  --_button-primary-bg-hover: #1D4ED8;
+  --_button-primary-text: #FFFFFF;
+  --_button-primary-border: transparent;
+  --_button-primary-shadow: 0 1px 2px rgba(37, 99, 235, 0.18);
+  --_brand-mark-bg: #FFFFFF;
+  --_brand-mark-border: #DADCE0;
+  --_brand-mark-color: #2563EB;
+  --_brand-mark-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+
   /* Overlay / button ripple */
   --_overlay-bg: rgba(15, 23, 42, 0.18);
   --_btn-ripple: rgba(255, 255, 255, 0.20);
 
   /* Login */
-  --_login-brand-gradient: #F5F5F5;
+  --_login-brand-bg: #F5F5F5;
+  --_login-brand-border: #E5E7EB;
+  --_login-brand-accent: #2563EB;
 }
 
 :root[data-theme="dark"] {
@@ -93,9 +106,9 @@
   --theme-bg-hover: #202329;
 
   /* Accent */
-  --theme-accent: #F2F4F8;
-  --theme-accent-light: #D9DEE7;
-  --theme-accent-bg: #252A33;
+  --theme-accent: #8AB4F8;
+  --theme-accent-light: #A7C7FF;
+  --theme-accent-bg: rgba(96, 165, 250, 0.14);
   --theme-accent-glow: #232730;
   --theme-accent-glow-start: #2B303A;
   --theme-accent-glow-start-hover: #333A46;
@@ -119,7 +132,7 @@
   /* Borders */
   --theme-border: #343842;
   --theme-border-subtle: #252932;
-  --theme-border-accent: #4C5565;
+  --theme-border-accent: #3A5F8F;
 
   /* Surfaces */
   --_surface-card-bg: #17191E;
@@ -139,10 +152,23 @@
   --_surface-toast-bg: #1B1E24;
   --_surface-ghost-btn-bg: transparent;
 
+  /* Buttons / brand marks */
+  --_button-primary-bg: #60A5FA;
+  --_button-primary-bg-hover: #8AB4F8;
+  --_button-primary-text: #0F1115;
+  --_button-primary-border: transparent;
+  --_button-primary-shadow: 0 1px 2px rgba(96, 165, 250, 0.28);
+  --_brand-mark-bg: #1B1E24;
+  --_brand-mark-border: #343842;
+  --_brand-mark-color: #8AB4F8;
+  --_brand-mark-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+
   /* Overlay / button ripple */
   --_overlay-bg: rgba(0, 0, 0, 0.52);
   --_btn-ripple: rgba(255, 255, 255, 0.16);
 
   /* Login */
-  --_login-brand-gradient: #15171B;
+  --_login-brand-bg: #15171B;
+  --_login-brand-border: #252932;
+  --_login-brand-accent: #8AB4F8;
 }
