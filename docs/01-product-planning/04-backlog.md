@@ -100,7 +100,7 @@
 | DOC-067 | DOC | 🟢 Done | P2 | P3 | 分布式临时编号与正式任务编号归并规则 | PR #248 merged：正式任务编号保持短格式，`DRAFT-YYYYMMDD-HHMM-XXXX` 只作临时来源；主表门禁已实现。 | [Technical Debt](../03-engineering-governance/technical-debt.md#doc-067) / [PR #248](https://github.com/MarkDanile/MetaEduBase/pull/248) |
 | DOC-069 | DOC | 🟢 Done | P0 | P2 | P2 阶段正式启动与重点任务规划 | PR #320 squash merge `33c132f`：Roadmap / P1 / P2 / W25 迭代 / Backlog / current-work 已对齐到“正式进入 P2”，并把 P2-NER / P2-RRF / 4 通道召回映射为 REQ-016 / REQ-017 / REQ-018。 | [P2 Milestone](02-milestones/02-growth-phase.md) / [PR #320](https://github.com/MarkDanile/MetaEduBase/pull/320) |
 | DOC-070 | DOC | 🟢 Done | P1 | P2 | AtomAIBase 项目定位与 README 对外介绍升级 | PR #322 squash merge `e72852b`：README 改为 AtomAIBase 开源项目主页结构，覆盖定位、能力、应用场景、架构图、快速开始、技术栈、路线图和文档导航；根包描述和 `ARCHITECTURE.md` 顶层定位同步。对外介绍保持泛行业定位；截图资产、README 英文版和全仓历史名称迁移留后续任务。 | [PR #322](https://github.com/MarkDanile/MetaEduBase/pull/322) / [Work Log](../03-engineering-governance/work-log.md) |
-| DOC-071 | DOC | 🟡 Doing | P0 | P2 | 最近完成任务与 P2 里程碑评审收口 | 评审 current-work / work-log / Backlog / P2 milestone 中 DOC-069 后完成任务，修正 REQ-016/017/018 事实源漂移并补评分总账 | [Review](../03-engineering-governance/04-retrospectives/2026-06-18-p2-recent-completion-review.md) |
+| DOC-071 | DOC | 🟢 Done | P0 | P2 | 最近完成任务与 P2 里程碑评审收口 | PR #350 squash merge `325ac35`：评审 current-work / work-log / Backlog / P2 milestone 中 DOC-069 后完成任务，修正 REQ-016/017/018 事实源漂移并补评分总账，登记 REQ-024 作为 P2 真实验收补强 | [Review](../03-engineering-governance/04-retrospectives/2026-06-18-p2-recent-completion-review.md) / [PR #350](https://github.com/MarkDanile/MetaEduBase/pull/350) |
 
 ## 状态迁移
 
