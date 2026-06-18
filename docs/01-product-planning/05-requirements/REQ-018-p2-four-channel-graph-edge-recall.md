@@ -1,6 +1,6 @@
 # REQ-018: P2 4 通道并行召回与图谱关系召回
 
-Status: 🟢 完成（Slice 4 待 dev DB backfill）
+Status: 🟢 完成（Slice 4 已验收，发现evidence_id=\"\" bug已修复）
 Priority: P0
 Milestone: P2
 Source: P2-RECALL-4 Open Item
@@ -60,4 +60,4 @@ Related: REQ-012 / REQ-013 / REQ-017
 | 2026-06-18 | Slice 1 完成 | PR #333 squash merge `a94c681`：RecallResult.edge_id + PgEdgeRecallChannel（seed→edge→node）+ PgEdgeRetriever + 5 mock tests |
 | 2026-06-18 | Slice 2 完成 | PR #334 squash merge `87230ba`：AIChatService edge_retriever 第 4 通道 + _normalize_candidate_channels 处理 knowledge_edge + RRF graph_edge 权重 0.5 + 2 mock tests |
 | 2026-06-18 | Slice 3 完成 | PR #335 merge（仅测试）：trace graph_edge 通道已在 diagnostics.retrieval_topn 中可见，EvidenceItem model_validator 自动去重 + 2 mock tests |
-| 2026-06-18 | Slice 4 占位 | 验收报告 placeholder 已产出；真 PG 验证待 dev DB knowledge_edges 数据 backfill |
+| 2026-06-18 | Slice 4 真实PG验收 | 4通道均激活（vector/keyword/graph/graph_edge）；发现并修复evidence_id="" bug（导致RRF dedup异常）；真PG验收报告已产出 |

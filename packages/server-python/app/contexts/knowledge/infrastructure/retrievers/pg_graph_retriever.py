@@ -139,7 +139,6 @@ class PgEdgeRetriever:
                 # edge_id is guaranteed non-None for edge-channel results
                 items.append(
                     EvidenceItem(
-                        evidence_id="",
                         source_type="knowledge_edge",
                         edge_id=r.edge_id,
                         file_id=r.source_file_id,

@@ -16,7 +16,6 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-018 P2 4 通道并行召回与图谱关系召回 | 🟢 完成 | P0 | RAG / Graph / AI Chat | Slice 1+2+3 PR #333/#334/#335 已合并：PgEdgeRetriever骨架 + 4通道注入 + trace/dedup 验证通过；Slice 4 待 dev DB knowledge_edges 数据 | Slice 4：真实PG验收报告（依赖 dev DB 有边数据） | — |
 | REQ-017 RRF / Weighted RRF 融合排序收口 | 🟡 进行中 | P0 | RAG / Ranking / AI Chat | Slice 1-3 PR #325 已合并：配置入口 + fusion diagnostics + 通道降级。Slice 4（真实 PG 样例 RRF 排序分析）待 REQ-015 PG 环境 backfill | Slice 4：RRF 排序分析脚本；依赖 REQ-015 真实 PG 环境 | 待 REQ-015 backfill |
 
 ## 下一批候选任务
