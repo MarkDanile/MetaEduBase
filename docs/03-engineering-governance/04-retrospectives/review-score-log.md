@@ -16,6 +16,14 @@
 
 | 日期 | 类型 | 任务 | PR | 总分 | 结论 | 必修 follow-up | 流程扣分点 | 规则 / 脚本改进 | 评审人 |
 |------|------|------|----|------|------|----------------|------------|------------------|--------|
+| 2026-06-18 | Original | P2-SEARCH PostgreSQL tsvector + 中文分词搜索增强 | [#192](https://github.com/MarkDanile/MetaEduBase/pull/192) / [#216](https://github.com/MarkDanile/MetaEduBase/pull/216) / [#308](https://github.com/MarkDanile/MetaEduBase/pull/308) / [#314](https://github.com/MarkDanile/MetaEduBase/pull/314) / [#318](https://github.com/MarkDanile/MetaEduBase/pull/318) | 88 | 良好；tsvector + chinese_zh 已从基础设施走到运行时召回和真实问答链路 | 无 | 多 PR 证据链分散，但里程碑和 work-log 已能追踪 | 不新增规则 | Codex |
+| 2026-06-18 | Original | BUG-009 AI Chat 真实 PG 链路未把相关正文 chunk 送入 prompt | [#314](https://github.com/MarkDanile/MetaEduBase/pull/314) | 90 | 优秀；真实 PG prompt 前验收和授权 DeepSeek ask 均通过，回答质量从兜底恢复到有引用答案 | 无 | 无 | 不新增规则 | Codex |
+| 2026-06-18 | Original | BUG-010 AI Chat 自然问法未稳定命中函数参数正文 chunk | [#316](https://github.com/MarkDanile/MetaEduBase/pull/316) | 87 | 良好；确定性 query normalizer 用小改动解决真实 A/B 问法差异 | 无 | 不等于 LLM NER 整体闭环，需避免在 P2 口径中混淆 | 不新增规则 | Codex |
+| 2026-06-18 | Original | REQ-016 P2 LLM 混合 NER / Query Understanding | [#328](https://github.com/MarkDanile/MetaEduBase/pull/328) / [#329](https://github.com/MarkDanile/MetaEduBase/pull/329) / [#330](https://github.com/MarkDanile/MetaEduBase/pull/330) | 82 | 良好但有条件；HybridQueryUnderstandingService、diagnostics、expanded_query 已接入，但真实 PG + LLM 报告仍是 placeholder | REQ-024 | Requirement 仍停 Shaping、Backlog 写 Done；“代码切片完成”和“真实效果验收完成”混写 | 已登记 REQ-024；不新增规则 | Codex |
+| 2026-06-18 | Original | REQ-017 P2 RRF / Weighted RRF 融合排序 | [#325](https://github.com/MarkDanile/MetaEduBase/pull/325) | 91 | 优秀；RRF 默认接入、权重配置、fusion diagnostics、通道降级和 4 通道真实 PG 验收 AC-1~7 证据完整 | 无 | Backlog / Requirement 仍停 Doing / Ready，本次已修正 | 不新增规则 | Codex |
+| 2026-06-18 | Original | REQ-018 P2 4 通道并行召回与图谱关系召回 | [#333](https://github.com/MarkDanile/MetaEduBase/pull/333) / [#334](https://github.com/MarkDanile/MetaEduBase/pull/334) / [#335](https://github.com/MarkDanile/MetaEduBase/pull/335) | 84 | 良好；graph_edge 第 4 通道接入、trace 和 evidence_id 修复成立，但 AC-5 弱召回补足样例仍不足 | REQ-024 | current-work / Backlog 仍写 Slice 4 待验收；报告中 AC-5 为条件通过但里程碑写法过满 | 已登记 REQ-024；不新增规则 | Codex |
+| 2026-06-18 | Original | BUG-011 数据要素模板 AI 生成 500 与 fallback ValueError 处理 | [#342](https://github.com/MarkDanile/MetaEduBase/pull/342) | 84 | 良好；fast ValueError 降级至 fallback，测试覆盖清晰；服务重启后接口复测仍需后续确认 | 无 | 运行时 `.env` key 变更和服务重启验收未在同 PR 内完全闭环 | 不新增规则 | Codex |
+| 2026-06-18 | Original | REQ-019~023 视觉主题与登录页品牌面收敛链 | [#336](https://github.com/MarkDanile/MetaEduBase/pull/336) / [#338](https://github.com/MarkDanile/MetaEduBase/pull/338) / [#340](https://github.com/MarkDanile/MetaEduBase/pull/340) / [#343](https://github.com/MarkDanile/MetaEduBase/pull/343) / [#345](https://github.com/MarkDanile/MetaEduBase/pull/345) | 86 | 良好；最终收敛到 light/dark 中性工作台 + 登录页大胆蓝色品牌面，验证和事实源收口完整 | 无 | 视觉方向经历多次快速调整，但小 PR 和 closeout 控制了风险 | 不新增规则 | Codex |
 | 2026-06-16 | Original | REQ-013 RAG Context Packer 与回答 grounding 增强 | [#305](https://github.com/MarkDanile/MetaEduBase/pull/305) / [#306](https://github.com/MarkDanile/MetaEduBase/pull/306) | 84 | 良好；Context Packer 位置正确，neighbor / section / graph-to-chunk / TOC guard 都有 mock 测试，但真实 PG 样例和最终回答质量仍未闭环 | REQ-014 | PR #305 合并时 Slice 5 真实 PG 样例仍待 backfill；PR #306 才补状态漂移 | 已登记 REQ-014；不新增规则 | Codex |
 | 2026-06-16 | Original | BUG-007 pdf_parser section path 错乱 | [#303](https://github.com/MarkDanile/MetaEduBase/pull/303) | 83 | 良好但偏测试侧；docling counters + 非标题黑名单方向正确，但 requirement 交付记录未及时回填且真实 reparse / backfill 仍需验收 | REQ-014 | Requirement 仍残留“实际修复留维护者下个 PR”的过期交付记录；本次评审已修正 | 已登记 REQ-014；不新增规则 | Codex |
 | 2026-06-16 | Original | BUG-006 资源库展示与抽取 5 子项收口 | [#295](https://github.com/MarkDanile/MetaEduBase/pull/295) / [#297](https://github.com/MarkDanile/MetaEduBase/pull/297) / [#299](https://github.com/MarkDanile/MetaEduBase/pull/299) / [#300](https://github.com/MarkDanile/MetaEduBase/pull/300) / [#301](https://github.com/MarkDanile/MetaEduBase/pull/301) | 86 | 良好；5 个用户可见问题均拆成小 PR 收口，前端 / 后端测试证据较充足，但 Backlog 仍写“待真 PG 复测” | REQ-014 | 多切片完成后综合真 PG 复测没有在同一事实源闭环；本次已把复测接力指向 REQ-014 | 不新增规则；现有多切片收口规则够用 | Codex |
@@ -72,12 +80,12 @@
 
 | 指标 | 当前值 | 说明 |
 |------|--------|------|
-| 已记录评审数 | 51 | 47 条 Original + 4 条 Backfilled。2026-06-16 新增 11 条 Codex 批次评审记录。 |
-| 平均评分 | 85.2 | 51 条 `总分` 算术平均；本轮新增评审总分 950，累计总分 4343。 |
-| 一次关闭率 | 57% | 评分 ≥ 80 且无必修 follow-up 的任务数 / 已记录评审数 = 29/51。 |
-| 返工率 | 43% | 有必修 follow-up 的任务数 / 已记录评审数 = 22/51。 |
-| 流程扣分率 | 65% | `流程扣分点` 列非 `无` 的任务数 / 已记录评审数 = 33/51；这里表示有可复盘流程信号，不等同于严重违规。 |
-| 规则转化率 | 51% | 形成规则、脚本或 follow-up 改进的评审数 / 已记录评审数 = 26/51。 |
+| 已记录评审数 | 59 | 55 条 Original + 4 条 Backfilled。2026-06-18 新增 8 条 P2 近期完成评审记录。 |
+| 平均评分 | 85.3 | 59 条 `总分` 算术平均；本轮新增评审总分 692，累计总分 5035。 |
+| 一次关闭率 | 59% | 评分 ≥ 80 且无必修 follow-up 的任务数 / 已记录评审数 = 35/59。 |
+| 返工率 | 41% | 有必修 follow-up 的任务数 / 已记录评审数 = 24/59。 |
+| 流程扣分率 | 68% | `流程扣分点` 列非 `无` 的任务数 / 已记录评审数 = 40/59；这里表示有可复盘流程信号，不等同于严重违规。 |
+| 规则转化率 | 47% | 形成规则、脚本或 follow-up 改进的评审数 / 已记录评审数 = 28/59。 |
 
 > 样本量不足时，本表只用于追踪单任务事实，不用于趋势判断。
 

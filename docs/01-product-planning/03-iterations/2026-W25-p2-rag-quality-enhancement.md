@@ -13,9 +13,10 @@ Goal: 在 REQ-012 多路 evidence 骨架之上，补齐召回后上下文组装�
 | REQ-014 | REQ | 🟢 Done | RAG 真实 PG 样例、数据回填与回答 grounding 验收 | PR #308 squash merge：spec + plan + 一次性验收脚本 + 占位报告 + 跨事实源同步。follow-up：下个 PR 跑真 PG |
 | REQ-015 | REQ | 🟢 Done | RAG 生产链路 grounding 与真实验收收口 | PR #314 merge `4d78667`：BUG-009 修复后真 dev DB prompt 前 context 已拿到 Python 正文；用户授权后完整 DeepSeek ask 已通过。 |
 | BUG-009 | BUG | 🟢 Done | AI Chat 真实 PG 链路未把相关正文 chunk 送入 prompt | PR #314 merge `4d78667`：已修共享 `AsyncSession` 并发、RRF 阈值、lexical supplement 排序和邻居 TOC 识别；prompt 前和完整 ask 真实验收均通过。 |
-| REQ-018 | REQ | 🟢 Done | P2 4 通道并行召回与图谱关系召回 | Slice 1+2+3 PR #333/#334/#335 已合并；Slice 4 真实 PG 验收依赖 dev DB 边数据，作为后续 backfill 验证。 |
-| REQ-017 | REQ | 🟡 Doing | P2 RRF / Weighted RRF 融合排序收口 | Slice 1-3 PR #325 已合并；Slice 4 真实 PG 样例 RRF 排序分析待 REQ-015 PG 环境 backfill。 |
-| REQ-016 | REQ | 🟢 Done | P2 LLM 混合 NER / Query Understanding | PR #328/#329/#330 已合并；混合 Query Understanding、expanded_query 和 retriever 接入已收口，真 PG 验收报告待环境执行后填充。 |
+| REQ-018 | REQ | 🟢 Done | P2 4 通道并行召回与图谱关系召回 | Slice 1+2+3 PR #333/#334/#335 已合并；Slice 4 真实 PG 验收已补，graph_edge 激活且 evidence_id bug 修复；AC-5 弱召回补足样例由 REQ-024 接力。 |
+| REQ-017 | REQ | 🟢 Done | P2 RRF / Weighted RRF 融合排序收口 | PR #325 + 真实 PG 验收报告已收口；4 通道 RRF 融合正常，AC-1~7 通过。 |
+| REQ-016 | REQ | 🟢 Done | P2 LLM 混合 NER / Query Understanding | PR #328/#329/#330 已合并；混合 Query Understanding、expanded_query 和 retriever 接入已收口，真实 PG + LLM 效果验收由 REQ-024 接力。 |
+| REQ-024 | REQ | 🔵 Ready | P2 真实验收补强：Query Understanding 与 graph_edge 补足样例 | 承接 REQ-016 报告 placeholder 与 REQ-018 AC-5 条件通过缺口，是当前 P2 RAG 质量的下一步优先项。 |
 
 ## Out of Scope
 
@@ -33,4 +34,4 @@ Goal: 在 REQ-012 多路 evidence 骨架之上，补齐召回后上下文组装�
 | REQ-014 只完成 tooling，生产链路仍缺 ContextPacker 注入和 diagnostics | 当前需要把机制真正接入默认 AI Chat endpoint，并让脚本能读到 trace | REQ-015 |
 | REQ-015 真实样例截停在 prompt 前仍缺正文 chunk | BUG-009 已把瓶颈收口：`fusion_topN[1]` 命中 `数据类型和变量` 正文，packed context 含基本类型证据，完整 DeepSeek ask 回答正确 | BUG-009 / REQ-015 已由 PR #314 收口 |
 | P2 已有 PostgreSQL tsvector 基础 | 当前先用既有 PostgreSQL 能力提升质量，不急于换 ES / Milvus / Neo4j | P2-SEARCH / REQ-013；P2-RRF 仍留在里程碑 Open Items，待真实瓶颈明确后再映射稳定任务编号 |
-| P2 正式进入增长期 | 重点不再是证明 P1 闭环存在，而是提升真实问答质量和可解释检索链路 | REQ-018 -> REQ-017 -> REQ-016 |
+| P2 正式进入增长期 | 重点不再是证明 P1 闭环存在，而是提升真实问答质量和可解释检索链路 | REQ-018 / REQ-017 / REQ-016 代码能力已接入；下一步 REQ-024 补真实效果验收 |

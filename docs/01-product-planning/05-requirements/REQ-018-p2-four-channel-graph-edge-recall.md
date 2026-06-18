@@ -19,7 +19,7 @@ Related: REQ-012 / REQ-013 / REQ-017
 | graph node recall | 已实现但不是 edge recall | `PgGraphRetriever` 包装 `PgVectorRecallChannel` / `PgKeywordRecallChannel` 查询 `knowledge_nodes`，并把 `source_file_id` / `source_chunk_id` 透传到 `EvidenceItem`。 |
 | graph node -> chunk hydration | 已实现 | `AIChatService._hydrate_graph_chunks()` 和 `ContextPacker` 可把 `knowledge_node` 的 `source_chunk_id` 回源到正文 chunk 与邻居 chunk。 |
 | PostgreSQL `knowledge_edges` edge recall | 未实现 | 当前未发现独立 graph edge recall adapter；`knowledge_edges` 主要用于 KG 展示、CRUD、kg-bundle 和数据完整性，不参与 AI Chat 召回通道。 |
-| 4 通道并行召回 | 未完成 | 当前生产 service 是 chunk composite + graph node + metadata filter，再按 evidence channels 分组；还没有独立 `graph_edge` 通道和对应 trace。 |
+| 4 通道并行召回 | 已实现 | PR #333/#334/#335 已接入 `PgEdgeRetriever` 第 4 通道，`diagnostics.retrieval_topn.graph_edge` 可见。 |
 
 因此 REQ-018 是 **新增召回通道任务**。已有 graph node 回源 chunk 能作为实现基础，但不能把它等同于 `knowledge_edges` 图谱关系召回。
 
@@ -61,3 +61,4 @@ Related: REQ-012 / REQ-013 / REQ-017
 | 2026-06-18 | Slice 2 完成 | PR #334 squash merge `87230ba`：AIChatService edge_retriever 第 4 通道 + _normalize_candidate_channels 处理 knowledge_edge + RRF graph_edge 权重 0.5 + 2 mock tests |
 | 2026-06-18 | Slice 3 完成 | PR #335 merge（仅测试）：trace graph_edge 通道已在 diagnostics.retrieval_topn 中可见，EvidenceItem model_validator 自动去重 + 2 mock tests |
 | 2026-06-18 | Slice 4 真实PG验收 | 4通道均激活（vector/keyword/graph/graph_edge）；发现并修复evidence_id="" bug（导致RRF dedup异常）；真PG验收报告已产出 |
+| 2026-06-18 | 评审收口 | DOC-071 确认通道接入可关闭；AC-5“关系召回补足 keyword/vector 不稳定问答”仍需更强真实样例，由 REQ-024 接力。 |
