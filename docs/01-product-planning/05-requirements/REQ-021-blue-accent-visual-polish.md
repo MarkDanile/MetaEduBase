@@ -1,6 +1,6 @@
 # REQ-021: 浅色主题加入克制蓝色点缀
 
-Status: 🟡 Doing
+Status: 🟢 Done
 Priority: P1
 Milestone: P2
 Owner: Codex
@@ -61,4 +61,4 @@ Note: 浏览器插件的页面脚本是只读作用域，不能临时写入 `loc
 
 ## 当前状态
 
-正在 `codex/req-021-blue-accent-visual-polish` 分支实施，PR 合并前保持 `Doing`。
+PR #340 已 squash merge 到 `main`，merge commit `5a13c3a`。Backlog、current-work 和 work-log 已按完成态收口。
