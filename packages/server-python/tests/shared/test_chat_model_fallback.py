@@ -88,7 +88,7 @@ class TestChatWithModelFallback:
             ProviderUnavailable("fallback fail"),
         ]
 
-        with pytest.raises(ProviderUnavailable, match="fallback fail"):
+        with pytest.raises(ProviderUnavailable, match="Both fast.*providers unavailable"):
             await chat_with_model_fallback(
                 messages=[{"role": "user", "content": "hi"}],
             )
@@ -117,17 +117,21 @@ class TestChatWithModelFallback:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Non-ProviderUnavailable errors (e.g. ValueError from unknown provider)
-        # should propagate, not be swallowed as "fast failure".
+        # from the fallback attempt should propagate, not be swallowed.
         mock = _install_chat_mock(monkeypatch)
-        mock.side_effect = ValueError("unknown provider")
+        # Fast: ProviderUnavailable (triggers fallback), Fallback: ValueError (propagates)
+        mock.side_effect = [
+            ProviderUnavailable("fast unavailable"),
+            ValueError("unknown provider"),
+        ]
 
         with pytest.raises(ValueError, match="unknown provider"):
             await chat_with_model_fallback(
                 messages=[{"role": "user", "content": "hi"}],
             )
 
-        # Only one chat() call should have happened
-        assert mock.call_count == 1
+        # Both chat() calls should have happened (fast failed, fallback raised)
+        assert mock.call_count == 2
 
     @pytest.mark.asyncio
     async def test_messages_passed_through_unchanged(
