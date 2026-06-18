@@ -17,7 +17,6 @@
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
 | REQ-024 P2 真实验收补强：Query Understanding 与 graph_edge 补足样例 | 🔴 阻塞 | P0 | RAG / P2 / Real Validation | 分支 `codex/req-024-p2-real-validation`；已产出验证脚本和真实 dev DB dry-run 报告；graph_edge 只证明进入 fusion，未进入 packed context；真实 LLM 验收因外部上下文发送安全边界未执行 | 先处理 TD-068，再由 REQ-025 接力 graph_edge 进入 prompt 与真实 LLM 效果验收；本任务不翻完成 | `scripts/validate_req024_p2_real_validation.py` dry-run 通过；`--allow-llm` 未运行 |
-| TD-068 AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明 | 🟡 进行中 | P0 | RAG / Embedding / AI Chat | 分支 `codex/td-068-vector-embedding-diagnostics`；已确认 vector topN 来自 keyword fallback，并让 diagnostics / REQ-024 report 显式透出 fallback 计数 | 运行完整门禁，提交 PR，合并后再翻完成 | 7 个相关 pytest 通过；ruff 指定文件通过；REQ-024 dry-run 已重跑 |
 
 ## 下一批候选任务
 
@@ -34,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-18 | TD-068 AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明 | 🟢 完成 | PR #355 squash merge `fdffd60`：确认 vector topN 是 keyword fallback；diagnostics / REQ-024 report 已显式透出 `embedding_fallback` 与 `vector fallback` 计数，REQ-025 后续验收必须据此判断 | [TD-068](technical-debt.md#td-068) / [Report](../02-delivery-plans/01-specs/2026-06-18-req-024-p2-real-validation-report.md) / [PR #355](https://github.com/MarkDanile/MetaEduBase/pull/355) |
 | 2026-06-18 | DOC-072 工程规则阶段复盘与 follow-up 登记 | 🟢 完成 | PR #352 squash merge `e776fb6`：复盘 DOC-057~DOC-071 后的规则执行效果，登记 DOC-073 门禁防绕过和 DOC-074 AI/RAG 完成态口径收紧，并放入工作台候选区 | [Retro](04-retrospectives/2026-06-18-rules-stage-retrospective.md) / [PR #352](https://github.com/MarkDanile/MetaEduBase/pull/352) |
 | 2026-06-18 | DOC-071 最近完成任务与 P2 里程碑评审收口 | 🟢 完成 | PR #350 squash merge `325ac35`：评审 DOC-069 后近期完成任务，重点复核 P2-SEARCH、BUG-009/010、REQ-016/017/018，修正 P2 状态漂移、补评分总账，并登记 REQ-024 作为 P2 真实验收补强 | [Review](04-retrospectives/2026-06-18-p2-recent-completion-review.md) / [REQ-024](../01-product-planning/05-requirements/REQ-024-p2-real-validation-query-understanding-and-graph-edge.md) / [PR #350](https://github.com/MarkDanile/MetaEduBase/pull/350) |
 | 2026-06-18 | REQ-023 登录页左侧品牌面大胆蓝色视觉加强 | 🟢 完成 | PR #345 squash merge `9d02ba6`：登录页左侧由轻浅蓝调整为深浅蓝品牌面，增加网格、斜向光带和底部圆弧层次；右侧表单和登录后工作区未扩散 | [REQ-023](../01-product-planning/05-requirements/REQ-023-bolder-login-brand-panel.md) / [PR #345](https://github.com/MarkDanile/MetaEduBase/pull/345) |
