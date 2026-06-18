@@ -1,6 +1,6 @@
 # REQ-019: 单主题视觉风格收敛
 
-Status: 🟣 待 Git 闭环
+Status: 🟢 Done
 Priority: P1
 Milestone: P2
 Owner: TBD
@@ -42,7 +42,7 @@ Owner: TBD
 
 ## 交付记录
 
-- 2026-06-18：`req-019-single-theme` 完成实现与验证；当前分支需完成 Git 工作流后翻 Done。
+- 2026-06-18：`req-019-single-theme` 完成实现与验证；[PR #336](https://github.com/MarkDanile/MetaEduBase/pull/336) squash merge `c3d3ab1`。
 - 验证：
   - `pnpm --filter @metaedu/web typecheck` 退出码 0。
   - `pnpm --filter @metaedu/web lint` 退出码 0。
