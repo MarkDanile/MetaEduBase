@@ -733,13 +733,18 @@ async def test_ai_chat_service_continues_when_one_channel_fails() -> None:
 
 
 async def test_diagnostics_contains_query_understanding_when_hybrid_ner_used() -> None:
-    """REQ-016 AC-6: diagnostics includes query_understanding trace when HybridQueryUnderstandingResult is used."""
+    """REQ-016 AC-6: diagnostics includes query_understanding trace."""
     from app.contexts.knowledge.application.hybrid_ner_service import (
         HybridQueryUnderstandingService,
     )
 
     fid = uuid.uuid4()
-    chunk = _chunk_evidence(fid, 1, score=0.9, content="电子信息专业的课程包括电路基础和信号系统。" * 5)
+    chunk = _chunk_evidence(
+        fid,
+        1,
+        score=0.9,
+        content="电子信息专业的课程包括电路基础和信号系统。" * 5,
+    )
 
     chunk_retriever = FakeChunkRetriever()
     chunk_retriever.return_value = [chunk]
@@ -772,10 +777,6 @@ async def test_diagnostics_query_understanding_populated_for_rule_miss_long_quer
     from app.contexts.knowledge.application.hybrid_ner_service import (
         HybridQueryUnderstandingService,
     )
-    from app.contexts.knowledge.application.query_understanding import (
-        QueryUnderstandingResult,
-    )
-
     fid = uuid.uuid4()
     chunk = _chunk_evidence(fid, 1, score=0.9, content="Python 函数参数调用和返回值处理。" * 5)
 
@@ -783,7 +784,15 @@ async def test_diagnostics_query_understanding_populated_for_rule_miss_long_quer
     chunk_retriever.return_value = [chunk]
 
     # Mock LLM to return structured QU output
-    mock_llm = MagicMock(return_value='{"normalized_query":"Python 函数参数","core_terms":["Python","函数参数"],"expanded_terms":["parameter","参数传递","返回值"],"entities":["Python"],"filters":{},"confidence":0.85,"reason":"编程语言学习"}')
+    mock_llm = MagicMock(
+        return_value=(
+            '{"normalized_query":"Python 函数参数",'
+            '"core_terms":["Python","函数参数"],'
+            '"expanded_terms":["parameter","参数传递","返回值"],'
+            '"entities":["Python"],"filters":{},'
+            '"confidence":0.85,"reason":"编程语言学习"}'
+        )
+    )
     hybrid_ner = HybridQueryUnderstandingService(llm_provider=mock_llm)
 
     service = AIChatService(
@@ -825,7 +834,15 @@ async def test_expanded_query_appears_in_retriever_trace() -> None:
     chunk_retriever = FakeChunkRetriever()
     chunk_retriever.return_value = [chunk]
 
-    mock_llm = MagicMock(return_value='{"normalized_query":"Python 函数参数","core_terms":["Python","函数参数"],"expanded_terms":["parameter","参数传递"],"entities":["Python"],"filters":{},"confidence":0.85,"reason":"编程语言"}')
+    mock_llm = MagicMock(
+        return_value=(
+            '{"normalized_query":"Python 函数参数",'
+            '"core_terms":["Python","函数参数"],'
+            '"expanded_terms":["parameter","参数传递"],'
+            '"entities":["Python"],"filters":{},'
+            '"confidence":0.85,"reason":"编程语言"}'
+        )
+    )
     hybrid_ner = HybridQueryUnderstandingService(llm_provider=mock_llm)
 
     service = AIChatService(
@@ -845,6 +862,49 @@ async def test_expanded_query_appears_in_retriever_trace() -> None:
     assert result.diagnostics["query_understanding"]["method"] == "llm"
     # expanded_terms from mock LLM response
     assert "parameter" in result.diagnostics["query_understanding"]["expanded_terms"]
+
+
+async def test_retrieval_trace_exposes_embedding_fallback_metadata() -> None:
+    """TD-068: vector topN must disclose when it is keyword fallback."""
+    fid = uuid.uuid4()
+    chunk = EvidenceItem(
+        evidence_id="",
+        source_type="chunk",
+        file_id=fid,
+        chunk_id=uuid.uuid4(),
+        title="数据类型和变量",
+        content="Python 支持整数、浮点数、字符串、布尔值等基本数据类型。" * 5,
+        snippet="Python 支持整数、浮点数、字符串、布尔值等基本数据类型。",
+        score=0.8,
+        channels=["vector", "keyword"],
+        metadata={
+            "embedding_fallback": True,
+            "search_mode": "tsvector",
+            "chunk_index": 12,
+        },
+    )
+
+    chunk_retriever = FakeChunkRetriever()
+    chunk_retriever.return_value = [chunk]
+    service = AIChatService(
+        chunk_retriever=chunk_retriever,
+        graph_retriever=FakeGraphRetriever(),
+        metadata_filter=FakeMetadataFilter(),
+        evidence_fusion=SimpleFrequencyFusion(),
+        ner_pipeline=RuleBasedNER(),
+    )
+
+    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+        result = await service.chat(
+            ServiceChatRequest(message="Python 的基本数据类型有哪些", context_window=3),
+            session=_session_for_file(fid),  # type: ignore[arg-type]
+        )
+
+    vector_trace = result.diagnostics["retrieval_topn"]["vector"][0]
+    keyword_trace = result.diagnostics["retrieval_topn"]["keyword"][0]
+    assert vector_trace["metadata"]["embedding_fallback"] is True
+    assert vector_trace["metadata"]["search_mode"] == "tsvector"
+    assert keyword_trace["metadata"]["embedding_fallback"] is True
 
 
 # ---------------------------------------------------------------------------

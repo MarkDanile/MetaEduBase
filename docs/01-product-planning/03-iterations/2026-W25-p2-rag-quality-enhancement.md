@@ -17,8 +17,8 @@ Goal: 在 REQ-012 多路 evidence 骨架之上，补齐召回后上下文组装�
 | REQ-017 | REQ | 🟢 Done | P2 RRF / Weighted RRF 融合排序收口 | PR #325 + 真实 PG 验收报告已收口；4 通道 RRF 融合正常，AC-1~7 通过。 |
 | REQ-016 | REQ | 🟢 Done | P2 LLM 混合 NER / Query Understanding | PR #328/#329/#330 已合并；混合 Query Understanding、expanded_query 和 retriever 接入已收口，真实 PG + LLM 效果验收由 REQ-024 接力。 |
 | REQ-024 | REQ | 🔴 Blocked | P2 真实验收补强：Query Understanding 与 graph_edge 补足样例 | 已产出 dry-run 报告：diagnostics 可复跑，graph_edge 进入 fusion；但真实 LLM 未执行、graph_edge 未进入 packed context。后续由 TD-068 / REQ-025 接力。 |
-| TD-068 | TD | 🔵 Ready | AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明 | 先确认向量通道是否真实参与多路召回验收。 |
-| REQ-025 | REQ | 🔵 Ready | P2 graph_edge 进入 prompt 与真实 LLM 效果验收收口 | 在 TD-068 结论明确后，继续证明 graph_edge 进入 packed context 并改善真实 LLM 回答。 |
+| TD-068 | TD | 🟡 Doing | AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明 | diagnostics 已透出 `embedding_fallback`，REQ-024 报告新增 `vector fallback` 计数；确认当前 vector topN 是 keyword fallback；待 PR 合并后翻完成。 |
+| REQ-025 | REQ | 🔵 Ready | P2 graph_edge 进入 prompt 与真实 LLM 效果验收收口 | 基于 TD-068 的 fallback 诊断，继续证明 graph_edge 进入 packed context 并改善真实 LLM 回答。 |
 
 ## Out of Scope
 
@@ -36,4 +36,4 @@ Goal: 在 REQ-012 多路 evidence 骨架之上，补齐召回后上下文组装�
 | REQ-014 只完成 tooling，生产链路仍缺 ContextPacker 注入和 diagnostics | 当前需要把机制真正接入默认 AI Chat endpoint，并让脚本能读到 trace | REQ-015 |
 | REQ-015 真实样例截停在 prompt 前仍缺正文 chunk | BUG-009 已把瓶颈收口：`fusion_topN[1]` 命中 `数据类型和变量` 正文，packed context 含基本类型证据，完整 DeepSeek ask 回答正确 | BUG-009 / REQ-015 已由 PR #314 收口 |
 | P2 已有 PostgreSQL tsvector 基础 | 当前先用既有 PostgreSQL 能力提升质量，不急于换 ES / Milvus / Neo4j | P2-SEARCH / REQ-013；P2-RRF 仍留在里程碑 Open Items，待真实瓶颈明确后再映射稳定任务编号 |
-| P2 正式进入增长期 | 重点不再是证明 P1 闭环存在，而是提升真实问答质量和可解释检索链路 | REQ-018 / REQ-017 / REQ-016 代码能力已接入；REQ-024 证明 dry-run 诊断链路但未证明最终效果，下一步 TD-068 / REQ-025 |
+| P2 正式进入增长期 | 重点不再是证明 P1 闭环存在，而是提升真实问答质量和可解释检索链路 | REQ-018 / REQ-017 / REQ-016 代码能力已接入；TD-068 已让 vector fallback 可见，下一步 REQ-025 做 graph_edge prompt / 真实 LLM 效果验收 |

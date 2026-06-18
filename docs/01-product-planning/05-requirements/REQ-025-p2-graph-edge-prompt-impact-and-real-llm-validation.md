@@ -31,11 +31,11 @@ REQ-024 干跑验收证明 graph_edge 通道在真实 dev DB 中可以补足 fus
 2. 至少 2 个真实问题的最终回答比 baseline 更完整，且回答引用能指向相关文档来源。
 3. 报告同时包含 baseline / +Query Understanding / +graph_edge / +weighted RRF 的 retrieval_topn、fusion_topn、packed_blocks 和最终回答摘要。
 4. 如果真实 LLM 调用被安全策略或环境阻塞，必须记录阻塞原因，不能把任务标记为效果通过。
-5. 如果向量通道 query embedding 为空，先处理或明确关联 [TD-068](../../03-engineering-governance/technical-debt.md#td-068) 后再做效果结论。
+5. 报告必须记录 `vector fallback` 计数；当 fallback 大于 0 时，不能把 vector topN 解释为真实语义向量召回。
 
 ## 建议执行顺序
 
-1. 先排查 TD-068，确认向量通道是否真实参与召回。
+1. 基于 TD-068 的结论，先把 `vector fallback` 计数作为验收报告固定字段。
 2. 复核 ContextPacker 对 `source_type="knowledge_edge"` / `channels=["graph_edge"]` 的处理，确保有效 edge 关联 chunk 可以进入 packed context。
 3. 使用 REQ-024 脚本或其后续版本跑 dry-run，对比 packed context。
 4. 获得用户明确授权后，再开启真实 LLM provider 验收。
