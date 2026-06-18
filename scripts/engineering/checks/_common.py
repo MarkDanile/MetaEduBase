@@ -64,6 +64,7 @@ SCRIPTED_GATE_CANDIDATES: frozenset[str] = frozenset(
         "Markdown 相对链接存在性检查",
         "AGENTS.md / CLAUDE.md 与 IDE 兼容入口同步检查",
         "源码文件超过 1000 行硬限制检查",
+        "非门禁治理任务修改门禁脚本或 `KNOWN_ISSUES`",
     }
 )
 
