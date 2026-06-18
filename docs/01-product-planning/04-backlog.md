@@ -51,6 +51,7 @@
 | REQ-016 | REQ | 🟣 Shaping | P0 | P2 | P2 LLM 混合 NER / Query Understanding | 规则 NER + deterministic normalizer 已有；后续新增 LLM Query Understanding schema、低置信触发策略、专属 trace 和真实问法回归。建议在 REQ-018 / REQ-017 基线明确后推进。 | [Requirement](05-requirements/REQ-016-p2-llm-hybrid-ner-query-understanding.md) |
 | REQ-017 | REQ | 🟣 Shaping | P0 | P2 | P2 RRF / Weighted RRF 融合排序收口 | RRF 已实现并默认接入 evidence AI Chat；后续重点是 weighted RRF 生产配置、4 通道接入后的排序验收、trace 和真实样例回归。建议在 REQ-018 之后推进。 | [Requirement](05-requirements/REQ-017-p2-rrf-weighted-fusion.md) |
 | REQ-018 | REQ | 🟣 Shaping | P0 | P2 | P2 4 通道并行召回与图谱关系召回 | 当前已有 chunk vector / chunk keyword / graph node 回源 chunk 基础，但没有独立 `knowledge_edges` graph edge recall 通道；建议作为 P2 下一项优先塑形。 | [Requirement](05-requirements/REQ-018-p2-four-channel-graph-edge-recall.md) |
+| REQ-019 | REQ | 🟣 待验证 / Git 闭环 | P1 | P2 | 单主题视觉风格收敛：极简白底 + 暖纸墨韵 | 实现与前端验证已完成；当前分支需完成 Git 工作流后翻 Done。 | [Requirement](05-requirements/REQ-019-single-paper-theme-visual-alignment.md) |
 | APP-001 | APP | ⚫ Candidate | P1 | P1 / P2 | 课程能力图谱智能体工具 | 优先进入 Shaping，明确课程样例、能力点 schema、图谱验收指标和首个最小闭环 |  |
 | APP-002 | APP | ⚫ Candidate | P1 | P2 | 智能预习规划与导学智能体 | 等 APP-001 能力图谱最小闭环明确后，塑形学情诊断、预习任务和资源推送 |  |
 | APP-003 | APP | ⚫ Candidate | P2 | P2 / P3 | 个性化学习资源推荐智能体 | 等资源类型、学生画像和能力图谱关联策略明确后塑形 |  |

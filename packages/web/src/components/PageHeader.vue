@@ -3,7 +3,7 @@
     <slot name="greeting" />
     <div class="flex items-start justify-between gap-4 flex-wrap">
       <div class="min-w-0">
-        <h1 class="text-[var(--text-page-title)] font-semibold tracking-tight leading-tight">
+        <h1 class="text-[var(--text-page-title)] font-semibold leading-tight">
           <slot name="title">{{ title }}</slot>
         </h1>
         <p v-if="subtitle" class="text-[var(--color-ink-tertiary)] mt-1 text-[var(--text-body)]">

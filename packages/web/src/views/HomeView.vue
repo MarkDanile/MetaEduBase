@@ -13,7 +13,7 @@
             <component :is="stat.icon" :size="16" :stroke-width="1.5" :class="stat.iconClass" />
           </div>
         </div>
-        <p class="text-[var(--text-page-title)] font-semibold tracking-tight tabular-nums">{{ stat.value }}</p>
+        <p class="text-[var(--text-page-title)] font-semibold tabular-nums">{{ stat.value }}</p>
         <p class="text-[var(--color-ink-tertiary)] mt-0.5">{{ stat.label }}</p>
       </div>
     </div>

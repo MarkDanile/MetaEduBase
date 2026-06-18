@@ -33,7 +33,8 @@
 ## 设计系统
 
 - 新增或修改业务 UI 优先使用语义化 `ui-*` workspace 层。
-- `liquid-*` 保留为历史兼容和少量品牌 / 装饰例外，不作为新增默认选择。
+- 产品主视觉只保留一套 `paper` 风格：极简白底、暖纸背景、墨色文字、低饱和玉青点缀。
+- `liquid-*` 保留为历史兼容类名，不作为新增默认选择；不得新增普通用户可切换主题入口。
 - 共享组件优先复用：`PageHeader`、`EmptyState`、`ConfirmDialog`、`LoadingSpinner`、`ToastContainer`。
 - 危险操作必须使用 `ConfirmDialog`，禁止点击即执行。
 - 对话框必须包含 `role="dialog"` 和 `aria-modal="true"`；复杂表单补 focus 管理。

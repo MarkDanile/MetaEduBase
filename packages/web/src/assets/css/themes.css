@@ -1,256 +1,77 @@
 /* ================================================================
-   THEME 1: Liquid Glass (default) — 液态玻璃
+   THEME: Paper — 极简白底 + 暖纸墨韵
+   保留旧 data-theme 入口，但所有主题统一收敛到同一套视觉变量。
    ================================================================ */
 :root,
-:root[data-theme="liquid"] {
-  /* Text */
-  --theme-ink: #334155;
-  --theme-ink-secondary: #64748B;
-  --theme-ink-tertiary: #94A3B8;
-  --theme-ink-inverse: #FFFFFF;
-  --theme-ink-dim: #C8CDD4;
-  /* Backgrounds */
-  --theme-bg-base: #F5F7FA;
-  --theme-bg-warm: #EDF0F5;
-  --theme-bg-elevated: #FFFFFF;
-  --theme-bg-hover: #F5F7FA;
-  /* Accent */
-  --theme-accent: #4C5EEB;
-  --theme-accent-light: #3A4CD9;
-  --theme-accent-bg: #EEF1FE;
-  --theme-accent-glow: #DEE3FC;
-  --theme-accent-glow-start: #7289F6;
-  --theme-accent-glow-start-hover: #9BA8F8;
-  --theme-accent-ring: rgba(76, 94, 235, 0.1);
-  --theme-accent-sweep: rgba(76, 94, 235, 0.08);
-  /* Highlight */
-  --theme-highlight: #F59E0B;
-  --theme-highlight-bg: rgba(245, 158, 11, 0.08);
-  /* Tags */
-  --theme-tag-green: rgba(16, 185, 129, 0.08);
-  --theme-tag-green-text: #059669;
-  --theme-tag-amber: rgba(245, 158, 11, 0.08);
-  --theme-tag-amber-text: #B45309;
-  --theme-tag-blue: rgba(76, 94, 235, 0.10);
-  --theme-tag-blue-text: #4C5EEB;
-  --theme-tag-purple: rgba(109, 40, 217, 0.06);
-  --theme-tag-purple-text: #6D28D9;
-  /* Borders */
-  --theme-border: #E1E6EE;
-  --theme-border-subtle: #EEF1F6;
-  --theme-border-accent: #4C5EEB;
-  /* Surfaces — full glass morphism */
-  --_surface-card-bg: rgba(255, 255, 255, 0.65);
-  --_surface-card-border: 1px solid rgba(255, 255, 255, 0.8);
-  --_surface-card-shadow: 0 8px 32px rgba(28, 44, 80, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6);
-  --_surface-card-shadow-hover: 0 10px 40px rgba(28, 44, 80, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.7);
-  --_surface-card-elevated-bg: rgba(255, 255, 255, 0.8);
-  --_surface-card-elevated-shadow: 0 12px 40px rgba(28, 44, 80, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.7);
-  --_surface-glass-blur: blur(24px);
-  --_surface-glass-blur-light: blur(8px);
-  --_surface-sidebar-bg: rgba(255, 255, 255, 0.72);
-  --_surface-input-bg: rgba(255, 255, 255, 0.5);
-  --_surface-input-bg-focus: rgba(255, 255, 255, 0.8);
-  --_surface-dialog-bg: rgba(255, 255, 255, 0.8);
-  --_surface-dialog-border: 1px solid rgba(255, 255, 255, 0.9);
-  --_surface-dialog-shadow: 0 12px 40px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.7);
-  --_surface-toast-bg: rgba(255, 255, 255, 0.9);
-  --_surface-ghost-btn-bg: rgba(255, 255, 255, 0.5);
-  /* Overlay / button ripple (TD-027) */
-  --_overlay-bg: rgba(0, 0, 0, 0.2);
-  --_btn-ripple: rgba(255, 255, 255, 0.25);
-  /* Login */
-  --_login-brand-gradient: linear-gradient(160deg, #0F172A 0%, #1E3A5F 40%, #1E40AF 100%);
-}
-
-/* ================================================================
-   THEME 2: Ink & Paper — 墨韵书香（文人水墨）
-   ================================================================ */
-:root[data-theme="ink"] {
-  /* Text — 柔和墨色 */
-  --theme-ink: #1C1C1C;
-  --theme-ink-secondary: #5A5954;
-  --theme-ink-tertiary: #8C8A82;
-  --theme-ink-inverse: #FFFFFF;
-  --theme-ink-dim: #B5B1A7;
-  /* Backgrounds — 暖白宣纸色调 */
-  --theme-bg-base: #FAF8F2;
-  --theme-bg-warm: #F1ECE2;
-  --theme-bg-elevated: #FEFDF9;
-  --theme-bg-hover: #F3EFE5;
-  /* Accent — 靛蓝（文人墨色） */
-  --theme-accent: #2563EB;
-  --theme-accent-light: #1D4ED8;
-  --theme-accent-bg: #EFF6FF;
-  --theme-accent-glow: #DBEAFE;
-  --theme-accent-glow-start: #3B82F6;
-  --theme-accent-glow-start-hover: #60A5FA;
-  --theme-accent-ring: rgba(37, 99, 235, 0.12);
-  --theme-accent-sweep: rgba(37, 99, 235, 0.06);
-  /* Highlight */
-  --theme-highlight: #9333EA;
-  --theme-highlight-bg: rgba(147, 51, 234, 0.08);
-  /* Tags */
-  --theme-tag-green: rgba(16, 185, 129, 0.08);
-  --theme-tag-green-text: #059669;
-  --theme-tag-amber: rgba(245, 158, 11, 0.08);
-  --theme-tag-amber-text: #D97706;
-  --theme-tag-blue: rgba(37, 99, 235, 0.08);
-  --theme-tag-blue-text: #2563EB;
-  --theme-tag-purple: rgba(147, 51, 234, 0.08);
-  --theme-tag-purple-text: #9333EA;
-  /* Borders */
-  --theme-border: #E2E8F0;
-  --theme-border-subtle: #F1F5F9;
-  --theme-border-accent: #2563EB;
-  /* Surfaces — 素雅宣纸质感 */
-  --_surface-card-bg: #FEFDF9;
-  --_surface-card-border: 1px solid #E2E8F0;
-  --_surface-card-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  --_surface-card-shadow-hover: 0 4px 14px rgba(0, 0, 0, 0.06);
-  --_surface-card-elevated-bg: #FEFDF9;
-  --_surface-card-elevated-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
-  --_surface-glass-blur: none;
-  --_surface-glass-blur-light: none;
-  --_surface-sidebar-bg: #F8FAFC;
-  --_surface-input-bg: #F1F5F9;
-  --_surface-input-bg-focus: #FEFDF9;
-  --_surface-dialog-bg: #FEFDF9;
-  --_surface-dialog-border: 1px solid #E2E8F0;
-  --_surface-dialog-shadow: 0 16px 48px rgba(0, 0, 0, 0.08);
-  --_surface-toast-bg: #FEFDF9;
-  --_surface-ghost-btn-bg: transparent;
-  /* Overlay / button ripple (TD-027) */
-  --_overlay-bg: rgba(0, 0, 0, 0.2);
-  --_btn-ripple: rgba(255, 255, 255, 0.25);
-  /* Login */
-  --_login-brand-gradient: linear-gradient(160deg, #1E3A5F 0%, #1E40AF 40%, #312E81 100%);
-}
-
-/* ================================================================
-   THEME 3: Navy & Brass — 沉稳奢华
-   ================================================================ */
-:root[data-theme="navy"] {
-  /* Text — 深炭灰 */
-  --theme-ink: #334155;
-  --theme-ink-secondary: #64748B;
-  --theme-ink-tertiary: #94A3B8;
-  --theme-ink-inverse: #FFFFFF;
-  --theme-ink-dim: #CBD5E1;
-  /* Backgrounds — 冷灰白调 */
-  --theme-bg-base: #F8FAFC;
-  --theme-bg-warm: #F1F5F9;
-  --theme-bg-elevated: #FFFFFF;
-  --theme-bg-hover: #E2E8F0;
-  /* Accent — 暗金（高端青铜） */
-  --theme-accent: #B45309;
-  --theme-accent-light: #92400E;
-  --theme-accent-bg: #FEF3C7;
-  --theme-accent-glow: #FDE68A;
-  --theme-accent-glow-start: #D97706;
-  --theme-accent-glow-start-hover: #B45309;
-  --theme-accent-ring: rgba(180, 83, 9, 0.12);
-  --theme-accent-sweep: rgba(180, 83, 9, 0.06);
-  /* Highlight */
-  --theme-highlight: #DC2626;
-  --theme-highlight-bg: rgba(220, 38, 38, 0.08);
-  /* Tags */
-  --theme-tag-green: rgba(16, 185, 129, 0.08);
-  --theme-tag-green-text: #059669;
-  --theme-tag-amber: rgba(180, 83, 9, 0.08);
-  --theme-tag-amber-text: #B45309;
-  --theme-tag-blue: rgba(59, 130, 246, 0.08);
-  --theme-tag-blue-text: #2563EB;
-  --theme-tag-purple: rgba(139, 92, 246, 0.08);
-  --theme-tag-purple-text: #7C3AED;
-  /* Borders */
-  --theme-border: #CBD5E1;
-  --theme-border-subtle: #E2E8F0;
-  --theme-border-accent: #B45309;
-  /* Surfaces — 冷调极简 */
-  --_surface-card-bg: #FFFFFF;
-  --_surface-card-border: 1px solid #E2E8F0;
-  --_surface-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --_surface-card-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --_surface-card-elevated-bg: #FFFFFF;
-  --_surface-card-elevated-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-  --_surface-glass-blur: none;
-  --_surface-glass-blur-light: none;
-  --_surface-sidebar-bg: #F8FAFC;
-  --_surface-input-bg: #F1F5F9;
-  --_surface-input-bg-focus: #FFFFFF;
-  --_surface-dialog-bg: #FFFFFF;
-  --_surface-dialog-border: 1px solid #E2E8F0;
-  --_surface-dialog-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
-  --_surface-toast-bg: #FFFFFF;
-  --_surface-ghost-btn-bg: transparent;
-  /* Overlay / button ripple (TD-027) */
-  --_overlay-bg: rgba(0, 0, 0, 0.2);
-  --_btn-ripple: rgba(255, 255, 255, 0.25);
-  /* Login */
-  --_login-brand-gradient: linear-gradient(160deg, #1E293B 0%, #334155 40%, #475569 100%);
-}
-
-/* ================================================================
-   THEME 4: Notion — 豆包极简冷白风
-   ================================================================ */
+:root[data-theme="paper"],
+:root[data-theme="liquid"],
+:root[data-theme="ink"],
+:root[data-theme="navy"],
 :root[data-theme="notion"] {
-  /* Text — 柔和深灰，无纯黑刺眼 */
-  --theme-ink: #1F1F1F;
-  --theme-ink-secondary: #6B7280;
-  --theme-ink-tertiary: #9CA3AF;
+  /* Text */
+  --theme-ink: #1F1C18;
+  --theme-ink-secondary: #5F5952;
+  --theme-ink-tertiary: #8D8478;
   --theme-ink-inverse: #FFFFFF;
-  --theme-ink-dim: #D1D5DB;
-  /* Backgrounds — 多级浅灰层级 */
-  --theme-bg-base: #FFFFFF;
-  --theme-bg-warm: #F4F5F7;
-  --theme-bg-elevated: #FFFFFF;
-  --theme-bg-hover: #F8F9FA;
-  /* Accent — 低饱和青蓝（天蓝） */
-  --theme-accent: #0EA5C9;
-  --theme-accent-light: #0891B2;
-  --theme-accent-bg: #E0F7FC;
-  --theme-accent-glow: #BAE6FD;
-  --theme-accent-glow-start: #38BDF8;
-  --theme-accent-glow-start-hover: #7DD3FC;
-  --theme-accent-ring: rgba(14, 165, 201, 0.12);
-  --theme-accent-sweep: rgba(14, 165, 201, 0.06);
+  --theme-ink-dim: #C4B9AC;
+
+  /* Backgrounds */
+  --theme-bg-base: #FBF8F1;
+  --theme-bg-warm: #F2ECDD;
+  --theme-bg-elevated: #FFFDF8;
+  --theme-bg-hover: #F5F0E6;
+
+  /* Accent */
+  --theme-accent: #7E9276;
+  --theme-accent-light: #657A60;
+  --theme-accent-bg: #E7EEE1;
+  --theme-accent-glow: #D7E2D1;
+  --theme-accent-glow-start: #9AAE92;
+  --theme-accent-glow-start-hover: #B0C2AA;
+  --theme-accent-ring: rgba(126, 146, 118, 0.14);
+  --theme-accent-sweep: rgba(126, 146, 118, 0.06);
+
   /* Highlight */
-  --theme-highlight: #F59E0B;
-  --theme-highlight-bg: rgba(245, 158, 11, 0.06);
-  /* Tags — 低饱和彩色 */
-  --theme-tag-green: rgba(14, 165, 201, 0.08);
-  --theme-tag-green-text: #0891B2;
-  --theme-tag-amber: rgba(245, 158, 11, 0.08);
-  --theme-tag-amber-text: #D97706;
-  --theme-tag-blue: rgba(14, 165, 201, 0.10);
-  --theme-tag-blue-text: #0EA5C9;
-  --theme-tag-purple: rgba(139, 92, 246, 0.08);
-  --theme-tag-purple-text: #7C3AED;
-  /* Borders — 极浅灰细边框 */
-  --theme-border: #E5E7EB;
-  --theme-border-subtle: #F3F4F6;
-  --theme-border-accent: #0EA5C9;
-  /* Surfaces — 纯白底 + 极浅灰边框，无阴影 */
-  --_surface-card-bg: #FFFFFF;
-  --_surface-card-border: 1px solid #E5E7EB;
-  --_surface-card-shadow: none;
-  --_surface-card-shadow-hover: none;
-  --_surface-card-elevated-bg: #FFFFFF;
-  --_surface-card-elevated-shadow: none;
+  --theme-highlight: #A0845C;
+  --theme-highlight-bg: rgba(160, 132, 92, 0.08);
+
+  /* Tags */
+  --theme-tag-green: rgba(126, 146, 118, 0.10);
+  --theme-tag-green-text: #657A60;
+  --theme-tag-amber: rgba(160, 132, 92, 0.10);
+  --theme-tag-amber-text: #A0845C;
+  --theme-tag-blue: rgba(100, 120, 140, 0.10);
+  --theme-tag-blue-text: #587083;
+  --theme-tag-purple: rgba(125, 96, 133, 0.10);
+  --theme-tag-purple-text: #7D6085;
+
+  /* Borders */
+  --theme-border: #E5DDCF;
+  --theme-border-subtle: #F1E9DD;
+  --theme-border-accent: #7E9276;
+
+  /* Surfaces */
+  --_surface-card-bg: #FFFDF8;
+  --_surface-card-border: 1px solid #E5DDCF;
+  --_surface-card-shadow: 0 1px 2px rgba(35, 28, 18, 0.04);
+  --_surface-card-shadow-hover: 0 4px 12px rgba(35, 28, 18, 0.06);
+  --_surface-card-elevated-bg: #FFFDF8;
+  --_surface-card-elevated-shadow: 0 6px 18px rgba(35, 28, 18, 0.06);
   --_surface-glass-blur: none;
   --_surface-glass-blur-light: none;
-  --_surface-sidebar-bg: #F8F9FA;
-  --_surface-input-bg: #FFFFFF;
-  --_surface-input-bg-focus: #FFFFFF;
-  --_surface-dialog-bg: #FFFFFF;
-  --_surface-dialog-border: 1px solid #E5E7EB;
-  --_surface-dialog-shadow: none;
-  --_surface-toast-bg: #FFFFFF;
+  --_surface-sidebar-bg: #F7F2E8;
+  --_surface-input-bg: #FFFDF8;
+  --_surface-input-bg-focus: #FFFDF8;
+  --_surface-dialog-bg: #FFFDF8;
+  --_surface-dialog-border: 1px solid #E5DDCF;
+  --_surface-dialog-shadow: 0 18px 42px rgba(35, 28, 18, 0.08);
+  --_surface-toast-bg: #FFFDF8;
   --_surface-ghost-btn-bg: transparent;
-  /* Overlay / button ripple (TD-027) */
-  --_overlay-bg: rgba(0, 0, 0, 0.15);
-  --_btn-ripple: rgba(255, 255, 255, 0.25);
+
+  /* Overlay / button ripple */
+  --_overlay-bg: rgba(35, 28, 18, 0.16);
+  --_btn-ripple: rgba(255, 255, 255, 0.20);
+
   /* Login */
-  --_login-brand-gradient: linear-gradient(160deg, #F8FAFC 0%, #E0F7FC 100%);
+  --_login-brand-gradient: linear-gradient(160deg, #EDE5D6 0%, #D8E2CF 100%);
 }

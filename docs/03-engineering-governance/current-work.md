@@ -14,7 +14,9 @@
 
 ## 当前进行中
 
-暂无。
+| 任务 | 状态 | 优先级 | 领域 | 下一步 |
+|------|------|--------|------|--------|
+| [REQ-019](../01-product-planning/05-requirements/REQ-019-single-paper-theme-visual-alignment.md) 单主题视觉风格收敛：极简白底 + 暖纸墨韵 | 🟣 待验证 / Git 闭环 | P1 | UI / Theme / Frontend | 实现、前端验证和浏览器烟测已完成；当前分支需完成 Git 工作流后再翻完成。 |
 
 ## 下一批候选任务
 

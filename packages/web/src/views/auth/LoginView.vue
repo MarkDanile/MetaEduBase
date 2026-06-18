@@ -190,9 +190,8 @@ async function handleLogin() {
   content: '';
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(circle, var(--color-border) 0.5px, transparent 0.5px);
-  background-size: 22px 22px;
-  opacity: 0.5;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent 280px);
+  opacity: 0.7;
   pointer-events: none;
 }
 
@@ -212,7 +211,7 @@ async function handleLogin() {
   color: var(--color-ink);
   text-align: center;
   margin-bottom: 32px;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 /* ===== 表单 ===== */
