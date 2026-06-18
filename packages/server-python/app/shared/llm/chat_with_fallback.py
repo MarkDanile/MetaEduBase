@@ -68,12 +68,30 @@ async def chat_with_model_fallback(
             "init_by_ai flash model failed, fallback to default DeepSeek model: %s",
             fast_error,
         )
+    except ValueError:
+        # Provider not configured (no API key or unknown name) — fall through to fallback
+        pass
+    else:
+        # Fast succeeded — return directly
+        return content
 
-    return await chat(
-        messages,
-        provider=fallback_provider,
-        model=resolved_fallback_model,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        timeout=timeout,
+    try:
+        return await chat(
+            messages,
+            provider=fallback_provider,
+            model=resolved_fallback_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+        )
+    except ProviderUnavailable as fallback_error:
+        logger.warning(
+            "init_by_ai fallback model also failed: %s",
+            fallback_error,
+        )
+    # ValueError from fallback propagates (unknown/bad provider is a programming error)
+
+    raise ProviderUnavailable(
+        f"Both fast ({fast_provider}/{fast_model}) and fallback "
+        f"({fallback_provider}/{resolved_fallback_model}) providers unavailable"
     )
