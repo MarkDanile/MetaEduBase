@@ -9,6 +9,11 @@
 - Tenant: `00000000-0000-0000-0000-000000000001`
 - LLM provider: `deepseek` (授权用户)
 
+> 2026-06-18 更新：本报告原为空表占位。REQ-024 已补充真实 dev DB dry-run diagnostics，并生成
+> [REQ-024 P2 真实验收补强报告](2026-06-18-req-024-p2-real-validation-report.md)。
+> 该补验可证明 Query Understanding trace / retrieval / fusion / packed diagnostics 可复跑，但 dry-run 使用脚本内 fake provider，
+> 不能代表真实 LLM Query Understanding 质量；真实 LLM 效果验收因外部上下文发送安全边界未执行。
+
 ## 验收目的
 
 验证 REQ-016 Slice 1-3 在真实 PG 环境下的行为：
@@ -36,7 +41,7 @@
 
 | 检查项 | 预期 | 实际 | 结果 |
 |--------|------|------|------|
-| query | 这门课的教学做得好不好？ | | |
+| query | 请帮我判断这份材料的教学安排是否合理 | | |
 | method | llm | | |
 | confidence | > 0.5 | | |
 | expanded_terms 非空 | 是 | | |
@@ -46,7 +51,7 @@
 
 | 检查项 | 预期 | 实际 | 结果 |
 |--------|------|------|------|
-| query | 查找模板配置相关的文档 | | |
+| query | 请帮我查找模板配置相关的文档资料 | | |
 | method | llm | | |
 | confidence | > 0.5 | | |
 | expanded_terms 含模板/配置相关词 | 是 | | |
@@ -65,11 +70,11 @@
 
 | 检查项 | 结果 | 证据 |
 |--------|------|------|
-| 规则命中不调用 LLM | 待验证 | |
-| 规则未命中长 query 调用 LLM | 待验证 | |
-| expanded_terms 进入 retrievers | 待验证 | |
-| diagnostics 含完整 query_understanding trace | 待验证 | |
-| expanded_query 增强召回 | 待验证 | |
+| 规则命中不调用 LLM | dry-run 已验证 | REQ-024 报告 Q4：`method=rule`、`trigger_reason=rule_hit` |
+| 规则未命中长 query 调用 LLM | dry-run 部分验证 | REQ-024 报告 Q1/Q2/Q3：fake provider 返回 `method=llm`、`confidence=0.75` |
+| expanded_terms 进入 retrievers | dry-run 部分验证 | REQ-024 报告 Q1/Q2/Q3 retrieval_topn 有变化；真实 LLM provider 未验收 |
+| diagnostics 含完整 query_understanding trace | dry-run 已验证 | REQ-024 报告包含 `query_understanding` / `retrieval_topn` / `fusion_topn` / `packed_blocks` |
+| expanded_query 增强召回 | 待真实 LLM 验证 | REQ-024 未开启外部 LLM；效果结论由 REQ-025 接力 |
 
 ## 运行方式
 
@@ -85,6 +90,6 @@ python scripts/validate_real_pg_rag.py ask \
 
 # REQ-016 专属问题在 REQ-015 的问题基础上增加以下 query understanding 验证：
 # - python_function_param: "Python 函数的参数要怎么理解最好"
-# - course_quality: "这门课的教学做得好不好？"
-# - template_doc: "查找模板配置相关的文档"
+# - course_quality: "请帮我判断这份材料的教学安排是否合理"
+# - template_doc: "请帮我查找模板配置相关的文档资料"
 ```

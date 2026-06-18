@@ -106,5 +106,5 @@
 | AC-2 | graph edge 命中的关系最终回源到chunk/section | ✅ | edge有source_chunk_id；hydration逻辑在context_packer（但graph_hydrated_count=0因graph_edge未进top10） |
 | AC-3 | trace中能看到graph edge topN、关联节点、回源chunk | ✅ | diagnostics.retrieval_topn.graph_edge 有5条独立edge记录 |
 | AC-4 | 重复evidence合并channels，不重复污染sources | ✅ | `evidence_id` 去重，channels 合并 |
-| AC-5 | 至少2个真实样例证明关系召回补足keyword/vector不稳定问答 | ⚠️ | Q2证明graph_edge通道有效（5条edge）；但当前数据下keyword/vector已强，edge未能改变fusion排序 |
+| AC-5 | 至少2个真实样例证明关系召回补足keyword/vector不稳定问答 | ⚠️ | REQ-024 dry-run 进一步证明 2 个样例中 graph_edge 新 chunk 进入 fusion，但 `edge in packed = 0`；最终 prompt / LLM 效果仍由 REQ-025 接力 |
 | AC-6 | 现有graph node → chunk hydration行为不回归 | ✅ | 代码未改动graph hydration逻辑 |

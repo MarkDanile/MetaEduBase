@@ -161,6 +161,7 @@
 | TD-065 | ds_embed 返 embedded count int | 🟢 完成 | P1 | 后端 / Structured Data / Embedding | TD-057 slice 9：ds_embed._do 返 `success_count` int；outer 补 `return`。 | [PR #275](https://github.com/MarkDanile/MetaEduBase/pull/275) (merge `f878303`) |
 | TD-066 | ds_cross_dataset_edges 返 cross dataset edges count | 🟢 完成 | P1 | 后端 / Structured Data / KG | TD-057 9 个 follow-up 列表（commit 49a964a 父任务总账）包含的"剩 6 个 follow-up"收口候选（实际只定义了 8 个 TD-058~TD-065，TD-066 是 parent 总账描述中预留的下一个 `_do` 编号）。`ds_cross_dataset_edges._do` 是 structured_data pipeline 最后一步（chain 由 ds_extract_kg 触发），caller 拿到新建跨数据集边数后可直接评估跨数据集 KG 链接构建质量。 | [PR #280](https://github.com/MarkDanile/MetaEduBase/pull/280) (merge `c343de7`) |
 | TD-067 | LLM 抽取 `teaching_plan` / `practice_links` 失败返 `-` | 🟢 完成 | P2 | 后端 / 模板抽取 / LLM prompt | 2026-06-14 全链路评估人才培养方案文件复测：模板 `人才培养方案` 期望 `teaching_plan: array[semester]` 38 课程 × 6 学期课时表 + `practice_links: table` 实践环节；LLM 返 `-`（未抽取）。`curriculum_system: array[course]` 38 门课正确抽取、`basic_info` 5 字段准 — 抽取链路"懂简单数组，不懂嵌套课时表"。需在 `extract_template_prompts.py` 补 few-shot 示例（教学进程表 + 实践环节表）。 | [PR #287](https://github.com/MarkDanile/MetaEduBase/pull/287) (merge `2b983b2`) |
+| TD-068 | AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明 | 🔵 就绪 | P0 | 后端 / RAG / Embedding / AI Chat | REQ-024 dry-run 重复输出 `pg_chunk_vector: empty embedding for query=...`，需确认向量通道是否真实参与 P2 验收。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -4013,3 +4014,43 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
   - ruff clean
   - TD-067 翻完成依据：PR #287 state=MERGED + merge commit `2b983b2` 已在 main + 8 mock pytest 全过 + ruff clean + 0 业务代码回归
   - 任务整体保持 🟢 完成——真 PG 重跑验证留维护者（沙箱无 LLM key）
+
+### TD-068: AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明
+
+状态：🔵 就绪
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P0 |
+| 领域 | 后端 / RAG / Embedding / AI Chat |
+| 事实源 | REQ-024 dry-run：`scripts/validate_req024_p2_real_validation.py` 真实 dev DB 验证时多次输出 `pg_chunk_vector: empty embedding for query=...` |
+| Related | [REQ-024](../01-product-planning/05-requirements/REQ-024-p2-real-validation-query-understanding-and-graph-edge.md) / [REQ-025](../01-product-planning/05-requirements/REQ-025-p2-graph-edge-prompt-impact-and-real-llm-validation.md) |
+
+**证据**
+
+- 2026-06-18 运行 `packages/server-python/.venv/bin/python scripts/validate_req024_p2_real_validation.py --out docs/02-delivery-plans/01-specs/2026-06-18-req-024-p2-real-validation-report.md --json-out /private/tmp/req024-dry-run-rerun.json` 时，所有样例均输出 `pg_chunk_vector: empty embedding for query='...'`。
+- 报告里的 `retrieval_topn` 仍显示 `vector` 数量，但日志提示 query embedding 路径返回空向量；需要确认这是日志误导、fallback 行为，还是向量召回实际退化。
+- P2 的多路召回目标依赖向量 / keyword / graph_node / graph_edge 各通道可解释地参与排序；如果 query embedding 为空，当前效果验收不能代表真实向量召回能力。
+
+**问题**
+
+- 验收报告可能把“向量通道有返回数量”误解为“向量语义检索有效”，但实际 query embedding 为空会让通道质量不可判断。
+- 后续 REQ-025 若不先确认该问题，会继续把 RAG 质量问题误归因给 graph_edge、RRF 或 Query Understanding。
+
+**完成标准**
+
+- 定位 `PgChunkVectorRetriever` / embedding provider / provider resolver 中 query embedding 为空的原因。
+- 给出明确结论：配置缺失、provider 失败、dry-run 环境限制、还是代码路径 bug。
+- 若是 bug，修复并新增回归测试；若是环境限制，验证脚本必须把向量通道状态显式标为 disabled / blocked，不得混入有效 topN。
+- 重新跑 REQ-024 / REQ-025 干跑样例，日志中不再出现未解释的 empty embedding。
+
+**验证方式**
+
+- `packages/server-python/.venv/bin/python scripts/validate_req024_p2_real_validation.py --out /private/tmp/req024-after-td068.md --json-out /private/tmp/req024-after-td068.json`
+- 覆盖 embedding provider 或 vector retriever 的单元测试，断言空 query embedding 时 diagnostics 明确标记通道不可用。
+- `scripts/check-engineering-docs`
+- `git diff --check`
+
+**交付记录**
+
+- 2026-06-18 登记（REQ-024 dry-run 验收发现）。本次只入账，不实现。

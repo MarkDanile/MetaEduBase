@@ -26,7 +26,7 @@
     },
     {
       "id": "Q2_course_quality",
-      "text": "这门课的教学做得好不好？",
+      "text": "请帮我判断这份材料的教学安排是否合理",
       "expected_category": "training_program",
       "query_understanding_expected": {
         "method": "llm",
@@ -37,7 +37,7 @@
     },
     {
       "id": "Q3_template_doc",
-      "text": "查找模板配置相关的文档",
+      "text": "请帮我查找模板配置相关的文档资料",
       "expected_category": "training_program",
       "query_understanding_expected": {
         "method": "llm",
