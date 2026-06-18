@@ -16,7 +16,6 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| [REQ-020](../01-product-planning/05-requirements/REQ-020-codex-trae-neutral-dual-theme.md) Codex / Trae-like 中性双主题视觉收敛 | 🟡 进行中 | P1 | UI / Theme / Frontend | 已实现 light/dark 双主题 token、历史主题迁移、用户菜单切换和 theme store 回归测试 | 推进 Git PR / merge 后同步完成态 | typecheck / lint / build / theme.spec / 浏览器 smoke 已通过 |
 | REQ-018 P2 4 通道并行召回与图谱关系召回 | 🟢 完成 | P0 | RAG / Graph / AI Chat | Slice 1+2+3 PR #333/#334/#335 已合并：PgEdgeRetriever骨架 + 4通道注入 + trace/dedup 验证通过；Slice 4 待 dev DB knowledge_edges 数据 | Slice 4：真实PG验收报告（依赖 dev DB 有边数据） | — |
 | REQ-017 RRF / Weighted RRF 融合排序收口 | 🟡 进行中 | P0 | RAG / Ranking / AI Chat | Slice 1-3 PR #325 已合并：配置入口 + fusion diagnostics + 通道降级。Slice 4（真实 PG 样例 RRF 排序分析）待 REQ-015 PG 环境 backfill | Slice 4：RRF 排序分析脚本；依赖 REQ-015 真实 PG 环境 | 待 REQ-015 backfill |
 
@@ -32,6 +31,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-18 | REQ-020 Codex / Trae-like 中性双主题视觉收敛 | 🟢 完成 | PR #338 squash merge `d4017d2`：收口为 light/dark 双主题，历史主题值迁移到 light，用户菜单提供轻量切换；新增 theme store 回归测试；前端 typecheck/lint/build/theme.spec + 浏览器 smoke 通过 | [REQ-020](../01-product-planning/05-requirements/REQ-020-codex-trae-neutral-dual-theme.md) / [PR #338](https://github.com/MarkDanile/MetaEduBase/pull/338) |
 | 2026-06-18 | REQ-019 单主题视觉风格收敛 | 🟢 完成 | PR #336 squash merge `c3d3ab1`：统一为 paper 单主题，移除用户可见主题切换，旧主题入口映射到同一套暖纸墨韵 token；前端 typecheck/lint/build + 浏览器烟测通过 | [REQ-019](../01-product-planning/05-requirements/REQ-019-single-paper-theme-visual-alignment.md) / [PR #336](https://github.com/MarkDanile/MetaEduBase/pull/336) |
 | 2026-06-18 | REQ-018 P2 4 通道并行召回收口 | 🟢 完成 | PR #333/#334/#335 squash merge：PgEdgeRetriever骨架 + 4通道注入AIChatService + trace/dedup验证 + 9 mock tests；131 knowledge tests 0 回归；验收报告placeholder已产出；Slice 4（真PG）待dev DB边数据 | [REQ-018](../01-product-planning/05-requirements/REQ-018-p2-four-channel-graph-edge-recall.md) / [Spec](../02-delivery-plans/01-specs/2026-06-18-req-018-p2-four-channel-graph-edge-recall.md) / [Plan](../02-delivery-plans/02-plans/2026-06-18-req-018-p2-four-channel-graph-edge-recall-plan.md) / [PR #333](https://github.com/MarkDanile/MetaEduBase/pull/333) / [PR #334](https://github.com/MarkDanile/MetaEduBase/pull/334) / [PR #335](https://github.com/MarkDanile/MetaEduBase/pull/335) |
 | 2026-06-17 | REQ-016 P2 LLM 混合 NER / Query Understanding 收口 | 🟢 完成 | PR #328/#329/#330 merge：HybridQueryUnderstandingService（规则优先 + LLM 低置信触发）+ NERResult.expanded_query + AIChatService diagnostics + keyword/vector retrievers 使用 expanded_query；70 tests 0 回归；验收报告 placeholder 已产出 | [REQ-016](../01-product-planning/05-requirements/REQ-016-p2-llm-hybrid-ner-query-understanding.md) / [Spec](../02-delivery-plans/01-specs/2026-06-17-req-016-llm-hybrid-ner.md) / [Plan](../02-delivery-plans/02-plans/2026-06-17-req-016-llm-hybrid-ner-plan.md) |
