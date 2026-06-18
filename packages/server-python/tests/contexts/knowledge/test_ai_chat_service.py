@@ -930,3 +930,108 @@ async def test_edge_retriever_none_does_not_break_service() -> None:
     assert len(result.sources) >= 1
     assert result.sources[0].source_type == "chunk"
 
+
+# ---------------------------------------------------------------------------
+# REQ-018 Slice 3 — trace differentiation + deduplication
+# ---------------------------------------------------------------------------
+
+
+async def test_graph_edge_channel_appears_in_retrieval_topn_diagnostics() -> None:
+    """REQ-018 AC-3: graph_edge key present in retrieval_topn diagnostics."""
+    fid = uuid.uuid4()
+    edge_id = uuid.uuid4()
+    chunk = _chunk_evidence(fid, 1, score=0.9, content="Python 基础知识" * 5)
+    edge_ev = EvidenceItem(
+        evidence_id="",
+        source_type="knowledge_edge",
+        edge_id=edge_id,
+        file_id=fid,
+        chunk_id=uuid.uuid4(),
+        node_id=uuid.uuid4(),
+        title="Python 先导知识",
+        content="先学逻辑思维再学 Python",
+        snippet="先学逻辑思维",
+        score=0.75,
+        channels=["graph_edge"],
+    )
+
+    chunk_retriever = FakeChunkRetriever()
+    chunk_retriever.return_value = [chunk]
+
+    async def edge_retriever(*args: Any, **kwargs: Any) -> list[EvidenceItem]:
+        return [edge_ev]
+
+    edge_mock: Any = MagicMock()
+    edge_mock.retrieve = edge_retriever
+
+    service = AIChatService(
+        chunk_retriever=chunk_retriever,
+        graph_retriever=FakeGraphRetriever(),
+        metadata_filter=FakeMetadataFilter(),
+        evidence_fusion=SimpleFrequencyFusion(),
+        edge_retriever=edge_mock,
+    )
+    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+        result = await service.chat(
+            ServiceChatRequest(message="Python 怎么学？", context_window=3),
+            session=_session_for_file(fid),  # type: ignore[arg-type]
+        )
+
+    # graph_edge channel present in retrieval_topn
+    assert "graph_edge" in result.diagnostics["retrieval_topn"]
+    edge_traces = result.diagnostics["retrieval_topn"]["graph_edge"]
+    assert len(edge_traces) == 1
+    assert edge_traces[0]["source_type"] == "knowledge_edge"
+    assert edge_traces[0]["evidence_id"] == f"knowledge_edge:{edge_id}"
+    assert "graph_edge" in edge_traces[0]["channels"]
+
+
+async def test_same_edge_evidence_merged_across_channels() -> None:
+    """REQ-018 AC-4: duplicate evidence merges channels (not duplicated in sources)."""
+    fid = uuid.uuid4()
+    edge_id = uuid.uuid4()
+    chunk = _chunk_evidence(fid, 1, score=0.9, content="Python 基础知识" * 5)
+    # Same edge returned from two different edge calls (edge_retriever returns same item)
+    edge_ev = EvidenceItem(
+        evidence_id=f"knowledge_edge:{edge_id}",  # pre-derived evidence_id
+        source_type="knowledge_edge",
+        edge_id=edge_id,
+        file_id=fid,
+        chunk_id=uuid.uuid4(),
+        node_id=uuid.uuid4(),
+        title="Python 先导知识",
+        content="先学逻辑思维",
+        snippet="先学逻辑思维",
+        score=0.8,
+        channels=["graph_edge"],
+    )
+
+    chunk_retriever = FakeChunkRetriever()
+    chunk_retriever.return_value = [chunk]
+
+    # Return the SAME edge evidence (simulating dedup already happened)
+    async def edge_retriever(*args: Any, **kwargs: Any) -> list[EvidenceItem]:
+        return [edge_ev]
+
+    edge_mock: Any = MagicMock()
+    edge_mock.retrieve = edge_retriever
+
+    service = AIChatService(
+        chunk_retriever=chunk_retriever,
+        graph_retriever=FakeGraphRetriever(),
+        metadata_filter=FakeMetadataFilter(),
+        evidence_fusion=SimpleFrequencyFusion(),
+        edge_retriever=edge_mock,
+    )
+    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+        result = await service.chat(
+            ServiceChatRequest(message="Python 怎么学？", context_window=3),
+            session=_session_for_file(fid),  # type: ignore[arg-type]
+        )
+
+    # Evidence deduplicated by EvidenceItem model_validator (same edge_id → same evidence_id)
+    edge_sources = [s for s in result.sources if s.source_type == "knowledge_edge"]
+    assert len(edge_sources) == 1  # not duplicated
+    assert edge_sources[0].edge_id == edge_id
+
+
