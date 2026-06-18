@@ -16,6 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
+| REQ-026 P2 RAG 效果比较与弱召回样例集收口 | 🟡 进行中 | P0 | RAG / P2 / Real Validation | 分支 `feat/req-026-rag-effect-comparison-weak-recall-samples`；spec+plan 已落地；`scripts/validate_req024_p2_real_validation.py` 已扩展支持 REQ-026 样例集、关键事实覆盖度计算与三层结论报告；新样例集 `validate_real_pg_rag_req026_weak_recall.example.json` (5 条) 已建；待用户授权跑真 PG dry-run 与 `--allow-llm` | 跑真 PG dry-run 生成报告 → 用户授权跑 `--allow-llm` → 收口文档并 PR | `python -m py_compile scripts/validate_req024_p2_real_validation.py` 通过；`--help` 输出包含 `--weak-recall-samples` / `--limit` |
 | REQ-024 P2 真实验收补强：Query Understanding 与 graph_edge 补足样例 | 🔴 阻塞 | P0 | RAG / P2 / Real Validation | 分支 `codex/req-024-p2-real-validation`；TD-068 已澄清 vector fallback；REQ-025 已补 graph_edge 进入 prompt 并跑真实 LLM，但最终质量改善证据不足 | 由 REQ-026 接力弱召回样例集和自动质量比较；本任务不翻完成 | REQ-024 dry-run 报告 + REQ-025 real LLM 报告均已生成；真实效果仍未通过 |
 | REQ-025 P2 graph_edge 进入 prompt 与真实 LLM 效果验收收口 | 🟣 待验证 | P0 | RAG / P2 / Real Validation | 分支 `feature/req-025-graph-edge-prompt-validation`；已让 `knowledge_edge` 回源 chunk 并保底进入 packed context；真实 LLM provider 已跑 | 完成本 PR 的代码与报告闭环；效果改善不足由 REQ-026 承接，不在本任务夸大完成 | 24 个相关 pytest 通过；ruff 指定文件通过；`--allow-llm` report 已生成，External LLM enabled |
 
@@ -23,7 +24,6 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
 |------|------|--------|------|--------|--------|
-| REQ-026 P2 RAG 效果比较与弱召回样例集收口 | 🔵 Ready | P0 | RAG / P2 / Real Validation | 基于 REQ-025 报告建立弱召回样例集和自动质量比较口径，证明 P2 链路对最终回答的真实增益 | [Requirement](../01-product-planning/05-requirements/REQ-026-p2-rag-effect-comparison-and-weak-recall-samples.md) / [REQ-025 Report](../02-delivery-plans/01-specs/2026-06-18-req-025-graph-edge-prompt-impact-validation-report.md) |
 | DOC-073 门禁脚本防绕过与规则修改范围校验 | 🔵 Ready | P1 | Governance / Quality Gates / Scripts | 评估并落地最小检查：非门禁治理任务不得修改门禁脚本、`KNOWN_ISSUES`、忽略列表或阈值来绕过当前失败 | [Backlog](../01-product-planning/04-backlog.md) / [Retro](04-retrospectives/2026-06-18-rules-stage-retrospective.md) |
 
 ## 最近完成

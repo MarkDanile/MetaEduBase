@@ -1,6 +1,6 @@
 # REQ-026: P2 RAG 效果比较与弱召回样例集收口
 
-Status: 🔵 Ready
+Status: 🟡 进行中
 Priority: P0
 Milestone: P2
 Source: REQ-025 real LLM validation follow-up
@@ -49,3 +49,9 @@ REQ-025 已证明 `graph_edge` 可以回源 chunk 并进入 packed context，也
 
 - REQ-025 report: `docs/02-delivery-plans/01-specs/2026-06-18-req-025-graph-edge-prompt-impact-validation-report.md`
 - REQ-025 requirement: `docs/01-product-planning/05-requirements/REQ-025-p2-graph-edge-prompt-impact-and-real-llm-validation.md`
+
+## Delivery Record
+
+| 日期 | 动作 | 事实 |
+|------|------|------|
+| 2026-06-18 | Shaping 完成 | spec + plan + 5 条弱召回样例集已落地；`scripts/validate_req024_p2_real_validation.py` 已扩展支持 REQ-026 关键事实覆盖度自动比较与三层结论报告；分支 `feat/req-026-rag-effect-comparison-weak-recall-samples`；待用户授权跑真 PG dry-run 与 `--allow-llm` |

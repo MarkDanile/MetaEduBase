@@ -27,12 +27,22 @@ if str(SERVER_PYTHON) not in sys.path:
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 DEFAULT_REQ016_SAMPLES = REPO_ROOT / "scripts" / "validate_real_pg_rag_req016.example.json"
 DEFAULT_REQ018_SAMPLES = REPO_ROOT / "scripts" / "validate_real_pg_rag_req018.example.json"
+DEFAULT_REQ026_SAMPLES = (
+    REPO_ROOT / "scripts" / "validate_real_pg_rag_req026_weak_recall.example.json"
+)
 DEFAULT_OUT = (
     REPO_ROOT
     / "docs"
     / "02-delivery-plans"
     / "01-specs"
     / "2026-06-18-req-024-p2-real-validation-report.md"
+)
+DEFAULT_REQ026_OUT = (
+    REPO_ROOT
+    / "docs"
+    / "02-delivery-plans"
+    / "01-specs"
+    / "2026-06-18-req-026-rag-effect-comparison-validation-report.md"
 )
 
 
@@ -42,6 +52,7 @@ class Question:
     question_id: str
     text: str
     expected: dict[str, Any]
+    expected_keypoints: list[str]
 
 
 @dataclass
@@ -71,6 +82,11 @@ class ScenarioRun:
     vector_fallback_count: int
     graph_edge_chunk_ids: list[str]
     fusion_chunk_ids: list[str]
+    document_sources_titles: list[str]
+    keypoint_total: int
+    keypoint_hit_count: int
+    keypoint_coverage_pct: float
+    keypoint_hit_list: list[str]
 
 
 def _load_dotenv(path: Path) -> None:
@@ -90,15 +106,21 @@ def _mask_db_url(url: str) -> str:
     return "***@" + url.split("@", 1)[1] if "@" in url else url
 
 
-def _load_questions(req016: Path, req018: Path) -> list[Question]:
+def _load_questions(req016: Path, req018: Path, req026: Path) -> list[Question]:
     questions: list[Question] = []
-    for group, path in [("REQ-016", req016), ("REQ-018", req018)]:
+    for group, path in [
+        ("REQ-016", req016),
+        ("REQ-018", req018),
+        ("REQ-026", req026),
+    ]:
+        if not path.exists():
+            continue
         data = json.loads(path.read_text(encoding="utf-8"))
         for item in data.get("questions", []):
             expected = {
                 k: v
                 for k, v in item.items()
-                if k not in {"id", "text", "expected_category"}
+                if k not in {"id", "text", "expected_category", "expected_keypoints"}
             }
             questions.append(
                 Question(
@@ -106,9 +128,30 @@ def _load_questions(req016: Path, req018: Path) -> list[Question]:
                     question_id=item["id"],
                     text=item["text"],
                     expected=expected,
+                    expected_keypoints=list(item.get("expected_keypoints", []) or []),
                 )
             )
     return questions
+
+
+def _compute_keypoint_coverage(
+    answer_preview: str,
+    sources_titles: list[str],
+    keypoints: list[str],
+) -> tuple[int, list[str], int, float]:
+    if not keypoints:
+        return 0, [], 0, 0.0
+    haystack = (answer_preview or "") + "\n" + "\n".join(sources_titles or [])
+    haystack_lower = haystack.lower()
+    hit_list: list[str] = []
+    for kp in keypoints:
+        if not kp:
+            continue
+        if kp.lower() in haystack_lower:
+            hit_list.append(kp)
+    total = len([k for k in keypoints if k])
+    pct = (len(hit_list) / total) if total else 0.0
+    return len(hit_list), hit_list, total, pct
 
 
 def _default_scenarios() -> list[Scenario]:
@@ -259,6 +302,28 @@ async def _run_question(session, tenant_id: str, q: Question, scenario: Scenario
         1 for block in packed_blocks
         if "graph_edge" in (block.get("channels") or []) or block.get("source_type") == "knowledge_edge"
     )
+    final_answer_preview = (result.reply or "")[:800]
+    sources_titles: list[str] = []
+    for src in (result.document_sources or [])[:10]:
+        # `result.document_sources` is a list of `DocumentSource` Pydantic models.
+        # Use attribute access (with dict fallback for tests/mocks that pass dicts).
+        title = ""
+        if hasattr(src, "title"):
+            title = getattr(src, "title", "") or ""
+        elif isinstance(src, dict):
+            title = (
+                src.get("title")
+                or src.get("source_title")
+                or src.get("filename")
+                or ""
+            )
+        if title:
+            sources_titles.append(str(title))
+    hit_count, hit_list, kp_total, kp_pct = _compute_keypoint_coverage(
+        final_answer_preview,
+        sources_titles,
+        q.expected_keypoints,
+    )
     return ScenarioRun(
         question_group=q.group,
         question_id=q.question_id,
@@ -269,7 +334,7 @@ async def _run_question(session, tenant_id: str, q: Question, scenario: Scenario
         fusion_topn=fusion_topn[:10],
         packed_blocks=packed_blocks[:10],
         prompt_preview=diagnostics.get("prompt_preview", "")[:1200],
-        final_answer_preview=(result.reply or "")[:800],
+        final_answer_preview=final_answer_preview,
         document_sources_count=len(result.document_sources or []),
         graph_edge_retrieval_count=len(graph_edge_items),
         graph_edge_fusion_count=fusion_edge_count,
@@ -281,6 +346,11 @@ async def _run_question(session, tenant_id: str, q: Question, scenario: Scenario
         ),
         graph_edge_chunk_ids=graph_edge_chunk_ids,
         fusion_chunk_ids=_trace_chunk_ids(fusion_topn),
+        document_sources_titles=sources_titles,
+        keypoint_total=kp_total,
+        keypoint_hit_count=hit_count,
+        keypoint_coverage_pct=round(kp_pct, 4),
+        keypoint_hit_list=hit_list,
     )
 
 
@@ -300,6 +370,9 @@ def _compact_run(run: ScenarioRun) -> dict[str, Any]:
         "graph_edge_fusion_count": run.graph_edge_fusion_count,
         "graph_edge_packed_count": run.graph_edge_packed_count,
         "document_sources_count": run.document_sources_count,
+        "keypoint_total": run.keypoint_total,
+        "keypoint_hit_count": run.keypoint_hit_count,
+        "keypoint_coverage_pct": run.keypoint_coverage_pct,
         "final_answer_preview": run.final_answer_preview[:220],
     }
 
@@ -318,6 +391,122 @@ def _graph_edge_supplement_count(group: dict[str, ScenarioRun]) -> int:
         return 0
     baseline_ids = set(baseline.fusion_chunk_ids)
     return len([cid for cid in edge.graph_edge_chunk_ids if cid not in baseline_ids])
+
+
+def _classify_coverage_delta(delta: float) -> str:
+    if delta >= 0.3:
+        return "正向"
+    if delta <= -0.3:
+        return "退化"
+    return "中性"
+
+
+def _render_req026_section(
+    runs: list[ScenarioRun],
+    grouped: dict[tuple[str, str], dict[str, ScenarioRun]],
+) -> tuple[str, dict[str, Any]]:
+    """Render REQ-026 weak recall section + collect summary stats."""
+    stats = {
+        "samples_total": 0,
+        "samples_p2_better": 0,
+        "samples_p2_worse": 0,
+        "samples_p2_neutral": 0,
+        "samples_qu_helps": 0,
+        "samples_graph_edge_in_packed": 0,
+        "samples_graph_edge_positive": 0,
+        "data_gaps": [],
+    }
+    lines: list[str] = []
+    lines.append("## REQ-026 弱召回样例关键事实覆盖度对比")
+    lines.append("")
+    lines.append("| Sample | Category | baseline cov | +QU cov | +graph_edge cov | +weighted RRF cov | delta | 判定 | edge_in_packed |")
+    lines.append("|--------|----------|--------------|---------|-----------------|-------------------|-------|------|----------------|")
+    sample_rows = 0
+    for (group, qid), scenario_runs in grouped.items():
+        if group != "REQ-026":
+            continue
+        sample_rows += 1
+        stats["samples_total"] += 1
+        baseline = scenario_runs.get("baseline_rule_no_edge")
+        qu = scenario_runs.get("query_understanding")
+        edge = scenario_runs.get("graph_edge")
+        weighted = scenario_runs.get("weighted_rrf")
+        baseline_cov = baseline.keypoint_coverage_pct if baseline else 0.0
+        qu_cov = qu.keypoint_coverage_pct if qu else 0.0
+        edge_cov = edge.keypoint_coverage_pct if edge else 0.0
+        weighted_cov = weighted.keypoint_coverage_pct if weighted else 0.0
+        delta = weighted_cov - baseline_cov
+        verdict = _classify_coverage_delta(delta)
+        if verdict == "正向":
+            stats["samples_p2_better"] += 1
+        elif verdict == "退化":
+            stats["samples_p2_worse"] += 1
+        else:
+            stats["samples_p2_neutral"] += 1
+        if (qu_cov - baseline_cov) >= 0.3:
+            stats["samples_qu_helps"] += 1
+        edge_packed = weighted.graph_edge_packed_count if weighted else 0
+        if edge_packed > 0:
+            stats["samples_graph_edge_in_packed"] += 1
+            if verdict == "正向":
+                stats["samples_graph_edge_positive"] += 1
+        lines.append(
+            f"| {qid} | {group} | {baseline_cov:.2f} | {qu_cov:.2f} | "
+            f"{edge_cov:.2f} | {weighted_cov:.2f} | {delta:+.2f} | {verdict} | {edge_packed} |"
+        )
+    lines.append("")
+    if sample_rows == 0:
+        lines.append("- 本次未加载任何 REQ-026 弱召回样例，请检查 `--weak-recall-samples` 路径。")
+        lines.append("")
+
+    lines.append("### 自动比较结论")
+    lines.append("")
+    lines.append(f"- **机制层** (代码能力已接入): REQ-026 样例通过 `validate_req024_p2_real_validation.py` "
+                 f"脚本与 4 个 scenario (`baseline_rule_no_edge` / `query_understanding` / `graph_edge` / "
+                 f"`weighted_rrf`) 完成执行。")
+    lines.append(
+        f"- **prompt 层** (evidence 已进入 prompt): REQ-026 样例中 `graph_edge_in_packed > 0` 的样例数 = "
+        f"`{stats['samples_graph_edge_in_packed']}` / `{stats['samples_total']}`。"
+    )
+    lines.append(
+        f"- **质量层** (真实 LLM 回答覆盖度提升): P2 完整链路相对 baseline 覆盖度提升 >= 30% 的样例数 = "
+        f"`{stats['samples_p2_better']}` / `{stats['samples_total']}`；退化样例数 = "
+        f"`{stats['samples_p2_worse']}`。"
+    )
+    lines.append(
+        f"- **Query Understanding 价值**: `+QU` 覆盖度相对 baseline 提升 >= 30% 的样例数 = "
+        f"`{stats['samples_qu_helps']}` / `{stats['samples_total']}`。"
+    )
+    lines.append(
+        f"- **graph_edge 价值**: `graph_edge in packed > 0` 且 delta >= 0.3 的样例数 = "
+        f"`{stats['samples_graph_edge_positive']}` / `{stats['samples_total']}`。"
+    )
+    lines.append("")
+
+    lines.append("### 数据缺口与后续任务")
+    lines.append("")
+    if stats["samples_p2_better"] < 1:
+        lines.append("- 当前 dev DB 数据集未能构造足够的弱召回样例来证明 P2 完整链路相对 baseline 提升 >= 30%。")
+        lines.append("- 后续任务候选：")
+        lines.append("  - `TD-068`: query embedding 为空导致 vector 通道降级为 keyword fallback（已登记，需修）")
+        lines.append("  - 新增 `REQ-027` (待登记): 增加 P2 弱召回知识覆盖 — 课程标准 / Python 高级特性 / 跨课程先导关系")
+        stats["data_gaps"].append("P2 弱召回样例不足")
+    if stats["samples_graph_edge_in_packed"] < 1:
+        lines.append("- 当前所有 REQ-026 弱召回样例中 graph_edge 都未进入 packed context。")
+        lines.append("- 后续任务候选：")
+        lines.append("  - 复核 ContextPacker 对 `knowledge_edge` source block 的 packed 阈值")
+        lines.append("  - 增加 `knowledge_edges` 真实样本数据（dev DB backfill）")
+        stats["data_gaps"].append("graph_edge 未进入 packed context")
+    if stats["samples_qu_helps"] < 1:
+        lines.append("- Query Understanding 对自然问法的增益证据不足。")
+        lines.append("- 后续任务候选：")
+        lines.append("  - 复核 HybridQueryUnderstandingService 在自然问法场景下的 expanded_terms 命中率")
+        lines.append("  - 增强规则优先 + LLM 低置信触发的样本多样性")
+        stats["data_gaps"].append("Query Understanding 增益不足")
+    if not stats["data_gaps"]:
+        lines.append("- 当前未发现数据缺口；后续根据样本扩展决定是否新增独立任务。")
+    lines.append("")
+    return "\n".join(lines), stats
 
 
 def _render_report(
@@ -448,6 +637,13 @@ def _render_report(
     lines.append(_json_preview([_compact_run(run) for run in runs], limit=4000))
     lines.append("```")
     lines.append("")
+
+    # REQ-026 section (added in REQ-026 extension)
+    if any(run.question_group == "REQ-026" for run in runs):
+        req026_section, req026_stats = _render_req026_section(runs, grouped)
+        lines.append(req026_section)
+        lines.append("")
+
     return "\n".join(lines)
 
 
@@ -461,7 +657,13 @@ async def _run(args: argparse.Namespace) -> int:
 
     tenant_id = args.tenant_id or os.environ.get("AI_CHAT_TENANT_ID") or DEFAULT_TENANT_ID
     db_url = os.environ.get("DATABASE_URL") or settings.database_url
-    questions = _load_questions(Path(args.req016_samples), Path(args.req018_samples))
+    questions = _load_questions(
+        Path(args.req016_samples),
+        Path(args.req018_samples),
+        Path(args.weak_recall_samples),
+    )
+    if args.limit and args.limit > 0:
+        questions = questions[: args.limit]
     scenarios = _default_scenarios()
     started_at = datetime.now().astimezone().isoformat()
     errors: list[str] = []
@@ -523,9 +725,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="validate_req024_p2_real_validation")
     parser.add_argument("--req016-samples", default=str(DEFAULT_REQ016_SAMPLES))
     parser.add_argument("--req018-samples", default=str(DEFAULT_REQ018_SAMPLES))
+    parser.add_argument("--weak-recall-samples", default=str(DEFAULT_REQ026_SAMPLES))
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--json-out", default="")
     parser.add_argument("--tenant-id", default="")
+    parser.add_argument("--limit", type=int, default=0, help="Limit number of samples (0 = no limit)")
     parser.add_argument("--report-title", default="REQ-024 P2 真实验收补强报告")
     parser.add_argument(
         "--allow-llm",
