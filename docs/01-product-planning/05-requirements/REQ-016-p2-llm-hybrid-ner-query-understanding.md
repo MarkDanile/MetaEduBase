@@ -47,3 +47,14 @@ Related: BUG-010 / REQ-017 / REQ-018
 
 - Backlog: `docs/01-product-planning/04-backlog.md`
 - Milestone: `docs/01-product-planning/02-milestones/02-growth-phase.md`
+
+## Delivery Record
+
+| 日期 | 动作 | 事实 |
+|------|------|------|
+| 2026-06-17 | Shaping 完成 | spec + plan 产出，PR #327 squash merge |
+| 2026-06-17 | Shaping 收口 | spec + plan + PR #327 已合并 |
+| 2026-06-17 | Slice 1 收口 | HybridQueryUnderstandingService 骨架 + schema + 9 mock tests，PR #328 merge |
+| 2026-06-17 | Slice 2 收口 | AIChatService diagnostics 扩展 + router 注入，PR #329 merge，58 tests 0 回归 |
+| 2026-06-17 | Slice 3 收口 | expanded_query 流经 keyword/vector retrievers，NERResult.expanded_query 字段，PR #330 merge，63 tests 0 回归 |
+| 2026-06-17 | Slice 4 收口 | 验收报告 placeholder + REQ-016 专属 samples 文件 + expanded_query test；真 PG 验收需 dev DB + backend + LLM key，报告 placeholder 待手动执行后填充 |

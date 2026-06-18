@@ -1,4 +1,4 @@
-"""`PgGraphRetriever` — knowledge graph adapter (P1: PG + SQL).
+"""`PgGraphRetriever` / `PgEdgeRetriever` — knowledge graph adapters (P1: PG + SQL).
 
 REQ-010 Slice 3 — 包装现有 `PgVectorRecallChannel` + `PgKeywordRecallChannel`
 (knowledge_nodes) 但返回 `EvidenceItem(source_type="knowledge_node")`。
@@ -19,6 +19,7 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.knowledge.application.recall_service import (
+    PgEdgeRecallChannel,
     PgKeywordRecallChannel,
     PgVectorRecallChannel,
 )
@@ -104,4 +105,60 @@ class PgGraphRetriever:
         except Exception as e:  # noqa: BLE001
             logger.warning("pg_graph keyword channel failed: %s", e)
 
+        return items
+
+
+class PgEdgeRetriever:
+    """PgEdgeRetriever — graph edge recall via knowledge_edges.
+
+    REQ-018 Slice 1 — wraps PgEdgeRecallChannel and returns
+    EvidenceItem(source_type="knowledge_edge", channels=["graph_edge"]).
+    Satisfies the runtime_checkable GraphRetriever Protocol.
+    """
+
+    name: str = "pg-edge"
+
+    def __init__(self) -> None:
+        self._channel = PgEdgeRecallChannel()
+
+    async def retrieve(
+        self,
+        query: str,
+        ner_result: NERResult,
+        tenant_id: str,
+        session: AsyncSession,
+        *,
+        top_k: int = 5,
+    ) -> list[EvidenceItem]:
+        items: list[EvidenceItem] = []
+        try:
+            results = await self._channel.recall(
+                query, ner_result, tenant_id, session, top_k
+            )
+            for r in results:
+                # edge_id is guaranteed non-None for edge-channel results
+                items.append(
+                    EvidenceItem(
+                        evidence_id="",
+                        source_type="knowledge_edge",
+                        edge_id=r.edge_id,
+                        file_id=r.source_file_id,
+                        chunk_id=r.source_chunk_id,
+                        source_chunk_id=r.source_chunk_id,
+                        node_id=r.node_id,
+                        title=r.title or "",
+                        content=r.description or "",
+                        snippet=(r.description or "")[:200],
+                        score=r.score,
+                        channels=["graph_edge"],
+                        metadata={
+                            "domain": r.domain,
+                            "level": r.level,
+                            "path": r.path,
+                            "relation_type": r.description,  # description carries relation context
+                        },
+                    )
+                )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("pg_edge channel failed: %s", e)
         return items

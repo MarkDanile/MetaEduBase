@@ -1,4 +1,6 @@
+import json
 import logging
+import os
 import re
 import uuid
 
@@ -37,6 +39,7 @@ from app.contexts.knowledge.infrastructure.retrievers.pg_chunk_vector_retriever 
     PgChunkVectorRetriever,
 )
 from app.contexts.knowledge.infrastructure.retrievers.pg_graph_retriever import (
+    PgEdgeRetriever,
     PgGraphRetriever,
 )
 from app.contexts.knowledge.infrastructure.retrievers.pg_metadata_filter import (
@@ -54,9 +57,47 @@ _keyword_channel = PgKeywordRecallChannel()
 _metadata_channel = PgMetadataRecallChannel()
 _fusion = FrequencyFusion()
 
+# REQ-017 Slice 1 — weighted RRF defaults.
+# Override with RRF_CHANNEL_WEIGHTS env var (JSON dict).
+_RRF_DEFAULT_WEIGHTS: dict[str, float] = {
+    "vector": 1.0,
+    "keyword": 1.0,
+    "graph_node": 0.5,
+    "graph_edge": 0.5,  # REQ-018 Slice 2: edge recall channel
+}
+
+
+def _get_rrf_channel_weights() -> dict[str, float]:
+    """Read RRF_CHANNEL_WEIGHTS from environment, fall back to defaults."""
+    raw = os.environ.get("RRF_CHANNEL_WEIGHTS", "")
+    if not raw:
+        return _RRF_DEFAULT_WEIGHTS.copy()
+    try:
+        parsed: dict[str, float] = json.loads(raw)
+        # Merge with defaults so unspecified channels get the default weight
+        return {**_RRF_DEFAULT_WEIGHTS, **parsed}
+    except (json.JSONDecodeError, TypeError, ValueError):
+        logger.warning("RRF_CHANNEL_WEIGHTS=%r parse failed, using defaults", raw)
+        return _RRF_DEFAULT_WEIGHTS.copy()
+
+
 # REQ-010 Slice 3 — evidence-aware AI Chat service (default PG adapters).
-def _build_evidence_service(session: AsyncSession, tenant_id: str) -> AIChatService:
+def _build_evidence_service(
+    session: AsyncSession, tenant_id: str, *, use_hybrid_ner: bool = True
+) -> AIChatService:
     tenant_uuid = tenant_id if isinstance(tenant_id, uuid.UUID) else uuid.UUID(str(tenant_id))
+    rrf_weights = _get_rrf_channel_weights()
+
+    # Lazy import to avoid circular dependency with hybrid_ner_service → ai_router
+    if use_hybrid_ner:
+        from app.contexts.knowledge.application.hybrid_ner_service import (
+            HybridQueryUnderstandingService,
+        )
+
+        ner_pipeline = HybridQueryUnderstandingService()
+    else:
+        ner_pipeline = None
+
     return AIChatService(
         chunk_retriever=CompositeChunkRetriever(
             [
@@ -66,8 +107,10 @@ def _build_evidence_service(session: AsyncSession, tenant_id: str) -> AIChatServ
         ),
         graph_retriever=PgGraphRetriever(),
         metadata_filter=PgMetadataFilter(),
-        evidence_fusion=RRFFusion(),
+        evidence_fusion=RRFFusion(channel_weights=rrf_weights),
+        ner_pipeline=ner_pipeline,
         context_packer=ContextPacker(ChunkRepository(session), tenant_uuid),
+        edge_retriever=PgEdgeRetriever(),  # REQ-018 Slice 2: 4th recall channel
     )
 
 

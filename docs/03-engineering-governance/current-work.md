@@ -14,17 +14,15 @@
 
 ## 当前进行中
 
-| 任务 | 状态 | 优先级 | 领域 | 下一步 |
-|------|------|--------|------|--------|
-| [REQ-019](../01-product-planning/05-requirements/REQ-019-single-paper-theme-visual-alignment.md) 单主题视觉风格收敛：极简白底 + 暖纸墨韵 | 🟣 待验证 / Git 闭环 | P1 | UI / Theme / Frontend | 实现、前端验证和浏览器烟测已完成；当前分支需完成 Git 工作流后再翻完成。 |
+| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
+|------|------|--------|------|----------|--------|------|
+| [REQ-019](../01-product-planning/05-requirements/REQ-019-single-paper-theme-visual-alignment.md) 单主题视觉风格收敛：极简白底 + 暖纸墨韵 | 🟣 待验证 / Git 闭环 | P1 | UI / Theme / Frontend | 实现、前端验证和浏览器烟测已完成 | 当前分支需完成 Git 工作流后再翻完成 | typecheck / lint / build / check-engineering-docs / diff-check 已通过；浏览器烟测 data-theme=paper |
+| REQ-018 P2 4 通道并行召回与图谱关系召回 | 🟢 完成 | P0 | RAG / Graph / AI Chat | Slice 1+2+3 PR #333/#334/#335 已合并：PgEdgeRetriever骨架 + 4通道注入 + trace/dedup 验证通过；Slice 4 待 dev DB knowledge_edges 数据 | Slice 4：真实PG验收报告（依赖 dev DB 有边数据） | — |
+| REQ-017 RRF / Weighted RRF 融合排序收口 | 🟡 进行中 | P0 | RAG / Ranking / AI Chat | Slice 1-3 PR #325 已合并：配置入口 + fusion diagnostics + 通道降级。Slice 4（真实 PG 样例 RRF 排序分析）待 REQ-015 PG 环境 backfill | Slice 4：RRF 排序分析脚本；依赖 REQ-015 真实 PG 环境 | 待 REQ-015 backfill |
 
 ## 下一批候选任务
 
-| 任务 | 状态 | 优先级 | 领域 | 下一步 |
-|------|------|--------|------|--------|
-| [REQ-018](../01-product-planning/05-requirements/REQ-018-p2-four-channel-graph-edge-recall.md) P2 4 通道并行召回与图谱关系召回 | 🟣 Shaping | P0 | RAG / Graph / AI Chat / P2 | 建议下一步优先塑形 spec/plan：确认独立 `knowledge_edges` recall 如何回源 chunk / section。 |
-| [REQ-017](../01-product-planning/05-requirements/REQ-017-p2-rrf-weighted-fusion.md) P2 RRF / Weighted RRF 融合排序收口 | 🟣 Shaping | P0 | RAG / Ranking / AI Chat / P2 | RRF 已默认接入；在 REQ-018 边界明确后进入 spec/plan，重点补 weighted 配置、4 通道排序验收和真实样例回归。 |
-| [REQ-016](../01-product-planning/05-requirements/REQ-016-p2-llm-hybrid-ner-query-understanding.md) P2 LLM 混合 NER / Query Understanding | 🟣 Shaping | P0 | NER / Query Understanding / AI Chat / P2 | 在 trace / 召回 / 排序基线清楚后推进，优先定义 schema、触发条件和真实问法回归。 |
+（暂无）
 
 ## 最近完成
 
@@ -34,6 +32,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-18 | REQ-018 P2 4 通道并行召回收口 | 🟢 完成 | PR #333/#334/#335 squash merge：PgEdgeRetriever骨架 + 4通道注入AIChatService + trace/dedup验证 + 9 mock tests；131 knowledge tests 0 回归；验收报告placeholder已产出；Slice 4（真PG）待dev DB边数据 | [REQ-018](../01-product-planning/05-requirements/REQ-018-p2-four-channel-graph-edge-recall.md) / [Spec](../02-delivery-plans/01-specs/2026-06-18-req-018-p2-four-channel-graph-edge-recall.md) / [Plan](../02-delivery-plans/02-plans/2026-06-18-req-018-p2-four-channel-graph-edge-recall-plan.md) / [PR #333](https://github.com/MarkDanile/MetaEduBase/pull/333) / [PR #334](https://github.com/MarkDanile/MetaEduBase/pull/334) / [PR #335](https://github.com/MarkDanile/MetaEduBase/pull/335) |
+| 2026-06-17 | REQ-016 P2 LLM 混合 NER / Query Understanding 收口 | 🟢 完成 | PR #328/#329/#330 merge：HybridQueryUnderstandingService（规则优先 + LLM 低置信触发）+ NERResult.expanded_query + AIChatService diagnostics + keyword/vector retrievers 使用 expanded_query；70 tests 0 回归；验收报告 placeholder 已产出 | [REQ-016](../01-product-planning/05-requirements/REQ-016-p2-llm-hybrid-ner-query-understanding.md) / [Spec](../02-delivery-plans/01-specs/2026-06-17-req-016-llm-hybrid-ner.md) / [Plan](../02-delivery-plans/02-plans/2026-06-17-req-016-llm-hybrid-ner-plan.md) |
 | 2026-06-17 | DOC-070 AtomAIBase 项目定位与 README 对外介绍升级 | 🟢 完成 | PR #322 squash merge `e72852b`：README 改为 AtomAIBase 开源项目主页结构；根包描述和顶层架构定位同步；对外介绍保持泛行业定位 | [Backlog](../01-product-planning/04-backlog.md) / [PR #322](https://github.com/MarkDanile/MetaEduBase/pull/322) |
 | 2026-06-17 | DOC-069 P2 阶段正式启动与重点任务规划 | 🟢 完成 | PR #320 merge `33c132f`：P1 Done、P2 Doing；REQ-016/017/018 入账并完成代码事实校准 | [P2 Milestone](../01-product-planning/02-milestones/02-growth-phase.md) / [PR #320](https://github.com/MarkDanile/MetaEduBase/pull/320) |
 | 2026-06-17 | P2-SEARCH PostgreSQL tsvector + 中文分词搜索增强 | 🟢 完成 | PR #318 merge `7d2a826` 收口：TD-047 PR #192（基础设施）+ REQ-012 PR #216（运行时检索切 chinese_zh + plainto_tsquery）+ REQ-014 PR #308 + REQ-015 PR #314（端到端验收） | [Milestone P2](../01-product-planning/02-milestones/02-growth-phase.md) / [TD-047](technical-debt.md#td-047) / [PR #318](https://github.com/MarkDanile/MetaEduBase/pull/318) |

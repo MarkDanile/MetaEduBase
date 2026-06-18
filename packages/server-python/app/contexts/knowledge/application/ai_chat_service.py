@@ -100,6 +100,7 @@ class AIChatDiagnostics(BaseModel):
     packed_blocks: list[PackedBlockTraceItem] = Field(default_factory=list)
     prompt_preview: str = ""
     packed: dict[str, Any] = Field(default_factory=dict)
+    query_understanding: dict | None = None  # REQ-016 Slice 2
 
     model_config = {"extra": "forbid"}
 
@@ -130,6 +131,7 @@ class AIChatService:
         min_evidence_score: float = 0.3,
         context_packer: ContextPacker | None = None,
         context_packing_options: ContextPackingOptions | None = None,
+        edge_retriever: GraphRetriever | None = None,  # REQ-018 Slice 2: graph edge channel
     ) -> None:
         self.chunk_retriever = chunk_retriever
         self.graph_retriever = graph_retriever
@@ -139,6 +141,7 @@ class AIChatService:
         self.min_evidence_score = min_evidence_score
         self._context_packer = context_packer
         self._packing_opts = context_packing_options or ContextPackingOptions()
+        self.edge_retriever = edge_retriever
 
     @staticmethod
     def _normalize_candidate_channels(
@@ -146,12 +149,17 @@ class AIChatService:
     ) -> list[EvidenceItem]:
         normalized: list[EvidenceItem] = []
         for item in candidates:
-            if item.source_type != "knowledge_node":
+            if item.source_type == "knowledge_node":
+                updated = item.model_copy(deep=True)
+                updated.channels = sorted(set(updated.channels or []).union({"graph"}))
+                normalized.append(updated)
+            elif item.source_type == "knowledge_edge":
+                # Edge items: add "graph_edge" channel label
+                updated = item.model_copy(deep=True)
+                updated.channels = sorted(set(updated.channels or []).union({"graph_edge"}))
+                normalized.append(updated)
+            else:
                 normalized.append(item)
-                continue
-            updated = item.model_copy(deep=True)
-            updated.channels = sorted(set(updated.channels or []).union({"graph"}))
-            normalized.append(updated)
         return normalized
 
     @staticmethod
@@ -218,6 +226,43 @@ class AIChatService:
                 )
             )
         return traced
+
+    def _enrich_fusion_diagnostics(
+        self,
+        packed: PackedContext,
+        channel_results: dict[str, list[EvidenceItem]],
+        fused: list[EvidenceItem],
+    ) -> PackedContext:
+        """REQ-017 Slice 2: populate RRF fusion diagnostics.
+
+        Fills fusion_method / rrf_k / rrf_weights_used / fusion_scores /
+        channel_ranks on packed.diagnostics.
+        """
+        fusion = self.evidence_fusion
+        diag = packed.diagnostics
+
+        # Identify fusion type
+        fusion_name = fusion.__class__.__name__
+        diag.fusion_method = fusion_name
+
+        # RRF-specific fields
+        if hasattr(fusion, "k"):
+            diag.rrf_k = fusion.k  # type: ignore[attr-defined]
+        if hasattr(fusion, "channel_weights"):
+            diag.rrf_weights_used = dict(fusion.channel_weights or {})  # type: ignore[attr-defined]
+
+        # channel_ranks: channel -> evidence_id -> rank (1-based)
+        channel_ranks: dict[str, dict[str, int]] = {}
+        for ch, items in channel_results.items():
+            channel_ranks[ch] = {
+                it.evidence_id: rank + 1 for rank, it in enumerate(items)
+            }
+        diag.channel_ranks = channel_ranks
+
+        # fusion_scores: evidence_id -> score from fusion output
+        diag.fusion_scores = {e.evidence_id: e.score for e in fused}
+
+        return packed
 
     async def _hydrate_graph_chunks(
         self,
@@ -393,8 +438,12 @@ class AIChatService:
         graph_results = await self._safe_retrieve_graph(
             message, ner_result, tenant_id, session, top_k=top_k
         )
+        # REQ-018 Slice 2: 4th channel — edge retriever (knowledge_edges path)
+        edge_results = await self._safe_retrieve_edge(
+            message, ner_result, tenant_id, session, top_k=top_k
+        )
 
-        raw_candidates = (chunk_results or []) + (graph_results or [])
+        raw_candidates = (chunk_results or []) + (graph_results or []) + (edge_results or [])
         raw_candidates = self._normalize_candidate_channels(raw_candidates)
         filtered_candidates = await self._safe_metadata_filter(
             ner_result, tenant_id, session, raw_candidates
@@ -413,6 +462,16 @@ class AIChatService:
             return await self.graph_retriever.retrieve(*args, **kwargs)
         except Exception as e:  # noqa: BLE001
             logger.warning("graph retrieval failed: %s", e)
+            return []
+
+    async def _safe_retrieve_edge(self, *args, **kwargs) -> list[EvidenceItem]:
+        """REQ-018 Slice 2: safe wrapper for edge retriever (4th recall channel)."""
+        if self.edge_retriever is None:
+            return []
+        try:
+            return await self.edge_retriever.retrieve(*args, **kwargs)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("edge retrieval failed: %s", e)
             return []
 
     def _build_prompt_context(self, packed: PackedContext) -> str:
@@ -554,6 +613,11 @@ class AIChatService:
                 ),
             )
 
+        # REQ-017 Slice 2: populate RRF fusion diagnostics
+        packed = self._enrich_fusion_diagnostics(
+            packed, channel_results, fused
+        )
+
         document_sources = await self._build_document_sources(fused, tenant_id, session)
 
         # REQ-012 diagnostic log: channel labels may be vector/keyword/graph,
@@ -589,6 +653,21 @@ class AIChatService:
         )
 
         context_text = self._build_prompt_context(packed)
+        # REQ-016 Slice 2: include query_understanding trace when available
+        qu = getattr(ner_result, "query_understanding", None)
+        query_understanding_diag: dict[str, Any] | None = None
+        if qu is not None:
+            query_understanding_diag = {
+                "method": qu.method,
+                "confidence": qu.confidence,
+                "normalized_query": qu.normalized_query,
+                "core_terms": qu.core_terms,
+                "expanded_terms": qu.expanded_terms,
+                "entities": qu.entities,
+                "filters": qu.filters,
+                "trigger_reason": getattr(ner_result, "trigger_reason", None),
+            }
+
         diagnostics_model = AIChatDiagnostics(
             query=request.message,
             retrieval_topn=retrieval_topn,
@@ -596,6 +675,7 @@ class AIChatService:
             packed_blocks=self._trace_packed_blocks(packed),
             prompt_preview=context_text[:1200],
             packed=packed.diagnostics.model_dump(mode="json"),
+            query_understanding=query_understanding_diag,
         )
         logger.info(
             "ai_chat_trace: %s",

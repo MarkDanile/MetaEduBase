@@ -88,7 +88,20 @@ class PgChunkKeywordRetriever:
         top_k: int = 5,
         file_filter: list[str] | None = None,
     ) -> list[EvidenceItem]:
+        # REQ-016 Slice 3: augment keywords with LLM expanded terms
         keywords = _tokenize(query)
+        expanded_query = getattr(ner_result, "expanded_query", "") or ""
+        if expanded_query:
+            expanded_keywords = _tokenize(expanded_query)
+            # Deduplicate while preserving order
+            seen: set[str] = set()
+            merged: list[str] = []
+            for kw in keywords + expanded_keywords:
+                if kw not in seen:
+                    seen.add(kw)
+                    merged.append(kw)
+            keywords = merged
+
         if not keywords:
             return []
 
