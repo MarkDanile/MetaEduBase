@@ -1,6 +1,6 @@
 # REQ-018: P2 4 通道并行召回与图谱关系召回
 
-Status: 🟣 Shaping
+Status: 🟡 进行中
 Priority: P0
 Milestone: P2
 Source: P2-RECALL-4 Open Item
@@ -57,3 +57,4 @@ Related: REQ-012 / REQ-013 / REQ-017
 |------|------|------|
 | 2026-06-18 | Shaping 完成 | spec + plan 产出，PR #332 squash merge |
 | 2026-06-18 | Shaping 收口 | spec + plan + PR #332 已合并 |
+| 2026-06-18 | Slice 1 完成 | PR #333 squash merge `a94c681`：RecallResult.edge_id + PgEdgeRecallChannel（seed→edge→node）+ PgEdgeRetriever + 5 mock tests |
