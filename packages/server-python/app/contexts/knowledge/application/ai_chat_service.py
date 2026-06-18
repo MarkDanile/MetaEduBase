@@ -75,6 +75,7 @@ class RetrievalTraceItem(BaseModel):
     score: float | None = None
     channels: list[str] = Field(default_factory=list)
     snippet: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class PackedBlockTraceItem(BaseModel):
@@ -200,6 +201,7 @@ class AIChatService:
                     score=item.score,
                     channels=list(item.channels or []),
                     snippet=(item.snippet or item.content or "")[:240],
+                    metadata=dict(item.metadata or {}),
                 )
             )
         return traced

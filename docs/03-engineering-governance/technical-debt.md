@@ -161,7 +161,7 @@
 | TD-065 | ds_embed 返 embedded count int | 🟢 完成 | P1 | 后端 / Structured Data / Embedding | TD-057 slice 9：ds_embed._do 返 `success_count` int；outer 补 `return`。 | [PR #275](https://github.com/MarkDanile/MetaEduBase/pull/275) (merge `f878303`) |
 | TD-066 | ds_cross_dataset_edges 返 cross dataset edges count | 🟢 完成 | P1 | 后端 / Structured Data / KG | TD-057 9 个 follow-up 列表（commit 49a964a 父任务总账）包含的"剩 6 个 follow-up"收口候选（实际只定义了 8 个 TD-058~TD-065，TD-066 是 parent 总账描述中预留的下一个 `_do` 编号）。`ds_cross_dataset_edges._do` 是 structured_data pipeline 最后一步（chain 由 ds_extract_kg 触发），caller 拿到新建跨数据集边数后可直接评估跨数据集 KG 链接构建质量。 | [PR #280](https://github.com/MarkDanile/MetaEduBase/pull/280) (merge `c343de7`) |
 | TD-067 | LLM 抽取 `teaching_plan` / `practice_links` 失败返 `-` | 🟢 完成 | P2 | 后端 / 模板抽取 / LLM prompt | 2026-06-14 全链路评估人才培养方案文件复测：模板 `人才培养方案` 期望 `teaching_plan: array[semester]` 38 课程 × 6 学期课时表 + `practice_links: table` 实践环节；LLM 返 `-`（未抽取）。`curriculum_system: array[course]` 38 门课正确抽取、`basic_info` 5 字段准 — 抽取链路"懂简单数组，不懂嵌套课时表"。需在 `extract_template_prompts.py` 补 few-shot 示例（教学进程表 + 实践环节表）。 | [PR #287](https://github.com/MarkDanile/MetaEduBase/pull/287) (merge `2b983b2`) |
-| TD-068 | AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明 | 🔵 就绪 | P0 | 后端 / RAG / Embedding / AI Chat | REQ-024 dry-run 重复输出 `pg_chunk_vector: empty embedding for query=...`，需确认向量通道是否真实参与 P2 验收。 |
+| TD-068 | AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明 | 🟡 进行中 | P0 | 后端 / RAG / Embedding / AI Chat | trace 已透出 `embedding_fallback` metadata；REQ-024 report 新增 `vector fallback` 计数，确认当前 vector topN 为 keyword fallback，不代表真实语义向量召回；待 PR 合并后翻完成。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -4017,7 +4017,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-068: AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明
 
-状态：🔵 就绪
+状态：🟡 进行中
 
 | 字段 | 内容 |
 |------|------|
@@ -4053,4 +4053,13 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 **交付记录**
 
-- 2026-06-18 登记（REQ-024 dry-run 验收发现）。本次只入账，不实现。
+- 2026-06-18 登记（REQ-024 dry-run 验收发现）。
+- 2026-06-18 修复进行中（接手工具：Codex / 分支 `codex/td-068-vector-embedding-diagnostics`）：
+  - 根因确认：`PgChunkVectorRetriever` 在 query embedding 为空时会走 keyword fallback，这是 BUG-003 设计的可用性降级；但返回 items 仍按 `vector` 通道进入 `retrieval_topn`，之前报告没有透出 `embedding_fallback`，导致“vector 有 topN”容易被误读为真实语义向量召回。
+  - 修 `AIChatService._trace_evidence`：`RetrievalTraceItem` 增加 `metadata`，trace 透出 `embedding_fallback` / `search_mode` / `chunk_index` 等审计字段。
+  - 修 `scripts/validate_req024_p2_real_validation.py`：报告新增 `vector fallback` 列和总计，明确 fallback 大于 0 时不代表真实语义向量召回。
+  - 重跑 REQ-024 dry-run 报告，当前 `vector fallback trace count: 152`，确认本环境 query embedding 仍为空，但诊断已不再误导。
+  - 新增 `test_retrieval_trace_exposes_embedding_fallback_metadata`，锁住 AI Chat diagnostics 必须透出 fallback metadata。
+  - 验证：`pytest ...test_retrieval_trace_exposes_embedding_fallback_metadata ...test_pg_chunk_vector_retriever_embedding_fallback.py -q` → 7 passed；`ruff check` 指定文件 → All checks passed；`py_compile` 通过。
+  - 备注：本任务不解决 embedding provider/key 可用性本身；若要恢复真实语义向量召回，应另起环境 / provider 配置任务。REQ-025 后续效果验收必须把 `vector fallback` 计数纳入判断。
+  - 当前 Git 阶段：待 PR / merge 完成后，再把状态翻为 `🟢 完成` 并补 PR 链接。

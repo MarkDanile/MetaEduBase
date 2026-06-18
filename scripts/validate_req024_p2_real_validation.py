@@ -68,6 +68,7 @@ class ScenarioRun:
     graph_edge_retrieval_count: int
     graph_edge_fusion_count: int
     graph_edge_packed_count: int
+    vector_fallback_count: int
     graph_edge_chunk_ids: list[str]
     fusion_chunk_ids: list[str]
 
@@ -248,6 +249,7 @@ async def _run_question(session, tenant_id: str, q: Question, scenario: Scenario
     fusion_topn = diagnostics.get("fusion_topn", []) or []
     packed_blocks = diagnostics.get("packed_blocks", []) or []
     graph_edge_items = retrieval_topn.get("graph_edge", []) or []
+    vector_items = retrieval_topn.get("vector", []) or []
     graph_edge_chunk_ids = _trace_chunk_ids(graph_edge_items)
     fusion_edge_count = sum(
         1 for item in fusion_topn
@@ -272,6 +274,11 @@ async def _run_question(session, tenant_id: str, q: Question, scenario: Scenario
         graph_edge_retrieval_count=len(graph_edge_items),
         graph_edge_fusion_count=fusion_edge_count,
         graph_edge_packed_count=packed_edge_count,
+        vector_fallback_count=sum(
+            1
+            for item in vector_items
+            if (item.get("metadata") or {}).get("embedding_fallback") is True
+        ),
         graph_edge_chunk_ids=graph_edge_chunk_ids,
         fusion_chunk_ids=_trace_chunk_ids(fusion_topn),
     )
@@ -329,8 +336,8 @@ def _render_report(
 
     lines.append("## REQ-016 Query Understanding 验收")
     lines.append("")
-    lines.append("| Query | Scenario | method | confidence | expanded_terms | retrieval_topn | packed_blocks | answer preview |")
-    lines.append("|-------|----------|--------|------------|----------------|----------------|---------------|----------------|")
+    lines.append("| Query | Scenario | method | confidence | expanded_terms | retrieval_topn | vector fallback | packed_blocks | answer preview |")
+    lines.append("|-------|----------|--------|------------|----------------|----------------|-----------------|---------------|----------------|")
     for (group, qid), scenario_runs in grouped.items():
         if group != "REQ-016":
             continue
@@ -349,6 +356,7 @@ def _render_report(
                 f"{qu.get('method', '-')} | {qu.get('confidence', '-')} | "
                 f"{_json_preview(qu.get('expanded_terms', []), limit=160)} | "
                 f"{_json_preview(run.retrieval_counts, limit=160)} | "
+                f"{run.vector_fallback_count} | "
                 f"{len(run.packed_blocks)} | {run.final_answer_preview[:120]} |"
             )
     lines.append("")
@@ -387,6 +395,11 @@ def _render_report(
         lines.append("- dry-run 下的 Query Understanding 使用脚本内 fake provider，不代表真实 LLM 解析质量。")
     else:
         lines.append("- 本报告启用了外部 LLM，可用于 REQ-016 / REQ-018 的真实效果验收判断。")
+    vector_fallback_total = sum(run.vector_fallback_count for run in runs)
+    lines.append(
+        f"- vector fallback trace count: `{vector_fallback_total}` "
+        "(大于 0 表示 vector 通道结果来自 keyword fallback，不代表真实语义向量召回)。"
+    )
     lines.append(
         f"- graph_edge fusion-level supplement examples: `{fusion_level_supplement_examples}` "
         "(只表示 graph_edge 召回的新 chunk 进入 fusion 阶段)。"
