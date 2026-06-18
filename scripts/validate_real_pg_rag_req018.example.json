@@ -1,0 +1,49 @@
+{
+  "description": "REQ-018 4通道图谱关系召回真实 PG 验收样本",
+  "samples": [
+    {
+      "category": "python_tutorial",
+      "label": "Python 教程 PDF（含图谱节点和边）",
+      "file_id": null,
+      "has_knowledge_edges": true
+    },
+    {
+      "category": "course_program",
+      "label": "课程体系 PDF（含先导知识关系边）",
+      "file_id": null,
+      "has_knowledge_edges": true
+    }
+  ],
+  "questions": [
+    {
+      "id": "Q1_prerequisite_query",
+      "text": "学习这门课前需要哪些先导知识？",
+      "expected_category": "course_program",
+      "edge_channel_expected": {
+        "graph_edge_in_retrieval_topn": true,
+        "edge_sourced_chunk_not_in_keyword_or_vector": true,
+        "relation_type_match": "先导知识"
+      }
+    },
+    {
+      "id": "Q2_cross_section_relationship",
+      "text": "Python 函数的参数和返回值有什么关系？",
+      "expected_category": "python_tutorial",
+      "edge_channel_expected": {
+        "graph_edge_in_retrieval_topn": true,
+        "edge_sourced_chunk_not_in_keyword_or_vector": true,
+        "relation_type_match": "相关"
+      }
+    },
+    {
+      "id": "Q3_keyword_only_baseline",
+      "text": "Python 函数定义",
+      "expected_category": "python_tutorial",
+      "edge_channel_expected": {
+        "graph_edge_in_retrieval_topn": false,
+        "note": "强关键词查询，chunk级已能召回，edge通道不必须"
+      }
+    }
+  ],
+  "output_report_path": "docs/02-delivery-plans/01-specs/2026-06-18-req-018-four-channel-graph-edge-recall-validation-report.md"
+}
