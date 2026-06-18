@@ -289,6 +289,21 @@ def _json_preview(value: Any, *, limit: int = 260) -> str:
     return text[:limit] + ("..." if len(text) > limit else "")
 
 
+def _compact_run(run: ScenarioRun) -> dict[str, Any]:
+    return {
+        "question_group": run.question_group,
+        "question_id": run.question_id,
+        "scenario": run.scenario,
+        "retrieval_counts": run.retrieval_counts,
+        "vector_fallback_count": run.vector_fallback_count,
+        "graph_edge_retrieval_count": run.graph_edge_retrieval_count,
+        "graph_edge_fusion_count": run.graph_edge_fusion_count,
+        "graph_edge_packed_count": run.graph_edge_packed_count,
+        "document_sources_count": run.document_sources_count,
+        "final_answer_preview": run.final_answer_preview[:220],
+    }
+
+
 def _group_runs(runs: list[ScenarioRun]) -> dict[tuple[str, str], dict[str, ScenarioRun]]:
     grouped: dict[tuple[str, str], dict[str, ScenarioRun]] = {}
     for run in runs:
@@ -313,10 +328,11 @@ def _render_report(
     allow_llm: bool,
     started_at: str,
     errors: list[str],
+    report_title: str,
 ) -> str:
     grouped = _group_runs(runs)
     lines: list[str] = []
-    lines.append("# REQ-024 P2 真实验收补强报告")
+    lines.append(f"# {report_title}")
     lines.append("")
     lines.append("## 环境")
     lines.append("")
@@ -413,12 +429,23 @@ def _render_report(
             "- 结论：graph_edge 已能补足 fusion 候选，但尚未证明进入最终 prompt；"
             "需要登记后续数据 / 权重 / context packer 任务。"
         )
+    elif not allow_llm:
+        lines.append(
+            "- 结论：graph_edge 已在 dry-run 中满足至少 2 个样例进入 packed context；"
+            "仍需真实 LLM provider 验收最终回答改善。"
+        )
+    else:
+        lines.append(
+            "- 结论：本报告已完成真实 LLM provider run；prompt-level 是否达标可由 "
+            "`graph_edge prompt-level supplement examples` 判断，最终回答是否改善仍需结合 "
+            "baseline / graph_edge / weighted_rrf 的 answer preview 做人工或自动质量比较。"
+        )
     lines.append("")
 
     lines.append("## 原始 JSON 摘要")
     lines.append("")
     lines.append("```json")
-    lines.append(_json_preview([asdict(run) for run in runs], limit=4000))
+    lines.append(_json_preview([_compact_run(run) for run in runs], limit=4000))
     lines.append("```")
     lines.append("")
     return "\n".join(lines)
@@ -474,13 +501,17 @@ async def _run(args: argparse.Namespace) -> int:
             allow_llm=args.allow_llm,
             started_at=started_at,
             errors=errors,
+            report_title=args.report_title,
         ),
         encoding="utf-8",
     )
     if args.json_out:
         json_out = Path(args.json_out)
         json_out.parent.mkdir(parents=True, exist_ok=True)
-        json_out.write_text(_json_preview([asdict(run) for run in runs], limit=1_000_000), encoding="utf-8")
+        json_out.write_text(
+            json.dumps([asdict(run) for run in runs], ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
     print(f"report written: {out}")
     if errors:
         print(f"completed with {len(errors)} scenario error(s)", file=sys.stderr)
@@ -495,6 +526,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--json-out", default="")
     parser.add_argument("--tenant-id", default="")
+    parser.add_argument("--report-title", default="REQ-024 P2 真实验收补强报告")
     parser.add_argument(
         "--allow-llm",
         action="store_true",

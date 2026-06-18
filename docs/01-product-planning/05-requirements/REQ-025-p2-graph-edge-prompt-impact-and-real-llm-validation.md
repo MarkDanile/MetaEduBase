@@ -1,6 +1,6 @@
 # REQ-025: P2 graph_edge 进入 prompt 与真实 LLM 效果验收收口
 
-Status: 🔵 Ready
+Status: 🟣 待验证（prompt-level 与真实 LLM run 已完成；最终质量改善证据不足）
 Priority: P0
 Milestone: P2
 Source: REQ-024 validation follow-up
@@ -40,7 +40,28 @@ REQ-024 干跑验收证明 graph_edge 通道在真实 dev DB 中可以补足 fus
 3. 使用 REQ-024 脚本或其后续版本跑 dry-run，对比 packed context。
 4. 获得用户明确授权后，再开启真实 LLM provider 验收。
 
+## 验收记录（2026-06-18 dry-run）
+
+- 已修复 `ContextPacker`：`knowledge_edge` 与 `knowledge_node` 共用 source chunk hydration 路径，`graph_edge` 的 `graph_source` block 可进入 packed context。
+- 已修复 `AIChatService._hydrate_graph_chunks`：fusion 后的 `knowledge_edge` 会回填 `document_chunks` 的 `content`、`chunk_index`、`section_title`、`section_path`，避免 prompt 只拿 edge 描述。
+- 已增加预算保底：当 fusion 已包含 `graph_edge` source block 时，packed context 至少保留 1 个 `graph_edge` source block，并遵守剩余字符预算。
+- 已生成 dry-run 报告：[REQ-025 P2 graph_edge prompt impact validation report](../../02-delivery-plans/01-specs/2026-06-18-req-025-graph-edge-prompt-impact-validation-report.md)。
+- dry-run 结果：`Q2_cross_section_relationship` / `Q3_keyword_only_baseline` 两个样例满足 `graph_edge topN > 0`、`edge in fusion > 0`、`edge in packed > 0`。
+- `vector fallback trace count: 152`，因此本轮仍不能把 vector topN 解释为真实语义向量召回。
+- 外部 LLM 未开启，本轮不能证明最终回答改善；下一步需用户明确授权后运行 `--allow-llm`。
+
+## 验收记录（2026-06-18 real LLM）
+
+- 用户已明确授权把本地 dev DB 检索出来的 prompt context 发送给当前 LLM provider 执行 `--allow-llm`。
+- 已运行真实 LLM provider 验收并更新报告：[REQ-025 P2 graph_edge prompt impact validation report](../../02-delivery-plans/01-specs/2026-06-18-req-025-graph-edge-prompt-impact-validation-report.md)。
+- 报告状态：`External LLM: enabled`，`Validation Status: real-llm-run`。
+- 机械链路结论：2 个样例满足 `graph_edge topN > 0`、`edge in fusion > 0`、`edge in packed > 0`，说明 `knowledge_edge` 已能回源 chunk 并进入最终 prompt。
+- 质量结论：最终回答改善证据不足。部分 baseline / query understanding 已能回答，部分 graph_edge-only 场景仍回答“未找到足够参考来源”，无法证明“至少 2 个真实问题最终回答比 baseline 更完整”。
+- 报告中的 `vector fallback trace count` 大于 0，因此本轮仍不能把 vector topN 解释为真实语义向量召回；具体计数以报告为准。
+- 后续由 [REQ-026](REQ-026-p2-rag-effect-comparison-and-weak-recall-samples.md) 承接：构建更稳定的弱召回样例集、自动质量比较口径和真实效果回归。
+
 ## 事实源
 
 - REQ-024 report: `docs/02-delivery-plans/01-specs/2026-06-18-req-024-p2-real-validation-report.md`
+- REQ-025 report: `docs/02-delivery-plans/01-specs/2026-06-18-req-025-graph-edge-prompt-impact-validation-report.md`
 - REQ-024 script: `scripts/validate_req024_p2_real_validation.py`

@@ -965,6 +965,78 @@ async def test_ai_chat_uses_four_channels_with_edge() -> None:
     assert len(result.diagnostics["retrieval_topn"]["graph_edge"]) == 1
 
 
+async def test_knowledge_edge_source_chunk_is_hydrated_for_prompt_context() -> None:
+    """REQ-025: knowledge_edge fusion item hydrates its source chunk before packing."""
+    fid = uuid.uuid4()
+    source_cid = uuid.uuid4()
+    edge_id = uuid.uuid4()
+    edge_ev = EvidenceItem(
+        evidence_id="",
+        source_type="knowledge_edge",
+        edge_id=edge_id,
+        file_id=fid,
+        chunk_id=source_cid,
+        source_chunk_id=source_cid,
+        title="课程能力边",
+        content="edge desc",
+        snippet="edge desc",
+        score=0.8,
+        channels=["graph_edge"],
+    )
+
+    async def edge_retriever(*args: Any, **kwargs: Any) -> list[EvidenceItem]:
+        return [edge_ev]
+
+    edge_mock: Any = MagicMock()
+    edge_mock.retrieve = edge_retriever
+    chunk_repo = FakeChunkRepo(
+        {
+            fid: [
+                {
+                    "chunk_index": 7,
+                    "id": source_cid,
+                    "content": "课程 A 支撑能力 B，这是图谱关系回源后的正文证据。",
+                    "section_title": "能力关系",
+                    "section_path": "2.2",
+                }
+            ]
+        }
+    )
+    service = AIChatService(
+        chunk_retriever=FakeChunkRetriever(),
+        graph_retriever=FakeGraphRetriever(),
+        metadata_filter=FakeMetadataFilter(),
+        evidence_fusion=SimpleFrequencyFusion(),
+        context_packer=ContextPacker(chunk_repo, uuid.uuid4()),
+        edge_retriever=edge_mock,
+    )
+
+    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+        result = await service.chat(
+            ServiceChatRequest(message="课程 A 支撑什么能力？", context_window=3),
+            session=FakeSession(chunks=[
+                {
+                    "id": source_cid,
+                    "file_id": fid,
+                    "chunk_index": 7,
+                    "content": "课程 A 支撑能力 B，这是图谱关系回源后的正文证据。",
+                    "section_title": "能力关系",
+                    "section_path": "2.2",
+                }
+            ]),  # type: ignore[arg-type]
+        )
+
+    edge_source = next(item for item in result.sources if item.source_type == "knowledge_edge")
+    assert edge_source.metadata["content_source"] == "document_chunk"
+    assert edge_source.metadata["chunk_index"] == 7
+    graph_edge_blocks = [
+        block for block in result.diagnostics["packed_blocks"]
+        if "graph_edge" in block["channels"]
+    ]
+    assert graph_edge_blocks
+    assert "正文证据" in graph_edge_blocks[0]["content"]
+
+
 async def test_edge_retriever_none_does_not_break_service() -> None:
     """REQ-018 Slice 2: edge_retriever=None (not injected) leaves 3-channel behavior intact."""
     fid = uuid.uuid4()
