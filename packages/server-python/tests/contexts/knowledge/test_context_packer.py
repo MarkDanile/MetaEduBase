@@ -459,6 +459,104 @@ async def test_graph_evidence_fetches_source_chunk_and_neighbors(fid, tenant_id)
 
 
 @pytest.mark.asyncio
+async def test_graph_edge_evidence_fetches_source_chunk_into_packed_context(fid, tenant_id) -> None:
+    """REQ-025: graph_edge evidence should hydrate its source chunk for prompt context."""
+    source_cid = uuid.uuid4()
+    edge_id = uuid.uuid4()
+    db_chunks = {
+        fid: [
+            {
+                "chunk_index": 8,
+                "id": source_cid,
+                "content": "课程 A 支撑能力 B，因此适合作为先导学习内容。",
+                "section_title": "能力支撑关系",
+                "section_path": "2.1",
+            },
+        ]
+    }
+    repo = FakeChunkRepo(db_chunks)
+    opts = ContextPackingOptions(neighbor_window=0, max_blocks=8, max_chars=4000)
+    packer = ContextPacker(repo, tenant_id, options=opts)
+
+    edge_ev = EvidenceItem(
+        evidence_id="",
+        source_type="knowledge_edge",
+        file_id=fid,
+        edge_id=edge_id,
+        source_chunk_id=source_cid,
+        chunk_id=source_cid,
+        title="能力支撑边",
+        content="课程 A -> 能力 B",
+        score=0.88,
+        channels=["graph_edge"],
+    )
+
+    packed = await packer.pack([edge_ev])
+
+    graph_blocks = [
+        block for block in packed.blocks
+        if block.expansion_type == "graph_source" and "graph_edge" in block.channels
+    ]
+    assert len(graph_blocks) == 1
+    assert graph_blocks[0].chunk_ids == [source_cid]
+    assert "支撑能力" in graph_blocks[0].content
+    assert packed.diagnostics.graph_chunks_fetched == 1
+
+
+@pytest.mark.asyncio
+async def test_graph_edge_source_block_survives_budget_trim(fid, tenant_id) -> None:
+    """REQ-025: at least one graph_edge source block survives prompt budget trim."""
+    source_cid = uuid.uuid4()
+    edge_id = uuid.uuid4()
+    db_chunks = {
+        fid: [
+            {
+                "chunk_index": 20,
+                "id": source_cid,
+                "content": "能力图谱边证明课程 A 支撑能力 B，是回答先导关系的关键证据。",
+                "section_title": "能力图谱边",
+                "section_path": "9.1",
+            },
+        ]
+    }
+    repo = FakeChunkRepo(db_chunks)
+    opts = ContextPackingOptions(neighbor_window=0, max_blocks=3, max_chars=4000)
+    packer = ContextPacker(repo, tenant_id, options=opts)
+    high_score_chunks = [
+        EvidenceItem(
+            evidence_id="",
+            source_type="chunk",
+            file_id=fid,
+            chunk_id=uuid.uuid4(),
+            title=f"high-{idx}",
+            content=f"普通高分正文 {idx}",
+            score=0.99 - idx * 0.01,
+            metadata={"chunk_index": idx},
+            channels=["keyword"],
+        )
+        for idx in range(5)
+    ]
+    edge_ev = EvidenceItem(
+        evidence_id="",
+        source_type="knowledge_edge",
+        file_id=fid,
+        edge_id=edge_id,
+        source_chunk_id=source_cid,
+        chunk_id=source_cid,
+        title="能力支撑边",
+        content="课程 A -> 能力 B",
+        score=0.1,
+        channels=["graph_edge"],
+    )
+
+    packed = await packer.pack([*high_score_chunks, edge_ev])
+
+    assert len(packed.blocks) <= 3
+    assert any("graph_edge" in block.channels for block in packed.blocks)
+    assert any("关键证据" in block.content for block in packed.blocks)
+
+
+@pytest.mark.asyncio
 async def test_graph_evidence_no_source_chunk_id_skips_gracefully(fid, tenant_id) -> None:
     """Graph evidence without source_chunk_id does not crash."""
     node_ev = EvidenceItem(

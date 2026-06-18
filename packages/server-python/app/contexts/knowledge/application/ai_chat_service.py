@@ -275,7 +275,7 @@ class AIChatService:
         chunk_ids = {
             item.source_chunk_id or item.chunk_id
             for item in fused
-            if item.source_type == "knowledge_node"
+            if item.source_type in {"knowledge_node", "knowledge_edge"}
             and (item.source_chunk_id is not None or item.chunk_id is not None)
         }
         if not chunk_ids:
@@ -304,7 +304,7 @@ class AIChatService:
         for item in fused:
             chunk_id = item.source_chunk_id or item.chunk_id
             chunk = chunks.get(chunk_id) if chunk_id is not None else None
-            if item.source_type != "knowledge_node" or chunk is None:
+            if item.source_type not in {"knowledge_node", "knowledge_edge"} or chunk is None:
                 hydrated.append(item)
                 continue
 

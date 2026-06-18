@@ -357,11 +357,12 @@ class ContextPacker:
         # ------------------------------------------------------------------
         # Phase 2: graph evidence → fetch source chunk + expand
         # Slice 3 AC: graph evidence with source_chunk_id is fetched and
-        # its neighbors are included in packed context.
+        # its neighbors are included in packed context. REQ-025 extends this
+        # same path to knowledge_edge evidence from the graph_edge channel.
         # ------------------------------------------------------------------
         graph_fetch_count = 0
         for idx, ev in enumerate(evidence, 1):
-            if ev.source_type != "knowledge_node":
+            if ev.source_type not in {"knowledge_node", "knowledge_edge"}:
                 continue
             source_cid = ev.source_chunk_id or ev.chunk_id
             if source_cid is None:
@@ -521,7 +522,9 @@ class ContextPacker:
         diag.total_blocks_before_trim = len(blocks)
         diag.total_chars_before_trim = sum(len(b.content) for b in blocks)
 
+        candidate_blocks = blocks
         blocks = self._apply_budget(blocks, toc_indices)
+        blocks = self._ensure_graph_edge_source_block(blocks, candidate_blocks)
 
         return PackedContext(
             blocks=blocks,
@@ -631,6 +634,36 @@ class ContextPacker:
                     if char_count >= self._opts.max_chars:
                         break
         return chosen
+
+    def _ensure_graph_edge_source_block(
+        self,
+        blocks: list[PackedContextBlock],
+        candidate_blocks: list[PackedContextBlock],
+    ) -> list[PackedContextBlock]:
+        """Keep at least one graph_edge source block when fusion produced one."""
+        if any("graph_edge" in (block.channels or []) for block in blocks):
+            return blocks
+        graph_edge_blocks = [
+            block for block in candidate_blocks
+            if block.expansion_type == "graph_source"
+            and "graph_edge" in (block.channels or [])
+        ]
+        if not graph_edge_blocks:
+            return blocks
+        if not blocks:
+            replacement = graph_edge_blocks[0].model_copy(deep=True)
+            replacement.content = replacement.content[: self._opts.max_chars_per_block]
+            return [replacement]
+
+        replacement = graph_edge_blocks[0].model_copy(deep=True)
+        kept = blocks[:-1]
+        used_chars = sum(len(block.content) for block in kept)
+        remaining_chars = max(0, self._opts.max_chars - used_chars)
+        cap = min(self._opts.max_chars_per_block, remaining_chars)
+        if cap <= 0:
+            return blocks
+        replacement.content = replacement.content[:cap]
+        return [*kept, replacement]
 
 
 # ---------------------------------------------------------------------------
