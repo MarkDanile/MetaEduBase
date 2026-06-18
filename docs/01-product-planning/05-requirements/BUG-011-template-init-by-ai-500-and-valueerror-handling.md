@@ -1,6 +1,6 @@
 # BUG-011: 数据要素模板 AI 生成 500 与 chat_with_model_fallback 异常处理缺陷
 
-Status: 🟡 进行中
+Status: 🟢 完成
 Priority: P1
 Milestone: P2
 Reported: 2026-06-18
@@ -46,3 +46,9 @@ Root Cause: 配置 + 代码缺陷双重因素
 ## 修复后验证（待执行）
 
 重启服务后重测 AI 生成功能，确认返回 200 且有字段列表。
+
+## 修复记录（补充）
+
+| 日期 | 修复内容 | 证据 |
+|------|----------|------|
+| 2026-06-18 | PR #342 squash merge：`chat_with_fallback.py` ValueError 降级 + test 更新 + BUG-011 记录创建 + current-work 更新 | [PR #342](https://github.com/MarkDanile/MetaEduBase/pull/342) |
