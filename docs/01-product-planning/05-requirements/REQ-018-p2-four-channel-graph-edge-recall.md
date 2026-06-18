@@ -58,3 +58,4 @@ Related: REQ-012 / REQ-013 / REQ-017
 | 2026-06-18 | Shaping 完成 | spec + plan 产出，PR #332 squash merge |
 | 2026-06-18 | Shaping 收口 | spec + plan + PR #332 已合并 |
 | 2026-06-18 | Slice 1 完成 | PR #333 squash merge `a94c681`：RecallResult.edge_id + PgEdgeRecallChannel（seed→edge→node）+ PgEdgeRetriever + 5 mock tests |
+| 2026-06-18 | Slice 2 完成 | PR #334 squash merge `87230ba`：AIChatService edge_retriever 第 4 通道 + _normalize_candidate_channels 处理 knowledge_edge + RRF graph_edge 权重 0.5 + 2 mock tests |

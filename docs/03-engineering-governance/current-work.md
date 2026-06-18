@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-018 P2 4 通道并行召回与图谱关系召回 | 🟡 进行中 | P0 | RAG / Graph / AI Chat | Slice 1 PR #333 已合并：PgEdgeRetriever 骨架（RecallResult.edge_id + PgEdgeRecallChannel + 5 mock tests） | Slice 2：PgEdgeRetriever 注入 AIChatService._build_evidence_service() 作为第 4 通道 | — |
+| REQ-018 P2 4 通道并行召回与图谱关系召回 | 🟡 进行中 | P0 | RAG / Graph / AI Chat | Slice 1+2 PR #333/#334 已合并：PgEdgeRetriever 骨架 + 4 通道注入 AIChatService | Slice 3：trace 区分 4 通道来源 + diagnostics retrieval_topn.graph_edge | — |
 | REQ-017 RRF / Weighted RRF 融合排序收口 | 🟡 进行中 | P0 | RAG / Ranking / AI Chat | Slice 1-3 PR #325 已合并：配置入口 + fusion diagnostics + 通道降级。Slice 4（真实 PG 样例 RRF 排序分析）待 REQ-015 PG 环境 backfill | Slice 4：RRF 排序分析脚本；依赖 REQ-015 真实 PG 环境 | 待 REQ-015 backfill |
 
 ## 下一批候选任务
@@ -31,7 +31,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
-| 2026-06-18 | REQ-018 Slice 1 PgEdgeRetriever 骨架 | 🟢 完成 | PR #333 squash merge `a94c681`：RecallResult.edge_id + PgEdgeRecallChannel（seed→edge→node 3步SQL）+ PgEdgeRetriever + 5 mock tests；127 knowledge tests 0 回归 | [REQ-018](../../01-product-planning/05-requirements/REQ-018-p2-four-channel-graph-edge-recall.md) / [Spec](../02-delivery-plans/01-specs/2026-06-18-req-018-p2-four-channel-graph-edge-recall.md) / [Plan](../02-delivery-plans/02-plans/2026-06-18-req-018-p2-four-channel-graph-edge-recall-plan.md) / [PR #333](https://github.com/MarkDanile/MetaEduBase/pull/333) |
+| 2026-06-18 | REQ-018 Slice 1+2 PgEdgeRetriever 骨架 + 4 通道注入 | 🟢 完成 | PR #333/#334 squash merge：RecallResult.edge_id + PgEdgeRecallChannel + PgEdgeRetriever + AIChatService edge_retriever 第 4 通道注入 + 7 mock tests；129 knowledge tests 0 回归 | [REQ-018](../../01-product-planning/05-requirements/REQ-018-p2-four-channel-graph-edge-recall.md) / [Spec](../02-delivery-plans/01-specs/2026-06-18-req-018-p2-four-channel-graph-edge-recall.md) / [Plan](../02-delivery-plans/02-plans/2026-06-18-req-018-p2-four-channel-graph-edge-recall-plan.md) / [PR #333](https://github.com/MarkDanile/MetaEduBase/pull/333) / [PR #334](https://github.com/MarkDanile/MetaEduBase/pull/334) |
 | 2026-06-17 | REQ-016 P2 LLM 混合 NER / Query Understanding 收口 | 🟢 完成 | PR #328/#329/#330 merge：HybridQueryUnderstandingService（规则优先 + LLM 低置信触发）+ NERResult.expanded_query + AIChatService diagnostics + keyword/vector retrievers 使用 expanded_query；70 tests 0 回归；验收报告 placeholder 已产出 | [REQ-016](../../01-product-planning/05-requirements/REQ-016-p2-llm-hybrid-ner-query-understanding.md) / [Spec](../02-delivery-plans/01-specs/2026-06-17-req-016-llm-hybrid-ner.md) / [Plan](../02-delivery-plans/02-plans/2026-06-17-req-016-llm-hybrid-ner-plan.md) |
 | 2026-06-17 | DOC-070 AtomAIBase 项目定位与 README 对外介绍升级 | 🟢 完成 | PR #322 squash merge `e72852b`：README 改为 AtomAIBase 开源项目主页结构；根包描述和顶层架构定位同步；对外介绍保持泛行业定位 | [Backlog](../01-product-planning/04-backlog.md) / [PR #322](https://github.com/MarkDanile/MetaEduBase/pull/322) |
 | 2026-06-17 | DOC-069 P2 阶段正式启动与重点任务规划 | 🟢 完成 | PR #320 merge `33c132f`：P1 Done、P2 Doing；REQ-016/017/018 入账并完成代码事实校准 | [P2 Milestone](../01-product-planning/02-milestones/02-growth-phase.md) / [PR #320](https://github.com/MarkDanile/MetaEduBase/pull/320) |
