@@ -1,6 +1,6 @@
 # REQ-023: 登录页左侧品牌面大胆蓝色视觉加强
 
-Status: 🟡 Doing
+Status: 🟢 Done
 Priority: P1
 Milestone: P2
 Owner: Codex
@@ -59,3 +59,7 @@ Environment: macOS 本地开发环境，前端 dev server `http://localhost:3001
 | `scripts/check-engineering-docs` | exit 0；31 known issues allowlisted |
 | `git diff --check` | exit 0 |
 | Browser smoke `/login` light | 左侧为明显蓝色品牌面；`brand-side` 宽 576、高 720；标题白色、subtitle 浅蓝白、能力标签半透明；右侧登录区背景 `rgb(250, 250, 250)` |
+
+## 当前状态
+
+已通过 [PR #345](https://github.com/MarkDanile/MetaEduBase/pull/345) squash merge 到 `main`，merge commit `9d02ba6`。Backlog、current-work 和 work-log 已同步收口。

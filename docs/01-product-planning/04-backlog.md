@@ -55,7 +55,7 @@
 | REQ-020 | REQ | 🟢 Done | P1 | P2 | Codex / Trae-like 中性双主题视觉收敛 | PR #338 squash merge `d4017d2`：收口为 light/dark 双主题、历史值迁移、用户菜单切换、theme store 回归测试和中性 AI Workspace 视觉规则。 | [Requirement](05-requirements/REQ-020-codex-trae-neutral-dual-theme.md) / [PR #338](https://github.com/MarkDanile/MetaEduBase/pull/338) |
 | REQ-021 | REQ | 🟢 Done | P1 | P2 | 浅色主题加入克制蓝色点缀 | PR #340 squash merge `5a13c3a`：主按钮、链接、焦点、选中态和品牌小标识统一为克制蓝色点缀；绿色仅保留成功语义；浅色登录页浏览器 smoke 通过 | [Requirement](05-requirements/REQ-021-blue-accent-visual-polish.md) / [PR #340](https://github.com/MarkDanile/MetaEduBase/pull/340) |
 | REQ-022 | REQ | 🟢 Done | P1 | P2 | 登录页品牌氛围与工作区画布白灰层级优化 | PR #343 squash merge `4c9d3a8`：登录页左侧增加浅蓝渐变、细网格和能力标签；登录后主工作区画布改为柔和白灰，卡片保持白色层级 | [Requirement](05-requirements/REQ-022-login-brand-and-workspace-canvas-polish.md) / [PR #343](https://github.com/MarkDanile/MetaEduBase/pull/343) |
-| REQ-023 | REQ | 🟡 Doing | P1 | P2 | 登录页左侧品牌面大胆蓝色视觉加强 | 将 REQ-022 偏浅的登录左侧调整为更有记忆点的蓝色品牌面；只影响登录页，不改变登录后工作区中性白灰风格 | [Requirement](05-requirements/REQ-023-bolder-login-brand-panel.md) |
+| REQ-023 | REQ | 🟢 Done | P1 | P2 | 登录页左侧品牌面大胆蓝色视觉加强 | PR #345 squash merge `9d02ba6`：登录页左侧改为更大胆的蓝色品牌面，保留右侧表单和登录后工作区中性白灰风格 | [Requirement](05-requirements/REQ-023-bolder-login-brand-panel.md) / [PR #345](https://github.com/MarkDanile/MetaEduBase/pull/345) |
 | APP-001 | APP | ⚫ Candidate | P1 | P1 / P2 | 课程能力图谱智能体工具 | 优先进入 Shaping，明确课程样例、能力点 schema、图谱验收指标和首个最小闭环 |  |
 | APP-002 | APP | ⚫ Candidate | P1 | P2 | 智能预习规划与导学智能体 | 等 APP-001 能力图谱最小闭环明确后，塑形学情诊断、预习任务和资源推送 |  |
 | APP-003 | APP | ⚫ Candidate | P2 | P2 / P3 | 个性化学习资源推荐智能体 | 等资源类型、学生画像和能力图谱关联策略明确后塑形 |  |
