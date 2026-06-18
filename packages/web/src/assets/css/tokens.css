@@ -8,6 +8,7 @@
 
   /* ---- Backgrounds (per-theme) ---- */
   --color-bg-base: var(--theme-bg-base);
+  --color-bg: var(--theme-bg-base);
   --color-bg-warm: var(--theme-bg-warm);
   --color-bg-elevated: var(--theme-bg-elevated);
   --color-bg-hover: var(--theme-bg-hover);

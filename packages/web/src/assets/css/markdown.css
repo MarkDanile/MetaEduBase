@@ -4,29 +4,17 @@
 @layer components {
   .content-bg {
     background-color: var(--color-bg-base);
-    background-image:
-      radial-gradient(ellipse at 50% 0%, var(--color-accent-glow) 0%, transparent 60%),
-      radial-gradient(var(--color-border) 0.5px, transparent 0.5px);
-    background-size: 100% 400px, 24px 24px;
+    background-image: none;
   }
 
   .mesh-bg {
     position: absolute;
     inset: 0;
     pointer-events: none;
-    opacity: 0.4;
+    opacity: 0.12;
     transition: opacity 0.3s ease;
     background-image:
-      radial-gradient(at 10% 20%, var(--color-accent-glow) 0px, transparent 50%),
-      radial-gradient(at 90% 80%, var(--color-accent-glow) 0px, transparent 50%),
-      radial-gradient(at 50% 50%, var(--color-bg-base) 0%, transparent 70%);
-  }
-
-  /* Disable mesh overlay for solid-card themes to avoid visual noise */
-  :root[data-theme="ink"] .mesh-bg,
-  :root[data-theme="navy"] .mesh-bg,
-  :root[data-theme="notion"] .mesh-bg {
-    opacity: 0.08;
+      linear-gradient(180deg, rgba(255, 255, 255, 0.48), transparent 280px);
   }
 
   .markdown-body {
@@ -52,7 +40,7 @@
   .markdown-body h6 {
     font-family: var(--font-display);
     font-weight: 600;
-    letter-spacing: -0.01em;
+    letter-spacing: 0;
     line-height: 1.4;
     margin: 16px 0 6px;
   }
@@ -112,20 +100,6 @@
     color: var(--color-ink-secondary);
     position: relative;
     overflow: hidden;
-  }
-
-  .markdown-body blockquote::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, transparent 40%, var(--color-accent-sweep) 50%, transparent 60%);
-    transform: translateX(-100%);
-    animation: highlight-sweep 2s var(--ease-out) 0.3s 1 forwards;
-  }
-
-  @keyframes highlight-sweep {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
   }
 
   .markdown-body blockquote p {

@@ -76,7 +76,7 @@
         <div class="p-6">
           <div class="flex items-start justify-between mb-5">
             <div>
-              <h2 class="text-[var(--text-section-title)] font-semibold tracking-tight">{{ selectedNode.title }}</h2>
+              <h2 class="text-[var(--text-section-title)] font-semibold">{{ selectedNode.title }}</h2>
               <p v-if="selectedNode.description" class="text-[var(--text-body)] text-[var(--color-ink-secondary)] mt-1">{{ selectedNode.description }}</p>
             </div>
             <button @click="selectedNode = null" class="p-1.5 rounded-md hover:bg-[var(--color-bg-hover)] transition-colors" aria-label="关闭详情">

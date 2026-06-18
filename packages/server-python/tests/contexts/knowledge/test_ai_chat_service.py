@@ -1033,5 +1033,3 @@ async def test_same_edge_evidence_merged_across_channels() -> None:
     edge_sources = [s for s in result.sources if s.source_type == "knowledge_edge"]
     assert len(edge_sources) == 1  # not duplicated
     assert edge_sources[0].edge_id == edge_id
-
-

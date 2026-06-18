@@ -19,15 +19,15 @@
   .ui-panel {
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border-subtle);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-sm);
+    border-radius: var(--radius-md);
+    box-shadow: var(--surface-card-shadow);
     transition: border-color var(--duration-fast) var(--ease-out),
                 box-shadow var(--duration-fast) var(--ease-out);
   }
 
   .ui-panel:hover {
     border-color: var(--color-border);
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--surface-card-shadow-hover);
   }
 
   .ui-toolbar {
@@ -93,41 +93,34 @@
     border-radius: var(--radius-md);
     border: none;
     cursor: pointer;
-    transition: all var(--duration-liquid) var(--ease-elastic);
+    transition: background-color var(--duration-fast) var(--ease-out),
+                border-color var(--duration-fast) var(--ease-out),
+                color var(--duration-fast) var(--ease-out),
+                box-shadow var(--duration-fast) var(--ease-out);
   }
 
   .ui-btn-primary {
     position: relative;
     overflow: hidden;
-    background: radial-gradient(circle at 30% 30%, var(--color-accent-glow-start), var(--color-accent));
+    background: var(--color-accent);
+    box-shadow: 0 1px 2px rgba(35, 28, 18, 0.08);
     color: var(--color-ink-inverse);
   }
 
   .ui-btn-primary::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    border-radius: 50%;
-    background: var(--btn-ripple);
-    transform: translate(-50%, -50%);
-    transition: width 0.5s var(--ease-out), height 0.5s var(--ease-out), opacity 0.3s var(--ease-out);
+    display: none;
   }
 
   .ui-btn-primary:hover {
-    background: radial-gradient(circle at 30% 30%, var(--color-accent-glow-start-hover), var(--color-accent-light));
+    background: var(--color-accent-light);
   }
 
   .ui-btn-primary:active {
-    transform: scale(0.97);
+    box-shadow: none;
   }
 
   .ui-btn-primary:active::after {
-    width: 220px;
-    height: 220px;
-    opacity: 0;
+    display: none;
   }
 
   .ui-btn-primary:disabled {
@@ -147,7 +140,7 @@
   .ui-btn-ghost:hover {
     background: var(--color-accent-bg);
     color: var(--color-accent);
-    border-color: var(--color-accent);
+    border-color: var(--color-border-accent);
   }
 
   .ui-btn-danger {
@@ -265,15 +258,4 @@
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
     animation: scan-line 6s ease-in-out infinite;
   }
-}
-
-/* ================================================================
-   TD-025: ui-panel 在 liquid 主题下保留玻璃感
-   复用 liquid 主题已声明的 --_surface-card-bg / --_surface-glass-blur，
-   仅覆盖背景与模糊，不重定义边框/阴影/hover（这些仍走 ui-panel 默认）。
-   ================================================================ */
-:root[data-theme="liquid"] .ui-panel {
-  background: var(--_surface-card-bg);
-  backdrop-filter: var(--_surface-glass-blur);
-  -webkit-backdrop-filter: var(--_surface-glass-blur);
 }

@@ -13,9 +13,9 @@ Goal: 在 REQ-012 多路 evidence 骨架之上，补齐召回后上下文组装�
 | REQ-014 | REQ | 🟢 Done | RAG 真实 PG 样例、数据回填与回答 grounding 验收 | PR #308 squash merge：spec + plan + 一次性验收脚本 + 占位报告 + 跨事实源同步。follow-up：下个 PR 跑真 PG |
 | REQ-015 | REQ | 🟢 Done | RAG 生产链路 grounding 与真实验收收口 | PR #314 merge `4d78667`：BUG-009 修复后真 dev DB prompt 前 context 已拿到 Python 正文；用户授权后完整 DeepSeek ask 已通过。 |
 | BUG-009 | BUG | 🟢 Done | AI Chat 真实 PG 链路未把相关正文 chunk 送入 prompt | PR #314 merge `4d78667`：已修共享 `AsyncSession` 并发、RRF 阈值、lexical supplement 排序和邻居 TOC 识别；prompt 前和完整 ask 真实验收均通过。 |
-| REQ-018 | REQ | 🟣 Shaping | P2 4 通道并行召回与图谱关系召回 | 先补独立 `knowledge_edges` relation recall，确认关系命中后能回源 chunk / section。 |
-| REQ-017 | REQ | 🔵 Ready | P2 RRF / Weighted RRF 融合排序收口 | Slice 1-3 PR #325 已合并；Slice 4 真实 PG 样例 RRF 排序分析待 REQ-015 PG 环境 backfill。 |
-| REQ-016 | REQ | 🔵 Ready | P2 LLM 混合 NER / Query Understanding | Shaping 已收口（spec + plan / PR #327）；等待开工 Slice 1。 |
+| REQ-018 | REQ | 🟢 Done | P2 4 通道并行召回与图谱关系召回 | Slice 1+2+3 PR #333/#334/#335 已合并；Slice 4 真实 PG 验收依赖 dev DB 边数据，作为后续 backfill 验证。 |
+| REQ-017 | REQ | 🟡 Doing | P2 RRF / Weighted RRF 融合排序收口 | Slice 1-3 PR #325 已合并；Slice 4 真实 PG 样例 RRF 排序分析待 REQ-015 PG 环境 backfill。 |
+| REQ-016 | REQ | 🟢 Done | P2 LLM 混合 NER / Query Understanding | PR #328/#329/#330 已合并；混合 Query Understanding、expanded_query 和 retriever 接入已收口，真 PG 验收报告待环境执行后填充。 |
 
 ## Out of Scope
 

@@ -7,7 +7,7 @@
           <MessageSquare :size="15" :stroke-width="1.5" class="relative z-[1] text-[var(--color-accent)]" />
         </div>
         <div>
-          <h1 class="text-[var(--text-subtitle)] font-semibold tracking-tight">AI 问答</h1>
+          <h1 class="text-[var(--text-subtitle)] font-semibold">AI 问答</h1>
           <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)] -mt-0.5">基于知识库的智能问答与内容溯源</p>
         </div>
         <div class="wet-line ml-auto" style="width:32px"></div>

@@ -1,12 +1,12 @@
 import { defineStore } from "pinia";
 import { ref, watch } from "vue";
 
-export type ThemeId = "liquid" | "ink" | "navy" | "notion";
+export type ThemeId = "paper";
+
+const DEFAULT_THEME: ThemeId = "paper";
 
 export const useThemeStore = defineStore("theme", () => {
-  const activeTheme = ref<ThemeId>(
-    (localStorage.getItem("metaedu_theme") as ThemeId) ?? "liquid"
-  );
+  const activeTheme = ref<ThemeId>(DEFAULT_THEME);
 
   function setTheme(theme: ThemeId) {
     activeTheme.value = theme;
