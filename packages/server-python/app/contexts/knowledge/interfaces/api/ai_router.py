@@ -39,6 +39,7 @@ from app.contexts.knowledge.infrastructure.retrievers.pg_chunk_vector_retriever 
     PgChunkVectorRetriever,
 )
 from app.contexts.knowledge.infrastructure.retrievers.pg_graph_retriever import (
+    PgEdgeRetriever,
     PgGraphRetriever,
 )
 from app.contexts.knowledge.infrastructure.retrievers.pg_metadata_filter import (
@@ -62,6 +63,7 @@ _RRF_DEFAULT_WEIGHTS: dict[str, float] = {
     "vector": 1.0,
     "keyword": 1.0,
     "graph_node": 0.5,
+    "graph_edge": 0.5,  # REQ-018 Slice 2: edge recall channel
 }
 
 
@@ -108,6 +110,7 @@ def _build_evidence_service(
         evidence_fusion=RRFFusion(channel_weights=rrf_weights),
         ner_pipeline=ner_pipeline,
         context_packer=ContextPacker(ChunkRepository(session), tenant_uuid),
+        edge_retriever=PgEdgeRetriever(),  # REQ-018 Slice 2: 4th recall channel
     )
 
 

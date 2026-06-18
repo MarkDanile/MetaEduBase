@@ -131,6 +131,7 @@ class AIChatService:
         min_evidence_score: float = 0.3,
         context_packer: ContextPacker | None = None,
         context_packing_options: ContextPackingOptions | None = None,
+        edge_retriever: GraphRetriever | None = None,  # REQ-018 Slice 2: graph edge channel
     ) -> None:
         self.chunk_retriever = chunk_retriever
         self.graph_retriever = graph_retriever
@@ -140,6 +141,7 @@ class AIChatService:
         self.min_evidence_score = min_evidence_score
         self._context_packer = context_packer
         self._packing_opts = context_packing_options or ContextPackingOptions()
+        self.edge_retriever = edge_retriever
 
     @staticmethod
     def _normalize_candidate_channels(
@@ -147,12 +149,17 @@ class AIChatService:
     ) -> list[EvidenceItem]:
         normalized: list[EvidenceItem] = []
         for item in candidates:
-            if item.source_type != "knowledge_node":
+            if item.source_type == "knowledge_node":
+                updated = item.model_copy(deep=True)
+                updated.channels = sorted(set(updated.channels or []).union({"graph"}))
+                normalized.append(updated)
+            elif item.source_type == "knowledge_edge":
+                # Edge items: add "graph_edge" channel label
+                updated = item.model_copy(deep=True)
+                updated.channels = sorted(set(updated.channels or []).union({"graph_edge"}))
+                normalized.append(updated)
+            else:
                 normalized.append(item)
-                continue
-            updated = item.model_copy(deep=True)
-            updated.channels = sorted(set(updated.channels or []).union({"graph"}))
-            normalized.append(updated)
         return normalized
 
     @staticmethod
@@ -431,8 +438,12 @@ class AIChatService:
         graph_results = await self._safe_retrieve_graph(
             message, ner_result, tenant_id, session, top_k=top_k
         )
+        # REQ-018 Slice 2: 4th channel — edge retriever (knowledge_edges path)
+        edge_results = await self._safe_retrieve_edge(
+            message, ner_result, tenant_id, session, top_k=top_k
+        )
 
-        raw_candidates = (chunk_results or []) + (graph_results or [])
+        raw_candidates = (chunk_results or []) + (graph_results or []) + (edge_results or [])
         raw_candidates = self._normalize_candidate_channels(raw_candidates)
         filtered_candidates = await self._safe_metadata_filter(
             ner_result, tenant_id, session, raw_candidates
@@ -451,6 +462,16 @@ class AIChatService:
             return await self.graph_retriever.retrieve(*args, **kwargs)
         except Exception as e:  # noqa: BLE001
             logger.warning("graph retrieval failed: %s", e)
+            return []
+
+    async def _safe_retrieve_edge(self, *args, **kwargs) -> list[EvidenceItem]:
+        """REQ-018 Slice 2: safe wrapper for edge retriever (4th recall channel)."""
+        if self.edge_retriever is None:
+            return []
+        try:
+            return await self.edge_retriever.retrieve(*args, **kwargs)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("edge retrieval failed: %s", e)
             return []
 
     def _build_prompt_context(self, packed: PackedContext) -> str:

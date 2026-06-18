@@ -845,3 +845,88 @@ async def test_expanded_query_appears_in_retriever_trace() -> None:
     assert result.diagnostics["query_understanding"]["method"] == "llm"
     # expanded_terms from mock LLM response
     assert "parameter" in result.diagnostics["query_understanding"]["expanded_terms"]
+
+
+# ---------------------------------------------------------------------------
+# REQ-018 Slice 2 — 4-channel parallel recall
+# ---------------------------------------------------------------------------
+
+
+async def test_ai_chat_uses_four_channels_with_edge() -> None:
+    """REQ-018 AC-1/AC-2: edge retriever is called and its evidence appears in sources."""
+    fid = uuid.uuid4()
+    edge_id = uuid.uuid4()
+    chunk = _chunk_evidence(fid, 1, score=0.9, content="Python 基本数据类型包括整数和浮点数。" * 5)
+    edge_ev = EvidenceItem(
+        evidence_id="",
+        source_type="knowledge_edge",
+        edge_id=edge_id,
+        file_id=fid,
+        chunk_id=uuid.uuid4(),
+        node_id=uuid.uuid4(),
+        title="Python 课程先导知识",
+        content="学习 Python 前建议先掌握基础逻辑思维",
+        snippet="学习 Python 前建议先掌握基础逻辑思维",
+        score=0.8,
+        channels=["graph_edge"],
+    )
+
+    chunk_retriever = FakeChunkRetriever()
+    chunk_retriever.return_value = [chunk]
+
+    # Edge retriever that returns one edge evidence item
+    async def edge_retriever(*args: Any, **kwargs: Any) -> list[EvidenceItem]:
+        return [edge_ev]
+
+    edge_mock: Any = MagicMock()
+    edge_mock.retrieve = edge_retriever
+
+    service = AIChatService(
+        chunk_retriever=chunk_retriever,
+        graph_retriever=FakeGraphRetriever(),
+        metadata_filter=FakeMetadataFilter(),
+        evidence_fusion=SimpleFrequencyFusion(),
+        edge_retriever=edge_mock,  # REQ-018 Slice 2: 4th channel
+    )
+    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+        result = await service.chat(
+            ServiceChatRequest(message="Python 基本数据类型有哪些？", context_window=3),
+            session=_session_for_file(fid),  # type: ignore[arg-type]
+        )
+
+    # Edge evidence should appear in sources
+    edge_sources = [s for s in result.sources if s.source_type == "knowledge_edge"]
+    assert len(edge_sources) == 1
+    assert edge_sources[0].edge_id == edge_id
+    assert "graph_edge" in edge_sources[0].channels
+
+    # diagnostics should have graph_edge in retrieval_topn
+    assert "graph_edge" in result.diagnostics["retrieval_topn"]
+    assert len(result.diagnostics["retrieval_topn"]["graph_edge"]) == 1
+
+
+async def test_edge_retriever_none_does_not_break_service() -> None:
+    """REQ-018 Slice 2: edge_retriever=None (not injected) leaves 3-channel behavior intact."""
+    fid = uuid.uuid4()
+    chunk = _chunk_evidence(fid, 1, score=0.9, content="电子信息工程专业需要掌握电路基础。" * 5)
+
+    chunk_retriever = FakeChunkRetriever()
+    chunk_retriever.return_value = [chunk]
+
+    service = AIChatService(
+        chunk_retriever=chunk_retriever,
+        graph_retriever=FakeGraphRetriever(),
+        metadata_filter=FakeMetadataFilter(),
+        evidence_fusion=SimpleFrequencyFusion(),
+        edge_retriever=None,  # REQ-018 Slice 2: not injected
+    )
+    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+        result = await service.chat(
+            ServiceChatRequest(message="电子信息工程专业需要什么基础？", context_window=3),
+            session=_session_for_file(fid),  # type: ignore[arg-type]
+        )
+
+    # Should still work with only 3 channels
+    assert len(result.sources) >= 1
+    assert result.sources[0].source_type == "chunk"
+
