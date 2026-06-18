@@ -18,7 +18,7 @@
   --theme-ink-dim: #C2C7CF;
 
   /* Backgrounds */
-  --theme-bg-base: #FFFFFF;
+  --theme-bg-base: #FAFAFA;
   --theme-bg-warm: #F5F5F5;
   --theme-bg-elevated: #FFFFFF;
   --theme-bg-hover: #F1F3F4;
@@ -89,6 +89,11 @@
   --_login-brand-bg: #F5F5F5;
   --_login-brand-border: #E5E7EB;
   --_login-brand-accent: #2563EB;
+  --_login-brand-gradient: linear-gradient(135deg, #EFF6FF 0%, #F8FAFC 52%, #FFFFFF 100%);
+  --_login-brand-grid: rgba(37, 99, 235, 0.10);
+  --_login-brand-orbit: rgba(37, 99, 235, 0.12);
+  --_login-brand-pill-bg: rgba(255, 255, 255, 0.72);
+  --_login-brand-pill-border: rgba(37, 99, 235, 0.16);
 }
 
 :root[data-theme="dark"] {
@@ -171,4 +176,9 @@
   --_login-brand-bg: #15171B;
   --_login-brand-border: #252932;
   --_login-brand-accent: #8AB4F8;
+  --_login-brand-gradient: linear-gradient(135deg, #111827 0%, #15171B 52%, #101114 100%);
+  --_login-brand-grid: rgba(138, 180, 248, 0.12);
+  --_login-brand-orbit: rgba(96, 165, 250, 0.14);
+  --_login-brand-pill-bg: rgba(27, 30, 36, 0.72);
+  --_login-brand-pill-border: rgba(138, 180, 248, 0.18);
 }
