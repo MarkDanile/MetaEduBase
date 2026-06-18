@@ -64,7 +64,18 @@
   --surface-dialog-shadow: var(--_surface-dialog-shadow);
   --surface-toast-bg: var(--_surface-toast-bg);
   --surface-ghost-btn-bg: var(--_surface-ghost-btn-bg);
-  --login-brand-gradient: var(--_login-brand-gradient);
+  --button-primary-bg: var(--_button-primary-bg);
+  --button-primary-bg-hover: var(--_button-primary-bg-hover);
+  --button-primary-text: var(--_button-primary-text);
+  --button-primary-border: var(--_button-primary-border);
+  --button-primary-shadow: var(--_button-primary-shadow);
+  --brand-mark-bg: var(--_brand-mark-bg);
+  --brand-mark-border: var(--_brand-mark-border);
+  --brand-mark-color: var(--_brand-mark-color);
+  --brand-mark-shadow: var(--_brand-mark-shadow);
+  --login-brand-bg: var(--_login-brand-bg);
+  --login-brand-border: var(--_login-brand-border);
+  --login-brand-accent: var(--_login-brand-accent);
 
   /* ---- Overlay / button ripple (per-theme) ---- */
   --overlay-bg: var(--_overlay-bg);

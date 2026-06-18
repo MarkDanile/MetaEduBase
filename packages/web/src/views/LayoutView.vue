@@ -5,8 +5,8 @@
       :class="collapsed ? 'w-[60px]' : 'w-[200px]'"
     >
       <div class="px-4 pt-5 pb-4 flex items-center" :class="collapsed ? 'justify-center' : 'gap-2.5'">
-        <div class="w-8 h-8 rounded-lg bg-[var(--color-ink)] flex items-center justify-center flex-shrink-0">
-          <BookOpen :size="16" class="text-[var(--color-ink-inverse)]" :stroke-width="2" />
+        <div class="app-brand-mark">
+          <BookOpen :size="16" :stroke-width="2" />
         </div>
         <div v-if="!collapsed">
           <h1 class="text-[var(--text-body)] font-semibold text-[var(--color-ink)]">元知职教基座</h1>
