@@ -86,14 +86,20 @@
   --_btn-ripple: rgba(255, 255, 255, 0.20);
 
   /* Login */
-  --_login-brand-bg: #F5F5F5;
-  --_login-brand-border: #E5E7EB;
-  --_login-brand-accent: #2563EB;
-  --_login-brand-gradient: linear-gradient(135deg, #EFF6FF 0%, #F8FAFC 52%, #FFFFFF 100%);
-  --_login-brand-grid: rgba(37, 99, 235, 0.10);
-  --_login-brand-orbit: rgba(37, 99, 235, 0.12);
-  --_login-brand-pill-bg: rgba(255, 255, 255, 0.72);
-  --_login-brand-pill-border: rgba(37, 99, 235, 0.16);
+  --_login-brand-bg: #0F3A8A;
+  --_login-brand-border: rgba(37, 99, 235, 0.34);
+  --_login-brand-accent: #93C5FD;
+  --_login-brand-gradient:
+    radial-gradient(circle at 18% 18%, rgba(96, 165, 250, 0.58) 0, transparent 28%),
+    radial-gradient(circle at 82% 24%, rgba(56, 189, 248, 0.36) 0, transparent 24%),
+    linear-gradient(135deg, #0B2F73 0%, #1D4ED8 48%, #2563EB 100%);
+  --_login-brand-grid: rgba(255, 255, 255, 0.14);
+  --_login-brand-orbit: rgba(191, 219, 254, 0.32);
+  --_login-brand-pill-bg: rgba(255, 255, 255, 0.14);
+  --_login-brand-pill-border: rgba(219, 234, 254, 0.34);
+  --_login-brand-title: #FFFFFF;
+  --_login-brand-subtitle: rgba(239, 246, 255, 0.82);
+  --_login-brand-pill-text: #EFF6FF;
 }
 
 :root[data-theme="dark"] {
@@ -176,9 +182,15 @@
   --_login-brand-bg: #15171B;
   --_login-brand-border: #252932;
   --_login-brand-accent: #8AB4F8;
-  --_login-brand-gradient: linear-gradient(135deg, #111827 0%, #15171B 52%, #101114 100%);
-  --_login-brand-grid: rgba(138, 180, 248, 0.12);
-  --_login-brand-orbit: rgba(96, 165, 250, 0.14);
-  --_login-brand-pill-bg: rgba(27, 30, 36, 0.72);
-  --_login-brand-pill-border: rgba(138, 180, 248, 0.18);
+  --_login-brand-gradient:
+    radial-gradient(circle at 18% 18%, rgba(96, 165, 250, 0.34) 0, transparent 30%),
+    radial-gradient(circle at 82% 24%, rgba(14, 165, 233, 0.22) 0, transparent 24%),
+    linear-gradient(135deg, #0B1220 0%, #172554 52%, #111827 100%);
+  --_login-brand-grid: rgba(191, 219, 254, 0.12);
+  --_login-brand-orbit: rgba(96, 165, 250, 0.20);
+  --_login-brand-pill-bg: rgba(15, 23, 42, 0.38);
+  --_login-brand-pill-border: rgba(147, 197, 253, 0.24);
+  --_login-brand-title: #F8FAFC;
+  --_login-brand-subtitle: rgba(219, 234, 254, 0.78);
+  --_login-brand-pill-text: #DBEAFE;
 }
