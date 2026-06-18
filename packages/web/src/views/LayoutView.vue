@@ -5,11 +5,11 @@
       :class="collapsed ? 'w-[60px]' : 'w-[200px]'"
     >
       <div class="px-4 pt-5 pb-4 flex items-center" :class="collapsed ? 'justify-center' : 'gap-2.5'">
-        <div class="w-8 h-8 rounded-lg bg-[var(--color-accent)] flex items-center justify-center flex-shrink-0">
-          <BookOpen :size="16" color="white" :stroke-width="2" />
+        <div class="w-8 h-8 rounded-lg bg-[var(--color-ink)] flex items-center justify-center flex-shrink-0">
+          <BookOpen :size="16" class="text-[var(--color-ink-inverse)]" :stroke-width="2" />
         </div>
         <div v-if="!collapsed">
-          <h1 class="text-[var(--text-body)] font-semibold tracking-tight text-[var(--color-ink)]" style="letter-spacing:-0.3px">元知职教基座</h1>
+          <h1 class="text-[var(--text-body)] font-semibold text-[var(--color-ink)]">元知职教基座</h1>
           <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)] -mt-0.5">MetaEduBase</p>
         </div>
       </div>
@@ -132,21 +132,10 @@
             个人中心
           </button>
 
-          <div class="user-menu-divider"></div>
-          <p class="user-menu-label">主题</p>
-          <div class="flex gap-1 px-1">
-            <button
-              v-for="t in themes"
-              :key="t.id"
-              @click="themeStore.setTheme(t.id)"
-              class="flex-1 h-7 rounded-[var(--radius-sm)] text-[10px] font-normal transition-all duration-200 border cursor-pointer"
-              :class="themeStore.activeTheme === t.id
-                ? 'border-[var(--color-accent)] bg-[var(--color-accent-bg)] text-[var(--color-accent)]'
-                : 'border-[var(--color-border-subtle)] text-[var(--color-ink-tertiary)] hover:border-[var(--color-border)] hover:text-[var(--color-ink-secondary)]'"
-            >
-              {{ t.shortLabel }}
-            </button>
-          </div>
+          <button class="user-menu-item" @click="toggleTheme">
+            <component :is="themeIcon" :size="15" :stroke-width="1.5" />
+            {{ themeLabel }}
+          </button>
 
           <div class="user-menu-divider"></div>
           <button class="user-menu-item user-menu-item-danger" @click="logout">
@@ -197,6 +186,7 @@
 import { computed, ref, onMounted, onUnmounted, type Component } from "vue";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import { useThemeStore } from "@/stores/theme";
 import { roleMap } from "@/constants/maps";
 import {
   BookOpen,
@@ -213,8 +203,9 @@ import {
   LayoutTemplate,
   Bot,
   ChevronDown,
+  Moon,
+  Sun,
 } from "lucide-vue-next";
-import { useThemeStore, type ThemeId } from "@/stores/theme";
 
 const route = useRoute();
 const router = useRouter();
@@ -224,15 +215,10 @@ const collapsed = ref(false);
 const mobileMenuOpen = ref(false);
 const menuOpen = ref(false);
 
-const themes: { id: ThemeId; label: string; shortLabel: string }[] = [
-  { id: "liquid", label: "液态玻璃", shortLabel: "液态" },
-  { id: "ink", label: "墨韵书香", shortLabel: "墨韵" },
-  { id: "navy", label: "沉稳奢华", shortLabel: "奢华" },
-  { id: "notion", label: "Notion", shortLabel: "N" },
-];
-
 const roleLabel = computed(() => roleMap[authStore.userRole ?? ""] ?? authStore.userRole ?? "用户");
 const roleInitial = computed(() => roleLabel.value.charAt(0));
+const themeLabel = computed(() => (themeStore.activeTheme === "dark" ? "切换浅色" : "切换深色"));
+const themeIcon = computed(() => (themeStore.activeTheme === "dark" ? Sun : Moon));
 
 const navItems: { title: string; route: string; icon: Component }[] = [
   { title: "总览", route: "/", icon: LayoutGrid },
@@ -263,6 +249,11 @@ function isActive(routePath: string) {
 function logout() {
   authStore.clearAuth();
   router.push("/login");
+}
+
+function toggleTheme() {
+  themeStore.toggleTheme();
+  menuOpen.value = false;
 }
 
 function handleResize() {
@@ -330,14 +321,15 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 44px;
+  height: 40px;
   padding: 0 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   color: var(--color-ink-secondary);
   font-size: 14px;
   font-weight: 400;
   text-decoration: none;
-  transition: all 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: background-color var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
   overflow: hidden;
   white-space: nowrap;
 }
@@ -348,13 +340,13 @@ onUnmounted(() => {
 }
 
 .nav-item:hover {
-  background: var(--color-accent-glow);
+  background: var(--color-bg-hover);
   color: var(--color-ink);
 }
 
 .nav-item-active {
   background: var(--color-accent-bg);
-  color: var(--color-accent);
+  color: var(--color-ink);
   font-weight: 500;
 }
 
@@ -371,23 +363,7 @@ onUnmounted(() => {
 }
 
 .nav-item-active .nav-icon {
-  color: var(--color-accent);
-}
-
-.nav-item-active .nav-icon::before {
-  content: '';
-  position: absolute;
-  inset: -4px;
-  border-radius: 8px;
-  background: linear-gradient(to top, var(--color-accent-bg) 0%, transparent 60%);
-  background-size: 100% 200%;
-  animation: liquid-fill 3s ease-in-out infinite;
-  z-index: -1;
-}
-
-@keyframes liquid-fill {
-  0%, 100% { background-position: 0% 100%; }
-  50% { background-position: 0% 0%; }
+  color: var(--color-ink);
 }
 
 @media (max-width: 640px) {
@@ -396,12 +372,6 @@ onUnmounted(() => {
   }
   main {
     margin-left: 0 !important;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .nav-item-active .nav-icon::before {
-    animation: none;
   }
 }
 
@@ -416,7 +386,7 @@ onUnmounted(() => {
 .nav-admin-subitems {
   margin-left: 8px;
   padding-left: 8px;
-  border-left: 1px solid var(--panel-border);
+  border-left: 1px solid var(--color-border-subtle);
 }
 
 .nav-item-sub {

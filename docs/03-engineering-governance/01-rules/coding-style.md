@@ -33,7 +33,8 @@
 ## 设计系统
 
 - 新增或修改业务 UI 优先使用语义化 `ui-*` workspace 层。
-- `liquid-*` 保留为历史兼容和少量品牌 / 装饰例外，不作为新增默认选择。
+- 产品主视觉只保留 `light` / `dark` 两套 Codex / Trae-like 中性 AI Workspace 主题：白灰 / 深灰底、细分割线、低阴影、极少强调色。
+- `paper` / `liquid` / `ink` / `navy` / `notion` 仅作为历史兼容入口映射到浅色主题；不得新增普通用户可切换的第三套主题。
 - 共享组件优先复用：`PageHeader`、`EmptyState`、`ConfirmDialog`、`LoadingSpinner`、`ToastContainer`。
 - 危险操作必须使用 `ConfirmDialog`，禁止点击即执行。
 - 对话框必须包含 `role="dialog"` 和 `aria-modal="true"`；复杂表单补 focus 管理。
