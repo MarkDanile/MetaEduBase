@@ -1,6 +1,6 @@
 # REQ-017: P2 RRF / Weighted RRF 融合排序
 
-Status: 🔵 Ready
+Status: 🟢 Done
 Priority: P0
 Milestone: P2
 Source: P2-RRF Open Item
@@ -54,6 +54,7 @@ Related: REQ-013 / REQ-015 / REQ-018
 | 2026-06-17 | Slice 1-3 完成 | PR #325 merge：RRFFusion 生产接入 + channel_weights 配置入口 + fusion diagnostics + 通道降级；测试覆盖 AC-1/2/3/6 |
 | 2026-06-18 | Slice 4 占位 | 验收报告 placeholder 已产出 |
 | 2026-06-18 | Slice 4 真实PG验收 | 4通道RRF融合正常，AC-4/5/7通过；验收报告已填充 |
+| 2026-06-18 | 评审收口 | DOC-071 将 Backlog / work-log / current-work 中旧的 Doing / placeholder 状态修正为 Done；事实源以 PR #325 + `2026-06-18-req-017-rrf-weighted-fusion-validation-report.md` 为准。 |
 
 ## Delivery Links
 

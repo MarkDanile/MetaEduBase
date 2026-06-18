@@ -1,6 +1,6 @@
 # REQ-016: P2 LLM 混合 NER / Query Understanding
 
-Status: 🟣 Shaping
+Status: 🟢 Done（代码切片完成；真实效果验收由 REQ-024 接力）
 Priority: P0
 Milestone: P2
 Source: P2-NER Open Item
@@ -16,10 +16,10 @@ Related: BUG-010 / REQ-017 / REQ-018
 |------|----------|------|
 | 规则 NER | 已实现 | `RuleBasedNER` 位于 `packages/server-python/app/contexts/knowledge/application/ner_service.py`，由 AI Chat 和 graph retrieve 入口调用。 |
 | 确定性 query normalizer | 已实现部分切片 | BUG-010 已增强 `keyword_query.tokenize_query()`，解决“函数参数”类自然问法术语拆分。 |
-| LLM Query Understanding | 未实现 | 当前代码未发现稳定的 LLM query understanding schema、LLM NER adapter、低置信触发策略或 diagnostics 输出。 |
-| Trace | 部分具备 | `AIChatService` 已输出 retrieval / fusion / packed trace，但还没有 query understanding 专属 trace。 |
+| LLM Query Understanding | 已实现 | PR #328/#329/#330 已接入 `HybridQueryUnderstandingService`、query understanding schema、低置信触发策略和 `NERResult.expanded_query`。 |
+| Trace | 已实现 | `AIChatService` 输出 retrieval / fusion / packed trace，并在 diagnostics 中透出 `query_understanding`。真实 PG + LLM 报告仍待 REQ-024 填充。 |
 
-因此 REQ-016 是 **新增 P2 能力**，不是收口已有 LLM NER。后续 CC 开发时应先做 schema、触发条件和降级策略，再接入生产链路。
+因此 REQ-016 的代码切片可关闭；真实 PG + LLM 效果验收不再混在本任务内，统一由 [REQ-024](REQ-024-p2-real-validation-query-understanding-and-graph-edge.md) 接力。
 
 ## Scope
 
@@ -58,3 +58,4 @@ Related: BUG-010 / REQ-017 / REQ-018
 | 2026-06-17 | Slice 2 收口 | AIChatService diagnostics 扩展 + router 注入，PR #329 merge，58 tests 0 回归 |
 | 2026-06-17 | Slice 3 收口 | expanded_query 流经 keyword/vector retrievers，NERResult.expanded_query 字段，PR #330 merge，63 tests 0 回归 |
 | 2026-06-17 | Slice 4 收口 | 验收报告 placeholder + REQ-016 专属 samples 文件 + expanded_query test；真 PG 验收需 dev DB + backend + LLM key，报告 placeholder 待手动执行后填充 |
+| 2026-06-18 | 评审收口 | DOC-071 复核确认代码切片已完成；真实 PG + LLM 效果验收分流到 REQ-024，避免把 placeholder 报告误当完成证据。 |

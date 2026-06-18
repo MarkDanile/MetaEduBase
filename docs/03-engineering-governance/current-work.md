@@ -16,11 +16,13 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-（无）
+| DOC-071 最近完成任务与 P2 里程碑评审收口 | 🟡 进行中 | P0 | Review / P2 / Score Log / Status Sync | 分支 `codex/review-recent-p2-completions`；已发现并修正 REQ-016/017/018 状态漂移，补 REQ-024 follow-up，正在写评审报告与评分总账 | 完成 review-score-log 与评审报告；运行文档门禁；提交 PR 并合并 | 待运行 |
 
 ## 下一批候选任务
 
-（暂无）
+| 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
+|------|------|--------|------|--------|--------|
+| REQ-024 P2 真实验收补强：Query Understanding 与 graph_edge 补足样例 | 🔵 Ready | P0 | RAG / P2 / Real Validation | 优先执行真实 dev DB + LLM 验收，填充 REQ-016 报告并证明 graph_edge 弱召回补足价值 | [Requirement](../01-product-planning/05-requirements/REQ-024-p2-real-validation-query-understanding-and-graph-edge.md) |
 
 ## 最近完成
 
@@ -36,7 +38,7 @@
 | 2026-06-18 | REQ-021 浅色主题加入克制蓝色点缀 | 🟢 完成 | PR #340 squash merge `5a13c3a`：主按钮改克制蓝色语义 token，Logo / 登录页品牌 mark 改中性底 + 蓝色小图标，设计规则明确蓝色为唯一交互点缀；前端 typecheck/lint/build + `/login` light smoke 通过 | [REQ-021](../01-product-planning/05-requirements/REQ-021-blue-accent-visual-polish.md) / [PR #340](https://github.com/MarkDanile/MetaEduBase/pull/340) |
 | 2026-06-18 | REQ-020 Codex / Trae-like 中性双主题视觉收敛 | 🟢 完成 | PR #338 squash merge `d4017d2`：收口为 light/dark 双主题，历史主题值迁移到 light，用户菜单提供轻量切换；新增 theme store 回归测试；前端 typecheck/lint/build/theme.spec + 浏览器 smoke 通过 | [REQ-020](../01-product-planning/05-requirements/REQ-020-codex-trae-neutral-dual-theme.md) / [PR #338](https://github.com/MarkDanile/MetaEduBase/pull/338) |
 | 2026-06-18 | REQ-019 单主题视觉风格收敛 | 🟢 完成 | PR #336 squash merge `c3d3ab1`：统一为 paper 单主题，移除用户可见主题切换，旧主题入口映射到同一套暖纸墨韵 token；前端 typecheck/lint/build + 浏览器烟测通过 | [REQ-019](../01-product-planning/05-requirements/REQ-019-single-paper-theme-visual-alignment.md) / [PR #336](https://github.com/MarkDanile/MetaEduBase/pull/336) |
-| 2026-06-18 | REQ-018 P2 4 通道并行召回收口 | 🟢 完成 | PR #333/#334/#335 squash merge：PgEdgeRetriever骨架 + 4通道注入AIChatService + trace/dedup验证 + 9 mock tests；131 knowledge tests 0 回归；验收报告placeholder已产出；Slice 4（真PG）待dev DB边数据 | [REQ-018](../01-product-planning/05-requirements/REQ-018-p2-four-channel-graph-edge-recall.md) / [Spec](../02-delivery-plans/01-specs/2026-06-18-req-018-p2-four-channel-graph-edge-recall.md) / [Plan](../02-delivery-plans/02-plans/2026-06-18-req-018-p2-four-channel-graph-edge-recall-plan.md) / [PR #333](https://github.com/MarkDanile/MetaEduBase/pull/333) / [PR #334](https://github.com/MarkDanile/MetaEduBase/pull/334) / [PR #335](https://github.com/MarkDanile/MetaEduBase/pull/335) |
+| 2026-06-18 | REQ-018 P2 4 通道并行召回收口 | 🟢 完成 | PR #333/#334/#335 squash merge：PgEdgeRetriever骨架 + 4通道注入AIChatService + trace/dedup验证 + 9 mock tests；真实 PG 验收已补，graph_edge 激活且 evidence_id bug 修复；AC-5 弱召回补足样例由 REQ-024 接力 | [REQ-018](../01-product-planning/05-requirements/REQ-018-p2-four-channel-graph-edge-recall.md) / [Spec](../02-delivery-plans/01-specs/2026-06-18-req-018-p2-four-channel-graph-edge-recall.md) / [Plan](../02-delivery-plans/02-plans/2026-06-18-req-018-p2-four-channel-graph-edge-recall-plan.md) / [Report](../02-delivery-plans/01-specs/2026-06-18-req-018-four-channel-graph-edge-recall-validation-report.md) / [PR #333](https://github.com/MarkDanile/MetaEduBase/pull/333) / [PR #334](https://github.com/MarkDanile/MetaEduBase/pull/334) / [PR #335](https://github.com/MarkDanile/MetaEduBase/pull/335) |
 | 2026-06-17 | REQ-016 P2 LLM 混合 NER / Query Understanding 收口 | 🟢 完成 | PR #328/#329/#330 merge：HybridQueryUnderstandingService（规则优先 + LLM 低置信触发）+ NERResult.expanded_query + AIChatService diagnostics + keyword/vector retrievers 使用 expanded_query；70 tests 0 回归；验收报告 placeholder 已产出 | [REQ-016](../01-product-planning/05-requirements/REQ-016-p2-llm-hybrid-ner-query-understanding.md) / [Spec](../02-delivery-plans/01-specs/2026-06-17-req-016-llm-hybrid-ner.md) / [Plan](../02-delivery-plans/02-plans/2026-06-17-req-016-llm-hybrid-ner-plan.md) |
 | 2026-06-17 | DOC-070 AtomAIBase 项目定位与 README 对外介绍升级 | 🟢 完成 | PR #322 squash merge `e72852b`：README 改为 AtomAIBase 开源项目主页结构；根包描述和顶层架构定位同步；对外介绍保持泛行业定位 | [Backlog](../01-product-planning/04-backlog.md) / [PR #322](https://github.com/MarkDanile/MetaEduBase/pull/322) |
 | 2026-06-17 | DOC-069 P2 阶段正式启动与重点任务规划 | 🟢 完成 | PR #320 merge `33c132f`：P1 Done、P2 Doing；REQ-016/017/018 入账并完成代码事实校准 | [P2 Milestone](../01-product-planning/02-milestones/02-growth-phase.md) / [PR #320](https://github.com/MarkDanile/MetaEduBase/pull/320) |
