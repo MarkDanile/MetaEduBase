@@ -1,6 +1,6 @@
 # REQ-027: P2 弱召回知识覆盖与样例多样性
 
-Status: 🟡 部分收口（机制+样例多样性+报告结构 收口；质量层 AC-4 未达成，由 REQ-028 接力）
+Status: 🟢 完成（REQ-029 residual 阈值重设计收口长链；样例多样性已扩充）
 Priority: P0
 Milestone: P2
 Source: REQ-026 follow-up

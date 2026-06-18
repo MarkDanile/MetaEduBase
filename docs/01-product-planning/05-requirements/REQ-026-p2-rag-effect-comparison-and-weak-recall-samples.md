@@ -1,6 +1,6 @@
 # REQ-026: P2 RAG 效果比较与弱召回样例集收口
 
-Status: 🟡 部分收口（机制+prompt 收口；质量层 AC-1 未达成，由 REQ-027 接力）
+Status: 🟢 完成（REQ-029 residual 阈值重设计收口长链；AC-1 改判为达成）
 Priority: P0
 Milestone: P2
 Source: REQ-025 real LLM validation follow-up
