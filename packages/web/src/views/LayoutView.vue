@@ -5,8 +5,8 @@
       :class="collapsed ? 'w-[60px]' : 'w-[200px]'"
     >
       <div class="px-4 pt-5 pb-4 flex items-center" :class="collapsed ? 'justify-center' : 'gap-2.5'">
-        <div class="w-8 h-8 rounded-lg bg-[var(--color-accent)] flex items-center justify-center flex-shrink-0">
-          <BookOpen :size="16" color="white" :stroke-width="2" />
+        <div class="w-8 h-8 rounded-lg bg-[var(--color-ink)] flex items-center justify-center flex-shrink-0">
+          <BookOpen :size="16" class="text-[var(--color-ink-inverse)]" :stroke-width="2" />
         </div>
         <div v-if="!collapsed">
           <h1 class="text-[var(--text-body)] font-semibold text-[var(--color-ink)]">元知职教基座</h1>
@@ -132,6 +132,11 @@
             个人中心
           </button>
 
+          <button class="user-menu-item" @click="toggleTheme">
+            <component :is="themeIcon" :size="15" :stroke-width="1.5" />
+            {{ themeLabel }}
+          </button>
+
           <div class="user-menu-divider"></div>
           <button class="user-menu-item user-menu-item-danger" @click="logout">
             <LogOut :size="15" :stroke-width="1.5" />
@@ -181,6 +186,7 @@
 import { computed, ref, onMounted, onUnmounted, type Component } from "vue";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import { useThemeStore } from "@/stores/theme";
 import { roleMap } from "@/constants/maps";
 import {
   BookOpen,
@@ -197,17 +203,22 @@ import {
   LayoutTemplate,
   Bot,
   ChevronDown,
+  Moon,
+  Sun,
 } from "lucide-vue-next";
 
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
+const themeStore = useThemeStore();
 const collapsed = ref(false);
 const mobileMenuOpen = ref(false);
 const menuOpen = ref(false);
 
 const roleLabel = computed(() => roleMap[authStore.userRole ?? ""] ?? authStore.userRole ?? "用户");
 const roleInitial = computed(() => roleLabel.value.charAt(0));
+const themeLabel = computed(() => (themeStore.activeTheme === "dark" ? "切换浅色" : "切换深色"));
+const themeIcon = computed(() => (themeStore.activeTheme === "dark" ? Sun : Moon));
 
 const navItems: { title: string; route: string; icon: Component }[] = [
   { title: "总览", route: "/", icon: LayoutGrid },
@@ -238,6 +249,11 @@ function isActive(routePath: string) {
 function logout() {
   authStore.clearAuth();
   router.push("/login");
+}
+
+function toggleTheme() {
+  themeStore.toggleTheme();
+  menuOpen.value = false;
 }
 
 function handleResize() {
@@ -305,9 +321,9 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 44px;
+  height: 40px;
   padding: 0 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   color: var(--color-ink-secondary);
   font-size: 14px;
   font-weight: 400;
@@ -324,13 +340,13 @@ onUnmounted(() => {
 }
 
 .nav-item:hover {
-  background: var(--color-accent-glow);
+  background: var(--color-bg-hover);
   color: var(--color-ink);
 }
 
 .nav-item-active {
   background: var(--color-accent-bg);
-  color: var(--color-accent);
+  color: var(--color-ink);
   font-weight: 500;
 }
 
@@ -347,7 +363,7 @@ onUnmounted(() => {
 }
 
 .nav-item-active .nav-icon {
-  color: var(--color-accent);
+  color: var(--color-ink);
 }
 
 @media (max-width: 640px) {

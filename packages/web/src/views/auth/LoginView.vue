@@ -5,9 +5,9 @@
       <div class="brand-content">
         <div class="brand-logo">
           <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-            <rect x="1" y="1" width="46" height="46" rx="12" fill="rgba(255,255,255,0.12)"/>
-            <rect x="1" y="1" width="46" height="46" rx="12" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
-            <text x="24" y="33" text-anchor="middle" fill="#fff" font-size="22" font-weight="700" font-family="system-ui, sans-serif">元</text>
+            <rect x="1" y="1" width="46" height="46" rx="12" fill="var(--color-bg-elevated)"/>
+            <rect x="1" y="1" width="46" height="46" rx="12" stroke="var(--color-border)" stroke-width="1"/>
+            <text x="24" y="33" text-anchor="middle" fill="var(--color-ink)" font-size="22" font-weight="700" font-family="system-ui, sans-serif">元</text>
           </svg>
         </div>
         <h1 class="brand-title">元知职教基座</h1>
@@ -130,12 +130,7 @@ async function handleLogin() {
 }
 
 .brand-noise {
-  position: absolute;
-  inset: 0;
-  opacity: 0.03;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 256px 256px;
-  pointer-events: none;
+  display: none;
 }
 
 .brand-content {
@@ -153,23 +148,23 @@ async function handleLogin() {
 }
 
 .brand-logo svg {
-  filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.15));
+  filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.10));
 }
 
 .brand-title {
   font-family: var(--font-display);
   font-size: 28px;
   font-weight: 700;
-  color: var(--color-ink-inverse);
+  color: var(--color-ink);
   letter-spacing: 0.06em;
   line-height: 1.3;
-  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+  text-shadow: none;
 }
 
 .brand-subtitle {
   font-size: var(--text-caption);
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--color-ink-secondary);
   letter-spacing: 0.08em;
   margin-top: 8px;
 }
@@ -187,12 +182,7 @@ async function handleLogin() {
 }
 
 .login-side::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent 280px);
-  opacity: 0.7;
-  pointer-events: none;
+  display: none;
 }
 
 /* ===== 登录卡片 ===== */

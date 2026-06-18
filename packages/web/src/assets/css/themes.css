@@ -1,77 +1,148 @@
 /* ================================================================
-   THEME: Paper — 极简白底 + 暖纸墨韵
-   保留旧 data-theme 入口，但所有主题统一收敛到同一套视觉变量。
+   THEME: Neutral AI Workspace
+   Light follows Codex / Trae-like white-gray tooling surfaces.
+   Dark keeps the same hierarchy for night work.
    ================================================================ */
 :root,
-:root[data-theme="paper"],
+:root[data-theme="light"],
 :root[data-theme="liquid"],
 :root[data-theme="ink"],
 :root[data-theme="navy"],
-:root[data-theme="notion"] {
+:root[data-theme="notion"],
+:root[data-theme="paper"] {
   /* Text */
-  --theme-ink: #1F1C18;
-  --theme-ink-secondary: #5F5952;
-  --theme-ink-tertiary: #8D8478;
+  --theme-ink: #202124;
+  --theme-ink-secondary: #5F6368;
+  --theme-ink-tertiary: #9AA0A6;
   --theme-ink-inverse: #FFFFFF;
-  --theme-ink-dim: #C4B9AC;
+  --theme-ink-dim: #C2C7CF;
 
   /* Backgrounds */
-  --theme-bg-base: #FBF8F1;
-  --theme-bg-warm: #F2ECDD;
-  --theme-bg-elevated: #FFFDF8;
-  --theme-bg-hover: #F5F0E6;
+  --theme-bg-base: #FFFFFF;
+  --theme-bg-warm: #F5F5F5;
+  --theme-bg-elevated: #FFFFFF;
+  --theme-bg-hover: #F1F3F4;
 
   /* Accent */
-  --theme-accent: #7E9276;
-  --theme-accent-light: #657A60;
-  --theme-accent-bg: #E7EEE1;
-  --theme-accent-glow: #D7E2D1;
-  --theme-accent-glow-start: #9AAE92;
-  --theme-accent-glow-start-hover: #B0C2AA;
-  --theme-accent-ring: rgba(126, 146, 118, 0.14);
-  --theme-accent-sweep: rgba(126, 146, 118, 0.06);
+  --theme-accent: #1F2328;
+  --theme-accent-light: #343941;
+  --theme-accent-bg: #EDEFF2;
+  --theme-accent-glow: #EEF0F3;
+  --theme-accent-glow-start: #DADDE2;
+  --theme-accent-glow-start-hover: #CFD4DC;
+  --theme-accent-ring: rgba(37, 99, 235, 0.16);
+  --theme-accent-sweep: rgba(37, 99, 235, 0.06);
 
   /* Highlight */
-  --theme-highlight: #A0845C;
-  --theme-highlight-bg: rgba(160, 132, 92, 0.08);
+  --theme-highlight: #2563EB;
+  --theme-highlight-bg: rgba(37, 99, 235, 0.08);
 
   /* Tags */
-  --theme-tag-green: rgba(126, 146, 118, 0.10);
-  --theme-tag-green-text: #657A60;
-  --theme-tag-amber: rgba(160, 132, 92, 0.10);
-  --theme-tag-amber-text: #A0845C;
-  --theme-tag-blue: rgba(100, 120, 140, 0.10);
-  --theme-tag-blue-text: #587083;
-  --theme-tag-purple: rgba(125, 96, 133, 0.10);
-  --theme-tag-purple-text: #7D6085;
+  --theme-tag-green: rgba(34, 134, 58, 0.10);
+  --theme-tag-green-text: #22863A;
+  --theme-tag-amber: rgba(154, 103, 0, 0.10);
+  --theme-tag-amber-text: #9A6700;
+  --theme-tag-blue: rgba(37, 99, 235, 0.10);
+  --theme-tag-blue-text: #2563EB;
+  --theme-tag-purple: rgba(111, 66, 193, 0.10);
+  --theme-tag-purple-text: #6F42C1;
 
   /* Borders */
-  --theme-border: #E5DDCF;
-  --theme-border-subtle: #F1E9DD;
-  --theme-border-accent: #7E9276;
+  --theme-border: #DADCE0;
+  --theme-border-subtle: #EDEFF2;
+  --theme-border-accent: #C7CCD4;
 
   /* Surfaces */
-  --_surface-card-bg: #FFFDF8;
-  --_surface-card-border: 1px solid #E5DDCF;
-  --_surface-card-shadow: 0 1px 2px rgba(35, 28, 18, 0.04);
-  --_surface-card-shadow-hover: 0 4px 12px rgba(35, 28, 18, 0.06);
-  --_surface-card-elevated-bg: #FFFDF8;
-  --_surface-card-elevated-shadow: 0 6px 18px rgba(35, 28, 18, 0.06);
+  --_surface-card-bg: #FFFFFF;
+  --_surface-card-border: 1px solid #E5E7EB;
+  --_surface-card-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --_surface-card-shadow-hover: 0 4px 12px rgba(15, 23, 42, 0.06);
+  --_surface-card-elevated-bg: #FFFFFF;
+  --_surface-card-elevated-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
   --_surface-glass-blur: none;
   --_surface-glass-blur-light: none;
-  --_surface-sidebar-bg: #F7F2E8;
-  --_surface-input-bg: #FFFDF8;
-  --_surface-input-bg-focus: #FFFDF8;
-  --_surface-dialog-bg: #FFFDF8;
-  --_surface-dialog-border: 1px solid #E5DDCF;
-  --_surface-dialog-shadow: 0 18px 42px rgba(35, 28, 18, 0.08);
-  --_surface-toast-bg: #FFFDF8;
+  --_surface-sidebar-bg: #F5F5F5;
+  --_surface-input-bg: #FFFFFF;
+  --_surface-input-bg-focus: #FFFFFF;
+  --_surface-dialog-bg: #FFFFFF;
+  --_surface-dialog-border: 1px solid #E5E7EB;
+  --_surface-dialog-shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
+  --_surface-toast-bg: #FFFFFF;
   --_surface-ghost-btn-bg: transparent;
 
   /* Overlay / button ripple */
-  --_overlay-bg: rgba(35, 28, 18, 0.16);
+  --_overlay-bg: rgba(15, 23, 42, 0.18);
   --_btn-ripple: rgba(255, 255, 255, 0.20);
 
   /* Login */
-  --_login-brand-gradient: linear-gradient(160deg, #EDE5D6 0%, #D8E2CF 100%);
+  --_login-brand-gradient: #F5F5F5;
+}
+
+:root[data-theme="dark"] {
+  /* Text */
+  --theme-ink: #F5F7FA;
+  --theme-ink-secondary: #C6CAD2;
+  --theme-ink-tertiary: #8E95A3;
+  --theme-ink-inverse: #0F1115;
+  --theme-ink-dim: #5D6675;
+
+  /* Backgrounds */
+  --theme-bg-base: #101114;
+  --theme-bg-warm: #15171B;
+  --theme-bg-elevated: #17191E;
+  --theme-bg-hover: #202329;
+
+  /* Accent */
+  --theme-accent: #F2F4F8;
+  --theme-accent-light: #D9DEE7;
+  --theme-accent-bg: #252A33;
+  --theme-accent-glow: #232730;
+  --theme-accent-glow-start: #2B303A;
+  --theme-accent-glow-start-hover: #333A46;
+  --theme-accent-ring: rgba(96, 165, 250, 0.22);
+  --theme-accent-sweep: rgba(96, 165, 250, 0.08);
+
+  /* Highlight */
+  --theme-highlight: #8AB4F8;
+  --theme-highlight-bg: rgba(138, 180, 248, 0.12);
+
+  /* Tags */
+  --theme-tag-green: rgba(87, 171, 90, 0.14);
+  --theme-tag-green-text: #7DD482;
+  --theme-tag-amber: rgba(245, 158, 11, 0.16);
+  --theme-tag-amber-text: #F7C56B;
+  --theme-tag-blue: rgba(96, 165, 250, 0.16);
+  --theme-tag-blue-text: #9CC7FF;
+  --theme-tag-purple: rgba(168, 139, 250, 0.16);
+  --theme-tag-purple-text: #C4B5FD;
+
+  /* Borders */
+  --theme-border: #343842;
+  --theme-border-subtle: #252932;
+  --theme-border-accent: #4C5565;
+
+  /* Surfaces */
+  --_surface-card-bg: #17191E;
+  --_surface-card-border: 1px solid #2A2F38;
+  --_surface-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.30);
+  --_surface-card-shadow-hover: 0 6px 18px rgba(0, 0, 0, 0.30);
+  --_surface-card-elevated-bg: #1B1E24;
+  --_surface-card-elevated-shadow: 0 18px 42px rgba(0, 0, 0, 0.38);
+  --_surface-glass-blur: none;
+  --_surface-glass-blur-light: none;
+  --_surface-sidebar-bg: #15171B;
+  --_surface-input-bg: #14161A;
+  --_surface-input-bg-focus: #171A20;
+  --_surface-dialog-bg: #1B1E24;
+  --_surface-dialog-border: 1px solid #343842;
+  --_surface-dialog-shadow: 0 18px 48px rgba(0, 0, 0, 0.48);
+  --_surface-toast-bg: #1B1E24;
+  --_surface-ghost-btn-bg: transparent;
+
+  /* Overlay / button ripple */
+  --_overlay-bg: rgba(0, 0, 0, 0.52);
+  --_btn-ripple: rgba(255, 255, 255, 0.16);
+
+  /* Login */
+  --_login-brand-gradient: #15171B;
 }
