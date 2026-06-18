@@ -1,15 +1,27 @@
 import { defineStore } from "pinia";
 import { ref, watch } from "vue";
 
-export type ThemeId = "paper";
+export type ThemeId = "light" | "dark";
 
-const DEFAULT_THEME: ThemeId = "paper";
+const DEFAULT_THEME: ThemeId = "light";
+const LEGACY_THEME_VALUES = new Set(["paper", "liquid", "ink", "navy", "notion"]);
+
+function resolveInitialTheme(): ThemeId {
+  const stored = localStorage.getItem("metaedu_theme");
+  if (stored === "dark" || stored === "light") return stored;
+  if (stored && LEGACY_THEME_VALUES.has(stored)) return "light";
+  return DEFAULT_THEME;
+}
 
 export const useThemeStore = defineStore("theme", () => {
-  const activeTheme = ref<ThemeId>(DEFAULT_THEME);
+  const activeTheme = ref<ThemeId>(resolveInitialTheme());
 
   function setTheme(theme: ThemeId) {
     activeTheme.value = theme;
+  }
+
+  function toggleTheme() {
+    activeTheme.value = activeTheme.value === "dark" ? "light" : "dark";
   }
 
   watch(
@@ -21,5 +33,5 @@ export const useThemeStore = defineStore("theme", () => {
     { immediate: true }
   );
 
-  return { activeTheme, setTheme };
+  return { activeTheme, setTheme, toggleTheme };
 });
