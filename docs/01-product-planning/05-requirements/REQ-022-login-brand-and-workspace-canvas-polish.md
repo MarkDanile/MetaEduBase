@@ -1,6 +1,6 @@
 # REQ-022: 登录页品牌氛围与工作区画布白灰层级优化
 
-Status: 🟡 Doing
+Status: 🟢 Done
 Priority: P1
 Milestone: P2
 Owner: Codex
@@ -56,4 +56,4 @@ Environment: macOS 本地开发环境，前端 dev server `http://127.0.0.1:5173
 
 ## 当前状态
 
-正在 `req-022-login-workspace-polish` 分支实施，PR 合并前保持 `Doing`。
+已通过 [PR #343](https://github.com/MarkDanile/MetaEduBase/pull/343) squash merge 到 `main`，merge commit `4c9d3a8`。Backlog、current-work 和 work-log 已同步收口。

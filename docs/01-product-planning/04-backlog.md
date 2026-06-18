@@ -54,7 +54,7 @@
 | REQ-019 | REQ | 🟢 Done | P1 | P2 | 单主题视觉风格收敛：极简白底 + 暖纸墨韵 | [PR #336](https://github.com/MarkDanile/MetaEduBase/pull/336) squash merge `c3d3ab1`：统一为 paper 单主题，移除用户可见主题切换，保留旧主题兼容入口。 | [Requirement](05-requirements/REQ-019-single-paper-theme-visual-alignment.md) |
 | REQ-020 | REQ | 🟢 Done | P1 | P2 | Codex / Trae-like 中性双主题视觉收敛 | PR #338 squash merge `d4017d2`：收口为 light/dark 双主题、历史值迁移、用户菜单切换、theme store 回归测试和中性 AI Workspace 视觉规则。 | [Requirement](05-requirements/REQ-020-codex-trae-neutral-dual-theme.md) / [PR #338](https://github.com/MarkDanile/MetaEduBase/pull/338) |
 | REQ-021 | REQ | 🟢 Done | P1 | P2 | 浅色主题加入克制蓝色点缀 | PR #340 squash merge `5a13c3a`：主按钮、链接、焦点、选中态和品牌小标识统一为克制蓝色点缀；绿色仅保留成功语义；浅色登录页浏览器 smoke 通过 | [Requirement](05-requirements/REQ-021-blue-accent-visual-polish.md) / [PR #340](https://github.com/MarkDanile/MetaEduBase/pull/340) |
-| REQ-022 | REQ | 🟡 Doing | P1 | P2 | 登录页品牌氛围与工作区画布白灰层级优化 | 登录页左侧允许更丰富的蓝色品牌视觉；登录后主工作区只调整为柔和灰白画布，卡片保持白色层级 | [Requirement](05-requirements/REQ-022-login-brand-and-workspace-canvas-polish.md) |
+| REQ-022 | REQ | 🟢 Done | P1 | P2 | 登录页品牌氛围与工作区画布白灰层级优化 | PR #343 squash merge `4c9d3a8`：登录页左侧增加浅蓝渐变、细网格和能力标签；登录后主工作区画布改为柔和白灰，卡片保持白色层级 | [Requirement](05-requirements/REQ-022-login-brand-and-workspace-canvas-polish.md) / [PR #343](https://github.com/MarkDanile/MetaEduBase/pull/343) |
 | APP-001 | APP | ⚫ Candidate | P1 | P1 / P2 | 课程能力图谱智能体工具 | 优先进入 Shaping，明确课程样例、能力点 schema、图谱验收指标和首个最小闭环 |  |
 | APP-002 | APP | ⚫ Candidate | P1 | P2 | 智能预习规划与导学智能体 | 等 APP-001 能力图谱最小闭环明确后，塑形学情诊断、预习任务和资源推送 |  |
 | APP-003 | APP | ⚫ Candidate | P2 | P2 / P3 | 个性化学习资源推荐智能体 | 等资源类型、学生画像和能力图谱关联策略明确后塑形 |  |
