@@ -1,0 +1,101 @@
+{
+  "description": "REQ-027 P2 RAG 弱召回样例集 v2 - 多样性扩展（基于 dev DB 真实内容校准）",
+  "samples": [
+    {
+      "category": "python_tutorial",
+      "label": "Python 教程 PDF (file_id=358bd704-d223-4228-8935-3a6e1b3e699f)",
+      "file_id": "358bd704-d223-4228-8935-3a6e1b3e699f",
+      "expected_doc_type": "课程标准"
+    },
+    {
+      "category": "training_program",
+      "label": "人才培养方案 PDF (file_id=93101825-eb59-442f-838b-3c3b9894051f)",
+      "file_id": "93101825-eb59-442f-838b-3c3b9894051f",
+      "expected_doc_type": "人才培养方案"
+    },
+    {
+      "category": "course_standard",
+      "label": "水环境监测课程标准 PDF (file_id=132a8cfd-d1d1-429e-9871-68aab82f5ec3)",
+      "file_id": "132a8cfd-d1d1-429e-9871-68aab82f5ec3",
+      "expected_doc_type": "课程标准"
+    }
+  ],
+  "questions": [
+    {
+      "id": "Q6_python_closure",
+      "text": "Python 闭包与装饰器有什么关系？",
+      "expected_category": "python_tutorial",
+      "expected_keypoints": [
+        "闭包",
+        "装饰器",
+        "函数",
+        "内部",
+        "引用"
+      ],
+      "weak_recall_reason": "闭包和装饰器跨高级特性章节，关键词召回易只命中其中一个",
+      "evaluation_focus": "graph_edge 跨章节关联价值 + Query Understanding 扩展词稳定性",
+      "calibration_evidence": "dev DB 抽样：file 358bd704 chunk_index 213 命中 'generator' + 'for 循环'；多个 chunks 含 '装饰器'/'闭包' 关键词"
+    },
+    {
+      "id": "Q7_kg_occupation_to_skill",
+      "text": "环境监测技术专业对应的职业资格和技能方向有哪些？",
+      "expected_category": "training_program",
+      "expected_keypoints": [
+        "环境监测技术",
+        "化学检验工",
+        "水环境监测工",
+        "水和废水",
+        "检测技术"
+      ],
+      "weak_recall_reason": "跨节点关系召回，单靠 keyword 难命中 '职业面向→专业技能方向→对应专业技能方向' 整条链",
+      "evaluation_focus": "graph_edge 关系链召回价值",
+      "calibration_evidence": "dev DB knowledge_edges 抽样命中: '环境监测技术专业→化学检验工(职业面向)'、'环境监测技术专业→水和废水检测技术(专业技能方向)'、'化学检验工→化学检验工(对应职业资格)' 等多条边"
+    },
+    {
+      "id": "Q8_training_program_occupation",
+      "text": "环境监测技术专业的职业面向包括哪些工种？",
+      "expected_category": "training_program",
+      "expected_keypoints": [
+        "化学检验工",
+        "水环境监测工",
+        "大气环境监测工",
+        "环境噪声",
+        "室内环境"
+      ],
+      "weak_recall_reason": "整段列举需要 knowledge_edges 关系召回，纯 keyword 召回片段化",
+      "evaluation_focus": "graph_edge 多源节点整合 + weighted RRF 排序",
+      "calibration_evidence": "dev DB knowledge_edges 5 条 '职业面向' 边全部命中: 化学检验工/水环境监测工/大气环境监测工/环境噪声与振动监测工/室内环境监测与治理技术"
+    },
+    {
+      "id": "Q9_course_standard_syllabus",
+      "text": "水环境监测课程包含哪些教学项目？",
+      "expected_category": "course_standard",
+      "expected_keypoints": [
+        "水样",
+        "采集",
+        "金属",
+        "非金属",
+        "有机物"
+      ],
+      "weak_recall_reason": "教学项目列表跨多个章节，自然问法易命中片段",
+      "evaluation_focus": "context packing 跨章节邻居 chunk 价值",
+      "calibration_evidence": "dev DB 抽样: course_standard chunk 3 命中 '项目一水环境监测基础' / '项目二水中物理指标' / '项目三水中金属指标' / '项目四水中非金属指标' / '项目五水中有机物' 完整六项目列表"
+    },
+    {
+      "id": "Q10_python_advanced_synthesis",
+      "text": "Python 高级特性中生成器、迭代器和列表生成式是什么关系？",
+      "expected_category": "python_tutorial",
+      "expected_keypoints": [
+        "生成器",
+        "迭代器",
+        "列表生成式",
+        "yield",
+        "for"
+      ],
+      "weak_recall_reason": "三个概念跨高级特性章节且语义关联紧密，keyword 召回易重复覆盖同一 chunk",
+      "evaluation_focus": "graph_edge 跨章节去重 + RRF 合并 channels",
+      "calibration_evidence": "dev DB 抽样: file 358bd704 多 chunks 命中 'generator'/'for 循环'/'列表生成式' 等关键词，跨 chunk_index 180-220 区间"
+    }
+  ],
+  "output_report_path": "docs/02-delivery-plans/01-specs/2026-06-18-req-027-rag-effect-comparison-v2-report.md"
+}
