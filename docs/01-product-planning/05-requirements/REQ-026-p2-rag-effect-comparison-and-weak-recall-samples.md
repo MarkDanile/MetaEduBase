@@ -1,6 +1,6 @@
 # REQ-026: P2 RAG 效果比较与弱召回样例集收口
 
-Status: 🟡 进行中
+Status: 🟡 部分收口（机制+prompt 收口；质量层 AC-1 未达成，由 REQ-027 接力）
 Priority: P0
 Milestone: P2
 Source: REQ-025 real LLM validation follow-up
@@ -54,4 +54,7 @@ REQ-025 已证明 `graph_edge` 可以回源 chunk 并进入 packed context，也
 
 | 日期 | 动作 | 事实 |
 |------|------|------|
-| 2026-06-18 | Shaping 完成 | spec + plan + 5 条弱召回样例集已落地；`scripts/validate_req024_p2_real_validation.py` 已扩展支持 REQ-026 关键事实覆盖度自动比较与三层结论报告；分支 `feat/req-026-rag-effect-comparison-weak-recall-samples`；待用户授权跑真 PG dry-run 与 `--allow-llm` |
+| 2026-06-18 | Shaping 完成 | spec + plan + 5 条弱召回样例集已落地；`scripts/validate_req024_p2_real_validation.py` 已扩展支持 REQ-026 关键事实覆盖度自动比较与三层结论报告；分支 `feat/req-026-rag-effect-comparison-weak-recall-samples` |
+| 2026-06-18 | Slice 1-3 完成 | PR #358 squash merge `930589b`：(Slice 1) 5 条弱召回样例集 `validate_real_pg_rag_req026_weak_recall.example.json` 含 `expected_keypoints`；(Slice 2) 扩展 `validate_req024_p2_real_validation.py`：`--weak-recall-samples` / `--limit` CLI、`_compute_keypoint_coverage`、DocumentSource Pydantic 属性访问修复、REQ-026 报告章节（覆盖度对比矩阵 + 三层结论 + 数据缺口自动识别）；(Slice 3) 真 PG dry-run + `--allow-llm` 真实 LLM 报告均生成 |
+| 2026-06-18 | 验收结果 | 机制层 5/5 ✅；prompt 层 graph_edge in packed 3/5 (60%) ✅ REQ-025 AC-2 达成；质量层 P2 覆盖度提升≥30% 仅 1/5 (20%) ❌ REQ-026 AC-1 未达成；Q4_prerequisite_knowledge_for_course 出现 -0.60 退化 |
+| 2026-06-18 | 后续分流 | REQ-027 (⚫ Candidate)：增加 P2 弱召回知识覆盖 — Python 高级特性 / 跨课程先导关系 / 复合 schema 样例多样性 |

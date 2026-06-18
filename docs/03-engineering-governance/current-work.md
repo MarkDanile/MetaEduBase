@@ -16,14 +16,14 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-026 P2 RAG 效果比较与弱召回样例集收口 | 🟡 进行中 | P0 | RAG / P2 / Real Validation | 分支 `feat/req-026-rag-effect-comparison-weak-recall-samples`；spec+plan 已落地；`scripts/validate_req024_p2_real_validation.py` 已扩展支持 REQ-026 样例集、关键事实覆盖度计算与三层结论报告；新样例集 `validate_real_pg_rag_req026_weak_recall.example.json` (5 条) 已建；待用户授权跑真 PG dry-run 与 `--allow-llm` | 跑真 PG dry-run 生成报告 → 用户授权跑 `--allow-llm` → 收口文档并 PR | `python -m py_compile scripts/validate_req024_p2_real_validation.py` 通过；`--help` 输出包含 `--weak-recall-samples` / `--limit` |
-| REQ-024 P2 真实验收补强：Query Understanding 与 graph_edge 补足样例 | 🔴 阻塞 | P0 | RAG / P2 / Real Validation | 分支 `codex/req-024-p2-real-validation`；TD-068 已澄清 vector fallback；REQ-025 已补 graph_edge 进入 prompt 并跑真实 LLM，但最终质量改善证据不足 | 由 REQ-026 接力弱召回样例集和自动质量比较；本任务不翻完成 | REQ-024 dry-run 报告 + REQ-025 real LLM 报告均已生成；真实效果仍未通过 |
-| REQ-025 P2 graph_edge 进入 prompt 与真实 LLM 效果验收收口 | 🟣 待验证 | P0 | RAG / P2 / Real Validation | 分支 `feature/req-025-graph-edge-prompt-validation`；已让 `knowledge_edge` 回源 chunk 并保底进入 packed context；真实 LLM provider 已跑 | 完成本 PR 的代码与报告闭环；效果改善不足由 REQ-026 承接，不在本任务夸大完成 | 24 个相关 pytest 通过；ruff 指定文件通过；`--allow-llm` report 已生成，External LLM enabled |
+| REQ-024 P2 真实验收补强：Query Understanding 与 graph_edge 补足样例 | 🔴 阻塞 | P0 | RAG / P2 / Real Validation | 分支 `codex/req-024-p2-real-validation`；TD-068 已澄清 vector fallback；REQ-025 已补 graph_edge 进入 prompt 并跑真实 LLM；REQ-026 进一步建立弱召回样例集和自动质量比较口径，但质量层仅 1/5 样例达成 ≥30% 增益，AC-1 未达成 | REQ-027 接力样例多样性与数据回填；本任务不翻完成 | REQ-024 dry-run 报告 + REQ-025 real LLM 报告 + REQ-026 real LLM 报告均已生成；真实效果仍未通过 |
+| REQ-025 P2 graph_edge 进入 prompt 与真实 LLM 效果验收收口 | 🟣 待验证 | P0 | RAG / P2 / Real Validation | 分支 `feature/req-025-graph-edge-prompt-validation`；已让 `knowledge_edge` 回源 chunk 并保底进入 packed context；真实 LLM provider 已跑 | 完成本 PR 的代码与报告闭环；效果改善不足由 REQ-026 / REQ-027 承接，不在本任务夸大完成 | 24 个相关 pytest 通过；ruff 指定文件通过；`--allow-llm` report 已生成，External LLM enabled |
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
 |------|------|--------|------|--------|--------|
+| REQ-027 P2 弱召回知识覆盖：Python 高级特性 / 跨课程先导 / 复合 schema 样例多样性 | ⚫ Candidate | P0 | RAG / P2 / Real Validation / Data | REQ-026 real LLM 报告：5 样例质量层仅 1/5 达成 ≥30% 增益；扩展样例 + 知识覆盖回填 | [REQ-026 Report](../02-delivery-plans/01-specs/2026-06-18-req-026-rag-effect-comparison-validation-report.md) |
 | DOC-073 门禁脚本防绕过与规则修改范围校验 | 🔵 Ready | P1 | Governance / Quality Gates / Scripts | 评估并落地最小检查：非门禁治理任务不得修改门禁脚本、`KNOWN_ISSUES`、忽略列表或阈值来绕过当前失败 | [Backlog](../01-product-planning/04-backlog.md) / [Retro](04-retrospectives/2026-06-18-rules-stage-retrospective.md) |
 
 ## 最近完成
@@ -34,6 +34,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-18 | REQ-026 P2 RAG 效果比较与弱召回样例集收口 | 🟡 部分收口 | PR #358 squash merge `930589b`：5 条弱召回样例集 + 关键事实覆盖度自动比较 + real LLM 报告。机制 5/5 ✅；prompt 3/5 ✅；质量 1/5 ❌ (AC-1 未达成，Q4 退化 -0.60)；登记 REQ-027 接力 | [REQ-026](../01-product-planning/05-requirements/REQ-026-p2-rag-effect-comparison-and-weak-recall-samples.md) / [Report](../02-delivery-plans/01-specs/2026-06-18-req-026-rag-effect-comparison-validation-report.md) / [PR #358](https://github.com/MarkDanile/MetaEduBase/pull/358) |
 | 2026-06-18 | TD-068 AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明 | 🟢 完成 | PR #355 squash merge `fdffd60`：确认 vector topN 是 keyword fallback；diagnostics / REQ-024 report 已显式透出 `embedding_fallback` 与 `vector fallback` 计数，REQ-025 后续验收必须据此判断 | [TD-068](technical-debt.md#td-068) / [Report](../02-delivery-plans/01-specs/2026-06-18-req-024-p2-real-validation-report.md) / [PR #355](https://github.com/MarkDanile/MetaEduBase/pull/355) |
 | 2026-06-18 | DOC-072 工程规则阶段复盘与 follow-up 登记 | 🟢 完成 | PR #352 squash merge `e776fb6`：复盘 DOC-057~DOC-071 后的规则执行效果，登记 DOC-073 门禁防绕过和 DOC-074 AI/RAG 完成态口径收紧，并放入工作台候选区 | [Retro](04-retrospectives/2026-06-18-rules-stage-retrospective.md) / [PR #352](https://github.com/MarkDanile/MetaEduBase/pull/352) |
 | 2026-06-18 | DOC-071 最近完成任务与 P2 里程碑评审收口 | 🟢 完成 | PR #350 squash merge `325ac35`：评审 DOC-069 后近期完成任务，重点复核 P2-SEARCH、BUG-009/010、REQ-016/017/018，修正 P2 状态漂移、补评分总账，并登记 REQ-024 作为 P2 真实验收补强 | [Review](04-retrospectives/2026-06-18-p2-recent-completion-review.md) / [REQ-024](../01-product-planning/05-requirements/REQ-024-p2-real-validation-query-understanding-and-graph-edge.md) / [PR #350](https://github.com/MarkDanile/MetaEduBase/pull/350) |
