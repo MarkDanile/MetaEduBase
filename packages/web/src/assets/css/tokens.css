@@ -81,6 +81,9 @@
   --login-brand-orbit: var(--_login-brand-orbit);
   --login-brand-pill-bg: var(--_login-brand-pill-bg);
   --login-brand-pill-border: var(--_login-brand-pill-border);
+  --login-brand-title: var(--_login-brand-title);
+  --login-brand-subtitle: var(--_login-brand-subtitle);
+  --login-brand-pill-text: var(--_login-brand-pill-text);
 
   /* ---- Overlay / button ripple (per-theme) ---- */
   --overlay-bg: var(--_overlay-bg);

@@ -134,11 +134,11 @@ async function handleLogin() {
 .brand-side::before {
   content: "";
   position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--login-brand-accent);
+  inset: 0;
+  background:
+    linear-gradient(115deg, rgba(255, 255, 255, 0.18), transparent 34%),
+    linear-gradient(180deg, transparent 0%, rgba(15, 23, 42, 0.18) 100%);
+  pointer-events: none;
 }
 
 .brand-side::after {
@@ -148,14 +148,24 @@ async function handleLogin() {
   background-image:
     linear-gradient(var(--login-brand-grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--login-brand-grid) 1px, transparent 1px),
-    radial-gradient(circle at 50% 42%, var(--login-brand-orbit) 0 1px, transparent 1px);
-  background-size: 32px 32px, 32px 32px, 156px 156px;
-  mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.72), transparent 82%);
+    radial-gradient(circle at 50% 42%, var(--login-brand-orbit) 0 1px, transparent 1px),
+    linear-gradient(135deg, transparent 0 42%, rgba(255, 255, 255, 0.16) 42% 43%, transparent 43% 100%);
+  background-size: 34px 34px, 34px 34px, 164px 164px, 100% 100%;
+  mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.86), transparent 94%);
   pointer-events: none;
 }
 
 .brand-noise {
-  display: none;
+  position: absolute;
+  inset: auto -72px -96px auto;
+  width: 240px;
+  height: 240px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 32px rgba(255, 255, 255, 0.04),
+    0 0 0 72px rgba(255, 255, 255, 0.03);
+  pointer-events: none;
 }
 
 .brand-content {
@@ -173,22 +183,26 @@ async function handleLogin() {
   height: 48px;
   border-radius: var(--radius-lg);
   margin-bottom: 20px;
+  color: var(--login-brand-title);
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.22);
 }
 
 .brand-title {
   font-family: var(--font-display);
   font-size: 28px;
   font-weight: 700;
-  color: var(--color-ink);
+  color: var(--login-brand-title);
   letter-spacing: 0.06em;
   line-height: 1.3;
-  text-shadow: none;
+  text-shadow: 0 8px 24px rgba(15, 23, 42, 0.24);
 }
 
 .brand-subtitle {
   font-size: var(--text-caption);
   font-weight: 500;
-  color: var(--color-ink-secondary);
+  color: var(--login-brand-subtitle);
   letter-spacing: 0.08em;
   margin-top: 8px;
 }
@@ -206,11 +220,13 @@ async function handleLogin() {
   border: 1px solid var(--login-brand-pill-border);
   border-radius: var(--radius-full);
   background: var(--login-brand-pill-bg);
-  color: var(--color-accent);
+  color: var(--login-brand-pill-text);
   font-size: var(--text-micro);
   font-weight: 600;
   letter-spacing: 0.04em;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 /* ===== 登录侧 ===== */
