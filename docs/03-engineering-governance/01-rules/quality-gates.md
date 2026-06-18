@@ -51,7 +51,7 @@ scripts/check-engineering-docs
 | 源码文件超过 1000 行硬限制检查 | 已实现 | 防止超大文件无登记回归 |
 | PR 描述必须包含 Summary / Scope / Validation / Risks / Docs | 候选 | 让 PR 成为交付事实源 |
 | 声明“零业务逻辑变更”时检查行为变化信号 | 候选 | 防止重构 / lint PR 隐含行为变化 |
-| 非门禁治理任务修改门禁脚本或 `KNOWN_ISSUES` | 候选 | 防止“改裁判”绕过当前失败 |
+| 非门禁治理任务修改门禁脚本或 `KNOWN_ISSUES` | 候选 / [DOC-073](../../01-product-planning/04-backlog.md) | 防止“改裁判”绕过当前失败 |
 
 ## 验证矩阵
 

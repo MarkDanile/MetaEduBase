@@ -16,12 +16,15 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
+| DOC-072 工程规则阶段复盘与 follow-up 登记 | 🟡 进行中 | P0 | Governance / Rules / Review / Follow-up | 分支 `codex/rules-retro-followups`；正在复盘 DOC-057~DOC-071 后的规则执行效果，并登记规则收紧 follow-up | 完成复盘文档、Backlog 与候选区登记；运行文档门禁；提交 PR 并合并 | 待运行 |
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
 |------|------|--------|------|--------|--------|
 | REQ-024 P2 真实验收补强：Query Understanding 与 graph_edge 补足样例 | 🔵 Ready | P0 | RAG / P2 / Real Validation | 优先执行真实 dev DB + LLM 验收，填充 REQ-016 报告并证明 graph_edge 弱召回补足价值 | [Requirement](../01-product-planning/05-requirements/REQ-024-p2-real-validation-query-understanding-and-graph-edge.md) |
+| DOC-073 门禁脚本防绕过与规则修改范围校验 | 🔵 Ready | P1 | Governance / Quality Gates / Scripts | 评估并落地最小检查：非门禁治理任务不得修改门禁脚本、`KNOWN_ISSUES`、忽略列表或阈值来绕过当前失败 | [Backlog](../01-product-planning/04-backlog.md) / [Retro](04-retrospectives/2026-06-18-rules-stage-retrospective.md) |
+| DOC-074 AI / RAG 需求完成态分层与真实验收口径收紧 | 🔵 Ready | P1 | Governance / AI Quality / Milestones | 收紧效果型需求的完成口径：代码接入、mock 验证、真实数据 / LLM 验收必须分层记录 | [Backlog](../01-product-planning/04-backlog.md) / [Retro](04-retrospectives/2026-06-18-rules-stage-retrospective.md) |
 
 ## 最近完成
 
