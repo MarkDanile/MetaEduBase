@@ -8,6 +8,11 @@
         </div>
         <h1 class="brand-title">元知职教基座</h1>
         <p class="brand-subtitle">AI Native · 职业教育知识基座</p>
+        <div class="brand-capabilities" aria-label="核心能力">
+          <span>RAG</span>
+          <span>Agent</span>
+          <span>Knowledge Base</span>
+        </div>
       </div>
     </div>
 
@@ -121,7 +126,7 @@ async function handleLogin() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--login-brand-bg);
+  background: var(--login-brand-gradient);
   border-right: 1px solid var(--login-brand-border);
   overflow: hidden;
 }
@@ -134,6 +139,19 @@ async function handleLogin() {
   bottom: 0;
   width: 2px;
   background: var(--login-brand-accent);
+}
+
+.brand-side::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--login-brand-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--login-brand-grid) 1px, transparent 1px),
+    radial-gradient(circle at 50% 42%, var(--login-brand-orbit) 0 1px, transparent 1px);
+  background-size: 32px 32px, 32px 32px, 156px 156px;
+  mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.72), transparent 82%);
+  pointer-events: none;
 }
 
 .brand-noise {
@@ -173,6 +191,26 @@ async function handleLogin() {
   color: var(--color-ink-secondary);
   letter-spacing: 0.08em;
   margin-top: 8px;
+}
+
+.brand-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.brand-capabilities span {
+  padding: 5px 10px;
+  border: 1px solid var(--login-brand-pill-border);
+  border-radius: var(--radius-full);
+  background: var(--login-brand-pill-bg);
+  color: var(--color-accent);
+  font-size: var(--text-micro);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 /* ===== 登录侧 ===== */
