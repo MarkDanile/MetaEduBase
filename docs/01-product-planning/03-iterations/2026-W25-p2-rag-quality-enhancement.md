@@ -17,7 +17,7 @@ Goal: 在 REQ-012 多路 evidence 骨架之上，补齐召回后上下文组装�
 | REQ-017 | REQ | 🟢 Done | P2 RRF / Weighted RRF 融合排序收口 | PR #325 + 真实 PG 验收报告已收口；4 通道 RRF 融合正常，AC-1~7 通过。 |
 | REQ-016 | REQ | 🟢 Done | P2 LLM 混合 NER / Query Understanding | PR #328/#329/#330 已合并；混合 Query Understanding、expanded_query 和 retriever 接入已收口，真实 PG + LLM 效果验收由 REQ-024 接力。 |
 | REQ-024 | REQ | 🔴 Blocked | P2 真实验收补强：Query Understanding 与 graph_edge 补足样例 | 已产出 dry-run 报告：diagnostics 可复跑，graph_edge 进入 fusion；但真实 LLM 未执行、graph_edge 未进入 packed context。后续由 TD-068 / REQ-025 接力。 |
-| TD-068 | TD | 🟡 Doing | AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明 | diagnostics 已透出 `embedding_fallback`，REQ-024 报告新增 `vector fallback` 计数；确认当前 vector topN 是 keyword fallback；待 PR 合并后翻完成。 |
+| TD-068 | TD | 🟢 Done | AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明 | PR #355 已合并；diagnostics 已透出 `embedding_fallback`，REQ-024 报告新增 `vector fallback` 计数；确认当前 vector topN 是 keyword fallback。 |
 | REQ-025 | REQ | 🔵 Ready | P2 graph_edge 进入 prompt 与真实 LLM 效果验收收口 | 基于 TD-068 的 fallback 诊断，继续证明 graph_edge 进入 packed context 并改善真实 LLM 回答。 |
 
 ## Out of Scope
