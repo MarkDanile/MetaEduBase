@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| DOC-073 门禁脚本防绕过与规则修改范围校验 | 🟡 进行中 | P1 | Governance / Quality Gates / Scripts | 分支 `docs/doc-073-quality-gate-guard`；已新增 `gate_file_scope` 检查：本次 diff 修改门禁脚本时，当前工作台任务必须是明确 DOC 门禁 / 治理脚本任务 | 提交、push、创建 PR，合并后再翻完成并回填 work-log | `py_compile` 通过；`pytest tests/engineering/test_check_engineering_docs.py tests/engineering/test_gate_file_scope.py -q` 30 passed；`scripts/check-engineering-docs` 通过（32 known）；`git diff --check` 通过 |
+| 暂无 | - | - | - | DOC-073 已通过 PR #362 merge；门禁脚本防绕过检查已接入 `scripts/check-engineering-docs` | 下一个接力任务建议从 P2 下半段或治理类 (DOC-074) 挑选 | - |
 
 ## 下一批候选任务
 
@@ -33,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-18 | DOC-073 门禁脚本防绕过与规则修改范围校验 | 🟢 完成 | PR #362 squash merge `11e9138`：新增 `gate_file_scope` 检查，非 DOC 门禁 / 治理脚本任务修改工程门禁脚本时会被 `scripts/check-engineering-docs` 拦截；补专项测试 30 passed | [Backlog](../01-product-planning/04-backlog.md) / [PR #362](https://github.com/MarkDanile/MetaEduBase/pull/362) |
 | 2026-06-18 | REQ-029 P2 弱召回 AC-5 阈值重设计 | 🟢 完成 | 分支 `feat/req-029-ac5-threshold-redesign`：residual ratio 公式 + `--lift-mode` CLI。Residual 模式 AC-5 5/10 达标，整条 P2 长链收口 | [REQ-029](../01-product-planning/05-requirements/REQ-029-p2-ac5-threshold-redesign.md) / [Residual Report](../02-delivery-plans/01-specs/2026-06-18-req-029-ac5-threshold-residual-report.md) |
 | 2026-06-18 | REQ-028 P2 弱召回自动质量比较口径改造 | 🟢 完成 | PR #360 squash merge `f624f49`：三口径（substring/semantic/llm_judge）+ v3 样例 10 条（keypoint 带 synonyms+weight）+ 真 LLM 报告。REQ-029 residual 模式补判 verdict 后翻完成 | [REQ-028](../01-product-planning/05-requirements/REQ-028-p2-auto-quality-metric.md) / [Report v3](../02-delivery-plans/01-specs/2026-06-18-req-028-rag-effect-comparison-v3-report.md) / [PR #360](https://github.com/MarkDanile/MetaEduBase/pull/360) |
 | 2026-06-18 | REQ-027 P2 弱召回知识覆盖与样例多样性 | 🟢 完成 | PR #359 squash merge `8310fca`：5 条 v2 样例 (dev DB 513 knowledge_edges 校准) + wrapper 脚本 + 真 LLM v1+v2 两轮报告。机制 10/10 ✅；prompt 5/10 ✅。REQ-029 residual 阈值补判后 AC-4 9/10 达标，翻完成 | [REQ-027](../01-product-planning/05-requirements/REQ-027-p2-weak-recall-knowledge-coverage.md) / [Report v2](../02-delivery-plans/01-specs/2026-06-18-req-027-rag-effect-comparison-v2-report.md) / [PR #359](https://github.com/MarkDanile/MetaEduBase/pull/359) |
