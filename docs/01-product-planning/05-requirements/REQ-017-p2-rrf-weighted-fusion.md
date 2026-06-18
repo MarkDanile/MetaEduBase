@@ -47,6 +47,14 @@ Related: REQ-013 / REQ-015 / REQ-018
 - AC-6：weighted RRF 权重可配置，并有测试证明配置会影响生产 service 的融合排序。
 - AC-7：REQ-018 的 graph edge 通道接入后，RRF / weighted RRF 能正确处理第 4 通道，并保留降级能力。
 
+## Delivery Record
+
+| 日期 | 动作 | 事实 |
+|------|------|------|
+| 2026-06-17 | Slice 1-3 完成 | PR #325 merge：RRFFusion 生产接入 + channel_weights 配置入口 + fusion diagnostics + 通道降级；测试覆盖 AC-1/2/3/6 |
+| 2026-06-18 | Slice 4 占位 | 验收报告 placeholder 已产出 |
+| 2026-06-18 | Slice 4 真实PG验收 | 4通道RRF融合正常，AC-4/5/7通过；验收报告已填充 |
+
 ## Delivery Links
 
 - Backlog: `docs/01-product-planning/04-backlog.md`
