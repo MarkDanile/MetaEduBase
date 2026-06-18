@@ -14,6 +14,7 @@ from ._common import Issue
 from .current_work import check_current_work, check_recent_completed_work_log
 from .entry_sync import check_entry_sync
 from .gate_candidates import check_scripted_gate_candidates
+from .gate_file_scope import check_gate_file_scope
 from .links_paths import (
     check_legacy_doc_roots,
     check_markdown_links,
@@ -60,6 +61,7 @@ KNOWN_CHECKS: tuple[Callable[[Path], list[Issue]], ...] = (
     check_delivery_placeholders,
     check_validation_claims,
     check_scripted_gate_candidates,
+    check_gate_file_scope,
     check_source_size_hard_limit,
     # DOC-060: 任务卡 vs 代码 / 声明语义校验。DOC-059 偏 PR 兜底维度，
     # DOC-060 偏代码 / 声明维度，互补覆盖"任务卡 → 实际状态"强校验缺口。

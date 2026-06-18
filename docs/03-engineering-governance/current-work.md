@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| 暂无 | - | - | - | P2 RAG 真实效果验收长链 (REQ-024/025/026/027/028/029) 已全部收口翻完成；下一个接力任务建议从 P2 下半段或治理类 (DOC-073) 挑选 | - | - |
+| DOC-073 门禁脚本防绕过与规则修改范围校验 | 🟡 进行中 | P1 | Governance / Quality Gates / Scripts | 分支 `docs/doc-073-quality-gate-guard`；已新增 `gate_file_scope` 检查：本次 diff 修改门禁脚本时，当前工作台任务必须是明确 DOC 门禁 / 治理脚本任务 | 提交、push、创建 PR，合并后再翻完成并回填 work-log | `py_compile` 通过；`pytest tests/engineering/test_check_engineering_docs.py tests/engineering/test_gate_file_scope.py -q` 30 passed；`scripts/check-engineering-docs` 通过（32 known）；`git diff --check` 通过 |
 
 ## 下一批候选任务
 
@@ -24,7 +24,6 @@
 |------|------|--------|------|--------|--------|
 | TD-068 AI Chat vector embedding 为空底层修复 | ⚫ Candidate | P1 | RAG / Embedding / Infrastructure | REQ-029 收口后 P2 长链 P0 全部完成；TD-068 diagnostics 已透出但底层修复未做 | [TD-068](technical-debt.md#td-068) |
 | TD-032 `validate_req024_p2_real_validation.py` 拆分 | ⚫ Candidate | P1 | Governance / Source File Sizes | 1035 行已登记例外；P2 长链收口后脚本逻辑稳定，拆分风险低 | [td-032-source-file-sizes.md](02-baselines/td-032-source-file-sizes.md) |
-| DOC-073 门禁脚本防绕过与规则修改范围校验 | 🔵 Ready | P1 | Governance / Quality Gates / Scripts | 评估并落地最小检查：非门禁治理任务不得修改门禁脚本、`KNOWN_ISSUES`、忽略列表或阈值来绕过当前失败 | [Backlog](../01-product-planning/04-backlog.md) / [Retro](04-retrospectives/2026-06-18-rules-stage-retrospective.md) |
 
 ## 最近完成
 
