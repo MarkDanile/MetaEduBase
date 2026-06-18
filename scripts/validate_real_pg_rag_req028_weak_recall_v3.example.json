@@ -1,0 +1,166 @@
+{
+  "description": "REQ-028 P2 RAG 弱召回样例集 v3 - 双口径/三口径覆盖度（keypoint 带 synonyms + weight）",
+  "samples": [
+    {
+      "category": "python_tutorial",
+      "label": "Python 教程 PDF",
+      "file_id": "358bd704-d223-4228-8935-3a6e1b3e699f",
+      "expected_doc_type": "课程标准"
+    },
+    {
+      "category": "training_program",
+      "label": "人才培养方案 PDF",
+      "file_id": "93101825-eb59-442f-838b-3c3b9894051f",
+      "expected_doc_type": "人才培养方案"
+    },
+    {
+      "category": "course_standard",
+      "label": "课程标准 PDF",
+      "file_id": "132a8cfd-d1d1-429e-9871-68aab82f5ec3",
+      "expected_doc_type": "课程标准"
+    }
+  ],
+  "questions": [
+    {
+      "id": "Q1_decorator_concept",
+      "text": "Python 装饰器是什么？它解决了什么问题？",
+      "expected_category": "python_tutorial",
+      "expected_keypoints": [
+        {"term": "装饰器", "synonyms": ["decorator", "@", "包装器", "wrapper", "@语法"], "weight": 1.0},
+        {"term": "函数", "synonyms": ["function", "def", "方法", "方法对象"], "weight": 0.5},
+        {"term": "语法糖", "synonyms": ["简写", "sugar", "便利语法"], "weight": 0.5},
+        {"term": "wrapper", "synonyms": ["包装", "包裹", "内部函数", "嵌套函数", "包装函数"], "weight": 1.0},
+        {"term": "参数", "synonyms": ["argument", "形参", "实参", "参数传递"], "weight": 0.5}
+      ],
+      "weak_recall_reason": "装饰器是高级特性，关键词召回可能只命中基础函数章节",
+      "evaluation_focus": "graph_edge + context packing 价值 + semantic 同义改写命中率"
+    },
+    {
+      "id": "Q2_generator_iterator_relationship",
+      "text": "Python 生成器和迭代器有什么关系？",
+      "expected_category": "python_tutorial",
+      "expected_keypoints": [
+        {"term": "生成器", "synonyms": ["generator", "yield", "生成器函数"], "weight": 1.0},
+        {"term": "迭代器", "synonyms": ["iterator", "iter", "next", "可迭代"], "weight": 1.0},
+        {"term": "yield", "synonyms": ["返回值", "返回", "产出"], "weight": 1.0},
+        {"term": "iter", "synonyms": ["__iter__", "迭代方法", "iter函数"], "weight": 0.5},
+        {"term": "next", "synonyms": ["__next__", "下一个", "取值"], "weight": 0.5}
+      ],
+      "weak_recall_reason": "两个概念跨章节，关键词召回容易只覆盖其中一个",
+      "evaluation_focus": "graph_edge 跨章节关联价值"
+    },
+    {
+      "id": "Q3_default_param_pitfall",
+      "text": "Python 函数默认参数的坑是什么？",
+      "expected_category": "python_tutorial",
+      "expected_keypoints": [
+        {"term": "默认参数", "synonyms": ["default", "默认值", "缺省参数"], "weight": 1.0},
+        {"term": "可变对象", "synonyms": ["mutable", "list", "字典", "dict", "可变的"], "weight": 1.0},
+        {"term": "list", "synonyms": ["列表", "[]", "List"], "weight": 0.5},
+        {"term": "None", "synonyms": ["空值", "null", "无"], "weight": 0.5},
+        {"term": "不变对象", "synonyms": ["不可变", "immutable", "常量"], "weight": 1.0}
+      ],
+      "weak_recall_reason": "自然问法不命中关键词，必须靠 Query Understanding 扩展",
+      "evaluation_focus": "Query Understanding 价值"
+    },
+    {
+      "id": "Q4_prerequisite_knowledge_for_course",
+      "text": "学习水环境监测这门课需要哪些先导知识？",
+      "expected_category": "training_program",
+      "expected_keypoints": [
+        {"term": "化学", "synonyms": ["化学检验", "化学基础", "化学知识"], "weight": 1.0},
+        {"term": "生物", "synonyms": ["生物学", "生物基础", "生命科学"], "weight": 1.0},
+        {"term": "基础", "synonyms": ["基础知识", "前置", "预备知识", "底子"], "weight": 0.5},
+        {"term": "先导", "synonyms": ["前置", "预备", "prerequisite", "前修"], "weight": 1.0},
+        {"term": "前置", "synonyms": ["先导", "准备", "前修", "预备"], "weight": 0.5}
+      ],
+      "weak_recall_reason": "跨课程先导知识，靠 graph_edge 才能命中",
+      "evaluation_focus": "graph_edge 关系召回价值"
+    },
+    {
+      "id": "Q5_course_target_summary",
+      "text": "请总结环境监测技术专业的课程目标。",
+      "expected_category": "course_standard",
+      "expected_keypoints": [
+        {"term": "环境监测", "synonyms": ["环境", "监测", "environmental monitoring"], "weight": 1.0},
+        {"term": "培养目标", "synonyms": ["目标", "培养", "育人目标", "教学目标"], "weight": 1.0},
+        {"term": "职业能力", "synonyms": ["能力", "职业技能", "职业素养", "competency"], "weight": 1.0},
+        {"term": "课程体系", "synonyms": ["课程", "体系", "教学体系", "curriculum"], "weight": 0.5},
+        {"term": "评价", "synonyms": ["评估", "考核", "assessment", "评测"], "weight": 0.5}
+      ],
+      "weak_recall_reason": "总结型问法，关键词召回片段化",
+      "evaluation_focus": "context packing + weighted RRF 价值"
+    },
+    {
+      "id": "Q6_python_closure",
+      "text": "Python 闭包与装饰器有什么关系？",
+      "expected_category": "python_tutorial",
+      "expected_keypoints": [
+        {"term": "闭包", "synonyms": ["closure", "嵌套函数", "外层引用", "封闭"], "weight": 1.0},
+        {"term": "装饰器", "synonyms": ["decorator", "@", "包装器", "wrapper"], "weight": 1.0},
+        {"term": "函数", "synonyms": ["function", "def", "方法", "嵌套函数"], "weight": 0.5},
+        {"term": "内部", "synonyms": ["内层", "里层", "inner", "嵌套"], "weight": 0.5},
+        {"term": "引用", "synonyms": ["reference", "变量", "自由变量", "绑定"], "weight": 1.0}
+      ],
+      "weak_recall_reason": "闭包和装饰器跨高级特性章节，关键词召回易只命中其中一个",
+      "evaluation_focus": "graph_edge 跨章节关联价值 + semantic 同义改写命中率"
+    },
+    {
+      "id": "Q7_kg_occupation_to_skill",
+      "text": "环境监测技术专业对应的职业资格和技能方向有哪些？",
+      "expected_category": "training_program",
+      "expected_keypoints": [
+        {"term": "环境监测技术", "synonyms": ["环境监测", "监测技术", "environmental"], "weight": 1.0},
+        {"term": "化学检验工", "synonyms": ["化学检验", "化检", "化验员"], "weight": 1.0},
+        {"term": "水环境监测工", "synonyms": ["水环境", "水监测", "水质监测"], "weight": 1.0},
+        {"term": "水和废水", "synonyms": ["水", "废水", "污水", "water"], "weight": 0.5},
+        {"term": "检测技术", "synonyms": ["检测", "testing", "测定", "化验"], "weight": 1.0}
+      ],
+      "weak_recall_reason": "跨节点关系召回，单靠 keyword 难命中 '职业面向→专业技能方向→对应专业技能方向' 整条链",
+      "evaluation_focus": "graph_edge 关系链召回价值"
+    },
+    {
+      "id": "Q8_training_program_occupation",
+      "text": "环境监测技术专业的职业面向包括哪些工种？",
+      "expected_category": "training_program",
+      "expected_keypoints": [
+        {"term": "化学检验工", "synonyms": ["化学检验", "化检"], "weight": 1.0},
+        {"term": "水环境监测工", "synonyms": ["水环境", "水质监测"], "weight": 1.0},
+        {"term": "大气环境监测工", "synonyms": ["大气", "空气监测", "大气监测"], "weight": 1.0},
+        {"term": "环境噪声", "synonyms": ["噪声", "噪音", "振动", "声学"], "weight": 1.0},
+        {"term": "室内环境", "synonyms": ["室内", "室内空气", "indoor"], "weight": 1.0}
+      ],
+      "weak_recall_reason": "整段列举需要 knowledge_edges 关系召回，纯 keyword 召回片段化",
+      "evaluation_focus": "graph_edge 多源节点整合 + weighted RRF 排序"
+    },
+    {
+      "id": "Q9_course_standard_syllabus",
+      "text": "水环境监测课程包含哪些教学项目？",
+      "expected_category": "course_standard",
+      "expected_keypoints": [
+        {"term": "水样", "synonyms": ["水", "样品", "水样品"], "weight": 1.0},
+        {"term": "采集", "synonyms": ["采样", "取样", "收集"], "weight": 0.5},
+        {"term": "金属", "synonyms": ["重金属", "metal", "金属指标"], "weight": 1.0},
+        {"term": "非金属", "synonyms": ["非金属指标", "非金属元素"], "weight": 1.0},
+        {"term": "有机物", "synonyms": ["有机", "organic", "有机化合物"], "weight": 1.0}
+      ],
+      "weak_recall_reason": "教学项目列表跨多个章节，自然问法易命中片段",
+      "evaluation_focus": "context packing 跨章节邻居 chunk 价值"
+    },
+    {
+      "id": "Q10_python_advanced_synthesis",
+      "text": "Python 高级特性中生成器、迭代器和列表生成式是什么关系？",
+      "expected_category": "python_tutorial",
+      "expected_keypoints": [
+        {"term": "生成器", "synonyms": ["generator", "yield", "生成器函数"], "weight": 1.0},
+        {"term": "迭代器", "synonyms": ["iterator", "iter", "next", "可迭代"], "weight": 1.0},
+        {"term": "列表生成式", "synonyms": ["list comprehension", "列表推导式", "推导式", "[x for x in]"], "weight": 1.0},
+        {"term": "yield", "synonyms": ["返回值", "产出"], "weight": 0.5},
+        {"term": "for", "synonyms": ["for循环", "循环", "遍历", "loop"], "weight": 0.5}
+      ],
+      "weak_recall_reason": "三个概念跨高级特性章节且语义关联紧密，keyword 召回易重复覆盖同一 chunk",
+      "evaluation_focus": "graph_edge 跨章节去重 + RRF 合并 channels"
+    }
+  ],
+  "output_report_path": "docs/02-delivery-plans/01-specs/2026-06-18-req-028-rag-effect-comparison-v3-report.md"
+}

@@ -20,6 +20,8 @@ Goal: 在 REQ-012 多路 evidence 骨架之上，补齐召回后上下文组装�
 | TD-068 | TD | 🟢 Done | AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明 | PR #355 已合并；diagnostics 已透出 `embedding_fallback`，REQ-024 报告新增 `vector fallback` 计数；确认当前 vector topN 是 keyword fallback。 |
 | REQ-025 | REQ | 🟣 待验证 | P2 graph_edge 进入 prompt 与真实 LLM 效果验收收口 | 2 个 graph_edge 样例已进入 packed context，真实 LLM provider 已跑；但最终回答相对 baseline 明显改善的证据不足。 |
 | REQ-026 | REQ | 🟡 部分收口 | P2 RAG 效果比较与弱召回样例集收口 | PR #358 squash merge `930589b`：spec+plan+5 条弱召回样例集+扩展脚本+真 LLM 报告。机制 5/5 ✅；prompt 3/5 ✅；质量 1/5 ❌ (AC-1 未达成，Q4 退化 -0.60)；登记 REQ-027 接力 |
+| REQ-027 | REQ | 🟡 部分收口 | P2 弱召回知识覆盖与样例多样性 | PR #359 squash merge `8310fca`：5 条 v2 样例（dev DB 513 knowledge_edges 校准）+ wrapper 脚本 + 真 LLM v1+v2 两轮报告。质量 1/10 AC-4 未达成；问题在自动覆盖度口径（Q8 baseline 已 0.80），登记 REQ-028 接力 |
+| REQ-028 | REQ | 🟡 部分收口 | P2 弱召回自动质量比较口径改造 | 分支 `feat/req-028-auto-quality-metric`：脚本支持三口径（substring/semantic/llm_judge）+ v3 样例 10 条 + 真 LLM 报告。AC-4 (semantic ≥ 0.50) 7/10 ✅；AC-5 (semantic lift ≥ 30%) 1/10 ❌；问题在 AC-5 阈值设计，登记 REQ-029 接力 |
 
 ## Out of Scope
 
