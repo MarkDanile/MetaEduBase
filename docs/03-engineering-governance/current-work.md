@@ -16,14 +16,15 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-024 P2 真实验收补强：Query Understanding 与 graph_edge 补足样例 | 🔴 阻塞 | P0 | RAG / P2 / Real Validation | 分支 `codex/req-024-p2-real-validation`；TD-068 已澄清 vector fallback；REQ-025 已补 graph_edge 进入 prompt 并跑真实 LLM；REQ-026 进一步建立弱召回样例集和自动质量比较口径，但质量层仅 1/5 样例达成 ≥30% 增益，AC-1 未达成 | REQ-027 接力样例多样性与数据回填；本任务不翻完成 | REQ-024 dry-run 报告 + REQ-025 real LLM 报告 + REQ-026 real LLM 报告均已生成；真实效果仍未通过 |
-| REQ-025 P2 graph_edge 进入 prompt 与真实 LLM 效果验收收口 | 🟣 待验证 | P0 | RAG / P2 / Real Validation | 分支 `feature/req-025-graph-edge-prompt-validation`；已让 `knowledge_edge` 回源 chunk 并保底进入 packed context；真实 LLM provider 已跑 | 完成本 PR 的代码与报告闭环；效果改善不足由 REQ-026 / REQ-027 承接，不在本任务夸大完成 | 24 个相关 pytest 通过；ruff 指定文件通过；`--allow-llm` report 已生成，External LLM enabled |
+| REQ-027 P2 弱召回知识覆盖与样例多样性 | 🟡 部分收口 | P0 | RAG / P2 / Real Validation / Data | 分支 `feat/req-027-weak-recall-knowledge-coverage`；requirement + spec + plan + 5 条 v2 样例（dev DB 校准：513 knowledge_edges 抽样职业面向链）+ wrapper 脚本 + 真 LLM v1+v2 两轮报告均已生成。质量层 P2 提升 ≥30% 仅 1/10 (10%)，AC-4 未达成；问题在自动覆盖度口径（子串匹配 + 真实 LLM 长答案同义改写），不在数据缺口（Q8 baseline 已 0.80） | REQ-028 接力自动质量比较口径改造（语义匹配 / LLM-as-judge 兜底）；本任务不翻完成 | wrapper 脚本 dry-run 两轮 exit 0；v1 复跑 1/5 与第一轮一致；v2 10 样例 4 scenario 全部跑通 |
+| REQ-024 P2 真实验收补强：Query Understanding 与 graph_edge 补足样例 | 🔴 阻塞 | P0 | RAG / P2 / Real Validation | 分支 `codex/req-024-p2-real-validation`；TD-068 已澄清 vector fallback；REQ-025 / REQ-026 / REQ-027 已接力，但质量层真实改善证据仍不足 | REQ-028 接力自动质量比较口径；本任务不翻完成 | REQ-024 / REQ-025 / REQ-026 / REQ-027 real LLM 报告均已生成；真实效果仍未通过 |
+| REQ-025 P2 graph_edge 进入 prompt 与真实 LLM 效果验收收口 | 🟣 待验证 | P0 | RAG / P2 / Real Validation | 分支 `feature/req-025-graph-edge-prompt-validation`；已让 `knowledge_edge` 回源 chunk 并保底进入 packed context；真实 LLM provider 已跑 | 完成本 PR 的代码与报告闭环；效果改善不足由 REQ-026 / REQ-027 / REQ-028 承接，不在本任务夸大完成 | 24 个相关 pytest 通过；ruff 指定文件通过；`--allow-llm` report 已生成，External LLM enabled |
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
 |------|------|--------|------|--------|--------|
-| REQ-027 P2 弱召回知识覆盖：Python 高级特性 / 跨课程先导 / 复合 schema 样例多样性 | ⚫ Candidate | P0 | RAG / P2 / Real Validation / Data | REQ-026 real LLM 报告：5 样例质量层仅 1/5 达成 ≥30% 增益；扩展样例 + 知识覆盖回填 | [REQ-026 Report](../02-delivery-plans/01-specs/2026-06-18-req-026-rag-effect-comparison-validation-report.md) |
+| REQ-028 P2 弱召回自动质量比较口径改造 | ⚫ Candidate | P0 | RAG / P2 / Real Validation / Quality Metrics | REQ-027 real LLM v1+v2 报告：质量层 P2 提升 ≥30% 仅 1/10。问题不在数据缺口（Q8 baseline 已 0.80），而在子串匹配 + 真实 LLM 长答案同义改写导致覆盖度低。需引入：语义匹配 / 关键事实分项权重 / LLM-as-judge 兜底（仅作为 secondary signal） | [REQ-027 Report v2](../02-delivery-plans/01-specs/2026-06-18-req-027-rag-effect-comparison-v2-report.md) / [REQ-027 Report v1](../02-delivery-plans/01-specs/2026-06-18-req-027-rag-effect-comparison-v1-report.md) |
 | DOC-073 门禁脚本防绕过与规则修改范围校验 | 🔵 Ready | P1 | Governance / Quality Gates / Scripts | 评估并落地最小检查：非门禁治理任务不得修改门禁脚本、`KNOWN_ISSUES`、忽略列表或阈值来绕过当前失败 | [Backlog](../01-product-planning/04-backlog.md) / [Retro](04-retrospectives/2026-06-18-rules-stage-retrospective.md) |
 
 ## 最近完成
