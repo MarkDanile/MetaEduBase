@@ -16,15 +16,15 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| REQ-027 P2 弱召回知识覆盖与样例多样性 | 🟡 部分收口 | P0 | RAG / P2 / Real Validation / Data | 分支 `feat/req-027-weak-recall-knowledge-coverage`；requirement + spec + plan + 5 条 v2 样例（dev DB 校准：513 knowledge_edges 抽样职业面向链）+ wrapper 脚本 + 真 LLM v1+v2 两轮报告均已生成。质量层 P2 提升 ≥30% 仅 1/10 (10%)，AC-4 未达成；问题在自动覆盖度口径（子串匹配 + 真实 LLM 长答案同义改写），不在数据缺口（Q8 baseline 已 0.80） | REQ-028 接力自动质量比较口径改造（语义匹配 / LLM-as-judge 兜底）；本任务不翻完成 | wrapper 脚本 dry-run 两轮 exit 0；v1 复跑 1/5 与第一轮一致；v2 10 样例 4 scenario 全部跑通 |
-| REQ-024 P2 真实验收补强：Query Understanding 与 graph_edge 补足样例 | 🔴 阻塞 | P0 | RAG / P2 / Real Validation | 分支 `codex/req-024-p2-real-validation`；TD-068 已澄清 vector fallback；REQ-025 / REQ-026 / REQ-027 已接力，但质量层真实改善证据仍不足 | REQ-028 接力自动质量比较口径；本任务不翻完成 | REQ-024 / REQ-025 / REQ-026 / REQ-027 real LLM 报告均已生成；真实效果仍未通过 |
-| REQ-025 P2 graph_edge 进入 prompt 与真实 LLM 效果验收收口 | 🟣 待验证 | P0 | RAG / P2 / Real Validation | 分支 `feature/req-025-graph-edge-prompt-validation`；已让 `knowledge_edge` 回源 chunk 并保底进入 packed context；真实 LLM provider 已跑 | 完成本 PR 的代码与报告闭环；效果改善不足由 REQ-026 / REQ-027 / REQ-028 承接，不在本任务夸大完成 | 24 个相关 pytest 通过；ruff 指定文件通过；`--allow-llm` report 已生成，External LLM enabled |
+| REQ-028 P2 弱召回自动质量比较口径改造 | 🟡 部分收口 | P0 | RAG / P2 / Real Validation / Quality Metrics | 分支 `feat/req-028-auto-quality-metric`；脚本支持三口径（substring/semantic/llm_judge）+ 向后兼容 + v3 样例 10 条 + 真 LLM 报告均已生成。AC-4 (semantic ≥ 0.50) 7/10 ✅；AC-5 (semantic lift ≥ 30%) 1/10 ❌（Q8 baseline 已 0.80，delta 受限于"已经很高"） | REQ-029 接力 AC-5 阈值重设计（剩余空间内的改善比例公式）；本任务不翻完成 | 脚本 1035 行已登记 TD-032；v3 报告真实 LLM 跑通；per-sample 矩阵可复跑 |
+| REQ-024 P2 真实验收补强：Query Understanding 与 graph_edge 补足样例 | 🔴 阻塞 | P0 | RAG / P2 / Real Validation | 分支 `codex/req-024-p2-real-validation`；TD-068 已澄清 vector fallback；REQ-025 / REQ-026 / REQ-027 / REQ-028 已接力，但质量层真实改善证据仍不足 | REQ-029 接力 AC-5 阈值重设计；本任务不翻完成 | REQ-024 / REQ-025 / REQ-026 / REQ-027 / REQ-028 real LLM 报告均已生成；真实效果仍未通过 |
+| REQ-025 P2 graph_edge 进入 prompt 与真实 LLM 效果验收收口 | 🟣 待验证 | P0 | RAG / P2 / Real Validation | 分支 `feature/req-025-graph-edge-prompt-validation`；已让 `knowledge_edge` 回源 chunk 并保底进入 packed context；真实 LLM provider 已跑 | 完成本 PR 的代码与报告闭环；效果改善不足由 REQ-026 / REQ-027 / REQ-028 / REQ-029 承接 | 24 个相关 pytest 通过；`--allow-llm` report 已生成 |
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
 |------|------|--------|------|--------|--------|
-| REQ-028 P2 弱召回自动质量比较口径改造 | ⚫ Candidate | P0 | RAG / P2 / Real Validation / Quality Metrics | REQ-027 real LLM v1+v2 报告：质量层 P2 提升 ≥30% 仅 1/10。问题不在数据缺口（Q8 baseline 已 0.80），而在子串匹配 + 真实 LLM 长答案同义改写导致覆盖度低。需引入：语义匹配 / 关键事实分项权重 / LLM-as-judge 兜底（仅作为 secondary signal） | [REQ-027 Report v2](../02-delivery-plans/01-specs/2026-06-18-req-027-rag-effect-comparison-v2-report.md) / [REQ-027 Report v1](../02-delivery-plans/01-specs/2026-06-18-req-027-rag-effect-comparison-v1-report.md) |
+| REQ-029 P2 弱召回 AC-5 阈值重设计 | ⚫ Candidate | P0 | RAG / P2 / Real Validation / Quality Metrics | REQ-028 v3 报告：AC-5 (semantic lift ≥ 30%) 1/10。问题：Q8 baseline 已 0.80 → 相对覆盖度改善公式在 baseline 高时难以达成 30%。需重设计：(weighted - baseline) / (1 - baseline) 即"剩余空间内的改善比例"；或对 baseline ≥0.5 的样例用绝对阈值 (如 weighted ≥ 0.9) | [REQ-028 v3 Report](../02-delivery-plans/01-specs/2026-06-18-req-028-rag-effect-comparison-v3-report.md) |
 | DOC-073 门禁脚本防绕过与规则修改范围校验 | 🔵 Ready | P1 | Governance / Quality Gates / Scripts | 评估并落地最小检查：非门禁治理任务不得修改门禁脚本、`KNOWN_ISSUES`、忽略列表或阈值来绕过当前失败 | [Backlog](../01-product-planning/04-backlog.md) / [Retro](04-retrospectives/2026-06-18-rules-stage-retrospective.md) |
 
 ## 最近完成

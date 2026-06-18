@@ -13,7 +13,7 @@ import asyncio
 import json
 import os
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -29,6 +29,9 @@ DEFAULT_REQ016_SAMPLES = REPO_ROOT / "scripts" / "validate_real_pg_rag_req016.ex
 DEFAULT_REQ018_SAMPLES = REPO_ROOT / "scripts" / "validate_real_pg_rag_req018.example.json"
 DEFAULT_REQ026_SAMPLES = (
     REPO_ROOT / "scripts" / "validate_real_pg_rag_req026_weak_recall.example.json"
+)
+DEFAULT_REQ028_SAMPLES = (
+    REPO_ROOT / "scripts" / "validate_real_pg_rag_req028_weak_recall_v3.example.json"
 )
 DEFAULT_OUT = (
     REPO_ROOT
@@ -52,7 +55,14 @@ class Question:
     question_id: str
     text: str
     expected: dict[str, Any]
-    expected_keypoints: list[str]
+    expected_keypoints: list["Keypoint"]
+
+
+@dataclass
+class Keypoint:
+    term: str
+    synonyms: list[str] = field(default_factory=list)
+    weight: float = 1.0
 
 
 @dataclass
@@ -87,6 +97,13 @@ class ScenarioRun:
     keypoint_hit_count: int
     keypoint_coverage_pct: float
     keypoint_hit_list: list[str]
+    # REQ-028: three-metric coverage fields
+    keypoint_coverage_pct_substring: float = 0.0
+    keypoint_coverage_pct_semantic: float = 0.0
+    keypoint_weight_pct_semantic: float = 0.0
+    keypoint_llm_judge_pct: float | None = None
+    keypoint_hit_list_substring: list[str] = field(default_factory=list)
+    keypoint_hit_list_semantic: list[str] = field(default_factory=list)
 
 
 def _load_dotenv(path: Path) -> None:
@@ -106,12 +123,32 @@ def _mask_db_url(url: str) -> str:
     return "***@" + url.split("@", 1)[1] if "@" in url else url
 
 
-def _load_questions(req016: Path, req018: Path, req026: Path) -> list[Question]:
+def _parse_keypoint(kp: Any) -> Keypoint:
+    """Parse a keypoint entry from JSON.
+
+    Accepts:
+    - string: ``"闭包"`` -> Keypoint(term="闭包")
+    - dict: ``{"term": "闭包", "synonyms": [...], "weight": 1.0}``
+    """
+    if isinstance(kp, str):
+        return Keypoint(term=kp)
+    if isinstance(kp, dict):
+        term = kp.get("term")
+        if not term:
+            raise ValueError(f"keypoint dict missing 'term': {kp!r}")
+        synonyms = list(kp.get("synonyms", []) or [])
+        weight = float(kp.get("weight", 1.0))
+        return Keypoint(term=str(term), synonyms=[str(s) for s in synonyms if s], weight=weight)
+    raise ValueError(f"unsupported keypoint type: {type(kp).__name__}")
+
+
+def _load_questions(req016: Path, req018: Path, req026: Path, req028: Path) -> list[Question]:
     questions: list[Question] = []
     for group, path in [
         ("REQ-016", req016),
         ("REQ-018", req018),
         ("REQ-026", req026),
+        ("REQ-028", req028),
     ]:
         if not path.exists():
             continue
@@ -122,13 +159,20 @@ def _load_questions(req016: Path, req018: Path, req026: Path) -> list[Question]:
                 for k, v in item.items()
                 if k not in {"id", "text", "expected_category", "expected_keypoints"}
             }
+            raw_keypoints = item.get("expected_keypoints", []) or []
+            keypoints: list[Keypoint] = []
+            for kp in raw_keypoints:
+                try:
+                    keypoints.append(_parse_keypoint(kp))
+                except ValueError as exc:
+                    print(f"warn: skip keypoint in {group}/{item.get('id')}: {exc}", file=sys.stderr)
             questions.append(
                 Question(
                     group=group,
                     question_id=item["id"],
                     text=item["text"],
                     expected=expected,
-                    expected_keypoints=list(item.get("expected_keypoints", []) or []),
+                    expected_keypoints=keypoints,
                 )
             )
     return questions
@@ -137,21 +181,148 @@ def _load_questions(req016: Path, req018: Path, req026: Path) -> list[Question]:
 def _compute_keypoint_coverage(
     answer_preview: str,
     sources_titles: list[str],
-    keypoints: list[str],
+    keypoints: list[Keypoint],
 ) -> tuple[int, list[str], int, float]:
+    """Backward-compatible substring coverage (REQ-026/027 baseline)."""
     if not keypoints:
         return 0, [], 0, 0.0
     haystack = (answer_preview or "") + "\n" + "\n".join(sources_titles or [])
     haystack_lower = haystack.lower()
     hit_list: list[str] = []
     for kp in keypoints:
-        if not kp:
+        if not kp.term:
             continue
-        if kp.lower() in haystack_lower:
-            hit_list.append(kp)
-    total = len([k for k in keypoints if k])
+        if kp.term.lower() in haystack_lower:
+            hit_list.append(kp.term)
+    total = len([k for k in keypoints if k.term])
     pct = (len(hit_list) / total) if total else 0.0
     return len(hit_list), hit_list, total, pct
+
+
+def _compute_semantic_coverage(
+    answer_preview: str,
+    sources_titles: list[str],
+    keypoints: list[Keypoint],
+) -> dict[str, Any]:
+    """REQ-028 semantic coverage: matches term + synonyms, supports per-keypoint weight.
+
+    Returns dict with: hit_count, total, coverage_pct, weight_pct, hit_terms.
+    """
+    if not keypoints:
+        return {
+            "hit_count": 0,
+            "total": 0,
+            "coverage_pct": 0.0,
+            "weight_pct": 0.0,
+            "hit_terms": [],
+        }
+    haystack = ((answer_preview or "") + "\n" + "\n".join(sources_titles or [])).lower()
+    hit_terms: list[str] = []
+    total_weight = 0.0
+    hit_weight = 0.0
+    for kp in keypoints:
+        if not kp.term:
+            continue
+        candidates = [kp.term] + list(kp.synonyms or [])
+        if any((c or "").lower() in haystack for c in candidates if c):
+            hit_terms.append(kp.term)
+            hit_weight += kp.weight
+        total_weight += kp.weight
+    total = len([k for k in keypoints if k.term])
+    coverage_pct = (len(hit_terms) / total) if total else 0.0
+    weight_pct = (hit_weight / total_weight) if total_weight else 0.0
+    return {
+        "hit_count": len(hit_terms),
+        "total": total,
+        "coverage_pct": round(coverage_pct, 4),
+        "weight_pct": round(weight_pct, 4),
+        "hit_terms": hit_terms,
+    }
+
+
+def _compute_llm_judge_coverage(
+    answer_preview: str,
+    keypoints: list[Keypoint],
+    llm_callable,
+) -> dict[str, Any] | None:
+    """Sync placeholder. Real implementation is the async variant below; this
+    exists only so legacy callers that import the sync name still resolve.
+    Use ``await _compute_llm_judge_coverage_async(...)`` instead.
+    """
+    return None
+
+
+async def _compute_llm_judge_coverage_async(
+    answer_preview: str,
+    keypoints: list[Keypoint],
+    llm_callable,
+) -> dict[str, Any] | None:
+    """Async LLM-as-judge coverage (REQ-028).
+
+    Returns None when llm_callable is None (dry-run mode).
+    """
+    if llm_callable is None or not keypoints:
+        return None
+    keypoint_terms = [kp.term for kp in keypoints if kp.term]
+    if not keypoint_terms:
+        return None
+    system_prompt = (
+        "你是一名严谨的答案评估员。给定一段 AI 回答和一组关键事实，"
+        "判断关键事实在回答中是否被覆盖。忽略同义改写和上下文蕴含，"
+        "只判断显式或明确等价表述是否出现。"
+        "严格输出 JSON: {\"covered\": [\"事实1\", ...], \"missing\": [\"事实2\", ...], \"score\": 0.0~1.0}。"
+        "score = len(covered) / len(全部事实)，范围 [0, 1]。不要输出 JSON 以外内容。"
+    )
+    user_prompt = (
+        f"## 关键事实列表（共 {len(keypoint_terms)} 条）\n"
+        + "\n".join(f"{i+1}. {t}" for i, t in enumerate(keypoint_terms))
+        + "\n\n## AI 回答\n"
+        + (answer_preview or "(空)")
+    )
+    try:
+        raw = await llm_callable(system_prompt, user_prompt)
+    except Exception as exc:  # noqa: BLE001
+        return {"error": f"{type(exc).__name__}: {exc}", "coverage_pct": None}
+    if not raw:
+        return {"error": "empty llm output", "coverage_pct": None}
+    # Parse JSON robustly: find first { ... } block.
+    text = str(raw).strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return {"error": "llm output not JSON", "raw": text[:200], "coverage_pct": None}
+    try:
+        data = json.loads(text[start : end + 1])
+    except json.JSONDecodeError as exc:
+        return {"error": f"json parse: {exc}", "raw": text[:200], "coverage_pct": None}
+    score = data.get("score")
+    if not isinstance(score, (int, float)):
+        score = None
+    return {
+        "covered": list(data.get("covered", []) or []),
+        "missing": list(data.get("missing", []) or []),
+        "score": score,
+        "coverage_pct": round(float(score), 4) if isinstance(score, (int, float)) else None,
+    }
+    # Parse JSON robustly: find first { ... } block.
+    text = raw.strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return {"error": "llm output not JSON", "raw": text[:200], "coverage_pct": None}
+    try:
+        data = json.loads(text[start : end + 1])
+    except json.JSONDecodeError as exc:
+        return {"error": f"json parse: {exc}", "raw": text[:200], "coverage_pct": None}
+    score = data.get("score")
+    if not isinstance(score, (int, float)):
+        score = None
+    return {
+        "covered": list(data.get("covered", []) or []),
+        "missing": list(data.get("missing", []) or []),
+        "score": score,
+        "coverage_pct": round(float(score), 4) if isinstance(score, (int, float)) else None,
+    }
 
 
 def _default_scenarios() -> list[Scenario]:
@@ -266,7 +437,9 @@ async def _build_service(session, tenant_id: str, scenario: Scenario, *, allow_l
             )
 
         service._call_llm = _dry_llm  # type: ignore[method-assign]
-    return service
+        return service, None
+    # allow_llm: return service's real _call_llm for LLM-as-judge (REQ-028)
+    return service, service._call_llm  # type: ignore[method-assign]
 
 
 def _trace_chunk_ids(items: list[dict[str, Any]]) -> list[str]:
@@ -281,7 +454,7 @@ def _trace_chunk_ids(items: list[dict[str, Any]]) -> list[str]:
 async def _run_question(session, tenant_id: str, q: Question, scenario: Scenario, *, allow_llm: bool) -> ScenarioRun:
     from app.contexts.knowledge.application.ai_chat_service import ChatRequest
 
-    service = await _build_service(session, tenant_id, scenario, allow_llm=allow_llm)
+    service, llm_callable = await _build_service(session, tenant_id, scenario, allow_llm=allow_llm)
     result = await service.chat(
         ChatRequest(message=q.text, context_window=8),
         tenant_id=tenant_id,
@@ -319,11 +492,25 @@ async def _run_question(session, tenant_id: str, q: Question, scenario: Scenario
             )
         if title:
             sources_titles.append(str(title))
-    hit_count, hit_list, kp_total, kp_pct = _compute_keypoint_coverage(
+
+    # REQ-028 three-metric coverage
+    sub_hit, sub_list, kp_total, sub_pct = _compute_keypoint_coverage(
         final_answer_preview,
         sources_titles,
         q.expected_keypoints,
     )
+    sem = _compute_semantic_coverage(
+        final_answer_preview,
+        sources_titles,
+        q.expected_keypoints,
+    )
+    judge = await _compute_llm_judge_coverage_async(
+        final_answer_preview,
+        q.expected_keypoints,
+        llm_callable,
+    )
+    judge_pct = judge.get("coverage_pct") if isinstance(judge, dict) else None
+
     return ScenarioRun(
         question_group=q.group,
         question_id=q.question_id,
@@ -348,9 +535,15 @@ async def _run_question(session, tenant_id: str, q: Question, scenario: Scenario
         fusion_chunk_ids=_trace_chunk_ids(fusion_topn),
         document_sources_titles=sources_titles,
         keypoint_total=kp_total,
-        keypoint_hit_count=hit_count,
-        keypoint_coverage_pct=round(kp_pct, 4),
-        keypoint_hit_list=hit_list,
+        keypoint_hit_count=sub_hit,
+        keypoint_coverage_pct=round(sub_pct, 4),
+        keypoint_hit_list=sub_list,
+        keypoint_coverage_pct_substring=round(sub_pct, 4),
+        keypoint_coverage_pct_semantic=sem["coverage_pct"],
+        keypoint_weight_pct_semantic=sem["weight_pct"],
+        keypoint_llm_judge_pct=judge_pct,
+        keypoint_hit_list_substring=sub_list,
+        keypoint_hit_list_semantic=sem["hit_terms"],
     )
 
 
@@ -373,6 +566,10 @@ def _compact_run(run: ScenarioRun) -> dict[str, Any]:
         "keypoint_total": run.keypoint_total,
         "keypoint_hit_count": run.keypoint_hit_count,
         "keypoint_coverage_pct": run.keypoint_coverage_pct,
+        "keypoint_coverage_pct_substring": run.keypoint_coverage_pct_substring,
+        "keypoint_coverage_pct_semantic": run.keypoint_coverage_pct_semantic,
+        "keypoint_weight_pct_semantic": run.keypoint_weight_pct_semantic,
+        "keypoint_llm_judge_pct": run.keypoint_llm_judge_pct,
         "final_answer_preview": run.final_answer_preview[:220],
     }
 
@@ -644,6 +841,95 @@ def _render_report(
         lines.append(req026_section)
         lines.append("")
 
+    # REQ-028 section (three-metric comparison)
+    if any(run.question_group == "REQ-028" for run in runs):
+        req028_section = _render_req028_section(runs, grouped)
+        lines.append(req028_section)
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _render_req028_section(
+    runs: list[ScenarioRun],
+    grouped: dict[tuple[str, str], dict[str, ScenarioRun]],
+) -> str:
+    """REQ-028: render three-metric coverage (substring / semantic / llm_judge)."""
+    lines: list[str] = []
+    lines.append("## REQ-028 三口径覆盖度对比")
+    lines.append("")
+    lines.append("| Sample | Scenario | substring cov | semantic cov | weight cov | llm_judge cov | semantic 命中明细 |")
+    lines.append("|--------|----------|---------------|--------------|------------|---------------|-------------------|")
+    rows = 0
+    semantic_above_threshold = 0
+    semantic_lift_threshold = 0
+    for (group, qid), scenario_runs in grouped.items():
+        if group != "REQ-028":
+            continue
+        for scenario_name in [
+            "baseline_rule_no_edge",
+            "query_understanding",
+            "graph_edge",
+            "weighted_rrf",
+        ]:
+            run = scenario_runs.get(scenario_name)
+            if not run:
+                continue
+            rows += 1
+            judge_str = (
+                f"{run.keypoint_llm_judge_pct:.2f}"
+                if isinstance(run.keypoint_llm_judge_pct, (int, float))
+                else "-"
+            )
+            sem_terms = ",".join(run.keypoint_hit_list_semantic[:5]) or "-"
+            lines.append(
+                f"| {qid} | {scenario_name} | "
+                f"{run.keypoint_coverage_pct_substring:.2f} | "
+                f"{run.keypoint_coverage_pct_semantic:.2f} | "
+                f"{run.keypoint_weight_pct_semantic:.2f} | "
+                f"{judge_str} | "
+                f"{sem_terms} |"
+            )
+    lines.append("")
+    # Per-sample summary (delta on semantic metric)
+    lines.append("### REQ-028 per-sample summary (semantic metric)")
+    lines.append("")
+    lines.append("| Sample | baseline sem | weighted sem | delta | 判定 (sem) | edge_in_packed |")
+    lines.append("|--------|--------------|--------------|-------|-------------|----------------|")
+    for (group, qid), scenario_runs in grouped.items():
+        if group != "REQ-028":
+            continue
+        baseline = scenario_runs.get("baseline_rule_no_edge")
+        weighted = scenario_runs.get("weighted_rrf")
+        if not baseline or not weighted:
+            continue
+        delta = weighted.keypoint_coverage_pct_semantic - baseline.keypoint_coverage_pct_semantic
+        if weighted.keypoint_coverage_pct_semantic >= 0.5:
+            semantic_above_threshold += 1
+        if delta >= 0.3:
+            semantic_lift_threshold += 1
+            verdict = "正向"
+        elif delta <= -0.3:
+            verdict = "退化"
+        else:
+            verdict = "中性"
+        lines.append(
+            f"| {qid} | {baseline.keypoint_coverage_pct_semantic:.2f} | "
+            f"{weighted.keypoint_coverage_pct_semantic:.2f} | {delta:+.2f} | {verdict} | "
+            f"{weighted.graph_edge_packed_count} |"
+        )
+    lines.append("")
+    lines.append("### REQ-028 三口径决策依据")
+    lines.append("")
+    lines.append(f"- **substring 口径 (历史基线)**: 与 REQ-026/027 报告一致；保留向后兼容。")
+    lines.append(f"- **semantic 口径 (主验收)**: term + synonyms 集合匹配，命中权重 1.0，修饰词权重 ≤0.5。")
+    lines.append(f"- **weight 口径 (semantic 加权)**: 按 Keypoint.weight 加权后的覆盖率；用于区分核心词与修饰词。")
+    lines.append(f"- **llm_judge 口径 (secondary signal)**: 由 LLM-as-judge 评估，仅在 `--allow-llm` 模式下生效；不作为唯一判定。")
+    lines.append(f"- **决策规则**: 当 semantic 与 substring 不一致时（如 semantic ≥ 0.50 但 substring = 0），优先看 semantic；语义匹配覆盖更准确反映真实命中。")
+    lines.append("")
+    lines.append(f"- **AC-4 (semantic ≥ 0.50)**: `{semantic_above_threshold}` 样例达标（独立看 weighted scenario）")
+    lines.append(f"- **AC-5 (semantic lift ≥ 30%)**: `{semantic_lift_threshold}` 样例达标")
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -661,6 +947,7 @@ async def _run(args: argparse.Namespace) -> int:
         Path(args.req016_samples),
         Path(args.req018_samples),
         Path(args.weak_recall_samples),
+        Path(getattr(args, "req028_samples", DEFAULT_REQ028_SAMPLES)),
     )
     if args.limit and args.limit > 0:
         questions = questions[: args.limit]
@@ -726,6 +1013,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--req016-samples", default=str(DEFAULT_REQ016_SAMPLES))
     parser.add_argument("--req018-samples", default=str(DEFAULT_REQ018_SAMPLES))
     parser.add_argument("--weak-recall-samples", default=str(DEFAULT_REQ026_SAMPLES))
+    parser.add_argument("--req028-samples", default=str(DEFAULT_REQ028_SAMPLES))
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--json-out", default="")
     parser.add_argument("--tenant-id", default="")
