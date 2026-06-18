@@ -1,9 +1,9 @@
 # REQ-020: Codex / Trae-like 中性双主题视觉收敛
 
-Status: 🟡 Doing
+Status: 🟢 Done
 Priority: P1
 Milestone: P2
-Owner: TBD
+Owner: Codex
 
 ## 背景
 
@@ -57,4 +57,4 @@ Environment: macOS 本地开发环境，前端 dev server `http://127.0.0.1:5173
 
 ## 当前状态
 
-代码与本地验证已收口，等待 PR / merge 后同步 Backlog、current-work 和 work-log 为完成态。
+PR #338 已 squash merge 到 `main`，merge commit `d4017d2`。Backlog、current-work 和 work-log 已按完成态收口。
