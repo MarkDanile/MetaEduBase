@@ -23,6 +23,7 @@ Goal: 在 REQ-012 多路 evidence 骨架之上，补齐召回后上下文组装�
 | REQ-027 | REQ | 🟢 Done | P2 弱召回知识覆盖与样例多样性 | PR #359：5 条 v2 样例 + wrapper 脚本 + 真 LLM v1+v2 两轮报告。REQ-029 residual 阈值补判 AC-4 9/10 达标，翻完成 |
 | REQ-028 | REQ | 🟢 Done | P2 弱召回自动质量比较口径改造 | PR #360：脚本支持三口径 + v3 样例 10 条 + 真 LLM 报告。REQ-029 residual 阈值补判 AC-5 5/10 达标，翻完成 |
 | REQ-029 | REQ | 🟢 Done | P2 弱召回 AC-5 阈值重设计 | residual ratio 公式 + --lift-mode CLI + 报告双模式。整条 P2 RAG 真实效果验收长链收口翻完成 |
+| TD-068 | TD | 🟡 部分收口（docs-only 诊断完成，TD-069 接力） | AI Chat vector embedding 为空底层修复 | [PR #355](https://github.com/MarkDanile/MetaEduBase/pull/355) diagnostics 透出；Slice 2 诊断真实根因为 schema 层（embedding 列 text vs vector），登记 [TD-069](../../03-engineering-governance/technical-debt.md#td-069) 接力 |
 
 ## Out of Scope
 
