@@ -22,7 +22,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
 |------|------|--------|------|--------|--------|
-| TD-068 AI Chat vector embedding 为空底层修复 | ⚫ Candidate | P1 | RAG / Embedding / Infrastructure | REQ-029 收口后 P2 长链 P0 全部完成；TD-068 diagnostics 已透出但底层修复未做 | [TD-068](technical-debt.md#td-068) |
+| TD-068 AI Chat vector embedding 为空底层修复 | 🟡 部分收口（docs-only 诊断完成） | P1 | RAG / Embedding / Infrastructure | 分支 `docs/td-068-slice2-diagnosis-td069-handoff`：Slice 2 诊断完成，真实根因为 dev DB schema 层（`document_chunks.embedding` / `knowledge_nodes.embedding` 两列都是 `text` 类型，pgvector `<=>` 操作符不可用；`knowledge_nodes.embedding` 599 行 100% NULL）。代码修复 (provider 多 fallback + retriever CAST) 已能真实生成 query embedding 但暂不 merge，等 TD-069 schema migration 一起合并 | [TD-068](technical-debt.md#td-068) / [TD-069](technical-debt.md#td-069) |
 | TD-032 `validate_req024_p2_real_validation.py` 拆分 | ⚫ Candidate | P1 | Governance / Source File Sizes | 1035 行已登记例外；P2 长链收口后脚本逻辑稳定，拆分风险低 | [td-032-source-file-sizes.md](02-baselines/td-032-source-file-sizes.md) |
 
 ## 最近完成
