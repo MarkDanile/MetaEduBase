@@ -27,7 +27,7 @@
 |------|------|
 | `scripts/validate_real_pg_rag.py`（新建） | 一次性验收脚本；5 个子命令 + Markdown 报告生成 |
 | `scripts/validate_real_pg_rag/__init__.py`（新建） | 标记脚本为包（可选；先用单文件） |
-| `scripts/validate_real_pg_rag_samples.example.json`（新建） | 样例 file_id 配置文件 + 4-5 个固定问题模板（不进真实数据） |
+| `tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.example.json`（新建） | 样例 file_id 配置文件 + 4-5 个固定问题模板（不进真实数据） |
 | `docs/02-delivery-plans/01-specs/2026-06-16-req-014-rag-real-pg-grounding-validation.md`（已存在） | spec |
 | `docs/02-delivery-plans/01-specs/2026-06-16-req-014-rag-real-pg-grounding-validation-report.md`（新建） | 验收报告（脚本生成） |
 | `docs/02-delivery-plans/02-plans/2026-06-16-req-014-rag-real-pg-grounding-validation-plan.md`（本文件） | plan |
@@ -91,11 +91,11 @@ Expected: spec 文件 staged 1 file changed。**不要 commit**；与本任务�
 
 **Files:**
 - Create: `scripts/validate_real_pg_rag.py`
-- Create: `scripts/validate_real_pg_rag_samples.example.json`
+- Create: `tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.example.json`
 
 - [ ] **Step 2.1: 写样例配置 example 文件**
 
-文件 `scripts/validate_real_pg_rag_samples.example.json`：
+文件 `tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.example.json`：
 
 ```json
 {
@@ -165,7 +165,7 @@ REQ-014 真实 PG 验收脚本（一次性，不进 CI / pytest）。
 
 使用：
   python scripts/validate_real_pg_rag.py backfill \
-    --samples scripts/validate_real_pg_rag_samples.json \
+    --samples tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.json \
     --out docs/02-delivery-plans/01-specs/2026-06-16-req-014-rag-real-pg-grounding-validation-report.md
 
 环境变量：
@@ -450,7 +450,7 @@ Expected: 退出码 0；`--help` 显示 5 个子命令。
 
 Run:
 ```bash
-git add scripts/validate_real_pg_rag.py scripts/validate_real_pg_rag_samples.example.json
+git add scripts/validate_real_pg_rag.py tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.example.json
 git diff --cached --stat
 ```
 Expected: 2 files changed。
@@ -1002,7 +1002,7 @@ git add scripts/validate_real_pg_rag.py
 ### Task 8: 准备真样例 file_id 与固定问题（替换 TBD）
 
 **Files:**
-- Modify: `scripts/validate_real_pg_rag_samples.json`（新建；不再使用 example）
+- Modify: `tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.json`（新建；不再使用 example）
 
 - [ ] **Step 8.1: 列出 dev 库文件**
 
@@ -1019,22 +1019,22 @@ psql "$DATABASE_URL" -c "SELECT id, original_filename, doc_type, template_id, pa
 
 Run:
 ```bash
-cp scripts/validate_real_pg_rag_samples.example.json scripts/validate_real_pg_rag_samples.json
+cp tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.example.json tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.json
 ```
 
-然后编辑 `scripts/validate_real_pg_rag_samples.json`，把 samples 的 `file_id` 填为真实 uuid，questions 的 `<TBD>` 替换为从对应文件里能问到答案的具体问题。
+然后编辑 `tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.json`，把 samples 的 `file_id` 填为真实 uuid，questions 的 `<TBD>` 替换为从对应文件里能问到答案的具体问题。
 
 - [ ] **Step 8.3: 验证 JSON 合法**
 
 Run:
 ```bash
-python -c "import json; print(json.dumps(json.load(open('scripts/validate_real_pg_rag_samples.json')), ensure_ascii=False, indent=2))" | head -20
+python -c "import json; print(json.dumps(json.load(open('tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.json')), ensure_ascii=False, indent=2))" | head -20
 ```
 Expected: 3-5 samples + 4-5 questions；TBD 全替换。
 
 - [ ] **Step 8.4: 加密提示 — 不入 git**
 
-把 `scripts/validate_real_pg_rag_samples.json` 加入 `.gitignore` 候选项查看：
+把 `tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.json` 加入 `.gitignore` 候选项查看：
 
 Run:
 ```bash
@@ -1045,7 +1045,7 @@ cat .gitignore | grep -i sample || echo "未忽略；继续"
 
 - [ ] **Step 8.5: 不 stage 真样例文件（dev 库 file_id 不入仓）**
 
-> 本任务不进 `scripts/validate_real_pg_rag_samples.json` 到 git。验收报告里只写 file_id + label，不暴露真名。
+> 本任务不进 `tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.json` 到 git。验收报告里只写 file_id + label，不暴露真名。
 
 ---
 
@@ -1070,7 +1070,7 @@ export LLM_API_KEY="<redacted>"
 Run:
 ```bash
 python scripts/validate_real_pg_rag.py backfill \
-  --samples scripts/validate_real_pg_rag_samples.json \
+  --samples tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.json \
   --out docs/02-delivery-plans/01-specs/2026-06-16-req-014-rag-real-pg-grounding-validation-report.md
 ```
 Expected: 退出码 0；输出 "backfill done" + intermediate 路径。
@@ -1080,7 +1080,7 @@ Expected: 退出码 0；输出 "backfill done" + intermediate 路径。
 Run:
 ```bash
 python scripts/validate_real_pg_rag.py ask \
-  --samples scripts/validate_real_pg_rag_samples.json \
+  --samples tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.json \
   --out docs/02-delivery-plans/01-specs/2026-06-16-req-014-rag-real-pg-grounding-validation-report.md
 ```
 Expected: 退出码 0；4-5 个问题有 AskResult；AC-2/AC-3 自动判定。
@@ -1090,7 +1090,7 @@ Expected: 退出码 0；4-5 个问题有 AskResult；AC-2/AC-3 自动判定。
 Run:
 ```bash
 python scripts/validate_real_pg_rag.py bug007 \
-  --samples scripts/validate_real_pg_rag_samples.json \
+  --samples tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.json \
   --out docs/02-delivery-plans/01-specs/2026-06-16-req-014-rag-real-pg-grounding-validation-report.md
 ```
 Expected: 退出码 0；3-5 个 PDF 样例有 section 复测结果。
@@ -1100,7 +1100,7 @@ Expected: 退出码 0；3-5 个 PDF 样例有 section 复测结果。
 Run:
 ```bash
 python scripts/validate_real_pg_rag.py bug006 \
-  --samples scripts/validate_real_pg_rag_samples.json \
+  --samples tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.json \
   --out docs/02-delivery-plans/01-specs/2026-06-16-req-014-rag-real-pg-grounding-validation-report.md
 ```
 Expected: 退出码 0；5 子项结构化结论。
@@ -1110,7 +1110,7 @@ Expected: 退出码 0；5 子项结构化结论。
 Run:
 ```bash
 python scripts/validate_real_pg_rag.py report \
-  --samples scripts/validate_real_pg_rag_samples.json \
+  --samples tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.json \
   --out docs/02-delivery-plans/01-specs/2026-06-16-req-014-rag-real-pg-grounding-validation-report.md
 ```
 Expected: 退出码 0；Markdown 报告生成。
@@ -1342,7 +1342,7 @@ REQ-014 已在"最近完成"区，状态 🟢 Done；候选区已清空。
 - 脚本依赖 SQL 表 / 列名（`files.parse_status` / `chunks` / `chunk_embeddings` / `chunk_tsvectors` / `knowledge_nodes` / `knowledge_edges` / `document_sections` / `templates`）：如果实际列名不一致，Task 9 第一次跑会暴露，修复即可。
 - `/api/v1/ai/chat/evidence` 响应结构（`diagnostics.retrieval_topn` / `fusion_topn` / `packed_blocks` / `evidence` / `document_sources` / `answer`）以 REQ-013 实现为准；如字段名不一致，Task 4.1 的 `_summarize_ask_response` 调整。
 - `build_fields_desc` import 路径为 `app.contexts.document.application.tasks.extract_template_prompts`（已实测）。
-- 真实样例 file_id 不进 git；`scripts/validate_real_pg_rag_samples.json` 应加入 `.gitignore`。
+- 真实样例 file_id 不进 git；`tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.json` 应加入 `.gitignore`。
 
 ---
 

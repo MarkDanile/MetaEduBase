@@ -25,7 +25,7 @@ Status: 🟢 Done
 | `packages/server-python/.venv/bin/python -m py_compile scripts/validate_real_pg_rag.py` | exit 0 | 验收脚本语法通过 |
 | `packages/server-python/.venv/bin/python -m ruff check ... scripts/validate_real_pg_rag.py` | exit 0 | 触达后端、测试与验收脚本 ruff 通过 |
 | `pnpm --filter @metaedu/web typecheck` | exit 0 | 前端新增 diagnostics 类型兼容 |
-| `packages/server-python/.venv/bin/python scripts/validate_real_pg_rag.py report --samples scripts/validate_real_pg_rag_samples.example.json --out /private/tmp/req015-rag-validation-dry-run-report.md` | exit 0 | 缺环境时生成占位报告并输出 warning |
+| `packages/server-python/.venv/bin/python scripts/validate_real_pg_rag.py report --samples tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.example.json --out /private/tmp/req015-rag-validation-dry-run-report.md` | exit 0 | 缺环境时生成占位报告并输出 warning |
 | `scripts/check-engineering-docs` | exit 0 | engineering docs checks passed |
 | `git diff --check` | exit 0 | whitespace clean |
 | `packages/server-python/.venv/bin/python -m pytest packages/server-python/tests/contexts/ai/test_ai_chat.py -q` | 5 passed | 允许连接本机 PG 后通过；验证 evidence endpoint 认证与 mock service 兼容 |

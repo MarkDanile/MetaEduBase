@@ -62,7 +62,7 @@ REQ-024 AC-2「至少 2 个真实样例展示 graph_edge 对 keyword/vector 弱�
 
 不另起一套脚本。在 `scripts/validate_req024_p2_real_validation.py` 基础上扩展：
 
-- **新增弱召回样例集**：`scripts/validate_real_pg_rag_req026_weak_recall.example.json`
+- **新增弱召回样例集**：`tests/fixtures/rag_validation_samples/validate_real_pg_rag_req026_weak_recall.example.json`
   - 与 `validate_real_pg_rag_req016.example.json` / `req018.example.json` 并列
   - 样例必须包含 `expected_keypoints`（中文关键词 / 短语列表，至少 3 个），用于自动覆盖度比较
   - 样例必须包含 `category`（python_tutorial / training_program / course_standard / cross_doc_relationship）
@@ -187,4 +187,4 @@ docs/03-engineering-governance/work-log.md                  # 一行式索引
 - REQ-025 report: `docs/02-delivery-plans/01-specs/2026-06-18-req-025-graph-edge-prompt-impact-validation-report.md`
 - REQ-024 script: `scripts/validate_req024_p2_real_validation.py`
 - TD-068: `docs/03-engineering-governance/technical-debt.md#td-068`
-- Existing sample sets: `scripts/validate_real_pg_rag_req016.example.json`, `scripts/validate_real_pg_rag_req018.example.json`
+- Existing sample sets: `tests/fixtures/rag_validation_samples/validate_real_pg_rag_req016.example.json`, `tests/fixtures/rag_validation_samples/validate_real_pg_rag_req018.example.json`

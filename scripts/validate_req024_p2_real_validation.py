@@ -25,13 +25,25 @@ if str(SERVER_PYTHON) not in sys.path:
     sys.path.insert(0, str(SERVER_PYTHON))
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
-DEFAULT_REQ016_SAMPLES = REPO_ROOT / "scripts" / "validate_real_pg_rag_req016.example.json"
-DEFAULT_REQ018_SAMPLES = REPO_ROOT / "scripts" / "validate_real_pg_rag_req018.example.json"
+DEFAULT_REQ016_SAMPLES = (
+    REPO_ROOT / "tests" / "fixtures" / "rag_validation_samples" / "validate_real_pg_rag_req016.example.json"
+)
+DEFAULT_REQ018_SAMPLES = (
+    REPO_ROOT / "tests" / "fixtures" / "rag_validation_samples" / "validate_real_pg_rag_req018.example.json"
+)
 DEFAULT_REQ026_SAMPLES = (
-    REPO_ROOT / "scripts" / "validate_real_pg_rag_req026_weak_recall.example.json"
+    REPO_ROOT
+    / "tests"
+    / "fixtures"
+    / "rag_validation_samples"
+    / "validate_real_pg_rag_req026_weak_recall.example.json"
 )
 DEFAULT_REQ028_SAMPLES = (
-    REPO_ROOT / "scripts" / "validate_real_pg_rag_req028_weak_recall_v3.example.json"
+    REPO_ROOT
+    / "tests"
+    / "fixtures"
+    / "rag_validation_samples"
+    / "validate_real_pg_rag_req028_weak_recall_v3.example.json"
 )
 DEFAULT_OUT = (
     REPO_ROOT

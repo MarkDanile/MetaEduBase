@@ -1,0 +1,45 @@
+{
+  "samples": [
+    {
+      "category": "python_tutorial",
+      "label": "Python 教程 PDF",
+      "file_id": "358bd704-d223-4228-8935-3a6e1b3e699f",
+      "expected_doc_type": "课程标准"
+    },
+    {
+      "category": "training_program",
+      "label": "人才培养方案 PDF",
+      "file_id": "93101825-eb59-442f-838b-3c3b9894051f",
+      "expected_doc_type": "人才培养方案"
+    },
+    {
+      "category": "course_standard",
+      "label": "课程标准 / 教案 PDF",
+      "file_id": "132a8cfd-d1d1-429e-9871-68aab82f5ec3",
+      "expected_doc_type": "课程标准"
+    }
+  ],
+  "questions": [
+    {
+      "id": "Q1",
+      "text": "python 的基本数据类型有哪些？",
+      "expected_category": "python_tutorial"
+    },
+    {
+      "id": "Q2",
+      "text": "环境监测技术专业的人才培养目标是什么？",
+      "expected_category": "training_program"
+    },
+    {
+      "id": "Q3",
+      "text": "水环境监测课程的课程目标是什么？",
+      "expected_category": "course_standard"
+    },
+    {
+      "id": "Q4",
+      "text": "量子计算的量子纠缠原理是什么？",
+      "expected_category": null
+    }
+  ],
+  "output_report_path": "docs/02-delivery-plans/01-specs/2026-06-17-req-015-rag-production-grounding-validation-report.md"
+}

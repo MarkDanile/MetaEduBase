@@ -14,7 +14,7 @@
 
 **文件：**
 
-- `scripts/validate_real_pg_rag_req026_weak_recall.example.json`（新建）
+- `tests/fixtures/rag_validation_samples/validate_real_pg_rag_req026_weak_recall.example.json`（新建）
   - 至少 5 条 questions
   - 每条包含 `id` / `text` / `category` / `expected_category` / `expected_keypoints`（>=3 条）
   - 样例类别建议：
@@ -89,7 +89,7 @@
 ```bash
 cd /Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase
 python scripts/validate_req024_p2_real_validation.py \
-    --weak-recall-samples scripts/validate_real_pg_rag_req026_weak_recall.example.json \
+    --weak-recall-samples tests/fixtures/rag_validation_samples/validate_real_pg_rag_req026_weak_recall.example.json \
     --out docs/02-delivery-plans/01-specs/2026-06-18-req-026-rag-effect-comparison-validation-report.md \
     --json-out /tmp/req026_dry_run.json \
     --report-title "REQ-026 P2 RAG 弱召回样例集与效果比较报告 (dry-run)"
@@ -109,7 +109,7 @@ python scripts/validate_req024_p2_real_validation.py \
 
 ```bash
 python scripts/validate_req024_p2_real_validation.py \
-    --weak-recall-samples scripts/validate_real_pg_rag_req026_weak_recall.example.json \
+    --weak-recall-samples tests/fixtures/rag_validation_samples/validate_real_pg_rag_req026_weak_recall.example.json \
     --out docs/02-delivery-plans/01-specs/2026-06-18-req-026-rag-effect-comparison-validation-report.md \
     --json-out /tmp/req026_real_llm.json \
     --report-title "REQ-026 P2 RAG 弱召回样例集与效果比较报告 (real LLM)" \
@@ -140,7 +140,7 @@ python scripts/validate_req024_p2_real_validation.py \
 
 ```bash
 git add scripts/validate_req024_p2_real_validation.py \
-        scripts/validate_real_pg_rag_req026_weak_recall.example.json \
+        tests/fixtures/rag_validation_samples/validate_real_pg_rag_req026_weak_recall.example.json \
         docs/02-delivery-plans/01-specs/2026-06-18-req-026-...md \
         docs/02-delivery-plans/02-plans/2026-06-18-req-026-...md \
         docs/02-delivery-plans/01-specs/2026-06-18-req-026-rag-effect-comparison-validation-report.md \
@@ -168,8 +168,8 @@ gh pr merge --squash --delete-branch
 ## Files To Inspect First
 
 - `scripts/validate_req024_p2_real_validation.py`（基线脚本）
-- `scripts/validate_real_pg_rag_req016.example.json`（现有样例结构参考）
-- `scripts/validate_real_pg_rag_req018.example.json`（现有样例结构参考）
+- `tests/fixtures/rag_validation_samples/validate_real_pg_rag_req016.example.json`（现有样例结构参考）
+- `tests/fixtures/rag_validation_samples/validate_real_pg_rag_req018.example.json`（现有样例结构参考）
 - `docs/02-delivery-plans/01-specs/2026-06-18-req-024-p2-real-validation-report.md`（报告结构参考）
 - `docs/02-delivery-plans/01-specs/2026-06-18-req-025-graph-edge-prompt-impact-validation-report.md`（报告结构参考）
 

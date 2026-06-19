@@ -19,8 +19,20 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "validate_req024_p2_real_validation.py"
-V1_SAMPLES = REPO_ROOT / "scripts" / "validate_real_pg_rag_req026_weak_recall.example.json"
-V2_SAMPLES = REPO_ROOT / "scripts" / "validate_real_pg_rag_req027_weak_recall_v2.example.json"
+V1_SAMPLES = (
+    REPO_ROOT
+    / "tests"
+    / "fixtures"
+    / "rag_validation_samples"
+    / "validate_real_pg_rag_req026_weak_recall.example.json"
+)
+V2_SAMPLES = (
+    REPO_ROOT
+    / "tests"
+    / "fixtures"
+    / "rag_validation_samples"
+    / "validate_real_pg_rag_req027_weak_recall_v2.example.json"
+)
 SPECS = REPO_ROOT / "docs" / "02-delivery-plans" / "01-specs"
 
 V1_REPORT = SPECS / "2026-06-18-req-027-rag-effect-comparison-v1-report.md"

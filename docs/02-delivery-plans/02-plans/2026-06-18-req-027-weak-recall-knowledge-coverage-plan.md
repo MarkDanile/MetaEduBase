@@ -17,7 +17,7 @@
 - `docs/01-product-planning/05-requirements/REQ-027-...md`（已产出）
 - `docs/02-delivery-plans/01-specs/2026-06-18-req-027-weak-recall-knowledge-coverage.md`（已产出）
 - `docs/02-delivery-plans/02-plans/2026-06-18-req-027-...md`（本文件）
-- `scripts/validate_real_pg_rag_req027_weak_recall_v2.example.json`（新增）
+- `tests/fixtures/rag_validation_samples/validate_real_pg_rag_req027_weak_recall_v2.example.json`（新增）
 
 **新增样例设计（≥5 条，每条 expected_keypoints 已在 dev DB 真实内容中校准）：**
 
@@ -161,7 +161,7 @@ python scripts/run_req027_validation.py --allow-llm
 
 ```bash
 git add scripts/run_req027_validation.py \
-        scripts/validate_real_pg_rag_req027_weak_recall_v2.example.json \
+        tests/fixtures/rag_validation_samples/validate_real_pg_rag_req027_weak_recall_v2.example.json \
         docs/02-delivery-plans/01-specs/2026-06-18-req-027-weak-recall-knowledge-coverage.md \
         docs/02-delivery-plans/02-plans/2026-06-18-req-027-weak-recall-knowledge-coverage-plan.md \
         docs/02-delivery-plans/01-specs/2026-06-18-req-027-rag-effect-comparison-v1-report.md \
@@ -189,7 +189,7 @@ gh pr merge --squash --delete-branch
 ## Files To Inspect First
 
 - `scripts/validate_req024_p2_real_validation.py`（基线脚本，已支持 REQ-026）
-- `scripts/validate_real_pg_rag_req026_weak_recall.example.json`（v1 样例结构参考）
+- `tests/fixtures/rag_validation_samples/validate_real_pg_rag_req026_weak_recall.example.json`（v1 样例结构参考）
 - `docs/02-delivery-plans/01-specs/2026-06-18-req-026-rag-effect-comparison-validation-report.md`（v1 报告结构参考）
 
 ## Required Checks
