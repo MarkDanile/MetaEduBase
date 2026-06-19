@@ -98,7 +98,7 @@
 
 **文件：**
 
-- `scripts/validate_real_pg_rag_req028_weak_recall_v3.example.json`（新建）
+- `tests/fixtures/rag_validation_samples/validate_real_pg_rag_req028_weak_recall_v3.example.json`（新建）
 
 **样例设计：**
 
@@ -130,7 +130,7 @@
 
 ```bash
 cd /Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase
-python scripts/run_req027_validation.py --weak-recall-samples scripts/validate_real_pg_rag_req028_weak_recall_v3.example.json --out docs/02-delivery-plans/01-specs/2026-06-18-req-028-rag-effect-comparison-v3-report.md --report-title "REQ-028 P2 RAG 弱召回样例 v3 双口径报告 (dry-run)"
+python scripts/run_req027_validation.py --weak-recall-samples tests/fixtures/rag_validation_samples/validate_real_pg_rag_req028_weak_recall_v3.example.json --out docs/02-delivery-plans/01-specs/2026-06-18-req-028-rag-effect-comparison-v3-report.md --report-title "REQ-028 P2 RAG 弱召回样例 v3 双口径报告 (dry-run)"
 ```
 
 **验收：**
@@ -145,7 +145,7 @@ python scripts/run_req027_validation.py --weak-recall-samples scripts/validate_r
 **命令：**
 
 ```bash
-python scripts/run_req027_validation.py --weak-recall-samples scripts/validate_real_pg_rag_req028_weak_recall_v3.example.json --out docs/02-delivery-plans/01-specs/2026-06-18-req-028-rag-effect-comparison-v3-report.md --report-title "REQ-028 P2 RAG 弱召回样例 v3 双口径报告 (real LLM)" --allow-llm
+python scripts/run_req027_validation.py --weak-recall-samples tests/fixtures/rag_validation_samples/validate_real_pg_rag_req028_weak_recall_v3.example.json --out docs/02-delivery-plans/01-specs/2026-06-18-req-028-rag-effect-comparison-v3-report.md --report-title "REQ-028 P2 RAG 弱召回样例 v3 双口径报告 (real LLM)" --allow-llm
 ```
 
 **验收：**
@@ -169,7 +169,7 @@ python scripts/run_req027_validation.py --weak-recall-samples scripts/validate_r
 
 ```bash
 git add scripts/validate_req024_p2_real_validation.py \
-        scripts/validate_real_pg_rag_req028_weak_recall_v3.example.json \
+        tests/fixtures/rag_validation_samples/validate_real_pg_rag_req028_weak_recall_v3.example.json \
         docs/02-delivery-plans/01-specs/2026-06-18-req-028-auto-quality-metric.md \
         docs/02-delivery-plans/02-plans/2026-06-18-req-028-auto-quality-metric-plan.md \
         docs/02-delivery-plans/01-specs/2026-06-18-req-028-rag-effect-comparison-v3-report.md \
@@ -196,7 +196,7 @@ gh pr merge --squash --delete-branch
 ## Files To Inspect First
 
 - `scripts/validate_req024_p2_real_validation.py`（基线脚本）
-- `scripts/validate_real_pg_rag_req027_weak_recall_v2.example.json`（v2 样例结构）
+- `tests/fixtures/rag_validation_samples/validate_real_pg_rag_req027_weak_recall_v2.example.json`（v2 样例结构）
 - `docs/02-delivery-plans/01-specs/2026-06-18-req-027-rag-effect-comparison-v2-report.md`（v2 报告结构）
 
 ## Required Checks

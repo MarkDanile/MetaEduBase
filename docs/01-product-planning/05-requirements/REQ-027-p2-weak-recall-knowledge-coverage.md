@@ -55,7 +55,7 @@ REQ-026 报告登记的 follow-up：扩展 P2 弱召回样例多样性与知识�
 
 - REQ-026 report: `docs/02-delivery-plans/01-specs/2026-06-18-req-026-rag-effect-comparison-validation-report.md`
 - REQ-026 requirement: `docs/01-product-planning/05-requirements/REQ-026-p2-rag-effect-comparison-and-weak-recall-samples.md`
-- REQ-026 样例集: `scripts/validate_real_pg_rag_req026_weak_recall.example.json`
+- REQ-026 样例集: `tests/fixtures/rag_validation_samples/validate_real_pg_rag_req026_weak_recall.example.json`
 - REQ-026 脚本: `scripts/validate_req024_p2_real_validation.py`
 - TD-068: `docs/03-engineering-governance/technical-debt.md#td-068`
 

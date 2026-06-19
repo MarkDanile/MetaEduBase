@@ -74,7 +74,7 @@ REQ-028 已登记 AC-5 阈值重设计 follow-up。
 - REQ-028 spec: `docs/02-delivery-plans/01-specs/2026-06-18-req-028-auto-quality-metric.md`
 - REQ-028 report v3: `docs/02-delivery-plans/01-specs/2026-06-18-req-028-rag-effect-comparison-v3-report.md`
 - REQ-028 脚本: `scripts/validate_req024_p2_real_validation.py`
-- REQ-028 样例集 v3: `scripts/validate_real_pg_rag_req028_weak_recall_v3.example.json`
+- REQ-028 样例集 v3: `tests/fixtures/rag_validation_samples/validate_real_pg_rag_req028_weak_recall_v3.example.json`
 
 ## Delivery Record
 

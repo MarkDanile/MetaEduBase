@@ -187,5 +187,5 @@ docs/03-engineering-governance/work-log.md
 - REQ-028 requirement: `docs/01-product-planning/05-requirements/REQ-028-p2-auto-quality-metric.md`
 - REQ-028 spec: `docs/02-delivery-plans/01-specs/2026-06-18-req-028-auto-quality-metric.md`
 - REQ-028 report v3: `docs/02-delivery-plans/01-specs/2026-06-18-req-028-rag-effect-comparison-v3-report.md`
-- REQ-028 样例集 v3: `scripts/validate_real_pg_rag_req028_weak_recall_v3.example.json`
+- REQ-028 样例集 v3: `tests/fixtures/rag_validation_samples/validate_real_pg_rag_req028_weak_recall_v3.example.json`
 - TD-068: `docs/03-engineering-governance/technical-debt.md#td-068`

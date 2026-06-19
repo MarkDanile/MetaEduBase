@@ -11,7 +11,7 @@ RAG 真实 PG 验收脚本（一次性，不进 CI / pytest）。
 
 使用：
   python scripts/validate_real_pg_rag.py backfill \\
-      --samples scripts/validate_real_pg_rag_samples.example.json \\
+      --samples tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.example.json \\
       --out docs/02-delivery-plans/01-specs/2026-06-16-req-014-rag-real-pg-grounding-validation-report.md
 
   真库验收时复制 example 并填入 dev 库 file_id；真实 samples 文件不进 git。

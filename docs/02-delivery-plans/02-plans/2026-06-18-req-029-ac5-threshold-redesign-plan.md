@@ -55,8 +55,8 @@
 ```bash
 cd /Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase
 python scripts/validate_req024_p2_real_validation.py \
-  --req028-samples scripts/validate_real_pg_rag_req028_weak_recall_v3.example.json \
-  --weak-recall-samples scripts/validate_real_pg_rag_req028_weak_recall_v3.example.json \
+  --req028-samples tests/fixtures/rag_validation_samples/validate_real_pg_rag_req028_weak_recall_v3.example.json \
+  --weak-recall-samples tests/fixtures/rag_validation_samples/validate_real_pg_rag_req028_weak_recall_v3.example.json \
   --out docs/02-delivery-plans/01-specs/2026-06-18-req-029-ac5-threshold-residual-report.md \
   --json-out /tmp/req029_residual.json \
   --report-title "REQ-029 P2 RAG 弱召回样例 v3 residual 阈值模式报告 (real LLM)" \

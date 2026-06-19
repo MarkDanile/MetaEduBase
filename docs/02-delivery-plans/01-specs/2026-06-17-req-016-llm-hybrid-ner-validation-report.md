@@ -84,7 +84,7 @@
 # 启动后端服务
 
 python scripts/validate_real_pg_rag.py ask \
-    --samples scripts/validate_real_pg_rag_samples.example.json \
+    --samples tests/fixtures/rag_validation_samples/validate_real_pg_rag_samples.example.json \
     --out docs/02-delivery-plans/01-specs/2026-06-17-req-016-llm-hybrid-ner-validation-report.md \
     --questions Q1,Q2,Q3,Q4
 
