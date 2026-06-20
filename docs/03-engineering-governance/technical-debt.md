@@ -161,8 +161,8 @@
 | TD-065 | ds_embed 返 embedded count int | 🟢 完成 | P1 | 后端 / Structured Data / Embedding | TD-057 slice 9：ds_embed._do 返 `success_count` int；outer 补 `return`。 | [PR #275](https://github.com/MarkDanile/MetaEduBase/pull/275) (merge `f878303`) |
 | TD-066 | ds_cross_dataset_edges 返 cross dataset edges count | 🟢 完成 | P1 | 后端 / Structured Data / KG | TD-057 9 个 follow-up 列表（commit 49a964a 父任务总账）包含的"剩 6 个 follow-up"收口候选（实际只定义了 8 个 TD-058~TD-065，TD-066 是 parent 总账描述中预留的下一个 `_do` 编号）。`ds_cross_dataset_edges._do` 是 structured_data pipeline 最后一步（chain 由 ds_extract_kg 触发），caller 拿到新建跨数据集边数后可直接评估跨数据集 KG 链接构建质量。 | [PR #280](https://github.com/MarkDanile/MetaEduBase/pull/280) (merge `c343de7`) |
 | TD-067 | LLM 抽取 `teaching_plan` / `practice_links` 失败返 `-` | 🟢 完成 | P2 | 后端 / 模板抽取 / LLM prompt | 2026-06-14 全链路评估人才培养方案文件复测：模板 `人才培养方案` 期望 `teaching_plan: array[semester]` 38 课程 × 6 学期课时表 + `practice_links: table` 实践环节；LLM 返 `-`（未抽取）。`curriculum_system: array[course]` 38 门课正确抽取、`basic_info` 5 字段准 — 抽取链路"懂简单数组，不懂嵌套课时表"。需在 `extract_template_prompts.py` 补 few-shot 示例（教学进程表 + 实践环节表）。 | [PR #287](https://github.com/MarkDanile/MetaEduBase/pull/287) (merge `2b983b2`) |
-| TD-068 | AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明 | 🟡 部分收口（diagnostics 透出 + 脚本识别 + 回归测试 PR #355 已合并；Slice 2 诊断完成，真实根因已定位为 schema 层，登记 TD-069 接力） | P0 | 后端 / RAG / Embedding / AI Chat | PR #355 squash merge `fdffd60`：trace 已透出 `embedding_fallback` metadata；REQ-024 report 新增 `vector fallback` 计数，确认当前 vector topN 为 keyword fallback，不代表真实语义向量召回。Slice 2: 修 `embedding_service.py` 多 provider fallback + 修 `pg_chunk_vector_retriever.py` `CAST(:vec AS vector)` 后 query embedding 真实生成（硅流 4096 维），但 dev DB `document_chunks.embedding` / `knowledge_nodes.embedding` 两列都是 `text` 类型不是 `vector`，pgvector `<=>` 操作符不可用，schema 层限制超出本任务代码修复范围 |
-| TD-069 | dev DB embedding 列类型与 pgvector 操作符不匹配导致真实向量召回不可用 | ⚫ Candidate | P0 | 后端 / RAG / Embedding / AI Chat / Schema | dev DB `document_chunks.embedding` (1062 行已 backfill 硅流 4096 维) / `knowledge_nodes.embedding` (599 行 100% NULL，从未填过) 两列当前 `text` 类型；pgvector 扩展已装但 `<=>` cosine 操作符要求 `vector` 类型。需：① alembic 迁移将两列改为 `vector(4096)`；② `embed_chunks` 任务重灌已上传文件（5 个 PDF）→ document_chunks；③ 评估是否给 `extract_knowledge_graph` 任务加 `embedding` 字段填充，或先标 graph_node 通道永久走 keyword 兜底；④ 重跑 REQ-018~REQ-029 全部报告，vector_fallback_count 应为 0 且 vector topN 真实命中 |
+| TD-068 | AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明 | 🟢 完成 (PR #TODO) | P0 | 后端 / RAG / Embedding / AI Chat | Slice 1 PR #355 squash merge `fdffd60`：trace 已透出 `embedding_fallback` metadata。Slice 2 (PR #TODO squash merge)：修 `embedding_service.py` 多 provider fallback + 修 `pg_chunk_vector_retriever.py` `CAST(:vec AS vector)` 后 query embedding 真实生成（硅流 4096 维）+ Slice 3 (TD-069) schema 迁移 `text` → `vector(4096)` + knowledge_nodes 599 行 backfill。验证：psql pgvector cosine 真返回 (chunk 0.6677 / node 0.6638)，`vector_fallback_count: 0`，4 通道全激活 |
+| TD-069 | dev DB embedding 列类型与 pgvector 操作符不匹配导致真实向量召回不可用 | 🟢 完成 (PR #TODO squash merge) | P0 | 后端 / RAG / Embedding / AI Chat / Schema | dev DB `document_chunks.embedding` (1062 行已 backfill 硅流 4096 维) / `knowledge_nodes.embedding` (599 行 100% NULL，从未填过) 两列当前 `text` 类型；pgvector 扩展已装但 `<=>` cosine 操作符要求 `vector` 类型。PR #TODO squash merge：alembic 030 迁移 `text` → `vector(4096)` (USING expression 兼容 NULL) + `extract_knowledge_graph` 加 embedding 字段填充 + 一次性 `backfill_knowledge_node_embeddings.py` 脚本回填 599 节点 + 同步 merge TD-068 Slice 2 代码修复 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -4018,7 +4018,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-068: AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明
 
-状态：🟡 部分收口（diagnostics 透出 + 脚本识别 + 回归测试 PR #355 已合并；Slice 2 诊断完成，真实根因已定位为 schema 层，登记 TD-069 接力）
+状态：🟢 完成 (PR #TODO)
 
 | 字段 | 内容 |
 |------|------|
@@ -4076,7 +4076,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-069: dev DB embedding 列类型与 pgvector 操作符不匹配导致真实向量召回不可用
 
-状态：⚫ Candidate
+状态：🟢 完成 (PR #TODO squash merge)
 
 | 字段 | 内容 |
 |------|------|
@@ -4120,3 +4120,4 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 **交付记录**
 
 - 2026-06-19 登记（TD-068 Slice 2 诊断发现）。
+- 2026-06-19 修复完成 (PR #TODO squash merge)：alembic 030 迁移 `document_chunks.embedding` / `knowledge_nodes.embedding` `text` → `vector(4096)` (USING expression)；新增 `backfill_knowledge_node_embeddings.py` 一次性脚本回填 599 节点 (硅流 8B 4096 维)；`extract_knowledge_graph.py` 加 embedding 字段填充；同步 merge TD-068 Slice 2 代码修复 (`embedding_service.py` 多 provider fallback + `pg_chunk_vector_retriever.py` / `recall_service.py` CAST 修复)；验证 psql pgvector cosine 真返回 (`SELECT 1 - (embedding <=> '[...]'::vector) FROM document_chunks` 正常) + `validate_req024_p2_real_validation.py` 真 PG dry-run `vector_fallback_count: 0` + retrieval_topn.vector 真命中 (chunk top-1 score 0.6677) + 4 通道全部激活。`document_chunks.embedding` 1062 行已 backfill / `knowledge_nodes.embedding` 599/599 backfilled。报告重跑留独立 PR。

@@ -38,10 +38,10 @@ class PgVectorRecallChannel:
             text(
                 "SELECT n.id, n.title, n.description, n.domain, n.level, n.path, "
                 "n.source_file_id, n.source_chunk_id, "
-                "1 - (n.embedding <=> :vec::vector) AS score "
+                "1 - (n.embedding <=> CAST(:vec AS vector)) AS score "
                 "FROM metaedu.knowledge_nodes n "
                 "WHERE n.tenant_id = :tid AND n.embedding IS NOT NULL "
-                "ORDER BY n.embedding <=> :vec::vector LIMIT :lim"
+                "ORDER BY n.embedding <=> CAST(:vec AS vector) LIMIT :lim"
             ),
             {"tid": tenant_id, "vec": vec_str, "lim": top_k},
         )

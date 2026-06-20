@@ -22,7 +22,6 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
 |------|------|--------|------|--------|--------|
-| TD-068 AI Chat vector embedding 为空底层修复 | 🟡 部分收口（docs-only 诊断完成） | P1 | RAG / Embedding / Infrastructure | 分支 `docs/td-068-slice2-diagnosis-td069-handoff`：Slice 2 诊断完成，真实根因为 dev DB schema 层（`document_chunks.embedding` / `knowledge_nodes.embedding` 两列都是 `text` 类型，pgvector `<=>` 操作符不可用；`knowledge_nodes.embedding` 599 行 100% NULL）。代码修复 (provider 多 fallback + retriever CAST) 已能真实生成 query embedding 但暂不 merge，等 TD-069 schema migration 一起合并 | [TD-068](technical-debt.md#td-068) / [TD-069](technical-debt.md#td-069) |
 | TD-032 `validate_req024_p2_real_validation.py` 拆分 | ⚫ Candidate | P1 | Governance / Source File Sizes | 1035 行已登记例外；P2 长链收口后脚本逻辑稳定，拆分风险低 | [td-032-source-file-sizes.md](02-baselines/td-032-source-file-sizes.md) |
 
 ## 最近完成
@@ -34,6 +33,7 @@
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
 | 2026-06-18 | DOC-073 门禁脚本防绕过与规则修改范围校验 | 🟢 完成 | PR #362 squash merge `11e9138`：新增 `gate_file_scope` 检查，非 DOC 门禁 / 治理脚本任务修改工程门禁脚本时会被 `scripts/check-engineering-docs` 拦截；补专项测试 30 passed | [Backlog](../01-product-planning/04-backlog.md) / [PR #362](https://github.com/MarkDanile/MetaEduBase/pull/362) |
+| 2026-06-19 | TD-068 + TD-069 联合修复 | 🟢 完成 | 分支 `feat/td-069-embedding-column-vector-migration` PR #TODO squash merge：alembic 030 迁移 + 599 节点 backfill + TD-068 Slice 2 代码同步 merge。psql pgvector cosine 真返回 + `vector_fallback_count: 0` + 4 通道全激活 | [TD-068](technical-debt.md#td-068) / [TD-069](technical-debt.md#td-069) / [PR #TODO](https://github.com/MarkDanile/MetaEduBase/pull/TODO) |
 | 2026-06-18 | REQ-029 P2 弱召回 AC-5 阈值重设计 | 🟢 完成 | 分支 `feat/req-029-ac5-threshold-redesign`：residual ratio 公式 + `--lift-mode` CLI。Residual 模式 AC-5 5/10 达标，整条 P2 长链收口 | [REQ-029](../01-product-planning/05-requirements/REQ-029-p2-ac5-threshold-redesign.md) / [Residual Report](../02-delivery-plans/01-specs/2026-06-18-req-029-ac5-threshold-residual-report.md) |
 | 2026-06-18 | REQ-028 P2 弱召回自动质量比较口径改造 | 🟢 完成 | PR #360 squash merge `f624f49`：三口径（substring/semantic/llm_judge）+ v3 样例 10 条（keypoint 带 synonyms+weight）+ 真 LLM 报告。REQ-029 residual 模式补判 verdict 后翻完成 | [REQ-028](../01-product-planning/05-requirements/REQ-028-p2-auto-quality-metric.md) / [Report v3](../02-delivery-plans/01-specs/2026-06-18-req-028-rag-effect-comparison-v3-report.md) / [PR #360](https://github.com/MarkDanile/MetaEduBase/pull/360) |
 | 2026-06-18 | REQ-027 P2 弱召回知识覆盖与样例多样性 | 🟢 完成 | PR #359 squash merge `8310fca`：5 条 v2 样例 (dev DB 513 knowledge_edges 校准) + wrapper 脚本 + 真 LLM v1+v2 两轮报告。机制 10/10 ✅；prompt 5/10 ✅。REQ-029 residual 阈值补判后 AC-4 9/10 达标，翻完成 | [REQ-027](../01-product-planning/05-requirements/REQ-027-p2-weak-recall-knowledge-coverage.md) / [Report v2](../02-delivery-plans/01-specs/2026-06-18-req-027-rag-effect-comparison-v2-report.md) / [PR #359](https://github.com/MarkDanile/MetaEduBase/pull/359) |
