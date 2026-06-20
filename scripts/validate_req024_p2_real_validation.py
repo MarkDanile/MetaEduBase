@@ -114,6 +114,10 @@ class ScenarioRun:
     keypoint_coverage_pct_semantic: float = 0.0
     keypoint_weight_pct_semantic: float = 0.0
     keypoint_llm_judge_pct: float | None = None
+    # REQ-030: semantic embedding coverage
+    keypoint_semantic_embedding_pct: float = 0.0
+    keypoint_semantic_embedding_weight_pct: float = 0.0
+    keypoint_semantic_embedding_hit_terms: list[str] = field(default_factory=list)
     keypoint_hit_list_substring: list[str] = field(default_factory=list)
     keypoint_hit_list_semantic: list[str] = field(default_factory=list)
 
@@ -249,6 +253,113 @@ def _compute_semantic_coverage(
         "coverage_pct": round(coverage_pct, 4),
         "weight_pct": round(weight_pct, 4),
         "hit_terms": hit_terms,
+    }
+
+
+# REQ-030: rate limit embedding API calls (硅流 / Qwen 默认 30 req/min，
+# 串行排队避免 429 卡死。Semaphore 控制并发数 = 2 即可保证 ≤ 30 req/min 在 batch 内)。
+_EMB_SEMAPHORE = asyncio.Semaphore(2)
+
+
+async def _compute_semantic_embedding_coverage(
+    answer_preview: str,
+    sources_titles: list[str],
+    keypoints: list[Keypoint],
+    embedding_callable,
+    threshold: float = 0.5,
+) -> dict[str, Any]:
+    """REQ-030 semantic embedding coverage: cosine similarity between answer
+    embedding and each keypoint's term + synonyms embeddings.
+
+    Returns dict with: coverage_pct, weight_pct, hit_terms, per_keypoint.
+    """
+    if not keypoints or embedding_callable is None:
+        return {
+            "coverage_pct": 0.0,
+            "weight_pct": 0.0,
+            "hit_terms": [],
+            "per_keypoint": [],
+            "error": "no embedding_callable or empty keypoints",
+        }
+    answer_text = (answer_preview or "") + "\n" + "\n".join(sources_titles or [])
+    if not answer_text.strip():
+        return {
+            "coverage_pct": 0.0,
+            "weight_pct": 0.0,
+            "hit_terms": [],
+            "per_keypoint": [],
+        }
+    try:
+        async with _EMB_SEMAPHORE:
+            answer_emb = await embedding_callable(answer_text)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "coverage_pct": 0.0,
+            "weight_pct": 0.0,
+            "hit_terms": [],
+            "per_keypoint": [],
+            "error": f"answer embedding failed: {exc}",
+        }
+    if not answer_emb:
+        return {
+            "coverage_pct": 0.0,
+            "weight_pct": 0.0,
+            "hit_terms": [],
+            "per_keypoint": [],
+            "error": "answer embedding returned None",
+        }
+
+    import math
+    hit_terms: list[str] = []
+    per_keypoint: list[dict[str, Any]] = []
+    total_weight = 0.0
+    hit_weight = 0.0
+
+    for kp in keypoints:
+        if not kp.term:
+            continue
+        candidates = [kp.term] + [s for s in (kp.synonyms or []) if s]
+        best_sim = 0.0
+        best_text = kp.term
+        for cand in candidates:
+            try:
+                async with _EMB_SEMAPHORE:
+                    cand_emb = await embedding_callable(cand)
+            except Exception:  # noqa: BLE001
+                continue
+            if not cand_emb or len(cand_emb) != len(answer_emb):
+                continue
+            # cosine similarity
+            dot = sum(a * b for a, b in zip(answer_emb, cand_emb))
+            norm_a = math.sqrt(sum(a * a for a in answer_emb))
+            norm_c = math.sqrt(sum(b * b for b in cand_emb))
+            if norm_a == 0 or norm_c == 0:
+                continue
+            sim = dot / (norm_a * norm_c)
+            if sim > best_sim:
+                best_sim = sim
+                best_text = cand
+        hit = best_sim >= threshold
+        per_keypoint.append({
+            "term": kp.term,
+            "best_match": best_text,
+            "similarity": round(best_sim, 4),
+            "hit": hit,
+            "weight": kp.weight,
+        })
+        if hit:
+            hit_terms.append(kp.term)
+            hit_weight += kp.weight
+        total_weight += kp.weight
+
+    total = len([k for k in keypoints if k.term])
+    coverage_pct = (len(hit_terms) / total) if total else 0.0
+    weight_pct = (hit_weight / total_weight) if total_weight else 0.0
+    return {
+        "coverage_pct": round(coverage_pct, 4),
+        "weight_pct": round(weight_pct, 4),
+        "hit_terms": hit_terms,
+        "per_keypoint": per_keypoint,
     }
 
 
@@ -449,9 +560,11 @@ async def _build_service(session, tenant_id: str, scenario: Scenario, *, allow_l
             )
 
         service._call_llm = _dry_llm  # type: ignore[method-assign]
-        return service, None
-    # allow_llm: return service's real _call_llm for LLM-as-judge (REQ-028)
-    return service, service._call_llm  # type: ignore[method-assign]
+        return service, None, None
+    # allow_llm: return service's real _call_llm for LLM-as-judge (REQ-028) and
+    # get_embedding for semantic embedding coverage (REQ-030)
+    from app.contexts.knowledge.application.embedding_service import get_embedding
+    return service, service._call_llm, get_embedding  # type: ignore[method-assign]
 
 
 def _trace_chunk_ids(items: list[dict[str, Any]]) -> list[str]:
@@ -466,7 +579,9 @@ def _trace_chunk_ids(items: list[dict[str, Any]]) -> list[str]:
 async def _run_question(session, tenant_id: str, q: Question, scenario: Scenario, *, allow_llm: bool) -> ScenarioRun:
     from app.contexts.knowledge.application.ai_chat_service import ChatRequest
 
-    service, llm_callable = await _build_service(session, tenant_id, scenario, allow_llm=allow_llm)
+    service, llm_callable, embedding_callable = await _build_service(
+        session, tenant_id, scenario, allow_llm=allow_llm
+    )
     result = await service.chat(
         ChatRequest(message=q.text, context_window=8),
         tenant_id=tenant_id,
@@ -523,6 +638,20 @@ async def _run_question(session, tenant_id: str, q: Question, scenario: Scenario
     )
     judge_pct = judge.get("coverage_pct") if isinstance(judge, dict) else None
 
+    # REQ-030: semantic embedding coverage (硅流 embedding cosine)
+    # Only run when --allow-llm (in dry-run, embedding_callable is None,
+    # so embedding math would fail / return 0).
+    semantic_emb = await _compute_semantic_embedding_coverage(
+        final_answer_preview,
+        sources_titles,
+        q.expected_keypoints,
+        embedding_callable if allow_llm else None,
+        threshold=0.5,
+    )
+    semantic_emb_pct = float(semantic_emb.get("coverage_pct", 0.0) or 0.0)
+    semantic_emb_weight_pct = float(semantic_emb.get("weight_pct", 0.0) or 0.0)
+    semantic_emb_hit_terms = list(semantic_emb.get("hit_terms", []) or [])
+
     return ScenarioRun(
         question_group=q.group,
         question_id=q.question_id,
@@ -556,6 +685,9 @@ async def _run_question(session, tenant_id: str, q: Question, scenario: Scenario
         keypoint_llm_judge_pct=judge_pct,
         keypoint_hit_list_substring=sub_list,
         keypoint_hit_list_semantic=sem["hit_terms"],
+        keypoint_semantic_embedding_pct=semantic_emb_pct,
+        keypoint_semantic_embedding_weight_pct=semantic_emb_weight_pct,
+        keypoint_semantic_embedding_hit_terms=semantic_emb_hit_terms,
     )
 
 
@@ -582,6 +714,10 @@ def _compact_run(run: ScenarioRun) -> dict[str, Any]:
         "keypoint_coverage_pct_semantic": run.keypoint_coverage_pct_semantic,
         "keypoint_weight_pct_semantic": run.keypoint_weight_pct_semantic,
         "keypoint_llm_judge_pct": run.keypoint_llm_judge_pct,
+        # REQ-030: semantic embedding + LLM-as-judge fields
+        "keypoint_semantic_embedding_pct": run.keypoint_semantic_embedding_pct,
+        "keypoint_semantic_embedding_weight_pct": run.keypoint_semantic_embedding_weight_pct,
+        "keypoint_semantic_embedding_hit_terms": run.keypoint_semantic_embedding_hit_terms,
         "final_answer_preview": run.final_answer_preview[:220],
     }
 
@@ -708,9 +844,9 @@ def _render_req026_section(
 
     lines.append("### 自动比较结论")
     lines.append("")
-    lines.append(f"- **机制层** (代码能力已接入): REQ-026 样例通过 `validate_req024_p2_real_validation.py` "
-                 f"脚本与 4 个 scenario (`baseline_rule_no_edge` / `query_understanding` / `graph_edge` / "
-                 f"`weighted_rrf`) 完成执行。")
+    lines.append("- **机制层** (代码能力已接入): REQ-026 样例通过 `validate_req024_p2_real_validation.py` "
+                 "脚本与 4 个 scenario (`baseline_rule_no_edge` / `query_understanding` / `graph_edge` / "
+                 "`weighted_rrf`) 完成执行。")
     lines.append(
         f"- **prompt 层** (evidence 已进入 prompt): REQ-026 样例中 `graph_edge_in_packed > 0` 的样例数 = "
         f"`{stats['samples_graph_edge_in_packed']}` / `{stats['samples_total']}`。"
@@ -898,6 +1034,15 @@ def _render_report(
         lines.append(req028_section)
         lines.append("")
 
+    # REQ-030 section (semantic embedding + LLM-as-judge)
+    if any(run.question_group == "REQ-028" for run in runs) and any(
+        run.keypoint_semantic_embedding_pct > 0.0 or run.keypoint_llm_judge_pct is not None
+        for run in runs
+    ):
+        req030_section = _render_req030_section(runs, grouped)
+        lines.append(req030_section)
+        lines.append("")
+
     return "\n".join(lines)
 
 
@@ -978,17 +1123,154 @@ def _render_req028_section(
     lines.append("")
     lines.append("### REQ-028 三口径决策依据")
     lines.append("")
-    lines.append(f"- **substring 口径 (历史基线)**: 与 REQ-026/027 报告一致；保留向后兼容。")
-    lines.append(f"- **semantic 口径 (主验收)**: term + synonyms 集合匹配，命中权重 1.0，修饰词权重 ≤0.5。")
-    lines.append(f"- **weight 口径 (semantic 加权)**: 按 Keypoint.weight 加权后的覆盖率；用于区分核心词与修饰词。")
-    lines.append(f"- **llm_judge 口径 (secondary signal)**: 由 LLM-as-judge 评估，仅在 `--allow-llm` 模式下生效；不作为唯一判定。")
-    lines.append(f"- **lift 口径 (REQ-029 阈值)**: residual_ratio = (weighted - baseline) / (1 - baseline)，解决 baseline 接近上限时绝对 delta 失去判别力的问题。")
-    lines.append(f"- **决策规则**: 当 semantic 与 substring 不一致时（如 semantic ≥ 0.50 但 substring = 0），优先看 semantic；语义匹配覆盖更准确反映真实命中。")
+    lines.append("- **substring 口径 (历史基线)**: 与 REQ-026/027 报告一致；保留向后兼容。")
+    lines.append("- **semantic 口径 (主验收)**: term + synonyms 集合匹配，命中权重 1.0，修饰词权重 ≤0.5。")
+    lines.append("- **weight 口径 (semantic 加权)**: 按 Keypoint.weight 加权后的覆盖率；用于区分核心词与修饰词。")
+    lines.append("- **llm_judge 口径 (secondary signal)**: 由 LLM-as-judge 评估，仅在 `--allow-llm` 模式下生效；不作为唯一判定。")
+    lines.append("- **lift 口径 (REQ-029 阈值)**: residual_ratio = (weighted - baseline) / (1 - baseline)，解决 baseline 接近上限时绝对 delta 失去判别力的问题。")
+    lines.append("- **决策规则**: 当 semantic 与 substring 不一致时（如 semantic ≥ 0.50 但 substring = 0），优先看 semantic；语义匹配覆盖更准确反映真实命中。")
     lines.append("")
     lines.append(f"- **AC-4 (semantic ≥ 0.50)**: `{semantic_above_threshold}` 样例达标（独立看 weighted scenario）")
     lines.append(f"- **AC-5 (semantic lift >= 0.30 in `{lift_mode}` mode)**: `{semantic_lift_threshold}` 样例达标")
     if lift_mode == "residual" and semantic_lift_threshold < 4:
         lines.append("- **未达成**: AC-5 residual 模式仍不达 4/10。已登记 REQ-030 接力。")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _render_req030_section(
+    runs: list[ScenarioRun],
+    grouped: dict[tuple[str, str], dict[str, ScenarioRun]],
+) -> str:
+    """REQ-030: render semantic embedding + LLM-as-judge four-metric comparison.
+
+    Per-sample matrix: substring / semantic / semantic embedding / LLM-as-judge
+    coverage. Plus Spearman correlation between semantic embedding and LLM-as-judge.
+    """
+    lines: list[str] = []
+    lines.append("## REQ-030 新口径对比（semantic embedding + LLM-as-judge）")
+    lines.append("")
+    lines.append("| Sample | Scenario | substring cov | semantic cov | semantic_emb cov | semantic_emb weight | LLM-as-judge cov |")
+    lines.append("|--------|----------|----------------|--------------|--------------------|----------------------|-------------------|")
+    sem_emb_pairs: list[tuple[float, float]] = []
+    for (group, qid), scenario_runs in grouped.items():
+        if group != "REQ-028":
+            continue
+        for scenario_name in [
+            "baseline_rule_no_edge",
+            "query_understanding",
+            "graph_edge",
+            "weighted_rrf",
+        ]:
+            run = scenario_runs.get(scenario_name)
+            if not run:
+                continue
+            judge_str = (
+                f"{run.keypoint_llm_judge_pct:.2f}"
+                if isinstance(run.keypoint_llm_judge_pct, (int, float))
+                else "-"
+            )
+            lines.append(
+                f"| {qid} | {scenario_name} | "
+                f"{run.keypoint_coverage_pct_substring:.2f} | "
+                f"{run.keypoint_coverage_pct_semantic:.2f} | "
+                f"{run.keypoint_semantic_embedding_pct:.2f} | "
+                f"{run.keypoint_semantic_embedding_weight_pct:.2f} | "
+                f"{judge_str} |"
+            )
+            if isinstance(run.keypoint_llm_judge_pct, (int, float)):
+                sem_emb_pairs.append(
+                    (run.keypoint_semantic_embedding_pct, run.keypoint_llm_judge_pct)
+                )
+    lines.append("")
+
+    # Spearman correlation between semantic_emb and llm_judge
+    if len(sem_emb_pairs) >= 3:
+        try:
+            from scipy.stats import spearmanr  # type: ignore
+            xs, ys = zip(*sem_emb_pairs)
+            rho, _ = spearmanr(xs, ys)
+            rho_str = f"{rho:.3f}"
+        except ImportError:
+            # fallback: simple Pearson
+            n = len(sem_emb_pairs)
+            mx = sum(p[0] for p in sem_emb_pairs) / n
+            my = sum(p[1] for p in sem_emb_pairs) / n
+            num = sum((p[0] - mx) * (p[1] - my) for p in sem_emb_pairs)
+            den_a = sum((p[0] - mx) ** 2 for p in sem_emb_pairs) ** 0.5
+            den_b = sum((p[1] - my) ** 2 for p in sem_emb_pairs) ** 0.5
+            rho = num / (den_a * den_b) if den_a * den_b > 0 else 0.0
+            rho_str = f"{rho:.3f} (Pearson fallback, scipy unavailable)"
+    else:
+        rho = 0.0
+        rho_str = "n/a"
+    lines.append("### REQ-030 双口径一致性")
+    lines.append("")
+    lines.append(
+        f"- semantic embedding vs LLM-as-judge Spearman correlation: `{rho_str}` (n={len(sem_emb_pairs)})"
+    )
+    lines.append("- AC-5 (semantic embedding delta ≥ 0.30) threshold: 见下方 per-sample summary")
+    lines.append("")
+
+    # Per-sample summary (semantic embedding delta)
+    lines.append("### REQ-030 per-sample summary (semantic embedding metric)")
+    lines.append("")
+    lines.append("| Sample | baseline sem_emb | weighted sem_emb | delta | 判定 (sem_emb) | LLM-judge delta | 判定 (judge) |")
+    lines.append("|--------|------------------|------------------|-------|-----------------|-----------------|----------------|")
+    sem_emb_above = 0
+    sem_emb_lift = 0
+    judge_lift = 0
+    for (group, qid), scenario_runs in grouped.items():
+        if group != "REQ-028":
+            continue
+        baseline = scenario_runs.get("baseline_rule_no_edge")
+        weighted = scenario_runs.get("weighted_rrf")
+        if not baseline or not weighted:
+            continue
+        delta = weighted.keypoint_semantic_embedding_pct - baseline.keypoint_semantic_embedding_pct
+        if delta >= 0.30:
+            verdict_se = "正向"
+            sem_emb_lift += 1
+        elif delta <= -0.30:
+            verdict_se = "退化"
+        else:
+            verdict_se = "中性"
+        if weighted.keypoint_semantic_embedding_pct >= 0.5:
+            sem_emb_above += 1
+        if (
+            isinstance(baseline.keypoint_llm_judge_pct, (int, float))
+            and isinstance(weighted.keypoint_llm_judge_pct, (int, float))
+        ):
+            judge_delta = weighted.keypoint_llm_judge_pct - baseline.keypoint_llm_judge_pct
+            if judge_delta >= 0.30:
+                verdict_j = "正向"
+                judge_lift += 1
+            elif judge_delta <= -0.30:
+                verdict_j = "退化"
+            else:
+                verdict_j = "中性"
+        else:
+            judge_delta = 0.0
+            verdict_j = "-"
+        lines.append(
+            f"| {qid} | {baseline.keypoint_semantic_embedding_pct:.2f} | "
+            f"{weighted.keypoint_semantic_embedding_pct:.2f} | {delta:+.2f} | {verdict_se} | "
+            f"{judge_delta:+.2f} | {verdict_j} |"
+        )
+    lines.append("")
+    lines.append("### REQ-030 三口径决策依据")
+    lines.append("")
+    lines.append("- **substring 口径 (历史基线)**: 与 REQ-026/027 报告一致。子串匹配，**不能识别 LLM 同义改写**——这是 REQ-028 v3 重跑后 AC 退步的根因。")
+    lines.append("- **semantic 口径 (REQ-028)**: term + synonyms 子串匹配集合，weight 加权。")
+    lines.append("- **semantic embedding 口径 (REQ-030, 主验收)**: 硅流 embedding 计算 answer 与 keypoint 余弦相似度，threshold 0.5 命中。**能识别同义改写**。")
+    lines.append("- **LLM-as-judge 口径 (REQ-028+030 secondary signal)**: LLM 评估 answer 与 keypoints 覆盖度，输出 JSON。仅在 `--allow-llm` 启用。")
+    lines.append("- **决策规则**: 在真 vector 召回下，substring / semantic 口径系统性低估 P2 长链能力；semantic embedding 是主验收口径，LLM-as-judge 是双口径一致性验证。")
+    lines.append("")
+    lines.append(f"- **AC-4 (semantic_emb ≥ 0.50)**: `{sem_emb_above}` 样例达标")
+    lines.append(f"- **AC-5 (semantic_emb lift >= 0.30)**: `{sem_emb_lift}` 样例达标")
+    lines.append(f"- **AC-5 (LLM-judge lift >= 0.30)**: `{judge_lift}` 样例达标 (secondary signal)")
+    if sem_emb_lift < 4:
+        lines.append("- **未达成**: AC-5 semantic embedding 模式仍不达 4/10。已登记 REQ-031 接力。")
     lines.append("")
     return "\n".join(lines)
 

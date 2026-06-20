@@ -20,7 +20,8 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
 |------|------|--------|------|--------|--------|
-| TD-032 `validate_req024_p2_real_validation.py` 拆分 | ⚫ Candidate | P1 | Governance / Source File Sizes | 1035 行已登记例外；P2 长链收口后脚本逻辑稳定，拆分风险低 | [td-032-source-file-sizes.md](02-baselines/td-032-source-file-sizes.md) |
+| REQ-031 P2 semantic embedding 覆盖率稳定性（REQ-030 接力） | ⚫ Candidate | P0 | P2 / RAG / Embedding | 离线预计算 keypoint embeddings 缓存 + httpx timeout 30→60s + retry with backoff；或评估本地 sentence-transformers | [REQ-030 Report](../02-delivery-plans/01-specs/2026-06-20-req-030-new-quality-metric-report.md) |
+| TD-032 `validate_req024_p2_real_validation.py` 拆分 | ⚫ Candidate | P1 | Governance / Source File Sizes | 1369 行已登记例外；P2 长链收口后脚本逻辑稳定，拆分风险低 | [td-032-source-file-sizes.md](02-baselines/td-032-source-file-sizes.md) |
 
 ## 最近完成
 
@@ -30,6 +31,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-20 | REQ-030 P2 RAG 自动质量评估新口径（semantic embedding + LLM-as-judge） | 🟡 部分收口 | 脚本支持四口径（substring/semantic/semantic_embedding/llm_judge）+ 报告新增 REQ-030 章节 + dry-run 通过。**真 LLM 报告 semantic_emb 全 0**：硅流 embedding API batch 下挂起，httpx 30s timeout 不足；LLM-judge 通路完整，AC-5 1/10 (Q4 +0.60)。已登记 REQ-031 接力 | [REQ-030](../01-product-planning/05-requirements/REQ-030-p2-rag-new-quality-metric.md) / [Report](../02-delivery-plans/01-specs/2026-06-20-req-030-new-quality-metric-report.md) / [REQ-031](../01-product-planning/04-backlog.md) |
 | 2026-06-18 | DOC-073 门禁脚本防绕过与规则修改范围校验 | 🟢 完成 | PR #362 squash merge `11e9138`：新增 `gate_file_scope` 检查，非 DOC 门禁 / 治理脚本任务修改工程门禁脚本时会被 `scripts/check-engineering-docs` 拦截；补专项测试 30 passed | [Backlog](../01-product-planning/04-backlog.md) / [PR #362](https://github.com/MarkDanile/MetaEduBase/pull/362) |
 | 2026-06-20 | REQ-028 v3 重跑 (TD-068+069 后真实向量召回) | 🟢 完成 | vector 通道真命中后 baseline 升 / weighted 降；AC-4 7→6，AC-5 residual 5→1。真实向量召回下 P2 长链需要新口径评估 | [REQ-028 v3 报告](../02-delivery-plans/01-specs/2026-06-18-req-028-rag-effect-comparison-v3-report.md) / PR #TODO |
 | 2026-06-18 | REQ-029 P2 弱召回 AC-5 阈值重设计 | 🟢 完成 | 分支 `feat/req-029-ac5-threshold-redesign`：residual ratio 公式 + `--lift-mode` CLI。Residual 模式 AC-5 5/10 达标，整条 P2 长链收口 | [REQ-029](../01-product-planning/05-requirements/REQ-029-p2-ac5-threshold-redesign.md) / [Residual Report](../02-delivery-plans/01-specs/2026-06-18-req-029-ac5-threshold-residual-report.md) |
