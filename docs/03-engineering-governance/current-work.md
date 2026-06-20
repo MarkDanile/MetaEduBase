@@ -14,14 +14,14 @@
 
 ## 当前进行中
 
-（无活跃任务。REQ-033 P2 链路价值评估已收口（PR 待合并），判定 graph_edge 在真 vector 下价值有限，REQ-030 翻完成。下一批接力候选见下方。）
+（无活跃任务。REQ-034 P2 graph_edge RRF 权重/策略调整评估已收口（PR 待合并），weight sweep 证生产默认 0.5 下 graph_edge 惰性（召回 8 chunks/样例但 0 进 fusion/packed），下调权重无效，登记 REQ-035 决策候选。下一批接力候选见下方。）
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
 |------|------|--------|------|--------|--------|
-| REQ-034 P2 graph_edge RRF 权重/策略调整评估（REQ-033 follow-up） | ⚫ Candidate | P1 | P2 / RAG / Retrieval | 评估是否下调 graph_edge RRF 权重 / 仅在 vector 召回弱时触发 edge / 调整 ContextPacker 优先级。需评估对 REQ-018/025 历史验收影响面 | [REQ-033 评估报告](../02-delivery-plans/01-specs/2026-06-20-req-033-p2-chain-value-evaluation-report.md) |
-| TD-032 `validate_req024_p2_real_validation.py` 拆分 | ⚫ Candidate | P1 | Governance / Source File Sizes | 已超 1000 行；脚本逻辑稳定，拆分风险低 | [td-032-source-file-sizes.md](02-baselines/td-032-source-file-sizes.md) |
+| REQ-035 P2 graph_edge 通道去留决策（REQ-034 follow-up） | ⚫ Candidate | P2 | P2 / RAG / Retrieval | 决策 (a) 禁用 graph_edge 通道省召回成本 vs (b) 上调默认权重使 edge 实际贡献。REQ-033/034 已证 edge 在默认权重惰性、即使进 packed 亦不改善 Metric B/跨文档。任一变更需重跑 REQ-025 真 LLM 验收 | [REQ-034 评估报告](../02-delivery-plans/01-specs/2026-06-20-req-034-graph-edge-rrf-weight-strategy-evaluation-report.md) |
+| TD-032 `validate_req024_p2_real_validation.py` 拆分 | ⚫ Candidate | P1 | Governance / Source File Sizes | 已超 1000 行（REQ-034 后约 1850 行）；脚本逻辑稳定，拆分风险低 | [td-032-source-file-sizes.md](02-baselines/td-032-source-file-sizes.md) |
 
 ## 最近完成
 
@@ -31,6 +31,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-20 | REQ-034 P2 graph_edge RRF 权重/策略调整评估（REQ-033 follow-up） | 🟢 完成 | 5 点 weight sweep + 策略可行性 + REQ-018/025 影响面。**关键发现**：生产默认 0.5 下 graph_edge 召回 8 chunks/样例但 0 进 fusion/packed（惰性死权重）；REQ-033 Metric A=5/10 实测于 w=1.2 boosting，高估生产贡献。下调权重无效；保留 0.5，登记 REQ-035 决策候选 | [REQ-034](../01-product-planning/05-requirements/REQ-034-p2-graph-edge-rrf-weight-strategy-evaluation.md) / [评估报告](../02-delivery-plans/01-specs/2026-06-20-req-034-graph-edge-rrf-weight-strategy-evaluation-report.md) |
 | 2026-06-20 | REQ-033 P2 链路真 vector 价值评估 | 🟢 完成 | retrieval 层价值评估：指标 A（edge 关联补足率）=5/10、指标 B（跨 section 扩展）=1/10、跨文档 grounding=0/10。判定**价值有限**。AC-5 根因归档为指标错配（keypoint 覆盖 vs graph_edge 关联补足目标不一致），REQ-030 翻完成。登记 REQ-034 候选 | [REQ-033](../01-product-planning/05-requirements/REQ-033-p2-chain-real-vector-value-evaluation.md) / [评估报告](../02-delivery-plans/01-specs/2026-06-20-req-033-p2-chain-value-evaluation-report.md) |
 | 2026-06-20 | REQ-032 P2 semantic_emb 阈值校准与 continuous 口径 | 🟢 完成 | `--semantic-emb-threshold` CLI + continuous 字段。threshold 0.35 后 AC-4 达标 4/10；AC-5 三口径各 1/10，根因定位为 P2 链路无正向贡献（非阈值），登记 REQ-033 | [REQ-032](../01-product-planning/05-requirements/REQ-032-p2-semantic-emb-threshold-calibration.md) / [Report](../02-delivery-plans/01-specs/2026-06-20-req-030-new-quality-metric-report.md) |
 | 2026-06-20 | REQ-031 P2 semantic embedding 覆盖率稳定性（REQ-030 接力） | 🟢 完成 | 进程内 embedding 缓存（hit=1581/miss=259）+ asyncio.wait_for 60s 硬超时 + 降级。timeout=0/error=0 消除 batch 挂起；semantic_emb 从全 0 变为 8/10 非零。REQ-030 AC-4/5 阈值校准留 follow-up | [REQ-031](../01-product-planning/05-requirements/REQ-031-p2-semantic-embedding-coverage-stabilization.md) / [Report](../02-delivery-plans/01-specs/2026-06-20-req-030-new-quality-metric-report.md) |

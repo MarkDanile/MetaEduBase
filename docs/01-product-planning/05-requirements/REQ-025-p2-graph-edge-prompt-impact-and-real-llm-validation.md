@@ -60,6 +60,16 @@ REQ-024 干跑验收证明 graph_edge 通道在真实 dev DB 中可以补足 fus
 - 报告中的 `vector fallback trace count` 大于 0，因此本轮仍不能把 vector topN 解释为真实语义向量召回；具体计数以报告为准。
 - 后续由 [REQ-026](REQ-026-p2-rag-effect-comparison-and-weak-recall-samples.md) 承接：构建更稳定的弱召回样例集、自动质量比较口径和真实效果回归。
 
+## 验收基线补充说明（2026-06-20，REQ-034 评估后）
+
+REQ-034 weight sweep 证实在**生产默认权重 0.5**（`ai_router._RRF_DEFAULT_WEIGHTS`，未设 `RRF_CHANNEL_WEIGHTS` env）下，graph_edge 每样例召回约 8 chunks 但 **0 进 fusion_topN / packed**——edge 通道在生产默认配置下是惰性死权重。本需求 2026-06-18 real LLM 验收中 `edge in packed > 0` 成立，依赖校验脚本 `weighted_rrf` scenario 使用的 **w=1.2 boosting 配置**（非生产默认）。
+
+因此本需求「graph_edge 进 prompt」验收基线补充说明：
+
+- 验收成立条件：graph_edge RRF 权重 ≥ 1.2（boosting）或生产 env 显式上调。
+- 生产默认 0.5 下 edge 不进 prompt，验收不成立——这是价值转移（真 vector 召回下 vector 通道已强，edge 被 RRF 挤出），非回归。
+- 详见 [REQ-034 评估报告](../../02-delivery-plans/01-specs/2026-06-20-req-034-graph-edge-rrf-weight-strategy-evaluation-report.md)。graph_edge 通道去留决策由 REQ-035 候选承接。
+
 ## 事实源
 
 - REQ-024 report: `docs/02-delivery-plans/01-specs/2026-06-18-req-024-p2-real-validation-report.md`
