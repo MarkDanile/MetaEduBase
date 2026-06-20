@@ -1,6 +1,6 @@
 # TD-032 Slice 8: 拆分 `validate_req024_p2_real_validation.py`
 
-> Status: 🟢 完成（PR #375 squash merge；dry-run render 路径 byte-identical 验证通过）
+> Status: 🟢 完成（PR #373 squash merge；dry-run render 路径 byte-identical 验证通过）
 > Created: 2026-06-20
 > Source: TD-032 follow-up（baseline 已登记 `validate_req024_p2_real_validation.py` 待拆分）
 > Plan: `docs/02-delivery-plans/02-plans/2026-06-20-td-032-req024-validation-script-split-plan.md`

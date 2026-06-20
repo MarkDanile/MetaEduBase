@@ -1488,7 +1488,7 @@
   - 验证（cwd=packages/web）：`pnpm typecheck` 退出码 0（零输出）；`pnpm lint` 退出码 0（零 warning）；`pnpm build` 退出码 0，✓ built in 3.00s；`scripts/check-engineering-docs` 退出码 0。
   - 实施时 3 处小修正（与切片 4 / 切片 6 经验一致）：`v-model` 改 `:value + @input` 显式 emit 链 + 子组件内部 helper（templateFieldLabel/getFieldLabel + labels 回退硬编码表）迁到 `FileTabsPanel` 内部 + `stepBgClass`/`stepIcon` 等 5 helper 迁到 `FileDetailPipelineStatusPanel` 内部（独立于切片 4 `PipelineStatusPanel` 因 document 5 步 vs structured_data 4 步 pipeline 不可复用）。
   - **TD-032 整体最终收口**：7 切片全部合并；500 附近全部拆分到位（document/router.py 29 / ResourceLibraryView 286 / FileDetailView 181）；仅 `main.css` 1343 保留 `🔵 例外已登记`（设计系统级别重构，TD-032 周期外）。
-- 2026-06-20 切片 8 已合并：[PR #375](https://github.com/MarkDanile/MetaEduBase/pull/375)。
+- 2026-06-20 切片 8 已合并：[PR #373](https://github.com/MarkDanile/MetaEduBase/pull/373)。
   - 落地 12 个文件（1 改瘦身 + 9 新包模块 + 2 新 spec/plan）：`scripts/validate_req024_p2_real_validation.py` 1955 → 23 行（薄入口 `sys.path` + `from rag_validation import main`）+ `scripts/rag_validation/` 包 9 文件（`__init__.py` 9 / `models.py` 119 / `loader.py` 86 / `coverage.py` 305 / `runner.py` 374 / `report.py` 397 / `report_quality.py` 196 / `report_chain.py` 457 / `main.py` 142）；全部 ≤500 行。
   - 触发原因：该脚本在 TD-032 收口时（2026-06-08）为 1035 行已登记待拆分，此后 P2 RAG 质量评估长链（REQ-028→034）持续叠加至 1955 行，远超 1000 行红线。
   - 验证：`ruff check scripts/rag_validation/ scripts/validate_req024_p2_real_validation.py` → All checks passed!（2 个未用 `Any` import 由 `--fix` 修）；`python -m py_compile` 全部通过；dry-run 复跑成功；**等价验证**——喂入拆分前捕获的 ScenarioRun JSON 经新 `_render_report` 重渲染，输出与拆分前报告 byte-identical（唯一差异为 db_url mask 输入串，系测试 harness 传入不同字符串，非渲染逻辑差异）；`scripts/scan-source-sizes --refresh` + `--diff` → `(no differences from baseline)`；`scripts/check-engineering-docs` 退出码 0。

@@ -1,6 +1,6 @@
 # TD-032 Slice 8 Plan: 拆分 `validate_req024_p2_real_validation.py`
 
-> Status: 🟢 完成（PR #375）
+> Status: 🟢 完成（PR #373）
 > Created: 2026-06-20
 > Spec: `docs/02-delivery-plans/01-specs/2026-06-20-td-032-req024-validation-script-split.md`
 
