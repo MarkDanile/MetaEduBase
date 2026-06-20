@@ -92,6 +92,7 @@
 
 ## 扫描历史
 - 2026-06-20：`scripts/scan-source-sizes --refresh` 自动刷新行数列。
+- 2026-06-20：`scripts/scan-source-sizes --refresh` 自动刷新行数列。
 - 2026-06-10：`scripts/scan-source-sizes --refresh`（DOC-055 收口）刷新 baseline — `--diff` 恢复 `(no differences from baseline)`；本轮 refresh 吸收了 PR #143 squash merge 时带入的 TD-034 代码行数变化（`extract_template_prompts.py` 88 → 93；`test_extract_template_prompts.py` 263 → 261），原 baseline 由 DOC-042 收口时建立（彼时 `--diff` 在 PR #143 合并后即报 2 个差异但被遗漏）。
 
 - 2026-06-08：与 `technical-debt.md#td-032` 证据段同步，基线建立。
