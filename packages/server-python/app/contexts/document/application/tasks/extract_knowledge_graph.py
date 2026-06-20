@@ -12,6 +12,7 @@ from celery import shared_task
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.contexts.knowledge.application.embedding_service import get_embedding
 from app.shared.llm.chat import chat
 from app.shared.tasks.lifecycle import (
     _create_task,
@@ -124,6 +125,15 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str, pipeline_versi
                     # Store normalized forms too
                     node_name_map[name.strip().strip('"')] = node_id
 
+                    # TD-069: generate embedding for this node (siliconflow 8B 4096-dim)
+                    # embedding_service.get_embedding returns 4096-dim list or None
+                    node_embedding = await get_embedding(name)
+                    node_embedding_str = (
+                        "[" + ",".join(f"{v:.6f}" for v in node_embedding) + "]"
+                        if node_embedding
+                        else None
+                    )
+
                     # REQ-010 Slice 5: 找首个包含 entity name 的 chunk
                     resolved_chunk_id = find_chunk_for_entity(chunks, name)
                     resolution = "chunk_resolved" if resolved_chunk_id else "file_only"
@@ -132,10 +142,11 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str, pipeline_versi
                         text(
                             "INSERT INTO metaedu.knowledge_nodes "
                             "(id, tenant_id, title, description, domain, level, "
-                            "path, source_file_id, source_chunk_id, "
+                            "path, source_file_id, source_chunk_id, embedding, "
                             "node_source_resolution, created_at, updated_at) "
                             "VALUES (:id, :tid, :title, '', 'education_sports', "
-                            "'knowledge_point', :path, :fid, :scid, :res, :now, :now)"
+                            "'knowledge_point', :path, :fid, :scid, "
+                            "CAST(:emb AS vector), :res, :now, :now)"
                         ),
                         {
                             "id": node_id,
@@ -144,6 +155,7 @@ def extract_knowledge_graph(file_id_str: str, tenant_id_str: str, pipeline_versi
                             "path": str(node_id)[:8],
                             "fid": file_id,
                             "scid": resolved_chunk_id,
+                            "emb": node_embedding_str,
                             "res": resolution,
                             "now": datetime.now(UTC).replace(tzinfo=None),
                         },

@@ -76,11 +76,11 @@ class PgChunkVectorRetriever:
             text(
                 "SELECT c.id, c.file_id, c.chunk_index, c.content, "
                 "c.section_title, c.section_path, "
-                "1 - (c.embedding <=> :vec::vector) AS score "
+                "1 - (c.embedding <=> CAST(:vec AS vector)) AS score "
                 "FROM metaedu.document_chunks c "
                 "WHERE c.tenant_id = :tid AND c.embedding IS NOT NULL"
                 f"{where_extra} "
-                "ORDER BY c.embedding <=> :vec::vector LIMIT :lim"
+                "ORDER BY c.embedding <=> CAST(:vec AS vector) LIMIT :lim"
             ),
             params,
         )
