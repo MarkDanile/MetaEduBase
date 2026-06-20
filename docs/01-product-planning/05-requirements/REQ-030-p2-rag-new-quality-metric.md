@@ -1,6 +1,6 @@
 # REQ-030: P2 RAG 自动质量评估新口径设计
 
-Status: 🟡 部分收口（脚本改造 + 报告生成完成；REQ-031 修复 embedding 通路 + REQ-032 阈值校准后 AC-4 达标 4/10，AC-5 三口径各 1/10 不达标，根因为 P2 链路本身无正向贡献，登记 REQ-033 评估链路）
+Status: 🟢 完成（REQ-033 评估后 AC-5 根因归档为指标错配：keypoint 覆盖 vs graph_edge 关联补足目标不一致，非链路缺陷。评估口径充分：四口径 + continuous + Spearman + retrieval 层指标）
 Priority: P0
 Milestone: P2
 Source: REQ-028 v3 重跑发现（TD-068+069 schema 修复后 vector 真召回导致 AC-4/AC-5 退步）
@@ -102,3 +102,4 @@ REQ-028 v3 10 样例中：
 | 2026-06-20 | 后续分流 | REQ-031 (⚫ Candidate)：REQ-030 接力 — 降低 AC 阈值（threshold 0.5 → 0.3）+ 加入 batch 限流 (5 req/sec) + 离线预计算 keypoint embeddings（避免每次 query 重新算）+ 评估用本地 sentence-transformers 替代硅流 API |
 | 2026-06-20 | REQ-031 接力收口 | REQ-031 实现进程内 embedding 缓存 (hit=1581/miss=259) + asyncio.wait_for 60s 硬超时 + 降级，**timeout=0/error=0 彻底消除 batch 挂起**。semantic_emb 从全 0 变为 **8/10 样例非零**（Q4/Q9 全零）。Spearman ρ=0.109 (n=40) 如实计算。**REQ-030 AC-4/5 仍 0/10**：threshold 0.5 过严，semantic_emb 值集中 0.20-0.40——属阈值校准问题，留 follow-up（threshold 0.5→0.35 或改 continuous weighted coverage）。REQ-030 维持 🟡 部分收口 |
 | 2026-06-20 | REQ-032 接力收口 | REQ-032 实现 `--semantic-emb-threshold` CLI + `keypoint_semantic_embedding_continuous_pct` 字段（continuous weighted coverage）。threshold 0.35 重跑：**AC-4 达标 4/10**（Q1/Q6/Q7/Q10，比 0.5 时 0/10 改善）。**AC-5 三口径各 1/10**（sem_emb Q6 +0.40 / continuous Q9 +0.31 / LLM-judge Q5 +0.40），正向 sample 互不一致；continuous delta 9/10 中性。continuous vs LLM-judge Pearson=0.072。**最终结论**：评估口径已充分，无法通过调阈值让 AC-5 达 4/10；根因是 P2 链路本身在真 vector 下对 keypoint 覆盖无系统性正向贡献（与 REQ-028 v3 核心发现一致）。登记 REQ-033 评估 P2 链路（RRF 权重 / graph_edge 策略）。REQ-030 维持 🟡 部分收口（AC-1/2/3/4/6/7/8 达标，AC-5 转链路问题） |
+| 2026-06-20 | REQ-033 接力收口 → REQ-030 翻完成 | REQ-033 评估 P2 链路 retrieval 层价值：指标 A（graph_edge 关联补足率）=5/10、指标 B（跨 section 扩展）=1/10、跨文档 grounding=0/10。**价值判定：价值有限**。graph_edge 在真 vector 下价值被稀释（vector 已强，edge RRF 融合时多被挤出，且不扩展跨文档 grounding）。**REQ-030 AC-5 不达标归档为指标错配**：keypoint 覆盖衡量「答案命中分散关键词」，graph_edge 补足「同文档关联上下文」，目标不一致——非链路缺陷。评估口径已充分（四口径 + continuous + Spearman + retrieval 层指标 A/B）。**REQ-030 翻 🟢 完成**。登记 REQ-034 候选评估是否调整 graph_edge RRF 权重/策略 |

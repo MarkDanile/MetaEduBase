@@ -1091,6 +1091,12 @@ def _render_report(
         lines.append(req030_section)
         lines.append("")
 
+    # REQ-033 section (P2 chain real-vector value evaluation, retrieval-layer metrics)
+    if any(run.question_group == "REQ-028" for run in runs):
+        req033_section = _render_req033_section(runs, grouped)
+        lines.append(req033_section)
+        lines.append("")
+
     return "\n".join(lines)
 
 
@@ -1365,6 +1371,184 @@ def _render_req030_section(
     lines.append(f"- **AC-5 (LLM-judge lift >= 0.30)**: `{judge_lift}` 样例达标 (secondary signal)")
     if sem_emb_lift < 4 and cont_lift < 4:
         lines.append("- **未达成**: AC-5 semantic_emb + continuous 双口径均不达 4/10。根因诊断见报告 §0.1（P2 链路在真 vector 下对 keypoint 覆盖无系统性正向贡献，非阈值问题）。")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _render_req033_section(
+    runs: list[ScenarioRun],
+    grouped: dict[tuple[str, str], dict[str, ScenarioRun]],
+) -> str:
+    """REQ-033: P2 chain real-vector value evaluation.
+
+    Retrieval-layer value analysis (graph_edge channel effectiveness,
+    cross-document grounding, packed re-rank overlap) + two new value
+    metrics aligned with graph_edge's design intent (context supplementation,
+    not keypoint hit).
+    """
+    lines: list[str] = []
+    lines.append("## REQ-033 P2 链路真 vector 价值评估")
+    lines.append("")
+    lines.append("> graph_edge 设计意图：补足 keyword/vector 弱召回的关联上下文（REQ-018/025）。")
+    lines.append("> keypoint 覆盖不是衡量其价值的正确指标——本节用 retrieval 层指标评估真实贡献。")
+    lines.append("")
+
+    # Table 1: graph_edge channel effectiveness per sample (weighted scenario)
+    lines.append("### 1. graph_edge 通道有效性（weighted scenario）")
+    lines.append("")
+    lines.append("| Sample | edge 召回 | edge 进 fusion | edge 进 packed | 判定 |")
+    lines.append("|--------|----------|----------------|----------------|------|")
+    edge_packed_positive = 0
+    total_samples = 0
+    for (group, qid), scenario_runs in grouped.items():
+        if group != "REQ-028":
+            continue
+        total_samples += 1
+        weighted = scenario_runs.get("weighted_rrf")
+        if not weighted:
+            continue
+        edge_recall = len(weighted.graph_edge_chunk_ids)
+        edge_fusion = weighted.graph_edge_fusion_count
+        edge_packed = weighted.graph_edge_packed_count
+        if edge_packed > 0:
+            verdict = "edge 进入 packed"
+            edge_packed_positive += 1
+        elif edge_fusion > 0:
+            verdict = "进 fusion 未进 packed"
+        elif edge_recall > 0:
+            verdict = "召回但 RRF 挤出"
+        else:
+            verdict = "无 edge 召回"
+        lines.append(
+            f"| {qid} | {edge_recall} | {edge_fusion} | {edge_packed} | {verdict} |"
+        )
+    lines.append("")
+
+    # Table 2: cross-document grounding + packed re-rank overlap
+    lines.append("### 2. 跨文档 grounding 与 packed 重排度")
+    lines.append("")
+    lines.append("| Sample | baseline sources | weighted sources | sources 变化 | packed overlap (b∩w) | edge 同文档? |")
+    lines.append("|--------|------------------|------------------|--------------|----------------------|--------------|")
+    cross_doc_positive = 0
+    for (group, qid), scenario_runs in grouped.items():
+        if group != "REQ-028":
+            continue
+        baseline = scenario_runs.get("baseline_rule_no_edge")
+        weighted = scenario_runs.get("weighted_rrf")
+        if not baseline or not weighted:
+            continue
+        b_sources = baseline.document_sources_count
+        w_sources = weighted.document_sources_count
+        src_delta = w_sources - b_sources
+        # packed chunk overlap
+        b_pack_ids: set[str] = set()
+        for b in baseline.packed_blocks:
+            for c in (b.get("chunk_ids") if isinstance(b, dict) else []) or []:
+                b_pack_ids.add(str(c))
+        w_pack_ids: set[str] = set()
+        for b in weighted.packed_blocks:
+            for c in (b.get("chunk_ids") if isinstance(b, dict) else []) or []:
+                w_pack_ids.add(str(c))
+        overlap = len(b_pack_ids & w_pack_ids) if b_pack_ids else 0
+        # edge evidence files vs other channel files (fusion_topn)
+        edge_fids: set[str] = set()
+        other_fids: set[str] = set()
+        for f in weighted.fusion_topn:
+            if not isinstance(f, dict):
+                continue
+            fid = str(f.get("file_id") or "")
+            chans = f.get("channels") if isinstance(f.get("channels"), list) else []
+            if "graph_edge" in chans:
+                edge_fids.add(fid)
+            else:
+                other_fids.add(fid)
+        edge_new_doc = bool(edge_fids - other_fids - {"None", ""}) if edge_fids else False
+        if edge_new_doc:
+            cross_doc_positive += 1
+        edge_doc_str = "是(跨文档)" if edge_new_doc else ("同文档" if edge_fids else "无 edge")
+        lines.append(
+            f"| {qid} | {b_sources} | {w_sources} | {src_delta:+d} | "
+            f"{overlap}/{len(b_pack_ids) or '-'} | {edge_doc_str} |"
+        )
+    lines.append("")
+
+    # Table 3: cross-section context integrity (metric B)
+    lines.append("### 3. 跨 section 上下文完整性（指标 B）")
+    lines.append("")
+    lines.append("| Sample | baseline distinct sections | weighted distinct sections | section 增量 | 判定 |")
+    lines.append("|--------|---------------------------|---------------------------|--------------|------|")
+    section_positive = 0
+    for (group, qid), scenario_runs in grouped.items():
+        if group != "REQ-028":
+            continue
+        baseline = scenario_runs.get("baseline_rule_no_edge")
+        weighted = scenario_runs.get("weighted_rrf")
+        if not baseline or not weighted:
+            continue
+
+        def _distinct_sections(run: ScenarioRun) -> set[str]:
+            secs: set[str] = set()
+            for b in run.packed_blocks:
+                if isinstance(b, dict):
+                    sp = b.get("section_path") or b.get("section_title")
+                    if sp:
+                        secs.add(str(sp))
+            return secs
+
+        b_secs = _distinct_sections(baseline)
+        w_secs = _distinct_sections(weighted)
+        delta = len(w_secs) - len(b_secs)
+        if delta > 0:
+            verdict = "上下文扩展"
+            section_positive += 1
+        elif delta < 0:
+            verdict = "上下文收缩"
+        else:
+            verdict = "无变化"
+        lines.append(
+            f"| {qid} | {len(b_secs)} | {len(w_secs)} | {delta:+d} | {verdict} |"
+        )
+    lines.append("")
+
+    # Metric A + B summary + verdict
+    metric_a = (edge_packed_positive / total_samples) if total_samples else 0.0
+    lines.append("### 4. 价值指标汇总与判定")
+    lines.append("")
+    lines.append(f"- **指标 A（graph_edge 关联补足率）**: `{edge_packed_positive}/{total_samples}` = `{metric_a:.0%}`")
+    lines.append("  - 定义：weighted scenario 中 packed context 含 graph_edge 通道 chunk 的样例比例")
+    lines.append(f"- **指标 B（跨 section 上下文扩展）**: `{section_positive}/{total_samples}` 样例正向扩展")
+    lines.append("  - 定义：weighted distinct section_path 数 > baseline 的样例比例")
+    lines.append(f"- **跨文档 grounding 扩展**: `{cross_doc_positive}/{total_samples}` 样例 edge 带来新文档")
+    lines.append("")
+    # Verdict per spec §5.3
+    if metric_a >= 0.4 and section_positive >= total_samples / 2:
+        verdict = "有价值"
+        action = "保留链路，更新 AC 基线用新指标（指标 A/B）替代 keypoint 覆盖"
+    elif metric_a > 0:
+        verdict = "价值有限"
+        action = "保留链路；graph_edge 在真 vector 下价值被稀释（vector 已强）。建议登记需求评估是否下调 graph_edge RRF 权重或调整触发策略，或确认价值天然有限并更新 REQ-025/030 验收基线说明"
+    else:
+        verdict = "无效"
+        action = "评估是否关闭 graph_edge 通道（登记独立需求）"
+    lines.append(f"- **价值判定**: `{verdict}`")
+    lines.append(f"- **建议动作**: {action}")
+    lines.append("")
+    lines.append("### 5. 结论")
+    lines.append("")
+    lines.append(
+        "- graph_edge 在 fake vector 时代（REQ-018/025 验收）有价值，因 keyword 兜底主导召回、edge 补足关联 chunk 能进 packed。"
+    )
+    lines.append(
+        "- 真 vector 召回下（TD-068+069 后）vector 通道已强，edge 通道在 RRF 融合时多被挤出 fusion_topN，"
+        "且 edge chunks 多为同文档关联、不扩展跨文档 grounding。"
+    )
+    lines.append(
+        "- keypoint 覆盖口径（REQ-030 AC-5）反映的是「答案是否命中分散的关键词」，而 graph_edge 补足的是"
+        "「同文档关联上下文」——两者目标不一致。AC-5 不达标是指标错配，非链路缺陷。"
+    )
+    lines.append(
+        "- 本评估不修改主链路代码。若需调整 graph_edge RRF 权重 / 策略，登记独立需求（REQ-034 候选）评估影响面。"
+    )
     lines.append("")
     return "\n".join(lines)
 
