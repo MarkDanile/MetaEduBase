@@ -256,9 +256,46 @@ def _compute_semantic_coverage(
     }
 
 
-# REQ-030: rate limit embedding API calls (硅流 / Qwen 默认 30 req/min，
+# REQ-030 / REQ-031: rate limit embedding API calls (硅流 / Qwen 默认 30 req/min，
 # 串行排队避免 429 卡死。Semaphore 控制并发数 = 2 即可保证 ≤ 30 req/min 在 batch 内)。
 _EMB_SEMAPHORE = asyncio.Semaphore(2)
+
+# REQ-031: 进程内 embedding 缓存。keypoint (term + synonyms) 文本在同一脚本运行内
+# 静态，跨 4 scenarios 完全相同，缓存命中避免重复 HTTP 调用。
+# 将 10 样例 × 4 scenarios × ~5 keypoints × ~2 candidates ≈ 440 次调用降至 ~140 次。
+_EMBEDDING_CACHE: dict[str, list[float]] = {}
+
+# REQ-031: 缓存命中 / miss / 超时降级计数（写报告诊断段）
+_EMB_STATS = {"hit": 0, "miss": 0, "timeout": 0, "error": 0}
+
+
+async def _get_cached_embedding(text: str, embedding_callable) -> list[float] | None:
+    """REQ-031: cached embedding with hard timeout + graceful degradation.
+
+    - cache hit: return immediately (no HTTP)
+    - cache miss: asyncio.wait_for(embedding_callable(text), timeout=60s)
+    - timeout / exception: return None (keypoint marked not hit, no hang)
+    - success: write cache + return
+    """
+    if not text:
+        return None
+    cached = _EMBEDDING_CACHE.get(text)
+    if cached is not None:
+        _EMB_STATS["hit"] += 1
+        return cached
+    _EMB_STATS["miss"] += 1
+    try:
+        async with _EMB_SEMAPHORE:
+            emb = await asyncio.wait_for(embedding_callable(text), timeout=60.0)
+    except asyncio.TimeoutError:
+        _EMB_STATS["timeout"] += 1
+        return None
+    except Exception:  # noqa: BLE001
+        _EMB_STATS["error"] += 1
+        return None
+    if emb:
+        _EMBEDDING_CACHE[text] = emb
+    return emb
 
 
 async def _compute_semantic_embedding_coverage(
@@ -270,6 +307,10 @@ async def _compute_semantic_embedding_coverage(
 ) -> dict[str, Any]:
     """REQ-030 semantic embedding coverage: cosine similarity between answer
     embedding and each keypoint's term + synonyms embeddings.
+
+    REQ-031: uses _get_cached_embedding (in-process cache + 60s hard timeout)
+    so keypoint embeddings are computed once per script run and reused across
+    the 4 scenarios per sample.
 
     Returns dict with: coverage_pct, weight_pct, hit_terms, per_keypoint.
     """
@@ -289,24 +330,14 @@ async def _compute_semantic_embedding_coverage(
             "hit_terms": [],
             "per_keypoint": [],
         }
-    try:
-        async with _EMB_SEMAPHORE:
-            answer_emb = await embedding_callable(answer_text)
-    except Exception as exc:  # noqa: BLE001
-        return {
-            "coverage_pct": 0.0,
-            "weight_pct": 0.0,
-            "hit_terms": [],
-            "per_keypoint": [],
-            "error": f"answer embedding failed: {exc}",
-        }
+    answer_emb = await _get_cached_embedding(answer_text, embedding_callable)
     if not answer_emb:
         return {
             "coverage_pct": 0.0,
             "weight_pct": 0.0,
             "hit_terms": [],
             "per_keypoint": [],
-            "error": "answer embedding returned None",
+            "error": "answer embedding failed (timeout/error/None)",
         }
 
     import math
@@ -322,11 +353,7 @@ async def _compute_semantic_embedding_coverage(
         best_sim = 0.0
         best_text = kp.term
         for cand in candidates:
-            try:
-                async with _EMB_SEMAPHORE:
-                    cand_emb = await embedding_callable(cand)
-            except Exception:  # noqa: BLE001
-                continue
+            cand_emb = await _get_cached_embedding(cand, embedding_callable)
             if not cand_emb or len(cand_emb) != len(answer_emb):
                 continue
             # cosine similarity
@@ -1150,6 +1177,14 @@ def _render_req030_section(
     lines: list[str] = []
     lines.append("## REQ-030 新口径对比（semantic embedding + LLM-as-judge）")
     lines.append("")
+    # REQ-031: embedding cache stats (hit / miss / timeout / error)
+    total_emb = sum(_EMB_STATS.values())
+    if total_emb > 0:
+        lines.append(
+            f"> REQ-031 embedding cache: hit=`{_EMB_STATS['hit']}` miss=`{_EMB_STATS['miss']}` "
+            f"timeout=`{_EMB_STATS['timeout']}` error=`{_EMB_STATS['error']}` (total=`{total_emb}`)"
+        )
+        lines.append("")
     lines.append("| Sample | Scenario | substring cov | semantic cov | semantic_emb cov | semantic_emb weight | LLM-as-judge cov |")
     lines.append("|--------|----------|----------------|--------------|--------------------|----------------------|-------------------|")
     sem_emb_pairs: list[tuple[float, float]] = []
