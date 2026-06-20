@@ -12,6 +12,7 @@ from typing import Any
 from .loader import _mask_db_url
 from .models import ScenarioRun
 from .report_chain import _render_req033_section, _render_req034_section
+from .report_decision import _render_req035_section
 from .report_quality import _render_req030_section
 from .runner import (
     _compact_run,
@@ -392,6 +393,12 @@ def _render_report(
     if any(run.question_group == "REQ-028" for run in runs):
         req034_section = _render_req034_section(runs, grouped)
         lines.append(req034_section)
+        lines.append("")
+
+    # REQ-035 section (graph_edge channel keep/disable decision)
+    if any(run.question_group == "REQ-028" for run in runs):
+        req035_section = _render_req035_section(runs, grouped)
+        lines.append(req035_section)
         lines.append("")
 
     return "\n".join(lines)

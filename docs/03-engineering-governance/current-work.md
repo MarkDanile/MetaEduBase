@@ -14,13 +14,13 @@
 
 ## 当前进行中
 
-（无活跃任务。TD-032 slice 8 `validate_req024_p2_real_validation.py` 拆分已收口（PR 待合并），1955 行单文件拆为薄入口 23 行 + `rag_validation/` 包 9 文件（全部 ≤500），dry-run render 路径 byte-identical 验证通过。下一批接力候选见下方。）
+（无活跃任务。REQ-035 graph_edge 通道去留决策已收口（PR 待合并），决策禁用 graph_edge 通道（生产默认 0.5 下召回纯无效）。下一批接力候选见下方。）
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
 |------|------|--------|------|--------|--------|
-| REQ-035 P2 graph_edge 通道去留决策（REQ-034 follow-up） | ⚫ Candidate | P2 | P2 / RAG / Retrieval | 决策 (a) 禁用 graph_edge 通道省召回成本 vs (b) 上调默认权重使 edge 实际贡献。REQ-033/034 已证 edge 在默认权重惰性、即使进 packed 亦不改善 Metric B/跨文档。任一变更需重跑 REQ-025 真 LLM 验收 | [REQ-034 评估报告](../02-delivery-plans/01-specs/2026-06-20-req-034-graph-edge-rrf-weight-strategy-evaluation-report.md) |
+| REQ-036 P2 graph_edge 通道禁用实现（REQ-035 follow-up） | ⚫ Candidate | P1 | P2 / RAG / Retrieval | REQ-035 决策禁用。实现 config 门控 `edge_retriever` 注入（保留 `PgEdgeRecallChannel` 代码）+ 重跑 REQ-025 真 LLM 验收 + REQ-018 基线降级说明 | [REQ-035 决策报告](../02-delivery-plans/01-specs/2026-06-20-req-035-graph-edge-channel-decision-report.md) |
 
 ## 最近完成
 
@@ -30,7 +30,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
-| 2026-06-20 | TD-032 slice 8 `validate_req024_p2_real_validation.py` 拆分 | 🟢 完成 | 1955 行单文件拆为薄入口 23 行 + `scripts/rag_validation/` 包 9 文件（全部 ≤500）；零业务逻辑变化，调用路径不变；dry-run render 路径 byte-identical 验证通过 | [TD-032](technical-debt.md#td-032) / [Spec](../02-delivery-plans/01-specs/2026-06-20-td-032-req024-validation-script-split.md) / [baseline](02-baselines/td-032-source-file-sizes.md) |
+| 2026-06-20 | REQ-035 P2 graph_edge 通道去留决策（REQ-034 follow-up） | 🟢 完成 | 成本/收益对照 + 禁用/上调可行性 + 决策。**决策：禁用 graph_edge 通道**。生产默认 0.5 下召回纯无效；即使 boosting 增益有限。禁用机制已存在（`edge_retriever=None`）。登记 REQ-036 实现候选 | [REQ-035](../01-product-planning/05-requirements/REQ-035-p2-graph-edge-channel-decision.md) / [决策报告](../02-delivery-plans/01-specs/2026-06-20-req-035-graph-edge-channel-decision-report.md) |
 | 2026-06-20 | REQ-034 P2 graph_edge RRF 权重/策略调整评估（REQ-033 follow-up） | 🟢 完成 | 5 点 weight sweep + 策略可行性 + REQ-018/025 影响面。**关键发现**：生产默认 0.5 下 graph_edge 召回 8 chunks/样例但 0 进 fusion/packed（惰性死权重）；REQ-033 Metric A=5/10 实测于 w=1.2 boosting，高估生产贡献。下调权重无效；保留 0.5，登记 REQ-035 决策候选 | [REQ-034](../01-product-planning/05-requirements/REQ-034-p2-graph-edge-rrf-weight-strategy-evaluation.md) / [评估报告](../02-delivery-plans/01-specs/2026-06-20-req-034-graph-edge-rrf-weight-strategy-evaluation-report.md) |
 | 2026-06-20 | REQ-033 P2 链路真 vector 价值评估 | 🟢 完成 | retrieval 层价值评估：指标 A（edge 关联补足率）=5/10、指标 B（跨 section 扩展）=1/10、跨文档 grounding=0/10。判定**价值有限**。AC-5 根因归档为指标错配（keypoint 覆盖 vs graph_edge 关联补足目标不一致），REQ-030 翻完成。登记 REQ-034 候选 | [REQ-033](../01-product-planning/05-requirements/REQ-033-p2-chain-real-vector-value-evaluation.md) / [评估报告](../02-delivery-plans/01-specs/2026-06-20-req-033-p2-chain-value-evaluation-report.md) |
 | 2026-06-20 | REQ-032 P2 semantic_emb 阈值校准与 continuous 口径 | 🟢 完成 | `--semantic-emb-threshold` CLI + continuous 字段。threshold 0.35 后 AC-4 达标 4/10；AC-5 三口径各 1/10，根因定位为 P2 链路无正向贡献（非阈值），登记 REQ-033 | [REQ-032](../01-product-planning/05-requirements/REQ-032-p2-semantic-emb-threshold-calibration.md) / [Report](../02-delivery-plans/01-specs/2026-06-20-req-030-new-quality-metric-report.md) |

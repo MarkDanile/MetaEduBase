@@ -55,14 +55,14 @@
     "language": "Python"
   },
   {
+    "path": "scripts/rag_validation/report_chain.py",
+    "lines": 458,
+    "language": "Python"
+  },
+  {
     "path": "packages/web/src/views/ai-apps/AiAppEditView.vue",
     "lines": 457,
     "language": "Vue"
-  },
-  {
-    "path": "scripts/rag_validation/report_chain.py",
-    "lines": 456,
-    "language": "Python"
   },
   {
     "path": "packages/web/src/views/admin/TemplateListView.vue",
@@ -105,6 +105,11 @@
     "language": "Python"
   },
   {
+    "path": "scripts/rag_validation/report.py",
+    "lines": 404,
+    "language": "Python"
+  },
+  {
     "path": "packages/web/src/views/LayoutView.vue",
     "lines": 400,
     "language": "Vue"
@@ -112,11 +117,6 @@
   {
     "path": "packages/server-python/app/shared/parsing/chunker.py",
     "lines": 398,
-    "language": "Python"
-  },
-  {
-    "path": "scripts/rag_validation/report.py",
-    "lines": 397,
     "language": "Python"
   },
   {
@@ -548,6 +548,11 @@
     "path": "packages/web/src/assets/css/compat-liquid.css",
     "lines": 165,
     "language": "CSS"
+  },
+  {
+    "path": "scripts/rag_validation/report_decision.py",
+    "lines": 165,
+    "language": "Python"
   },
   {
     "path": "scripts/ai/check_orphans.py",
