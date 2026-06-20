@@ -81,3 +81,5 @@ REQ-027 报告登记的 follow-up：自动质量比较口径改造。
 | 2026-06-18 | 验收结果 | 机制层 10/10 ✅；AC-4 (semantic ≥ 0.50): 7/10 样例达标 ✅；AC-5 (semantic lift ≥ 30%): 1/10 样例达标 ❌。问题诊断：Q8 baseline 已 0.80 → 在 baseline 已经很高的情况下 +0.30 难度大；问题在 AC-5 阈值设计，不在 P2 链路本身。Q1 (+0.80) 强正向；Q4 (-0.80) 强退化 |
 | 2026-06-18 | TD-032 登记 | `validate_req024_p2_real_validation.py` 1035 行（REQ-024→026→028 三轮扩展），已登记到 `td-032-source-file-sizes.md` 待拆分 |
 | 2026-06-18 | 后续分流 | REQ-029 (⚫ Candidate)：AC-5 阈值重设计 — 相对绝对覆盖度改善 (delta) 改为 (weighted - baseline) / (1 - baseline)，允许 baseline 高的样例也能达成 30% 增益 |
+| 2026-06-19 | REQ-029 接力 | PR #361 squash merge `49ecd42`：residual ratio 公式 + `--lift-mode` CLI + 报告双模式。Residual 模式 AC-5 5/10 达标，整条 P2 RAG 真实效果验收长链收口翻完成 |
+| 2026-06-20 | TD-068+069 后重跑 | dev DB embedding 列已 `vector(4096)` + 599 nodes backfilled。`vector_fallback_count: 0`，4 通道全激活，psql pgvector cosine 真返回。本次重跑 baseline coverage 普遍上升（vector 不再 fallback），但 weighted RRF coverage 下降（真召回的 chunks 不一定含 expected keypoints）。**关键发现**：AC-4 6/10，AC-5 residual 1/10——真实向量召回下 P2 长链能力需要新口径（语义匹配 / LLM-as-judge）评估。本次报告更诚实但 AC 不再"易达成" |
