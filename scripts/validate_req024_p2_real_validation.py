@@ -118,6 +118,8 @@ class ScenarioRun:
     keypoint_semantic_embedding_pct: float = 0.0
     keypoint_semantic_embedding_weight_pct: float = 0.0
     keypoint_semantic_embedding_hit_terms: list[str] = field(default_factory=list)
+    # REQ-032: continuous weighted coverage (no threshold binarization)
+    keypoint_semantic_embedding_continuous_pct: float = 0.0
     keypoint_hit_list_substring: list[str] = field(default_factory=list)
     keypoint_hit_list_semantic: list[str] = field(default_factory=list)
 
@@ -345,6 +347,7 @@ async def _compute_semantic_embedding_coverage(
     per_keypoint: list[dict[str, Any]] = []
     total_weight = 0.0
     hit_weight = 0.0
+    continuous_weighted_sum = 0.0  # REQ-032
 
     for kp in keypoints:
         if not kp.term:
@@ -374,6 +377,8 @@ async def _compute_semantic_embedding_coverage(
             "hit": hit,
             "weight": kp.weight,
         })
+        # REQ-032: continuous weighted coverage accumulator (no binarization)
+        continuous_weighted_sum += kp.weight * best_sim
         if hit:
             hit_terms.append(kp.term)
             hit_weight += kp.weight
@@ -382,9 +387,12 @@ async def _compute_semantic_embedding_coverage(
     total = len([k for k in keypoints if k.term])
     coverage_pct = (len(hit_terms) / total) if total else 0.0
     weight_pct = (hit_weight / total_weight) if total_weight else 0.0
+    # REQ-032: continuous = sum(weight * best_sim) / sum(weight), range [0, 1]
+    continuous_pct = (continuous_weighted_sum / total_weight) if total_weight else 0.0
     return {
         "coverage_pct": round(coverage_pct, 4),
         "weight_pct": round(weight_pct, 4),
+        "continuous_pct": round(continuous_pct, 4),
         "hit_terms": hit_terms,
         "per_keypoint": per_keypoint,
     }
@@ -603,7 +611,15 @@ def _trace_chunk_ids(items: list[dict[str, Any]]) -> list[str]:
     return ids
 
 
-async def _run_question(session, tenant_id: str, q: Question, scenario: Scenario, *, allow_llm: bool) -> ScenarioRun:
+async def _run_question(
+    session,
+    tenant_id: str,
+    q: Question,
+    scenario: Scenario,
+    *,
+    allow_llm: bool,
+    semantic_emb_threshold: float = 0.5,
+) -> ScenarioRun:
     from app.contexts.knowledge.application.ai_chat_service import ChatRequest
 
     service, llm_callable, embedding_callable = await _build_service(
@@ -668,16 +684,18 @@ async def _run_question(session, tenant_id: str, q: Question, scenario: Scenario
     # REQ-030: semantic embedding coverage (硅流 embedding cosine)
     # Only run when --allow-llm (in dry-run, embedding_callable is None,
     # so embedding math would fail / return 0).
+    # REQ-032: threshold is configurable via --semantic-emb-threshold (default 0.5).
     semantic_emb = await _compute_semantic_embedding_coverage(
         final_answer_preview,
         sources_titles,
         q.expected_keypoints,
         embedding_callable if allow_llm else None,
-        threshold=0.5,
+        threshold=semantic_emb_threshold,
     )
     semantic_emb_pct = float(semantic_emb.get("coverage_pct", 0.0) or 0.0)
     semantic_emb_weight_pct = float(semantic_emb.get("weight_pct", 0.0) or 0.0)
     semantic_emb_hit_terms = list(semantic_emb.get("hit_terms", []) or [])
+    semantic_emb_continuous_pct = float(semantic_emb.get("continuous_pct", 0.0) or 0.0)
 
     return ScenarioRun(
         question_group=q.group,
@@ -715,6 +733,7 @@ async def _run_question(session, tenant_id: str, q: Question, scenario: Scenario
         keypoint_semantic_embedding_pct=semantic_emb_pct,
         keypoint_semantic_embedding_weight_pct=semantic_emb_weight_pct,
         keypoint_semantic_embedding_hit_terms=semantic_emb_hit_terms,
+        keypoint_semantic_embedding_continuous_pct=semantic_emb_continuous_pct,
     )
 
 
@@ -745,6 +764,8 @@ def _compact_run(run: ScenarioRun) -> dict[str, Any]:
         "keypoint_semantic_embedding_pct": run.keypoint_semantic_embedding_pct,
         "keypoint_semantic_embedding_weight_pct": run.keypoint_semantic_embedding_weight_pct,
         "keypoint_semantic_embedding_hit_terms": run.keypoint_semantic_embedding_hit_terms,
+        # REQ-032: continuous weighted coverage (no threshold binarization)
+        "keypoint_semantic_embedding_continuous_pct": run.keypoint_semantic_embedding_continuous_pct,
         "final_answer_preview": run.final_answer_preview[:220],
     }
 
@@ -1185,9 +1206,10 @@ def _render_req030_section(
             f"timeout=`{_EMB_STATS['timeout']}` error=`{_EMB_STATS['error']}` (total=`{total_emb}`)"
         )
         lines.append("")
-    lines.append("| Sample | Scenario | substring cov | semantic cov | semantic_emb cov | semantic_emb weight | LLM-as-judge cov |")
-    lines.append("|--------|----------|----------------|--------------|--------------------|----------------------|-------------------|")
+    lines.append("| Sample | Scenario | substring cov | semantic cov | semantic_emb cov | semantic_emb weight | cont cov | LLM-as-judge cov |")
+    lines.append("|--------|----------|----------------|--------------|--------------------|----------------------|----------|-------------------|")
     sem_emb_pairs: list[tuple[float, float]] = []
+    cont_judge_pairs: list[tuple[float, float]] = []
     for (group, qid), scenario_runs in grouped.items():
         if group != "REQ-028":
             continue
@@ -1211,11 +1233,15 @@ def _render_req030_section(
                 f"{run.keypoint_coverage_pct_semantic:.2f} | "
                 f"{run.keypoint_semantic_embedding_pct:.2f} | "
                 f"{run.keypoint_semantic_embedding_weight_pct:.2f} | "
+                f"{run.keypoint_semantic_embedding_continuous_pct:.2f} | "
                 f"{judge_str} |"
             )
             if isinstance(run.keypoint_llm_judge_pct, (int, float)):
                 sem_emb_pairs.append(
                     (run.keypoint_semantic_embedding_pct, run.keypoint_llm_judge_pct)
+                )
+                cont_judge_pairs.append(
+                    (run.keypoint_semantic_embedding_continuous_pct, run.keypoint_llm_judge_pct)
                 )
     lines.append("")
 
@@ -1239,10 +1265,27 @@ def _render_req030_section(
     else:
         rho = 0.0
         rho_str = "n/a"
+
+    def _pearson(pairs: list[tuple[float, float]]) -> str:
+        if len(pairs) < 3:
+            return "n/a"
+        n = len(pairs)
+        mx = sum(p[0] for p in pairs) / n
+        my = sum(p[1] for p in pairs) / n
+        num = sum((p[0] - mx) * (p[1] - my) for p in pairs)
+        da = sum((p[0] - mx) ** 2 for p in pairs) ** 0.5
+        db = sum((p[1] - my) ** 2 for p in pairs) ** 0.5
+        r = num / (da * db) if da * db > 0 else 0.0
+        return f"{r:.3f} (Pearson)"
+
+    cont_rho_str = _pearson(cont_judge_pairs)
     lines.append("### REQ-030 双口径一致性")
     lines.append("")
     lines.append(
-        f"- semantic embedding vs LLM-as-judge Spearman correlation: `{rho_str}` (n={len(sem_emb_pairs)})"
+        f"- semantic embedding (threshold-based) vs LLM-as-judge: `{rho_str}` (n={len(sem_emb_pairs)})"
+    )
+    lines.append(
+        f"- continuous weighted coverage vs LLM-as-judge: `{cont_rho_str}` (n={len(cont_judge_pairs)})"
     )
     lines.append("- AC-5 (semantic embedding delta ≥ 0.30) threshold: 见下方 per-sample summary")
     lines.append("")
@@ -1250,11 +1293,12 @@ def _render_req030_section(
     # Per-sample summary (semantic embedding delta)
     lines.append("### REQ-030 per-sample summary (semantic embedding metric)")
     lines.append("")
-    lines.append("| Sample | baseline sem_emb | weighted sem_emb | delta | 判定 (sem_emb) | LLM-judge delta | 判定 (judge) |")
-    lines.append("|--------|------------------|------------------|-------|-----------------|-----------------|----------------|")
+    lines.append("| Sample | baseline sem_emb | weighted sem_emb | delta | 判定 (sem_emb) | baseline cont | weighted cont | cont delta | 判定 (cont) | LLM-judge delta | 判定 (judge) |")
+    lines.append("|--------|------------------|------------------|-------|-----------------|---------------|---------------|------------|--------------|-----------------|----------------|")
     sem_emb_above = 0
     sem_emb_lift = 0
     judge_lift = 0
+    cont_lift = 0
     for (group, qid), scenario_runs in grouped.items():
         if group != "REQ-028":
             continue
@@ -1272,6 +1316,18 @@ def _render_req030_section(
             verdict_se = "中性"
         if weighted.keypoint_semantic_embedding_pct >= 0.5:
             sem_emb_above += 1
+        # REQ-032: continuous delta
+        cont_delta = (
+            weighted.keypoint_semantic_embedding_continuous_pct
+            - baseline.keypoint_semantic_embedding_continuous_pct
+        )
+        if cont_delta >= 0.30:
+            verdict_cont = "正向"
+            cont_lift += 1
+        elif cont_delta <= -0.30:
+            verdict_cont = "退化"
+        else:
+            verdict_cont = "中性"
         if (
             isinstance(baseline.keypoint_llm_judge_pct, (int, float))
             and isinstance(weighted.keypoint_llm_judge_pct, (int, float))
@@ -1290,6 +1346,8 @@ def _render_req030_section(
         lines.append(
             f"| {qid} | {baseline.keypoint_semantic_embedding_pct:.2f} | "
             f"{weighted.keypoint_semantic_embedding_pct:.2f} | {delta:+.2f} | {verdict_se} | "
+            f"{baseline.keypoint_semantic_embedding_continuous_pct:.2f} | "
+            f"{weighted.keypoint_semantic_embedding_continuous_pct:.2f} | {cont_delta:+.2f} | {verdict_cont} | "
             f"{judge_delta:+.2f} | {verdict_j} |"
         )
     lines.append("")
@@ -1303,9 +1361,10 @@ def _render_req030_section(
     lines.append("")
     lines.append(f"- **AC-4 (semantic_emb ≥ 0.50)**: `{sem_emb_above}` 样例达标")
     lines.append(f"- **AC-5 (semantic_emb lift >= 0.30)**: `{sem_emb_lift}` 样例达标")
+    lines.append(f"- **AC-5 (continuous lift >= 0.30)**: `{cont_lift}` 样例达标 (REQ-032 secondary)")
     lines.append(f"- **AC-5 (LLM-judge lift >= 0.30)**: `{judge_lift}` 样例达标 (secondary signal)")
-    if sem_emb_lift < 4:
-        lines.append("- **未达成**: AC-5 semantic embedding 模式仍不达 4/10。已登记 REQ-031 接力。")
+    if sem_emb_lift < 4 and cont_lift < 4:
+        lines.append("- **未达成**: AC-5 semantic_emb + continuous 双口径均不达 4/10。根因诊断见报告 §0.1（P2 链路在真 vector 下对 keypoint 覆盖无系统性正向贡献，非阈值问题）。")
     lines.append("")
     return "\n".join(lines)
 
@@ -1347,6 +1406,7 @@ async def _run(args: argparse.Namespace) -> int:
                                 q,
                                 scenario,
                                 allow_llm=args.allow_llm,
+                                semantic_emb_threshold=args.semantic_emb_threshold,
                             )
                         )
                     except Exception as exc:  # noqa: BLE001
@@ -1407,6 +1467,12 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["residual", "absolute"],
         default="residual",
         help="REQ-029 AC-5 threshold mode: 'residual' (default, (weighted - baseline) / (1 - baseline)) or 'absolute' (REQ-026/028 baseline, weighted - baseline).",
+    )
+    parser.add_argument(
+        "--semantic-emb-threshold",
+        type=float,
+        default=0.5,
+        help="REQ-032: cosine similarity threshold for semantic embedding coverage hit (default 0.5; lower to 0.35 for Chinese short keypoints).",
     )
     return parser
 

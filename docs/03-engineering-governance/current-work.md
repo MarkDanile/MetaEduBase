@@ -14,13 +14,13 @@
 
 ## 当前进行中
 
-（无活跃任务。REQ-031 semantic embedding 通路稳定性已收口（PR 待合并），REQ-030 维持部分收口（AC-4/5 阈值校准留 follow-up）。下一批接力候选见下方"下一批候选任务"。）
+（无活跃任务。REQ-032 阈值校准 + continuous 口径已收口（PR 待合并），REQ-030 AC-4 达标 4/10，AC-5 根因定位为 P2 链路无正向贡献，登记 REQ-033。下一批接力候选见下方。）
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
 |------|------|--------|------|--------|--------|
-| REQ-032 P2 semantic_emb 阈值校准（REQ-030 AC-4/5 接力） | ⚫ Candidate | P1 | P2 / RAG / Quality Metrics | threshold 0.5 → 0.35 重判 AC-4/5；或改 continuous weighted coverage（不二值化，用 similarity 加权）替代 threshold 命中 | [REQ-030 Report §0.1](../02-delivery-plans/01-specs/2026-06-20-req-030-new-quality-metric-report.md) |
+| REQ-033 P2 链路真 vector 价值评估（REQ-030 AC-5 根因接力） | ⚫ Candidate | P0 | P2 / RAG / Retrieval | 评估 RRF 权重 / graph_edge 策略 / ContextPacker 是否需调整；或重新定义 P2 链路价值指标（不只看 keypoint 覆盖） | [REQ-030 Report §0.1](../02-delivery-plans/01-specs/2026-06-20-req-030-new-quality-metric-report.md) |
 | TD-032 `validate_req024_p2_real_validation.py` 拆分 | ⚫ Candidate | P1 | Governance / Source File Sizes | 已超 1000 行；脚本逻辑稳定，拆分风险低 | [td-032-source-file-sizes.md](02-baselines/td-032-source-file-sizes.md) |
 
 ## 最近完成
@@ -31,6 +31,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-20 | REQ-032 P2 semantic_emb 阈值校准与 continuous 口径 | 🟢 完成 | `--semantic-emb-threshold` CLI + continuous 字段。threshold 0.35 后 AC-4 达标 4/10；AC-5 三口径各 1/10，根因定位为 P2 链路无正向贡献（非阈值），登记 REQ-033 | [REQ-032](../01-product-planning/05-requirements/REQ-032-p2-semantic-emb-threshold-calibration.md) / [Report](../02-delivery-plans/01-specs/2026-06-20-req-030-new-quality-metric-report.md) |
 | 2026-06-20 | REQ-031 P2 semantic embedding 覆盖率稳定性（REQ-030 接力） | 🟢 完成 | 进程内 embedding 缓存（hit=1581/miss=259）+ asyncio.wait_for 60s 硬超时 + 降级。timeout=0/error=0 消除 batch 挂起；semantic_emb 从全 0 变为 8/10 非零。REQ-030 AC-4/5 阈值校准留 follow-up | [REQ-031](../01-product-planning/05-requirements/REQ-031-p2-semantic-embedding-coverage-stabilization.md) / [Report](../02-delivery-plans/01-specs/2026-06-20-req-030-new-quality-metric-report.md) |
 | 2026-06-20 | REQ-030 P2 RAG 自动质量评估新口径（semantic embedding + LLM-as-judge） | 🟡 部分收口 | 脚本支持四口径（substring/semantic/semantic_embedding/llm_judge）+ 报告新增 REQ-030 章节 + dry-run 通过。**真 LLM 报告 semantic_emb 全 0**：硅流 embedding API batch 下挂起，httpx 30s timeout 不足；LLM-judge 通路完整，AC-5 1/10 (Q4 +0.60)。已登记 REQ-031 接力 | [REQ-030](../01-product-planning/05-requirements/REQ-030-p2-rag-new-quality-metric.md) / [Report](../02-delivery-plans/01-specs/2026-06-20-req-030-new-quality-metric-report.md) / [REQ-031](../01-product-planning/04-backlog.md) |
 | 2026-06-18 | DOC-073 门禁脚本防绕过与规则修改范围校验 | 🟢 完成 | PR #362 squash merge `11e9138`：新增 `gate_file_scope` 检查，非 DOC 门禁 / 治理脚本任务修改工程门禁脚本时会被 `scripts/check-engineering-docs` 拦截；补专项测试 30 passed | [Backlog](../01-product-planning/04-backlog.md) / [PR #362](https://github.com/MarkDanile/MetaEduBase/pull/362) |
