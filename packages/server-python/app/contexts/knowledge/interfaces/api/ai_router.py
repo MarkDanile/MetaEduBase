@@ -81,12 +81,33 @@ def _get_rrf_channel_weights() -> dict[str, float]:
         return _RRF_DEFAULT_WEIGHTS.copy()
 
 
+def _graph_edge_recall_enabled() -> bool:
+    """REQ-036: graph_edge 通道生产门控。默认 false（REQ-035 决策禁用）。
+
+    生产默认权重 0.5 下 graph_edge 召回 ~8 chunks/样例但 0 进 fusion/packed
+    （REQ-034 证惰性），且即使 boosting 亦不改善 Metric B/跨文档（REQ-033）。
+    env GRAPH_EDGE_RECALL_ENABLED 真值（"1"/"true"/"yes"/"on"，大小写不敏感）
+    → 启用 edge_retriever；否则 None（禁用，省每 query 3 SQL 召回成本）。
+
+    PgEdgeRecallChannel / PgEdgeRetriever 代码保留，可随时经 env 重新启用
+    （如 vector 召回退化或图谱扩充时）。
+    """
+    raw = os.environ.get("GRAPH_EDGE_RECALL_ENABLED", "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 # REQ-010 Slice 3 — evidence-aware AI Chat service (default PG adapters).
 def _build_evidence_service(
     session: AsyncSession, tenant_id: str, *, use_hybrid_ner: bool = True
 ) -> AIChatService:
     tenant_uuid = tenant_id if isinstance(tenant_id, uuid.UUID) else uuid.UUID(str(tenant_id))
     rrf_weights = _get_rrf_channel_weights()
+    graph_edge_on = _graph_edge_recall_enabled()
+    logger.info(
+        "ai_router: graph_edge recall %s (GRAPH_EDGE_RECALL_ENABLED=%r)",
+        "enabled" if graph_edge_on else "disabled (3-channel production)",
+        os.environ.get("GRAPH_EDGE_RECALL_ENABLED", ""),
+    )
 
     # Lazy import to avoid circular dependency with hybrid_ner_service → ai_router
     if use_hybrid_ner:
@@ -110,7 +131,9 @@ def _build_evidence_service(
         evidence_fusion=RRFFusion(channel_weights=rrf_weights),
         ner_pipeline=ner_pipeline,
         context_packer=ContextPacker(ChunkRepository(session), tenant_uuid),
-        edge_retriever=PgEdgeRetriever(),  # REQ-018 Slice 2: 4th recall channel
+        # REQ-036: graph_edge 通道默认禁用（REQ-035 决策）。经
+        # GRAPH_EDGE_RECALL_ENABLED env 启用。PgEdgeRetriever 代码保留。
+        edge_retriever=PgEdgeRetriever() if graph_edge_on else None,
     )
 
 

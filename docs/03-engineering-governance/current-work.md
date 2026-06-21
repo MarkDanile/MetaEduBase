@@ -14,13 +14,13 @@
 
 ## 当前进行中
 
-（无活跃任务。REQ-035 graph_edge 通道去留决策已收口（PR 待合并），决策禁用 graph_edge 通道（生产默认 0.5 下召回纯无效）。下一批接力候选见下方。）
+（无活跃任务。REQ-036 graph_edge 通道禁用实现已收口（PR 待合并）：`GRAPH_EDGE_RECALL_ENABLED` env 门控默认 off，`PgEdgeRecallChannel` 代码保留。真 LLM 全量验收因 embedding provider 慢阻登记 REQ-037。下一批接力候选见下方。）
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
 |------|------|--------|------|--------|--------|
-| REQ-036 P2 graph_edge 通道禁用实现（REQ-035 follow-up） | ⚫ Candidate | P1 | P2 / RAG / Retrieval | REQ-035 决策禁用。实现 config 门控 `edge_retriever` 注入（保留 `PgEdgeRecallChannel` 代码）+ 重跑 REQ-025 真 LLM 验收 + REQ-018 基线降级说明 | [REQ-035 决策报告](../02-delivery-plans/01-specs/2026-06-20-req-035-graph-edge-channel-decision-report.md) |
+| REQ-037 P2 graph_edge 禁用真 LLM 全量验收（REQ-036 follow-up） | ⚫ Candidate | P2 | P2 / RAG / Verification | embedding provider 恢复稳定后重跑 REQ-028 v3 10 样例 `--allow-llm`，对比 baseline（edge-off）vs graph_edge@0.5 答案覆盖度，确认禁用无回归 | [REQ-036 实现报告](../02-delivery-plans/01-specs/2026-06-20-req-036-graph-edge-channel-disable-impl-report.md) |
 
 ## 最近完成
 
@@ -30,6 +30,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-20 | REQ-036 P2 graph_edge 通道禁用实现（REQ-035 follow-up） | 🟢 完成 | `GRAPH_EDGE_RECALL_ENABLED` env 门控默认 off；`PgEdgeRecallChannel` 代码保留可重新启用。单测 37 passed 无回归。dry-run 实证 4/10 样例 packed 仅 1-2 chunk 微调。真 LLM 全量验收因 embedding provider 慢阻登记 REQ-037。REQ-018 基线降级 | [REQ-036](../01-product-planning/05-requirements/REQ-036-p2-graph-edge-channel-disable-impl.md) / [实现报告](../02-delivery-plans/01-specs/2026-06-20-req-036-graph-edge-channel-disable-impl-report.md) |
 | 2026-06-20 | REQ-035 P2 graph_edge 通道去留决策（REQ-034 follow-up） | 🟢 完成 | 成本/收益对照 + 禁用/上调可行性 + 决策。**决策：禁用 graph_edge 通道**。生产默认 0.5 下召回纯无效；即使 boosting 增益有限。禁用机制已存在（`edge_retriever=None`）。登记 REQ-036 实现候选 | [REQ-035](../01-product-planning/05-requirements/REQ-035-p2-graph-edge-channel-decision.md) / [决策报告](../02-delivery-plans/01-specs/2026-06-20-req-035-graph-edge-channel-decision-report.md) |
 | 2026-06-20 | REQ-034 P2 graph_edge RRF 权重/策略调整评估（REQ-033 follow-up） | 🟢 完成 | 5 点 weight sweep + 策略可行性 + REQ-018/025 影响面。**关键发现**：生产默认 0.5 下 graph_edge 召回 8 chunks/样例但 0 进 fusion/packed（惰性死权重）；REQ-033 Metric A=5/10 实测于 w=1.2 boosting，高估生产贡献。下调权重无效；保留 0.5，登记 REQ-035 决策候选 | [REQ-034](../01-product-planning/05-requirements/REQ-034-p2-graph-edge-rrf-weight-strategy-evaluation.md) / [评估报告](../02-delivery-plans/01-specs/2026-06-20-req-034-graph-edge-rrf-weight-strategy-evaluation-report.md) |
 | 2026-06-20 | REQ-033 P2 链路真 vector 价值评估 | 🟢 完成 | retrieval 层价值评估：指标 A（edge 关联补足率）=5/10、指标 B（跨 section 扩展）=1/10、跨文档 grounding=0/10。判定**价值有限**。AC-5 根因归档为指标错配（keypoint 覆盖 vs graph_edge 关联补足目标不一致），REQ-030 翻完成。登记 REQ-034 候选 | [REQ-033](../01-product-planning/05-requirements/REQ-033-p2-chain-real-vector-value-evaluation.md) / [评估报告](../02-delivery-plans/01-specs/2026-06-20-req-033-p2-chain-value-evaluation-report.md) |
@@ -41,4 +42,3 @@
 | 2026-06-18 | REQ-029 P2 弱召回 AC-5 阈值重设计 | 🟢 完成 | 分支 `feat/req-029-ac5-threshold-redesign`：residual ratio 公式 + `--lift-mode` CLI。Residual 模式 AC-5 5/10 达标，整条 P2 长链收口 | [REQ-029](../01-product-planning/05-requirements/REQ-029-p2-ac5-threshold-redesign.md) / [Residual Report](../02-delivery-plans/01-specs/2026-06-18-req-029-ac5-threshold-residual-report.md) |
 | 2026-06-18 | REQ-028 P2 弱召回自动质量比较口径改造 | 🟢 完成 | PR #360 squash merge `f624f49`：三口径（substring/semantic/llm_judge）+ v3 样例 10 条（keypoint 带 synonyms+weight）+ 真 LLM 报告。REQ-029 residual 模式补判 verdict 后翻完成 | [REQ-028](../01-product-planning/05-requirements/REQ-028-p2-auto-quality-metric.md) / [Report v3](../02-delivery-plans/01-specs/2026-06-18-req-028-rag-effect-comparison-v3-report.md) / [PR #360](https://github.com/MarkDanile/MetaEduBase/pull/360) |
 | 2026-06-18 | REQ-027 P2 弱召回知识覆盖与样例多样性 | 🟢 完成 | PR #359 squash merge `8310fca`：5 条 v2 样例 (dev DB 513 knowledge_edges 校准) + wrapper 脚本 + 真 LLM v1+v2 两轮报告。机制 10/10 ✅；prompt 5/10 ✅。REQ-029 residual 阈值补判后 AC-4 9/10 达标，翻完成 | [REQ-027](../01-product-planning/05-requirements/REQ-027-p2-weak-recall-knowledge-coverage.md) / [Report v2](../02-delivery-plans/01-specs/2026-06-18-req-027-rag-effect-comparison-v2-report.md) / [PR #359](https://github.com/MarkDanile/MetaEduBase/pull/359) |
-| 2026-06-18 | REQ-026 P2 RAG 效果比较与弱召回样例集收口 | 🟢 完成 | PR #358 squash merge `930589b`：5 条弱召回样例集 + 关键事实覆盖度自动比较 + real LLM 报告。机制 5/5 ✅；prompt 3/5 ✅。REQ-029 residual 阈值补判后 AC-1 改判为达成，翻完成 | [REQ-026](../01-product-planning/05-requirements/REQ-026-p2-rag-effect-comparison-and-weak-recall-samples.md) / [Report](../02-delivery-plans/01-specs/2026-06-18-req-026-rag-effect-comparison-validation-report.md) / [PR #358](https://github.com/MarkDanile/MetaEduBase/pull/358) |

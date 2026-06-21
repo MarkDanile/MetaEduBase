@@ -8,10 +8,14 @@ from app.contexts.knowledge.application.ai_chat_service import AIChatService
 from app.contexts.knowledge.application.context_packer import ContextPacker
 from app.contexts.knowledge.application.evidence_fusion import RRFFusion
 from app.contexts.knowledge.domain.evidence import EvidenceItem
+from app.contexts.knowledge.infrastructure.retrievers.pg_graph_retriever import (
+    PgEdgeRetriever,
+)
 from app.contexts.knowledge.interfaces.api.ai_router import (
     _RRF_DEFAULT_WEIGHTS,
     _build_evidence_service,
     _get_rrf_channel_weights,
+    _graph_edge_recall_enabled,
 )
 
 
@@ -69,6 +73,44 @@ def test_build_evidence_service_injects_weights() -> None:
         assert service.evidence_fusion.channel_weights["vector"] == 1.0  # default
     finally:
         del os.environ["RRF_CHANNEL_WEIGHTS"]
+
+
+# REQ-036: graph_edge 通道生产门控。默认 false（REQ-035 决策禁用）。
+_GRAPH_EDGE_ENV = "GRAPH_EDGE_RECALL_ENABLED"
+
+
+def test_graph_edge_recall_gate_defaults_off() -> None:
+    """No env / falsy values → edge_retriever is None (REQ-035 禁用决策)."""
+    for val in ["", "false", "0", "no", "off", "FALSE"]:
+        if val:
+            os.environ[_GRAPH_EDGE_ENV] = val
+        elif _GRAPH_EDGE_ENV in os.environ:
+            del os.environ[_GRAPH_EDGE_ENV]
+        try:
+            assert _graph_edge_recall_enabled() is False, f"val={val!r}"
+            service = _build_evidence_service(
+                MagicMock(),
+                "11111111-1111-1111-1111-111111111111",
+            )
+            assert service.edge_retriever is None, f"val={val!r}"
+        finally:
+            if val and _GRAPH_EDGE_ENV in os.environ:
+                del os.environ[_GRAPH_EDGE_ENV]
+
+
+def test_graph_edge_recall_gate_enabled_truthy() -> None:
+    """Truthy env values → edge_retriever is PgEdgeRetriever (代码保留可重新启用)."""
+    for val in ["1", "true", "yes", "on", "TRUE", "Yes", "ON"]:
+        os.environ[_GRAPH_EDGE_ENV] = val
+        try:
+            assert _graph_edge_recall_enabled() is True, f"val={val!r}"
+            service = _build_evidence_service(
+                MagicMock(),
+                "11111111-1111-1111-1111-111111111111",
+            )
+            assert isinstance(service.edge_retriever, PgEdgeRetriever), f"val={val!r}"
+        finally:
+            del os.environ[_GRAPH_EDGE_ENV]
 
 
 def test_enrich_fusion_diagnostics_populates_rrf_fields() -> None:
