@@ -31,6 +31,7 @@
 | 明确 bug、回归、异常 | bug fix | 记录复现、期望、验证；优先补测试或手动验收。 |
 | `TD-xxx` 或维护性治理 | technical-debt | 读技术债总账；高风险先补 spec/plan。 |
 | 新想法、里程碑、需求池 | product planning | 进入 Backlog / Requirement，不直接开发。 |
+| AI Chat / RAG / LLM NER / 图谱召回等效果型任务 | ai-effect validation | 必须声明最高已验证层级，不用低层证据冒充真实效果达成。 |
 | 跨 3 个以上文件、新 API、新数据模型、复杂 UI | superpower / plan-do | 先产出 spec/plan，再实现。 |
 | 架构方向、技术选型、未知成本 | spike | 输出取舍和下一步，不默认改主路径。 |
 | 结构优化但行为不变 | refactor | 明确行为边界和验证方式。 |
@@ -62,6 +63,10 @@
 | 规则、文档、流程、状态漂移、脚本门禁 | `DOC-xxx` | work-log、规则或脚本 |
 
 不使用 `REQ-xxx-FOLLOWUP`、`TD-xxx-FOLLOWUP` 作为长期编号。进入 `Ready` / `Done` 前必须有证据、完成标准和验证方式。
+
+## 效果型任务完成分层
+
+AI Chat / RAG / LLM NER / 图谱召回等效果型任务，按最高已验证层级声明：代码接入 -> mock / fixture -> dry-run / 真实 PG -> 真实 LLM / 用户验收。低层证据不得冒充高层；阻塞时登记 follow-up。
 
 ## 模式完成标准
 

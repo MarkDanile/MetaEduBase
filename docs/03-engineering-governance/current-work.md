@@ -14,7 +14,9 @@
 
 ## 当前进行中
 
-（无活跃任务。REQ-036 graph_edge 通道禁用实现已收口（PR 待合并）：`GRAPH_EDGE_RECALL_ENABLED` env 门控默认 off，`PgEdgeRecallChannel` 代码保留。真 LLM 全量验收因 embedding provider 慢阻登记 REQ-037。下一批接力候选见下方。）
+| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
+|------|------|--------|------|----------|--------|------|
+| DOC-074 AI / RAG 需求完成态分层与真实验收口径收紧 | 🟡 进行中 | P1 | Governance / AI RAG / Quality Gates | 分支 `docs/doc-074-ai-rag-completion-gates`；已收紧 task-modes / quality-gates / review-scorecard / workflow 中的效果型完成态分层口径 | 提交、push、创建 PR，合并后再翻完成并回填 work-log | `scripts/check-engineering-docs` 通过（31 known）；`git diff --check` 通过；规则文件行数：task-modes 97、quality-gates 84、review-scorecard 90、workflow 84 |
 
 ## 下一批候选任务
 

@@ -23,6 +23,7 @@
 8. 插件输出：spec/plan 事实源必须指向 `docs/02-delivery-plans/01-specs/*` / `02-plans/*`。
 9. 收口方式：工作台状态变更、工程治理事实源变更必须走 PR；禁止 `git push origin main` 直推。
 10. 门禁失败：先修被拦截对象；禁止在当前任务内修改门禁脚本、`KNOWN_ISSUES`、忽略列表、阈值或 CI 配置来绕过失败。
+11. AI / RAG 效果型任务：完成态必须写最高验证层级；代码接入、mock、dry-run、真实 PG、真实 LLM / 用户验收不得互相冒充。
 
 文档、规则、spec、plan、任务状态或交接信息变化时，额外运行：
 
@@ -52,6 +53,7 @@ scripts/check-engineering-docs
 | PR 描述必须包含 Summary / Scope / Validation / Risks / Docs | 候选 | 让 PR 成为交付事实源 |
 | 声明“零业务逻辑变更”时检查行为变化信号 | 候选 | 防止重构 / lint PR 隐含行为变化 |
 | 非门禁治理任务修改门禁脚本或 `KNOWN_ISSUES` | 已实现 / [DOC-073](../../01-product-planning/04-backlog.md) | 防止“改裁判”绕过当前失败 |
+| AI / RAG 效果型任务完成态分层声明 | 候选 / [DOC-074](../../01-product-planning/04-backlog.md) | 防止代码接入被误写成真实效果验收 |
 
 ## 验证矩阵
 
@@ -69,6 +71,7 @@ scripts/check-engineering-docs
 - 行为变化声明：出现“零业务逻辑变更”“仅 lint”“无行为变化”时，检查函数签名、默认值、条件、异常、SQL、prompt、路由注册、配置和用户文案；有信号就改写为风险声明并补验证。
 - 覆盖矩阵：影响多个等价入口、对象类型、状态流或端点时，用最小矩阵锁定覆盖；回归测试要覆盖正确行为，不只覆盖暴露 bug 的路径。
 - 前端请求生命周期：涉及 composable、Vue Query、轮询、loading/error、mutation 刷新时，检查请求参数、enabled/lazy-load、轮询、刷新、UI 状态、DTO adapter。
+- AI / RAG 效果型验收：区分代码接入、mock / fixture、dry-run / 真实 PG、真实 LLM / 用户验收；只允许按已跑到的最高层级翻状态。
 - 复核发现入账：当前任务内能修则修；不阻塞但有证据则入 `REQ` / `BUG` / `TD` / `DOC`；近期接力才加入候选区。
 
 ## 验证表述规范
