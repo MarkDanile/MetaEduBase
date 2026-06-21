@@ -1,6 +1,6 @@
 # REQ-002: 模板化结构抽取能力的配置与复用体验
 
-Status: 🔵 Ready
+Status: 🟢 完成（4 子任务全部收口 + follow-up TD-041/TD-042 完成；2026-06-21 closeout）
 Priority: P2
 Milestone: P1 / P2
 External:
@@ -148,3 +148,16 @@ REQ-002 已完成塑形（Shaping → Ready 过渡），下一步按以下顺序
 - 当前模板核心 CRUD + AI 初始化 + 嵌套字段编辑器 + doc_type 冲突检查已落地。REQ-002 不再"重复造轮子"，只补"配置体验 / 复用 / 可观测性 / 可维护性"。
 - vuedraggable 已在 `packages/web/package.json` 安装但 UI 未启用，是子任务"配置效率"的天然起点。
 - 任何涉及"模板存储 schema 变更"或"跨上下文（document / knowledge / rag）协作"的子任务，必须先建 spec 再进入开发，避免把塑形阶段当成实现阶段。
+## Delivery Record
+
+| 日期 | 动作 | 事实 |
+|------|------|------|
+| 2026-06-10 | Shaping | 6 个决策（Q1-Q6）已澄清；requirement + 决策记录同步落档（PR #146/147） |
+| 2026-06-10 | 子任务拆分 | REQ-002-1 配置效率 / REQ-002-2 复用机制 / REQ-002-3 溯源 / REQ-002-4 可维护性 按 Q7 决议（REQ-002-3 先行做 contract 基线）开工 |
+| 2026-06-10 | REQ-002-3 完成 | PR #153 squash merge（merge `98b986c`）：后端 `structured_data["template"]` 扩 6 键（id/version/layer）+ 6 键 meta 落盘 + e2e + 前端 `FileTabsPanel` 溯源卡。follow-up：TD-039（保留键集合抽 shared schema）+ TD-040（Vue 单元测试）|
+| 2026-06-10 | REQ-002-1 完成 | PR #158 squash merge：vuedraggable 拖拽 + 子树复制 + 撤销 toast + 搜索过滤；AC-2/3 嵌套拖拽留 follow-up。后续由 TD-041（PR #161）承接 |
+| 2026-06-10 | REQ-002-2 完成 | PR #159 squash merge：6 端点 + `template_versions` 表 + 版本快照 + 3 新组件 + 导入导出；8 条测试。沙箱无 PG，集成测试留 follow-up |
+| 2026-06-10 | TD-042 完成 | REQ-002-2 后端集成测试在 PG 实例下验证（PR #159 + PR #122 修复 007 inline FK + asyncpg 反射 PK 解析缺陷） |
+| 2026-06-10 | TD-041 完成 | FieldCard 递归渲染 + 嵌套拖拽（PR #161 squash merge `9d41b1e`）；resolve REQ-002-1 AC-2/3 嵌套拖拽 follow-up |
+| 2026-06-10 | REQ-002-4 完成 | PR #170 squash merge（merge `e8fd5474`）：008 alembic 迁移（4 列）+ `_detect_destructive_changes` + `_validate_fields` 6 键保留 + `deprecate`/`undeprecate` + `select_template` 跳过 deprecated + 16 条新 pytest + 前端弃用按钮 + 3 个二次确认 + field.key 红框校验。REQ-002 子任务链最后一棒 |
+| 2026-06-21 | 整体收口（closeout） | 4 子任务全 🟢 Done + TD-041/TD-042 follow-up 完成。requirement Status 🔵 Ready → 🟢 Done + backlog / current-work 同步。无新代码改动 |

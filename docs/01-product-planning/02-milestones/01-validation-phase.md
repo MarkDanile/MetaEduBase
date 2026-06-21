@@ -95,7 +95,7 @@ External:
 | ID | 状态 | 说明 | 归属 |
 |----|------|------|------|
 | REQ-001 | 🟣 Shaping | 知识资产处理链路的产品化验收视图 | `docs/01-product-planning/04-backlog.md` |
-| REQ-002 | 🔵 Ready | 模板化结构抽取能力的配置与复用体验 | [Requirement](../05-requirements/REQ-002-template-config-and-reuse.md) / [Backlog](../04-backlog.md) |
+| REQ-002 | 🟢 完成 | 模板化结构抽取配置与复用体验：4 子任务链全部收口（REQ-002-1 配置效率 PR #158 / REQ-002-2 复用机制 PR #159 / REQ-002-3 溯源 PR #153 / REQ-002-4 可维护性 PR #170）+ follow-up TD-041 嵌套拖拽 PR #161 + TD-042 PG 集成测试 PR #159/#122。2026-06-21 closeout | [Requirement](../05-requirements/REQ-002-template-config-and-reuse.md) / [Backlog](../04-backlog.md) |
 | REQ-002-3 | 🟢 完成 | 模板抽取结果溯源字段扩展（template.{id, version, layer}） | [Spec](../../02-delivery-plans/01-specs/2026-06-10-req-002-3-template-source-tracking.md) / [Backlog](../04-backlog.md) / [PR #153](https://github.com/MarkDanile/MetaEduBase/pull/153) |
 | REQ-003 | 🟢 Done | P1 RAG 质量链路验收与回归测试（已由 PR #74 关闭，验收缺口由 REQ-007 承接） | `docs/01-product-planning/04-backlog.md` |
 | REQ-004 | 🟢 Done | 模板匹配可解释化收口（主要代码和测试由 PR #77 关闭；验收证据与质量门禁缺口由 REQ-008 承接） | `docs/01-product-planning/04-backlog.md` |
