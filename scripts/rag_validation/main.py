@@ -55,26 +55,35 @@ async def _run(args: argparse.Namespace) -> int:
 
     engine = create_async_engine(db_url, echo=False)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    tasks: list = []
+    sem = asyncio.Semaphore(args.concurrency)
+
+    async def _guarded(q, scenario):
+        async with sem:
+            try:
+                return ("ok", await _run_question(
+                    session,
+                    tenant_id,
+                    q,
+                    scenario,
+                    allow_llm=args.allow_llm,
+                    semantic_emb_threshold=args.semantic_emb_threshold,
+                ))
+            except Exception as exc:  # noqa: BLE001
+                return ("err", f"{q.group}/{q.question_id}/{scenario.name}: "
+                               f"{type(exc).__name__}: {exc}")
+
     try:
         async with session_factory() as session:
             for q in questions:
                 for scenario in scenarios:
-                    try:
-                        runs.append(
-                            await _run_question(
-                                session,
-                                tenant_id,
-                                q,
-                                scenario,
-                                allow_llm=args.allow_llm,
-                                semantic_emb_threshold=args.semantic_emb_threshold,
-                            )
-                        )
-                    except Exception as exc:  # noqa: BLE001
-                        errors.append(
-                            f"{q.group}/{q.question_id}/{scenario.name}: "
-                            f"{type(exc).__name__}: {exc}"
-                        )
+                    tasks.append(_guarded(q, scenario))
+            results = await asyncio.gather(*tasks, return_exceptions=False)
+            for status, payload in results:
+                if status == "ok":
+                    runs.append(payload)
+                else:
+                    errors.append(payload)
     finally:
         await engine.dispose()
 
@@ -134,6 +143,11 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.5,
         help="REQ-032: cosine similarity threshold for semantic embedding coverage hit (default 0.5; lower to 0.35 for Chinese short keypoints).",
+    )
+    parser.add_argument(
+        "--concurrency", type=int, default=4,
+        help="TD-071: max concurrent _run_question tasks (default 4). "
+             "Provider-side rate limit (_EMB_SEMAPHORE=2 in coverage.py) is independent.",
     )
     return parser
 
