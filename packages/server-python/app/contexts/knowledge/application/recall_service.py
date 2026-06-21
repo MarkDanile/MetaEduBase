@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.knowledge.application.embedding_service import (
-    get_embedding as get_embedding_vec,
+    get_embedding_with_timeout as get_embedding_vec,
 )
 from app.shared.domain.ner_pipeline import NERResult
 from app.shared.domain.recall_channel import RecallResult

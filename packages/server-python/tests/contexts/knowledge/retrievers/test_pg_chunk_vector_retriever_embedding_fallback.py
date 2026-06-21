@@ -69,7 +69,7 @@ async def test_embedding_empty_falls_back_to_ilike_keyword() -> None:
     session = _FakeSession(ilike_rows=ilike_rows)
 
     with patch(
-        "app.contexts.knowledge.infrastructure.retrievers.pg_chunk_vector_retriever.get_embedding",
+        "app.contexts.knowledge.infrastructure.retrievers.pg_chunk_vector_retriever.get_embedding_with_timeout",
         AsyncMock(return_value=None),
     ):
         retriever = PgChunkVectorRetriever()
@@ -105,7 +105,7 @@ async def test_embedding_empty_logs_warning(caplog) -> None:
     session = _FakeSession(ilike_rows=[])
 
     with caplog.at_level(logging.WARNING), patch(
-        "app.contexts.knowledge.infrastructure.retrievers.pg_chunk_vector_retriever.get_embedding",
+        "app.contexts.knowledge.infrastructure.retrievers.pg_chunk_vector_retriever.get_embedding_with_timeout",
         AsyncMock(return_value=None),
     ):
         retriever = PgChunkVectorRetriever()
@@ -132,7 +132,7 @@ async def test_embedding_success_uses_vector_path() -> None:
     fake_embedding = [0.0] * 1536
 
     with patch(
-        "app.contexts.knowledge.infrastructure.retrievers.pg_chunk_vector_retriever.get_embedding",
+        "app.contexts.knowledge.infrastructure.retrievers.pg_chunk_vector_retriever.get_embedding_with_timeout",
         AsyncMock(return_value=fake_embedding),
     ):
         # 让 <=> 路径返回 row，ILIKE 路径返回空
