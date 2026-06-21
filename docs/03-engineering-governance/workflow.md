@@ -65,11 +65,12 @@ AI 查找任务时优先 `rg "REQ-xxx|TD-xxx|BUG-xxx|DOC-xxx"` 精确定位，�
 
 1. 运行与范围匹配的验证；环境阻塞时记录命令、失败摘要、影响范围。
 2. 更新工作台状态、进展、下一步和验证结果。
-3. 执行 `01-rules/quality-gates.md#完成门禁`。
-4. 技术债、需求、BUG、DOC 等任务同步对应总账。
-5. 需要长期追踪的完成项写入 `work-log.md`。
-6. 用户要求提交时，按 `01-rules/git-workflow.md#快速交付通道` 推进到指定阶段。
-7. 完整 Git 闭环后，清除交付占位；PR 未 merge 不得写 `🟢 完成`。
+3. AI / RAG 效果型任务先写清最高验证层级：代码接入、mock / fixture、dry-run / 真实 PG、真实 LLM / 用户验收。
+4. 执行 `01-rules/quality-gates.md#完成门禁`。
+5. 技术债、需求、BUG、DOC 等任务同步对应总账。
+6. 需要长期追踪的完成项写入 `work-log.md`。
+7. 用户要求提交时，按 `01-rules/git-workflow.md#快速交付通道` 推进到指定阶段。
+8. 完整 Git 闭环后，清除交付占位；PR 未 merge 不得写 `🟢 完成`。
 
 ## 插件使用规则
 
