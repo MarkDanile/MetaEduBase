@@ -1,6 +1,6 @@
 # Iteration 2026-W25: P2 RAG 质量增强
 
-Status: 🟡 Doing
+Status: 🟢 Done
 Dates: 2026-W25
 Goal: 在 REQ-012 多路 evidence 骨架之上，补齐召回后上下文组装、排序演进和真实问答 grounding，优先解决“资料库有正文但回答证据不足”的问题。
 
@@ -9,7 +9,7 @@ Goal: 在 REQ-012 多路 evidence 骨架之上，补齐召回后上下文组装�
 | ID | 类型 | 状态 | 摘要 | 验收 |
 |----|------|------|------|------|
 | REQ-013 | REQ | 🟢 Done | RAG Context Packer 与回答 grounding 增强 | PR #305 已合并；命中 chunk 后按相邻 chunk / 同 section 组装 prompt。真实 PG 样例与最终 grounding 验收转入 REQ-014。 |
-| BUG-007 | BUG | 🔵 Ready | pdf_parser sections path 错乱 | 修复 section path 计算，降低后续 section expansion 依赖坏 metadata 的风险。 |
+| BUG-007 | BUG | 🟢 Done | pdf_parser sections path 错乱 | 修复 section path 计算，降低后续 section expansion 依赖坏 metadata 的风险。PR #303 squash merge：section path 改用 docling counters 算法 + 非标题黑名单补全；mock tests pass。 |
 | REQ-014 | REQ | 🟢 Done | RAG 真实 PG 样例、数据回填与回答 grounding 验收 | PR #308 squash merge：spec + plan + 一次性验收脚本 + 占位报告 + 跨事实源同步。follow-up：下个 PR 跑真 PG |
 | REQ-015 | REQ | 🟢 Done | RAG 生产链路 grounding 与真实验收收口 | PR #314 merge `4d78667`：BUG-009 修复后真 dev DB prompt 前 context 已拿到 Python 正文；用户授权后完整 DeepSeek ask 已通过。 |
 | BUG-009 | BUG | 🟢 Done | AI Chat 真实 PG 链路未把相关正文 chunk 送入 prompt | PR #314 merge `4d78667`：已修共享 `AsyncSession` 并发、RRF 阈值、lexical supplement 排序和邻居 TOC 识别；prompt 前和完整 ask 真实验收均通过。 |
@@ -51,3 +51,7 @@ Goal: 在 REQ-012 多路 evidence 骨架之上，补齐召回后上下文组装�
 | REQ-015 真实样例截停在 prompt 前仍缺正文 chunk | BUG-009 已把瓶颈收口：`fusion_topN[1]` 命中 `数据类型和变量` 正文，packed context 含基本类型证据，完整 DeepSeek ask 回答正确 | BUG-009 / REQ-015 已由 PR #314 收口 |
 | P2 已有 PostgreSQL tsvector 基础 | 当前先用既有 PostgreSQL 能力提升质量，不急于换 ES / Milvus / Neo4j | P2-SEARCH / REQ-013；P2-RRF 仍留在里程碑 Open Items，待真实瓶颈明确后再映射稳定任务编号 |
 | P2 正式进入增长期 | 重点不再是证明 P1 闭环存在，而是提升真实问答质量和可解释检索链路 | REQ-018 / REQ-017 / REQ-016 代码能力已接入；TD-068 已让 vector fallback 可见；REQ-025 已完成 graph_edge prompt-level 与真实 LLM run；REQ-026 继续收口真实效果比较 |
+| REQ-028 真 LLM v3 重跑发现 AC-5 在真 vector 下系统性退步 | 指标错配（keypoint 覆盖 vs graph_edge 关联补足），非链路缺陷 | REQ-030 / REQ-031 / REQ-032 / REQ-033 三轮接力诊断 |
+| REQ-033 判定 graph_edge 在真 vector 下价值有限 | 真 vector 召回下 vector 通道已强，edge 通道 RRF 融合多被挤出，跨文档 grounding=0/10 | REQ-034 评估调整 / REQ-035 决策 / REQ-036 实现 / REQ-037 验证 / REQ-038 补强（环境阻塞） |
+| REQ-036 实施 graph_edge 通道禁用但 4/10 packed 出现微调 | edge-boosted 共享节点重排导致 1-2 chunk 微调，需真 LLM 验证答案无回归 | REQ-037 验证（dry-run 10/10 零覆盖度差异） + TD-070 修 vector-recall 超时 + REQ-038 补强（🔴 Blocked） |
+| W25 整体收口（2026-06-21） | Scope 全 🟢 Done（24 项）。P2 RAG 质量链路：上下文组装（REQ-013）+ 真实 PG grounding（REQ-014/015）+ 4 通道并行召回（REQ-016/017/018）+ 真实效果验收长链（REQ-024→037）+ TD-068/069 schema 与 vector fallback + TD-070 vector-recall 超时兜底 + DOC-074 完成态分层口径。graph_edge 通道治理全闭环（评估→决策→实现→验证→补强阻塞）。交付事实详见 work-log + 各 spec/plan/report + PR。 | 后续候选见 current-work：REQ-038 全量真 LLM 补强（🔴 Blocked 等环境）+ REQ-002 模板配置（🔵 Ready）+ APP-001 课程能力图谱（⚫ Candidate 需 Shaping） |
