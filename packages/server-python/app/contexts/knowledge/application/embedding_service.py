@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 
@@ -78,3 +79,28 @@ async def get_embedding(text: str) -> list[float] | None:
             )
             continue
     return None
+
+
+async def get_embedding_with_timeout(
+    text: str, timeout: float = 60.0
+) -> list[float] | None:
+    """TD-070: get_embedding with an outer hard timeout.
+
+    Vector recall query-time call sites use this helper so a single query's
+    embedding fetch cannot block up to 90s (3 providers × 30s httpx) when
+    providers are slow or unreachable. On timeout the helper returns None,
+    letting callers fall back to keyword search — identical to get_embedding's
+    existing None-on-failure contract.
+
+    Mirrors the REQ-031 `_get_cached_embedding` 60s wait_for pattern.
+    """
+    try:
+        return await asyncio.wait_for(get_embedding(text), timeout=timeout)
+    except TimeoutError:
+        logger.warning(
+            "get_embedding timed out after %.1fs (text len=%d); "
+            "falling back to keyword search",
+            timeout,
+            len(text),
+        )
+        return None

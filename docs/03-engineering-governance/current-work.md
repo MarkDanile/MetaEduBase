@@ -20,7 +20,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
 |------|------|--------|------|--------|--------|
-| REQ-037 P2 graph_edge 禁用真 LLM 全量验收（REQ-036 follow-up） | ⚫ Candidate | P2 | P2 / RAG / Verification | embedding provider 恢复稳定后重跑 REQ-028 v3 10 样例 `--allow-llm`，对比 baseline（edge-off）vs graph_edge@0.5 答案覆盖度，确认禁用无回归 | [REQ-036 实现报告](../02-delivery-plans/01-specs/2026-06-20-req-036-graph-edge-channel-disable-impl-report.md) |
+| REQ-037 P2 graph_edge 禁用真 LLM 全量验收（REQ-036 follow-up） | ⚫ Candidate | P2 | P2 / RAG / Verification | TD-070 已修 vector-recall 无超时阻塞（60s 兜底），可重跑 REQ-028 v3 10 样例 `--allow-llm`，对比 baseline（edge-off）vs graph_edge@0.5 答案覆盖度，确认禁用无回归 | [REQ-036 实现报告](../02-delivery-plans/01-specs/2026-06-20-req-036-graph-edge-channel-disable-impl-report.md) |
 
 ## 最近完成
 
@@ -30,6 +30,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-21 | TD-070 vector 召回 query embedding 无超时兜底 | 🟢 完成 | `get_embedding_with_timeout(text, timeout=60.0)` helper（与 REQ-031 60s 模式一致）+ 3 recall 调用点改造（recall_service / pg_chunk_vector_retriever / router:278）。慢 provider 下向量召回从阻塞 90s 改为 60s fail-fast 降级 keyword。+3 单测，89 passed 无回归。解锁 REQ-037 | [TD-070](technical-debt.md#td-070) / [Spec](../02-delivery-plans/01-specs/2026-06-21-td-070-vector-recall-timeout.md) |
 | 2026-06-21 | DOC-074 AI / RAG 需求完成态分层与真实验收口径收紧 | 🟢 完成 | PR #376 squash merge `96689b7`：定义效果型任务最高验证层级，明确代码接入、mock、dry-run / 真实 PG、真实 LLM / 用户验收不得互相冒充；评分卡同步扣分口径 | [Backlog](../01-product-planning/04-backlog.md) / [PR #376](https://github.com/MarkDanile/MetaEduBase/pull/376) |
 | 2026-06-20 | REQ-036 P2 graph_edge 通道禁用实现（REQ-035 follow-up） | 🟢 完成 | `GRAPH_EDGE_RECALL_ENABLED` env 门控默认 off；`PgEdgeRecallChannel` 代码保留可重新启用。单测 37 passed 无回归。dry-run 实证 4/10 样例 packed 仅 1-2 chunk 微调。真 LLM 全量验收因 embedding provider 慢阻登记 REQ-037。REQ-018 基线降级 | [REQ-036](../01-product-planning/05-requirements/REQ-036-p2-graph-edge-channel-disable-impl.md) / [实现报告](../02-delivery-plans/01-specs/2026-06-20-req-036-graph-edge-channel-disable-impl-report.md) |
 | 2026-06-20 | REQ-035 P2 graph_edge 通道去留决策（REQ-034 follow-up） | 🟢 完成 | 成本/收益对照 + 禁用/上调可行性 + 决策。**决策：禁用 graph_edge 通道**。生产默认 0.5 下召回纯无效；即使 boosting 增益有限。禁用机制已存在（`edge_retriever=None`）。登记 REQ-036 实现候选 | [REQ-035](../01-product-planning/05-requirements/REQ-035-p2-graph-edge-channel-decision.md) / [决策报告](../02-delivery-plans/01-specs/2026-06-20-req-035-graph-edge-channel-decision-report.md) |
@@ -41,5 +42,3 @@
 | 2026-06-18 | DOC-073 门禁脚本防绕过与规则修改范围校验 | 🟢 完成 | PR #362 squash merge `11e9138`：新增 `gate_file_scope` 检查，非 DOC 门禁 / 治理脚本任务修改工程门禁脚本时会被 `scripts/check-engineering-docs` 拦截；补专项测试 30 passed | [Backlog](../01-product-planning/04-backlog.md) / [PR #362](https://github.com/MarkDanile/MetaEduBase/pull/362) |
 | 2026-06-20 | REQ-028 v3 重跑 (TD-068+069 后真实向量召回) | 🟢 完成 | vector 通道真命中后 baseline 升 / weighted 降；AC-4 7→6，AC-5 residual 5→1。真实向量召回下 P2 长链需要新口径评估 | [REQ-028 v3 报告](../02-delivery-plans/01-specs/2026-06-18-req-028-rag-effect-comparison-v3-report.md) / PR #TODO |
 | 2026-06-18 | REQ-029 P2 弱召回 AC-5 阈值重设计 | 🟢 完成 | 分支 `feat/req-029-ac5-threshold-redesign`：residual ratio 公式 + `--lift-mode` CLI。Residual 模式 AC-5 5/10 达标，整条 P2 长链收口 | [REQ-029](../01-product-planning/05-requirements/REQ-029-p2-ac5-threshold-redesign.md) / [Residual Report](../02-delivery-plans/01-specs/2026-06-18-req-029-ac5-threshold-residual-report.md) |
-| 2026-06-18 | REQ-028 P2 弱召回自动质量比较口径改造 | 🟢 完成 | PR #360 squash merge `f624f49`：三口径（substring/semantic/llm_judge）+ v3 样例 10 条（keypoint 带 synonyms+weight）+ 真 LLM 报告。REQ-029 residual 模式补判 verdict 后翻完成 | [REQ-028](../01-product-planning/05-requirements/REQ-028-p2-auto-quality-metric.md) / [Report v3](../02-delivery-plans/01-specs/2026-06-18-req-028-rag-effect-comparison-v3-report.md) / [PR #360](https://github.com/MarkDanile/MetaEduBase/pull/360) |
-| 2026-06-18 | REQ-027 P2 弱召回知识覆盖与样例多样性 | 🟢 完成 | PR #359 squash merge `8310fca`：5 条 v2 样例 (dev DB 513 knowledge_edges 校准) + wrapper 脚本 + 真 LLM v1+v2 两轮报告。机制 10/10 ✅；prompt 5/10 ✅。REQ-029 residual 阈值补判后 AC-4 9/10 达标，翻完成 | [REQ-027](../01-product-planning/05-requirements/REQ-027-p2-weak-recall-knowledge-coverage.md) / [Report v2](../02-delivery-plans/01-specs/2026-06-18-req-027-rag-effect-comparison-v2-report.md) / [PR #359](https://github.com/MarkDanile/MetaEduBase/pull/359) |

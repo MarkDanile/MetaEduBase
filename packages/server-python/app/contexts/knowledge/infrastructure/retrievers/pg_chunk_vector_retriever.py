@@ -20,7 +20,9 @@ import uuid
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.contexts.knowledge.application.embedding_service import get_embedding
+from app.contexts.knowledge.application.embedding_service import (
+    get_embedding_with_timeout,
+)
 from app.contexts.knowledge.domain.evidence import EvidenceItem
 from app.contexts.knowledge.infrastructure.retrievers.keyword_query import (
     bind_keyword_params,
@@ -55,7 +57,7 @@ class PgChunkVectorRetriever:
         # REQ-016 Slice 3: augment embedding query with LLM expanded terms
         expanded_query = getattr(ner_result, "expanded_query", "") or ""
         embedding_text = f"{query} {expanded_query}".strip() if expanded_query else query
-        embedding = await get_embedding(embedding_text)
+        embedding = await get_embedding_with_timeout(embedding_text)
         if not embedding:
             logger.warning("pg_chunk_vector: empty embedding for query=%r", query[:60])
             return await self._fallback_keyword_search(

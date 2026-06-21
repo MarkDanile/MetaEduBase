@@ -163,6 +163,7 @@
 | TD-067 | LLM 抽取 `teaching_plan` / `practice_links` 失败返 `-` | 🟢 完成 | P2 | 后端 / 模板抽取 / LLM prompt | 2026-06-14 全链路评估人才培养方案文件复测：模板 `人才培养方案` 期望 `teaching_plan: array[semester]` 38 课程 × 6 学期课时表 + `practice_links: table` 实践环节；LLM 返 `-`（未抽取）。`curriculum_system: array[course]` 38 门课正确抽取、`basic_info` 5 字段准 — 抽取链路"懂简单数组，不懂嵌套课时表"。需在 `extract_template_prompts.py` 补 few-shot 示例（教学进程表 + 实践环节表）。 | [PR #287](https://github.com/MarkDanile/MetaEduBase/pull/287) (merge `2b983b2`) |
 | TD-068 | AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明 | 🟢 完成 (PR #TODO) | P0 | 后端 / RAG / Embedding / AI Chat | Slice 1 PR #355 squash merge `fdffd60`：trace 已透出 `embedding_fallback` metadata。Slice 2 (PR #TODO squash merge)：修 `embedding_service.py` 多 provider fallback + 修 `pg_chunk_vector_retriever.py` `CAST(:vec AS vector)` 后 query embedding 真实生成（硅流 4096 维）+ Slice 3 (TD-069) schema 迁移 `text` → `vector(4096)` + knowledge_nodes 599 行 backfill。验证：psql pgvector cosine 真返回 (chunk 0.6677 / node 0.6638)，`vector_fallback_count: 0`，4 通道全激活 |
 | TD-069 | dev DB embedding 列类型与 pgvector 操作符不匹配导致真实向量召回不可用 | 🟢 完成 (PR #TODO squash merge) | P0 | 后端 / RAG / Embedding / AI Chat / Schema | dev DB `document_chunks.embedding` (1062 行已 backfill 硅流 4096 维) / `knowledge_nodes.embedding` (599 行 100% NULL，从未填过) 两列当前 `text` 类型；pgvector 扩展已装但 `<=>` cosine 操作符要求 `vector` 类型。PR #TODO squash merge：alembic 030 迁移 `text` → `vector(4096)` (USING expression 兼容 NULL) + `extract_knowledge_graph` 加 embedding 字段填充 + 一次性 `backfill_knowledge_node_embeddings.py` 脚本回填 599 节点 + 同步 merge TD-068 Slice 2 代码修复 |
+| TD-070 | vector 召回 query embedding 无超时兜底 | 🟢 完成 | P1 | 后端 / RAG / Embedding / Recall | `get_embedding` 串行尝试 3 provider × 30s httpx = 最多 90s/调用；3 个 query-time recall 调用点（`recall_service.py:32` PgVectorRecallChannel / `pg_chunk_vector_retriever.py:58` PgChunkVectorRetriever / `router.py:278` KG 搜索）无外层超时，慢 provider 下阻塞生产 chat + 卡住 REQ-037 全量真 LLM 验收。新增 `get_embedding_with_timeout(text, timeout=60.0)` helper（`asyncio.wait_for` + TimeoutError→None 降级，与 REQ-031 `_get_cached_embedding` 60s 模式一致），3 调用点改用之。单测 3 条（成功透传 / 超时 None / None 透传）+ 现有测试无回归。`get_embedding` 本身不动（batch/写入路径保持现状） |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -4128,3 +4129,45 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 - 2026-06-19 登记（TD-068 Slice 2 诊断发现）。
 - 2026-06-19 修复完成 (PR #TODO squash merge)：alembic 030 迁移 `document_chunks.embedding` / `knowledge_nodes.embedding` `text` → `vector(4096)` (USING expression)；新增 `backfill_knowledge_node_embeddings.py` 一次性脚本回填 599 节点 (硅流 8B 4096 维)；`extract_knowledge_graph.py` 加 embedding 字段填充；同步 merge TD-068 Slice 2 代码修复 (`embedding_service.py` 多 provider fallback + `pg_chunk_vector_retriever.py` / `recall_service.py` CAST 修复)；验证 psql pgvector cosine 真返回 (`SELECT 1 - (embedding <=> '[...]'::vector) FROM document_chunks` 正常) + `validate_req024_p2_real_validation.py` 真 PG dry-run `vector_fallback_count: 0` + retrieval_topn.vector 真命中 (chunk top-1 score 0.6677) + 4 通道全部激活。`document_chunks.embedding` 1062 行已 backfill / `knowledge_nodes.embedding` 599/599 backfilled。报告重跑留独立 PR。
+
+### TD-070: vector 召回 query embedding 无超时兜底
+
+状态：🟢 完成
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 后端 / RAG / Embedding / Recall |
+| 事实源 | REQ-036 实现报告（真 LLM 全量验收受阻诊断）；`packages/server-python/app/contexts/knowledge/application/embedding_service.py`；`recall_service.py:32` / `pg_chunk_vector_retriever.py:58` / `router.py:278` |
+
+**证据**
+
+- `get_embedding(text)`（`embedding_service.py`）串行尝试最多 3 个 provider（qwen → siliconflow → minimax），每个 provider `httpx.AsyncClient(timeout=30.0)`。慢/不可达 provider 下单次调用最多阻塞 **90s**（3 × 30s）。
+- vector 召回 3 个 query-time 调用点**均无外层超时**：
+  - `recall_service.py:32` `PgVectorRecallChannel.recall`（生产 chat knowledge_nodes 向量召回，经 `PgGraphRetriever`）
+  - `pg_chunk_vector_retriever.py:58` `PgChunkVectorRetriever.retrieve`（生产 chat chunk 向量召回，经 `CompositeChunkRetriever`）
+  - `router.py:278` KG 语义/混合搜索 endpoint（用户面 search API）
+- 对比：REQ-031 `_get_cached_embedding`（校验脚本 keypoint coverage 路径）已加 `asyncio.wait_for(..., 60.0)` 外层超时。生产 vector 召回路径无同等兜底——REQ-031 修复时遗漏的对等缺口。
+
+**问题**
+
+- 生产 chat 阻塞：AIChatService 串行召回（SQLAlchemy AsyncSession 禁并发），慢 provider 下单 query 向量召回阻塞最多 90s，成本完全叠加。
+- REQ-037 全量真 LLM 验收受阻：10 样例 × 6 scenario = 60 次 `_run_question`，每次触发向量召回 embedding，慢 provider 下 0% CPU 网络 I/O 等待，全量 run 不可在可接受时间内完成。
+
+**完成标准**
+
+- vector 召回 query-time 调用点加外层硬超时，与 REQ-031 模式一致（60s `asyncio.wait_for` + TimeoutError→None 降级）。
+- 慢 provider 下向量召回 fail-fast 降级为 keyword，不再阻塞 90s。
+- `get_embedding` 本身不动（batch backfill / node 写入路径保持现状）；REQ-031 `_get_cached_embedding` 不动。
+
+**验证方式**
+
+- 单测：`get_embedding_with_timeout` 成功透传 / 超时返回 None / None 透传。
+- 现有测试无回归：embedding_service / pg_chunk_vector_retriever fallback / ai_chat_router_req015 / retrievers / ai_chat_service / context_packer。
+- `ruff check` + `scripts/check-engineering-docs`。
+
+**交付记录**
+
+- 2026-06-21 登记（REQ-036 实现报告 follow-up）。
+- 2026-06-21 修复完成：`embedding_service.py` 新增 `get_embedding_with_timeout(text, timeout=60.0)` helper（`asyncio.wait_for` + catch `TimeoutError` → log warning + return None，与 REQ-031 `_get_cached_embedding` 60s 模式一致）；3 recall 调用点改用之（`recall_service.py` import alias 改 `get_embedding_with_timeout as get_embedding_vec` / `pg_chunk_vector_retriever.py` 改 import + 调用 / `router.py:278` 改调用，:182 写入路径不动）；`test_embedding_service.py` +3 单测（成功透传 / 超时 None / None 透传）；`test_pg_chunk_vector_retriever_embedding_fallback.py` 3 处 patch target 跟随 import 改名。验证：`pytest tests/contexts/knowledge/test_embedding_service.py tests/contexts/knowledge/retrievers/ tests/contexts/knowledge/test_ai_chat_service.py tests/contexts/knowledge/test_context_packer.py tests/contexts/ai/test_ai_chat_router_req015.py -q` → 89 passed 无回归（`test_knowledge.py` 失败为 pre-existing asyncpg DB 连接问题，与本任务无关）；`ruff check` All checks passed!；`scripts/check-engineering-docs` 退出码 0。
+- 解锁 REQ-037 全量真 LLM 验收（向量召回不再无超时阻塞）。

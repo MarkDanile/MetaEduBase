@@ -13,7 +13,10 @@ from app.contexts.knowledge.application.dto import (
     KnowledgeSearchDTO,
     SearchResultDTO,
 )
-from app.contexts.knowledge.application.embedding_service import get_embedding
+from app.contexts.knowledge.application.embedding_service import (
+    get_embedding,
+    get_embedding_with_timeout,
+)
 from app.contexts.knowledge.infrastructure.knowledge_repository import (
     KnowledgeNodeRepository,
 )
@@ -275,7 +278,7 @@ async def search_knowledge(
     search_mode = data.search_mode or "hybrid"
     top_k = data.top_k or 5
 
-    embedding = await get_embedding(data.query)
+    embedding = await get_embedding_with_timeout(data.query)
 
     if embedding and search_mode in ("semantic", "hybrid"):
         vec_str = "[" + ",".join(str(v) for v in embedding) + "]"
