@@ -20,7 +20,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
 |------|------|--------|------|--------|--------|
-| REQ-038 P2 graph_edge 禁用全量真 LLM 验收补强（REQ-037 follow-up） | ⚫ Candidate | P3 | P2 / RAG / Verification | REQ-037 全量真 LLM run 受 embedding provider 累积吞吐阻塞。provider 吞吐改善或离线批量预计算 keypoint embedding 后重跑 `--allow-llm` 全量 10 样例，补 semantic_emb/continuous/llm_judge 口径对比 | [REQ-037 验收报告](../02-delivery-plans/01-specs/2026-06-21-req-037-graph-edge-disable-real-llm-verify-report.md) |
+| REQ-038 P2 graph_edge 禁用全量真 LLM 验收补强（REQ-037 follow-up） | 🔴 Blocked | P3 | P2 / RAG / Verification | 环境阻塞：embedding provider 累积吞吐不足（120 次 answer+recall embedding 无法缓存，~50-60min）。keypoint 已被 REQ-031 缓存优化非瓶颈，离线预计算不能解决。用户决策跳过，环境就绪后再做。REQ-037 dry-run 实证已支撑禁用决策，本任务仅补强 | [REQ-038](../01-product-planning/05-requirements/REQ-038-p2-graph-edge-disable-full-llm-verify-supplement.md) |
 
 ## 最近完成
 
