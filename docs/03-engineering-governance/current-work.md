@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 | 验证 |
 |------|------|--------|------|----------|--------|------|
-| DOC-074 AI / RAG 需求完成态分层与真实验收口径收紧 | 🟡 进行中 | P1 | Governance / AI RAG / Quality Gates | 分支 `docs/doc-074-ai-rag-completion-gates`；已收紧 task-modes / quality-gates / review-scorecard / workflow 中的效果型完成态分层口径 | 提交、push、创建 PR，合并后再翻完成并回填 work-log | `scripts/check-engineering-docs` 通过（31 known）；`git diff --check` 通过；规则文件行数：task-modes 97、quality-gates 84、review-scorecard 90、workflow 84 |
+| 暂无 | - | - | - | DOC-074 已通过 PR #376 merge；AI / RAG 效果型完成态分层口径已进入 task-modes / quality-gates / review-scorecard / workflow | 下一个接力任务建议处理 REQ-037，或继续评审近期 AI/RAG 效果型完成声明 | - |
 
 ## 下一批候选任务
 
@@ -32,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-21 | DOC-074 AI / RAG 需求完成态分层与真实验收口径收紧 | 🟢 完成 | PR #376 squash merge `96689b7`：定义效果型任务最高验证层级，明确代码接入、mock、dry-run / 真实 PG、真实 LLM / 用户验收不得互相冒充；评分卡同步扣分口径 | [Backlog](../01-product-planning/04-backlog.md) / [PR #376](https://github.com/MarkDanile/MetaEduBase/pull/376) |
 | 2026-06-20 | REQ-036 P2 graph_edge 通道禁用实现（REQ-035 follow-up） | 🟢 完成 | `GRAPH_EDGE_RECALL_ENABLED` env 门控默认 off；`PgEdgeRecallChannel` 代码保留可重新启用。单测 37 passed 无回归。dry-run 实证 4/10 样例 packed 仅 1-2 chunk 微调。真 LLM 全量验收因 embedding provider 慢阻登记 REQ-037。REQ-018 基线降级 | [REQ-036](../01-product-planning/05-requirements/REQ-036-p2-graph-edge-channel-disable-impl.md) / [实现报告](../02-delivery-plans/01-specs/2026-06-20-req-036-graph-edge-channel-disable-impl-report.md) |
 | 2026-06-20 | REQ-035 P2 graph_edge 通道去留决策（REQ-034 follow-up） | 🟢 完成 | 成本/收益对照 + 禁用/上调可行性 + 决策。**决策：禁用 graph_edge 通道**。生产默认 0.5 下召回纯无效；即使 boosting 增益有限。禁用机制已存在（`edge_retriever=None`）。登记 REQ-036 实现候选 | [REQ-035](../01-product-planning/05-requirements/REQ-035-p2-graph-edge-channel-decision.md) / [决策报告](../02-delivery-plans/01-specs/2026-06-20-req-035-graph-edge-channel-decision-report.md) |
 | 2026-06-20 | REQ-034 P2 graph_edge RRF 权重/策略调整评估（REQ-033 follow-up） | 🟢 完成 | 5 点 weight sweep + 策略可行性 + REQ-018/025 影响面。**关键发现**：生产默认 0.5 下 graph_edge 召回 8 chunks/样例但 0 进 fusion/packed（惰性死权重）；REQ-033 Metric A=5/10 实测于 w=1.2 boosting，高估生产贡献。下调权重无效；保留 0.5，登记 REQ-035 决策候选 | [REQ-034](../01-product-planning/05-requirements/REQ-034-p2-graph-edge-rrf-weight-strategy-evaluation.md) / [评估报告](../02-delivery-plans/01-specs/2026-06-20-req-034-graph-edge-rrf-weight-strategy-evaluation-report.md) |
