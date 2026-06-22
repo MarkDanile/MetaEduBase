@@ -55,37 +55,37 @@ async def _run(args: argparse.Namespace) -> int:
 
     engine = create_async_engine(db_url, echo=False)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
-    tasks: list = []
     sem = asyncio.Semaphore(args.concurrency)
 
     async def _guarded(q, scenario):
-        async with sem:
-            try:
-                return ("ok", await _run_question(
-                    session,
-                    tenant_id,
-                    q,
-                    scenario,
-                    allow_llm=args.allow_llm,
-                    semantic_emb_threshold=args.semantic_emb_threshold,
-                ))
-            except Exception as exc:  # noqa: BLE001
-                return ("err", f"{q.group}/{q.question_id}/{scenario.name}: "
-                               f"{type(exc).__name__}: {exc}")
+        async with session_factory() as task_session:
+            async with sem:
+                try:
+                    return ("ok", await _run_question(
+                        task_session,
+                        tenant_id,
+                        q,
+                        scenario,
+                        allow_llm=args.allow_llm,
+                        semantic_emb_threshold=args.semantic_emb_threshold,
+                    ))
+                except Exception as exc:  # noqa: BLE001
+                    return ("err", f"{q.group}/{q.question_id}/{scenario.name}: "
+                                   f"{type(exc).__name__}: {exc}")
 
+    tasks: list = []
+    for q in questions:
+        for scenario in scenarios:
+            tasks.append(_guarded(q, scenario))
     try:
-        async with session_factory() as session:
-            for q in questions:
-                for scenario in scenarios:
-                    tasks.append(_guarded(q, scenario))
-            results = await asyncio.gather(*tasks, return_exceptions=False)
-            for status, payload in results:
-                if status == "ok":
-                    runs.append(payload)
-                else:
-                    errors.append(payload)
+        results = await asyncio.gather(*tasks, return_exceptions=False)
     finally:
         await engine.dispose()
+    for status, payload in results:
+        if status == "ok":
+            runs.append(payload)
+        else:
+            errors.append(payload)
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -145,8 +145,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="REQ-032: cosine similarity threshold for semantic embedding coverage hit (default 0.5; lower to 0.35 for Chinese short keypoints).",
     )
     parser.add_argument(
-        "--concurrency", type=int, default=4,
-        help="TD-071: max concurrent _run_question tasks (default 4). "
+        "--concurrency", type=int, default=4, choices=[1, 2, 4, 8],
+        help="TD-071: max concurrent _run_question tasks (default 4, choices: 1/2/4/8). "
              "Provider-side rate limit (_EMB_SEMAPHORE=2 in coverage.py) is independent.",
     )
     return parser
