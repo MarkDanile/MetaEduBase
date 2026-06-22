@@ -14,13 +14,13 @@
 
 ## 当前进行中
 
-当前无活跃任务。REQ-039 P2 graph_edge 禁用全量真 LLM 验收解除阻塞（TD-071 接力）已 🟢 完成（验证报告含 AC-4 wall-clock 超时 follow-up：实测 17.8min 全 suite，REQ-028 v3 子集按比例 6.6min 达标）。TD-071 实施 PR #384 open 待 merge。后续候选见下方。
+当前无活跃任务。REQ-039 P2 graph_edge 禁用全量真 LLM 验收解除阻塞（TD-071 接力）已 🟢 完成。AC-4 wall-clock ≤10min 目标经 2026-06-22 子集验证（[报告](../02-delivery-plans/01-specs/2026-06-22-td-071-ac4-subset-validation-report.md)）判定**不可达**：实测 132 run 29.6min，按比例 60 run 推算 15-20min；spirit 解释（6.6min）被实测推翻。TD-071 实施本身仍健康（timeout=0/error=0，与历史 50-60min 阻塞比 3-3.4× 加速）。AC-4 重新归类为"已分析、目标不可达、需后续 follow-up 接力"，follow-up #1 关闭。后续候选见下方。
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
 |------|------|--------|------|--------|--------|
-| AC-4 wall-clock 超时 follow-up | 🔵 候选 | P3 | P2 / RAG / Verification | 本次实测全 suite 17.8min 超 AC-4 ≤10min 目标。REQ-028 v3 子集按比例 6.6min 达标。如需严格满足 AC-4，下次 brief 命令需显式限制 REQ-028 子集（仅传 `--req028-samples` 不传 `--weak-recall-samples`，或加 `--limit`） | [REQ-039 验收报告 §6 follow-up #1](../02-delivery-plans/01-specs/2026-06-21-req-039-p2-graph-edge-disable-llm-verify-unblock-report.md#6-follow-up) |
+| AC-4 wall-clock 超时 follow-up | 🟢 已关闭 | P3 | P2 / RAG / Verification | 2026-06-22 子集验证实测 132 run 29.6min（仅传 `--req028-samples` 仍触发多 group）。按比例 60 run 推算 15-20min。AC-4 ≤10min 目标不可达，spirit 解释被推翻。接力 follow-up：离线批量 keypoint 预计算 / runner.py 接 batch helper / 提 provider 限流 | [AC-4 子集验证报告](../02-delivery-plans/01-specs/2026-06-22-td-071-ac4-subset-validation-report.md) |
 | Q7_kg_occupation_to_skill graph_edge 退化排查 | 🔵 候选 | P3 | P2 / RAG / Fusion | baseline 0.4 → graph_edge 0（substring/semantic 口径），1/27 样例。graph_edge 通道在某些 fusion 排序下改变 packed chunk 选择导致命中下降。规模小不构成系统性；如需修复需复查 fusion 排序与 graph_edge 通道交互 | [REQ-039 验收报告 §6 follow-up #2](../02-delivery-plans/01-specs/2026-06-21-req-039-p2-graph-edge-disable-llm-verify-unblock-report.md#6-follow-up) |
 | 离线批量 keypoint embedding 预计算 | 🔵 候选 | P3 | RAG / Embedding / TD | REQ-037 登记 follow-up。TD-071 batch helper 已铺路：runner.py 改 `embedding_callable=get_embeddings_with_timeout_batch` 可进一步省 HTTP 数（预计全量 ~5min） | [REQ-037 验收报告 §6](../02-delivery-plans/01-specs/2026-06-21-req-037-graph-edge-disable-real-llm-verify-report.md#6-follow-up) |
 
@@ -32,7 +32,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
-| 2026-06-22 | REQ-039 P2 graph_edge 禁用全量真 LLM 验收解除阻塞（TD-071 接力） | 🟢 完成 | 全量 `--allow-llm --concurrency 4` 实测 17.8min（27 样例 × 6 scenario = 162 run）；`_EMB_STATS` hit=2177/miss=475/timeout=0/error=0 健康。mismatch=37（70% LLM 噪声字段，确定性字段正负抵消）。REQ-036 禁用决策真实 LLM 维度无系统性回归 | [REQ-039](../01-product-planning/05-requirements/REQ-039-p2-graph-edge-disable-llm-verify-unblock.md) / [验收报告](../02-delivery-plans/01-specs/2026-06-21-req-039-p2-graph-edge-disable-llm-verify-unblock-report.md) / [PR #384](https://github.com/MarkDanile/MetaEduBase/pull/384) |
+| 2026-06-22 | AC-4 wall-clock 子集验证（TD-071 follow-up #1） | 🟢 已关闭 | 仅传 `--req028-samples` 实测 132 run 29.6min（spirit 解释 6.6min 被推翻）。AC-4 ≤10min 目标不可达。TD-071 实施健康（3-3.4× 加速 vs 50-60min 阻塞）。接力 3 条候选（离线批量 keypoint 预计算 / runner.py 接 batch helper / 提 provider 限流） | [AC-4 子集验证报告](../02-delivery-plans/01-specs/2026-06-22-td-071-ac4-subset-validation-report.md) |
+| 2026-06-22 | REQ-039 P2 graph_edge 禁用全量真 LLM 验收解除阻塞（TD-071 接力） | 🟢 完成 | 全量 `--allow-llm --concurrency 4` 实测 17.8min（27 样例 × 6 scenario = 162 run）；`_EMB_STATS` hit=2177/miss=475/timeout=0/error=0 健康。mismatch=37（70% LLM 噪声字段，确定性字段正负抵消）。REQ-036 禁用决策真实 LLM 维度无系统性回归。main merge commit `365e390` | [REQ-039](../01-product-planning/05-requirements/REQ-039-p2-graph-edge-disable-llm-verify-unblock.md) / [验收报告](../02-delivery-plans/01-specs/2026-06-21-req-039-p2-graph-edge-disable-llm-verify-unblock-report.md) / [PR #384 (MERGED)](https://github.com/MarkDanile/MetaEduBase/pull/384) |
 | 2026-06-21 | REQ-002 模板化结构抽取配置与复用体验 closeout | 🟢 Done | 4 子任务全收口：REQ-002-3 溯源（PR #153）+ REQ-002-1 配置效率（PR #158）+ TD-041 嵌套拖拽（PR #161）+ REQ-002-2 复用机制（PR #159）+ TD-042 PG 集成测试（PR #159/#122）+ REQ-002-4 可维护性（PR #170）。requirement Status 🔵 Ready → 🟢 Done，docs-only 内务登记 | [Requirement](../01-product-planning/05-requirements/REQ-002-template-config-and-reuse.md) |
 | 2026-06-21 | W25 迭代 2026-W25 P2 RAG 质量增强 收口 | 🟢 Done | Scope 24 项全交付（修复 BUG-007 漂移）。覆盖 REQ-013/014/015 + REQ-016/017/018 + REQ-024→037 + TD-068/069/070 + DOC-074。graph_edge 治理全闭环 | [迭代文件](../01-product-planning/03-iterations/2026-W25-p2-rag-quality-enhancement.md) / [work-log 索引](work-log.md) |
 | 2026-06-21 | REQ-037 P2 graph_edge 禁用真 LLM 全量验收（REQ-036 follow-up） | 🟢 完成 | 全量真 LLM run 受 embedding provider 累积吞吐阻塞；dry-run 实证 10/10 样例 baseline = graph_edge@0.5 零覆盖度差异。全量真 LLM 登记 REQ-038 follow-up | [REQ-037](../01-product-planning/05-requirements/REQ-037-p2-graph-edge-disable-real-llm-verify.md) / [验收报告](../02-delivery-plans/01-specs/2026-06-21-req-037-graph-edge-disable-real-llm-verify-report.md) |

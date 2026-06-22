@@ -92,7 +92,7 @@ cd packages/server-python && /usr/bin/time -p python ../../scripts/validate_req0
 | ID | 内容 | 实际 | 判定 |
 |----|------|------|------|
 | AC-1 | TD-071 PR merged + 单测通过 | branch `feature/td-071-rag-eval-embedding-batch` 含 3 commits (bb375d3/b594402/3eb6a0d)，PR #384 open（待 merge） | ✓ 实施完成，merge 由 PR 流程推进 |
-| AC-2 | `--allow-llm` ≤ 10min 完成 | 17.8 min（27 样例全 suite）；按比例 10 样例 ≈ 6.6 min 达标 | ⚠️ 全 suite 超时；REQ-028 子集达标 |
+| AC-2 | `--allow-llm` ≤ 10min 完成 | 17.8 min（27 样例全 suite，spirit 解释按比例 10 样例 ≈ 6.6 min）；**2026-06-22 AC-4 子集实测推翻 spirit 解释**（仅传 `--req028-samples` 仍触发 132 run = 29.6 min；按比例 60 run 推算 15-20 min） | ⚠️ AC-4 不可达；spirit 解释被推翻；详见 [AC-4 子集验证报告](2026-06-22-td-071-ac4-subset-validation-report.md) |
 | AC-3 | 报告含 baseline vs graph_edge 四口径对比 + llm_judge | 报告 `/tmp/td071-full-real-llm.md` 含 5 字段对比 + llm_judge | ✓ |
 | AC-4 | 判定 baseline ≥ graph_edge 无系统性退步 | 37 mismatch 中 26 为 LLM 噪声；11 确定性字段正负抵消 | ✓（含 follow-up） |
 | AC-5 | 若发现回归登记 follow-up | Q7 退化 + 11 确定性 mismatch 登记 follow-up #1 | ✓ |
@@ -100,16 +100,16 @@ cd packages/server-python && /usr/bin/time -p python ../../scripts/validate_req0
 
 ## 5. 结论
 
-1. **TD-071 解锁 REQ-038 阻塞**：从 REQ-037 的 50-60min 后台跑阻塞 → 本次 17.8min 实测完成（162 run），加速 ~3-4×。按 REQ-028 v3 子集（10 样例）比例约 6.6min，达成 AC-4 目标。
+1. **TD-071 解锁 REQ-038 阻塞**：从 REQ-037 的 50-60min 后台跑阻塞 → 本次 17.8min 实测完成（162 run），加速 ~3-4×。**注意**：AC-4 ≤10min 子集 spirit 解释已被 2026-06-22 子集验证推翻（实测 132 run 29.6 min，按比例 60 run 推算 15-20 min）—— 详见 [AC-4 子集验证报告](2026-06-22-td-071-ac4-subset-validation-report.md)。AC-4 目标不可达是 provider 累积吞吐天花板，需独立 follow-up（离线批量 keypoint 预计算 / runner.py 接 batch helper / 提 provider 限流）接力，不影响 TD-071 实施健康。
 2. **REQ-036 graph_edge 禁用决策在真实 LLM 维度无系统性回归**：37 mismatch 主要由 LLM-as-judge 本质噪声造成；确定性字段正负抵消；与 REQ-037 dry-run 结论一致（dry-run 零差异是确定性子串匹配的优势）。
 3. **`_EMB_STATS` 健康**：hit=2177 / miss=475 / timeout=0 / error=0。keypoint 缓存跨 run 命中正常；answer embedding 跨 run 不重符合预期；TD-070 60s 兜底与 TD-071 batch 改造均工作正常。
-4. **REQ-039 翻 🟢 完成**；TD-071 翻 🟢 完成。
+4. **REQ-039 翻 🟢 完成**；TD-071 翻 🟢 完成；AC-4 ≤10min 目标重新归类为"已分析、不可达、需后续 follow-up 接力"。
 
 ## 6. follow-up
 
 | 项 | 说明 | 归属 |
 |----|------|------|
-| AC-4 wall-clock 超时（17.8min vs 10min 目标） | 实际跑全 suite 27 样例；按 REQ-028 子集（10 样例）估算 6.6min 达标。brief 命令未限制仅 REQ-028 子集，脚本同时跑 REQ-016/018/026/028 全 suite。如要严格满足 AC-4，建议在 brief 中显式指定 `--limit N` 或仅传 `--req028-samples` 不传 `--weak-recall-samples` | 文档/脚本入口约定（候选区，非 TD） |
+| AC-4 wall-clock 超时（17.8min vs 10min 目标） | **2026-06-22 子集验证完成**：仅传 `--req028-samples` 仍触发 132 run（REQ-028 + REQ-026 + REQ-016 + REQ-018），实测 wall-clock 1774.91s ≈ **29.6 min**。按比例 60 run 推算 15-20 min。**AC-4 ≤10min 目标在当前环境不可达**，spirit 解释（按比例 6.6 min）被实测推翻。follow-up #1 **关闭**（不再以 AC-4 ≤10min 为目标），接力 3 条候选 follow-up（离线批量 keypoint 预计算 / runner.py 接 batch helper / 提 provider 限流）。详见 [AC-4 子集验证报告](2026-06-22-td-071-ac4-subset-validation-report.md) | 已关闭（[AC-4 子集验证报告](2026-06-22-td-071-ac4-subset-validation-report.md)） |
 | Q7_kg_occupation_to_skill graph_edge 退化 | baseline 0.4 → graph_edge 0（substring/semantic 口径），1 样例。graph_edge 通道在某些 fusion 排序下改变 packed chunk 选择导致命中下降。规模小（1/27），不构成系统性问题；如需修复，需复查 graph_edge 通道与 fusion 排序的交互 | 候选区（非阻塞） |
 | 真实 LLM 维度与 dry-run 不一致 | dry-run substring/semantic 口径零差异 vs real-LLM 11 mismatch。差异源于真实 chunk 召回数量受 graph_edge 通道影响（graph_edge 偶发多召回/少召回）。已在 §3.3 分析，正负抵消 | 已分析（无需 follow-up） |
 | 离线批量 keypoint embedding 预计算 | REQ-037 报告登记 follow-up，本任务未做；TD-071 batch helper 已为此铺路（runner.py 改 `embedding_callable=get_embeddings_with_timeout_batch` 可进一步省 HTTP 数） | 候选区（TD） |
