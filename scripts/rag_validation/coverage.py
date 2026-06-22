@@ -122,6 +122,94 @@ async def _get_cached_embedding(text: str, embedding_callable) -> list[float] | 
     return emb
 
 
+async def _get_cached_embeddings_batch(
+    texts: list[str],
+    embedding_callable,
+    *,
+    batch_size: int = 10,
+) -> list[list[float] | None]:
+    """TD-071: batched cache lookup + provider batch fill.
+
+    - Dedup by `text` (dict preserves order).
+    - Cache hits return immediately (no HTTP); bump `_EMB_STATS["hit"]`.
+    - Cache misses accumulate; pass unique misses to provider via
+      `embedding_callable` (per-text). Within a batch chunk (size
+      `batch_size`), per-text calls run concurrently via `asyncio.gather`,
+      with each call entering `async with _EMB_SEMAPHORE` to keep provider
+      pressure at ≤ 2 (same as the pre-existing single-call path).
+    - Per-text timeout: `asyncio.wait_for(embedding_callable(t), 60.0)`;
+      on `asyncio.TimeoutError` → `_EMB_STATS["timeout"]++` + return None;
+      on other exception → `_EMB_STATS["error"]++` + return None.
+    - On success: write `_EMBEDDING_CACHE[t] = emb` and return.
+    - Returns list aligned with input `texts` (preserves duplicates and
+      original order).
+    """
+    aligned: list[list[float] | None] = [None] * len(texts)
+    if not texts:
+        return aligned
+
+    # 1. Dedup while preserving order; collect miss list.
+    seen: dict[str, None] = {}
+    miss_texts: list[str] = []
+    for t in texts:
+        if not t:
+            continue
+        if t in _EMBEDDING_CACHE:
+            _EMB_STATS["hit"] += 1
+        elif t not in seen:
+            seen[t] = None
+            miss_texts.append(t)
+            _EMB_STATS["miss"] += 1
+
+    # 2. Fill cache misses via per-text embedding_callable in semaphore-bound
+    #    concurrent batches. We do NOT call get_embeddings_with_timeout_batch
+    #    directly here because `embedding_callable` (passed in by runner.py) is
+    #    `get_embedding` from server-python — a single-text function. The batch
+    #    optimization at the embedding_service layer (Task 1) is exercised when
+    #    callers invoke it directly. Here we batch the *callable invocations*
+    #    with the existing Semaphore(2) to keep provider pressure identical.
+    if miss_texts:
+        # Process misses in chunks of `batch_size`; within a batch, run calls
+        # concurrently limited by _EMB_SEMAPHORE.
+        import math as _math
+
+        n_batches = _math.ceil(len(miss_texts) / batch_size)
+        for batch_idx in range(n_batches):
+            start = batch_idx * batch_size
+            end = start + batch_size
+            batch = miss_texts[start:end]
+
+            async def _one(t: str) -> list[float] | None:
+                async with _EMB_SEMAPHORE:
+                    try:
+                        emb = await asyncio.wait_for(
+                            embedding_callable(t), timeout=60.0
+                        )
+                    except asyncio.TimeoutError:
+                        _EMB_STATS["timeout"] += 1
+                        return None
+                    except Exception:  # noqa: BLE001
+                        _EMB_STATS["error"] += 1
+                        return None
+                if emb:
+                    _EMBEDDING_CACHE[t] = emb
+                return emb
+
+            results = await asyncio.gather(*(_one(t) for t in batch))
+            for t, emb in zip(batch, results):
+                if emb is not None:
+                    _EMBEDDING_CACHE[t] = emb
+
+    # 3. Build aligned output (preserves input order + duplicates).
+    for i, t in enumerate(texts):
+        if not t:
+            aligned[i] = None
+            continue
+        aligned[i] = _EMBEDDING_CACHE.get(t)
+
+    return aligned
+
+
 async def _compute_semantic_embedding_coverage(
     answer_preview: str,
     sources_titles: list[str],
@@ -154,7 +242,19 @@ async def _compute_semantic_embedding_coverage(
             "hit_terms": [],
             "per_keypoint": [],
         }
-    answer_emb = await _get_cached_embedding(answer_text, embedding_callable)
+    # TD-071: batched — collect answer + all keypoint candidates, single batch call.
+    _unique_texts: list[str] = [answer_text]
+    for _kp in keypoints:
+        if not _kp.term:
+            continue
+        _unique_texts.append(_kp.term)
+        _unique_texts.extend(s for s in (_kp.synonyms or []) if s)
+    _unique_texts = list(dict.fromkeys(_unique_texts))  # dedup, preserve order
+    _embs = await _get_cached_embeddings_batch(
+        _unique_texts, embedding_callable, batch_size=10
+    )
+    _emb_map = dict(zip(_unique_texts, _embs))
+    answer_emb = _emb_map.get(answer_text)
     if not answer_emb:
         return {
             "coverage_pct": 0.0,
@@ -178,7 +278,7 @@ async def _compute_semantic_embedding_coverage(
         best_sim = 0.0
         best_text = kp.term
         for cand in candidates:
-            cand_emb = await _get_cached_embedding(cand, embedding_callable)
+            cand_emb = _emb_map.get(cand)
             if not cand_emb or len(cand_emb) != len(answer_emb):
                 continue
             # cosine similarity
