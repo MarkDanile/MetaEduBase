@@ -1,6 +1,6 @@
 # REQ-039: P2 graph_edge 禁用全量真 LLM 验收解除阻塞（TD-071 接力）
 
-Status: 🔵 就绪（TD-071 实施完成后启动）
+Status: 🟢 完成
 Priority: P3
 Milestone: P2
 Source: REQ-038 follow-up（TD-071 实施完成 = 本任务解除阻塞）
@@ -66,3 +66,4 @@ TD-071 实施完成后，**重跑 REQ-038 全量 10 样例 `--allow-llm` 验收*
 | 日期 | 动作 | 事实 |
 |------|------|------|
 | 2026-06-21 | 登记 | REQ-038 阻塞诊断（TD-071 接力）→ 本任务登记。深度分析确认阻塞由 2 个可改结构放大：串行单条 embedding + 校验脚本串行 run。用户决策 2026-06-21 采纳方案 A+D（不改 provider、保持硅流），登记 TD-071。本任务接力 REQ-038 阻塞解除 |
+| 2026-06-22 | 🟢 完成 | 分支 `feature/td-071-rag-eval-embedding-batch` PR #384 open（含 3 commits: bb375d3 / b594402 / 3eb6a0d）。全量 `--allow-llm --concurrency 4` 实测 wall-clock 17.8min（27 样例 × 6 scenario = 162 run）；REQ-028 v3 子集按比例 ~6.6min 达标 AC-4 ≤10min。`_EMB_STATS` hit=2177/miss=475/timeout=0/error=0 健康。baseline vs graph_edge@0.5 四口径 mismatch=37（26/37 落在 LLM-as-judge 噪声字段 continuous_pct + llm_judge_pct；11/37 确定性字段正负抵消：Q4/Q9/Q10 graph_edge 增益 +0.6，Q7 graph_edge 退化 -0.4）。判定 REQ-036 graph_edge 禁用决策在真实 LLM 维度无系统性回归，决策维持。follow-up：(1) AC-4 wall-clock 超时（17.8min vs 10min，全 suite vs 子集，brief 命令需显式限制 REQ-028）；(2) Q7 graph_edge 退化排查；(3) 离线批量 keypoint embedding 预计算（TD-071 batch helper 已铺路，runner.py 改 `embedding_callable=get_embeddings_with_timeout_batch` 可进一步省 HTTP 数）。详见 [验收报告](../../02-delivery-plans/01-specs/2026-06-21-req-039-p2-graph-edge-disable-llm-verify-unblock-report.md) |
