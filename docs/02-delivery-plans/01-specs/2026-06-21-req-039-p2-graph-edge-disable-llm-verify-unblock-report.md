@@ -76,6 +76,8 @@ cd packages/server-python && /usr/bin/time -p python ../../scripts/validate_req0
 
 模式：graph_edge 通道在 Q4/Q9/Q10 上提供关键 chunk 召回（substring/semantic 口径从 0 → 0.6），但在 Q7 上 baseline 反而比 graph_edge 命中更多（graph_edge 通道改变 fusion 排序导致次优）。
 
+> **⚠️ 2026-06-23 归因纠正**：上述 Q7「graph_edge 通道改变 fusion 排序导致命中下降」的归因经 [Q7 排查报告](2026-06-23-q7-graph-edge-degradation-investigation-report.md) 单问题真 LLM 隔离复现**推翻**。`query_understanding` 与 `graph_edge` 场景（同 NER，只差 graph_edge）的 `fusion_chunk_ids` / `packed_chunk_ids` 逐字节相同 —— graph_edge@0.5 召回 8 条但 0 条进 fusion/packed（死权重），结构上不可能改变 Q7 的 packed context。substring 跨场景差异（及跨 run 符号翻转：本次 +0.2、报告那次 −0.4）全部来自 LLM 答案方差。详见 [Q7 排查报告 §4-5](2026-06-23-q7-graph-edge-degradation-investigation-report.md#4-根因)。
+
 ### 3.4 判定
 
 **判定：禁用 graph_edge 通道在真实 LLM 维度无系统性回归**
@@ -110,7 +112,7 @@ cd packages/server-python && /usr/bin/time -p python ../../scripts/validate_req0
 | 项 | 说明 | 归属 |
 |----|------|------|
 | AC-4 wall-clock 超时（17.8min vs 10min 目标） | **2026-06-22 子集验证完成**：仅传 `--req028-samples` 仍触发 132 run（REQ-028 + REQ-026 + REQ-016 + REQ-018），实测 wall-clock 1774.91s ≈ **29.6 min**。按比例 60 run 推算 15-20 min。**AC-4 ≤10min 目标在当前环境不可达**，spirit 解释（按比例 6.6 min）被实测推翻。follow-up #1 **关闭**（不再以 AC-4 ≤10min 为目标），接力 3 条候选 follow-up（离线批量 keypoint 预计算 / runner.py 接 batch helper / 提 provider 限流）。详见 [AC-4 子集验证报告](2026-06-22-td-071-ac4-subset-validation-report.md) | 已关闭（[AC-4 子集验证报告](2026-06-22-td-071-ac4-subset-validation-report.md)） |
-| Q7_kg_occupation_to_skill graph_edge 退化 | baseline 0.4 → graph_edge 0（substring/semantic 口径），1 样例。graph_edge 通道在某些 fusion 排序下改变 packed chunk 选择导致命中下降。规模小（1/27），不构成系统性问题；如需修复，需复查 graph_edge 通道与 fusion 排序的交互 | 候选区（非阻塞） |
+| Q7_kg_occupation_to_skill graph_edge 退化 | baseline 0.4 → graph_edge 0（substring/semantic 口径），1 样例。graph_edge 通道在某些 fusion 排序下改变 packed chunk 选择导致命中下降。规模小（1/27），不构成系统性问题；如需修复，需复查 graph_edge 通道与 fusion 排序的交互 | **2026-06-23 已关闭（归因纠正）**：[Q7 排查报告](2026-06-23-q7-graph-edge-degradation-investigation-report.md) 单问题真 LLM 隔离复现推翻原归因。graph_edge@0.5 是死权重（召回 8 条但 0 条进 fusion/packed），`query_understanding`↔`graph_edge` packed 逐字节相同，结构上不可能改变 Q7 命中。substring 跨场景差异及跨 run 符号翻转（本次 +0.2 / 原报告 −0.4）全部来自 LLM 答案方差。非真实回归，无需修复 |
 | 真实 LLM 维度与 dry-run 不一致 | dry-run substring/semantic 口径零差异 vs real-LLM 11 mismatch。差异源于真实 chunk 召回数量受 graph_edge 通道影响（graph_edge 偶发多召回/少召回）。已在 §3.3 分析，正负抵消 | 已分析（无需 follow-up） |
 | 离线批量 keypoint embedding 预计算 | REQ-037 报告登记 follow-up，本任务未做；TD-071 batch helper 已为此铺路（runner.py 改 `embedding_callable=get_embeddings_with_timeout_batch` 可进一步省 HTTP 数） | 候选区（TD） |
 
