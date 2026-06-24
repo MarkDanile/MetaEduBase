@@ -1,9 +1,10 @@
 # BUG-011 — AI Chat 偶发「请求失败: 网络错误」
 
-> Status: 🟡 进行中
+> Status: 🟢 Done
 > Priority: P1
 > Area: 前端 / P2 AI Chat
 > Created: 2026-06-23
+> Closed: 2026-06-24 (PR #388 `8aa09d0`)
 
 ## 现象
 
@@ -42,3 +43,15 @@
 
 - vitest 单测覆盖 `describeChatError`。
 - 手动 curl `/api/v1/ai/chat/evidence` 确认 200（已实证 10-21s）。
+
+## 交付记录
+
+PR #388 squash merge `8aa09d0`（2026-06-24）：
+- 新增 `packages/web/src/views/ai-chat/chatError.ts` `describeChatError` 纯函数 + 4 vitest 用例。
+- `AiChatView.vue` chat 请求加 `timeout: 120000`；catch 块改用 `describeChatError`。
+- `pnpm test` 75 passed；`pnpm typecheck` 退出 0；`pnpm lint` 退出 0。
+- 手动 curl「Python 的基本数据类型」HTTP 200 24.3s（旧 30s 必触发「网络错误」）。
+
+## follow-up
+
+- 流式（SSE）输出：当前仍为整请求返回，超慢 provider（>120s）仍会超时。登记为后续增强，非本 BUG 范围。
