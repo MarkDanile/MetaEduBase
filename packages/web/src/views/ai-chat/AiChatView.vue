@@ -162,6 +162,7 @@ import { deriveDocumentSourcesFromEvidence } from "./documentSources";
 import { findEvidenceForMessage } from "./evidenceNavigation";
 import { replaceEvidenceReferences } from "./evidenceReferences";
 import { buildFileOpenUrl, openInNewTab } from "./openFileUrl";
+import { describeChatError } from "./chatError";
 
 hljs.registerLanguage("python", python);
 hljs.registerLanguage("javascript", javascript);
@@ -308,11 +309,16 @@ async function sendMessage() {
   try {
     // REQ-010 Slice 7: 改用 /ai/chat/evidence (返回 EvidenceItem[])。
     // 旧 /ai/chat 端点保留向后兼容；前端默认走 evidence-aware 入口。
+    // BUG-011: 后端 `_call_llm` 60s + 检索 ~10s，端点合理耗时可达 ~70s；
+    // 全局 axios timeout=30s 会让慢 LLM/provider 抖动先触发前端超时 →
+    // 误报「网络错误」。chat 请求单独放宽到 120s（≥后端 LLM 60s + 余量，
+    // 与 services/template.ts 既有 120000 一致）。
     const { data } = await api.post<EvidenceChatResponse>(
       "/ai/chat/evidence",
       { message: text, context_window: 5 },
       {
         signal: abortController.value.signal,
+        timeout: 120000,
       }
     );
     const documentSources = data.document_sources?.length
@@ -335,11 +341,12 @@ async function sendMessage() {
         document_sources_view: [],
       });
     } else {
-      const err = e as { response?: { data?: { detail?: string } } };
+      // BUG-011: 区分超时 / 真网络错误 / 后端 detail，超时不再误报「网络错误」。
+      const err = e as { code?: string; response?: { data?: { detail?: string } } };
       messages.value.push({
         id: nextMessageId("assistant"),
         role: "assistant",
-        content: `请求失败: ${err.response?.data?.detail ?? "网络错误"}`,
+        content: describeChatError(err),
         document_sources_view: [],
       });
     }

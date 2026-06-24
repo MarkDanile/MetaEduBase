@@ -14,7 +14,20 @@
 
 ## 当前进行中
 
-当前无活跃任务。REQ-039 P2 graph_edge 禁用全量真 LLM 验收解除阻塞（TD-071 接力）已 🟢 完成。AC-4 wall-clock ≤10min 目标经 2026-06-22 子集验证（[报告](../02-delivery-plans/01-specs/2026-06-22-td-071-ac4-subset-validation-report.md)）判定**不可达**：实测 132 run 29.6min，按比例 60 run 推算 15-20min；spirit 解释（6.6min）被实测推翻。TD-071 实施本身仍健康（timeout=0/error=0，与历史 50-60min 阻塞比 3-3.4× 加速）。AC-4 重新归类为"已分析、目标不可达、需后续 follow-up 接力"，follow-up #1 关闭。Q7 graph_edge 退化排查经 2026-06-23 单问题真 LLM 隔离复现**关闭（归因纠正）**：原"graph_edge 改变 fusion 排序"归因被推翻，实为 LLM 答案方差（graph_edge@0.5 死权重，packed 逐字节不变），非真实回归，无需修复（[报告](../02-delivery-plans/01-specs/2026-06-23-q7-graph-edge-degradation-investigation-report.md)）。后续候选见下方。
+### BUG-011: AI Chat 偶发「请求失败: 网络错误」
+
+状态：🟡 进行中
+类型：bug fix
+领域：前端 / P2 AI Chat
+分支：`fix/bug-011-ai-chat-timeout-network-error`
+
+需求来源：
+- Bug: `docs/01-product-planning/05-requirements/BUG-011-ai-chat-timeout-shorter-than-backend-llm.md`
+
+当前进展：修复已实施——新增 `chatError.ts` 纯函数 `describeChatError`（区分 超时/网络/HTTP detail）+ vitest 4 用例；AiChatView chat 请求改 120s 单请求超时（≥后端 LLM 60s + 余量）。
+下一步：commit + PR + merge。
+验证状态：`pnpm test` 75 passed（含 4 新）；`pnpm typecheck` 退出 0；`pnpm lint` 退出 0；手动 curl HTTP 200 24.3s（旧 30s 必超时）。Git 阶段未完成。
+交接备注：surgical 前端改动；不改后端/provider；流式输出登记 follow-up。REQ-039 P2 graph_edge 禁用全量真 LLM 验收解除阻塞（TD-071 接力）已 🟢 完成。AC-4 wall-clock ≤10min 目标经 2026-06-22 子集验证（[报告](../02-delivery-plans/01-specs/2026-06-22-td-071-ac4-subset-validation-report.md)）判定**不可达**：实测 132 run 29.6min，按比例 60 run 推算 15-20min；spirit 解释（6.6min）被实测推翻。TD-071 实施本身仍健康（timeout=0/error=0，与历史 50-60min 阻塞比 3-3.4× 加速）。AC-4 重新归类为"已分析、目标不可达、需后续 follow-up 接力"，follow-up #1 关闭。Q7 graph_edge 退化排查经 2026-06-23 单问题真 LLM 隔离复现**关闭（归因纠正）**：原"graph_edge 改变 fusion 排序"归因被推翻，实为 LLM 答案方差（graph_edge@0.5 死权重，packed 逐字节不变），非真实回归，无需修复（[报告](../02-delivery-plans/01-specs/2026-06-23-q7-graph-edge-degradation-investigation-report.md)）。后续候选见下方。
 
 ## 下一批候选任务
 
