@@ -54,6 +54,26 @@ def check_current_work(root: Path) -> list[Issue]:
                 )
             )
 
+    # 「当前进行中」形状门禁：无活跃任务时只保留单句，防止 agent 把已完成
+    # 任务的摘要段落整段塞进来（事实应归「最近完成」区）。活跃态用表格或
+    # `### TASK` 卡片时不触发单句约束。
+    inprog_start, inprog_body = section(lines, "当前进行中")
+    if inprog_start != -1:
+        has_active_table = bool(table_rows(inprog_body))
+        has_task_card = any(line.lstrip().startswith("### ") for _, line in inprog_body)
+        if not has_active_table and not has_task_card:
+            non_empty = [ln for _, ln in inprog_body if ln.strip()]
+            if len(non_empty) > 1:
+                issues.append(
+                    Issue(
+                        path,
+                        inprog_start + 1,
+                        "current-work-in-progress-pollution",
+                        "“当前进行中”无活跃任务时应只保留一句“当前无活跃任务。”，不得追加完成摘要段落。",
+                        "删除多余段落；完成摘要归入“最近完成”区；活跃任务用表格或 ### TASK 卡片登记。",
+                    )
+                )
+
     candidate_start, candidate_body = section(lines, "下一批候选任务")
     if candidate_start == -1:
         issues.append(

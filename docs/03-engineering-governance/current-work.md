@@ -14,7 +14,9 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+| 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
+|------|------|--------|------|--------|--------|
+| DOC-075 current-work「当前进行中」段落污染硬门禁 | 🟡 进行中 | P2 | P3 / 治理 / 门禁 | `check_current_work` 加形状门禁已实现 + 测试绿；待 quality-gates 候选清单 + SCRIPTED_GATE_CANDIDATES + workbench 措辞同步后 PR | [DOC-075](../01-product-planning/04-backlog.md) |
 
 ## 下一批候选任务
 

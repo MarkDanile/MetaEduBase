@@ -39,6 +39,7 @@ scripts/check-engineering-docs
 |----------|----------|----------|
 | `current-work.md` 最近完成最多 20 行，超过后只保留最新 12 行 | 已实现 | 防止工作台无限扩张 |
 | `current-work.md` 下一批候选最多 3 行，且不允许 `🟢 完成` | 已实现 | 防止候选区变历史索引 |
+| `current-work.md` 当前进行中无活跃任务时只保留单句，不得追加完成摘要段落 | 已实现 | 防止当前进行中区被完成摘要段落污染 |
 | 已完成任务不得残留 `未运行`、`待提交`、`以最终回复为准` 等占位 | 已实现 / 持续补强 | 防止完成态漂移 |
 | Backlog、current-work、work-log、technical-debt 中任务 ID 唯一且状态不冲突 | 候选 / 部分实现 | 降低跨事实源漂移 |
 | 禁止把 `REQ-xxx-FOLLOWUP` / `TD-xxx-FOLLOWUP` 作为长期任务编号 | 已实现 | 保持稳定检索 |
