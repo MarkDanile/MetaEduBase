@@ -1,6 +1,6 @@
 # BUG-012 — AI Chat 证据引用 / 参考来源点击打开空白页
 
-> Status: 🔵 Ready（已塑形，待实现）
+> Status: 🟡 进行中
 > Priority: P1
 > Area: 前端 / P2 AI Chat / 资源详情
 > Created: 2026-06-24
