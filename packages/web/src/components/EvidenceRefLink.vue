@@ -26,12 +26,11 @@
       }
     });
 
-  跳文件逻辑（AiChatView.openEvidenceFileByIndex）：
+  跳文件逻辑（AiChatView.openEvidenceFileByIndex → openEvidenceFile → openFile
+  → buildFileOpenUrl，路径 `/resource/{id}`，与路由 `resource/:id` 对齐；
+  BUG-012 修正了旧 `/resource/files/{id}` 多余 `files/` 段导致空白页）：
     if (sources[ref - 1]?.file_id) {
-      const params = new URLSearchParams();
-      if (sources[ref - 1].chunk_id) params.set('chunk', sources[ref - 1].chunk_id);
-      const qs = params.toString();
-      window.location.href = `/resource/files/${sources[ref - 1].file_id}${qs ? '?' + qs : ''}`;
+      openFile(sources[ref - 1].file_id, sources[ref - 1].chunk_id);
     }
 -->
 <template>

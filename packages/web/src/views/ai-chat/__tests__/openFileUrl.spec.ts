@@ -1,9 +1,13 @@
 /**
- * `openFileUrl` — BUG-003 fix4 AC-5 行为锁。
+ * `openFileUrl` — BUG-003 fix4 AC-5 行为锁 + BUG-012 修正。
  *
  * - buildFileOpenUrl: URL 构造 + chunk 锚点 + 空 fileId 报错。
  * - openInNewTab: 隐藏 <a target="_blank" rel="noopener noreferrer">.click()
  *   替代 window.open / window.location.href，避免弹窗拦截 + 整页跳转。
+ *
+ * BUG-012: 路由为 `resource/:id`（router.ts），base 必须是 `/resource/{id}`，
+ * 旧断言锁了错误路径 `/resource/files/{id}` 导致链接 404 空白页。本 spec 修正
+ * 为正确路径作为回归锁。
  *
  * AC-5 真实点击验证由维护者人工验收；本 spec 锁住 URL 构造 + DOM
  * helper 契约作为回归锁。
@@ -11,23 +15,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildFileOpenUrl, openInNewTab } from "../openFileUrl";
 
-describe("buildFileOpenUrl — BUG-003 fix4 AC-5", () => {
-  it("无 chunkId 时 URL 不带 query", () => {
-    expect(buildFileOpenUrl("file-abc")).toBe("/resource/files/file-abc");
+describe("buildFileOpenUrl — BUG-003 fix4 AC-5 / BUG-012", () => {
+  it("无 chunkId 时 URL 不带 query，base 为 /resource/{id}", () => {
+    expect(buildFileOpenUrl("file-abc")).toBe("/resource/file-abc");
   });
 
   it("有 chunkId 时附加 ?chunk={id} 查询参数", () => {
     expect(buildFileOpenUrl("file-abc", "chunk-xyz")).toBe(
-      "/resource/files/file-abc?chunk=chunk-xyz"
+      "/resource/file-abc?chunk=chunk-xyz"
     );
   });
 
   it("chunkId 为空字符串时视作无 chunk", () => {
-    expect(buildFileOpenUrl("file-abc", "")).toBe("/resource/files/file-abc");
+    expect(buildFileOpenUrl("file-abc", "")).toBe("/resource/file-abc");
   });
 
   it("chunkId 为 null 时视作无 chunk", () => {
-    expect(buildFileOpenUrl("file-abc", null)).toBe("/resource/files/file-abc");
+    expect(buildFileOpenUrl("file-abc", null)).toBe("/resource/file-abc");
   });
 
   it("fileId 为空字符串时抛错", () => {

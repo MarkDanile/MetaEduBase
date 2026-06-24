@@ -14,13 +14,27 @@
 
 ## 当前进行中
 
-当前无活跃任务。BUG-011 AI Chat 偶发「网络错误」已 🟢 完成（PR #388）：根因为前端 axios 全局 timeout=30s < 后端 `_call_llm` 60s + 检索 ~10s，慢 LLM/provider 抖动触发前端先超时并误报「网络错误」；修复为 chat 请求改 120s 单请求超时 + `describeChatError` 区分超时/网络/detail。后续候选见下方。REQ-039 P2 graph_edge 禁用全量真 LLM 验收解除阻塞（TD-071 接力）已 🟢 完成。AC-4 wall-clock ≤10min 目标经 2026-06-22 子集验证（[报告](../02-delivery-plans/01-specs/2026-06-22-td-071-ac4-subset-validation-report.md)）判定**不可达**：实测 132 run 29.6min，按比例 60 run 推算 15-20min；spirit 解释（6.6min）被实测推翻。TD-071 实施本身仍健康（timeout=0/error=0，与历史 50-60min 阻塞比 3-3.4× 加速）。AC-4 重新归类为"已分析、目标不可达、需后续 follow-up 接力"，follow-up #1 关闭。Q7 graph_edge 退化排查经 2026-06-23 单问题真 LLM 隔离复现**关闭（归因纠正）**：原"graph_edge 改变 fusion 排序"归因被推翻，实为 LLM 答案方差（graph_edge@0.5 死权重，packed 逐字节不变），非真实回归，无需修复（[报告](../02-delivery-plans/01-specs/2026-06-23-q7-graph-edge-degradation-investigation-report.md)）。后续候选见下方。
+### BUG-012: AI Chat 证据引用 / 参考来源点击打开空白页
+
+状态：🟡 进行中
+类型：bug fix
+领域：前端 / P2 AI Chat / 资源详情
+分支：`fix/bug-012-ai-chat-evidence-link-blank-page`
+
+需求来源：
+- Bug: `docs/01-product-planning/05-requirements/BUG-012-ai-chat-evidence-link-blank-page.md`
+
+当前进展：修复已实施（TDD）。根因：`buildFileOpenUrl` 拼成 `/resource/files/{id}`，路由是 `resource/:id`，无匹配 → 空白页。修复：base 改 `/resource/{id}`（与 ResourceLibraryView 一致）+ `EvidenceRefLink.vue` 注释同步 + spec 断言修正（先 RED 后 GREEN）。
+下一步：commit + PR + merge。
+验证状态：`pnpm test` 75 passed；`pnpm typecheck` 退出 0；`pnpm lint` 退出 0；`grep` 确认无 `/resource/files/` 残留代码。Git 阶段未完成。
+交接备注：surgical 前端改动；不改路由表/后端；catch-all 404 页登记 follow-up。
+
+BUG-011 AI Chat 偶发「网络错误」已 🟢 完成（PR #388）。REQ-039 P2 graph_edge 禁用全量真 LLM 验收解除阻塞（TD-071 接力）已 🟢 完成。AC-4 wall-clock ≤10min 目标经 2026-06-22 子集验证（[报告](../02-delivery-plans/01-specs/2026-06-22-td-071-ac4-subset-validation-report.md)）判定**不可达**：实测 132 run 29.6min，按比例 60 run 推算 15-20min；spirit 解释（6.6min）被实测推翻。TD-071 实施本身仍健康（timeout=0/error=0，与历史 50-60min 阻塞比 3-3.4× 加速）。AC-4 重新归类为"已分析、目标不可达、需后续 follow-up 接力"，follow-up #1 关闭。Q7 graph_edge 退化排查经 2026-06-23 单问题真 LLM 隔离复现**关闭（归因纠正）**：原"graph_edge 改变 fusion 排序"归因被推翻，实为 LLM 答案方差（graph_edge@0.5 死权重，packed 逐字节不变），非真实回归，无需修复（[报告](../02-delivery-plans/01-specs/2026-06-23-q7-graph-edge-degradation-investigation-report.md)）。后续候选见下方。
 
 ## 下一批候选任务
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
 |------|------|--------|------|--------|--------|
-| BUG-012 AI Chat 证据引用/参考来源打开空白页 | 🔵 Ready | P1 | P2 / 前端 / AI Chat | 已塑形待实现。根因：链接拼 `/resource/files/{id}` 但路由是 `resource/:id`，无匹配 + 无 catch-all → 空白页。`buildFileOpenUrl` + `EvidenceRefLink.vue:34` 两处；`openFileUrl.spec.ts` 把错误路径锁进断言。修复方向：base 改 `/resource/{id}` + 同步 spec | [BUG-012](../01-product-planning/05-requirements/BUG-012-ai-chat-evidence-link-blank-page.md) |
 | AC-4 wall-clock 超时 follow-up | 🟢 已关闭 | P3 | P2 / RAG / Verification | 2026-06-22 子集验证实测 132 run 29.6min（仅传 `--req028-samples` 仍触发多 group）。按比例 60 run 推算 15-20min。AC-4 ≤10min 目标不可达，spirit 解释被推翻。接力 follow-up：离线批量 keypoint 预计算 / runner.py 接 batch helper / 提 provider 限流 | [AC-4 子集验证报告](../02-delivery-plans/01-specs/2026-06-22-td-071-ac4-subset-validation-report.md) |
 | 离线批量 keypoint embedding 预计算 | 🔵 候选 | P3 | RAG / Embedding / TD | REQ-037 登记 follow-up。TD-071 batch helper 已铺路：runner.py 改 `embedding_callable=get_embeddings_with_timeout_batch` 可进一步省 HTTP 数（预计全量 ~5min） | [REQ-037 验收报告 §6](../02-delivery-plans/01-specs/2026-06-21-req-037-graph-edge-disable-real-llm-verify-report.md#6-follow-up) |
 
