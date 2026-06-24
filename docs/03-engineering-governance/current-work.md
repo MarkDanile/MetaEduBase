@@ -20,6 +20,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
 |------|------|--------|------|--------|--------|
+| BUG-012 AI Chat 证据引用/参考来源打开空白页 | 🔵 Ready | P1 | P2 / 前端 / AI Chat | 已塑形待实现。根因：链接拼 `/resource/files/{id}` 但路由是 `resource/:id`，无匹配 + 无 catch-all → 空白页。`buildFileOpenUrl` + `EvidenceRefLink.vue:34` 两处；`openFileUrl.spec.ts` 把错误路径锁进断言。修复方向：base 改 `/resource/{id}` + 同步 spec | [BUG-012](../01-product-planning/05-requirements/BUG-012-ai-chat-evidence-link-blank-page.md) |
 | AC-4 wall-clock 超时 follow-up | 🟢 已关闭 | P3 | P2 / RAG / Verification | 2026-06-22 子集验证实测 132 run 29.6min（仅传 `--req028-samples` 仍触发多 group）。按比例 60 run 推算 15-20min。AC-4 ≤10min 目标不可达，spirit 解释被推翻。接力 follow-up：离线批量 keypoint 预计算 / runner.py 接 batch helper / 提 provider 限流 | [AC-4 子集验证报告](../02-delivery-plans/01-specs/2026-06-22-td-071-ac4-subset-validation-report.md) |
 | 离线批量 keypoint embedding 预计算 | 🔵 候选 | P3 | RAG / Embedding / TD | REQ-037 登记 follow-up。TD-071 batch helper 已铺路：runner.py 改 `embedding_callable=get_embeddings_with_timeout_batch` 可进一步省 HTTP 数（预计全量 ~5min） | [REQ-037 验收报告 §6](../02-delivery-plans/01-specs/2026-06-21-req-037-graph-edge-disable-real-llm-verify-report.md#6-follow-up) |
 
