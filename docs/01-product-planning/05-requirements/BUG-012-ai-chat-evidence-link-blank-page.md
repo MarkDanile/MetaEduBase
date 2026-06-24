@@ -1,9 +1,10 @@
 # BUG-012 — AI Chat 证据引用 / 参考来源点击打开空白页
 
-> Status: 🟡 进行中
+> Status: 🟢 Done
 > Priority: P1
 > Area: 前端 / P2 AI Chat / 资源详情
 > Created: 2026-06-24
+> Closed: 2026-06-24 (PR #391 `f88fc37`)
 
 ## 现象
 
@@ -47,6 +48,14 @@ AI Chat 回答结果中：
 - vitest 锁住正确 URL 构造。
 - 手动：AI Chat 提问 → 点击证据引用 + 参考来源 → 新标签非空白、定位 chunk。
 - `grep -rn "/resource/files/" packages/web/src` 确认无残留错误路径（注释除外）。
+
+## 交付记录
+
+PR #391 squash merge `f88fc37`（2026-06-24，TDD RED→GREEN）：
+- `buildFileOpenUrl` base：`/resource/files/{id}` → `/resource/{id}`（与路由 `resource/:id` + ResourceLibraryView 一致）。
+- `EvidenceRefLink.vue` 注释同步实际 `openFile` 路径。
+- `openFileUrl.spec.ts` 断言修正为正确路径（先 RED 4 fail，改实现后 GREEN 7 passed）。
+- `pnpm test` 75 passed；`pnpm typecheck` 退出 0；`pnpm lint` 退出 0；`grep` 无 `/resource/files/` 残留代码。
 
 ## 修复方向（候选，待实现时定）
 

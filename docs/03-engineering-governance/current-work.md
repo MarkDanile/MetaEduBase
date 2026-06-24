@@ -14,22 +14,7 @@
 
 ## 当前进行中
 
-### BUG-012: AI Chat 证据引用 / 参考来源点击打开空白页
-
-状态：🟡 进行中
-类型：bug fix
-领域：前端 / P2 AI Chat / 资源详情
-分支：`fix/bug-012-ai-chat-evidence-link-blank-page`
-
-需求来源：
-- Bug: `docs/01-product-planning/05-requirements/BUG-012-ai-chat-evidence-link-blank-page.md`
-
-当前进展：修复已实施（TDD）。根因：`buildFileOpenUrl` 拼成 `/resource/files/{id}`，路由是 `resource/:id`，无匹配 → 空白页。修复：base 改 `/resource/{id}`（与 ResourceLibraryView 一致）+ `EvidenceRefLink.vue` 注释同步 + spec 断言修正（先 RED 后 GREEN）。
-下一步：commit + PR + merge。
-验证状态：`pnpm test` 75 passed；`pnpm typecheck` 退出 0；`pnpm lint` 退出 0；`grep` 确认无 `/resource/files/` 残留代码。Git 阶段未完成。
-交接备注：surgical 前端改动；不改路由表/后端；catch-all 404 页登记 follow-up。
-
-BUG-011 AI Chat 偶发「网络错误」已 🟢 完成（PR #388）。REQ-039 P2 graph_edge 禁用全量真 LLM 验收解除阻塞（TD-071 接力）已 🟢 完成。AC-4 wall-clock ≤10min 目标经 2026-06-22 子集验证（[报告](../02-delivery-plans/01-specs/2026-06-22-td-071-ac4-subset-validation-report.md)）判定**不可达**：实测 132 run 29.6min，按比例 60 run 推算 15-20min；spirit 解释（6.6min）被实测推翻。TD-071 实施本身仍健康（timeout=0/error=0，与历史 50-60min 阻塞比 3-3.4× 加速）。AC-4 重新归类为"已分析、目标不可达、需后续 follow-up 接力"，follow-up #1 关闭。Q7 graph_edge 退化排查经 2026-06-23 单问题真 LLM 隔离复现**关闭（归因纠正）**：原"graph_edge 改变 fusion 排序"归因被推翻，实为 LLM 答案方差（graph_edge@0.5 死权重，packed 逐字节不变），非真实回归，无需修复（[报告](../02-delivery-plans/01-specs/2026-06-23-q7-graph-edge-degradation-investigation-report.md)）。后续候选见下方。
+当前无活跃任务。BUG-012 AI Chat 证据引用/参考来源打开空白页已 🟢 完成（PR #391）：根因为链接拼 `/resource/files/{id}` 但路由是 `resource/:id`，无匹配 → 空白页；TDD 修复 `buildFileOpenUrl` base 为 `/resource/{id}` + 同步 spec。后续候选见下方。BUG-011 AI Chat 偶发「网络错误」已 🟢 完成（PR #388）。REQ-039 P2 graph_edge 禁用全量真 LLM 验收解除阻塞（TD-071 接力）已 🟢 完成。AC-4 wall-clock ≤10min 目标经 2026-06-22 子集验证（[报告](../02-delivery-plans/01-specs/2026-06-22-td-071-ac4-subset-validation-report.md)）判定**不可达**：实测 132 run 29.6min，按比例 60 run 推算 15-20min；spirit 解释（6.6min）被实测推翻。TD-071 实施本身仍健康（timeout=0/error=0，与历史 50-60min 阻塞比 3-3.4× 加速）。AC-4 重新归类为"已分析、目标不可达、需后续 follow-up 接力"，follow-up #1 关闭。Q7 graph_edge 退化排查经 2026-06-23 单问题真 LLM 隔离复现**关闭（归因纠正）**：原"graph_edge 改变 fusion 排序"归因被推翻，实为 LLM 答案方差（graph_edge@0.5 死权重，packed 逐字节不变），非真实回归，无需修复（[报告](../02-delivery-plans/01-specs/2026-06-23-q7-graph-edge-degradation-investigation-report.md)）。后续候选见下方。
 
 ## 下一批候选任务
 
@@ -46,6 +31,7 @@ BUG-011 AI Chat 偶发「网络错误」已 🟢 完成（PR #388）。REQ-039 P
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-06-24 | BUG-012 AI Chat 证据引用/参考来源打开空白页 | 🟢 Done | 链接拼 `/resource/files/{id}` 但路由是 `resource/:id` 无匹配 → 空白页；spec 把错误路径锁进断言。TDD 修复 `buildFileOpenUrl` base 为 `/resource/{id}` + 同步 spec。`pnpm test` 75 passed / typecheck / lint 0 | [Bug](../01-product-planning/05-requirements/BUG-012-ai-chat-evidence-link-blank-page.md) / [PR #391](https://github.com/MarkDanile/MetaEduBase/pull/391) (`f88fc37`) |
 | 2026-06-24 | BUG-011 AI Chat 偶发「网络错误」 | 🟢 Done | 根因：前端 axios 全局 timeout=30s < 后端 `_call_llm` 60s + 检索 ~10s，慢 LLM/provider 抖动触发前端先超时并误报「网络错误」。修复：chat 请求改 120s 单请求超时 + 新增 `describeChatError` 区分 超时/网络/detail。`pnpm test` 75 passed / typecheck / lint 0；curl HTTP 200 24.3s | [Bug](../01-product-planning/05-requirements/BUG-011-ai-chat-timeout-shorter-than-backend-llm.md) / [PR #388](https://github.com/MarkDanile/MetaEduBase/pull/388) (`8aa09d0`) |
 | 2026-06-23 | Q7_kg_occupation_to_skill graph_edge 退化排查 | 🟢 已关闭（归因纠正） | 单问题真 LLM 隔离复现推翻 REQ-039 §3.3 归因：graph_edge@0.5 死权重（packed 逐字节不变），substring 跨场景差异及跨 run 符号翻转均来自 LLM 答案方差。非真实回归，无需修复 | [Q7 排查报告](../02-delivery-plans/01-specs/2026-06-23-q7-graph-edge-degradation-investigation-report.md) / [REQ-039 §6 follow-up #2](../02-delivery-plans/01-specs/2026-06-21-req-039-p2-graph-edge-disable-llm-verify-unblock-report.md#6-follow-up) |
 | 2026-06-22 | AC-4 wall-clock 子集验证（TD-071 follow-up #1） | 🟢 已关闭 | 仅传 `--req028-samples` 实测 132 run 29.6min（spirit 解释 6.6min 被推翻）。AC-4 ≤10min 目标不可达。TD-071 实施健康（3-3.4× 加速 vs 50-60min 阻塞）。接力 3 条候选（离线批量 keypoint 预计算 / runner.py 接 batch helper / 提 provider 限流） | [AC-4 子集验证报告](../02-delivery-plans/01-specs/2026-06-22-td-071-ac4-subset-validation-report.md) |
