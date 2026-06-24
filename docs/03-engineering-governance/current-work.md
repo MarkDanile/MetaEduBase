@@ -14,7 +14,7 @@
 
 ## 当前进行中
 
-当前无活跃任务。BUG-012 AI Chat 证据引用/参考来源打开空白页已 🟢 完成（PR #391）：根因为链接拼 `/resource/files/{id}` 但路由是 `resource/:id`，无匹配 → 空白页；TDD 修复 `buildFileOpenUrl` base 为 `/resource/{id}` + 同步 spec。后续候选见下方。BUG-011 AI Chat 偶发「网络错误」已 🟢 完成（PR #388）。REQ-039 P2 graph_edge 禁用全量真 LLM 验收解除阻塞（TD-071 接力）已 🟢 完成。AC-4 wall-clock ≤10min 目标经 2026-06-22 子集验证（[报告](../02-delivery-plans/01-specs/2026-06-22-td-071-ac4-subset-validation-report.md)）判定**不可达**：实测 132 run 29.6min，按比例 60 run 推算 15-20min；spirit 解释（6.6min）被实测推翻。TD-071 实施本身仍健康（timeout=0/error=0，与历史 50-60min 阻塞比 3-3.4× 加速）。AC-4 重新归类为"已分析、目标不可达、需后续 follow-up 接力"，follow-up #1 关闭。Q7 graph_edge 退化排查经 2026-06-23 单问题真 LLM 隔离复现**关闭（归因纠正）**：原"graph_edge 改变 fusion 排序"归因被推翻，实为 LLM 答案方差（graph_edge@0.5 死权重，packed 逐字节不变），非真实回归，无需修复（[报告](../02-delivery-plans/01-specs/2026-06-23-q7-graph-edge-degradation-investigation-report.md)）。后续候选见下方。
+当前无活跃任务。
 
 ## 下一批候选任务
 
