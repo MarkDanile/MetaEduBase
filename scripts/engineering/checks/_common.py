@@ -55,6 +55,7 @@ SCRIPTED_GATE_CANDIDATES: frozenset[str] = frozenset(
     {
         "`current-work.md` 最近完成最多 20 行，超过后只保留最新 12 行",
         "`current-work.md` 下一批候选最多 3 行，且不允许 `🟢 完成`",
+        "`current-work.md` 当前进行中无活跃任务时只保留单句，不得追加完成摘要段落",
         "已完成任务不得残留 `未运行`、`待提交`、`以最终回复为准` 等占位",
         "禁止把 `REQ-xxx-FOLLOWUP` / `TD-xxx-FOLLOWUP` 作为长期任务编号",
         "`DRAFT-*` 临时编号不得作为正式任务池主键",
