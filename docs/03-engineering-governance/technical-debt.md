@@ -4139,15 +4139,15 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 |------|------|
 | 优先级 | P1 |
 | 领域 | 后端 / RAG / Embedding / Recall |
-| 事实源 | REQ-036 实现报告（真 LLM 全量验收受阻诊断）；`packages/server-python/app/contexts/knowledge/application/embedding_service.py`；`recall_service.py:32` / `pg_chunk_vector_retriever.py:58` / `router.py:278` |
+| 事实源 | REQ-036 实现报告（真 LLM 全量验收受阻诊断）；`packages/server-python/app/contexts/knowledge/application/embedding_service.py`；调用点（target_files，真 LLM 全量验收受阻诊断时的 3 个 query-time 召回路径）：`packages/server-python/app/contexts/knowledge/application/recall_service.py`、`packages/server-python/app/contexts/knowledge/infrastructure/retrievers/pg_chunk_vector_retriever.py`、`packages/server-python/app/contexts/knowledge/interfaces/api/router.py` |
 
 **证据**
 
-- `get_embedding(text)`（`embedding_service.py`）串行尝试最多 3 个 provider（qwen → siliconflow → minimax），每个 provider `httpx.AsyncClient(timeout=30.0)`。慢/不可达 provider 下单次调用最多阻塞 **90s**（3 × 30s）。
-- vector 召回 3 个 query-time 调用点**均无外层超时**：
-  - `recall_service.py:32` `PgVectorRecallChannel.recall`（生产 chat knowledge_nodes 向量召回，经 `PgGraphRetriever`）
-  - `pg_chunk_vector_retriever.py:58` `PgChunkVectorRetriever.retrieve`（生产 chat chunk 向量召回，经 `CompositeChunkRetriever`）
-  - `router.py:278` KG 语义/混合搜索 endpoint（用户面 search API）
+- `get_embedding(text)`（`packages/server-python/app/contexts/knowledge/application/embedding_service.py`）串行尝试最多 3 个 provider（qwen → siliconflow → minimax），每个 provider `httpx.AsyncClient(timeout=30.0)`。慢/不可达 provider 下单次调用最多阻塞 **90s**（3 × 30s）。
+- vector 召回 3 个 query-time 调用点**均无外层超时**（target_files 见下，均相对仓库根）：
+  - `packages/server-python/app/contexts/knowledge/application/recall_service.py`（生产 chat knowledge_nodes 向量召回，经 `PgGraphRetriever`）
+  - `packages/server-python/app/contexts/knowledge/infrastructure/retrievers/pg_chunk_vector_retriever.py`（生产 chat chunk 向量召回，经 `CompositeChunkRetriever`）
+  - `packages/server-python/app/contexts/knowledge/interfaces/api/router.py`（KG 语义/混合搜索 endpoint，用户面 search API）
 - 对比：REQ-031 `_get_cached_embedding`（校验脚本 keypoint coverage 路径）已加 `asyncio.wait_for(..., 60.0)` 外层超时。生产 vector 召回路径无同等兜底——REQ-031 修复时遗漏的对等缺口。
 
 **问题**
@@ -4170,7 +4170,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 **交付记录**
 
 - 2026-06-21 登记（REQ-036 实现报告 follow-up）。
-- 2026-06-21 修复完成：`embedding_service.py` 新增 `get_embedding_with_timeout(text, timeout=60.0)` helper（`asyncio.wait_for` + catch `TimeoutError` → log warning + return None，与 REQ-031 `_get_cached_embedding` 60s 模式一致）；3 recall 调用点改用之（`recall_service.py` import alias 改 `get_embedding_with_timeout as get_embedding_vec` / `pg_chunk_vector_retriever.py` 改 import + 调用 / `router.py:278` 改调用，:182 写入路径不动）；`test_embedding_service.py` +3 单测（成功透传 / 超时 None / None 透传）；`test_pg_chunk_vector_retriever_embedding_fallback.py` 3 处 patch target 跟随 import 改名。验证：`pytest tests/contexts/knowledge/test_embedding_service.py tests/contexts/knowledge/retrievers/ tests/contexts/knowledge/test_ai_chat_service.py tests/contexts/knowledge/test_context_packer.py tests/contexts/ai/test_ai_chat_router_req015.py -q` → 89 passed 无回归（`test_knowledge.py` 失败为 pre-existing asyncpg DB 连接问题，与本任务无关）；`ruff check` All checks passed!；`scripts/check-engineering-docs` 退出码 0。
+- 2026-06-21 修复完成：`embedding_service.py` 新增 `get_embedding_with_timeout(text, timeout=60.0)` helper（`asyncio.wait_for` + catch `TimeoutError` → log warning + return None，与 REQ-031 `_get_cached_embedding` 60s 模式一致）；召回调用点（recall_service / pg_chunk_vector_retriever / router 三处）改用之（`recall_service.py` import alias 改 `get_embedding_with_timeout as get_embedding_vec` / `pg_chunk_vector_retriever.py` 改 import + 调用 / `router.py` 改调用，写入路径不动）；`test_embedding_service.py` 新增三条单测（成功透传 / 超时 None / None 透传）；`test_pg_chunk_vector_retriever_embedding_fallback.py` 内三个 patch target 跟随 import 改名。验证：`pytest tests/contexts/knowledge/test_embedding_service.py tests/contexts/knowledge/retrievers/ tests/contexts/knowledge/test_ai_chat_service.py tests/contexts/knowledge/test_context_packer.py tests/contexts/ai/test_ai_chat_router_req015.py -q` → 89 passed 无回归（`test_knowledge.py` 失败为 pre-existing asyncpg DB 连接问题，与本任务无关）；`ruff check` All checks passed!；`scripts/check-engineering-docs` 退出码 0。
 - 解锁 REQ-037 全量真 LLM 验收（向量召回不再无超时阻塞）。
 
 ### TD-071: RAG 评估 embedding 串行单条调用 + 校验脚本串行 run：累积吞吐阻塞全量真 LLM 验收
