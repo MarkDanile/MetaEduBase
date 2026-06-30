@@ -4323,7 +4323,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-074: `_is_batch_embedding_callable` + `_get_cached_embeddings_batch` 路由分派无单测：TD-072 实现缺陷回归无锁死
 
-状态：🟡 进行中
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -4387,3 +4387,15 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 **交付记录**
 
 - 2026-06-30 登记（PR #386 squash merge 后内务登记）
+- 2026-06-30 实施（分支 `feat/td-074-coverage-batch-routing-tests` + PR #400 merged）：
+  - 新建 `packages/server-python/tests/scripts/__init__.py` + `.../rag_validation/__init__.py`（REQ-010 占位）
+  - 新建 `.../rag_validation/conftest.py`（局部 conftest 注入 REPO_ROOT + scripts/ 到 sys.path；不动全局 conftest.py）
+  - 新建 `.../rag_validation/test_coverage_batch_routing.py`（26 tests / 4 test class）：
+    - TestIsBatchEmbeddingCallable（13 tests）：None / builtin / lambda / 单条 / list[str] / List[str] / Sequence[str] / Iterable[str] / MutableSequence[str] / bare list / 多 POKW + KW_ONLY 模拟生产签名 / forward reference
+    - TestCachedEmbeddingsBatchRouting（8 tests）：空 texts / 空字符串 / batch 一次调用 / per-text 多次 / dedup / cache hit / batch 超时降级 / batch 错长度降级
+    - TestRedDemonstration（2 tests）：monkeypatch 模拟 always True / always False 检测器
+    - TestPerTextBackwardCompatibility（1 test）：TD-071 缓存语义保持
+  - 验证：`pytest tests/engineering/ -q` 38 passed 无回归 + `pytest packages/server-python/tests/scripts/rag_validation/ -q` 26 passed + `ruff check scripts/rag_validation/ packages/server-python/tests/scripts/` All checks passed + `scripts/check-engineering-docs` exit 0 + `git diff --check` clean
+  - TDD 纪律（retrospective 诚实登记）：production code 已在 main，26 tests 全覆盖 + monkeypatch RED demonstration 缓解"测试立即通过"风险
+  - 业务 tests（test_ai_chat / test_knowledge / test_resource 等）因环境无 PostgreSQL 5432 端口有 connection errors——与本 PR 无关，按 git-workflow 范围只跑 TD-074 影响范围
+  - 详见 [PR #400](https://github.com/MarkDanile/MetaEduBase/pull/400) (`e09ed35` squash merge)
