@@ -4224,3 +4224,50 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
   - 验证：实测全量 `--allow-llm --concurrency 4` 跑 27 样例 × 6 scenario = 162 run，wall-clock 17.8min（REQ-028 v3 子集按比例 ~6.6min 达成 AC-4 ≤10min）；`_EMB_STATS` hit=2177/miss=475/timeout=0/error=0 健康；baseline vs graph_edge@0.5 四口径 mismatch=37（70% 落在 LLM-as-judge 噪声字段，确定性字段正负抵消）。REQ-036 graph_edge 禁用决策真实 LLM 维度无系统性回归。
   - 已知 spec 偏差（已在 plan 诚实登记）：Task 1 `get_embeddings_with_timeout_batch` helper 是预留接口，本 plan runner.py 未直接调用，实际 batch 化在 coverage.py 内部以 per-text gather + `_EMB_SEMAPHORE=2` 实现。完全省 HTTP 数的方案（runner.py 改 `embedding_callable=get_embeddings_with_timeout_batch`）登记 follow-up（离线批量 keypoint embedding 预计算路径）。
   - 详见 [验收报告 REQ-039](../02-delivery-plans/01-specs/2026-06-21-req-039-p2-graph-edge-disable-llm-verify-unblock-report.md)。
+
+### TD-073: RAG 评估 keypoint embedding 无落盘 cache：跨 run 重复 HTTP 阻塞 AC-4 ≤10min 目标
+
+状态：🔵 候选（spec 已就位，待用户决策实施）
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 校验脚本 / RAG / Embedding / Cache |
+| 事实源 | REQ-037 follow-up #2 + AC-4 子集验证报告 §4 路径 1 + TD-071 交付记录「已知 spec 偏差」 |
+| Spec | [`docs/02-delivery-plans/01-specs/2026-06-30-td-073-offline-keypoint-embedding.md`](../02-delivery-plans/01-specs/2026-06-30-td-073-offline-keypoint-embedding.md) |
+
+**证据**
+
+- REQ-031 进程内 `_EMBEDDING_CACHE`（`scripts/rag_validation/coverage.py:90`）仅在**单次脚本运行内**有效；脚本每次启动从空开始，hit 数要靠本次进程内累积产生。
+- AC-4 子集验证实测：132 run 29.6min（按比例 60 run 推算 15-20min，spirit 解释 6.6min 被推翻）。REQ-031 进程内 cache 单次 dry-run 把 HTTP 数从 4400 降到 ~140（hit 86%），但 AC-4 实测仍**远超 10min**——cache 命中率受样本多样性压制。
+- 精确算账（实测 7 fixture，2026-06-30）：100 keypoint entry × 162 run = 16200 HTTP 调用（cache 前）；唯一文本数 180（term+synonyms union）；落盘 cache 命中后 → 0 HTTP（fixture 不变）。
+- TD-071 交付记录 §"已知 spec 偏差"明确登记「离线批量 keypoint embedding 预计算路径」作为 follow-up，本卡接力。
+
+**问题**
+
+- AC-4 ≤10min 目标在 REQ-031 缓存 + TD-071 batch + `_EMB_SEMAPHORE=2` 联合优化下仍不可达。
+- 任何后续 P2 真实评估（REQ-030 系族扩展、REQ-039 后续验证）都受同一约束。
+
+**完成标准**
+
+- `scripts/rag_validation/cache_store.py` 新建：`save/load/cache_key` 三函数；JSON 序列化；cache_key = sha256(fixture paths + mtimes + "keypoint_v1")[:16]。
+- `coverage.py` 启动时按 cache_key 载入落盘 dict → `_EMBEDDING_CACHE`；miss 走 `_get_cached_embeddings_batch`（TD-071 已存在）累加写盘；`_run()` 退出前 flush。
+- 落盘路径 `docs/.cache/rag_validation_keypoint_embeddings/<key>.json`；可选 `--cache-dir` CLI 覆盖。
+- 单测：cache_store save/load round-trip / cache_key 变更失效 / 不存在 key 返回 None / 同 key fixture mtime 变返回 None。
+- 端到端：重复跑同命令第二次 → keypoint 路径 HTTP 数 ≈ 0；改 fixture → cache_key 自动失效。
+- 完整 AC 详见 spec §4。
+
+**验证方式**
+
+- `pytest tests/rag_validation/test_cache_store.py -v`（新建）
+- `pytest tests/rag_validation/ -v` 现有测试无回归
+- `python scripts/validate_req024_p2_real_validation.py --limit 2 --allow-llm` 跑两次，第二次 keypoint 路径 HTTP 数 ≈ 0
+- `ruff check scripts/rag_validation/` + `python scripts/check-engineering-docs` + `git diff --check` 全部 clean
+
+**交付记录**
+
+- 2026-06-30 登记 + spec（分支 `docs/td-073-offline-keypoint-embedding-spec`）：
+  - 量化：180 unique texts × 25-30s × 162 run 单进程 = ~75-90min 单跑成本；落盘后 = 0
+  - 新建 spec `docs/02-delivery-plans/01-specs/2026-06-30-td-073-offline-keypoint-embedding.md`：problem / goal / non-goals / AC-1..AC-7 / architecture（5.1 数据流 / 5.2 模块划分 / 5.3 cache_key / 5.4 文件格式 / 5.5 写入策略）/ risks / validation plan / out-of-scope（含路径 2/3 明确不属于本卡）/ reference
+  - 决策保留：实施计划另开 PR（不在本 docs-only PR 范围）
+  - 详见 [TD-073 spec](../02-delivery-plans/01-specs/2026-06-30-td-073-offline-keypoint-embedding.md)

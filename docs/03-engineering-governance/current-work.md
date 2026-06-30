@@ -21,7 +21,7 @@
 | 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
 |------|------|--------|------|--------|--------|
 | AC-4 wall-clock 超时 follow-up | 🟢 已关闭 | P3 | P2 / RAG / Verification | 2026-06-22 子集验证实测 132 run 29.6min（仅传 `--req028-samples` 仍触发多 group）。按比例 60 run 推算 15-20min。AC-4 ≤10min 目标不可达，spirit 解释被推翻。接力 follow-up：离线批量 keypoint 预计算 / runner.py 接 batch helper / 提 provider 限流 | [AC-4 子集验证报告](../02-delivery-plans/01-specs/2026-06-22-td-071-ac4-subset-validation-report.md) |
-| 离线批量 keypoint embedding 预计算 | 🔵 候选 | P3 | RAG / Embedding / TD | REQ-037 登记 follow-up。TD-071 batch helper 已铺路：runner.py 改 `embedding_callable=get_embeddings_with_timeout_batch` 可进一步省 HTTP 数（预计全量 ~5min） | [REQ-037 验收报告 §6](../02-delivery-plans/01-specs/2026-06-21-req-037-graph-edge-disable-real-llm-verify-report.md#6-follow-up) |
+| 离线批量 keypoint embedding 预计算 | 🔵 候选 | P2 | RAG / Embedding / TD | **TD-073 spec 已就位**（PR 待提）。落盘 cache（`docs/.cache/rag_validation_keypoint_embeddings/<key>.json`）消除 keypoint 路径全部 HTTP，AC-4 重新定义 ≤15min（叠加路径 2 接力后可达 ≤10min）。180 unique texts × 25-30s × 162 run = 75-90min 单跑 → 0 | [TD-073 spec](../02-delivery-plans/01-specs/2026-06-30-td-073-offline-keypoint-embedding.md) / [技术债总账](technical-debt.md#td-073) |
 
 ## 最近完成
 
