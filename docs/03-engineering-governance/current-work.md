@@ -14,9 +14,7 @@
 
 ## 当前进行中
 
-| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 |
-|------|------|--------|------|----------|--------|
-| TD-074 `_is_batch_embedding_callable` + `_get_cached_embeddings_batch` 路由分派无单测 | 🟡 进行中 | P2 | 校验脚本 / 测试基础设施 / 纯 TDD | 分支 `feat/td-074-coverage-batch-routing-tests`；技术债总账已登记。RED 测试待写：`_is_batch_embedding_callable` type-hint 检测分支 + `_get_cached_embeddings_batch` 路由分派 + 降级 | 写 `tests/rag_validation/__init__.py` + `tests/rag_validation/test_coverage_batch_routing.py` 全 RED → GREEN |
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -33,7 +31,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
-| 2026-06-30 | TD-072 runner.py 接 batch helper（TD-071 §5 偏差接力） | 🟢 完成 | runner.py 改传 `get_embeddings_with_timeout_batch`；coverage.py 新增 `_is_batch_embedding_callable` + 路由。预期 60 run 5-7min（叠加 TD-071 总 6-10×）。rebase 解冲突，全门禁 0。follow-up：`_is_batch_embedding_callable` 无单测（TD-074） | [TD-072 spec](../02-delivery-plans/01-specs/2026-06-22-td-072-runner-batch-wiring.md) / [PR #386](https://github.com/MarkDanile/MetaEduBase/pull/386) (`b645ca2`) |
+| 2026-06-30 | TD-074 `_is_batch_embedding_callable` + batch routing 单测补强 | 🟢 完成 | 26 tests / 4 test class。覆盖 None/builtin/lambda/单条/list/Sequence/Iterable/bare list/多 POKW；路由：batch/per-text/dedup/cache hit/超时降级/错长度降级。pytest 26 + 38 passed 无回归 / ruff 0 / diff clean | [PR #400](https://github.com/MarkDanile/MetaEduBase/pull/400) (`e09ed35`) |
 | 2026-06-30 | TD-073 离线批量 keypoint embedding 预计算 spec | 🟢 Done | docs-only：spec + 总账登记 + 候选区更新。落盘 cache 消除 keypoint 路径全部 HTTP；180 unique texts × 25-30s × 162 run = 75-90min → 0。AC-4 重新定义 ≤15min（叠加 TD-072 ≤10min）。全门禁 0 | [TD-073 spec](../02-delivery-plans/01-specs/2026-06-30-td-073-offline-keypoint-embedding.md) / [PR #398](https://github.com/MarkDanile/MetaEduBase/pull/398) (`520bc4a`) |
 | 2026-06-30 | DOC-076 current-work 最近完成批量归档 18→12 | 🟢 Done | 按 workbench 保留策略：18 数据行 → 12（裁 REQ-035/034/033/032/031/030 6 行）；6 项索引均在 work-log 保留；未改门禁 / KNOWN_ISSUES。`check-engineering-docs` 退出码 0 / 38 passed / diff clean | [PR #397](https://github.com/MarkDanile/MetaEduBase/pull/397) (`e321cbd`) |
 | 2026-06-24 | DOC-075 current-work「当前进行中」段落污染硬门禁 | 🟢 Done | `check_current_work` 加 `current-work-in-progress-pollution` 门禁：无活跃任务时该区只允许单句，>1 行阻塞 PR。`pytest tests/engineering/ -q` → 38 passed 退出码 0；`ruff` 0 | [PR #394](https://github.com/MarkDanile/MetaEduBase/pull/394) (`d75c966`) |
@@ -44,4 +42,3 @@
 | 2026-06-21 | REQ-002 模板化结构抽取配置与复用体验 closeout | 🟢 Done | 4 子任务全收口：REQ-002-3 溯源（PR #153）+ REQ-002-1 配置效率（PR #158）+ TD-041 嵌套拖拽（PR #161）+ REQ-002-2 复用机制（PR #159）+ TD-042 PG 集成测试（PR #159/#122）+ REQ-002-4 可维护性（PR #170）。requirement Status 🔵 Ready → 🟢 Done，docs-only 内务登记 | [Requirement](../01-product-planning/05-requirements/REQ-002-template-config-and-reuse.md) |
 | 2026-06-21 | W25 迭代 2026-W25 P2 RAG 质量增强 收口 | 🟢 Done | Scope 24 项全交付（修复 BUG-007 漂移）。覆盖 REQ-013/014/015 + REQ-016/017/018 + REQ-024→037 + TD-068/069/070 + DOC-074。graph_edge 治理全闭环 | [迭代文件](../01-product-planning/03-iterations/2026-W25-p2-rag-quality-enhancement.md) / [work-log 索引](work-log.md) |
 | 2026-06-21 | REQ-037 P2 graph_edge 禁用真 LLM 全量验收（REQ-036 follow-up） | 🟢 完成 | 全量真 LLM run 受 embedding provider 累积吞吐阻塞；dry-run 实证 10/10 样例 baseline = graph_edge@0.5 零覆盖度差异。全量真 LLM 登记 REQ-038 follow-up | [REQ-037](../01-product-planning/05-requirements/REQ-037-p2-graph-edge-disable-real-llm-verify.md) / [验收报告](../02-delivery-plans/01-specs/2026-06-21-req-037-graph-edge-disable-real-llm-verify-report.md) |
-| 2026-06-21 | TD-070 vector 召回 query embedding 无超时兜底 | 🟢 完成 | `get_embedding_with_timeout(text, timeout=60.0)` helper + 3 recall 调用点改造。慢 provider 从阻塞 90s 改为 60s fail-fast 降级 keyword。+3 单测 89 passed 无回归，解锁 REQ-037 | [TD-070](technical-debt.md#td-070) / [Spec](../02-delivery-plans/01-specs/2026-06-21-td-070-vector-recall-timeout.md) |
