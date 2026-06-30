@@ -4320,3 +4320,70 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
   - 新建 spec `docs/02-delivery-plans/01-specs/2026-06-30-td-073-offline-keypoint-embedding.md`：problem / goal / non-goals / AC-1..AC-7 / architecture（5.1 数据流 / 5.2 模块划分 / 5.3 cache_key / 5.4 文件格式 / 5.5 写入策略）/ risks / validation plan / out-of-scope（含路径 2/3 明确不属于本卡）/ reference
   - 决策保留：实施计划另开 PR（不在本 docs-only PR 范围）
   - 详见 [TD-073 spec](../02-delivery-plans/01-specs/2026-06-30-td-073-offline-keypoint-embedding.md)
+
+### TD-074: `_is_batch_embedding_callable` + `_get_cached_embeddings_batch` 路由分派无单测：TD-072 实现缺陷回归无锁死
+
+状态：🟡 进行中
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 校验脚本 / 测试基础设施 / 纯 TDD |
+| 事实源 | TD-072 交付记录「follow-up：`_is_batch_embedding_callable` 自身无单测」；PR #386 closeout；PR #386 squash merge commit `b645ca2` |
+| Spec | 不需要（纯 TDD 任务；目标是补单测，spec 已在 TD-072 §4 中覆盖） |
+
+**证据**
+
+- `scripts/rag_validation/coverage.py:98-158` 新增 `_is_batch_embedding_callable(embedding_callable) -> bool`，靠 `inspect.signature` + type-hint 区分 batch vs per-text callable。该函数是 TD-072 的核心路由逻辑（`_get_cached_embeddings_batch:282` 据此分流 batch vs per-text 路径）。
+- `scripts/rag_validation/coverage.py:161-181` 新增 `_per_text_fallback`（batch 失败时降级）。
+- `scripts/rag_validation/coverage.py:184-208` 已有 `_per_text_gather`（TD-071 旧行为保留）。
+- `scripts/rag_validation/coverage.py:212-326` 已有 `_get_cached_embeddings_batch`（TD-072 改 use_batch_path 分流）。
+- 整体 4 个函数 = TD-072 整个路由系统，**全部无单测**。`tests/rag_validation/` 目录不存在；当前 `tests/` 下只有 `tests/engineering/`（门禁单测）+ `tests/contexts/...`（业务单测）。
+- 风险：`_is_batch_embedding_callable` 的 type-hint 检测脆弱（依赖 `typing.get_origin` / `typing.get_type_hints` 等行为）；`Sequence` 包含 `list` 是 `list ⊂ Sequence` 但 `Sequence` 不是 `list`；typing import 在 Python 3.9 / 3.10 / 3.11 / 3.12 间行为差异；forward reference；`from __future__ import annotations` 影响。任何改动都可能让 type-hint 检测无声回归。
+
+**问题**
+
+- TD-072 实施 PR #386 squash merge 时，`gate_file_scope` 与 `check-engineering-docs` 不强制要求新增代码必备单测（按现有规则不算 active issue）。
+- 但任何对 `_is_batch_embedding_callable` 的修改（例如新增 callable 类型支持、修 typing bug、适配 Python 版本）都会"看似工作"——因为没有任何回归测试报警。
+- TD-072 核心价值是"60 run 5-7min（再加速 2-3×）"——如果 batch 路径被 silent 错配为 per-text，跑得 17.8min 而非 5-7min，没人知道。
+
+**完成标准**
+
+- `tests/rag_validation/__init__.py`（空文件）+ `tests/rag_validation/test_coverage_batch_routing.py` 新建。
+- 测试覆盖 `_is_batch_embedding_callable` 全部检测分支：
+  - **None 输入** → `False`
+  - **builtin / C-implemented callable**（如 `len` / `sorted`）→ `False`（签名不可内省）
+  - **lambda 无 type hint** → `False`
+  - **单条 callable**：`text: str` / `def f(x): ...`（无注解）→ `False`
+  - **batch callable**：第一个 POKW 参数是 `list[str]` → `True`
+  - **batch callable**：`Sequence[str]` / `Iterable[str]` / `MutableSequence[str]` → `True`
+  - **batch callable**：`List[str]`（大写老 typing）→ `True`
+  - **batch callable**：`list`（无参数化）→ `True`
+  - **batch callable with extra POKW + KW_ONLY**：`def f(texts: list[str], timeout: float = 60.0, *, batch_size: int = 10): ...` → `True`（模拟生产 `get_embeddings_with_timeout_batch`）
+  - **无 POKW 参数** callable → `False`
+  - **type hint 含 string annotation** `"list[str]"` → `True`（get_type_hints 解析）
+  - **POSITIONAL_ONLY / VAR_POSITIONAL / KW_ONLY** 不当 batch 标记：排除测试
+- 测试覆盖 `_get_cached_embeddings_batch` 路由（核心行为锁死）：
+  - 传 batch callable → 走 batch HTTP（mock 验证 call 一次，传入 list）
+  - 传 per-text callable → 走 `_per_text_gather`（mock 验证 call 多次，每个 per-text）
+  - cache hit 路径 不调 callable（mock 验证）
+  - cache miss + batch callable + provider 超时 → 降级到 `_per_text_fallback`
+  - cache miss + batch callable + provider 返回错误结果（emb 长度不匹配）→ 降级到 `_per_text_fallback`
+  - 空 texts 输入 → 返回 `[None] * 0`，不调 callable
+  - texts 含空字符串 → 对应位置返回 None
+  - duplicate texts → cache hit / miss 计数与一致性
+- 跑 `pytest tests/rag_validation/ -v` 全 pass
+- 现有测试无回归（`tests/engineering/` + `tests/contexts/...` 全 pass）
+
+**验证方式**
+
+- `pytest tests/rag_validation/test_coverage_batch_routing.py -v` 全 pass（**TDD 流程：先 RED 写失败测试，再 GREEN 验证**——但本卡不写 production code，因代码已在 main 上；红线是首次跑测试，看 fail 信息，验证预期功能未覆盖；再以"已有代码应通过测试"方式补全测试 → GREEN）
+- `pytest tests/rag_validation/ -v` 全部 pass
+- `pytest tests/engineering/ -v` 38 passed 无回归
+- `python scripts/check-engineering-docs` exit 0
+- `ruff check scripts/rag_validation/ tests/rag_validation/` 0 violations
+- `git diff --check` clean
+
+**交付记录**
+
+- 2026-06-30 登记（PR #386 squash merge 后内务登记）

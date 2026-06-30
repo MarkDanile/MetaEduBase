@@ -14,7 +14,9 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 |
+|------|------|--------|------|----------|--------|
+| TD-074 `_is_batch_embedding_callable` + `_get_cached_embeddings_batch` 路由分派无单测 | 🟡 进行中 | P2 | 校验脚本 / 测试基础设施 / 纯 TDD | 分支 `feat/td-074-coverage-batch-routing-tests`；技术债总账已登记。RED 测试待写：`_is_batch_embedding_callable` type-hint 检测分支 + `_get_cached_embeddings_batch` 路由分派 + 降级 | 写 `tests/rag_validation/__init__.py` + `tests/rag_validation/test_coverage_batch_routing.py` 全 RED → GREEN |
 
 ## 下一批候选任务
 
