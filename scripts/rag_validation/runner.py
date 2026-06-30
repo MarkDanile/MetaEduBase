@@ -148,9 +148,16 @@ async def _build_service(session, tenant_id: str, scenario: Scenario, *, allow_l
         service._call_llm = _dry_llm  # type: ignore[method-assign]
         return service, None, None
     # allow_llm: return service's real _call_llm for LLM-as-judge (REQ-028) and
-    # get_embedding for semantic embedding coverage (REQ-030)
-    from app.contexts.knowledge.application.embedding_service import get_embedding
-    return service, service._call_llm, get_embedding  # type: ignore[method-assign]
+    # get_embeddings_with_timeout_batch for semantic embedding coverage (REQ-030;
+    # TD-072: use the batch variant to cut HTTP count from ~140 to ~10-15).
+    from app.contexts.knowledge.application.embedding_service import (
+        get_embeddings_with_timeout_batch,
+    )
+    return (
+        service,
+        service._call_llm,
+        get_embeddings_with_timeout_batch,  # type: ignore[method-assign]
+    )
 
 
 def _trace_chunk_ids(items: list[dict[str, Any]]) -> list[str]:

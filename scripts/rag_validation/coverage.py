@@ -12,7 +12,9 @@ process-singletons defined here; `report_quality` reads `_EMB_STATS` only.
 from __future__ import annotations
 
 import asyncio
+import inspect  # TD-072: detect batch vs per-text embedding_callable
 import json
+import typing
 from typing import Any
 
 from .models import Keypoint
@@ -93,6 +95,119 @@ _EMBEDDING_CACHE: dict[str, list[float]] = {}
 _EMB_STATS = {"hit": 0, "miss": 0, "timeout": 0, "error": 0}
 
 
+def _is_batch_embedding_callable(embedding_callable) -> bool:
+    """TD-072: detect whether `embedding_callable` accepts a list (batch)
+    or a single string (per-text). Used to route between batch HTTP and
+    per-text gather paths in `_get_cached_embeddings_batch`.
+
+    Detection logic: the callable's first POSITIONAL_OR_KEYWORD /
+    POSITIONAL_ONLY parameter's type annotation must indicate a list-like
+    (e.g. ``list[str]``, ``List[str]``, ``Sequence[str]``,
+    ``Iterable[str]``, ``MutableSequence[str]``, bare ``list``). If so →
+    batch path. Otherwise → per-text path (the safer default, matching
+    TD-071's pre-existing behavior, used for callables like
+    ``get_embedding(text: str)``).
+
+    The first POKW parameter is the discriminator — additional POKW
+    parameters (e.g. ``timeout`` in
+    ``get_embeddings_with_timeout_batch(texts: list[str], timeout=60.0, *,
+    batch_size=10)``) and KEYWORD_ONLY parameters are ignored. This
+    correctly distinguishes the production batch callable (2 POKW + 1
+    KW_ONLY) from a single-text callable (1 POKW: ``text: str``).
+
+    Falls back to False (per-text path) when signature introspection fails
+    (e.g., builtins, C-implemented callables, lambdas without hints) or
+    when the callable has no positional parameters at all.
+    """
+    if embedding_callable is None:
+        return False
+    try:
+        sig = inspect.signature(embedding_callable)
+    except (ValueError, TypeError):  # noqa: BLE001
+        return False
+    positional_params = [
+        p
+        for p in sig.parameters.values()
+        if p.kind in (p.POSITIONAL_OR_KEYWORD, p.POSITIONAL_ONLY)
+    ]
+    if not positional_params:
+        return False
+    first = positional_params[0]
+    annotation = first.annotation
+    if annotation is inspect.Parameter.empty:
+        return False
+    # Unwrap string annotations (e.g., "list[str]") via get_type_hints when possible.
+    resolved: Any = annotation
+    try:
+        hints = typing.get_type_hints(embedding_callable)
+        resolved = hints.get(first.name, annotation)
+    except Exception:  # noqa: BLE001
+        resolved = annotation
+    # Match list / List / Sequence / Iterable of str-like element.
+    origin = typing.get_origin(resolved)
+    if origin is not None:
+        raw = getattr(resolved, "__origin__", None)
+        name = getattr(raw, "__name__", "") if raw is not None else ""
+        if name in ("list", "List", "Sequence", "Iterable", "MutableSequence"):
+            return True
+        return False
+    # Non-generic annotation: check if it's a bare list.
+    name = getattr(resolved, "__name__", "")
+    if name in ("list", "List"):
+        return True
+    return False
+
+
+async def _per_text_fallback(
+    batch: list[str], embedding_callable
+) -> None:
+    """TD-072: per-text fallback when batch call fails.
+
+    Calls `embedding_callable([t])` (batch callable with a single-element
+    list) so the provider-fallback chain in `get_embeddings_with_timeout_batch`
+    is reused. Writes cache on success; silently skips on failure
+    (stats already bumped by the caller).
+    """
+    for t in batch:
+        try:
+            async with _EMB_SEMAPHORE:
+                emb = await asyncio.wait_for(
+                    embedding_callable([t]),
+                    timeout=60.0,
+                )
+        except (asyncio.TimeoutError, Exception):  # noqa: BLE001
+            continue
+        if emb and emb[0]:
+            _EMBEDDING_CACHE[t] = emb[0]
+
+
+async def _per_text_gather(
+    batch: list[str], embedding_callable
+) -> None:
+    """TD-071: per-text gather (backward compat path for single-text
+    callables like `get_embedding`). Mirrors the original TD-071 behavior.
+    """
+
+    async def _one(t: str) -> list[float] | None:
+        async with _EMB_SEMAPHORE:
+            try:
+                emb = await asyncio.wait_for(
+                    embedding_callable(t),
+                    timeout=60.0,
+                )
+            except asyncio.TimeoutError:
+                _EMB_STATS["timeout"] += 1
+                return None
+            except Exception:  # noqa: BLE001
+                _EMB_STATS["error"] += 1
+                return None
+        if emb:
+            _EMBEDDING_CACHE[t] = emb
+        return emb
+
+    await asyncio.gather(*(_one(t) for t in batch))
+
+
 async def _get_cached_embedding(text: str, embedding_callable) -> list[float] | None:
     """REQ-031: cached embedding with hard timeout + graceful degradation.
 
@@ -161,16 +276,11 @@ async def _get_cached_embeddings_batch(
             miss_texts.append(t)
             _EMB_STATS["miss"] += 1
 
-    # 2. Fill cache misses via per-text embedding_callable in semaphore-bound
-    #    concurrent batches. We do NOT call get_embeddings_with_timeout_batch
-    #    directly here because `embedding_callable` (passed in by runner.py) is
-    #    `get_embedding` from server-python — a single-text function. The batch
-    #    optimization at the embedding_service layer (Task 1) is exercised when
-    #    callers invoke it directly. Here we batch the *callable invocations*
-    #    with the existing Semaphore(2) to keep provider pressure identical.
+    # 2. Fill cache misses via batch HTTP (TD-072) or per-text gather (TD-071).
     if miss_texts:
-        # Process misses in chunks of `batch_size`; within a batch, run calls
-        # concurrently limited by _EMB_SEMAPHORE.
+        # Route: detect batch vs per-text callable signature.
+        use_batch_path = _is_batch_embedding_callable(embedding_callable)
+
         import math as _math
 
         n_batches = _math.ceil(len(miss_texts) / batch_size)
@@ -179,26 +289,32 @@ async def _get_cached_embeddings_batch(
             end = start + batch_size
             batch = miss_texts[start:end]
 
-            async def _one(t: str) -> list[float] | None:
-                async with _EMB_SEMAPHORE:
-                    try:
-                        emb = await asyncio.wait_for(
-                            embedding_callable(t), timeout=60.0
+            if use_batch_path:
+                # TD-072: native batch HTTP path.
+                try:
+                    async with _EMB_SEMAPHORE:
+                        embs = await asyncio.wait_for(
+                            embedding_callable(batch),
+                            timeout=60.0,
                         )
-                    except asyncio.TimeoutError:
-                        _EMB_STATS["timeout"] += 1
-                        return None
-                    except Exception:  # noqa: BLE001
+                except asyncio.TimeoutError:
+                    _EMB_STATS["timeout"] += 1
+                    await _per_text_fallback(batch, embedding_callable)
+                except Exception:  # noqa: BLE001
+                    _EMB_STATS["error"] += 1
+                    await _per_text_fallback(batch, embedding_callable)
+                else:
+                    if embs and len(embs) == len(batch):
+                        for t, emb in zip(batch, embs):
+                            if emb:
+                                _EMBEDDING_CACHE[t] = emb
+                    else:
+                        # Malformed response — fallback to per-text.
                         _EMB_STATS["error"] += 1
-                        return None
-                if emb:
-                    _EMBEDDING_CACHE[t] = emb
-                return emb
-
-            results = await asyncio.gather(*(_one(t) for t in batch))
-            for t, emb in zip(batch, results):
-                if emb is not None:
-                    _EMBEDDING_CACHE[t] = emb
+                        await _per_text_fallback(batch, embedding_callable)
+            else:
+                # TD-071 path: per-text gather for single-text callables.
+                await _per_text_gather(batch, embedding_callable)
 
     # 3. Build aligned output (preserves input order + duplicates).
     for i, t in enumerate(texts):
