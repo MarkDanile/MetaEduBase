@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 |
 |------|------|--------|------|----------|--------|
-| BUG-013 业务 tests 失败：asyncpg 不支持 `:vec::vector` 占位符 + cast | 🟡 进行中 | P1 | 后端 / 业务 tests / pgvector | 分支 `fix/bug-013-asyncpg-vec-cast`；启动 `./dev.sh infra` + `./dev.sh init-db` 后 `pytest tests/` 12 failed（asyncpg ProgrammingError：`:vec::vector` 语法错）；BUG 卡已登记；4 处待修（chunk_repository.py:127 + knowledge_repository.py:100/332/334） | 改 4 处 `:vec::vector` → `CAST(:vec AS vector)` + 跑全量 pytest 验证 |
+| AC-4 ≤10min 真 LLM 实证（环境基础设施就位） | 🟡 进行中 | P3 | P2 / RAG / Verification | 分支 `verify/ac4-real-llm-evidence`；PG 5432 (metaedu + metaedu_test) + Redis 已启动（参见 PR #406 收口）；provider API key 缺失（minimax/deepseek/qwen/siliconflow env 未设）故走 dry-run 路径 + 整理 follow-up；详细实测数据见 verify 报告（待写） | 跑 dry-run 端到端（main.py 集成 + cache_key 实测 + unique texts 算账）+ 写报告 + 登记真 LLM follow-up |
 
 ## 下一批候选任务
 
