@@ -14,9 +14,7 @@
 
 ## 当前进行中
 
-| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 |
-|------|------|--------|------|----------|--------|
-| AC-4 ≤10min 真 LLM 实证（环境基础设施就位） | 🟡 进行中 | P3 | P2 / RAG / Verification | 分支 `verify/ac4-real-llm-evidence`；PG 5432 (metaedu + metaedu_test) + Redis 已启动（参见 PR #406 收口）；provider API key 缺失（minimax/deepseek/qwen/siliconflow env 未设）故走 dry-run 路径 + 整理 follow-up；详细实测数据见 verify 报告（待写） | 跑 dry-run 端到端（main.py 集成 + cache_key 实测 + unique texts 算账）+ 写报告 + 登记真 LLM follow-up |
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -32,7 +30,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
-| 2026-06-30 | AC-4 verify dry-run smoke（TD-072 + TD-073 接力后） | 🟡 已登记 follow-up | PG 5432 不可达故走 dry-run + mock batch embedder。Run 1 miss=14, Run 2 hit=14 / 0 miss / 0.42× wall-clock。cache-key 失效（mtime mutate）✅。14 entries 落盘 3394 bytes。AC-4 ≤10min 真 LLM 实证登记 follow-up（需 PG + provider key） | [AC-4 verify 报告](../02-delivery-plans/01-specs/2026-06-30-ac4-verify-td073-dry-run-smoke-report.md) / [PR #404](https://github.com/MarkDanile/MetaEduBase/pull/404) (`aad3ad2`) |
+| 2026-06-30 | AC-4 ≤10min 真 LLM 验证（基础设施 OK；provider key 缺失） | 🟡 已登记 follow-up | dry-run 12 run：Run1 no-cache 12.815s / Run2 cold 13.774s / Run3 warm 10.840s；cache_key 稳定；5 fixtures/180 unique texts（spec 一致）。真 LLM AC-4 ≤10min 需 provider key + 业务 tests 已通（535 PR #406） | [AC-4 verify 报告](../02-delivery-plans/01-specs/2026-07-01-ac4-real-llm-evidence-report.md) / [PR #407](https://github.com/MarkDanile/MetaEduBase/pull/407) (`6c3c6bc`) |
 | 2026-06-30 | TD-073 离线批量 keypoint embedding 预计算落盘（实施） | 🟢 完成 | cache_store.py + coverage 启动/退出 hook + miss 累加 + main.py CLI。15+9 新单测；pytest 50/38 passed / ruff 0 / diff clean。180 texts × 25-30s × 162 run = 75-90min → 0。AC-4 重定义 ≤15min（叠加 TD-072 ≤10min 实证待 verify） | [TD-073 plan](../02-delivery-plans/02-plans/2026-06-30-td-073-offline-keypoint-embedding-plan.md) / [PR #402](https://github.com/MarkDanile/MetaEduBase/pull/402) (`0676bb0`) |
 | 2026-06-30 | TD-074 `_is_batch_embedding_callable` + batch routing 单测补强 | 🟢 完成 | 26 tests / 4 test class。覆盖 None/builtin/lambda/单条/list/Sequence/Iterable/bare list/多 POKW；路由：batch/per-text/dedup/cache hit/超时降级/错长度降级。pytest 26 + 38 passed 无回归 / ruff 0 / diff clean | [PR #400](https://github.com/MarkDanile/MetaEduBase/pull/400) (`e09ed35`) |
 | 2026-06-30 | TD-073 离线批量 keypoint embedding 预计算 spec | 🟢 Done | docs-only：spec + 总账登记 + 候选区更新。落盘 cache 消除 keypoint 路径全部 HTTP；180 unique texts × 25-30s × 162 run = 75-90min → 0。AC-4 重新定义 ≤15min（叠加 TD-072 ≤10min）。全门禁 0 | [TD-073 spec](../02-delivery-plans/01-specs/2026-06-30-td-073-offline-keypoint-embedding.md) / [PR #398](https://github.com/MarkDanile/MetaEduBase/pull/398) (`520bc4a`) |
