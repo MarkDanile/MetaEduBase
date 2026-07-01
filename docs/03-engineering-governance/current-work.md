@@ -14,7 +14,9 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 |
+|------|------|--------|------|----------|--------|
+| AC-4 ≤10min 真 LLM 实证（provider key 已就位） | 🟡 进行中 | P3 | P2 / RAG / Verification | 分支 `verify/ac4-real-llm-evidence-v2`；packages/server-python/.env 已有 MINIMAX/SILICONFLOW/DEEPSEEK 三 provider key（minimax key 125 字符 + siliconflow 51 字符 + deepseek 35 字符）；settings.llm_default_provider='deepseek'（被 .env 覆盖默认 minimax）；先跑 Run 1 (cold cache) + Run 2 (warm cache) `--limit 2 --allow-llm --concurrency 4` 验证 provider chain + cache 路径激活 | 跑 Run 1 cold cache + Run 2 warm cache + Run 3 全量 60 run + 写报告 |
 
 ## 下一批候选任务
 
