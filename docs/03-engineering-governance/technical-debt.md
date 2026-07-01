@@ -4276,7 +4276,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-073: RAG 评估 keypoint embedding 无落盘 cache：跨 run 重复 HTTP 阻塞 AC-4 ≤10min 目标
 
-状态：🔵 候选（spec 已就位，待用户决策实施）
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -4320,6 +4320,17 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
   - 新建 spec `docs/02-delivery-plans/01-specs/2026-06-30-td-073-offline-keypoint-embedding.md`：problem / goal / non-goals / AC-1..AC-7 / architecture（5.1 数据流 / 5.2 模块划分 / 5.3 cache_key / 5.4 文件格式 / 5.5 写入策略）/ risks / validation plan / out-of-scope（含路径 2/3 明确不属于本卡）/ reference
   - 决策保留：实施计划另开 PR（不在本 docs-only PR 范围）
   - 详见 [TD-073 spec](../02-delivery-plans/01-specs/2026-06-30-td-073-offline-keypoint-embedding.md)
+- 2026-06-30 实施完成（分支 `feat/td-073-offline-keypoint-cache-impl` + PR #402 merged）：
+  - 新建 `docs/02-delivery-plans/02-plans/2026-06-30-td-073-offline-keypoint-embedding-plan.md`（226 行 plan：3 task / TDD / self-review）
+  - 新建 `scripts/rag_validation/cache_store.py`（4 函数：`compute_cache_key` / `collect_unique_texts` / `save` / `load` + `_SCHEMA_VERSION = "keypoint_v1"`）：cache_key = sha256(fixture paths + mtimes + "keypoint_v1")[:16]；load 失败模式（missing / corrupt / schema mismatch）→ None 不抛；save mkdir -p
+  - `scripts/rag_validation/coverage.py` 新增 4 函数（`_keypoint_cache_key` / `_load_keypoint_cache` / `_save_keypoint_cache` / `_record_pending_miss`）+ `_KEYPOINT_CACHE_PENDING` 模块级 dict；三处 miss 路径（batch / per_text_gather / per_text_fallback）调 `_record_pending_miss`
+  - `scripts/rag_validation/main.py` 新增 `--cache-dir` / `--no-cache` CLI + `_flush_keypoint_cache_if_enabled` helper；`_run` 启动调 `_load_keypoint_cache`，退出前调 `_save_keypoint_cache`
+  - 新建 `packages/server-python/tests/scripts/rag_validation/test_cache_store.py`（15 tests：deterministic / mtime / path / schema / dedup / synonyms / round-trip / 4 种 None 失败模式 / save mkdir）
+  - 新建 `.../test_coverage_persistent_cache.py`（9 tests：3 load / 2 pending / 3 save / 1 end-to-end 二轮命中）
+  - 验证：`pytest tests/engineering/ -q` 38 passed 无回归 + `pytest packages/server-python/tests/scripts/rag_validation/ -q` **50 passed**（26 TD-074 + 15 cache_store + 9 coverage_persistent_cache）+ `ruff check scripts/rag_validation/ packages/server-python/tests/scripts/` All checks passed + `scripts/check-engineering-docs` exit 0（31 known issues allowlist）+ `git diff --check` clean
+  - TDD 3 task 完整 RED → GREEN 循环：Task 1（cache_store 9 RED → 15 PASS）/ Task 2（coverage 9 RED → 9 PASS；过程发现 mock 设计 bug——per_text callable 应返单 embedding 不是 batch 形式）/ Task 3（main.py plumbing，无专门测试，依赖 Task 2 的 end-to-end 间接覆盖）
+  - 业务 tests（test_ai_chat / test_knowledge / test_resource 等）因环境无 PostgreSQL 5432 端口有 connection errors——与本 PR 无关，按 git-workflow 范围只跑 TD-073 影响范围
+  - 详见 [PR #402](https://github.com/MarkDanile/MetaEduBase/pull/402) (`0676bb0` squash merge) / [TD-073 plan](../02-delivery-plans/02-plans/2026-06-30-td-073-offline-keypoint-embedding-plan.md)
 
 ### TD-074: `_is_batch_embedding_callable` + `_get_cached_embeddings_batch` 路由分派无单测：TD-072 实现缺陷回归无锁死
 
