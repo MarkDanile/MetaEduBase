@@ -14,7 +14,9 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 |
+|------|------|--------|------|----------|--------|
+| AC-4 verify 分支：TD-072 + TD-073 接力后 dry-run smoke | 🟡 进行中 | P3 | P2 / RAG / Verification | 分支 `verify/td-073-ac4-dry-run-smoke`；PG 5432 不可达故走 dry-run（不调 LLM）路径；目标验证 cache 写入 + 第二次命中 + 算 keypoint path HTTP 节省；真 LLM verify 登记 follow-up | 跑 Run 1（`--limit 2` dry-run，cache 写入）+ Run 2（同命令重复，cache 命中验证）|
 
 ## 下一批候选任务
 
