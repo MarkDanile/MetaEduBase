@@ -28,6 +28,7 @@ from .models import (
 )
 from .report import _render_report
 from .runner import _default_scenarios, _run_question
+from . import coverage  # TD-073: persistent keypoint cache hooks
 
 
 async def _run(args: argparse.Namespace) -> int:
@@ -48,6 +49,20 @@ async def _run(args: argparse.Namespace) -> int:
     )
     if args.limit and args.limit > 0:
         questions = questions[: args.limit]
+
+    # TD-073: load persistent keypoint embedding cache (silently skipped on miss).
+    if not getattr(args, "no_cache", False):
+        coverage._load_keypoint_cache(
+            questions,
+            Path(args.cache_dir),
+            [
+                Path(args.req016_samples),
+                Path(args.req018_samples),
+                Path(args.weak_recall_samples),
+                Path(getattr(args, "req028_samples", DEFAULT_REQ028_SAMPLES)),
+            ],
+        )
+
     scenarios = _default_scenarios()
     started_at = datetime.now().astimezone().isoformat()
     errors: list[str] = []
@@ -110,10 +125,35 @@ async def _run(args: argparse.Namespace) -> int:
             encoding="utf-8",
         )
     print(f"report written: {out}")
+
+    # TD-073: persist keypoint cache at end of run.
+    _flush_keypoint_cache_if_enabled(args)
+
     if errors:
         print(f"completed with {len(errors)} scenario error(s)", file=sys.stderr)
         return 1
     return 0
+
+
+def _flush_keypoint_cache_if_enabled(args: argparse.Namespace) -> None:
+    """TD-073: save persistent keypoint cache at the end of `_run`.
+
+    Silently no-op when `--no-cache` is set or `--cache-dir` is empty.
+    """
+    if getattr(args, "no_cache", False):
+        return
+    cache_dir = getattr(args, "cache_dir", None)
+    if not cache_dir:
+        return
+    coverage._save_keypoint_cache(
+        Path(cache_dir),
+        [
+            Path(args.req016_samples),
+            Path(args.req018_samples),
+            Path(args.weak_recall_samples),
+            Path(getattr(args, "req028_samples", DEFAULT_REQ028_SAMPLES)),
+        ],
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -148,6 +188,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "--concurrency", type=int, default=4, choices=[1, 2, 4, 8],
         help="TD-071: max concurrent _run_question tasks (default 4, choices: 1/2/4/8). "
              "Provider-side rate limit (_EMB_SEMAPHORE=2 in coverage.py) is independent.",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        default=str(REPO_ROOT / "docs" / ".cache" / "rag_validation_keypoint_embeddings"),
+        help="TD-073: directory for persistent keypoint embedding cache. "
+             "Default: docs/.cache/rag_validation_keypoint_embeddings/ under repo root.",
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="TD-073: disable persistent keypoint cache (skip load + save).",
     )
     return parser
 
