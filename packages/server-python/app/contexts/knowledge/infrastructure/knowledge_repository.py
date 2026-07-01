@@ -91,13 +91,15 @@ class KnowledgeNodeRepository:
         }
 
         if vec_str is not None:
+            # BUG-013: asyncpg 不支持 `:vec::vector`（占位符 + PG cast）写法。
+            # asyncpg driver 只支持 named placeholder 单一值；改用 `CAST(... AS ...)`。
             await self._session.execute(
                 text(
                     "INSERT INTO metaedu.knowledge_nodes "
                     "(id, tenant_id, title, description, domain, level, "
                     "parent_id, path, tags, metadata, embedding, created_at, updated_at) "
                     "VALUES (:id, :tid, :title, :desc, :domain, :level, "
-                    ":pid, :path, :tags, :meta, :vec::vector, :now, :now)"
+                    ":pid, :path, :tags, :meta, CAST(:vec AS vector), :now, :now)"
                 ),
                 {**base_params, "vec": vec_str},
             )
@@ -327,11 +329,13 @@ class KnowledgeNodeRepository:
             params["domain"] = domain
 
         where = " AND ".join(conditions)
+        # BUG-013: asyncpg 不支持 `:vec::vector`（占位符 + PG cast）写法。
+        # 改用 `CAST(... AS ...)` 语法。
         result = await self._session.execute(
             text(
-                f"SELECT n.*, 1 - (n.embedding <=> :vec::vector) AS score "
+                f"SELECT n.*, 1 - (n.embedding <=> CAST(:vec AS vector)) AS score "
                 f"FROM metaedu.knowledge_nodes n WHERE {where} "
-                f"ORDER BY n.embedding <=> :vec::vector LIMIT :lim"
+                f"ORDER BY n.embedding <=> CAST(:vec AS vector) LIMIT :lim"
             ),
             params,
         )
