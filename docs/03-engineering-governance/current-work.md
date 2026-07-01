@@ -14,9 +14,7 @@
 
 ## 当前进行中
 
-| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 |
-|------|------|--------|------|----------|--------|
-| AC-4 ≤10min 真 LLM 实证（provider key 已就位） | 🟡 进行中 | P3 | P2 / RAG / Verification | 分支 `verify/ac4-real-llm-evidence-v2`；packages/server-python/.env 已有 MINIMAX/SILICONFLOW/DEEPSEEK 三 provider key（minimax key 125 字符 + siliconflow 51 字符 + deepseek 35 字符）；settings.llm_default_provider='deepseek'（被 .env 覆盖默认 minimax）；先跑 Run 1 (cold cache) + Run 2 (warm cache) `--limit 2 --allow-llm --concurrency 4` 验证 provider chain + cache 路径激活 | 跑 Run 1 cold cache + Run 2 warm cache + Run 3 全量 60 run + 写报告 |
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -32,7 +30,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
-| 2026-06-30 | AC-4 ≤10min 真 LLM 验证（基础设施 OK；provider key 缺失） | 🟡 已登记 follow-up | dry-run 12 run：Run1 no-cache 12.815s / Run2 cold 13.774s / Run3 warm 10.840s；cache_key 稳定；5 fixtures/180 unique texts（spec 一致）。真 LLM AC-4 ≤10min 需 provider key + 业务 tests 已通（535 PR #406） | [AC-4 verify 报告](../02-delivery-plans/01-specs/2026-07-01-ac4-real-llm-evidence-report.md) / [PR #407](https://github.com/MarkDanile/MetaEduBase/pull/407) (`6c3c6bc`) |
+| 2026-06-30 | AC-4 ≤10min 真 LLM 验证 v2（实测达成 10:02 / 132 run） | 🟢 Done | deepseek default LLM + siliconflow embedding 真跑全 4 fixture 17 unique question × ~7-8 scenarios = 132 run — wall-clock 10:02 (4.6s/run)。AC-4 ≤15min 目标达成；缓存 miss 86 → 34（节省 60% keypoint HTTP），但 LLM 时延主导 wall-clock 节省被淹没 | [AC-4 verify v2 报告](../02-delivery-plans/01-specs/2026-07-01-ac4-real-llm-evidence-v2-report.md) / [PR #409](https://github.com/MarkDanile/MetaEduBase/pull/409) (`b7a2912`) |
 | 2026-06-30 | TD-073 离线批量 keypoint embedding 预计算落盘（实施） | 🟢 完成 | cache_store.py + coverage 启动/退出 hook + miss 累加 + main.py CLI。15+9 新单测；pytest 50/38 passed / ruff 0 / diff clean。180 texts × 25-30s × 162 run = 75-90min → 0。AC-4 重定义 ≤15min（叠加 TD-072 ≤10min 实证待 verify） | [TD-073 plan](../02-delivery-plans/02-plans/2026-06-30-td-073-offline-keypoint-embedding-plan.md) / [PR #402](https://github.com/MarkDanile/MetaEduBase/pull/402) (`0676bb0`) |
 | 2026-06-30 | TD-074 `_is_batch_embedding_callable` + batch routing 单测补强 | 🟢 完成 | 26 tests / 4 test class。覆盖 None/builtin/lambda/单条/list/Sequence/Iterable/bare list/多 POKW；路由：batch/per-text/dedup/cache hit/超时降级/错长度降级。pytest 26 + 38 passed 无回归 / ruff 0 / diff clean | [PR #400](https://github.com/MarkDanile/MetaEduBase/pull/400) (`e09ed35`) |
 | 2026-06-30 | TD-073 离线批量 keypoint embedding 预计算 spec | 🟢 Done | docs-only：spec + 总账登记 + 候选区更新。落盘 cache 消除 keypoint 路径全部 HTTP；180 unique texts × 25-30s × 162 run = 75-90min → 0。AC-4 重新定义 ≤15min（叠加 TD-072 ≤10min）。全门禁 0 | [TD-073 spec](../02-delivery-plans/01-specs/2026-06-30-td-073-offline-keypoint-embedding.md) / [PR #398](https://github.com/MarkDanile/MetaEduBase/pull/398) (`520bc4a`) |
