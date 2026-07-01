@@ -17,6 +17,7 @@ import json
 import typing
 from typing import Any
 
+from . import cache_store
 from .models import Keypoint
 
 
@@ -91,8 +92,104 @@ _EMB_SEMAPHORE = asyncio.Semaphore(2)
 # 将 10 样例 × 4 scenarios × ~5 keypoints × ~2 candidates ≈ 440 次调用降至 ~140 次。
 _EMBEDDING_CACHE: dict[str, list[float]] = {}
 
+# TD-073: pending accumulator for the persistent keypoint cache. Misses
+# recorded here are merged into the in-memory `_EMBEDDING_CACHE` on save
+# (spec §5.5). Separate dict keeps the fast-path look-up table uncluttered.
+_KEYPOINT_CACHE_PENDING: dict[str, list[float]] = {}
+
+# TD-073: regression alias for test imports (`coverage.cache_store`).
+cache_store = cache_store
+
 # REQ-031: 缓存命中 / miss / 超时降级计数（写报告诊断段）
 _EMB_STATS = {"hit": 0, "miss": 0, "timeout": 0, "error": 0}
+
+
+def _keypoint_cache_key(fixture_paths: list[Any]) -> str:
+    """TD-073: thin wrapper so callers don't import cache_store directly.
+
+    See `rag_validation.cache_store.compute_cache_key` for the algorithm.
+    """
+    return cache_store.compute_cache_key(fixture_paths)
+
+
+def _load_keypoint_cache(
+    questions: list[Any],
+    cache_dir: Any,
+    fixture_paths: list[Any],
+) -> None:
+    """TD-073: startup hook. Populate `_EMBEDDING_CACHE` from disk cache.
+
+    Silent no-op when:
+    - `cache_dir` does not exist (fresh environment)
+    - No cache file matches the current `cache_key` (cache_key changed
+      because fixture mtimes drifted; spec §6 mitigation: consider
+      bumping to content-sha256 in the future)
+    - Cache file is corrupt or schema mismatched (treated as miss; caller
+      will rebuild via HTTP)
+
+    On success: pre-populated embeddings are merged into the in-memory
+    `_EMBEDDING_CACHE` so subsequent misses become hits without HTTP.
+    """
+    if not questions or not cache_dir or not fixture_paths:
+        return
+    cache_key = _keypoint_cache_key(fixture_paths)
+    loaded = cache_store.load(cache_key, cache_dir)
+    if loaded is None:
+        return
+    # Only populate entries that are still relevant to the current
+    # question set (defensive: avoid stale entries from prior runs that
+    # used different fixtures).
+    relevant = set(cache_store.collect_unique_texts(questions))
+    for text, emb in loaded.items():
+        if text in relevant:
+            _EMBEDDING_CACHE[text] = emb
+
+
+def _save_keypoint_cache(
+    cache_dir: Any,
+    fixture_paths: list[Any],
+) -> None:
+    """TD-073: exit-time hook. Persist merged in-memory + pending cache.
+
+    Merges `_EMBEDDING_CACHE` (run-time fast path) + `_KEYPOINT_CACHE_PENDING`
+    (miss accumulator) → deduplicated by text → `cache_store.save`.
+
+    Failure modes are graceful (per spec §5.5):
+    - I/O error / JSON error → log warning + return without raising
+      (do not block the main validation flow)
+    - Empty both → still writes a cache file with `texts: {}` (next run
+      will populate on miss)
+
+    Spec §6 risk: serializer performance. 180 texts × 4096 dim × 4 byte
+    ≈ 3 MB JSON; serialize < 1 s on dev hardware. If latency becomes an
+    issue, swap to msgpack in a future TD.
+    """
+    if not cache_dir or not fixture_paths:
+        return
+    cache_key = _keypoint_cache_key(fixture_paths)
+    merged: dict[str, list[float]] = {}
+    merged.update(_EMBEDDING_CACHE)
+    merged.update(_KEYPOINT_CACHE_PENDING)
+    try:
+        cache_store.save(merged, cache_key, cache_dir)
+    except (OSError, TypeError, ValueError) as exc:  # noqa: BLE001
+        import sys
+
+        print(
+            f"warn: keypoint cache save failed for {cache_key}: "
+            f"{type(exc).__name__}: {exc}; main flow continues",
+            file=sys.stderr,
+        )
+
+
+def _record_pending_miss(text: str, emb: list[float]) -> None:
+    """TD-073: record a successful miss fill to `_KEYPOINT_CACHE_PENDING`.
+
+    Called from `_get_cached_embeddings_batch` after a fresh embedding is
+    fetched from the provider. Caller is responsible for normalising the
+    key (e.g. lowercase) so duplicates collapse.
+    """
+    _KEYPOINT_CACHE_PENDING[text] = emb
 
 
 def _is_batch_embedding_callable(embedding_callable) -> bool:
@@ -167,6 +264,8 @@ async def _per_text_fallback(
     list) so the provider-fallback chain in `get_embeddings_with_timeout_batch`
     is reused. Writes cache on success; silently skips on failure
     (stats already bumped by the caller).
+
+    TD-073: also records successful per-text misses to `_KEYPOINT_CACHE_PENDING`.
     """
     for t in batch:
         try:
@@ -179,6 +278,7 @@ async def _per_text_fallback(
             continue
         if emb and emb[0]:
             _EMBEDDING_CACHE[t] = emb[0]
+            _record_pending_miss(t.lower(), emb[0])  # TD-073
 
 
 async def _per_text_gather(
@@ -186,6 +286,8 @@ async def _per_text_gather(
 ) -> None:
     """TD-071: per-text gather (backward compat path for single-text
     callables like `get_embedding`). Mirrors the original TD-071 behavior.
+
+    TD-073: also records successful misses to `_KEYPOINT_CACHE_PENDING`.
     """
 
     async def _one(t: str) -> list[float] | None:
@@ -203,6 +305,7 @@ async def _per_text_gather(
                 return None
         if emb:
             _EMBEDDING_CACHE[t] = emb
+            _record_pending_miss(t.lower(), emb)  # TD-073
         return emb
 
     await asyncio.gather(*(_one(t) for t in batch))
@@ -308,6 +411,7 @@ async def _get_cached_embeddings_batch(
                         for t, emb in zip(batch, embs):
                             if emb:
                                 _EMBEDDING_CACHE[t] = emb
+                                _record_pending_miss(t.lower(), emb)  # TD-073
                     else:
                         # Malformed response — fallback to per-text.
                         _EMB_STATS["error"] += 1

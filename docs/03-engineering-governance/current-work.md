@@ -14,7 +14,9 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 |
+|------|------|--------|------|----------|--------|
+| TD-073 离线批量 keypoint embedding 预计算实施 | 🟡 进行中 | P2 | RAG / Embedding / TD | 分支 `feat/td-073-offline-keypoint-cache-impl`；spec 已就位（PR #398 / `520bc4a`）；候选区对应行已更新；待写 plan + TDD 实施（cache_store + coverage 启动钩子 + main.py flush） | 写 `docs/02-delivery-plans/02-plans/2026-06-30-td-073-offline-keypoint-embedding-plan.md`：3 task 序列 + TDD 步骤 + 验证策略 |
 
 ## 下一批候选任务
 
