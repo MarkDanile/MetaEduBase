@@ -123,8 +123,15 @@ class ChunkRepository:
             )
 
     async def update_embedding(self, chunk_id: uuid.UUID, embedding: list[float]) -> None:
+        # BUG-013: asyncpg 不支持 `:vec::vector`（占位符 + PG cast）写法。
+        # asyncpg driver 只支持 named placeholder 单一值；改用 `CAST(... AS ...)`。
+        sql = (
+            "UPDATE metaedu.document_chunks "
+            "SET embedding = CAST(:vec AS vector) "
+            "WHERE id = :cid"
+        )
         await self._session.execute(
-            text("UPDATE metaedu.document_chunks SET embedding = :vec::vector WHERE id = :cid"),
+            text(sql),
             {"vec": json.dumps(embedding), "cid": chunk_id},
         )
 
