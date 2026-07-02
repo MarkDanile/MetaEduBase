@@ -14,7 +14,9 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 |
+|------|------|--------|------|----------|--------|
+| 候选 3 路径 3：`_EMB_SEMAPHORE` 提升（spike 对比） | 🟡 进行中 | P3 | OPS / Validation / Spike | 分支 `verify/semaphore-upgrade-spike`；AC-4 v2 实测 wall-clock 4.6s/run（132 run 10:02）；`miss=224 / total=1506`（85% hit rate）→ cache warm 下路径 3 边际价值有限，但 cache cold 下有效；设计 Spike A/B 对比：改 `_EMB_SEMAPHORE=5` vs 当前 2（同一 cache cold/warm 两组对比） | 改 `coverage.py:_EMB_SEMAPHORE=2 → 5` + 跑 4 组对比（cold/warm × semaphore 2/5）+ 出 verdict report |
 
 ## 下一批候选任务
 
