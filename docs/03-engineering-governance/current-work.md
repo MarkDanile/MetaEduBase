@@ -18,9 +18,7 @@
 
 ## 下一批候选任务
 
-| 任务 | 状态 | 优先级 | 领域 | 下一步 | 事实源 |
-|------|------|--------|------|--------|--------|
-| AC-4 wall-clock 超时 follow-up | 🟢 已关闭 | P3 | P2 / RAG / Verification | 2026-06-22 子集验证实测 132 run 29.6min（仅传 `--req028-samples` 仍触发多 group）。按比例 60 run 推算 15-20min。AC-4 ≤10min 目标不可达，spirit 解释被推翻。接力 follow-up：离线批量 keypoint 预计算 / runner.py 接 batch helper / 提 provider 限流 | [AC-4 子集验证报告](../02-delivery-plans/01-specs/2026-06-22-td-071-ac4-subset-validation-report.md) |
+候选区已清空（AC-4 wall-clock follow-up 三条路径 — TD-072 runner batch / TD-073 落盘 cache / 候选 3 `_EMB_SEMAPHORE` spike verdict: no change — 全部已实施或已 spike 决断；AC-4 ≤10min 真 LLM 验证 v2 实测达成 10:02 / 132 run 在最近完成 line 33）。后续候选见 `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/technical-debt.md` 🟡/🔵 状态卡。
 
 ## 最近完成
 
