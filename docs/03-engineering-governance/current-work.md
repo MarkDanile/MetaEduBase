@@ -14,9 +14,7 @@
 
 ## 当前进行中
 
-| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 |
-|------|------|--------|------|----------|--------|
-| 候选 3 路径 3：`_EMB_SEMAPHORE` 提升（spike 对比） | 🟡 进行中 | P3 | OPS / Validation / Spike | 分支 `verify/semaphore-upgrade-spike`；AC-4 v2 实测 wall-clock 4.6s/run（132 run 10:02）；`miss=224 / total=1506`（85% hit rate）→ cache warm 下路径 3 边际价值有限，但 cache cold 下有效；设计 Spike A/B 对比：改 `_EMB_SEMAPHORE=5` vs 当前 2（同一 cache cold/warm 两组对比） | 改 `coverage.py:_EMB_SEMAPHORE=2 → 5` + 跑 4 组对比（cold/warm × semaphore 2/5）+ 出 verdict report |
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -42,4 +40,4 @@
 | 2026-06-24 | BUG-011 AI Chat 偶发「网络错误」 | 🟢 Done | 根因：前端 axios 全局 timeout=30s < 后端 `_call_llm` 60s + 检索 ~10s，慢 LLM/provider 抖动触发前端先超时并误报「网络错误」。修复：chat 请求改 120s 单请求超时 + 新增 `describeChatError` 区分 超时/网络/detail。`pnpm test` 75 passed / typecheck / lint 0；curl HTTP 200 24.3s | [Bug](../01-product-planning/05-requirements/BUG-011-ai-chat-timeout-shorter-than-backend-llm.md) / [PR #388](https://github.com/MarkDanile/MetaEduBase/pull/388) (`8aa09d0`) |
 | 2026-06-23 | Q7_kg_occupation_to_skill graph_edge 退化排查 | 🟢 已关闭（归因纠正） | 单问题真 LLM 隔离复现推翻 REQ-039 §3.3 归因：graph_edge@0.5 死权重（packed 逐字节不变），substring 跨场景差异及跨 run 符号翻转均来自 LLM 答案方差。非真实回归，无需修复 | [Q7 排查报告](../02-delivery-plans/01-specs/2026-06-23-q7-graph-edge-degradation-investigation-report.md) / [REQ-039 §6 follow-up #2](../02-delivery-plans/01-specs/2026-06-21-req-039-p2-graph-edge-disable-llm-verify-unblock-report.md#6-follow-up) |
 | 2026-06-22 | AC-4 wall-clock 子集验证（TD-071 follow-up #1） | 🟢 已关闭 | 仅传 `--req028-samples` 实测 132 run 29.6min（spirit 解释 6.6min 被推翻）。AC-4 ≤10min 目标不可达。TD-071 实施健康（3-3.4× 加速 vs 50-60min 阻塞）。接力 3 条候选（离线批量 keypoint 预计算 / runner.py 接 batch helper / 提 provider 限流） | [AC-4 子集验证报告](../02-delivery-plans/01-specs/2026-06-22-td-071-ac4-subset-validation-report.md) |
-| 2026-06-21 | REQ-002 模板化结构抽取配置与复用体验 closeout | 🟢 Done | 4 子任务全收口：REQ-002-3 溯源（PR #153）+ REQ-002-1 配置效率（PR #158）+ TD-041 嵌套拖拽（PR #161）+ REQ-002-2 复用机制（PR #159）+ TD-042 PG 集成测试（PR #159/#122）+ REQ-002-4 可维护性（PR #170）。requirement Status 🔵 Ready → 🟢 Done，docs-only 内务登记 | [Requirement](../01-product-planning/05-requirements/REQ-002-template-config-and-reuse.md) |
+| 2026-06-30 | 候选 3 路径 3 `_EMB_SEMAPHORE` spike（cache warm 不建议改） | 🟡 verdict: no change | minimax LLM A/B 对比 Sem=2 (11:25) vs Sem=5 (11:51)：cache warm miss 几乎不变 (94 vs 92)；A2 反慢 25.64s (+3.7% 噪声)。主 wall-clock 仍 LLM provider 时延。结论：cache warm 下 0% 节省，不建议改 | [候选 3 spike 报告](../02-delivery-plans/01-specs/2026-07-02-candidate3-semaphore-upgrade-spike-report.md) / [PR #411](https://github.com/MarkDanile/MetaEduBase/pull/411) (`7f46ece`) |
