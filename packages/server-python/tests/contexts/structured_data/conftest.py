@@ -1,11 +1,11 @@
-"""Conftest for structured_data context — db_session + sample_dataset + seed_rbac fixtures.
+"""Conftest for structured_data context — db_session + sample_dataset + sample_semantic_model + seed_rbac fixtures.
 
-REQ-052 Tasks 2 & 3: These fixtures back the repository, adapter, RBAC and PII
-tests in this context. They live in the context-specific conftest so they
-don't pollute the global tests/conftest.py with REQ-052-only setup. The
-existing global fixtures (``client``, ``auth_token``, ``auth_headers``) and
-the ``mock_celery_tasks`` autouse fixture from tests/conftest.py remain in
-effect.
+REQ-052 Tasks 2 & 3 & 4: These fixtures back the repository, adapter, RBAC,
+PII, query planner, validator and SQL guard tests in this context. They live
+in the context-specific conftest so they don't pollute the global
+``tests/conftest.py`` with REQ-052-only setup. The existing global fixtures
+(``client``, ``auth_token``, ``auth_headers``) and the ``mock_celery_tasks``
+autouse fixture from tests/conftest.py remain in effect.
 
 Conventions:
 - ``db_session`` yields an ``AsyncSession`` bound to the test DB; commits at
@@ -13,6 +13,10 @@ Conventions:
   clean session without cross-test state in the pool.
 - ``sample_dataset`` persists a ``DatasetModel`` row + a couple of JSONB rows
   so that column-scan / adapter tests have real data to work with.
+- ``sample_semantic_model`` (Task 4) builds an in-memory ``SemanticModel``
+  dataclass wired to ``sample_dataset``. It does NOT persist to the DB — the
+  query_planner / semantic_validator / sql_guard tests operate on the
+  dataclass directly and don't need round-trip JSONB serialisation.
 - ``seed_rbac`` (Task 3) inserts per-role visibility_rules for ``bill``
   entity_type into ``metaedu.role_permissions`` so that the field-level RBAC
   tests can observe different visibility outcomes per role without each test
@@ -32,6 +36,14 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from app.contexts.structured_data.domain.semantic_model import (
+    ColumnMapping,
+    ColumnRole,
+    ColumnType,
+    DataSourceType,
+    MetricDefinition,
+    SemanticModel,
+)
 from app.shared.infrastructure.seed import DEFAULT_ADMIN_ID, DEFAULT_TENANT_ID
 from tests.conftest import DEFAULT_TEST_DB_URL
 
@@ -197,3 +209,75 @@ async def seed_rbac(db_session):
         "manager_rules": {"amount": "visible", "company_name": "masked"},
         "leader_rules": {"amount": "visible", "company_name": "visible"},
     }
+
+
+@pytest_asyncio.fixture
+async def sample_semantic_model(sample_dataset):
+    """Build an in-memory :class:`SemanticModel` wired to ``sample_dataset``.
+
+    REQ-052 Task 4: the Query Planner / Semantic Validator / SQL Guard tests
+    consume the dataclass form directly (no DB round-trip) so this fixture
+    just constructs the dataclass with a representative schema for the bill
+    entity. Mirrors the helper used in
+    ``test_semantic_model_repository._make_semantic_model`` but as a
+    context-level fixture so all Task 4 tests can reuse it.
+
+    Columns chosen to exercise the key validator branches:
+
+    - ``company_name`` (entity_key, str) — used by query_plan filters and
+      SqlGuard visibility checks.
+    - ``amount`` (metric, float, sensitive) — used by metric aggregations
+      and PII masking tests.
+    - ``billing_date`` (filter, date) — used by query_plan time_range and
+      filter tests.
+
+    Metric ``total_amount`` (``SUM(amount)``) covers the metric-validation
+    branch of the validator. Tenant and dataset ids both come from the
+    default seed so the model satisfies any FK the test DB enforces.
+    """
+    now = datetime.now(UTC).replace(tzinfo=None)
+    model = SemanticModel(
+        id=uuid.uuid4(),
+        tenant_id=sample_dataset["tenant_id"],
+        dataset_id=sample_dataset["id"],
+        entity_type="bill",
+        entity_name="账单",
+        data_source_config={
+            "type": DataSourceType.IMPORTED_DATASET.value,
+            "dataset_id": str(sample_dataset["id"]),
+        },
+        column_mapping={
+            "company_name": ColumnMapping(
+                role=ColumnRole.ENTITY_KEY,
+                type=ColumnType.STR,
+                sensitive=False,
+                synonym=["企业名称"],
+            ),
+            "amount": ColumnMapping(
+                role=ColumnRole.METRIC,
+                type=ColumnType.FLOAT,
+                sensitive=True,
+                synonym=["金额"],
+            ),
+            "billing_date": ColumnMapping(
+                role=ColumnRole.FILTER,
+                type=ColumnType.DATE,
+                sensitive=False,
+                synonym=["账单日期"],
+            ),
+        },
+        metric_definitions={
+            "total_amount": MetricDefinition(
+                column="amount", aggregation="sum", label="总金额"
+            ),
+            "unpaid_amount": MetricDefinition(
+                column="amount", aggregation="sum", label="欠费金额"
+            ),
+        },
+        version="v1",
+        status="active",
+        created_by=DEFAULT_ADMIN_ID,
+        created_at=now,
+        updated_at=now,
+    )
+    yield model
