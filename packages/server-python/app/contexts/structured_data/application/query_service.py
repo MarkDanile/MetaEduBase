@@ -128,6 +128,26 @@ class QueryService:
         self._explainer = explainer or ResultExplainer()
         self._pii_detector = pii_detector or PIIDetector()
 
+    def with_session(self, session: AsyncSession) -> "QueryService":
+        """Return a copy of this service bound to a single request session.
+
+        The lifespan-built singleton holds a *factory* so it can mint a
+        fresh session per request. The router calls this to rebind the
+        request-scoped ``session`` instead, so the audit row + the
+        response commit together (and tests can observe audit writes
+        without racing a separate session). Collaborators are shared;
+        only the session source changes. Keeping the rebind here avoids
+        the router reaching into private attributes.
+        """
+        return QueryService(
+            session_factory=lambda: session,
+            planner=self._planner,
+            validator=self._validator,
+            adapter_factory=self._adapter_factory,
+            explainer=self._explainer,
+            pii_detector=self._pii_detector,
+        )
+
     async def ask(
         self,
         *,

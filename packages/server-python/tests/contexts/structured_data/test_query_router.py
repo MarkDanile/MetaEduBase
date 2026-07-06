@@ -135,6 +135,60 @@ async def persisted_semantic_model(db_session, sample_dataset):
     yield sample_dataset
 
 
+async def _persist_direct_db_model(
+    session: AsyncSession, dataset_id: uuid.UUID
+) -> None:
+    """Persist a semantic model whose ``data_source_config.type`` is
+    ``direct_db`` (a V1 placeholder, unsupported by
+    ``default_adapter_factory``).
+
+    Used to exercise the router's ValueError → 400 translation: the plan
+    passes validation, the pipeline reaches the adapter factory, and the
+    factory raises ``ValueError`` for the unsupported source type. Uses a
+    distinct ``entity_type`` ("invoice") so it doesn't collide with the
+    ``bill`` model persisted by other tests.
+    """
+    repo = SemanticModelRepository(session)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    model = SemanticModel(
+        id=uuid.uuid4(),
+        tenant_id=DEFAULT_TENANT_ID,
+        dataset_id=dataset_id,
+        entity_type="invoice",
+        entity_name="发票",
+        data_source_config={
+            "type": DataSourceType.DIRECT_DB.value,
+            "dataset_id": str(dataset_id),
+        },
+        column_mapping={
+            "company_name": ColumnMapping(
+                role=ColumnRole.ENTITY_KEY,
+                type=ColumnType.STR,
+                sensitive=False,
+                synonym=["企业名称"],
+            ),
+            "amount": ColumnMapping(
+                role=ColumnRole.METRIC,
+                type=ColumnType.FLOAT,
+                sensitive=True,
+                synonym=["金额"],
+            ),
+        },
+        metric_definitions={
+            "total_amount": MetricDefinition(
+                column="amount", aggregation="sum", label="总金额"
+            ),
+        },
+        version="v1",
+        status="active",
+        created_by=DEFAULT_ADMIN_ID,
+        created_at=now,
+        updated_at=now,
+    )
+    await repo.create(model)
+    await session.commit()
+
+
 async def _count_audit_rows() -> int:
     """Open a fresh engine and count rows in ``query_audit_log``.
 
@@ -295,3 +349,107 @@ async def test_ask_endpoint_unauthenticated(client: AsyncClient):
         },
     )
     assert response.status_code in (401, 403)
+
+
+# ---------------------------------------------------------------------------
+# Spec-binding gaps (reviewer Important #1 + #2)
+# ---------------------------------------------------------------------------
+
+
+async def test_ask_endpoint_unsupported_data_source_returns_400(
+    client: AsyncClient, auth_headers: dict, db_session, sample_dataset
+):
+    """未实现的 data_source_type（direct_db）→ 400，而不是 500。
+
+    ``default_adapter_factory`` raises ``ValueError`` for any type other
+    than ``imported_dataset``. The router must translate that into a 400
+    (client asked for an unimplemented source) rather than letting it
+    propagate as an unhandled 500.
+    """
+    await _persist_direct_db_model(db_session, sample_dataset["id"])
+
+    planner_response = json.dumps(
+        {
+            "entity": "invoice",
+            "metrics": ["total_amount"],
+            "filters": {},
+            "limit": 100,
+        }
+    )
+    with patch(
+        "app.contexts.structured_data.application.query_planner.chat",
+        new_callable=AsyncMock,
+    ) as mock_planner, patch(
+        "app.contexts.structured_data.application.result_explainer.chat",
+        new_callable=AsyncMock,
+    ) as mock_explainer:
+        mock_planner.return_value = planner_response
+        mock_explainer.return_value = "summary"
+
+        response = await client.post(
+            "/api/v1/data-query/ask",
+            headers=auth_headers,
+            json={
+                "entity_type": "invoice",
+                "question": "查询发票金额",
+                "business_purpose": "信用风险评估",
+            },
+        )
+
+    assert response.status_code == 400, response.text
+    assert "direct_db" in response.json()["detail"]
+
+
+async def test_ask_endpoint_validator_rejection_audits_with_zero_rows(
+    client: AsyncClient, auth_headers: dict, seed_rbac, persisted_semantic_model
+):
+    """校验失败（幽灵 metric）→ ok=False + errors，且仍写审计（result_count=0）。
+
+    Spec §12 (国资审计) requires a complete trail: EVERY query attempt
+    must be logged, including validator rejections. The planner is mocked
+    to produce a plan with a ghost metric so ``SemanticValidator.validate``
+    returns errors and the pipeline short-circuits. We assert the response
+    reports the failure AND that an audit row was still written.
+
+    ``seed_rbac`` clears the audit log at setup so the count reflects only
+    this request's write.
+    """
+    before = await _count_audit_rows()
+
+    # Ghost metric "bogus" is not in metric_definitions → validator rejects.
+    planner_response = json.dumps(
+        {
+            "entity": "bill",
+            "metrics": ["bogus"],
+            "filters": {},
+            "time_range": None,
+            "limit": 100,
+        }
+    )
+    with patch(
+        "app.contexts.structured_data.application.query_planner.chat",
+        new_callable=AsyncMock,
+    ) as mock_planner, patch(
+        "app.contexts.structured_data.application.result_explainer.chat",
+        new_callable=AsyncMock,
+    ) as mock_explainer:
+        mock_planner.return_value = planner_response
+        mock_explainer.return_value = "should-not-be-called"
+
+        response = await client.post(
+            "/api/v1/data-query/ask",
+            headers=auth_headers,
+            json={
+                "entity_type": "bill",
+                "question": "这企业的乱七八糟指标是多少",
+                "business_purpose": "信用风险评估",
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["ok"] is False
+    assert data["errors"], "validator rejection must return a non-empty errors list"
+    # Audit trail must still capture the rejected attempt.
+    after = await _count_audit_rows()
+    assert after == before + 1, "validator-rejected attempt must still be audited"

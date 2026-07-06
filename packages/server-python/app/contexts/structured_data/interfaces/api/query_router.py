@@ -97,27 +97,6 @@ class AskResponse(BaseModel):
     suggestion: str | None = None
 
 
-def _bind_service_to_session(
-    base_service: QueryService, db_session: AsyncSession
-) -> QueryService:
-    """Return a new :class:`QueryService` bound to the request session.
-
-    The lifespan-built service holds a *factory* (``async_session_factory``)
-    so it can mint fresh sessions per request. We reuse the
-    request-scoped ``db_session`` instead so the audit row + the
-    response commit together (and so tests can observe audit writes
-    without racing a separate session).
-    """
-    return QueryService(
-        session_factory=lambda: db_session,
-        planner=base_service._planner,
-        validator=base_service._validator,
-        adapter_factory=base_service._adapter_factory,
-        explainer=base_service._explainer,
-        pii_detector=base_service._pii_detector,
-    )
-
-
 @router.post("/ask", response_model=AskResponse)
 async def ask(
     req: AskRequest,
@@ -150,17 +129,23 @@ async def ask(
 
     # ---- delegate to the orchestrator ----
     base_service: QueryService = request.app.state.query_service
-    bound_service = _bind_service_to_session(base_service, db_session)
+    bound_service = base_service.with_session(db_session)
 
-    result = await bound_service.ask(
-        question=req.question,
-        semantic_model=semantic_model,
-        user_id=user_id,
-        tenant_id=tenant_id,
-        role=role,
-        business_purpose=req.business_purpose,
-        confirmed_company_name=req.confirmed_company_name,
-        ip=(request.client.host if request.client else None),
-        user_agent=request.headers.get("user-agent"),
-    )
+    try:
+        result = await bound_service.ask(
+            question=req.question,
+            semantic_model=semantic_model,
+            user_id=user_id,
+            tenant_id=tenant_id,
+            role=role,
+            business_purpose=req.business_purpose,
+            confirmed_company_name=req.confirmed_company_name,
+            ip=(request.client.host if request.client else None),
+            user_agent=request.headers.get("user-agent"),
+        )
+    except ValueError as e:
+        # Unsupported data_source_type (e.g. 'direct_db' / 'mcp') surfaces
+        # from ``default_adapter_factory`` as a ValueError. That's a client
+        # asking for an unimplemented source, not a server fault → 400.
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return AskResponse(**result)
