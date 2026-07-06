@@ -26,18 +26,70 @@
 ```text
 用户自然语言问题
   → LLM 生成 query_plan (entity/metrics/filters/time/limit)
-  → 语义层校验 (entity → dataset_id, metric → 计算规则, filter → column)
-  → JSONB 查询构造器 (在 dataset_rows.data 上构建 SQLAlchemy 查询)
+  → 语义层校验 (entity → data_source, metric → 计算规则, filter → column)
+  → Data Source Adapter (按 data_source_config.type 分派)
+      ├── ImportedDatasetAdapter  (datasets + dataset_rows JSONB 查询)
+      ├── DirectDBAdapter         (直连数据库只读视图 SQL 查询, V1)
+      └── MCPAdapter              (企查查/自家 MCP tool call, V1)
   → SQL Guard (只读/limit/租户/敏感脱敏)
-  → 执行查询 → 结果
+  → 执行查询 → 统一 result_rows
   → Result Explainer (表格 + 摘要 + 口径 + 来源)
   → evidence_ref (供 REQ-046 报告引用)
 ```
 
+### 2.1 数据源统一架构（行业最佳实践）
+
+未来智能问数的核心数据源有 3 种，**本质上都统一建立语义层**：
+
+| 数据源类型 | 说明 | Adapter | 首期 |
+|-----------|------|---------|------|
+| #1 直连数据库 | 本系统直接链接的内部系统数据库（资管/CRM/财务） | `DirectDBAdapter` | V1 |
+| **#2 导入数据集** | **本系统直接导入的数据（当前 datasets + dataset_rows）** | **`ImportedDatasetAdapter`** | **✅ 首期** |
+| #3 第三方 MCP | 自家 MCP（系统开发的 MCP）+ 企查查等外部 MCP | `MCPAdapter` | V1 |
+
+**统一 Data Source Adapter 接口**（参考 Palantir Ontology 的 Object Set Source + Cube.dev 的 driverFactory）：
+
+```python
+class DataSourceAdapter(ABC):
+    """统一数据源适配器接口。语义层不绑死数据源类型。"""
+
+    @abstractmethod
+    async def query(
+        self,
+        query_plan: QueryPlan,
+        semantic_model: SemanticModel,
+        tenant_id: UUID,
+        user_role: str,
+    ) -> list[dict]:
+        """执行查询，返回统一格式的 result_rows。"""
+        ...
+
+    @abstractmethod
+    def validate_query(self, query_plan: QueryPlan, semantic_model: SemanticModel) -> list[str]:
+        """校验 query_plan 是否可执行（字段存在/类型匹配/权限）。"""
+        ...
+```
+
+**语义层扩展**（`semantic_models` 表新增 `data_source_config` 字段）：
+
+```json
+{
+  "data_source_config": {
+    "type": "imported_dataset",  // imported_dataset / direct_db / mcp
+    "dataset_id": "uuid-...",     // type=imported_dataset 时
+    "db_connection": null,        // type=direct_db 时 (V1)
+    "mcp_server": null,           // type=mcp 时 (V1)
+    "mcp_tool": null              // type=mcp 时 (V1)
+  }
+}
+```
+
+**首期只实现 `ImportedDatasetAdapter`**（JSONB 查询路径），接口先行；`DirectDBAdapter` 和 `MCPAdapter` 留 V1，但接口已定义，后续扩展只需加 adapter 实现。
+
 核心目标：
 
-- 将自然语言问题映射到受治理的数据集、指标、维度、过滤条件和 JSONB 查询计划。
-- 通过语义层屏蔽物理表结构复杂度，避免大模型直接猜表、猜字段、猜口径。
+- 将自然语言问题映射到受治理的数据集、指标、维度、过滤条件和查询计划。
+- 通过语义层屏蔽物理数据源差异（导入数据集 / 直连数据库 / MCP），避免大模型直接猜表、猜字段、猜口径。
 - 在查询前做权限、敏感字段、查询安全和成本控制。
 - 在查询后给出结果解释、数据来源、指标口径和异常提示。
 - 支撑企业 360 背调、续约风险、报送材料、经营分析等上层应用。
@@ -138,17 +190,22 @@ Query Planner (LLM)
   - 输出: query_plan JSON (entity/metrics/filters/time/limit/sort)
   ↓
 语义层校验
-  - entity → dataset_id (查 semantic_models 表)
+  - entity → data_source_config (查 semantic_models 表)
   - metrics → column + aggregation (查 metric_definitions)
   - filters → column + op (查 column_mapping)
   - 校验失败 → 返回错误 + 建议问法
   ↓
-SQL Guard
-  1. 只读: JSONB 查询天然只读（无 INSERT/UPDATE/DELETE 风险）
+Data Source Adapter 分派（按 data_source_config.type）
+  - imported_dataset → ImportedDatasetAdapter (JSONB 查询, 首期)
+  - direct_db → DirectDBAdapter (SQL 查询, V1)
+  - mcp → MCPAdapter (tool call, V1)
+  ↓
+SQL Guard（adapter 执行后统一检查）
+  1. 只读: adapter 返回只读结果（ImportedDatasetAdapter 天然只读；DirectDBAdapter 强制 SELECT；MCPAdapter 只调只读 tool）
   2. limit: 必须有 limit（默认 100, max 1000）
-  3. 租户隔离: WHERE 必须含 tenant_id
+  3. 租户隔离: 查询必须含 tenant_id
   4. 敏感字段: 结果中 sensitive=true 的字段按角色脱敏
-  5. 审计日志: 记录 user_id / question / query_plan / 执行时间 / result_count
+  5. 审计日志: 记录 user_id / question / query_plan / adapter_type / 执行时间 / result_count
   ↓
 JSONB 查询构造器
   - SQLAlchemy select(dataset_rows).where(data['column'].astext.op(...)(value))
@@ -167,20 +224,24 @@ Result Explainer (LLM)
 
 | 模块 | 职责 | 文件位置 |
 |------|------|----------|
-| 语义层 | entity/metric/dimension/synonym/sensitive 映射 | `app/contexts/structured_data/domain/semantic_model.py` + `infrastructure/semantic_model_repository.py` |
+| 语义层 | entity/metric/dimension/synonym/sensitive + data_source_config 映射 | `app/contexts/structured_data/domain/semantic_model.py` + `infrastructure/semantic_model_repository.py` |
 | Query Planner | NL → query_plan (LLM) | `app/contexts/structured_data/application/query_planner.py` |
-| 语义层校验 | query_plan → dataset_id + column + aggregation | `app/contexts/structured_data/application/semantic_validator.py` |
-| SQL Guard | 只读/limit/租户/敏感脱敏/审计 | `app/contexts/structured_data/application/sql_guard.py` |
-| JSONB 查询构造器 | query_plan → SQLAlchemy 查询 | `app/contexts/structured_data/infrastructure/jsonb_query_builder.py` |
+| 语义层校验 | query_plan → data_source + column + aggregation | `app/contexts/structured_data/application/semantic_validator.py` |
+| **Data Source Adapter 接口** | 统一查询接口（抽象基类） | `app/contexts/structured_data/domain/data_source_adapter.py` |
+| **ImportedDatasetAdapter** | query_plan → JSONB 查询（首期实现） | `app/contexts/structured_data/infrastructure/imported_dataset_adapter.py` |
+| DirectDBAdapter (V1) | query_plan → SQL 查询（接口预留，V1 实现） | `app/contexts/structured_data/infrastructure/direct_db_adapter.py` |
+| MCPAdapter (V1) | query_plan → MCP tool call（接口预留，V1 实现） | `app/contexts/structured_data/infrastructure/mcp_adapter.py` |
+| SQL Guard | 只读/limit/租户/敏感脱敏/审计（adapter 执行后统一检查） | `app/contexts/structured_data/application/sql_guard.py` |
 | Result Explainer | 结果 → summary + 口径 + 来源 | `app/contexts/structured_data/application/result_explainer.py` |
 | 问数 API | 端点编排 | `app/contexts/structured_data/interfaces/api/query_router.py` |
 | 前端问数面板 | UI 输入 + 结果展示 | `packages/web/src/views/database/QueryPanel.vue`（或独立 tab） |
 
 **复用现有模块**：
-- `datasets` + `dataset_rows` 表（数据源）
+- `datasets` + `dataset_rows` 表（数据源 #2，ImportedDatasetAdapter 查询目标）
 - `DatasetRepository`（list_datasets / get_by_id / list_rows）
 - 前端 `DatabaseView` + `DatasetTabsPanel`（UI 容器）
 - `ai_chat_service._call_llm`（LLM 调用，复用 deepseek/minimax provider）
+- 后续 V1 复用 `app/shared/llm/mcp/`（MCP 运行时，MCPAdapter 调用）
 
 ### 5.3 语义层模型（semantic_models 表）
 
@@ -188,9 +249,10 @@ Result Explainer (LLM)
 CREATE TABLE metaedu.semantic_models (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL,
-    dataset_id UUID NOT NULL REFERENCES metaedu.datasets(id),
+    dataset_id UUID REFERENCES metaedu.datasets(id),  -- type=imported_dataset 时必填; 其他类型可空
     entity_type VARCHAR(50) NOT NULL,  -- customer / contract / lease / bill / ticket
     entity_name VARCHAR(100) NOT NULL,  -- 客户 / 合同 / 租约 / 账单 / 工单
+    data_source_config JSONB NOT NULL DEFAULT '{"type": "imported_dataset"}',  -- 数据源配置
     column_mapping JSONB NOT NULL,  -- {column_name → {role, type, sensitive, synonym}}
     metric_definitions JSONB NOT NULL,  -- {metric_name → {column, aggregation, label}}
     version VARCHAR(20) NOT NULL DEFAULT 'v1',
@@ -198,8 +260,21 @@ CREATE TABLE metaedu.semantic_models (
     created_by UUID NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    UNIQUE(tenant_id, dataset_id, entity_type)
+    UNIQUE(tenant_id, entity_type, data_source_config)
 );
+```
+
+**data_source_config 示例**：
+
+```json
+// 数据源 #2: 导入数据集（首期）
+{"type": "imported_dataset", "dataset_id": "uuid-..."}
+
+// 数据源 #1: 直连数据库（V1）
+{"type": "direct_db", "db_connection": "postgresql://readonly:...@host/db", "schema": "asset_mgmt", "table": "contracts"}
+
+// 数据源 #3: MCP（V1）
+{"type": "mcp", "mcp_server": "qcc", "mcp_tool": "search_company_history", "result_mapping": {...}}
 ```
 
 **column_mapping 示例**：
