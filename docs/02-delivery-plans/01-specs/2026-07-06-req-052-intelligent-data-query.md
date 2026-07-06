@@ -34,8 +34,40 @@
   → SQL Guard (只读/limit/租户/敏感脱敏)
   → 执行查询 → 统一 result_rows
   → Result Explainer (表格 + 摘要 + 口径 + 来源)
-  → evidence_ref (供 REQ-046 报告引用)
+  → evidence_ref (供 Skill / REQ-046 报告引用)
 ```
+
+### 2.0 原子能力定位（与 Skill / 专业应用的关系）
+
+REQ-052 是**数据激活原子能力**，不是业务应用。完成后，后续专业领域通过 **Skill（REQ-045 SOP 编排）** 在其上爆发：
+
+```text
+REQ-052（本 spec）= 数据激活原子能力
+  - 统一语义层 + Query Planner + SQL Guard + Result Explainer
+  - 暴露 API: POST /api/v1/data-query/ask
+  - 被任何调用方复用（前端面板 / AI Chat / Skill / 其他应用）
+      ↑ 被调用
+REQ-045（Skill 注册与执行）= SOP 编排框架
+  - Skill = 步骤序列，每步可调 API / MCP / LLM
+      ↑ 使用
+专业领域 Skill（后续按需构建）:
+  - REQ-046 企业 360 背调 Skill（招商部门）
+  - APP-020 续约风险 Skill
+  - APP-023 经营分析 Skill
+  - APP-028 空置去化 Skill
+```
+
+**架构对标 Palantir**：
+- **Ontology（原子能力）** = REQ-052 统一语义层 + 数据激活
+- **Workshop / AIP（编排 + 应用）** = REQ-045 Skill + 专业领域应用
+
+**技术可行性确认**：
+- ✅ REQ-052 API 可被 Skill 步骤调用（HTTP API）
+- ✅ evidence_ref 链路完整（REQ-052 返回 → Skill 报告引用 → 前端展示）
+- ✅ 企业主体确认可复用（Skill 步骤 1 企查查确认 → 步骤 2 传 confirmed_name 给 REQ-052）
+- ⚠️ REQ-045 Skill 框架当前 Shaping，但不阻塞 REQ-052——API 先实现，Skill 框架后续调用
+
+**爆发模式**：REQ-052 做完后，后续专业 Skill 只需"编排"不需"重写数据查询"——每个 Skill 定义自己的 SOP（步骤序列），步骤中调用 REQ-052 API 获取数据，LLM 生成报告。首期验证用 REQ-046 背调 Skill（1 个 Skill 验证模式），后续复制扩展到其他专业领域。
 
 ### 2.1 数据源统一架构（行业最佳实践）
 
