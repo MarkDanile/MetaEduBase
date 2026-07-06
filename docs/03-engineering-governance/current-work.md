@@ -14,7 +14,30 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK: BUG-013 资源库/数据库页面 500
+
+状态：🔴 Open（diagnostic）
+类型：Bug Fix
+领域：后端 / document + structured_data 上下文
+当前执行模式：systematic-debugging → 定位 → TDD fix
+最近接手工具：主代理
+分支：（待创建）
+
+需求来源：
+- [BUG-013](../01-product-planning/05-requirements/BUG-013-resource-database-500-endpoints.md)
+
+当前进展：
+- 用户报告 3 个 endpoint 500：`/api/v1/document/folders`、`/api/v1/document/files?limit=100`、`/api/v1/structured-data/datasets?sort_by=created_at&sort_dir=desc`
+- 源码本体最近 30+ commits 内未改动；时间上与 PR #417（REQ-052）相邻
+- 源代码静态排查：3 路径都过 `tid = get_tenant_id()` 然后 SQL 绑定，未见显式 bug
+
+下一步：
+- 需后端 traceback：让用户启 `uvicorn app.main:app --reload` 复现一次 → 获取 traceback
+- 或本地起 backend + 用 curl 复现
+- 锁定根因 → TDD 修 → 测试 → 闭环 PR
+
+验证状态：待 traceback
+交接备注：根因可能在 `tenant_context` ContextVar / alembic 迁移未应用 / REQ-052 lifespan 副作用，需要 traceback 锁定
 
 ## 下一批候选任务
 

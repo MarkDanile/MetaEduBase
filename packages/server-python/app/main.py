@@ -1,7 +1,11 @@
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+import asyncpg
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import OperationalError
 
 import app.shared.infrastructure.models  # noqa: F401
 from app.config import settings
@@ -24,6 +28,8 @@ from app.contexts.structured_data.interfaces.api.task_router import (
 )
 from app.contexts.template.interfaces.api.router import router as template_router
 from app.shared.infrastructure.database import async_session_factory
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -60,6 +66,56 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(OperationalError)
+async def _db_unavailable_handler(
+    request: Request, exc: OperationalError
+) -> JSONResponse:
+    """BUG-013 — Map asyncpg / SQLAlchemy DB-down errors to 503, not 500.
+
+    When the local PostgreSQL service is not running (e.g. after ``./dev.sh stop``
+    or before ``./dev.sh infra``), asyncpg raises ``ConnectionDoesNotExistError``,
+    which SQLAlchemy wraps as :class:`OperationalError`. Without this handler,
+    FastAPI returns 500 Internal Server Error and the frontend shows a generic
+    "网络错误" / blank page.
+
+    Per RFC 7231, 503 Service Unavailable is the correct status for "currently
+    down but might recover" — distinguishes infrastructure outages (transient,
+    operator-fixable) from code bugs (500, requires code fix). The response
+    detail explains the likely cause so the user can run ``./dev.sh infra``.
+    """
+    original = getattr(exc, "orig", None)
+    is_conn_error = isinstance(
+        original, (asyncpg.exceptions.PostgresConnectionError, ConnectionRefusedError)
+    )
+    if not is_conn_error:
+        # Non-connection OperationalError (e.g. transaction deadlock, serialization
+        # failure) is a real backend error — log it as such and return 500.
+        logger.error(
+            "DB operational error on %s %s: %r",
+            request.method,
+            request.url.path,
+            exc,
+        )
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "数据库操作失败，请稍后重试"},
+        )
+
+    logger.warning(
+        "BUG-013: DB connection unavailable on %s %s: %r",
+        request.method,
+        request.url.path,
+        exc,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "detail": "数据库暂时不可用，请确认 PostgreSQL 已启动（./dev.sh infra）后重试",
+            "retry_after_seconds": 5,
+        },
+    )
 
 app.include_router(identity_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(knowledge_router, prefix="/api/v1/knowledge", tags=["knowledge"])
