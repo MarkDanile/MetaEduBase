@@ -139,4 +139,34 @@ describe("QueryPanel.vue (REQ-052 Task 6)", () => {
     expect(wrapper.text()).toContain("company 不存在");
     expect(wrapper.text()).toContain("请先上传企业认证材料");
   });
+
+  it("surfaces HTTP errors via in-panel error UI", async () => {
+    mockAsk.mockRejectedValue({
+      response: { data: { ok: false, errors: ["entity_type not found"], suggestion: "请尝试 bill" } },
+    });
+
+    const wrapper = mount(QueryPanel);
+    await wrapper.find('input[placeholder*="自然语言"]').setValue("这企业欠费多少");
+    await wrapper.find('input[placeholder*="查询背景"]').setValue("评估信用风险");
+    await wrapper.find("form").trigger("submit");
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain("查询失败");
+      expect(wrapper.text()).toContain("entity_type not found");
+      expect(wrapper.text()).toContain("请尝试 bill");
+    });
+  });
+
+  it("surfaces generic network errors", async () => {
+    mockAsk.mockRejectedValue(new Error("Network Error"));
+
+    const wrapper = mount(QueryPanel);
+    await wrapper.find('input[placeholder*="自然语言"]').setValue("这企业欠费多少");
+    await wrapper.find('input[placeholder*="查询背景"]').setValue("评估信用风险");
+    await wrapper.find("form").trigger("submit");
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain("查询失败");
+      expect(wrapper.text()).toContain("Network Error");
+      expect(wrapper.text()).toContain("请检查网络连接或稍后重试");
+    });
+  });
 });

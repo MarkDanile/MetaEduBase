@@ -140,6 +140,22 @@ async function onAsk() {
     const res = await ask(req);
     result.value = res;
     history.add(req, res);
+  } catch (err: unknown) {
+    // Axios errors carry response.data (AskResponse) for known non-2xx
+    // (404/422/400/401), or are generic Error for network failures.
+    const responseData = (err as { response?: { data?: unknown } })?.response?.data;
+    if (responseData && typeof responseData === "object") {
+      // Backend returned an AskResponse-shaped body (validation, unsupported type, etc.)
+      result.value = responseData as AskResponse;
+    } else {
+      // Network error / timeout / unknown
+      const message = err instanceof Error ? err.message : "网络错误，请重试";
+      result.value = {
+        ok: false,
+        errors: [message],
+        suggestion: "请检查网络连接或稍后重试",
+      } as AskResponse;
+    }
   } finally {
     loading.value = false;
   }
