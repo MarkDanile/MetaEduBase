@@ -165,27 +165,35 @@ async def test_validate_query_returns_empty_for_now(db_session, sample_dataset):
 
 
 async def test_direct_db_adapter_raises_not_implemented(db_session):
-    """DirectDBAdapter is a V1 placeholder — every entry point must reject."""
+    """DirectDBAdapter is a V1 placeholder — every entry point must reject.
+
+    Each ``__init__`` / ``query`` / ``validate_query`` is exercised via the
+    unbound-method pattern so a regression that removes ``raise`` from any
+    of the three entry points fails its own assertion.
+    """
     with pytest.raises(NotImplementedError):
         DirectDBAdapter(db_session)
 
     with pytest.raises(NotImplementedError):
-        DirectDBAdapter().query({}, None, DEFAULT_TENANT_ID, "manager")
+        await DirectDBAdapter.query(None, {}, None, DEFAULT_TENANT_ID, "manager")
 
     with pytest.raises(NotImplementedError):
-        DirectDBAdapter().validate_query({}, None)
+        DirectDBAdapter.validate_query(None, {}, None)
 
 
 async def test_mcp_adapter_raises_not_implemented(db_session):
-    """MCPAdapter is a V1 placeholder — every entry point must reject."""
+    """MCPAdapter is a V1 placeholder — every entry point must reject.
+
+    Same unbound-method pattern as ``test_direct_db_adapter_raises_not_implemented``.
+    """
     with pytest.raises(NotImplementedError):
         MCPAdapter(db_session)
 
     with pytest.raises(NotImplementedError):
-        MCPAdapter().query({}, None, DEFAULT_TENANT_ID, "manager")
+        await MCPAdapter.query(None, {}, None, DEFAULT_TENANT_ID, "manager")
 
     with pytest.raises(NotImplementedError):
-        MCPAdapter().validate_query({}, None)
+        MCPAdapter.validate_query(None, {}, None)
 
 
 async def test_adapters_inherit_from_abc():
