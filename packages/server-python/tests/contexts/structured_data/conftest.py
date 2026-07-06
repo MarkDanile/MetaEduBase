@@ -1,10 +1,11 @@
-"""Conftest for structured_data context — db_session + sample_dataset fixtures.
+"""Conftest for structured_data context — db_session + sample_dataset + seed_rbac fixtures.
 
-REQ-052 Task 2: These fixtures back the repository and adapter tests in this
-context. They live in the context-specific conftest so they don't pollute the
-global tests/conftest.py with REQ-052-only setup. The existing global fixtures
-(``client``, ``auth_token``, ``auth_headers``) and the ``mock_celery_tasks``
-autouse fixture from tests/conftest.py remain in effect.
+REQ-052 Tasks 2 & 3: These fixtures back the repository, adapter, RBAC and PII
+tests in this context. They live in the context-specific conftest so they
+don't pollute the global tests/conftest.py with REQ-052-only setup. The
+existing global fixtures (``client``, ``auth_token``, ``auth_headers``) and
+the ``mock_celery_tasks`` autouse fixture from tests/conftest.py remain in
+effect.
 
 Conventions:
 - ``db_session`` yields an ``AsyncSession`` bound to the test DB; commits at
@@ -12,8 +13,12 @@ Conventions:
   clean session without cross-test state in the pool.
 - ``sample_dataset`` persists a ``DatasetModel`` row + a couple of JSONB rows
   so that column-scan / adapter tests have real data to work with.
-- Both fixtures default to the seeded ``DEFAULT_TENANT_ID`` so we satisfy
-  any FK that the test DB enforces.
+- ``seed_rbac`` (Task 3) inserts per-role visibility_rules for ``bill``
+  entity_type into ``metaedu.role_permissions`` so that the field-level RBAC
+  tests can observe different visibility outcomes per role without each test
+  having to hand-insert rules.
+- All fixtures default to the seeded ``DEFAULT_TENANT_ID`` so we satisfy any
+  FK that the test DB enforces.
 """
 
 from __future__ import annotations
@@ -114,3 +119,81 @@ async def sample_dataset(db_session):
 
     await db_session.flush()
     yield {"id": dataset_id, "tenant_id": DEFAULT_TENANT_ID}
+
+
+@pytest_asyncio.fixture
+async def seed_rbac(db_session):
+    """Insert per-role visibility_rules into ``metaedu.role_permissions``.
+
+    REQ-052 Task 3: provides the seed data that the RBAC tests assume. The
+    fixture is idempotent — it deletes any existing rows for the
+    ``(tenant_id, role, entity_type)`` tuples it manages before inserting,
+    so the test suite stays order-independent even though ``db_session``
+    commits at end-of-test.
+
+    The matrix is intentionally a partial subset: 2 roles (manager + leader)
+    with two fields (``amount`` + ``company_name``) on entity_type
+    ``bill``. Other roles (employee, data_admin, auditor) have no row in
+    this fixture, which lets the service's strict-default (MASKED) path be
+    tested naturally.
+
+    Visibility choices:
+    - manager can see ``amount`` (VISIBLE) but ``company_name`` is MASKED
+      to verify per-field granularity.
+    - leader can see both (VISIBLE) — full read access at leader level.
+
+    Each test that needs different per-entity rules can write its own INSERT
+    with a unique ``entity_type`` and clean up explicitly, or use the
+    ``cleanup_rbac`` fixture for ergonomic teardown.
+    """
+    # Idempotent: clear prior rows for these (tenant, role, entity) tuples
+    # so re-running a test doesn't trip the uq_role_permissions_... index.
+    await db_session.execute(
+        text(
+            "DELETE FROM metaedu.role_permissions WHERE tenant_id = :tid "
+            "AND role IN ('manager', 'leader') AND entity_type = 'bill'"
+        ),
+        {"tid": DEFAULT_TENANT_ID},
+    )
+    # Also clear tenant grants + audit log so each test starts from a
+    # clean slate for cross-tenant + audit tests.
+    await db_session.execute(
+        text("DELETE FROM metaedu.tenant_access_grants WHERE tenant_id = :tid"),
+        {"tid": DEFAULT_TENANT_ID},
+    )
+    await db_session.execute(
+        text("DELETE FROM metaedu.query_audit_log WHERE tenant_id = :tid"),
+        {"tid": DEFAULT_TENANT_ID},
+    )
+    await db_session.flush()
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    # manager: amount VISIBLE, company_name MASKED
+    manager_rules = json.dumps({"amount": "visible", "company_name": "masked"})
+    await db_session.execute(
+        text(
+            f"INSERT INTO metaedu.role_permissions "
+            f"(id, tenant_id, role, entity_type, visibility_rules, created_at) "
+            f"VALUES (:id, :tid, 'manager', 'bill', '{manager_rules}'::jsonb, :now)"
+        ),
+        {"id": uuid.uuid4(), "tid": DEFAULT_TENANT_ID, "now": now},
+    )
+
+    # leader: both fields VISIBLE
+    leader_rules = json.dumps({"amount": "visible", "company_name": "visible"})
+    await db_session.execute(
+        text(
+            f"INSERT INTO metaedu.role_permissions "
+            f"(id, tenant_id, role, entity_type, visibility_rules, created_at) "
+            f"VALUES (:id, :tid, 'leader', 'bill', '{leader_rules}'::jsonb, :now)"
+        ),
+        {"id": uuid.uuid4(), "tid": DEFAULT_TENANT_ID, "now": now},
+    )
+
+    await db_session.flush()
+    yield {
+        "tenant_id": DEFAULT_TENANT_ID,
+        "manager_rules": {"amount": "visible", "company_name": "masked"},
+        "leader_rules": {"amount": "visible", "company_name": "visible"},
+    }
