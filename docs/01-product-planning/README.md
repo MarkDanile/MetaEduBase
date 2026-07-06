@@ -10,7 +10,7 @@
 | Milestones | `docs/01-product-planning/02-milestones/*` | 单个里程碑详情；只在需要展开时创建 |
 | Iteration | `docs/01-product-planning/03-iterations/*` | 当前和近期 1 到 2 个迭代；不做长期历史档案 |
 | Backlog | `docs/01-product-planning/04-backlog.md` | 需求、Bug、技术债、文档和运营任务索引；不写完整 PRD |
-| AI Applications | `docs/01-product-planning/06-ai-applications/*` | 真实 AI 应用组合、应用广场和学校场景验证包；不写交付计划 |
+| AI Applications | `docs/01-product-planning/06-ai-applications/*` | 真实 AI 应用组合、应用广场、教育类应用与后续行业场景验证包；不写交付计划 |
 | Delivery | `docs/02-delivery-plans/01-specs/*` / `docs/02-delivery-plans/02-plans/*` / `docs/03-engineering-governance/current-work.md` | 进入交付后的需求、计划和当前执行状态 |
 
 ## 使用规则
