@@ -379,6 +379,108 @@ REQ-052: 收到 confirmed_company_name
 
 如果内部 dataset 中企业名称与企查查确认名称不完全一致（如简称 vs 全称），通过 column_mapping.synonym 做模糊匹配（首期用 `ilike` 或 `contains`）。
 
+### 5.8 AI Chat 接入（Tool Calling 框架）
+
+用户除前端问数面板外，也可在 AI Chat 中直接问数。需要给 AI Chat 加 tool calling 能力。
+
+**当前 AI Chat 架构**（`ai_chat_service.py` + `ai_router._call_llm`）：
+- 只发 `messages`（system + user），LLM 生成答案
+- 无 tools / function calling 支持
+- RAG 检索结果注入 prompt → LLM 生成
+
+**扩展设计**（OpenAI 兼容 tools 参数，deepseek/minimax/qwen 均支持）：
+
+```text
+AI Chat 流程扩展:
+  用户问题 "这家企业欠费多少"
+  ↓
+  LLM 第一步调用 (带 tools 参数)
+    - messages: [system + user]
+    - tools: [
+        {
+          "name": "query_internal_data",
+          "description": "查询内部结构化业务数据（合同/账单/工单/租约）。当用户问金额、数量、统计、列表等结构化数据问题时调用。",
+          "parameters": {
+            "question": "str (用户的自然语言问题)",
+            "entity_hint": "str? (可选: customer/contract/lease/bill/ticket)"
+          }
+        }
+      ]
+    - tool_choice: "auto"
+  ↓
+  LLM 返回 tool_call: query_internal_data(question="这家企业欠费多少")
+  ↓
+  执行问数工具: 调用 REQ-052 API (POST /api/v1/data-query/ask)
+    → 返回 result_rows + summary + metric_values + source
+  ↓
+  LLM 第二步调用 (带 tool 结果)
+    - messages: [system + user + assistant(tool_call) + tool(result)]
+    → LLM 基于问数结果生成自然语言答案
+  ↓
+  返回 AI Chat 答案 (含问数结果引用)
+```
+
+**关键设计点**：
+
+| 设计点 | 说明 |
+|--------|------|
+| Tool 注册 | `query_internal_data` 工具注册到 AI Chat tool registry（首期硬编码 1 个工具，后续可扩展为通用 registry） |
+| 意图判断 | LLM 自动判断（`tool_choice: "auto"`）——文档 RAG 问题不触发工具，结构化数据问题触发 |
+| 混合场景 | RAG 检索 + 问数工具可共存（LLM 先调工具拿数据，再结合 RAG 文档生成答案） |
+| `_call_llm` 扩展 | 新增 `tools` 参数 + 处理 `tool_calls` 响应；保持向后兼容（不传 tools 时行为不变） |
+| 结果展示 | AI Chat 答案中展示问数结果表格 + 来源（evidence_ref 复用 REQ-052 的） |
+| 企业主体 | AI Chat 需先确认企业全称（复用 REQ-046 主体确认逻辑，或首期要求用户输入全称） |
+
+**`_call_llm` 扩展签名**（向后兼容）：
+
+```python
+# 现有
+async def _call_llm(system_prompt: str, user_content: str) -> str: ...
+
+# 扩展后
+async def _call_llm(
+    system_prompt: str,
+    user_content: str,
+    *,
+    tools: list[dict] | None = None,       # OpenAI tools schema
+    tool_choice: str = "auto",              # "auto" / "none" / {"type": "function", ...}
+) -> str | dict:                            # 返回 content 或 tool_calls
+```
+
+**AI Chat tool calling 编排**（`ai_chat_service.chat` 扩展）：
+
+```python
+# 伪代码
+async def chat(self, request, ...):
+    # 1. RAG 检索（现有）
+    rag_context = await self._retrieve_and_pack(...)
+
+    # 2. LLM 第一步（带 tools）
+    result = await self._call_llm(
+        system_prompt, user_content + rag_context,
+        tools=[query_internal_data_tool],
+    )
+
+    # 3. 如果 LLM 返回 tool_call
+    if isinstance(result, dict) and result.get("tool_calls"):
+        tool_result = await self._execute_tool(result["tool_calls"][0])
+        # 4. LLM 第二步（带 tool 结果）
+        final_answer = await self._call_llm(
+            system_prompt, user_content + rag_context,
+            # 追加 assistant(tool_call) + tool(result) 到 messages
+        )
+        return final_answer
+
+    # 5. 如果 LLM 直接返回 content（无需工具）
+    return result
+```
+
+**首期范围**：
+- ✅ 只注册 1 个工具：`query_internal_data`
+- ✅ 只支持单轮 tool call（LLM 调一次工具 → 生成答案）
+- ❌ 不做多轮 tool call（LLM 多次调工具，留 V1）
+- ❌ 不做通用 tool registry（首期硬编码，留 V1）
+
 ## 6. Slice 拆分（每 Slice 闭环可演示）
 
 **核心原则：每个 Slice 完成后都能独立演示一个端到端场景，不允许"等下个 Slice 才能用"。**
@@ -416,7 +518,18 @@ REQ-052: 收到 confirmed_company_name
 - 集成测试：question → query_plan → 查询 → result → summary → 前端展示
 - 演示验收：前端输入"这家企业欠费多少" → 看到表格 + 摘要 + 口径 + 来源
 
-### Slice 3: REQ-046 集成 + 回归样例（背调闭环）
+### Slice 3: AI Chat Tool Calling 接入（聊天问数闭环）
+
+**闭环演示**：用户在 AI Chat 页面问"这家企业欠费多少" → AI 自动判断调问数工具 → 返回自然语言答案 + 问数结果表格。
+
+- 扩展 `ai_router._call_llm` 支持 `tools` 参数 + `tool_calls` 响应处理（向后兼容）
+- 扩展 `ai_chat_service.chat` 支持 tool calling 编排（第一步 LLM 判断 → 执行工具 → 第二步 LLM 生成答案）
+- 注册 `query_internal_data` 工具（调用 REQ-052 API）
+- 前端 AI Chat 展示问数结果表格 + 来源引用
+- 单测：tool calling 编排 + 工具执行 + 意图判断（文档问题不触发工具）
+- 演示验收：AI Chat 问"这家企业欠费多少" → AI 返回答案含数据表格 + 来源
+
+### Slice 4: REQ-046 集成 + 回归样例（背调闭环）
 
 **闭环演示**：REQ-046 企业 360 背调流程中 → 企查查主体确认 → 内部问数 → evidence_ref 写入背调报告。
 
