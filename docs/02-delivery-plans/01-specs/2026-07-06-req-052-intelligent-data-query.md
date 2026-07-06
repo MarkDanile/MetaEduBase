@@ -70,6 +70,18 @@ REQ-045（Skill 注册与执行）= SOP 编排框架
 
 **爆发模式**：REQ-052 做完后，后续专业 Skill 只需"编排"不需"重写数据查询"——每个 Skill 定义自己的 SOP（步骤序列），步骤中调用 REQ-052 API 获取数据，LLM 生成报告。首期验证用 REQ-046 背调 Skill（1 个 Skill 验证模式），后续复制扩展到其他专业领域。
 
+**对外输出**：REQ-052 智能问数能力作为标准原子能力，后续可封装为两种对外服务形态：
+- **REST API**：供第三方系统直接调用（`POST /api/v1/data-query/ask`），返回 query_plan + result + summary + evidence_ref
+- **MCP Server**：封装为 MCP tool（如 `query_internal_data`），供其他 AI 应用 / Agent / 第三方平台通过 MCP 协议调用
+
+```text
+REQ-052 原子能力
+  ├── 内部调用: 前端问数面板 / AI Chat tool calling / Skill 编排
+  └── 对外输出: REST API（第三方系统直接调用）+ MCP Server（其他 AI 应用 / Agent 调用）
+```
+
+这意味着 REQ-052 不只服务于本系统，还可作为**数据激活中台**对外输出能力——其他系统的 AI 应用可以通过 API 或 MCP 接入本系统的智能问数能力，复用统一语义层和数据治理。
+
 ### 2.1 数据源统一架构（行业最佳实践）
 
 未来智能问数的核心数据源有 3 种，**本质上都统一建立语义层**：
