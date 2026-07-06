@@ -68,6 +68,8 @@
               @change-page="changePage"
               @node-click="selectedKgNode = $event"
             />
+
+            <QueryPanel v-if="selectedId" :dataset-id="selectedId" />
           </template>
 
           <EmptyState v-else title="请选择数据集" hint="从左侧列表选择数据集查看详情" />
@@ -133,6 +135,7 @@ import KgOverviewPanel from "@/views/database/KgOverviewPanel.vue";
 import DatasetDetailMetaBar from "@/views/database/DatasetDetailMetaBar.vue";
 import PipelineStatusPanel from "@/views/database/PipelineStatusPanel.vue";
 import DatasetTabsPanel from "@/views/database/DatasetTabsPanel.vue";
+import QueryPanel from "@/views/database/QueryPanel.vue";
 import UploadDatasetDialog, { type UploadForm } from "@/views/database/UploadDatasetDialog.vue";
 
 const toast = useToast();
