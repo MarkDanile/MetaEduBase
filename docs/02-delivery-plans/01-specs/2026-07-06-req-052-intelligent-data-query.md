@@ -92,6 +92,39 @@ REQ-052 原子能力
 | **#2 导入数据集** | **本系统直接导入的数据（当前 datasets + dataset_rows）** | **`ImportedDatasetAdapter`** | **✅ 首期** |
 | #3 第三方 MCP | 自家 MCP（系统开发的 MCP）+ 企查查等外部 MCP | `MCPAdapter` | V1 |
 
+**MCPAdapter Schema 发现（企查查示例）**：
+
+企查查每个工具都有**公开的 detail 页面**（如 `https://agent.qcc.com/data/qcc-company/get_company_by_query`），含：
+- 工具名称 / 描述 / 所属 Server / 标签
+- **demo 输出结构**（典型样例 JSON）
+
+例：`get_company_by_query` 输出结构：
+```json
+{
+  "匹配结果": "多候选",                          // 单值（枚举）
+  "检索关键字": "企查查",                        // 单值
+  "摘要": "命中多个相关主体，...",                // 单值（解释文本）
+  "企业信息": [                                  // 数组
+    {
+      "企业名称": "企查查科技股份有限公司",        // string
+      "统一社会信用代码": "91320594088140947F",   // string（18位）
+      "成立日期": "2014-03-12",                    // string (YYYY-MM-DD)
+      "法定代表人名称": ["陈德强"],               // array<string>
+      "状态": "在业"                                // string（枚举）
+    }
+  ]
+}
+```
+
+**重要发现**：企查查内置"多候选"处理逻辑——"**必须将候选列表完整展示给用户，等待用户明确指定后方可继续**。自动选择任意候选项直接调用下游工具属于错误操作"——这与 REQ-046 主体确认流程完全一致（spec §5.7 已设计）。
+
+**MCPAdapter Schema 发现 3 步法**（基于 detail 页面）：
+1. **工具列表**：MCP `tools/list`（标准方法）—— 185 个工具 + input schema
+2. **返回字段 schema**：爬企查查 detail 页面（公开）—— 获取 demo 输出结构 + 字段类型
+3. **首次接入**：调 1 次 tool 取实际返回 → 补充字段类型/可选性（消耗少量积分）
+
+MCP Adapter 整体可行性大幅提升：input schema（自动）+ output schema（半自动）→ 企查查 185 个工具可在 V1 阶段批量接入。
+
 **统一 Data Source Adapter 接口**（参考 Palantir Ontology 的 Object Set Source + Cube.dev 的 driverFactory）：
 
 ```python
