@@ -195,4 +195,4 @@ Added to `packages/web/src/views/database/QueryPanel.test.ts`:
 
 ### Final commit (this fix)
 
-`61f216b6 fix(web): REQ-052 Task 6 surface HTTP errors in QueryPanel (404/422/400/401 + network)`
+`f4e8e024 fix(web): REQ-052 Task 6 surface HTTP errors in QueryPanel (404/422/400/401 + network)`
