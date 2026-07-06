@@ -1,0 +1,195 @@
+"""Semantic model repository — CRUD + column scan + drift detection (REQ-052).
+
+Public surface:
+
+- :meth:`SemanticModelRepository.create` — persist a new semantic model row.
+- :meth:`SemanticModelRepository.get_by_entity_type` — fetch the active
+  semantic model for a ``(tenant, entity_type, data_source_config)`` triple.
+  Inactive (``status != 'active'``) rows are filtered out.
+- :meth:`SemanticModelRepository.scan_dataset_columns` — return the distinct
+  JSONB keys that appear in ``metaedu.dataset_rows.data`` for the given
+  dataset. Powers drift detection and on-boarding flows.
+- :meth:`SemanticModelRepository.detect_drift` — convenience wrapper around
+  :meth:`scan_dataset_columns` that compares actual vs registered columns.
+
+The repository never touches the adapter layer; it deals exclusively with
+``metaedu.semantic_models`` and ``metaedu.dataset_rows``. Adapters live in
+``infrastructure/imported_dataset_adapter.py`` etc.
+"""
+
+from __future__ import annotations
+
+import uuid
+
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.contexts.structured_data.domain.semantic_model import (
+    ColumnMapping,
+    MetricDefinition,
+    SemanticModel,
+)
+from app.contexts.structured_data.infrastructure.models import DatasetRowModel
+from app.contexts.structured_data.infrastructure.semantic_models_models import (
+    SemanticModelModel,
+)
+
+
+class SemanticModelRepository:
+    """Repository over ``metaedu.semantic_models``.
+
+    The constructor takes the AsyncSession so that callers can compose the
+    repository into a larger unit-of-work (FastAPI dependency, batch job).
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def create(self, model: SemanticModel) -> None:
+        """Persist a new semantic model row.
+
+        Uses ``flush`` (not commit) so the caller's transaction controls the
+        boundary. JSONB columns are populated via the dataclass-to-dict
+        converters, which guarantees the on-disk shape stays in sync with
+        the dataclass contract.
+        """
+        row = SemanticModelModel(
+            id=model.id,
+            tenant_id=model.tenant_id,
+            dataset_id=model.dataset_id,
+            entity_type=model.entity_type,
+            entity_name=model.entity_name,
+            data_source_config=model.data_source_config,
+            column_mapping={
+                key: value.to_dict() for key, value in model.column_mapping.items()
+            },
+            metric_definitions={
+                key: value.to_dict() for key, value in model.metric_definitions.items()
+            },
+            version=model.version,
+            status=model.status,
+            created_by=model.created_by,
+        )
+        self._session.add(row)
+        await self._session.flush()
+
+    async def get_by_entity_type(
+        self,
+        tenant_id: uuid.UUID,
+        entity_type: str,
+        data_source_config: dict,
+    ) -> SemanticModel | None:
+        """Return the active semantic model for the given triple, or ``None``.
+
+        Filters out non-active rows so callers don't have to second-guess
+        the status. The ``data_source_config.cast(JSONB) ==`` comparison is
+        defensive — SQLAlchemy already serializes dict-typed JSONB columns
+        for equality, but the explicit cast guards against any dialect
+        edge-case where the column type metadata is missing.
+        """
+        stmt = select(SemanticModelModel).where(
+            SemanticModelModel.tenant_id == tenant_id,
+            SemanticModelModel.entity_type == entity_type,
+            SemanticModelModel.data_source_config.cast(JSONB) == data_source_config,
+            SemanticModelModel.status == "active",
+        )
+        result = await self._session.execute(stmt)
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        return self._to_domain(row)
+
+    async def get_active_by_entity_type(
+        self,
+        tenant_id: uuid.UUID,
+        entity_type: str,
+    ) -> SemanticModel | None:
+        """Return the active semantic model for ``(tenant_id, entity_type)``.
+
+        **REQ-052 Task 5 deviation (option A)** — the brief sketch passed
+        ``data_source_config={}`` to :meth:`get_by_entity_type`, which
+        silently fails to match the seeded row (whose
+        ``data_source_config`` carries ``{"type": "imported_dataset",
+        "dataset_id": "..."}``). The router only knows the
+        ``entity_type`` from the request payload — it does NOT carry the
+        ``data_source_config`` around, so we provide a thin lookup that
+        filters only by ``tenant_id + entity_type + status='active'`` and
+        picks the most-recently-updated row when several exist.
+
+        This is additive — :meth:`get_by_entity_type` is unchanged and
+        continues to support tests that need the full triple-key lookup.
+        """
+        stmt = (
+            select(SemanticModelModel)
+            .where(
+                SemanticModelModel.tenant_id == tenant_id,
+                SemanticModelModel.entity_type == entity_type,
+                SemanticModelModel.status == "active",
+            )
+            .order_by(SemanticModelModel.updated_at.desc())
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        return self._to_domain(row)
+
+    async def scan_dataset_columns(self, dataset_id: uuid.UUID) -> set[str]:
+        """Return the distinct JSONB keys present in ``dataset_rows.data``.
+
+        PostgreSQL's ``jsonb_object_keys`` returns one row per top-level key
+        across all rows of the dataset; ``DISTINCT`` collapses duplicates.
+        If no rows exist the result is an empty set (no exception).
+        """
+        stmt = (
+            select(func.jsonb_object_keys(DatasetRowModel.data).label("key"))
+            .where(DatasetRowModel.dataset_id == dataset_id)
+            .distinct()
+        )
+        result = await self._session.execute(stmt)
+        return {row.key for row in result.all()}
+
+    async def detect_drift(
+        self, dataset_id: uuid.UUID, model: SemanticModel
+    ) -> dict:
+        """Compare actual dataset columns against the registered mapping.
+
+        Returns ``{"new_columns": [...], "removed_columns": [...]}`` where:
+
+        - ``new_columns`` are present in the data but not in
+          ``model.column_mapping``.
+        - ``removed_columns`` are registered in ``model.column_mapping``
+          but no longer present in the data.
+        """
+        actual = await self.scan_dataset_columns(dataset_id)
+        registered = set(model.column_mapping.keys())
+        return {
+            "new_columns": sorted(actual - registered),
+            "removed_columns": sorted(registered - actual),
+        }
+
+    def _to_domain(self, row: SemanticModelModel) -> SemanticModel:
+        """Map an ORM row back to the :class:`SemanticModel` dataclass."""
+        return SemanticModel(
+            id=row.id,
+            tenant_id=row.tenant_id,
+            dataset_id=row.dataset_id,
+            entity_type=row.entity_type,
+            entity_name=row.entity_name,
+            data_source_config=row.data_source_config,
+            column_mapping={
+                key: ColumnMapping.from_dict(value)
+                for key, value in row.column_mapping.items()
+            },
+            metric_definitions={
+                key: MetricDefinition.from_dict(value)
+                for key, value in row.metric_definitions.items()
+            },
+            version=row.version,
+            status=row.status,
+            created_by=row.created_by,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )

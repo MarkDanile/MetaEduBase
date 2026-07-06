@@ -236,13 +236,26 @@ async def test_ai_chat_prompt_contains_chunk_content() -> None:
         captured["user"] = user
         return "ok"
 
+    async def fake_llm_with_tools(
+        self, messages, *, tools=None, tool_choice="auto"
+    ):
+        # REQ-052 Task 7 — preserve the legacy ``captured["user"] = user``
+        # behaviour by extracting the user message from the messages list.
+        for m in messages or []:
+            if m.get("role") == "user":
+                captured["user"] = m.get("content", "")
+                break
+        return {"content": "ok", "tool_calls": None}
+
     service = AIChatService(
         chunk_retriever=chunk_retriever,
         graph_retriever=graph_retriever,
         metadata_filter=FakeMetadataFilter(),
         evidence_fusion=SimpleFrequencyFusion(),
     )
-    with patch.object(AIChatService, "_call_llm", fake_llm):
+    with patch.object(AIChatService, "_call_llm", fake_llm), patch.object(
+        AIChatService, "_call_llm_with_tools", fake_llm_with_tools
+    ):
         await service.chat(
             ServiceChatRequest(message="电子信息工程专业需要什么？", context_window=3),
             session=SESSION,  # type: ignore[arg-type]
@@ -269,13 +282,24 @@ async def test_ai_chat_prompt_citation_numbers_match_sources_order() -> None:
         captured["user"] = user
         return "ok"
 
+    async def fake_llm_with_tools(
+        self, messages, *, tools=None, tool_choice="auto"
+    ):
+        for m in messages or []:
+            if m.get("role") == "user":
+                captured["user"] = m.get("content", "")
+                break
+        return {"content": "ok", "tool_calls": None}
+
     service = AIChatService(
         chunk_retriever=chunk_retriever,
         graph_retriever=graph_retriever,
         metadata_filter=FakeMetadataFilter(),
         evidence_fusion=SimpleFrequencyFusion(),
     )
-    with patch.object(AIChatService, "_call_llm", fake_llm):
+    with patch.object(AIChatService, "_call_llm", fake_llm), patch.object(
+        AIChatService, "_call_llm_with_tools", fake_llm_with_tools
+    ):
         result = await service.chat(
             ServiceChatRequest(message="hi", context_window=3),
             session=SESSION,  # type: ignore[arg-type]
@@ -303,13 +327,27 @@ async def test_ai_chat_no_evidence_returns_fallback() -> None:
         captured["user"] = user
         return "未找到足够参考来源：知识库中暂无与该问题相关的内容。"
 
+    async def fake_llm_with_tools(
+        self, messages, *, tools=None, tool_choice="auto"
+    ):
+        for m in messages or []:
+            if m.get("role") == "user":
+                captured["user"] = m.get("content", "")
+                break
+        return {
+            "content": "未找到足够参考来源：知识库中暂无与该问题相关的内容。",
+            "tool_calls": None,
+        }
+
     service = AIChatService(
         chunk_retriever=chunk_retriever,
         graph_retriever=graph_retriever,
         metadata_filter=FakeMetadataFilter(),
         evidence_fusion=SimpleFrequencyFusion(),
     )
-    with patch.object(AIChatService, "_call_llm", fake_llm):
+    with patch.object(AIChatService, "_call_llm", fake_llm), patch.object(
+        AIChatService, "_call_llm_with_tools", fake_llm_with_tools
+    ):
         result = await service.chat(
             ServiceChatRequest(message="niche question", context_window=3),
             session=SESSION,  # type: ignore[arg-type]
@@ -560,13 +598,24 @@ async def test_graph_evidence_hydrates_prompt_from_source_chunk() -> None:
         captured["user"] = user
         return "ok"
 
+    async def fake_llm_with_tools(
+        self, messages, *, tools=None, tool_choice="auto"
+    ):
+        for m in messages or []:
+            if m.get("role") == "user":
+                captured["user"] = m.get("content", "")
+                break
+        return {"content": "ok", "tool_calls": None}
+
     service = AIChatService(
         chunk_retriever=FakeChunkRetriever(),
         graph_retriever=graph,
         metadata_filter=FakeMetadataFilter(),
         evidence_fusion=SimpleFrequencyFusion(),
     )
-    with patch.object(AIChatService, "_call_llm", fake_llm):
+    with patch.object(AIChatService, "_call_llm", fake_llm), patch.object(
+        AIChatService, "_call_llm_with_tools", fake_llm_with_tools
+    ):
         result = await service.chat(
             ServiceChatRequest(message="Python 有哪些基本数据类型？", context_window=3),
             session=session,  # type: ignore[arg-type]
@@ -627,6 +676,20 @@ async def test_context_packer_diagnostics_include_python_body_context() -> None:
         captured["user"] = user
         return "Python 的基本数据类型包括 int、float、str、bool、list、tuple、dict 和 set。[1]"
 
+    async def fake_llm_with_tools(
+        self, messages, *, tools=None, tool_choice="auto"
+    ):
+        for m in messages or []:
+            if m.get("role") == "user":
+                captured["user"] = m.get("content", "")
+                break
+        return {
+            "content": (
+                "Python 的基本数据类型包括 int、float、str、bool、list、tuple、dict 和 set。[1]"
+            ),
+            "tool_calls": None,
+        }
+
     service = AIChatService(
         chunk_retriever=chunk_retriever,
         graph_retriever=FakeGraphRetriever(),
@@ -638,7 +701,9 @@ async def test_context_packer_diagnostics_include_python_body_context() -> None:
             ContextPackingOptions(neighbor_window=0, max_blocks=8, max_chars=4000),
         ),
     )
-    with patch.object(AIChatService, "_call_llm", fake_llm):
+    with patch.object(AIChatService, "_call_llm", fake_llm), patch.object(
+        AIChatService, "_call_llm_with_tools", fake_llm_with_tools
+    ):
         result = await service.chat(
             ServiceChatRequest(message="python 的基本数据类型有哪些？", context_window=3),
             tenant_id=str(tenant_id),

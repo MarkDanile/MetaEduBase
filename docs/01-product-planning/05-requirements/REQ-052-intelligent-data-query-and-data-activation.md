@@ -1,6 +1,6 @@
 # REQ-052: 智能问数与国资信息化数据激活原子能力
 
-Status: 🟣 Shaping
+Status: 🟡 待 PR merge
 Priority: P0
 Milestone: P3
 Domain: AI Workspace / Data Activation / Text-to-SQL / 产业园区
@@ -132,3 +132,4 @@ REQ-046 至少要能由智能问数支撑以下内部问题：
 | 日期 | 动作 | 事实 |
 |------|------|------|
 | 2026-07-06 | 登记 | 用户补充国资国企核心价值是激活多年信息化沉淀数据；登记智能问数为企业 360 背调配套的 P0 原子能力。 |
+| 2026-07-07 | 实施 | 9 Task 实施完成 (branch `docs/req-052-plan` 16 commits ahead of main)。AC-1..AC-6 代码层 + 单测层覆盖；AC-7 (10 真实业务样例回归) 由 Task 4-8 单测覆盖等价场景，但 sandbox 无 PG/LLM 无法跑真 curl e2e，🟣 待验证（follow-up 真实环境跑真实业务问数 10 样例）。 |

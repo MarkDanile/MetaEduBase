@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -102,6 +103,8 @@ class AIChatDiagnostics(BaseModel):
     prompt_preview: str = ""
     packed: dict[str, Any] = Field(default_factory=dict)
     query_understanding: dict | None = None  # REQ-016 Slice 2
+    # REQ-052 Task 7 — tool calling trace (None / list of tool-call summaries).
+    tool_calls: list[dict] | None = None
 
     model_config = {"extra": "forbid"}
 
@@ -133,6 +136,15 @@ class AIChatService:
         context_packer: ContextPacker | None = None,
         context_packing_options: ContextPackingOptions | None = None,
         edge_retriever: GraphRetriever | None = None,  # REQ-018 Slice 2: graph edge channel
+        # REQ-052 Task 7 — tool-calling wiring. The factory is invoked with
+        # the request-bound ``AsyncSession`` so the resulting repo can issue
+        # SQL inside the same transaction as the audit log commit. Production
+        # wires ``SemanticModelRepository`` (Task 5); tests can inject a fake.
+        semantic_model_repository_factory: Any | None = None,
+        # REQ-052 Task 7 — REQ-052 ``QueryService`` (Task 5) used to execute
+        # the ``query_internal_data`` tool. Wired by the router at request
+        # time so the audit row commits with the response.
+        query_service: Any | None = None,
     ) -> None:
         self.chunk_retriever = chunk_retriever
         self.graph_retriever = graph_retriever
@@ -143,6 +155,20 @@ class AIChatService:
         self._context_packer = context_packer
         self._packing_opts = context_packing_options or ContextPackingOptions()
         self.edge_retriever = edge_retriever
+        # Default factory falls back to the real SemanticModelRepository
+        # (REQ-052 Task 5). Lazy-imported to avoid pulling structured_data
+        # into test paths that don't need it.
+        if semantic_model_repository_factory is None:
+            def _default_repo_factory(session: AsyncSession):
+                from app.contexts.structured_data.infrastructure.semantic_model_repository import (
+                    SemanticModelRepository,
+                )
+                return SemanticModelRepository(session)
+
+            self.semantic_model_repository_factory = _default_repo_factory
+        else:
+            self.semantic_model_repository_factory = semantic_model_repository_factory
+        self.query_service = query_service
 
     @staticmethod
     def _normalize_candidate_channels(
@@ -540,12 +566,74 @@ class AIChatService:
 
         return await _call_llm(system_prompt, user_content)
 
+    async def _call_llm_with_tools(
+        self,
+        messages: list[dict],
+        *,
+        tools: list[dict] | None = None,
+        tool_choice: str = "auto",
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
+    ) -> dict:
+        """REQ-052 Task 7 — tool-calling-aware LLM call.
+
+        Delegates to :func:`app.contexts.knowledge.interfaces.api.ai_router._call_llm_with_tools`.
+        Accepts a full conversation history and returns
+        ``{"content": str | None, "tool_calls": list | None}`` so the chat
+        flow can decide whether to invoke the registered tool.
+
+        Tests override this method via ``patch.object(AIChatService,
+        "_call_llm_with_tools", ...)`` — see
+        ``test_ai_chat_tool_calling.py``.
+        """
+        from app.contexts.knowledge.interfaces.api.ai_router import (
+            _call_llm_with_tools as _router_call_llm_with_tools,
+        )
+
+        return await _router_call_llm_with_tools(
+            messages,
+            tools=tools,
+            tool_choice=tool_choice,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+    # REQ-052 Task 7 — tool definition for ``query_internal_data``. Declared
+    # as a class attribute so tests can introspect it without re-creating it.
+    _QUERY_INTERNAL_DATA_TOOL: dict[str, Any] = {
+        "type": "function",
+        "function": {
+            "name": "query_internal_data",
+            "description": (
+                "查询内部结构化业务数据（账单/合同/工单/租约/客户等）。"
+                "当用户问金额、数量、统计、列表、明细等结构化数据问题时调用。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "自然语言问题（包含具体想问的指标 / 时间范围 / 过滤条件）",
+                    },
+                    "entity_hint": {
+                        "type": "string",
+                        "enum": ["bill", "contract", "ticket", "lease", "customer"],
+                        "description": "可选 — 实体类型提示；不填时由 QueryService 自动归类",
+                    },
+                },
+                "required": ["question"],
+            },
+        },
+    }
+
     async def chat(
         self,
         request: ChatRequest,
         *,
         tenant_id: str = "default",
         session: AsyncSession | None = None,
+        user_id: uuid.UUID | None = None,
+        role: str = "employee",
     ) -> ChatResponse:
         if session is None:  # pragma: no cover - placeholder path
             raise ValueError("session is required for production chat path")
@@ -689,8 +777,162 @@ class AIChatService:
             else f"学生问题：{request.message}"
         )
 
-        reply_raw = await self._call_llm(self.SYSTEM_PROMPT, user_content)
-        reply = self._clean_llm_output(reply_raw)
+        # ------------------------------------------------------------------
+        # REQ-052 Task 7 — tool-calling orchestration
+        #
+        # Flow:
+        #   1. LLM first call (with `tools=[query_internal_data]`)
+        #      → either returns direct ``content`` (no tool needed)
+        #      → or returns ``tool_calls`` requesting `query_internal_data`.
+        #   2. If tool_calls present and the function name is supported,
+        #      look up the ``SemanticModel`` by ``entity_hint`` (or fall back
+        #      to a default) and call :meth:`QueryService.ask`. The audit
+        #      log row is written inside ``QueryService.ask`` (REQ-052 §12).
+        #   3. LLM second call (with full conversation history: system →
+        #      user → assistant+tool_call → tool result) → final ``content``.
+        # ------------------------------------------------------------------
+
+        first_messages = [
+            {"role": "system", "content": self.SYSTEM_PROMPT},
+            {"role": "user", "content": user_content},
+        ]
+        first_result = await self._call_llm_with_tools(
+            first_messages,
+            tools=[self._QUERY_INTERNAL_DATA_TOOL],
+            tool_choice="auto",
+        )
+        tool_calls = first_result.get("tool_calls")
+        first_content = first_result.get("content")
+
+        if not tool_calls:
+            # LLM answered directly — no tool invocation, no second LLM call.
+            reply = self._clean_llm_output(first_content or "")
+            diagnostics_model.tool_calls = None
+        else:
+            # We have at least one tool call. We only handle one for V1;
+            # the function name must be ``query_internal_data``.
+            tool_call = tool_calls[0]
+            fn_name = (tool_call.get("function") or {}).get("name")
+            if fn_name != "query_internal_data":
+                # Unknown / unsupported tool — fall back to first-response
+                # content (or a polite fallback if the model returned None).
+                logger.warning(
+                    "ai_chat_service: unsupported tool_call name=%r; "
+                    "falling back to direct content.",
+                    fn_name,
+                )
+                reply = self._clean_llm_output(
+                    first_content or "抱歉，我暂时无法执行该操作。"
+                )
+                diagnostics_model.tool_calls = [
+                    {
+                        "name": fn_name,
+                        "skipped": True,
+                        "reason": "unsupported_function_name",
+                    }
+                ]
+            else:
+                diagnostics_model.tool_calls = [
+                    {"name": fn_name, "skipped": False}
+                ]
+                # ---- 3a. Resolve SemanticModel from entity_hint ----
+                arguments_raw = (tool_call.get("function") or {}).get(
+                    "arguments", "{}"
+                )
+                try:
+                    arguments = json.loads(arguments_raw)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "ai_chat_service: invalid tool_call arguments=%r; "
+                        "treating as empty dict.",
+                        arguments_raw,
+                    )
+                    arguments = {}
+                entity_hint = arguments.get("entity_hint") or "bill"
+                question = arguments.get("question") or request.message
+
+                # Resolve the SemanticModel via the injected repository factory
+                # (production wires ``SemanticModelRepository(session)`` via
+                # ``ai_router._build_evidence_service``; tests inject a fake).
+                semantic_repo = self.semantic_model_repository_factory(session)
+                tenant_uuid = (
+                    uuid.UUID(str(tenant_id))
+                    if not isinstance(tenant_id, uuid.UUID)
+                    else tenant_id
+                )
+                semantic_model = await semantic_repo.get_active_by_entity_type(
+                    tenant_id=tenant_uuid, entity_type=entity_hint
+                )
+
+                if semantic_model is None:
+                    # No semantic model registered for this entity_hint —
+                    # degrade gracefully to a textual apology so the user
+                    # doesn't see a raw stack trace.
+                    logger.warning(
+                        "ai_chat_service: no semantic_model for entity_hint=%r "
+                        "(tenant=%s); skipping QueryService.ask.",
+                        entity_hint,
+                        tenant_uuid,
+                    )
+                    tool_result_payload = {
+                        "ok": False,
+                        "errors": [
+                            f"entity_type '{entity_hint}' not configured for tenant"
+                        ],
+                        "suggestion": "请尝试更具体的问题。",
+                    }
+                else:
+                    # ---- 3b. Call QueryService.ask (writes audit row) ----
+                    query_service = getattr(self, "query_service", None)
+                    if query_service is None:
+                        # Production path: QueryService is built at lifespan
+                        # startup and bound to the request session. The router
+                        # is responsible for injecting it; if it's missing
+                        # here we degrade to a no-data reply rather than
+                        # crashing the chat.
+                        logger.warning(
+                            "ai_chat_service: query_service not injected; "
+                            "skipping tool execution."
+                        )
+                        tool_result_payload = {
+                            "ok": False,
+                            "errors": ["query_service not available"],
+                            "suggestion": "请稍后重试。",
+                        }
+                    else:
+                        effective_user_id = user_id or uuid.uuid4()
+                        tool_result_payload = await query_service.ask(
+                            question=question,
+                            semantic_model=semantic_model,
+                            user_id=effective_user_id,
+                            tenant_id=tenant_uuid,
+                            role=role,
+                            business_purpose=(
+                                f"AI Chat 工具调用 — question={question[:80]}"
+                            ),
+                            confirmed_company_name=None,  # V1: system prompt handles ambiguity
+                        )
+
+                # ---- 3c. Second LLM call with full conversation history ----
+                second_messages = [
+                    {"role": "system", "content": self.SYSTEM_PROMPT},
+                    {"role": "user", "content": user_content},
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [tool_call],
+                    },
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call["id"],
+                        "content": json.dumps(
+                            tool_result_payload, ensure_ascii=False
+                        ),
+                    },
+                ]
+                second_result = await self._call_llm_with_tools(second_messages)
+                second_content = second_result.get("content")
+                reply = self._clean_llm_output(second_content or "")
 
         return ChatResponse(
             reply=reply,
