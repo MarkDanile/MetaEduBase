@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -12,15 +14,43 @@ from app.contexts.knowledge.interfaces.api.graph_retrieve_router import (
 )
 from app.contexts.knowledge.interfaces.api.router import router as knowledge_router
 from app.contexts.resource.interfaces.api.router import router as resource_router
+from app.contexts.structured_data.application.query_service import QueryService
+from app.contexts.structured_data.interfaces.api.query_router import (
+    router as data_query_router,
+)
 from app.contexts.structured_data.interfaces.api.router import router as structured_data_router
 from app.contexts.structured_data.interfaces.api.task_router import (
     router as structured_data_task_router,
 )
 from app.contexts.template.interfaces.api.router import router as template_router
+from app.shared.infrastructure.database import async_session_factory
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):  # noqa: ARG001
+    """REQ-052 Task 5 — build a single :class:`QueryService` at startup.
+
+    The service is stateless beyond its collaborators; building it once
+    keeps the wiring code out of the request hot path. ``app.state`` is
+    the FastAPI-native place for app-scoped state — the router reads
+    it via ``request.app.state.query_service``.
+    """
+    app.state.query_service = QueryService(
+        session_factory=async_session_factory,
+    )
+    try:
+        yield
+    finally:
+        # No resources to release — ``async_session_factory`` shares
+        # the engine owned by ``app.shared.infrastructure.database``,
+        # which is disposed at process exit.
+        app.state.query_service = None
+
 
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -54,6 +84,9 @@ app.include_router(
     structured_data_task_router,
     prefix="/api/v1/structured-data",
     tags=["structured-data-tasks"],
+)
+app.include_router(
+    data_query_router, tags=["data-query"]
 )
 app.include_router(template_router)
 app.include_router(ai_app_router, prefix="/api/v1/ai-apps", tags=["ai-apps"])

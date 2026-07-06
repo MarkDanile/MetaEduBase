@@ -59,10 +59,24 @@ async def client():
     await engine.dispose()
 
     app.dependency_overrides[get_session] = _get_test_session
+    # REQ-052 Task 5: build a placeholder QueryService so the router
+    # can read ``app.state.query_service`` during the request. Tests
+    # that need the orchestrator to actually do work override this with
+    # a fully-wired QueryService via the ``query_service`` fixture in
+    # ``tests/contexts/structured_data/conftest.py`` — that fixture
+    # uses the ``query_service`` autouse override below to swap in a
+    # real instance after this fixture sets the placeholder.
+    from app.contexts.structured_data.application.query_service import (
+        QueryService,
+    )
+    from app.shared.infrastructure.database import async_session_factory
+
+    app.state.query_service = QueryService(session_factory=async_session_factory)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
+    app.state.query_service = None
 
     # Clean up template table after each test to prevent data leaking between tests
     cleanup_engine = create_async_engine(TEST_DB_URL, echo=False, poolclass=NullPool)

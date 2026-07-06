@@ -100,6 +100,42 @@ class SemanticModelRepository:
             return None
         return self._to_domain(row)
 
+    async def get_active_by_entity_type(
+        self,
+        tenant_id: uuid.UUID,
+        entity_type: str,
+    ) -> SemanticModel | None:
+        """Return the active semantic model for ``(tenant_id, entity_type)``.
+
+        **REQ-052 Task 5 deviation (option A)** — the brief sketch passed
+        ``data_source_config={}`` to :meth:`get_by_entity_type`, which
+        silently fails to match the seeded row (whose
+        ``data_source_config`` carries ``{"type": "imported_dataset",
+        "dataset_id": "..."}``). The router only knows the
+        ``entity_type`` from the request payload — it does NOT carry the
+        ``data_source_config`` around, so we provide a thin lookup that
+        filters only by ``tenant_id + entity_type + status='active'`` and
+        picks the most-recently-updated row when several exist.
+
+        This is additive — :meth:`get_by_entity_type` is unchanged and
+        continues to support tests that need the full triple-key lookup.
+        """
+        stmt = (
+            select(SemanticModelModel)
+            .where(
+                SemanticModelModel.tenant_id == tenant_id,
+                SemanticModelModel.entity_type == entity_type,
+                SemanticModelModel.status == "active",
+            )
+            .order_by(SemanticModelModel.updated_at.desc())
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        return self._to_domain(row)
+
     async def scan_dataset_columns(self, dataset_id: uuid.UUID) -> set[str]:
         """Return the distinct JSONB keys present in ``dataset_rows.data``.
 
