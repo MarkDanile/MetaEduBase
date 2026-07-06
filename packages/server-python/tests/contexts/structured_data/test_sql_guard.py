@@ -244,25 +244,32 @@ async def test_empty_rows_returns_empty_guard_result(sample_semantic_model):
 
 
 async def test_guard_handles_rbac_exception_gracefully(sample_semantic_model):
-    """RBAC service 抛异常 → guard 不应将异常冒泡（最后防线不应该再抛）。
+    """RBAC service 抛异常 → guard 应降级到 MASKED 而非冒泡异常。
 
-    这是审计相关：guard 应尽可能返回安全的默认（masked / empty）而不是
-    让请求失败。这样即使 RBAC 服务短暂不可用，问数接口也能降级到
-    "全部 mask" 而不是 500。
+    这是审计相关：guard 是最后防线，即使 RBAC 短暂不可用，也必须
+    返回一个安全的默认（每列 MASKED），而不是 500。这样 question-
+    answering 接口可以降级到"全部脱敏"而不是完全不可用。
+
+    Spec AC-4 / §12.2 — RBAC 失败的合同是 fallback 到 MASKED。
     """
     rbac = AsyncMock(spec=RBACService)
     rbac.get_field_visibility = AsyncMock(side_effect=RuntimeError("rbac down"))
     guard = SqlGuard(rbac_service=rbac, pii_detector=PIIDetector())
     rows = [{"company_name": "ACME", "amount": 100.0}]
 
-    # 行为由实现选择 — 我们期望 guard 至少不 raise；
-    # 若选择降级到"全部 mask"，rows 仍存在但值被 mask
-    try:
-        result = await guard.check_and_mask(
-            rows, sample_semantic_model, role="manager"
-        )
-        # 若实现选择降级：rows 仍存在
-        assert result.rows is not None
-    except RuntimeError:
-        # 若实现选择冒泡：也接受，但记录在测试中（信号给未来 reviewer）
-        pytest.skip("guard chose to propagate RBAC errors; acceptable per audit")
+    # 期望：guard 不抛异常，并降级到 MASKED 行为。
+    result = await guard.check_and_mask(
+        rows, sample_semantic_model, role="manager"
+    )
+
+    # 1. 不抛异常，rows 仍存在
+    assert result.rows is not None
+    assert len(result.rows) == 1
+    # 2. rbac.get_field_visibility 至少被调用一次（fallback 之前尝试了）
+    assert rbac.get_field_visibility.await_count >= 1
+    # 3. MASKED fallback + PII detector — 对于非 PII 字符串值，列保持原样
+    #    （MASKED 路径调 _mask_value，若 PII detector 不识别则原样保留）。
+    #    关键是：没有让异常冒泡、且调用了 rbac。
+    row = result.rows[0]
+    assert "company_name" in row
+    assert "amount" in row
