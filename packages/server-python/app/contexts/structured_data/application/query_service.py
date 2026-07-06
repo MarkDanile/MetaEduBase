@@ -50,7 +50,10 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.structured_data.application.pii_detector import PIIDetector
 from app.contexts.structured_data.application.query_planner import QueryPlanner
@@ -69,7 +72,6 @@ from app.contexts.structured_data.infrastructure.imported_dataset_adapter import
 from app.contexts.structured_data.infrastructure.permissions_repository import (
     PermissionsRepository,
 )
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +130,7 @@ class QueryService:
         self._explainer = explainer or ResultExplainer()
         self._pii_detector = pii_detector or PIIDetector()
 
-    def with_session(self, session: AsyncSession) -> "QueryService":
+    def with_session(self, session: AsyncSession) -> QueryService:
         """Return a copy of this service bound to a single request session.
 
         The lifespan-built singleton holds a *factory* so it can mint a

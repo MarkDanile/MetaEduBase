@@ -1,4 +1,7 @@
-"""Conftest for structured_data context — db_session + sample_dataset + sample_semantic_model + seed_rbac fixtures.
+"""Conftest for structured_data context.
+
+Provides db_session + sample_dataset + sample_semantic_model + seed_rbac
+fixtures.
 
 REQ-052 Tasks 2 & 3 & 4: These fixtures back the repository, adapter, RBAC,
 PII, query planner, validator and SQL guard tests in this context. They live

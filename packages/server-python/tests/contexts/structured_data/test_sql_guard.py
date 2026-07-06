@@ -35,7 +35,6 @@ async ``get_field_visibility`` method from Task 3.
 
 from __future__ import annotations
 
-import uuid
 from unittest.mock import AsyncMock
 
 import pytest

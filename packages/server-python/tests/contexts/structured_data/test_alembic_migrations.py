@@ -6,7 +6,6 @@ the JSONB columns used by downstream tasks are present.
 """
 from __future__ import annotations
 
-import asyncio
 import os
 
 import asyncpg

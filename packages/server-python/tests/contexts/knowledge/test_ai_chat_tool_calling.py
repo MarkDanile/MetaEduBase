@@ -31,7 +31,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import uuid
 from typing import Any
@@ -41,9 +40,6 @@ from app.contexts.knowledge.application.ai_chat_service import AIChatService
 from app.contexts.knowledge.application.ai_chat_service import (
     ChatRequest as ServiceChatRequest,
 )
-from app.contexts.knowledge.application.composite_retriever import (
-    CompositeChunkRetriever,
-)
 from app.contexts.knowledge.application.evidence_fusion import SimpleFrequencyFusion
 from app.contexts.knowledge.application.retrievers_fake import (
     FakeChunkRetriever,
@@ -51,7 +47,6 @@ from app.contexts.knowledge.application.retrievers_fake import (
     FakeMetadataFilter,
 )
 from app.contexts.knowledge.domain.evidence import EvidenceItem
-
 
 # ---------------------------------------------------------------------------
 # Test fakes — re-use minimal scaffolding from test_ai_chat_service.py so we

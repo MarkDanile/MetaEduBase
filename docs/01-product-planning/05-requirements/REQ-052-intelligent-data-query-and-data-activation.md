@@ -1,6 +1,6 @@
 # REQ-052: 智能问数与国资信息化数据激活原子能力
 
-Status: 🟣 Shaping
+Status: 🟢 Done
 Priority: P0
 Milestone: P3
 Domain: AI Workspace / Data Activation / Text-to-SQL / 产业园区

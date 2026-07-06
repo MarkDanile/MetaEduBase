@@ -267,7 +267,8 @@ def ds_extract_kg(dataset_id_str: str, tenant_id_str: str):
                 ds_build_cross_dataset_edges.delay(str(tenant_id))
 
             # TD-064 fix: return KG count (entities + relations)
-            return {"entities": len(name_to_node_id), "relations": len(kg_data.get("relations", []))}
+            relations = kg_data.get("relations", [])
+            return {"entities": len(name_to_node_id), "relations": len(relations)}
 
         except Exception as e:
             await _update_task_status(session, task_id, "failed", 0, str(e))

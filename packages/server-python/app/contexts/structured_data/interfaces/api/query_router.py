@@ -101,8 +101,8 @@ class AskResponse(BaseModel):
 async def ask(
     req: AskRequest,
     request: Request,
-    db_session: AsyncSession = Depends(get_session),
-    current_user: dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    current_user: dict = Depends(get_current_user),  # noqa: B008
 ):
     """问数 API：用户传入问题 + 业务背景，返回 query_plan + 结果 + 摘要。"""
     # ---- auth ----

@@ -107,7 +107,7 @@ class SqlGuard:
 
         for row in rows:
             # Snapshot the items so we can safely `del` during iteration.
-            for col, value in list(row.items()):
+            for col, _value in list(row.items()):  # noqa: B007
                 # Field whitelist — drop columns not in the schema.
                 if col not in allowed_cols:
                     del row[col]

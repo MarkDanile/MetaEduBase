@@ -62,7 +62,10 @@ def _compile_limit(stmt) -> int:
         if isinstance(limit_val, int):
             return limit_val
     # Fallback: compile and parse the LIMIT clause from the rendered SQL.
-    compiled = str(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+    compiled = str(stmt.compile(
+        dialect=postgresql.dialect(),
+        compile_kwargs={"literal_binds": True},
+    ))
     # Postgres renders ``LIMIT n`` at the end; parse the trailing integer.
     # Statements here don't have OFFSET, so the regex matches the last
     # ``LIMIT <digits>`` group.
@@ -86,7 +89,7 @@ async def test_limit_zero_clamped_to_one(db_session, sample_dataset):
     one row.
     """
     builder = JsonbQueryBuilder(db_session)
-    model = sample_dataset["semantic_model"] if "semantic_model" in sample_dataset else None
+    model = sample_dataset.get("semantic_model")  # noqa: SIM401
     # Build a minimal SemanticModel inline — the fixture returns a dict,
     # so we need the model object. Build it directly to avoid coupling.
     from app.contexts.structured_data.domain.semantic_model import (
