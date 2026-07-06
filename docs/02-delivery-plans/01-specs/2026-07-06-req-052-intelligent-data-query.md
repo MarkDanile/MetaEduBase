@@ -54,14 +54,25 @@
 
 **本 spec 选路线 2（Text2DSL / 语义层）**——与企业级可信问数需求匹配，避免路线 1 的 SQL 幻觉风险。最终演进目标对标 **Palantir 本体论**（Ontology）——对象、关系、指标、规则、事件、证据一体化建模。
 
-### 2.2 演进路径（分阶段）
+### 2.2 演进路径（分阶段，每阶段闭环可演示）
 
-| 阶段 | 路线 | 范围 | 对应需求 |
-|------|------|------|----------|
-| **阶段 1（本 spec）** | 路线 2 | 语义层 + Query Planner + SQL Guard + Result Explainer | REQ-052 V0 |
-| 阶段 2 | 路线 2 + 跨 dataset | 跨 dataset JOIN + 复杂指标计算 + 指标血缘 | REQ-052 V1 + REQ-051 |
-| **阶段 3（最终目标）** | 路线 3 | 本体图谱（对象/关系/规则/事件/证据）+ 语义层 + 确定性引擎 | REQ-052 V2 + 对标 Palantir Ontology |
-| 阶段 4 | Agentic | 问数后触发行动（异常→任务→通知→整改） | REQ-049（调度）+ REQ-050（规则引擎） |
+**核心原则：每个阶段都必须能闭环演示和使用，不允许"半成品堆叠到下阶段才可用"。**
+
+| 阶段 | 路线 | 范围 | 闭环演示场景 | 对应需求 |
+|------|------|------|-------------|----------|
+| **阶段 1（本 spec）** | 路线 2 | 语义层 + Query Planner + SQL Guard + Result Explainer（单 dataset） | 用户上传"账单流水"数据集 → 配置语义模型 → 自然语言问"这家企业欠费多少" → 返回表格 + 欠费金额 + 口径 + 来源 | REQ-052 V0 |
+| **阶段 2** | 路线 2 + 跨 dataset | 跨 dataset JOIN + 复杂指标计算 + 指标血缘 | 用户问"这家企业的合同到期 + 欠费 + 工单综合情况" → 跨合同/账单/工单 3 个 dataset JOIN → 返回综合背调数据表 | REQ-052 V1 + REQ-051 |
+| **阶段 3（最终目标）** | 路线 3 | 本体图谱（对象/关系/规则/事件/证据）+ 语义层 + 确定性引擎 | 用户问"这家企业为什么风险高" → 本体图谱归因（欠费↑ + 工单↑ + 合同即将到期）→ 返回归因链 + 证据 + 建议动作 | REQ-052 V2 + 对标 Palantir Ontology |
+| **阶段 4** | Agentic | 问数后触发行动（异常→任务→通知→整改） | 系统自动发现"某企业连续 3 月欠费" → 触发催缴任务 → 通知物业负责人 → 生成整改建议 | REQ-049（调度）+ REQ-050（规则引擎） |
+
+**每阶段闭环验收标准**：
+
+| 阶段 | 闭环验收（必须全部达成才进入下阶段） |
+|------|-------------------------------------|
+| 阶段 1 | ① 上传 1 个真实数据集 → ② 配置语义模型 → ③ 自然语言问数 → ④ 返回表格+摘要+口径+来源 → ⑤ 前端可演示 |
+| 阶段 2 | ① 上传 3 个关联数据集（合同/账单/工单）→ ② 配置跨 dataset 关系 → ③ 自然语言综合问数 → ④ 返回 JOIN 结果 → ⑤ 前端可演示 |
+| 阶段 3 | ① 建对象+关系本体 → ② 自然语言归因问数 → ③ 返回归因链+证据 → ④ 前端可演示 |
+| 阶段 4 | ① 配置规则阈值 → ② 自动扫描发现异常 → ③ 触发任务+通知 → ④ 前端可演示 |
 
 **阶段 3 目标（Palantir Ontology 对标）**：
 - **对象层**：企业、合同、租约、账单、工单、楼宇、载体（谁是谁）
@@ -293,44 +304,50 @@ REQ-052: 收到 confirmed_company_name
 
 如果内部 dataset 中企业名称与企查查确认名称不完全一致（如简称 vs 全称），通过 column_mapping.synonym 做模糊匹配（首期用 `ilike` 或 `contains`）。
 
-## 6. Slice 拆分（实施路径）
+## 6. Slice 拆分（每 Slice 闭环可演示）
 
-### Slice 0: 数据问数盘点 + 语义层建表
+**核心原则：每个 Slice 完成后都能独立演示一个端到端场景，不允许"等下个 Slice 才能用"。**
+
+### Slice 0: 语义层建表 + 数据上传 + 手动配置
+
+**闭环演示**：用户上传 1 个"账单流水"数据集 → 在前端配置语义模型（entity_type=bill + column_mapping + metric_definitions）→ 保存成功 → 可查看语义模型。
 
 - 新建 `metaedu.semantic_models` 表 + alembic migration
 - 新建 `SemanticModelRepository`（CRUD）
-- 用户上传 ≥3 个业务数据集（合同 / 账单 / 工单）到 `datasets`
-- 为每个 dataset 配置 semantic_model（column_mapping + metric_definitions）
+- 前端 `DatabaseView` 新增"语义模型"tab：为 dataset 配置 column_mapping / metric_definitions
+- 用户上传 ≥1 个业务数据集到 `datasets` + 配置语义模型
 - **真实业务表字段在实施时与用户确认**
+- 演示验收：上传数据集 → 配置语义模型 → 查看 column_mapping + metric_definitions 已保存
 
-### Slice 1: Query Planner + 语义层校验
+### Slice 1: Query Planner + JSONB 查询 + API（最小闭环）
+
+**闭环演示**：用户 POST `/api/v1/data-query/ask` 问"这家企业欠费多少" → 返回 query_plan + result_rows + metric_values。
 
 - 实现 `QueryPlanner`（LLM 生成 query_plan）
 - 实现 `SemanticValidator`（query_plan → dataset_id + column + aggregation 校验）
-- 单测：10 个真实问数样例 → query_plan 正确性
-
-### Slice 2: SQL Guard + JSONB 查询构造器
-
-- 实现 `JsonbQueryBuilder`（query_plan → SQLAlchemy 查询）
+- 实现 `JsonbQueryBuilder`（query_plan → SQLAlchemy JSONB 查询）
 - 实现 `SqlGuard`（limit / 租户 / 字段白名单 / 敏感脱敏 / 审计）
-- 单测：4 种拒绝场景 + 1 种脱敏场景
+- 实现 `query_router.py`（POST /api/v1/data-query/ask）返回 query_plan + result_rows + metric_values（**不含 LLM summary**）
+- 单测：10 个真实问数样例 → query_plan + result 正确性 + 4 种 Guard 拒绝场景
+- 演示验收：curl / API 调用 → 返回 query_plan JSON + result_rows 表格 + metric_values
 
-### Slice 3: Result Explainer + API 编排
+### Slice 2: Result Explainer + 前端问数面板（完整闭环）
+
+**闭环演示**：用户在前端"智能问数"面板输入自然语言 → 看到 query_plan + result_rows 表格 + LLM summary + 口径 + 来源 + caveats。
 
 - 实现 `ResultExplainer`（LLM 生成 summary + 口径 + caveats）
-- 实现 `query_router.py`（POST /api/v1/data-query/ask）
-- 集成测试：question → query_plan → 查询 → result → response
+- 前端 `DatabaseView` 新增"智能问数"tab：输入框 + query_plan 展示 + result_rows 表格 + summary + 口径 + 来源
+- 历史问数记录（前端展示最近 N 条）
+- 集成测试：question → query_plan → 查询 → result → summary → 前端展示
+- 演示验收：前端输入"这家企业欠费多少" → 看到表格 + 摘要 + 口径 + 来源
 
-### Slice 4: 前端问数面板
+### Slice 3: REQ-046 集成 + 回归样例（背调闭环）
 
-- 在 `DatabaseView` 新增"智能问数"tab
-- 输入框 + query_plan 展示 + result_rows 表格 + summary + 口径 + 来源
-- 历史问数记录
-
-### Slice 5: REQ-046 集成 + 回归样例
+**闭环演示**：REQ-046 企业 360 背调流程中 → 企查查主体确认 → 内部问数 → evidence_ref 写入背调报告。
 
 - REQ-046 背调 Skill 调用 REQ-052 问数 → evidence_ref 写入报告
 - 10 个回归样例（成功 / 空结果 / 权限不足 / 字段缺失 / 脱敏 / 跨 entity / 时间范围 / 同义问法 / 高风险 / 边界）
+- 演示验收：REQ-046 背调报告含内部问数 evidence_ref + 10 回归样例全通过
 
 ## 7. Risks & Mitigations
 
