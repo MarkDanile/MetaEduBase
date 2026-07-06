@@ -14,30 +14,7 @@
 
 ## 当前进行中
 
-### TASK: BUG-013 资源库/数据库页面 500
-
-状态：🔴 Open（diagnostic）
-类型：Bug Fix
-领域：后端 / document + structured_data 上下文
-当前执行模式：systematic-debugging → 定位 → TDD fix
-最近接手工具：主代理
-分支：（待创建）
-
-需求来源：
-- [BUG-013](../01-product-planning/05-requirements/BUG-013-resource-database-500-endpoints.md)
-
-当前进展：
-- 用户报告 3 个 endpoint 500：`/api/v1/document/folders`、`/api/v1/document/files?limit=100`、`/api/v1/structured-data/datasets?sort_by=created_at&sort_dir=desc`
-- 源码本体最近 30+ commits 内未改动；时间上与 PR #417（REQ-052）相邻
-- 源代码静态排查：3 路径都过 `tid = get_tenant_id()` 然后 SQL 绑定，未见显式 bug
-
-下一步：
-- 需后端 traceback：让用户启 `uvicorn app.main:app --reload` 复现一次 → 获取 traceback
-- 或本地起 backend + 用 curl 复现
-- 锁定根因 → TDD 修 → 测试 → 闭环 PR
-
-验证状态：待 traceback
-交接备注：根因可能在 `tenant_context` ContextVar / alembic 迁移未应用 / REQ-052 lifespan 副作用，需要 traceback 锁定
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -56,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-07 | BUG-013 资源库/数据库页面 500 → 503（DB 不可用） | 🟢 完成 | 根因：asyncpg 在 PG 宕机时抛 ConnectionDoesNotExistError → SQLAlchemy OperationalError → FastAPI 默认 500。修复：main.py 加 exception_handler，识别 conn error → 503 + 明确 './dev.sh infra' 恢复路径 | [BUG-013](../01-product-planning/05-requirements/BUG-013-resource-database-500-endpoints.md) / [PR #418](https://github.com/MarkDanile/MetaEduBase/pull/418) (`f8c8646`) |
 | 2026-07-07 | REQ-052 智能问数与国资信息化数据激活原子能力（实施 9 Task 收口） | 🟢 完成 | 9 Task：schema + Adapter + RBAC + PII + QueryPlanner + SqlGuard + ResultExplainer + API + QueryPanel + AI Chat + BacktrackSkill。51/51 pure unit；4/4 质量门禁 0；AC-7 待真实环境 e2e | [REQ-052 plan](../02-delivery-plans/02-plans/2026-07-01-req-052-intelligent-data-query.md) / [PR #417](https://github.com/MarkDanile/MetaEduBase/pull/417) (`60e60e70`) |
 | 2026-07-01 | REQ-052 智能问数与国资信息化数据激活原子能力（spec Shaping → Ready） | 🟢 完成 | spec 868 行：3 种数据源 Adapter + 路线 2（Palantir Ontology）/ Slice 0-4 / §11 JSONB 80% 边界 / §12 国资安全审查 12 项补 7 项 | [REQ-052 spec](../02-delivery-plans/01-specs/2026-07-06-req-052-intelligent-data-query.md) / [PR #415](https://github.com/MarkDanile/MetaEduBase/pull/415) (`b6c2a4a`) |
 | 2026-06-30 | TD-073 离线批量 keypoint embedding 预计算落盘（实施） | 🟢 完成 | cache_store.py + coverage 启动/退出 hook + miss 累加 + main.py CLI。15+9 新单测；pytest 50/38 passed / ruff 0 / diff clean。180 texts × 25-30s × 162 run = 75-90min → 0。AC-4 重定义 ≤15min（叠加 TD-072 ≤10min 实证待 verify） | [TD-073 plan](../02-delivery-plans/02-plans/2026-06-30-td-073-offline-keypoint-embedding-plan.md) / [PR #402](https://github.com/MarkDanile/MetaEduBase/pull/402) (`0676bb0`) |
@@ -65,6 +43,4 @@
 | 2026-06-24 | DOC-075 current-work「当前进行中」段落污染硬门禁 | 🟢 Done | `check_current_work` 加 `current-work-in-progress-pollution` 门禁：无活跃任务时该区只允许单句，>1 行阻塞 PR。`pytest tests/engineering/ -q` → 38 passed 退出码 0；`ruff` 0 | [PR #394](https://github.com/MarkDanile/MetaEduBase/pull/394) (`d75c966`) |
 | 2026-06-24 | BUG-012 AI Chat 证据引用/参考来源打开空白页 | 🟢 Done | 链接拼 `/resource/files/{id}` 但路由是 `resource/:id` 无匹配 → 空白页；spec 把错误路径锁进断言。TDD 修复 `buildFileOpenUrl` base 为 `/resource/{id}` + 同步 spec。`pnpm test` 75 passed / typecheck / lint 0 | [Bug](../01-product-planning/05-requirements/BUG-012-ai-chat-evidence-link-blank-page.md) / [PR #391](https://github.com/MarkDanile/MetaEduBase/pull/391) (`f88fc37`) |
 | 2026-06-24 | BUG-011 AI Chat 偶发「网络错误」 | 🟢 Done | 根因：前端 axios 全局 timeout=30s < 后端 `_call_llm` 60s + 检索 ~10s，慢 LLM/provider 抖动触发前端先超时并误报「网络错误」。修复：chat 请求改 120s 单请求超时 + 新增 `describeChatError` 区分 超时/网络/detail。`pnpm test` 75 passed / typecheck / lint 0；curl HTTP 200 24.3s | [Bug](../01-product-planning/05-requirements/BUG-011-ai-chat-timeout-shorter-than-backend-llm.md) / [PR #388](https://github.com/MarkDanile/MetaEduBase/pull/388) (`8aa09d0`) |
-| 2026-06-23 | Q7_kg_occupation_to_skill graph_edge 退化排查 | 🟢 已关闭（归因纠正） | 单问题真 LLM 隔离复现推翻 REQ-039 §3.3 归因：graph_edge@0.5 死权重（packed 逐字节不变），substring 跨场景差异及跨 run 符号翻转均来自 LLM 答案方差。非真实回归，无需修复 | [Q7 排查报告](../02-delivery-plans/01-specs/2026-06-23-q7-graph-edge-degradation-investigation-report.md) / [REQ-039 §6 follow-up #2](../02-delivery-plans/01-specs/2026-06-21-req-039-p2-graph-edge-disable-llm-verify-unblock-report.md#6-follow-up) |
-| 2026-06-22 | AC-4 wall-clock 子集验证（TD-071 follow-up #1） | 🟢 已关闭 | 仅传 `--req028-samples` 实测 132 run 29.6min（spirit 解释 6.6min 被推翻）。AC-4 ≤10min 目标不可达。TD-071 实施健康（3-3.4× 加速 vs 50-60min 阻塞）。接力 3 条候选（离线批量 keypoint 预计算 / runner.py 接 batch helper / 提 provider 限流） | [AC-4 子集验证报告](../02-delivery-plans/01-specs/2026-06-22-td-071-ac4-subset-validation-report.md) |
 | 2026-06-30 | 候选 3 路径 3 `_EMB_SEMAPHORE` spike（cache warm 不建议改） | 🟡 verdict: no change | minimax LLM A/B 对比 Sem=2 (11:25) vs Sem=5 (11:51)：cache warm miss 几乎不变 (94 vs 92)；A2 反慢 25.64s (+3.7% 噪声)。主 wall-clock 仍 LLM provider 时延。结论：cache warm 下 0% 节省，不建议改 | [候选 3 spike 报告](../02-delivery-plans/01-specs/2026-07-02-candidate3-semaphore-upgrade-spike-report.md) / [PR #411](https://github.com/MarkDanile/MetaEduBase/pull/411) (`7f46ece`) |
