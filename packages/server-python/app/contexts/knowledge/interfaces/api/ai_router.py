@@ -213,6 +213,15 @@ async def ai_chat_evidence(
 
 
 async def _call_llm(system_prompt: str, user_content: str) -> str:
+    """Synchronous-style LLM call returning plain text content.
+
+    **REQ-052 Task 7 deviation**: this signature is INTENTIONALLY preserved
+    verbatim (no ``tools`` kwarg, return type stays ``str``). The plan's
+    global constraint mandates backward compatibility — every existing
+    caller (RAG retrieval path, hybrid_ner, e2e fixtures) continues to
+    receive plain text. Tool-calling support lives in the new sibling
+    :func:`_call_llm_with_tools`.
+    """
     config = resolve_chat_provider()
     if config is None:
         return (
@@ -242,3 +251,66 @@ async def _call_llm(system_prompt: str, user_content: str) -> str:
     except Exception as e:
         logger.error(f"LLM 调用失败: {e}")
         return f"❌ AI 回答生成失败: {type(e).__name__}"
+
+
+async def _call_llm_with_tools(
+    messages: list[dict],
+    *,
+    tools: list[dict] | None = None,
+    tool_choice: str = "auto",
+    temperature: float = 0.7,
+    max_tokens: int = 2000,
+) -> dict:
+    """REQ-052 Task 7 — tool-calling-aware LLM call.
+
+    Accepts a full conversation history (``messages``) so the caller can
+    stitch together the multi-turn tool-calling flow (system → user →
+    assistant+tool_call → tool result). Returns a structured
+    ``{"content": str | None, "tool_calls": list | None}`` dict so the
+    AI Chat service can decide whether to invoke the tool or short-circuit
+    to a direct text reply.
+
+    This is a sibling of :func:`_call_llm` — it does NOT replace it. The
+    legacy ``_call_llm`` path is kept for RAG / NER / e2e callers that
+    don't need tool awareness (see plan global constraint: "不修改
+    ``ai_router._call_llm`` 现有签名（向后兼容，新增 tools 参数）").
+    """
+    config = resolve_chat_provider()
+    if config is None:
+        return {
+            "content": (
+                "⚠️ 尚未配置 LLM API Key，请在 .env 中设置 "
+                "MINIMAX_API_KEY / DEEPSEEK_API_KEY / QWEN_API_KEY。"
+            ),
+            "tool_calls": None,
+        }
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            payload: dict = {
+                "model": config.model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+            if tools:
+                payload["tools"] = tools
+                payload["tool_choice"] = tool_choice
+            resp = await client.post(
+                f"{config.base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {config.api_key}"},
+                json=payload,
+            )
+            resp.raise_for_status()
+            message = resp.json()["choices"][0]["message"]
+            content = message.get("content")
+            tool_calls = message.get("tool_calls")
+            if isinstance(content, str):
+                content = _clean_llm_output(content)
+            return {"content": content, "tool_calls": tool_calls}
+    except Exception as e:
+        logger.error(f"LLM 调用失败 (with tools): {e}")
+        return {
+            "content": f"❌ AI 回答生成失败: {type(e).__name__}",
+            "tool_calls": None,
+        }

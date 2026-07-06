@@ -140,22 +140,44 @@ async def test_p1_rag_evidence_e2e_manufacturing(client, auth_headers):
     # (async) 但未 await — 真实 LLM 路径会抛 TypeError"got coroutine"。
     # 用 patch 把 ai_router._call_llm 替换为 sync stub, 绕过 Slice 3 漏
     # await 的 bug, 让 e2e 仍能验证 /chat/evidence 端点 (AC-1/AC-4)。
+    #
+    # REQ-052 Task 7: chat 路径现在调用 ``_call_llm_with_tools``（带
+    # tools=[query_internal_data]）；我们同时 patch 两个入口以兼容新旧路径。
     from contextlib import ExitStack
     from unittest.mock import AsyncMock, patch
 
     from app.contexts.knowledge.interfaces.api import ai_router as ai_router_mod
 
+    _stub_response = (
+        f"基于 [1] 的回答：智能制造专业需要掌握 CAD、CAE、PLC 编程、"
+        f"数控机床、工业机器人、传感器、自动化生产线与数字孪生等技能 [2]。\n"
+        f"\n（{{user_content}}）"
+    )
     stack = ExitStack()
     stack.enter_context(
         patch.object(
             ai_router_mod,
             "_call_llm",
             AsyncMock(
-                side_effect=lambda sys_prompt, user_content: (
-                    f"基于 [1] 的回答：智能制造专业需要掌握 CAD、CAE、PLC 编程、"
-                    f"数控机床、工业机器人、传感器、自动化生产线与数字孪生等技能 [2]。\n"
-                    f"\n（{user_content}）"
+                side_effect=lambda sys_prompt, user_content: _stub_response.format(
+                    user_content=user_content
                 )
+            ),
+        )
+    )
+    stack.enter_context(
+        patch.object(
+            ai_router_mod,
+            "_call_llm_with_tools",
+            AsyncMock(
+                side_effect=lambda messages, *, tools=None, tool_choice="auto": {
+                    "content": _stub_response.format(
+                        user_content=(
+                            messages[-1]["content"] if messages else ""
+                        )
+                    ),
+                    "tool_calls": None,
+                }
             ),
         )
     )
