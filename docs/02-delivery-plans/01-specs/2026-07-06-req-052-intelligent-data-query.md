@@ -42,6 +42,37 @@
 - 在查询后给出结果解释、数据来源、指标口径和异常提示。
 - 支撑企业 360 背调、续约风险、报送材料、经营分析等上层应用。
 
+### 2.1 技术路线选型（参考行业实践）
+
+参考《智能问数技术路线与选型》（https://mp.weixin.qq.com/s/03bGPfs3Mc2zZMtI1-DyRw）三条主流路线：
+
+| 路线 | 描述 | 适合场景 | 风险 |
+|------|------|----------|------|
+| 路线 1: Text2SQL | LLM 直接生成 SQL → 校验 → 执行 | 单表/小宽表、字段清晰、口径简单 | SQL 幻觉、join 错误、指标口径错误 |
+| **路线 2: Text2DSL / 语义层** | LLM 生成 IR/DSL（query plan）→ 语义层生成 SQL | 复杂指标、多部门共用、企业级 | 需建语义层/指标层/对象层 |
+| 路线 3: 语义层 + 本体 + 图谱 | 本体图谱建模对象关系 + 语义层算指标 + LLM 只理解意图 | 跨部门、跨系统、需归因/证据溯源 | 建模成本高 |
+
+**本 spec 选路线 2（Text2DSL / 语义层）**——与企业级可信问数需求匹配，避免路线 1 的 SQL 幻觉风险。最终演进目标对标 **Palantir 本体论**（Ontology）——对象、关系、指标、规则、事件、证据一体化建模。
+
+### 2.2 演进路径（分阶段）
+
+| 阶段 | 路线 | 范围 | 对应需求 |
+|------|------|------|----------|
+| **阶段 1（本 spec）** | 路线 2 | 语义层 + Query Planner + SQL Guard + Result Explainer | REQ-052 V0 |
+| 阶段 2 | 路线 2 + 跨 dataset | 跨 dataset JOIN + 复杂指标计算 + 指标血缘 | REQ-052 V1 + REQ-051 |
+| **阶段 3（最终目标）** | 路线 3 | 本体图谱（对象/关系/规则/事件/证据）+ 语义层 + 确定性引擎 | REQ-052 V2 + 对标 Palantir Ontology |
+| 阶段 4 | Agentic | 问数后触发行动（异常→任务→通知→整改） | REQ-049（调度）+ REQ-050（规则引擎） |
+
+**阶段 3 目标（Palantir Ontology 对标）**：
+- **对象层**：企业、合同、租约、账单、工单、楼宇、载体（谁是谁）
+- **关系层**：企业→合同→租约→账单→工单（关系是什么）
+- **指标层**：欠费率、出租率、NOI、续约率（怎么算）
+- **规则层**：违约判定、风险阈值、到期提醒（规则是什么）
+- **事件层**：签约、欠费、投诉、到期（发生了什么）
+- **证据层**：数据来源、口径、时间戳、审计链（依据是什么）
+
+LLM 在阶段 3 只负责理解意图，查询/计算/推理/溯源交给确定性引擎。
+
 ## 3. Non-Goals
 
 - 不允许大模型直接对生产库裸写 SQL（首期走 JSONB 查询路径，不生成真实 SQL）。
@@ -51,6 +82,26 @@
 - 不要求首期支持所有数据库和所有业务系统。
 - 不在首期做跨 dataset JOIN（单 dataset 内查询优先）。
 - 不在 spec 中定义真实业务表字段——具体字段在实施阶段与用户确认真实表结构后填入。
+- **不在首期做本体图谱（路线 3）**——对象关系建模、归因解释、证据溯源留阶段 3（对标 Palantir Ontology）。
+- **不在首期做 Agentic 问数**——问数后触发行动（异常→任务→通知→整改）留阶段 4，承接 REQ-049（调度）+ REQ-050（规则引擎）。
+- 不在首期做指标血缘追溯（首期只返回 metric_definitions 口径，不做血缘链路）。
+
+### 3.1 语义层完整性说明
+
+参考行业实践，完整的企业级语义层应包含：指标定义、维度定义、时间口径、聚合规则、常用过滤条件、join 路径。
+
+**首期覆盖**（本 spec）：
+- ✅ 指标定义（metric_definitions: column + aggregation + label）
+- ✅ 维度定义（column_mapping: role=dimension）
+- ✅ 时间口径（query_plan.time_range）
+- ✅ 聚合规则（metric_definitions.aggregation: sum/count/avg）
+- ✅ 常用过滤条件（query_plan.filters + column_mapping.synonym 同义词匹配）
+- ✅ 敏感字段标记（column_mapping.sensitive + 角色脱敏）
+
+**首期不覆盖**（留阶段 2）：
+- ❌ join 路径（跨 dataset JOIN 留 V1）
+- ❌ 指标血缘（留 V1 + REQ-051）
+- ❌ 复杂计算指标（如 NOI = 收入 - 运营成本，需多列复合计算，留 V1）
 
 ## 4. Acceptance Criteria
 
@@ -313,11 +364,16 @@ REQ-052: 收到 confirmed_company_name
 - 不做自然语言结果朗读（TTS）
 - 不做多轮对话（首期单次问答）
 - 不在 spec 中定义真实业务表字段（实施时与用户确认）
+- 不做本体图谱 / 对象关系建模（阶段 3，对标 Palantir Ontology）
+- 不做 Agentic 问数 / 行动触发（阶段 4，承接 REQ-049 + REQ-050）
 
 ## 10. 参考
 
 - REQ-052 requirement：[REQ-052-intelligent-data-query-and-data-activation.md](../../01-product-planning/05-requirements/REQ-052-intelligent-data-query-and-data-activation.md)
 - REQ-046 spec §4.5 智能问数边界：[2026-07-03-req-046-enterprise-360-due-diligence-workbench.md](2026-07-03-req-046-enterprise-360-due-diligence-workbench.md)
 - 产业园区 AI 应用组合：[industrial-park-applications.md](../../01-product-planning/06-ai-applications/industrial-park-applications.md)
+- **智能问数技术路线与选型**（路线 1/2/3 + Agentic 趋势）：https://mp.weixin.qq.com/s/03bGPfs3Mc2zZMtI1-DyRw
+- 企查查 MCP 主体识别规则：https://agent.qcc.com/guide
+- Palantir Ontology（本体论，阶段 3 对标）：https://www.palantir.com/docs/foundr/ontology/overview
 - 智能问数技术栈参考：https://mp.weixin.qq.com/s/03bGPfs3Mc2zZMtI1-DyRw
 - 企查查 MCP 主体识别规则：https://agent.qcc.com/guide
