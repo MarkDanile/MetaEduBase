@@ -18,7 +18,13 @@
 
 ## 下一批候选任务
 
-候选区已清空（AC-4 wall-clock follow-up 三条路径 — TD-072 runner batch / TD-073 落盘 cache / 候选 3 `_EMB_SEMAPHORE` spike verdict: no change — 全部已实施或已 spike 决断；AC-4 ≤10min 真 LLM 验证 v2 实测达成 10:02 / 132 run 在最近完成 line 33）。后续候选见 `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/technical-debt.md` 🟡/🔵 状态卡。
+按"建议执行顺序"排序；候选区只保留近期 1 到 3 个入口，完整任务池回 `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/technical-debt.md`。
+
+| 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
+|--------|------|------|------------|--------|
+| P0 | REQ-046 企业 360 背调工作台与 MCP / Skill 集成闭环 | 🔵 Ready | 先执行 Slice 0 / Slice 1：盘点企查查 MCP 工具、确认 V0 背调维度、实现企业主体锚定与 QCC MCP adapter；内部数据激活由 REQ-052 承接 | [Requirement](../01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md) / [Spec](../02-delivery-plans/01-specs/2026-07-03-req-046-enterprise-360-due-diligence-workbench.md) / [Plan](../02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md) |
+| P0 | REQ-052 智能问数与国资信息化数据激活原子能力 | 🟣 Shaping | 先盘点首批内部数据源、企业背调问数样例、语义实体、指标口径、SQL Guard 和权限边界；用于支撑 REQ-046 内部履约 / 合同 / 缴费 / 工单数据查询 | [Requirement](../01-product-planning/05-requirements/REQ-052-intelligent-data-query-and-data-activation.md) / [Industrial Park Apps](../01-product-planning/06-ai-applications/industrial-park-applications.md#原子能力优先级路线) |
+| P0 | REQ-044 MCP 注册、管理与调用能力 | ⚫ Candidate | 若 REQ-046 adapter 需要从 V0 走向生产化，则优先塑形 MCP registry、权限、会话可用性和调用审计 | [Backlog](../01-product-planning/04-backlog.md) / [Applications](../01-product-planning/06-ai-applications/README.md#产品基座能力候选) |
 
 ## 最近完成
 
