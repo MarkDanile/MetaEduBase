@@ -292,11 +292,25 @@ class QueryService:
     ) -> None:
         """Persist one row to ``metaedu.query_audit_log``.
 
+        REQ-054: also writes ``catalog_id`` (resolved from
+        ``semantic_model.catalog_id``) so every audit row carries the
+        database attribution the regulator needs. The column is
+        nullable, but the resolved semantic model always has a
+        catalog_id set — a missing value here would indicate a bug
+        upstream (the resolver must never return a model without
+        catalog_id).
+
         Defensive: a DB error here MUST NOT crash the user-visible
         response — the regulator cares about the trail, but the user's
         answer is more important. We log the audit failure at WARNING
         and return the answer anyway.
         """
+        # REQ-054: catalog_id from the resolved semantic model. The
+        # dataclass declares it as ``uuid.UUID | None`` for backward
+        # compat with pre-REQ-054 callers, but the router now guarantees
+        # it is always set; we still defensively coerce to None if it's
+        # somehow missing so the audit row never raises.
+        catalog_id: uuid.UUID | None = getattr(semantic_model, "catalog_id", None)
         try:
             await audit_repo.log_query(
                 user_id=user_id,
@@ -317,6 +331,7 @@ class QueryService:
                 duration_ms=duration_ms,
                 ip=ip,
                 user_agent=user_agent,
+                catalog_id=catalog_id,
             )
         except Exception as e:  # pragma: no cover — defensive
             logger.warning(

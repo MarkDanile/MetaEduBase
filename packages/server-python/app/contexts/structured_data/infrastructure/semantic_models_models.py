@@ -126,6 +126,16 @@ class QueryAuditLogModel(Base):
         UUID(as_uuid=True), nullable=False, index=True
     )
     role: Mapped[str] = mapped_column(String(50), nullable=False)
+    # REQ-054: catalog_id is filled at query time by QueryService._audit from
+    # the resolved SemanticModel.catalog_id. Nullable because legacy rows
+    # pre-date REQ-054 (migration 018 only made datasets/semantic_models
+    # NOT NULL; audit log keeps it nullable for forensic completeness).
+    catalog_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metaedu.data_catalogs.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
     business_purpose: Mapped[str] = mapped_column(Text, nullable=False)
     question: Mapped[str] = mapped_column(Text, nullable=False)
     query_plan: Mapped[dict] = mapped_column(PG_JSONB, nullable=False)

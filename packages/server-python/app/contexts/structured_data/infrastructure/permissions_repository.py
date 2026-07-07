@@ -99,6 +99,7 @@ class PermissionsRepository:
         duration_ms: int | None,
         ip: str | None,
         user_agent: str | None,
+        catalog_id: uuid.UUID | None = None,
     ) -> None:
         """Append a row to ``metaedu.query_audit_log``.
 
@@ -108,11 +109,20 @@ class PermissionsRepository:
         non-empty / non-whitespace content — that policy is intentionally in
         the service layer so we can return a clean ``ValueError`` to the
         caller instead of an integrity error from the driver.
+
+        ``catalog_id`` is REQ-054's audit-completeness tag: every audit row
+        records which database the question was asked against. It is
+        optional at the signature level because pre-REQ-054 callers
+        (legacy tests) don't supply it; in production every
+        :class:`QueryService.ask` call passes the resolved
+        ``semantic_model.catalog_id`` so the audit log fully satisfies
+        spec §12 (国资审计 / database-attribution completeness).
         """
         log = QueryAuditLogModel(
             user_id=user_id,
             tenant_id=tenant_id,
             role=role,
+            catalog_id=catalog_id,
             business_purpose=business_purpose,
             question=question,
             query_plan=query_plan,

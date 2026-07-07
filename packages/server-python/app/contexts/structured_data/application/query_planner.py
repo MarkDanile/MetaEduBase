@@ -110,12 +110,24 @@ class QueryPlanner:
 
         The schema is rendered from the semantic model so the LLM has
         ground-truth column names + metric definitions to choose from.
+
+        REQ-054: the prompt now also names the ``catalog_id`` so the LLM
+        knows which database's schema it's reading. V1 only surfaces the
+        UUID (no human-readable catalog name) — that's enough for the
+        LLM to disambiguate when a tenant has multiple catalogs, and it
+        avoids an extra catalog-name query in the planner hot path.
+        V2 can resolve ``catalog_name`` / ``catalog_code`` from the
+        catalog service and inline them here.
         """
         column_mapping = list(semantic_model.column_mapping.keys())
         metric_definitions = list(semantic_model.metric_definitions.keys())
+        # REQ-054: catalog_id is a UUID on the SemanticModel dataclass.
+        # ``str(...)`` is safe for both uuid.UUID and the rare str fallback.
+        catalog_id_str = str(getattr(semantic_model, "catalog_id", "") or "")
         return (
             "你是问数助手。基于语义层 schema 生成 query_plan (JSON)。\n\n"
             "语义层 schema:\n"
+            f"- 当前数据库 ID (catalog_id): {catalog_id_str}\n"
             f"- entity_type: {semantic_model.entity_type}\n"
             f"- entity_name: {semantic_model.entity_name}\n"
             f"- column_mapping: {column_mapping}\n"
