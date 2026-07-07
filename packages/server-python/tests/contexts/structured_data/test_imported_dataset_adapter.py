@@ -8,7 +8,9 @@ The adapter contract is small for now:
 - ``validate_query`` returns an empty list (no validation rules yet).
 
 These tests cover the happy path, tenant isolation, the limit cap, and
-the placeholder behaviour of ``DirectDBAdapter`` / ``MCPAdapter``.
+cross-adapter inheritance / type-string checks. Dedicated V1 tests for
+``DirectDBAdapter`` and ``MCPAdapter`` (REQ-054 Task 4) live in
+``test_direct_db_adapter.py`` and ``test_mcp_adapter.py``.
 """
 
 from __future__ import annotations
@@ -164,38 +166,6 @@ async def test_validate_query_returns_empty_for_now(db_session, sample_dataset):
     assert errors == []
 
 
-async def test_direct_db_adapter_raises_not_implemented(db_session):
-    """DirectDBAdapter is a V1 placeholder — every entry point must reject.
-
-    Each ``__init__`` / ``query`` / ``validate_query`` is exercised via the
-    unbound-method pattern so a regression that removes ``raise`` from any
-    of the three entry points fails its own assertion.
-    """
-    with pytest.raises(NotImplementedError):
-        DirectDBAdapter(db_session)
-
-    with pytest.raises(NotImplementedError):
-        await DirectDBAdapter.query(None, {}, None, DEFAULT_TENANT_ID, "manager")
-
-    with pytest.raises(NotImplementedError):
-        DirectDBAdapter.validate_query(None, {}, None)
-
-
-async def test_mcp_adapter_raises_not_implemented(db_session):
-    """MCPAdapter is a V1 placeholder — every entry point must reject.
-
-    Same unbound-method pattern as ``test_direct_db_adapter_raises_not_implemented``.
-    """
-    with pytest.raises(NotImplementedError):
-        MCPAdapter(db_session)
-
-    with pytest.raises(NotImplementedError):
-        await MCPAdapter.query(None, {}, None, DEFAULT_TENANT_ID, "manager")
-
-    with pytest.raises(NotImplementedError):
-        MCPAdapter.validate_query(None, {}, None)
-
-
 async def test_adapters_inherit_from_abc():
     """All adapter implementations must extend ``DataSourceAdapter``."""
     assert issubclass(ImportedDatasetAdapter, DataSourceAdapter)
@@ -204,8 +174,19 @@ async def test_adapters_inherit_from_abc():
 
 
 async def test_direct_db_and_mcp_get_data_source_type():
-    """The placeholder classes still expose their type identifier."""
-    # Even though __init__ raises, get_data_source_type is a class-level
-    # concern — we exercise it without instantiating.
-    assert DirectDBAdapter.get_data_source_type(None) == "direct_db"  # type: ignore[arg-type]
-    assert MCPAdapter.get_data_source_type(None) == "mcp"  # type: ignore[arg-type]
+    """The V1 adapter classes expose their type identifier.
+
+    REQ-054 Task 4 upgraded DirectDBAdapter / MCPAdapter from placeholder
+    to V1 interface skeletons — ``__init__`` no longer raises. Dedicated
+    V1 tests live in ``test_direct_db_adapter.py`` / ``test_mcp_adapter.py``;
+    this assertion remains as a cross-file sanity check on the type string.
+    """
+    adapter_db = DirectDBAdapter(
+        config={"connection_string": "postgresql://x", "table_name": "bills"}
+    )
+    assert adapter_db.get_data_source_type() == "direct_db"
+
+    adapter_mcp = MCPAdapter(
+        config={"server_url": "http://mcp.local", "tool_name": "query_bills"}
+    )
+    assert adapter_mcp.get_data_source_type() == "mcp"
