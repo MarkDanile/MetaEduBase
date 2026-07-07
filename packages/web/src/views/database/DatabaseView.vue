@@ -104,12 +104,7 @@ onMounted(() => {
 
 function onCardClick(catalog: CatalogDTO) {
   // Task 8 will register /database/:code route and render CatalogDetailPage.
-  // Fallback to /database if the route is not yet registered to avoid runtime errors.
-  try {
-    router.push(`/database/${catalog.code}`);
-  } catch {
-    router.push("/database");
-  }
+  router.push(`/database/${catalog.code}`);
 }
 
 async function doCreate(req: CatalogCreate) {

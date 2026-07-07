@@ -44,7 +44,15 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { Database } from "lucide-vue-next";
+import {
+  Database,
+  Building,
+  BookOpen,
+  Briefcase,
+  Factory,
+  GraduationCap,
+  School,
+} from "lucide-vue-next";
 import type { CatalogDTO } from "@/services/catalog";
 
 const props = defineProps<{
@@ -56,9 +64,22 @@ const emit = defineEmits<{
 }>();
 
 // Icon resolution: backend sends icon as a string (lucide icon name).
-// Falls back to generic Database icon if not a recognised lucide name.
+// Resolves against a whitelist of allowed lucide icons; falls back to Database.
+const ICON_MAP = {
+  Database,
+  Building,
+  BookOpen,
+  Briefcase,
+  Factory,
+  GraduationCap,
+  School,
+} as const;
+
+type IconName = keyof typeof ICON_MAP;
+
 const iconComponent = computed(() => {
-  return Database;
+  const name = props.catalog.icon as IconName | string | undefined;
+  return (name && name in ICON_MAP ? ICON_MAP[name as IconName] : Database);
 });
 
 const iconStyle = computed(() => {
