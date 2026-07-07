@@ -66,18 +66,30 @@ class DatasetRepository:
     ) -> dict:
         dataset_id = uuid.uuid4()
         now = datetime.now(UTC).replace(tzinfo=None)
+        # Resolve the tenant's default education catalog so the NOT NULL
+        # catalog_id column (REQ-054 migration 018) is satisfied. Future
+        # tasks will accept catalog_id as an explicit parameter.
+        catalog_result = await self._session.execute(
+            text(
+                "SELECT id FROM metaedu.data_catalogs "
+                "WHERE tenant_id = :tid AND code = 'education'"
+            ),
+            {"tid": tenant_id},
+        )
+        catalog_id = catalog_result.scalar_one()
         await self._session.execute(
             text(
                 "INSERT INTO metaedu.datasets "
-                "(id, tenant_id, name, description, source_file, tags, status, "
+                "(id, tenant_id, catalog_id, name, description, source_file, tags, status, "
                 "kg_status, row_count, sort_order, created_by, created_at, "
                 "updated_at) "
-                "VALUES (:id, :tid, :name, :desc, :sfile, :tags, 'uploaded', "
+                "VALUES (:id, :tid, :cid, :name, :desc, :sfile, :tags, 'uploaded', "
                 "'pending', 0, 0, :uid, :now, :now)"
             ),
             {
                 "id": dataset_id,
                 "tid": tenant_id,
+                "cid": catalog_id,
                 "name": name,
                 "desc": description,
                 "sfile": source_file,
@@ -89,6 +101,7 @@ class DatasetRepository:
         return {
             "id": dataset_id,
             "tenant_id": tenant_id,
+            "catalog_id": catalog_id,
             "name": name,
             "description": description,
             "source_file": source_file,

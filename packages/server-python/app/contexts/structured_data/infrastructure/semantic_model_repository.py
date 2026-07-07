@@ -53,10 +53,27 @@ class SemanticModelRepository:
         boundary. JSONB columns are populated via the dataclass-to-dict
         converters, which guarantees the on-disk shape stays in sync with
         the dataclass contract.
+
+        ``catalog_id`` is resolved to the tenant's default ``education``
+        catalog (REQ-054 migration 018 guarantees one exists). Future tasks
+        will let the caller pass ``catalog_id`` explicitly via the domain
+        model.
         """
+        # Resolve default education catalog for this tenant.
+        from sqlalchemy import text
+
+        catalog_result = await self._session.execute(
+            text(
+                "SELECT id FROM metaedu.data_catalogs "
+                "WHERE tenant_id = :tid AND code = 'education'"
+            ),
+            {"tid": model.tenant_id},
+        )
+        catalog_id = catalog_result.scalar_one()
         row = SemanticModelModel(
             id=model.id,
             tenant_id=model.tenant_id,
+            catalog_id=catalog_id,
             dataset_id=model.dataset_id,
             entity_type=model.entity_type,
             entity_name=model.entity_name,

@@ -39,6 +39,12 @@ class SemanticModelModel(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True
     )
+    catalog_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metaedu.data_catalogs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
     dataset_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("metaedu.datasets.id", ondelete="CASCADE"),
