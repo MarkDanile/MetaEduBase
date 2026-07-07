@@ -14,7 +14,31 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK: REQ-054 平台级数据库（catalog）主题域分组
+
+状态：🟣 Shaping
+类型：Product Planning → Spec
+领域：AI Workspace / Data Platform / Catalog
+当前执行模式：brainstorming → spec（待用户审）
+最近接手工具：主代理
+分支：`docs/req-054-shaping`
+
+需求来源：
+- [Requirement](../01-product-planning/05-requirements/REQ-054-platform-database-catalog.md)
+- [Spec](../02-delivery-plans/01-specs/2026-07-07-req-054-platform-database-catalog.md)
+
+当前进展：
+- 用户决策确认：UI「数据库」/ 代码 `catalog`；自动建默认库迁移；仅 admin 可建库；V1 一次性全做
+- spec 12 章节产出（problem / goal / AC-10 / 架构 / Slice 0-5 共 13 Task / 风险 / 边界 / 安全）
+- 承接 REQ-052 数据层升级（加 catalog_id 维度，不破坏现有能力）
+
+下一步：
+- 用户审 spec → Shaping → Ready
+- 调 writing-plans skill 产出实施计划（预估 9-13 Task）
+- subagent-driven 实施
+
+验证状态：spec 待用户审
+交接备注：spec 在 `docs/02-delivery-plans/01-specs/2026-07-07-req-054-platform-database-catalog.md`；用户审通过后进 plan 阶段
 
 ## 下一批候选任务
 
