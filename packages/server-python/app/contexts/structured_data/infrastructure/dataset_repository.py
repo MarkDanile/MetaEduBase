@@ -17,6 +17,7 @@ class DatasetRepository:
     async def list_datasets(
         self,
         tenant_id: uuid.UUID,
+        catalog_id: uuid.UUID | None = None,
         tag: str | None = None,
         status: str | None = None,
         limit: int = 50,
@@ -26,6 +27,9 @@ class DatasetRepository:
     ) -> list[dict]:
         conditions = ["tenant_id = :tid"]
         params: dict = {"tid": tenant_id}
+        if catalog_id is not None:
+            conditions.append("catalog_id = :cid")
+            params["cid"] = catalog_id
         if tag:
             conditions.append(":tag = ANY(tags)")
             params["tag"] = tag
@@ -63,20 +67,10 @@ class DatasetRepository:
         source_file: str | None,
         tags: list[str],
         created_by: uuid.UUID,
+        catalog_id: uuid.UUID,
     ) -> dict:
         dataset_id = uuid.uuid4()
         now = datetime.now(UTC).replace(tzinfo=None)
-        # Resolve the tenant's default education catalog so the NOT NULL
-        # catalog_id column (REQ-054 migration 018) is satisfied. Future
-        # tasks will accept catalog_id as an explicit parameter.
-        catalog_result = await self._session.execute(
-            text(
-                "SELECT id FROM metaedu.data_catalogs "
-                "WHERE tenant_id = :tid AND code = 'education'"
-            ),
-            {"tid": tenant_id},
-        )
-        catalog_id = catalog_result.scalar_one()
         await self._session.execute(
             text(
                 "INSERT INTO metaedu.datasets "
