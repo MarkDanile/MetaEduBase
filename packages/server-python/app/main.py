@@ -19,6 +19,9 @@ from app.contexts.knowledge.interfaces.api.graph_retrieve_router import (
 from app.contexts.knowledge.interfaces.api.router import router as knowledge_router
 from app.contexts.resource.interfaces.api.router import router as resource_router
 from app.contexts.structured_data.application.query_service import QueryService
+from app.contexts.structured_data.interfaces.api.catalog_router import (
+    router as catalog_router,
+)
 from app.contexts.structured_data.interfaces.api.query_router import (
     router as data_query_router,
 )
@@ -141,6 +144,7 @@ app.include_router(
     prefix="/api/v1/structured-data",
     tags=["structured-data-tasks"],
 )
+app.include_router(catalog_router)
 app.include_router(
     data_query_router, tags=["data-query"]
 )
