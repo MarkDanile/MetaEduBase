@@ -140,6 +140,12 @@ class SemanticModel:
     ``created_at`` / ``updated_at`` are optional because callers building
     a new model in tests or service code may not have them yet; the DB
     column defaults will fill them in on flush.
+
+    ``catalog_id`` is REQ-054's tenant-scoped database identity; it is
+    placed after the required positional fields so it can keep a default
+    of ``None`` (preserving the historical constructor shape for callers
+    that don't yet care about multi-catalog routing). The repository
+    rejects ``catalog_id=None`` at create time.
     """
 
     id: uuid.UUID
@@ -155,3 +161,4 @@ class SemanticModel:
     created_by: uuid.UUID | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    catalog_id: uuid.UUID | None = None  # REQ-054: 所属数据库

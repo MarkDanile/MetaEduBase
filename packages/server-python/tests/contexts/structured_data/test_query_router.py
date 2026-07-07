@@ -79,6 +79,16 @@ async def _persist_semantic_model(session: AsyncSession, dataset_id: uuid.UUID) 
     session (which is a different AsyncSession from this fixture).
     """
     repo = SemanticModelRepository(session)
+    # REQ-054: resolve the default education catalog so the new
+    # ``catalog_id`` column is satisfied.
+    catalog_row = await session.execute(
+        text(
+            "SELECT id FROM metaedu.data_catalogs "
+            "WHERE tenant_id = :tid AND code = 'education'"
+        ),
+        {"tid": DEFAULT_TENANT_ID},
+    )
+    catalog_id = catalog_row.scalar_one()
     now = datetime.now(UTC).replace(tzinfo=None)
     model = SemanticModel(
         id=uuid.uuid4(),
@@ -124,7 +134,7 @@ async def _persist_semantic_model(session: AsyncSession, dataset_id: uuid.UUID) 
         created_at=now,
         updated_at=now,
     )
-    await repo.create(model)
+    await repo.create(model, catalog_id=catalog_id)
     await session.commit()
 
 
@@ -149,6 +159,15 @@ async def _persist_direct_db_model(
     ``bill`` model persisted by other tests.
     """
     repo = SemanticModelRepository(session)
+    # REQ-054: resolve the default education catalog.
+    catalog_row = await session.execute(
+        text(
+            "SELECT id FROM metaedu.data_catalogs "
+            "WHERE tenant_id = :tid AND code = 'education'"
+        ),
+        {"tid": DEFAULT_TENANT_ID},
+    )
+    catalog_id = catalog_row.scalar_one()
     now = datetime.now(UTC).replace(tzinfo=None)
     model = SemanticModel(
         id=uuid.uuid4(),
@@ -185,7 +204,7 @@ async def _persist_direct_db_model(
         created_at=now,
         updated_at=now,
     )
-    await repo.create(model)
+    await repo.create(model, catalog_id=catalog_id)
     await session.commit()
 
 
