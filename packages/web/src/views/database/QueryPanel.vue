@@ -12,14 +12,36 @@
     </div>
 
     <form @submit.prevent="onAsk" class="space-y-2">
-      <select
-        v-model="entityType"
-        class="border border-[var(--color-border)] rounded px-2 py-1 bg-[var(--color-bg)] text-[var(--color-ink)]"
-      >
-        <option value="bill">账单 (bill)</option>
-        <option value="contract">合同 (contract)</option>
-        <option value="ticket">工单 (ticket)</option>
-      </select>
+      <div class="flex flex-wrap gap-2">
+        <select
+          v-model="catalogId"
+          class="border border-[var(--color-border)] rounded px-2 py-1 bg-[var(--color-bg)] text-[var(--color-ink)]"
+          data-testid="catalog-select"
+          :disabled="lockedCatalogId !== null"
+        >
+          <option
+            v-for="c in catalogs"
+            :key="c.id"
+            :value="c.id"
+          >
+            {{ c.name }} ({{ c.code }})
+          </option>
+        </select>
+        <select
+          v-model="entityType"
+          class="border border-[var(--color-border)] rounded px-2 py-1 bg-[var(--color-bg)] text-[var(--color-ink)]"
+          data-testid="entity-type-select"
+        >
+          <option v-if="!availableEntityTypes.length" value="bill">账单 (bill)</option>
+          <option
+            v-for="t in availableEntityTypes"
+            :key="t"
+            :value="t"
+          >
+            {{ entityTypeLabel(t) }}
+          </option>
+        </select>
+      </div>
       <input
         v-model="question"
         placeholder="输入自然语言问题"
@@ -93,25 +115,47 @@
 
 <script setup lang="ts">
 /**
- * REQ-052 Task 6: 前端问数面板。
+ * REQ-052 Task 6 + REQ-054 Task 8: 前端问数面板。
  *
- * - entity_type / question / business_purpose 必填，business_purpose 服务端 ≥5 字 + UI 双重 enforce。
- * - `datasetId` 是 informational prop，不影响请求体；用户选择 entity_type 决定查询范围。
+ * - REQ-054 加 数据库 select（catalog store 加载），与 entity_type 联动：
+ *   切换 catalog 时，entity_type 选项重置为新 catalog 的 entity_types 白名单。
+ * - `catalogId` 可由父组件 `preSelectedCatalogId` prop 锁定（来自 CatalogDetailPage）。
+ * - `entity_type` / `question` / `business_purpose` 必填，business_purpose 服务端 ≥5 字。
  * - 历史写入 Pinia store (`useQueryHistory`)，最多保留 10 条。
  */
-import { ref, computed } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { ask, type AskRequest, type AskResponse } from "@/services/data-query";
 import { useQueryHistory } from "@/stores/query-history";
+import { useCatalogStore } from "@/stores/catalog";
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     datasetId?: string;
+    preSelectedCatalogId?: string | null;
   }>(),
   {
     datasetId: "",
+    preSelectedCatalogId: null,
   },
 );
 
+const ENTITY_TYPE_LABELS: Record<string, string> = {
+  bill: "账单 (bill)",
+  contract: "合同 (contract)",
+  ticket: "工单 (ticket)",
+  invoice: "发票 (invoice)",
+  customer: "客户 (customer)",
+};
+
+function entityTypeLabel(t: string) {
+  return ENTITY_TYPE_LABELS[t] ?? t;
+}
+
+const catalogStore = useCatalogStore();
+const catalogs = computed(() => catalogStore.catalogs);
+const lockedCatalogId = computed(() => props.preSelectedCatalogId ?? null);
+
+const catalogId = ref("");
 const entityType = ref("bill");
 const question = ref("");
 const companyName = ref("");
@@ -120,18 +164,48 @@ const loading = ref(false);
 const result = ref<AskResponse | null>(null);
 const history = useQueryHistory();
 
+const availableEntityTypes = computed(() => {
+  const current = catalogs.value.find((c) => c.id === catalogId.value);
+  return current?.entity_types ?? [];
+});
+
 const resultColumns = computed(() => {
   if (!result.value?.result_rows || result.value.result_rows.length === 0) return [];
   return Object.keys(result.value.result_rows[0]);
 });
 
+onMounted(async () => {
+  if (catalogs.value.length === 0) {
+    try {
+      await catalogStore.fetch();
+    } catch {
+      // toast handled by QueryCache.onError in main.ts
+    }
+  }
+  // Initialize selection: locked > first available
+  if (lockedCatalogId.value) {
+    catalogId.value = lockedCatalogId.value;
+  } else if (catalogs.value.length > 0) {
+    catalogId.value = catalogs.value[0].id;
+  }
+});
+
+watch(catalogId, () => {
+  // Reset entity_type to first available in selected catalog
+  const entityTypes = availableEntityTypes.value;
+  if (entityTypes.length > 0 && !entityTypes.includes(entityType.value)) {
+    entityType.value = entityTypes[0];
+  }
+});
+
 async function onAsk() {
-  // 客户端二次校验：question 必填 + business_purpose ≥5 字（与后端 pydantic 双重 enforce）。
+  if (!catalogId.value) return;
   if (!question.value.trim() || businessPurpose.value.trim().length < 5) return;
   loading.value = true;
   result.value = null;
   try {
     const req: AskRequest = {
+      catalog_id: catalogId.value,
       entity_type: entityType.value,
       question: question.value,
       business_purpose: businessPurpose.value,
@@ -141,14 +215,10 @@ async function onAsk() {
     result.value = res;
     history.add(req, res);
   } catch (err: unknown) {
-    // Axios errors carry response.data (AskResponse) for known non-2xx
-    // (404/422/400/401), or are generic Error for network failures.
     const responseData = (err as { response?: { data?: unknown } })?.response?.data;
     if (responseData && typeof responseData === "object") {
-      // Backend returned an AskResponse-shaped body (validation, unsupported type, etc.)
       result.value = responseData as AskResponse;
     } else {
-      // Network error / timeout / unknown
       const message = err instanceof Error ? err.message : "网络错误，请重试";
       result.value = {
         ok: false,

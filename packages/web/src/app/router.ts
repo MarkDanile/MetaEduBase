@@ -43,6 +43,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import("@/views/database/DatabaseView.vue"),
       },
       {
+        path: "database/:catalogCode",
+        name: "catalog-detail",
+        component: () => import("@/views/database/CatalogDetailPage.vue"),
+      },
+      {
         path: "ai-chat",
         name: "ai-chat",
         component: () => import("@/views/ai-chat/AiChatView.vue"),

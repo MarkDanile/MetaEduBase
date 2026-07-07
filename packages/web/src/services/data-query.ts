@@ -1,12 +1,15 @@
 /**
- * REQ-052 Task 6: 数据查询 API 客户端 + 类型定义。
+ * REQ-052 Task 6 + REQ-054 Task 8: 数据查询 API 客户端 + 类型定义。
  *
  * 与后端 `/api/v1/data-query/ask` 端点对齐。
  * axios 实例统一从 `./api` 引入，避免使用不存在的 `@/utils/http` 路径。
+ *
+ * REQ-054 加 `catalog_id` 字段：按 (catalog_id, entity_type) 双键路由到对应语义模型。
  */
 import api from "./api";
 
 export interface AskRequest {
+  catalog_id: string;
   entity_type: string;
   question: string;
   business_purpose: string;
