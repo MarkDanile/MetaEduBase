@@ -533,3 +533,110 @@ async def test_create_uses_model_catalog_id_when_no_arg(
     )
     assert got is not None
     assert got.catalog_id == education_catalog_id
+
+
+# ---------------------------------------------------------------------------
+# REQ-054 Task 5 follow-up (review): pin get_active_by_entity_type contract
+# ---------------------------------------------------------------------------
+
+
+async def test_get_active_by_entity_type_silently_returns_one_when_multiple_active(
+    db_session, sample_dataset, education_catalog_id, second_catalog_id
+):
+    """Pin the contract of the deprecated ``get_active_by_entity_type``.
+
+    The method's SQL has ``ORDER BY updated_at DESC LIMIT 1`` and the
+    ORM call is ``scalar_one_or_none()``. With two active rows that
+    share ``(tenant_id, entity_type)`` the method therefore **silently
+    returns one row** — the most-recently-updated active row — without
+    raising. (See the deprecated-method docstring.)
+
+    This test pins that behavior so the docstring and the contract stay
+    in sync, and so future "fixes" that change the behavior have to
+    update both the docstring and this test together.
+    """
+    repo = SemanticModelRepository(db_session)
+
+    # Two active models, same entity_type, different catalogs AND
+    # different data_source_config (required so the unique constraint
+    # ``(tenant_id, catalog_id, entity_type, data_source_config)``
+    # allows both rows to coexist).
+    edu_model = _make_semantic_model(
+        sample_dataset["id"], education_catalog_id, entity_type="collide_type"
+    )
+    edu_model.data_source_config = {
+        "type": DataSourceType.IMPORTED_DATASET.value,
+        "dataset_id": str(uuid.uuid4()),
+    }
+    await repo.create(edu_model, catalog_id=education_catalog_id)
+
+    hr_model = _make_semantic_model(
+        sample_dataset["id"],
+        second_catalog_id,
+        entity_type="collide_type",
+        entity_name="HR colliding entity",
+    )
+    hr_model.data_source_config = {
+        "type": DataSourceType.IMPORTED_DATASET.value,
+        "dataset_id": str(uuid.uuid4()),
+    }
+    hr_model.column_mapping = {
+        "employee_id": ColumnMapping(
+            role=ColumnRole.ENTITY_KEY,
+            type=ColumnType.STR,
+        ),
+    }
+    await repo.create(hr_model, catalog_id=second_catalog_id)
+    await db_session.commit()
+
+    # Sanity: both rows are active and share (tenant_id, entity_type).
+    count_stmt = select(SemanticModelModel).where(
+        SemanticModelModel.tenant_id == DEFAULT_TENANT_ID,
+        SemanticModelModel.entity_type == "collide_type",
+        SemanticModelModel.status == "active",
+    )
+    rows = (await db_session.execute(count_stmt)).scalars().all()
+    assert len(rows) == 2
+
+    # The deprecated single-key lookup returns ONE of the rows without
+    # raising — that's the LIMIT 1 / ORDER BY updated_at DESC contract.
+    got = await repo.get_active_by_entity_type(
+        tenant_id=DEFAULT_TENANT_ID,
+        entity_type="collide_type",
+    )
+
+    assert got is not None
+    # The method returns SOME matching active row (it cannot guarantee
+    # which one given multiple active rows). We just verify the lookup
+    # silently succeeded instead of raising, which is the behavior pin.
+    assert got.id in {edu_model.id, hr_model.id}
+    assert got.entity_type == "collide_type"
+
+
+async def test_get_active_by_entity_type_returns_single_when_unique(
+    db_session, sample_dataset, education_catalog_id
+):
+    """Counterpart to the ambiguity-pin test: when only ONE active
+    row matches ``(tenant_id, entity_type)``, the deprecated method
+    returns that row.
+
+    This pins the happy path so the contract of
+    ``get_active_by_entity_type`` is unambiguously documented: on a
+    unique match it returns the row; on ambiguity (>1 active row) it
+    returns one of them silently per the LIMIT 1 ordering.
+    """
+    repo = SemanticModelRepository(db_session)
+    model = _make_semantic_model(
+        sample_dataset["id"], education_catalog_id, entity_type="lonely_type"
+    )
+    await repo.create(model, catalog_id=education_catalog_id)
+    await db_session.commit()
+
+    got = await repo.get_active_by_entity_type(
+        tenant_id=model.tenant_id,
+        entity_type="lonely_type",
+    )
+
+    assert got is not None
+    assert got.id == model.id
+    assert got.entity_type == "lonely_type"

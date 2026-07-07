@@ -162,12 +162,14 @@ class SemanticModelRepository:
 
         .. deprecated::
             REQ-054: this method does NOT filter by ``catalog_id`` and is
-            unsafe once a tenant has more than one catalog — it may return
-            any one of several active rows for the same ``entity_type``
-            (order is by ``updated_at`` desc, which is not stable). New
-            callers MUST use
-            :meth:`get_active_by_catalog_and_entity_type` and pass an
-            explicit ``catalog_id``. This method is kept for backward
+            unsafe once a tenant has more than one catalog. The SQL
+            query orders by ``updated_at DESC`` and applies ``LIMIT 1``,
+            so when multiple active rows share ``(tenant_id, entity_type)``
+            the method **silently returns one of them** (the most
+            recently updated row). Callers therefore cannot tell whether
+            they got the "right" row for their catalog. New callers MUST
+            use :meth:`get_active_by_catalog_and_entity_type` and pass
+            an explicit ``catalog_id``. This method is kept for backward
             compatibility with the REQ-052 single-tenant path until the
             router migrates (tracked outside this task).
         """
