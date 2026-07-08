@@ -53,6 +53,7 @@ export const structuredDataApi = {
   listDatasets: (params?: {
     tag?: string;
     status?: string;
+    catalog_id?: string;
     offset?: number;
     limit?: number;
     sort_by?: string;

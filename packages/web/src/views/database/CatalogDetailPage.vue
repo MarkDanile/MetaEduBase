@@ -51,8 +51,8 @@
         <div class="flex flex-wrap gap-4">
           <DatasetListPanel
             class="w-[260px]"
-            :datasets="filteredDatasets"
-            :loading="datasetsLoading"
+            :datasets="allDatasetsForCatalog"
+            :loading="datasetsCatalogLoading"
             :selected-id="selectedDatasetId"
             :show-kg-overview="false"
             :sort-by="'created_at'"
@@ -231,7 +231,6 @@ import type { KnowledgeEdgeDTO, KnowledgeNodeDTO } from "@/services/knowledge";
 import { structuredDataApi } from "@/services/structured-data";
 import {
   datasetKeys,
-  useDatasetsQuery,
   useDatasetRowsQuery,
   useDatasetKgQuery,
   useUploadDatasetMutation,
@@ -268,11 +267,6 @@ const catalog = computed<CatalogDTO | null>(() => {
 const pageLoading = computed(() => catalogStore.loading && !catalog.value);
 
 // --- Datasets filtered by current catalog ---
-const datasetsParams = computed(() => ({ sort_by: "created_at", sort_dir: "desc" }));
-const datasetsQuery = useDatasetsQuery(datasetsParams);
-const datasets = computed<DatasetDTO[]>(() => datasetsQuery.data.value ?? []);
-const datasetsLoading = computed(() => datasetsQuery.isLoading.value);
-
 const allDatasetsForCatalog = ref<DatasetDTO[]>([]);
 const datasetsCatalogLoading = ref(false);
 
@@ -283,10 +277,8 @@ async function loadCatalogDatasets() {
   }
   datasetsCatalogLoading.value = true;
   try {
-    const res = await structuredDataApi.listDatasets({});
-    allDatasetsForCatalog.value = res.data.filter(
-      (d) => d.tenant_id === catalog.value!.tenant_id,
-    );
+    const res = await structuredDataApi.listDatasets({ catalog_id: catalog.value.id });
+    allDatasetsForCatalog.value = res.data;
   } catch {
     allDatasetsForCatalog.value = [];
   } finally {
@@ -294,22 +286,12 @@ async function loadCatalogDatasets() {
   }
 }
 
-const filteredDatasets = computed<DatasetDTO[]>(() => {
-  // No direct catalog_id column on listDatasets in this stage, so we
-  // conservatively show all datasets and let detail provide context.
-  // Real filtering happens via backend filter (added in Task 3).
-  const list = allDatasetsForCatalog.value.length
-    ? allDatasetsForCatalog.value
-    : datasets.value;
-  return list;
-});
-
 // --- Selected dataset detail ---
 const selectedDatasetId = ref<string | null>(null);
 const selectedDataset = computed<DatasetDTO | null>(() => {
   const id = selectedDatasetId.value;
   if (!id) return null;
-  return filteredDatasets.value.find((d) => d.id === id) ?? null;
+  return allDatasetsForCatalog.value.find((d) => d.id === id) ?? null;
 });
 
 const rowsQuery = useDatasetRowsQuery(selectedDatasetId, ref({ offset: 0, limit: 20 }));
