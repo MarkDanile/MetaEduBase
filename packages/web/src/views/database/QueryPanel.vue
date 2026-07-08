@@ -37,7 +37,7 @@
             {{ entityTypesLoading
               ? "加载实体类型..."
               : availableEntityTypes.length === 0
-                ? "请先上传数据集"
+                ? (datasetsCount === 0 ? "请先上传数据集" : "请先指定实体类型")
                 : "请选择实体类型" }}
           </option>
           <option
@@ -54,7 +54,12 @@
         class="text-[var(--text-micro)] text-amber-600"
         data-testid="entity-type-empty-hint"
       >
-        该数据库尚未上传数据集，entity_type 列表为空。请先上传数据集以发现实体类型。
+        <template v-if="datasetsCount === 0">
+          该数据库尚未上传数据集，entity_type 列表为空。请先上传数据集以发现实体类型。
+        </template>
+        <template v-else>
+          现有 {{ datasetsCount }} 个数据集未指定 entity_type，请在数据集 tab 中为数据集指定 entity_type
+        </template>
       </p>
       <input
         v-model="question"
@@ -174,6 +179,10 @@ const history = useQueryHistory();
 // REQ-054 review fix #5: entity_type 从该 catalog 的 datasets 动态聚合。
 const discoveredEntityTypes = ref<string[]>([]);
 const entityTypesLoading = ref(false);
+// REQ-054 bugfix: track raw dataset count so the empty hint distinguishes
+// "no datasets" (upload first) from "datasets exist but entity_type NULL"
+// (assign entity_type in the datasets tab).
+const datasetsCount = ref(0);
 
 const availableEntityTypes = computed(() => discoveredEntityTypes.value);
 
@@ -185,11 +194,13 @@ const resultColumns = computed(() => {
 async function loadEntityTypes(catId: string) {
   if (!catId) {
     discoveredEntityTypes.value = [];
+    datasetsCount.value = 0;
     return;
   }
   entityTypesLoading.value = true;
   try {
     const res = await structuredDataApi.listDatasets({ catalog_id: catId });
+    datasetsCount.value = res.data.length;
     const types = new Set<string>();
     for (const ds of res.data) {
       if (ds.entity_type) types.add(ds.entity_type);
@@ -197,6 +208,7 @@ async function loadEntityTypes(catId: string) {
     discoveredEntityTypes.value = Array.from(types).sort();
   } catch {
     discoveredEntityTypes.value = [];
+    datasetsCount.value = 0;
   } finally {
     entityTypesLoading.value = false;
   }

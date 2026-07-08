@@ -21,6 +21,9 @@ class DatasetUpdate(BaseModel):
     description: str | None = None
     tags: list[str] | None = None
     sort_order: int | None = None
+    # REQ-054 bugfix: allow editing entity_type on existing datasets so legacy
+    # rows (entity_type NULL pre-migration-019) can be tagged without re-upload.
+    entity_type: str | None = None
 
 
 class DatasetDTO(BaseModel):

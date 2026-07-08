@@ -115,6 +115,37 @@ async def test_update_dataset(client, auth_headers):
     assert resp.json()["name"] == "更新名称"
 
 
+async def test_update_dataset_entity_type(client, auth_headers):
+    """REQ-054 bugfix: PATCH /datasets/{id} 支持更新 entity_type。
+
+    Legacy datasets（migration 019 之前上传，entity_type NULL）需要不重新上传
+    即可补填 entity_type，否则语义层 tab 与问数 entity_type 下拉都会过滤掉它们。
+    """
+    catalog_id = await _get_education_catalog_id(client, auth_headers)
+    upload = await client.post(
+        "/api/v1/structured-data/datasets/upload",
+        files={"file": _xlsx_file("update_entity.xlsx", b"original")},
+        data={"catalog_id": catalog_id, "entity_type": "customer"},
+        headers=auth_headers,
+    )
+    ds_id = upload.json()["id"]
+
+    resp = await client.patch(
+        f"/api/v1/structured-data/datasets/{ds_id}",
+        json={"entity_type": "invoice"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["entity_type"] == "invoice"
+
+    # Persisted: GET 回读确认落库
+    get_resp = await client.get(
+        f"/api/v1/structured-data/datasets/{ds_id}", headers=auth_headers
+    )
+    assert get_resp.status_code == 200
+    assert get_resp.json()["entity_type"] == "invoice"
+
+
 async def test_delete_dataset(client, auth_headers):
     catalog_id = await _get_education_catalog_id(client, auth_headers)
     upload = await client.post(

@@ -280,6 +280,34 @@ function useRebuildKgMutation(
   });
 }
 
+interface UpdateDatasetVars {
+  name?: string;
+  description?: string;
+  tags?: string[];
+  sort_order?: number;
+  entity_type?: string;
+}
+
+function useUpdateDatasetMutation(
+  datasetId: Ref<string | null>,
+  onSuccess: (data: DatasetDTO) => void,
+): UseMutationReturnType<DatasetDTO, Error, UpdateDatasetVars, unknown> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: UpdateDatasetVars) =>
+      structuredDataApi
+        .updateDataset(datasetId.value as string, vars)
+        .then((r) => r.data),
+    onSuccess: (data) => {
+      onSuccess(data);
+      // REQ-054 bugfix: invalidate all dataset caches so the semantic tab
+      // and QueryPanel entity_type dropdown re-aggregate after an
+      // entity_type edit.
+      void qc.invalidateQueries({ queryKey: datasetKeys.all });
+    },
+  });
+}
+
 export {
   useDatasetsQuery,
   useDatasetTasksQuery,
@@ -291,4 +319,5 @@ export {
   useRetryTasksMutation,
   useReinitializeMutation,
   useRebuildKgMutation,
+  useUpdateDatasetMutation,
 };

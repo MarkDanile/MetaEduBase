@@ -26,16 +26,18 @@ vi.mock("@/services/catalog", () => ({
   deleteCatalog: vi.fn(),
 }));
 
-const { mockListDatasets, mockGetKnowledgeGraph, mockRebuildKg } = vi.hoisted(() => ({
+const { mockListDatasets, mockGetKnowledgeGraph, mockRebuildKg, mockUpdateDataset } = vi.hoisted(() => ({
   mockListDatasets: vi.fn(),
   mockGetKnowledgeGraph: vi.fn(),
   mockRebuildKg: vi.fn(),
+  mockUpdateDataset: vi.fn(),
 }));
 
 vi.mock("@/services/structured-data", () => ({
   structuredDataApi: {
     listDatasets: mockListDatasets,
     uploadDataset: vi.fn(),
+    updateDataset: mockUpdateDataset,
     getKnowledgeGraph: mockGetKnowledgeGraph,
     rebuildKnowledgeGraph: mockRebuildKg,
   },
@@ -254,6 +256,7 @@ describe("CatalogDetailPage.vue (REQ-054 Task 8 + review fix)", () => {
     mockListDatasets.mockReset().mockResolvedValue({ data: SAMPLE_DATASETS });
     mockGetKnowledgeGraph.mockReset().mockResolvedValue({ data: { nodes: [], edges: [] } });
     mockRebuildKg.mockReset().mockResolvedValue({ data: { status: "ok", dataset_count: 3 } });
+    mockUpdateDataset.mockReset().mockResolvedValue({ data: SAMPLE_DATASETS[0] });
   });
 
   it("renders 4 tabs (数据集 / 语义层 / 知识图谱 / 问数)", async () => {
@@ -295,12 +298,43 @@ describe("CatalogDetailPage.vue (REQ-054 Task 8 + review fix)", () => {
     expect(wrapper.find('[data-testid="semantic-empty"]').exists()).toBe(true);
   });
 
+  it("semantic tab shows assign-entity-type hint when datasets exist but entity_type all NULL", async () => {
+    // Legacy datasets (pre-migration-019) have entity_type NULL. The semantic
+    // tab must NOT say "尚未配置语义层"; it should tell the user to assign
+    // entity_type in the datasets tab.
+    mockListDatasets.mockResolvedValue({
+      data: SAMPLE_DATASETS.map((d) => ({ ...d, entity_type: null })),
+    });
+    const { wrapper } = await mountDetail();
+    await wrapper.find('[data-testid="tab-semantic"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="semantic-empty"]').exists()).toBe(false);
+    const hint = wrapper.find('[data-testid="semantic-no-entity-type"]');
+    expect(hint.exists()).toBe(true);
+    expect(hint.text()).toContain("未指定 entity_type");
+    expect(hint.text()).toContain(String(SAMPLE_DATASETS.length));
+  });
+
   it("switches to kg tab and embeds KgOverviewPanel", async () => {
     const { wrapper } = await mountDetail();
     await wrapper.find('[data-testid="tab-kg"]').trigger("click");
     await flushPromises();
     const kgOverview = wrapper.find('[data-testid="stub-kg-overview"]');
     expect(kgOverview.exists()).toBe(true);
+  });
+
+  it("lazy-mounts KgOverviewPanel only after KG tab is first opened (avoid 0-width graph)", async () => {
+    const { wrapper } = await mountDetail();
+    // Before opening KG tab, the panel is not mounted (section is v-show
+    // hidden, so a mounted G6 graph would read clientWidth=0).
+    expect(wrapper.find('[data-testid="stub-kg-overview"]').exists()).toBe(false);
+    // KG section reserves vertical render space.
+    const kgSection = wrapper.find('[data-testid="tab-panel-kg"]');
+    expect(kgSection.classes()).toContain("min-h-[600px]");
+    // After opening KG tab, the panel mounts.
+    await wrapper.find('[data-testid="tab-kg"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="stub-kg-overview"]').exists()).toBe(true);
   });
 
   it("switches to ask tab and embeds QueryPanel with preSelectedCatalogId", async () => {

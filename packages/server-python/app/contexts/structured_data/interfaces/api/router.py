@@ -226,6 +226,7 @@ async def update_dataset(
         description=data.description,
         tags=data.tags,
         sort_order=data.sort_order,
+        entity_type=data.entity_type,
     )
     row = await repo.get_by_id(did, tid)
     return _dataset_row_to_dto(row)
