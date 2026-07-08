@@ -192,7 +192,7 @@ interface UploadDatasetVars {
 }
 
 function useUploadDatasetMutation(
-  onSuccess: () => void,
+  onSuccess: (data: DatasetDTO) => void,
 ): UseMutationReturnType<DatasetDTO, Error, UploadDatasetVars, unknown> {
   const qc = useQueryClient();
   return useMutation({
@@ -201,8 +201,10 @@ function useUploadDatasetMutation(
     // here silently dropped the dataset name and fell back to file.filename.
     mutationFn: ({ formData, name }) =>
       structuredDataApi.uploadDataset(formData, name).then((r) => r.data),
-    onSuccess: () => {
-      onSuccess();
+    // REQ-054 review fix: forward the returned DatasetDTO so the caller can
+    // surface the new-entity-type `warning` to the user.
+    onSuccess: (data) => {
+      onSuccess(data);
       void qc.invalidateQueries({ queryKey: datasetKeys.all });
     },
   });

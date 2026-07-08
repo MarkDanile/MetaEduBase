@@ -1,10 +1,12 @@
 /**
- * REQ-052 + REQ-054 Task 8: UploadDatasetDialog 行为锁。
+ * REQ-052 + REQ-054 Task 8 + review fix: UploadDatasetDialog 行为锁。
  *
- * - REQ-054: 数据库 select（catalog store 加载）+ entity_type select（按白名单过滤）。
+ * - REQ-054: 数据库 select（catalog store 加载）。
+ * - entity_type 自由输入（datalist 提示已发现类型，不再校验白名单）。
  * - preSelectedCatalogId prop 锁定 catalog select。
  * - 表单合法性：catalog_id + entity_type + name + file 均必填，canUpload 联动。
  * - 上传时 FormData 必带 catalog_id + entity_type。
+ * - review fix: warning prop 展示后端返回的新实体类型提示。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
@@ -68,6 +70,7 @@ async function mountDialog(props: {
   form?: UploadForm;
   uploading?: boolean;
   preSelectedCatalogId?: string | null;
+  warning?: string | null;
 } = {}) {
   setActivePinia(createPinia());
   const catalogStore = useCatalogStore();
@@ -80,21 +83,22 @@ async function mountDialog(props: {
       form: props.form ?? emptyForm(),
       uploading: props.uploading ?? false,
       preSelectedCatalogId: props.preSelectedCatalogId ?? null,
+      warning: props.warning ?? null,
     },
   });
   await flushPromises();
   return wrapper;
 }
 
-describe("UploadDatasetDialog.vue (REQ-052 + REQ-054 Task 8)", () => {
+describe("UploadDatasetDialog.vue (REQ-052 + REQ-054 Task 8 + review fix)", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("renders catalog select and entity_type select", async () => {
+  it("renders catalog select and entity_type input", async () => {
     const wrapper = await mountDialog();
     expect(wrapper.find('[data-testid="upload-catalog-select"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="upload-entity-type-select"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="upload-entity-type-input"]').exists()).toBe(true);
   });
 
   it("renders catalog options from catalog store", async () => {
@@ -106,15 +110,26 @@ describe("UploadDatasetDialog.vue (REQ-052 + REQ-054 Task 8)", () => {
     expect(labels.some((l) => l.includes("人力资源"))).toBe(true);
   });
 
-  it("entity_type options follow selected catalog whitelist", async () => {
+  it("entity_type datalist shows discovered types as suggestions", async () => {
     const wrapper = await mountDialog({
       form: { ...emptyForm(), catalog_id: "cat-fin" },
     });
-    const select = wrapper.find('[data-testid="upload-entity-type-select"]');
-    const values = select.findAll("option").map((o) => o.attributes("value"));
+    const datalist = wrapper.find("#upload-entity-type-suggestions");
+    expect(datalist.exists()).toBe(true);
+    const values = datalist.findAll("option").map((o) => o.attributes("value"));
     expect(values).toContain("bill");
     expect(values).toContain("invoice");
     expect(values).not.toContain("employee");
+  });
+
+  it("entity_type input is free-text (not disabled) even with empty catalog types", async () => {
+    const wrapper = await mountDialog({
+      form: { ...emptyForm(), catalog_id: "cat-fin", entity_type: "custom_new_type" },
+    });
+    const input = wrapper.find('[data-testid="upload-entity-type-input"]');
+    expect(input.exists()).toBe(true);
+    expect(input.attributes("disabled")).toBeUndefined();
+    expect((input.element as HTMLInputElement).value).toBe("custom_new_type");
   });
 
   it("switching catalog resets entity_type (parent emits new form)", async () => {
@@ -130,7 +145,19 @@ describe("UploadDatasetDialog.vue (REQ-052 + REQ-054 Task 8)", () => {
     expect(last.entity_type).toBe("");
   });
 
-  it("preSelectedCatalogId prop disables catalog select and pre-fills form", async () => {
+  it("emits update:form when entity_type input changes", async () => {
+    const wrapper = await mountDialog({
+      form: { ...emptyForm(), catalog_id: "cat-fin" },
+    });
+    const input = wrapper.find('[data-testid="upload-entity-type-input"]');
+    await input.setValue("new_type");
+    const updates = wrapper.emitted("update:form");
+    expect(updates).toBeTruthy();
+    const last = updates![updates!.length - 1][0] as UploadForm;
+    expect(last.entity_type).toBe("new_type");
+  });
+
+  it("preSelectedCatalogId prop disables catalog select", async () => {
     const wrapper = await mountDialog({
       open: true,
       preSelectedCatalogId: "cat-hr",
@@ -185,9 +212,17 @@ describe("UploadDatasetDialog.vue (REQ-052 + REQ-054 Task 8)", () => {
     expect(last.entity_type).toBe("bill");
   });
 
-  it("renders fallback entity_type options when no catalog selected", async () => {
-    const wrapper = await mountDialog({ form: emptyForm() });
-    const select = wrapper.find('[data-testid="upload-entity-type-select"]');
-    expect(select.attributes("disabled")).toBeDefined();
+  it("renders warning when warning prop is set", async () => {
+    const wrapper = await mountDialog({
+      warning: "发现新实体类型 ticket，请确认是否属于本主题",
+    });
+    const warning = wrapper.find('[data-testid="upload-warning"]');
+    expect(warning.exists()).toBe(true);
+    expect(warning.text()).toContain("发现新实体类型 ticket");
+  });
+
+  it("does not render warning when warning prop is null", async () => {
+    const wrapper = await mountDialog({ warning: null });
+    expect(wrapper.find('[data-testid="upload-warning"]').exists()).toBe(false);
   });
 });

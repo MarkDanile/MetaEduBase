@@ -33,7 +33,9 @@ export interface CatalogDTO {
 export interface CatalogCreate {
   code: string;
   name: string;
-  entity_types: string[];
+  // REQ-054 review fix: entity_types optional (default empty array on backend).
+  // Discovered dynamically from uploaded datasets rather than declared upfront.
+  entity_types?: string[];
   description?: string;
   icon?: string;
   color?: string;

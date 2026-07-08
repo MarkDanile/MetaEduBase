@@ -6,9 +6,22 @@
     >
       <template #extra>
         <div class="flex items-center gap-2">
-          <span v-if="catalog" class="ui-tag" data-testid="catalog-info-tags">
-            {{ catalog.entity_types.join(' / ') }}
+          <span
+            v-if="catalog && discoveredEntityTypes.length"
+            class="ui-tag"
+            data-testid="catalog-info-tags"
+          >
+            {{ discoveredEntityTypes.join(' / ') }}
           </span>
+          <button
+            v-if="catalog"
+            type="button"
+            class="ui-btn-primary px-3 py-1.5 flex items-center gap-1.5"
+            data-testid="upload-dataset-btn"
+            @click="openUploadDialog"
+          >
+            <Upload :size="14" /> 上传数据集
+          </button>
           <button
             type="button"
             class="ui-btn-ghost px-3 py-1.5 flex items-center gap-1.5"
@@ -90,18 +103,8 @@
             <EmptyState
               v-else
               title="选择左侧数据集查看详情"
-              hint="或点击下方 [+ 上传数据集] 新增"
+              hint="或点击右上角 [上传数据集] 新增"
             />
-            <div class="mt-4 flex gap-2">
-              <button
-                type="button"
-                class="ui-btn-primary px-4 py-2 flex items-center gap-1.5"
-                data-testid="upload-dataset-btn"
-                @click="openUploadDialog"
-              >
-                <Upload :size="14" /> 上传数据集
-              </button>
-            </div>
           </div>
         </div>
       </section>
@@ -112,24 +115,35 @@
           <h3 class="text-[var(--text-section-title)] font-medium mb-3 text-[var(--color-ink)]">
             语义层（按 catalog_id 隔离）
           </h3>
-          <p v-if="!catalog.entity_types.length" class="text-[var(--color-ink-tertiary)]" data-testid="semantic-no-types">
-            此数据库尚未配置 entity_types，无法启用语义层。
-          </p>
-          <div v-else class="space-y-2">
+          <LoadingSpinner v-if="datasetsCatalogLoading" text="加载语义层..." />
+          <EmptyState
+            v-else-if="!semanticModels.length"
+            title="尚未配置语义层"
+            hint="上传数据集后可按实体类型自动构建"
+            data-testid="semantic-empty"
+          />
+          <div v-else class="space-y-3">
             <div
-              v-for="et in catalog.entity_types"
-              :key="et"
+              v-for="model in semanticModels"
+              :key="model.entity_type"
               class="border border-[var(--color-border)] rounded p-3"
-              :data-testid="`semantic-row-${et}`"
+              :data-testid="`semantic-row-${model.entity_type}`"
             >
               <div class="flex items-center justify-between">
-                <span class="font-medium">{{ et }}</span>
-                <span class="ui-tag text-[var(--text-micro)]" :data-testid="`semantic-state-${et}`">
-                  {{ semanticStates[et] ? semanticStates[et] : "未激活" }}
+                <span class="font-medium">{{ model.entity_type }}</span>
+                <span class="ui-tag text-[var(--text-micro)]" :data-testid="`semantic-state-${model.entity_type}`">
+                  已就绪 · {{ model.datasetCount }} 个数据集
                 </span>
               </div>
-              <p class="text-[var(--text-caption)] text-[var(--color-ink-tertiary)] mt-1">
-                (catalog_id, {{ et }}) 双键路由的语义模型 (V1 只读)
+              <p
+                v-if="model.columns.length"
+                class="text-[var(--text-caption)] text-[var(--color-ink-tertiary)] mt-1"
+                :data-testid="`semantic-columns-${model.entity_type}`"
+              >
+                列映射 ({{ model.columns.length }}): {{ model.columns.join(', ') }}
+              </p>
+              <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)] mt-1">
+                (catalog_id, {{ model.entity_type }}) 双键路由的语义模型 · V1 从已上传数据集聚合
               </p>
             </div>
           </div>
@@ -138,37 +152,19 @@
 
       <!-- Tab 3: 知识图谱 -->
       <section v-show="activeTab === 'kg'" data-testid="tab-panel-kg" class="mt-4">
-        <div class="ui-panel p-4">
-          <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center gap-2">
-              <GitBranch :size="18" class="text-[var(--color-accent)]" />
-              <h3 class="text-[var(--text-section-title)] font-medium text-[var(--color-ink)]">
-                知识图谱（按 catalog_id 过滤）
-              </h3>
-              <span class="text-[var(--text-small)] text-[var(--color-ink-tertiary)]" data-testid="kg-node-count">
-                {{ kgNodes.length }} 节点 · {{ kgEdges.length }} 关系
-              </span>
-            </div>
-          </div>
-          <LoadingSpinner v-if="kgCatalogLoading" text="加载知识图谱..." />
-          <EmptyState
-            v-else-if="!kgNodes.length"
-            title="暂无知识图谱节点"
-            hint="从该数据库下的数据集中抽取"
-          />
-          <div v-else class="space-y-1 max-h-[400px] overflow-y-auto">
-            <div
-              v-for="node in kgNodes.slice(0, 50)"
-              :key="node.id"
-              class="px-3 py-2 rounded hover:bg-[var(--color-bg-hover)]"
-            >
-              <div class="text-[var(--text-body)] font-medium">{{ node.title }}</div>
-              <div class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">
-                {{ node.domain }} · {{ node.level }}
-              </div>
-            </div>
-          </div>
-        </div>
+        <!--
+          V1: 复用全局 KG 总览面板（KgOverviewPanel）。
+          后端 knowledge-graph 接口暂未支持 catalog_id 过滤，V2 将加过滤参数后
+          在 useKgOverviewQuery 内按 catalog_id 拉取。
+        -->
+        <KgOverviewPanel
+          :nodes="kgOverviewNodes"
+          :edges="kgOverviewEdges"
+          :loading="kgOverviewLoading"
+          :rebuilding="kgRebuilding"
+          @rebuild="onRebuildKg"
+          @node-click="() => {}"
+        />
       </section>
 
       <!-- Tab 4: 问数 -->
@@ -183,6 +179,7 @@
       :form="uploadForm"
       :uploading="uploadInProgress"
       :pre-selected-catalog-id="catalog.id"
+      :warning="uploadWarning"
       @update:open="(v: boolean) => (uploadOpen = v)"
       @update:form="onUploadFormChange"
       @file-change="onFileChange"
@@ -193,18 +190,20 @@
 
 <script setup lang="ts">
 /**
- * REQ-054 Task 8: 数据库详情页。
+ * REQ-054 Task 8 + review fix: 数据库详情页。
  *
  * 4 tab：
  * - 数据集：复用 DatasetListPanel + DatasetDetailMetaBar + DatasetTabsPanel，
  *   按 catalog_id 过滤当前数据库的数据集。
- * - 语义层：V1 只读，列出该 catalog 的 entity_types 与占位状态。
- * - 知识图谱：按 catalog_id 过滤 KG 节点（V1 stub 简化展示）。
+ * - 语义层：V1 从已上传 datasets 聚合 DISTINCT entity_type，展示每个实体类型
+ *   的数据集数量与列映射（复查反馈 #4，替代原占位「未激活」）。
+ * - 知识图谱：嵌入 KgOverviewPanel 全局总览（复查反馈 #2，替代原 stub）。
+ *   V1 后端 KG 接口未支持 catalog_id 过滤，V2 加过滤。
  * - 问数：嵌入 QueryPanel，传入 preSelectedCatalogId 锁定该库。
  *
- * URL: /database/:catalogCode (注册在 router.ts)
+ * 复查反馈 #3：「上传数据集」按钮移到 PageHeader #extra，固定右上角不随列表滚动。
  *
- * Task 7 的 DatabaseView 卡片 click → router.push(`/database/${catalog.code}`)。
+ * URL: /database/:catalogCode (注册在 router.ts)
  */
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -222,6 +221,7 @@ import LoadingSpinner from "@/components/LoadingSpinner.vue";
 import DatasetListPanel from "@/views/database/DatasetListPanel.vue";
 import DatasetTabsPanel from "@/views/database/DatasetTabsPanel.vue";
 import DatasetDetailMetaBar from "@/views/database/DatasetDetailMetaBar.vue";
+import KgOverviewPanel from "@/views/database/KgOverviewPanel.vue";
 import QueryPanel from "@/views/database/QueryPanel.vue";
 import UploadDatasetDialog from "@/views/database/UploadDatasetDialog.vue";
 import { useCatalogStore } from "@/stores/catalog";
@@ -233,9 +233,11 @@ import {
   datasetKeys,
   useDatasetRowsQuery,
   useDatasetKgQuery,
+  useKgOverviewQuery,
   useUploadDatasetMutation,
   useDeleteDatasetMutation,
   useReinitializeMutation,
+  useRebuildKgMutation,
 } from "@/views/database/queries";
 import { useQueryClient } from "@tanstack/vue-query";
 import { useToast } from "@/composables/useToast";
@@ -286,6 +288,34 @@ async function loadCatalogDatasets() {
   }
 }
 
+// REQ-054 review fix #4: 语义层从 datasets 聚合 DISTINCT entity_type。
+interface SemanticModelView {
+  entity_type: string;
+  datasetCount: number;
+  columns: string[];
+}
+const discoveredEntityTypes = computed<string[]>(() => {
+  const types = new Set<string>();
+  for (const ds of allDatasetsForCatalog.value) {
+    if (ds.entity_type) types.add(ds.entity_type);
+  }
+  return Array.from(types).sort();
+});
+const semanticModels = computed<SemanticModelView[]>(() => {
+  return discoveredEntityTypes.value.map((et) => {
+    const datasets = allDatasetsForCatalog.value.filter((d) => d.entity_type === et);
+    const columns: string[] = [];
+    for (const ds of datasets) {
+      if (ds.column_names) {
+        for (const col of ds.column_names) {
+          if (!columns.includes(col)) columns.push(col);
+        }
+      }
+    }
+    return { entity_type: et, datasetCount: datasets.length, columns };
+  });
+});
+
 // --- Selected dataset detail ---
 const selectedDatasetId = ref<string | null>(null);
 const selectedDataset = computed<DatasetDTO | null>(() => {
@@ -307,32 +337,27 @@ function onSelectDataset(ds: DatasetDTO) {
   selectedDatasetId.value = ds.id;
 }
 
-// --- Catalog-level KG nodes (stub) ---
-const kgNodes = ref<KnowledgeNodeDTO[]>([]);
-const kgEdges = ref<KnowledgeEdgeDTO[]>([]);
-const kgCatalogLoading = ref(false);
+// --- Catalog-level KG overview (review fix #2: embed KgOverviewPanel) ---
+// V1: global KG (no catalog_id filter); V2 will add catalog_id filtering.
+const kgOverviewQuery = useKgOverviewQuery(ref(true));
+const kgOverviewNodes = computed<KnowledgeNodeDTO[]>(() => kgOverviewQuery.data.value?.nodes ?? []);
+const kgOverviewEdges = computed<KnowledgeEdgeDTO[]>(() => kgOverviewQuery.data.value?.edges ?? []);
+const kgOverviewLoading = computed(() => kgOverviewQuery.isLoading.value);
+const kgRebuilding = ref(false);
 
-async function loadCatalogKg() {
-  kgCatalogLoading.value = true;
-  try {
-    // V1 stub: 复用 overview 接口，调用方在 Task 6/9 之后接入 catalog 过滤
-    const res = await structuredDataApi.getKnowledgeGraph();
-    kgNodes.value = (res.data.nodes as unknown as KnowledgeNodeDTO[]).slice(0, 30);
-    kgEdges.value = [];
-  } catch {
-    kgNodes.value = [];
-    kgEdges.value = [];
-  } finally {
-    kgCatalogLoading.value = false;
-  }
+const rebuildKgMutation = useRebuildKgMutation(ref(null), () => {
+  kgRebuilding.value = false;
+  toast.success("知识图谱重建已触发");
+});
+function onRebuildKg() {
+  kgRebuilding.value = true;
+  rebuildKgMutation.mutate();
 }
-
-// --- Semantic layer (V1 stub) ---
-const semanticStates = ref<Record<string, string>>({});
 
 // --- Upload dialog ---
 const uploadOpen = ref(false);
 const uploadInProgress = ref(false);
+const uploadWarning = ref<string | null>(null);
 const emptyUploadForm = (): UploadForm => ({
   name: "",
   description: "",
@@ -347,6 +372,7 @@ function openUploadDialog() {
   if (!catalog.value) return;
   uploadForm.value = emptyUploadForm();
   uploadForm.value.catalog_id = catalog.value.id;
+  uploadWarning.value = null;
   uploadOpen.value = true;
 }
 
@@ -360,10 +386,17 @@ function onFileChange(e: Event) {
   uploadForm.value = { ...uploadForm.value, file };
 }
 
-const uploadMutation = useUploadDatasetMutation(() => {
+const uploadMutation = useUploadDatasetMutation((data) => {
   uploadInProgress.value = false;
-  uploadOpen.value = false;
-  toast.success("数据集上传成功");
+  // REQ-054 review fix: surface new-entity-type warning.
+  if (data.warning) {
+    uploadWarning.value = data.warning;
+    toast.warning(data.warning);
+    // Keep dialog open so the user sees the inline warning.
+  } else {
+    uploadOpen.value = false;
+    toast.success("数据集上传成功");
+  }
   void loadCatalogDatasets();
 });
 
@@ -373,6 +406,7 @@ async function onUploadSubmit() {
     return;
   }
   uploadInProgress.value = true;
+  uploadWarning.value = null;
   const fd = new FormData();
   fd.append("catalog_id", uploadForm.value.catalog_id);
   fd.append("entity_type", uploadForm.value.entity_type);
@@ -426,7 +460,6 @@ onMounted(async () => {
     }
   }
   await loadCatalogDatasets();
-  await loadCatalogKg();
 });
 
 watch(catalogCode, async (next) => {
@@ -434,7 +467,6 @@ watch(catalogCode, async (next) => {
     await catalogStore.fetch();
   }
   await loadCatalogDatasets();
-  await loadCatalogKg();
 });
 
 function goBack() {
