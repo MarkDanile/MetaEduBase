@@ -83,6 +83,7 @@
               :selected="selectedDataset"
               @delete="onDeleteDataset"
               @reinitialize="onReinitialize"
+              @update-entity-type="onUpdateEntityType"
             />
             <DatasetTabsPanel
               v-if="selectedDataset"
@@ -117,11 +118,18 @@
           </h3>
           <LoadingSpinner v-if="datasetsCatalogLoading" text="加载语义层..." />
           <EmptyState
-            v-else-if="!semanticModels.length"
+            v-else-if="allDatasetsForCatalog.length === 0"
             title="尚未配置语义层"
             hint="上传数据集后可按实体类型自动构建"
             data-testid="semantic-empty"
           />
+          <div
+            v-else-if="hasDatasetsWithoutEntityType"
+            data-testid="semantic-no-entity-type"
+            class="text-[var(--text-small)] text-amber-600"
+          >
+            现有 {{ allDatasetsForCatalog.length }} 个数据集未指定 entity_type，请在数据集 tab 中为数据集指定 entity_type
+          </div>
           <div v-else class="space-y-3">
             <div
               v-for="model in semanticModels"
@@ -151,13 +159,24 @@
       </section>
 
       <!-- Tab 3: 知识图谱 -->
-      <section v-show="activeTab === 'kg'" data-testid="tab-panel-kg" class="mt-4">
+      <section
+        v-show="activeTab === 'kg'"
+        data-testid="tab-panel-kg"
+        class="mt-4 min-h-[600px]"
+      >
         <!--
           V1: 复用全局 KG 总览面板（KgOverviewPanel）。
           后端 knowledge-graph 接口暂未支持 catalog_id 过滤，V2 将加过滤参数后
           在 useKgOverviewQuery 内按 catalog_id 拉取。
+
+          Bugfix: lazy-mount KgOverviewPanel with v-if=kgEverOpened so the G6
+          graph only initialises after this section is visible. Under v-show
+          the section is display:none on mount (default tab is datasets), so
+          KGGraph reads clientWidth=0 and renders a 0-width graph. Deferring
+          mount to first tab visit guarantees a real clientWidth.
         -->
         <KgOverviewPanel
+          v-if="kgEverOpened"
           :nodes="kgOverviewNodes"
           :edges="kgOverviewEdges"
           :loading="kgOverviewLoading"
@@ -238,6 +257,7 @@ import {
   useDeleteDatasetMutation,
   useReinitializeMutation,
   useRebuildKgMutation,
+  useUpdateDatasetMutation,
 } from "@/views/database/queries";
 import { useQueryClient } from "@tanstack/vue-query";
 import { useToast } from "@/composables/useToast";
@@ -258,6 +278,12 @@ const toast = useToast();
 const qc = useQueryClient();
 
 const activeTab = ref<TabKey>("datasets");
+// Bugfix: KgOverviewPanel is lazy-mounted on first visit to the KG tab so the
+// G6 graph sees a non-zero container width (see template comment).
+const kgEverOpened = ref(false);
+watch(activeTab, (next) => {
+  if (next === "kg") kgEverOpened.value = true;
+});
 
 // --- Resolve catalog by code from URL ---
 const catalogCode = computed(() => String(route.params.catalogCode ?? ""));
@@ -315,6 +341,12 @@ const semanticModels = computed<SemanticModelView[]>(() => {
     return { entity_type: et, datasetCount: datasets.length, columns };
   });
 });
+// Bugfix: distinguish "no datasets" (-> upload hint) from "datasets exist but
+// none have entity_type" (-> assign entity_type hint). Legacy datasets
+// uploaded before migration 019 have entity_type NULL.
+const hasDatasetsWithoutEntityType = computed(
+  () => allDatasetsForCatalog.value.length > 0 && discoveredEntityTypes.value.length === 0,
+);
 
 // --- Selected dataset detail ---
 const selectedDatasetId = ref<string | null>(null);
@@ -448,6 +480,17 @@ const reinitMutation = useReinitializeMutation(selectedDatasetId, () => {
 
 function onReinitialize() {
   reinitMutation.mutate();
+}
+
+// Bugfix: update entity_type on the selected dataset (legacy NULL -> value).
+const updateDatasetMutation = useUpdateDatasetMutation(selectedDatasetId, () => {
+  toast.success("已更新数据集实体类型");
+  void loadCatalogDatasets();
+});
+
+function onUpdateEntityType(entityType: string) {
+  if (!selectedDatasetId.value) return;
+  updateDatasetMutation.mutate({ entity_type: entityType });
 }
 
 // --- Lifecycle ---

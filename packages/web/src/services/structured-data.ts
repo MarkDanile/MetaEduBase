@@ -72,7 +72,13 @@ export const structuredDataApi = {
   deleteDataset: (id: string) => api.delete(`/structured-data/datasets/${id}`),
   updateDataset: (
     id: string,
-    data: { name?: string; description?: string; tags?: string[]; sort_order?: number },
+    data: {
+      name?: string;
+      description?: string;
+      tags?: string[];
+      sort_order?: number;
+      entity_type?: string;
+    },
   ) => api.patch<DatasetDTO>(`/structured-data/datasets/${id}`, data),
 
   // Rows

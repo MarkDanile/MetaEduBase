@@ -315,5 +315,31 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8 + review fix)", () => 
     const wrapper = await mountPanel();
     await flushPromises();
     expect(wrapper.find('[data-testid="entity-type-empty-hint"]').exists()).toBe(true);
+    // No datasets -> "尚未上传数据集" upload message.
+    expect(wrapper.find('[data-testid="entity-type-empty-hint"]').text()).toContain("尚未上传数据集");
+  });
+
+  it("shows assign-entity-type hint when datasets exist but entity_type all NULL", async () => {
+    // Legacy datasets (pre-migration-019) have entity_type NULL. The panel
+    // must NOT say "尚未上传数据集"; it should tell the user to assign
+    // entity_type in the datasets tab.
+    mockListDatasets.mockReset().mockResolvedValue({
+      data: [
+        { id: "ds-null-1", entity_type: null },
+        { id: "ds-null-2", entity_type: null },
+      ],
+    });
+
+    const wrapper = await mountPanel();
+    await flushPromises();
+    const hint = wrapper.find('[data-testid="entity-type-empty-hint"]');
+    expect(hint.exists()).toBe(true);
+    expect(hint.text()).not.toContain("尚未上传数据集");
+    expect(hint.text()).toContain("未指定 entity_type");
+    expect(hint.text()).toContain("2");
+    // Select placeholder reflects "needs entity_type" not "needs upload".
+    const select = wrapper.find('[data-testid="entity-type-select"]');
+    const placeholderOption = select.find("option");
+    expect(placeholderOption.text()).toContain("请先指定实体类型");
   });
 });
