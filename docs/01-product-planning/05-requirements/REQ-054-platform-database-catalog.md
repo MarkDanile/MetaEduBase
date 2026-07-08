@@ -1,6 +1,6 @@
 # REQ-054: 平台级数据库（catalog）主题域分组与多源数据接入
 
-Status: 🟡 待 PR merge
+Status: 🟢 Done
 Priority: P0
 Milestone: P3
 Domain: AI Workspace / Data Platform / Catalog / 产业园区
