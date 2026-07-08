@@ -49,22 +49,6 @@
 
         <div>
           <label class="block text-[var(--text-small)] text-[var(--color-ink-secondary)] mb-1">
-            实体类型 <span class="text-red-500">*</span>
-          </label>
-          <input
-            v-model="entityTypesText"
-            class="ui-input w-full"
-            placeholder="多个用逗号分隔，如：bill, contract, ticket"
-            required
-            data-testid="catalog-entity-types-input"
-          />
-          <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)] mt-1">
-            至少 1 个，多个用英文逗号分隔
-          </p>
-        </div>
-
-        <div>
-          <label class="block text-[var(--text-small)] text-[var(--color-ink-secondary)] mb-1">
             描述（可选）
           </label>
           <textarea
@@ -75,28 +59,9 @@
           />
         </div>
 
-        <div class="flex gap-2">
-          <div class="flex-1">
-            <label class="block text-[var(--text-small)] text-[var(--color-ink-secondary)] mb-1">
-              图标（可选）
-            </label>
-            <input
-              v-model="form.icon"
-              class="ui-input w-full"
-              placeholder="如：Database, Wallet"
-            />
-          </div>
-          <div class="flex-1">
-            <label class="block text-[var(--text-small)] text-[var(--color-ink-secondary)] mb-1">
-              颜色（可选）
-            </label>
-            <input
-              v-model="form.color"
-              class="ui-input w-full"
-              placeholder="如：#1677ff"
-            />
-          </div>
-        </div>
+        <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">
+          实体类型无需预设，上传数据集后会自动发现并聚合。
+        </p>
 
         <p v-if="errorMessage" class="text-[var(--text-small)] text-red-600" data-testid="catalog-error">
           {{ errorMessage }}
@@ -128,11 +93,16 @@ import { Loader2, Plus, X } from "lucide-vue-next";
 import type { CatalogCreate } from "@/services/catalog";
 
 /**
- * REQ-054 Task 7: 新建数据库对话框。
+ * REQ-054 review fix: 新建数据库对话框（简化版）。
+ *
+ * 复查反馈 #1：原 dialog 字段过多（entity_types / icon / color）。
+ * 简化为只保留 code + name + description（可选）：
+ * - entity_types 不再预设，后端默认空数组，上传数据集后动态发现。
+ * - icon / color 由后端默认值处理。
  *
  * 客户端校验：
  * - code: 正则 `^[a-z][a-z0-9_]*$`，长度 2-50（与后端 pydantic 一致）。
- * - entity_types: 至少 1 个（trim 后非空）。
+ * - name: 非空。
  * 提交成功 emit("submit", req)；失败由父组件 toast 处理，本地只展示 message。
  */
 
@@ -143,10 +113,7 @@ const MIN_CODE_LEN = 2;
 export interface CatalogCreateForm {
   code: string;
   name: string;
-  entity_types: string[];
   description: string;
-  icon: string;
-  color: string;
 }
 
 const props = defineProps<{
@@ -163,14 +130,10 @@ const emit = defineEmits<{
 const empty = (): CatalogCreateForm => ({
   code: "",
   name: "",
-  entity_types: [],
   description: "",
-  icon: "",
-  color: "",
 });
 
 const form = reactive<CatalogCreateForm>(empty());
-const entityTypesText = ref("");
 const errorMessage = ref("");
 
 // Reset form whenever dialog opens
@@ -179,33 +142,22 @@ watch(
   (open) => {
     if (open) {
       Object.assign(form, empty());
-      entityTypesText.value = "";
       errorMessage.value = "";
     }
   },
 );
-
-// Mirror text input into entity_types array (trim, drop empties, dedupe)
-watch(entityTypesText, (text) => {
-  const parts = text
-    .split(",")
-    .map((t) => t.trim())
-    .filter(Boolean);
-  form.entity_types = Array.from(new Set(parts));
-});
 
 const canSubmit = computed(() => {
   const code = form.code.trim();
   if (code.length < MIN_CODE_LEN || code.length > MAX_CODE_LEN) return false;
   if (!new RegExp(CODE_PATTERN).test(code)) return false;
   if (!form.name.trim()) return false;
-  if (form.entity_types.length < 1) return false;
   return true;
 });
 
 function onSubmit() {
   if (!canSubmit.value) {
-    errorMessage.value = "请检查表单：code 仅含小写字母/数字/下划线，名称非空，至少 1 个实体类型";
+    errorMessage.value = "请检查表单：code 仅含小写字母/数字/下划线，名称非空";
     return;
   }
   errorMessage.value = "";
@@ -213,11 +165,8 @@ function onSubmit() {
   const req: CatalogCreate = {
     code: form.code.trim(),
     name: form.name.trim(),
-    entity_types: form.entity_types,
   };
   if (form.description.trim()) req.description = form.description.trim();
-  if (form.icon.trim()) req.icon = form.icon.trim();
-  if (form.color.trim()) req.color = form.color.trim();
 
   emit("submit", req);
 }

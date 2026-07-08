@@ -1,5 +1,5 @@
 /**
- * REQ-052 Task 6 + REQ-054 Task 8: QueryPanel 行为锁。
+ * REQ-052 Task 6 + REQ-054 Task 8 + review fix: QueryPanel 行为锁。
  *
  * - 渲染表单 (catalog select + entity_type select + question + business_purpose)。
  * - business_purpose minlength=5（与后端 pydantic 双重 enforce）。
@@ -7,14 +7,16 @@
  * - datasetId 作为 informational prop 渲染（不影响请求体）。
  * - REQ-054: 提交请求体必须含 catalog_id；切换 catalog 后 entity_type 重置。
  * - REQ-054: preSelectedCatalogId 锁定 catalog select。
+ * - review fix #5: entity_type 下拉从 datasets 动态聚合（不再 hardcoded）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 
-const { mockAsk, mockListCatalogs } = vi.hoisted(() => ({
+const { mockAsk, mockListCatalogs, mockListDatasets } = vi.hoisted(() => ({
   mockAsk: vi.fn(),
   mockListCatalogs: vi.fn(),
+  mockListDatasets: vi.fn(),
 }));
 
 vi.mock("@/services/data-query", () => ({
@@ -23,6 +25,12 @@ vi.mock("@/services/data-query", () => ({
 
 vi.mock("@/services/catalog", () => ({
   listCatalogs: mockListCatalogs,
+}));
+
+vi.mock("@/services/structured-data", () => ({
+  structuredDataApi: {
+    listDatasets: mockListDatasets,
+  },
 }));
 
 import QueryPanel from "./QueryPanel.vue";
@@ -62,6 +70,18 @@ const SAMPLE_CATALOGS = [
   },
 ];
 
+// Datasets returned by listDatasets({ catalog_id }). entity_type is the
+// discovered attribute the panel aggregates into the dropdown.
+const DATASETS_BY_CATALOG: Record<string, { id: string; entity_type: string }[]> = {
+  "cat-fin": [
+    { id: "ds-1", entity_type: "bill" },
+    { id: "ds-2", entity_type: "invoice" },
+  ],
+  "cat-hr": [
+    { id: "ds-3", entity_type: "employee" },
+  ],
+};
+
 async function mountPanel(props: { datasetId?: string; preSelectedCatalogId?: string | null } = {}) {
   setActivePinia(createPinia());
   const catalogStore = useCatalogStore();
@@ -73,10 +93,14 @@ async function mountPanel(props: { datasetId?: string; preSelectedCatalogId?: st
   return wrapper;
 }
 
-describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8)", () => {
+describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8 + review fix)", () => {
   beforeEach(() => {
     mockAsk.mockReset();
     mockListCatalogs.mockReset().mockResolvedValue(SAMPLE_CATALOGS);
+    mockListDatasets.mockReset().mockImplementation((params?: { catalog_id?: string }) => {
+      const catId = params?.catalog_id ?? "";
+      return Promise.resolve({ data: DATASETS_BY_CATALOG[catId] ?? [] });
+    });
   });
 
   it("renders form (catalog select + entity_type select + question + business_purpose)", async () => {
@@ -108,12 +132,12 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8)", () => {
   it("catalog select defaults to first catalog", async () => {
     const wrapper = await mountPanel();
     const catalogSelect = wrapper.find('[data-testid="catalog-select"]');
-    // HTMLValueProperty reflects the v-model value
     expect((catalogSelect.element as HTMLSelectElement).value).toBe("cat-fin");
   });
 
-  it("entity_type options are filtered by selected catalog's whitelist", async () => {
+  it("entity_type options are aggregated from selected catalog's datasets", async () => {
     const wrapper = await mountPanel();
+    await flushPromises();
     const entitySelect = wrapper.find('[data-testid="entity-type-select"]');
     const options = entitySelect.findAll("option");
     const values = options.map((o) => o.attributes("value"));
@@ -122,10 +146,10 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8)", () => {
     expect(values).not.toContain("employee");
   });
 
-  it("switching catalog resets entity_type to first available", async () => {
+  it("switching catalog re-fetches datasets and resets entity_type", async () => {
     const wrapper = await mountPanel();
     // Start with finance: bill/invoice
-    // Switch to hr which only has employee
+    await flushPromises();
     const catalogSelect = wrapper.find('[data-testid="catalog-select"]');
     await catalogSelect.setValue("cat-hr");
     await flushPromises();
@@ -157,6 +181,7 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8)", () => {
     });
 
     const wrapper = await mountPanel();
+    await flushPromises();
     await wrapper.find('input[placeholder*="自然语言"]').setValue("这企业欠费多少");
     await wrapper.find('input[placeholder*="企业全称"]').setValue("江苏神码");
     await wrapper.find('input[placeholder*="查询背景"]').setValue("评估信用风险");
@@ -165,7 +190,7 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8)", () => {
     expect(mockAsk).toHaveBeenCalledTimes(1);
     const callArg = mockAsk.mock.calls[0][0];
     expect(callArg.catalog_id).toBe("cat-fin"); // default first
-    expect(callArg.entity_type).toBe("bill");    // default first in whitelist
+    expect(callArg.entity_type).toBe("bill"); // first discovered in cat-fin datasets
     expect(callArg.question).toBe("这企业欠费多少");
     expect(callArg.business_purpose).toBe("评估信用风险");
     expect(callArg.confirmed_company_name).toBe("江苏神码");
@@ -179,6 +204,7 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8)", () => {
     mockAsk.mockResolvedValue({ ok: true });
 
     const wrapper = await mountPanel({ preSelectedCatalogId: "cat-hr" });
+    await flushPromises();
     await wrapper.find('input[placeholder*="自然语言"]').setValue("员工数");
     await wrapper.find('input[placeholder*="查询背景"]').setValue("统计在职人数");
     await wrapper.find("form").trigger("submit");
@@ -191,6 +217,7 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8)", () => {
 
   it("skips ask() when business_purpose is too short", async () => {
     const wrapper = await mountPanel();
+    await flushPromises();
     await wrapper.find('input[placeholder*="自然语言"]').setValue("这企业欠费多少");
     await wrapper.find('input[placeholder*="查询背景"]').setValue("1234");
     await wrapper.find("form").trigger("submit");
@@ -202,6 +229,7 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8)", () => {
     mockAsk.mockResolvedValue({ ok: true, result_rows: [], result_count: 0 });
 
     const wrapper = await mountPanel();
+    await flushPromises();
     await wrapper.find('input[placeholder*="自然语言"]').setValue("这企业欠费多少");
     await wrapper.find('input[placeholder*="查询背景"]').setValue("评估信用风险");
     await wrapper.find("form").trigger("submit");
@@ -222,6 +250,7 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8)", () => {
     });
 
     const wrapper = await mountPanel();
+    await flushPromises();
     await wrapper.find('input[placeholder*="自然语言"]').setValue("测试问题");
     await wrapper.find('input[placeholder*="查询背景"]').setValue("随便问问背景");
     await wrapper.find("form").trigger("submit");
@@ -237,6 +266,7 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8)", () => {
     });
 
     const wrapper = await mountPanel();
+    await flushPromises();
     await wrapper.find('input[placeholder*="自然语言"]').setValue("测试问题");
     await wrapper.find('input[placeholder*="查询背景"]').setValue("随便问问背景");
     await wrapper.find("form").trigger("submit");
@@ -252,6 +282,7 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8)", () => {
     });
 
     const wrapper = await mountPanel();
+    await flushPromises();
     await wrapper.find('input[placeholder*="自然语言"]').setValue("这企业欠费多少");
     await wrapper.find('input[placeholder*="查询背景"]').setValue("评估信用风险");
     await wrapper.find("form").trigger("submit");
@@ -266,6 +297,7 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8)", () => {
     mockAsk.mockRejectedValue(new Error("Network Error"));
 
     const wrapper = await mountPanel();
+    await flushPromises();
     await wrapper.find('input[placeholder*="自然语言"]').setValue("这企业欠费多少");
     await wrapper.find('input[placeholder*="查询背景"]').setValue("评估信用风险");
     await wrapper.find("form").trigger("submit");
@@ -274,5 +306,14 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8)", () => {
       expect(wrapper.text()).toContain("Network Error");
       expect(wrapper.text()).toContain("请检查网络连接或稍后重试");
     });
+  });
+
+  it("shows empty hint when catalog has no datasets (no entity_types)", async () => {
+    // cat-fin returns [] -> empty hint visible
+    mockListDatasets.mockReset().mockResolvedValue({ data: [] });
+
+    const wrapper = await mountPanel();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="entity-type-empty-hint"]').exists()).toBe(true);
   });
 });

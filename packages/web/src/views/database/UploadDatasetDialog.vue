@@ -41,25 +41,19 @@
           <label class="block text-[var(--text-small)] text-[var(--color-ink-secondary)] mb-1">
             实体类型 <span class="text-red-500">*</span>
           </label>
-          <select
+          <input
             :value="form.entity_type"
             class="ui-input w-full"
-            data-testid="upload-entity-type-select"
-            :disabled="!form.catalog_id || availableEntityTypes.length === 0"
-          >
-            <option value="" disabled>
-              {{ availableEntityTypes.length === 0 ? "请先选择数据库" : "请选择实体类型" }}
-            </option>
-            <option
-              v-for="t in availableEntityTypes"
-              :key="t"
-              :value="t"
-            >
-              {{ t }}
-            </option>
-          </select>
+            placeholder="如：bill, contract, ticket"
+            list="upload-entity-type-suggestions"
+            data-testid="upload-entity-type-input"
+            @input="emit('update:form', { ...form, entity_type: ($event.target as HTMLInputElement).value })"
+          />
+          <datalist id="upload-entity-type-suggestions">
+            <option v-for="t in availableEntityTypes" :key="t" :value="t" />
+          </datalist>
           <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)] mt-1">
-            仅显示所选数据库的白名单 entity_types
+            自由填写，新实体类型首次上传会提示确认
           </p>
         </div>
         <div>
@@ -113,6 +107,14 @@
             @change="emit('file-change', $event)"
           />
         </div>
+        <div
+          v-if="warning"
+          class="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-[var(--text-small)] text-amber-700"
+          data-testid="upload-warning"
+        >
+          <AlertTriangle :size="14" class="mt-0.5 shrink-0" />
+          <span>{{ warning }}</span>
+        </div>
         <p v-if="errorMessage" class="text-[var(--text-small)] text-red-600" data-testid="upload-error">
           {{ errorMessage }}
         </p>
@@ -136,16 +138,18 @@
 
 <script setup lang="ts">
 /**
- * REQ-052 + REQ-054 Task 8: 数据集上传对话框。
+ * REQ-052 + REQ-054 Task 8 + review fix: 数据集上传对话框。
  *
  * REQ-054 改造：
- * - 加 数据库 select（catalogs 列表从 store 加载）。
- * - 加 entity_type select（按所选数据库白名单过滤）。
+ * - 数据库 select（catalogs 列表从 store 加载）。
+ * - entity_type 自由输入（datalist 提示已发现的 entity_types，不再校验白名单）。
+ *   后端 V1 起 entity_type 为自由文本，新类型首次上传时响应带 warning。
  * - `preSelectedCatalogId` prop 支持 CatalogDetailPage 预选锁定。
  * - 上传时 FormData 必带 `catalog_id` + `entity_type`（父组件负责）。
+ * - `warning` prop 展示后端返回的新实体类型提示。
  */
 import { computed, ref, watch } from "vue";
-import { Upload, FileSpreadsheet, X } from "lucide-vue-next";
+import { Upload, FileSpreadsheet, X, AlertTriangle } from "lucide-vue-next";
 import LoadingSpinner from "@/components/LoadingSpinner.vue";
 import { useCatalogStore } from "@/stores/catalog";
 
@@ -163,6 +167,8 @@ const props = defineProps<{
   form: UploadForm;
   uploading: boolean;
   preSelectedCatalogId?: string | null;
+  // REQ-054 review fix: upload response warning (new entity_type first occurrence).
+  warning?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -219,7 +225,7 @@ watch(
     if (!props.form.catalog_id) {
       errorMessage.value = "请先选择数据库";
     } else if (!props.form.entity_type) {
-      errorMessage.value = "请选择实体类型";
+      errorMessage.value = "请输入实体类型";
     } else {
       errorMessage.value = "";
     }

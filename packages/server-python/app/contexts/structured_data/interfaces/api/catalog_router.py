@@ -34,7 +34,11 @@ router = APIRouter(prefix="/api/v1/catalogs", tags=["catalogs"])
 class CatalogCreate(BaseModel):
     code: str = Field(..., min_length=2, max_length=50, pattern=r"^[a-z][a-z0-9_]*$")
     name: str = Field(..., min_length=1, max_length=200)
-    entity_types: list[str] = Field(..., min_length=1)
+    # REQ-054 review fix V1: entity_types is now optional - the catalog's
+    # effective entity-type list is discovered from uploaded datasets (see
+    # CatalogService.get_discovered_entity_types). The stored field is kept
+    # as optional metadata; callers may pass [] or omit it entirely.
+    entity_types: list[str] = Field(default_factory=list)
     description: str | None = None
     icon: str | None = None
     color: str | None = None

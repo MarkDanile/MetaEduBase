@@ -31,17 +31,31 @@
           v-model="entityType"
           class="border border-[var(--color-border)] rounded px-2 py-1 bg-[var(--color-bg)] text-[var(--color-ink)]"
           data-testid="entity-type-select"
+          :disabled="entityTypesLoading || availableEntityTypes.length === 0"
         >
-          <option v-if="!availableEntityTypes.length" value="bill">账单 (bill)</option>
+          <option value="" disabled>
+            {{ entityTypesLoading
+              ? "加载实体类型..."
+              : availableEntityTypes.length === 0
+                ? "请先上传数据集"
+                : "请选择实体类型" }}
+          </option>
           <option
             v-for="t in availableEntityTypes"
             :key="t"
             :value="t"
           >
-            {{ entityTypeLabel(t) }}
+            {{ t }}
           </option>
         </select>
       </div>
+      <p
+        v-if="!entityTypesLoading && availableEntityTypes.length === 0 && catalogId"
+        class="text-[var(--text-micro)] text-amber-600"
+        data-testid="entity-type-empty-hint"
+      >
+        该数据库尚未上传数据集，entity_type 列表为空。请先上传数据集以发现实体类型。
+      </p>
       <input
         v-model="question"
         placeholder="输入自然语言问题"
@@ -115,18 +129,23 @@
 
 <script setup lang="ts">
 /**
- * REQ-052 Task 6 + REQ-054 Task 8: 前端问数面板。
+ * REQ-052 Task 6 + REQ-054 Task 8 + review fix: 前端问数面板。
  *
- * - REQ-054 加 数据库 select（catalog store 加载），与 entity_type 联动：
- *   切换 catalog 时，entity_type 选项重置为新 catalog 的 entity_types 白名单。
+ * - REQ-054 加 数据库 select（catalog store 加载），与 entity_type 联动。
  * - `catalogId` 可由父组件 `preSelectedCatalogId` prop 锁定（来自 CatalogDetailPage）。
  * - `entity_type` / `question` / `business_purpose` 必填，business_purpose 服务端 ≥5 字。
  * - 历史写入 Pinia store (`useQueryHistory`)，最多保留 10 条。
+ *
+ * REQ-054 review fix #5: entity_type 下拉从 datasets 动态聚合。
+ * - 切换 catalog 时调 `listDatasets({ catalog_id })` 获取该库数据集，
+ *   聚合 DISTINCT entity_type 填充下拉（不再 hardcoded bill/contract/customer）。
+ * - 该库无数据集时下拉为空 + 提示「请先上传数据集」。
  */
 import { ref, computed, watch, onMounted } from "vue";
 import { ask, type AskRequest, type AskResponse } from "@/services/data-query";
 import { useQueryHistory } from "@/stores/query-history";
 import { useCatalogStore } from "@/stores/catalog";
+import { structuredDataApi } from "@/services/structured-data";
 
 const props = withDefaults(
   defineProps<{
@@ -139,24 +158,12 @@ const props = withDefaults(
   },
 );
 
-const ENTITY_TYPE_LABELS: Record<string, string> = {
-  bill: "账单 (bill)",
-  contract: "合同 (contract)",
-  ticket: "工单 (ticket)",
-  invoice: "发票 (invoice)",
-  customer: "客户 (customer)",
-};
-
-function entityTypeLabel(t: string) {
-  return ENTITY_TYPE_LABELS[t] ?? t;
-}
-
 const catalogStore = useCatalogStore();
 const catalogs = computed(() => catalogStore.catalogs);
 const lockedCatalogId = computed(() => props.preSelectedCatalogId ?? null);
 
 const catalogId = ref("");
-const entityType = ref("bill");
+const entityType = ref("");
 const question = ref("");
 const companyName = ref("");
 const businessPurpose = ref("");
@@ -164,15 +171,36 @@ const loading = ref(false);
 const result = ref<AskResponse | null>(null);
 const history = useQueryHistory();
 
-const availableEntityTypes = computed(() => {
-  const current = catalogs.value.find((c) => c.id === catalogId.value);
-  return current?.entity_types ?? [];
-});
+// REQ-054 review fix #5: entity_type 从该 catalog 的 datasets 动态聚合。
+const discoveredEntityTypes = ref<string[]>([]);
+const entityTypesLoading = ref(false);
+
+const availableEntityTypes = computed(() => discoveredEntityTypes.value);
 
 const resultColumns = computed(() => {
   if (!result.value?.result_rows || result.value.result_rows.length === 0) return [];
   return Object.keys(result.value.result_rows[0]);
 });
+
+async function loadEntityTypes(catId: string) {
+  if (!catId) {
+    discoveredEntityTypes.value = [];
+    return;
+  }
+  entityTypesLoading.value = true;
+  try {
+    const res = await structuredDataApi.listDatasets({ catalog_id: catId });
+    const types = new Set<string>();
+    for (const ds of res.data) {
+      if (ds.entity_type) types.add(ds.entity_type);
+    }
+    discoveredEntityTypes.value = Array.from(types).sort();
+  } catch {
+    discoveredEntityTypes.value = [];
+  } finally {
+    entityTypesLoading.value = false;
+  }
+}
 
 onMounted(async () => {
   if (catalogs.value.length === 0) {
@@ -188,13 +216,20 @@ onMounted(async () => {
   } else if (catalogs.value.length > 0) {
     catalogId.value = catalogs.value[0].id;
   }
+  await loadEntityTypes(catalogId.value);
 });
 
-watch(catalogId, () => {
-  // Reset entity_type to first available in selected catalog
-  const entityTypes = availableEntityTypes.value;
-  if (entityTypes.length > 0 && !entityTypes.includes(entityType.value)) {
-    entityType.value = entityTypes[0];
+// 切换 catalog 时重新拉取该库的 entity_types。
+watch(catalogId, (next) => {
+  void loadEntityTypes(next);
+});
+
+// entity_types 加载后，若当前选中不在列表内则重置为第一个。
+watch(availableEntityTypes, (types) => {
+  if (types.length > 0 && !types.includes(entityType.value)) {
+    entityType.value = types[0];
+  } else if (types.length === 0) {
+    entityType.value = "";
   }
 });
 

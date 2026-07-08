@@ -16,6 +16,10 @@ export interface DatasetDTO {
   status: string;
   kg_status: string;
   sort_order: number;
+  // REQ-054 review fix: entity_type persisted on upload (free-text, nullable).
+  entity_type: string | null;
+  // Upload-only: set when entity_type is first occurrence in the catalog.
+  warning?: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;

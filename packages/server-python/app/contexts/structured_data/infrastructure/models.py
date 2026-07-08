@@ -34,6 +34,7 @@ class DatasetModel(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="uploaded")
     kg_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    entity_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None)

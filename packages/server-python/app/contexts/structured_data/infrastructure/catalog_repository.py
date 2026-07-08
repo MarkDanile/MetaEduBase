@@ -1,4 +1,4 @@
-"""Catalog repository: CRUD + tenant 隔离 + entity_types 白名单.
+"""Catalog repository: CRUD + tenant 隔离.
 
 REQ-054 Task 2: every query is scoped by ``tenant_id`` so that one tenant
 cannot read or mutate another tenant's catalogs. Soft delete

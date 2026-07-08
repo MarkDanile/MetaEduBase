@@ -136,17 +136,36 @@ class CatalogService:
     async def validate_entity_type(
         self, catalog_id: uuid.UUID, tenant_id: uuid.UUID, entity_type: str
     ) -> None:
-        """白名单校验：entity_type 必须在 catalog.entity_types 内.
+        """No-op (REQ-054 review fix V1 - dynamic discovery).
 
-        REQ-054 Task 3 will call this when binding a dataset to a catalog.
-        Raises ``ValueError`` if the catalog is missing or the entity_type
-        isn't whitelisted.
+        entity_types is no longer a whitelist: entity_type is free-text on
+        upload and persisted to ``datasets.entity_type``. The discovered
+        list is computed via :meth:`get_discovered_entity_types`. Retained
+        as a no-op for backward compatibility (the upload router no longer
+        calls it, but the signature is kept so imports / downstream code
+        don't break).
         """
-        catalog = await self._repo.get_by_id(catalog_id, tenant_id)
-        if not catalog:
-            raise ValueError(f"数据库 {catalog_id} 不存在")
-        if not catalog.allows_entity_type(entity_type):
-            raise ValueError(
-                f"entity_type '{entity_type}' 不在数据库 '{catalog.name}' 的白名单内"
-                f"（支持: {catalog.entity_types}）"
-            )
+        return None
+
+    async def get_discovered_entity_types(
+        self, catalog_id: uuid.UUID, tenant_id: uuid.UUID
+    ) -> list[str]:
+        """Return DISTINCT entity_type persisted on datasets in this catalog.
+
+        REQ-054 review fix V1: the catalog's effective entity-type list is
+        discovered from uploaded datasets rather than declared upfront.
+        Tenant-scoped for isolation. Rows with NULL entity_type are
+        excluded.
+        """
+        from sqlalchemy import text
+
+        result = await self._session.execute(
+            text(
+                "SELECT DISTINCT entity_type FROM metaedu.datasets "
+                "WHERE catalog_id = :cid AND tenant_id = :tid "
+                "AND entity_type IS NOT NULL "
+                "ORDER BY entity_type"
+            ),
+            {"cid": catalog_id, "tid": tenant_id},
+        )
+        return [row[0] for row in result.all()]

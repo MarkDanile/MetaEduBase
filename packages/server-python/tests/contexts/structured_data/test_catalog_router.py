@@ -156,16 +156,30 @@ async def test_create_catalog_422_invalid_code(
     assert resp.status_code == 422
 
 
-async def test_create_catalog_422_empty_entity_types(
+async def test_create_catalog_201_empty_entity_types(
     client: AsyncClient, auth_headers: dict
 ):
-    """entity_types 为空数组 → 422（min_length=1）。"""
+    """REQ-054 V1: entity_types 为空数组 -> 201（可选，动态发现模式）。"""
     payload = _make_create_payload(_unique_code("empty"))
     payload["entity_types"] = []
     resp = await client.post(
         "/api/v1/catalogs", json=payload, headers=auth_headers
     )
-    assert resp.status_code == 422
+    assert resp.status_code == 201
+    assert resp.json()["entity_types"] == []
+
+
+async def test_create_catalog_201_without_entity_types(
+    client: AsyncClient, auth_headers: dict
+):
+    """REQ-054 V1: 完全省略 entity_types 字段 -> 201（默认空数组）。"""
+    payload = _make_create_payload(_unique_code("omit"))
+    del payload["entity_types"]
+    resp = await client.post(
+        "/api/v1/catalogs", json=payload, headers=auth_headers
+    )
+    assert resp.status_code == 201
+    assert resp.json()["entity_types"] == []
 
 
 async def test_create_catalog_201_data_admin(client: AsyncClient):

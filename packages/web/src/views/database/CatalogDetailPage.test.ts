@@ -1,10 +1,15 @@
 /**
- * REQ-054 Task 8: CatalogDetailPage 行为锁。
+ * REQ-054 Task 8 + review fix: CatalogDetailPage 行为锁。
  *
  * - 4 tab 渲染（数据集 / 语义层 / 知识图谱 / 问数）。
  * - 默认显示 数据集 tab，切换 tab 后对应 panel v-show。
  * - 按 URL param :catalogCode 从 store 解析 catalog。
  * - 嵌入 QueryPanel 并传入 preSelectedCatalogId 锁定该库。
+ *
+ * review fix:
+ * - 上传按钮移到 PageHeader #extra（固定右上角）。
+ * - 语义层从 datasets 聚合 entity_type（不再读 catalog.entity_types 占位）。
+ * - KG tab 嵌入 KgOverviewPanel（mock 为 stub）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
@@ -21,11 +26,18 @@ vi.mock("@/services/catalog", () => ({
   deleteCatalog: vi.fn(),
 }));
 
+const { mockListDatasets, mockGetKnowledgeGraph, mockRebuildKg } = vi.hoisted(() => ({
+  mockListDatasets: vi.fn(),
+  mockGetKnowledgeGraph: vi.fn(),
+  mockRebuildKg: vi.fn(),
+}));
+
 vi.mock("@/services/structured-data", () => ({
   structuredDataApi: {
-    listDatasets: vi.fn().mockResolvedValue({ data: [] }),
+    listDatasets: mockListDatasets,
     uploadDataset: vi.fn(),
-    getKnowledgeGraph: vi.fn().mockResolvedValue({ data: { nodes: [], edges: [] } }),
+    getKnowledgeGraph: mockGetKnowledgeGraph,
+    rebuildKnowledgeGraph: mockRebuildKg,
   },
 }));
 
@@ -72,6 +84,24 @@ vi.mock("@/views/database/DatasetTabsPanel.vue", () => ({
   }),
 }));
 
+vi.mock("@/views/database/KgOverviewPanel.vue", () => ({
+  default: defineComponent({
+    name: "StubKgOverview",
+    props: ["nodes", "edges", "loading", "rebuilding"],
+    emits: ["rebuild", "node-click"],
+    render() {
+      return h(
+        "div",
+        {
+          "data-testid": "stub-kg-overview",
+          "data-node-count": String(this.nodes?.length ?? 0),
+        },
+        "kg-overview",
+      );
+    },
+  }),
+}));
+
 vi.mock("@/views/database/QueryPanel.vue", () => ({
   default: defineComponent({
     name: "StubQuery",
@@ -89,8 +119,16 @@ vi.mock("@/views/database/QueryPanel.vue", () => ({
 vi.mock("@/views/database/UploadDatasetDialog.vue", () => ({
   default: defineComponent({
     name: "StubUpload",
+    props: ["open", "form", "uploading", "preSelectedCatalogId", "warning"],
     render() {
-      return h("div", { "data-testid": "stub-upload" }, "upload");
+      return h(
+        "div",
+        {
+          "data-testid": "stub-upload",
+          "data-warning": String(this.warning ?? ""),
+        },
+        "upload",
+      );
     },
   }),
 }));
@@ -113,6 +151,64 @@ const SAMPLE_CATALOG = {
   created_at: "2026-01-01T00:00:00",
   updated_at: "2026-01-01T00:00:00",
 };
+
+// Datasets with entity_type for semantic tab aggregation.
+const SAMPLE_DATASETS = [
+  {
+    id: "ds-bill",
+    tenant_id: "t-1",
+    name: "账单数据集",
+    description: null,
+    column_names: ["id", "amount", "due_date"],
+    column_types: null,
+    row_count: 10,
+    source_file: null,
+    tags: [],
+    status: "ready",
+    kg_status: "ready",
+    sort_order: 0,
+    entity_type: "bill",
+    created_by: "u-1",
+    created_at: "2026-01-01T00:00:00",
+    updated_at: "2026-01-01T00:00:00",
+  },
+  {
+    id: "ds-contract",
+    tenant_id: "t-1",
+    name: "合同数据集",
+    description: null,
+    column_names: ["id", "party", "signed_at"],
+    column_types: null,
+    row_count: 5,
+    source_file: null,
+    tags: [],
+    status: "ready",
+    kg_status: "ready",
+    sort_order: 1,
+    entity_type: "contract",
+    created_by: "u-1",
+    created_at: "2026-01-01T00:00:00",
+    updated_at: "2026-01-01T00:00:00",
+  },
+  {
+    id: "ds-ticket",
+    tenant_id: "t-1",
+    name: "工单数据集",
+    description: null,
+    column_names: ["id", "status"],
+    column_types: null,
+    row_count: 8,
+    source_file: null,
+    tags: [],
+    status: "ready",
+    kg_status: "ready",
+    sort_order: 2,
+    entity_type: "ticket",
+    created_by: "u-1",
+    created_at: "2026-01-01T00:00:00",
+    updated_at: "2026-01-01T00:00:00",
+  },
+];
 
 async function mountDetail(catalogs: unknown = [SAMPLE_CATALOG]) {
   setActivePinia(createPinia());
@@ -152,9 +248,12 @@ async function mountDetail(catalogs: unknown = [SAMPLE_CATALOG]) {
   return { wrapper, router, catalogStore };
 }
 
-describe("CatalogDetailPage.vue (REQ-054 Task 8)", () => {
+describe("CatalogDetailPage.vue (REQ-054 Task 8 + review fix)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockListDatasets.mockReset().mockResolvedValue({ data: SAMPLE_DATASETS });
+    mockGetKnowledgeGraph.mockReset().mockResolvedValue({ data: { nodes: [], edges: [] } });
+    mockRebuildKg.mockReset().mockResolvedValue({ data: { status: "ok", dataset_count: 3 } });
   });
 
   it("renders 4 tabs (数据集 / 语义层 / 知识图谱 / 问数)", async () => {
@@ -176,22 +275,32 @@ describe("CatalogDetailPage.vue (REQ-054 Task 8)", () => {
     expect(semanticPanel.attributes("style") || "").toMatch(/display:\s*none|visibility:\s*hidden/);
   });
 
-  it("switches to semantic tab and shows entity_types", async () => {
+  it("switches to semantic tab and shows entity_types aggregated from datasets", async () => {
     const { wrapper } = await mountDetail();
     await wrapper.find('[data-testid="tab-semantic"]').trigger("click");
     await flushPromises();
     expect(wrapper.find('[data-testid="semantic-row-bill"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="semantic-row-contract"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="semantic-row-ticket"]').exists()).toBe(true);
+    // 列映射可见
+    expect(wrapper.find('[data-testid="semantic-columns-bill"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="semantic-columns-bill"]').text()).toContain("amount");
   });
 
-  it("switches to kg tab and shows KG count badge", async () => {
+  it("semantic tab shows empty state when catalog has no datasets", async () => {
+    mockListDatasets.mockResolvedValue({ data: [] });
+    const { wrapper } = await mountDetail();
+    await wrapper.find('[data-testid="tab-semantic"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="semantic-empty"]').exists()).toBe(true);
+  });
+
+  it("switches to kg tab and embeds KgOverviewPanel", async () => {
     const { wrapper } = await mountDetail();
     await wrapper.find('[data-testid="tab-kg"]').trigger("click");
     await flushPromises();
-    const count = wrapper.find('[data-testid="kg-node-count"]');
-    expect(count.exists()).toBe(true);
-    expect(count.text()).toContain("0 节点");
+    const kgOverview = wrapper.find('[data-testid="stub-kg-overview"]');
+    expect(kgOverview.exists()).toBe(true);
   });
 
   it("switches to ask tab and embeds QueryPanel with preSelectedCatalogId", async () => {
@@ -203,10 +312,14 @@ describe("CatalogDetailPage.vue (REQ-054 Task 8)", () => {
     expect(queryStub.attributes("data-pre")).toBe("cat-edu");
   });
 
-  it("renders upload-dataset button inside datasets tab", async () => {
+  it("renders upload-dataset button in PageHeader (fixed top-right)", async () => {
     const { wrapper } = await mountDetail();
     const btn = wrapper.find('[data-testid="upload-dataset-btn"]');
     expect(btn.exists()).toBe(true);
+    // Button should be outside the scrollable tab panels (in PageHeader extra).
+    // Verify it is NOT inside the datasets tab panel section.
+    const datasetsPanel = wrapper.find('[data-testid="tab-panel-datasets"]');
+    expect(datasetsPanel.find('[data-testid="upload-dataset-btn"]').exists()).toBe(false);
   });
 
   it("shows not-found hint when code does not match any catalog", async () => {
