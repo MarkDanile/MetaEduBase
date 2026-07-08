@@ -46,17 +46,41 @@ class SemanticModelRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def create(self, model: SemanticModel) -> None:
+    async def create(
+        self,
+        model: SemanticModel,
+        catalog_id: uuid.UUID | None = None,
+    ) -> None:
         """Persist a new semantic model row.
 
         Uses ``flush`` (not commit) so the caller's transaction controls the
         boundary. JSONB columns are populated via the dataclass-to-dict
         converters, which guarantees the on-disk shape stays in sync with
         the dataclass contract.
+
+        ``catalog_id`` is REQUIRED (REQ-054): every semantic model belongs to
+        a specific data catalog, and the new unique constraint
+        ``(tenant_id, catalog_id, entity_type, data_source_config)`` enforces
+        this. The caller must pass it explicitly via the ``catalog_id``
+        argument (or by setting ``model.catalog_id`` before calling
+        ``create``) — auto-resolution has been removed so the caller can
+        always choose the correct catalog for multi-tenant / multi-catalog
+        setups.
         """
+        # REQ-054: catalog_id is now an explicit, caller-supplied value.
+        # Accept it from the function argument first, then fall back to the
+        # domain model. We do NOT auto-resolve to "education" anymore —
+        # explicit beats implicit once a tenant can have multiple catalogs.
+        resolved_catalog_id = catalog_id if catalog_id is not None else model.catalog_id
+        if resolved_catalog_id is None:
+            raise ValueError(
+                "catalog_id is required (REQ-054): pass it to create() or "
+                "set model.catalog_id before persisting"
+            )
         row = SemanticModelModel(
             id=model.id,
             tenant_id=model.tenant_id,
+            catalog_id=resolved_catalog_id,
             dataset_id=model.dataset_id,
             entity_type=model.entity_type,
             entity_name=model.entity_name,
@@ -100,6 +124,35 @@ class SemanticModelRepository:
             return None
         return self._to_domain(row)
 
+    async def get_active_by_catalog_and_entity_type(
+        self,
+        tenant_id: uuid.UUID,
+        catalog_id: uuid.UUID,
+        entity_type: str,
+    ) -> SemanticModel | None:
+        """REQ-054: 按 (catalog_id, entity_type) 双键查询 active model.
+
+        Filters by BOTH ``catalog_id`` and ``entity_type`` (plus
+        ``status='active'``) so the lookup is safe even when a tenant has
+        multiple catalogs with different schemas for the same
+        ``entity_type``. The old single-key method
+        :meth:`get_active_by_entity_type` would raise
+        ``MultipleResultsFound`` as soon as a tenant creates a second
+        catalog — this method replaces it for any caller that has a
+        ``catalog_id`` in scope.
+        """
+        stmt = select(SemanticModelModel).where(
+            SemanticModelModel.tenant_id == tenant_id,
+            SemanticModelModel.catalog_id == catalog_id,
+            SemanticModelModel.entity_type == entity_type,
+            SemanticModelModel.status == "active",
+        )
+        result = await self._session.execute(stmt)
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        return self._to_domain(row)
+
     async def get_active_by_entity_type(
         self,
         tenant_id: uuid.UUID,
@@ -107,18 +160,18 @@ class SemanticModelRepository:
     ) -> SemanticModel | None:
         """Return the active semantic model for ``(tenant_id, entity_type)``.
 
-        **REQ-052 Task 5 deviation (option A)** — the brief sketch passed
-        ``data_source_config={}`` to :meth:`get_by_entity_type`, which
-        silently fails to match the seeded row (whose
-        ``data_source_config`` carries ``{"type": "imported_dataset",
-        "dataset_id": "..."}``). The router only knows the
-        ``entity_type`` from the request payload — it does NOT carry the
-        ``data_source_config`` around, so we provide a thin lookup that
-        filters only by ``tenant_id + entity_type + status='active'`` and
-        picks the most-recently-updated row when several exist.
-
-        This is additive — :meth:`get_by_entity_type` is unchanged and
-        continues to support tests that need the full triple-key lookup.
+        .. deprecated::
+            REQ-054: this method does NOT filter by ``catalog_id`` and is
+            unsafe once a tenant has more than one catalog. The SQL
+            query orders by ``updated_at DESC`` and applies ``LIMIT 1``,
+            so when multiple active rows share ``(tenant_id, entity_type)``
+            the method **silently returns one of them** (the most
+            recently updated row). Callers therefore cannot tell whether
+            they got the "right" row for their catalog. New callers MUST
+            use :meth:`get_active_by_catalog_and_entity_type` and pass
+            an explicit ``catalog_id``. This method is kept for backward
+            compatibility with the REQ-052 single-tenant path until the
+            router migrates (tracked outside this task).
         """
         stmt = (
             select(SemanticModelModel)
@@ -175,6 +228,7 @@ class SemanticModelRepository:
         return SemanticModel(
             id=row.id,
             tenant_id=row.tenant_id,
+            catalog_id=row.catalog_id,
             dataset_id=row.dataset_id,
             entity_type=row.entity_type,
             entity_name=row.entity_name,

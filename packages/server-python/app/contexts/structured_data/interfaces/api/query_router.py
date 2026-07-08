@@ -65,8 +65,17 @@ class AskRequest(BaseModel):
 
     ``business_purpose`` is mandatory (min_length=5) per REQ-052 §12
     (国资审计). Missing or too-short returns 422.
+
+    ``catalog_id`` is REQ-054's tenant-scoped database identifier and is
+    mandatory: the ask endpoint resolves the semantic model by
+    ``(catalog_id, entity_type)`` rather than ``entity_type`` alone, so the
+    same ``entity_type`` can coexist under different catalogs. The
+    router parses the value as a UUID before passing it to the
+    repository; malformed values surface as 422 from pydantic's
+    downstream type check.
     """
 
+    catalog_id: str = Field(..., description="数据库 ID（REQ-054）")
     entity_type: str = Field(..., description="entity_type, e.g. 'bill'")
     question: str = Field(..., min_length=1)
     business_purpose: str = Field(
@@ -115,15 +124,34 @@ async def ask(
 
     # ---- resolve semantic model ----
     repo = SemanticModelRepository(db_session)
-    semantic_model = await repo.get_active_by_entity_type(
-        tenant_id=tenant_id, entity_type=req.entity_type
+    # REQ-054: dual-key routing — the same entity_type can live in
+    # multiple catalogs (e.g. education vs finance); we filter by BOTH
+    # catalog_id and entity_type so the lookup is unambiguous. The old
+    # ``get_active_by_entity_type`` is deprecated (Task 5 fix) because
+    # it silently returns one row when multiple active rows share the
+    # same ``(tenant_id, entity_type)`` triple.
+    try:
+        catalog_uuid = uuid.UUID(req.catalog_id)
+    except ValueError as e:
+        # Defensive: pydantic's str type-check normally catches this,
+        # but if a malformed UUID slips through (e.g. "not-a-uuid" via
+        # alias) surface 422 with the same shape pydantic emits so the
+        # client gets a consistent error contract.
+        raise HTTPException(
+            status_code=422,
+            detail=f"catalog_id must be a UUID: {req.catalog_id!r}",
+        ) from e
+    semantic_model = await repo.get_active_by_catalog_and_entity_type(
+        tenant_id=tenant_id,
+        catalog_id=catalog_uuid,
+        entity_type=req.entity_type,
     )
     if semantic_model is None:
         raise HTTPException(
             status_code=404,
             detail=(
-                f"entity_type '{req.entity_type}' not found in semantic model "
-                f"for tenant {tenant_id}"
+                f"entity_type '{req.entity_type}' not found in catalog "
+                f"{catalog_uuid} for tenant {tenant_id}"
             ),
         )
 

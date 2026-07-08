@@ -1,6 +1,6 @@
 # REQ-054: 平台级数据库（catalog）主题域分组与多源数据接入
 
-Status: 🟣 Shaping
+Status: 🟡 待 PR merge
 Priority: P0
 Milestone: P3
 Domain: AI Workspace / Data Platform / Catalog / 产业园区
@@ -135,3 +135,4 @@ REQ-054 是 REQ-052 的数据层升级，不破坏 REQ-052 已有能力，只加
 | 日期 | 动作 | 事实 |
 |------|------|------|
 | 2026-07-07 | 登记 | 用户补充基础平台需要按主题域分组数据集；登记 REQ-054 为 P0 原子能力，承接 REQ-052 数据层升级。 |
+| 2026-07-08 | 实施完成 | 9 Task 全部实施完成（分支 `feat/req-054-catalog`）。Task 1：schema（alembic 016-018 + ORM + 默认库迁移）；Task 2：catalog CRUD API + RBAC；Task 3：上传改造（catalog_id 必选 + entity_type 白名单）；Task 4：DirectDB + MCP adapter V1；Task 5：语义层双键路由 (catalog_id, entity_type)；Task 6：QueryPlanner + /data-query/ask 加 catalog_id；Task 7：前端数据库列表卡片 + 新建对话框；Task 8：前端详情页 + QueryPanel + 上传改造；Task 9：端到端 + closeout。backend 207 passed / frontend 128 passed / ruff 0 / pnpm lint 0 errors / pnpm typecheck 0 / check-engineering-docs exit 0。AC-1~10 全覆盖。手动 e2e 受环境限制未跑。PR 未开，merge 后翻 🟢 Done。 |

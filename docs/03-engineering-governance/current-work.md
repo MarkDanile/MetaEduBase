@@ -14,31 +14,7 @@
 
 ## 当前进行中
 
-### TASK: REQ-054 平台级数据库（catalog）主题域分组
-
-状态：🟣 Shaping
-类型：Product Planning → Spec
-领域：AI Workspace / Data Platform / Catalog
-当前执行模式：brainstorming → spec（待用户审）
-最近接手工具：主代理
-分支：`docs/req-054-shaping`
-
-需求来源：
-- [Requirement](../01-product-planning/05-requirements/REQ-054-platform-database-catalog.md)
-- [Spec](../02-delivery-plans/01-specs/2026-07-07-req-054-platform-database-catalog.md)
-
-当前进展：
-- 用户决策确认：UI「数据库」/ 代码 `catalog`；自动建默认库迁移；仅 admin 可建库；V1 一次性全做
-- spec 12 章节产出（problem / goal / AC-10 / 架构 / Slice 0-5 共 13 Task / 风险 / 边界 / 安全）
-- 承接 REQ-052 数据层升级（加 catalog_id 维度，不破坏现有能力）
-
-下一步：
-- 用户审 spec → Shaping → Ready
-- 调 writing-plans skill 产出实施计划（预估 9-13 Task）
-- subagent-driven 实施
-
-验证状态：spec 待用户审
-交接备注：spec 在 `docs/02-delivery-plans/01-specs/2026-07-07-req-054-platform-database-catalog.md`；用户审通过后进 plan 阶段
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -57,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-08 | REQ-054 平台级数据库（catalog）主题域分组与多源数据接入（9 Task 实施完成） | 🟡 待 PR merge | 9 Task：schema（alembic 016-018）+ catalog CRUD API + RBAC + 上传改造 + DirectDB/MCP adapter V1 + 语义层双键路由 + QueryPlanner 按 catalog_id + 前端列表卡片 + 详情页 tab。backend 207 passed / frontend 128 passed / 4 质量门禁 0 / AC-1~10 全覆盖 | [REQ-054 plan](../02-delivery-plans/02-plans/2026-07-07-req-054-platform-database-catalog.md) / 分支 `feat/req-054-catalog` |
 | 2026-07-07 | BUG-013 资源库/数据库页面 500 → 503（DB 不可用） | 🟢 完成 | 根因：asyncpg 在 PG 宕机时抛 ConnectionDoesNotExistError → SQLAlchemy OperationalError → FastAPI 默认 500。修复：main.py 加 exception_handler，识别 conn error → 503 + 明确 './dev.sh infra' 恢复路径 | [BUG-013](../01-product-planning/05-requirements/BUG-013-resource-database-500-endpoints.md) / [PR #418](https://github.com/MarkDanile/MetaEduBase/pull/418) (`f8c8646`) |
 | 2026-07-07 | REQ-052 智能问数与国资信息化数据激活原子能力（实施 9 Task 收口） | 🟢 完成 | 9 Task：schema + Adapter + RBAC + PII + QueryPlanner + SqlGuard + ResultExplainer + API + QueryPanel + AI Chat + BacktrackSkill。51/51 pure unit；4/4 质量门禁 0；AC-7 待真实环境 e2e | [REQ-052 plan](../02-delivery-plans/02-plans/2026-07-01-req-052-intelligent-data-query.md) / [PR #417](https://github.com/MarkDanile/MetaEduBase/pull/417) (`60e60e70`) |
 | 2026-07-01 | REQ-052 智能问数与国资信息化数据激活原子能力（spec Shaping → Ready） | 🟢 完成 | spec 868 行：3 种数据源 Adapter + 路线 2（Palantir Ontology）/ Slice 0-4 / §11 JSONB 80% 边界 / §12 国资安全审查 12 项补 7 项 | [REQ-052 spec](../02-delivery-plans/01-specs/2026-07-06-req-052-intelligent-data-query.md) / [PR #415](https://github.com/MarkDanile/MetaEduBase/pull/415) (`b6c2a4a`) |

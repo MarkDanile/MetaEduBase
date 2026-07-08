@@ -17,6 +17,7 @@ class DatasetRepository:
     async def list_datasets(
         self,
         tenant_id: uuid.UUID,
+        catalog_id: uuid.UUID | None = None,
         tag: str | None = None,
         status: str | None = None,
         limit: int = 50,
@@ -26,6 +27,9 @@ class DatasetRepository:
     ) -> list[dict]:
         conditions = ["tenant_id = :tid"]
         params: dict = {"tid": tenant_id}
+        if catalog_id is not None:
+            conditions.append("catalog_id = :cid")
+            params["cid"] = catalog_id
         if tag:
             conditions.append(":tag = ANY(tags)")
             params["tag"] = tag
@@ -63,21 +67,23 @@ class DatasetRepository:
         source_file: str | None,
         tags: list[str],
         created_by: uuid.UUID,
+        catalog_id: uuid.UUID,
     ) -> dict:
         dataset_id = uuid.uuid4()
         now = datetime.now(UTC).replace(tzinfo=None)
         await self._session.execute(
             text(
                 "INSERT INTO metaedu.datasets "
-                "(id, tenant_id, name, description, source_file, tags, status, "
+                "(id, tenant_id, catalog_id, name, description, source_file, tags, status, "
                 "kg_status, row_count, sort_order, created_by, created_at, "
                 "updated_at) "
-                "VALUES (:id, :tid, :name, :desc, :sfile, :tags, 'uploaded', "
+                "VALUES (:id, :tid, :cid, :name, :desc, :sfile, :tags, 'uploaded', "
                 "'pending', 0, 0, :uid, :now, :now)"
             ),
             {
                 "id": dataset_id,
                 "tid": tenant_id,
+                "cid": catalog_id,
                 "name": name,
                 "desc": description,
                 "sfile": source_file,
@@ -89,6 +95,7 @@ class DatasetRepository:
         return {
             "id": dataset_id,
             "tenant_id": tenant_id,
+            "catalog_id": catalog_id,
             "name": name,
             "description": description,
             "source_file": source_file,

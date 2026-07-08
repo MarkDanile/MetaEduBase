@@ -82,6 +82,17 @@ async def sample_dataset(db_session):
     """
     dataset_id = uuid.uuid4()
     now = datetime.now(UTC).replace(tzinfo=None)
+    # Resolve the default education catalog for the tenant so the NOT NULL
+    # catalog_id column (REQ-054 migration 018) is satisfied. The catalog is
+    # seeded by alembic 018 for every tenant that exists in the DB.
+    catalog_row = await db_session.execute(
+        text(
+            "SELECT id FROM metaedu.data_catalogs "
+            "WHERE tenant_id = :tid AND code = 'education'"
+        ),
+        {"tid": DEFAULT_TENANT_ID},
+    )
+    catalog_id = catalog_row.scalar_one()
     # Note: we splice JSON strings directly into the SQL rather than binding
     # them, because asyncpg's parameter style is positional ($1, $2, ...) and
     # using ``:cnames::jsonb`` would clash with SQLAlchemy's named-to-positional
@@ -92,16 +103,17 @@ async def sample_dataset(db_session):
     await db_session.execute(
         text(
             f"INSERT INTO metaedu.datasets "
-            f"(id, tenant_id, name, description, column_names, column_types, "
+            f"(id, tenant_id, catalog_id, name, description, column_names, column_types, "
             f"row_count, source_file, tags, status, kg_status, sort_order, "
             f"created_by, created_at, updated_at) "
-            f"VALUES (:id, :tid, :name, :desc, '{cnames_literal}'::jsonb, "
+            f"VALUES (:id, :tid, :cid, :name, :desc, '{cnames_literal}'::jsonb, "
             f"'{ctypes_literal}'::jsonb, :rcount, NULL, NULL, 'uploaded', "
             f"'pending', 0, :uid, :now, :now)"
         ),
         {
             "id": dataset_id,
             "tid": DEFAULT_TENANT_ID,
+            "cid": catalog_id,
             "name": "bill-test-dataset",
             "desc": "sample dataset for REQ-052 tests",
             "rcount": 2,

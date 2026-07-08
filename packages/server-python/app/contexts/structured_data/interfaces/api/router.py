@@ -6,13 +6,14 @@ import logging
 import os
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Celery tasks — imported at module level for testability
 from app.celery_app import celery_app
 from app.config import settings
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
+from app.contexts.structured_data.application.catalog_service import CatalogService
 from app.contexts.structured_data.application.cleanup import cleanup_dataset_derivatives
 from app.contexts.structured_data.application.dto import (
     DatasetDTO,
@@ -51,6 +52,7 @@ def _dataset_row_to_dto(row: dict) -> DatasetDTO:
 
 @router.get("/datasets", response_model=list[DatasetDTO])
 async def list_datasets(
+    catalog_id: str | None = None,
     tag: str | None = None,
     status: str | None = None,
     offset: int = Query(default=0, ge=0),
@@ -64,6 +66,7 @@ async def list_datasets(
     repo = DatasetRepository(session)
     rows = await repo.list_datasets(
         tid,
+        catalog_id=uuid.UUID(catalog_id) if catalog_id else None,
         tag=tag,
         status=status,
         limit=limit,
@@ -77,12 +80,25 @@ async def list_datasets(
 @router.post("/datasets/upload", response_model=DatasetDTO, status_code=201)
 async def upload_dataset(
     file: UploadFile,
+    catalog_id: str = Form(...),
+    entity_type: str = Form(...),
     name: str | None = None,
     session: AsyncSession = Depends(get_session),  # noqa: B008
     current_user: dict = Depends(get_current_user),  # noqa: B008
 ):
     tid = get_tenant_id()
     uid = current_user["id"]
+
+    # REQ-054 Task 3: 白名单校验 — entity_type 必须在 catalog.entity_types 内
+    catalog_service = CatalogService(session)
+    try:
+        await catalog_service.validate_entity_type(
+            catalog_id=uuid.UUID(catalog_id),
+            tenant_id=tid,
+            entity_type=entity_type,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     if not file.filename:
         raise HTTPException(status_code=400, detail="文件名不能为空")
@@ -107,6 +123,7 @@ async def upload_dataset(
         source_file=storage_key,
         tags=[],
         created_by=uid,
+        catalog_id=uuid.UUID(catalog_id),
     )
 
     # Trigger dataset processing pipeline
