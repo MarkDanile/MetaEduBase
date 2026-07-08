@@ -1,4 +1,4 @@
-"""Test CatalogService: 5-role RBAC matrix + code 冲突 + entity_types 白名单.
+"""Test CatalogService: 5-role RBAC matrix + code 冲突 + entity_type 动态发现.
 
 REQ-054 Task 2: the service is the RBAC enforcement point — only
 ``admin`` / ``data_admin`` / ``super_admin`` may write. The 5 roles from
@@ -12,6 +12,7 @@ uuid-suffixed ``code`` values keep tests order-independent and re-runnable.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 
@@ -273,60 +274,115 @@ async def test_delete_unknown_id_returns_false(db_session):
 
 
 # ---------------------------------------------------------------------------
-# entity_types 白名单校验
+# validate_entity_type (V1 no-op) + get_discovered_entity_types
 # ---------------------------------------------------------------------------
 
 
-async def test_validate_entity_type_accepts_whitelisted(db_session):
-    """entity_type 在白名单内 → 不抛异常。"""
+async def test_validate_entity_type_is_noop(db_session):
+    """REQ-054 V1: validate_entity_type 是 no-op（动态发现，不再校验白名单）。
+
+    任何 entity_type（含不在预设列表内的）都不抛异常；不存在的 catalog_id
+    也不抛异常（方法已不做 catalog 查找）。
+    """
     service = CatalogService(db_session)
     catalog = await _make_catalog_via_service(
-        service, code=_unique_code("wok"), entity_types=["bill", "contract"]
+        service, code=_unique_code("nop"), entity_types=["bill", "contract"]
     )
-    # 不抛异常即通过
+    # 预设列表内的 entity_type -> 不抛
     await service.validate_entity_type(catalog.id, DEFAULT_TENANT_ID, "bill")
-    await service.validate_entity_type(catalog.id, DEFAULT_TENANT_ID, "contract")
+    # 预设列表外的 entity_type -> 也不抛（V1 自由填写）
+    await service.validate_entity_type(catalog.id, DEFAULT_TENANT_ID, "payment")
+    # 不存在的 catalog_id -> 也不抛（no-op，不做 catalog 查找）
+    await service.validate_entity_type(uuid.uuid4(), DEFAULT_TENANT_ID, "bill")
 
 
-async def test_validate_entity_type_rejects_non_whitelisted(db_session):
-    """entity_type 不在白名单内 → ValueError（带支持列表提示）。"""
+async def test_get_discovered_entity_types_returns_distinct(db_session):
+    """get_discovered_entity_types -> 从 datasets 聚合 DISTINCT entity_type。
+
+    往一个 catalog 插入两条 dataset（entity_type bill / contract），再插一条
+    NULL entity_type，应返回 ['bill', 'contract']（去重 + 排序 + 排除 NULL）。
+    """
+    from sqlalchemy import text
+
     service = CatalogService(db_session)
     catalog = await _make_catalog_via_service(
-        service, code=_unique_code("wrj"), entity_types=["bill", "contract"]
+        service, code=_unique_code("disc"), entity_types=[]
     )
-    with pytest.raises(ValueError, match="白名单"):
-        await service.validate_entity_type(
-            catalog.id, DEFAULT_TENANT_ID, "payment"
+    now_dt = datetime.now(UTC).replace(tzinfo=None)
+    # 插入 3 条 dataset：bill / contract / NULL
+    for et in ("bill", "contract", None):
+        await db_session.execute(
+            text(
+                "INSERT INTO metaedu.datasets "
+                "(id, tenant_id, catalog_id, name, status, kg_status, "
+                "sort_order, entity_type, created_by, created_at, updated_at) "
+                "VALUES (:id, :tid, :cid, :name, 'uploaded', 'pending', 0, "
+                ":et, :uid, :now, :now)"
+            ),
+            {
+                "id": uuid.uuid4(),
+                "tid": DEFAULT_TENANT_ID,
+                "cid": catalog.id,
+                "name": f"ds-{et or 'null'}",
+                "et": et,
+                "uid": DEFAULT_ADMIN_ID,
+                "now": now_dt,
+            },
         )
+    discovered = await service.get_discovered_entity_types(
+        catalog.id, DEFAULT_TENANT_ID
+    )
+    assert discovered == ["bill", "contract"]
 
 
-async def test_validate_entity_type_unknown_catalog(db_session):
-    """validate_entity_type 不存在的 catalog_id → ValueError。"""
+async def test_get_discovered_entity_types_empty_for_new_catalog(db_session):
+    """新建 catalog（无 dataset）-> get_discovered_entity_types 返回空列表。"""
     service = CatalogService(db_session)
-    with pytest.raises(ValueError, match="不存在"):
-        await service.validate_entity_type(
-            uuid.uuid4(), DEFAULT_TENANT_ID, "bill"
-        )
+    catalog = await _make_catalog_via_service(
+        service, code=_unique_code("empty"), entity_types=[]
+    )
+    discovered = await service.get_discovered_entity_types(
+        catalog.id, DEFAULT_TENANT_ID
+    )
+    assert discovered == []
 
 
-async def test_validate_entity_type_cross_tenant_catalog(db_session):
-    """validate_entity_type 跨 tenant 访问 → 视为不存在（tenant 隔离）。"""
+async def test_get_discovered_entity_types_tenant_isolated(db_session):
+    """get_discovered_entity_types 跨 tenant -> 看不到他租户的 dataset。"""
+    from sqlalchemy import text
+
     service = CatalogService(db_session)
     other_tenant = uuid.uuid4()
-    # 在 other_tenant 建 catalog
-    other_catalog = await service.create(
+    catalog = await service.create(
         tenant_id=other_tenant,
-        code=_unique_code("ctt"),
+        code=_unique_code("ctt2"),
         name="他租户的库",
-        entity_types=["bill"],
+        entity_types=[],
         created_by=DEFAULT_ADMIN_ID,
         role="super_admin",
     )
-    # 用 DEFAULT_TENANT_ID 去查 other_tenant 的 catalog → 不存在
-    with pytest.raises(ValueError, match="不存在"):
-        await service.validate_entity_type(
-            other_catalog.id, DEFAULT_TENANT_ID, "bill"
-        )
+    await db_session.execute(
+        text(
+            "INSERT INTO metaedu.datasets "
+            "(id, tenant_id, catalog_id, name, status, kg_status, "
+            "sort_order, entity_type, created_by, created_at, updated_at) "
+            "VALUES (:id, :tid, :cid, :name, 'uploaded', 'pending', 0, "
+            "'bill', :uid, :now, :now)"
+        ),
+        {
+            "id": uuid.uuid4(),
+            "tid": other_tenant,
+            "cid": catalog.id,
+            "name": "other-tenant-ds",
+            "uid": DEFAULT_ADMIN_ID,
+            "now": datetime.now(UTC).replace(tzinfo=None),
+        },
+    )
+    # 用 DEFAULT_TENANT_ID 查 -> 看不到 other_tenant 的 dataset
+    discovered = await service.get_discovered_entity_types(
+        catalog.id, DEFAULT_TENANT_ID
+    )
+    assert discovered == []
 
 
 # ---------------------------------------------------------------------------

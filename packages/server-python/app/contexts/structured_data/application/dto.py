@@ -36,9 +36,13 @@ class DatasetDTO(BaseModel):
     status: str
     kg_status: str
     sort_order: int
+    entity_type: str | None = None
     created_by: UUID
     created_at: datetime
     updated_at: datetime
+    # Upload-only: set when entity_type is first occurrence in the catalog.
+    # None on all other endpoints (list / get / patch / reinitialize).
+    warning: str | None = None
 
     model_config = {"from_attributes": True}
 

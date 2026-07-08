@@ -44,6 +44,7 @@ def _dataset_row_to_dto(row: dict) -> DatasetDTO:
         status=row["status"],
         kg_status=row["kg_status"],
         sort_order=row["sort_order"],
+        entity_type=row.get("entity_type"),
         created_by=row["created_by"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -89,16 +90,14 @@ async def upload_dataset(
     tid = get_tenant_id()
     uid = current_user["id"]
 
-    # REQ-054 Task 3: 白名单校验 — entity_type 必须在 catalog.entity_types 内
+    # REQ-054 review fix V1: catalog existence check (replaces the old
+    # whitelist validation). entity_type is now free-text and persisted to
+    # datasets.entity_type; the catalog's discovered list is aggregated
+    # from datasets rather than declared upfront.
     catalog_service = CatalogService(session)
-    try:
-        await catalog_service.validate_entity_type(
-            catalog_id=uuid.UUID(catalog_id),
-            tenant_id=tid,
-            entity_type=entity_type,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    catalog = await catalog_service.get_by_id(uuid.UUID(catalog_id), tid)
+    if not catalog:
+        raise HTTPException(status_code=400, detail="数据库不存在")
 
     if not file.filename:
         raise HTTPException(status_code=400, detail="文件名不能为空")
@@ -124,7 +123,18 @@ async def upload_dataset(
         tags=[],
         created_by=uid,
         catalog_id=uuid.UUID(catalog_id),
+        entity_type=entity_type,
     )
+
+    # New-entity warning: if this is the first dataset with this entity_type
+    # in this catalog, surface a confirmation hint. count == 1 means the row
+    # we just inserted is the only one.
+    warning: str | None = None
+    count = await repo.count_by_catalog_and_entity_type(
+        tid, uuid.UUID(catalog_id), entity_type
+    )
+    if count == 1:
+        warning = f"发现新实体类型 {entity_type}，请确认是否属于本主题"
 
     # Trigger dataset processing pipeline
     try:
@@ -132,7 +142,9 @@ async def upload_dataset(
     except Exception as e:
         logger.warning(f"Failed to dispatch ds_parse task — {type(e).__name__}: {e}")
 
-    return _dataset_row_to_dto(row)
+    dto = _dataset_row_to_dto(row)
+    dto.warning = warning
+    return dto
 
 
 @router.get("/datasets/{dataset_id}", response_model=DatasetDTO)

@@ -1,14 +1,16 @@
 """Tests for structured_data dataset endpoints.
 
-REQ-054 Task 3: the upload endpoint now requires ``catalog_id`` +
-``entity_type`` (Form fields) and validates the entity_type against the
-catalog's whitelist via :meth:`CatalogService.validate_entity_type`. The
-list endpoint accepts an optional ``catalog_id`` query filter.
+REQ-054 review fix (V1): the upload endpoint no longer validates
+``entity_type`` against a catalog whitelist. ``entity_type`` is free-text,
+persisted to ``datasets.entity_type``, and the catalog's effective
+entity-type list is discovered from uploaded datasets. A ``warning`` field
+is added to the upload response when the entity_type is the first
+occurrence in that catalog. The list endpoint accepts an optional
+``catalog_id`` query filter.
 
-The seeded ``education`` catalog (alembic 018) with
-``entity_types = ["customer", "bill", "contract"]`` backs these tests —
-we look it up via ``GET /api/v1/catalogs`` and use ``customer`` as the
-entity_type for valid uploads.
+The seeded ``education`` catalog (alembic 018) backs these tests - we look
+it up via ``GET /api/v1/catalogs`` and use ``customer`` as the entity_type
+for valid uploads.
 """
 
 import io
@@ -62,6 +64,7 @@ async def test_upload_dataset(client, auth_headers):
     data = resp.json()
     assert data["name"] == "测试数据集"
     assert data["status"] == "uploaded"
+    assert data["entity_type"] == "customer"
     return data["id"]
 
 
@@ -142,7 +145,7 @@ async def test_kg_status(client, auth_headers):
 
 
 # ---------------------------------------------------------------------------
-# REQ-054 Task 3 — new tests for catalog_id + entity_type validation
+# REQ-054 V1 — catalog_id + entity_type (dynamic discovery, no whitelist)
 # ---------------------------------------------------------------------------
 
 
@@ -169,21 +172,25 @@ async def test_upload_dataset_422_missing_entity_type(client, auth_headers):
     assert resp.status_code == 422
 
 
-async def test_upload_dataset_400_bad_entity_type(client, auth_headers):
-    """entity_type 不在 catalog 白名单 → 400（CatalogService.validate_entity_type）。"""
+async def test_upload_dataset_201_any_entity_type(client, auth_headers):
+    """REQ-054 V1: entity_type 自由填写（不再校验白名单）-> 201。
+
+    "unknown_entity" 不在 education catalog 的预设 entity_types 内，但 V1
+    动态发现模式下任何 entity_type 都被接受并持久化到 datasets.entity_type。
+    """
     catalog_id = await _get_education_catalog_id(client, auth_headers)
     resp = await client.post(
         "/api/v1/structured-data/datasets/upload",
-        files={"file": _xlsx_file("bad_entity.xlsx")},
+        files={"file": _xlsx_file("free_entity.xlsx")},
         data={"catalog_id": catalog_id, "entity_type": "unknown_entity"},
         headers=auth_headers,
     )
-    assert resp.status_code == 400
-    assert "白名单" in resp.json()["detail"]
+    assert resp.status_code == 201
+    assert resp.json()["entity_type"] == "unknown_entity"
 
 
 async def test_upload_dataset_400_unknown_catalog(client, auth_headers):
-    """catalog_id 不存在 → 400（CatalogService.validate_entity_type）。"""
+    """catalog_id 不存在 -> 400（catalog 存在性校验）。"""
     fake_catalog_id = str(uuid.uuid4())
     resp = await client.post(
         "/api/v1/structured-data/datasets/upload",
@@ -193,6 +200,36 @@ async def test_upload_dataset_400_unknown_catalog(client, auth_headers):
     )
     assert resp.status_code == 400
     assert "不存在" in resp.json()["detail"]
+
+
+async def test_upload_new_entity_type_warning(client, auth_headers):
+    """首次出现的 entity_type -> 响应带 warning；再次上传同 entity_type -> 无 warning。"""
+    catalog_id = await _get_education_catalog_id(client, auth_headers)
+    # 用一个本测试独占的 entity_type，避免被其他测试污染计数
+    entity = f"warn_{uuid.uuid4().hex[:6]}"
+
+    # 第一次上传 -> warning 提示
+    resp1 = await client.post(
+        "/api/v1/structured-data/datasets/upload",
+        files={"file": _xlsx_file("warn_first.xlsx", b"a")},
+        data={"catalog_id": catalog_id, "entity_type": entity},
+        headers=auth_headers,
+    )
+    assert resp1.status_code == 201
+    body1 = resp1.json()
+    assert body1["entity_type"] == entity
+    assert body1["warning"] is not None
+    assert entity in body1["warning"]
+
+    # 第二次上传同 entity_type -> 无 warning
+    resp2 = await client.post(
+        "/api/v1/structured-data/datasets/upload",
+        files={"file": _xlsx_file("warn_second.xlsx", b"b")},
+        data={"catalog_id": catalog_id, "entity_type": entity},
+        headers=auth_headers,
+    )
+    assert resp2.status_code == 201
+    assert resp2.json()["warning"] is None
 
 
 async def test_upload_dataset_201_returns_catalog_id(client, auth_headers):

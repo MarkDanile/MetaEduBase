@@ -68,6 +68,7 @@ class DatasetRepository:
         tags: list[str],
         created_by: uuid.UUID,
         catalog_id: uuid.UUID,
+        entity_type: str | None = None,
     ) -> dict:
         dataset_id = uuid.uuid4()
         now = datetime.now(UTC).replace(tzinfo=None)
@@ -75,10 +76,10 @@ class DatasetRepository:
             text(
                 "INSERT INTO metaedu.datasets "
                 "(id, tenant_id, catalog_id, name, description, source_file, tags, status, "
-                "kg_status, row_count, sort_order, created_by, created_at, "
-                "updated_at) "
+                "kg_status, row_count, sort_order, entity_type, created_by, "
+                "created_at, updated_at) "
                 "VALUES (:id, :tid, :cid, :name, :desc, :sfile, :tags, 'uploaded', "
-                "'pending', 0, 0, :uid, :now, :now)"
+                "'pending', 0, 0, :etype, :uid, :now, :now)"
             ),
             {
                 "id": dataset_id,
@@ -88,6 +89,7 @@ class DatasetRepository:
                 "desc": description,
                 "sfile": source_file,
                 "tags": tags,
+                "etype": entity_type,
                 "uid": created_by,
                 "now": now,
             },
@@ -104,10 +106,32 @@ class DatasetRepository:
             "kg_status": "pending",
             "row_count": 0,
             "sort_order": 0,
+            "entity_type": entity_type,
             "created_by": created_by,
             "created_at": now,
             "updated_at": now,
         }
+
+    async def count_by_catalog_and_entity_type(
+        self,
+        tenant_id: uuid.UUID,
+        catalog_id: uuid.UUID,
+        entity_type: str,
+    ) -> int:
+        """Count datasets in a catalog with a given entity_type.
+
+        Used by the upload router to detect first-occurrence entity_type so
+        it can emit a new-entity warning. Tenant-scoped for isolation.
+        """
+        result = await self._session.execute(
+            text(
+                "SELECT COUNT(*) FROM metaedu.datasets "
+                "WHERE tenant_id = :tid AND catalog_id = :cid "
+                "AND entity_type = :et"
+            ),
+            {"tid": tenant_id, "cid": catalog_id, "et": entity_type},
+        )
+        return result.scalar() or 0
 
     async def update(self, dataset_id: uuid.UUID, tenant_id: uuid.UUID, **kwargs: object) -> None:
         sets: list[str] = []
