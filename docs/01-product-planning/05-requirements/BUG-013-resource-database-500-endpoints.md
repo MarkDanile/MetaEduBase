@@ -4,7 +4,8 @@
 > Priority: P1
 > Area: 后端 / document 接口 + structured_data 接口
 > Created: 2026-07-07
-> Closed: 2026-07-07 (commit TBD)
+> Closed: 2026-07-07 (PR #418 `f8c8646`)
+> ID note: 2026-07-15 Code Review 发现 BUG-013 已被 PR #406 的 pgvector cast 任务占用；待 DOC-077 统一重编号，当前链接暂保留。
 
 ## 现象
 

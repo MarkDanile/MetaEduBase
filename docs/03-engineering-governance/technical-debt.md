@@ -161,11 +161,14 @@
 | TD-065 | ds_embed 返 embedded count int | 🟢 完成 | P1 | 后端 / Structured Data / Embedding | TD-057 slice 9：ds_embed._do 返 `success_count` int；outer 补 `return`。 | [PR #275](https://github.com/MarkDanile/MetaEduBase/pull/275) (merge `f878303`) |
 | TD-066 | ds_cross_dataset_edges 返 cross dataset edges count | 🟢 完成 | P1 | 后端 / Structured Data / KG | TD-057 9 个 follow-up 列表（commit 49a964a 父任务总账）包含的"剩 6 个 follow-up"收口候选（实际只定义了 8 个 TD-058~TD-065，TD-066 是 parent 总账描述中预留的下一个 `_do` 编号）。`ds_cross_dataset_edges._do` 是 structured_data pipeline 最后一步（chain 由 ds_extract_kg 触发），caller 拿到新建跨数据集边数后可直接评估跨数据集 KG 链接构建质量。 | [PR #280](https://github.com/MarkDanile/MetaEduBase/pull/280) (merge `c343de7`) |
 | TD-067 | LLM 抽取 `teaching_plan` / `practice_links` 失败返 `-` | 🟢 完成 | P2 | 后端 / 模板抽取 / LLM prompt | 2026-06-14 全链路评估人才培养方案文件复测：模板 `人才培养方案` 期望 `teaching_plan: array[semester]` 38 课程 × 6 学期课时表 + `practice_links: table` 实践环节；LLM 返 `-`（未抽取）。`curriculum_system: array[course]` 38 门课正确抽取、`basic_info` 5 字段准 — 抽取链路"懂简单数组，不懂嵌套课时表"。需在 `extract_template_prompts.py` 补 few-shot 示例（教学进程表 + 实践环节表）。 | [PR #287](https://github.com/MarkDanile/MetaEduBase/pull/287) (merge `2b983b2`) |
-| TD-068 | AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明 | 🟢 完成 (PR #TODO) | P0 | 后端 / RAG / Embedding / AI Chat | Slice 1 PR #355 squash merge `fdffd60`：trace 已透出 `embedding_fallback` metadata。Slice 2 (PR #TODO squash merge)：修 `embedding_service.py` 多 provider fallback + 修 `pg_chunk_vector_retriever.py` `CAST(:vec AS vector)` 后 query embedding 真实生成（硅流 4096 维）+ Slice 3 (TD-069) schema 迁移 `text` → `vector(4096)` + knowledge_nodes 599 行 backfill。验证：psql pgvector cosine 真返回 (chunk 0.6677 / node 0.6638)，`vector_fallback_count: 0`，4 通道全激活 |
-| TD-069 | dev DB embedding 列类型与 pgvector 操作符不匹配导致真实向量召回不可用 | 🟢 完成 (PR #TODO squash merge) | P0 | 后端 / RAG / Embedding / AI Chat / Schema | dev DB `document_chunks.embedding` (1062 行已 backfill 硅流 4096 维) / `knowledge_nodes.embedding` (599 行 100% NULL，从未填过) 两列当前 `text` 类型；pgvector 扩展已装但 `<=>` cosine 操作符要求 `vector` 类型。PR #TODO squash merge：alembic 030 迁移 `text` → `vector(4096)` (USING expression 兼容 NULL) + `extract_knowledge_graph` 加 embedding 字段填充 + 一次性 `backfill_knowledge_node_embeddings.py` 脚本回填 599 节点 + 同步 merge TD-068 Slice 2 代码修复 |
+| TD-068 | AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明 | 🟢 完成 | P0 | 后端 / RAG / Embedding / AI Chat | Slice 1 PR #355 squash merge `fdffd60`：trace 已透出 `embedding_fallback` metadata。Slice 2 / 3 随 [PR #366](https://github.com/MarkDanile/MetaEduBase/pull/366) 合并：多 provider fallback、pgvector CAST、vector(4096) migration 和节点 backfill。验证：psql cosine 真返回，`vector_fallback_count: 0`，4 通道激活。 |
+| TD-069 | dev DB embedding 列类型与 pgvector 操作符不匹配导致真实向量召回不可用 | 🟢 完成 | P0 | 后端 / RAG / Embedding / AI Chat / Schema | [PR #366](https://github.com/MarkDanile/MetaEduBase/pull/366)：alembic 030 把 embedding 列迁到 `vector(4096)`，补节点写入和一次性 backfill；Code Review 发现默认 backfill 的 mutable predicate + OFFSET 会跳行，接力 TD-075。 |
 | TD-070 | vector 召回 query embedding 无超时兜底 | 🟢 完成 | P1 | 后端 / RAG / Embedding / Recall | `get_embedding` 串行尝试 3 provider × 30s httpx = 最多 90s/调用；3 个 query-time recall 调用点（`recall_service.py:32` PgVectorRecallChannel / `pg_chunk_vector_retriever.py:58` PgChunkVectorRetriever / `router.py:278` KG 搜索）无外层超时，慢 provider 下阻塞生产 chat + 卡住 REQ-037 全量真 LLM 验收。新增 `get_embedding_with_timeout(text, timeout=60.0)` helper（`asyncio.wait_for` + TimeoutError→None 降级，与 REQ-031 `_get_cached_embedding` 60s 模式一致），3 调用点改用之。单测 3 条（成功透传 / 超时 None / None 透传）+ 现有测试无回归。`get_embedding` 本身不动（batch/写入路径保持现状） |
 | TD-071 | RAG 评估 embedding 串行单条调用 + 校验脚本串行 run：累积吞吐阻塞全量真 LLM 验收 | 🟢 完成 | P1 | 后端 / RAG / Embedding / 校验脚本 | REQ-038 阻塞根因（embedding provider 累积吞吐不足）由 2 个可改结构放大：(1) `embedding_service.get_embedding` 只暴露单条接口，provider 原生 batch API（`SiliconFlowProvider.embed(texts: list[str])`）未启用 → 120 次 answer+recall embedding 拆 120 次 HTTP 串行，单次 ~25-30s × 120 = 50-60min；(2) `scripts/rag_validation/main.py` `for q in questions: for scenario in scenarios: await _run_question(...)` 双重 for 串行 60 次 run，无 `asyncio.gather` → 即使单次加速也仍串行排队。新增 `get_embeddings_with_timeout_batch` helper（provider batch API + 失败降级逐条重试）+ `_compute_semantic_embedding_coverage` 改 batch（answer + keypoint 候选一次拿回，5-15 条/批）+ main.py `asyncio.gather` + `--concurrency` CLI（默认 4，semaphore=2 维持 provider 限流不放大）。目标：REQ-038 全量真 LLM run 50-60min → ≤10min 完成；保持 REQ-031 进程内缓存命中统计不变；不破坏 TD-070 60s 兜底；不动主链路代码；provider 不切换。详见 [Spec](../02-delivery-plans/01-specs/2026-06-21-td-071-rag-eval-embedding-batch.md) |
 | TD-072 | runner.py 接入 `get_embeddings_with_timeout_batch`（TD-071 §5 偏差接力）：完全省 HTTP 数，进一步加速 60 run 评估 | 🟢 完成 | P1 | 后端 / RAG / Embedding / 校验脚本 | TD-071 实施完成 + AC-4 子集验证（132 run 29.6 min / 推算 60 run 15-20 min）共同确认：当前"per-text gather within Semaphore=2"路径虽加速 3-3.4×，但仍未到 AC-4 ≤10 min 目标。根因：`runner.py:_build_service` 把 `get_embedding`（单条）作为 `embedding_callable` 传入 `_compute_semantic_embedding_coverage`，导致 `coverage._get_cached_embeddings_batch` 即使有 `get_embeddings_with_timeout_batch` helper（TD-071 实施）也无法调用 —— 仍走 per-text gather。修复：`runner.py:_build_service` 把 `embedding_callable=get_embeddings_with_timeout_batch`（单 helper，签名 `(texts: list[str]) -> list[list[float] | None]`）传给 `coverage._get_cached_embeddings_batch`；coverage 内部检测 callable 是 batch 还是单条，启用真正 batch HTTP 路径。预期 60 run 压到 5-7 min（再加速 2-3×，叠加 TD-071 3-3.4× → 总 6-10× vs 历史 50-60 min 阻塞）。详见 [Spec](../02-delivery-plans/01-specs/2026-06-22-td-072-runner-batch-wiring.md) |
+| TD-073 | RAG 评估 keypoint embedding 离线预计算与落盘 cache | 🟢 完成 | P2 | 校验脚本 / RAG / Embedding / Cache | [PR #402](https://github.com/MarkDanile/MetaEduBase/pull/402)：cache store + coverage load/save + CLI；24 个新增测试，RAG validation 50 passed。 |
+| TD-074 | `_is_batch_embedding_callable` 与 batch routing 单测补强 | 🟢 完成 | P2 | 校验脚本 / 测试基础设施 | [PR #400](https://github.com/MarkDanile/MetaEduBase/pull/400)：26 个测试锁定 callable 判断、batch/per-text 路由、cache、timeout 和错误长度降级。 |
+| TD-075 | `knowledge_nodes` embedding backfill 使用 mutable predicate + OFFSET 导致跳行 | ⚫ 待办 | P1 | 后端 / 数据迁移 / RAG / 测试 | [DOC-078 Review](04-retrospectives/2026-07-15-recent-completion-code-review.md#p1-td-069-backfill-默认分页会跳行) / [PR #366](https://github.com/MarkDanile/MetaEduBase/pull/366) |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -4028,7 +4031,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-068: AI Chat 真实验证中 query embedding 为空导致向量召回有效性不明
 
-状态：🟢 完成 (PR #TODO)
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -4038,6 +4041,8 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 | Related | [REQ-024](../01-product-planning/05-requirements/REQ-024-p2-real-validation-query-understanding-and-graph-edge.md) / [REQ-025](../01-product-planning/05-requirements/REQ-025-p2-graph-edge-prompt-impact-and-real-llm-validation.md) / [REQ-026](../01-product-planning/05-requirements/REQ-026-p2-rag-effect-comparison-and-weak-recall-samples.md) |
 | 交付 PR (Slice 1) | [PR #355](https://github.com/MarkDanile/MetaEduBase/pull/355) |
 | Merge Commit (Slice 1) | `fdffd60` (squash merge) |
+| 交付 PR (Slice 2) | [PR #366](https://github.com/MarkDanile/MetaEduBase/pull/366) |
+| Merge Commit (Slice 2) | `ed77227` (squash merge) |
 
 **证据**
 
@@ -4086,7 +4091,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-069: dev DB embedding 列类型与 pgvector 操作符不匹配导致真实向量召回不可用
 
-状态：🟢 完成 (PR #TODO squash merge)
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -4130,7 +4135,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 **交付记录**
 
 - 2026-06-19 登记（TD-068 Slice 2 诊断发现）。
-- 2026-06-19 修复完成 (PR #TODO squash merge)：alembic 030 迁移 `document_chunks.embedding` / `knowledge_nodes.embedding` `text` → `vector(4096)` (USING expression)；新增 `backfill_knowledge_node_embeddings.py` 一次性脚本回填 599 节点 (硅流 8B 4096 维)；`extract_knowledge_graph.py` 加 embedding 字段填充；同步 merge TD-068 Slice 2 代码修复 (`embedding_service.py` 多 provider fallback + `pg_chunk_vector_retriever.py` / `recall_service.py` CAST 修复)；验证 psql pgvector cosine 真返回 (`SELECT 1 - (embedding <=> '[...]'::vector) FROM document_chunks` 正常) + `validate_req024_p2_real_validation.py` 真 PG dry-run `vector_fallback_count: 0` + retrieval_topn.vector 真命中 (chunk top-1 score 0.6677) + 4 通道全部激活。`document_chunks.embedding` 1062 行已 backfill / `knowledge_nodes.embedding` 599/599 backfilled。报告重跑留独立 PR。
+- 2026-06-19 修复完成（PR #366 squash merge `ed77227`）：alembic 030 迁移 `document_chunks.embedding` / `knowledge_nodes.embedding` `text` → `vector(4096)` (USING expression)；新增 `backfill_knowledge_node_embeddings.py` 脚本回填 599 节点 (硅流 8B 4096 维)；`extract_knowledge_graph.py` 加 embedding 字段填充；同步 merge TD-068 Slice 2 代码修复 (`embedding_service.py` 多 provider fallback + `pg_chunk_vector_retriever.py` / `recall_service.py` CAST 修复)；验证 psql pgvector cosine 真返回 (`SELECT 1 - (embedding <=> '[...]'::vector) FROM document_chunks` 正常) + `validate_req024_p2_real_validation.py` 真 PG dry-run `vector_fallback_count: 0` + retrieval_topn.vector 真命中 (chunk top-1 score 0.6677) + 4 通道全部激活。`document_chunks.embedding` 1062 行已 backfill / `knowledge_nodes.embedding` 599/599 backfilled。2026-07-15 复评发现脚本单次分页会跳行，由 TD-075 接力。
 
 ### TD-070: vector 召回 query embedding 无超时兜底
 
@@ -4410,3 +4415,42 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
   - TDD 纪律（retrospective 诚实登记）：production code 已在 main，26 tests 全覆盖 + monkeypatch RED demonstration 缓解"测试立即通过"风险
   - 业务 tests（test_ai_chat / test_knowledge / test_resource 等）因环境无 PostgreSQL 5432 端口有 connection errors——与本 PR 无关，按 git-workflow 范围只跑 TD-074 影响范围
   - 详见 [PR #400](https://github.com/MarkDanile/MetaEduBase/pull/400) (`e09ed35` squash merge)
+
+### TD-075: `knowledge_nodes` embedding backfill 使用 mutable predicate + OFFSET 导致跳行
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 后端 / 数据迁移 / RAG / 测试 |
+| 事实源 | [DOC-078 Review](04-retrospectives/2026-07-15-recent-completion-code-review.md#p1-td-069-backfill-默认分页会跳行) / [PR #366](https://github.com/MarkDanile/MetaEduBase/pull/366) |
+
+**证据**
+
+- `backfill_knowledge_node_embeddings.py` 默认查询 `WHERE embedding IS NULL ORDER BY created_at LIMIT :limit OFFSET :offset`。
+- 每批成功后把当前行更新为非 NULL 并提交，下一轮待选结果集缩短，但代码继续 `offset += batch_size`，因此跳过仍为 NULL 的行。
+- 该脚本没有单测；PR #366 的 599/599 真 DB 结果证明当时数据最终填满，不证明一次默认执行的分页算法正确。
+
+**问题**
+
+- 一次运行可能只处理部分目标行，且日志中的 `total_backfilled/target_count` 不会自动使进程失败。
+- 重跑会逐步收敛，但与“一次性 backfill”“幂等”的交付契约不符，后续更大数据集会放大遗漏风险。
+
+**完成标准**
+
+- 改为稳定 keyset 分页，或每轮重复选择 `embedding IS NULL LIMIT :limit` 且不使用 OFFSET。
+- 空标题、provider 返回空值和单行失败不得让成功行被跳过；最终输出 remaining count。
+- 默认执行结束时若 `embedding IS NULL` 仍有可处理行，返回非 0 或明确失败摘要。
+- 补大于 2 个 batch 的测试，证明每个 ID 恰好处理一次；补部分 provider 失败后重跑可继续收敛的测试。
+
+**验证方式**
+
+- `pytest` 运行新增 backfill 单测，至少覆盖 125 行 / batch_size=50、空标题、部分失败和二次重跑。
+- mock embedding provider，不调用真实外部 API。
+- 有 dev DB 时额外执行前后 count 核对；没有 dev DB 只声明单测层级。
+- `ruff check`、`scripts/check-engineering-docs`、`git diff --check`。
+
+**交付记录**
+
+- 2026-07-15：DOC-078 Code Review 登记，尚未实施。

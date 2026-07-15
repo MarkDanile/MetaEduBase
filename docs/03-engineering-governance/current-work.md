@@ -14,7 +14,9 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+| 任务 | 状态 | 执行 | 下一步 | 验证 / 交接 |
+|------|------|------|--------|-------------|
+| [DOC-078 近期完成任务 Code Review](04-retrospectives/2026-07-15-recent-completion-code-review.md) | 🟡 进行中 | Codex / review / `codex/review-recent-completions-20260715` | 待 Git 闭环 | 评分已登记；文档门禁与工程测试通过；真实 DB e2e 未运行；后续优先 REQ-056 |
 
 ## 下一批候选任务
 
@@ -22,8 +24,9 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-046 企业 360 背调工作台与 MCP / Skill 集成闭环 | 🔵 Ready | 先执行 Slice 0 / Slice 1：盘点企查查 MCP 工具、确认 V0 背调维度、实现企业主体锚定与 QCC MCP adapter；内部数据激活由 REQ-052 承接 | [Requirement](../01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md) / [Spec](../02-delivery-plans/01-specs/2026-07-03-req-046-enterprise-360-due-diligence-workbench.md) / [Plan](../02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md) |
-| P0 | REQ-044 MCP 注册、管理与调用能力 | ⚫ Candidate | 若 REQ-046 adapter 需要从 V0 走向生产化，则优先塑形 MCP registry、权限、会话可用性和调用审计 | [Backlog](../01-product-planning/04-backlog.md) / [Applications](../01-product-planning/06-ai-applications/README.md#产品基座能力候选) |
+| P0 | REQ-056 智能问数真实执行闭环与 AI Chat 生产接线 | 🔵 Ready | 先修 ImportedDataset 过滤未接生产路径，再补 AI Chat request-bound QueryService + catalog 双键路由，最后跑 10 个真实业务样例 | [Requirement](../01-product-planning/05-requirements/REQ-056-intelligent-data-query-production-closure.md) / [Review](04-retrospectives/2026-07-15-recent-completion-code-review.md) |
+| P0 | DOC-077 跨事实源任务编号唯一性与历史碰撞收口 | 🔵 Ready | 先重编号后创建的 BUG-011 / BUG-013，再补 Requirement、Backlog、current-work、work-log、score log 同 ID 异义门禁 | [Backlog](../01-product-planning/04-backlog.md) / [Review](04-retrospectives/2026-07-15-recent-completion-code-review.md#p1-bug-编号已发生两次碰撞) |
+| P1 | TD-075 knowledge_nodes embedding backfill 稳定分页 | ⚫ 待办 | 改为稳定 keyset 或无 OFFSET 批处理，并补跨 3 个 batch、部分失败与重跑回归 | [Technical Debt](technical-debt.md#td-075-knowledge_nodes-embedding-backfill-使用-mutable-predicate--offset-导致跳行) / [Review](04-retrospectives/2026-07-15-recent-completion-code-review.md#p1-td-069-backfill-默认分页会跳行) |
 
 ## 最近完成
 
@@ -33,15 +36,11 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
-| 2026-07-08 | REQ-054 平台级数据库（catalog）主题域分组与多源数据接入（9 Task 实施完成） | 🟢 完成 | 9 Task：schema（alembic 016-018）+ catalog CRUD API + RBAC + 上传改造 + DirectDB/MCP adapter V1 + 语义层双键路由 + QueryPlanner 按 catalog_id + 前端列表卡片 + 详情页 tab。backend 207 / frontend 128 passed / 4 质量门禁 0 / AC-1~10 全覆盖 | [REQ-054 plan](../02-delivery-plans/02-plans/2026-07-07-req-054-platform-database-catalog.md) / [PR #421](https://github.com/MarkDanile/MetaEduBase/pull/421) (`b91f196a`) |
-| 2026-07-07 | BUG-013 资源库/数据库页面 500 → 503（DB 不可用） | 🟢 完成 | 根因：asyncpg 在 PG 宕机时抛 ConnectionDoesNotExistError → SQLAlchemy OperationalError → FastAPI 默认 500。修复：main.py 加 exception_handler，识别 conn error → 503 + 明确 './dev.sh infra' 恢复路径 | [BUG-013](../01-product-planning/05-requirements/BUG-013-resource-database-500-endpoints.md) / [PR #418](https://github.com/MarkDanile/MetaEduBase/pull/418) (`f8c8646`) |
-| 2026-07-07 | REQ-052 智能问数与国资信息化数据激活原子能力（实施 9 Task 收口） | 🟢 完成 | 9 Task：schema + Adapter + RBAC + PII + QueryPlanner + SqlGuard + ResultExplainer + API + QueryPanel + AI Chat + BacktrackSkill。51/51 pure unit；4/4 质量门禁 0；AC-7 待真实环境 e2e | [REQ-052 plan](../02-delivery-plans/02-plans/2026-07-01-req-052-intelligent-data-query.md) / [PR #417](https://github.com/MarkDanile/MetaEduBase/pull/417) (`60e60e70`) |
-| 2026-07-01 | REQ-052 智能问数与国资信息化数据激活原子能力（spec Shaping → Ready） | 🟢 完成 | spec 868 行：3 种数据源 Adapter + 路线 2（Palantir Ontology）/ Slice 0-4 / §11 JSONB 80% 边界 / §12 国资安全审查 12 项补 7 项 | [REQ-052 spec](../02-delivery-plans/01-specs/2026-07-06-req-052-intelligent-data-query.md) / [PR #415](https://github.com/MarkDanile/MetaEduBase/pull/415) (`b6c2a4a`) |
-| 2026-06-30 | TD-073 离线批量 keypoint embedding 预计算落盘（实施） | 🟢 完成 | cache_store.py + coverage 启动/退出 hook + miss 累加 + main.py CLI。15+9 新单测；pytest 50/38 passed / ruff 0 / diff clean。180 texts × 25-30s × 162 run = 75-90min → 0。AC-4 重定义 ≤15min（叠加 TD-072 ≤10min 实证待 verify） | [TD-073 plan](../02-delivery-plans/02-plans/2026-06-30-td-073-offline-keypoint-embedding-plan.md) / [PR #402](https://github.com/MarkDanile/MetaEduBase/pull/402) (`0676bb0`) |
-| 2026-06-30 | TD-074 `_is_batch_embedding_callable` + batch routing 单测补强 | 🟢 完成 | 26 tests / 4 test class。覆盖 None/builtin/lambda/单条/list/Sequence/Iterable/bare list/多 POKW；路由：batch/per-text/dedup/cache hit/超时降级/错长度降级。pytest 26 + 38 passed 无回归 / ruff 0 / diff clean | [PR #400](https://github.com/MarkDanile/MetaEduBase/pull/400) (`e09ed35`) |
-| 2026-06-30 | TD-073 离线批量 keypoint embedding 预计算 spec | 🟢 Done | docs-only：spec + 总账登记 + 候选区更新。落盘 cache 消除 keypoint 路径全部 HTTP；180 unique texts × 25-30s × 162 run = 75-90min → 0。AC-4 重新定义 ≤15min（叠加 TD-072 ≤10min）。全门禁 0 | [TD-073 spec](../02-delivery-plans/01-specs/2026-06-30-td-073-offline-keypoint-embedding.md) / [PR #398](https://github.com/MarkDanile/MetaEduBase/pull/398) (`520bc4a`) |
-| 2026-06-30 | DOC-076 current-work 最近完成批量归档 18→12 | 🟢 Done | 按 workbench 保留策略：18 数据行 → 12（裁 REQ-035/034/033/032/031/030 6 行）；6 项索引均在 work-log 保留；未改门禁 / KNOWN_ISSUES。`check-engineering-docs` 退出码 0 / 38 passed / diff clean | [PR #397](https://github.com/MarkDanile/MetaEduBase/pull/397) (`e321cbd`) |
-| 2026-06-24 | DOC-075 current-work「当前进行中」段落污染硬门禁 | 🟢 Done | `check_current_work` 加 `current-work-in-progress-pollution` 门禁：无活跃任务时该区只允许单句，>1 行阻塞 PR。`pytest tests/engineering/ -q` → 38 passed 退出码 0；`ruff` 0 | [PR #394](https://github.com/MarkDanile/MetaEduBase/pull/394) (`d75c966`) |
-| 2026-06-24 | BUG-012 AI Chat 证据引用/参考来源打开空白页 | 🟢 Done | 链接拼 `/resource/files/{id}` 但路由是 `resource/:id` 无匹配 → 空白页；spec 把错误路径锁进断言。TDD 修复 `buildFileOpenUrl` base 为 `/resource/{id}` + 同步 spec。`pnpm test` 75 passed / typecheck / lint 0 | [Bug](../01-product-planning/05-requirements/BUG-012-ai-chat-evidence-link-blank-page.md) / [PR #391](https://github.com/MarkDanile/MetaEduBase/pull/391) (`f88fc37`) |
-| 2026-06-24 | BUG-011 AI Chat 偶发「网络错误」 | 🟢 Done | 根因：前端 axios 全局 timeout=30s < 后端 `_call_llm` 60s + 检索 ~10s，慢 LLM/provider 抖动触发前端先超时并误报「网络错误」。修复：chat 请求改 120s 单请求超时 + 新增 `describeChatError` 区分 超时/网络/detail。`pnpm test` 75 passed / typecheck / lint 0；curl HTTP 200 24.3s | [Bug](../01-product-planning/05-requirements/BUG-011-ai-chat-timeout-shorter-than-backend-llm.md) / [PR #388](https://github.com/MarkDanile/MetaEduBase/pull/388) (`8aa09d0`) |
-| 2026-06-30 | 候选 3 路径 3 `_EMB_SEMAPHORE` spike（cache warm 不建议改） | 🟡 verdict: no change | minimax LLM A/B 对比 Sem=2 (11:25) vs Sem=5 (11:51)：cache warm miss 几乎不变 (94 vs 92)；A2 反慢 25.64s (+3.7% 噪声)。主 wall-clock 仍 LLM provider 时延。结论：cache warm 下 0% 节省，不建议改 | [候选 3 spike 报告](../02-delivery-plans/01-specs/2026-07-02-candidate3-semaphore-upgrade-spike-report.md) / [PR #411](https://github.com/MarkDanile/MetaEduBase/pull/411) (`7f46ece`) |
+| 2026-07-08 | REQ-054 Catalog 主体实现 | 🟢 完成 | Catalog 主体能力有条件关闭；adapter 可达性与 entity_type 契约由 REQ-057 接力 | [REQ-054](../01-product-planning/05-requirements/REQ-054-platform-database-catalog.md) / [REQ-057](../01-product-planning/05-requirements/REQ-057-catalog-adapter-and-entity-contract-closure.md) |
+| 2026-07-07 | BUG-013 资源库 / 数据库 DB 不可用返回 503 | 🟢 完成 | 数据库连接故障统一返回 503 和恢复提示；编号碰撞待 DOC-077 收口 | [Bug](../01-product-planning/05-requirements/BUG-013-resource-database-500-endpoints.md) / [PR #418](https://github.com/MarkDanile/MetaEduBase/pull/418) |
+| 2026-06-30 | TD-073 离线 keypoint embedding 预计算落盘 | 🟢 完成 | 落盘缓存消除重复 embedding HTTP，RAG 验收性能进入可控范围 | [Plan](../02-delivery-plans/02-plans/2026-06-30-td-073-offline-keypoint-embedding-plan.md) / [PR #402](https://github.com/MarkDanile/MetaEduBase/pull/402) |
+| 2026-06-30 | TD-074 batch embedding 路由测试补强 | 🟢 完成 | 补齐 batch / per-text、缓存、超时和降级路由回归 | [PR #400](https://github.com/MarkDanile/MetaEduBase/pull/400) |
+| 2026-06-30 | DOC-076 最近完成批量归档 | 🟢 完成 | 最近完成窗口从 18 行压回 12 行，长期索引保留在 work-log | [PR #397](https://github.com/MarkDanile/MetaEduBase/pull/397) |
+| 2026-06-30 | `_EMB_SEMAPHORE` 并发 spike | 🟢 完成 | cache warm 场景提高并发无收益，结论为保持现状 | [Report](../02-delivery-plans/01-specs/2026-07-02-candidate3-semaphore-upgrade-spike-report.md) / [PR #411](https://github.com/MarkDanile/MetaEduBase/pull/411) |
+| 2026-06-24 | DOC-075 当前进行中污染门禁 | 🟢 完成 | 无活跃任务时强制当前进行中区只保留一句话 | [PR #394](https://github.com/MarkDanile/MetaEduBase/pull/394) |
+| 2026-06-24 | BUG-011 AI Chat 超时误报网络错误 | 🟢 完成 | 单请求超时调整为 120 秒并区分超时、网络和 HTTP 错误 | [Bug](../01-product-planning/05-requirements/BUG-011-ai-chat-timeout-shorter-than-backend-llm.md) / [PR #388](https://github.com/MarkDanile/MetaEduBase/pull/388) |

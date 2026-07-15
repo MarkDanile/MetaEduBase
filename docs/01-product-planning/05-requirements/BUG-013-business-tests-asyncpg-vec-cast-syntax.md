@@ -1,10 +1,12 @@
 # BUG-013 — 业务 tests 失败：asyncpg 不支持 SQLAlchemy `:vec::vector` 占位符 + cast
 
-> Status: 🟡 进行中
+> Status: 🟢 Done
 > Priority: P1
 > Area: 后端 / 业务 tests / pgvector 集成
 > Created: 2026-07-01
 > Reporter: AC-4 verify follow-up / 业务 tests 修复（候选区第 2 项）
+> Closed: 2026-07-01 (PR #406 `9358c88`)
+> ID note: 2026-07-15 Code Review 发现后续另一任务复用了 BUG-013；待 DOC-077 统一重编号，当前链接暂保留。
 
 ## 现象
 
