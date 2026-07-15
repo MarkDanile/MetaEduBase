@@ -14,9 +14,7 @@
 
 ## 当前进行中
 
-| 任务 | 状态 | 执行 | 下一步 | 验证 / 交接 |
-|------|------|------|--------|-------------|
-| [DOC-078 近期完成任务 Code Review](04-retrospectives/2026-07-15-recent-completion-code-review.md) | 🟡 进行中 | Codex / review / `codex/review-recent-completions-20260715` | 待 Git 闭环 | 评分已登记；文档门禁与工程测试通过；真实 DB e2e 未运行；后续优先 REQ-056 |
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -36,6 +34,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-15 | DOC-078 近期完成任务 Code Review | 🟢 完成 | 8 个批次评分与 4 个 follow-up 已入账；REQ-052 重新打开；候选区优先 REQ-056 / DOC-077 / TD-075 | [Review](04-retrospectives/2026-07-15-recent-completion-code-review.md) / [PR #425](https://github.com/MarkDanile/MetaEduBase/pull/425) |
 | 2026-07-08 | REQ-054 Catalog 主体实现 | 🟢 完成 | Catalog 主体能力有条件关闭；adapter 可达性与 entity_type 契约由 REQ-057 接力 | [REQ-054](../01-product-planning/05-requirements/REQ-054-platform-database-catalog.md) / [REQ-057](../01-product-planning/05-requirements/REQ-057-catalog-adapter-and-entity-contract-closure.md) |
 | 2026-07-07 | BUG-013 资源库 / 数据库 DB 不可用返回 503 | 🟢 完成 | 数据库连接故障统一返回 503 和恢复提示；编号碰撞待 DOC-077 收口 | [Bug](../01-product-planning/05-requirements/BUG-013-resource-database-500-endpoints.md) / [PR #418](https://github.com/MarkDanile/MetaEduBase/pull/418) |
 | 2026-06-30 | TD-073 离线 keypoint embedding 预计算落盘 | 🟢 完成 | 落盘缓存消除重复 embedding HTTP，RAG 验收性能进入可控范围 | [Plan](../02-delivery-plans/02-plans/2026-06-30-td-073-offline-keypoint-embedding-plan.md) / [PR #402](https://github.com/MarkDanile/MetaEduBase/pull/402) |

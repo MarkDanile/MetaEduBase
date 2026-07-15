@@ -139,3 +139,9 @@ Scope:
 - `pytest tests/engineering -q`：38 passed。
 - `scripts/check-engineering-docs`：退出码 0，但未发现重复 BUG ID，印证 DOC-077 门禁缺口。
 - 真实 structured_data dev DB e2e：未运行，当前本机 5432 未监听；不得据此关闭 REQ-052 AC-7。
+
+## Git Closeout
+
+- PR：[PR #425](https://github.com/MarkDanile/MetaEduBase/pull/425)，2026-07-15 squash merge。
+- Merge commit：`96056855`。
+- 仓库未上报 CI checks；合并前本地 `scripts/check-engineering-docs`、38 个 engineering tests 和 `git diff --check` 均通过。
