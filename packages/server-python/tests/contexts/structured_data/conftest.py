@@ -149,6 +149,79 @@ async def sample_dataset(db_session):
 
 
 @pytest_asyncio.fixture
+async def sample_dataset_with_rows(db_session):
+    """Persist a ``DatasetModel`` + 5 ``DatasetRowModel`` rows for filter tests.
+
+    REQ-056 Task 1: the end-to-end filtering test needs a dataset whose rows
+    have a distinguishable ``company_name`` distribution so that applying a
+    filter changes the result count. Five rows are inserted with
+    ``company_name`` in ``{A, A, B, B, C}`` (2 × A, 2 × B, 1 × C) and
+    monotonically increasing ``billing_date`` so ``time_range`` narrowing is
+    also observable. Mirrors ``sample_dataset`` but with a richer row set.
+    """
+    dataset_id = uuid.uuid4()
+    now = datetime.now(UTC).replace(tzinfo=None)
+    catalog_row = await db_session.execute(
+        text(
+            "SELECT id FROM metaedu.data_catalogs "
+            "WHERE tenant_id = :tid AND code = 'education'"
+        ),
+        {"tid": DEFAULT_TENANT_ID},
+    )
+    catalog_id = catalog_row.scalar_one()
+    cnames_literal = json.dumps(["company_name", "amount", "billing_date"])
+    ctypes_literal = json.dumps(["str", "float", "date"])
+    await db_session.execute(
+        text(
+            f"INSERT INTO metaedu.datasets "
+            f"(id, tenant_id, catalog_id, name, description, column_names, column_types, "
+            f"row_count, source_file, tags, status, kg_status, sort_order, "
+            f"created_by, created_at, updated_at) "
+            f"VALUES (:id, :tid, :cid, :name, :desc, '{cnames_literal}'::jsonb, "
+            f"'{ctypes_literal}'::jsonb, :rcount, NULL, NULL, 'uploaded', "
+            f"'pending', 0, :uid, :now, :now)"
+        ),
+        {
+            "id": dataset_id,
+            "tid": DEFAULT_TENANT_ID,
+            "cid": catalog_id,
+            "name": "bill-filter-dataset",
+            "desc": "5-row dataset for REQ-056 filtering tests",
+            "rcount": 5,
+            "uid": DEFAULT_ADMIN_ID,
+            "now": now,
+        },
+    )
+
+    rows = [
+        {"company_name": "A", "amount": 10.0, "billing_date": "2026-01-01"},
+        {"company_name": "A", "amount": 20.0, "billing_date": "2026-02-01"},
+        {"company_name": "B", "amount": 30.0, "billing_date": "2026-03-01"},
+        {"company_name": "B", "amount": 40.0, "billing_date": "2026-04-01"},
+        {"company_name": "C", "amount": 50.0, "billing_date": "2026-05-01"},
+    ]
+    for i, payload in enumerate(rows):
+        payload_literal = json.dumps(payload)
+        await db_session.execute(
+            text(
+                f"INSERT INTO metaedu.dataset_rows "
+                f"(id, tenant_id, dataset_id, row_index, data, created_at) "
+                f"VALUES (:id, :tid, :did, :idx, '{payload_literal}'::jsonb, :now)"
+            ),
+            {
+                "id": uuid.uuid4(),
+                "tid": DEFAULT_TENANT_ID,
+                "did": dataset_id,
+                "idx": i,
+                "now": now,
+            },
+        )
+
+    await db_session.flush()
+    yield {"id": dataset_id, "tenant_id": DEFAULT_TENANT_ID}
+
+
+@pytest_asyncio.fixture
 async def seed_rbac(db_session):
     """Insert per-role visibility_rules into ``metaedu.role_permissions``.
 
