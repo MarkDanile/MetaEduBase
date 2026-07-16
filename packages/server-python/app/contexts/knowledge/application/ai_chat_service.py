@@ -600,6 +600,12 @@ class AIChatService:
 
     # REQ-052 Task 7 — tool definition for ``query_internal_data``. Declared
     # as a class attribute so tests can introspect it without re-creating it.
+    # REQ-056 Task 3 — ``catalog_id`` added so the LLM can route by catalog.
+    # When the LLM fills this field, AI Chat resolves the SemanticModel via
+    # ``get_active_by_catalog_and_entity_type`` (dual-key) so multi-catalog
+    # tenants don't accidentally hit the wrong ``bill``/``contract`` model.
+    # When omitted, AI Chat falls back to ``get_active_by_entity_type`` (V1
+    # legacy behavior — REQ-052 Task 7 path).
     _QUERY_INTERNAL_DATA_TOOL: dict[str, Any] = {
         "type": "function",
         "function": {
@@ -607,6 +613,9 @@ class AIChatService:
             "description": (
                 "查询内部结构化业务数据（账单/合同/工单/租约/客户等）。"
                 "当用户问金额、数量、统计、列表、明细等结构化数据问题时调用。"
+                "若用户的问题明显属于某个数据库（catalog），必须把对应的 "
+                "catalog_id 填到 catalog_id 参数；未指定时由系统按 entity_hint "
+                "单键路由（可能命中错的 catalog）。"
             ),
             "parameters": {
                 "type": "object",
@@ -619,6 +628,18 @@ class AIChatService:
                         "type": "string",
                         "enum": ["bill", "contract", "ticket", "lease", "customer"],
                         "description": "可选 — 实体类型提示；不填时由 QueryService 自动归类",
+                    },
+                    # REQ-056 Task 3 — catalog routing key. LLM fills this when
+                    # the user's question is scoped to a specific catalog
+                    # (e.g. "园区欠费" → park catalog). String form so the
+                    # model can emit it verbatim; the service parses to UUID
+                    # before calling the repository.
+                    "catalog_id": {
+                        "type": "string",
+                        "description": (
+                            "数据库（catalog）的 UUID；不填时按 entity_hint 单键路由。"
+                            "多 catalog 场景强烈建议填写，避免命中错误 schema。"
+                        ),
                     },
                 },
                 "required": ["question"],
@@ -634,9 +655,28 @@ class AIChatService:
         session: AsyncSession | None = None,
         user_id: uuid.UUID | None = None,
         role: str = "employee",
+        # REQ-056 Task 2 — when the caller (router) has the authenticated
+        # current_user dict from ``Depends(get_current_user)``, pass it here
+        # so user_id / role / tenant_id are sourced from the verified JWT
+        # rather than from per-call kwargs (which are easy to leave stale).
+        # ``current_user`` wins over the legacy kwargs — it is the source of
+        # truth for audit identity.
+        current_user: dict | None = None,
     ) -> ChatResponse:
         if session is None:  # pragma: no cover - placeholder path
             raise ValueError("session is required for production chat path")
+
+        # REQ-056 Task 2 — resolve request-bound identity. ``current_user``
+        # is preferred when provided (carries the verified JWT user). Legacy
+        # callers that only pass ``user_id``/``role``/``tenant_id`` still
+        # work; if neither is given, fall back to a random UUID (test seams
+        # only — production must inject a current_user).
+        if current_user is not None:
+            user_id = current_user.get("id", user_id)
+            role = current_user.get("role", role) or role
+            cu_tenant = current_user.get("tenant_id")
+            if cu_tenant is not None:
+                tenant_id = str(cu_tenant)
 
         ner_result = await self.ner_pipeline.extract(request.message)
         top_k = request.context_window
@@ -851,6 +891,24 @@ class AIChatService:
                 entity_hint = arguments.get("entity_hint") or "bill"
                 question = arguments.get("question") or request.message
 
+                # REQ-056 Task 3 — resolve catalog_id from the LLM-filled
+                # tool argument. The LLM emits a string UUID; we defensively
+                # parse to ``uuid.UUID`` so a malformed value degrades to the
+                # legacy single-key path rather than crashing the chat.
+                catalog_id_arg = arguments.get("catalog_id")
+                resolved_catalog_id: uuid.UUID | None = None
+                if catalog_id_arg:
+                    try:
+                        resolved_catalog_id = uuid.UUID(str(catalog_id_arg))
+                    except (TypeError, ValueError):
+                        logger.warning(
+                            "ai_chat_service: invalid catalog_id=%r from "
+                            "tool_call arguments; falling back to "
+                            "entity_type-only routing.",
+                            catalog_id_arg,
+                        )
+                        resolved_catalog_id = None
+
                 # Resolve the SemanticModel via the injected repository factory
                 # (production wires ``SemanticModelRepository(session)`` via
                 # ``ai_router._build_evidence_service``; tests inject a fake).
@@ -860,9 +918,25 @@ class AIChatService:
                     if not isinstance(tenant_id, uuid.UUID)
                     else tenant_id
                 )
-                semantic_model = await semantic_repo.get_active_by_entity_type(
-                    tenant_id=tenant_uuid, entity_type=entity_hint
-                )
+                if resolved_catalog_id is not None:
+                    # Dual-key routing — REQ-054 catalog-scoped lookup. Safe
+                    # even when a tenant has multiple catalogs with the same
+                    # ``entity_type`` registered.
+                    semantic_model = (
+                        await semantic_repo.get_active_by_catalog_and_entity_type(
+                            tenant_id=tenant_uuid,
+                            catalog_id=resolved_catalog_id,
+                            entity_type=entity_hint,
+                        )
+                    )
+                else:
+                    # Legacy single-key fallback — REQ-052 Task 7 path. Kept
+                    # for V1 backward compat: small/old models that don't
+                    # know the ``catalog_id`` field, and tenants without
+                    # multi-catalog schemas.
+                    semantic_model = await semantic_repo.get_active_by_entity_type(
+                        tenant_id=tenant_uuid, entity_type=entity_hint
+                    )
 
                 if semantic_model is None:
                     # No semantic model registered for this entity_hint —

@@ -7,18 +7,18 @@ their ``data`` JSONB column as plain ``dict``s.
 
 What it does today:
 
-- Filters strictly by ``tenant_id`` (security boundary) and ``dataset_id``.
-- Honors ``query_plan.limit`` (defaults to 100) and ``query_plan.data_source_ref``
-  as a per-call override of the dataset id.
-- Returns an empty list (not an error) when no dataset id is discoverable.
+- Delegates SQL emission to :class:`JsonbQueryBuilder`, which applies the
+  ``tenant_id`` (security boundary) + ``dataset_id`` predicates, JSONB
+  ``filters``, ``time_range`` and a clamped ``limit`` (REQ-056 Task 1).
+- Returns an empty list (not an error) when no dataset id is discoverable
+  (the builder returns ``None``).
 
 What it does **not** do yet:
 
-- JSONB predicate filtering (``company_name = 'ACME'``). That lands with the
-  JsonbQueryBuilder in a later slice, where ``validate_query`` will also
-  start returning real rule violations instead of an empty list.
 - Aggregation / metric resolution (``SUM(amount)`` etc). The repository's
   ``metric_definitions`` are consumed by the Query Planner, not here.
+- RBAC / PII masking on the returned rows (lands in a later slice); the
+  ``user_role`` argument is accepted for symmetry with the ABC.
 """
 
 from __future__ import annotations
@@ -26,13 +26,14 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.structured_data.domain.data_source_adapter import (
     DataSourceAdapter,
 )
-from app.contexts.structured_data.infrastructure.models import DatasetRowModel
+from app.contexts.structured_data.infrastructure.jsonb_query_builder import (
+    JsonbQueryBuilder,
+)
 
 
 class ImportedDatasetAdapter(DataSourceAdapter):
@@ -40,6 +41,7 @@ class ImportedDatasetAdapter(DataSourceAdapter):
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+        self._builder = JsonbQueryBuilder(session)
 
     def get_data_source_type(self) -> str:
         return "imported_dataset"
@@ -51,28 +53,22 @@ class ImportedDatasetAdapter(DataSourceAdapter):
         tenant_id: uuid.UUID,
         user_role: str,
     ) -> list[dict]:
-        """Return the JSONB ``data`` payload of each row for the given dataset.
+        """Return the JSONB ``data`` payload of each matching row.
 
-        The ``tenant_id`` predicate is **non-negotiable** — it's the only
-        guarantee that a user from tenant A cannot see tenant B's rows even
-        if they spoof ``query_plan`` or ``semantic_model.dataset_id``.
-        ``user_role`` is accepted for symmetry with the ABC; no role-aware
-        filtering is applied yet (RBAC lands in Task 5).
+        SQL emission is delegated to :class:`JsonbQueryBuilder`, which
+        applies the ``tenant_id`` predicate (the **non-negotiable** tenant
+        isolation boundary), the ``dataset_id`` predicate, plus any
+        ``filters`` / ``time_range`` / clamped ``limit`` from the plan.
+        The builder returns ``None`` when no dataset id can be resolved —
+        we treat that as "no query" and return an empty list rather than
+        an error. ``user_role`` is accepted for symmetry with the ABC; no
+        role-aware filtering is applied yet (RBAC lands in a later slice).
         """
-        dataset_id = query_plan.get("data_source_ref") or (
-            semantic_model.dataset_id if semantic_model is not None else None
-        )
-        if not dataset_id:
+        stmt = self._builder.build(query_plan, semantic_model, tenant_id)
+        if stmt is None:
             return []
-
-        stmt = select(DatasetRowModel).where(
-            DatasetRowModel.tenant_id == tenant_id,
-            DatasetRowModel.dataset_id == uuid.UUID(str(dataset_id)),
-        )
-        limit = int(query_plan.get("limit", 100))
-        stmt = stmt.limit(limit)
         result = await self._session.execute(stmt)
-        return [row.data for row in result.scalars().all()]
+        return [data for (data,) in result.all()]
 
     def validate_query(self, query_plan: dict, semantic_model: Any) -> list[str]:
         """First-slice: no validation rules.

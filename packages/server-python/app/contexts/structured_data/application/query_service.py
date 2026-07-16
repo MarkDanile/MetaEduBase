@@ -43,6 +43,16 @@ Brief deviations (recorded in commit message):
    session-bound :class:`RBACService` to it, so the orchestrator's
    public surface is cleaner. The PII detector is stateless and is
    instantiated inside the constructor.
+
+4. **Audit fail-closed (REQ-056 Task 4)** — the original
+   implementation wrapped the audit write in a try/except that
+   logged a WARNING and returned the user response anyway. REQ-056
+   reverses this: an audit-write failure now propagates out of
+   :meth:`_audit` and therefore out of :meth:`ask`, so the user
+   never receives ``result_rows`` for a request the regulator cannot
+   trace. The :class:`AsyncSession` context manager rolls back the
+   request on the unwound exception, so no partial state is
+   persisted either.
 """
 
 from __future__ import annotations
@@ -300,43 +310,46 @@ class QueryService:
         upstream (the resolver must never return a model without
         catalog_id).
 
-        Defensive: a DB error here MUST NOT crash the user-visible
-        response — the regulator cares about the trail, but the user's
-        answer is more important. We log the audit failure at WARNING
-        and return the answer anyway.
+        REQ-056 Task 4: fail-closed. An audit-write failure MUST
+        propagate out of this method (and therefore out of
+        :meth:`ask`) — the user-visible ``result_rows`` are only
+        returned after the audit row is durably written, otherwise we
+        would leak sensitive data to a user whose activity the
+        regulator cannot trace. This is a deliberate reversal of the
+        pre-REQ-056 policy ("defensive: log and return the answer
+        anyway") which the spec §12 (国资审计) integrity story
+        requires we close.
         """
         # REQ-054: catalog_id from the resolved semantic model. The
         # dataclass declares it as ``uuid.UUID | None`` for backward
         # compat with pre-REQ-054 callers, but the router now guarantees
         # it is always set; we still defensively coerce to None if it's
-        # somehow missing so the audit row never raises.
+        # somehow missing so the audit row never raises on missing
+        # columns.
         catalog_id: uuid.UUID | None = getattr(semantic_model, "catalog_id", None)
-        try:
-            await audit_repo.log_query(
-                user_id=user_id,
-                tenant_id=tenant_id,
-                role=role,
-                business_purpose=business_purpose,
-                question=question,
-                query_plan=query_plan,
-                data_source_type=semantic_model.data_source_config.get(
-                    "type", "imported_dataset"
-                ),
-                data_source_ref=(
-                    str(semantic_model.dataset_id)
-                    if semantic_model.dataset_id
-                    else None
-                ),
-                result_count=result_count,
-                duration_ms=duration_ms,
-                ip=ip,
-                user_agent=user_agent,
-                catalog_id=catalog_id,
-            )
-        except Exception as e:  # pragma: no cover — defensive
-            logger.warning(
-                "QueryService: audit log write failed (%s: %s); "
-                "user response is unaffected.",
-                type(e).__name__,
-                e,
-            )
+        # REQ-056 Task 4: NO try/except. The exception propagates so
+        # that ``ask`` aborts the request before returning result_rows.
+        # ``session.commit()`` (the next line in ``ask``) is also
+        # skipped because the exception unwinds the ``async with``
+        # context manager, which rolls back the request session.
+        await audit_repo.log_query(
+            user_id=user_id,
+            tenant_id=tenant_id,
+            role=role,
+            business_purpose=business_purpose,
+            question=question,
+            query_plan=query_plan,
+            data_source_type=semantic_model.data_source_config.get(
+                "type", "imported_dataset"
+            ),
+            data_source_ref=(
+                str(semantic_model.dataset_id)
+                if semantic_model.dataset_id
+                else None
+            ),
+            result_count=result_count,
+            duration_ms=duration_ms,
+            ip=ip,
+            user_agent=user_agent,
+            catalog_id=catalog_id,
+        )

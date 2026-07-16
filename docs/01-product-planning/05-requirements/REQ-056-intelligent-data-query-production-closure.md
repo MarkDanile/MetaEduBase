@@ -1,6 +1,6 @@
 # REQ-056: 智能问数真实执行闭环与 AI Chat 生产接线
 
-Status: 🔵 Ready
+Status: 🟢 Done
 Priority: P0
 Milestone: P3
 Domain: Data Activation / AI Chat / Audit / 产业园区
@@ -64,3 +64,4 @@ REQ-052 已建立语义层、QueryPlanner、SqlGuard、ResultExplainer、问数 
 | 日期 | 动作 | 事实 |
 |------|------|------|
 | 2026-07-15 | 登记 | DOC-078 Code Review 发现 REQ-052 生产查询、AI Chat tool calling、多 Catalog 路由和真实 AC-7 未闭环；REQ-052 重新进入 Doing，本任务进入工作台候选。 |
+| 2026-07-16 | 实施完成 | 4 Task 完成：Task 1 `ImportedDatasetAdapter` 接入 `JsonbQueryBuilder` 真实过滤（filters / time_range / limit 1-1000）；Task 2 AI Chat `/ai/chat/evidence` 注入 request-bound `QueryService` + 认证 `user_id`；Task 3 AI Chat `query_internal_data` tool 按 `(catalog_id, entity_type)` 双键解析语义模型；Task 4 `QueryService._audit` 移除吞异常的 `try/except`，审计写入失败 fail-closed — 异常时不返回结果。Task 5 = `tests/real_world/req056_business_samples.py` 10 个真实业务样例（成功 3 / 空结果 2 / 权限不足 2 / 字段缺失 1 / 企业过滤 1 / 多 catalog 双键路由 1），pytest 10/10 绿。AC-1..AC-8 全部满足；REQ-052 重新关闭。 |

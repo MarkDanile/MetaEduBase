@@ -1,6 +1,6 @@
 # REQ-052: 智能问数与国资信息化数据激活原子能力
 
-Status: 🟡 Doing
+Status: 🟢 Done
 Priority: P0
 Milestone: P3
 Domain: AI Workspace / Data Activation / Text-to-SQL / 产业园区
@@ -134,3 +134,4 @@ REQ-046 至少要能由智能问数支撑以下内部问题：
 | 2026-07-06 | 登记 | 用户补充国资国企核心价值是激活多年信息化沉淀数据；登记智能问数为企业 360 背调配套的 P0 原子能力。 |
 | 2026-07-07 | 实施 | 9 Task 实施完成 (branch `docs/req-052-plan` 16 commits ahead of main)。AC-1..AC-6 代码层 + 单测层覆盖；AC-7 (10 真实业务样例回归) 由 Task 4-8 单测覆盖等价场景，但 sandbox 无 PG/LLM 无法跑真 curl e2e，🟣 待验证（follow-up 真实环境跑真实业务问数 10 样例）。 |
 | 2026-07-15 | Code Review 重新打开 | PR #417 的实现批次已合并，但生产 `ImportedDatasetAdapter` 未调用 `JsonbQueryBuilder`，AI Chat 未注入 `QueryService`，多 Catalog tool 路径仍单键路由，且 AC-7 未跑真实 e2e；总分 58，不能维持 Done。接力 [REQ-056](REQ-056-intelligent-data-query-production-closure.md)。 |
+| 2026-07-16 | REQ-056 接力完成，重新关闭 | REQ-056 4 Task + 10 真实业务样例全部落地：`ImportedDatasetAdapter` 通过 `JsonbQueryBuilder` 真实执行 filters / time_range / limit；AI Chat `/ai/chat/evidence` 注入 request-bound `QueryService` 与认证 `user_id`；AI Chat `query_internal_data` tool 按 `(catalog_id, entity_type)` 双键路由；`QueryService._audit` 异常时不返回结果 (fail-closed)；AC-7 = `tests/real_world/req056_business_samples.py` 10/10 真实 dev DB 业务样例。AC-1..AC-8 全部满足。 |
