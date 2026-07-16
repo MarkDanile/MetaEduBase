@@ -634,9 +634,28 @@ class AIChatService:
         session: AsyncSession | None = None,
         user_id: uuid.UUID | None = None,
         role: str = "employee",
+        # REQ-056 Task 2 — when the caller (router) has the authenticated
+        # current_user dict from ``Depends(get_current_user)``, pass it here
+        # so user_id / role / tenant_id are sourced from the verified JWT
+        # rather than from per-call kwargs (which are easy to leave stale).
+        # ``current_user`` wins over the legacy kwargs — it is the source of
+        # truth for audit identity.
+        current_user: dict | None = None,
     ) -> ChatResponse:
         if session is None:  # pragma: no cover - placeholder path
             raise ValueError("session is required for production chat path")
+
+        # REQ-056 Task 2 — resolve request-bound identity. ``current_user``
+        # is preferred when provided (carries the verified JWT user). Legacy
+        # callers that only pass ``user_id``/``role``/``tenant_id`` still
+        # work; if neither is given, fall back to a random UUID (test seams
+        # only — production must inject a current_user).
+        if current_user is not None:
+            user_id = current_user.get("id", user_id)
+            role = current_user.get("role", role) or role
+            cu_tenant = current_user.get("tenant_id")
+            if cu_tenant is not None:
+                tenant_id = str(cu_tenant)
 
         ner_result = await self.ner_pipeline.extract(request.message)
         top_k = request.context_window

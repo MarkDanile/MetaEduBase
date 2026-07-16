@@ -187,6 +187,11 @@ async def ai_chat_evidence(
     tid = str(tenant_value)
 
     service = _evidence_service or _build_evidence_service(session, tid)
+    # REQ-056 Task 2 — propagate the verified JWT identity to the chat
+    # service so QueryService.ask (and the audit row it writes) carries
+    # the authenticated user_id / role / tenant_id rather than a random
+    # UUID. The current_user dict comes from ``Depends(get_current_user)``
+    # upstream.
     result: ServiceChatResponse = await service.chat(
         ServiceChatRequest(
             message=data.message,
@@ -194,6 +199,7 @@ async def ai_chat_evidence(
         ),
         tenant_id=tid,
         session=session,
+        current_user=_current_user,
     )
 
     return EvidenceChatResponse(
