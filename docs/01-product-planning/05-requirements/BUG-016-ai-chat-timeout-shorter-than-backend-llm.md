@@ -1,6 +1,7 @@
-# BUG-011 — AI Chat 偶发「请求失败: 网络错误」
+# BUG-016 — AI Chat 偶发「请求失败: 网络错误」
 
 > Status: 🟢 Done
+> Alias: 历史 BUG-011（DOC-077 收口重编号）
 > Priority: P1
 > Area: 前端 / P2 AI Chat
 > Created: 2026-06-23
