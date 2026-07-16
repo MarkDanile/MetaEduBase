@@ -14,7 +14,9 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+| 任务 | 状态 | 当前进展 | 下一步 |
+|------|------|----------|--------|
+| DOC-077 跨事实源任务编号唯一性与历史碰撞收口 | 🟢 完成 | 重命名 BUG-011 → BUG-016 (alias) / BUG-013 → BUG-014 (alias)；新增 `scripts/engineering/checks/unique_task_ids.py` 同 ID 异义门禁；`check-engineering-docs` exit 0 | [Backlog](../01-product-planning/04-backlog.md) / [Review](04-retrospectives/2026-07-15-recent-completion-code-review.md#p1-bug-编号已发生两次碰撞) |
 
 ## 下一批候选任务
 
@@ -22,7 +24,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | DOC-077 跨事实源任务编号唯一性与历史碰撞收口 | 🔵 Ready | 先重编号后创建的 BUG-011 / BUG-013，再补 Requirement、Backlog、current-work、work-log、score log 同 ID 异义门禁 | [Backlog](../01-product-planning/04-backlog.md) / [Review](04-retrospectives/2026-07-15-recent-completion-code-review.md#p1-bug-编号已发生两次碰撞) |
+| P0 | DOC-077 跨事实源任务编号唯一性与历史碰撞收口 | 🔵 Ready | 先重编号后创建的 BUG-011 (alias BUG-016) / BUG-013 (alias BUG-014)，再补 Requirement、Backlog、current-work、work-log、score log 同 ID 异义门禁 | [Backlog](../01-product-planning/04-backlog.md) / [Review](04-retrospectives/2026-07-15-recent-completion-code-review.md#p1-bug-编号已发生两次碰撞) |
 | P1 | TD-075 knowledge_nodes embedding backfill 稳定分页 | ⚫ 待办 | 改为稳定 keyset 或无 OFFSET 批处理，并补跨 3 个 batch、部分失败与重跑回归 | [Technical Debt](technical-debt.md#td-075-knowledge_nodes-embedding-backfill-使用-mutable-predicate--offset-导致跳行) / [Review](04-retrospectives/2026-07-15-recent-completion-code-review.md#p1-td-069-backfill-默认分页会跳行) |
 
 ## 最近完成
@@ -36,10 +38,10 @@
 | 2026-07-16 | REQ-056 智能问数真实执行闭环与 AI Chat 生产接线 | 🟢 完成 | 4 Task 完成 + `tests/real_world/req056_business_samples.py` 10/10 真实业务样例绿；ImportedDataset 真实过滤、AI Chat request-bound QueryService + catalog 双键路由、审计 fail-closed 全闭环；REQ-052 重新关闭 | [REQ-056](../01-product-planning/05-requirements/REQ-056-intelligent-data-query-production-closure.md) / [REQ-052](../01-product-planning/05-requirements/REQ-052-intelligent-data-query-and-data-activation.md) |
 | 2026-07-15 | DOC-078 近期完成任务 Code Review | 🟢 完成 | 8 个批次评分与 4 个 follow-up 已入账；REQ-052 重新打开；候选区优先 REQ-056 / DOC-077 / TD-075 | [Review](04-retrospectives/2026-07-15-recent-completion-code-review.md) / [PR #425](https://github.com/MarkDanile/MetaEduBase/pull/425) |
 | 2026-07-08 | REQ-054 Catalog 主体实现 | 🟢 完成 | Catalog 主体能力有条件关闭；adapter 可达性与 entity_type 契约由 REQ-057 接力 | [REQ-054](../01-product-planning/05-requirements/REQ-054-platform-database-catalog.md) / [REQ-057](../01-product-planning/05-requirements/REQ-057-catalog-adapter-and-entity-contract-closure.md) |
-| 2026-07-07 | BUG-013 资源库 / 数据库 DB 不可用返回 503 | 🟢 完成 | 数据库连接故障统一返回 503 和恢复提示；编号碰撞待 DOC-077 收口 | [Bug](../01-product-planning/05-requirements/BUG-013-resource-database-500-endpoints.md) / [PR #418](https://github.com/MarkDanile/MetaEduBase/pull/418) |
+| 2026-07-07 | BUG-014 资源库 / 数据库 DB 不可用返回 503 | 🟢 完成 | 数据库连接故障统一返回 503 和恢复提示（历史编号 BUG-013，DOC-077 收口） | [Bug](../01-product-planning/05-requirements/BUG-014-resource-database-500-endpoints.md) / [PR #418](https://github.com/MarkDanile/MetaEduBase/pull/418) |
 | 2026-06-30 | TD-073 离线 keypoint embedding 预计算落盘 | 🟢 完成 | 落盘缓存消除重复 embedding HTTP，RAG 验收性能进入可控范围 | [Plan](../02-delivery-plans/02-plans/2026-06-30-td-073-offline-keypoint-embedding-plan.md) / [PR #402](https://github.com/MarkDanile/MetaEduBase/pull/402) |
 | 2026-06-30 | TD-074 batch embedding 路由测试补强 | 🟢 完成 | 补齐 batch / per-text、缓存、超时和降级路由回归 | [PR #400](https://github.com/MarkDanile/MetaEduBase/pull/400) |
 | 2026-06-30 | DOC-076 最近完成批量归档 | 🟢 完成 | 最近完成窗口从 18 行压回 12 行，长期索引保留在 work-log | [PR #397](https://github.com/MarkDanile/MetaEduBase/pull/397) |
 | 2026-06-30 | `_EMB_SEMAPHORE` 并发 spike | 🟢 完成 | cache warm 场景提高并发无收益，结论为保持现状 | [Report](../02-delivery-plans/01-specs/2026-07-02-candidate3-semaphore-upgrade-spike-report.md) / [PR #411](https://github.com/MarkDanile/MetaEduBase/pull/411) |
 | 2026-06-24 | DOC-075 当前进行中污染门禁 | 🟢 完成 | 无活跃任务时强制当前进行中区只保留一句话 | [PR #394](https://github.com/MarkDanile/MetaEduBase/pull/394) |
-| 2026-06-24 | BUG-011 AI Chat 超时误报网络错误 | 🟢 完成 | 单请求超时调整为 120 秒并区分超时、网络和 HTTP 错误 | [Bug](../01-product-planning/05-requirements/BUG-011-ai-chat-timeout-shorter-than-backend-llm.md) / [PR #388](https://github.com/MarkDanile/MetaEduBase/pull/388) |
+| 2026-06-24 | BUG-016 AI Chat 超时误报网络错误 | 🟢 完成 | 单请求超时调整为 120 秒并区分超时、网络和 HTTP 错误（历史编号 BUG-011，DOC-077 收口） | [Bug](../01-product-planning/05-requirements/BUG-016-ai-chat-timeout-shorter-than-backend-llm.md) / [PR #388](https://github.com/MarkDanile/MetaEduBase/pull/388) |

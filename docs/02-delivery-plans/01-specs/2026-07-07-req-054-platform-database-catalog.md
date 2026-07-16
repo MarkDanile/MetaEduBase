@@ -335,7 +335,7 @@ async def ask(
 - REQ-052 plan: `docs/02-delivery-plans/02-plans/2026-07-01-req-052-intelligent-data-query.md`
 - REQ-052 PR: #417 (`60e60e70`)
 - REQ-046 spec: `docs/02-delivery-plans/01-specs/2026-07-03-req-046-enterprise-360-due-diligence-workbench.md`
-- BUG-013（DB 不可用 503 处理）: `docs/01-product-planning/05-requirements/BUG-013-resource-database-500-endpoints.md`
+- BUG-014（DB 不可用 503 处理，alias: 历史 BUG-013）: `docs/01-product-planning/05-requirements/BUG-014-resource-database-500-endpoints.md`
 
 ---
 

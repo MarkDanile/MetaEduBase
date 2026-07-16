@@ -41,6 +41,7 @@ from .task_ids import (
 from .task_order import check_task_pool_order
 from .task_pr_consistency import check as check_task_pr_consistency
 from .technical_debt import check_completed_plans, check_technical_debt
+from .unique_task_ids import check_unique_task_ids
 
 
 KNOWN_CHECKS: tuple[Callable[[Path], list[Issue]], ...] = (
@@ -72,6 +73,10 @@ KNOWN_CHECKS: tuple[Callable[[Path], list[Issue]], ...] = (
     # 路径已被 DOC-060/063 改用 git plumbing 取代；DOC-059 调整实现为 git
     # log 兜底（DOC-060 显式 skip "无 PR 字段"卡、本债补这个口子）。
     check_task_pr_consistency,
+    # DOC-077: 跨事实源任务编号唯一性门禁。同一 ID 在 docs/*.md 中不得映射
+    # 到多个不同 H1 标题；命中后必须按创建时间归并（保留首次占用 / 重命名 +
+    # alias）。
+    check_unique_task_ids,
 )
 
 

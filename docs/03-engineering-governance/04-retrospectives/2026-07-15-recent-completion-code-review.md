@@ -12,12 +12,12 @@ Scope:
 
 | 批次 | 任务 / PR | 本轮处理 |
 |------|-----------|----------|
-| AI Chat 用户缺陷 | BUG-011 timeout #388 / BUG-012 source link #391 | 完整评分 |
+| AI Chat 用户缺陷 | BUG-016 timeout #388（alias: 历史 BUG-011）/ BUG-012 source link #391 | 完整评分 |
 | Embedding 数据修复 | TD-068 / TD-069 #366 | 完整评分 |
 | P2 graph_edge 决策 | REQ-028、REQ-030~039、TD-032 slice 8，PR #367~#380 / #384 | 聚合评分 |
 | RAG 验收性能 | TD-070~074、REQ-040、AC-4 reports，PR #379 / #386 / #400 / #402 / #404 / #407 / #409 / #411 | 聚合评分 |
 | 治理门禁 | DOC-074 / DOC-075 / DOC-076，PR #376 / #394 / #397 | 聚合评分 |
-| DB 可靠性 | 两个不同任务都使用 BUG-013：#406 / #418 | 聚合评分 + 编号治理 |
+| DB 可靠性 | 两个不同任务都使用历史 BUG-013：#406（保留 BUG-013） / #418（重命名为 BUG-014） | 聚合评分 + 编号治理 |
 | 智能问数 | REQ-052 #417 | 完整评分，重新打开 |
 | 数据库 Catalog | REQ-054 #421 / #422 / #424 | 完整评分，有条件关闭 |
 
@@ -71,8 +71,8 @@ Scope:
 
 ### P1: BUG 编号已发生两次碰撞
 
-- `BUG-011` 同时指“模板 AI 生成 500”（#342）和“AI Chat timeout”（#388）。
-- `BUG-013` 同时指“pgvector cast”（#406）和“DB unavailable 503”（#418）。
+- 历史 `BUG-011` 同时指“模板 AI 生成 500”（#342，保留 BUG-011）和“AI Chat timeout”（#388，已重命名为 BUG-016）。
+- 历史 `BUG-013` 同时指“pgvector cast”（#406，保留 BUG-013）和“DB unavailable 503”（#418，已重命名为 BUG-014）。
 - 当前任务 ID 门禁检查 DRAFT / FOLLOWUP / Backlog Done 索引，但不检查 Requirement 文件标题与 work-log 的同 ID 异义。
 
 处理：登记 `DOC-077`，按创建时间保留先占用编号，后创建项重新编号并保留 alias；新增跨事实源唯一性门禁。
@@ -89,12 +89,12 @@ Scope:
 
 | 批次 | 范围 /15 | 实现 /20 | 验证 /20 | 流程 /15 | 风险 /15 | 交接 /10 | 改进 /5 | 总分 | 结论 |
 |------|----------|----------|----------|----------|----------|----------|---------|------|------|
-| BUG-011 timeout + BUG-012 link | 14 | 18 | 18 | 6 | 12 | 9 | 4 | 81 | 功能修复有效；BUG-011 编号碰撞必须治理。 |
+| BUG-016 timeout + BUG-012 link | 14 | 18 | 18 | 6 | 12 | 9 | 4 | 81 | 功能修复有效；历史 BUG-011 编号碰撞已治理（alias BUG-016）。 |
 | TD-068 / TD-069 embedding schema + backfill | 13 | 14 | 13 | 10 | 12 | 8 | 4 | 74 | 真 PG 结果成立，但 backfill 分页实现和 PR 占位需修。 |
 | REQ-028 / REQ-030~039 graph_edge 评估决策链 | 14 | 17 | 18 | 12 | 13 | 8 | 4 | 86 | 多口径评估最终支持默认禁用，证据链较完整。 |
 | TD-070~074 / REQ-040 / AC-4 性能收口链 | 14 | 18 | 19 | 13 | 13 | 8 | 4 | 89 | 从 50~60min 阻塞推进到真实 10:02，缓存和路由测试充分。 |
 | DOC-074~076 治理门禁链 | 14 | 18 | 18 | 12 | 14 | 8 | 4 | 88 | 规则分层和工作台形状门禁有效；任务 ID 唯一性仍有盲区。 |
-| BUG-013 cast + BUG-013 DB unavailable | 14 | 17 | 15 | 7 | 12 | 8 | 4 | 77 | 两个修复本身有效；编号碰撞、状态/TBD 和空测试拉低可追踪性。 |
+| BUG-013 cast + BUG-014 DB unavailable | 14 | 17 | 15 | 7 | 12 | 8 | 4 | 77 | 两个修复本身有效；历史编号碰撞已治理，状态/TBD 和空测试拉低可追踪性。 |
 | REQ-052 智能问数 | 9 | 10 | 11 | 6 | 9 | 8 | 5 | 58 | 不合格；核心查询与 AI Chat 生产链未闭环，不能维持 Done。 |
 | REQ-054 Catalog + #422 / #424 | 11 | 14 | 14 | 8 | 11 | 9 | 5 | 72 | Catalog 骨架可用但有条件关闭；adapter 可达性和契约漂移必须接力。 |
 
@@ -120,7 +120,7 @@ Scope:
 ### DOC-077: 跨事实源任务编号唯一性与历史碰撞收口
 
 - 状态：🔵 Ready，P0。
-- 按创建时间保留 BUG-011 / BUG-013 的首次占用，后创建项分配新编号；所有旧链接保留 alias 说明。
+- 按创建时间保留历史 BUG-011 / BUG-013 的首次占用（template-init / business-tests），后创建项分配新编号（BUG-016 / BUG-014）；所有旧链接保留 alias 说明。
 - 扩展 `scripts/check-engineering-docs`：Requirement 文件名 / H1、Backlog、current-work、work-log、score log 同 ID 不得映射到不同标题。
 - 验证必须包含两个不同文件复用同一 BUG ID 的 RED 用例和规范归并后的 GREEN。
 
@@ -135,7 +135,7 @@ Scope:
 
 - `pnpm --filter @metaedu/web test -- chatError.spec.ts openFileUrl.spec.ts`：11 passed。
 - `pytest tests/scripts/rag_validation -q`：50 passed。
-- `pytest test_ai_chat_tool_calling.py test_bug013_db_unavailable_handler.py -q`：8 passed；其中 BUG-013 的“非 DB 错误仍 500”测试函数仅 `pass`，作为验证扣分记录。
+- `pytest test_ai_chat_tool_calling.py test_bug013_db_unavailable_handler.py -q`：8 passed；其中 BUG-014（原 BUG-013）的“非 DB 错误仍 500”测试函数仅 `pass`，作为验证扣分记录。
 - `pytest tests/engineering -q`：38 passed。
 - `scripts/check-engineering-docs`：退出码 0，但未发现重复 BUG ID，印证 DOC-077 门禁缺口。
 - 真实 structured_data dev DB e2e：未运行，当前本机 5432 未监听；不得据此关闭 REQ-052 AC-7。

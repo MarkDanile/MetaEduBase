@@ -6,7 +6,7 @@
 > Created: 2026-07-01
 > Reporter: AC-4 verify follow-up / 业务 tests 修复（候选区第 2 项）
 > Closed: 2026-07-01 (PR #406 `9358c88`)
-> ID note: 2026-07-15 Code Review 发现后续另一任务复用了 BUG-013；待 DOC-077 统一重编号，当前链接暂保留。
+> ID note: 2026-07-15 Code Review 发现后续另一任务（#418 DB 503）复用了 BUG-013；DOC-077 已收口，将 #418 重命名为 BUG-014。
 
 ## 现象
 
