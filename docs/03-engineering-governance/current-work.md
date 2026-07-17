@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 当前进展 | 下一步 |
 |------|------|----------|--------|
-| DOC-077 跨事实源任务编号唯一性与历史碰撞收口 | 🟢 完成 | 重命名 BUG-011 → BUG-016 (alias) / BUG-013 → BUG-014 (alias)；新增 `scripts/engineering/checks/unique_task_ids.py` 同 ID 异义门禁；`check-engineering-docs` exit 0 | [Backlog](../01-product-planning/04-backlog.md) / [Review](04-retrospectives/2026-07-15-recent-completion-code-review.md#p1-bug-编号已发生两次碰撞) |
+| BUG-015 QueryPanel 输入框冗余 + 查询背景强制填写 | 🟡 Doing | 中高职教育数据库测试反馈：3 个输入框里"企业全称"在教育库语义下不存在 + "查询背景"必填 5+ 字是 UX 摩擦 + 实体类型空时提示不清。已登记 BUG-015（🟣 Shaping）| 移除企业全称输入 + business_purpose 改可选 + entity_type 空提示优化 | [Backlog](../01-product-planning/04-backlog.md) / [BUG-015](../01-product-planning/05-requirements/BUG-015-querypanel-ux-redundant-inputs.md) |
 
 ## 下一批候选任务
 
