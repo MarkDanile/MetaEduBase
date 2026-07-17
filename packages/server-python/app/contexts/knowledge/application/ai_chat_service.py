@@ -984,7 +984,6 @@ class AIChatService:
                             business_purpose=(
                                 f"AI Chat 工具调用 — question={question[:80]}"
                             ),
-                            confirmed_company_name=None,  # V1: system prompt handles ambiguity
                         )
 
                 # ---- 3c. Second LLM call with full conversation history ----
