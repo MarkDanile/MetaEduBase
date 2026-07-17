@@ -162,7 +162,6 @@ class BacktrackSkill:
             tenant_id=tenant_id,
             role=role,
             business_purpose=business_purpose,
-            confirmed_company_name=company_name,
         )
 
         # ---- 3. Build evidence_ref (V0: in-memory, not persisted) ----------

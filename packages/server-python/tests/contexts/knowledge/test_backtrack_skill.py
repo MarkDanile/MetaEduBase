@@ -142,8 +142,10 @@ async def test_backtrack_skill_happy_path_calls_query_service() -> None:
     assert ask_kwargs["tenant_id"] == tenant_id
     assert ask_kwargs["role"] == "employee"  # V0 default
     assert ask_kwargs["business_purpose"] == "企业 360 背调"  # V0 default
-    # confirmed_company_name keeps the canonical name for SqlGuard/audit
-    assert ask_kwargs["confirmed_company_name"] == company_name
+    # BUG-015: confirmed_company_name removed from QueryService.ask
+    # signature — the company_name prefix is folded into ``question``
+    # above, so SqlGuard/audit no longer needs a separate channel.
+    assert "confirmed_company_name" not in ask_kwargs
 
     # 3. Return shape
     assert "evidence_refs" in result

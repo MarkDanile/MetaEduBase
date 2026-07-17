@@ -477,11 +477,9 @@ async def test_ai_chat_tool_call_query_service_ask_executes_with_correct_args() 
     assert ask_kwargs["tenant_id"] == tenant_id
     assert ask_kwargs["role"] == "manager"
     assert ask_kwargs["business_purpose"]  # non-empty
-    # ``confirmed_company_name`` may be None for V1 (system prompt instructs
-    # the model to ask the user if ambiguous).
-    assert ask_kwargs.get("confirmed_company_name") is None or isinstance(
-        ask_kwargs["confirmed_company_name"], str
-    )
+    # BUG-015: confirmed_company_name removed from QueryService.ask —
+    # ambiguity is resolved entirely by the system prompt + planner.
+    assert "confirmed_company_name" not in ask_kwargs
 
 
 # ---------------------------------------------------------------------------

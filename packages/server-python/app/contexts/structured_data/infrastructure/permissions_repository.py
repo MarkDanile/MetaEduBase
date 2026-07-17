@@ -90,7 +90,7 @@ class PermissionsRepository:
         user_id: uuid.UUID,
         tenant_id: uuid.UUID,
         role: str,
-        business_purpose: str,
+        business_purpose: str | None,
         question: str,
         query_plan: dict,
         data_source_type: str,
@@ -103,12 +103,13 @@ class PermissionsRepository:
     ) -> None:
         """Append a row to ``metaedu.query_audit_log``.
 
-        Note: the caller (:class:`RBACService`) is responsible for
-        enforcing ``business_purpose`` is non-empty before reaching this
-        method. The DB schema marks the column NOT NULL but does not enforce
-        non-empty / non-whitespace content — that policy is intentionally in
-        the service layer so we can return a clean ``ValueError`` to the
-        caller instead of an integrity error from the driver.
+        BUG-015: ``business_purpose`` is now optional. The DB schema
+        (alembic migration 020) flipped the column to NULL-able so a user
+        who opts out of typing intent context writes an audit row with
+        ``business_purpose=NULL``. The identity / question / query_plan /
+        result_count / IP / user-agent / catalog_id columns still pin
+        the request to the actor and dataset, so spec §12 (国资审计)
+        remains satisfied even when intent text is absent.
 
         ``catalog_id`` is REQ-054's audit-completeness tag: every audit row
         records which database the question was asked against. It is
