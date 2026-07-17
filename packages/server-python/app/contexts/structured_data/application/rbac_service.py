@@ -12,10 +12,10 @@ REQ-052 Task 3: thin orchestration layer on top of
    cross-tenant call requires a still-valid grant row in
    ``metaedu.tenant_access_grants``.
 
-3. **Audit log** — ``log_query`` validates ``business_purpose`` is a
-   non-empty string before persisting. The DB schema marks the column NOT
-   NULL; the service-layer check enforces a stronger non-blank contract and
-   surfaces a clean ValueError to the caller instead of an integrity error.
+3. **Audit log** — ``log_query`` validates ``business_purpose`` is
+   either a non-empty string or ``None``. None means the user opted out
+   of typing intent context (BUG-015); the audit row records the column
+   as NULL.
 """
 
 from __future__ import annotations
@@ -93,16 +93,20 @@ class RBACService:
         """Persist a row to ``metaedu.query_audit_log`` after enforcing the
         ``business_purpose`` invariant.
 
-        ``business_purpose`` is a SPEC-required field — see REQ-052 §12
-        (国资审计 must record the business intent of every query). Empty or
-        whitespace-only values are rejected with ``ValueError`` before any
-        DB round-trip is attempted, so callers see a clear, actionable
-        error instead of an integrity error from the driver.
+        ``business_purpose`` may be a non-empty / non-whitespace string,
+        or ``None``. Empty strings / whitespace-only strings are
+        rejected with ``ValueError`` before any DB round-trip is
+        attempted, so callers see a clear, actionable error instead of
+        an integrity error from the driver. ``None`` (BUG-015 — user
+        opted out of typing intent context) is forwarded to the DB
+        unchanged so the audit row carries ``business_purpose=NULL``.
         """
         business_purpose = kwargs.get("business_purpose")
-        if not isinstance(business_purpose, str) or not business_purpose.strip():
+        if business_purpose is not None and (
+            not isinstance(business_purpose, str) or not business_purpose.strip()
+        ):
             raise ValueError(
-                "business_purpose is required and must be a non-empty string "
-                "for query_audit_log (REQ-052 §12)."
+                "business_purpose must be a non-empty string or None for "
+                "query_audit_log (REQ-052 §12 / BUG-015)."
             )
         await self._repo.log_query(**kwargs)

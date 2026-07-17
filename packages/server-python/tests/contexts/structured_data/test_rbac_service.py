@@ -298,7 +298,13 @@ async def test_log_query_persists_row(db_session, seed_rbac):
 
 
 async def test_log_query_enforces_business_purpose(db_session, seed_rbac):
-    """business_purpose 是审计必填字段 — 空字符串 / 纯空白必须拒绝。"""
+    """业务背景必须是合法的字符串或 None（BUG-015：可选）。
+
+    Empty strings / whitespace-only strings still raise ValueError so a
+    buggy caller can't sneak a meaningless audit row into
+    ``query_audit_log``. None is accepted (BUG-015: user opted out of
+    typing intent context) and forwarded to the DB unchanged.
+    """
     rbac = RBACService(db_session)
 
     with pytest.raises(ValueError, match="business_purpose"):
@@ -332,3 +338,45 @@ async def test_log_query_enforces_business_purpose(db_session, seed_rbac):
             ip=None,
             user_agent=None,
         )
+
+
+async def test_log_query_accepts_business_purpose_none(db_session, seed_rbac):
+    """BUG-015: ``business_purpose=None`` 必须成功 — audit 行写 NULL.
+
+    Mirrors the production ask() opt-out path: the user submits a
+    question without typing intent context and the audit log records
+    ``business_purpose=NULL`` for the row.
+    """
+    from sqlalchemy import select
+
+    from app.contexts.structured_data.infrastructure.semantic_models_models import (
+        QueryAuditLogModel,
+    )
+
+    rbac = RBACService(db_session)
+    await rbac.log_query(
+        user_id=DEFAULT_ADMIN_ID,
+        tenant_id=DEFAULT_TENANT_ID,
+        role=Role.MANAGER.value,
+        business_purpose=None,  # BUG-015: opt-out of intent text
+        question="查询园区账单总额",
+        query_plan={"intent": "metric_query", "entity": "bill"},
+        data_source_type="imported_dataset",
+        data_source_ref=None,
+        result_count=0,
+        duration_ms=None,
+        ip=None,
+        user_agent=None,
+    )
+    await db_session.flush()
+
+    rows = (
+        await db_session.execute(
+            select(QueryAuditLogModel).where(
+                QueryAuditLogModel.tenant_id == DEFAULT_TENANT_ID
+            )
+        )
+    ).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].business_purpose is None
+    assert rows[0].question == "查询园区账单总额"

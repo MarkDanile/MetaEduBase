@@ -3,8 +3,7 @@
 REQ-052 Task 5: the request handler is intentionally thin. All real
 work is delegated to :class:`QueryService`; the router's only jobs are:
 
-1. Validate the request payload (pydantic — ``business_purpose`` >= 5
-   chars; missing fields → 422).
+1. Validate the request payload (pydantic — required fields → 422).
 2. Authenticate via the existing
    :func:`app.contexts.identity.interfaces.api.dependencies.get_current_user`.
 3. Resolve the :class:`SemanticModel` from the DB (via
@@ -40,6 +39,13 @@ Brief deviations:
   ``request.state.db_session`` (assumed middleware-injected). The
   codebase uses FastAPI ``Depends(get_session)`` for the
   request-scoped session, so we use that pattern.
+
+- **BUG-015** — ``business_purpose`` is now **optional** (was previously
+  ``Field(..., min_length=5)``). Removing it lets the user submit a
+  plain data question without typing redundant intent context; if
+  omitted, the audit log row carries ``business_purpose=NULL``.
+  ``confirmed_company_name`` was removed entirely (was a V1-only
+  disambiguation hint that the system prompt + planner handle today).
 """
 
 from __future__ import annotations
@@ -63,9 +69,6 @@ router = APIRouter(prefix="/api/v1/data-query", tags=["data-query"])
 class AskRequest(BaseModel):
     """Pydantic request body for POST /api/v1/data-query/ask.
 
-    ``business_purpose`` is mandatory (min_length=5) per REQ-052 §12
-    (国资审计). Missing or too-short returns 422.
-
     ``catalog_id`` is REQ-054's tenant-scoped database identifier and is
     mandatory: the ask endpoint resolves the semantic model by
     ``(catalog_id, entity_type)`` rather than ``entity_type`` alone, so the
@@ -73,15 +76,18 @@ class AskRequest(BaseModel):
     router parses the value as a UUID before passing it to the
     repository; malformed values surface as 422 from pydantic's
     downstream type check.
+
+    ``business_purpose`` was demoted to optional in BUG-015 — users may
+    submit a plain data question without typing intent context; the
+    audit log row records ``business_purpose=NULL`` in that case.
     """
 
     catalog_id: str = Field(..., description="数据库 ID（REQ-054）")
     entity_type: str = Field(..., description="entity_type, e.g. 'bill'")
     question: str = Field(..., min_length=1)
-    business_purpose: str = Field(
-        ..., min_length=5, description="查询背景（必填，用于审计）"
+    business_purpose: str | None = Field(
+        default=None, description="查询背景（可选，>5 字时记录审计）"
     )
-    confirmed_company_name: str | None = None
 
 
 class AskResponse(BaseModel):
@@ -167,7 +173,6 @@ async def ask(
             tenant_id=tenant_id,
             role=role,
             business_purpose=req.business_purpose,
-            confirmed_company_name=req.confirmed_company_name,
             ip=(request.client.host if request.client else None),
             user_agent=request.headers.get("user-agent"),
         )

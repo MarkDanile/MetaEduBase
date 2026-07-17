@@ -389,3 +389,64 @@ async def test_audit_failure_propagates_real_db(db_session):
     assert await _count_audit_rows() == 0, (
         "audit row must NOT be persisted when log_query raises"
     )
+
+
+# ---------------------------------------------------------------------------
+# BUG-015: business_purpose is now optional — audit write with None must succeed
+# ---------------------------------------------------------------------------
+
+
+async def test_audit_business_purpose_none_writes_row(db_session):
+    """BUG-015 contract pin: ``business_purpose=None`` must persist a row
+    and the row's ``business_purpose`` column must be NULL.
+
+    The audit write path used to reject empty-string business_purpose.
+    Migration 020 flipped the column to NULL-able, the router demoted
+    the field to optional, and :class:`QueryService.ask` forwards
+    ``None`` straight through. This test pins the integration: a real
+    write against the test DB with ``business_purpose=None`` produces a
+    row whose column is NULL — no ``IntegrityError``, no ValueError.
+    """
+    from sqlalchemy import select
+
+    from app.contexts.structured_data.infrastructure.semantic_models_models import (
+        QueryAuditLogModel,
+    )
+
+    await _seed_permissive_visibility(db_session)
+    real_catalog_id = await _resolve_education_catalog_id(db_session)
+
+    sm = _make_semantic_model(
+        dataset_id=uuid.uuid4(), catalog_id=real_catalog_id
+    )
+    qs = _build_query_service_with_mock_collaborators(db_session)
+
+    result = await qs.ask(
+        question="这企业欠费多少",
+        semantic_model=sm,
+        user_id=DEFAULT_ADMIN_ID,
+        tenant_id=DEFAULT_TENANT_ID,
+        role="leader",
+        business_purpose=None,  # BUG-015: omitted intent context
+    )
+
+    assert result["ok"] is True, result
+    assert "result_rows" in result
+    assert result["result_count"] == 1
+
+    # Direct-read the audit row to verify business_purpose is NULL.
+    rows = (
+        await db_session.execute(
+            select(QueryAuditLogModel).where(
+                QueryAuditLogModel.tenant_id == DEFAULT_TENANT_ID
+            )
+        )
+    ).scalars().all()
+    assert len(rows) == 1, "BUG-015: one audit row expected"
+    assert rows[0].business_purpose is None, (
+        "BUG-015: audit row.business_purpose must be NULL when omitted"
+    )
+    # Core audit fields must still be intact.
+    assert rows[0].user_id == DEFAULT_ADMIN_ID
+    assert rows[0].question == "这企业欠费多少"
+    assert rows[0].result_count == 1

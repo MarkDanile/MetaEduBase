@@ -1,11 +1,15 @@
 """End-to-end test for POST /api/v1/data-query/ask.
 
-REQ-052 Task 5 + REQ-054 Task 6: the router is the only entry point for
-the data-activation pipeline from the outside world. It must:
+REQ-052 Task 5 + REQ-054 Task 6 + BUG-015: the router is the only entry
+point for the data-activation pipeline from the outside world. It must:
 
-1. Validate the request payload (pydantic ``business_purpose`` >= 5
-   chars enforced; missing fields return 422 — including the
-   REQ-054 ``catalog_id`` field).
+1. Validate the request payload (pydantic — required fields return
+   422). BUG-015 demoted ``business_purpose`` from
+   ``Field(..., min_length=5)`` to ``Field(default=None)`` and removed
+   ``confirmed_company_name`` entirely; the
+   tests below split the old ``test_ask_endpoint_missing_business_purpose``
+   and ``test_ask_endpoint_short_business_purpose`` cases into a single
+   opt-in path (omitting the field is now allowed).
 2. Authenticate the caller via the existing
    :func:`app.contexts.identity.interfaces.api.dependencies.get_current_user`.
 3. Resolve the ``SemanticModel`` for the request's ``(catalog_id,
@@ -21,13 +25,15 @@ Tests cover the brief's required cases plus the validation surface:
 - ``test_ask_endpoint_success`` — end-to-end happy path with a real
   semantic model persisted to the test DB. Verifies the response shape
   matches :class:`AskResponse`, the audit log row was written AND the
-  row carries the right ``catalog_id``.
+  row carries the right ``catalog_id``. BUG-015: business_purpose is
+  optional and omitted here.
+- ``test_ask_endpoint_omits_business_purpose_succeeds`` — explicit
+  BUG-015 test that omitting ``business_purpose`` still returns 200 +
+  writes an audit row with ``business_purpose=NULL``.
+- ``test_ask_endpoint_success_writes_catalog_id`` — REQ-054 catalog_id
+  audit correctness (separate test, unchanged).
 - ``test_ask_endpoint_missing_catalog_id`` — REQ-054: missing
   ``catalog_id`` → 422.
-- ``test_ask_endpoint_missing_business_purpose`` — missing
-  ``business_purpose`` → 422.
-- ``test_ask_endpoint_short_business_purpose`` — ``business_purpose``
-  under 5 chars → 422.
 - ``test_ask_endpoint_unknown_entity_type`` — semantic model not found
   for the requested ``(catalog_id, entity_type)`` → 404 (detail
   mentions ``catalog_id``).
@@ -341,8 +347,8 @@ async def test_ask_endpoint_success(
                 "catalog_id": str(persisted_semantic_model["catalog_id"]),
                 "entity_type": "bill",
                 "question": "这企业欠费多少",
-                "business_purpose": "评估客户信用风险",
-                "confirmed_company_name": "ACME",
+                # BUG-015: business_purpose is optional now and intentionally
+                # omitted here to lock the no-context ask path.
             },
         )
 
@@ -355,6 +361,66 @@ async def test_ask_endpoint_success(
     assert data["result_count"] >= 0
     # Audit log row must be persisted for every successful ask.
     assert await _count_audit_rows() >= 1
+
+
+async def test_ask_endpoint_omits_business_purpose_succeeds(
+    client: AsyncClient, auth_headers: dict, persisted_semantic_model
+):
+    """BUG-015: 缺 business_purpose 现在是允许的 — audit 行写 NULL.
+
+    Pins the BUG-015 contract that omitting ``business_purpose`` does
+    not 422 the request; the pipeline runs and ``query_audit_log``
+    carries ``business_purpose=NULL`` for the row.
+    """
+    planner_response = json.dumps(
+        {
+            "entity": "bill",
+            "metrics": ["unpaid_amount"],
+            "filters": {},
+            "limit": 100,
+        }
+    )
+    with patch(
+        "app.contexts.structured_data.application.query_planner.chat",
+        new_callable=AsyncMock,
+    ) as mock_planner, patch(
+        "app.contexts.structured_data.application.result_explainer.chat",
+        new_callable=AsyncMock,
+    ) as mock_explainer:
+        mock_planner.return_value = planner_response
+        mock_explainer.return_value = "summary without business_purpose"
+
+        response = await client.post(
+            "/api/v1/data-query/ask",
+            headers=auth_headers,
+            json={
+                "catalog_id": str(persisted_semantic_model["catalog_id"]),
+                "entity_type": "bill",
+                "question": "这企业欠费多少",
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["ok"] is True
+    # Audit row carries business_purpose=NULL — read it back via a fresh engine.
+    engine = create_async_engine(DEFAULT_TEST_DB_URL, poolclass=NullPool)
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with factory() as s:
+            row = (await s.execute(
+                text(
+                    "SELECT business_purpose FROM metaedu.query_audit_log "
+                    "WHERE tenant_id = :tid "
+                    "ORDER BY created_at DESC, id DESC LIMIT 1"
+                ),
+                {"tid": DEFAULT_TENANT_ID},
+            )).first()
+    finally:
+        await engine.dispose()
+    assert row is not None
+    assert row[0] is None, (
+        "BUG-015 contract: business_purpose omitted → audit row NULL"
+    )
 
 
 async def test_ask_endpoint_success_writes_catalog_id(
@@ -407,27 +473,6 @@ async def test_ask_endpoint_success_writes_catalog_id(
     assert written_catalog_id == catalog_id
 
 
-async def test_ask_endpoint_missing_business_purpose(
-    client: AsyncClient, auth_headers: dict, persisted_semantic_model
-):
-    """缺 business_purpose → 422（pydantic 必填校验）。"""
-    response = await client.post(
-        "/api/v1/data-query/ask",
-        headers=auth_headers,
-        json={
-            "catalog_id": str(persisted_semantic_model["catalog_id"]),
-            "entity_type": "bill",
-            "question": "这企业欠费多少",
-        },
-    )
-    assert response.status_code == 422
-
-
-# ---------------------------------------------------------------------------
-# REQ-054: catalog_id validation + routing
-# ---------------------------------------------------------------------------
-
-
 async def test_ask_endpoint_missing_catalog_id(
     client: AsyncClient, auth_headers: dict, persisted_semantic_model
 ):
@@ -455,23 +500,6 @@ async def test_ask_endpoint_missing_catalog_id(
 # ---------------------------------------------------------------------------
 # Validation surface (bonus tests beyond the brief)
 # ---------------------------------------------------------------------------
-
-
-async def test_ask_endpoint_short_business_purpose(
-    client: AsyncClient, auth_headers: dict, persisted_semantic_model
-):
-    """``business_purpose`` 少于 5 字 → 422。"""
-    response = await client.post(
-        "/api/v1/data-query/ask",
-        headers=auth_headers,
-        json={
-            "catalog_id": str(persisted_semantic_model["catalog_id"]),
-            "entity_type": "bill",
-            "question": "这企业欠费多少",
-            "business_purpose": "abc",  # 3 chars, < 5
-        },
-    )
-    assert response.status_code == 422
 
 
 async def test_ask_endpoint_unknown_entity_type(

@@ -168,8 +168,7 @@ class QueryService:
         user_id: uuid.UUID,
         tenant_id: uuid.UUID,
         role: str,
-        business_purpose: str,
-        confirmed_company_name: str | None = None,
+        business_purpose: str | None = None,
         ip: str | None = None,
         user_agent: str | None = None,
     ) -> dict:
@@ -178,6 +177,12 @@ class QueryService:
         Returns either ``{"ok": True, "query_plan": ..., ...}`` or
         ``{"ok": False, "errors": [...], "suggestion": "..."}``. The
         audit row is written in BOTH cases — see module docstring.
+
+        BUG-015: ``business_purpose`` is optional. When ``None`` (user
+        opted out of typing context) the audit log records it as NULL
+        — the spec §12 (国资审计) invariant now relies on
+        ``user_id / question / query_plan / result_count`` plus the
+        IP / user-agent instead of intent text.
         """
         started = time.time()
         async with self._session_factory() as session:
@@ -189,7 +194,6 @@ class QueryService:
             query_plan = await self._planner.plan(
                 question=question,
                 semantic_model=semantic_model,
-                confirmed_company_name=confirmed_company_name,
             )
 
             # ---------- 2. Validator ----------
@@ -291,7 +295,7 @@ class QueryService:
         user_id: uuid.UUID,
         tenant_id: uuid.UUID,
         role: str,
-        business_purpose: str,
+        business_purpose: str | None,
         question: str,
         query_plan: dict,
         semantic_model: Any,
