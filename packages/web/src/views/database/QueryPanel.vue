@@ -55,28 +55,16 @@
         data-testid="entity-type-empty-hint"
       >
         <template v-if="datasetsCount === 0">
-          该数据库尚未上传数据集，entity_type 列表为空。请先上传数据集以发现实体类型。
+          该数据库尚未上传数据集。请前往「数据集」tab 上传 CSV 文件以发现 entity_type。
         </template>
         <template v-else>
-          现有 {{ datasetsCount }} 个数据集未指定 entity_type，请在数据集 tab 中为数据集指定 entity_type
+          现有 {{ datasetsCount }} 个数据集未指定 entity_type。点击数据集行右侧的「编辑」按钮，设置 entity_type（如 customer / bill / course）。
         </template>
       </p>
       <input
         v-model="question"
         placeholder="输入自然语言问题"
         class="border border-[var(--color-border)] rounded px-2 py-1 w-full bg-[var(--color-bg)] text-[var(--color-ink)]"
-        required
-      />
-      <input
-        v-model="companyName"
-        placeholder="企业全称（已确认）"
-        class="border border-[var(--color-border)] rounded px-2 py-1 w-full bg-[var(--color-bg)] text-[var(--color-ink)]"
-      />
-      <input
-        v-model="businessPurpose"
-        placeholder="查询背景（必填，≥5 字）"
-        class="border border-[var(--color-border)] rounded px-2 py-1 w-full bg-[var(--color-bg)] text-[var(--color-ink)]"
-        minlength="5"
         required
       />
       <button
@@ -134,17 +122,20 @@
 
 <script setup lang="ts">
 /**
- * REQ-052 Task 6 + REQ-054 Task 8 + review fix: 前端问数面板。
+ * REQ-052 Task 6 + REQ-054 Task 8 + review fix + BUG-015: 前端问数面板。
  *
  * - REQ-054 加 数据库 select（catalog store 加载），与 entity_type 联动。
  * - `catalogId` 可由父组件 `preSelectedCatalogId` prop 锁定（来自 CatalogDetailPage）。
- * - `entity_type` / `question` / `business_purpose` 必填，business_purpose 服务端 ≥5 字。
  * - 历史写入 Pinia store (`useQueryHistory`)，最多保留 10 条。
  *
  * REQ-054 review fix #5: entity_type 下拉从 datasets 动态聚合。
  * - 切换 catalog 时调 `listDatasets({ catalog_id })` 获取该库数据集，
  *   聚合 DISTINCT entity_type 填充下拉（不再 hardcoded bill/contract/customer）。
  * - 该库无数据集时下拉为空 + 提示「请先上传数据集」。
+ *
+ * BUG-015: 移除了原 `企业全称（已确认）` 与 `查询背景（≥5 字）` 两个冗余输入框。
+ * 改问只用 `question` 一项发送 `AskRequest`，`business_purpose` 改为可选；entity_type
+ * 空提示文案增加 "上传 CSV" 的具体指引，告诉用户去「数据集」tab 如何发现 entity_type。
  */
 import { ref, computed, watch, onMounted } from "vue";
 import { ask, type AskRequest, type AskResponse } from "@/services/data-query";
@@ -170,8 +161,6 @@ const lockedCatalogId = computed(() => props.preSelectedCatalogId ?? null);
 const catalogId = ref("");
 const entityType = ref("");
 const question = ref("");
-const companyName = ref("");
-const businessPurpose = ref("");
 const loading = ref(false);
 const result = ref<AskResponse | null>(null);
 const history = useQueryHistory();
@@ -247,7 +236,7 @@ watch(availableEntityTypes, (types) => {
 
 async function onAsk() {
   if (!catalogId.value) return;
-  if (!question.value.trim() || businessPurpose.value.trim().length < 5) return;
+  if (!question.value.trim()) return;
   loading.value = true;
   result.value = null;
   try {
@@ -255,8 +244,6 @@ async function onAsk() {
       catalog_id: catalogId.value,
       entity_type: entityType.value,
       question: question.value,
-      business_purpose: businessPurpose.value,
-      ...(companyName.value ? { confirmed_company_name: companyName.value } : {}),
     };
     const res = await ask(req);
     result.value = res;

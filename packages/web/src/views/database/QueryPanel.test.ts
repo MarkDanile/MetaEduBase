@@ -1,13 +1,15 @@
 /**
- * REQ-052 Task 6 + REQ-054 Task 8 + review fix: QueryPanel 行为锁。
+ * REQ-052 Task 6 + REQ-054 Task 8 + review fix + BUG-015: QueryPanel 行为锁。
  *
- * - 渲染表单 (catalog select + entity_type select + question + business_purpose)。
- * - business_purpose minlength=5（与后端 pydantic 双重 enforce）。
+ * - 渲染表单 (catalog select + entity_type select + question)。
+ * - BUG-015: business_purpose 与 companyName 输入框已移除 — ask()
+ *   直接发送 catalog_id + entity_type + question 即可。
  * - submit 时调用 ask()，并把结果写入 Pinia history store。
  * - datasetId 作为 informational prop 渲染（不影响请求体）。
  * - REQ-054: 提交请求体必须含 catalog_id；切换 catalog 后 entity_type 重置。
  * - REQ-054: preSelectedCatalogId 锁定 catalog select。
  * - review fix #5: entity_type 下拉从 datasets 动态聚合（不再 hardcoded）。
+ * - BUG-015: entity_type 为空的提示文案新增 "上传 CSV" 指引。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
@@ -93,7 +95,7 @@ async function mountPanel(props: { datasetId?: string; preSelectedCatalogId?: st
   return wrapper;
 }
 
-describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8 + review fix)", () => {
+describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8 + review fix + BUG-015)", () => {
   beforeEach(() => {
     mockAsk.mockReset();
     mockListCatalogs.mockReset().mockResolvedValue(SAMPLE_CATALOGS);
@@ -103,19 +105,14 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8 + review fix)", () => 
     });
   });
 
-  it("renders form (catalog select + entity_type select + question + business_purpose)", async () => {
+  it("renders form (catalog select + entity_type select + question)", async () => {
     const wrapper = await mountPanel();
     expect(wrapper.find('[data-testid="catalog-select"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="entity-type-select"]').exists()).toBe(true);
     expect(wrapper.find('input[placeholder*="自然语言"]').exists()).toBe(true);
-    expect(wrapper.find('input[placeholder*="查询背景"]').exists()).toBe(true);
-  });
-
-  it("requires business_purpose min 5 chars (UI enforce)", async () => {
-    const wrapper = await mountPanel();
-    const input = wrapper.find('input[placeholder*="查询背景"]');
-    expect(input.attributes("minlength")).toBe("5");
-    expect(input.attributes("required")).toBeDefined();
+    // BUG-015: business_purpose / company_name inputs are gone.
+    expect(wrapper.find('input[placeholder*="查询背景"]').exists()).toBe(false);
+    expect(wrapper.find('input[placeholder*="企业全称"]').exists()).toBe(false);
   });
 
   it("shows datasetId badge when datasetId prop is provided", async () => {
@@ -170,7 +167,7 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8 + review fix)", () => 
     expect((catalogSelect.element as HTMLSelectElement).value).toBe("cat-hr");
   });
 
-  it("calls ask() with catalog_id on submit", async () => {
+  it("calls ask() with catalog_id on submit (BUG-015: no business_purpose / company_name)", async () => {
     mockAsk.mockResolvedValue({
       ok: true,
       result_rows: [{ id: 1 }],
@@ -183,8 +180,6 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8 + review fix)", () => 
     const wrapper = await mountPanel();
     await flushPromises();
     await wrapper.find('input[placeholder*="自然语言"]').setValue("这企业欠费多少");
-    await wrapper.find('input[placeholder*="企业全称"]').setValue("江苏神码");
-    await wrapper.find('input[placeholder*="查询背景"]').setValue("评估信用风险");
     await wrapper.find("form").trigger("submit");
 
     expect(mockAsk).toHaveBeenCalledTimes(1);
@@ -192,8 +187,9 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8 + review fix)", () => 
     expect(callArg.catalog_id).toBe("cat-fin"); // default first
     expect(callArg.entity_type).toBe("bill"); // first discovered in cat-fin datasets
     expect(callArg.question).toBe("这企业欠费多少");
-    expect(callArg.business_purpose).toBe("评估信用风险");
-    expect(callArg.confirmed_company_name).toBe("江苏神码");
+    // BUG-015: business_purpose / confirmed_company_name 不再随请求体发送。
+    expect("business_purpose" in callArg).toBe(false);
+    expect("confirmed_company_name" in callArg).toBe(false);
 
     const history = useQueryHistory();
     expect(history.entries.length).toBe(1);
@@ -206,7 +202,6 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8 + review fix)", () => 
     const wrapper = await mountPanel({ preSelectedCatalogId: "cat-hr" });
     await flushPromises();
     await wrapper.find('input[placeholder*="自然语言"]').setValue("员工数");
-    await wrapper.find('input[placeholder*="查询背景"]').setValue("统计在职人数");
     await wrapper.find("form").trigger("submit");
 
     expect(mockAsk).toHaveBeenCalledTimes(1);
@@ -215,28 +210,13 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8 + review fix)", () => 
     expect(callArg.entity_type).toBe("employee");
   });
 
-  it("skips ask() when business_purpose is too short", async () => {
+  it("skips ask() when question is empty", async () => {
     const wrapper = await mountPanel();
     await flushPromises();
-    await wrapper.find('input[placeholder*="自然语言"]').setValue("这企业欠费多少");
-    await wrapper.find('input[placeholder*="查询背景"]').setValue("1234");
+    await wrapper.find('input[placeholder*="自然语言"]').setValue("");
     await wrapper.find("form").trigger("submit");
 
     expect(mockAsk).not.toHaveBeenCalled();
-  });
-
-  it("omits confirmed_company_name when company name is empty", async () => {
-    mockAsk.mockResolvedValue({ ok: true, result_rows: [], result_count: 0 });
-
-    const wrapper = await mountPanel();
-    await flushPromises();
-    await wrapper.find('input[placeholder*="自然语言"]').setValue("这企业欠费多少");
-    await wrapper.find('input[placeholder*="查询背景"]').setValue("评估信用风险");
-    await wrapper.find("form").trigger("submit");
-
-    expect(mockAsk).toHaveBeenCalledTimes(1);
-    const callArg = mockAsk.mock.calls[0][0];
-    expect("confirmed_company_name" in callArg).toBe(false);
   });
 
   it("renders success summary + result count on ok response", async () => {
@@ -252,7 +232,6 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8 + review fix)", () => 
     const wrapper = await mountPanel();
     await flushPromises();
     await wrapper.find('input[placeholder*="自然语言"]').setValue("测试问题");
-    await wrapper.find('input[placeholder*="查询背景"]').setValue("随便问问背景");
     await wrapper.find("form").trigger("submit");
     await vi.waitFor(() => expect(wrapper.text()).toContain("找到 3 条账单记录"));
     expect(wrapper.text()).toContain("共 3 条记录");
@@ -268,7 +247,6 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8 + review fix)", () => 
     const wrapper = await mountPanel();
     await flushPromises();
     await wrapper.find('input[placeholder*="自然语言"]').setValue("测试问题");
-    await wrapper.find('input[placeholder*="查询背景"]').setValue("随便问问背景");
     await wrapper.find("form").trigger("submit");
     await vi.waitFor(() => expect(wrapper.text()).toContain("查询失败"));
     expect(wrapper.text()).toContain("缺少必要权限");
@@ -284,7 +262,6 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8 + review fix)", () => 
     const wrapper = await mountPanel();
     await flushPromises();
     await wrapper.find('input[placeholder*="自然语言"]').setValue("这企业欠费多少");
-    await wrapper.find('input[placeholder*="查询背景"]').setValue("评估信用风险");
     await wrapper.find("form").trigger("submit");
     await vi.waitFor(() => {
       expect(wrapper.text()).toContain("查询失败");
@@ -299,7 +276,6 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8 + review fix)", () => 
     const wrapper = await mountPanel();
     await flushPromises();
     await wrapper.find('input[placeholder*="自然语言"]').setValue("这企业欠费多少");
-    await wrapper.find('input[placeholder*="查询背景"]').setValue("评估信用风险");
     await wrapper.find("form").trigger("submit");
     await vi.waitFor(() => {
       expect(wrapper.text()).toContain("查询失败");
@@ -308,15 +284,16 @@ describe("QueryPanel.vue (REQ-052 Task 6 + REQ-054 Task 8 + review fix)", () => 
     });
   });
 
-  it("shows empty hint when catalog has no datasets (no entity_types)", async () => {
+  it("shows upload-CSV hint when catalog has no datasets (no entity_types)", async () => {
     // cat-fin returns [] -> empty hint visible
     mockListDatasets.mockReset().mockResolvedValue({ data: [] });
 
     const wrapper = await mountPanel();
     await flushPromises();
     expect(wrapper.find('[data-testid="entity-type-empty-hint"]').exists()).toBe(true);
-    // No datasets -> "尚未上传数据集" upload message.
+    // BUG-015: 空数据集文案升级为"如何上传"——告诉用户去「数据集」tab上传 CSV。
     expect(wrapper.find('[data-testid="entity-type-empty-hint"]').text()).toContain("尚未上传数据集");
+    expect(wrapper.find('[data-testid="entity-type-empty-hint"]').text()).toContain("上传 CSV");
   });
 
   it("shows assign-entity-type hint when datasets exist but entity_type all NULL", async () => {
