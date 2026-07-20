@@ -14,7 +14,33 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TD-075: knowledge_nodes embedding backfill 稳定分页
+
+状态：🟡 进行中
+类型：技术债 / plan-do
+领域：后端 / 数据迁移 / RAG / 测试
+当前执行模式：plan-do
+最近接手工具：Claude Code
+分支：`fix/td-075-backfill-pagination`
+
+需求来源：
+- 技术债：[TD-075](technical-debt.md#td-075-knowledge_nodes-embedding-backfill-使用-mutable-predicate--offset-导致跳行)
+- Review：[DOC-078](04-retrospectives/2026-07-15-recent-completion-code-review.md#p1-td-069-backfill-默认分页会跳行)
+
+当前进展：
+- `backfill_knowledge_node_embeddings.py` 移除 OFFSET（默认模式每轮重新查询 `WHERE embedding IS NULL LIMIT :limit`）+ `BackfillResult` + `attempted_ids` 防重试 + remaining count + 非零退出码。
+- 新增 `tests/scripts/test_backfill_knowledge_node_pagination.py`（6 tests：>2 batch 无跳行 / 空标题 / provider 空值 / 重跑收敛 / 单行异常 / dataclass）。
+
+下一步：
+- 提交代码 + 状态同步本提交。
+- 创建 PR，merge 后翻 `🟢 完成` + 回填 work-log。
+
+验证状态：
+- `pytest tests/scripts/test_backfill_knowledge_node_pagination.py -v` → 6 passed。
+- `ruff check` → 0 violations。
+- `scripts/check-engineering-docs` → exit 0。
+
+交接备注：PR 未 merge 前不得翻 `🟢 完成`。
 
 ## 下一批候选任务
 
@@ -22,7 +48,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | TD-075 knowledge_nodes embedding backfill 稳定分页 | ⚫ 待办 | 改为稳定 keyset 或无 OFFSET 批处理，并补跨 3 个 batch、部分失败与重跑回归 | [Technical Debt](technical-debt.md#td-075-knowledge_nodes-embedding-backfill-使用-mutable-predicate--offset-导致跳行) / [Review](04-retrospectives/2026-07-15-recent-completion-code-review.md#p1-td-069-backfill-默认分页会跳行) |
+| - | （候选区暂空，TD-075 已移入当前进行中） | - | 下一批候选待 DOC-078 follow-up 或 backlog 重新点名 | - |
 
 ## 最近完成
 
