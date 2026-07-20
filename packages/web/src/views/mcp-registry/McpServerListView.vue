@@ -249,7 +249,7 @@
             </div>
           </div>
 
-          <div class="flex items-center justify-between mt-4">
+          <div v-if="auditTotal > 0" class="flex items-center justify-between mt-4">
             <span data-testid="audit-page-info" class="text-[var(--text-small)] text-[var(--color-ink-tertiary)]">
               {{ auditPageInfo }}
             </span>
@@ -301,6 +301,10 @@ import {
 
 // 与后端 MCP_REGISTRY_ADMIN_ROLES 对齐
 const MCP_ADMIN_ROLES = ["admin", "data_admin", "super_admin"];
+// 与后端 _CODE_PATTERN / _ENV_KEY_PATTERN 对齐（mcp_registry_service.py /
+// domain/mcp_server.py）：前端先挡一轮，避免无谓的 422 往返。
+const CODE_PATTERN = /^[a-z][a-z0-9_]*$/;
+const CREDENTIAL_REF_PATTERN = /^[A-Z][A-Z0-9_]*$/;
 
 const authStore = useAuthStore();
 const toast = useToast();
@@ -348,6 +352,20 @@ function errorDetail(e: unknown, fallback: string): string {
 async function submitCreate() {
   if (!form.code.trim() || !form.name.trim() || !form.server_url.trim()) {
     toast.error("请填写必填项");
+    return;
+  }
+  // 前端格式校验（与后端 pattern 对齐，提前挡掉非法输入）
+  if (!CODE_PATTERN.test(form.code.trim())) {
+    toast.error("code 必须小写字母开头，仅含小写字母 / 数字 / 下划线");
+    return;
+  }
+  const credRef = form.credential_ref.trim();
+  if (credRef && !CREDENTIAL_REF_PATTERN.test(credRef)) {
+    toast.error("credential_ref 必须大写字母开头，仅含大写字母 / 数字 / 下划线");
+    return;
+  }
+  if (!(Number(form.timeout_ms) > 0)) {
+    toast.error("timeout_ms 必须为正数");
     return;
   }
   const roles = form.allowed_roles

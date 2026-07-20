@@ -71,6 +71,7 @@ import {
   enableMcpServer,
   disableMcpServer,
   deleteMcpServer,
+  listInvocations,
 } from "@/services/mcpRegistry";
 
 const SAMPLE_SERVERS = [
@@ -223,5 +224,75 @@ describe("McpServerListView.vue (REQ-044 Task 4 / AC-10)", () => {
 
     expect(deleteMcpServer).toHaveBeenCalledTimes(1);
     expect(deleteMcpServer).toHaveBeenCalledWith("srv-qcc");
+  });
+
+  it("audit modal paginates invocations with limit/offset (REQ-044 Task 4 review F3)", async () => {
+    // page 1: 10 items, total 11 -> hasNext true
+    vi.mocked(listInvocations).mockResolvedValueOnce({
+      items: Array.from({ length: 10 }, (_, i) => ({
+        id: `inv-${i}`,
+        server_id: "srv-qcc",
+        server_code: "qcc",
+        tool_name: "search_company",
+        caller_type: "adapter:structured_data",
+        caller_user_id: null,
+        params_digest: "d",
+        response_digest: "r",
+        ok: true,
+        error_code: null,
+        error_message: null,
+        duration_ms: 120,
+        created_at: "2026-07-01T00:00:00",
+      })),
+      total: 11,
+      limit: 10,
+      offset: 0,
+    } as never);
+    // page 2: 1 item, total 11 -> hasNext false
+    vi.mocked(listInvocations).mockResolvedValueOnce({
+      items: [
+        {
+          id: "inv-10",
+          server_id: "srv-qcc",
+          server_code: "qcc",
+          tool_name: "search_company",
+          caller_type: "adapter:structured_data",
+          caller_user_id: null,
+          params_digest: "d",
+          response_digest: "r",
+          ok: false,
+          error_code: "timeout",
+          error_message: "timed out",
+          duration_ms: 30000,
+          created_at: "2026-07-02T00:00:00",
+        },
+      ],
+      total: 11,
+      limit: 10,
+      offset: 10,
+    } as never);
+
+    const wrapper = await mountView("admin");
+    // open audit on first server (srv-qcc)
+    await wrapper.find('[data-testid="audit-btn"]').trigger("click");
+    await flushPromises();
+
+    expect(listInvocations).toHaveBeenCalledWith("srv-qcc", { limit: 10, offset: 0 });
+    const modal = body('[data-testid="audit-modal"]');
+    expect(modal.findAll(".audit-row")).toHaveLength(10);
+    expect(body('[data-testid="audit-page-info"]').text()).toContain("1-10");
+    expect(body('[data-testid="audit-page-info"]').text()).toContain("共 11");
+    // footer rendered only when total > 0 (review F1)
+    expect(body('[data-testid="audit-prev"]').attributes("disabled")).toBeDefined();
+    expect(body('[data-testid="audit-next"]').attributes("disabled")).toBeUndefined();
+
+    // next page -> offset 10
+    await body('[data-testid="audit-next"]').trigger("click");
+    await flushPromises();
+    expect(listInvocations).toHaveBeenCalledWith("srv-qcc", { limit: 10, offset: 10 });
+    expect(body('[data-testid="audit-modal"]').findAll(".audit-row")).toHaveLength(1);
+    expect(body('[data-testid="audit-page-info"]').text()).toContain("11-11");
+    // last page -> next disabled
+    expect(body('[data-testid="audit-next"]').attributes("disabled")).toBeDefined();
   });
 });
