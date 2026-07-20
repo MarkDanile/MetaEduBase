@@ -41,7 +41,26 @@ def test_invalid_env_key_names_raise(name: str):
 
 def test_resolve_returns_env_value(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("TEST_MCP_CRED_OK", "expected-secret")
-    assert CredentialRef("TEST_MCP_CRED_OK").resolve() == "expected-secret"
+    cred = CredentialRef("TEST_MCP_CRED_OK").resolve()
+    assert cred.raw == "expected-secret"
+    assert cred.header_value == "Bearer expected-secret"
+
+
+def test_resolve_strips_redundant_bearer_prefix(monkeypatch: pytest.MonkeyPatch):
+    """env 值若误带 ``Bearer `` 前缀会被剥离 — 客户端自行加 scheme。"""
+    monkeypatch.setenv("TEST_MCP_CRED_BEARER", "Bearer expected-secret")
+    cred = CredentialRef("TEST_MCP_CRED_BEARER").resolve()
+    assert cred.raw == "expected-secret"
+    assert cred.header_value == "Bearer expected-secret"
+
+
+def test_resolve_value_repr_is_redacted(monkeypatch: pytest.MonkeyPatch):
+    """AuthCredential 的 repr/str 绝不暴露 secret — 防 traceback/log 泄漏。"""
+    monkeypatch.setenv("TEST_MCP_CRED_REPR", "expected-secret")
+    cred = CredentialRef("TEST_MCP_CRED_REPR").resolve()
+    assert "expected-secret" not in repr(cred)
+    assert "expected-secret" not in str(cred)
+    assert "redacted" in repr(cred)
 
 
 def test_resolve_missing_env_fails_closed(
@@ -78,7 +97,7 @@ def test_secret_value_never_leaks_to_errors_or_logs(
     ref = CredentialRef("CANARY_MCP_TOKEN")
 
     with caplog.at_level(logging.DEBUG):
-        assert ref.resolve() == canary
+        assert ref.resolve().raw == canary
         monkeypatch.delenv("CANARY_MCP_TOKEN")
         with pytest.raises(CredentialUnavailableError) as exc_info:
             ref.resolve()

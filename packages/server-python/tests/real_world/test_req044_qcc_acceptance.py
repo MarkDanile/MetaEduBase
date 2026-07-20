@@ -241,10 +241,12 @@ async def test_qcc_invoke_audited_no_secret_leak(engine):
     assert audit.params_digest, "params_digest must be persisted"
     assert audit.response_digest, "response_digest must be persisted for an ok call"
 
-    # CRITICAL security invariant: token value must not appear in ANY audit
-    # column. Fixed failure message -- never print the leaked value.
-    # Use the module-level QCC_TOKEN directly (no local binding) so a failure
-    # traceback can't surface the credential as a local variable.
+    # CRITICAL security invariant: the credential must not appear in ANY audit
+    # column, in either form the wire could carry (bare secret or the composed
+    # "Bearer <secret>" header value). Fixed failure message -- never print the
+    # leaked value. Use module-level QCC_TOKEN directly (no local binding) so a
+    # failure traceback can't surface the credential as a local variable.
+    leak_needles = [QCC_TOKEN, f"Bearer {QCC_TOKEN}"]
     leaked_cols = [
         col_name
         for col_name, val in [
@@ -255,17 +257,18 @@ async def test_qcc_invoke_audited_no_secret_leak(engine):
             ("tool_name", audit.tool_name),
             ("caller_type", audit.caller_type),
         ]
-        if val is not None and QCC_TOKEN in str(val)
+        if val is not None and any(n in str(val) for n in leak_needles)
     ]
     assert not leaked_cols, (
         f"TOKEN LEAKED into audit column(s): {leaked_cols} "
         "(column values NOT printed to avoid leaking the credential)"
     )
 
-    # Defensive: token must not be echoed in the tool's result data either.
+    # Defensive: the credential must not be echoed in the tool's result data
+    # either (again, bare or composed form).
     result_str = json.dumps(result, ensure_ascii=False, default=str)
-    assert QCC_TOKEN not in result_str, (
-        "token leaked into invoke result (result NOT printed to avoid leaking the credential)"
+    assert not any(n in result_str for n in leak_needles), (
+        "credential leaked into invoke result (result NOT printed to avoid leaking it)"
     )
 
     print(

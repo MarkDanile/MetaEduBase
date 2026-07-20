@@ -18,7 +18,10 @@ import json
 import httpx
 import pytest
 
-from app.contexts.mcp_registry.domain.mcp_server import MCPServer
+from app.contexts.mcp_registry.domain.mcp_server import (
+    AuthCredential,
+    MCPServer,
+)
 from app.contexts.mcp_registry.infrastructure.mcp_client import (
     ERROR_TIMEOUT,
     ERROR_TOOL,
@@ -28,6 +31,11 @@ from app.contexts.mcp_registry.infrastructure.mcp_client import (
 )
 
 pytestmark = pytest.mark.asyncio
+
+
+def _cred(raw: str = "tok") -> AuthCredential:
+    """Build an opaque AuthCredential from a bare test secret."""
+    return AuthCredential(f"Bearer {raw}")
 
 
 def _server(
@@ -103,7 +111,7 @@ async def test_call_tool_success_json_response():
     })
     client = _mock(handler)
     result = await client.call_tool(
-        _server(), credential="tok", tool_name="search", params={"q": "ACME"}
+        _server(), credential=_cred(), tool_name="search", params={"q": "ACME"}
     )
     assert result.ok is True
     assert result.result == {"structuredContent": [{"company": "ACME"}]}
@@ -129,7 +137,7 @@ async def test_call_tool_success_sse_response():
 
     client = _mock(handler)
     result = await client.call_tool(
-        _server(), credential="tok", tool_name="search", params={}
+        _server(), credential=_cred(), tool_name="search", params={}
     )
     assert result.ok is True
     assert result.result == call_result
@@ -170,7 +178,7 @@ async def test_call_tool_timeout_normalizes_to_timeout_code():
 
     client = _mock(handler)
     result = await client.call_tool(
-        _server(timeout_ms=50), credential="tok", tool_name="t", params={}
+        _server(timeout_ms=50), credential=_cred(), tool_name="t", params={}
     )
     assert result.ok is False
     assert result.error_code == ERROR_TIMEOUT
@@ -182,7 +190,7 @@ async def test_call_tool_http_error_normalizes_to_transport_error():
 
     client = _mock(handler)
     result = await client.call_tool(
-        _server(), credential="tok", tool_name="t", params={}
+        _server(), credential=_cred(), tool_name="t", params={}
     )
     assert result.ok is False
     assert result.error_code == ERROR_TRANSPORT
@@ -205,7 +213,7 @@ async def test_call_tool_jsonrpc_error_normalizes_to_tool_error():
 
     client = _mock(err_handler)
     result = await client.call_tool(
-        _server(), credential="tok", tool_name="t", params={}
+        _server(), credential=_cred(), tool_name="t", params={}
     )
     assert result.ok is False
     assert result.error_code == ERROR_TOOL
@@ -231,7 +239,7 @@ async def test_call_tool_iserror_result_normalizes_to_tool_error():
 
     client = _mock(handler)
     result = await client.call_tool(
-        _server(), credential="tok", tool_name="t", params={}
+        _server(), credential=_cred(), tool_name="t", params={}
     )
     assert result.ok is False
     assert result.error_code == ERROR_TOOL
@@ -245,7 +253,7 @@ async def test_legacy_sse_transport_not_implemented():
     """sse enum -> transport_error (V1 not implemented)."""
     client = MCPClient()
     result = await client.call_tool(
-        _server(transport="sse"), credential="tok", tool_name="t", params={}
+        _server(transport="sse"), credential=_cred(), tool_name="t", params={}
     )
     assert result.ok is False
     assert result.error_code == ERROR_TRANSPORT
@@ -255,7 +263,7 @@ async def test_legacy_sse_transport_not_implemented():
 async def test_unsupported_transport_rejected():
     client = MCPClient()
     result = await client.call_tool(
-        _server(transport="websocket"), credential="tok", tool_name="t", params={}
+        _server(transport="websocket"), credential=_cred(), tool_name="t", params={}
     )
     assert result.ok is False
     assert result.error_code == ERROR_TRANSPORT
@@ -270,7 +278,7 @@ async def test_list_tools_returns_tools_on_success():
         "tools/list": [{"tools": [{"name": "search"}, {"name": "detail"}]}],
     })
     client = _mock(handler)
-    tools = await client.list_tools(_server(), credential="tok")
+    tools = await client.list_tools(_server(), credential=_cred())
     assert [t["name"] for t in tools] == ["search", "detail"]
 
 
@@ -280,5 +288,5 @@ async def test_list_tools_raises_typed_error_on_failure():
 
     client = _mock(handler)
     with pytest.raises(MCPClientError) as exc:
-        await client.list_tools(_server(), credential="tok")
+        await client.list_tools(_server(), credential=_cred())
     assert exc.value.error_code == ERROR_TRANSPORT

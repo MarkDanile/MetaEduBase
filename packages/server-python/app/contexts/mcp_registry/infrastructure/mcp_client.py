@@ -22,10 +22,14 @@ Transport behaviour (spec §4.4):
   and a clear message. Old dual-endpoint servers must be fronted by a
   streamable-HTTP gateway.
 
-Auth: ``Authorization: Bearer <resolved credential>``; the header name
-is configurable via the constructor (default ``Authorization``). The
-credential value is **never** logged, never put into error messages,
-and never persisted.
+Auth: the resolved credential is an :class:`AuthCredential` (opaque — its
+``__repr__``/``__str__`` are redacted) that carries a single pre-composed
+``Authorization`` header value. The raw secret is therefore never bound as a
+plain ``str`` local anywhere in the client call chain, so a failure traceback
+(which prints frame locals) cannot print it — the frames only ever hold the
+opaque object. The value is **never** logged, never put into error messages,
+and never persisted; it is injected only by ``_headers`` when building the
+httpx request.
 
 Timeout: ``asyncio.wait_for`` hard timeout of ``server.timeout_ms``
 per call; timeouts normalize to ``error_code="timeout"``.
@@ -50,7 +54,7 @@ from typing import Any
 
 import httpx
 
-from app.contexts.mcp_registry.domain.mcp_server import MCPServer
+from app.contexts.mcp_registry.domain.mcp_server import AuthCredential, MCPServer
 
 # Normalized error codes (spec §4.2).
 ERROR_TIMEOUT = "timeout"
@@ -133,7 +137,7 @@ class MCPClient:
     async def call_tool(
         self,
         server: MCPServer,
-        credential: str | None,
+        credential: AuthCredential | None,
         tool_name: str,
         params: dict,
     ) -> MCPCallResult:
@@ -194,7 +198,7 @@ class MCPClient:
         return MCPCallResult(ok=True, result=result)
 
     async def list_tools(
-        self, server: MCPServer, credential: str | None
+        self, server: MCPServer, credential: AuthCredential | None
     ) -> list[dict]:
         """Return the server's tool list (enable connectivity probe).
 
@@ -279,16 +283,18 @@ class MCPClient:
             return await fn(client, session_id)
 
     def _headers(
-        self, credential: str | None, session_id: str | None
+        self, credential: AuthCredential | None, session_id: str | None
     ) -> dict[str, str]:
         headers = {
             "Accept": "application/json, text/event-stream",
             "Content-Type": "application/json",
         }
         # The credential is injected here and ONLY here — never logged,
-        # never included in error messages.
-        if credential:
-            headers[self._auth_header] = f"Bearer {credential}"
+        # never included in error messages. The opaque AuthCredential already
+        # carries the fully-composed header value, so no frame ever formats
+        # the raw secret itself.
+        if credential is not None:
+            headers[self._auth_header] = credential.header_value
         if session_id:
             headers["Mcp-Session-Id"] = session_id
         return headers

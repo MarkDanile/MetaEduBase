@@ -33,6 +33,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.mcp_registry.domain.mcp_server import (
+    AuthCredential,
     CredentialRef,
     CredentialUnavailableError,
     MCPServer,
@@ -161,7 +162,10 @@ class MCPInvocationService:
             )
 
         # ---- credential resolution (fail-closed, no call made) ----
-        credential: str | None = None
+        # resolve() returns an opaque AuthCredential (redacted repr) — the
+        # raw secret is never bound as a plain str local here, so a traceback
+        # cannot print it.
+        credential: AuthCredential | None = None
         if server.credential_ref:
             try:
                 credential = CredentialRef(server.credential_ref).resolve()
@@ -171,7 +175,10 @@ class MCPInvocationService:
         # ---- transport call ----
         result = await self._client.call_tool(server, credential, tool_name, params or {})
         if not result.ok:
-            message = self._sanitize(result.error_message or "MCP call failed", credential)
+            message = self._sanitize(
+                result.error_message or "MCP call failed",
+                credential.raw if credential is not None else None,
+            )
             raise await _fail(result.error_code or "transport_error", message)
 
         await self._audit.write(
@@ -198,7 +205,7 @@ class MCPInvocationService:
         business invocation), and the warning never contains the
         credential value.
         """
-        credential: str | None = None
+        credential: AuthCredential | None = None
         if server.credential_ref:
             try:
                 credential = CredentialRef(server.credential_ref).resolve()
@@ -207,13 +214,19 @@ class MCPInvocationService:
         try:
             await self._client.list_tools(server, credential)
         except MCPClientError as e:
-            message = self._sanitize(str(e), credential)
+            message = self._sanitize(
+                str(e), credential.raw if credential is not None else None
+            )
             return f"list_tools 连通校验失败 ({e.error_code})：{message}"
         return None
 
     @staticmethod
     def _sanitize(message: str, credential: str | None) -> str:
-        """Guarantee the resolved secret never appears in stored text."""
+        """Guarantee the resolved secret never appears in stored text.
+
+        Pure, non-raising (a single ``str.replace``): the bare secret it
+        receives is transient and cannot leak into a traceback.
+        """
         if credential:
             message = message.replace(credential, "***")
         return message
