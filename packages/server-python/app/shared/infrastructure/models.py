@@ -11,6 +11,10 @@ from app.contexts.mcp_registry.infrastructure.mcp_server_models import (  # noqa
     MCPServerModel,
 )
 from app.contexts.resource.infrastructure.models import ResourceModel
+from app.contexts.skill_registry.infrastructure.skill_models import (  # noqa: F401
+    SkillExecutionAuditModel,
+    SkillModel,
+)
 from app.contexts.structured_data.infrastructure.catalog_models import CatalogModel  # noqa: F401
 from app.contexts.structured_data.infrastructure.models import DatasetModel, DatasetRowModel
 from app.contexts.structured_data.infrastructure.semantic_models_models import (  # noqa: F401
@@ -30,6 +34,8 @@ __all__ = [
     "MCPInvocationAuditModel",
     "MCPServerModel",
     "ResourceModel",
+    "SkillExecutionAuditModel",
+    "SkillModel",
     "CatalogModel",
     "DatasetModel",
     "DatasetRowModel",

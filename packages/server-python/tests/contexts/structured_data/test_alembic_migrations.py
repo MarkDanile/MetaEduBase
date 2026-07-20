@@ -45,12 +45,12 @@ async def test_alembic_012_015_create_schema():
     db_url = _db_url()
     conn = await asyncpg.connect(db_url)
     try:
-        # Version stamp must reflect current head (021 after REQ-044).
+        # Version stamp must reflect current head (022 after REQ-045).
         version = await conn.fetchval(
             "SELECT version_num FROM metaedu.alembic_version"
         )
-        assert version == "021_mcp_registry", (
-            f"alembic head should be 021_mcp_registry, got {version!r}"
+        assert version == "022_skill_registry", (
+            f"alembic head should be 022_skill_registry, got {version!r}"
         )
 
         # All 4 tables must exist.

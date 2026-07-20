@@ -157,8 +157,11 @@ params: [{name: company_name, required: true}]
 **校验规则**（`SopTemplate.validate`，注册时执行，失败 422）：
 
 - A 层：`name` kebab-case、`description` 非空 ≤1024。
-- B 层：`steps` 非空；每步 `id` 唯一、`server` + `tool` 必填；`mcp_dependencies` 与 `steps[].server` 引用的 server code 一致。
+- B 层：`steps` 非空；每步 `id` 唯一、`server` + `tool` 必填；`analysis_rules` / `principles` 若存在必须是 list（标量拒绝，不静默拆字符）。
+- `mcp_dependencies` **覆盖**语义：`declared ⊇ steps[].server`（超集许可，多声明未用的 server 是良性的）；缺省时按空声明处理并仍走覆盖校验——steps 非空时必然失败，故该字段事实上**必填**（与上文 `# 必需 MCP server 及用途` 一致）。
 - 工具引用闭合：注册时校验 `steps[].server` 在本 tenant `mcp_servers` 已注册（不校验 tool 是否存在于远端 server，enable 试运行时经 `list_tools` 探活）。
+
+**V1 不消费的字段**：`params` / `metadata` / `allowed-tools` 仅存档于 DB `sop_template` 正文，V1 `SopTemplate` VO 不解析（执行时 subject 由 caller 整体传入，runner 不强制 params 声明）；后续若需按 params 校验 subject 或展示元数据，再扩 VO 解析。
 
 ### 4.4 执行流程（SkillRunner）
 
