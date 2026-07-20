@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-046: 企业 360 背调工作台与 MCP / Skill 集成闭环
+
+状态：🟡 进行中
+类型：新业务能力（产品需求开发）
+领域：AI Workspace / Data Platform / MCP / Skill / 产业园区
+当前执行模式：product planning -> spec/plan 驱动开发（Slice 0 塑形）
+最近接手工具：Claude Code
+分支：feat/req-046-due-diligence
+
+需求来源：
+- Requirement: docs/01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md
+- Spec: docs/02-delivery-plans/01-specs/2026-07-03-req-046-enterprise-360-due-diligence-workbench.md
+- Plan: docs/02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md
+- 架构约束: docs/03-engineering-governance/01-rules/architecture.md
+
+当前进展：开工三连完成，已建任务分支并登记工作台；Slice 0（盘点企查查 MCP 工具 + 确认样例企业与内部 MCP mock/真实）待用户决策后启动。
+下一步：用户确认 Slice 0 决策点（样例企业授权、内部 MCP mock vs 真实、企查查 Skill 导入方式、报告导出形态），再启动 Slice 1 主体锚定 + QCC MCP Adapter。
+验证状态：未运行（塑形阶段）。
+交接备注：REQ-046 V0 保持 adapter 边界，不写死企查查/内部系统；依赖 REQ-044（MCP registry）/ REQ-045（Skill registry）/ REQ-052（智能问数）。
 
 ## 下一批候选任务
 
@@ -22,7 +40,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0（主线） | REQ-046 / APP-005 企业 360 背调工作台 V0 | 🔵 Ready | 按 Slice 0/1 启动：确认授权样例与 QCC 工具清单，实现企业主体锚定和企查查 MCP Adapter | [Requirement](../01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md) / [Spec](../02-delivery-plans/01-specs/2026-07-03-req-046-enterprise-360-due-diligence-workbench.md) / [Plan](../02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md) |
 | P0（并行） | REQ-044 MCP 注册、管理与调用能力 | ⚫ Candidate | 随 REQ-046 的 QCC / 内部 MCP 真实接入塑形最小 registry，优先启停、权限、凭证引用、审计与调用 trace | [Backlog](../01-product-planning/04-backlog.md) / [Applications](../01-product-planning/06-ai-applications/README.md#产品基座能力候选) |
 
 ## 最近完成
