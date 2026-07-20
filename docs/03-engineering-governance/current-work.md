@@ -14,33 +14,7 @@
 
 ## 当前进行中
 
-### TD-075: knowledge_nodes embedding backfill 稳定分页
-
-状态：🟡 进行中
-类型：技术债 / plan-do
-领域：后端 / 数据迁移 / RAG / 测试
-当前执行模式：plan-do
-最近接手工具：Claude Code
-分支：`fix/td-075-backfill-pagination`
-
-需求来源：
-- 技术债：[TD-075](technical-debt.md#td-075-knowledge_nodes-embedding-backfill-使用-mutable-predicate--offset-导致跳行)
-- Review：[DOC-078](04-retrospectives/2026-07-15-recent-completion-code-review.md#p1-td-069-backfill-默认分页会跳行)
-
-当前进展：
-- `backfill_knowledge_node_embeddings.py` 移除 OFFSET（默认模式每轮重新查询 `WHERE embedding IS NULL LIMIT :limit`）+ `BackfillResult` + `attempted_ids` 防重试 + remaining count + 非零退出码。
-- 新增 `tests/scripts/test_backfill_knowledge_node_pagination.py`（6 tests：>2 batch 无跳行 / 空标题 / provider 空值 / 重跑收敛 / 单行异常 / dataclass）。
-
-下一步：
-- 提交代码 + 状态同步本提交。
-- 创建 PR，merge 后翻 `🟢 完成` + 回填 work-log。
-
-验证状态：
-- `pytest tests/scripts/test_backfill_knowledge_node_pagination.py -v` → 6 passed。
-- `ruff check` → 0 violations。
-- `scripts/check-engineering-docs` → exit 0。
-
-交接备注：PR 未 merge 前不得翻 `🟢 完成`。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -48,7 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| - | （候选区暂空，TD-075 已移入当前进行中） | - | 下一批候选待 DOC-078 follow-up 或 backlog 重新点名 | - |
+| - | （候选区暂空，待 backlog 重新点名） | - | 下一批候选待 DOC-078 follow-up 或 backlog 重新点名 | - |
 
 ## 最近完成
 
@@ -58,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-17 | TD-075 knowledge_nodes backfill 移除 OFFSET 防跳行 | 🟢 完成 | 移除 force=False OFFSET（每轮重查 WHERE embedding IS NULL LIMIT）+ BackfillResult + attempted_ids 防重复 + 单行失败不阻塞 + remaining count 非零退出。6 单测 pass | [Tech Debt](technical-debt.md#td-075-knowledge_nodes-embedding-backfill-使用-mutable-predicate--offset-导致跳行) / [PR #432](https://github.com/MarkDanile/MetaEduBase/pull/432) (`f30c1760`) |
 | 2026-07-17 | DOC-077 跨事实源任务编号唯一性与历史碰撞收口 | 🟢 完成 | 重命名 BUG-011 -> BUG-016 (alias) / BUG-013 -> BUG-014 (alias)；新增 `scripts/engineering/checks/unique_task_ids.py` 同 ID 异义门禁；40/40 engineering tests pass | [Review](04-retrospectives/2026-07-15-recent-completion-code-review.md#p1-bug-编号已发生两次碰撞) / [PR #429](https://github.com/MarkDanile/MetaEduBase/pull/429) (`60045b1f`) |
 | 2026-07-17 | BUG-015 QueryPanel 移除冗余 input + 查询背景改可选 | 🟢 完成 | 移除 "企业全称" 输入 + business_purpose 改 Optional + migration 020 audit_log.business_purpose nullable + entity_type 空提示含上传指引。803 backend + 16 frontend tests pass | [BUG-015](../01-product-planning/05-requirements/BUG-015-querypanel-ux-redundant-inputs.md) / [PR #430](https://github.com/MarkDanile/MetaEduBase/pull/430) (`d69684ae`) |
 | 2026-07-16 | REQ-056 智能问数真实执行闭环与 AI Chat 生产接线 | 🟢 完成 | 4 Task 完成 + `tests/real_world/req056_business_samples.py` 10/10 真实业务样例绿；ImportedDataset 真实过滤、AI Chat request-bound QueryService + catalog 双键路由、审计 fail-closed 全闭环；REQ-052 重新关闭 | [REQ-056](../01-product-planning/05-requirements/REQ-056-intelligent-data-query-production-closure.md) / [REQ-052](../01-product-planning/05-requirements/REQ-052-intelligent-data-query-and-data-activation.md) |
