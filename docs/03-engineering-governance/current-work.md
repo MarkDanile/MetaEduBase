@@ -14,25 +14,7 @@
 
 ## 当前进行中
 
-| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 |
-|------|------|--------|------|----------|--------|
-| DOC-079 门禁脚本修复（req-status-consistency）+ REQ-045 Skill registry 塑形 | 🟡 进行中 | P0 | 门禁治理 / Skill | 门禁修复已提交（6f46d8f3）；REQ-045 塑形三件套（requirement/spec/plan）已 Ready | 提交 REQ-045 塑形交付物并收口 |
-
-### REQ-045 塑形交付物（随本任务一并收口）
-
-- Requirement: docs/01-product-planning/05-requirements/REQ-045-skill-registry-and-execution.md（Status 🔵 Ready）
-- Spec: docs/02-delivery-plans/01-specs/2026-07-20-req-045-skill-registry.md
-- Plan: docs/02-delivery-plans/02-plans/2026-07-20-req-045-skill-registry-plan.md
-- 决策：8 项塑形决策确认（声明式 SOP 模板 / 平台编排执行 / 新建 skill_registry + 背调 SOP 首个 / 两层模板 schema / server_code.tool_name 绑定 / 同 code 多版本 / 结构化产物分区 / 内部 SkillRunner 入口）；调研确认企查查官方 SKILL.md 公开可抓（27 个 skill）。
-
-### 验收标准（本任务收口须满足）
-
-- [x] 门禁修复（DOC-079）：req-status-consistency 解析任务卡片 + 状态格 fail-closed；41/41 engineering tests pass。
-- [ ] REQ-045 塑形交付物提交；check-engineering-docs exit 0 且无 REQ-045 假阳性。
-- [ ] backlog REQ-045 行 🔵 Ready + 链接；work-log +1 行（REQ-045 塑形）。
-
-分支：feat/req-046-due-diligence
-最近接手工具：Claude Code
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -40,8 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0（主线，待 REQ-045） | REQ-045 Skill registry 实现（5 Task） | 🔵 Ready | 塑形已 Ready，按 plan 启动实现：migration 022 + domain/SopTemplate -> CRUD/RBAC/版本 -> SkillRunner 执行引擎 -> 最小管理 UI -> 背调 SOP 真实端到端验收 | [Requirement](../01-product-planning/05-requirements/REQ-045-skill-registry-and-execution.md) / [Spec](../02-delivery-plans/01-specs/2026-07-20-req-045-skill-registry.md) / [Plan](../02-delivery-plans/02-plans/2026-07-20-req-045-skill-registry-plan.md) |
-| P0（主线，待 REQ-045） | REQ-046 / APP-005 企业 360 背调工作台 V0 | 🔵 Ready | REQ-045 就绪后启动：主体锚定 + QCC MCP Adapter + 内部问数（REQ-052）+ 背调 Skill + 报告归档 | [Requirement](../01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md) / [Spec](../02-delivery-plans/01-specs/2026-07-03-req-046-enterprise-360-due-diligence-workbench.md) / [Plan](../02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md) |
+| P0（主线，REQ-045 已就绪） | REQ-046 / APP-005 企业 360 背调工作台 V0 | 🔵 Ready | REQ-045 已交付（背调 SOP + SkillRunner），可启动：主体锚定 + QCC MCP Adapter + 内部问数（REQ-052）+ 背调 Skill + 报告归档 | [Requirement](../01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md) / [Spec](../02-delivery-plans/01-specs/2026-07-03-req-046-enterprise-360-due-diligence-workbench.md) / [Plan](../02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md) |
 
 ## 最近完成
 
@@ -51,6 +32,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-21 | REQ-045 Skill 注册、管理与调用能力 | 🟢 完成 | 最小 Skill registry（声明式 SOP 模板 + SkillRunner 平台编排：经 REQ-044 MCP 工具收集事实 + LLM 合成结构化产物）+ 首个真实 Skill=企业 360 背调 SOP；AC-9 真实 QCC+LLM 端到端验收通过（凭证/企业敏感原文不泄漏）。218 范围 tests pass / ruff 0 | [REQ-045](../01-product-planning/05-requirements/REQ-045-skill-registry-and-execution.md) |
+| 2026-07-21 | DOC-079 门禁脚本修复（req-status-consistency） | 🟢 完成 | req-status-consistency 解析「当前进行中」散文式任务卡片 + priority 格 REQ 引用被当任务 id、状态格 fail-closed 两处叠加根因；新增回归测试。41/41 engineering tests pass | [work-log](work-log.md) |
 | 2026-07-20 | REQ-044 MCP 注册、管理与调用能力 | 🟢 完成 | 最小 tenant 级 MCP registry + 真实 streamable_http client + 调用审计 + 最小管理 UI；AC-9 真实 QCC 验收通过（凭证不泄漏）。335 backend + 6 frontend tests pass / ruff 0 | [REQ-044](../01-product-planning/05-requirements/REQ-044-mcp-registry-and-invocation.md) |
 | 2026-07-20 | REQ-057 Catalog Adapter 路由与 entity_type 契约收口 | 🟢 完成 | adapter registry 3 类型路由 + MCP 抛 CapabilityUnavailableError（QueryService 捕获写审计 ok=False）+ 两 Catalog 同 entity_type 隔离测试（AC-5）+ REQ-054 AC 按真实验证层级修正 + entity_type 动态发现文档统一。226 backend tests pass / ruff 0 | [REQ-057](../01-product-planning/05-requirements/REQ-057-catalog-adapter-and-entity-contract-closure.md) |
 | 2026-07-17 | TD-075 knowledge_nodes backfill 移除 OFFSET 防跳行 | 🟢 完成 | 移除 force=False OFFSET（每轮重查 WHERE embedding IS NULL LIMIT）+ BackfillResult + attempted_ids 防重复 + 单行失败不阻塞 + remaining count 非零退出。6 单测 pass | [Tech Debt](technical-debt.md#td-075-knowledge_nodes-embedding-backfill-使用-mutable-predicate--offset-导致跳行) / [PR #432](https://github.com/MarkDanile/MetaEduBase/pull/432) (`f30c1760`) |

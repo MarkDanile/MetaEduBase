@@ -1,6 +1,6 @@
 # REQ-045: Skill 注册、管理与调用能力（最小 Skill registry）
 
-Status: 🔵 Ready
+Status: 🟢 Done
 Priority: P0
 Milestone: P3
 App: 平台基座能力（下游驱动 APP-005 / REQ-046 企业 360 背调）
@@ -93,3 +93,4 @@ REQ-044 交付了平台级 MCP registry：tenant 级注册 / 启停 / 角色权�
 |------|------|------|
 | 2026-07-20 | 登记 / 塑形启动 | REQ-044 🟢 Done 后启动 REQ-045 塑形；用户确认 3 项核心决策：Skill 形态=声明式 SOP 模板、执行模型=平台编排（MCP 工具 + LLM 合成）、代码归属=新建 `skill_registry` 且背调 SOP 为首个真实 Skill；并行调研企查查官方 SOP 形态与 Anthropic / Codex 声明式 Skill 规范以定模板 schema。 |
 | 2026-07-20 | 塑形确认 -> Ready | 调研确认企查查官方 SKILL.md 公开可抓（`agent.qcc.com/skill/v1/{category}/{id}/SKILL.md`，27 个 skill，背调相关 kyb-verification / credit-due-diligence / ic-memo / ubo-screening 等），其"工作流维度→工具链→量化阈值→填空式报告骨架"范式 + agentskills.io 标准 frontmatter 共同定下 D4 两层模板 schema；据此敲定 D4–D8（两层模板 / `server_code.tool_name` 绑定 / 同 code 多版本 / 结构化产物分区 / 内部 `SkillRunner` 入口）；Status 🟣 Shaping -> 🔵 Ready，进入 spec / plan。 |
+| 2026-07-21 | 实施完成 -> Done | 5 Task 全部交付并复审通过：Task 1 migration 022 `metaedu.skills`（`(tenant_id,code,version)` 唯一 + 软删）+ `metaedu.skill_execution_audit`（digest 不存原文）+ domain `SopTemplate` 两层 schema（mcp_dependencies 覆盖语义 declared⊇used）（`869eead8`）/ Task 2 CRUD API 9 endpoint + 管理 RBAC + 版本 + 模板校验编排（`516f81e3`）/ Task 3 `SkillRunner` 执行引擎（resolve->enabled->角色->parse->per-step `MCPInvocationService.invoke` 任何失败即 tool_error 不编造->LLM 合成->写审计；稳定 error_code）+ digest 口径对齐 REQ-044 + 跨租户隔离（`4bc3d6f0`）/ Task 4 最小管理 UI（列表/注册导入/启停/版本/删除/审计/试运行 + 前端 RBAC，`e0ddfe2e`）/ Task 5 首个真实 Skill `enterprise_360_dd`（9 步背调 SOP 全绑定 qcc）+ AC-9 真实端到端验收通过（真实 QCC + 真实 LLM，duration_ms=17106，三 digest 齐备，3 分区报告，token/企业敏感原文不泄漏；`1205f7be`）。Task 5 closeout 跑全量门禁时发现并修复 Task 3 既有 audit fixture FK 清理顺序缺陷（`f02c3330`）。REQ-045 范围门禁 218 passed / ruff 0。Status 🔵 Ready -> 🟢 Done。 |
