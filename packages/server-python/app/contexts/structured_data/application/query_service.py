@@ -17,7 +17,11 @@ Pipeline order:
     6. Audit:     append a row to ``metaedu.query_audit_log`` — ALWAYS,
                  including failures (Step 2 short-circuits log a row too,
                  so the regulator sees "user asked X, validator rejected
-                 with reasons Y").
+                 with reasons Y"; Step 3 capability failures - e.g. MCP
+                 V1 raising :class:`CapabilityUnavailableError` - also
+                 log a row with ``result_count=0`` before surfacing
+                 ``ok=False``, so the gap is explicit without leaking
+                 un-audited result_rows).
 
 The service is built once at app startup (lifespan) with all
 collaborators and stored on ``app.state.query_service``. Tests build a
@@ -74,6 +78,7 @@ from app.contexts.structured_data.application.semantic_validator import (
 )
 from app.contexts.structured_data.application.sql_guard import SqlGuard
 from app.contexts.structured_data.domain.data_source_adapter import (
+    CapabilityUnavailableError,
     DataSourceAdapter,
 )
 from app.contexts.structured_data.infrastructure.direct_db_adapter import (
@@ -242,12 +247,50 @@ class QueryService:
             adapter = await self._adapter_factory(
                 session, semantic_model.data_source_config
             )
-            result_rows = await adapter.query(
-                query_plan=query_plan,
-                semantic_model=semantic_model,
-                tenant_id=tenant_id,
-                user_role=role,
-            )
+            # REQ-057: MCPAdapter.query raises CapabilityUnavailableError
+            # because no real MCP server is wired up yet (V1 placeholder).
+            # Pre-REQ-057 the MCP adapter returned ``[]`` and the audit row
+            # was written downstream with ``result_count=0``. The new
+            # explicit-capability-gap path must preserve BOTH invariants:
+            # (a) the regulator still sees the attempt (audit row written
+            # here, not after the unwind) and (b) the caller gets a clear
+            # ``ok=False`` instead of an unhandled 500. Spec §12
+            # (国资审计) fail-closed audit: EVERY query attempt is logged,
+            # including capability failures - so we write the row before
+            # returning, mirroring the validator-rejection branch above.
+            try:
+                result_rows = await adapter.query(
+                    query_plan=query_plan,
+                    semantic_model=semantic_model,
+                    tenant_id=tenant_id,
+                    user_role=role,
+                )
+            except CapabilityUnavailableError as e:
+                duration_ms = int((time.time() - started) * 1000)
+                await self._audit(
+                    audit_repo=audit_repo,
+                    user_id=user_id,
+                    tenant_id=tenant_id,
+                    role=role,
+                    business_purpose=business_purpose,
+                    question=question,
+                    query_plan=query_plan,
+                    semantic_model=semantic_model,
+                    result_count=0,
+                    duration_ms=duration_ms,
+                    ip=ip,
+                    user_agent=user_agent,
+                )
+                await session.commit()
+                return {
+                    "ok": False,
+                    "errors": [f"数据源能力不可用: {e}"],
+                    "suggestion": (
+                        "该数据源类型当前不支持查询（V1 占位）。"
+                        "请使用 imported_dataset 类型或等待 V2 接入。"
+                    ),
+                    "duration_ms": duration_ms,
+                }
 
             # ---------- 4. SqlGuard ----------
             guard_result = await sql_guard.check_and_mask(

@@ -34,9 +34,14 @@ class CapabilityUnavailableError(Exception):
     "0 results" summary for a request that never actually ran, hiding the
     capability gap from the user and the audit trail.
 
-    The router / orchestrator maps this to a 501 Not Implemented (or a
-    400 with a clear capability message) so the caller knows the path is
-    intentionally unavailable rather than silently empty.
+    The orchestrator (:meth:`QueryService.ask`) catches this, writes an
+    audit row with ``result_count=0`` (spec §12 fail-closed audit
+    invariant: every attempt is logged, including capability failures),
+    and surfaces ``{"ok": False, "errors": ["数据源能力不可用: ..."],
+    "suggestion": "..."}`` to the caller so the gap is explicit rather
+    than silently empty. The router passes the response through as 200
+    (not 501/500) because the request was well-formed - the data source
+    simply doesn't support querying yet.
     """
 
 
