@@ -81,6 +81,13 @@ const routes: RouteRecordRaw[] = [
         component: () => import("@/views/mcp-registry/McpServerListView.vue"),
         meta: { title: "MCP 服务", requiresAuth: true },
       },
+      // REQ-045: Skill 服务最小管理页
+      {
+        path: "admin/skills",
+        name: "SkillList",
+        component: () => import("@/views/skill-registry/SkillListView.vue"),
+        meta: { title: "Skill 服务", requiresAuth: true },
+      },
       // AI 应用广场
       {
         path: "ai-apps",
