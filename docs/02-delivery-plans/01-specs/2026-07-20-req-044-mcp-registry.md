@@ -95,7 +95,7 @@
 | `tool_name` | varchar(200) | 被调用的 MCP tool |
 | `caller_type` | varchar(30) | `http_api` / `adapter:structured_data` / `service` |
 | `caller_user_id` | UUID nullable | 触发用户（服务内部调用可空） |
-| `params_digest` | varchar(64) | 规范化参数 JSON 的 sha256；**原始参数不落库** |
+| `params_digest` | varchar(64) nullable | 规范化参数 JSON 的 sha256；**原始参数不落库**；nullable 以容纳 pre-call 失败分支（resolve/早期校验前无参数可 digest），正常调用恒有值 |
 | `response_digest` | varchar(64) nullable | 响应摘要 sha256；响应体不落库 |
 | `ok` | boolean NOT NULL | |
 | `error_code` | varchar(50) nullable | 归一化错误码（如 `credential_unavailable` / `disabled` / `forbidden` / `transport_error` / `tool_error` / `timeout`） |
