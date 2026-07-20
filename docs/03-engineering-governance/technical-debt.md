@@ -168,7 +168,7 @@
 | TD-072 | runner.py 接入 `get_embeddings_with_timeout_batch`（TD-071 §5 偏差接力）：完全省 HTTP 数，进一步加速 60 run 评估 | 🟢 完成 | P1 | 后端 / RAG / Embedding / 校验脚本 | TD-071 实施完成 + AC-4 子集验证（132 run 29.6 min / 推算 60 run 15-20 min）共同确认：当前"per-text gather within Semaphore=2"路径虽加速 3-3.4×，但仍未到 AC-4 ≤10 min 目标。根因：`runner.py:_build_service` 把 `get_embedding`（单条）作为 `embedding_callable` 传入 `_compute_semantic_embedding_coverage`，导致 `coverage._get_cached_embeddings_batch` 即使有 `get_embeddings_with_timeout_batch` helper（TD-071 实施）也无法调用 —— 仍走 per-text gather。修复：`runner.py:_build_service` 把 `embedding_callable=get_embeddings_with_timeout_batch`（单 helper，签名 `(texts: list[str]) -> list[list[float] | None]`）传给 `coverage._get_cached_embeddings_batch`；coverage 内部检测 callable 是 batch 还是单条，启用真正 batch HTTP 路径。预期 60 run 压到 5-7 min（再加速 2-3×，叠加 TD-071 3-3.4× → 总 6-10× vs 历史 50-60 min 阻塞）。详见 [Spec](../02-delivery-plans/01-specs/2026-06-22-td-072-runner-batch-wiring.md) |
 | TD-073 | RAG 评估 keypoint embedding 离线预计算与落盘 cache | 🟢 完成 | P2 | 校验脚本 / RAG / Embedding / Cache | [PR #402](https://github.com/MarkDanile/MetaEduBase/pull/402)：cache store + coverage load/save + CLI；24 个新增测试，RAG validation 50 passed。 |
 | TD-074 | `_is_batch_embedding_callable` 与 batch routing 单测补强 | 🟢 完成 | P2 | 校验脚本 / 测试基础设施 | [PR #400](https://github.com/MarkDanile/MetaEduBase/pull/400)：26 个测试锁定 callable 判断、batch/per-text 路由、cache、timeout 和错误长度降级。 |
-| TD-075 | `knowledge_nodes` embedding backfill 使用 mutable predicate + OFFSET 导致跳行 | ⚫ 待办 | P1 | 后端 / 数据迁移 / RAG / 测试 | [DOC-078 Review](04-retrospectives/2026-07-15-recent-completion-code-review.md#p1-td-069-backfill-默认分页会跳行) / [PR #366](https://github.com/MarkDanile/MetaEduBase/pull/366) |
+| TD-075 | `knowledge_nodes` embedding backfill 使用 mutable predicate + OFFSET 导致跳行 | 🟡 进行中 | P1 | 后端 / 数据迁移 / RAG / 测试 | [DOC-078 Review](04-retrospectives/2026-07-15-recent-completion-code-review.md#p1-td-069-backfill-默认分页会跳行) / [PR #366](https://github.com/MarkDanile/MetaEduBase/pull/366) |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -4418,7 +4418,7 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-075: `knowledge_nodes` embedding backfill 使用 mutable predicate + OFFSET 导致跳行
 
-状态：⚫ 待办
+状态：🟡 进行中
 
 | 字段 | 内容 |
 |------|------|
@@ -4454,3 +4454,10 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 **交付记录**
 
 - 2026-07-15：DOC-078 Code Review 登记，尚未实施。
+- 2026-07-20：实施（分支 `fix/td-075-backfill-pagination`）：
+  - `backfill_knowledge_node_embeddings.py` 默认模式（`force=False`）移除 OFFSET，每轮重新查询 `WHERE embedding IS NULL LIMIT :limit`；`force=True` 保留 OFFSET（结果集稳定，无跳行风险）。
+  - 新增 `BackfillResult` dataclass（total/skipped/failed/remaining）+ per-run `attempted_ids` 防重试，确保单行失败/空标题/provider 空值不重复计数且不阻塞成功行。
+  - 循环结束后查询 `remaining = COUNT(*) WHERE embedding IS NULL AND COALESCE(title,'') <> ''`（排除空标题不可处理行）；`main()` 在 `force=False` 且 `remaining > 0` 时返回非 0 退出码并输出失败摘要。
+  - 新增 `tests/scripts/test_backfill_knowledge_node_pagination.py`（6 tests）：>2 batch 全量无跳行 / 空标题不阻塞 / provider 空值 + remaining / 部分失败重跑收敛 / 单行异常不阻塞 / `BackfillResult` 默认值。
+  - 验证：`pytest tests/scripts/test_backfill_knowledge_node_pagination.py -v` 6 passed + `ruff check` 0 violations + `scripts/check-engineering-docs` exit 0 + `git diff --check` clean。
+  - 待 PR merge 后翻 `🟢 完成`。
