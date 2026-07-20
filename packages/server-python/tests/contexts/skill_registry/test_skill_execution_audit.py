@@ -34,6 +34,14 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture(autouse=True)
 async def _clean_skill_tables(db_session):
+    # FK 顺序：mcp_invocation_audit -> mcp_servers。mcp_registry 测试可能在
+    # test DB 残留 invocation audit 行引用 server，必须先清 invocation audit，
+    # 否则下文 DELETE mcp_servers 触发 ForeignKeyViolationError（跨模块污染）。
+    await db_session.execute(
+        text("DELETE FROM metaedu.mcp_invocation_audit "
+             "WHERE tenant_id = :tid"),
+        {"tid": DEFAULT_TENANT_ID},
+    )
     await db_session.execute(
         text("DELETE FROM metaedu.skill_execution_audit "
              "WHERE tenant_id = :tid"),
