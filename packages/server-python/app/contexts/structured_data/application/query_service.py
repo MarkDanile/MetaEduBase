@@ -17,11 +17,12 @@ Pipeline order:
     6. Audit:     append a row to ``metaedu.query_audit_log`` — ALWAYS,
                  including failures (Step 2 short-circuits log a row too,
                  so the regulator sees "user asked X, validator rejected
-                 with reasons Y"; Step 3 capability failures - e.g. MCP
-                 V1 raising :class:`CapabilityUnavailableError` - also
-                 log a row with ``result_count=0`` before surfacing
-                 ``ok=False``, so the gap is explicit without leaking
-                 un-audited result_rows).
+                 with reasons Y"; Step 3 invocation failures - e.g. the
+                 REQ-044 MCP path raising
+                 :class:`MCPInvocationError` - also log a row with
+                 ``result_count=0`` before surfacing ``ok=False``, so
+                 the failure is explicit without leaking un-audited
+                 result_rows).
 
 The service is built once at app startup (lifespan) with all
 collaborators and stored on ``app.state.query_service``. Tests build a
@@ -69,6 +70,10 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.contexts.mcp_registry.application.mcp_invocation_service import (
+    MCPInvocationError,
+    MCPInvocationService,
+)
 from app.contexts.structured_data.application.pii_detector import PIIDetector
 from app.contexts.structured_data.application.query_planner import QueryPlanner
 from app.contexts.structured_data.application.rbac_service import RBACService
@@ -78,7 +83,6 @@ from app.contexts.structured_data.application.semantic_validator import (
 )
 from app.contexts.structured_data.application.sql_guard import SqlGuard
 from app.contexts.structured_data.domain.data_source_adapter import (
-    CapabilityUnavailableError,
     DataSourceAdapter,
 )
 from app.contexts.structured_data.infrastructure.direct_db_adapter import (
@@ -111,10 +115,10 @@ async def default_adapter_factory(
     ``imported_dataset`` is the fully-implemented path; ``direct_db``
     hands back the V1 :class:`DirectDBAdapter` (read-only SELECT +
     table_name regex whitelist + limit clamp); ``mcp`` hands back the
-    V1 :class:`MCPAdapter` whose :meth:`MCPAdapter.query` raises
-    :class:`CapabilityUnavailableError` so the gap is explicit rather
-    than masquerading as an empty result. Any other type raises
-    ``ValueError`` so the router can surface a 400 instead of a 500.
+    REQ-044 :class:`MCPAdapter` wired to a session-bound
+    :class:`MCPInvocationService` (registry resolution + audit live
+    there). Any other type raises ``ValueError`` so the router can
+    surface a 400 instead of a 500.
     """
     ds_type = (data_source_config or {}).get("type", "imported_dataset")
     if ds_type == "imported_dataset":
@@ -122,7 +126,11 @@ async def default_adapter_factory(
     if ds_type == "direct_db":
         return DirectDBAdapter(session, config=data_source_config)
     if ds_type == "mcp":
-        return MCPAdapter(session, config=data_source_config)
+        return MCPAdapter(
+            session,
+            config=data_source_config,
+            invocation_service=MCPInvocationService(session),
+        )
     raise ValueError(
         f"Unknown data_source type: {ds_type!r} "
         f"(supported: 'imported_dataset', 'direct_db', 'mcp')"
@@ -247,17 +255,17 @@ class QueryService:
             adapter = await self._adapter_factory(
                 session, semantic_model.data_source_config
             )
-            # REQ-057: MCPAdapter.query raises CapabilityUnavailableError
-            # because no real MCP server is wired up yet (V1 placeholder).
-            # Pre-REQ-057 the MCP adapter returned ``[]`` and the audit row
-            # was written downstream with ``result_count=0``. The new
-            # explicit-capability-gap path must preserve BOTH invariants:
-            # (a) the regulator still sees the attempt (audit row written
-            # here, not after the unwind) and (b) the caller gets a clear
-            # ``ok=False`` instead of an unhandled 500. Spec §12
-            # (国资审计) fail-closed audit: EVERY query attempt is logged,
-            # including capability failures - so we write the row before
-            # returning, mirroring the validator-rejection branch above.
+            # REQ-044: MCPAdapter.query delegates to MCPInvocationService,
+            # which raises MCPInvocationError (disabled / forbidden /
+            # credential_unavailable / timeout / transport_error /
+            # tool_error) or its NotFound subclass (unregistered). The
+            # same fail-closed invariants as the REQ-057 capability path
+            # must hold: (a) the regulator still sees the attempt (audit
+            # row written here, not after the unwind — the
+            # mcp_invocation_audit row is written by the invocation
+            # service in this same session) and (b) the caller gets a
+            # clear ``ok=False`` instead of an unhandled 500. Spec §12
+            # (国资审计): EVERY query attempt is logged.
             try:
                 result_rows = await adapter.query(
                     query_plan=query_plan,
@@ -265,7 +273,7 @@ class QueryService:
                     tenant_id=tenant_id,
                     user_role=role,
                 )
-            except CapabilityUnavailableError as e:
+            except MCPInvocationError as e:
                 duration_ms = int((time.time() - started) * 1000)
                 await self._audit(
                     audit_repo=audit_repo,
@@ -284,10 +292,10 @@ class QueryService:
                 await session.commit()
                 return {
                     "ok": False,
-                    "errors": [f"数据源能力不可用: {e}"],
+                    "errors": [f"MCP 数据源调用失败 ({e.error_code}): {e}"],
                     "suggestion": (
-                        "该数据源类型当前不支持查询（V1 占位）。"
-                        "请使用 imported_dataset 类型或等待 V2 接入。"
+                        "请确认 MCP server 已注册并启用、当前角色在 "
+                        "allowed_roles 内，且凭证 env 已注入。"
                     ),
                     "duration_ms": duration_ms,
                 }

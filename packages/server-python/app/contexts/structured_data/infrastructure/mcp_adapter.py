@@ -1,36 +1,53 @@
-"""MCPAdapter - V1 interface skeleton (REQ-054 Task 4).
+"""MCPAdapter — real MCP invocation via the REQ-044 registry.
 
-Upgraded from the REQ-052 placeholder to a V1 interface skeleton. V1
-does **not** connect to a real MCP (Model Context Protocol) server -
-``query`` raises :class:`CapabilityUnavailableError` so the capability
-gap is explicit, and ``validate_query`` checks config completeness.
-V2 will wire up the QCC MCP server (REQ-044 / REQ-046).
+Rewired in REQ-044 Task 3: the adapter no longer raises
+``CapabilityUnavailableError`` (the REQ-054/REQ-057 V1 placeholder).
+``data_source_config`` now names a *registered* MCP server plus tool:
 
-Configuration (``data_source_config``):
-    server_url: str     # MCP server URL
-    tool_name: str      # the tool to invoke on the MCP server
+    server_code: str    # code of a row in metaedu.mcp_servers (this tenant)
+    tool_name: str      # the tool to invoke on that server
+
+``query`` delegates to
+:class:`~app.contexts.mcp_registry.application.mcp_invocation_service.MCPInvocationService`,
+which resolves the server for the tenant, enforces enabled / role /
+credential gates, calls the MCP transport, and writes the
+``mcp_invocation_audit`` row. Unregistered / disabled / forbidden /
+transport failures propagate as typed
+:class:`MCPInvocationError` / :class:`MCPInvocationServerNotFoundError` —
+explicit failures, never an empty-list success and never a
+capability-placeholder masquerade.
 """
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
+from app.contexts.mcp_registry.application.mcp_invocation_service import (
+    InvocationCaller,
+    MCPInvocationService,
+)
 from app.contexts.structured_data.domain.data_source_adapter import (
-    CapabilityUnavailableError,
     DataSourceAdapter,
 )
 
 
 class MCPAdapter(DataSourceAdapter):
-    """V1: MCP service mapping interface skeleton (no real server)."""
+    """MCP data source adapter: delegates to ``MCPInvocationService``."""
 
     def __init__(
         self,
         session: Any = None,
         config: dict | None = None,
+        invocation_service: MCPInvocationService | None = None,
     ) -> None:
         self._config = config or {}
+        # Assembly boundary preserved: the adapter receives the service;
+        # only MCPInvocationService constructs the MCPClient.
+        self._invocation_service = invocation_service or (
+            MCPInvocationService(session) if session is not None else None
+        )
 
     def get_data_source_type(self) -> str:
         return "mcp"
@@ -42,26 +59,79 @@ class MCPAdapter(DataSourceAdapter):
         tenant_id: uuid.UUID,
         user_role: str,
     ) -> list[dict]:
-        """V1: raise - no real MCP server is connected.
+        """Invoke the configured MCP tool and normalize rows.
 
-        Returning ``[]`` would masquerade as "query succeeded, no data"
-        and let the orchestrator emit a misleading "0 results" summary
-        for a request that never ran. We raise
-        :class:`CapabilityUnavailableError` instead so the gap is
-        explicit to the caller and the audit trail. V2 will connect to
-        the QCC MCP server via ``server_url`` and invoke ``tool_name``
-        with the query plan.
+        Explicit-failure contract: config gaps raise ``ValueError``;
+        registry / permission / transport failures propagate as
+        :class:`MCPInvocationError` (audited by the invocation service)
+        or :class:`MCPInvocationServerNotFoundError` (unregistered). Nothing
+        here swallows a failure into ``[]``.
         """
-        raise CapabilityUnavailableError(
-            "MCP adapter V1: 真实 MCP server 未接入（REQ-044 / REQ-046 承接）。"
-            "当前不支持查询，不得伪装为空结果成功。"
+        if self._invocation_service is None:
+            raise ValueError(
+                "MCPAdapter 需要 MCPInvocationService（经 session 装配或显式注入）"
+            )
+        server_code = self._config.get("server_code")
+        tool_name = self._config.get("tool_name")
+        if not server_code or not tool_name:
+            raise ValueError(
+                "mcp 数据源配置不完整：需要 server_code 与 tool_name"
+            )
+        result = await self._invocation_service.invoke(
+            tenant_id=tenant_id,
+            server_code=str(server_code),
+            tool_name=str(tool_name),
+            params=query_plan,
+            caller=InvocationCaller(
+                caller_type="adapter:structured_data",
+                role=user_role,
+                user_id=None,
+            ),
         )
+        return self._rows_from_result(result)
 
     def validate_query(self, query_plan: dict, semantic_model: Any) -> list[str]:
-        """Check that ``server_url`` and ``tool_name`` are configured."""
+        """Check that ``server_code`` and ``tool_name`` are configured."""
         errors: list[str] = []
-        if not self._config.get("server_url"):
-            errors.append("mcp 缺少 server_url 配置")
+        if not self._config.get("server_code"):
+            errors.append("mcp 缺少 server_code 配置")
         if not self._config.get("tool_name"):
             errors.append("mcp 缺少 tool_name 配置")
         return errors
+
+    @staticmethod
+    def _rows_from_result(result: dict) -> list[dict]:
+        """Normalize a ``tools/call`` result into ``list[dict]`` rows.
+
+        Prefers MCP ``structuredContent``; falls back to JSON-encoded
+        ``content`` text items; last resort wraps the raw result dict.
+        """
+        structured = result.get("structuredContent")
+        if isinstance(structured, list):
+            return [r for r in structured if isinstance(r, dict)]
+        if isinstance(structured, dict):
+            rows = structured.get("rows")
+            if isinstance(rows, list):
+                return [r for r in rows if isinstance(r, dict)]
+            return [structured]
+        content = result.get("content")
+        if isinstance(content, list):
+            texts = [
+                str(item.get("text", ""))
+                for item in content
+                if isinstance(item, dict) and item.get("type") == "text"
+            ]
+            parsed: list[dict] = []
+            for text_item in texts:
+                if not text_item:
+                    continue
+                try:
+                    payload = json.loads(text_item)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                if isinstance(payload, list):
+                    parsed.extend(r for r in payload if isinstance(r, dict))
+                elif isinstance(payload, dict):
+                    parsed.append(payload)
+            return parsed
+        return [result] if isinstance(result, dict) else []

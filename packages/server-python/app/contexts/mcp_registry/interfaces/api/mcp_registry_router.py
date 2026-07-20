@@ -8,6 +8,7 @@ Endpoints (spec §4.5, first 7 rows):
 - ``POST   /api/v1/mcp-servers/{id}/enable`` — enable (admin roles)
 - ``POST   /api/v1/mcp-servers/{id}/disable``— disable (admin roles)
 - ``DELETE /api/v1/mcp-servers/{id}``        — soft delete (admin roles)
+- ``GET    /api/v1/mcp-servers/{id}/invocations`` — audit query (admin roles, paginated)
 
 The router is intentionally light: auth + payload parsing + typed-error
 mapping (403 / 404 / 409 / 422). The response DTO contains **no secret** —
@@ -18,19 +19,29 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
+from app.contexts.mcp_registry.application.mcp_invocation_service import (
+    MCPInvocationService,
+)
 from app.contexts.mcp_registry.application.mcp_registry_service import (
+    MCP_REGISTRY_ADMIN_ROLES,
     MCPRegistryPermissionError,
     MCPRegistryService,
     MCPServerCodeConflictError,
     MCPServerNotFoundError,
 )
 from app.contexts.mcp_registry.domain.mcp_server import MCPServer
+from app.contexts.mcp_registry.infrastructure.invocation_audit_repository import (
+    InvocationAuditRepository,
+)
+from app.contexts.mcp_registry.infrastructure.mcp_server_models import (
+    MCPInvocationAuditModel,
+)
 from app.shared.infrastructure.database import get_session
 
 router = APIRouter(prefix="/api/v1/mcp-servers", tags=["mcp-registry"])
@@ -95,6 +106,55 @@ def _to_dto(server: MCPServer) -> MCPServerDTO:
         created_by=server.created_by,
         created_at=server.created_at.isoformat() if server.created_at else "",
         updated_at=server.updated_at.isoformat() if server.updated_at else "",
+    )
+
+
+class MCPServerEnableDTO(MCPServerDTO):
+    """Enable response: server DTO + optional connectivity-probe warning."""
+
+    warning: str | None = None
+
+
+class InvocationDTO(BaseModel):
+    """Audit row DTO — digests only, never raw params / response bodies."""
+
+    id: uuid.UUID
+    server_id: uuid.UUID
+    server_code: str
+    tool_name: str
+    caller_type: str
+    caller_user_id: uuid.UUID | None
+    params_digest: str | None
+    response_digest: str | None
+    ok: bool
+    error_code: str | None
+    error_message: str | None
+    duration_ms: int
+    created_at: str
+
+
+class InvocationListResponse(BaseModel):
+    items: list[InvocationDTO]
+    total: int
+    limit: int
+    offset: int
+
+
+def _to_invocation_dto(row: MCPInvocationAuditModel) -> InvocationDTO:
+    return InvocationDTO(
+        id=row.id,
+        server_id=row.server_id,
+        server_code=row.server_code,
+        tool_name=row.tool_name,
+        caller_type=row.caller_type,
+        caller_user_id=row.caller_user_id,
+        params_digest=row.params_digest,
+        response_digest=row.response_digest,
+        ok=row.ok,
+        error_code=row.error_code,
+        error_message=row.error_message,
+        duration_ms=row.duration_ms,
+        created_at=row.created_at.isoformat() if row.created_at else "",
     )
 
 
@@ -223,16 +283,23 @@ async def _set_enabled(
     return server
 
 
-@router.post("/{server_id}/enable", response_model=MCPServerDTO)
+@router.post("/{server_id}/enable", response_model=MCPServerEnableDTO)
 async def enable_mcp_server(
     server_id: str,
+    probe: bool = Query(default=True),  # noqa: B008
     session: AsyncSession = Depends(get_session),  # noqa: B008
     current_user: dict = Depends(get_current_user),  # noqa: B008
 ):
-    # TODO(Task 3): 可选 list_tools 连通校验（spec §4.5：失败不阻塞启用，
-    # 仅返回警告）。Task 2 只翻转 enabled 标志。
+    # REQ-044 Task 3 (spec §4.5): optional list_tools connectivity probe.
+    # The probe NEVER blocks enabling — a failure (missing credential,
+    # unreachable server, unsupported transport) comes back as a
+    # ``warning`` in the response. ``probe=false`` skips the check.
     server = await _set_enabled(server_id, True, session, current_user)
-    return _to_dto(server)
+    warning: str | None = None
+    if probe:
+        warning = await MCPInvocationService(session).probe_connectivity(server)
+    dto = _to_dto(server)
+    return MCPServerEnableDTO(**dto.model_dump(), warning=warning)
 
 
 @router.post("/{server_id}/disable", response_model=MCPServerDTO)
@@ -263,3 +330,37 @@ async def delete_mcp_server(
     except MCPServerNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     await session.commit()
+
+
+@router.get("/{server_id}/invocations", response_model=InvocationListResponse)
+async def list_invocations(
+    server_id: str,
+    limit: int = Query(default=50, ge=1, le=200),  # noqa: B008
+    offset: int = Query(default=0, ge=0),  # noqa: B008
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+    current_user: dict = Depends(get_current_user),  # noqa: B008
+):
+    """Paginated invocation audit for one server (spec §4.5 last row).
+
+    Admin roles only; the server lookup and the audit query are both
+    tenant-forced, so another tenant's server id yields 404 and its
+    audit rows are never reachable.
+    """
+    tenant_id = uuid.UUID(str(current_user["tenant_id"]))
+    role = str(current_user.get("role", "employee"))
+    if role not in MCP_REGISTRY_ADMIN_ROLES:
+        raise HTTPException(status_code=403, detail="无权查询 MCP 调用审计")
+    service = _service(session)
+    try:
+        server = await service.get_by_id(tenant_id, uuid.UUID(server_id))
+    except MCPServerNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    rows, total = await InvocationAuditRepository(session).list_by_server(
+        tenant_id, server.id, limit=limit, offset=offset
+    )
+    return InvocationListResponse(
+        items=[_to_invocation_dto(r) for r in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )

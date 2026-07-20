@@ -337,9 +337,13 @@ async def _persist_direct_db_model(
 async def _persist_mcp_model(session: AsyncSession, dataset_id: uuid.UUID) -> None:
     """Persist an ``mcp``-typed model (entity_type ``supplier``).
 
-    REQ-057 AC-3: the MCP adapter V1 raises ``CapabilityUnavailableError``
-    instead of returning ``[]``; the router test asserts the orchestrator
-    catches it, writes an audit row, and returns ``ok=False``.
+    REQ-044: the adapter now delegates to ``MCPInvocationService``. With
+    ``server_code`` pointing at a server NOT registered in
+    ``metaedu.mcp_servers`` for this tenant, the service raises
+    ``MCPInvocationServerNotFoundError`` (a subclass of
+    ``MCPInvocationError``); ``QueryService.ask`` catches it, writes a
+    ``query_audit_log`` row, and returns ``ok=False`` - never a 500 and
+    never an empty-list masquerade.
     """
     await _persist_typed_model(
         session,
@@ -348,7 +352,7 @@ async def _persist_mcp_model(session: AsyncSession, dataset_id: uuid.UUID) -> No
         entity_name="供应商",
         data_source_config={
             "type": "mcp",
-            "server_url": "https://mcp.example.com/sse",
+            "server_code": "qcc_not_registered",
             "tool_name": "query_supplier",
         },
     )
@@ -779,7 +783,7 @@ async def test_ask_endpoint_validator_rejection_audits_with_zero_rows(
 # ---------------------------------------------------------------------------
 
 
-async def test_ask_endpoint_mcp_capability_unavailable_audits_and_returns_ok_false(
+async def test_ask_endpoint_mcp_unregistered_server_audits_and_returns_ok_false(
     client: AsyncClient, auth_headers: dict, db_session, sample_dataset,
     persisted_semantic_model,
 ):
@@ -824,16 +828,16 @@ async def test_ask_endpoint_mcp_capability_unavailable_audits_and_returns_ok_fal
             },
         )
 
-    # Well-formed request; the data source simply can't serve it yet → 200
-    # carrying ok=False (not a 5xx).
+    # Well-formed request; the MCP server is unregistered → 200 carrying
+    # ok=False (not a 5xx).
     assert response.status_code == 200, response.text
     data = response.json()
     assert data["ok"] is False
-    assert data["errors"], "capability gap must surface a non-empty errors list"
-    assert any("能力不可用" in e or "不可用" in e for e in data["errors"])
-    assert data.get("suggestion"), "capability gap should include a suggestion"
+    assert data["errors"], "invocation failure must surface a non-empty errors list"
+    assert any("MCP 数据源调用失败" in e for e in data["errors"])
+    assert data.get("suggestion"), "failure should include a suggestion"
 
-    # Fail-closed audit: the attempt is logged despite the capability gap.
+    # Fail-closed audit: the attempt is logged despite the invocation failure.
     after = await _count_audit_rows()
     assert after == before + 1, (
         "capability-unavailable attempt must still write an audit row"
