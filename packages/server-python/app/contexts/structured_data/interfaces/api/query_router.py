@@ -177,8 +177,12 @@ async def ask(
             user_agent=request.headers.get("user-agent"),
         )
     except ValueError as e:
-        # Unsupported data_source_type (e.g. 'direct_db' / 'mcp') surfaces
-        # from ``default_adapter_factory`` as a ValueError. That's a client
-        # asking for an unimplemented source, not a server fault → 400.
+        # Unknown data_source_type (anything outside 'imported_dataset' /
+        # 'direct_db' / 'mcp') surfaces from ``default_adapter_factory``
+        # as a ValueError. That's a client asking for an unimplemented
+        # source, not a server fault -> 400. (MCP V1 raises
+        # CapabilityUnavailableError at query time, not here - the factory
+        # still hands back the adapter so the gap is observable via the
+        # ABC contract.)
         raise HTTPException(status_code=400, detail=str(e)) from e
     return AskResponse(**result)

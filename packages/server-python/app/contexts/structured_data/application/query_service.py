@@ -76,9 +76,13 @@ from app.contexts.structured_data.application.sql_guard import SqlGuard
 from app.contexts.structured_data.domain.data_source_adapter import (
     DataSourceAdapter,
 )
+from app.contexts.structured_data.infrastructure.direct_db_adapter import (
+    DirectDBAdapter,
+)
 from app.contexts.structured_data.infrastructure.imported_dataset_adapter import (
     ImportedDatasetAdapter,
 )
+from app.contexts.structured_data.infrastructure.mcp_adapter import MCPAdapter
 from app.contexts.structured_data.infrastructure.permissions_repository import (
     PermissionsRepository,
 )
@@ -98,15 +102,25 @@ async def default_adapter_factory(
 ) -> DataSourceAdapter:
     """Build the data-source adapter for a model's ``data_source_config``.
 
-    V1 supports only ``type == "imported_dataset"``. Other types raise
+    REQ-057: routes all three declared :class:`DataSourceType` values.
+    ``imported_dataset`` is the fully-implemented path; ``direct_db``
+    hands back the V1 :class:`DirectDBAdapter` (read-only SELECT +
+    table_name regex whitelist + limit clamp); ``mcp`` hands back the
+    V1 :class:`MCPAdapter` whose :meth:`MCPAdapter.query` raises
+    :class:`CapabilityUnavailableError` so the gap is explicit rather
+    than masquerading as an empty result. Any other type raises
     ``ValueError`` so the router can surface a 400 instead of a 500.
     """
     ds_type = (data_source_config or {}).get("type", "imported_dataset")
     if ds_type == "imported_dataset":
         return ImportedDatasetAdapter(session)
+    if ds_type == "direct_db":
+        return DirectDBAdapter(session, config=data_source_config)
+    if ds_type == "mcp":
+        return MCPAdapter(session, config=data_source_config)
     raise ValueError(
-        f"Unsupported data_source_type: {ds_type!r} "
-        f"(V1 only supports 'imported_dataset'; V1 will add 'direct_db' / 'mcp')"
+        f"Unknown data_source type: {ds_type!r} "
+        f"(supported: 'imported_dataset', 'direct_db', 'mcp')"
     )
 
 

@@ -1,9 +1,10 @@
-"""MCPAdapter — V1 interface skeleton (REQ-054 Task 4).
+"""MCPAdapter - V1 interface skeleton (REQ-054 Task 4).
 
 Upgraded from the REQ-052 placeholder to a V1 interface skeleton. V1
-does **not** connect to a real MCP (Model Context Protocol) server —
-``query`` returns an empty list and ``validate_query`` checks config
-completeness. V2 will wire up the QCC MCP server.
+does **not** connect to a real MCP (Model Context Protocol) server -
+``query`` raises :class:`CapabilityUnavailableError` so the capability
+gap is explicit, and ``validate_query`` checks config completeness.
+V2 will wire up the QCC MCP server (REQ-044 / REQ-046).
 
 Configuration (``data_source_config``):
     server_url: str     # MCP server URL
@@ -16,6 +17,7 @@ import uuid
 from typing import Any
 
 from app.contexts.structured_data.domain.data_source_adapter import (
+    CapabilityUnavailableError,
     DataSourceAdapter,
 )
 
@@ -40,12 +42,20 @@ class MCPAdapter(DataSourceAdapter):
         tenant_id: uuid.UUID,
         user_role: str,
     ) -> list[dict]:
-        """V1: return an empty list — no real MCP server is connected.
+        """V1: raise - no real MCP server is connected.
 
-        V2 will connect to the QCC MCP server via ``server_url`` and
-        invoke ``tool_name`` with the query plan.
+        Returning ``[]`` would masquerade as "query succeeded, no data"
+        and let the orchestrator emit a misleading "0 results" summary
+        for a request that never ran. We raise
+        :class:`CapabilityUnavailableError` instead so the gap is
+        explicit to the caller and the audit trail. V2 will connect to
+        the QCC MCP server via ``server_url`` and invoke ``tool_name``
+        with the query plan.
         """
-        return []
+        raise CapabilityUnavailableError(
+            "MCP adapter V1: 真实 MCP server 未接入（REQ-044 / REQ-046 承接）。"
+            "当前不支持查询，不得伪装为空结果成功。"
+        )
 
     def validate_query(self, query_plan: dict, semantic_model: Any) -> list[str]:
         """Check that ``server_url`` and ``tool_name`` are configured."""

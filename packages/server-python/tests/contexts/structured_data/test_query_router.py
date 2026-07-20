@@ -199,18 +199,20 @@ async def persisted_semantic_model(db_session, sample_dataset):
     }
 
 
-async def _persist_direct_db_model(
+async def _persist_unknown_type_model(
     session: AsyncSession, dataset_id: uuid.UUID
 ) -> None:
-    """Persist a semantic model whose ``data_source_config.type`` is
-    ``direct_db`` (a V1 placeholder, unsupported by
-    ``default_adapter_factory``).
+    """Persist a semantic model whose ``data_source_config.type`` is a
+    string the factory does not recognize (``"unknown_type"``).
 
-    Used to exercise the router's ValueError → 400 translation: the plan
+    REQ-057: ``default_adapter_factory`` now routes all three declared
+    :class:`DataSourceType` values (``imported_dataset`` / ``direct_db``
+    / ``mcp``); only a truly unknown type raises ``ValueError``. Used to
+    exercise the router's ``ValueError`` → 400 translation: the plan
     passes validation, the pipeline reaches the adapter factory, and the
-    factory raises ``ValueError`` for the unsupported source type. Uses a
-    distinct ``entity_type`` ("invoice") so it doesn't collide with the
-    ``bill`` model persisted by other tests.
+    factory raises ``ValueError`` for the unrecognized source type. Uses
+    a distinct ``entity_type`` ("invoice") so it doesn't collide with
+    the ``bill`` model persisted by other tests.
     """
     repo = SemanticModelRepository(session)
     # REQ-054: resolve the default education catalog.
@@ -223,7 +225,7 @@ async def _persist_direct_db_model(
         entity_type="invoice",
         entity_name="发票",
         data_source_config={
-            "type": DataSourceType.DIRECT_DB.value,
+            "type": "unknown_type",
             "dataset_id": str(dataset_id),
         },
         column_mapping={
@@ -572,14 +574,15 @@ async def test_ask_endpoint_unsupported_data_source_returns_400(
     client: AsyncClient, auth_headers: dict, db_session, sample_dataset,
     persisted_semantic_model,
 ):
-    """未实现的 data_source_type（direct_db）→ 400，而不是 500。
+    """未知 data_source_type（unknown_type）→ 400，而不是 500。
 
-    ``default_adapter_factory`` raises ``ValueError`` for any type other
-    than ``imported_dataset``. The router must translate that into a 400
-    (client asked for an unimplemented source) rather than letting it
-    propagate as an unhandled 500.
+    REQ-057: ``default_adapter_factory`` now supports ``imported_dataset``
+    / ``direct_db`` / ``mcp``; only a truly unknown type raises
+    ``ValueError``. The router must translate that into a 400 (client
+    asked for an unrecognized source) rather than letting it propagate
+    as an unhandled 500.
     """
-    await _persist_direct_db_model(db_session, sample_dataset["id"])
+    await _persist_unknown_type_model(db_session, sample_dataset["id"])
 
     planner_response = json.dumps(
         {
@@ -611,7 +614,7 @@ async def test_ask_endpoint_unsupported_data_source_returns_400(
         )
 
     assert response.status_code == 400, response.text
-    assert "direct_db" in response.json()["detail"]
+    assert "unknown_type" in response.json()["detail"]
 
 
 async def test_ask_endpoint_validator_rejection_audits_with_zero_rows(
