@@ -1,6 +1,6 @@
 # REQ-044 Spec: MCP 注册、管理与调用能力
 
-> **Status**: 🔵 Ready
+> **Status**: 🟢 Done
 > **Plan**: `docs/02-delivery-plans/02-plans/2026-07-20-req-044-mcp-registry-plan.md`
 > **Requirement**: `docs/01-product-planning/05-requirements/REQ-044-mcp-registry-and-invocation.md`
 > **Related**: REQ-045（Skill registry）/ REQ-046（企业 360 背调，下游驱动）/ REQ-048（内部系统 MCP 契约）/ REQ-054（catalog 数据源 mcp 类型）/ REQ-057（adapter registry + CapabilityUnavailableError）

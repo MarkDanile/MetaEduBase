@@ -80,16 +80,20 @@ from tests.conftest import DEFAULT_TEST_DB_URL, _ensure_seed
 # override already-set env vars, so a real shell env still wins.
 load_dotenv()
 
-# AC-9 是手工验收：没有真实 token 就 skip，不进 CI。
+# AC-9 是手工验收：必须显式 opt-in（RUN_QCC_AC9=1）且有真实 token，否则 skip。
+# 只查 token 不够 — .env 持久化 token 会让本地套件每次都对 QCC 发真实请求
+# （QCC 不可达 / token 轮换后本地套件会红），所以用独立 opt-in 闸门保证套件
+# 默认 hermetic，AC-9 只在显式运行时执行真实调用。
 QCC_TOKEN = os.environ.get("QCC_MCP_TOKEN")
+_RUN_AC9 = os.environ.get("RUN_QCC_AC9")
 QCC_SERVER_URL = "https://agent.qcc.com/mcp/company/stream"
 QCC_SERVER_CODE = "qcc_company_ac9"
 
 pytestmark = [
     pytest.mark.asyncio,
     pytest.mark.skipif(
-        not QCC_TOKEN,
-        reason="AC-9 manual: set QCC_MCP_TOKEN env to run real QCC call (not CI)",
+        not (_RUN_AC9 and QCC_TOKEN),
+        reason="AC-9 manual: set RUN_QCC_AC9=1 + QCC_MCP_TOKEN to run real QCC call (not CI)",
     ),
 ]
 

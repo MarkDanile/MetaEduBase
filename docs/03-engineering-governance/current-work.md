@@ -14,25 +14,7 @@
 
 ## 当前进行中
 
-### REQ-044: MCP 注册、管理与调用能力（最小 registry，首个真实接入=企查查）
-
-状态：🟡 进行中
-类型：新平台能力（product planning -> spec/plan 驱动开发；当前在塑形 Shaping）
-领域：MCP / Tools / Data Platform / 产业园区
-当前执行模式：Subagent-Driven（SDD）；先塑形到 Ready 再实现
-最近接手工具：Claude Code
-分支：feat/req-046-due-diligence
-
-需求来源：
-- Backlog: docs/01-product-planning/04-backlog.md（REQ-044 行，⚫ Candidate）
-- Applications: docs/01-product-planning/06-ai-applications/README.md#产品基座能力候选
-- 下游触发: docs/01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md
-- 架构约束: docs/03-engineering-governance/01-rules/architecture.md
-
-当前进展：开工三连完成；REQ-046 Slice 0 决策已确认为串行依赖链 REQ-044 -> REQ-045 -> REQ-046，当前主线切换为 REQ-044 塑形（建 requirement + spec + plan）。
-下一步：产出 REQ-044 requirement（最小 MCP registry：注册 / 启停 / 权限 / 凭证引用 / 调用审计 trace；首个真实 server=企查查，凭证由用户提供）+ spec + plan，进入 Ready 后启动实现。
-验证状态：未运行（塑形阶段）。
-交接备注：决策链——REQ-046 内部客户信息走 REQ-052 智能问数；企查查后端真接（用户提供凭证）；背调 Skill 依赖 REQ-045 registry；REQ-044 / REQ-045 需先塑形到 Ready。
+（当前无进行中任务；主线推进到 Skill registry 与背调工作台候选。从"下一批候选任务"认领下一任务时，在此重建对应任务卡片。）
 
 ## 下一批候选任务
 
@@ -40,8 +22,8 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0（主线，待 REQ-044） | REQ-045 Skill 注册、管理与调用能力 | ⚫ Candidate | REQ-044 完成后塑形最小 Skill registry（导入 / 注册 / 启停 / 执行 / 版本），承载企查查官方背调 SOP | [Backlog](../01-product-planning/04-backlog.md) / [Applications](../01-product-planning/06-ai-applications/README.md#产品基座能力候选) |
-| P0（主线，待 REQ-045） | REQ-046 / APP-005 企业 360 背调工作台 V0 | 🔵 Ready | REQ-044 / REQ-045 就绪后启动：主体锚定 + QCC MCP Adapter + 内部问数（REQ-052）+ 背调 Skill + 报告归档 | [Requirement](../01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md) / [Spec](../02-delivery-plans/01-specs/2026-07-03-req-046-enterprise-360-due-diligence-workbench.md) / [Plan](../02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md) |
+| P0（主线，REQ-044 已就绪） | REQ-045 Skill 注册、管理与调用能力 | ⚫ Candidate | REQ-044 已收口，可启动塑形最小 Skill registry（导入 / 注册 / 启停 / 执行 / 版本），承载企查查官方背调 SOP | [Backlog](../01-product-planning/04-backlog.md) / [Applications](../01-product-planning/06-ai-applications/README.md#产品基座能力候选) |
+| P0（主线，待 REQ-045） | REQ-046 / APP-005 企业 360 背调工作台 V0 | 🔵 Ready | REQ-044 已就绪；REQ-045 就绪后启动：主体锚定 + QCC MCP Adapter + 内部问数（REQ-052）+ 背调 Skill + 报告归档 | [Requirement](../01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md) / [Spec](../02-delivery-plans/01-specs/2026-07-03-req-046-enterprise-360-due-diligence-workbench.md) / [Plan](../02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md) |
 
 ## 最近完成
 
@@ -51,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-20 | REQ-044 MCP 注册、管理与调用能力 | 🟢 完成 | 最小 tenant 级 MCP registry + 真实 streamable_http client + 调用审计 + 最小管理 UI；AC-9 真实 QCC 验收通过（凭证不泄漏）。335 backend + 6 frontend tests pass / ruff 0 | [REQ-044](../01-product-planning/05-requirements/REQ-044-mcp-registry-and-invocation.md) |
 | 2026-07-20 | REQ-057 Catalog Adapter 路由与 entity_type 契约收口 | 🟢 完成 | adapter registry 3 类型路由 + MCP 抛 CapabilityUnavailableError（QueryService 捕获写审计 ok=False）+ 两 Catalog 同 entity_type 隔离测试（AC-5）+ REQ-054 AC 按真实验证层级修正 + entity_type 动态发现文档统一。226 backend tests pass / ruff 0 | [REQ-057](../01-product-planning/05-requirements/REQ-057-catalog-adapter-and-entity-contract-closure.md) |
 | 2026-07-17 | TD-075 knowledge_nodes backfill 移除 OFFSET 防跳行 | 🟢 完成 | 移除 force=False OFFSET（每轮重查 WHERE embedding IS NULL LIMIT）+ BackfillResult + attempted_ids 防重复 + 单行失败不阻塞 + remaining count 非零退出。6 单测 pass | [Tech Debt](technical-debt.md#td-075-knowledge_nodes-embedding-backfill-使用-mutable-predicate--offset-导致跳行) / [PR #432](https://github.com/MarkDanile/MetaEduBase/pull/432) (`f30c1760`) |
 | 2026-07-17 | DOC-077 跨事实源任务编号唯一性与历史碰撞收口 | 🟢 完成 | 重命名 BUG-011 -> BUG-016 (alias) / BUG-013 -> BUG-014 (alias)；新增 `scripts/engineering/checks/unique_task_ids.py` 同 ID 异义门禁；40/40 engineering tests pass | [Review](04-retrospectives/2026-07-15-recent-completion-code-review.md#p1-bug-编号已发生两次碰撞) / [PR #429](https://github.com/MarkDanile/MetaEduBase/pull/429) (`60045b1f`) |

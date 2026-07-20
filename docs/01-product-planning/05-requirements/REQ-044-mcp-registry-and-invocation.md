@@ -1,6 +1,6 @@
 # REQ-044: MCP 注册、管理与调用能力
 
-Status: 🔵 Ready
+Status: 🟢 Done
 Priority: P0
 Milestone: P3
 Domain: MCP / Tools / 平台基座
@@ -85,3 +85,8 @@ REQ-046（企业 360 背调工作台）是产业园区 P0 首个落地场景，�
 |------|------|------|
 | 2026-07-20 | 登记 / 塑形 | REQ-046 Slice 0 决策链锁定 REQ-044 → REQ-045 → REQ-046 串行，REQ-044 升为主线；用户确认首个真实 MCP server 为企查查 QCC（凭证由用户提供）；按最小 registry 范围塑形，产出 spec / plan。 |
 | 2026-07-20 | 塑形确认 -> Ready | 用户确认 6 项塑形决策：新上下文 `mcp_registry`、官方 mcp SDK 优先（httpx 兜底）、V1 带最小管理 UI、enable 可选 list_tools 探活、凭证只存引用、server_url 入配置列；AC 增补最小管理页（AC-10）；Status 🟣 Shaping -> 🔵 Ready。 |
+| 2026-07-20 | Task 1: migration 021 + ORM + domain | migration 021 建 `metaedu.mcp_servers`（tenant 隔离 + `(tenant_id, code)` 唯一 + 软删）与 `metaedu.mcp_invocation_audit`（digest 口径，绝不存原文）；`MCPServer` / `CredentialRef` / `MCPServerModel`；commits `d02bc21f` / `5d188077`；复审 APPROVED。 |
+| 2026-07-20 | Task 2: registry CRUD API + 管理 RBAC | 7 endpoint（注册 / 列表 / 详情 / 启停 / 删除 / 审计查询），管理操作限 `MCP_REGISTRY_ADMIN_ROLES`，`credential_ref` 引用名校验；软删后同 code 重注册 IntegrityError 映射 409；commits `2a2b859d` / `66e013bd`；复审 APPROVED w/ fixes。 |
+| 2026-07-20 | Task 3: MCP client + 调用审计 + structured_data 接线 | httpx streamable_http client（initialize handshake + tools/call，JSON + SSE 双解析，`asyncio.wait_for` 硬超时）；`MCPInvocationService.invoke`（resolve -> enabled 门 -> 角色门 -> CredentialRef.resolve -> call_tool -> 审计，稳定 error_code 集）；`MCPAdapter` 经 registry 解析（AC-8：未注册/禁用/无权限显式失败）；commits `a9563119` / `3d197550`；复审 APPROVED w/ fixes。 |
+| 2026-07-20 | Task 4: 最小管理 UI (AC-10) | `services/mcpRegistry.ts` + `views/mcp-registry/McpServerListView.vue`（列表 / 注册 modal / 启停（探活警告 toast）/ 删除 / 审计分页查询）；管理操作限 `["admin","data_admin","super_admin"]`，与后端 RBAC 一致；router + Layout 导航；6 vitest；commits `03efe7ca` / `80e51f94`；复审 APPROVED w/ fixes。 |
+| 2026-07-20 | Task 5 / AC-9: QCC 真实调用验收 + closeout | `tests/real_world/test_req044_qcc_acceptance.py`（`RUN_QCC_AC9=1` + `QCC_MCP_TOKEN` 显式 opt-in，默认 skip 不进 CI）。**AC-9 通过（真实 QCC）**：注册 qcc-company server（streamable_http）-> `list_tools` 发现 16 个工具 -> `get_company_by_query` 真实调用 ok=True，duration_ms=275，params_digest=`07b431600e81…` / response_digest=`c21d05d2d68f…` 齐备；**token（bare 与 `Bearer` 两种形态）不出现在任何审计列 / invoke 结果**。**安全修复**：`AuthCredential` 不透明值对象（redacted repr）+ `resolve()` 防御性剥离冗余 `Bearer ` 前缀，杜绝 pytest `--tb=long` frame-locals 泄漏 secret（commit `c7ac0add`）；AC-9 scaffolding `0859f905`。凭证仅经 env 注入，DB 只存引用名。335 backend tests pass / ruff 0。 |
