@@ -177,6 +177,28 @@ def collect_current_work_req_statuses(root: Path) -> dict[str, list[tuple[Path, 
     path = root / "docs/03-engineering-governance/current-work.md"
     lines = read_lines(path)
     statuses: dict[str, list[tuple[Path, int, str]]] = {}
+
+    # 1) 「当前进行中」也接受散文式任务卡片（`### REQ-XXX: ...` + 后续 `状态：...`
+    #    行）。原实现只用 table_rows 扫表格，完全不识别这种卡片，导致活跃任务的
+    #    current-work 状态漏采，进而触发 req-status-consistency 假阳性。
+    _start, in_progress = section(lines, "当前进行中")
+    card_id: str | None = None
+    for line_no, line in in_progress:
+        header = re.match(r"^###\s+(REQ-\d{3}(?:-\d+)?)\s*[:：]", line.strip())
+        if header:
+            card_id = header.group(1)
+            continue
+        if card_id is None:
+            continue
+        status_match = re.match(r"^状态[:：]\s*(.+)$", line.strip())
+        if status_match:
+            normalized = normalize_status(status_match.group(1))
+            if is_product_status(normalized):
+                statuses.setdefault(card_id, []).append((path, line_no, normalized))
+            card_id = None
+
+    # 2) 三个 section 的表格行。状态格必须解析为合法产品状态，否则跳过——
+    #    防止把任务名格（normalize_status 对自由文本 fail-open 原样返回）误当状态。
     for title in ("当前进行中", "下一批候选任务", "最近完成"):
         _start, body = section(lines, title)
         for line_no, row in table_rows(body):
@@ -187,8 +209,11 @@ def collect_current_work_req_statuses(root: Path) -> dict[str, list[tuple[Path, 
             if not task_match:
                 continue
             status_cell = cells[1] if title != "最近完成" else cells[2]
+            normalized = normalize_status(status_cell)
+            if not is_product_status(normalized):
+                continue
             statuses.setdefault(task_match.group(0), []).append(
-                (path, line_no, normalize_status(status_cell))
+                (path, line_no, normalized)
             )
     return statuses
 
