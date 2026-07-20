@@ -133,7 +133,7 @@
 | PATCH | `/api/v1/mcp-servers/{id}` | admin / data_admin / super_admin | 更新配置 / allowed_roles |
 | POST | `/api/v1/mcp-servers/{id}/enable` | admin / data_admin / super_admin | 启用（可选 list_tools 连通校验，失败仍允许启用但返回警告） |
 | POST | `/api/v1/mcp-servers/{id}/disable` | admin / data_admin / super_admin | 禁用 |
-| DELETE | `/api/v1/mcp-servers/{id}` | admin / super_admin | 软删（is_active=false）；有审计行的 server 不硬删 |
+| DELETE | `/api/v1/mcp-servers/{id}` | admin / data_admin / super_admin | 软删（is_active=false）；有审计行的 server 不硬删（与 catalog 管理权限集一致） |
 | GET | `/api/v1/mcp-servers/{id}/invocations` | admin / data_admin / super_admin | 审计查询（分页，本 tenant） |
 
 业务调用（structured_data 问数、REQ-046 背调）不暴露公开 invoke API，走 `MCPInvocationService` 内部入口；V1 如需调试，用 enable 时的连通校验或测试脚本，不开通用调用端点。

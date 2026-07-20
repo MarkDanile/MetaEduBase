@@ -1,0 +1,29 @@
+"""Conftest for mcp_registry context tests (REQ-044).
+
+Provides the ``db_session`` fixture — an ``AsyncSession`` against the test
+DB (commits on clean teardown, rolls back on error, NullPool), mirroring
+``tests/contexts/structured_data/conftest.py``. The global ``client`` /
+``auth_headers`` fixtures from ``tests/conftest.py`` remain in effect.
+"""
+from __future__ import annotations
+
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
+
+from tests.conftest import DEFAULT_TEST_DB_URL
+
+
+@pytest_asyncio.fixture
+async def db_session():
+    """Yield an ``AsyncSession`` against the test DB."""
+    engine = create_async_engine(DEFAULT_TEST_DB_URL, echo=False, poolclass=NullPool)
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+    await engine.dispose()
