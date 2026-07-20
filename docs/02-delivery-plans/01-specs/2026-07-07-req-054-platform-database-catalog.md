@@ -4,6 +4,8 @@
 > **Plan**: 待 writing-plans skill 产出
 > **Related**: REQ-052（智能问数，已实施 PR #417）/ REQ-046（企业 360 背调）/ REQ-048（内部系统 adapter）
 
+> **⚠️ 修正说明（2026-07-20，REQ-057）**：本文档为历史 spec，不重写历史。entity_type 策略已由 PR #422 从"白名单"改为**动态发现**——`validate_entity_type` 现为保留的 no-op，`get_discovered_entity_types` 按 datasets 表 DISTINCT 聚合，entity_type 由上传数据集自由产生，治理/演化归 REQ-055。本文中所有"entity_types 白名单"描述均已被取代（SUPERSEDED）。当前事实以 [REQ-057](../../01-product-planning/05-requirements/REQ-057-catalog-adapter-and-entity-contract-closure.md) 与 `app/contexts/structured_data/application/catalog_service.py` 为准。
+
 ---
 
 ## 1. 问题陈述
@@ -126,10 +128,10 @@ REQ-052 已设计 `data_source_config.type` 字段，3 种类型：
 
 | ID | 内容 | 验证方式 |
 |----|------|----------|
-| AC-1 | `metaedu.data_catalogs` 表创建，CRUD API 可用，entity_types 白名单校验生效 | API 测试 + alembic migration 验证 |
+| AC-1 | `metaedu.data_catalogs` 表创建，CRUD API 可用，entity_types 白名单校验生效（已被 PR #422 动态发现取代） | API 测试 + alembic migration 验证 |
 | AC-2 | `datasets` / `semantic_models` / `knowledge_nodes` / `query_audit_log` 加 `catalog_id` FK，迁移后现有数据归入默认库 | migration 测试 + 数据验证 |
 | AC-3 | 仅 admin / data_admin 可创建数据库；普通用户只能浏览使用 | RBAC 权限测试（5 角色 × CRUD 矩阵） |
-| AC-4 | 数据集上传时必选 catalog_id；entity_type 必须在该库的白名单内 | 上传 API 测试（缺 catalog_id → 422；entity_type 不在白名单 → 400） |
+| AC-4 | 数据集上传时必选 catalog_id；entity_type 必须在该库的白名单内（白名单部分已被 PR #422 动态发现取代） | 上传 API 测试（缺 catalog_id → 422；entity_type 不在白名单 → 400） |
 | AC-5 | 语义层按 (catalog_id, entity_type) 路由；同 entity_type 在不同库下可独立配置 | repository 测试（同 entity_type 不同 catalog 返回不同 model） |
 | AC-6 | QueryPlanner / QueryService.ask 按 catalog_id 路由到正确的 semantic_model | 集成测试（2 个库同 entity_type，问数返回各自结果） |
 | AC-7 | 前端数据库列表卡片 + 详情页 tab（数据集 / 语义层 / KG / 问数） | 前端 vitest + 手动验证 |
