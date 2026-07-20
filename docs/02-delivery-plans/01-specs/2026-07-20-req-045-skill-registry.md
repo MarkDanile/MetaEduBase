@@ -98,7 +98,7 @@ REQ-044 交付了 MCP registry，解决"拿到事实"（工具调用可注册、
 | `caller_type` | varchar(30) | `http_api` / `adapter:due_diligence` / `service` |
 | `caller_user_id` | UUID nullable | 触发用户 |
 | `subject_digest` | varchar(64) nullable | 执行主体（如企业名 / 统一社会信用代码）规范化 JSON 的 sha256；**原始主体标识不落审计库** |
-| `steps_digest` | varchar(64) nullable | 各步骤结果摘要（步骤 id + 对应 `mcp_invocation_audit.id` 列表）的 sha256；事实本体不落审计库 |
+| `steps_digest` | varchar(64) nullable | 各步骤结果摘要的 sha256 canonical JSON：`{step_id: canonical_digest(result)}`（与各步在 `mcp_invocation_audit` 的 `response_digest` 同口径；因 `MCPInvocationService.invoke` 当前不返回 audit id，间接关联--经 `mcp_invocation_audit.params_digest == skill_execution_audit.subject_digest` + caller + 时间窗反查）；事实本体不落审计库 |
 | `report_digest` | varchar(64) nullable | LLM 合成报告的 sha256；报告正文不落审计库（产物归 REQ-046/047） |
 | `ok` | boolean NOT NULL | |
 | `error_code` | varchar(50) nullable | 归一化错误码（`disabled` / `forbidden` / `template_error` / `tool_unavailable` / `tool_error` / `llm_error` / `timeout`） |
@@ -181,7 +181,7 @@ caller (REQ-046 adapter / 管理页试运行)
 ```
 
 - 步骤执行顺序按 `steps` 数组顺序；required 步失败即整体失败并写审计，optional 步失败降级为"该维度缺失标注"（V1 全部按 required 处理，降级策略留 V2）。
-- 每个 MCP 步骤调用已在 REQ-044 `mcp_invocation_audit` 留痕；`skill_execution_audit.steps_digest` 关联这些审计行 id。
+- 每个 MCP 步骤调用已在 REQ-044 `mcp_invocation_audit` 留痕；`skill_execution_audit.steps_digest` 经 `params_digest == subject_digest` 间接关联这些审计行（REQ-046 evidence 若需精确 `mcp_invocation_audit.id`，需在 REQ-044 让 `invoke` 返回 audit id，属跨需求前向改动）。
 - LLM 入口复用 `shared/llm/chat.py`（统一 chat + provider fallback），不新造 LLM client。
 
 ### 4.5 API 端点
