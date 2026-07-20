@@ -205,6 +205,7 @@ import {
   ChevronDown,
   Moon,
   Sun,
+  Plug,
 } from "lucide-vue-next";
 
 const route = useRoute();
@@ -231,6 +232,7 @@ const navItems: { title: string; route: string; icon: Component }[] = [
 
 const adminItems = [
   { title: "数据要素模板", route: "/admin/template", icon: LayoutTemplate },
+  { title: "MCP 服务", route: "/admin/mcp-servers", icon: Plug },
 ];
 
 const adminExpanded = ref(false);
