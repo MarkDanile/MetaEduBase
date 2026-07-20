@@ -442,6 +442,31 @@ async def test_api_create_409_code_conflict(
     assert "已存在" in resp.json()["detail"]
 
 
+async def test_api_create_409_reregister_after_soft_delete(
+    client: AsyncClient, auth_headers: dict
+):
+    """软删后同 code 重新注册 → 409，而不是未处理 500。
+
+    Reviewer Important #1: ``uq_mcp_servers_tenant_code`` 是普通（非部分）
+    UNIQUE，服务层预查只看 active 行，所以软删后的 code 会触达 DB 约束。
+    router 必须把 ``IntegrityError`` 映射为 409（同时覆盖 check-then-insert
+    竞态），不得返回 500 让 code 永久不可复用。
+    """
+    code = _unique_code("rereg")
+    body = await _create_via_api(client, auth_headers, code)
+    # 软删
+    del_resp = await client.delete(
+        f"/api/v1/mcp-servers/{body['id']}", headers=auth_headers
+    )
+    assert del_resp.status_code in (200, 204), del_resp.text
+    # 同 code 重新注册 → 唯一约束冲突 → 409（非 500）
+    resp = await client.post(
+        "/api/v1/mcp-servers", json=_make_payload(code), headers=auth_headers
+    )
+    assert resp.status_code == 409, resp.text
+    assert "已存在" in resp.json()["detail"]
+
+
 async def test_api_create_422_bad_credential_ref(
     client: AsyncClient, auth_headers: dict
 ):

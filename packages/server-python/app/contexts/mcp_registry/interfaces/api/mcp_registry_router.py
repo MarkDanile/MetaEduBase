@@ -20,6 +20,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
@@ -122,13 +123,27 @@ async def create_mcp_server(
             created_by=uuid.UUID(str(current_user["id"])),
             role=str(current_user.get("role", "employee")),
         )
+        await session.commit()
     except MCPRegistryPermissionError as e:
         raise HTTPException(status_code=403, detail=str(e)) from e
     except MCPServerCodeConflictError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
+    except IntegrityError as e:
+        # uq_mcp_servers_tenant_code is a plain (non-partial) UNIQUE on
+        # (tenant_id, code). The service pre-check only looks at active rows,
+        # so re-registering a soft-deleted code — or a check-then-insert race
+        # — reaches the DB constraint (on flush inside create() or on commit)
+        # and raises IntegrityError. Map it to the spec §4.5 "code 冲突 409"
+        # contract instead of an unhandled 500.
+        await session.rollback()
+        if "uq_mcp_servers_tenant_code" in str(e.orig):
+            raise HTTPException(
+                status_code=409,
+                detail=f"MCP server code '{req.code}' 已存在（含已停用记录）",
+            ) from e
+        raise
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
-    await session.commit()
     return _to_dto(server)
 
 
