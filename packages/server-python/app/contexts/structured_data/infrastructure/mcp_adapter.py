@@ -100,12 +100,21 @@ class MCPAdapter(DataSourceAdapter):
         return errors
 
     @staticmethod
-    def _rows_from_result(result: dict) -> list[dict]:
+    def _rows_from_result(result: Any) -> list[dict]:
         """Normalize a ``tools/call`` result into ``list[dict]`` rows.
 
         Prefers MCP ``structuredContent``; falls back to JSON-encoded
         ``content`` text items; last resort wraps the raw result dict.
+
+        A non-dict result (e.g. a bare list from a non-spec server) or an
+        empty result yields ``[]`` - never a phantom ``[{}]`` row that
+        would inflate ``result_count`` downstream.
         """
+        # Entry guard: defend against non-spec result shapes (a bare list
+        # would AttributeError on ``.get``) and empty results (which must
+        # not become a phantom single-row ``[{}]``).
+        if not isinstance(result, dict) or not result:
+            return []
         structured = result.get("structuredContent")
         if isinstance(structured, list):
             return [r for r in structured if isinstance(r, dict)]
@@ -134,4 +143,4 @@ class MCPAdapter(DataSourceAdapter):
                 elif isinstance(payload, dict):
                     parsed.append(payload)
             return parsed
-        return [result] if isinstance(result, dict) else []
+        return [result]

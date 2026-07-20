@@ -592,8 +592,14 @@ async def test_api_enable_disable_flips_flag(
     created = await _create_via_api(client, auth_headers, _unique_code("ena"))
     assert created["enabled"] is False
 
+    # probe=false keeps the test hermetic: with probe=true (default) the
+    # enable endpoint would run probe_connectivity, and if a developer
+    # has QCC_MCP_TOKEN set in .env for AC-9 manual verification, that
+    # probe makes a real HTTP call to the configured server_url.
     resp = await client.post(
-        f"/api/v1/mcp-servers/{created['id']}/enable", headers=auth_headers
+        f"/api/v1/mcp-servers/{created['id']}/enable",
+        headers=auth_headers,
+        params={"probe": "false"},
     )
     assert resp.status_code == 200
     assert resp.json()["enabled"] is True
@@ -604,6 +610,33 @@ async def test_api_enable_disable_flips_flag(
     )
     assert resp.status_code == 200
     assert resp.json()["enabled"] is False
+
+
+async def test_api_enable_probe_warning_when_credential_missing(
+    client: AsyncClient, auth_headers: dict, monkeypatch: pytest.MonkeyPatch
+):
+    """probe=true on a server whose credential env var is absent:
+
+    enable still succeeds (probe is non-blocking) and the response carries
+    a non-empty ``warning`` - the connectivity check was skipped because
+    the credential could not be resolved. Hermetic: no network call is
+    made (credential resolution short-circuits before list_tools).
+    """
+    missing_env = "REQ044_PROBE_MISSING_TOKEN"
+    monkeypatch.delenv(missing_env, raising=False)
+    payload = _make_payload(_unique_code("prb"))
+    payload["credential_ref"] = missing_env
+    resp = await client.post("/api/v1/mcp-servers", json=payload, headers=auth_headers)
+    assert resp.status_code == 201, resp.text
+    server_id = resp.json()["id"]
+
+    resp = await client.post(
+        f"/api/v1/mcp-servers/{server_id}/enable", headers=auth_headers
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["enabled"] is True  # probe never blocks enable
+    assert body.get("warning"), "missing-credential probe must surface a warning"
 
 
 async def test_api_enable_404(client: AsyncClient, auth_headers: dict):

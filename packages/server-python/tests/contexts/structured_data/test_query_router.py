@@ -779,7 +779,7 @@ async def test_ask_endpoint_validator_rejection_audits_with_zero_rows(
 
 
 # ---------------------------------------------------------------------------
-# REQ-057 reviewer findings: capability-unavailable + DirectDB reachability
+# REQ-044 MCP invocation-failure + REQ-057 DirectDB reachability
 # ---------------------------------------------------------------------------
 
 
@@ -787,14 +787,16 @@ async def test_ask_endpoint_mcp_unregistered_server_audits_and_returns_ok_false(
     client: AsyncClient, auth_headers: dict, db_session, sample_dataset,
     persisted_semantic_model,
 ):
-    """MCP V1 数据源 → ok=False + 仍写审计行（不 500、不伪装空结果）。
+    """MCP 数据源 -> ok=False + 仍写审计行（不 500、不伪装空结果）。
 
-    REQ-057 AC-3 + spec §12 (国资审计): the MCP adapter raises
-    ``CapabilityUnavailableError``. The orchestrator must catch it,
-    write an audit row with ``result_count=0`` (fail-closed: EVERY
-    attempt is logged, including capability failures), and return a
-    clear ``ok=False`` — never an unhandled 500, and never a silent
-    "0 results" success that hides the capability gap.
+    REQ-044 AC-8 + spec §4.6 (国资审计): the configured MCP server is
+    unregistered, so ``MCPInvocationService.invoke`` raises
+    ``MCPInvocationServerNotFoundError`` (a ``MCPInvocationError``
+    subclass). ``QueryService.ask`` catches it, writes a query_audit_log
+    row with ``result_count=0`` (fail-closed: EVERY attempt is logged,
+    including invocation failures), and returns a clear ``ok=False`` -
+    never an unhandled 500, and never a silent "0 results" success that
+    hides the failure.
     """
     await _persist_mcp_model(db_session, sample_dataset["id"])
     before = await _count_audit_rows()
@@ -840,7 +842,7 @@ async def test_ask_endpoint_mcp_unregistered_server_audits_and_returns_ok_false(
     # Fail-closed audit: the attempt is logged despite the invocation failure.
     after = await _count_audit_rows()
     assert after == before + 1, (
-        "capability-unavailable attempt must still write an audit row"
+        "invocation-failure attempt must still write an audit row"
     )
     written_catalog_id = await _latest_audit_catalog_id()
     assert written_catalog_id == persisted_semantic_model["catalog_id"]

@@ -223,6 +223,31 @@ async def test_query_falls_back_to_wrapping_raw_result():
     assert rows == [{"unrecognized": "shape"}]
 
 
+async def test_query_empty_result_yields_no_phantom_row():
+    """An empty result must not become a phantom ``[{}]`` row that would
+    inflate ``result_count`` downstream (REQ-044 Task 3 review fix)."""
+    svc = _mock_service(result={})
+    adapter = MCPAdapter(
+        config={"server_code": "qcc", "tool_name": "t"},
+        invocation_service=svc,
+    )
+    rows = await adapter.query({}, None, DEFAULT_TENANT_ID, "manager")
+    assert rows == []
+
+
+async def test_query_non_dict_result_yields_no_rows_without_crashing():
+    """A non-spec server returning a bare list as the JSON-RPC result must
+    not crash (AttributeError on ``.get``); it yields ``[]`` (REQ-044 Task 3
+    review fix)."""
+    svc = _mock_service(result=[{"a": 1}, {"b": 2}])
+    adapter = MCPAdapter(
+        config={"server_code": "qcc", "tool_name": "t"},
+        invocation_service=svc,
+    )
+    rows = await adapter.query({}, None, DEFAULT_TENANT_ID, "manager")
+    assert rows == []
+
+
 # ── ABC inheritance ────────────────────────────────────────────────
 
 

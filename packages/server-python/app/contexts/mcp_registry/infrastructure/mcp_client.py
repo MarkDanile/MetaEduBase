@@ -144,6 +144,13 @@ class MCPClient:
         service can write a uniform audit row.
         """
         try:
+            # Per spec §4.4, ``server.timeout_ms`` is the "单次调用超时" budget
+            # for one logical call_tool - which in streamable_http includes the
+            # initialize handshake + notifications/initialized + tools/call
+            # (you cannot call tools/call without first initializing). The
+            # wait_for therefore covers the whole _with_session; for V1's
+            # single-tool QCC calls the handshake is one cheap round-trip and
+            # leaves the bulk of the budget for tools/call.
             result = await asyncio.wait_for(
                 self._with_session(
                     server,
