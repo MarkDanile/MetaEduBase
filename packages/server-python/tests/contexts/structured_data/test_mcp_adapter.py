@@ -1,18 +1,24 @@
-"""Test MCPAdapter — V1 interface skeleton (REQ-054 Task 4).
+"""Test MCPAdapter - V1 interface skeleton (REQ-054 Task 4).
 
-V1 contract (upgraded from REQ-052 placeholder):
+V1 contract (upgraded from REQ-052 placeholder, then REQ-057 tightened
+the capability boundary):
 - ``__init__`` accepts a ``config`` dict (no longer raises NotImplementedError).
 - ``get_data_source_type`` returns ``"mcp"``.
 - ``validate_query`` reports missing ``server_url`` / ``tool_name``.
-- ``query`` returns an empty list (V1 does not connect to a real MCP server;
-  V2 will wire up the QCC MCP server).
+- ``query`` raises :class:`CapabilityUnavailableError` - V1 does not
+  connect to a real MCP server, and returning ``[]`` would masquerade
+  as "query succeeded, no data". V2 will wire up the QCC MCP server
+  (REQ-044 / REQ-046).
 
-These tests are pure unit tests — no DB, no network, no mocks needed.
+These tests are pure unit tests - no DB, no network, no mocks needed.
 """
 
 from __future__ import annotations
 
+import pytest
+
 from app.contexts.structured_data.domain.data_source_adapter import (
+    CapabilityUnavailableError,
     DataSourceAdapter,
 )
 from app.contexts.structured_data.infrastructure.mcp_adapter import MCPAdapter
@@ -63,47 +69,52 @@ def test_validate_query_empty_config_reports_both():
     assert any("tool_name" in e for e in errors)
 
 
-# ── query — V1 returns empty list ─────────────────────────────────
+# ── query - V1 raises CapabilityUnavailableError ───────────────────
 
 
-async def test_query_returns_empty_list():
-    """V1: query does not connect to a real MCP server — returns []."""
+async def test_query_raises_capability_unavailable():
+    """V1: query raises - no real MCP server is connected.
+
+    REQ-057: returning ``[]`` would masquerade as "query succeeded, no
+    data"; the adapter must raise :class:`CapabilityUnavailableError`
+    so the gap is explicit to the caller and the audit trail.
+    """
     adapter = MCPAdapter(
         config={"server_url": "http://mcp.local", "tool_name": "query_bills"}
     )
-    rows = await adapter.query(
-        query_plan={},
-        semantic_model=None,
-        tenant_id=DEFAULT_TENANT_ID,
-        user_role="manager",
-    )
-    assert rows == []
+    with pytest.raises(CapabilityUnavailableError):
+        await adapter.query(
+            query_plan={},
+            semantic_model=None,
+            tenant_id=DEFAULT_TENANT_ID,
+            user_role="manager",
+        )
 
 
-async def test_query_returns_empty_list_even_without_config():
-    """V1: query is a no-op skeleton — returns [] regardless of config."""
+async def test_query_raises_capability_unavailable_even_without_config():
+    """V1: query raises regardless of config completeness."""
     adapter = MCPAdapter(config={})
-    rows = await adapter.query(
-        query_plan={},
-        semantic_model=None,
-        tenant_id=DEFAULT_TENANT_ID,
-        user_role="manager",
-    )
-    assert rows == []
+    with pytest.raises(CapabilityUnavailableError):
+        await adapter.query(
+            query_plan={},
+            semantic_model=None,
+            tenant_id=DEFAULT_TENANT_ID,
+            user_role="manager",
+        )
 
 
-async def test_query_returns_empty_list_with_limit():
-    """V1: query ignores query_plan and returns [] (no real server)."""
+async def test_query_raises_capability_unavailable_with_limit():
+    """V1: query raises regardless of query_plan contents (no real server)."""
     adapter = MCPAdapter(
         config={"server_url": "http://mcp.local", "tool_name": "query_bills"}
     )
-    rows = await adapter.query(
-        query_plan={"limit": 100, "filters": {"company": "ACME"}},
-        semantic_model=None,
-        tenant_id=DEFAULT_TENANT_ID,
-        user_role="manager",
-    )
-    assert rows == []
+    with pytest.raises(CapabilityUnavailableError):
+        await adapter.query(
+            query_plan={"limit": 100, "filters": {"company": "ACME"}},
+            semantic_model=None,
+            tenant_id=DEFAULT_TENANT_ID,
+            user_role="manager",
+        )
 
 
 # ── ABC inheritance ────────────────────────────────────────────────

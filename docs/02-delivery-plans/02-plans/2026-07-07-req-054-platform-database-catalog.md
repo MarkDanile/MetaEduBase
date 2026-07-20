@@ -1,5 +1,7 @@
 # REQ-054 Implementation Plan: 平台级数据库（catalog）主题域分组与多源数据接入
 
+> **⚠️ 修正说明（2026-07-20，REQ-057）**：本文档为历史 plan，不重写历史任务正文。其中所有 entity_type"白名单"设计与校验步骤（Global Constraints、Task 2 `validate_entity_type`、Task 3 上传白名单校验等）已被 PR #422 的**动态发现**策略取代：`validate_entity_type` 现为保留的 no-op，`get_discovered_entity_types` 按 datasets 表 DISTINCT 聚合。当前事实以 [REQ-057](../../01-product-planning/05-requirements/REQ-057-catalog-adapter-and-entity-contract-closure.md) 与 `app/contexts/structured_data/application/catalog_service.py` 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在保留 tenant_id 跨租户隔离的前提下，于 tenant 内部新增 `catalog`（UI 称"数据库"）主题域分组维度，让数据集 / 语义层 / 知识图谱 / 问数按数据库独立管理，支持 3 种数据源类型统一接入。

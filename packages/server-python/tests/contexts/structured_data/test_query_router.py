@@ -199,18 +199,20 @@ async def persisted_semantic_model(db_session, sample_dataset):
     }
 
 
-async def _persist_direct_db_model(
+async def _persist_unknown_type_model(
     session: AsyncSession, dataset_id: uuid.UUID
 ) -> None:
-    """Persist a semantic model whose ``data_source_config.type`` is
-    ``direct_db`` (a V1 placeholder, unsupported by
-    ``default_adapter_factory``).
+    """Persist a semantic model whose ``data_source_config.type`` is a
+    string the factory does not recognize (``"unknown_type"``).
 
-    Used to exercise the router's ValueError → 400 translation: the plan
+    REQ-057: ``default_adapter_factory`` now routes all three declared
+    :class:`DataSourceType` values (``imported_dataset`` / ``direct_db``
+    / ``mcp``); only a truly unknown type raises ``ValueError``. Used to
+    exercise the router's ``ValueError`` → 400 translation: the plan
     passes validation, the pipeline reaches the adapter factory, and the
-    factory raises ``ValueError`` for the unsupported source type. Uses a
-    distinct ``entity_type`` ("invoice") so it doesn't collide with the
-    ``bill`` model persisted by other tests.
+    factory raises ``ValueError`` for the unrecognized source type. Uses
+    a distinct ``entity_type`` ("invoice") so it doesn't collide with
+    the ``bill`` model persisted by other tests.
     """
     repo = SemanticModelRepository(session)
     # REQ-054: resolve the default education catalog.
@@ -223,7 +225,7 @@ async def _persist_direct_db_model(
         entity_type="invoice",
         entity_name="发票",
         data_source_config={
-            "type": DataSourceType.DIRECT_DB.value,
+            "type": "unknown_type",
             "dataset_id": str(dataset_id),
         },
         column_mapping={
@@ -253,6 +255,103 @@ async def _persist_direct_db_model(
     )
     await repo.create(model, catalog_id=catalog_id)
     await session.commit()
+
+
+async def _persist_typed_model(
+    session: AsyncSession,
+    dataset_id: uuid.UUID,
+    *,
+    entity_type: str,
+    entity_name: str,
+    data_source_config: dict,
+) -> None:
+    """Persist a semantic model with a caller-supplied ``data_source_config``.
+
+    Shared body for the REQ-057 typed-model helpers below
+    (:func:`_persist_direct_db_model` / :func:`_persist_mcp_model`) so
+    the routing reachability tests only differ in the config they pass.
+    Uses the caller's ``entity_type`` so concurrent models in the same
+    catalog don't collide on ``scalar_one_or_none()``.
+    """
+    repo = SemanticModelRepository(session)
+    catalog_id = await _resolve_education_catalog_id(session)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    model = SemanticModel(
+        id=uuid.uuid4(),
+        tenant_id=DEFAULT_TENANT_ID,
+        dataset_id=dataset_id,
+        entity_type=entity_type,
+        entity_name=entity_name,
+        data_source_config=data_source_config,
+        column_mapping={
+            "company_name": ColumnMapping(
+                role=ColumnRole.ENTITY_KEY,
+                type=ColumnType.STR,
+                sensitive=False,
+                synonym=["企业名称"],
+            ),
+            "amount": ColumnMapping(
+                role=ColumnRole.METRIC,
+                type=ColumnType.FLOAT,
+                sensitive=True,
+                synonym=["金额"],
+            ),
+        },
+        metric_definitions={
+            "total_amount": MetricDefinition(
+                column="amount", aggregation="sum", label="总金额"
+            ),
+        },
+        version="v1",
+        status="active",
+        created_by=DEFAULT_ADMIN_ID,
+        created_at=now,
+        updated_at=now,
+    )
+    await repo.create(model, catalog_id=catalog_id)
+    await session.commit()
+
+
+async def _persist_direct_db_model(
+    session: AsyncSession, dataset_id: uuid.UUID
+) -> None:
+    """Persist a ``direct_db``-typed model (entity_type ``contract``).
+
+    REQ-057 AC-2: proves the ``direct_db`` path is reachable through the
+    router → factory → adapter chain. ``asyncpg.connect`` is mocked in
+    the test so no real external PG is needed.
+    """
+    await _persist_typed_model(
+        session,
+        dataset_id,
+        entity_type="contract",
+        entity_name="合同",
+        data_source_config={
+            "type": "direct_db",
+            "connection_string": "postgresql://readonly@ext-host:5432/extdb",
+            "table_name": "contracts",
+        },
+    )
+
+
+async def _persist_mcp_model(session: AsyncSession, dataset_id: uuid.UUID) -> None:
+    """Persist an ``mcp``-typed model (entity_type ``supplier``).
+
+    REQ-057 AC-3: the MCP adapter V1 raises ``CapabilityUnavailableError``
+    instead of returning ``[]``; the router test asserts the orchestrator
+    catches it, writes an audit row, and returns ``ok=False``.
+    """
+    await _persist_typed_model(
+        session,
+        dataset_id,
+        entity_type="supplier",
+        entity_name="供应商",
+        data_source_config={
+            "type": "mcp",
+            "server_url": "https://mcp.example.com/sse",
+            "tool_name": "query_supplier",
+        },
+    )
 
 
 async def _count_audit_rows() -> int:
@@ -572,14 +671,15 @@ async def test_ask_endpoint_unsupported_data_source_returns_400(
     client: AsyncClient, auth_headers: dict, db_session, sample_dataset,
     persisted_semantic_model,
 ):
-    """未实现的 data_source_type（direct_db）→ 400，而不是 500。
+    """未知 data_source_type（unknown_type）→ 400，而不是 500。
 
-    ``default_adapter_factory`` raises ``ValueError`` for any type other
-    than ``imported_dataset``. The router must translate that into a 400
-    (client asked for an unimplemented source) rather than letting it
-    propagate as an unhandled 500.
+    REQ-057: ``default_adapter_factory`` now supports ``imported_dataset``
+    / ``direct_db`` / ``mcp``; only a truly unknown type raises
+    ``ValueError``. The router must translate that into a 400 (client
+    asked for an unrecognized source) rather than letting it propagate
+    as an unhandled 500.
     """
-    await _persist_direct_db_model(db_session, sample_dataset["id"])
+    await _persist_unknown_type_model(db_session, sample_dataset["id"])
 
     planner_response = json.dumps(
         {
@@ -611,7 +711,7 @@ async def test_ask_endpoint_unsupported_data_source_returns_400(
         )
 
     assert response.status_code == 400, response.text
-    assert "direct_db" in response.json()["detail"]
+    assert "unknown_type" in response.json()["detail"]
 
 
 async def test_ask_endpoint_validator_rejection_audits_with_zero_rows(
@@ -672,3 +772,141 @@ async def test_ask_endpoint_validator_rejection_audits_with_zero_rows(
     assert written_catalog_id == catalog_id, (
         "validator-rejected audit row must carry catalog_id"
     )
+
+
+# ---------------------------------------------------------------------------
+# REQ-057 reviewer findings: capability-unavailable + DirectDB reachability
+# ---------------------------------------------------------------------------
+
+
+async def test_ask_endpoint_mcp_capability_unavailable_audits_and_returns_ok_false(
+    client: AsyncClient, auth_headers: dict, db_session, sample_dataset,
+    persisted_semantic_model,
+):
+    """MCP V1 数据源 → ok=False + 仍写审计行（不 500、不伪装空结果）。
+
+    REQ-057 AC-3 + spec §12 (国资审计): the MCP adapter raises
+    ``CapabilityUnavailableError``. The orchestrator must catch it,
+    write an audit row with ``result_count=0`` (fail-closed: EVERY
+    attempt is logged, including capability failures), and return a
+    clear ``ok=False`` — never an unhandled 500, and never a silent
+    "0 results" success that hides the capability gap.
+    """
+    await _persist_mcp_model(db_session, sample_dataset["id"])
+    before = await _count_audit_rows()
+
+    planner_response = json.dumps(
+        {
+            "entity": "supplier",
+            "metrics": ["total_amount"],
+            "filters": {},
+            "limit": 100,
+        }
+    )
+    with patch(
+        "app.contexts.structured_data.application.query_planner.chat",
+        new_callable=AsyncMock,
+    ) as mock_planner, patch(
+        "app.contexts.structured_data.application.result_explainer.chat",
+        new_callable=AsyncMock,
+    ) as mock_explainer:
+        mock_planner.return_value = planner_response
+        mock_explainer.return_value = "should-not-be-called"
+
+        response = await client.post(
+            "/api/v1/data-query/ask",
+            headers=auth_headers,
+            json={
+                "catalog_id": str(persisted_semantic_model["catalog_id"]),
+                "entity_type": "supplier",
+                "question": "查询供应商金额",
+                "business_purpose": "信用风险评估",
+            },
+        )
+
+    # Well-formed request; the data source simply can't serve it yet → 200
+    # carrying ok=False (not a 5xx).
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["ok"] is False
+    assert data["errors"], "capability gap must surface a non-empty errors list"
+    assert any("能力不可用" in e or "不可用" in e for e in data["errors"])
+    assert data.get("suggestion"), "capability gap should include a suggestion"
+
+    # Fail-closed audit: the attempt is logged despite the capability gap.
+    after = await _count_audit_rows()
+    assert after == before + 1, (
+        "capability-unavailable attempt must still write an audit row"
+    )
+    written_catalog_id = await _latest_audit_catalog_id()
+    assert written_catalog_id == persisted_semantic_model["catalog_id"]
+
+
+async def test_ask_endpoint_direct_db_reachable_returns_ok_true(
+    client: AsyncClient, auth_headers: dict, db_session, sample_dataset,
+    persisted_semantic_model,
+):
+    """DirectDB 数据源经 factory 路由可达 → ok=True（asyncpg 已 mock）。
+
+    REQ-057 AC-2: proves the ``direct_db`` path is wired end-to-end —
+    router → ``default_adapter_factory`` (routes type=direct_db) →
+    ``DirectDBAdapter.query``. ``asyncpg.connect`` is mocked so no real
+    external PG is required; the mock returns one row so the pipeline
+    produces a non-empty result and the explainer summarizes it.
+    """
+    await _persist_direct_db_model(db_session, sample_dataset["id"])
+
+    planner_response = json.dumps(
+        {
+            "entity": "contract",
+            "metrics": ["total_amount"],
+            "filters": {},
+            "limit": 100,
+        }
+    )
+
+    fake_conn = AsyncMock()
+    fake_conn.fetch.return_value = [
+        {"company_name": "ACME", "amount": 150.0},
+    ]
+
+    # Patch the ``asyncpg`` name ON the adapter module (not
+    # ``asyncpg.connect``) — the latter would also rebind the attribute
+    # that SQLAlchemy's asyncpg dialect resolves, breaking the request
+    # session's own DB connection. Scoping the patch to the adapter
+    # module leaves SQLAlchemy's dialect untouched.
+    fake_asyncpg = AsyncMock()
+    fake_asyncpg.connect.return_value = fake_conn
+
+    with patch(
+        "app.contexts.structured_data.application.query_planner.chat",
+        new_callable=AsyncMock,
+    ) as mock_planner, patch(
+        "app.contexts.structured_data.application.result_explainer.chat",
+        new_callable=AsyncMock,
+    ) as mock_explainer, patch(
+        "app.contexts.structured_data.infrastructure.direct_db_adapter.asyncpg",
+        fake_asyncpg,
+    ):
+        mock_planner.return_value = planner_response
+        mock_explainer.return_value = "合同总金额 150 元"
+
+        response = await client.post(
+            "/api/v1/data-query/ask",
+            headers=auth_headers,
+            json={
+                "catalog_id": str(persisted_semantic_model["catalog_id"]),
+                "entity_type": "contract",
+                "question": "查询合同总金额",
+                "business_purpose": "信用风险评估",
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["ok"] is True, f"direct_db path must succeed: {data}"
+    assert data["result_count"] == 1
+    assert data["summary"] == "合同总金额 150 元"
+    # The adapter actually reached asyncpg (reachability, not short-circuit).
+    fake_asyncpg.connect.assert_awaited_once()
+    fake_conn.fetch.assert_awaited_once()

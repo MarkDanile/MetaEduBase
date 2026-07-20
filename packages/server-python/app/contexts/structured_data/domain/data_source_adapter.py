@@ -24,6 +24,27 @@ import uuid
 from typing import Any
 
 
+class CapabilityUnavailableError(Exception):
+    """Raised when an adapter's capability is not yet implemented.
+
+    Distinct from returning ``[]`` (which would masquerade as "query
+    succeeded, no data"). The MCP V1 adapter raises this from
+    :meth:`DataSourceAdapter.query` because no real MCP server is wired
+    up yet - returning an empty list would let the orchestrator build a
+    "0 results" summary for a request that never actually ran, hiding the
+    capability gap from the user and the audit trail.
+
+    The orchestrator (:meth:`QueryService.ask`) catches this, writes an
+    audit row with ``result_count=0`` (spec §12 fail-closed audit
+    invariant: every attempt is logged, including capability failures),
+    and surfaces ``{"ok": False, "errors": ["数据源能力不可用: ..."],
+    "suggestion": "..."}`` to the caller so the gap is explicit rather
+    than silently empty. The router passes the response through as 200
+    (not 501/500) because the request was well-formed - the data source
+    simply doesn't support querying yet.
+    """
+
+
 class DataSourceAdapter(abc.ABC):
     """统一数据源适配器接口。语义层不绑死数据源类型。"""
 

@@ -1,6 +1,6 @@
 # REQ-057: Catalog 数据源 Adapter 路由与 entity_type 契约收口
 
-Status: 🟣 Shaping
+Status: 🟢 Done
 Priority: P1
 Milestone: P3
 Domain: Data Platform / Catalog / Adapter / 产业园区
@@ -62,3 +62,6 @@ REQ-054 的 Catalog CRUD、tenant 隔离、数据集归属、双键语义模型�
 | 日期 | 动作 | 事实 |
 |------|------|------|
 | 2026-07-15 | 登记 | DOC-078 Code Review 发现 REQ-054 adapter 可达性和 entity_type 动态发现契约未收口；作为有条件关闭后的必修 follow-up。 |
+| 2026-07-20 | Task 1 完成 | Adapter registry 3 类型路由：imported_dataset / direct_db / mcp 统一解析；MCP 改为显式抛 CapabilityUnavailableError（QueryService.ask 捕获后写审计 ok=False，不伪装成功空结果）；router 测试覆盖（commits `62aad607` / `5cf4b649`）。 |
+| 2026-07-20 | Task 2 完成 | 两 Catalog 同 entity_type 隔离集成测试补齐（AC-5）：语义模型、问数结果和审计 catalog_id 均正确隔离（commit `736cf2e1`）。 |
+| 2026-07-20 | Task 3 完成 | 文档统一：REQ-054 AC 按真实最高验证层级重写（白名单 → 动态发现 + AC-10 能力分层）；spec / plan 顶部加修正说明；backlog / current-work / work-log 状态同步。验证：structured_data 后端 226 tests pass / ruff 0。 |
