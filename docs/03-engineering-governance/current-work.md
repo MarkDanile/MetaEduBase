@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-（当前无进行中任务；主线推进到 Skill registry 与背调工作台候选。从"下一批候选任务"认领下一任务时，在此重建对应任务卡片。）
+| 任务 | 状态 | 优先级 | 领域 | 当前进展 | 下一步 |
+|------|------|--------|------|----------|--------|
+| DOC-079 门禁脚本修复（req-status-consistency）+ REQ-045 Skill registry 塑形 | 🟡 进行中 | P0 | 门禁治理 / Skill | 门禁修复已提交（6f46d8f3）；REQ-045 塑形三件套（requirement/spec/plan）已 Ready | 提交 REQ-045 塑形交付物并收口 |
+
+### REQ-045 塑形交付物（随本任务一并收口）
+
+- Requirement: docs/01-product-planning/05-requirements/REQ-045-skill-registry-and-execution.md（Status 🔵 Ready）
+- Spec: docs/02-delivery-plans/01-specs/2026-07-20-req-045-skill-registry.md
+- Plan: docs/02-delivery-plans/02-plans/2026-07-20-req-045-skill-registry-plan.md
+- 决策：8 项塑形决策确认（声明式 SOP 模板 / 平台编排执行 / 新建 skill_registry + 背调 SOP 首个 / 两层模板 schema / server_code.tool_name 绑定 / 同 code 多版本 / 结构化产物分区 / 内部 SkillRunner 入口）；调研确认企查查官方 SKILL.md 公开可抓（27 个 skill）。
+
+### 验收标准（本任务收口须满足）
+
+- [x] 门禁修复（DOC-079）：req-status-consistency 解析任务卡片 + 状态格 fail-closed；41/41 engineering tests pass。
+- [ ] REQ-045 塑形交付物提交；check-engineering-docs exit 0 且无 REQ-045 假阳性。
+- [ ] backlog REQ-045 行 🔵 Ready + 链接；work-log +1 行（REQ-045 塑形）。
+
+分支：feat/req-046-due-diligence
+最近接手工具：Claude Code
 
 ## 下一批候选任务
 
@@ -22,8 +40,8 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0（主线，REQ-044 已就绪） | REQ-045 Skill 注册、管理与调用能力 | ⚫ Candidate | REQ-044 已收口，可启动塑形最小 Skill registry（导入 / 注册 / 启停 / 执行 / 版本），承载企查查官方背调 SOP | [Backlog](../01-product-planning/04-backlog.md) / [Applications](../01-product-planning/06-ai-applications/README.md#产品基座能力候选) |
-| P0（主线，待 REQ-045） | REQ-046 / APP-005 企业 360 背调工作台 V0 | 🔵 Ready | REQ-044 已就绪；REQ-045 就绪后启动：主体锚定 + QCC MCP Adapter + 内部问数（REQ-052）+ 背调 Skill + 报告归档 | [Requirement](../01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md) / [Spec](../02-delivery-plans/01-specs/2026-07-03-req-046-enterprise-360-due-diligence-workbench.md) / [Plan](../02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md) |
+| P0（主线，待 REQ-045） | REQ-045 Skill registry 实现（5 Task） | 🔵 Ready | 塑形已 Ready，按 plan 启动实现：migration 022 + domain/SopTemplate -> CRUD/RBAC/版本 -> SkillRunner 执行引擎 -> 最小管理 UI -> 背调 SOP 真实端到端验收 | [Requirement](../01-product-planning/05-requirements/REQ-045-skill-registry-and-execution.md) / [Spec](../02-delivery-plans/01-specs/2026-07-20-req-045-skill-registry.md) / [Plan](../02-delivery-plans/02-plans/2026-07-20-req-045-skill-registry-plan.md) |
+| P0（主线，待 REQ-045） | REQ-046 / APP-005 企业 360 背调工作台 V0 | 🔵 Ready | REQ-045 就绪后启动：主体锚定 + QCC MCP Adapter + 内部问数（REQ-052）+ 背调 Skill + 报告归档 | [Requirement](../01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md) / [Spec](../02-delivery-plans/01-specs/2026-07-03-req-046-enterprise-360-due-diligence-workbench.md) / [Plan](../02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md) |
 
 ## 最近完成
 
