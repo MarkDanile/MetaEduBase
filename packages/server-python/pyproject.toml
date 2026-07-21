@@ -43,6 +43,9 @@ include = ["app*", "app.shared.schemas"]
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+# 迁移文件是冻结的历史产物（alembic autogen 输出），纯风格修复 17 文件无功能收益且污染 git-blame；
+# 默认 `ruff check .` 排除。显式 `ruff check alembic/versions/` 仍可检查。
+extend-exclude = ["alembic/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
