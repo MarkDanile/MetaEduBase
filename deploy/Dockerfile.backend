@@ -2,12 +2,24 @@ FROM python:3.12-slim AS base
 
 RUN apt-get update && apt-get install -y --no-install-recommends libpq5 && rm -rf /var/lib/apt/lists/*
 
+# install uv (pinned to match local dev uv 0.11.16); uv.lock 保证可复现安装
+COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /uvx /usr/local/bin/
+
+# precompile bytecode for faster container startup
+ENV UV_COMPILE_BYTECODE=1
+
 WORKDIR /app
 
-COPY packages/server-python/pyproject.toml ./
-RUN pip install --no-cache-dir .
+# cache layer: install locked deps only (no project source, no dev/ai extras)
+COPY packages/server-python/pyproject.toml packages/server-python/uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
 
+# copy source + install the project itself
 COPY packages/server-python/ ./
+RUN uv sync --frozen --no-dev
+
+# uv sync 创建 /app/.venv；把它的 bin 放到 PATH 前面让 CMD 的 uvicorn 解析到 venv
+ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8000
 
