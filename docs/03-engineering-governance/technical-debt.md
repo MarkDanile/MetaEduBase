@@ -172,6 +172,7 @@
 | TD-076 | 全量测试套件 pre-existing 失败与 ruff 错误（REQ-045 baseline 漂移 + template_selector 字面 `\n` 不归一化） | 🟢 完成 | P2 | 后端 / 测试基础设施 / 治理 / RAG | [PR #436](https://github.com/MarkDanile/MetaEduBase/pull/436)（`9a335455`）：ruff 26->0 + test_p1_rag_evidence_e2e mock `**_kwargs` 吞未用形参 + test_cascade_cleanup 补 catalog_id/entity_type（REQ-054 必填）+ template_selector L3 字面 `\n` 归一化（+回归单测）；全量 1064 passed/3 skipped + ruff 0。 |
 | TD-077 | 无依赖锁文件，dev/deploy 不可复现安装（采用 uv sync --frozen + 提交 uv.lock） | 🟢 完成 | P2 | 后端 / 基础设施 / 依赖管理 / 可复现性 | [PR #438](https://github.com/MarkDanile/MetaEduBase/pull/438)（`17c33aa1`）：uv.lock 提交进 git + dev.sh 4 个 pip install 调用点 -> `uv sync --frozen --extra dev`（+ ensure_uv 兜底）+ Dockerfile.backend -> `uv sync --frozen --no-dev`；ai extras 默认不装（声明但 `app/` 零 import + Python 3.14 上 marker-pdf->pillow 无预编译 wheel）。全量 1064 pass/3 skip + ruff 0。 |
 | TD-078 | 清理未使用的 ai extras（TD-077 follow-up） | 🟢 完成 | P3 | 后端 / 依赖管理 / 可复现性 | TD-077 显式 defer 的 follow-up：`[project.optional-dependencies].ai`（llama-index / langgraph / langchain / sentence-transformers / paddleocr / marker-pdf）声明但 `app/` + `tests/` 零 import、且 Python 3.14 上 marker-pdf -> pillow 无预编译 wheel 装不上。从 `pyproject.toml` 删除 ai 块 + `uv lock` 重生成（232 -> 93 包：纯删除 139 个、0 版本变更、0 新增；base/dev 8 个关键包 fastapi/uvicorn/celery/pytest/ruff/httpx/sqlalchemy/alembic 版本不变）。dev.sh / Dockerfile / CI 无引用 ai extras（TD-077 已清）。[PR #440](https://github.com/MarkDanile/MetaEduBase/pull/440)（`a9bba350`）：全量 1064 pass/3 skip + 零 .py 改动 + check-engineering-docs 0 新增。 |
+| TD-079 | 排除 alembic/versions/ 出 ruff 范围（93 个 pre-existing ruff 错误收口） | 🟡 进行中 | P3 | 后端 / 治理 / lint / 可复现性 | TD-078 closeout 发现 main 上 `ruff check .` 报 93 个 pre-existing 错误（TD-076/077 的 "ruff 0" 实际只覆盖 app/+tests/）。93 错误全在 `alembic/versions/` 迁移文件（UP007 33 / E501 26 / I001 12 / UP035 11 / W292 7 / F401 4），`app/` + `tests/` 本就 0。迁移是冻结历史产物，纯风格修复 17 文件无功能收益且污染 git-blame -> 改 `pyproject.toml` `[tool.ruff]` 加 `extend-exclude = ["alembic/versions"]`（显式 `ruff check alembic/versions/` 仍可查，仅默认扫描排除）。`ruff check .` -> 0。待 PR merge 后翻 🟢。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -4609,3 +4610,48 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
   - `uv.lock`：`uv lock` 重生成，232 -> 93 包（删 139、0 版本变更、0 新增）。
   - 验证：`uv sync --frozen --extra dev` 成功 + `--extra ai` 报错 + `uv tree linux/3.12` exit 0 + `pytest --collect-only` 1067 collected + 全量 pytest 1064 pass / 3 skip（基线一致）+ `git diff main` 仅 2 文件零 .py。
   - [PR #440](https://github.com/MarkDanile/MetaEduBase/pull/440) squash merge（`a9bba350`），翻 `🟢 完成`。Phase 2 收尾：本条目 🟡 -> 🟢 + work-log 索引 + current-work 最近完成 + 重置当前进行中。
+
+### TD-079: 排除 alembic/versions/ 出 ruff 范围（93 个 pre-existing ruff 错误收口）
+
+状态：🟡 进行中
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P3 |
+| 领域 | 后端 / 治理 / lint / 可复现性 |
+| 事实源 | 本任务 / TD-078 closeout 发现 |
+
+**证据**
+
+- TD-078 closeout 时 `ruff check .` 报 93 个 pre-existing 错误；TD-076/077 的 "ruff 0" 实际只覆盖 `app/` + `tests/`。
+- 93 错误**全部**在 `alembic/versions/` 迁移文件；`ruff check app/ tests/` = 0 errors。
+- 规则分布：UP007 33（Optional[X] -> X | Y）/ E501 26（行 >100，`op.add_column(..., schema="metaedu")` / `sa.Column(... ForeignKey ...)` 长列定义）/ I001 12（import 顺序）/ UP035 11（deprecated import）/ W292 7（文末无换行）/ F401 4（alembic autogen 样板未用的 `postgresql.*`）。
+- 67 自动可修 + 26 手工（全 E501）。
+
+**问题**
+
+- 迁移是冻结的历史产物（alembic autogen 输出），纯风格修复 17 文件 = git-blame 噪声 + 零功能收益 + 触碰冻结代码的潜在风险。
+- `ruff check .` 非 0 让 "ruff 0" 质量口径名实不符（实际只 app/+tests/ 0）。
+
+**完成标准**
+
+- `pyproject.toml` `[tool.ruff]` 加 `extend-exclude = ["alembic/versions"]`（用 extend-exclude 保留 ruff 默认排除）。
+- `ruff check .` -> 0；`ruff check app/ tests/` 仍 0（无回归）。
+- 显式 `ruff check alembic/versions/` 仍可查（证明仅默认扫描排除，非永久屏蔽）。
+- 全量 pytest 不回归（1064 pass / 3 skip 基线）；零 .py 改动 = 零功能影响。
+- `scripts/check-engineering-docs` 0 新增；`git diff --check` clean。
+
+**验证方式**
+
+- `ruff check .` -> 0 errors。
+- `ruff check app/ tests/` -> 0 errors。
+- `ruff check alembic/versions/` -> Found 93 errors（显式可查，仅默认扫描排除）。
+- `pytest --collect-only` 1067 collected + 全量 pytest 后台跑作金标准。
+- `scripts/check-engineering-docs` passed；`git diff --check` clean。
+
+**交付记录**
+
+- 2026-07-21：实施（分支 `chore/td-079-exclude-alembic-from-ruff`）：
+  - `pyproject.toml`：`[tool.ruff]` 加 `extend-exclude = ["alembic/versions"]` + 注释说明。
+  - 验证：`ruff check .` 0 + `app/` + `tests/` 0 + `alembic/versions/` 显式 93 + collect-only 1067 + 全量 pytest 后台跑中 + docs 门禁 0 新增 + git diff --check clean。
+  - PR 待创建；merge 后翻 🟢 完成（phase 2 收尾补 work-log + 最近完成）。

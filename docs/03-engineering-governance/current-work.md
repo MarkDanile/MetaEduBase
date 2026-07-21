@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TD-079: 排除 alembic/versions/ 出 ruff 范围（93 个 pre-existing ruff 错误收口）
+
+状态：🟡 进行中
+类型：技术债清理
+领域：后端 / 治理 / lint / 可复现性
+当前执行模式：SDD（单人直接开发）
+最近接手工具：Claude Code
+分支：chore/td-079-exclude-alembic-from-ruff
+
+需求来源：
+- Spec: 不适用（技术债清理）
+- Plan: 不适用
+- 技术债：[TD-079](technical-debt.md) / TD-078 closeout 发现
+- 架构约束：不适用（ruff 配置改动，无架构影响）
+
+当前进展：`pyproject.toml` `[tool.ruff]` 加 `extend-exclude = ["alembic/versions"]`；`ruff check .` -> 0 + `app/`+`tests/` 仍 0 + `alembic/versions/` 显式可查 93 + collect-only 1067 + docs 门禁 0 新增 + git diff --check clean；全量 pytest 后台跑中。
+下一步：全量 pytest 绿 -> 提交 phase 1 PR -> merge 后 phase 2 收尾（🟡 -> 🟢 + work-log + 最近完成）。
+验证状态：ruff 归零 + 无回归已验；全量 pytest 待定；零 .py 改动 = 零功能影响。
+交接备注：93 错误全在迁移文件，排除而非原地修复（冻结历史产物，避免 blame 噪声）；显式 `ruff check alembic/versions/` 仍可查。
 
 ## 下一批候选任务
 
