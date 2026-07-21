@@ -74,6 +74,27 @@ compose_cmd() {
   fi
 }
 
+ensure_uv() {
+  if ! command -v uv &>/dev/null; then
+    log "安装 uv (Python 包管理器)..."
+    if command -v brew &>/dev/null; then
+      brew install uv || die "uv 安装失败，请手动执行: brew install uv"
+    else
+      python3 -m pip install --user uv -q || die "uv 安装失败，请手动执行: pip install --user uv"
+    fi
+  fi
+}
+
+# 用 uv sync --frozen 从提交的 uv.lock 可复现安装后端依赖（base + dev）。
+# ai extras 声明但 app 代码未使用、且在 Python 3.14 上无预编译 wheel（marker-pdf -> pillow 源码构建失败），
+# 故默认不装；需要时手动 `uv sync --extra ai`。新增/升级依赖用 `uv add <pkg>`（同步更新 pyproject + uv.lock）。
+sync_backend_deps() {
+  ensure_uv
+  cd "$SERVER_DIR"
+  log "同步后端依赖 (uv sync --frozen --extra dev)..."
+  uv sync --frozen --extra dev
+}
+
 backend_is_running() {
   curl -sf http://localhost:8000/api/v1/health >/dev/null 2>&1
 }
@@ -208,17 +229,7 @@ start_infra() {
 init_dev_db() {
   log "初始化开发数据库 (迁移 + 默认开发账号)..."
   start_infra
-  cd "$SERVER_DIR"
-  if [[ ! -d ".venv" ]]; then
-    log "创建 Python 虚拟环境..."
-    python3 -m venv .venv
-    log "安装后端依赖..."
-    .venv/bin/pip install -e ".[dev,ai]" -q
-  fi
-  if ! .venv/bin/python -c "import alembic" 2>/dev/null; then
-    log "安装后端依赖..."
-    .venv/bin/pip install -e ".[dev,ai]" -q
-  fi
+  sync_backend_deps
   ALLOW_DEFAULT_SEED=true .venv/bin/python -m app.shared.infrastructure.dev_setup
   ok "开发数据库初始化完成"
 }
@@ -226,17 +237,7 @@ init_dev_db() {
 init_test_db() {
   log "初始化测试数据库 (创建库 + 扩展 + Alembic upgrade head)..."
   start_infra
-  cd "$SERVER_DIR"
-  if [[ ! -d ".venv" ]]; then
-    log "创建 Python 虚拟环境..."
-    python3 -m venv .venv
-    log "安装后端依赖..."
-    .venv/bin/pip install -e ".[dev,ai]" -q
-  fi
-  if ! .venv/bin/python -c "import alembic" 2>/dev/null; then
-    log "安装后端依赖..."
-    .venv/bin/pip install -e ".[dev,ai]" -q
-  fi
+  sync_backend_deps
   .venv/bin/python -m app.shared.infrastructure.test_db_setup
   ok "测试数据库初始化完成"
 }
@@ -256,17 +257,7 @@ start_backend() {
   if [[ "$db_ok" != "true" ]]; then
     die "PostgreSQL 未运行，请先执行 ./dev.sh infra"
   fi
-  cd "$SERVER_DIR"
-  if [[ ! -d ".venv" ]]; then
-    log "创建 Python 虚拟环境..."
-    python3 -m venv .venv
-    log "安装后端依赖..."
-    .venv/bin/pip install -e ".[dev,ai]" -q
-  fi
-  if ! .venv/bin/python -c "import uvicorn" 2>/dev/null; then
-    log "安装后端依赖..."
-    .venv/bin/pip install -e ".[dev,ai]" -q
-  fi
+  sync_backend_deps
   log "启动后端服务 (port 8000)..."
   .venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 \
     > "$LOG_DIR/backend.log" 2>&1 &
@@ -356,12 +347,7 @@ start_celery() {
     return
   fi
 
-  cd "$SERVER_DIR"
-  if [[ ! -d ".venv" ]]; then
-    log "创建 Python 虚拟环境..."
-    python3 -m venv .venv
-    .venv/bin/pip install -e ".[dev,ai]" -q
-  fi
+  sync_backend_deps
   log "启动 Celery Worker..."
   .venv/bin/python scripts/celery_worker_dev.py \
     > "$LOG_DIR/celery.log" 2>&1 &

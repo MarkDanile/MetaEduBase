@@ -14,7 +14,23 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TD-077: 无依赖锁文件，dev/deploy 不可复现安装
+
+状态：🟡 进行中
+类型：技术债 / 基础设施 / 依赖管理
+领域：后端 / 可复现性
+当前执行模式：直接修复（chore）
+最近接手工具：Claude Code
+分支：`fix/td-077-uv-lockfile-adoption`
+
+需求来源：
+- 技术债：`technical-debt.md#td-077`
+- 触发：TD-076 期间发现 uv.lock 未跟踪 + dev/deploy 无锁文件、不可复现
+
+当前进展：uv.lock 重新生成并提交；dev.sh 4 个 pip 调用点 -> `uv sync --frozen --extra dev`（+ ensure_uv 兜底）；Dockerfile.backend -> `uv sync --frozen --no-dev`。全量 1064 pass/3 skip + ruff 0。
+下一步：PR + merge；merge 后翻 🟢 + work-log + 最近完成 + 重置当前进行中，再接 REQ-046。
+验证状态：uv sync --frozen 成功 + 全量 pytest 两次连跑 1064 pass/3 skip + ruff 0 + git diff --check clean。Docker build 后台验证中。
+交接备注：merge 后需 closeout docs PR。行为变化：dev 默认 base+dev（去 ai extras，因声明未用 + 3.14 无 wheel）；加依赖用 uv add。
 
 ## 下一批候选任务
 
