@@ -20,7 +20,7 @@ subject is forbidden, so a bare 简称/品牌名 can never trigger risk scans.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 # spec §4.2 状态机合法迁移:状态 -> 允许的后继状态集合
@@ -140,6 +140,25 @@ class DdReport:
     skill_execution_audit_id: uuid.UUID | None = None
     confirmed_by: uuid.UUID | None = None
     confirmed_at: datetime | None = None
+
+    def confirm(self, *, by: uuid.UUID, at: datetime) -> DdReport:
+        """Lock a draft (spec §4.6): records confirmer + timestamp. A re-run
+        produces ``version + 1`` instead of mutating the confirmed report."""
+        if self.status != "draft":
+            raise DdTaskStateError(
+                "invalid_transition",
+                f"报告状态不能从 '{self.status}' 迁移到 'confirmed'",
+            )
+        return replace(self, status="confirmed", confirmed_by=by, confirmed_at=at)
+
+    def archive(self) -> DdReport:
+        """Retire a draft or confirmed report."""
+        if self.status not in ("draft", "confirmed"):
+            raise DdTaskStateError(
+                "invalid_transition",
+                f"报告状态不能从 '{self.status}' 迁移到 'archived'",
+            )
+        return replace(self, status="archived")
 
 
 @dataclass(frozen=True)

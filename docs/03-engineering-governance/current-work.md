@@ -14,14 +14,14 @@
 
 ## 当前进行中
 
-### REQ-046 / APP-005 企业 360 背调工作台 V0（PR-5 / Slice 4：园区招商背调 SKILL 模板 + internal_query step）
+### REQ-046 / APP-005 企业 360 背调工作台 V0（PR-6 / Slice 5：Orchestrator + Report Store + Evidence Ledger）
 
 状态：🟡 进行中
-类型：业务能力集成 + SKILL 模板
-领域：后端（skill_registry / structured_data）
-当前执行模式：按 plan 分 7 个小 PR（本 PR = Slice 4 园区招商背调 SKILL 模板 + internal_query step 端到端，AC-4）
+类型：业务编排 + 持久化资产
+领域：后端（due_diligence / skill_registry / structured_data）
+当前执行模式：按 plan 分 7 个小 PR（本 PR = Slice 5 Orchestrator + Report Store + Evidence Ledger + POST /tasks/{id}/run，AC-2/5/6/7）
 最近接手工具：Claude Code
-分支：feat/req046-s5-park-investment-dd-skill
+分支：feat/req046-s6-orchestrator-report-evidence
 
 需求来源：
 - Requirement: `docs/01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md`
@@ -29,10 +29,10 @@
 - Plan: `docs/02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md`
 - 实施 plan（用户已批准）：新建园区招商背调 SKILL（内外数据整合）+ SkillRunner v2 三类 step（mcp/internal-customer/internal_query）+ 第三方 QCC SKILL 导入；内部数据=真实园区数据集 xlsx 上传（非 mock）
 
-当前进展：PR-1 #444、PR-2 #445、PR-3 #446、PR-4 #447 已合并；已新建 `templates/park_investment_dd.yaml`（三类 step：QCC 外部 + internal_customer MCP + internal_query，§4.6 七键 report_contract），`dd_query_runner` 生产 adapter 并在 run_skill 完成 query_runner 接线，`scripts/seed_dd_semantic_models.py`（entity_type↔最新 processed dataset 绑定，幂等）。
-下一步：完成差异复核后提交、创建 PR-5；合并后进入 PR-6 Orchestrator + Report Store + Evidence Ledger（AC-2/5/6/7）。
-验证状态：聚焦 skill_registry + scripts 222/222 pass（含模板契约 7、query_runner adapter 4、AC-4 internal_query 端到端 1、seed 脚本 4）；ruff 全量 0；`scripts/check-engineering-docs` 通过；`git diff --check` 通过；全量后端 1152 pass / 3 skip / 1 个已知 flaky（order-sensitive embedding warning）单独复跑通过。
-交接备注：internal_query 经 `DD_INTERNAL_QUERY_CATALOG_ID`（V0 单 catalog）定位 active 语义模型；ambiguous/missing 均 fail-closed。注册 park_investment_dd 需本 tenant 先注册 `qcc` + `internal_customer` 两个 MCP server。semantic model 当前生产侧读多写零，seed 脚本是唯一写入路径。
+当前进展：PR-1 #444、PR-2 #445、PR-3 #446、PR-4 #447、PR-5 #448 已合并；已实现 `dd_orchestrator.run`（AC-1 状态门 → SkillRunner(park_investment_dd) → report_json + steps → ReportService.create_draft + 落 dd_evidence），Report Store（draft/confirm/archive + version+1 + 确定性企业画像 markdown 渲染）、Evidence Ledger（§4.7 每个 runner 绑定的 evidence_ref 落一行），以及 `POST /tasks/{id}/run`、`GET /reports/{id}`、`POST /reports/{id}/confirm`、`POST /reports/{id}/archive`、`GET /reports/{id}/evidence` 五个端点。
+下一步：完成差异复核后提交、创建 PR-6；合并后进入 PR-7 第三方 SKILL 导入 + APP-005 前端 + 真实企业端到端（AC-8/9）。
+验证状态：聚焦 due_diligence + skill_registry + structured_data + scripts 513/513 pass（含 orchestrator 5、report/evidence 8、run router 4 端到端含真跨租户隔离）；ruff 全量 0；`git diff --check` 通过；全量后端 1169 pass / 3 skip / 1 个已知 flaky（order-sensitive embedding warning）单独复跑通过。
+交接备注：orchestrator 经 `_orchestrator(session, request)` 装配 SkillRunner + production query_runner（mirror skill run router）；report_json/report_markdown 为业务表（租户隔离，明文允许），evidence ledger 只存非敏感 summary + ref_id。report markdown 是 report_json 的确定性投影（非 LLM 再合成），空分区显式渲染"无"（AC-7）。
 
 
 ## 下一批候选任务
