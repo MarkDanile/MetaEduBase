@@ -396,7 +396,7 @@ class SkillRunner:
             )
         try:
             question = (step.question_template or "").format(**subject)
-        except (KeyError, ValueError) as e:
+        except (KeyError, IndexError, AttributeError, TypeError, ValueError) as e:
             raise await _fail(
                 "tool_error", f"step '{step.id}' 问数模板格式化失败: {e}"
             ) from e

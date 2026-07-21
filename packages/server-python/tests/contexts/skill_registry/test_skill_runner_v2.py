@@ -265,6 +265,41 @@ async def test_internal_query_missing_subject_field_is_audited_tool_error(
     assert row.first() == (False, "tool_error")
 
 
+@pytest.mark.parametrize(
+    "question_template",
+    ["{0}", "{company_name.missing}"],
+)
+async def test_internal_query_format_errors_are_audited_tool_errors(
+    db_session, monkeypatch, question_template
+):
+    """str.format 的位置/属性错误不得泄露为未审计异常。"""
+    monkeypatch.setattr(
+        "app.contexts.skill_registry.application.skill_runner.chat",
+        AsyncMock(return_value="unused"),
+    )
+    sop = QUERY_CONTRACT_SOP.replace(
+        'question_template: "{company_name} 过去 3 年欠费"',
+        f'question_template: "{question_template}"',
+    )
+    await _register_skill(db_session, sop=sop)
+    runner = SkillRunner(
+        db_session,
+        invocation_service=_mock_invocation(),
+        query_runner=_mock_query(),
+    )
+
+    with pytest.raises(SkillExecutionError) as exc:
+        await runner.run(
+            tenant_id=DEFAULT_TENANT_ID,
+            skill_code="dd",
+            version="1.0.0",
+            subject={"company_name": "ACME"},
+            caller=_caller(),
+        )
+
+    assert exc.value.error_code == "tool_error"
+
+
 async def test_internal_query_unsuccessful_result_fails_closed(
     db_session, monkeypatch
 ):

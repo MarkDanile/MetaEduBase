@@ -31,7 +31,7 @@
 
 当前进展：PR-1 #444、PR-2 #445 已合并；Slice 2 已实现 `invoke_with_trace`、QueryService `audit_id` 透传、`mcp|internal_query` step 分发、结构化 report_contract 校验与一次重试、runner 绑定真实 evidence audit ref（LLM 仅声明 source_step）。
 下一步：完成差异复核后提交、创建 PR-3；合并后进入 PR-4 Internal Customer MCP + 真实数据灌入。
-验证状态：相关后端 485/485 pass；ruff 全量 0；Web lint 0 error（16 个既有 warning）+ typecheck 通过；`scripts/check-engineering-docs` 通过；全量后端 1115 pass / 3 skip / 1 个已知 order-sensitive embedding warning 测试失败，单独复跑通过。
+验证状态：相关后端 487/487 pass；ruff 全量 0；Web lint 0 error（16 个既有 warning）+ typecheck 通过；`scripts/check-engineering-docs` 通过；全量后端 1115 pass / 3 skip / 1 个已知 order-sensitive embedding warning 测试失败，单独复跑通过。
 交接备注：test DB 走 docker zhparser 镜像；完整套件唯一失败与本 slice 无关且为既有已知 flaky；PR-3 不含真实 QCC 调用或真实 LLM 验收，最高验证层级为 real PG + mocked network leaves。
 
 
