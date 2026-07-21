@@ -14,7 +14,23 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TD-076: 全量测试套件 pre-existing 失败与 ruff 错误
+
+状态：🟡 进行中
+类型：技术债 / 测试基础设施 / 治理
+领域：后端 / RAG / 测试
+当前执行模式：直接修复（chore，非 SDD）
+最近接手工具：Claude Code
+分支：`fix/td-076-pre-existing-suite-failures`
+
+需求来源：
+- 技术债：`technical-debt.md#td-076`
+- 触发：REQ-045 全量回归发现 pre-existing 失败（`85e2163e` 确认非本任务引入）
+
+当前进展：ruff 26->0；`test_p1_rag_evidence_e2e` mock 改 `**_kwargs`；`test_cascade_cleanup` 补 `catalog_id`/`entity_type`；`template_selector` 字面 `\n` 归一化 + 回归单测。全量 1064 passed / 3 skipped + ruff 0。
+下一步：PR + merge；merge 后翻 🟢 + work-log + 最近完成 + 重置当前进行中，再接 REQ-046。
+验证状态：全量 `pytest tests/` 绿 + `ruff check app/ tests/` 0 + `git diff --check` clean。
+交接备注：merge 后需 closeout docs PR（翻 🟢 + work-log + 最近完成 + 重置当前进行中）。
 
 ## 下一批候选任务
 

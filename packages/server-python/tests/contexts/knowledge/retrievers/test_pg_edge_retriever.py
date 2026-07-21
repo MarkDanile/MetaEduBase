@@ -4,15 +4,11 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
-
 from app.contexts.knowledge.application.retrievers import GraphRetriever
-from app.contexts.knowledge.domain.evidence import EvidenceItem
 from app.contexts.knowledge.infrastructure.retrievers.pg_graph_retriever import (
     PgEdgeRetriever,
 )
 from app.shared.domain.ner_pipeline import NERResult
-
 
 # ---------------------------------------------------------------------------
 # Mock SQLAlchemy session

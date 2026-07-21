@@ -14,7 +14,6 @@ from unittest.mock import patch
 
 from app.contexts.document.application.tasks import chunk as chunk_task
 
-
 _TENANT_STR = "00000000-0000-0000-0000-000000000001"
 _FID_STR = "12345678-1234-1234-1234-123456789012"
 

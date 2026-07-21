@@ -11,12 +11,9 @@ from app.shared.parsing.chunker import (
     MIN_CHUNK_CHARS,
     TARGET_CHUNK_CHARS,
     Chunk,
-    _enforce_size_limit,
-    _split_into_sentences,
     chunk_by_structure,
 )
 from app.shared.parsing.pdf_parser import DocumentSection, ParsedDocument
-
 
 # --- Helpers ---
 
@@ -126,8 +123,15 @@ def test_enforce_size_limit_merges_tiny_chunks():
     # Create two chunks: first ~50 chars, second ~20 chars (below MIN_CHUNK_CHARS)
     from app.shared.parsing.chunker import _merge_small_chunks
 
-    tiny = Chunk(content="短", section_title="T", section_path="1", char_start=0, char_end=2, index=1)
-    prev = Chunk(content="这是一段比较长的内容用于测试。" * 3, section_title="T", section_path="1", char_start=0, char_end=90, index=0)
+    tiny = Chunk(
+        content="短", section_title="T", section_path="1",
+        char_start=0, char_end=2, index=1,
+    )
+    prev = Chunk(
+        content="这是一段比较长的内容用于测试。" * 3,
+        section_title="T", section_path="1",
+        char_start=0, char_end=90, index=0,
+    )
     result = _merge_small_chunks([prev, tiny], min_size=MIN_CHUNK_CHARS)
 
     # tiny should have been merged into prev

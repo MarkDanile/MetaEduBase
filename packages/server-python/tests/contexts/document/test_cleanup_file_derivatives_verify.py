@@ -24,7 +24,6 @@ import pytest
 
 from app.contexts.document.application.cleanup import cleanup_file_derivatives
 
-
 _TID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 _FID = uuid.UUID("12345678-1234-1234-1234-123456789012")
 
