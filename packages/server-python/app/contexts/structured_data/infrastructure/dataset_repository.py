@@ -223,7 +223,7 @@ class DatasetRepository:
                 text(
                     "INSERT INTO metaedu.dataset_rows "
                     "(id, tenant_id, dataset_id, row_index, data, created_at) "
-                    "VALUES (:id, :tid, :did, :idx, :data::jsonb, :now)"
+                    "VALUES (:id, :tid, :did, :idx, CAST(:data AS jsonb), :now)"
                 ),
                 {
                     "id": row_id,

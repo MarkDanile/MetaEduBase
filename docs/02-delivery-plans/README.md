@@ -8,6 +8,7 @@
 |------|------|
 | [01-specs](01-specs/README.md) | 交付级需求、产品设计和验收标准 |
 | [02-plans](02-plans/README.md) | 实施计划、任务拆分、验证步骤和交付记录 |
+| [03-runbooks](03-runbooks/README.md) | 交付后的部署、数据灌入与操作手册 |
 
 ## 使用规则
 
