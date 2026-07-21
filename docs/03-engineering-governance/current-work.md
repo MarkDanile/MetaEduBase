@@ -14,25 +14,7 @@
 
 ## 当前进行中
 
-### TD-078: 清理未使用的 ai extras（TD-077 follow-up）
-
-状态：🟡 进行中
-类型：技术债清理
-领域：后端 / 依赖管理 / 可复现性
-当前执行模式：SDD（单人直接开发）
-最近接手工具：Claude Code
-分支：chore/td-078-remove-unused-ai-extras
-
-需求来源：
-- Spec: 不适用（技术债 follow-up）
-- Plan: 不适用
-- 技术债：[TD-078](technical-debt.md) / TD-077 follow-up
-- 架构约束：不适用（纯依赖元数据清理，无架构影响）
-
-当前进展：`pyproject.toml` 删 ai 块 + `uv lock` 重生成（232 -> 93 包，纯删除 139 / 0 版本变更 / 0 新增）；`uv sync --extra dev` 成功 + `--extra ai` 报错 + `uv tree linux/3.12` exit 0 + collect-only 1067；全量 pytest 后台跑中。
-下一步：全量 pytest 绿 -> 提交 phase 1 PR（pyproject + uv.lock + TD 登记 + 本卡片）-> merge 后 phase 2 收尾（🟡 -> 🟢 + work-log + 最近完成）。
-验证状态：uv sync / uv tree / collect-only 通过；全量 pytest 待定；ruff 零 .py 改动 = 零新增（93 pre-existing 出范围）。
-交接备注：零 .py 改动，纯依赖元数据清理；TD-077 已确认 ai extras 未使用且装不上。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -50,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-21 | TD-078 清理未使用的 ai extras（TD-077 follow-up） | 🟢 完成 | 删 pyproject 的 ai extras（6 包声明未用 + 3.14 无 wheel）+ uv lock 重生成（232->93，纯删 139/0 版本变更/0 新增）；uv sync --extra dev 成功 + --extra ai 报错 + uv tree linux/3.12 exit 0；零 .py 改动，全量 1064 pass/3 skip 基线一致 | [Tech Debt](technical-debt.md#td-078-清理未使用的-ai-extrastd-077-follow-up) / [PR #440](https://github.com/MarkDanile/MetaEduBase/pull/440) |
 | 2026-07-21 | TD-077 采用 uv lockfile 保证 dev/deploy 可复现安装 | 🟢 完成 | uv.lock 提交进 git + dev.sh 4 个 pip 调用点 -> `uv sync --frozen --extra dev` + Dockerfile.backend -> `uv sync --frozen --no-dev`；ai extras 默认不装（声明未用 + 3.14 无 wheel）。全量 1064 pass/3 skip + ruff 0 | [Tech Debt](technical-debt.md#td-077-无依赖锁文件-devdeploy-不可复现安装) / [PR #438](https://github.com/MarkDanile/MetaEduBase/pull/438) |
 | 2026-07-21 | TD-076 全量套件 pre-existing 失败 + ruff 归零 | 🟢 完成 | 修 template_selector 字面 \n 归一化(+回归单测)+cascade upload 补 catalog_id/entity_type+e2e mock **_kwargs+ruff 26->0；全量 1064 pass/3 skip + ruff 0 | [Tech Debt](technical-debt.md#td-076-全量测试套件-pre-existing-失败与-ruff-错误req-045-收尾-baseline-漂移) / [PR #436](https://github.com/MarkDanile/MetaEduBase/pull/436) |
 | 2026-07-21 | REQ-045 Skill 注册、管理与调用能力 | 🟢 完成 | 最小 Skill registry（声明式 SOP 模板 + SkillRunner 平台编排：经 REQ-044 MCP 工具收集事实 + LLM 合成结构化产物）+ 首个真实 Skill=企业 360 背调 SOP；AC-9 真实 QCC+LLM 端到端验收通过（凭证/企业敏感原文不泄漏）。218 范围 tests pass / ruff 0 | [REQ-045](../01-product-planning/05-requirements/REQ-045-skill-registry-and-execution.md) |
