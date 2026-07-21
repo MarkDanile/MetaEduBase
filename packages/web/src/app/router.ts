@@ -138,6 +138,25 @@ const routes: RouteRecordRaw[] = [
         component: () => import("@/views/apps/AppPlaceholderView.vue"),
         meta: { title: "复习巩固", requiresAuth: true },
       },
+      // REQ-046 / APP-005: 企业 360 背调工作台
+      {
+        path: "apps/enterprise-360-dd",
+        name: "AppEnterprise360Dd",
+        component: () => import("@/views/due-diligence/DdTaskListView.vue"),
+        meta: { title: "企业 360 背调", requiresAuth: true },
+      },
+      {
+        path: "apps/enterprise-360-dd/tasks/:id",
+        name: "AppEnterprise360DdDetail",
+        component: () => import("@/views/due-diligence/DdTaskDetailView.vue"),
+        meta: { title: "背调任务", requiresAuth: true },
+      },
+      {
+        path: "apps/enterprise-360-dd/reports/:reportId",
+        name: "AppEnterprise360DdReport",
+        component: () => import("@/views/due-diligence/DdReportView.vue"),
+        meta: { title: "背调报告", requiresAuth: true },
+      },
     ],
   },
 ];

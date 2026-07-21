@@ -94,7 +94,7 @@ async def seed_default_data() -> None:
 
 
 async def seed_ai_applications(session: Any, now: Any) -> None:
-    """Seed APP-001 ~ APP-004 内置应用数据"""
+    """Seed APP-001 ~ APP-005 内置应用数据"""
     apps = [
         {
             "id": str(uuid.uuid4()),
@@ -172,6 +172,25 @@ async def seed_ai_applications(session: Any, now: Any) -> None:
             "tenant_id": str(DEFAULT_TENANT_ID),
             "now": now,
         },
+        {
+            "id": str(uuid.uuid4()),
+            "code": "APP-005",
+            "name": "企业 360 背调工作台",
+            "description": "面向园区招商的企业 360 背调：锚定企业主体，整合外部（企查查）+ 内部客户 + 内部问数三类数据，生成企业画像报告与可回溯证据账本。",  # noqa: E501
+            "category": "operations",
+            "icon": "🔍",
+            "status": "Published",
+            "visibility": "internal",
+            "entry_type": "internal_route",
+            "route_path": "/apps/enterprise-360-dd",
+            "config_schema": {},
+            "required_capabilities": ["MCP", "skill_registry", "structured_query"],
+            "owner": "system",
+            "version": "1.0.0",
+            "sort_order": 5,
+            "tenant_id": str(DEFAULT_TENANT_ID),
+            "now": now,
+        },
     ]
     for app in apps:
         await session.execute(
@@ -192,7 +211,7 @@ async def seed_ai_applications(session: Any, now: Any) -> None:
             app,
         )
     await session.commit()
-    print("✅ 种子数据已插入: APP-001 ~ APP-004 内置应用")
+    print("✅ 种子数据已插入: APP-001 ~ APP-005 内置应用")
 
 
 async def seed_development_database() -> None:
