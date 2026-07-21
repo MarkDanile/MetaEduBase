@@ -14,14 +14,14 @@
 
 ## 当前进行中
 
-### REQ-046 / APP-005 企业 360 背调工作台 V0（PR-4 / Slice 3：Internal Customer MCP + 真实数据灌入）
+### REQ-046 / APP-005 企业 360 背调工作台 V0（PR-5 / Slice 4：园区招商背调 SKILL 模板 + internal_query step）
 
 状态：🟡 进行中
-类型：内部数据能力 + MCP 部署件
-领域：后端（internal_mcp / structured_data / mcp_registry）
-当前执行模式：按 plan 分 7 个小 PR（本 PR = Slice 3 内部客户 MCP + 真实园区数据灌入，AC-3/7）
+类型：业务能力集成 + SKILL 模板
+领域：后端（skill_registry / structured_data）
+当前执行模式：按 plan 分 7 个小 PR（本 PR = Slice 4 园区招商背调 SKILL 模板 + internal_query step 端到端，AC-4）
 最近接手工具：Claude Code
-分支：feat/req046-s4-internal-customer-mcp
+分支：feat/req046-s5-park-investment-dd-skill
 
 需求来源：
 - Requirement: `docs/01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md`
@@ -29,10 +29,10 @@
 - Plan: `docs/02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md`
 - 实施 plan（用户已批准）：新建园区招商背调 SKILL（内外数据整合）+ SkillRunner v2 三类 step（mcp/internal-customer/internal_query）+ 第三方 QCC SKILL 导入；内部数据=真实园区数据集 xlsx 上传（非 mock）
 
-当前进展：PR-1 #444、PR-2 #445、PR-3 #446 已合并；已实现 `/internal-mcp` 单端点 streamable HTTP（initialize → initialized → tools/list/tools/call）、tenant-scoped `get_customer_360` 六维 join、缺维 `not_connected`、Bearer 鉴权，以及 13 张 xlsx 的生成/上传/注册脚本与 runbook。
-下一步：完成差异复核后提交、创建 PR-4；合并后进入 PR-5 园区招商背调 SKILL 模板 + internal_query step（AC-4）。
-验证状态：聚焦 internal_mcp + 脚本 + JSONB 回归 12/12 pass；受影响 contexts（structured_data/skill_registry/mcp_registry）488/488 pass；全量后端 1136 pass / 3 skip / 1 个已知 flaky（order-sensitive embedding warning）单独复跑通过；ruff 全量 0；`scripts/check-engineering-docs` 通过；`git diff --check` 通过。
-交接备注：内部 MCP 使用 `INTERNAL_MCP_TENANT_ID` 做 V0 单租户绑定、`INTERNAL_MCP_TOKEN` 做调用鉴权；只提交 env-key 名，不提交凭证值。内部数据必须来自真实上传的 dataset_rows；生成跟进记录必须显式标记 synthetic，不得冒充真实客户事实。上传/注册为部署侧操作（需用户 env），不在本 PR 提交范围；生成的 `13_客户_合作跟进记录_待审核.xlsx` 待人工审阅后走上传管道。
+当前进展：PR-1 #444、PR-2 #445、PR-3 #446、PR-4 #447 已合并；已新建 `templates/park_investment_dd.yaml`（三类 step：QCC 外部 + internal_customer MCP + internal_query，§4.6 七键 report_contract），`dd_query_runner` 生产 adapter 并在 run_skill 完成 query_runner 接线，`scripts/seed_dd_semantic_models.py`（entity_type↔最新 processed dataset 绑定，幂等）。
+下一步：完成差异复核后提交、创建 PR-5；合并后进入 PR-6 Orchestrator + Report Store + Evidence Ledger（AC-2/5/6/7）。
+验证状态：聚焦 skill_registry + scripts 222/222 pass（含模板契约 7、query_runner adapter 4、AC-4 internal_query 端到端 1、seed 脚本 4）；ruff 全量 0；`scripts/check-engineering-docs` 通过；`git diff --check` 通过；全量后端 1152 pass / 3 skip / 1 个已知 flaky（order-sensitive embedding warning）单独复跑通过。
+交接备注：internal_query 经 `DD_INTERNAL_QUERY_CATALOG_ID`（V0 单 catalog）定位 active 语义模型；ambiguous/missing 均 fail-closed。注册 park_investment_dd 需本 tenant 先注册 `qcc` + `internal_customer` 两个 MCP server。semantic model 当前生产侧读多写零，seed 脚本是唯一写入路径。
 
 
 ## 下一批候选任务

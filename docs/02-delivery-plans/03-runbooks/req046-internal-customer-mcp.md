@@ -72,7 +72,21 @@ uv run python scripts/register_internal_mcp.py \
 
 脚本注册 `internal_customer`，credential_ref 固定为 `INTERNAL_MCP_TOKEN`，然后执行 `tools/list` 探活并启用。
 
-## 5. 验证
+## 5. （PR-5）灌入 DD 语义模型并注册园区招商背调 SKILL
+
+上传的 dataset 全部 `processed` 后，为 `internal_query` step 绑定语义模型。先解析 `park_operations` catalog 的 UUID 并写入 env（`DD_INTERNAL_QUERY_CATALOG_ID`），供 `internal_query` 定位语义模型：
+
+```bash
+uv run python scripts/seed_dd_semantic_models.py \
+  --tenant-id <目标 tenant UUID> \
+  --created-by <操作人 user UUID>
+```
+
+脚本对 9 个 DD entity_type 各创建一个 active semantic model，绑定该 entity_type 最新 `processed` 数据集；幂等（已有 active model 的 entity_type 跳过）。
+
+然后注册园区招商背调 SKILL：模板原文为 `app/contexts/skill_registry/templates/park_investment_dd.yaml`，经 `POST /api/v1/skills`（`code=park_investment_dd`、`version=1.0.0`、`sop_template=<yaml 原文>`）注册，再 `POST /api/v1/skills/{id}/enable`。前提：本 tenant 已注册 `qcc` 与 `internal_customer` 两个 MCP server（step.server 引用闭合校验）。
+
+## 6. 验证
 
 通过 MCP Registry 调用：
 
