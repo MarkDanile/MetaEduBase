@@ -88,3 +88,74 @@ def test_passes_when_in_progress_uses_active_table(tmp_path: Path) -> None:
     result = run_checker(tmp_path)
 
     assert "只保留一句" not in result.stderr, result.stderr
+
+
+def test_req_status_consistency_reads_prose_task_card(tmp_path: Path) -> None:
+    """`req-status-consistency` 必须能解析「当前进行中」的散文式任务卡片。
+
+    回归锁（REQ-045 塑形时发现）：`collect_current_work_req_statuses` 原先只
+    用 `table_rows` 扫三个 section 的表格行，有两个叠加缺陷：
+    (1) 不识别 `### REQ-XXX: ...` + `状态：...` 的散文式任务卡片，卡片状态
+        根本没被采集；
+    (2) 「下一批候选任务」表的 priority 格若含 `REQ-045` 引用（如
+        `P0（主线，待 REQ-045）`），`REQ_ID_RE.search(cells[0])` 会把它当成
+        任务 id，再把 cells[1]（任务名）当状态 —— `normalize_status` 对非
+        状态文本 fail-open 原样返回，于是任务名被当成一个"状态"参与比对，
+        报「状态不一致」假阳性。
+
+    修复后：卡片 `状态：🔵 Ready` 被采集为 current-work 状态；任务名格不再
+    被当状态；backlog / requirement / current-work 三方 Ready 一致 → 不报。
+    """
+    make_minimal_docs(tmp_path)
+    (tmp_path / "docs/01-product-planning/05-requirements").mkdir(
+        parents=True, exist_ok=True
+    )
+    (tmp_path / "docs/01-product-planning/05-requirements/REQ-045-x.md").write_text(
+        "# REQ-045: 示例\n\nStatus: 🔵 Ready\n", encoding="utf-8"
+    )
+    (tmp_path / "docs/01-product-planning/04-backlog.md").write_text(
+        textwrap.dedent(
+            """
+            # Product Backlog
+
+            ## Backlog
+
+            | ID | 类型 | 状态 | 优先级 | 里程碑 | 摘要 | 下一步 | External |
+            |----|------|------|--------|--------|------|--------|----------|
+            | REQ-045 | REQ | 🔵 Ready | P0 | P3 | 示例 | 实现 |  |
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/03-engineering-governance/current-work.md").write_text(
+        textwrap.dedent(
+            """
+            # 当前开发工作台
+
+            ## 当前进行中
+
+            ### REQ-045: 示例任务
+
+            状态：🔵 Ready（塑形完成，待启动实现）
+            类型：新平台能力
+
+            ## 下一批候选任务
+
+            | 优先级 | 任务 | 状态 | 建议下一步 |
+            |--------|------|------|------------|
+            | P0（主线，待 REQ-045） | REQ-046 下游任务 | ⚫ Candidate | 等上游。 |
+
+            ## 最近完成
+
+            | 日期 | 任务 | 状态 | 摘要 | 事实源 |
+            |------|------|------|------|--------|
+            | 2026-06-05 | DOC-001 示例完成 | 🟢 完成 | 已完成。 | docs/03-engineering-governance/work-log.md |
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+    result = run_checker(tmp_path)
+
+    assert "状态不一致" not in result.stderr, result.stderr
+

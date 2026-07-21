@@ -17,7 +17,13 @@ from app.contexts.knowledge.interfaces.api.graph_retrieve_router import (
     router as graph_retrieve_router,
 )
 from app.contexts.knowledge.interfaces.api.router import router as knowledge_router
+from app.contexts.mcp_registry.interfaces.api.mcp_registry_router import (
+    router as mcp_registry_router,
+)
 from app.contexts.resource.interfaces.api.router import router as resource_router
+from app.contexts.skill_registry.interfaces.api.skill_registry_router import (
+    router as skill_registry_router,
+)
 from app.contexts.structured_data.application.query_service import QueryService
 from app.contexts.structured_data.interfaces.api.catalog_router import (
     router as catalog_router,
@@ -145,6 +151,8 @@ app.include_router(
     tags=["structured-data-tasks"],
 )
 app.include_router(catalog_router)
+app.include_router(mcp_registry_router)
+app.include_router(skill_registry_router)
 app.include_router(
     data_query_router, tags=["data-query"]
 )

@@ -85,7 +85,7 @@
 | REQ-042 | AI Chat 三栏工作台与 Composer 体验重构 | ⚫ Candidate | 参考 Codex / Trae：左侧会话，中间对话，右侧待办、产物、参考信息；输入区固定、非扁长、与主内容宽度对齐。 |
 | REQ-043 | AI Chat 工具调用与 Agentic RAG 编排能力 | ⚫ Candidate | 让 AI Chat 能按任务要求自主规划、调用 MCP / Skill / RAG 工具、评估证据、必要时重试，并保留 Pi Agent 集成 Spike 作为候选实现路径。 |
 | REQ-044 | MCP 注册、管理与调用能力 | ⚫ Candidate | 建立类似 Codex MCP 的注册、启用、禁用、权限、会话级可用性和调用观测能力。 |
-| REQ-045 | Skill 注册、管理与调用能力 | ⚫ Candidate | 支持导入、注册、启用、禁用和执行类 Codex Skill / Anthropic Skill 的 SOP 能力，并让 AI 应用按权限调用。 |
+| REQ-045 | Skill 注册、管理与调用能力 | 🟢 Done | 支持导入、注册、启用、禁用和执行类 Codex Skill / Anthropic Skill 的 SOP 能力，并让 AI 应用按权限调用。已交付：声明式 SOP 模板 + SkillRunner 平台编排（MCP 工具 + LLM 合成）+ 首个真实 Skill=企业 360 背调 SOP（AC-9 真实验收通过）。 |
 | REQ-047 | AI 任务产物、报告归档与人工确认中心 | ⚫ Candidate | 统一保存报告、表格、清单、工单草稿、证据链、版本和人工确认结论。 |
 | REQ-048 | 内部业务系统 MCP Adapter 契约基线 | ⚫ Candidate | 抽象资管、招商 CRM、合同、财务、OA、工单等内部系统的最小读写契约和权限边界。 |
 | REQ-049 | 主动任务调度与事件触发能力 | ⚫ Candidate | 支撑每日扫描、到期提醒、风险预警、报表生成、线索雷达等 Advisor 型应用。 |

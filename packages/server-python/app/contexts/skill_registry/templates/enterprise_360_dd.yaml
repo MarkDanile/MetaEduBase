@@ -1,0 +1,182 @@
+# 企业 360 背调 SOP 模板（REQ-045 首个真实 Skill）
+#
+# 形态：声明式 SOP 模板（spec §4.3 两层 schema）。
+# - A 层元数据对齐 agentskills.io 开放标准（name kebab-case / description）。
+# - B 层 SOP 正文借鉴企查查官方 SKILL.md 范式：工作流维度 -> 工具链 ->
+#   量化阈值 -> 填空式报告骨架（模型只填值、不造结构）。
+#
+# 步骤绑定 REQ-044 已注册的 qcc-company server（16 个真实工具），server_code
+# = "qcc"（AC-9 验收时注册的 code）。report_template 强制事实 / AI 分析 /
+# 待人工确认项三分区，对齐 REQ-046 AC-5（不混写）。
+#
+# 本模板不含任何 secret；凭证仅经 env 注入（QCC_MCP_TOKEN）。
+# 来源参考：企查查官方 SKILL.md（agent.qcc.com/skill/v1/banking/credit-due-diligence-qcc/SKILL.md）
+# 通用尽调维度 + qcc-company 真实工具集。
+
+name: enterprise-360-dd
+description: >-
+  企业 360 背调：入驻 / 投决 / 准入前核验主体真实性与风险。何时触发：招商初筛、
+  拜访前、入驻申请或投决会前需要可归档的企业背景与风险摘要时。做什么：经企查查
+  MCP 拉取工商 / 股权 / 实控人 / 风险 / 高管等公开事实，按固定 SOP 组织成结构稳定、
+  事实与分析分区的背调报告草案。
+metadata:
+  version: "1.0.0"
+  category: due-diligence
+  author: platform
+  source_ref: https://agent.qcc.com/skill/v1/banking/credit-due-diligence-qcc/SKILL.md
+
+mcp_dependencies:
+  - {server: qcc, required: true}
+
+principles:
+  - 缺失数据显式标注"未获取"或"待补充"，绝不编造默认值或臆测。
+  - 事实 / AI 分析 / 待人工确认项严格分区，不混写。
+  - 所有风险事实必须可追溯到企查查 MCP 工具调用；无来源的判断标为"AI 分析"。
+  - 报告只给风险关注点与待确认项，不给最终准入 / 投决结论（归人工）。
+  - 数据时效明示：企查查数据存在更新延迟，高风险项提示 48 小时内复核。
+
+steps:
+  - id: subject_verify
+    title: 主体工商核验
+    server: qcc
+    tool: get_company_registration_info
+    analysis_rules:
+      - 工商二要素（名称 / 统一社会信用代码）与输入不一致即标记主体存疑。
+      - 登记状态非"存续 / 在营"标记高风险。
+    output: 主体身份档案（名称 / 统一社会信用代码 / 法定代表人 / 注册资本 / 成立日期 / 登记状态）
+
+  - id: company_profile
+    title: 企业基础画像
+    server: qcc
+    tool: get_company_profile
+    analysis_rules:
+      - 经营范围与园区招商行业匹配度标注。
+    output: 企业画像（经营范围 / 注册地址 / 企业类型 / 行业分类）
+
+  - id: shareholder_structure
+    title: 股东结构
+    server: qcc
+    tool: get_shareholder_info
+    analysis_rules:
+      - 股东持股比例Top列示。
+    output: 股东清单（股东名称 / 持股比例 / 认缴出资）
+
+  - id: actual_controller
+    title: 实际控制人
+    server: qcc
+    tool: get_actual_controller
+    analysis_rules:
+      - 实控人穿透链路列示；穿透失败标注"未穿透到自然人"。
+    output: 实控人信息（姓名 / 持股链路 / 控制路径）
+
+  - id: beneficial_owners
+    title: 受益所有人
+    server: qcc
+    tool: get_beneficial_owners
+    analysis_rules:
+      - 按 25% 阈值识别受益所有人；无则标注"未识别到 25% 以上受益所有人"。
+    output: 受益所有人清单
+
+  - id: key_personnel
+    title: 主要人员
+    server: qcc
+    tool: get_key_personnel
+    analysis_rules:
+      - 董监高名单列示；法定代表人 / 高管失信或限高标记高风险。
+    output: 主要人员清单（姓名 / 职务）
+
+  - id: change_records
+    title: 变更记录
+    server: qcc
+    tool: get_change_records
+    analysis_rules:
+      - 近期重大变更（股权 / 法定代表人 / 注册资本）列示并标注时间。
+    output: 变更记录摘要
+
+  - id: external_investments
+    title: 对外投资
+    server: qcc
+    tool: get_external_investments
+    analysis_rules:
+      - 对外投资企业清单；投资规模与主业相关性标注。
+    output: 对外投资清单
+
+  - id: contact_info
+    title: 联系信息
+    server: qcc
+    tool: get_contact_info
+    analysis_rules:
+      - 联系电话 / 邮箱 / 网站列示；联系方式缺失标注"待补充"。
+    output: 联系信息
+
+report_template: |
+  # 企业 360 背调报告草案
+
+  > 本报告由平台 Skill 执行引擎按 enterprise-360-dd SOP 自动生成草案，仅供招商 / 投决参考，
+  > 不构成准入或投决结论。所有事实来源为企查查 MCP 公开数据，存在更新延迟。
+
+  ## 事实数据
+  （以下为各步骤工具调用返回的结构化事实，逐项填入，缺失项标"未获取"）
+
+  ### 主体工商核验
+  - 企业名称：
+  - 统一社会信用代码：
+  - 法定代表人：
+  - 注册资本：
+  - 成立日期：
+  - 登记状态：
+
+  ### 企业基础画像
+  - 经营范围：
+  - 注册地址：
+  - 企业类型：
+  - 行业分类：
+
+  ### 股东结构
+  | 股东名称 | 持股比例 | 认缴出资 |
+  |----------|----------|----------|
+  （逐行列示）
+
+  ### 实际控制人
+  - 实控人姓名：
+  - 持股链路：
+
+  ### 受益所有人
+  （按 25% 阈值列示）
+
+  ### 主要人员
+  | 姓名 | 职务 |
+  |------|------|
+  （董监高逐行列示）
+
+  ### 变更记录
+  （近期重大变更，含日期）
+
+  ### 对外投资
+  （对外投资企业清单）
+
+  ### 联系信息
+  - 电话：
+  - 邮箱：
+  - 网站：
+
+  ## AI 分析
+  （基于上述事实的风险关注点分析，每条标注"AI 分析"并注明依据事实项）
+
+  - 主体真实性：
+  - 股权与控制权稳定性：
+  - 受益所有人透明度：
+  - 主要人员风险：
+  - 变更与投资动向：
+
+  ## 待人工确认项
+  （需人工进一步核实或补充的事项，不自动下结论）
+
+  -
+  -
+
+  ## 证据来源与工具调用记录
+  （各步骤对应企查查 MCP 工具调用，详见 skill_execution_audit + 关联 mcp_invocation_audit）
+
+  ## 人工复核结论区
+  （留空，由人工填写最终复核结论）
