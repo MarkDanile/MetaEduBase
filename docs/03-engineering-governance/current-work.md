@@ -14,14 +14,14 @@
 
 ## 当前进行中
 
-### REQ-046 / APP-005 企业 360 背调工作台 V0(PR-1 / Slice 0:骨架 + 迁移)
+### REQ-046 / APP-005 企业 360 背调工作台 V0(PR-2 / Slice 1:Subject Resolver + 任务容器)
 
 状态：🟡 进行中
 类型：新业务能力 + 平台能力验证
 领域：后端(due_diligence context)
-当前执行模式：按 plan 分 7 个小 PR(本 PR = Slice 0 骨架 + 迁移 023)
+当前执行模式：按 plan 分 7 个小 PR(本 PR = Slice 1 主体锚定 + 任务容器,AC-1)
 最近接手工具：Claude Code
-分支：feat/req046-s1-dd-skeleton
+分支：feat/req046-s2-subject-resolver
 
 需求来源：
 - Requirement: `docs/01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md`
@@ -29,10 +29,10 @@
 - Plan: `docs/02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md`
 - 实施 plan(用户已批准): 新建园区招商背调 SKILL(内外数据整合)+ SkillRunner v2 三类 step(mcp/internal-customer/internal_query)+ 第三方 QCC SKILL 导入;内部数据=真实园区数据集 xlsx 上传(非 mock)
 
-当前进展：PR-1 已提交并建 PR #444(待 merge)。已建 due_diligence context 四层骨架 + 迁移 023(dd_tasks/dd_reports/dd_evidence 三表)+ ORM 模型;5 个迁移测试绿;ruff 0;全量 1068 pass/3 skip(1 个 embedding fallback 为 pre-existing 顺序敏感 flaky,与本任务无关);docs 门禁通过。
-下一步:merge PR #444 → 从 main 拉 PR-2 分支(feat/req046-s2-*):Subject Resolver + 任务容器(AC-1)。
-验证状态：迁移测试 5/5 pass;ruff check . 0;全量 1068 pass/3 skip;docs 门禁通过。
-交接备注：test DB 走 docker zhparser 镜像(colima + docker-compose.dev.yml,redis/minio 已起;本地 homebrew pg 已停避免 5432 冲突);全量 pytest 需先起这套 infra;后续 slice 见 plan 文件。
+当前进展：PR-2 已提交并建 PR #445(待 merge)。Slice 1 完成:domain 状态机(dd_task.py,AC-1 硬约束 assert_can_run)+ SubjectResolver(经 invoke 调 qcc get_company_by_query 锚定)+ DdTaskService + DdTaskRepository + dd_router(/api/v1/dd/tasks CRUD + resolve/confirm-subject)+ 挂载 main.py。31 个范围测试绿;ruff 0;全量 1094 pass/3 skip(1 个 embedding fallback 为 pre-existing flaky)。
+下一步:merge PR #445 → 从 main 拉 PR-3 分支(feat/req046-s3-*):SkillRunner v2 三类 step + 结构化输出(AC-5/6 地基)。
+验证状态：范围测试 31/31 pass;ruff check . 0;全量 pytest 进行中。
+交接备注：test DB 走 docker zhparser 镜像(colima + docker-compose.dev.yml,redis/minio 已起);resolve 走 invoke(qcc server 角色门/审计继承);report run 入口(AC-1 强制执行)留 Slice 5;后续 slice 见 plan 文件。
 
 
 ## 下一批候选任务
