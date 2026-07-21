@@ -39,6 +39,7 @@ from app.contexts.structured_data.interfaces.api.task_router import (
     router as structured_data_task_router,
 )
 from app.contexts.template.interfaces.api.router import router as template_router
+from app.internal_mcp.server import router as internal_mcp_router
 from app.shared.infrastructure.database import async_session_factory
 
 logger = logging.getLogger(__name__)
@@ -162,6 +163,7 @@ app.include_router(
 app.include_router(template_router)
 app.include_router(ai_app_router, prefix="/api/v1/ai-apps", tags=["ai-apps"])
 app.include_router(due_diligence_router)
+app.include_router(internal_mcp_router)
 
 
 @app.get("/api/v1/health")

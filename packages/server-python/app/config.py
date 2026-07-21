@@ -54,6 +54,8 @@ class Settings(BaseSettings):
 
     mcp_server_host: str = "0.0.0.0"
     mcp_server_port: int = 8001
+    internal_mcp_tenant_id: str = ""
+    internal_mcp_token: str = ""
 
     siliconflow_api_key: str = ""
 
