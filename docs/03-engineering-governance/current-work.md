@@ -29,8 +29,8 @@
 - Plan: `docs/02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md`
 - 实施 plan(用户已批准): 新建园区招商背调 SKILL(内外数据整合)+ SkillRunner v2 三类 step(mcp/internal-customer/internal_query)+ 第三方 QCC SKILL 导入;内部数据=真实园区数据集 xlsx 上传(非 mock)
 
-当前进展：PR-1(#444)已 merge。Slice 1 完成:domain 状态机(dd_task.py,AC-1 硬约束 assert_can_run)+ SubjectResolver(经 invoke 调 qcc get_company_by_query 锚定)+ DdTaskService(任务容器编排)+ DdTaskRepository(租户隔离)+ dd_router(/api/v1/dd/tasks CRUD + resolve/confirm-subject)+ 挂载 main.py。31 个范围测试绿(domain 12 + service 7 + router 7 + 迁移 5);ruff 0。
-下一步：全量 pytest 确认无回归 → 提交 PR-2 → 后续 PR-3(SkillRunner v2 三类 step + 结构化输出,AC-5/6 地基)。
+当前进展：PR-2 已提交并建 PR #445(待 merge)。Slice 1 完成:domain 状态机(dd_task.py,AC-1 硬约束 assert_can_run)+ SubjectResolver(经 invoke 调 qcc get_company_by_query 锚定)+ DdTaskService + DdTaskRepository + dd_router(/api/v1/dd/tasks CRUD + resolve/confirm-subject)+ 挂载 main.py。31 个范围测试绿;ruff 0;全量 1094 pass/3 skip(1 个 embedding fallback 为 pre-existing flaky)。
+下一步:merge PR #445 → 从 main 拉 PR-3 分支(feat/req046-s3-*):SkillRunner v2 三类 step + 结构化输出(AC-5/6 地基)。
 验证状态：范围测试 31/31 pass;ruff check . 0;全量 pytest 进行中。
 交接备注：test DB 走 docker zhparser 镜像(colima + docker-compose.dev.yml,redis/minio 已起);resolve 走 invoke(qcc server 角色门/审计继承);report run 入口(AC-1 强制执行)留 Slice 5;后续 slice 见 plan 文件。
 
