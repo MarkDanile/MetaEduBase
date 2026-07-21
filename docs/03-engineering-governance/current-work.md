@@ -14,23 +14,7 @@
 
 ## 当前进行中
 
-### TD-076: 全量测试套件 pre-existing 失败与 ruff 错误
-
-状态：🟡 进行中
-类型：技术债 / 测试基础设施 / 治理
-领域：后端 / RAG / 测试
-当前执行模式：直接修复（chore，非 SDD）
-最近接手工具：Claude Code
-分支：`fix/td-076-pre-existing-suite-failures`
-
-需求来源：
-- 技术债：`technical-debt.md#td-076`
-- 触发：REQ-045 全量回归发现 pre-existing 失败（`85e2163e` 确认非本任务引入）
-
-当前进展：ruff 26->0；`test_p1_rag_evidence_e2e` mock 改 `**_kwargs`；`test_cascade_cleanup` 补 `catalog_id`/`entity_type`；`template_selector` 字面 `\n` 归一化 + 回归单测。全量 1064 passed / 3 skipped + ruff 0。
-下一步：PR + merge；merge 后翻 🟢 + work-log + 最近完成 + 重置当前进行中，再接 REQ-046。
-验证状态：全量 `pytest tests/` 绿 + `ruff check app/ tests/` 0 + `git diff --check` clean。
-交接备注：merge 后需 closeout docs PR（翻 🟢 + work-log + 最近完成 + 重置当前进行中）。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -48,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-21 | TD-076 全量套件 pre-existing 失败 + ruff 归零 | 🟢 完成 | 修 template_selector 字面 \n 归一化(+回归单测)+cascade upload 补 catalog_id/entity_type+e2e mock **_kwargs+ruff 26->0；全量 1064 pass/3 skip + ruff 0 | [Tech Debt](technical-debt.md#td-076-全量测试套件-pre-existing-失败与-ruff-错误req-045-收尾-baseline-漂移) / [PR #436](https://github.com/MarkDanile/MetaEduBase/pull/436) |
 | 2026-07-21 | REQ-045 Skill 注册、管理与调用能力 | 🟢 完成 | 最小 Skill registry（声明式 SOP 模板 + SkillRunner 平台编排：经 REQ-044 MCP 工具收集事实 + LLM 合成结构化产物）+ 首个真实 Skill=企业 360 背调 SOP；AC-9 真实 QCC+LLM 端到端验收通过（凭证/企业敏感原文不泄漏）。218 范围 tests pass / ruff 0 | [REQ-045](../01-product-planning/05-requirements/REQ-045-skill-registry-and-execution.md) |
 | 2026-07-21 | DOC-079 门禁脚本修复（req-status-consistency） | 🟢 完成 | req-status-consistency 解析「当前进行中」散文式任务卡片 + priority 格 REQ 引用被当任务 id、状态格 fail-closed 两处叠加根因；新增回归测试。41/41 engineering tests pass | [work-log](work-log.md) |
 | 2026-07-20 | REQ-044 MCP 注册、管理与调用能力 | 🟢 完成 | 最小 tenant 级 MCP registry + 真实 streamable_http client + 调用审计 + 最小管理 UI；AC-9 真实 QCC 验收通过（凭证不泄漏）。335 backend + 6 frontend tests pass / ruff 0 | [REQ-044](../01-product-planning/05-requirements/REQ-044-mcp-registry-and-invocation.md) |
