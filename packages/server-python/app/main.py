@@ -11,6 +11,9 @@ import app.shared.infrastructure.models  # noqa: F401
 from app.config import settings
 from app.contexts.ai_app.interfaces.api.router import router as ai_app_router
 from app.contexts.document.interfaces.api.router import router as document_router
+from app.contexts.due_diligence.interfaces.api.dd_router import (
+    router as due_diligence_router,
+)
 from app.contexts.identity.interfaces.api.router import router as identity_router
 from app.contexts.knowledge.interfaces.api.ai_router import router as ai_router
 from app.contexts.knowledge.interfaces.api.graph_retrieve_router import (
@@ -158,6 +161,7 @@ app.include_router(
 )
 app.include_router(template_router)
 app.include_router(ai_app_router, prefix="/api/v1/ai-apps", tags=["ai-apps"])
+app.include_router(due_diligence_router)
 
 
 @app.get("/api/v1/health")
