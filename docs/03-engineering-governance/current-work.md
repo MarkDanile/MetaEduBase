@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TD-078: 清理未使用的 ai extras（TD-077 follow-up）
+
+状态：🟡 进行中
+类型：技术债清理
+领域：后端 / 依赖管理 / 可复现性
+当前执行模式：SDD（单人直接开发）
+最近接手工具：Claude Code
+分支：chore/td-078-remove-unused-ai-extras
+
+需求来源：
+- Spec: 不适用（技术债 follow-up）
+- Plan: 不适用
+- 技术债：[TD-078](technical-debt.md) / TD-077 follow-up
+- 架构约束：不适用（纯依赖元数据清理，无架构影响）
+
+当前进展：`pyproject.toml` 删 ai 块 + `uv lock` 重生成（232 -> 93 包，纯删除 139 / 0 版本变更 / 0 新增）；`uv sync --extra dev` 成功 + `--extra ai` 报错 + `uv tree linux/3.12` exit 0 + collect-only 1067；全量 pytest 后台跑中。
+下一步：全量 pytest 绿 -> 提交 phase 1 PR（pyproject + uv.lock + TD 登记 + 本卡片）-> merge 后 phase 2 收尾（🟡 -> 🟢 + work-log + 最近完成）。
+验证状态：uv sync / uv tree / collect-only 通过；全量 pytest 待定；ruff 零 .py 改动 = 零新增（93 pre-existing 出范围）。
+交接备注：零 .py 改动，纯依赖元数据清理；TD-077 已确认 ai extras 未使用且装不上。
 
 ## 下一批候选任务
 
