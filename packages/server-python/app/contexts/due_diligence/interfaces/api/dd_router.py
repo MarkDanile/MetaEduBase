@@ -17,10 +17,15 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.contexts.due_diligence.application.dd_orchestrator import DdOrchestrator
+from app.contexts.due_diligence.application.dd_report_service import (
+    DdReportNotFoundError,
+    DdReportService,
+)
 from app.contexts.due_diligence.application.dd_task_service import (
     DdTaskNotFoundError,
     DdTaskService,
@@ -29,6 +34,13 @@ from app.contexts.due_diligence.application.subject_resolver import SubjectResol
 from app.contexts.due_diligence.domain.dd_task import (
     DdTaskStateError,
     SubjectCandidate,
+    SubjectNotConfirmedError,
+)
+from app.contexts.due_diligence.infrastructure.dd_evidence_repository import (
+    DdEvidenceRepository,
+)
+from app.contexts.due_diligence.infrastructure.dd_report_repository import (
+    DdReportRepository,
 )
 from app.contexts.due_diligence.infrastructure.dd_task_repository import (
     DdTaskRepository,
@@ -38,6 +50,14 @@ from app.contexts.mcp_registry.application.mcp_invocation_service import (
     InvocationCaller,
     MCPInvocationError,
     MCPInvocationService,
+)
+from app.contexts.skill_registry.application.dd_query_runner import (
+    build_dd_internal_query_runner,
+)
+from app.contexts.skill_registry.application.skill_runner import (
+    SkillExecutionError,
+    SkillExecutionNotFoundError,
+    SkillRunner,
 )
 from app.shared.infrastructure.database import get_session
 
@@ -87,6 +107,67 @@ def _to_dto(task) -> TaskDTO:
 def _service(session: AsyncSession) -> DdTaskService:
     resolver = SubjectResolver(MCPInvocationService(session))
     return DdTaskService(DdTaskRepository(session), resolver)
+
+
+def _report_service(session: AsyncSession) -> DdReportService:
+    return DdReportService(DdReportRepository(session))
+
+
+def _orchestrator(session: AsyncSession, request: Request) -> DdOrchestrator:
+    """Assemble the run pipeline: SkillRunner with the production
+    ``internal_query`` channel bound (mirrors the skill run router) plus the
+    report store."""
+    query_runner = build_dd_internal_query_runner(
+        request.app.state.query_service, session
+    )
+    runner = SkillRunner(session, query_runner=query_runner)
+    return DdOrchestrator(
+        session, runner=runner, report_service=_report_service(session)
+    )
+
+
+class ReportDTO(BaseModel):
+    id: uuid.UUID
+    task_id: uuid.UUID
+    version: int
+    status: str
+    report_json: dict
+    report_markdown: str
+    skill_execution_audit_id: uuid.UUID | None
+    confirmed_by: uuid.UUID | None
+    confirmed_at: str | None
+
+
+class EvidenceDTO(BaseModel):
+    id: uuid.UUID
+    evidence_type: str
+    ref_id: uuid.UUID | None
+    section: str | None
+    summary: str | None
+
+
+def _to_report_dto(report) -> ReportDTO:
+    return ReportDTO(
+        id=report.id,
+        task_id=report.task_id,
+        version=report.version,
+        status=report.status,
+        report_json=report.report_json,
+        report_markdown=report.report_markdown,
+        skill_execution_audit_id=report.skill_execution_audit_id,
+        confirmed_by=report.confirmed_by,
+        confirmed_at=report.confirmed_at.isoformat() if report.confirmed_at else None,
+    )
+
+
+def _to_evidence_dto(evidence) -> EvidenceDTO:
+    return EvidenceDTO(
+        id=evidence.id,
+        evidence_type=evidence.evidence_type,
+        ref_id=evidence.ref_id,
+        section=evidence.section,
+        summary=evidence.summary,
+    )
 
 
 def _caller(user: dict) -> InvocationCaller:
@@ -177,3 +258,107 @@ async def confirm_subject(
     except DdTaskStateError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     return _to_dto(task)
+
+
+# --- Slice 5: run + report store + evidence ledger (AC-2/5/6/7) ---
+
+
+@router.post("/tasks/{task_id}/run", status_code=201)
+async def run_task(
+    task_id: uuid.UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+    user: dict = Depends(get_current_user),  # noqa: B008
+) -> ReportDTO:
+    """Run the DD skill for a confirmed task -> report draft + evidence.
+
+    AC-1: a non-confirmed task is rejected before any QCC tool is reachable.
+    """
+    try:
+        task = await _service(session).get_task(
+            tenant_id=user["tenant_id"], task_id=task_id
+        )
+        report = await _orchestrator(session, request).run(
+            tenant_id=user["tenant_id"], task=task, caller=_caller(user)
+        )
+    except DdTaskNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except SubjectNotConfirmedError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except SkillExecutionNotFoundError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except SkillExecutionError as e:
+        await session.commit()  # persist the failure audit row
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    await session.commit()
+    return _to_report_dto(report)
+
+
+@router.get("/reports/{report_id}")
+async def get_report(
+    report_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+    user: dict = Depends(get_current_user),  # noqa: B008
+) -> ReportDTO:
+    try:
+        report = await _report_service(session).get_report(
+            tenant_id=user["tenant_id"], report_id=report_id
+        )
+    except DdReportNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return _to_report_dto(report)
+
+
+@router.post("/reports/{report_id}/confirm")
+async def confirm_report(
+    report_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+    user: dict = Depends(get_current_user),  # noqa: B008
+) -> ReportDTO:
+    try:
+        report = await _report_service(session).confirm(
+            tenant_id=user["tenant_id"], report_id=report_id, by=user["id"]
+        )
+    except DdReportNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except DdTaskStateError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    await session.commit()
+    return _to_report_dto(report)
+
+
+@router.post("/reports/{report_id}/archive")
+async def archive_report(
+    report_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+    user: dict = Depends(get_current_user),  # noqa: B008
+) -> ReportDTO:
+    try:
+        report = await _report_service(session).archive(
+            tenant_id=user["tenant_id"], report_id=report_id
+        )
+    except DdReportNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except DdTaskStateError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    await session.commit()
+    return _to_report_dto(report)
+
+
+@router.get("/reports/{report_id}/evidence")
+async def list_evidence(
+    report_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+    user: dict = Depends(get_current_user),  # noqa: B008
+) -> list[EvidenceDTO]:
+    # 报告存在性 + 租户隔离由 get_report 强制；证据行随报告归属。
+    try:
+        report = await _report_service(session).get_report(
+            tenant_id=user["tenant_id"], report_id=report_id
+        )
+    except DdReportNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    rows = await DdEvidenceRepository(session).list_by_report(
+        user["tenant_id"], report.id
+    )
+    return [_to_evidence_dto(r) for r in rows]
