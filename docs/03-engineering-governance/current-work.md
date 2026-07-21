@@ -29,10 +29,10 @@
 - Plan: `docs/02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md`
 - 实施 plan(用户已批准): 新建园区招商背调 SKILL(内外数据整合)+ SkillRunner v2 三类 step(mcp/internal-customer/internal_query)+ 第三方 QCC SKILL 导入;内部数据=真实园区数据集 xlsx 上传(非 mock)
 
-当前进展：已建 due_diligence context 四层骨架 + 迁移 023(dd_tasks/dd_reports/dd_evidence 三表)+ ORM 模型 dd_models.py;5 个迁移测试绿(表/唯一约束/外键/索引/对称 downgrade);ruff 0。
-下一步：跑全量 pytest 确认无回归 → 提交 PR-1 → 后续 PR-2(Subject Resolver + 任务容器,AC-1)。
-验证状态：迁移测试 5/5 pass;ruff check . 0;全量 pytest 进行中。
-交接备注：test DB 走 docker zhparser 镜像(colima + docker-compose.dev.yml,本地 homebrew pg 已停避免 5432 冲突);后续 slice 见 plan 文件。
+当前进展：PR-1 已提交并建 PR #444(待 merge)。已建 due_diligence context 四层骨架 + 迁移 023(dd_tasks/dd_reports/dd_evidence 三表)+ ORM 模型;5 个迁移测试绿;ruff 0;全量 1068 pass/3 skip(1 个 embedding fallback 为 pre-existing 顺序敏感 flaky,与本任务无关);docs 门禁通过。
+下一步:merge PR #444 → 从 main 拉 PR-2 分支(feat/req046-s2-*):Subject Resolver + 任务容器(AC-1)。
+验证状态：迁移测试 5/5 pass;ruff check . 0;全量 1068 pass/3 skip;docs 门禁通过。
+交接备注：test DB 走 docker zhparser 镜像(colima + docker-compose.dev.yml,redis/minio 已起;本地 homebrew pg 已停避免 5432 冲突);全量 pytest 需先起这套 infra;后续 slice 见 plan 文件。
 
 
 ## 下一批候选任务
