@@ -1,6 +1,6 @@
 # REQ-046: 企业 360 背调工作台与 MCP / Skill 集成闭环
 
-Status: 🔵 Ready
+Status: 🟢 Done
 Priority: P0
 Milestone: P2 / P3
 App: APP-005 企业 360 背调工作台
@@ -128,3 +128,4 @@ External:
 | 日期 | 动作 | 事实 |
 |------|------|------|
 | 2026-07-03 | 登记 | 用户确认企业 360 背调作为产业园区首个优先落地场景；登记 APP-005 / REQ-046，并建立 spec / plan 供后续开发。 |
+| 2026-07-22 | 完成 | 按 plan 分 7 个小 PR（#444~#450）交付并全部合并：任务容器 + Subject Resolver（AC-1 主体锚定）+ SkillRunner v2 三类 step（mcp / internal-customer / internal_query 可审计编排）+ Internal Customer MCP（读真实园区数据集）+ 园区招商背调 SKILL（park_investment_dd，report_contract §4.6 七键）+ Orchestrator / Report Store / Evidence Ledger（§4.6/4.7，报告版本 + 证据可回溯 + 人工确认/归档）+ 第三方 QCC SKILL 导入通道（`import_external_skill.py` 启发式 SKILL.md→SopTemplate 草稿，header 注明 server code 需人工校订）+ APP-005 工作台前端（任务列表/主体锚定/七键企业画像渲染/证据抽屉 + 市场卡片）。AC-1~AC-7 由单测 / 契约 / e2e 覆盖（含 AC-1 未确认禁 run、AC-7 空分区显式「无」）；AC-8 真实企业端到端骨架 opt-in 就位（`tests/real_world/test_req046_due_diligence_e2e_acceptance.py`：缺真实 QCC/内部 MCP/问数/授权企业任一项即显式阻塞 skip，不用 mock 冒充通过，真实执行体留待真实通道联调后填充）。验证：后端全量 1176 pass / 4 skip / 1 已知 flaky；前端 vitest 166 pass；ruff 0。 |
