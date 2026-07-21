@@ -170,7 +170,7 @@
 | TD-074 | `_is_batch_embedding_callable` 与 batch routing 单测补强 | 🟢 完成 | P2 | 校验脚本 / 测试基础设施 | [PR #400](https://github.com/MarkDanile/MetaEduBase/pull/400)：26 个测试锁定 callable 判断、batch/per-text 路由、cache、timeout 和错误长度降级。 |
 | TD-075 | `knowledge_nodes` embedding backfill 使用 mutable predicate + OFFSET 导致跳行 | 🟢 完成 | P1 | 后端 / 数据迁移 / RAG / 测试 | [DOC-078 Review](04-retrospectives/2026-07-15-recent-completion-code-review.md#p1-td-069-backfill-默认分页会跳行) / [PR #432](https://github.com/MarkDanile/MetaEduBase/pull/432)（`f30c1760`）：移除 force=False 路径 OFFSET（每轮重新查 WHERE embedding IS NULL LIMIT :limit）；加 BackfillResult + attempted_ids 防重复；单行失败 try-except 不阻塞；remaining count + 非零退出；6 单测（125 行无跳行 / 空标题 / provider None / 重跑收敛 / 单行异常 / defaults）。 |
 | TD-076 | 全量测试套件 pre-existing 失败与 ruff 错误（REQ-045 baseline 漂移 + template_selector 字面 `\n` 不归一化） | 🟢 完成 | P2 | 后端 / 测试基础设施 / 治理 / RAG | [PR #436](https://github.com/MarkDanile/MetaEduBase/pull/436)（`9a335455`）：ruff 26->0 + test_p1_rag_evidence_e2e mock `**_kwargs` 吞未用形参 + test_cascade_cleanup 补 catalog_id/entity_type（REQ-054 必填）+ template_selector L3 字面 `\n` 归一化（+回归单测）；全量 1064 passed/3 skipped + ruff 0。 |
-| TD-077 | 无依赖锁文件，dev/deploy 不可复现安装（采用 uv sync --frozen + 提交 uv.lock） | 🟡 进行中 | P2 | 后端 / 基础设施 / 依赖管理 / 可复现性 | 本任务：uv.lock 提交进 git + dev.sh 4 个 pip install 调用点 -> `uv sync --frozen --extra dev`（+ ensure_uv 兜底）+ Dockerfile.backend -> `uv sync --frozen --no-dev`；ai extras 默认不装（声明但 `app/` 零 import + Python 3.14 上 marker-pdf->pillow 无预编译 wheel）。全量 1064 passed/3 skipped + ruff 0。 |
+| TD-077 | 无依赖锁文件，dev/deploy 不可复现安装（采用 uv sync --frozen + 提交 uv.lock） | 🟢 完成 | P2 | 后端 / 基础设施 / 依赖管理 / 可复现性 | [PR #438](https://github.com/MarkDanile/MetaEduBase/pull/438)（`17c33aa1`）：uv.lock 提交进 git + dev.sh 4 个 pip install 调用点 -> `uv sync --frozen --extra dev`（+ ensure_uv 兜底）+ Dockerfile.backend -> `uv sync --frozen --no-dev`；ai extras 默认不装（声明但 `app/` 零 import + Python 3.14 上 marker-pdf->pillow 无预编译 wheel）。全量 1064 pass/3 skip + ruff 0。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -4515,13 +4515,13 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
 
 ### TD-077: 无依赖锁文件，dev/deploy 不可复现安装
 
-状态：🟡 进行中
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P2 |
 | 领域 | 后端 / 基础设施 / 依赖管理 / 可复现性 |
-| 事实源 | 本任务 / 分支 `fix/td-077-uv-lockfile-adoption` |
+| 事实源 | 本任务 / [PR #438](https://github.com/MarkDanile/MetaEduBase/pull/438)（`17c33aa1`） |
 
 **证据**
 
@@ -4559,4 +4559,4 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
   - `deploy/Dockerfile.backend`：`COPY --from=ghcr.io/astral-sh/uv:0.11.16` 装 uv + `UV_COMPILE_BYTECODE=1` + `uv sync --frozen --no-dev --no-install-project`（缓存层）+ `uv sync --frozen --no-dev`（装项目）+ `ENV PATH=/app/.venv/bin`。
   - 行为变化：dev 默认 sync 改 base+dev（去掉 `--extra ai`，因为 ai extras 声明但 `app/` 零 import、且在 Python 3.14 上 marker-pdf->pillow 无预编译 wheel 装不上；旧 `.[dev,ai]` 的 ai 从未真正装成功，dev.sh 的 `import alembic` 兜底未发现）。ai extras 留在 pyproject 供未来按需 `uv sync --extra ai`；加依赖改用 `uv add`。
   - 验证：`uv sync --frozen --extra dev` 成功 + `pytest tests/` 两次连跑 1064 passed / 3 skipped（首次 step4 AI flaky 隔离复跑通过，二次全绿）+ `ruff check` 0 + `git diff --check` clean。Docker build 后台验证中。
-  - 待 PR merge 后翻 `🟢 完成`。
+  - [PR #438](https://github.com/MarkDanile/MetaEduBase/pull/438) squash merge（`17c33aa1`），翻 `🟢 完成`。

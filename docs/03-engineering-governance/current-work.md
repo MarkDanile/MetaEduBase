@@ -14,23 +14,7 @@
 
 ## 当前进行中
 
-### TD-077: 无依赖锁文件，dev/deploy 不可复现安装
-
-状态：🟡 进行中
-类型：技术债 / 基础设施 / 依赖管理
-领域：后端 / 可复现性
-当前执行模式：直接修复（chore）
-最近接手工具：Claude Code
-分支：`fix/td-077-uv-lockfile-adoption`
-
-需求来源：
-- 技术债：`technical-debt.md#td-077`
-- 触发：TD-076 期间发现 uv.lock 未跟踪 + dev/deploy 无锁文件、不可复现
-
-当前进展：uv.lock 重新生成并提交；dev.sh 4 个 pip 调用点 -> `uv sync --frozen --extra dev`（+ ensure_uv 兜底）；Dockerfile.backend -> `uv sync --frozen --no-dev`。全量 1064 pass/3 skip + ruff 0。
-下一步：PR + merge；merge 后翻 🟢 + work-log + 最近完成 + 重置当前进行中，再接 REQ-046。
-验证状态：uv sync --frozen 成功 + 全量 pytest 两次连跑 1064 pass/3 skip + ruff 0 + git diff --check clean。Docker build 后台验证中。
-交接备注：merge 后需 closeout docs PR。行为变化：dev 默认 base+dev（去 ai extras，因声明未用 + 3.14 无 wheel）；加依赖用 uv add。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -48,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-21 | TD-077 采用 uv lockfile 保证 dev/deploy 可复现安装 | 🟢 完成 | uv.lock 提交进 git + dev.sh 4 个 pip 调用点 -> `uv sync --frozen --extra dev` + Dockerfile.backend -> `uv sync --frozen --no-dev`；ai extras 默认不装（声明未用 + 3.14 无 wheel）。全量 1064 pass/3 skip + ruff 0 | [Tech Debt](technical-debt.md#td-077-无依赖锁文件-devdeploy-不可复现安装) / [PR #438](https://github.com/MarkDanile/MetaEduBase/pull/438) |
 | 2026-07-21 | TD-076 全量套件 pre-existing 失败 + ruff 归零 | 🟢 完成 | 修 template_selector 字面 \n 归一化(+回归单测)+cascade upload 补 catalog_id/entity_type+e2e mock **_kwargs+ruff 26->0；全量 1064 pass/3 skip + ruff 0 | [Tech Debt](technical-debt.md#td-076-全量测试套件-pre-existing-失败与-ruff-错误req-045-收尾-baseline-漂移) / [PR #436](https://github.com/MarkDanile/MetaEduBase/pull/436) |
 | 2026-07-21 | REQ-045 Skill 注册、管理与调用能力 | 🟢 完成 | 最小 Skill registry（声明式 SOP 模板 + SkillRunner 平台编排：经 REQ-044 MCP 工具收集事实 + LLM 合成结构化产物）+ 首个真实 Skill=企业 360 背调 SOP；AC-9 真实 QCC+LLM 端到端验收通过（凭证/企业敏感原文不泄漏）。218 范围 tests pass / ruff 0 | [REQ-045](../01-product-planning/05-requirements/REQ-045-skill-registry-and-execution.md) |
 | 2026-07-21 | DOC-079 门禁脚本修复（req-status-consistency） | 🟢 完成 | req-status-consistency 解析「当前进行中」散文式任务卡片 + priority 格 REQ 引用被当任务 id、状态格 fail-closed 两处叠加根因；新增回归测试。41/41 engineering tests pass | [work-log](work-log.md) |
