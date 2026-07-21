@@ -111,6 +111,11 @@ async def select_template(
             confidence=None, reason=f"AI call raised: {e!r}",
         )
 
+    # AI 有时把 prompt 里的 `\n` 格式说明当成字面量回显
+    # （如 "教案\n1.0"，其中 \n 是反斜杠+n 两个字符），而非真正的换行。
+    # splitlines() 不会切分字面 \n，导致 matched_type 残留置信度后缀而匹配失败。
+    # 先把字面 \n / \r 转义归一化为真实换行再切分。
+    response = response.replace("\\n", "\n").replace("\\r", "")
     lines = [line.strip() for line in response.splitlines() if line.strip()]
     if not lines:
         return SelectionResult(

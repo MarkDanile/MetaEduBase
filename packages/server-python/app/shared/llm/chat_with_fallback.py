@@ -71,9 +71,6 @@ async def chat_with_model_fallback(
     except ValueError:
         # Provider not configured (no API key or unknown name) — fall through to fallback
         pass
-    else:
-        # Fast succeeded — return directly
-        return content
 
     try:
         return await chat(

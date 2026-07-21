@@ -115,6 +115,21 @@ async def test_l3_ai_high_confidence_match():
 
 
 @pytest.mark.asyncio
+async def test_l3_ai_literal_backslash_n_is_normalized():
+    # Regression: AI 有时把 prompt 的 \n 格式说明当成字面量回显
+    # （反斜杠+n 两个字符），而非真实换行。归一化后应与真实换行等价。
+    tpl = _tpl("教案-AI", ["教案"])
+    res = await select_template(
+        chunks_text="x", doc_type="", filename="",
+        templates=[tpl], ai_chat=_ai(r"教案\n0.92"),
+    )
+    assert res.layer == "L3"
+    assert res.template is tpl
+    assert res.matched_type == "教案"
+    assert res.confidence == 0.92
+
+
+@pytest.mark.asyncio
 async def test_l3_ai_below_threshold_returns_none():
     tpl = _tpl("教案-AI", ["教案"])
     res = await select_template(

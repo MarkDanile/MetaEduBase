@@ -149,9 +149,9 @@ async def test_p1_rag_evidence_e2e_manufacturing(client, auth_headers):
     from app.contexts.knowledge.interfaces.api import ai_router as ai_router_mod
 
     _stub_response = (
-        f"基于 [1] 的回答：智能制造专业需要掌握 CAD、CAE、PLC 编程、"
-        f"数控机床、工业机器人、传感器、自动化生产线与数字孪生等技能 [2]。\n"
-        f"\n（{{user_content}}）"
+        "基于 [1] 的回答：智能制造专业需要掌握 CAD、CAE、PLC 编程、"
+        "数控机床、工业机器人、传感器、自动化生产线与数字孪生等技能 [2]。\n"
+        "\n（{user_content}）"
     )
     stack = ExitStack()
     stack.enter_context(
@@ -170,7 +170,7 @@ async def test_p1_rag_evidence_e2e_manufacturing(client, auth_headers):
             ai_router_mod,
             "_call_llm_with_tools",
             AsyncMock(
-                side_effect=lambda messages, *, tools=None, tool_choice="auto": {
+                side_effect=lambda messages, **_kwargs: {
                     "content": _stub_response.format(
                         user_content=(
                             messages[-1]["content"] if messages else ""

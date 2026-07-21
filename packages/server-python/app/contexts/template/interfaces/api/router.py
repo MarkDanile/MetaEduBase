@@ -4,8 +4,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-_logger = logging.getLogger(__name__)
-
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.contexts.template.application.dto import (
     CloneTemplateRequest,
@@ -24,6 +22,8 @@ from app.contexts.template.application.dto import (
 from app.contexts.template.application.service import TemplateService
 from app.contexts.template.interfaces.api.dependencies import get_template_service
 from app.shared.infrastructure.tenant_context import get_tenant_id
+
+_logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/templates", tags=["templates"])
 
@@ -68,7 +68,9 @@ async def init_template_by_ai(
         tenant_id = get_tenant_id()
         source_file_uuid = UUID(dto.source_file_id) if dto.source_file_id else None
         tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
-        fields = await service.init_by_ai(dto.doc_type, source_file_uuid, tenant_uuid, dto.ai_context)
+        fields = await service.init_by_ai(
+            dto.doc_type, source_file_uuid, tenant_uuid, dto.ai_context
+        )
         validated = []
         for f in fields:
             try:

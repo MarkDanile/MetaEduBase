@@ -15,7 +15,6 @@ from app.contexts.knowledge.application.query_understanding import (
 )
 from app.shared.domain.ner_pipeline import NERPipeline, NERResult
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -24,7 +23,15 @@ from app.shared.domain.ner_pipeline import NERPipeline, NERResult
 @pytest.fixture
 def service() -> HybridQueryUnderstandingService:
     """Service with a mock LLM provider (always succeeds)."""
-    mock_llm = MagicMock(return_value='{"normalized_query":"Python 参数","core_terms":["Python","函数参数"],"expanded_terms":["函数参数","parameter"],"entities":["Python"],"filters":{},"confidence":0.85,"reason":"编程语言查询"}')
+    mock_llm = MagicMock(
+        return_value='{"normalized_query":"Python 参数",'
+        '"core_terms":["Python","函数参数"],'
+        '"expanded_terms":["函数参数","parameter"],'
+        '"entities":["Python"],'
+        '"filters":{},'
+        '"confidence":0.85,'
+        '"reason":"编程语言查询"}'
+    )
     return HybridQueryUnderstandingService(llm_provider=mock_llm)
 
 
@@ -56,7 +63,9 @@ async def test_extract_rule_hit_does_not_call_llm(service: HybridQueryUnderstand
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_extract_function_param_query_no_llm(service: HybridQueryUnderstandingService) -> None:
+async def test_extract_function_param_query_no_llm(
+    service: HybridQueryUnderstandingService,
+) -> None:
     """BUG-010 query "函数参数" hits rule via level keywords → no LLM."""
     result = await service.extract("Python 函数的参数要怎么理解最好")
 
@@ -75,7 +84,9 @@ async def test_extract_function_param_query_no_llm(service: HybridQueryUnderstan
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_extract_rule_miss_short_query_no_llm(service: HybridQueryUnderstandingService) -> None:
+async def test_extract_rule_miss_short_query_no_llm(
+    service: HybridQueryUnderstandingService,
+) -> None:
     """Short rule-missed query does NOT trigger LLM (no domain/level hit, too short)."""
     result = await service.extract("你好")
 
@@ -92,7 +103,9 @@ async def test_extract_rule_miss_short_query_no_llm(service: HybridQueryUndersta
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_extract_llm_called_on_rule_miss_long_query(service: HybridQueryUnderstandingService) -> None:
+async def test_extract_llm_called_on_rule_miss_long_query(
+    service: HybridQueryUnderstandingService,
+) -> None:
     """Rule-missed long query triggers LLM and populates expanded_terms."""
     result = await service.extract("Python 函数的参数要怎么理解最好")
 
@@ -127,7 +140,15 @@ async def test_extract_llm_failure_falls_back_to_rule() -> None:
 
 async def test_extract_llm_populates_expanded_query_for_retrieval() -> None:
     """REQ-016 Slice 3: LLM QU result sets expanded_query for keyword/vector retrieval."""
-    mock_llm = MagicMock(return_value='{"normalized_query":"Python 函数参数","core_terms":["Python","函数参数"],"expanded_terms":["parameter","参数传递","返回值"],"entities":["Python"],"filters":{},"confidence":0.85,"reason":"编程语言"}')
+    mock_llm = MagicMock(
+        return_value='{"normalized_query":"Python 函数参数",'
+        '"core_terms":["Python","函数参数"],'
+        '"expanded_terms":["parameter","参数传递","返回值"],'
+        '"entities":["Python"],'
+        '"filters":{},'
+        '"confidence":0.85,'
+        '"reason":"编程语言"}'
+    )
     service = HybridQueryUnderstandingService(llm_provider=mock_llm)
 
     result = await service.extract("Python 函数的参数要怎么理解最好")

@@ -26,6 +26,20 @@ def _test_engine():
     return create_async_engine(TEST_DB_URL, echo=False, poolclass=NullPool)
 
 
+async def _get_education_catalog_id(client, auth_headers) -> str:
+    """Fetch the seeded ``education`` catalog id for upload tests.
+
+    The education catalog is seeded by alembic 018 for every tenant.
+    REQ-054 made catalog_id + entity_type required for dataset upload.
+    """
+    resp = await client.get("/api/v1/catalogs", headers=auth_headers)
+    assert resp.status_code == 200
+    for c in resp.json():
+        if c["code"] == "education":
+            return c["id"]
+    raise AssertionError("education catalog not seeded - run alembic 018")
+
+
 async def _insert_kg_for_file(
     file_id: uuid.UUID,
     tenant_id: uuid.UUID,
@@ -265,6 +279,7 @@ async def test_delete_dataset_cleans_knowledge_edges_before_nodes(
     must be removed before the nodes themselves (RESTRICT FK).
     Regression test for the bug where delete_dataset skipped edge deletion."""
     # 1. Upload a dataset
+    catalog_id = await _get_education_catalog_id(client, auth_headers)
     resp = await client.post(
         "/api/v1/structured-data/datasets/upload",
         files={
@@ -274,6 +289,7 @@ async def test_delete_dataset_cleans_knowledge_edges_before_nodes(
                 "text/csv",
             )
         },
+        data={"catalog_id": catalog_id, "entity_type": "test"},
         headers=auth_headers,
     )
     assert resp.status_code == 201
@@ -299,6 +315,7 @@ async def test_reinitialize_dataset_cleans_knowledge_edges_before_nodes(
     """When a dataset is re-initialized, knowledge_edges referencing its
     nodes must be removed before the nodes themselves (RESTRICT FK)."""
     # 1. Upload a dataset
+    catalog_id = await _get_education_catalog_id(client, auth_headers)
     resp = await client.post(
         "/api/v1/structured-data/datasets/upload",
         files={
@@ -308,6 +325,7 @@ async def test_reinitialize_dataset_cleans_knowledge_edges_before_nodes(
                 "text/csv",
             )
         },
+        data={"catalog_id": catalog_id, "entity_type": "test"},
         headers=auth_headers,
     )
     assert resp.status_code == 201

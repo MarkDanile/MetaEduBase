@@ -169,6 +169,7 @@
 | TD-073 | RAG 评估 keypoint embedding 离线预计算与落盘 cache | 🟢 完成 | P2 | 校验脚本 / RAG / Embedding / Cache | [PR #402](https://github.com/MarkDanile/MetaEduBase/pull/402)：cache store + coverage load/save + CLI；24 个新增测试，RAG validation 50 passed。 |
 | TD-074 | `_is_batch_embedding_callable` 与 batch routing 单测补强 | 🟢 完成 | P2 | 校验脚本 / 测试基础设施 | [PR #400](https://github.com/MarkDanile/MetaEduBase/pull/400)：26 个测试锁定 callable 判断、batch/per-text 路由、cache、timeout 和错误长度降级。 |
 | TD-075 | `knowledge_nodes` embedding backfill 使用 mutable predicate + OFFSET 导致跳行 | 🟢 完成 | P1 | 后端 / 数据迁移 / RAG / 测试 | [DOC-078 Review](04-retrospectives/2026-07-15-recent-completion-code-review.md#p1-td-069-backfill-默认分页会跳行) / [PR #432](https://github.com/MarkDanile/MetaEduBase/pull/432)（`f30c1760`）：移除 force=False 路径 OFFSET（每轮重新查 WHERE embedding IS NULL LIMIT :limit）；加 BackfillResult + attempted_ids 防重复；单行失败 try-except 不阻塞；remaining count + 非零退出；6 单测（125 行无跳行 / 空标题 / provider None / 重跑收敛 / 单行异常 / defaults）。 |
+| TD-076 | 全量测试套件 pre-existing 失败与 ruff 错误（REQ-045 baseline 漂移 + template_selector 字面 `\n` 不归一化） | 🟡 进行中 | P2 | 后端 / 测试基础设施 / 治理 / RAG | 本任务收口 REQ-045 全量回归发现的 pre-existing 失败：ruff 26->0 + test_p1_rag_evidence_e2e mock `**_kwargs` 吞未用形参 + test_cascade_cleanup 补 catalog_id/entity_type（REQ-054 必填）+ template_selector L3 字面 `\n` 归一化（+回归单测）；全量 1064 passed/3 skipped + ruff 0。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -4460,4 +4461,52 @@ REQ-010 Slice 6 已就位 3 个 backfill 管理命令 + CLI（`app.cli.backfill`
   - 循环结束后查询 `remaining = COUNT(*) WHERE embedding IS NULL AND COALESCE(title,'') <> ''`（排除空标题不可处理行）；`main()` 在 `force=False` 且 `remaining > 0` 时返回非 0 退出码并输出失败摘要。
   - 新增 `tests/scripts/test_backfill_knowledge_node_pagination.py`（6 tests）：>2 batch 全量无跳行 / 空标题不阻塞 / provider 空值 + remaining / 部分失败重跑收敛 / 单行异常不阻塞 / `BackfillResult` 默认值。
   - 验证：`pytest tests/scripts/test_backfill_knowledge_node_pagination.py -v` 6 passed + `ruff check` 0 violations + `scripts/check-engineering-docs` exit 0 + `git diff --check` clean。
+  - 待 PR merge 后翻 `🟢 完成`。
+
+
+### TD-076: 全量测试套件 pre-existing 失败与 ruff 错误（REQ-045 收尾 baseline 漂移）
+
+状态：🟡 进行中
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 后端 / 测试基础设施 / 治理 / RAG |
+| 事实源 | 本任务 / 分支 `fix/td-076-pre-existing-suite-failures` |
+
+**证据**
+
+- REQ-045 全量回归发现 4 个 test 失败 + 26 个 ruff 错误；checkout `85e2163e`（REQ-045 前）确认非本任务引入，属 pre-existing baseline 漂移。
+- ruff 26 错误：F821（`chat_with_fallback.py` 死代码 `else` 分支引用未定义 name）、E402/E501（`template/router.py`）、I001/F401/F541/E501（多个 test 文件 import 排序 + 未用 import + 长 line）。
+- `test_p1_rag_evidence_e2e`：`_call_llm_with_tools` mock lambda 缺 `temperature`/`max_tokens` 形参，真实调用传 kwargs 时 TypeError。
+- `test_cascade_cleanup`（2 test）：dataset upload 调用缺 `catalog_id` + `entity_type`（REQ-054 起为必填），返回 422。
+- `test_p1_demo`（step3/step5 flaky）：`template_selector` L3 AI 响应解析对字面 `\n`（反斜杠+n 两字符）不归一化；AI 非确定性地把 prompt 的 `\n` 格式说明当字面量回显时 `matched_type` 残留置信度后缀，匹配 tenant template 失败 -> `layer=none` -> template.id 字段缺失。
+
+**问题**
+
+- baseline 漂移让 REQ-045（及后续 REQ-046）全量门禁无法直接判绿，需人工排除 pre-existing。
+- `template_selector` 字面 `\n` 不归一化是真实产品缺陷（非仅测试问题）：AI 偶发回显格式说明会导致文档类型匹配失败、回退 `layer=none`，影响所有依赖 L1/L3 模板命中的抽取流程。
+
+**完成标准**
+
+- 全量 `pytest tests/` 绿（1064 passed, 3 skipped 为 sandbox embedding 预期 skip）。
+- `ruff check app/ tests/` 退出码 0。
+- `template_selector` 字面 `\n` 归一化 + 回归单测。
+- 除字面 `\n` 归一化修复外不引入新行为变化。
+
+**验证方式**
+
+- `pytest tests/ -q` 全量绿。
+- `ruff check app/ tests/` 0 violations。
+- `scripts/check-engineering-docs` exit 0。
+- `git diff --check` clean。
+
+**交付记录**
+
+- 2026-07-20：实施（分支 `fix/td-076-pre-existing-suite-failures`）：
+  - ruff 26 -> 0：`chat_with_fallback.py` 删除死代码 `else` 分支（F821）；`template/router.py` `_logger` 移到 import 后（E402）+ 长 line 折行（E501）；`test_hybrid_ner_service` / `test_chunker` / `test_p1_rag_evidence_e2e` import 排序 + 长 line 折行 + 未用 import 删除（I001/F401/F541/E501）。
+  - `test_p1_rag_evidence_e2e`：`_call_llm_with_tools` mock lambda 改 `**_kwargs` 吞掉未用 keyword 形参（`temperature`/`max_tokens`/`tools`/`tool_choice`），签名不再脆裂。
+  - `test_cascade_cleanup`（2 test）：upload 调用补 `catalog_id`（`GET /api/v1/catalogs` 取 `education`）+ `entity_type="test"`（REQ-054 必填）。
+  - `template_selector.py`：L3 AI 响应解析前 `response.replace("\\n", "\n").replace("\\r", "")` 归一化字面转义，使 `教案\n0.92`（字面 `\n`）与 `教案` + 真实换行 + `0.92` 等价；新增回归单测 `test_l3_ai_literal_backslash_n_is_normalized`。
+  - 验证：`pytest tests/ -q` 1064 passed, 3 skipped + `ruff check app/ tests/` All checks passed + `git diff --check` clean。
   - 待 PR merge 后翻 `🟢 完成`。
