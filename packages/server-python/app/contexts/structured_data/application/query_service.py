@@ -227,7 +227,7 @@ class QueryService:
             errors = self._validator.validate(query_plan, semantic_model)
             if errors:
                 duration_ms = int((time.time() - started) * 1000)
-                await self._audit(
+                audit_id = await self._audit(
                     audit_repo=audit_repo,
                     user_id=user_id,
                     tenant_id=tenant_id,
@@ -249,6 +249,7 @@ class QueryService:
                         "请尝试更明确的问题，如"
                         '"这企业过去 3 年的欠费金额"'
                     ),
+                    "audit_id": audit_id,
                 }
 
             # ---------- 3. Adapter ----------
@@ -275,7 +276,7 @@ class QueryService:
                 )
             except MCPInvocationError as e:
                 duration_ms = int((time.time() - started) * 1000)
-                await self._audit(
+                audit_id = await self._audit(
                     audit_repo=audit_repo,
                     user_id=user_id,
                     tenant_id=tenant_id,
@@ -298,6 +299,7 @@ class QueryService:
                         "allowed_roles 内，且凭证 env 已注入。"
                     ),
                     "duration_ms": duration_ms,
+                    "audit_id": audit_id,
                 }
 
             # ---------- 4. SqlGuard ----------
@@ -320,7 +322,7 @@ class QueryService:
             duration_ms = int((time.time() - started) * 1000)
 
             # ---------- 6. Audit ----------
-            await self._audit(
+            audit_id = await self._audit(
                 audit_repo=audit_repo,
                 user_id=user_id,
                 tenant_id=tenant_id,
@@ -347,6 +349,7 @@ class QueryService:
                 "caveats": explainer_result.caveats,
                 "confidence": explainer_result.confidence,
                 "duration_ms": duration_ms,
+                "audit_id": audit_id,
             }
 
     # ------------------------------------------------------------------
@@ -368,8 +371,11 @@ class QueryService:
         duration_ms: int,
         ip: str | None,
         user_agent: str | None,
-    ) -> None:
-        """Persist one row to ``metaedu.query_audit_log``.
+    ) -> uuid.UUID:
+        """Persist one row to ``metaedu.query_audit_log`` and return its id.
+
+        REQ-046 PR-3: returns the audit row id so :meth:`ask` can surface
+        ``audit_id`` to the REQ-046 evidence chain (spec §4.5 / AC-4).
 
         REQ-054: also writes ``catalog_id`` (resolved from
         ``semantic_model.catalog_id``) so every audit row carries the
@@ -401,7 +407,7 @@ class QueryService:
         # ``session.commit()`` (the next line in ``ask``) is also
         # skipped because the exception unwinds the ``async with``
         # context manager, which rolls back the request session.
-        await audit_repo.log_query(
+        log = await audit_repo.log_query(
             user_id=user_id,
             tenant_id=tenant_id,
             role=role,
@@ -422,3 +428,4 @@ class QueryService:
             user_agent=user_agent,
             catalog_id=catalog_id,
         )
+        return log.id

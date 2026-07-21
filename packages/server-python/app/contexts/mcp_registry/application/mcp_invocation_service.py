@@ -92,6 +92,20 @@ class InvocationCaller:
     user_id: uuid.UUID | None = None
 
 
+@dataclass(frozen=True)
+class InvocationTrace:
+    """Result + audit-row binding for one invocation (REQ-046 evidence chain).
+
+    ``audit_id`` points at the ``mcp_invocation_audit`` row written for this
+    call, so a caller (e.g. REQ-046 SkillRunner) can bind each report section
+    to its reproducible tool-call evidence without the audit table ever
+    exposing raw params / response (digests only, spec §4.2).
+    """
+
+    result: dict
+    audit_id: uuid.UUID
+
+
 class MCPInvocationService:
     """Invocation orchestration + audit for registered MCP servers."""
 
@@ -115,8 +129,36 @@ class MCPInvocationService:
     ) -> dict:
         """Invoke ``tool_name`` on the registered server; return its result.
 
+        Thin shell over :meth:`invoke_with_trace` (REQ-044 contract unchanged):
+        returns only the tool result, discarding the audit-row binding.
+
         Raises :class:`MCPInvocationServerNotFoundError` (unregistered, no
         audit) or :class:`MCPInvocationError` (audited failure).
+        """
+        return (
+            await self.invoke_with_trace(
+                tenant_id=tenant_id,
+                server_code=server_code,
+                tool_name=tool_name,
+                params=params,
+                caller=caller,
+            )
+        ).result
+
+    async def invoke_with_trace(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        server_code: str,
+        tool_name: str,
+        params: dict | None,
+        caller: InvocationCaller,
+    ) -> InvocationTrace:
+        """Invoke ``tool_name`` and return result + audit-row binding.
+
+        Identical gates / call / audit to :meth:`invoke`, but returns an
+        :class:`InvocationTrace` carrying the ``mcp_invocation_audit`` row id
+        so REQ-046 can bind report sections to reproducible tool-call evidence.
         """
         started = time.monotonic()
         server = await self._servers.get_by_code(tenant_id, server_code)
@@ -181,7 +223,7 @@ class MCPInvocationService:
             )
             raise await _fail(result.error_code or "transport_error", message)
 
-        await self._audit.write(
+        audit_row = await self._audit.write(
             tenant_id=tenant_id,
             server_id=server.id,
             server_code=server.code,
@@ -195,7 +237,7 @@ class MCPInvocationService:
             error_message=None,
             duration_ms=_duration(),
         )
-        return result.result or {}
+        return InvocationTrace(result=result.result or {}, audit_id=audit_row.id)
 
     async def probe_connectivity(self, server: MCPServer) -> str | None:
         """Non-blocking ``list_tools`` probe for the enable endpoint.

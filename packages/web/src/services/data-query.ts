@@ -29,6 +29,7 @@ export interface AskResponse {
   caveats?: string[];
   confidence?: string;
   duration_ms?: number;
+  audit_id?: string;
   errors?: string[];
   suggestion?: string;
 }

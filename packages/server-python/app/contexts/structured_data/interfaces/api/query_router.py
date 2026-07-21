@@ -108,6 +108,7 @@ class AskResponse(BaseModel):
     caveats: list[str] | None = None
     confidence: str | None = None
     duration_ms: int | None = None
+    audit_id: uuid.UUID | None = None
     errors: list[str] | None = None
     suggestion: str | None = None
 

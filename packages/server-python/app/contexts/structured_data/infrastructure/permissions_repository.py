@@ -100,8 +100,12 @@ class PermissionsRepository:
         ip: str | None,
         user_agent: str | None,
         catalog_id: uuid.UUID | None = None,
-    ) -> None:
-        """Append a row to ``metaedu.query_audit_log``.
+    ) -> QueryAuditLogModel:
+        """Append a row to ``metaedu.query_audit_log`` and return it.
+
+        REQ-046 PR-3: now returns the inserted model so
+        :class:`QueryService.ask` can surface ``audit_id`` to the REQ-046
+        evidence chain. Behavior otherwise unchanged.
 
         BUG-015: ``business_purpose`` is now optional. The DB schema
         (alembic migration 020) flipped the column to NULL-able so a user
@@ -136,3 +140,4 @@ class PermissionsRepository:
         )
         self._session.add(log)
         await self._session.flush()
+        return log

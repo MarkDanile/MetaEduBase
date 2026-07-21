@@ -22,6 +22,8 @@ from datetime import datetime
 from typing import Any
 
 import yaml
+from jsonschema import SchemaError
+from jsonschema.validators import validator_for
 
 _KEBAB_CASE_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 _MAX_NAME_LENGTH = 64
@@ -36,14 +38,24 @@ class SopTemplateError(Exception):
 
 @dataclass(frozen=True)
 class SopStep:
-    """One workflow step: an analysis dimension bound to an MCP tool."""
+    """One workflow step (REQ-046 v2): an analysis dimension bound to a source.
+
+    ``type`` selects the execution channel:
+    - ``mcp`` (default, REQ-045): call ``server`` + ``tool`` via REQ-044
+      ``MCPInvocationService`` (external QCC or internal customer MCP).
+    - ``internal_query`` (REQ-046): run ``question_template`` through REQ-052
+      ``QueryService`` (structured-data 问数); ``server``/``tool`` are unused.
+    """
 
     id: str
-    server: str
-    tool: str
+    server: str | None = None
+    tool: str | None = None
     title: str | None = None
     analysis_rules: tuple[str, ...] = ()
     output: str | None = None
+    type: str = "mcp"
+    question_template: str | None = None
+    entity_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -56,6 +68,7 @@ class SopTemplate:
     mcp_dependencies: tuple[str, ...] = ()
     principles: tuple[str, ...] = ()
     report_template: str | None = None
+    report_contract: dict | None = None
 
     @classmethod
     def parse(cls, yaml_text: str) -> SopTemplate:
@@ -121,17 +134,33 @@ class SopTemplate:
                     f"sop_template duplicate step id: {step_id}"
                 )
             seen_ids.add(step_id)
-            server = step.get("server")
-            if not isinstance(server, str) or not server:
+            # REQ-046 v2: step type selects the execution channel. ``mcp``
+            # (default) requires server+tool; ``internal_query`` requires
+            # question_template and skips server/tool + dependency coverage.
+            step_type = step.get("type", "mcp")
+            if step_type not in ("mcp", "internal_query"):
                 raise SopTemplateError(
-                    f"sop_template step {step_id!r} missing required field: server"
+                    f"sop_template step {step_id!r} has invalid type: {step_type!r}"
                 )
-            tool = step.get("tool")
-            if not isinstance(tool, str) or not tool:
-                raise SopTemplateError(
-                    f"sop_template step {step_id!r} missing required field: tool"
-                )
-            used_servers.add(server)
+            if step_type == "mcp":
+                server = step.get("server")
+                if not isinstance(server, str) or not server:
+                    raise SopTemplateError(
+                        f"sop_template step {step_id!r} missing required field: server"
+                    )
+                tool = step.get("tool")
+                if not isinstance(tool, str) or not tool:
+                    raise SopTemplateError(
+                        f"sop_template step {step_id!r} missing required field: tool"
+                    )
+                used_servers.add(server)
+            else:  # internal_query
+                question_template = step.get("question_template")
+                if not isinstance(question_template, str) or not question_template:
+                    raise SopTemplateError(
+                        f"sop_template step {step_id!r} (internal_query) missing "
+                        "required field: question_template"
+                    )
             # List-typed step fields must actually be lists — a scalar like
             # `analysis_rules: abc` must be rejected, not silently iterated
             # into single-character strings downstream (Important #2).
@@ -171,16 +200,36 @@ class SopTemplate:
         if principles is not None and not isinstance(principles, list):
             raise SopTemplateError("sop_template principles must be a list")
 
+        # REQ-046 v2: optional report_contract (§4.6 structured-report schema).
+        report_contract = data.get("report_contract")
+        if report_contract is not None:
+            if not isinstance(report_contract, dict):
+                raise SopTemplateError("sop_template report_contract must be a mapping")
+            schema = report_contract.get("schema")
+            if not isinstance(schema, dict) or not schema:
+                raise SopTemplateError(
+                    "sop_template report_contract.schema must be a non-empty mapping"
+                )
+            try:
+                validator_for(schema).check_schema(schema)
+            except SchemaError as exc:
+                raise SopTemplateError(
+                    f"sop_template report_contract.schema is invalid: {exc.message}"
+                ) from exc
+
     @staticmethod
     def _build(data: dict[str, Any]) -> SopTemplate:
         steps = tuple(
             SopStep(
                 id=step["id"],
-                server=step["server"],
-                tool=step["tool"],
+                server=step.get("server"),
+                tool=step.get("tool"),
                 title=step.get("title"),
                 analysis_rules=tuple(step.get("analysis_rules") or ()),
                 output=step.get("output"),
+                type=step.get("type", "mcp"),
+                question_template=step.get("question_template"),
+                entity_type=step.get("entity_type"),
             )
             for step in data["steps"]
         )
@@ -195,6 +244,7 @@ class SopTemplate:
             mcp_dependencies=dependencies,
             principles=principles,
             report_template=data.get("report_template"),
+            report_contract=data.get("report_contract"),
         )
 
 

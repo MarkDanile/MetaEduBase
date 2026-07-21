@@ -26,6 +26,7 @@ from sqlalchemy import text
 
 from app.contexts.mcp_registry.application.mcp_invocation_service import (
     InvocationCaller,
+    InvocationTrace,
     MCPInvocationError,
     canonical_digest,
 )
@@ -141,7 +142,12 @@ async def _register_skill(
 
 
 def _mock_invocation(step_to_result: dict[str, dict]) -> AsyncMock:
-    """Map step id -> MCP tool result; ``invoke`` returns by tool_name."""
+    """Map step id -> MCP tool result; ``invoke`` returns by tool_name.
+
+    REQ-046 v2: the runner now calls ``invoke_with_trace``; the mock provides
+    it (returning an ``InvocationTrace``) and delegates ``invoke`` to the same
+    side_effect so legacy ``invoke.await_count`` assertions still hold.
+    """
     tool_to_result = {
         f"tool_{i}": result for i, result in enumerate(step_to_result.values())
     }
@@ -149,8 +155,16 @@ def _mock_invocation(step_to_result: dict[str, dict]) -> AsyncMock:
     async def _invoke(*, server_code, tool_name, params, caller, tenant_id):
         return tool_to_result[tool_name]
 
+    async def _invoke_with_trace(*, server_code, tool_name, params, caller, tenant_id):
+        result = await _invoke(
+            server_code=server_code, tool_name=tool_name,
+            params=params, caller=caller, tenant_id=tenant_id,
+        )
+        return InvocationTrace(result=result, audit_id=uuid.uuid4())
+
     mock = AsyncMock()
     mock.invoke = AsyncMock(side_effect=_invoke)
+    mock.invoke_with_trace = AsyncMock(side_effect=_invoke_with_trace)
     return mock
 
 
@@ -165,8 +179,16 @@ def _mock_invocation_step_fails(failing_step_index: int) -> AsyncMock:
             raise MCPInvocationError("tool_error", "公司未找到")
         return {"ok": True, "step": idx}
 
+    async def _invoke_with_trace(*, server_code, tool_name, params, caller, tenant_id):
+        result = await _invoke(
+            server_code=server_code, tool_name=tool_name,
+            params=params, caller=caller, tenant_id=tenant_id,
+        )
+        return InvocationTrace(result=result, audit_id=uuid.uuid4())
+
     mock = AsyncMock()
     mock.invoke = AsyncMock(side_effect=_invoke)
+    mock.invoke_with_trace = AsyncMock(side_effect=_invoke_with_trace)
     return mock
 
 
@@ -268,10 +290,10 @@ async def test_run_invokes_steps_in_order(db_session, monkeypatch):
         tenant_id=DEFAULT_TENANT_ID, skill_code=code, version="1.0.0",
         subject={"x": 1}, caller=_caller(),
     )
-    assert inv.invoke.await_count == 2
+    assert inv.invoke_with_trace.await_count == 2
     # First call tool_0, second tool_1
-    first = inv.invoke.await_args_list[0].kwargs["tool_name"]
-    second = inv.invoke.await_args_list[1].kwargs["tool_name"]
+    first = inv.invoke_with_trace.await_args_list[0].kwargs["tool_name"]
+    second = inv.invoke_with_trace.await_args_list[1].kwargs["tool_name"]
     assert first == "tool_0"
     assert second == "tool_1"
 
@@ -531,6 +553,7 @@ async def test_error_message_scrubs_subject_values(db_session, monkeypatch):
 
     mock = AsyncMock()
     mock.invoke = AsyncMock(side_effect=_invoke)
+    mock.invoke_with_trace = AsyncMock(side_effect=_invoke)
     runner = SkillRunner(db_session, invocation_service=mock)
     with pytest.raises(SkillExecutionError):
         await runner.run(
@@ -564,6 +587,7 @@ async def test_error_message_scrubs_nested_and_nonstring_subject_values(
 
     mock = AsyncMock()
     mock.invoke = AsyncMock(side_effect=_invoke)
+    mock.invoke_with_trace = AsyncMock(side_effect=_invoke)
     runner = SkillRunner(db_session, invocation_service=mock)
     with pytest.raises(SkillExecutionError):
         await runner.run(
