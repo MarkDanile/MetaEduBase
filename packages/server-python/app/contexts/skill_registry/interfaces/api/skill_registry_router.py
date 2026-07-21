@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +30,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.contexts.mcp_registry.application.mcp_invocation_service import (
     InvocationCaller,
+)
+from app.contexts.skill_registry.application.dd_query_runner import (
+    build_dd_internal_query_runner,
 )
 from app.contexts.skill_registry.application.skill_registry_service import (
     SKILL_REGISTRY_ADMIN_ROLES,
@@ -412,6 +415,7 @@ async def list_executions(
 async def run_skill(
     skill_id: str,
     req: SkillRunRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session),  # noqa: B008
     current_user: dict = Depends(get_current_user),  # noqa: B008
 ):
@@ -422,6 +426,12 @@ async def run_skill(
     requested ``version``. Failure branches are audited by the runner; the
     audit row is committed BEFORE the error is re-raised as an HTTP error,
     otherwise ``get_session`` would roll it back.
+
+    REQ-046 PR-5: wire the production ``internal_query`` channel. The runner
+    gets a ``query_runner`` bound to the request-scoped ``QueryService``
+    (``app.state.query_service`` re-bound to this session, mirroring the
+    query_router wiring) so ``internal_query`` steps execute governed
+    structured-data queries; skills without such steps are unaffected.
     """
     tenant_id = uuid.UUID(str(current_user["tenant_id"]))
     role = str(current_user.get("role", "employee"))
@@ -431,7 +441,10 @@ async def run_skill(
         skill = await service.get_by_id(tenant_id, uuid.UUID(skill_id))
     except SkillNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
-    runner = SkillRunner(session)
+    query_runner = build_dd_internal_query_runner(
+        request.app.state.query_service, session
+    )
+    runner = SkillRunner(session, query_runner=query_runner)
     caller = InvocationCaller(
         caller_type="http_api",
         role=role,

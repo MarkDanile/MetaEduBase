@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     mcp_server_port: int = 8001
     internal_mcp_tenant_id: str = ""
     internal_mcp_token: str = ""
+    # REQ-046 PR-5: V0 single-tenant catalog for internal_query semantic-model
+    # resolution (the internal park datasets live in this one catalog).
+    dd_internal_query_catalog_id: str = ""
 
     siliconflow_api_key: str = ""
 

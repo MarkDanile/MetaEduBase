@@ -1,0 +1,170 @@
+# 园区招商背调 SOP 模板（REQ-046 PR-5 / Slice 4，APP-005）
+#
+# 形态：声明式 SOP 模板（spec §4.3 两层 schema），在企业 360 背调（REQ-045
+# enterprise-360-dd，外部 QCC only）之上叠加两类内部 step，整合内外数据：
+#   1. 外部 QCC 事实（mcp step, server=qcc）
+#   2. 内部客户六维事实（mcp step, server=internal_customer -> get_customer_360）
+#   3. 内部智能问数（internal_query step, 走 REQ-052 QueryService 语义层）
+#
+# report_contract（spec §4.6 七键）强制结构化报告：summary / external_facts /
+# internal_facts / risk_watch_items / human_review_items / evidence_refs /
+# report_sections。evidence_refs 每项只声明 source_step，真实 ref_id /
+# evidence_type 由 SkillRunner 绑定（LLM 永不接触真实 audit id）。
+#
+# 本模板不含任何 secret；凭证仅经 env 注入（QCC_MCP_TOKEN / INTERNAL_MCP_TOKEN）。
+# 内部数据来自真实上传的 dataset_rows；cooperation_notes 为 synthetic/待审核，
+# 报告中不得写成真实客户事实。
+
+name: park-investment-dd
+description: >-
+  园区招商企业 360 背调：招商初筛 / 拜访前 / 入驻申请或投决会前，整合目标企业的
+  外部公开事实（企查查）与园区内部客户事实（在租 / 缴费 / 合同 / 工单 / 跟进）及
+  内部结构化问数（欠费 / 租约到期 / 工单满意度），按企业画像生成事实、AI 分析、
+  待人工确认分区的背调报告草案。何时触发：需要可归档、内外数据打通的企业背景与
+  风险摘要时。不输出最终准入 / 投决结论（归人工）。
+metadata:
+  version: "1.0.0"
+  category: due-diligence
+  author: platform
+  source_ref: REQ-046 园区招商背调 SKILL（内部数据整合）
+
+mcp_dependencies:
+  - {server: qcc, required: true}
+  - {server: internal_customer, required: true}
+
+principles:
+  - 缺失数据显式标注"未获取 / 未接入 / 待补充"，绝不编造默认值或臆测。
+  - 外部事实（企查查）与内部事实（园区）严格分区，不混写来源。
+  - 事实 / AI 分析 / 待人工确认项严格分区，不混写。
+  - 所有结论必须可追溯到具体 step；无来源的判断标为"AI 分析"。
+  - 内部 cooperation_notes 为 synthetic / 待审核线索，仅作参考，不得当作真实客户沟通事实。
+  - 内部维度返回 not_connected 时，报告对应分区写"未接入"，不得推断。
+  - 报告只给风险关注点与待确认项，不给最终准入 / 投决结论（归人工）。
+  - 数据时效明示：企查查与内部数据均存在更新延迟，高风险项提示 48 小时内复核。
+
+steps:
+  # ---- 外部 QCC 事实 ----
+  - id: subject_verify
+    type: mcp
+    server: qcc
+    tool: get_company_registration_info
+    title: 主体工商核验
+    analysis_rules:
+      - 工商二要素（名称 / 统一社会信用代码）与输入不一致即标记主体存疑。
+      - 登记状态非"存续 / 在营"标记高风险。
+    output: 主体身份档案（名称 / 统一社会信用代码 / 法定代表人 / 注册资本 / 成立日期 / 登记状态）
+
+  - id: company_profile
+    type: mcp
+    server: qcc
+    tool: get_company_profile
+    title: 企业基础画像
+    analysis_rules:
+      - 经营范围与园区招商行业匹配度标注。
+    output: 企业画像（经营范围 / 注册地址 / 企业类型 / 行业分类）
+
+  - id: external_risk_scan
+    type: mcp
+    server: qcc
+    tool: get_company_risk_scan
+    title: 外部风险扫描
+    analysis_rules:
+      - 命中失信 / 被执行 / 限高 / 经营异常 / 行政处罚任一维度即列入风险关注点。
+    output: 外部风险扫描结果（命中维度清单）
+
+  - id: shareholder_structure
+    type: mcp
+    server: qcc
+    tool: get_shareholder_info
+    title: 股东结构
+    analysis_rules:
+      - 股东持股比例 Top 列示；实控人集中度标注。
+    output: 股东清单（股东名称 / 持股比例 / 认缴出资）
+
+  # ---- 内部客户六维事实（Internal Customer MCP）----
+  - id: internal_customer
+    type: mcp
+    server: internal_customer
+    tool: get_customer_360
+    title: 内部客户 360
+    analysis_rules:
+      - subject 命中后在租 / 缴费 / 合同 / 工单 / 跟进六维逐维列示。
+      - 任一维度 not_connected 标注"未接入"；空数组标注"无记录"。
+      - cooperation_notes 标注 synthetic / 待审核，仅作线索参考。
+    output: 内部客户六维事实（subject / lease_history / payment_history / contract_history / service_tickets / cooperation_notes）
+
+  # ---- 内部智能问数（REQ-052 语义层，internal_query）----
+  - id: unpaid_query
+    type: internal_query
+    entity_type: bill
+    question_template: "{company_name} 过去三年是否有欠费记录？欠费金额与笔数分别是多少？"
+    title: 欠费问数
+    analysis_rules:
+      - 欠费金额或笔数大于零列入风险关注点，并标注金额口径与统计区间。
+    output: 欠费问数（question / query_plan / result_rows / source_type / semantic_model_version）
+
+  - id: lease_expiry_query
+    type: internal_query
+    entity_type: lease_term
+    question_template: "{company_name} 当前在租租约的到期时间是什么？未来 6 个月内是否有租约到期？"
+    title: 租约到期问数
+    analysis_rules:
+      - 未来 6 个月内到期标注续租 / 退租关注点。
+    output: 租约到期问数（到期时间 / 是否临近到期）
+
+  - id: ticket_satisfaction_query
+    type: internal_query
+    entity_type: ticket
+    question_template: "{company_name} 历史物业工单数量与处理满意度如何？是否有未关闭的高优先级工单？"
+    title: 工单满意度问数
+    analysis_rules:
+      - 未关闭高优先级工单或满意度偏低列入风险关注点。
+    output: 工单满意度问数（工单量 / 满意度 / 未关闭高优先级工单）
+
+report_contract:
+  schema:
+    type: object
+    required:
+      - summary
+      - external_facts
+      - internal_facts
+      - risk_watch_items
+      - human_review_items
+      - evidence_refs
+      - report_sections
+    additionalProperties: false
+    properties:
+      summary:
+        type: array
+        items: {type: string}
+      external_facts:
+        type: array
+        items: {type: string}
+      internal_facts:
+        type: array
+        items: {type: string}
+      risk_watch_items:
+        type: array
+        items: {type: string}
+      human_review_items:
+        type: array
+        items: {type: string}
+      evidence_refs:
+        type: array
+        items:
+          type: object
+          required: [source_step, evidence_type, ref_id]
+          additionalProperties: false
+          properties:
+            source_step: {type: string}
+            evidence_type: {enum: [mcp_invocation, data_query]}
+            ref_id: {type: string, format: uuid}
+      report_sections:
+        type: array
+        items:
+          type: object
+          required: [title, content]
+          additionalProperties: false
+          properties:
+            title: {type: string}
+            content: {type: string}
