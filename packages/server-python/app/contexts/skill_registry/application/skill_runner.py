@@ -48,6 +48,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+import jsonschema
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.mcp_registry.application.mcp_invocation_service import (
@@ -121,11 +122,19 @@ class SkillExecutionNotFoundError(SkillExecutionError, LookupError):
 
 @dataclass(frozen=True)
 class SkillStepResult:
-    """Per-step summary in a :class:`SkillResult` — digest only, no facts."""
+    """Per-step summary in a :class:`SkillResult` — digest only, no facts.
+
+    REQ-046 v2: carries the audit-row binding for the evidence chain (AC-6).
+    ``invocation_audit_id`` points at the ``mcp_invocation_audit`` row for an
+    ``mcp`` step; ``query_audit_id`` points at the ``query_audit_log`` row for
+    an ``internal_query`` step. Both are optional for REQ-045 backward compat.
+    """
 
     id: str
     ok: bool
     digest: str | None = None
+    invocation_audit_id: uuid.UUID | None = None
+    query_audit_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -145,6 +154,10 @@ class SkillResult:
     execution_audit_id: uuid.UUID
     duration_ms: int
     steps: tuple[SkillStepResult, ...] = field(default_factory=tuple)
+    # REQ-046 v2: parsed + schema-validated structured report (§4.6) when the
+    # SOP declares a ``report_contract``; ``report`` still holds the raw LLM
+    # text (REQ-045 field semantics unchanged).
+    report_json: dict | None = None
 
 
 class SkillRunner:
@@ -154,6 +167,7 @@ class SkillRunner:
         self,
         session: AsyncSession,
         invocation_service: MCPInvocationService | None = None,
+        query_runner: Any | None = None,
     ) -> None:
         self._session = session
         self._skills = SkillRepository(session)
@@ -161,6 +175,11 @@ class SkillRunner:
         # Assembly boundary: MCPInvocationService is constructed here and
         # only here (injectable for tests).
         self._invocation = invocation_service or MCPInvocationService(session)
+        # REQ-046 v2: internal_query steps run through this callable
+        # (question, entity_type, subject, caller, tenant_id) -> dict with
+        # ``audit_id``; injected so tests stay network-free and production
+        # wires the REQ-052 QueryService adapter.
+        self._query_runner = query_runner
 
     async def run(
         self,
@@ -221,36 +240,25 @@ class SkillRunner:
         except SopTemplateError as e:
             raise await _fail("template_error", f"SOP 模板解析失败: {e}") from e
 
-        # ---- sequential steps via REQ-044 (V1: all required) ----
+        # ---- sequential steps (V1: all required) ----
+        # REQ-046 v2: dispatch by step type — ``mcp`` via invoke_with_trace
+        # (carries invocation_audit_id), ``internal_query`` via query_runner
+        # (carries query_audit_id). Any failure -> whole run fails (never
+        # fabricate facts, spec §4.4).
         facts: dict[str, Any] = {}
         step_results: list[SkillStepResult] = []
         for step in template.steps:
-            try:
-                result = await self._invocation.invoke(
-                    tenant_id=tenant_id,
-                    server_code=step.server,
-                    tool_name=step.tool,
-                    params=subject,
-                    caller=caller,
-                )
-            except MCPInvocationError as e:
-                # 任一步失败即整体失败 — 不编造事实（spec §4.4）。MCP 侧已
-                # 在 mcp_invocation_audit 留痕（未注册 server 除外）。
-                raise await _fail(
-                    "tool_error",
-                    f"step '{step.id}' 调用失败 ({e.error_code}): {e}",
-                ) from e
-            facts[step.id] = result
-            step_results.append(
-                SkillStepResult(id=step.id, ok=True, digest=canonical_digest(result))
-            )
+            if step.type == "internal_query":
+                step_result = await self._run_query_step(step, subject, caller, tenant_id, _fail)
+            else:
+                step_result = await self._run_mcp_step(step, subject, caller, tenant_id, _fail)
+            facts[step.id] = step_result.pop("_facts")
+            step_results.append(SkillStepResult(**step_result))
 
         # ---- LLM synthesis (fill-in report_template, no fabrication) ----
-        messages = self._build_messages(template, subject_digest, facts)
-        try:
-            report = await chat(messages)
-        except Exception as e:
-            raise await _fail("llm_error", f"LLM 合成失败: {e}") from e
+        report, report_json = await self._synthesize(
+            template, subject_digest, facts, step_results, subject, _fail
+        )
 
         report_digest = hashlib.sha256(report.encode("utf-8")).hexdigest()
         steps_digest = canonical_digest(
@@ -274,7 +282,198 @@ class SkillRunner:
             execution_audit_id=audit_row.id,
             duration_ms=duration_ms,
             steps=tuple(step_results),
+            report_json=report_json,
         )
+
+    async def _synthesize(
+        self, template, subject_digest, facts, step_results, subject, _fail
+    ) -> tuple[str, dict | None]:
+        """LLM synthesis + optional report_contract schema validation (§4.6).
+
+        Without a ``report_contract`` this is the REQ-045 fill-in path
+        (returns ``(text, None)``). With one, the LLM is asked for schema-
+        conforming JSON; the output is ``json.loads`` + ``jsonschema``
+        validated, retried once on failure, and finally fails
+        ``report_invalid`` (audited — never fabricated or silently degraded).
+        """
+        contract = template.report_contract
+        schema = (contract or {}).get("schema")
+        messages = self._build_messages(template, subject_digest, facts)
+        if not schema:
+            try:
+                text = await chat(messages)
+            except Exception as e:
+                raise await _fail("llm_error", f"LLM 合成失败: {e}") from e
+            return text, None
+
+        messages = messages + [
+            {
+                "role": "user",
+                "content": (
+                    "只输出符合以下 JSON Schema 的 JSON，不要 Markdown 代码块：\n"
+                    + json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
+                    + "\n对于 evidence_refs，每项只提供 source_step；"
+                    "不要生成 ref_id 或 evidence_type，它们由执行器注入。"
+                ),
+            }
+        ]
+        last_error: str | None = None
+        for attempt in range(2):  # 初次 + 一次重试
+            prompt = messages
+            if attempt == 1 and last_error:
+                prompt = messages + [
+                    {
+                        "role": "user",
+                        "content": (
+                            f"上次输出不符合 schema: {last_error}。"
+                            "请只输出符合 schema 的 JSON。"
+                        ),
+                    }
+                ]
+            try:
+                text = await chat(prompt)
+            except Exception as e:
+                raise await _fail("llm_error", f"LLM 合成失败: {e}") from e
+            try:
+                parsed = json.loads(text)
+                try:
+                    parsed = self._bind_evidence_refs(parsed, step_results)
+                except ValueError as e:
+                    last_error = str(e)[:200]
+                    continue
+                jsonschema.validate(parsed, schema)
+                return (
+                    json.dumps(
+                        parsed, ensure_ascii=False, separators=(",", ":")
+                    ),
+                    parsed,
+                )
+            except json.JSONDecodeError as e:
+                last_error = f"invalid JSON at line {e.lineno}, column {e.colno}"
+            except jsonschema.ValidationError as e:
+                path = ".".join(str(part) for part in e.absolute_path) or "$"
+                validator = e.validator or "schema"
+                last_error = f"schema validation failed at {path} ({validator})"
+        raise await _fail(
+            "report_invalid",
+            f"LLM 输出未通过 report_contract schema 校验: {last_error}",
+        )
+
+    async def _run_mcp_step(
+        self, step, subject, caller, tenant_id, _fail
+    ) -> dict:
+        """Run one ``mcp`` step via invoke_with_trace (REQ-044 gates + audit)."""
+        try:
+            trace = await self._invocation.invoke_with_trace(
+                tenant_id=tenant_id,
+                server_code=step.server,
+                tool_name=step.tool,
+                params=subject,
+                caller=caller,
+            )
+            result, audit_id = trace.result, trace.audit_id
+        except MCPInvocationError as e:
+            raise await _fail(
+                "tool_error",
+                f"step '{step.id}' 调用失败 ({e.error_code}): {e}",
+            ) from e
+        return {
+            "id": step.id,
+            "ok": True,
+            "digest": canonical_digest(result),
+            "invocation_audit_id": audit_id,
+            "_facts": result,
+        }
+
+    async def _run_query_step(
+        self, step, subject, caller, tenant_id, _fail
+    ) -> dict:
+        """Run one ``internal_query`` step via the injectable query runner."""
+        if self._query_runner is None:
+            raise await _fail(
+                "tool_error",
+                f"step '{step.id}' 是 internal_query,但 runner 未配置 query_runner",
+            )
+        try:
+            question = (step.question_template or "").format(**subject)
+        except (KeyError, ValueError) as e:
+            raise await _fail(
+                "tool_error", f"step '{step.id}' 问数模板格式化失败: {e}"
+            ) from e
+        try:
+            result = await self._query_runner(
+                question=question,
+                entity_type=step.entity_type,
+                subject=subject,
+                caller=caller,
+                tenant_id=tenant_id,
+            )
+        except Exception as e:
+            raise await _fail(
+                "tool_error", f"step '{step.id}' 问数调用失败: {e}"
+            ) from e
+        if result.get("ok") is not True:
+            raise await _fail(
+                "tool_error", f"step '{step.id}' 问数结果未成功"
+            )
+        audit_id = result.get("audit_id")
+        if not isinstance(audit_id, uuid.UUID):
+            raise await _fail(
+                "tool_error", f"step '{step.id}' 问数结果缺少有效 audit_id"
+            )
+        return {
+            "id": step.id,
+            "ok": True,
+            "digest": canonical_digest(result),
+            "query_audit_id": audit_id,
+            "_facts": result,
+        }
+
+    @staticmethod
+    def _bind_evidence_refs(
+        report_json: dict, step_results: list[SkillStepResult]
+    ) -> dict:
+        """Replace LLM-supplied evidence ids with runner-owned audit bindings."""
+        if not isinstance(report_json, dict):
+            raise ValueError("report_contract 输出必须是 JSON object")
+        evidence_refs = report_json.get("evidence_refs")
+        if evidence_refs is None:
+            return report_json
+        if not isinstance(evidence_refs, list):
+            raise ValueError("report_contract evidence_refs 必须是数组")
+
+        steps = {step.id: step for step in step_results}
+        bound_refs: list[dict[str, str]] = []
+        for index, ref in enumerate(evidence_refs):
+            if not isinstance(ref, dict) or not isinstance(ref.get("source_step"), str):
+                raise ValueError(
+                    f"report_contract evidence_refs[{index}] 缺少 source_step"
+                )
+            source_step = ref["source_step"]
+            step = steps.get(source_step)
+            if step is None:
+                raise ValueError(
+                    f"report_contract evidence_refs[{index}] 引用了未知 step: {source_step}"
+                )
+            if step.invocation_audit_id is not None:
+                evidence_type = "mcp_invocation"
+                ref_id = step.invocation_audit_id
+            elif step.query_audit_id is not None:
+                evidence_type = "data_query"
+                ref_id = step.query_audit_id
+            else:
+                raise ValueError(
+                    f"report_contract evidence_refs[{index}] 的 step 无审计引用: "
+                    f"{source_step}"
+                )
+            bound_refs.append(
+                {
+                    "source_step": source_step,
+                    "evidence_type": evidence_type,
+                    "ref_id": str(ref_id),
+                }
+            )
+        return {**report_json, "evidence_refs": bound_refs}
 
     async def _write_audit(
         self,

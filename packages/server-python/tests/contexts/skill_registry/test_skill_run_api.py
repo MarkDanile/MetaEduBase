@@ -15,6 +15,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.contexts.mcp_registry.application.mcp_invocation_service import (
+    InvocationTrace,
     MCPInvocationError,
 )
 from app.contexts.skill_registry.application import skill_runner as runner_mod
@@ -119,12 +120,15 @@ def _patch_invocation(monkeypatch, *, tool_results=None, raises=None):
         def __init__(self, session):
             self._session = session
 
-        async def invoke(
+        async def invoke_with_trace(
             self, *, tenant_id, server_code, tool_name, params, caller
         ):
             if raises is not None:
                 raise raises
-            return (tool_results or {}).get(tool_name, {"ok": True})
+            return InvocationTrace(
+                result=(tool_results or {}).get(tool_name, {"ok": True}),
+                audit_id=uuid.uuid4(),
+            )
 
     monkeypatch.setattr(runner_mod, "MCPInvocationService", _FakeInvocation)
 

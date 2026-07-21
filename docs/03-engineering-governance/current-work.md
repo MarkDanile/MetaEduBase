@@ -14,25 +14,25 @@
 
 ## 当前进行中
 
-### REQ-046 / APP-005 企业 360 背调工作台 V0(PR-2 / Slice 1:Subject Resolver + 任务容器)
+### REQ-046 / APP-005 企业 360 背调工作台 V0（PR-3 / Slice 2：SkillRunner v2）
 
 状态：🟡 进行中
-类型：新业务能力 + 平台能力验证
-领域：后端(due_diligence context)
-当前执行模式：按 plan 分 7 个小 PR(本 PR = Slice 1 主体锚定 + 任务容器,AC-1)
+类型：平台能力扩展 + 业务集成地基
+领域：后端（skill_registry / mcp_registry / structured_data）
+当前执行模式：按 plan 分 7 个小 PR（本 PR = Slice 2 三类 step + 结构化输出 + 证据透传，AC-5/6 地基）
 最近接手工具：Claude Code
-分支：feat/req046-s2-subject-resolver
+分支：feat/req046-s3-skillrunner-v2
 
 需求来源：
 - Requirement: `docs/01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md`
 - Spec: `docs/02-delivery-plans/01-specs/2026-07-03-req-046-enterprise-360-due-diligence-workbench.md`
 - Plan: `docs/02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md`
-- 实施 plan(用户已批准): 新建园区招商背调 SKILL(内外数据整合)+ SkillRunner v2 三类 step(mcp/internal-customer/internal_query)+ 第三方 QCC SKILL 导入;内部数据=真实园区数据集 xlsx 上传(非 mock)
+- 实施 plan（用户已批准）：新建园区招商背调 SKILL（内外数据整合）+ SkillRunner v2 三类 step（mcp/internal-customer/internal_query）+ 第三方 QCC SKILL 导入；内部数据=真实园区数据集 xlsx 上传（非 mock）
 
-当前进展：PR-2 已提交并建 PR #445(待 merge)。Slice 1 完成:domain 状态机(dd_task.py,AC-1 硬约束 assert_can_run)+ SubjectResolver(经 invoke 调 qcc get_company_by_query 锚定)+ DdTaskService + DdTaskRepository + dd_router(/api/v1/dd/tasks CRUD + resolve/confirm-subject)+ 挂载 main.py。31 个范围测试绿;ruff 0;全量 1094 pass/3 skip(1 个 embedding fallback 为 pre-existing flaky)。
-下一步:merge PR #445 → 从 main 拉 PR-3 分支(feat/req046-s3-*):SkillRunner v2 三类 step + 结构化输出(AC-5/6 地基)。
-验证状态：范围测试 31/31 pass;ruff check . 0;全量 pytest 进行中。
-交接备注：test DB 走 docker zhparser 镜像(colima + docker-compose.dev.yml,redis/minio 已起);resolve 走 invoke(qcc server 角色门/审计继承);report run 入口(AC-1 强制执行)留 Slice 5;后续 slice 见 plan 文件。
+当前进展：PR-1 #444、PR-2 #445 已合并；Slice 2 已实现 `invoke_with_trace`、QueryService `audit_id` 透传、`mcp|internal_query` step 分发、结构化 report_contract 校验与一次重试、runner 绑定真实 evidence audit ref（LLM 仅声明 source_step）。
+下一步：完成差异复核后提交、创建 PR-3；合并后进入 PR-4 Internal Customer MCP + 真实数据灌入。
+验证状态：相关后端 485/485 pass；ruff 全量 0；Web lint 0 error（16 个既有 warning）+ typecheck 通过；`scripts/check-engineering-docs` 通过；全量后端 1115 pass / 3 skip / 1 个已知 order-sensitive embedding warning 测试失败，单独复跑通过。
+交接备注：test DB 走 docker zhparser 镜像；完整套件唯一失败与本 slice 无关且为既有已知 flaky；PR-3 不含真实 QCC 调用或真实 LLM 验收，最高验证层级为 real PG + mocked network leaves。
 
 
 ## 下一批候选任务

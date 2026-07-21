@@ -100,8 +100,14 @@ class SkillRegistryService:
     async def _validate_step_servers(
         self, tenant_id: uuid.UUID, template: SopTemplate
     ) -> None:
-        """工具引用闭合：每个 steps[].server 必须在本 tenant 已注册且 active。"""
-        referenced = {step.server for step in template.steps}
+        """工具引用闭合：每个 mcp step 的 server 必须在本 tenant 已注册且 active。
+
+        REQ-046 v2: ``internal_query`` steps have ``server=None`` (they run via
+        the data-query channel, not an MCP server) and are excluded here.
+        """
+        referenced = {
+            step.server for step in template.steps if step.server is not None
+        }
         for server_code in sorted(referenced):
             server = await self._mcp_repo.get_by_code(tenant_id, server_code)
             if server is None:
