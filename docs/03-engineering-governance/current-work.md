@@ -14,26 +14,7 @@
 
 ## 当前进行中
 
-### REQ-046 / APP-005 企业 360 背调工作台 V0（PR-7 / Slice 6：第三方 SKILL 导入 + APP-005 前端 + AC-8/9）
-
-状态：🟡 进行中
-类型：业务编排 + 持久化资产
-领域：后端（skill_registry 导入）+ 前端（due-diligence 工作台）
-当前执行模式：按 plan 分 7 个小 PR（本 PR = Slice 6 第三方 QCC SKILL 导入 + APP-005 前端 + 真实企业端到端 AC-8/9）
-最近接手工具：Claude Code
-分支：feat/req046-s7-skill-import-frontend-e2e
-
-需求来源：
-- Requirement: `docs/01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md`
-- Spec: `docs/02-delivery-plans/01-specs/2026-07-03-req-046-enterprise-360-due-diligence-workbench.md`
-- Plan: `docs/02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md`
-- 实施 plan（用户已批准）：新建园区招商背调 SKILL（内外数据整合）+ SkillRunner v2 三类 step（mcp/internal-customer/internal_query）+ 第三方 QCC SKILL 导入；内部数据=真实园区数据集 xlsx 上传（非 mock）
-
-当前进展：PR-1 #444、PR-2 #445、PR-3 #446、PR-4 #447、PR-5 #448、PR-6 #449 已合并（编排 + Report Store + Evidence Ledger + run/report/evidence 端点已落地）。本 PR-7 已实现：① `scripts/import_external_skill.py` 启发式 SKILL.md → SopTemplate YAML 草稿转换器（命令→name、工具 token→mcp_dependencies、每维度一 step、报告骨架→report_template），已对真实 QCC 授信尽调 SKILL 验证（5 维度、4 server），header 注明 server code 需人工校订（qcc-* → 平台注册的 qcc）；② APP-005 前端：`services/dueDiligence.ts`（任务/主体/run/报告/证据全端点）+ `views/due-diligence/`（DdTaskListView 入口/新建、DdTaskDetailView 主体锚定卡+状态时间线+run、DdReportView 七键企业画像渲染+确认锁版/归档+证据抽屉、ReportSection/EvidenceDrawer/status 子组件）+ 路由注册 `/apps/enterprise-360-dd*` + `seed.py` APP-005 市场卡片；③ AC-8 真实企业端到端骨架 `tests/real_world/test_req046_due_diligence_e2e_acceptance.py`（phase-0 模板加载常跑，phase-1 真实通道 opt-in 闸门：缺 QCC/内部 MCP/问数/授权企业任一项即显式阻塞 skip，不用 mock 冒充通过）。
-下一步：提交、创建 PR-7；合并后补全 AC-8 真实执行体（需真实 QCC/内部 MCP/问数联调）并同步 APP/Backlog/Requirement/work-log（AC-9）。
-验证状态：后端全量 1176 pass / 4 skip / 1 个已知 flaky（order-sensitive embedding warning，单独复跑通过）；ruff 全量 0；`git diff --check` 通过；前端 vitest 166 pass（含 APP-005 新增 8）、vue-tsc 0、eslint 0；AC-8 phase-0 pass、phase-1 显式阻塞 skip。
-交接备注：导入是启发式转换（V0 目标=可注册草稿+人工校订，非无损导入）。前端报告/证据仅在归属租户视图展示、不缓存不打印；evidence 只含非敏感 summary+ref_id。AC-8 骨架已立起 opt-in 闸门与阻塞枚举，真实执行体留待真实通道联调后填充（骨架内显式 fail，非静默通过）。
-
+当前无进行中任务。下一批候选见下表。
 
 ## 下一批候选任务
 
@@ -41,7 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0（主线，REQ-045 已就绪） | REQ-046 / APP-005 企业 360 背调工作台 V0 | 🔵 Ready | REQ-045 已交付（背调 SOP + SkillRunner），可启动：主体锚定 + QCC MCP Adapter + 内部问数（REQ-052）+ 背调 Skill + 报告归档 | [Requirement](../01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md) / [Spec](../02-delivery-plans/01-specs/2026-07-03-req-046-enterprise-360-due-diligence-workbench.md) / [Plan](../02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md) |
+| P0（主线收口） | REQ-046 AC-8 真实企业端到端执行体落地 | 🔵 Ready | AC-8 骨架 opt-in 闸门已就位（合并于 #450）；需真实通道联调（`upload_park_datasets.py` 灌库 + `register_internal_mcp.py` 注册 internal MCP + `seed_dd_semantic_models.py` seed 语义模型 + QCC_MCP_TOKEN/INTERNAL_MCP_TOKEN/DD_INTERNAL_QUERY_CATALOG_ID env），随后补全 `test_real_enterprise_end_to_end` 真实执行体 | [REQ-046](../01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md) / [Plan](../02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md) |
 
 ## 最近完成
 
@@ -51,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-22 | REQ-046 / APP-005 企业 360 背调工作台 V0 | 🟢 完成 | 首个产业园区 P0 合规风控闭环，7 小 PR（#444~#450）：任务容器+Subject Resolver+SkillRunner v2 三类 step+Internal Customer MCP+背调 SKILL+Orchestrator/Report/Evidence+第三方导入+APP-005 前端；AC-1~7 覆盖、AC-8 骨架就位。后端 1176 pass/ruff 0 | [REQ-046](../01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md) / [work-log](work-log.md) |
 | 2026-07-21 | TD-079 排除 alembic/versions/ 出 ruff（93 pre-existing 收口） | 🟢 完成 | pyproject [tool.ruff] 加 extend-exclude=["alembic/versions"]；93 错误全在迁移文件（UP007/E501/I001/UP035/W292/F401），app/+tests/ 本就 0。ruff check . -> 0 + 显式 alembic 可查 + 全量 1064 pass/3 skip；零 .py 改动 | [Tech Debt](technical-debt.md#td-079-排除-alembicversions-出-ruff-范围93-个-pre-existing-ruff-错误收口) / [PR #442](https://github.com/MarkDanile/MetaEduBase/pull/442) |
 | 2026-07-21 | TD-078 清理未使用的 ai extras（TD-077 follow-up） | 🟢 完成 | 删 pyproject 的 ai extras（6 包声明未用 + 3.14 无 wheel）+ uv lock 重生成（232->93，纯删 139/0 版本变更/0 新增）；uv sync --extra dev 成功 + --extra ai 报错 + uv tree linux/3.12 exit 0；零 .py 改动，全量 1064 pass/3 skip 基线一致 | [Tech Debt](technical-debt.md#td-078-清理未使用的-ai-extrastd-077-follow-up) / [PR #440](https://github.com/MarkDanile/MetaEduBase/pull/440) |
 | 2026-07-21 | TD-077 采用 uv lockfile 保证 dev/deploy 可复现安装 | 🟢 完成 | uv.lock 提交进 git + dev.sh 4 个 pip 调用点 -> `uv sync --frozen --extra dev` + Dockerfile.backend -> `uv sync --frozen --no-dev`；ai extras 默认不装（声明未用 + 3.14 无 wheel）。全量 1064 pass/3 skip + ruff 0 | [Tech Debt](technical-debt.md#td-077-无依赖锁文件-devdeploy-不可复现安装) / [PR #438](https://github.com/MarkDanile/MetaEduBase/pull/438) |
