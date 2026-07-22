@@ -18,27 +18,9 @@ from httpx import AsyncClient
 from app.contexts.mcp_registry.application.mcp_invocation_service import (
     MCPInvocationError,
 )
+from tests.contexts.identity._helpers import register_and_login as _register_and_login
 
 pytestmark = pytest.mark.asyncio
-
-
-async def _register_and_login(client: AsyncClient, *, username: str, role: str) -> str:
-    resp = await client.post(
-        "/api/v1/auth/register",
-        json={
-            "username": username,
-            "password": "Test1234!",
-            "email": f"{username}@test.local",
-            "role": role,
-        },
-    )
-    assert resp.status_code == 201, f"register failed: {resp.text}"
-    resp = await client.post(
-        "/api/v1/auth/login",
-        json={"username": username, "password": "Test1234!"},
-    )
-    assert resp.status_code == 200, f"login failed: {resp.text}"
-    return resp.json()["access_token"]
 
 
 def _headers(token: str) -> dict[str, str]:

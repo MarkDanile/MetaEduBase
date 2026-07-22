@@ -31,6 +31,7 @@ from app.contexts.mcp_registry.application.mcp_registry_service import (
 )
 from app.contexts.mcp_registry.domain.mcp_server import MCPServer
 from app.shared.infrastructure.seed import DEFAULT_ADMIN_ID, DEFAULT_TENANT_ID
+from tests.contexts.identity._helpers import register_and_login as _register_and_login
 
 pytestmark = pytest.mark.asyncio
 
@@ -339,25 +340,7 @@ async def test_tenant_isolation(db_session):
 # ---------------------------------------------------------------------------
 
 
-async def _register_and_login(
-    client: AsyncClient, *, username: str, role: str
-) -> str:
-    resp = await client.post(
-        "/api/v1/auth/register",
-        json={
-            "username": username,
-            "password": "Test1234!",
-            "email": f"{username}@test.local",
-            "role": role,
-        },
-    )
-    assert resp.status_code == 201, f"register failed: {resp.text}"
-    resp = await client.post(
-        "/api/v1/auth/login",
-        json={"username": username, "password": "Test1234!"},
-    )
-    assert resp.status_code == 200, f"login failed: {resp.text}"
-    return resp.json()["access_token"]
+# _register_and_login 经 tests.contexts.identity._helpers 注入（BUG-017）
 
 
 def _headers(token: str) -> dict[str, str]:

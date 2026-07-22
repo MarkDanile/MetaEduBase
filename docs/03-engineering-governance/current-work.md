@@ -14,7 +14,26 @@
 
 ## 当前进行中
 
-当前无进行中任务。下一批候选见下表。
+### BUG-017: 身份注册与 JWT 信任边界
+
+状态：🟡 PR 待评审
+类型：bug fix（P0 安全）
+领域：identity / auth / config / deploy
+分支：fix/bug017-identity-jwt-trust-boundary
+PR：[#454](https://github.com/MarkDanile/MetaEduBase/pull/454)
+
+需求来源：
+- Spec: [BUG-017](../01-product-planning/05-requirements/BUG-017-identity-registration-and-jwt-trust-boundary.md)
+- Plan: [2026-07-22-bug-017-plan](../02-delivery-plans/02-plans/2026-07-22-bug-017-identity-jwt-trust-boundary-plan.md)
+- 复核: [2026-07-22 安全与质量复核](04-retrospectives/2026-07-22-security-and-quality-follow-up-review.md)
+
+当前进展：Slice 1-5 全部落地并提交 PR #454。register 降级（extra='forbid' + 强制 teacher）+ 管理员入口（super_admin only）+ JWT 生产 fail-fast + 安全日志（password/token redact）。
+
+下一步：PR #454 评审合并后 -> 归档卡片至最近完成 + 回填 work-log + 更新 backlog BUG-017 状态为 🟢。
+
+验证状态：全量 pytest `1222 passed, 1 failed`（唯一失败 `test_embedding_empty_logs_warning` = TD-080 pre-existing，main 全量同失败）；ruff / check-engineering-docs / git diff --check 全绿；新增 24 测试用例 + 6 文件迁移 0 回归。可复核证据：`cd packages/server-python && uv run pytest -q --tb=line` -> `1 failed, 1222 passed, 4 skipped`；`uv run ruff check app/ tests/` -> `All checks passed!`；`./scripts/check-engineering-docs` -> `passed (31 known issue allowlisted)`；`git diff --check` -> exit 0。环境：macOS Darwin 25.5.0，Python 3.14，uv 本地。
+
+交接备注：BUG-017/018/019 关闭前不扩大 Agentic 工具调用和外部 MCP 暴露范围。
 
 ## 下一批候选任务
 
@@ -22,7 +41,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0-1 | BUG-017 身份注册与 JWT 信任边界 | 🔵 就绪 | 先补 spec/plan，关闭高权自注册并建立生产 JWT fail-fast | [BUG-017](../01-product-planning/05-requirements/BUG-017-identity-registration-and-jwt-trust-boundary.md) |
 | P0-2 | BUG-018 AI App 鉴权、租户与 Token 暴露 | 🔵 就绪 | 在 BUG-017 后实施管理/public API 分离、tenant 强制和 Token DTO 收口 | [BUG-018](../01-product-planning/05-requirements/BUG-018-ai-app-auth-tenant-and-token-exposure.md) |
 | P0-3 | BUG-019 MCP 凭证边界与 SSRF | 🔵 就绪 | 在 BUG-017 后补 secret binding、目标校验和出口限制；完成前不扩 MCP | [BUG-019](../01-product-planning/05-requirements/BUG-019-mcp-credential-boundary-and-ssrf.md) |
 
