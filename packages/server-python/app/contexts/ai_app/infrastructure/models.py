@@ -1,6 +1,7 @@
 from datetime import datetime
+from uuid import uuid4
 
-from sqlalchemy import Column, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import declarative_base
 
@@ -11,8 +12,9 @@ Base = declarative_base()
 
 class AiApplicationModel(Base):
     __tablename__ = "ai_applications"
+    __table_args__ = {"schema": "metaedu"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     code = Column(String(50), nullable=False, unique=True)
     name = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
@@ -29,6 +31,8 @@ class AiApplicationModel(Base):
     version = Column(String(20), nullable=False, default="1.0.0")
     sort_order = Column(Integer, nullable=False, default=0)
     tenant_id = Column(UUID(as_uuid=True), nullable=True)
+    # BUG-018 AC-3: 平台应用跨租户可见，仅 super_admin 可写。
+    is_platform = Column(Boolean, nullable=False, default=False)
     share_token = Column(String(100), nullable=True, unique=True)
     api_token = Column(String(100), nullable=True, unique=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)

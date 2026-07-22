@@ -2,12 +2,17 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.contexts.ai_app.domain.enums import AiAppEntryType, AiAppStatus, AiAppVisibility
 
 
 class AiAppCreate(BaseModel):
+    """BUG-018 AC-3: client 不得指定 tenant_id / is_platform（extra='forbid'）；
+    服务端强制 tenant_id=current_user.tenant_id；is_platform 仅 super_admin 可设。"""
+
+    model_config = ConfigDict(extra="forbid")
+
     code: str = Field(..., min_length=1, max_length=50)
     name: str = Field(..., min_length=1, max_length=200)
     description: str | None = None
@@ -23,7 +28,6 @@ class AiAppCreate(BaseModel):
     owner: str | None = Field(None, max_length=200)
     version: str = "1.0.0"
     sort_order: int = 0
-    tenant_id: UUID | None = None
 
 
 class AiAppUpdate(BaseModel):
@@ -61,6 +65,7 @@ class AiAppResponse(BaseModel):
     version: str
     sort_order: int
     tenant_id: UUID | None
+    is_platform: bool
     share_token: str | None
     api_token: str | None
     created_at: datetime
