@@ -287,9 +287,28 @@ async function uploadResource() {
   }
 }
 
-function downloadResource(item: ResourceItem) {
-  const token = localStorage.getItem("metaedu_token");
-  window.open(`/api/v1/resources/${item.id}/download?token=${token}`, "_blank");
+async function downloadResource(item: ResourceItem) {
+  // BUG-020 AC-5: 下载改用 Authorization header（axios 拦截器自动带），
+  // 不再把 token 拼进 URL query（防进浏览器历史 + 代理日志）。
+  try {
+    const res = await api.get(`/resources/${item.id}/download`, {
+      responseType: "blob",
+    });
+    // 从 Content-Disposition 提取文件名，回退到 item 标题
+    const cd = res.headers["content-disposition"] || "";
+    const m = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)/i);
+    const filename = m?.[1] || `${item.title || item.id}.${item.file_type || "bin"}`;
+    const url = window.URL.createObjectURL(res.data);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = decodeURIComponent(filename);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  } catch {
+    // 401 由 api.ts 拦截器跳转 /login；其他错误静默
+  }
 }
 
 async function doDeleteResource() {

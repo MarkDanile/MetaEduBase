@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
-import os
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +24,18 @@ from app.contexts.structured_data.application.tasks import ds_parse
 from app.contexts.structured_data.infrastructure.dataset_repository import DatasetRepository
 from app.shared.infrastructure.database import get_session
 from app.shared.infrastructure.tenant_context import get_tenant_id
+from app.shared.upload_safety import (
+    DEFAULT_MAX_BYTES,
+    UploadSafetyError,
+    UploadSizeExceeded,
+    UploadTypeUnsupported,
+    commit_tmpfile,
+    read_chunked_to_tempfile,
+    safe_display_name,
+    safe_storage_key,
+    validate_storage_path_containment,
+    validate_upload_type,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -102,18 +114,41 @@ async def upload_dataset(
     if not file.filename:
         raise HTTPException(status_code=400, detail="文件名不能为空")
 
-    upload_dir = os.path.join(settings.upload_dir, str(tid))
-    os.makedirs(upload_dir, exist_ok=True)
+    # BUG-020 AC-1/AC-4: 服务端 storage_key + 安全显示名
+    try:
+        storage_key, display_name = safe_storage_key(str(tid), file.filename)
+    except UploadSafetyError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
-    storage_key = f"{tid}/{uuid.uuid4().hex}_{file.filename}"
-    file_path = os.path.join(settings.upload_dir, storage_key)
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    # BUG-020 AC-3: 类型白名单（用安全显示名提取 ext）
+    try:
+        validate_upload_type(
+            "structured_data", filename=display_name, content_type=file.content_type,
+        )
+    except UploadTypeUnsupported as e:
+        raise HTTPException(status_code=415, detail=str(e)) from e
 
-    content = await file.read()
-    with open(file_path, "wb") as f:
-        f.write(content)
+    upload_base = Path(settings.upload_dir)
+    file_path = upload_base / storage_key
+    try:
+        validate_storage_path_containment(file_path.parent, upload_base)
+    except UploadSafetyError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
-    dataset_name = name or file.filename.rsplit(".", 1)[0]
+    # BUG-020 AC-2: 流式分块 + size 上限
+    tmp_dir = upload_base / str(tid) / ".tmp"
+    try:
+        tmp_path, _file_size = await read_chunked_to_tempfile(
+            file, max_bytes=DEFAULT_MAX_BYTES, tmp_dir=tmp_dir,
+        )
+    except UploadSizeExceeded as e:
+        raise HTTPException(status_code=413, detail=str(e)) from e
+    try:
+        commit_tmpfile(tmp_path, file_path)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"文件落盘失败：{e}") from e
+
+    dataset_name = name or safe_display_name(file.filename).rsplit(".", 1)[0]
     repo = DatasetRepository(session)
     row = await repo.create(
         tenant_id=tid,
