@@ -218,6 +218,7 @@ async def test_share_endpoint_anonymous_resolves_token(client: AsyncClient):
     """BUG-018 Slice 4: 公开 share 端点按 token 解析应用，不暴露 token 字段。"""
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import create_async_engine
+
     from tests.conftest import TEST_DB_URL
     pub_id = uuid.uuid4()
     pub_code = f"APP-SHARE-{uuid.uuid4().hex[:6]}"
