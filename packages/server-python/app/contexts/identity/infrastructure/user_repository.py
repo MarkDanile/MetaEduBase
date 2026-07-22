@@ -59,3 +59,46 @@ class UserRepository:
                 "now": now,
             },
         )
+
+    async def find_by_id(self, user_id: uuid.UUID, tenant_id: uuid.UUID) -> dict | None:
+        """按 (id, tenant_id) 查用户；跨租户查询返回 None。"""
+        result = await self._session.execute(
+            text(
+                "SELECT id, tenant_id, username, role, domain, is_active "
+                "FROM metaedu.users WHERE id = :uid AND tenant_id = :tid"
+            ),
+            {"uid": user_id, "tid": tenant_id},
+        )
+        row = result.mappings().first()
+        return dict(row) if row else None
+
+    async def update_role_and_status(
+        self,
+        *,
+        user_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        role: str | None = None,
+        is_active: bool | None = None,
+    ) -> bool:
+        """更新 role 和/或 is_active；返回是否命中一行（跨租户不命中）。"""
+        sets: list[str] = []
+        params: dict = {"uid": user_id, "tid": tenant_id}
+        if role is not None:
+            sets.append("role = :role")
+            params["role"] = role
+        if is_active is not None:
+            sets.append("is_active = :active")
+            params["active"] = is_active
+        if not sets:
+            return False
+        sets.append("updated_at = :now")
+        params["now"] = datetime.now(UTC).replace(tzinfo=None)
+        result = await self._session.execute(
+            text(
+                "UPDATE metaedu.users SET "
+                + ", ".join(sets)
+                + " WHERE id = :uid AND tenant_id = :tid"
+            ),
+            params,
+        )
+        return result.rowcount > 0

@@ -45,7 +45,6 @@ async def test_register_success(client: AsyncClient):
             "username": username,
             "password": "password123",
             "email": f"{username}@test.local",
-            "role": "teacher",
         },
     )
     assert resp.status_code == 201
@@ -60,11 +59,11 @@ async def test_register_duplicate_username(client: AsyncClient):
     username = f"dup_{uuid.uuid4().hex[:8]}"
     await client.post(
         "/api/v1/auth/register",
-        json={"username": username, "password": "pass123", "role": "teacher"},
+        json={"username": username, "password": "pass123"},
     )
     resp = await client.post(
         "/api/v1/auth/register",
-        json={"username": username, "password": "pass456", "role": "teacher"},
+        json={"username": username, "password": "pass456"},
     )
     assert resp.status_code == 409
 
@@ -74,7 +73,7 @@ async def test_register_then_login(client: AsyncClient):
     username = f"login_{uuid.uuid4().hex[:8]}"
     await client.post(
         "/api/v1/auth/register",
-        json={"username": username, "password": "mypassword", "role": "teacher"},
+        json={"username": username, "password": "mypassword"},
     )
     resp = await client.post(
         "/api/v1/auth/login",

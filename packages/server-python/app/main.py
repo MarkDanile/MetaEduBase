@@ -17,6 +17,7 @@ from app.contexts.due_diligence.interfaces.api.dd_router import (
 from app.contexts.identity.application.auth_service import (
     validate_production_jwt_secret,
 )
+from app.contexts.identity.interfaces.api.admin_router import router as identity_admin_router
 from app.contexts.identity.interfaces.api.router import router as identity_router
 from app.contexts.knowledge.interfaces.api.ai_router import router as ai_router
 from app.contexts.knowledge.interfaces.api.graph_retrieve_router import (
@@ -137,6 +138,7 @@ async def _db_unavailable_handler(
     )
 
 app.include_router(identity_router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(identity_admin_router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(knowledge_router, prefix="/api/v1/knowledge", tags=["knowledge"])
 app.include_router(
     graph_retrieve_router,

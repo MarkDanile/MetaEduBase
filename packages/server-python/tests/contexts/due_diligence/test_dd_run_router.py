@@ -21,29 +21,13 @@ from httpx import AsyncClient
 from app.contexts.mcp_registry.application.mcp_invocation_service import (
     InvocationTrace,
 )
+from tests.contexts.identity._helpers import register_and_login as _register_and_login
 
 pytestmark = pytest.mark.asyncio
 
 
-async def _register_and_login(
-    client: AsyncClient, *, username: str, role: str, tenant_id: str | None = None
-) -> str:
-    payload = {
-        "username": username,
-        "password": "Test1234!",
-        "email": f"{username}@test.local",
-        "role": role,
-    }
-    if tenant_id is not None:
-        payload["tenant_id"] = tenant_id
-    resp = await client.post("/api/v1/auth/register", json=payload)
-    assert resp.status_code == 201, resp.text
-    resp = await client.post(
-        "/api/v1/auth/login",
-        json={"username": username, "password": "Test1234!"},
-    )
-    assert resp.status_code == 200, resp.text
-    return resp.json()["access_token"]
+# _register_and_login 经 tests.contexts.identity._helpers 注入（BUG-017，
+# 支持 tenant_id 参数用于跨租户测试）。
 
 
 def _headers(token: str) -> dict[str, str]:

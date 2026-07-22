@@ -27,6 +27,8 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import text
 
+from tests.contexts.identity._helpers import register_and_login as _register_and_login
+
 pytestmark = pytest.mark.asyncio
 
 
@@ -39,30 +41,7 @@ def _unique_code(prefix: str = "api") -> str:
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
 
 
-async def _register_and_login(
-    client: AsyncClient, *, username: str, role: str
-) -> str:
-    """Register a new user with the given role and return their access token.
-
-    Uses the default tenant (DEFAULT_TENANT_ID) so the FK on users.tenant_id
-    is satisfied by the seeded tenant row.
-    """
-    resp = await client.post(
-        "/api/v1/auth/register",
-        json={
-            "username": username,
-            "password": "Test1234!",
-            "email": f"{username}@test.local",
-            "role": role,
-        },
-    )
-    assert resp.status_code == 201, f"register failed: {resp.text}"
-    resp = await client.post(
-        "/api/v1/auth/login",
-        json={"username": username, "password": "Test1234!"},
-    )
-    assert resp.status_code == 200, f"login failed: {resp.text}"
-    return resp.json()["access_token"]
+# _register_and_login 经 tests.contexts.identity._helpers 注入（BUG-017）
 
 
 def _headers(token: str) -> dict[str, str]:
