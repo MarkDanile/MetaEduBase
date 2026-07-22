@@ -14,15 +14,17 @@
 
 ## 当前进行中
 
-暂无进行中任务。BUG-018 已合并归档（见最近完成），下一批候选 BUG-019 见下表。
+暂无进行中任务。BUG-019 已合并归档（见最近完成），P0 安全三件套已全部关闭。
 
 ## 下一批候选任务
 
 按"建议执行顺序"排序；候选区只保留近期 1 到 3 个入口，完整任务池回 `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/technical-debt.md`。
 
+按"建议执行顺序"排序；候选区只保留近期 1 到 3 个入口，完整任务池回 `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/technical-debt.md`。
+
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0-2 | BUG-019 MCP 凭证边界与 SSRF | 🔵 就绪 | BUG-017/018 已关闭，可启动：补 secret binding、目标校验和出口限制；完成前不扩 MCP | [BUG-019](../01-product-planning/05-requirements/BUG-019-mcp-credential-boundary-and-ssrf.md) |
+| - | - | - | P0 安全三件套（BUG-017/018/019）已全部合并。下一轮按 backlog 优先级重排 | [backlog](../01-product-planning/04-backlog.md) |
 
 ## 最近完成
 
@@ -32,6 +34,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-22 | BUG-019 MCP 凭证边界与 SSRF 硬化 | 🟢 完成 | P0 安全：CredentialRef 命名空间+黑名单+URL/IP/DNS rebinding 拒绝+set_enabled 前置校验+follow_redirects=False+mcp-server fail-fast+401 一次刷新。7 AC 全覆盖；38 后端测试+7 mcp-server 测试；全量 1290 pass/1 TD-080 pre-existing/ruff 0 | [PR #456](https://github.com/MarkDanile/MetaEduBase/pull/456)（`3eb526f1`）/ [work-log](work-log.md) |
 | 2026-07-22 | BUG-018 AI App 鉴权、租户与 Token 暴露硬化 | 🟢 完成 | P0 安全：管理端点认证+RBAC+tenant-scoped+反伪造 tenant+DTO 拆 Public/Admin/Token+公开 /public+/share/{token}+前端 axios 统一。7 AC 全覆盖；31 后端测试；全量 1252 pass/2 pre-existing；ruff/docs/前端 typecheck+lint 0 | [PR #455](https://github.com/MarkDanile/MetaEduBase/pull/455)（`b084bba3`）/ [work-log](work-log.md) |
 | 2026-07-22 | BUG-017 身份注册与 JWT 信任边界硬化 | 🟢 完成 | P0 安全：register 降级（extra='forbid'+强制 teacher）+管理员入口（super_admin only）+JWT 生产 fail-fast+安全日志 redact；6 AC 覆盖。新增 24 测试+6 文件迁移 0 回归；全量 1222 pass/1 TD-080 pre-existing/ruff 0 | [PR #454](https://github.com/MarkDanile/MetaEduBase/pull/454)（`400d05a7`）/ [work-log](work-log.md) |
 | 2026-07-22 | REQ-046 AC-8 真实企业端到端执行体落地 | 🟢 完成 | 按授权样本企业（上汽集团）跑通真实端到端；修 internal_query 真实链路：主体→关系键映射（bill→客户ID/lease→合同ID/ticket→房间ID）+三层主体识别+confirmed_filters 通道+planner 重试+数值字符串聚合+filter 归一化+seed 补 metric。AC-8 PASSED、476 pass/ruff 0 | [PR #452](https://github.com/MarkDanile/MetaEduBase/pull/452) / [work-log](work-log.md) |
