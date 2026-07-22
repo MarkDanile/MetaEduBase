@@ -14,24 +14,7 @@
 
 ## 当前进行中
 
-### REQ-046 AC-8: 真实企业端到端执行体落地
-
-状态：🟡 进行中（真实验收已通过，PR 未合并）
-类型：主线收口（真实端到端）
-领域：due_diligence / skill_registry / structured_data
-分支：feat/req046-ac8-internal-query-real-chain
-
-需求来源：
-- Requirement: docs/01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md
-- Plan: docs/02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md
-
-当前进展：真实通道已联调（13 园区数据集灌库 + internal MCP 注册 + 9 DD 语义模型 seed + qcc/qcc_risk 注册探活），按授权样本企业（上汽集团）跑通 AC-8 真实端到端。修复真实链路暴露的 internal_query 契约缺口：主体→关系键映射（bill→客户ID / lease_term→合同ID / ticket→房间ID）+ 三层主体识别（信用代码→注册名→fuzzy 唯一）+ confirmed_filters 通道 + planner 校验失败重试 + 数值字符串聚合 + filter 简写归一化 + seed 补 metric_definitions。
-
-下一步：走 PR 合并闭环；合并后卡片归档至最近完成，回填 work-log。
-
-验证状态：AC-8 真实端到端 PASSED（report ext=5 int=7，evidence 8 行含 data_query+mcp_invocation）；后端范围测试 476 pass / ruff 0 / check-engineering-docs 通过。
-
-交接备注：凭证仅 env 注入（QCC_MCP_TOKEN / INTERNAL_MCP_TOKEN），不入库不入日志；cooperation_notes 为 synthetic 待审核。
+当前无进行中任务。下一批候选见下表。
 
 ## 下一批候选任务
 
@@ -39,7 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| （待定） | 下一批主线任务待规划 | ⚪ 待澄清 | AC-8 合并后从 Backlog 点名 | [Backlog](../01-product-planning/04-backlog.md) |
+| （待定） | 下一批主线任务待规划 | ⚪ 待澄清 | 从 Backlog 点名 | [Backlog](../01-product-planning/04-backlog.md) |
 
 ## 最近完成
 
@@ -49,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-22 | REQ-046 AC-8 真实企业端到端执行体落地 | 🟢 完成 | 按授权样本企业（上汽集团）跑通真实端到端；修 internal_query 真实链路：主体→关系键映射（bill→客户ID/lease→合同ID/ticket→房间ID）+三层主体识别+confirmed_filters 通道+planner 重试+数值字符串聚合+filter 归一化+seed 补 metric。AC-8 PASSED、476 pass/ruff 0 | [PR #452](https://github.com/MarkDanile/MetaEduBase/pull/452) / [work-log](work-log.md) |
 | 2026-07-22 | REQ-046 / APP-005 企业 360 背调工作台 V0 | 🟢 完成 | 首个产业园区 P0 合规风控闭环，7 小 PR（#444~#450）：任务容器+Subject Resolver+SkillRunner v2 三类 step+Internal Customer MCP+背调 SKILL+Orchestrator/Report/Evidence+第三方导入+APP-005 前端；AC-1~7 覆盖、AC-8 骨架就位。后端 1176 pass/ruff 0 | [REQ-046](../01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md) / [work-log](work-log.md) |
 | 2026-07-21 | TD-079 排除 alembic/versions/ 出 ruff（93 pre-existing 收口） | 🟢 完成 | pyproject [tool.ruff] 加 extend-exclude=["alembic/versions"]；93 错误全在迁移文件（UP007/E501/I001/UP035/W292/F401），app/+tests/ 本就 0。ruff check . -> 0 + 显式 alembic 可查 + 全量 1064 pass/3 skip；零 .py 改动 | [Tech Debt](technical-debt.md#td-079-排除-alembicversions-出-ruff-范围93-个-pre-existing-ruff-错误收口) / [PR #442](https://github.com/MarkDanile/MetaEduBase/pull/442) |
 | 2026-07-21 | TD-078 清理未使用的 ai extras（TD-077 follow-up） | 🟢 完成 | 删 pyproject 的 ai extras（6 包声明未用 + 3.14 无 wheel）+ uv lock 重生成（232->93，纯删 139/0 版本变更/0 新增）；uv sync --extra dev 成功 + --extra ai 报错 + uv tree linux/3.12 exit 0；零 .py 改动，全量 1064 pass/3 skip 基线一致 | [Tech Debt](technical-debt.md#td-078-清理未使用的-ai-extrastd-077-follow-up) / [PR #440](https://github.com/MarkDanile/MetaEduBase/pull/440) |
