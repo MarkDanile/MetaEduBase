@@ -257,7 +257,10 @@ class MCPClient:
                 f"unsupported transport {server.transport!r}",
             )
         async with httpx.AsyncClient(
-            transport=self._transport, timeout=None
+            # BUG-019 AC-3: 禁止跨 host 重定向（防 redirect 逃逸到攻击者服务）。
+            follow_redirects=False,
+            transport=self._transport,
+            timeout=None,
         ) as client:
             init_result, session_id = await self._rpc_with_headers(
                 client,

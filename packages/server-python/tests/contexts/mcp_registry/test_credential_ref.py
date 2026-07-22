@@ -16,7 +16,18 @@ from app.contexts.mcp_registry.domain.mcp_server import (
     CredentialUnavailableError,
 )
 
-VALID_NAMES = ["QCC_MCP_TOKEN", "A", "ABC_123", "X_Y_Z_1"]
+VALID_NAMES = [
+    "QCC_MCP_TOKEN",
+    "INTERNAL_MCP_TOKEN",
+    "MCP_TEST_TOKEN",
+    "TEST_MCP_CRED_OK",
+    "TEST_MCP_CRED_BEARER",
+    "TEST_MCP_CRED_REPR",
+    "CANARY_MCP_TOKEN",
+    "EMPTY_MCP_CRED",
+    "MISSING_MCP_CRED",
+    "PROBE_MCP_MISSING_TOKEN",
+]
 INVALID_NAMES = [
     "qcc_token",      # 小写开头
     "Qcc_Token",      # 含小写
@@ -25,6 +36,13 @@ INVALID_NAMES = [
     "1ABC",           # 数字开头
     "",               # 空串
     "QCC.TOKEN",      # 点号
+    # BUG-019 AC-1: 非 MCP secret 命名空间拒绝
+    "JWT_SECRET",     # 黑名单命中
+    "DATABASE_URL",   # 黑名单命中
+    "DEEPSEEK_API_KEY",  # 黑名单命中
+    "PROBE_TOKEN",    # 不在 MCP 命名空间
+    "MY_SECRET",      # 通配 *SECRET*
+    "DB_PASSWORD",    # 黑名单命中
 ]
 
 
@@ -35,7 +53,7 @@ def test_valid_env_key_names_pass(name: str):
 
 @pytest.mark.parametrize("name", INVALID_NAMES)
 def test_invalid_env_key_names_raise(name: str):
-    with pytest.raises(ValueError, match="credential_ref"):
+    with pytest.raises(ValueError, match="credential_ref|命名空间|黑名单"):
         CredentialRef(name)
 
 

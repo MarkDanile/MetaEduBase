@@ -20,7 +20,45 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 _ENV_KEY_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
+# BUG-019 AC-1: 非 MCP secret 命名空间（JWT / DB / LLM provider keys 等）显式拒绝，
+# 即便其格式匹配 _ENV_KEY_PATTERN。命名空间宽松：含 ``MCP_`` 或 ``_MCP_`` 即可
+# （兼容既有 QCC_MCP_TOKEN / INTERNAL_MCP_TOKEN 等约定）。
+_MCP_NAMESPACE_PATTERN = re.compile(r"(^|_)(MCP)_", re.IGNORECASE)
 _BEARER_PREFIX = "Bearer "
+
+# BUG-019 AC-1: 显式黑名单 —— 这些前缀/字串的 env 绝不能作为 MCP credential，
+# 防止高权账号读到 LLM / 数据库 / JWT 密钥并发往外部 MCP。
+DENIED_KEY_FRAGMENTS = (
+    "JWT_SECRET",
+    "JWT_KEY",
+    "DATABASE_URL",
+    "DB_URL",
+    "DB_PASSWORD",
+    "DEEPSEEK_API_KEY",
+    "DEEPSEEK_KEY",
+    "SILICONFLOW_API_KEY",
+    "SILICONFLOW_KEY",
+    "MINIMAX_API_KEY",
+    "MINIMAX_KEY",
+    "OPENAI_API_KEY",
+    "OPENAI_KEY",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_KEY",
+    "LLM_API_KEY",
+    "QCC_CLIENT_SECRET",  # QCC 真正的 secret vs QCC_MCP_TOKEN（绑定 token）
+    "PRIVATE_KEY",
+    "ROOT_PASSWORD",
+    "ADMIN_PASSWORD",
+    "POSTGRES_PASSWORD",
+)
+
+
+def _is_denied_env_key(env_key: str) -> bool:
+    upper = env_key.upper()
+    if any(fragment in upper for fragment in DENIED_KEY_FRAGMENTS):
+        return True
+    # 通配：*SECRET* / *PASSWORD* / *PRIVATE_KEY*（避免漏网）
+    return "SECRET" in upper or "PASSWORD" in upper or "PRIVATE_KEY" in upper
 
 
 class CredentialUnavailableError(Exception):
@@ -81,6 +119,17 @@ class CredentialRef:
             raise ValueError(
                 "credential_ref must be an env key name matching "
                 "^[A-Z][A-Z0-9_]*$ (e.g. QCC_MCP_TOKEN)"
+            )
+        # BUG-019 AC-1: 强制 MCP namespace + 拒绝高敏感命名（JWT/DB/LLM key 等）。
+        if not _MCP_NAMESPACE_PATTERN.search(self.env_key):
+            raise ValueError(
+                f"credential_ref {self.env_key!r} 不在 MCP 命名空间内"
+                "（env key 名必须包含 MCP_ 或 _MCP_，如 QCC_MCP_TOKEN）"
+            )
+        if _is_denied_env_key(self.env_key):
+            raise ValueError(
+                f"credential_ref {self.env_key!r} 命中黑名单"
+                "（JWT/DB/LLM/private/password 等非 MCP secret 不可用）"
             )
 
     def resolve(self) -> AuthCredential:
