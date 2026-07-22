@@ -173,6 +173,8 @@
 | TD-077 | 无依赖锁文件，dev/deploy 不可复现安装（采用 uv sync --frozen + 提交 uv.lock） | 🟢 完成 | P2 | 后端 / 基础设施 / 依赖管理 / 可复现性 | [PR #438](https://github.com/MarkDanile/MetaEduBase/pull/438)（`17c33aa1`）：uv.lock 提交进 git + dev.sh 4 个 pip install 调用点 -> `uv sync --frozen --extra dev`（+ ensure_uv 兜底）+ Dockerfile.backend -> `uv sync --frozen --no-dev`；ai extras 默认不装（声明但 `app/` 零 import + Python 3.14 上 marker-pdf->pillow 无预编译 wheel）。全量 1064 pass/3 skip + ruff 0。 |
 | TD-078 | 清理未使用的 ai extras（TD-077 follow-up） | 🟢 完成 | P3 | 后端 / 依赖管理 / 可复现性 | TD-077 显式 defer 的 follow-up：`[project.optional-dependencies].ai`（llama-index / langgraph / langchain / sentence-transformers / paddleocr / marker-pdf）声明但 `app/` + `tests/` 零 import、且 Python 3.14 上 marker-pdf -> pillow 无预编译 wheel 装不上。从 `pyproject.toml` 删除 ai 块 + `uv lock` 重生成（232 -> 93 包：纯删除 139 个、0 版本变更、0 新增；base/dev 8 个关键包 fastapi/uvicorn/celery/pytest/ruff/httpx/sqlalchemy/alembic 版本不变）。dev.sh / Dockerfile / CI 无引用 ai extras（TD-077 已清）。[PR #440](https://github.com/MarkDanile/MetaEduBase/pull/440)（`a9bba350`）：全量 1064 pass/3 skip + 零 .py 改动 + check-engineering-docs 0 新增。 |
 | TD-079 | 排除 alembic/versions/ 出 ruff 范围（93 个 pre-existing ruff 错误收口） | 🟢 完成 | P3 | 后端 / 治理 / lint / 可复现性 | TD-078 closeout 发现 main 上 `ruff check .` 报 93 个 pre-existing 错误（TD-076/077 的 "ruff 0" 实际只覆盖 app/+tests/）。93 错误全在 `alembic/versions/` 迁移文件（UP007 33 / E501 26 / I001 12 / UP035 11 / W292 7 / F401 4），`app/` + `tests/` 本就 0。迁移是冻结历史产物，纯风格修复 17 文件无功能收益且污染 git-blame -> 改 `pyproject.toml` `[tool.ruff]` 加 `extend-exclude = ["alembic/versions"]`（显式 `ruff check alembic/versions/` 仍可查，仅默认扫描排除）。`ruff check .` -> 0。[PR #442](https://github.com/MarkDanile/MetaEduBase/pull/442)（`32ffb08b`）：`ruff check .` 0 + app/+tests/ 0 + alembic 显式可查 93 + 全量 1064 pass/3 skip + 零 .py 改动 + docs 0 新增。 |
+| TD-080 | 后端全量测试存在顺序污染与 coroutine 未 await warning | 🔵 就绪 | P1 | 后端 / 测试基础设施 / 稳定性 | 2026-07-22 沙箱外本机 PG 全量：1198 passed / 1 failed / 4 skipped / 29 warnings；唯一失败 `test_embedding_empty_logs_warning` 单独复跑通过，说明全局日志/模块状态被前序用例污染；另有多条 `run_in_session` coroutine 未 await / unraisable warning。需定位状态泄漏、保证全量稳定 0 fail，并清除 coroutine 资源警告。 |
+| TD-081 | CI、Git hooks 与 mypy 可执行基线缺失 | 🔵 就绪 | P1 | 工程基础设施 / CI / Hooks / Typing | 仓库无 `.github/workflows`；`core.hooksPath` 指向 `.git/hooks` 导致已提交 `.githooks` 未生效，pre-commit 还以 `ruff ... || true` 吞失败；`mypy app` 因重复模块路径无法启动。建立最小 CI、可复现 hook 安装/强制失败和 mypy 启动基线。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -186,6 +188,53 @@
 | DOC-067 | 分布式临时编号与正式任务编号归并规则 | 🟢 完成 | P2 | 文档 / 工程脚本 / 任务池 / 跨设备协作 | PR #248 merged `9bf177b`：保留正式短编号，`DRAFT-*` 只作临时来源，主表门禁已实现。 |
 
 ## 任务详情
+
+### TD-081: CI、Git hooks 与 mypy 可执行基线缺失
+
+状态：🔵 就绪
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 工程基础设施 / CI / Hooks / Typing |
+| 事实源 | [2026-07-22 安全与质量复核](04-retrospectives/2026-07-22-security-and-quality-follow-up-review.md) |
+
+**完成标准**
+
+- 新增最小 CI，至少执行后端 Ruff/pytest、前端 typecheck/lint/Vitest/build、工程文档门禁。
+- PostgreSQL 测试服务和依赖安装使用锁文件，可在全新 runner 复现。
+- 提供可重复的 hooks 安装入口，确认 `core.hooksPath=.githooks`；pre-commit 不再吞 Ruff 失败。
+- `mypy app` 能进入真实检查阶段；若暴露历史类型错误，形成有边界、可递减且禁止新增错误的基线，不使用全局 `ignore_errors` 掩盖。
+- PR 分支执行门禁失败时能阻止合并；不得通过修改阈值/忽略列表绕过。
+
+**验证方式**
+
+- 本地 fresh checkout 模拟安装 hooks 并构造 Ruff/TS 失败，确认 commit 被阻止。
+- `mypy app` 不再报 duplicate module startup error。
+- GitHub Actions 在 PR 上完成全矩阵并可查看失败详情。
+
+### TD-080: 后端全量测试存在顺序污染与 coroutine 未 await warning
+
+状态：🔵 就绪
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 后端 / 测试基础设施 / 稳定性 |
+| 事实源 | [2026-07-22 安全与质量复核](04-retrospectives/2026-07-22-security-and-quality-follow-up-review.md) |
+
+**完成标准**
+
+- 定位导致 `test_embedding_empty_logs_warning` 仅在全量顺序下失败的全局 logger/module/mock 状态泄漏并增加隔离回归。
+- 清除测试输出中的 `coroutine 'run_in_session' was never awaited` 和对应 unraisable exception warning。
+- 全量 pytest 在同一环境连续运行两次均 0 fail；聚焦用例和全量用例结果一致。
+- 不通过放宽断言、过滤 RuntimeWarning 或全局 suppress warnings 伪装通过。
+
+**验证方式**
+
+- `.venv/bin/pytest -q` 连续两次退出码 0。
+- 对污染源相关测试做前后顺序组合复跑。
+- 使用 `-W error::RuntimeWarning` 覆盖 coroutine warning 相关范围。
 
 ### DOC-067: 分布式临时编号与正式任务编号归并规则
 
