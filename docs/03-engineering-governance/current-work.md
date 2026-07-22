@@ -22,7 +22,9 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| （待定） | 下一批主线任务待规划 | ⚪ 待澄清 | 从 Backlog 点名 | [Backlog](../01-product-planning/04-backlog.md) |
+| P0-1 | BUG-017 身份注册与 JWT 信任边界 | 🔵 就绪 | 先补 spec/plan，关闭高权自注册并建立生产 JWT fail-fast | [BUG-017](../01-product-planning/05-requirements/BUG-017-identity-registration-and-jwt-trust-boundary.md) |
+| P0-2 | BUG-018 AI App 鉴权、租户与 Token 暴露 | 🔵 就绪 | 在 BUG-017 后实施管理/public API 分离、tenant 强制和 Token DTO 收口 | [BUG-018](../01-product-planning/05-requirements/BUG-018-ai-app-auth-tenant-and-token-exposure.md) |
+| P0-3 | BUG-019 MCP 凭证边界与 SSRF | 🔵 就绪 | 在 BUG-017 后补 secret binding、目标校验和出口限制；完成前不扩 MCP | [BUG-019](../01-product-planning/05-requirements/BUG-019-mcp-credential-boundary-and-ssrf.md) |
 
 ## 最近完成
 
