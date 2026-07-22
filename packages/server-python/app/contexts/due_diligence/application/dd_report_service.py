@@ -112,9 +112,19 @@ class DdReportService:
         return await self._repo.list_by_task(tenant_id, task_id)
 
     async def confirm(
-        self, *, tenant_id: uuid.UUID, report_id: uuid.UUID, by: uuid.UUID
+        self, *, tenant_id: uuid.UUID, report_id: uuid.UUID,
+        by: uuid.UUID, by_role: str = "admin",
+        generator_id: uuid.UUID | None = None,
     ) -> DdReport:
         report = await self.get_report(tenant_id=tenant_id, report_id=report_id)
+        # REQ-058 AC-3 maker-checker：confirm 需 admin/data_admin 且 ≠ generated_by
+        if generator_id is not None:
+            from app.contexts.due_diligence.application.dd_permissions import (
+                assert_can_confirm_report,
+            )
+            assert_can_confirm_report(
+                generator_id=generator_id, confirmer_id=by, confirmer_role=by_role,
+            )
         return await self._repo.save(report.confirm(by=by, at=_utcnow()))
 
     async def archive(self, *, tenant_id: uuid.UUID, report_id: uuid.UUID) -> DdReport:

@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.due_diligence.application.dd_orchestrator import DdOrchestrator
+from app.contexts.due_diligence.application.dd_permissions import DdPermissionError
 from app.contexts.due_diligence.application.dd_report_service import (
     DdReportNotFoundError,
     DdReportService,
@@ -146,7 +147,20 @@ class EvidenceDTO(BaseModel):
     summary: str | None
 
 
-def _to_report_dto(report) -> ReportDTO:
+def _to_report_dto(report, *, role: str | None = None) -> ReportDTO:
+    """序列化为 ReportDTO；super_admin 平台运维只返 status（不返报告原文/证据，AC-5）。"""
+    if role == "super_admin":
+        return ReportDTO(
+            id=report.id,
+            task_id=report.task_id,
+            version=report.version,
+            status=report.status,
+            report_json={},
+            report_markdown="",
+            skill_execution_audit_id=report.skill_execution_audit_id,
+            confirmed_by=report.confirmed_by,
+            confirmed_at=report.confirmed_at.isoformat() if report.confirmed_at else None,
+        )
     return ReportDTO(
         id=report.id,
         task_id=report.task_id,
@@ -185,6 +199,15 @@ async def create_task(
     session: AsyncSession = Depends(get_session),  # noqa: B008
     user: dict = Depends(get_current_user),  # noqa: B008
 ) -> TaskDTO:
+    from app.contexts.due_diligence.application.dd_permissions import (
+        DdAction,
+        can_perform,
+    )
+    if not can_perform(DdAction.CREATE, role=str(user.get("role", ""))):
+        raise HTTPException(
+            status_code=403,
+            detail=f"角色 {user.get('role')!r} 无权创建 DD 任务（需 leader/admin/data_admin）",
+        )
     task = await _service(session).create_task(
         tenant_id=user["tenant_id"],
         title=payload.title,
@@ -291,7 +314,7 @@ async def run_task(
         await session.commit()  # persist the failure audit row
         raise HTTPException(status_code=502, detail=str(e)) from e
     await session.commit()
-    return _to_report_dto(report)
+    return _to_report_dto(report, role=str(user.get("role", "")))
 
 
 @router.get("/reports/{report_id}")
@@ -306,7 +329,7 @@ async def get_report(
         )
     except DdReportNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
-    return _to_report_dto(report)
+    return _to_report_dto(report, role=str(user.get("role", "")))
 
 
 @router.post("/reports/{report_id}/confirm")
@@ -316,15 +339,32 @@ async def confirm_report(
     user: dict = Depends(get_current_user),  # noqa: B008
 ) -> ReportDTO:
     try:
-        report = await _report_service(session).confirm(
-            tenant_id=user["tenant_id"], report_id=report_id, by=user["id"]
+        # REQ-058 AC-3: 先查 task 取 generator_id 做 maker-checker
+        report_svc = _report_service(session)
+        task_svc = _service(session)
+        # 先取 report 找 task_id（tenant-scoped get 已 404 跨租户）
+        report = await report_svc.get_report(
+            tenant_id=user["tenant_id"], report_id=report_id,
+        )
+        task = await task_svc.get_task(
+            tenant_id=user["tenant_id"], task_id=report.task_id,
+        )
+        report = await report_svc.confirm(
+            tenant_id=user["tenant_id"], report_id=report_id,
+            by=user["id"], by_role=str(user.get("role", "")),
+            generator_id=task.created_by,
         )
     except DdReportNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+    except DdTaskNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except DdTaskStateError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+    except DdPermissionError as e:
+        # REQ-058 AC-1/AC-3：权限 / maker-checker 失败
+        raise HTTPException(status_code=403, detail=str(e)) from e
     await session.commit()
-    return _to_report_dto(report)
+    return _to_report_dto(report, role=str(user.get("role", "")))
 
 
 @router.post("/reports/{report_id}/archive")
@@ -333,6 +373,15 @@ async def archive_report(
     session: AsyncSession = Depends(get_session),  # noqa: B008
     user: dict = Depends(get_current_user),  # noqa: B008
 ) -> ReportDTO:
+    from app.contexts.due_diligence.application.dd_permissions import (
+        DdAction,
+        can_perform,
+    )
+    if not can_perform(DdAction.ARCHIVE, role=str(user.get("role", ""))):
+        raise HTTPException(
+            status_code=403,
+            detail=f"角色 {user.get('role')!r} 无权归档（需 admin/data_admin）",
+        )
     try:
         report = await _report_service(session).archive(
             tenant_id=user["tenant_id"], report_id=report_id
@@ -342,7 +391,7 @@ async def archive_report(
     except DdTaskStateError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     await session.commit()
-    return _to_report_dto(report)
+    return _to_report_dto(report, role=str(user.get("role", "")))
 
 
 @router.get("/reports/{report_id}/evidence")
