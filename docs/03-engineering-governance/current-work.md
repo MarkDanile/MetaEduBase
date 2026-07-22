@@ -22,7 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-058 企业背调生产级 RBAC、制审分离与多租户配置 | 🟣 Shaping | BUG-017/019 已关闭，依赖满足；实施前先完成 shaping 冻结角色矩阵与迁移方案，再进入 spec/plan | [REQ-058](../01-product-planning/05-requirements/REQ-058-due-diligence-production-rbac-and-multitenancy.md) |
+| P0 | REQ-058 企业背调生产级 RBAC、制审分离与多租户配置 | 🔵 Ready | 2026-07-22 shaping 完成（角色矩阵/配置模型/迁移策略已冻结）；可按 plan 5 Slice 实施 | [REQ-058](../01-product-planning/05-requirements/REQ-058-due-diligence-production-rbac-and-multitenancy.md) / [Plan](../02-delivery-plans/02-plans/2026-07-22-req058-dd-production-rbac-multitenancy-plan.md) |
 | P1 | TD-080 后端全量测试顺序污染与 coroutine 未 await warning | 🔵 就绪 | 定位全量顺序污染根因（test_embedding_empty_logs_warning 单独 PASS、全量 fail）+ 清除 run_in_session coroutine 资源警告，保证全量稳定 0 fail | [Tech Debt](technical-debt.md#td-080-后端全量测试存在顺序污染与-coroutine-未-await-warning) |
 | P1 | TD-081 CI、Git hooks 与 mypy 可执行基线缺失 | 🔵 就绪 | 建立最小 CI（.github/workflows）+ 可复现 hook 安装/强制失败（pre-commit 不再 `ruff ... || true` 吞失败）+ mypy 启动基线 | [Tech Debt](technical-debt.md#td-081-ci-git-hooks-与-mypy-可执行基线缺失) |
 
