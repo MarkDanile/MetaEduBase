@@ -260,3 +260,122 @@ async def test_plan_default_limit_when_missing(sample_semantic_model):
         )
 
     assert plan["limit"] == 100
+
+
+# ---------------------------------------------------------------------------
+# confirmed_filters: 任意识别列强制过滤（REQ-046 AC-8 中文数据集）
+# ---------------------------------------------------------------------------
+
+
+async def test_plan_injects_confirmed_filters_for_relation_key(sample_semantic_model):
+    """confirmed_filters 用真实中文列名强制过滤，覆盖 LLM 幻觉的同列值。
+
+    REQ-046 AC-8：bill/lease_term/ticket 中文数据集没有 ``company_name``
+    列，正确的主体过滤键是关系键（``客户ID`` / ``合同ID`` / ``房间ID``）。
+    dd_query_runner 解析出这些键后经 ``confirmed_filters`` 下传；planner
+    必须把它们当作 ground truth 注入 query_plan，且覆盖 LLM 在同列上的
+    猜测值（主体识别列不容 LLM 篡改）。
+    """
+    llm_response = json.dumps(
+        {
+            "entity": "bill",
+            "metrics": ["unpaid_amount"],
+            "filters": {
+                # LLM 幻觉了一个客户ID — 必须被 confirmed_filters 覆盖
+                "客户ID": {"op": "eq", "value": " hallucinated-id "},
+            },
+            "limit": 100,
+        }
+    )
+    with patch(
+        "app.contexts.structured_data.application.query_planner.chat",
+        new_callable=AsyncMock,
+    ) as mock_chat:
+        mock_chat.return_value = llm_response
+        planner = QueryPlanner()
+        plan = await planner.plan(
+            question="这企业欠费多少",
+            semantic_model=sample_semantic_model,
+            confirmed_filters={"客户ID": {"op": "eq", "value": "CUST-001"}},
+        )
+
+    assert plan["filters"]["客户ID"] == {"op": "eq", "value": "CUST-001"}
+
+
+async def test_plan_injects_confirmed_filters_in_operator_form(sample_semantic_model):
+    """confirmed_filters 支持 in 等多值算子（lease_term 按多合同过滤）。"""
+    llm_response = json.dumps(
+        {"entity": "lease_term", "metrics": [], "filters": {}, "limit": 100}
+    )
+    with patch(
+        "app.contexts.structured_data.application.query_planner.chat",
+        new_callable=AsyncMock,
+    ) as mock_chat:
+        mock_chat.return_value = llm_response
+        planner = QueryPlanner()
+        plan = await planner.plan(
+            question="租约到期",
+            semantic_model=sample_semantic_model,
+            confirmed_filters={"合同ID": {"op": "in", "value": ["HT-1", "HT-2"]}},
+        )
+
+    assert plan["filters"]["合同ID"] == {"op": "in", "value": ["HT-1", "HT-2"]}
+
+
+async def test_plan_no_confirmed_filters_leaves_llm_filters(sample_semantic_model):
+    """不传 confirmed_filters → 不注入任何识别列过滤（保持现状）。"""
+    llm_response = json.dumps(
+        {"entity": "bill", "metrics": [], "filters": {}, "limit": 100}
+    )
+    with patch(
+        "app.contexts.structured_data.application.query_planner.chat",
+        new_callable=AsyncMock,
+    ) as mock_chat:
+        mock_chat.return_value = llm_response
+        planner = QueryPlanner()
+        plan = await planner.plan(
+            question="这企业欠费多少",
+            semantic_model=sample_semantic_model,
+        )
+
+    assert plan["filters"] == {}
+
+
+async def test_plan_system_prompt_states_literal_entity_value(sample_semantic_model):
+    """System prompt 必须给出 entity 的字面值,而非只让它"从 entity_type 选"。
+
+    真实 LLM(MiniMax 推理模型)对抽象指令"entity 必须从 entity_type 选"
+    依从性不稳定,会漏掉 entity 导致 validator 拒绝。把字面值直接写进
+    prompt("entity 必须等于 \"bill\"")可显著提高依从性。
+    """
+    sample_semantic_model.entity_type = "bill"
+    planner = QueryPlanner()
+    prompt = planner._build_system_prompt(sample_semantic_model)
+    assert 'entity 必须等于 "bill"' in prompt
+
+
+async def test_plan_user_prompt_declares_resolved_subject_filter(sample_semantic_model):
+    """confirmed_filters 存在时,user prompt 必须声明主体已解析。
+
+    否则 LLM 不知道主体过滤已由编排层强制注入,会在 reasoning 里反复
+    纠结"如何按公司名过滤",甚至编造 company_name 过滤或漏掉 entity。
+    声明后 LLM 只需围绕 metric / time_range 出计划。
+    """
+    llm_response = json.dumps(
+        {"entity": "bill", "metrics": ["unpaid_amount"], "filters": {}, "limit": 100}
+    )
+    with patch(
+        "app.contexts.structured_data.application.query_planner.chat",
+        new_callable=AsyncMock,
+    ) as mock_chat:
+        mock_chat.return_value = llm_response
+        planner = QueryPlanner()
+        await planner.plan(
+            question="这企业欠费多少",
+            semantic_model=sample_semantic_model,
+            confirmed_filters={"客户ID": {"op": "eq", "value": "CUST-001"}},
+        )
+
+    user_prompt = mock_chat.await_args.kwargs["messages"][1]["content"]
+    assert "客户ID" in user_prompt
+    assert "CUST-001" in user_prompt

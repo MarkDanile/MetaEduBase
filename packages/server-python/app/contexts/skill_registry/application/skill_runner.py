@@ -97,6 +97,22 @@ def _iter_subject_values(subject: Any) -> list[str]:
     return values
 
 
+def _mcp_step_params(server: str, subject: Any) -> dict:
+    """Map the skill ``subject`` to the tool params an MCP server expects.
+
+    Real QCC tools (any ``qcc*`` server — company / risk / history / executive)
+    all take a single ``searchKey`` (the company name); the internal customer
+    MCP takes ``company_name`` + ``credit_code`` (the same shape as
+    ``confirmed_subject``). Without this mapping a QCC step would send
+    ``{company_name, credit_code}`` and QCC would reject it (``searchKey``
+    undefined) — the gap AC-8 surfaced. Non-QCC servers get the subject as-is.
+    """
+    if server.startswith("qcc") and isinstance(subject, dict):
+        name = subject.get("company_name") or subject.get("searchKey") or ""
+        return {"searchKey": name}
+    return subject if isinstance(subject, dict) else {}
+
+
 class SkillExecutionError(Exception):
     """Typed execution failure — always paired with an audit row.
 
@@ -368,7 +384,7 @@ class SkillRunner:
                 tenant_id=tenant_id,
                 server_code=step.server,
                 tool_name=step.tool,
-                params=subject,
+                params=_mcp_step_params(step.server, subject),
                 caller=caller,
             )
             result, audit_id = trace.result, trace.audit_id

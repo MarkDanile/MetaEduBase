@@ -193,3 +193,53 @@ async def test_ask_validator_rejected_returns_audit_id(db_session):
     )
     assert row_id is not None
     assert result.get("audit_id") == row_id
+
+
+async def test_ask_threads_confirmed_filters_to_planner(db_session):
+    """ask 必须把 confirmed_filters 透传给 planner(REQ-046 AC-8 主体过滤)。
+
+    dd_query_runner 解析出主体关系键(客户ID/合同ID/房间ID)后经 ask 下传;
+    planner 据此强制注入过滤。若 ask 吞掉该参数,主体过滤就退回死代码。
+    """
+    await _seed_permissive(db_session)
+    sm = _make_semantic_model(dataset_id=uuid.uuid4())
+    qs = _stub_query_service(db_session)
+    confirmed = {"客户ID": {"op": "eq", "value": "CUST-001"}}
+    await qs.ask(
+        question="这企业欠费多少",
+        semantic_model=sm,
+        user_id=DEFAULT_ADMIN_ID,
+        tenant_id=DEFAULT_TENANT_ID,
+        role="leader",
+        confirmed_filters=confirmed,
+    )
+    plan_kwargs = qs._planner.plan.await_args.kwargs
+    assert plan_kwargs["confirmed_filters"] == confirmed
+
+
+async def test_ask_retries_planner_once_on_validation_failure(db_session):
+    """validator 拒绝首个 plan 时,ask 重试 planner 一次再失败才 fail-closed。
+
+    真实 LLM(MiniMax 推理模型)对 query_plan 的 JSON 依从性不稳定,偶尔漏
+    ``entity``。REQ-046 plan 风险点 4 明确"一次重试 + fail-closed":首个
+    plan 校验失败 -> 用错误反馈重试一次 -> 第二次仍失败才走 fail-closed。
+    """
+    await _seed_permissive(db_session)
+    sm = _make_semantic_model(dataset_id=uuid.uuid4())
+    qs = _stub_query_service(db_session)
+    # 第一次返回坏 plan(缺 entity),第二次返回好 plan。
+    qs._planner.plan = AsyncMock(
+        side_effect=[
+            {"metrics": ["total_amount"], "filters": {}},  # 缺 entity
+            {"entity": "bill", "metrics": ["total_amount"], "filters": {}},
+        ]
+    )
+    result = await qs.ask(
+        question="这企业欠费多少",
+        semantic_model=sm,
+        user_id=DEFAULT_ADMIN_ID,
+        tenant_id=DEFAULT_TENANT_ID,
+        role="leader",
+    )
+    assert qs._planner.plan.await_count == 2
+    assert result["ok"] is True

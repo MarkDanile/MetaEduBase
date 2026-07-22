@@ -149,6 +149,35 @@ async def test_explain_avg_metric_aggregation(sample_semantic_model):
     assert result.metric_values["avg_amount"]["label"] == "平均金额"
 
 
+async def test_sum_coerces_string_numeric_values(sample_semantic_model):
+    """JSONB 数值列若以字符串落库(xlsx 导入),sum/avg 必须按数值聚合。
+
+    REQ-046 AC-8 真实数据集:``未付金额(元)`` 等金额列在 ``dataset_rows.data``
+    里是字符串(如 ``"100.0"``),直接 ``sum`` 会 TypeError。explainer 必须把
+    可解析为数字的字符串按数值聚合,非数字值忽略(不崩溃、不污染结果)。
+    """
+    with patch(
+        "app.contexts.structured_data.application.result_explainer.chat",
+        new_callable=AsyncMock,
+    ) as mock_chat:
+        mock_chat.return_value = "summary"
+        explainer = ResultExplainer()
+        result = await explainer.explain(
+            result_rows=[
+                {"amount": "100.0"},
+                {"amount": "50.5"},
+                {"amount": "N/A"},  # 非数字 -> 忽略
+                {"amount": None},   # 缺失 -> 忽略
+                {"amount": 25},     # 已是数字
+            ],
+            semantic_model=sample_semantic_model,
+            query_plan={"entity": "bill", "metrics": ["unpaid_amount"]},
+            question="这企业欠费多少",
+        )
+
+    assert result.metric_values["unpaid_amount"]["value"] == 175.5
+
+
 async def test_detect_caveats_company_name_filter(sample_semantic_model):
     """When the query_plan has a ``company_name`` filter, the caveat about
     exact-match-may-miss-synonyms is appended.

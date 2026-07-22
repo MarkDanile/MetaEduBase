@@ -117,10 +117,18 @@ class JsonbQueryBuilder:
 
         Operators not in :data:`OPERATOR_MAP` are silently dropped — see
         "JSONB operator safety" in the module docstring.
+
+        Filter shorthand normalization (REQ-046 AC-8): the LLM occasionally
+        emits a filter condition in a shorthand instead of the canonical
+        ``{"op": ..., "value": ...}`` object. Each shorthand is normalized
+        before the operator lookup so a malformed-but-recoverable plan never
+        crashes the pipeline:
+
+        - bare scalar ``{"状态": "未关闭"}`` -> ``eq``;
+        - Mongo-style ``{"费用": {"$gt": 0}}`` -> the ``$``-stripped operator.
         """
         for col, cond in filters.items():
-            op = (cond or {}).get("op", "eq")
-            value = (cond or {}).get("value")
+            op, value = self._normalize_condition(cond)
             op_fn = self.OPERATOR_MAP.get(op)
             if op_fn is None:
                 logger.warning(
@@ -131,6 +139,20 @@ class JsonbQueryBuilder:
                 continue
             stmt = stmt.where(op_fn(DatasetRowModel.data[col].astext, value))
         return stmt
+
+    @staticmethod
+    def _normalize_condition(cond) -> tuple[str, Any]:
+        """Return ``(op, value)`` from a canonical or shorthand filter condition."""
+        if isinstance(cond, dict):
+            if "op" in cond or "value" in cond:
+                return cond.get("op", "eq"), cond.get("value")
+            # Mongo-style single-key {"$gt": 0} / {"gt": 0}.
+            if len(cond) == 1:
+                (raw_op, value), = cond.items()
+                return str(raw_op).lstrip("$"), value
+            return "eq", None
+        # Bare scalar shorthand -> equality.
+        return "eq", cond
 
     def _apply_time_range(self, stmt, time_range):
         """Apply ``time_range`` as ``>= start`` / ``<= end`` over ``.astext``.

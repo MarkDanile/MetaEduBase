@@ -30,6 +30,7 @@ metadata:
 
 mcp_dependencies:
   - {server: qcc, required: true}
+  - {server: qcc_risk, required: true}
   - {server: internal_customer, required: true}
 
 principles:
@@ -65,7 +66,7 @@ steps:
 
   - id: external_risk_scan
     type: mcp
-    server: qcc
+    server: qcc_risk
     tool: get_company_risk_scan
     title: 外部风险扫描
     analysis_rules:

@@ -7,8 +7,19 @@ to its ``query_audit_log`` row for the evidence chain. This drives the REAL
 persisted semantic model + dataset rows, and a real imported_dataset query —
 only the two LLM leaves (query planner + report synthesis) are stubbed.
 
-Covers the three canonical DD angles (欠费 / 租约到期 / 工单满意度) and the
-AC-4 contract that each internal_query step carries a ``query_audit_id``.
+AC-8 (real Chinese datasets): bill/lease_term/ticket have no ``company_name``
+column, so the query_runner resolves the confirmed subject to a relation key
+through the park join graph and force-injects it as a validated filter:
+
+    customer(客户名称 -> 客户ID)
+      bill              -> eq  客户ID
+      lease_term        -> in  合同ID   (客户ID -> 合同ID via contract)
+      ticket            -> in  房间ID   (合同ID -> 房间ID via contract_property)
+
+This fixture therefore persists the full graph (customer + contract +
+contract_property + one target dataset) with Chinese column names, and asserts
+each step returns ok + a real query_audit_id while scoping to the single
+confirmed enterprise (never a park-wide scan).
 """
 from __future__ import annotations
 
@@ -43,6 +54,12 @@ from app.shared.infrastructure.seed import DEFAULT_ADMIN_ID, DEFAULT_TENANT_ID
 
 pytestmark = pytest.mark.asyncio
 
+# Confirmed subject (ACME) + a second enterprise (BetaCorp) to prove scoping.
+_ACME = "ACME"
+_ACME_ID = "CUST-001"
+_ACME_CONTRACTS = ["HT-1", "HT-2"]
+_ACME_ROOMS = ["RM-1", "RM-2"]
+
 
 @pytest.fixture(autouse=True)
 async def _clean(db_session):
@@ -53,46 +70,32 @@ async def _clean(db_session):
         "DELETE FROM metaedu.query_audit_log WHERE tenant_id = :tid",
         "DELETE FROM metaedu.role_permissions WHERE tenant_id = :tid AND role = 'admin'",
         "DELETE FROM metaedu.dataset_rows WHERE tenant_id = :tid",
-        "DELETE FROM metaedu.datasets WHERE tenant_id = :tid AND name = 'dd-e2e-bill'",
+        "DELETE FROM metaedu.datasets WHERE tenant_id = :tid AND name LIKE 'dd-e2e-%'",
     ):
         await db_session.execute(text(stmt), {"tid": DEFAULT_TENANT_ID})
     await db_session.flush()
     yield
 
 
-@pytest.fixture
-async def sample_dataset(db_session):
-    """Persist a bill dataset + 2 rows in the education catalog (mirrors the
-    structured_data conftest fixture, which is not visible from this context)."""
+async def _insert_dataset(db_session, catalog_id, name, columns, rows):
+    """Persist a processed dataset + JSONB rows; return its id."""
     dataset_id = uuid.uuid4()
     now = datetime.now(UTC).replace(tzinfo=None)
-    catalog_id = await db_session.scalar(
-        text(
-            "SELECT id FROM metaedu.data_catalogs "
-            "WHERE tenant_id = :tid AND code = 'education'"
-        ),
-        {"tid": DEFAULT_TENANT_ID},
-    )
-    cnames = json.dumps(["company_name", "amount", "billing_date"])
-    ctypes = json.dumps(["str", "float", "date"])
+    cnames = json.dumps(columns, ensure_ascii=False)
+    ctypes = json.dumps(["str"] * len(columns))
     await db_session.execute(
         text(
             f"INSERT INTO metaedu.datasets "
             f"(id, tenant_id, catalog_id, name, column_names, column_types, "
             f"row_count, status, kg_status, sort_order, created_by, created_at, updated_at) "
-            f"VALUES (:id, :tid, :cid, 'dd-e2e-bill', '{cnames}'::jsonb, "
-            f"'{ctypes}'::jsonb, 2, 'processed', 'done', 0, :uid, :now, :now)"
+            f"VALUES (:id, :tid, :cid, :name, '{cnames}'::jsonb, "
+            f"'{ctypes}'::jsonb, :rc, 'processed', 'done', 0, :uid, :now, :now)"
         ),
         {"id": dataset_id, "tid": DEFAULT_TENANT_ID, "cid": catalog_id,
-         "uid": DEFAULT_ADMIN_ID, "now": now},
+         "name": name, "rc": len(rows), "uid": DEFAULT_ADMIN_ID, "now": now},
     )
-    for i, payload in enumerate(
-        [
-            {"company_name": "ACME", "amount": 100.0, "billing_date": "2026-01-01"},
-            {"company_name": "BetaCorp", "amount": 50.5, "billing_date": "2026-02-01"},
-        ]
-    ):
-        lit = json.dumps(payload)
+    for i, payload in enumerate(rows):
+        lit = json.dumps(payload, ensure_ascii=False)
         await db_session.execute(
             text(
                 f"INSERT INTO metaedu.dataset_rows "
@@ -103,7 +106,7 @@ async def sample_dataset(db_session):
              "idx": i, "now": now},
         )
     await db_session.flush()
-    yield {"id": dataset_id, "tenant_id": DEFAULT_TENANT_ID}
+    return dataset_id
 
 
 async def _persist_model(db_session, dataset_id, *, entity_type, catalog_id, columns):
@@ -187,11 +190,10 @@ def _sop(questions):
     )
 
 
-async def test_internal_query_three_dd_questions_end_to_end(
-    db_session, sample_dataset, monkeypatch
-):
-    """AC-4: 3 internal_query steps hit the real imported_dataset pipeline and
-    each binds a real query_audit_log id; the report carries data_query evidence."""
+async def test_internal_query_three_dd_questions_end_to_end(db_session, monkeypatch):
+    """AC-4 + AC-8: 3 internal_query steps resolve the subject through the join
+    graph, hit the real imported_dataset pipeline scoped to ACME, and each binds
+    a real query_audit_log id; the report carries data_query evidence."""
     catalog_id = await db_session.scalar(
         text(
             "SELECT id FROM metaedu.data_catalogs "
@@ -201,21 +203,66 @@ async def test_internal_query_three_dd_questions_end_to_end(
     )
     monkeypatch.setattr(settings, "dd_internal_query_catalog_id", str(catalog_id))
 
-    # Three DD angles; all point at the same sample bill dataset for the query
-    # (each entity_type gets its own active semantic model over that dataset).
-    # Each model carries a unique marker column so the stubbed planner can tell
-    # which entity_type it is planning for from the system prompt content.
-    entity_types = ["bill", "lease_term", "ticket"]
-    marker = {"bill": "bill_marker", "lease_term": "lease_marker", "ticket": "ticket_marker"}
-    for et in entity_types:
+    # Join-graph datasets (Chinese columns, mirroring the real park bundle).
+    customer_cols = ["客户ID", "客户名称", "统一社会信用代码"]
+    contract_cols = ["合同ID", "客户ID", "合同状态"]
+    cp_cols = ["记录ID", "合同ID", "房间ID"]
+    bill_cols = ["账单ID", "客户ID", "未付金额(元)", "到期日"]
+    lease_cols = ["条款ID", "合同ID", "条款失效日期"]
+    ticket_cols = ["工单ID", "房间ID", "优先级", "状态"]
+
+    customer_ds = await _insert_dataset(db_session, catalog_id, "dd-e2e-customer",
+        customer_cols,
+        [
+            {"客户ID": _ACME_ID, "客户名称": _ACME, "统一社会信用代码": "91ACME"},
+            {"客户ID": "CUST-002", "客户名称": "BetaCorp", "统一社会信用代码": "91BETA"},
+        ])
+    contract_ds = await _insert_dataset(db_session, catalog_id, "dd-e2e-contract",
+        contract_cols,
+        [
+            {"合同ID": "HT-1", "客户ID": _ACME_ID, "合同状态": "在租"},
+            {"合同ID": "HT-2", "客户ID": _ACME_ID, "合同状态": "在租"},
+            {"合同ID": "HT-9", "客户ID": "CUST-002", "合同状态": "在租"},
+        ])
+    cp_ds = await _insert_dataset(db_session, catalog_id, "dd-e2e-contract-property",
+        cp_cols,
+        [
+            {"记录ID": "R1", "合同ID": "HT-1", "房间ID": "RM-1"},
+            {"记录ID": "R2", "合同ID": "HT-2", "房间ID": "RM-2"},
+            {"记录ID": "R9", "合同ID": "HT-9", "房间ID": "RM-9"},
+        ])
+    bill_ds = await _insert_dataset(db_session, catalog_id, "dd-e2e-bill",
+        bill_cols,
+        [
+            {"账单ID": "B1", "客户ID": _ACME_ID, "未付金额(元)": "100.0", "到期日": "2026-01-01"},
+            {"账单ID": "B2", "客户ID": "CUST-002", "未付金额(元)": "999.0", "到期日": "2026-01-01"},
+        ])
+    lease_ds = await _insert_dataset(db_session, catalog_id, "dd-e2e-lease",
+        lease_cols,
+        [
+            {"条款ID": "T1", "合同ID": "HT-1", "条款失效日期": "2026-12-31"},
+            {"条款ID": "T9", "合同ID": "HT-9", "条款失效日期": "2026-12-31"},
+        ])
+    ticket_ds = await _insert_dataset(db_session, catalog_id, "dd-e2e-ticket",
+        ticket_cols,
+        [
+            {"工单ID": "W1", "房间ID": "RM-1", "优先级": "高", "状态": "未关闭"},
+            {"工单ID": "W9", "房间ID": "RM-9", "优先级": "高", "状态": "未关闭"},
+        ])
+
+    datasets = {
+        "customer": (customer_ds, customer_cols),
+        "contract": (contract_ds, contract_cols),
+        "contract_property": (cp_ds, cp_cols),
+        "bill": (bill_ds, bill_cols),
+        "lease_term": (lease_ds, lease_cols),
+        "ticket": (ticket_ds, ticket_cols),
+    }
+    for et, (ds_id, cols) in datasets.items():
         await _persist_model(
-            db_session,
-            sample_dataset["id"],
-            entity_type=et,
-            catalog_id=catalog_id,
-            columns=["company_name", "amount", "billing_date", marker[et]],
+            db_session, ds_id, entity_type=et, catalog_id=catalog_id, columns=cols
         )
-    await _seed_rbac_visible(db_session, entity_types)
+    await _seed_rbac_visible(db_session, list(datasets))
     await db_session.commit()
 
     questions = [
@@ -231,9 +278,12 @@ async def test_internal_query_three_dd_questions_end_to_end(
     caller = InvocationCaller(caller_type="service", role="admin", user_id=DEFAULT_ADMIN_ID)
 
     def _plan_for(messages, **_kw):
+        # Stubbed planner returns a minimal valid plan (entity only); the real
+        # subject filter is force-injected by the runner downstream, so the LLM
+        # need not produce it here.
         system = messages[0]["content"] if messages else ""
-        for et, mk in marker.items():
-            if mk in system:
+        for et in ("bill", "lease_term", "ticket"):
+            if f"entity_type: {et}" in system:
                 return json.dumps({"entity": et, "metrics": [], "filters": {}, "limit": 100})
         return json.dumps({"entity": "bill", "metrics": [], "filters": {}, "limit": 100})
 
@@ -250,7 +300,7 @@ async def test_internal_query_three_dd_questions_end_to_end(
             tenant_id=DEFAULT_TENANT_ID,
             skill_code="park_investment_dd",
             version="1.0.0",
-            subject={"company_name": "ACME"},
+            subject={"company_name": _ACME, "credit_code": None},
             caller=caller,
         )
 
@@ -265,3 +315,20 @@ async def test_internal_query_three_dd_questions_end_to_end(
             {"id": q_audit},
         )
         assert exists, f"{qid} query_audit_id not persisted"
+
+    # AC-8 scoping: each step's persisted query_plan carries the resolved
+    # subject relation-key filter (never a park-wide scan).
+    plans = {}
+    for qid, et, _ in questions:
+        plan_json = await db_session.scalar(
+            text("SELECT query_plan FROM metaedu.query_audit_log WHERE id = :id"),
+            {"id": by_id[qid].query_audit_id},
+        )
+        plans[et] = plan_json if isinstance(plan_json, dict) else json.loads(plan_json)
+    assert plans["bill"]["filters"]["客户ID"] == {"op": "eq", "value": _ACME_ID}
+    assert plans["lease_term"]["filters"]["合同ID"] == {
+        "op": "in", "value": _ACME_CONTRACTS,
+    }
+    assert plans["ticket"]["filters"]["房间ID"] == {
+        "op": "in", "value": _ACME_ROOMS,
+    }

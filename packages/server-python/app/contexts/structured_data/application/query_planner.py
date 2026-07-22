@@ -65,6 +65,8 @@ class QueryPlanner:
         question: str,
         semantic_model: Any,
         confirmed_company_name: str | None = None,
+        confirmed_filters: dict | None = None,
+        retry_feedback: str | None = None,
     ) -> dict:
         """Ask the LLM for a ``query_plan`` JSON and post-process it.
 
@@ -74,13 +76,33 @@ class QueryPlanner:
         2. Call :func:`chat` with the messages list.
         3. Strip markdown fences / leading prose; ``json.loads`` the first
            ``{...}`` match.
-        4. Force-inject the company_name filter from
-           ``confirmed_company_name`` (REQ-052 §5.7 — entity confirmation
-           is the ground truth, the LLM must not override it).
+        4. Force-inject subject filters (see below).
         5. Default ``limit`` to 100 when missing.
+
+        Subject-filter injection — two forms, both treated as ground truth
+        that OVERWRITES whatever the LLM returned for the same column (the
+        LLM is a guesser; the caller-resolved subject is authoritative):
+
+        - ``confirmed_company_name`` (REQ-052 §5.7): injects
+          ``filters["company_name"]``. Retained for the customer-facing
+          datasets that carry a ``company_name`` column.
+        - ``confirmed_filters`` (REQ-046 AC-8): an arbitrary
+          ``{column: {op, value}}`` mapping for datasets whose subject key
+          is a relation column rather than a name. The Chinese park datasets
+          (bill/lease_term/ticket) have no ``company_name`` column; their
+          subject is scoped via ``客户ID`` / ``合同ID`` / ``房间ID`` resolved
+          by the dd orchestration layer. Keys must be real dataset columns
+          (the validator enforces ``filters ⊆ column_mapping``).
         """
         system_prompt = self._build_system_prompt(semantic_model)
-        user_prompt = self._build_user_prompt(question, confirmed_company_name)
+        user_prompt = self._build_user_prompt(
+            question, confirmed_company_name, confirmed_filters
+        )
+        if retry_feedback:
+            user_prompt += (
+                f"\n\n上一次输出未通过校验：{retry_feedback}。"
+                "请严格按输出格式重发完整 query_plan JSON，不要遗漏任何必填字段。"
+            )
 
         raw = await chat(
             messages=[
@@ -91,16 +113,17 @@ class QueryPlanner:
         )
         plan = self._parse_llm_output(raw)
 
-        # Force-inject the confirmed company_name — REQ-052 §5.7 contract.
-        # This OVERWRITES whatever the LLM returned for company_name. The
-        # LLM is a guesser; confirmed_company_name is ground truth from
-        # the REQ-046 entity confirmation flow.
+        # Force-inject confirmed subject filters — REQ-052 §5.7 / REQ-046 AC-8.
         if confirmed_company_name:
             filters = plan.setdefault("filters", {})
             filters["company_name"] = {
                 "op": "eq",
                 "value": confirmed_company_name,
             }
+        if confirmed_filters:
+            filters = plan.setdefault("filters", {})
+            for column, condition in confirmed_filters.items():
+                filters[column] = condition
 
         plan.setdefault("limit", self.DEFAULT_LIMIT)
         return plan
@@ -133,8 +156,8 @@ class QueryPlanner:
             f"- column_mapping: {column_mapping}\n"
             f"- metric_definitions: {metric_definitions}\n\n"
             "规则:\n"
-            "1. 只输出 query_plan JSON，不要解释\n"
-            "2. entity 必须从 entity_type 选\n"
+            "1. 只输出 query_plan JSON，不要解释、不要输出思考过程\n"
+            f'2. entity 必须等于 "{semantic_model.entity_type}"（照抄此字面值，必填）\n'
             "3. metrics 必须从 metric_definitions 选（如不需要聚合填空数组）\n"
             "4. filters 用 column_mapping 的 key\n"
             "5. time_range 字段必须是 date 类型\n"
@@ -144,12 +167,30 @@ class QueryPlanner:
         )
 
     def _build_user_prompt(
-        self, question: str, confirmed_company_name: str | None
+        self,
+        question: str,
+        confirmed_company_name: str | None,
+        confirmed_filters: dict | None = None,
     ) -> str:
-        """User prompt — the question itself, optionally with company hint."""
+        """User prompt — the question itself, optionally with subject hints.
+
+        When the orchestration layer has already resolved the subject to a
+        relation-key filter (``confirmed_filters``), we say so explicitly.
+        Otherwise the LLM burns its reasoning budget trying to filter by a
+        company-name column the dataset doesn't have, and may hallucinate a
+        ``company_name`` filter or drop ``entity`` entirely.
+        """
         prompt = f"问题: {question}"
         if confirmed_company_name:
             prompt += f"\n企业全称（已确认）: {confirmed_company_name}"
+        if confirmed_filters:
+            cols = ", ".join(
+                f"{col}={cond.get('value')}" for col, cond in confirmed_filters.items()
+            )
+            prompt += (
+                f"\n主体范围已由系统解析并强制过滤（{cols}），"
+                "你无需再按企业名称/主体添加过滤，只围绕 metrics 与 time_range 生成 query_plan。"
+            )
         return prompt
 
     def _parse_llm_output(self, raw: str) -> dict:
