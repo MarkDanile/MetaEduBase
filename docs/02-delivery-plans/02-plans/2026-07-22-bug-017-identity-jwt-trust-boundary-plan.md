@@ -1,6 +1,6 @@
 # BUG-017 Implementation Plan: 身份注册与 JWT 信任边界
 
-> **For agentic workers:** 按 Slice 顺序实施，每 Slice 独立 commit + 可验证。Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** 按 Slice 顺序实施，每 Slice 独立 commit + 可验证。Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 关闭身份入口与 JWT 根信任漏洞--公开注册不再接受客户端提供的 `role` / `tenant_id`；建立受控管理员建用户与角色授予入口；JWT 密钥取消可运行默认值，生产启动缺失/default/低强度时 fail-fast；安全日志记录身份事件结果（不记密码/Token）。
 
@@ -58,33 +58,33 @@
 ## Slices
 
 ### Slice 1: JWT 信任边界 fail-fast（AC-3, AC-4）
-- [ ] `config.py` 新增 `environment: str = "development"`
-- [ ] `auth_service.py` 新增 `validate_production_jwt_secret(settings)`：environment=="production" 时，secret 为空 / == 默认值 / len<32 -> raise RuntimeError
-- [ ] `main.py` 启动事件调用校验
-- [ ] `test_jwt_fail_fast.py`：production 三种坏 secret 启动失败；development 默认值可启动；默认密钥签的 Token decode -> None -> 401
-- [ ] `.env.example` 补 `APP_ENV` / `JWT_SECRET` 注释
+- [x] `config.py` 新增 `environment: str = "development"`
+- [x] `auth_service.py` 新增 `validate_production_jwt_secret(settings)`：environment=="production" 时，secret 为空 / == 默认值 / len<32 -> raise RuntimeError
+- [x] `main.py` 启动事件调用校验
+- [x] `test_jwt_fail_fast.py`：production 三种坏 secret 启动失败；development 默认值可启动；默认密钥签的 Token decode -> None -> 401
+- [x] `.env.example` 补 `APP_ENV` / `JWT_SECRET` 注释
 
 ### Slice 2: role 受控枚举 + 公开 register 降级（AC-1）
-- [ ] `domain/role.py` RoleEnum + HIGH_PRIVILEGE_ROLES + is_valid_role
-- [ ] `router.py` RegisterRequest 移除 role/tenant_id；register 强制 teacher + 默认 tenant；写安全日志
-- [ ] `test_role_policy.py` + `test_register_hardening.py`：匿名 register 返回 role=teacher；传 role/tenant_id 被忽略或拒；不能创建高权
-- [ ] 迁移 `test_auth.py` 中非 teacher register 用法
+- [x] `domain/role.py` RoleEnum + HIGH_PRIVILEGE_ROLES + is_valid_role
+- [x] `router.py` RegisterRequest 移除 role/tenant_id；register 强制 teacher + 默认 tenant；写安全日志
+- [x] `test_role_policy.py` + `test_register_hardening.py`：匿名 register 返回 role=teacher；传 role/tenant_id 被忽略或拒；不能创建高权
+- [x] 迁移 `test_auth.py` 中非 teacher register 用法
 
 ### Slice 3: 管理员建用户 + 角色授予入口（AC-2）
-- [ ] `admin_router.py` `POST /api/v1/admin/users`（super_admin）+ `PATCH /api/v1/admin/users/{id}`
-- [ ] `user_repository.py` 新增 `find_by_id` / `update_role_and_status`
-- [ ] `test_admin_user_management.py`：正向建用户 + 角色变更；普通用户/teacher 调 -> 403；role ∉ 枚举 -> 422；跨租户隔离
-- [ ] `_helpers.py` create_user_as_admin；迁移其余 8 测试文件的高权 register 用法
+- [x] `admin_router.py` `POST /api/v1/admin/users`（super_admin）+ `PATCH /api/v1/admin/users/{id}`
+- [x] `user_repository.py` 新增 `find_by_id` / `update_role_and_status`
+- [x] `test_admin_user_management.py`：正向建用户 + 角色变更；普通用户/teacher 调 -> 403；role ∉ 枚举 -> 422；跨租户隔离
+- [x] `_helpers.py` create_user_as_admin；迁移其余 8 测试文件的高权 register 用法
 
 ### Slice 4: 安全日志（AC-6）
-- [ ] `security_logger.py` 结构化日志（event_type/actor/target/result/ip），不记 password/token
-- [ ] register / admin 建用户 / 角色变更调用安全日志
-- [ ] `test_security_logger.py`：字段齐全、password/token 不出现
+- [x] `security_logger.py` 结构化日志（event_type/actor/target/result/ip），不记 password/token
+- [x] register / admin 建用户 / 角色变更调用安全日志
+- [x] `test_security_logger.py`：字段齐全、password/token 不出现
 
 ### Slice 5: 回归与收口（AC-5）
-- [ ] login / /auth/me / 禁用用户 Token 拒绝回归测试
-- [ ] 全量后端 pytest / ruff / check-engineering-docs / git diff --check
-- [ ] 工作台归档 + work-log
+- [x] login / /auth/me / 禁用用户 Token 拒绝回归测试
+- [x] 全量后端 pytest / ruff / check-engineering-docs / git diff --check
+- [x] 工作台归档 + work-log
 
 ## 验证矩阵
 
@@ -118,3 +118,14 @@
 - **测试迁移风险**：9 文件改用 admin 入口。缓解：helper 统一、逐文件迁移+跑绿。
 - **JWT fail-fast 误伤开发**：仅 production 触发，development 保留默认值。缓解：environment 默认 development。
 - **回滚**：每 Slice 独立 commit，可 revert 单 Slice。
+
+## 验证摘要（Slice 5 收口）
+
+- Slice 1-4 独立 commit：`9c122330`（Slice 1 JWT fail-fast）/ `2fa5abf9`（Slice 2-4 register 降级 + 管理员入口 + 安全日志）/ `96695f1f`（Slice 5 security_logger 全量顺序污染自洽）。
+- 全量后端 pytest：`1222 passed, 4 skipped, 1 failed`——唯一失败 `test_embedding_empty_logs_warning` 为 TD-080 pre-existing（main 同样失败，本任务未引入）。`test_p1_demo_step4_kg_extract` 偶发 flaky（main 全量 PASS，BUG-017 不涉及 KG 抽取逻辑，test_p1_demo 历史 flaky），非本任务回归。
+- ruff check app/ tests/：All checks passed。
+- scripts/check-engineering-docs：passed（31 known issue allowlisted）。
+- git diff --check：exit 0。
+- 新增测试：`test_jwt_fail_fast.py`(7) + `test_role_policy.py`(3) + `test_register_hardening.py`(4) + `test_admin_user_management.py`(7) + `test_security_logger.py`(3) = 24 用例全绿。
+- 迁移测试：6 文件改用 `tests/contexts/identity/_helpers.py::register_and_login`（admin 入口建用户），0 回归。
+
