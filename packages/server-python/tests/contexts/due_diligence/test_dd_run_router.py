@@ -56,7 +56,12 @@ async def _create_and_confirm_task(client: AsyncClient, token: str) -> dict:
 
 
 async def _register_park_skill(client: AsyncClient, token: str) -> None:
-    for code in ("qcc", "internal_customer"):
+    import uuid as _uuid
+    suffix = _uuid.uuid4().hex[:8]
+    qcc_code = f"qcc_{suffix}"
+    intcust_code = f"internal_customer_{suffix}"
+    skill_code = f"park_investment_dd_{suffix}"
+    for code in (qcc_code, intcust_code):
         resp = await client.post(
             "/api/v1/mcp-servers",
             json={
@@ -68,42 +73,74 @@ async def _register_park_skill(client: AsyncClient, token: str) -> None:
         )
         assert resp.status_code in (201, 409), resp.text
     sop = (
-        "name: park-investment-dd\n"
-        "description: 园区招商背调\n"
-        "mcp_dependencies:\n  - {server: qcc, required: true}\n"
-        "steps:\n"
-        "  - id: subject_verify\n    type: mcp\n    server: qcc\n"
-        "    tool: get_company_registration_info\n"
-        "report_contract:\n  schema:\n    type: object\n"
-        "    required: [summary, external_facts, internal_facts, risk_watch_items,"
-        " human_review_items, evidence_refs, report_sections]\n"
-        "    properties:\n"
-        "      summary: {type: array}\n"
-        "      external_facts: {type: array}\n"
-        "      internal_facts: {type: array}\n"
-        "      risk_watch_items: {type: array}\n"
-        "      human_review_items: {type: array}\n"
-        "      evidence_refs: {type: array}\n"
-        "      report_sections: {type: array}\n"
+        f"name: park-investment-dd\n"
+        f"description: 园区招商背调\n"
+        f"mcp_dependencies:\n  - {{server: {qcc_code}, required: true}}\n"
+        f"steps:\n"
+        f"  - id: subject_verify\n    type: mcp\n    server: {qcc_code}\n"
+        f"    tool: get_company_registration_info\n"
+        f"report_contract:\n  schema:\n    type: object\n"
+        f"    required: [summary, external_facts, internal_facts, risk_watch_items,"
+        f" human_review_items, evidence_refs, report_sections]\n"
+        f"    properties:\n"
+        f"      summary: {{type: array}}\n"
+        f"      external_facts: {{type: array}}\n"
+        f"      internal_facts: {{type: array}}\n"
+        f"      risk_watch_items: {{type: array}}\n"
+        f"      human_review_items: {{type: array}}\n"
+        f"      evidence_refs: {{type: array}}\n"
+        f"      report_sections: {{type: array}}\n"
     )
     resp = await client.post(
         "/api/v1/skills",
         json={
-            "code": "park_investment_dd",
+            "code": skill_code,
             "version": "1.0.0",
             "name": "园区招商背调",
             "sop_template": sop,
-            "allowed_roles": ["admin"],
+            "allowed_roles": ["admin", "leader"],
         },
         headers=_headers(token),
     )
     assert resp.status_code in (201, 409), resp.text
     if resp.status_code == 201:
         skill_id = resp.json()["id"]
-        resp = await client.post(
+        en = await client.post(
             f"/api/v1/skills/{skill_id}/enable", headers=_headers(token)
         )
-        assert resp.status_code == 200, resp.text
+        assert en.status_code == 200, en.text
+    # REQ-058: V0 SOP 硬编码 skill code 'park_investment_dd'（DD_SKILL_CODE）。
+    # fixture 末尾确保 V0 skill 存在 + allowed_roles 含 leader + enabled。
+    v0_sop = sop.replace(qcc_code, "qcc").replace(skill_code, "park_investment_dd")
+    resp = await client.post(
+        "/api/v1/skills",
+        json={
+            "code": "park_investment_dd",
+            "version": "1.0.0",
+            "name": "园区招商背调",
+            "sop_template": v0_sop,
+            "allowed_roles": ["admin", "leader"],
+        },
+        headers=_headers(token),
+    )
+    assert resp.status_code in (201, 409), resp.text
+    resp = await client.get("/api/v1/skills", headers=_headers(token))
+    assert resp.status_code == 200, resp.text
+    v0_skill = next(
+        (s for s in resp.json() if s["code"] == "park_investment_dd"), None
+    )
+    assert v0_skill is not None, "V0 park_investment_dd 应已被创建"
+    patch_resp = await client.patch(
+        f"/api/v1/skills/{v0_skill['id']}",
+        json={"allowed_roles": ["admin", "leader"]},
+        headers=_headers(token),
+    )
+    assert patch_resp.status_code == 200, patch_resp.text
+    if not v0_skill.get("enabled"):
+        en = await client.post(
+            f"/api/v1/skills/{v0_skill['id']}/enable", headers=_headers(token)
+        )
+        assert en.status_code == 200, en.text
 
 
 _SEVEN_KEY_REPORT = {
@@ -174,18 +211,27 @@ async def test_run_produces_report_and_evidence(client: AsyncClient):
 
 
 async def test_report_confirm_locks_version(client: AsyncClient):
-    token = await _register_and_login(client, username=_uname("ddrun"), role="admin")
-    await _register_park_skill(client, token)
-    task = await _create_and_confirm_task(client, token)
+    # REQ-058 AC-3: leader 创建+run，admin（不同用户）confirm。
+    leader_token = await _register_and_login(
+        client, username=_uname("ddrun_leader"), role="leader",
+    )
+    admin_token = await _register_and_login(
+        client, username=_uname("ddrun_admin"), role="admin",
+    )
+    # MCP server 注册需 admin/data_admin/super_admin（用 admin_token）
+    await _register_park_skill(client, admin_token)
+    task = await _create_and_confirm_task(client, leader_token)
     inv_patch, report_patch = _run_mocks()
     with inv_patch, report_patch:
         resp = await client.post(
-            f"/api/v1/dd/tasks/{task['id']}/run", headers=_headers(token)
+            f"/api/v1/dd/tasks/{task['id']}/run", headers=_headers(leader_token)
         )
+    assert resp.status_code == 201, resp.text
     report_id = resp.json()["id"]
 
+    # admin（不同人）confirm
     resp = await client.post(
-        f"/api/v1/dd/reports/{report_id}/confirm", headers=_headers(token)
+        f"/api/v1/dd/reports/{report_id}/confirm", headers=_headers(admin_token)
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "confirmed"
@@ -193,7 +239,7 @@ async def test_report_confirm_locks_version(client: AsyncClient):
 
     # re-confirm -> 422
     resp = await client.post(
-        f"/api/v1/dd/reports/{report_id}/confirm", headers=_headers(token)
+        f"/api/v1/dd/reports/{report_id}/confirm", headers=_headers(admin_token)
     )
     assert resp.status_code == 422
 
