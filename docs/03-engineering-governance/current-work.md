@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无进行中任务。下一批候选见下表。
+### REQ-046 AC-8: 真实企业端到端执行体落地
+
+状态：🟡 进行中（真实验收已通过，PR 未合并）
+类型：主线收口（真实端到端）
+领域：due_diligence / skill_registry / structured_data
+分支：feat/req046-ac8-internal-query-real-chain
+
+需求来源：
+- Requirement: docs/01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md
+- Plan: docs/02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md
+
+当前进展：真实通道已联调（13 园区数据集灌库 + internal MCP 注册 + 9 DD 语义模型 seed + qcc/qcc_risk 注册探活），按授权样本企业（上汽集团）跑通 AC-8 真实端到端。修复真实链路暴露的 internal_query 契约缺口：主体→关系键映射（bill→客户ID / lease_term→合同ID / ticket→房间ID）+ 三层主体识别（信用代码→注册名→fuzzy 唯一）+ confirmed_filters 通道 + planner 校验失败重试 + 数值字符串聚合 + filter 简写归一化 + seed 补 metric_definitions。
+
+下一步：走 PR 合并闭环；合并后卡片归档至最近完成，回填 work-log。
+
+验证状态：AC-8 真实端到端 PASSED（report ext=5 int=7，evidence 8 行含 data_query+mcp_invocation）；后端范围测试 476 pass / ruff 0 / check-engineering-docs 通过。
+
+交接备注：凭证仅 env 注入（QCC_MCP_TOKEN / INTERNAL_MCP_TOKEN），不入库不入日志；cooperation_notes 为 synthetic 待审核。
 
 ## 下一批候选任务
 
@@ -22,7 +39,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0（主线收口） | REQ-046 AC-8 真实企业端到端执行体落地 | 🔵 Ready | AC-8 骨架 opt-in 闸门已就位（合并于 #450）；需真实通道联调（`upload_park_datasets.py` 灌库 + `register_internal_mcp.py` 注册 internal MCP + `seed_dd_semantic_models.py` seed 语义模型 + QCC_MCP_TOKEN/INTERNAL_MCP_TOKEN/DD_INTERNAL_QUERY_CATALOG_ID env），随后补全 `test_real_enterprise_end_to_end` 真实执行体 | [REQ-046](../01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md) / [Plan](../02-delivery-plans/02-plans/2026-07-03-req-046-enterprise-360-due-diligence-workbench-plan.md) |
+| （待定） | 下一批主线任务待规划 | ⚪ 待澄清 | AC-8 合并后从 Backlog 点名 | [Backlog](../01-product-planning/04-backlog.md) |
 
 ## 最近完成
 
