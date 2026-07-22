@@ -1,10 +1,11 @@
 # REQ-058: 企业背调生产级 RBAC、制审分离与多租户配置
 
-> Status: 🟣 Shaping
+> Status: 🔵 Ready
 > Priority: P0
 > Milestone: P3 / Industrial Park Production
 > Area: 企业背调 / RBAC / Audit / Multi-tenant
 > Created: 2026-07-22
+> Shaped: 2026-07-22（角色矩阵 / 配置模型 / 迁移策略已冻结，见 Decisions）
 > Source: [2026-07-22 安全与质量复核](../../03-engineering-governance/04-retrospectives/2026-07-22-security-and-quality-follow-up-review.md)
 
 ## Problem
@@ -38,15 +39,88 @@ REQ-046 V0 已完成 tenant-scoped 任务、报告和证据链，但所有认证
 
 ## Open Questions
 
+> 2026-07-22 shaping 已冻结，决策见下；保留原问题供追溯。
+
 - 首期采用现有通用角色映射，还是新增招商/合规岗位角色？
 - maker-checker 是否所有报告强制，还是按风险等级配置？
 - 任务可见性默认采用本人/团队/全租户哪一级？
 
+## Decisions（2026-07-22 shaping 冻结）
+
+### D-1 角色映射：复用现有通用角色（不改 RoleEnum）
+
+| 业务岗位 | 系统角色 | DD 能力 |
+|----------|----------|---------|
+| 招商创建者 | `leader` | create / run（own+allotted）/ read（own+allotted）/ evidence |
+| 合规复核 | `admin` / `data_admin` | read（tenant all）/ confirm-reject（checker）/ archive / evidence |
+| 平台运维 | `super_admin` | read status only（无业务原文）/ configure tenant |
+| 其他（teacher/employee/student） | - | 仅被分配时 read+run allotted |
+
+依据：复用 BUG-017 已冻结的 `RoleEnum` + `HIGH_PRIVILEGE_ROLES`，不改角色枚举边界，迁移成本最低；语义通过 DD 动作矩阵表达而非新角色。
+
+### D-2 maker-checker：所有报告强制制审分离
+
+- 报告 `confirm` 必须由 `admin`/`data_admin` 角色且 `user_id != report.generated_by`。
+- 生成者（任何角色 run 产报告）一律不能确认自己的报告。
+- `reject` 同样需授权复核人，记录 actor + reason + 时间。
+- 风险等级配置留 follow-up（本任务不引入 risk_level 字段）。
+
+### D-3 任务可见性：本人 + 分配对象 + 高权
+
+- `DdTask` 加 `assignee_id` 字段（nullable；创建时可选分配）。
+- list 查询 WHERE `created_by = :uid OR assignee_id = :uid OR role IN HIGH_PRIVILEGE_ROLES`。
+- 平台运维（super_admin）仅看运行状态（无报告原文/证据）。
+
+### D-4 配置模型：新建 tenant_scoped_config 表 + 迁移脚本
+
+- 新建 `metaedu.tenant_scoped_config`（`tenant_id, config_key, config_value jsonb, updated_by, updated_at`，PK `(tenant_id, config_key)`）。
+- Internal MCP binding / DD Catalog binding / Skill binding 从 `settings` 全局单值迁到 DB，按 caller `tenant_id` 解析。
+- 迁移脚本把现有 `settings.internal_mcp_tenant_id` / `settings.dd_catalog_id` 等值写入 `DEFAULT_TENANT` 行作为兜底。
+- `settings` 保留作开发期默认 fallback（生产以 DB 为准），双源在 follow-up 收口。
+
+## Frozen Design
+
+### DD 动作权限矩阵
+
+| 动作 | leader | admin/data_admin | super_admin | 被分配其他角色 |
+|------|--------|------------------|-------------|----------------|
+| create | ✓ | ✓ | ✗ | ✗ |
+| read | own+allotted | tenant all | status only | allotted |
+| run | own+allotted | ✗ | ✗ | allotted |
+| confirm | ✗（maker） | ✓（checker, ≠generated_by） | ✗ | ✗ |
+| reject | ✗ | ✓（checker, ≠generated_by） | ✗ | ✗ |
+| archive | ✗ | ✓ | ✗ | ✗ |
+| evidence | own+allotted | ✓ | ✗ | allotted |
+| configure tenant | ✗ | ✗ | ✓ | ✗ |
+
+### 配置模型
+
+```
+metaedu.tenant_scoped_config
+  tenant_id      UUID NOT NULL REFERENCES metaedu.tenants(id)
+  config_key     VARCHAR(100) NOT NULL   -- 如 internal_mcp_binding / dd_catalog_binding
+  config_value   JSONB NOT NULL
+  updated_by     UUID
+  updated_at     TIMESTAMPTZ
+  PRIMARY KEY (tenant_id, config_key)
+```
+
+支持 key：`internal_mcp_binding`（{server_id}）/ `dd_catalog_binding`（{catalog_id}）/ `skill_bindings`（[skill_id...]）。后续可扩展。
+
+### 迁移策略
+
+1. migration 025 建 `tenant_scoped_config` 表。
+2. `seed_tenant_config.py` 把 `settings.internal_mcp_tenant_id` / `settings.dd_catalog_id` 写入 DEFAULT_TENANT 行。
+3. Internal MCP server / DD Catalog resolver 改读 `tenant_scoped_config`（按 caller tenant_id），settings 作开发 fallback。
+4. DdTask 加 `assignee_id` 列（migration 026）。
+5. 审计：配置变更 / confirm / reject / archive 进既有 `dd_evidence` + `mcp_invocation_audit` 链，不新建审计表。
+
 ## Dependencies
 
-- 必须先完成 `BUG-017`、`BUG-019`。
+- 必须先完成 `BUG-017`、`BUG-019`（已 🟢 Done）。
 - 以 REQ-046 / APP-005 为业务基线，不重写现有报告结构。
 
 ## Delivery Links
 
-- 实施前补 spec/plan，并冻结角色矩阵、配置模型和迁移策略。
+- 实施前补 spec/plan，并冻结角色矩阵、配置模型和迁移策略。✅ 2026-07-22 shaping 完成。
+- Plan: `docs/02-delivery-plans/02-plans/2026-07-22-req058-dd-production-rbac-multitenancy-plan.md`
