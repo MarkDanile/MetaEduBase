@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无进行中任务。下一批候选见下表。
+### BUG-017: 身份注册与 JWT 信任边界
+
+状态：🟡 进行中
+类型：bug fix（P0 安全）
+领域：identity / auth / config / deploy
+分支：fix/bug017-identity-jwt-trust-boundary
+
+需求来源：
+- Spec: [BUG-017](../01-product-planning/05-requirements/BUG-017-identity-registration-and-jwt-trust-boundary.md)
+- Plan: [2026-07-22-bug-017-plan](../02-delivery-plans/02-plans/2026-07-22-bug-017-identity-jwt-trust-boundary-plan.md)
+- 复核: [2026-07-22 安全与质量复核](04-retrospectives/2026-07-22-security-and-quality-follow-up-review.md)
+
+当前进展：plan 已落地（5 Slice）。正在实施 Slice 1（JWT fail-fast：config environment + 生产启动校验 + 默认密钥 Token 拒绝）。
+
+下一步：Slice 2（role 受控枚举 + 公开 register 降级）-> Slice 3（管理员建用户/角色授予入口）-> Slice 4（安全日志）-> Slice 5（回归+收口）。
+
+验证状态：待 Slice 完成后跑全量门禁。
+
+交接备注：BUG-017/018/019 关闭前不扩大 Agentic 工具调用和外部 MCP 暴露范围。
 
 ## 下一批候选任务
 
@@ -22,7 +40,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0-1 | BUG-017 身份注册与 JWT 信任边界 | 🔵 就绪 | 先补 spec/plan，关闭高权自注册并建立生产 JWT fail-fast | [BUG-017](../01-product-planning/05-requirements/BUG-017-identity-registration-and-jwt-trust-boundary.md) |
 | P0-2 | BUG-018 AI App 鉴权、租户与 Token 暴露 | 🔵 就绪 | 在 BUG-017 后实施管理/public API 分离、tenant 强制和 Token DTO 收口 | [BUG-018](../01-product-planning/05-requirements/BUG-018-ai-app-auth-tenant-and-token-exposure.md) |
 | P0-3 | BUG-019 MCP 凭证边界与 SSRF | 🔵 就绪 | 在 BUG-017 后补 secret binding、目标校验和出口限制；完成前不扩 MCP | [BUG-019](../01-product-planning/05-requirements/BUG-019-mcp-credential-boundary-and-ssrf.md) |
 

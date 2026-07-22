@@ -14,6 +14,9 @@ from app.contexts.document.interfaces.api.router import router as document_route
 from app.contexts.due_diligence.interfaces.api.dd_router import (
     router as due_diligence_router,
 )
+from app.contexts.identity.application.auth_service import (
+    validate_production_jwt_secret,
+)
 from app.contexts.identity.interfaces.api.router import router as identity_router
 from app.contexts.knowledge.interfaces.api.ai_router import router as ai_router
 from app.contexts.knowledge.interfaces.api.graph_retrieve_router import (
@@ -53,7 +56,10 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     keeps the wiring code out of the request hot path. ``app.state`` is
     the FastAPI-native place for app-scoped state — the router reads
     it via ``request.app.state.query_service``.
+    BUG-017 AC-3: production 启动前校验 JWT 密钥--缺失 / default / 低强度
+    直接 fail-fast，不让进程带可伪造的根信任进入服务态。
     """
+    validate_production_jwt_secret(settings)
     app.state.query_service = QueryService(
         session_factory=async_session_factory,
     )
