@@ -49,6 +49,30 @@ from typing import Any
 from app.shared.llm.chat import chat
 
 
+def _as_number(value: Any) -> float | int | None:
+    """Coerce a JSONB cell to a number for metric aggregation; else ``None``.
+
+    Imported XLSX datasets store amount / cost columns as strings (the cell
+    text is preserved verbatim), so a metric over ``未付金额(元)`` sees values
+    like ``"100.0"``. ``int`` / ``float`` pass through; numeric strings are
+    parsed; anything else (``None``, ``"N/A"``, free text) is dropped so a
+    single dirty cell never crashes or skews the aggregate.
+    """
+    if isinstance(value, bool):  # guard: bool is an int subclass
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            return None
+    return None
+
+
 @dataclass
 class ExplainerResult:
     """Output of :meth:`ResultExplainer.explain`.
@@ -128,16 +152,20 @@ class ResultExplainer:
             if metric_def is None:
                 continue
             col = metric_def.column
-            values = [
-                r.get(col) for r in result_rows if r.get(col) is not None
-            ]
             agg = metric_def.aggregation
-            if agg == "sum":
-                value: Any = sum(values)
-            elif agg == "count":
-                value = len(values)
-            elif agg == "avg":
-                value = sum(values) / len(values) if values else 0
+            if agg == "count":
+                # count = non-null row presence; no numeric coercion needed.
+                value = sum(1 for r in result_rows if r.get(col) is not None)
+            elif agg in ("sum", "avg"):
+                values = [
+                    v
+                    for r in result_rows
+                    if (v := _as_number(r.get(col))) is not None
+                ]
+                if agg == "sum":
+                    value: Any = sum(values)
+                else:
+                    value = sum(values) / len(values) if values else 0
             else:
                 # Unknown aggregation — mark as not computed.
                 value = None

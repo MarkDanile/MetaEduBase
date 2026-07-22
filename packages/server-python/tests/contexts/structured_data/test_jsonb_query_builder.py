@@ -349,3 +349,76 @@ async def test_tenant_id_enforced_as_where_predicate(db_session, sample_dataset)
     assert "tenant_id" in compiled_sql
     # The seeded DEFAULT_TENANT_ID must appear in the compiled SQL.
     assert str(DEFAULT_TENANT_ID) in compiled_sql
+
+
+# ---------------------------------------------------------------------------
+# Filter shorthand normalization (REQ-046 AC-8 — LLM 输出容错)
+# ---------------------------------------------------------------------------
+
+
+def _make_model(sample_dataset, columns):
+    from app.contexts.structured_data.domain.semantic_model import (
+        ColumnMapping,
+        ColumnRole,
+        ColumnType,
+        DataSourceType,
+        SemanticModel,
+    )
+    from app.shared.infrastructure.seed import DEFAULT_ADMIN_ID, DEFAULT_TENANT_ID
+
+    return SemanticModel(
+        id=uuid.uuid4(),
+        tenant_id=DEFAULT_TENANT_ID,
+        dataset_id=sample_dataset["id"],
+        entity_type="ticket",
+        entity_name="工单",
+        data_source_config={
+            "type": DataSourceType.IMPORTED_DATASET.value,
+            "dataset_id": str(sample_dataset["id"]),
+        },
+        column_mapping={
+            c: ColumnMapping(role=ColumnRole.DIMENSION, type=ColumnType.STR)
+            for c in columns
+        },
+        metric_definitions={},
+        created_by=DEFAULT_ADMIN_ID,
+    )
+
+
+async def test_filters_accept_bare_string_shorthand(db_session, sample_dataset):
+    """LLM 偶发输出 ``{"状态": "未关闭"}`` 裸值简写 -> 归一化为 eq,不崩溃。
+
+    真实链路(ticket 问数)观测到 LLM 把 filter 写成裸字符串而非
+    ``{"op","value"}`` 对象,builder 直接 ``.get("op")`` 会 AttributeError。
+    裸值按等值(eq)处理。
+    """
+    from app.shared.infrastructure.seed import DEFAULT_TENANT_ID
+
+    model = _make_model(sample_dataset, ["状态"])
+    builder = JsonbQueryBuilder(db_session)
+    stmt = builder.build(
+        query_plan={"filters": {"状态": "未关闭"}, "limit": 10},
+        semantic_model=model,
+        tenant_id=DEFAULT_TENANT_ID,
+    )
+    sql = str(stmt.compile(
+        dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+    ))
+    assert "未关闭" in sql
+
+
+async def test_filters_accept_mongo_style_operator_shorthand(db_session, sample_dataset):
+    """LLM 偶发输出 ``{"费用": {"$gt": 0}}`` Mongo 风格 -> 归一化为 gt。"""
+    from app.shared.infrastructure.seed import DEFAULT_TENANT_ID
+
+    model = _make_model(sample_dataset, ["费用"])
+    builder = JsonbQueryBuilder(db_session)
+    stmt = builder.build(
+        query_plan={"filters": {"费用": {"$gt": "0"}}, "limit": 10},
+        semantic_model=model,
+        tenant_id=DEFAULT_TENANT_ID,
+    )
+    sql = str(stmt.compile(
+        dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+    ))
+    assert "费用" in sql

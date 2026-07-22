@@ -170,3 +170,92 @@ async def test_skips_entity_type_without_processed_dataset(db_session):
         {"tid": DEFAULT_TENANT_ID},
     )
     assert count == 0
+
+
+async def _model_row(db_session, entity_type):
+    row = (
+        await db_session.execute(
+            text(
+                "SELECT column_mapping, metric_definitions FROM metaedu.semantic_models "
+                "WHERE tenant_id = :tid AND entity_type = :et AND status = 'active'"
+            ),
+            {"tid": DEFAULT_TENANT_ID, "et": entity_type},
+        )
+    ).first()
+    assert row is not None, f"no active semantic model for {entity_type}"
+    cm, md = row[0], row[1]
+    import json as _json
+    return (
+        cm if isinstance(cm, dict) else _json.loads(cm),
+        md if isinstance(md, dict) else _json.loads(md),
+    )
+
+
+async def test_bill_metric_definitions_and_column_types(db_session):
+    """AC-8:bill 语义模型补 metric_definitions + 金额/日期列类型。
+
+    缺 metric 时 planner prompt 的 ``metric_definitions: []`` 让 LLM 无从
+    锚定(漏 entity / 编造 metric)-> validator 拒绝。seed 必须为问数
+    三实体提供可聚合的 metric 定义,column 指向真实中文列。
+    """
+    cid = await _make_catalog(db_session)
+    await _make_dataset(
+        db_session, cid, entity_type="bill",
+        columns=["账单ID", "客户ID", "未付金额(元)", "应付金额(元)", "到期日", "账单状态"],
+    )
+    await db_session.commit()
+
+    await seed.seed(db_session, tenant_id=DEFAULT_TENANT_ID, created_by=DEFAULT_ADMIN_ID)
+    await db_session.commit()
+
+    cm, md = await _model_row(db_session, "bill")
+    # 金额列标 metric + float;日期列标 date;关系键标 entity_key。
+    assert cm["未付金额(元)"]["role"] == "metric"
+    assert cm["未付金额(元)"]["type"] == "float"
+    assert cm["到期日"]["type"] == "date"
+    assert cm["客户ID"]["role"] == "entity_key"
+    # metric_definitions 指向真实列、explainer 支持的聚合。
+    assert md["unpaid_amount"] == {
+        "column": "未付金额(元)", "aggregation": "sum", "label": "欠费金额",
+    }
+    assert md["unpaid_count"] == {
+        "column": "未付金额(元)", "aggregation": "count", "label": "欠费笔数",
+    }
+
+
+async def test_lease_term_metric_and_date_columns(db_session):
+    cid = await _make_catalog(db_session)
+    await _make_dataset(
+        db_session, cid, entity_type="lease_term",
+        columns=["条款ID", "合同ID", "每期金额(元)", "条款生效日期", "条款失效日期"],
+    )
+    await db_session.commit()
+
+    await seed.seed(db_session, tenant_id=DEFAULT_TENANT_ID, created_by=DEFAULT_ADMIN_ID)
+    await db_session.commit()
+
+    cm, md = await _model_row(db_session, "lease_term")
+    assert cm["条款失效日期"]["type"] == "date"
+    assert md["expiring_count"] == {
+        "column": "条款ID", "aggregation": "count", "label": "租约条款数",
+    }
+
+
+async def test_ticket_metric_definitions(db_session):
+    cid = await _make_catalog(db_session)
+    await _make_dataset(
+        db_session, cid, entity_type="ticket",
+        columns=["工单ID", "房间ID", "优先级", "状态", "费用(元)"],
+    )
+    await db_session.commit()
+
+    await seed.seed(db_session, tenant_id=DEFAULT_TENANT_ID, created_by=DEFAULT_ADMIN_ID)
+    await db_session.commit()
+
+    cm, md = await _model_row(db_session, "ticket")
+    assert md["ticket_count"] == {
+        "column": "工单ID", "aggregation": "count", "label": "工单数量",
+    }
+    assert md["total_cost"] == {
+        "column": "费用(元)", "aggregation": "sum", "label": "工单费用",
+    }

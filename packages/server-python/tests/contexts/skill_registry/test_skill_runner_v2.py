@@ -230,6 +230,53 @@ async def test_mixed_steps_carry_audit_ids(db_session, monkeypatch):
     assert by_id["unpaid_query"].query_audit_id is not None
 
 
+async def test_mcp_step_maps_company_name_to_searchkey_for_qcc(db_session, monkeypatch):
+    """真实 QCC 工具入参是 ``searchKey``（AC-8 联调暴露）。subject 携带
+    ``{company_name, credit_code}``；调 qcc server 的 mcp step 必须映射成
+    ``searchKey=company_name``，否则 QCC 报 searchKey undefined。"""
+    monkeypatch.setattr(
+        "app.contexts.skill_registry.application.skill_runner.chat",
+        AsyncMock(return_value="## 事实数据\nx"),
+    )
+    await _register_skill(db_session, sop=MIXED_SOP)
+    invocation = _mock_invocation()
+    runner = SkillRunner(
+        db_session, invocation_service=invocation, query_runner=_mock_query(),
+    )
+    await runner.run(
+        tenant_id=DEFAULT_TENANT_ID, skill_code="dd", version="1.0.0",
+        subject={"company_name": "ACME", "credit_code": "91X"}, caller=_caller(),
+    )
+    qcc_call = next(
+        c for c in invocation.invoke_with_trace.call_args_list
+        if c.kwargs["server_code"] == "qcc"
+    )
+    assert qcc_call.kwargs["params"] == {"searchKey": "ACME"}
+
+
+async def test_mcp_step_passes_full_subject_to_internal_customer(db_session, monkeypatch):
+    """internal_customer ``get_customer_360`` 要 ``company_name``+``credit_code``，
+    与 confirmed_subject 形状一致，原样透传（不做 searchKey 映射）。"""
+    monkeypatch.setattr(
+        "app.contexts.skill_registry.application.skill_runner.chat",
+        AsyncMock(return_value="## 事实数据\nx"),
+    )
+    await _register_skill(db_session, sop=MIXED_SOP)
+    invocation = _mock_invocation()
+    runner = SkillRunner(
+        db_session, invocation_service=invocation, query_runner=_mock_query(),
+    )
+    await runner.run(
+        tenant_id=DEFAULT_TENANT_ID, skill_code="dd", version="1.0.0",
+        subject={"company_name": "ACME", "credit_code": "91X"}, caller=_caller(),
+    )
+    ic_call = next(
+        c for c in invocation.invoke_with_trace.call_args_list
+        if c.kwargs["server_code"] == "internal_customer"
+    )
+    assert ic_call.kwargs["params"] == {"company_name": "ACME", "credit_code": "91X"}
+
+
 async def test_internal_query_missing_subject_field_is_audited_tool_error(
     db_session, monkeypatch
 ):

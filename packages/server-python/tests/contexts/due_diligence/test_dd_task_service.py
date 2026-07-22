@@ -91,13 +91,20 @@ def _service(invocation) -> DdTaskService:
 
 @pytest.mark.asyncio
 async def test_resolve_short_name_returns_candidates():
+    # 真实 QCC 契约：返回 content[0].text 为 JSON，企业数组在 企业信息，
+    # 字段 企业名称 / 统一社会信用代码。
+    import json as _json
+
+    inner = {
+        "企业信息": [
+            {"企业名称": "阿里巴巴(中国)有限公司", "统一社会信用代码": "91A"},
+            {"企业名称": "阿里巴巴网络技术有限公司", "统一社会信用代码": "91B"},
+        ]
+    }
     invocation = _FakeInvocation(
         {
             "get_company_by_query": {
-                "items": [
-                    {"company_name": "阿里巴巴(中国)有限公司", "credit_code": "91A"},
-                    {"company_name": "阿里巴巴网络技术有限公司", "credit_code": "91B"},
-                ]
+                "content": [{"type": "text", "text": _json.dumps(inner, ensure_ascii=False)}]
             }
         }
     )
@@ -113,15 +120,25 @@ async def test_resolve_short_name_returns_candidates():
         "阿里巴巴(中国)有限公司",
         "阿里巴巴网络技术有限公司",
     ]
-    # 调用了 qcc 锚定工具,传入原始 query
+    assert [c.credit_code for c in candidates] == ["91A", "91B"]
+    # 调用了 qcc 锚定工具,按真实 QCC 契约传 searchKey
     assert invocation.calls[0]["tool_name"] == "get_company_by_query"
-    assert invocation.calls[0]["params"] == {"query": "阿里巴巴"}
+    assert invocation.calls[0]["params"] == {"searchKey": "阿里巴巴"}
     assert invocation.calls[0]["server_code"] == "qcc"
 
 
 @pytest.mark.asyncio
 async def test_resolve_no_match_returns_empty():
-    invocation = _FakeInvocation({"get_company_by_query": {"items": []}})
+    import json as _json
+
+    inner = {"企业信息": []}
+    invocation = _FakeInvocation(
+        {
+            "get_company_by_query": {
+                "content": [{"type": "text", "text": _json.dumps(inner, ensure_ascii=False)}]
+            }
+        }
+    )
     service = _service(invocation)
     tenant_id = uuid.uuid4()
     task = await service.create_task(

@@ -198,6 +198,7 @@ class QueryService:
         business_purpose: str | None = None,
         ip: str | None = None,
         user_agent: str | None = None,
+        confirmed_filters: dict | None = None,
     ) -> dict:
         """Run the full pipeline and return the API-shaped dict.
 
@@ -217,14 +218,26 @@ class QueryService:
             sql_guard = SqlGuard(rbac_service=rbac, pii_detector=self._pii_detector)
             audit_repo = PermissionsRepository(session)
 
-            # ---------- 1. Planner ----------
+            # ---------- 1. Planner (+ 1 retry on validation failure) ----------
+            # 真实 LLM 对 query_plan 的 JSON 依从性不稳定(偶漏 entity)。REQ-046
+            # plan 风险点 4:首个 plan 校验失败 -> 带错误反馈重试一次 -> 仍失败才
+            # fail-closed。重试把校验错误回喂给 planner,显著降低二次失败率。
             query_plan = await self._planner.plan(
                 question=question,
                 semantic_model=semantic_model,
+                confirmed_filters=confirmed_filters,
             )
 
             # ---------- 2. Validator ----------
             errors = self._validator.validate(query_plan, semantic_model)
+            if errors:
+                query_plan = await self._planner.plan(
+                    question=question,
+                    semantic_model=semantic_model,
+                    confirmed_filters=confirmed_filters,
+                    retry_feedback="; ".join(errors),
+                )
+                errors = self._validator.validate(query_plan, semantic_model)
             if errors:
                 duration_ms = int((time.time() - started) * 1000)
                 audit_id = await self._audit(

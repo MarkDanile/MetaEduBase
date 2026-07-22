@@ -34,6 +34,7 @@ from app.contexts.structured_data.domain.semantic_model import (
     ColumnRole,
     ColumnType,
     DataSourceType,
+    MetricDefinition,
     SemanticModel,
 )
 from app.contexts.structured_data.infrastructure.semantic_model_repository import (
@@ -55,6 +56,35 @@ _DD_ENTITY_TYPES = (
     "cooperation_note",
 )
 _ENTITY_KEY_COLUMN = "客户ID"
+
+# Per-entity metric definitions (REQ-046 AC-8). The planner prompt only injects
+# ``metric_definitions.keys()``; an empty map leaves the LLM nothing to anchor
+# on (it omits ``entity`` / invents metrics and the validator rejects the plan).
+# Each metric's ``column`` is a real Chinese dataset column and the aggregation
+# is one the result explainer actually computes (sum / count / avg).
+_METRIC_DEFINITIONS: dict[str, dict[str, tuple[str, str, str]]] = {
+    "bill": {
+        "unpaid_amount": ("未付金额(元)", "sum", "欠费金额"),
+        "unpaid_count": ("未付金额(元)", "count", "欠费笔数"),
+    },
+    "lease_term": {
+        "expiring_count": ("条款ID", "count", "租约条款数"),
+    },
+    "ticket": {
+        "ticket_count": ("工单ID", "count", "工单数量"),
+        "total_cost": ("费用(元)", "sum", "工单费用"),
+    },
+}
+
+# Column-type inference by Chinese column-name shape. The default STR stays
+# correct for free-text columns; only numeric / date columns need a precise
+# type so the planner + time_range reasoning treat them correctly.
+def _column_type(column: str) -> ColumnType:
+    if column.endswith("日期") or column.endswith("时间") or column == "到期日":
+        return ColumnType.DATE
+    if ("金额" in column) or ("费用" in column) or ("单价" in column):
+        return ColumnType.FLOAT
+    return ColumnType.STR
 
 
 async def _catalog_id(session: AsyncSession, tenant_id: uuid.UUID) -> uuid.UUID | None:
@@ -101,14 +131,27 @@ async def _has_active_model(
     )
 
 
-def _column_mapping(columns: list[str]) -> dict[str, ColumnMapping]:
+def _column_mapping(entity_type: str, columns: list[str]) -> dict[str, ColumnMapping]:
+    metric_columns = {spec[0] for spec in _METRIC_DEFINITIONS.get(entity_type, {}).values()}
     mapping: dict[str, ColumnMapping] = {}
     for column in columns:
         if not column:
             continue
-        role = ColumnRole.ENTITY_KEY if column == _ENTITY_KEY_COLUMN else ColumnRole.DIMENSION
-        mapping[column] = ColumnMapping(role=role, type=ColumnType.STR, sensitive=False)
+        if column == _ENTITY_KEY_COLUMN:
+            role = ColumnRole.ENTITY_KEY
+        elif column in metric_columns:
+            role = ColumnRole.METRIC
+        else:
+            role = ColumnRole.DIMENSION
+        mapping[column] = ColumnMapping(role=role, type=_column_type(column), sensitive=False)
     return mapping
+
+
+def _metric_definitions(entity_type: str) -> dict[str, MetricDefinition]:
+    return {
+        name: MetricDefinition(column=column, aggregation=agg, label=label)
+        for name, (column, agg, label) in _METRIC_DEFINITIONS.get(entity_type, {}).items()
+    }
 
 
 async def seed(
@@ -142,8 +185,8 @@ async def seed(
                 "type": DataSourceType.IMPORTED_DATASET.value,
                 "dataset_id": str(dataset_id),
             },
-            column_mapping=_column_mapping(columns),
-            metric_definitions={},
+            column_mapping=_column_mapping(entity_type, columns),
+            metric_definitions=_metric_definitions(entity_type),
             version="v1",
             status="active",
             created_by=created_by,

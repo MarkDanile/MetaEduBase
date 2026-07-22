@@ -53,7 +53,12 @@ _RUN_AC8 = os.environ.get("RUN_DD_AC8")
 QCC_TOKEN = os.environ.get("QCC_MCP_TOKEN")
 INTERNAL_TOKEN = os.environ.get("INTERNAL_MCP_TOKEN")
 DD_CATALOG_ID = os.environ.get("DD_INTERNAL_QUERY_CATALOG_ID")
-DD_AC8_COMPANY = os.environ.get("DD_AC8_COMPANY", "")
+DD_AC8_COMPANY = os.environ.get("DD_AC8_COMPANY", "上汽集团股份有限公司")
+# 运行中后端（env 已注入、qcc/internal_customer/skill 已注册）。AC-8 走真实
+# HTTP 全链，不打 TestClient —— 真实验收必须命中真实装配的后端进程。
+DD_AC8_BASE_URL = os.environ.get("DD_AC8_BASE_URL", "http://localhost:8000")
+DD_AC8_ADMIN_USER = os.environ.get("DD_AC8_ADMIN_USER", "admin")
+DD_AC8_ADMIN_PASSWORD = os.environ.get("DD_AC8_ADMIN_PASSWORD", "")
 
 PARK_TEMPLATE_PATH = (
     Path(__file__).resolve().parents[2]
@@ -84,6 +89,10 @@ def _block_reasons() -> list[str]:
         reasons.append(
             "DD_INTERNAL_QUERY_CATALOG_ID 未配置：内部问数通道不可用"
             "（阻塞，需先灌库+seed 语义模型）"
+        )
+    if not DD_AC8_ADMIN_PASSWORD:
+        reasons.append(
+            "DD_AC8_ADMIN_PASSWORD 未设置：无法登录运行中后端获取 admin JWT（阻塞）"
         )
     return reasons
 
@@ -117,20 +126,107 @@ async def test_real_enterprise_end_to_end():
     """phase 1（真实 QCC + 内部 MCP + 内部问数 + 真实 LLM）：真实企业端到端。
 
     本用例**只在全部真实通道就绪时运行**（否则被上面的 skipif 以显式阻塞原因
-    跳过）。它用真实授权企业跑通工作台编排，断言报告草案、证据账本与审计齐备，
-    且 token / 企业名原文不泄漏进审计列。
+    跳过）。它命中**运行中的真实后端**（env 已注入、qcc / internal_customer /
+    park_investment_dd 已注册），走 HTTP 全链：
 
-    NOTE: 该用例的真实执行体在真实通道就绪后填充。当前为骨架：先把「就绪即运行、
-    未就绪即显式阻塞」的闸门立起来，避免用 mock 冒充通过。真实执行体将：
-      1. 注册 qcc + internal-customer server（credential_ref 仅 env-key 名）
-      2. 注册 park_investment_dd skill（enable）
-      3. DdTaskService.create_task -> resolve -> confirm_subject（真实主体锚定）
-      4. DdOrchestrator.run（真三类 step）-> 报告草案 + 证据账本
-      5. 断言 §4.6 七键分区齐备、证据行可回溯、审计 digest 齐备、无 token/原文泄漏
+      create_task -> resolve_subject（真实 QCC 主体锚定）
+        -> confirm_subject -> run（真三类 step：QCC 外部 + 内部客户 + 内部问数）
+        -> 报告草案 + 证据账本 -> confirm -> archive
+
+    断言：§4.6 七键分区齐备、证据行可回溯（ref_id 非空）、确认锁版、归档生效，
+    且 token / 企业名原文不泄漏进任何返回的错误字段。只打印分区标题 / 计数 /
+    digest 前缀，不打印 report 全文或企业敏感事实。
     """
-    # 骨架阶段：到达这里说明四类真实通道全部就绪（否则已被 skipif 拦截）。
-    # 真实执行体在真实通道联调后落地；此处先显式标记为未实现，而非默默通过。
-    pytest.fail(
-        "AC-8 真实执行体待联调落地：真实通道已就绪，但端到端执行体尚未实现。"
-        "不用 mock 冒充通过 —— 请在真实 QCC/内部 MCP/问数联调后补全本用例。"
-    )
+    import httpx
+
+    # ── 登录运行中后端拿 admin JWT（不打印 token）──
+    with httpx.Client(base_url=DD_AC8_BASE_URL, timeout=30.0) as client:
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"username": DD_AC8_ADMIN_USER, "password": DD_AC8_ADMIN_PASSWORD},
+        )
+        assert login.status_code == 200, f"登录失败: HTTP {login.status_code}"
+        token = login.json()["access_token"]
+        auth = {"Authorization": f"Bearer {token}"}
+
+        # ── 1. 创建任务 ──
+        created = client.post(
+            "/api/v1/dd/tasks",
+            json={"title": f"AC-8 {DD_AC8_COMPANY} 背调", "subject_query": DD_AC8_COMPANY},
+            headers=auth,
+        )
+        assert created.status_code == 201, (
+            f"create_task: HTTP {created.status_code} {created.text[:200]}"
+        )
+        task_id = created.json()["id"]
+
+        # ── 2. 主体锚定（真实 QCC）──
+        resolved = client.post(f"/api/v1/dd/tasks/{task_id}/resolve-subject", headers=auth)
+        assert resolved.status_code == 200, (
+            f"resolve_subject: HTTP {resolved.status_code} {resolved.text[:200]}"
+        )
+        candidates = resolved.json()
+        assert candidates, "主体锚定未返回任何候选（AC-8：企业未匹配不得编造）"
+        chosen = next(
+            (c for c in candidates if DD_AC8_COMPANY in c.get("company_name", "")),
+            candidates[0],
+        )
+
+        # ── 3. 确认主体 ──
+        confirmed = client.post(
+            f"/api/v1/dd/tasks/{task_id}/confirm-subject",
+            json={"company_name": chosen["company_name"], "credit_code": chosen.get("credit_code")},
+            headers=auth,
+        )
+        assert confirmed.status_code == 200, (
+            f"confirm_subject: HTTP {confirmed.status_code} {confirmed.text[:200]}"
+        )
+        assert confirmed.json()["status"] == "subject_confirmed"
+
+        # ── 4. 运行背调（真三类 step，耗时较长）──
+        run = client.post(f"/api/v1/dd/tasks/{task_id}/run", headers=auth, timeout=300.0)
+        assert run.status_code == 201, f"run: HTTP {run.status_code} {run.text[:300]}"
+        report = run.json()
+        report_id = report["id"]
+
+        # ── 5. §4.6 七键分区齐备（AC-5/AC-7；缺维显式标注，不编造）──
+        rj = report["report_json"]
+        for key in (
+            "summary", "external_facts", "internal_facts",
+            "risk_watch_items", "human_review_items", "report_sections",
+        ):
+            assert key in rj, f"report_json 缺少 §4.6 键: {key}"
+        assert report["status"] == "draft"
+        print(
+            f"[AC-8] report v{report['version']} draft ok: "
+            f"ext={len(rj.get('external_facts') or [])} "
+            f"int={len(rj.get('internal_facts') or [])} "
+            f"risk={len(rj.get('risk_watch_items') or [])} "
+            f"review={len(rj.get('human_review_items') or [])} "
+            f"sections={len(rj.get('report_sections') or [])}"
+        )
+
+        # ── 6. 证据账本可回溯（AC-6；ref_id 非空，只含非敏感摘要）──
+        evidence = client.get(f"/api/v1/dd/reports/{report_id}/evidence", headers=auth)
+        assert evidence.status_code == 200, f"evidence: HTTP {evidence.status_code}"
+        ev_rows = evidence.json()
+        assert ev_rows, "证据账本为空（每个 evidence_ref 应落一行）"
+        assert all(r.get("ref_id") for r in ev_rows), "存在缺 ref_id 的证据行（不可回溯）"
+        ev_types = {r.get("evidence_type") for r in ev_rows}
+        print(f"[AC-8] evidence rows={len(ev_rows)} types={sorted(ev_types)}")
+
+        # ── 7. 人工确认锁版 + 归档 ──
+        confirmed_r = client.post(f"/api/v1/dd/reports/{report_id}/confirm", headers=auth)
+        assert confirmed_r.status_code == 200, f"confirm: HTTP {confirmed_r.status_code}"
+        assert confirmed_r.json()["status"] == "confirmed"
+        archived = client.post(f"/api/v1/dd/reports/{report_id}/archive", headers=auth)
+        assert archived.status_code == 200, f"archive: HTTP {archived.status_code}"
+        assert archived.json()["status"] == "archived"
+
+        # ── 8. token / 企业名原文不泄漏进任何返回文本 ──
+        for label, resp in (("run", run), ("evidence", evidence)):
+            body = resp.text
+            for needle in (QCC_TOKEN, INTERNAL_TOKEN, f"Bearer {QCC_TOKEN}"):
+                if needle:
+                    assert needle not in body, f"TOKEN 泄漏进 {label} 响应"
+        print("[AC-8] REQ-046 真实企业端到端 PASSED（confirm->archive 全链）")
