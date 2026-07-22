@@ -74,6 +74,7 @@ class DdTaskRepository:
         row.confirmed_by = task.confirmed_by
         row.confirmed_at = task.confirmed_at
         row.skill_execution_audit_id = task.skill_execution_audit_id
+        row.assignee_id = task.assignee_id
         await self._session.flush()
         return self._to_domain(row)
 
@@ -89,4 +90,5 @@ class DdTaskRepository:
             confirmed_at=row.confirmed_at,
             skill_execution_audit_id=row.skill_execution_audit_id,
             created_by=row.created_by,
+            assignee_id=row.assignee_id,
         )

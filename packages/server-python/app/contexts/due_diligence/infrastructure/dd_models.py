@@ -67,6 +67,10 @@ class DdTaskModel(Base):
     created_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False
     )
+    # REQ-058 D-3: 任务可分配给同 tenant 其他用户（创建者+分配对象+高权可见）
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=_utcnow
     )

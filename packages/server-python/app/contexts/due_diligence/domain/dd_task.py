@@ -23,6 +23,8 @@ import uuid
 from dataclasses import dataclass, replace
 from datetime import datetime
 
+from app.contexts.identity.domain.role import HIGH_PRIVILEGE_ROLES as _HIGH_PRIVILEGE_ROLES
+
 # spec §4.2 状态机合法迁移:状态 -> 允许的后继状态集合
 _ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
     "subject_pending": frozenset({"subject_confirmed", "failed"}),
@@ -72,6 +74,22 @@ class DdTask:
     confirmed_by: uuid.UUID | None = None
     confirmed_at: datetime | None = None
     skill_execution_audit_id: uuid.UUID | None = None
+    # REQ-058 D-3: 任务可分配给同 tenant 其他用户（创建者+分配对象+高权可见）
+    assignee_id: uuid.UUID | None = None
+
+    def visible_to(self, user_id: uuid.UUID, *, role: str) -> bool:
+        """REQ-058 AC-1/AC-2 可见性：本人 / 分配对象 / 高权角色。
+
+        - 创建者始终可见（own）。
+        - assignee == user_id 可见（allotted）。
+        - role ∈ HIGH_PRIVILEGE_ROLES 可见（合规复核 + 平台运维）。
+        - 其他低权用户不可见。
+        """
+        if user_id == self.created_by:
+            return True
+        if self.assignee_id is not None and user_id == self.assignee_id:
+            return True
+        return role in _HIGH_PRIVILEGE_ROLES
 
     def _transition(self, target: str) -> None:
         allowed = _ALLOWED_TRANSITIONS.get(self.status, frozenset())
