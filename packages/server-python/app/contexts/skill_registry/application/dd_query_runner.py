@@ -48,14 +48,30 @@ QueryRunner = Callable[..., Awaitable[dict]]
 # Mirrors the proven two-stage lookup in ``app.internal_mcp.customer_repository``.
 
 
-def _catalog_id() -> uuid.UUID:
-    raw = settings.dd_internal_query_catalog_id
+async def _catalog_id(
+    caller_tenant_id: uuid.UUID, session: AsyncSession,
+) -> uuid.UUID:
+    """Resolve catalog_id per caller tenant via tenant_scoped_config (REQ-058 D-4).
+
+    DB binding 优先；未配置 fallback settings.dd_internal_query_catalog_id。
+    """
+    from app.contexts.identity.application.tenant_config_service import TenantConfigService
+    from app.contexts.identity.infrastructure import mcp_binding_resolver
+    svc = TenantConfigService(session)
     try:
-        return uuid.UUID(raw)
-    except (TypeError, ValueError) as exc:
-        raise RuntimeError(
-            "DD_INTERNAL_QUERY_CATALOG_ID 未配置或非法，internal_query step 无法定位语义模型"
-        ) from exc
+        return await mcp_binding_resolver.resolve_dd_catalog_id(
+            caller_tenant_id=caller_tenant_id, config_service=svc,
+        )
+    except mcp_binding_resolver.ConfigurationError:
+        raw = settings.dd_internal_query_catalog_id
+        try:
+            return uuid.UUID(raw)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                "DD_INTERNAL_QUERY_CATALOG_ID 未配置或非法（"
+                f"tenant {caller_tenant_id} DB 无 dd_catalog_binding"
+                " + settings.dd_internal_query_catalog_id 空）"
+            ) from exc
 
 
 def build_dd_internal_query_runner(
@@ -72,7 +88,9 @@ def build_dd_internal_query_runner(
 
     async def _model_for(entity_type: str, tenant_id: uuid.UUID):
         return await repo.get_active_by_catalog_and_entity_type(
-            tenant_id=tenant_id, catalog_id=_catalog_id(), entity_type=entity_type
+            tenant_id=tenant_id,
+            catalog_id=await _catalog_id(tenant_id, session),
+            entity_type=entity_type,
         )
 
     async def _resolve_customer_id(tenant_id: uuid.UUID, subject: dict) -> str | None:
