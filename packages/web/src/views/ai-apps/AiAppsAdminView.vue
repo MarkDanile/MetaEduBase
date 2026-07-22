@@ -124,17 +124,17 @@ import PageHeader from '@/components/PageHeader.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import LoadingSpinner from '@/components/LoadingSpinner.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
-import { aiAppsApi, type AiAppResponse } from '@/services/aiAppsApi';
+import { aiAppsApi, type AiAppAdmin } from '@/services/aiAppsApi';
 import { useToast } from '@/composables/useToast';
 
 const router = useRouter();
 const toast = useToast();
 
 const loading = ref(false);
-const apps = ref<AiAppResponse[]>([]);
+const apps = ref<AiAppAdmin[]>([]);
 const currentTab = ref('all');
 const showArchiveConfirm = ref(false);
-const archiveTarget = ref<AiAppResponse | null>(null);
+const archiveTarget = ref<AiAppAdmin | null>(null);
 
 const statusTabs = [
   { value: 'all', label: '全部' },
@@ -180,8 +180,10 @@ function goToEdit(id: string) {
 async function loadApps() {
   loading.value = true;
   try {
-    const res = await aiAppsApi.list({ include_archived: true });
-    apps.value = res.items || [];
+    // BUG-018 AC-4: 管理列表需含 share_token/api_token 供 UI 展示，超管 ?scope=admin。
+    // 后端实际返 AiAppAdmin（含 token），但 OpenAPI 类型签名是 AiAppPublic —— cast。
+    const res = await aiAppsApi.list({ include_archived: true, admin_scope: true });
+    apps.value = (res.items as AiAppAdmin[]) || [];
   } catch {
     toast.error('加载应用列表失败');
   } finally {
@@ -189,7 +191,7 @@ async function loadApps() {
   }
 }
 
-async function doPublish(app: AiAppResponse) {
+async function doPublish(app: AiAppAdmin) {
   try {
     await aiAppsApi.publish(app.id);
     toast.success('应用已发布');
@@ -199,7 +201,7 @@ async function doPublish(app: AiAppResponse) {
   }
 }
 
-async function doDisable(app: AiAppResponse) {
+async function doDisable(app: AiAppAdmin) {
   try {
     await aiAppsApi.disable(app.id);
     toast.success('应用已禁用');
@@ -209,7 +211,7 @@ async function doDisable(app: AiAppResponse) {
   }
 }
 
-async function doEnable(app: AiAppResponse) {
+async function doEnable(app: AiAppAdmin) {
   try {
     await aiAppsApi.enable(app.id);
     toast.success('应用已启用');
@@ -219,7 +221,7 @@ async function doEnable(app: AiAppResponse) {
   }
 }
 
-function confirmArchive(app: AiAppResponse) {
+function confirmArchive(app: AiAppAdmin) {
   archiveTarget.value = app;
   showArchiveConfirm.value = true;
 }

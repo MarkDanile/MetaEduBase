@@ -2,12 +2,17 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.contexts.ai_app.domain.enums import AiAppEntryType, AiAppStatus, AiAppVisibility
 
 
 class AiAppCreate(BaseModel):
+    """BUG-018 AC-3: client 不得指定 tenant_id / is_platform（extra='forbid'）；
+    服务端强制 tenant_id=current_user.tenant_id；is_platform 仅 super_admin 可设。"""
+
+    model_config = ConfigDict(extra="forbid")
+
     code: str = Field(..., min_length=1, max_length=50)
     name: str = Field(..., min_length=1, max_length=200)
     description: str | None = None
@@ -23,7 +28,6 @@ class AiAppCreate(BaseModel):
     owner: str | None = Field(None, max_length=200)
     version: str = "1.0.0"
     sort_order: int = 0
-    tenant_id: UUID | None = None
 
 
 class AiAppUpdate(BaseModel):
@@ -43,7 +47,12 @@ class AiAppUpdate(BaseModel):
     sort_order: int | None = None
 
 
-class AiAppResponse(BaseModel):
+class AiAppPublicResponse(BaseModel):
+    """BUG-018 AC-4/AC-5: 默认列表/详情响应不含 token / config_schema / owner 私有配置。
+
+    公开 endpoint、管理端点默认都返回此类型（管理超管加 ?scope=admin 才看 AdminResponse）。
+    """
+
     id: UUID
     code: str
     name: str
@@ -55,20 +64,32 @@ class AiAppResponse(BaseModel):
     entry_type: AiAppEntryType
     route_path: str | None
     external_url: str | None
-    config_schema: dict[str, Any] | None
     required_capabilities: list[str] | None
-    owner: str | None
     version: str
     sort_order: int
     tenant_id: UUID | None
-    share_token: str | None
-    api_token: str | None
+    is_platform: bool
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
 
 
+class AiAppAdminResponse(AiAppPublicResponse):
+    """BUG-018 AC-4: 超管 ?scope=admin 才返回 token 字段（含 share_token/api_token）。"""
+
+    owner: str | None
+    config_schema: dict[str, Any] | None
+    share_token: str | None
+    api_token: str | None
+
+
+class AiAppTokenResponse(BaseModel):
+    """BUG-018 AC-4: rotate 只返回对应 token 字段，不含整 DTO。"""
+
+    token: str
+
+
 class AiAppListResponse(BaseModel):
-    items: list[AiAppResponse]
+    items: list[AiAppPublicResponse]
     total: int

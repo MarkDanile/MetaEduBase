@@ -29,7 +29,6 @@
           <div class="detail-meta">
             <span v-if="app.category" class="meta-tag">{{ app.category }}</span>
             <span v-if="app.version" class="meta-tag">v{{ app.version }}</span>
-            <span v-if="app.owner" class="meta-tag">负责人: {{ app.owner }}</span>
           </div>
         </div>
       </div>
@@ -74,12 +73,12 @@
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowLeft, Rocket } from 'lucide-vue-next';
-import { aiAppsApi, type AiAppResponse } from '@/services/aiAppsApi';
+import { aiAppsApi, type AiAppPublic } from '@/services/aiAppsApi';
 
 const route = useRoute();
 const router = useRouter();
 const loading = ref(false);
-const app = ref<AiAppResponse | null>(null);
+const app = ref<AiAppPublic | null>(null);
 
 function statusLabel(status: string) {
   const map: Record<string, string> = {
@@ -100,7 +99,7 @@ onMounted(async () => {
   loading.value = true;
   try {
     const apps = await aiAppsApi.list({});
-    app.value = apps.items?.find((a: AiAppResponse) => a.code === code) || null;
+    app.value = apps.items?.find((a: AiAppPublic) => a.code === code) || null;
   } catch (e) {
     console.error('加载应用详情失败', e);
   } finally {

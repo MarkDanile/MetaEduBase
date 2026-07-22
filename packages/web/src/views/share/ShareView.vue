@@ -35,12 +35,12 @@
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Rocket } from 'lucide-vue-next';
-import { aiAppsApi, type AiAppResponse } from '@/services/aiAppsApi';
+import { aiAppsApi, type AiAppPublic } from '@/services/aiAppsApi';
 
 const route = useRoute();
 const router = useRouter();
 const loading = ref(true);
-const app = ref<AiAppResponse | null>(null);
+const app = ref<AiAppPublic | null>(null);
 
 onMounted(async () => {
   const token = route.params.token as string;
@@ -49,9 +49,8 @@ onMounted(async () => {
     return;
   }
   try {
-    // 遍历公开应用查找匹配的 share_token
-    const res = await aiAppsApi.list({ status: 'Published' });
-    app.value = res.items.find(a => a.share_token === token) || null;
+    // BUG-018 Slice 4: 公开 share 端点按 token 直接查（不枚举 + 不暴露 share_token）。
+    app.value = await aiAppsApi.getByShareToken(token);
   } catch {
     app.value = null;
   } finally {

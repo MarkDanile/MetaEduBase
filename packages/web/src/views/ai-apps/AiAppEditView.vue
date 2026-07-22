@@ -195,13 +195,15 @@ import { useRoute, useRouter } from 'vue-router';
 import { ArrowLeft } from 'lucide-vue-next';
 import PageHeader from '@/components/PageHeader.vue';
 import LoadingSpinner from '@/components/LoadingSpinner.vue';
-import { aiAppsApi, type AiAppResponse } from '@/services/aiAppsApi';
+import { aiAppsApi, type AiAppAdmin } from '@/services/aiAppsApi';
 
-type AiAppUpdateInput = Partial<Pick<AiAppResponse,
+type AiAppUpdateInput = Partial<Pick<AiAppAdmin,
   'name' | 'description' | 'category' | 'icon' | 'version' | 'owner' |
   'visibility' | 'entry_type' | 'route_path' | 'external_url' |
   'required_capabilities' | 'config_schema'
->> & { code?: string };
+>>;
+// create 时必填 name（其他 backend default 已覆盖），code 必填
+type AiAppCreateInput = AiAppUpdateInput & { code: string; name: string };
 import { useToast } from '@/composables/useToast';
 
 const route = useRoute();
@@ -213,7 +215,7 @@ const isEdit = computed(() => !!appId.value && appId.value !== 'create');
 
 const loading = ref(false);
 const saving = ref(false);
-const app = ref<AiAppResponse | null>(null);
+const app = ref<AiAppAdmin | null>(null);
 const newCapability = ref('');
 const configError = ref('');
 
@@ -263,8 +265,9 @@ async function loadApp() {
   if (!isEdit.value) return;
   loading.value = true;
   try {
-    app.value = await aiAppsApi.get(appId.value!);
-    const a = app.value;
+    // BUG-018 AC-4: 编辑页需显示 share_token/api_token，超管 ?scope=admin 拿 Admin。
+    const a = (await aiAppsApi.get(appId.value!, { admin_scope: true })) as AiAppAdmin;
+    app.value = a;
     form.code = a.code;
     form.name = a.name;
     form.description = a.description || '';
@@ -317,8 +320,22 @@ async function doSave() {
       await aiAppsApi.update(appId.value!, data);
       toast.success('应用已更新');
     } else {
-      data.code = form.code;
-      await aiAppsApi.create(data);
+      const createData: AiAppCreateInput = {
+        code: form.code,
+        name: form.name,
+        description: form.description || null,
+        category: form.category || null,
+        icon: form.icon || null,
+        version: form.version,
+        owner: form.owner || null,
+        visibility: form.visibility,
+        entry_type: form.entry_type,
+        route_path: form.route_path || null,
+        external_url: form.external_url || null,
+        required_capabilities: form.required_capabilities!.length ? form.required_capabilities : null,
+        config_schema: config,
+      };
+      await aiAppsApi.create(createData);
       toast.success('应用已创建');
     }
     router.push('/ai-apps/admin');
