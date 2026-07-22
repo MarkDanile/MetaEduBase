@@ -26,6 +26,10 @@ from app.contexts.mcp_registry.domain.mcp_server import (
     CredentialRef,
     MCPServer,
 )
+from app.contexts.mcp_registry.domain.url_policy import (
+    MCPServerURLError,
+    validate_mcp_server_url,
+)
 from app.contexts.mcp_registry.infrastructure.mcp_server_repository import (
     MCPServerRepository,
 )
@@ -96,6 +100,14 @@ class MCPRegistryService:
         if credential_ref is not None:
             CredentialRef(credential_ref)
 
+    @staticmethod
+    def _validate_server_url(server_url: str, *, has_credential: bool) -> None:
+        # BUG-019 AC-2/AC-3: URL/IP/DNS 安全校验。失败抛 MCPServerURLError -> router 422。
+        try:
+            validate_mcp_server_url(server_url, has_credential=has_credential)
+        except MCPServerURLError as exc:
+            raise ValueError(str(exc)) from exc
+
     async def create(
         self,
         *,
@@ -115,6 +127,10 @@ class MCPRegistryService:
         self._validate_code(code)
         self._validate_transport(transport)
         self._validate_credential_ref(credential_ref)
+        # BUG-019 AC-2/AC-3: 服务端拒绝 loopback/私网/metadata + 强制 scheme 策略。
+        self._validate_server_url(
+            server_url, has_credential=bool(credential_ref)
+        )
         # code 唯一性校验 — 提前于 INSERT，让 router 能返回 409
         existing = await self._repo.get_by_code(tenant_id, code)
         if existing:
@@ -162,6 +178,19 @@ class MCPRegistryService:
         credential_ref = updates.get("credential_ref")
         if credential_ref is not None:
             self._validate_credential_ref(str(credential_ref))
+        # BUG-019 AC-2/AC-3: server_url 更新需重新校验；带凭证状态由 effective cred 决定。
+        new_server_url = updates.get("server_url")
+        if new_server_url is not None:
+            # 决定 has_credential: 若 credential_ref 在本次更新则用它，否则查现有 server。
+            effective_cred: str | None
+            if credential_ref is not None:
+                effective_cred = str(credential_ref)
+            else:
+                existing = await self._repo.get_by_id(tenant_id, server_id)
+                effective_cred = existing.credential_ref if existing else None
+            self._validate_server_url(
+                str(new_server_url), has_credential=bool(effective_cred)
+            )
         server = await self._repo.update(tenant_id, server_id, **updates)
         if not server:
             raise MCPServerNotFoundError("MCP server 不存在")
@@ -176,6 +205,17 @@ class MCPRegistryService:
         role: str = "employee",
     ) -> MCPServer:
         self._check_admin(role)
+        # BUG-019 AC-2/AC-3: enable 前置重新校验 secret + URL（防 DNS rebinding
+        # 在注册后变更 IP -> 重新解析为内网/metadata）。
+        existing = await self._repo.get_by_id(tenant_id, server_id)
+        if existing is None:
+            raise MCPServerNotFoundError("MCP server 不存在")
+        if enabled:
+            if existing.credential_ref:
+                self._validate_credential_ref(existing.credential_ref)
+            self._validate_server_url(
+                existing.server_url, has_credential=bool(existing.credential_ref)
+            )
         server = await self._repo.set_enabled(tenant_id, server_id, enabled)
         if not server:
             raise MCPServerNotFoundError("MCP server 不存在")

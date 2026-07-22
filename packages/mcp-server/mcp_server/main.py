@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import sys
 from typing import Any
 
 import httpx
@@ -11,13 +12,30 @@ from mcp.types import TextContent, Tool
 server = Server("metaedu-knowledge-base")
 
 BACKEND_URL = os.environ.get("METAEDU_BACKEND_URL", "http://localhost:8000/api/v1")
-AUTH_USERNAME = os.environ.get("METAEDU_AUTH_USERNAME", "admin")
-AUTH_PASSWORD = os.environ.get("METAEDU_AUTH_PASSWORD", "admin123")
+# BUG-019 AC-6: 旧默认凭据 admin/admin123 必须显式配置；缺一即 fail-fast。
+AUTH_USERNAME = os.environ.get("METAEDU_AUTH_USERNAME")
+AUTH_PASSWORD = os.environ.get("METAEDU_AUTH_PASSWORD")
+
+if not AUTH_USERNAME or not AUTH_PASSWORD:
+    sys.stderr.write(
+        "FATAL: METAEDU_AUTH_USERNAME and METAEDU_AUTH_PASSWORD must be set"
+        " explicitly (BUG-019 AC-6: 移除默认凭据 admin/admin123)。\n"
+    )
+    raise SystemExit(2)
+# 显式校验长度，避免空字符串配置
+if len(AUTH_USERNAME) < 3 or len(AUTH_PASSWORD) < 8:
+    sys.stderr.write(
+        "FATAL: METAEDU_AUTH_USERNAME/PASSWORD 太短（>=3 / >=8 字符）。\n"
+    )
+    raise SystemExit(2)
 
 _token_cache: dict[str, str] = {}
 
 
-async def _get_token() -> str:
+async def _get_token(*, force_refresh: bool = False) -> str:
+    """登录拿 token；force_refresh=True 清掉缓存重登（401 一次刷新保护）。"""
+    if force_refresh:
+        _token_cache.pop("token", None)
     if _token_cache.get("token"):
         return _token_cache["token"]
     async with httpx.AsyncClient(base_url=BACKEND_URL) as client:
@@ -30,20 +48,33 @@ async def _get_token() -> str:
     return _token_cache["token"]
 
 
-async def _api_get(path: str, params: dict | None = None) -> dict | list:
+async def _api_request(method: str, path: str, *, params: dict | None = None,
+                       body: dict | None = None, _retried: bool = False) -> Any:
+    """统一 API 请求；401 时最多刷新 token 重试一次（防无限重试）。"""
     token = await _get_token()
     async with httpx.AsyncClient(base_url=BACKEND_URL) as client:
-        resp = await client.get(path, params=params, headers={"Authorization": f"Bearer {token}"})
+        if method == "GET":
+            resp = await client.get(path, params=params,
+                                    headers={"Authorization": f"Bearer {token}"})
+        elif method == "POST":
+            resp = await client.post(path, json=body,
+                                     headers={"Authorization": f"Bearer {token}"})
+        else:
+            raise ValueError(f"unsupported method {method!r}")
+        if resp.status_code == 401 and not _retried:
+            # BUG-019 AC-6: 401 刷新一次；仍 401 则 fail-closed
+            await _get_token(force_refresh=True)
+            return await _api_request(method, path, params=params, body=body, _retried=True)
         resp.raise_for_status()
         return resp.json()
+
+
+async def _api_get(path: str, params: dict | None = None) -> dict | list:
+    return await _api_request("GET", path, params=params)
 
 
 async def _api_post(path: str, body: dict | None = None) -> dict | list:
-    token = await _get_token()
-    async with httpx.AsyncClient(base_url=BACKEND_URL) as client:
-        resp = await client.post(path, json=body, headers={"Authorization": f"Bearer {token}"})
-        resp.raise_for_status()
-        return resp.json()
+    return await _api_request("POST", path, body=body)
 
 
 DOMAINS = [

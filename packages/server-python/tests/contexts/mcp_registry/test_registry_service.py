@@ -605,7 +605,7 @@ async def test_api_enable_probe_warning_when_credential_missing(
     the credential could not be resolved. Hermetic: no network call is
     made (credential resolution short-circuits before list_tools).
     """
-    missing_env = "REQ044_PROBE_MISSING_TOKEN"
+    missing_env = "PROBE_MCP_MISSING_TOKEN"
     monkeypatch.delenv(missing_env, raising=False)
     payload = _make_payload(_unique_code("prb"))
     payload["credential_ref"] = missing_env
