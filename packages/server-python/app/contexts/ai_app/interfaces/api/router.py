@@ -50,6 +50,18 @@ async def list_public_ai_apps(
     return AiAppListResponse(items=items, total=len(items))
 
 
+@router.get("/share/{token}")
+async def get_ai_app_by_share_token(
+    token: str,
+    service: Annotated[AiAppService, Depends(get_service)],
+):
+    """BUG-018 Slice 4: 公开 share 链接解析。按 token 查已发布应用（不返 token）。"""
+    model = await service.get_by_share_token(token)
+    if model is None:
+        raise HTTPException(status_code=404, detail="AI application not found")
+    return AiAppPublicResponse.model_validate(model).model_dump(mode="json")
+
+
 @router.get("", response_model=AiAppListResponse)
 async def list_ai_apps(
     service: Annotated[AiAppService, Depends(get_service)],

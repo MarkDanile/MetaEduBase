@@ -71,11 +71,11 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { Search, ArrowRight } from 'lucide-vue-next';
-import { aiAppsApi, type AiAppResponse } from '@/services/aiAppsApi';
+import { aiAppsApi, type AiAppPublic } from '@/services/aiAppsApi';
 
 const router = useRouter();
 const loading = ref(false);
-const apps = ref<AiAppResponse[]>([]);
+const apps = ref<AiAppPublic[]>([]);
 const searchKeyword = ref('');
 const selectedCategory = ref('全部');
 
@@ -115,7 +115,8 @@ function handleSearch() {
 onMounted(async () => {
   loading.value = true;
   try {
-    const res = await aiAppsApi.list({ status: 'Published' });
+    // BUG-018 AC-5: 公开应用广场走匿名 /public 端点，仅 Published+public+is_platform 子集。
+    const res = await aiAppsApi.listPublic();
     apps.value = res.items || [];
   } catch (e) {
     console.error('加载应用列表失败', e);

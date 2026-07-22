@@ -214,6 +214,52 @@ async def test_public_endpoint_anonymous_access(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_share_endpoint_anonymous_resolves_token(client: AsyncClient):
+    """BUG-018 Slice 4: 公开 share 端点按 token 解析应用，不暴露 token 字段。"""
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from tests.conftest import TEST_DB_URL
+    pub_id = uuid.uuid4()
+    pub_code = f"APP-SHARE-{uuid.uuid4().hex[:6]}"
+    share_token_value = f"share-{uuid.uuid4().hex[:10]}"
+    eng = create_async_engine(TEST_DB_URL)
+    try:
+        async with eng.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO metaedu.ai_applications "
+                    "(id, code, name, status, visibility, entry_type, version, sort_order, "
+                    " tenant_id, is_platform, share_token, created_at, updated_at) "
+                    "VALUES (:id, :code, :name, 'Published', 'public', 'internal_route', "
+                    " '1.0.0', 0, NULL, true, :share_token, NOW(), NOW())"
+                ),
+                {
+                    "id": pub_id,
+                    "code": pub_code,
+                    "name": "shared app",
+                    "share_token": share_token_value,
+                },
+            )
+    finally:
+        await eng.dispose()
+    # 匿名按 share_token 查
+    resp = await client.get(f"/api/v1/ai-apps/share/{share_token_value}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["code"] == pub_code
+    assert "share_token" not in body
+    assert "api_token" not in body
+    assert "config_schema" not in body
+
+
+@pytest.mark.asyncio
+async def test_share_endpoint_unknown_token_returns_404(client: AsyncClient):
+    """BUG-018 Slice 4: 不存在的 token -> 404。"""
+    resp = await client.get("/api/v1/ai-apps/share/nonexistent-token-xyz")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_high_privilege_roles_see_admin_scope(client: AsyncClient):
     """HIGH_PRIVILEGE_ROLES 都能用 ?scope=admin 查看 token；其他角色被忽略 scope。"""
     # teacher 应忽略 scope（403 或 404 由 tenant 决定；本测试只看 response body 无 token）

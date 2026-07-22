@@ -80,6 +80,21 @@ class AiAppService:
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_by_share_token(self, token: str) -> AiApplicationModel | None:
+        """BUG-018 Slice 4: 公开 share endpoint，按 share_token 查已发布应用。
+
+        不暴露 token 字段本身；只允许 Published + visibility=public + is_platform=True。
+        """
+        stmt = (
+            select(AiApplicationModel)
+            .where(AiApplicationModel.share_token == token)
+            .where(AiApplicationModel.is_platform.is_(True))
+            .where(AiApplicationModel.status == AiAppStatus.PUBLISHED.value)
+            .where(AiApplicationModel.visibility == "public")
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_by_id(
         self, app_id: UUID, viewer_tenant_id: UUID | None = None,
         viewer_role: str | None = None,
