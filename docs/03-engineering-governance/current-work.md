@@ -14,26 +14,7 @@
 
 ## 当前进行中
 
-### BUG-017: 身份注册与 JWT 信任边界
-
-状态：🟡 PR 待评审
-类型：bug fix（P0 安全）
-领域：identity / auth / config / deploy
-分支：fix/bug017-identity-jwt-trust-boundary
-PR：[#454](https://github.com/MarkDanile/MetaEduBase/pull/454)
-
-需求来源：
-- Spec: [BUG-017](../01-product-planning/05-requirements/BUG-017-identity-registration-and-jwt-trust-boundary.md)
-- Plan: [2026-07-22-bug-017-plan](../02-delivery-plans/02-plans/2026-07-22-bug-017-identity-jwt-trust-boundary-plan.md)
-- 复核: [2026-07-22 安全与质量复核](04-retrospectives/2026-07-22-security-and-quality-follow-up-review.md)
-
-当前进展：Slice 1-5 全部落地并提交 PR #454。register 降级（extra='forbid' + 强制 teacher）+ 管理员入口（super_admin only）+ JWT 生产 fail-fast + 安全日志（password/token redact）。
-
-下一步：PR #454 评审合并后 -> 归档卡片至最近完成 + 回填 work-log + 更新 backlog BUG-017 状态为 🟢。
-
-验证状态：全量 pytest `1222 passed, 1 failed`（唯一失败 `test_embedding_empty_logs_warning` = TD-080 pre-existing，main 全量同失败）；ruff / check-engineering-docs / git diff --check 全绿；新增 24 测试用例 + 6 文件迁移 0 回归。可复核证据：`cd packages/server-python && uv run pytest -q --tb=line` -> `1 failed, 1222 passed, 4 skipped`；`uv run ruff check app/ tests/` -> `All checks passed!`；`./scripts/check-engineering-docs` -> `passed (31 known issue allowlisted)`；`git diff --check` -> exit 0。环境：macOS Darwin 25.5.0，Python 3.14，uv 本地。
-
-交接备注：BUG-017/018/019 关闭前不扩大 Agentic 工具调用和外部 MCP 暴露范围。
+暂无进行中任务。BUG-017 已合并归档（见最近完成），下一批候选 BUG-018 / BUG-019 见下表。
 
 ## 下一批候选任务
 
@@ -41,8 +22,8 @@ PR：[#454](https://github.com/MarkDanile/MetaEduBase/pull/454)
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0-2 | BUG-018 AI App 鉴权、租户与 Token 暴露 | 🔵 就绪 | 在 BUG-017 后实施管理/public API 分离、tenant 强制和 Token DTO 收口 | [BUG-018](../01-product-planning/05-requirements/BUG-018-ai-app-auth-tenant-and-token-exposure.md) |
-| P0-3 | BUG-019 MCP 凭证边界与 SSRF | 🔵 就绪 | 在 BUG-017 后补 secret binding、目标校验和出口限制；完成前不扩 MCP | [BUG-019](../01-product-planning/05-requirements/BUG-019-mcp-credential-boundary-and-ssrf.md) |
+| P0-2 | BUG-018 AI App 鉴权、租户与 Token 暴露 | 🔵 就绪 | BUG-017 已关闭，可启动：实施管理/public API 分离、tenant 强制和 Token DTO 收口 | [BUG-018](../01-product-planning/05-requirements/BUG-018-ai-app-auth-tenant-and-token-exposure.md) |
+| P0-3 | BUG-019 MCP 凭证边界与 SSRF | 🔵 就绪 | BUG-017 已关闭，可启动：补 secret binding、目标校验和出口限制；完成前不扩 MCP | [BUG-019](../01-product-planning/05-requirements/BUG-019-mcp-credential-boundary-and-ssrf.md) |
 
 ## 最近完成
 
@@ -52,6 +33,7 @@ PR：[#454](https://github.com/MarkDanile/MetaEduBase/pull/454)
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-22 | BUG-017 身份注册与 JWT 信任边界硬化 | 🟢 完成 | P0 安全：register 降级（extra='forbid'+强制 teacher）+管理员入口（super_admin only）+JWT 生产 fail-fast+安全日志 redact；6 AC 覆盖。新增 24 测试+6 文件迁移 0 回归；全量 1222 pass/1 TD-080 pre-existing/ruff 0 | [PR #454](https://github.com/MarkDanile/MetaEduBase/pull/454)（`400d05a7`）/ [work-log](work-log.md) |
 | 2026-07-22 | REQ-046 AC-8 真实企业端到端执行体落地 | 🟢 完成 | 按授权样本企业（上汽集团）跑通真实端到端；修 internal_query 真实链路：主体→关系键映射（bill→客户ID/lease→合同ID/ticket→房间ID）+三层主体识别+confirmed_filters 通道+planner 重试+数值字符串聚合+filter 归一化+seed 补 metric。AC-8 PASSED、476 pass/ruff 0 | [PR #452](https://github.com/MarkDanile/MetaEduBase/pull/452) / [work-log](work-log.md) |
 | 2026-07-22 | REQ-046 / APP-005 企业 360 背调工作台 V0 | 🟢 完成 | 首个产业园区 P0 合规风控闭环，7 小 PR（#444~#450）：任务容器+Subject Resolver+SkillRunner v2 三类 step+Internal Customer MCP+背调 SKILL+Orchestrator/Report/Evidence+第三方导入+APP-005 前端；AC-1~7 覆盖、AC-8 骨架就位。后端 1176 pass/ruff 0 | [REQ-046](../01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md) / [work-log](work-log.md) |
 | 2026-07-21 | TD-079 排除 alembic/versions/ 出 ruff（93 pre-existing 收口） | 🟢 完成 | pyproject [tool.ruff] 加 extend-exclude=["alembic/versions"]；93 错误全在迁移文件（UP007/E501/I001/UP035/W292/F401），app/+tests/ 本就 0。ruff check . -> 0 + 显式 alembic 可查 + 全量 1064 pass/3 skip；零 .py 改动 | [Tech Debt](technical-debt.md#td-079-排除-alembicversions-出-ruff-范围93-个-pre-existing-ruff-错误收口) / [PR #442](https://github.com/MarkDanile/MetaEduBase/pull/442) |
