@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import logging
-import os
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +18,17 @@ from app.contexts.document.infrastructure.file_repository import FileRepository
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.shared.infrastructure.database import get_session
 from app.shared.infrastructure.tenant_context import get_tenant_id
+from app.shared.upload_safety import (
+    DEFAULT_MAX_BYTES,
+    UploadSafetyError,
+    UploadSizeExceeded,
+    UploadTypeUnsupported,
+    commit_tmpfile,
+    read_chunked_to_tempfile,
+    safe_storage_key,
+    validate_storage_path_containment,
+    validate_upload_type,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -88,28 +99,54 @@ async def upload_file(
     if not file.filename:
         raise HTTPException(status_code=400, detail="文件名不能为空")
 
-    upload_dir = os.path.join(settings.upload_dir, str(tid))
-    os.makedirs(upload_dir, exist_ok=True)
+    # BUG-020 AC-1/AC-4: 服务端生成 storage_key（不拼用户原始路径）+ 安全显示名
+    try:
+        storage_key, display_name = safe_storage_key(str(tid), file.filename)
+    except UploadSafetyError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
-    storage_key = f"{tid}/{uuid.uuid4().hex}_{file.filename}"
-    file_path = os.path.join(settings.upload_dir, storage_key)
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    # BUG-020 AC-3: 类型白名单（用安全显示名提取 ext，防 ../etc/passwd 伪造 ext）
+    try:
+        validate_upload_type(
+            "document", filename=display_name, content_type=file.content_type,
+        )
+    except UploadTypeUnsupported as e:
+        raise HTTPException(status_code=415, detail=str(e)) from e
 
-    content = await file.read()
-    with open(file_path, "wb") as f:
-        f.write(content)
+    upload_base = Path(settings.upload_dir)
+    file_path = upload_base / storage_key
+    # AC-1: containment 校验防 symlink/.. 逃逸
+    try:
+        validate_storage_path_containment(file_path.parent, upload_base)
+    except UploadSafetyError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
-    file_type = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "unknown"
+    # BUG-020 AC-2: 流式分块 + size 上限；超限 413 + 删临时文件
+    tmp_dir = upload_base / str(tid) / ".tmp"
+    try:
+        tmp_path, file_size = await read_chunked_to_tempfile(
+            file, max_bytes=DEFAULT_MAX_BYTES, tmp_dir=tmp_dir,
+        )
+    except UploadSizeExceeded as e:
+        raise HTTPException(status_code=413, detail=str(e)) from e
+    try:
+        commit_tmpfile(tmp_path, file_path)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"文件落盘失败：{e}") from e
+
+    file_type = (
+        display_name.rsplit(".", 1)[-1].lower() if "." in display_name else "unknown"
+    )
     tags: list[str] = []
 
     repo = FileRepository(session)
     row = await repo.create(
         tenant_id=tid,
         folder_id=uuid.UUID(folder_id) if folder_id else None,
-        filename=file.filename,
+        filename=display_name,
         file_type=file_type,
         doc_type=doc_type,
-        file_size=len(content),
+        file_size=file_size,
         storage_key=storage_key,
         tags=tags,
         uploaded_by=uid,

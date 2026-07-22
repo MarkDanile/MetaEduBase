@@ -12,6 +12,17 @@ from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.contexts.resource.infrastructure.resource_repository import ResourceRepository
 from app.shared.infrastructure.database import get_session
 from app.shared.infrastructure.tenant_context import get_tenant_id
+from app.shared.upload_safety import (
+    DEFAULT_MAX_BYTES,
+    UploadSafetyError,
+    UploadSizeExceeded,
+    UploadTypeUnsupported,
+    commit_tmpfile,
+    read_chunked_to_tempfile,
+    safe_storage_key,
+    validate_storage_path_containment,
+    validate_upload_type,
+)
 
 router = APIRouter()
 
@@ -77,19 +88,47 @@ async def upload_resource(
     kp_ids = json.loads(knowledge_point_ids)
     kp_uuids = [uuid.UUID(kp) for kp in kp_ids] if kp_ids else []
 
-    content = await file.read()
-    file_size = len(content)
-    file_type = (
-        Path(file.filename or "unknown").suffix.lstrip(".").lower()
-        if file.filename
-        else "unknown"
-    )
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="文件名不能为空")
 
-    storage_key = f"{resource_id}.{file_type}"
+    # BUG-020 AC-1/AC-4: 安全显示名 + 服务端 storage_key（resource_id.ext）
+    try:
+        _, display_name = safe_storage_key(str(tid), file.filename)
+    except UploadSafetyError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    file_type = (
+        display_name.rsplit(".", 1)[-1].lower() if "." in display_name else "unknown"
+    )
+    # BUG-020 AC-3: 类型白名单（用安全显示名提取 ext）
+    try:
+        validate_upload_type(
+            "resource", filename=display_name, content_type=file.content_type,
+        )
+    except UploadTypeUnsupported as e:
+        raise HTTPException(status_code=415, detail=str(e)) from e
+    storage_key = (
+        f"{resource_id}.{file_type}" if file_type != "unknown" else str(resource_id)
+    )
     tenant_dir = _ensure_upload_dir(tid)
     file_path = tenant_dir / storage_key
-    with open(file_path, "wb") as f:
-        f.write(content)
+    # AC-1: containment 校验
+    try:
+        validate_storage_path_containment(file_path, tenant_dir)
+    except UploadSafetyError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    # BUG-020 AC-2: 流式分块 + size 上限
+    tmp_dir = tenant_dir / ".tmp"
+    try:
+        tmp_path, file_size = await read_chunked_to_tempfile(
+            file, max_bytes=DEFAULT_MAX_BYTES, tmp_dir=tmp_dir,
+        )
+    except UploadSizeExceeded as e:
+        raise HTTPException(status_code=413, detail=str(e)) from e
+    try:
+        commit_tmpfile(tmp_path, file_path)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"文件落盘失败：{e}") from e
 
     repo = ResourceRepository(session)
     await repo.create(
