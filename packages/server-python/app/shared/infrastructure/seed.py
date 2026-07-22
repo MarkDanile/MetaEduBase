@@ -1,4 +1,5 @@
 import asyncio
+import json
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -91,6 +92,41 @@ async def seed_default_data() -> None:
         print("✅ 种子数据已插入: 默认租户 + admin 用户")
 
         await seed_ai_applications(session, now)
+        await seed_tenant_config(session)
+
+
+async def seed_tenant_config(session: Any) -> None:
+    """REQ-058: 把 settings 全局配置写入 DEFAULT_TENANT 的 tenant_scoped_config。
+
+    幂等：仅在 settings 值非空时 UPSERT；已存在不覆盖（尊重运维手动配置）。
+    生产以 DB 为准，settings 作开发 fallback（D-4）。
+    """
+    bindings: list[tuple[str, dict]] = []
+    if settings.internal_mcp_tenant_id:
+        bindings.append(
+            ("internal_mcp_binding", {"tenant_id": settings.internal_mcp_tenant_id})
+        )
+    if settings.dd_internal_query_catalog_id:
+        bindings.append(
+            ("dd_catalog_binding", {"catalog_id": settings.dd_internal_query_catalog_id})
+        )
+    for key, value in bindings:
+        await session.execute(
+            text(
+                "INSERT INTO metaedu.tenant_scoped_config "
+                "(tenant_id, config_key, config_value, updated_at) "
+                "VALUES (:tid, :key, (:value)::jsonb, NOW()) "
+                "ON CONFLICT (tenant_id, config_key) DO NOTHING"
+            ),
+            {
+                "tid": DEFAULT_TENANT_ID,
+                "key": key,
+                "value": json.dumps(value),
+            },
+        )
+    if bindings:
+        await session.commit()
+        print(f"✅ 种子数据已插入: tenant_scoped_config ({len(bindings)} 项)")
 
 
 async def seed_ai_applications(session: Any, now: Any) -> None:

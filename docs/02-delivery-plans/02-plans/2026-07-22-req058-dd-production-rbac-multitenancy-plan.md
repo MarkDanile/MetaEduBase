@@ -21,13 +21,16 @@ BUG-017/019 已关闭，依赖满足。本 plan 基于 shaping 冻结设计实�
 
 ## Slices
 
-### Slice 1：tenant_scoped_config 表 + 迁移 + 配置 service（AC-4/AC-6）
-- [ ] migration 025：`metaedu.tenant_scoped_config`（PK tenant_id+config_key）
-- [ ] `app/contexts/identity/application/tenant_config_service.py`：`get_config(tenant_id, key)` / `set_config(tenant_id, key, value, updated_by)` / `list_configs(tenant_id)`
-- [ ] `seed_tenant_config.py`：把 `settings.internal_mcp_tenant_id` / `settings.dd_catalog_id` 写入 DEFAULT_TENANT
-- [ ] Internal MCP server `_tenant_id()` 改读 `tenant_scoped_config`（按 caller tenant_id），settings fallback
-- [ ] DD Catalog resolver 同理改读 tenant config
-- [ ] `tests/contexts/identity/test_tenant_config_service.py`：CRUD + 跨 tenant 隔离 + settings fallback
+### Slice 1a：tenant_scoped_config 表 + 迁移 + 配置 service（AC-4/AC-6）—— 本 PR
+- [x] migration 025：`metaedu.tenant_scoped_config`（PK tenant_id+config_key）
+- [x] `app/contexts/identity/infrastructure/models.py`：`TenantScopedConfigModel`（Mapped[dict] + JSONB）
+- [x] `app/contexts/identity/application/tenant_config_service.py`：`get_config` / `get_config_or`（含 settings fallback）/ `set_config`（UPSERT）/ `list_configs` + `TenantConfigNotFoundError`
+- [x] `app/shared/infrastructure/seed.py::seed_tenant_config`：把 `settings.internal_mcp_tenant_id` / `settings.dd_internal_query_catalog_id` 写入 DEFAULT_TENANT（幂等 ON CONFLICT DO NOTHING）
+- [x] `tests/contexts/identity/test_tenant_config_service.py`：6 用例（CRUD/跨 tenant 隔离/UPSERT/list/fallback）
+
+### Slice 1b：Internal MCP / DD Catalog 接入 tenant_scoped_config —— 下一 PR
+- [ ] Internal MCP server `_tenant_id()` 改读 `tenant_scoped_config.internal_mcp_binding`（caller tenant_id 传播，需 MCP 调用链改造：SkillRunner 注入 tenant_id 到 MCP tool arguments）
+- [ ] DD Catalog resolver 同理改读 `dd_catalog_binding`
 - [ ] `tests/contexts/due_diligence/test_internal_mcp_tenant_binding.py`：tenant A/B 不同 binding，执行不串租户
 
 ### Slice 2：DdTask assignee_id + 可见性策略（AC-1/AC-2/AC-5）
