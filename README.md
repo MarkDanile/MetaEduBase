@@ -88,6 +88,7 @@ git clone https://github.com/MarkDanile/MetaEduBase.git
 cd MetaEduBase
 pnpm install
 cd packages/server-python && make install && cd ../..
+pnpm hooks:install
 
 ./dev.sh init-db
 ./dev.sh

@@ -62,7 +62,7 @@ from app.contexts.skill_registry.application.skill_registry_service import (
 from app.contexts.skill_registry.application.skill_runner import SkillRunner
 from app.contexts.skill_registry.domain.skill import SopTemplate
 from app.shared.infrastructure.seed import DEFAULT_ADMIN_ID, DEFAULT_TENANT_ID
-from tests.conftest import DEFAULT_TEST_DB_URL, _ensure_seed
+from tests.conftest import TEST_DB_URL, _ensure_seed
 
 # AC-9 是手工验收：必须显式 opt-in（RUN_SKILL_AC9=1）+ QCC token，否则 skip。
 # 与 REQ-044 AC-9 同款独立 opt-in 闸门，保证套件默认 hermetic。
@@ -110,7 +110,7 @@ async def ac9_session():
     idempotent (no-op if seed rows already present). Aligns with REQ-044
     AC-9 ``engine`` fixture pattern.
     """
-    engine = create_async_engine(DEFAULT_TEST_DB_URL, poolclass=NullPool)
+    engine = create_async_engine(TEST_DB_URL, poolclass=NullPool)
     await _ensure_seed(engine)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
@@ -231,7 +231,7 @@ async def test_due_diligence_runs_end_to_end(ac9_qcc_skill):
     skill = ac9_qcc_skill
 
     # Fresh session for the runner (the fixture's session committed registration).
-    engine = create_async_engine(DEFAULT_TEST_DB_URL, poolclass=NullPool)
+    engine = create_async_engine(TEST_DB_URL, poolclass=NullPool)
     factory = async_sessionmaker(engine, expire_on_commit=False)
 
     caller = InvocationCaller(

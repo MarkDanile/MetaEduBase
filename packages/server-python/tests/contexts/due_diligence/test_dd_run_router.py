@@ -61,7 +61,7 @@ async def _register_park_skill(client: AsyncClient, token: str) -> None:
     qcc_code = f"qcc_{suffix}"
     intcust_code = f"internal_customer_{suffix}"
     skill_code = f"park_investment_dd_{suffix}"
-    for code in (qcc_code, intcust_code):
+    for code in ("qcc", qcc_code, intcust_code):
         resp = await client.post(
             "/api/v1/mcp-servers",
             json={

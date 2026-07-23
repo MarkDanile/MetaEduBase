@@ -136,6 +136,7 @@ async def test_regenerate_api_token_response_only_api_token(client: AsyncClient)
 @pytest.mark.asyncio
 async def test_public_endpoint_anonymous_access(client: AsyncClient):
     """AC-5: 公开 endpoint 匿名访问，只含 PUBLISHED+PUBLIC+is_platform 子集，不含 token。"""
+    await _ensure_other_tenant()
     # 通过 raw DB 注入一个公开应用（service 不支持创建公开应用）
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import create_async_engine

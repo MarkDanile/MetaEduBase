@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  echo "Run this command inside a Git checkout." >&2
+  exit 1
+}
+
+cd "$REPO_ROOT"
+for hook in pre-commit pre-push commit-msg; do
+  if [[ ! -f ".githooks/$hook" ]]; then
+    echo "Missing .githooks/$hook" >&2
+    exit 1
+  fi
+  chmod +x ".githooks/$hook"
+done
+
+git config core.hooksPath .githooks
+
+configured_path=$(git config --get core.hooksPath)
+if [[ "$configured_path" != ".githooks" ]]; then
+  echo "Failed to configure core.hooksPath=.githooks" >&2
+  exit 1
+fi
+
+echo "Git hooks installed for this checkout: core.hooksPath=.githooks"

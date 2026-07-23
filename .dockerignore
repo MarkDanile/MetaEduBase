@@ -1,0 +1,17 @@
+.git
+.github
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.turbo
+.dev-logs
+.playwright-mcp
+.superpowers
+.codegraph
+**/.venv
+**/__pycache__
+**/node_modules
+**/dist
+**/*.pyc
+outputs
+packages/server-python/uploads

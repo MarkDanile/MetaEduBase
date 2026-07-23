@@ -92,40 +92,60 @@ async def _ensure_seed(engine):
             text("SELECT id FROM metaedu.tenants WHERE id = :id"),
             {"id": DEFAULT_TENANT_ID},
         )
-        if result.scalar_one_or_none():
-            return
+        tenant_exists = result.scalar_one_or_none() is not None
         from datetime import UTC, datetime
 
         import bcrypt
 
         now = datetime.now(UTC).replace(tzinfo=None)
+        if not tenant_exists:
+            await session.execute(
+                text(
+                    "INSERT INTO metaedu.tenants "
+                    "(id, name, school_name, isolation, is_active, created_at, updated_at) "
+                    "VALUES (:id, :name, :school_name, :isolation, true, :now, :now)"
+                ),
+                {
+                    "id": DEFAULT_TENANT_ID,
+                    "name": "test",
+                    "school_name": "测试学校",
+                    "isolation": "shared",
+                    "now": now,
+                },
+            )
+            pw_hash = bcrypt.hashpw(b"admin123", bcrypt.gensalt()).decode()
+            await session.execute(
+                text(
+                    "INSERT INTO metaedu.users "
+                    "(id, tenant_id, username, email, password_hash, role, "
+                    "clearance_level, is_active, created_at, updated_at) "
+                    "VALUES (:id, :tenant_id, :username, :email, :password_hash, "
+                    ":role, 5, true, :now, :now)"
+                ),
+                {
+                    "id": DEFAULT_ADMIN_ID,
+                    "tenant_id": DEFAULT_TENANT_ID,
+                    "username": "admin",
+                    "email": "admin@test.local",
+                    "password_hash": pw_hash,
+                    "role": "super_admin",
+                    "now": now,
+                },
+            )
         await session.execute(
             text(
-                "INSERT INTO metaedu.tenants "
-                "(id, name, school_name, isolation, is_active, created_at, updated_at) "
-                "VALUES (:id, :name, :school_name, :isolation, true, :now, :now)"
+                "INSERT INTO metaedu.data_catalogs "
+                "(tenant_id, code, name, description, entity_types, "
+                "default_business_purpose, is_active, created_by) "
+                "VALUES (:tenant_id, 'education', '中高职教育数据库', "
+                "'测试环境默认教育主题域', "
+                "'[\"customer\",\"bill\",\"contract\"]'::jsonb, "
+                "'教育数据分析', true, :created_by) "
+                "ON CONFLICT (tenant_id, code) DO NOTHING"
             ),
             {
-                "id": DEFAULT_TENANT_ID,
-                "name": "test",
-                "school_name": "测试学校",
-                "isolation": "shared",
-                "now": now,
-            },
-        )
-        pw_hash = bcrypt.hashpw(b"admin123", bcrypt.gensalt()).decode()
-        await session.execute(
-            text(
-                "INSERT INTO metaedu.users "
-                "(id, tenant_id, username, email, password_hash, role, "
-                "clearance_level, is_active, created_at, updated_at) "
-                "VALUES (:id, :tenant_id, :username, :email, :password_hash, "
-                ":role, 5, true, :now, :now)"
-            ),
-            {
-                "id": DEFAULT_ADMIN_ID, "tenant_id": DEFAULT_TENANT_ID,
-                "username": "admin", "email": "admin@test.local",
-                "password_hash": pw_hash, "role": "super_admin", "now": now,
+                "tenant_id": DEFAULT_TENANT_ID,
+                "created_by": DEFAULT_ADMIN_ID,
             },
         )
         await session.commit()

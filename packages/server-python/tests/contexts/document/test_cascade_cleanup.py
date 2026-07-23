@@ -15,10 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from app.shared.infrastructure.seed import DEFAULT_TENANT_ID
+from tests.conftest import TEST_DB_URL
 
 pytestmark = pytest.mark.asyncio
 
-TEST_DB_URL = "postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test"
 _DEFAULT_TENANT = DEFAULT_TENANT_ID  # already a uuid.UUID
 
 

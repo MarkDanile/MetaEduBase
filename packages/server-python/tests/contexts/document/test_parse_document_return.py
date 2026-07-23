@@ -92,6 +92,12 @@ def test_parse_document_accepts_uuid_strings() -> None:
     assert parsed_fid is not None
     assert parsed_tid is not None
 
-    with patch("asyncio.run", return_value={"full_text": "x", "section_count": 1}):
+    with patch(
+        "asyncio.run",
+        side_effect=lambda c, r={"full_text": "x", "section_count": 1}: (
+            c.close(),
+            r,
+        )[1],
+    ):
         result = parse_task.parse_document(_FID_STR, _TENANT_STR)
     assert result is not None

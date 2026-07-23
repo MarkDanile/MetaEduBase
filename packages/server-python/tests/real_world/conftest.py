@@ -16,10 +16,6 @@ PostgreSQL test DB.
 
 from __future__ import annotations
 
-import pytest
-
-
-
 import json
 import uuid
 from datetime import UTC, datetime
@@ -30,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from app.shared.infrastructure.seed import DEFAULT_ADMIN_ID, DEFAULT_TENANT_ID
-from tests.conftest import DEFAULT_TEST_DB_URL
+from tests.conftest import TEST_DB_URL
 
 
 @pytest_asyncio.fixture
@@ -41,7 +37,7 @@ async def db_session():
     so each test gets a fresh connection (matches the pattern used by
     ``tests/contexts/structured_data/conftest.py:db_session``).
     """
-    engine = create_async_engine(DEFAULT_TEST_DB_URL, echo=False, poolclass=NullPool)
+    engine = create_async_engine(TEST_DB_URL, echo=False, poolclass=NullPool)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
         try:

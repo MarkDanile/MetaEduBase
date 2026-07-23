@@ -70,7 +70,7 @@ from app.contexts.mcp_registry.infrastructure.mcp_server_repository import (
     MCPServerRepository,
 )
 from app.shared.infrastructure.seed import DEFAULT_ADMIN_ID, DEFAULT_TENANT_ID
-from tests.conftest import DEFAULT_TEST_DB_URL, _ensure_seed
+from tests.conftest import TEST_DB_URL, _ensure_seed
 
 # Load .env (gitignored) into os.environ so QCC_MCP_TOKEN is visible both to
 # the skip gate below and to CredentialRef.resolve() at call time. The app's
@@ -101,7 +101,7 @@ pytestmark = [
 @pytest_asyncio.fixture
 async def engine():
     """Test DB engine with seed ensured (tenant + super_admin)."""
-    e = create_async_engine(DEFAULT_TEST_DB_URL, echo=False, poolclass=NullPool)
+    e = create_async_engine(TEST_DB_URL, echo=False, poolclass=NullPool)
     await _ensure_seed(e)
     yield e
     await e.dispose()

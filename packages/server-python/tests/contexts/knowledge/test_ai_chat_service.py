@@ -524,6 +524,7 @@ async def test_ai_chat_service_runs_chunk_then_graph_sequentially() -> None:
     with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
         await service.chat(
             ServiceChatRequest(message="Python 基本数据类型", context_window=3),
+            tenant_id=str(uuid.uuid4()),
             session=_session_for_file(fid),  # type: ignore[arg-type]
         )
 

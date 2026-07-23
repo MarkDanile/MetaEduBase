@@ -57,6 +57,9 @@ def test_extract_knowledge_graph_accepts_uuid_strings() -> None:
     assert parsed_fid is not None
     assert parsed_tid is not None
 
-    with patch("asyncio.run", return_value={"nodes": 1, "edges": 1}):
+    with patch(
+        "asyncio.run",
+        side_effect=lambda c, r={"nodes": 1, "edges": 1}: (c.close(), r)[1],
+    ):
         result = extract_knowledge_graph(_FID_STR, _TENANT_STR)
     assert result is not None

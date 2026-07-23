@@ -13,7 +13,7 @@ async def test_016_018_create_catalog_schema_and_default():
     db_url = os.environ.get(
         "TEST_DATABASE_URL",
         "postgresql://metaedu:dev_only_123@localhost:5432/metaedu_test",
-    )
+    ).replace("postgresql+asyncpg://", "postgresql://", 1)
     conn = await asyncpg.connect(db_url)
     try:
         # data_catalogs 表存在 + 列正确
