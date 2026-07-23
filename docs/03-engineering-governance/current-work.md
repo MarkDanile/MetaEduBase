@@ -14,24 +14,7 @@
 
 ## 当前进行中
 
-### TD-083: 后端风险分级测试选择与性能专项治理
-
-状态：🟡 进行中
-类型：TD
-领域：后端 / 测试基础设施 / CI 性能 / 影响分析
-当前执行模式：基础设施 / 技术债模式
-最近接手工具：Codex
-分支：`codex/td-083-backend-test-selection`
-
-需求来源：
-- Spec: [TD-083 风险分级测试选择](../02-delivery-plans/01-specs/2026-07-23-td-083-backend-risk-tiered-test-selection.md)
-- Plan: [TD-083 实施计划](../02-delivery-plans/02-plans/2026-07-23-td-083-backend-risk-tiered-test-selection-plan.md)
-- 技术债：[TD-083](technical-debt.md#td-083-后端风险分级测试选择与性能专项治理)
-
-当前进展：风险选择器、PR targeted / main full-not-slow / nightly full 已接入；测试 fixture 已 mock API Celery 分发并新增默认禁外网护栏，仅保留真实 PostgreSQL；护栏发现的 2 个 MCP 系统 DNS 依赖已改为固定 mock；embedding timeout 的真实等待已改为 mock 异常并移出 slow；手工真实验收使用 `external_network` opt-in；后端目录 Markdown 改为 engineering-only。
-下一步：更新 PR #469 并验证 CI；合并后建立叶子 Context 探针 PR 验证 targeted。
-验证状态：选择器/scope 29 pass；工程 78 pass；Ruff、mypy、docs gate 通过；原最慢 6 用例 3.27s、相关 27 pass/10.32s；完整 `not slow` 1365 pass/3 skip/8 deselected/2m41s，最慢 2.52s；`slow` 7 pass/1 skip/3.89s（原 33.96s）；外部网络 marker 收集 4 个显式手工验收。
-交接备注：本地 hooks 不增加 pytest；未知路径、identity/shared/迁移/全局 fixture 必须 full；不得恢复任意文件分片。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -39,7 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-暂无候选任务；下一轮任务待规划。
+| P2 | TD-084 GitHub Actions Node 24 runtime 升级 | ⚫ 待办 | 复核 release notes / runner 兼容性后更新 action 引用，重新跑三路 CI | [Tech Debt](technical-debt.md#td-084-github-actions-node-24-runtime-升级) |
 
 ## 最近完成
 
@@ -49,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-23 | TD-083 后端风险分级测试选择与性能专项治理 | 🟢 完成 | PR targeted / main full-not-slow / nightly full；默认禁外网 + 外部依赖 mock；not-slow 1365 pass/2m41s；resource 探针 15 pass/4.22s | [PR #469](https://github.com/MarkDanile/MetaEduBase/pull/469)（`cccb3ff6`）/ [Tech Debt](technical-debt.md#td-083-后端风险分级测试选择与性能专项治理) |
 | 2026-07-23 | TD-082 分层质量门禁与 CI 提速 | 🟢 完成 | scope-aware CI + 秒级 hooks + MCP lock + 前端构建去重；不可靠分片已撤销，后端专项由 TD-083 接力 | [PR #467](https://github.com/MarkDanile/MetaEduBase/pull/467)（`754ca109`）/ [Tech Debt](technical-debt.md#td-082-分层质量门禁与-ci-提速) |
 | 2026-07-23 | TD-081 CI、Git hooks 与 mypy 可执行基线 | 🟢 完成 | 三路 GitHub CI + fresh PostgreSQL/zhparser + fail-closed hooks + 可递减 mypy baseline；main required checks 对管理员生效。Backend 1368 pass/5 skip，三路 CI 全绿 | [PR #465](https://github.com/MarkDanile/MetaEduBase/pull/465)（`a37a7e51`）/ [Tech Debt](technical-debt.md#td-081-ci-git-hooks-与-mypy-可执行基线缺失) |
 | 2026-07-22 | TD-080 后端全量测试顺序污染与 coroutine 未 await warning | 🟢 完成 | alembic fileConfig 传 disable_existing_loggers=False 治本（不再污染已存在 logger）+ 12 document asyncio.run mock 改 side_effect close coroutine + slow marker 优化 dev 循环（-m 'not slow' 6:33→~5min）。全量 0 fail；1 回归测试防回退 | [PR #464](https://github.com/MarkDanile/MetaEduBase/pull/464)（`a20f3ee1`）/ [work-log](work-log.md) |

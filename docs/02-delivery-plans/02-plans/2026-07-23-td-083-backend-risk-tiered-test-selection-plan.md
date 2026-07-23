@@ -31,10 +31,12 @@
 - backend push 到 main 使用 full `not slow`；schedule/manual 使用含 slow 全量。
 - 保持三个 required check 名称和 docs/frontend/MCP scope 行为不变。
 
-状态：已实现；真实 GitHub full fail-safe 与后续 targeted 探针待验证。
+状态：已完成；PR #469 的 Backend `4m53s`、Frontend `1m04s`、Engineering docs `13s` 全绿；main push run #29995992024 的 Backend `5m06s`、Frontend `1m00s`、Engineering docs `16s` 全绿。
 
 ## Step 5：验证与收口
 
 - 运行选择器/工程测试、Ruff、mypy、targeted Context、完整 `not slow`、MCP、文档门禁和 diff 检查。
 - 用当前 CI 基础设施 PR 验证 full fail-safe；再用最小叶子 Context 探针 PR 验证 targeted wall time。
 - 回填真实测试数量、耗时、PR/merge 信息，完成 Git 闭环。
+
+状态：已完成；基础设施 PR #469 已 squash merge `cccb3ff6`，main push run #29995992024 全绿；探针 PR #470 已验证 `context:resource` targeted 选择（15 passed / 4.22s，Backend 1m44s）后关闭且未合并。
