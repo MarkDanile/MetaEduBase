@@ -79,10 +79,10 @@ def test_pre_commit_propagates_ruff_failure(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 17
-    assert "Running Ruff" in result.stdout
+    assert "Ruff on staged backend files" in result.stdout
 
 
-def test_pre_commit_propagates_frontend_typecheck_failure(tmp_path: Path) -> None:
+def test_pre_commit_propagates_frontend_lint_failure(tmp_path: Path) -> None:
     init_repo(tmp_path)
     copy_hooks(tmp_path)
     write_executable(tmp_path / "bin/pnpm", "#!/usr/bin/env bash\nexit 19\n")
@@ -102,7 +102,7 @@ def test_pre_commit_propagates_frontend_typecheck_failure(tmp_path: Path) -> Non
     )
 
     assert result.returncode == 19
-    assert "frontend typecheck" in result.stdout
+    assert "ESLint on staged frontend files" in result.stdout
 
 
 def test_pre_push_blocks_main_without_advertising_bypass(tmp_path: Path) -> None:

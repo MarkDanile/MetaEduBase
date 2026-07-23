@@ -5,12 +5,15 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+  schedule:
+    - cron: "0 20 * * *"
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -26,24 +29,43 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 2
+
+      - name: Detect change scopes
+        id: scopes
+        uses: ./.github/actions/change-scopes
+        with:
+          event-name: ${{ github.event_name }}
+          base-sha: ${{ github.event.pull_request.base.sha || github.event.before }}
+          head-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: No backend or MCP changes
+        if: steps.scopes.outputs.backend != 'true' && steps.scopes.outputs.mcp != 'true'
+        run: echo "Backend and MCP checks are not required for this change."
 
       - name: Install uv
+        if: steps.scopes.outputs.backend == 'true' || steps.scopes.outputs.mcp == 'true'
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-          cache-dependency-glob: packages/server-python/uv.lock
+          cache-dependency-glob: |
+            packages/server-python/uv.lock
+            packages/mcp-server/uv.lock
 
-      - name: Install Python 3.12 dependencies
+      - name: Install Python 3.12 backend dependencies
+        if: steps.scopes.outputs.backend == 'true'
         run: uv sync --project packages/server-python --python 3.12 --frozen --extra dev
 
       - name: Prepare pinned PostgreSQL build sources
+        if: steps.scopes.outputs.backend == 'true'
         run: scripts/ci/prepare-postgres-sources
 
       - name: Set up Docker Buildx
+        if: steps.scopes.outputs.backend == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Build PostgreSQL test image
+        if: steps.scopes.outputs.backend == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -54,6 +76,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=metaedu-postgres
 
       - name: Start PostgreSQL
+        if: steps.scopes.outputs.backend == 'true'
         run: |
           docker run --detach --rm \
             --name metaedu-ci-postgres \
@@ -74,30 +97,54 @@ jobs:
           exit 1
 
       - name: Initialize test database
+        if: steps.scopes.outputs.backend == 'true'
         working-directory: packages/server-python
         run: uv run --frozen --extra dev python -m app.shared.infrastructure.test_db_setup
 
       - name: Ruff
+        if: steps.scopes.outputs.backend == 'true'
         working-directory: packages/server-python
         run: uv run --frozen --extra dev ruff check .
 
       - name: mypy baseline
+        if: steps.scopes.outputs.backend == 'true'
         working-directory: packages/server-python
         run: uv run --frozen --extra dev python scripts/check_mypy_baseline.py
 
-      - name: Backend tests
+      - name: Backend PR tests
+        if: steps.scopes.outputs.backend == 'true' && steps.scopes.outputs.full != 'true'
         working-directory: packages/server-python
-        run: uv run --frozen --extra dev pytest -q
+        run: uv run --frozen --extra dev pytest -q -m "not slow" --durations=20
 
-      - name: Engineering infrastructure tests
-        run: packages/server-python/.venv/bin/python -m pytest tests/engineering -q
+      - name: Backend full tests
+        if: steps.scopes.outputs.backend == 'true' && steps.scopes.outputs.full == 'true'
+        working-directory: packages/server-python
+        run: uv run --frozen --extra dev pytest -q --durations=20
+
+      - name: Check MCP lockfile
+        if: steps.scopes.outputs.mcp == 'true'
+        run: uv lock --check --project packages/mcp-server
+
+      - name: Install MCP Python 3.12 dependencies
+        if: steps.scopes.outputs.mcp == 'true'
+        run: uv sync --project packages/mcp-server --python 3.12 --frozen
+
+      - name: MCP Ruff
+        if: steps.scopes.outputs.mcp == 'true'
+        working-directory: packages/mcp-server
+        run: uv run --frozen ruff check .
+
+      - name: MCP tests
+        if: steps.scopes.outputs.mcp == 'true'
+        working-directory: packages/mcp-server
+        run: uv run --frozen pytest -q
 
       - name: PostgreSQL diagnostics
-        if: failure()
+        if: failure() && steps.scopes.outputs.backend == 'true'
         run: docker logs metaedu-ci-postgres
 
       - name: Stop PostgreSQL
-        if: always()
+        if: always() && steps.scopes.outputs.backend == 'true'
         run: docker stop metaedu-ci-postgres || true
 
   frontend:
@@ -107,32 +154,53 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect change scopes
+        id: scopes
+        uses: ./.github/actions/change-scopes
+        with:
+          event-name: ${{ github.event_name }}
+          base-sha: ${{ github.event.pull_request.base.sha || github.event.before }}
+          head-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: No frontend changes
+        if: steps.scopes.outputs.frontend != 'true'
+        run: echo "Frontend checks are not required for this change."
 
       - name: Install pnpm
+        if: steps.scopes.outputs.frontend == 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 9.15.0
 
       - name: Install Node.js
+        if: steps.scopes.outputs.frontend == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        if: steps.scopes.outputs.frontend == 'true'
+        run: pnpm install --frozen-lockfile --prefer-offline
 
       - name: Typecheck
+        if: steps.scopes.outputs.frontend == 'true'
         run: pnpm --filter @metaedu/web typecheck
 
       - name: Lint
+        if: steps.scopes.outputs.frontend == 'true'
         run: pnpm --filter @metaedu/web lint
 
       - name: Unit tests
+        if: steps.scopes.outputs.frontend == 'true'
         run: pnpm --filter @metaedu/web test
 
-      - name: Build
-        run: pnpm --filter @metaedu/web build
+      - name: Bundle
+        if: steps.scopes.outputs.frontend == 'true'
+        run: pnpm --filter @metaedu/web build:bundle
 
   engineering-docs:
     name: Engineering docs
@@ -144,8 +212,27 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Detect change scopes
+        id: scopes
+        uses: ./.github/actions/change-scopes
+        with:
+          event-name: ${{ github.event_name }}
+          base-sha: ${{ github.event.pull_request.base.sha || github.event.before }}
+          head-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+
       - name: Engineering documentation gate
         run: scripts/check-engineering-docs --full
+
+      - name: Install uv for engineering tests
+        if: steps.scopes.outputs.engineering_tests == 'true'
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: packages/server-python/uv.lock
+
+      - name: Engineering infrastructure tests
+        if: steps.scopes.outputs.engineering_tests == 'true'
+        run: uv run --with pytest==8.4.2 python -m pytest tests/engineering -q
 
       - name: Whitespace gate
         run: git diff --check origin/main...HEAD

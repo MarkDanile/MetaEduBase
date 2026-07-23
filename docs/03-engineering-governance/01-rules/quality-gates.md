@@ -5,9 +5,21 @@
 ## 基本原则
 
 - 先跑最小相关验证，再按风险扩展。
+- 本地 commit / push 只做秒级静态反馈；分钟级 pytest 进入 CI，不重复堆叠在每个阶段。
 - 退出码为 0 才能写“通过”；非 0 且属历史问题时，写“未通过；失败项属于 TD-xxx；本任务未新增”。
 - 文档-only 也要检查链接、编号、状态、引用路径。
 - 未解决问题必须绑定已有任务或新增任务，不停留在聊天记录。
+
+## 执行分层
+
+| 阶段 | 默认职责 |
+|------|----------|
+| pre-commit | 只检查 staged 文件：Ruff / ESLint / 文档门禁 / lock 一致性；不跑 pytest 或全量 typecheck |
+| pre-push | 按 `origin/main` 到 `HEAD` 的净变更执行相关模块静态门禁；不跑 pytest |
+| PR CI | 三个 required check 始终出现；无关 job 快速 no-op，相关后端跑 `not slow` 回归 |
+| 定时 / 手动 CI | 全 scope + 后端含 slow 全量回归，作为非重复的完整金标准 |
+
+路径分类事实源为 `scripts/ci/detect-change-scopes`；未知路径必须 fail-safe 全跑。Codex、Claude Code 和人工终端共同使用仓库 hooks，不维护 Agent 私有门禁。
 
 ## 完成门禁
 

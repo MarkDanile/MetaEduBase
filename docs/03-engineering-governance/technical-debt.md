@@ -175,6 +175,7 @@
 | TD-079 | 排除 alembic/versions/ 出 ruff 范围（93 个 pre-existing ruff 错误收口） | 🟢 完成 | P3 | 后端 / 治理 / lint / 可复现性 | TD-078 closeout 发现 main 上 `ruff check .` 报 93 个 pre-existing 错误（TD-076/077 的 "ruff 0" 实际只覆盖 app/+tests/）。93 错误全在 `alembic/versions/` 迁移文件（UP007 33 / E501 26 / I001 12 / UP035 11 / W292 7 / F401 4），`app/` + `tests/` 本就 0。迁移是冻结历史产物，纯风格修复 17 文件无功能收益且污染 git-blame -> 改 `pyproject.toml` `[tool.ruff]` 加 `extend-exclude = ["alembic/versions"]`（显式 `ruff check alembic/versions/` 仍可查，仅默认扫描排除）。`ruff check .` -> 0。[PR #442](https://github.com/MarkDanile/MetaEduBase/pull/442)（`32ffb08b`）：`ruff check .` 0 + app/+tests/ 0 + alembic 显式可查 93 + 全量 1064 pass/3 skip + 零 .py 改动 + docs 0 新增。 |
 | TD-080 | 后端全量测试存在顺序污染与 coroutine 未 await warning | 🟢 完成 | P1 | 后端 / 测试基础设施 / 稳定性 | 2026-07-22 沙箱外本机 PG 全量：1198 passed / 1 failed / 4 skipped / 29 warnings；唯一失败 `test_embedding_empty_logs_warning` 单独复跑通过，说明全局日志/模块状态被前序用例污染；另有多条 `run_in_session` coroutine 未 await / unraisable warning。需定位状态泄漏、保证全量稳定 0 fail，并清除 coroutine 资源警告。 |
 | TD-081 | CI、Git hooks 与 mypy 可执行基线缺失 | 🟢 完成 | P1 | 工程基础设施 / CI / Hooks / Typing | [PR #465](https://github.com/MarkDanile/MetaEduBase/pull/465)（`a37a7e51`）：三路 CI、fresh PostgreSQL、fail-closed hooks、mypy 可递减基线与 main required checks 已交付。 |
+| TD-082 | 分层质量门禁与 CI 提速 | 🟡 进行中 | P1 | 工程基础设施 / CI / Hooks / 测试性能 / 依赖管理 | PR #466 纯文档收口仍触发 Backend 10m23s + Frontend 1m8s；需按改动范围执行、分离 PR 快速回归与定时全量回归，并收口 MCP 独立锁文件。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -188,6 +189,51 @@
 | DOC-067 | 分布式临时编号与正式任务编号归并规则 | 🟢 完成 | P2 | 文档 / 工程脚本 / 任务池 / 跨设备协作 | PR #248 merged `9bf177b`：保留正式短编号，`DRAFT-*` 只作临时来源，主表门禁已实现。 |
 
 ## 任务详情
+
+### TD-082: 分层质量门禁与 CI 提速
+
+状态：🟡 进行中
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 工程基础设施 / CI / Hooks / 测试性能 / 依赖管理 |
+| 事实源 | 用户对 TD-081 实际运行时长的复盘；GitHub Actions run `29983858909` |
+| Spec | [TD-082 分层质量门禁与 CI 提速](../02-delivery-plans/01-specs/2026-07-23-td-082-scope-aware-quality-gates.md) |
+| Plan | [TD-082 实施计划](../02-delivery-plans/02-plans/2026-07-23-td-082-scope-aware-quality-gates-plan.md) |
+
+**证据**
+
+- 纯文档 PR #466 三路 required checks：Backend 10m23s、Frontend 1m8s、Engineering docs 7s；Backend 全量 pytest 是主要阻塞项。
+- `.github/workflows/ci.yml` 当前所有 PR 无条件安装前后端依赖、构建 PostgreSQL，并执行后端全量 pytest 与前端完整链路。
+- `.githooks/pre-commit` 遇到任一 Python 文件时 Ruff 扫全后端，遇到任一 Vue/TS 文件时执行全量 typecheck；职责偏重。
+- `packages/mcp-server/uv.lock` 为 109KB 未跟踪文件；`uv lock --check --project packages/mcp-server` 成功，但 Makefile 与 CI 尚未消费该锁。
+- TD-077 仅提交 `packages/server-python/uv.lock`；`git log --all -- packages/mcp-server/uv.lock` 无历史，因此 MCP 独立锁不是旧修复回退。
+
+**完成标准**
+
+- Backend、Frontend、Engineering docs 三个 required check 名称稳定存在；文档-only 和单端改动由无关 job 快速 no-op 成功，不出现缺失 required check。
+- pre-commit 只检查 staged 文件；pre-push 只执行相关模块静态门禁，不在本地 hooks 跑 pytest。
+- 后端 PR 跑 Ruff、mypy baseline、独立测试库与 `not slow` 快速回归；全量含 slow 测试由每日定时或手动 workflow 执行。
+- 前端 CI 不重复 typecheck；Engineering docs 保持亚秒级脚本，工程门禁测试只在治理实现变化时执行。
+- scope 分类对未知路径 fail-safe；有自动测试覆盖 docs/backend/frontend/MCP/跨域/未知路径。
+- MCP Server 锁文件被提交并由本地/CI 的 frozen 命令消费，不再作为无归属工作区噪声。
+- Codex、Claude Code、终端 Git 与 Windows Git Bash 共同使用仓库 hooks 和 CI，不引入 Agent 私有规则。
+
+**验证方式**
+
+- scope 分类脚本单测 + shell smoke；hooks 用暂存文件和分支 diff 场景验证。
+- 后端 `pytest -m "not slow"`、MCP pytest、前端 typecheck/lint/Vitest/bundle、工程测试与文档门禁。
+- PR 上核对三个 required checks 的实际耗时和 no-op 行为；手动 full workflow 核对含 slow 测试仍可执行。
+- `uv lock --check --project packages/mcp-server`、`git diff --check`。
+
+**交付记录**
+
+- 进行中；分支 `codex/td-082-scope-aware-ci`。
+- 本地实现结果：scope 分类含空 diff 的 7 类测试通过；hooks 改 staged/static 分层；CI 保留三 required names，并在每个 job 内亚秒分类以维持并行启动。
+- 后端真实测试库：`pytest -m "not slow" --durations=20` 为 1352 pass / 3 skip / 18 deselect，4m33s；修复 18 个测试 patch 旧 `_call_llm` 导致真实 provider 调用后降为 3m07s，目标文件 24 pass / 0.07s。
+- MCP：正式提交独立 lock，frozen Ruff 0.06s、7 tests 2.45s；前端本地 typecheck 3.10s、lint 2.14s、Vitest 3.60s、bundle 4.82s；Engineering docs 本地 1.87s、工程测试 56 pass。
+- 真实 staged 变更执行 pre-commit 1.00s；全范围分支执行 pre-push 4.43s（hook 取整 5s）；两者均未运行 pytest。
 
 ### TD-081: CI、Git hooks 与 mypy 可执行基线缺失
 

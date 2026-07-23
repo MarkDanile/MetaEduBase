@@ -1,15 +1,12 @@
 """BUG-019 Slice 4: 旧 MCP 默认账号 fail-fast + 401 一次刷新（AC-6）。
 
-用子进程跑（mcp-server venv 未装 pytest/mcp，避免引入新依赖）。
+用子进程跑，隔离 import-time 凭据校验与模块级 token cache。
 """
 from __future__ import annotations
 
 import os
 import subprocess
 import sys
-
-import pytest
-
 
 def _run_subprocess(
     script: str,

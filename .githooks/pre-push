@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+REPO_ROOT=$(git rev-parse --show-toplevel)
+cd "$REPO_ROOT"
+
+started_at=$SECONDS
 BRANCH=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)
 
 if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
@@ -12,4 +16,44 @@ if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
   exit 1
 fi
 
-echo "[pre-push] 推送分支检查通过：$BRANCH"
+base_ref=${METAEDU_HOOK_BASE_REF:-origin/main}
+if ! git rev-parse --verify --quiet "$base_ref^{commit}" >/dev/null; then
+  echo "[pre-push] Missing $base_ref; fetch the base branch before pushing." >&2
+  exit 1
+fi
+
+eval "$(scripts/ci/detect-change-scopes --base "$base_ref" --head HEAD)"
+
+if [[ "$backend" == true ]]; then
+  if [[ ! -x packages/server-python/.venv/bin/python ]]; then
+    echo "[pre-push] Missing backend environment; run: uv sync --project packages/server-python --frozen --extra dev" >&2
+    exit 1
+  fi
+  echo "[pre-push] Backend Ruff + mypy baseline..."
+  (
+    cd packages/server-python
+    .venv/bin/python -m ruff check .
+    .venv/bin/python scripts/check_mypy_baseline.py
+  )
+fi
+
+if [[ "$frontend" == true ]]; then
+  echo "[pre-push] Frontend typecheck..."
+  pnpm --filter @metaedu/web typecheck
+fi
+
+if [[ "$mcp" == true ]]; then
+  echo "[pre-push] MCP lock + Ruff..."
+  uv lock --check --project packages/mcp-server
+  (
+    cd packages/mcp-server
+    uv run --frozen ruff check .
+  )
+fi
+
+if [[ "$engineering" == true ]]; then
+  echo "[pre-push] Engineering documentation gate..."
+  scripts/check-engineering-docs
+fi
+
+echo "[pre-push] 推送分支检查通过：$BRANCH ($((SECONDS - started_at))s)"

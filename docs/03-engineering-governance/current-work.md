@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TD-082: 分层质量门禁与 CI 提速
+
+状态：🟡 进行中
+类型：TD
+领域：工程基础设施 / CI / Hooks / 测试性能 / 依赖管理
+当前执行模式：技术债模式
+最近接手工具：Codex
+分支：`codex/td-082-scope-aware-ci`
+
+需求来源：
+- Spec: [TD-082 分层质量门禁与 CI 提速](../02-delivery-plans/01-specs/2026-07-23-td-082-scope-aware-quality-gates.md)
+- Plan: [TD-082 实施计划](../02-delivery-plans/02-plans/2026-07-23-td-082-scope-aware-quality-gates-plan.md)
+- 技术债：[TD-082](technical-debt.md#td-082-分层质量门禁与-ci-提速)
+
+当前进展：已完成按范围 CI、轻量 hooks、PR `not slow` / 定时全量分层、前端去重 typecheck、MCP frozen lock；并修复 18 个 AI Chat 单测误调用真实 LLM 的测试隔离缺陷。
+下一步：完成提交前全门禁，创建 PR 并以 GitHub fresh runner 核对三路实际耗时。
+验证状态：pre-commit 1.00s / pre-push 4.43s；后端 `not slow` 1352 pass/3 skip/18 deselect，4m33s -> 3m07s；AI Chat 24 pass/0.07s；MCP 7 pass；工程 56 pass；前端与 docs gate 通过。
+交接备注：三个 required check 名称保持稳定；未知路径 fail-safe 全跑；本地沙箱内 PostgreSQL 被拒绝，后端计时使用已授权的本机测试库。
 
 ## 下一批候选任务
 

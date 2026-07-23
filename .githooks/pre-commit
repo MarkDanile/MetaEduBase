@@ -4,17 +4,26 @@ set -euo pipefail
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT"
 
-has_python=false
-has_frontend=false
+started_at=$SECONDS
+server_python_files=()
+mcp_python_files=()
+frontend_files=()
 has_engineering_docs=false
+has_mcp_lock_input=false
 
 while IFS= read -r -d '' file; do
   case "$file" in
     packages/server-python/*.py|packages/server-python/**/*.py)
-      has_python=true
+      server_python_files+=("$file")
+      ;;
+    packages/mcp-server/*.py|packages/mcp-server/**/*.py)
+      mcp_python_files+=("$file")
+      ;;
+    packages/mcp-server/pyproject.toml|packages/mcp-server/uv.lock)
+      has_mcp_lock_input=true
       ;;
     packages/web/*.ts|packages/web/*.vue|packages/web/**/*.ts|packages/web/**/*.vue)
-      has_frontend=true
+      frontend_files+=("${file#packages/web/}")
       ;;
     AGENTS.md|CLAUDE.md|docs/*|scripts/engineering/*|tests/engineering/*)
       has_engineering_docs=true
@@ -22,25 +31,39 @@ while IFS= read -r -d '' file; do
   esac
 done < <(git diff --cached --name-only --diff-filter=ACMR -z)
 
-if [[ "$has_python" == true ]]; then
+if [[ ${#server_python_files[@]} -gt 0 ]]; then
   if [[ ! -x packages/server-python/.venv/bin/python ]]; then
     echo "[pre-commit] Missing backend environment; run: uv sync --project packages/server-python --frozen --extra dev" >&2
     exit 1
   fi
-  echo "[pre-commit] Running Ruff..."
+  echo "[pre-commit] Ruff on staged backend files..."
+  packages/server-python/.venv/bin/python -m ruff check "${server_python_files[@]}"
+fi
+
+if [[ ${#mcp_python_files[@]} -gt 0 ]]; then
+  if [[ ! -x packages/mcp-server/.venv/bin/python ]]; then
+    echo "[pre-commit] Missing MCP environment; run: uv sync --project packages/mcp-server --frozen" >&2
+    exit 1
+  fi
+  echo "[pre-commit] Ruff on staged MCP files..."
+  packages/mcp-server/.venv/bin/python -m ruff check "${mcp_python_files[@]}"
+fi
+
+if [[ ${#frontend_files[@]} -gt 0 ]]; then
+  if ! command -v pnpm >/dev/null 2>&1; then
+    echo "[pre-commit] pnpm is required for frontend lint." >&2
+    exit 1
+  fi
+  echo "[pre-commit] ESLint on staged frontend files..."
   (
-    cd packages/server-python
-    .venv/bin/python -m ruff check .
+    cd packages/web
+    pnpm exec eslint "${frontend_files[@]}"
   )
 fi
 
-if [[ "$has_frontend" == true ]]; then
-  if ! command -v pnpm >/dev/null 2>&1; then
-    echo "[pre-commit] pnpm is required for frontend typecheck." >&2
-    exit 1
-  fi
-  echo "[pre-commit] Running frontend typecheck..."
-  pnpm --filter @metaedu/web typecheck
+if [[ "$has_mcp_lock_input" == true ]]; then
+  echo "[pre-commit] Checking MCP lockfile..."
+  uv lock --check --project packages/mcp-server
 fi
 
 if [[ "$has_engineering_docs" == true ]]; then
@@ -48,4 +71,4 @@ if [[ "$has_engineering_docs" == true ]]; then
   scripts/check-engineering-docs
 fi
 
-echo "[pre-commit] All checks passed."
+echo "[pre-commit] All checks passed in $((SECONDS - started_at))s."
