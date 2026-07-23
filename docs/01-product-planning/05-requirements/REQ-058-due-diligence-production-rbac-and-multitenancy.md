@@ -1,11 +1,12 @@
 # REQ-058: 企业背调生产级 RBAC、制审分离与多租户配置
 
-> Status: 🔵 Ready
+> Status: 🟢 Done
 > Priority: P0
 > Milestone: P3 / Industrial Park Production
 > Area: 企业背调 / RBAC / Audit / Multi-tenant
 > Created: 2026-07-22
 > Shaped: 2026-07-22（角色矩阵 / 配置模型 / 迁移策略已冻结，见 Decisions）
+> Completed: 2026-07-22（5 Slice via PR #459~#463）
 > Source: [2026-07-22 安全与质量复核](../../03-engineering-governance/04-retrospectives/2026-07-22-security-and-quality-follow-up-review.md)
 
 ## Problem

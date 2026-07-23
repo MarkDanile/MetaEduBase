@@ -14,7 +14,7 @@
 
 ## 当前进行中
 
-暂无进行中任务。
+暂无进行中任务。REQ-058 已合并归档（见最近完成）。
 
 ## 下一批候选任务
 
@@ -22,7 +22,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-058 企业背调生产级 RBAC、制审分离与多租户配置 | 🔵 Ready | 2026-07-22 shaping 完成（角色矩阵/配置模型/迁移策略已冻结）；可按 plan 5 Slice 实施 | [REQ-058](../01-product-planning/05-requirements/REQ-058-due-diligence-production-rbac-and-multitenancy.md) / [Plan](../02-delivery-plans/02-plans/2026-07-22-req058-dd-production-rbac-multitenancy-plan.md) |
 | P1 | TD-080 后端全量测试顺序污染与 coroutine 未 await warning | 🔵 就绪 | 定位全量顺序污染根因（test_embedding_empty_logs_warning 单独 PASS、全量 fail）+ 清除 run_in_session coroutine 资源警告，保证全量稳定 0 fail | [Tech Debt](technical-debt.md#td-080-后端全量测试存在顺序污染与-coroutine-未-await-warning) |
 | P1 | TD-081 CI、Git hooks 与 mypy 可执行基线缺失 | 🔵 就绪 | 建立最小 CI（.github/workflows）+ 可复现 hook 安装/强制失败（pre-commit 不再 `ruff ... || true` 吞失败）+ mypy 启动基线 | [Tech Debt](technical-debt.md#td-081-ci-git-hooks-与-mypy-可执行基线缺失) |
 
@@ -34,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-22 | REQ-058 企业背调生产级 RBAC、制审分离与多租户配置 | 🟢 完成 | DD 权限矩阵+maker-checker+任务可见性+tenant_scoped_config 表+配置审计+平台 status only。7 AC；5 Slice（#459~#463）；43 测试；全量 1364 pass/3 pre-existing；ruff 0/docs gate 0 | [PR #463](https://github.com/MarkDanile/MetaEduBase/pull/463)（`d2c3b752`）/ [work-log](work-log.md) |
 | 2026-07-22 | BUG-020 上传路径/大小/类型与下载认证传输硬化 | 🟢 完成 | P0 安全：safe_display_name+containment 校验+流式分块 size 413+ext/MIME 双校验 415+storage_key 服务端生成+前端下载改 axios blob+Authorization header。6 AC；34 后端测试；全量 1322 pass/3 pre-existing；ruff 0/docs gate 0/前端 typecheck+lint 0 | [PR #457](https://github.com/MarkDanile/MetaEduBase/pull/457)（`beddaaab`）/ [work-log](work-log.md) |
 | 2026-07-22 | BUG-019 MCP 凭证边界与 SSRF 硬化 | 🟢 完成 | P0 安全：CredentialRef 命名空间+黑名单+URL/IP/DNS rebinding 拒绝+set_enabled 前置校验+follow_redirects=False+mcp-server fail-fast+401 一次刷新。7 AC 全覆盖；38 后端测试+7 mcp-server 测试；全量 1290 pass/1 TD-080 pre-existing/ruff 0 | [PR #456](https://github.com/MarkDanile/MetaEduBase/pull/456)（`3eb526f1`）/ [work-log](work-log.md) |
 | 2026-07-22 | BUG-018 AI App 鉴权、租户与 Token 暴露硬化 | 🟢 完成 | P0 安全：管理端点认证+RBAC+tenant-scoped+反伪造 tenant+DTO 拆 Public/Admin/Token+公开 /public+/share/{token}+前端 axios 统一。7 AC 全覆盖；31 后端测试；全量 1252 pass/2 pre-existing；ruff/docs/前端 typecheck+lint 0 | [PR #455](https://github.com/MarkDanile/MetaEduBase/pull/455)（`b084bba3`）/ [work-log](work-log.md) |
