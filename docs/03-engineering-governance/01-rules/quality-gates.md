@@ -16,8 +16,8 @@
 |------|----------|
 | pre-commit | 只检查 staged 文件：Ruff / ESLint / 文档门禁 / lock 一致性；不跑 pytest 或全量 typecheck |
 | pre-push | 按 `origin/main` 到 `HEAD` 的净变更执行相关模块静态门禁；不跑 pytest |
-| PR CI | 三个 required check 始终出现；无关 job 快速 no-op，相关后端跑 `not slow` 回归 |
-| 定时 / 手动 CI | 全 scope + 后端含 slow 全量回归，作为非重复的完整金标准 |
+| PR CI | 三个 required check 始终出现；无关 job 快速 no-op，相关后端运行 targeted 或完整 hermetic 回归 |
+| 定时 / 手动 CI | 全 scope + 后端完整 hermetic 回归；真实外部服务验收不进入自动 CI |
 
 路径分类事实源为 `scripts/ci/detect-change-scopes`；未知路径必须 fail-safe 全跑。Codex、Claude Code 和人工终端共同使用仓库 hooks，不维护 Agent 私有门禁。
 

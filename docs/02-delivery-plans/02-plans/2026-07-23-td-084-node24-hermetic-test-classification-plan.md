@@ -1,0 +1,39 @@
+# TD-084 GitHub Actions Node 24 与 hermetic 测试分类收口实施计划
+
+## Step 1：冻结版本与测试语义
+
+- 记录 6 类 action 的官方最新 release 和 `runs.using: node24` 证据。
+- 记录现有 slow 套件 7 passed / 1 skipped / 3.89s 基线。
+- 将 TD-084 移入工作台进行中。
+
+状态：已完成。
+
+## Step 2：升级 CI actions
+
+- checkout v4 -> v7；setup-node v4 -> v7；pnpm setup v4 -> v6。
+- setup-uv v6 -> v9，并显式保留 `prune-cache: true`。
+- setup-buildx v3 -> v4；build-push v6 -> v7。
+
+状态：已完成实现与本地验证，待 CI 验证。
+
+## Step 3：收口 hermetic 测试分类
+
+- 移除 `test_p1_demo.py` 与 REQ-046 real-world 文件的模块级 slow marker。
+- 删除 pytest slow marker 注册。
+- CI targeted / full / schedule/manual 统一过滤 `external_network`。
+- 更新测试规则、质量门禁和工程回归断言。
+
+状态：已完成实现与本地验证，待 CI 验证。
+
+## Step 4：验证与 Git 闭环
+
+- 本地运行完整 hermetic pytest、Ruff、mypy baseline、工程测试、docs gate、lock 与 diff 检查。
+- PR 验证 required checks；合并后验证 main push；再触发 workflow_dispatch 验证手动路径。
+- 检查 annotations，不允许保留本任务目标 action 的 Node 20 warning。
+- 回填 durations、测试数量、PR / merge / run 后收口工作台与技术债。
+
+状态：本地验证已完成，PR/main/workflow_dispatch 待验证。
+
+- Command: `cd packages/server-python && .venv/bin/pytest -q -m 'not external_network' --durations=20`
+- Result: 退出码 0；1372 passed / 4 external deselected / 2m48s；Ruff、mypy baseline、工程测试 79 passed、docs gate、YAML、lock 与 diff check 均为退出码 0。
+- Environment: macOS 本机，真实 `metaedu_test` PostgreSQL；LLM、Celery、Redis、HTTP、MCP 外部连接由 mock / 默认禁网 fixture 隔离。

@@ -8,6 +8,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "ci" / "detect-change-scopes"
+WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
 
 def _classify(*paths: str) -> dict[str, str]:
@@ -97,3 +98,32 @@ def test_github_output_matches_stdout() -> None:
         assert Path(output_path).read_text() == result.stdout
     finally:
         os.unlink(output_path)
+
+
+def test_ci_uses_node24_actions_and_hermetic_pytest_boundary() -> None:
+    workflow = WORKFLOW.read_text()
+    expected_actions = {
+        "actions/checkout@v7",
+        "actions/setup-node@v7",
+        "pnpm/action-setup@v6",
+        "astral-sh/setup-uv@v9",
+        "docker/setup-buildx-action@v4",
+        "docker/build-push-action@v7",
+    }
+    for action in expected_actions:
+        assert action in workflow
+
+    legacy_actions = {
+        "actions/checkout@v4",
+        "actions/setup-node@v4",
+        "pnpm/action-setup@v4",
+        "astral-sh/setup-uv@v6",
+        "docker/setup-buildx-action@v3",
+        "docker/build-push-action@v6",
+    }
+    for action in legacy_actions:
+        assert action not in workflow
+
+    assert "not slow" not in workflow
+    assert workflow.count('-m "not external_network"') == 3
+    assert workflow.count("prune-cache: true") == 2

@@ -47,7 +47,6 @@ import pytest
 from dotenv import load_dotenv
 
 load_dotenv()
-pytestmark = pytest.mark.slow
 
 # ── opt-in 闸门与真实通道探测 ──────────────────────────────────────────────
 _RUN_AC8 = os.environ.get("RUN_DD_AC8")
