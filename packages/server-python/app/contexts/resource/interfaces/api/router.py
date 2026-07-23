@@ -1,3 +1,5 @@
+"""Resource API routes used by the TD-083 targeted CI probe."""
+
 import json
 import os
 import uuid
