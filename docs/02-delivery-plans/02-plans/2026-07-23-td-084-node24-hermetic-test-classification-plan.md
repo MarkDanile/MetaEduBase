@@ -14,7 +14,7 @@
 - setup-uv v6 -> v9.0.0，并显式保留 `prune-cache: true`；官方未提供 `v9` major tag，使用可解析的精确 release。
 - setup-buildx v3 -> v4；build-push v6 -> v7。
 
-状态：已完成实现与本地验证；PR 首轮验证发现 setup-uv 无 `v9` major tag，已修正为 `v9.0.0`，待 CI 复验。
+状态：已完成。PR 首轮验证发现 setup-uv 无 `v9` major tag，修正为 `v9.0.0` 后 PR、main push 与 workflow_dispatch 均通过。
 
 ## Step 3：收口 hermetic 测试分类
 
@@ -23,7 +23,7 @@
 - CI targeted / full / schedule/manual 统一过滤 `external_network`。
 - 更新测试规则、质量门禁和工程回归断言。
 
-状态：已完成实现与本地验证，待 CI 验证。
+状态：已完成。PR、main push 与 workflow_dispatch 均执行完整 hermetic 回归并通过。
 
 ## Step 4：验证与 Git 闭环
 
@@ -32,9 +32,12 @@
 - 检查 annotations，不允许保留本任务目标 action 的 Node 20 warning。
 - 回填 durations、测试数量、PR / merge / run 后收口工作台与技术债。
 
-状态：本地验证已完成，PR/main/workflow_dispatch 待验证。
+状态：已完成。
 
 - Command: `cd packages/server-python && .venv/bin/pytest -q -m 'not external_network' --durations=20`
 - Result: 退出码 0；1372 passed / 4 external deselected / 2m48s；Ruff、mypy baseline、工程测试 79 passed、docs gate、YAML、lock 与 diff check 均为退出码 0。
 - Environment: macOS 本机，真实 `metaedu_test` PostgreSQL；LLM、Celery、Redis、HTTP、MCP 外部连接由 mock / 默认禁网 fixture 隔离。
 - PR evidence: [run #29998631061](https://github.com/MarkDanile/MetaEduBase/actions/runs/29998631061) 中 Frontend 通过；Backend 与 Engineering docs 在加载 `astral-sh/setup-uv@v9` 时分别于 2s / 3s 失败，尚未执行项目检查。官方 Git refs 复核确认其余 5 个 major tag 存在，setup-uv 仅 `v9.0.0` 存在，故改用精确 release。
+- PR success: [PR #472](https://github.com/MarkDanile/MetaEduBase/pull/472) squash merge `beb7c6fd`；[run #29998945591](https://github.com/MarkDanile/MetaEduBase/actions/runs/29998945591) Backend 5m06s（1371 passed / 1 skipped / 4 external deselected / 3m21s，MCP 7 passed）、Frontend 1m10s、Engineering docs 16s。
+- Main/manual: main push [run #29999345037](https://github.com/MarkDanile/MetaEduBase/actions/runs/29999345037) Backend 5m09s / Frontend 1m01s / Engineering docs 13s；workflow_dispatch [run #29999714011](https://github.com/MarkDanile/MetaEduBase/actions/runs/29999714011) Backend 5m08s / Frontend 1m10s / Engineering docs 12s，三路均通过。
+- Annotations: PR Backend 与 Engineering docs 均为 0；Frontend 仅保留 10 条既有测试文件 lint warning，三类运行均未出现本任务 6 类 action 的 Node 20 deprecated warning。
