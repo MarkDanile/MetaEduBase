@@ -178,6 +178,7 @@
 | TD-082 | 分层质量门禁与 CI 提速 | 🟢 完成 | P1 | 工程基础设施 / CI / Hooks / 测试性能 / 依赖管理 | [PR #467](https://github.com/MarkDanile/MetaEduBase/pull/467)（`754ca109`）：scope-aware 三路 CI、秒级 hooks、MCP lock 与前端去重已交付；后端专项转 TD-083。 |
 | TD-083 | 后端风险分级测试选择与性能专项治理 | 🟢 完成 | P1 | 后端 / 测试基础设施 / CI 性能 | [PR #469](https://github.com/MarkDanile/MetaEduBase/pull/469)（`cccb3ff6`）/ [Spec](../02-delivery-plans/01-specs/2026-07-23-td-083-backend-risk-tiered-test-selection.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-td-083-backend-risk-tiered-test-selection-plan.md) |
 | TD-084 | GitHub Actions Node 24 与 hermetic 测试分类收口 | 🟢 完成 | P2 | 工程基础设施 / CI / 依赖维护 / 测试语义 | [PR #472](https://github.com/MarkDanile/MetaEduBase/pull/472)（`beb7c6fd`）/ [Spec](../02-delivery-plans/01-specs/2026-07-23-td-084-node24-hermetic-test-classification.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-td-084-node24-hermetic-test-classification-plan.md) |
+| TD-085 | 收口 AI Chat、Skill 与 Agent App 的上下文边界倒置 | ⚫ 待办 | P1 | 后端 / Agent Platform / DDD / 可维护性 | [REQ-059](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md) / 2026-07-23 源码复核 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -191,6 +192,52 @@
 | DOC-067 | 分布式临时编号与正式任务编号归并规则 | 🟢 完成 | P2 | 文档 / 工程脚本 / 任务池 / 跨设备协作 | PR #248 merged `9bf177b`：保留正式短编号，`DRAFT-*` 只作临时来源，主表门禁已实现。 |
 
 ## 任务详情
+
+### TD-085: 收口 AI Chat、Skill 与 Agent App 的上下文边界倒置
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 后端 / Agent Platform / DDD / 可维护性 |
+| 事实源 | [REQ-059](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md) / 2026-07-23 源码复核 |
+
+**证据**
+
+- `knowledge/application/ai_chat_service.py` 1015 行，超过仓库 1000 行硬边界；同时承担 NER、检索、Fusion、Context Packing、Prompt、LLM、内部问数 Tool Calling 和 diagnostics。
+- `AIChatService._call_llm*` 从 application 层反向导入 `knowledge/interfaces/api/ai_router.py`；`hybrid_ner_service.py` 也存在同类反向依赖，靠函数内 lazy import 避免循环。
+- `skill_registry/application/dd_query_runner.py` 258 行，名称、配置、主体解析和数据关系均属于企业背调，却位于通用 Skill 上下文；Skill Router 和 DD Router 都直接装配该 adapter。
+- `skill_registry/application/skill_runner.py` 565 行，包含“企业尽调报告助手”系统 Prompt、QCC 参数映射、`internal_query` 专用分支和背调证据绑定，通用 Registry/Runner 已被首个业务场景反向塑形。
+- 当前不存在 `agent_workspace`、`agent_runtime` 或 `tool_gateway` bounded context；直接接 Pi/ACP 会与 AI Chat、SkillRunner、DdOrchestrator 形成平行编排链。
+
+**问题**
+
+- 依赖方向从 domain/application 指向 interface 和具体业务 adapter，违反仓库 Router 轻量与上下文分层规则。
+- Direct RAG、确定性 Skill 和未来 Agent Runtime 的职责无法清晰组合，新增工具只能继续硬编码进 AIChatService 或 SkillRunner。
+- 企业背调字段和 Prompt 泄漏进通用层，后续教育、政策、园区其他 Agent App 会被迫适配背调语义。
+- 一次性大重构风险高；必须以特征测试和 Port/Adapter 逐步迁移，保持现有真实业务闭环。
+
+**完成标准**
+
+- 抽出统一 LLM application port / infrastructure adapter，`knowledge/application` 不再导入 `interfaces/api`。
+- 将 `AIChatService` 收缩为职责明确的 Direct RAG 用例；通用 Tool Calling 迁入 REQ-043 Tool Gateway/Runtime，迁移期间保持兼容 adapter。
+- 将 `dd_query_runner`、QCC 参数映射、背调 Prompt 和背调 evidence 绑定移回 `due_diligence`，通用 Skill 层只依赖抽象 Tool/Artifact ports。
+- 明确 deterministic SkillRunner 与 Agent Skills（模型可发现的指令资产）的产品语义，避免继续用同一名词承载两种执行模型。
+- Router 只做认证、DTO、异常/响应映射；依赖装配进入清晰的 composition provider。
+- 分 Slice 执行，每个 Slice 有行为特征测试；不得以本债为名同时实现 REQ-041/043 新功能。
+- 实际新增 Agent bounded context 时同步 `ARCHITECTURE.md`；仅移动内部实现的 Slice 不提前宣称新架构已落地。
+
+**验证方式**
+
+- 架构扫描：`rg` 证明 `contexts/*/application` 不再导入本 context 的 `interfaces/api`，`skill_registry` 不再出现 DD/QCC/企业尽调专属实现。
+- 文件规模门禁：`ai_chat_service.py` 不再超过 1000 行，新增/重构文件遵循默认 500 行规则。
+- 运行 AI Chat RAG、Skill Registry/Runner、企业背调、智能问数相关 hermetic 回归；真实外部 QCC/LLM 验收按受影响 Slice 决定，不用 mock 冒充。
+- `ruff check`、mypy baseline、`scripts/check-engineering-docs`、`git diff --check`。
+
+**交付记录**
+
+- 2026-07-23：在 BUG-017/018/019、REQ-058 和 TD-080~084 收口后登记；待 REQ-059 架构边界冻结并拆分 spec/plan，不与菜单 REQ-060 混为同一实施 PR。
 
 ### TD-084: GitHub Actions Node 24 与 hermetic 测试分类收口
 

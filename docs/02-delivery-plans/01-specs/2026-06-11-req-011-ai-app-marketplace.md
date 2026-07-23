@@ -2,6 +2,7 @@
 
 > Spec 入口：REQ-011（需求塑形 2026-06-11）。本文件是验收口径与边界的事实源；实施拆分见 [`2026-06-11-req-011-ai-app-marketplace-plan.md`](../02-plans/2026-06-11-req-011-ai-app-marketplace-plan.md)。
 > 需求正文：[`docs/01-product-planning/05-requirements/REQ-011-ai-application-marketplace-and-registry.md`](../../01-product-planning/05-requirements/REQ-011-ai-application-marketplace-and-registry.md)
+> 2026-07-23 范围说明：APP-001“首个 Pilot”仅指教育应用子组合在广场中的首个接入样例；全项目应用开发当前以园区为优先，近期主线为 APP-005/009/012/030/016。顶级菜单决策由 REQ-060 重新治理，本 spec 继续约束应用注册与广场能力，不覆盖当前导航事实源。
 
 ## 目标
 
@@ -17,9 +18,9 @@
 
 > 用户在 REQ-011 塑形阶段确认 5 项决策；后续 spec / plan 不得偏离。
 
-- **Q1 — APP-001 作为首个 Pilot 应用**：APP-001（课程能力图谱）以 Published/Pilot 状态进入广场。
+- **Q1 — APP-001 作为教育应用广场首个 Pilot**：APP-001（课程能力图谱）以 Published/Pilot 状态进入广场；该决定不代表全项目应用交付优先级。
 - **Q2 — 可见性粒度**：支持租户级隔离，`visibility` 字段由 `tenant_id` 协同控制。
-- **Q3 — 应用管理入口**：新增 `AI 应用` 顶级独立菜单，下含"应用广场"和"应用管理"两个子菜单。
+- **Q3 — 应用管理入口（历史）**：原方案新增 `AI 应用` 顶级独立菜单；当前导航层级以 REQ-060 的统一 permission/nav 事实源为准。
 - **Q4 — config_schema 方案**：强类型 Pydantic 配置模型，不只存原始 JSON。
 - **Q5 — 对外发布预留**：同步预留 share_token（分享链接）和 api_token（API 暴露）字段。
 

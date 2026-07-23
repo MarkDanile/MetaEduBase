@@ -5,7 +5,7 @@ Priority: P0
 Milestone: P3
 Domain: AI Workspace / Data Activation / Text-to-SQL / 产业园区
 Source: 用户补充：国资国企最看重激活多年信息化投入沉淀的数据；企业 360 背调也应依赖智能问数能力
-Related: REQ-046 / REQ-048 / REQ-050 / REQ-051 / APP-005 / APP-020 / APP-022 / APP-023 / APP-028
+Related: REQ-046 / REQ-048 / REQ-050 / REQ-051 / APP-005 / APP-012 / APP-020 / APP-023 / APP-028 / APP-030
 External:
 - 智能问数技术栈参考: https://mp.weixin.qq.com/s/03bGPfs3Mc2zZMtI1-DyRw
 
