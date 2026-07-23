@@ -16,10 +16,12 @@
 |------|----------|
 | pre-commit | 只检查 staged 文件：Ruff / ESLint / 文档门禁 / lock 一致性；不跑 pytest 或全量 typecheck |
 | pre-push | 按 `origin/main` 到 `HEAD` 的净变更执行相关模块静态门禁；不跑 pytest |
-| PR CI | 三个 required check 始终出现；无关 job 快速 no-op，相关后端在隔离 PostgreSQL shards 跑 `not slow` 回归 |
+| PR CI | 三个 required check 始终出现；无关 job 快速 no-op，相关后端跑 `not slow` 回归 |
 | 定时 / 手动 CI | 全 scope + 后端含 slow 全量回归，作为非重复的完整金标准 |
 
 路径分类事实源为 `scripts/ci/detect-change-scopes`；未知路径必须 fail-safe 全跑。Codex、Claude Code 和人工终端共同使用仓库 hooks，不维护 Agent 私有门禁。
+
+后端 scope 内的进一步测试选择必须基于稳定模块所有权和风险分级；不得按文件数量任意分片，也不得仅因改动行数少而跳过共享、鉴权、租户、迁移或测试基础设施的完整回归。专项治理见 TD-083。
 
 ## 完成门禁
 

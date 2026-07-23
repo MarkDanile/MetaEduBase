@@ -17,10 +17,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  backend-checks:
-    name: Backend checks
+  backend:
+    name: Backend
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test
+      DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test
+      JWT_SECRET_KEY: ci-only-not-for-production
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -47,79 +51,6 @@ jobs:
           cache-dependency-glob: |
             packages/server-python/uv.lock
             packages/mcp-server/uv.lock
-
-      - name: Install Python 3.12 backend dependencies
-        if: steps.scopes.outputs.backend == 'true'
-        run: uv sync --project packages/server-python --python 3.12 --frozen --extra dev
-
-      - name: Ruff
-        if: steps.scopes.outputs.backend == 'true'
-        working-directory: packages/server-python
-        run: uv run --frozen --extra dev ruff check .
-
-      - name: mypy baseline
-        if: steps.scopes.outputs.backend == 'true'
-        working-directory: packages/server-python
-        run: uv run --frozen --extra dev python scripts/check_mypy_baseline.py
-
-      - name: Check MCP lockfile
-        if: steps.scopes.outputs.mcp == 'true'
-        run: uv lock --check --project packages/mcp-server
-
-      - name: Install MCP Python 3.12 dependencies
-        if: steps.scopes.outputs.mcp == 'true'
-        run: uv sync --project packages/mcp-server --python 3.12 --frozen
-
-      - name: MCP Ruff
-        if: steps.scopes.outputs.mcp == 'true'
-        working-directory: packages/mcp-server
-        run: uv run --frozen ruff check .
-
-      - name: MCP tests
-        if: steps.scopes.outputs.mcp == 'true'
-        working-directory: packages/mcp-server
-        run: uv run --frozen pytest -q
-
-  backend-tests:
-    name: Backend tests (${{ matrix.label }}/2)
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - index: 0
-            label: 1
-          - index: 1
-            label: 2
-    env:
-      TEST_DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test
-      DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test
-      JWT_SECRET_KEY: ci-only-not-for-production
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Detect change scopes
-        id: scopes
-        uses: ./.github/actions/change-scopes
-        with:
-          event-name: ${{ github.event_name }}
-          base-sha: ${{ github.event.pull_request.base.sha || github.event.before }}
-          head-sha: ${{ github.event.pull_request.head.sha || github.sha }}
-
-      - name: No backend changes
-        if: steps.scopes.outputs.backend != 'true'
-        run: echo "Backend tests are not required for this change."
-
-      - name: Install uv
-        if: steps.scopes.outputs.backend == 'true'
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-          cache-dependency-glob: packages/server-python/uv.lock
 
       - name: Install Python 3.12 backend dependencies
         if: steps.scopes.outputs.backend == 'true'
@@ -170,29 +101,43 @@ jobs:
         working-directory: packages/server-python
         run: uv run --frozen --extra dev python -m app.shared.infrastructure.test_db_setup
 
-      - name: Run backend test shard
+      - name: Ruff
         if: steps.scopes.outputs.backend == 'true'
         working-directory: packages/server-python
-        env:
-          SHARD_INDEX: ${{ matrix.index }}
-          FULL_RUN: ${{ steps.scopes.outputs.full }}
-        run: |
-          collect_args=(--collect-only -q)
-          pytest_args=(-q --durations=15)
-          if [[ "$FULL_RUN" != "true" ]]; then
-            collect_args+=(-m "not slow")
-            pytest_args+=(-m "not slow")
-          fi
-          uv run --frozen --extra dev pytest "${collect_args[@]}" > /tmp/pytest-nodes.txt
-          mapfile -t test_files < <(
-            ../../scripts/ci/select-pytest-files \
-              "$SHARD_INDEX" 2 tests /tmp/pytest-nodes.txt
-          )
-          if [[ ${#test_files[@]} -eq 0 ]]; then
-            echo "No tests selected for shard $SHARD_INDEX" >&2
-            exit 1
-          fi
-          uv run --frozen --extra dev pytest "${pytest_args[@]}" "${test_files[@]}"
+        run: uv run --frozen --extra dev ruff check .
+
+      - name: mypy baseline
+        if: steps.scopes.outputs.backend == 'true'
+        working-directory: packages/server-python
+        run: uv run --frozen --extra dev python scripts/check_mypy_baseline.py
+
+      - name: Backend PR tests
+        if: steps.scopes.outputs.backend == 'true' && steps.scopes.outputs.full != 'true'
+        working-directory: packages/server-python
+        run: uv run --frozen --extra dev pytest -q -m "not slow" --durations=20
+
+      - name: Backend full tests
+        if: steps.scopes.outputs.backend == 'true' && steps.scopes.outputs.full == 'true'
+        working-directory: packages/server-python
+        run: uv run --frozen --extra dev pytest -q --durations=20
+
+      - name: Check MCP lockfile
+        if: steps.scopes.outputs.mcp == 'true'
+        run: uv lock --check --project packages/mcp-server
+
+      - name: Install MCP Python 3.12 dependencies
+        if: steps.scopes.outputs.mcp == 'true'
+        run: uv sync --project packages/mcp-server --python 3.12 --frozen
+
+      - name: MCP Ruff
+        if: steps.scopes.outputs.mcp == 'true'
+        working-directory: packages/mcp-server
+        run: uv run --frozen ruff check .
+
+      - name: MCP tests
+        if: steps.scopes.outputs.mcp == 'true'
+        working-directory: packages/mcp-server
+        run: uv run --frozen pytest -q
 
       - name: PostgreSQL diagnostics
         if: failure() && steps.scopes.outputs.backend == 'true'
@@ -201,26 +146,6 @@ jobs:
       - name: Stop PostgreSQL
         if: always() && steps.scopes.outputs.backend == 'true'
         run: docker stop metaedu-ci-postgres || true
-
-  backend:
-    name: Backend
-    needs:
-      - backend-checks
-      - backend-tests
-    if: always()
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Verify backend jobs
-        env:
-          CHECKS_RESULT: ${{ needs.backend-checks.result }}
-          TESTS_RESULT: ${{ needs.backend-tests.result }}
-        run: |
-          if [[ "$CHECKS_RESULT" != "success" || "$TESTS_RESULT" != "success" ]]; then
-            echo "Backend checks=$CHECKS_RESULT, tests=$TESTS_RESULT" >&2
-            exit 1
-          fi
-          echo "Backend checks and all test shards passed."
 
   frontend:
     name: Frontend

@@ -37,7 +37,7 @@ pnpm --filter @metaedu/web typecheck
 pnpm --filter @metaedu/web build
 ```
 
-PR 后端默认在独立 PostgreSQL runners 分片运行 `pytest -m "not slow"`；`slow` 用例仍由每日定时或手动 CI 全量执行。分片必须完整、互斥且由同一个 `Backend` required check 聚合；slow 失败必须修复或入账。
+PR 后端当前默认运行 `pytest -m "not slow"`；`slow` 用例仍由每日定时或手动 CI 全量执行。后续按 TD-083 建立稳定的上下文级影响分析后，叶子上下文改动可运行相关测试与全局 smoke，高风险共享改动仍运行完整回归。slow 失败必须修复或入账，不得因其不阻塞普通 PR 而长期忽略。
 
 ## Mock 边界
 

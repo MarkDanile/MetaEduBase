@@ -18,13 +18,13 @@
 
 ## Step 3：改造 GitHub CI
 
-- 每个 required job 内执行亚秒级 change classification；避免单独分类 job 串行增加等待。
+- 每个 required job 内执行亚秒级 change classification，避免单独分类 job 串行增加等待；三个 required jobs 始终创建。
 - Backend/Frontend 对无关改动 no-op；Engineering docs 保持常驻。
-- 后端 PR 使用两个隔离 PostgreSQL shards 跑 `not slow`，由 `Backend` 聚合；schedule/manual 在相同 shards 跑全量。
+- 后端 PR 使用 `not slow`；schedule/manual 使用全量。
 - 前端 build 去掉重复 typecheck；治理测试移到 Engineering docs 的条件步骤。
 - 验证：workflow 语法、相关本地命令、PR 三路耗时。
 
-状态：首轮 GitHub 三路通过，但 Backend 9m47s 不达标；追加 2 个隔离 PostgreSQL shards + `Backend` 聚合，第二轮耗时待回填。
+状态：实现与本地验证已完成；PR #467 首轮三路通过。任意文件分片实验因 fixture 边界失效和耗时失衡已撤销，稳定名称与串行可靠回归保持不变。
 
 ## Step 4：收口 MCP 锁文件
 
@@ -39,3 +39,5 @@
 - 更新 testing、quality-gates、local-development 的分层口径。
 - 运行相关门禁、记录时长、提交 PR 并合并。
 - full workflow 若仍有高耗时测试，以 durations 证据登记独立 follow-up，不在本任务猜测式重构测试基础设施。
+
+状态：后端影响分析、风险分级、稳定测试边界和慢用例治理已登记为 TD-083，不阻塞 TD-082 收口。
