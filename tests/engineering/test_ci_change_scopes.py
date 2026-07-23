@@ -106,7 +106,7 @@ def test_ci_uses_node24_actions_and_hermetic_pytest_boundary() -> None:
         "actions/checkout@v7",
         "actions/setup-node@v7",
         "pnpm/action-setup@v6",
-        "astral-sh/setup-uv@v9",
+        "astral-sh/setup-uv@v9.0.0",
         "docker/setup-buildx-action@v4",
         "docker/build-push-action@v7",
     }

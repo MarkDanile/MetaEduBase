@@ -28,10 +28,10 @@
 - Plan: [TD-084 Plan](../02-delivery-plans/02-plans/2026-07-23-td-084-node24-hermetic-test-classification-plan.md)
 - 技术债：[TD-084](technical-debt.md#td-084-github-actions-node-24-与-hermetic-测试分类收口)
 
-当前进展：6 类 action 已升级到 Node 24 major，setup-uv 显式保留 prune-cache；CI 已统一 `not external_network`，slow marker 已移除，确定性 E2E 已纳入普通 hermetic 回归。
-下一步：提交 PR，并通过 PR/main/workflow_dispatch 三层 CI，核对 Node 20 annotations 清零。
-验证状态：完整 hermetic pytest 1372 pass/4 external deselected/2m48s；Ruff、mypy baseline、工程测试 79 pass、docs gate、YAML、diff check 通过；CI 待运行。
-交接备注：不得让真实外部服务进入 CI；setup-uv v9 显式保留 prune-cache=true；required check 名称不变。
+当前进展：6 类 action 已升级到 Node 24 版本，setup-uv 因无 `v9` major tag 精确固定 `v9.0.0` 并显式保留 prune-cache；CI 已统一 `not external_network`，slow marker 已移除，确定性 E2E 已纳入普通 hermetic 回归。
+下一步：推送 setup-uv tag 修正，通过 PR/main/workflow_dispatch 三层 CI，并核对 Node 20 annotations 清零。
+验证状态：完整 hermetic pytest 1372 pass/4 external deselected/2m48s；Ruff、mypy baseline、工程测试 79 pass、docs gate、YAML、diff check 通过；PR 首轮 Frontend 通过，Backend/Engineering docs 因 setup-uv `v9` tag 不存在而在加载阶段失败，待修正后复验。
+交接备注：不得让真实外部服务进入 CI；setup-uv v9.0.0 显式保留 prune-cache=true；required check 名称不变。
 
 ## 下一批候选任务
 

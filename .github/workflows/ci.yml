@@ -70,7 +70,7 @@ jobs:
 
       - name: Install uv
         if: steps.scopes.outputs.backend == 'true' || steps.scopes.outputs.mcp == 'true'
-        uses: astral-sh/setup-uv@v9
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
           prune-cache: true
@@ -272,7 +272,7 @@ jobs:
 
       - name: Install uv for engineering tests
         if: steps.scopes.outputs.engineering_tests == 'true'
-        uses: astral-sh/setup-uv@v9
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
           prune-cache: true

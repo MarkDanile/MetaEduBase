@@ -208,6 +208,7 @@
 
 - GitHub 当前将 `actions/checkout@v4`、`actions/setup-node@v4`、`pnpm/action-setup@v4`、`astral-sh/setup-uv@v6`、`docker/setup-buildx-action@v3`、`docker/build-push-action@v6` 强制运行在 Node 24，并产生 Node 20 deprecated warning。
 - 2026-07-23 通过官方 GitHub release 与 `action.yml` 核对到 Node 24 runtime 版本：checkout `v7.0.1`、setup-node `v7.0.0`、pnpm setup `v6.0.9`、setup-uv `v9.0.0`、setup-buildx `v4.2.0`、build-push `v7.3.0`。
+- Git refs 复核确认 checkout `v7`、setup-node `v7`、pnpm setup `v6`、setup-buildx `v4`、build-push `v7` 均有 major tag；setup-uv 的 `v9` 返回 404，仅 `v9.0.0` 可解析，因此该 action 使用精确 release pin。
 - TD-083 后 slow 套件只剩 7 passed / 1 skipped / 3.89s；继续用 `not slow` 排除确定性 E2E 的收益小于覆盖损失。
 
 **问题**
@@ -230,6 +231,7 @@
 **交付记录**
 
 - 进行中；分支 `codex/td-084-node24-hermetic-tests`；action/marker 实现与本地验证已完成，PR/main/workflow_dispatch 待验证。
+- PR 首轮 [run #29998631061](https://github.com/MarkDanile/MetaEduBase/actions/runs/29998631061)：Frontend 1m07s 通过；Backend 2s、Engineering docs 3s 均因不存在的 `astral-sh/setup-uv@v9` tag 在加载阶段失败，未执行项目测试。已依据官方 Git refs 修正为 `@v9.0.0`。
 - Command: `cd packages/server-python && .venv/bin/pytest -q -m 'not external_network' --durations=20`
 - Result: 退出码 0；1372 passed / 4 external deselected / 2m48s；Ruff、mypy baseline、工程测试 79 passed、docs gate、YAML、lock 与 diff check 均为退出码 0。
 - Environment: macOS 本机，真实 `metaedu_test` PostgreSQL；外部服务由 mock / 默认禁网 fixture 隔离。

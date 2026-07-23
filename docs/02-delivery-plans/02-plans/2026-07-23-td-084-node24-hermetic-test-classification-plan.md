@@ -11,10 +11,10 @@
 ## Step 2：升级 CI actions
 
 - checkout v4 -> v7；setup-node v4 -> v7；pnpm setup v4 -> v6。
-- setup-uv v6 -> v9，并显式保留 `prune-cache: true`。
+- setup-uv v6 -> v9.0.0，并显式保留 `prune-cache: true`；官方未提供 `v9` major tag，使用可解析的精确 release。
 - setup-buildx v3 -> v4；build-push v6 -> v7。
 
-状态：已完成实现与本地验证，待 CI 验证。
+状态：已完成实现与本地验证；PR 首轮验证发现 setup-uv 无 `v9` major tag，已修正为 `v9.0.0`，待 CI 复验。
 
 ## Step 3：收口 hermetic 测试分类
 
@@ -37,3 +37,4 @@
 - Command: `cd packages/server-python && .venv/bin/pytest -q -m 'not external_network' --durations=20`
 - Result: 退出码 0；1372 passed / 4 external deselected / 2m48s；Ruff、mypy baseline、工程测试 79 passed、docs gate、YAML、lock 与 diff check 均为退出码 0。
 - Environment: macOS 本机，真实 `metaedu_test` PostgreSQL；LLM、Celery、Redis、HTTP、MCP 外部连接由 mock / 默认禁网 fixture 隔离。
+- PR evidence: [run #29998631061](https://github.com/MarkDanile/MetaEduBase/actions/runs/29998631061) 中 Frontend 通过；Backend 与 Engineering docs 在加载 `astral-sh/setup-uv@v9` 时分别于 2s / 3s 失败，尚未执行项目检查。官方 Git refs 复核确认其余 5 个 major tag 存在，setup-uv 仅 `v9.0.0` 存在，故改用精确 release。
