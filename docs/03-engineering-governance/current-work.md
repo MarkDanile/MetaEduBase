@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TD-084: GitHub Actions Node 24 与 hermetic 测试分类收口
+
+状态：🟡 进行中
+类型：TD
+领域：工程基础设施 / CI / 依赖维护 / 测试语义
+当前执行模式：基础设施 / 技术债模式
+最近接手工具：Codex
+分支：`codex/td-084-node24-hermetic-tests`
+
+需求来源：
+- Spec: [TD-084 Spec](../02-delivery-plans/01-specs/2026-07-23-td-084-node24-hermetic-test-classification.md)
+- Plan: [TD-084 Plan](../02-delivery-plans/02-plans/2026-07-23-td-084-node24-hermetic-test-classification-plan.md)
+- 技术债：[TD-084](technical-debt.md#td-084-github-actions-node-24-与-hermetic-测试分类收口)
+
+当前进展：6 类 action 已升级到 Node 24 版本，setup-uv 因无 `v9` major tag 精确固定 `v9.0.0` 并显式保留 prune-cache；CI 已统一 `not external_network`，slow marker 已移除，确定性 E2E 已纳入普通 hermetic 回归。
+下一步：推送 setup-uv tag 修正，通过 PR/main/workflow_dispatch 三层 CI，并核对 Node 20 annotations 清零。
+验证状态：完整 hermetic pytest 1372 pass/4 external deselected/2m48s；Ruff、mypy baseline、工程测试 79 pass、docs gate、YAML、diff check 通过；PR 首轮 Frontend 通过，Backend/Engineering docs 因 setup-uv `v9` tag 不存在而在加载阶段失败，待修正后复验。
+交接备注：不得让真实外部服务进入 CI；setup-uv v9.0.0 显式保留 prune-cache=true；required check 名称不变。
 
 ## 下一批候选任务
 
@@ -22,7 +39,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P2 | TD-084 GitHub Actions Node 24 runtime 升级 | ⚫ 待办 | 复核 release notes / runner 兼容性后更新 action 引用，重新跑三路 CI | [Tech Debt](technical-debt.md#td-084-github-actions-node-24-runtime-升级) |
+暂无候选任务；下一轮任务待规划。
 
 ## 最近完成
 

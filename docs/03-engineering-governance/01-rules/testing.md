@@ -37,7 +37,7 @@ pnpm --filter @metaedu/web typecheck
 pnpm --filter @metaedu/web build
 ```
 
-PR 后端当前默认运行 `pytest -m "not slow"`；`slow` 用例仍由每日定时或手动 CI 全量执行。后续按 TD-083 建立稳定的上下文级影响分析后，叶子上下文改动可运行相关测试与全局 smoke，高风险共享改动仍运行完整回归。slow 失败必须修复或入账，不得因其不阻塞普通 PR 而长期忽略。
+所有自动 CI pytest 路径统一使用 `pytest -m "not external_network"`。PR 叶子 Context 运行相关测试与全局 smoke；高风险 PR 和 main push 运行完整 hermetic 回归；schedule/workflow_dispatch 运行全 scope，但同样不获得真实外部服务权限。真实 QCC、LLM 或第三方 MCP 验收只能在人工明确授权并提供 opt-in 环境变量时独立运行。
 
 ## Mock 边界
 
@@ -56,6 +56,11 @@ timeout 结束测试。
 长时间 `sleep` 或完整 timeout 倒计时来驱动断言。
 真实外部调用只允许出现在手工 opt-in 验收中，并显式标记
 `external_network`；该 marker 不是普通单元/集成测试的绕过入口。
+
+测试分类按副作用和可复现性，而不是按文件名或历史耗时：真实 PostgreSQL、
+mock broker/provider 的 E2E 只要稳定可复现，就属于普通 hermetic 回归。只有实际
+存在且有量化证据的超长离线评估才可另立 `expensive` marker；不得用 `slow`
+混合表达 E2E、外部网络和耗时三种不同语义。
 
 尽量真实集成：
 

@@ -177,7 +177,7 @@
 | TD-081 | CI、Git hooks 与 mypy 可执行基线缺失 | 🟢 完成 | P1 | 工程基础设施 / CI / Hooks / Typing | [PR #465](https://github.com/MarkDanile/MetaEduBase/pull/465)（`a37a7e51`）：三路 CI、fresh PostgreSQL、fail-closed hooks、mypy 可递减基线与 main required checks 已交付。 |
 | TD-082 | 分层质量门禁与 CI 提速 | 🟢 完成 | P1 | 工程基础设施 / CI / Hooks / 测试性能 / 依赖管理 | [PR #467](https://github.com/MarkDanile/MetaEduBase/pull/467)（`754ca109`）：scope-aware 三路 CI、秒级 hooks、MCP lock 与前端去重已交付；后端专项转 TD-083。 |
 | TD-083 | 后端风险分级测试选择与性能专项治理 | 🟢 完成 | P1 | 后端 / 测试基础设施 / CI 性能 | [PR #469](https://github.com/MarkDanile/MetaEduBase/pull/469)（`cccb3ff6`）/ [Spec](../02-delivery-plans/01-specs/2026-07-23-td-083-backend-risk-tiered-test-selection.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-td-083-backend-risk-tiered-test-selection-plan.md) |
-| TD-084 | GitHub Actions Node 24 runtime 升级 | ⚫ 待办 | P2 | 工程基础设施 / CI / 依赖维护 | GitHub CI run `29995992024` 弃用警告 |
+| TD-084 | GitHub Actions Node 24 与 hermetic 测试分类收口 | 🟡 进行中 | P2 | 工程基础设施 / CI / 依赖维护 / 测试语义 | [Spec](../02-delivery-plans/01-specs/2026-07-23-td-084-node24-hermetic-test-classification.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-td-084-node24-hermetic-test-classification-plan.md) |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -192,28 +192,34 @@
 
 ## 任务详情
 
-### TD-084: GitHub Actions Node 24 runtime 升级
+### TD-084: GitHub Actions Node 24 与 hermetic 测试分类收口
 
-状态：⚫ 待办
+状态：🟡 进行中
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P2 |
-| 领域 | 工程基础设施 / CI / 依赖维护 |
+| 领域 | 工程基础设施 / CI / 依赖维护 / 测试语义 |
 | 事实源 | GitHub CI run [#29995992024](https://github.com/MarkDanile/MetaEduBase/actions/runs/29995992024) annotations |
+| Spec | [TD-084 Spec](../02-delivery-plans/01-specs/2026-07-23-td-084-node24-hermetic-test-classification.md) |
+| Plan | [TD-084 Plan](../02-delivery-plans/02-plans/2026-07-23-td-084-node24-hermetic-test-classification-plan.md) |
 
 **证据**
 
 - GitHub 当前将 `actions/checkout@v4`、`actions/setup-node@v4`、`pnpm/action-setup@v4`、`astral-sh/setup-uv@v6`、`docker/setup-buildx-action@v3`、`docker/build-push-action@v6` 强制运行在 Node 24，并产生 Node 20 deprecated warning。
 - 2026-07-23 通过官方 GitHub release 与 `action.yml` 核对到 Node 24 runtime 版本：checkout `v7.0.1`、setup-node `v7.0.0`、pnpm setup `v6.0.9`、setup-uv `v9.0.0`、setup-buildx `v4.2.0`、build-push `v7.3.0`。
+- Git refs 复核确认 checkout `v7`、setup-node `v7`、pnpm setup `v6`、setup-buildx `v4`、build-push `v7` 均有 major tag；setup-uv 的 `v9` 返回 404，仅 `v9.0.0` 可解析，因此该 action 使用精确 release pin。
+- TD-083 后 slow 套件只剩 7 passed / 1 skipped / 3.89s；继续用 `not slow` 排除确定性 E2E 的收益小于覆盖损失。
 
 **问题**
 
 - CI 仍引用旧 major tag；虽然当前 runner 已兼容运行，但 action runtime 迁移没有显式收口，后续可能因旧 Node runtime 移除而被动中断。
+- `slow` 同时混合“耗时”“E2E”“真实外部服务”三种语义，导致可复现测试被普通回归排除；真实边界应由 `external_network` 表达。
 
 **完成标准**
 
 - 复核各 action release notes、输入兼容性和 runner 最低版本后，统一更新 `.github/workflows/ci.yml` 的全部相关引用。
+- 删除仓库自有 slow marker；确定性 E2E 进入普通回归，CI 所有 pytest 路径统一排除 `external_network`。
 - PR required checks、main push、schedule/manual 三类 CI 均通过，且不引入 lockfile、测试选择和工作区状态回归。
 - CI annotations 不再出现这些 action 的 Node 20 deprecated warning；若 GitHub 仍对某 action 提示兼容性，保留明确例外和升级原因。
 
@@ -224,7 +230,11 @@
 
 **交付记录**
 
-- 待办；当前仅完成版本核对，未修改 CI action 引用。
+- 进行中；分支 `codex/td-084-node24-hermetic-tests`；action/marker 实现与本地验证已完成，PR/main/workflow_dispatch 待验证。
+- PR 首轮 [run #29998631061](https://github.com/MarkDanile/MetaEduBase/actions/runs/29998631061)：Frontend 1m07s 通过；Backend 2s、Engineering docs 3s 均因不存在的 `astral-sh/setup-uv@v9` tag 在加载阶段失败，未执行项目测试。已依据官方 Git refs 修正为 `@v9.0.0`。
+- Command: `cd packages/server-python && .venv/bin/pytest -q -m 'not external_network' --durations=20`
+- Result: 退出码 0；1372 passed / 4 external deselected / 2m48s；Ruff、mypy baseline、工程测试 79 passed、docs gate、YAML、lock 与 diff check 均为退出码 0。
+- Environment: macOS 本机，真实 `metaedu_test` PostgreSQL；外部服务由 mock / 默认禁网 fixture 隔离。
 
 ### TD-083: 后端风险分级测试选择与性能专项治理
 

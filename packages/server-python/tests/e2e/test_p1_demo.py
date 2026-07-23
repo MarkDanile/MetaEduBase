@@ -35,7 +35,7 @@ from app.config import settings
 from app.contexts.document.application.tasks.parse import parse_document
 from app.shared.infrastructure.seed import DEFAULT_TENANT_ID
 
-pytestmark = [pytest.mark.slow, pytest.mark.asyncio]
+pytestmark = pytest.mark.asyncio
 
 
 # --- helpers --------------------------------------------------------------

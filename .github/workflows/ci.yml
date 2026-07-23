@@ -27,7 +27,7 @@ jobs:
       JWT_SECRET_KEY: ci-only-not-for-production
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
@@ -70,9 +70,10 @@ jobs:
 
       - name: Install uv
         if: steps.scopes.outputs.backend == 'true' || steps.scopes.outputs.mcp == 'true'
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
+          prune-cache: true
           cache-dependency-glob: |
             packages/server-python/uv.lock
             packages/mcp-server/uv.lock
@@ -87,11 +88,11 @@ jobs:
 
       - name: Set up Docker Buildx
         if: steps.scopes.outputs.backend == 'true'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build PostgreSQL test image
         if: steps.scopes.outputs.backend == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/Dockerfile.postgres
@@ -152,20 +153,20 @@ jobs:
           fi
           echo "Backend targeted reason: ${{ steps.backend_tests.outputs.reason }}"
           uv run --frozen --extra dev pytest \
-            -q -m "not slow" --durations=20 "${pytest_paths[@]}"
+            -q -m "not external_network" --durations=20 "${pytest_paths[@]}"
 
-      - name: Backend full not-slow tests
+      - name: Backend full hermetic tests
         if: >-
           steps.scopes.outputs.backend == 'true' &&
           steps.scopes.outputs.full != 'true' &&
           steps.backend_tests.outputs.mode == 'full'
         working-directory: packages/server-python
-        run: uv run --frozen --extra dev pytest -q -m "not slow" --durations=20
+        run: uv run --frozen --extra dev pytest -q -m "not external_network" --durations=20
 
-      - name: Backend full tests
+      - name: Backend scheduled hermetic tests
         if: steps.scopes.outputs.backend == 'true' && steps.scopes.outputs.full == 'true'
         working-directory: packages/server-python
-        run: uv run --frozen --extra dev pytest -q --durations=20
+        run: uv run --frozen --extra dev pytest -q -m "not external_network" --durations=20
 
       - name: Check MCP lockfile
         if: steps.scopes.outputs.mcp == 'true'
@@ -199,7 +200,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
@@ -217,13 +218,13 @@ jobs:
 
       - name: Install pnpm
         if: steps.scopes.outputs.frontend == 'true'
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
 
       - name: Install Node.js
         if: steps.scopes.outputs.frontend == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: pnpm
@@ -254,7 +255,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -271,9 +272,10 @@ jobs:
 
       - name: Install uv for engineering tests
         if: steps.scopes.outputs.engineering_tests == 'true'
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
+          prune-cache: true
           cache-dependency-glob: packages/server-python/uv.lock
 
       - name: Engineering infrastructure tests
