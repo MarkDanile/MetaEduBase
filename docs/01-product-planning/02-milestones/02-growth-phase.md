@@ -1,7 +1,7 @@
 # P2: 阶段二 — 增长期
 
-Status: 🟡 Doing
-Current: Yes
+Status: 🟢 Done
+Current: No
 External:
 
 ## Goal
@@ -108,13 +108,21 @@ External:
 | P2-EXTRACT | ⚫ Candidate | 抽取 schema 稳定化：继续沉淀模板字段、嵌套结构、抽取结果契约和真实样例回归；承接 REQ-002 closeout 后的实际缺口（2026-06-21）。 | [Backlog](../04-backlog.md) |
 | P2-INFRA | ⚫ Candidate | Redis 缓存 / RabbitMQ / LiteLLM / MinIO 集群按瓶颈择一推进；只有出现稳定性、成本、吞吐或可观测瓶颈时进入 Backlog。 | 待进入 backlog |
 
-## Suggested Next Focus
+## Closure Note
 
-| 顺序 | 任务 | 为什么先做 |
-|------|------|------------|
-| 1 | REQ-018 P2-RECALL-4 | 先补独立 `knowledge_edges` 关系通道，再把四通道并行召回验收清楚。 |
-| 2 | REQ-017 P2-RRF | RRF 基础已在生产链路中，等 REQ-018 通道边界明确后收口 weighted 配置和 4 通道排序验收。 |
-| 3 | REQ-016 P2-NER | 在有 trace、召回和排序基线后再引入 LLM Query Understanding，更容易判断它解决的是实体理解问题还是召回排序问题。 |
+2026-07-23 正式关闭 P2 并进入 P3。P2 已完成 Query Understanding、混合检索、RRF、Context Packing、真实效果评测和生产链路稳定化，并进一步交付 MCP Registry、SkillRunner、智能问数和企业背调真实业务闭环。
+
+`P2-EXTRACT` 与 `P2-INFRA` 不是关闭阻塞项：抽取 schema 继续由真实应用按需塑形；Redis/RabbitMQ/LiteLLM/MinIO 集群等升级只有在稳定性、成本或吞吐指标触发时进入 P4。P3 不再继续横向堆叠 RAG 技术，而是把现有能力纳入统一 Agent Control Plane、Workspace、Tool Gateway 和企业治理。
+
+## P3 Handoff
+
+| 已有资产 | P3 使用方式 |
+|----------|-------------|
+| Direct RAG、Query Understanding、RRF、Context Packer | 作为低延时 `DirectRagRuntime` 和 Agent 的 Knowledge Tool |
+| MCP Registry / Invocation | 经 `ToolGateway` 统一授权和审计，不重建 Registry |
+| Skill Registry / SkillRunner | 保留确定性 SOP 路径，并作为 Agent 可调用能力 |
+| QueryService / 智能问数 | 作为受治理 Structured Data Tool |
+| 企业背调 | 作为已交付 Agent App 和平台回归样例，不作为平台内核 |
 
 ## Evidence
 

@@ -2,6 +2,14 @@
 
 本目录记录当前和近期迭代。它服务于排期和阶段交接，不替代 `docs/03-engineering-governance/current-work.md` 的当前执行状态。
 
+## 当前迭代
+
+| 迭代 | 状态 | 目标 |
+|------|------|------|
+| [2026-W30 P3 企业 Agent 平台控制面塑形](2026-W30-p3-enterprise-agent-platform.md) | 🟡 Doing | 完成 P2 -> P3 路线切换和 REQ-059 Architecture Gate |
+
+最近关闭：[2026-W25 P2 RAG 质量增强](2026-W25-p2-rag-quality-enhancement.md)。更早迭代只保留历史交接价值，不作为当前任务入口。
+
 ## 使用规则
 
 - 只保留当前和近期 1 到 2 个迭代文件。

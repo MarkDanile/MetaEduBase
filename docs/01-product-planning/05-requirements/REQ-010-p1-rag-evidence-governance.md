@@ -41,7 +41,7 @@ P1 阶段的核心目标是验证 RAG 问答链路：
 4. 回答中的来源编号可以追溯到具体文件、chunk 或结构化字段。
 5. 前端能够展示回答下方的参考文件 / 来源列表。
 6. 历史数据在结构升级后可通过初始化 / 回填任务补齐，不要求人工重新上传全部资料。
-7. P1 的 PostgreSQL 单引擎实现必须通过接口隔离，保证 P2 / P3 替换 Neo4j、Milvus / Qdrant、Elasticsearch 等基础设施时不改 AI Chat 业务编排。
+7. P1 的 PostgreSQL 单引擎实现必须通过接口隔离，保证 P4 替换 Neo4j、Milvus / Qdrant、Elasticsearch 等基础设施时不改 AI Chat 业务编排。
 
 ## 建议证据模型
 
@@ -69,7 +69,7 @@ P1 阶段的核心目标是验证 RAG 问答链路：
 ### Backend
 
 - 建立召回抽象边界，避免 AI Chat 直接依赖具体存储实现：
-  - `ChunkRetriever` 或等价接口：P1 可由 PostgreSQL + pgvector / tsvector 实现，P2/P3 可替换为 Milvus / Qdrant / Elasticsearch。
+  - `ChunkRetriever` 或等价接口：P1/P2 由 PostgreSQL + pgvector / tsvector 实现，P4 可按指标替换为 Milvus / Qdrant / Elasticsearch。
   - `GraphRetriever` 或等价接口：P1 可由 `knowledge_nodes` / `knowledge_edges` + SQL 查询实现，后续可替换 Neo4j 或 GraphRAG 风格索引。
   - `MetadataFilter` 或等价接口：P1 可读 `files.doc_type` / `tags` / `structured_data`，后续可接入更完整的标签服务或画像服务。
   - `EvidenceFusion` 或等价接口：融合排序只处理统一 evidence，不关心底层通道来自 PostgreSQL、ES、向量库还是图数据库。
@@ -187,7 +187,7 @@ pgvector SQL / tsvector SQL / Neo4j Cypher / ES DSL / Milvus collection name
 - AC-9：提供历史数据初始化 / 回填方案，并能统计 node-to-chunk、chunk embedding、chunk tsvector、metadata 可用率。
 - AC-10：回填过程幂等，重复执行不会产生重复节点、重复边或重复 evidence 来源。
 - AC-11：AI Chat 编排层依赖抽象接口或 service，不直接拼 pgvector / tsvector / 图谱 SQL；测试可通过 fake retriever / fake fusion 验证编排。
-- AC-12：spec / plan 明确 P1 PostgreSQL adapter 与 P2/P3 Neo4j、Milvus / Qdrant、Elasticsearch 替换边界。
+- AC-12：spec / plan 明确 P1/P2 PostgreSQL adapter 与 P4 Neo4j、Milvus / Qdrant、Elasticsearch 替换边界。
 
 ## 建议切片
 

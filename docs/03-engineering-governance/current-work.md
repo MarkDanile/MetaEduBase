@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-059: 企业级可控 Agent 平台源码研究与控制面塑形
+
+状态：🟣 Shaping
+类型：Product Planning / Architecture Spike
+领域：Agent Platform / Control Plane / Runtime / Agentic RAG
+当前执行模式：spike
+最近接手工具：Codex
+分支：`codex/docs-agent-platform-roadmap`
+
+需求来源：
+- Requirement: [REQ-059](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md)
+- Spec: [源码研究与控制面契约](../02-delivery-plans/01-specs/2026-07-23-req-059-enterprise-agent-platform-control-plane.md)
+- Related: [REQ-043](../01-product-planning/05-requirements/REQ-043-runtime-neutral-agentic-rag-orchestration.md) / [REQ-041](../01-product-planning/05-requirements/REQ-041-ai-workspace-conversation-persistence.md) / [REQ-047](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md)
+- 技术债：[TD-085](technical-debt.md#td-085-收口-ai-chatskill-与-agent-app-的上下文边界倒置)
+
+当前进展：已完成源码与专家解读交叉核验、Control Plane contract 和命名；项目路线已从 P2 增长期切换到 P3 企业 Agent 平台化，原规模化/多模态顺延 P4；已新增 W30 迭代并统一建议依赖顺序。园区近期应用主线已冻结为 APP-005 企业 360 背调 -> APP-009 AI 载体选址 -> APP-012 招商动态报表 -> APP-030 会展招商 -> APP-016 产业研究；APP-011 并入 016，APP-022 并入 012；新增 REQ-062 共享动态采集报表和 REQ-063 受治理外部数据能力。
+下一步：确认 REQ-059 Ready 前六项待决策、APP-005/009 首批 Rubric、REQ-062 首个真实统计要求和 REQ-063 首批授权来源；确认后先补 REQ-041/047 contract-first spec，并可并行塑形 REQ-060，不直接进入 Pi 实现。
+验证状态：`scripts/check-engineering-docs --full` 通过（32 项历史 allowlist）；`git diff --check` 通过。未运行代码测试，本轮仅修改规划与架构文档。
+交接备注：本轮只完成架构塑形和事实源文档，不实现 Runtime、数据库表或 UI；REQ-059 继续保持 Shaping。Claude Code 后续接手时先读取本卡、REQ-059 与控制面 spec，从最新 main 创建新任务分支，不在已合并的 `codex/docs-agent-platform-roadmap` 上继续开发；不得把外部项目 README 声明当作已验证生产能力。
 
 ## 下一批候选任务
 
@@ -22,7 +40,9 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-暂无候选任务；下一轮任务待规划。
+| P0-1 | REQ-041 AI Workspace 会话持久化与多会话事实源 | ⚫ Candidate | 与 REQ-047 联合设计引用关系，先补 Conversation/Message 数据模型、幂等、删除/保留、API 与迁移 plan | [Requirement](../01-product-planning/05-requirements/REQ-041-ai-workspace-conversation-persistence.md) |
+| P0-2 | REQ-047 Agent Run、产物、证据与人工确认中心 | ⚫ Candidate | 紧随 REQ-041 补 Run/Event/Approval/Artifact/Evidence 状态机、seq、终态和 SSE replay spec | [Requirement](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md) |
+| P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | ⚫ Candidate | 可并行补导航矩阵与 plan；移除重复 Skill、归位 MCP/Skill，并建立 permission/nav 单一事实源 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) |
 
 ## 最近完成
 
