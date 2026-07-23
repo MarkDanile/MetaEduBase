@@ -24,7 +24,7 @@ TEST_DB_URL = os.environ.get("TEST_DATABASE_URL", DEFAULT_TEST_DB_URL)
 @pytest_asyncio.fixture(autouse=True)
 async def mock_celery_tasks():
     """Patch Celery task dispatch to prevent broker connection in tests."""
-    with patch("app.contexts.document.interfaces.api.router.parse_document") as mock_doc, \
+    with patch("app.contexts.document.interfaces.api.files.parse_document") as mock_doc, \
          patch("app.contexts.structured_data.interfaces.api.router.ds_parse") as mock_ds:
         mock_doc.delay = lambda *a, **k: None
         mock_ds.delay = lambda *a, **k: None

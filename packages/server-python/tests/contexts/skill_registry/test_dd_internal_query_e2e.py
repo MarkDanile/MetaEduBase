@@ -291,10 +291,14 @@ async def test_internal_query_three_dd_questions_end_to_end(db_session, monkeypa
         "app.contexts.structured_data.application.query_planner.chat",
         new_callable=AsyncMock,
     ) as mock_planner, patch(
+        "app.contexts.structured_data.application.result_explainer.chat",
+        new_callable=AsyncMock,
+    ) as mock_explainer, patch(
         "app.contexts.skill_registry.application.skill_runner.chat",
         new_callable=AsyncMock,
     ) as mock_report:
         mock_planner.side_effect = _plan_for
+        mock_explainer.return_value = "已按确认主体查询内部数据"
         mock_report.return_value = "## 事实数据\n欠费/租约/工单见各 step\n## AI 分析\n无"
         result = await runner.run(
             tenant_id=DEFAULT_TENANT_ID,

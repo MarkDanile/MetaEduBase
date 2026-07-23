@@ -150,7 +150,7 @@ async def test_p1_rag_evidence_e2e_manufacturing(client, auth_headers):
 
     _stub_response = (
         "基于 [1] 的回答：智能制造专业需要掌握 CAD、CAE、PLC 编程、"
-        "数控机床、工业机器人、传感器、自动化生产线与数字孪生等技能 [2]。\n"
+        "数控机床、工业机器人、传感器、自动化生产线与数字孪生等技能。\n"
         "\n（{user_content}）"
     )
     stack = ExitStack()
