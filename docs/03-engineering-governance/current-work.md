@@ -14,24 +14,7 @@
 
 ## 当前进行中
 
-### TD-082: 分层质量门禁与 CI 提速
-
-状态：🟡 进行中
-类型：TD
-领域：工程基础设施 / CI / Hooks / 测试性能 / 依赖管理
-当前执行模式：技术债模式
-最近接手工具：Codex
-分支：`codex/td-082-scope-aware-ci`
-
-需求来源：
-- Spec: [TD-082 分层质量门禁与 CI 提速](../02-delivery-plans/01-specs/2026-07-23-td-082-scope-aware-quality-gates.md)
-- Plan: [TD-082 实施计划](../02-delivery-plans/02-plans/2026-07-23-td-082-scope-aware-quality-gates-plan.md)
-- 技术债：[TD-082](technical-debt.md#td-082-分层质量门禁与-ci-提速)
-
-当前进展：已完成按范围 CI、轻量 hooks、PR `not slow` / 定时全量分层、前端去重 typecheck、MCP frozen lock；任意文件两分片实验因 fixture 边界失效和 3m17s / 8m00s 失衡已撤销。
-下一步：推送可靠串行版本，等待 PR #467 三路通过后合并；后端测试影响分析与专项提速由 TD-083 接力。
-验证状态：pre-commit 1.00s / pre-push 4.43s；后端 `not slow` 1352 pass/3 skip/18 deselect，4m33s -> 3m07s；PR 首轮 Backend 9m47s / Frontend 1m05s / Engineering docs 12s；分片失败证据已复核。
-交接备注：hooks 永不运行 pytest；三个 required check 名称保持稳定；未知路径 fail-safe 全跑；TD-082 不再承担后端测试架构改造。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -49,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-23 | TD-082 分层质量门禁与 CI 提速 | 🟢 完成 | scope-aware CI + 秒级 hooks + MCP lock + 前端构建去重；不可靠分片已撤销，后端专项由 TD-083 接力 | [PR #467](https://github.com/MarkDanile/MetaEduBase/pull/467)（`754ca109`）/ [Tech Debt](technical-debt.md#td-082-分层质量门禁与-ci-提速) |
 | 2026-07-23 | TD-081 CI、Git hooks 与 mypy 可执行基线 | 🟢 完成 | 三路 GitHub CI + fresh PostgreSQL/zhparser + fail-closed hooks + 可递减 mypy baseline；main required checks 对管理员生效。Backend 1368 pass/5 skip，三路 CI 全绿 | [PR #465](https://github.com/MarkDanile/MetaEduBase/pull/465)（`a37a7e51`）/ [Tech Debt](technical-debt.md#td-081-ci-git-hooks-与-mypy-可执行基线缺失) |
 | 2026-07-22 | TD-080 后端全量测试顺序污染与 coroutine 未 await warning | 🟢 完成 | alembic fileConfig 传 disable_existing_loggers=False 治本（不再污染已存在 logger）+ 12 document asyncio.run mock 改 side_effect close coroutine + slow marker 优化 dev 循环（-m 'not slow' 6:33→~5min）。全量 0 fail；1 回归测试防回退 | [PR #464](https://github.com/MarkDanile/MetaEduBase/pull/464)（`a20f3ee1`）/ [work-log](work-log.md) |
 | 2026-07-22 | REQ-058 企业背调生产级 RBAC、制审分离与多租户配置 | 🟢 完成 | DD 权限矩阵+maker-checker+任务可见性+tenant_scoped_config 表+配置审计+平台 status only。7 AC；5 Slice（#459~#463）；43 测试；全量 1364 pass/3 pre-existing；ruff 0/docs gate 0 | [PR #463](https://github.com/MarkDanile/MetaEduBase/pull/463)（`d2c3b752`）/ [work-log](work-log.md) |
