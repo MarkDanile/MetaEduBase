@@ -1,7 +1,7 @@
 # TD-081 CI、Git Hooks 与 mypy 可执行基线 Spec
 
-> 状态：🟣 待验证  
-> 任务：[TD-081](../../03-engineering-governance/technical-debt.md#td-081-ci-git-hooks-与-mypy-可执行基线缺失)  
+> 状态：🟣 待验证
+> 任务：[TD-081](../../03-engineering-governance/technical-debt.md#td-081-ci-git-hooks-与-mypy-可执行基线缺失)
 > 日期：2026-07-23
 
 ## 背景

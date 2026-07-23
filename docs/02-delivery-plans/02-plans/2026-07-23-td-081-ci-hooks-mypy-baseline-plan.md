@@ -1,6 +1,6 @@
 # TD-081 CI、Git Hooks 与 mypy 可执行基线实施计划
 
-> 状态：🟣 待验证  
+> 状态：🟣 待验证
 > Spec：[2026-07-23-td-081-ci-hooks-mypy-baseline.md](../01-specs/2026-07-23-td-081-ci-hooks-mypy-baseline.md)
 
 ## Task 1：开工与事实源
