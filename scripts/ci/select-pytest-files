@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 2 || $# -gt 4 ]]; then
+  echo "Usage: scripts/ci/select-pytest-files SHARD_INDEX SHARD_COUNT [TEST_ROOT] [COLLECTED_NODES]" >&2
+  exit 2
+fi
+
+shard_index=$1
+shard_count=$2
+test_root=${3:-tests}
+collected_nodes=${4:-}
+
+if ! [[ "$shard_index" =~ ^[0-9]+$ && "$shard_count" =~ ^[1-9][0-9]*$ ]]; then
+  echo "SHARD_INDEX and SHARD_COUNT must be non-negative integers; count must be > 0." >&2
+  exit 2
+fi
+if ((shard_index >= shard_count)); then
+  echo "SHARD_INDEX must be less than SHARD_COUNT." >&2
+  exit 2
+fi
+if [[ ! -d "$test_root" ]]; then
+  echo "Test root does not exist: $test_root" >&2
+  exit 2
+fi
+if [[ -n "$collected_nodes" && ! -f "$collected_nodes" ]]; then
+  echo "Collected node list does not exist: $collected_nodes" >&2
+  exit 2
+fi
+
+emit_weights() {
+  if [[ -n "$collected_nodes" ]]; then
+    awk -F '::' 'NF > 1 { count[$1]++ } END { for (file in count) print count[file] "\t" file }' \
+      "$collected_nodes"
+    return
+  fi
+
+  # Source lines are a deterministic fallback for callers without pytest.
+  while IFS= read -r file; do
+    lines=$(wc -l < "$file")
+    printf '%s\t%s\n' "$lines" "$file"
+  done < <(find "$test_root" -type f -name 'test_*.py' | LC_ALL=C sort)
+}
+
+# Greedy assignment keeps the heaviest collected files on different isolated
+# PostgreSQL runners without adding a test-distribution plugin.
+emit_weights \
+  | LC_ALL=C sort -t $'\t' -k1,1nr -k2,2 \
+  | awk -F '\t' -v target="$shard_index" -v count="$shard_count" '
+      BEGIN {
+        for (i = 0; i < count; i++) load[i] = 0
+      }
+      {
+        lightest = 0
+        for (i = 1; i < count; i++) {
+          if (load[i] < load[lightest]) lightest = i
+        }
+        if (lightest == target) print $2
+        load[lightest] += $1
+      }
+    '

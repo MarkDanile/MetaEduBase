@@ -18,13 +18,13 @@
 
 ## Step 3：改造 GitHub CI
 
-- 增加 change classification job；三个 required jobs 始终创建。
+- 每个 required job 内执行亚秒级 change classification；避免单独分类 job 串行增加等待。
 - Backend/Frontend 对无关改动 no-op；Engineering docs 保持常驻。
-- 后端 PR 使用 `not slow`；schedule/manual 使用全量。
+- 后端 PR 使用两个隔离 PostgreSQL shards 跑 `not slow`，由 `Backend` 聚合；schedule/manual 在相同 shards 跑全量。
 - 前端 build 去掉重复 typecheck；治理测试移到 Engineering docs 的条件步骤。
 - 验证：workflow 语法、相关本地命令、PR 三路耗时。
 
-状态：实现与本地验证已完成；GitHub PR 耗时待回填。
+状态：首轮 GitHub 三路通过，但 Backend 9m47s 不达标；追加 2 个隔离 PostgreSQL shards + `Backend` 聚合，第二轮耗时待回填。
 
 ## Step 4：收口 MCP 锁文件
 

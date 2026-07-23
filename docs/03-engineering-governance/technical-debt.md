@@ -217,6 +217,7 @@
 - 后端 PR 跑 Ruff、mypy baseline、独立测试库与 `not slow` 快速回归；全量含 slow 测试由每日定时或手动 workflow 执行。
 - 前端 CI 不重复 typecheck；Engineering docs 保持亚秒级脚本，工程门禁测试只在治理实现变化时执行。
 - scope 分类对未知路径 fail-safe；有自动测试覆盖 docs/backend/frontend/MCP/跨域/未知路径。
+- 后端测试可在隔离 PostgreSQL runner 并行执行，最终仍由稳定名称 `Backend` 聚合，任一 shard 失败则 required check 失败。
 - MCP Server 锁文件被提交并由本地/CI 的 frozen 命令消费，不再作为无归属工作区噪声。
 - Codex、Claude Code、终端 Git 与 Windows Git Bash 共同使用仓库 hooks 和 CI，不引入 Agent 私有规则。
 
@@ -234,6 +235,7 @@
 - 后端真实测试库：`pytest -m "not slow" --durations=20` 为 1352 pass / 3 skip / 18 deselect，4m33s；修复 18 个测试 patch 旧 `_call_llm` 导致真实 provider 调用后降为 3m07s，目标文件 24 pass / 0.07s。
 - MCP：正式提交独立 lock，frozen Ruff 0.06s、7 tests 2.45s；前端本地 typecheck 3.10s、lint 2.14s、Vitest 3.60s、bundle 4.82s；Engineering docs 本地 1.87s、工程测试 56 pass。
 - 真实 staged 变更执行 pre-commit 1.00s；全范围分支执行 pre-push 4.43s（hook 取整 5s）；两者均未运行 pytest。
+- PR #467 首轮 run `29987875989`：Frontend 1m05s、Engineering docs 12s、Backend 9m47s。后端串行 wall time 不达标，继续拆为 2 个独立 PostgreSQL shard；PR collect nodes 精确平衡为 678/677（各 79 文件），聚合 required check 仍名为 `Backend`。
 
 ### TD-081: CI、Git hooks 与 mypy 可执行基线缺失
 

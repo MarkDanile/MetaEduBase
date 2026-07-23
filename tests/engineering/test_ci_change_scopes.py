@@ -91,3 +91,11 @@ def test_github_output_matches_stdout() -> None:
         assert Path(output_path).read_text() == result.stdout
     finally:
         os.unlink(output_path)
+
+
+def test_required_check_names_remain_stable_with_backend_aggregation() -> None:
+    workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert "\n  backend:\n    name: Backend\n" in workflow
+    assert "\n  frontend:\n    name: Frontend\n" in workflow
+    assert "\n  engineering-docs:\n    name: Engineering docs\n" in workflow
+    assert "      - backend-checks\n      - backend-tests\n" in workflow
