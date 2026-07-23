@@ -65,3 +65,4 @@ TD-081 建立了可执行的三路 CI，但首个纯文档收口 PR 仍无条件
 - 全范围分支执行 pre-push：4.43s，完成后端 Ruff+mypy、前端 typecheck、MCP lock+Ruff、文档门禁，未运行 pytest。
 - PR #467 首轮 run `29987875989`：Backend 9m47s、Frontend 1m05s、Engineering docs 12s；CI/Hook 路径本身触发 fail-safe 全范围，耗时用于建立 fresh runner 基线。
 - 两 shard 实验 run `29988992837` 出现 fixture 加载失败且耗时为 3m17s / 8m00s，证明当前按 node 数任意分文件既不可靠也不均衡；该实验已从交付范围撤销，后续由 TD-083 基于稳定测试边界治理。
+- 可靠串行收口 run `29990314892`：Backend 9m46s、Frontend 1m01s、Engineering docs 13s，三路全部通过；PR #467 squash merge `754ca109`。
