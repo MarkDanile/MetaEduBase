@@ -29,9 +29,14 @@ _TEST_DB_URL = os.environ.get(
 
 @pytest_asyncio.fixture
 async def session() -> AsyncSession:
+    from sqlalchemy import text
     engine = create_async_engine(_TEST_DB_URL, poolclass=NullPool)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as s:
+        # 清理残留（test isolation；client fixture 不清 tenant_scoped_config）
+        await s.execute(text("DELETE FROM metaedu.tenant_config_audit"))
+        await s.execute(text("DELETE FROM metaedu.tenant_scoped_config"))
+        await s.commit()
         yield s
     await engine.dispose()
 
