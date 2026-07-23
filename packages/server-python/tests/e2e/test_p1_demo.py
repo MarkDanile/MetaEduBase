@@ -20,9 +20,7 @@ Test database: ``TEST_DATABASE_URL`` defaults to
 ``postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test``.
 Run ``./dev.sh init-test-db`` once per environment.
 """
-
 from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 import io
@@ -37,7 +35,7 @@ from app.config import settings
 from app.contexts.document.application.tasks.parse import parse_document
 from app.shared.infrastructure.seed import DEFAULT_TENANT_ID
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.slow, pytest.mark.asyncio]
 
 
 # --- helpers --------------------------------------------------------------

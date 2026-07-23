@@ -20,7 +20,7 @@ _FID_STR = "12345678-1234-1234-1234-123456789012"
 def test_extract_knowledge_graph_returns_summary_dict() -> None:
     """Pre-fix: returned None. Post-fix: returns {nodes: N, edges: M} dict."""
     fake_result = {"nodes": 5, "edges": 3}
-    with patch("asyncio.run", return_value=fake_result):
+    with patch("asyncio.run", side_effect=lambda c, r=fake_result: (c.close(), r)[1]):
         result = extract_knowledge_graph(_FID_STR, _TENANT_STR)
 
     assert result == fake_result
@@ -32,7 +32,7 @@ def test_extract_knowledge_graph_returns_summary_dict() -> None:
 def test_extract_knowledge_graph_zero_returns_zero() -> None:
     """Idempotent: empty KG returns 0 nodes / 0 edges."""
     empty_result = {"nodes": 0, "edges": 0}
-    with patch("asyncio.run", return_value=empty_result):
+    with patch("asyncio.run", side_effect=lambda c, r=empty_result: (c.close(), r)[1]):
         result = extract_knowledge_graph(_FID_STR, _TENANT_STR)
     assert result == empty_result
 
@@ -45,7 +45,7 @@ def test_extract_knowledge_graph_does_not_return_none() -> None:
         {"nodes": 10, "edges": 0},
         {"nodes": 100, "edges": 200},
     ):
-        with patch("asyncio.run", return_value=fake_result):
+        with patch("asyncio.run", side_effect=lambda c, r=fake_result: (c.close(), r)[1]):
             result = extract_knowledge_graph(_FID_STR, _TENANT_STR)
         assert result is not None
         assert result == fake_result
