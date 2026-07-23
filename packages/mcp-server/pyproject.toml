@@ -9,6 +9,12 @@ dependencies = [
     "pydantic>=2.10.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "ruff>=0.9.0",
+]
+
 [build-system]
 requires = ["setuptools>=75.0"]
 build-backend = "setuptools.build_meta"

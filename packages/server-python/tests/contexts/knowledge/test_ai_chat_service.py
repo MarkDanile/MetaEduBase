@@ -191,6 +191,10 @@ def _session_for_file(
     )
 
 
+def _direct_llm_mock(content: str = "ok") -> AsyncMock:
+    return AsyncMock(return_value={"content": content, "tool_calls": None})
+
+
 async def test_ai_chat_service_returns_chunk_evidence_in_sources() -> None:
     """AC-1: sources 至少 1 条 source_type=chunk。"""
     fid = uuid.uuid4()
@@ -210,7 +214,7 @@ async def test_ai_chat_service_returns_chunk_evidence_in_sources() -> None:
         evidence_fusion=fusion,
     )
 
-    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+    with patch.object(service, "_call_llm_with_tools", _direct_llm_mock()):
         result = await service.chat(
             ServiceChatRequest(message="hi", context_window=3),
             session=SESSION,  # type: ignore[arg-type]
@@ -375,7 +379,7 @@ async def test_ai_chat_evidence_filter_drops_low_score() -> None:
         evidence_fusion=SimpleFrequencyFusion(),
         min_evidence_score=0.3,
     )
-    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+    with patch.object(service, "_call_llm_with_tools", _direct_llm_mock()):
         result = await service.chat(
             ServiceChatRequest(message="hi", context_window=5),
             session=SESSION,  # type: ignore[arg-type]
@@ -405,7 +409,7 @@ async def test_ai_chat_keeps_rrf_rank_scores_below_absolute_threshold() -> None:
         evidence_fusion=RRFFusion(),
         min_evidence_score=0.3,
     )
-    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+    with patch.object(service, "_call_llm_with_tools", _direct_llm_mock()):
         result = await service.chat(
             ServiceChatRequest(message="python 的基本数据类型有哪些？", context_window=3),
             session=_session_for_file(fid),  # type: ignore[arg-type]
@@ -434,7 +438,7 @@ async def test_ai_chat_combines_chunk_and_node_evidence() -> None:
         metadata_filter=FakeMetadataFilter(),
         evidence_fusion=SimpleFrequencyFusion(),
     )
-    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+    with patch.object(service, "_call_llm_with_tools", _direct_llm_mock()):
         result = await service.chat(
             ServiceChatRequest(message="hi", context_window=3),
             session=SESSION,  # type: ignore[arg-type]
@@ -465,7 +469,7 @@ async def test_composite_chunk_retriever_calls_vector_and_keyword() -> None:
         evidence_fusion=SimpleFrequencyFusion(),
     )
 
-    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+    with patch.object(service, "_call_llm_with_tools", _direct_llm_mock()):
         result = await service.chat(
             ServiceChatRequest(message="Python 基本数据类型", context_window=3),
             session=_session_for_file(fid),  # type: ignore[arg-type]
@@ -521,7 +525,7 @@ async def test_ai_chat_service_runs_chunk_then_graph_sequentially() -> None:
         metadata_filter=FakeMetadataFilter(),
         evidence_fusion=SimpleFrequencyFusion(),
     )
-    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+    with patch.object(service, "_call_llm_with_tools", _direct_llm_mock()):
         await service.chat(
             ServiceChatRequest(message="Python 基本数据类型", context_window=3),
             tenant_id=str(uuid.uuid4()),
@@ -549,7 +553,7 @@ async def test_metadata_filter_return_value_affects_fusion_input() -> None:
         evidence_fusion=SimpleFrequencyFusion(),
     )
 
-    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+    with patch.object(service, "_call_llm_with_tools", _direct_llm_mock()):
         result = await service.chat(
             ServiceChatRequest(message="hi", context_window=3),
             session=_session_for_file(fid),  # type: ignore[arg-type]
@@ -745,7 +749,7 @@ async def test_document_sources_group_by_file_and_skip_unattributed_graph() -> N
         metadata_filter=FakeMetadataFilter(),
         evidence_fusion=SimpleFrequencyFusion(),
     )
-    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+    with patch.object(service, "_call_llm_with_tools", _direct_llm_mock()):
         result = await service.chat(
             ServiceChatRequest(message="hi", context_window=3),
             session=_session_for_file(fid),  # type: ignore[arg-type]
@@ -782,7 +786,7 @@ async def test_ai_chat_service_continues_when_one_channel_fails() -> None:
         metadata_filter=FakeMetadataFilter(),
         evidence_fusion=SimpleFrequencyFusion(),
     )
-    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+    with patch.object(service, "_call_llm_with_tools", _direct_llm_mock()):
         result = await service.chat(
             ServiceChatRequest(message="Python 基本数据类型有哪些？", context_window=3),
             session=_session_for_file(fid),  # type: ignore[arg-type]
@@ -825,7 +829,7 @@ async def test_diagnostics_contains_query_understanding_when_hybrid_ner_used() -
         evidence_fusion=SimpleFrequencyFusion(),
         ner_pipeline=hybrid_ner,
     )
-    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+    with patch.object(service, "_call_llm_with_tools", _direct_llm_mock()):
         result = await service.chat(
             ServiceChatRequest(message="电子信息专业课程", context_window=3),
             session=_session_for_file(fid),  # type: ignore[arg-type]
@@ -868,7 +872,7 @@ async def test_diagnostics_query_understanding_populated_for_rule_miss_long_quer
         evidence_fusion=SimpleFrequencyFusion(),
         ner_pipeline=hybrid_ner,
     )
-    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+    with patch.object(service, "_call_llm_with_tools", _direct_llm_mock()):
         result = await service.chat(
             # Long enough to trigger LLM and no rule match
             ServiceChatRequest(message="Python 函数的参数要怎么理解最好", context_window=3),
@@ -918,7 +922,7 @@ async def test_expanded_query_appears_in_retriever_trace() -> None:
         evidence_fusion=SimpleFrequencyFusion(),
         ner_pipeline=hybrid_ner,
     )
-    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+    with patch.object(service, "_call_llm_with_tools", _direct_llm_mock()):
         result = await service.chat(
             ServiceChatRequest(message="Python 函数的参数要怎么理解最好", context_window=3),
             session=_session_for_file(fid),  # type: ignore[arg-type]
@@ -960,7 +964,7 @@ async def test_retrieval_trace_exposes_embedding_fallback_metadata() -> None:
         ner_pipeline=RuleBasedNER(),
     )
 
-    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+    with patch.object(service, "_call_llm_with_tools", _direct_llm_mock()):
         result = await service.chat(
             ServiceChatRequest(message="Python 的基本数据类型有哪些", context_window=3),
             session=_session_for_file(fid),  # type: ignore[arg-type]
@@ -1014,7 +1018,7 @@ async def test_ai_chat_uses_four_channels_with_edge() -> None:
         evidence_fusion=SimpleFrequencyFusion(),
         edge_retriever=edge_mock,  # REQ-018 Slice 2: 4th channel
     )
-    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+    with patch.object(service, "_call_llm_with_tools", _direct_llm_mock()):
         result = await service.chat(
             ServiceChatRequest(message="Python 基本数据类型有哪些？", context_window=3),
             session=_session_for_file(fid),  # type: ignore[arg-type]
@@ -1077,7 +1081,7 @@ async def test_knowledge_edge_source_chunk_is_hydrated_for_prompt_context() -> N
         edge_retriever=edge_mock,
     )
 
-    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+    with patch.object(service, "_call_llm_with_tools", _direct_llm_mock()):
         result = await service.chat(
             ServiceChatRequest(message="课程 A 支撑什么能力？", context_window=3),
             session=FakeSession(chunks=[
@@ -1118,7 +1122,7 @@ async def test_edge_retriever_none_does_not_break_service() -> None:
         evidence_fusion=SimpleFrequencyFusion(),
         edge_retriever=None,  # REQ-018 Slice 2: not injected
     )
-    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+    with patch.object(service, "_call_llm_with_tools", _direct_llm_mock()):
         result = await service.chat(
             ServiceChatRequest(message="电子信息工程专业需要什么基础？", context_window=3),
             session=_session_for_file(fid),  # type: ignore[arg-type]
@@ -1169,7 +1173,7 @@ async def test_graph_edge_channel_appears_in_retrieval_topn_diagnostics() -> Non
         evidence_fusion=SimpleFrequencyFusion(),
         edge_retriever=edge_mock,
     )
-    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+    with patch.object(service, "_call_llm_with_tools", _direct_llm_mock()):
         result = await service.chat(
             ServiceChatRequest(message="Python 怎么学？", context_window=3),
             session=_session_for_file(fid),  # type: ignore[arg-type]
@@ -1221,7 +1225,7 @@ async def test_same_edge_evidence_merged_across_channels() -> None:
         evidence_fusion=SimpleFrequencyFusion(),
         edge_retriever=edge_mock,
     )
-    with patch.object(service, "_call_llm", AsyncMock(return_value="ok")):
+    with patch.object(service, "_call_llm_with_tools", _direct_llm_mock()):
         result = await service.chat(
             ServiceChatRequest(message="Python 怎么学？", context_window=3),
             session=_session_for_file(fid),  # type: ignore[arg-type]

@@ -1,7 +1,16 @@
-.PHONY: dev install
+.PHONY: dev install install-dev lint test
 
 install:
-	pip install -e .
+	uv sync --frozen --no-dev
+
+install-dev:
+	uv sync --frozen
 
 dev:
-	python -m mcp_server.main
+	uv run --frozen python -m mcp_server.main
+
+lint:
+	uv run --frozen ruff check .
+
+test:
+	uv run --frozen pytest -q

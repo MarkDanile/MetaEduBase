@@ -24,6 +24,10 @@
 | 迁移 | `make migrate` / `make migrate-create msg=\"...\"` / `make migrate-downgrade` |
 | 前端 | `pnpm --filter @metaedu/web dev` / `lint` / `typecheck` / `build` |
 | shared | `pnpm --filter @metaedu/shared typecheck` |
+| 安装共享 Git hooks | `scripts/install-git-hooks` |
+| MCP 安装 / 测试 | `cd packages/mcp-server && make install-dev` / `make test` |
+
+hooks 属于仓库级入口：pre-commit 检查 staged 文件，pre-push 检查分支相关静态门禁，均不执行 pytest。每个新 clone（包括 Codex、Claude Code 或 Windows Git Bash）运行一次 `scripts/install-git-hooks`。
 
 ## 数据库边界
 

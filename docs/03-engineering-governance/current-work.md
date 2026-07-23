@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TD-082: 分层质量门禁与 CI 提速
+
+状态：🟡 进行中
+类型：TD
+领域：工程基础设施 / CI / Hooks / 测试性能 / 依赖管理
+当前执行模式：技术债模式
+最近接手工具：Codex
+分支：`codex/td-082-scope-aware-ci`
+
+需求来源：
+- Spec: [TD-082 分层质量门禁与 CI 提速](../02-delivery-plans/01-specs/2026-07-23-td-082-scope-aware-quality-gates.md)
+- Plan: [TD-082 实施计划](../02-delivery-plans/02-plans/2026-07-23-td-082-scope-aware-quality-gates-plan.md)
+- 技术债：[TD-082](technical-debt.md#td-082-分层质量门禁与-ci-提速)
+
+当前进展：已完成按范围 CI、轻量 hooks、PR `not slow` / 定时全量分层、前端去重 typecheck、MCP frozen lock；任意文件两分片实验因 fixture 边界失效和 3m17s / 8m00s 失衡已撤销。
+下一步：推送可靠串行版本，等待 PR #467 三路通过后合并；后端测试影响分析与专项提速由 TD-083 接力。
+验证状态：pre-commit 1.00s / pre-push 4.43s；后端 `not slow` 1352 pass/3 skip/18 deselect，4m33s -> 3m07s；PR 首轮 Backend 9m47s / Frontend 1m05s / Engineering docs 12s；分片失败证据已复核。
+交接备注：hooks 永不运行 pytest；三个 required check 名称保持稳定；未知路径 fail-safe 全跑；TD-082 不再承担后端测试架构改造。
 
 ## 下一批候选任务
 
@@ -22,7 +39,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-暂无候选任务；下一轮任务待规划。
+| P1 | TD-083 后端风险分级测试选择与性能专项治理 | 🔵 就绪 | 先采集 CI duration 基线和 fixture 所有权，再建立稳定上下文映射；禁止任意文件分片 | [Tech Debt](technical-debt.md#td-083-后端风险分级测试选择与性能专项治理) |
 
 ## 最近完成
 

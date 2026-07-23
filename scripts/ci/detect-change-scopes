@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  scripts/ci/detect-change-scopes --base REF [--head REF] [--github-output FILE]
+  scripts/ci/detect-change-scopes --staged [--github-output FILE]
+  scripts/ci/detect-change-scopes --all [--github-output FILE]
+  scripts/ci/detect-change-scopes -- PATH...
+EOF
+}
+
+base_ref=""
+head_ref="HEAD"
+staged=false
+force_all=false
+github_output=""
+explicit_paths=false
+paths=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --base)
+      base_ref=${2:?"--base requires a ref"}
+      shift 2
+      ;;
+    --head)
+      head_ref=${2:?"--head requires a ref"}
+      shift 2
+      ;;
+    --staged)
+      staged=true
+      shift
+      ;;
+    --all)
+      force_all=true
+      shift
+      ;;
+    --github-output)
+      github_output=${2:?"--github-output requires a file"}
+      shift 2
+      ;;
+    --)
+      explicit_paths=true
+      shift
+      while [[ $# -gt 0 ]]; do
+        paths+=("$1")
+        shift
+      done
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ "$force_all" != true && ${#paths[@]} -eq 0 ]]; then
+  if [[ "$staged" == true ]]; then
+    while IFS= read -r -d '' path; do
+      paths+=("$path")
+    done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+  elif [[ -n "$base_ref" ]]; then
+    while IFS= read -r -d '' path; do
+      paths+=("$path")
+    done < <(git diff --name-only --diff-filter=ACMR -z "$base_ref" "$head_ref")
+  elif [[ "$explicit_paths" != true ]]; then
+    echo "Provide --base, --staged, --all, or paths after --." >&2
+    exit 2
+  fi
+fi
+
+backend=false
+frontend=false
+mcp=false
+engineering=false
+engineering_tests=false
+full=false
+
+if [[ "$force_all" == true ]]; then
+  backend=true
+  frontend=true
+  mcp=true
+  engineering=true
+  engineering_tests=true
+  full=true
+elif [[ ${#paths[@]} -gt 0 ]]; then
+  for path in "${paths[@]}"; do
+    case "$path" in
+      .github/actions/*|.github/workflows/*|.githooks/*|scripts/ci/*|scripts/install-git-hooks)
+        backend=true
+        frontend=true
+        mcp=true
+        engineering=true
+        engineering_tests=true
+        ;;
+      packages/server-python/*|deploy/Dockerfile.postgres)
+        backend=true
+        ;;
+      packages/web/*|packages/shared/*|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json)
+        frontend=true
+        ;;
+      packages/mcp-server/*)
+        mcp=true
+        ;;
+      scripts/check-engineering-docs|scripts/engineering/*|tests/engineering/*)
+        engineering=true
+        engineering_tests=true
+        ;;
+      AGENTS.md|CLAUDE.md|docs/*|.claude/*|.trae/*|*.md)
+        engineering=true
+        ;;
+      *)
+        # Unknown repository paths fail safe so a new module cannot silently bypass CI.
+        backend=true
+        frontend=true
+        mcp=true
+        engineering=true
+        engineering_tests=true
+        ;;
+    esac
+  done
+fi
+
+emit() {
+  local key=$1
+  local value=$2
+  printf '%s=%s\n' "$key" "$value"
+  if [[ -n "$github_output" ]]; then
+    printf '%s=%s\n' "$key" "$value" >> "$github_output"
+  fi
+}
+
+emit backend "$backend"
+emit frontend "$frontend"
+emit mcp "$mcp"
+emit engineering "$engineering"
+emit engineering_tests "$engineering_tests"
+emit full "$full"

@@ -1,0 +1,48 @@
+name: Detect change scopes
+description: Export repository change scopes without delaying parallel required jobs.
+
+inputs:
+  event-name:
+    required: true
+  base-sha:
+    required: false
+  head-sha:
+    required: true
+
+outputs:
+  backend:
+    value: ${{ steps.detect.outputs.backend }}
+  frontend:
+    value: ${{ steps.detect.outputs.frontend }}
+  mcp:
+    value: ${{ steps.detect.outputs.mcp }}
+  engineering:
+    value: ${{ steps.detect.outputs.engineering }}
+  engineering_tests:
+    value: ${{ steps.detect.outputs.engineering_tests }}
+  full:
+    value: ${{ steps.detect.outputs.full }}
+
+runs:
+  using: composite
+  steps:
+    - name: Classify changed paths
+      id: detect
+      shell: bash
+      env:
+        EVENT_NAME: ${{ inputs.event-name }}
+        BASE_SHA: ${{ inputs.base-sha }}
+        HEAD_SHA: ${{ inputs.head-sha }}
+      run: |
+        if [[ "$EVENT_NAME" == "schedule" || "$EVENT_NAME" == "workflow_dispatch" ]]; then
+          scripts/ci/detect-change-scopes --all --github-output "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+          BASE_SHA=$(git rev-parse "$HEAD_SHA^")
+        fi
+        scripts/ci/detect-change-scopes \
+          --base "$BASE_SHA" \
+          --head "$HEAD_SHA" \
+          --github-output "$GITHUB_OUTPUT"

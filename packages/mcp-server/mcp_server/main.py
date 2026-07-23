@@ -1,5 +1,4 @@
 import asyncio
-import json
 import os
 import sys
 from typing import Any
@@ -325,7 +324,6 @@ async def _create_knowledge_node(args: dict) -> list[TextContent]:
 
 
 async def _list_resources(args: dict) -> list[TextContent]:
-    kp_id = args.get("knowledge_point_id")
     resource_type = args.get("resource_type")
     domain = args.get("domain")
     limit = args.get("limit", 10)
@@ -376,7 +374,7 @@ async def _generate_quiz(args: dict) -> list[TextContent]:
         f"请基于以下知识点内容，生成 {count} 道{type_cn.get(quiz_type, quiz_type)}，"
         f"难度为{diff_cn.get(difficulty, difficulty)}：\n\n"
         + "\n\n".join(nodes_info)
-        + f"\n\n请按 JSON 格式返回题目列表，每题包含 question、options（选择题4个选项）、answer、explanation 字段。"
+        + "\n\n请按 JSON 格式返回题目列表，每题包含 question、options（选择题4个选项）、answer、explanation 字段。"
     )
 
     return [TextContent(type="text", text=prompt)]
