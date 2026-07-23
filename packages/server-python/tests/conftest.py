@@ -2,7 +2,8 @@
 # The sys.path side effect lives in tests._paths; importing it here keeps
 # conftest.py itself free of module-level statements that break E402.
 import os
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -23,12 +24,26 @@ TEST_DB_URL = os.environ.get("TEST_DATABASE_URL", DEFAULT_TEST_DB_URL)
 
 @pytest_asyncio.fixture(autouse=True)
 async def mock_celery_tasks():
-    """Patch Celery task dispatch to prevent broker connection in tests."""
-    with patch("app.contexts.document.interfaces.api.files.parse_document") as mock_doc, \
-         patch("app.contexts.structured_data.interfaces.api.router.ds_parse") as mock_ds:
-        mock_doc.delay = lambda *a, **k: None
-        mock_ds.delay = lambda *a, **k: None
-        yield
+    """Patch API-level task dispatch so normal tests never contact a real broker."""
+    with (
+        patch("app.contexts.document.interfaces.api.files.parse_document") as document_upload,
+        patch("app.contexts.document.interfaces.api.tasks.parse_document") as document_retry,
+        patch("app.contexts.structured_data.interfaces.api.router.ds_parse") as dataset_parse,
+        patch(
+            "app.contexts.structured_data.application.tasks.ds_extract_kg.ds_extract_kg.delay",
+            return_value=None,
+        ) as dataset_extract_kg_delay,
+        patch("app.celery_app.celery_app.send_task", return_value=None) as send_task,
+    ):
+        for task in (document_upload, document_retry, dataset_parse):
+            task.delay = Mock(return_value=None)
+        yield SimpleNamespace(
+            document_upload=document_upload,
+            document_retry=document_retry,
+            dataset_parse=dataset_parse,
+            dataset_extract_kg_delay=dataset_extract_kg_delay,
+            send_task=send_task,
+        )
 
 
 async def _get_test_session():

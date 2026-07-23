@@ -38,7 +38,9 @@ async def _upload_file(client, auth_headers, name: str = "retry.txt") -> str:
     return resp.json()["id"]
 
 
-async def test_retry_file_tasks_returns_pending_tasks(client, auth_headers):
+async def test_retry_file_tasks_returns_pending_tasks(
+    client, auth_headers, mock_celery_tasks,
+):
     """Happy path: failed/pending tasks are reset, endpoint returns 200."""
     file_id = await _upload_file(client, auth_headers)
 
@@ -54,6 +56,7 @@ async def test_retry_file_tasks_returns_pending_tasks(client, auth_headers):
     # of how many rows exist; we only assert the row shape survived a round-trip.
     for row in payload:
         assert row["status"] in {"pending", "running", "success", "failed"}
+    assert mock_celery_tasks.document_retry.delay.call_count == 1
 
 
 async def test_retry_dispatches_parse_document_without_await_and_with_pipeline_version(

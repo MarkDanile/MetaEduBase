@@ -100,6 +100,9 @@ elif [[ ${#paths[@]} -gt 0 ]]; then
         engineering=true
         engineering_tests=true
         ;;
+      packages/server-python/*.md)
+        engineering=true
+        ;;
       packages/server-python/*|deploy/Dockerfile.postgres)
         backend=true
         ;;

@@ -52,7 +52,7 @@ def _xlsx_file(name: str, content: bytes = b"fake excel"):
 # ---------------------------------------------------------------------------
 
 
-async def test_upload_dataset(client, auth_headers):
+async def test_upload_dataset(client, auth_headers, mock_celery_tasks):
     catalog_id = await _get_education_catalog_id(client, auth_headers)
     resp = await client.post(
         "/api/v1/structured-data/datasets/upload?name=测试数据集",
@@ -65,6 +65,8 @@ async def test_upload_dataset(client, auth_headers):
     assert data["name"] == "测试数据集"
     assert data["status"] == "uploaded"
     assert data["entity_type"] == "customer"
+    assert mock_celery_tasks.send_task.call_count == 1
+    assert mock_celery_tasks.send_task.call_args.args[0] == "ds_parse"
     return data["id"]
 
 

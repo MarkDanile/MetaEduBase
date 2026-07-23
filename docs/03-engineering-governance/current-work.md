@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TD-083: 后端风险分级测试选择与性能专项治理
+
+状态：🟡 进行中
+类型：TD
+领域：后端 / 测试基础设施 / CI 性能 / 影响分析
+当前执行模式：基础设施 / 技术债模式
+最近接手工具：Codex
+分支：`codex/td-083-backend-test-selection`
+
+需求来源：
+- Spec: [TD-083 风险分级测试选择](../02-delivery-plans/01-specs/2026-07-23-td-083-backend-risk-tiered-test-selection.md)
+- Plan: [TD-083 实施计划](../02-delivery-plans/02-plans/2026-07-23-td-083-backend-risk-tiered-test-selection-plan.md)
+- 技术债：[TD-083](technical-debt.md#td-083-后端风险分级测试选择与性能专项治理)
+
+当前进展：风险选择器、PR targeted / main full-not-slow / nightly full 已接入；测试 fixture 已 mock API Celery 分发，保留真实 PostgreSQL；后端目录 Markdown 改为 engineering-only。
+下一步：提交 PR，以 CI full fail-safe 验证完整回归和新 Backend wall time；合并后建立叶子 Context 探针 PR 验证 targeted。
+验证状态：选择器/scope 29 pass；Ruff+mypy 通过；工程 77 pass；原最慢 6 用例 3.27s、三个完整文件 22 pass/10.38s；docs/YAML/diff 通过。
+交接备注：本地 hooks 不增加 pytest；未知路径、identity/shared/迁移/全局 fixture 必须 full；不得恢复任意文件分片。
 
 ## 下一批候选任务
 
@@ -22,7 +39,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | TD-083 后端风险分级测试选择与性能专项治理 | 🔵 就绪 | 先采集 CI duration 基线和 fixture 所有权，再建立稳定上下文映射；禁止任意文件分片 | [Tech Debt](technical-debt.md#td-083-后端风险分级测试选择与性能专项治理) |
+暂无候选任务；下一轮任务待规划。
 
 ## 最近完成
 

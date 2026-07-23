@@ -32,6 +32,12 @@ def test_docs_only_activates_engineering() -> None:
     }
 
 
+def test_backend_package_markdown_is_engineering_only() -> None:
+    scopes = _classify("packages/server-python/README.md")
+    assert scopes["engineering"] == "true"
+    assert scopes["backend"] == "false"
+
+
 def test_empty_change_set_activates_nothing() -> None:
     assert _classify() == {
         "backend": "false",
