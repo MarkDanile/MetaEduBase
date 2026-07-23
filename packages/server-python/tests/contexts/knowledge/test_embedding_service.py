@@ -1,13 +1,12 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from app.contexts.knowledge.application.embedding_service import (
     get_embedding,
     get_embedding_with_timeout,
 )
-
-pytestmark = pytest.mark.slow
 
 
 @pytest.mark.asyncio
@@ -82,19 +81,23 @@ async def test_get_embedding_with_timeout_success_passthrough():
 
 @pytest.mark.asyncio
 async def test_get_embedding_with_timeout_returns_none_on_timeout():
-    """Slow get_embedding (>timeout) → helper returns None (keyword fallback)."""
-    import asyncio as _asyncio
+    """A mocked outer timeout returns None without waiting in real time."""
 
-    async def _slow(_text: str) -> list[float]:
-        await _asyncio.sleep(10.0)
-        return [0.1] * 4096
+    async def _timeout(awaitable, *, timeout):
+        awaitable.close()
+        raise TimeoutError
 
     with patch(
         "app.contexts.knowledge.application.embedding_service.get_embedding",
-        side_effect=_slow,
-    ):
-        result = await get_embedding_with_timeout("测试", timeout=0.1)
+        new=AsyncMock(),
+    ), patch(
+        "app.contexts.knowledge.application.embedding_service.asyncio.wait_for",
+        side_effect=_timeout,
+    ) as wait_for:
+        result = await get_embedding_with_timeout("测试", timeout=60.0)
     assert result is None
+    wait_for.assert_awaited_once()
+    assert wait_for.await_args.kwargs == {"timeout": 60.0}
 
 
 @pytest.mark.asyncio
@@ -210,22 +213,16 @@ async def test_get_embeddings_batch_all_providers_unavailable():
 
 
 @pytest.mark.asyncio
-async def test_get_embeddings_batch_outer_timeout_falls_back():
-    """asyncio.wait_for times out the batch call → per-text fallback for the batch."""
-    import asyncio as _asyncio
+async def test_get_embeddings_batch_provider_timeout_falls_back():
+    """A mocked provider timeout triggers immediate per-text fallback."""
 
-    # Batch call hangs forever; per-text fallback returns immediately.
     fake_emb = [0.5] * 4096
-
-    async def _hang(*_a, **_kw):
-        await _asyncio.sleep(10.0)
-        return MagicMock()
 
     async def _per_text(_t: str) -> list[float]:
         return fake_emb
 
     mock_client = AsyncMock()
-    mock_client.post = AsyncMock(side_effect=_hang)
+    mock_client.post = AsyncMock(side_effect=httpx.ReadTimeout("mocked timeout"))
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=False)
 
@@ -235,6 +232,8 @@ async def test_get_embeddings_batch_outer_timeout_falls_back():
         mock_settings.qwen_api_key = "test-key"
         mock_settings.qwen_base_url = "https://test.example.com/v1"
         mock_settings.embedding_model = "test-model"
+        mock_settings.siliconflow_api_key = ""
+        mock_settings.minimax_api_key = ""
 
         with patch("httpx.AsyncClient", return_value=mock_client), patch(
             "app.contexts.knowledge.application.embedding_service.get_embedding",
@@ -244,10 +243,9 @@ async def test_get_embeddings_batch_outer_timeout_falls_back():
                 get_embeddings_with_timeout_batch,
             )
 
-            # Note: outer timeout on per-text fallback is 60s default; we
-            # override via timeout=0.2 to keep test fast.
             result = await get_embeddings_with_timeout_batch(
-                ["p"], batch_size=10, timeout=0.2
+                ["p"], batch_size=10, timeout=60.0
             )
 
     assert result == [fake_emb]
+    mock_client.post.assert_awaited_once()

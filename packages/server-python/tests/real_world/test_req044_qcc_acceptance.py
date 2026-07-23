@@ -91,6 +91,7 @@ QCC_SERVER_CODE = "qcc_company_ac9"
 
 pytestmark = [
     pytest.mark.asyncio,
+    pytest.mark.external_network,
     pytest.mark.skipif(
         not (_RUN_AC9 and QCC_TOKEN),
         reason="AC-9 manual: set RUN_QCC_AC9=1 + QCC_MCP_TOKEN to run real QCC call (not CI)",

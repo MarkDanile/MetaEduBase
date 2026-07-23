@@ -209,6 +209,7 @@
 - 按 collect node 数把 1355 个测试任意分为两组，CI 耗时为 3m17s / 8m00s，node 数不能代表运行成本。
 - shard 1 执行 `tests/contexts/mcp_registry/test_invocation_trace.py` 时出现 `fixture 'db_session' not found`，尽管 fixture 已位于同目录 `conftest.py`；具体加载根因尚未完成独立复现，分片实现已从 TD-082 撤销。
 - `test_retry_file_tasks_returns_pending_tasks` 单例在 CI 中约 19.34s，已有可量化慢用例需要单独剖析。
+- 默认禁网护栏首次完整回归发现 2 个 MCP URL policy 用例直接依赖系统 DNS；改为固定 `_resolve_host` mock。另将 embedding timeout 的真实 30 秒等待改为 mock 异常并移出 slow；最终 `not slow` 为 1365 passed / 3 skipped / 8 deselected / 2m41s，`slow` 从 33.96s 降至 3.89s。
 
 **问题**
 
@@ -220,7 +221,7 @@
 - 建立后端改动风险矩阵：叶子 context 运行对应 context 测试 + 全局 smoke；shared、鉴权、租户、迁移、依赖、应用装配、全局 fixture 和未知路径运行全部 `not slow`。
 - 相关测试选择器输出选择原因和测试集合，并有完整性、确定性、未知路径 fail-safe 自动测试；不得按改动行数或文件数量判断风险。
 - 明确 PR 相关/高风险回归、main 完整 `not slow` 和定时含 slow 三层触发策略，required check 名称保持稳定。
-- 采集真实 CI durations，优先修复外部调用逃逸、固定等待、重复数据库初始化和最慢用例；如需并行，只按 fixture 完整的稳定测试边界拆分。
+- 采集真实 CI durations，优先修复外部调用逃逸、固定等待、重复数据库初始化和最慢用例；普通测试默认拒绝未 mock 的外部网络，仅手工 opt-in 验收允许显式放行；如需并行，只按 fixture 完整的稳定测试边界拆分。
 - 目标以真实基线确定：叶子 context PR 不再支付全部后端测试成本；完整回归不得降低覆盖或引入顺序/数据库污染。
 
 **验证方式**

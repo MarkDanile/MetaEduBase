@@ -7,6 +7,9 @@ URL 必须满足：
 """
 from __future__ import annotations
 
+import ipaddress
+from unittest.mock import patch
+
 import pytest
 
 from app.contexts.mcp_registry.domain.url_policy import (
@@ -49,7 +52,6 @@ def test_invalid_scheme_rejected():
         "http://127.0.0.1/mcp",
         "http://127.0.0.1:8080/mcp",
         "http://0.0.0.0/mcp",
-        "http://localhost/mcp",  # -> 127.0.0.1
     ],
 )
 def test_loopback_rejected(url: str):
@@ -58,17 +60,37 @@ def test_loopback_rejected(url: str):
         validate_mcp_server_url(url, has_credential=False)
 
 
+def test_loopback_hostname_rejected():
+    """Hostname policy remains deterministic without using machine DNS."""
+    with patch(
+        "app.contexts.mcp_registry.domain.url_policy._resolve_host",
+        return_value=[ipaddress.ip_address("127.0.0.1")],
+    ), pytest.raises(MCPServerURLError):
+        validate_mcp_server_url("http://localhost/mcp", has_credential=False)
+
+
 @pytest.mark.parametrize(
     "url",
     [
         "http://169.254.169.254/latest/meta-data/",  # AWS / GCP / Azure metadata
-        "http://metadata.google.internal/computeMetadata/v1/",
     ],
 )
 def test_cloud_metadata_rejected(url: str):
     """AC-2: cloud metadata IP 拒绝（link-local 169.254/16 + 已知 host）。"""
     with pytest.raises(MCPServerURLError):
         validate_mcp_server_url(url, has_credential=False)
+
+
+def test_cloud_metadata_hostname_rejected():
+    """Cloud metadata hostname uses a fixed link-local DNS result."""
+    with patch(
+        "app.contexts.mcp_registry.domain.url_policy._resolve_host",
+        return_value=[ipaddress.ip_address("169.254.169.254")],
+    ), pytest.raises(MCPServerURLError):
+        validate_mcp_server_url(
+            "http://metadata.google.internal/computeMetadata/v1/",
+            has_credential=False,
+        )
 
 
 @pytest.mark.parametrize(

@@ -19,10 +19,11 @@
 ## Step 3：消除测试外部任务分发等待
 
 - 修正全局 pytest fixture，隔离结构化数据 `celery_app.send_task` 和 document retry alias。
+- 增加默认拒绝外部网络的 fail-fast fixture，仅放行测试 PostgreSQL；真实外部验收显式标记 `external_network`。
 - 保留测试内局部 spy/异常覆盖能力，并用行为断言锁定 mock 确实生效。
 - 对修复前 19/38 秒用例做独立 PostgreSQL 复测。
 
-状态：已完成；原最慢 6 用例 6 passed / 3.27s，三个完整文件 22 passed / 10.38s。
+状态：已完成并通过完整回归；原最慢 6 用例 6 passed / 3.27s，三个完整文件 22 passed / 10.38s；禁网护栏发现并修正 2 个依赖系统 DNS 的 MCP URL policy 用例；embedding timeout 用例改为 mock 异常并移出 slow。最终 `not slow` 为 1365 passed / 3 skipped / 8 deselected / 2m41s，`slow` 为 7 passed / 1 skipped / 3.89s（优化前 33.96s）。
 
 ## Step 4：接入 GitHub CI
 

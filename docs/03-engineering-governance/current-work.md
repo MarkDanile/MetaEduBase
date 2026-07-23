@@ -28,9 +28,9 @@
 - Plan: [TD-083 实施计划](../02-delivery-plans/02-plans/2026-07-23-td-083-backend-risk-tiered-test-selection-plan.md)
 - 技术债：[TD-083](technical-debt.md#td-083-后端风险分级测试选择与性能专项治理)
 
-当前进展：风险选择器、PR targeted / main full-not-slow / nightly full 已接入；测试 fixture 已 mock API Celery 分发，保留真实 PostgreSQL；后端目录 Markdown 改为 engineering-only。
-下一步：提交 PR，以 CI full fail-safe 验证完整回归和新 Backend wall time；合并后建立叶子 Context 探针 PR 验证 targeted。
-验证状态：选择器/scope 29 pass；Ruff+mypy 通过；工程 77 pass；原最慢 6 用例 3.27s、三个完整文件 22 pass/10.38s；docs/YAML/diff 通过。
+当前进展：风险选择器、PR targeted / main full-not-slow / nightly full 已接入；测试 fixture 已 mock API Celery 分发并新增默认禁外网护栏，仅保留真实 PostgreSQL；护栏发现的 2 个 MCP 系统 DNS 依赖已改为固定 mock；embedding timeout 的真实等待已改为 mock 异常并移出 slow；手工真实验收使用 `external_network` opt-in；后端目录 Markdown 改为 engineering-only。
+下一步：更新 PR #469 并验证 CI；合并后建立叶子 Context 探针 PR 验证 targeted。
+验证状态：选择器/scope 29 pass；工程 78 pass；Ruff、mypy、docs gate 通过；原最慢 6 用例 3.27s、相关 27 pass/10.32s；完整 `not slow` 1365 pass/3 skip/8 deselected/2m41s，最慢 2.52s；`slow` 7 pass/1 skip/3.89s（原 33.96s）；外部网络 marker 收集 4 个显式手工验收。
 交接备注：本地 hooks 不增加 pytest；未知路径、identity/shared/迁移/全局 fixture 必须 full；不得恢复任意文件分片。
 
 ## 下一批候选任务

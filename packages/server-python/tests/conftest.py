@@ -2,9 +2,12 @@
 # The sys.path side effect lives in tests._paths; importing it here keeps
 # conftest.py itself free of module-level statements that break E402.
 import os
+import socket
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+from urllib.parse import urlsplit
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
@@ -20,6 +23,99 @@ DEFAULT_TEST_DB_URL = (
     "postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test"
 )
 TEST_DB_URL = os.environ.get("TEST_DATABASE_URL", DEFAULT_TEST_DB_URL)
+_TEST_DB = urlsplit(TEST_DB_URL)
+_TEST_DB_HOST = _TEST_DB.hostname or "localhost"
+_TEST_DB_PORT = _TEST_DB.port or 5432
+
+
+def _normalize_host(host: object) -> str:
+    return str(host).split("%", maxsplit=1)[0].lower()
+
+
+def _resolve_test_database_addresses() -> frozenset[str]:
+    try:
+        infos = socket.getaddrinfo(_TEST_DB_HOST, _TEST_DB_PORT, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        return frozenset({_normalize_host(_TEST_DB_HOST)})
+    return frozenset(
+        {_normalize_host(_TEST_DB_HOST), *(_normalize_host(info[4][0]) for info in infos)}
+    )
+
+
+_TEST_DB_ADDRESSES = _resolve_test_database_addresses()
+
+
+class UnmockedExternalNetworkError(RuntimeError):
+    """Raised when a normal test attempts an unmocked external connection."""
+
+
+def _port_number(port: object) -> int | None:
+    try:
+        return int(port)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_test_database_lookup(host: object, port: object) -> bool:
+    return (
+        _normalize_host(host) in _TEST_DB_ADDRESSES
+        and _port_number(port) == _TEST_DB_PORT
+    )
+
+
+def _is_test_database_connection(address: object) -> bool:
+    return (
+        isinstance(address, tuple)
+        and len(address) >= 2
+        and _normalize_host(address[0]) in _TEST_DB_ADDRESSES
+        and _port_number(address[1]) == _TEST_DB_PORT
+    )
+
+
+@pytest.fixture(autouse=True)
+def block_unmocked_external_network(monkeypatch, request):
+    """Fail fast on network escapes while retaining the real test PostgreSQL.
+
+    Tests that intentionally call a real provider must be manual opt-in tests
+    marked ``external_network``. Normal tests should mock the provider, HTTP
+    transport, broker, or cache at the nearest boundary.
+    """
+    if request.node.get_closest_marker("external_network"):
+        yield
+        return
+
+    real_getaddrinfo = socket.getaddrinfo
+    real_connect = socket.socket.connect
+    real_connect_ex = socket.socket.connect_ex
+
+    def blocked_getaddrinfo(host, port, *args, **kwargs):
+        if _is_test_database_lookup(host, port):
+            return real_getaddrinfo(host, port, *args, **kwargs)
+        raise UnmockedExternalNetworkError(
+            f"unmocked external DNS lookup blocked: {host!r}:{port!r}; "
+            "mock the external dependency or use an explicit external_network test"
+        )
+
+    def blocked_connect(sock, address):
+        if _is_test_database_connection(address):
+            return real_connect(sock, address)
+        raise UnmockedExternalNetworkError(
+            f"unmocked external connection blocked: {address!r}; "
+            "mock the external dependency or use an explicit external_network test"
+        )
+
+    def blocked_connect_ex(sock, address):
+        if _is_test_database_connection(address):
+            return real_connect_ex(sock, address)
+        raise UnmockedExternalNetworkError(
+            f"unmocked external connection blocked: {address!r}; "
+            "mock the external dependency or use an explicit external_network test"
+        )
+
+    monkeypatch.setattr(socket, "getaddrinfo", blocked_getaddrinfo)
+    monkeypatch.setattr(socket.socket, "connect", blocked_connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", blocked_connect_ex)
+    yield
 
 
 @pytest_asyncio.fixture(autouse=True)

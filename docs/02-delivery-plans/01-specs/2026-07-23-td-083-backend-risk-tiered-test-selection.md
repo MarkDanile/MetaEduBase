@@ -11,7 +11,7 @@ TD-082 已把本地 hooks 收敛到 0-4 秒，并让 docs-only PR 的 Backend/Fr
 1. PR 按稳定 Context 所有权和反向依赖选择相关测试，不再因任意叶子后端改动运行全部后端测试。
 2. shared、identity、迁移、应用装配、依赖、全局 fixture、CI 和未知路径 fail-safe 执行完整 `not slow`。
 3. backend push 到 `main` 执行完整 `not slow`；schedule/workflow_dispatch 执行包含 slow 的全量回归。
-4. 修复测试中的真实 Celery broker 逃逸，消除 19/38 秒固定等待，不修改生产任务分发行为。
+4. 修复测试中的真实 Celery broker 逃逸，并让普通测试默认拒绝未 mock 的外部网络，消除 19/38 秒固定等待，不修改生产任务分发行为。
 5. 保持 `Backend`、`Frontend`、`Engineering docs` required check 名称和本地 hooks 行为不变。
 
 ## 非目标
@@ -61,7 +61,7 @@ TD-082 已把本地 hooks 收敛到 0-4 秒，并让 docs-only PR 的 Backend/Fr
 - AC-1：选择器输出 `targeted/full`、可审计 reason 和确定性 pytest paths。
 - AC-2：9 个 Context 映射、identity/shared/migration/global fixture/CI/未知路径升级、直接测试文件选择均有自动测试。
 - AC-3：PR targeted/full、main full-not-slow、schedule/manual full 三层接入，`Backend` required check 名称不变。
-- AC-4：structured upload 和 document retry 测试不再访问真实 Celery broker；既有分发行为断言仍成立。
+- AC-4：structured upload 和 document retry 测试不再访问真实 Celery broker；普通测试只放行测试 PostgreSQL，未 mock 的 Redis、LLM、MCP、第三方 HTTP 连接立即失败；手工真实验收以 `external_network` 显式 opt-in；既有分发行为断言仍成立。
 - AC-5：可靠完整 `not slow` 结果不减少；slow 仍由 schedule/manual 执行。
 - AC-6：至少一个真实叶子 Context PR 验证 targeted reason、测试集合、CI wall time；CI/测试基础设施改动验证 full fail-safe。
 - AC-7：记录修复前后最慢用例与 Backend wall time；不以未实测推算值声明完成。

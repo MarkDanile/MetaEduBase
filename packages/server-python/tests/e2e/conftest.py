@@ -1,7 +1,4 @@
-"""e2e shared fixtures.
-
-Redis must already be running (``bash dev.sh infra``).
-"""
+"""E2E shared fixtures; external brokers/providers remain mocked by default."""
 
 from __future__ import annotations
 

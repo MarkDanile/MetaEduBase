@@ -215,6 +215,7 @@ async def ac9_qcc_skill(ac9_session: AsyncSession):
 
 
 @pytestmark_skill
+@pytest.mark.external_network
 @pytest.mark.asyncio
 async def test_due_diligence_runs_end_to_end(ac9_qcc_skill):
     """phase 1（真实 QCC + 真实 LLM）：背调 SOP 端到端执行验收。
