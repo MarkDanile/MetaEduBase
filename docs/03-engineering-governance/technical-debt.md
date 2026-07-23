@@ -177,7 +177,7 @@
 | TD-081 | CI、Git hooks 与 mypy 可执行基线缺失 | 🟢 完成 | P1 | 工程基础设施 / CI / Hooks / Typing | [PR #465](https://github.com/MarkDanile/MetaEduBase/pull/465)（`a37a7e51`）：三路 CI、fresh PostgreSQL、fail-closed hooks、mypy 可递减基线与 main required checks 已交付。 |
 | TD-082 | 分层质量门禁与 CI 提速 | 🟢 完成 | P1 | 工程基础设施 / CI / Hooks / 测试性能 / 依赖管理 | [PR #467](https://github.com/MarkDanile/MetaEduBase/pull/467)（`754ca109`）：scope-aware 三路 CI、秒级 hooks、MCP lock 与前端去重已交付；后端专项转 TD-083。 |
 | TD-083 | 后端风险分级测试选择与性能专项治理 | 🟢 完成 | P1 | 后端 / 测试基础设施 / CI 性能 | [PR #469](https://github.com/MarkDanile/MetaEduBase/pull/469)（`cccb3ff6`）/ [Spec](../02-delivery-plans/01-specs/2026-07-23-td-083-backend-risk-tiered-test-selection.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-td-083-backend-risk-tiered-test-selection-plan.md) |
-| TD-084 | GitHub Actions Node 24 与 hermetic 测试分类收口 | 🟡 进行中 | P2 | 工程基础设施 / CI / 依赖维护 / 测试语义 | [Spec](../02-delivery-plans/01-specs/2026-07-23-td-084-node24-hermetic-test-classification.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-td-084-node24-hermetic-test-classification-plan.md) |
+| TD-084 | GitHub Actions Node 24 与 hermetic 测试分类收口 | 🟢 完成 | P2 | 工程基础设施 / CI / 依赖维护 / 测试语义 | [PR #472](https://github.com/MarkDanile/MetaEduBase/pull/472)（`beb7c6fd`）/ [Spec](../02-delivery-plans/01-specs/2026-07-23-td-084-node24-hermetic-test-classification.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-td-084-node24-hermetic-test-classification-plan.md) |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -194,7 +194,7 @@
 
 ### TD-084: GitHub Actions Node 24 与 hermetic 测试分类收口
 
-状态：🟡 进行中
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -230,11 +230,14 @@
 
 **交付记录**
 
-- 进行中；分支 `codex/td-084-node24-hermetic-tests`；action/marker 实现与本地验证已完成，PR/main/workflow_dispatch 待验证。
+- 已完成（2026-07-23）；[PR #472](https://github.com/MarkDanile/MetaEduBase/pull/472) squash merge `beb7c6fd`。6 类 action 已切换 Node 24 版本；setup-uv 因无 `v9` major tag 精确固定 `v9.0.0` 并显式保留 `prune-cache: true`；仓库 slow marker 已删除，CI 统一 `not external_network`。
 - PR 首轮 [run #29998631061](https://github.com/MarkDanile/MetaEduBase/actions/runs/29998631061)：Frontend 1m07s 通过；Backend 2s、Engineering docs 3s 均因不存在的 `astral-sh/setup-uv@v9` tag 在加载阶段失败，未执行项目测试。已依据官方 Git refs 修正为 `@v9.0.0`。
 - Command: `cd packages/server-python && .venv/bin/pytest -q -m 'not external_network' --durations=20`
 - Result: 退出码 0；1372 passed / 4 external deselected / 2m48s；Ruff、mypy baseline、工程测试 79 passed、docs gate、YAML、lock 与 diff check 均为退出码 0。
 - Environment: macOS 本机，真实 `metaedu_test` PostgreSQL；外部服务由 mock / 默认禁网 fixture 隔离。
+- PR success [run #29998945591](https://github.com/MarkDanile/MetaEduBase/actions/runs/29998945591)：Backend 5m06s（1371 passed / 1 skipped / 4 external deselected / 3m21s；MCP 7 passed）、Frontend 1m10s、Engineering docs 16s。
+- Main push [run #29999345037](https://github.com/MarkDanile/MetaEduBase/actions/runs/29999345037)：Backend 5m09s、Frontend 1m01s、Engineering docs 13s；workflow_dispatch [run #29999714011](https://github.com/MarkDanile/MetaEduBase/actions/runs/29999714011)：Backend 5m08s、Frontend 1m10s、Engineering docs 12s；均通过。
+- PR Backend / Engineering docs annotations 为 0，Frontend 仅 10 条既有测试 lint warning；未发现本任务 6 类 action 的 Node 20 deprecated warning。
 
 ### TD-083: 后端风险分级测试选择与性能专项治理
 

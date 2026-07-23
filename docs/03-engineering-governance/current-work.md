@@ -14,24 +14,7 @@
 
 ## 当前进行中
 
-### TD-084: GitHub Actions Node 24 与 hermetic 测试分类收口
-
-状态：🟡 进行中
-类型：TD
-领域：工程基础设施 / CI / 依赖维护 / 测试语义
-当前执行模式：基础设施 / 技术债模式
-最近接手工具：Codex
-分支：`codex/td-084-node24-hermetic-tests`
-
-需求来源：
-- Spec: [TD-084 Spec](../02-delivery-plans/01-specs/2026-07-23-td-084-node24-hermetic-test-classification.md)
-- Plan: [TD-084 Plan](../02-delivery-plans/02-plans/2026-07-23-td-084-node24-hermetic-test-classification-plan.md)
-- 技术债：[TD-084](technical-debt.md#td-084-github-actions-node-24-与-hermetic-测试分类收口)
-
-当前进展：6 类 action 已升级到 Node 24 版本，setup-uv 因无 `v9` major tag 精确固定 `v9.0.0` 并显式保留 prune-cache；CI 已统一 `not external_network`，slow marker 已移除，确定性 E2E 已纳入普通 hermetic 回归。
-下一步：推送 setup-uv tag 修正，通过 PR/main/workflow_dispatch 三层 CI，并核对 Node 20 annotations 清零。
-验证状态：完整 hermetic pytest 1372 pass/4 external deselected/2m48s；Ruff、mypy baseline、工程测试 79 pass、docs gate、YAML、diff check 通过；PR 首轮 Frontend 通过，Backend/Engineering docs 因 setup-uv `v9` tag 不存在而在加载阶段失败，待修正后复验。
-交接备注：不得让真实外部服务进入 CI；setup-uv v9.0.0 显式保留 prune-cache=true；required check 名称不变。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -49,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-23 | TD-084 GitHub Actions Node 24 与 hermetic 测试分类收口 | 🟢 完成 | 6 类 Action 升级 Node 24；slow marker 移除，CI 统一排除 external_network；PR/main/manual 三层全绿，Backend 约 5m，无 Node 20 警告 | [PR #472](https://github.com/MarkDanile/MetaEduBase/pull/472)（`beb7c6fd`）/ [Tech Debt](technical-debt.md#td-084-github-actions-node-24-与-hermetic-测试分类收口) |
 | 2026-07-23 | TD-083 后端风险分级测试选择与性能专项治理 | 🟢 完成 | PR targeted / main full-not-slow / nightly full；默认禁外网 + 外部依赖 mock；not-slow 1365 pass/2m41s；resource 探针 15 pass/4.22s | [PR #469](https://github.com/MarkDanile/MetaEduBase/pull/469)（`cccb3ff6`）/ [Tech Debt](technical-debt.md#td-083-后端风险分级测试选择与性能专项治理) |
 | 2026-07-23 | TD-082 分层质量门禁与 CI 提速 | 🟢 完成 | scope-aware CI + 秒级 hooks + MCP lock + 前端构建去重；不可靠分片已撤销，后端专项由 TD-083 接力 | [PR #467](https://github.com/MarkDanile/MetaEduBase/pull/467)（`754ca109`）/ [Tech Debt](technical-debt.md#td-082-分层质量门禁与-ci-提速) |
 | 2026-07-23 | TD-081 CI、Git hooks 与 mypy 可执行基线 | 🟢 完成 | 三路 GitHub CI + fresh PostgreSQL/zhparser + fail-closed hooks + 可递减 mypy baseline；main required checks 对管理员生效。Backend 1368 pass/5 skip，三路 CI 全绿 | [PR #465](https://github.com/MarkDanile/MetaEduBase/pull/465)（`a37a7e51`）/ [Tech Debt](technical-debt.md#td-081-ci-git-hooks-与-mypy-可执行基线缺失) |
