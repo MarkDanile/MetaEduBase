@@ -1,6 +1,6 @@
 # TD-081 CI、Git Hooks 与 mypy 可执行基线实施计划
 
-> 状态：🟣 待验证
+> 状态：🟢 完成
 > Spec：[2026-07-23-td-081-ci-hooks-mypy-baseline.md](../01-specs/2026-07-23-td-081-ci-hooks-mypy-baseline.md)
 
 ## Task 1：开工与事实源
@@ -33,6 +33,12 @@
 ## Task 5：验证与 Git 闭环
 
 - [x] 执行 Backend / Frontend / Engineering docs 本地等价命令。
-- [ ] push 并确认三个 GitHub Actions job 通过。
-- [ ] 配置 `main` required checks，并验证 branch protection 返回配置一致。
-- [ ] PR 合并后更新 TD、工作台、work-log，最终确认 `main` 干净。
+- [x] push 并确认三个 GitHub Actions job 通过（run `29982970071`）。
+- [x] 配置 `main` required checks，并验证 branch protection 返回配置一致。
+- [x] PR #465 合并后更新 TD、工作台、work-log，并通过独立 closeout PR 收口。
+
+## 交付结果
+
+- 实现 PR：[PR #465](https://github.com/MarkDanile/MetaEduBase/pull/465)，merge commit `a37a7e51`。
+- Required checks：`Backend`、`Frontend`、`Engineering docs`；strict + `enforce_admins=true`。
+- 最终 Backend：`1368 passed / 5 skipped / 28 warnings`，工程测试 `49 passed`，mypy 0 regression。

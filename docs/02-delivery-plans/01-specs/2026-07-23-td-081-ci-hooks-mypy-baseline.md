@@ -1,6 +1,6 @@
 # TD-081 CI、Git Hooks 与 mypy 可执行基线 Spec
 
-> 状态：🟣 待验证
+> 状态：🟢 完成
 > 任务：[TD-081](../../03-engineering-governance/technical-debt.md#td-081-ci-git-hooks-与-mypy-可执行基线缺失)
 > 日期：2026-07-23
 
@@ -56,6 +56,14 @@
 4. baseline 校验对当前历史错误通过，对新增错误或计数增加失败。
 5. 后端 Ruff/pytest、前端 typecheck/lint/Vitest/build、工程文档门禁均在 GitHub Actions 可见。
 6. GitHub `main` 将三个 job 配置为 required checks；失败 PR 不可合并。
+
+## 验收结果
+
+- [PR #465](https://github.com/MarkDanile/MetaEduBase/pull/465) 已 squash merge（`a37a7e51`）。
+- GitHub Actions run `29982970071`：Backend、Frontend、Engineering docs 全部通过。
+- Backend：Python 3.12 + fresh PostgreSQL，`1368 passed / 5 skipped / 28 warnings`；Ruff 通过；mypy baseline 264 个历史错误 / 78 keys / 0 regression；工程测试 49 passed。
+- Frontend：typecheck、lint（0 error / 16 warning）、Vitest 166 passed、build 全部通过。
+- `main` branch protection：strict required checks 为 `Backend`、`Frontend`、`Engineering docs`，并启用 `enforce_admins`。
 
 ## 风险与回滚
 
