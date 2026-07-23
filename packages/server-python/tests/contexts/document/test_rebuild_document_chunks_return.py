@@ -37,7 +37,7 @@ def test_rebuild_document_chunks_returns_rebuilt_chunk_count() -> None:
 
     Pre-fix: returned None (asyncio.run's return discarded).
     """
-    with patch("asyncio.run", return_value=7):
+    with patch("asyncio.run", side_effect=lambda c, r=7: (c.close(), r)[1]):
         result = rebuild_chunks.rebuild_document_chunks(_FID_STR, _TENANT_STR)
 
     assert result == 7, (
@@ -51,7 +51,7 @@ def test_rebuild_document_chunks_returns_rebuilt_chunk_count() -> None:
 
 def test_rebuild_document_chunks_zero_returns_zero() -> None:
     """When no chunks are rebuilt (e.g. empty sections), return 0."""
-    with patch("asyncio.run", return_value=0):
+    with patch("asyncio.run", side_effect=lambda c, r=0: (c.close(), r)[1]):
         result = rebuild_chunks.rebuild_document_chunks(_FID_STR, _TENANT_STR)
 
     assert result == 0
@@ -66,7 +66,7 @@ def test_rebuild_document_chunks_zero_does_not_return_none() -> None:
     under any rebuilt count.
     """
     for fake_count in (0, 1, 7, 100, 1000):
-        with patch("asyncio.run", return_value=fake_count):
+        with patch("asyncio.run", side_effect=lambda c, r=fake_count: (c.close(), r)[1]):
             result = rebuild_chunks.rebuild_document_chunks(_FID_STR, _TENANT_STR)
         assert result is not None, (
             f"rebuild_document_chunks returned None for count={fake_count}; "
@@ -82,7 +82,7 @@ def test_rebuild_document_chunks_accepts_uuid_strings() -> None:
     assert parsed_fid is not None
     assert parsed_tid is not None
 
-    with patch("asyncio.run", return_value=42):
+    with patch("asyncio.run", side_effect=lambda c, r=42: (c.close(), r)[1]):
         # No exception expected.
         result = rebuild_chunks.rebuild_document_chunks(_FID_STR, _TENANT_STR)
     assert result == 42

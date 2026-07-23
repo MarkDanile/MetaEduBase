@@ -2,6 +2,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.slow
+
+
+import pytest
+
 from app.contexts.knowledge.application.embedding_service import (
     get_embedding,
     get_embedding_with_timeout,

@@ -16,6 +16,10 @@ PostgreSQL test DB.
 
 from __future__ import annotations
 
+import pytest
+
+
+
 import json
 import uuid
 from datetime import UTC, datetime

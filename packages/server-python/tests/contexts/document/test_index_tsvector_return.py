@@ -21,7 +21,7 @@ def test_index_tsvector_returns_indexed_count() -> None:
     Pre-fix: returned None (asyncio.run's return discarded).
     Post-fix: returns the indexed chunk count.
     """
-    with patch("asyncio.run", return_value=12):
+    with patch("asyncio.run", side_effect=lambda c, r=12: (c.close(), r)[1]):
         result = index_task.index_tsvector(_FID_STR, _TENANT_STR)
 
     assert result == 12
@@ -29,7 +29,7 @@ def test_index_tsvector_returns_indexed_count() -> None:
 
 
 def test_index_tsvector_zero_returns_zero() -> None:
-    with patch("asyncio.run", return_value=0):
+    with patch("asyncio.run", side_effect=lambda c, r=0: (c.close(), r)[1]):
         result = index_task.index_tsvector(_FID_STR, _TENANT_STR)
     assert result == 0
     assert isinstance(result, int)
@@ -38,7 +38,7 @@ def test_index_tsvector_zero_returns_zero() -> None:
 def test_index_tsvector_does_not_return_none() -> None:
     """Regression lock against the exact TD-060 bug."""
     for fake_count in (0, 1, 5, 100, 1000):
-        with patch("asyncio.run", return_value=fake_count):
+        with patch("asyncio.run", side_effect=lambda c, r=fake_count: (c.close(), r)[1]):
             result = index_task.index_tsvector(_FID_STR, _TENANT_STR)
         assert result is not None
         assert result == fake_count
@@ -50,6 +50,6 @@ def test_index_tsvector_accepts_uuid_strings() -> None:
     assert parsed_fid is not None
     assert parsed_tid is not None
 
-    with patch("asyncio.run", return_value=42):
+    with patch("asyncio.run", side_effect=lambda c, r=42: (c.close(), r)[1]):
         result = index_task.index_tsvector(_FID_STR, _TENANT_STR)
     assert result == 42

@@ -15,27 +15,27 @@ _DID_STR = "12345678-1234-1234-1234-123456789012"
 
 
 def test_ds_embed_returns_embedded_count() -> None:
-    with patch("asyncio.run", return_value=7):
+    with patch("asyncio.run", side_effect=lambda c, r=7: (c.close(), r)[1]):
         result = ds_embed(_DID_STR, _TENANT_STR)
     assert result == 7
     assert isinstance(result, int)
 
 
 def test_ds_embed_zero_returns_zero() -> None:
-    with patch("asyncio.run", return_value=0):
+    with patch("asyncio.run", side_effect=lambda c, r=0: (c.close(), r)[1]):
         result = ds_embed(_DID_STR, _TENANT_STR)
     assert result == 0
 
 
 def test_ds_embed_does_not_return_none() -> None:
     for fake_count in (0, 1, 5, 100, 1000):
-        with patch("asyncio.run", return_value=fake_count):
+        with patch("asyncio.run", side_effect=lambda c, r=fake_count: (c.close(), r)[1]):
             result = ds_embed(_DID_STR, _TENANT_STR)
         assert result is not None
         assert result == fake_count
 
 
 def test_ds_embed_accepts_uuid_strings() -> None:
-    with patch("asyncio.run", return_value=42):
+    with patch("asyncio.run", side_effect=lambda c, r=42: (c.close(), r)[1]):
         result = ds_embed(_DID_STR, _TENANT_STR)
     assert result == 42

@@ -34,7 +34,7 @@ def test_parse_document_returns_structured_data_dict() -> None:
             {"title": "Intro", "level": 1, "path": "1", "page": 0, "content": "Hello world."}
         ],
     }
-    with patch("asyncio.run", return_value=fake_result):
+    with patch("asyncio.run", side_effect=lambda c, r=fake_result: (c.close(), r)[1]):
         result = parse_task.parse_document(_FID_STR, _TENANT_STR)
 
     assert result == fake_result, (
@@ -56,7 +56,7 @@ def test_parse_document_dict_has_required_keys() -> None:
         "section_count": 1,
         "sections": [],
     }
-    with patch("asyncio.run", return_value=fake_result):
+    with patch("asyncio.run", side_effect=lambda c, r=fake_result: (c.close(), r)[1]):
         result = parse_task.parse_document(_FID_STR, _TENANT_STR)
 
     assert "full_text" in result
@@ -76,7 +76,7 @@ def test_parse_document_does_not_return_none() -> None:
         {"full_text": "x", "section_count": 1, "sections": []},
         {"full_text": "xy" * 100, "section_count": 5, "sections": [{"title": "T", "level": 1}]},
     ):
-        with patch("asyncio.run", return_value=fake_result):
+        with patch("asyncio.run", side_effect=lambda c, r=fake_result: (c.close(), r)[1]):
             result = parse_task.parse_document(_FID_STR, _TENANT_STR)
         assert result is not None, (
             f"parse_document returned None for {fake_result}; "

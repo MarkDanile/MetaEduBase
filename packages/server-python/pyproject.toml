@@ -54,3 +54,6 @@ select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "slow: 慢测试（e2e / real_world / 长 timeout）；默认 -m 'not slow' 排除",
+]

@@ -40,6 +40,11 @@ LLM，跑通完整编排（主体确认 -> run -> 报告草案 + 证据账本 ->
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.slow
+
+
 import os
 from pathlib import Path
 

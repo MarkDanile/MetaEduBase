@@ -46,7 +46,7 @@ def test_cleanup_orphan_chunks_returns_deleted_rowcount() -> None:
     Without TD-055 fix, the outer `asyncio.run(_run_in_session(_do))`
     call discards the result — caller gets None.
     """
-    with patch("asyncio.run", return_value=42):
+    with patch("asyncio.run", side_effect=lambda c, r=42: (c.close(), r)[1]):
         result = rebuild_chunks.cleanup_orphan_chunks(_TENANT_STR)
 
     assert result == 42, (
@@ -60,7 +60,7 @@ def test_cleanup_orphan_chunks_returns_deleted_rowcount() -> None:
 
 def test_cleanup_orphan_chunks_zero_returns_zero() -> None:
     """When no orphans exist, the return value is 0 (idempotent re-run)."""
-    with patch("asyncio.run", return_value=0):
+    with patch("asyncio.run", side_effect=lambda c, r=0: (c.close(), r)[1]):
         result = rebuild_chunks.cleanup_orphan_chunks(_TENANT_STR)
 
     assert result == 0
@@ -70,7 +70,7 @@ def test_cleanup_orphan_chunks_zero_returns_zero() -> None:
 def test_cleanup_orphan_chunks_zero_does_not_return_none() -> None:
     """Regression lock against the exact TD-055 bug."""
     for fake_deleted in (0, 1, 7, 100, 1000):
-        with patch("asyncio.run", return_value=fake_deleted):
+        with patch("asyncio.run", side_effect=lambda c, r=fake_deleted: (c.close(), r)[1]):
             result = rebuild_chunks.cleanup_orphan_chunks(_TENANT_STR)
         assert result is not None, (
             f"cleanup_orphan_chunks returned None for deleted={fake_deleted}; "
@@ -84,6 +84,6 @@ def test_cleanup_orphan_chunks_accepts_uuid_string() -> None:
     parsed = uuid.UUID(_TENANT_STR)
     assert parsed is not None  # sanity: this UUID parses
 
-    with patch("asyncio.run", return_value=5):
+    with patch("asyncio.run", side_effect=lambda c, r=5: (c.close(), r)[1]):
         result = rebuild_chunks.cleanup_orphan_chunks(_TENANT_STR)
     assert result == 5

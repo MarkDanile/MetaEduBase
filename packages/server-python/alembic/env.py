@@ -16,7 +16,10 @@ config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # TD-080: disable_existing_loggers=False 避免污染测试中已创建的 logger
+    # （fileConfig 默认 True 会把已存在 logger 设 disabled=True，导致后续测试
+    # caplog 收不到 warning，全量顺序下 test_embedding_empty_logs_warning 失败）。
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 
