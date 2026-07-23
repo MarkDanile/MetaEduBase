@@ -9,21 +9,21 @@ Stage 1.0 (PR #117) shipped the first three steps.  Stage 1.5 adds:
         (node-shaped SourceItem) endpoint was removed.
 * AC-6  Sources field shape (covered inside AC-5).
 
-Broker: Redis (``./dev.sh infra``).  AC-3 / AC-4 dispatch through the
-real ``.delay()``, then invoke synchronously so the e2e can verify
-the result without a running Celery worker.  LLM calls for extract
-tasks are not mocked (they need a real API key); the assertions
-focus on the dispatch path and the structured_data / knowledge_nodes
-read-back.
+AC-3 / AC-4 verify the Celery ``.delay()`` dispatch contract with a mock, then
+invoke the task body synchronously so the e2e can verify the real database
+result without a broker or worker. External LLM and embedding leaves use
+deterministic responses; the pipeline, persistence and API read-back remain real.
 
 Test database: ``TEST_DATABASE_URL`` defaults to
 ``postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test``.
 Run ``./dev.sh init-test-db`` once per environment.
 """
 from __future__ import annotations
+
 import asyncio
 import concurrent.futures
 import io
+import json
 import os
 import uuid
 from datetime import UTC, datetime
@@ -288,9 +288,8 @@ async def test_p1_demo_step3_template_extract(
 ):
     """AC-3: ``extract_template`` writes ``structured_data.template``.
 
-    Creates a demo template, seeds document_chunks, dispatches
-    ``extract_template.delay()`` through Redis, then invokes
-    synchronously to verify the result.
+    Creates a demo template, seeds document_chunks, verifies Celery dispatch,
+    then invokes the task synchronously to verify the result.
     """
     from app.contexts.document.application.tasks.extract_template import (
         extract_template,
@@ -335,13 +334,30 @@ async def test_p1_demo_step3_template_extract(
     )
     assert chunks == 1
 
-    # Dispatch through real Redis broker.
-    extract_template.delay(str(file_id), str(DEFAULT_TENANT_ID))
+    from unittest.mock import AsyncMock, patch
 
-    # Also invoke synchronously so the e2e can verify the result.
-    await _run_task_async(
-        extract_template, str(file_id), str(DEFAULT_TENANT_ID)
-    )
+    def _template_llm(*, messages, **_kwargs):
+        prompt = messages[-1]["content"] if messages else ""
+        if "可选文档类型" in prompt:
+            return "教案\n0.99"
+        return json.dumps(
+            {
+                "basic_info": {"title": "函数教案", "subject": "数学"},
+                "teaching_objectives": [{"item": "理解函数"}],
+            },
+            ensure_ascii=False,
+        )
+
+    with patch.object(extract_template, "delay") as mock_dispatch, patch(
+        "app.contexts.document.application.tasks.extract_template.chat",
+        new_callable=AsyncMock,
+    ) as mock_chat:
+        mock_chat.side_effect = _template_llm
+        extract_template.delay(str(file_id), str(DEFAULT_TENANT_ID))
+        mock_dispatch.assert_called_once_with(str(file_id), str(DEFAULT_TENANT_ID))
+        await _run_task_async(
+            extract_template, str(file_id), str(DEFAULT_TENANT_ID)
+        )
 
     resp = await client.get(
         f"/api/v1/document/files/{file_id}", headers=auth_headers
@@ -385,10 +401,34 @@ async def test_p1_demo_step4_kg_extract(
         client, auth_headers
     )
 
-    extract_knowledge_graph.delay(str(file_id), str(DEFAULT_TENANT_ID))
-    await _run_task_async(
-        extract_knowledge_graph, str(file_id), str(DEFAULT_TENANT_ID)
+    from unittest.mock import AsyncMock, patch
+
+    kg_response = json.dumps(
+        {
+            "entities": [
+                {"name": "函数", "type": "知识点"},
+                {"name": "例题", "type": "教学活动"},
+            ],
+            "relations": [
+                {"source": "例题", "target": "函数", "relation": "讲解"},
+            ],
+        },
+        ensure_ascii=False,
     )
+    with patch.object(extract_knowledge_graph, "delay") as mock_dispatch, patch(
+        "app.contexts.document.application.tasks.extract_knowledge_graph.chat",
+        new_callable=AsyncMock,
+        return_value=kg_response,
+    ), patch(
+        "app.contexts.document.application.tasks.extract_knowledge_graph.get_embedding",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        extract_knowledge_graph.delay(str(file_id), str(DEFAULT_TENANT_ID))
+        mock_dispatch.assert_called_once_with(str(file_id), str(DEFAULT_TENANT_ID))
+        await _run_task_async(
+            extract_knowledge_graph, str(file_id), str(DEFAULT_TENANT_ID)
+        )
 
     resp = await client.get(
         f"/api/v1/knowledge/nodes?source_file_id={file_id}",

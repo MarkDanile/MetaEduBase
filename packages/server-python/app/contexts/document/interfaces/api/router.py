@@ -4,9 +4,8 @@
 拆分自原单文件（494 行）。子 router 包含到本 router 后由 `app/main.py` 统一挂载到
 `/api/v1/document` prefix。
 
-主 router 模块顶层 re-export `parse_document`，让
-`patch("app.contexts.document.interfaces.api.router.parse_document")` 仍工作
-（`tests/conftest.py:24`）。
+主 router 模块顶层 re-export `parse_document` 仅保留旧 import 兼容；测试必须 patch
+实际调用点 `app.contexts.document.interfaces.api.files.parse_document`。
 """
 
 from __future__ import annotations

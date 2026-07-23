@@ -57,3 +57,9 @@ testpaths = ["tests"]
 markers = [
     "slow: 慢测试（e2e / real_world / 长 timeout）；默认 -m 'not slow' 排除",
 ]
+
+[tool.mypy]
+python_version = "3.12"
+explicit_package_bases = true
+show_error_codes = true
+pretty = false

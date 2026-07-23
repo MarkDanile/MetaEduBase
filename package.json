@@ -11,6 +11,7 @@
     "dev:mcp": "cd packages/mcp-server && make dev",
     "dev:stop": "./dev.sh stop",
     "dev:status": "./dev.sh status",
+    "hooks:install": "bash scripts/install-git-hooks",
     "build:web": "pnpm --filter @metaedu/web build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",

@@ -57,7 +57,7 @@ from app.contexts.structured_data.infrastructure.semantic_model_repository impor
     SemanticModelRepository,
 )
 from app.shared.infrastructure.seed import DEFAULT_ADMIN_ID, DEFAULT_TENANT_ID
-from tests.conftest import DEFAULT_TEST_DB_URL
+from tests.conftest import TEST_DB_URL
 
 pytestmark = pytest.mark.asyncio
 
@@ -262,7 +262,7 @@ async def _persist_semantic_model_for_bill(
 
 async def _count_audit_rows() -> int:
     """Count query_audit_log rows for the default tenant (fresh engine)."""
-    engine = create_async_engine(DEFAULT_TEST_DB_URL, poolclass=NullPool)
+    engine = create_async_engine(TEST_DB_URL, poolclass=NullPool)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     try:
         async with factory() as s:

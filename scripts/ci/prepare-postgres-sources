@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCWS_VERSION="1.2.3"
+SCWS_SHA256="60d50ac3dc42cff3c0b16cb1cfee47d8cb8c8baa142a58bc62854477b81f1af5"
+ZHPARSER_REF="39b38b453c6fe568adfe42af6361020b9ae4033b"
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+CACHE_DIR="$REPO_ROOT/deploy/cache"
+SCWS_ARCHIVE="$CACHE_DIR/scws-${SCWS_VERSION}.tar.bz2"
+ZHPARSER_ARCHIVE="$CACHE_DIR/zhparser.tar.gz"
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+download() {
+  local url=$1
+  local destination=$2
+  curl --location --fail --retry 5 --retry-all-errors \
+    --connect-timeout 20 --max-time 300 \
+    --silent --show-error --output "$destination" "$url"
+}
+
+mkdir -p "$CACHE_DIR"
+
+if [[ ! -f "$SCWS_ARCHIVE" ]] || [[ "$(sha256 "$SCWS_ARCHIVE")" != "$SCWS_SHA256" ]]; then
+  download \
+    "https://www.xunsearch.com/scws/down/scws-${SCWS_VERSION}.tar.bz2" \
+    "$TMP_DIR/scws.tar.bz2"
+  actual_scws_sha=$(sha256 "$TMP_DIR/scws.tar.bz2")
+  if [[ "$actual_scws_sha" != "$SCWS_SHA256" ]]; then
+    echo "SCWS checksum mismatch: expected $SCWS_SHA256, got $actual_scws_sha" >&2
+    exit 1
+  fi
+  mv "$TMP_DIR/scws.tar.bz2" "$SCWS_ARCHIVE"
+fi
+
+if [[ -f "$ZHPARSER_ARCHIVE" ]] && \
+   tar -tzf "$ZHPARSER_ARCHIVE" 2>/dev/null | grep -Fx 'zhparser/Makefile' >/dev/null; then
+  mkdir "$TMP_DIR/zhparser-src"
+  tar -xzf "$ZHPARSER_ARCHIVE" --strip-components=1 -C "$TMP_DIR/zhparser-src"
+  COPYFILE_DISABLE=1 tar -czf "$TMP_DIR/zhparser.tar.gz" -C "$TMP_DIR" zhparser-src
+  mv "$TMP_DIR/zhparser.tar.gz" "$ZHPARSER_ARCHIVE"
+fi
+
+if [[ ! -f "$ZHPARSER_ARCHIVE" ]] || \
+   ! tar -tzf "$ZHPARSER_ARCHIVE" 2>/dev/null | grep -Fx 'zhparser-src/Makefile' >/dev/null; then
+  download \
+    "https://codeload.github.com/amutu/zhparser/tar.gz/${ZHPARSER_REF}" \
+    "$TMP_DIR/zhparser-upstream.tar.gz"
+  gzip -t "$TMP_DIR/zhparser-upstream.tar.gz"
+  mkdir "$TMP_DIR/zhparser-src"
+  tar -xzf "$TMP_DIR/zhparser-upstream.tar.gz" \
+    --strip-components=1 -C "$TMP_DIR/zhparser-src"
+  test -f "$TMP_DIR/zhparser-src/Makefile"
+  test -f "$TMP_DIR/zhparser-src/zhparser.control"
+  COPYFILE_DISABLE=1 tar -czf "$TMP_DIR/zhparser.tar.gz" -C "$TMP_DIR" zhparser-src
+  mv "$TMP_DIR/zhparser.tar.gz" "$ZHPARSER_ARCHIVE"
+fi
+
+echo "PostgreSQL build sources are ready in deploy/cache."

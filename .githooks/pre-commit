@@ -1,28 +1,51 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$' || true)
-STAGED_TS=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|vue)$' || true)
+REPO_ROOT=$(git rev-parse --show-toplevel)
+cd "$REPO_ROOT"
 
-if [[ -n "$STAGED_PY" ]]; then
-  echo "[pre-commit] Running ruff check on Python files..."
-  cd packages/server-python
-  for f in $STAGED_PY; do
-    if [[ -f "$f" ]]; then
-      .venv/bin/ruff check "../../$f" 2>/dev/null || true
-    fi
-  done
-  cd ../..
-fi
+has_python=false
+has_frontend=false
+has_engineering_docs=false
 
-if [[ -n "$STAGED_TS" ]]; then
-  echo "[pre-commit] Running vue-tsc --noEmit..."
-  cd packages/web && npx vue-tsc --noEmit 2>&1
-  RESULT=$?
-  cd ../..
-  if [[ $RESULT -ne 0 ]]; then
-    echo "[pre-commit] ❌ TypeScript check failed. Fix errors or commit with --no-verify."
+while IFS= read -r -d '' file; do
+  case "$file" in
+    packages/server-python/*.py|packages/server-python/**/*.py)
+      has_python=true
+      ;;
+    packages/web/*.ts|packages/web/*.vue|packages/web/**/*.ts|packages/web/**/*.vue)
+      has_frontend=true
+      ;;
+    AGENTS.md|CLAUDE.md|docs/*|scripts/engineering/*|tests/engineering/*)
+      has_engineering_docs=true
+      ;;
+  esac
+done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+
+if [[ "$has_python" == true ]]; then
+  if [[ ! -x packages/server-python/.venv/bin/python ]]; then
+    echo "[pre-commit] Missing backend environment; run: uv sync --project packages/server-python --frozen --extra dev" >&2
     exit 1
   fi
+  echo "[pre-commit] Running Ruff..."
+  (
+    cd packages/server-python
+    .venv/bin/python -m ruff check .
+  )
 fi
 
-echo "[pre-commit] ✅ All checks passed"
+if [[ "$has_frontend" == true ]]; then
+  if ! command -v pnpm >/dev/null 2>&1; then
+    echo "[pre-commit] pnpm is required for frontend typecheck." >&2
+    exit 1
+  fi
+  echo "[pre-commit] Running frontend typecheck..."
+  pnpm --filter @metaedu/web typecheck
+fi
+
+if [[ "$has_engineering_docs" == true ]]; then
+  echo "[pre-commit] Running engineering documentation gate..."
+  scripts/check-engineering-docs
+fi
+
+echo "[pre-commit] All checks passed."

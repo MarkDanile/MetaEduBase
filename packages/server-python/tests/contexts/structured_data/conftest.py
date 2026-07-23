@@ -48,7 +48,7 @@ from app.contexts.structured_data.domain.semantic_model import (
     SemanticModel,
 )
 from app.shared.infrastructure.seed import DEFAULT_ADMIN_ID, DEFAULT_TENANT_ID
-from tests.conftest import DEFAULT_TEST_DB_URL
+from tests.conftest import TEST_DB_URL
 
 
 @pytest_asyncio.fixture
@@ -59,7 +59,7 @@ async def db_session():
     so that the session's connection is closed at end-of-test — matches
     the pattern used by tests/conftest.py's ``client`` fixture.
     """
-    engine = create_async_engine(DEFAULT_TEST_DB_URL, echo=False, poolclass=NullPool)
+    engine = create_async_engine(TEST_DB_URL, echo=False, poolclass=NullPool)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
         try:

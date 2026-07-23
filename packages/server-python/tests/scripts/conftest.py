@@ -10,13 +10,13 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from tests.conftest import DEFAULT_TEST_DB_URL
+from tests.conftest import TEST_DB_URL
 
 
 @pytest_asyncio.fixture
 async def db_session():
     """Yield an ``AsyncSession`` against the test DB."""
-    engine = create_async_engine(DEFAULT_TEST_DB_URL, echo=False, poolclass=NullPool)
+    engine = create_async_engine(TEST_DB_URL, echo=False, poolclass=NullPool)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
         try:

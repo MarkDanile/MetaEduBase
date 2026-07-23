@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-暂无进行中任务。TD-080 已合并归档（见最近完成）。
+### TD-081: CI、Git hooks 与 mypy 可执行基线缺失
+
+状态：🟣 待验证
+类型：Infrastructure / Technical Debt
+领域：工程基础设施 / CI / Hooks / Typing
+当前执行模式：infrastructure / release
+最近接手工具：Codex
+分支：`codex/chore-td-081-ci-hooks-mypy`
+
+需求来源：
+- [Spec](../02-delivery-plans/01-specs/2026-07-23-td-081-ci-hooks-mypy-baseline.md)
+- [Plan](../02-delivery-plans/02-plans/2026-07-23-td-081-ci-hooks-mypy-baseline-plan.md)
+- [技术债](technical-debt.md#td-081-ci-git-hooks-与-mypy-可执行基线缺失)
+
+当前进展：三路 CI、fresh PostgreSQL 构建、hooks 安装与失败传播、mypy 可递减基线均已实现；fresh DB 暴露的测试环境漂移已收口。
+下一步：提交并在真实 GitHub Actions 确认 Backend / Frontend / Engineering docs，通过后配置 `main` required checks。
+验证状态：本地 fresh PostgreSQL（隔离 55432）全量 `1368 passed / 4 skipped`；Ruff 0；mypy 264 历史错误 / 0 regression；工程测试 49 passed；前端 166 passed + typecheck/lint/build 通过；docs full gate 通过。
+交接备注：`packages/mcp-server/uv.lock` 是开工前已存在的未跟踪文件，本任务不暂存、不修改。
 
 ## 下一批候选任务
 
@@ -22,7 +39,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | TD-081 CI、Git hooks 与 mypy 可执行基线缺失 | 🔵 就绪 | 建立最小 CI（.github/workflows）+ 可复现 hook 安装/强制失败（pre-commit 不再 `ruff ... || true` 吞失败）+ mypy 启动基线 | [Tech Debt](technical-debt.md#td-081-ci-git-hooks-与-mypy-可执行基线缺失) |
+暂无候选任务；TD-081 正在当前区等待远端 CI 验证。
 
 ## 最近完成
 

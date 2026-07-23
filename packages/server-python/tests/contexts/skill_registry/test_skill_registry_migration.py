@@ -40,7 +40,9 @@ EXPECTED_INDEXES = {
 
 
 def _db_url() -> str:
-    return os.environ.get("TEST_DATABASE_URL", DEFAULT_TEST_DB_URL)
+    return os.environ.get("TEST_DATABASE_URL", DEFAULT_TEST_DB_URL).replace(
+        "postgresql+asyncpg://", "postgresql://", 1
+    )
 
 
 def _sqlalchemy_url() -> str:

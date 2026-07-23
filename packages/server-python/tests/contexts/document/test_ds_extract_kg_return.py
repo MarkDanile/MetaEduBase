@@ -42,6 +42,9 @@ def test_ds_extract_kg_does_not_return_none() -> None:
 
 
 def test_ds_extract_kg_accepts_uuid_strings() -> None:
-    with patch("asyncio.run", return_value={"entities": 1, "relations": 1}):
+    with patch(
+        "asyncio.run",
+        side_effect=lambda c, r={"entities": 1, "relations": 1}: (c.close(), r)[1],
+    ):
         result = ds_extract_kg(_DID_STR, _TENANT_STR)
     assert result is not None

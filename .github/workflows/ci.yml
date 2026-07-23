@@ -1,0 +1,151 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test
+      DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test
+      JWT_SECRET_KEY: ci-only-not-for-production
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: packages/server-python/uv.lock
+
+      - name: Install Python 3.12 dependencies
+        run: uv sync --project packages/server-python --python 3.12 --frozen --extra dev
+
+      - name: Prepare pinned PostgreSQL build sources
+        run: scripts/ci/prepare-postgres-sources
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build PostgreSQL test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.postgres
+          load: true
+          tags: metaedu/postgres-zhparser:ci
+          cache-from: type=gha,scope=metaedu-postgres
+          cache-to: type=gha,mode=max,scope=metaedu-postgres
+
+      - name: Start PostgreSQL
+        run: |
+          docker run --detach --rm \
+            --name metaedu-ci-postgres \
+            --publish 5432:5432 \
+            --env POSTGRES_DB=metaedu \
+            --env POSTGRES_USER=metaedu \
+            --env POSTGRES_PASSWORD=dev_only_123 \
+            metaedu/postgres-zhparser:ci
+          for attempt in $(seq 1 30); do
+            if docker exec metaedu-ci-postgres pg_isready -U metaedu -d metaedu; then
+              sleep 3
+              docker exec metaedu-ci-postgres pg_isready -U metaedu -d metaedu
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs metaedu-ci-postgres
+          exit 1
+
+      - name: Initialize test database
+        working-directory: packages/server-python
+        run: uv run --frozen --extra dev python -m app.shared.infrastructure.test_db_setup
+
+      - name: Ruff
+        working-directory: packages/server-python
+        run: uv run --frozen --extra dev ruff check .
+
+      - name: mypy baseline
+        working-directory: packages/server-python
+        run: uv run --frozen --extra dev python scripts/check_mypy_baseline.py
+
+      - name: Backend tests
+        working-directory: packages/server-python
+        run: uv run --frozen --extra dev pytest -q
+
+      - name: Engineering infrastructure tests
+        run: packages/server-python/.venv/bin/python -m pytest tests/engineering -q
+
+      - name: PostgreSQL diagnostics
+        if: failure()
+        run: docker logs metaedu-ci-postgres
+
+      - name: Stop PostgreSQL
+        if: always()
+        run: docker stop metaedu-ci-postgres || true
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --filter @metaedu/web typecheck
+
+      - name: Lint
+        run: pnpm --filter @metaedu/web lint
+
+      - name: Unit tests
+        run: pnpm --filter @metaedu/web test
+
+      - name: Build
+        run: pnpm --filter @metaedu/web build
+
+  engineering-docs:
+    name: Engineering docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Engineering documentation gate
+        run: scripts/check-engineering-docs --full
+
+      - name: Whitespace gate
+        run: git diff --check origin/main...HEAD

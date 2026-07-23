@@ -74,7 +74,7 @@ from app.contexts.structured_data.infrastructure.semantic_model_repository impor
     SemanticModelRepository,
 )
 from app.shared.infrastructure.seed import DEFAULT_ADMIN_ID, DEFAULT_TENANT_ID
-from tests.conftest import DEFAULT_TEST_DB_URL
+from tests.conftest import TEST_DB_URL
 
 pytestmark = pytest.mark.asyncio
 
@@ -365,7 +365,7 @@ async def _count_audit_rows() -> int:
     tears down; this helper opens a separate session to verify the row
     landed.
     """
-    engine = create_async_engine(DEFAULT_TEST_DB_URL, poolclass=NullPool)
+    engine = create_async_engine(TEST_DB_URL, poolclass=NullPool)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     try:
         async with factory() as s:
@@ -393,7 +393,7 @@ async def _latest_audit_catalog_id() -> uuid.UUID | None:
     otherwise order non-deterministically and ``scalar_one()`` would
     raise ``MultipleResultsFound``).
     """
-    engine = create_async_engine(DEFAULT_TEST_DB_URL, poolclass=NullPool)
+    engine = create_async_engine(TEST_DB_URL, poolclass=NullPool)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     try:
         async with factory() as s:
@@ -506,7 +506,7 @@ async def test_ask_endpoint_omits_business_purpose_succeeds(
     assert response.status_code == 200, response.text
     assert response.json()["ok"] is True
     # Audit row carries business_purpose=NULL — read it back via a fresh engine.
-    engine = create_async_engine(DEFAULT_TEST_DB_URL, poolclass=NullPool)
+    engine = create_async_engine(TEST_DB_URL, poolclass=NullPool)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     try:
         async with factory() as s:

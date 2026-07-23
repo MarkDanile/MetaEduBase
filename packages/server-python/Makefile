@@ -35,7 +35,7 @@ migrate-current:
 
 lint:
 	ruff check app/ tests/
-	mypy app/
+	python scripts/check_mypy_baseline.py
 
 test:
 	pytest -v
