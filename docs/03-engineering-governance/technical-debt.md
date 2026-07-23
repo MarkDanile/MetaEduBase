@@ -173,7 +173,7 @@
 | TD-077 | 无依赖锁文件，dev/deploy 不可复现安装（采用 uv sync --frozen + 提交 uv.lock） | 🟢 完成 | P2 | 后端 / 基础设施 / 依赖管理 / 可复现性 | [PR #438](https://github.com/MarkDanile/MetaEduBase/pull/438)（`17c33aa1`）：uv.lock 提交进 git + dev.sh 4 个 pip install 调用点 -> `uv sync --frozen --extra dev`（+ ensure_uv 兜底）+ Dockerfile.backend -> `uv sync --frozen --no-dev`；ai extras 默认不装（声明但 `app/` 零 import + Python 3.14 上 marker-pdf->pillow 无预编译 wheel）。全量 1064 pass/3 skip + ruff 0。 |
 | TD-078 | 清理未使用的 ai extras（TD-077 follow-up） | 🟢 完成 | P3 | 后端 / 依赖管理 / 可复现性 | TD-077 显式 defer 的 follow-up：`[project.optional-dependencies].ai`（llama-index / langgraph / langchain / sentence-transformers / paddleocr / marker-pdf）声明但 `app/` + `tests/` 零 import、且 Python 3.14 上 marker-pdf -> pillow 无预编译 wheel 装不上。从 `pyproject.toml` 删除 ai 块 + `uv lock` 重生成（232 -> 93 包：纯删除 139 个、0 版本变更、0 新增；base/dev 8 个关键包 fastapi/uvicorn/celery/pytest/ruff/httpx/sqlalchemy/alembic 版本不变）。dev.sh / Dockerfile / CI 无引用 ai extras（TD-077 已清）。[PR #440](https://github.com/MarkDanile/MetaEduBase/pull/440)（`a9bba350`）：全量 1064 pass/3 skip + 零 .py 改动 + check-engineering-docs 0 新增。 |
 | TD-079 | 排除 alembic/versions/ 出 ruff 范围（93 个 pre-existing ruff 错误收口） | 🟢 完成 | P3 | 后端 / 治理 / lint / 可复现性 | TD-078 closeout 发现 main 上 `ruff check .` 报 93 个 pre-existing 错误（TD-076/077 的 "ruff 0" 实际只覆盖 app/+tests/）。93 错误全在 `alembic/versions/` 迁移文件（UP007 33 / E501 26 / I001 12 / UP035 11 / W292 7 / F401 4），`app/` + `tests/` 本就 0。迁移是冻结历史产物，纯风格修复 17 文件无功能收益且污染 git-blame -> 改 `pyproject.toml` `[tool.ruff]` 加 `extend-exclude = ["alembic/versions"]`（显式 `ruff check alembic/versions/` 仍可查，仅默认扫描排除）。`ruff check .` -> 0。[PR #442](https://github.com/MarkDanile/MetaEduBase/pull/442)（`32ffb08b`）：`ruff check .` 0 + app/+tests/ 0 + alembic 显式可查 93 + 全量 1064 pass/3 skip + 零 .py 改动 + docs 0 新增。 |
-| TD-080 | 后端全量测试存在顺序污染与 coroutine 未 await warning | 🔵 就绪 | P1 | 后端 / 测试基础设施 / 稳定性 | 2026-07-22 沙箱外本机 PG 全量：1198 passed / 1 failed / 4 skipped / 29 warnings；唯一失败 `test_embedding_empty_logs_warning` 单独复跑通过，说明全局日志/模块状态被前序用例污染；另有多条 `run_in_session` coroutine 未 await / unraisable warning。需定位状态泄漏、保证全量稳定 0 fail，并清除 coroutine 资源警告。 |
+| TD-080 | 后端全量测试存在顺序污染与 coroutine 未 await warning | 🟢 完成 | P1 | 后端 / 测试基础设施 / 稳定性 | 2026-07-22 沙箱外本机 PG 全量：1198 passed / 1 failed / 4 skipped / 29 warnings；唯一失败 `test_embedding_empty_logs_warning` 单独复跑通过，说明全局日志/模块状态被前序用例污染；另有多条 `run_in_session` coroutine 未 await / unraisable warning。需定位状态泄漏、保证全量稳定 0 fail，并清除 coroutine 资源警告。 |
 | TD-081 | CI、Git hooks 与 mypy 可执行基线缺失 | 🔵 就绪 | P1 | 工程基础设施 / CI / Hooks / Typing | 仓库无 `.github/workflows`；`core.hooksPath` 指向 `.git/hooks` 导致已提交 `.githooks` 未生效，pre-commit 还以 `ruff ... || true` 吞失败；`mypy app` 因重复模块路径无法启动。建立最小 CI、可复现 hook 安装/强制失败和 mypy 启动基线。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
@@ -215,26 +215,40 @@
 
 ### TD-080: 后端全量测试存在顺序污染与 coroutine 未 await warning
 
-状态：🔵 就绪
+状态：🟢 完成（PR #464 / 2026-07-22）
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P1 |
 | 领域 | 后端 / 测试基础设施 / 稳定性 |
 | 事实源 | [2026-07-22 安全与质量复核](04-retrospectives/2026-07-22-security-and-quality-follow-up-review.md) |
+| 交付 PR | [PR #464](https://github.com/MarkDanile/MetaEduBase/pull/464) |
+| Merge Commit | `a20f3ee1` (squash merge) |
 
-**完成标准**
+**根因**
 
-- 定位导致 `test_embedding_empty_logs_warning` 仅在全量顺序下失败的全局 logger/module/mock 状态泄漏并增加隔离回归。
-- 清除测试输出中的 `coroutine 'run_in_session' was never awaited` 和对应 unraisable exception warning。
-- 全量 pytest 在同一环境连续运行两次均 0 fail；聚焦用例和全量用例结果一致。
-- 不通过放宽断言、过滤 RuntimeWarning 或全局 suppress warnings 伪装通过。
+- `alembic/env.py:19` `fileConfig(config.config_file_name)` 默认 `disable_existing_loggers=True`，跑 migration 时把测试中已创建的 logger（如 `app.contexts.knowledge...pg_chunk_vector_retriever`）设 `disabled=True`，后续 `caplog` 收不到 warning 导致全量顺序下 `test_embedding_empty_logs_warning` 失败。
+- 12 个 document 测试 `patch("asyncio.run", return_value=X)` 替换为 sync MagicMock 不 await 传入的 coroutine，泄漏为 never-awaited coroutine。
 
-**验证方式**
+**修复**
 
-- `.venv/bin/pytest -q` 连续两次退出码 0。
-- 对污染源相关测试做前后顺序组合复跑。
-- 使用 `-W error::RuntimeWarning` 覆盖 coroutine warning 相关范围。
+- `alembic/env.py` 改 `fileConfig(..., disable_existing_loggers=False)` 治本。
+- 12 document 测试 `patch("asyncio.run", side_effect=lambda c, r=X: (c.close(), r)[1])` 消费 coroutine。
+- 1 回归测试 `test_alembic_env_uses_disable_existing_loggers_false` 断言 env.py 源码含 `disable_existing_loggers=False`（gate 防回退）。
+- 测试速度优化：`pyproject.toml` 加 `markers = [slow]`；e2e/real_world/test_embedding_service/test_dd_internal_query_e2e 加 `pytestmark = pytest.mark.slow`（合并现有 marker）。
+
+**证据**
+
+- 全量 `pytest` 1367 passed（含 slow）。
+- `pytest -m "not slow"` 1351 passed / 5:32（dev 循环）。
+- 之前 `-m "not slow"` 6:33 → 节省 1:01（~15%）。
+- ruff check pyproject.toml: All checks passed。
+- check-engineering-docs: passed。
+- git diff --check: exit 0。
+
+**未实施 / 留作 follow-up**
+
+- conftest session-scoped engine + SAVEPOINT 隔离（实验发现：破坏 commit 语义 + PG local 连接复用慢 + lock 竞争 → 整体变慢 1min）。建议改为 pytest-xdist `-n auto` 并行（理论 -50% 时间）。
 
 ### DOC-067: 分布式临时编号与正式任务编号归并规则
 
