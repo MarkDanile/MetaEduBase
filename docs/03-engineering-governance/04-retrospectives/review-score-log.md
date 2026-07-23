@@ -16,6 +16,7 @@
 
 | 日期 | 类型 | 任务 | PR | 总分 | 结论 | 必修 follow-up | 流程扣分点 | 规则 / 脚本改进 | 评审人 |
 |------|------|------|----|------|------|----------------|------------|------------------|--------|
+| 2026-07-23 | Original | REQ-059 企业 Agent 平台路线与园区五应用塑形 | [#474](https://github.com/MarkDanile/MetaEduBase/pull/474) | 95 | 优秀；控制面、Runtime 中立边界、任务顺序、P3/P4 里程碑和园区五应用去重形成一致事实源，可合并；REQ-059 继续保持 Shaping | 无 | 无 | 不新增规则；现有文档门禁、工作台和评分流程已覆盖 | Codex |
 | 2026-07-15 | Original | REQ-054 Catalog + 数据源接入复查 | [#421](https://github.com/MarkDanile/MetaEduBase/pull/421) / [#422](https://github.com/MarkDanile/MetaEduBase/pull/422) / [#424](https://github.com/MarkDanile/MetaEduBase/pull/424) | 72 | 可接受但有条件；Catalog 骨架可用，DirectDB / MCP adapter 尚不可从默认工厂到达，entity_type 契约存在漂移 | REQ-057 | AC-1~10 全覆盖声明超过生产可达范围，需求、spec、plan 与后续动态发现实现未同步 | 已登记 REQ-057，先统一 adapter 路由和 entity_type 契约 | Codex |
 | 2026-07-15 | Original | REQ-052 智能问数与数据激活 | [#417](https://github.com/MarkDanile/MetaEduBase/pull/417) | 58 | 不合格；查询过滤、AI Chat 生产接线、多 Catalog 路由和真实 e2e 均未闭环，已重新打开 | REQ-056 | AC-7 明确未跑真实环境仍翻 Done；mock 注入掩盖 production wiring 缺口 | 已登记 REQ-056，并将 REQ-052 恢复 Doing | Codex |
 | 2026-07-15 | Original | BUG-013 pgvector cast + BUG-014 DB unavailable（历史编号均曾记为 BUG-013，DOC-077 已重命名） | [#406](https://github.com/MarkDanile/MetaEduBase/pull/406) / [#418](https://github.com/MarkDanile/MetaEduBase/pull/418) | 77 | 可接受；两个修复本身有效，但历史同一 BUG 编号指向不同问题，测试与事实源仍有空实现和状态漂移 | DOC-077 | 编号碰撞（已治理）、完成态元数据滞后，且“非 DB 错误仍 500”测试函数为空 | 已登记 DOC-077，补跨事实源 ID 唯一性门禁 | Codex |
@@ -88,12 +89,12 @@
 
 | 指标 | 当前值 | 说明 |
 |------|--------|------|
-| 已记录评审数 | 67 | 63 条 Original + 4 条 Backfilled。2026-07-15 新增 8 条近期完成评审记录。 |
-| 平均评分 | 84.5 | 67 条 `总分` 算术平均；本轮新增评审总分 625，累计总分 5660。 |
-| 一次关闭率 | 55% | 评分 ≥ 80 且无必修 follow-up 的任务数 / 已记录评审数 = 37/67。 |
-| 返工率 | 45% | 有必修 follow-up 的任务数 / 已记录评审数 = 30/67。 |
-| 流程扣分率 | 70% | `流程扣分点` 列非 `无` 的任务数 / 已记录评审数 = 47/67；这里表示有可复盘流程信号，不等同于严重违规。 |
-| 规则转化率 | 51% | 形成规则、脚本或 follow-up 改进的评审数 / 已记录评审数 = 34/67。 |
+| 已记录评审数 | 68 | 64 条 Original + 4 条 Backfilled。2026-07-23 新增 1 条 REQ-059 规划塑形评审记录。 |
+| 平均评分 | 84.6 | 68 条 `总分` 算术平均；累计总分 5755。 |
+| 一次关闭率 | 56% | 评分 ≥ 80 且无必修 follow-up 的任务数 / 已记录评审数 = 38/68。 |
+| 返工率 | 44% | 有必修 follow-up 的任务数 / 已记录评审数 = 30/68。 |
+| 流程扣分率 | 69% | `流程扣分点` 列非 `无` 的任务数 / 已记录评审数 = 47/68；这里表示有可复盘流程信号，不等同于严重违规。 |
+| 规则转化率 | 50% | 形成规则、脚本或 follow-up 改进的评审数 / 已记录评审数 = 34/68。 |
 
 > 样本量不足时，本表只用于追踪单任务事实，不用于趋势判断。
 
