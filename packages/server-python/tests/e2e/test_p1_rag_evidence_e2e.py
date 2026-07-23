@@ -12,8 +12,8 @@ AC-1 / AC-4 / AC-9 / AC-12 闭环：
 
 环境要求:
 - 真 PG: ``./dev.sh init-test-db`` 一次
-- 真 Redis broker: ``./dev.sh infra``（或 broker patch）
-- 缺环境时整文件 skip，与 ``test_p1_demo`` 风格一致
+- Celery broker 与外部 LLM: 由测试 fixture / 局部 stub 隔离
+- 缺 PG 时整文件 skip，与 ``test_p1_demo`` 风格一致
 """
 
 from __future__ import annotations

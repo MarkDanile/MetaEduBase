@@ -176,7 +176,7 @@
 | TD-080 | 后端全量测试存在顺序污染与 coroutine 未 await warning | 🟢 完成 | P1 | 后端 / 测试基础设施 / 稳定性 | 2026-07-22 沙箱外本机 PG 全量：1198 passed / 1 failed / 4 skipped / 29 warnings；唯一失败 `test_embedding_empty_logs_warning` 单独复跑通过，说明全局日志/模块状态被前序用例污染；另有多条 `run_in_session` coroutine 未 await / unraisable warning。需定位状态泄漏、保证全量稳定 0 fail，并清除 coroutine 资源警告。 |
 | TD-081 | CI、Git hooks 与 mypy 可执行基线缺失 | 🟢 完成 | P1 | 工程基础设施 / CI / Hooks / Typing | [PR #465](https://github.com/MarkDanile/MetaEduBase/pull/465)（`a37a7e51`）：三路 CI、fresh PostgreSQL、fail-closed hooks、mypy 可递减基线与 main required checks 已交付。 |
 | TD-082 | 分层质量门禁与 CI 提速 | 🟢 完成 | P1 | 工程基础设施 / CI / Hooks / 测试性能 / 依赖管理 | [PR #467](https://github.com/MarkDanile/MetaEduBase/pull/467)（`754ca109`）：scope-aware 三路 CI、秒级 hooks、MCP lock 与前端去重已交付；后端专项转 TD-083。 |
-| TD-083 | 后端风险分级测试选择与性能专项治理 | 🔵 就绪 | P1 | 后端 / 测试基础设施 / CI 性能 | TD-082 PR #467：串行 Backend 9m47s；任意文件两分片 fixture 失效且耗时 3m17s / 8m00s。需按稳定上下文和风险分级选择测试。 |
+| TD-083 | 后端风险分级测试选择与性能专项治理 | 🟡 进行中 | P1 | 后端 / 测试基础设施 / CI 性能 | [Spec](../02-delivery-plans/01-specs/2026-07-23-td-083-backend-risk-tiered-test-selection.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-td-083-backend-risk-tiered-test-selection-plan.md) |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -193,13 +193,15 @@
 
 ### TD-083: 后端风险分级测试选择与性能专项治理
 
-状态：🔵 就绪
+状态：🟡 进行中
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P1 |
 | 领域 | 后端 / 测试基础设施 / CI 性能 / 影响分析 |
 | 事实源 | TD-082 PR #467 runs `29987875989` / `29988992837` |
+| Spec | [TD-083 风险分级测试选择](../02-delivery-plans/01-specs/2026-07-23-td-083-backend-risk-tiered-test-selection.md) |
+| Plan | [TD-083 实施计划](../02-delivery-plans/02-plans/2026-07-23-td-083-backend-risk-tiered-test-selection-plan.md) |
 
 **证据**
 
@@ -207,6 +209,7 @@
 - 按 collect node 数把 1355 个测试任意分为两组，CI 耗时为 3m17s / 8m00s，node 数不能代表运行成本。
 - shard 1 执行 `tests/contexts/mcp_registry/test_invocation_trace.py` 时出现 `fixture 'db_session' not found`，尽管 fixture 已位于同目录 `conftest.py`；具体加载根因尚未完成独立复现，分片实现已从 TD-082 撤销。
 - `test_retry_file_tasks_returns_pending_tasks` 单例在 CI 中约 19.34s，已有可量化慢用例需要单独剖析。
+- 默认禁网护栏首次完整回归发现 2 个 MCP URL policy 用例直接依赖系统 DNS；改为固定 `_resolve_host` mock。另将 embedding timeout 的真实 30 秒等待改为 mock 异常并移出 slow；最终 `not slow` 为 1365 passed / 3 skipped / 8 deselected / 2m41s，`slow` 从 33.96s 降至 3.89s。
 
 **问题**
 
@@ -217,8 +220,8 @@
 
 - 建立后端改动风险矩阵：叶子 context 运行对应 context 测试 + 全局 smoke；shared、鉴权、租户、迁移、依赖、应用装配、全局 fixture 和未知路径运行全部 `not slow`。
 - 相关测试选择器输出选择原因和测试集合，并有完整性、确定性、未知路径 fail-safe 自动测试；不得按改动行数或文件数量判断风险。
-- 明确 PR 快速门禁、合并前完整 `not slow` 和定时含 slow 三层触发策略，required check 名称保持稳定。
-- 采集真实 CI durations，优先修复外部调用逃逸、固定等待、重复数据库初始化和最慢用例；如需并行，只按 fixture 完整的稳定测试边界拆分。
+- 明确 PR 相关/高风险回归、main 完整 `not slow` 和定时含 slow 三层触发策略，required check 名称保持稳定。
+- 采集真实 CI durations，优先修复外部调用逃逸、固定等待、重复数据库初始化和最慢用例；普通测试默认拒绝未 mock 的外部网络，仅手工 opt-in 验收允许显式放行；如需并行，只按 fixture 完整的稳定测试边界拆分。
 - 目标以真实基线确定：叶子 context PR 不再支付全部后端测试成本；完整回归不得降低覆盖或引入顺序/数据库污染。
 
 **验证方式**
@@ -229,7 +232,7 @@
 
 **交付记录**
 
-- 未完成；TD-082 收口后优先开工，禁止把分钟级 pytest 加回本地 hooks。
+- 进行中；分支 `codex/td-083-backend-test-selection`。选择器/scope 29 pass，工程测试 77 pass；真实 PG 下原最慢 6 用例 6 pass / 3.27s，三个完整回归文件 22 pass / 10.38s；GitHub full/targeted 耗时待回填。
 
 ### TD-082: 分层质量门禁与 CI 提速
 

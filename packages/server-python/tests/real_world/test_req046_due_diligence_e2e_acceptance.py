@@ -122,6 +122,7 @@ def test_park_template_loads():
     bool(_block_reasons()),
     reason="AC-8 阻塞: " + "; ".join(_block_reasons() or ["ready"]),
 )
+@pytest.mark.external_network
 @pytest.mark.asyncio
 async def test_real_enterprise_end_to_end():
     """phase 1（真实 QCC + 内部 MCP + 内部问数 + 真实 LLM）：真实企业端到端。

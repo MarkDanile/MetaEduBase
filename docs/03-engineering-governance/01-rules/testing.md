@@ -41,11 +41,21 @@ PR 后端当前默认运行 `pytest -m "not slow"`；`slow` 用例仍由每日�
 
 ## Mock 边界
 
-适合 mock：
+普通自动化测试默认禁止访问外部网络，只放行 `TEST_DATABASE_URL` 指向的测试
+PostgreSQL。遗漏 mock 时必须立即失败并指出连接目标，不得依赖连接失败、重试或
+timeout 结束测试。
+
+必须 mock：
 
 - 外部 LLM / embedding 服务。
 - Celery broker 投递。
-- 难稳定复现的第三方网络依赖。
+- Redis、第三方 HTTP / MCP 和其他网络依赖。
+
+使用 `AsyncMock`、`httpx.MockTransport` 或在生产代码实际查找符号处 patch。
+重试、连接失败和 timeout 分支必须 mock 对应异常或时间源，不得用真实网络失败、
+长时间 `sleep` 或完整 timeout 倒计时来驱动断言。
+真实外部调用只允许出现在手工 opt-in 验收中，并显式标记
+`external_network`；该 marker 不是普通单元/集成测试的绕过入口。
 
 尽量真实集成：
 
