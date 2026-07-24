@@ -14,25 +14,7 @@
 
 ## 当前进行中
 
-### REQ-047-E1: Execution durable core
-
-状态：🟡 进行中
-类型：superpower / plan-do
-领域：`agent_execution` / durable control plane
-当前执行模式：联合 Core Plan Slice E1
-最近接手工具：Codex + GPT-5.6 Sol `xhigh`
-分支：`codex/req-047-e1-durable-core`
-
-需求来源：
-- Requirement: [REQ-047](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md)
-- Spec: [Conversation/Message/Run/Event 联合核心契约](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md#63-agentrun)
-- Plan: [Slice E1](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-e1execution-durable-core)
-- 前置：E0 已由 PR #481 合并，Alembic head `029_agent_execution_identity`
-
-当前进展：domain、`030` migration、repository/RunCoordinator、连续 ACK、FIFO、atomic resume 与 canonical terminal 已实现；独立 `max` 三轮反例审查已收敛为 `P0/P1/P2 = 0`。
-下一步：提交 PR、等待 CI 和合并，再走 docs-only 收口。
-验证状态：真实 PostgreSQL E1 专项 `172 passed`；Workspace + Execution 联合 `190 passed`；全量 hermetic `1562 passed / 4 deselected`；Ruff、mypy baseline、migration `030 -> 029 -> 030`、docs gate 与独立 `max` 复核均通过。
-交接备注：严格止于 E1；不得加入 B1 workspace bridge、HTTP/SSE、Pi/Worker、真实 Tool/Input/Approval store、Artifact/Evidence、Conversation DELETE 或 `/turns`。ACK cursor 只能和 RunEvent/receipt 同事务推进。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -40,7 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-047 Core Slice B1：Workspace/Execution bridge | 🔵 就绪 | E1 合并后接入 transactional inbox/outbox、Guard、FIFO projection barrier 与 submit/delete 协调；不得与 E1 并行修改公共状态机 | [Requirement](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-b1workspaceexecution-bridge-与并发-guard) |
+| P0 | REQ-047 Core Slice B1：Workspace/Execution bridge | 🔵 就绪 | 基于已合并 E1 接入 transactional inbox/outbox、Guard、FIFO projection barrier 与 submit/delete 协调；不得并行修改 E1 公共状态机 | [Requirement](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-b1workspaceexecution-bridge-与并发-guard) |
 | P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | ⚫ Candidate | 可并行补导航矩阵与 plan；移除重复 Skill、归位 MCP/Skill，并建立 permission/nav 单一事实源 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) |
 
 ## 最近完成
@@ -51,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-24 | Agent Execution E1 durable core | 🟢 完成 | `AgentRun/TurnInput/RunEvent`、FIFO/one-active、连续 Runtime ACK、atomic resume、canonical terminal、组合 FK 与 `030` migration；无 B1/API/Pi/extended entity 越界；全量 1562 passed | [PR #483](https://github.com/MarkDanile/MetaEduBase/pull/483)（`d66f50d3`） |
 | 2026-07-24 | Agent Execution E0 identity、Binding 与 Snapshot | 🟢 完成 | `agent_execution` 最小 catalog、版本化 Snapshot、Direct RAG compatibility identity、Binding epoch/DB-clock lease/cursor 契约与 `029` migration；无 Run/Event/API/Runtime 越界；全量 1411 passed | [PR #481](https://github.com/MarkDanile/MetaEduBase/pull/481)（`37417149`） |
 | 2026-07-24 | Agent Workspace W1 durable store | 🟢 完成 | `agent_workspace` 四业务表 + inbox/outbox、owner-private API、CAS/keyset、双 seq 与完整摘要落地；DELETE/`/turns` 保持关闭；全量 1390 passed | [PR #479](https://github.com/MarkDanile/MetaEduBase/pull/479)（`88bf3c35`） |
 | 2026-07-24 | Conversation/Run 联合核心契约塑形 | 🟢 完成 | 冻结 16 项核心决策与 8 Slice plan；四轮独立 `max` 反例审查 P0/P1 从 9 -> 4 -> 1 -> 0；纯文档，无代码/迁移/API/UI | [PR #477](https://github.com/MarkDanile/MetaEduBase/pull/477)（`265f59c7`） |
