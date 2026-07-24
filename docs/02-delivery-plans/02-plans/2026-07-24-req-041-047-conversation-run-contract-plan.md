@@ -125,6 +125,8 @@ packages/server-python/app/composition/
 
 **复杂度/执行**：极高，`S-XH`；不得下放一致性算法。
 
+**实施状态**：🟢 已由 [PR #485](https://github.com/MarkDanile/MetaEduBase/pull/485) 合并（`e113904b`）；严格止于本 Slice，未开放新 `/turns` 生产入口、A1 SSE、Pi/Worker/Tool Gateway、D1 或 R1。B1 专项 25 passed、Workspace/Execution/B1 联合 215 passed、全量 1587 passed / 4 deselected、三路 CI 全绿；三轮独立 `gpt-5.6-sol max` 审查从 P0/P1/P2=0/8/3 收敛至 0/0/0。
+
 交付：
 
 - 在 shared schema 中冻结 `turn.requested.v1`、`assistant_message.publish_requested.v1` 与 inbox ACK DTO；共享文件只含 schema。

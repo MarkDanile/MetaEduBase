@@ -14,25 +14,7 @@
 
 ## 当前进行中
 
-### REQ-047-B1: Workspace/Execution bridge 与并发 Guard
-
-状态：🟡 进行中
-类型：superpower / plan-do
-领域：`agent_workspace` / `agent_execution` / `composition`
-当前执行模式：GPT-5.6 Sol `xhigh` 主实施；完成后由独立 Harness `max` 只读反例审查
-最近接手工具：Codex
-分支：`codex/req-047-b1-workspace-bridge`
-
-需求来源：
-- Requirement：[REQ-047](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md)
-- Spec：[REQ-041/047 联合核心契约](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md)
-- Plan：[Slice B1](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-b1workspaceexecution-bridge-与并发-guard)
-- 架构约束：CR-1/2/3/4/5/6/10/13/16；不得跨 context 共享 ORM/repository，不得并行修改 E1 公共状态机
-
-当前进展：B1 shared schema、双向 inbox/outbox、attempt/claimant fencing、Coordinator/Guard、真实 Workspace FIFO barrier、terminal output projection、dead-letter/retry/abandon/reconcile/suppress、DELETE/restore 与 `031` migration 已实现；新 `/turns` 生产入口保持关闭。三轮独立 `gpt-5.6-sol max` 审查从 `P0/P1/P2=0/8/3 -> 0/0/6 -> 0/0/0` 收敛，冻结终审期间工作区未变化。
-下一步：执行完成门禁后 commit/push，创建实现 PR 并等待三路 CI；合并后另走 docs closeout PR，同步 Requirement/Plan/Backlog/Iteration/工作台，不提前把完整 REQ-047 标记完成。
-验证状态：B1 专项 25 passed；Workspace/Execution/B1 联合 215 passed；完整 hermetic backend 1587 passed / 4 deselected；Ruff、mypy baseline（243 historical / 0 regressions）、工程文档 full gate、`git diff --check`、Alembic `030 -> 031 -> 030 -> 031` 与有 durable payload 时 downgrade fail-closed 均通过。
-交接备注：严格止于 B1；不开放新 Agent Workspace submit HTTP 入口，不接 Pi/Worker/Tool Gateway，不实现 A1 SSE、D1 Direct RAG compatibility 或 R1 purge。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -40,6 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P0 | REQ-047 Core Slice A1：Run query 与 SSE replay | 🔵 就绪 | 实现 GET Run、cancel intent、after-seq SSE replay/live handoff、权限撤销、gap 与 retention 语义；不得提前接 Pi/Worker 或 extended entities | [Requirement](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-a1run-query-与-sse-replay) |
 | P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | ⚫ Candidate | 可并行补导航矩阵与 plan；移除重复 Skill、归位 MCP/Skill，并建立 permission/nav 单一事实源 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) |
 
 ## 最近完成
@@ -50,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-24 | Agent Control Plane B1 Workspace/Execution bridge | 🟢 完成 | shared schema/JCS、双向 inbox/outbox、fencing、Guard、真实 FIFO barrier、terminal projection、dead-letter/reconcile、guarded DELETE/restore 与 `031` migration；全量 1587 passed，三路 CI 全绿 | [PR #485](https://github.com/MarkDanile/MetaEduBase/pull/485)（`e113904b`） |
 | 2026-07-24 | Agent Execution E1 durable core | 🟢 完成 | `AgentRun/TurnInput/RunEvent`、FIFO/one-active、连续 Runtime ACK、atomic resume、canonical terminal、组合 FK 与 `030` migration；无 B1/API/Pi/extended entity 越界；全量 1562 passed | [PR #483](https://github.com/MarkDanile/MetaEduBase/pull/483)（`d66f50d3`） |
 | 2026-07-24 | Agent Execution E0 identity、Binding 与 Snapshot | 🟢 完成 | `agent_execution` 最小 catalog、版本化 Snapshot、Direct RAG compatibility identity、Binding epoch/DB-clock lease/cursor 契约与 `029` migration；无 Run/Event/API/Runtime 越界；全量 1411 passed | [PR #481](https://github.com/MarkDanile/MetaEduBase/pull/481)（`37417149`） |
 | 2026-07-24 | Agent Workspace W1 durable store | 🟢 完成 | `agent_workspace` 四业务表 + inbox/outbox、owner-private API、CAS/keyset、双 seq 与完整摘要落地；DELETE/`/turns` 保持关闭；全量 1390 passed | [PR #479](https://github.com/MarkDanile/MetaEduBase/pull/479)（`88bf3c35`） |
@@ -61,12 +45,3 @@
 | 2026-07-23 | TD-081 CI、Git hooks 与 mypy 可执行基线 | 🟢 完成 | 三路 GitHub CI + fresh PostgreSQL/zhparser + fail-closed hooks + 可递减 mypy baseline；main required checks 对管理员生效。Backend 1368 pass/5 skip，三路 CI 全绿 | [PR #465](https://github.com/MarkDanile/MetaEduBase/pull/465)（`a37a7e51`）/ [Tech Debt](technical-debt.md#td-081-ci-git-hooks-与-mypy-可执行基线缺失) |
 | 2026-07-22 | TD-080 后端全量测试顺序污染与 coroutine 未 await warning | 🟢 完成 | alembic fileConfig 传 disable_existing_loggers=False 治本（不再污染已存在 logger）+ 12 document asyncio.run mock 改 side_effect close coroutine + slow marker 优化 dev 循环（-m 'not slow' 6:33→~5min）。全量 0 fail；1 回归测试防回退 | [PR #464](https://github.com/MarkDanile/MetaEduBase/pull/464)（`a20f3ee1`）/ [work-log](work-log.md) |
 | 2026-07-22 | REQ-058 企业背调生产级 RBAC、制审分离与多租户配置 | 🟢 完成 | DD 权限矩阵+maker-checker+任务可见性+tenant_scoped_config 表+配置审计+平台 status only。7 AC；5 Slice（#459~#463）；43 测试；全量 1364 pass/3 pre-existing；ruff 0/docs gate 0 | [PR #463](https://github.com/MarkDanile/MetaEduBase/pull/463)（`d2c3b752`）/ [work-log](work-log.md) |
-| 2026-07-22 | BUG-020 上传路径/大小/类型与下载认证传输硬化 | 🟢 完成 | P0 安全：safe_display_name+containment 校验+流式分块 size 413+ext/MIME 双校验 415+storage_key 服务端生成+前端下载改 axios blob+Authorization header。6 AC；34 后端测试；全量 1322 pass/3 pre-existing；ruff 0/docs gate 0/前端 typecheck+lint 0 | [PR #457](https://github.com/MarkDanile/MetaEduBase/pull/457)（`beddaaab`）/ [work-log](work-log.md) |
-| 2026-07-22 | BUG-019 MCP 凭证边界与 SSRF 硬化 | 🟢 完成 | P0 安全：CredentialRef 命名空间+黑名单+URL/IP/DNS rebinding 拒绝+set_enabled 前置校验+follow_redirects=False+mcp-server fail-fast+401 一次刷新。7 AC 全覆盖；38 后端测试+7 mcp-server 测试；全量 1290 pass/1 TD-080 pre-existing/ruff 0 | [PR #456](https://github.com/MarkDanile/MetaEduBase/pull/456)（`3eb526f1`）/ [work-log](work-log.md) |
-| 2026-07-22 | BUG-018 AI App 鉴权、租户与 Token 暴露硬化 | 🟢 完成 | P0 安全：管理端点认证+RBAC+tenant-scoped+反伪造 tenant+DTO 拆 Public/Admin/Token+公开 /public+/share/{token}+前端 axios 统一。7 AC 全覆盖；31 后端测试；全量 1252 pass/2 pre-existing；ruff/docs/前端 typecheck+lint 0 | [PR #455](https://github.com/MarkDanile/MetaEduBase/pull/455)（`b084bba3`）/ [work-log](work-log.md) |
-| 2026-07-22 | BUG-017 身份注册与 JWT 信任边界硬化 | 🟢 完成 | P0 安全：register 降级（extra='forbid'+强制 teacher）+管理员入口（super_admin only）+JWT 生产 fail-fast+安全日志 redact；6 AC 覆盖。新增 24 测试+6 文件迁移 0 回归；全量 1222 pass/1 TD-080 pre-existing/ruff 0 | [PR #454](https://github.com/MarkDanile/MetaEduBase/pull/454)（`400d05a7`）/ [work-log](work-log.md) |
-| 2026-07-22 | REQ-046 AC-8 真实企业端到端执行体落地 | 🟢 完成 | 按授权样本企业（上汽集团）跑通真实端到端；修 internal_query 真实链路：主体→关系键映射（bill→客户ID/lease→合同ID/ticket→房间ID）+三层主体识别+confirmed_filters 通道+planner 重试+数值字符串聚合+filter 归一化+seed 补 metric。AC-8 PASSED、476 pass/ruff 0 | [PR #452](https://github.com/MarkDanile/MetaEduBase/pull/452) / [work-log](work-log.md) |
-| 2026-07-22 | REQ-046 / APP-005 企业 360 背调工作台 V0 | 🟢 完成 | 首个产业园区 P0 合规风控闭环，7 小 PR（#444~#450）：任务容器+Subject Resolver+SkillRunner v2 三类 step+Internal Customer MCP+背调 SKILL+Orchestrator/Report/Evidence+第三方导入+APP-005 前端；AC-1~7 覆盖、AC-8 骨架就位。后端 1176 pass/ruff 0 | [REQ-046](../01-product-planning/05-requirements/REQ-046-enterprise-360-due-diligence-workbench.md) / [work-log](work-log.md) |
-| 2026-07-21 | TD-079 排除 alembic/versions/ 出 ruff（93 pre-existing 收口） | 🟢 完成 | pyproject [tool.ruff] 加 extend-exclude=["alembic/versions"]；93 错误全在迁移文件（UP007/E501/I001/UP035/W292/F401），app/+tests/ 本就 0。ruff check . -> 0 + 显式 alembic 可查 + 全量 1064 pass/3 skip；零 .py 改动 | [Tech Debt](technical-debt.md#td-079-排除-alembicversions-出-ruff-范围93-个-pre-existing-ruff-错误收口) / [PR #442](https://github.com/MarkDanile/MetaEduBase/pull/442) |
-| 2026-07-21 | TD-078 清理未使用的 ai extras（TD-077 follow-up） | 🟢 完成 | 删 pyproject 的 ai extras（6 包声明未用 + 3.14 无 wheel）+ uv lock 重生成（232->93，纯删 139/0 版本变更/0 新增）；uv sync --extra dev 成功 + --extra ai 报错 + uv tree linux/3.12 exit 0；零 .py 改动，全量 1064 pass/3 skip 基线一致 | [Tech Debt](technical-debt.md#td-078-清理未使用的-ai-extrastd-077-follow-up) / [PR #440](https://github.com/MarkDanile/MetaEduBase/pull/440) |
-| 2026-07-21 | TD-077 采用 uv lockfile 保证 dev/deploy 可复现安装 | 🟢 完成 | uv.lock 提交进 git + dev.sh 4 个 pip 调用点 -> `uv sync --frozen --extra dev` + Dockerfile.backend -> `uv sync --frozen --no-dev`；ai extras 默认不装（声明未用 + 3.14 无 wheel）。全量 1064 pass/3 skip + ruff 0 | [Tech Debt](technical-debt.md#td-077-无依赖锁文件-devdeploy-不可复现安装) / [PR #438](https://github.com/MarkDanile/MetaEduBase/pull/438) |
