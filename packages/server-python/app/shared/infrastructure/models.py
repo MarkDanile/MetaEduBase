@@ -1,3 +1,8 @@
+from app.contexts.agent_execution.infrastructure.models import (
+    AgentDefinitionVersionModel,
+    RuntimeProfileModel,
+    RuntimeSessionBindingModel,
+)
 from app.contexts.agent_workspace.infrastructure.models import (
     ConversationModel,
     ConversationUserStateModel,
@@ -31,6 +36,7 @@ from app.contexts.structured_data.infrastructure.semantic_models_models import (
 from app.contexts.template.infrastructure.models import TemplateModel  # noqa: F401
 
 __all__ = [
+    "AgentDefinitionVersionModel",
     "ConversationModel",
     "ConversationUserStateModel",
     "DocumentChunkModel",
@@ -46,6 +52,8 @@ __all__ = [
     "MCPInvocationAuditModel",
     "MCPServerModel",
     "ResourceModel",
+    "RuntimeProfileModel",
+    "RuntimeSessionBindingModel",
     "SkillExecutionAuditModel",
     "SkillModel",
     "CatalogModel",
