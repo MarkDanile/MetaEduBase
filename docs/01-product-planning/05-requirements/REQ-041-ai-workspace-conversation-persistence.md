@@ -4,6 +4,7 @@
 > Priority: P0
 > Milestone: P3 / Enterprise Agent Platform
 > Area: AI Workspace / Conversation / Message
+> Target Context: `agent_workspace`（代码与迁移落地后再同步 `ARCHITECTURE.md`）
 > Created: 2026-07-23（补齐既有 Backlog 候选事实源）
 > Parent: REQ-059
 > Related: REQ-042 / REQ-043 / REQ-047 / REQ-061
@@ -15,10 +16,13 @@
 ## Scope
 
 - 建立 tenant-scoped `Conversation` 与 `Message` 事实源。
+- 本需求归属目标上下文 `agent_workspace`，只拥有 Conversation/Message 及用户可见会话生命周期；不拥有 Runtime live handle、ToolGrant、Approval 状态机或业务报告字段。
 - 支持新建、自动/手工命名、置顶、取消置顶、归档、恢复、软删除和搜索。
 - Message 保存用户可见内容、角色、状态、创建者和必要引用；sources、diagnostics、artifact、run 采用稳定引用，不将所有对象复制进消息 JSON。
 - 支持按 Conversation 分页加载历史，保证顺序稳定和重复请求幂等。
-- 产品 Conversation 与 Runtime Session 解耦；Runtime Binding 归 REQ-043。
+- 用户输入先持久化为 Message，再由 `agent_execution` 建立不可变 `TurnInput`；活动 Run 中的普通新输入默认排队到下一 Run，显式 steer 由 REQ-043 处理。
+- 产品 Conversation 与 Runtime Session 解耦；`RuntimeSessionBinding` 归 `agent_execution`，由 REQ-047/043 承接持久化与 Runtime 接线。
+- `agent_workspace` 与 `agent_execution` 只通过稳定 ID、application port 和显式 DTO 交互，不共享 ORM model 或 repository。
 - 为后续 fork/branch 保留父会话和分叉消息引用，不要求 V1 交付完整树形 UI。
 
 ## Acceptance
@@ -27,9 +31,9 @@
 - AC-2：新建、重命名、置顶、归档、恢复、删除和搜索均有 API 与持久化测试。
 - AC-3：页面刷新和重新登录后可恢复会话列表及消息历史。
 - AC-4：消息写入具备幂等键；客户端重试不会产生重复用户消息或回答。
-- AC-5：删除策略覆盖 Message 引用的 Run、Artifact、Evidence 和 Runtime Binding，明确软删、保留与异步清理边界。
+- AC-5：与 REQ-047 contract-first 冻结 Message 引用的 Run、Artifact、Evidence 和 Runtime Binding 的删除/保留关系；Conversation 删除不得以 ORM cascade 绕过执行审计、业务保留或法定删除策略。
 - AC-6：不保存原始 Chain-of-Thought；thinking 仅保存可公开的结构化摘要或运行事件引用。
-- AC-7：现有 Direct RAG 回答可作为首个兼容路径写入 Conversation，不要求先接 Pi。
+- AC-7：现有 `/ai/chat/evidence` Direct RAG 回答可作为首个兼容路径写入 Conversation，不要求先接 Pi；新 Agent Workspace 的统一 Turn Loop 语义由 REQ-043 承接。
 
 ## Non-goals
 
@@ -41,4 +45,4 @@
 ## Dependencies / Next Step
 
 - 先以 REQ-059 的数据所有权与事件边界为约束补交付 spec/plan。
-- 与 REQ-047 contract-first 对齐 Conversation、Message、Run 和 Artifact 的引用关系。
+- 与 REQ-047 contract-first 对齐 Conversation、Message、Run 和 Artifact 的 ID、删除/保留与终态关系，并保持两个上下文独立迁移。

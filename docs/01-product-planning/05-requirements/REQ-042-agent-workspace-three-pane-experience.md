@@ -17,8 +17,9 @@
 - 左栏：会话列表、搜索、新建、重命名、置顶、归档和删除。
 - 中栏：用户/助手消息与统一 RunEvent 时间线，Composer 固定且支持停止、继续和附件。
 - 右栏：任务/计划、审批、产物、证据与运行详情，可按场景配置默认 Tab。
+- 每次新 Workspace 输入先持久化 Message 并创建后台 AgentRun；活动 Run 中默认排队为下一 Run，用户显式操作才 steer 当前 Run。
 - 通过 `run_id + seq` 消费统一 SSE 事件，支持 after-seq 重连、缺口检测和终态恢复。
-- 显示 plan summary、current phase、tool lifecycle、evidence、approval、artifact、retry/error summary。
+- 显示 plan summary、current phase、tool lifecycle、human input、evidence、approval、artifact、retry/error summary；HumanInputRequest 与 Approval 使用不同组件。
 - 响应式布局：窄屏使用抽屉/Tab，不允许三栏压缩后文本重叠。
 - 浅色/深色主题沿用现有中性工作台设计系统。
 
@@ -31,6 +32,7 @@
 - AC-5：不展示原始 Chain-of-Thought；thinking UI 只消费平台批准的摘要事件。
 - AC-6：桌面与移动视口无文本遮挡、横向溢出和控件跳动，并有 Playwright 截图验收。
 - AC-7：Direct RAG、SkillRunner 和 Agent Runtime 在同一时间线协议下呈现，UI 不依赖某个 Runtime 私有事件。
+- AC-8：用户离开页面后 Run 继续；重新进入可恢复当前状态。活动 Run 中普通消息默认进入下一 Run，显式 steer 有独立交互和事件反馈。
 
 ## Non-goals
 
