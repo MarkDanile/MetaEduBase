@@ -14,7 +14,26 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-041/047: Conversation、Message、Run、Event 联合契约塑形
+
+状态：🟣 待验证
+类型：Product Planning / Contract-first Shaping
+领域：Agent Workspace / Agent Execution / Conversation / Run Event
+当前执行模式：spike / superpower
+最近接手工具：Codex
+分支：`codex/req-041-047-contract`
+
+需求来源：
+- REQ-041: [Conversation/Message](../01-product-planning/05-requirements/REQ-041-ai-workspace-conversation-persistence.md)
+- REQ-047: [Run/Event/Approval/Artifact](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md)
+- Parent: [REQ-059](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md)
+- Spec: [联合核心契约](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md)
+- Plan: [分 Slice 实施计划](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md)
+
+当前进展：源码审计、Conversation/Message/Run/Event 联合 spec、8 Slice 实施 plan 与规划状态同步已完成；四轮独立反例审查把 9 -> 4 -> 1 -> 0 个 P0/P1 逐轮收口。REQ-041 全范围 Ready；REQ-047 保持 Shaping，但 Durable Core 可按 E0/E1 实施。本轮未修改代码、迁移、API 或 UI。
+下一步：完成范围检查、提交、PR checks、合并与 main clean check；实现从 REQ-041 W1 开始，REQ-047 E0/E1 紧随。
+验证状态：`scripts/check-engineering-docs --full` 通过（32 个既有 known issues allowlisted）；`git diff --check` 通过；独立 GPT-5.6 Sol `max` 只读反例审查 P0/P1 清零。文档-only，按范围不运行代码测试。
+交接备注：`agent_workspace` 只拥有 Conversation/Message，`agent_execution` 只拥有 Run/Event/Approval/Artifact 等执行事实；禁止共享 ORM/repository 或让 Message JSON 成为执行事实源。
 
 ## 下一批候选任务
 
@@ -22,8 +41,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0-1 | REQ-041 AI Workspace 会话持久化与多会话事实源 | ⚫ Candidate | 与 REQ-047 联合设计引用关系，先补 Conversation/Message 数据模型、幂等、删除/保留、API 与迁移 plan | [Requirement](../01-product-planning/05-requirements/REQ-041-ai-workspace-conversation-persistence.md) |
-| P0-2 | REQ-047 Agent Run、产物、证据与人工确认中心 | ⚫ Candidate | 紧随 REQ-041 补 Run/Event/Approval/Artifact/Evidence 状态机、seq、终态和 SSE replay spec | [Requirement](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md) |
 | P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | ⚫ Candidate | 可并行补导航矩阵与 plan；移除重复 Skill、归位 MCP/Skill，并建立 permission/nav 单一事实源 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) |
 
 ## 最近完成

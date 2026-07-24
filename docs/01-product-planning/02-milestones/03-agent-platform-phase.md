@@ -113,7 +113,7 @@ Agent Apps
 ## Current Iteration
 
 - [2026-W30 P3 企业 Agent 平台控制面塑形](../03-iterations/2026-W30-p3-enterprise-agent-platform.md)
-- REQ-059 Architecture Gate 已由 PR #475 完成；下一步进入 REQ-041/047 contract-first 设计，REQ-060 可并行塑形，不直接跳到 Pi Worker。
+- REQ-059 Architecture Gate 已由 PR #475 完成；REQ-041/047 Core contract-first 设计已形成联合 spec/plan。下一步从 REQ-041 W1 与 REQ-047 E1 Durable Core 开始，REQ-060 可并行塑形，不直接跳到 Pi Worker。
 
 ## Completion Criteria
 
@@ -142,8 +142,8 @@ Agent Apps
 
 | ID | 状态 | 说明 | 事实源 |
 |----|------|------|--------|
-| REQ-041 | ⚫ Candidate | Conversation/Message 与多会话事实源 | [Requirement](../05-requirements/REQ-041-ai-workspace-conversation-persistence.md) |
-| REQ-047 | ⚫ Candidate | Run/Event/Approval/Artifact/Evidence | [Requirement](../05-requirements/REQ-047-agent-run-artifact-approval-center.md) |
+| REQ-041 | 🔵 Ready | Conversation/Message 联合契约与 plan 已冻结；按 W1 开始 | [Requirement](../05-requirements/REQ-041-ai-workspace-conversation-persistence.md) / [Spec](../../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md) / [Plan](../../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md) |
+| REQ-047 | 🟣 Shaping | Core Ready：Run/Event 可实施；Approval/Tool/Artifact/Evidence extended contracts 继续塑形 | [Requirement](../05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [Core Spec](../../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md) |
 | REQ-060 | ⚫ Candidate | 控制台信息架构和权限化导航，可与 Durable State 并行 | [Requirement](../05-requirements/REQ-060-enterprise-console-information-architecture.md) |
 | REQ-042 | ⚫ Candidate | Codex 式 Agent Workspace | [Requirement](../05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | TD-085 | ⚫ 待办 | 收口 AI Chat、Skill 与 Agent App 上下文边界倒置 | [Technical Debt](../../03-engineering-governance/technical-debt.md#td-085-收口-ai-chatskill-与-agent-app-的上下文边界倒置) |

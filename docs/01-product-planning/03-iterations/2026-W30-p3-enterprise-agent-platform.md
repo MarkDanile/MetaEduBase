@@ -16,8 +16,8 @@ Goal: 完成 P2 -> P3 路线切换，冻结企业 Agent Control Plane、源码�
 
 | 顺序 | 任务 | 当前状态 | 下一步 |
 |------|------|----------|--------|
-| 1 | REQ-041 Conversation/Message | ⚫ Candidate | 与 REQ-047 联合补数据关系、删除/保留、幂等和 API spec，先实施产品会话事实源 |
-| 2 | REQ-047 Run/Event/Approval/Artifact | ⚫ Candidate | 冻结完整状态机、runtime_seq/RunEvent seq、terminal result、SSE replay、HumanInput、Approval 和 `outcome_unknown`，紧随 REQ-041 实施 |
+| 1 | REQ-041 Conversation/Message | 🔵 Ready | 联合 spec/plan 已冻结数据关系、outbox/inbox、删除/保留、幂等、API 和并发 Guard；下一步按 W1 实施 |
+| 2 | REQ-047 Run/Event/Approval/Artifact | 🟣 Shaping | Core Ready：Run/Event 可按 E1/B1/A1/R1 实施；HumanInput/Approval、Tool/Grant/Snapshot、Artifact/Evidence 继续独立塑形 |
 | 2P | REQ-060 控制台导航 | ⚫ Candidate | 可独立并行补 spec/plan，收口重复 Skill、MCP/Skill 归位和 permission/nav 单一事实源 |
 | 3 | REQ-042 Agent Workspace | ⚫ Candidate | 用 Direct RAG/Skill compatibility path 验收，不等待 Pi 才开始产品体验 |
 | 4 | TD-085 边界收口 | ⚫ 待办 | 分 Slice 抽 LLM Port、Direct RAG 和业务专属逻辑，保持现有行为 |
@@ -52,7 +52,7 @@ Goal: 完成 P2 -> P3 路线切换，冻结企业 Agent Control Plane、源码�
 ## Out of Scope
 
 - 本迭代不创建 Agent Runtime Worker、不引入 Pi npm 依赖、不实现数据库表或新 UI。
-- 不把 REQ-041/047/060 从 Candidate 提前翻 Ready；必须先完成各自交付 spec/plan。
+- REQ-041 只有联合 spec/plan 完成后才可翻 Ready；REQ-047 只允许标 Core Ready，extended contracts 未完成前保持 Shaping；REQ-060 仍须先完成独立 spec/plan。
 - 不更新 `ARCHITECTURE.md` 声称新 bounded context 已落地。
 - 不引入 P4 的 Milvus、Neo4j、Elasticsearch、多模态或 HA 基础设施。
 
@@ -72,6 +72,8 @@ Goal: 完成 P2 -> P3 路线切换，冻结企业 Agent Control Plane、源码�
 - [P3 Milestone](../02-milestones/03-agent-platform-phase.md)
 - [REQ-059 Requirement](../05-requirements/REQ-059-enterprise-agent-platform-kernel.md)
 - [REQ-059 Source Study & Contract](../../02-delivery-plans/01-specs/2026-07-23-req-059-enterprise-agent-platform-control-plane.md)
+- [REQ-041/047 Core Contract](../../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md)
+- [REQ-041/047 Core Plan](../../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md)
 - [PR #475](https://github.com/MarkDanile/MetaEduBase/pull/475) / squash merge `132730a0`
 - [Current Work](../../03-engineering-governance/current-work.md)
 - [AI Delivery Routing Matrix](../../03-engineering-governance/03-matrices/agent-platform-ai-delivery-routing.md)

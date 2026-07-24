@@ -486,16 +486,7 @@ close_session(handle, discard_persistent_state)
 
 ### 9.2 AgentRun 与 RunEvent
 
-`AgentRun` 是终态事实源：
-
-```text
-queued -> starting -> running
-running -> waiting_input|waiting_approval|resume_required|cancelling
-waiting_input|waiting_approval -> running|cancelling|expired
-resume_required -> starting|failed|cancelled
-queued|starting|running|waiting_input|waiting_approval|cancelling
-  -> completed|failed|cancelled|expired
-```
+`AgentRun` 是终态事实源。V1 唯一规范迁移表由后续 contract-first 设计冻结在 [REQ-041/047 联合核心契约 §7.3](2026-07-24-req-041-047-conversation-run-contract.md#73-agentrun)；Adapter、Coordinator、测试和文档不得维护第二份不同迁移表。
 
 状态迁移硬条件：
 
