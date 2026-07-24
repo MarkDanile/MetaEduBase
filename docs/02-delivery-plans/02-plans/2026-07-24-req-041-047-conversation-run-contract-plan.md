@@ -88,7 +88,7 @@ packages/server-python/app/composition/
 
 **复杂度/执行**：极高，`S-XH`；profile DTO 可下放，Binding epoch/ACK cursor 不可下放。
 
-**实施状态**：🟡 分支 `codex/req-047-e0-execution-identity` 实现与验证已完成，正在走 Git 闭环；严格止于本 Slice，未引入 Run/Event 或 Runtime 调用。专项 21 passed、全量 1411 passed / 4 deselected；独立 `max` 反例审查最终 P0/P1=0。
+**实施状态**：🟢 已由 [PR #481](https://github.com/MarkDanile/MetaEduBase/pull/481) 合并（`37417149`）；严格止于本 Slice，未引入 Run/Event 或 Runtime 调用。专项 21 passed、全量 1411 passed / 4 deselected、三路 CI 全绿；独立 `max` 初审 1 P1/3 P2 全修，最终 P0/P1=0。E1 必须把 RunEvent/receipt 与 ACK cursor 放在同一事务，不得恢复独立 cursor mutation。
 
 交付：
 
