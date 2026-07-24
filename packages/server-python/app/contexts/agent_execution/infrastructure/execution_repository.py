@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal, cast
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -50,10 +51,18 @@ from app.contexts.agent_execution.infrastructure.execution_mappers import (
 from app.contexts.agent_execution.infrastructure.models import (
     AgentDefinitionVersionModel,
     AgentRunModel,
+    ExecutionOutboxModel,
     RunEventModel,
     RuntimeProfileModel,
     RuntimeSessionBindingModel,
     TurnInputModel,
+)
+from app.shared.schemas.agent_integration import (
+    AssistantMessagePublishRequestedV1,
+)
+from app.shared.schemas.agent_integration_codec import (
+    integration_event_digest,
+    integration_event_payload,
 )
 
 _E1_UNSUPPORTED_ENTITY_EVENTS = frozenset(
@@ -739,6 +748,53 @@ class AgentExecutionRepository:
                 correlation_id=row.correlation_id,
             ),
         )
+        if target_status is RunStatus.COMPLETED:
+            assert row.terminal_message_id is not None
+            assert row.terminal_output_ref is not None
+            assert row.terminal_output_digest is not None
+            assert row.terminal_output_size is not None
+            assert row.terminal_output_media_type is not None
+            assert row.terminal_output_classification is not None
+            publish_event = AssistantMessagePublishRequestedV1(
+                event_id=uuid.uuid4(),
+                tenant_id=row.tenant_id,
+                aggregate_id=row.id,
+                conversation_id=row.conversation_id,
+                run_id=row.id,
+                message_id=row.terminal_message_id,
+                reply_to_message_id=row.root_input_message_id,
+                agent_definition_version_id=row.agent_definition_version_id,
+                output_ref=row.terminal_output_ref,
+                output_digest=row.terminal_output_digest,
+                output_size=row.terminal_output_size,
+                output_media_type=row.terminal_output_media_type,
+                output_classification=cast(
+                    Literal["public", "internal", "restricted"],
+                    row.terminal_output_classification,
+                ),
+                correlation_id=row.correlation_id,
+                causation_id=event.id,
+                occurred_at=now,
+            )
+            self._session.add(
+                ExecutionOutboxModel(
+                    id=publish_event.event_id,
+                    tenant_id=row.tenant_id,
+                    event_type=publish_event.event_type,
+                    schema_version=publish_event.schema_version,
+                    aggregate_id=row.id,
+                    aggregate_type=publish_event.aggregate_type,
+                    payload_inline=integration_event_payload(publish_event),
+                    payload_ref=None,
+                    payload_digest=integration_event_digest(publish_event),
+                    correlation_id=row.correlation_id,
+                    causation_id=event.id,
+                    status="pending",
+                    attempt_count=0,
+                    next_attempt_at=now,
+                    created_at=now,
+                )
+            )
         await self._session.flush()
         return to_run(row), event, False
 

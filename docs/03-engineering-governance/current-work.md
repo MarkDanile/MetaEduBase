@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-047-B1: Workspace/Execution bridge 与并发 Guard
+
+状态：🟡 进行中
+类型：superpower / plan-do
+领域：`agent_workspace` / `agent_execution` / `composition`
+当前执行模式：GPT-5.6 Sol `xhigh` 主实施；完成后由独立 Harness `max` 只读反例审查
+最近接手工具：Codex
+分支：`codex/req-047-b1-workspace-bridge`
+
+需求来源：
+- Requirement：[REQ-047](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md)
+- Spec：[REQ-041/047 联合核心契约](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md)
+- Plan：[Slice B1](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-b1workspaceexecution-bridge-与并发-guard)
+- 架构约束：CR-1/2/3/4/5/6/10/13/16；不得跨 context 共享 ORM/repository，不得并行修改 E1 公共状态机
+
+当前进展：B1 shared schema、双向 inbox/outbox、attempt/claimant fencing、Coordinator/Guard、真实 Workspace FIFO barrier、terminal output projection、dead-letter/retry/abandon/reconcile/suppress、DELETE/restore 与 `031` migration 已实现；新 `/turns` 生产入口保持关闭。三轮独立 `gpt-5.6-sol max` 审查从 `P0/P1/P2=0/8/3 -> 0/0/6 -> 0/0/0` 收敛，冻结终审期间工作区未变化。
+下一步：执行完成门禁后 commit/push，创建实现 PR 并等待三路 CI；合并后另走 docs closeout PR，同步 Requirement/Plan/Backlog/Iteration/工作台，不提前把完整 REQ-047 标记完成。
+验证状态：B1 专项 25 passed；Workspace/Execution/B1 联合 215 passed；完整 hermetic backend 1587 passed / 4 deselected；Ruff、mypy baseline（243 historical / 0 regressions）、工程文档 full gate、`git diff --check`、Alembic `030 -> 031 -> 030 -> 031` 与有 durable payload 时 downgrade fail-closed 均通过。
+交接备注：严格止于 B1；不开放新 Agent Workspace submit HTTP 入口，不接 Pi/Worker/Tool Gateway，不实现 A1 SSE、D1 Direct RAG compatibility 或 R1 purge。
 
 ## 下一批候选任务
 
@@ -22,7 +40,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-047 Core Slice B1：Workspace/Execution bridge | 🔵 就绪 | 基于已合并 E1 接入 transactional inbox/outbox、Guard、FIFO projection barrier 与 submit/delete 协调；不得并行修改 E1 公共状态机 | [Requirement](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-b1workspaceexecution-bridge-与并发-guard) |
 | P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | ⚫ Candidate | 可并行补导航矩阵与 plan；移除重复 Skill、归位 MCP/Skill，并建立 permission/nav 单一事实源 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) |
 
 ## 最近完成

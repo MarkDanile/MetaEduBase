@@ -167,9 +167,9 @@ async def test_super_admin_role_does_not_grant_other_owners_message_access(
     assert conversation_id not in {item["id"] for item in listing.json()["items"]}
 
 
-async def test_w1_does_not_register_conversation_delete_or_submit_turn_routes():
+async def test_b1_registers_guarded_delete_but_keeps_submit_turn_route_closed():
     paths = app.openapi()["paths"]
     base = "/api/v1/agent-workspace/conversations/{conversation_id}"
-    assert "delete" not in paths[base]
+    assert "delete" in paths[base]
     assert f"{base}/turns" not in paths
     assert "delete" in paths[f"{base}/pin"]

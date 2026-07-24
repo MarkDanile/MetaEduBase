@@ -32,3 +32,7 @@ class ResourceReferenceForbiddenError(AgentWorkspaceError, PermissionError):
 
 class TitleSourceConflictError(AgentWorkspaceError):
     pass
+
+
+class WorkspaceIntegrationConflictError(AgentWorkspaceError):
+    """An inbox/outbox replay conflicts with durable workspace facts."""

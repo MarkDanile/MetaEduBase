@@ -15,7 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.infrastructure.database import Base
@@ -369,6 +369,19 @@ class WorkspaceOutboxModel(Base):
             "char_length(payload_digest) = 64",
             name="ck_agent_ws_outbox_digest_length",
         ),
+        CheckConstraint(
+            "(payload_inline IS NOT NULL AND payload_ref IS NULL "
+            "AND pg_column_size(payload_inline) <= 32768) OR "
+            "(payload_inline IS NULL AND payload_ref IS NOT NULL)",
+            name="ck_agent_ws_outbox_payload",
+        ),
+        Index(
+            "uq_agent_ws_outbox_turn",
+            "tenant_id",
+            "aggregate_id",
+            unique=True,
+            postgresql_where=text("event_type = 'turn.requested.v1'"),
+        ),
         Index(
             "ix_agent_ws_outbox_dispatch",
             "tenant_id",
@@ -387,6 +400,7 @@ class WorkspaceOutboxModel(Base):
     schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
     aggregate_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     aggregate_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    payload_inline: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     payload_ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
     payload_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     correlation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)

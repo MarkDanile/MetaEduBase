@@ -713,6 +713,28 @@ class ExecutionOutboxModel(Base):
             "char_length(payload_digest) = 64",
             name="ck_agent_exec_outbox_digest",
         ),
+        CheckConstraint(
+            "(payload_inline IS NOT NULL AND payload_ref IS NULL "
+            "AND pg_column_size(payload_inline) <= 32768) OR "
+            "(payload_inline IS NULL AND payload_ref IS NOT NULL)",
+            name="ck_agent_exec_outbox_payload",
+        ),
+        CheckConstraint(
+            "(decision_actor_id IS NULL AND decision_reason IS NULL "
+            "AND decision_digest IS NULL AND decided_at IS NULL) OR "
+            "(decision_actor_id IS NOT NULL AND decision_reason IS NOT NULL "
+            "AND char_length(decision_digest) = 64 AND decided_at IS NOT NULL)",
+            name="ck_agent_exec_outbox_decision",
+        ),
+        Index(
+            "uq_agent_exec_outbox_publish",
+            "tenant_id",
+            "aggregate_id",
+            unique=True,
+            postgresql_where=text(
+                "event_type = 'assistant_message.publish_requested.v1'"
+            ),
+        ),
         Index(
             "ix_agent_exec_outbox_dispatch",
             "tenant_id",
@@ -731,6 +753,7 @@ class ExecutionOutboxModel(Base):
     schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
     aggregate_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     aggregate_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    payload_inline: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     payload_ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
     payload_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     correlation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
@@ -753,6 +776,14 @@ class ExecutionOutboxModel(Base):
         DateTime(timezone=True), nullable=True
     )
     last_error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    decision_actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    decision_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    decision_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class ExecutionInboxModel(Base):
