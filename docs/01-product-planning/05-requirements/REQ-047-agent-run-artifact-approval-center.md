@@ -1,7 +1,7 @@
 # REQ-047: Agent Run、产物、证据与人工确认中心
 
 > Status: 🟣 Shaping
-> Core Contract: 🟡 Doing（Slice E1；完整 REQ-047 继续 Shaping）
+> Core Contract: 🟡 Doing（Slice E1 已完成，下一步 B1；完整 REQ-047 继续 Shaping）
 > Priority: P0
 > Milestone: P3 / Enterprise Agent Platform
 > Area: Agent Run / Event / Approval / Artifact / Evidence
@@ -61,6 +61,6 @@
 
 ## Dependencies / Next Step
 
-- Conversation/Message/Run/Event Durable Core 已与 REQ-041 冻结；W1 与 E0 已合并，后续按 E1/B1/A1/R1 推进。两个 context 分别迁移，不共享 ORM/repository；E1 的 RunEvent/receipt 与 Runtime ACK cursor 必须在同一事务提交。
+- Conversation/Message/Run/Event Durable Core 已与 REQ-041 冻结；W1、E0 与 E1 已合并，后续按 B1/A1/R1 推进。两个 context 分别迁移，不共享 ORM/repository；RunEvent/receipt 与 Runtime ACK cursor 必须在同一事务提交。
 - 完整 REQ-047 仍处于 Shaping：HumanInput/Approval、ToolCall/Grant/Snapshot、Artifact/Evidence 必须分别补充字段、状态、权限、retention 与故障 spec/plan，完成前不得把 REQ-047 整体翻 Ready/Done。
 - Durable Core 为 REQ-042 提供稳定 UI 事件协议，为 REQ-043 提供 Runtime 输出事实源；首个兼容路径支持 Direct RAG/SkillRunner，不等待 Pi Worker。

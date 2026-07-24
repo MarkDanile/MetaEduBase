@@ -103,7 +103,7 @@ packages/server-python/app/composition/
 
 **复杂度/执行**：极高，`S-XH`；第二 Harness 只读检查状态机和并发反例。
 
-**实施状态**：🟡 正在分支 `codex/req-047-e1-durable-core` 实施；严格止于本 Slice，不开放 B1 bridge、HTTP/SSE、Pi/Worker 或 extended entities。
+**实施状态**：🟢 已由 [PR #483](https://github.com/MarkDanile/MetaEduBase/pull/483) 合并（`d66f50d3`）；严格止于本 Slice，未开放 B1 bridge、HTTP/SSE、Pi/Worker 或 extended entities。E1 专项 172 passed、联合 190 passed、全量 1562 passed / 4 deselected、三路 CI 全绿；独立 `gpt-5.6-sol max` 三轮反例审查全部修正，最终 P0/P1/P2=0。
 
 交付：
 
