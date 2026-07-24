@@ -16,8 +16,8 @@ Goal: 完成 P2 -> P3 路线切换，冻结企业 Agent Control Plane、源码�
 
 | 顺序 | 任务 | 当前状态 | 下一步 |
 |------|------|----------|--------|
-| 1 | REQ-041 Conversation/Message | 🟡 Doing | W1 与 E0/E1/B1 已合并；guarded DELETE/restore 已开放，新 Workspace submit-turn 保持关闭；下一步 A1 |
-| 2 | REQ-047 Run/Event/Approval/Artifact | 🟣 Shaping（Core A1 Ready） | B1 已由 PR #485 合并；后续 A1/R1，HumanInput/Approval、Tool/Grant/Snapshot、Artifact/Evidence 继续独立塑形 |
+| 1 | REQ-041 Conversation/Message | 🟡 Doing | W1 与 E0/E1/B1/A1 已合并；guarded DELETE/restore 与 Run query/SSE 已开放，新 Workspace submit-turn 保持关闭；下一步 D1 |
+| 2 | REQ-047 Run/Event/Approval/Artifact | 🟣 Shaping（Core A1 Done / D1 Next） | A1 已由 PR #487 合并；后续 D1/R1/C1，HumanInput/Approval、Tool/Grant/Snapshot、Artifact/Evidence 继续独立塑形 |
 | 2P | REQ-060 控制台导航 | ⚫ Candidate | 可独立并行补 spec/plan，收口重复 Skill、MCP/Skill 归位和 permission/nav 单一事实源 |
 | 3 | REQ-042 Agent Workspace | ⚫ Candidate | 用 Direct RAG/Skill compatibility path 验收，不等待 Pi 才开始产品体验 |
 | 4 | TD-085 边界收口 | ⚫ 待办 | 分 Slice 抽 LLM Port、Direct RAG 和业务专属逻辑，保持现有行为 |

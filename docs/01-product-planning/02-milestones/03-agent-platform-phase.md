@@ -113,7 +113,7 @@ Agent Apps
 ## Current Iteration
 
 - [2026-W30 P3 企业 Agent 平台控制面塑形](../03-iterations/2026-W30-p3-enterprise-agent-platform.md)
-- REQ-059 Architecture Gate 已由 PR #475 完成；REQ-041 W1 与 REQ-047 E0/E1/B1 已合并，下一步进入 A1 Run query 与 SSE replay；REQ-060 可并行塑形，不直接跳到 Pi Worker。
+- REQ-059 Architecture Gate 已由 PR #475 完成；REQ-041 W1 与 REQ-047 E0/E1/B1/A1 已合并，下一步进入 D1 旧 Direct RAG compatibility recording；REQ-060 可并行塑形，不直接跳到 Pi Worker。
 
 ## Completion Criteria
 
@@ -142,8 +142,8 @@ Agent Apps
 
 | ID | 状态 | 说明 | 事实源 |
 |----|------|------|--------|
-| REQ-041 | 🟡 Doing | W1 与 E0/E1/B1 已合并；guarded DELETE/restore 已开放，新 Workspace submit-turn 保持关闭；下一步 A1 | [Requirement](../05-requirements/REQ-041-ai-workspace-conversation-persistence.md) / [Spec](../../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md) / [Plan](../../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md) |
-| REQ-047 | 🟣 Shaping（Core A1 Ready） | B1 bridge/Guard、FIFO barrier、terminal projection 与 `031` migration 已由 PR #485 合并；下一步 A1，extended contracts 继续塑形 | [Requirement](../05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [Core Spec](../../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md) |
+| REQ-041 | 🟡 Doing | W1 与 E0/E1/B1/A1 已合并；guarded DELETE/restore 与 Run query/SSE 已开放，新 Workspace submit-turn 保持关闭；下一步 D1 | [Requirement](../05-requirements/REQ-041-ai-workspace-conversation-persistence.md) / [Spec](../../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md) / [Plan](../../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md) |
+| REQ-047 | 🟣 Shaping（Core A1 Done / D1 Next） | A1 Run query、幂等 cancel intent、SSE replay 与 `032` migration 已由 PR #487 合并；下一步 D1，extended contracts 继续塑形 | [Requirement](../05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [Core Spec](../../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md) |
 | REQ-060 | ⚫ Candidate | 控制台信息架构和权限化导航，可与 Durable State 并行 | [Requirement](../05-requirements/REQ-060-enterprise-console-information-architecture.md) |
 | REQ-042 | ⚫ Candidate | Codex 式 Agent Workspace | [Requirement](../05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | TD-085 | ⚫ 待办 | 收口 AI Chat、Skill 与 Agent App 上下文边界倒置 | [Technical Debt](../../03-engineering-governance/technical-debt.md#td-085-收口-ai-chatskill-与-agent-app-的上下文边界倒置) |
