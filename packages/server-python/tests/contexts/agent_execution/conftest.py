@@ -8,9 +8,10 @@ from sqlalchemy.pool import NullPool
 from tests.conftest import TEST_DB_URL
 
 _CLEAN_SQL = (
-    "DELETE FROM metaedu.agent_runtime_session_bindings",
-    "DELETE FROM metaedu.agent_runtime_profiles",
-    "DELETE FROM metaedu.agent_definition_versions",
+    "TRUNCATE TABLE metaedu.agent_run_events, metaedu.agent_turn_inputs, "
+    "metaedu.agent_execution_inbox, metaedu.agent_execution_outbox, "
+    "metaedu.agent_runs, metaedu.agent_runtime_session_bindings, "
+    "metaedu.agent_runtime_profiles, metaedu.agent_definition_versions",
 )
 
 

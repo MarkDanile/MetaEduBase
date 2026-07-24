@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-047-E1: Execution durable core
+
+状态：🟡 进行中
+类型：superpower / plan-do
+领域：`agent_execution` / durable control plane
+当前执行模式：联合 Core Plan Slice E1
+最近接手工具：Codex + GPT-5.6 Sol `xhigh`
+分支：`codex/req-047-e1-durable-core`
+
+需求来源：
+- Requirement: [REQ-047](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md)
+- Spec: [Conversation/Message/Run/Event 联合核心契约](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md#63-agentrun)
+- Plan: [Slice E1](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-e1execution-durable-core)
+- 前置：E0 已由 PR #481 合并，Alembic head `029_agent_execution_identity`
+
+当前进展：domain、`030` migration、repository/RunCoordinator、连续 ACK、FIFO、atomic resume 与 canonical terminal 已实现；独立 `max` 三轮反例审查已收敛为 `P0/P1/P2 = 0`。
+下一步：提交 PR、等待 CI 和合并，再走 docs-only 收口。
+验证状态：真实 PostgreSQL E1 专项 `172 passed`；Workspace + Execution 联合 `190 passed`；全量 hermetic `1562 passed / 4 deselected`；Ruff、mypy baseline、migration `030 -> 029 -> 030`、docs gate 与独立 `max` 复核均通过。
+交接备注：严格止于 E1；不得加入 B1 workspace bridge、HTTP/SSE、Pi/Worker、真实 Tool/Input/Approval store、Artifact/Evidence、Conversation DELETE 或 `/turns`。ACK cursor 只能和 RunEvent/receipt 同事务推进。
 
 ## 下一批候选任务
 
@@ -22,7 +40,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-047 Core Slice E1：Execution durable core | 🔵 就绪 | 基于已合并 E0 实施 Run/Input/Event、连续 ACK、FIFO 与终态；ACK cursor 只能和 RunEvent/receipt 同事务推进；完整 REQ-047 仍保持 Shaping | [Requirement](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-e1execution-durable-core) |
+| P0 | REQ-047 Core Slice B1：Workspace/Execution bridge | 🔵 就绪 | E1 合并后接入 transactional inbox/outbox、Guard、FIFO projection barrier 与 submit/delete 协调；不得与 E1 并行修改公共状态机 | [Requirement](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-b1workspaceexecution-bridge-与并发-guard) |
 | P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | ⚫ Candidate | 可并行补导航矩阵与 plan；移除重复 Skill、归位 MCP/Skill，并建立 permission/nav 单一事实源 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) |
 
 ## 最近完成

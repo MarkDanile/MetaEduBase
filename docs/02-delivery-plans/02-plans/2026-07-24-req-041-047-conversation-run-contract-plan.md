@@ -103,12 +103,15 @@ packages/server-python/app/composition/
 
 **复杂度/执行**：极高，`S-XH`；第二 Harness 只读检查状态机和并发反例。
 
+**实施状态**：🟡 正在分支 `codex/req-047-e1-durable-core` 实施；严格止于本 Slice，不开放 B1 bridge、HTTP/SSE、Pi/Worker 或 extended entities。
+
 交付：
 
 - 建立 `agent_execution` context 骨架和 `AgentRun/TurnInput/RunEvent` domain model，引用已合并 E0 identity/snapshot。
 - 独立 migration 创建 run/input/event 与 execution inbox/outbox 表；建立 FIFO queue、one-active partial unique lease、canonical/runtime seq unique 和 recovery index。
 - Run 固化 bounded capability/config/budget snapshot 与 context ref/digest。
 - 使用表驱动状态机实现 spec 允许迁移与终态 guard。E1 只启动 capability snapshot 明确 `tool/input/approval=false` 的 compatibility/read-only profile；其他 profile 在对应 durable store 未安装时 fail closed。测试通过 GuardStatePort fake 覆盖 pending/unknown 反例，不把 fake 当生产实现。
+- `start_run` 独占 `queued -> starting`；`mark_run_resume_required/resume_run` 以 `Run -> Binding` 锁序原子更新恢复状态，通用 transition 禁止绕过；从 `resume_required` 终态时同事务关闭 Binding 恢复意图。
 - 实现 RunEvent append、Runtime ingest dedupe、canonical terminal event 与 AgentRun 终态同事务。
 - `runtime.terminal_observed` 只能作为 observation；不得直接等同 canonical terminal。
 

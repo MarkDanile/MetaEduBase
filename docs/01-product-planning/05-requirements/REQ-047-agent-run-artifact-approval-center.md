@@ -1,7 +1,7 @@
 # REQ-047: Agent Run、产物、证据与人工确认中心
 
 > Status: 🟣 Shaping
-> Core Contract: 🟡 Doing（Slice E0 已完成，下一步 E1；完整 REQ-047 继续 Shaping）
+> Core Contract: 🟡 Doing（Slice E1；完整 REQ-047 继续 Shaping）
 > Priority: P0
 > Milestone: P3 / Enterprise Agent Platform
 > Area: Agent Run / Event / Approval / Artifact / Evidence
