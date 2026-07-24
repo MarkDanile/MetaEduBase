@@ -17,7 +17,6 @@ from app.contexts.agent_execution.application.execution_identity_service import 
 )
 from app.contexts.agent_execution.domain import (
     CatalogConflictError,
-    RuntimeBindingConflictError,
     RuntimeBindingNotFoundError,
     RuntimeBindingStatus,
     RuntimeCapabilitySnapshot,
@@ -162,7 +161,7 @@ async def test_compatibility_profile_never_creates_runtime_binding(db_session):
 
 
 @pytest.mark.asyncio
-async def test_binding_epoch_stream_lease_and_cursor_are_fenced(db_session):
+async def test_binding_stream_lease_and_cursor_are_fenced(db_session):
     service = ExecutionIdentityService(db_session)
     profile = await _native_profile(service, TENANT_A)
     binding = await service.create_runtime_binding(
@@ -198,53 +197,14 @@ async def test_binding_epoch_stream_lease_and_cursor_are_fenced(db_session):
             stream_id=uuid.uuid4(),
             lease_seconds=30,
         )
-
-    with pytest.raises(RuntimeStreamLeaseConflictError):
-        await service.mark_runtime_binding_resume_required(
-            tenant_id=TENANT_A,
-            binding_id=binding.id,
-            runtime_profile_id=profile.id,
-            expected_epoch=1,
-            expected_revision=claimed.revision,
-        )
-    await db_session.execute(
-        update(RuntimeSessionBindingModel)
-        .where(
-            RuntimeSessionBindingModel.tenant_id == TENANT_A,
-            RuntimeSessionBindingModel.id == binding.id,
-        )
-        .values(stream_lease_expires_at=datetime.now(UTC) - timedelta(seconds=1))
-    )
-    await db_session.flush()
-    resume_required = await service.mark_runtime_binding_resume_required(
-        tenant_id=TENANT_A,
-        binding_id=binding.id,
-        runtime_profile_id=profile.id,
-        expected_epoch=1,
-        expected_revision=claimed.revision,
-    )
-    assert resume_required.status is RuntimeBindingStatus.RESUME_REQUIRED
-    assert resume_required.next_expected_runtime_seq == 1
-    assert resume_required.acked_through_runtime_seq == 0
-
-    resumed = await service.start_new_runtime_epoch(
-        tenant_id=TENANT_A,
-        binding_id=binding.id,
-        runtime_profile_id=profile.id,
-        expected_epoch=1,
-        expected_revision=resume_required.revision,
-        runtime_session_ref="pi-session-1",
-    )
-    assert resumed.current_epoch == 2
-    assert resumed.next_expected_runtime_seq == 1
-    assert resumed.acked_through_runtime_seq == 0
-    assert resumed.active_stream_id is None
+    assert claimed.next_expected_runtime_seq == 1
+    assert claimed.acked_through_runtime_seq == 0
     with pytest.raises(RuntimeEpochMismatchError):
         await service.claim_ingest_stream(
             tenant_id=TENANT_A,
             binding_id=binding.id,
             runtime_profile_id=profile.id,
-            runtime_epoch=1,
+            runtime_epoch=2,
             stream_id=uuid.uuid4(),
             lease_seconds=30,
         )
@@ -349,64 +309,6 @@ async def test_two_database_sessions_allow_only_one_live_ingest_stream(db_sessio
     ) == 1
 
 
-@pytest.mark.asyncio
-async def test_claim_and_resume_required_compete_under_one_binding_lock(db_session):
-    service = ExecutionIdentityService(db_session)
-    profile = await _native_profile(service, TENANT_A)
-    binding = await service.create_runtime_binding(
-        tenant_id=TENANT_A,
-        conversation_id=uuid.uuid4(),
-        runtime_profile_id=profile.id,
-    )
-    binding = await service.activate_runtime_binding(
-        tenant_id=TENANT_A,
-        binding_id=binding.id,
-        runtime_session_ref="pi-session-race",
-        expected_revision=1,
-    )
-    await db_session.commit()
-
-    engine = create_async_engine(TEST_DB_URL, echo=False, poolclass=NullPool)
-    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-    async def claim():
-        async with factory() as session:
-            try:
-                result = await ExecutionIdentityService(session).claim_ingest_stream(
-                    tenant_id=TENANT_A,
-                    binding_id=binding.id,
-                    runtime_profile_id=profile.id,
-                    runtime_epoch=1,
-                    stream_id=uuid.uuid4(),
-                    lease_seconds=30,
-                )
-                await session.commit()
-                return result
-            except Exception as exc:
-                await session.rollback()
-                return exc
-
-    async def require_resume():
-        async with factory() as session:
-            try:
-                result = await ExecutionIdentityService(
-                    session
-                ).mark_runtime_binding_resume_required(
-                    tenant_id=TENANT_A,
-                    binding_id=binding.id,
-                    runtime_profile_id=profile.id,
-                    expected_epoch=1,
-                    expected_revision=binding.revision,
-                )
-                await session.commit()
-                return result
-            except Exception as exc:
-                await session.rollback()
-                return exc
-
-    try:
-        results = await asyncio.gather(claim(), require_resume())
-    finally:
-        await engine.dispose()
-    assert sum(isinstance(result, RuntimeSessionBinding) for result in results) == 1
-    assert sum(isinstance(result, RuntimeBindingConflictError) for result in results) == 1
+def test_binding_resume_lifecycle_is_not_exposed_without_run_owner():
+    assert not hasattr(ExecutionIdentityService, "mark_runtime_binding_resume_required")
+    assert not hasattr(ExecutionIdentityService, "start_new_runtime_epoch")

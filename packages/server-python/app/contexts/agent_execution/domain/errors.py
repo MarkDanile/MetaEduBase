@@ -45,3 +45,35 @@ class RuntimeEventConflictError(AgentExecutionError):
 
 class InvalidRuntimeProvenanceError(AgentExecutionError):
     """Runtime provenance is partial, malformed, or crosses a control boundary."""
+
+
+class RunNotFoundError(AgentExecutionError):
+    """The requested tenant-scoped Agent Run does not exist."""
+
+
+class RunConflictError(AgentExecutionError):
+    """A Run idempotency, revision, FIFO, or ownership precondition failed."""
+
+
+class InvalidRunTransitionError(AgentExecutionError):
+    """The requested Agent Run state transition is not allowed."""
+
+
+class RunGuardBlockedError(AgentExecutionError):
+    """Durable Tool/Input/Approval state prevents a Run transition."""
+
+
+class UnsupportedRunCapabilitiesError(AgentExecutionError):
+    """The Run requests capabilities whose durable stores are not installed."""
+
+
+class RunEventConflictError(AgentExecutionError):
+    """A RunEvent identity, sequence, or immutable digest conflicts."""
+
+
+class RunEventPayloadError(AgentExecutionError):
+    """A RunEvent payload violates version, size, or classification policy."""
+
+
+class TerminalResultConflictError(AgentExecutionError):
+    """A terminal result conflicts with an already persisted result."""

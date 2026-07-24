@@ -430,6 +430,8 @@ V1 可用稳定 64-bit key 的 PostgreSQL advisory transaction lock 实现；它
 - queued 直接 cancelled 只适用于尚未创建 Runtime invocation/ToolCall 的 Run；cancelling 的 terminal 转移必须先满足全部终态 guard。
 - `completed` 必须有独立 terminal result、可验证 output digest 和 canonical terminal event。
 - 状态变化通过 `(id, tenant_id, status_revision, expected_status)` CAS；非法迁移返回稳定冲突，不覆盖当前状态。
+- `queued -> starting` 只允许 `start_run` 在 FIFO/start barrier 内执行；`* -> resume_required` 与 `resume_required -> starting` 只允许 owner command 原子更新 Run 和 Binding，通用 transition 不得执行这三条边。
+- `agent_execution` 内涉及两行的操作统一按 `AgentRun -> RuntimeSessionBinding` 加锁；禁止先调用 Binding service、再迁移 Run。`resume_required -> failed/cancelled` 必须在同一事务把 Binding 恢复意图置为 closed。
 
 ## 8. 产品命令与 API
 

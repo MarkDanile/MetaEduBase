@@ -1,7 +1,12 @@
 from app.contexts.agent_execution.infrastructure.models import (
     AgentDefinitionVersionModel,
+    AgentRunModel,
+    ExecutionInboxModel,
+    ExecutionOutboxModel,
+    RunEventModel,
     RuntimeProfileModel,
     RuntimeSessionBindingModel,
+    TurnInputModel,
 )
 from app.contexts.agent_workspace.infrastructure.models import (
     ConversationModel,
@@ -37,10 +42,13 @@ from app.contexts.template.infrastructure.models import TemplateModel  # noqa: F
 
 __all__ = [
     "AgentDefinitionVersionModel",
+    "AgentRunModel",
     "ConversationModel",
     "ConversationUserStateModel",
     "DocumentChunkModel",
     "DocumentTaskModel",
+    "ExecutionInboxModel",
+    "ExecutionOutboxModel",
     "FileModel",
     "FolderModel",
     "TenantModel",
@@ -52,6 +60,7 @@ __all__ = [
     "MCPInvocationAuditModel",
     "MCPServerModel",
     "ResourceModel",
+    "RunEventModel",
     "RuntimeProfileModel",
     "RuntimeSessionBindingModel",
     "SkillExecutionAuditModel",
@@ -60,6 +69,7 @@ __all__ = [
     "DatasetModel",
     "DatasetRowModel",
     "SemanticModelModel",
+    "TurnInputModel",
     "WorkspaceInboxModel",
     "WorkspaceOutboxModel",
 ]
