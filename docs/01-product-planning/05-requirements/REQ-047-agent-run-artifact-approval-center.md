@@ -1,6 +1,7 @@
 # REQ-047: Agent Run、产物、证据与人工确认中心
 
-> Status: ⚫ Candidate
+> Status: 🟣 Shaping
+> Core Contract: 🔵 Ready（Conversation/Message/Run/Event）
 > Priority: P0
 > Milestone: P3 / Enterprise Agent Platform
 > Area: Agent Run / Event / Approval / Artifact / Evidence
@@ -8,6 +9,8 @@
 > Created: 2026-07-23（重塑既有 Backlog 候选）
 > Parent: REQ-059
 > Related: REQ-041 / REQ-042 / REQ-043 / REQ-046
+> Core Spec: [REQ-041/047 联合核心契约](../../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md)
+> Core Plan: [Durable Core 分 Slice 实施计划](../../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md)
 
 ## Problem
 
@@ -58,6 +61,6 @@
 
 ## Dependencies / Next Step
 
-- 与 REQ-041 contract-first 设计 Conversation/Message/Run 引用。
-- 与 REQ-041 contract-first 冻结 ID、删除/保留和终态关系，两个上下文分别实现与迁移。
-- 为 REQ-042 提供稳定 UI 事件协议，为 REQ-043 提供 Runtime 输出事实源；首个兼容路径支持 Direct RAG/SkillRunner，不等待 Pi Worker。
+- Conversation/Message/Run/Event Durable Core 已与 REQ-041 冻结，可按联合 plan 的 E1/B1/A1/R1 实施；两个 context 分别迁移，不共享 ORM/repository。
+- 完整 REQ-047 仍处于 Shaping：HumanInput/Approval、ToolCall/Grant/Snapshot、Artifact/Evidence 必须分别补充字段、状态、权限、retention 与故障 spec/plan，完成前不得把 REQ-047 整体翻 Ready/Done。
+- Durable Core 为 REQ-042 提供稳定 UI 事件协议，为 REQ-043 提供 Runtime 输出事实源；首个兼容路径支持 Direct RAG/SkillRunner，不等待 Pi Worker。
