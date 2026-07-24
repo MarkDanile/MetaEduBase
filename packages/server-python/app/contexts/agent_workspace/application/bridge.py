@@ -403,6 +403,21 @@ class AgentWorkspaceBridgeService:
         )
         return state is MessageContentState.VISIBLE
 
+    async def share_owned_conversation(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        include_deleted: bool,
+    ) -> None:
+        await self._bridge_repo.share_owned_conversation(
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            conversation_id=conversation_id,
+            include_deleted=include_deleted,
+        )
+
     async def lock_owned_conversation(
         self,
         *,

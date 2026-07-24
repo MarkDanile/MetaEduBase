@@ -4,10 +4,10 @@ from uuid import UUID
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.contexts.identity.application.auth_service import decode_access_token
-from app.shared.infrastructure.database import get_session
+from app.shared.infrastructure.database import get_session, get_session_factory
 from app.shared.infrastructure.tenant_context import set_tenant_context
 
 security_scheme = HTTPBearer()
@@ -17,6 +17,35 @@ async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(security_scheme)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> dict:
+    current_user, _ = await _resolve_current_user(
+        credentials=credentials,
+        session=session,
+    )
+    return current_user
+
+
+async def get_stream_current_user(
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security_scheme)],
+    session_factory: Annotated[
+        async_sessionmaker[AsyncSession], Depends(get_session_factory)
+    ],
+) -> dict:
+    """Authenticate before streaming without retaining a request-scoped DB session."""
+
+    async with session_factory() as session:
+        current_user, payload = await _resolve_current_user(
+            credentials=credentials,
+            session=session,
+        )
+    current_user["_token_expires_at"] = payload.get("exp")
+    return current_user
+
+
+async def _resolve_current_user(
+    *,
+    credentials: HTTPAuthorizationCredentials,
+    session: AsyncSession,
+) -> tuple[dict, dict]:
     token = credentials.credentials
     payload = decode_access_token(token)
     if payload is None:
@@ -45,4 +74,4 @@ async def get_current_user(
         clearance=row["clearance_level"],
     )
 
-    return dict(row)
+    return dict(row), payload

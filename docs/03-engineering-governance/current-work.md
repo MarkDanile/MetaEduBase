@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-047-A1: Run query 与 SSE replay
+
+状态：🟡 进行中
+类型：superpower / plan-do
+领域：`agent_execution` / HTTP API / SSE
+当前执行模式：GPT-5.6 Sol `high` 主实施；replay/live handoff、权限撤销、gap/retention 由 `xhigh/max` 独立复核
+最近接手工具：Codex
+分支：`codex/req-047-a1-run-sse`
+
+需求来源：
+- Requirement：[REQ-047](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md)
+- Spec：[REQ-041/047 联合核心契约](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md)
+- Plan：[Slice A1](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-a1run-query-与-sse-replay)
+- 架构约束：CR-1/6/9/10/12/13/14/16；Run GET 是终态事实，SSE 只读 PostgreSQL ledger，不以连接存活充当权限或终态
+
+当前进展：A1 实现与本地验证完成：GET Run、持久化幂等 cancel intent、PostgreSQL ledger SSE replay/live polling、权限重验、gap/retention/cursor 错误和 `032` migration 已落地；未开放新 `/turns`。
+下一步：按 Git 快速交付通道创建实现 PR；required checks 全绿后 squash merge，再以独立 docs-only PR 收口 A1 状态、plan、Requirement 和 work-log。
+验证状态：A1 专项 18 passed；Workspace/Execution/Control Plane 联合 233 passed；完整 hermetic backend 1605 passed / 4 deselected / 33 warnings；`032` upgrade/downgrade/upgrade、Ruff、mypy baseline（243 historical / 0 regressions）、工程文档门禁和 `git diff --check` 已通过；独立 `gpt-5.6-sol max` 审查最终 P0/P1/P2=0/0/0。
+交接备注：严格止于 A1；不开放 `/turns`，不接 Pi/Worker/Tool Gateway，不实现 D1/R1 或 HumanInput/Approval/Artifact/Evidence。
 
 ## 下一批候选任务
 
@@ -22,7 +40,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-047 Core Slice A1：Run query 与 SSE replay | 🔵 就绪 | 实现 GET Run、cancel intent、after-seq SSE replay/live handoff、权限撤销、gap 与 retention 语义；不得提前接 Pi/Worker 或 extended entities | [Requirement](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-a1run-query-与-sse-replay) |
 | P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | ⚫ Candidate | 可并行补导航矩阵与 plan；移除重复 Skill、归位 MCP/Skill，并建立 permission/nav 单一事实源 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) |
 
 ## 最近完成

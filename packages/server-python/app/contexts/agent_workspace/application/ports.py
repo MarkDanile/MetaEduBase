@@ -51,6 +51,15 @@ class FailClosedTerminalOutputReader:
 
 
 class WorkspaceReadPort(Protocol):
+    async def share_owned_conversation(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        include_deleted: bool,
+    ) -> None: ...
+
     async def lock_owned_conversation(
         self,
         *,

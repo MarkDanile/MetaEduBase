@@ -182,6 +182,7 @@ class AgentRun:
     creation_digest: str
     status: RunStatus
     status_revision: int
+    cancel_requested_revision: int | None
     next_event_seq: int
     first_available_event_seq: int
     last_event_seq: int

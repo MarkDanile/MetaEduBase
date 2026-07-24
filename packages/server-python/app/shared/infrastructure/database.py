@@ -25,6 +25,12 @@ async_session_factory = async_sessionmaker(
 )
 
 
+def get_session_factory() -> async_sessionmaker[AsyncSession]:
+    """Expose the short-lived session factory for durable streaming readers."""
+
+    return async_session_factory
+
+
 class Base(DeclarativeBase):
     pass
 
