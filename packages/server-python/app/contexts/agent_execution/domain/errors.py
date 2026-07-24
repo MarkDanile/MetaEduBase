@@ -77,3 +77,7 @@ class RunEventPayloadError(AgentExecutionError):
 
 class TerminalResultConflictError(AgentExecutionError):
     """A terminal result conflicts with an already persisted result."""
+
+
+class ExecutionIntegrationConflictError(AgentExecutionError):
+    """An inbox/outbox replay conflicts with durable execution facts."""

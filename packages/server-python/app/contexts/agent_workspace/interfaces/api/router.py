@@ -8,6 +8,12 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, 
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.composition.agent_control_plane import (
+    ConversationExecutionCoordinator,
+    ConversationHasNonTerminalRunError,
+    ConversationHasPendingTurnError,
+    ExecutionPortUnavailableError,
+)
 from app.contexts.agent_workspace.application.conversation_service import (
     AgentWorkspaceService,
 )
@@ -166,6 +172,21 @@ def _error_detail(code: str, message: str) -> dict[str, str]:
 
 
 def _raise_workspace_error(exc: Exception) -> NoReturn:
+    if isinstance(exc, ConversationHasPendingTurnError):
+        raise HTTPException(
+            status_code=409,
+            detail=_error_detail("conversation_has_pending_turn", str(exc)),
+        ) from exc
+    if isinstance(exc, ConversationHasNonTerminalRunError):
+        raise HTTPException(
+            status_code=409,
+            detail=_error_detail("conversation_has_non_terminal_run", str(exc)),
+        ) from exc
+    if isinstance(exc, ExecutionPortUnavailableError):
+        raise HTTPException(
+            status_code=503,
+            detail=_error_detail("execution_unavailable", str(exc)),
+        ) from exc
     if isinstance(exc, ConversationNotFoundError):
         raise HTTPException(
             status_code=404, detail=_error_detail("not_found", str(exc))
@@ -409,11 +430,45 @@ async def restore_conversation(
 ):
     tenant_id, actor_id = _identity(current_user)
     try:
-        view = await _service(session).restore_conversation(
+        await ConversationExecutionCoordinator(session).restore_conversation(
             tenant_id=tenant_id,
             actor_id=actor_id,
             conversation_id=conversation_id,
             expected_revision=_expected_revision(if_match),
+        )
+        view = await _service(session).get_conversation(
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            conversation_id=conversation_id,
+        )
+        await session.commit()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _raise_workspace_error(exc)
+    return _conversation_dto(view)
+
+
+@router.delete("/{conversation_id}", response_model=ConversationDTO, status_code=202)
+async def delete_conversation(
+    conversation_id: uuid.UUID,
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+    current_user: dict = Depends(get_current_user),  # noqa: B008
+):
+    tenant_id, actor_id = _identity(current_user)
+    try:
+        await ConversationExecutionCoordinator(session).delete_conversation(
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            conversation_id=conversation_id,
+            expected_revision=_expected_revision(if_match),
+        )
+        view = await _service(session).get_conversation(
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            conversation_id=conversation_id,
+            include_deleted=True,
         )
         await session.commit()
     except HTTPException:

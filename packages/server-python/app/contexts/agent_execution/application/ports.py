@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from app.contexts.agent_execution.domain.run import AgentRun
+from app.shared.schemas.agent_integration import TurnRequestedV1
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +30,16 @@ class RunStartBarrierPort(Protocol):
         conversation_id: uuid.UUID,
         run_id: uuid.UUID,
         queue_seq: int,
+    ) -> bool: ...
+
+
+class ExecutionRunReadPort(Protocol):
+    async def has_non_terminal_run(
+        self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> bool: ...
+
+    async def has_turn_acceptance(
+        self, event: TurnRequestedV1, *, payload_digest: str
     ) -> bool: ...
 
 

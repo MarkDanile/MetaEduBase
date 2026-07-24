@@ -15,6 +15,7 @@ from app.contexts.agent_workspace.domain.errors import (
     ResourceReferenceForbiddenError,
     RevisionConflictError,
     TitleSourceConflictError,
+    WorkspaceIntegrationConflictError,
 )
 from app.contexts.agent_workspace.domain.message import (
     AuthorType,
@@ -49,5 +50,6 @@ __all__ = [
     "ResourceReferenceForbiddenError",
     "RevisionConflictError",
     "TitleSourceConflictError",
+    "WorkspaceIntegrationConflictError",
     "TurnDispatchState",
 ]
