@@ -304,6 +304,12 @@ class AgentRunModel(Base):
             name="ck_agent_run_sequences",
         ),
         CheckConstraint(
+            "cancel_requested_revision IS NULL OR "
+            "(cancel_requested_revision >= 1 "
+            "AND cancel_requested_revision <= status_revision)",
+            name="ck_agent_run_cancel_revision",
+        ),
+        CheckConstraint(
             "char_length(creation_digest) = 64",
             name="ck_agent_run_creation_digest",
         ),
@@ -403,6 +409,9 @@ class AgentRunModel(Base):
     creation_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="queued")
     status_revision: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1)
+    cancel_requested_revision: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True
+    )
     next_event_seq: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1)
     first_available_event_seq: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=1

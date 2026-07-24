@@ -55,6 +55,10 @@ class RunConflictError(AgentExecutionError):
     """A Run idempotency, revision, FIFO, or ownership precondition failed."""
 
 
+class RunRevisionConflictError(RunConflictError):
+    """A Run command used a stale status revision."""
+
+
 class InvalidRunTransitionError(AgentExecutionError):
     """The requested Agent Run state transition is not allowed."""
 
@@ -73,6 +77,38 @@ class RunEventConflictError(AgentExecutionError):
 
 class RunEventPayloadError(AgentExecutionError):
     """A RunEvent payload violates version, size, or classification policy."""
+
+
+class EventHistoryExpiredError(AgentExecutionError):
+    def __init__(
+        self,
+        *,
+        first_available_event_seq: int,
+        run_status: str,
+        event_log_complete: bool,
+    ):
+        self.first_available_event_seq = first_available_event_seq
+        self.run_status = run_status
+        self.event_log_complete = event_log_complete
+        super().__init__("requested event history is no longer available")
+
+
+class EventCursorAheadError(AgentExecutionError):
+    def __init__(self, *, after_seq: int, last_event_seq: int):
+        self.after_seq = after_seq
+        self.last_event_seq = last_event_seq
+        super().__init__(
+            f"event cursor {after_seq} is ahead of last issued seq {last_event_seq}"
+        )
+
+
+class EventGapDetectedError(AgentExecutionError):
+    def __init__(self, *, expected_seq: int, received_seq: int | None):
+        self.expected_seq = expected_seq
+        self.received_seq = received_seq
+        super().__init__(
+            f"event gap detected at seq {expected_seq}; received {received_seq}"
+        )
 
 
 class TerminalResultConflictError(AgentExecutionError):

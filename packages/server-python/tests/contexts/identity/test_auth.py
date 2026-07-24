@@ -88,6 +88,15 @@ async def test_me_with_valid_token(client: AsyncClient, auth_headers: dict):
     resp = await client.get("/api/v1/auth/me", headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()
+    assert set(data) == {
+        "id",
+        "tenant_id",
+        "username",
+        "role",
+        "domain",
+        "clearance_level",
+        "is_active",
+    }
     assert data["username"] == "admin"
     assert data["role"] == "super_admin"
 

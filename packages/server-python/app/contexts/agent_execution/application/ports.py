@@ -4,6 +4,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Protocol
 
+from app.contexts.agent_execution.domain.event import EventVisibility
 from app.contexts.agent_execution.domain.run import AgentRun
 from app.shared.schemas.agent_integration import TurnRequestedV1
 
@@ -16,6 +17,23 @@ class DurableGuardState:
     outcome_unknown_tool_calls: int = 0
     runtime_invocation_exists: bool = False
     unused_grants: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationAccessDecision:
+    audience_key: str
+    visible_event_scopes: frozenset[EventVisibility]
+    can_cancel: bool
+
+
+class RunConversationAccessPort(Protocol):
+    async def resolve(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> ConversationAccessDecision | None: ...
 
 
 class GuardStatePort(Protocol):

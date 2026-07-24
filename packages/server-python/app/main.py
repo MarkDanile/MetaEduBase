@@ -8,6 +8,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError
 
 from app.config import settings
+from app.contexts.agent_execution.interfaces.api.router import (
+    router as agent_execution_router,
+)
 from app.contexts.agent_workspace.interfaces.api.router import (
     router as agent_workspace_router,
 )
@@ -141,6 +144,7 @@ async def _db_unavailable_handler(
     )
 
 app.include_router(identity_router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(agent_execution_router)
 app.include_router(agent_workspace_router)
 app.include_router(identity_admin_router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(knowledge_router, prefix="/api/v1/knowledge", tags=["knowledge"])

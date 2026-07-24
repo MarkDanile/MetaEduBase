@@ -95,6 +95,7 @@ class RunCoordinator:
             creation_digest=creation_digest,
             status=RunStatus.QUEUED,
             status_revision=1,
+            cancel_requested_revision=None,
             next_event_seq=1,
             first_available_event_seq=1,
             last_event_seq=0,
@@ -315,6 +316,19 @@ class RunCoordinator:
             expected_status=expected_status,
             expected_revision=expected_revision,
             result=result,
+        )
+
+    async def reserve_cancel_intent(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+        expected_revision: int,
+    ) -> tuple[AgentRun, bool]:
+        return await self._repository.reserve_cancel_intent(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            expected_revision=expected_revision,
         )
 
     async def require_run(

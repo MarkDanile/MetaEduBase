@@ -17,6 +17,7 @@ from app.contexts.agent_execution.domain import (
     AgentRun,
     EventVisibility,
     InvalidRuntimeProvenanceError,
+    InvalidRunTransitionError,
     OutputPublishState,
     PersistedRuntimeReceipt,
     RunConflictError,
@@ -24,6 +25,7 @@ from app.contexts.agent_execution.domain import (
     RunEventConflictError,
     RunEventType,
     RunNotFoundError,
+    RunRevisionConflictError,
     RunStatus,
     RuntimeBindingStatus,
     RuntimeEventConflictError,
@@ -231,6 +233,36 @@ class AgentExecutionRepository:
             tenant_id=tenant_id, run_id=run_id, for_update=False
         )
         return to_run(row) if row is not None else None
+
+    async def reserve_cancel_intent(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+        expected_revision: int,
+    ) -> tuple[AgentRun, bool]:
+        row = await self._require_run_for_update(
+            tenant_id=tenant_id,
+            run_id=run_id,
+        )
+        if row.cancel_requested_revision is not None:
+            if row.cancel_requested_revision != expected_revision:
+                raise RunRevisionConflictError(
+                    "Agent Run cancel intent belongs to another revision"
+                )
+            return to_run(row), False
+        if row.status_revision != expected_revision:
+            raise RunRevisionConflictError(
+                "Agent Run cancel revision precondition failed"
+            )
+        current_status = RunStatus(row.status)
+        if current_status in TERMINAL_RUN_STATUSES:
+            raise InvalidRunTransitionError(
+                f"Agent Run in {current_status.value} cannot be cancelled"
+            )
+        row.cancel_requested_revision = expected_revision
+        await self._session.flush()
+        return to_run(row), True
 
     async def start_run(
         self,
@@ -881,6 +913,7 @@ class AgentExecutionRepository:
             AgentRunModel.tenant_id == tenant_id,
             AgentRunModel.id == run_id,
         )
+        statement = statement.execution_options(populate_existing=True)
         if for_update:
             statement = statement.with_for_update()
         return (await self._session.execute(statement)).scalar_one_or_none()
@@ -920,6 +953,6 @@ class AgentExecutionRepository:
         expected_revision: int,
     ) -> None:
         if row.status != expected_status.value or row.status_revision != expected_revision:
-            raise RunConflictError(
+            raise RunRevisionConflictError(
                 "Agent Run status or revision precondition failed"
             )

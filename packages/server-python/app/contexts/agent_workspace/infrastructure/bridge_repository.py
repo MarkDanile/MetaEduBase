@@ -406,6 +406,27 @@ class WorkspaceBridgeRepository:
         await self._session.flush()
         return TurnDispatchState.ABANDONED
 
+    async def share_owned_conversation(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        include_deleted: bool,
+    ) -> ConversationModel:
+        statement = self._owned_conversation_statement(
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            conversation_id=conversation_id,
+            include_deleted=include_deleted,
+        )
+        row = (
+            await self._session.execute(statement.with_for_update(read=True))
+        ).scalar_one_or_none()
+        if row is None:
+            raise ConversationNotFoundError("Conversation not found")
+        return row
+
     async def lock_owned_conversation(
         self,
         *,
@@ -414,6 +435,27 @@ class WorkspaceBridgeRepository:
         conversation_id: uuid.UUID,
         include_deleted: bool,
     ) -> ConversationModel:
+        statement = self._owned_conversation_statement(
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            conversation_id=conversation_id,
+            include_deleted=include_deleted,
+        )
+        row = (
+            await self._session.execute(statement.with_for_update())
+        ).scalar_one_or_none()
+        if row is None:
+            raise ConversationNotFoundError("Conversation not found")
+        return row
+
+    @staticmethod
+    def _owned_conversation_statement(
+        *,
+        tenant_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        include_deleted: bool,
+    ):
         statement = select(ConversationModel).where(
             ConversationModel.tenant_id == tenant_id,
             ConversationModel.id == conversation_id,
@@ -423,12 +465,7 @@ class WorkspaceBridgeRepository:
             statement = statement.where(
                 ConversationModel.state != ConversationState.DELETED.value
             )
-        row = (
-            await self._session.execute(statement.with_for_update())
-        ).scalar_one_or_none()
-        if row is None:
-            raise ConversationNotFoundError("Conversation not found")
-        return row
+        return statement
 
     async def has_unacknowledged_turn(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID

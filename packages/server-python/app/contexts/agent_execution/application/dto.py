@@ -4,10 +4,13 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
+from app.contexts.agent_execution.application.ports import ConversationAccessDecision
 from app.contexts.agent_execution.domain import (
+    AgentRun,
     EventVisibility,
     RunBudgetSnapshot,
     RunConfigSnapshot,
+    RunEvent,
     RunEventContent,
     RunEventType,
     RuntimeCapabilitySnapshot,
@@ -54,3 +57,25 @@ class RuntimeEventCommand:
     frame: RuntimeIngestFrame
     stream_id: uuid.UUID
     event: NewRunEvent
+
+
+@dataclass(frozen=True, slots=True)
+class EventReplayWindow:
+    run: AgentRun
+    events: tuple[RunEvent, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class EventReplayBatch:
+    run: AgentRun
+    events: tuple[RunEvent, ...]
+    access: ConversationAccessDecision
+    after_seq: int
+
+    @property
+    def delivered_through_seq(self) -> int:
+        return self.events[-1].seq if self.events else self.after_seq
+
+    @property
+    def terminal_and_caught_up(self) -> bool:
+        return self.run.is_terminal and self.delivered_through_seq >= self.run.last_event_seq
