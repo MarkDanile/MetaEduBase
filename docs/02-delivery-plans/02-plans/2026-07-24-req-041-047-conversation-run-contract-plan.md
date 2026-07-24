@@ -67,6 +67,8 @@ packages/server-python/app/composition/
 
 **复杂度/执行**：高，`S-H`；Repository/DTO/普通 API 测试可交 `G-H`，删除与幂等由 `S-XH` Review。
 
+**实施状态**：🟢 已由 [PR #479](https://github.com/MarkDanile/MetaEduBase/pull/479) 合并；只完成本 Slice，REQ-041 全需求继续保持 Doing。
+
 交付：
 
 - 建立 `agent_workspace` context 骨架和 `Conversation/ConversationUserState/Message/MessagePart` domain model。

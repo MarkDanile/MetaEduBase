@@ -16,6 +16,7 @@
 
 | 日期 | 类型 | 任务 | PR | 总分 | 结论 | 必修 follow-up | 流程扣分点 | 规则 / 脚本改进 | 评审人 |
 |------|------|------|----|------|------|----------------|------------|------------------|--------|
+| 2026-07-24 | Original | REQ-041 Slice W1 Workspace durable store | [#479](https://github.com/MarkDanile/MetaEduBase/pull/479) | 93 | 优秀；范围严格止于 durable workspace store，owner/tenant、CAS、keyset、幂等和并发 seq 有真实 PostgreSQL 证据；独立复审 3 finding 合并前全部修复 | TD-086 | 外部 Claude 复审因数据导出策略未执行，改用独立内部 `gpt-5.6-luna high`；全库 `alembic check` 暴露历史 metadata 漂移 | 已登记 TD-086，后续建立可执行 schema drift gate；不扩写当前规则 | Codex + gpt-5.6-luna |
 | 2026-07-24 | Original | REQ-059 企业级可控 Agent 平台 Architecture Gate | [#475](https://github.com/MarkDanile/MetaEduBase/pull/475) | 97 | 优秀；八项控制面决策、12 仓库源码导航、AI Delivery Matrix、园区 Pilot 与后续任务边界形成一致事实源；独立复审和用户签字完成，可关闭 | 无 | 无 | 不新增规则；后续 Adapter 统一执行 conformance suite | Codex |
 | 2026-07-23 | Original | REQ-059 企业 Agent 平台路线与园区五应用塑形 | [#474](https://github.com/MarkDanile/MetaEduBase/pull/474) | 95 | 优秀；控制面、Runtime 中立边界、任务顺序、P3/P4 里程碑和园区五应用去重形成一致事实源，可合并；REQ-059 继续保持 Shaping | 无 | 无 | 不新增规则；现有文档门禁、工作台和评分流程已覆盖 | Codex |
 | 2026-07-15 | Original | REQ-054 Catalog + 数据源接入复查 | [#421](https://github.com/MarkDanile/MetaEduBase/pull/421) / [#422](https://github.com/MarkDanile/MetaEduBase/pull/422) / [#424](https://github.com/MarkDanile/MetaEduBase/pull/424) | 72 | 可接受但有条件；Catalog 骨架可用，DirectDB / MCP adapter 尚不可从默认工厂到达，entity_type 契约存在漂移 | REQ-057 | AC-1~10 全覆盖声明超过生产可达范围，需求、spec、plan 与后续动态发现实现未同步 | 已登记 REQ-057，先统一 adapter 路由和 entity_type 契约 | Codex |
@@ -90,12 +91,12 @@
 
 | 指标 | 当前值 | 说明 |
 |------|--------|------|
-| 已记录评审数 | 69 | 65 条 Original + 4 条 Backfilled。2026-07-24 新增 REQ-059 Architecture Gate 评审记录。 |
-| 平均评分 | 84.8 | 69 条 `总分` 算术平均；累计总分 5852。 |
-| 一次关闭率 | 57% | 评分 ≥ 80 且无必修 follow-up 的任务数 / 已记录评审数 = 39/69。 |
-| 返工率 | 43% | 有必修 follow-up 的任务数 / 已记录评审数 = 30/69。 |
-| 流程扣分率 | 68% | `流程扣分点` 列非 `无` 的任务数 / 已记录评审数 = 47/69；这里表示有可复盘流程信号，不等同于严重违规。 |
-| 规则转化率 | 49% | 形成规则、脚本或 follow-up 改进的评审数 / 已记录评审数 = 34/69。 |
+| 已记录评审数 | 70 | 66 条 Original + 4 条 Backfilled。2026-07-24 新增 REQ-041 W1 评审记录。 |
+| 平均评分 | 84.9 | 70 条 `总分` 算术平均；累计总分 5945。 |
+| 一次关闭率 | 56% | 评分 ≥ 80 且无必修 follow-up 的任务数 / 已记录评审数 = 39/70。 |
+| 返工率 | 44% | 有必修 follow-up 的任务数 / 已记录评审数 = 31/70。 |
+| 流程扣分率 | 69% | `流程扣分点` 列非 `无` 的任务数 / 已记录评审数 = 48/70；这里表示有可复盘流程信号，不等同于严重违规。 |
+| 规则转化率 | 50% | 形成规则、脚本或 follow-up 改进的评审数 / 已记录评审数 = 35/70。 |
 
 > 样本量不足时，本表只用于追踪单任务事实，不用于趋势判断。
 
