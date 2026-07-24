@@ -14,24 +14,7 @@
 
 ## 当前进行中
 
-### REQ-041 W1: Workspace durable store
-
-状态：🟡 进行中
-类型：New Feature / Backend / Database / Contract-first
-领域：Agent Workspace / Conversation / Message
-当前执行模式：plan-do / superpower
-最近接手工具：Codex
-分支：`codex/req-041-w1-workspace-store`
-
-需求来源：
-- Requirement: [REQ-041](../01-product-planning/05-requirements/REQ-041-ai-workspace-conversation-persistence.md)
-- Spec: [Conversation/Message/Run/Event 联合核心契约](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md)
-- Plan: [Slice W1](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-w1workspace-durable-store)
-
-当前进展：W1 durable store 已实现 Conversation/UserState/Message/Part、workspace inbox/outbox、tenant/owner policy、CAS、keyset/history、双 seq 与完整 command digest；严格未创建 `agent_execution`。
-下一步：走 commit / PR / merge；REQ-041 保持 Doing，后续按 E0 -> E1 推进 REQ-047 Core。
-验证状态：W1 18 passed（真实 PostgreSQL，含 50 并发、同 key 竞争、resource ref fail-closed）；W1 + 既有 migration smoke 20 passed；migration upgrade/downgrade/upgrade 通过；全量 1390 passed / 4 deselected；Ruff、mypy baseline、工程文档门禁、diff check 通过。独立 `gpt-5.6-luna high` 只读复审 3 项 finding 已全部修复；全库 `alembic check` 历史 metadata 漂移另记 TD-086。
-交接备注：Conversation DELETE endpoint 与新 Agent Workspace `/turns` 均未注册；内部 `reserve_user_turn` 只为 B1 coordinator 和契约测试保留；未实现 Runtime、Pi、SSE 或前端页面。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -50,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-24 | Agent Workspace W1 durable store | 🟢 完成 | `agent_workspace` 四业务表 + inbox/outbox、owner-private API、CAS/keyset、双 seq 与完整摘要落地；DELETE/`/turns` 保持关闭；全量 1390 passed | [PR #479](https://github.com/MarkDanile/MetaEduBase/pull/479)（`88bf3c35`） |
 | 2026-07-24 | Conversation/Run 联合核心契约塑形 | 🟢 完成 | 冻结 16 项核心决策与 8 Slice plan；四轮独立 `max` 反例审查 P0/P1 从 9 -> 4 -> 1 -> 0；纯文档，无代码/迁移/API/UI | [PR #477](https://github.com/MarkDanile/MetaEduBase/pull/477)（`265f59c7`） |
 | 2026-07-24 | REQ-059 企业级可控 Agent 平台源码研究与控制面塑形 | 🟢 完成 | 八项 Architecture Gate 决策、AI Delivery Matrix、园区应用顺序和 12 仓库固定源码导航完成；文档门禁、路径核验、独立复审和用户签字通过 | [PR #475](https://github.com/MarkDanile/MetaEduBase/pull/475)（`132730a0`）/ [Requirement](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md) |
 | 2026-07-23 | TD-084 GitHub Actions Node 24 与 hermetic 测试分类收口 | 🟢 完成 | 6 类 Action 升级 Node 24；slow marker 移除，CI 统一排除 external_network；PR/main/manual 三层全绿，Backend 约 5m，无 Node 20 警告 | [PR #472](https://github.com/MarkDanile/MetaEduBase/pull/472)（`beb7c6fd`）/ [Tech Debt](technical-debt.md#td-084-github-actions-node-24-与-hermetic-测试分类收口) |

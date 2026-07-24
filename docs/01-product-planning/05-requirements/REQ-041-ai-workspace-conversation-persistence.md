@@ -55,6 +55,6 @@
 
 ## Dependencies / Next Step
 
-- Slice W1 已实现并进入 Git 闭环：`agent_workspace` durable store、owner-private Conversation API、Message history、双 seq、完整 command digest 与 workspace inbox/outbox 已落地；Conversation DELETE 和新 Workspace submit-turn 继续由 B1 门禁保持关闭。
+- Slice W1 已由 [PR #479](https://github.com/MarkDanile/MetaEduBase/pull/479) 合并：`agent_workspace` durable store、owner-private Conversation API、Message history、双 seq、完整 command digest 与 workspace inbox/outbox 已落地；Conversation DELETE 和新 Workspace submit-turn 继续由 B1 门禁保持关闭。
 - 进入实施时从 plan 的 Slice W1 开始；不得跳过 E1/B1 直接开放 DELETE 或把旧 AI Chat 页面内存写入冒充 durable Conversation。
 - REQ-047 Durable Core 与本需求联合实施；Approval/Tool/Artifact/Evidence 扩展不阻塞 W1/E1，但不属于 REQ-041 的完成范围。
