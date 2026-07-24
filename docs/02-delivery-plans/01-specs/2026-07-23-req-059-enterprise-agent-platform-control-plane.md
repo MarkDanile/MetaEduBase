@@ -1,6 +1,6 @@
 # REQ-059 Spec: 企业级可控 Agent 平台源码研究与控制面契约
 
-> **Status**: 🔵 Ready
+> **Status**: 🟢 Done
 > **Requirement**: `docs/01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md`
 > **Related**: REQ-041 / REQ-042 / REQ-043 / REQ-047 / REQ-060 / REQ-061 / TD-085
 > **Research baseline**: 2026-07-24
@@ -646,7 +646,7 @@ Pi compaction、OpenClaw Markdown memory、Open Design global/project memory 和
 
 | 阶段 | 建议工期 | 交付 | 依赖/门禁 |
 |------|----------|------|-----------|
-| 0. Contract Freeze | 1-2 周 | 本 spec、Context Map、Runtime/RunEvent/ToolGrant schema、APP-005/009 首批 Rubric、APP-012/030 共享采集边界和 APP-016 研究边界 | REQ-059 Ready（Architecture Gate 已完成） |
+| 0. Contract Freeze | 1-2 周 | 本 spec、Context Map、Runtime/RunEvent/ToolGrant schema、APP-005/009 首批 Rubric、APP-012/030 共享采集边界和 APP-016 研究边界 | REQ-059 Architecture Gate 已完成 |
 | 1. Durable Control Plane | 2-3 周 | REQ-041 Conversation/Message；REQ-047 Run/Event/Approval/Artifact 最小表与 API；旧 Direct RAG/Skill compatibility path | 不接 Pi；先证明刷新/重连/终态 |
 | 2. Workspace & Navigation | 2-3 周 | REQ-042 三栏 Workspace；REQ-060 单一导航/permission source | Playwright desktop/mobile + RBAC matrix |
 | 3. Boundary Closure & Tool Gateway | 2-4 周 | TD-085 分 Slice；LLM Port；Direct RAG 收缩；AgentTurnLoopRuntime/RuntimeProfile/ToolRouter/ToolGateway/ToolGrant contract | 现有 RAG/问数/Skill/DD 回归全绿 |
@@ -844,7 +844,7 @@ APP-012/030 共用 REQ-062 的 Campaign/Form/Submission Rubric；APP-016 共用 
 - execute 后进程或网络失败时必须先按 provider idempotency key、状态接口或业务审计 reconcile；无法判定时进入 `outcome_unknown`，暂停 Run 且禁止盲重试。
 - 无幂等键或可靠对账能力的写 Tool 只能暴露为 L2 Draft/Action Proposal。V1 不支持生产 `allow-always`。
 
-### 15.3 Ready 后仍需外部输入
+### 15.3 完成后仍需外部输入
 
 以下内容不改变 Architecture Gate，可作为独立 Requirement 的真实验收前置：
 

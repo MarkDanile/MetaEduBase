@@ -16,6 +16,7 @@
 
 | 日期 | 类型 | 任务 | PR | 总分 | 结论 | 必修 follow-up | 流程扣分点 | 规则 / 脚本改进 | 评审人 |
 |------|------|------|----|------|------|----------------|------------|------------------|--------|
+| 2026-07-24 | Original | REQ-059 企业级可控 Agent 平台 Architecture Gate | [#475](https://github.com/MarkDanile/MetaEduBase/pull/475) | 97 | 优秀；八项控制面决策、12 仓库源码导航、AI Delivery Matrix、园区 Pilot 与后续任务边界形成一致事实源；独立复审和用户签字完成，可关闭 | 无 | 无 | 不新增规则；后续 Adapter 统一执行 conformance suite | Codex |
 | 2026-07-23 | Original | REQ-059 企业 Agent 平台路线与园区五应用塑形 | [#474](https://github.com/MarkDanile/MetaEduBase/pull/474) | 95 | 优秀；控制面、Runtime 中立边界、任务顺序、P3/P4 里程碑和园区五应用去重形成一致事实源，可合并；REQ-059 继续保持 Shaping | 无 | 无 | 不新增规则；现有文档门禁、工作台和评分流程已覆盖 | Codex |
 | 2026-07-15 | Original | REQ-054 Catalog + 数据源接入复查 | [#421](https://github.com/MarkDanile/MetaEduBase/pull/421) / [#422](https://github.com/MarkDanile/MetaEduBase/pull/422) / [#424](https://github.com/MarkDanile/MetaEduBase/pull/424) | 72 | 可接受但有条件；Catalog 骨架可用，DirectDB / MCP adapter 尚不可从默认工厂到达，entity_type 契约存在漂移 | REQ-057 | AC-1~10 全覆盖声明超过生产可达范围，需求、spec、plan 与后续动态发现实现未同步 | 已登记 REQ-057，先统一 adapter 路由和 entity_type 契约 | Codex |
 | 2026-07-15 | Original | REQ-052 智能问数与数据激活 | [#417](https://github.com/MarkDanile/MetaEduBase/pull/417) | 58 | 不合格；查询过滤、AI Chat 生产接线、多 Catalog 路由和真实 e2e 均未闭环，已重新打开 | REQ-056 | AC-7 明确未跑真实环境仍翻 Done；mock 注入掩盖 production wiring 缺口 | 已登记 REQ-056，并将 REQ-052 恢复 Doing | Codex |
@@ -89,12 +90,12 @@
 
 | 指标 | 当前值 | 说明 |
 |------|--------|------|
-| 已记录评审数 | 68 | 64 条 Original + 4 条 Backfilled。2026-07-23 新增 1 条 REQ-059 规划塑形评审记录。 |
-| 平均评分 | 84.6 | 68 条 `总分` 算术平均；累计总分 5755。 |
-| 一次关闭率 | 56% | 评分 ≥ 80 且无必修 follow-up 的任务数 / 已记录评审数 = 38/68。 |
-| 返工率 | 44% | 有必修 follow-up 的任务数 / 已记录评审数 = 30/68。 |
-| 流程扣分率 | 69% | `流程扣分点` 列非 `无` 的任务数 / 已记录评审数 = 47/68；这里表示有可复盘流程信号，不等同于严重违规。 |
-| 规则转化率 | 50% | 形成规则、脚本或 follow-up 改进的评审数 / 已记录评审数 = 34/68。 |
+| 已记录评审数 | 69 | 65 条 Original + 4 条 Backfilled。2026-07-24 新增 REQ-059 Architecture Gate 评审记录。 |
+| 平均评分 | 84.8 | 69 条 `总分` 算术平均；累计总分 5852。 |
+| 一次关闭率 | 57% | 评分 ≥ 80 且无必修 follow-up 的任务数 / 已记录评审数 = 39/69。 |
+| 返工率 | 43% | 有必修 follow-up 的任务数 / 已记录评审数 = 30/69。 |
+| 流程扣分率 | 68% | `流程扣分点` 列非 `无` 的任务数 / 已记录评审数 = 47/69；这里表示有可复盘流程信号，不等同于严重违规。 |
+| 规则转化率 | 49% | 形成规则、脚本或 follow-up 改进的评审数 / 已记录评审数 = 34/69。 |
 
 > 样本量不足时，本表只用于追踪单任务事实，不用于趋势判断。
 

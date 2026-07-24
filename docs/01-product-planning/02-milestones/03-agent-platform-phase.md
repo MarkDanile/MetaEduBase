@@ -113,7 +113,7 @@ Agent Apps
 ## Current Iteration
 
 - [2026-W30 P3 企业 Agent 平台控制面塑形](../03-iterations/2026-W30-p3-enterprise-agent-platform.md)
-- 当前只推进 Architecture Gate 和下一波 contract-first 准备，不直接实施 Pi Worker。
+- REQ-059 Architecture Gate 已由 PR #475 完成；下一步进入 REQ-041/047 contract-first 设计，REQ-060 可并行塑形，不直接跳到 Pi Worker。
 
 ## Completion Criteria
 
@@ -142,7 +142,6 @@ Agent Apps
 
 | ID | 状态 | 说明 | 事实源 |
 |----|------|------|--------|
-| REQ-059 | 🔵 Ready | Architecture Gate 已完成；八项决策、AI Delivery Matrix、Pilot Rubric 与后续外部输入边界已冻结 | [Requirement](../05-requirements/REQ-059-enterprise-agent-platform-kernel.md) / [Spec](../../02-delivery-plans/01-specs/2026-07-23-req-059-enterprise-agent-platform-control-plane.md) |
 | REQ-041 | ⚫ Candidate | Conversation/Message 与多会话事实源 | [Requirement](../05-requirements/REQ-041-ai-workspace-conversation-persistence.md) |
 | REQ-047 | ⚫ Candidate | Run/Event/Approval/Artifact/Evidence | [Requirement](../05-requirements/REQ-047-agent-run-artifact-approval-center.md) |
 | REQ-060 | ⚫ Candidate | 控制台信息架构和权限化导航，可与 Durable State 并行 | [Requirement](../05-requirements/REQ-060-enterprise-console-information-architecture.md) |
