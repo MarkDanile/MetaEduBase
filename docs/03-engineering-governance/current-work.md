@@ -14,26 +14,7 @@
 
 ## 当前进行中
 
-### REQ-041/047: Conversation、Message、Run、Event 联合契约塑形
-
-状态：🟣 待验证
-类型：Product Planning / Contract-first Shaping
-领域：Agent Workspace / Agent Execution / Conversation / Run Event
-当前执行模式：spike / superpower
-最近接手工具：Codex
-分支：`codex/req-041-047-contract`
-
-需求来源：
-- REQ-041: [Conversation/Message](../01-product-planning/05-requirements/REQ-041-ai-workspace-conversation-persistence.md)
-- REQ-047: [Run/Event/Approval/Artifact](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md)
-- Parent: [REQ-059](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md)
-- Spec: [联合核心契约](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md)
-- Plan: [分 Slice 实施计划](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md)
-
-当前进展：源码审计、Conversation/Message/Run/Event 联合 spec、8 Slice 实施 plan 与规划状态同步已完成；四轮独立反例审查把 9 -> 4 -> 1 -> 0 个 P0/P1 逐轮收口。REQ-041 全范围 Ready；REQ-047 保持 Shaping，但 Durable Core 可按 E0/E1 实施。本轮未修改代码、迁移、API 或 UI。
-下一步：完成范围检查、提交、PR checks、合并与 main clean check；实现从 REQ-041 W1 开始，REQ-047 E0/E1 紧随。
-验证状态：`scripts/check-engineering-docs --full` 通过（32 个既有 known issues allowlisted）；`git diff --check` 通过；独立 GPT-5.6 Sol `max` 只读反例审查 P0/P1 清零。文档-only，按范围不运行代码测试。
-交接备注：`agent_workspace` 只拥有 Conversation/Message，`agent_execution` 只拥有 Run/Event/Approval/Artifact 等执行事实；禁止共享 ORM/repository 或让 Message JSON 成为执行事实源。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -41,6 +22,8 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P0 | REQ-041 Slice W1：Workspace durable store | 🔵 Ready | 先实现 Conversation/UserState/Message/Part、双 seq、完整 command digest 与 owner-private API；DELETE endpoint 等 B1 Guard 后再开放 | [Requirement](../01-product-planning/05-requirements/REQ-041-ai-workspace-conversation-persistence.md) / [Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-w1workspace-durable-store) |
+| P0 | REQ-047 Core Slice E0/E1：Execution identity 与 durable core | 🟣 Shaping | W1 后按 E0 -> E1 实施最小 Profile/Binding/Snapshot、Run/Input/Event、连续 ACK、FIFO 与终态；完整 REQ-047 仍保持 Shaping | [Requirement](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-e0execution-identitybinding-与-snapshot-contract) |
 | P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | ⚫ Candidate | 可并行补导航矩阵与 plan；移除重复 Skill、归位 MCP/Skill，并建立 permission/nav 单一事实源 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) |
 
 ## 最近完成
@@ -51,6 +34,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-24 | Conversation/Run 联合核心契约塑形 | 🟢 完成 | 冻结 16 项核心决策与 8 Slice plan；四轮独立 `max` 反例审查 P0/P1 从 9 -> 4 -> 1 -> 0；纯文档，无代码/迁移/API/UI | [PR #477](https://github.com/MarkDanile/MetaEduBase/pull/477)（`265f59c7`） |
 | 2026-07-24 | REQ-059 企业级可控 Agent 平台源码研究与控制面塑形 | 🟢 完成 | 八项 Architecture Gate 决策、AI Delivery Matrix、园区应用顺序和 12 仓库固定源码导航完成；文档门禁、路径核验、独立复审和用户签字通过 | [PR #475](https://github.com/MarkDanile/MetaEduBase/pull/475)（`132730a0`）/ [Requirement](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md) |
 | 2026-07-23 | TD-084 GitHub Actions Node 24 与 hermetic 测试分类收口 | 🟢 完成 | 6 类 Action 升级 Node 24；slow marker 移除，CI 统一排除 external_network；PR/main/manual 三层全绿，Backend 约 5m，无 Node 20 警告 | [PR #472](https://github.com/MarkDanile/MetaEduBase/pull/472)（`beb7c6fd`）/ [Tech Debt](technical-debt.md#td-084-github-actions-node-24-与-hermetic-测试分类收口) |
 | 2026-07-23 | TD-083 后端风险分级测试选择与性能专项治理 | 🟢 完成 | PR targeted / main full-not-slow / nightly full；默认禁外网 + 外部依赖 mock；not-slow 1365 pass/2m41s；resource 探针 15 pass/4.22s | [PR #469](https://github.com/MarkDanile/MetaEduBase/pull/469)（`cccb3ff6`）/ [Tech Debt](technical-debt.md#td-083-后端风险分级测试选择与性能专项治理) |
