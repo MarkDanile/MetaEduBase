@@ -1,9 +1,9 @@
 # REQ-059 Spec: 企业级可控 Agent 平台源码研究与控制面契约
 
-> **Status**: 🟣 Shaping
+> **Status**: 🔵 Ready
 > **Requirement**: `docs/01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md`
 > **Related**: REQ-041 / REQ-042 / REQ-043 / REQ-047 / REQ-060 / REQ-061 / TD-085
-> **Research baseline**: 2026-07-23
+> **Research baseline**: 2026-07-24
 > **Purpose**: 冻结架构边界、统一命名和实施顺序；本 spec 不代表对应代码已经落地
 
 ---
@@ -13,7 +13,8 @@
 MetaEduBase 的目标不是再增加一个“会循环调用工具的 RAG 服务”，而是建设一套类似 Codex 的企业 Agent Harness：
 
 - 产品级 Conversation、Message、AgentRun、RunEvent、Approval、Artifact、Evidence 和 Memory 由 MetaEduBase 持久化并治理。
-- Direct RAG、确定性 SkillRunner、Pi Agent Loop 和 ACP 外部 Agent 都是可路由的 Runtime，不拥有企业产品事实源。
+- 新 Agent Workspace 的每次输入统一进入 `AgentTurnLoopRuntime`；模型可以零工具回答，也可以自主选择 RAG、Query、MCP、Skill 和业务工具。
+- 旧 Direct RAG、确定性 SkillRunner、Pi Agent Loop 和 ACP 外部 Agent 都不拥有企业产品事实源；前两者只作为兼容入口或确定性 Workflow 保留。
 - Pi 最适合作为首个 Native Agent Runtime 内核，但其源码明确不提供企业权限、MCP、审批、计划模式或沙箱边界。
 - ACP 适合做南向 Runtime 协议和能力协商，不适合作为业务编排、产品会话或企业权限事实源。
 - OpenClaw 最值得借鉴 Runtime Port、Session Actor、Event Ledger、Approval 和 Task Recovery；不能继承其单 Operator 信任域。
@@ -27,9 +28,10 @@ MetaEduBase 的目标不是再增加一个“会循环调用工具的 RAG 服务
 MetaEduBase Web
   -> MetaEduBase API / SSE
       -> Agent Control Plane (Python + PostgreSQL)
-          -> DirectRagRuntime / SkillRuntime
-          -> Agent Runtime Worker (Node.js, pinned Pi SDK)
-          -> ACP Runtime Adapter (external agents)
+          -> AgentTurnLoopRuntime
+              -> Agent Runtime Worker (Node.js, pinned Pi SDK)
+              -> ACP / LangGraph / self-hosted adapters
+          -> Direct RAG / Skill compatibility adapters
           -> Tool Gateway -> existing RAG / MCP / SkillRunner / QueryService
 ```
 
@@ -47,16 +49,20 @@ MetaEduBase Web
 
 ### 2.2 研究快照
 
-| 项目 | 快照 | 定位 |
-|------|------|------|
-| OpenClaw | [`5e651d5`](https://github.com/openclaw/openclaw/tree/5e651d5ac76ce2ad41e1a0205bed210f818ad8b9) | 个人 AI Assistant Gateway / Harness |
-| Pi | [`a5afc3f`](https://github.com/earendil-works/pi/tree/a5afc3f171e422e08a2ccc342827719f9952f38a) | Agent Loop SDK、Session 与 Coding Agent |
-| Nuwax Web | [`1278e30`](https://github.com/nuwax-ai/nuwax/tree/1278e30dc42fff2c741185775f7cade5bf01389e) | Agent 产品前端 |
-| NuwaClaw | [`77bccef`](https://github.com/nuwax-ai/nuwaclaw/tree/77bccefe701a5a73895dced587fea0636c7216f6) | Electron Agent Client、ACP Engine 与权限交互 |
-| RCoder | [`2189eaf`](https://github.com/nuwax-ai/rcoder/tree/2189eaffc4d2a6b0bc92b988c859698b0377124b) | Rust Agent Runner、Session 与 Permission Manager |
-| Claude ACP Adapter | [`3b72577`](https://github.com/agentclientprotocol/claude-agent-acp/tree/3b725779996a7c8b99b26ef3553abb915423037a) | ACP 到 Claude Agent SDK 的适配 |
-| Open Design | [`506c290`](https://github.com/nexu-io/open-design/tree/506c2900b972e6f3a25cfe5fabd7041ec6d869ca) / `0.16.1` | Local-first Agent Workspace 与 Runtime Adapter |
-| Codex | [`39a2438`](https://github.com/openai/codex/tree/39a2438d16514d0d6f88105d17b0f747994af487) | Coding Agent Core、App Server 与 Harness |
+| 项目（GitHub） | 固定快照 | 定位 |
+|----------------|----------|------|
+| [OpenClaw](https://github.com/openclaw/openclaw) | [`5e651d5`](https://github.com/openclaw/openclaw/tree/5e651d5ac76ce2ad41e1a0205bed210f818ad8b9) | 个人 AI Assistant Gateway / Harness |
+| [Pi](https://github.com/earendil-works/pi) | [`a5afc3f`](https://github.com/earendil-works/pi/tree/a5afc3f171e422e08a2ccc342827719f9952f38a) | Agent Loop SDK、Session 与 Coding Agent |
+| [Nuwax Web](https://github.com/nuwax-ai/nuwax) | [`1278e30`](https://github.com/nuwax-ai/nuwax/tree/1278e30dc42fff2c741185775f7cade5bf01389e) | Agent 产品前端 |
+| [NuwaClaw](https://github.com/nuwax-ai/nuwaclaw) | [`77bccef`](https://github.com/nuwax-ai/nuwaclaw/tree/77bccefe701a5a73895dced587fea0636c7216f6) | Electron Agent Client、ACP Engine 与权限交互 |
+| [RCoder](https://github.com/nuwax-ai/rcoder) | [`2189eaf`](https://github.com/nuwax-ai/rcoder/tree/2189eaffc4d2a6b0bc92b988c859698b0377124b) | Rust Agent Runner、Session 与 Permission Manager |
+| [Claude ACP Adapter](https://github.com/agentclientprotocol/claude-agent-acp) | [`3b72577`](https://github.com/agentclientprotocol/claude-agent-acp/tree/3b725779996a7c8b99b26ef3553abb915423037a) | ACP 到 Claude Agent SDK 的适配 |
+| [Open Design](https://github.com/nexu-io/open-design) | [`506c290`](https://github.com/nexu-io/open-design/tree/506c2900b972e6f3a25cfe5fabd7041ec6d869ca) / `0.16.1` | Local-first Agent Workspace 与 Runtime Adapter |
+| [Codex](https://github.com/openai/codex) | [`39a2438`](https://github.com/openai/codex/tree/39a2438d16514d0d6f88105d17b0f747994af487) | Coding Agent Core、App Server 与 Harness |
+| [LangGraph](https://github.com/langchain-ai/langgraph) | [`31f90df`](https://github.com/langchain-ai/langgraph/tree/31f90df3e6b0268fa77fd2d118a917d420b84a68) | Durable graph execution、checkpoint 与 interrupt/resume |
+| [Kimi CLI](https://github.com/MoonshotAI/kimi-cli) | [`4a550ef`](https://github.com/MoonshotAI/kimi-cli/tree/4a550effdfcb29a25a5d325bf935296cc50cd417) | Agent Harness、ACP Server、Session、MCP 与 Approval |
+| [LangChain](https://github.com/langchain-ai/langchain) | [`64f5ebf`](https://github.com/langchain-ai/langchain/tree/64f5ebf97101f4ce1bd9a150ba27281f957516a7) | Agent factory、middleware 与 provider/tool 组件 |
+| [OpenCode](https://github.com/anomalyco/opencode) | [`743f641`](https://github.com/anomalyco/opencode/tree/743f6410f2e5002723fc5e893039ac49fbfe0de8) | Local-first Agent、Session Runtime 与 Workspace 产品实现 |
 
 进入实施 Spike 前必须重新固定版本、许可证、Node/Python/Rust 运行要求和破坏性变更，不允许使用浮动 `latest`。
 
@@ -68,6 +74,44 @@ MetaEduBase Web
 | Pi 解读 | Agent Loop、并行/串行工具、Hook、steer/follow-up、compaction 基本准确 | Pi README 明确默认继承宿主进程权限；Coding Agent README 明确无内建 MCP、sub-agent、permission popup、plan mode 和 todo |
 | Nuwax 解读 | ACP 适配层、能力协商和 Intervention 交互值得参考 | Nuwax 主仓是前端，Runtime 分散在多个仓库；标准 Apache-2.0 无“商业使用需额外授权”条款；不能把 README 架构图视为单仓已交付能力 |
 | Open Design 解读 | Agent Workspace、插件和设计任务闭环方向有价值 | 材料基于早期 `0.1.0 Draft`；当前 `0.16.1` 已有桌面应用、Plugin、Automation、Memory、MCP、ACP、Pi RPC、SQLite 与 Run Event |
+
+### 2.4 后续 REQ 实施源码导航
+
+本节是后续 Agent Platform 需求的源码导航事实源。开工时只把固定 commit 的源码和测试作为实现证据；若升级快照，必须在对应 spec/plan 记录新 commit、许可证复核、行为差异和回归命令。链接用于学习协议、状态机和产品模式，不代表允许复制许可证不兼容的代码，也不改变 MetaEduBase 对 Conversation、Run、Approval、Artifact、Evidence、Memory、权限和审计的所有权。
+
+#### 2.4.1 Runtime、Loop 与 Session
+
+| 能力主题 | 项目与固定源码路径 | 可借鉴 | 不可照搬 | MetaEduBase 承接任务 |
+|----------|--------------------|--------|----------|---------------------|
+| Runtime Port、事件流、恢复 | OpenClaw [`AcpRuntime`](https://github.com/openclaw/openclaw/blob/5e651d5ac76ce2ad41e1a0205bed210f818ad8b9/packages/acp-core/src/runtime/types.ts)、[`EventLedger`](https://github.com/openclaw/openclaw/blob/5e651d5ac76ce2ad41e1a0205bed210f818ad8b9/src/acp/event-ledger.ts)、[`TaskRegistry`](https://github.com/openclaw/openclaw/blob/5e651d5ac76ce2ad41e1a0205bed210f818ad8b9/src/tasks/task-registry.ts) | `events + terminal result`、单调 seq、完整性标记、任务恢复 | 单 Operator 信任域、本地 Gateway/主机权限 | REQ-043、REQ-047、REQ-049 |
+| Native Agent Loop | Pi [`agent-loop.ts`](https://github.com/earendil-works/pi/blob/a5afc3f171e422e08a2ccc342827719f9952f38a/packages/agent/src/agent-loop.ts)、[`harness/types.ts`](https://github.com/earendil-works/pi/blob/a5afc3f171e422e08a2ccc342827719f9952f38a/packages/agent/src/harness/types.ts)、[`agent-session.ts`](https://github.com/earendil-works/pi/blob/a5afc3f171e422e08a2ccc342827719f9952f38a/packages/coding-agent/src/core/agent-session.ts) | tool batch、steer/follow-up、stop hook、上下文变换、运行事件 | 宿主进程权限、Coding Agent UI、把私有 Session 当产品事实源 | REQ-043 Pi Worker / Runtime Adapter |
+| Runtime 私有 Session | Pi [`session.ts`](https://github.com/earendil-works/pi/blob/a5afc3f171e422e08a2ccc342827719f9952f38a/packages/agent/src/harness/session/session.ts)、[`jsonl-repo.ts`](https://github.com/earendil-works/pi/blob/a5afc3f171e422e08a2ccc342827719f9952f38a/packages/agent/src/harness/session/jsonl-repo.ts)、[`session-manager.ts`](https://github.com/earendil-works/pi/blob/a5afc3f171e422e08a2ccc342827719f9952f38a/packages/coding-agent/src/core/session-manager.ts) | append-only tree、branch、compaction、可替换存储 | JSONL 作为企业 Conversation/RunEvent 唯一存储 | REQ-041、REQ-043 |
+| ACP Session 适配 | NuwaClaw [`acpSessionSetup.ts`](https://github.com/nuwax-ai/nuwaclaw/blob/77bccefe701a5a73895dced587fea0636c7216f6/crates/agent-electron-client/src/main/services/engines/acp/acpSessionSetup.ts)、Claude ACP Adapter [`acp-agent.ts`](https://github.com/agentclientprotocol/claude-agent-acp/blob/3b725779996a7c8b99b26ef3553abb915423037a/src/acp-agent.ts)、[`session-load.test.ts`](https://github.com/agentclientprotocol/claude-agent-acp/blob/3b725779996a7c8b99b26ef3553abb915423037a/src/tests/session-load.test.ts) | initialize/new/load/resume/prompt/cancel、能力与错误映射 | NuwaClaw 的 load 失败静默 new；Provider 专属权限模式进入通用契约 | REQ-043 ACP Adapter / conformance suite |
+| Rust Runner 与 Session | RCoder [`session_manager.rs`](https://github.com/nuwax-ai/rcoder/blob/2189eaffc4d2a6b0bc92b988c859698b0377124b/crates/agent_abstraction/src/session/session_manager.rs)、[`acp_worker.rs`](https://github.com/nuwax-ai/rcoder/blob/2189eaffc4d2a6b0bc92b988c859698b0377124b/crates/agent_abstraction/src/session/acp_worker.rs)、[`agent_session_service.rs`](https://github.com/nuwax-ai/rcoder/blob/2189eaffc4d2a6b0bc92b988c859698b0377124b/crates/agent_runner/src/service/agent_session_service.rs) | Runner/Worker 分离、session registry、cancel/notify 边界 | 内存 registry/cache 作为 durable state；直接复用其容器部署假设 | REQ-043 Worker、Runtime Cell |
+| 数据驱动 Runtime Definition | Open Design [`runtimes/types.ts`](https://github.com/nexu-io/open-design/blob/506c2900b972e6f3a25cfe5fabd7041ec6d869ca/apps/daemon/src/runtimes/types.ts)、[`runtimes/registry.ts`](https://github.com/nexu-io/open-design/blob/506c2900b972e6f3a25cfe5fabd7041ec6d869ca/apps/daemon/src/runtimes/registry.ts)、[`ACP session`](https://github.com/nexu-io/open-design/blob/506c2900b972e6f3a25cfe5fabd7041ec6d869ca/apps/daemon/src/agent-protocol/acp/session.ts)、[`Pi RPC session`](https://github.com/nexu-io/open-design/blob/506c2900b972e6f3a25cfe5fabd7041ec6d869ca/apps/daemon/src/agent-protocol/pi-rpc/session.ts) | RuntimeAgentDef、通用 detection/launch/invoke、ACP/Pi 双适配 | CLI 放权参数、自动 permission/confirm、进程内 Run Registry | REQ-043 RuntimeProfile / Adapter |
+| Thread/Turn/Item Harness | Codex [`app-server/README.md`](https://github.com/openai/codex/blob/39a2438d16514d0d6f88105d17b0f747994af487/codex-rs/app-server/README.md)、[`thread_manager.rs`](https://github.com/openai/codex/blob/39a2438d16514d0d6f88105d17b0f747994af487/codex-rs/core/src/thread_manager.rs)、[`session.rs`](https://github.com/openai/codex/blob/39a2438d16514d0d6f88105d17b0f747994af487/codex-rs/core/src/session/session.rs)、[`turn_context.rs`](https://github.com/openai/codex/blob/39a2438d16514d0d6f88105d17b0f747994af487/codex-rs/core/src/session/turn_context.rs) | start/resume/fork、turn start/steer/interrupt、Session 与 TurnContext 分层 | 未公开桌面服务端推断；本地 Coding Agent 权限替代企业 RBAC | REQ-041、REQ-042、REQ-043、REQ-047 |
+| Durable Graph Runtime | LangGraph [`types.py`](https://github.com/langchain-ai/langgraph/blob/31f90df3e6b0268fa77fd2d118a917d420b84a68/libs/langgraph/langgraph/types.py)、[`pregel/_loop.py`](https://github.com/langchain-ai/langgraph/blob/31f90df3e6b0268fa77fd2d118a917d420b84a68/libs/langgraph/langgraph/pregel/_loop.py)、[`pregel/_retry.py`](https://github.com/langchain-ai/langgraph/blob/31f90df3e6b0268fa77fd2d118a917d420b84a68/libs/langgraph/langgraph/pregel/_retry.py) | `Command(resume=...)`、interrupt、superstep、retry policy | checkpoint 等同企业 RunEvent；通用 retry 自动覆盖写 Tool 的 unknown outcome | REQ-043 LangGraph Adapter、REQ-047 |
+| Checkpoint 契约 | LangGraph [`checkpoint/base`](https://github.com/langchain-ai/langgraph/blob/31f90df3e6b0268fa77fd2d118a917d420b84a68/libs/checkpoint/langgraph/checkpoint/base/__init__.py)、[`test_put_writes.py`](https://github.com/langchain-ai/langgraph/blob/31f90df3e6b0268fa77fd2d118a917d420b84a68/libs/checkpoint-conformance/langgraph/checkpoint/conformance/spec/test_put_writes.py) | checkpoint/pending writes 接口与 conformance 测试思路 | 直接采用其存储 schema 或绕过 MetaEduBase Event Ledger | REQ-043 Adapter conformance suite |
+| Python Agent + ACP Server | Kimi CLI [`acp/server.py`](https://github.com/MoonshotAI/kimi-cli/blob/4a550effdfcb29a25a5d325bf935296cc50cd417/src/kimi_cli/acp/server.py)、[`acp/session.py`](https://github.com/MoonshotAI/kimi-cli/blob/4a550effdfcb29a25a5d325bf935296cc50cd417/src/kimi_cli/acp/session.py)、[`session.py`](https://github.com/MoonshotAI/kimi-cli/blob/4a550effdfcb29a25a5d325bf935296cc50cd417/src/kimi_cli/session.py) | ACP capability、new/load/resume/list/model/cancel、历史 replay | 进程内 `sessions`、本地 wire/session 文件作为企业事实源 | REQ-043 ACP conformance / External Runtime |
+| Local-first Agent Runtime | OpenCode [`runner/index.ts`](https://github.com/anomalyco/opencode/blob/743f6410f2e5002723fc5e893039ac49fbfe0de8/packages/core/src/session/runner/index.ts)、[`run-coordinator.ts`](https://github.com/anomalyco/opencode/blob/743f6410f2e5002723fc5e893039ac49fbfe0de8/packages/core/src/session/run-coordinator.ts)、[`event.ts`](https://github.com/anomalyco/opencode/blob/743f6410f2e5002723fc5e893039ac49fbfe0de8/packages/core/src/session/event.ts)、[`store.ts`](https://github.com/anomalyco/opencode/blob/743f6410f2e5002723fc5e893039ac49fbfe0de8/packages/core/src/session/store.ts) | Session runner、coordinator、event projection、input inbox | local/project ownership 与存储 schema 直接变成多租户控制面 | REQ-042、REQ-043 External Runtime |
+
+#### 2.4.2 Tool、Skill、Approval、Sandbox 与 Workspace
+
+| 能力主题 | 项目与固定源码路径 | 可借鉴 | 不可照搬 | MetaEduBase 承接任务 |
+|----------|--------------------|--------|----------|---------------------|
+| Tool 生命周期 | Codex [`tools/router.rs`](https://github.com/openai/codex/blob/39a2438d16514d0d6f88105d17b0f747994af487/codex-rs/core/src/tools/router.rs)、[`tools/registry.rs`](https://github.com/openai/codex/blob/39a2438d16514d0d6f88105d17b0f747994af487/codex-rs/core/src/tools/registry.rs)、[`mcp.rs`](https://github.com/openai/codex/blob/39a2438d16514d0d6f88105d17b0f747994af487/codex-rs/core/src/mcp.rs) | model-visible spec、Registry/Router、hook 与 MCP 生命周期分离 | Runtime 直拿企业凭证或绕过 ToolGrant | REQ-043 ToolGateway / ToolRouter |
+| Approval 状态 | OpenClaw [`approval-shared.ts`](https://github.com/openclaw/openclaw/blob/5e651d5ac76ce2ad41e1a0205bed210f818ad8b9/src/gateway/server-methods/approval-shared.ts)、NuwaClaw [`approvalInterventionService.ts`](https://github.com/nuwax-ai/nuwaclaw/blob/77bccefe701a5a73895dced587fea0636c7216f6/crates/agent-electron-client/src/main/services/intervention/approvalInterventionService.ts)、RCoder [`permission_manager.rs`](https://github.com/nuwax-ai/rcoder/blob/2189eaffc4d2a6b0bc92b988c859698b0377124b/crates/agent_runner/src/service/permission_manager.rs) | revision、runtime epoch、option 白名单、first-answer-wins | NuwaClaw/RCoder 的进程内 pending Map；生产 `allow-always` | REQ-047、REQ-043 durable HITL |
+| Permission 与 Sandbox | NuwaClaw [`permissionCoordinator.ts`](https://github.com/nuwax-ai/nuwaclaw/blob/77bccefe701a5a73895dced587fea0636c7216f6/crates/agent-electron-client/src/main/services/engines/acp/permission/permissionCoordinator.ts)、[`acpSandboxPolicy.ts`](https://github.com/nuwax-ai/nuwaclaw/blob/77bccefe701a5a73895dced587fea0636c7216f6/crates/agent-electron-client/src/main/services/engines/acp/sandbox/acpSandboxPolicy.ts)、Codex [`approvals.rs`](https://github.com/openai/codex/blob/39a2438d16514d0d6f88105d17b0f747994af487/codex-rs/protocol/src/approvals.rs)、[`sandbox manager`](https://github.com/openai/codex/blob/39a2438d16514d0d6f88105d17b0f747994af487/codex-rs/sandboxing/src/manager.rs) | 宿主二次写路径校验、独立 permission protocol、平台 sandbox manager | `yolo`、network on、`degrade_to_off`、把 sandbox 当唯一授权层 | REQ-043 Sandbox / WorkspaceLease、REQ-047 |
+| Run-scoped Tool Token | Open Design [`tool-tokens.ts`](https://github.com/nexu-io/open-design/blob/506c2900b972e6f3a25cfe5fabd7041ec6d869ca/apps/daemon/src/tool-tokens.ts)、[`db.ts`](https://github.com/nexu-io/open-design/blob/506c2900b972e6f3a25cfe5fabd7041ec6d869ca/apps/daemon/src/db.ts) | Run/Project/Endpoint/Operation/TTL/revoke 绑定；产品会话与 Runtime identity 分离 | 进程内 Token Registry；本地 SQLite schema 直接复制 | REQ-041、REQ-043 ToolGrant |
+| Agent Hook、MCP 与审批 | Kimi CLI [`kimisoul.py`](https://github.com/MoonshotAI/kimi-cli/blob/4a550effdfcb29a25a5d325bf935296cc50cd417/src/kimi_cli/soul/kimisoul.py)、[`approval.py`](https://github.com/MoonshotAI/kimi-cli/blob/4a550effdfcb29a25a5d325bf935296cc50cd417/src/kimi_cli/soul/approval.py)、[`toolset.py`](https://github.com/MoonshotAI/kimi-cli/blob/4a550effdfcb29a25a5d325bf935296cc50cd417/src/kimi_cli/soul/toolset.py)、[`hooks/engine.py`](https://github.com/MoonshotAI/kimi-cli/blob/4a550effdfcb29a25a5d325bf935296cc50cd417/src/kimi_cli/hooks/engine.py) | steer queue、hook engine、MCP tool wrapper、工具前审批 | yolo/AFK/approve-for-session 直接映射企业生产策略 | REQ-043 Tool Adapter / Hook、REQ-047 |
+| Agent Middleware 组件 | LangChain [`agents/factory.py`](https://github.com/langchain-ai/langchain/blob/64f5ebf97101f4ce1bd9a150ba27281f957516a7/libs/langchain_v1/langchain/agents/factory.py)、[`middleware/types.py`](https://github.com/langchain-ai/langchain/blob/64f5ebf97101f4ce1bd9a150ba27281f957516a7/libs/langchain_v1/langchain/agents/middleware/types.py)、[`human_in_the_loop.py`](https://github.com/langchain-ai/langchain/blob/64f5ebf97101f4ce1bd9a150ba27281f957516a7/libs/langchain_v1/langchain/agents/middleware/human_in_the_loop.py)、[`tool_retry.py`](https://github.com/langchain-ai/langchain/blob/64f5ebf97101f4ce1bd9a150ba27281f957516a7/libs/langchain_v1/langchain/agents/middleware/tool_retry.py) | middleware composition、tool selection/retry、HITL API 形态 | 把 middleware 当 durable Runtime/Approval；对不可逆写入做通用自动重试 | REQ-043 应用层组件评估，不是 V1 Runtime |
+| Tool/Skill Registry | OpenCode [`tool/registry.ts`](https://github.com/anomalyco/opencode/blob/743f6410f2e5002723fc5e893039ac49fbfe0de8/packages/core/src/tool/registry.ts)、[`skill/discovery.ts`](https://github.com/anomalyco/opencode/blob/743f6410f2e5002723fc5e893039ac49fbfe0de8/packages/core/src/skill/discovery.ts)、[`permission.ts`](https://github.com/anomalyco/opencode/blob/743f6410f2e5002723fc5e893039ac49fbfe0de8/packages/core/src/permission.ts) | 工具发现、Skill 惰性加载、permission rule 组织 | 替换现有 MCP/Skill Registry；Runtime 自行裁决 tenant 权限 | REQ-043、REQ-060、REQ-061 |
+| Intervention UI | Nuwax [`useConversationStreamResume.ts`](https://github.com/nuwax-ai/nuwax/blob/1278e30dc42fff2c741185775f7cade5bf01389e/src/components/business-component/UnifiedChatSession/hooks/useConversationStreamResume.ts)、[`useAgentInterventionLayer.ts`](https://github.com/nuwax-ai/nuwax/blob/1278e30dc42fff2c741185775f7cade5bf01389e/src/components/business-component/AgentIntervention/hooks/useAgentInterventionLayer.ts)、[`AcpPermissionCard`](https://github.com/nuwax-ai/nuwax/blob/1278e30dc42fff2c741185775f7cade5bf01389e/src/components/business-component/AgentIntervention/AcpPermissionCard/index.tsx) | SSE 恢复、pending intervention 队列、revision/option 交互 | 前端本地状态作为审批事实源；直接嵌入 Nuwax 页面 | REQ-042、REQ-047 |
+| Workspace 时间线与权限 Dock | OpenCode [`session timeline`](https://github.com/anomalyco/opencode/blob/743f6410f2e5002723fc5e893039ac49fbfe0de8/packages/app/src/pages/session/timeline/message-timeline.tsx)、[`session-permission-dock.tsx`](https://github.com/anomalyco/opencode/blob/743f6410f2e5002723fc5e893039ac49fbfe0de8/packages/app/src/pages/session/composer/session-permission-dock.tsx)、Open Design [`json-event-stream.ts`](https://github.com/nexu-io/open-design/blob/506c2900b972e6f3a25cfe5fabd7041ec6d869ca/apps/daemon/src/runtimes/json-event-stream.ts) | 时间线投影、inline permission、事件流观察面 | UI 直接消费 Runtime 私有事件；照搬单用户信息架构 | REQ-042、REQ-060 |
+| Skill 与长期上下文 | Pi [`extensions/types.ts`](https://github.com/earendil-works/pi/blob/a5afc3f171e422e08a2ccc342827719f9952f38a/packages/coding-agent/src/core/extensions/types.ts)、Codex [`core-skills/service.rs`](https://github.com/openai/codex/blob/39a2438d16514d0d6f88105d17b0f747994af487/codex-rs/core-skills/src/service.rs)、Open Design [`skills.ts`](https://github.com/nexu-io/open-design/blob/506c2900b972e6f3a25cfe5fabd7041ec6d869ca/apps/daemon/src/skills.ts)、[`memory.ts`](https://github.com/nexu-io/open-design/blob/506c2900b972e6f3a25cfe5fabd7041ec6d869ca/apps/daemon/src/memory.ts) | Extension/Skill 接口、惰性发现、Run 隔离复制、文件型记忆模式 | 把 Extension 等同 MCP；global/project 文件记忆替代 tenant/purpose 治理 | REQ-043、REQ-061 |
+| Rollout 与可重放记录 | Codex [`rollout/recorder.rs`](https://github.com/openai/codex/blob/39a2438d16514d0d6f88105d17b0f747994af487/codex-rs/rollout/src/recorder.rs)、Open Design [`runtimes/json-event-stream.ts`](https://github.com/nexu-io/open-design/blob/506c2900b972e6f3a25cfe5fabd7041ec6d869ca/apps/daemon/src/runtimes/json-event-stream.ts) | 顺序记录、resume、观察与调试 | rollout/JSONL 直接充当 PostgreSQL 企业事件账本 | REQ-047 RunEventLedger、REQ-043 Worker spool |
+
+后续 Requirement/plan 至少应在 `AI Delivery Profile` 或“参考实现”段落引用本节中与任务直接相关的路径；不得为了“借鉴完整”而一次性复制多个上游的状态机。若源码行为与本 spec 冻结语义冲突，以本 spec 的企业所有权、失败语义和安全默认值为准，并把差异写入 Adapter conformance test。
 
 ## 3. RAG 1.0 到 4.0 的准确解释
 
@@ -219,7 +263,7 @@ Claude ACP Adapter 本身对不存在 Session 返回 `resourceNotFound`，因此
 | 核心定位 | Assistant Gateway/Harness | Agent Loop SDK | 产品 + ACP Client | Local Agent Workspace | Coding Agent Harness | 企业 Control Plane + Agent Apps |
 | Loop | 外部 Runtime | 强 | 外部 ACP Engine | 多 CLI/ACP/Pi | 强 | Pi 首期，Runtime 可替换 |
 | 产品会话 | 有，偏个人 | Runtime Session | App/ACP Session | Conversation + agent session | Thread/Turn/Item | Conversation/Message + AgentRun/Event |
-| Runtime Port | `AcpRuntime` | SDK API | `AcpEngine` | `RuntimeAgentDef`/Generic Engine | App Server/Core | `AgentRuntimePort` |
+| Runtime Port | `AcpRuntime` | SDK API | `AcpEngine` | `RuntimeAgentDef`/Generic Engine | App Server/Core | `AgentTurnLoopRuntime` |
 | 事件恢复 | SQLite Event Ledger | Session tree，不是企业 event log | SSE 与 replay 抑制 | JSONL + SSE | Rollout + protocol event | PostgreSQL `RunEventLedger` + SSE |
 | MCP/Tool | 强 | 核心无 MCP | ACP 注入 | MCP/connector/tool token | ToolRouter/Registry + MCP | 统一 `ToolGateway` |
 | Skill | 文件/插件 | Extension/README | 产品能力 | 每 Run 隔离复制 | Skill service | 区分 deterministic Skill 与 Agent Skill |
@@ -259,6 +303,11 @@ Claude ACP Adapter 本身对不存在 Session 返回 `resourceNotFound`，因此
 | `AgentRun` | Turn | 一次请求到 terminal result 的运行 |
 | `RunEvent` | Item/Event | 阶段、计划摘要、工具、审批、产物、usage 和错误 |
 | `RuntimeSessionBinding` | loaded Session/runtime state | 产品 Conversation 到 Runtime 私有 Session 的可丢失绑定 |
+| `TurnInput` | Turn input | 不可变输入快照，引用用户 Message、附件和 `queued/steer` 交付方式 |
+| `HumanInputRequest` | user input request | Runtime 需要补充信息时的持久化请求，不等同高风险 Approval |
+| `AgentDefinitionVersion` / `RuntimeProfile` | Agent config/runtime selection | 版本化 Agent 能力和 Runtime 绑定；切换 Runtime 时创建新 Binding |
+| `RuntimeCapabilitySnapshot` / `RunConfigSnapshot` / `ContextSnapshot` | TurnContext snapshot | 固化本 Run 的 Runtime 能力、预算、模型、工具和上下文选择 |
+| `ModelGrant` | run-scoped model access | 授权本 Run 使用指定模型能力，不包含 Provider 长期凭证 |
 | `Artifact` / `EvidenceItem` | generated item/tool result 的业务扩展 | 报告、表格、草稿和可追溯证据 |
 
 不直接把后端实体命名为 Thread/Turn，是因为 MetaEduBase 已面向教育和园区业务，`Conversation/AgentRun` 语义更清晰；通过映射保留 Codex 架构经验。
@@ -276,9 +325,9 @@ Claude ACP Adapter 本身对不存在 Session 返回 `resourceNotFound`，因此
 
 | 名称 | 职责 | 源码依据 |
 |------|------|----------|
-| `RunCoordinator` | 创建 Run、路由 Runtime、持久化 binding、接收事件、处理终态/取消 | OpenClaw Runtime Manager、Codex Thread/Turn lifecycle |
-| `RunRoutingService` | 选择 `direct_rag / deterministic_skill / agent_runtime` | Adaptive-RAG 思路，企业策略实现 |
-| `AgentRuntimePort` | Runtime 中立的 create/resume/start/cancel/close contract | OpenClaw `AcpRuntime`、Open Design Runtime Agent、Codex App Server |
+| `RunCoordinator` | 创建 Run、解析 Runtime Profile、持久化 binding、接收事件、处理终态/取消 | OpenClaw Runtime Manager、Codex Thread/Turn lifecycle |
+| `RuntimeProfileResolver` | 按 `AgentDefinitionVersion` 和租户策略解析 Runtime/模型/工具配置，不判断问题简单或复杂 | Open Design Runtime Agent Definition、Codex TurnContext |
+| `AgentTurnLoopRuntime` | Runtime 中立的 create/resume/start turn/steer/cancel/close contract | Pi Agent Loop、OpenClaw `AcpRuntime`、Codex App Server |
 | `RuntimeRegistry` | 按 runtime id/capability 选择 Adapter | OpenDesign Registry、OpenClaw Runtime Registry |
 | `ToolRouter` | 生成本 Run 模型可见工具集合 | Codex `ToolRouter` |
 | `ToolGateway` | Tool Grant 校验、策略、调用、审计和结果裁剪 | Codex ToolRegistry、Open Design Tool Token |
@@ -305,25 +354,30 @@ packages/server-python/app/contexts/
 ├── agent_execution/
 │   ├── application/
 │   │   ├── run_coordinator.py
-│   │   ├── run_routing_service.py
+│   │   ├── runtime_profile_resolver.py
 │   │   ├── context_assembler.py
 │   │   └── tool_gateway.py
 │   ├── domain/
 │   │   ├── agent_run.py
 │   │   ├── run_event.py
+│   │   ├── agent_definition_version.py
+│   │   ├── runtime_profile.py
 │   │   ├── runtime_session_binding.py
+│   │   ├── turn_input.py
+│   │   ├── human_input_request.py
 │   │   ├── tool_call.py
 │   │   ├── tool_grant.py
+│   │   ├── model_grant.py
 │   │   ├── approval_request.py
 │   │   ├── artifact.py
 │   │   ├── evidence_item.py
+│   │   ├── snapshots.py
 │   │   └── ports/
-│   │       ├── agent_runtime.py
+│   │       ├── agent_turn_loop_runtime.py
 │   │       └── run_event_ledger.py
 │   ├── infrastructure/
 │   │   ├── runtimes/
-│   │   │   ├── direct_rag_runtime.py
-│   │   │   ├── skill_runtime.py
+│   │   │   ├── compatibility_runtime.py
 │   │   │   └── remote_agent_runtime.py
 │   │   └── persistence/
 │   └── interfaces/api/
@@ -338,11 +392,12 @@ packages/agent-runtime-worker/            # REQ-043 Pi Spike 验证后
 ├── src/runtime/pi-runtime-adapter.ts
 ├── src/runtime/acp-runtime-adapter.ts
 ├── src/session/runtime-session-registry.ts
+├── src/events/runtime-event-spool.ts
 ├── src/events/runtime-event-mapper.ts
 └── src/tools/tool-gateway-client.ts
 ```
 
-`runtime-session-registry` 只能缓存 live handle；`RuntimeSessionBinding` 必须先写 PostgreSQL。Worker 重启后缓存可丢失，控制面必须把 Run 恢复为 `resume_required / failed`，不能假装仍在运行。
+`runtime-session-registry` 只能缓存 live handle；`RuntimeSessionBinding` 必须先写 PostgreSQL。Worker 使用本地 SQLite spool 保留未 ACK 事件，但它仍不是企业事实源。Worker 重启后 live handle 可丢失，控制面必须把 Run 恢复为 `resume_required / failed`，不能假装仍在运行。
 
 ## 8. 目标运行流程
 
@@ -351,21 +406,21 @@ flowchart TD
     U["用户输入"] --> API["Agent Workspace API"]
     API --> CM["Conversation / Message"]
     CM --> RC["RunCoordinator"]
-    RC --> RR{"RunRoutingService"}
-    RR -->|"简单事实问答"| DR["DirectRagRuntime"]
-    RR -->|"固定 SOP"| SR["SkillRuntime"]
-    RR -->|"多步骤任务"| AR["RemoteAgentRuntime"]
-    AR --> PI["PiRuntimeAdapter"]
-    AR --> ACP["AcpRuntimeAdapter"]
-    DR --> TG["ToolGateway"]
-    SR --> TG
+    RC --> RP["RuntimeProfileResolver"]
+    RP --> AR["AgentTurnLoopRuntime"]
+    AR --> PI["PiRuntimeAdapter (V1 default)"]
+    AR --> ACP["ACP / future adapters"]
     PI --> TG
     ACP --> TG
     TG --> K["Knowledge Search / Graph Recall"]
     TG --> Q["QueryService"]
     TG --> M["MCPInvocationService"]
     TG --> S["SkillRunner"]
+    PI --> SP["SQLite event spool"]
+    ACP --> SP
+    SP -->|"runtime_seq stream"| RC
     RC --> EL["RunEventLedger"]
+    EL -->|"ACK through runtime_seq"| SP
     TG --> EL
     EL --> PG[("PostgreSQL")]
     PG --> SSE["SSE after_seq replay"]
@@ -374,30 +429,33 @@ flowchart TD
     AP --> PG
 ```
 
-### 8.1 Adaptive Route
+### 8.1 Turn Entry 与 Runtime Binding
 
-路由不是一次性 LLM 分类器，而是可审计的分层策略：
+新 Agent Workspace 不使用外部“问题复杂度分类器”决定是否进入 Agent Loop：
 
-1. 显式产品入口或 Agent App 固定 route 优先。
-2. 规则识别单轮 FAQ、固定 SOP、写操作和敏感场景。
-3. 只有模糊边界才调用轻量 classifier。
-4. 路由结果写入 `AgentRun.route` 和 `routing_reason`，支持离线评测与回放。
+1. `AgentDefinitionVersion` 固定 Agent 指令、可发现能力和默认 `RuntimeProfile`。
+2. `RuntimeProfileResolver` 只解析租户允许的 Runtime、模型、工具、预算和自主等级，不判断用户问题简单或复杂。
+3. Pi 是 V1 默认 `AgentTurnLoopRuntime`；模型输出最终文本且没有 ToolCall 时，本 Turn 零工具结束。
+4. 需要知识、数据或行动时，模型在同一 Loop 内选择授权 Tool；Policy 可以隐藏或拒绝不允许的 Tool，但不替模型做语义规划。
+5. 切换 Runtime/Profile 创建新 `RuntimeSessionBinding`；产品 Conversation、Message、Run 和 Artifact 保持不变，不迁移 Runtime 私有 checkpoint。
 
-建议初始分布目标不是硬编码“60%-70%”，而是用真实流量评测后设定。默认原则是能走 Direct RAG 的请求不进入 Pi，以保护 P95 延时和成本。
+旧 `/ai/chat/evidence` 和确定性 Agent App Workflow 可继续使用 compatibility adapter，逐步写入统一 Conversation/RunEvent；这不构成新 Workspace 的旁路语义。
 
 ### 8.2 Agent Loop
 
-多步骤路径由 Pi Agent Loop 驱动：
+V1 Agent Turn 由 Pi Agent Loop 驱动：
 
 - 模型根据系统指令和可见 Tool Specs 产生计划摘要和工具调用。
 - Tool 调用全部回到 MetaEduBase Tool Gateway。
 - `EvidencePolicy` 把缺失、冲突和来源不足转为结构化 Tool Result/next-turn context。
 - `BudgetPolicy` 与 `StopPolicy` 通过 Pi Hook/stop hook 限制循环。
 - 最终回答和结构化 Artifact 由 RunCoordinator 收口，不能由 Worker 直接写业务表。
+- 活动 Run 中的新消息默认持久化为下一 Run 的 queued `TurnInput`；只有用户显式 steer 时才注入当前 Session actor queue。
+- Runtime 追问生成 `HumanInputRequest` 并进入 `waiting_input`；高风险行动生成 `ApprovalRequest` 并进入 `waiting_approval`，二者不能复用同一状态或响应 API。
 
 ## 9. 核心契约
 
-### 9.1 AgentRuntimePort
+### 9.1 AgentTurnLoopRuntime
 
 最小语义以 OpenClaw `AcpRuntime`、Codex App Server 和 ACP 能力交集为基线：
 
@@ -405,11 +463,15 @@ flowchart TD
 initialize() -> RuntimeCapabilities
 create_session(input) -> RuntimeSessionHandle
 resume_session(binding) -> RuntimeSessionHandle | ResumeError
-start_run(handle, input) -> RuntimeRun(events, terminal_result)
+start_turn(handle, TurnInput) -> RuntimeRun(events, terminal_result)
+stream_events(handle, after_runtime_seq)
+ack_events(handle, through_runtime_seq)
 get_status(handle)
 set_mode(handle, mode)
 set_config_option(handle, key, value)
+respond_input(handle, input_response)
 respond_approval(handle, approval_response)
+steer_turn(handle, TurnInput)
 cancel_run(handle, reason)
 close_session(handle, discard_persistent_state)
 ```
@@ -420,15 +482,27 @@ close_session(handle, discard_persistent_state)
 - `resume_session` 失败返回稳定错误，不得自动 `create_session`。
 - 一个 Runtime Session 同时最多一个可变 Turn；steer/follow-up 进入 Session actor queue。
 - 每次调用携带 `tenant_id / conversation_id / run_id / runtime_epoch`，Adapter 不信任 Worker 内存映射。
+- Worker 先将事件写入本地 SQLite spool 再发送；Control Plane 以 `(binding, epoch, runtime_seq)` 幂等持久化并分配 `RunEvent.seq`，提交成功后才 ACK。
 
 ### 9.2 AgentRun 与 RunEvent
 
 `AgentRun` 是终态事实源：
 
 ```text
-queued -> running -> waiting_approval -> running
-queued/running/waiting_approval -> completed|failed|cancelled|expired
+queued -> starting -> running
+running -> waiting_input|waiting_approval|resume_required|cancelling
+waiting_input|waiting_approval -> running|cancelling|expired
+resume_required -> starting|failed|cancelled
+queued|starting|running|waiting_input|waiting_approval|cancelling
+  -> completed|failed|cancelled|expired
 ```
+
+状态迁移硬条件：
+
+- `resume_required -> starting` 只能由同一 `RuntimeSessionBinding`、预期 runtime epoch 的 `resume_session` 成功触发；恢复失败保持 `resume_required` 并记录稳定错误。创建新 Binding 必须创建新 Run，不能借 `starting` 静默续跑旧 Run。
+- cancel/timeout 先阻止新 ToolCall 并进入 `cancelling`。存在 `executing/reconciling` 写 Tool 时不得落 `cancelled/expired`；必须先 reconcile 为 succeeded/failed，或把 ToolCall 置为 `outcome_unknown`、Run 置为 `resume_required`。
+- `outcome_unknown` 是未解决、非终态 ToolCall 状态。只允许经 Provider 对账或具名人工裁决转为 `succeeded/failed`；存在任何 `outcome_unknown` 时，Run 不得进入 completed/failed/cancelled/expired。
+- Approval 过期时，对应 `waiting_approval` ToolCall 原子转为 `cancelled`、释放预算和 Grant；Run 才能继续转为 expired/cancelled。Run 进入任一终态前不得残留非终态 ToolCall/HumanInputRequest/ApprovalRequest。
 
 `RunEvent` 最小字段：
 
@@ -436,6 +510,7 @@ queued/running/waiting_approval -> completed|failed|cancelled|expired
 tenant_id, conversation_id, run_id, seq, event_id,
 type, occurred_at, visibility, payload_ref|payload,
 runtime_id, runtime_epoch, causation_id, correlation_id
+runtime_binding_id, runtime_seq, runtime_event_id
 ```
 
 建议事件族：
@@ -445,12 +520,17 @@ run.started / phase.changed / plan.summary
 tool.started / tool.progress / tool.completed / tool.failed
 evidence.added / evidence.conflict
 approval.requested / approval.resolved / approval.expired
+input.requested / input.resolved
 artifact.created / artifact.updated
 usage.updated / retry.scheduled / error.reported
+run.resume_required / tool.outcome_unknown
+runtime.terminal_observed
 run.completed / run.failed / run.cancelled / run.expired
 ```
 
 原始 Chain-of-Thought 不进入 `RunEvent`；UI 只显示 `plan.summary`、phase、tool lifecycle、证据、审批、usage 和错误摘要。
+
+Worker 的终态通知只映射为 `runtime.terminal_observed`。RunCoordinator 读取独立 `terminal_result` 后，在同一事务中 CAS `AgentRun` 终态并追加唯一 canonical `run.completed/failed/cancelled/expired` 事件。相同重复结果幂等忽略；事件与 terminal result 或后续 terminal result 冲突时不覆盖既有终态，记录双方 digest，并以 `runtime_terminal_mismatch` 失败/告警处理，禁止静默选择“成功”。
 
 ### 9.3 Tool Gateway 与 Tool Grant
 
@@ -458,12 +538,13 @@ Tool Gateway 是唯一企业调用入口：
 
 ```text
 Runtime ToolCall
-  -> validate ToolGrant(run, tenant, actor, agent, tool, operation, expiry)
-  -> Policy decision(deny / allow / require_approval)
-  -> invoke adapter
-  -> redact / externalize payload
-  -> persist ToolCall + audit + RunEvent
-  -> return model-facing ToolResult
+  -> prepare(arguments digest, risk, idempotency/reconcile capability)
+  -> approval(if required, exact ToolCall + arguments digest)
+  -> reserve(ToolGrant + budget)
+  -> execute(adapter)
+  -> reconcile(provider idempotency key / status / business audit)
+  -> settle or release budget
+  -> resume with model-facing ToolResult
 ```
 
 `ToolGrant` 必须是短期、Run-scoped、可撤销凭证，至少绑定：
@@ -473,6 +554,8 @@ Runtime ToolCall
 - TTL、最大调用数、预算和 purpose。
 
 Runtime Worker 不获得 MCP secret、数据库连接或租户长期 Token。
+
+写 Tool 的 `ToolCall` 状态至少覆盖 `prepared / waiting_approval / reserved / executing / reconciling / succeeded / failed / outcome_unknown / cancelled`。其中只有 `succeeded/failed/cancelled` 是终态；`outcome_unknown` 必须保持可对账。执行请求必须携带稳定 idempotency key；Worker 或网络在 execute 后丢失时先 reconcile。无法证明成功或失败时进入 `outcome_unknown`，暂停 Run 并交由人工/对账流程处理，禁止自动重放。没有幂等键或可靠对账能力的写 Tool 只能作为 L2 Draft/Action Proposal 暴露。
 
 ### 9.4 Approval
 
@@ -485,7 +568,28 @@ Runtime Worker 不获得 MCP secret、数据库连接或租户长期 Token。
 
 并发规则：first-answer-wins；相同响应幂等成功，不同响应稳定冲突。服务重启后仍可查询和处理；Runtime 已丢失时审批只能终结为 superseded/cancelled，不能执行旧 Tool Call。
 
-### 9.5 Sandbox 与 Workspace
+V1 审批精确绑定一次 `ToolCall`、参数摘要、revision 和 runtime epoch，不支持持久化 `allow-always`。审批通过后重新签发匹配批准参数的新 Grant；参数变化必须重新 prepare/approval。
+
+审批拒绝、过期、取消或 superseded 时，尚未执行的 ToolCall 必须原子转为 `cancelled` 并释放 Grant/预算；已经进入 executing/reconciling 的 ToolCall 不受审批状态回滚，必须完成 reconcile 或进入 `outcome_unknown`。
+
+### 9.5 Run Snapshots 与配置
+
+- `RuntimeCapabilitySnapshot` 固化 create/resume 时协商到的 Runtime 能力。
+- `RunConfigSnapshot` 固化 `AgentDefinitionVersion`、`RuntimeProfile`、模型、预算、自主等级、Policy 版本和工具集合。
+- `ContextSnapshot` 记录选入本 Run 的 Message、Summary、Memory、Evidence 和 Tool Result 引用，不复制敏感正文。
+- `ModelGrant` 是 Run-scoped、可撤销的模型访问授权；Worker 只获得短期调用能力，不获得 Provider 长期凭证。
+- Run 创建后配置变更只影响下一 Run；审计和恢复使用当前 Run 的不可变 Snapshot。
+
+### 9.6 Compatibility Run Adapter
+
+旧 Direct RAG/Skill 路径通过 `CompatibilityRunAdapter` 写入统一 Run/Event，而不是伪造有私有 Session 的 Agent Runtime：
+
+- RunCoordinator 在调用前创建 AgentRun，并为本次无状态调用生成 adapter invocation id/runtime epoch；`RuntimeSessionBinding` 可为空。
+- Adapter 把旧服务的开始、来源、diagnostics、产物、错误和返回值映射为同一 RunEvent/terminal contract；canonical 终态仍只由 RunCoordinator 提交。
+- 无原生 Session 的 compatibility path 不声明 resume/steer 能力；进程中断后明确失败，不静默重跑产生重复回答或业务副作用。
+- Compatibility adapter 只服务旧入口和迁移期验收，不接受新 Agent Workspace 输入，也不得成长为第二套 Tool Gateway。
+
+### 9.7 Sandbox 与 Workspace
 
 生产默认：
 
@@ -496,7 +600,7 @@ Runtime Worker 不获得 MCP secret、数据库连接或租户长期 Token。
 - 高风险租户或写任务使用独立 Runtime Cell；只读低风险任务可共享 Worker 池。
 - Tool Gateway 再做宿主侧策略，Sandbox 不是唯一授权层。
 
-### 9.6 Memory 与 Context
+### 9.8 Memory 与 Context
 
 必须区分：
 
@@ -514,8 +618,11 @@ Pi compaction、OpenClaw Markdown memory、Open Design global/project memory 和
 选择：源码级 SDK 集成，部署为独立 Node Runtime Worker。
 
 - 在自有 `packages/agent-runtime-worker` 中固定 `@earendil-works/pi-agent-core` 等具体版本和 lockfile。
-- 通过自有 `PiRuntimeAdapter` 使用 Agent Loop、SessionStorage 和 Hook。
+- `AgentDefinitionVersion` 通过 `RuntimeProfile` 默认绑定 `PiRuntimeAdapter`；后续更换 Adapter 不修改 Conversation/Run 事实源。
+- 通过自有 `PiRuntimeAdapter` 使用 Agent Loop、SessionStorage 和 Hook；Pi 私有 Session 只由 `RuntimeSessionBinding` 引用。
+- Worker 使用本地 SQLite event spool；未收到 Control Plane ACK 的 `runtime_seq` 事件在重连后重发。
 - 开发期可以 monorepo package 运行；生产构建为独立容器镜像，由 MetaEduBase 控制版本和回滚。
+- V1 交付 Docker Compose 部署单元，同时保持 health check、配置、存储和网络边界可迁移到 Kubernetes。
 - 不整体 fork Pi；只有上游 bug 无法扩展且补丁已尝试 upstream 时才维护最小 patch。
 - 不嵌入 Pi 页面，不让浏览器连接 Pi RPC。
 
@@ -539,13 +646,14 @@ Pi compaction、OpenClaw Markdown memory、Open Design global/project memory 和
 
 | 阶段 | 建议工期 | 交付 | 依赖/门禁 |
 |------|----------|------|-----------|
-| 0. Contract Freeze | 1-2 周 | 本 spec、Context Map、Runtime/RunEvent/ToolGrant schema、APP-005/009 首批 Rubric、APP-012/030 共享采集边界和 APP-016 研究边界 | REQ-059 Shaping -> Ready |
-| 1. Durable Control Plane | 2-3 周 | REQ-041 Conversation/Message；REQ-047 Run/Event/Approval/Artifact 最小表与 API；Direct RAG compatibility path | 不接 Pi；先证明刷新/重连/终态 |
+| 0. Contract Freeze | 1-2 周 | 本 spec、Context Map、Runtime/RunEvent/ToolGrant schema、APP-005/009 首批 Rubric、APP-012/030 共享采集边界和 APP-016 研究边界 | REQ-059 Ready（Architecture Gate 已完成） |
+| 1. Durable Control Plane | 2-3 周 | REQ-041 Conversation/Message；REQ-047 Run/Event/Approval/Artifact 最小表与 API；旧 Direct RAG/Skill compatibility path | 不接 Pi；先证明刷新/重连/终态 |
 | 2. Workspace & Navigation | 2-3 周 | REQ-042 三栏 Workspace；REQ-060 单一导航/permission source | Playwright desktop/mobile + RBAC matrix |
-| 3. Boundary Closure & Tool Gateway | 2-4 周 | TD-085 分 Slice；LLM Port；Direct RAG 收缩；ToolRouter/ToolGateway/ToolGrant | 现有 RAG/问数/Skill/DD 回归全绿 |
-| 4. Pi Read-only Pilot | 3-4 周 | Node Worker、PiRuntimeAdapter；先跑 APP-005 只读对照，再以 APP-009 跑真实资产 + 授权外部交通/配套数据的多方案选址；覆盖 RAG + Query + MCP/Skill、多步计划、预算和取消 | sandbox fail closed；无真实 secret 下发；不替换 APP-005 生产 SkillRunner；外部数据经 REQ-063 |
-| 5. Approval, Sandbox & ACP | 4-6 周 | durable approval、workspace lease、network allowlist、ACP new/resume/cancel/permission | 故障注入、重启恢复、跨租户攻击测试 |
-| 6. Memory & Active Work | 4-6 周 | REQ-061 Memory Governance、REQ-049 schedule/event trigger、评测与运营面板 | 敏感记忆策略、删除/纠正、成本基线 |
+| 3. Boundary Closure & Tool Gateway | 2-4 周 | TD-085 分 Slice；LLM Port；Direct RAG 收缩；AgentTurnLoopRuntime/RuntimeProfile/ToolRouter/ToolGateway/ToolGrant contract | 现有 RAG/问数/Skill/DD 回归全绿 |
+| 4. Pi Read-only Pilot | 3-4 周 | Node Worker、PiRuntimeAdapter、SQLite spool/ACK；先跑 APP-005 只读对照，再以 APP-009 跑真实资产 + 授权外部交通/配套数据的多方案选址 | sandbox fail closed；无真实 secret 下发；不替换 APP-005 生产 SkillRunner；外部数据经 REQ-063 |
+| 5. Controlled Action | 4-6 周 | durable HITL、workspace lease、network allowlist、L3 写语义、REQ-062/APP-012 闭环，再复用到 APP-030 | crash/reconcile/unknown、重启恢复、跨租户攻击测试 |
+| 6. Runtime Expansion | 2-4 周 | ACP 与 LangGraph Adapter，复用同一 conformance suite | capability/new/resume/steer/cancel/permission/event mapping 全通过 |
+| 7. Memory & Active Work | 4-6 周 | REQ-061 Memory Governance、REQ-049 schedule/event trigger、APP-016、评测与运营面板 | 敏感记忆策略、删除/纠正、成本基线 |
 
 可演示 V1 约 8-12 周；满足企业生产治理的 V1 约 16-24 周。任何“2-4 周完成超级智能体”的计划通常只覆盖 Agent Loop 演示，不覆盖多租户、恢复、审批、沙箱、审计和评测。
 
@@ -554,9 +662,13 @@ Pi compaction、OpenClaw Markdown memory、Open Design global/project memory 和
 | 原方案 | 调整 |
 |--------|------|
 | A. 先建 Planner/Executor/Evaluator Agent Core，并拆 AIChatService | 先做 Contract/RunEvent；TD-085 单独拆依赖倒置；Pi 提供统一 Loop，不新建三个通用类 |
-| B. 再做记忆 + 路由 | 路由应在 Pi Pilot 前完成；长期记忆延后，Conversation/Run 持久化不能延后 |
+| B. 再做记忆 + 路由 | 新 Workspace 不做外部问题复杂度路由；先冻结 Runtime Profile/Binding 和 Tool Policy，长期记忆延后，Conversation/Run 持久化不能延后 |
 | C. 再接 MCP/Skill | MCP/Skill 已交付；当前工作是 Tool Gateway 包装和授权，不是重建 Registry |
 | D. 最后产品化控制台 | 会话、Run、审批和事件 UI 是 Harness 的早期验收面，不应等 Loop 完成后补 |
+
+### 11.2 AI Delivery Profile
+
+后续每个交付 plan 必须记录复杂度、风险面、主 Harness/model/effort、允许下放范围、第二评审模型、人工门禁和验证命令。初始任务分工、推理强度和双模型评审规则以 [Agent Platform AI Delivery Routing Matrix](../../03-engineering-governance/03-matrices/agent-platform-ai-delivery-routing.md) 为事实源。该矩阵只管理编码交付责任，不参与产品运行时的 `RuntimeProfile` 或 `ModelGrant`。
 
 ## 12. 首批企业场景
 
@@ -564,15 +676,15 @@ Pi compaction、OpenClaw Markdown memory、Open Design global/project memory 和
 
 建议园区五应用验收场景：
 
-| 场景 | Route | 验证重点 |
-|------|-------|----------|
+| 场景 | 执行方式 | 验证重点 |
+|------|----------|----------|
 | 园区第一号：APP-005 企业 360 背调 | deterministic SkillRunner 生产基线 + Agent Runtime 只读对照 | 接入统一 Conversation/Run/Approval/Artifact/Workspace；保持制审分离、报告/证据和 MCP 审计，不用 Agent 路径直接替换生产编排 |
 | 园区第二号：APP-009 AI 载体选址 | Agent Runtime + QueryService + REQ-063 External Data | 真实资产库存、企业硬约束、授权地图/交通数据、多方案权衡、来源时效和人工选择；不自动锁定房源 |
 | 园区第三号：APP-012 招商动态报表 | REQ-062 Campaign Workflow + Agent 辅助 | 统计要求解析、系统覆盖判断、动态表单审核发布、多人填报、数据快照、汇总报告和常态模板 |
 | 园区第四号：APP-030 会展招商 | REQ-062 Campaign Workflow + Conversation Capture | 历史模板复用、本次字段版本、百人级受众、表单/对话登记、主体去重、进度和领导汇总 |
 | 园区第五号：APP-016 产业研究辅助平台 | Research Agent + Skill + REQ-063 External Data + Artifact | 研究计划、授权来源、产业链/企业分析、假设与事实分离、证据化报告和招商指导；吸收 APP-011 |
 
-高风险写操作首期不让自由 Agent 直接执行。Agent 生成草稿或 Action Proposal，确定性 Workflow 校验后进入人工审批，再由受控 Tool 执行。
+高风险写操作首期不让自由 Agent 无审批执行。具备幂等键与可靠对账的 Tool 可在确定性 Policy 校验和精确审批后按 L3 执行；其余 Tool 只生成草稿或 Action Proposal。
 
 ## 13. 自主等级
 
@@ -590,7 +702,8 @@ L4 不是“yolo”。它必须是明确业务范围、确定性前后置校验�
 
 ### 14.1 效果指标
 
-- Route accuracy：Direct RAG / Skill / Agent 分类正确率。
+- Zero-tool/tool decision quality：应直接回答时不滥用工具，需要事实源时不跳过检索或问数。
+- Tool exposure policy accuracy：按 AgentDefinition/tenant/purpose 生成的可见工具集合是否正确。
 - Task success：按场景验收 Rubric 完成任务的比例。
 - Groundedness 与 evidence coverage：关键结论是否有受治理证据。
 - Contradiction handling：证据冲突是否显式呈现和升级。
@@ -599,14 +712,17 @@ L4 不是“yolo”。它必须是明确业务范围、确定性前后置校验�
 
 ### 14.2 运行指标
 
-- 各 Route 的 P50/P95 首 token、总时长和排队时间。
+- 各 RuntimeProfile / AgentDefinition 的 P50/P95 首 token、总时长和排队时间。
 - 每 Run step/tool/retry/token/cost。
 - resume success、event gap、duplicate event、terminal mismatch。
-- approval pending/expired/conflict、sandbox denied、policy denied。
+- spool pending/ACK lag、runtime seq duplicate/gap、approval pending/expired/conflict、sandbox denied、policy denied。
+- write reconcile success、`outcome_unknown`、人工对账时长和禁止盲重试命中数。
 
 ### 14.3 故障与安全门禁
 
 - Worker 进程在 running/waiting_approval 时被 kill，控制面状态可恢复或显式失败。
+- 对 `prepare / approval / reserve / execute / reconcile / settle` 每个边界注入崩溃；execute 后无法判定结果时必须进入 `outcome_unknown`。
+- Worker spool 在 ACK 丢失、重复发送和重启后仍可重放；Control Plane 不产生重复 `RunEvent` 或重复终态。
 - SSE 断线后从 `after_seq` 重放，无重复终态和事件缺口静默。
 - ACP `session/load` 不存在/损坏时不创建新 Session。
 - Sandbox/网络策略不可用时拒绝启动 Run。
@@ -621,26 +737,129 @@ L4 不是“yolo”。它必须是明确业务范围、确定性前后置校验�
 - 前端只连接 MetaEduBase API/SSE，不页面集成外部 Agent。
 - Pi 固定版本 SDK + Node Worker/Sidecar，不整体 fork。
 - ACP 是南向 Runtime 协议，不是业务编排引擎。
-- Direct RAG、SkillRunner、Agent Runtime 按复杂度分流。
+- 新 Agent Workspace 输入统一进入 `AgentTurnLoopRuntime`；旧 Direct RAG/Skill 和确定性 Workflow 保持兼容边界。
 - 不保存或展示原始 Chain-of-Thought。
 - Approval、Tool Grant、RunEvent 和 Runtime Binding 必须持久化或可重建；内存 Map 不是事实源。
 - `session/load` 失败不得静默创建新 Session；Sandbox 不得 fail open。
 
-### 15.2 REQ-059 Ready 前必须决定
+### 15.2 Architecture Gate 冻结决策
 
-- Python Control Plane 到 Node Worker 使用 HTTP/SSE、NDJSON RPC 还是 gRPC。
-- Worker 共享池与 per-tenant Runtime Cell 的分级标准。
-- RunEvent payload 外置阈值、保留周期和归档策略。
-- Tool Grant 的签名/opaque token、撤销和计费模型。
-- APP-005/009/012/030/016 的离线评测集、Rubric、真实数据授权与上线门槛；首个 REQ-062 Campaign 和 REQ-063 Source Registry 样例。
-- `agent_workspace` / `agent_execution` 两个 bounded context 是否在首个 Slice 同时创建，或先以模块边界落在一个上下文后再拆分。
+2026-07-23 按源码研究、当前代码边界和企业部署约束冻结以下 V1 默认值。后续 Requirement 可以在不改变产品事实源和 Port 语义的前提下优化实现；改变本表中的所有权、失败语义或安全默认值属于破坏性架构变更，必须回到 REQ-059 重新评审。
+
+| ID | 决策 | V1 冻结值 | 后续触发条件 |
+|----|------|-----------|--------------|
+| AG-1 | Control Plane -> Worker 传输 | 内部 HTTP/JSON command API + SSE event stream；终态独立查询；生产使用服务身份和 mTLS/等价双向认证 | 只有真实压测证明 HTTP/SSE 无法满足吞吐、背压或双向流要求时，才在 `AgentTurnLoopRuntime` 后评估 gRPC |
+| AG-2 | Runtime 隔离 | L0/L1 只读任务可使用共享 Worker 池；写操作、敏感租户、不可信 ACP、自定义文件/网络能力进入独立 Runtime Cell | 根据真实资源争用、合规等级和 P95 排队时间调整 Cell 粒度，不降低 fail-closed 默认值 |
+| AG-3 | RunEvent 存储 | 可公开/内部 JSON payload `<= 32 KiB` 才内联 PostgreSQL；更大、二进制或敏感内容外置对象存储，仅保留 ref/digest/size/classification | 真实事件体积分布证明阈值不合理时按迁移 spec 调整，不允许直接增大数据库行而无基线 |
+| AG-4 | ToolGrant | 服务端生成 256-bit opaque token，只存服务端摘要；默认 TTL 5 分钟、最大 15 分钟；写操作单次使用；预算由控制面 reserve、按 execute/reconcile 结果 settle/release | 只有 Gateway 压测证明在线校验成为瓶颈时才评估签名 token，且仍需即时撤销通道 |
+| AG-5 | 首批 Pilot | APP-005 保持 SkillRunner 生产基线并做只读 Agent 对照；APP-009 是首个新 Agent Pilot；其余园区应用使用各自 Requirement 验收 | 外部来源未授权时 APP-009 明确 Blocked，不用 mock/dry-run 冒充真实 Pilot 通过 |
+| AG-6 | bounded context | 首个实现 Slice 同时建立 `agent_workspace` 与 `agent_execution` 两个契约边界；`agent_memory` 后置 | 代码和迁移真正引入上下文时更新 `ARCHITECTURE.md`，不先创建通用 `agent` context |
+| AG-7 | Turn Loop 与 Runtime 绑定 | 新 Agent Workspace 输入统一进入 `AgentTurnLoopRuntime`；Pi 为 V1 默认 RuntimeProfile；切换 Runtime 新建 Binding，不迁移私有 checkpoint | 只有产品决定恢复外部问题复杂度路由时回到 REQ-059 评审；旧 AI Chat/Workflow 兼容不触发变更 |
+| AG-8 | Worker 事件与写操作恢复 | Worker SQLite spool + runtime_seq + Control Plane ACK；写操作按 prepare/approval/reserve/execute/reconcile/settle，未知结果 `outcome_unknown` 且禁止盲重试 | 只有 Provider 提供更强原子提交/对账协议时才可简化，不得弱化未知结果语义 |
+
+#### AG-1：HTTP/SSE 传输契约
+
+- Control Plane 通过幂等 HTTP/JSON command 创建/恢复 Session、启动/取消 Run、响应审批和关闭 Session。
+- Worker 通过 SSE 暴露按 `after_runtime_seq` 恢复的事件流；Control Plane 将事件规范化后写入 `RunEventLedger`，再通过 command API ACK `through_runtime_seq`；浏览器不直接连接 Worker。
+- 每个 command 必须携带 `tenant_id / conversation_id / run_id / runtime_epoch / idempotency_key`；Worker 不把连接存活等同于 Run 存活。
+- `events` 与 `terminal_result` 保持分离；SSE 结束、网络断开或 Worker 重启都不能推导 Run 已成功。
+- 首期不采用裸 NDJSON 双向 RPC；审批、cancel、steer/follow-up 统一走 command API，事件统一走 SSE，避免两套重放语义。
+
+#### AG-2：Runtime Cell 分级
+
+共享 Worker 池只允许同时满足以下条件的任务：
+
+- RuntimeProfile、自主等级和 Tool Policy 均判定为只读 L0/L1 模式。
+- 文件系统只读或仅使用独立临时目录，网络访问仅经 allowlist/Tool Gateway。
+- 不含业务写 Tool、租户长期凭证、自定义可执行代码或未受信 ACP Runtime。
+- 每个 Run 有独立 WorkspaceLease、并发/CPU/内存/时间预算和 runtime epoch。
+
+出现任一条件时进入独立 Runtime Cell：
+
+- 任何业务写操作、文件持久化写入或高风险审批后执行。
+- tenant policy、数据分类或监管要求需要专属故障域。
+- 外部 ACP/自定义 Runtime 无法证明与平台相同的沙箱边界。
+- 自定义 Tool/Skill 需要额外网络、文件或进程能力。
+
+敏感租户默认 per-tenant Cell；一次性高风险任务可以 per-run Cell。Sandbox、挂载或网络策略不可用时拒绝启动，不降级到共享池。
+
+#### AG-3：RunEvent payload、保留与归档
+
+- PostgreSQL `RunEvent` 内联 payload 必须是已裁剪 JSON、大小 `<= 32 KiB`，且 classification 不高于 `internal`。
+- 超过阈值、二进制、原始 Tool Result、文档正文以及 `confidential/restricted` 内容写对象存储；事件只保存 `payload_ref / sha256 / byte_size / content_type / classification / expires_at` 和安全摘要。
+- 默认保留：RunEvent 热重放 90 天；Run 终态、Approval 决策、ToolCall 审计和 payload digest 365 天；Artifact/Evidence 按业务与租户保留策略执行。租户策略可以延长，但不能绕过法定或安全删除要求。
+- 热重放期后，客户端只能读取已归档摘要和 Artifact/Evidence，不承诺逐 token/tool-progress 回放。
+- 原始 Chain-of-Thought、密钥、数据库连接、长期 Token 和未裁剪敏感响应不进入 RunEvent 或日志。
+- `(tenant_id, run_id, seq)` 必须唯一；外置失败时不得先提交指向不存在对象的事件。
+
+#### AG-4：ToolGrant 与预算结算
+
+- ToolGrant token 使用 CSPRNG 生成至少 256 bit 熵的 opaque value，只在签发时返回 Runtime；数据库保存 keyed digest/token hint，不保存明文。
+- Grant 绑定 `tenant / actor / agent / run / runtime_epoch / tool_id+version / operation / resource constraints / purpose / risk / approval_revision / expires_at / max_calls / budget`。
+- 默认 TTL 5 分钟，绝对上限 15 分钟；写操作 `max_calls=1`。只读 Grant 也必须有调用次数和成本上限，不签发 Conversation 级长期 Grant。
+- Run terminal、cancel、runtime epoch 变化、审批过期/撤销、策略版本失效或预算耗尽时立即撤销；重放旧 token 稳定返回拒绝。
+- 预算采用 `reserve -> execute -> reconcile -> settle/release`：Control Plane 在调用前原子预留，Gateway 按真实 usage 和对账结果结算；Worker 自报 token/cost 只做观测，不是计费事实源。
+- 审批通过后签发匹配批准参数摘要的新 Grant，不扩大原 Grant 权限，不允许 Runtime 修改已批准参数后复用。
+
+#### AG-5：首批 Pilot Rubric
+
+| Pilot | 数据与执行方式 | 必须通过的安全/正确性门槛 | 质量与运营基线 |
+|-------|--------------|---------------------------|----------------|
+| APP-005 企业 360 背调 | 使用已有授权企业样例、真实 QCC/内部数据/QueryService；生产仍走 deterministic SkillRunner，Agent 只读对照 | 跨租户/越权调用 0；关键事实 100% 有 Evidence；制审分离和人工确认点 100% 保留；Agent 不写 DdTask/DdReport | 对比 schema 完整度、Evidence coverage、工具失败、人工干预、P50/P95、token/cost，不预设无数据依据的“准确率提升” |
+| APP-009 AI 载体选址 | 一份真实企业需求、一个真实资产 Catalog、至少一个经 REQ-063 授权的地图/交通来源；只读 Agent Runtime | 推荐方案硬约束违反 0；外部关键指标 100% 带来源/时间/坐标与距离口径；至少 3 套方案；不自动锁房或写资产系统 | 记录可行方案率、排序稳定性、证据覆盖、工具失败、人工改权重次数、P50/P95、token/cost |
+
+真实授权样例不足时，只能完成 contract/fixture 安全测试并标记 Pilot Blocked。首个真实样例用于建立基线，不发布无法回溯数据集和评分方法的聚合准确率。进入规模化生产前，由 APP Requirement 用代表性数据集另行冻结业务阈值。
+
+APP-012/030 共用 REQ-062 的 Campaign/Form/Submission Rubric；APP-016 共用 REQ-063 的来源和研究证据 Rubric，不复制到首个 Runtime Gate。
+
+#### AG-6：上下文所有权
+
+首个实现 Slice 联合冻结、分开创建两个 bounded context：
+
+| 上下文 | 拥有对象 | 禁止拥有 |
+|--------|----------|----------|
+| `agent_workspace` | Conversation、Message、会话命名/置顶/归档/删除/搜索和用户可见消息生命周期 | Runtime live handle、ToolGrant、Approval 状态机、业务报告字段 |
+| `agent_execution` | AgentDefinitionVersion、RuntimeProfile、AgentRun、RunEvent、RuntimeSessionBinding、TurnInput、HumanInputRequest、ToolCall、ToolGrant、ModelGrant、ApprovalRequest、Artifact、EvidenceItem、运行 Snapshot 和执行策略 Port | Conversation 生命周期、长期 Memory、企业背调/选址/报表/研究领域状态 |
+| `agent_memory`（后置） | MemoryItem、摘要/记忆治理和 Context 选择记录 | Conversation/Run 事实源、企业知识库本体 |
+
+- REQ-041 与 REQ-047 在同一 contract-first 设计中确认 ID、删除/保留和终态关系，但按上下文分别实现与迁移。
+- 两个上下文只通过 application port、稳定 ID 和显式 DTO 交互，不共享 ORM model/repository。
+- `agent_execution` 必须先支持 DirectRagRuntime/SkillRuntime compatibility path，不等待 Pi Worker 才可验收。
+- `ARCHITECTURE.md` 只在代码、迁移和运行单元真实落地时更新；本 Architecture Gate 仍是目标设计，不虚构现状。
+
+#### AG-7：Turn Loop 入口与 Runtime 绑定
+
+- 新 Agent Workspace 的每个用户输入先持久化 Message/TurnInput，再创建后台 AgentRun 并进入 `AgentTurnLoopRuntime`。
+- Pi 是 V1 默认 RuntimeProfile；模型可以零 ToolCall 直接结束，也可以在同一 Loop 内调用受治理工具。
+- 活动 Run 的普通新消息默认 queued 为下一 Run；用户显式 steer 才进入当前 Session actor queue。
+- Runtime 追问使用 `HumanInputRequest`，高风险行动使用 `ApprovalRequest`；二者状态、权限和响应 API 分离。
+- 更换 Runtime/Profile 创建新 `RuntimeSessionBinding`；不迁移 Pi、ACP、LangGraph 或其他 Runtime 的私有 checkpoint。
+- 旧 `/ai/chat/evidence` 和确定性 Workflow 作为兼容入口保留，但不得被描述为新 Workspace 的复杂度旁路。
+
+#### AG-8：Worker Event Spool 与写操作恢复
+
+- Worker 先把事件写入本地 SQLite spool，再按单调 `runtime_seq` 发送；Control Plane 以 `(binding, epoch, runtime_seq)` 幂等落 PostgreSQL 后 ACK。
+- PostgreSQL `RunEvent` 是唯一企业事件事实源；spool 只负责进程间至少一次投递，不承担租户查询、审计或长期保留。
+- 写 Tool 固定按 `prepare -> approval -> reserve -> execute -> reconcile -> settle -> resume` 推进，审批精确绑定 ToolCall 和参数摘要。
+- execute 后进程或网络失败时必须先按 provider idempotency key、状态接口或业务审计 reconcile；无法判定时进入 `outcome_unknown`，暂停 Run 且禁止盲重试。
+- 无幂等键或可靠对账能力的写 Tool 只能暴露为 L2 Draft/Action Proposal。V1 不支持生产 `allow-always`。
+
+### 15.3 Ready 后仍需外部输入
+
+以下内容不改变 Architecture Gate，可作为独立 Requirement 的真实验收前置：
+
+- APP-009 的企业需求样例、资产 Catalog 和地图/交通数据授权，由 REQ-063 source Spike 跟踪。
+- APP-012 的首份统计要求、填报角色和输出格式，由 REQ-062 跟踪。
+- APP-030 的真实展会、受邀招商人员和历史模板，由 APP-030 后续 Requirement 跟踪。
+- APP-016 的真实产业研究课题、研究范式和授权来源，由 APP-016 后续 Requirement 与 REQ-063 跟踪。
+- 上述输入缺失会阻塞对应 Pilot 的真实验收，不回退 REQ-059 的控制面架构决策，也不得用 mock 宣称业务 Pilot 完成。
 
 ## 16. 明确不做
 
-- 不把所有 AI Chat 请求改为 Agent Loop。
+- 不把旧 AI Chat 端点或确定性业务 Workflow 强制迁入 Agent Loop；新 Agent Workspace 统一 Turn Loop 是已冻结目标。
 - 不用 GraphRAG 替代 Runtime/控制面；GraphRAG 只是可选 Retrieval Tool。
 - 不让 Pi/ACP Session 取代 Conversation/Message。
 - 不让 Runtime 直接调用租户数据库、MCP secret 或业务写 API。
 - 不使用 `allow-all-tools`、`dangerously-skip-permissions`、默认 yolo、自动 confirm 或 sandbox degrade-to-off 作为生产配置。
 - 不把企业背调字段、QCC 参数或报告 schema 写入平台通用实体。
-- 不在本 Shaping 文档更新 `ARCHITECTURE.md` 并声称新上下文已落地；代码和迁移开始后再更新长期架构事实源。
+- 不在本架构文档更新 `ARCHITECTURE.md` 并声称新上下文已落地；代码和迁移开始后再更新长期架构事实源。

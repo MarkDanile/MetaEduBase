@@ -16,23 +16,25 @@
 
 ### REQ-059: 企业级可控 Agent 平台源码研究与控制面塑形
 
-状态：🟣 Shaping
+状态：🔵 就绪
 类型：Product Planning / Architecture Spike
 领域：Agent Platform / Control Plane / Runtime / Agentic RAG
 当前执行模式：spike
 最近接手工具：Codex
-分支：`codex/docs-agent-platform-roadmap`
+分支：`codex/req-059-architecture-gate`
 
 需求来源：
 - Requirement: [REQ-059](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md)
 - Spec: [源码研究与控制面契约](../02-delivery-plans/01-specs/2026-07-23-req-059-enterprise-agent-platform-control-plane.md)
+- Source Navigation: [固定仓库、commit 与实施源码路径](../02-delivery-plans/01-specs/2026-07-23-req-059-enterprise-agent-platform-control-plane.md#24-后续-req-实施源码导航)
+- Matrix: [Agent Platform AI Delivery Routing](03-matrices/agent-platform-ai-delivery-routing.md)
 - Related: [REQ-043](../01-product-planning/05-requirements/REQ-043-runtime-neutral-agentic-rag-orchestration.md) / [REQ-041](../01-product-planning/05-requirements/REQ-041-ai-workspace-conversation-persistence.md) / [REQ-047](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md)
 - 技术债：[TD-085](technical-debt.md#td-085-收口-ai-chatskill-与-agent-app-的上下文边界倒置)
 
-当前进展：已完成源码与专家解读交叉核验、Control Plane contract 和命名；项目路线已从 P2 增长期切换到 P3 企业 Agent 平台化，原规模化/多模态顺延 P4；已新增 W30 迭代并统一建议依赖顺序。园区近期应用主线已冻结为 APP-005 企业 360 背调 -> APP-009 AI 载体选址 -> APP-012 招商动态报表 -> APP-030 会展招商 -> APP-016 产业研究；APP-011 并入 016，APP-022 并入 012；新增 REQ-062 共享动态采集报表和 REQ-063 受治理外部数据能力。
-下一步：确认 REQ-059 Ready 前六项待决策、APP-005/009 首批 Rubric、REQ-062 首个真实统计要求和 REQ-063 首批授权来源；确认后先补 REQ-041/047 contract-first spec，并可并行塑形 REQ-060，不直接进入 Pi 实现。
-验证状态：`scripts/check-engineering-docs --full` 通过（32 项历史 allowlist）；`git diff --check` 通过。未运行代码测试，本轮仅修改规划与架构文档。
-交接备注：本轮只完成架构塑形和事实源文档，不实现 Runtime、数据库表或 UI；REQ-059 继续保持 Shaping。Claude Code 后续接手时先读取本卡、REQ-059 与控制面 spec，从最新 main 创建新任务分支，不在已合并的 `codex/docs-agent-platform-roadmap` 上继续开发；不得把外部项目 README 声明当作已验证生产能力。
+当前进展：Architecture Gate 已扩展为八项决策：新 Workspace 统一进入 `AgentTurnLoopRuntime`、Pi 默认 RuntimeProfile、切换 Runtime 新建 Binding、Worker SQLite spool/runtime_seq/ACK、L3 写操作 reconcile/`outcome_unknown`；任务复杂度、模型、推理强度和双模型评审已登记到 AI Delivery Matrix。12 个参考仓库已补 GitHub 地址、固定 commit、精确源码路径、借鉴/禁用边界和后续 REQ 映射。
+下一步：完成本轮文档门禁与一致性复核后进入 Git 闭环；后续由独立任务联合补 REQ-041/047 contract-first spec/plan，REQ-060 可并行塑形，不直接在本分支实现 Pi、数据库表或 UI。
+验证状态：`scripts/check-engineering-docs --full` 通过（32 项历史 allowlist），12 个上游固定 commit 的引用路径逐仓核验无缺失，GitHub URL/commit 一致性扫描和 `git diff --check` 通过。本地 `gpt-5.6-terra/high` 独立只读审查发现的 7 项状态机/兼容/分工问题已全部收口，复审无阻塞问题。外部 Claude Code + GLM-5.2 审查因私有仓库外发策略被拒绝，未执行；用户于 2026-07-24 完成人工架构确认。本轮为 M0 文档，不运行代码测试。
+交接备注：后续每个交付 plan 必须补 `AI Delivery Profile`；编码模型分工不得与产品 RuntimeProfile/ModelGrant 混用。APP-009 的真实地图/交通授权仍由 REQ-063 跟踪，不得用 mock/dry-run 冒充业务 Pilot 完成。
 
 ## 下一批候选任务
 
