@@ -95,7 +95,7 @@
 | REQ-050 | 政策 / 规则 / 评分引擎与可解释匹配 | ⚫ Candidate | 支撑政策匹配、合同审查、载体推荐、风险评分和线索评分，要求规则来源可追溯。 |
 | REQ-051 | 业务指标语义层与经营分析口径 | ⚫ Candidate | 固化出租率、空置率、去化率、NOI、现金流、欠费率等经营指标定义和数据血缘。 |
 | REQ-052 | 智能问数与国资信息化数据激活原子能力 | 🟢 Done | 已交付语义层、查询计划、SQL Guard、权限治理、结果解释和真实业务样例闭环。 |
-| REQ-059 | 企业级可控 Agent 平台内核与 Runtime 中立控制面 | 🔵 Ready | Architecture Gate 已冻结平台所有权、统一 Turn Loop、HTTP/SSE+ACK、Runtime Cell、RunEvent/ToolGrant、L3 写恢复、AI Delivery Matrix 和 APP-005/009 Pilot Rubric。 |
+| REQ-059 | 企业级可控 Agent 平台内核与 Runtime 中立控制面 | 🟢 Done | PR #475 完成 Architecture Gate，冻结平台所有权、统一 Turn Loop、HTTP/SSE+ACK、Runtime Cell、RunEvent/ToolGrant、L3 写恢复、AI Delivery Matrix、12 仓库源码导航和 APP-005/009 Pilot Rubric。 |
 | REQ-060 | 企业 Agent 控制台信息架构与权限化导航 | ⚫ Candidate | 收口菜单事实源，将 MCP/Skill 归入能力中心，按 permission 派生导航和路由守卫。 |
 | REQ-061 | Agent 记忆与上下文治理 | ⚫ Candidate | 分离工作上下文、会话摘要、长期记忆和企业知识，建立来源、TTL、确认和删除边界。 |
 | REQ-062 | 动态数据采集、填报与报表发布平台 | ⚫ Candidate | 为 APP-012/030 提供覆盖分析、版本化表单、Campaign、Submission、汇总和常态化发布能力。 |

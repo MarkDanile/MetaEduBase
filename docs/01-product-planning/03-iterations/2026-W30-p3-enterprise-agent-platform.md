@@ -8,11 +8,11 @@ Goal: 完成 P2 -> P3 路线切换，冻结企业 Agent Control Plane、源码�
 
 | ID | 类型 | 状态 | 摘要 | 本迭代退出条件 |
 |----|------|------|------|----------------|
-| REQ-059 | REQ | 🔵 Ready | 企业级可控 Agent 平台内核与 Runtime 中立控制面 | 源码研究、Context Map、命名、Runtime/RunEvent/ToolGrant 契约、八项 Architecture Gate 决策、AI Delivery Matrix 和 APP-005/009 Pilot Rubric 已冻结 |
+| REQ-059 | REQ | 🟢 Done | 企业级可控 Agent 平台内核与 Runtime 中立控制面 | PR #475 已合并；源码研究、Context Map、命名、Runtime/RunEvent/ToolGrant 契约、八项 Architecture Gate 决策、AI Delivery Matrix 和 APP-005/009 Pilot Rubric 已冻结 |
 
 ## Ready Queue
 
-本表只表示 REQ-059 通过 Architecture Gate 后的建议顺序，不把 Candidate 状态提前写成 Planned/Doing。
+本表只表示 REQ-059 完成 Architecture Gate 后的建议顺序，不把 Candidate 状态提前写成 Planned/Doing。
 
 | 顺序 | 任务 | 当前状态 | 下一步 |
 |------|------|----------|--------|
@@ -72,5 +72,6 @@ Goal: 完成 P2 -> P3 路线切换，冻结企业 Agent Control Plane、源码�
 - [P3 Milestone](../02-milestones/03-agent-platform-phase.md)
 - [REQ-059 Requirement](../05-requirements/REQ-059-enterprise-agent-platform-kernel.md)
 - [REQ-059 Source Study & Contract](../../02-delivery-plans/01-specs/2026-07-23-req-059-enterprise-agent-platform-control-plane.md)
+- [PR #475](https://github.com/MarkDanile/MetaEduBase/pull/475) / squash merge `132730a0`
 - [Current Work](../../03-engineering-governance/current-work.md)
 - [AI Delivery Routing Matrix](../../03-engineering-governance/03-matrices/agent-platform-ai-delivery-routing.md)

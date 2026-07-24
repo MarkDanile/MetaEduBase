@@ -14,27 +14,7 @@
 
 ## 当前进行中
 
-### REQ-059: 企业级可控 Agent 平台源码研究与控制面塑形
-
-状态：🔵 就绪
-类型：Product Planning / Architecture Spike
-领域：Agent Platform / Control Plane / Runtime / Agentic RAG
-当前执行模式：spike
-最近接手工具：Codex
-分支：`codex/req-059-architecture-gate`
-
-需求来源：
-- Requirement: [REQ-059](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md)
-- Spec: [源码研究与控制面契约](../02-delivery-plans/01-specs/2026-07-23-req-059-enterprise-agent-platform-control-plane.md)
-- Source Navigation: [固定仓库、commit 与实施源码路径](../02-delivery-plans/01-specs/2026-07-23-req-059-enterprise-agent-platform-control-plane.md#24-后续-req-实施源码导航)
-- Matrix: [Agent Platform AI Delivery Routing](03-matrices/agent-platform-ai-delivery-routing.md)
-- Related: [REQ-043](../01-product-planning/05-requirements/REQ-043-runtime-neutral-agentic-rag-orchestration.md) / [REQ-041](../01-product-planning/05-requirements/REQ-041-ai-workspace-conversation-persistence.md) / [REQ-047](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md)
-- 技术债：[TD-085](technical-debt.md#td-085-收口-ai-chatskill-与-agent-app-的上下文边界倒置)
-
-当前进展：Architecture Gate 已扩展为八项决策：新 Workspace 统一进入 `AgentTurnLoopRuntime`、Pi 默认 RuntimeProfile、切换 Runtime 新建 Binding、Worker SQLite spool/runtime_seq/ACK、L3 写操作 reconcile/`outcome_unknown`；任务复杂度、模型、推理强度和双模型评审已登记到 AI Delivery Matrix。12 个参考仓库已补 GitHub 地址、固定 commit、精确源码路径、借鉴/禁用边界和后续 REQ 映射。
-下一步：完成本轮文档门禁与一致性复核后进入 Git 闭环；后续由独立任务联合补 REQ-041/047 contract-first spec/plan，REQ-060 可并行塑形，不直接在本分支实现 Pi、数据库表或 UI。
-验证状态：`scripts/check-engineering-docs --full` 通过（32 项历史 allowlist），12 个上游固定 commit 的引用路径逐仓核验无缺失，GitHub URL/commit 一致性扫描和 `git diff --check` 通过。本地 `gpt-5.6-terra/high` 独立只读审查发现的 7 项状态机/兼容/分工问题已全部收口，复审无阻塞问题。外部 Claude Code + GLM-5.2 审查因私有仓库外发策略被拒绝，未执行；用户于 2026-07-24 完成人工架构确认。本轮为 M0 文档，不运行代码测试。
-交接备注：后续每个交付 plan 必须补 `AI Delivery Profile`；编码模型分工不得与产品 RuntimeProfile/ModelGrant 混用。APP-009 的真实地图/交通授权仍由 REQ-063 跟踪，不得用 mock/dry-run 冒充业务 Pilot 完成。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -54,6 +34,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-24 | REQ-059 企业级可控 Agent 平台源码研究与控制面塑形 | 🟢 完成 | 八项 Architecture Gate 决策、AI Delivery Matrix、园区应用顺序和 12 仓库固定源码导航完成；文档门禁、路径核验、独立复审和用户签字通过 | [PR #475](https://github.com/MarkDanile/MetaEduBase/pull/475)（`132730a0`）/ [Requirement](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md) |
 | 2026-07-23 | TD-084 GitHub Actions Node 24 与 hermetic 测试分类收口 | 🟢 完成 | 6 类 Action 升级 Node 24；slow marker 移除，CI 统一排除 external_network；PR/main/manual 三层全绿，Backend 约 5m，无 Node 20 警告 | [PR #472](https://github.com/MarkDanile/MetaEduBase/pull/472)（`beb7c6fd`）/ [Tech Debt](technical-debt.md#td-084-github-actions-node-24-与-hermetic-测试分类收口) |
 | 2026-07-23 | TD-083 后端风险分级测试选择与性能专项治理 | 🟢 完成 | PR targeted / main full-not-slow / nightly full；默认禁外网 + 外部依赖 mock；not-slow 1365 pass/2m41s；resource 探针 15 pass/4.22s | [PR #469](https://github.com/MarkDanile/MetaEduBase/pull/469)（`cccb3ff6`）/ [Tech Debt](technical-debt.md#td-083-后端风险分级测试选择与性能专项治理) |
 | 2026-07-23 | TD-082 分层质量门禁与 CI 提速 | 🟢 完成 | scope-aware CI + 秒级 hooks + MCP lock + 前端构建去重；不可靠分片已撤销，后端专项由 TD-083 接力 | [PR #467](https://github.com/MarkDanile/MetaEduBase/pull/467)（`754ca109`）/ [Tech Debt](technical-debt.md#td-082-分层质量门禁与-ci-提速) |

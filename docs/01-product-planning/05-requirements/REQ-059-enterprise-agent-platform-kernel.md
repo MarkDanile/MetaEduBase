@@ -1,10 +1,11 @@
 # REQ-059: 企业级可控 Agent 平台内核与 Runtime 中立控制面
 
-> Status: 🔵 Ready
+> Status: 🟢 Done
 > Priority: P0
 > Milestone: P3 / Enterprise Agent Platform
 > Area: Agent Platform / Control Plane / Runtime / Multi-tenant
 > Created: 2026-07-23
+> Completed: 2026-07-24（Architecture Gate via PR #475）
 > Source: 用户关于 Codex 式超级智能体、Pi / ACP 集成和教育/园区企业控制台的连续规划讨论
 > Related: REQ-041 / REQ-042 / REQ-043 / REQ-047 / REQ-049 / REQ-060 / REQ-061 / REQ-062 / REQ-063 / TD-085
 > Spec: [源码研究与控制面契约](../../02-delivery-plans/01-specs/2026-07-23-req-059-enterprise-agent-platform-control-plane.md)
@@ -171,14 +172,36 @@ GraphRAG 是关系索引与推理增强，只作为可选 Retrieval Tool，不�
 | AG-7 | 新 Agent Workspace 输入统一进入 `AgentTurnLoopRuntime`；Pi 是 V1 默认绑定；零工具回答不是旁路，旧 AI Chat 和确定性 Workflow 保留兼容边界 |
 | AG-8 | Worker 使用 SQLite spool + `runtime_seq` + Control Plane ACK；写工具执行遵循 prepare/approval/reserve/execute/reconcile/settle，未知结果进入 `outcome_unknown` 且禁止盲重试 |
 
-## Ready Evidence
+## Completion Evidence
 
 - Context Map、源码对比、目标命名、Runtime/RunEvent/ToolGrant/Approval/Sandbox 和 Worker ACK/写操作恢复基线已进入控制面 spec。
 - 12 个参考仓库均已登记 GitHub 地址、固定 commit、精确源码路径、可借鉴/禁用边界和后续 REQ 映射。
 - APP-005/009 首批 Pilot 的安全门槛、证据口径和真实数据阻塞语义已冻结；不使用无数据集依据的聚合准确率。
 - REQ-041/043/047/060/061/062/063 均有独立所有权、依赖和非目标；REQ-059 不直接实现整个 Agent 平台。
 - 后续任务复杂度、编码模型、推理强度、可下放范围和双模型评审门禁见 [AI Delivery Routing Matrix](../../03-engineering-governance/03-matrices/agent-platform-ai-delivery-routing.md)。
-- 真实地图/交通、动态统计、展会和产业研究输入由对应 Requirement 跟踪，不再作为控制面进入 Ready 的未决架构问题。
+- 真实地图/交通、动态统计、展会和产业研究输入由对应 Requirement 跟踪，不再作为 Architecture Gate 的未决问题。
+
+## Closeout Review
+
+| 维度 | 得分 | 证据 |
+|------|------|------|
+| 范围与需求匹配 / 15 | 15 | Control Plane、Runtime、园区应用和非目标边界均进入 Requirement/Spec/Milestone |
+| 实现质量 / 20 | 20 | 八项 Architecture Gate 决策、目标命名、实施顺序和 12 仓库源码导航形成单一事实源 |
+| 测试与验证证据 / 20 | 18 | 文档全量门禁、diff、固定 commit 路径和 URL 一致性通过；本任务为 M0 文档，不运行代码测试 |
+| 事实源与流程遵守 / 15 | 15 | PR #475 合并后同步 Requirement、Backlog、Iteration、Milestone、work-log 和工作台 |
+| 风险与行为变化控制 / 15 | 15 | 明确不保存 CoT、Pi 不进 API 进程、沙箱 fail closed、写操作 reconcile/unknown 和 Pilot 边界 |
+| 可评审性与交接质量 / 10 | 10 | 独立模型复审、用户签字、源码路径与后续 REQ/模型分工均可追踪 |
+| 持续改进信号 / 5 | 4 | 7 项架构反例已当前收口；未新增规则，后续通过各 Adapter conformance suite 验证 |
+
+总分：97/100。结论：优秀，可关闭 Architecture Gate；无必修 follow-up，后续实施按既定独立 Requirement 推进。
+
+## Delivery Record
+
+| 日期 | 阶段 | 结果 |
+|------|------|------|
+| 2026-07-23 | 路线与应用塑形 | PR #474 合并，建立 REQ-059、P3 路线、园区五应用和 Runtime 中立方向 |
+| 2026-07-24 | Architecture Gate | [PR #475](https://github.com/MarkDanile/MetaEduBase/pull/475) squash merge `132730a0`；冻结八项架构决策、AI Delivery Matrix 和 12 仓库源码导航 |
+| 2026-07-24 | 验证与签字 | `scripts/check-engineering-docs --full`、`git diff --check`、上游固定路径/URL 一致性通过；独立模型复审无阻塞；用户完成架构确认 |
 
 ## Remaining Inputs
 
@@ -186,4 +209,4 @@ GraphRAG 是关系索引与推理增强，只作为可选 Retrieval Tool，不�
 - REQ-062：APP-012 首个真实统计要求、填报角色和输出格式。
 - APP-030/016 后续 Requirement：真实展会与产业研究课题。
 
-这些输入缺失会阻塞对应业务 Pilot 的真实验收，不改变 REQ-059 Ready 状态，也不得用 mock/dry-run 冒充业务完成。
+这些输入缺失会阻塞对应业务 Pilot 的真实验收，不改变 REQ-059 Architecture Gate 已完成的事实，也不得用 mock/dry-run 冒充业务完成。
