@@ -56,5 +56,5 @@
 ## Dependencies / Next Step
 
 - Slice W1 已由 [PR #479](https://github.com/MarkDanile/MetaEduBase/pull/479) 合并：`agent_workspace` durable store、owner-private Conversation API、Message history、双 seq、完整 command digest 与 workspace inbox/outbox 已落地。
-- Slice B1 已由 [PR #485](https://github.com/MarkDanile/MetaEduBase/pull/485) 合并：跨 context inbox/outbox、ConversationExecutionGuard、FIFO/projection barrier、dead-letter/reconcile 与 guarded DELETE/restore 已落地；新 Workspace submit-turn 生产入口仍保持关闭，下一步为 A1 Run query 与 SSE replay。
+- Slice B1 已由 [PR #485](https://github.com/MarkDanile/MetaEduBase/pull/485) 合并；Slice A1 已由 [PR #487](https://github.com/MarkDanile/MetaEduBase/pull/487) 合并，Run query、幂等 cancel intent 与 SSE replay 已落地。新 Workspace submit-turn 生产入口仍保持关闭，下一步为 D1 旧 Direct RAG compatibility recording。
 - REQ-047 Durable Core 与本需求联合实施；Approval/Tool/Artifact/Evidence 扩展不阻塞 W1/E1，但不属于 REQ-041 的完成范围。

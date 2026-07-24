@@ -163,6 +163,8 @@ packages/server-python/app/composition/
 
 **复杂度/执行**：高，`S-H` 主导；replay/live handoff 与权限撤销由 `S-XH` Review。
 
+**实施状态**：🟢 已由 [PR #487](https://github.com/MarkDanile/MetaEduBase/pull/487) 合并（`2f91bed8`）；交付 owner-private GET Run、持久化幂等 cancel intent、PostgreSQL ledger SSE replay/live polling、权限重验、gap/retention/cursor 错误和 `032` migration，严格未开放新 Workspace `/turns`、Pi/Worker/Tool Gateway、D1/R1 或 extended entities。A1 专项 18 passed、Workspace/Execution/Control Plane 联合 233 passed、全量 1605 passed / 4 deselected / 33 warnings，Alembic upgrade/downgrade/upgrade 与三路 CI 全绿；独立 `gpt-5.6-sol max` 多轮审查最终 P0/P1/P2=0/0/0。
+
 交付：
 
 - 实现 GET Run、cancel intent 和 `GET /events?after_seq=N`。
