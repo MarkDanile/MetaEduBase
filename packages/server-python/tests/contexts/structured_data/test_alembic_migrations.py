@@ -47,12 +47,12 @@ async def test_alembic_012_015_create_schema():
     db_url = _db_url()
     conn = await asyncpg.connect(db_url)
     try:
-        # Version stamp must reflect current head (026 after BUG-018 + REQ-058)。
+        # Version stamp must reflect the current repository head.
         version = await conn.fetchval(
             "SELECT version_num FROM metaedu.alembic_version"
         )
-        assert version == "027_tenant_config_audit", (
-            f"alembic head should be 027_tenant_config_audit, got {version!r}"
+        assert version == "028_agent_workspace_store", (
+            f"alembic head should be 028_agent_workspace_store, got {version!r}"
         )
 
         # All 4 tables must exist.

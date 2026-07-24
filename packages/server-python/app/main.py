@@ -7,8 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError
 
-import app.shared.infrastructure.models  # noqa: F401
 from app.config import settings
+from app.contexts.agent_workspace.interfaces.api.router import (
+    router as agent_workspace_router,
+)
 from app.contexts.ai_app.interfaces.api.router import router as ai_app_router
 from app.contexts.document.interfaces.api.router import router as document_router
 from app.contexts.due_diligence.interfaces.api.dd_router import (
@@ -44,6 +46,7 @@ from app.contexts.structured_data.interfaces.api.task_router import (
 )
 from app.contexts.template.interfaces.api.router import router as template_router
 from app.internal_mcp.server import router as internal_mcp_router
+from app.shared.infrastructure import models as _registered_models  # noqa: F401
 from app.shared.infrastructure.database import async_session_factory
 
 logger = logging.getLogger(__name__)
@@ -138,6 +141,7 @@ async def _db_unavailable_handler(
     )
 
 app.include_router(identity_router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(agent_workspace_router)
 app.include_router(identity_admin_router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(knowledge_router, prefix="/api/v1/knowledge", tags=["knowledge"])
 app.include_router(

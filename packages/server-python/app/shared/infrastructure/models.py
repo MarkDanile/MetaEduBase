@@ -1,3 +1,11 @@
+from app.contexts.agent_workspace.infrastructure.models import (
+    ConversationModel,
+    ConversationUserStateModel,
+    MessageModel,
+    MessagePartModel,
+    WorkspaceInboxModel,
+    WorkspaceOutboxModel,
+)
 from app.contexts.document.infrastructure.models import (
     DocumentChunkModel,
     DocumentTaskModel,
@@ -23,6 +31,8 @@ from app.contexts.structured_data.infrastructure.semantic_models_models import (
 from app.contexts.template.infrastructure.models import TemplateModel  # noqa: F401
 
 __all__ = [
+    "ConversationModel",
+    "ConversationUserStateModel",
     "DocumentChunkModel",
     "DocumentTaskModel",
     "FileModel",
@@ -31,6 +41,8 @@ __all__ = [
     "UserModel",
     "KnowledgeNodeModel",
     "KnowledgeEdgeModel",
+    "MessageModel",
+    "MessagePartModel",
     "MCPInvocationAuditModel",
     "MCPServerModel",
     "ResourceModel",
@@ -40,4 +52,6 @@ __all__ = [
     "DatasetModel",
     "DatasetRowModel",
     "SemanticModelModel",
+    "WorkspaceInboxModel",
+    "WorkspaceOutboxModel",
 ]
