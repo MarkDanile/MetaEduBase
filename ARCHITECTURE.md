@@ -61,6 +61,8 @@ flowchart LR
     API --> Document[Document<br/>文件与文档处理]
     API --> Structured[Structured Data<br/>数据集与图谱构建]
     API --> Template[Template<br/>数据要素模板]
+    API --> AgentWorkspace[Agent Workspace<br/>会话与消息事实源]
+    API --> AgentExecution[Agent Execution<br/>执行身份与 Runtime Binding]
 
     API --> Worker[Async Workers<br/>Celery tasks]
     Worker --> Document
@@ -75,6 +77,8 @@ flowchart LR
     Document --> Store
     Structured --> Store
     Template --> Store
+    AgentWorkspace --> Store
+    AgentExecution --> Store
     Worker --> Redis[(Redis)]
     Document --> ObjectStore[(Object Storage)]
 ```
@@ -109,6 +113,8 @@ flowchart LR
 | Structured Data | 数据集、数据行、结构化知识抽取与图谱构建 | 数据集结果、图谱节点边、任务状态 |
 | Template | 数据要素模板及其 AI 初始化 | 模板结构、字段定义、初始化结果 |
 | Resource | 旧资源管理能力，保留兼容职责 | 历史资源接口和过渡能力 |
+| Agent Workspace | 产品 Conversation、用户级会话状态、Message 与 MessagePart | 持久会话、消息历史、置顶和归档状态 |
+| Agent Execution | AgentDefinitionVersion、RuntimeProfile 与 RuntimeSessionBinding；后续执行事实仍按独立契约分 Slice 落地 | 版本化执行身份、Runtime 能力摘要、epoch/lease/连续 ACK cursor |
 
 这些上下文共享基础设施，但不应随意共享业务语义。跨上下文复用时，优先共享契约、基础设施或显式服务，而不是互相穿透内部实现。
 
@@ -143,6 +149,12 @@ flowchart LR
 
 这意味着 AI 问答不是独立孤岛，而是知识上下文的消费层。
 
+### 5.5 Agent 会话与 Runtime 身份
+
+产品 Conversation/Message 由 Agent Workspace 持有，Runtime 私有 Session 的绑定由 Agent Execution 持有。两个上下文只交换 tenant-scoped opaque UUID 或版本化 application contract，不共享 ORM、repository，也不建立跨上下文数据库外键。
+
+Direct RAG compatibility path 只登记稳定 AgentDefinitionVersion/RuntimeProfile 身份，不伪造 Runtime Session。原生 Runtime Binding 使用单调 epoch 隔离旧执行所有者，并以单活动 stream lease 和连续 ACK cursor 为后续事件摄取提供持久边界；Run/Event、Worker 和浏览器 SSE 不属于当前已落地范围。
+
 ## 6. 数据所有权与边界
 
 系统长期要守住的不是“有哪些表名”，而是“谁拥有哪类数据语义”。
@@ -152,6 +164,8 @@ flowchart LR
 - 文件与文档派生结果由 Document 拥有
 - 数据集与结构化图谱构建过程由 Structured Data 拥有
 - 模板定义由 Template 拥有
+- 产品 Conversation、Message 与用户级会话状态由 Agent Workspace 拥有
+- Agent/Runtime 版本身份与 Runtime 私有 Session Binding 由 Agent Execution 拥有
 
 如果一个改动会改变这些所有权边界，例如把某类派生结果迁到另一个上下文、把旧 resource 能力正式废弃、或让 shared 包开始承载新的公共契约族，这类变化应更新本文件。
 
