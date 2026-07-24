@@ -142,6 +142,7 @@ outbox dispatcher
 | id | UUID PK | Conversation 稳定 id |
 | tenant_id | UUID, indexed | 租户边界 |
 | created_by | UUID | V1 owner；平台管理员不因此获得正文权限 |
+| creation_digest | char(64) | 不可变 create command 摘要；同 client conversation id 不同命令返回 409 |
 | title | varchar(200) nullable | 首条消息前允许为空 |
 | title_source | `none/auto/user` | 用户标题不得被 auto title 覆盖 |
 | state | `active/archived/deleted` | 产品生命周期，不反映 Run 状态 |
@@ -456,6 +457,8 @@ API 前缀：
 | POST | `/agent-workspace/conversations/{id}/messages/{message_id}/turn-dispatch/abandon` | 确认 execution 未接受后放弃，不生成第二个命令 |
 
 Conversation list cursor 固化 filter/query hash 与 `(pinned_at, last_activity_at, id)` anchor，并以 cursor issued-at 排除列表开始后新建的 Conversation。它保证 keyset 单向遍历而不冒充数据库历史快照：并发 rename/pin/new Message 会让条目重排，客户端在本地产生这些 mutation 后必须失效并重新加载列表。Message 历史默认按 seq descending 取一页、响应按 ascending 展示，不使用 offset。
+
+client conversation id 的重试必须同时匹配不可变 `creation_digest`；摘要覆盖 tenant、actor、conversation id 与规范化初始标题。相同摘要返回原 Conversation，不同摘要返回 `409 idempotency_conflict`，后续 rename 不改变 creation digest。
 
 `q` 去控制字符、长度 2-100，搜索 title 和 actor 有权读取且 `content_state=visible` 的文本 part；返回 Conversation 级结果，默认不回传正文 snippet。搜索 cursor 必须绑定 normalized query hash，换 query 后旧 cursor 返回 400。
 

@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-041 W1: Workspace durable store
+
+状态：🟡 进行中
+类型：New Feature / Backend / Database / Contract-first
+领域：Agent Workspace / Conversation / Message
+当前执行模式：plan-do / superpower
+最近接手工具：Codex
+分支：`codex/req-041-w1-workspace-store`
+
+需求来源：
+- Requirement: [REQ-041](../01-product-planning/05-requirements/REQ-041-ai-workspace-conversation-persistence.md)
+- Spec: [Conversation/Message/Run/Event 联合核心契约](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md)
+- Plan: [Slice W1](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-w1workspace-durable-store)
+
+当前进展：W1 durable store 已实现 Conversation/UserState/Message/Part、workspace inbox/outbox、tenant/owner policy、CAS、keyset/history、双 seq 与完整 command digest；严格未创建 `agent_execution`。
+下一步：走 commit / PR / merge；REQ-041 保持 Doing，后续按 E0 -> E1 推进 REQ-047 Core。
+验证状态：W1 18 passed（真实 PostgreSQL，含 50 并发、同 key 竞争、resource ref fail-closed）；W1 + 既有 migration smoke 20 passed；migration upgrade/downgrade/upgrade 通过；全量 1390 passed / 4 deselected；Ruff、mypy baseline、工程文档门禁、diff check 通过。独立 `gpt-5.6-luna high` 只读复审 3 项 finding 已全部修复；全库 `alembic check` 历史 metadata 漂移另记 TD-086。
+交接备注：Conversation DELETE endpoint 与新 Agent Workspace `/turns` 均未注册；内部 `reserve_user_turn` 只为 B1 coordinator 和契约测试保留；未实现 Runtime、Pi、SSE 或前端页面。
 
 ## 下一批候选任务
 
@@ -22,7 +39,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-041 Slice W1：Workspace durable store | 🔵 Ready | 先实现 Conversation/UserState/Message/Part、双 seq、完整 command digest 与 owner-private API；DELETE endpoint 等 B1 Guard 后再开放 | [Requirement](../01-product-planning/05-requirements/REQ-041-ai-workspace-conversation-persistence.md) / [Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-w1workspace-durable-store) |
 | P0 | REQ-047 Core Slice E0/E1：Execution identity 与 durable core | 🟣 Shaping | W1 后按 E0 -> E1 实施最小 Profile/Binding/Snapshot、Run/Input/Event、连续 ACK、FIFO 与终态；完整 REQ-047 仍保持 Shaping | [Requirement](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-e0execution-identitybinding-与-snapshot-contract) |
 | P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | ⚫ Candidate | 可并行补导航矩阵与 plan；移除重复 Skill、归位 MCP/Skill，并建立 permission/nav 单一事实源 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) |
 

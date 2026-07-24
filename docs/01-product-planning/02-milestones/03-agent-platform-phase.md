@@ -142,7 +142,7 @@ Agent Apps
 
 | ID | 状态 | 说明 | 事实源 |
 |----|------|------|--------|
-| REQ-041 | 🔵 Ready | Conversation/Message 联合契约与 plan 已冻结；按 W1 开始 | [Requirement](../05-requirements/REQ-041-ai-workspace-conversation-persistence.md) / [Spec](../../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md) / [Plan](../../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md) |
+| REQ-041 | 🟡 Doing | W1 已实现并进入 Git 闭环；DELETE/submit-turn 保持关闭，下一步 E0/E1 | [Requirement](../05-requirements/REQ-041-ai-workspace-conversation-persistence.md) / [Spec](../../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md) / [Plan](../../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md) |
 | REQ-047 | 🟣 Shaping | Core Ready：Run/Event 可实施；Approval/Tool/Artifact/Evidence extended contracts 继续塑形 | [Requirement](../05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [Core Spec](../../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md) |
 | REQ-060 | ⚫ Candidate | 控制台信息架构和权限化导航，可与 Durable State 并行 | [Requirement](../05-requirements/REQ-060-enterprise-console-information-architecture.md) |
 | REQ-042 | ⚫ Candidate | Codex 式 Agent Workspace | [Requirement](../05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |

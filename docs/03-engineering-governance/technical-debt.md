@@ -179,6 +179,7 @@
 | TD-083 | 后端风险分级测试选择与性能专项治理 | 🟢 完成 | P1 | 后端 / 测试基础设施 / CI 性能 | [PR #469](https://github.com/MarkDanile/MetaEduBase/pull/469)（`cccb3ff6`）/ [Spec](../02-delivery-plans/01-specs/2026-07-23-td-083-backend-risk-tiered-test-selection.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-td-083-backend-risk-tiered-test-selection-plan.md) |
 | TD-084 | GitHub Actions Node 24 与 hermetic 测试分类收口 | 🟢 完成 | P2 | 工程基础设施 / CI / 依赖维护 / 测试语义 | [PR #472](https://github.com/MarkDanile/MetaEduBase/pull/472)（`beb7c6fd`）/ [Spec](../02-delivery-plans/01-specs/2026-07-23-td-084-node24-hermetic-test-classification.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-td-084-node24-hermetic-test-classification-plan.md) |
 | TD-085 | 收口 AI Chat、Skill 与 Agent App 的上下文边界倒置 | ⚫ 待办 | P1 | 后端 / Agent Platform / DDD / 可维护性 | [REQ-059](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md) / 2026-07-23 源码复核 |
+| TD-086 | 收口 Alembic target metadata 漂移并建立可执行 schema drift gate | ⚫ 待办 | P2 | 后端 / 数据库迁移 / CI / 质量门禁 | REQ-041 W1 migration 验证 / 2026-07-24 `alembic check` 实测 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -192,6 +193,29 @@
 | DOC-067 | 分布式临时编号与正式任务编号归并规则 | 🟢 完成 | P2 | 文档 / 工程脚本 / 任务池 / 跨设备协作 | PR #248 merged `9bf177b`：保留正式短编号，`DRAFT-*` 只作临时来源，主表门禁已实现。 |
 
 ## 任务详情
+
+### TD-086: 收口 Alembic target metadata 漂移并建立可执行 schema drift gate
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P2 |
+| 领域 | 后端 / 数据库迁移 / CI / 质量门禁 |
+| 事实源 | REQ-041 W1 migration 验证 / 2026-07-24 `alembic check` 实测 |
+
+**证据**
+
+- 测试库已在 `028_agent_workspace_store` head，W1 targeted migration upgrade/downgrade/upgrade、索引、约束、TIMESTAMPTZ 与无跨 context FK 测试通过。
+- 同一数据库执行 `alembic check` 仍退出 255，误报删除 `ai_applications`、`templates`、`alembic_version` 等既有表，并对多组 schema-qualified FK 产生 remove/add 对。
+- 根因范围不只属于 W1：当前 `target_metadata` 注册不完整，历史 ORM 的 schema/default/type 与 migration 也存在差异；不能通过修改 028 migration 或扩大忽略列表掩盖。
+
+**完成标准**
+
+- Alembic `target_metadata` 完整注册当前 ORM 表，并明确排除 Alembic 自有版本表。
+- 收口 schema-qualified FK、server default、nullable 与 pgvector/tsvector 类型的稳定比较策略，不产生虚假 remove/add。
+- 在全新 `metaedu_test` 从 base 升到 head 后，`alembic check` 退出 0；同时保留 migration round-trip 与关键约束测试。
+- 将 drift check 接入合适的 CI 层级，失败时不得修改门禁阈值或忽略列表绕过。
 
 ### TD-085: 收口 AI Chat、Skill 与 Agent App 的上下文边界倒置
 
