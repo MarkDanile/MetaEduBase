@@ -7,6 +7,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.contexts.identity.application.auth_service import decode_access_token
+from app.contexts.identity.application.security_logger import log_security_event
+from app.contexts.identity.domain.role import HIGH_PRIVILEGE_ROLES
 from app.shared.infrastructure.database import get_session, get_session_factory
 from app.shared.infrastructure.tenant_context import set_tenant_context
 
@@ -21,6 +23,30 @@ async def get_current_user(
         credentials=credentials,
         session=session,
     )
+    return current_user
+
+
+async def require_high_privilege(
+    current_user: Annotated[dict, Depends(get_current_user)],
+) -> dict:
+    """TD-087: 共享 RBAC 守卫 -- 仅 HIGH_PRIVILEGE_ROLES 通过，否则 403。
+
+    匿名由 ``get_current_user`` 返回 401；低权角色（leader/teacher/
+    employee/student）返回 403 + 写 ``admin_access_denied`` 安全日志。
+    复用 BUG-017 ``HIGH_PRIVILEGE_ROLES`` + ``security_logger``，不造新常量。
+    """
+    role = current_user.get("role")
+    if role not in HIGH_PRIVILEGE_ROLES:
+        log_security_event(
+            event_type="admin_access_denied",
+            actor_user_id=str(current_user.get("id")),
+            result="denied",
+            detail={"role": role, "endpoint": "template-admin"},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"角色 {role!r} 无权管理模板（仅 {sorted(HIGH_PRIVILEGE_ROLES)} 可操作）",
+        )
     return current_user
 
 
