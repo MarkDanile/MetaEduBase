@@ -8,7 +8,11 @@ import pytest
 from httpx import AsyncClient
 
 from app.contexts.knowledge.domain.evidence import EvidenceItem
-from app.contexts.knowledge.interfaces.api.ai_router import _clean_llm_output
+from app.contexts.knowledge.interfaces.api.ai_router import (
+    LLMProviderCallError,
+    _call_llm_with_tools,
+    _clean_llm_output,
+)
 
 
 @pytest.mark.asyncio
@@ -30,6 +34,34 @@ async def test_clean_llm_output_another_tag_pair():
     cleaned = _clean_llm_output(output)
     assert "解析部分" not in cleaned
     assert "实际" in cleaned
+
+
+@pytest.mark.asyncio
+async def test_tool_aware_provider_failure_is_sanitized(caplog):
+    provider = MagicMock(
+        model="test-model",
+        base_url="https://provider.invalid",
+        api_key="secret-key",
+    )
+    client = AsyncMock()
+    client.__aenter__.return_value = client
+    client.post.side_effect = RuntimeError("SECRET-PROVIDER-DIAGNOSTIC")
+
+    with (
+        patch(
+            "app.contexts.knowledge.interfaces.api.ai_router.resolve_chat_provider",
+            return_value=provider,
+        ),
+        patch(
+            "app.contexts.knowledge.interfaces.api.ai_router.httpx.AsyncClient",
+            return_value=client,
+        ),
+        pytest.raises(LLMProviderCallError, match="LLM provider call failed"),
+    ):
+        await _call_llm_with_tools([{"role": "user", "content": "hello"}])
+
+    assert "SECRET-PROVIDER-DIAGNOSTIC" not in caplog.text
+    assert "secret-key" not in caplog.text
 
 
 def _fake_evidence_service(reply: str = "这是AI的回答", sources: list[EvidenceItem] | None = None):

@@ -181,13 +181,23 @@ packages/server-python/app/composition/
 
 交付：
 
-- 现有 `/ai/chat/evidence` 行为保持兼容，并在旧入口内部通过 CompatibilityRunAdapter 写同一 Conversation/Run/Event/terminal contract；它不消费新 Workspace submit-turn。
+- 现有 `/ai/chat/evidence` 行为保持兼容，并在旧入口内部通过 CompatibilityRunAdapter 写同一 Conversation/Run/Event/terminal contract；它复用内部 submit-turn/bridge 契约，但不开放新 Workspace submit-turn API。
 - 输出最小事件族：queued/started、phase、evidence summary、usage/error summary、canonical terminal；不伪造 ToolCall 或 RuntimeSessionBinding。
 - existing RAG source 只转为受权限裁剪的 Evidence summary/ref，不把 diagnostics 原文整体复制到 Message。
 - 使用 deterministic fake LLM + 真实 PostgreSQL 验证 persistence/replay；真实 LLM 只作为产品效果验收，不是 durable contract 通过前提。
 - 新 Workspace submit route 保持 feature-disabled，直到 REQ-043 至少一个 AgentTurnLoopRuntime profile 通过 conformance；测试可用 fake Runtime 验证命令契约，不在生产把 Direct RAG 冒充 Agent Loop。
 
 退出条件：重新认证后通过 API 恢复旧入口记录的 user Message、Run、events、assistant Message；原 `/ai/chat/evidence` 回归不变；同一输入重试不重复回答。页面刷新/断线体验归 REQ-042。
+
+**实施状态**：🟣 实现、本地门禁与独立 `gpt-5.6-sol max` 审查完成（最终 P0/P1/P2=0/0/0），待 Git 闭环。实现冻结以下兼容语义：
+
+- 请求新增可选 `conversation_id + client_message_id`，必须成对出现；显式 identity 才提供跨 HTTP 幂等，旧客户端省略时每次生成新 identity，响应以加法返回内部 Conversation/user Message/Run/assistant Message ID。客户端 Conversation alias 统一映射为 tenant+actor scoped UUID；首次响应的内部 ID 可与 alias 不同，后续可直接使用内部 ID。
+- 模型调用前先提交 Conversation、user Message 和 Workspace outbox，再通过 B1 dispatcher 的 claim/consume/ACK 三个短事务创建 compatibility Run；Run 启动状态随后提交。任一边界中断时，同 identity 可从 PostgreSQL outbox/Run 恢复，首段不可用返回稳定 `direct_rag_turn_pending` 503。
+- 模型成功后在 Guard-first 事务中写裁剪后的 evidence/usage summary、`033_agent_compat_output` durable staging、canonical terminal 与 output outbox；随后通过独立 claim/projection/ACK 短事务发布 assistant Message。projection 暂时失败返回 `direct_rag_output_pending` 503，同 identity 重试不再调用模型。模型异常只保存稳定 code 和泛化摘要，不保存原始 exception、diagnostics 或 Chain-of-Thought。
+- 相同 identity 的完成态重放读取持久化 assistant Message和 durable response envelope；并发请求只允许一个 terminal/assistant winner，落后请求必须返回赢家的回答与裁剪后 evidence refs。D1 不创建完整 Evidence entity，重放 refs 只保留稳定 ID、title、score、channels 等引用字段，清空 content/snippet/metadata，并返回 `compatibility_replay=true`。
+- 模型调用由 Run UUID 对应的 PostgreSQL session advisory claim 串行化；claim 使用独立 `pool_size=4 / max_overflow=0 / pool_timeout=1s` 小池，与请求/检索主池隔离并在 lifespan shutdown dispose，容量耗尽返回 pending 背压。竞争请求返回 `direct_rag_execution_pending` 503，进程/连接退出自动释放 claim，同 identity 重试可接管未终态 Run。completion/failure 事务先获取 `Conversation Guard -> Conversation row`，再锁 Run/Message；真实 PostgreSQL 竞争测试复现旧锁反转，并验证主请求池仅 1 连接时持 claim 仍可获取主池连接。D1 policy 的同步 compatibility Run 收到 cancel 后在同一请求内结算为 `cancelled`；ASGI task cancellation 回归验证会尝试写脱敏 failed terminal，但不把该测试外推为所有代理/浏览器断连保证。provider 异常转为无原始异常链的稳定 502。输入超过 Workspace UTF-8 上限返回 422；旧 service 生成超过 64 KiB 的回答时返回 `direct_rag_output_too_large` 502，Run 失败且不创建 assistant Message。
+- Vue compatibility 客户端的 storage key 绑定 tenant+JWT subject，认证主体切换或退出时清理；单个 unresolved request 不允许被新问题覆盖，durable pending 或用户停止后保留 identity 并把原问题恢复到输入框。成功响应后将外部 alias 替换为服务端返回的内部 Conversation ID。
+- 通过 deterministic fake LLM + 真实 PostgreSQL 验证首次持久化、重新认证 API/SSE 恢复、显式幂等、输入/输出桥故障恢复、并发赢家、取消、失败终态、事件脱敏与旧入口回归；`033` Alembic downgrade/upgrade 往返通过。未创建 RuntimeSessionBinding、ToolCall、Artifact 或 Evidence entity，未开放 Workspace `/turns`，不将 Direct RAG 声称为 Agent Loop。
 
 ### Slice R1：Retention、purge 与恢复收口
 

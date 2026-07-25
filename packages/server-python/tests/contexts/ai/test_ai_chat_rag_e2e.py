@@ -11,6 +11,10 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
+from app.composition.direct_rag_compatibility import (
+    DirectRagRecording,
+    PreparedDirectRagTurn,
+)
 from app.contexts.knowledge.domain.evidence import EvidenceItem
 from app.contexts.knowledge.interfaces.api import ai_router
 
@@ -22,10 +26,17 @@ def _build_app():
     app.include_router(ai_router.router, prefix="/api/v1/ai")
 
     async def _override_user():
-        return {"id": "u", "tenant_id": "t", "role": "student"}
+        return {
+            "id": "81000000-0000-0000-0000-000000000001",
+            "tenant_id": "81000000-0000-0000-0000-000000000002",
+            "role": "student",
+        }
 
     async def _override_session():
-        yield MagicMock()
+        session = MagicMock()
+        session.commit = AsyncMock()
+        session.rollback = AsyncMock()
+        yield session
 
     from app.contexts.knowledge.interfaces.api.ai_router import get_session  # noqa
     app.dependency_overrides[get_session] = _override_session
@@ -69,6 +80,46 @@ def _patch_service(sources: list[EvidenceItem], reply: str = "这是AI的回答"
     )
 
 
+def _patch_compatibility_adapter():
+    conversation_id = uuid.uuid4()
+    user_message_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+    assistant_message_id = uuid.uuid4()
+    prepared = PreparedDirectRagTurn(
+        tenant_id=uuid.uuid4(),
+        actor_id=uuid.uuid4(),
+        recording=DirectRagRecording(
+            conversation_id=conversation_id,
+            user_message_id=user_message_id,
+            run_id=run_id,
+            assistant_message_id=None,
+        ),
+    )
+    completed = DirectRagRecording(
+        conversation_id=conversation_id,
+        user_message_id=user_message_id,
+        run_id=run_id,
+        assistant_message_id=assistant_message_id,
+    )
+    published = PreparedDirectRagTurn(
+        tenant_id=prepared.tenant_id,
+        actor_id=prepared.actor_id,
+        recording=completed,
+    )
+    adapter = MagicMock()
+    adapter.prepare_turn = AsyncMock(return_value=prepared)
+    adapter.activate_turn = AsyncMock(return_value=prepared)
+    adapter.complete_turn = AsyncMock(return_value=completed)
+    adapter.publish_completed_turn = AsyncMock(return_value=published)
+    adapter.fail_turn = AsyncMock()
+    adapter.completed_turn = AsyncMock(return_value=None)
+    return patch(
+        "app.contexts.knowledge.interfaces.api.ai_router."
+        "_build_direct_rag_compatibility_adapter",
+        return_value=adapter,
+    )
+
+
 # --- AC-7: 单通道降级 (TD-048: 走 evidence 端点) ---------------------------
 
 
@@ -87,7 +138,7 @@ async def test_ai_chat_degrades_when_one_channel_raises():
     app = _build_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        with _patch_service(sources):
+        with _patch_service(sources), _patch_compatibility_adapter():
             resp = await ac.post(
                 "/api/v1/ai/chat/evidence",
                 json={"message": "智能制造专业的课程"},
@@ -119,7 +170,7 @@ async def test_ai_chat_sources_have_required_fields():
     app = _build_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        with _patch_service(sources):
+        with _patch_service(sources), _patch_compatibility_adapter():
             resp = await ac.post(
                 "/api/v1/ai/chat/evidence",
                 json={"message": "智能制造"},
@@ -156,7 +207,7 @@ async def test_ai_chat_fuses_duplicate_node_id_across_channels():
     app = _build_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        with _patch_service(sources):
+        with _patch_service(sources), _patch_compatibility_adapter():
             resp = await ac.post(
                 "/api/v1/ai/chat/evidence",
                 json={"message": "智能制造专业的知识点"},

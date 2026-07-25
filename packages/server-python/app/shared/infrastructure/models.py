@@ -1,6 +1,7 @@
 from app.contexts.agent_execution.infrastructure.models import (
     AgentDefinitionVersionModel,
     AgentRunModel,
+    CompatibilityOutputModel,
     ExecutionInboxModel,
     ExecutionOutboxModel,
     RunEventModel,
@@ -43,6 +44,7 @@ from app.contexts.template.infrastructure.models import TemplateModel  # noqa: F
 __all__ = [
     "AgentDefinitionVersionModel",
     "AgentRunModel",
+    "CompatibilityOutputModel",
     "ConversationModel",
     "ConversationUserStateModel",
     "DocumentChunkModel",

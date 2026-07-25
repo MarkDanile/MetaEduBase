@@ -4,8 +4,14 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from app.config import settings
 
@@ -23,6 +29,41 @@ async_session_factory = async_sessionmaker(
     class_=AsyncSession,
     expire_on_commit=False,
 )
+
+_advisory_claim_engines: dict[tuple[int, str], AsyncEngine] = {}
+
+
+def get_advisory_claim_engine(source_engine: AsyncEngine) -> AsyncEngine:
+    """Return a bounded pool isolated from request/repository database traffic."""
+    if isinstance(source_engine.pool, NullPool):
+        return create_async_engine(
+            source_engine.url,
+            echo=False,
+            poolclass=NullPool,
+        )
+    key = (
+        id(asyncio.get_running_loop()),
+        source_engine.url.render_as_string(hide_password=False),
+    )
+    claim_engine = _advisory_claim_engines.get(key)
+    if claim_engine is None:
+        claim_engine = create_async_engine(
+            source_engine.url,
+            echo=False,
+            pool_size=4,
+            max_overflow=0,
+            pool_timeout=1,
+            pool_pre_ping=True,
+        )
+        _advisory_claim_engines[key] = claim_engine
+    return claim_engine
+
+
+async def dispose_advisory_claim_engines() -> None:
+    engines = tuple(_advisory_claim_engines.values())
+    _advisory_claim_engines.clear()
+    for claim_engine in engines:
+        await claim_engine.dispose()
 
 
 def get_session_factory() -> async_sessionmaker[AsyncSession]:

@@ -1,14 +1,27 @@
+import asyncio
 import json
 import logging
 import os
 import re
 import uuid
+from dataclasses import replace
 
 import httpx
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.composition.direct_rag_compatibility import (
+    DirectRagCompatibilityAdapter,
+    DirectRagCompatibilityError,
+    DirectRagExecutionPendingError,
+    DirectRagOutputTooLargeError,
+    DirectRagRecording,
+    DirectRagTurnPendingError,
+    PreparedDirectRagTurn,
+)
+from app.contexts.agent_execution.domain import AgentExecutionError
+from app.contexts.agent_workspace.domain import AgentWorkspaceError
 from app.contexts.document.infrastructure.chunk_repository import ChunkRepository
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.contexts.knowledge.application.ai_chat_service import (
@@ -142,6 +155,10 @@ def _build_evidence_service(
 _evidence_service: AIChatService | None = None
 
 
+class LLMProviderCallError(RuntimeError):
+    """Sanitized provider failure safe to cross the application boundary."""
+
+
 def _clean_llm_output(content: str) -> str:
     content = re.sub(r"考量.*?生成", "", content, flags=re.DOTALL)
     content = re.sub(r"思路.*?回复", "", content, flags=re.DOTALL)
@@ -152,6 +169,27 @@ def _clean_llm_output(content: str) -> str:
 class ChatRequest(BaseModel):
     message: str
     context_window: int = 5
+    conversation_id: uuid.UUID | None = None
+    client_message_id: uuid.UUID | None = None
+
+    @field_validator("message")
+    @classmethod
+    def validate_message(cls, value: str) -> str:
+        if not value:
+            raise ValueError("message must not be empty")
+        if "\x00" in value:
+            raise ValueError("message cannot contain NUL characters")
+        if len(value.encode("utf-8")) > 64 * 1024:
+            raise ValueError("message exceeds 65536 UTF-8 bytes")
+        return value
+
+    @model_validator(mode="after")
+    def validate_idempotency_identity(self) -> "ChatRequest":
+        if (self.conversation_id is None) != (self.client_message_id is None):
+            raise ValueError(
+                "conversation_id and client_message_id must be supplied together"
+            )
+        return self
 
 
 class EvidenceChatResponse(BaseModel):
@@ -167,6 +205,214 @@ class EvidenceChatResponse(BaseModel):
     sources: list[EvidenceItem]
     document_sources: list[DocumentSource] = Field(default_factory=list)
     diagnostics: dict = Field(default_factory=dict)
+    conversation_id: uuid.UUID
+    user_message_id: uuid.UUID
+    run_id: uuid.UUID
+    assistant_message_id: uuid.UUID | None
+
+
+def _build_direct_rag_compatibility_adapter(
+    session: AsyncSession,
+) -> DirectRagCompatibilityAdapter:
+    return DirectRagCompatibilityAdapter(session)
+
+
+def _compatibility_http_error(exc: Exception) -> HTTPException:
+    if exc.__class__.__name__ == "IdempotencyConflictError":
+        code = "idempotency_conflict"
+    else:
+        code = "direct_rag_recording_conflict"
+    return HTTPException(
+        status_code=409,
+        detail={"code": code, "message": "Direct RAG request conflicts"},
+    )
+
+
+def _evidence_response(
+    result: ServiceChatResponse,
+    recording: DirectRagRecording,
+) -> EvidenceChatResponse:
+    return EvidenceChatResponse(
+        reply=result.reply,
+        sources=result.sources,
+        document_sources=(
+            getattr(result, "document_sources", [])
+            if isinstance(getattr(result, "document_sources", []), list)
+            else []
+        ),
+        diagnostics=(
+            getattr(result, "diagnostics", {})
+            if isinstance(getattr(result, "diagnostics", {}), dict)
+            else {}
+        ),
+        conversation_id=recording.conversation_id,
+        user_message_id=recording.user_message_id,
+        run_id=recording.run_id,
+        assistant_message_id=recording.assistant_message_id,
+    )
+
+
+def _replay_response(prepared: PreparedDirectRagTurn) -> EvidenceChatResponse:
+    assert prepared.replay_reply is not None
+    return EvidenceChatResponse(
+        reply=prepared.replay_reply,
+        sources=list(prepared.replay_sources),
+        document_sources=[],
+        diagnostics={"compatibility_replay": True},
+        conversation_id=prepared.recording.conversation_id,
+        user_message_id=prepared.recording.user_message_id,
+        run_id=prepared.recording.run_id,
+        assistant_message_id=prepared.recording.assistant_message_id,
+    )
+
+
+async def _recover_completed_turn(
+    *,
+    compatibility: DirectRagCompatibilityAdapter,
+    prepared: PreparedDirectRagTurn,
+    session: AsyncSession,
+) -> EvidenceChatResponse | None:
+    reconciled = await compatibility.completed_turn(prepared=prepared)
+    if reconciled is None:
+        return None
+    await session.commit()
+    if reconciled.requires_output_publish:
+        reconciled = await compatibility.publish_completed_turn(prepared=reconciled)
+        await session.commit()
+    return _replay_response(reconciled)
+
+
+async def _execute_direct_rag_turn(
+    *,
+    data: ChatRequest,
+    session: AsyncSession,
+    current_user: dict,
+    tenant_id: str,
+    compatibility: DirectRagCompatibilityAdapter,
+    prepared: PreparedDirectRagTurn,
+) -> EvidenceChatResponse:
+    service = _evidence_service or _build_evidence_service(session, tenant_id)
+    try:
+        result: ServiceChatResponse = await service.chat(
+            ServiceChatRequest(
+                message=data.message,
+                context_window=data.context_window,
+            ),
+            tenant_id=tenant_id,
+            session=session,
+            current_user=current_user,
+        )
+    except asyncio.CancelledError:
+        await session.rollback()
+        try:
+            await compatibility.fail_turn(
+                prepared=prepared,
+                code="direct_rag_request_cancelled",
+            )
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            logger.error(
+                "failed to settle cancelled Direct RAG request run_id=%s",
+                prepared.recording.run_id,
+            )
+        raise
+    except Exception:
+        await session.rollback()
+        try:
+            replay = await _recover_completed_turn(
+                compatibility=compatibility,
+                prepared=prepared,
+                session=session,
+            )
+            if replay is not None:
+                return replay
+            await compatibility.fail_turn(prepared=prepared)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            logger.error(
+                "failed to persist Direct RAG failed terminal run_id=%s",
+                prepared.recording.run_id,
+            )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "direct_rag_execution_failed",
+                "message": "AI service execution failed",
+                "run_id": str(prepared.recording.run_id),
+            },
+        ) from None
+
+    try:
+        recording = await compatibility.complete_turn(
+            prepared=prepared,
+            response=result,
+        )
+        await session.commit()
+    except DirectRagOutputTooLargeError:
+        await session.rollback()
+        await compatibility.fail_turn(
+            prepared=prepared,
+            code="direct_rag_output_too_large",
+        )
+        await session.commit()
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "direct_rag_output_too_large",
+                "message": "AI answer exceeds the durable output limit",
+                "run_id": str(prepared.recording.run_id),
+            },
+        ) from None
+    except Exception as recording_error:
+        await session.rollback()
+        try:
+            replay = await _recover_completed_turn(
+                compatibility=compatibility,
+                prepared=prepared,
+                session=session,
+            )
+            if replay is not None:
+                return replay
+            await compatibility.fail_turn(
+                prepared=prepared,
+                code="direct_rag_recording_failed",
+            )
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            logger.error(
+                "failed to reconcile Direct RAG terminal recording run_id=%s",
+                prepared.recording.run_id,
+            )
+        if isinstance(recording_error, DirectRagCompatibilityError):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "direct_rag_run_not_active",
+                    "message": "Direct RAG request is no longer active",
+                    "run_id": str(prepared.recording.run_id),
+                },
+            ) from None
+        raise recording_error
+
+    try:
+        published = await compatibility.publish_completed_turn(
+            prepared=replace(prepared, recording=recording)
+        )
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "direct_rag_output_pending",
+                "message": "AI answer is pending durable projection",
+                "run_id": str(recording.run_id),
+            },
+        ) from None
+    return _evidence_response(result, published.recording)
 
 
 @router.post("/chat/evidence", response_model=EvidenceChatResponse)
@@ -185,37 +431,86 @@ async def ai_chat_evidence(
     """
     tenant_value = get_tenant_id() or _current_user.get("tenant_id")
     tid = str(tenant_value)
+    tenant_id = uuid.UUID(tid)
+    actor_id = uuid.UUID(str(_current_user["id"]))
+    conversation_id = data.conversation_id or uuid.uuid4()
+    client_message_id = data.client_message_id or uuid.uuid4()
+    compatibility = _build_direct_rag_compatibility_adapter(session)
 
-    service = _evidence_service or _build_evidence_service(session, tid)
-    # REQ-056 Task 2 — propagate the verified JWT identity to the chat
-    # service so QueryService.ask (and the audit row it writes) carries
-    # the authenticated user_id / role / tenant_id rather than a random
-    # UUID. The current_user dict comes from ``Depends(get_current_user)``
-    # upstream.
-    result: ServiceChatResponse = await service.chat(
-        ServiceChatRequest(
+    try:
+        prepared = await compatibility.prepare_turn(
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            conversation_id=conversation_id,
+            client_message_id=client_message_id,
             message=data.message,
             context_window=data.context_window,
-        ),
-        tenant_id=tid,
-        session=session,
-        current_user=_current_user,
-    )
+        )
+        await session.commit()
+        prepared = await compatibility.activate_turn(prepared=prepared)
+        await session.commit()
+    except DirectRagTurnPendingError:
+        await session.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "direct_rag_turn_pending",
+                "message": "AI request is pending durable execution acceptance",
+                "run_id": str(prepared.recording.run_id),
+            },
+        ) from None
+    except (AgentWorkspaceError, AgentExecutionError, DirectRagCompatibilityError) as exc:
+        await session.rollback()
+        raise _compatibility_http_error(exc) from exc
 
-    return EvidenceChatResponse(
-        reply=result.reply,
-        sources=result.sources,
-        document_sources=(
-            getattr(result, "document_sources", [])
-            if isinstance(getattr(result, "document_sources", []), list)
-            else []
-        ),
-        diagnostics=(
-            getattr(result, "diagnostics", {})
-            if isinstance(getattr(result, "diagnostics", {}), dict)
-            else {}
-        ),
-    )
+    if prepared.requires_output_publish:
+        try:
+            prepared = await compatibility.publish_completed_turn(prepared=prepared)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "direct_rag_output_pending",
+                    "message": "AI answer is pending durable projection",
+                    "run_id": str(prepared.recording.run_id),
+                },
+            ) from None
+
+    if prepared.is_completed_replay:
+        return _replay_response(prepared)
+
+    try:
+        async with compatibility.execution_claim(prepared=prepared):
+            return await _execute_direct_rag_turn(
+                data=data,
+                session=session,
+                current_user=_current_user,
+                tenant_id=tid,
+                compatibility=compatibility,
+                prepared=prepared,
+            )
+    except DirectRagExecutionPendingError:
+        await session.rollback()
+        try:
+            replay = await _recover_completed_turn(
+                compatibility=compatibility,
+                prepared=prepared,
+                session=session,
+            )
+            if replay is not None:
+                return replay
+        except Exception:
+            await session.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "direct_rag_execution_pending",
+                "message": "AI request is already executing",
+                "run_id": str(prepared.recording.run_id),
+            },
+        ) from None
 
 
 async def _call_llm(system_prompt: str, user_content: str) -> str:
@@ -255,7 +550,7 @@ async def _call_llm(system_prompt: str, user_content: str) -> str:
             content = resp.json()["choices"][0]["message"]["content"]
             return _clean_llm_output(content)
     except Exception as e:
-        logger.error(f"LLM 调用失败: {e}")
+        logger.error("LLM call failed")
         return f"❌ AI 回答生成失败: {type(e).__name__}"
 
 
@@ -314,9 +609,6 @@ async def _call_llm_with_tools(
             if isinstance(content, str):
                 content = _clean_llm_output(content)
             return {"content": content, "tool_calls": tool_calls}
-    except Exception as e:
-        logger.error(f"LLM 调用失败 (with tools): {e}")
-        return {
-            "content": f"❌ AI 回答生成失败: {type(e).__name__}",
-            "tool_calls": None,
-        }
+    except Exception:
+        logger.error("LLM call failed (with tools)")
+        raise LLMProviderCallError("LLM provider call failed") from None
