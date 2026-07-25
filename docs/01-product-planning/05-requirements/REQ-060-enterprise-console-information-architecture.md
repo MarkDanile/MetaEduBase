@@ -1,11 +1,12 @@
 # REQ-060: 企业 Agent 控制台信息架构与权限化导航
 
-> Status: ⚫ Candidate
+> Status: 🔵 Ready
 > Priority: P1
 > Milestone: P3 / Enterprise Agent Platform
 > Area: Web / Information Architecture / Navigation / RBAC
 > Created: 2026-07-23
-> Source: 用户指出 MCP / Skill 管理入口与一级“技能编排”菜单发生语义和层级漂移
+> Shaped: 2026-07-23（4 决策冻结 + Spec/Plan 完成，见 Delivery Links）
+> Source: 用户指出 MCP / Skill 管理入口与一级"技能编排"菜单发生语义和层级漂移
 > Parent: REQ-059
 > Related: REQ-011 / REQ-042 / REQ-044 / REQ-045
 
@@ -60,4 +61,10 @@
 ## Dependencies / Next Step
 
 - 可在 REQ-059 架构冻结后独立补 spec/plan 并实施，不依赖 Pi/ACP。
-- “AI 问答”改名“Agent 工作台”的时点与 REQ-041/042 验收绑定，避免菜单名称超前于真实能力。
+- "AI 问答"改名"Agent 工作台"的时点与 REQ-041/042 验收绑定，避免菜单名称超前于真实能力。
+
+## Delivery Links
+
+- Spec: `docs/02-delivery-plans/01-specs/2026-07-23-req060-console-ia-nav-rbac.md`
+- Plan: `docs/02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md`
+- Shaping 决策（2026-07-23）：D-1 统一到后端 RoleEnum / D-2 能力中心普通用户完全隐藏 / D-3 旧链接重定向 / D-4 AI 问答保持名称绑定 REQ-042 改名

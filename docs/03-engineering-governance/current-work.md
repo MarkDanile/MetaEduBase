@@ -14,7 +14,21 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-060: 企业 Agent 控制台信息架构与权限化导航
+
+状态：🔵 Ready（shaping 完成，Spec/Plan 待 PR 合并）
+类型：需求塑形（P1）
+领域：Web / IA / Navigation / RBAC
+分支：shape/req060-console-ia-nav-rbac
+
+需求来源：
+- Spec: [REQ-060](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md)
+- Delivery Spec: [2026-07-23-req060-console-ia-nav-rbac](../02-delivery-plans/01-specs/2026-07-23-req060-console-ia-nav-rbac.md)
+- Plan: [2026-07-23-req060-console-ia-nav-rbac-plan](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md)
+
+当前进展：shaping 完成。4 决策冻结（D-1 统一后端 RoleEnum / D-2 能力中心普通用户隐藏 / D-3 旧链接重定向 / D-4 AI 问答保持名称）。盘点菜单漂移（三份割裂导航 + 技能编排占位 + MCP/Skill 归属错误 + roleMap 前后端不一致）。Spec + Plan 5 Slice 已写。
+
+下一步：PR 合并后归档；实施按 Plan 5 Slice（nav.ts 事实源 -> roleMap 统一 -> Sidebar/HomeView 迁移 -> 深链守卫+403+重定向 -> a11y+回归）。
 
 ## 下一批候选任务
 
@@ -22,7 +36,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | ⚫ Candidate | 可并行补导航矩阵与 plan；移除重复 Skill、归位 MCP/Skill，并建立 permission/nav 单一事实源 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) |
+| P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | 🔵 Ready | shaping 完成（4 决策冻结 + Spec/Plan）；可按 Plan 5 Slice 实施 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) / [Spec](../02-delivery-plans/01-specs/2026-07-23-req060-console-ia-nav-rbac.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md) |
 
 ## 最近完成
 
