@@ -180,6 +180,7 @@
 | TD-084 | GitHub Actions Node 24 与 hermetic 测试分类收口 | 🟢 完成 | P2 | 工程基础设施 / CI / 依赖维护 / 测试语义 | [PR #472](https://github.com/MarkDanile/MetaEduBase/pull/472)（`beb7c6fd`）/ [Spec](../02-delivery-plans/01-specs/2026-07-23-td-084-node24-hermetic-test-classification.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-td-084-node24-hermetic-test-classification-plan.md) |
 | TD-085 | 收口 AI Chat、Skill 与 Agent App 的上下文边界倒置 | ⚫ 待办 | P1 | 后端 / Agent Platform / DDD / 可维护性 | [REQ-059](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md) / 2026-07-23 源码复核 |
 | TD-086 | 收口 Alembic target metadata 漂移并建立可执行 schema drift gate | ⚫ 待办 | P2 | 后端 / 数据库迁移 / CI / 质量门禁 | REQ-041 W1 migration 验证 / 2026-07-24 `alembic check` 实测 |
+| TD-087 | 模板管理 API 缺少后端 RBAC | ⚫ 待办 | P1 | 后端 / Template / Identity / RBAC / 多租户 | REQ-060 R1 复审：`/api/v1/templates/*` 仅认证无角色授权；是 `/data/templates*` 受保护路由迁移前置 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -193,6 +194,47 @@
 | DOC-067 | 分布式临时编号与正式任务编号归并规则 | 🟢 完成 | P2 | 文档 / 工程脚本 / 任务池 / 跨设备协作 | PR #248 merged `9bf177b`：保留正式短编号，`DRAFT-*` 只作临时来源，主表门禁已实现。 |
 
 ## 任务详情
+
+### TD-087: 模板管理 API 缺少后端 RBAC
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 后端 / Template / Identity / RBAC / 多租户 |
+| 来源 | REQ-060 R1 源码复审（2026-07-25） |
+| 依赖关系 | REQ-060 Foundation 可先行；`/data/templates*` 路由迁移、旧链接重定向与 AC-3 收口必须等待本任务完成 |
+
+**证据**
+
+- `packages/server-python/app/contexts/template/interfaces/api/router.py` 的 list、check、AI init、create、get、update、delete、import、clone、version、rollback、export、deprecate 等端点只依赖 `get_current_user`，没有 role guard。
+- 同一 router 包含删除、回滚、废弃、导入、AI 初始化等管理写操作；前端隐藏菜单不能保护这些 API。
+- REQ-060 初版 Spec/Plan 只写“后续登记 TD-087”，但技术债总账没有该编号，current-work/work-log 却声称已经登记，形成事实源漂移。
+- 前端 `authStore.userRole` 持久化于 localStorage，只能用于展示体验；用户可修改本地值，不能作为后端授权证据。
+
+**V1 端点策略**
+
+- 模板管理 router 的 list/read/check/version/export 与全部 mutation 统一要求 `HIGH_PRIVILEGE_ROLES`：`super_admin/data_admin/admin`。
+- `leader/teacher/employee/student` 返回 403；未认证返回 401；tenant isolation 和现有 404 语义保持不变。
+- 后续园区表单或 Agent Runtime 若需要读取已发布模板，应通过独立 application port 或单独定义的最小只读 grant/DTO，不得重新放开管理 router。
+- 禁止把前端 `nav.data.templates`、本地 role 或隐藏按钮当成授权实现。
+
+**完成标准**
+
+- 使用 identity context 的共享授权依赖或等价既有模式，不在 template context 再造角色常量。
+- 管理 router 所有端点执行一致授权；不能只保护 mutation 而遗漏 list/export/version。
+- 覆盖匿名、7 个 RoleEnum、跨租户访问以及至少 create/get/update/delete/rollback/export 代表端点。
+- 既有高权模板流程无回归；拒绝响应不泄露模板存在性或跨租户信息。
+- REQ-060 Spec/Plan、current-work 与本总账同步；关闭后模板路由才能进入原子迁移 Slice。
+
+**验证方式**
+
+- `cd packages/server-python && uv run pytest tests/contexts/template -q`
+- 新增/扩展 API RBAC 矩阵测试：anonymous -> 401；4 low roles -> 403；3 high roles -> 2xx/既有业务状态。
+- 真实 PostgreSQL tenant isolation 回归；不得只用 service mock 宣称完成。
+- `cd packages/server-python && uv run ruff check app/contexts/template tests/contexts/template`
+- `scripts/check-engineering-docs` 与 `git diff --check`。
 
 ### TD-086: 收口 Alembic target metadata 漂移并建立可执行 schema drift gate
 

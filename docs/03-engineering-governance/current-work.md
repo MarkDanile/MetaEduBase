@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无活跃任务。REQ-060 shaping 已合并（见最近完成），状态 Ready 可按 Plan 5 Slice 实施。
+### REQ-060-R1: 企业 Agent 控制台导航塑形复审修订
+
+状态：🟡 进行中
+类型：需求塑形修订（docs-only）
+领域：Web / IA / Navigation / RBAC / Engineering Governance
+当前执行模式：review correction / plan-do
+最近接手工具：Codex
+分支：`codex/docs-req060-shaping-corrections`
+
+需求来源：
+- Requirement: [REQ-060](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md)
+- Delivery Spec: [2026-07-23-req060-console-ia-nav-rbac](../02-delivery-plans/01-specs/2026-07-23-req060-console-ia-nav-rbac.md)
+- Plan: [2026-07-23-req060-console-ia-nav-rbac-plan](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md)
+
+当前进展：Spec/Plan R1 已修订；Route Record/`activeNav`/fail-closed/原子迁移/移动端 Playwright 契约已冻结，TD-087 已正式入账，Iteration/Milestone/AI Applications/评分总账已同步。
+下一步：提交 docs-only 变更，创建 PR 并等待 required checks；合并后做最小 closeout。
+验证状态：`scripts/check-engineering-docs` 通过（31 条 allowlisted known issues）；`git diff --check` 通过；无业务代码变更，不运行前后端测试。
+交接备注：修订合并前不得进入 REQ-060 业务实现；TD-087 完成后才允许迁移受保护模板路由。
 
 ## 下一批候选任务
 
@@ -22,7 +39,8 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | 🔵 Ready | shaping 完成（4 决策冻结 + Spec/Plan）；可按 Plan 5 Slice 实施 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) / [Spec](../02-delivery-plans/01-specs/2026-07-23-req060-console-ia-nav-rbac.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md) |
+| P1-S | TD-087 模板管理 API 后端 RBAC | ⚫ 待办 | REQ-060 受保护模板路由迁移前先实施并验证 7 角色矩阵 | [Tech Debt](technical-debt.md#td-087-模板管理-api-缺少后端-rbac) |
+| P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | 🔵 Ready | R1 修订合并后，按修订 Plan 从 Foundation Slice 开始 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) / [Spec](../02-delivery-plans/01-specs/2026-07-23-req060-console-ia-nav-rbac.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md) |
 
 ## 最近完成
 
@@ -43,7 +61,7 @@
 | 2026-07-23 | TD-084 GitHub Actions Node 24 与 hermetic 测试分类收口 | 🟢 完成 | 6 类 Action 升级 Node 24；slow marker 移除，CI 统一排除 external_network；PR/main/manual 三层全绿，Backend 约 5m，无 Node 20 警告 | [PR #472](https://github.com/MarkDanile/MetaEduBase/pull/472)（`beb7c6fd`）/ [Tech Debt](technical-debt.md#td-084-github-actions-node-24-与-hermetic-测试分类收口) |
 | 2026-07-23 | TD-083 后端风险分级测试选择与性能专项治理 | 🟢 完成 | PR targeted / main full-not-slow / nightly full；默认禁外网 + 外部依赖 mock；not-slow 1365 pass/2m41s；resource 探针 15 pass/4.22s | [PR #469](https://github.com/MarkDanile/MetaEduBase/pull/469)（`cccb3ff6`）/ [Tech Debt](technical-debt.md#td-083-后端风险分级测试选择与性能专项治理) |
 | 2026-07-23 | TD-082 分层质量门禁与 CI 提速 | 🟢 完成 | scope-aware CI + 秒级 hooks + MCP lock + 前端构建去重；不可靠分片已撤销，后端专项由 TD-083 接力 | [PR #467](https://github.com/MarkDanile/MetaEduBase/pull/467)（`754ca109`）/ [Tech Debt](technical-debt.md#td-082-分层质量门禁与-ci-提速) |
-| 2026-07-23 | REQ-060 企业 Agent 控制台信息架构与权限化导航（shaping） | 🟢 Shaping 完成 | 盘点菜单漂移 6 问题+4 决策冻结（统一 RoleEnum/能力中心隐藏/旧链接重定向/AI 问答保持名称）+Spec 11 节+Plan 5 Slice+独立安全审查 P0/P1 清零（模板 API 无 RBAC 登记 TD-087）。状态 Candidate->Ready | [PR #491](https://github.com/MarkDanile/MetaEduBase/pull/491)（`efe126af`）/ [work-log](work-log.md) |
+| 2026-07-23 | REQ-060 企业 Agent 控制台信息架构与权限化导航（初版 shaping） | 🟢 初版完成 | PR #491 冻结目标 IA；2026-07-25 复审发现 4 P1/2 P2，已由当前 R1 修订 activeNav、原子路由、移动端边界并正式登记 TD-087 | [PR #491](https://github.com/MarkDanile/MetaEduBase/pull/491)（`efe126af`）/ [Spec R1](../02-delivery-plans/01-specs/2026-07-23-req060-console-ia-nav-rbac.md#11-r1-review-corrections2026-07-25) |
 | 2026-07-23 | TD-081 CI、Git hooks 与 mypy 可执行基线 | 🟢 完成 | 三路 GitHub CI + fresh PostgreSQL/zhparser + fail-closed hooks + 可递减 mypy baseline；main required checks 对管理员生效。Backend 1368 pass/5 skip，三路 CI 全绿 | [PR #465](https://github.com/MarkDanile/MetaEduBase/pull/465)（`a37a7e51`）/ [Tech Debt](technical-debt.md#td-081-ci-git-hooks-与-mypy-可执行基线缺失) |
 | 2026-07-22 | TD-080 后端全量测试顺序污染与 coroutine 未 await warning | 🟢 完成 | alembic fileConfig 传 disable_existing_loggers=False 治本（不再污染已存在 logger）+ 12 document asyncio.run mock 改 side_effect close coroutine + slow marker 优化 dev 循环（-m 'not slow' 6:33→~5min）。全量 0 fail；1 回归测试防回退 | [PR #464](https://github.com/MarkDanile/MetaEduBase/pull/464)（`a20f3ee1`）/ [work-log](work-log.md) |
 | 2026-07-22 | REQ-058 企业背调生产级 RBAC、制审分离与多租户配置 | 🟢 完成 | DD 权限矩阵+maker-checker+任务可见性+tenant_scoped_config 表+配置审计+平台 status only。7 AC；5 Slice（#459~#463）；43 测试；全量 1364 pass/3 pre-existing；ruff 0/docs gate 0 | [PR #463](https://github.com/MarkDanile/MetaEduBase/pull/463)（`d2c3b752`）/ [work-log](work-log.md) |

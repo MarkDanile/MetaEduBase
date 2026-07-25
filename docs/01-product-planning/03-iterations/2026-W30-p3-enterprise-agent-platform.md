@@ -18,7 +18,7 @@ Goal: 完成 P2 -> P3 路线切换，冻结企业 Agent Control Plane、源码�
 |------|------|----------|--------|
 | 1 | REQ-041 Conversation/Message | 🟡 Doing | W1 与 E0/E1/B1/A1 已合并；guarded DELETE/restore 与 Run query/SSE 已开放，新 Workspace submit-turn 保持关闭；下一步 D1 |
 | 2 | REQ-047 Run/Event/Approval/Artifact | 🟣 Shaping（Core A1 Done / D1 Next） | A1 已由 PR #487 合并；后续 D1/R1/C1，HumanInput/Approval、Tool/Grant/Snapshot、Artifact/Evidence 继续独立塑形 |
-| 2P | REQ-060 控制台导航 | ⚫ Candidate | 可独立并行补 spec/plan，收口重复 Skill、MCP/Skill 归位和 permission/nav 单一事实源 |
+| 2P | REQ-060 控制台导航 | 🔵 Ready | Shaping + R1 修订完成；先完成 TD-087，再按 Foundation、原子路由守卫、导航投影、移动端/Playwright 顺序实施 |
 | 3 | REQ-042 Agent Workspace | ⚫ Candidate | 用 Direct RAG/Skill compatibility path 验收，不等待 Pi 才开始产品体验 |
 | 4 | TD-085 边界收口 | ⚫ 待办 | 分 Slice 抽 LLM Port、Direct RAG 和业务专属逻辑，保持现有行为 |
 | 5 | REQ-043 Runtime/Tool Gateway | ⚫ Candidate | 先 AgentTurnLoopRuntime/RuntimeProfile + Tool Gateway contract，再做 Pi read-only Pilot、L3 写恢复和 ACP/LangGraph Adapter |
@@ -52,7 +52,7 @@ Goal: 完成 P2 -> P3 路线切换，冻结企业 Agent Control Plane、源码�
 ## Out of Scope
 
 - 本迭代不创建 Agent Runtime Worker、不引入 Pi npm 依赖、不实现新 UI；后续 Core Slice 可按已签字联合 plan 独立落库。
-- REQ-041 只有联合 spec/plan 完成后才可翻 Ready；REQ-047 只允许标 Core Ready，extended contracts 未完成前保持 Shaping；REQ-060 仍须先完成独立 spec/plan。
+- REQ-041 W1 与 REQ-047 E0/E1/B1/A1/D1 已完成；REQ-047 extended contracts 未完成前父任务保持 Shaping。REQ-060 已完成独立 Spec/Plan 和 R1 复审修订，模板路由受 TD-087 前置约束。
 - 不更新 `ARCHITECTURE.md` 声称新 bounded context 已落地。
 - 不引入 P4 的 Milvus、Neo4j、Elasticsearch、多模态或 HA 基础设施。
 

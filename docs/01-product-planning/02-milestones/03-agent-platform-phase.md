@@ -113,7 +113,7 @@ Agent Apps
 ## Current Iteration
 
 - [2026-W30 P3 企业 Agent 平台控制面塑形](../03-iterations/2026-W30-p3-enterprise-agent-platform.md)
-- REQ-059 Architecture Gate 已由 PR #475 完成；REQ-041 W1 与 REQ-047 E0/E1/B1/A1 已合并，下一步进入 D1 旧 Direct RAG compatibility recording；REQ-060 可并行塑形，不直接跳到 Pi Worker。
+- REQ-059 Architecture Gate 已由 PR #475 完成；REQ-041 W1 与 REQ-047 E0/E1/B1/A1/D1 已合并。近期顺序调整为 TD-087 -> REQ-060 实施 -> REQ-042/TD-085/REQ-043；不直接跳到 Pi Worker。
 
 ## Completion Criteria
 
