@@ -5,6 +5,7 @@
 > Priority: P1
 > Area: Web / Information Architecture / Navigation / RBAC
 > Shaped: 2026-07-23
+> Revised: 2026-07-25（R1 复审修订）
 > Parent: REQ-059（🟢 Done）
 
 ## 1. 背景与问题
@@ -29,7 +30,7 @@
 | D-2 | MCP/Skill 归属错误 | 在 `adminItems`（系统管理），应归"能力中心"（spec Target IA） |
 | D-3 | 管理入口对普通用户可见 | `adminItems` + `aiAppItems` 对所有登录用户显示，无 role 过滤 |
 | D-4 | 路由无 permission 守卫 | `router.beforeEach` 仅检查 token；深链直达管理页 -> API 401（非 403） |
-| D-5 | isActive 误高亮 | `startsWith` 导致 `/resource/123` 误高亮 `/resource` 同前缀其他入口 |
+| D-5 | path prefix 高亮语义混杂 | `startsWith` 会让 `/ai-apps/admin` 同时高亮应用广场和应用管理；但详情页又需要高亮父入口，不能简单改成 exact name |
 | D-6 | 首页暴露占位入口 | HomeView `navItems` 含"技能编排"占位 |
 
 ### 2.3 角色映射漂移（P0 阻塞）
@@ -63,7 +64,7 @@
 
 | 旧路径 | 新路径 | 策略 |
 |--------|--------|------|
-| `/skill-editor` | `/capabilities/skills`（或首页 + "已下线"提示） | redirect，1 版本周期后移除 |
+| `/skill-editor` | `/capabilities/skills` | redirect，1 版本周期后移除；目标权限守卫重新裁决 |
 | `/admin/mcp-servers` | `/capabilities/mcp` | redirect |
 | `/admin/skills` | `/capabilities/skills` | redirect |
 | `/admin/template` | `/data/templates`（知识与数据区域） | redirect |
@@ -74,14 +75,11 @@
 
 REQ-060 保持"AI 问答" + route `/ai-chat`。REQ-042 Agent Workspace 验收通过后，单独 PR 改名"Agent 工作台" + route meta flag。避免菜单名称超前于真实能力（当前无 Agent Loop）。
 
-### D-5 permission 派生：V1 用已验证角色，API 是最终裁决
+### D-5 permission 派生：V1 本地角色只负责展示，API 是最终裁决
 
-V1 前端 permission 由已验证身份角色（`authStore.userRole`）映射；API 始终是授权事实源（后端 RBAC 独立拒绝）。后续切换后端下发 permission grants 时不重写页面结构（只改 permission resolver）。
+V1 前端 permission 由 `authStore.userRole` 映射。该值当前来自登录响应后写入 `localStorage`，刷新时直接恢复，不能称为持续验证的授权事实，也不能替代后端裁决。它只控制导航和展示体验：未知/缺失角色、未知 permission、未知 feature flag 一律 fail-closed；无 permission 的已认证基础路由才可放行。API 始终独立完成 RBAC/ABAC，后续切换后端下发 permission grants 时只替换 resolver，不改变 Route Record 和导航投影结构。
 
-**例外（前置依赖）**：模板 API（`/api/v1/templates/*`）当前后端**无 RBAC**（仅 `get_current_user` 认证，无 role 守卫），不满足"API 独立拒绝"。REQ-060 不在范围内修复后端（Non-goal"既有 API 不改"），改为：
-- Spec §5.4 显式撤回对模板的"既有 RBAC"承诺
-- AC-3 注明模板暂不纳入"三层一致"验收
-- 登记 TD-087「模板 API 缺后端 RBAC」作为前置依赖（REQ-060 实施前不阻塞，但模板权限化验收依赖 TD-087 关闭）
+**前置依赖**：模板 API（`/api/v1/templates/*`）当前后端**无 RBAC**（仅 `get_current_user` 认证，无 role 守卫），不满足"API 独立拒绝"。现正式登记 TD-087「模板管理 API 缺后端 RBAC」；REQ-060 Foundation 可先实施，但模板目标路由、深链守卫、旧链接迁移和 AC-3 验收不得在 TD-087 关闭前合并。
 
 ### D-6 `/system/*` 路由 V1 预留，不创建
 
@@ -98,9 +96,25 @@ V1 前端 permission 由已验证身份角色（`authStore.userRole`）映射；
 
 V1 策略：
 - `/apps/*` 路由 permission = `nav.apps.marketplace`（已登录即可见 route），但**具体应用的后端 RBAC 独立裁决**（DD 后端已守，占位应用无敏感数据）
-- 前端不隐藏 `/apps/*` shell（普通用户可见入口），API 越权由后端 403
+- `/apps/*` shell 可通过应用广场进入，但全部 `hiddenInNav=true`，不得由 Route 投影成侧边栏或首页一级入口
+- `/apps/*` 默认 `activeNav=AiAppsMarketplace`，其详情页刷新时保持应用广场父入口高亮
 - AC-3 "三层一致"对 `/apps/*` 不强制（shell 可见 + API 守卫，接受 shell 泄露）
 - DD 详情 `/apps/enterprise-360-dd/tasks/:id` 等深链：前端不额外守卫，依赖后端 403
+
+### D-8 Route Record 所有权与纯投影
+
+- `router.ts` 的 Route Record 是 `path/name/meta` 唯一事实源；导航不得再维护第二份 path、permission 或 hidden 配置。
+- `nav.ts` 只导出类型、section descriptor、permission/feature resolver 和接收 `router.getRoutes()` 结果的纯投影函数；不得导入 Router 实例，避免循环依赖。
+- 首页展示文案可以按 route name 维护独立 presentation 配置，但不得复制 path、permission、feature flag 或 active 规则。
+- Vue Router `RouteMeta` augmentation 允许 guest、redirect、layout parent 缺少导航字段；所有可认证访问的业务 leaf route 必须显式声明 title、section、permission/基础访问语义、hidden 和 active 映射。
+
+### D-9 受保护路由原子迁移
+
+新目标路由、permission meta、`/403`、深链守卫和旧链接重定向必须在同一 Slice/PR 交付。禁止先合并“菜单隐藏/路由迁移”、后补守卫的中间状态。TD-087 未关闭时不得迁移 `/data/templates*`。
+
+### D-10 移动端属于实施范围
+
+当前 `mobileMenuOpen` 没有打开入口，窄屏只会把固定侧栏压缩到 60px。REQ-060 必须实现移动端顶部菜单按钮和 off-canvas navigation，覆盖 backdrop/Escape/route-change 关闭、焦点返回、body scroll、`aria-controls`/`aria-expanded`，并建立可重复的 Playwright 桌面/移动验收，不得只写“人工验证”。
 
 ## 4. 目标信息架构（Target IA）
 
@@ -117,25 +131,28 @@ V1 策略：
 
 ## 5. 导航事实源设计（Single Source of Truth）
 
-### 5.1 route meta schema
+### 5.1 Route meta schema
 
 每个 route record 的 `meta` 扩展为类型化：
 
 ```ts
 interface RouteMeta {
-  title: string;              // 显示名
-  section: NavSection;        // 一级区域枚举
+  title?: string;             // 业务 leaf route 必填；guest/layout/redirect 可省略
+  section?: NavSection;       // 业务 leaf route 必填
   order?: number;             // 区域内排序
   permission?: PermissionKey; // 所需 permission（缺省=已登录即可）
   hiddenInNav?: boolean;      // 详情/编辑/占位页不在菜单显示
-  featureFlag?: string;       // 未交付功能 flag（hidden until flag on）
+  featureFlag?: FeatureFlagKey; // 未交付功能 flag；未知或未启用时 fail-closed
+  activeNav?: RouteRecordName;  // 详情/编辑/shell 对应的父导航 route name
   icon?: Component;           // 菜单图标
 }
 ```
 
-### 5.2 nav config 单一源
+`hiddenInNav` 对 guest、layout parent、redirect、详情、编辑、独立应用 shell 和占位页默认视为 `true`；只有显式可导航的业务 leaf route 才进入投影。`activeNav` 缺省为 route 自身 name，隐藏 route 必须显式指向可见父入口或声明不参与主导航高亮。
 
-新建 `packages/web/src/app/nav.ts`：类型化导航配置（从 route meta 派生 section/order/permission）。Sidebar / breadcrumb / route guard / 首页快捷入口都从 `nav.ts` 派生，不再维护三份数组。
+### 5.2 Route Record 单一源与 nav 纯投影
+
+新建 `packages/web/src/app/nav.ts`，但它不是第二份配置表：只包含类型、section descriptor、fail-closed resolver 和 `projectNavigation(routes, accessContext)` 等纯函数。调用方把 `router.getRoutes()` 传入，Sidebar / breadcrumb / route guard / 首页快捷入口统一读取 Route Record meta，不再维护三份 path/permission 数组。`nav.ts` 不得导入 `router.ts` 或 Router 实例。
 
 ### 5.3 permission key 矩阵
 
@@ -155,46 +172,42 @@ interface RouteMeta {
 
 **层级语义**：permission key 独立校验，**子 key 不蕴含父 key**（如持有 `nav.data.templates` 不自动获 `nav.data`）。resolver 对每个 key 独立判断。`nav.apps.marketplace` 与 `nav.apps.admin` 同理独立。
 
-### 5.4 route -> permission 显式映射表
+### 5.4 Route -> permission / visibility / active 显式映射表
 
-| route | name | permission | hiddenInNav | 备注 |
-|-------|------|------------|:-:|------|
-| `/` | home | - | - | 总览 |
-| `/ai-chat` | ai-chat | `nav.ai_work` | - | AI 问答 |
-| `/ai-apps` | AiAppsMarketplace | `nav.apps.marketplace` | - | 应用广场 |
-| `/ai-apps/admin` | AiAppsAdmin | `nav.apps.admin` | - | 应用管理 |
-| `/ai-apps/admin/:id` | AiAppEdit | `nav.apps.admin` | ✅ | 编辑详情 |
-| `/ai-apps/:code` | AiAppDetail | `nav.apps.marketplace` | ✅ | 应用详情 |
-| `/knowledge` | knowledge | `nav.knowledge` | - | 知识库 |
-| `/resource` | resource | `nav.knowledge` | - | 资源库 |
-| `/resource/:id` | file-detail | `nav.knowledge` | ✅ | 文件详情 |
-| `/database` | database | `nav.data` | - | 数据库 |
-| `/database/:catalogCode` | catalog-detail | `nav.data` | ✅ | 目录详情 |
-| `/data/templates` | templates-list | `nav.data.templates` | - | 数据要素模板（迁自 `/admin/template`） |
-| `/data/templates/:id` | template-detail | `nav.data.templates` | ✅ | 模板详情 |
-| `/capabilities/skills` | capabilities-skills | `nav.capabilities` | - | Skill 库（迁自 `/admin/skills`） |
-| `/capabilities/mcp` | capabilities-mcp | `nav.capabilities` | - | MCP 工具（迁自 `/admin/mcp-servers`） |
-| `/system` | system | `nav.system` | ✅ | 系统管理占位（V1 预留，D-6） |
-| `/apps/*` | App* | `nav.apps.marketplace` | - | 独立应用（D-7，后端独立裁决） |
-| `/skill-editor` | - | - | - | **下线**，重定向 `/capabilities/skills`（D-3） |
-| `/admin` | - | - | - | **下线**，重定向 `/system`（D-3/D-6） |
-| `/admin/*` 旧路径 | - | - | - | 重定向新路径（D-3） |
+| route | name | permission | hidden | activeNav | 备注 |
+|-------|------|------------|:-:|-----------|------|
+| `/` | home | `nav.overview` | - | `home` | 总览 |
+| `/ai-chat` | ai-chat | `nav.ai_work` | - | `ai-chat` | AI 问答 |
+| `/ai-apps` | AiAppsMarketplace | `nav.apps.marketplace` | - | `AiAppsMarketplace` | 应用广场 |
+| `/ai-apps/admin` | AiAppsAdmin | `nav.apps.admin` | - | `AiAppsAdmin` | 应用管理 |
+| `/ai-apps/admin/:id` | AiAppEdit | `nav.apps.admin` | ✅ | `AiAppsAdmin` | 编辑详情 |
+| `/ai-apps/:code` | AiAppDetail | `nav.apps.marketplace` | ✅ | `AiAppsMarketplace` | 应用详情 |
+| `/knowledge` | knowledge | `nav.knowledge` | - | `knowledge` | 知识库 |
+| `/resource` | resource | `nav.knowledge` | - | `resource` | 资源库 |
+| `/resource/:id` | file-detail | `nav.knowledge` | ✅ | `resource` | 文件详情 |
+| `/database` | database | `nav.data` | - | `database` | 数据库 |
+| `/database/:catalogCode` | catalog-detail | `nav.data` | ✅ | `database` | 目录详情 |
+| `/data/templates` | templates-list | `nav.data.templates` | - | `templates-list` | TD-087 后迁移 |
+| `/data/templates/:id` | template-detail | `nav.data.templates` | ✅ | `templates-list` | 模板详情 |
+| `/capabilities/skills` | capabilities-skills | `nav.capabilities` | - | `capabilities-skills` | Skill 库 |
+| `/capabilities/mcp` | capabilities-mcp | `nav.capabilities` | - | `capabilities-mcp` | MCP 工具 |
+| `/system` | system | `nav.system` | ✅ | - | V1 占位，不展示入口 |
+| `/apps/*` | App* | `nav.apps.marketplace` | ✅ | `AiAppsMarketplace` | 独立应用 shell/详情，API 独立裁决 |
+| `/skill-editor` | - | - | ✅ | - | redirect `/capabilities/skills` |
+| `/admin` | - | - | ✅ | - | redirect `/system` |
+| `/admin/*` 旧路径 | - | - | ✅ | - | redirect 新路径 |
 
-### 5.4 深链守卫
+### 5.5 深链守卫与 fail-closed
 
-- 前端 `router.beforeEach` 增强：检查 `to.meta.permission`，无权限 -> 重定向 `/403`（新建无权限页）或首页 + toast。
+- 前端 `router.beforeEach` 增强：检查 `to.meta.permission` 和 feature flag；未知角色、未知 permission、未知/关闭 flag 均进入 `/403`，不得默认放行。
 - 后端 API 独立拒绝越权（**既有 RBAC**，不依赖前端隐藏）。
 - AC-3：隐藏菜单 + 深链 403 + API 401/403 三层一致。
 
-**例外（前置依赖 TD-087）**：模板 API（`/api/v1/templates/*`）当前后端无 RBAC（仅认证无授权），不满足"API 独立拒绝"。REQ-060 范围内：
-- 前端按 `nav.data.templates`（HIGH_PRIVILEGE）隐藏菜单 + 深链 403
-- 后端 API 暂不对模板做角色守卫（TD-087 未关闭前）
-- **AC-3 对模板不强制"三层一致"**（前端两层守 + API 暂敞口，登记 TD-087 后续加固）
-- TD-087 关闭后模板纳入三层一致验收
+**模板迁移门禁（TD-087）**：模板 API（`/api/v1/templates/*`）当前后端无 RBAC（仅认证无授权），不满足"API 独立拒绝"。TD-087 未关闭前保留现有 `/admin/template*` 路径，不创建 `/data/templates*`、不增加旧链接重定向，也不得宣称前端深链 403 已保护模板 API。TD-087 关闭后，模板目标路由、HIGH_PRIVILEGE 导航/深链守卫和旧链接迁移必须同批交付，并纳入 AC-3 三层一致验收。
 
-### 5.5 isActive 精确匹配
+### 5.6 activeNav 精确匹配
 
-`isActive` 改为 route name 匹配（非 path startsWith），避免详情路由误高亮同前缀。面包屑用 route meta section 展开正确分组。
+`isActive` 比较当前 route 的 `activeNav ?? name` 与可见 NavItem 的 route name，不使用 path prefix。这样 `/ai-apps/admin` 不会同时高亮应用广场，而 `file-detail`、`catalog-detail`、`AiAppEdit` 和独立应用详情仍能高亮显式父入口。面包屑和分组展开使用同一 section/activeNav 投影。
 
 ## 6. 所有权边界
 
@@ -213,12 +226,12 @@ interface RouteMeta {
 
 - AC-1：侧边栏不存在两个 Skill 入口；"技能编排"占位下线；未交付功能默认 `hiddenInNav`。
 - AC-2：MCP/Skill 位于能力中心 `/capabilities/*`；数据要素模板位于知识与数据 `/data/templates`；系统管理只承载平台治理。
-- AC-3：普通用户看不到应用管理、能力中心、系统管理入口；深链 -> 前端 403 页 + API 独立 401/403。**例外：模板 API 暂无后端 RBAC（TD-087），AC-3 对模板不强制三层一致，前端两层守 + API 暂敞口**。
-- AC-4：Sidebar / breadcrumb / route guard 使用同一 `nav.ts` + route meta；新增菜单不再修改三份数组。
+- AC-3：普通用户看不到应用管理、能力中心、系统管理入口；深链 -> 前端 403 页 + API 独立 401/403。模板路由只有 TD-087 关闭后才迁移，并必须同批满足三层一致。
+- AC-4：Route Record 是 path/name/meta 唯一事实源；Sidebar / breadcrumb / route guard 通过 `nav.ts` 纯投影消费，不再维护三份数组或产生 Router 循环依赖。
 - AC-5：首页快捷入口引用命名路由 + 按同一 permission 过滤；不再出现失效/占位入口。
-- AC-6：刷新任一深链展开正确菜单分组 + 高亮父级；详情路由不误高亮同前缀（route name 匹配）。
-- AC-7：覆盖 7 角色（employee/teacher/student/leader/admin/data_admin/super_admin）最小导航矩阵测试。
-- AC-8：移动端折叠菜单 + 键盘导航 + aria 状态 + 浅色/深色主题浏览器验收。
+- AC-6：刷新任一深链按 `activeNav` 展开正确菜单分组并高亮唯一父级；独立应用 shell 不投影成一级菜单。
+- AC-7：覆盖 7 角色及 unknown/null role 的导航、深链与 fail-closed 矩阵测试。
+- AC-8：实现移动端 off-canvas 菜单、键盘/焦点/aria 状态，并通过 Playwright 桌面/移动、浅色/深色主题验收。
 - AC-9（新增）：前端 roleMap 统一到后端 RoleEnum；DD 页面 roleLabel 正确显示 leader/admin/data_admin。
 - AC-10（新增）：旧链接 `/skill-editor` `/admin/mcp-servers` `/admin/skills` `/admin/template` 重定向到新路径。
 
@@ -228,6 +241,7 @@ interface RouteMeta {
 - 不把前端隐藏当安全控制；后端 RBAC/ABAC 仍是最终裁决。
 - 不同时重做所有业务页面视觉。
 - 不实现后端 permission grants 下发（V1 用角色映射，后续切换不重写页面）。
+- 不在 REQ-060 内统一 MCP/Skill/Database 页面按钮的业务 action permission；这些按钮仍由各业务 API 最终裁决，后续 action grant 需独立契约，不能复用 `nav.*` 冒充业务授权。
 
 ## 9. Open Questions（已冻结）
 
@@ -243,4 +257,16 @@ interface RouteMeta {
 - REQ-059（🟢 Done）平台内核 + RBAC 边界。
 - BUG-017（🟢 Done）RoleEnum + HIGH_PRIVILEGE_ROLES。
 - REQ-044/045（🟢 Done）MCP/Skill Registry API（菜单归属迁移，不改 API）。
+- TD-087（⚫ 待办）模板管理 API 后端 RBAC；是 `/data/templates*` 迁移和 REQ-060 AC-3 收口前置。
 - REQ-042/043/047（未实施）—— REQ-060 只预留位置，不阻塞。
+
+## 11. R1 Review Corrections（2026-07-25）
+
+源码复审发现原 shaping 的“P0/P1 清零”声明不成立，修订前结果为 `P0/P1/P2 = 0/4/2`：
+
+- 原 `isActive` 诊断把 `/resource/:id` 高亮父入口误判成问题，改成 exact name 又会使详情页无高亮；现以 `activeNav` 明确父映射。
+- `/apps/*` 原表未隐藏，会被 Route 投影为一级菜单；现统一 `hiddenInNav=true`。
+- TD-087 只在 Spec/Plan 被提及、未进入技术债总账；现正式登记并设为模板路由迁移前置。
+- 原 Slice 3/4 分开造成菜单迁移后、守卫落地前的中间态；现要求原子交付。
+- 当前移动端状态没有 opener，不能把 AC-8 写成纯验证；现纳入真实实现和 Playwright 回归。
+- AI Applications、Iteration、Milestone 状态滞后；本次同步修正并把评审落入 score log。

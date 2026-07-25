@@ -16,6 +16,7 @@
 
 | 日期 | 类型 | 任务 | PR | 总分 | 结论 | 必修 follow-up | 流程扣分点 | 规则 / 脚本改进 | 评审人 |
 |------|------|------|----|------|------|----------------|------------|------------------|--------|
+| 2026-07-25 | Original | REQ-060 企业 Agent 控制台导航 shaping | [#491](https://github.com/MarkDanile/MetaEduBase/pull/491) / [#492](https://github.com/MarkDanile/MetaEduBase/pull/492) | 70 | 可接受但必须修订后实施；目标 IA 和角色矩阵方向正确，源码复审发现 `activeNav` 缺失、路由/守卫非原子、移动端未实施和 TD-087 未入账，原“P0/P1 清零”声明不成立 | TD-087 / REQ-060 | work-log/current-work 声称 TD-087 已登记但总账不存在；AI Applications/Iteration 仍为 Candidate；docs gate 未覆盖这些语义漂移 | 本次在原 REQ-060 内修订契约并正式登记 TD-087；状态一致性脚本改进暂不扩项，先观察复发 | Codex |
 | 2026-07-24 | Original | REQ-041 Slice W1 Workspace durable store | [#479](https://github.com/MarkDanile/MetaEduBase/pull/479) | 93 | 优秀；范围严格止于 durable workspace store，owner/tenant、CAS、keyset、幂等和并发 seq 有真实 PostgreSQL 证据；独立复审 3 finding 合并前全部修复 | TD-086 | 外部 Claude 复审因数据导出策略未执行，改用独立内部 `gpt-5.6-luna high`；全库 `alembic check` 暴露历史 metadata 漂移 | 已登记 TD-086，后续建立可执行 schema drift gate；不扩写当前规则 | Codex + gpt-5.6-luna |
 | 2026-07-24 | Original | REQ-059 企业级可控 Agent 平台 Architecture Gate | [#475](https://github.com/MarkDanile/MetaEduBase/pull/475) | 97 | 优秀；八项控制面决策、12 仓库源码导航、AI Delivery Matrix、园区 Pilot 与后续任务边界形成一致事实源；独立复审和用户签字完成，可关闭 | 无 | 无 | 不新增规则；后续 Adapter 统一执行 conformance suite | Codex |
 | 2026-07-23 | Original | REQ-059 企业 Agent 平台路线与园区五应用塑形 | [#474](https://github.com/MarkDanile/MetaEduBase/pull/474) | 95 | 优秀；控制面、Runtime 中立边界、任务顺序、P3/P4 里程碑和园区五应用去重形成一致事实源，可合并；REQ-059 继续保持 Shaping | 无 | 无 | 不新增规则；现有文档门禁、工作台和评分流程已覆盖 | Codex |
@@ -91,12 +92,12 @@
 
 | 指标 | 当前值 | 说明 |
 |------|--------|------|
-| 已记录评审数 | 70 | 66 条 Original + 4 条 Backfilled。2026-07-24 新增 REQ-041 W1 评审记录。 |
-| 平均评分 | 84.9 | 70 条 `总分` 算术平均；累计总分 5945。 |
-| 一次关闭率 | 56% | 评分 ≥ 80 且无必修 follow-up 的任务数 / 已记录评审数 = 39/70。 |
-| 返工率 | 44% | 有必修 follow-up 的任务数 / 已记录评审数 = 31/70。 |
-| 流程扣分率 | 69% | `流程扣分点` 列非 `无` 的任务数 / 已记录评审数 = 48/70；这里表示有可复盘流程信号，不等同于严重违规。 |
-| 规则转化率 | 50% | 形成规则、脚本或 follow-up 改进的评审数 / 已记录评审数 = 35/70。 |
+| 已记录评审数 | 71 | 67 条 Original + 4 条 Backfilled。2026-07-25 新增 REQ-060 shaping 复审记录。 |
+| 平均评分 | 84.7 | 71 条 `总分` 算术平均；累计总分 6015。 |
+| 一次关闭率 | 55% | 评分 ≥ 80 且无必修 follow-up 的任务数 / 已记录评审数 = 39/71。 |
+| 返工率 | 45% | 有必修 follow-up 的任务数 / 已记录评审数 = 32/71。 |
+| 流程扣分率 | 69% | `流程扣分点` 列非 `无` 的任务数 / 已记录评审数 = 49/71；这里表示有可复盘流程信号，不等同于严重违规。 |
+| 规则转化率 | 51% | 形成规则、脚本或 follow-up 改进的评审数 / 已记录评审数 = 36/71。 |
 
 > 样本量不足时，本表只用于追踪单任务事实，不用于趋势判断。
 

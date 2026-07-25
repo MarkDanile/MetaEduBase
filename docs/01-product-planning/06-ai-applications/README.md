@@ -96,12 +96,12 @@
 | REQ-051 | 业务指标语义层与经营分析口径 | ⚫ Candidate | 固化出租率、空置率、去化率、NOI、现金流、欠费率等经营指标定义和数据血缘。 |
 | REQ-052 | 智能问数与国资信息化数据激活原子能力 | 🟢 Done | 已交付语义层、查询计划、SQL Guard、权限治理、结果解释和真实业务样例闭环。 |
 | REQ-059 | 企业级可控 Agent 平台内核与 Runtime 中立控制面 | 🟢 Done | PR #475 完成 Architecture Gate，冻结平台所有权、统一 Turn Loop、HTTP/SSE+ACK、Runtime Cell、RunEvent/ToolGrant、L3 写恢复、AI Delivery Matrix、12 仓库源码导航和 APP-005/009 Pilot Rubric。 |
-| REQ-060 | 企业 Agent 控制台信息架构与权限化导航 | ⚫ Candidate | 收口菜单事实源，将 MCP/Skill 归入能力中心，按 permission 派生导航和路由守卫。 |
+| REQ-060 | 企业 Agent 控制台信息架构与权限化导航 | 🔵 Ready | Shaping + R1 复审修订完成；Route Record 单一源、`activeNav`、fail-closed、原子路由迁移与移动端/Playwright 边界已冻结。TD-087 是模板受保护路由迁移前置。 |
 | REQ-061 | Agent 记忆与上下文治理 | ⚫ Candidate | 分离工作上下文、会话摘要、长期记忆和企业知识，建立来源、TTL、确认和删除边界。 |
 | REQ-062 | 动态数据采集、填报与报表发布平台 | ⚫ Candidate | 为 APP-012/030 提供覆盖分析、版本化表单、Campaign、Submission、汇总和常态化发布能力。 |
 | REQ-063 | 受治理的外部数据采集与研究证据链 | ⚫ Candidate | 为 APP-009/016 提供授权 API/MCP/爬虫 Connector、网络策略、来源快照、新鲜度和证据治理。 |
 
-当前执行顺序固定为：REQ-059 Architecture Gate（已完成）-> REQ-041 Conversation/Message -> REQ-047 Run/Event/Approval/Artifact -> REQ-042 Workspace -> TD-085 边界收口 -> REQ-043 AgentTurnLoopRuntime/Tool Gateway -> Pi 只读 Pilot -> durable HITL/Sandbox/L3 + REQ-062/APP-012 -> APP-030 -> ACP/LangGraph -> REQ-061 -> REQ-049 -> APP-016。REQ-060 菜单收口现在可与 REQ-041/047 并行。REQ-044 / 045 / 052 已是能力提供层，不再作为待建设前置项。
+当前执行顺序固定为：REQ-059 Architecture Gate（已完成）-> REQ-041/047 durable core（核心 Slice 已完成，extended contracts 继续按需）-> TD-087 -> REQ-060 -> REQ-042 Workspace -> TD-085 边界收口 -> REQ-043 AgentTurnLoopRuntime/Tool Gateway -> Pi 只读 Pilot -> durable HITL/Sandbox/L3 + REQ-062/APP-012 -> APP-030 -> ACP/LangGraph -> REQ-061 -> REQ-049 -> APP-016。REQ-060 Foundation 可与 TD-087 顺序接力，但模板路由迁移必须等待 TD-087。REQ-044 / 045 / 052 已是能力提供层，不再作为待建设前置项。
 
 应用基础可做受控并行：REQ-063 的授权来源与合规 Spike 可立即开始，但 Connector 接入必须等待 Tool Gateway；REQ-062 可在 REQ-047 Run/Artifact 契约冻结后塑形 Campaign/Form/Submission，不等待 Pi，但 APP-012/030 不得各自先写临时表单引擎。
 
