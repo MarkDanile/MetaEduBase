@@ -1,4 +1,22 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
+import type { FeatureFlagKey, NavSection, PermissionKey } from "./nav";
+
+// REQ-060 Slice 1: RouteMeta augmentation -- route record 是 path/name/meta
+// 唯一事实源；sidebar/breadcrumb/guard 从 meta 派生（nav.ts projectNavigation）。
+declare module "vue-router" {
+  interface RouteMeta {
+    title?: string;
+    section?: NavSection;
+    order?: number;
+    permission?: PermissionKey;
+    hiddenInNav?: boolean;
+    featureFlag?: FeatureFlagKey;
+    activeNav?: string;
+    icon?: unknown;
+    guest?: boolean;
+    requiresAuth?: boolean;
+  }
+}
 
 const routes: RouteRecordRaw[] = [
   {
