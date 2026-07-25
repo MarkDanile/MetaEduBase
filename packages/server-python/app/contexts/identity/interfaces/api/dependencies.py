@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -27,13 +27,19 @@ async def get_current_user(
 
 
 async def require_high_privilege(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    request: Request,
+    current_user: dict = Depends(get_current_user),  # noqa: B008
 ) -> dict:
     """TD-087: 共享 RBAC 守卫 -- 仅 HIGH_PRIVILEGE_ROLES 通过，否则 403。
 
-    匿名由 ``get_current_user`` 返回 401；低权角色（leader/teacher/
-    employee/student）返回 403 + 写 ``admin_access_denied`` 安全日志。
-    复用 BUG-017 ``HIGH_PRIVILEGE_ROLES`` + ``security_logger``，不造新常量。
+    通用、脱敏、跨 context 复用（template/ai_app/mcp_registry 等）。匿名由
+    ``get_current_user`` 返回 401；低权角色（leader/teacher/employee/student）
+    返回 403 + 写 ``admin_access_denied`` 安全日志（含 method/path + 角色）。
+    复用 BUG-017 ``HIGH_PRIVILEGE_ROLES`` + ``security_logger``，不造新角色常量。
+
+    注：参数注解直接用 ``Depends(get_current_user)``（不写 ``Annotated[dict, ...]``），
+    避免 ``from __future__ import annotations`` 下 type hint 变字符串导致 ForwardRef
+    解析失败。
     """
     role = current_user.get("role")
     if role not in HIGH_PRIVILEGE_ROLES:
@@ -41,11 +47,15 @@ async def require_high_privilege(
             event_type="admin_access_denied",
             actor_user_id=str(current_user.get("id")),
             result="denied",
-            detail={"role": role, "endpoint": "template-admin"},
+            detail={
+                "role": role,
+                "method": request.method,
+                "path": request.url.path,
+            },
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"角色 {role!r} 无权管理模板（仅 {sorted(HIGH_PRIVILEGE_ROLES)} 可操作）",
+            detail="无权访问管理资源",
         )
     return current_user
 

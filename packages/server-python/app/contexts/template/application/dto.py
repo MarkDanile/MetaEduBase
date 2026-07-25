@@ -56,6 +56,16 @@ class TemplateResponse(BaseModel):
     deprecated_at: str | None
     deprecated_reason: str | None
 
+
+class TemplateLookupResponse(BaseModel):
+    """Authenticated tenant-local projection used for field-label rendering."""
+
+    id: str
+    name: str
+    doc_types: list[str]
+    fields: list[FieldDTO]
+
+
 class TemplateAIInitRequest(BaseModel):
     doc_type: str
     source_file_id: str | None = None

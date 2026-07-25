@@ -4,7 +4,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from app.contexts.identity.interfaces.api.dependencies import require_high_privilege
+from app.contexts.identity.interfaces.api.dependencies import (
+    get_current_user,
+    require_high_privilege,
+)
 from app.contexts.template.application.dto import (
     CloneTemplateRequest,
     DeprecateTemplateRequest,
@@ -14,6 +17,7 @@ from app.contexts.template.application.dto import (
     TemplateAIInitResponse,
     TemplateCreate,
     TemplateExportResponse,
+    TemplateLookupResponse,
     TemplateResponse,
     TemplateUpdate,
     TemplateVersionDetailResponse,
@@ -42,6 +46,18 @@ async def list_templates(
 
 # NOTE: Specific routes must be defined BEFORE /{template_id}
 # to avoid being matched as a template_id
+@router.get("/lookup", response_model=list[TemplateLookupResponse])
+async def lookup_templates(
+    current_user: Annotated[dict, Depends(get_current_user)],
+    service: Annotated[TemplateService, Depends(get_template_service)],
+):
+    """Return the tenant-local minimal projection used for field labels."""
+    del current_user  # 仅触发认证
+    tid = get_tenant_id()
+    tenant_uuid = tid if isinstance(tid, UUID) else UUID(tid)
+    return await service.list_lookup(tenant_uuid)
+
+
 @router.get("/check-doc-type", response_model=dict)
 async def check_doc_type(
     doc_type: str,

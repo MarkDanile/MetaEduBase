@@ -138,12 +138,12 @@ import FieldValue from "./FieldValue.vue";
 import { getTemplateStructuredData, TEMPLATE_META_RESERVED_KEYS } from "@metaedu/shared/schemas/document";
 import { getTemplateFieldLabel } from "@/utils/templateLabels";
 import type { ChunkDTO } from "@/services/document";
-import type { Template } from "@/services/template";
+import type { TemplateLookup } from "@/services/template";
 import type { KnowledgeNodeDTO, KnowledgeEdgeDTO } from "@/services/knowledge";
 
 const props = defineProps<{
   activeTab: string;
-  templates: Template[];
+  templates: TemplateLookup[];
   chunks: ChunkDTO[];
   chunksLoading: boolean;
   kgNodes: KnowledgeNodeDTO[];

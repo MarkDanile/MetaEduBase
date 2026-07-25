@@ -31,7 +31,7 @@ import {
   type KnowledgeEdgeDTO,
   type KnowledgeNodeDTO,
 } from "@/services/knowledge";
-import { templateApi, type Template } from "@/services/template";
+import { templateApi, type TemplateLookup } from "@/services/template";
 
 // ---------------------------------------------------------------------------
 // Query keys
@@ -122,7 +122,7 @@ function useFileKgQuery(
   });
 }
 
-function useTemplatesQuery(): UseQueryReturnType<Template[], Error> {
+function useTemplatesQuery(): UseQueryReturnType<TemplateLookup[], Error> {
   return useQuery({
     queryKey: templateKeys.all,
     // Legacy `loadTemplates` silently failed; preserve that behavior by
@@ -131,7 +131,7 @@ function useTemplatesQuery(): UseQueryReturnType<Template[], Error> {
     // is not triggered.
     queryFn: async () => {
       try {
-        return (await templateApi.list()).data;
+        return (await templateApi.lookup()).data;
       } catch {
         return [];
       }

@@ -5,7 +5,9 @@ import json
 import logging
 import re
 import time
+from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import TypedDict
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,6 +43,13 @@ _CONTAINER_TYPES = frozenset({"object", "table", "array"})
 _LEAF_TYPES = frozenset({"text", "textarea", "number"})
 
 
+class TemplateLookupProjection(TypedDict):
+    id: str
+    name: str
+    doc_types: list[str]
+    fields: list[dict]
+
+
 def _dto_to_entity(dto: FieldDTO) -> Field:
     return Field(
         key=dto.key,
@@ -69,6 +78,15 @@ def _entity_to_dto(entity: Template) -> dict:
         "is_deprecated": entity.is_deprecated,
         "deprecated_at": entity.deprecated_at.isoformat() if entity.deprecated_at else None,
         "deprecated_reason": entity.deprecated_reason,
+    }
+
+
+def _entity_to_lookup_dto(entity: Template) -> TemplateLookupProjection:
+    return {
+        "id": str(entity.id),
+        "name": entity.name,
+        "doc_types": entity.doc_types,
+        "fields": [f.to_dict() for f in entity.fields],
     }
 
 
@@ -232,6 +250,13 @@ class TemplateService:
         if not include_deprecated:
             result = [t for t in result if not t["is_deprecated"]]
         return result
+
+    async def list_lookup(
+        self, tenant_id: UUID
+    ) -> Sequence[TemplateLookupProjection]:
+        """Return active templates through the minimal business-read projection."""
+        templates = await self.repo.list(tenant_id)
+        return [_entity_to_lookup_dto(t) for t in templates if not t.is_deprecated]
 
     # REQ-002-2: clone / version / export / import
 

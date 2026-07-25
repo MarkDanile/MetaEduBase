@@ -35,6 +35,11 @@ export interface Template {
   deprecated_reason: string | null;
 }
 
+export type TemplateLookup = Pick<
+  Template,
+  "id" | "name" | "doc_types" | "fields"
+>;
+
 // REQ-002-2: clone / version / export types
 
 export interface CloneTemplateRequest {
@@ -79,6 +84,9 @@ export const templateApi = {
   list(includeDeprecated = false) {
     const qs = includeDeprecated ? "?include_deprecated=true" : "";
     return api.get<Template[]>(`/templates${qs}`);
+  },
+  lookup() {
+    return api.get<TemplateLookup[]>("/templates/lookup");
   },
   get(id: string) {
     return api.get<Template>(`/templates/${id}`);
