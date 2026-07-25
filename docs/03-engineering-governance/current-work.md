@@ -14,24 +14,7 @@
 
 ## 当前进行中
 
-### REQ-060-R1: 企业 Agent 控制台导航塑形复审修订
-
-状态：🟡 进行中
-类型：需求塑形修订（docs-only）
-领域：Web / IA / Navigation / RBAC / Engineering Governance
-当前执行模式：review correction / plan-do
-最近接手工具：Codex
-分支：`codex/docs-req060-shaping-corrections`
-
-需求来源：
-- Requirement: [REQ-060](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md)
-- Delivery Spec: [2026-07-23-req060-console-ia-nav-rbac](../02-delivery-plans/01-specs/2026-07-23-req060-console-ia-nav-rbac.md)
-- Plan: [2026-07-23-req060-console-ia-nav-rbac-plan](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md)
-
-当前进展：Spec/Plan R1 已修订；Route Record/`activeNav`/fail-closed/原子迁移/移动端 Playwright 契约已冻结，TD-087 已正式入账，Iteration/Milestone/AI Applications/评分总账已同步。
-下一步：提交 docs-only 变更，创建 PR 并等待 required checks；合并后做最小 closeout。
-验证状态：`scripts/check-engineering-docs` 通过（31 条 allowlisted known issues）；`git diff --check` 通过；无业务代码变更，不运行前后端测试。
-交接备注：修订合并前不得进入 REQ-060 业务实现；TD-087 完成后才允许迁移受保护模板路由。
+当前无活跃任务。
 
 ## 下一批候选任务
 

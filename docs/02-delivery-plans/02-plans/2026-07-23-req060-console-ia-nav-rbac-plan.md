@@ -95,7 +95,7 @@ Slice 1 可在 TD-087 实施前完成，但 Slice 2 不得越过 Gate 0。不同
 
 ## 验证摘要（实施阶段回填）
 
-- Shaping R1：`scripts/check-engineering-docs` + `git diff --check`。
+- Shaping R1：PR #493（squash merge `a0e18b8b`）；`scripts/check-engineering-docs` 通过（31 条 allowlisted known issues），`git diff --check` 通过，三项 required checks 通过。
 - Gate 0：模板 API 7 角色 + 匿名 + tenant isolation 后端测试。
 - Slice 1-3：Vitest permission/nav/router/Layout/Home 矩阵 + lint + typecheck。
 - Slice 4：Playwright desktop/mobile/light/dark + 全量前端门禁。

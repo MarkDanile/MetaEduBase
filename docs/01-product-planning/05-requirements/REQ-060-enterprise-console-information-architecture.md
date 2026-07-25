@@ -70,3 +70,4 @@
 - Plan: `docs/02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md`
 - Shaping 决策（2026-07-23）：D-1 统一到后端 RoleEnum / D-2 能力中心普通用户完全隐藏 / D-3 旧链接重定向 / D-4 AI 问答保持名称绑定 REQ-042 改名
 - R1 复审修订（2026-07-25）：增加 `activeNav`、fail-closed 与 Route Record 所有权；登记 TD-087 前置；原子化路由迁移；移动端与 Playwright 改为真实实施范围。
+- R1 Delivery: [PR #493](https://github.com/MarkDanile/MetaEduBase/pull/493)（squash merge `a0e18b8b`）。
