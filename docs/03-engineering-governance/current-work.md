@@ -14,7 +14,18 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TD-087: 模板管理 API 后端 RBAC
+
+状态：🟡 进行中（分支 fix/td087-template-api-rbac，PR #495 待审）
+类型：安全加固（P1）
+领域：后端 / Template / RBAC
+
+需求来源：
+- Tech Debt: [TD-087](technical-debt.md#td-087-模板管理-api-缺少后端-rbac)
+
+当前进展：15 个管理端点已接入共享 `require_high_privilege` 守卫；`/lookup` 使用独立最小 DTO；管理 list 与业务 lookup 前端契约已分离；92 个 RBAC / lookup 用例覆盖角色矩阵、响应脱敏、字段白名单和跨租户不可见。
+
+下一步：完成本地门禁、提交推送并等待新 HEAD CI；安全复审通过并合并后，REQ-060 Slice 2（受保护模板路由 + 深链守卫 + 旧链接重定向）方可解锁。
 
 ## 下一批候选任务
 
@@ -22,7 +33,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1-S | TD-087 模板管理 API 后端 RBAC | ⚫ 待办 | REQ-060 受保护模板路由迁移前先实施并验证 7 角色矩阵 | [Tech Debt](technical-debt.md#td-087-模板管理-api-缺少后端-rbac) |
 | P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | 🔵 Ready | R1 修订合并后，按修订 Plan 从 Foundation Slice 开始 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) / [Spec](../02-delivery-plans/01-specs/2026-07-23-req060-console-ia-nav-rbac.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md) |
 
 ## 最近完成

@@ -75,7 +75,7 @@
 import { ref, computed } from 'vue';
 import { ChevronDown, ChevronRight } from 'lucide-vue-next';
 import { getTemplateFieldLabelByPath, findFieldNode, type KeyedNode } from '@/utils/templateLabels';
-import type { Template } from '@/services/template';
+import type { TemplateLookup } from '@/services/template';
 
 const props = defineProps<{
   label: string;
@@ -84,7 +84,7 @@ const props = defineProps<{
   // BUG-006 #1 round 2: nested 字段 label 解析需要完整 keyPath 数组
   // (覆盖 object children / array item / table column)
   keyPath?: string[];
-  templates?: ReadonlyArray<Template>;
+  templates?: ReadonlyArray<TemplateLookup>;
 }>();
 
 const depth = computed(() => props.depth ?? 0);

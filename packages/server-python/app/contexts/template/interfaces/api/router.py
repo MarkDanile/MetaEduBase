@@ -4,7 +4,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from app.contexts.identity.interfaces.api.dependencies import get_current_user
+from app.contexts.identity.interfaces.api.dependencies import (
+    get_current_user,
+    require_high_privilege,
+)
 from app.contexts.template.application.dto import (
     CloneTemplateRequest,
     DeprecateTemplateRequest,
@@ -14,6 +17,7 @@ from app.contexts.template.application.dto import (
     TemplateAIInitResponse,
     TemplateCreate,
     TemplateExportResponse,
+    TemplateLookupResponse,
     TemplateResponse,
     TemplateUpdate,
     TemplateVersionDetailResponse,
@@ -31,7 +35,7 @@ router = APIRouter(prefix="/api/v1/templates", tags=["templates"])
 @router.get("", response_model=list[TemplateResponse])
 async def list_templates(
     service: Annotated[TemplateService, Depends(get_template_service)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, Depends(require_high_privilege)],
     # REQ-002-4: include_deprecated filter (default false hides deprecated)
     include_deprecated: bool = False,
 ):
@@ -42,11 +46,23 @@ async def list_templates(
 
 # NOTE: Specific routes must be defined BEFORE /{template_id}
 # to avoid being matched as a template_id
+@router.get("/lookup", response_model=list[TemplateLookupResponse])
+async def lookup_templates(
+    current_user: Annotated[dict, Depends(get_current_user)],
+    service: Annotated[TemplateService, Depends(get_template_service)],
+):
+    """Return the tenant-local minimal projection used for field labels."""
+    del current_user  # 仅触发认证
+    tid = get_tenant_id()
+    tenant_uuid = tid if isinstance(tid, UUID) else UUID(tid)
+    return await service.list_lookup(tenant_uuid)
+
+
 @router.get("/check-doc-type", response_model=dict)
 async def check_doc_type(
     doc_type: str,
     service: Annotated[TemplateService, Depends(get_template_service)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, Depends(require_high_privilege)],
 ):
     tenant_id = get_tenant_id()
     templates = await service.list(tenant_id)
@@ -62,7 +78,7 @@ async def check_doc_type(
 async def init_template_by_ai(
     dto: TemplateAIInitRequest,
     service: Annotated[TemplateService, Depends(get_template_service)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, Depends(require_high_privilege)],
 ):
     try:
         tenant_id = get_tenant_id()
@@ -87,7 +103,7 @@ async def init_template_by_ai(
 async def create_template(
     dto: TemplateCreate,
     service: Annotated[TemplateService, Depends(get_template_service)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, Depends(require_high_privilege)],
 ):
     tenant_id = get_tenant_id()
     tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
@@ -101,7 +117,7 @@ async def create_template(
 async def get_template(
     template_id: str,
     service: Annotated[TemplateService, Depends(get_template_service)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, Depends(require_high_privilege)],
 ):
     tenant_id = get_tenant_id()
     result = await service.get(UUID(template_id), tenant_id)
@@ -115,7 +131,7 @@ async def update_template(
     template_id: str,
     dto: TemplateUpdate,
     service: Annotated[TemplateService, Depends(get_template_service)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, Depends(require_high_privilege)],
 ):
     tenant_id = get_tenant_id()
     tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
@@ -132,7 +148,7 @@ async def update_template(
 async def delete_template(
     template_id: str,
     service: Annotated[TemplateService, Depends(get_template_service)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, Depends(require_high_privilege)],
 ):
     tenant_id = get_tenant_id()
     await service.delete(UUID(template_id), tenant_id)
@@ -147,7 +163,7 @@ async def delete_template(
 async def import_template(
     dto: ImportTemplateRequest,
     service: Annotated[TemplateService, Depends(get_template_service)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, Depends(require_high_privilege)],
     response: Response,
 ):
     tenant_id = get_tenant_id()
@@ -176,7 +192,7 @@ async def clone_template(
     template_id: str,
     dto: CloneTemplateRequest,
     service: Annotated[TemplateService, Depends(get_template_service)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, Depends(require_high_privilege)],
 ):
     tenant_id = get_tenant_id()
     tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
@@ -193,7 +209,7 @@ async def clone_template(
 async def list_template_versions(
     template_id: str,
     service: Annotated[TemplateService, Depends(get_template_service)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, Depends(require_high_privilege)],
     limit: int = 20,
     offset: int = 0,
 ):
@@ -210,7 +226,7 @@ async def get_template_version(
     template_id: str,
     version_number: int,
     service: Annotated[TemplateService, Depends(get_template_service)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, Depends(require_high_privilege)],
 ):
     tenant_id = get_tenant_id()
     tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
@@ -228,7 +244,7 @@ async def rollback_template(
     template_id: str,
     version_number: int,
     service: Annotated[TemplateService, Depends(get_template_service)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, Depends(require_high_privilege)],
 ):
     tenant_id = get_tenant_id()
     tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
@@ -245,7 +261,7 @@ async def rollback_template(
 async def export_template(
     template_id: str,
     service: Annotated[TemplateService, Depends(get_template_service)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, Depends(require_high_privilege)],
 ):
     tenant_id = get_tenant_id()
     tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
@@ -265,7 +281,7 @@ async def deprecate_template(
     template_id: str,
     dto: DeprecateTemplateRequest,
     service: Annotated[TemplateService, Depends(get_template_service)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, Depends(require_high_privilege)],
 ):
     tenant_id = get_tenant_id()
     tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)
@@ -279,7 +295,7 @@ async def deprecate_template(
 async def undeprecate_template(
     template_id: str,
     service: Annotated[TemplateService, Depends(get_template_service)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, Depends(require_high_privilege)],
 ):
     tenant_id = get_tenant_id()
     tenant_uuid = tenant_id if isinstance(tenant_id, UUID) else UUID(tenant_id)

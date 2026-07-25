@@ -80,7 +80,7 @@ import FileTabsPanel from "@/views/resource/FileTabsPanel.vue";
 import { useToast } from "@/composables/useToast";
 import { type FileDTO, type ChunkDTO, type TaskDTO } from "@/services/document";
 import { type KnowledgeNodeDTO, type KnowledgeEdgeDTO } from "@/services/knowledge";
-import { type Template } from "@/services/template";
+import { type TemplateLookup } from "@/services/template";
 import {
   useFileQuery,
   useFileTasksQuery,
@@ -164,7 +164,7 @@ const kgNodes = computed<KnowledgeNodeDTO[]>(() => kgQuery.data.value?.nodes ?? 
 const kgEdges = computed<KnowledgeEdgeDTO[]>(() => kgQuery.data.value?.edges ?? []);
 
 const templatesQuery = useTemplatesQuery();
-const templates = computed<Template[]>(() => templatesQuery.data.value ?? []);
+const templates = computed<TemplateLookup[]>(() => templatesQuery.data.value ?? []);
 
 // --- Mutations (Vue Query) ---
 const retryMutation = useRetryTasksMutation(fileId, () => {
