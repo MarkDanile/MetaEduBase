@@ -22,6 +22,7 @@ from app.contexts.agent_execution.infrastructure.repository import (
 DIRECT_RAG_DEFINITION_KEY = "system.direct_rag"
 DIRECT_RAG_DEFINITION_VERSION = 1
 DIRECT_RAG_PROFILE_KEY = "compat.direct_rag.v1"
+DIRECT_RAG_POLICY_VERSION = "compat.direct_rag.v1"
 
 DIRECT_RAG_CAPABILITIES = RuntimeCapabilitySnapshot(
     runtime_kind="compatibility",

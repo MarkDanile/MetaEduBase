@@ -50,7 +50,10 @@ from app.contexts.structured_data.interfaces.api.task_router import (
 from app.contexts.template.interfaces.api.router import router as template_router
 from app.internal_mcp.server import router as internal_mcp_router
 from app.shared.infrastructure import models as _registered_models  # noqa: F401
-from app.shared.infrastructure.database import async_session_factory
+from app.shared.infrastructure.database import (
+    async_session_factory,
+    dispose_advisory_claim_engines,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -73,10 +76,8 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     try:
         yield
     finally:
-        # No resources to release — ``async_session_factory`` shares
-        # the engine owned by ``app.shared.infrastructure.database``,
-        # which is disposed at process exit.
         app.state.query_service = None
+        await dispose_advisory_claim_engines()
 
 
 app = FastAPI(

@@ -5,6 +5,9 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.agent_execution.application.dto import EventReplayBatch
+from app.contexts.agent_execution.application.execution_identity_service import (
+    DIRECT_RAG_POLICY_VERSION,
+)
 from app.contexts.agent_execution.application.ports import (
     ConversationAccessDecision,
     RunConversationAccessPort,
@@ -57,7 +60,7 @@ class RunQueryService:
         run_id: uuid.UUID,
         expected_revision: int,
     ) -> AgentRun:
-        _, access = await self._require_run_access(
+        run, access = await self._require_run_access(
             tenant_id=tenant_id,
             actor_id=actor_id,
             run_id=run_id,
@@ -71,6 +74,40 @@ class RunQueryService:
         )
         if not reserved or current.status is RunStatus.CANCELLING:
             return current
+        if current.run_config_snapshot.policy_version == DIRECT_RAG_POLICY_VERSION:
+            if current.status in {RunStatus.QUEUED, RunStatus.RESUME_REQUIRED}:
+                cancelled, _, _ = await self._coordinator.commit_terminal(
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                    expected_status=current.status,
+                    expected_revision=current.status_revision,
+                    result=TerminalResult(
+                        outcome="cancelled",
+                        code="direct_rag_cancelled",
+                        reason="Legacy Direct RAG compatibility request was cancelled",
+                    ),
+                )
+                return cancelled
+            cancelling, _ = await self._coordinator.transition_run(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                expected_status=current.status,
+                expected_revision=current.status_revision,
+                target_status=RunStatus.CANCELLING,
+                summary="Cancelling legacy Direct RAG compatibility request",
+            )
+            cancelled, _, _ = await self._coordinator.commit_terminal(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                expected_status=RunStatus.CANCELLING,
+                expected_revision=cancelling.status_revision,
+                result=TerminalResult(
+                    outcome="cancelled",
+                    code="direct_rag_cancelled",
+                    reason="Legacy Direct RAG compatibility request was cancelled",
+                ),
+            )
+            return cancelled
         if current.status in {RunStatus.QUEUED, RunStatus.RESUME_REQUIRED}:
             cancelled, _, _ = await self._coordinator.commit_terminal(
                 tenant_id=tenant_id,

@@ -17,7 +17,27 @@
 export interface ChatErrorShape {
   code?: string;
   message?: string;
-  response?: { status?: number; data?: { detail?: string } };
+  response?: {
+    status?: number;
+    data?: { detail?: string | { code?: string; message?: string } };
+  };
+}
+
+const DURABLE_PENDING_CODES = new Set([
+  "direct_rag_turn_pending",
+  "direct_rag_execution_pending",
+  "direct_rag_output_pending",
+]);
+
+export function shouldPreserveRequestIdentity(err: ChatErrorShape): boolean {
+  if (!err.response) return true;
+  const detail = err.response.data?.detail;
+  return Boolean(
+    detail
+    && typeof detail === "object"
+    && detail.code
+    && DURABLE_PENDING_CODES.has(detail.code),
+  );
 }
 
 export function describeChatError(err: ChatErrorShape): string {
@@ -26,8 +46,12 @@ export function describeChatError(err: ChatErrorShape): string {
     return "请求超时，请稍后重试";
   }
   const detail = err.response?.data?.detail;
-  if (detail) {
+  if (typeof detail === "string" && detail) {
     return `请求失败: ${detail}`;
+  }
+  if (detail && typeof detail === "object") {
+    const message = detail.message || detail.code;
+    if (message) return `请求失败: ${message}`;
   }
   // 有响应但无 detail（如 502/网关），或无响应且非超时（连接拒绝/DNS/CORS）
   return "网络连接失败，请检查网络后重试";

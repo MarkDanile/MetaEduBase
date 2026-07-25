@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-047-D1: 旧 Direct RAG compatibility recording
+
+状态：🟡 进行中
+类型：ai-effect validation / superpower / plan-do
+领域：旧 AI Chat / `agent_workspace` / `agent_execution` / composition
+当前执行模式：GPT-5.6 Sol `high` 主实施；幂等、证据裁剪、事务失败语义与旧入口回归由 `max` 独立复核
+最近接手工具：Codex
+分支：`codex/req-047-d1-direct-rag-recording`
+
+需求来源：
+- Requirement：[REQ-047](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md)
+- Spec：[REQ-041/047 联合核心契约](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md)
+- Plan：[Slice D1](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-d1旧-direct-rag-compatibility-recording)
+- 架构约束：只在旧 `/ai/chat/evidence` 内部记录 Conversation/Message/Run/Event/terminal；可复用内部 submit-turn/bridge 契约但不开放新 Workspace submit-turn API，不伪造 ToolCall、RuntimeSessionBinding 或 Agent Loop
+
+当前进展：`DirectRagCompatibilityAdapter`、旧 evidence route additive identity/receipt、tenant+actor scoped Conversation alias、容量隔离的单 Run advisory execution claim、Vue 按认证主体隔离的稳定 identity、显式幂等重放、Guard-first 锁序、同步 compat cancel、provider 脱敏 502、`033` durable output staging 与输入/输出 bridge 故障恢复均已实现；多轮 `max` 审查 findings 全修，最终 P0/P1/P2=0/0/0。
+下一步：按快速交付通道提交、push、创建 PR、等待 CI、合并并清理工作区。
+验证状态：D1 真实 PostgreSQL 专项 15 passed；AI/Workspace/Execution/Control Plane/迁移联合 312 passed；完整 hermetic backend 1623 passed / 4 deselected / 33 warnings；`033` Alembic downgrade/upgrade 通过；前端全量 172 passed，lint/typecheck 通过（16 条既有 warning）；Ruff、mypy baseline 243 historical / 0 regression、79 项工程测试、docs gate 与 diff check 通过；独立 `gpt-5.6-sol max` 最终 P0/P1/P2=0/0/0。
+交接备注：严格止于 D1；新 Workspace `/turns`、Pi/Worker/Tool Gateway、R1 和 HumanInput/Approval/Artifact/Evidence 保持关闭；最高效果验收层级不得高于 fake LLM + 真实 PG。
 
 ## 下一批候选任务
 
@@ -22,7 +40,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-047 Core Slice D1：旧 Direct RAG compatibility recording | 🔵 就绪 | 由 GPT-5.6 Sol `high` 实施，`max` 复核幂等、证据裁剪与旧入口回归；只记录现有 `/ai/chat/evidence`，不得开放 Workspace `/turns` 或冒充 Agent Loop | [Requirement](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-d1旧-direct-rag-compatibility-recording) |
 | P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | ⚫ Candidate | 可并行补导航矩阵与 plan；移除重复 Skill、归位 MCP/Skill，并建立 permission/nav 单一事实源 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) |
 
 ## 最近完成

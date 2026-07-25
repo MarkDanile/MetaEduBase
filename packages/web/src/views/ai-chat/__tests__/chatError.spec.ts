@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeChatError } from "../chatError";
+import { describeChatError, shouldPreserveRequestIdentity } from "../chatError";
 
 // axios error shapes (only the fields describeChatError inspects):
 // - timeout: code 'ECONNABORTED', no `response`, message mentions timeout
@@ -48,9 +48,58 @@ describe("describeChatError", () => {
     expect(msg).not.toContain("网络错误");
   });
 
+  it("surfaces a sanitized structured backend detail", () => {
+    const msg = describeChatError({
+      response: {
+        status: 502,
+        data: {
+          detail: {
+            code: "direct_rag_execution_failed",
+            message: "AI service execution failed",
+          },
+        },
+      },
+    });
+    expect(msg).toBe("请求失败: AI service execution failed");
+    expect(msg).not.toContain("[object Object]");
+  });
+
   it("falls back to network message when response exists but has no detail", () => {
     const err = axiosError({ response: { status: 502 } });
     const msg = describeChatError(err);
     expect(msg).toContain("网络");
+  });
+});
+
+describe("shouldPreserveRequestIdentity", () => {
+  it("preserves unknown network outcomes and durable pending responses", () => {
+    expect(shouldPreserveRequestIdentity({ code: "ERR_NETWORK" })).toBe(true);
+    expect(shouldPreserveRequestIdentity({
+      response: {
+        status: 503,
+        data: { detail: { code: "direct_rag_turn_pending" } },
+      },
+    })).toBe(true);
+    expect(shouldPreserveRequestIdentity({
+      response: {
+        status: 503,
+        data: { detail: { code: "direct_rag_execution_pending" } },
+      },
+    })).toBe(true);
+    expect(shouldPreserveRequestIdentity({
+      response: {
+        status: 503,
+        data: { detail: { code: "direct_rag_output_pending" } },
+      },
+    })).toBe(true);
+  });
+
+  it("clears identity for known terminal HTTP failures", () => {
+    expect(shouldPreserveRequestIdentity({
+      response: {
+        status: 502,
+        data: { detail: { code: "direct_rag_execution_failed" } },
+      },
+    })).toBe(false);
   });
 });

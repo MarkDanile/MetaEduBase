@@ -12,6 +12,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     text,
 )
@@ -465,6 +466,73 @@ class AgentRunModel(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+
+class CompatibilityOutputModel(Base):
+    __tablename__ = "agent_compatibility_outputs"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "run_id", name="uq_agent_compat_output_tenant_run"
+        ),
+        UniqueConstraint(
+            "tenant_id", "output_ref", name="uq_agent_compat_output_ref"
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "run_id", "conversation_id"],
+            [
+                "metaedu.agent_runs.tenant_id",
+                "metaedu.agent_runs.id",
+                "metaedu.agent_runs.conversation_id",
+            ],
+            name="fk_agent_compat_output_run",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "char_length(btrim(output_ref)) > 0 AND output_ref = btrim(output_ref)",
+            name="ck_agent_compat_output_ref",
+        ),
+        CheckConstraint(
+            "char_length(output_digest) = 64 AND char_length(response_digest) = 64",
+            name="ck_agent_compat_output_digests",
+        ),
+        CheckConstraint(
+            "media_type = 'text/markdown' AND classification = 'internal'",
+            name="ck_agent_compat_output_contract",
+        ),
+        CheckConstraint(
+            "octet_length(reply_text) <= 65536",
+            name="ck_agent_compat_output_reply_size",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(response_envelope) = 'object' "
+            "AND pg_column_size(response_envelope) <= 262144",
+            name="ck_agent_compat_output_envelope_size",
+        ),
+        Index(
+            "ix_agent_compat_output_conversation",
+            "tenant_id",
+            "conversation_id",
+            "created_at",
+        ),
+        {"schema": "metaedu"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    output_ref: Mapped[str] = mapped_column(String(500), nullable=False)
+    output_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    response_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    reply_text: Mapped[str] = mapped_column(Text, nullable=False)
+    response_envelope: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    media_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    classification: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
     )
 
 

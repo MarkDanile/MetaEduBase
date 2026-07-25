@@ -54,4 +54,8 @@ export interface EvidenceChatResponse {
   sources: EvidenceItem[];
   document_sources?: DocumentSource[];
   diagnostics?: Record<string, unknown>;
+  conversation_id: string;
+  user_message_id: string;
+  run_id: string;
+  assistant_message_id: string | null;
 }

@@ -162,7 +162,12 @@ import { deriveDocumentSourcesFromEvidence } from "./documentSources";
 import { findEvidenceForMessage } from "./evidenceNavigation";
 import { replaceEvidenceReferences } from "./evidenceReferences";
 import { buildFileOpenUrl, openInNewTab } from "./openFileUrl";
-import { describeChatError } from "./chatError";
+import { aiChatStorageKeys } from "@/utils/aiChatSessionStorage";
+import {
+  describeChatError,
+  shouldPreserveRequestIdentity,
+  type ChatErrorShape,
+} from "./chatError";
 
 hljs.registerLanguage("python", python);
 hljs.registerLanguage("javascript", javascript);
@@ -247,6 +252,11 @@ const loading = ref(false);
 const chatContainer = ref<HTMLElement | null>(null);
 const inputEl = ref<HTMLTextAreaElement | null>(null);
 const abortController = ref<AbortController | null>(null);
+const storageKeys = aiChatStorageKeys();
+const conversationStorageKey = storageKeys.conversation;
+const pendingRequestStorageKey = storageKeys.pendingRequest;
+let conversationId = sessionStorage.getItem(conversationStorageKey) || crypto.randomUUID();
+sessionStorage.setItem(conversationStorageKey, conversationId);
 // BUG-003 fix5 AC-4: 中文输入法兼容。@keydown.enter 在 IME composing
 // 阶段也会触发（中文选词），需要在 compositionstart/end 显式追踪；
 // onEnterKey 在 isComposing=true 时不调 sendMessage。
@@ -259,6 +269,37 @@ const quickQuestions = [
 ];
 
 let messageSeq = 0;
+
+interface PendingChatRequest {
+  text: string;
+  clientMessageId: string;
+}
+
+function pendingRequestFor(text: string): PendingChatRequest {
+  try {
+    const value = sessionStorage.getItem(pendingRequestStorageKey);
+    const parsed = value ? JSON.parse(value) as Partial<PendingChatRequest> : null;
+    if (parsed?.text === text && typeof parsed.clientMessageId === "string") {
+      return { text, clientMessageId: parsed.clientMessageId };
+    }
+  } catch {
+    sessionStorage.removeItem(pendingRequestStorageKey);
+  }
+  return { text, clientMessageId: crypto.randomUUID() };
+}
+
+function unresolvedPendingRequest(): PendingChatRequest | null {
+  try {
+    const value = sessionStorage.getItem(pendingRequestStorageKey);
+    const parsed = value ? JSON.parse(value) as Partial<PendingChatRequest> : null;
+    if (typeof parsed?.text === "string" && typeof parsed.clientMessageId === "string") {
+      return { text: parsed.text, clientMessageId: parsed.clientMessageId };
+    }
+  } catch {
+    sessionStorage.removeItem(pendingRequestStorageKey);
+  }
+  return null;
+}
 
 function nextMessageId(role: ChatMessage["role"]): string {
   messageSeq += 1;
@@ -293,6 +334,17 @@ function onEnterKey() {
 async function sendMessage() {
   const text = inputText.value.trim();
   if (!text || loading.value) return;
+  const unresolved = unresolvedPendingRequest();
+  if (unresolved && unresolved.text !== text) {
+    messages.value.push({
+      id: nextMessageId("assistant"),
+      role: "assistant",
+      content: "上一条请求状态仍待确认，请先重试原问题。",
+      document_sources_view: [],
+    });
+    scrollToBottom();
+    return;
+  }
 
   messages.value.push({
     id: nextMessageId("user"),
@@ -307,6 +359,9 @@ async function sendMessage() {
   scrollToBottom();
 
   try {
+    const pendingRequest = pendingRequestFor(text);
+    const clientMessageId = pendingRequest.clientMessageId;
+    sessionStorage.setItem(pendingRequestStorageKey, JSON.stringify(pendingRequest));
     // REQ-010 Slice 7: 改用 /ai/chat/evidence (返回 EvidenceItem[])。
     // 旧 /ai/chat 端点保留向后兼容；前端默认走 evidence-aware 入口。
     // BUG-011: 后端 `_call_llm` 60s + 检索 ~10s，端点合理耗时可达 ~70s；
@@ -315,7 +370,12 @@ async function sendMessage() {
     // 与 services/template.ts 既有 120000 一致）。
     const { data } = await api.post<EvidenceChatResponse>(
       "/ai/chat/evidence",
-      { message: text, context_window: 5 },
+      {
+        message: text,
+        context_window: 5,
+        conversation_id: conversationId,
+        client_message_id: clientMessageId,
+      },
       {
         signal: abortController.value.signal,
         timeout: 120000,
@@ -332,8 +392,13 @@ async function sendMessage() {
       document_sources: data.document_sources,
       document_sources_view: documentSources,
     });
+    conversationId = data.conversation_id;
+    sessionStorage.setItem(conversationStorageKey, conversationId);
+    sessionStorage.removeItem(pendingRequestStorageKey);
   } catch (e: unknown) {
     if ((e as Error).name === "CanceledError" || (e as Error).name === "AbortError") {
+      inputText.value = text;
+      autoResize();
       messages.value.push({
         id: nextMessageId("assistant"),
         role: "assistant",
@@ -342,7 +407,13 @@ async function sendMessage() {
       });
     } else {
       // BUG-011: 区分超时 / 真网络错误 / 后端 detail，超时不再误报「网络错误」。
-      const err = e as { code?: string; response?: { data?: { detail?: string } } };
+      const err = e as ChatErrorShape;
+      if (shouldPreserveRequestIdentity(err)) {
+        inputText.value = text;
+        autoResize();
+      } else {
+        sessionStorage.removeItem(pendingRequestStorageKey);
+      }
       messages.value.push({
         id: nextMessageId("assistant"),
         role: "assistant",

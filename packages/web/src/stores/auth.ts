@@ -1,5 +1,9 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
+import {
+  aiChatSessionScope,
+  clearAiChatSessionStorage,
+} from "@/utils/aiChatSessionStorage";
 
 export const useAuthStore = defineStore("auth", () => {
   const token = ref<string | null>(localStorage.getItem("metaedu_token"));
@@ -10,6 +14,10 @@ export const useAuthStore = defineStore("auth", () => {
   const isAuthenticated = computed(() => !!token.value);
 
   function setAuth(newToken: string, newTenantId: string, role: string, domain?: string) {
+    if (aiChatSessionScope(token.value, tenantId.value)
+      !== aiChatSessionScope(newToken, newTenantId)) {
+      clearAiChatSessionStorage();
+    }
     token.value = newToken;
     tenantId.value = newTenantId;
     userRole.value = role;
@@ -25,6 +33,7 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   function clearAuth() {
+    clearAiChatSessionStorage();
     token.value = null;
     tenantId.value = null;
     userRole.value = null;
