@@ -189,7 +189,7 @@ packages/server-python/app/composition/
 
 退出条件：重新认证后通过 API 恢复旧入口记录的 user Message、Run、events、assistant Message；原 `/ai/chat/evidence` 回归不变；同一输入重试不重复回答。页面刷新/断线体验归 REQ-042。
 
-**实施状态**：🟣 实现、本地门禁与独立 `gpt-5.6-sol max` 审查完成（最终 P0/P1/P2=0/0/0），待 Git 闭环。实现冻结以下兼容语义：
+**实施状态**：🟢 已由 [PR #489](https://github.com/MarkDanile/MetaEduBase/pull/489) 合并（`56de6bf1`）。D1 专项 15 passed、联合 312 passed、完整 hermetic backend 1623 passed / 4 deselected / 33 warnings、前端 172 passed，三路 CI 全绿；独立 `gpt-5.6-sol max` 最终 P0/P1/P2=0/0/0。实现冻结以下兼容语义：
 
 - 请求新增可选 `conversation_id + client_message_id`，必须成对出现；显式 identity 才提供跨 HTTP 幂等，旧客户端省略时每次生成新 identity，响应以加法返回内部 Conversation/user Message/Run/assistant Message ID。客户端 Conversation alias 统一映射为 tenant+actor scoped UUID；首次响应的内部 ID 可与 alias 不同，后续可直接使用内部 ID。
 - 模型调用前先提交 Conversation、user Message 和 Workspace outbox，再通过 B1 dispatcher 的 claim/consume/ACK 三个短事务创建 compatibility Run；Run 启动状态随后提交。任一边界中断时，同 identity 可从 PostgreSQL outbox/Run 恢复，首段不可用返回稳定 `direct_rag_turn_pending` 503。
