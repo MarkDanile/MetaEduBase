@@ -14,21 +14,7 @@
 
 ## 当前进行中
 
-### REQ-060: 企业 Agent 控制台信息架构与权限化导航
-
-状态：🔵 Ready（shaping 完成，Spec/Plan 待 PR 合并）
-类型：需求塑形（P1）
-领域：Web / IA / Navigation / RBAC
-分支：shape/req060-console-ia-nav-rbac
-
-需求来源：
-- Spec: [REQ-060](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md)
-- Delivery Spec: [2026-07-23-req060-console-ia-nav-rbac](../02-delivery-plans/01-specs/2026-07-23-req060-console-ia-nav-rbac.md)
-- Plan: [2026-07-23-req060-console-ia-nav-rbac-plan](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md)
-
-当前进展：shaping 完成。4 决策冻结（D-1 统一后端 RoleEnum / D-2 能力中心普通用户隐藏 / D-3 旧链接重定向 / D-4 AI 问答保持名称）。盘点菜单漂移（三份割裂导航 + 技能编排占位 + MCP/Skill 归属错误 + roleMap 前后端不一致）。Spec + Plan 5 Slice 已写。
-
-下一步：PR 合并后归档；实施按 Plan 5 Slice（nav.ts 事实源 -> roleMap 统一 -> Sidebar/HomeView 迁移 -> 深链守卫+403+重定向 -> a11y+回归）。
+当前无活跃任务。REQ-060 shaping 已合并（见最近完成），状态 Ready 可按 Plan 5 Slice 实施。
 
 ## 下一批候选任务
 
@@ -57,6 +43,7 @@
 | 2026-07-23 | TD-084 GitHub Actions Node 24 与 hermetic 测试分类收口 | 🟢 完成 | 6 类 Action 升级 Node 24；slow marker 移除，CI 统一排除 external_network；PR/main/manual 三层全绿，Backend 约 5m，无 Node 20 警告 | [PR #472](https://github.com/MarkDanile/MetaEduBase/pull/472)（`beb7c6fd`）/ [Tech Debt](technical-debt.md#td-084-github-actions-node-24-与-hermetic-测试分类收口) |
 | 2026-07-23 | TD-083 后端风险分级测试选择与性能专项治理 | 🟢 完成 | PR targeted / main full-not-slow / nightly full；默认禁外网 + 外部依赖 mock；not-slow 1365 pass/2m41s；resource 探针 15 pass/4.22s | [PR #469](https://github.com/MarkDanile/MetaEduBase/pull/469)（`cccb3ff6`）/ [Tech Debt](technical-debt.md#td-083-后端风险分级测试选择与性能专项治理) |
 | 2026-07-23 | TD-082 分层质量门禁与 CI 提速 | 🟢 完成 | scope-aware CI + 秒级 hooks + MCP lock + 前端构建去重；不可靠分片已撤销，后端专项由 TD-083 接力 | [PR #467](https://github.com/MarkDanile/MetaEduBase/pull/467)（`754ca109`）/ [Tech Debt](technical-debt.md#td-082-分层质量门禁与-ci-提速) |
+| 2026-07-23 | REQ-060 企业 Agent 控制台信息架构与权限化导航（shaping） | 🟢 Shaping 完成 | 盘点菜单漂移 6 问题+4 决策冻结（统一 RoleEnum/能力中心隐藏/旧链接重定向/AI 问答保持名称）+Spec 11 节+Plan 5 Slice+独立安全审查 P0/P1 清零（模板 API 无 RBAC 登记 TD-087）。状态 Candidate->Ready | [PR #491](https://github.com/MarkDanile/MetaEduBase/pull/491)（`efe126af`）/ [work-log](work-log.md) |
 | 2026-07-23 | TD-081 CI、Git hooks 与 mypy 可执行基线 | 🟢 完成 | 三路 GitHub CI + fresh PostgreSQL/zhparser + fail-closed hooks + 可递减 mypy baseline；main required checks 对管理员生效。Backend 1368 pass/5 skip，三路 CI 全绿 | [PR #465](https://github.com/MarkDanile/MetaEduBase/pull/465)（`a37a7e51`）/ [Tech Debt](technical-debt.md#td-081-ci-git-hooks-与-mypy-可执行基线缺失) |
 | 2026-07-22 | TD-080 后端全量测试顺序污染与 coroutine 未 await warning | 🟢 完成 | alembic fileConfig 传 disable_existing_loggers=False 治本（不再污染已存在 logger）+ 12 document asyncio.run mock 改 side_effect close coroutine + slow marker 优化 dev 循环（-m 'not slow' 6:33→~5min）。全量 0 fail；1 回归测试防回退 | [PR #464](https://github.com/MarkDanile/MetaEduBase/pull/464)（`a20f3ee1`）/ [work-log](work-log.md) |
 | 2026-07-22 | REQ-058 企业背调生产级 RBAC、制审分离与多租户配置 | 🟢 完成 | DD 权限矩阵+maker-checker+任务可见性+tenant_scoped_config 表+配置审计+平台 status only。7 AC；5 Slice（#459~#463）；43 测试；全量 1364 pass/3 pre-existing；ruff 0/docs gate 0 | [PR #463](https://github.com/MarkDanile/MetaEduBase/pull/463)（`d2c3b752`）/ [work-log](work-log.md) |
