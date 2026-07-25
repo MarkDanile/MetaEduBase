@@ -41,7 +41,7 @@
 - [ ] `router.beforeEach` 增强：检查 `to.meta.permission`，无权限 -> `/403`
 - [ ] 新建 `ForbiddenView.vue`（403 页）
 - [ ] 旧路径重定向（D-3 完整）：`/skill-editor` -> `/capabilities/skills`；`/admin/mcp-servers` -> `/capabilities/mcp`；`/admin/skills` -> `/capabilities/skills`；`/admin/template` -> `/data/templates`；`/admin/template/:id` -> `/data/templates/:id`；`/admin` -> `/system`
-- [ ] 测试：深链 403 + 重定向 + API 独立拒绝（AC-3 三层一致，**模板例外：TD-082 未关闭前仅前端两层**）
+- [ ] 测试：深链 403 + 重定向 + API 独立拒绝（AC-3 三层一致，**模板例外：TD-087 未关闭前仅前端两层**）
 - **复杂度**：中（守卫 + 重定向）
 - **模型分工**：Sonnet + Opus review（深链绕过）
 
@@ -82,7 +82,7 @@
 - 不实现 Agent Loop / Runtime / Agent Builder（只预留 hidden + featureFlag）
 - 后端 RBAC 是最终裁决，前端隐藏不是安全控制
 - 既有 API 不改（REQ-044/045/058 菜单归属迁移，不动 API）
-- **模板 API 例外（TD-082）**：模板 API 当前无后端 RBAC，REQ-060 不修复（Non-goal），仅前端两层守（菜单隐藏 + 深链 403）。TD-082 关闭前 AC-3 对模板不强制三层一致。
+- **模板 API 例外（TD-087）**：模板 API 当前无后端 RBAC，REQ-060 不修复（Non-goal），仅前端两层守（菜单隐藏 + 深链 403）。TD-087 关闭前 AC-3 对模板不强制三层一致。
 - 旧链接重定向保留 1 版本周期
 
 ## Non-goals
@@ -106,6 +106,6 @@
 - 安全闸：AC-3 深链 403 + API 独立；AC-9 roleMap 统一；AC-10 旧链接重定向
 ## Follow-up（REQ-060 范围外，登记技术债）
 
-- **TD-082 模板 API 后端 RBAC**：`/api/v1/templates/*` 加 `require_high_privilege` 守卫。TD-082 关闭后模板纳入 AC-3 三层一致验收。REQ-060 实施时（Slice 5 收口）同步登记到 `docs/03-engineering-governance/technical-debt.md`。
+- **TD-087 模板 API 后端 RBAC**：`/api/v1/templates/*` 加 `require_high_privilege` 守卫。TD-087 关闭后模板纳入 AC-3 三层一致验收。REQ-060 实施时（Slice 5 收口）同步登记到 `docs/03-engineering-governance/technical-debt.md`。
 - **`/system/*` 子路由创建**：V1 预留（D-6），后续系统管理各子页作为独立需求交付。
 - **后端 permission grants 下发**：V1 用角色映射，后续切换不重写页面。
