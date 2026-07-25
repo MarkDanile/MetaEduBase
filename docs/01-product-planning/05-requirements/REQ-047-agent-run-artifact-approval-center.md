@@ -1,7 +1,7 @@
 # REQ-047: Agent Run、产物、证据与人工确认中心
 
 > Status: 🟣 Shaping
-> Core Contract: 🟡 Doing（Slice D1 已实现、本地门禁与独立审查通过，待 Git 闭环；完整 REQ-047 继续 Shaping）
+> Core Contract: 🟡 Doing（Slice D1 已由 PR #489 合并；完整 REQ-047 继续 Shaping）
 > Priority: P0
 > Milestone: P3 / Enterprise Agent Platform
 > Area: Agent Run / Event / Approval / Artifact / Evidence
@@ -64,6 +64,6 @@
 - Conversation/Message/Run/Event Durable Core 已与 REQ-041 冻结；W1、E0、E1、B1 与 A1 已合并，后续按 D1/R1/C1 推进。两个 context 分别迁移，不共享 ORM/repository；RunEvent/receipt 与 Runtime ACK cursor 必须在同一事务提交。
 - B1 已由 [PR #485](https://github.com/MarkDanile/MetaEduBase/pull/485) 合并：版本化 shared schema、JCS canonical JSON、双向 inbox/outbox、attempt/claimant fencing、真实 Workspace FIFO barrier、terminal output projection、dead-letter/reconcile/suppress、ConversationExecutionGuard、guarded DELETE/restore 与 `031` migration 已落地；新 `/turns` 生产入口、A1 SSE、Pi/Worker、Tool Gateway、D1 和 R1 均未越界实现。
 - A1 已由 [PR #487](https://github.com/MarkDanile/MetaEduBase/pull/487) 合并：owner-private GET Run、持久化幂等 cancel intent、PostgreSQL ledger SSE replay/live polling、权限重验、gap/retention/cursor 错误与 `032` migration 已落地；新 Workspace `/turns`、Pi/Worker、Tool Gateway、D1/R1 和 extended entities 仍未开放。
-- D1 已在 `codex/req-047-d1-direct-rag-recording` 完成实现与本地验证：旧 `/ai/chat/evidence` 通过 composition adapter 写 Conversation、user/assistant Message、compatibility Run、裁剪事件与 canonical terminal；`033_agent_compat_output` 为终态回答和裁剪后的 evidence refs 提供 durable staging，输入与输出桥均复用 B1 的 claim/consume/ACK 短事务。显式 `conversation_id + client_message_id` 支持幂等重放；外部 Conversation alias 统一映射为 tenant+actor scoped 内部 ID，单 Run 使用容量隔离的 PostgreSQL advisory execution claim pool 防止并发重复调用模型且不占用主业务池。现有 Vue 客户端按 tenant+JWT subject 隔离并发送稳定 identity，durable pending/停止时保留原问题和恢复凭据，其他旧调用方省略 identity 时由服务端生成且不虚构跨 HTTP 重试幂等。D1 policy 的同步 compatibility Run 在 cancel 时直接结算为 `cancelled`，不会停留在无人消费的 `cancelling`；provider 异常对外转稳定 502 且不记录原始 diagnostics。最高验证层级为 deterministic fake LLM + 真实 PostgreSQL，真实 LLM 产品效果不在本 Slice 声明范围；PR/merge 前仍保持进行中。
+- D1 已由 [PR #489](https://github.com/MarkDanile/MetaEduBase/pull/489) 合并（`56de6bf1`）：旧 `/ai/chat/evidence` 通过 composition adapter 写 Conversation、user/assistant Message、compatibility Run、裁剪事件与 canonical terminal；`033_agent_compat_output` 为终态回答和裁剪后的 evidence refs 提供 durable staging，输入与输出桥均复用 B1 的 claim/consume/ACK 短事务。显式 `conversation_id + client_message_id` 支持幂等重放；外部 Conversation alias 映射为 tenant+actor scoped 内部 ID，单 Run 使用容量隔离的 PostgreSQL advisory execution claim pool 防止并发重复调用模型且不占用主业务池。Vue 客户端按 tenant+JWT subject 隔离稳定 identity，durable pending/停止时保留恢复凭据。D1 policy 的同步 compatibility Run 在 cancel 时直接结算为 `cancelled`；provider 异常对外转稳定 502 且不记录原始 diagnostics。全量 1623 passed、三路 CI 与独立 `max` 复审全绿；最高验证层级为 deterministic fake LLM + 真实 PostgreSQL，真实 LLM 产品效果不在本 Slice 声明范围。
 - 完整 REQ-047 仍处于 Shaping：HumanInput/Approval、ToolCall/Grant/Snapshot、Artifact/Evidence 必须分别补充字段、状态、权限、retention 与故障 spec/plan，完成前不得把 REQ-047 整体翻 Ready/Done。
 - Durable Core 为 REQ-042 提供稳定 UI 事件协议，为 REQ-043 提供 Runtime 输出事实源；首个兼容路径支持 Direct RAG/SkillRunner，不等待 Pi Worker。
