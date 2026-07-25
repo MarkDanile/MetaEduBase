@@ -14,18 +14,7 @@
 
 ## 当前进行中
 
-### TD-087: 模板管理 API 后端 RBAC
-
-状态：🟡 进行中（分支 fix/td087-template-api-rbac，PR #495 待审）
-类型：安全加固（P1）
-领域：后端 / Template / RBAC
-
-需求来源：
-- Tech Debt: [TD-087](technical-debt.md#td-087-模板管理-api-缺少后端-rbac)
-
-当前进展：15 个管理端点已接入共享 `require_high_privilege` 守卫；`/lookup` 使用独立最小 DTO；管理 list 与业务 lookup 前端契约已分离；92 个 RBAC / lookup 用例覆盖角色矩阵、响应脱敏、字段白名单和跨租户不可见。
-
-下一步：完成本地门禁、提交推送并等待新 HEAD CI；安全复审通过并合并后，REQ-060 Slice 2（受保护模板路由 + 深链守卫 + 旧链接重定向）方可解锁。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -43,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-25 | TD-087 模板管理 API 后端 RBAC | 🟢 完成 | 15 个管理端点统一高权守卫；tenant-local 最小 lookup DTO、403 脱敏与 92 例角色/租户矩阵完成；Template 124、Identity 47、Frontend 175 passed，三路 CI 全绿 | [PR #495](https://github.com/MarkDanile/MetaEduBase/pull/495)（`40a7bf46`）/ [Tech Debt](technical-debt.md#td-087-模板管理-api-缺少后端-rbac) |
 | 2026-07-25 | Agent Control Plane D1 Direct RAG compatibility recording | 🟢 完成 | 旧 evidence API 持久化 Conversation/Message/Run/Event/terminal；双向 bridge 恢复、scoped identity、隔离 execution claim 与 `033` staging；全量 1623 passed，三路 CI 与 `max` 复审全绿 | [PR #489](https://github.com/MarkDanile/MetaEduBase/pull/489)（`56de6bf1`） |
 | 2026-07-24 | Agent Control Plane A1 Run query 与 SSE replay | 🟢 完成 | owner-private GET Run、持久化幂等 cancel intent、PostgreSQL ledger SSE replay/live polling、权限重验和 gap/retention/cursor 错误；`032` migration；全量 1605 passed，三路 CI 全绿 | [PR #487](https://github.com/MarkDanile/MetaEduBase/pull/487)（`2f91bed8`） |
 | 2026-07-24 | Agent Control Plane B1 Workspace/Execution bridge | 🟢 完成 | shared schema/JCS、双向 inbox/outbox、fencing、Guard、真实 FIFO barrier、terminal projection、dead-letter/reconcile、guarded DELETE/restore 与 `031` migration；全量 1587 passed，三路 CI 全绿 | [PR #485](https://github.com/MarkDanile/MetaEduBase/pull/485)（`e113904b`） |
