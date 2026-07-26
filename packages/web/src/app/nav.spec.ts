@@ -39,6 +39,30 @@ describe("PERMISSION_KEYS", () => {
   });
 });
 
+// P2-4: 完整 7 角色 × 9 permission key 真值矩阵（防止同数量权限互换）
+const TRUTH_TABLE: Record<string, boolean[]> = {
+  //              overview ai_work marketplace admin knowledge data templates capabilities system
+  super_admin:  [true,    true,    true,       true, true,      true, true,       true,        true],
+  data_admin:   [true,    true,    true,       true, true,      true, true,       true,        false],
+  admin:        [true,    true,    true,       true, true,      true, true,       true,        false],
+  leader:       [true,    true,    true,       false, true,     true, false,      false,       false],
+  teacher:      [true,    true,    true,       false, true,     true, false,      false,       false],
+  employee:     [true,    true,    true,       false, true,     true, false,      false,       false],
+  student:      [true,    true,    true,       false, true,     true, false,      false,       false],
+};
+
+describe("7 role × 9 permission truth table", () => {
+  for (const role of ALL_ROLES) {
+    it(`${role} matches truth table`, () => {
+      const perms = resolvePermissions(ctx(role));
+      const expected = TRUTH_TABLE[role];
+      PERMISSION_KEYS.forEach((key, i) => {
+        expect(perms.has(key)).toBe(expected[i]);
+      });
+    });
+  }
+});
+
 describe("resolvePermissions", () => {
   it("super_admin gets all 9 permissions", () => {
     const perms = resolvePermissions(ctx("super_admin"));
@@ -79,26 +103,30 @@ describe("resolvePermissions", () => {
     }
   });
 
-  it("unknown role fail-closed: only base authenticated keys (overview/ai_work/marketplace/knowledge/data)", () => {
+  it("unknown role fail-closed: empty permissions (no base keys)", () => {
     const perms = resolvePermissions(ctx("unknown_role"));
-    // fail-closed: unknown role gets minimal base (same as low-privilege)
-    expect(perms.size).toBe(5);
-    expect(perms.has("nav.system")).toBe(false);
-    expect(perms.has("nav.capabilities")).toBe(false);
+    expect(perms.size).toBe(0);
   });
 
   it("null role fail-closed: empty permissions", () => {
     const perms = resolvePermissions(ctx(null));
     expect(perms.size).toBe(0);
   });
+
+  it("unknown role canAccess denied even for permission-less route", () => {
+    const meta: RouteNavMeta = { section: "overview", title: "Home" };
+    expect(canAccess(meta, ctx("unknown_role"))).toBe(false);
+  });
 });
 
 describe("canAccess", () => {
-  it("route without permission key = only requires authenticated (any role)", () => {
+  it("route without permission key = only requires authenticated known role", () => {
     const meta: RouteNavMeta = { section: "overview", title: "Home" };
     for (const role of ALL_ROLES) {
       expect(canAccess(meta, ctx(role))).toBe(true);
     }
+    // unknown role denied even for permission-less route (fail-closed)
+    expect(canAccess(meta, ctx("unknown_role"))).toBe(false);
   });
 
   it("route with nav.system only super_admin passes", () => {

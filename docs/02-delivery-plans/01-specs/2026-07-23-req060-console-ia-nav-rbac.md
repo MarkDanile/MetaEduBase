@@ -203,7 +203,7 @@ interface RouteMeta {
 - 后端 API 独立拒绝越权（**既有 RBAC**，不依赖前端隐藏）。
 - AC-3：隐藏菜单 + 深链 403 + API 401/403 三层一致。
 
-**模板迁移门禁（TD-087）**：模板 API（`/api/v1/templates/*`）当前后端无 RBAC（仅认证无授权），不满足"API 独立拒绝"。TD-087 未关闭前保留现有 `/admin/template*` 路径，不创建 `/data/templates*`、不增加旧链接重定向，也不得宣称前端深链 403 已保护模板 API。TD-087 关闭后，模板目标路由、HIGH_PRIVILEGE 导航/深链守卫和旧链接迁移必须同批交付，并纳入 AC-3 三层一致验收。
+**模板迁移门禁（TD-087 已关闭）**：模板 API（`/api/v1/templates/*`）后端 RBAC 已由 TD-087（PR #495）补齐。模板目标路由、HIGH_PRIVILEGE 导航/深链守卫和旧链接迁移在 Slice 2 同批交付，并纳入 AC-3 三层一致验收。
 
 ### 5.6 activeNav 精确匹配
 
@@ -257,7 +257,7 @@ interface RouteMeta {
 - REQ-059（🟢 Done）平台内核 + RBAC 边界。
 - BUG-017（🟢 Done）RoleEnum + HIGH_PRIVILEGE_ROLES。
 - REQ-044/045（🟢 Done）MCP/Skill Registry API（菜单归属迁移，不改 API）。
-- TD-087（⚫ 待办）模板管理 API 后端 RBAC；是 `/data/templates*` 迁移和 REQ-060 AC-3 收口前置。
+- TD-087（🟢 完成，PR #495）模板管理 API 后端 RBAC；`/data/templates*` 迁移和 REQ-060 AC-3 收口前置已解除。
 - REQ-042/043/047（未实施）—— REQ-060 只预留位置，不阻塞。
 
 ## 11. R1 Review Corrections（2026-07-25）

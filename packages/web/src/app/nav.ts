@@ -38,6 +38,24 @@ export type NavSection =
   | "capabilities"
   | "system";
 
+/** Section descriptor（typed，供 Layout 直接渲染 label，不另造配置表）。 */
+export interface SectionDescriptor {
+  id: NavSection;
+  label: string;
+  order: number;
+}
+
+/** 全部 7 section 的 descriptor（spec §4 Target IA + 排序）。 */
+export const SECTION_DESCRIPTORS: Record<NavSection, SectionDescriptor> = {
+  overview: { id: "overview", label: "总览", order: 1 },
+  ai_work: { id: "ai_work", label: "AI 工作", order: 2 },
+  apps: { id: "apps", label: "智能体应用", order: 3 },
+  knowledge: { id: "knowledge", label: "知识与数据", order: 4 },
+  data: { id: "data", label: "数据", order: 5 },
+  capabilities: { id: "capabilities", label: "能力中心", order: 6 },
+  system: { id: "system", label: "系统管理", order: 7 },
+};
+
 /** Permission key（spec §5.3 矩阵 9 个，独立校验，子 key 不蕴含父 key）。 */
 export type PermissionKey =
   | "nav.overview"
@@ -89,28 +107,24 @@ export interface AccessContext {
   featureFlags: FeatureFlags;
 }
 
-/** section 排序权重（NavSection 枚举顺序）。 */
-const SECTION_ORDER: Record<NavSection, number> = {
-  overview: 1,
-  ai_work: 2,
-  apps: 3,
-  knowledge: 4,
-  data: 5,
-  capabilities: 6,
-  system: 7,
-};
 
 /**
  * 角色 -> permission 集合（spec §5.3 矩阵）。
  *
  * fail-closed：
  * - null role -> 空集合
- * - unknown role -> 5 base keys（同低权，不泄露管理入口）
+ * - unknown role -> 空集合（不泄露任何入口，包括基础路由）
  * - HIGH_PRIVILEGE (admin/data_admin) -> 8 keys（无 system）
  * - super_admin -> 全部 9 keys
+ * - low privilege (leader/teacher/employee/student) -> 5 base keys
  */
 export function resolvePermissions(ctx: AccessContext): Set<PermissionKey> {
   if (ctx.role === null) {
+    return new Set();
+  }
+  const role = ctx.role as Role;
+  if (!isKnownRole(role)) {
+    // unknown role fail-closed -> 空集合（不获任何权限）
     return new Set();
   }
   const base: PermissionKey[] = [
@@ -120,11 +134,6 @@ export function resolvePermissions(ctx: AccessContext): Set<PermissionKey> {
     "nav.knowledge",
     "nav.data",
   ];
-  const role = ctx.role as Role;
-  if (!isKnownRole(role)) {
-    // unknown role fail-closed -> base only
-    return new Set(base);
-  }
   if (role === "super_admin") {
     return new Set(PERMISSION_KEYS);
   }
@@ -155,12 +164,18 @@ function isKnownRole(role: string): role is Role {
 /**
  * 单 route 访问判定（fail-closed）。
  *
- * - null role + 有 permission -> 拒绝
- * - 无 permission key -> 仅要求已认证（role != null）
+ * - null role -> 拒绝
+ * - unknown role -> 拒绝（即使无 permission 的基础路由也拒绝，fail-closed）
+ * - 无 permission key -> 仅要求已认证 + 已知角色
  * - feature flag 未定义/关闭 -> 拒绝（fail-closed）
  */
 export function canAccess(meta: RouteNavMeta, ctx: AccessContext): boolean {
   if (ctx.role === null) {
+    return false;
+  }
+  const role = ctx.role as Role;
+  if (!isKnownRole(role)) {
+    // unknown role fail-closed: 拒绝所有路由（包括无 permission 的基础路由）
     return false;
   }
   if (meta.permission !== undefined) {
@@ -188,9 +203,10 @@ export interface NavItem {
   icon?: unknown;
 }
 
-/** 投影后的 section。 */
+/** 投影后的 section（descriptor-backed，含 label 供 Layout 渲染）。 */
 export interface NavSectionProjection {
   id: NavSection;
+  label: string;
   order: number;
   items: NavItem[];
 }
@@ -226,11 +242,13 @@ export function projectNavigation(
       continue;
     }
     const section = meta.section;
+    const descriptor = SECTION_DESCRIPTORS[section];
     let sectionProj = sectionsMap.get(section);
     if (!sectionProj) {
       sectionProj = {
         id: section,
-        order: SECTION_ORDER[section],
+        label: descriptor.label,
+        order: descriptor.order,
         items: [],
       };
       sectionsMap.set(section, sectionProj);
