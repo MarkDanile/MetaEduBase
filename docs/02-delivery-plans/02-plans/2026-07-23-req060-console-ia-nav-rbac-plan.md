@@ -8,23 +8,23 @@
 
 R1 修订后按 5 个交付 Gate 实施。每个 Gate 独立 PR，但受保护目标路由、permission meta、403 守卫和旧链接重定向必须在同一 Gate 原子交付。Route Record 是 `path/name/meta` 唯一事实源；`nav.ts` 只做无 Router 反向依赖的纯投影。
 
-## Gate 0：TD-087 模板管理 API 后端 RBAC
+## Gate 0：TD-087 模板管理 API 后端 RBAC（✅ 已完成，PR #495）
 
-- [ ] 按 `technical-debt.md#td-087-模板管理-api-缺少后端-rbac` 独立实施，不与前端菜单 PR 混合。
-- [ ] 冻结模板管理 API 端点矩阵；V1 管理 router 的 list/read/write/version/export 全部要求 `HIGH_PRIVILEGE_ROLES`。
-- [ ] 覆盖匿名 401、4 个普通角色 403、3 个高权角色放行及 tenant isolation。
-- [ ] TD-087 未关闭前，不创建或重定向 `/data/templates*`。
+- [x] 按 `technical-debt.md#td-087-模板管理-api-缺少后端-rbac` 独立实施，不与前端菜单 PR 混合。
+- [x] 冻结模板管理 API 端点矩阵；V1 管理 router 的 list/read/write/version/export 全部要求 `HIGH_PRIVILEGE_ROLES`。
+- [x] 覆盖匿名 401、4 个普通角色 403、3 个高权角色放行及 tenant isolation。
+- [x] TD-087 已关闭（PR #495 `40a7bf46`），Slice 2 可创建 `/data/templates*`。
 - **复杂度**：高（认证授权 + 既有模板调用回归）。
 - **推荐模型**：GPT-5.6 Sol `high`；独立 RBAC Review 使用 `xhigh`。
 
 ## Slice 1：Route meta Foundation + role/permission resolver
 
-- [ ] `packages/web/src/app/nav.ts`：NavSection、section descriptors、PermissionKey、FeatureFlagKey、fail-closed resolver 和 `projectNavigation(routes, accessContext)` 纯函数；禁止导入 Router 实例。
-- [ ] `packages/web/src/app/router.ts` / `env.d.ts`：Vue Router `RouteMeta` augmentation，加入 `title/section/order/permission/hiddenInNav/featureFlag/activeNav/icon`。
-- [ ] Route Record 是 path/name/meta 唯一事实源；guest/layout/redirect 可省略导航字段，业务 leaf route 必须显式声明访问与投影语义。
-- [ ] `packages/web/src/constants/maps.ts`：roleMap/roleShortMap 对齐后端 7 个 RoleEnum；删除不存在角色。
-- [ ] unknown/null role、未知 permission、未知/关闭 feature flag 必须 fail-closed；无 permission 的基础路由只要求已认证。
-- [ ] 测试放在现有 colocated 约定下：`packages/web/src/app/nav.spec.ts`，覆盖 7 角色 + unknown/null、9 permission key、feature flag 和排序。
+- [x] `packages/web/src/app/nav.ts`：NavSection、section descriptors、PermissionKey、FeatureFlagKey、fail-closed resolver 和 `projectNavigation(routes, accessContext)` 纯函数；禁止导入 Router 实例。
+- [x] `packages/web/src/app/router.ts` / `env.d.ts`：Vue Router `RouteMeta` augmentation，加入 `title/section/order/permission/hiddenInNav/featureFlag/activeNav/icon`。
+- [x] Route Record 是 path/name/meta 唯一事实源；guest/layout/redirect 可省略导航字段，业务 leaf route 必须显式声明访问与投影语义。
+- [x] `packages/web/src/constants/maps.ts`：roleMap/roleShortMap 对齐后端 7 个 RoleEnum；删除不存在角色。
+- [x] unknown/null role、未知 permission、未知/关闭 feature flag 必须 fail-closed；无 permission 的基础路由只要求已认证。
+- [x] 测试放在现有 colocated 约定下：`packages/web/src/app/nav.spec.ts`，覆盖 7 角色 + unknown/null、9 permission key、feature flag 和排序。
 - **复杂度**：高（全局契约与后续 Slice 的公共事实源）。
 - **推荐模型**：GPT-5.6 Sol `high`；第二模型只读审查循环依赖、默认值和 fail-closed。
 

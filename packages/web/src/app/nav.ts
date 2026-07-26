@@ -28,13 +28,12 @@ const HIGH_PRIVILEGE_ROLES: ReadonlySet<Role> = new Set([
   "admin",
 ]);
 
-/** 一级导航区域枚举（spec §4 Target IA）。 */
+/** 一级导航区域枚举（spec §4 Target IA，知识与数据合并为单一区域）。 */
 export type NavSection =
   | "overview"
   | "ai_work"
   | "apps"
-  | "knowledge"
-  | "data"
+  | "knowledge_data"
   | "capabilities"
   | "system";
 
@@ -45,15 +44,16 @@ export interface SectionDescriptor {
   order: number;
 }
 
-/** 全部 7 section 的 descriptor（spec §4 Target IA + 排序）。 */
+/** 全部 6 section 的 descriptor（spec §4 Target IA + 排序）。
+ * 注：permission key nav.knowledge/nav.data/nav.data.templates 独立校验，
+ * 但导航投影合并为单一"知识与数据"一级区域（spec 冻结）。 */
 export const SECTION_DESCRIPTORS: Record<NavSection, SectionDescriptor> = {
   overview: { id: "overview", label: "总览", order: 1 },
   ai_work: { id: "ai_work", label: "AI 工作", order: 2 },
   apps: { id: "apps", label: "智能体应用", order: 3 },
-  knowledge: { id: "knowledge", label: "知识与数据", order: 4 },
-  data: { id: "data", label: "数据", order: 5 },
-  capabilities: { id: "capabilities", label: "能力中心", order: 6 },
-  system: { id: "system", label: "系统管理", order: 7 },
+  knowledge_data: { id: "knowledge_data", label: "知识与数据", order: 4 },
+  capabilities: { id: "capabilities", label: "能力中心", order: 5 },
+  system: { id: "system", label: "系统管理", order: 6 },
 };
 
 /** Permission key（spec §5.3 矩阵 9 个，独立校验，子 key 不蕴含父 key）。 */
@@ -243,6 +243,10 @@ export function projectNavigation(
     }
     const section = meta.section;
     const descriptor = SECTION_DESCRIPTORS[section];
+    // P2: 非法 section fail-closed -- descriptor 不存在则跳过（不抛异常）
+    if (!descriptor) {
+      continue;
+    }
     let sectionProj = sectionsMap.get(section);
     if (!sectionProj) {
       sectionProj = {

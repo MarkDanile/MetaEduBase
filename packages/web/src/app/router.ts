@@ -45,31 +45,31 @@ const routes: RouteRecordRaw[] = [
         path: "knowledge",
         name: "knowledge",
         component: () => import("@/views/knowledge/KnowledgeBaseView.vue"),
-        meta: { section: "knowledge", title: "知识库", permission: "nav.knowledge", activeNav: "knowledge", order: 1 },
+        meta: { section: "knowledge_data", title: "知识库", permission: "nav.knowledge", activeNav: "knowledge", order: 1 },
       },
       {
         path: "resource",
         name: "resource",
         component: () => import("@/views/resource/ResourceLibraryView.vue"),
-        meta: { section: "knowledge", title: "资源库", permission: "nav.knowledge", activeNav: "resource", order: 2 },
+        meta: { section: "knowledge_data", title: "资源库", permission: "nav.knowledge", activeNav: "resource", order: 2 },
       },
       {
         path: "resource/:id",
         name: "file-detail",
         component: () => import("@/views/resource/FileDetailView.vue"),
-        meta: { section: "knowledge", title: "文件详情", permission: "nav.knowledge", hiddenInNav: true, activeNav: "resource" },
+        meta: { section: "knowledge_data", title: "文件详情", permission: "nav.knowledge", hiddenInNav: true, activeNav: "resource" },
       },
       {
         path: "database",
         name: "database",
         component: () => import("@/views/database/DatabaseView.vue"),
-        meta: { section: "data", title: "数据库", permission: "nav.data", activeNav: "database", order: 1 },
+        meta: { section: "knowledge_data", title: "数据库", permission: "nav.data", activeNav: "database", order: 1 },
       },
       {
         path: "database/:catalogCode",
         name: "catalog-detail",
         component: () => import("@/views/database/CatalogDetailPage.vue"),
-        meta: { section: "data", title: "目录详情", permission: "nav.data", hiddenInNav: true, activeNav: "database" },
+        meta: { section: "knowledge_data", title: "目录详情", permission: "nav.data", hiddenInNav: true, activeNav: "database" },
       },
       {
         path: "ai-chat",
@@ -93,13 +93,13 @@ const routes: RouteRecordRaw[] = [
         path: "admin/template",
         name: "TemplateManagement",
         component: () => import("@/views/admin/TemplateListView.vue"),
-        meta: { section: "data", title: "数据要素模板", permission: "nav.data.templates", hiddenInNav: true, activeNav: "templates-list", requiresAuth: true },
+        meta: { section: "knowledge_data", title: "数据要素模板", permission: "nav.data.templates", hiddenInNav: true, activeNav: "templates-list", requiresAuth: true },
       },
       {
         path: "admin/template/:id",
         name: "TemplateDetail",
         component: () => import("@/views/admin/TemplateEditorView.vue"),
-        meta: { section: "data", title: "模板详情", permission: "nav.data.templates", hiddenInNav: true, activeNav: "templates-list", requiresAuth: true },
+        meta: { section: "knowledge_data", title: "模板详情", permission: "nav.data.templates", hiddenInNav: true, activeNav: "templates-list", requiresAuth: true },
       },
       // REQ-044: MCP 服务最小管理页
       {

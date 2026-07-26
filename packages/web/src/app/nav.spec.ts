@@ -199,7 +199,7 @@ describe("projectNavigation", () => {
     {
       name: "knowledge",
       path: "/knowledge",
-      meta: { section: "knowledge", title: "知识库", order: 1 },
+      meta: { section: "knowledge_data", title: "知识库", order: 1 },
     },
     {
       name: "skills",
@@ -225,14 +225,14 @@ describe("projectNavigation", () => {
     {
       name: "file-detail",
       path: "/resource/:id",
-      meta: { section: "knowledge", title: "文件详情", hiddenInNav: true },
+      meta: { section: "knowledge_data", title: "文件详情", hiddenInNav: true },
     },
   ];
 
   it("projects visible sections ordered, filters by permission + hiddenInNav", () => {
     const sections = projectNavigation(routes, ctx("super_admin", { system_management: true }));
     const sectionIds = sections.map((s) => s.id);
-    expect(sectionIds).toEqual(["overview", "knowledge", "capabilities", "system"]);
+    expect(sectionIds).toEqual(["overview", "knowledge_data", "capabilities", "system"]);
     // hiddenInNav excluded
     const allItems = sections.flatMap((s) => s.items);
     expect(allItems.find((i) => i.name === "file-detail")).toBeUndefined();
@@ -242,7 +242,7 @@ describe("projectNavigation", () => {
     const sections = projectNavigation(routes, ctx("teacher"));
     const sectionIds = sections.map((s) => s.id);
     expect(sectionIds).toContain("overview");
-    expect(sectionIds).toContain("knowledge");
+    expect(sectionIds).toContain("knowledge_data");
     expect(sectionIds).not.toContain("capabilities");
     expect(sectionIds).not.toContain("system");
   });
@@ -262,11 +262,20 @@ describe("projectNavigation", () => {
 
   it("sections ordered by section order, items ordered by route meta order", () => {
     const orderedRoutes = [
-      { name: "b", path: "/b", meta: { section: "knowledge" as const, title: "B", order: 2 } },
-      { name: "a", path: "/a", meta: { section: "knowledge" as const, title: "A", order: 1 } },
+      { name: "b", path: "/b", meta: { section: "knowledge_data" as const, title: "B", order: 2 } },
+      { name: "a", path: "/a", meta: { section: "knowledge_data" as const, title: "A", order: 1 } },
     ];
     const sections = projectNavigation(orderedRoutes, ctx("super_admin"));
     expect(sections[0].items[0].name).toBe("a");
     expect(sections[0].items[1].name).toBe("b");
+  });
+
+  it("P2: illegal section fail-closed skipped (no throw)", () => {
+    const illegalRoutes = [
+      { name: "bad", path: "/bad", meta: { section: "nonexistent" as never, title: "X" } },
+    ];
+    // 不应抛异常，非法 section 被跳过
+    const sections = projectNavigation(illegalRoutes, ctx("super_admin"));
+    expect(sections).toEqual([]);
   });
 });
