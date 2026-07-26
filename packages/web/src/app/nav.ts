@@ -89,6 +89,14 @@ export type FeatureFlagKey =
 
 export type FeatureFlags = Partial<Record<FeatureFlagKey, boolean>>;
 
+/** 已知 feature flag 集合（运行时验证，防同名非法 flag 放行）。 */
+const KNOWN_FEATURE_FLAGS: ReadonlySet<string> = new Set<FeatureFlagKey>([
+  "system_management",
+  "agent_workspace",
+  "agent_runtime",
+  "agent_run_center",
+]);
+
 /** Route nav meta（Vue Router RouteMeta augmentation，见 router.ts/env.d.ts）。 */
 export interface RouteNavMeta {
   title: string;
@@ -185,6 +193,10 @@ export function canAccess(meta: RouteNavMeta, ctx: AccessContext): boolean {
     }
   }
   if (meta.featureFlag !== undefined) {
+    // P1: 未知 feature flag fail-closed（运行时同名 true 也不放行）
+    if (!KNOWN_FEATURE_FLAGS.has(meta.featureFlag)) {
+      return false;
+    }
     // fail-closed: flag 必须显式 true
     if (ctx.featureFlags[meta.featureFlag] !== true) {
       return false;
@@ -212,17 +224,23 @@ export interface NavSectionProjection {
 }
 
 /**
+ * Route record 的结构化类型（兼容 Vue Router RouteRecordNormalized / RouteRecordRaw，
+ * 不导入 vue-router 实例）。name 接受 string | symbol（Vue Router RouteRecordName）。
+ */
+export interface RouteLike {
+  name?: string | symbol;
+  path: string;
+  meta?: Record<string, unknown>;
+}
+
+/**
  * 从 route records 投影可见导航（按 section 分组 + permission/hidden/flag 过滤）。
  *
- * 输入是 Vue Router RouteRecordRaw[]（只读 meta），不导入 Router 实例。
+ * 输入兼容 `router.getRoutes()` 返回的 RouteRecordNormalized[]（不导入 Router 实例）。
  * hiddenInNav=true 的 route 不出现在菜单（但 route 仍可达 + 守卫独立判定）。
  */
 export function projectNavigation(
-  routes: ReadonlyArray<{
-    name?: string;
-    path: string;
-    meta?: Partial<RouteNavMeta>;
-  }>,
+  routes: ReadonlyArray<RouteLike>,
   ctx: AccessContext,
 ): NavSectionProjection[] {
   const sectionsMap = new Map<NavSection, NavSectionProjection>();
@@ -241,6 +259,7 @@ export function projectNavigation(
     if (!route.name) {
       continue;
     }
+    const routeName = String(route.name);
     const section = meta.section;
     const descriptor = SECTION_DESCRIPTORS[section];
     // P2: 非法 section fail-closed -- descriptor 不存在则跳过（不抛异常）
@@ -258,7 +277,7 @@ export function projectNavigation(
       sectionsMap.set(section, sectionProj);
     }
     sectionProj.items.push({
-      name: route.name,
+      name: routeName,
       path: route.path,
       title: meta.title,
       section,

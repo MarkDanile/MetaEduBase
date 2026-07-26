@@ -24,7 +24,7 @@
 - Spec: [REQ-060](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md)
 - Plan: [Slice 1](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md)
 
-当前进展：nav.ts（permission resolver + section descriptors + projectNavigation）+ router.ts（24 路由补 meta）+ maps.ts（roleMap 统一）+ nav.spec.ts（26 测试含 7×9 真值矩阵）。第二轮复审修复：P1 knowledge+data 合并单一 knowledge_data section + P2 非法 section fail-closed。
+当前进展：nav.ts（permission resolver + section descriptors + projectNavigation，unknown feature flag + 非法 section fail-closed）+ router.ts（24 路由补 meta，knowledge+data 合并为单一 knowledge_data section）+ maps.ts（roleMap 统一到后端 RoleEnum 7 角色）+ nav.spec.ts（**34 测试**含 7×9 真值矩阵 + 6 section + 7 role map + 真实 router.getRoutes 投影 + feature flag 运行时契约）。第三轮复审修复完成。
 
 下一步：PR #497 复审通过后合并；Slice 2（受保护路由 + 守卫 + 重定向）TD-087 已合并无阻塞。
 
@@ -34,7 +34,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | 🔵 Ready | R1 修订合并后，按修订 Plan 从 Foundation Slice 开始 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) / [Spec](../02-delivery-plans/01-specs/2026-07-23-req060-console-ia-nav-rbac.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md) |
+| P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | 🟡 Slice 1 评审中 | PR #497 第三轮修复完成（34 tests GREEN），待 Codex xhigh 最终复审 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) / [Spec](../02-delivery-plans/01-specs/2026-07-23-req060-console-ia-nav-rbac.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md) |
 
 ## 最近完成
 

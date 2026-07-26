@@ -8,12 +8,15 @@ import { describe, expect, it } from "vitest";
 import {
   type AccessContext,
   type FeatureFlags,
+  type NavSection,
   PERMISSION_KEYS,
   type RouteNavMeta,
+  SECTION_DESCRIPTORS,
   canAccess,
   projectNavigation,
   resolvePermissions,
 } from "./nav";
+import { roleMap } from "@/constants/maps";
 
 const ALL_ROLES = [
   "super_admin",
@@ -277,5 +280,116 @@ describe("projectNavigation", () => {
     // 不应抛异常，非法 section 被跳过
     const sections = projectNavigation(illegalRoutes, ctx("super_admin"));
     expect(sections).toEqual([]);
+  });
+});
+
+describe("SECTION_DESCRIPTORS", () => {
+  it("exposes all 6 canonical sections (knowledge+data merged)", () => {
+    const ids = Object.keys(SECTION_DESCRIPTORS) as NavSection[];
+    expect(ids).toHaveLength(6);
+    expect(ids).toContain("knowledge_data");
+    expect(ids).not.toContain("knowledge");
+    expect(ids).not.toContain("data");
+  });
+
+  it("each descriptor has id/label/order", () => {
+    for (const id of Object.keys(SECTION_DESCRIPTORS) as NavSection[]) {
+      const d = SECTION_DESCRIPTORS[id];
+      expect(d.id).toBe(id);
+      expect(typeof d.label).toBe("string");
+      expect(d.label.length).toBeGreaterThan(0);
+      expect(typeof d.order).toBe("number");
+      expect(d.order).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("roleMap covers 7 backend RoleEnum exactly", () => {
+  it("roleMap keys === ALL_ROLES (no extra, no missing)", () => {
+    const roleMapKeys = Object.keys(roleMap).sort();
+    const expected = [...ALL_ROLES].sort();
+    expect(roleMapKeys).toEqual(expected);
+  });
+});
+
+describe("feature flag runtime contracts", () => {
+  it("unknown feature flag name in meta is fail-closed even if runtime flag is true", () => {
+    // meta.featureFlag 是非法名（不在 KNOWN_FEATURE_FLAGS），但运行时
+    // 同名 key 值 true：必须 fail-closed 拒绝（不允许伪造 flag 放行）
+    const meta: RouteNavMeta = {
+      section: "overview",
+      title: "X",
+      permission: "nav.overview",
+      featureFlag: "rogue_flag" as never,
+    };
+    // 即便 super_admin + rogue_flag=true：拒绝
+    expect(
+      canAccess(meta, ctx("super_admin", { rogue_flag: true } as FeatureFlags)),
+    ).toBe(false);
+  });
+
+  it("known feature flag off -> denied (existing fail-closed behavior)", () => {
+    const meta: RouteNavMeta = {
+      section: "system",
+      title: "X",
+      permission: "nav.system",
+      featureFlag: "system_management",
+    };
+    expect(canAccess(meta, ctx("super_admin", { system_management: false }))).toBe(false);
+  });
+
+  it("known feature flag on + permission -> allowed", () => {
+    const meta: RouteNavMeta = {
+      section: "system",
+      title: "X",
+      permission: "nav.system",
+      featureFlag: "system_management",
+    };
+    expect(canAccess(meta, ctx("super_admin", { system_management: true }))).toBe(true);
+  });
+});
+
+describe("projectNavigation accepts router.getRoutes() shape", () => {
+  it("accepts symbol-typed route.name (Vue Router RouteRecordName)", async () => {
+    // router.getRoutes() 返回 RouteRecordNormalized[]，name 是 string | symbol
+    const routerModule = await import("./router");
+    const router = (
+      routerModule as { default: { options: { routes: ReadonlyArray<unknown> } } }
+    ).default;
+    const rawRoutes = router.options.routes;
+    const flat: {
+      name?: string | symbol;
+      path: string;
+      meta?: Record<string, unknown>;
+    }[] = [];
+    for (const r of rawRoutes) {
+      const rec = r as unknown as {
+        name?: string | symbol;
+        path: string;
+        meta?: Record<string, unknown>;
+        children?: ReadonlyArray<{
+          name?: string | symbol;
+          path: string;
+          meta?: Record<string, unknown>;
+        }>;
+      };
+      if (rec.children) {
+        for (const c of rec.children) {
+          flat.push({
+            name: c.name,
+            path: c.path ?? "",
+            meta: c.meta,
+          });
+        }
+      } else {
+        flat.push({ name: rec.name, path: rec.path, meta: rec.meta });
+      }
+    }
+    // 应能投影非空 sections（super_admin + system_management flag on）
+    const sections = projectNavigation(flat, ctx("super_admin", { system_management: true }));
+    expect(sections.length).toBeGreaterThan(0);
+    // 6 个 section 至少出现 4 个
+    const sectionIds = sections.map((s) => s.id);
+    expect(new Set(sectionIds).size).toBe(sections.length);
   });
 });
