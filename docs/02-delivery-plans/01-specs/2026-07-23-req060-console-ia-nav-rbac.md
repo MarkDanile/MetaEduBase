@@ -79,7 +79,7 @@ REQ-060 保持"AI 问答" + route `/ai-chat`。REQ-042 Agent Workspace 验收通
 
 V1 前端 permission 由 `authStore.userRole` 映射。该值当前来自登录响应后写入 `localStorage`，刷新时直接恢复，不能称为持续验证的授权事实，也不能替代后端裁决。它只控制导航和展示体验：未知/缺失角色、未知 permission、未知 feature flag 一律 fail-closed；无 permission 的已认证基础路由才可放行。API 始终独立完成 RBAC/ABAC，后续切换后端下发 permission grants 时只替换 resolver，不改变 Route Record 和导航投影结构。
 
-**前置依赖**：模板 API（`/api/v1/templates/*`）当前后端**无 RBAC**（仅 `get_current_user` 认证，无 role 守卫），不满足"API 独立拒绝"。现正式登记 TD-087「模板管理 API 缺后端 RBAC」；REQ-060 Foundation 可先实施，但模板目标路由、深链守卫、旧链接迁移和 AC-3 验收不得在 TD-087 关闭前合并。
+**前置依赖（已满足）**：TD-087（模板管理 API 后端 RBAC）已由 PR #495 完成，模板 API 已具备后端 HIGH_PRIVILEGE_ROLES 守卫。REQ-060 Slice 1 已实施，Slice 2 模板目标路由、深链守卫、旧链接迁移和 AC-3 验收可按原子迁移契约实施。（R1 形成时 TD-087 尚未完成，此段为历史状态记录。）
 
 ### D-6 `/system/*` 路由 V1 预留，不创建
 
@@ -187,7 +187,7 @@ interface RouteMeta {
 | `/resource/:id` | file-detail | `nav.knowledge` | ✅ | `resource` | 文件详情 |
 | `/database` | database | `nav.data` | - | `database` | 数据库 |
 | `/database/:catalogCode` | catalog-detail | `nav.data` | ✅ | `database` | 目录详情 |
-| `/data/templates` | templates-list | `nav.data.templates` | - | `templates-list` | TD-087 后迁移 |
+| `/data/templates` | templates-list | `nav.data.templates` | - | `templates-list` | TD-087 已完成，Slice 2 迁移 |
 | `/data/templates/:id` | template-detail | `nav.data.templates` | ✅ | `templates-list` | 模板详情 |
 | `/capabilities/skills` | capabilities-skills | `nav.capabilities` | - | `capabilities-skills` | Skill 库 |
 | `/capabilities/mcp` | capabilities-mcp | `nav.capabilities` | - | `capabilities-mcp` | MCP 工具 |
@@ -226,7 +226,7 @@ interface RouteMeta {
 
 - AC-1：侧边栏不存在两个 Skill 入口；"技能编排"占位下线；未交付功能默认 `hiddenInNav`。
 - AC-2：MCP/Skill 位于能力中心 `/capabilities/*`；数据要素模板位于知识与数据 `/data/templates`；系统管理只承载平台治理。
-- AC-3：普通用户看不到应用管理、能力中心、系统管理入口；深链 -> 前端 403 页 + API 独立 401/403。模板路由只有 TD-087 关闭后才迁移，并必须同批满足三层一致。
+- AC-3：普通用户看不到应用管理、能力中心、系统管理入口；深链 -> 前端 403 页 + API 独立 401/403。模板路由在 Slice 2 迁移，并必须同批满足三层一致。
 - AC-4：Route Record 是 path/name/meta 唯一事实源；Sidebar / breadcrumb / route guard 通过 `nav.ts` 纯投影消费，不再维护三份数组或产生 Router 循环依赖。
 - AC-5：首页快捷入口引用命名路由 + 按同一 permission 过滤；不再出现失效/占位入口。
 - AC-6：刷新任一深链按 `activeNav` 展开正确菜单分组并高亮唯一父级；独立应用 shell 不投影成一级菜单。
@@ -266,7 +266,7 @@ interface RouteMeta {
 
 - 原 `isActive` 诊断把 `/resource/:id` 高亮父入口误判成问题，改成 exact name 又会使详情页无高亮；现以 `activeNav` 明确父映射。
 - `/apps/*` 原表未隐藏，会被 Route 投影为一级菜单；现统一 `hiddenInNav=true`。
-- TD-087 只在 Spec/Plan 被提及、未进入技术债总账；现正式登记并设为模板路由迁移前置。
+- TD-087 已由 PR #495 完成（🟢），模板路由迁移前置已解除。（R1 形成时 TD-087 尚未进入技术债总账，此段为历史状态记录。）
 - 原 Slice 3/4 分开造成菜单迁移后、守卫落地前的中间态；现要求原子交付。
 - 当前移动端状态没有 opener，不能把 AC-8 写成纯验证；现纳入真实实现和 Playwright 回归。
 - AI Applications、Iteration、Milestone 状态滞后；本次同步修正并把评审落入 score log。

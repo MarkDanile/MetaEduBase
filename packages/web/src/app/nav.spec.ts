@@ -350,46 +350,21 @@ describe("feature flag runtime contracts", () => {
   });
 });
 
-describe("projectNavigation accepts router.getRoutes() shape", () => {
-  it("accepts symbol-typed route.name (Vue Router RouteRecordName)", async () => {
-    // router.getRoutes() 返回 RouteRecordNormalized[]，name 是 string | symbol
-    // router.getRoutes() 是 Vue Router 公开 API；router.options.routes 是内部细节
+describe("projectNavigation accepts router.getRoutes() directly", () => {
+  it("projects real router.getRoutes() without manual flatten", async () => {
+    // 直接调用 Vue Router 公开 API router.getRoutes()，不手工 flatten / cast
     const routerModule = await import("./router");
-    const router = (routerModule as { default: { getRoutes: () => ReadonlyArray<unknown> } })
-      .default;
-    const rawRoutes = router.getRoutes();
-    const flat: {
-      name?: string | symbol;
-      path: string;
-      meta?: Record<string, unknown>;
-    }[] = [];
-    for (const r of rawRoutes) {
-      const rec = r as unknown as {
-        name?: string | symbol;
-        path: string;
-        meta?: Record<string, unknown>;
-        children?: ReadonlyArray<{
-          name?: string | symbol;
-          path: string;
-          meta?: Record<string, unknown>;
-        }>;
-      };
-      if (rec.children) {
-        for (const c of rec.children) {
-          flat.push({
-            name: c.name,
-            path: c.path ?? "",
-            meta: c.meta,
-          });
-        }
-      } else {
-        flat.push({ name: rec.name, path: rec.path, meta: rec.meta });
-      }
-    }
-    // 应能投影非空 sections（super_admin + system_management flag on）
-    const sections = projectNavigation(flat, ctx("super_admin", { system_management: true }));
+    const router = (
+      routerModule as { default: { getRoutes: () => ReadonlyArray<unknown> } }
+    ).default;
+    const routes = router.getRoutes();
+    // projectNavigation 接受 RouteLike[]，router.getRoutes() 返回 RouteRecordNormalized[]
+    // 直接传入，不 flatten / unknown cast
+    const sections = projectNavigation(
+      routes as Parameters<typeof projectNavigation>[0],
+      ctx("super_admin", { system_management: true }),
+    );
     expect(sections.length).toBeGreaterThan(0);
-    // 6 个 section 至少出现 4 个
     const sectionIds = sections.map((s) => s.id);
     expect(new Set(sectionIds).size).toBe(sections.length);
   });

@@ -16,7 +16,7 @@
 
 ### REQ-060 Slice 1: Route meta Foundation + role/permission resolver
 
-状态：🟡 Slice 1 第四轮复审修复（分支 feat/req060-slice1-nav-foundation，PR #497），待 Codex xhigh 最终复审
+状态：🟡 Slice 1 第六轮修复（分支 feat/req060-slice1-nav-foundation，PR #497），待 Codex xhigh 最终复审
 类型：前端基础设施（P1）
 领域：Web / IA / Navigation / RBAC
 
@@ -24,7 +24,7 @@
 - Spec: [REQ-060](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md)
 - Plan: [Slice 1](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md)
 
-当前进展：nav.ts（permission resolver + section descriptors + projectNavigation，unknown feature flag + 非法 section fail-closed）+ router.ts（24 路由补 meta，knowledge+data 合并为单一 knowledge_data section）+ maps.ts（roleMap 统一到后端 RoleEnum 7 角色）+ nav.spec.ts（**34 测试**含 7×9 真值矩阵 + 6 section + 7 role map + 真实 router.getRoutes 投影 + feature flag 运行时契约）。第三轮复审修复完成。
+当前进展：nav.ts + router.ts + maps.ts 保持不变；nav.spec.ts 第六轮修复（38 tests GREEN，6 canonical section 顺序 + 7 roleShortMap 精确键集 + 未知 permission key fail-closed + 真实 router.getRoutes() 直接投影 + 24 business leaf title/section 契约）。
 
 下一步：PR #497 复审通过后合并；Slice 2（受保护路由 + 守卫 + 重定向）TD-087 已合并无阻塞。
 
