@@ -11,6 +11,7 @@ import {
   type NavSection,
   PERMISSION_KEYS,
   type RouteNavMeta,
+  type SectionDescriptor,
   SECTION_DESCRIPTORS,
   canAccess,
   projectNavigation,
@@ -393,12 +394,21 @@ describe("projectNavigation accepts router.getRoutes() shape", () => {
     expect(new Set(sectionIds).size).toBe(sections.length);
   });
 });
-
 describe("canonical section coverage (real router.getRoutes())", () => {
-  it("exposes all 6 canonical section descriptors exactly", () => {
-    expect(Object.keys(SECTION_DESCRIPTORS).sort()).toEqual(
-      ["ai_work", "apps", "capabilities", "knowledge_data", "overview", "system"],
+  it("exposes all 6 canonical section descriptors exactly in order", () => {
+    // 按 order 排序后与完整 array 精确 toEqual
+    const ordered = (Object.values(SECTION_DESCRIPTORS) as SectionDescriptor[]).sort(
+      (a, b) => a.order - b.order,
     );
+    const expected = [
+      { id: "overview", label: "总览", order: 1 },
+      { id: "ai_work", label: "AI 工作", order: 2 },
+      { id: "apps", label: "智能体应用", order: 3 },
+      { id: "knowledge_data", label: "知识与数据", order: 4 },
+      { id: "capabilities", label: "能力中心", order: 5 },
+      { id: "system", label: "系统管理", order: 6 },
+    ];
+    expect(ordered).toEqual(expected);
   });
 });
 
@@ -410,7 +420,7 @@ describe("roleShortMap covers 7 backend RoleEnum exactly", () => {
 });
 
 describe("permission rejection keys", () => {
-  it("canAccess denies unknown permission key (P1 fail-closed)", () => {
+  it("canAccess denies unknown permission key (fail-closed)", () => {
     const meta: RouteNavMeta = {
       section: "overview",
       title: "X",
@@ -421,36 +431,47 @@ describe("permission rejection keys", () => {
   });
 });
 
-describe("meta inventory on real router", () => {
+describe("meta inventory on real router.getRoutes()", () => {
+  // 直接用 Vue Router 公开 API router.getRoutes() 校验业务 leaf contract
   it("every business leaf route declares title + section (Route Meta contract)", async () => {
     const routerModule = await import("./router");
     const router = (
       routerModule as { default: { getRoutes: () => ReadonlyArray<unknown> } }
     ).default;
-    const missingTitleOrSection: string[] = [];
-    for (const r of router.getRoutes() as Array<{
-      name?: string;
-      path: string;
-      meta?: { title?: string; section?: string; hiddenInNav?: boolean };
-      children?: ReadonlyArray<{
-        name?: string;
-        path: string;
-        meta?: { title?: string; section?: string; hiddenInNav?: boolean };
-      }>;
-    }>) {
-      // 跳过 layout 父级（有 children 或 path 为 layout parent 如 /）
-      if (r.children) continue;
-      // guest 路由（login/share/lookup）不要求 title/section
-      if (r.path === "/login" || r.path === "/share/:token") continue;
+    const allRoutes = router.getRoutes() as Array<{
+      name?: string | symbol;
+      path?: string;
+      meta?: {
+        title?: string;
+        section?: string;
+        hiddenInNav?: boolean;
+        guest?: boolean;
+        requiresAuth?: boolean;
+      };
+    }>;
+
+    // 业务 leaf：具名路由（name !== undefined）且非 guest
+    const businessLeaves = allRoutes.filter(
+      (r) => r.name !== undefined && r.meta?.guest !== true,
+    );
+
+    // 精确断言业务 leaf 数量为 24
+    expect(
+      businessLeaves.length,
+      `expected 24 business leaves, got ${businessLeaves.length}`,
+    ).toBe(24);
+
+    // 逐项断言 title + section 均存在（失败信息必须输出 route name/path）
+    const missing: string[] = [];
+    for (const r of businessLeaves) {
       if (!r.meta?.title || !r.meta?.section) {
-        missingTitleOrSection.push(
-          `${r.name ?? r.path}: title=${!!r.meta?.title} section=${!!r.meta?.section}`,
+        const name = typeof r.name === "symbol" ? r.name.toString() : r.name;
+        missing.push(
+          `${name ?? r.path ?? "<unnamed>"} (${r.path ?? "?"}): ` +
+            `title=${!!r.meta?.title} section=${!!r.meta?.section}`,
         );
       }
     }
-    expect(
-      missingTitleOrSection,
-      `routes missing title/section: ${missingTitleOrSection.join(", ")}`,
-    ).toEqual([]);
+    expect(missing, `routes missing title/section: ${missing.join("; ")}`).toEqual([]);
   });
 });
