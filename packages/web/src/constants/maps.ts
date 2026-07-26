@@ -20,22 +20,25 @@ export const levelMap: Record<string, string> = {
   operation_step: "操作步骤",
 };
 
+// REQ-060 D-1: roleMap 统一到后端 RoleEnum 7 角色（BUG-017 冻结）
 export const roleMap: Record<string, string> = {
   super_admin: "超级管理员",
-  domain_expert: "领域专家",
+  data_admin: "数据管理员",
+  admin: "管理员",
+  leader: "招商负责人",
   teacher: "教师",
+  employee: "员工",
   student: "学生",
-  harness_engineer: "线束工程师",
-  system_ops: "系统运维",
 };
 
 export const roleShortMap: Record<string, string> = {
-  super_admin: "管理员",
-  domain_expert: "领域专家",
+  super_admin: "超管",
+  data_admin: "数据",
+  admin: "管理",
+  leader: "招商",
   teacher: "老师",
+  employee: "员工",
   student: "同学",
-  harness_engineer: "工程师",
-  system_ops: "运维",
 };
 
 export const resourceTypeMap: Record<string, string> = {

@@ -14,7 +14,19 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-060 Slice 1: Route meta Foundation + role/permission resolver
+
+状态：🟡 Slice 1 第六轮修复（分支 feat/req060-slice1-nav-foundation，PR #497），待 Codex xhigh 最终复审
+类型：前端基础设施（P1）
+领域：Web / IA / Navigation / RBAC
+
+需求来源：
+- Spec: [REQ-060](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md)
+- Plan: [Slice 1](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md)
+
+当前进展：nav.ts + router.ts + maps.ts 保持不变；nav.spec.ts 第六轮修复（38 tests GREEN，6 canonical section 顺序 + 7 roleShortMap 精确键集 + 未知 permission key fail-closed + 真实 router.getRoutes() 直接投影 + 24 business leaf title/section 契约）。
+
+下一步：PR #497 复审通过后合并；Slice 2（受保护路由 + 守卫 + 重定向）TD-087 已合并无阻塞。
 
 ## 下一批候选任务
 
@@ -22,7 +34,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | 🔵 Ready | R1 修订合并后，按修订 Plan 从 Foundation Slice 开始 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) / [Spec](../02-delivery-plans/01-specs/2026-07-23-req060-console-ia-nav-rbac.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md) |
+| P1-P | REQ-060 Slice 2: 受保护目标路由 + 守卫 + 重定向原子迁移 | 🔵 Ready | PR #497 合并后启动；与 /data/templates* 迁移、深链守卫、旧链接重定向和 AC-3 收口同批交付 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) / [Spec](../02-delivery-plans/01-specs/2026-07-23-req060-console-ia-nav-rbac.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md) |
 
 ## 最近完成
 
