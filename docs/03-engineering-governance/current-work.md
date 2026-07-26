@@ -34,7 +34,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | 🟡 Slice 1 评审中 | PR #497 第三轮修复完成（34 tests GREEN），待 Codex xhigh 最终复审 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) / [Spec](../02-delivery-plans/01-specs/2026-07-23-req060-console-ia-nav-rbac.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md) |
+| P1-P | REQ-060 企业 Agent 控制台信息架构与权限化导航 | 🟡 Slice 1 评审中 | PR #497 第四轮修复完成（38 tests GREEN），待 Codex xhigh 最终复审 | [Requirement](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) / [Spec](../02-delivery-plans/01-specs/2026-07-23-req060-console-ia-nav-rbac.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md) |
 
 ## 最近完成
 

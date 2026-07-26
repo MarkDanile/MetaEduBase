@@ -352,11 +352,11 @@ describe("feature flag runtime contracts", () => {
 describe("projectNavigation accepts router.getRoutes() shape", () => {
   it("accepts symbol-typed route.name (Vue Router RouteRecordName)", async () => {
     // router.getRoutes() 返回 RouteRecordNormalized[]，name 是 string | symbol
+    // router.getRoutes() 是 Vue Router 公开 API；router.options.routes 是内部细节
     const routerModule = await import("./router");
-    const router = (
-      routerModule as { default: { options: { routes: ReadonlyArray<unknown> } } }
-    ).default;
-    const rawRoutes = router.options.routes;
+    const router = (routerModule as { default: { getRoutes: () => ReadonlyArray<unknown> } })
+      .default;
+    const rawRoutes = router.getRoutes();
     const flat: {
       name?: string | symbol;
       path: string;
@@ -391,5 +391,66 @@ describe("projectNavigation accepts router.getRoutes() shape", () => {
     // 6 个 section 至少出现 4 个
     const sectionIds = sections.map((s) => s.id);
     expect(new Set(sectionIds).size).toBe(sections.length);
+  });
+});
+
+describe("canonical section coverage (real router.getRoutes())", () => {
+  it("exposes all 6 canonical section descriptors exactly", () => {
+    expect(Object.keys(SECTION_DESCRIPTORS).sort()).toEqual(
+      ["ai_work", "apps", "capabilities", "knowledge_data", "overview", "system"],
+    );
+  });
+});
+
+describe("roleShortMap covers 7 backend RoleEnum exactly", () => {
+  it("roleShortMap keys === ALL_ROLES (no extra, no missing)", async () => {
+    const { roleShortMap } = await import("@/constants/maps");
+    expect(Object.keys(roleShortMap).sort()).toEqual([...ALL_ROLES].sort());
+  });
+});
+
+describe("permission rejection keys", () => {
+  it("canAccess denies unknown permission key (P1 fail-closed)", () => {
+    const meta: RouteNavMeta = {
+      section: "overview",
+      title: "X",
+      permission: "nav.never_exists" as never,
+    };
+    // super_admin 仍被拒（permission key 必须在已知集合内）
+    expect(canAccess(meta, ctx("super_admin"))).toBe(false);
+  });
+});
+
+describe("meta inventory on real router", () => {
+  it("every business leaf route declares title + section (Route Meta contract)", async () => {
+    const routerModule = await import("./router");
+    const router = (
+      routerModule as { default: { getRoutes: () => ReadonlyArray<unknown> } }
+    ).default;
+    const missingTitleOrSection: string[] = [];
+    for (const r of router.getRoutes() as Array<{
+      name?: string;
+      path: string;
+      meta?: { title?: string; section?: string; hiddenInNav?: boolean };
+      children?: ReadonlyArray<{
+        name?: string;
+        path: string;
+        meta?: { title?: string; section?: string; hiddenInNav?: boolean };
+      }>;
+    }>) {
+      // 跳过 layout 父级（有 children 或 path 为 layout parent 如 /）
+      if (r.children) continue;
+      // guest 路由（login/share/lookup）不要求 title/section
+      if (r.path === "/login" || r.path === "/share/:token") continue;
+      if (!r.meta?.title || !r.meta?.section) {
+        missingTitleOrSection.push(
+          `${r.name ?? r.path}: title=${!!r.meta?.title} section=${!!r.meta?.section}`,
+        );
+      }
+    }
+    expect(
+      missingTitleOrSection,
+      `routes missing title/section: ${missingTitleOrSection.join(", ")}`,
+    ).toEqual([]);
   });
 });
