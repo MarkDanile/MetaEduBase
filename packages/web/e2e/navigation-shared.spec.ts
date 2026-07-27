@@ -8,7 +8,7 @@
  * - breadcrumb 详情页父链
  */
 import { test, expect } from "@playwright/test";
-import { injectAuth, type Role } from "./fixtures";
+import { setupE2E } from "./fixtures";
 
 const ALL_ROLES: Role[] = [
   "super_admin",
@@ -34,7 +34,7 @@ test.describe("shared: 7 角色 sidebar 可见性矩阵", () => {
 
   for (const role of ALL_ROLES) {
     test(`${role}: sidebar section 集合正确`, async ({ page }) => {
-      await injectAuth(page, role);
+      await setupE2E(page, role);
       await page.goto("/");
       await page.waitForLoadState("networkidle");
       const sectionLabels = await page.locator(".nav-section-label").allTextContents();
@@ -51,14 +51,14 @@ test.describe("shared: 7 角色 sidebar 可见性矩阵", () => {
 
 test.describe("shared: 旧链接重定向", () => {
   test("/skill-editor -> /capabilities/skills", async ({ page }) => {
-    await injectAuth(page, "admin");
+    await setupE2E(page, "admin");
     await page.goto("/skill-editor");
     await page.waitForLoadState("networkidle");
     expect(page.url()).toContain("/capabilities/skills");
   });
 
   test("/admin/template/:id -> /data/templates/:id (参数保留)", async ({ page }) => {
-    await injectAuth(page, "admin");
+    await setupE2E(page, "admin");
     await page.goto("/admin/template/42");
     await page.waitForLoadState("networkidle");
     expect(page.url()).toContain("/data/templates/42");
@@ -67,7 +67,7 @@ test.describe("shared: 旧链接重定向", () => {
 
 test.describe("shared: 低权深链 -> /403", () => {
   test("teacher -> /capabilities/skills -> /forbidden", async ({ page }) => {
-    await injectAuth(page, "teacher");
+    await setupE2E(page, "teacher");
     await page.goto("/capabilities/skills");
     await page.waitForLoadState("networkidle");
     expect(page.url()).toContain("/403");
@@ -76,7 +76,7 @@ test.describe("shared: 低权深链 -> /403", () => {
 
 test.describe("shared: breadcrumb 详情页父链", () => {
   test("/resource/:id -> 总览 / 资源库 / 文件详情", async ({ page }) => {
-    await injectAuth(page, "admin");
+    await setupE2E(page, "admin");
     await page.goto("/resource/abc");
     await page.waitForLoadState("networkidle");
     const breadcrumb = page.locator("nav.breadcrumb-bar");
@@ -86,7 +86,7 @@ test.describe("shared: breadcrumb 详情页父链", () => {
   });
 
   test("/data/templates/:id -> 总览 / 数据要素模板 / 模板详情", async ({ page }) => {
-    await injectAuth(page, "admin");
+    await setupE2E(page, "admin");
     await page.goto("/data/templates/42");
     await page.waitForLoadState("networkidle");
     const breadcrumb = page.locator("nav.breadcrumb-bar");

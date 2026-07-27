@@ -2,11 +2,11 @@
  * REQ-060 Slice 4: Playwright e2e 共享 fixtures。
  *
  * - injectAuth: 注入登录态（metaedu_token / metaedu_role / metaedu_tenant_id），
- *   跳过实际登录步骤以避免后端依赖；路由 guard 读 localStorage 直接放行
- * - switchRole: 在 case 内动态切换 role（无需 reload）—— 仅影响导航可见性，
- *   不触发路由变化
+ *   跳过实际登录步骤以避免后端依赖
+ * - installApiMocks: 拦截 `/api/v1/*` 请求返回确定性 mock，防 ECONNREFUSED
+ *   导致页面组件回退到列表页或错误状态
  */
-import type { Page } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
 
 export type Role =
   | "super_admin"
@@ -15,13 +15,7 @@ export type Role =
   | "leader"
   | "teacher"
   | "employee"
-  | "student"
-  | "unknown_role";
-
-export interface AuthFixture {
-  page: Page;
-  role: Role;
-}
+  | "student";
 
 /**
  * 注入登录态到 localStorage，然后 goto /（home）。
@@ -36,14 +30,112 @@ export async function injectAuth(page: Page, role: Role): Promise<void> {
 }
 
 /**
- * 在已加载页面内切换 role（用于测试 sidebar 过滤）：
- * - 重置 token / tenant_id（保持已登录态）
- * - 刷新页面让 router + nav.ts 重新读取 role
+ * 安装 API route mocks：拦截所有 `/api/v1/*` 请求返回确定性响应。
+ *
+ * 导航测试只验证路由跳转、sidebar 高亮、drawer 行为，不验证后端数据。
+ * 没有 mock 时页面组件因 ECONNREFUSED 会回退或报错，改变 URL 和 DOM。
+ *
+ * mock 策略：
+ * - GET list 端点 -> 空列表 / { results: [], total: 0 }
+ * - GET detail 端点 -> 最小对象（含 id 字段）
+ * - POST/PUT/DELETE -> { ok: true }
+ * - 其它 -> {}
  */
-export async function switchRole(page: Page, role: Role): Promise<void> {
-  await page.evaluate((r: Role) => {
-    localStorage.setItem("metaedu_role", r);
-  }, role);
-  await page.reload();
-  await page.waitForLoadState("networkidle");
+export async function installApiMocks(page: Page): Promise<void> {
+  await page.route("**/api/v1/**", async (route: Route) => {
+    const method = route.request().method();
+    const url = route.request().url();
+    const path = new URL(url).pathname;
+
+    // 列表端点：返回空列表
+    if (method === "GET") {
+      // 知识节点
+      if (path.includes("/knowledge/nodes")) {
+        await route.fulfill({ json: { results: [], total: 0 } });
+        return;
+      }
+      // 资源
+      if (path.includes("/resources")) {
+        await route.fulfill({ json: { results: [], total: 0 } });
+        return;
+      }
+      // 模板列表 / lookup
+      if (path.match(/\/templates(\/|$|\?)/) && !path.match(/\/templates\/[^/]+$/)) {
+        await route.fulfill({ json: [] });
+        return;
+      }
+      if (path.includes("/templates/lookup")) {
+        await route.fulfill({ json: [] });
+        return;
+      }
+      // 模板详情
+      if (path.match(/\/templates\/[^/]+$/)) {
+        const id = path.split("/").pop() ?? "1";
+        await route.fulfill({
+          json: {
+            id,
+            name: "测试模板",
+            doc_types: [],
+            fields: [],
+            ai_prompt: null,
+            ai_context: null,
+            source_file_id: null,
+            created_at: "2026-01-01T00:00:00",
+            updated_at: "2026-01-01T00:00:00",
+            schema_version: 1,
+            is_deprecated: false,
+            deprecated_at: null,
+            deprecated_reason: null,
+          },
+        });
+        return;
+      }
+      // 数据集
+      if (path.includes("/datasets")) {
+        await route.fulfill({ json: [] });
+        return;
+      }
+      // catalog
+      if (path.includes("/catalogs")) {
+        await route.fulfill({ json: [] });
+        return;
+      }
+      // AI 应用
+      if (path.includes("/ai-apps")) {
+        await route.fulfill({ json: [] });
+        return;
+      }
+      // skills
+      if (path.includes("/skills")) {
+        await route.fulfill({ json: [] });
+        return;
+      }
+      // mcp servers
+      if (path.includes("/mcp")) {
+        await route.fulfill({ json: [] });
+        return;
+      }
+      // 文件详情
+      if (path.includes("/files/")) {
+        await route.fulfill({ json: { id: "abc", title: "测试文件" } });
+        return;
+      }
+    }
+
+    // 默认：GET -> {}，POST/PUT/DELETE -> { ok: true }
+    if (method === "GET") {
+      await route.fulfill({ json: {} });
+    } else {
+      await route.fulfill({ json: { ok: true } });
+    }
+  });
+}
+
+/**
+ * 一站式 setup：注入登录态 + 安装 API mocks。
+ * 每个 e2e case 应在 page.goto 之前调用此函数。
+ */
+export async function setupE2E(page: Page, role: Role): Promise<void> {
+  await injectAuth(page, role);
+  await installApiMocks(page);
 }

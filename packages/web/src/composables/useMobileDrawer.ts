@@ -99,9 +99,15 @@ export function useMobileDrawer(opts: UseMobileDrawerOptions): UseMobileDrawerRe
    * Drawer 内 keydown 处理：Tab/Shift+Tab 在 drawer 内容里循环焦点。
    * 外部 LayoutView 在 `<aside>` 上挂 keydown 监听，命中后调用本函数。
    *
-   * 可见性过滤：排除 CSS display:none / visibility:hidden / offsetParent===null
-   * 的元素（如桌面端折叠按钮在移动端被 `hidden md:flex` 隐藏，不应进入 Tab 循环）。
+   * 可见性过滤：排除 CSS display:none / visibility:hidden / hidden 属性
+   * 的元素（如桌面端折叠按钮在移动端被 `hidden md:flex` 隐藏）。
    * 同时排除带 `data-desktop-only` 标记的元素（桌面端专属控件）。
+   *
+   * active 不在 focusables 中的处理（P1 修订）：
+   * - 初始焦点可能在 `tabindex="-1"` 的 data-autofocus 元素上（不在 focusables 中）
+   * - Tab (forward): 定向到 first
+   * - Shift+Tab (backward): 定向到 last
+   * - 这样从 data-autofocus 按 Tab 进入循环，按 Shift+Tab 也不会逃出
    */
   function onDrawerKeydown(e: KeyboardEvent) {
     if (!open.value) return;
@@ -111,12 +117,6 @@ export function useMobileDrawer(opts: UseMobileDrawerOptions): UseMobileDrawerRe
     const candidates = drawer.querySelectorAll<HTMLElement>(
       "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
     );
-    // 过滤：只保留真正可见 + 可交互的元素
-    // - 排除 data-desktop-only（桌面端专属控件，移动端不可见）
-    // - 排除 display:none（Playwright 真实浏览器有效；jsdom 无 CSS 引擎不触发）
-    // - 排除 visibility:hidden（同上）
-    // - 排除 hidden 属性（HTML 标准 hidden）
-    // 注：不用 offsetParent（jsdom 无 layout，始终返回 null）
     const focusables = Array.from(candidates).filter((el) => {
       if (el.hasAttribute("data-desktop-only")) return false;
       if (el.hidden) return false;
@@ -129,12 +129,20 @@ export function useMobileDrawer(opts: UseMobileDrawerOptions): UseMobileDrawerRe
     const first = focusables[0];
     const last = focusables[focusables.length - 1];
     const active = document.activeElement as HTMLElement | null;
-    if (e.shiftKey && active === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && active === last) {
-      e.preventDefault();
-      first.focus();
+    const activeIndex = active ? focusables.indexOf(active) : -1;
+
+    if (e.shiftKey) {
+      // Shift+Tab: 如果 active 是 first 或不在 focusables 中，定向到 last
+      if (activeIndex <= 0) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      // Tab: 如果 active 是 last 或不在 focusables 中，定向到 first
+      if (activeIndex === -1 || activeIndex === focusables.length - 1) {
+        e.preventDefault();
+        first.focus();
+      }
     }
   }
 

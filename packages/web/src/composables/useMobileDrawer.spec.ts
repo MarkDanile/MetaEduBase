@@ -341,7 +341,7 @@ describe("useMobileDrawer: Tab 焦点循环", () => {
         <div>
           <button ref="openerRef">O</button>
           <aside ref="drawerRef">
-            <button data-autofocus>A</button>
+            <div data-autofocus tabindex="-1">A</div>
             <button>B1</button>
             <button>B2</button>
           </aside>
@@ -355,13 +355,106 @@ describe("useMobileDrawer: Tab 焦点循环", () => {
     openDrawer();
     await flushPromises();
     const aside = wrapper.find("aside").element as HTMLElement;
-    const focusables = aside.querySelectorAll<HTMLElement>("button");
+    // data-autofocus 是 div tabindex=-1，不在 focusables 中
+    const focusables = Array.from(aside.querySelectorAll<HTMLElement>("button"));
     const last = focusables[focusables.length - 1];
     last.focus();
-    expect(document.activeElement).toBe(last);
-    // 触发 Tab
+    // Tab 从 last -> first
     onDrawerKeydown(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
     expect(document.activeElement).toEqual(focusables[0]);
+    closeDrawer(false);
+  });
+
+  it("Tab 从 data-autofocus (tabindex=-1, 不在 focusables 中) 定向到 first", async () => {
+    const openerRef = ref<HTMLElement | null>(null);
+    const drawerRef = ref<HTMLElement | null>(null);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: "/", name: "home", component: { template: "<div/>" }, meta: { title: "总览" } }],
+    });
+    await router.push("/");
+    await router.isReady();
+    await flushPromises();
+    let onDrawerKeydown: (e: KeyboardEvent) => void = () => {};
+    let openDrawer: () => void = () => {};
+    let closeDrawer: (b?: boolean) => void = () => {};
+    const Comp = defineComponent({
+      setup() {
+        const r = useMobileDrawer({ openerRef, drawerRef, route: router.currentRoute });
+        onDrawerKeydown = r.onDrawerKeydown;
+        openDrawer = r.openDrawer;
+        closeDrawer = r.closeDrawer;
+        return { ...r, openerRef, drawerRef };
+      },
+      template: `
+        <div>
+          <button ref="openerRef">O</button>
+          <aside ref="drawerRef">
+            <div data-autofocus tabindex="-1">A</div>
+            <button>B1</button>
+            <button>B2</button>
+          </aside>
+        </div>
+      `,
+    });
+    const wrapper = mount(Comp, { attachTo: document.body });
+    await flushPromises();
+    openerRef.value = wrapper.find("button").element as HTMLElement;
+    drawerRef.value = wrapper.find("aside").element as HTMLElement;
+    openDrawer();
+    await flushPromises();
+    // 焦点在 data-autofocus div 上（openDrawer 自动聚焦）
+    const autofocusEl = wrapper.find("[data-autofocus]").element as HTMLElement;
+    expect(document.activeElement).toEqual(autofocusEl);
+    // Tab 从 data-autofocus（不在 focusables 中）-> 定向到 first (B1)
+    onDrawerKeydown(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    const buttons = Array.from(wrapper.find("aside").element.querySelectorAll<HTMLElement>("button"));
+    expect(document.activeElement).toEqual(buttons[0]);
+    closeDrawer(false);
+  });
+
+  it("Shift+Tab 从 data-autofocus (tabindex=-1) 定向到 last", async () => {
+    const openerRef = ref<HTMLElement | null>(null);
+    const drawerRef = ref<HTMLElement | null>(null);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: "/", name: "home", component: { template: "<div/>" }, meta: { title: "总览" } }],
+    });
+    await router.push("/");
+    await router.isReady();
+    await flushPromises();
+    let onDrawerKeydown: (e: KeyboardEvent) => void = () => {};
+    let openDrawer: () => void = () => {};
+    let closeDrawer: (b?: boolean) => void = () => {};
+    const Comp = defineComponent({
+      setup() {
+        const r = useMobileDrawer({ openerRef, drawerRef, route: router.currentRoute });
+        onDrawerKeydown = r.onDrawerKeydown;
+        openDrawer = r.openDrawer;
+        closeDrawer = r.closeDrawer;
+        return { ...r, openerRef, drawerRef };
+      },
+      template: `
+        <div>
+          <button ref="openerRef">O</button>
+          <aside ref="drawerRef">
+            <div data-autofocus tabindex="-1">A</div>
+            <button>B1</button>
+            <button>B2</button>
+          </aside>
+        </div>
+      `,
+    });
+    const wrapper = mount(Comp, { attachTo: document.body });
+    await flushPromises();
+    openerRef.value = wrapper.find("button").element as HTMLElement;
+    drawerRef.value = wrapper.find("aside").element as HTMLElement;
+    openDrawer();
+    await flushPromises();
+    // Shift+Tab 从 data-autofocus -> 定向到 last (B2)
+    onDrawerKeydown(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true }));
+    const buttons = Array.from(wrapper.find("aside").element.querySelectorAll<HTMLElement>("button"));
+    expect(document.activeElement).toEqual(buttons[buttons.length - 1]);
     closeDrawer(false);
   });
 });
