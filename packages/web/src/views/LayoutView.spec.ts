@@ -463,3 +463,187 @@ function collectActiveLabels(wrapper: ReturnType<typeof mount>): string[] {
   }
   return unique;
 }
+
+/* =========================================================================
+ * REQ-060 Slice 4: 移动端 drawer + a11y + skip-link + aria-current
+ * =======================================================================*/
+
+describe("LayoutView: skip-link (a11y)", () => {
+  it("渲染指向 #main-content 的 skip-link", async () => {
+    const { wrapper } = await mountLayout("admin");
+    const skip = wrapper.find("a.skip-link");
+    expect(skip.exists()).toBe(true);
+    expect(skip.attributes("href")).toBe("#main-content");
+    wrapper.unmount();
+  });
+});
+
+describe("LayoutView: mobile top-bar opener", () => {
+  it("渲染 mobile-opener 按钮（含 aria-controls + aria-expanded）", async () => {
+    const { wrapper } = await mountLayout("admin");
+    const opener = wrapper.find("button.mobile-opener");
+    expect(opener.exists()).toBe(true);
+    expect(opener.attributes("aria-controls")).toBe("mobile-drawer");
+    expect(opener.attributes("aria-expanded")).toBe("false");
+    expect(opener.attributes("aria-label")).toBe("打开导航");
+    wrapper.unmount();
+  });
+
+  it("点击 opener 切换 aria-expanded + 切换菜单图标", async () => {
+    const { wrapper } = await mountLayout("admin");
+    const opener = wrapper.find("button.mobile-opener");
+    expect(opener.attributes("aria-expanded")).toBe("false");
+    await opener.trigger("click");
+    expect(opener.attributes("aria-expanded")).toBe("true");
+    expect(opener.attributes("aria-label")).toBe("关闭导航");
+    expect(wrapper.find(".drawer-backdrop").exists()).toBe(true);
+    wrapper.unmount();
+  });
+});
+
+describe("LayoutView: mobile drawer state", () => {
+  it("drawer open 时 aside 不带 -translate-x-full", async () => {
+    const { wrapper } = await mountLayout("admin");
+    const opener = wrapper.find("button.mobile-opener");
+    await opener.trigger("click");
+    const aside = wrapper.find("aside#mobile-drawer");
+    const cls = aside.attributes("class") ?? "";
+    expect(cls.includes("-translate-x-full")).toBe(false);
+    expect(cls.includes("translate-x-0")).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("drawer open 时 backdrop 存在并可点击关闭", async () => {
+    const { wrapper } = await mountLayout("admin");
+    const opener = wrapper.find("button.mobile-opener");
+    await opener.trigger("click");
+    const backdrop = wrapper.find("[data-testid='drawer-backdrop']");
+    expect(backdrop.exists()).toBe(true);
+    await backdrop.trigger("click");
+    expect(opener.attributes("aria-expanded")).toBe("false");
+    wrapper.unmount();
+  });
+
+  it("drawer open 时 document.body.style.overflow = hidden", async () => {
+    const { wrapper } = await mountLayout("admin");
+    const opener = wrapper.find("button.mobile-opener");
+    await opener.trigger("click");
+    expect(document.body.style.overflow).toBe("hidden");
+    wrapper.unmount();
+  });
+
+  it("drawer close 后 body.style.overflow 恢复", async () => {
+    const { wrapper } = await mountLayout("admin");
+    const opener = wrapper.find("button.mobile-opener");
+    await opener.trigger("click");
+    expect(document.body.style.overflow).toBe("hidden");
+    await opener.trigger("click");
+    expect(document.body.style.overflow).toBe("");
+    wrapper.unmount();
+  });
+
+  it("drawer open 时按 Escape 关闭", async () => {
+    const { wrapper } = await mountLayout("admin");
+    const opener = wrapper.find("button.mobile-opener");
+    await opener.trigger("click");
+    expect(opener.attributes("aria-expanded")).toBe("true");
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await nextTick();
+    expect(opener.attributes("aria-expanded")).toBe("false");
+    expect(document.body.style.overflow).toBe("");
+    wrapper.unmount();
+  });
+
+  it("route change 自动关闭 drawer（returnFocus=false）", async () => {
+    const { wrapper, router } = await mountLayout("admin");
+    const opener = wrapper.find("button.mobile-opener");
+    await opener.trigger("click");
+    expect(opener.attributes("aria-expanded")).toBe("true");
+    await router.replace("/knowledge");
+    await router.isReady();
+    await nextTick();
+    await flushPromises();
+    expect(opener.attributes("aria-expanded")).toBe("false");
+    wrapper.unmount();
+  });
+});
+
+describe("LayoutView: nav item aria-current", () => {
+  it("active nav-item 设置 aria-current=page", async () => {
+    const { wrapper, router } = await mountLayout("admin");
+    await router.replace("/knowledge");
+    await router.isReady();
+    await nextTick();
+    await flushPromises();
+    const activeItem = wrapper.findAll(".nav-item").find((i) =>
+      i.text().includes("知识库"),
+    );
+    expect(activeItem).toBeTruthy();
+    expect(activeItem?.attributes("aria-current")).toBe("page");
+    wrapper.unmount();
+  });
+
+  it("非 active nav-item 不设 aria-current", async () => {
+    const { wrapper, router } = await mountLayout("admin");
+    await router.replace("/knowledge");
+    await router.isReady();
+    await nextTick();
+    await flushPromises();
+    const items = wrapper.findAll(".nav-item");
+    const inactive = items.find((i) =>
+      i.text().includes("AI 问答"),
+    );
+    expect(inactive).toBeTruthy();
+    // aria-current 应当是 undefined（或无属性）
+    expect(inactive?.attributes("aria-current")).toBeUndefined();
+    wrapper.unmount();
+  });
+});
+
+describe("LayoutView: desktop collapse 独立于 mobile drawer", () => {
+  it("desktop collapsed 与 mobile drawer 独立：桌面折叠不影响 mobile drawer 状态", async () => {
+    const { wrapper } = await mountLayout("admin");
+    const desktopToggle = wrapper.find(".desktop-collapse-toggle");
+    expect(desktopToggle.exists()).toBe(true);
+    // 桌面折叠
+    await desktopToggle.trigger("click");
+    // mobile opener 不受影响
+    const opener = wrapper.find("button.mobile-opener");
+    expect(opener.attributes("aria-expanded")).toBe("false");
+    // 桌面折叠的 nav-item-collapsed 类生效
+    const collapsedItems = wrapper.findAll(".nav-item-collapsed");
+    expect(collapsedItems.length).toBeGreaterThan(0);
+    wrapper.unmount();
+  });
+});
+
+describe("LayoutView: user menu a11y", () => {
+  it("user menu 按钮 aria-expanded + aria-haspopup", async () => {
+    const { wrapper } = await mountLayout("admin");
+    const userBtn = wrapper.find('button[aria-label="管理员"]');
+    expect(userBtn.exists()).toBe(true);
+    expect(userBtn.attributes("aria-expanded")).toBe("false");
+    expect(userBtn.attributes("aria-haspopup")).toBe("menu");
+    wrapper.unmount();
+  });
+
+  it("user menu 打开时 menu role + menuitem role", async () => {
+    const { wrapper } = await mountLayout("admin");
+    const userBtn = wrapper.find('button[aria-label="管理员"]');
+    await userBtn.trigger("click");
+    expect(wrapper.find('[role="menu"]').exists()).toBe(true);
+    expect(wrapper.findAll('[role="menuitem"]').length).toBeGreaterThan(0);
+    wrapper.unmount();
+  });
+});
+
+describe("LayoutView: prefers-reduced-motion", () => {
+  it("CSS 包含 prefers-reduced-motion: reduce 媒体查询", async () => {
+    // 静态断言：通过 Vite `?raw` import 在构建时读取 LayoutView.vue 源码
+    // 避免引入 @types/node 依赖。
+    // vitest.config.ts 用 vite，运行时支持 ?raw。
+    const src = (await import("./LayoutView.vue?raw")).default as string;
+    expect(src).toContain("prefers-reduced-motion");
+    expect(src).toContain("transition: none");
+  });
+});
