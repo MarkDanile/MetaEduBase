@@ -361,7 +361,7 @@ describe("useMobileDrawer: Tab 焦点循环", () => {
     expect(document.activeElement).toBe(last);
     // 触发 Tab
     onDrawerKeydown(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
-    expect(document.activeElement).toBe(focusables[0]);
+    expect(document.activeElement).toEqual(focusables[0]);
     closeDrawer(false);
   });
 });

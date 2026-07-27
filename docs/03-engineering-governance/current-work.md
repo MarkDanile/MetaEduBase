@@ -16,7 +16,7 @@
 
 ### REQ-060 Slice 4: 移动端 + a11y + Playwright + 收口
 
-状态：🟡 In Progress（Slice 3 已合并归档 PR #501，Slice 4 启动中）
+状态：🟡 In Progress（Slice 3 已合并归档 PR #501/#502，Slice 4 PR #503 复审返修中）
 类型：前端响应式 + 浏览器验收（P1）
 领域：Web / IA / Navigation / a11y
 

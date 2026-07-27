@@ -11,5 +11,7 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    // 排除 Playwright e2e 目录（由 `pnpm test:e2e` 单独跑）
+    exclude: ["node_modules/**", "dist/**", "e2e/**"],
   },
 });

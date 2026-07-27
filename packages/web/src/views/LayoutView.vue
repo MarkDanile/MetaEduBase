@@ -24,32 +24,40 @@
       </h1>
     </header>
 
-    <!-- REQ-060 Slice 4: drawer 容器 -->
+    <!--
+      REQ-060 Slice 4: drawer 容器
+      - 移动端基础宽度 w-72（288px），drawer 打开时 translate-x-0，关闭时 -translate-x-full
+      - 桌面端 md:w-[200px] 或 md:w-[60px]（随 desktopCollapsed），始终 md:translate-x-0
+      - keydown 挂在 <aside> 上（覆盖 nav + footer 用户菜单），不只是 <nav>
+    -->
     <aside
       id="mobile-drawer"
       ref="mobileDrawerRef"
       :class="[
-        'sidebar-shell fixed left-0 top-0 bottom-0 flex flex-col z-[var(--z-sidebar)] transition-all duration-300 ease-out',
-        desktopCollapsed ? 'md:w-[60px] md:translate-x-0' : 'md:w-[200px] md:translate-x-0',
+        'sidebar-shell fixed left-0 top-0 bottom-0 flex flex-col z-[var(--z-sidebar)] transition-all duration-300 ease-out w-72',
+        desktopCollapsed ? 'md:w-[60px]' : 'md:w-[200px]',
         mobileDrawer.open.value
           ? 'translate-x-0'
           : '-translate-x-full md:translate-x-0',
       ]"
+      @keydown="mobileDrawer.onDrawerKeydown"
     >
-      <div class="px-4 pt-5 pb-4 flex items-center" :class="desktopCollapsed ? 'md:justify-center' : 'md:gap-2.5'">
-        <div class="app-brand-mark">
+      <div
+        class="px-4 pt-5 pb-4 flex items-center"
+        :class="showFullContent ? 'gap-2.5' : 'md:justify-center'"
+      >
+        <div class="app-brand-mark" data-autofocus tabindex="-1">
           <BookOpen :size="16" :stroke-width="2" />
         </div>
-        <div v-if="!desktopCollapsed">
+        <div v-if="showFullContent">
           <h1 class="text-[var(--text-body)] font-semibold text-[var(--color-ink)]">元知职教基座</h1>
           <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)] -mt-0.5">MetaEduBase</p>
         </div>
       </div>
 
       <nav
-        class="flex-1 px-2 space-y-0.5"
+        class="flex-1 px-2 space-y-0.5 overflow-y-auto"
         :aria-label="mobileDrawer.open.value ? '主导航（已展开）' : '主导航'"
-        @keydown="mobileDrawer.onDrawerKeydown"
       >
         <!-- REQ-060 Slice 3: 从 Route Record 投影导航（统一 section 分组） -->
         <div
@@ -57,7 +65,7 @@
           :key="section.id"
           class="nav-section"
         >
-          <p v-if="!desktopCollapsed" class="nav-section-label">{{ section.label }}</p>
+          <p v-if="showFullContent" class="nav-section-label">{{ section.label }}</p>
           <RouterLink
             v-for="item in section.items"
             :key="item.name"
@@ -65,16 +73,16 @@
             class="nav-item"
             :class="{
               'nav-item-active': isActive(item.name),
-              'nav-item-collapsed': desktopCollapsed,
+              'nav-item-collapsed': !showFullContent,
             }"
-            :title="desktopCollapsed ? item.title : undefined"
+            :title="!showFullContent ? item.title : undefined"
             :aria-label="item.title"
             :aria-current="isActive(item.name) ? 'page' : undefined"
           >
             <div class="nav-icon">
-              <component :is="item.icon" v-if="item.icon" :size="desktopCollapsed ? 20 : 18" :stroke-width="1.5" />
+              <component :is="item.icon" v-if="item.icon" :size="!showFullContent ? 20 : 18" :stroke-width="1.5" />
             </div>
-            <span v-if="!desktopCollapsed" class="nav-label">{{ item.title }}</span>
+            <span v-if="showFullContent" class="nav-label">{{ item.title }}</span>
           </RouterLink>
         </div>
       </nav>
@@ -83,7 +91,7 @@
         <button
           @click="userMenuOpen = !userMenuOpen"
           class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--color-bg-hover)] transition-colors cursor-pointer border-none bg-none"
-          :class="desktopCollapsed ? 'md:justify-center' : ''"
+          :class="!showFullContent ? 'md:justify-center' : ''"
           :aria-label="roleLabel"
           :aria-expanded="userMenuOpen"
           aria-haspopup="menu"
@@ -91,11 +99,11 @@
           <div class="w-7 h-7 rounded-full bg-[var(--color-accent-bg)] flex items-center justify-center text-[var(--text-micro)] font-semibold text-[var(--color-accent)] flex-shrink-0">
             {{ roleInitial }}
           </div>
-          <div v-if="!desktopCollapsed" class="flex-1 min-w-0 text-left">
+          <div v-if="showFullContent" class="flex-1 min-w-0 text-left">
             <p class="font-medium truncate text-[var(--text-caption)] text-[var(--color-ink)]">{{ roleLabel }}</p>
           </div>
           <ChevronUp
-            v-if="!desktopCollapsed"
+            v-if="showFullContent"
             :size="12"
             :stroke-width="2"
             class="text-[var(--color-ink-tertiary)] transition-transform duration-200"
@@ -133,11 +141,12 @@
         />
       </div>
 
-      <!-- REQ-060 Slice 4: 桌面端 collapse toggle（仅 md+ 显示） -->
+      <!-- REQ-060 Slice 4: 桌面端 collapse toggle（仅 md+ 显示，data-desktop-only 标记用于 focus trap 排除） -->
       <button
         v-show="!mobileDrawer.open.value"
         @click="desktopCollapsed = !desktopCollapsed"
-        class="desktop-collapse-toggle absolute -right-3 top-7 w-6 h-6 rounded-full bg-[var(--color-bg-elevated)] border border-[var(--color-border)] shadow-sm flex items-center justify-center hover:bg-[var(--color-accent-bg)] transition-colors hidden md:flex"
+        class="desktop-collapse-toggle absolute -right-3 top-7 w-6 h-6 rounded-full bg-[var(--color-bg-elevated)] border border-[var(--color-border)] shadow-sm items-center justify-center hover:bg-[var(--color-accent-bg)] transition-colors hidden md:flex"
+        data-desktop-only="true"
         :aria-label="desktopCollapsed ? '展开侧边栏' : '折叠侧边栏'"
         :aria-expanded="!desktopCollapsed"
       >
@@ -145,7 +154,7 @@
       </button>
     </aside>
 
-    <!-- REQ-060 Slice 4: drawer backdrop（drawer 打开时） -->
+    <!-- REQ-060 Slice 4: drawer backdrop（drawer 打开时，仅移动端） -->
     <div
       v-if="mobileDrawer.open.value"
       class="drawer-backdrop fixed inset-0 bg-black/40 z-[calc(var(--z-sidebar)-1)] md:hidden"
@@ -156,8 +165,10 @@
     <main
       id="main-content"
       tabindex="-1"
-      class="flex-1 min-h-screen transition-all duration-300 ease-out"
-      :class="[mainMarginClass, mobileDrawer.open.value ? 'md:ml-[200px]' : ''].join(' ')"
+      :class="[
+        'flex-1 min-h-screen transition-all duration-300 ease-out',
+        isMobile ? 'ml-0' : desktopCollapsed ? 'md:ml-[60px]' : 'md:ml-[200px]',
+      ]"
     >
       <div class="ui-page-shell pt-12 md:pt-0">
         <!-- REQ-060 Slice 3 收口：全局 Breadcrumb（route.matched -> meta.title 链） -->
@@ -202,15 +213,16 @@ const router = useRouter();
 const authStore = useAuthStore();
 const themeStore = useThemeStore();
 
-// REQ-060 Slice 4: 桌面端折叠与移动端 drawer 独立状态。
-// 旧实现：单一 `collapsed` 混用 desktop/mobile，导致窄屏折叠态无法打开。
+// REQ-060 Slice 4（修订）: 桌面端折叠与移动端 drawer 独立状态。
+// - desktopCollapsed: 仅影响 md+ 展示（折叠/展开 sidebar 宽度 + 文字隐藏）
+// - isMobile: 响应式 viewport 状态（<768 = true），用于 main margin + showFullContent
+// - mobileDrawer.open: drawer 打开/关闭状态（仅移动端生效）
 const desktopCollapsed = ref(false);
+const isMobile = ref(false);
 const mobileOpenerRef = ref<HTMLElement | null>(null);
 const mobileDrawerRef = ref<HTMLElement | null>(null);
 const mobileDrawer = useMobileDrawer({
-  // eslint-disable-next-line vue/no-ref-as-operand
   openerRef: mobileOpenerRef,
-  // eslint-disable-next-line vue/no-ref-as-operand
   drawerRef: mobileDrawerRef,
   route,
 });
@@ -220,6 +232,14 @@ const roleLabel = computed(() => roleMap[authStore.userRole ?? ""] ?? authStore.
 const roleInitial = computed(() => roleLabel.value.charAt(0));
 const themeLabel = computed(() => (themeStore.activeTheme === "dark" ? "切换浅色" : "切换深色"));
 const themeIcon = computed(() => (themeStore.activeTheme === "dark" ? Sun : Moon));
+
+// REQ-060 Slice 4（修订）: showFullContent 控制 brand/section/nav label 是否显示。
+// - 移动端（isMobile=true）: 始终 true（drawer 是临时覆盖层，打开时必须显示完整菜单文字）
+// - 桌面端（isMobile=false）: !desktopCollapsed（折叠时隐藏文字，只显示图标）
+const showFullContent = computed(() => {
+  if (isMobile.value) return true;
+  return !desktopCollapsed.value;
+});
 
 // REQ-060 Slice 3: 从 Route Record 投影导航（删 navItems/adminItems/aiAppItems 三份数组）
 // 复用 nav.ts#loadFeatureFlags（唯一运行时来源，防 flag key 漂移）
@@ -236,16 +256,6 @@ function isActive(itemName: string) {
   return activeNav === itemName;
 }
 
-const mainMarginClass = computed(() => {
-  // 桌面端（>=768）：随 desktopCollapsed 调整左边距
-  // 移动端（<768）：drawer 打开时 aside translate-x-0 但不影响 main layout
-  //              （main 始终 ml-0，drawer 覆盖在 main 上方）
-  if (typeof window !== "undefined" && window.innerWidth >= 768) {
-    return desktopCollapsed.value ? "md:ml-[60px]" : "md:ml-[200px]";
-  }
-  return "";
-});
-
 function logout() {
   authStore.clearAuth();
   router.push("/login");
@@ -256,10 +266,19 @@ function toggleTheme() {
   userMenuOpen.value = false;
 }
 
-// REQ-060 Slice 4: 桌面端 resize 时自动折叠（保持旧 UX），不动 drawer 状态
+// REQ-060 Slice 4（修订）: 响应式 resize 处理
+// - 更新 isMobile（响应式，computed 依赖它会重算）
+// - 移动端自动设 desktopCollapsed=true（桌面端切换回来时保持折叠 UX）
+// - mobile -> desktop 切换时自动关闭 drawer（防 body scroll lock 残留）
 function handleResize() {
-  if (window.innerWidth < 768) {
+  const wasMobile = isMobile.value;
+  isMobile.value = window.innerWidth < 768;
+  if (isMobile.value) {
     desktopCollapsed.value = true;
+  }
+  // mobile -> desktop: 关闭 drawer（returnFocus=false，因为 opener 在桌面端不可见）
+  if (wasMobile && !isMobile.value && mobileDrawer.open.value) {
+    mobileDrawer.closeDrawer(false);
   }
 }
 

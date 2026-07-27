@@ -59,11 +59,11 @@ R1 修订后按 5 个交付 Gate 实施。每个 Gate 独立 PR，但受保护�
 - [x] 覆盖 backdrop、Escape、route change 关闭，打开/关闭焦点迁移，body scroll lock，`aria-controls`、`aria-expanded`、`aria-current`。`useMobileDrawer` 封装：document 级 Escape 监听 + watch(route.fullPath) 自动关闭 + body overflow lock/unlock + 焦点回到 opener + Tab/Shift+Tab 循环焦点；opener `aria-controls="mobile-drawer"` + `:aria-expanded`；nav-item `:aria-current="isActive(item.name) ? 'page' : undefined"`。
 - [x] 为分组按钮实现键盘导航和稳定展开状态；桌面折叠与移动抽屉状态分离。desktop `desktopCollapsed` (toggle 桌面 collapse button, `md:flex` only) 与 mobile `mobileDrawer.open` (opener `md:hidden` only) 完全独立；`@media (prefers-reduced-motion: reduce)` 取消所有 transition；skip-link `<a href="#main-content">` 视觉隐藏 + focus 显示。
 - [x] 仓库当前无 Playwright：新增最小 `@playwright/test` 依赖、配置和可复现脚本；覆盖桌面/移动、浅色/深色、7 角色代表集、403、重定向和详情父高亮截图/断言。`packages/web/playwright.config.ts` + `e2e/navigation.spec.ts` + `e2e/fixtures.ts` + `e2e/README.md`；2 projects (chromium-desktop 1280×800 + chromium-mobile Pixel 5)；`injectAuth(page, role)` 注入 localStorage 跳过实际登录；覆盖 7 角色 sidebar / activeNav 高亮 / 详情父高亮 / mobile drawer 状态机 + a11y / 主题 / 旧链接重定向 / 403 / breadcrumb。
-- [x] 运行前端 lint、typecheck、Vitest、Playwright；PR CI 按 scope 执行，禁止把 mock UI 当后端 RBAC 证据。typecheck 0 errors / eslint 0 errors 28 warnings（PR 新增 stub + 既有 CatalogDetailPage）/ vitest canonical 324 tests（含 Slice 4 新增 28：useMobileDrawer 13 + LayoutView +15）/ docs gate passed / `git diff --check` exit 0；Playwright 二进制 install + 实际 e2e 跑在 CI 容器执行（本地 pnpm store 差异限制 install）。
+- [ ] 运行前端 lint、typecheck、Vitest、Playwright；PR CI 按 scope 执行，禁止把 mock UI 当后端 RBAC 证据。首轮复审 P1 修复中：vitest 排除 e2e/**、mobile drawer 宽度/状态分离、focus trap 修复、Playwright testMatch 拆 project、pnpm-lock + ci.yml 接入 e2e。待返修完成后重跑全量验证。
 - [ ] 用户验收后更新 work-log、Requirement/Backlog/current-work 和本 Plan 验证摘要。（待 Codex 复审通过 + 用户合并后归档）
 - **复杂度**：高（当前移动端能力缺失，不是纯验收）。
 - **完成 commit**：`pending`（PR 待合并；待 Codex 复审通过后归档 work-log + REQ-060 Done + current-work）。
-- **测试分布**：useMobileDrawer.spec.ts 13 + LayoutView.spec.ts 47（+15 Slice 4）= Slice 4 新增 28 tests；Playwright e2e navigation.spec.ts ~25 cases（desktop + mobile projects）。
+- **测试分布**：useMobileDrawer.spec.ts 13 + LayoutView.spec.ts 47（+15 Slice 4）= Slice 4 新增 28 vitest tests；Playwright e2e 拆为 navigation-shared/desktop/mobile 三组 spec（7 角色 + activeNav + 详情父高亮 + drawer 状态机 + focus/Tab/body-lock + 截图）。
 - **推荐模型**：GPT-5.6 Sol `medium` 或 Kimi K3 thinking 实现；Sol `high` 做响应式/RBAC Review。
 
 ## 强制顺序

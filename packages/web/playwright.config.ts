@@ -1,13 +1,12 @@
 /**
  * REQ-060 Slice 4: Playwright e2e 配置。
  *
- * 覆盖：
- * - chromium-desktop (1280x800) + chromium-mobile (Pixel 5) 两 project
- * - webServer: 自启动 `vite preview --port 3000`（生产构建）
- * - baseURL: http://localhost:3000
- * - headless + CI 默认；本地开发可 `PWDEBUG=1` 调试
+ * 项目分流（P1 修订）：
+ * - chromium-desktop: 只跑 *-desktop.spec.ts + *-shared.spec.ts
+ * - chromium-mobile: 只跑 *-mobile.spec.ts + *-shared.spec.ts
+ * 通过 testMatch glob 模式实现，避免 mobile-only 测试在 desktop viewport 跑失败。
  *
- * CI 集成（计划在 turbo.json + .github/workflows）：
+ * CI 集成：
  * 1. `pnpm --filter @metaedu/web exec playwright install --with-deps chromium`
  * 2. `pnpm --filter @metaedu/web build`（先 build 才能 vite preview）
  * 3. `pnpm --filter @metaedu/web test:e2e`
@@ -37,10 +36,12 @@ export default defineConfig({
   projects: [
     {
       name: "chromium-desktop",
+      testMatch: /.*(-desktop|-shared)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 } },
     },
     {
       name: "chromium-mobile",
+      testMatch: /.*(-mobile|-shared)\.spec\.ts/,
       use: { ...devices["Pixel 5"] },
     },
   ],
