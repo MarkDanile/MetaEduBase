@@ -14,20 +14,21 @@
 
 ## 当前进行中
 
-### REQ-041/047 R1 返修（文档门禁 / work-log 一致性 / plan 勾选同步）
+### REQ-041/047 R1-S0 Retention、Purge 与恢复专项塑形
 
-状态：🟡 In Progress（REQ-060 已 Done 收口；启动下一批）
-类型：Backend + 文档（GPT-5.6 Sol `xhigh`）
-领域：Conversation / Run / work-log
+状态：🟠 Awaiting Architecture Review（仅文档，不实施代码）
+类型：Architecture / Backend / Data Governance（GPT-5.6 Sol `xhigh`）
+领域：Conversation / Run / Retention / Erasure
 
 需求来源：
-- Spec: [REQ-041/047](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md)
-- Plan: [REQ-041/047 plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md)
-- Backlog: [REQ-041/047 R1 候选](../01-product-planning/04-backlog.md)
+- Parent Spec: [REQ-041/047 联合核心契约](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md)
+- R1 Spec: [Retention、Purge 与恢复专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- R1 Plan: [R1 分 Slice 实施计划](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
+- Backlog: [REQ-041/047](../01-product-planning/04-backlog.md)
 
-当前进展：REQ-060 四 Slice（#497/#499/#501/#503）已全部合并；仓库全量 326/326 vitest + 55/55 Playwright + 三路 CI 全绿。下一批启动 REQ-041/047 R1 返修 + REQ-042 塑形 + REQ-047 C1 收口。
+当前进展：REQ-060 已完整 Done；W1/E0/E1/B1/A1/D1 已合并。R1-S0 已按当前 ORM、Coordinator 与 writer 事实建立专项 Spec/Plan，拆为 S1-S6，并补充 tombstone schema、旧 Writer 发布门禁和备份恢复边界；当前没有 ErasureFence、legal hold、owner ACK、retention worker 或 Pi Worker，不能把文档塑形写成实现完成。文档 full gate 与 `git diff --check` 已通过。
 
-下一步：启动 REQ-041/047 R1 返修（文档门禁 / work-log 一致性 / plan 勾选同步）。
+下一步：完成独立架构复核；由用户确认 R1 Spec §12 五项门禁后，单独启动 R1-S1 Fence/Hold/Purge schema 基座。
 
 ## 下一批候选任务
 
@@ -35,9 +36,9 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1-P | REQ-041/047 R1 返修（文档门禁 / work-log 一致性 / plan 勾选同步） | 🔵 Ready | REQ-060 合并后启动，使用 GPT-5.6 Sol `xhigh`| [Backlog](../01-product-planning/04-backlog.md) |
-| P1-P | REQ-042 塑形（AI 问答 -> Agent 工作台） | 🔵 Ready | REQ-060 合并后启动 | [Spec](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) |
-| P1-P | REQ-047 C1 收口（app context durable + features） | 🔵 Ready | REQ-041 R1 后启动 | [Backlog](../01-product-planning/04-backlog.md) |
+| P0 | REQ-041/047 R1-S1 Fence/Hold/Purge schema 基座 | 🟣 Blocked by S0 Review | 用户确认 owner、hold authority、30/90/365 与 fail-closed 后启动，使用 Sol `xhigh` + 独立 `max` | [R1 Plan](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s1fencehold-与-purge-schema-基座) |
+| P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
+| P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
 

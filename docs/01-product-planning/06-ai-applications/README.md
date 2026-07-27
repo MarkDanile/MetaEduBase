@@ -89,19 +89,19 @@
 | REQ-043 | Runtime 中立的 Agentic RAG 与工具编排 | ⚫ Candidate | 建立 AgentTurnLoopRuntime、RuntimeProfile、Tool Gateway、Worker ACK 和写恢复，分阶段验证 Pi、ACP 与 LangGraph Adapter。 |
 | REQ-044 | MCP 注册、管理与调用能力 | 🟢 Done | 已交付 tenant 级 Registry、权限、凭证引用、调用审计、真实 MCP client 和管理 UI。 |
 | REQ-045 | Skill 注册、管理与调用能力 | 🟢 Done | 支持导入、注册、启用、禁用和执行类 Codex Skill / Anthropic Skill 的 SOP 能力，并让 AI 应用按权限调用。已交付：声明式 SOP 模板 + SkillRunner 平台编排（MCP 工具 + LLM 合成）+ 首个真实 Skill=企业 360 背调 SOP（AC-9 真实验收通过）。 |
-| REQ-047 | Agent Run、产物、证据与人工确认中心 | ⚫ Candidate | 建立 Run/Event/ToolCall/Approval/Artifact/Evidence 持久化和重放事实源。 |
+| REQ-047 | Agent Run、产物、证据与人工确认中心 | 🟣 Shaping（Durable Core D1 Done / R1 Planning） | Run/Event Durable Core 已完成 D1；下一步 R1/C1。ToolCall/Approval/Artifact/Evidence 继续独立塑形。 |
 | REQ-048 | 内部业务系统 MCP Adapter 契约基线 | ⚫ Candidate | 抽象资管、招商 CRM、合同、财务、OA、工单等内部系统的最小读写契约和权限边界。 |
 | REQ-049 | 主动任务调度与事件触发能力 | ⚫ Candidate | 支撑每日扫描、到期提醒、风险预警、报表生成、线索雷达等 Advisor 型应用。 |
 | REQ-050 | 政策 / 规则 / 评分引擎与可解释匹配 | ⚫ Candidate | 支撑政策匹配、合同审查、载体推荐、风险评分和线索评分，要求规则来源可追溯。 |
 | REQ-051 | 业务指标语义层与经营分析口径 | ⚫ Candidate | 固化出租率、空置率、去化率、NOI、现金流、欠费率等经营指标定义和数据血缘。 |
 | REQ-052 | 智能问数与国资信息化数据激活原子能力 | 🟢 Done | 已交付语义层、查询计划、SQL Guard、权限治理、结果解释和真实业务样例闭环。 |
 | REQ-059 | 企业级可控 Agent 平台内核与 Runtime 中立控制面 | 🟢 Done | PR #475 完成 Architecture Gate，冻结平台所有权、统一 Turn Loop、HTTP/SSE+ACK、Runtime Cell、RunEvent/ToolGrant、L3 写恢复、AI Delivery Matrix、12 仓库源码导航和 APP-005/009 Pilot Rubric。 |
-| REQ-060 | 企业 Agent 控制台信息架构与权限化导航 | 🔵 Ready | Shaping + R1 复审修订完成；Route Record 单一源、`activeNav`、fail-closed、原子路由迁移与移动端/Playwright 边界已冻结。TD-087 是模板受保护路由迁移前置。 |
+| REQ-060 | 企业 Agent 控制台信息架构与权限化导航 | 🟢 Done | Slice 1-4 与 closeout 已合并；Route Record 单一源、`activeNav`、fail-closed、移动端/a11y 与 Playwright 55/55 已完成。 |
 | REQ-061 | Agent 记忆与上下文治理 | ⚫ Candidate | 分离工作上下文、会话摘要、长期记忆和企业知识，建立来源、TTL、确认和删除边界。 |
 | REQ-062 | 动态数据采集、填报与报表发布平台 | ⚫ Candidate | 为 APP-012/030 提供覆盖分析、版本化表单、Campaign、Submission、汇总和常态化发布能力。 |
 | REQ-063 | 受治理的外部数据采集与研究证据链 | ⚫ Candidate | 为 APP-009/016 提供授权 API/MCP/爬虫 Connector、网络策略、来源快照、新鲜度和证据治理。 |
 
-当前执行顺序固定为：REQ-059 Architecture Gate（已完成）-> REQ-041/047 durable core（核心 Slice 已完成，extended contracts 继续按需）-> TD-087 -> REQ-060 -> REQ-042 Workspace -> TD-085 边界收口 -> REQ-043 AgentTurnLoopRuntime/Tool Gateway -> Pi 只读 Pilot -> durable HITL/Sandbox/L3 + REQ-062/APP-012 -> APP-030 -> ACP/LangGraph -> REQ-061 -> REQ-049 -> APP-016。REQ-060 Foundation 可与 TD-087 顺序接力，但模板路由迁移必须等待 TD-087。REQ-044 / 045 / 052 已是能力提供层，不再作为待建设前置项。
+当前执行顺序固定为：REQ-059/REQ-060（已完成）-> REQ-041/047 R1-S1..S6 -> C1 Durable Core 总验收 -> REQ-042 Workspace -> TD-085 边界收口 -> REQ-043 AgentTurnLoopRuntime/Tool Gateway -> Pi 只读 Pilot -> durable HITL/Sandbox/L3 + REQ-062/APP-012 -> APP-030 -> ACP/LangGraph -> REQ-061 -> REQ-049 -> APP-016。REQ-042 可在 R1 期间并行文档塑形，但完整代码实现等待 C1；REQ-044/045/052 已是能力提供层，不再作为待建设前置项。
 
 应用基础可做受控并行：REQ-063 的授权来源与合规 Spike 可立即开始，但 Connector 接入必须等待 Tool Gateway；REQ-062 可在 REQ-047 Run/Artifact 契约冻结后塑形 Campaign/Form/Submission，不等待 Pi，但 APP-012/030 不得各自先写临时表单引擎。
 

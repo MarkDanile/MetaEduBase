@@ -10,6 +10,7 @@
 > Related: REQ-042 / REQ-043 / REQ-047 / REQ-061
 > Spec: [REQ-041/047 联合核心契约](../../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md)
 > Plan: [Durable Core 分 Slice 实施计划](../../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md)
+> R1 Spec/Plan: [Retention、Purge 与恢复专项契约](../../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md) / [分 Slice 实施计划](../../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
 
 ## Problem
 
@@ -56,5 +57,5 @@
 ## Dependencies / Next Step
 
 - Slice W1 已由 [PR #479](https://github.com/MarkDanile/MetaEduBase/pull/479) 合并：`agent_workspace` durable store、owner-private Conversation API、Message history、双 seq、完整 command digest 与 workspace inbox/outbox 已落地。
-- Slice B1 已由 [PR #485](https://github.com/MarkDanile/MetaEduBase/pull/485) 合并；Slice A1 已由 [PR #487](https://github.com/MarkDanile/MetaEduBase/pull/487) 合并，Run query、幂等 cancel intent 与 SSE replay 已落地。新 Workspace submit-turn 生产入口仍保持关闭，下一步为 D1 旧 Direct RAG compatibility recording。
+- Slice B1 已由 [PR #485](https://github.com/MarkDanile/MetaEduBase/pull/485) 合并，A1 已由 [PR #487](https://github.com/MarkDanile/MetaEduBase/pull/487) 合并，D1 已由 [PR #489](https://github.com/MarkDanile/MetaEduBase/pull/489) 合并。Conversation/Run/Event durable compatibility path 已落地；新 Workspace submit-turn 生产入口仍保持关闭，下一步按 R1 专项计划完成 S1-S6，再执行 C1。
 - REQ-047 Durable Core 与本需求联合实施；Approval/Tool/Artifact/Evidence 扩展不阻塞 W1/E1，但不属于 REQ-041 的完成范围。
