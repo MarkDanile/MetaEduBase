@@ -26,9 +26,10 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <RouterLink
             v-for="item in homeCards"
-            :key="item.name"
-            :to="{ name: item.name }"
-            class="ui-panel p-4 group"
+            :key="item.routeName"
+            :to="{ name: item.routeName }"
+            class="ui-panel p-4 group home-card"
+            :data-card-name="item.routeName"
           >
             <div class="flex items-center gap-3">
               <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" :class="item.bgClass">
@@ -55,7 +56,8 @@
                 v-for="shortcut in shortcuts"
                 :key="shortcut.name"
                 @click="$router.push({ name: shortcut.name })"
-                class="w-full flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] hover:bg-[var(--color-bg-hover)] transition-colors group text-left"
+                class="w-full flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] hover:bg-[var(--color-bg-hover)] transition-colors group text-left home-shortcut"
+                :data-shortcut-name="shortcut.name"
               >
                 <div class="w-8 h-8 rounded-md bg-[var(--color-accent-bg)] flex items-center justify-center flex-shrink-0">
                   <component :is="shortcut.icon" :size="14" :stroke-width="1.5" class="text-[var(--color-accent)]" />
@@ -97,9 +99,12 @@ import { computed, ref, onMounted } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 import {
   BookOpen,
+  Database,
   FolderOpen,
   MessageSquare,
+  LayoutTemplate,
   Workflow,
+  Plug,
   Bot,
   Upload,
   Globe2,
@@ -109,10 +114,10 @@ import { useAuthStore } from "@/stores/auth";
 import { roleShortMap } from "@/constants/maps";
 import PageHeader from "@/components/PageHeader.vue";
 import api from "@/services/api";
-import { loadFeatureFlags, projectNavigation, type NavItem, type NavSection } from "@/app/nav";
+import { loadFeatureFlags, projectNavigation } from "@/app/nav";
 
 interface HomeCard {
-  name: string;
+  routeName: string;
   title: string;
   desc: string;
   icon: LucideIcon;
@@ -120,12 +125,89 @@ interface HomeCard {
   iconClass: string;
 }
 
-interface SectionMeta {
+interface HomeCardSpec {
+  routeName: string;
+  title: string;
   desc: string;
   icon: LucideIcon;
   bgClass: string;
   iconClass: string;
 }
+
+// REQ-060 Slice 3 收口（修订-2）：HOME_CARD_SPECS 是纯展示配置（routeName +
+// presentation），0 RBAC 字段（不含 path/permission/hidden/featureFlag）。
+// 可见性由 projectNavigation(router.getRoutes(), ctx) 的可见名称集合决定：
+// HOME_CARD_SPECS 与该集合求交集 = 最终 homeCards。
+//
+// 顺序决定渲染顺序（保留手工策展的 IA 优先级，不是 router order）。
+// "技能编排" 旧入口（其 path 在 Slice 2 已 redirect 到 capabilities-skills）按
+// plan "下线技能编排"，不列入。
+const HOME_CARD_SPECS: HomeCardSpec[] = [
+  {
+    routeName: "knowledge",
+    title: "知识库",
+    desc: "构建和管理结构化的职业教育知识体系",
+    icon: BookOpen,
+    bgClass: "bg-[var(--color-accent-bg)]",
+    iconClass: "text-[var(--color-accent)]",
+  },
+  {
+    routeName: "resource",
+    title: "资源库",
+    desc: "上传和管理教学文档、视频等多媒体资源",
+    icon: FolderOpen,
+    bgClass: "bg-[var(--color-tag-green)]",
+    iconClass: "text-[var(--color-tag-green-text)]",
+  },
+  {
+    routeName: "database",
+    title: "数据库",
+    desc: "管理结构化数据集与知识图谱构建",
+    icon: Database,
+    bgClass: "bg-[var(--color-tag-amber)]",
+    iconClass: "text-[var(--color-tag-amber-text)]",
+  },
+  {
+    routeName: "templates-list",
+    title: "数据要素模板",
+    desc: "配置结构化文档抽取模板与字段定义",
+    icon: LayoutTemplate,
+    bgClass: "bg-[var(--color-tag-purple)]",
+    iconClass: "text-[var(--color-tag-purple-text)]",
+  },
+  {
+    routeName: "ai-chat",
+    title: "AI 问答",
+    desc: "基于知识库的智能问答，精准检索课程内容",
+    icon: MessageSquare,
+    bgClass: "bg-[var(--color-highlight-bg)]",
+    iconClass: "text-[var(--color-highlight)]",
+  },
+  {
+    routeName: "capabilities-skills",
+    title: "Skill 库",
+    desc: "管理 AI 技能定义与执行流程",
+    icon: Workflow,
+    bgClass: "bg-[var(--color-tag-blue)]",
+    iconClass: "text-[var(--color-tag-blue-text)]",
+  },
+  {
+    routeName: "capabilities-mcp",
+    title: "MCP 工具",
+    desc: "注册和管理外部 MCP 数据源",
+    icon: Plug,
+    bgClass: "bg-[var(--color-tag-blue)]",
+    iconClass: "text-[var(--color-tag-blue-text)]",
+  },
+  {
+    routeName: "AiAppsMarketplace",
+    title: "AI 应用广场",
+    desc: "浏览与使用已发布的智能体应用",
+    icon: Bot,
+    bgClass: "bg-[var(--color-accent-bg)]",
+    iconClass: "text-[var(--color-accent)]",
+  },
+];
 
 const authStore = useAuthStore();
 const router = useRouter();
@@ -182,92 +264,17 @@ const recentActivities = [
   { text: "知识节点「智能制造」已校验", time: "2 天前", dotClass: "bg-[var(--color-success)]" },
 ];
 
-// REQ-060 Slice 3 收口（修订）：HomeView 通过 projectNavigation 投影 Route Record
-// 派生可见的 home cards，不再硬编码 CARD_SPECS 白名单。section 文案/图标/配色是
-// 展示层 metadata，不参与 RBAC（RBAC 由 route meta.permission/featureFlag + canAccess
-// 决定，projectNavigation 已 fail-closed）。
-const SECTION_META: Record<NavSection, SectionMeta> = {
-  overview: {
-    desc: "首页",
-    icon: Globe2,
-    bgClass: "bg-[var(--color-tag-purple)]",
-    iconClass: "text-[var(--color-tag-purple-text)]",
-  },
-  ai_work: {
-    desc: "基于知识库的智能问答，精准检索课程内容",
-    icon: MessageSquare,
-    bgClass: "bg-[var(--color-highlight-bg)]",
-    iconClass: "text-[var(--color-highlight)]",
-  },
-  apps: {
-    desc: "浏览与使用已发布的智能体应用",
-    icon: Bot,
-    bgClass: "bg-[var(--color-accent-bg)]",
-    iconClass: "text-[var(--color-accent)]",
-  },
-  knowledge_data: {
-    desc: "管理结构化数据集与知识图谱构建",
-    icon: BookOpen,
-    bgClass: "bg-[var(--color-tag-amber)]",
-    iconClass: "text-[var(--color-tag-amber-text)]",
-  },
-  capabilities: {
-    desc: "管理 AI 技能定义与 MCP 工具",
-    icon: Workflow,
-    bgClass: "bg-[var(--color-tag-blue)]",
-    iconClass: "text-[var(--color-tag-blue-text)]",
-  },
-  system: {
-    desc: "系统管理（hiddenInNav，由 feature flag 控制可见）",
-    icon: Globe2,
-    bgClass: "bg-[var(--color-bg-warm)]",
-    iconClass: "text-[var(--color-ink-tertiary)]",
-  },
-};
-
-// HomeView 排除：overview（首页本身）+ system（hiddenInNav，未交付功能）
-const HOMECARD_SECTIONS: ReadonlySet<NavSection> = new Set<NavSection>([
-  "ai_work",
-  "knowledge_data",
-  "capabilities",
-  "apps",
-]);
-
-function itemToCard(item: NavItem, meta: SectionMeta): HomeCard {
-  return {
-    name: item.name,
-    title: item.title,
-    desc: meta.desc,
-    icon: (item.icon as LucideIcon | undefined) ?? meta.icon,
-    bgClass: meta.bgClass,
-    iconClass: meta.iconClass,
-  };
-}
-
-// 每个 section 选 1 张主卡片：取 meta.order 最小的可见 item（projectNavigation 已排序）
-function pickHomeCards(sections: ReturnType<typeof projectNavigation>): HomeCard[] {
-  const cards: HomeCard[] = [];
-  for (const section of sections) {
-    if (!HOMECARD_SECTIONS.has(section.id)) continue;
-    const first = section.items[0];
-    if (!first) continue;
-    cards.push(itemToCard(first, SECTION_META[section.id]));
-  }
-  return cards;
-}
-
-// 快捷操作：与 home cards 同源（projection）。SHORTCUT_MAPPINGS 声明展示层
-// 文案/图标 + 目标 (section, itemName)；可见性经 projectNavigation fail-closed
-// 过滤（权限缺失或 feature flag off 的目标自动隐藏）。
-interface ShortcutMapping {
-  section: NavSection;
+// shortcut：纯展示配置 (section, itemName, presentation)。可见性 = projectNavigation
+// 可见名称集合 ∩ SHORTCUT_MAPPINGS。
+interface ShortcutSpec {
+  section: "knowledge_data" | "ai_work" | "capabilities" | "apps";
   itemName: string;
   title: string;
   desc: string;
   icon: LucideIcon;
 }
 
-const SHORTCUT_MAPPINGS: ShortcutMapping[] = [
+const SHORTCUT_SPECS: ShortcutSpec[] = [
   {
     section: "knowledge_data",
     itemName: "knowledge",
@@ -308,7 +315,7 @@ const shortcuts = computed<Shortcut[]>(() => {
   for (const s of sections) {
     for (const it of s.items) visibleKeys.add(`${s.id}::${it.name}`);
   }
-  return SHORTCUT_MAPPINGS.filter((m) =>
+  return SHORTCUT_SPECS.filter((m) =>
     visibleKeys.has(`${m.section}::${m.itemName}`),
   ).map((m) => ({
     name: m.itemName,
@@ -318,12 +325,20 @@ const shortcuts = computed<Shortcut[]>(() => {
   }));
 });
 
+// home cards：HOME_CARD_SPECS (presentation) ∩ projectNavigation 可见名称集合。
+// 保留全部手工策展的多入口（资源库 / 数据库 / 模板 / Skill / MCP 都不会因"每段
+// 取首项"丢失）；可见性唯一来源是 projectNavigation 的 fail-closed 投影。
 const homeCards = computed<HomeCard[]>(() => {
   const ctx = {
     role: authStore.userRole,
     featureFlags: loadFeatureFlags(),
   };
-  return pickHomeCards(projectNavigation(router.getRoutes(), ctx));
+  const sections = projectNavigation(router.getRoutes(), ctx);
+  const visibleNames = new Set<string>();
+  for (const s of sections) {
+    for (const it of s.items) visibleNames.add(it.name);
+  }
+  return HOME_CARD_SPECS.filter((spec) => visibleNames.has(spec.routeName));
 });
 
 async function loadStats() {

@@ -1,13 +1,13 @@
 /**
- * REQ-060 Slice 3 收口（修订）：HomeView 单元测试。
+ * REQ-060 Slice 3 收口（修订-2）：HomeView 单元测试。
  *
  * 覆盖：
- * - HomeView 通过 projectNavigation 派生 home cards（不硬编码 CARD_SPECS）
- * - 引用 route name 而非 path；隐藏 route（hiddenInNav）不在 home cards
- * - 技能编排旧入口被下线（不出现；其原 path 在 Slice 2 redirect 到 capabilities-skills）
- * - section 文案/图标由 SECTION_META 派生（不参与 RBAC）
- * - shortcut 通过 (section, itemName) 解析；权限缺失或 feature flag off 自动隐藏
- * - unknown role fail-closed：cards 与 shortcuts 都为空
+ * - homeCards = HOME_CARD_SPECS ∩ projectNavigation 可见名称集合
+ * - 卡片使用稳定选择器 `.home-card[data-card-name="<routeName>"]`，避免整页 text 假阳性
+ * - 同一 section 多入口都保留（知识与数据 → 知识库/资源库/数据库/数据要素模板）
+ * - 「技能编排」旧入口已下线（spec 不含 skill-editor）
+ * - shortcut 经 (section, itemName) 解析；权限缺失自动隐藏
+ * - unknown / null role fail-closed
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
@@ -50,46 +50,22 @@ vi.mock("axios", () => {
   return { default: handler };
 });
 
-const StubRouterLink = defineComponent({
-  name: "RouterLinkStub",
-  props: {
-    to: { type: Object, default: () => ({}) },
-  },
-  setup(props, { slots }) {
-    return () =>
-      h(
-        "a",
-        {
-          class: "stub-router-link",
-          "data-name": (props.to as { name?: string })?.name ?? "",
-        },
-        slots.default?.(),
-      );
-  },
-});
+// 用稳定选择器：卡片带 class .home-card + data-card-name（routeName）
+function cardSelector(routeName: string): string {
+  return `.home-card[data-card-name="${routeName}"]`;
+}
 
-const StubRouterView = defineComponent({
-  name: "RouterViewStub",
-  setup(_, { slots }) {
-    return () => h("div", { class: "stub-router-view" }, slots.default?.());
-  },
-});
-
-function setAuth(role: string | null) {
+async function mountHome(role: string | null, opts: { flags?: Record<string, boolean> } = {}) {
+  setActivePinia(createPinia());
   if (role) {
     localStorageMock.setItem("metaedu_token", "fake");
     localStorageMock.setItem("metaedu_role", role);
     localStorageMock.setItem("metaedu_tenant_id", "t1");
   } else {
-    localStorageMock.removeItem("metaedu_token");
+    localStorageMock.setItem("metaedu_token", "fake");
     localStorageMock.removeItem("metaedu_role");
-    localStorageMock.removeItem("metaedu_tenant_id");
+    localStorageMock.setItem("metaedu_tenant_id", "t1");
   }
-}
-
-async function mountHome(role: string | null, opts: { flags?: Record<string, boolean> } = {}) {
-  setActivePinia(createPinia());
-  setAuth(role);
   for (const [k, v] of Object.entries(opts.flags ?? {})) {
     if (v) localStorageMock.setItem(`metaedu_feature_${k}`, "true");
   }
@@ -99,13 +75,17 @@ async function mountHome(role: string | null, opts: { flags?: Record<string, boo
   await router.isReady();
   await flushPromises();
 
+  // stub RouterView 防止 LayoutView 子路由触发 axios；HomeView 直接渲染
   const wrapper = mount(HomeView, {
     global: {
       plugins: [router],
       stubs: {
-        RouterLink: StubRouterLink,
-        RouterView: StubRouterView,
-        transition: false,
+        RouterView: defineComponent({
+          name: "RouterViewStub",
+          setup(_, { slots }) {
+            return () => h("div", { class: "stub-router-view" }, slots.default?.());
+          },
+        }),
       },
     },
     attachTo: document.body,
@@ -124,76 +104,100 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("HomeView: cards via projectNavigation", () => {
-  it("admin: cards reference route name not path (no hardcoded path)", async () => {
+describe("HomeView: homeCards = HOME_CARD_SPECS ∩ projectNavigation", () => {
+  it("admin: 知识与数据 section 多入口全保留（知识库/资源库/数据库/数据要素模板）", async () => {
     const { wrapper } = await mountHome("admin");
-    // HomeView 卡片由 projectNavigation 投影生成，每张卡片 <h3> 显示 route.meta.title。
-    // 验证：可见业务 leaf title 出现在卡片区，不出现 "技能编排" 旧文案。
-    const text = wrapper.text();
-    expect(text).toContain("知识库"); // knowledge
-    expect(text).toContain("资源库"); // resource
-    expect(text).toContain("AI 问答"); // ai-chat
-    expect(text).toContain("Skill 库"); // capabilities-skills
-    expect(text.includes("技能编排")).toBe(false);
+    // admin 拥有 nav.data.templates 权限 → 数据要素模板应出现
+    expect(wrapper.find(cardSelector("knowledge")).exists()).toBe(true);
+    expect(wrapper.find(cardSelector("resource")).exists()).toBe(true);
+    expect(wrapper.find(cardSelector("database")).exists()).toBe(true);
+    expect(wrapper.find(cardSelector("templates-list")).exists()).toBe(true);
+    // 知识与数据 section 共 4 入口全部保留（不允许"每段取首项"导致丢失）
+    const knowledgeDataCards = wrapper
+      .findAll(".home-card")
+      .filter((c) =>
+        ["knowledge", "resource", "database", "templates-list"].includes(
+          c.attributes("data-card-name") ?? "",
+        ),
+      );
+    expect(knowledgeDataCards.length).toBe(4);
     wrapper.unmount();
   });
 
-  it("teacher (low role): excludes capabilities/system section cards", async () => {
+  it("admin: 能力中心 section 多入口全保留（Skill 库 + MCP 工具）", async () => {
+    const { wrapper } = await mountHome("admin");
+    expect(wrapper.find(cardSelector("capabilities-skills")).exists()).toBe(true);
+    expect(wrapper.find(cardSelector("capabilities-mcp")).exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("teacher: 能力中心 cards 不出现（无 nav.capabilities），但其他 base 入口仍在", async () => {
     const { wrapper } = await mountHome("teacher");
-    const text = wrapper.text();
-    expect(text).toContain("知识库");
-    expect(text).toContain("AI 问答");
-    // 不应包含 capabilities/system 高权 section 的卡片
-    expect(text.includes("Skill 库")).toBe(false);
-    expect(text.includes("MCP 工具")).toBe(false);
-    expect(text.includes("数据要素模板")).toBe(false);
-    expect(text.includes("系统管理")).toBe(false);
+    expect(wrapper.find(cardSelector("capabilities-skills")).exists()).toBe(false);
+    expect(wrapper.find(cardSelector("capabilities-mcp")).exists()).toBe(false);
+    expect(wrapper.find(cardSelector("templates-list")).exists()).toBe(false);
+    // teacher 仍有 base 入口
+    expect(wrapper.find(cardSelector("knowledge")).exists()).toBe(true);
+    expect(wrapper.find(cardSelector("resource")).exists()).toBe(true);
+    expect(wrapper.find(cardSelector("ai-chat")).exists()).toBe(true);
     wrapper.unmount();
   });
 
-  it("super_admin: 系统管理（hiddenInNav）永远不在 cards", async () => {
-    const { wrapper } = await mountHome("super_admin", { flags: { system_management: true } });
-    const text = wrapper.text();
-    expect(text.includes("系统管理")).toBe(false);
-    wrapper.unmount();
-  });
-
-  it("cards: 技能编排 旧入口已下线（不出现 capabilities-skills 误命名为 skill-editor）", async () => {
-    const { wrapper } = await mountHome("admin");
-    const text = wrapper.text();
-    expect(text.includes("技能编排")).toBe(false);
-    wrapper.unmount();
-  });
-
-  it("unknown role fail-closed: cards empty (verified via direct projectNavigation)", async () => {
-    // 通过直接调用 projectNavigation 验证 fail-closed（无业务 leaf 投影）
-    const { projectNavigation } = await import("@/app/nav");
-    const { default: router } = await import("@/app/router");
-    const sections = projectNavigation(router.getRoutes(), {
-      role: "unknown_role",
-      featureFlags: {},
+  it("super_admin: 知识与数据 + 能力中心 + 应用区共多入口全部出现", async () => {
+    const { wrapper } = await mountHome("super_admin", {
+      flags: { system_management: true },
     });
-    const items = sections.flatMap((s) => s.items);
-    expect(items.length).toBe(0);
-    // HomeView text 也不会显示 cards 标题（stats "AI 问答" 等是展示常量不算 card）
+    const expected = [
+      "knowledge",
+      "resource",
+      "database",
+      "templates-list",
+      "ai-chat",
+      "capabilities-skills",
+      "capabilities-mcp",
+      "AiAppsMarketplace",
+    ];
+    for (const name of expected) {
+      expect(wrapper.find(cardSelector(name)).exists(), `card ${name} missing`).toBe(true);
+    }
+    // system hiddenInNav → 不出现在 home cards（即使 flag on）
+    expect(wrapper.find(cardSelector("system")).exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("HOME_CARD_SPECS 引用的是 routeName（presentation-only），不含 path/permission", async () => {
+    // 直接断言：所有渲染卡片的 data-card-name 都是 RouterName（symbol-free 字符串），
+    // 不出现 path、permission key、feature flag key
+    const { wrapper } = await mountHome("admin");
+    const names = wrapper.findAll(".home-card").map((c) => c.attributes("data-card-name") ?? "");
+    expect(names.length).toBeGreaterThan(0);
+    for (const n of names) {
+      expect(n.startsWith("/"), `card name should not be a path: ${n}`).toBe(false);
+      expect(n.includes("nav."), `card name should not be a permission key: ${n}`).toBe(false);
+      expect(n.includes("_management"), `card name should not be a feature flag: ${n}`).toBe(false);
+    }
+    wrapper.unmount();
+  });
+
+  it("unknown role fail-closed: cards empty", async () => {
     const { wrapper } = await mountHome("unknown_role");
-    expect(wrapper.text().includes("浏览知识目录")).toBe(false);
-    expect(wrapper.text().includes("AI 智能问答")).toBe(false);
+    expect(wrapper.findAll(".home-card").length).toBe(0);
     wrapper.unmount();
   });
 
   it("null role fail-closed: cards empty", async () => {
-    const { projectNavigation } = await import("@/app/nav");
-    const { default: router } = await import("@/app/router");
-    const sections = projectNavigation(router.getRoutes(), {
-      role: null,
-      featureFlags: {},
-    });
-    const items = sections.flatMap((s) => s.items);
-    expect(items.length).toBe(0);
     const { wrapper } = await mountHome(null);
-    expect(wrapper.text().includes("浏览知识目录")).toBe(false);
-    expect(wrapper.text().includes("AI 智能问答")).toBe(false);
+    expect(wrapper.findAll(".home-card").length).toBe(0);
+    wrapper.unmount();
+  });
+
+  it("skill-editor 旧入口未出现在 HOME_CARD_SPECS（plan 下线技能编排）", async () => {
+    // 直接断言：所有渲染卡片的 data-card-name 集合不含 skill-editor
+    const { wrapper } = await mountHome("super_admin", { flags: { system_management: true } });
+    const names = wrapper.findAll(".home-card").map((c) => c.attributes("data-card-name") ?? "");
+    expect(names).not.toContain("skill-editor");
+    // 整页文本也不含"技能编排"文案
+    expect(wrapper.text().includes("技能编排")).toBe(false);
     wrapper.unmount();
   });
 });
@@ -201,30 +205,24 @@ describe("HomeView: cards via projectNavigation", () => {
 describe("HomeView: shortcuts via projectNavigation", () => {
   it("admin: shortcuts include knowledge + ai-chat + resource", async () => {
     const { wrapper } = await mountHome("admin");
-    // shortcuts 用 <button @click="$router.push">，不能直接断言 RouterLink
-    // 但页面内含这些文案的按钮（快捷操作 section）
-    const texts = wrapper.text();
-    expect(texts).toContain("浏览知识目录");
-    expect(texts).toContain("AI 智能问答");
-    expect(texts).toContain("上传教学资源");
+    // shortcuts 用 data-shortcut-name 选择器（稳定）
+    expect(wrapper.find('.home-shortcut[data-shortcut-name="knowledge"]').exists()).toBe(true);
+    expect(wrapper.find('.home-shortcut[data-shortcut-name="ai-chat"]').exists()).toBe(true);
+    expect(wrapper.find('.home-shortcut[data-shortcut-name="resource"]').exists()).toBe(true);
     wrapper.unmount();
   });
 
-  it("teacher: capabilities/system templates shortcuts hidden", async () => {
+  it("teacher: capabilities/system templates shortcuts hidden (权限缺失自动过滤)", async () => {
     const { wrapper } = await mountHome("teacher");
-    const texts = wrapper.text();
-    // knowledge/resource/ai-chat 仍可见（teacher 有 base permission）
-    expect(texts).toContain("浏览知识目录");
-    expect(texts).toContain("AI 智能问答");
+    expect(wrapper.find('.home-shortcut[data-shortcut-name="knowledge"]').exists()).toBe(true);
+    expect(wrapper.find('.home-shortcut[data-shortcut-name="ai-chat"]').exists()).toBe(true);
+    expect(wrapper.find('.home-shortcut[data-shortcut-name="resource"]').exists()).toBe(true);
     wrapper.unmount();
   });
 
-  it("unknown role fail-closed: shortcuts empty (no knowledge/resource/ai-chat cards)", async () => {
+  it("unknown role fail-closed: shortcuts empty", async () => {
     const { wrapper } = await mountHome("unknown_role");
-    const texts = wrapper.text();
-    expect(texts).not.toContain("浏览知识目录");
-    expect(texts).not.toContain("AI 智能问答");
-    expect(texts).not.toContain("上传教学资源");
+    expect(wrapper.findAll(".home-shortcut").length).toBe(0);
     wrapper.unmount();
   });
 });
@@ -238,7 +236,6 @@ describe("HomeView: smoke render", () => {
 
   it("renders greeting line with roleLabel", async () => {
     const { wrapper } = await mountHome("admin");
-    // roleShortMap[admin] = "管理员"
     expect(wrapper.text()).toMatch(/(早上好|上午好|中午好|下午好|晚上好|夜深了)/);
     wrapper.unmount();
   });

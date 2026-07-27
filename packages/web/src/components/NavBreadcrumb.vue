@@ -1,11 +1,14 @@
 <template>
   <!--
-    REQ-060 Slice 3 收口（修订）：全局 Breadcrumb（NavBreadcrumb）。
-    派生链 = 虚拟首页 crumb + 当前 route 的 activeNav 指向的 sidebar route +
-    当前 route 自身（如果当前 route 自身不在 sidebar 即 hiddenInNav）。
-    全部数据来自 Route Record 的 meta.activeNav/meta.title，无 URL 推断。
-    hiddenInNav 不影响 breadcrumb（仅 sidebar 过滤）。
-    当前页（最后一项）非链接，aria-current="page"，符合 WAI-ARIA breadcrumb 模式。
+    REQ-060 Slice 3 收口（修订-2）：全局 Breadcrumb（NavBreadcrumb）。
+    派生规则：
+    1. 从当前 route 的 meta.activeNav 链向上追溯（router.getRoutes()）。
+    2. 每一步校验：父项必须与当前 route 的 meta.section 一致，否则 fail-closed
+       （不加入链，防误配 activeNav 跳出当前 section）。
+    3. 链以 home 终止（home 自身不再向上）。
+    4. 顶部追加虚拟「总览」首页 crumb（如果链中没有 home）。
+    5. hiddenInNav route 仍出现（仅 sidebar 过滤 breadcrumb 不过滤）。
+    6. 当前页（最后一项）非链接，aria-current="page"，符合 WAI-ARIA breadcrumb 模式。
   -->
   <nav
     v-if="crumbs.length > 1"
@@ -17,7 +20,9 @@
         v-if="i < crumbs.length - 1"
         :to="{ name: crumb.name }"
         class="text-[var(--color-accent)] hover:underline"
-      >{{ crumb.title }}</RouterLink>
+      >
+        {{ crumb.title }}
+      </RouterLink>
       <span
         v-else
         class="text-[var(--color-ink)] font-medium"
@@ -68,6 +73,36 @@ function crumbFromName(name: string): Crumb | null {
   return { name, title: meta.title };
 }
 
+/**
+ * 单步沿 activeNav 向上走：父项必须与 currentRoute 的 section 一致；否则
+ * fail-closed 返回 null（不引入跨 section 的 crumb，防误配 activeNav 跳出
+ * 当前 IA 区域）。
+ *
+ * 返回值：父项 route name（同 section），或 null（不跳转）。
+ */
+function parentRouteName(
+  currentName: string,
+  currentSection: string | undefined,
+): string | null {
+  if (currentName === "home") return null;
+  const currentMeta = readMeta(findRouteByName(currentName)?.meta);
+  const parentName = currentMeta.activeNav;
+  if (!parentName) return null;
+  if (parentName === currentName) return null;
+  const parentMeta = readMeta(findRouteByName(parentName)?.meta);
+  if (!parentMeta.title) return null;
+  // section 一致性校验：currentSection 与 parentMeta.section 必须严格相等。
+  // 不允许跨 section 跳转（防误配 activeNav 把当前 crumb 拉到别的 IA 区域）。
+  if (
+    currentSection !== undefined &&
+    parentMeta.section !== undefined &&
+    parentMeta.section !== currentSection
+  ) {
+    return null;
+  }
+  return parentName;
+}
+
 const crumbs = computed<Crumb[]>(() => {
   const currentMeta = readMeta(route.meta);
   const currentName = typeof route.name === "string" ? route.name : "";
@@ -76,29 +111,24 @@ const crumbs = computed<Crumb[]>(() => {
   const chain: Crumb[] = [];
   const visited = new Set<string>();
 
-  // 1. 顺着 activeNav 链向上找父项 crumb（activeNav 链以 home 终止）。
-  //    典型链路：file-detail -> resource -> home；AiAppDetail -> AiAppsMarketplace -> home。
-  let cursor: string | undefined = currentName;
+  // 沿 activeNav 链向上（每步同 section 校验），直到 home 或 fail-closed。
+  let cursor: string | null = currentName;
+  const cursorSection: string | undefined = currentMeta.section;
   const cursorChain: string[] = [];
   while (cursor && !visited.has(cursor)) {
     visited.add(cursor);
     cursorChain.push(cursor);
-    const meta = readMeta(findRouteByName(cursor)?.meta);
-    if (!meta.activeNav) break;
-    if (meta.activeNav === cursor) break;
-    cursor = meta.activeNav;
+    if (cursor === "home") break;
+    cursor = parentRouteName(cursor, cursorSection);
   }
 
-  // cursorChain = [current, parent, grandparent, ..., home]
-  // breadcrumb 顺序 = reverse（home 在前，current 在末尾）
+  // cursorChain = [current, parent, ..., home]；breadcrumb 顺序 = reverse
   for (const name of cursorChain.reverse()) {
     const crumb = crumbFromName(name);
     if (crumb) chain.push(crumb);
   }
 
-  // 2. 顶部追加虚拟「总览」首页 crumb（如果链中没有 home）。
-  //    例：/knowledge 的 activeNav = knowledge（自指），cursorChain 只有 [knowledge]，
-  //    必须加 home 才能形成 "总览 / 知识库" 链。
+  // 顶部追加虚拟「总览」首页 crumb（如果链中没有 home）。
   if (chain.length === 0 || chain[0].name !== "home") {
     const home = crumbFromName("home");
     if (home) chain.unshift(home);

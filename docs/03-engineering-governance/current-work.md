@@ -24,7 +24,7 @@
 - Spec: [REQ-060](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md)
 - Plan: [Slice 3](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md#slice-3sidebar--home--breadcrumb-统一投影)（已勾选所有 checklist）
 
-当前进展：Sidebar/Home/Breadcrumb 全部通过 `projectNavigation` + `route.meta.activeNav` 投影，无硬编码 path/permission/hidden。HomeView 通过 `projectNavigation` 派生 home cards；NavBreadcrumb 通过 activeNav 链向上追溯到 home。新增 26 个测试（LayoutView +15，NavBreadcrumb +15，HomeView +11 总数 -5 旧实现细节），全量前端 vitest 通过（实测行数见 PR #501 描述）。
+当前进展：Sidebar/Home/Breadcrumb 全部通过 `projectNavigation` + `route.meta.activeNav` 投影，无硬编码 path/permission/hidden。HomeView 通过 `HOME_CARD_SPECS ∩ projectNavigation 可见名称集合` 派生 home cards；NavBreadcrumb 通过 activeNav 链向上追溯 + 同 section 校验（fail-closed）。新增测试分布：LayoutView 32 + NavBreadcrumb 15 + HomeView 13 = 60 个测试；仓库全量 `291/291 passed / 0 failed`（Codex 容器 canonical 实测，PR #501 三路 CI 全绿）。
 
 下一步：Codex 最终复审 → 合并 PR #501 → 启动 Slice 4（移动端 / a11y / Playwright）。
 
