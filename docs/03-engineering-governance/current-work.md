@@ -16,7 +16,7 @@
 
 ### REQ-060 Slice 2: 受保护目标路由 + 守卫 + 重定向原子迁移
 
-状态：🟡 In Progress（Slice 2 实现完成，PR #499 复审 P0/P1 = 0/0，P2 修复中，待复审合并）
+状态：🟡 In Progress（Slice 2 实现完成，PR #499 复审 P0/P1 = 0/0，P2 修复已提交，待 Codex 最终复审，通过后由用户合并）
 类型：前端 + 后端守卫（P1）
 领域：Web / IA / Navigation / RBAC
 
@@ -34,7 +34,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| - | - | - | REQ-060 Slice 2 进行中（见上方），合并后候选 Slice 3 | - |
+| P1-P | REQ-060 Slice 3: Sidebar / Home / Breadcrumb 统一投影 | 🔵 Ready | Slice 2 合并后启动 | [Plan](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md) |
 
 ## 最近完成
 

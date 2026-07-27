@@ -100,7 +100,16 @@ Slice 1 可在 TD-087 实施前完成，但 Slice 2 不得越过 Gate 0。不同
 - Slice 1-3：Vitest permission/nav/router/Layout/Home 矩阵 + lint + typecheck。
 - Slice 4：Playwright desktop/mobile/light/dark + 全量前端门禁。
 - mock/fixture 仅证明前端契约，不得宣称后端 RBAC 或真实用户 Pilot 完成。
-- Slice 2 收口（2026-07-27，PR #499 复审 P0/P1 = 0/0，P2 修复中）：
+- Slice 2 收口（2026-07-27，PR #499 复审 P0/P1 = 0/0，P2 修复已提交，待最终复审）：
   - feature flag 实际来源：`nav.ts#loadFeatureFlags` 从 `localStorage` 读取 `metaedu_feature_<flag>`（`"true"` 为开），`router.ts` guard 调用之，替换原写死空 `FeatureFlags`。flag 缺失仍 fail-closed（system_management 为未交付功能，后端 `LoginResponse` 暂未下发 flags，发布时由登录流程写入）。
   - 旧链接 6/6 覆盖：补 `/admin/template/:id -> /data/templates/:id` 参数保留测试；router.spec 15 tests、nav.spec 43 tests 全绿。
-  - 后端 401/403 独立证据（AC-3 第三层，与前端 mock 无关）：`packages/server-python/tests/contexts/template/test_template_rbac.py`（TD-087）、`contexts/mcp_registry/test_registry_service.py`、`contexts/skill_registry/test_skill_registry_service.py`、`contexts/ai_app/test_admin_auth.py`；全量 `cd packages/server-python && uv run pytest -q` -> 213 passed。
+  - 后端 401/403 独立证据（AC-3 第三层，与前端 mock 无关）：
+    ```bash
+    cd packages/server-python
+    .venv/bin/pytest \
+      tests/contexts/template/test_template_rbac.py \
+      tests/contexts/mcp_registry/test_registry_service.py \
+      tests/contexts/skill_registry/test_skill_registry_service.py \
+      tests/contexts/ai_app/test_admin_auth.py -q
+    ```
+    结果：`213 passed in 111.71s`。
