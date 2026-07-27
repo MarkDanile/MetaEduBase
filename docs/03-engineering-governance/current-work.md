@@ -16,17 +16,17 @@
 
 ### REQ-060 Slice 3: Sidebar / Home / Breadcrumb 统一投影
 
-状态：🟡 In Progress（Slice 2 已合并归档 PR #499，Slice 3 启动中）
+状态：🟡 Awaiting Final Review（Slice 1/Slice 2 已合并归档 PR #497/#499，Slice 3 主体迁移 + 修订全部完成，待 Codex 最终复审后再合 PR #501）
 类型：前端布局迁移（P1）
 领域：Web / IA / Navigation / RBAC
 
 需求来源：
 - Spec: [REQ-060](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md)
-- Plan: [Slice 3](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md)
+- Plan: [Slice 3](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md#slice-3sidebar--home--breadcrumb-统一投影)（已勾选所有 checklist）
 
-当前进展：Slice 1（nav foundation + permission resolver）+ Slice 2（受保护路由 + 守卫 + 重定向）已合并。Slice 3 启动：LayoutView 删 navItems/adminItems/aiAppItems 改 Route Record 投影 + HomeView 引用命名路由 + Breadcrumb + 精确高亮 activeNav。
+当前进展：Sidebar/Home/Breadcrumb 全部通过 `projectNavigation` + `route.meta.activeNav` 投影，无硬编码 path/permission/hidden。HomeView 通过 `HOME_CARD_SPECS ∩ projectNavigation 可见名称集合` 派生 home cards（presentation-only）；NavBreadcrumb 通过 activeNav 链向上追溯 + 同 section 一致性校验（任一缺失或不相等均 fail-closed）。新增测试分布：LayoutView 32 + NavBreadcrumb 18 + HomeView 13 = 63 个测试；仓库全量 `296/296 passed / 0 failed`（Codex 容器 canonical 实测，PR #501 三路 CI 全绿）。
 
-下一步：实施 Slice 3 checklist（LayoutView/HomeView/Breadcrumb 迁移 + 7 角色导航矩阵 + 详情父高亮 + section 排序 + feature flag）。
+下一步：Codex 最终复审 → 合并 PR #501 → 启动 Slice 4（移动端 / a11y / Playwright）。
 
 ## 下一批候选任务
 

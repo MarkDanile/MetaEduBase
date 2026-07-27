@@ -25,10 +25,11 @@
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <RouterLink
-            v-for="item in navItems"
-            :key="item.route"
-            :to="item.route"
-            class="ui-panel p-4 group"
+            v-for="item in homeCards"
+            :key="item.routeName"
+            :to="{ name: item.routeName }"
+            class="ui-panel p-4 group home-card"
+            :data-card-name="item.routeName"
           >
             <div class="flex items-center gap-3">
               <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" :class="item.bgClass">
@@ -53,16 +54,17 @@
             <div class="space-y-1.5">
               <button
                 v-for="shortcut in shortcuts"
-                :key="shortcut.label"
-                @click="$router.push(shortcut.route)"
-                class="w-full flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] hover:bg-[var(--color-bg-hover)] transition-colors group text-left"
+                :key="shortcut.name"
+                @click="$router.push({ name: shortcut.name })"
+                class="w-full flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] hover:bg-[var(--color-bg-hover)] transition-colors group text-left home-shortcut"
+                :data-shortcut-name="shortcut.name"
               >
                 <div class="w-8 h-8 rounded-md bg-[var(--color-accent-bg)] flex items-center justify-center flex-shrink-0">
                   <component :is="shortcut.icon" :size="14" :stroke-width="1.5" class="text-[var(--color-accent)]" />
                 </div>
                 <div class="flex-1 min-w-0">
-                  <p class="font-medium group-hover:text-[var(--color-accent)] transition-colors">{{ shortcut.label }}</p>
-                  <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">{{ shortcut.hint }}</p>
+                  <p class="font-medium group-hover:text-[var(--color-accent)] transition-colors">{{ shortcut.title }}</p>
+                  <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">{{ shortcut.desc }}</p>
                 </div>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-[var(--color-ink-tertiary)] flex-shrink-0 transition-transform group-hover:translate-x-1"><polyline points="9 18 15 12 9 6"/></svg>
               </button>
@@ -94,22 +96,121 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted } from "vue";
-import { RouterLink } from "vue-router";
+import { RouterLink, useRouter } from "vue-router";
 import {
   BookOpen,
   Database,
   FolderOpen,
-  Globe2,
   MessageSquare,
-  Settings,
+  LayoutTemplate,
+  Workflow,
+  Plug,
+  Bot,
   Upload,
+  Globe2,
+  type LucideIcon,
 } from "lucide-vue-next";
 import { useAuthStore } from "@/stores/auth";
 import { roleShortMap } from "@/constants/maps";
 import PageHeader from "@/components/PageHeader.vue";
 import api from "@/services/api";
+import { loadFeatureFlags, projectNavigation } from "@/app/nav";
+
+interface HomeCard {
+  routeName: string;
+  title: string;
+  desc: string;
+  icon: LucideIcon;
+  bgClass: string;
+  iconClass: string;
+}
+
+interface HomeCardSpec {
+  routeName: string;
+  title: string;
+  desc: string;
+  icon: LucideIcon;
+  bgClass: string;
+  iconClass: string;
+}
+
+// REQ-060 Slice 3 收口（修订-2）：HOME_CARD_SPECS 是纯展示配置（routeName +
+// presentation），0 RBAC 字段（不含 path/permission/hidden/featureFlag）。
+// 可见性由 projectNavigation(router.getRoutes(), ctx) 的可见名称集合决定：
+// HOME_CARD_SPECS 与该集合求交集 = 最终 homeCards。
+//
+// 顺序决定渲染顺序（保留手工策展的 IA 优先级，不是 router order）。
+// "技能编排" 旧入口（其 path 在 Slice 2 已 redirect 到 capabilities-skills）按
+// plan "下线技能编排"，不列入。
+const HOME_CARD_SPECS: HomeCardSpec[] = [
+  {
+    routeName: "knowledge",
+    title: "知识库",
+    desc: "构建和管理结构化的职业教育知识体系",
+    icon: BookOpen,
+    bgClass: "bg-[var(--color-accent-bg)]",
+    iconClass: "text-[var(--color-accent)]",
+  },
+  {
+    routeName: "resource",
+    title: "资源库",
+    desc: "上传和管理教学文档、视频等多媒体资源",
+    icon: FolderOpen,
+    bgClass: "bg-[var(--color-tag-green)]",
+    iconClass: "text-[var(--color-tag-green-text)]",
+  },
+  {
+    routeName: "database",
+    title: "数据库",
+    desc: "管理结构化数据集与知识图谱构建",
+    icon: Database,
+    bgClass: "bg-[var(--color-tag-amber)]",
+    iconClass: "text-[var(--color-tag-amber-text)]",
+  },
+  {
+    routeName: "templates-list",
+    title: "数据要素模板",
+    desc: "配置结构化文档抽取模板与字段定义",
+    icon: LayoutTemplate,
+    bgClass: "bg-[var(--color-tag-purple)]",
+    iconClass: "text-[var(--color-tag-purple-text)]",
+  },
+  {
+    routeName: "ai-chat",
+    title: "AI 问答",
+    desc: "基于知识库的智能问答，精准检索课程内容",
+    icon: MessageSquare,
+    bgClass: "bg-[var(--color-highlight-bg)]",
+    iconClass: "text-[var(--color-highlight)]",
+  },
+  {
+    routeName: "capabilities-skills",
+    title: "Skill 库",
+    desc: "管理 AI 技能定义与执行流程",
+    icon: Workflow,
+    bgClass: "bg-[var(--color-tag-blue)]",
+    iconClass: "text-[var(--color-tag-blue-text)]",
+  },
+  {
+    routeName: "capabilities-mcp",
+    title: "MCP 工具",
+    desc: "注册和管理外部 MCP 数据源",
+    icon: Plug,
+    bgClass: "bg-[var(--color-tag-blue)]",
+    iconClass: "text-[var(--color-tag-blue-text)]",
+  },
+  {
+    routeName: "AiAppsMarketplace",
+    title: "AI 应用广场",
+    desc: "浏览与使用已发布的智能体应用",
+    icon: Bot,
+    bgClass: "bg-[var(--color-accent-bg)]",
+    iconClass: "text-[var(--color-accent)]",
+  },
+];
 
 const authStore = useAuthStore();
+const router = useRouter();
 
 const roleLabel = computed(() => roleShortMap[authStore.userRole ?? ""] ?? "用户");
 
@@ -163,69 +264,82 @@ const recentActivities = [
   { text: "知识节点「智能制造」已校验", time: "2 天前", dotClass: "bg-[var(--color-success)]" },
 ];
 
-const navItems = [
-  {
-    title: "知识库",
-    desc: "构建和管理结构化的职业教育知识体系",
-    route: "/knowledge",
-    bgClass: "bg-[var(--color-accent-bg)]",
-    icon: BookOpen,
-    iconClass: "text-[var(--color-accent)]",
-  },
-  {
-    title: "资源库",
-    desc: "上传和管理教学文档、视频等多媒体资源",
-    route: "/resource",
-    bgClass: "bg-[var(--color-tag-green)]",
-    icon: FolderOpen,
-    iconClass: "text-[var(--color-tag-green-text)]",
-  },
-  {
-    title: "数据库",
-    desc: "管理结构化数据集与知识图谱构建",
-    route: "/database",
-    bgClass: "bg-[var(--color-tag-amber)]",
-    icon: Database,
-    iconClass: "text-[var(--color-tag-amber-text)]",
-  },
-  {
-    title: "AI 问答",
-    desc: "基于知识库的智能问答，精准检索课程内容",
-    route: "/ai-chat",
-    bgClass: "bg-[var(--color-highlight-bg)]",
-    icon: MessageSquare,
-    iconClass: "text-[var(--color-highlight)]",
-  },
-  {
-    title: "技能编排",
-    desc: "可视化编排 AI 技能流程与自动化工作流",
-    route: "/skill-editor",
-    bgClass: "bg-[var(--color-tag-purple)]",
-    icon: Settings,
-    iconClass: "text-[var(--color-tag-purple-text)]",
-  },
-];
+// shortcut：纯展示配置 (section, itemName, presentation)。可见性 = projectNavigation
+// 可见名称集合 ∩ SHORTCUT_MAPPINGS。
+interface ShortcutSpec {
+  section: "knowledge_data" | "ai_work" | "capabilities" | "apps";
+  itemName: string;
+  title: string;
+  desc: string;
+  icon: LucideIcon;
+}
 
-const shortcuts = [
+const SHORTCUT_SPECS: ShortcutSpec[] = [
   {
-    label: "浏览知识目录",
-    hint: "查看专业和课程层级",
-    route: "/knowledge",
+    section: "knowledge_data",
+    itemName: "knowledge",
+    title: "浏览知识目录",
+    desc: "查看专业和课程层级",
     icon: BookOpen,
   },
   {
-    label: "AI 智能问答",
-    hint: "提问职教相关问题",
-    route: "/ai-chat",
+    section: "ai_work",
+    itemName: "ai-chat",
+    title: "AI 智能问答",
+    desc: "提问职教相关问题",
     icon: MessageSquare,
   },
   {
-    label: "上传教学资源",
-    hint: "添加文档、视频等",
-    route: "/resource",
+    section: "knowledge_data",
+    itemName: "resource",
+    title: "上传教学资源",
+    desc: "添加文档、视频等",
     icon: Upload,
   },
 ];
+
+interface Shortcut {
+  name: string;
+  title: string;
+  desc: string;
+  icon: LucideIcon;
+}
+
+const shortcuts = computed<Shortcut[]>(() => {
+  const ctx = {
+    role: authStore.userRole,
+    featureFlags: loadFeatureFlags(),
+  };
+  const sections = projectNavigation(router.getRoutes(), ctx);
+  const visibleKeys = new Set<string>();
+  for (const s of sections) {
+    for (const it of s.items) visibleKeys.add(`${s.id}::${it.name}`);
+  }
+  return SHORTCUT_SPECS.filter((m) =>
+    visibleKeys.has(`${m.section}::${m.itemName}`),
+  ).map((m) => ({
+    name: m.itemName,
+    title: m.title,
+    desc: m.desc,
+    icon: m.icon,
+  }));
+});
+
+// home cards：HOME_CARD_SPECS (presentation) ∩ projectNavigation 可见名称集合。
+// 保留全部手工策展的多入口（资源库 / 数据库 / 模板 / Skill / MCP 都不会因"每段
+// 取首项"丢失）；可见性唯一来源是 projectNavigation 的 fail-closed 投影。
+const homeCards = computed<HomeCard[]>(() => {
+  const ctx = {
+    role: authStore.userRole,
+    featureFlags: loadFeatureFlags(),
+  };
+  const sections = projectNavigation(router.getRoutes(), ctx);
+  const visibleNames = new Set<string>();
+  for (const s of sections) {
+    for (const it of s.items) visibleNames.add(it.name);
+  }
+  return HOME_CARD_SPECS.filter((spec) => visibleNames.has(spec.routeName));
+});
 
 async function loadStats() {
   try {

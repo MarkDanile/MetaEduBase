@@ -15,88 +15,27 @@
       </div>
 
       <nav class="flex-1 px-2 space-y-0.5">
-        <RouterLink
-          v-for="item in navItems"
-          :key="item.route"
-          :to="item.route"
-          class="nav-item"
-          :class="{ 'nav-item-active': isActive(item.route), 'nav-item-collapsed': collapsed }"
-          :title="collapsed ? item.title : undefined"
+        <!-- REQ-060 Slice 3: 从 Route Record 投影导航（统一 section 分组） -->
+        <div
+          v-for="section in navSections"
+          :key="section.id"
+          class="nav-section"
         >
-          <div class="nav-icon">
-            <component :is="item.icon" :size="18" :stroke-width="1.5" />
-          </div>
-          <span v-if="!collapsed" class="nav-label">{{ item.title }}</span>
-        </RouterLink>
-
-        <!-- AI Apps submenu -->
-        <div class="nav-admin-section">
-          <button
-            class="nav-item nav-item-admin"
-            :class="{ 'nav-item-collapsed': collapsed }"
-            @click="appsExpanded = !appsExpanded"
-            :title="collapsed ? 'AI 应用' : undefined"
+          <p v-if="!collapsed" class="nav-section-label">{{ section.label }}</p>
+          <RouterLink
+            v-for="item in section.items"
+            :key="item.name"
+            :to="{ name: item.name }"
+            class="nav-item"
+            :class="{ 'nav-item-active': isActive(item.name), 'nav-item-collapsed': collapsed }"
+            :title="collapsed ? item.title : undefined"
+            :aria-label="item.title"
           >
             <div class="nav-icon">
-              <Bot :size="18" :stroke-width="1.5" />
+              <component :is="item.icon" v-if="item.icon" :size="collapsed ? 20 : 18" :stroke-width="1.5" />
             </div>
-            <span v-if="!collapsed" class="nav-label flex-1">AI 应用</span>
-            <ChevronDown
-              v-if="!collapsed"
-              :size="14"
-              :class="{ 'rotate-180': appsExpanded }"
-              class="text-[var(--color-ink-tertiary)] transition-transform"
-            />
-          </button>
-          <div v-if="appsExpanded && !collapsed" class="nav-admin-subitems">
-            <RouterLink
-              v-for="item in aiAppItems"
-              :key="item.route"
-              :to="item.route"
-              class="nav-item nav-item-sub"
-              :class="{ 'nav-item-active': isActive(item.route) }"
-            >
-              <div class="nav-icon">
-                <component :is="item.icon" :size="16" :stroke-width="1.5" />
-              </div>
-              <span class="nav-label">{{ item.title }}</span>
-            </RouterLink>
-          </div>
-        </div>
-
-        <!-- Admin submenu -->
-        <div class="nav-admin-section">
-          <button
-            class="nav-item nav-item-admin"
-            :class="{ 'nav-item-collapsed': collapsed }"
-            @click="adminExpanded = !adminExpanded"
-            :title="collapsed ? '系统管理' : undefined"
-          >
-            <div class="nav-icon">
-              <Cog :size="18" :stroke-width="1.5" />
-            </div>
-            <span v-if="!collapsed" class="nav-label flex-1">系统管理</span>
-            <ChevronDown
-              v-if="!collapsed"
-              :size="14"
-              :class="{ 'rotate-180': adminExpanded }"
-              class="text-[var(--color-ink-tertiary)] transition-transform"
-            />
-          </button>
-          <div v-if="adminExpanded && !collapsed" class="nav-admin-subitems">
-            <RouterLink
-              v-for="item in adminItems"
-              :key="item.route"
-              :to="item.route"
-              class="nav-item nav-item-sub"
-              :class="{ 'nav-item-active': isActive(item.route) }"
-            >
-              <div class="nav-icon">
-                <component :is="item.icon" :size="16" :stroke-width="1.5" />
-              </div>
-              <span class="nav-label">{{ item.title }}</span>
-            </RouterLink>
-          </div>
+            <span v-if="!collapsed" class="nav-label">{{ item.title }}</span>
+          </RouterLink>
         </div>
       </nav>
 
@@ -166,6 +105,8 @@
       :class="collapsed ? 'ml-[60px]' : 'ml-[200px]'"
     >
       <div class="ui-page-shell">
+        <!-- REQ-060 Slice 3 收口：全局 Breadcrumb（route.matched -> meta.title 链） -->
+        <NavBreadcrumb />
         <RouterView v-slot="{ Component: RouteComponent, route: currentRoute }">
           <transition name="liquid-rise" mode="out-in">
             <component :is="RouteComponent" :key="currentRoute.path" />
@@ -183,31 +124,26 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, type Component } from "vue";
+import { computed, ref, onMounted, onUnmounted } from "vue";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useThemeStore } from "@/stores/theme";
 import { roleMap } from "@/constants/maps";
 import {
   BookOpen,
-  Database,
-  FolderOpen,
-  LayoutGrid,
-  MessageSquare,
-  Settings,
   LogOut,
   ChevronLeft,
   ChevronUp,
-  Cog,
   User,
-  LayoutTemplate,
-  Bot,
-  ChevronDown,
   Moon,
   Sun,
-  Plug,
-  Workflow,
 } from "lucide-vue-next";
+import {
+  projectNavigation,
+  loadFeatureFlags,
+  type NavSectionProjection,
+} from "@/app/nav";
+import NavBreadcrumb from "@/components/NavBreadcrumb.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -222,32 +158,19 @@ const roleInitial = computed(() => roleLabel.value.charAt(0));
 const themeLabel = computed(() => (themeStore.activeTheme === "dark" ? "切换浅色" : "切换深色"));
 const themeIcon = computed(() => (themeStore.activeTheme === "dark" ? Sun : Moon));
 
-const navItems: { title: string; route: string; icon: Component }[] = [
-  { title: "总览", route: "/", icon: LayoutGrid },
-  { title: "知识库", route: "/knowledge", icon: BookOpen },
-  { title: "资源库", route: "/resource", icon: FolderOpen },
-  { title: "数据库", route: "/database", icon: Database },
-  { title: "AI 问答", route: "/ai-chat", icon: MessageSquare },
-  { title: "技能编排", route: "/skill-editor", icon: Settings },
-];
+// REQ-060 Slice 3: 从 Route Record 投影导航（删 navItems/adminItems/aiAppItems 三份数组）
+// 复用 nav.ts#loadFeatureFlags（唯一运行时来源，防 flag key 漂移）
+const navSections = computed<NavSectionProjection[]>(() => {
+  return projectNavigation(router.getRoutes(), {
+    role: authStore.userRole,
+    featureFlags: loadFeatureFlags(),
+  });
+});
 
-const adminItems = [
-  { title: "数据要素模板", route: "/admin/template", icon: LayoutTemplate },
-  { title: "MCP 服务", route: "/admin/mcp-servers", icon: Plug },
-  { title: "Skill 服务", route: "/admin/skills", icon: Workflow },
-];
-
-const adminExpanded = ref(false);
-const appsExpanded = ref(false);
-
-const aiAppItems = [
-  { title: "应用广场", route: "/ai-apps", icon: Bot },
-  { title: "应用管理", route: "/ai-apps/admin", icon: Bot },
-];
-
-function isActive(routePath: string) {
-  if (routePath === "/") return route.path === "/";
-  return route.path.startsWith(routePath);
+// REQ-060 Slice 3: 精确高亮 -- 比较 current.meta.activeNav ?? current.name，禁止 path startsWith
+function isActive(itemName: string) {
+  const activeNav = route.meta.activeNav ?? (typeof route.name === "string" ? route.name : "");
+  return activeNav === itemName;
 }
 
 function logout() {
@@ -379,26 +302,16 @@ onUnmounted(() => {
   }
 }
 
-.nav-admin-section {
-  margin-top: 2px;
+.nav-section {
+  margin-bottom: 4px;
 }
 
-.nav-item-admin {
-  justify-content: flex-start !important;
-}
-
-.nav-admin-subitems {
-  margin-left: 8px;
-  padding-left: 8px;
-  border-left: 1px solid var(--color-border-subtle);
-}
-
-.nav-item-sub {
-  height: 38px !important;
-  padding-left: 12px !important;
-}
-
-.nav-item-sub .nav-icon {
-  opacity: 0.7;
+.nav-section-label {
+  padding: 8px 12px 4px;
+  font-size: var(--text-micro);
+  color: var(--color-ink-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0;
+  margin: 0;
 }
 </style>
