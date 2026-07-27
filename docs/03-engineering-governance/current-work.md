@@ -24,9 +24,9 @@
 - Spec: [REQ-060](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md)
 - Plan: [Slice 4](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md)
 
-当前进展：Slice 1/2/3 已合并。Slice 4 PR #503 三轮返修（commit 8d454aff）：useMobileDrawer composable + LayoutView 重构（mobile drawer w-72 + isMobile 响应式 + showFullContent 分离 + keydown on aside + focus trap active-not-in-set）+ Playwright 3 组 spec（shared/desktop/mobile testMatch 分流）+ API route mock + 结构视觉断言 + ci.yml 接入 e2e。Slice 4 新增 30 vitest tests（useMobileDrawer 15 + LayoutView +15）；仓库全量 326/326 passed。E2E 50 cases × 2 projects。待 Codex 最终复审。
+当前进展：Slice 1/2/3 已合并。Slice 4 PR #503 四轮返修（commit d044abb6）：useMobileDrawer composable（15 tests）+ LayoutView 重构（+15 tests = 47 total）+ Playwright 3 组 spec（shared/desktop/mobile testMatch 分流，~51 project executions）+ API route mock + 结构视觉断言 + ci.yml 接入 e2e + tsconfig.e2e.json 类型门禁。Slice 4 新增 30 vitest tests；仓库全量 326/326 passed。待 Codex 最终复审。
 
-下一步：Codex 复审通过 -> 合并 PR #503 -> 归档 work-log + REQ-060 Done + current-work 收口。
+下一步：Codex 复审通过 -> 合并 PR #503 -> 归档 work-log + REQ-060 Done。
 
 下一步：实施 Slice 4 checklist（移动端断点 + a11y 全覆盖 + Playwright 配置 + 验收 → 提交 PR 等 Codex 复审）。
 

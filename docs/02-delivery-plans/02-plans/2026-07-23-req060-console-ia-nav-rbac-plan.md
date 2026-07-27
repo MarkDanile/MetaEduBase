@@ -63,7 +63,7 @@ R1 修订后按 5 个交付 Gate 实施。每个 Gate 独立 PR，但受保护�
 - [ ] 用户验收后更新 work-log、Requirement/Backlog/current-work 和本 Plan 验证摘要。（待 Codex 复审通过 + 用户合并后归档）
 - **复杂度**：高（当前移动端能力缺失，不是纯验收）。
 - **完成 commit**：`pending`（PR 待合并；待 Codex 复审通过后归档 work-log + REQ-060 Done + current-work）。
-- **测试分布**：useMobileDrawer.spec.ts 13 + LayoutView.spec.ts 47（+15 Slice 4）= Slice 4 新增 28 vitest tests；Playwright e2e 拆为 navigation-shared/desktop/mobile 三组 spec（7 角色 + activeNav + 详情父高亮 + drawer 状态机 + focus/Tab/body-lock + 截图）。
+- **测试分布**：useMobileDrawer.spec.ts 15 + LayoutView.spec.ts 47（+15 Slice 4）= Slice 4 新增 30 vitest tests；Playwright e2e 拆为 navigation-shared/desktop/mobile 三组 spec（7 角色 + activeNav + 详情父高亮 + drawer 状态机 + focus/Tab/body-lock + 结构视觉断言 + skip-link 键盘验收）。
 - **推荐模型**：GPT-5.6 Sol `medium` 或 Kimi K3 thinking 实现；Sol `high` 做响应式/RBAC Review。
 
 ## 强制顺序

@@ -31,7 +31,7 @@ pnpm --filter @metaedu/web test:e2e
 - **Auth + API mock**：`setupE2E(page, role)` 注入 `metaedu_token`/`metaedu_role`/`metaedu_tenant_id` 到 localStorage + 拦截 `/api/v1/*` 返回确定性 mock（防 ECONNREFUSED 导致页面组件回退）。
 - **路由**：纯前端路由 + 守卫；guard 读 localStorage 放行。
 - **viewport**：2 projects（chromium-desktop 1280×800 + chromium-mobile Pixel 5）按 testMatch 分流。
-- **skip-link 键盘测试**：在 shared spec（desktop project 执行），因为 Pixel 5 touch emulation 的 Tab 序列不可靠。mobile spec 只做结构断言。
+- **skip-link 键盘测试**：在 desktop spec（仅 desktop project 执行），因为 Pixel 5 touch emulation 的 Tab 序列不可靠。mobile spec 只做结构断言。
 - **视觉验收**：用结构断言（`data-theme` + 元素可见性）替代 `toHaveScreenshot`，避免 OS-specific screenshot baseline。
 - **Trace**：失败时保留 video + trace，便于调试。
 
