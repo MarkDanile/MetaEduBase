@@ -18,6 +18,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
+import { createMemoryHistory, createRouter } from "vue-router";
 import { defineComponent, h, nextTick } from "vue";
 import NavBreadcrumb from "./NavBreadcrumb.vue";
 
@@ -234,44 +235,184 @@ describe("NavBreadcrumb: /apps/* shell routes (activeNav=AiAppsMarketplace)", ()
 });
 
 describe("NavBreadcrumb: section-consistency fail-closed", () => {
-  it("activeNav 指向未知 route name: 链在错配点终止，不插入假 crumb", async () => {
-    // 真实注入 activeNav 错配：直接 mutate router 中 knowledge route 的 meta.activeNav
-    // 指向一个不存在的 route。链在 knowledge 处找不到合法父项，fail-closed：
-    // chain = [knowledge]（仅自身）→ 顶部 prepend home → [home, knowledge]
-    const { wrapper, router } = await mountBreadcrumb();
-    await router.replace("/knowledge");
+  // 独立 router per case：避免污染共享 singleton router（route meta 不可写）。
+  // 本 block 用 createMemoryHistory + 自定义 routes 直接 mount，断言 parentRouteName
+  // 等价行为：缺失 section 一律 fail-closed。
+  function buildIsolatedRouter(
+    routeOverrides: Array<{
+      path: string;
+      name: string;
+      meta: Record<string, unknown>;
+    }>,
+  ) {
+    return createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/", name: "home", component: { template: "<div/>" }, meta: { title: "总览", section: "overview", activeNav: "home" } },
+        ...routeOverrides.map((r) => ({
+          path: r.path,
+          name: r.name,
+          component: { template: "<div/>" },
+          meta: r.meta,
+        })),
+      ],
+    });
+  }
+
+  async function mountBreadcrumbIsolated(router: ReturnType<typeof createRouter>) {
     await router.isReady();
-    // 找到 knowledge route 并篡改 activeNav
-    const knowledgeRoute = router.getRoutes().find((r) => r.name === "knowledge");
-    if (knowledgeRoute) {
-      knowledgeRoute.meta = { ...knowledgeRoute.meta, activeNav: "ghost_route_xyz" };
-    }
-    await nextTick();
     await flushPromises();
-    // activeNav = ghost_route_xyz 找不到对应 route → parentRouteName 返回 null →
-    // chain 只有 [knowledge]，顶部 prepend home → [总览 / 知识库]
+    const wrapper = mount(NavBreadcrumb, {
+      global: {
+        plugins: [router],
+        stubs: {
+          RouterLink: defineComponent({
+            name: "RouterLinkStub",
+            props: { to: { type: Object, default: () => ({}) } },
+            setup(props, { slots }) {
+              return () =>
+                h(
+                  "a",
+                  {
+                    class: "stub-router-link",
+                    "data-name": (props.to as { name?: string })?.name ?? "",
+                  },
+                  slots.default?.(),
+                );
+            },
+          }),
+        },
+      },
+      attachTo: document.body,
+    });
+    await flushPromises();
+    return wrapper;
+  }
+
+  it("activeNav 指向未知 route name: chain 终止在当前 route，不插入假 crumb", async () => {
+    const router = buildIsolatedRouter([
+      {
+        path: "/x",
+        name: "x",
+        meta: { title: "X", section: "overview", activeNav: "ghost_route_xyz" },
+      },
+    ]);
+    setActivePinia(createPinia());
+    setAuth("admin");
+    await router.push("/x");
+    await router.isReady();
+    await nextTick();
+    const wrapper = await mountBreadcrumbIsolated(router);
+    // activeNav 找不到对应 route → parentRouteName 返回 null → chain = [x]
+    // prepend home → [总览 / X]，linkNames = [home]
     expect(linkNames(wrapper)).toEqual(["home"]);
-    expect(wrapper.find('[aria-current="page"]').text()).toBe("知识库");
+    expect(wrapper.find('[aria-current="page"]').text()).toBe("X");
     wrapper.unmount();
   });
 
-  it("activeNav 跨 section: 拒绝跳转，链在当前 route 终止", async () => {
-    // 注入跨 section activeNav：让 knowledge (section=knowledge_data) 的 activeNav
-    // 指向 ai-chat (section=ai_work)。section 一致性校验应 fail-closed：
-    // chain = [knowledge] → [总览 / 知识库]，不插入 ai-chat。
-    const { wrapper, router } = await mountBreadcrumb();
-    await router.replace("/knowledge");
+  it("activeNav 跨 section: 拒绝跳转，链仅自身 + 顶部 home", async () => {
+    const router = buildIsolatedRouter([
+      {
+        path: "/a",
+        name: "a",
+        meta: { title: "A", section: "section_a", activeNav: "b" },
+      },
+      {
+        path: "/b",
+        name: "b",
+        meta: { title: "B", section: "section_b" },
+      },
+    ]);
+    setActivePinia(createPinia());
+    setAuth("admin");
+    await router.push("/a");
     await router.isReady();
-    const knowledgeRoute = router.getRoutes().find((r) => r.name === "knowledge");
-    if (knowledgeRoute) {
-      knowledgeRoute.meta = { ...knowledgeRoute.meta, activeNav: "ai-chat" };
-    }
     await nextTick();
-    await flushPromises();
+    const wrapper = await mountBreadcrumbIsolated(router);
+    // a (section_a) 的 activeNav = b (section_b)，跨 section 拒绝
+    // chain = [a]，prepend home → [home, a]，linkNames = [home]
     const names = linkNames(wrapper);
-    // 不应包含 ai-chat（跨 section 被拒）
-    expect(names).not.toContain("ai-chat");
+    expect(names).not.toContain("b");
     expect(names).toEqual(["home"]);
+    expect(wrapper.find('[aria-current="page"]').text()).toBe("A");
+    wrapper.unmount();
+  });
+
+  it("当前 route 缺 meta.section: 拒绝向上追溯（fail-closed），链仅自身", async () => {
+    const router = buildIsolatedRouter([
+      {
+        path: "/a",
+        name: "a",
+        meta: { title: "A", activeNav: "b" }, // 缺 section
+      },
+      {
+        path: "/b",
+        name: "b",
+        meta: { title: "B", section: "section_b" },
+      },
+    ]);
+    setActivePinia(createPinia());
+    setAuth("admin");
+    await router.push("/a");
+    await router.isReady();
+    await nextTick();
+    const wrapper = await mountBreadcrumbIsolated(router);
+    // a 缺 section → cursorSection = undefined → parentRouteName 拒绝
+    expect(linkNames(wrapper)).toEqual(["home"]);
+    expect(wrapper.find('[aria-current="page"]').text()).toBe("A");
+    wrapper.unmount();
+  });
+
+  it("父 route 缺 meta.section: 拒绝跳转（即使 currentSection 存在）", async () => {
+    const router = buildIsolatedRouter([
+      {
+        path: "/a",
+        name: "a",
+        meta: { title: "A", section: "section_a", activeNav: "b" },
+      },
+      {
+        path: "/b",
+        name: "b",
+        meta: { title: "B" }, // 缺 section
+      },
+    ]);
+    setActivePinia(createPinia());
+    setAuth("admin");
+    await router.push("/a");
+    await router.isReady();
+    await nextTick();
+    const wrapper = await mountBreadcrumbIsolated(router);
+    // parent b 缺 section → parentRouteName 拒绝
+    const names = linkNames(wrapper);
+    expect(names).not.toContain("b");
+    expect(names).toEqual(["home"]);
+    expect(wrapper.find('[aria-current="page"]').text()).toBe("A");
+    wrapper.unmount();
+  });
+
+  it("正常 activeNav（同 section）：链派生通过校验", async () => {
+    const router = buildIsolatedRouter([
+      {
+        path: "/parent",
+        name: "parent",
+        meta: { title: "Parent", section: "section_a", activeNav: "parent" },
+      },
+      {
+        path: "/child",
+        name: "child",
+        meta: { title: "Child", section: "section_a", activeNav: "parent" },
+      },
+    ]);
+    setActivePinia(createPinia());
+    setAuth("admin");
+    await router.push("/child");
+    await router.isReady();
+    await nextTick();
+    const wrapper = await mountBreadcrumbIsolated(router);
+    // child 同 section activeNav=parent，parent 又 activeNav=parent（自指）→ chain = [child, parent]
+    // prepend home → [home, parent, child]，linkNames = [home, parent]
+    expect(linkNames(wrapper)).toEqual(["home", "parent"]);
+    expect(wrapper.find('[aria-current="page"]').text()).toBe("Child");
     wrapper.unmount();
   });
 });

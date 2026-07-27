@@ -41,14 +41,15 @@ R1 修订后按 5 个交付 Gate 实施。每个 Gate 独立 PR，但受保护�
 
 ## Slice 3：Sidebar / Home / Breadcrumb 统一投影
 
-- [x] `LayoutView.vue` 删除 `navItems/adminItems/aiAppItems` path/permission 数组，使用 Route Record 投影并按 section 渲染。
-- [x] `HomeView.vue` 展示配置只引用 route name；path、permission、hidden 和 feature flag 从 Route Record 解析。HomeView 通过 `projectNavigation` 投影每个 section 的首张卡片（不含 overview/system），shortcut 由 `(section, itemName)` 映射 + projection 可见性过滤。
-- [x] 新建全局 `NavBreadcrumb` 组件（`packages/web/src/components/NavBreadcrumb.vue`），使用 `route.matched + meta.activeNav` 链向上追溯到 home，无 URL 截断；hiddenInNav route 仍出现 crumb。
-- [x] 下线”技能编排”；MCP/Skill 归能力中心，模板归知识与数据；未交付 system 子页不显示。
-- [x] 精确高亮：比较 `current.meta.activeNav ?? current.name`，禁止 path `startsWith`。
-- [x] 覆盖 7 角色最小导航矩阵（LayoutView.spec.ts 7 角色 × section label 集合断言）、详情页唯一父高亮（5 条）、首页无失效/占位入口（HomeView.spec.ts 11 条）、section 排序（nav.spec.ts 既有）、feature flag（LayoutView.spec.ts）。
+- [x] `LayoutView.vue` 删除 `navItems/adminItems/aiAppItems` path/permission 数组，使用 Route Record 投影并按 section 渲染（`projectNavigation(router.getRoutes(), ctx)` 唯一事实源）。
+- [x] `HomeView.vue` 展示配置只引用 route name；path、permission、hidden 和 feature flag 从 Route Record 解析。`HOME_CARD_SPECS` 是纯展示配置（`routeName + presentation`，0 RBAC 字段），与 `projectNavigation` 可见名称集合求交集 = 最终 `homeCards`；shortcut 由 `(section, itemName)` 映射 + projection 可见性过滤。
+- [x] 新建全局 `NavBreadcrumb` 组件（`packages/web/src/components/NavBreadcrumb.vue`），沿当前 route 的 `meta.activeNav` 链向上追溯到 home；每步校验父项 `meta.section` 与当前 route 同 section，任一缺失或不相等均 fail-closed（Plan "无完整 meta 一律 fail-closed"）；hiddenInNav route 仍出现 crumb（仅 sidebar 过滤 breadcrumb 不过滤）。
+- [x] 下线"技能编排"（其 route 在 Slice 2 已 redirect 到 capabilities-skills，按 plan 不再列入 HOME_CARD_SPECS）；MCP/Skill 归能力中心，模板归知识与数据；未交付 system 子页不显示（hiddenInNav=true，sidebar 永不出现）。
+- [x] 精确高亮：比较 `current.meta.activeNav ?? current.name`，禁止 path `startsWith`（详见 LayoutView `isActive()`）。
+- [x] 覆盖 7 角色最小导航矩阵（LayoutView.spec.ts 7 角色 × section label 集合断言）、详情页唯一父高亮（5 条）、首页无失效/占位入口（HomeView.spec.ts 13 条）、section 排序（nav.spec.ts 既有）、feature flag（LayoutView.spec.ts）。
 - **复杂度**：高（全局布局迁移 + 多入口回归）。
-- **完成 commit**：`7dec33e1`（初版收口）+ 后续 P1 修订（详见 PR #501）。
+- **完成 commit**：`fa57809f`（最终收口）+ 修订-3 `pending`（PR #501 待最终复审）。
+- **测试分布**：LayoutView.spec.ts 32 + NavBreadcrumb.spec.ts 18 + HomeView.spec.ts 13 = 63 个 Slice 3 新增测试；仓库全量 canonical 293/293（Codex 容器，本 commit 后预计 +3 = 296/296）。
 - **推荐模型**：GPT-5.6 Sol `medium/high` 或 Kimi K3 thinking 负责 UI；RBAC Review 使用 Sol `high`。
 
 ## Slice 4：移动端、a11y、Playwright 与收口
@@ -81,7 +82,7 @@ Slice 1 可在 TD-087 实施前完成，但 Slice 2 不得越过 Gate 0。不同
 - `packages/web/src/constants/maps.ts` - role label 对齐
 - `packages/web/src/views/LayoutView.vue` - Sidebar/移动导航
 - `packages/web/src/views/HomeView.vue` - route-name presentation
-- `packages/web/src/components/Breadcrumb.vue` - 全局导航 breadcrumb
+- `packages/web/src/components/NavBreadcrumb.vue` - 全局导航 breadcrumb（activeNav 链 + 同 section 一致性 fail-closed）
 - `packages/web/src/views/ForbiddenView.vue` - 403
 - `packages/web/playwright.config.ts` / `packages/web/e2e/navigation.spec.ts` - 浏览器验收
 

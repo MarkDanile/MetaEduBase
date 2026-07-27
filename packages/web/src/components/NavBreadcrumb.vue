@@ -91,11 +91,14 @@ function parentRouteName(
   if (parentName === currentName) return null;
   const parentMeta = readMeta(findRouteByName(parentName)?.meta);
   if (!parentMeta.title) return null;
-  // section 一致性校验：currentSection 与 parentMeta.section 必须严格相等。
-  // 不允许跨 section 跳转（防误配 activeNav 把当前 crumb 拉到别的 IA 区域）。
+  // section 一致性校验（fail-closed）：
+  // - currentSection 与 parentMeta.section 都必须存在
+  // - 且严格相等
+  // 任一缺失或不相等均返回 null（不允许跨 section 跳转；不允许 meta 缺失放行）。
+  // 这与 Plan "无完整 meta 一律 fail-closed" 一致。
   if (
-    currentSection !== undefined &&
-    parentMeta.section !== undefined &&
+    currentSection === undefined ||
+    parentMeta.section === undefined ||
     parentMeta.section !== currentSection
   ) {
     return null;
