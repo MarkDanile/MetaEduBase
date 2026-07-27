@@ -5,9 +5,9 @@ REQ-060 Slice 4 浏览器端到端验收。
 ## 文件结构
 
 - `fixtures.ts`：共享 setup（`setupE2E(page, role)` = `injectAuth` + `installApiMocks`）
-- `navigation-shared.spec.ts`：desktop + mobile 都跑（7 角色 sidebar / 重定向 / 403 / breadcrumb / skip-link 键盘验收）
-- `navigation-desktop.spec.ts`：仅 desktop project（activeNav 高亮 / 详情父高亮 / 折叠 / 主题 / 结构视觉断言）
-- `navigation-mobile.spec.ts`：仅 mobile project（drawer 状态机 / focus return / Tab/Shift+Tab / body lock / 结构视觉断言）
+- `navigation-shared.spec.ts`：desktop + mobile 都跑（7 角色 sidebar / 重定向 / 403 / breadcrumb）
+- `navigation-desktop.spec.ts`：仅 desktop project（activeNav 高亮 / 详情父高亮 / 折叠 / 主题 / skip-link 键盘验收 / 结构视觉断言）
+- `navigation-mobile.spec.ts`：仅 mobile project（drawer 状态机 / focus return / Tab/Shift+Tab / body lock / 关闭态 inert / 路由关闭焦点返回 / 结构视觉断言）
 
 `playwright.config.ts` 用 `testMatch` glob 分流：
 - `chromium-desktop`：`/.*(-desktop|-shared)\.spec\.ts/`

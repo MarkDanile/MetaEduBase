@@ -167,7 +167,15 @@ export function useMobileDrawer(opts: UseMobileDrawerOptions): UseMobileDrawerRe
       watch(
         () => routeRef!.value?.fullPath,
         (next: string | undefined) => {
-          if (open.value && next !== undefined) closeDrawer(false);
+          if (open.value && next !== undefined) {
+            closeDrawer(false);
+            // Spec D-10: 路由关闭后焦点不能停留在已移出视口的导航链接上。
+            // 聚焦新页面主内容（#main-content 有 tabindex=-1 可编程聚焦）。
+            nextTick(() => {
+              const main = document.getElementById("main-content");
+              main?.focus();
+            });
+          }
         },
       );
     }

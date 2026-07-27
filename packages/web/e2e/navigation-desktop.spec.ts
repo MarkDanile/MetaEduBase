@@ -164,7 +164,12 @@ test.describe("desktop: skip-link 键盘验收", () => {
     const skip = page.locator("a.skip-link");
     await expect(skip).toHaveAttribute("href", "#main-content");
     await skip.waitFor({ state: "attached" });
-    // Tab 到 skip-link（DOM 第一个可聚焦元素）
+    // 建立确定的键盘起点：blur 当前焦点 + 聚焦 body
+    await page.evaluate(() => {
+      (document.activeElement as HTMLElement)?.blur();
+      document.body.focus();
+    });
+    // Tab 到 skip-link（DOM 第一个可聚焦元素，sr-only clip 模式保留在 Tab 序列中）
     await page.keyboard.press("Tab");
     await expect(skip).toBeFocused();
     // Enter 跳转到 #main-content

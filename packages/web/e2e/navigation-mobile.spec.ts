@@ -159,9 +159,65 @@ test.describe("mobile: skip-link 结构断言", () => {
     await expect(skip).toHaveAttribute("href", "#main-content");
     await expect(skip).toBeAttached();
     // 键盘 Tab 序列在 Pixel 5 touch emulation 下不可靠；
-    // 完整 Tab + Enter 键盘验收在 navigation-shared.spec.ts 的 desktop project 中执行。
+    // 完整 Tab + Enter 键盘验收在 navigation-desktop.spec.ts 中执行。
     // 这里只验证结构：skip-link 存在、href 正确、文本可见。
     await expect(skip).toHaveText("跳到主要内容");
+  });
+});
+
+test.describe("mobile: 关闭态 drawer inert（焦点不进入）", () => {
+  test("drawer 关闭时 aside 有 inert + aria-hidden", async ({ page }) => {
+    await setupE2E(page, "admin");
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    const aside = page.locator("aside#mobile-drawer");
+    await expect(aside).toHaveAttribute("inert");
+    await expect(aside).toHaveAttribute("aria-hidden", "true");
+  });
+
+  test("drawer 关闭时 Tab 不进入 drawer 内部链接", async ({ page }) => {
+    await setupE2E(page, "admin");
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    // 建立确定的键盘起点
+    await page.evaluate(() => {
+      (document.activeElement as HTMLElement)?.blur();
+      document.body.focus();
+    });
+    // 连续 Tab：焦点不应进入 drawer 内的 nav-item
+    for (let i = 0; i < 5; i++) {
+      await page.keyboard.press("Tab");
+      const isInDrawer = await page.evaluate(() => {
+        const drawer = document.getElementById("mobile-drawer");
+        return drawer?.contains(document.activeElement);
+      });
+      expect(isInDrawer, `Tab #${i + 1} entered closed drawer`).toBe(false);
+    }
+  });
+
+  test("drawer 打开时 inert 移除", async ({ page }) => {
+    await setupE2E(page, "admin");
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    await page.locator("button.mobile-opener").click();
+    const aside = page.locator("aside#mobile-drawer");
+    await expect(aside).not.toHaveAttribute("inert");
+    await expect(aside).not.toHaveAttribute("aria-hidden");
+  });
+});
+
+test.describe("mobile: 路由关闭后焦点返回 main-content", () => {
+  test("点击 nav-item 导航后焦点在 #main-content", async ({ page }) => {
+    await setupE2E(page, "admin");
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    await page.locator("button.mobile-opener").click();
+    // 点击 drawer 内的 nav-item 导航
+    await page.locator(".nav-item", { hasText: "知识库" }).first().click();
+    // drawer 关闭
+    await expect(page.locator("button.mobile-opener")).toHaveAttribute("aria-expanded", "false");
+    // 焦点在 #main-content（不是已移出视口的 nav-item）
+    await expect(page.locator("#main-content")).toBeFocused();
   });
 });
 

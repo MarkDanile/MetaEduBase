@@ -40,6 +40,8 @@
           ? 'translate-x-0'
           : '-translate-x-full md:translate-x-0',
       ]"
+      :inert="isMobile && !mobileDrawer.open.value ? true : undefined"
+      :aria-hidden="isMobile && !mobileDrawer.open.value ? 'true' : undefined"
       @keydown="mobileDrawer.onDrawerKeydown"
     >
       <div
@@ -293,23 +295,37 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* REQ-060 Slice 4: skip-link 视觉隐藏 + focus 显示 */
+/* REQ-060 Slice 4: skip-link 视觉隐藏 + focus 显示
+   使用 sr-only clip 模式（比 position:absolute + top:-40px 更可靠，
+   确保所有浏览器（含 headless Chrome on Linux）将链接保留在 Tab 序列中） */
 .skip-link {
   position: absolute;
-  top: -40px;
-  left: 8px;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
   z-index: 9999;
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  width: auto;
+  height: auto;
   padding: 8px 12px;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
   background: var(--color-accent);
   color: white;
   font-size: var(--text-caption);
   text-decoration: none;
   border-radius: var(--radius-md);
-  transition: top 150ms ease-out;
-}
-.skip-link:focus,
-.skip-link:focus-visible {
-  top: 8px;
   outline: 2px solid var(--color-ink);
   outline-offset: 2px;
 }
