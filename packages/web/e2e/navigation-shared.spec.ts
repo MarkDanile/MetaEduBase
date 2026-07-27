@@ -93,3 +93,21 @@ test.describe("shared: breadcrumb 详情页父链", () => {
     await expect(breadcrumb.locator('[aria-current="page"]')).toHaveText("模板详情");
   });
 });
+
+test.describe("shared: skip-link 键盘验收（desktop project 执行）", () => {
+  test("Tab 聚焦 skip-link -> Enter 跳转 #main-content", async ({ page }) => {
+    await setupE2E(page, "admin");
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    const skip = page.locator("a.skip-link");
+    await expect(skip).toHaveAttribute("href", "#main-content");
+    await skip.waitFor({ state: "attached" });
+    // Tab 到 skip-link（DOM 第一个可聚焦元素）
+    await page.keyboard.press("Tab");
+    await expect(skip).toBeFocused();
+    // Enter 跳转到 #main-content
+    await page.keyboard.press("Enter");
+    // main-content 获得焦点（tabindex=-1 使其可编程聚焦）
+    await expect(page.locator("#main-content")).toBeFocused();
+  });
+});

@@ -24,9 +24,9 @@
 - Spec: [REQ-060](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md)
 - Plan: [Slice 4](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md)
 
-当前进展：Slice 1/2/3 已合并。Slice 4 实现完成（commit pending）：`useMobileDrawer` composable（焦点管理 + body scroll lock + Escape + route change 关闭 + Tab 循环焦点）+ LayoutView 重构（mobile top-bar opener + slide-in drawer + backdrop + skip-link + `aria-controls`/`aria-expanded`/`aria-current="page"` + `prefers-reduced-motion` + desktop/mobile 状态独立）+ Playwright 接入（`@playwright/test` + `playwright.config.ts` + `e2e/navigation.spec.ts` + `e2e/fixtures.ts`）。Slice 4 新增 28 tests（useMobileDrawer 13 + LayoutView +15）；仓库全量 vitest canonical 324 tests / 0 failed；typecheck 0 / eslint 0 errors 28 warnings / docs gate passed / diff check exit 0。Playwright 二进制 install + 实际 e2e 跑在 CI 容器执行（本地 pnpm store 差异限制 install）。
+当前进展：Slice 1/2/3 已合并。Slice 4 PR #503 三轮返修（commit 8d454aff）：useMobileDrawer composable + LayoutView 重构（mobile drawer w-72 + isMobile 响应式 + showFullContent 分离 + keydown on aside + focus trap active-not-in-set）+ Playwright 3 组 spec（shared/desktop/mobile testMatch 分流）+ API route mock + 结构视觉断言 + ci.yml 接入 e2e。Slice 4 新增 30 vitest tests（useMobileDrawer 15 + LayoutView +15）；仓库全量 326/326 passed。E2E 50 cases × 2 projects。待 Codex 最终复审。
 
-下一步：Codex 复审通过后合并 PR -> 归档 work-log + REQ-060 Done + current-work 收口 -> REQ-060 完整交付。
+下一步：Codex 复审通过 -> 合并 PR #503 -> 归档 work-log + REQ-060 Done + current-work 收口。
 
 下一步：实施 Slice 4 checklist（移动端断点 + a11y 全覆盖 + Playwright 配置 + 验收 → 提交 PR 等 Codex 复审）。
 

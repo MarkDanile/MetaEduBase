@@ -9,7 +9,7 @@
     "build:bundle": "vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
-    "lint": "eslint \"src/**/*.{ts,vue}\"",
+    "lint": "eslint \"src/**/*.{ts,vue}\" \"e2e/**/*.ts\" \"playwright.config.ts\"",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install --with-deps chromium"

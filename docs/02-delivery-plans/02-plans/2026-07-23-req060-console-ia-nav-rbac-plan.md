@@ -58,7 +58,7 @@ R1 修订后按 5 个交付 Gate 实施。每个 Gate 独立 PR，但受保护�
 - [x] 实现 `<768px` 顶部 Menu 图标按钮和 off-canvas navigation；关闭状态不保留 60px 固定侧栏。LayoutView 加 `mobileOpenerRef` + `useMobileDrawer` composable；drawer open 时 aside `translate-x-0`，关闭时 `-translate-x-full`；desktopCollapsed 与 mobileDrawerOpen 独立 ref。
 - [x] 覆盖 backdrop、Escape、route change 关闭，打开/关闭焦点迁移，body scroll lock，`aria-controls`、`aria-expanded`、`aria-current`。`useMobileDrawer` 封装：document 级 Escape 监听 + watch(route.fullPath) 自动关闭 + body overflow lock/unlock + 焦点回到 opener + Tab/Shift+Tab 循环焦点；opener `aria-controls="mobile-drawer"` + `:aria-expanded`；nav-item `:aria-current="isActive(item.name) ? 'page' : undefined"`。
 - [x] 为分组按钮实现键盘导航和稳定展开状态；桌面折叠与移动抽屉状态分离。desktop `desktopCollapsed` (toggle 桌面 collapse button, `md:flex` only) 与 mobile `mobileDrawer.open` (opener `md:hidden` only) 完全独立；`@media (prefers-reduced-motion: reduce)` 取消所有 transition；skip-link `<a href="#main-content">` 视觉隐藏 + focus 显示。
-- [x] 仓库当前无 Playwright：新增最小 `@playwright/test` 依赖、配置和可复现脚本；覆盖桌面/移动、浅色/深色、7 角色代表集、403、重定向和详情父高亮截图/断言。`packages/web/playwright.config.ts` + `e2e/navigation.spec.ts` + `e2e/fixtures.ts` + `e2e/README.md`；2 projects (chromium-desktop 1280×800 + chromium-mobile Pixel 5)；`injectAuth(page, role)` 注入 localStorage 跳过实际登录；覆盖 7 角色 sidebar / activeNav 高亮 / 详情父高亮 / mobile drawer 状态机 + a11y / 主题 / 旧链接重定向 / 403 / breadcrumb。
+- [x] 仓库当前无 Playwright：新增 `@playwright/test` 依赖、配置和可复现脚本；覆盖桌面/移动、浅色/深色、7 角色代表集、403、重定向和详情父高亮。`packages/web/playwright.config.ts` + `e2e/navigation-shared.spec.ts` + `e2e/navigation-desktop.spec.ts` + `e2e/navigation-mobile.spec.ts` + `e2e/fixtures.ts` + `e2e/README.md`；2 projects (chromium-desktop 1280×800 + chromium-mobile Pixel 5) 用 testMatch glob 分流；`setupE2E(page, role)` = injectAuth + installApiMocks（拦截 /api/v1/* 防 ECONNREFUSED）；结构视觉断言替代 toHaveScreenshot（跨平台）；覆盖 7 角色 sidebar / activeNav 高亮 / 详情父高亮 / mobile drawer 状态机 + a11y / 主题 / 旧链接重定向 / 403 / breadcrumb / skip-link 键盘验收。
 - [ ] 运行前端 lint、typecheck、Vitest、Playwright；PR CI 按 scope 执行，禁止把 mock UI 当后端 RBAC 证据。首轮复审 P1 修复中：vitest 排除 e2e/**、mobile drawer 宽度/状态分离、focus trap 修复、Playwright testMatch 拆 project、pnpm-lock + ci.yml 接入 e2e。待返修完成后重跑全量验证。
 - [ ] 用户验收后更新 work-log、Requirement/Backlog/current-work 和本 Plan 验证摘要。（待 Codex 复审通过 + 用户合并后归档）
 - **复杂度**：高（当前移动端能力缺失，不是纯验收）。
@@ -87,7 +87,7 @@ Slice 1 可在 TD-087 实施前完成，但 Slice 2 不得越过 Gate 0。不同
 - `packages/web/src/views/HomeView.vue` - route-name presentation
 - `packages/web/src/components/NavBreadcrumb.vue` - 全局导航 breadcrumb（activeNav 链 + 同 section 一致性 fail-closed）
 - `packages/web/src/views/ForbiddenView.vue` - 403
-- `packages/web/playwright.config.ts` / `packages/web/e2e/navigation.spec.ts` - 浏览器验收
+- `packages/web/playwright.config.ts` / `packages/web/e2e/navigation-{shared,desktop,mobile}.spec.ts` - 浏览器验收（testMatch 分流 desktop/mobile）
 
 ## Global Constraints
 

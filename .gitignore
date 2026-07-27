@@ -44,3 +44,4 @@ deploy/cache/
 scripts/validate_real_pg_rag_samples.json
 scripts/*.intermediate.json
 docs/**/*.intermediate.json
+test-results/
