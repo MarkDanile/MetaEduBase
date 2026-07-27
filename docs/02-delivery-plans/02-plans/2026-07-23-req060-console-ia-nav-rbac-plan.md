@@ -30,12 +30,12 @@ R1 修订后按 5 个交付 Gate 实施。每个 Gate 独立 PR，但受保护�
 
 ## Slice 2：受保护目标路由 + 守卫 + 重定向原子迁移
 
-- [ ] 新建目标路由：`/capabilities/skills`、`/capabilities/mcp`、`/data/templates`、`/data/templates/:id`、`/system`；复用既有页面，不实现未交付系统管理子页。
-- [ ] 同一 PR 新建 `/403`、permission/feature guard 和全部旧链接重定向：`/skill-editor`、`/admin/mcp-servers`、`/admin/skills`、`/admin/template`、`/admin/template/:id`、`/admin`。
-- [ ] `activeNav` 映射：`file-detail -> resource`、`catalog-detail -> database`、`AiAppEdit -> AiAppsAdmin`、`AiAppDetail/App* -> AiAppsMarketplace`、`template-detail -> templates-list`。
-- [ ] 所有详情、编辑、redirect、独立应用 shell 和占位 route 设为 `hiddenInNav=true`。
-- [ ] 测试：低权深链 403、高权访问、unknown role fail-closed、重定向后重新执行目标 route guard、`/403` 不产生循环。
-- [ ] 后端 API 独立验证：MCP/Skill/AI App 与完成后的 TD-087 均保持 401/403 裁决。
+- [x] 新建目标路由：`/capabilities/skills`、`/capabilities/mcp`、`/data/templates`、`/data/templates/:id`、`/system`；复用既有页面，不实现未交付系统管理子页。
+- [x] 同一 PR 新建 `/403`、permission/feature guard 和全部旧链接重定向：`/skill-editor`、`/admin/mcp-servers`、`/admin/skills`、`/admin/template`、`/admin/template/:id`、`/admin`。
+- [x] `activeNav` 映射：`file-detail -> resource`、`catalog-detail -> database`、`AiAppEdit -> AiAppsAdmin`、`AiAppDetail/App* -> AiAppsMarketplace`、`template-detail -> templates-list`。
+- [x] 所有详情、编辑、redirect、独立应用 shell 和占位 route 设为 `hiddenInNav=true`。
+- [x] 测试：低权深链 403、高权访问、unknown role fail-closed、重定向后重新执行目标 route guard、`/403` 不产生循环。
+- [x] 后端 API 独立验证：MCP/Skill/AI App 与完成后的 TD-087 均保持 401/403 裁决。
 - **复杂度**：高（路由切换与授权必须原子）。
 - **推荐模型**：GPT-5.6 Sol `high`；独立 Review `xhigh`。
 
@@ -100,3 +100,16 @@ Slice 1 可在 TD-087 实施前完成，但 Slice 2 不得越过 Gate 0。不同
 - Slice 1-3：Vitest permission/nav/router/Layout/Home 矩阵 + lint + typecheck。
 - Slice 4：Playwright desktop/mobile/light/dark + 全量前端门禁。
 - mock/fixture 仅证明前端契约，不得宣称后端 RBAC 或真实用户 Pilot 完成。
+- Slice 2 收口（2026-07-27，PR #499 复审 P0/P1 = 0/0，P2 修复已提交，待最终复审）：
+  - feature flag 实际来源：`nav.ts#loadFeatureFlags` 从 `localStorage` 读取 `metaedu_feature_<flag>`（`"true"` 为开），`router.ts` guard 调用之，替换原写死空 `FeatureFlags`。flag 缺失仍 fail-closed（system_management 为未交付功能，后端 `LoginResponse` 暂未下发 flags，发布时由登录流程写入）。
+  - 旧链接 6/6 覆盖：补 `/admin/template/:id -> /data/templates/:id` 参数保留测试；router.spec 15 tests、nav.spec 43 tests 全绿。
+  - 后端 401/403 独立证据（AC-3 第三层，与前端 mock 无关）：
+    ```bash
+    cd packages/server-python
+    .venv/bin/pytest \
+      tests/contexts/template/test_template_rbac.py \
+      tests/contexts/mcp_registry/test_registry_service.py \
+      tests/contexts/skill_registry/test_skill_registry_service.py \
+      tests/contexts/ai_app/test_admin_auth.py -q
+    ```
+    结果：`213 passed in 111.71s`。

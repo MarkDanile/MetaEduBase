@@ -4,7 +4,7 @@
  * 覆盖 7 角色 × 9 permission key + unknown/null role fail-closed + feature flag
  * + section 排序 + hiddenInNav 投影。
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type AccessContext,
   type FeatureFlags,
@@ -14,6 +14,7 @@ import {
   type SectionDescriptor,
   SECTION_DESCRIPTORS,
   canAccess,
+  loadFeatureFlags,
   projectNavigation,
   resolvePermissions,
 } from "./nav";
@@ -430,11 +431,12 @@ describe("meta inventory on real router.getRoutes()", () => {
       (r) => r.name !== undefined && r.meta?.guest !== true,
     );
 
-    // 精确断言业务 leaf 数量为 24
+    // 精确断言业务 leaf 数量为 23（Slice 2 后：admin/skill-editor 变 redirect，
+    // 新增 5 目标路由 + /403 guest = 净减 1 named leaf）
     expect(
       businessLeaves.length,
-      `expected 24 business leaves, got ${businessLeaves.length}`,
-    ).toBe(24);
+      `expected 23 business leaves, got ${businessLeaves.length}`,
+    ).toBe(23);
 
     // 逐项断言 title + section 均存在（失败信息必须输出 route name/path）
     const missing: string[] = [];
@@ -448,5 +450,55 @@ describe("meta inventory on real router.getRoutes()", () => {
       }
     }
     expect(missing, `routes missing title/section: ${missing.join("; ")}`).toEqual([]);
+  });
+});
+
+describe("loadFeatureFlags", () => {
+  // 使用独立内存实现隔离测试状态（Vitest jsdom 已配置 localStorage，
+  // 此处 stub 确保每个 test 状态独立，与 router.spec 同源约定）。
+  let store: Record<string, string>;
+  beforeEach(() => {
+    store = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => store[key] ?? null,
+      setItem: (key: string, value: string) => {
+        store[key] = value;
+      },
+      removeItem: (key: string) => {
+        delete store[key];
+      },
+      clear: () => {
+        store = {};
+      },
+    });
+  });
+
+  it("returns empty when no flags set (fail-closed)", () => {
+    expect(loadFeatureFlags()).toEqual({});
+  });
+
+  it("reads metaedu_feature_<flag>=\"true\" as on", () => {
+    localStorage.setItem("metaedu_feature_system_management", "true");
+    expect(loadFeatureFlags()).toEqual({ system_management: true });
+  });
+
+  it("treats non-\"true\" values as off", () => {
+    localStorage.setItem("metaedu_feature_system_management", "false");
+    localStorage.setItem("metaedu_feature_agent_workspace", "1");
+    expect(loadFeatureFlags()).toEqual({});
+  });
+
+  it("ignores unknown flag keys (no rogue flag passthrough)", () => {
+    localStorage.setItem("metaedu_feature_rogue_flag", "true");
+    expect(loadFeatureFlags()).toEqual({});
+  });
+
+  it("loads multiple known flags", () => {
+    localStorage.setItem("metaedu_feature_system_management", "true");
+    localStorage.setItem("metaedu_feature_agent_runtime", "true");
+    expect(loadFeatureFlags()).toEqual({
+      system_management: true,
+      agent_runtime: true,
+    });
   });
 });
