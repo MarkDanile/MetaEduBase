@@ -203,6 +203,8 @@ packages/server-python/app/composition/
 
 **复杂度/执行**：极高，`S-XH`；GLM-5.2 `max` 隐私/故障反审，人工数据负责人签字。
 
+**专项事实源**：R1 已拆分为 [专项契约](../01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md) 与 [S0-S6 实施计划](2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)。本节只保留联合契约摘要；后续实现、勾选和验证以专项 Plan 为准。
+
 交付：
 
 - 实现 30 天 Conversation recovery、Run/Event 90/365 天基线、payload tombstone 与 envelope bounds。
