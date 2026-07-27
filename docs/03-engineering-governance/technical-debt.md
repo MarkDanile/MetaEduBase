@@ -181,6 +181,7 @@
 | TD-085 | 收口 AI Chat、Skill 与 Agent App 的上下文边界倒置 | ⚫ 待办 | P1 | 后端 / Agent Platform / DDD / 可维护性 | [REQ-059](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md) / 2026-07-23 源码复核 |
 | TD-086 | 收口 Alembic target metadata 漂移并建立可执行 schema drift gate | ⚫ 待办 | P2 | 后端 / 数据库迁移 / CI / 质量门禁 | REQ-041 W1 migration 验证 / 2026-07-24 `alembic check` 实测 |
 | TD-087 | 模板管理 API 缺少后端 RBAC | 🟢 完成 | P1 | 后端 / Template / Identity / RBAC / 多租户 | [PR #495](https://github.com/MarkDanile/MetaEduBase/pull/495)（`40a7bf46`）：15 个管理端点统一高权守卫，最小 lookup DTO、脱敏审计与完整角色 / 租户矩阵通过 |
+| TD-088 | REQ-060 Slice 2 旧链接重定向移除 | 🔵 就绪 | P3 | 前端 / Web / Navigation / 技术债 | [PR #499](https://github.com/MarkDanile/MetaEduBase/pull/499)（`a1fa26dc`）：6 条旧链接重定向（/skill-editor /admin /admin/template(+/:id) /admin/mcp-servers /admin/skills -> 新路径）保留 1 版本周期后移除；移除前确认无外部书签/链接引用 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -242,6 +243,32 @@
 - 403 客户端响应固定脱敏，安全审计保留 actor、role、method、path；跨租户 lookup 明确断言 tenant A template ID 不可见。
 - 本地验证：Template 124 passed、TD-087 RBAC / lookup 92 passed、Identity 47 passed、Frontend 175 passed；Ruff、mypy baseline、ESLint、typecheck、docs gate、diff check 均通过。
 - PR 新 HEAD `e9dc1db2` 的 Backend / Frontend / Engineering docs 三路 CI 全绿；REQ-060 受保护模板路由原子迁移前置已解除。
+
+### TD-088: REQ-060 Slice 2 旧链接重定向移除
+
+状态：🔵 就绪
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P3 |
+| 领域 | 前端 / Web / Navigation / 技术债 |
+| 来源 | REQ-060 Slice 2（PR #499，`a1fa26dc`） |
+
+**问题**
+
+- REQ-060 Slice 2 新建 6 条旧链接重定向（`/skill-editor`、`/admin`、`/admin/template`、`/admin/template/:id`、`/admin/mcp-servers`、`/admin/skills` -> 新目标路径），保留 1 版本周期兼容外部书签。
+- 重定向路由无业务逻辑，长期保留增加 router 膨胀 + 维护成本。
+
+**完成标准**
+
+- 确认无外部书签/链接引用旧路径（可通过 access log / analytics 确认）。
+- 移除 6 条 redirect route record。
+- 全量前端测试 + typecheck + lint 通过。
+
+**验证方式**
+
+- `cd packages/web && pnpm vitest run && pnpm typecheck && pnpm lint`
+- `scripts/check-engineering-docs`
 
 ### TD-086: 收口 Alembic target metadata 漂移并建立可执行 schema drift gate
 
