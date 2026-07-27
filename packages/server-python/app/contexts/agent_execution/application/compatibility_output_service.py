@@ -125,6 +125,13 @@ class CompatibilityOutputService:
 
     @staticmethod
     def _to_snapshot(row: CompatibilityOutputModel) -> CompatibilityOutputSnapshot:
+        # 该快照只用于已完成的 terminal output 读取/重放，对应
+        # ``payload_state='present'``（正文非空）。redacted tombstone 是 R1 purge
+        # 后的状态，不会出现在此路径；在此断言边界，不让 Optional 泄漏到快照。
+        if row.reply_text is None or row.response_envelope is None:
+            raise RunConflictError(
+                "compatibility output body is erased; snapshot unavailable"
+            )
         return CompatibilityOutputSnapshot(
             tenant_id=row.tenant_id,
             conversation_id=row.conversation_id,

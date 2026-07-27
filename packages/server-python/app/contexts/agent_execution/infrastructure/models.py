@@ -339,6 +339,9 @@ class AgentRunModel(Base):
             name="ck_agent_run_terminal_envelope",
         ),
         CheckConstraint(
+            # completed：terminal output envelope 要么完整保留（含 B1 suppress
+            # 审计），要么在 R1 purge 后整体转 tombstone（清 ref/media_type/
+            # classification/message_id，保留 digest/size）。不允许部分清除。
             "(status = 'completed' AND terminal_output_ref IS NOT NULL "
             "AND char_length(btrim(terminal_output_ref)) > 0 "
             "AND terminal_output_ref = btrim(terminal_output_ref) "
@@ -353,6 +356,16 @@ class AgentRunModel(Base):
             "AND terminal_message_id IS NOT NULL "
             "AND output_publish_state IN ('pending', 'published', 'dead_letter', "
             "'suppressed')) OR "
+            # completed 且 output 已 suppress 的 R1 tombstone 分支：整体清除正文
+            # ref/media_type/classification/message_id，保留 digest/size。
+            "(status = 'completed' AND output_publish_state = 'suppressed' "
+            "AND terminal_output_ref IS NULL "
+            "AND char_length(terminal_output_digest) = 64 "
+            "AND terminal_output_size >= 0 "
+            "AND terminal_output_media_type IS NULL "
+            "AND terminal_output_classification IS NULL "
+            "AND terminal_message_id IS NULL) OR "
+            # 非 completed：不携带任何 terminal output 字段。
             "(status <> 'completed' AND terminal_output_ref IS NULL "
             "AND terminal_output_digest IS NULL AND terminal_output_size IS NULL "
             "AND terminal_output_media_type IS NULL "
@@ -505,8 +518,20 @@ class CompatibilityOutputModel(Base):
             name="ck_agent_compat_output_reply_size",
         ),
         CheckConstraint(
-            "jsonb_typeof(response_envelope) = 'object' "
-            "AND pg_column_size(response_envelope) <= 262144",
+            "payload_state IN ('present', 'redacted')",
+            name="ck_agent_compat_output_payload_state",
+        ),
+        CheckConstraint(
+            "(payload_state = 'present' AND reply_text IS NOT NULL "
+            "AND response_envelope IS NOT NULL) OR "
+            "(payload_state = 'redacted' AND reply_text IS NULL "
+            "AND response_envelope IS NULL)",
+            name="ck_agent_compat_output_payload",
+        ),
+        CheckConstraint(
+            "response_envelope IS NULL OR "
+            "(jsonb_typeof(response_envelope) = 'object' "
+            "AND pg_column_size(response_envelope) <= 262144)",
             name="ck_agent_compat_output_envelope_size",
         ),
         Index(
@@ -527,8 +552,11 @@ class CompatibilityOutputModel(Base):
     output_ref: Mapped[str] = mapped_column(String(500), nullable=False)
     output_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     response_digest: Mapped[str] = mapped_column(String(64), nullable=False)
-    reply_text: Mapped[str] = mapped_column(Text, nullable=False)
-    response_envelope: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    reply_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    response_envelope: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    payload_state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="present"
+    )
     media_type: Mapped[str] = mapped_column(String(100), nullable=False)
     classification: Mapped[str] = mapped_column(String(16), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -783,7 +811,8 @@ class ExecutionOutboxModel(Base):
     __tablename__ = "agent_execution_outbox"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending', 'claimed', 'published', 'dead_letter', 'cancelled')",
+            "status IN ('pending', 'claimed', 'published', 'dead_letter', "
+            "'cancelled', 'suppressed')",
             name="ck_agent_exec_outbox_status",
         ),
         CheckConstraint(
@@ -791,9 +820,12 @@ class ExecutionOutboxModel(Base):
             name="ck_agent_exec_outbox_digest",
         ),
         CheckConstraint(
-            "(payload_inline IS NOT NULL AND payload_ref IS NULL "
+            "(status = 'suppressed' AND payload_inline IS NULL "
+            "AND payload_ref IS NULL) OR "
+            "(status <> 'suppressed' AND "
+            "((payload_inline IS NOT NULL AND payload_ref IS NULL "
             "AND pg_column_size(payload_inline) <= 32768) OR "
-            "(payload_inline IS NULL AND payload_ref IS NOT NULL)",
+            "(payload_inline IS NULL AND payload_ref IS NOT NULL)))",
             name="ck_agent_exec_outbox_payload",
         ),
         CheckConstraint(

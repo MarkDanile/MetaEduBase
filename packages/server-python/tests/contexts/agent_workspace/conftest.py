@@ -8,6 +8,10 @@ from sqlalchemy.pool import NullPool
 from tests.conftest import TEST_DB_URL
 
 _CLEAN_SQL = (
+    "DELETE FROM metaedu.agent_conversation_legal_holds",
+    "DELETE FROM metaedu.agent_conversation_purge_owners",
+    "DELETE FROM metaedu.agent_conversation_purges",
+    "DELETE FROM metaedu.agent_erasure_fences",
     "DELETE FROM metaedu.agent_workspace_inbox",
     "DELETE FROM metaedu.agent_workspace_outbox",
     "DELETE FROM metaedu.agent_message_parts",

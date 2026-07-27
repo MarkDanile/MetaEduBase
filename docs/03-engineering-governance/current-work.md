@@ -14,11 +14,12 @@
 
 ## 当前进行中
 
-### REQ-041/047 R1-S0 Retention、Purge 与恢复专项塑形
+### REQ-041/047 R1-S1 Fence、Hold 与 Purge schema 基座
 
-状态：🟠 Awaiting Architecture Review（仅文档，不实施代码）
-类型：Architecture / Backend / Data Governance（GPT-5.6 Sol `xhigh`）
+状态：🟣 待验证（实现完成，等待全量回归 + Codex/安全复审 + PR）
+类型：Architecture / Backend / Data Governance（claude-opus-4-8[1m]，最高推理强度）
 领域：Conversation / Run / Retention / Erasure
+分支：feat/req041-047-r1-s1-erasure-schema-base
 
 需求来源：
 - Parent Spec: [REQ-041/047 联合核心契约](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md)
@@ -26,9 +27,11 @@
 - R1 Plan: [R1 分 Slice 实施计划](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
 - Backlog: [REQ-041/047](../01-product-planning/04-backlog.md)
 
-当前进展：REQ-060 已完整 Done；W1/E0/E1/B1/A1/D1 已合并。R1-S0 已按当前 ORM、Coordinator 与 writer 事实建立专项 Spec/Plan，拆为 S1-S6，并补充 tombstone schema、旧 Writer 发布门禁和备份恢复边界；当前没有 ErasureFence、legal hold、owner ACK、retention worker 或 Pi Worker，不能把文档塑形写成实现完成。文档 full gate 与 `git diff --check` 已通过。
+当前进展：R1 Spec §12 五项门禁用户已确认。R1-S1 已实现唯一版本化 `conversation_owner_key()`（跨进程 golden-vector）、code-defined owner registry（6 固定 `.v1` owner + canonical snapshot/digest + fail closed）、四张 coordination 表（ErasureFence/PurgeOperation/PurgeOwnerCheckpoint/ConversationLegalHold + Conversation.hold_revision）、Message/Run/CompatibilityOutput/transport tombstone expand-only schema，以及可恢复/幂等/分批/tenant 限流的 baseline fence backfill 命令。migration `034` expand-only、upgrade/downgrade/upgrade 往返通过；27 erasure 专项 + 全量 hermetic 后端 1742 passed / 0 failed；ruff 0 错误、mypy baseline 0 回归。不启动 scheduler、不清正文、不接 S2-S4 writer、不加 legal-hold API/UI、不实现 Runtime/external adapter。
 
-下一步：完成独立架构复核；由用户确认 R1 Spec §12 五项门禁后，单独启动 R1-S1 Fence/Hold/Purge schema 基座。
+下一步：提交并创建 PR（不合并）；由用户做独立安全复审 + Codex 复审。
+
+验证状态：migration 往返 / schema CHECK / tenant 复合键 / CAS / owner registry digest 决定性 / 并发 fence 唯一性（真实 PG）/ backfill 幂等分批重启全部通过；全量 hermetic 后端 1742 passed / 0 failed；ruff 0 错误；mypy baseline 0 回归；docs gate 与 git diff --check 通过。已修复 composition 测试隔离（autouse truncate agent 表），消除对 agent_workspace 迁移往返测试的污染。
 
 ## 下一批候选任务
 
