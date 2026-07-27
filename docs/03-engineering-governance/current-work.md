@@ -14,19 +14,19 @@
 
 ## 当前进行中
 
-### REQ-060 Slice 2: 受保护目标路由 + 守卫 + 重定向原子迁移
+### REQ-060 Slice 3: Sidebar / Home / Breadcrumb 统一投影
 
-状态：🟡 In Progress（Slice 2 实现完成，PR #499 复审 P0/P1 = 0/0，P2 修复已提交，待 Codex 最终复审，通过后由用户合并）
-类型：前端 + 后端守卫（P1）
+状态：🟡 In Progress（Slice 2 已合并归档 PR #499，Slice 3 启动中）
+类型：前端布局迁移（P1）
 领域：Web / IA / Navigation / RBAC
 
 需求来源：
 - Spec: [REQ-060](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md)
-- Plan: [Slice 2](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md)
+- Plan: [Slice 3](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md)
 
-当前进展：Slice 2 实现已落地（目标路由 + /403 + permission/feature guard + 6 条旧链接重定向）。PR #499 复审三处 P2 收口完成（2026-07-27）：(1) `nav.ts#loadFeatureFlags` 从 localStorage 读 `metaedu_feature_<flag>`，`router.ts` guard 调用之，修掉写死空 flags 致 `/system` 永远 403 的 bug；(2) 补 `/admin/template/:id` 参数保留测试，旧链接 6/6 覆盖；(3) Plan Slice 2 checkbox 全勾 + 后端 401/403 独立证据收口（template/mcp/skill/ai_app RBAC 测试）。router.spec 15 + nav.spec 43 = 58 tests GREEN。
+当前进展：Slice 1（nav foundation + permission resolver）+ Slice 2（受保护路由 + 守卫 + 重定向）已合并。Slice 3 启动：LayoutView 删 navItems/adminItems/aiAppItems 改 Route Record 投影 + HomeView 引用命名路由 + Breadcrumb + 精确高亮 activeNav。
 
-下一步：用户复审合并 PR #499；合并后归档至 work-log 并登记 TD（旧链接一个版本周期后移除）。
+下一步：实施 Slice 3 checklist（LayoutView/HomeView/Breadcrumb 迁移 + 7 角色导航矩阵 + 详情父高亮 + section 排序 + feature flag）。
 
 ## 下一批候选任务
 
@@ -34,7 +34,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1-P | REQ-060 Slice 3: Sidebar / Home / Breadcrumb 统一投影 | 🔵 Ready | Slice 2 合并后启动 | [Plan](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md) |
+| P1-P | REQ-060 Slice 4: 移动端 + a11y + Playwright + 收口 | 🔵 Ready | Slice 3 合并后启动 | [Plan](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md) |
 
 ## 最近完成
 
