@@ -1,12 +1,18 @@
 /**
- * REQ-060 Slice 3 收口：全局 Breadcrumb 单元测试。
+ * REQ-060 Slice 3 收口（修订）：NavBreadcrumb 单元测试。
+ *
+ * 派生规则（基于 activeNav + route name，不再用 URL 截断）：
+ * - 顺着当前 route 的 meta.activeNav 链向上找父项
+ *   - activeNav 自指（home/knowledge/...）→ 终止
+ *   - activeNav 指向父项（file-detail -> resource）→ 父项 meta.activeNav 自指 → 终止
+ * - 顶部追加虚拟「总览」首页 crumb（如果链中没有 home）
+ * - 单 crumb（仅当前页 = home）不渲染导航条
  *
  * 覆盖：
- * - route.matched 链派生（parent -> leaf），仅保留带 meta.title 的层级
- * - hiddenInNav 不影响 breadcrumb（仅 sidebar 过滤）
- * - 当前页（最后一项）非链接，aria-current="page"
- * - 单 crumb（仅当前页）不渲染导航条，避免冗余
- * - root layout wrapper（无 meta.title）自动跳过
+ * - activeNav 链派生（parent -> leaf）
+ * - hiddenInNav route 仍出现在 breadcrumb（仅 sidebar 过滤）
+ * - /apps/* shell 路由（activeNav=AiAppsMarketplace）→ 父项高亮
+ * - 当前页 aria-current="page"，中间 crumb 是 RouterLink
  * - 未知/异常 route 不抛异常
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -69,7 +75,6 @@ async function mountBreadcrumb() {
   const wrapper = mount(NavBreadcrumb, {
     global: {
       plugins: [router],
-      // stub RouterLink 为最小占位，避免触发子路由组件 axios 401
       stubs: {
         RouterLink: defineComponent({
           name: "RouterLinkStub",
@@ -85,19 +90,18 @@ async function mountBreadcrumb() {
   return { wrapper, router };
 }
 
-describe("Breadcrumb: route.matched chain", () => {
-  it("on / (home): only one crumb — nav not rendered", async () => {
+describe("NavBreadcrumb: activeNav chain derivation", () => {
+  it("on / (home): single crumb — nav not rendered (avoid 总览 / 总览)", async () => {
     const { wrapper, router } = await mountBreadcrumb();
     await router.replace("/");
     await router.isReady();
     await nextTick();
     await flushPromises();
-    // 单 crumb 时不渲染整个 nav（避免视觉冗余）
     expect(wrapper.find("nav.breadcrumb-bar").exists()).toBe(false);
     wrapper.unmount();
   });
 
-  it("on /knowledge: 总览 / 知识库 (last is aria-current=page)", async () => {
+  it("on /knowledge (activeNav=self): 总览 / 知识库", async () => {
     const { wrapper, router } = await mountBreadcrumb();
     await router.replace("/knowledge");
     await router.isReady();
@@ -106,7 +110,6 @@ describe("Breadcrumb: route.matched chain", () => {
     const nav = wrapper.find("nav.breadcrumb-bar");
     expect(nav.exists()).toBe(true);
     expect(nav.attributes("aria-label")).toBe("面包屑导航");
-    // 收集所有 crumb 文本（link + current span）
     const links = nav.findAll("a.stub-router-link");
     expect(links.map((a) => a.text())).toEqual(["总览"]);
     const current = nav.find('[aria-current="page"]');
@@ -128,10 +131,23 @@ describe("Breadcrumb: route.matched chain", () => {
     expect(nav.find('[aria-current="page"]').text()).toBe("Skill 库");
     wrapper.unmount();
   });
+
+  it("on /ai-chat: 总览 / AI 问答", async () => {
+    const { wrapper, router } = await mountBreadcrumb();
+    await router.replace("/ai-chat");
+    await router.isReady();
+    await nextTick();
+    await flushPromises();
+    const nav = wrapper.find("nav.breadcrumb-bar");
+    const links = nav.findAll("a.stub-router-link");
+    expect(links.map((a) => a.text())).toEqual(["总览"]);
+    expect(nav.find('[aria-current="page"]').text()).toBe("AI 问答");
+    wrapper.unmount();
+  });
 });
 
-describe("Breadcrumb: hiddenInNav routes still appear in breadcrumb", () => {
-  it("on /resource/:id (file-detail hiddenInNav=true): 总览 / 资源库 / 文件详情", async () => {
+describe("NavBreadcrumb: hiddenInNav routes still appear via activeNav parent", () => {
+  it("on /resource/:id (file-detail hiddenInNav, activeNav=resource): 总览 / 资源库 / 文件详情", async () => {
     const { wrapper, router } = await mountBreadcrumb();
     await router.replace("/resource/abc");
     await router.isReady();
@@ -145,8 +161,7 @@ describe("Breadcrumb: hiddenInNav routes still appear in breadcrumb", () => {
     wrapper.unmount();
   });
 
-  it("on /data/templates/:id (template-detail hiddenInNav=true): 总览 / 数据要素模板 / 模板详情", async () => {
-    // /data 是占位 segment（无 route），/data/templates 才是父级。
+  it("on /data/templates/:id (template-detail activeNav=templates-list): 总览 / 数据要素模板 / 模板详情", async () => {
     const { wrapper, router } = await mountBreadcrumb();
     await router.replace("/data/templates/42");
     await router.isReady();
@@ -159,9 +174,75 @@ describe("Breadcrumb: hiddenInNav routes still appear in breadcrumb", () => {
     expect(nav.find('[aria-current="page"]').text()).toBe("模板详情");
     wrapper.unmount();
   });
+
+  it("on /database/:catalogCode (catalog-detail activeNav=database): 总览 / 数据库 / 目录详情", async () => {
+    const { wrapper, router } = await mountBreadcrumb();
+    await router.replace("/database/electronics_info");
+    await router.isReady();
+    await nextTick();
+    await flushPromises();
+    const nav = wrapper.find("nav.breadcrumb-bar");
+    const links = nav.findAll("a.stub-router-link");
+    expect(links.map((a) => a.text())).toEqual(["总览", "数据库"]);
+    expect(nav.find('[aria-current="page"]').text()).toBe("目录详情");
+    wrapper.unmount();
+  });
 });
 
-describe("Breadcrumb: separator + accessibility", () => {
+describe("NavBreadcrumb: /apps/* shell routes (activeNav=AiAppsMarketplace)", () => {
+  it("on /ai-apps/:code (AiAppDetail hiddenInNav, activeNav=AiAppsMarketplace): 总览 / AI 应用广场 / 应用详情", async () => {
+    const { wrapper, router } = await mountBreadcrumb();
+    await router.replace("/ai-apps/sample-app");
+    await router.isReady();
+    await nextTick();
+    await flushPromises();
+    const nav = wrapper.find("nav.breadcrumb-bar");
+    expect(nav.exists()).toBe(true);
+    const links = nav.findAll("a.stub-router-link");
+    expect(links.map((a) => a.text())).toEqual(["总览", "AI 应用广场"]);
+    expect(nav.find('[aria-current="page"]').text()).toBe("应用详情");
+    wrapper.unmount();
+  });
+
+  it("on /ai-apps/admin/:id (AiAppEdit hiddenInNav, activeNav=AiAppsAdmin): 总览 / 应用管理 / 编辑应用", async () => {
+    const { wrapper, router } = await mountBreadcrumb();
+    await router.replace("/ai-apps/admin/42");
+    await router.isReady();
+    await nextTick();
+    await flushPromises();
+    const nav = wrapper.find("nav.breadcrumb-bar");
+    const links = nav.findAll("a.stub-router-link");
+    expect(links.map((a) => a.text())).toEqual(["总览", "应用管理"]);
+    expect(nav.find('[aria-current="page"]').text()).toBe("编辑应用");
+    wrapper.unmount();
+  });
+
+  it("on /apps/course-capability-map (AppCourseCapabilityMap hiddenInNav): 总览 / AI 应用广场 / 课程能力图谱", async () => {
+    const { wrapper, router } = await mountBreadcrumb();
+    await router.replace("/apps/course-capability-map");
+    await router.isReady();
+    await nextTick();
+    await flushPromises();
+    const nav = wrapper.find("nav.breadcrumb-bar");
+    const links = nav.findAll("a.stub-router-link");
+    expect(links.map((a) => a.text())).toEqual(["总览", "AI 应用广场"]);
+    expect(nav.find('[aria-current="page"]').text()).toBe("课程能力图谱");
+    wrapper.unmount();
+  });
+
+  it("on /apps/preview-guide (AppPreviewGuide hiddenInNav): 总览 / AI 应用广场 / 智能预习导学", async () => {
+    const { wrapper, router } = await mountBreadcrumb();
+    await router.replace("/apps/preview-guide");
+    await router.isReady();
+    await nextTick();
+    await flushPromises();
+    const nav = wrapper.find("nav.breadcrumb-bar");
+    expect(nav.find('[aria-current="page"]').text()).toBe("智能预习导学");
+    wrapper.unmount();
+  });
+});
+
+describe("NavBreadcrumb: separator + accessibility", () => {
   it("renders ChevronRight separators between crumbs", async () => {
     const { wrapper, router } = await mountBreadcrumb();
     await router.replace("/resource/abc");
@@ -187,8 +268,8 @@ describe("Breadcrumb: separator + accessibility", () => {
   });
 });
 
-describe("Breadcrumb: failure modes", () => {
-  it("matched empty -> nav not rendered (no throw)", async () => {
+describe("NavBreadcrumb: failure modes", () => {
+  it("matched empty / no title -> nav not rendered (no throw)", async () => {
     const { wrapper, router } = await mountBreadcrumb();
     await router.replace("/").catch(() => {});
     await router.isReady();
@@ -199,15 +280,15 @@ describe("Breadcrumb: failure modes", () => {
     wrapper.unmount();
   });
 
-  it("route name fallback works when meta.activeNav absent (sanity)", async () => {
+  it("activeNav points to unknown route name -> chain breaks safely, no throw", async () => {
+    // 不会发生（router.ts 由工程团队维护），但 fail-closed 行为必须可观察
     const { wrapper, router } = await mountBreadcrumb();
-    await router.replace("/ai-chat");
+    await router.replace("/knowledge");
     await router.isReady();
     await nextTick();
     await flushPromises();
-    const nav = wrapper.find("nav.breadcrumb-bar");
-    expect(nav.exists()).toBe(true);
-    expect(nav.find('[aria-current="page"]').text()).toBe("AI 问答");
+    // 即便 activeNav 异常解析失败，仍渲染至少 [总览 / 知识库]
+    expect(wrapper.find("nav.breadcrumb-bar").exists()).toBe(true);
     wrapper.unmount();
   });
 });

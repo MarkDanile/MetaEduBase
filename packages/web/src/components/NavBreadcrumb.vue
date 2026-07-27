@@ -1,9 +1,10 @@
 <template>
   <!--
-    REQ-060 Slice 3 收口：全局 Breadcrumb（NavBreadcrumb）。
-    从 route.matched 链派生（Vue Router matched = parent -> leaf 顺序）。
-    仅显示含 meta.title 的层级（root layout 无 meta.title，自动跳过）。
-    hiddenInNav 不影响 breadcrumb（sidebar 控制可见入口；breadcrumb 显示已到达的页面路径）。
+    REQ-060 Slice 3 收口（修订）：全局 Breadcrumb（NavBreadcrumb）。
+    派生链 = 虚拟首页 crumb + 当前 route 的 activeNav 指向的 sidebar route +
+    当前 route 自身（如果当前 route 自身不在 sidebar 即 hiddenInNav）。
+    全部数据来自 Route Record 的 meta.activeNav/meta.title，无 URL 推断。
+    hiddenInNav 不影响 breadcrumb（仅 sidebar 过滤）。
     当前页（最后一项）非链接，aria-current="page"，符合 WAI-ARIA breadcrumb 模式。
   -->
   <nav
@@ -11,7 +12,7 @@
     class="breadcrumb-bar flex items-center gap-1.5 text-[var(--text-micro)] text-[var(--color-ink-tertiary)] mb-3"
     aria-label="面包屑导航"
   >
-    <template v-for="(crumb, i) in crumbs" :key="`${crumb.path}-${i}`">
+    <template v-for="(crumb, i) in crumbs" :key="`${crumb.name}-${i}`">
       <RouterLink
         v-if="i < crumbs.length - 1"
         :to="{ name: crumb.name }"
@@ -39,94 +40,76 @@ import { ChevronRight } from "lucide-vue-next";
 
 interface Crumb {
   name: string;
-  path: string;
   title: string;
+}
+
+interface RouteMeta {
+  title?: string;
+  section?: string;
+  activeNav?: string;
 }
 
 const route = useRoute();
 const router = useRouter();
 
-/**
- * Breadcrumb 链派生规则：
- * - route.matched 仅含 parent -> leaf 链。对 `/resource/:id`，matched = [root, file-detail]
- *   （资源库 `/resource` 是 sibling，不是 parent），故 matched 不含「资源库」。
- * - 为详情页补中间 crumb：把当前 path 的最后一段剥掉，找到首个匹配的有
- *   meta.title 的 route；这就是「详情父级」section 入口（如 资源库）。
- * - 在链最前面追加虚拟「总览」首页 crumb（指向 home route）。
- */
+function readMeta(meta: unknown): RouteMeta {
+  return (meta ?? {}) as RouteMeta;
+}
+
+function findRouteByName(name: string) {
+  return router.getRoutes().find((r) => r.name === name);
+}
+
+function crumbFromName(name: string): Crumb | null {
+  const r = findRouteByName(name);
+  if (!r) return null;
+  const meta = readMeta(r.meta);
+  if (!meta.title) return null;
+  return { name, title: meta.title };
+}
+
 const crumbs = computed<Crumb[]>(() => {
-  const matched = route.matched.filter(
-    (r) => Boolean((r.meta as { title?: string } | undefined)?.title),
-  );
-  if (matched.length === 0) return [];
+  const currentMeta = readMeta(route.meta);
+  const currentName = typeof route.name === "string" ? route.name : "";
+  if (!currentName || !currentMeta.title) return [];
 
-  const leaf = matched[matched.length - 1];
-  const leafName = typeof leaf.name === "string" ? leaf.name : "";
-  const leafMeta = leaf.meta as { title: string };
+  const chain: Crumb[] = [];
+  const visited = new Set<string>();
 
-  // 1. 当前页就是 home -> 只渲染 总览（避免 总览 / 总览）
-  if (leafName === "home") {
-    return [{ name: "home", path: "/", title: leafMeta.title }];
+  // 1. 顺着 activeNav 链向上找父项 crumb（activeNav 链以 home 终止）。
+  //    典型链路：file-detail -> resource -> home；AiAppDetail -> AiAppsMarketplace -> home。
+  let cursor: string | undefined = currentName;
+  const cursorChain: string[] = [];
+  while (cursor && !visited.has(cursor)) {
+    visited.add(cursor);
+    cursorChain.push(cursor);
+    const meta = readMeta(findRouteByName(cursor)?.meta);
+    if (!meta.activeNav) break;
+    if (meta.activeNav === cursor) break;
+    cursor = meta.activeNav;
   }
 
-  // 2. 找「详情父级」section 入口（向上找第一个匹配的有 meta.title 的具名 route）
-  // 例：/data/templates/42 -> /data/templates（数据要素模板）
-  // 例：/resource/abc -> /resource（资源库）
-  // 例：/database/x -> /database（数据库）
-  const pathSegments = route.path.split("/").filter(Boolean);
-  const parentCrumbs: Crumb[] = [];
-  if (pathSegments.length > 1) {
-    const allRoutes = router.getRoutes();
-    for (let i = pathSegments.length - 1; i > 0; i--) {
-      const candidatePath = "/" + pathSegments.slice(0, i).join("/");
-      const parentRoute = allRoutes.find(
-        (r) =>
-          r.path === candidatePath &&
-          typeof r.name === "string" &&
-          r.name !== leafName &&
-          Boolean((r.meta as { title?: string } | undefined)?.title),
-      );
-      if (parentRoute) {
-        const meta = parentRoute.meta as { title: string };
-        parentCrumbs.push({
-          name: String(parentRoute.name),
-          path: parentRoute.path,
-          title: meta.title,
-        });
-        // 只取最近一级父（避免 /a/b/c 撞出多个 parent）
-        break;
-      }
-    }
+  // cursorChain = [current, parent, grandparent, ..., home]
+  // breadcrumb 顺序 = reverse（home 在前，current 在末尾）
+  for (const name of cursorChain.reverse()) {
+    const crumb = crumbFromName(name);
+    if (crumb) chain.push(crumb);
   }
 
-  // 3. 拼装：虚拟「总览」 + 可选父级 + matched 链（matched 已含 leaf，去重）
-  const matchedCrumbs: Crumb[] = matched.map((r) => {
-    const meta = r.meta as { title: string };
-    return {
-      name: typeof r.name === "string" ? r.name : "",
-      path: r.path,
-      title: meta.title,
-    };
-  });
-  const chain: Crumb[] = [
-    { name: "home", path: "/", title: "总览" },
-    ...parentCrumbs,
-    ...matchedCrumbs,
-  ];
-  // 去重（按 path + title）
-  const seen = new Set<string>();
-  return chain.filter((c) => {
-    const key = `${c.path}::${c.title}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  // 2. 顶部追加虚拟「总览」首页 crumb（如果链中没有 home）。
+  //    例：/knowledge 的 activeNav = knowledge（自指），cursorChain 只有 [knowledge]，
+  //    必须加 home 才能形成 "总览 / 知识库" 链。
+  if (chain.length === 0 || chain[0].name !== "home") {
+    const home = crumbFromName("home");
+    if (home) chain.unshift(home);
+  }
+
+  return chain;
 });
 </script>
 
 <style scoped>
 .breadcrumb-bar {
-  /* 与 PageHeader 间距一致：8px gutter */
   min-height: 18px;
 }
 </style>

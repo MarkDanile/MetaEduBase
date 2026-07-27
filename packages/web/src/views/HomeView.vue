@@ -97,12 +97,9 @@ import { computed, ref, onMounted } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 import {
   BookOpen,
-  Database,
   FolderOpen,
   MessageSquare,
-  LayoutTemplate,
   Workflow,
-  Plug,
   Bot,
   Upload,
   Globe2,
@@ -112,11 +109,18 @@ import { useAuthStore } from "@/stores/auth";
 import { roleShortMap } from "@/constants/maps";
 import PageHeader from "@/components/PageHeader.vue";
 import api from "@/services/api";
-import { canAccess, loadFeatureFlags } from "@/app/nav";
+import { loadFeatureFlags, projectNavigation, type NavItem, type NavSection } from "@/app/nav";
 
 interface HomeCard {
   name: string;
   title: string;
+  desc: string;
+  icon: LucideIcon;
+  bgClass: string;
+  iconClass: string;
+}
+
+interface SectionMeta {
   desc: string;
   icon: LucideIcon;
   bgClass: string;
@@ -178,181 +182,148 @@ const recentActivities = [
   { text: "知识节点「智能制造」已校验", time: "2 天前", dotClass: "bg-[var(--color-success)]" },
 ];
 
-// REQ-060 Slice 3 收口：HomeView 展示配置只引用 route name；path、permission、
-// hidden、feature flag 从 Route Record 解析。"技能编排" 旧入口在 Slice 2 已
-// 重定向到 capabilities-skills，按 plan "下线技能编排" 不再列在首页。
-interface CardSpec {
-  name: string;
-  title: string;
-  desc: string;
-  icon: LucideIcon;
-  bgClass: string;
-  iconClass: string;
-}
-
-const CARD_SPECS: CardSpec[] = [
-  {
-    name: "knowledge",
-    title: "知识库",
-    desc: "构建和管理结构化的职业教育知识体系",
-    icon: BookOpen,
-    bgClass: "bg-[var(--color-accent-bg)]",
-    iconClass: "text-[var(--color-accent)]",
+// REQ-060 Slice 3 收口（修订）：HomeView 通过 projectNavigation 投影 Route Record
+// 派生可见的 home cards，不再硬编码 CARD_SPECS 白名单。section 文案/图标/配色是
+// 展示层 metadata，不参与 RBAC（RBAC 由 route meta.permission/featureFlag + canAccess
+// 决定，projectNavigation 已 fail-closed）。
+const SECTION_META: Record<NavSection, SectionMeta> = {
+  overview: {
+    desc: "首页",
+    icon: Globe2,
+    bgClass: "bg-[var(--color-tag-purple)]",
+    iconClass: "text-[var(--color-tag-purple-text)]",
   },
-  {
-    name: "resource",
-    title: "资源库",
-    desc: "上传和管理教学文档、视频等多媒体资源",
-    icon: FolderOpen,
-    bgClass: "bg-[var(--color-tag-green)]",
-    iconClass: "text-[var(--color-tag-green-text)]",
-  },
-  {
-    name: "database",
-    title: "数据库",
-    desc: "管理结构化数据集与知识图谱构建",
-    icon: Database,
-    bgClass: "bg-[var(--color-tag-amber)]",
-    iconClass: "text-[var(--color-tag-amber-text)]",
-  },
-  {
-    name: "ai-chat",
-    title: "AI 问答",
+  ai_work: {
     desc: "基于知识库的智能问答，精准检索课程内容",
     icon: MessageSquare,
     bgClass: "bg-[var(--color-highlight-bg)]",
     iconClass: "text-[var(--color-highlight)]",
   },
-  {
-    name: "templates-list",
-    title: "数据要素模板",
-    desc: "配置结构化文档抽取模板与字段定义",
-    icon: LayoutTemplate,
-    bgClass: "bg-[var(--color-tag-purple)]",
-    iconClass: "text-[var(--color-tag-purple-text)]",
-  },
-  {
-    name: "capabilities-skills",
-    title: "Skill 库",
-    desc: "管理 AI 技能定义与执行流程",
-    icon: Workflow,
-    bgClass: "bg-[var(--color-tag-blue)]",
-    iconClass: "text-[var(--color-tag-blue-text)]",
-  },
-  {
-    name: "capabilities-mcp",
-    title: "MCP 工具",
-    desc: "注册和管理外部 MCP 数据源",
-    icon: Plug,
-    bgClass: "bg-[var(--color-tag-blue)]",
-    iconClass: "text-[var(--color-tag-blue-text)]",
-  },
-  {
-    name: "AiAppsMarketplace",
-    title: "AI 应用广场",
+  apps: {
     desc: "浏览与使用已发布的智能体应用",
     icon: Bot,
     bgClass: "bg-[var(--color-accent-bg)]",
     iconClass: "text-[var(--color-accent)]",
   },
-];
+  knowledge_data: {
+    desc: "管理结构化数据集与知识图谱构建",
+    icon: BookOpen,
+    bgClass: "bg-[var(--color-tag-amber)]",
+    iconClass: "text-[var(--color-tag-amber-text)]",
+  },
+  capabilities: {
+    desc: "管理 AI 技能定义与 MCP 工具",
+    icon: Workflow,
+    bgClass: "bg-[var(--color-tag-blue)]",
+    iconClass: "text-[var(--color-tag-blue-text)]",
+  },
+  system: {
+    desc: "系统管理（hiddenInNav，由 feature flag 控制可见）",
+    icon: Globe2,
+    bgClass: "bg-[var(--color-bg-warm)]",
+    iconClass: "text-[var(--color-ink-tertiary)]",
+  },
+};
 
-const SHORTCUT_SPECS: CardSpec[] = [
+// HomeView 排除：overview（首页本身）+ system（hiddenInNav，未交付功能）
+const HOMECARD_SECTIONS: ReadonlySet<NavSection> = new Set<NavSection>([
+  "ai_work",
+  "knowledge_data",
+  "capabilities",
+  "apps",
+]);
+
+function itemToCard(item: NavItem, meta: SectionMeta): HomeCard {
+  return {
+    name: item.name,
+    title: item.title,
+    desc: meta.desc,
+    icon: (item.icon as LucideIcon | undefined) ?? meta.icon,
+    bgClass: meta.bgClass,
+    iconClass: meta.iconClass,
+  };
+}
+
+// 每个 section 选 1 张主卡片：取 meta.order 最小的可见 item（projectNavigation 已排序）
+function pickHomeCards(sections: ReturnType<typeof projectNavigation>): HomeCard[] {
+  const cards: HomeCard[] = [];
+  for (const section of sections) {
+    if (!HOMECARD_SECTIONS.has(section.id)) continue;
+    const first = section.items[0];
+    if (!first) continue;
+    cards.push(itemToCard(first, SECTION_META[section.id]));
+  }
+  return cards;
+}
+
+// 快捷操作：与 home cards 同源（projection）。SHORTCUT_MAPPINGS 声明展示层
+// 文案/图标 + 目标 (section, itemName)；可见性经 projectNavigation fail-closed
+// 过滤（权限缺失或 feature flag off 的目标自动隐藏）。
+interface ShortcutMapping {
+  section: NavSection;
+  itemName: string;
+  title: string;
+  desc: string;
+  icon: LucideIcon;
+}
+
+const SHORTCUT_MAPPINGS: ShortcutMapping[] = [
   {
-    name: "knowledge",
+    section: "knowledge_data",
+    itemName: "knowledge",
     title: "浏览知识目录",
     desc: "查看专业和课程层级",
     icon: BookOpen,
-    bgClass: "",
-    iconClass: "",
   },
   {
-    name: "ai-chat",
+    section: "ai_work",
+    itemName: "ai-chat",
     title: "AI 智能问答",
     desc: "提问职教相关问题",
     icon: MessageSquare,
-    bgClass: "",
-    iconClass: "",
   },
   {
-    name: "resource",
+    section: "knowledge_data",
+    itemName: "resource",
     title: "上传教学资源",
     desc: "添加文档、视频等",
     icon: Upload,
-    bgClass: "",
-    iconClass: "",
   },
 ];
+
+interface Shortcut {
+  name: string;
+  title: string;
+  desc: string;
+  icon: LucideIcon;
+}
+
+const shortcuts = computed<Shortcut[]>(() => {
+  const ctx = {
+    role: authStore.userRole,
+    featureFlags: loadFeatureFlags(),
+  };
+  const sections = projectNavigation(router.getRoutes(), ctx);
+  const visibleKeys = new Set<string>();
+  for (const s of sections) {
+    for (const it of s.items) visibleKeys.add(`${s.id}::${it.name}`);
+  }
+  return SHORTCUT_MAPPINGS.filter((m) =>
+    visibleKeys.has(`${m.section}::${m.itemName}`),
+  ).map((m) => ({
+    name: m.itemName,
+    title: m.title,
+    desc: m.desc,
+    icon: m.icon,
+  }));
+});
 
 const homeCards = computed<HomeCard[]>(() => {
   const ctx = {
     role: authStore.userRole,
     featureFlags: loadFeatureFlags(),
   };
-  const routes = router.getRoutes();
-  return CARD_SPECS.filter((spec) => {
-    const record = routes.find(
-      (r) => typeof r.name === "string" && r.name === spec.name,
-    );
-    if (!record) return false;
-    const meta = (record.meta ?? {}) as {
-      title?: string;
-      section?: string;
-      permission?: Parameters<typeof canAccess>[0]["permission"];
-      featureFlag?: Parameters<typeof canAccess>[0]["featureFlag"];
-      hiddenInNav?: boolean;
-    };
-    return canAccess(
-      {
-        title: meta.title ?? "",
-        section: (meta.section as never) ?? ("overview" as never),
-        permission: meta.permission,
-        featureFlag: meta.featureFlag,
-      },
-      ctx,
-    );
-  }).map((spec) => ({
-    name: spec.name,
-    title: spec.title,
-    desc: spec.desc,
-    icon: spec.icon,
-    bgClass: spec.bgClass,
-    iconClass: spec.iconClass,
-  }));
-});
-
-const shortcuts = computed(() => {
-  const ctx = {
-    role: authStore.userRole,
-    featureFlags: loadFeatureFlags(),
-  };
-  const routes = router.getRoutes();
-  return SHORTCUT_SPECS.filter((spec) => {
-    const record = routes.find(
-      (r) => typeof r.name === "string" && r.name === spec.name,
-    );
-    if (!record) return false;
-    const meta = (record.meta ?? {}) as {
-      title?: string;
-      section?: string;
-      permission?: Parameters<typeof canAccess>[0]["permission"];
-      featureFlag?: Parameters<typeof canAccess>[0]["featureFlag"];
-    };
-    return canAccess(
-      {
-        title: meta.title ?? "",
-        section: (meta.section as never) ?? ("overview" as never),
-        permission: meta.permission,
-        featureFlag: meta.featureFlag,
-      },
-      ctx,
-    );
-  }).map((spec) => ({
-    name: spec.name,
-    title: spec.title,
-    desc: spec.desc,
-    icon: spec.icon,
-  }));
+  return pickHomeCards(projectNavigation(router.getRoutes(), ctx));
 });
 
 async function loadStats() {

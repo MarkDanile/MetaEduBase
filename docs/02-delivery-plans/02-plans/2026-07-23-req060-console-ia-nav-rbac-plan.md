@@ -41,13 +41,14 @@ R1 修订后按 5 个交付 Gate 实施。每个 Gate 独立 PR，但受保护�
 
 ## Slice 3：Sidebar / Home / Breadcrumb 统一投影
 
-- [ ] `LayoutView.vue` 删除 `navItems/adminItems/aiAppItems` path/permission 数组，使用 Route Record 投影并按 section 渲染。
-- [ ] `HomeView.vue` 展示配置只引用 route name；path、permission、hidden 和 feature flag 从 Route Record 解析。
-- [ ] 新建或复用全局 Breadcrumb，使用 section + `activeNav`；不得干扰知识库页面内部的数据层级 breadcrumb。
-- [ ] 下线“技能编排”；MCP/Skill 归能力中心，模板归知识与数据；未交付 system 子页不显示。
-- [ ] 精确高亮：比较 `current.meta.activeNav ?? current.name`，禁止 path `startsWith`。
-- [ ] 覆盖 7 角色最小导航矩阵、详情页唯一父高亮、首页无失效/占位入口、section 排序和 feature flag。
+- [x] `LayoutView.vue` 删除 `navItems/adminItems/aiAppItems` path/permission 数组，使用 Route Record 投影并按 section 渲染。
+- [x] `HomeView.vue` 展示配置只引用 route name；path、permission、hidden 和 feature flag 从 Route Record 解析。HomeView 通过 `projectNavigation` 投影每个 section 的首张卡片（不含 overview/system），shortcut 由 `(section, itemName)` 映射 + projection 可见性过滤。
+- [x] 新建全局 `NavBreadcrumb` 组件（`packages/web/src/components/NavBreadcrumb.vue`），使用 `route.matched + meta.activeNav` 链向上追溯到 home，无 URL 截断；hiddenInNav route 仍出现 crumb。
+- [x] 下线”技能编排”；MCP/Skill 归能力中心，模板归知识与数据；未交付 system 子页不显示。
+- [x] 精确高亮：比较 `current.meta.activeNav ?? current.name`，禁止 path `startsWith`。
+- [x] 覆盖 7 角色最小导航矩阵（LayoutView.spec.ts 7 角色 × section label 集合断言）、详情页唯一父高亮（5 条）、首页无失效/占位入口（HomeView.spec.ts 11 条）、section 排序（nav.spec.ts 既有）、feature flag（LayoutView.spec.ts）。
 - **复杂度**：高（全局布局迁移 + 多入口回归）。
+- **完成 commit**：`7dec33e1`（初版收口）+ 后续 P1 修订（详见 PR #501）。
 - **推荐模型**：GPT-5.6 Sol `medium/high` 或 Kimi K3 thinking 负责 UI；RBAC Review 使用 Sol `high`。
 
 ## Slice 4：移动端、a11y、Playwright 与收口
