@@ -465,15 +465,14 @@ function collectActiveLabels(wrapper: ReturnType<typeof mount>): string[] {
 }
 
 /* =========================================================================
- * REQ-060 Slice 4: 移动端 drawer + a11y + skip-link + aria-current
+ * REQ-060 Slice 4: 移动端 drawer + a11y + aria-current
  * =======================================================================*/
 
-describe("LayoutView: skip-link (a11y)", () => {
-  it("渲染指向 #main-content 的 skip-link", async () => {
+describe("LayoutView: 不重复 skip-link（由 App.vue 全局提供）", () => {
+  it("LayoutView 不渲染 skip-link（避免与 App.vue 全局链接重复）", async () => {
     const { wrapper } = await mountLayout("admin");
     const skip = wrapper.find("a.skip-link");
-    expect(skip.exists()).toBe(true);
-    expect(skip.attributes("href")).toBe("#main-content");
+    expect(skip.exists()).toBe(false);
     wrapper.unmount();
   });
 });

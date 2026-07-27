@@ -1,7 +1,7 @@
 <template>
   <div class="flex min-h-screen">
-    <!-- REQ-060 Slice 4: skip-link（a11y） -->
-    <a href="#main-content" class="skip-link">跳到主要内容</a>
+    <!-- REQ-060 Slice 4: skip-link 由 App.vue 全局提供（sr-only focus:not-sr-only），
+         此处不再重复，避免 DOM 出现两个 href=#main-content 链接导致 Tab 序列错误。 -->
 
     <!-- REQ-060 Slice 4: 移动端 top-bar（<768 显示） -->
     <header
@@ -295,40 +295,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* REQ-060 Slice 4: skip-link 视觉隐藏 + focus 显示
-   使用 sr-only clip 模式（比 position:absolute + top:-40px 更可靠，
-   确保所有浏览器（含 headless Chrome on Linux）将链接保留在 Tab 序列中） */
-.skip-link {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-  z-index: 9999;
-}
-.skip-link:focus,
-.skip-link:focus-visible {
-  position: fixed;
-  top: 8px;
-  left: 8px;
-  width: auto;
-  height: auto;
-  padding: 8px 12px;
-  margin: 0;
-  overflow: visible;
-  clip: auto;
-  background: var(--color-accent);
-  color: white;
-  font-size: var(--text-caption);
-  text-decoration: none;
-  border-radius: var(--radius-md);
-  outline: 2px solid var(--color-ink);
-  outline-offset: 2px;
-}
+/* REQ-060 Slice 4: skip-link CSS 已移除 -- 由 App.vue 全局 sr-only/focus:not-sr-only 提供。 */
 
 .user-menu-item {
   display: flex;

@@ -24,17 +24,15 @@
 - Spec: [REQ-060](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md)
 - Plan: [Slice 4](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md)
 
-当前进展：Slice 1/2/3 已合并。Slice 4 PR #503 五轮返修（commit 0b20b412）：useMobileDrawer composable（15 tests）+ LayoutView 重构（+15 tests = 47 total）+ Playwright 3 组 spec（shared/desktop/mobile testMatch 分流）+ API route mock + 结构视觉断言 + ci.yml 接入 e2e + tsconfig.e2e.json 类型门禁。Frontend CI 50/51 passed（skip-link 键盘测试在 CI 浏览器不稳定，正在修复 CSS + 确定性键盘起点 + drawer inert/aria-hidden + 路由关闭焦点返回）。待 Playwright 全绿。
+当前进展：Slice 1/2/3 已合并。Slice 4 PR #503 六轮返修（commit cc4d59db）：useMobileDrawer composable（15 tests）+ LayoutView 重构（+15 tests = 47 total）+ Playwright 3 组 spec（shared/desktop/mobile testMatch 分流）+ API route mock + 结构视觉断言 + ci.yml 接入 e2e + tsconfig.e2e.json + drawer inert/aria-hidden + 路由关闭焦点返回 #main-content + skip-link 单一所有权（App.vue 全局，删除 LayoutView 重复）。Playwright 54/55（仅 skip-link 重复导致 CI 失败，本轮修复）。待 Playwright 55/55 + 三路 CI 全绿。
 
-下一步：返修完成 -> Playwright 全绿 -> Codex 复审 -> 合并 PR #503 -> 归档 work-log + REQ-060 Done。
+下一步：Playwright 55/55 -> Codex 最终复审 -> 合并 PR #503 -> 归档 work-log + REQ-060 Done。
 
 ## 下一批候选任务
 
 按"建议执行顺序"排序；候选区只保留近期 1 到 3 个入口，完整任务池回 `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/technical-debt.md`。
 
-| 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
-|--------|------|------|------------|--------|
-
+（REQ-060 Slice 4 合并后更新候选区）
 
 ## 最近完成
 

@@ -161,17 +161,13 @@ test.describe("desktop: skip-link 键盘验收", () => {
     await setupE2E(page, "admin");
     await page.goto("/");
     await page.waitForLoadState("networkidle");
-    const skip = page.locator("a.skip-link");
-    await expect(skip).toHaveAttribute("href", "#main-content");
-    await skip.waitFor({ state: "attached" });
-    // 建立确定的键盘起点：blur 当前焦点 + 聚焦 body
-    await page.evaluate(() => {
-      (document.activeElement as HTMLElement)?.blur();
-      document.body.focus();
-    });
-    // Tab 到 skip-link（DOM 第一个可聚焦元素，sr-only clip 模式保留在 Tab 序列中）
+    // App.vue 提供全局 skip-link（sr-only focus:not-sr-only），
+    // LayoutView 不再重复。全页面应只有一个 href=#main-content 链接。
+    const skipLinks = page.locator('a[href="#main-content"]');
+    await expect(skipLinks).toHaveCount(1);
+    // 真实键盘 Tab（不调用 blur/focus 程序化操作）
     await page.keyboard.press("Tab");
-    await expect(skip).toBeFocused();
+    await expect(skipLinks).toBeFocused();
     // Enter 跳转到 #main-content
     await page.keyboard.press("Enter");
     // main-content 获得焦点（tabindex=-1 使其可编程聚焦）

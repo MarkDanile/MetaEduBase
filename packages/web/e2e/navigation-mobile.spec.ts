@@ -151,16 +151,16 @@ test.describe("mobile: body scroll lock", () => {
 });
 
 test.describe("mobile: skip-link 结构断言", () => {
-  test("skip-link 存在 + href 指向 #main-content + CSS 视觉隐藏", async ({ page }) => {
+  test("skip-link 存在 + href 指向 #main-content + 全页唯一", async ({ page }) => {
     await setupE2E(page, "admin");
     await page.goto("/");
     await page.waitForLoadState("networkidle");
-    const skip = page.locator("a.skip-link");
-    await expect(skip).toHaveAttribute("href", "#main-content");
+    // App.vue 提供全局 skip-link；LayoutView 不再重复
+    const skip = page.locator('a[href="#main-content"]');
+    await expect(skip).toHaveCount(1);
     await expect(skip).toBeAttached();
     // 键盘 Tab 序列在 Pixel 5 touch emulation 下不可靠；
     // 完整 Tab + Enter 键盘验收在 navigation-desktop.spec.ts 中执行。
-    // 这里只验证结构：skip-link 存在、href 正确、文本可见。
     await expect(skip).toHaveText("跳到主要内容");
   });
 });
