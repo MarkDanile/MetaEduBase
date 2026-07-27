@@ -5,9 +5,9 @@
  * - 低权角色深链 403（permission guard）
  * - 高权角色访问通过
  * - unknown role fail-closed 403
- * - 旧链接重定向到新路径
+ * - 旧链接重定向到新路径（含 /admin/template/:id 参数保留）
  * - /403 不产生循环（guest 路由 + 已登录时不跳 home）
- * - feature flag off -> 403
+ * - feature flag off -> 403 / on -> 放行
  */
 import { describe, expect, it, beforeEach } from "vitest";
 
@@ -136,14 +136,23 @@ describe("REQ-060 Slice 2: old link redirects", () => {
     expect(router.currentRoute.value.name).toBe("templates-list");
   });
 
-  it("/admin -> /system", async () => {
+  it("/admin/template/:id -> /data/templates/:id (param preserved)", async () => {
+    setAuth("admin");
+    const router = await createTestRouter();
+    await router.push("/admin/template/42");
+    await router.isReady();
+    expect(router.currentRoute.value.name).toBe("template-detail");
+    expect(router.currentRoute.value.params.id).toBe("42");
+  });
+
+  it("/admin -> /system (feature flag on -> allowed)", async () => {
     setAuth("super_admin");
     localStorageMock.setItem("metaedu_feature_system_management", "true");
     const router = await createTestRouter();
     await router.push("/admin");
     await router.isReady();
-    // /admin redirects to /system; super_admin without feature flag -> 403
-    expect(router.currentRoute.value.name).toBe("forbidden");
+    // /admin redirects to /system; super_admin + system_management flag on -> 放行
+    expect(router.currentRoute.value.name).toBe("system");
   });
 });
 

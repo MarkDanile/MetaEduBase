@@ -2,6 +2,7 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router"
 import type { FeatureFlagKey, NavSection, PermissionKey } from "./nav";
 import {
   canAccess,
+  loadFeatureFlags,
   type AccessContext,
   type FeatureFlags,
 } from "./nav";
@@ -245,7 +246,7 @@ router.beforeEach((to, _from, next) => {
 
   // 3. permission/feature guard（fail-closed）
   const role = localStorage.getItem("metaedu_role");
-  const featureFlags: FeatureFlags = {};
+  const featureFlags: FeatureFlags = loadFeatureFlags();
   const ctx: AccessContext = { role, featureFlags };
 
   if (to.meta.permission || to.meta.featureFlag) {

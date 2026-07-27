@@ -205,6 +205,26 @@ export function canAccess(meta: RouteNavMeta, ctx: AccessContext): boolean {
   return true;
 }
 
+/**
+ * 从 localStorage 加载 feature flags（唯一运行时来源）。
+ *
+ * key 约定：`metaedu_feature_<flag>`，值 `"true"` 视为开启，其余（含缺失）视为关闭。
+ * 仅读取 KNOWN_FEATURE_FLAGS 内的 flag，忽略未知 key（防同名非法 flag 放行）。
+ *
+ * 注意：system_management 等当前为未交付功能（hidden until flag on），
+ * 后端 LoginResponse 暂未下发 flags；功能发布时由登录流程写入对应 key。
+ * flag 缺失时 fail-closed（canAccess 拒绝），符合未发布功能的预期行为。
+ */
+export function loadFeatureFlags(): FeatureFlags {
+  const flags: FeatureFlags = {};
+  for (const key of KNOWN_FEATURE_FLAGS) {
+    if (localStorage.getItem(`metaedu_feature_${key}`) === "true") {
+      flags[key as FeatureFlagKey] = true;
+    }
+  }
+  return flags;
+}
+
 /** 投影后的导航项。 */
 export interface NavItem {
   name: string;
