@@ -25,9 +25,9 @@
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <RouterLink
-            v-for="item in navItems"
-            :key="item.route"
-            :to="item.route"
+            v-for="item in homeCards"
+            :key="item.name"
+            :to="{ name: item.name }"
             class="ui-panel p-4 group"
           >
             <div class="flex items-center gap-3">
@@ -53,16 +53,16 @@
             <div class="space-y-1.5">
               <button
                 v-for="shortcut in shortcuts"
-                :key="shortcut.label"
-                @click="$router.push(shortcut.route)"
+                :key="shortcut.name"
+                @click="$router.push({ name: shortcut.name })"
                 class="w-full flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] hover:bg-[var(--color-bg-hover)] transition-colors group text-left"
               >
                 <div class="w-8 h-8 rounded-md bg-[var(--color-accent-bg)] flex items-center justify-center flex-shrink-0">
                   <component :is="shortcut.icon" :size="14" :stroke-width="1.5" class="text-[var(--color-accent)]" />
                 </div>
                 <div class="flex-1 min-w-0">
-                  <p class="font-medium group-hover:text-[var(--color-accent)] transition-colors">{{ shortcut.label }}</p>
-                  <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">{{ shortcut.hint }}</p>
+                  <p class="font-medium group-hover:text-[var(--color-accent)] transition-colors">{{ shortcut.title }}</p>
+                  <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">{{ shortcut.desc }}</p>
                 </div>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-[var(--color-ink-tertiary)] flex-shrink-0 transition-transform group-hover:translate-x-1"><polyline points="9 18 15 12 9 6"/></svg>
               </button>
@@ -94,22 +94,37 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted } from "vue";
-import { RouterLink } from "vue-router";
+import { RouterLink, useRouter } from "vue-router";
 import {
   BookOpen,
   Database,
   FolderOpen,
-  Globe2,
   MessageSquare,
-  Settings,
+  LayoutTemplate,
+  Workflow,
+  Plug,
+  Bot,
   Upload,
+  Globe2,
+  type LucideIcon,
 } from "lucide-vue-next";
 import { useAuthStore } from "@/stores/auth";
 import { roleShortMap } from "@/constants/maps";
 import PageHeader from "@/components/PageHeader.vue";
 import api from "@/services/api";
+import { canAccess, loadFeatureFlags } from "@/app/nav";
+
+interface HomeCard {
+  name: string;
+  title: string;
+  desc: string;
+  icon: LucideIcon;
+  bgClass: string;
+  iconClass: string;
+}
 
 const authStore = useAuthStore();
+const router = useRouter();
 
 const roleLabel = computed(() => roleShortMap[authStore.userRole ?? ""] ?? "用户");
 
@@ -163,69 +178,182 @@ const recentActivities = [
   { text: "知识节点「智能制造」已校验", time: "2 天前", dotClass: "bg-[var(--color-success)]" },
 ];
 
-const navItems = [
+// REQ-060 Slice 3 收口：HomeView 展示配置只引用 route name；path、permission、
+// hidden、feature flag 从 Route Record 解析。"技能编排" 旧入口在 Slice 2 已
+// 重定向到 capabilities-skills，按 plan "下线技能编排" 不再列在首页。
+interface CardSpec {
+  name: string;
+  title: string;
+  desc: string;
+  icon: LucideIcon;
+  bgClass: string;
+  iconClass: string;
+}
+
+const CARD_SPECS: CardSpec[] = [
   {
+    name: "knowledge",
     title: "知识库",
     desc: "构建和管理结构化的职业教育知识体系",
-    route: "/knowledge",
-    bgClass: "bg-[var(--color-accent-bg)]",
     icon: BookOpen,
+    bgClass: "bg-[var(--color-accent-bg)]",
     iconClass: "text-[var(--color-accent)]",
   },
   {
+    name: "resource",
     title: "资源库",
     desc: "上传和管理教学文档、视频等多媒体资源",
-    route: "/resource",
-    bgClass: "bg-[var(--color-tag-green)]",
     icon: FolderOpen,
+    bgClass: "bg-[var(--color-tag-green)]",
     iconClass: "text-[var(--color-tag-green-text)]",
   },
   {
+    name: "database",
     title: "数据库",
     desc: "管理结构化数据集与知识图谱构建",
-    route: "/database",
-    bgClass: "bg-[var(--color-tag-amber)]",
     icon: Database,
+    bgClass: "bg-[var(--color-tag-amber)]",
     iconClass: "text-[var(--color-tag-amber-text)]",
   },
   {
+    name: "ai-chat",
     title: "AI 问答",
     desc: "基于知识库的智能问答，精准检索课程内容",
-    route: "/ai-chat",
-    bgClass: "bg-[var(--color-highlight-bg)]",
     icon: MessageSquare,
+    bgClass: "bg-[var(--color-highlight-bg)]",
     iconClass: "text-[var(--color-highlight)]",
   },
   {
-    title: "技能编排",
-    desc: "可视化编排 AI 技能流程与自动化工作流",
-    route: "/skill-editor",
+    name: "templates-list",
+    title: "数据要素模板",
+    desc: "配置结构化文档抽取模板与字段定义",
+    icon: LayoutTemplate,
     bgClass: "bg-[var(--color-tag-purple)]",
-    icon: Settings,
     iconClass: "text-[var(--color-tag-purple-text)]",
+  },
+  {
+    name: "capabilities-skills",
+    title: "Skill 库",
+    desc: "管理 AI 技能定义与执行流程",
+    icon: Workflow,
+    bgClass: "bg-[var(--color-tag-blue)]",
+    iconClass: "text-[var(--color-tag-blue-text)]",
+  },
+  {
+    name: "capabilities-mcp",
+    title: "MCP 工具",
+    desc: "注册和管理外部 MCP 数据源",
+    icon: Plug,
+    bgClass: "bg-[var(--color-tag-blue)]",
+    iconClass: "text-[var(--color-tag-blue-text)]",
+  },
+  {
+    name: "AiAppsMarketplace",
+    title: "AI 应用广场",
+    desc: "浏览与使用已发布的智能体应用",
+    icon: Bot,
+    bgClass: "bg-[var(--color-accent-bg)]",
+    iconClass: "text-[var(--color-accent)]",
   },
 ];
 
-const shortcuts = [
+const SHORTCUT_SPECS: CardSpec[] = [
   {
-    label: "浏览知识目录",
-    hint: "查看专业和课程层级",
-    route: "/knowledge",
+    name: "knowledge",
+    title: "浏览知识目录",
+    desc: "查看专业和课程层级",
     icon: BookOpen,
+    bgClass: "",
+    iconClass: "",
   },
   {
-    label: "AI 智能问答",
-    hint: "提问职教相关问题",
-    route: "/ai-chat",
+    name: "ai-chat",
+    title: "AI 智能问答",
+    desc: "提问职教相关问题",
     icon: MessageSquare,
+    bgClass: "",
+    iconClass: "",
   },
   {
-    label: "上传教学资源",
-    hint: "添加文档、视频等",
-    route: "/resource",
+    name: "resource",
+    title: "上传教学资源",
+    desc: "添加文档、视频等",
     icon: Upload,
+    bgClass: "",
+    iconClass: "",
   },
 ];
+
+const homeCards = computed<HomeCard[]>(() => {
+  const ctx = {
+    role: authStore.userRole,
+    featureFlags: loadFeatureFlags(),
+  };
+  const routes = router.getRoutes();
+  return CARD_SPECS.filter((spec) => {
+    const record = routes.find(
+      (r) => typeof r.name === "string" && r.name === spec.name,
+    );
+    if (!record) return false;
+    const meta = (record.meta ?? {}) as {
+      title?: string;
+      section?: string;
+      permission?: Parameters<typeof canAccess>[0]["permission"];
+      featureFlag?: Parameters<typeof canAccess>[0]["featureFlag"];
+      hiddenInNav?: boolean;
+    };
+    return canAccess(
+      {
+        title: meta.title ?? "",
+        section: (meta.section as never) ?? ("overview" as never),
+        permission: meta.permission,
+        featureFlag: meta.featureFlag,
+      },
+      ctx,
+    );
+  }).map((spec) => ({
+    name: spec.name,
+    title: spec.title,
+    desc: spec.desc,
+    icon: spec.icon,
+    bgClass: spec.bgClass,
+    iconClass: spec.iconClass,
+  }));
+});
+
+const shortcuts = computed(() => {
+  const ctx = {
+    role: authStore.userRole,
+    featureFlags: loadFeatureFlags(),
+  };
+  const routes = router.getRoutes();
+  return SHORTCUT_SPECS.filter((spec) => {
+    const record = routes.find(
+      (r) => typeof r.name === "string" && r.name === spec.name,
+    );
+    if (!record) return false;
+    const meta = (record.meta ?? {}) as {
+      title?: string;
+      section?: string;
+      permission?: Parameters<typeof canAccess>[0]["permission"];
+      featureFlag?: Parameters<typeof canAccess>[0]["featureFlag"];
+    };
+    return canAccess(
+      {
+        title: meta.title ?? "",
+        section: (meta.section as never) ?? ("overview" as never),
+        permission: meta.permission,
+        featureFlag: meta.featureFlag,
+      },
+      ctx,
+    );
+  }).map((spec) => ({
+    name: spec.name,
+    title: spec.title,
+    desc: spec.desc,
+    icon: spec.icon,
+  }));
+});
 
 async function loadStats() {
   try {

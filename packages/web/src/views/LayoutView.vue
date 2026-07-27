@@ -105,6 +105,8 @@
       :class="collapsed ? 'ml-[60px]' : 'ml-[200px]'"
     >
       <div class="ui-page-shell">
+        <!-- REQ-060 Slice 3 收口：全局 Breadcrumb（route.matched -> meta.title 链） -->
+        <NavBreadcrumb />
         <RouterView v-slot="{ Component: RouteComponent, route: currentRoute }">
           <transition name="liquid-rise" mode="out-in">
             <component :is="RouteComponent" :key="currentRoute.path" />
@@ -141,6 +143,7 @@ import {
   loadFeatureFlags,
   type NavSectionProjection,
 } from "@/app/nav";
+import NavBreadcrumb from "@/components/NavBreadcrumb.vue";
 
 const route = useRoute();
 const router = useRouter();

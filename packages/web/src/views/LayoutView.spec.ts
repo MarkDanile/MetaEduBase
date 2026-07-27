@@ -261,6 +261,127 @@ describe("LayoutView: activeNav unique highlighting", () => {
   });
 });
 
+describe("LayoutView: detail parent highlighting (activeNav -> visible sidebar parent)", () => {
+  it("on /resource/:id, parent 资源库 highlighted (file-detail.activeNav = resource)", async () => {
+    const { wrapper, router } = await mountLayout("admin");
+    await router.replace("/resource/abc");
+    await router.isReady();
+    await nextTick();
+    await flushPromises();
+    const active = collectActiveLabels(wrapper);
+    expect(active).toEqual(["资源库"]);
+    wrapper.unmount();
+  });
+
+  it("on /database/:catalogCode, parent 数据库 highlighted (catalog-detail.activeNav = database)", async () => {
+    const { wrapper, router } = await mountLayout("admin");
+    await router.replace("/database/electronics_info");
+    await router.isReady();
+    await nextTick();
+    await flushPromises();
+    const active = collectActiveLabels(wrapper);
+    expect(active).toEqual(["数据库"]);
+    wrapper.unmount();
+  });
+
+  it("on /data/templates/:id, parent 数据要素模板 highlighted (template-detail.activeNav = templates-list)", async () => {
+    const { wrapper, router } = await mountLayout("admin");
+    await router.replace("/data/templates/42");
+    await router.isReady();
+    await nextTick();
+    await flushPromises();
+    const active = collectActiveLabels(wrapper);
+    expect(active).toEqual(["数据要素模板"]);
+    wrapper.unmount();
+  });
+
+  it("on /capabilities/skills (admin), Skill 库 highlighted; not parent fallback", async () => {
+    // capabilities section 只有一个 visible sidebar item，detail parent 场景
+    // 在 capabilities/mcp 才有意义。
+    const { wrapper, router } = await mountLayout("admin");
+    await router.replace("/capabilities/skills");
+    await router.isReady();
+    await nextTick();
+    await flushPromises();
+    const active = collectActiveLabels(wrapper);
+    expect(active).toEqual(["Skill 库"]);
+    wrapper.unmount();
+  });
+
+  it("on /ai-apps/:code (admin), parent AI 应用广场 highlighted (AiAppDetail.activeNav = AiAppsMarketplace)", async () => {
+    const { wrapper, router } = await mountLayout("admin");
+    await router.replace("/ai-apps/sample-app");
+    await router.isReady();
+    await nextTick();
+    await flushPromises();
+    const active = collectActiveLabels(wrapper);
+    expect(active).toEqual(["AI 应用广场"]);
+    wrapper.unmount();
+  });
+
+  it("on /ai-apps/admin/:id (admin), parent 应用管理 highlighted (AiAppEdit.activeNav = AiAppsAdmin)", async () => {
+    const { wrapper, router } = await mountLayout("admin");
+    await router.replace("/ai-apps/admin/42");
+    await router.isReady();
+    await nextTick();
+    await flushPromises();
+    const active = collectActiveLabels(wrapper);
+    expect(active).toEqual(["应用管理"]);
+    wrapper.unmount();
+  });
+});
+
+describe("LayoutView: 7-role visibility matrix", () => {
+  // 7 角色 × sidebar section 可见性契约（plan §Slice 3 验收要求）
+  // Section label 集合驱动断言；不硬编码具体 link 数。
+  const SECTION_LABELS: Record<string, string[]> = {
+    teacher: ["总览", "AI 工作", "智能体应用", "知识与数据"],
+    employee: ["总览", "AI 工作", "智能体应用", "知识与数据"],
+    student: ["总览", "AI 工作", "智能体应用", "知识与数据"],
+    leader: ["总览", "AI 工作", "智能体应用", "知识与数据"],
+    admin: ["总览", "AI 工作", "智能体应用", "知识与数据", "能力中心"],
+    data_admin: ["总览", "AI 工作", "智能体应用", "知识与数据", "能力中心"],
+  };
+
+  for (const role of Object.keys(SECTION_LABELS) as Array<keyof typeof SECTION_LABELS>) {
+    it(`${role} sees only the role-allowed sections`, async () => {
+      const { wrapper } = await mountLayout(role);
+      const labels = wrapper.findAll(".nav-section-label").map((n) => n.text());
+      const expected = SECTION_LABELS[role];
+      for (const e of expected) {
+        expect(labels, `${role} should see ${e}`).toContain(e);
+      }
+      // 关键反向断言：低权角色看不到高权 section
+      if (["teacher", "employee", "student", "leader"].includes(role)) {
+        expect(labels, `${role} should NOT see 能力中心`).not.toContain("能力中心");
+      }
+      wrapper.unmount();
+    });
+  }
+
+  it("unknown role -> empty sidebar (fail-closed)", async () => {
+    const { wrapper } = await mountLayout("unknown_role");
+    expect(wrapper.findAll(".nav-item").length).toBe(0);
+    expect(wrapper.findAll(".nav-section-label").length).toBe(0);
+    wrapper.unmount();
+  });
+
+  it("null role -> empty sidebar (fail-closed)", async () => {
+    const { wrapper } = await mountLayout(null);
+    expect(wrapper.findAll(".nav-item").length).toBe(0);
+    wrapper.unmount();
+  });
+
+  it("super_admin: 系统管理 route is hiddenInNav, never in sidebar even with flag on", async () => {
+    localStorageMock.setItem("metaedu_feature_system_management", "true");
+    const { wrapper } = await mountLayout("super_admin");
+    const labels = wrapper.findAll(".nav-item").map((l) => l.text());
+    // 系统管理 route hiddenInNav=true：sidebar 永不展示（仅经 /admin redirect 访问）
+    expect(labels.some((s) => s.includes("系统管理"))).toBe(false);
+    wrapper.unmount();
+  });
+});
+
 describe("LayoutView: every visible route has icon", () => {
   it("every rendered nav-item contains a rendered svg icon", async () => {
     const { wrapper } = await mountLayout("admin");
