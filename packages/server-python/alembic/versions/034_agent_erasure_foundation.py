@@ -48,7 +48,7 @@ def upgrade() -> None:
         schema="metaedu",
     )
 
-    # --- Message: body_state tombstone ------------------------------------
+    # --- Message: body_state + actor tombstone ------------------------------
     op.add_column(
         "agent_messages",
         sa.Column(
@@ -64,6 +64,61 @@ def upgrade() -> None:
         "agent_messages",
         "body_state IN ('present', 'redacted') AND "
         "(body_state <> 'redacted' OR content_state = 'redacted')",
+        schema="metaedu",
+    )
+    # actor tombstone：不可逆 actor identity digest；redacted 时清除 author_id。
+    op.add_column(
+        "agent_messages",
+        sa.Column(
+            "actor_identity_digest",
+            sa.String(64),
+            nullable=True,
+        ),
+        schema="metaedu",
+    )
+    op.create_check_constraint(
+        "ck_agent_msg_actor_digest",
+        "agent_messages",
+        "actor_identity_digest IS NULL OR "
+        "char_length(actor_identity_digest) = 64",
+        schema="metaedu",
+    )
+    # 重做 envelope CHECK：user_input present 仍强制 author_id 非空；redacted
+    # tombstone 允许 author_id NULL 但要求 actor_identity_digest 保留。其余
+    # message_kind 分支保持原样（不弱化正常写路径）。
+    op.drop_constraint(
+        "ck_agent_msg_envelope",
+        "agent_messages",
+        schema="metaedu",
+        type_="check",
+    )
+    op.create_check_constraint(
+        "ck_agent_msg_envelope",
+        "agent_messages",
+        "(message_kind = 'user_input' AND author_type = 'user' "
+        "AND body_state <> 'redacted' AND author_id IS NOT NULL AND "
+        "client_message_id IS NOT NULL AND requested_run_id IS NOT NULL AND "
+        "requested_run_queue_seq IS NOT NULL AND turn_request_digest IS NOT NULL "
+        "AND turn_dispatch_state IS NOT NULL AND origin_run_id IS NULL "
+        "AND output_ordinal IS NULL) OR "
+        "(message_kind = 'user_input' AND author_type = 'user' "
+        "AND body_state = 'redacted' AND author_id IS NULL "
+        "AND actor_identity_digest IS NOT NULL "
+        "AND char_length(actor_identity_digest) = 64 "
+        "AND client_message_id IS NOT NULL AND requested_run_id IS NOT NULL AND "
+        "requested_run_queue_seq IS NOT NULL AND turn_request_digest IS NOT NULL "
+        "AND turn_dispatch_state IS NOT NULL AND origin_run_id IS NULL "
+        "AND output_ordinal IS NULL) OR "
+        "(message_kind = 'assistant_output' AND author_type = 'agent' "
+        "AND client_message_id IS NULL AND requested_run_id IS NULL "
+        "AND requested_run_queue_seq IS NULL AND turn_request_digest IS NULL "
+        "AND turn_dispatch_state IS NULL AND origin_run_id IS NOT NULL "
+        "AND output_ordinal >= 0) OR "
+        "(message_kind = 'system_notice' AND author_type = 'system' "
+        "AND client_message_id IS NULL AND requested_run_id IS NULL "
+        "AND requested_run_queue_seq IS NULL AND turn_request_digest IS NULL "
+        "AND turn_dispatch_state IS NULL AND origin_run_id IS NULL "
+        "AND output_ordinal IS NULL)",
         schema="metaedu",
     )
 
@@ -291,6 +346,11 @@ def upgrade() -> None:
             name="ck_agent_erasure_fence_ingress_digest",
         ),
         sa.CheckConstraint(
+            "jsonb_typeof(ingress_checkpoint) = 'object' "
+            "AND pg_column_size(ingress_checkpoint) <= 16384",
+            name="ck_agent_erasure_fence_ingress_checkpoint",
+        ),
+        sa.CheckConstraint(
             "(state = 'erased' AND ack_digest IS NOT NULL "
             "AND char_length(ack_digest) = 64 AND acked_at IS NOT NULL) OR "
             "(state <> 'erased' AND ack_digest IS NULL AND acked_at IS NULL)",
@@ -318,6 +378,12 @@ def upgrade() -> None:
             server_default="scheduled",
         ),
         sa.Column("registry_digest", sa.String(64), nullable=False),
+        sa.Column(
+            "registry_snapshot",
+            JSONB,
+            nullable=False,
+            server_default="[]",
+        ),
         sa.Column(
             "retention_policy_snapshot",
             JSONB,
@@ -381,6 +447,16 @@ def upgrade() -> None:
             "AND char_length(retention_policy_digest) = 64",
             name="ck_agent_purge_digests",
         ),
+        sa.CheckConstraint(
+            "jsonb_typeof(registry_snapshot) = 'array' "
+            "AND pg_column_size(registry_snapshot) <= 65536",
+            name="ck_agent_purge_registry_snapshot",
+        ),
+        sa.CheckConstraint(
+            "jsonb_typeof(retention_policy_snapshot) = 'object' "
+            "AND pg_column_size(retention_policy_snapshot) <= 16384",
+            name="ck_agent_purge_retention_snapshot",
+        ),
         schema="metaedu",
     )
     op.create_index(
@@ -396,6 +472,8 @@ def upgrade() -> None:
         sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
         sa.Column("purge_operation_id", UUID(as_uuid=True), nullable=False),
         sa.Column("owner_key", sa.String(100), nullable=False),
+        sa.Column("owner_version", sa.Integer(), nullable=False),
+        sa.Column("capability_digest", sa.String(64), nullable=False),
         sa.Column(
             "state",
             sa.String(16),
@@ -437,6 +515,13 @@ def upgrade() -> None:
             name="ck_agent_purge_owner_state",
         ),
         sa.CheckConstraint("attempt >= 0", name="ck_agent_purge_owner_attempt"),
+        sa.CheckConstraint(
+            "owner_version >= 1", name="ck_agent_purge_owner_version"
+        ),
+        sa.CheckConstraint(
+            "char_length(capability_digest) = 64",
+            name="ck_agent_purge_owner_capability_digest",
+        ),
         sa.CheckConstraint(
             "checkpoint_digest IS NULL OR char_length(checkpoint_digest) = 64",
             name="ck_agent_purge_owner_checkpoint_digest",
@@ -664,6 +749,40 @@ def downgrade() -> None:
     )
 
     # Message / Conversation 还原。
+    op.drop_constraint(
+        "ck_agent_msg_envelope",
+        "agent_messages",
+        schema="metaedu",
+        type_="check",
+    )
+    op.create_check_constraint(
+        "ck_agent_msg_envelope",
+        "agent_messages",
+        "(message_kind = 'user_input' AND author_type = 'user' "
+        "AND author_id IS NOT NULL AND "
+        "client_message_id IS NOT NULL AND requested_run_id IS NOT NULL AND "
+        "requested_run_queue_seq IS NOT NULL AND turn_request_digest IS NOT NULL "
+        "AND turn_dispatch_state IS NOT NULL AND origin_run_id IS NULL "
+        "AND output_ordinal IS NULL) OR "
+        "(message_kind = 'assistant_output' AND author_type = 'agent' "
+        "AND client_message_id IS NULL AND requested_run_id IS NULL "
+        "AND requested_run_queue_seq IS NULL AND turn_request_digest IS NULL "
+        "AND turn_dispatch_state IS NULL AND origin_run_id IS NOT NULL "
+        "AND output_ordinal >= 0) OR "
+        "(message_kind = 'system_notice' AND author_type = 'system' "
+        "AND client_message_id IS NULL AND requested_run_id IS NULL "
+        "AND requested_run_queue_seq IS NULL AND turn_request_digest IS NULL "
+        "AND turn_dispatch_state IS NULL AND origin_run_id IS NULL "
+        "AND output_ordinal IS NULL)",
+        schema="metaedu",
+    )
+    op.drop_constraint(
+        "ck_agent_msg_actor_digest",
+        "agent_messages",
+        schema="metaedu",
+        type_="check",
+    )
+    op.drop_column("agent_messages", "actor_identity_digest", schema="metaedu")
     op.drop_constraint(
         "ck_agent_msg_body_state",
         "agent_messages",

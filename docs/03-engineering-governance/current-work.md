@@ -27,11 +27,11 @@
 - R1 Plan: [R1 分 Slice 实施计划](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
 - Backlog: [REQ-041/047](../01-product-planning/04-backlog.md)
 
-当前进展：R1 Spec §12 五项门禁用户已确认。R1-S1 已实现唯一版本化 `conversation_owner_key()`（跨进程 golden-vector）、code-defined owner registry（6 固定 `.v1` owner + canonical snapshot/digest + fail closed）、四张 coordination 表（ErasureFence/PurgeOperation/PurgeOwnerCheckpoint/ConversationLegalHold + Conversation.hold_revision）、Message/Run/CompatibilityOutput/transport tombstone expand-only schema，以及可恢复/幂等/分批/tenant 限流的 baseline fence backfill 命令。migration `034` expand-only、upgrade/downgrade/upgrade 往返通过；27 erasure 专项 + 全量 hermetic 后端 1742 passed / 0 failed；ruff 0 错误、mypy baseline 0 回归。不启动 scheduler、不清正文、不接 S2-S4 writer、不加 legal-hold API/UI、不实现 Runtime/external adapter。
+当前进展：R1-S1 已交付 schema 基座（唯一版本化 `conversation_owner_key()`、code-defined owner registry、四张 coordination 表 + Conversation.hold_revision、Message/Run/CompatibilityOutput/transport + actor tombstone expand-only schema、可恢复/幂等/分批/tenant 限流且带游标的 baseline fence backfill 命令与 CLI 入口）。PR #506 已创建（未合并）。复审（2026-07-28）提出 6 P1 + 若干 P2，已全部修复：backfill keyset 游标、fence 版本 fail closed、registry 全 owner erase_available=False、purge registry_snapshot + owner capability 持久化、legal hold 多 active 用 EXISTS、Message actor tombstone schema、snapshot JSON object/大小 CHECK。migration `034` 原地修订、upgrade/downgrade/upgrade 往返通过。不启动 scheduler、不清正文、不接 S2-S4 writer、不加 legal-hold API/UI、不实现 Runtime/external adapter。
 
-下一步：提交并创建 PR（不合并）；由用户做独立安全复审 + Codex 复审。
+下一步：等用户对修订后 PR #506 做独立安全复审 + Codex 复审，通过后才按流程合并。
 
-验证状态：migration 往返 / schema CHECK / tenant 复合键 / CAS / owner registry digest 决定性 / 并发 fence 唯一性（真实 PG）/ backfill 幂等分批重启全部通过；全量 hermetic 后端 1742 passed / 0 failed；ruff 0 错误；mypy baseline 0 回归；docs gate 与 git diff --check 通过。已修复 composition 测试隔离（autouse truncate agent 表），消除对 agent_workspace 迁移往返测试的污染。
+验证状态：migration 往返 / schema CHECK / tenant 复合键 / CAS / owner registry digest 决定性 / 并发 fence 唯一性（真实 PG）/ backfill 幂等分批游标重启全部通过；36 erasure 专项 + 235 workspace/execution/control-plane 回归全绿；ruff 0 错误；mypy baseline 0 回归；docs gate 与 git diff --check 通过。
 
 ## 下一批候选任务
 
@@ -39,7 +39,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-041/047 R1-S1 Fence/Hold/Purge schema 基座 | 🟣 Blocked by S0 Review | 用户确认 owner、hold authority、30/90/365 与 fail-closed 后启动，使用 Sol `xhigh` + 独立 `max` | [R1 Plan](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s1fencehold-与-purge-schema-基座) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 

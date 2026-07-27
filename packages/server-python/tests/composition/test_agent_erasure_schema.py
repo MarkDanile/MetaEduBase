@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.composition.agent_erasure_backfill import backfill_baseline_fences
 from app.composition.agent_erasure_locks import acquire_owner_lock
 from app.composition.agent_erasure_registry import (
+    OwnerRegistryChangedError,
     UnknownOwnerError,
     owner_registry,
 )
@@ -71,6 +72,21 @@ async def _column_nullable(table: str, column: str) -> str:
         await connection.close()
 
 
+async def _column_exists(table: str, column: str) -> bool:
+    connection = await asyncpg.connect(_db_url())
+    try:
+        return bool(
+            await connection.fetchval(
+                "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_schema='metaedu' AND table_name=$1 AND column_name=$2)",
+                table,
+                column,
+            )
+        )
+    finally:
+        await connection.close()
+
+
 # ---------------------------------------------------------------------------
 # 迁移与 schema
 # ---------------------------------------------------------------------------
@@ -91,6 +107,23 @@ async def test_034_coordination_tables_and_tombstone_columns_exist():
         await _column_nullable("agent_compatibility_outputs", "response_envelope")
         == "YES"
     )
+
+
+@pytest.mark.asyncio
+async def test_purge_operation_stores_registry_snapshot_and_owner_capability():
+    """PurgeOperation 必须保存排序 owner 列表（registry_snapshot）而不只是 digest；
+    owner checkpoint 必须记录 owner_version 与 capability_digest，代码升级后可重建
+    某次 ACK 对应的 owner capability（Spec §4 / §5）。"""
+    assert await _column_exists("agent_conversation_purges", "registry_snapshot")
+    assert await _column_exists("agent_conversation_purge_owners", "owner_version")
+    assert await _column_exists("agent_conversation_purge_owners", "capability_digest")
+
+
+@pytest.mark.asyncio
+async def test_message_actor_tombstone_columns_exist():
+    """Message actor tombstone：redacted 可清除 author_id，并保留不可逆
+    actor_identity_digest（Spec §4 workspace.core.v1 actor_identity capability）。"""
+    assert await _column_exists("agent_messages", "actor_identity_digest")
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +257,69 @@ async def test_fence_cas_conflict_and_erased_requires_ack(db_session):
 
 
 @pytest.mark.asyncio
+async def test_multiple_active_legal_holds_are_detected(db_session):
+    """同一 Conversation 可存在多个 active hold；has_active_legal_hold 必须用
+    EXISTS 语义返回 True，不得因多行抛 MultipleResultsFound。"""
+    repo = AgentErasureRepository(db_session)
+    tenant_id, conversation_id = await _make_conversation(db_session)
+    actor = uuid.uuid4()
+    await repo.create_legal_hold(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        reason_code="court-order",
+        purpose="litigation hold",
+        actor_id=actor,
+    )
+    await repo.create_legal_hold(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        reason_code="regulatory",
+        purpose="regulator request",
+        actor_id=actor,
+    )
+    assert (
+        await repo.has_active_legal_hold(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
+        is True
+    )
+
+
+@pytest.mark.asyncio
+async def test_fence_transition_fails_closed_on_stale_owner_version(db_session):
+    """DB fence 的 owner_version 与已安装 registry 版本不一致时，transition 必须
+    fail closed（registry 变化 -> 不允许继续推进旧版本 fence）。"""
+    repo = AgentErasureRepository(db_session)
+    tenant_id, conversation_id = await _make_conversation(db_session)
+    fence = await repo.create_fence(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        owner_key="workspace.core.v1",
+    )
+    # 模拟 registry 升级前留下的旧版本 fence：直接把 DB 行 version 改成非当前值。
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_erasure_fences SET owner_version = 99 "
+            "WHERE tenant_id = :t AND conversation_id = :c "
+            "AND owner_key = 'workspace.core.v1'"
+        ),
+        {"t": tenant_id, "c": conversation_id},
+    )
+    await db_session.flush()
+    with pytest.raises(OwnerRegistryChangedError):
+        await repo.transition_fence_state(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key="workspace.core.v1",
+            expected_state=ErasureFenceState.ACTIVE,
+            expected_revision=fence.revision,
+            new_state=ErasureFenceState.ERASING,
+            purge_revision=1,
+            hold_revision=0,
+        )
+
+
+@pytest.mark.asyncio
 async def test_concurrent_fence_creation_is_unique(session_factory):
     """真实 PostgreSQL：并发建立同一 fence，唯一约束保证只有一行。"""
     # 在独立事务中创建并提交 Conversation，使并发连接可见。
@@ -261,6 +357,80 @@ async def test_concurrent_fence_creation_is_unique(session_factory):
             )
         ).scalar_one()
     assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_message_actor_tombstone_clears_author_id_and_normal_holds(db_session):
+    """user_input redacted tombstone 可清 author_id 并保留 actor_identity_digest；
+    未擦除（present）的 user_input 仍强制 author_id 非空（不弱化正常约束）。"""
+    tenant_id, conversation_id = await _make_conversation(db_session)
+    digest = "a1" * 32
+    actor_digest = "b2" * 32
+    # redacted tombstone：author_id NULL + actor_identity_digest 保留合法。
+    await db_session.execute(
+        text(
+            "INSERT INTO metaedu.agent_messages "
+            "(id, tenant_id, conversation_id, seq, message_kind, author_type, "
+            " author_id, actor_identity_digest, client_message_id, requested_run_id, "
+            " requested_run_queue_seq, turn_request_digest, turn_dispatch_state, "
+            " content_state, body_state, content_digest, created_at) "
+            "VALUES (:id, :t, :c, 1, 'user_input', 'user', NULL, :ad, :cmid, :rid, "
+            " 1, :trd, 'accepted', 'redacted', 'redacted', :d, now())"
+        ),
+        {
+            "id": uuid.uuid4(),
+            "t": tenant_id,
+            "c": conversation_id,
+            "ad": actor_digest,
+            "cmid": uuid.uuid4(),
+            "rid": uuid.uuid4(),
+            "trd": digest,
+            "d": digest,
+        },
+    )
+    # present user_input 缺 author_id 仍违反 CHECK（子事务回滚，保留 Conversation）。
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            await db_session.execute(
+                text(
+                    "INSERT INTO metaedu.agent_messages "
+                    "(id, tenant_id, conversation_id, seq, message_kind, author_type, "
+                    " author_id, actor_identity_digest, client_message_id, "
+                    " requested_run_id, requested_run_queue_seq, turn_request_digest, "
+                    " turn_dispatch_state, content_state, body_state, content_digest, "
+                    " created_at) "
+                    "VALUES (:id, :t, :c, 2, 'user_input', 'user', NULL, NULL, :cmid, "
+                    " :rid, 1, :trd, 'accepted', 'visible', 'present', :d, now())"
+                ),
+                {
+                    "id": uuid.uuid4(),
+                    "t": tenant_id,
+                    "c": conversation_id,
+                    "cmid": uuid.uuid4(),
+                    "rid": uuid.uuid4(),
+                    "trd": digest,
+                    "d": digest,
+                },
+            )
+
+
+@pytest.mark.asyncio
+async def test_snapshot_columns_reject_non_object_json(db_session):
+    """ingress_checkpoint / retention_policy_snapshot 必须是 JSON object
+    （Spec：JSON object），标量/数组被拒绝。"""
+    tenant_id, conversation_id = await _make_conversation(db_session)
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            await db_session.execute(
+                text(
+                    "INSERT INTO metaedu.agent_erasure_fences "
+                    "(tenant_id, conversation_id, owner_key, owner_version, state, "
+                    " ingress_checkpoint, ingress_digest) "
+                    "VALUES (:t, :c, 'workspace.core.v1', 1, 'active', "
+                    " '[1,2]'::jsonb, :d)"
+                ),
+                {"t": tenant_id, "c": conversation_id, "d": "c3" * 32},
+            )
 
 
 @pytest.mark.asyncio
@@ -486,6 +656,53 @@ async def test_completed_run_normal_output_constraint_still_enforced(db_session)
 
 
 # ---------------------------------------------------------------------------
+# purge operation / owner checkpoint：registry snapshot 持久化（评审 P1.4）
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_purge_operation_persists_registry_snapshot(db_session):
+    repo = AgentErasureRepository(db_session)
+    tenant_id, conversation_id = await _make_conversation(db_session)
+    purge = await repo.create_purge_operation(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        purge_revision=1,
+        registry_digest="e5" * 32,
+        retention_policy_snapshot={"conversation_days": 30},
+        hold_revision_snapshot=0,
+    )
+    # 排序 owner 列表持久化（不只是 digest），可重建该次 operation 的能力视图。
+    assert isinstance(purge.registry_snapshot, list)
+    assert [entry["owner_key"] for entry in purge.registry_snapshot] == sorted(
+        entry["owner_key"] for entry in purge.registry_snapshot
+    )
+    for entry in purge.registry_snapshot:
+        assert set(entry) == {"owner_key", "owner_version", "capability_digest"}
+
+
+@pytest.mark.asyncio
+async def test_owner_checkpoint_persists_version_and_capability(db_session):
+    repo = AgentErasureRepository(db_session)
+    tenant_id, conversation_id = await _make_conversation(db_session)
+    purge = await repo.create_purge_operation(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        purge_revision=1,
+        registry_digest="e5" * 32,
+        retention_policy_snapshot={"conversation_days": 30},
+        hold_revision_snapshot=0,
+    )
+    checkpoint = await repo.create_owner_checkpoint(
+        tenant_id=tenant_id,
+        purge_operation_id=purge.id,
+        owner_key="workspace.core.v1",
+    )
+    assert checkpoint.owner_version == 1
+    assert len(checkpoint.capability_digest) == 64
+
+
+# ---------------------------------------------------------------------------
 # backfill
 # ---------------------------------------------------------------------------
 
@@ -540,7 +757,10 @@ async def test_backfill_max_conversations_is_resumable(session_factory):
     )
     assert partial.conversations_scanned == 1
     resumed = await backfill_baseline_fences(
-        session_factory, tenant_id=tenant_id, batch_size=100
+        session_factory,
+        tenant_id=tenant_id,
+        batch_size=100,
+        after_id=partial.next_after_id,
     )
     assert resumed.ok
     async with session_factory() as session:
@@ -554,3 +774,43 @@ async def test_backfill_max_conversations_is_resumable(session_factory):
             )
         ).scalar_one()
     assert count == 2 * owners
+
+
+@pytest.mark.asyncio
+async def test_backfill_bounded_runs_advance_via_cursor(session_factory):
+    """反例（评审 P1.1）：连续 bounded 调用必须通过游标持续推进。
+
+    三次 ``max_conversations=1`` 且正确串联游标，应处理全部 3 个 Conversation，
+    而不是反复处理第一个。
+    """
+    async with session_factory() as session, session.begin():
+        tenant_id = uuid.uuid4()
+        for _ in range(3):
+            await _insert_conversation(session, tenant_id=tenant_id)
+
+    owners = len(owner_registry())
+    seen: set[uuid.UUID] = set()
+    after_id = None
+    for _ in range(3):
+        report = await backfill_baseline_fences(
+            session_factory,
+            tenant_id=tenant_id,
+            batch_size=100,
+            max_conversations=1,
+            after_id=after_id,
+        )
+        assert report.conversations_scanned == 1
+        seen.update(report.processed_conversations)
+        after_id = report.next_after_id
+    assert len(seen) == 3
+    async with session_factory() as session:
+        count = (
+            await session.execute(
+                text(
+                    "SELECT count(*) FROM metaedu.agent_erasure_fences "
+                    "WHERE tenant_id = :t"
+                ),
+                {"t": tenant_id},
+            )
+        ).scalar_one()
+    assert count == 3 * owners

@@ -42,10 +42,20 @@ class BackfillReport:
     fences_created: int = 0
     fences_already_present: int = 0
     failed_conversations: list[uuid.UUID] = field(default_factory=list)
+    # 本次成功处理的 Conversation id（用于串联游标与诊断）。
+    processed_conversations: list[uuid.UUID] = field(default_factory=list)
+    # 下次调用的起始游标（最后一个已扫描 Conversation id）；处理完全部后为
+    # 最后一个 id，调用方据此判断是否继续。
+    next_after_id: uuid.UUID | None = None
+    # True 表示本次在达到 max_conversations 前已扫描完 tenant 内全部
+    # Conversation（即没有更多可处理）；``ok`` 只表示无失败，不代表已扫完。
+    completed: bool = False
     registry_digest: str = ""
 
     @property
     def ok(self) -> bool:
+        """本次运行无失败。注意：``ok=True`` 不等于已处理完全部——
+        需同时看 ``completed`` 或反复以 ``next_after_id`` 续跑到 completed。"""
         return not self.failed_conversations
 
 
@@ -114,18 +124,23 @@ async def backfill_baseline_fences(
     tenant_id: uuid.UUID,
     batch_size: int = 100,
     max_conversations: int | None = None,
+    after_id: uuid.UUID | None = None,
 ) -> BackfillReport:
     """为指定 tenant 的既有 Conversation 幂等补 baseline fence。
 
     每个 Conversation 在独立短事务中处理；任一失败计入 ``failed_conversations``
     并继续（fail closed 由 report.ok 体现，不静默通过）。
+
+    游标：``after_id`` 为 keyset 起始（只处理 id > after_id 的 Conversation）；
+    报告带回 ``next_after_id`` 供下次续跑。bounded（``max_conversations``）调用
+    必须串联该游标才能持续推进，否则会反复处理同一批头部 Conversation。
     """
     report = BackfillReport(registry_digest=registry_digest())
     # 触发 registry 解析；任何 owner 缺失会在首个 Conversation 前 fail closed。
     owner_registry()
 
-    after_id: uuid.UUID | None = None
     processed = 0
+    exhausted = False
     while True:
         async with session_factory() as session, session.begin():
             batch = await _select_conversation_batch(
@@ -135,9 +150,12 @@ async def backfill_baseline_fences(
                 batch_size=batch_size,
             )
         if not batch:
+            exhausted = True
             break
         for conversation_id in batch:
             if max_conversations is not None and processed >= max_conversations:
+                report.next_after_id = after_id
+                report.tenants_processed = 1
                 return report
             try:
                 async with session_factory() as session, session.begin():
@@ -149,17 +167,19 @@ async def backfill_baseline_fences(
                 report.fences_created += created
                 report.fences_already_present += already
                 report.conversations_scanned += 1
+                report.processed_conversations.append(conversation_id)
             except Exception:
                 report.failed_conversations.append(conversation_id)
             processed += 1
             after_id = conversation_id
-        # 终止条件：本批已处理完，且要么达到 max_conversations、要么本批
-        # 已空/不足 batch_size（说明没有更多 Conversation）。达到
-        # max_conversations 时不能因整批返回而误判为“还有更多”。
+        # 终止条件：达到 max_conversations，或本批不足 batch_size（没有更多）。
         if max_conversations is not None and processed >= max_conversations:
             break
         if len(batch) < batch_size:
+            exhausted = True
             break
+    report.next_after_id = after_id
+    report.completed = exhausted
     report.tenants_processed = 1
     return report
 
@@ -171,3 +191,73 @@ async def count_conversations(session: AsyncSession, *, tenant_id: uuid.UUID) ->
         .where(ConversationModel.tenant_id == tenant_id)
     )
     return int(result.scalar_one())
+
+
+# ---------------------------------------------------------------------------
+# 可执行入口（运维命令）：python -m app.composition.agent_erasure_backfill
+# ---------------------------------------------------------------------------
+
+
+async def _run_cli(args: object) -> int:
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from app.config import settings
+
+    engine = create_async_engine(settings.database_url, echo=False, poolclass=NullPool)
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        after_id = uuid.UUID(args.after_id) if args.after_id else None  # type: ignore[attr-defined]
+        report = await backfill_baseline_fences(
+            factory,
+            tenant_id=uuid.UUID(args.tenant_id),  # type: ignore[attr-defined]
+            batch_size=args.batch_size,  # type: ignore[attr-defined]
+            max_conversations=args.max_conversations,  # type: ignore[attr-defined]
+            after_id=after_id,
+        )
+    finally:
+        await engine.dispose()
+    print(  # noqa: T201
+        "backfill report: "
+        f"scanned={report.conversations_scanned} "
+        f"created={report.fences_created} "
+        f"already_present={report.fences_already_present} "
+        f"failed={len(report.failed_conversations)} "
+        f"completed={report.completed} "
+        f"next_after_id={report.next_after_id}"
+    )
+    if report.failed_conversations:
+        print(  # noqa: T201
+            "failed conversations: "
+            + ", ".join(str(c) for c in report.failed_conversations)
+        )
+        return 1
+    return 0
+
+
+def main() -> int:
+    import argparse
+    import asyncio
+
+    parser = argparse.ArgumentParser(
+        prog="python -m app.composition.agent_erasure_backfill",
+        description="为既有 Conversation 幂等补 baseline erasure fence（可恢复/分批）。",
+    )
+    parser.add_argument("--tenant-id", required=True, help="目标 tenant UUID")
+    parser.add_argument("--batch-size", type=int, default=100)
+    parser.add_argument(
+        "--max-conversations",
+        type=int,
+        default=None,
+        help="单次最多处理的 Conversation 数（有界分批）；达到后由 next_after_id 续跑",
+    )
+    parser.add_argument(
+        "--after-id",
+        default=None,
+        help="续跑游标：只处理 id 大于该值的 Conversation（上次报告的 next_after_id）",
+    )
+    return asyncio.run(_run_cli(parser.parse_args()))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -5,9 +5,10 @@ Python 类名、模块路径或运行时随机顺序。registry snapshot 与 dig
 owner_key 字典序排序，保证顺序稳定。unknown owner、版本变化或缺失
 capability 一律 fail closed。
 
-R1-S1 只声明 owner 身份与能力；``runtime.private.v1`` 与
-``external.payload.v1`` 的擦除能力在 S1 不可用（无已安装 Runtime/对象存储
-adapter），调用 ``require_capability(..., "erase")`` 必须 fail closed。
+R1-S1 只声明 owner 身份与能力，**不实现任何 owner 的 eraser**（S2-S4 才由真实
+participant 注册擦除能力）。因此 S1 阶段全部 owner 的 ``erase_available=False``，
+调用 ``require_capability(..., "erase")`` 一律 fail closed，不得对未实现的
+清除能力放行。
 """
 
 from __future__ import annotations
@@ -38,12 +39,14 @@ class OwnerDefinition:
     owner_key: str
     owner_version: int
     capabilities: tuple[str, ...]
-    # S1 未安装 Runtime/external adapter 的 owner 擦除能力不可用。
+    # S1 未实现任何 owner 的 eraser（S2-S4 由真实 participant 注册），全部不可用。
     erase_available: bool
 
 
 # V1 固定 owner（Spec §4.1）。capabilities 只描述 owner 持有的正文/引用类别，
 # 不保存正文或 secret。顺序在代码中不承载语义；对外 snapshot 一律排序。
+# S1 不实现任何 eraser -> 全部 erase_available=False；后续 slice 接 participant
+# 时逐个翻 True 并补相应测试。
 _OWNER_DEFINITIONS: tuple[OwnerDefinition, ...] = (
     OwnerDefinition(
         owner_key="workspace.core.v1",
@@ -54,13 +57,13 @@ _OWNER_DEFINITIONS: tuple[OwnerDefinition, ...] = (
             "actor_identity",
             "user_state",
         ),
-        erase_available=True,
+        erase_available=False,
     ),
     OwnerDefinition(
         owner_key="workspace.transport.v1",
         owner_version=1,
         capabilities=("workspace_outbox_payload", "workspace_inbox_receipt"),
-        erase_available=True,
+        erase_available=False,
     ),
     OwnerDefinition(
         owner_key="execution.core.v1",
@@ -71,13 +74,13 @@ _OWNER_DEFINITIONS: tuple[OwnerDefinition, ...] = (
             "compatibility_output",
             "run_event_payload",
         ),
-        erase_available=True,
+        erase_available=False,
     ),
     OwnerDefinition(
         owner_key="execution.transport.v1",
         owner_version=1,
         capabilities=("execution_outbox_payload", "execution_inbox_receipt"),
-        erase_available=True,
+        erase_available=False,
     ),
     OwnerDefinition(
         owner_key="external.payload.v1",

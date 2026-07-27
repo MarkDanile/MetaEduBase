@@ -72,6 +72,7 @@ class PurgeOperation:
     purge_revision: int
     state: PurgeOperationState
     registry_digest: str
+    registry_snapshot: list
     retention_policy_snapshot: dict
     retention_policy_digest: str
     hold_revision_snapshot: int
@@ -92,6 +93,8 @@ class PurgeOwnerCheckpoint:
     tenant_id: uuid.UUID
     purge_operation_id: uuid.UUID
     owner_key: str
+    owner_version: int
+    capability_digest: str
     state: PurgeOwnerState
     attempt: int
     checkpoint_digest: str | None

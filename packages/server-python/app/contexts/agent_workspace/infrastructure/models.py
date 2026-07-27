@@ -205,6 +205,11 @@ class MessageModel(Base):
             "(body_state <> 'redacted' OR content_state = 'redacted')",
             name="ck_agent_msg_body_state",
         ),
+        CheckConstraint(
+            "actor_identity_digest IS NULL OR "
+            "char_length(actor_identity_digest) = 64",
+            name="ck_agent_msg_actor_digest",
+        ),
         CheckConstraint("seq >= 1", name="ck_agent_msg_seq_positive"),
         CheckConstraint(
             "requested_run_queue_seq IS NULL OR requested_run_queue_seq >= 1",
@@ -212,8 +217,16 @@ class MessageModel(Base):
         ),
         CheckConstraint(
             "(message_kind = 'user_input' AND author_type = 'user' "
-            "AND author_id IS NOT NULL AND "
+            "AND body_state <> 'redacted' AND author_id IS NOT NULL AND "
             "client_message_id IS NOT NULL AND requested_run_id IS NOT NULL AND "
+            "requested_run_queue_seq IS NOT NULL AND turn_request_digest IS NOT NULL "
+            "AND turn_dispatch_state IS NOT NULL AND origin_run_id IS NULL "
+            "AND output_ordinal IS NULL) OR "
+            "(message_kind = 'user_input' AND author_type = 'user' "
+            "AND body_state = 'redacted' AND author_id IS NULL "
+            "AND actor_identity_digest IS NOT NULL "
+            "AND char_length(actor_identity_digest) = 64 "
+            "AND client_message_id IS NOT NULL AND requested_run_id IS NOT NULL AND "
             "requested_run_queue_seq IS NOT NULL AND turn_request_digest IS NOT NULL "
             "AND turn_dispatch_state IS NOT NULL AND origin_run_id IS NULL "
             "AND output_ordinal IS NULL) OR "
@@ -308,6 +321,9 @@ class MessageModel(Base):
     content_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     body_state: Mapped[str] = mapped_column(
         String(16), nullable=False, default="present"
+    )
+    actor_identity_digest: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
@@ -530,6 +546,11 @@ class ErasureFenceModel(Base):
             name="ck_agent_erasure_fence_ingress_digest",
         ),
         CheckConstraint(
+            "jsonb_typeof(ingress_checkpoint) = 'object' "
+            "AND pg_column_size(ingress_checkpoint) <= 16384",
+            name="ck_agent_erasure_fence_ingress_checkpoint",
+        ),
+        CheckConstraint(
             "(state = 'erased' AND ack_digest IS NOT NULL "
             "AND char_length(ack_digest) = 64 AND acked_at IS NOT NULL) OR "
             "(state <> 'erased' AND ack_digest IS NULL AND acked_at IS NULL)",
@@ -604,6 +625,16 @@ class PurgeOperationModel(Base):
             "AND char_length(retention_policy_digest) = 64",
             name="ck_agent_purge_digests",
         ),
+        CheckConstraint(
+            "jsonb_typeof(registry_snapshot) = 'array' "
+            "AND pg_column_size(registry_snapshot) <= 65536",
+            name="ck_agent_purge_registry_snapshot",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(retention_policy_snapshot) = 'object' "
+            "AND pg_column_size(retention_policy_snapshot) <= 16384",
+            name="ck_agent_purge_retention_snapshot",
+        ),
         Index(
             "ix_agent_purge_schedule",
             "tenant_id",
@@ -623,6 +654,9 @@ class PurgeOperationModel(Base):
     purge_revision: Mapped[int] = mapped_column(BigInteger, nullable=False)
     state: Mapped[str] = mapped_column(String(16), nullable=False, default="scheduled")
     registry_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    registry_snapshot: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list
+    )
     retention_policy_snapshot: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict
     )
@@ -676,6 +710,13 @@ class PurgeOwnerCheckpointModel(Base):
         ),
         CheckConstraint("attempt >= 0", name="ck_agent_purge_owner_attempt"),
         CheckConstraint(
+            "owner_version >= 1", name="ck_agent_purge_owner_version"
+        ),
+        CheckConstraint(
+            "char_length(capability_digest) = 64",
+            name="ck_agent_purge_owner_capability_digest",
+        ),
+        CheckConstraint(
             "checkpoint_digest IS NULL OR char_length(checkpoint_digest) = 64",
             name="ck_agent_purge_owner_checkpoint_digest",
         ),
@@ -696,6 +737,8 @@ class PurgeOwnerCheckpointModel(Base):
         UUID(as_uuid=True), nullable=False
     )
     owner_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    owner_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    capability_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     state: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     checkpoint_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)

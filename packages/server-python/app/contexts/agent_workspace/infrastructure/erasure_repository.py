@@ -16,10 +16,15 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.composition.agent_erasure_registry import require_owner
+from app.composition.agent_erasure_registry import (
+    capability_digest,
+    registry_snapshot,
+    require_owner,
+    require_owner_version,
+)
 from app.contexts.agent_workspace.domain.erasure import (
     ConversationLegalHold,
     ErasureFence,
@@ -75,6 +80,7 @@ def _purge_to_domain(model: PurgeOperationModel) -> PurgeOperation:
         purge_revision=model.purge_revision,
         state=PurgeOperationState(model.state),
         registry_digest=model.registry_digest,
+        registry_snapshot=list(model.registry_snapshot),
         retention_policy_snapshot=dict(model.retention_policy_snapshot),
         retention_policy_digest=model.retention_policy_digest,
         hold_revision_snapshot=model.hold_revision_snapshot,
@@ -96,6 +102,8 @@ def _owner_to_domain(model: PurgeOwnerCheckpointModel) -> PurgeOwnerCheckpoint:
         tenant_id=model.tenant_id,
         purge_operation_id=model.purge_operation_id,
         owner_key=model.owner_key,
+        owner_version=model.owner_version,
+        capability_digest=model.capability_digest,
         state=PurgeOwnerState(model.state),
         attempt=model.attempt,
         checkpoint_digest=model.checkpoint_digest,
@@ -244,6 +252,9 @@ class AgentErasureRepository:
         model = result.scalar_one_or_none()
         if model is None:
             raise ValueError("erasure fence missing; cannot transition")
+        # 版本守卫：fence 行记录的 owner_version 必须仍匹配已安装 registry，
+        # 否则 registry 已升级 -> fail closed，不推进旧版本 fence（Spec §4）。
+        require_owner_version(owner_key, model.owner_version)
         if model.state != expected_state.value or model.revision != expected_revision:
             raise ValueError("erasure fence CAS conflict")
         if new_state is ErasureFenceState.ERASED and not ack_digest:
@@ -279,6 +290,9 @@ class AgentErasureRepository:
             purge_revision=purge_revision,
             state=PurgeOperationState.SCHEDULED.value,
             registry_digest=registry_digest,
+            # 持久化排序 owner 列表（不只是 digest），代码升级后可重建该次
+            # operation 对应的 owner capability（Spec §4 / §5）。
+            registry_snapshot=registry_snapshot(),
             retention_policy_snapshot=retention_policy_snapshot,
             retention_policy_digest=canonical_digest(
                 {"policy": retention_policy_snapshot, "schema_version": 1}
@@ -315,12 +329,15 @@ class AgentErasureRepository:
         owner_key: str,
         now: datetime | None = None,
     ) -> PurgeOwnerCheckpoint:
-        require_owner(owner_key)
+        owner = require_owner(owner_key)
         effective_now = now or _utcnow()
         model = PurgeOwnerCheckpointModel(
             tenant_id=tenant_id,
             purge_operation_id=purge_operation_id,
             owner_key=owner_key,
+            # 记录 owner_version 与 capability_digest，ACK 可重建对应能力（Spec §4）。
+            owner_version=owner.owner_version,
+            capability_digest=capability_digest(owner_key),
             state=PurgeOwnerState.PENDING.value,
             attempt=0,
             created_at=effective_now,
@@ -363,14 +380,20 @@ class AgentErasureRepository:
     async def has_active_legal_hold(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
     ) -> bool:
+        """是否存在任一 active hold。同一 Conversation 允许多个 active hold，
+        用 EXISTS 语义而非 scalar_one_or_none（多行不得抛 MultipleResultsFound）。"""
         result = await self._session.execute(
-            select(ConversationLegalHoldModel.id).where(
-                ConversationLegalHoldModel.tenant_id == tenant_id,
-                ConversationLegalHoldModel.conversation_id == conversation_id,
-                ConversationLegalHoldModel.state == LegalHoldState.ACTIVE.value,
+            select(
+                exists(
+                    select(ConversationLegalHoldModel.id).where(
+                        ConversationLegalHoldModel.tenant_id == tenant_id,
+                        ConversationLegalHoldModel.conversation_id == conversation_id,
+                        ConversationLegalHoldModel.state == LegalHoldState.ACTIVE.value,
+                    )
+                )
             )
         )
-        return result.scalar_one_or_none() is not None
+        return bool(result.scalar_one())
 
 
 __all__ = ["AgentErasureRepository"]

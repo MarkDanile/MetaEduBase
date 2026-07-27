@@ -75,13 +75,14 @@ def test_missing_capability_fails_closed() -> None:
         registry.require_capability("runtime.private.v1", "session_destroy")
 
 
-def test_runtime_and_external_erasers_are_unavailable_in_s1() -> None:
+def test_all_erasers_are_unavailable_in_s1() -> None:
     registry = _import_registry()
-    # S1 不实现 Runtime / external 擦除能力；相关 owner 必须 fail closed。
-    with pytest.raises(registry.OwnerCapabilityUnavailableError):
-        registry.require_capability("runtime.private.v1", "erase")
-    with pytest.raises(registry.OwnerCapabilityUnavailableError):
-        registry.require_capability("external.payload.v1", "erase")
+    # S1 不实现任何 owner 的 eraser（S2-S4 才接 participant）；全部 erase 必须
+    # fail closed，不得对未实现的清除能力放行。
+    for owner in registry.owner_registry():
+        assert owner.erase_available is False
+        with pytest.raises(registry.OwnerCapabilityUnavailableError):
+            registry.require_capability(owner.owner_key, "erase")
 
 
 def test_validate_snapshot_digest_detects_registry_change() -> None:
