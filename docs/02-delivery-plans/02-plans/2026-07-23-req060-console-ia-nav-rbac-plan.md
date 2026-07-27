@@ -59,12 +59,16 @@ R1 修订后按 5 个交付 Gate 实施。每个 Gate 独立 PR，但受保护�
 - [x] 覆盖 backdrop、Escape、route change 关闭，打开/关闭焦点迁移，body scroll lock，`aria-controls`、`aria-expanded`、`aria-current`。`useMobileDrawer` 封装：document 级 Escape 监听 + watch(route.fullPath) 自动关闭 + body overflow lock/unlock + 焦点回到 opener + Tab/Shift+Tab 循环焦点；opener `aria-controls="mobile-drawer"` + `:aria-expanded`；nav-item `:aria-current="isActive(item.name) ? 'page' : undefined"`。
 - [x] 为分组按钮实现键盘导航和稳定展开状态；桌面折叠与移动抽屉状态分离。desktop `desktopCollapsed` (toggle 桌面 collapse button, `md:flex` only) 与 mobile `mobileDrawer.open` (opener `md:hidden` only) 完全独立；`@media (prefers-reduced-motion: reduce)` 取消所有 transition；skip-link `<a href="#main-content">` 视觉隐藏 + focus 显示。
 - [x] 仓库当前无 Playwright：新增 `@playwright/test` 依赖、配置和可复现脚本；覆盖桌面/移动、浅色/深色、7 角色代表集、403、重定向和详情父高亮。`packages/web/playwright.config.ts` + `e2e/navigation-shared.spec.ts` + `e2e/navigation-desktop.spec.ts` + `e2e/navigation-mobile.spec.ts` + `e2e/fixtures.ts` + `e2e/README.md`；2 projects (chromium-desktop 1280×800 + chromium-mobile Pixel 5) 用 testMatch glob 分流；`setupE2E(page, role)` = injectAuth + installApiMocks（拦截 /api/v1/* 防 ECONNREFUSED）；结构视觉断言替代 toHaveScreenshot（跨平台）；覆盖 7 角色 sidebar / activeNav 高亮 / 详情父高亮 / mobile drawer 状态机 + a11y / 主题 / 旧链接重定向 / 403 / breadcrumb / skip-link 键盘验收。
-- [ ] 运行前端 lint、typecheck、Vitest、Playwright；PR CI 按 scope 执行，禁止把 mock UI 当后端 RBAC 证据。首轮复审 P1 修复中：vitest 排除 e2e/**、mobile drawer 宽度/状态分离、focus trap 修复、Playwright testMatch 拆 project、pnpm-lock + ci.yml 接入 e2e。待返修完成后重跑全量验证。
-- [ ] 用户验收后更新 work-log、Requirement/Backlog/current-work 和本 Plan 验证摘要。（待 Codex 复审通过 + 用户合并后归档）
-- **复杂度**：高（当前移动端能力缺失，不是纯验收）。
-- **完成 commit**：`pending`（PR 待合并；待 Codex 复审通过后归档 work-log + REQ-060 Done + current-work）。
-- **测试分布**：useMobileDrawer.spec.ts 15 + LayoutView.spec.ts 47（+15 Slice 4）= Slice 4 新增 30 vitest tests；Playwright e2e 拆为 navigation-shared/desktop/mobile 三组 spec（7 角色 + activeNav + 详情父高亮 + drawer 状态机 + focus/Tab/body-lock + 结构视觉断言 + skip-link 键盘验收）。
-- **推荐模型**：GPT-5.6 Sol `medium` 或 Kimi K3 thinking 实现；Sol `high` 做响应式/RBAC Review。
+- [x] 运行前端 lint、typecheck、Vitest、Playwright；PR CI 按 scope 执行，禁止把 mock UI 当后端 RBAC 证据。`vitest.config.ts` 排除 `e2e/**`（`configDefaults.exclude` 追加）；`tsconfig.e2e.json` 独立类型门禁；`package.json` lint 纳入 `e2e/**/*.ts` + `playwright.config.ts`；`ci.yml` 接入 Playwright install + test:e2e。最终验证：vitest canonical 326/326 passed；Playwright 55/55（仅 desktop 跑 skip-link 键盘用例）；typecheck 0 / lint 0 errors 28 warnings / docs gate / diff check exit 0；三路 CI 全绿（Frontend 2m30s / Backend 8m05s / Engineering docs）。六轮复审收口（r1: mobile drawer + focus trap + project 分流 + CI；r2: active-not-in-set + API mocks + 结构断言；r3: skip-link to shared + lint scope；r4: skip-link to desktop + e2e typecheck；r5: drawer inert + 路由焦点 + skip-link CSS；r6: 单一 skip-link 所有权收口）。
+- [ ] 用户验收后更新 work-log、Requirement/Backlog/current-work 和本 Plan 验证摘要。（Codex 复审通过；待用户合并后归档 → 提交 work-log closeout commit，PR #503 merge 后 REQ-060 Done 状态切换）
+- **复杂度**：高（移动端 + a11y + Playwright 浏览器验收合一）。
+- **完成 commit**：`b924bddc`（六轮返修最终 commit；Codex 复审通过 `P0/P1/P2 = 0/0/1`；待用户合并 PR #503）。
+- **测试分布**：useMobileDrawer.spec.ts 15 + LayoutView.spec.ts 47（+15 Slice 4）= Slice 4 新增 30 vitest tests；Playwright e2e 三组 spec 55/55（shared × 2 projects + desktop + mobile）。合计仓库 canonical 326/326 + Playwright 55/55。
+- **焦点返回契约**（Spec D-10 收口）：
+  - Escape / backdrop / opener 二次点击 关闭 -> 焦点回到 opener
+  - 路由导航关闭 drawer -> 焦点移到新页面 `#main-content`（避免停留在已移出视口的 nav-link）
+  - 关闭态 drawer 加 `inert` + `aria-hidden="true"`（防止 Tab 序列 + AT 树进入）
+- **推荐模型**：GPT-5.6 Sol `high` 做响应式 + a11y + 焦点语义返修；Kimi K3 thinking 实现 UI 改动。
 
 ## 强制顺序
 
