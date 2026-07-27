@@ -29,7 +29,11 @@
             class="nav-item"
             :class="{ 'nav-item-active': isActive(item.name), 'nav-item-collapsed': collapsed }"
             :title="collapsed ? item.title : undefined"
+            :aria-label="item.title"
           >
+            <div class="nav-icon">
+              <component :is="item.icon" v-if="item.icon" :size="collapsed ? 20 : 18" :stroke-width="1.5" />
+            </div>
             <span v-if="!collapsed" class="nav-label">{{ item.title }}</span>
           </RouterLink>
         </div>
@@ -124,6 +128,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useThemeStore } from "@/stores/theme";
 import { roleMap } from "@/constants/maps";
 import {
+  BookOpen,
   LogOut,
   ChevronLeft,
   ChevronUp,
@@ -133,8 +138,8 @@ import {
 } from "lucide-vue-next";
 import {
   projectNavigation,
+  loadFeatureFlags,
   type NavSectionProjection,
-  type FeatureFlags,
 } from "@/app/nav";
 
 const route = useRoute();
@@ -151,23 +156,7 @@ const themeLabel = computed(() => (themeStore.activeTheme === "dark" ? "切换�
 const themeIcon = computed(() => (themeStore.activeTheme === "dark" ? Sun : Moon));
 
 // REQ-060 Slice 3: 从 Route Record 投影导航（删 navItems/adminItems/aiAppItems 三份数组）
-function loadFeatureFlags(): FeatureFlags {
-  const flags: FeatureFlags = {};
-  const keys: Array<keyof FeatureFlags> = [
-    "system_management",
-    "agent_workspace",
-    "agent_runtime",
-    "agent_run_center",
-  ];
-  for (const key of keys) {
-    const val = localStorage.getItem(`metaedu_feature_${key}`);
-    if (val === "true") {
-      flags[key] = true;
-    }
-  }
-  return flags;
-}
-
+// 复用 nav.ts#loadFeatureFlags（唯一运行时来源，防 flag key 漂移）
 const navSections = computed<NavSectionProjection[]>(() => {
   return projectNavigation(router.getRoutes(), {
     role: authStore.userRole,
@@ -319,30 +308,7 @@ onUnmounted(() => {
   font-size: var(--text-micro);
   color: var(--color-ink-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   margin: 0;
-}
-
-.nav-admin-section {
-  margin-top: 2px;
-}
-
-.nav-item-admin {
-  justify-content: flex-start !important;
-}
-
-.nav-admin-subitems {
-  margin-left: 8px;
-  padding-left: 8px;
-  border-left: 1px solid var(--color-border-subtle);
-}
-
-.nav-item-sub {
-  height: 38px !important;
-  padding-left: 12px !important;
-}
-
-.nav-item-sub .nav-icon {
-  opacity: 0.7;
 }
 </style>
