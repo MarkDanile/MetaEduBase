@@ -16,7 +16,7 @@
 
 ### REQ-060 Slice 4: 移动端 + a11y + Playwright + 收口
 
-状态：🟡 In Progress（Slice 3 已合并归档 PR #501，Slice 4 启动中）
+状态：🟡 Awaiting Merge（Slice 4 PR #503 六轮返修完成，Codex 复审通过待用户合并）
 类型：前端响应式 + 浏览器验收（P1）
 领域：Web / IA / Navigation / a11y
 
@@ -24,9 +24,9 @@
 - Spec: [REQ-060](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md)
 - Plan: [Slice 4](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md)
 
-当前进展：Slice 1（nav foundation + permission resolver）+ Slice 2（受保护路由 + 守卫 + 重定向）+ Slice 3（Sidebar/Home/Breadcrumb 统一投影，已合并 PR #501 + 63 新增测试 + canonical 296/296）已合并归档。Slice 4 启动：`<768px` 顶部 Menu 按钮 + off-canvas navigation；backdrop / Escape / route change 关闭 / 焦点迁移 / `body scroll lock` / `aria-controls` / `aria-expanded` / `aria-current`；分组按钮键盘导航 + 稳定展开状态；新增最小 `@playwright/test` 覆盖桌面/移动、浅色/深色、7 角色代表集、403、重定向、详情父高亮。
+当前进展：Slice 1/2/3 已合并。Slice 4 PR #503 六轮返修（commit b924bddc）：useMobileDrawer composable（15 tests）+ LayoutView 重构（+15 tests = 47 total）+ Playwright 3 组 spec（shared/desktop/mobile testMatch 分流）+ API route mock + 结构视觉断言 + ci.yml 接入 e2e + tsconfig.e2e.json + drawer inert/aria-hidden + 路由关闭焦点返回 #main-content + skip-link 单一所有权（App.vue 全局）。仓库 canonical 326/326 passed；Playwright 55/55（仅 desktop 跑 skip-link 键盘用例）；typecheck 0 / lint 0 errors 28 warnings / docs gate / diff check exit 0；三路 CI 全绿（Frontend 2m30s, Backend 8m05s, Engineering docs）。
 
-下一步：实施 Slice 4 checklist（移动端断点 + a11y 全覆盖 + Playwright 配置 + 验收 → 提交 PR 等 Codex 复审）。
+下一步：用户合并 PR #503 -> 归档 work-log + scorecard + REQ-060 Done + current-work 收口。
 
 ## 下一批候选任务
 
@@ -34,7 +34,9 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1-P | （REQ-060 Slice 5: 验收收口 + work-log） | 🟢 Pending | Slice 4 合并后启动 | [Plan](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md#slice-4移动端a11y--playwright-与收口) |
+| P1-P | REQ-041/047 R1 返修（文档门禁 / work-log 一致性 / plan 勾选同步） | 🔵 Ready | REQ-060 合并后启动，使用 GPT-5.6 Sol `xhigh`| [Backlog](../01-product-planning/04-backlog.md) |
+| P1-P | REQ-042 塑形（AI 问答 -> Agent 工作台） | 🔵 Ready | REQ-060 合并后启动 | [Spec](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md) |
+| P1-P | REQ-047 C1 收口（app context durable + features） | 🔵 Ready | REQ-041 R1 后启动 | [Backlog](../01-product-planning/04-backlog.md) |
 
 ## 最近完成
 
