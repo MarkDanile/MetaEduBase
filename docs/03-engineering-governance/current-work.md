@@ -14,19 +14,20 @@
 
 ## 当前进行中
 
-### REQ-060 Slice 4: 移动端 + a11y + Playwright + 收口
+### REQ-041/047 R1 返修（文档门禁 / work-log 一致性 / plan 勾选同步）
 
-状态：🟡 Awaiting Merge（Slice 4 PR #503 六轮返修完成，Codex 复审通过待用户合并）
-类型：前端响应式 + 浏览器验收（P1）
-领域：Web / IA / Navigation / a11y
+状态：🟡 In Progress（REQ-060 已 Done 收口；启动下一批）
+类型：Backend + 文档（GPT-5.6 Sol `xhigh`）
+领域：Conversation / Run / work-log
 
 需求来源：
-- Spec: [REQ-060](../01-product-planning/05-requirements/REQ-060-enterprise-console-information-architecture.md)
-- Plan: [Slice 4](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md)
+- Spec: [REQ-041/047](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md)
+- Plan: [REQ-041/047 plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md)
+- Backlog: [REQ-041/047 R1 候选](../01-product-planning/04-backlog.md)
 
-当前进展：Slice 1/2/3 已合并。Slice 4 PR #503 六轮返修（commit b924bddc）：useMobileDrawer composable（15 tests）+ LayoutView 重构（+15 tests = 47 total）+ Playwright 3 组 spec（shared/desktop/mobile testMatch 分流）+ API route mock + 结构视觉断言 + ci.yml 接入 e2e + tsconfig.e2e.json + drawer inert/aria-hidden + 路由关闭焦点返回 #main-content + skip-link 单一所有权（App.vue 全局）。仓库 canonical 326/326 passed；Playwright 55/55（仅 desktop 跑 skip-link 键盘用例）；typecheck 0 / lint 0 errors 28 warnings / docs gate / diff check exit 0；三路 CI 全绿（Frontend 2m30s, Backend 8m05s, Engineering docs）。
+当前进展：REQ-060 四 Slice（#497/#499/#501/#503）已全部合并；仓库全量 326/326 vitest + 55/55 Playwright + 三路 CI 全绿。下一批启动 REQ-041/047 R1 返修 + REQ-042 塑形 + REQ-047 C1 收口。
 
-下一步：用户合并 PR #503 -> 归档 work-log + scorecard + REQ-060 Done + current-work 收口。
+下一步：启动 REQ-041/047 R1 返修（文档门禁 / work-log 一致性 / plan 勾选同步）。
 
 ## 下一批候选任务
 
@@ -46,6 +47,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-27 | REQ-060 Slice 4 移动端 + a11y + Playwright + 收口 | 🟢 完成 | useMobileDrawer + LayoutView 重构（30 新增 vitest）+ Playwright 3 组 spec（55/55）；326/326 vitest；三路 CI 全绿；六轮复审 P0/P1/P2=0/0/0；评分 95 | [PR #503](https://github.com/MarkDanile/MetaEduBase/pull/503)（）/ [Plan §Slice 4](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md) / [work-log](work-log.md) / [scorecard](04-retrospectives/review-score-log.md) |
 | 2026-07-25 | TD-087 模板管理 API 后端 RBAC | 🟢 完成 | 15 个管理端点统一高权守卫；tenant-local 最小 lookup DTO、403 脱敏与 92 例角色/租户矩阵完成；Template 124、Identity 47、Frontend 175 passed，三路 CI 全绿 | [PR #495](https://github.com/MarkDanile/MetaEduBase/pull/495)（`40a7bf46`）/ [Tech Debt](technical-debt.md#td-087-模板管理-api-缺少后端-rbac) |
 | 2026-07-25 | Agent Control Plane D1 Direct RAG compatibility recording | 🟢 完成 | 旧 evidence API 持久化 Conversation/Message/Run/Event/terminal；双向 bridge 恢复、scoped identity、隔离 execution claim 与 `033` staging；全量 1623 passed，三路 CI 与 `max` 复审全绿 | [PR #489](https://github.com/MarkDanile/MetaEduBase/pull/489)（`56de6bf1`） |
 | 2026-07-24 | Agent Control Plane A1 Run query 与 SSE replay | 🟢 完成 | owner-private GET Run、持久化幂等 cancel intent、PostgreSQL ledger SSE replay/live polling、权限重验和 gap/retention/cursor 错误；`032` migration；全量 1605 passed，三路 CI 全绿 | [PR #487](https://github.com/MarkDanile/MetaEduBase/pull/487)（`2f91bed8`） |
