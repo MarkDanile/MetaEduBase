@@ -430,11 +430,12 @@ describe("meta inventory on real router.getRoutes()", () => {
       (r) => r.name !== undefined && r.meta?.guest !== true,
     );
 
-    // 精确断言业务 leaf 数量为 24
+    // 精确断言业务 leaf 数量为 23（Slice 2 后：admin/skill-editor 变 redirect，
+    // 新增 5 目标路由 + /403 guest = 净减 1 named leaf）
     expect(
       businessLeaves.length,
-      `expected 24 business leaves, got ${businessLeaves.length}`,
-    ).toBe(24);
+      `expected 23 business leaves, got ${businessLeaves.length}`,
+    ).toBe(23);
 
     // 逐项断言 title + section 均存在（失败信息必须输出 route name/path）
     const missing: string[] = [];
