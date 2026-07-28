@@ -27,11 +27,11 @@
 - R1 Plan: [R1 分 Slice 实施计划](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
 - Backlog: [REQ-041/047](../01-product-planning/04-backlog.md)
 
-当前进展：R1-S1 已交付 schema 基座（唯一版本化 `conversation_owner_key()`、code-defined owner registry、四张 coordination 表 + Conversation.hold_revision、Message/Conversation/Run/CompatibilityOutput/transport + actor tombstone expand-only schema、带游标与 CLI 的 baseline fence backfill）。PR #506 已创建（未合并）。第一至四轮复审 P1/P2 已修复；第五轮复审（P0=0/P1=1/P2=3）后：P1 fence 状态机显式转移表（`_FENCE_ALLOWED_TRANSITIONS`，拒 erasing/erased→active、active→erased、erased→任意、blocked→active/erased；合法推进要求 purge_revision>=1）+ 完整 4×4 表驱动测试（变异验证 M6）；P2.2 修复 TD-085 标题被吞；P2.3 更正 TD-089 归因（PK/UK 同列去重是 PostgreSQL 自身）+ 迁移方式（合并前原地改 034、合并后新增 migration）；P2.4 backfill `conversations_scanned`→`conversations_succeeded` + 失败恢复契约（失败行游标推进、续跑不重试、起点幂等重跑）+ CLI exit 1 重跑指令。本轮不改 migration 034。不启动 scheduler、不清正文、不接 S2-S4 writer、不加 legal-hold API/UI、不实现 Runtime/external adapter。
+当前进展：R1-S1 已交付 schema 基座（唯一版本化 `conversation_owner_key()`、code-defined owner registry、四张 coordination 表 + Conversation.hold_revision、Message/Conversation/Run/CompatibilityOutput/transport + actor tombstone expand-only schema、带游标与 CLI 的 baseline fence backfill）。PR #506 已创建（未合并）。第一至五轮复审 P1/P2 已修复；第六轮复审（P0=0/P1=0/P2=2 + 1 P3 文案，核心状态机已确认正确）后：P2.1 补齐 fence 状态机 4×4 全部 16 条边覆盖（补 `blocked→blocked` + `active→erasing`/`blocked→erasing` 的 `purge_revision=0` 下界）；P2.2 非 erased 边携带 ACK fail closed（ACK 只属于 erased，防「提交 ACK」与「状态推进」混用被静默丢弃，变异验证 M7）；P3 更正「restore 重挂 fence」文案（owner 离开 active 后普通 restore 即不允许）。不启动 scheduler、不清正文、不接 S2-S4 writer、不加 legal-hold API/UI、不实现 Runtime/external adapter。
 
-下一步：等用户对修订后 PR #506 做独立安全复审 + Codex 复审，通过后才按流程合并；`034` 最终稳定后对本地 dev DB 做显式 schema reset（旧版同 revision，普通 downgrade 不可用）。
+下一步：等用户对修订后 PR #506 做只读复核 + Codex 复审，通过后才按流程合并；`034` 最终稳定后对本地 dev DB 做显式 schema reset（旧版同 revision，普通 downgrade 不可用）。
 
-验证状态：migration 往返 / schema CHECK / tenant 复合键 / CAS / fence 状态机转移表 / owner registry digest 决定性 / 并发 fence 唯一性（真实 PG）/ backfill 幂等分批游标重启 + 失败恢复契约全部通过；62 erasure 专项 + 235 workspace/execution/control-plane 回归全绿；ruff 0 错误；mypy baseline 0 回归；docs gate 与 git diff --check 通过。
+验证状态：migration 往返 / schema CHECK / tenant 复合键 / CAS / fence 状态机转移表（16 边全覆盖 + ACK 边界）/ owner registry digest 决定性 / 并发 fence 唯一性（真实 PG）/ backfill 幂等分批游标重启 + 失败恢复契约全部通过；62 erasure 专项 + 235 workspace/execution/control-plane 回归全绿；ruff 0 错误；mypy baseline 0 回归；docs gate 与 git diff --check 通过。
 
 ## 下一批候选任务
 

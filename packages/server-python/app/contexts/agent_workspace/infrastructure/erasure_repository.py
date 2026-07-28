@@ -58,8 +58,8 @@ def _empty_ingress_digest() -> str:
 # - active→erasing：开始 purge fencing；token 由调用方从合法 operation revision 提供。
 # - erasing→erased：owner ACK 完成；erasing→blocked：owner 暂停（external/hold）。
 # - blocked→erasing：解除暂停后继续。
-# 禁止：任何 →active（恢复普通写只能经 restore 路径重挂新 fence，不在 CAS 内）；
-# erased 为终态；blocked 不得直达 erased（须经 erasing 完成 ACK）。
+# 禁止：任何 →active（owner 一旦离开 active，普通 restore 即不允许，不存在回到
+# active 的 fence 路径）；erased 为终态；blocked 不得直达 erased（须经 erasing 完成 ACK）。
 _FENCE_ALLOWED_TRANSITIONS: frozenset[tuple[ErasureFenceState, ErasureFenceState]] = (
     frozenset(
         {
@@ -279,7 +279,8 @@ class AgentErasureRepository:
             raise ValueError("erasure fence CAS conflict")
         # 状态机显式转移表：非法边（如 erasing/erased→active 重新开放 writer、
         # active→erased 绕过 erasing fencing、erased→任意、blocked→active）一律
-        # fail closed，不依赖调用方自觉（Spec §5.1/§6.2，R1-AC3）。
+        # fail closed，不依赖调用方自觉（Spec §5.1/§6.2，R1-AC3）。owner 一旦离开
+        # active，普通 restore 即不允许；不存在「删除并重建 fence 回到 active」的路径。
         current_state = ErasureFenceState(model.state)
         if (current_state, new_state) not in _FENCE_ALLOWED_TRANSITIONS:
             raise ValueError(
@@ -302,6 +303,13 @@ class AgentErasureRepository:
             )
         if new_state is ErasureFenceState.ERASED and not ack_digest:
             raise ValueError("erased fence requires ack_digest")
+        # ACK 只属于 erased：非 erased 边携带 ack_digest 说明调用方把「提交 ACK」与
+        # 「状态推进」混用，ACK 会被静默丢弃——durable purge saga 必须 fail closed。
+        if new_state is not ErasureFenceState.ERASED and ack_digest is not None:
+            raise ValueError(
+                f"ack_digest only allowed on erased transition, got non-erased "
+                f"{current_state} -> {new_state}"
+            )
         model.state = new_state.value
         model.purge_revision = purge_revision
         model.hold_revision = hold_revision

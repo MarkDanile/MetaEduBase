@@ -500,9 +500,10 @@ async def test_fence_state_transition_table_4x4(db_session):
     st, rev = await _drive(t, c, [(S.BLOCKED, 1, 0, None)])
     assert st is S.BLOCKED
 
-    # --- from=blocked：→erasing 合法，→active/erased 非法 ---
+    # --- from=blocked：→erasing 合法，→active/erased/blocked 非法 ---
     await _expect_reject(t, c, st, rev, S.ACTIVE, 2, 1)
     await _expect_reject(t, c, st, rev, S.ERASED, 1, 0, ack="a" * 64)
+    await _expect_reject(t, c, st, rev, S.BLOCKED, 2, 1)  # blocked→blocked 自迁移非法
     st, rev = await _drive(t, c, [(S.ERASING, 2, 1, None)])
     assert st is S.ERASING
 
@@ -512,11 +513,30 @@ async def test_fence_state_transition_table_4x4(db_session):
     for target in (S.ACTIVE, S.ERASING, S.BLOCKED, S.ERASED):
         await _expect_reject(t, c, st, rev, target, 4, 2, ack="e" * 64)
 
-    # --- 合法推进 token 下界：erasing→erased / erasing→blocked 要求 purge_revision>=1 ---
+    # --- 合法推进 token 下界：全部三条非 active 源边要求 purge_revision>=1 ---
+    # active→erasing
     t, c = await _make()
+    f = await repo.create_fence(tenant_id=t, conversation_id=c, owner_key="workspace.core.v1")
+    await _expect_reject(t, c, S.ACTIVE, f.revision, S.ERASING, 0, 0)
+    # erasing→erased / erasing→blocked
     st, rev = await _drive(t, c, [(S.ERASING, 1, 0, None)])
     await _expect_reject(t, c, st, rev, S.ERASED, 0, 0, ack="f" * 64)
     await _expect_reject(t, c, st, rev, S.BLOCKED, 0, 0)
+    # blocked→erasing
+    st, rev = await _drive(t, c, [(S.BLOCKED, 1, 0, None)])
+    await _expect_reject(t, c, st, rev, S.ERASING, 0, 0)
+
+    # --- 非 erased 边携带 ACK 一律 fail closed（不得静默丢弃 ACK）---
+    # active→erasing 携带 ACK
+    t, c = await _make()
+    f = await repo.create_fence(tenant_id=t, conversation_id=c, owner_key="workspace.core.v1")
+    await _expect_reject(t, c, S.ACTIVE, f.revision, S.ERASING, 1, 0, ack="a" * 64)
+    # erasing→blocked 携带 ACK
+    st, rev = await _drive(t, c, [(S.ERASING, 1, 0, None)])
+    await _expect_reject(t, c, st, rev, S.BLOCKED, 1, 0, ack="b" * 64)
+    # blocked→erasing 携带 ACK
+    st, rev = await _drive(t, c, [(S.BLOCKED, 1, 0, None)])
+    await _expect_reject(t, c, st, rev, S.ERASING, 2, 1, ack="c" * 64)
 
 
 @pytest.mark.asyncio
