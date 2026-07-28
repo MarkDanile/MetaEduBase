@@ -26,6 +26,7 @@ from app.contexts.agent_workspace.domain import (
     ConversationPurgedError,
     ConversationPurgeInProgressError,
     ConversationRecoveryExpiredError,
+    ConversationRestoreNotAllowedError,
     ConversationState,
     IdempotencyConflictError,
     InvalidConversationStateError,
@@ -222,6 +223,11 @@ def _raise_workspace_error(exc: Exception) -> NoReturn:
         raise HTTPException(
             status_code=409,
             detail=_error_detail("conversation_purged", str(exc)),
+        ) from exc
+    if isinstance(exc, ConversationRestoreNotAllowedError):
+        raise HTTPException(
+            status_code=409,
+            detail=_error_detail("conversation_restore_not_allowed", str(exc)),
         ) from exc
     if isinstance(exc, TitleSourceConflictError):
         raise HTTPException(

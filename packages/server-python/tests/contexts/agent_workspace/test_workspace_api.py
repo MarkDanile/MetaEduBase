@@ -12,6 +12,9 @@ from app.contexts.agent_workspace.application.dto import MessagePartInput, TurnC
 from app.contexts.agent_workspace.domain import MessagePartType
 from app.main import app
 from app.shared.infrastructure.seed import DEFAULT_ADMIN_ID, DEFAULT_TENANT_ID
+from tests.contexts.agent_control_plane.helpers import (
+    create_baseline_fences_via_engine,
+)
 from tests.contexts.identity._helpers import register_and_login
 
 pytestmark = pytest.mark.asyncio
@@ -127,6 +130,10 @@ async def test_owner_private_crud_cas_and_history(
     )
     assert archived.status_code == 200
     assert archived.json()["state"] == "archived"
+    # R1-S2：restore 要求预期 owner fence 集合完整且全部 active（backfill 基线）。
+    await create_baseline_fences_via_engine(
+        tenant_id=DEFAULT_TENANT_ID, conversation_id=conversation_id
+    )
     restored = await client.post(
         f"/api/v1/agent-workspace/conversations/{conversation_id}/restore",
         headers={**auth_headers, "If-Match": "3"},

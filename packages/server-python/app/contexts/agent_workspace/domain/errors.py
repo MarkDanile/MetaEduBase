@@ -30,6 +30,10 @@ class ConversationPurgeInProgressError(AgentWorkspaceError):
     pass
 
 
+class ConversationRestoreNotAllowedError(AgentWorkspaceError):
+    """Restore 的安全账本不完整或不可信（fence 缺失/未知 owner/版本漂移）。"""
+
+
 class IdempotencyConflictError(AgentWorkspaceError):
     pass
 

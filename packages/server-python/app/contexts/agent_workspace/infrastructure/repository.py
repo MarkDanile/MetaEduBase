@@ -5,8 +5,9 @@ from collections import defaultdict
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, and_, exists, func, literal, or_, select
+from sqlalchemy import DateTime, and_, exists, func, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.agent_workspace.domain import (
@@ -32,6 +33,9 @@ from app.contexts.agent_workspace.domain import (
     RevisionConflictError,
     TitleSourceConflictError,
     TurnDispatchState,
+)
+from app.contexts.agent_workspace.infrastructure.erasure_repository import (
+    AgentErasureRepository,
 )
 from app.contexts.agent_workspace.infrastructure.models import (
     ConversationModel,
@@ -277,9 +281,8 @@ class AgentWorkspaceRepository:
         self._check_revision(row, expected_revision)
         if row.purged_at is not None:
             raise ConversationPurgedError("purged conversations cannot be restored")
-        # R1-S2 恢复截止（Spec §3）：purge_state=running|completed 拒绝普通恢复；
-        # blocked/failed 不阻止，但也不能绕过 30 天截止时间（now >= purge_after
-        # 即截止）。这些检查必须在清除 purge_after 之前、同一行锁下完成。
+        # R1-S2 恢复截止（Spec §3）：purge_state=running|completed 拒绝普通恢复。
+        # 这些检查必须在清除 purge_after 之前、同一行锁下完成。
         if row.purge_state in {
             PurgeState.RUNNING.value,
             PurgeState.COMPLETED.value,
@@ -287,15 +290,20 @@ class AgentWorkspaceRepository:
             raise ConversationPurgeInProgressError(
                 "conversation purge is running or completed; cannot be restored"
             )
-        effective_now = now or datetime.now(UTC)
-        if (
-            row.state == ConversationState.DELETED.value
-            and row.purge_after is not None
-            and effective_now >= row.purge_after
-        ):
-            raise ConversationRecoveryExpiredError(
-                "conversation recovery window has expired"
-            )
+        # 生产默认裁决时间取数据库时钟（bridge 在锁后注入时尊重注入值）。
+        effective_now = now or await self._database_now()
+        # deleted 且 purge_after IS NULL：无法证明 now < purge_after -> fail
+        # closed，不得把「无截止记录」当作可恢复放行。
+        if row.state == ConversationState.DELETED.value:
+            if row.purge_after is None:
+                raise ConversationRecoveryExpiredError(
+                    "deleted conversation has no recovery deadline recorded; "
+                    "cannot prove the recovery window is still open"
+                )
+            if effective_now >= row.purge_after:
+                raise ConversationRecoveryExpiredError(
+                    "conversation recovery window has expired"
+                )
         if row.state not in {
             ConversationState.ARCHIVED.value,
             ConversationState.DELETED.value,
@@ -303,16 +311,48 @@ class AgentWorkspaceRepository:
             raise InvalidConversationStateError(
                 "only archived or deleted conversations can be restored"
             )
-        row.state = ConversationState.ACTIVE.value
-        row.archived_at = None
-        row.archived_by = None
-        row.deleted_at = None
-        row.deleted_by = None
-        row.purge_after = None
-        row.purge_state = PurgeState.NOT_SCHEDULED.value
-        row.revision += 1
-        row.updated_at = effective_now
+        # Spec §3-3：恢复成功通过 CAS 取消尚未开始的 purge operation（置
+        # cancelled 终态、保留审计行）；与下方 Conversation 状态恢复同一事务
+        # 原子提交。started 的 checkpoint 会在取消前 fail closed。
+        await AgentErasureRepository(
+            self._session
+        ).cancel_scheduled_operations_for_restore(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            now=effective_now,
+        )
+        # revision/hold/purge CAS：Conversation FOR UPDATE 行锁已串行并发写
+        # （任何 hold/purge 变更须先取同一行锁），UPDATE 谓词作兜底；恢复同时
+        # 推进 purge_revision，旧 purge lease/revision 随后失效（Spec §3-3）。
+        result = await self._session.execute(
+            update(ConversationModel)
+            .where(
+                ConversationModel.tenant_id == tenant_id,
+                ConversationModel.id == row.id,
+                ConversationModel.revision == row.revision,
+                ConversationModel.hold_revision == row.hold_revision,
+                ConversationModel.purge_revision == row.purge_revision,
+            )
+            .values(
+                state=ConversationState.ACTIVE.value,
+                archived_at=None,
+                archived_by=None,
+                deleted_at=None,
+                deleted_by=None,
+                purge_after=None,
+                purge_state=PurgeState.NOT_SCHEDULED.value,
+                purge_revision=row.purge_revision + 1,
+                revision=row.revision + 1,
+                updated_at=effective_now,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        if not isinstance(result, CursorResult) or result.rowcount != 1:
+            raise RevisionConflictError(
+                "conversation revision/hold/purge token changed during restore"
+            )
         await self._session.flush()
+        await self._session.refresh(row)
         return self._to_conversation(row)
 
     async def soft_delete_after_guard(
@@ -323,13 +363,18 @@ class AgentWorkspaceRepository:
         conversation_id: uuid.UUID,
         expected_revision: int,
         purge_after: datetime,
+        deleted_at: datetime | None = None,
     ) -> Conversation:
-        """Persist deletion after B1's coordinator has proved its execution guard."""
+        """Persist deletion after B1's coordinator has proved its execution guard.
+
+        deleted_at 与 purge_after 必须同源（purge_after = deleted_at + 恢复
+        窗口）；生产默认在锁后取数据库时钟，调用方注入同一采样值。
+        """
         row = await self._require_owned_row_for_update(
             tenant_id, actor_id, conversation_id
         )
         self._check_revision(row, expected_revision)
-        now = datetime.now(UTC)
+        now = deleted_at or await self._database_now()
         row.state = ConversationState.DELETED.value
         row.deleted_at = now
         row.deleted_by = actor_id
@@ -533,6 +578,12 @@ class AgentWorkspaceRepository:
             raise RevisionConflictError(
                 f"expected revision {expected_revision}, current revision is {row.revision}"
             )
+
+    async def _database_now(self) -> datetime:
+        """生产默认时钟源：数据库 ``clock_timestamp()``（不是应用进程时钟）。"""
+        now = await self._session.scalar(select(func.clock_timestamp()))
+        assert now is not None
+        return now
 
     async def _messages_with_parts(
         self, tenant_id: uuid.UUID, rows: Sequence[MessageModel]

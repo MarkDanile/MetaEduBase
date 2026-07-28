@@ -257,25 +257,10 @@ class AgentWorkspaceService:
             conversation_id=conversation_id,
         )
 
-    async def restore_conversation(
-        self,
-        *,
-        tenant_id: uuid.UUID,
-        actor_id: uuid.UUID,
-        conversation_id: uuid.UUID,
-        expected_revision: int,
-    ) -> ConversationView:
-        await self._repo.restore(
-            tenant_id=tenant_id,
-            actor_id=actor_id,
-            conversation_id=conversation_id,
-            expected_revision=expected_revision,
-        )
-        return await self.get_conversation(
-            tenant_id=tenant_id,
-            actor_id=actor_id,
-            conversation_id=conversation_id,
-        )
+    # R1-S2 收口：restore 唯一入口是 B1 ConversationExecutionCoordinator
+    # （Guard -> Conversation row -> owner lock -> fence FOR UPDATE ->
+    # operation CAS + 锁后 DB 时钟）。本 service 不再提供绕过统一编排的
+    # 恢复旁路；archive-restore 与 deleted-restore 都走 coordinator。
 
     async def set_pinned(
         self,

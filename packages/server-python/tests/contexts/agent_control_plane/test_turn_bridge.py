@@ -45,6 +45,7 @@ from tests.contexts.agent_control_plane.helpers import (
     ACTOR_ID,
     TENANT_ID,
     bootstrap_workspace,
+    create_baseline_fences,
     turn_command,
 )
 
@@ -268,6 +269,10 @@ async def test_delete_fails_closed_for_pending_and_non_terminal_then_restores(
     )
     assert deleted.state is ConversationState.DELETED
     assert deleted.purge_after is not None
+    # R1-S2：restore 要求预期 owner fence 集合完整且全部 active（backfill 基线）。
+    await create_baseline_fences(
+        db_session, tenant_id=TENANT_ID, conversation_id=conversation_id
+    )
     restored = await ConversationExecutionCoordinator(db_session).restore_conversation(
         tenant_id=TENANT_ID,
         actor_id=ACTOR_ID,

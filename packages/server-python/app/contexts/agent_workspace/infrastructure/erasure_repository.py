@@ -16,7 +16,8 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import exists, select
+from sqlalchemy import exists, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.composition.agent_erasure_registry import (
@@ -36,6 +37,9 @@ from app.contexts.agent_workspace.domain.erasure import (
     PurgeOperationState,
     PurgeOwnerCheckpoint,
     PurgeOwnerState,
+)
+from app.contexts.agent_workspace.domain.errors import (
+    ConversationPurgeInProgressError,
 )
 from app.contexts.agent_workspace.infrastructure.models import (
     ConversationLegalHoldModel,
@@ -233,6 +237,11 @@ class AgentErasureRepository:
     async def list_fences(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
     ) -> list[ErasureFence]:
+        """普通读（不加行锁）：供只读查询/报告路径使用。
+
+        restore/purge 等状态裁决路径必须用 ``list_fences_for_update``，
+        在 owner lock 之后对 fence 行加 FOR UPDATE（模块 docstring 锁序）。
+        """
         result = await self._session.execute(
             select(ErasureFenceModel)
             .where(
@@ -240,6 +249,25 @@ class AgentErasureRepository:
                 ErasureFenceModel.conversation_id == conversation_id,
             )
             .order_by(ErasureFenceModel.owner_key)
+        )
+        return [_fence_to_domain(row) for row in result.scalars().all()]
+
+    async def list_fences_for_update(
+        self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> list[ErasureFence]:
+        """状态裁决路径的 fence 行锁读取（FOR UPDATE）。
+
+        锁序（模块 docstring）：调用方必须先持 Guard -> Conversation row ->
+        owner advisory lock，再取本行锁；按 owner_key 字典序返回。
+        """
+        result = await self._session.execute(
+            select(ErasureFenceModel)
+            .where(
+                ErasureFenceModel.tenant_id == tenant_id,
+                ErasureFenceModel.conversation_id == conversation_id,
+            )
+            .order_by(ErasureFenceModel.owner_key)
+            .with_for_update()
         )
         return [_fence_to_domain(row) for row in result.scalars().all()]
 
@@ -389,6 +417,83 @@ class AgentErasureRepository:
         )
         model = result.scalar_one_or_none()
         return _purge_to_domain(model) if model is not None else None
+
+    async def cancel_scheduled_operations_for_restore(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        now: datetime | None = None,
+    ) -> list[PurgeOperation]:
+        """restore CAS（Spec §3-3）：把尚未开始的 purge operation 置 cancelled
+        终态（保留审计行、清 next_retry_at、推进 revision），返回被取消行。
+
+        scheduled operation 若已有 owner checkpoint 进入 erasing/blocked/acked，
+        说明清除实际已开始（状态自相矛盾）-> fail closed，不得恢复也不得改写
+        operation。operation 行锁 + state 谓词构成 CAS；调用方必须先持
+        Conversation 行锁，保证取消与 Conversation 状态恢复原子提交。
+        """
+        effective_now = now or _utcnow()
+        result = await self._session.execute(
+            select(PurgeOperationModel)
+            .where(
+                PurgeOperationModel.tenant_id == tenant_id,
+                PurgeOperationModel.conversation_id == conversation_id,
+                PurgeOperationModel.state == PurgeOperationState.SCHEDULED.value,
+            )
+            .with_for_update()
+        )
+        operations = list(result.scalars().all())
+        # 尚未开始的 operation 只允许 pending/failed checkpoint；出现
+        # erasing/blocked/acked 即「清除实际已开始」-> fail closed。
+        safe_checkpoint_states = frozenset(
+            {PurgeOwnerState.PENDING.value, PurgeOwnerState.FAILED.value}
+        )
+        for operation in operations:
+            checkpoint_states = (
+                (
+                    await self._session.execute(
+                        select(PurgeOwnerCheckpointModel.state).where(
+                            PurgeOwnerCheckpointModel.tenant_id == tenant_id,
+                            PurgeOwnerCheckpointModel.purge_operation_id
+                            == operation.id,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if any(
+                state not in safe_checkpoint_states for state in checkpoint_states
+            ):
+                raise ConversationPurgeInProgressError(
+                    "scheduled purge operation has a started owner checkpoint; "
+                    "restore would resurrect a body whose erasure already began"
+                )
+        cancelled: list[PurgeOperation] = []
+        for operation in operations:
+            update_result = await self._session.execute(
+                update(PurgeOperationModel)
+                .where(
+                    PurgeOperationModel.tenant_id == tenant_id,
+                    PurgeOperationModel.id == operation.id,
+                    PurgeOperationModel.state == PurgeOperationState.SCHEDULED.value,
+                )
+                .values(
+                    state=PurgeOperationState.CANCELLED.value,
+                    next_retry_at=None,
+                    revision=operation.revision + 1,
+                    updated_at=effective_now,
+                )
+                .execution_options(synchronize_session=False)
+            )
+            if not isinstance(update_result, CursorResult) or update_result.rowcount != 1:
+                raise ValueError(
+                    "purge operation cancel CAS conflict during restore"
+                )
+            await self._session.refresh(operation)
+            cancelled.append(_purge_to_domain(operation))
+        return cancelled
 
     async def create_owner_checkpoint(
         self,
