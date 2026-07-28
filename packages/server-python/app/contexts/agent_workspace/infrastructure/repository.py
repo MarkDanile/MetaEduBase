@@ -539,6 +539,12 @@ class AgentWorkspaceRepository:
 
     @staticmethod
     def _to_conversation(row: ConversationModel) -> Conversation:
+        # actor tombstone（redacted）的 created_by 已被清除为 None；S1 无清除
+        # writer，该读路径不应遇到。若遇到说明存在越权写 -> fail closed。
+        if row.created_by is None:
+            raise ConversationIdConflictError(
+                "conversation actor is erased; snapshot unavailable"
+            )
         return Conversation(
             id=row.id,
             tenant_id=row.tenant_id,

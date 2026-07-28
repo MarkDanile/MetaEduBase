@@ -20,7 +20,9 @@ from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.composition.agent_erasure_registry import (
-    capability_digest,
+    OwnerRegistryChangedError,
+    UnknownOwnerError,
+    registry_digest,
     registry_snapshot,
     require_owner,
     require_owner_version,
@@ -278,21 +280,30 @@ class AgentErasureRepository:
         tenant_id: uuid.UUID,
         conversation_id: uuid.UUID,
         purge_revision: int,
-        registry_digest: str,
         retention_policy_snapshot: dict,
         hold_revision_snapshot: int,
+        expected_registry_digest: str | None = None,
         now: datetime | None = None,
     ) -> PurgeOperation:
         effective_now = now or _utcnow()
+        # digest 与 snapshot 同源：从将持久化的 snapshot 计算 digest，二者绑定。
+        snapshot = registry_snapshot()
+        digest = registry_digest()
+        # 可选乐观并发：调用方若声明 expected digest，必须与当前一致，否则
+        # registry 已变化 -> fail closed，不持久化不一致的 operation（Spec §4）。
+        if expected_registry_digest is not None and expected_registry_digest != digest:
+            raise OwnerRegistryChangedError(
+                "expected registry digest does not match installed registry"
+            )
         model = PurgeOperationModel(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             purge_revision=purge_revision,
             state=PurgeOperationState.SCHEDULED.value,
-            registry_digest=registry_digest,
+            registry_digest=digest,
             # 持久化排序 owner 列表（不只是 digest），代码升级后可重建该次
             # operation 对应的 owner capability（Spec §4 / §5）。
-            registry_snapshot=registry_snapshot(),
+            registry_snapshot=snapshot,
             retention_policy_snapshot=retention_policy_snapshot,
             retention_policy_digest=canonical_digest(
                 {"policy": retention_policy_snapshot, "schema_version": 1}
@@ -329,15 +340,36 @@ class AgentErasureRepository:
         owner_key: str,
         now: datetime | None = None,
     ) -> PurgeOwnerCheckpoint:
-        owner = require_owner(owner_key)
+        require_owner(owner_key)
         effective_now = now or _utcnow()
+        # 从该 operation 持久化的 registry_snapshot 取 owner_version/capability_digest
+        # （与 registry_digest 同源），而非重新读取当前 registry——保证代码升级后
+        # 该次 ACK 仍对应 operation 冻结的能力视图（Spec §4）。
+        purge_result = await self._session.execute(
+            select(PurgeOperationModel.registry_snapshot).where(
+                PurgeOperationModel.tenant_id == tenant_id,
+                PurgeOperationModel.id == purge_operation_id,
+            )
+        )
+        snapshot = purge_result.scalar_one_or_none()
+        if snapshot is None:
+            raise ValueError(
+                f"purge operation {purge_operation_id} missing; cannot checkpoint"
+            )
+        entry = next(
+            (item for item in snapshot if item.get("owner_key") == owner_key),
+            None,
+        )
+        if entry is None:
+            raise UnknownOwnerError(
+                f"owner {owner_key!r} not present in operation registry snapshot"
+            )
         model = PurgeOwnerCheckpointModel(
             tenant_id=tenant_id,
             purge_operation_id=purge_operation_id,
             owner_key=owner_key,
-            # 记录 owner_version 与 capability_digest，ACK 可重建对应能力（Spec §4）。
-            owner_version=owner.owner_version,
-            capability_digest=capability_digest(owner_key),
+            owner_version=int(entry["owner_version"]),
+            capability_digest=str(entry["capability_digest"]),
             state=PurgeOwnerState.PENDING.value,
             attempt=0,
             created_at=effective_now,

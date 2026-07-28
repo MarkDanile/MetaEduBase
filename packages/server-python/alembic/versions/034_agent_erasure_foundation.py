@@ -30,7 +30,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # --- Conversation: hold_revision -------------------------------------
+    # --- Conversation: hold_revision + actor tombstone ----------------------
     op.add_column(
         "agent_conversations",
         sa.Column(
@@ -45,6 +45,43 @@ def upgrade() -> None:
         "ck_agent_conv_hold_revision",
         "agent_conversations",
         "hold_revision >= 0",
+        schema="metaedu",
+    )
+    # actor tombstone：redacted 可清 created_by，保留不可逆 creator_identity_digest。
+    op.add_column(
+        "agent_conversations",
+        sa.Column(
+            "actor_state",
+            sa.String(16),
+            nullable=False,
+            server_default="present",
+        ),
+        schema="metaedu",
+    )
+    op.add_column(
+        "agent_conversations",
+        sa.Column(
+            "creator_identity_digest",
+            sa.String(64),
+            nullable=True,
+        ),
+        schema="metaedu",
+    )
+    op.alter_column(
+        "agent_conversations",
+        "created_by",
+        existing_type=UUID(as_uuid=True),
+        nullable=True,
+        schema="metaedu",
+    )
+    op.create_check_constraint(
+        "ck_agent_conv_actor",
+        "agent_conversations",
+        "(actor_state = 'present' AND created_by IS NOT NULL "
+        "AND creator_identity_digest IS NULL) OR "
+        "(actor_state = 'redacted' AND created_by IS NULL "
+        "AND creator_identity_digest IS NOT NULL "
+        "AND char_length(creator_identity_digest) = 64)",
         schema="metaedu",
     )
 
@@ -790,6 +827,23 @@ def downgrade() -> None:
         type_="check",
     )
     op.drop_column("agent_messages", "body_state", schema="metaedu")
+
+    # Conversation actor tombstone / hold_revision 还原。
+    op.drop_constraint(
+        "ck_agent_conv_actor",
+        "agent_conversations",
+        schema="metaedu",
+        type_="check",
+    )
+    op.drop_column("agent_conversations", "creator_identity_digest", schema="metaedu")
+    op.drop_column("agent_conversations", "actor_state", schema="metaedu")
+    op.alter_column(
+        "agent_conversations",
+        "created_by",
+        existing_type=UUID(as_uuid=True),
+        nullable=False,
+        schema="metaedu",
+    )
     op.drop_constraint(
         "ck_agent_conv_hold_revision",
         "agent_conversations",

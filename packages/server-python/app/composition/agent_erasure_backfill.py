@@ -35,15 +35,24 @@ def _empty_ingress_digest() -> str:
     return canonical_digest({"ingress": {}, "schema_version": 1})
 
 
+@dataclass(frozen=True, slots=True)
+class BackfillFailure:
+    """单个 Conversation 回填失败的稳定诊断信息（不持久化正文）。"""
+
+    conversation_id: uuid.UUID
+    reason_code: str
+    error_type: str
+
+
 @dataclass(slots=True)
 class BackfillReport:
     tenants_processed: int = 0
     conversations_scanned: int = 0
     fences_created: int = 0
     fences_already_present: int = 0
-    failed_conversations: list[uuid.UUID] = field(default_factory=list)
-    # 本次成功处理的 Conversation id（用于串联游标与诊断）。
-    processed_conversations: list[uuid.UUID] = field(default_factory=list)
+    # 失败明细：稳定 reason_code + conversation_id + 异常类型（生产排障用，
+    # 不持久化正文）。仅失败条目入列，条数远小于会话总数，内存有界。
+    failures: list[BackfillFailure] = field(default_factory=list)
     # 下次调用的起始游标（最后一个已扫描 Conversation id）；处理完全部后为
     # 最后一个 id，调用方据此判断是否继续。
     next_after_id: uuid.UUID | None = None
@@ -53,10 +62,15 @@ class BackfillReport:
     registry_digest: str = ""
 
     @property
+    def failed_conversations(self) -> list[uuid.UUID]:
+        """失败 Conversation id 列表（向后兼容视图，源自 ``failures``）。"""
+        return [failure.conversation_id for failure in self.failures]
+
+    @property
     def ok(self) -> bool:
         """本次运行无失败。注意：``ok=True`` 不等于已处理完全部——
         需同时看 ``completed`` 或反复以 ``next_after_id`` 续跑到 completed。"""
-        return not self.failed_conversations
+        return not self.failures
 
 
 async def _select_conversation_batch(
@@ -135,6 +149,14 @@ async def backfill_baseline_fences(
     报告带回 ``next_after_id`` 供下次续跑。bounded（``max_conversations``）调用
     必须串联该游标才能持续推进，否则会反复处理同一批头部 Conversation。
     """
+    # 参数守卫（fail closed）：非法规模会产生“处理 0 个却 completed”的虚假结果。
+    if batch_size < 1:
+        raise ValueError(f"batch_size must be >= 1, got {batch_size}")
+    if max_conversations is not None and max_conversations < 1:
+        raise ValueError(
+            f"max_conversations must be None or >= 1, got {max_conversations}"
+        )
+
     report = BackfillReport(registry_digest=registry_digest())
     # 触发 registry 解析；任何 owner 缺失会在首个 Conversation 前 fail closed。
     owner_registry()
@@ -167,9 +189,14 @@ async def backfill_baseline_fences(
                 report.fences_created += created
                 report.fences_already_present += already
                 report.conversations_scanned += 1
-                report.processed_conversations.append(conversation_id)
-            except Exception:
-                report.failed_conversations.append(conversation_id)
+            except Exception as exc:
+                report.failures.append(
+                    BackfillFailure(
+                        conversation_id=conversation_id,
+                        reason_code="fence_insert_failed",
+                        error_type=type(exc).__name__,
+                    )
+                )
             processed += 1
             after_id = conversation_id
         # 终止条件：达到 max_conversations，或本批不足 batch_size（没有更多）。
@@ -195,10 +222,20 @@ async def count_conversations(session: AsyncSession, *, tenant_id: uuid.UUID) ->
 
 # ---------------------------------------------------------------------------
 # 可执行入口（运维命令）：python -m app.composition.agent_erasure_backfill
+#
+# 退出码契约（自动化调用）：
+#   0 = 全部完成且无失败；
+#   1 = 有失败（report.failures 含稳定 reason_code）；
+#   2 = 未完成（达到 --max-conversations 但未扫完），须以输出的 next_after_id
+#       作为 --after-id 续跑直到 exit 0。
 # ---------------------------------------------------------------------------
 
 
-async def _run_cli(args: object) -> int:
+def _make_session_factory():
+    """构造生产 session factory（独立可注入以便测试替换）。
+
+    使用方负责在结束后 dispose 引擎；此处返回 (session_factory, engine)。
+    """
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from sqlalchemy.pool import NullPool
 
@@ -206,6 +243,11 @@ async def _run_cli(args: object) -> int:
 
     engine = create_async_engine(settings.database_url, echo=False, poolclass=NullPool)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    return factory, engine
+
+
+async def _run_cli(args: object) -> int:
+    factory, engine = _make_session_factory()
     try:
         after_id = uuid.UUID(args.after_id) if args.after_id else None  # type: ignore[attr-defined]
         report = await backfill_baseline_fences(
@@ -226,12 +268,20 @@ async def _run_cli(args: object) -> int:
         f"completed={report.completed} "
         f"next_after_id={report.next_after_id}"
     )
+    # 退出码契约（自动化调用）：0=全部完成且无失败；1=有失败；2=未完成
+    # （达到 max_conversations 但未扫完，须以 next_after_id 续跑）。
     if report.failed_conversations:
-        print(  # noqa: T201
-            "failed conversations: "
-            + ", ".join(str(c) for c in report.failed_conversations)
-        )
+        for failure in report.failures:
+            print(  # noqa: T201
+                f"failed conversation: {failure.conversation_id} "
+                f"reason={failure.reason_code} error={failure.error_type}"
+            )
         return 1
+    if not report.completed:
+        print(  # noqa: T201
+            f"incomplete: resume with --after-id {report.next_after_id}"
+        )
+        return 2
     return 0
 
 

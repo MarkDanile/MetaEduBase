@@ -25,7 +25,9 @@ from app.composition.agent_erasure_locks import acquire_owner_lock
 from app.composition.agent_erasure_registry import (
     OwnerRegistryChangedError,
     UnknownOwnerError,
+    capability_digest,
     owner_registry,
+    registry_digest,
 )
 from app.contexts.agent_workspace.domain.erasure import ErasureFenceState
 from app.contexts.agent_workspace.infrastructure.erasure_repository import (
@@ -124,6 +126,16 @@ async def test_message_actor_tombstone_columns_exist():
     """Message actor tombstone：redacted 可清除 author_id，并保留不可逆
     actor_identity_digest（Spec §4 workspace.core.v1 actor_identity capability）。"""
     assert await _column_exists("agent_messages", "actor_identity_digest")
+
+
+@pytest.mark.asyncio
+async def test_conversation_actor_tombstone_columns_exist():
+    """Conversation actor tombstone（评审 P1.2）：redacted 可清除 created_by，
+    并保留不可逆 creator_identity_digest 与 actor_state（Spec §7.1）。"""
+    assert await _column_exists("agent_conversations", "actor_state")
+    assert await _column_exists("agent_conversations", "creator_identity_digest")
+    # created_by 放宽为 nullable 以支持 redacted 清除。
+    assert await _column_nullable("agent_conversations", "created_by") == "YES"
 
 
 # ---------------------------------------------------------------------------
@@ -357,6 +369,40 @@ async def test_concurrent_fence_creation_is_unique(session_factory):
             )
         ).scalar_one()
     assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_conversation_actor_tombstone_clears_created_by_and_normal_holds(
+    db_session,
+):
+    """Conversation actor tombstone：redacted 可清 created_by 并保留
+    creator_identity_digest；present 仍强制 created_by 非空（不弱化正常约束）。
+
+    直接 UPDATE 已存在的 Conversation（由 ``_make_conversation`` 以 present 形态
+    创建）到 redacted tombstone 形态。
+    """
+    tenant_id, conversation_id = await _make_conversation(db_session)
+    creator_digest = "c7" * 32
+    # redacted tombstone：created_by NULL + actor_state=redacted + digest 保留合法。
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversations SET created_by = NULL, "
+            " actor_state = 'redacted', creator_identity_digest = :d "
+            "WHERE tenant_id = :t AND id = :c"
+        ),
+        {"t": tenant_id, "c": conversation_id, "d": creator_digest},
+    )
+    # present 但 created_by NULL 仍违反 CHECK（子事务回滚，保留 Conversation）。
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            await db_session.execute(
+                text(
+                    "UPDATE metaedu.agent_conversations SET created_by = NULL, "
+                    " actor_state = 'present' "
+                    "WHERE tenant_id = :t AND id = :c"
+                ),
+                {"t": tenant_id, "c": conversation_id},
+            )
 
 
 @pytest.mark.asyncio
@@ -656,7 +702,7 @@ async def test_completed_run_normal_output_constraint_still_enforced(db_session)
 
 
 # ---------------------------------------------------------------------------
-# purge operation / owner checkpoint：registry snapshot 持久化（评审 P1.4）
+# purge operation / owner checkpoint：registry snapshot 持久化与 digest 绑定
 # ---------------------------------------------------------------------------
 
 
@@ -668,10 +714,11 @@ async def test_purge_operation_persists_registry_snapshot(db_session):
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         purge_revision=1,
-        registry_digest="e5" * 32,
         retention_policy_snapshot={"conversation_days": 30},
         hold_revision_snapshot=0,
     )
+    # digest 与 snapshot 同源：digest 由持久化的 snapshot 计算，二者绑定。
+    assert purge.registry_digest == registry_digest()
     # 排序 owner 列表持久化（不只是 digest），可重建该次 operation 的能力视图。
     assert isinstance(purge.registry_snapshot, list)
     assert [entry["owner_key"] for entry in purge.registry_snapshot] == sorted(
@@ -682,14 +729,30 @@ async def test_purge_operation_persists_registry_snapshot(db_session):
 
 
 @pytest.mark.asyncio
-async def test_owner_checkpoint_persists_version_and_capability(db_session):
+async def test_purge_operation_rejects_mismatched_expected_digest(db_session):
+    """反例（评审 P1.1）：传入与当前 registry 不一致的 expected digest 必须
+    fail closed，不得持久化 snapshot 与 digest 不一致的 operation。"""
+    repo = AgentErasureRepository(db_session)
+    tenant_id, conversation_id = await _make_conversation(db_session)
+    with pytest.raises(OwnerRegistryChangedError):
+        await repo.create_purge_operation(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            purge_revision=1,
+            retention_policy_snapshot={"conversation_days": 30},
+            hold_revision_snapshot=0,
+            expected_registry_digest="0" * 64,
+        )
+
+
+@pytest.mark.asyncio
+async def test_owner_checkpoint_uses_operation_snapshot(db_session):
     repo = AgentErasureRepository(db_session)
     tenant_id, conversation_id = await _make_conversation(db_session)
     purge = await repo.create_purge_operation(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         purge_revision=1,
-        registry_digest="e5" * 32,
         retention_policy_snapshot={"conversation_days": 30},
         hold_revision_snapshot=0,
     )
@@ -698,8 +761,37 @@ async def test_owner_checkpoint_persists_version_and_capability(db_session):
         purge_operation_id=purge.id,
         owner_key="workspace.core.v1",
     )
+    # checkpoint 的 owner_version/capability_digest 来自该 operation 持久化的
+    # snapshot（与 digest 同源），而非重新读取当前 registry。
+    snapshot_entry = next(
+        entry
+        for entry in purge.registry_snapshot
+        if entry["owner_key"] == "workspace.core.v1"
+    )
+    assert checkpoint.owner_version == snapshot_entry["owner_version"]
+    assert checkpoint.capability_digest == snapshot_entry["capability_digest"]
     assert checkpoint.owner_version == 1
-    assert len(checkpoint.capability_digest) == 64
+    assert checkpoint.capability_digest == capability_digest("workspace.core.v1")
+
+
+@pytest.mark.asyncio
+async def test_owner_checkpoint_rejects_owner_not_in_snapshot(db_session):
+    """owner 不在该 operation 持久化 snapshot 中 -> fail closed。"""
+    repo = AgentErasureRepository(db_session)
+    tenant_id, conversation_id = await _make_conversation(db_session)
+    purge = await repo.create_purge_operation(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        purge_revision=1,
+        retention_policy_snapshot={"conversation_days": 30},
+        hold_revision_snapshot=0,
+    )
+    with pytest.raises(UnknownOwnerError):
+        await repo.create_owner_checkpoint(
+            tenant_id=tenant_id,
+            purge_operation_id=purge.id,
+            owner_key="workspace.unknown.v9",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -789,7 +881,6 @@ async def test_backfill_bounded_runs_advance_via_cursor(session_factory):
             await _insert_conversation(session, tenant_id=tenant_id)
 
     owners = len(owner_registry())
-    seen: set[uuid.UUID] = set()
     after_id = None
     for _ in range(3):
         report = await backfill_baseline_fences(
@@ -800,9 +891,13 @@ async def test_backfill_bounded_runs_advance_via_cursor(session_factory):
             after_id=after_id,
         )
         assert report.conversations_scanned == 1
-        seen.update(report.processed_conversations)
         after_id = report.next_after_id
-    assert len(seen) == 3
+    # 游标串联 3 次后已扫完全部 -> 第 4 次从该游标起没有更多 Conversation。
+    final = await backfill_baseline_fences(
+        session_factory, tenant_id=tenant_id, batch_size=100, after_id=after_id
+    )
+    assert final.conversations_scanned == 0
+    assert final.completed is True
     async with session_factory() as session:
         count = (
             await session.execute(
@@ -814,3 +909,99 @@ async def test_backfill_bounded_runs_advance_via_cursor(session_factory):
             )
         ).scalar_one()
     assert count == 3 * owners
+
+
+@pytest.mark.asyncio
+async def test_backfill_rejects_invalid_batch_and_max(session_factory):
+    """反例（评审 P1.3）：batch_size<1 或 max_conversations<1 必须 fail closed，
+    不得产生“处理 0 个却 completed=True”的虚假完成。"""
+    tenant_id = uuid.uuid4()
+    with pytest.raises(ValueError):
+        await backfill_baseline_fences(
+            session_factory, tenant_id=tenant_id, batch_size=0
+        )
+    with pytest.raises(ValueError):
+        await backfill_baseline_fences(
+            session_factory, tenant_id=tenant_id, batch_size=-5
+        )
+    with pytest.raises(ValueError):
+        await backfill_baseline_fences(
+            session_factory, tenant_id=tenant_id, max_conversations=0
+        )
+
+
+@pytest.mark.asyncio
+async def test_backfill_report_does_not_retain_all_ids(session_factory):
+    """BackfillReport 不持有全量 processed id 列表（内存随会话数线性增长）；
+    游标与计数已足够串联与诊断。"""
+    async with session_factory() as session, session.begin():
+        tenant_id = uuid.uuid4()
+        for _ in range(3):
+            await _insert_conversation(session, tenant_id=tenant_id)
+    report = await backfill_baseline_fences(
+        session_factory, tenant_id=tenant_id, batch_size=2
+    )
+    assert report.conversations_scanned == 3
+    assert not hasattr(report, "processed_conversations")
+
+
+# ---------------------------------------------------------------------------
+# backfill CLI 退出码契约（评审 P2）：0=完成 / 1=失败 / 2=未完成须续跑
+# ---------------------------------------------------------------------------
+
+
+class _NullEngine:
+    async def dispose(self) -> None:
+        return None
+
+
+def _cli_args(**overrides):
+    import argparse
+
+    defaults = {
+        "tenant_id": str(uuid.uuid4()),
+        "batch_size": 100,
+        "max_conversations": None,
+        "after_id": None,
+    }
+    defaults.update(overrides)
+    return argparse.Namespace(**defaults)
+
+
+def _patch_session_factory(monkeypatch, session_factory):
+    from app.composition import agent_erasure_backfill as backfill_module
+
+    monkeypatch.setattr(
+        backfill_module,
+        "_make_session_factory",
+        lambda: (session_factory, _NullEngine()),
+    )
+    return backfill_module
+
+
+@pytest.mark.asyncio
+async def test_cli_exit_0_when_complete(session_factory, monkeypatch):
+    backfill_module = _patch_session_factory(monkeypatch, session_factory)
+    # 空 tenant：无可处理 Conversation -> completed=True -> exit 0。
+    exit_code = await backfill_module._run_cli(_cli_args())
+    assert exit_code == 0
+
+
+@pytest.mark.asyncio
+async def test_cli_exit_2_when_incomplete(session_factory, monkeypatch):
+    async with session_factory() as session, session.begin():
+        tenant_id = uuid.uuid4()
+        for _ in range(3):
+            await _insert_conversation(session, tenant_id=tenant_id)
+    backfill_module = _patch_session_factory(monkeypatch, session_factory)
+    exit_code = await backfill_module._run_cli(
+        _cli_args(tenant_id=str(tenant_id), max_conversations=1)
+    )
+    assert exit_code == 2
+
+
+@pytest.mark.asyncio
+async def test_cli_rejects_invalid_batch_size(session_factory, monkeypatch):
+    backfill_module = _patch_session_factory(monkeypatch, session_factory)
+    with pytest.raises(ValueError):
+        await backfill_module._run_cli(_cli_args(batch_size=0))
