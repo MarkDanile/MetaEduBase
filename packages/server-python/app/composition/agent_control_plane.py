@@ -273,7 +273,9 @@ class ConversationExecutionCoordinator:
         actor_id: uuid.UUID,
         conversation_id: uuid.UUID,
         expected_revision: int,
+        now: datetime | None = None,
     ) -> Conversation:
+        effective_now = now or datetime.now(UTC)
         await self._guard.acquire(
             self._session,
             tenant_id=tenant_id,
@@ -290,6 +292,7 @@ class ConversationExecutionCoordinator:
             actor_id=actor_id,
             conversation_id=conversation_id,
             expected_revision=expected_revision,
+            now=effective_now,
         )
 
     async def acquire_purge_preflight(

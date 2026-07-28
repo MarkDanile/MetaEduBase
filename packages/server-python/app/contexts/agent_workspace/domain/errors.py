@@ -22,6 +22,14 @@ class ConversationPurgedError(AgentWorkspaceError):
     pass
 
 
+class ConversationRecoveryExpiredError(AgentWorkspaceError):
+    pass
+
+
+class ConversationPurgeInProgressError(AgentWorkspaceError):
+    pass
+
+
 class IdempotencyConflictError(AgentWorkspaceError):
     pass
 

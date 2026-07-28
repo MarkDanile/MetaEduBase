@@ -16,6 +16,8 @@ from app.contexts.agent_workspace.domain import (
     ConversationIdConflictError,
     ConversationNotFoundError,
     ConversationPurgedError,
+    ConversationPurgeInProgressError,
+    ConversationRecoveryExpiredError,
     ConversationState,
     ConversationTitleSource,
     ConversationUserState,
@@ -267,6 +269,7 @@ class AgentWorkspaceRepository:
         actor_id: uuid.UUID,
         conversation_id: uuid.UUID,
         expected_revision: int,
+        now: datetime | None = None,
     ) -> Conversation:
         row = await self._require_owned_row_for_update(
             tenant_id, actor_id, conversation_id, include_deleted=True
@@ -274,6 +277,25 @@ class AgentWorkspaceRepository:
         self._check_revision(row, expected_revision)
         if row.purged_at is not None:
             raise ConversationPurgedError("purged conversations cannot be restored")
+        # R1-S2 恢复截止（Spec §3）：purge_state=running|completed 拒绝普通恢复；
+        # blocked/failed 不阻止，但也不能绕过 30 天截止时间（now >= purge_after
+        # 即截止）。这些检查必须在清除 purge_after 之前、同一行锁下完成。
+        if row.purge_state in {
+            PurgeState.RUNNING.value,
+            PurgeState.COMPLETED.value,
+        }:
+            raise ConversationPurgeInProgressError(
+                "conversation purge is running or completed; cannot be restored"
+            )
+        effective_now = now or datetime.now(UTC)
+        if (
+            row.state == ConversationState.DELETED.value
+            and row.purge_after is not None
+            and effective_now >= row.purge_after
+        ):
+            raise ConversationRecoveryExpiredError(
+                "conversation recovery window has expired"
+            )
         if row.state not in {
             ConversationState.ARCHIVED.value,
             ConversationState.DELETED.value,
@@ -281,7 +303,6 @@ class AgentWorkspaceRepository:
             raise InvalidConversationStateError(
                 "only archived or deleted conversations can be restored"
             )
-        now = datetime.now(UTC)
         row.state = ConversationState.ACTIVE.value
         row.archived_at = None
         row.archived_by = None
@@ -290,7 +311,7 @@ class AgentWorkspaceRepository:
         row.purge_after = None
         row.purge_state = PurgeState.NOT_SCHEDULED.value
         row.revision += 1
-        row.updated_at = now
+        row.updated_at = effective_now
         await self._session.flush()
         return self._to_conversation(row)
 

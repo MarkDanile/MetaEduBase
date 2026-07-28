@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.composition.agent_erasure_locks import acquire_owner_lock
 from app.contexts.agent_workspace.application.command_digest import (
     message_content_digest,
     message_part_digest,
@@ -27,6 +28,9 @@ from app.contexts.agent_workspace.application.ports import (
 from app.contexts.agent_workspace.domain import (
     ContentClassification,
     Conversation,
+    ConversationPurgedError,
+    ConversationPurgeInProgressError,
+    ErasureFenceState,
     MessageContentState,
     MessagePartType,
     ResourceReferenceForbiddenError,
@@ -35,6 +39,9 @@ from app.contexts.agent_workspace.domain import (
 )
 from app.contexts.agent_workspace.infrastructure.bridge_repository import (
     WorkspaceBridgeRepository,
+)
+from app.contexts.agent_workspace.infrastructure.erasure_repository import (
+    AgentErasureRepository,
 )
 from app.contexts.agent_workspace.infrastructure.repository import (
     AgentWorkspaceRepository,
@@ -481,12 +488,35 @@ class AgentWorkspaceBridgeService:
         actor_id: uuid.UUID,
         conversation_id: uuid.UUID,
         expected_revision: int,
+        now: datetime,
     ) -> Conversation:
+        # R1-S2 恢复截止（Spec §3）：owner ACK 检查必须在 Guard -> Conversation
+        # row -> owner advisory lock -> fence FOR UPDATE 锁序下与同事务的时间
+        # 检查一起完成，与 purge 竞争时不得复活正文。blocked fence 不阻止
+        # restore（可由 erasing 恢复推进，恢复窗口仍由 purge_after 截止兜底）。
+        await acquire_owner_lock(
+            self._session,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key="workspace.core.v1",
+        )
+        fences = await AgentErasureRepository(self._session).list_fences(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
+        if any(fence.state is ErasureFenceState.ERASED for fence in fences):
+            raise ConversationPurgedError(
+                "conversation owner purge has completed; cannot be restored"
+            )
+        if any(fence.state is ErasureFenceState.ERASING for fence in fences):
+            raise ConversationPurgeInProgressError(
+                "conversation owner purge is in progress; cannot be restored"
+            )
         return await self._workspace_repo.restore(
             tenant_id=tenant_id,
             actor_id=actor_id,
             conversation_id=conversation_id,
             expected_revision=expected_revision,
+            now=now,
         )
 
     @staticmethod
