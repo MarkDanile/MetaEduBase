@@ -14,22 +14,22 @@
 
 ## 当前进行中
 
-### TD-089 erasure fence 冗余/无效索引清理
+### REQ-041/047 R1-S2 Workspace owner 与恢复截止
 
-状态：🟡 进行中（实现完成，PR 待合并；合并后由收口 PR 翻 🟢）
-类型：Technical Debt / Backend / Database Migration / Performance
-领域：Agent Workspace / Erasure
-分支：fix/td-089-erasure-fence-redundant-index
+状态：🔵 就绪（待启动，模型 Sol `xhigh` 主实现 + 独立 `max` 审查 Workspace writer fence / restore/purge race / 正文扫描）
+类型：Architecture / Backend / Data Governance
+领域：Conversation / Workspace / Erasure / Recovery
+分支：（开工时按 git-workflow 创建 feat/req041-047-r1-s2-*）
 
 需求来源：
-- 技术债：[TD-089](technical-debt.md#td-089-agent_erasure_fences-冗余无效索引pk-蕴含的-uk-声明--pk-前缀-ix)
-- R1 Plan: [round4/5 复审段](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
+- R1 Spec: [Retention、Purge 与恢复专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- R1 Plan: [R1 分 Slice 实施计划 §R1-S2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s2workspace-owner-与恢复截止)
 
-范围：删除 `ErasureFenceModel` 的 `uq_agent_erasure_fence_owner` 死声明（PostgreSQL 对「UK 列 ⊆ PK 列」去重，UK 从不创建）与 `ix_agent_erasure_fence_conversation` 冗余 `Index`（PK btree 已服务 conversation 前缀查询）；新增 migration `035_erasure_fence_ix_cleanup`（`034` 已随 #506 合并冻结，故新迁移而非原地修订）。`034` 保持冻结原样不改。
+范围（plan §R1-S2）：`workspace.core.v1` participant 清 Conversation title、物理删除 MessagePart 正文行、清原 actor id 与 ConversationUserState（保留 Message envelope、digest、不可逆 actor audit digest）；正文路径接 writer fence；restore 强制 `now < purge_after`、无 started owner ACK、revision/hold/purge CAS；list/get/search/history 对 deleted/purged fail closed；final workspace body scan 作为完成门禁。明确不做：Execution 清除、transport cancellation、Scheduler API。
 
-验证：8 新增测试 + 全量 1785 passed + erasure/workspace 88 全绿 + ruff 0 + mypy baseline 0 regressions；真实迁移证据 034 head 冗余 ix 存在/死 UK 无 → 035 head 冗余 ix 删/PK 保留；变异测试 M8 可杀。
+前置已就绪：R1-S1 schema 基座已合并（PR #506，merge commit `b8cbdf14`）；TD-089 已收口（PR #508，merge commit `eccb0f37`），fence 冗余 ix 已清、dev `metaedu` 已应用 035（head=`035_erasure_fence_ix_cleanup`）。
 
-下一步：开 PR 以 `main` 为 base；合并并同步 `main` 后运行 `alembic upgrade head` 应用 035 到 dev `metaedu`，提供三项证据（`alembic_version=035_erasure_fence_ix_cleanup`、`ix_agent_erasure_fence_conversation` 不存在、`pk_agent_erasure_fences` 仍存在），再经收口 PR 翻 🟢。
+下一步：按 plan §R1-S2 创建任务分支并启动实现；独立 `max` 审查 Workspace writer fence、restore/purge race、正文扫描。不提前进入 S3-S6。
 
 ## 下一批候选任务
 
@@ -37,7 +37,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-041/047 R1-S2 Workspace owner 与恢复截止 | 🔵 就绪（TD-089 合并收口后恢复为当前任务） | 按 plan §R1-S2 创建 `feat/req041-047-r1-s2-*` 分支；Sol `xhigh` 主实现 + 独立 `max` 审查 Workspace writer fence / restore/purge race / 正文扫描 | [R1 Spec](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md) / [R1 Plan §R1-S2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s2workspace-owner-与恢复截止) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
