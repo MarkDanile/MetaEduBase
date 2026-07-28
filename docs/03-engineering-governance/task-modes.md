@@ -44,9 +44,10 @@
 | `按流程处理 TD-xxx` | 开工三连；读技术债总账；确认完成标准和验证方式。 |
 | `按流程修复这个 BUG` | 登记 / 更新 `BUG-xxx`；写复现路径、期望行为、验证方式。 |
 | `按流程规划这个需求` | 更新 Backlog；必要时新建 Requirement；不直接实现。 |
-| `按流程开发这个新需求` | 判断是否需要 spec/plan；复杂需求先塑形。 |
-| `按流程评审 XXX` | 读事实源、PR/diff、`review-scorecard.md`；输出评分、follow-up、规则改进判断。 |
-| `按流程提交` / `完整 Git 闭环` | 读 `git-workflow.md`；推进 commit / push / PR / merge / clean check。 |
+| `按流程开发这个新需求` | 判断是否需要 spec/plan；复杂需求先塑形；完成实现、验证、commit、push 和 PR 创建后停止，报告 CI 状态并提示后续评审，不自动合并。 |
+| `按流程提交` | 读 `git-workflow.md`；推进 commit / push / PR 后停止，不自动合并。 |
+| `按流程评审 XXX` | 读事实源、当前 PR/diff 和 `review-scorecard.md`；处理或登记 finding，完成正式评分并更新评分总账，重新验证后停止，保持 PR 未合并。 |
+| `按流程合并` / `提交至合并` / `完整 Git 闭环` | 读 `git-workflow.md`；确认评审评分、当前 PR Head、阻塞 finding 和 required checks 后执行合并、文档收口与 clean check。 |
 | `按流程复盘 XXX` | 区分实现问题、规则缺口、工具习惯、需求塑形不足；必要时登记 follow-up。 |
 | `按流程复核 P1` / `收口当前迭代` | 对齐 Roadmap、Milestone、Iteration、Backlog、current-work、TD。 |
 | `按流程规划 APP-xxx` | 更新 AI Applications 与 Backlog；进入 Requirement Shaping，不直接实现。 |
@@ -95,3 +96,5 @@ AI Chat / RAG / LLM NER / 图谱召回等效果型任务，按最高已验证层
 提交、PR、合并或声明完成前，执行 `quality-gates.md#完成门禁`。触发专项风险时补读对应规则：API / DTO 读 `contracts.md`；数据一致性读 `data-integrity.md`；测试策略读 `testing.md`；Git 阶段读 `git-workflow.md`。
 
 验证声明必须写命令、退出结果、范围、环境；不能把主观判断包装成“通过”。
+
+`按流程开发`、`按流程评审`、`按流程合并` 是三个独立阶段，不因前一阶段完成而自动进入后一阶段。PR 创建或评分完成都不构成合并授权。
