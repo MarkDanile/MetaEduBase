@@ -259,6 +259,14 @@ class AgentErasureRepository:
         require_owner_version(owner_key, model.owner_version)
         if model.state != expected_state.value or model.revision != expected_revision:
             raise ValueError("erasure fence CAS conflict")
+        # fencing token 单调守卫（Spec §5.1/§6.2）：purge_revision/hold_revision 只增
+        # 不减，等值合法（重试复用同 token）。回退会重新放行持有旧 revision 的暂停
+        # writer（R1-AC3），fail closed。
+        if purge_revision < model.purge_revision or hold_revision < model.hold_revision:
+            raise ValueError(
+                "erasure fence fencing token regression: purge_revision/hold_revision "
+                "must be monotonically non-decreasing"
+            )
         if new_state is ErasureFenceState.ERASED and not ack_digest:
             raise ValueError("erased fence requires ack_digest")
         model.state = new_state.value
@@ -296,7 +304,10 @@ class AgentErasureRepository:
             raise OwnerRegistryChangedError(
                 "expected registry digest does not match installed registry"
             )
-        # hold_revision_snapshot 是单调 fencing token，负数非法（参数校验兜底 DB）。
+        # purge_revision/hold_revision_snapshot 是单调 fencing token，应用层 fail
+        # closed（与 DB ck_agent_purge_revisions 同深度，不漏到 IntegrityError）。
+        if purge_revision < 1:
+            raise ValueError(f"purge_revision must be >= 1, got {purge_revision}")
         if hold_revision_snapshot < 0:
             raise ValueError(
                 f"hold_revision_snapshot must be >= 0, got {hold_revision_snapshot}"

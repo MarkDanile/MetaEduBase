@@ -182,6 +182,7 @@
 | TD-086 | 收口 Alembic target metadata 漂移并建立可执行 schema drift gate | ⚫ 待办 | P2 | 后端 / 数据库迁移 / CI / 质量门禁 | REQ-041 W1 migration 验证 / 2026-07-24 `alembic check` 实测 |
 | TD-087 | 模板管理 API 缺少后端 RBAC | 🟢 完成 | P1 | 后端 / Template / Identity / RBAC / 多租户 | [PR #495](https://github.com/MarkDanile/MetaEduBase/pull/495)（`40a7bf46`）：15 个管理端点统一高权守卫，最小 lookup DTO、脱敏审计与完整角色 / 租户矩阵通过 |
 | TD-088 | REQ-060 Slice 2 旧链接重定向移除 | 🔵 就绪 | P3 | 前端 / Web / Navigation / 技术债 | [PR #499](https://github.com/MarkDanile/MetaEduBase/pull/499)（`a1fa26dc`）：6 条旧链接重定向（/skill-editor /admin /admin/template(+/:id) /admin/mcp-servers /admin/skills -> 新路径）保留 1 版本周期后移除；移除前确认无外部书签/链接引用 |
+| TD-089 | `agent_erasure_fences` 冗余/无效索引（PK 蕴含的 UK 声明 + PK 前缀 ix） | ⚫ 待办 | P3 | 后端 / 数据库迁移 / 性能 / Erasure | PR #506 round4 独立 `max` 复审 F7 + 复核更正：`ErasureFenceModel` 声明 `uq_agent_erasure_fence_owner`（与 PK `(tenant_id,conversation_id,owner_key)` 同列）与 `ix_agent_erasure_fence_conversation`（PK 前缀）。经离线 mock + 离线 SQL + 最小复现证实：SQLAlchemy 对「PK 与 UK 同列」在真实建表时**静默跳过该 UK**（只建 PK），故 UK 声明从不生效（死声明，非冗余 btree）；`ix_..._conversation` 是唯一实际存在的冗余 btree（PK 已可服务 conversation 前缀查询，`ON CONFLICT` 仲裁用 PK）。清理须原地改 migration `034` 并重建 test 库，随 `034` 最终稳定时一并进行（见 [plan](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) round4 段）。 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -293,7 +294,28 @@
 - 在全新 `metaedu_test` 从 base 升到 head 后，`alembic check` 退出 0；同时保留 migration round-trip 与关键约束测试。
 - 将 drift check 接入合适的 CI 层级，失败时不得修改门禁阈值或忽略列表绕过。
 
-### TD-085: 收口 AI Chat、Skill 与 Agent App 的上下文边界倒置
+### TD-089: `agent_erasure_fences` 冗余/无效索引（PK 蕴含的 UK 声明 + PK 前缀 ix）
+
+状态：⚫ 待办
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P3 |
+| 领域 | 后端 / 数据库迁移 / 性能 / Erasure |
+| 事实源 | PR #506 round4 独立 `max` 复审 F7 + 复核更正 / [R1 plan](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
+
+**证据**
+
+- `packages/server-python/app/contexts/agent_workspace/infrastructure/models.py` `ErasureFenceModel`：PK=`(tenant_id, conversation_id, owner_key)`；`uq_agent_erasure_fence_owner` 声明同三列 UK；`ix_agent_erasure_fence_conversation` 是 PK 前缀 `(tenant_id, conversation_id)`。
+- **复核更正（2026-07-28）**：经离线 mock 执行 034 `upgrade()`、离线 `--sql`、真实建库（test_db_setup 与裸 `alembic upgrade head` 两条路径）与最小复现证实——SQLAlchemy 对「PK 与 UK 同列」在真实 `create_all`/迁移执行时**静默跳过该 UK**（只建 PK，离线 SQL 里仍生成但执行去重）。因此 `uq_agent_erasure_fence_owner` 是从不生效的**死声明**，不是复审 F7 所称的第二棵冗余 btree。
+- 唯一实际存在的冗余 btree 是 `ix_agent_erasure_fence_conversation`：PK 已可服务 conversation 前缀查询，`_backfill_conversation` 的 `ON CONFLICT DO NOTHING` 仲裁用 PK。
+- 与 F9 复核结论一致：现网/CI 库「缺该 UK」是 SQLAlchemy 的确定性行为，**不是**同 revision schema 漂移。
+
+**完成标准**
+
+- 删除 `uq_agent_erasure_fence_owner` 死声明（models + migration）与 `ix_agent_erasure_fence_conversation` 冗余索引（models + migration）。
+- 因 PR #506 未合并、`034` 原地修订，须随 `034` 最终稳定时一并改 migration 并重建本地 test 库（`DROP SCHEMA metaedu CASCADE` + `test_db_setup`），重跑 erasure 专项与 migration 往返。
+- 不引入新 migration 版本号；dev 库按既有「同 revision schema reset」流程一并处理。
 
 状态：⚫ 待办
 

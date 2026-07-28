@@ -173,6 +173,28 @@ async def _make_conversation(db_session: AsyncSession) -> tuple[uuid.UUID, uuid.
     return tenant_id, conversation_id
 
 
+async def _make_conversation_with_tenant(
+    db_session: AsyncSession, tenant_id: uuid.UUID
+) -> uuid.UUID:
+    return await _insert_conversation(db_session, tenant_id=tenant_id)
+
+
+async def _make_purge_operation(
+    db_session: AsyncSession,
+) -> tuple[uuid.UUID, uuid.UUID, object]:
+    """建立 tenant/conversation + 一个 purge operation，供 owner-checkpoint 反例复用。"""
+    repo = AgentErasureRepository(db_session)
+    tenant_id, conversation_id = await _make_conversation(db_session)
+    purge = await repo.create_purge_operation(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        purge_revision=1,
+        retention_policy_snapshot={"conversation_days": 30},
+        hold_revision_snapshot=0,
+    )
+    return tenant_id, conversation_id, purge
+
+
 @pytest.mark.asyncio
 async def test_fence_create_and_get_for_update(db_session):
     repo = AgentErasureRepository(db_session)
@@ -329,6 +351,71 @@ async def test_fence_transition_fails_closed_on_stale_owner_version(db_session):
             purge_revision=1,
             hold_revision=0,
         )
+
+
+@pytest.mark.asyncio
+async def test_fence_transition_rejects_fencing_token_regression(db_session):
+    """反例（round4 复审 F1）：purge_revision/hold_revision 是单调 fencing token
+    （Spec §5.1/§6.2），CAS transition 不得把 token 回退到更小的值——否则持有旧
+    revision 的暂停 writer 会被错误放行，威胁 R1-AC3。等值合法（重试复用同 token）。"""
+    repo = AgentErasureRepository(db_session)
+    tenant_id, conversation_id = await _make_conversation(db_session)
+    fence = await repo.create_fence(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        owner_key="workspace.core.v1",
+    )
+    erasing = await repo.transition_fence_state(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        owner_key="workspace.core.v1",
+        expected_state=ErasureFenceState.ACTIVE,
+        expected_revision=fence.revision,
+        new_state=ErasureFenceState.ERASING,
+        purge_revision=5,
+        hold_revision=3,
+    )
+    assert erasing.purge_revision == 5
+    assert erasing.hold_revision == 3
+    # purge_revision 回退 -> fail closed
+    with pytest.raises(ValueError):
+        await repo.transition_fence_state(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key="workspace.core.v1",
+            expected_state=ErasureFenceState.ERASING,
+            expected_revision=erasing.revision,
+            new_state=ErasureFenceState.ACTIVE,
+            purge_revision=1,
+            hold_revision=3,
+        )
+    # hold_revision 回退 -> fail closed
+    with pytest.raises(ValueError):
+        await repo.transition_fence_state(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key="workspace.core.v1",
+            expected_state=ErasureFenceState.ERASING,
+            expected_revision=erasing.revision,
+            new_state=ErasureFenceState.ACTIVE,
+            purge_revision=5,
+            hold_revision=0,
+        )
+    # 等值/递增合法：推进到 erased（带 ack）。
+    erased = await repo.transition_fence_state(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        owner_key="workspace.core.v1",
+        expected_state=ErasureFenceState.ERASING,
+        expected_revision=erasing.revision,
+        new_state=ErasureFenceState.ERASED,
+        purge_revision=6,
+        hold_revision=3,
+        ack_digest="c" * 64,
+    )
+    assert erased.state is ErasureFenceState.ERASED
+    assert erased.purge_revision == 6
+    assert erased.hold_revision == 3
 
 
 @pytest.mark.asyncio
@@ -866,6 +953,67 @@ async def test_owner_checkpoint_fails_closed_on_tampered_snapshot(db_session):
 
 
 @pytest.mark.asyncio
+async def test_owner_checkpoint_fails_closed_on_stale_but_consistent_registry(db_session):
+    """反例（round4 复审 F2，变异杀手）：operation 的 snapshot 与 digest 内部自洽
+    （校验 a 通过），但不再匹配当前已安装 registry（校验 b 必须 fail closed）。
+
+    模拟 registry 升级后留下的旧 operation：snapshot 被改成 v999 视图，digest 也
+    同步改成该篡改 snapshot 的 digest（故内部自洽、躲过校验 a），但该 digest 与
+    当前 registry digest 不符——只有独立的校验 (b) 能拦截。删掉校验 (b) 本测试变红。"""
+    import json as _json
+
+    from app.composition.agent_erasure_registry import snapshot_digest
+
+    repo = AgentErasureRepository(db_session)
+    tenant_id, _, purge = await _make_purge_operation(db_session)
+    stale = [
+        (
+            {**entry, "owner_version": 999}
+            if entry["owner_key"] == "workspace.core.v1"
+            else entry
+        )
+        for entry in purge.registry_snapshot
+    ]
+    stale_digest = snapshot_digest(stale)
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversation_purges "
+            "SET registry_snapshot = CAST(:s AS jsonb), registry_digest = :d "
+            "WHERE tenant_id = :t AND id = :p"
+        ),
+        {"t": tenant_id, "p": purge.id, "s": _json.dumps(stale), "d": stale_digest},
+    )
+    await db_session.flush()
+    with pytest.raises(OwnerRegistryChangedError):
+        await repo.create_owner_checkpoint(
+            tenant_id=tenant_id,
+            purge_operation_id=purge.id,
+            owner_key="workspace.core.v1",
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_purge_operation_rejects_non_positive_purge_revision(db_session):
+    """反例（round4 复审 F10c）：purge_revision 是 >=1 的单调 fencing token，
+    create_purge_operation 必须在应用层 fail closed（与 hold_revision_snapshot
+    校验深度一致），而不是漏到 DB 才报 IntegrityError。"""
+    repo = AgentErasureRepository(db_session)
+    tenant_id, conversation_id = await _make_conversation(db_session)
+    # purge_revision=0 与 -1 都必须应用层 fail closed；各自独立 savepoint，
+    # 避免前一次失败的 flush 污染后一次（GREEN 后应用层校验在 flush 前抛 ValueError）。
+    for bad_revision in (0, -1):
+        with pytest.raises(ValueError):
+            async with db_session.begin_nested():
+                await repo.create_purge_operation(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    purge_revision=bad_revision,
+                    retention_policy_snapshot={"conversation_days": 30},
+                    hold_revision_snapshot=0,
+                )
+
+
+@pytest.mark.asyncio
 async def test_purge_operation_rejects_negative_hold_revision(db_session):
     """反例（评审 round3 P1.2）：hold_revision_snapshot 是单调 fencing token，
     负数必须在 repository 参数校验层 fail closed。"""
@@ -1157,3 +1305,182 @@ async def test_cli_rejects_invalid_batch_size(session_factory, monkeypatch):
     backfill_module = _patch_session_factory(monkeypatch, session_factory)
     with pytest.raises(ValueError):
         await backfill_module._run_cli(_cli_args(batch_size=0))
+
+
+# ---------------------------------------------------------------------------
+# round4 复审 F5：tombstone「清一半必须拒」负向分支（真实 PostgreSQL CHECK）
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_message_redacted_requires_actor_identity_digest(db_session):
+    """反例（round4 复审 F5）：redacted user_input 清 author_id 时必须保留不可逆
+    actor_identity_digest；缺 digest 的「清一半」行必须被 DB CHECK 拒绝。"""
+    tenant_id, conversation_id = await _make_conversation(db_session)
+    base = {
+        "t": tenant_id,
+        "c": conversation_id,
+        "id": uuid.uuid4(),
+        "content_digest": "a" * 64,
+        "client_message_id": uuid.uuid4(),
+        "run_id": uuid.uuid4(),
+        "turn_digest": "b" * 64,
+        "actor_digest": "d" * 64,
+    }
+    insert_sql = (
+        "INSERT INTO metaedu.agent_messages "
+        "(id, tenant_id, conversation_id, seq, message_kind, author_type, author_id, "
+        " content_state, body_state, actor_identity_digest, content_digest, "
+        " client_message_id, requested_run_id, requested_run_queue_seq, "
+        " turn_request_digest, turn_dispatch_state, created_at) "
+        "VALUES (:id, :t, :c, 1, 'user_input', 'user', :author_id, 'redacted', "
+        " 'redacted', :actor_digest, :content_digest, :client_message_id, :run_id, 1, "
+        " :turn_digest, 'accepted', now())"
+    )
+    # 负向：redacted 但 actor_identity_digest 为 NULL（清了 actor 却没留 digest）-> 拒。
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            await db_session.execute(
+                text(insert_sql),
+                {**base, "author_id": None, "actor_digest": None},
+            )
+    # 正向：redacted + 清 author_id + 保留 digest -> 允许。
+    async with db_session.begin_nested():
+        await db_session.execute(
+            text(insert_sql), {**base, "author_id": None}
+        )
+
+
+@pytest.mark.asyncio
+async def test_conversation_redacted_requires_creator_identity_digest(db_session):
+    """反例（round4 复审 F5）：Conversation redacted 清 created_by 时必须保留
+    creator_identity_digest；缺 digest 必须被 DB CHECK 拒绝。"""
+    tenant_id, conversation_id = await _make_conversation(db_session)
+    # 负向：redacted 但 creator_identity_digest 为 NULL -> 拒。
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            await db_session.execute(
+                text(
+                    "UPDATE metaedu.agent_conversations SET actor_state='redacted', "
+                    "created_by=NULL, creator_identity_digest=NULL "
+                    "WHERE tenant_id=:t AND id=:c"
+                ),
+                {"t": tenant_id, "c": conversation_id},
+            )
+    # 正向：redacted + 清 created_by + 保留 64-hex digest -> 允许。
+    async with db_session.begin_nested():
+        await db_session.execute(
+            text(
+                "UPDATE metaedu.agent_conversations SET actor_state='redacted', "
+                "created_by=NULL, creator_identity_digest=:d "
+                "WHERE tenant_id=:t AND id=:c"
+            ),
+            {"t": tenant_id, "c": conversation_id, "d": "e" * 64},
+        )
+
+
+@pytest.mark.asyncio
+async def test_outbox_suppressed_requires_cleared_payload(db_session):
+    """反例（round4 复审 F5）：两侧 outbox 的 suppressed tombstone 必须清空
+    payload_inline/payload_ref；保留正文的 suppressed 行必须被 DB CHECK 拒绝。"""
+    tenant_id = uuid.uuid4()
+    ws_sql = (
+        "INSERT INTO metaedu.agent_workspace_outbox "
+        "(id, tenant_id, event_type, schema_version, aggregate_id, aggregate_type, "
+        " payload_inline, payload_ref, payload_digest, correlation_id, status, "
+        " attempt_count, next_attempt_at, created_at) "
+        "VALUES (:id, :t, 'turn.requested.v1', 1, :agg, 'conversation', :inline, "
+        " :ref, :digest, :corr, :status, 0, now(), now())"
+    )
+    ex_sql = (
+        "INSERT INTO metaedu.agent_execution_outbox "
+        "(id, tenant_id, event_type, schema_version, aggregate_id, aggregate_type, "
+        " payload_inline, payload_ref, payload_digest, correlation_id, status, "
+        " attempt_count, next_attempt_at, created_at) "
+        "VALUES (:id, :t, 'assistant_message.publish_requested.v1', 1, :agg, 'run', "
+        " :inline, :ref, :digest, :corr, :status, 0, now(), now())"
+    )
+    for stmt in (ws_sql, ex_sql):
+        base = {
+            "id": uuid.uuid4(),
+            "t": tenant_id,
+            "agg": uuid.uuid4(),
+            "corr": uuid.uuid4(),
+            "digest": "f" * 64,
+        }
+        # 负向：suppressed 但仍带正文 inline -> 拒。
+        with pytest.raises(IntegrityError):
+            async with db_session.begin_nested():
+                await db_session.execute(
+                    text(stmt),
+                    {
+                        **base,
+                        "inline": '{"k":"v"}',
+                        "ref": None,
+                        "status": "suppressed",
+                    },
+                )
+        # 正向：suppressed + 双 NULL payload + 保留 digest -> 允许。
+        async with db_session.begin_nested():
+            await db_session.execute(
+                text(stmt), {**base, "inline": None, "ref": None, "status": "suppressed"}
+            )
+
+
+# ---------------------------------------------------------------------------
+# round4 复审 F3/F4：failures 上界变异杀手 + CLI 失败总数
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_backfill_failures_capped_above_sample_limit(session_factory, monkeypatch):
+    """反例（round4 复审 F3，变异杀手）：失败数必须真正超过样本上限，验证样本
+    恰好封顶于 _MAX_FAILURE_SAMPLES 且 failure_count 仍为总失败数。只造 5 个失败
+    无法区分有无封顶——本测试用上限 + 富余，删掉封顶逻辑即变红。"""
+    from app.composition import agent_erasure_backfill as backfill_module
+
+    cap = backfill_module._MAX_FAILURE_SAMPLES
+    total = cap + 5
+
+    async def _always_fail(session, *, tenant_id, conversation_id):
+        raise RuntimeError("simulated systematic failure")
+
+    monkeypatch.setattr(backfill_module, "_backfill_conversation", _always_fail)
+    async with session_factory() as session, session.begin():
+        tenant_id = uuid.uuid4()
+        for _ in range(total):
+            await _insert_conversation(session, tenant_id=tenant_id)
+    # batch_size >= total，保证单批扫完全部、失败数真实超过样本上限（>cap）。
+    # 失败路径只计 failure_count，不计 conversations_scanned（scanned 仅成功行）。
+    report = await backfill_baseline_fences(
+        session_factory, tenant_id=tenant_id, batch_size=total
+    )
+    assert report.failure_count == total
+    assert len(report.failures) == cap
+    assert report.ok is False
+
+
+@pytest.mark.asyncio
+async def test_cli_prints_total_failure_count(session_factory, monkeypatch, capsys):
+    """反例（round4 复审 F4）：CLI 报告的 failed= 必须是失败总数 failure_count，
+    不是有界样本数。系统性失败 20 个（>16 上限）时应打印 failed=20 而非 failed=16。"""
+    from app.composition import agent_erasure_backfill as backfill_module
+
+    cap = backfill_module._MAX_FAILURE_SAMPLES
+    total = cap + 4
+
+    async def _always_fail(session, *, tenant_id, conversation_id):
+        raise RuntimeError("simulated systematic failure")
+
+    monkeypatch.setattr(backfill_module, "_backfill_conversation", _always_fail)
+    async with session_factory() as session, session.begin():
+        tenant_id = uuid.uuid4()
+        for _ in range(total):
+            await _insert_conversation(session, tenant_id=tenant_id)
+    module = _patch_session_factory(monkeypatch, session_factory)
+    capsys.readouterr()  # 清掉 setup 输出
+    exit_code = await module._run_cli(_cli_args(tenant_id=str(tenant_id)))
+    out = capsys.readouterr().out
+    assert exit_code == 1
+    assert f"failed={total}" in out
+    assert f"failed={cap}\n" not in out

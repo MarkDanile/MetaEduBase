@@ -18,7 +18,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -62,8 +62,10 @@ class BackfillReport:
     # 下次调用的起始游标（最后一个已扫描 Conversation id）；处理完全部后为
     # 最后一个 id，调用方据此判断是否继续。
     next_after_id: uuid.UUID | None = None
-    # True 表示本次在达到 max_conversations 前已扫描完 tenant 内全部
-    # Conversation（即没有更多可处理）；``ok`` 只表示无失败，不代表已扫完。
+    # True 仅表示"游标探测时点之后没有更多可处理行"（point-in-time），不是完备性
+    # 证明：随机 UUID 主键下，并发插入 id>cursor（或任何时候 id<cursor）的新行会被
+    # 本次及后续 keyset 续跑错过。补偿由 S2 首写建 fence + S6 missing-fence 巡检 +
+    # 幂等重跑承担。``ok`` 只表示无失败，不代表已扫完。
     completed: bool = False
     registry_digest: str = ""
 
@@ -231,13 +233,7 @@ async def backfill_baseline_fences(
     return report
 
 
-async def count_conversations(session: AsyncSession, *, tenant_id: uuid.UUID) -> int:
-    result = await session.execute(
-        select(func.count())
-        .select_from(ConversationModel)
-        .where(ConversationModel.tenant_id == tenant_id)
-    )
-    return int(result.scalar_one())
+# ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
@@ -284,7 +280,7 @@ async def _run_cli(args: object) -> int:
         f"scanned={report.conversations_scanned} "
         f"created={report.fences_created} "
         f"already_present={report.fences_already_present} "
-        f"failed={len(report.failed_conversations)} "
+        f"failed={report.failure_count} "
         f"completed={report.completed} "
         f"next_after_id={report.next_after_id}"
     )
