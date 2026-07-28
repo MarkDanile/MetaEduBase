@@ -54,6 +54,24 @@ def _empty_ingress_digest() -> str:
     return canonical_digest({"ingress": {}, "schema_version": 1})
 
 
+# fence 状态机显式转移表（Spec §5.1/§6.2）：只允许下列 (from → to) 边。
+# - active→erasing：开始 purge fencing；token 由调用方从合法 operation revision 提供。
+# - erasing→erased：owner ACK 完成；erasing→blocked：owner 暂停（external/hold）。
+# - blocked→erasing：解除暂停后继续。
+# 禁止：任何 →active（恢复普通写只能经 restore 路径重挂新 fence，不在 CAS 内）；
+# erased 为终态；blocked 不得直达 erased（须经 erasing 完成 ACK）。
+_FENCE_ALLOWED_TRANSITIONS: frozenset[tuple[ErasureFenceState, ErasureFenceState]] = (
+    frozenset(
+        {
+            (ErasureFenceState.ACTIVE, ErasureFenceState.ERASING),
+            (ErasureFenceState.ERASING, ErasureFenceState.ERASED),
+            (ErasureFenceState.ERASING, ErasureFenceState.BLOCKED),
+            (ErasureFenceState.BLOCKED, ErasureFenceState.ERASING),
+        }
+    )
+)
+
+
 def _fence_to_domain(model: ErasureFenceModel) -> ErasureFence:
     return ErasureFence(
         tenant_id=model.tenant_id,
@@ -259,6 +277,21 @@ class AgentErasureRepository:
         require_owner_version(owner_key, model.owner_version)
         if model.state != expected_state.value or model.revision != expected_revision:
             raise ValueError("erasure fence CAS conflict")
+        # 状态机显式转移表：非法边（如 erasing/erased→active 重新开放 writer、
+        # active→erased 绕过 erasing fencing、erased→任意、blocked→active）一律
+        # fail closed，不依赖调用方自觉（Spec §5.1/§6.2，R1-AC3）。
+        current_state = ErasureFenceState(model.state)
+        if (current_state, new_state) not in _FENCE_ALLOWED_TRANSITIONS:
+            raise ValueError(
+                f"illegal erasure fence transition {current_state} -> {new_state}"
+            )
+        # 合法推进（→erasing/erased/blocked）必须带 purge fencing token（>=1）：
+        # purge_revision=0 表示「无 purge operation」，绕过 erasing fencing。
+        if purge_revision < 1:
+            raise ValueError(
+                f"erasure fence transition {current_state} -> {new_state} requires "
+                f"purge_revision >= 1, got {purge_revision}"
+            )
         # fencing token 单调守卫（Spec §5.1/§6.2）：purge_revision/hold_revision 只增
         # 不减，等值合法（重试复用同 token）。回退会重新放行持有旧 revision 的暂停
         # writer（R1-AC3），fail closed。

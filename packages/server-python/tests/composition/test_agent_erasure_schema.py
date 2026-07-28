@@ -419,6 +419,107 @@ async def test_fence_transition_rejects_fencing_token_regression(db_session):
 
 
 @pytest.mark.asyncio
+async def test_fence_state_transition_table_4x4(db_session):
+    """反例（round5 复审 P1）：fence 状态机必须有显式转移表，不能只校验 token 单调。
+
+    允许：active→erasing、erasing→erased/blocked、blocked→erasing。
+    拒绝：erasing/erased→active（重新开放 writer）、active→erased（绕过 erasing
+    fencing）、erased→任意、blocked→active（绕过 erasing fencing）。
+    合法推进（erasing→erased/blocked）仍要求 purge_revision>=1（purge fencing token）。
+    """
+    repo = AgentErasureRepository(db_session)
+    S = ErasureFenceState  # noqa: N806
+
+    async def _make() -> tuple[uuid.UUID, uuid.UUID]:
+        return await _make_conversation(db_session)
+
+    async def _drive(tenant_id, conversation_id, path):
+        """沿 path 驱动 fence；fence 不存在则先建 active（同 owner 唯一，复用已存在行）。
+        path 元素为 (new_state, purge_rev, hold_rev, ack)。"""
+        existing = await repo.get_fence_for_update(
+            tenant_id=tenant_id, conversation_id=conversation_id, owner_key="workspace.core.v1"
+        )
+        if existing is None:
+            existing = await repo.create_fence(
+                tenant_id=tenant_id, conversation_id=conversation_id, owner_key="workspace.core.v1"
+            )
+        state, revision = existing.state, existing.revision
+        for new_state, purge_rev, hold_rev, ack in path:
+            result = await repo.transition_fence_state(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                owner_key="workspace.core.v1",
+                expected_state=state,
+                expected_revision=revision,
+                new_state=new_state,
+                purge_revision=purge_rev,
+                hold_revision=hold_rev,
+                ack_digest=ack,
+            )
+            state, revision = new_state, result.revision
+        return state, revision
+
+    async def _expect_reject(
+        tenant_id,
+        conversation_id,
+        from_state,
+        from_revision,
+        new_state,
+        purge_rev,
+        hold_rev,
+        ack=None,
+    ):
+        with pytest.raises(ValueError):
+            await repo.transition_fence_state(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                owner_key="workspace.core.v1",
+                expected_state=from_state,
+                expected_revision=from_revision,
+                new_state=new_state,
+                purge_revision=purge_rev,
+                hold_revision=hold_rev,
+                ack_digest=ack,
+            )
+
+    # --- from=active：仅 active→erasing 合法（其余三边均拒）---
+    t, c = await _make()
+    fence = await repo.create_fence(
+        tenant_id=t, conversation_id=c, owner_key="workspace.core.v1"
+    )
+    await _expect_reject(t, c, S.ACTIVE, fence.revision, S.ACTIVE, 1, 0)
+    await _expect_reject(t, c, S.ACTIVE, fence.revision, S.BLOCKED, 1, 0)
+    await _expect_reject(t, c, S.ACTIVE, fence.revision, S.ERASED, 1, 0, ack="a" * 64)
+
+    # --- from=erasing：→erased/blocked 合法（purge_revision>=1），→active 非法 ---
+    t, c = await _make()
+    st, rev = await _drive(t, c, [(S.ERASING, 1, 0, None)])
+    await _expect_reject(t, c, st, rev, S.ACTIVE, 2, 1)  # erasing→active 即使 token 递增也拒
+    await _expect_reject(t, c, st, rev, S.ERASING, 2, 1)  # 自迁移非法
+    # erasing→blocked 合法
+    st, rev = await _drive(t, c, [(S.BLOCKED, 1, 0, None)])
+    assert st is S.BLOCKED
+
+    # --- from=blocked：→erasing 合法，→active/erased 非法 ---
+    await _expect_reject(t, c, st, rev, S.ACTIVE, 2, 1)
+    await _expect_reject(t, c, st, rev, S.ERASED, 1, 0, ack="a" * 64)
+    st, rev = await _drive(t, c, [(S.ERASING, 2, 1, None)])
+    assert st is S.ERASING
+
+    # --- from=erased：→任意非法（终态）---
+    st, rev = await _drive(t, c, [(S.ERASED, 3, 1, "d" * 64)])
+    assert st is S.ERASED
+    for target in (S.ACTIVE, S.ERASING, S.BLOCKED, S.ERASED):
+        await _expect_reject(t, c, st, rev, target, 4, 2, ack="e" * 64)
+
+    # --- 合法推进 token 下界：erasing→erased / erasing→blocked 要求 purge_revision>=1 ---
+    t, c = await _make()
+    st, rev = await _drive(t, c, [(S.ERASING, 1, 0, None)])
+    await _expect_reject(t, c, st, rev, S.ERASED, 0, 0, ack="f" * 64)
+    await _expect_reject(t, c, st, rev, S.BLOCKED, 0, 0)
+
+
+@pytest.mark.asyncio
 async def test_concurrent_fence_creation_is_unique(session_factory):
     """真实 PostgreSQL：并发建立同一 fence，唯一约束保证只有一行。"""
     # 在独立事务中创建并提交 Conversation，使并发连接可见。
@@ -1072,7 +1173,7 @@ async def test_backfill_is_idempotent_batched_and_resumable(session_factory):
         session_factory, tenant_id=tenant_id, batch_size=2
     )
     assert first.ok
-    assert first.conversations_scanned == 3
+    assert first.conversations_succeeded == 3
     assert first.fences_created == 3 * owners
     # 幂等：重复执行不再创建新 fence。
     second = await backfill_baseline_fences(
@@ -1107,7 +1208,7 @@ async def test_backfill_max_conversations_is_resumable(session_factory):
     partial = await backfill_baseline_fences(
         session_factory, tenant_id=tenant_id, batch_size=100, max_conversations=1
     )
-    assert partial.conversations_scanned == 1
+    assert partial.conversations_succeeded == 1
     resumed = await backfill_baseline_fences(
         session_factory,
         tenant_id=tenant_id,
@@ -1150,13 +1251,13 @@ async def test_backfill_bounded_runs_advance_via_cursor(session_factory):
             max_conversations=1,
             after_id=after_id,
         )
-        assert report.conversations_scanned == 1
+        assert report.conversations_succeeded == 1
         after_id = report.next_after_id
     # 游标串联 3 次后已扫完全部 -> 第 4 次从该游标起没有更多 Conversation。
     final = await backfill_baseline_fences(
         session_factory, tenant_id=tenant_id, batch_size=100, after_id=after_id
     )
-    assert final.conversations_scanned == 0
+    assert final.conversations_succeeded == 0
     assert final.completed is True
     async with session_factory() as session:
         count = (
@@ -1201,7 +1302,7 @@ async def test_backfill_report_does_not_retain_all_ids(session_factory):
     report = await backfill_baseline_fences(
         session_factory, tenant_id=tenant_id, batch_size=2
     )
-    assert report.conversations_scanned == 3
+    assert report.conversations_succeeded == 3
     assert not hasattr(report, "processed_conversations")
 
 
@@ -1241,7 +1342,7 @@ async def test_backfill_marks_complete_when_last_row_hits_max(session_factory):
     report = await backfill_baseline_fences(
         session_factory, tenant_id=tenant_id, batch_size=100, max_conversations=1
     )
-    assert report.conversations_scanned == 1
+    assert report.conversations_succeeded == 1
     assert report.completed is True
 
 
@@ -1451,7 +1552,7 @@ async def test_backfill_failures_capped_above_sample_limit(session_factory, monk
         for _ in range(total):
             await _insert_conversation(session, tenant_id=tenant_id)
     # batch_size >= total，保证单批扫完全部、失败数真实超过样本上限（>cap）。
-    # 失败路径只计 failure_count，不计 conversations_scanned（scanned 仅成功行）。
+    # 失败路径只计 failure_count，不计 conversations_succeeded（succeeded 仅成功行）。
     report = await backfill_baseline_fences(
         session_factory, tenant_id=tenant_id, batch_size=total
     )
@@ -1484,3 +1585,53 @@ async def test_cli_prints_total_failure_count(session_factory, monkeypatch, caps
     assert exit_code == 1
     assert f"failed={total}" in out
     assert f"failed={cap}\n" not in out
+
+
+@pytest.mark.asyncio
+async def test_backfill_report_exposes_succeeded_not_scanned(session_factory, monkeypatch):
+    """反例（round5 复审 P2.4）：report 必须明确「成功」而非模糊「scanned」——
+    scanned 只计成功行，失败行不计。字段名 conversations_succeeded 才准确表达。"""
+    from app.composition import agent_erasure_backfill as backfill_module
+
+    async def _fail_after_first(session, *, tenant_id, conversation_id):
+        _fail_after_first.calls += 1
+        if _fail_after_first.calls > 1:
+            raise RuntimeError("boom")
+        return (6, 0)
+
+    _fail_after_first.calls = 0
+    monkeypatch.setattr(backfill_module, "_backfill_conversation", _fail_after_first)
+    async with session_factory() as session, session.begin():
+        tenant_id = uuid.uuid4()
+        for _ in range(3):
+            await _insert_conversation(session, tenant_id=tenant_id)
+    report = await backfill_baseline_fences(
+        session_factory, tenant_id=tenant_id, batch_size=10
+    )
+    assert report.conversations_succeeded == 1
+    assert report.failure_count == 2
+    assert not hasattr(report, "conversations_scanned")
+
+
+@pytest.mark.asyncio
+async def test_cli_exit1_prints_full_rerun_recovery(session_factory, monkeypatch, capsys):
+    """反例（round5 复审 P2.4）：exit 1 时 CLI 必须打印「从 tenant 起点完整重跑」
+    指令——失败行不会被 next_after_id 续跑覆盖（游标已越过失败行），唯一可靠
+    恢复是从起点幂等重跑。"""
+    from app.composition import agent_erasure_backfill as backfill_module
+
+    async def _always_fail(session, *, tenant_id, conversation_id):
+        raise RuntimeError("simulated systematic failure")
+
+    monkeypatch.setattr(backfill_module, "_backfill_conversation", _always_fail)
+    async with session_factory() as session, session.begin():
+        tenant_id = uuid.uuid4()
+        await _insert_conversation(session, tenant_id=tenant_id)
+    module = _patch_session_factory(monkeypatch, session_factory)
+    capsys.readouterr()
+    exit_code = await module._run_cli(_cli_args(tenant_id=str(tenant_id)))
+    out = capsys.readouterr().out
+    assert exit_code == 1
+    # 必须给出从起点重跑的明确指令（不带 --after-id），而非误导续跑游标。
+    assert f"--tenant-id {tenant_id}" in out
+    assert "起点" in out or "rerun from" in out.lower() or "from the start" in out.lower()

@@ -8,7 +8,12 @@
 - 分批 + tenant 限流：调用方传 ``tenant_id``、``batch_size``、``max_conversations``
   控制单批规模；批间由调用方决定是否停顿。
 - fail closed：owner registry 必须能解析全部 6 个固定 owner；任何无法可靠处理的
-  Conversation 计入 ``failed``，不静默跳过。
+  Conversation 计入 ``failure_count``，不静默跳过。
+
+**失败恢复契约**：失败行的游标仍会越过（``next_after_id`` 推进）。因此用
+``--after-id <next_after_id>`` 续跑**不会**重试失败行；失败后唯一可靠的完整恢复
+是从 tenant 起点（不带 ``--after-id``）幂等重跑到 exit 0。fence 写入幂等
+（ON CONFLICT DO NOTHING），重跑不会重复创建。
 
 R1-S1 只补 fence；不建立 purge operation、不改 Conversation purge_state、不清正文。
 """
@@ -52,15 +57,18 @@ class BackfillFailure:
 @dataclass(slots=True)
 class BackfillReport:
     tenants_processed: int = 0
-    conversations_scanned: int = 0
+    # 成功处理的 Conversation 数（fence 已写入或已存在）。失败行**不计入**——
+    # 失败行计入 failure_count，且游标仍会越过它们（见模块 docstring 失败恢复契约）。
+    conversations_succeeded: int = 0
     fences_created: int = 0
     fences_already_present: int = 0
     # 失败样本（有界，最多 _MAX_FAILURE_SAMPLES 条）+ 总失败计数。系统性失败
     # 时样本数封顶，不随失败数线性增长。
     failures: list[BackfillFailure] = field(default_factory=list)
     failure_count: int = 0
-    # 下次调用的起始游标（最后一个已扫描 Conversation id）；处理完全部后为
-    # 最后一个 id，调用方据此判断是否继续。
+    # 下次调用的起始游标（最后一个已扫描 Conversation id，含失败行）；处理完全部
+    # 后为最后一个 id。**注意**：失败行也推进此游标，故用它续跑不会重试失败行；
+    # 失败后的完整恢复须从 tenant 起点（不带游标）幂等重跑（见模块 docstring）。
     next_after_id: uuid.UUID | None = None
     # True 仅表示"游标探测时点之后没有更多可处理行"（point-in-time），不是完备性
     # 证明：随机 UUID 主键下，并发插入 id>cursor（或任何时候 id<cursor）的新行会被
@@ -196,7 +204,7 @@ async def backfill_baseline_fences(
                     )
                 report.fences_created += created
                 report.fences_already_present += already
-                report.conversations_scanned += 1
+                report.conversations_succeeded += 1
             except Exception as exc:
                 report.failure_count += 1
                 # 只保留有界样本；超出后仅累计 failure_count，不再 append。
@@ -277,7 +285,7 @@ async def _run_cli(args: object) -> int:
         await engine.dispose()
     print(  # noqa: T201
         "backfill report: "
-        f"scanned={report.conversations_scanned} "
+        f"succeeded={report.conversations_succeeded} "
         f"created={report.fences_created} "
         f"already_present={report.fences_already_present} "
         f"failed={report.failure_count} "
@@ -292,6 +300,14 @@ async def _run_cli(args: object) -> int:
                 f"failed conversation: {failure.conversation_id} "
                 f"reason={failure.reason_code} error={failure.error_type}"
             )
+        # 失败恢复契约：游标已越过失败行，next_after_id 续跑不会重试失败行；
+        # 唯一可靠恢复是从 tenant 起点（不带 --after-id）幂等重跑到 exit 0。
+        print(  # noqa: T201
+            "failures present: failed rows are NOT retried by resuming with "
+            "--after-id (cursor already advanced past them). Recovery: rerun from "
+            f"the tenant start (omit --after-id): python -m "
+            f"app.composition.agent_erasure_backfill --tenant-id {args.tenant_id}"  # type: ignore[attr-defined]
+        )
         return 1
     if not report.completed:
         print(  # noqa: T201
