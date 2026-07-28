@@ -14,24 +14,22 @@
 
 ## 当前进行中
 
-### REQ-041/047 R1-S1 Fence、Hold 与 Purge schema 基座
+### REQ-041/047 R1-S2 Workspace owner 与恢复截止
 
-状态：🟣 待验证（实现完成，等待全量回归 + Codex/安全复审 + PR）
-类型：Architecture / Backend / Data Governance（claude-opus-4-8[1m]，最高推理强度）
-领域：Conversation / Run / Retention / Erasure
-分支：feat/req041-047-r1-s1-erasure-schema-base
+状态：🔵 就绪（待启动，模型 Sol `xhigh` 主实现 + 独立 `max` 审查 Workspace writer fence / restore/purge race / 正文扫描）
+类型：Architecture / Backend / Data Governance
+领域：Conversation / Workspace / Erasure / Recovery
+分支：（开工时按 git-workflow 创建 feat/req041-047-r1-s2-*）
 
 需求来源：
-- Parent Spec: [REQ-041/047 联合核心契约](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md)
 - R1 Spec: [Retention、Purge 与恢复专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- R1 Plan: [R1 分 Slice 实施计划](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
-- Backlog: [REQ-041/047](../01-product-planning/04-backlog.md)
+- R1 Plan: [R1 分 Slice 实施计划 §R1-S2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s2workspace-owner-与恢复截止)
 
-当前进展：R1-S1 已交付 schema 基座（唯一版本化 `conversation_owner_key()`、code-defined owner registry、四张 coordination 表 + Conversation.hold_revision、Message/Conversation/Run/CompatibilityOutput/transport + actor tombstone expand-only schema、带游标与 CLI 的 baseline fence backfill）。PR #506 已创建（未合并）。第一至五轮复审 P1/P2 已修复；第六轮复审（P0=0/P1=0/P2=2 + 1 P3 文案，核心状态机已确认正确）后：P2.1 补齐 fence 状态机 4×4 全部 16 条边覆盖（补 `blocked→blocked` + `active→erasing`/`blocked→erasing` 的 `purge_revision=0` 下界）；P2.2 非 erased 边携带 ACK fail closed（ACK 只属于 erased，防「提交 ACK」与「状态推进」混用被静默丢弃，变异验证 M7）；P3 更正「restore 重挂 fence」文案（owner 离开 active 后普通 restore 即不允许）。不启动 scheduler、不清正文、不接 S2-S4 writer、不加 legal-hold API/UI、不实现 Runtime/external adapter。
+范围（plan §R1-S2）：`workspace.core.v1` participant 清 Conversation title、物理删除 MessagePart 正文行、清原 actor id 与 ConversationUserState（保留 Message envelope、digest、不可逆 actor audit digest）；正文路径接 writer fence；restore 强制 `now < purge_after`、无 started owner ACK、revision/hold/purge CAS；list/get/search/history 对 deleted/purged fail closed；final workspace body scan 作为完成门禁。明确不做：Execution 清除、transport cancellation、Scheduler API。
 
-下一步：等用户对修订后 PR #506 做只读复核 + Codex 复审，通过后才按流程合并；`034` 最终稳定后对本地 dev DB 做显式 schema reset（旧版同 revision，普通 downgrade 不可用）。
+前置已就绪：R1-S1 schema 基座已合并（PR #506，merge commit `b8cbdf14`），fence 状态机/owner registry/backfill/tombstone schema 全部落地；本地 dev `metaedu` 已受控 reset 到 034 head（48 表；reset 清空 dev metaedu 数据，种子需经正常 dev 初始化重建）。
 
-验证状态：migration 往返 / schema CHECK / tenant 复合键 / CAS / fence 状态机转移表（16 边全覆盖 + ACK 边界）/ owner registry digest 决定性 / 并发 fence 唯一性（真实 PG）/ backfill 幂等分批游标重启 + 失败恢复契约全部通过；62 erasure 专项 + 235 workspace/execution/control-plane 回归全绿；ruff 0 错误；mypy baseline 0 回归；docs gate 与 git diff --check 通过。
+下一步：按 plan §R1-S2 创建任务分支并启动实现；独立 `max` 审查 Workspace writer fence、restore/purge race、正文扫描。不提前进入 S3-S6。
 
 ## 下一批候选任务
 
@@ -50,6 +48,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-28 | R1-S1 Fence/Hold/Purge schema 基座 | 🟢 完成 | owner key 锁 + owner registry + 四协调表 + tombstone + fence 状态机（16 边）+ backfill 恢复契约；六轮 max 复审 P0/P1/P2=0/0/0；全量 1777 passed；dev 已 reset 到 034 head | [PR #506](https://github.com/MarkDanile/MetaEduBase/pull/506)（merge `b8cbdf14`）/ [Plan §R1-S1](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-07-27 | REQ-060 Slice 4 移动端 + a11y + Playwright + 收口 | 🟢 完成 | useMobileDrawer + LayoutView 重构（30 新增 vitest）+ Playwright 3 组 spec（55/55）；326/326 vitest；三路 CI 全绿；六轮复审 P0/P1/P2=0/0/0；评分 95 | [PR #503](https://github.com/MarkDanile/MetaEduBase/pull/503)（）/ [Plan §Slice 4](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md) / [work-log](work-log.md) / [scorecard](04-retrospectives/review-score-log.md) |
 | 2026-07-25 | TD-087 模板管理 API 后端 RBAC | 🟢 完成 | 15 个管理端点统一高权守卫；tenant-local 最小 lookup DTO、403 脱敏与 92 例角色/租户矩阵完成；Template 124、Identity 47、Frontend 175 passed，三路 CI 全绿 | [PR #495](https://github.com/MarkDanile/MetaEduBase/pull/495)（`40a7bf46`）/ [Tech Debt](technical-debt.md#td-087-模板管理-api-缺少后端-rbac) |
 | 2026-07-25 | Agent Control Plane D1 Direct RAG compatibility recording | 🟢 完成 | 旧 evidence API 持久化 Conversation/Message/Run/Event/terminal；双向 bridge 恢复、scoped identity、隔离 execution claim 与 `033` staging；全量 1623 passed，三路 CI 与 `max` 复审全绿 | [PR #489](https://github.com/MarkDanile/MetaEduBase/pull/489)（`56de6bf1`） |
