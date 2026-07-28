@@ -9,6 +9,10 @@ from tests.conftest import TEST_DB_URL
 
 _CLEAN_SQL = """
 TRUNCATE TABLE
+    metaedu.agent_conversation_legal_holds,
+    metaedu.agent_conversation_purge_owners,
+    metaedu.agent_conversation_purges,
+    metaedu.agent_erasure_fences,
     metaedu.agent_compatibility_outputs,
     metaedu.agent_run_events,
     metaedu.agent_turn_inputs,

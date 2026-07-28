@@ -4,6 +4,8 @@ from logging.config import fileConfig
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+import app.contexts.agent_execution.infrastructure.models  # noqa: F401
+import app.contexts.agent_workspace.infrastructure.models  # noqa: F401
 import app.contexts.identity.infrastructure.models  # noqa: F401
 import app.contexts.knowledge.infrastructure.models  # noqa: F401
 import app.contexts.resource.infrastructure.models  # noqa: F401

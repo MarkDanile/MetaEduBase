@@ -74,8 +74,6 @@
     "app/contexts/template/infrastructure/template_version_repository.py::arg-type": 9,
     "app/contexts/template/interfaces/api/router.py::arg-type": 3,
     "app/contexts/template/interfaces/api/router.py::attr-defined": 1,
-    "app/main.py::assignment": 1,
-    "app/main.py::attr-defined": 20,
     "app/main.py::import-untyped": 1,
     "app/shared/infrastructure/test_db_setup.py::import-untyped": 1,
     "app/shared/parsing/pdf_parser.py::import-untyped": 1,
