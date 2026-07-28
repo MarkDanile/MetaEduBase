@@ -16,10 +16,10 @@
 
 ### REQ-041/047 R1-S2 Workspace owner 与恢复截止
 
-状态：🔵 就绪（待启动，模型 Sol `xhigh` 主实现 + 独立 `max` 审查 Workspace writer fence / restore/purge race / 正文扫描）
+状态：🟡 进行中（S2-B restore 恢复截止已提交 `afd1e27a`，Codex 复审 P0=0/P1=4/P2=3，返修中；模型 Sol `xhigh` 主实现 + 独立 `max` 审查 Workspace writer fence / restore/purge race / 正文扫描）
 类型：Architecture / Backend / Data Governance
 领域：Conversation / Workspace / Erasure / Recovery
-分支：（开工时按 git-workflow 创建 feat/req041-047-r1-s2-*）
+分支：feat/req041-047-r1-s2-workspace-owner
 
 需求来源：
 - R1 Spec: [Retention、Purge 与恢复专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
@@ -29,7 +29,7 @@
 
 前置已就绪：R1-S1 schema 基座已合并（PR #506，merge commit `b8cbdf14`）；TD-089 已收口（PR #508，merge commit `eccb0f37`），fence 冗余 ix 已清、dev `metaedu` 已应用 035（head=`035_erasure_fence_ix_cleanup`）。
 
-下一步：按 plan §R1-S2 创建任务分支并启动实现；独立 `max` 审查 Workspace writer fence、restore/purge race、正文扫描。不提前进入 S3-S6。
+下一步：S2-B 复审返修（blocked/缺 fence fail-closed、恢复失效旧 purge revision/operation、锁后 DB 时钟、purge_after NULL fail-closed、race 测试强化、收敛 service 旁路）→ 独立 `max` 专查 restore/purge 双向竞态与 revision 失效 → 清零后进 S2-A writer fence。不提前进入 S3-S6。
 
 ## 下一批候选任务
 
