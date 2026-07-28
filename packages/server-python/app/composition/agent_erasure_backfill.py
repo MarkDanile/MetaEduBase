@@ -35,6 +35,11 @@ def _empty_ingress_digest() -> str:
     return canonical_digest({"ingress": {}, "schema_version": 1})
 
 
+# 失败样本上限：超过后只累计 failure_count，不再 append（内存有界，
+# 系统性失败时不会 O(N) 增长导致报告前 OOM）。
+_MAX_FAILURE_SAMPLES = 16
+
+
 @dataclass(frozen=True, slots=True)
 class BackfillFailure:
     """单个 Conversation 回填失败的稳定诊断信息（不持久化正文）。"""
@@ -50,9 +55,10 @@ class BackfillReport:
     conversations_scanned: int = 0
     fences_created: int = 0
     fences_already_present: int = 0
-    # 失败明细：稳定 reason_code + conversation_id + 异常类型（生产排障用，
-    # 不持久化正文）。仅失败条目入列，条数远小于会话总数，内存有界。
+    # 失败样本（有界，最多 _MAX_FAILURE_SAMPLES 条）+ 总失败计数。系统性失败
+    # 时样本数封顶，不随失败数线性增长。
     failures: list[BackfillFailure] = field(default_factory=list)
+    failure_count: int = 0
     # 下次调用的起始游标（最后一个已扫描 Conversation id）；处理完全部后为
     # 最后一个 id，调用方据此判断是否继续。
     next_after_id: uuid.UUID | None = None
@@ -63,14 +69,14 @@ class BackfillReport:
 
     @property
     def failed_conversations(self) -> list[uuid.UUID]:
-        """失败 Conversation id 列表（向后兼容视图，源自 ``failures``）。"""
+        """失败样本的 Conversation id（有界，仅前 ``_MAX_FAILURE_SAMPLES`` 条）。"""
         return [failure.conversation_id for failure in self.failures]
 
     @property
     def ok(self) -> bool:
         """本次运行无失败。注意：``ok=True`` 不等于已处理完全部——
         需同时看 ``completed`` 或反复以 ``next_after_id`` 续跑到 completed。"""
-        return not self.failures
+        return self.failure_count == 0
 
 
 async def _select_conversation_batch(
@@ -175,10 +181,10 @@ async def backfill_baseline_fences(
             exhausted = True
             break
         for conversation_id in batch:
+            # 达到 max_conversations：停止处理，落到下方统一的 completed 判定
+            # （不能在此直接 return，否则会跳过 exhausted 探测而误报未完成）。
             if max_conversations is not None and processed >= max_conversations:
-                report.next_after_id = after_id
-                report.tenants_processed = 1
-                return report
+                break
             try:
                 async with session_factory() as session, session.begin():
                     created, already = await _backfill_conversation(
@@ -190,13 +196,16 @@ async def backfill_baseline_fences(
                 report.fences_already_present += already
                 report.conversations_scanned += 1
             except Exception as exc:
-                report.failures.append(
-                    BackfillFailure(
-                        conversation_id=conversation_id,
-                        reason_code="fence_insert_failed",
-                        error_type=type(exc).__name__,
+                report.failure_count += 1
+                # 只保留有界样本；超出后仅累计 failure_count，不再 append。
+                if len(report.failures) < _MAX_FAILURE_SAMPLES:
+                    report.failures.append(
+                        BackfillFailure(
+                            conversation_id=conversation_id,
+                            reason_code="fence_insert_failed",
+                            error_type=type(exc).__name__,
+                        )
                     )
-                )
             processed += 1
             after_id = conversation_id
         # 终止条件：达到 max_conversations，或本批不足 batch_size（没有更多）。
@@ -205,6 +214,17 @@ async def backfill_baseline_fences(
         if len(batch) < batch_size:
             exhausted = True
             break
+    # completed 判定（评审 round3 P2.4）：即使达到 max_conversations 提前退出，
+    # 也要确认游标之后是否还有未处理 Conversation；没有则实际已完成。
+    if not exhausted:
+        async with session_factory() as session, session.begin():
+            remaining = await _select_conversation_batch(
+                session,
+                tenant_id=tenant_id,
+                after_id=after_id,
+                batch_size=1,
+            )
+        exhausted = not remaining
     report.next_after_id = after_id
     report.completed = exhausted
     report.tenants_processed = 1

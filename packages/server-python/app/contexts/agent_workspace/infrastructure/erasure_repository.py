@@ -22,10 +22,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.composition.agent_erasure_registry import (
     OwnerRegistryChangedError,
     UnknownOwnerError,
-    registry_digest,
     registry_snapshot,
     require_owner,
     require_owner_version,
+    snapshot_digest,
 )
 from app.contexts.agent_workspace.domain.erasure import (
     ConversationLegalHold,
@@ -286,14 +286,20 @@ class AgentErasureRepository:
         now: datetime | None = None,
     ) -> PurgeOperation:
         effective_now = now or _utcnow()
-        # digest 与 snapshot 同源：从将持久化的 snapshot 计算 digest，二者绑定。
+        # 单一事实源：生成一次 snapshot，digest 由该同一 snapshot 计算（不二次
+        # 调用 registry_snapshot()），保证 snapshot 与 digest 严格同源绑定。
         snapshot = registry_snapshot()
-        digest = registry_digest()
+        digest = snapshot_digest(snapshot)
         # 可选乐观并发：调用方若声明 expected digest，必须与当前一致，否则
         # registry 已变化 -> fail closed，不持久化不一致的 operation（Spec §4）。
         if expected_registry_digest is not None and expected_registry_digest != digest:
             raise OwnerRegistryChangedError(
                 "expected registry digest does not match installed registry"
+            )
+        # hold_revision_snapshot 是单调 fencing token，负数非法（参数校验兜底 DB）。
+        if hold_revision_snapshot < 0:
+            raise ValueError(
+                f"hold_revision_snapshot must be >= 0, got {hold_revision_snapshot}"
             )
         model = PurgeOperationModel(
             tenant_id=tenant_id,
@@ -346,15 +352,32 @@ class AgentErasureRepository:
         # （与 registry_digest 同源），而非重新读取当前 registry——保证代码升级后
         # 该次 ACK 仍对应 operation 冻结的能力视图（Spec §4）。
         purge_result = await self._session.execute(
-            select(PurgeOperationModel.registry_snapshot).where(
+            select(
+                PurgeOperationModel.registry_snapshot,
+                PurgeOperationModel.registry_digest,
+            ).where(
                 PurgeOperationModel.tenant_id == tenant_id,
                 PurgeOperationModel.id == purge_operation_id,
             )
         )
-        snapshot = purge_result.scalar_one_or_none()
-        if snapshot is None:
+        row = purge_result.one_or_none()
+        if row is None:
             raise ValueError(
                 f"purge operation {purge_operation_id} missing; cannot checkpoint"
+            )
+        snapshot, stored_digest = row
+        # 内部一致性：持久化 snapshot 的 digest 必须等于持久化 registry_digest，
+        # 否则 snapshot 被篡改 -> fail closed。
+        if snapshot_digest(list(snapshot)) != stored_digest:
+            raise OwnerRegistryChangedError(
+                "purge operation registry snapshot/digest mismatch; fail closed"
+            )
+        # registry drift：operation 的 digest 必须仍匹配当前已安装 registry，
+        # 否则 registry 已升级 -> fail closed，不基于过期能力视图建 checkpoint
+        # （Spec §4.2 / R1-AC2）。
+        if stored_digest != snapshot_digest(registry_snapshot()):
+            raise OwnerRegistryChangedError(
+                "purge operation registry digest no longer matches installed registry"
             )
         entry = next(
             (item for item in snapshot if item.get("owner_key") == owner_key),

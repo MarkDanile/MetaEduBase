@@ -476,7 +476,8 @@ def upgrade() -> None:
             name="ck_agent_purge_state",
         ),
         sa.CheckConstraint(
-            "purge_revision >= 1 AND lease_epoch >= 0 AND revision >= 1",
+            "purge_revision >= 1 AND lease_epoch >= 0 AND revision >= 1 "
+            "AND hold_revision_snapshot >= 0",
             name="ck_agent_purge_revisions",
         ),
         sa.CheckConstraint(

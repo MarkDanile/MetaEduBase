@@ -132,9 +132,19 @@ def registry_snapshot() -> list[dict[str, object]]:
     ]
 
 
+def snapshot_digest(snapshot: list[dict[str, object]]) -> str:
+    """对任意（含持久化的）registry snapshot 计算 canonical digest。
+
+    与 ``registry_digest()`` 同一 canonical 形式，但作用于传入的 snapshot——
+    用于校验持久化 operation 的 ``registry_snapshot`` 与其 ``registry_digest``
+    是否内部一致，避免“重新生成快照再 digest”与持久化对象脱节。
+    """
+    return canonical_digest({"owners": snapshot, "schema_version": 1})
+
+
 def registry_digest() -> str:
     """registry snapshot 的 canonical digest。"""
-    return canonical_digest({"owners": registry_snapshot(), "schema_version": 1})
+    return snapshot_digest(registry_snapshot())
 
 
 def require_owner(owner_key: str) -> OwnerDefinition:

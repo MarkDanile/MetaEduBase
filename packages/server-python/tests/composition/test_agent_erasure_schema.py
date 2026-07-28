@@ -794,6 +794,118 @@ async def test_owner_checkpoint_rejects_owner_not_in_snapshot(db_session):
         )
 
 
+@pytest.mark.asyncio
+async def test_owner_checkpoint_fails_closed_on_registry_drift(db_session):
+    """反例（评审 round3 P1.1）：operation 持久化的 registry_digest 不再匹配当前
+    registry 时，create_owner_checkpoint 必须 fail closed，不得继续创建 checkpoint
+    （Spec §4.2 / R1-AC2 registry drift）。"""
+    repo = AgentErasureRepository(db_session)
+    tenant_id, conversation_id = await _make_conversation(db_session)
+    purge = await repo.create_purge_operation(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        purge_revision=1,
+        retention_policy_snapshot={"conversation_days": 30},
+        hold_revision_snapshot=0,
+    )
+    # 模拟 registry 升级后留下的旧 operation：digest 与当前 registry 不一致。
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversation_purges SET registry_digest = :d "
+            "WHERE tenant_id = :t AND id = :p"
+        ),
+        {"t": tenant_id, "p": purge.id, "d": "0" * 64},
+    )
+    await db_session.flush()
+    with pytest.raises(OwnerRegistryChangedError):
+        await repo.create_owner_checkpoint(
+            tenant_id=tenant_id,
+            purge_operation_id=purge.id,
+            owner_key="workspace.core.v1",
+        )
+
+
+@pytest.mark.asyncio
+async def test_owner_checkpoint_fails_closed_on_tampered_snapshot(db_session):
+    """反例（评审 round3 P1.1）：operation 的 snapshot 与其 registry_digest 内部
+    不一致（被篡改）时，create_owner_checkpoint 必须 fail closed。"""
+    repo = AgentErasureRepository(db_session)
+    tenant_id, conversation_id = await _make_conversation(db_session)
+    purge = await repo.create_purge_operation(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        purge_revision=1,
+        retention_policy_snapshot={"conversation_days": 30},
+        hold_revision_snapshot=0,
+    )
+    # 篡改 snapshot（owner_version=999），但不改 registry_digest -> 内部不一致。
+    tampered = [
+        (
+            {**entry, "owner_version": 999}
+            if entry["owner_key"] == "workspace.core.v1"
+            else entry
+        )
+        for entry in purge.registry_snapshot
+    ]
+    import json as _json
+
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversation_purges SET registry_snapshot = "
+            " CAST(:s AS jsonb) WHERE tenant_id = :t AND id = :p"
+        ),
+        {"t": tenant_id, "p": purge.id, "s": _json.dumps(tampered)},
+    )
+    await db_session.flush()
+    with pytest.raises(OwnerRegistryChangedError):
+        await repo.create_owner_checkpoint(
+            tenant_id=tenant_id,
+            purge_operation_id=purge.id,
+            owner_key="workspace.core.v1",
+        )
+
+
+@pytest.mark.asyncio
+async def test_purge_operation_rejects_negative_hold_revision(db_session):
+    """反例（评审 round3 P1.2）：hold_revision_snapshot 是单调 fencing token，
+    负数必须在 repository 参数校验层 fail closed。"""
+    repo = AgentErasureRepository(db_session)
+    tenant_id, conversation_id = await _make_conversation(db_session)
+    with pytest.raises(ValueError):
+        await repo.create_purge_operation(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            purge_revision=1,
+            retention_policy_snapshot={"conversation_days": 30},
+            hold_revision_snapshot=-1,
+        )
+
+
+@pytest.mark.asyncio
+async def test_purge_hold_revision_snapshot_db_check_rejects_negative(db_session):
+    """DB CHECK 层同样拒绝 hold_revision_snapshot < 0（绕过 repository 时兜底）。"""
+    tenant_id, conversation_id = await _make_conversation(db_session)
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            await db_session.execute(
+                text(
+                    "INSERT INTO metaedu.agent_conversation_purges "
+                    "(id, tenant_id, conversation_id, purge_revision, state, "
+                    " registry_digest, registry_snapshot, retention_policy_snapshot, "
+                    " retention_policy_digest, hold_revision_snapshot) "
+                    "VALUES (:id, :t, :c, 1, 'scheduled', :rd, '[]'::jsonb, "
+                    " '{}'::jsonb, :rpd, -1)"
+                ),
+                {
+                    "id": uuid.uuid4(),
+                    "t": tenant_id,
+                    "c": conversation_id,
+                    "rd": "ab" * 32,
+                    "rpd": "cd" * 32,
+                },
+            )
+
+
 # ---------------------------------------------------------------------------
 # backfill
 # ---------------------------------------------------------------------------
@@ -943,6 +1055,46 @@ async def test_backfill_report_does_not_retain_all_ids(session_factory):
     )
     assert report.conversations_scanned == 3
     assert not hasattr(report, "processed_conversations")
+
+
+@pytest.mark.asyncio
+async def test_backfill_failures_are_bounded(session_factory, monkeypatch):
+    """反例（评审 round3 P1.3）：系统性失败时 failures 必须内存有界。
+
+    强制所有 Conversation 失败并超过样本上限，report 只保留固定上限样本 +
+    总失败计数，不随失败数线性增长。
+    """
+    from app.composition import agent_erasure_backfill as backfill_module
+
+    async def _always_fail(session, *, tenant_id, conversation_id):
+        raise RuntimeError("simulated systematic failure")
+
+    monkeypatch.setattr(backfill_module, "_backfill_conversation", _always_fail)
+    async with session_factory() as session, session.begin():
+        tenant_id = uuid.uuid4()
+        for _ in range(5):
+            await _insert_conversation(session, tenant_id=tenant_id)
+    report = await backfill_baseline_fences(
+        session_factory, tenant_id=tenant_id, batch_size=2
+    )
+    assert report.failure_count == 5
+    # 样本数封顶于 _MAX_FAILURE_SAMPLES（有界），不随失败数线性增长。
+    assert len(report.failures) <= backfill_module._MAX_FAILURE_SAMPLES
+    assert report.ok is False
+
+
+@pytest.mark.asyncio
+async def test_backfill_marks_complete_when_last_row_hits_max(session_factory):
+    """反例（评审 round3 P2.4）：仅剩 1 行且 max_conversations=1 时，
+    实际已无更多 Conversation，应 completed=True 而非误报未完成。"""
+    async with session_factory() as session, session.begin():
+        tenant_id = uuid.uuid4()
+        await _insert_conversation(session, tenant_id=tenant_id)
+    report = await backfill_baseline_fences(
+        session_factory, tenant_id=tenant_id, batch_size=100, max_conversations=1
+    )
+    assert report.conversations_scanned == 1
+    assert report.completed is True
 
 
 # ---------------------------------------------------------------------------

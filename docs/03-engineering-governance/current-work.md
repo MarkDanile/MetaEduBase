@@ -27,11 +27,11 @@
 - R1 Plan: [R1 分 Slice 实施计划](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
 - Backlog: [REQ-041/047](../01-product-planning/04-backlog.md)
 
-当前进展：R1-S1 已交付 schema 基座（唯一版本化 `conversation_owner_key()`、code-defined owner registry、四张 coordination 表 + Conversation.hold_revision、Message/Conversation/Run/CompatibilityOutput/transport + actor tombstone expand-only schema、带游标与 CLI 的 baseline fence backfill）。PR #506 已创建（未合并）。第一轮复审 6 P1 与第二轮复审 3 P1 已逐一修复并 push；第二轮修复包括 purge registry snapshot/digest 同源绑定、Conversation actor tombstone（Spec §7.1）、backfill 参数 fail closed + 内存有界 failures + CLI 退出码契约。migration `034` 原地修订、upgrade/downgrade/upgrade 往返通过。不启动 scheduler、不清正文、不接 S2-S4 writer、不加 legal-hold API/UI、不实现 Runtime/external adapter。
+当前进展：R1-S1 已交付 schema 基座（唯一版本化 `conversation_owner_key()`、code-defined owner registry、四张 coordination 表 + Conversation.hold_revision、Message/Conversation/Run/CompatibilityOutput/transport + actor tombstone expand-only schema、带游标与 CLI 的 baseline fence backfill）。PR #506 已创建（未合并）。第一/二/三轮复审的 P1/P2 已逐一修复并 push；第三轮修复包括 registry snapshot↔digest 双重 fail-closed（篡改/升级即拒）、`hold_revision_snapshot` 下界、backfill failures 真正内存有界（failure_count + 样本封顶）、completed 误报修复（游标后 EXISTS 探测）。migration `034` 原地修订、upgrade/downgrade/upgrade 往返通过。不启动 scheduler、不清正文、不接 S2-S4 writer、不加 legal-hold API/UI、不实现 Runtime/external adapter。
 
 下一步：等用户对修订后 PR #506 做独立安全复审 + Codex 复审，通过后才按流程合并；`034` 最终稳定后对本地 dev DB 做显式 schema reset（旧版同 revision，普通 downgrade 不可用）。
 
-验证状态：migration 往返 / schema CHECK / tenant 复合键 / CAS / owner registry digest 决定性 / 并发 fence 唯一性（真实 PG）/ backfill 幂等分批游标重启全部通过；45 erasure 专项 + 235 workspace/execution/control-plane 回归全绿；ruff 0 错误；mypy baseline 0 回归；docs gate 与 git diff --check 通过。
+验证状态：migration 往返 / schema CHECK / tenant 复合键 / CAS / owner registry digest 决定性 / 并发 fence 唯一性（真实 PG）/ backfill 幂等分批游标重启全部通过；51 erasure 专项 + 235 workspace/execution/control-plane 回归全绿；ruff 0 错误；mypy baseline 0 回归；docs gate 与 git diff --check 通过。
 
 ## 下一批候选任务
 
