@@ -6,7 +6,9 @@
 
 - `main` 只读；任何仓库文件修改都必须先建任务分支。
 - 一个分支服务一个清晰任务或强相关切片；一个提交表达一个原子变更。
-- 用户说“按流程提交”“完整 Git 闭环”时，默认推进 commit / push / PR / merge main / clean check。
+- 用户说“按流程开发”或“按流程提交”时，默认只推进到 commit / push / PR，报告 CI 状态后停止，不自动合并。
+- 用户说“按流程评审”时，按评分卡评审当前 PR、处理发现、更新评分总账并重新验证；评审完成后仍保持 PR 未合并。
+- 只有用户明确说“按流程合并”“提交至合并”或“完整 Git 闭环”时，才继续执行 merge main、文档收口和 clean check。
 - 进入 `git add` 前必须执行 `quality-gates.md#完成门禁`。
 - PR 是默认交付事实源；merge commit 只在文档已有占位或审计需要时回填。
 
@@ -19,14 +21,28 @@
 
 ## 快速交付通道
 
+### PR 交付阶段
+
 1. 入口确认：读 `current-work.md` 和本文件；确认当前已在任务分支。
 2. 最小验证：按范围运行必要命令。文档-only 通常为 `scripts/check-engineering-docs` + `git diff --check`。
 3. 范围边界：用 `git diff --name-status` 确认无关文件、生成物、缓存或资产清理未混入。
 4. 提交链路：`git add` 相关文件，Conventional Commit，push，创建 PR。
-5. 合并检查：`gh pr view` + `gh pr checks`；无阻塞则 squash merge 并删除远端分支。
-6. 合并后收口：同步本地 `main`，确认 `main...origin/main` 干净；清除交付占位。
+5. PR 交接：报告 PR 链接和 required checks 状态，提示用户后续执行“按流程评审”，然后停止。CI 可继续等待和报告，但不得因此自动进入评审或合并。
 
-中间只报告关键阶段：已提交、PR 已创建、已合并 main、最终干净。失败时再展开原因。
+### 评审阶段
+
+6. 用户明确说“按流程评审”后，按 `review-scorecard.md` 评审当前待合并 PR Head；当前任务范围内的阻塞 finding 优先修复，非阻塞问题绑定稳定 follow-up。
+7. 完成正式评分并更新 `review-score-log.md`；评审修复和评分记录推送到同一 PR，重新执行受影响验证并等待 required checks。
+8. 报告评分、finding、follow-up 和 CI 状态，然后停止并保持 PR 开放。评分记录本身的纯文档提交不使评审失效；评分后若代码、测试或契约继续变化，合并前必须复核变化范围并更新评审结论。
+
+### 合并阶段
+
+9. 只有用户明确说“按流程合并”“提交至合并”或“完整 Git 闭环”后，才检查评分记录已覆盖当前 PR、阻塞 finding 已清零，并运行 `gh pr view` + `gh pr checks`。评分缺失、未覆盖当前代码或仍有阻塞 finding 时必须停止，不得合并，并提示先执行“按流程评审”。
+10. 无阻塞后 squash merge 并删除远端分支；同步本地 `main`。
+11. 如任务完成状态依赖 merge 事实，从最新 `main` 创建轻量 docs closeout 分支和 PR，更新工作台、Requirement / TD、plan、work-log 等必要事实源并合并。
+12. 确认最终 `main...origin/main` 干净，且交付事实源不再有完成日期、PR、验证结果等活动占位。
+
+中间只报告关键阶段：已提交、PR 已创建、评审已完成、已合并 main、最终干净。失败时再展开原因。
 
 ## 分支命名
 
