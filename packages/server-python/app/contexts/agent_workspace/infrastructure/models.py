@@ -534,12 +534,10 @@ class WorkspaceInboxModel(Base):
 class ErasureFenceModel(Base):
     __tablename__ = "agent_erasure_fences"
     __table_args__ = (
-        UniqueConstraint(
-            "tenant_id",
-            "conversation_id",
-            "owner_key",
-            name="uq_agent_erasure_fence_owner",
-        ),
+        # PK = (tenant_id, conversation_id, owner_key)（下方 primary_key=True）。
+        # 不再声明同三列 UK：PostgreSQL 对「UK 列 ⊆ PK 列」去重，UK 从不创建
+        # （死声明）。也不再建 (tenant_id, conversation_id) 前缀 Index：PK btree
+        # 已可服务该前缀查询，冗余 ix 只增写放大（TD-089）。
         ForeignKeyConstraint(
             ["tenant_id", "conversation_id"],
             [
@@ -571,11 +569,6 @@ class ErasureFenceModel(Base):
             "AND char_length(ack_digest) = 64 AND acked_at IS NOT NULL) OR "
             "(state <> 'erased' AND ack_digest IS NULL AND acked_at IS NULL)",
             name="ck_agent_erasure_fence_ack",
-        ),
-        Index(
-            "ix_agent_erasure_fence_conversation",
-            "tenant_id",
-            "conversation_id",
         ),
         {"schema": "metaedu"},
     )

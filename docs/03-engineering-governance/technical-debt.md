@@ -182,7 +182,7 @@
 | TD-086 | 收口 Alembic target metadata 漂移并建立可执行 schema drift gate | ⚫ 待办 | P2 | 后端 / 数据库迁移 / CI / 质量门禁 | REQ-041 W1 migration 验证 / 2026-07-24 `alembic check` 实测 |
 | TD-087 | 模板管理 API 缺少后端 RBAC | 🟢 完成 | P1 | 后端 / Template / Identity / RBAC / 多租户 | [PR #495](https://github.com/MarkDanile/MetaEduBase/pull/495)（`40a7bf46`）：15 个管理端点统一高权守卫，最小 lookup DTO、脱敏审计与完整角色 / 租户矩阵通过 |
 | TD-088 | REQ-060 Slice 2 旧链接重定向移除 | 🔵 就绪 | P3 | 前端 / Web / Navigation / 技术债 | [PR #499](https://github.com/MarkDanile/MetaEduBase/pull/499)（`a1fa26dc`）：6 条旧链接重定向（/skill-editor /admin /admin/template(+/:id) /admin/mcp-servers /admin/skills -> 新路径）保留 1 版本周期后移除；移除前确认无外部书签/链接引用 |
-| TD-089 | `agent_erasure_fences` 冗余/无效索引（PK 蕴含的 UK 声明 + PK 前缀 ix） | ⚫ 待办 | P3 | 后端 / 数据库迁移 / 性能 / Erasure | PR #506 round4 独立 `max` 复审 F7 + 两轮复核更正：`ErasureFenceModel` 声明 `uq_agent_erasure_fence_owner`（与 PK `(tenant_id,conversation_id,owner_key)` 同列）与 `ix_agent_erasure_fence_conversation`（PK 前缀）。经离线 mock + 离线 SQL + 纯 PG 回滚事务复现证实：**PostgreSQL 自身**对「PK 与 UK 同列」去重（只建 PK），故 UK 声明从不生效（死声明，非冗余 btree）；`ix_..._conversation` 是唯一实际存在的冗余 btree（PK 已可服务 conversation 前缀查询，`ON CONFLICT` 仲裁用 PK）。迁移方式：**#506 合并前处理可原地修订 `034`；合并后处理必须新增迁移**（见 [plan](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) round4 段）。 |
+| TD-089 | `agent_erasure_fences` 冗余/无效索引（PK 蕴含的 UK 声明 + PK 前缀 ix） | 🟣 待验证 | P3 | 后端 / 数据库迁移 / 性能 / Erasure | 实现完成、待 PR 合并验证：`models.py` 删 `uq_agent_erasure_fence_owner` 死声明（PostgreSQL 对「UK 列 ⊆ PK 列」去重，UK 从不创建）与 `ix_agent_erasure_fence_conversation` 冗余 `Index`（PK btree 已服务 conversation 前缀查询）；新增 migration `035_erasure_fence_ix_cleanup`（`034` 合并后冻结故新迁移）：upgrade 真实 DROP 冗余 ix + 幂等 `DROP CONSTRAINT IF EXISTS` 死 UK，downgrade 幂等重建（先 `035.downgrade` 重建 ix 再 `034.downgrade`，`034` 保持冻结原样不改）。新增 8 测试（源级守卫 + 库级终态证据 + 035 清理 + 幂等往返 + metadata⊆live）；真实迁移证据 034 head 冗余 ix 存在/死 UK 无 → 035 head 冗余 ix 删/PK 保留；变异测试 M8 可杀（库重置 034 前置下 035 不删 ix 测试变红）。验证：88 erasure/workspace 全绿 + 全量 1785 passed + ruff 0 + mypy baseline 0 regressions。dev 库合并后 `alembic upgrade head` 应用 035。分支 `fix/td-089-erasure-fence-redundant-index`，PR 合并并经收口 PR 翻 🟢 |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -296,7 +296,7 @@
 
 ### TD-089: `agent_erasure_fences` 冗余/无效索引（PK 蕴含的 UK 声明 + PK 前缀 ix）
 
-状态：⚫ 待办
+状态：🟣 待验证
 
 | 字段 | 内容 |
 |------|------|
@@ -316,6 +316,17 @@
 - 删除 `uq_agent_erasure_fence_owner` 死声明（models + migration）与 `ix_agent_erasure_fence_conversation` 冗余索引（models + migration）。
 - **迁移方式取决于处理时机（round5 复审更正）**：若本任务在 PR #506 合并**前**处理，可原地修订 `034`（PR 未合并，无新版本号）并重建本地 test 库（`DROP SCHEMA metaedu CASCADE` + `test_db_setup`）；若在 #506 合并**后**处理，`034` 已冻结，**必须新增后续 migration**（不得原地改已合并迁移）。
 - 处理后重跑 erasure 专项与 migration 往返；dev 库按既有「同 revision schema reset」流程一并处理。
+
+**实现记录**
+
+2026-07-28 实现完成（分支 `fix/td-089-erasure-fence-redundant-index`，待 PR 合并验证后由收口 PR 翻 🟢）：
+
+- `models.py` `ErasureFenceModel`：删除 `uq_agent_erasure_fence_owner` 死声明与 `ix_agent_erasure_fence_conversation` 冗余 `Index`；PK 仍由三列 `primary_key=True` 提供，owner 查找与 conversation 前缀查询由 PK btree 服务（PostgreSQL 不为 FK 自动建索引）。
+- 新增 migration `035_erasure_fence_ix_cleanup`（`034` 已合并冻结，故新迁移而非原地修订）：upgrade 真实 `DROP INDEX` 冗余 ix + 幂等 `DROP CONSTRAINT IF EXISTS` 死 UK（UK 从不创建，仅环境兜底）；downgrade 用 `DROP INDEX IF EXISTS` 幂等重建 ix。`034` 保持冻结原样、**不改动**：正常回滚顺序是先 `035.downgrade()`（重建 ix）再 `034.downgrade()`（此时 ix 已恢复，正常 drop），无需给 `034` 加 `IF EXISTS`。
+- revision id 定为 `035_erasure_fence_ix_cleanup`（28 字符），因 `alembic_version.version_num` 为 `varchar(32)`，初稿 39 字符 id 触发 `StringDataRightTruncation`。
+- 新增 `tests/composition/test_agent_erasure_fence_index_cleanup.py`（8 tests）：源级守卫（models 无死 UK/冗余 ix、PK 三列、035 文件声明）+ 库级终态证据（死 UK 从不创建、fence 表只剩 PK btree）+ 035 upgrade 清理 + 035 downgrade/upgrade 幂等往返 + metadata ⊆ live 无漂移。真实迁移证据：034 head 冗余 ix 存在 / 死 UK 不存在 → 035 head 冗余 ix 删除 / PK 保留。变异测试（M8：035 upgrade 跳过 DROP INDEX）在「库先重置到 034」前置下测试变红，证明断言可杀变异；过渡期曾因持久 test 库已在 035 head 导致变异假存活，已定位并修正测试为终态稳定口径。
+- 验证：8 新增 + 既有 034 往返 + erasure/workspace 88 全绿；ruff 0（`alembic/versions` 默认排除，显式 `ruff check alembic/versions/034|035` 亦过）；mypy baseline 243 历史 / 76 keys / **0 regressions**。
+- dev `metaedu` 库：分支合并后需 `alembic upgrade head` 应用 035 删除冗余 ix（schema-only，无数据回填）。
 
 ### TD-085: 收口 AI Chat、Skill 与 Agent App 的上下文边界倒置
 
