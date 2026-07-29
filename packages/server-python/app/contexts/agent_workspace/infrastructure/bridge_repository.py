@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.composition.agent_suppression_reasons import suppression_reason_code
 from app.contexts.agent_workspace.application.command_digest import (
     message_content_digest,
     message_part_digest,
@@ -50,28 +51,6 @@ from app.shared.schemas.agent_integration_codec import (
 
 WORKSPACE_TURN_CONSUMER = "agent_execution.turn_requested.v1"
 WORKSPACE_OUTPUT_CONSUMER = "agent_workspace.assistant_publish.v1"
-
-# 受控 suppression reason code 白名单（P2-5）：redacted tombstone 只存受控
-# code，自由文本（可能含正文/提示词/secret）永不落库。不在白名单的输入归一到
-# 通用 code，不反射原始内容。
-_SUPPRESS_REASON_CODES: frozenset[str] = frozenset(
-    {
-        "external_object_deleted",
-        "output_purge_suppressed",
-        "late_body_write_rejected",
-        "operator_suppressed",
-        "retention_expired",
-    }
-)
-_SUPPRESS_REASON_FALLBACK = "operator_suppressed"
-
-
-def _suppress_reason_code(reason: str) -> str:
-    """把调用方 reason 归一到受控 code；自由文本不落 tombstone。"""
-    normalized = reason.strip().lower().replace(" ", "_").replace("-", "_")
-    if normalized in _SUPPRESS_REASON_CODES:
-        return normalized
-    return _SUPPRESS_REASON_FALLBACK
 
 
 class WorkspaceBridgeRepository:
@@ -713,7 +692,7 @@ class WorkspaceBridgeRepository:
                 created_at=consumed_at,
                 redacted_at=consumed_at,
                 # P2-5：tombstone 只存受控 reason code，自由文本不落库。
-                redacted_reason=_suppress_reason_code(reason),
+                redacted_reason=suppression_reason_code(reason),
             )
         )
         conversation.next_message_seq += 1

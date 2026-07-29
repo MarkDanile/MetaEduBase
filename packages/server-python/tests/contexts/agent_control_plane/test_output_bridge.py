@@ -177,9 +177,10 @@ async def test_output_dead_letter_can_retry_with_same_event_and_message_ids(
 async def test_suppressed_tombstone_stores_controlled_reason_code_not_free_text(
     db_session, session_factory
 ):
-    """P2-5（Codex）：suppressed tombstone 的 redacted_reason 只存受控 reason
-    code，自由文本（可能含正文/提示词/secret）不落库。白名单 code 原样保留；
-    非白名单输入归一到通用 code，不反射原始内容。"""
+    """P2-5（Codex）+ 独立 max P2：suppressed tombstone 的 redacted_reason 与
+    execution outbox 的 decision_reason 都只存受控 reason code，自由文本（可能
+    含正文/提示词/secret）不落库、不进入 decision_digest 输入。白名单 code
+    原样保留；非白名单输入归一到通用 code，不反射原始内容。"""
     content = b"sensitive body"
     _, run, message_id = await _completed_run(
         db_session, session_factory, content=content
@@ -200,6 +201,16 @@ async def test_suppressed_tombstone_stores_controlled_reason_code_not_free_text(
     assert message.redacted_reason == "operator_suppressed"
     assert "身份证" not in (message.redacted_reason or "")
     assert "110101199001011234" not in (message.redacted_reason or "")
+    # execution outbox decision_reason 同样只存受控 code（同一数据流）。
+    outbox = await db_session.scalar(
+        select(ExecutionOutboxModel).where(
+            ExecutionOutboxModel.aggregate_id == run.id
+        )
+    )
+    assert outbox is not None
+    assert outbox.decision_reason == "operator_suppressed"
+    assert "身份证" not in (outbox.decision_reason or "")
+    assert "110101199001011234" not in (outbox.decision_reason or "")
 
 
 async def test_authorized_suppress_writes_redacted_tombstone_and_audit(
