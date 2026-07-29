@@ -19,13 +19,27 @@ owner_version 漂移（registry 已升级）fail closed。
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import uuid
 
 import pytest
 from sqlalchemy import func, select, text
 
+from app.composition.agent_control_plane import (
+    AgentBridgeDispatcher,
+    ConversationExecutionCoordinator,
+)
 from app.composition.agent_erasure_locks import acquire_owner_lock
 from app.composition.agent_erasure_registry import owner_registry
+from app.contexts.agent_execution.application.run_coordinator import RunCoordinator
+from app.contexts.agent_execution.domain import (
+    RunStatus,
+    SnapshotClassification,
+    TerminalResult,
+)
+from app.contexts.agent_execution.infrastructure.models import (
+    ExecutionOutboxModel,
+)
 from app.contexts.agent_workspace.application.bridge import (
     AgentWorkspaceBridgeService,
 )
@@ -50,8 +64,12 @@ from app.contexts.agent_workspace.infrastructure.models import (
     MessagePartModel,
 )
 from tests.contexts.agent_control_plane.helpers import (
+    ACTOR_ID,
+    TENANT_ID,
+    StaticOutputReader,
     bootstrap_workspace,
     create_baseline_fences,
+    turn_command,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -115,14 +133,23 @@ async def _fence_to_state(
     )
 
 
-async def _count_body_parts(session, conversation_id) -> int:
-    """该会话所有 Message 的 MessagePart 正文行数（经 Message.conversation_id 关联）。"""
-    return await session.scalar(
+async def _count_body_parts(
+    session, conversation_id, *, message_kind: str | None = None
+) -> int:
+    """该会话 Message 的 MessagePart 正文行数（经 Message.conversation_id 关联）。
+
+    ``message_kind`` 限定时只计该 kind（如 assistant_output），用于区分用户正文
+    与 assistant 正文——构造 completed Run 的 submit_turn 会写一条用户正文。
+    """
+    stmt = (
         select(func.count())
         .select_from(MessagePartModel)
         .join(MessageModel, MessagePartModel.message_id == MessageModel.id)
         .where(MessageModel.conversation_id == conversation_id)
     )
+    if message_kind is not None:
+        stmt = stmt.where(MessageModel.message_kind == message_kind)
+    return await session.scalar(stmt)
 
 
 async def _tenant_id(db_session, conversation_id) -> uuid.UUID:
@@ -383,3 +410,136 @@ async def test_create_fence_on_non_active_fence_fails_closed(db_session):
             conversation_id=conversation_id,
             owner_key=_OWNER_KEY,
         )
+
+
+async def _completed_run_with_pending_output(
+    db_session, session_factory, *, content: bytes
+):
+    """构造 completed Run + pending execution outbox（assistant 正文待投影）。
+
+    复用 test_output_bridge 的 _completed_run 模式：submit_turn -> dispatch_turn
+    -> start_run -> RUNNING -> commit_terminal（产生 pending output outbox）。
+    返回 (conversation_id, run, terminal_message_id, outbox)。
+    """
+    conversation_id, identity, launch = await bootstrap_workspace(db_session)
+    receipt = await ConversationExecutionCoordinator(db_session).submit_turn(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        command=turn_command(identity, "bridge fence"),
+        launch=launch,
+    )
+    await db_session.commit()
+    run = await AgentBridgeDispatcher(
+        session_factory, worker_id="writer-fence-setup"
+    ).dispatch_turn(event_id=receipt.event_id)
+    assert run is not None
+    terminal_message_id = uuid.uuid4()
+    async with session_factory() as session, session.begin():
+        started, _ = await ConversationExecutionCoordinator(session).start_run(
+            tenant_id=TENANT_ID,
+            run_id=run.id,
+            expected_revision=1,
+        )
+        running, _ = await RunCoordinator(session).transition_run(
+            tenant_id=TENANT_ID,
+            run_id=run.id,
+            expected_status=RunStatus.STARTING,
+            expected_revision=started.status_revision,
+            target_status=RunStatus.RUNNING,
+            summary="Runtime started",
+        )
+        completed, _, _ = await RunCoordinator(session).commit_terminal(
+            tenant_id=TENANT_ID,
+            run_id=run.id,
+            expected_status=RunStatus.RUNNING,
+            expected_revision=running.status_revision,
+            result=TerminalResult(
+                outcome="completed",
+                code="ok",
+                reason="answer ready",
+                output_ref=f"terminal-output-{run.id}",
+                output_digest=hashlib.sha256(content).hexdigest(),
+                output_size=len(content),
+                output_media_type="text/markdown",
+                output_classification=SnapshotClassification.INTERNAL,
+                terminal_message_id=terminal_message_id,
+            ),
+        )
+    outbox = await db_session.scalar(
+        select(ExecutionOutboxModel).where(
+            ExecutionOutboxModel.aggregate_id == run.id
+        )
+    )
+    assert outbox is not None
+    return conversation_id, completed, terminal_message_id, outbox
+
+
+async def test_project_assistant_message_creates_fence_on_first_body_write(
+    db_session, session_factory
+):
+    """assistant 正文注入点（bridge_repository.project_assistant_message）：
+    惰性首写建 fence。无 fence 的会话首次投影 assistant 正文，同事务建立
+    workspace.core.v1 active fence 并放行正文写。"""
+    content = b"# assistant body"
+    conversation_id, _, _, outbox = await _completed_run_with_pending_output(
+        db_session, session_factory, content=content
+    )
+
+    dispatcher = AgentBridgeDispatcher(
+        session_factory,
+        worker_id="writer-fence-output",
+        output_reader=StaticOutputReader(content),
+    )
+    assert await dispatcher.dispatch_output(event_id=outbox.id) is True
+
+    tenant_id = await _tenant_id(db_session, conversation_id)
+    fence = await AgentErasureRepository(db_session).get_fence_for_update(
+        tenant_id=tenant_id, conversation_id=conversation_id, owner_key=_OWNER_KEY
+    )
+    assert fence is not None
+    assert fence.state is ErasureFenceState.ACTIVE
+    # assistant 正文已写入。
+    assert (
+        await _count_body_parts(
+            db_session, conversation_id, message_kind="assistant_output"
+        )
+        >= 1
+    )
+
+
+async def test_project_assistant_message_with_erasing_fence_rejected(
+    db_session, session_factory
+):
+    """assistant 正文注入点：fence erasing（purge fencing 进行中），迟到的
+    publish_requested 事件被消费时必须 fail closed
+    （LateBodyWriteRejectedError），assistant 正文不得复活（MessagePart 零写入）。"""
+    content = b"# late assistant body"
+    conversation_id, _, _, outbox = await _completed_run_with_pending_output(
+        db_session, session_factory, content=content
+    )
+    tenant_id = await _tenant_id(db_session, conversation_id)
+    await create_baseline_fences(
+        db_session, tenant_id=tenant_id, conversation_id=conversation_id
+    )
+    await _fence_to_state(db_session, conversation_id, ErasureFenceState.ERASING)
+    await db_session.commit()
+
+    dispatcher = AgentBridgeDispatcher(
+        session_factory,
+        worker_id="writer-fence-output-late",
+        output_reader=StaticOutputReader(content),
+    )
+    with pytest.raises(LateBodyWriteRejectedError):
+        await dispatcher.dispatch_output(event_id=outbox.id)
+
+    # assistant 正文未复活：该会话无任何 assistant_output 正文
+    # （构造 completed Run 的 submit_turn 用户正文不算）。
+    async with session_factory() as session:
+        assert (
+            await _count_body_parts(
+                session, conversation_id, message_kind="assistant_output"
+            )
+            == 0
+        )
+
