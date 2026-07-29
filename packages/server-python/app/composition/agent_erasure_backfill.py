@@ -3,8 +3,14 @@
 为既有 Conversation 补当前已安装 owner 的 baseline ``active`` fence。设计约束：
 
 - 不做单一全表大事务：每个 Conversation 一个短事务，崩溃/重启后从下一个
-  Conversation 继续（幂等 INSERT ... ON CONFLICT DO NOTHING）。
-- 幂等：同一 fence 重复写入不报错、不重复。
+  Conversation 继续。
+- 锁序（Spec §6.1，S2-C）：逐 owner 经
+  ``AgentErasureRepository.create_fence_under_owner_lock``（自带 Conversation
+  行锁 -> owner advisory lock -> fence FOR UPDATE），与正文 writer 同锁序，
+  避免绕过 owner lock 与 writer 形成 AB-BA 死锁。
+- 幂等：fence 已存在且为同 owner_version 的 active 时返回既有行（不重复创建）；
+  version 漂移或非 active（清除路径上的状态）fail closed 计入 ``failure_count``，
+  不覆盖清除路径上的既有 fence。
 - 分批 + tenant 限流：调用方传 ``tenant_id``、``batch_size``、``max_conversations``
   控制单批规模；批间由调用方决定是否停顿。
 - fail closed：owner registry 必须能解析全部 6 个固定 owner；任何无法可靠处理的
@@ -13,9 +19,10 @@
 **失败恢复契约**：失败行的游标仍会越过（``next_after_id`` 推进）。因此用
 ``--after-id <next_after_id>`` 续跑**不会**重试失败行；失败后唯一可靠的完整恢复
 是从 tenant 起点（不带 ``--after-id``）幂等重跑到 exit 0。fence 写入幂等
-（ON CONFLICT DO NOTHING），重跑不会重复创建。
+（``create_fence_under_owner_lock`` 对既有 active 行幂等返回），重跑不会重复创建。
 
-R1-S1 只补 fence；不建立 purge operation、不改 Conversation purge_state、不清正文。
+R1-S1/S2-C 只补 fence；不建立 purge operation、不改 Conversation purge_state、
+不清正文。
 """
 
 from __future__ import annotations
@@ -24,21 +31,12 @@ import uuid
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.composition.agent_erasure_registry import owner_registry, registry_digest
 from app.contexts.agent_workspace.infrastructure.models import (
     ConversationModel,
-    ErasureFenceModel,
 )
-from app.shared.schemas.canonical_json import canonical_digest
-
-
-def _empty_ingress_digest() -> str:
-    return canonical_digest({"ingress": {}, "schema_version": 1})
-
 
 # 失败样本上限：超过后只累计 failure_count，不再 append（内存有界，
 # 系统性失败时不会 O(N) 增长导致报告前 OOM）。
@@ -117,34 +115,43 @@ async def _backfill_conversation(
     """为单个 Conversation 幂等补全部 owner 的 fence。
 
     返回 (created, already_present)。调用方在独立事务中调用本函数。
+
+    锁序（Spec §6.1，S2-C）：逐 owner 经
+    ``AgentErasureRepository.create_fence_under_owner_lock``（自带 Conversation
+    行锁 -> owner advisory lock -> fence FOR UPDATE），与正文 writer 同锁序，
+    避免「裸 INSERT ... ON CONFLICT」绕过 owner lock 与 writer 形成 AB-BA 死锁。
+    幂等（§4.2/§10.3）：fence 已存在且为同 owner_version 的 active 时返回既有
+    行（计 already_present）；version 漂移或非 active（清除路径上的状态）经
+    ``create_fence_under_owner_lock`` fail closed，抛 ``OwnerRegistryChangedError``
+    计入 failure_count（不静默覆盖清除路径上的 fence）。
     """
+    from app.contexts.agent_workspace.infrastructure.erasure_repository import (
+        AgentErasureRepository,
+    )
+
     created = 0
     already = 0
-    ingress_digest = _empty_ingress_digest()
+    repo = AgentErasureRepository(session)
     for owner in owner_registry():
-        statement = (
-            insert(ErasureFenceModel)
-            .values(
+        # 探测先前行以区分 created/already（报告准确性）；create_fence_under_
+        # owner_lock 内部在 owner lock 下 get-then-create，幂等且不 PK 冲突。
+        existed = (
+            await repo.get_fence_for_update(
                 tenant_id=tenant_id,
                 conversation_id=conversation_id,
                 owner_key=owner.owner_key,
-                owner_version=owner.owner_version,
-                state="active",
-                ingress_checkpoint={},
-                ingress_digest=ingress_digest,
             )
-            .on_conflict_do_nothing(
-                index_elements=["tenant_id", "conversation_id", "owner_key"]
-            )
+            is not None
         )
-        result = await session.execute(statement)
-        rowcount = (
-            result.rowcount if isinstance(result, CursorResult) else 0
+        await repo.create_fence_under_owner_lock(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key=owner.owner_key,
         )
-        if rowcount > 0:
-            created += 1
-        else:
+        if existed:
             already += 1
+        else:
+            created += 1
     return created, already
 
 

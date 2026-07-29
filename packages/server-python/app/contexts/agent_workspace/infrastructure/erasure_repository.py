@@ -415,6 +415,78 @@ class AgentErasureRepository:
         await self._session.flush()
         return _fence_to_domain(fence_model)
 
+    # --- ingress checkpoint（Spec §5.1/§6.2，S2-C）-------------------------
+
+    @staticmethod
+    def _advance_ingress(
+        checkpoint: dict,
+        *,
+        source_key: str,
+        watermark: int,
+        epoch: int,
+    ) -> dict:
+        """返回推进了 ``source_key`` 水位的新 checkpoint（不就地改入参）。
+
+        只记录真实 source 序号/epoch 的连续水位，不保存正文、prompt、自由文本
+        或原始 payload。``watermark`` 必须真实反映本写分配到的 source 序号
+        （body=message seq / title=Conversation revision），``epoch`` 为
+        Conversation 当前 purge_revision。水位只增不减（单调）：回退或重复
+        写同一序号保持既有水位。
+        """
+        sources = dict(checkpoint.get("sources") or {})
+        existing = sources.get(source_key)
+        new_watermark = watermark
+        if existing is not None:
+            new_watermark = max(int(existing.get("watermark", 0)), watermark)
+        sources[source_key] = {"watermark": new_watermark, "epoch": epoch}
+        return {"schema_version": 1, "sources": sources}
+
+    async def advance_ingress_checkpoint_for_update(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        owner_key: str,
+        source_key: str,
+        watermark: int,
+        epoch: int,
+        now: datetime | None = None,
+    ) -> ErasureFence:
+        """在已裁决的 fence 行上推进 ``source_key`` 的 ingress checkpoint。
+
+        前置：调用方已在同一事务内经 ``require_body_write_fence_for_update``
+        裁决放行（fence 行锁在握、state=active、token 已对齐），并已分配本写
+        的真实 source 序号（body=seq / title=revision CAS 后值）。本方法与正文
+        写同一事务 commit，实现「正文写 + checkpoint + receipt 一起 commit」。
+
+        fail closed：fence 非 active（裁决后被并发 purge 接管）拒绝推进——不得
+        在清除路径上为已拒正文补 checkpoint。checkpoint 与 ``ingress_digest``
+        同源（shared ``canonical_digest``），不用 ``last_body_write_at`` 或
+        fence 自身 ``revision`` 冒充。
+        """
+        fence_model = await self._session.get(
+            ErasureFenceModel, (tenant_id, conversation_id, owner_key)
+        )
+        if fence_model is None:
+            raise LateBodyWriteRejectedError(
+                f"erasure fence {owner_key!r} missing during ingress advance"
+            )
+        if fence_model.state != ErasureFenceState.ACTIVE.value:
+            raise LateBodyWriteRejectedError(
+                f"owner fence {owner_key!r} is {fence_model.state}; cannot advance "
+                "ingress checkpoint on a non-active (purge-path) fence"
+            )
+        fence_model.ingress_checkpoint = self._advance_ingress(
+            dict(fence_model.ingress_checkpoint),
+            source_key=source_key,
+            watermark=watermark,
+            epoch=epoch,
+        )
+        fence_model.ingress_digest = canonical_digest(fence_model.ingress_checkpoint)
+        fence_model.updated_at = now or _utcnow()
+        await self._session.flush()
+        return _fence_to_domain(fence_model)
+
     async def list_fences(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
     ) -> list[ErasureFence]:

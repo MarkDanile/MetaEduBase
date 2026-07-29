@@ -119,3 +119,48 @@ async def create_baseline_fences_via_engine(
             )
     finally:
         await engine.dispose()
+
+
+async def set_core_fence_erasing_via_engine(
+    *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+) -> None:
+    """API 测试用：经独立 engine 把 workspace.core.v1 fence 推进 erasing。
+
+    用于 409 E2E：fence 非 active 时 writer（rename 等）必须 fail closed
+    ``late_body_write_rejected``。经生产 CAS 路径（owner lock -> fence FOR UPDATE）
+    而非裸 UPDATE，保持锁序一致。
+    """
+    from app.composition.agent_erasure_locks import acquire_owner_lock
+    from app.contexts.agent_workspace.domain import ErasureFenceState
+
+    engine = create_async_engine(TEST_DB_URL, echo=False, poolclass=NullPool)
+    try:
+        factory = async_sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with factory() as session, session.begin():
+            await acquire_owner_lock(
+                session,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                owner_key="workspace.core.v1",
+            )
+            repo = AgentErasureRepository(session)
+            fence = await repo.get_fence_for_update(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                owner_key="workspace.core.v1",
+            )
+            assert fence is not None
+            await repo.transition_fence_state(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                owner_key="workspace.core.v1",
+                expected_state=ErasureFenceState.ACTIVE,
+                expected_revision=fence.revision,
+                new_state=ErasureFenceState.ERASING,
+                purge_revision=1,
+                hold_revision=0,
+            )
+    finally:
+        await engine.dispose()

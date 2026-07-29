@@ -1331,6 +1331,73 @@ async def test_backfill_report_does_not_retain_all_ids(session_factory):
 
 
 @pytest.mark.asyncio
+async def test_backfill_uses_owner_lock_path_no_ab_ba_with_writer(session_factory):
+    """S2-C item 4/8（M5 反例）：backfill 必须经
+    ``create_fence_under_owner_lock``（Conversation 行锁 -> owner lock -> fence），
+    与正文 writer 同锁序。并发 backfill 与惰性正文 writer 互不 PK 冲突、不
+    AB-BA 死锁，双方成功且 fence 唯一 active。
+
+    失败形态：backfill 绕过 Conversation 行锁（如裸 get_or_create / INSERT）
+    时，与持 Conversation 行锁等 owner lock 的 writer 形成 AB-BA；本测试以
+    并发执行验证双方在同锁序下串行完成、fence 不重复。"""
+    import asyncio
+
+    from app.contexts.agent_workspace.application.conversation_service import (
+        AgentWorkspaceService,
+    )
+    from tests.contexts.agent_control_plane.test_writer_fence import _text_command
+
+    async with session_factory() as session, session.begin():
+        tenant_id = uuid.uuid4()
+        conversation_id = await _insert_conversation(session, tenant_id=tenant_id)
+        # writer 需要 Conversation.created_by 作为 actor。
+        actor_id = (
+            await session.execute(
+                text(
+                    "SELECT created_by FROM metaedu.agent_conversations "
+                    "WHERE id = :id"
+                ),
+                {"id": conversation_id},
+            )
+        ).scalar_one()
+
+    async def lazy_writer():
+        async with session_factory() as session, session.begin():
+            await AgentWorkspaceService(
+                session, cursor_secret="test-secret"
+            ).reserve_user_turn(
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                conversation_id=conversation_id,
+                command=_text_command("writer concurrent with backfill"),
+            )
+
+    async def backfill():
+        return await backfill_baseline_fences(
+            session_factory, tenant_id=tenant_id, batch_size=10
+        )
+
+    results = await asyncio.gather(
+        lazy_writer(), backfill(), return_exceptions=True
+    )
+    errors = [r for r in results if isinstance(r, Exception)]
+    assert not errors, f"backfill/writer concurrency raised: {errors!r}"
+
+    async with session_factory() as session:
+        count = (
+            await session.execute(
+                text(
+                    "SELECT count(*) FROM metaedu.agent_erasure_fences "
+                    "WHERE tenant_id = :t AND conversation_id = :c"
+                ),
+                {"t": tenant_id, "c": conversation_id},
+            )
+        ).scalar_one()
+    # 每个 owner 恰好一个 fence（惰性 writer 建 core、backfill 幂等补齐其余）。
+    assert count == len(owner_registry())
+
+
+@pytest.mark.asyncio
 async def test_backfill_failures_are_bounded(session_factory, monkeypatch):
     """反例（评审 round3 P1.3）：系统性失败时 failures 必须内存有界。
 

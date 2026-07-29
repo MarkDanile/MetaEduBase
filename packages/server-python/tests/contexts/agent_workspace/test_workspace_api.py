@@ -14,6 +14,7 @@ from app.main import app
 from app.shared.infrastructure.seed import DEFAULT_ADMIN_ID, DEFAULT_TENANT_ID
 from tests.contexts.agent_control_plane.helpers import (
     create_baseline_fences_via_engine,
+    set_core_fence_erasing_via_engine,
 )
 from tests.contexts.identity._helpers import register_and_login
 
@@ -140,6 +141,40 @@ async def test_owner_private_crud_cas_and_history(
     )
     assert restored.status_code == 200
     assert restored.json()["state"] == "active"
+
+
+async def test_late_body_write_rejected_returns_409_e2e(
+    client: AsyncClient, auth_headers: dict[str, str]
+):
+    """R1-S2 S2-C item 5：fence 非 active（erasing）时，经 API 的 title writer
+    （rename PATCH）必须返回 409 ``late_body_write_rejected``，而非 500——
+    LateBodyWriteRejectedError 在 router 映射为确定性 409，不得复活清除路径
+    上的 title。"""
+    create = await client.post(
+        "/api/v1/agent-workspace/conversations",
+        headers=auth_headers,
+        json={"title": "to be fenced"},
+    )
+    assert create.status_code == 201, create.text
+    conversation_id = uuid.UUID(create.json()["id"])
+    # 推进 workspace.core.v1 fence 到 erasing（独立 engine 经生产 CAS 路径）。
+    await set_core_fence_erasing_via_engine(
+        tenant_id=DEFAULT_TENANT_ID, conversation_id=conversation_id
+    )
+
+    rejected = await client.patch(
+        f"/api/v1/agent-workspace/conversations/{conversation_id}",
+        headers={**auth_headers, "If-Match": 'W/"1"'},
+        json={"title": "should be rejected"},
+    )
+    assert rejected.status_code == 409, rejected.text
+    assert rejected.json()["detail"]["code"] == "late_body_write_rejected"
+    # title 未被改写（清除路径上的 title 不得复活）。
+    detail = await client.get(
+        f"/api/v1/agent-workspace/conversations/{conversation_id}",
+        headers=auth_headers,
+    )
+    assert detail.json()["title"] == "to be fenced"
 
 
 async def test_super_admin_role_does_not_grant_other_owners_message_access(

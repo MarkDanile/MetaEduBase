@@ -94,6 +94,19 @@ class AgentWorkspaceRepository:
             raise IdempotencyConflictError(
                 "conversation id was already used with a different create command"
             )
+        if inserted_id is not None:
+            # 真实新建分支（Spec §4.2/§6.2，S2-C）：为 workspace.core.v1 建
+            # baseline active fence——缺失 fence 不得被解释为安全。经
+            # create_fence_under_owner_lock（自带 Conversation 行锁 -> owner
+            # lock -> fence，防 AB-BA）。幂等重放分支（行已存在）不重建 fence。
+            # 其余 owner 由受控 backfill 补齐；title 初始 tombstone 不算 title 写。
+            await AgentErasureRepository(
+                self._session
+            ).create_fence_under_owner_lock(
+                tenant_id=conversation.tenant_id,
+                conversation_id=conversation.id,
+                owner_key="workspace.core.v1",
+            )
         return self._to_conversation(row), inserted_id is not None
 
     async def get_conversation(
@@ -236,10 +249,32 @@ class AgentWorkspaceRepository:
         self._check_revision(row, expected_revision)
         if require_no_title and row.title_source != ConversationTitleSource.NONE.value:
             raise TitleSourceConflictError("conversation title is no longer unset")
+        # Spec §6.2（S2-C）：title 是 workspace.core.v1 的 conversation_title
+        # 能力，rename/auto-title 与正文同走 fence 裁决——fence 非 active
+        # （purge 进行中/已完成）fail closed，不得在清除路径上改写 title。
+        await AgentErasureRepository(
+            self._session
+        ).require_body_write_fence_for_update(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key="workspace.core.v1",
+        )
         row.title = title
         row.title_source = source.value
         row.revision += 1
         row.updated_at = datetime.now(UTC)
+        # title ingress（S2-C 契约注记）：watermark 取 title CAS 后的 Conversation
+        # revision，epoch 取 purge_revision；与 title 写同一事务 commit。
+        await AgentErasureRepository(
+            self._session
+        ).advance_ingress_checkpoint_for_update(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key="workspace.core.v1",
+            source_key="title",
+            watermark=row.revision,
+            epoch=row.purge_revision,
+        )
         await self._session.flush()
         return self._to_conversation(row)
 
@@ -541,6 +576,20 @@ class AgentWorkspaceRepository:
         row.next_run_queue_seq += 1
         row.last_activity_at = now
         row.updated_at = now
+        # Spec §6.2 第 5 步（S2-C）：正文写 + ingress checkpoint 同一事务 commit。
+        # body_messages source 的 watermark 记录本写分配到的真实 message seq
+        # （连续水位），epoch 取 Conversation 当前 purge_revision——不用
+        # last_body_write_at 或 fence revision 冒充 ingress checkpoint。
+        await AgentErasureRepository(
+            self._session
+        ).advance_ingress_checkpoint_for_update(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key="workspace.core.v1",
+            source_key="body_messages",
+            watermark=message_row.seq,
+            epoch=row.purge_revision,
+        )
         await self._session.flush()
         return self._to_message(message_row, tuple(parts)), True
 
