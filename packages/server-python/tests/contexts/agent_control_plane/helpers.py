@@ -97,7 +97,7 @@ async def create_baseline_fences(
     for owner in owner_registry():
         if owner.owner_key == skip_owner:
             continue
-        await repo.create_fence(
+        await repo.create_fence_under_owner_lock(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             owner_key=owner.owner_key,

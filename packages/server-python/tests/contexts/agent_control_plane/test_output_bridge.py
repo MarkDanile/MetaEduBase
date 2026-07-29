@@ -174,6 +174,34 @@ async def test_output_dead_letter_can_retry_with_same_event_and_message_ids(
     assert message.origin_run_id == run.id
 
 
+async def test_suppressed_tombstone_stores_controlled_reason_code_not_free_text(
+    db_session, session_factory
+):
+    """P2-5（Codex）：suppressed tombstone 的 redacted_reason 只存受控 reason
+    code，自由文本（可能含正文/提示词/secret）不落库。白名单 code 原样保留；
+    非白名单输入归一到通用 code，不反射原始内容。"""
+    content = b"sensitive body"
+    _, run, message_id = await _completed_run(
+        db_session, session_factory, content=content
+    )
+    secret_reason = "user prompt: 我的身份证号 110101199001011234, delete this"
+    await ConversationExecutionCoordinator(db_session).suppress_output_projection(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        run_id=run.id,
+        reason=secret_reason,
+    )
+    await db_session.commit()
+
+    message = await db_session.get(MessageModel, message_id)
+    assert message is not None
+    assert message.content_state == MessageContentState.REDACTED.value
+    # 自由文本（含敏感内容）不落 tombstone；只存受控归一 code。
+    assert message.redacted_reason == "operator_suppressed"
+    assert "身份证" not in (message.redacted_reason or "")
+    assert "110101199001011234" not in (message.redacted_reason or "")
+
+
 async def test_authorized_suppress_writes_redacted_tombstone_and_audit(
     db_session, session_factory
 ):
@@ -205,6 +233,46 @@ async def test_authorized_suppress_writes_redacted_tombstone_and_audit(
     assert outbox.decision_actor_id == ACTOR_ID
     assert outbox.decision_digest is not None
     assert message.content_state == MessageContentState.REDACTED.value
+    assert await db_session.scalar(
+        select(func.count())
+        .select_from(MessagePartModel)
+        .where(MessagePartModel.message_id == message_id)
+    ) == 0
+
+
+async def test_suppressed_tombstone_allowed_during_running_purge(
+    db_session, session_factory
+):
+    """P1-2（Codex）：purge_state=running 时 suppressed tombstone 仍可落——
+    联合契约要求 running/completed 时不得读 output ref、只能写 redacted
+    tombstone 并 suppress Run。修复前 project_suppressed_output 经
+    _lock_projection_conversation 的 purge_state 拒绝被挡，迟到 output 只能
+    失败重试/死信；修复后 tombstone 正常落库且不写 MessagePart 正文。"""
+    content = b"late output during purge"
+    _, run, message_id = await _completed_run(
+        db_session, session_factory, content=content
+    )
+    # 把 Conversation 置 purge_state=running（purge 进行中）。
+    await db_session.execute(
+        update(ConversationModel)
+        .where(ConversationModel.id == run.conversation_id)
+        .values(purge_state="running")
+    )
+    await db_session.commit()
+
+    # suppressed tombstone 必须可落（不被 purge_state 拒绝）。
+    await ConversationExecutionCoordinator(db_session).suppress_output_projection(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        run_id=run.id,
+        reason="suppressed during purge",
+    )
+    await db_session.commit()
+
+    message = await db_session.get(MessageModel, message_id)
+    assert message is not None
+    assert message.content_state == MessageContentState.REDACTED.value
+    # 无正文 tombstone：不写 MessagePart。
     assert await db_session.scalar(
         select(func.count())
         .select_from(MessagePartModel)

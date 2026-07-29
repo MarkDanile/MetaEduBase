@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import func, select, text
@@ -165,8 +166,10 @@ async def _actor_id(db_session, conversation_id) -> uuid.UUID:
 
 
 async def test_reserve_user_turn_creates_fence_on_first_body_write(db_session):
-    """惰性建 fence（Spec §4.2）：无 fence 的新会话首次写用户正文，同事务建立
-    workspace.core.v1 active fence 并放行正文写。"""
+    """惰性建 fence（Spec §4.2）+ fencing token 同步 + checkpoint 原子推进
+    （Spec §6.2 第 3/4 步）：无 fence 的新会话首次写用户正文，同事务建立
+    active fence、同步到 Conversation 当前 token、推进 last_body_write_at 与
+    fence revision，并放行正文写。"""
     conversation_id, _, _ = await bootstrap_workspace(db_session)
     tenant_id = await _tenant_id(db_session, conversation_id)
     service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
@@ -184,6 +187,52 @@ async def test_reserve_user_turn_creates_fence_on_first_body_write(db_session):
     )
     assert fence is not None
     assert fence.state is ErasureFenceState.ACTIVE
+    conversation = await db_session.get(ConversationModel, conversation_id)
+    assert conversation is not None
+    # 新 fence 同步到 Conversation 当前 fencing token（新会话均为 0）。
+    assert fence.purge_revision == conversation.purge_revision
+    assert fence.hold_revision == conversation.hold_revision
+    # 正文写 checkpoint 原子推进：last_body_write_at 已落、fence revision 推进。
+    assert fence.last_body_write_at is not None
+    assert fence.revision == 2  # create(1) -> body-write advance(2)
+
+
+async def test_reserve_user_turn_with_contradictory_token_rejected(db_session):
+    """fencing token 矛盾 fail closed（Spec §5.1/§6.2 第 3 步）：active fence 的
+    purge_revision 高于 Conversation 当前值（fence 携带 purge token 但 state
+    仍 active 且 Conversation 无对应 purge——矛盾状态）-> 拒绝正文写。"""
+    conversation_id, _, _ = await bootstrap_workspace(db_session)
+    tenant_id = await _tenant_id(db_session, conversation_id)
+    actor_id = await _actor_id(db_session, conversation_id)
+    await create_baseline_fences(
+        db_session, tenant_id=tenant_id, conversation_id=conversation_id
+    )
+    # 直接抬 fence purge_revision 超过 Conversation（构造矛盾 token）。
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_erasure_fences SET purge_revision = 99 "
+            "WHERE tenant_id = :tenant_id AND conversation_id = :conversation_id "
+            "AND owner_key = :owner_key"
+        ),
+        {
+            "tenant_id": tenant_id,
+            "conversation_id": conversation_id,
+            "owner_key": _OWNER_KEY,
+        },
+    )
+    await db_session.commit()
+
+    with pytest.raises(LateBodyWriteRejectedError):
+        await AgentWorkspaceService(
+            db_session, cursor_secret="test-secret"
+        ).reserve_user_turn(
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            conversation_id=conversation_id,
+            command=_text_command("should be rejected"),
+        )
+    await db_session.rollback()
+    assert await _count_body_parts(db_session, conversation_id) == 0
 
 
 async def test_reserve_user_turn_with_erasing_fence_rejected(db_session):
@@ -405,7 +454,7 @@ async def test_create_fence_on_non_active_fence_fails_closed(db_session):
     from app.composition.agent_erasure_registry import OwnerRegistryChangedError
 
     with pytest.raises(OwnerRegistryChangedError):
-        await AgentErasureRepository(db_session).create_fence(
+        await AgentErasureRepository(db_session).create_fence_under_owner_lock(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             owner_key=_OWNER_KEY,
@@ -543,3 +592,195 @@ async def test_project_assistant_message_with_erasing_fence_rejected(
             == 0
         )
 
+
+async def test_write_after_restore_aligns_stale_active_fence(db_session):
+    """restore 推进 Conversation purge_revision（S2-B）后，恢复会话的 active
+    fence token 仍是 delete 时的旧值（落后）。首次写正文必须把 stale active
+    fence 单调对齐到 Conversation 当前 token 并放行——不得把「恢复后可写」
+    误判为 stale 拒绝（Codex P1-1 核心产品路径）。"""
+    conversation_id, _, _ = await bootstrap_workspace(db_session)
+    deleted_at = datetime(2026, 1, 1, tzinfo=UTC)
+    await ConversationExecutionCoordinator(db_session).delete_conversation(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        expected_revision=1,
+        now=deleted_at,
+    )
+    await create_baseline_fences(
+        db_session, tenant_id=TENANT_ID, conversation_id=conversation_id
+    )
+    await ConversationExecutionCoordinator(db_session).restore_conversation(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        expected_revision=2,
+        now=deleted_at + timedelta(days=1),
+    )
+    await db_session.commit()
+    conversation = await db_session.get(ConversationModel, conversation_id)
+    assert conversation is not None
+    # restore 已推进 Conversation purge_revision（delete +1、restore +1）。
+    assert conversation.purge_revision == 2
+
+    # 恢复后写正文：stale active fence 单调对齐并放行。
+    result = await AgentWorkspaceService(
+        db_session, cursor_secret="test-secret"
+    ).reserve_user_turn(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        command=_text_command("after restore"),
+    )
+    assert result.idempotent_replay is False
+
+    fence = await AgentErasureRepository(db_session).get_fence_for_update(
+        tenant_id=TENANT_ID, conversation_id=conversation_id, owner_key=_OWNER_KEY
+    )
+    assert fence is not None
+    assert fence.state is ErasureFenceState.ACTIVE
+    # fence token 已对齐到 Conversation 当前值。
+    assert fence.purge_revision == conversation.purge_revision
+    assert fence.last_body_write_at is not None
+
+
+async def test_writer_win_race_purge_waits_then_takes_over(
+    db_session, session_factory
+):
+    """R1-AC3 writer-win（Codex P1-3）：writer 通过 active fence check 后在
+    commit 前暂停（持有 Conversation 行锁 + owner lock + fence 行锁）；purge
+    CAS 必须在 owner/fence 锁上等待，不得插队。writer 提交正文后 purge 才获锁
+    推进 erasing——writer 在 fence check 后写入的正文被 purge 接管，此后任何
+    新正文写都被 fence 拒绝（不复活）。
+
+    与 purge-win race（test_writer_fence_purge_win_race_body_not_resurrected）
+    互补：那条证明 purge 先赢时 writer 被拒；这条证明 writer 先持锁时 purge
+    被串行、writer 提交后 purge 接管，两个方向都不丢正确性。"""
+    conversation_id, _, _ = await bootstrap_workspace(db_session)
+    tenant_id = await _tenant_id(db_session, conversation_id)
+    actor_id = await _actor_id(db_session, conversation_id)
+    await create_baseline_fences(
+        db_session, tenant_id=tenant_id, conversation_id=conversation_id
+    )
+    await db_session.commit()
+
+    writer_holds_locks = asyncio.Event()
+    release_writer = asyncio.Event()
+
+    async def writer():
+        async with session_factory() as session, session.begin():
+            # writer 锁序：Conversation 行锁 -> owner lock -> fence FOR UPDATE
+            # （require_body_write_fence_for_update），通过 active check。
+            await AgentWorkspaceBridgeService(session).lock_owned_conversation(
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                conversation_id=conversation_id,
+                include_deleted=False,
+            )
+            await AgentErasureRepository(
+                session
+            ).require_body_write_fence_for_update(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                owner_key=_OWNER_KEY,
+            )
+            # fence check 已通过、行锁在握；在 commit 前暂停，模拟「writer 过
+            # check 后与 purge 竞争」的窗口。
+            writer_holds_locks.set()
+            await release_writer.wait()
+            # 窗口后提交正文（fence 仍 active，writer 合法持有锁）。
+            await AgentWorkspaceService(
+                session, cursor_secret="test-secret"
+            ).reserve_user_turn(
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                conversation_id=conversation_id,
+                command=_text_command("writer-win body"),
+            )
+
+    async def purge():
+        async with session_factory() as session, session.begin():
+            await AgentWorkspaceBridgeService(session).lock_owned_conversation(
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                conversation_id=conversation_id,
+                include_deleted=True,
+            )
+            await _fence_to_state(session, conversation_id, ErasureFenceState.ERASING)
+
+    writer_task = asyncio.create_task(writer())
+    purge_task: asyncio.Task | None = None
+    try:
+        # writer 已持 Conversation 行锁 + owner lock + fence 行锁。
+        await asyncio.wait_for(writer_holds_locks.wait(), timeout=5)
+        purge_task = asyncio.create_task(purge())
+        # purge 在 Conversation 行锁/owner lock 上被 writer 阻塞，不得插队完成。
+        await asyncio.sleep(0.5)
+        assert not purge_task.done()
+        # writer 提交正文后释放锁；purge 获锁推进 erasing。
+        release_writer.set()
+        await asyncio.wait_for(writer_task, timeout=5)
+        await asyncio.wait_for(purge_task, timeout=5)
+    finally:
+        release_writer.set()
+        for task in (writer_task, purge_task):
+            if task is not None and not task.done():
+                task.cancel()
+
+    # writer 在 fence check 后提交的正文已落库（writer-win，合法）。
+    async with session_factory() as session:
+        assert await _count_body_parts(session, conversation_id) == 1
+        # purge 已接管：fence 进入 erasing，此后新正文写被拒（不复活）。
+        fence = await AgentErasureRepository(session).get_fence_for_update(
+            tenant_id=tenant_id, conversation_id=conversation_id, owner_key=_OWNER_KEY
+        )
+        assert fence is not None
+        assert fence.state is ErasureFenceState.ERASING
+
+
+async def test_concurrent_lazy_writer_and_backfill_no_pk_conflict(
+    db_session, session_factory
+):
+    """P2-4（Codex）：惰性 writer 与受控 backfill 并发建同一 fence 时，双方经
+    公开入口（require_body_write_fence_for_update /
+    create_fence_under_owner_lock）自带 owner lock 串行，不得双 insert 撞唯一
+    索引；最终 fence 唯一且 active。"""
+    conversation_id, _, _ = await bootstrap_workspace(db_session)
+    tenant_id = await _tenant_id(db_session, conversation_id)
+    actor_id = await _actor_id(db_session, conversation_id)
+    await db_session.commit()
+
+    async def lazy_writer():
+        async with session_factory() as session, session.begin():
+            await AgentWorkspaceService(
+                session, cursor_secret="test-secret"
+            ).reserve_user_turn(
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                conversation_id=conversation_id,
+                command=_text_command("concurrent lazy"),
+            )
+
+    async def backfill():
+        async with session_factory() as session, session.begin():
+            await AgentErasureRepository(
+                session
+            ).create_fence_under_owner_lock(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                owner_key=_OWNER_KEY,
+            )
+
+    # 并发执行：任一顺序都必须成功（owner lock 串行 + 幂等）。
+    results = await asyncio.gather(
+        lazy_writer(), backfill(), return_exceptions=True
+    )
+    errors = [r for r in results if isinstance(r, Exception)]
+    assert not errors, f"concurrent fence creation raised: {errors!r}"
+
+    async with session_factory() as session:
+        fence = await AgentErasureRepository(session).get_fence_for_update(
+            tenant_id=tenant_id, conversation_id=conversation_id, owner_key=_OWNER_KEY
+        )
+        assert fence is not None
+        assert fence.state is ErasureFenceState.ACTIVE

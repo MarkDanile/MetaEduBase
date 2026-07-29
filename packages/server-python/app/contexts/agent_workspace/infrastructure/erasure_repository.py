@@ -45,6 +45,7 @@ from app.contexts.agent_workspace.domain.errors import (
 )
 from app.contexts.agent_workspace.infrastructure.models import (
     ConversationLegalHoldModel,
+    ConversationModel,
     ErasureFenceModel,
     PurgeOperationModel,
     PurgeOwnerCheckpointModel,
@@ -186,7 +187,54 @@ class AgentErasureRepository:
         model = result.scalar_one_or_none()
         return _fence_to_domain(model) if model is not None else None
 
-    async def create_fence(
+    async def create_fence_under_owner_lock(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        owner_key: str,
+        now: datetime | None = None,
+    ) -> ErasureFence:
+        """受控建立/补齐 fence 的**唯一公开入口**（backfill / 测试基线）。
+
+        锁序（Spec §6.1）：先持 Conversation 行锁（与正文 writer 一致，
+        Conversation row -> owner lock -> fence FOR UPDATE），再取 owner
+        advisory lock，最后在锁内调私有 primitive。若跳过 Conversation 行锁
+        直接取 owner lock，会与「Conversation 行锁 -> owner lock」的正文
+        writer 形成 AB-BA 死锁（writer 持 Conversation 行锁等 owner lock，
+        backfill 持 owner lock 等 fence/Conversation）。get-then-create 与
+        惰性 writer / 其他 backfill 并发时由此串行（§10.3 幂等）。调用方
+        不得绕过本入口直调私有 primitive。
+        """
+        # Conversation 行锁（锁序第一步）：与正文 writer 对齐，防 AB-BA 死锁。
+        conversation = (
+            await self._session.execute(
+                select(ConversationModel)
+                .where(
+                    ConversationModel.tenant_id == tenant_id,
+                    ConversationModel.id == conversation_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if conversation is None:
+            raise LateBodyWriteRejectedError(
+                f"conversation {conversation_id} not found for fence backfill"
+            )
+        await acquire_owner_lock(
+            self._session,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key=owner_key,
+        )
+        return await self._create_fence(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key=owner_key,
+            now=now,
+        )
+
+    async def _create_fence(
         self,
         *,
         tenant_id: uuid.UUID,
@@ -201,10 +249,10 @@ class AgentErasureRepository:
         补齐不得与其 PK 冲突。版本漂移或非 active（清除路径上的状态）仍 fail
         closed，不把既有行当作可安全重建。
 
-        前置条件：get-then-create 的竞态安全依赖调用方已持 owner advisory lock
-        （``require_body_write_fence_for_update`` / ``get_or_create_fence_for_update``
-        均在 owner lock 内调用）。未来受控 backfill 命令必须经 owner lock 进入，
-        不得绕过直调本方法，否则与惰性 writer 并发时双 insert 撞唯一索引。
+        私有 primitive：get-then-create 的竞态安全依赖调用方已持 owner
+        advisory lock。唯一合法调用方是本类的
+        ``create_fence_under_owner_lock`` / ``get_or_create_fence_for_update``
+        （均先取 owner lock）。不得外部直调。
         """
         owner = require_owner(owner_key)
         existing = await self.get_fence_for_update(
@@ -256,7 +304,7 @@ class AgentErasureRepository:
         )
         if fence is not None:
             return fence
-        return await self.create_fence(
+        return await self._create_fence(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             owner_key=owner_key,
@@ -271,15 +319,32 @@ class AgentErasureRepository:
         owner_key: str,
         now: datetime | None = None,
     ) -> ErasureFence:
-        """正文 writer fence 裁决（Spec §6.2）：owner lock -> fence FOR UPDATE
-        （缺失按 registry 建 active fence）-> 仅 active 允许写正文。
+        """正文 writer fence 裁决（Spec §6.2 第 1-5 步）：owner lock -> fence
+        FOR UPDATE（缺失按 registry 建 active fence）-> 校验 state/token ->
+        仅 active 且 token 新鲜才允许写正文，并原子推进正文写 checkpoint。
 
-        erasing/blocked/erased 一律拒绝（``LateBodyWriteRejectedError``）：
-        purge 进行中或已完成时不得复活正文。owner_version 漂移 fail closed
-        （registry 已升级，不基于过期能力视图写正文）。调用方必须先持
-        Conversation 行锁（本方法自带 owner advisory lock，与
-        ``list_fences_for_update`` 的锁序一致：Conversation row -> owner lock
-        -> fence FOR UPDATE）。缺行不被解释为安全：首次写建立 active fence。
+        锁序（模块 docstring）：调用方已持 Conversation 行锁 -> 本方法取
+        owner advisory lock -> fence FOR UPDATE -> 同事务内更新 fence 行。
+        Conversation 行锁已串行所有正文写与 restore/delete 的 token 推进，
+        fence 行锁串行 purge 的状态/token CAS——三行同事务内读改写，原子。
+
+        校验（Spec §6.2 第 3 步，fail closed -> LateBodyWriteRejectedError）：
+        - owner_version 漂移：registry 已升级，不基于过期能力视图写正文。
+        - state 非 active（erasing/blocked/erased）：purge 进行中/已完成。
+        - 既有 active fence 的 purge/hold_revision 与 Conversation 当前 fencing
+          token 不一致（stale）：restore/purge 已推进 Conversation token 而本
+          fence 未对齐，不得基于过期 token 放行正文。
+
+        token 语义（Spec §5.1 fencing token）：
+        - **新 fence（惰性首写，revision=1）**：同步到 Conversation 当前 token。
+          delete 推进 Conversation purge_revision 且不留 active fence 同步点；
+          新 fence 必须携带当前 token，否则恢复/删除后的会话永远无法写正文。
+        - **既有 active fence**：只校验相等、不推进 token——writer 无权改写
+          fencing token（那是 purge/restore/delete 的职责）。
+
+        原子推进（Spec §6.2 第 4 步）：放行时推进 ``last_body_write_at`` 并以
+        fence revision CAS 落库；ingress_checkpoint 的真实 source-key 推进随
+        对应 writer 的 source 标识在后续 slice 落地（当前不伪造 source key）。
         """
         await acquire_owner_lock(
             self._session,
@@ -287,14 +352,20 @@ class AgentErasureRepository:
             conversation_id=conversation_id,
             owner_key=owner_key,
         )
+        # Conversation 行锁已由调用方持有；读取当前 fencing token。hold 无
+        # 正文 writer 写路径（hold 由独立 lifecycle 管理），不存在竞争写。
+        conversation = await self._session.get(ConversationModel, conversation_id)
+        if conversation is None:
+            raise LateBodyWriteRejectedError(
+                f"conversation {conversation_id} not found for body write fence"
+            )
         fence = await self.get_or_create_fence_for_update(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             owner_key=owner_key,
             now=now,
         )
-        # owner_version 漂移 fail closed：registry 已升级，不基于过期能力视图写
-        # 正文；归为「拒绝写正文」domain 语义，router 统一映射 409。
+        # owner_version 漂移 fail closed（归为「拒绝写正文」domain 语义）。
         try:
             require_owner_version(owner_key, fence.owner_version)
         except OwnerRegistryChangedError as exc:
@@ -307,7 +378,42 @@ class AgentErasureRepository:
                 f"owner fence {owner_key!r} is {fence.state.value}; "
                 "body write rejected because purge is in progress or complete"
             )
-        return fence
+        # fencing token 校验/同步。get_or_create 返回的 domain 是创建时快照；
+        # 需要行锁内的 model 以原子更新。active fence 的 purge_revision 只增
+        # 不减（单调）：落后于 Conversation 说明 fence 不在 purge 路径上
+        # （purge 会在 CAS 时把 fence token 盖到 >= Conversation），安全单调
+        # 对齐——涵盖惰性首写（fence=0）与 delete 推进后的 stale active fence
+        # （deleted 会话的迟到投影/幂等重放需放行）。fence token 高于
+        # Conversation 是矛盾状态（fence 有 purge token 但 state 仍 active 且
+        # Conversation 无对应 purge），fail closed。
+        fence_model = await self._session.get(
+            ErasureFenceModel,
+            (fence.tenant_id, fence.conversation_id, fence.owner_key),
+        )
+        if fence_model is None:  # pragma: no cover - get_or_create 刚保证存在
+            raise LateBodyWriteRejectedError("erasure fence vanished during write")
+        if fence_model.purge_revision > conversation.purge_revision:
+            raise LateBodyWriteRejectedError(
+                f"owner fence {owner_key!r} purge_revision "
+                f"{fence_model.purge_revision} exceeds conversation "
+                f"{conversation.purge_revision} while still active; body write "
+                "rejected on contradictory fencing token"
+            )
+        if (
+            fence_model.purge_revision < conversation.purge_revision
+            or fence_model.hold_revision != conversation.hold_revision
+        ):
+            # 单调对齐到 Conversation 当前 token（含惰性首写与 deleted stale）。
+            fence_model.purge_revision = conversation.purge_revision
+            fence_model.hold_revision = conversation.hold_revision
+        # 原子推进正文写 checkpoint（Spec §6.2 第 4 步）：last_body_write_at +
+        # fence revision CAS。与正文写同事务 commit（调用方负责）。
+        effective_now = now or _utcnow()
+        fence_model.last_body_write_at = effective_now
+        fence_model.revision = fence_model.revision + 1
+        fence_model.updated_at = effective_now
+        await self._session.flush()
+        return _fence_to_domain(fence_model)
 
     async def list_fences(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID

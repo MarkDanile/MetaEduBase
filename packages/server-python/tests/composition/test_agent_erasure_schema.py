@@ -199,7 +199,7 @@ async def _make_purge_operation(
 async def test_fence_create_and_get_for_update(db_session):
     repo = AgentErasureRepository(db_session)
     tenant_id, conversation_id = await _make_conversation(db_session)
-    fence = await repo.create_fence(
+    fence = await repo.create_fence_under_owner_lock(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         owner_key="workspace.core.v1",
@@ -222,7 +222,7 @@ async def test_fence_unknown_owner_fails_closed(db_session):
     repo = AgentErasureRepository(db_session)
     tenant_id, conversation_id = await _make_conversation(db_session)
     with pytest.raises(UnknownOwnerError):
-        await repo.create_fence(
+        await repo.create_fence_under_owner_lock(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             owner_key="workspace.unknown.v9",
@@ -233,7 +233,7 @@ async def test_fence_unknown_owner_fails_closed(db_session):
 async def test_fence_cas_conflict_and_erased_requires_ack(db_session):
     repo = AgentErasureRepository(db_session)
     tenant_id, conversation_id = await _make_conversation(db_session)
-    fence = await repo.create_fence(
+    fence = await repo.create_fence_under_owner_lock(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         owner_key="execution.core.v1",
@@ -325,7 +325,7 @@ async def test_fence_transition_fails_closed_on_stale_owner_version(db_session):
     fail closed（registry 变化 -> 不允许继续推进旧版本 fence）。"""
     repo = AgentErasureRepository(db_session)
     tenant_id, conversation_id = await _make_conversation(db_session)
-    fence = await repo.create_fence(
+    fence = await repo.create_fence_under_owner_lock(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         owner_key="workspace.core.v1",
@@ -360,7 +360,7 @@ async def test_fence_transition_rejects_fencing_token_regression(db_session):
     revision 的暂停 writer 会被错误放行，威胁 R1-AC3。等值合法（重试复用同 token）。"""
     repo = AgentErasureRepository(db_session)
     tenant_id, conversation_id = await _make_conversation(db_session)
-    fence = await repo.create_fence(
+    fence = await repo.create_fence_under_owner_lock(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         owner_key="workspace.core.v1",
@@ -440,7 +440,7 @@ async def test_fence_state_transition_table_4x4(db_session):
             tenant_id=tenant_id, conversation_id=conversation_id, owner_key="workspace.core.v1"
         )
         if existing is None:
-            existing = await repo.create_fence(
+            existing = await repo.create_fence_under_owner_lock(
                 tenant_id=tenant_id, conversation_id=conversation_id, owner_key="workspace.core.v1"
             )
         state, revision = existing.state, existing.revision
@@ -484,7 +484,7 @@ async def test_fence_state_transition_table_4x4(db_session):
 
     # --- from=active：仅 active→erasing 合法（其余三边均拒）---
     t, c = await _make()
-    fence = await repo.create_fence(
+    fence = await repo.create_fence_under_owner_lock(
         tenant_id=t, conversation_id=c, owner_key="workspace.core.v1"
     )
     await _expect_reject(t, c, S.ACTIVE, fence.revision, S.ACTIVE, 1, 0)
@@ -516,7 +516,9 @@ async def test_fence_state_transition_table_4x4(db_session):
     # --- 合法推进 token 下界：全部三条非 active 源边要求 purge_revision>=1 ---
     # active→erasing
     t, c = await _make()
-    f = await repo.create_fence(tenant_id=t, conversation_id=c, owner_key="workspace.core.v1")
+    f = await repo.create_fence_under_owner_lock(
+        tenant_id=t, conversation_id=c, owner_key="workspace.core.v1"
+    )
     await _expect_reject(t, c, S.ACTIVE, f.revision, S.ERASING, 0, 0)
     # erasing→erased / erasing→blocked
     st, rev = await _drive(t, c, [(S.ERASING, 1, 0, None)])
@@ -529,7 +531,9 @@ async def test_fence_state_transition_table_4x4(db_session):
     # --- 非 erased 边携带 ACK 一律 fail closed（不得静默丢弃 ACK）---
     # active→erasing 携带 ACK
     t, c = await _make()
-    f = await repo.create_fence(tenant_id=t, conversation_id=c, owner_key="workspace.core.v1")
+    f = await repo.create_fence_under_owner_lock(
+        tenant_id=t, conversation_id=c, owner_key="workspace.core.v1"
+    )
     await _expect_reject(t, c, S.ACTIVE, f.revision, S.ERASING, 1, 0, ack="a" * 64)
     # erasing→blocked 携带 ACK
     st, rev = await _drive(t, c, [(S.ERASING, 1, 0, None)])

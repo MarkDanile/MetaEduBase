@@ -431,7 +431,12 @@ class AgentWorkspaceBridgeService:
         consumed_at: datetime,
     ) -> None:
         self._require_event_digest(event, payload_digest)
-        await self._bridge_repo.lock_projection_conversation(event)
+        # suppressed tombstone 路径：purge running/completed 时只写无正文
+        # redacted 占位（联合契约），不经 output_reader 读 output ref，锁
+        # Conversation 时放行 purge_fenced，不得把迟到 output 拒进死信。
+        await self._bridge_repo.lock_projection_conversation(
+            event, allow_purge_fenced=True
+        )
         should_project = await self._bridge_repo.begin_output_receipt(
             event=event, payload_digest=payload_digest
         )

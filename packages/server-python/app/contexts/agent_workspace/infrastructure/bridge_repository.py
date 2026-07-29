@@ -51,6 +51,28 @@ from app.shared.schemas.agent_integration_codec import (
 WORKSPACE_TURN_CONSUMER = "agent_execution.turn_requested.v1"
 WORKSPACE_OUTPUT_CONSUMER = "agent_workspace.assistant_publish.v1"
 
+# 受控 suppression reason code 白名单（P2-5）：redacted tombstone 只存受控
+# code，自由文本（可能含正文/提示词/secret）永不落库。不在白名单的输入归一到
+# 通用 code，不反射原始内容。
+_SUPPRESS_REASON_CODES: frozenset[str] = frozenset(
+    {
+        "external_object_deleted",
+        "output_purge_suppressed",
+        "late_body_write_rejected",
+        "operator_suppressed",
+        "retention_expired",
+    }
+)
+_SUPPRESS_REASON_FALLBACK = "operator_suppressed"
+
+
+def _suppress_reason_code(reason: str) -> str:
+    """把调用方 reason 归一到受控 code；自由文本不落 tombstone。"""
+    normalized = reason.strip().lower().replace(" ", "_").replace("-", "_")
+    if normalized in _SUPPRESS_REASON_CODES:
+        return normalized
+    return _SUPPRESS_REASON_FALLBACK
+
 
 class WorkspaceBridgeRepository:
     """Workspace-owned integration facts. The caller owns transaction boundaries."""
@@ -584,9 +606,14 @@ class WorkspaceBridgeRepository:
         return True
 
     async def lock_projection_conversation(
-        self, event: AssistantMessagePublishRequestedV1
+        self,
+        event: AssistantMessagePublishRequestedV1,
+        *,
+        allow_purge_fenced: bool = False,
     ) -> None:
-        await self._lock_projection_conversation(event)
+        await self._lock_projection_conversation(
+            event, allow_purge_fenced=allow_purge_fenced
+        )
 
     async def project_assistant_message(
         self,
@@ -661,7 +688,9 @@ class WorkspaceBridgeRepository:
         reason: str,
         consumed_at: datetime,
     ) -> None:
-        conversation = await self._lock_projection_conversation(event)
+        conversation = await self._lock_projection_conversation(
+            event, allow_purge_fenced=True
+        )
         existing = await self._existing_output_message(event)
         if existing is not None:
             raise WorkspaceIntegrationConflictError(
@@ -683,7 +712,8 @@ class WorkspaceBridgeRepository:
                 content_digest=event.output_digest,
                 created_at=consumed_at,
                 redacted_at=consumed_at,
-                redacted_reason=reason[:200],
+                # P2-5：tombstone 只存受控 reason code，自由文本不落库。
+                redacted_reason=_suppress_reason_code(reason),
             )
         )
         conversation.next_message_seq += 1
@@ -733,7 +763,10 @@ class WorkspaceBridgeRepository:
         return event
 
     async def _lock_projection_conversation(
-        self, event: AssistantMessagePublishRequestedV1
+        self,
+        event: AssistantMessagePublishRequestedV1,
+        *,
+        allow_purge_fenced: bool = False,
     ) -> ConversationModel:
         conversation = (
             await self._session.execute(
@@ -747,7 +780,12 @@ class WorkspaceBridgeRepository:
         ).scalar_one_or_none()
         if conversation is None:
             raise ConversationNotFoundError("Conversation not found for output projection")
-        if conversation.purge_state in {"running", "completed"}:
+        # 正文投影（project_assistant_message）在 purge running/completed 时拒绝
+        # （另有正文 writer fence 双保险）；suppressed tombstone 路径
+        # （allow_purge_fenced=True，project_suppressed_output）只写无正文
+        # redacted 占位，purge 进行中落 tombstone 是联合契约要求的安全路径，
+        # 不得被拒进失败重试/死信。
+        if conversation.purge_state in {"running", "completed"} and not allow_purge_fenced:
             raise InvalidConversationStateError(
                 "output projection is fenced by Conversation purge"
             )
