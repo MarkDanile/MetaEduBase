@@ -16,7 +16,7 @@
 
 ### REQ-041/047 R1-S2 Workspace owner 与恢复截止
 
-状态：🟡 进行中（S2-B restore 恢复截止已提交 `afd1e27a`，Codex 复审 P0=0/P1=4/P2=3，返修中；模型 Sol `xhigh` 主实现 + 独立 `max` 审查 Workspace writer fence / restore/purge race / 正文扫描）
+状态：🟡 进行中（S2-B restore 恢复截止已返修收口：Codex P0=0/P1=4/P2=3 全闭合 + 独立 `max` 复审 P0=0/P1=0/P2=4 判定**可进 S2-A**，P2-1 failed checkpoint fail-closed 已顺手收口 `bb2a6d92`；模型 Sol `xhigh` 主实现 + 独立 `max` 审查 Workspace writer fence / restore/purge race / 正文扫描）
 类型：Architecture / Backend / Data Governance
 领域：Conversation / Workspace / Erasure / Recovery
 分支：feat/req041-047-r1-s2-workspace-owner
@@ -29,7 +29,7 @@
 
 前置已就绪：R1-S1 schema 基座已合并（PR #506，merge commit `b8cbdf14`）；TD-089 已收口（PR #508，merge commit `eccb0f37`），fence 冗余 ix 已清、dev `metaedu` 已应用 035（head=`035_erasure_fence_ix_cleanup`）。
 
-下一步：S2-B 复审返修（blocked/缺 fence fail-closed、恢复失效旧 purge revision/operation、锁后 DB 时钟、purge_after NULL fail-closed、race 测试强化、收敛 service 旁路）→ 独立 `max` 专查 restore/purge 双向竞态与 revision 失效 → 清零后进 S2-A writer fence。不提前进入 S3-S6。
+下一步：进入 S2-A writer fence。S2-A 显性前置（独立 `max` P2-2）：交付 writer fence 首次写建 `get_or_create_fence_for_update` + backfill 命令——当前普通 delete→restore 对无 fence 会话 fail-closed `conversation_restore_not_allowed`，writer fence 与 backfill 落地前该产品入口事实退化，必须在 S2-A 闭合。S3 前置（P2-3）：purge worker claim 顺序强制 Guard→Conversation row→owner lock→fence→operation，写入 S3 worker spec/实现防 AB-BA 死锁。S2-A/S3 补测（P2-4）：concurrent double-restore race 测试；hold 生效中 restore 测试随 hold slice 补齐（spec R1-AC7）。不提前进入 S3-S6。
 
 ## 下一批候选任务
 
