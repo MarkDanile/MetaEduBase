@@ -788,14 +788,21 @@ async def test_p1_2_ensure_fence_returns_created_flag(db_session):
 
 
 async def test_p2_4_existing_fence_writer_backfill_no_reversed_wait(
-    db_session, session_factory
+    db_session, session_factory, monkeypatch
 ):
-    """P2-4（复审）：预建 committed fence，再并发 writer 与 backfill——双方经
-    ensure/require 的 Conversation 行锁 -> owner lock -> fence 同锁序串行，无
-    fence->Conversation 反向等待（AB-BA）。任一顺序都成功、fence 唯一 active。
+    """P2-4（复审 round3）：预建 committed fence，writer 仅持 Conversation 行锁
+    即暂停，再并发 backfill——证明 backfill 经 ensure 的 Conversation 行锁 ->
+    owner lock -> fence 同锁序，**在拿到 Conversation 行锁前不触达 fence**。
 
     与从缺 fence 出发的旧并发测试互补：本条覆盖「已有 fence + writer/backfill
-    并发」，检测未来 fence-before-Conversation 探测回归（反向锁序死锁）。"""
+    并发」，检测 fence-before-Conversation 探测回归（反向锁序 AB-BA）。
+
+    杀旧反向锁序的关键时序（round3 P2 复审）：writer 在 require 取 fence 之前
+    就停在 Conversation 行锁上。若 backfill 旧实现「先 get_fence_for_update 锁
+    fence、再进 ensure 锁 Conversation」，它会**先**触达 fence（在 writer 释放
+    Conversation 前）。用 monkeypatch 在 backfill 会话的 ``get_fence_for_update``
+    首次返回时发事件：正确实现在 writer 释放前**不得**触发该事件；pre-probe
+    变异会先触发事件，断言变红。"""
     import asyncio
 
     from app.contexts.agent_workspace.application.bridge import (
@@ -815,10 +822,12 @@ async def test_p2_4_existing_fence_writer_backfill_no_reversed_wait(
 
     writer_holds_conv_lock = asyncio.Event()
     release_writer = asyncio.Event()
+    backfill_touched_fence = asyncio.Event()
 
     async def writer():
-        # writer：先持 Conversation 行锁（与正文写一致），再经 require 取 owner
-        # lock + fence FOR UPDATE——同锁序。持有期间让 backfill 竞争。
+        # writer 仅持 Conversation 行锁（与正文写第一步一致）即暂停——**不**先
+        # 取 owner lock/fence。这样若 backfill 走 fence-first，它会先抢到 fence、
+        # 再阻塞在 Conversation 上；writer 恢复后申请 fence 即成 AB-BA。
         async with session_factory() as session, session.begin():
             await AgentWorkspaceBridgeService(session).lock_owned_conversation(
                 tenant_id=TENANT_ID,
@@ -826,41 +835,62 @@ async def test_p2_4_existing_fence_writer_backfill_no_reversed_wait(
                 conversation_id=conversation_id,
                 include_deleted=False,
             )
-            await AgentErasureRepository(
-                session
-            ).require_body_write_fence_for_update(
-                tenant_id=TENANT_ID,
-                conversation_id=conversation_id,
-                owner_key=_OWNER_KEY,
-            )
             writer_holds_conv_lock.set()
             await release_writer.wait()
+
+    # 仅对 backfill 会话的 AgentErasureRepository 装 instrument：首个
+    # get_fence_for_update 返回即发事件。正确实现中，ensure 在拿到 Conversation
+    # 行锁 + owner lock 后才调它——即 writer 释放 Conversation 之后。
+    real_get = AgentErasureRepository.get_fence_for_update
+
+    async def _instrumented(self, *, tenant_id, conversation_id, owner_key):
+        result = await real_get(
+            self,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key=owner_key,
+        )
+        backfill_touched_fence.set()
+        return result
 
     async def backfill():
         # backfill 经 ensure_fence_under_owner_lock（Conversation 行锁 -> owner
         # lock -> fence）：对已有 fence 幂等返回，不得 fence-before-Conversation。
         async with session_factory() as session, session.begin():
-            await AgentErasureRepository(
-                session
-            ).ensure_fence_under_owner_lock(
-                tenant_id=TENANT_ID,
-                conversation_id=conversation_id,
-                owner_key=_OWNER_KEY,
-            )
+            with monkeypatch.context() as mp:
+                mp.setattr(
+                    AgentErasureRepository,
+                    "get_fence_for_update",
+                    _instrumented,
+                )
+                await AgentErasureRepository(
+                    session
+                ).ensure_fence_under_owner_lock(
+                    tenant_id=TENANT_ID,
+                    conversation_id=conversation_id,
+                    owner_key=_OWNER_KEY,
+                )
 
     writer_task = asyncio.create_task(writer())
     backfill_task: asyncio.Task | None = None
     try:
+        # writer 已持 Conversation 行锁（未取 fence）。
         await asyncio.wait_for(writer_holds_conv_lock.wait(), timeout=5)
         backfill_task = asyncio.create_task(backfill())
-        # backfill 在 Conversation 行锁上等待 writer（同锁序串行，非死锁）；
-        # 不得抢先完成（否则说明它走了 fence-first 反向路径）。
+        # backfill 应阻塞在 Conversation 行锁上（同锁序串行），**尚未**触达
+        # fence。若旧 fence-first：它已先拿到 fence（事件触发）并阻塞在
+        # Conversation——此时 writer 恢复取 fence 即 AB-BA。故此处事件不得触发。
         await asyncio.sleep(0.5)
         assert not backfill_task.done()
+        assert not backfill_touched_fence.is_set(), (
+            "backfill touched the fence before the writer released the "
+            "Conversation lock — fence-before-Conversation (reversed lock order)"
+        )
         release_writer.set()
         await asyncio.wait_for(writer_task, timeout=5)
-        # writer 释放后 backfill 串行完成（无 AB-BA 死锁）。
+        # writer 释放后 backfill 串行完成（拿到 Conversation -> owner -> fence）。
         await asyncio.wait_for(backfill_task, timeout=5)
+        assert backfill_touched_fence.is_set()
     finally:
         release_writer.set()
         for task in (writer_task, backfill_task):
