@@ -62,6 +62,15 @@ class IdempotencyConflictError(AgentWorkspaceError):
     pass
 
 
+class ConversationNotPurgeableError(AgentWorkspaceError):
+    """R1-S2 S2-D：会话不满足 purge 前置条件（Spec §3）。
+
+    purge 只能作用于已删除且恢复窗口已过（``now >= purge_after``）、尚未被
+    purged（``purged_at IS NULL``）的会话。active/archived 或未到期的会话不得
+    被直接擦除--执行器无条件强制该前置，不依赖 scheduler 只 claim 到期行。
+    """
+
+
 class ResourceReferenceForbiddenError(AgentWorkspaceError, PermissionError):
     pass
 
