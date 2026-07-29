@@ -20,6 +20,7 @@ from sqlalchemy import exists, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.composition.agent_erasure_locks import acquire_owner_lock
 from app.composition.agent_erasure_registry import (
     OwnerRegistryChangedError,
     UnknownOwnerError,
@@ -40,6 +41,7 @@ from app.contexts.agent_workspace.domain.erasure import (
 )
 from app.contexts.agent_workspace.domain.errors import (
     ConversationPurgeInProgressError,
+    LateBodyWriteRejectedError,
 )
 from app.contexts.agent_workspace.infrastructure.models import (
     ConversationLegalHoldModel,
@@ -192,8 +194,30 @@ class AgentErasureRepository:
         owner_key: str,
         now: datetime | None = None,
     ) -> ErasureFence:
-        """按 registry 建立 ``active`` fence；owner key 必须已登记（fail closed）。"""
+        """按 registry 建立 ``active`` fence；owner key 必须已登记（fail closed）。
+
+        幂等（Spec §4.2 backfill / §10.3）：fence 已存在且为同 owner_version 的
+        ``active`` 时直接返回既有行——正文 writer 首次写已惰性建 fence，backfill
+        补齐不得与其 PK 冲突。版本漂移或非 active（清除路径上的状态）仍 fail
+        closed，不把既有行当作可安全重建。
+        """
         owner = require_owner(owner_key)
+        existing = await self.get_fence_for_update(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key=owner_key,
+        )
+        if existing is not None:
+            if (
+                existing.owner_version == owner.owner_version
+                and existing.state is ErasureFenceState.ACTIVE
+            ):
+                return existing
+            raise OwnerRegistryChangedError(
+                f"fence {owner_key!r} already exists with version "
+                f"{existing.owner_version}/state {existing.state.value}; "
+                "refusing to recreate over a non-baseline row"
+            )
         effective_now = now or _utcnow()
         model = ErasureFenceModel(
             tenant_id=tenant_id,
@@ -233,6 +257,52 @@ class AgentErasureRepository:
             owner_key=owner_key,
             now=now,
         )
+
+    async def require_body_write_fence_for_update(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        owner_key: str,
+        now: datetime | None = None,
+    ) -> ErasureFence:
+        """正文 writer fence 裁决（Spec §6.2）：owner lock -> fence FOR UPDATE
+        （缺失按 registry 建 active fence）-> 仅 active 允许写正文。
+
+        erasing/blocked/erased 一律拒绝（``LateBodyWriteRejectedError``）：
+        purge 进行中或已完成时不得复活正文。owner_version 漂移 fail closed
+        （registry 已升级，不基于过期能力视图写正文）。调用方必须先持
+        Conversation 行锁（本方法自带 owner advisory lock，与
+        ``list_fences_for_update`` 的锁序一致：Conversation row -> owner lock
+        -> fence FOR UPDATE）。缺行不被解释为安全：首次写建立 active fence。
+        """
+        await acquire_owner_lock(
+            self._session,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key=owner_key,
+        )
+        fence = await self.get_or_create_fence_for_update(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key=owner_key,
+            now=now,
+        )
+        # owner_version 漂移 fail closed：registry 已升级，不基于过期能力视图写
+        # 正文；归为「拒绝写正文」domain 语义，router 统一映射 409。
+        try:
+            require_owner_version(owner_key, fence.owner_version)
+        except OwnerRegistryChangedError as exc:
+            raise LateBodyWriteRejectedError(
+                f"owner fence {owner_key!r} version {fence.owner_version} does not "
+                "match installed registry; body write rejected"
+            ) from exc
+        if fence.state is not ErasureFenceState.ACTIVE:
+            raise LateBodyWriteRejectedError(
+                f"owner fence {owner_key!r} is {fence.state.value}; "
+                "body write rejected because purge is in progress or complete"
+            )
+        return fence
 
     async def list_fences(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID

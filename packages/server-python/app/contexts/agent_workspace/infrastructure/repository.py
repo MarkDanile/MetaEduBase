@@ -476,6 +476,17 @@ class AgentWorkspaceRepository:
             raise InvalidConversationStateError(
                 "new turns require an active conversation"
             )
+        # Spec §6.2 正文 writer fence：Conversation 行锁之后取 owner lock +
+        # fence FOR UPDATE，仅 workspace.core.v1 fence active 才允许写用户正文；
+        # purge 进行中/已完成 fail closed（late_body_write_rejected），不得复活
+        # 正在清除路径上的正文。
+        await AgentErasureRepository(
+            self._session
+        ).require_body_write_fence_for_update(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key="workspace.core.v1",
+        )
         existing_stmt = select(MessageModel).where(
             MessageModel.tenant_id == tenant_id,
             MessageModel.conversation_id == conversation_id,

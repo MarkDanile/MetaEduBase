@@ -34,6 +34,10 @@ class ConversationRestoreNotAllowedError(AgentWorkspaceError):
     """Restore 的安全账本不完整或不可信（fence 缺失/未知 owner/版本漂移）。"""
 
 
+class LateBodyWriteRejectedError(AgentWorkspaceError):
+    """正文 writer 在 owner fence 非 active（purge 进行中/已完成）时写正文被拒。"""
+
+
 class IdempotencyConflictError(AgentWorkspaceError):
     pass
 

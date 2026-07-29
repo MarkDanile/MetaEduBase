@@ -30,6 +30,7 @@ from app.contexts.agent_workspace.domain import (
     ConversationState,
     IdempotencyConflictError,
     InvalidConversationStateError,
+    LateBodyWriteRejectedError,
     Message,
     MessagePart,
     ResourceReferenceForbiddenError,
@@ -228,6 +229,11 @@ def _raise_workspace_error(exc: Exception) -> NoReturn:
         raise HTTPException(
             status_code=409,
             detail=_error_detail("conversation_restore_not_allowed", str(exc)),
+        ) from exc
+    if isinstance(exc, LateBodyWriteRejectedError):
+        raise HTTPException(
+            status_code=409,
+            detail=_error_detail("late_body_write_rejected", str(exc)),
         ) from exc
     if isinstance(exc, TitleSourceConflictError):
         raise HTTPException(

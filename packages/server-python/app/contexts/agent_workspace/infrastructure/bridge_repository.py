@@ -25,6 +25,9 @@ from app.contexts.agent_workspace.domain import (
     TurnDispatchState,
     WorkspaceIntegrationConflictError,
 )
+from app.contexts.agent_workspace.infrastructure.erasure_repository import (
+    AgentErasureRepository,
+)
 from app.contexts.agent_workspace.infrastructure.models import (
     ConversationModel,
     MessageModel,
@@ -596,6 +599,18 @@ class WorkspaceBridgeRepository:
         consumed_at: datetime,
     ) -> None:
         conversation = await self._lock_projection_conversation(event)
+        # Spec §6.2 正文 writer fence：Conversation 行锁（含 purge_state 雏形）
+        # 之后取 owner lock + fence FOR UPDATE，仅 workspace.core.v1 fence active
+        # 才允许写 assistant 正文；purge 进行中/已完成 fail closed
+        # （late_body_write_rejected），不得复活正在清除路径上的正文。suppressed
+        # tombstone 路径（project_suppressed_output）不接正文 fence。
+        await AgentErasureRepository(
+            self._session
+        ).require_body_write_fence_for_update(
+            tenant_id=event.tenant_id,
+            conversation_id=event.conversation_id,
+            owner_key="workspace.core.v1",
+        )
         existing = await self._existing_output_message(event)
         if existing is not None:
             raise WorkspaceIntegrationConflictError(
