@@ -228,6 +228,15 @@ S1 已交付 `app/composition/agent_erasure_backfill.py`（bounded cursor、分�
 
 **验证**：S2-C 专项（fence ingress 推进原子性、title writer fence、create 建 fence、read fail-closed、backfill 锁序、reserve fence-before-replay、409 e2e、double-restore race）+ workspace/execution/control-plane 回归全绿；新增测试经变异验证；ruff 0；mypy baseline 0 回归；docs gate + git diff --check 通过。本轮**不改 migration 034/035**。
 
+#### S2-C 复审修订（2026-07-29，独立 `max` round 1/2 返修落点）
+
+冻结注记后两轮独立复审发现的偏差及落地修订，**优先于上面 §3/§4 的对应旧陈述**：
+
+- **§3 初始 title 旧陈述作废**（round 1 P1-4）：原写「create 时 title 恒为 tombstone、不推进 title ingress」。实际 `create_conversation` 支持初始 title；修订为——真实新建分支若 `conversation.title is not None`，在同一事务按 `title` source key 推进 title ingress（watermark=Conversation `revision`、epoch=`purge_revision`），与 set_title 同一推进原语。初始 title 视为真实 title 正文写，必须进 checkpoint。
+- **§4 deleted 读边界修订**（round 2 P1-3）：原写「`_to_conversation` 已对 deleted 投影 tombstone」。实际此前 `_to_conversation` 对 deleted 仍返回原始 `title`/`created_by`。修订为——`_to_conversation` 对 `state=deleted` 投影 **redacted recovery envelope**：`title=None`、`title_source=none`、`created_by=None`、`archived_by=None`、`deleted_by=None`，仅保留恢复所需字段（`id`/`state`/`revision`/`purge_after`/`deleted_at`）；active/archived 行为不变。DELETE 响应、get `include_deleted=True` 均经此 redaction，不泄露真实 title/actor。
+- **§4 list/search fail-closed 增强**（round 1 P1-3）：`list_conversations`/`search` 对 `state=deleted` 不再精确过滤返回，而是 fail-closed 抛 `DeletedConversationListingError` → HTTP 410 `deleted_conversation_listing`，避免经 deleted 列表泄露 title 与正文匹配关系。
+- **migration 036 数据矩阵**（round 2 P1-1/P1-2）：upgrade 精确匹配 legacy pair（`ingress_checkpoint={} AND ingress_digest=LEGACY`，不依赖 revision），未知 digest 与非空 checkpoint 不动；downgrade 同时还原 legacy checkpoint 与 legacy digest 两列，不留失配。数据中间态由专门 036 数据矩阵测试锁定（rev1/rev>1 legacy 归一、未知 digest 不被覆盖、非空 checkpoint 不动、downgrade 两列正确）。
+
 ### R1-S3：Execution owner、RunEvent payload 与 compatibility output
 
 **复杂度/执行**：极高，Sol `xhigh`；独立 `max` 审查 terminal/projection 反例。
