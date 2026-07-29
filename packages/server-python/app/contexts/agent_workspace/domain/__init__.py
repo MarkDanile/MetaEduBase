@@ -30,6 +30,7 @@ from app.contexts.agent_workspace.domain.errors import (
     ResourceReferenceForbiddenError,
     RevisionConflictError,
     TitleSourceConflictError,
+    WorkspaceBodyScanNonZeroError,
     WorkspaceIntegrationConflictError,
 )
 from app.contexts.agent_workspace.domain.message import (
@@ -78,6 +79,7 @@ __all__ = [
     "ResourceReferenceForbiddenError",
     "RevisionConflictError",
     "TitleSourceConflictError",
+    "WorkspaceBodyScanNonZeroError",
     "WorkspaceIntegrationConflictError",
     "TurnDispatchState",
 ]
