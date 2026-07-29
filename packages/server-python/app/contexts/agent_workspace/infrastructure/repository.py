@@ -99,14 +99,26 @@ class AgentWorkspaceRepository:
             # baseline active fence——缺失 fence 不得被解释为安全。经
             # create_fence_under_owner_lock（自带 Conversation 行锁 -> owner
             # lock -> fence，防 AB-BA）。幂等重放分支（行已存在）不重建 fence。
-            # 其余 owner 由受控 backfill 补齐；title 初始 tombstone 不算 title 写。
-            await AgentErasureRepository(
-                self._session
-            ).create_fence_under_owner_lock(
+            # 其余 owner 由受控 backfill 补齐。
+            erasure = AgentErasureRepository(self._session)
+            await erasure.create_fence_under_owner_lock(
                 tenant_id=conversation.tenant_id,
                 conversation_id=conversation.id,
                 owner_key="workspace.core.v1",
             )
+            # S2-C P1-4 复审：初始 title 非空（title_source=user，真实 title 写）
+            # 时必须同事务推进 title ingress——watermark 取创建时的 Conversation
+            # revision（=1），epoch 取 purge_revision（=0）。仅 title=None（none
+            # tombstone）不算 title 写、不推进。
+            if conversation.title is not None:
+                await erasure.advance_ingress_checkpoint_for_update(
+                    tenant_id=conversation.tenant_id,
+                    conversation_id=conversation.id,
+                    owner_key="workspace.core.v1",
+                    source_key="title",
+                    watermark=row.revision,
+                    epoch=row.purge_revision,
+                )
         return self._to_conversation(row), inserted_id is not None
 
     async def get_conversation(

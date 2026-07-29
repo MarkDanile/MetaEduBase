@@ -57,8 +57,21 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-def _empty_ingress_digest() -> str:
-    return canonical_digest({"ingress": {}, "schema_version": 1})
+# 规范空 ingress checkpoint（Spec §5.1，S2-C P1-5 复审）：baseline fence（新建/
+# backfill）的 ``ingress_checkpoint`` 与 ``ingress_digest`` 必须同源——digest 始终
+# 等于 ``canonical_digest(ingress_checkpoint)``。统一常量避免「存 ``{}`` 却 hash
+# 另一对象形状」的天生不一致。schema 与 ``_advance_ingress`` 产出一致
+# （``schema_version=1`` + ``sources`` dict）。
+EMPTY_INGRESS_CHECKPOINT: dict = {"schema_version": 1, "sources": {}}
+
+# workspace.core.v1 受管正文 ingress 的 canonical source key（S2-C 契约注记）：
+# 只允许这两个受控类别，任意 key fail closed（防止脱离能力模型的 checkpoint 写入）。
+INGRESS_SOURCE_KEYS: frozenset[str] = frozenset({"body_messages", "title"})
+
+
+def empty_ingress_digest() -> str:
+    """规范空 checkpoint 的 digest（与 ``EMPTY_INGRESS_CHECKPOINT`` 严格同源）。"""
+    return canonical_digest(EMPTY_INGRESS_CHECKPOINT)
 
 
 # fence 状态机显式转移表（Spec §5.1/§6.2）：只允许下列 (from → to) 边。
@@ -234,6 +247,60 @@ class AgentErasureRepository:
             now=now,
         )
 
+    async def ensure_fence_under_owner_lock(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        owner_key: str,
+        now: datetime | None = None,
+    ) -> tuple[ErasureFence, bool]:
+        """受控 ensure（backfill 用）：与 ``create_fence_under_owner_lock`` 同锁序，
+        额外返回 ``(fence, created)``——``created=True`` 表示本调用新建，``False``
+        表示既有 active 行幂等返回。
+
+        S2-C P1-2 复审：backfill 不得「先 ``get_fence_for_update`` 锁 fence、再进
+        本方法锁 Conversation」——那会对已有 fence 形成 fence->Conversation 反向
+        锁序，与 writer 的 Conversation->owner->fence 构成真实 AB-BA 死锁。探测
+        必须在锁内（``_create_fence`` 的 get-then-create 已持 Conversation 行锁 +
+        owner lock），由本方法统一返回 created 标志，禁止锁前探测。
+        """
+        # 锁序第一步：Conversation 行锁（与 writer 一致）。
+        conversation = (
+            await self._session.execute(
+                select(ConversationModel)
+                .where(
+                    ConversationModel.tenant_id == tenant_id,
+                    ConversationModel.id == conversation_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if conversation is None:
+            raise LateBodyWriteRejectedError(
+                f"conversation {conversation_id} not found for fence backfill"
+            )
+        await acquire_owner_lock(
+            self._session,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key=owner_key,
+        )
+        # 锁内探测（此时已持 Conversation 行锁 + owner lock，无反向锁序）。
+        existing = await self.get_fence_for_update(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key=owner_key,
+        )
+        created = existing is None
+        fence = await self._create_fence(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key=owner_key,
+            now=now,
+        )
+        return fence, created
+
     async def _create_fence(
         self,
         *,
@@ -278,8 +345,8 @@ class AgentErasureRepository:
             owner_key=owner.owner_key,
             owner_version=owner.owner_version,
             state=ErasureFenceState.ACTIVE.value,
-            ingress_checkpoint={},
-            ingress_digest=_empty_ingress_digest(),
+            ingress_checkpoint=dict(EMPTY_INGRESS_CHECKPOINT),
+            ingress_digest=empty_ingress_digest(),
             revision=1,
             created_at=effective_now,
             updated_at=effective_now,
@@ -406,13 +473,12 @@ class AgentErasureRepository:
             # 单调对齐到 Conversation 当前 token（含惰性首写与 deleted stale）。
             fence_model.purge_revision = conversation.purge_revision
             fence_model.hold_revision = conversation.hold_revision
-        # 原子推进正文写 checkpoint（Spec §6.2 第 4 步）：last_body_write_at +
-        # fence revision CAS。与正文写同事务 commit（调用方负责）。
-        effective_now = now or _utcnow()
-        fence_model.last_body_write_at = effective_now
-        fence_model.revision = fence_model.revision + 1
-        fence_model.updated_at = effective_now
-        await self._session.flush()
+            await self._session.flush()
+        # S2-C P2-6 复审：本方法只做裁决（verdict），不推进
+        # last_body_write_at/revision/checkpoint——推进归属
+        # ``advance_ingress_checkpoint_for_update``，仅在有真实正文/checkpoint
+        # 推进时发生。否则幂等 replay（经本裁决放行但不写新正文）会空推进
+        # last_body_write_at/revision，把「裁决」误当「正文写」。
         return _fence_to_domain(fence_model)
 
     # --- ingress checkpoint（Spec §5.1/§6.2，S2-C）-------------------------
@@ -455,18 +521,59 @@ class AgentErasureRepository:
         """在已裁决的 fence 行上推进 ``source_key`` 的 ingress checkpoint。
 
         前置：调用方已在同一事务内经 ``require_body_write_fence_for_update``
-        裁决放行（fence 行锁在握、state=active、token 已对齐），并已分配本写
-        的真实 source 序号（body=seq / title=revision CAS 后值）。本方法与正文
-        写同一事务 commit，实现「正文写 + checkpoint + receipt 一起 commit」。
+        裁决放行（state=active、token 已对齐），并已分配本写的真实 source 序号
+        （body=seq / title=revision CAS 后值）。本方法与正文写同一事务 commit，
+        实现「正文写 + checkpoint + receipt 一起 commit」。
 
-        fail closed：fence 非 active（裁决后被并发 purge 接管）拒绝推进——不得
-        在清除路径上为已拒正文补 checkpoint。checkpoint 与 ``ingress_digest``
-        同源（shared ``canonical_digest``），不用 ``last_body_write_at`` 或
-        fence 自身 ``revision`` 冒充。
+        S2-C P2-6/P2-7 复审：本方法**独占** checkpoint + ``last_body_write_at`` +
+        fence ``revision`` 的推进（verdict 不再推进），并自校验输入、自取 fence
+        行锁，不靠调用约定保证安全：
+        - ``source_key`` 必须是受控类别（``INGRESS_SOURCE_KEYS``），任意 key fail
+          closed（``ValueError``）。
+        - ``watermark`` 必须为正（真实 source 序号）。
+        - ``epoch`` 必须等于 Conversation 当前 ``purge_revision``（stale epoch fail
+          closed，不把旧 purge epoch 的写记到新 epoch）。
+        - fence 非 active（裁决后被并发 purge 接管）拒绝推进（writer-win race
+          原子兜底），不在清除路径上为已拒正文补 checkpoint。
         """
-        fence_model = await self._session.get(
-            ErasureFenceModel, (tenant_id, conversation_id, owner_key)
-        )
+        if source_key not in INGRESS_SOURCE_KEYS:
+            raise ValueError(
+                f"unknown ingress source_key {source_key!r}; must be one of "
+                f"{sorted(INGRESS_SOURCE_KEYS)}"
+            )
+        if watermark < 1:
+            raise ValueError(f"ingress watermark must be >= 1, got {watermark}")
+        # 自取 Conversation（读 purge_revision 校验 epoch）+ fence 行锁。
+        conversation = (
+            await self._session.execute(
+                select(ConversationModel)
+                .where(
+                    ConversationModel.tenant_id == tenant_id,
+                    ConversationModel.id == conversation_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if conversation is None:
+            raise LateBodyWriteRejectedError(
+                f"conversation {conversation_id} not found for ingress advance"
+            )
+        if epoch != conversation.purge_revision:
+            raise ValueError(
+                f"ingress epoch {epoch} does not match conversation purge_revision "
+                f"{conversation.purge_revision}; refusing to record a stale-epoch write"
+            )
+        fence_model = (
+            await self._session.execute(
+                select(ErasureFenceModel)
+                .where(
+                    ErasureFenceModel.tenant_id == tenant_id,
+                    ErasureFenceModel.conversation_id == conversation_id,
+                    ErasureFenceModel.owner_key == owner_key,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
         if fence_model is None:
             raise LateBodyWriteRejectedError(
                 f"erasure fence {owner_key!r} missing during ingress advance"
@@ -476,6 +583,7 @@ class AgentErasureRepository:
                 f"owner fence {owner_key!r} is {fence_model.state}; cannot advance "
                 "ingress checkpoint on a non-active (purge-path) fence"
             )
+        effective_now = now or _utcnow()
         fence_model.ingress_checkpoint = self._advance_ingress(
             dict(fence_model.ingress_checkpoint),
             source_key=source_key,
@@ -483,7 +591,11 @@ class AgentErasureRepository:
             epoch=epoch,
         )
         fence_model.ingress_digest = canonical_digest(fence_model.ingress_checkpoint)
-        fence_model.updated_at = now or _utcnow()
+        # 推进归属本方法（P2-6）：last_body_write_at + fence revision CAS 随真实
+        # 正文/checkpoint 写推进，与正文写同事务 commit。
+        fence_model.last_body_write_at = effective_now
+        fence_model.revision = fence_model.revision + 1
+        fence_model.updated_at = effective_now
         await self._session.flush()
         return _fence_to_domain(fence_model)
 

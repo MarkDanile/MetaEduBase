@@ -133,25 +133,19 @@ async def _backfill_conversation(
     already = 0
     repo = AgentErasureRepository(session)
     for owner in owner_registry():
-        # 探测先前行以区分 created/already（报告准确性）；create_fence_under_
-        # owner_lock 内部在 owner lock 下 get-then-create，幂等且不 PK 冲突。
-        existed = (
-            await repo.get_fence_for_update(
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
-                owner_key=owner.owner_key,
-            )
-            is not None
-        )
-        await repo.create_fence_under_owner_lock(
+        # S2-C P1-2 复审：经 ensure_fence_under_owner_lock 返回 created 标志，
+        # 禁止「先 get_fence_for_update 锁 fence、再锁 Conversation」的锁前探测
+        # （对已有 fence 会形成 fence->Conversation 反向锁序，与 writer 构成
+        # AB-BA 死锁）。created 判定在锁内完成。
+        _, was_created = await repo.ensure_fence_under_owner_lock(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             owner_key=owner.owner_key,
         )
-        if existed:
-            already += 1
-        else:
+        if was_created:
             created += 1
+        else:
+            already += 1
     return created, already
 
 

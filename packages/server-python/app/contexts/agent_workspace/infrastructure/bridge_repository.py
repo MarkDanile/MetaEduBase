@@ -658,6 +658,21 @@ class WorkspaceBridgeRepository:
         if conversation.state != ConversationState.DELETED.value:
             conversation.last_activity_at = consumed_at
         conversation.updated_at = consumed_at
+        # Spec §6.2 第 5 步（S2-C P1-1 复审）：assistant 正文写 + ingress
+        # checkpoint + receipt 同一事务 commit。body_messages source 的 watermark
+        # 记录本写分配到的真实 message seq（连续水位），epoch 取 Conversation 当前
+        # purge_revision——assistant 投影与用户正文同受 body ingress 水位约束。
+        await AgentErasureRepository(
+            self._session
+        ).advance_ingress_checkpoint_for_update(
+            tenant_id=event.tenant_id,
+            conversation_id=event.conversation_id,
+            owner_key="workspace.core.v1",
+            source_key="body_messages",
+            watermark=message.seq,
+            epoch=conversation.purge_revision,
+            now=consumed_at,
+        )
         await self._consume_output_receipt(event=event, consumed_at=consumed_at)
 
     async def project_suppressed_output(

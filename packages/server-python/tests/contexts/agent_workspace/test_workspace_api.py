@@ -177,6 +177,29 @@ async def test_late_body_write_rejected_returns_409_e2e(
     assert detail.json()["title"] == "to be fenced"
 
 
+async def test_deleted_state_listing_returns_410_e2e(
+    client: AsyncClient, auth_headers: dict[str, str]
+):
+    """R1-S2 S2-C P1-3 复审：公开 list/search 带 state=deleted 必须 fail closed
+    （410 deleted_conversation_listing），不得返回原始 title 或搜索正文——
+    deleted/purged fail-closed。deleted 恢复走 get include_deleted redacted 路径。"""
+    listed = await client.get(
+        "/api/v1/agent-workspace/conversations",
+        headers=auth_headers,
+        params={"state": "deleted"},
+    )
+    assert listed.status_code == 410, listed.text
+    assert listed.json()["detail"]["code"] == "deleted_conversation_listing"
+    # search 同样 fail closed。
+    searched = await client.get(
+        "/api/v1/agent-workspace/conversations",
+        headers=auth_headers,
+        params={"state": "deleted", "q": "anything"},
+    )
+    assert searched.status_code == 410
+    assert searched.json()["detail"]["code"] == "deleted_conversation_listing"
+
+
 async def test_super_admin_role_does_not_grant_other_owners_message_access(
     client: AsyncClient, auth_headers: dict[str, str]
 ):

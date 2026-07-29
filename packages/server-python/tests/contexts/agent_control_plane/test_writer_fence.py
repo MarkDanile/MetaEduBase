@@ -193,8 +193,10 @@ async def test_reserve_user_turn_creates_fence_on_first_body_write(db_session):
     assert fence.purge_revision == conversation.purge_revision
     assert fence.hold_revision == conversation.hold_revision
     # 正文写 checkpoint 原子推进：last_body_write_at 已落、fence revision 推进。
+    # S2-C 复审后：create（rev1）-> 初始 title ingress 推进（rev2，bootstrap 带
+    # title）-> 首次 body 写推进（rev3）。verdict 不再推进 revision（P2-6）。
     assert fence.last_body_write_at is not None
-    assert fence.revision == 2  # create(1) -> body-write advance(2)
+    assert fence.revision == 3  # create(1) -> title ingress(2) -> body write(3)
 
 
 async def test_reserve_user_turn_with_contradictory_token_rejected(db_session):

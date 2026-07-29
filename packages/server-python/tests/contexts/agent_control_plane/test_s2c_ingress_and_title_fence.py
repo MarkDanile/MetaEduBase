@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.composition.agent_erasure_registry import owner_registry
 from app.contexts.agent_workspace.application.conversation_service import (
     AgentWorkspaceService,
 )
@@ -456,7 +457,295 @@ async def test_advance_ingress_checkpoint_rejects_non_active_fence(db_session):
             epoch=0,
         )
     await db_session.rollback()
-    # checkpoint 未被推进（仍为空 sources）。
+    # checkpoint 未被推进：rollback 后 fence 仍是 erasing 前的状态；被拒绝的
+    # body_messages advance 未落库（create 时的 title ingress 不受影响）。
     fence = await _core_fence(db_session, conversation_id)
     assert fence is not None
-    assert fence.ingress_checkpoint.get("sources") in (None, {})
+    assert fence.state is ErasureFenceState.ERASING
+    sources = dict(fence.ingress_checkpoint.get("sources", {}))
+    # 拒绝的 advance 不得新增 body_messages source。
+    assert "body_messages" not in sources
+
+
+# ---------------------------------------------------------------------------
+# 复审返修专项（PR #511 独立 max P1x5/P2x2）
+# ---------------------------------------------------------------------------
+
+
+async def test_p1_5_baseline_digest_matches_checkpoint(db_session):
+    """P1-5：baseline fence 的 ingress_digest 必须等于 canonical_digest(
+    ingress_checkpoint)——不得「存 {} 却 hash 另一对象形状」。新建与 backfill
+    fence 在首次正文写入前即满足冻结契约。"""
+    from app.shared.schemas.canonical_json import canonical_digest
+
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    # title=None -> 纯 baseline（无 title ingress 推进），checkpoint 应为规范空。
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title=None
+    )
+    fence = await _core_fence(db_session, view.conversation.id)
+    assert fence is not None
+    assert fence.ingress_digest == canonical_digest(fence.ingress_checkpoint)
+    # 规范空 checkpoint（非裸 {}）。
+    assert fence.ingress_checkpoint == {"schema_version": 1, "sources": {}}
+
+
+async def test_p1_4_create_with_initial_title_advances_title_ingress(db_session):
+    """P1-4：create 携带初始 title（title_source=user）时，title ingress 必须
+    同事务推进到创建 revision；仅 title=None 才是 tombstone 不推进。"""
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title="initial title"
+    )
+    conversation_id = view.conversation.id
+    conversation = await db_session.get(ConversationModel, conversation_id)
+    assert conversation is not None
+    assert conversation.title == "initial title"
+
+    sources = await _ingress_sources(db_session, conversation_id)
+    title = sources.get("title")
+    assert title is not None, "create with initial title must advance title ingress"
+    assert title["watermark"] == conversation.revision
+    assert title["epoch"] == conversation.purge_revision
+
+
+async def test_p1_3_list_rejects_deleted_state(db_session):
+    """P1-3：公开 list/search 拒绝 state=deleted——不得返回原始 title 或搜索
+    MessagePart.text_content（deleted/purged fail-closed）。deleted 恢复走
+    get_conversation(include_deleted=True) redacted 路径。"""
+    from app.contexts.agent_workspace.domain import (
+        ConversationState,
+        DeletedConversationListingError,
+    )
+
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    with pytest.raises(DeletedConversationListingError):
+        await service.list_conversations(
+            tenant_id=TENANT_ID,
+            actor_id=ACTOR_ID,
+            state=ConversationState.DELETED,
+        )
+    # search 同样拒绝（带 query）。
+    with pytest.raises(DeletedConversationListingError):
+        await service.list_conversations(
+            tenant_id=TENANT_ID,
+            actor_id=ACTOR_ID,
+            state=ConversationState.DELETED,
+            query="anything",
+        )
+
+
+async def test_p2_6_verdict_does_not_advance_on_idempotent_replay(db_session):
+    """P2-6：verdict（require_body_write_fence_for_update）不推进
+    last_body_write_at/revision——幂等 replay（不写新正文）不得空推进 fence。
+    只有真实正文写经 advance_ingress 推进。"""
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title=None
+    )
+    conversation_id = view.conversation.id
+    command = _text_command("replay body")
+    await service.reserve_user_turn(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        command=command,
+    )
+    fence_after_write = await _core_fence(db_session, conversation_id)
+    assert fence_after_write is not None
+    revision_after_write = fence_after_write.revision
+    last_write_after_write = fence_after_write.last_body_write_at
+
+    # 幂等重放（同 client_message_id，不写新正文）：经 verdict 放行但不推进。
+    replay = await service.reserve_user_turn(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        command=command,
+    )
+    assert replay.idempotent_replay is True
+    fence_after_replay = await _core_fence(db_session, conversation_id)
+    assert fence_after_replay is not None
+    # verdict 不推进：revision 与 last_body_write_at 与首次写后一致。
+    assert fence_after_replay.revision == revision_after_write
+    assert fence_after_replay.last_body_write_at == last_write_after_write
+
+
+async def test_p2_7_advance_validates_source_key_watermark_epoch(db_session):
+    """P2-7：advance_ingress_checkpoint_for_update 自校验——非受控
+    source_key、非正 watermark、stale epoch（!= purge_revision）一律 fail
+    closed，不靠调用约定。"""
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title=None
+    )
+    conversation_id = view.conversation.id
+    await create_baseline_fences(
+        db_session, tenant_id=TENANT_ID, conversation_id=conversation_id
+    )
+    await db_session.commit()
+    repo = AgentErasureRepository(db_session)
+
+    # 任意 source_key fail closed。
+    with pytest.raises(ValueError, match="unknown ingress source_key"):
+        await repo.advance_ingress_checkpoint_for_update(
+            tenant_id=TENANT_ID,
+            conversation_id=conversation_id,
+            owner_key=_OWNER_KEY,
+            source_key="evil_free_text",
+            watermark=1,
+            epoch=0,
+        )
+    # 非正 watermark fail closed。
+    with pytest.raises(ValueError, match="watermark must be >= 1"):
+        await repo.advance_ingress_checkpoint_for_update(
+            tenant_id=TENANT_ID,
+            conversation_id=conversation_id,
+            owner_key=_OWNER_KEY,
+            source_key="body_messages",
+            watermark=0,
+            epoch=0,
+        )
+    # stale epoch（!= purge_revision）fail closed。
+    with pytest.raises(ValueError, match="does not match conversation purge_revision"):
+        await repo.advance_ingress_checkpoint_for_update(
+            tenant_id=TENANT_ID,
+            conversation_id=conversation_id,
+            owner_key=_OWNER_KEY,
+            source_key="body_messages",
+            watermark=1,
+            epoch=99,
+        )
+
+
+async def test_p1_1_assistant_projection_advances_body_checkpoint(
+    db_session, session_factory
+):
+    """P1-1：assistant 正文投影（project_assistant_message）必须同事务推进
+    body_messages checkpoint——watermark 记录分配到的 message seq。正文、
+    checkpoint、receipt 一起 commit。"""
+    import hashlib
+    import uuid as _uuid
+
+    from sqlalchemy import select
+
+    from app.composition.agent_control_plane import (
+        AgentBridgeDispatcher,
+        ConversationExecutionCoordinator,
+    )
+    from app.contexts.agent_execution.application.run_coordinator import (
+        RunCoordinator,
+    )
+    from app.contexts.agent_execution.domain import (
+        RunStatus,
+        SnapshotClassification,
+        TerminalResult,
+    )
+    from app.contexts.agent_execution.infrastructure.models import (
+        ExecutionOutboxModel,
+    )
+    from tests.contexts.agent_control_plane.helpers import (
+        StaticOutputReader,
+        bootstrap_workspace,
+        turn_command,
+    )
+
+    content = b"# assistant checkpoint"
+    conversation_id, identity, launch = await bootstrap_workspace(db_session)
+    receipt = await ConversationExecutionCoordinator(db_session).submit_turn(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        command=turn_command(identity, "trigger"),
+        launch=launch,
+    )
+    await db_session.commit()
+    run = await AgentBridgeDispatcher(
+        session_factory, worker_id="p11-setup"
+    ).dispatch_turn(event_id=receipt.event_id)
+    assert run is not None
+    terminal_message_id = _uuid.uuid4()
+    async with session_factory() as session, session.begin():
+        started, _ = await ConversationExecutionCoordinator(session).start_run(
+            tenant_id=TENANT_ID, run_id=run.id, expected_revision=1
+        )
+        running, _ = await RunCoordinator(session).transition_run(
+            tenant_id=TENANT_ID,
+            run_id=run.id,
+            expected_status=RunStatus.STARTING,
+            expected_revision=started.status_revision,
+            target_status=RunStatus.RUNNING,
+            summary="go",
+        )
+        await RunCoordinator(session).commit_terminal(
+            tenant_id=TENANT_ID,
+            run_id=run.id,
+            expected_status=RunStatus.RUNNING,
+            expected_revision=running.status_revision,
+            result=TerminalResult(
+                outcome="completed",
+                code="ok",
+                reason="ready",
+                output_ref=f"out-{run.id}",
+                output_digest=hashlib.sha256(content).hexdigest(),
+                output_size=len(content),
+                output_media_type="text/markdown",
+                output_classification=SnapshotClassification.INTERNAL,
+                terminal_message_id=terminal_message_id,
+            ),
+        )
+    outbox = await db_session.scalar(
+        select(ExecutionOutboxModel).where(
+            ExecutionOutboxModel.aggregate_id == run.id
+        )
+    )
+    assert outbox is not None
+
+    # 投影 assistant 正文。
+    dispatcher = AgentBridgeDispatcher(
+        session_factory,
+        worker_id="p11-output",
+        output_reader=StaticOutputReader(content),
+    )
+    assert await dispatcher.dispatch_output(event_id=outbox.id) is True
+
+    # body_messages checkpoint 已推进到 assistant message 的 seq（>= 用户正文 seq）。
+    fence = await _core_fence(db_session, conversation_id)
+    assert fence is not None
+    sources = dict(fence.ingress_checkpoint.get("sources", {}))
+    body = sources.get("body_messages")
+    assert body is not None, "assistant projection must advance body_messages"
+    # assistant message seq=2（bootstrap 用户 turn seq=1）。
+    assert body["watermark"] == 2
+    conversation = await db_session.get(ConversationModel, conversation_id)
+    assert conversation is not None
+    assert body["epoch"] == conversation.purge_revision
+
+
+async def test_p1_2_ensure_fence_returns_created_flag(db_session):
+    """P1-2：ensure_fence_under_owner_lock 返回 created 标志，且全程在
+    Conversation 行锁 + owner lock 内探测（无锁前探测）。新建 True、既有
+    active 幂等 False。"""
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title=None
+    )
+    conversation_id = view.conversation.id
+    repo = AgentErasureRepository(db_session)
+    # create 已建 workspace.core fence（active）-> ensure 幂等返回 created=False。
+    _, created_existing = await repo.ensure_fence_under_owner_lock(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        owner_key=_OWNER_KEY,
+    )
+    assert created_existing is False
+    # 缺失 owner（其余 registry owner）-> ensure 新建 created=True。
+    other = next(
+        o.owner_key for o in owner_registry() if o.owner_key != _OWNER_KEY
+    )
+    _, created_new = await repo.ensure_fence_under_owner_lock(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        owner_key=other,
+    )
+    assert created_new is True

@@ -28,6 +28,7 @@ from app.contexts.agent_workspace.domain import (
     ConversationRecoveryExpiredError,
     ConversationRestoreNotAllowedError,
     ConversationState,
+    DeletedConversationListingError,
     IdempotencyConflictError,
     InvalidConversationStateError,
     LateBodyWriteRejectedError,
@@ -234,6 +235,13 @@ def _raise_workspace_error(exc: Exception) -> NoReturn:
         raise HTTPException(
             status_code=409,
             detail=_error_detail("late_body_write_rejected", str(exc)),
+        ) from exc
+    if isinstance(exc, DeletedConversationListingError):
+        # deleted/purged fail-closed：公开 list/search 不接受 deleted 状态。
+        # 410 Gone 表达「该视图永久不可用」，不泄露任何 deleted 会话存在性/内容。
+        raise HTTPException(
+            status_code=410,
+            detail=_error_detail("deleted_conversation_listing", str(exc)),
         ) from exc
     if isinstance(exc, TitleSourceConflictError):
         raise HTTPException(
