@@ -237,6 +237,54 @@ S1 已交付 `app/composition/agent_erasure_backfill.py`（bounded cursor、分�
 - **§4 list/search fail-closed 增强**（round 1 P1-3）：`list_conversations`/`search` 对 `state=deleted` 不再精确过滤返回，而是 fail-closed 抛 `DeletedConversationListingError` → HTTP 410 `deleted_conversation_listing`，避免经 deleted 列表泄露 title 与正文匹配关系。
 - **migration 036 数据矩阵**（round 2 P1-1/P1-2）：upgrade 精确匹配 legacy pair（`ingress_checkpoint={} AND ingress_digest=LEGACY`，不依赖 revision），未知 digest 与非空 checkpoint 不动；downgrade 同时还原 legacy checkpoint 与 legacy digest 两列，不留失配。数据中间态由专门 036 数据矩阵测试锁定（rev1/rev>1 legacy 归一、未知 digest 不被覆盖、非空 checkpoint 不动、downgrade 两列正确）。
 
+#### S2-D/E 契约注记 / plan delta（2026-07-29，先于代码冻结）
+
+本轮冻结 S2-D/E（workspace.core.v1 正文清除 + participant ACK + final body scan）的设计决策与不变量，作为后续实现与独立 `max`/Codex 复审的事实源。不改已合并 migration 034/035/036、不进 S3（Execution owner）/S4/S5、**不启用 purge scheduler 对生产自动执行**（`conversation_purge_scheduler` 启用在 Spec §10 属独立 deploy 阶段，本 Slice 只交付可被 scheduler/受控命令调用的清除与 ACK 原语）、不混入 TD-090 P3。
+
+**范围切分**：S2-D = `workspace.core.v1` participant 正文清除原语 + final body scan（Spec §7.1 的执行器）；S2-E = participant ACK + purge operation/owner checkpoint 推进 + 完成门禁（Spec §5.2 的 saga 闭合）。两者共用同一锁序与 fencing token，故契约注记合并冻结、分两个 commit 实现。
+
+**1. 清除触发与锁序（Spec §6.1，与 writer/backfill 同序，防 AB-BA）**
+
+purge 对单 Conversation 的清除**必须**沿用固定锁序：`Conversation row FOR UPDATE -> owner advisory lock(workspace.core.v1) -> ErasureFence row FOR UPDATE -> owner aggregate rows（Conversation -> Message -> MessagePart -> ConversationUserState）`。清除执行器经 `ensure_fence_under_owner_lock`/`transition_fence_state` 取锁，**不得**绕开 Conversation 行锁直接锁 fence 或 Message（否则与 writer 的 Conversation->owner->fence 构成反向等待）。fence 缺失时在 owner lock 下创建（Spec §5.1「不能把缺行解释为安全」）。
+
+**2. workspace.core.v1 participant 清除动作（Spec §7.1，同事务、可重入）**
+
+单 Conversation、单 purge_revision 内，participant 在同一事务完成以下清除并推进 fence `active -> erasing`（首次）：
+
+- **Conversation title**：置 `title=NULL`、`title_source=none`（tombstone），保留 id/state/revision/purge_after/purged_at 等 envelope。**不**物理删除 Conversation 行（restore/审计 envelope 保留）。
+- **actor 不可逆匿名化**：`Conversation.created_by`/`Message.author_id` 置 NULL，另存 tenant-scoped 不可逆 `creator_identity_digest`/`actor_identity_digest`（HMAC-SHA256(tenant-scoped key, actor UUID)，64-hex，**不含可还原明文**）。沿用 S1 已建的 `actor_state='redacted'` + digest CHECK 约束（`ck_agent_conv_actor`/`ck_agent_msg_actor_digest`），不用真实 UUID 冒充匿名。
+- **Message 正文**：**物理删除** `agent_message_parts` 正文行（V1 不保留 Part envelope，避免空正文违反 part-type 约束），并把所属 `agent_messages` 转 redacted tombstone（`body_state='redacted'`、`content_state='redacted'`、`redacted_at`、`redacted_reason` 用受控 code），保留 Message id/seq/kind/`content_digest`/必要 opaque id。**不得**改写 seq 或删除 Message envelope。
+- **ConversationUserState**：物理删除 `agent_conversation_user_state`（pin/read 非审计必需 envelope，Spec §7.1）。
+- **redacted_reason 受控化**：一律走 shared `suppression_reason_code` 白名单 code，自由文本（可能含正文/prompt/secret）**绝不**入库（与 S2-A/B tombstone 一致）。
+
+可重入（Spec §8「重复 claim/ACK 丢失后从 checkpoint 恢复」）：对已 redacted Message、已删 Part/UserState、已匿名 actor 再次执行清除是幂等 no-op，不报错、不二次计数。重试复用同 purge_revision 与 owner checkpoint，不新建 revision。
+
+**3. final workspace body scan（完成门禁，Spec §5.2/§7.1）**
+
+清除后、ACK 前必须做 workspace 正文扫描：该 Conversation 下 `body_state='present'` 的 Message、`agent_message_parts` 残留行、`agent_conversation_user_state` 残留行、`actor_state='present'` 的 Conversation/Message 必须为 **0**。扫描结果（每类计数 + canonical digest）记入 owner `checkpoint_digest`。**扫描非零 -> 不得 ACK**，fence 保持/回 `blocked` 并记稳定 reason code（如 `workspace_body_scan_nonzero`），不把「已执行 DELETE 的受影响行数」当完成（Spec §4.2「没有查到正文不是隐式 ACK」）。
+
+**4. participant ACK 与 fencing（Spec §5.1/§5.2）**
+
+- 仅当 body scan 为零，participant 才提交 ACK：`transition_fence_state(erasing -> erased, ack_digest=canonical_digest(清除摘要))`，`ack_digest` 仅允许落在 erased 边（S1 状态机已强制）。ACK 摘要 = 排序后的 `{owner_key, owner_version, purge_revision, 各类清除计数, body_scan_digest}` 的 canonical digest，**不含正文/actor 明文**。
+- 推进 fencing token：`purge_revision` 单调不减（重试复用同 token），`hold_revision` 对当前 Conversation `hold_revision`。active legal hold 阻止 fence `active -> erasing`（Spec §5.3），purge operation 记 `blocked`，**不**清除任何正文。
+- purge operation/owner checkpoint 同步：`agent_conversation_purge_owners` 该 owner `pending/erasing -> acked`（带 `ack_digest`），operation 在**所有 snapshot owner acked 且 registry digest 匹配且最终 body scan 为零**后才写 `purge_state=completed`/`purged_at`（Spec §5.2）。本 Slice 只接 `workspace.core.v1` 单 owner；多 owner（execution/transport）的 operation 完成判定属 S3/S4，本 Slice 不伪造 completed。
+
+**5. 明确不做（边界）**
+
+- 不启用/不实现 `conversation_purge_scheduler` 对到期 Conversation 的自动 claim 循环（Spec §8/§10，独立 deploy + S3 worker claim 顺序一并交付）；本 Slice 的清除执行器以**受控入口/服务方法**形态供 scheduler 或运维命令调用。
+- 不清除 Execution/Runtime/transport owner 正文（S3/S4）。
+- 不改 legal hold lifecycle（S5）；仅消费 `hold_revision` 做 purge CAS 与 active-hold 阻止。
+- 不实现 external object erase（无生产 adapter，Spec §7.3 对未知 scheme fail closed `external_owner_unavailable`）。
+
+**6. 竞态与不变量复核（复审重点）**
+
+- 清除与并发正文 writer：清除在 owner lock 内推进 fence `active -> erasing` 后，writer 经 `require_body_write_fence_for_update` 裁决即被拒（`LateBodyWriteRejectedError`），清除期间不得有新正文复活（与 S2-A writer-win/purge-win race 互补）。
+- 清除与 restore：fence 已离开 `active` 后 restore fail closed（S2-B 已锁）；清除开始后 restore 不得复活正文。
+- 迟到写：fence `erasing/erased` 下旧事件只能写无正文 tombstone/receipt，不重建正文（Spec §6.2）。
+- 跨 tenant/跨 actor/未知 owner/stale fencing token/版本漂移 全部 fail closed。
+
+**验证**：S2-D/E 专项（title/Message/Part/UserState/actor 清除断言、tombstone envelope 保留、body scan 零/非零门禁、ACK digest 契约、active hold 阻止、清除中 writer 被拒、可重入幂等、跨 tenant/actor fail closed）+ workspace/control-plane 回归全绿；新增测试经变异验证（删除某清除动作 -> body scan 非零 / ACK 被拒）；ruff 0；mypy baseline 0 回归；docs gate + git diff --check 通过。本轮**不改 migration 034/035/036**、不启用 purge scheduler。
+
 ### R1-S3：Execution owner、RunEvent payload 与 compatibility output
 
 **复杂度/执行**：极高，Sol `xhigh`；独立 `max` 审查 terminal/projection 反例。
