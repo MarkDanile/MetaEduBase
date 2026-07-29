@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select, update
 
+from app.composition.agent_control_plane import ConversationExecutionCoordinator
 from app.contexts.agent_workspace.application.command_digest import (
     turn_request_digest,
 )
@@ -31,6 +33,7 @@ from app.contexts.agent_workspace.infrastructure.models import (
     ConversationUserStateModel,
     MessageModel,
 )
+from tests.contexts.agent_control_plane.helpers import create_baseline_fences
 
 pytestmark = pytest.mark.asyncio
 
@@ -190,18 +193,34 @@ async def test_archive_restore_and_deleted_rows_are_hidden(db_session):
         expected_revision=1,
     )
     assert archived.conversation.state is ConversationState.ARCHIVED
-    restored = await service.restore_conversation(
+    # R1-S2 收口：restore 唯一入口是 B1 coordinator（service 不再提供绕过
+    # Guard/owner fence/operation CAS 的旁路）；要求 baseline fence 完整。
+    await create_baseline_fences(
+        db_session,
+        tenant_id=TENANT_A,
+        conversation_id=view.conversation.id,
+    )
+    restored = await ConversationExecutionCoordinator(
+        db_session
+    ).restore_conversation(
         tenant_id=TENANT_A,
         actor_id=OWNER_A,
         conversation_id=view.conversation.id,
         expected_revision=2,
     )
-    assert restored.conversation.state is ConversationState.ACTIVE
+    assert restored.state is ConversationState.ACTIVE
 
     await db_session.execute(
         update(ConversationModel)
         .where(ConversationModel.id == view.conversation.id)
-        .values(state="deleted", revision=4)
+        .values(
+            state="deleted",
+            revision=4,
+            deleted_at=datetime.now(UTC),
+            purge_after=datetime.now(UTC) + timedelta(days=30),
+            purge_state="scheduled",
+            purge_revision=1,
+        )
     )
     await db_session.flush()
     with pytest.raises(ConversationNotFoundError):
@@ -217,13 +236,15 @@ async def test_archive_restore_and_deleted_rows_are_hidden(db_session):
         include_deleted=True,
     )
     assert deleted.conversation.state is ConversationState.DELETED
-    restored_deleted = await service.restore_conversation(
+    restored_deleted = await ConversationExecutionCoordinator(
+        db_session
+    ).restore_conversation(
         tenant_id=TENANT_A,
         actor_id=OWNER_A,
         conversation_id=view.conversation.id,
         expected_revision=4,
     )
-    assert restored_deleted.conversation.state is ConversationState.ACTIVE
+    assert restored_deleted.state is ConversationState.ACTIVE
 
 
 async def test_turn_digest_idempotency_covers_agent_and_options(db_session):

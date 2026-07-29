@@ -183,6 +183,7 @@
 | TD-087 | 模板管理 API 缺少后端 RBAC | 🟢 完成 | P1 | 后端 / Template / Identity / RBAC / 多租户 | [PR #495](https://github.com/MarkDanile/MetaEduBase/pull/495)（`40a7bf46`）：15 个管理端点统一高权守卫，最小 lookup DTO、脱敏审计与完整角色 / 租户矩阵通过 |
 | TD-088 | REQ-060 Slice 2 旧链接重定向移除 | 🔵 就绪 | P3 | 前端 / Web / Navigation / 技术债 | [PR #499](https://github.com/MarkDanile/MetaEduBase/pull/499)（`a1fa26dc`）：6 条旧链接重定向（/skill-editor /admin /admin/template(+/:id) /admin/mcp-servers /admin/skills -> 新路径）保留 1 版本周期后移除；移除前确认无外部书签/链接引用 |
 | TD-089 | `agent_erasure_fences` 冗余/无效索引（PK 蕴含的 UK 声明 + PK 前缀 ix） | 🟢 完成 | P3 | 后端 / 数据库迁移 / 性能 / Erasure | 2026-07-28 收口（[PR #508](https://github.com/MarkDanile/MetaEduBase/pull/508)，squash merge `eccb0f37`）：`models.py` 删 `uq_agent_erasure_fence_owner` 死声明（PostgreSQL 对「UK 列 ⊆ PK 列」去重，UK 从不创建）与 `ix_agent_erasure_fence_conversation` 冗余 `Index`（PK btree 已服务 conversation 前缀查询）；新增 migration `035_erasure_fence_ix_cleanup`（`034` 合并后冻结故新迁移，`034` 全程未改）：upgrade 真实 DROP 冗余 ix + 幂等 `DROP CONSTRAINT IF EXISTS` 死 UK，downgrade `DROP INDEX IF EXISTS` 幂等重建。新增 8 测试 + 全量 1785 passed + ruff 0 + mypy baseline 0 regressions。dev `metaedu` 已 `alembic upgrade head` 应用 035，四项证据：`alembic_version=035_erasure_fence_ix_cleanup` / `ix_agent_erasure_fence_conversation` 不存在 / `pk_agent_erasure_fences` 存在 / 死 UK 约束数=0 |
+| TD-090 | writer fence 三处健壮性硬化（公开无锁原语 / hold_revision 高端降级 / Conversation 读无 tenant 谓词） | 🔵 就绪 | P3 | 后端 / Erasure / 锁序 / 健壮性 | R1-S2 S2-A 独立 `max` 复核（commit `3bf1a515` 返修后）P0=0/P1=0/P2=1/P3=3 判可进 S2-C；3 条 P3 登记跟踪：见 [详情](#td-090-writer-fence-三处健壮性硬化公开无锁原语--hold_revision-高端降级--conversation-读无-tenant-谓词) |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -327,6 +328,33 @@
 - 新增 `tests/composition/test_agent_erasure_fence_index_cleanup.py`（8 tests）：源级守卫（models 无死 UK/冗余 ix、PK 三列、035 文件声明）+ 库级终态证据（死 UK 从不创建、fence 表只剩 PK btree）+ 035 upgrade 清理 + 035 downgrade/upgrade 幂等往返 + metadata ⊆ live 无漂移。真实迁移证据：034 head 冗余 ix 存在 / 死 UK 不存在 → 035 head 冗余 ix 删除 / PK 保留。变异测试（M8：035 upgrade 跳过 DROP INDEX）在「库先重置到 034」前置下测试变红，证明断言可杀变异；过渡期曾因持久 test 库已在 035 head 导致变异假存活，已定位并修正测试为终态稳定口径。
 - 验证：8 新增 + 既有 034 往返 + erasure/workspace 88 全绿 + **全量后端 1785 passed / 0 failed / 4 skipped**；ruff 0（`alembic/versions` 默认排除，显式 `ruff check alembic/versions/034|035` 亦过）；mypy baseline 243 历史 / 76 keys / **0 regressions**。
 - dev `metaedu` 库：PR #508 合并并同步 `main` 后执行 `alembic upgrade head`（`034 → 035`，schema-only，无数据回填），四项证据复核通过：`alembic_version = 035_erasure_fence_ix_cleanup`；`ix_agent_erasure_fence_conversation` 不存在；`pk_agent_erasure_fences` 仍存在；死 UK `uq_agent_erasure_fence_owner` 约束数 = 0（fence 表现仅剩 PK btree）。
+
+### TD-090: writer fence 三处健壮性硬化（公开无锁原语 / hold_revision 高端降级 / Conversation 读无 tenant 谓词）
+
+状态：🔵 就绪
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P3 |
+| 领域 | 后端 / Erasure / 锁序 / 健壮性 |
+| 事实源 | R1-S2 S2-A 独立 `max` 复核（commit `3bf1a515` 返修后，P0=0/P1=0/P2=1/P3=3 判可进 S2-C）/ [R1 plan](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
+
+**证据**
+
+- **[P3-a] `get_or_create_fence_for_update` 仍是公开的无锁原语**（`erasure_repository.py:291-312`）：与本轮已私有化 + 统一锁序的 `_create_fence` 并存。`require_body_write_fence_for_update` 已走 `create_fence_under_owner_lock`（Conversation 行锁 → owner advisory lock → fence FOR UPDATE），但 `get_or_create_fence_for_update` 仍可作为公开入口被绕过锁序直接调用，重新打开 AB-BA 死锁面（同 P2-4 已修复的 backfill↔writer 竞争）。
+- **[P3-b] `hold_revision` 高端不对齐时静默降级，与 `purge_revision` 处理不一致**（`erasure_repository.py:403-409`）：`purge_revision` 高端（fence > Conversation 矛盾 token）fail closed 抛 `LateBodyWriteRejectedError`；`hold_revision` 高端却被单调对齐 silently 覆盖，丢失「hold 计数器被外部推进」这一矛盾信号，两 token 一致性语义不对称。
+- **[P3-c] Conversation 读取无 `tenant` 谓词、行锁前置仅靠约定**（`erasure_repository.py:357`）：`require_body_write_fence_for_update` 用 `session.get(ConversationModel, conversation_id)` 按 PK 读取，不带 `tenant_id` 过滤；跨租户 `conversation_id` 命中会进入后续 owner/fence 逻辑（最终多半在 owner_version 校验 fail closed，但多一次无谓锁获取 + 依赖下游校验兜底）。行锁前置（Conversation FOR UPDATE 先于 owner lock）当前只靠 `create_fence_under_owner_lock` 内部约定，无显式断言或 lint 守护。
+
+**完成标准**
+
+- P3-a：`get_or_create_fence_for_update` 私有化或并入 `create_fence_under_owner_lock`，消除公开无锁入口；调用方迁移完毕。
+- P3-b：`hold_revision` 高端（fence > Conversation）与 `purge_revision` 对齐 fail closed 抛 `LateBodyWriteRejectedError`；低端仍单调对齐。补对称性测试。
+- P3-c：Conversation 读取补 `tenant_id` 谓词（或改 `_require_owned_row_for_update` 复用既有 tenant-scoped 行锁），并为行锁前置加显式守护（注释/断言/lint）。
+- 三条各自 RED-first 测试 + 变异验证，全量回归绿。
+
+**交付记录**
+
+_（待 S2-C/S3 或独立切片处理；登记于 2026-07-29，源自独立 `max` 复核，不阻塞 S2-C 进入）_
 
 ### TD-085: 收口 AI Chat、Skill 与 Agent App 的上下文边界倒置
 

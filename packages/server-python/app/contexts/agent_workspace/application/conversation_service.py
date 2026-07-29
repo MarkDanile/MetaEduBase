@@ -35,6 +35,7 @@ from app.contexts.agent_workspace.domain import (
     ConversationNotFoundError,
     ConversationState,
     ConversationTitleSource,
+    DeletedConversationListingError,
     IdempotencyConflictError,
     MessagePart,
     MessagePartType,
@@ -146,6 +147,15 @@ class AgentWorkspaceService:
     ) -> ConversationPage:
         if not 1 <= limit <= 100:
             raise ValueError("limit must be between 1 and 100")
+        # R1-S2 S2-C P1-3 复审：公开 list/search 不接受 deleted 状态——它会返回
+        # 原始 title 并对 MessagePart.text_content 求值，泄露已删除会话标题与
+        # 正文匹配关系（deleted/purged fail-closed）。deleted 恢复走
+        # get_conversation(include_deleted=True) 的 redacted tombstone 路径。
+        if state is ConversationState.DELETED:
+            raise DeletedConversationListingError(
+                "listing/searching deleted conversations is not allowed; "
+                "recover via get_conversation(include_deleted=True)"
+            )
         normalized_query = self.normalize_search_query(query) if query else None
         filter_digest = canonical_digest(
             {
@@ -257,25 +267,10 @@ class AgentWorkspaceService:
             conversation_id=conversation_id,
         )
 
-    async def restore_conversation(
-        self,
-        *,
-        tenant_id: uuid.UUID,
-        actor_id: uuid.UUID,
-        conversation_id: uuid.UUID,
-        expected_revision: int,
-    ) -> ConversationView:
-        await self._repo.restore(
-            tenant_id=tenant_id,
-            actor_id=actor_id,
-            conversation_id=conversation_id,
-            expected_revision=expected_revision,
-        )
-        return await self.get_conversation(
-            tenant_id=tenant_id,
-            actor_id=actor_id,
-            conversation_id=conversation_id,
-        )
+    # R1-S2 收口：restore 唯一入口是 B1 ConversationExecutionCoordinator
+    # （Guard -> Conversation row -> owner lock -> fence FOR UPDATE ->
+    # operation CAS + 锁后 DB 时钟）。本 service 不再提供绕过统一编排的
+    # 恢复旁路；archive-restore 与 deleted-restore 都走 coordinator。
 
     async def set_pinned(
         self,

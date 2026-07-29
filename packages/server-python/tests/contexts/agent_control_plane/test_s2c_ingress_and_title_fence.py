@@ -1,0 +1,905 @@
+"""R1-S2 S2-C：ingress checkpoint 真实 source key + title/create 接 fence。
+
+Spec §5.1/§6.2（plan §R1-S2「S2-C 契约注记」2026-07-29）：
+
+- ``ingress_checkpoint`` 以 ``workspace.core.v1`` 能力类别为 canonical source
+  key——``body_messages`` 用 message ``seq`` 连续水位、``title`` 用
+  Conversation ``revision``，epoch 取 ``purge_revision``；digest 走 shared
+  ``canonical_digest``。**不用** ``last_body_write_at``（可观察时间戳）或
+  fence 自身 ``revision``（CAS 计数器）冒充 ingress checkpoint。
+- 正文写 / checkpoint / receipt 同一事务 commit：checkpoint 记录的是**本写**
+  分配到的真实 seq（或 title CAS 后的 revision），不是下一水位，也不得落后。
+- title（rename/auto-title）经 ``workspace.core.v1`` 的 ``conversation_title``
+  能力，与正文同走 fence 裁决 + ingress 推进；fence 非 active 一律
+  ``LateBodyWriteRejectedError``。
+- Conversation create 真实新建分支经 ``create_fence_under_owner_lock`` 建立
+  ``workspace.core.v1`` baseline ``active`` fence（缺失不得解释为安全）。
+- list/get/search/history 对 deleted/purged fail closed，已知 UUID 不泄露
+  title/正文/actor 或可恢复元数据。
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from app.composition.agent_erasure_registry import owner_registry
+from app.contexts.agent_workspace.application.conversation_service import (
+    AgentWorkspaceService,
+)
+from app.contexts.agent_workspace.domain import (
+    ErasureFenceState,
+    LateBodyWriteRejectedError,
+)
+from app.contexts.agent_workspace.infrastructure.erasure_repository import (
+    AgentErasureRepository,
+)
+from app.contexts.agent_workspace.infrastructure.models import (
+    ConversationModel,
+)
+from tests.contexts.agent_control_plane.helpers import (
+    ACTOR_ID,
+    TENANT_ID,
+    create_baseline_fences,
+)
+from tests.contexts.agent_control_plane.test_writer_fence import (
+    _fence_to_state,
+    _text_command,
+)
+
+pytestmark = pytest.mark.asyncio
+
+_OWNER_KEY = "workspace.core.v1"
+
+
+async def _core_fence(session, conversation_id):
+    return await AgentErasureRepository(session).get_fence_for_update(
+        tenant_id=TENANT_ID, conversation_id=conversation_id, owner_key=_OWNER_KEY
+    )
+
+
+async def _ingress_sources(session, conversation_id) -> dict:
+    fence = await _core_fence(session, conversation_id)
+    assert fence is not None
+    return dict(fence.ingress_checkpoint.get("sources", {}))
+
+
+# ---------------------------------------------------------------------------
+# Item 3：真实 ingress_checkpoint（body 用 message seq 水位）
+# ---------------------------------------------------------------------------
+
+
+async def test_body_write_advances_ingress_checkpoint_to_written_seq(db_session):
+    """body ingress 真实 source key（Spec §6.2 第 4 步）：首次写用户正文后，
+    ``body_messages`` source 的 watermark 等于本写分配到的 message ``seq``
+    （连续水位），epoch 等于 Conversation 当前 ``purge_revision``。
+
+    不得用 ``last_body_write_at`` 或 fence ``revision`` 冒充：checkpoint 记录
+    的是真实 source 序号。失败形态：checkpoint 仍为空 ``{}``（S2-A 只推进
+    last_body_write_at/revision，未写 source key）。"""
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title="ingress body"
+    )
+    conversation_id = view.conversation.id
+
+    result = await service.reserve_user_turn(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        command=_text_command("first body"),
+    )
+    assert result.idempotent_replay is False
+    written_seq = result.message.seq
+
+    sources = await _ingress_sources(db_session, conversation_id)
+    body = sources.get("body_messages")
+    assert body is not None, "body_messages source key missing from checkpoint"
+    assert body["watermark"] == written_seq
+    conversation = await db_session.get(ConversationModel, conversation_id)
+    assert conversation is not None
+    assert body["epoch"] == conversation.purge_revision
+
+    fence = await _core_fence(db_session, conversation_id)
+    assert fence is not None
+    # digest 与 checkpoint 同源（shared canonical_digest），不伪造。
+    from app.shared.schemas.canonical_json import canonical_digest
+
+    assert fence.ingress_digest == canonical_digest(fence.ingress_checkpoint)
+
+
+async def test_second_body_write_advances_watermark_monotonically(db_session):
+    """连续水位随正文写单调推进：第二次写正文后 watermark 推进到新的 seq。"""
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title="ingress body 2"
+    )
+    conversation_id = view.conversation.id
+
+    first = await service.reserve_user_turn(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        command=_text_command("one"),
+    )
+    second = await service.reserve_user_turn(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        command=_text_command("two"),
+    )
+    assert first.message.seq < second.message.seq
+
+    sources = await _ingress_sources(db_session, conversation_id)
+    assert sources["body_messages"]["watermark"] == second.message.seq
+
+
+async def test_idempotent_replay_does_not_advance_watermark(db_session):
+    """幂等重放（同 client_message_id）不写新正文，watermark 不得推进——
+    checkpoint 只反映真实正文写。"""
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title="ingress replay"
+    )
+    conversation_id = view.conversation.id
+    command = _text_command("replayed body")
+
+    first = await service.reserve_user_turn(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        command=command,
+    )
+    replay = await service.reserve_user_turn(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        command=command,
+    )
+    assert replay.idempotent_replay is True
+    assert replay.message.seq == first.message.seq
+
+    sources = await _ingress_sources(db_session, conversation_id)
+    assert sources["body_messages"]["watermark"] == first.message.seq
+
+
+# ---------------------------------------------------------------------------
+# Item 2 + 3：title writer 接 fence + title ingress（用 Conversation revision）
+# ---------------------------------------------------------------------------
+
+
+async def test_rename_advances_title_ingress_checkpoint(db_session):
+    """title ingress 真实 source key：rename 写 title 后，``title`` source 的
+    watermark 等于 title CAS 后的 Conversation ``revision``，epoch 等于
+    ``purge_revision``。title 经 ``conversation_title`` 能力接 fence。"""
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title=None
+    )
+    conversation_id = view.conversation.id
+    await create_baseline_fences(
+        db_session, tenant_id=TENANT_ID, conversation_id=conversation_id
+    )
+    await db_session.commit()
+
+    await service.rename_conversation(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        title="renamed title",
+        expected_revision=1,
+    )
+    conversation = await db_session.get(ConversationModel, conversation_id)
+    assert conversation is not None
+
+    sources = await _ingress_sources(db_session, conversation_id)
+    title = sources.get("title")
+    assert title is not None, "title source key missing from checkpoint"
+    assert title["watermark"] == conversation.revision
+    assert title["epoch"] == conversation.purge_revision
+
+
+async def test_rename_with_erasing_fence_rejected(db_session):
+    """title writer fence（item 2）：fence erasing 时 rename 必须 fail closed
+    （LateBodyWriteRejectedError），不得在清除路径上改写 title。
+
+    失败形态：set_title 当前不接 fence，rename 直接成功（无拒绝）。"""
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title="original"
+    )
+    conversation_id = view.conversation.id
+    await create_baseline_fences(
+        db_session, tenant_id=TENANT_ID, conversation_id=conversation_id
+    )
+    await _fence_to_state(db_session, conversation_id, ErasureFenceState.ERASING)
+    await db_session.commit()
+
+    with pytest.raises(LateBodyWriteRejectedError):
+        await service.rename_conversation(
+            tenant_id=TENANT_ID,
+            actor_id=ACTOR_ID,
+            conversation_id=conversation_id,
+            title="should be rejected",
+            expected_revision=1,
+        )
+    await db_session.rollback()
+    conversation = await db_session.get(ConversationModel, conversation_id)
+    assert conversation is not None
+    assert conversation.title == "original"
+
+
+async def test_auto_title_with_erasing_fence_rejected(db_session):
+    """auto-title writer fence：fence 非 active 时 apply_auto_title fail closed。"""
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title=None
+    )
+    conversation_id = view.conversation.id
+    await create_baseline_fences(
+        db_session, tenant_id=TENANT_ID, conversation_id=conversation_id
+    )
+    await _fence_to_state(db_session, conversation_id, ErasureFenceState.ERASING)
+    await db_session.commit()
+
+    with pytest.raises(LateBodyWriteRejectedError):
+        await service.apply_auto_title(
+            tenant_id=TENANT_ID,
+            actor_id=ACTOR_ID,
+            conversation_id=conversation_id,
+            title="auto title",
+            expected_revision=1,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Item 2：Conversation create 建 baseline fence
+# ---------------------------------------------------------------------------
+
+
+async def test_create_conversation_establishes_baseline_core_fence(db_session):
+    """create 真实新建分支建 workspace.core.v1 baseline active fence（缺失不得
+    解释为安全）。幂等重放分支不重建 fence。"""
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, created = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title="baseline fence"
+    )
+    assert created is True
+    conversation_id = view.conversation.id
+
+    fence = await _core_fence(db_session, conversation_id)
+    assert fence is not None, "create must establish baseline core fence"
+    assert fence.state is ErasureFenceState.ACTIVE
+    conversation = await db_session.get(ConversationModel, conversation_id)
+    assert conversation is not None
+    assert fence.purge_revision == conversation.purge_revision
+    assert fence.hold_revision == conversation.hold_revision
+
+
+# ---------------------------------------------------------------------------
+# Item 1：read 路径 fail closed（已知 UUID 不泄露 title/正文/actor）
+# ---------------------------------------------------------------------------
+
+
+async def test_get_history_deleted_conversation_fail_closed(db_session):
+    """deleted 会话已知 UUID：get/list_messages 返回 gone/not-found，不泄露
+    title、正文或 actor。"""
+    from app.contexts.agent_workspace.domain import ConversationNotFoundError
+
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title="secret title"
+    )
+    conversation_id = view.conversation.id
+    await db_session.commit()
+
+    # 软删除（经 coordinator 维持不变量）。
+    from app.composition.agent_control_plane import ConversationExecutionCoordinator
+
+    await ConversationExecutionCoordinator(db_session).delete_conversation(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        expected_revision=1,
+    )
+    await db_session.commit()
+
+    # get（默认不含 deleted）-> gone。
+    got = await service._repo.get_conversation(
+        TENANT_ID, ACTOR_ID, conversation_id
+    )
+    assert got is None
+    # history（list_messages）-> not found，不泄露正文。
+    with pytest.raises(ConversationNotFoundError):
+        await service.list_messages(
+            tenant_id=TENANT_ID,
+            actor_id=ACTOR_ID,
+            conversation_id=conversation_id,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Item 6：reserve fence 校验先于幂等 replay 查找
+# ---------------------------------------------------------------------------
+
+
+async def test_reserve_fence_check_precedes_idempotent_replay(db_session):
+    """item 6（plan §R1-S2 S2-C 注记）：``reserve_user_turn`` 的 fence 校验必须
+    先于幂等 replay 查找——fence 非 active（purge 进行中）时，即使
+    ``client_message_id`` 已存在（本可幂等命中返回）也 fail closed
+    ``LateBodyWriteRejectedError``，不得因幂等命中而复活清除路径上的正文。
+
+    顺序错误形态：先查 replay 命中直接返回，fence 拒绝被绕过。"""
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title="fence before replay"
+    )
+    conversation_id = view.conversation.id
+    command = _text_command("existing body")
+    first = await service.reserve_user_turn(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        command=command,
+    )
+    assert first.idempotent_replay is False
+    await create_baseline_fences(
+        db_session, tenant_id=TENANT_ID, conversation_id=conversation_id
+    )
+    # 推进 fence 到 erasing（purge 进行中）。
+    await _fence_to_state(db_session, conversation_id, ErasureFenceState.ERASING)
+    await db_session.commit()
+
+    # 同一 client_message_id 重放：fence 校验先于 replay 命中 -> fail closed。
+    with pytest.raises(LateBodyWriteRejectedError):
+        await service.reserve_user_turn(
+            tenant_id=TENANT_ID,
+            actor_id=ACTOR_ID,
+            conversation_id=conversation_id,
+            command=command,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Item 7：concurrent double-restore race
+# ---------------------------------------------------------------------------
+
+
+async def test_concurrent_double_restore_race_single_winner(
+    db_session, session_factory
+):
+    """item 7（plan §R1-S2 S2-C 注记）：两个并发 restore（同一
+    expected_revision）只有一个成功——Conversation 行锁串行 + revision CAS
+    兜底，第二个 fail closed（revision_conflict / 状态非法），不得双推进
+    purge_revision 或重复取消 purge operation。
+
+    hold 生效中的 restore 归 hold slice（S5），本测试只覆盖无 hold 的
+    double-restore race。"""
+    import asyncio
+    from datetime import UTC, datetime, timedelta
+
+    from app.composition.agent_control_plane import ConversationExecutionCoordinator
+
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title="double restore"
+    )
+    conversation_id = view.conversation.id
+    await create_baseline_fences(
+        db_session, tenant_id=TENANT_ID, conversation_id=conversation_id
+    )
+    deleted_at = datetime(2026, 1, 1, tzinfo=UTC)
+    await ConversationExecutionCoordinator(db_session).delete_conversation(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        expected_revision=1,
+        now=deleted_at,
+    )
+    await db_session.commit()
+    restore_now = deleted_at + timedelta(days=1)
+
+    async def restore_once():
+        async with session_factory() as session, session.begin():
+            return await ConversationExecutionCoordinator(
+                session
+            ).restore_conversation(
+                tenant_id=TENANT_ID,
+                actor_id=ACTOR_ID,
+                conversation_id=conversation_id,
+                expected_revision=2,
+                now=restore_now,
+            )
+
+    results = await asyncio.gather(
+        restore_once(), restore_once(), return_exceptions=True
+    )
+    successes = [r for r in results if not isinstance(r, Exception)]
+    failures = [r for r in results if isinstance(r, Exception)]
+    # 恰好一个成功；另一个 fail closed（不双推进）。
+    assert len(successes) == 1, f"expected single winner, got {results!r}"
+    assert len(failures) == 1
+
+    conversation = await db_session.get(ConversationModel, conversation_id)
+    assert conversation is not None
+    assert conversation.state == "active"
+    # purge_revision 只推进一次（delete +1、restore +1），不得双推进。
+    assert conversation.purge_revision == 2
+
+
+# ---------------------------------------------------------------------------
+# Item 8：advance 非 active 守卫（writer-win race 原子兜底）
+# ---------------------------------------------------------------------------
+
+
+async def test_advance_ingress_checkpoint_rejects_non_active_fence(db_session):
+    """item 8（M6 反例）：``advance_ingress_checkpoint_for_update`` 对非 active
+    fence 必须 fail closed——这是「verdict 放行后被并发 purge 接管」race 的原子
+    兜底：fence 已 erasing 时不得为已拒正文补 checkpoint（不复活清除路径）。"""
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title="advance guard"
+    )
+    conversation_id = view.conversation.id
+    await create_baseline_fences(
+        db_session, tenant_id=TENANT_ID, conversation_id=conversation_id
+    )
+    await _fence_to_state(db_session, conversation_id, ErasureFenceState.ERASING)
+    await db_session.commit()
+
+    repo = AgentErasureRepository(db_session)
+    with pytest.raises(LateBodyWriteRejectedError):
+        await repo.advance_ingress_checkpoint_for_update(
+            tenant_id=TENANT_ID,
+            conversation_id=conversation_id,
+            owner_key=_OWNER_KEY,
+            source_key="body_messages",
+            watermark=1,
+            epoch=0,
+        )
+    await db_session.rollback()
+    # checkpoint 未被推进：rollback 后 fence 仍是 erasing 前的状态；被拒绝的
+    # body_messages advance 未落库（create 时的 title ingress 不受影响）。
+    fence = await _core_fence(db_session, conversation_id)
+    assert fence is not None
+    assert fence.state is ErasureFenceState.ERASING
+    sources = dict(fence.ingress_checkpoint.get("sources", {}))
+    # 拒绝的 advance 不得新增 body_messages source。
+    assert "body_messages" not in sources
+
+
+# ---------------------------------------------------------------------------
+# 复审返修专项（PR #511 独立 max P1x5/P2x2）
+# ---------------------------------------------------------------------------
+
+
+async def test_p1_5_baseline_digest_matches_checkpoint(db_session):
+    """P1-5：baseline fence 的 ingress_digest 必须等于 canonical_digest(
+    ingress_checkpoint)——不得「存 {} 却 hash 另一对象形状」。新建与 backfill
+    fence 在首次正文写入前即满足冻结契约。"""
+    from app.shared.schemas.canonical_json import canonical_digest
+
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    # title=None -> 纯 baseline（无 title ingress 推进），checkpoint 应为规范空。
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title=None
+    )
+    fence = await _core_fence(db_session, view.conversation.id)
+    assert fence is not None
+    assert fence.ingress_digest == canonical_digest(fence.ingress_checkpoint)
+    # 规范空 checkpoint（非裸 {}）。
+    assert fence.ingress_checkpoint == {"schema_version": 1, "sources": {}}
+
+
+async def test_p1_4_create_with_initial_title_advances_title_ingress(db_session):
+    """P1-4：create 携带初始 title（title_source=user）时，title ingress 必须
+    同事务推进到创建 revision；仅 title=None 才是 tombstone 不推进。"""
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title="initial title"
+    )
+    conversation_id = view.conversation.id
+    conversation = await db_session.get(ConversationModel, conversation_id)
+    assert conversation is not None
+    assert conversation.title == "initial title"
+
+    sources = await _ingress_sources(db_session, conversation_id)
+    title = sources.get("title")
+    assert title is not None, "create with initial title must advance title ingress"
+    assert title["watermark"] == conversation.revision
+    assert title["epoch"] == conversation.purge_revision
+
+
+async def test_p1_3_list_rejects_deleted_state(db_session):
+    """P1-3：公开 list/search 拒绝 state=deleted——不得返回原始 title 或搜索
+    MessagePart.text_content（deleted/purged fail-closed）。deleted 恢复走
+    get_conversation(include_deleted=True) redacted 路径。"""
+    from app.contexts.agent_workspace.domain import (
+        ConversationState,
+        DeletedConversationListingError,
+    )
+
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    with pytest.raises(DeletedConversationListingError):
+        await service.list_conversations(
+            tenant_id=TENANT_ID,
+            actor_id=ACTOR_ID,
+            state=ConversationState.DELETED,
+        )
+    # search 同样拒绝（带 query）。
+    with pytest.raises(DeletedConversationListingError):
+        await service.list_conversations(
+            tenant_id=TENANT_ID,
+            actor_id=ACTOR_ID,
+            state=ConversationState.DELETED,
+            query="anything",
+        )
+
+
+async def test_p1_3_include_deleted_returns_redacted_envelope(db_session):
+    """P1-3：deleted 恢复路径（get_conversation include_deleted=True）返回
+    redacted envelope——保留恢复所需 id/state/revision/purge_after，但 title
+    与 actor（created_by）置 None，不泄露原始标题/主体。"""
+    from app.composition.agent_control_plane import ConversationExecutionCoordinator
+
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title="sensitive title"
+    )
+    conversation_id = view.conversation.id
+    await db_session.commit()
+    await ConversationExecutionCoordinator(db_session).delete_conversation(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        expected_revision=1,
+    )
+    await db_session.commit()
+
+    deleted = await service.get_conversation(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        include_deleted=True,
+    )
+    conv = deleted.conversation
+    assert conv.state.value == "deleted"
+    # redacted envelope：恢复字段保留，title/actor 不泄露。
+    assert conv.title is None
+    assert conv.created_by is None
+    assert conv.id == conversation_id
+    assert conv.purge_after is not None
+    assert conv.revision >= 1
+
+
+async def test_p2_6_verdict_does_not_advance_on_idempotent_replay(db_session):
+    """P2-6：verdict（require_body_write_fence_for_update）不推进
+    last_body_write_at/revision——幂等 replay（不写新正文）不得空推进 fence。
+    只有真实正文写经 advance_ingress 推进。"""
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title=None
+    )
+    conversation_id = view.conversation.id
+    command = _text_command("replay body")
+    await service.reserve_user_turn(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        command=command,
+    )
+    fence_after_write = await _core_fence(db_session, conversation_id)
+    assert fence_after_write is not None
+    revision_after_write = fence_after_write.revision
+    last_write_after_write = fence_after_write.last_body_write_at
+
+    # 幂等重放（同 client_message_id，不写新正文）：经 verdict 放行但不推进。
+    replay = await service.reserve_user_turn(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        command=command,
+    )
+    assert replay.idempotent_replay is True
+    fence_after_replay = await _core_fence(db_session, conversation_id)
+    assert fence_after_replay is not None
+    # verdict 不推进：revision 与 last_body_write_at 与首次写后一致。
+    assert fence_after_replay.revision == revision_after_write
+    assert fence_after_replay.last_body_write_at == last_write_after_write
+
+
+async def test_p2_7_advance_validates_source_key_watermark_epoch(db_session):
+    """P2-7：advance_ingress_checkpoint_for_update 自校验——非受控
+    source_key、非正 watermark、stale epoch（!= purge_revision）一律 fail
+    closed，不靠调用约定。"""
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title=None
+    )
+    conversation_id = view.conversation.id
+    await create_baseline_fences(
+        db_session, tenant_id=TENANT_ID, conversation_id=conversation_id
+    )
+    await db_session.commit()
+    repo = AgentErasureRepository(db_session)
+
+    # 任意 source_key fail closed。
+    with pytest.raises(ValueError, match="unknown ingress source_key"):
+        await repo.advance_ingress_checkpoint_for_update(
+            tenant_id=TENANT_ID,
+            conversation_id=conversation_id,
+            owner_key=_OWNER_KEY,
+            source_key="evil_free_text",
+            watermark=1,
+            epoch=0,
+        )
+    # 非正 watermark fail closed。
+    with pytest.raises(ValueError, match="watermark must be >= 1"):
+        await repo.advance_ingress_checkpoint_for_update(
+            tenant_id=TENANT_ID,
+            conversation_id=conversation_id,
+            owner_key=_OWNER_KEY,
+            source_key="body_messages",
+            watermark=0,
+            epoch=0,
+        )
+    # stale epoch（!= purge_revision）fail closed。
+    with pytest.raises(ValueError, match="does not match conversation purge_revision"):
+        await repo.advance_ingress_checkpoint_for_update(
+            tenant_id=TENANT_ID,
+            conversation_id=conversation_id,
+            owner_key=_OWNER_KEY,
+            source_key="body_messages",
+            watermark=1,
+            epoch=99,
+        )
+
+
+async def test_p1_1_assistant_projection_advances_body_checkpoint(
+    db_session, session_factory
+):
+    """P1-1：assistant 正文投影（project_assistant_message）必须同事务推进
+    body_messages checkpoint——watermark 记录分配到的 message seq。正文、
+    checkpoint、receipt 一起 commit。"""
+    import hashlib
+    import uuid as _uuid
+
+    from sqlalchemy import select
+
+    from app.composition.agent_control_plane import (
+        AgentBridgeDispatcher,
+        ConversationExecutionCoordinator,
+    )
+    from app.contexts.agent_execution.application.run_coordinator import (
+        RunCoordinator,
+    )
+    from app.contexts.agent_execution.domain import (
+        RunStatus,
+        SnapshotClassification,
+        TerminalResult,
+    )
+    from app.contexts.agent_execution.infrastructure.models import (
+        ExecutionOutboxModel,
+    )
+    from tests.contexts.agent_control_plane.helpers import (
+        StaticOutputReader,
+        bootstrap_workspace,
+        turn_command,
+    )
+
+    content = b"# assistant checkpoint"
+    conversation_id, identity, launch = await bootstrap_workspace(db_session)
+    receipt = await ConversationExecutionCoordinator(db_session).submit_turn(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        command=turn_command(identity, "trigger"),
+        launch=launch,
+    )
+    await db_session.commit()
+    run = await AgentBridgeDispatcher(
+        session_factory, worker_id="p11-setup"
+    ).dispatch_turn(event_id=receipt.event_id)
+    assert run is not None
+    terminal_message_id = _uuid.uuid4()
+    async with session_factory() as session, session.begin():
+        started, _ = await ConversationExecutionCoordinator(session).start_run(
+            tenant_id=TENANT_ID, run_id=run.id, expected_revision=1
+        )
+        running, _ = await RunCoordinator(session).transition_run(
+            tenant_id=TENANT_ID,
+            run_id=run.id,
+            expected_status=RunStatus.STARTING,
+            expected_revision=started.status_revision,
+            target_status=RunStatus.RUNNING,
+            summary="go",
+        )
+        await RunCoordinator(session).commit_terminal(
+            tenant_id=TENANT_ID,
+            run_id=run.id,
+            expected_status=RunStatus.RUNNING,
+            expected_revision=running.status_revision,
+            result=TerminalResult(
+                outcome="completed",
+                code="ok",
+                reason="ready",
+                output_ref=f"out-{run.id}",
+                output_digest=hashlib.sha256(content).hexdigest(),
+                output_size=len(content),
+                output_media_type="text/markdown",
+                output_classification=SnapshotClassification.INTERNAL,
+                terminal_message_id=terminal_message_id,
+            ),
+        )
+    outbox = await db_session.scalar(
+        select(ExecutionOutboxModel).where(
+            ExecutionOutboxModel.aggregate_id == run.id
+        )
+    )
+    assert outbox is not None
+
+    # 投影 assistant 正文。
+    dispatcher = AgentBridgeDispatcher(
+        session_factory,
+        worker_id="p11-output",
+        output_reader=StaticOutputReader(content),
+    )
+    assert await dispatcher.dispatch_output(event_id=outbox.id) is True
+
+    # body_messages checkpoint 已推进到 assistant message 的 seq（>= 用户正文 seq）。
+    fence = await _core_fence(db_session, conversation_id)
+    assert fence is not None
+    sources = dict(fence.ingress_checkpoint.get("sources", {}))
+    body = sources.get("body_messages")
+    assert body is not None, "assistant projection must advance body_messages"
+    # assistant message seq=2（bootstrap 用户 turn seq=1）。
+    assert body["watermark"] == 2
+    conversation = await db_session.get(ConversationModel, conversation_id)
+    assert conversation is not None
+    assert body["epoch"] == conversation.purge_revision
+
+
+async def test_p1_2_ensure_fence_returns_created_flag(db_session):
+    """P1-2：ensure_fence_under_owner_lock 返回 created 标志，且全程在
+    Conversation 行锁 + owner lock 内探测（无锁前探测）。新建 True、既有
+    active 幂等 False。"""
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title=None
+    )
+    conversation_id = view.conversation.id
+    repo = AgentErasureRepository(db_session)
+    # create 已建 workspace.core fence（active）-> ensure 幂等返回 created=False。
+    _, created_existing = await repo.ensure_fence_under_owner_lock(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        owner_key=_OWNER_KEY,
+    )
+    assert created_existing is False
+    # 缺失 owner（其余 registry owner）-> ensure 新建 created=True。
+    other = next(
+        o.owner_key for o in owner_registry() if o.owner_key != _OWNER_KEY
+    )
+    _, created_new = await repo.ensure_fence_under_owner_lock(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        owner_key=other,
+    )
+    assert created_new is True
+
+
+async def test_p2_4_existing_fence_writer_backfill_no_reversed_wait(
+    db_session, session_factory, monkeypatch
+):
+    """P2-4（复审 round3）：预建 committed fence，writer 仅持 Conversation 行锁
+    即暂停，再并发 backfill——证明 backfill 经 ensure 的 Conversation 行锁 ->
+    owner lock -> fence 同锁序，**在拿到 Conversation 行锁前不触达 fence**。
+
+    与从缺 fence 出发的旧并发测试互补：本条覆盖「已有 fence + writer/backfill
+    并发」，检测 fence-before-Conversation 探测回归（反向锁序 AB-BA）。
+
+    杀旧反向锁序的关键时序（round3 P2 复审）：writer 在 require 取 fence 之前
+    就停在 Conversation 行锁上。若 backfill 旧实现「先 get_fence_for_update 锁
+    fence、再进 ensure 锁 Conversation」，它会**先**触达 fence（在 writer 释放
+    Conversation 前）。用 monkeypatch 在 backfill 会话的 ``get_fence_for_update``
+    首次返回时发事件：正确实现在 writer 释放前**不得**触发该事件；pre-probe
+    变异会先触发事件，断言变红。"""
+    import asyncio
+
+    from app.contexts.agent_workspace.application.bridge import (
+        AgentWorkspaceBridgeService,
+    )
+
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title="existing fence"
+    )
+    conversation_id = view.conversation.id
+    # 预建 committed fence（全部 owner active），使 backfill 走「已有 fence」路径。
+    await create_baseline_fences(
+        db_session, tenant_id=TENANT_ID, conversation_id=conversation_id
+    )
+    await db_session.commit()
+
+    writer_holds_conv_lock = asyncio.Event()
+    release_writer = asyncio.Event()
+    backfill_touched_fence = asyncio.Event()
+
+    async def writer():
+        # writer 仅持 Conversation 行锁（与正文写第一步一致）即暂停——**不**先
+        # 取 owner lock/fence。这样若 backfill 走 fence-first，它会先抢到 fence、
+        # 再阻塞在 Conversation 上；writer 恢复后申请 fence 即成 AB-BA。
+        async with session_factory() as session, session.begin():
+            await AgentWorkspaceBridgeService(session).lock_owned_conversation(
+                tenant_id=TENANT_ID,
+                actor_id=ACTOR_ID,
+                conversation_id=conversation_id,
+                include_deleted=False,
+            )
+            writer_holds_conv_lock.set()
+            await release_writer.wait()
+
+    # 仅对 backfill 会话的 AgentErasureRepository 装 instrument：首个
+    # get_fence_for_update 返回即发事件。正确实现中，ensure 在拿到 Conversation
+    # 行锁 + owner lock 后才调它——即 writer 释放 Conversation 之后。
+    real_get = AgentErasureRepository.get_fence_for_update
+
+    async def _instrumented(self, *, tenant_id, conversation_id, owner_key):
+        result = await real_get(
+            self,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key=owner_key,
+        )
+        backfill_touched_fence.set()
+        return result
+
+    async def backfill():
+        # backfill 经 ensure_fence_under_owner_lock（Conversation 行锁 -> owner
+        # lock -> fence）：对已有 fence 幂等返回，不得 fence-before-Conversation。
+        async with session_factory() as session, session.begin():
+            with monkeypatch.context() as mp:
+                mp.setattr(
+                    AgentErasureRepository,
+                    "get_fence_for_update",
+                    _instrumented,
+                )
+                await AgentErasureRepository(
+                    session
+                ).ensure_fence_under_owner_lock(
+                    tenant_id=TENANT_ID,
+                    conversation_id=conversation_id,
+                    owner_key=_OWNER_KEY,
+                )
+
+    writer_task = asyncio.create_task(writer())
+    backfill_task: asyncio.Task | None = None
+    try:
+        # writer 已持 Conversation 行锁（未取 fence）。
+        await asyncio.wait_for(writer_holds_conv_lock.wait(), timeout=5)
+        backfill_task = asyncio.create_task(backfill())
+        # backfill 应阻塞在 Conversation 行锁上（同锁序串行），**尚未**触达
+        # fence。若旧 fence-first：它已先拿到 fence（事件触发）并阻塞在
+        # Conversation——此时 writer 恢复取 fence 即 AB-BA。故此处事件不得触发。
+        await asyncio.sleep(0.5)
+        assert not backfill_task.done()
+        assert not backfill_touched_fence.is_set(), (
+            "backfill touched the fence before the writer released the "
+            "Conversation lock — fence-before-Conversation (reversed lock order)"
+        )
+        release_writer.set()
+        await asyncio.wait_for(writer_task, timeout=5)
+        # writer 释放后 backfill 串行完成（拿到 Conversation -> owner -> fence）。
+        await asyncio.wait_for(backfill_task, timeout=5)
+        assert backfill_touched_fence.is_set()
+    finally:
+        release_writer.set()
+        for task in (writer_task, backfill_task):
+            if task is not None and not task.done():
+                task.cancel()
+
+    async with session_factory() as session:
+        fence = await AgentErasureRepository(session).get_fence_for_update(
+            tenant_id=TENANT_ID, conversation_id=conversation_id, owner_key=_OWNER_KEY
+        )
+        assert fence is not None
+        assert fence.state is ErasureFenceState.ACTIVE

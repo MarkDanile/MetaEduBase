@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
+from app.composition.agent_erasure_registry import owner_registry
 from app.contexts.agent_execution.application.execution_identity_service import (
     CompatibilityIdentity,
     ExecutionIdentityService,
@@ -15,7 +17,11 @@ from app.contexts.agent_workspace.application.conversation_service import (
 from app.contexts.agent_workspace.application.dto import MessagePartInput, TurnCommand
 from app.contexts.agent_workspace.application.ports import TerminalOutput
 from app.contexts.agent_workspace.domain import MessagePartType
+from app.contexts.agent_workspace.infrastructure.erasure_repository import (
+    AgentErasureRepository,
+)
 from app.shared.schemas.agent_integration import TurnLaunchSpecV1
+from tests.conftest import TEST_DB_URL
 from tests.contexts.agent_execution.e1_helpers import make_budget
 
 TENANT_ID = uuid.UUID("71000000-0000-0000-0000-000000000001")
@@ -73,3 +79,88 @@ def turn_command(identity: CompatibilityIdentity, text: str) -> TurnCommand:
         parts=(MessagePartInput(type=MessagePartType.TEXT, text=text),),
         agent_definition_version_id=identity.agent_definition_version.id,
     )
+
+
+async def create_baseline_fences(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    skip_owner: str | None = None,
+) -> None:
+    """为全部 registry owner 建 active baseline fence（等价 backfill 已覆盖）。
+
+    restore 要求 fence 集合完整且全部 active；``skip_owner`` 用于构造
+    「缺失 fail closed」反例。
+    """
+    repo = AgentErasureRepository(session)
+    for owner in owner_registry():
+        if owner.owner_key == skip_owner:
+            continue
+        await repo.create_fence_under_owner_lock(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key=owner.owner_key,
+        )
+
+
+async def create_baseline_fences_via_engine(
+    *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+) -> None:
+    """API 测试用：经独立 engine 以生产 create_fence 路径建 baseline fence。"""
+    engine = create_async_engine(TEST_DB_URL, echo=False, poolclass=NullPool)
+    try:
+        factory = async_sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with factory() as session, session.begin():
+            await create_baseline_fences(
+                session, tenant_id=tenant_id, conversation_id=conversation_id
+            )
+    finally:
+        await engine.dispose()
+
+
+async def set_core_fence_erasing_via_engine(
+    *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+) -> None:
+    """API 测试用：经独立 engine 把 workspace.core.v1 fence 推进 erasing。
+
+    用于 409 E2E：fence 非 active 时 writer（rename 等）必须 fail closed
+    ``late_body_write_rejected``。经生产 CAS 路径（owner lock -> fence FOR UPDATE）
+    而非裸 UPDATE，保持锁序一致。
+    """
+    from app.composition.agent_erasure_locks import acquire_owner_lock
+    from app.contexts.agent_workspace.domain import ErasureFenceState
+
+    engine = create_async_engine(TEST_DB_URL, echo=False, poolclass=NullPool)
+    try:
+        factory = async_sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with factory() as session, session.begin():
+            await acquire_owner_lock(
+                session,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                owner_key="workspace.core.v1",
+            )
+            repo = AgentErasureRepository(session)
+            fence = await repo.get_fence_for_update(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                owner_key="workspace.core.v1",
+            )
+            assert fence is not None
+            await repo.transition_fence_state(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                owner_key="workspace.core.v1",
+                expected_state=ErasureFenceState.ACTIVE,
+                expected_revision=fence.revision,
+                new_state=ErasureFenceState.ERASING,
+                purge_revision=1,
+                hold_revision=0,
+            )
+    finally:
+        await engine.dispose()

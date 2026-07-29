@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.composition.agent_erasure_locks import acquire_owner_lock
+from app.composition.agent_erasure_registry import owner_registry
 from app.contexts.agent_workspace.application.command_digest import (
     message_content_digest,
     message_part_digest,
@@ -27,6 +31,11 @@ from app.contexts.agent_workspace.application.ports import (
 from app.contexts.agent_workspace.domain import (
     ContentClassification,
     Conversation,
+    ConversationPurgedError,
+    ConversationPurgeInProgressError,
+    ConversationRestoreNotAllowedError,
+    ErasureFence,
+    ErasureFenceState,
     MessageContentState,
     MessagePartType,
     ResourceReferenceForbiddenError,
@@ -35,6 +44,9 @@ from app.contexts.agent_workspace.domain import (
 )
 from app.contexts.agent_workspace.infrastructure.bridge_repository import (
     WorkspaceBridgeRepository,
+)
+from app.contexts.agent_workspace.infrastructure.erasure_repository import (
+    AgentErasureRepository,
 )
 from app.contexts.agent_workspace.infrastructure.repository import (
     AgentWorkspaceRepository,
@@ -69,6 +81,57 @@ class PoisonedWorkspaceEvent:
     tenant_id: uuid.UUID
     event_id: uuid.UUID
     error_code: str
+
+
+def _require_restorable_fences(fences: Sequence[ErasureFence]) -> None:
+    """restore 的 fence 集合裁决（Spec §3/§4.2，fail closed）。
+
+    预期 owner 集合 = code-defined ``owner_registry()``（与 backfill 建的
+    baseline fence 一一对应）。判定优先级（确定性，强信号优先）：
+
+    - 任一 fence ``erased`` -> ConversationPurgedError（终态优先）；
+    - 任一 fence ``blocked/erasing`` -> ConversationPurgeInProgressError；
+    - 未知 owner fence、预期 fence 缺失、owner_version 漂移 ->
+      ConversationRestoreNotAllowedError（没有查到 fence 不是隐式安全；
+      缺失不视为安全，即使对从未建过 fence 的全新/历史会话也 fail closed）。
+    """
+    if any(fence.state is ErasureFenceState.ERASED for fence in fences):
+        raise ConversationPurgedError(
+            "conversation owner purge has completed; cannot be restored"
+        )
+    if any(
+        fence.state in {ErasureFenceState.BLOCKED, ErasureFenceState.ERASING}
+        for fence in fences
+    ):
+        raise ConversationPurgeInProgressError(
+            "conversation owner purge is in progress or paused; "
+            "cannot be restored"
+        )
+    expected = {owner.owner_key: owner for owner in owner_registry()}
+    unknown = sorted(
+        fence.owner_key for fence in fences if fence.owner_key not in expected
+    )
+    if unknown:
+        raise ConversationRestoreNotAllowedError(
+            f"conversation has erasure fences from unknown owners: {unknown}"
+        )
+    by_owner = {fence.owner_key: fence for fence in fences}
+    missing = sorted(key for key in expected if key not in by_owner)
+    if missing:
+        raise ConversationRestoreNotAllowedError(
+            "conversation erasure fence ledger is incomplete; "
+            f"missing owners: {missing}"
+        )
+    drifted = sorted(
+        owner_key
+        for owner_key, fence in by_owner.items()
+        if fence.owner_version != expected[owner_key].owner_version
+    )
+    if drifted:
+        raise ConversationRestoreNotAllowedError(
+            "conversation erasure fence owner version no longer matches the "
+            f"installed registry: {drifted}"
+        )
 
 
 class AgentWorkspaceBridgeService:
@@ -368,7 +431,12 @@ class AgentWorkspaceBridgeService:
         consumed_at: datetime,
     ) -> None:
         self._require_event_digest(event, payload_digest)
-        await self._bridge_repo.lock_projection_conversation(event)
+        # suppressed tombstone 路径：purge running/completed 时只写无正文
+        # redacted 占位（联合契约），不经 output_reader 读 output ref，锁
+        # Conversation 时放行 purge_fenced，不得把迟到 output 拒进死信。
+        await self._bridge_repo.lock_projection_conversation(
+            event, allow_purge_fenced=True
+        )
         should_project = await self._bridge_repo.begin_output_receipt(
             event=event, payload_digest=payload_digest
         )
@@ -465,6 +533,7 @@ class AgentWorkspaceBridgeService:
         conversation_id: uuid.UUID,
         expected_revision: int,
         purge_after: datetime,
+        deleted_at: datetime | None = None,
     ) -> Conversation:
         return await self._workspace_repo.soft_delete_after_guard(
             tenant_id=tenant_id,
@@ -472,6 +541,7 @@ class AgentWorkspaceBridgeService:
             conversation_id=conversation_id,
             expected_revision=expected_revision,
             purge_after=purge_after,
+            deleted_at=deleted_at,
         )
 
     async def restore_after_guard(
@@ -481,12 +551,39 @@ class AgentWorkspaceBridgeService:
         actor_id: uuid.UUID,
         conversation_id: uuid.UUID,
         expected_revision: int,
+        now: datetime | None = None,
     ) -> Conversation:
+        # R1-S2 恢复截止（Spec §3/§4.2）：restore 要求预期 owner fence 集合
+        # （registry 全部固定 owner）完整且全部 active，与 purge 竞争时不得
+        # 复活正文。锁序：Guard -> Conversation row -> owner advisory lock ->
+        # fence FOR UPDATE（单 owner 操作只取 workspace.core.v1 一个 owner
+        # lock）。生产裁决时间在全部锁取得之后读数据库 clock_timestamp()
+        # （请求可能在截止前进入、锁等待跨截止，锁后采样必须 fail closed）；
+        # 测试经 now 注入时钟。
+        await acquire_owner_lock(
+            self._session,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key="workspace.core.v1",
+        )
+        fences = await AgentErasureRepository(
+            self._session
+        ).list_fences_for_update(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
+        _require_restorable_fences(fences)
+        effective_now = now
+        if effective_now is None:
+            effective_now = await self._session.scalar(
+                select(func.clock_timestamp())
+            )
+            assert effective_now is not None
         return await self._workspace_repo.restore(
             tenant_id=tenant_id,
             actor_id=actor_id,
             conversation_id=conversation_id,
             expected_revision=expected_revision,
+            now=effective_now,
         )
 
     @staticmethod

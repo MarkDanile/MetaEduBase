@@ -228,7 +228,6 @@ class ConversationExecutionCoordinator:
         expected_revision: int,
         now: datetime | None = None,
     ) -> Conversation:
-        effective_now = now or datetime.now(UTC)
         await self._guard.acquire(
             self._session,
             tenant_id=tenant_id,
@@ -258,12 +257,22 @@ class ConversationExecutionCoordinator:
             raise ConversationHasNonTerminalRunError(
                 "Conversation has a non-terminal Agent Run"
             )
+        # 裁决时间必须在 Guard + Conversation 行锁之后采样；生产默认读数据库
+        # clock_timestamp（测试经 now 注入）。deleted_at 与 purge_after 同源
+        # （purge_after = deleted_at + 30 天恢复窗口，Spec §3）。
+        effective_now = now
+        if effective_now is None:
+            effective_now = await self._session.scalar(
+                select(func.clock_timestamp())
+            )
+            assert effective_now is not None
         return await self._workspace.soft_delete_after_guard(
             tenant_id=tenant_id,
             actor_id=actor_id,
             conversation_id=conversation_id,
             expected_revision=expected_revision,
             purge_after=effective_now + timedelta(days=30),
+            deleted_at=effective_now,
         )
 
     async def restore_conversation(
@@ -273,6 +282,7 @@ class ConversationExecutionCoordinator:
         actor_id: uuid.UUID,
         conversation_id: uuid.UUID,
         expected_revision: int,
+        now: datetime | None = None,
     ) -> Conversation:
         await self._guard.acquire(
             self._session,
@@ -285,11 +295,14 @@ class ConversationExecutionCoordinator:
             conversation_id=conversation_id,
             include_deleted=True,
         )
+        # 裁决时间在 bridge 内于 owner lock + fence FOR UPDATE 之后采样
+        # （生产默认 DB clock_timestamp）；now 仅作测试注入透传。
         return await self._workspace.restore_after_guard(
             tenant_id=tenant_id,
             actor_id=actor_id,
             conversation_id=conversation_id,
             expected_revision=expected_revision,
+            now=now,
         )
 
     async def acquire_purge_preflight(

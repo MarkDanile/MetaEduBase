@@ -5,8 +5,9 @@ from collections import defaultdict
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, and_, exists, func, literal, or_, select
+from sqlalchemy import DateTime, and_, exists, func, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.agent_workspace.domain import (
@@ -16,6 +17,8 @@ from app.contexts.agent_workspace.domain import (
     ConversationIdConflictError,
     ConversationNotFoundError,
     ConversationPurgedError,
+    ConversationPurgeInProgressError,
+    ConversationRecoveryExpiredError,
     ConversationState,
     ConversationTitleSource,
     ConversationUserState,
@@ -30,6 +33,9 @@ from app.contexts.agent_workspace.domain import (
     RevisionConflictError,
     TitleSourceConflictError,
     TurnDispatchState,
+)
+from app.contexts.agent_workspace.infrastructure.erasure_repository import (
+    AgentErasureRepository,
 )
 from app.contexts.agent_workspace.infrastructure.models import (
     ConversationModel,
@@ -76,6 +82,9 @@ class AgentWorkspaceRepository:
             .returning(ConversationModel.id)
         )
         inserted_id = (await self._session.execute(stmt)).scalar_one_or_none()
+        # 创建命令必有 actor（create 路径 ``created_by`` 恒为非 None）；仅
+        # deleted 读投影才会 redact 为 None，不会出现在 create。
+        assert conversation.created_by is not None
         row = await self._get_owned_row(
             conversation.tenant_id,
             conversation.created_by,
@@ -88,6 +97,31 @@ class AgentWorkspaceRepository:
             raise IdempotencyConflictError(
                 "conversation id was already used with a different create command"
             )
+        if inserted_id is not None:
+            # 真实新建分支（Spec §4.2/§6.2，S2-C）：为 workspace.core.v1 建
+            # baseline active fence——缺失 fence 不得被解释为安全。经
+            # create_fence_under_owner_lock（自带 Conversation 行锁 -> owner
+            # lock -> fence，防 AB-BA）。幂等重放分支（行已存在）不重建 fence。
+            # 其余 owner 由受控 backfill 补齐。
+            erasure = AgentErasureRepository(self._session)
+            await erasure.create_fence_under_owner_lock(
+                tenant_id=conversation.tenant_id,
+                conversation_id=conversation.id,
+                owner_key="workspace.core.v1",
+            )
+            # S2-C P1-4 复审：初始 title 非空（title_source=user，真实 title 写）
+            # 时必须同事务推进 title ingress——watermark 取创建时的 Conversation
+            # revision（=1），epoch 取 purge_revision（=0）。仅 title=None（none
+            # tombstone）不算 title 写、不推进。
+            if conversation.title is not None:
+                await erasure.advance_ingress_checkpoint_for_update(
+                    tenant_id=conversation.tenant_id,
+                    conversation_id=conversation.id,
+                    owner_key="workspace.core.v1",
+                    source_key="title",
+                    watermark=row.revision,
+                    epoch=row.purge_revision,
+                )
         return self._to_conversation(row), inserted_id is not None
 
     async def get_conversation(
@@ -230,10 +264,32 @@ class AgentWorkspaceRepository:
         self._check_revision(row, expected_revision)
         if require_no_title and row.title_source != ConversationTitleSource.NONE.value:
             raise TitleSourceConflictError("conversation title is no longer unset")
+        # Spec §6.2（S2-C）：title 是 workspace.core.v1 的 conversation_title
+        # 能力，rename/auto-title 与正文同走 fence 裁决——fence 非 active
+        # （purge 进行中/已完成）fail closed，不得在清除路径上改写 title。
+        await AgentErasureRepository(
+            self._session
+        ).require_body_write_fence_for_update(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key="workspace.core.v1",
+        )
         row.title = title
         row.title_source = source.value
         row.revision += 1
         row.updated_at = datetime.now(UTC)
+        # title ingress（S2-C 契约注记）：watermark 取 title CAS 后的 Conversation
+        # revision，epoch 取 purge_revision；与 title 写同一事务 commit。
+        await AgentErasureRepository(
+            self._session
+        ).advance_ingress_checkpoint_for_update(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key="workspace.core.v1",
+            source_key="title",
+            watermark=row.revision,
+            epoch=row.purge_revision,
+        )
         await self._session.flush()
         return self._to_conversation(row)
 
@@ -267,6 +323,7 @@ class AgentWorkspaceRepository:
         actor_id: uuid.UUID,
         conversation_id: uuid.UUID,
         expected_revision: int,
+        now: datetime | None = None,
     ) -> Conversation:
         row = await self._require_owned_row_for_update(
             tenant_id, actor_id, conversation_id, include_deleted=True
@@ -274,6 +331,29 @@ class AgentWorkspaceRepository:
         self._check_revision(row, expected_revision)
         if row.purged_at is not None:
             raise ConversationPurgedError("purged conversations cannot be restored")
+        # R1-S2 恢复截止（Spec §3）：purge_state=running|completed 拒绝普通恢复。
+        # 这些检查必须在清除 purge_after 之前、同一行锁下完成。
+        if row.purge_state in {
+            PurgeState.RUNNING.value,
+            PurgeState.COMPLETED.value,
+        }:
+            raise ConversationPurgeInProgressError(
+                "conversation purge is running or completed; cannot be restored"
+            )
+        # 生产默认裁决时间取数据库时钟（bridge 在锁后注入时尊重注入值）。
+        effective_now = now or await self._database_now()
+        # deleted 且 purge_after IS NULL：无法证明 now < purge_after -> fail
+        # closed，不得把「无截止记录」当作可恢复放行。
+        if row.state == ConversationState.DELETED.value:
+            if row.purge_after is None:
+                raise ConversationRecoveryExpiredError(
+                    "deleted conversation has no recovery deadline recorded; "
+                    "cannot prove the recovery window is still open"
+                )
+            if effective_now >= row.purge_after:
+                raise ConversationRecoveryExpiredError(
+                    "conversation recovery window has expired"
+                )
         if row.state not in {
             ConversationState.ARCHIVED.value,
             ConversationState.DELETED.value,
@@ -281,17 +361,48 @@ class AgentWorkspaceRepository:
             raise InvalidConversationStateError(
                 "only archived or deleted conversations can be restored"
             )
-        now = datetime.now(UTC)
-        row.state = ConversationState.ACTIVE.value
-        row.archived_at = None
-        row.archived_by = None
-        row.deleted_at = None
-        row.deleted_by = None
-        row.purge_after = None
-        row.purge_state = PurgeState.NOT_SCHEDULED.value
-        row.revision += 1
-        row.updated_at = now
+        # Spec §3-3：恢复成功通过 CAS 取消尚未开始的 purge operation（置
+        # cancelled 终态、保留审计行）；与下方 Conversation 状态恢复同一事务
+        # 原子提交。started 的 checkpoint 会在取消前 fail closed。
+        await AgentErasureRepository(
+            self._session
+        ).cancel_scheduled_operations_for_restore(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            now=effective_now,
+        )
+        # revision/hold/purge CAS：Conversation FOR UPDATE 行锁已串行并发写
+        # （任何 hold/purge 变更须先取同一行锁），UPDATE 谓词作兜底；恢复同时
+        # 推进 purge_revision，旧 purge lease/revision 随后失效（Spec §3-3）。
+        result = await self._session.execute(
+            update(ConversationModel)
+            .where(
+                ConversationModel.tenant_id == tenant_id,
+                ConversationModel.id == row.id,
+                ConversationModel.revision == row.revision,
+                ConversationModel.hold_revision == row.hold_revision,
+                ConversationModel.purge_revision == row.purge_revision,
+            )
+            .values(
+                state=ConversationState.ACTIVE.value,
+                archived_at=None,
+                archived_by=None,
+                deleted_at=None,
+                deleted_by=None,
+                purge_after=None,
+                purge_state=PurgeState.NOT_SCHEDULED.value,
+                purge_revision=row.purge_revision + 1,
+                revision=row.revision + 1,
+                updated_at=effective_now,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        if not isinstance(result, CursorResult) or result.rowcount != 1:
+            raise RevisionConflictError(
+                "conversation revision/hold/purge token changed during restore"
+            )
         await self._session.flush()
+        await self._session.refresh(row)
         return self._to_conversation(row)
 
     async def soft_delete_after_guard(
@@ -302,13 +413,18 @@ class AgentWorkspaceRepository:
         conversation_id: uuid.UUID,
         expected_revision: int,
         purge_after: datetime,
+        deleted_at: datetime | None = None,
     ) -> Conversation:
-        """Persist deletion after B1's coordinator has proved its execution guard."""
+        """Persist deletion after B1's coordinator has proved its execution guard.
+
+        deleted_at 与 purge_after 必须同源（purge_after = deleted_at + 恢复
+        窗口）；生产默认在锁后取数据库时钟，调用方注入同一采样值。
+        """
         row = await self._require_owned_row_for_update(
             tenant_id, actor_id, conversation_id
         )
         self._check_revision(row, expected_revision)
-        now = datetime.now(UTC)
+        now = deleted_at or await self._database_now()
         row.state = ConversationState.DELETED.value
         row.deleted_at = now
         row.deleted_by = actor_id
@@ -410,6 +526,17 @@ class AgentWorkspaceRepository:
             raise InvalidConversationStateError(
                 "new turns require an active conversation"
             )
+        # Spec §6.2 正文 writer fence：Conversation 行锁之后取 owner lock +
+        # fence FOR UPDATE，仅 workspace.core.v1 fence active 才允许写用户正文；
+        # purge 进行中/已完成 fail closed（late_body_write_rejected），不得复活
+        # 正在清除路径上的正文。
+        await AgentErasureRepository(
+            self._session
+        ).require_body_write_fence_for_update(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key="workspace.core.v1",
+        )
         existing_stmt = select(MessageModel).where(
             MessageModel.tenant_id == tenant_id,
             MessageModel.conversation_id == conversation_id,
@@ -464,6 +591,20 @@ class AgentWorkspaceRepository:
         row.next_run_queue_seq += 1
         row.last_activity_at = now
         row.updated_at = now
+        # Spec §6.2 第 5 步（S2-C）：正文写 + ingress checkpoint 同一事务 commit。
+        # body_messages source 的 watermark 记录本写分配到的真实 message seq
+        # （连续水位），epoch 取 Conversation 当前 purge_revision——不用
+        # last_body_write_at 或 fence revision 冒充 ingress checkpoint。
+        await AgentErasureRepository(
+            self._session
+        ).advance_ingress_checkpoint_for_update(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key="workspace.core.v1",
+            source_key="body_messages",
+            watermark=message_row.seq,
+            epoch=row.purge_revision,
+        )
         await self._session.flush()
         return self._to_message(message_row, tuple(parts)), True
 
@@ -513,6 +654,12 @@ class AgentWorkspaceRepository:
                 f"expected revision {expected_revision}, current revision is {row.revision}"
             )
 
+    async def _database_now(self) -> datetime:
+        """生产默认时钟源：数据库 ``clock_timestamp()``（不是应用进程时钟）。"""
+        now = await self._session.scalar(select(func.clock_timestamp()))
+        assert now is not None
+        return now
+
     async def _messages_with_parts(
         self, tenant_id: uuid.UUID, rows: Sequence[MessageModel]
     ) -> list[Message]:
@@ -545,13 +692,23 @@ class AgentWorkspaceRepository:
             raise ConversationIdConflictError(
                 "conversation actor is erased; snapshot unavailable"
             )
+        # R1-S2 S2-C P1-3 复审：deleted/purged fail-closed 适用于所有读投影，
+        # 包括 include_deleted 恢复路径与 DELETE 响应——已知 UUID 也不得泄露
+        # title、actor。deleted 会话只暴露恢复所需 envelope（id/state/revision/
+        # purge_after/deleted_at 等），title 置 None、actor（created_by/deleted_by/
+        # archived_by）置 None。active/archived 不受影响（正常返回 title/actor）。
+        is_deleted = row.state == ConversationState.DELETED.value
         return Conversation(
             id=row.id,
             tenant_id=row.tenant_id,
-            created_by=row.created_by,
+            created_by=None if is_deleted else row.created_by,
             creation_digest=row.creation_digest,
-            title=row.title,
-            title_source=ConversationTitleSource(row.title_source),
+            title=None if is_deleted else row.title,
+            title_source=(
+                ConversationTitleSource.NONE
+                if is_deleted
+                else ConversationTitleSource(row.title_source)
+            ),
             state=ConversationState(row.state),
             parent_conversation_id=row.parent_conversation_id,
             forked_from_message_id=row.forked_from_message_id,
@@ -559,9 +716,9 @@ class AgentWorkspaceRepository:
             next_run_queue_seq=row.next_run_queue_seq,
             last_activity_at=row.last_activity_at,
             archived_at=row.archived_at,
-            archived_by=row.archived_by,
+            archived_by=None if is_deleted else row.archived_by,
             deleted_at=row.deleted_at,
-            deleted_by=row.deleted_by,
+            deleted_by=None if is_deleted else row.deleted_by,
             purge_after=row.purge_after,
             purge_state=PurgeState(row.purge_state),
             purge_revision=row.purge_revision,

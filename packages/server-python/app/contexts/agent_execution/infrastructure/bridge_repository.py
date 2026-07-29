@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.composition.agent_suppression_reasons import suppression_reason_code
 from app.contexts.agent_execution.domain import (
     TERMINAL_RUN_STATUSES,
     ExecutionIntegrationConflictError,
@@ -486,7 +487,10 @@ class ExecutionBridgeRepository:
         normalized_reason = reason.strip()
         if not normalized_reason:
             raise ExecutionIntegrationConflictError("suppression reason is required")
-        stored_reason = normalized_reason[:500]
+        # P2（独立 max 复核）：decision_reason 只存受控 reason code，自由文本
+        # （可能含正文/提示词/secret）不落库也不进入 decision_digest 输入，与
+        # workspace tombstone 的 redacted_reason 归一到同一 code。
+        stored_reason = suppression_reason_code(normalized_reason)
         row.status = "cancelled"
         row.claimed_at = None
         row.claimed_by = None

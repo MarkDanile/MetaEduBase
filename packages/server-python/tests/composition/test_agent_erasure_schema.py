@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
 from pathlib import Path
 
@@ -199,7 +200,7 @@ async def _make_purge_operation(
 async def test_fence_create_and_get_for_update(db_session):
     repo = AgentErasureRepository(db_session)
     tenant_id, conversation_id = await _make_conversation(db_session)
-    fence = await repo.create_fence(
+    fence = await repo.create_fence_under_owner_lock(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         owner_key="workspace.core.v1",
@@ -222,7 +223,7 @@ async def test_fence_unknown_owner_fails_closed(db_session):
     repo = AgentErasureRepository(db_session)
     tenant_id, conversation_id = await _make_conversation(db_session)
     with pytest.raises(UnknownOwnerError):
-        await repo.create_fence(
+        await repo.create_fence_under_owner_lock(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             owner_key="workspace.unknown.v9",
@@ -233,7 +234,7 @@ async def test_fence_unknown_owner_fails_closed(db_session):
 async def test_fence_cas_conflict_and_erased_requires_ack(db_session):
     repo = AgentErasureRepository(db_session)
     tenant_id, conversation_id = await _make_conversation(db_session)
-    fence = await repo.create_fence(
+    fence = await repo.create_fence_under_owner_lock(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         owner_key="execution.core.v1",
@@ -325,7 +326,7 @@ async def test_fence_transition_fails_closed_on_stale_owner_version(db_session):
     fail closed（registry 变化 -> 不允许继续推进旧版本 fence）。"""
     repo = AgentErasureRepository(db_session)
     tenant_id, conversation_id = await _make_conversation(db_session)
-    fence = await repo.create_fence(
+    fence = await repo.create_fence_under_owner_lock(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         owner_key="workspace.core.v1",
@@ -360,7 +361,7 @@ async def test_fence_transition_rejects_fencing_token_regression(db_session):
     revision 的暂停 writer 会被错误放行，威胁 R1-AC3。等值合法（重试复用同 token）。"""
     repo = AgentErasureRepository(db_session)
     tenant_id, conversation_id = await _make_conversation(db_session)
-    fence = await repo.create_fence(
+    fence = await repo.create_fence_under_owner_lock(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         owner_key="workspace.core.v1",
@@ -440,7 +441,7 @@ async def test_fence_state_transition_table_4x4(db_session):
             tenant_id=tenant_id, conversation_id=conversation_id, owner_key="workspace.core.v1"
         )
         if existing is None:
-            existing = await repo.create_fence(
+            existing = await repo.create_fence_under_owner_lock(
                 tenant_id=tenant_id, conversation_id=conversation_id, owner_key="workspace.core.v1"
             )
         state, revision = existing.state, existing.revision
@@ -484,7 +485,7 @@ async def test_fence_state_transition_table_4x4(db_session):
 
     # --- from=active：仅 active→erasing 合法（其余三边均拒）---
     t, c = await _make()
-    fence = await repo.create_fence(
+    fence = await repo.create_fence_under_owner_lock(
         tenant_id=t, conversation_id=c, owner_key="workspace.core.v1"
     )
     await _expect_reject(t, c, S.ACTIVE, fence.revision, S.ACTIVE, 1, 0)
@@ -516,7 +517,9 @@ async def test_fence_state_transition_table_4x4(db_session):
     # --- 合法推进 token 下界：全部三条非 active 源边要求 purge_revision>=1 ---
     # active→erasing
     t, c = await _make()
-    f = await repo.create_fence(tenant_id=t, conversation_id=c, owner_key="workspace.core.v1")
+    f = await repo.create_fence_under_owner_lock(
+        tenant_id=t, conversation_id=c, owner_key="workspace.core.v1"
+    )
     await _expect_reject(t, c, S.ACTIVE, f.revision, S.ERASING, 0, 0)
     # erasing→erased / erasing→blocked
     st, rev = await _drive(t, c, [(S.ERASING, 1, 0, None)])
@@ -529,7 +532,9 @@ async def test_fence_state_transition_table_4x4(db_session):
     # --- 非 erased 边携带 ACK 一律 fail closed（不得静默丢弃 ACK）---
     # active→erasing 携带 ACK
     t, c = await _make()
-    f = await repo.create_fence(tenant_id=t, conversation_id=c, owner_key="workspace.core.v1")
+    f = await repo.create_fence_under_owner_lock(
+        tenant_id=t, conversation_id=c, owner_key="workspace.core.v1"
+    )
     await _expect_reject(t, c, S.ACTIVE, f.revision, S.ERASING, 1, 0, ack="a" * 64)
     # erasing→blocked 携带 ACK
     st, rev = await _drive(t, c, [(S.ERASING, 1, 0, None)])
@@ -1327,6 +1332,73 @@ async def test_backfill_report_does_not_retain_all_ids(session_factory):
 
 
 @pytest.mark.asyncio
+async def test_backfill_uses_owner_lock_path_no_ab_ba_with_writer(session_factory):
+    """S2-C item 4/8（M5 反例）：backfill 必须经
+    ``create_fence_under_owner_lock``（Conversation 行锁 -> owner lock -> fence），
+    与正文 writer 同锁序。并发 backfill 与惰性正文 writer 互不 PK 冲突、不
+    AB-BA 死锁，双方成功且 fence 唯一 active。
+
+    失败形态：backfill 绕过 Conversation 行锁（如裸 get_or_create / INSERT）
+    时，与持 Conversation 行锁等 owner lock 的 writer 形成 AB-BA；本测试以
+    并发执行验证双方在同锁序下串行完成、fence 不重复。"""
+    import asyncio
+
+    from app.contexts.agent_workspace.application.conversation_service import (
+        AgentWorkspaceService,
+    )
+    from tests.contexts.agent_control_plane.test_writer_fence import _text_command
+
+    async with session_factory() as session, session.begin():
+        tenant_id = uuid.uuid4()
+        conversation_id = await _insert_conversation(session, tenant_id=tenant_id)
+        # writer 需要 Conversation.created_by 作为 actor。
+        actor_id = (
+            await session.execute(
+                text(
+                    "SELECT created_by FROM metaedu.agent_conversations "
+                    "WHERE id = :id"
+                ),
+                {"id": conversation_id},
+            )
+        ).scalar_one()
+
+    async def lazy_writer():
+        async with session_factory() as session, session.begin():
+            await AgentWorkspaceService(
+                session, cursor_secret="test-secret"
+            ).reserve_user_turn(
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                conversation_id=conversation_id,
+                command=_text_command("writer concurrent with backfill"),
+            )
+
+    async def backfill():
+        return await backfill_baseline_fences(
+            session_factory, tenant_id=tenant_id, batch_size=10
+        )
+
+    results = await asyncio.gather(
+        lazy_writer(), backfill(), return_exceptions=True
+    )
+    errors = [r for r in results if isinstance(r, Exception)]
+    assert not errors, f"backfill/writer concurrency raised: {errors!r}"
+
+    async with session_factory() as session:
+        count = (
+            await session.execute(
+                text(
+                    "SELECT count(*) FROM metaedu.agent_erasure_fences "
+                    "WHERE tenant_id = :t AND conversation_id = :c"
+                ),
+                {"t": tenant_id, "c": conversation_id},
+            )
+        ).scalar_one()
+    # 每个 owner 恰好一个 fence（惰性 writer 建 core、backfill 幂等补齐其余）。
+    assert count == len(owner_registry())
+
+
+@pytest.mark.asyncio
 async def test_backfill_failures_are_bounded(session_factory, monkeypatch):
     """反例（评审 round3 P1.3）：系统性失败时 failures 必须内存有界。
 
@@ -1364,6 +1436,212 @@ async def test_backfill_marks_complete_when_last_row_hits_max(session_factory):
     )
     assert report.conversations_succeeded == 1
     assert report.completed is True
+
+
+# ---------------------------------------------------------------------------
+# Migration 036 数据矩阵（S2-C 复审 P1-1/P1-2/P2-5）
+# ---------------------------------------------------------------------------
+
+# 与 alembic/versions/036_erasure_fence_empty_ingress.py 内联常量保持一致。
+_M036_CANONICAL_EMPTY = '{"schema_version":1,"sources":{}}'
+_M036_CANONICAL_DIGEST = (
+    "3e17b54f0c02a2006978c6b820174145df71c6d2a864d6f255cfb7d188e581a1"
+)
+_M036_LEGACY_DIGEST = (
+    "f7552c7ea13f39feea276636a18d0553fe9f2ee545f3dfae8efcc4bf37f61d6f"
+)
+_M036_UNKNOWN_DIGEST = "0" * 64
+
+
+class _RecordingBind:
+    """同步 record 036 迁移 ``op.get_bind().execute(text(...), params)`` 的
+    ``(sql, params)``（迁移 ``upgrade()``/``downgrade()`` 是同步函数）。测试随后
+    把记录到的语句经 ``flush`` 在 asyncpg 上真实执行——保证跑的是**迁移模块真实
+    SQL**，而非复述的第二份 SQL（P2-5：第二份 SQL 让迁移变异不可测）。"""
+
+    def __init__(self):
+        self.calls: list[tuple[str, dict]] = []
+
+    def execute(self, clause, params):
+        self.calls.append((str(clause), params))
+
+    @staticmethod
+    def _to_asyncpg(sql: str, params: dict) -> tuple[str, list]:
+        names: list[str] = []
+
+        def _sub(match):
+            names.append(match.group(1))
+            return f"${len(names)}"
+
+        # 与 SQLAlchemy text() 一致：``:name``（Pg cast）不是 bind 参数——
+        # 仅匹配前面不是 ``:`` 的 ``:name``。
+        out = re.sub(r"(?<!:):([a-z_][a-z0-9_]*)", _sub, sql)
+        return out, [params[n] for n in names]
+
+    async def flush(self, conn) -> None:
+        for sql, params in self.calls:
+            out, args = self._to_asyncpg(sql, params)
+            await conn.execute(out, *args)
+        self.calls.clear()
+
+
+def _load_migration_036():
+    """按文件路径加载 036 迁移模块（版本目录名非合法包名，不能普通 import）。"""
+    import importlib.util
+
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "alembic"
+        / "versions"
+        / "036_erasure_fence_empty_ingress.py"
+    )
+    spec = importlib.util.spec_from_file_location("m036", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec is not None and spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+async def _m036_insert_fence(
+    conn,
+    *,
+    tenant_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    owner_key: str,
+    checkpoint: str,
+    digest: str,
+    revision: int,
+) -> None:
+    await conn.execute(
+        "INSERT INTO metaedu.agent_erasure_fences "
+        "(tenant_id, conversation_id, owner_key, owner_version, state, "
+        " purge_revision, hold_revision, ingress_checkpoint, ingress_digest, "
+        " revision, created_at, updated_at) "
+        "VALUES ($1, $2, $3, 1, 'active', 0, 0, $4::jsonb, $5, $6, now(), now())",
+        tenant_id,
+        conversation_id,
+        owner_key,
+        checkpoint,
+        digest,
+        revision,
+    )
+
+
+async def _m036_read_fence(conn, *, tenant_id, conversation_id, owner_key):
+    return await conn.fetchrow(
+        "SELECT ingress_checkpoint::text AS cp, ingress_digest AS dg, revision "
+        "FROM metaedu.agent_erasure_fences "
+        "WHERE tenant_id=$1 AND conversation_id=$2 AND owner_key=$3",
+        tenant_id,
+        conversation_id,
+        owner_key,
+    )
+
+
+@pytest.mark.asyncio
+async def test_migration_036_data_matrix(session_factory, monkeypatch):
+    """036 upgrade/downgrade 数据矩阵（P1-1/P1-2/P2-5）：
+
+    - legacy pair（checkpoint={} + legacy digest），rev=1 与 rev>1 都归一；
+    - 未知 digest（checkpoint={} + 异常 digest）不动，不静默洗成正常；
+    - 已推进正文 checkpoint（checkpoint 非 {}）不动；
+    - downgrade 同时还原 legacy checkpoint 与 legacy digest（两列一致）。
+
+    用独立 tenant + 精确迁移 SQL 在隔离事务验证，不触碰共享 alembic_version。
+    """
+    tenant_id = uuid.uuid4()
+    # 4 个 conversation：legacy rev1 / legacy rev>1 / unknown digest / 非空 cp。
+    async with session_factory() as session, session.begin():
+        cid_rev1 = await _insert_conversation(session, tenant_id=tenant_id)
+        cid_rev2 = await _insert_conversation(session, tenant_id=tenant_id)
+        cid_unknown = await _insert_conversation(session, tenant_id=tenant_id)
+        cid_body = await _insert_conversation(session, tenant_id=tenant_id)
+
+    conn = await asyncpg.connect(_db_url())
+    try:
+        # 播种（每个用独立 owner_key 区分）。
+        await _m036_insert_fence(
+            conn, tenant_id=tenant_id, conversation_id=cid_rev1,
+            owner_key="workspace.core.v1", checkpoint="{}",
+            digest=_M036_LEGACY_DIGEST, revision=1,
+        )
+        await _m036_insert_fence(
+            conn, tenant_id=tenant_id, conversation_id=cid_rev2,
+            owner_key="workspace.core.v1", checkpoint="{}",
+            digest=_M036_LEGACY_DIGEST, revision=3,  # S2-A 推进 revision 未推进 ingress
+        )
+        await _m036_insert_fence(
+            conn, tenant_id=tenant_id, conversation_id=cid_unknown,
+            owner_key="workspace.core.v1", checkpoint="{}",
+            digest=_M036_UNKNOWN_DIGEST, revision=1,
+        )
+        await _m036_insert_fence(
+            conn, tenant_id=tenant_id, conversation_id=cid_body,
+            owner_key="workspace.core.v1",
+            checkpoint='{"schema_version":1,"sources":{"body_messages":{"watermark":2,"epoch":0}}}',
+            digest=_M036_UNKNOWN_DIGEST, revision=5,
+        )
+
+        # --- upgrade：跑迁移模块真实 upgrade()（monkeypatch op.get_bind 到 asyncpg）---
+        import json as _json
+
+        import alembic.op as alembic_op
+
+        m036 = _load_migration_036()
+        bind = _RecordingBind()
+        monkeypatch.setattr(alembic_op, "get_bind", lambda: bind)
+        m036.upgrade()
+        await bind.flush(conn)
+        r1 = await _m036_read_fence(
+            conn, tenant_id=tenant_id, conversation_id=cid_rev1,
+            owner_key="workspace.core.v1")
+        r2 = await _m036_read_fence(
+            conn, tenant_id=tenant_id, conversation_id=cid_rev2,
+            owner_key="workspace.core.v1")
+        ru = await _m036_read_fence(
+            conn, tenant_id=tenant_id, conversation_id=cid_unknown,
+            owner_key="workspace.core.v1")
+        rb = await _m036_read_fence(
+            conn, tenant_id=tenant_id, conversation_id=cid_body,
+            owner_key="workspace.core.v1")
+        # legacy rev1 与 rev>1 都归一（不依赖 revision）。jsonb 键序归一化，
+        # 语义比对（解析后等值）；digest 精确比对。
+        for row in (r1, r2):
+            assert _json.loads(row["cp"]) == {"schema_version": 1, "sources": {}}
+            assert row["dg"] == _M036_CANONICAL_DIGEST
+        # 未知 digest 不动（不洗白）。
+        assert _json.loads(ru["cp"]) == {}
+        assert ru["dg"] == _M036_UNKNOWN_DIGEST
+        # 非空 checkpoint 不动。
+        assert "body_messages" in rb["cp"]
+        assert rb["dg"] == _M036_UNKNOWN_DIGEST
+
+        # --- downgrade：两列同时还原 legacy pair（跑真实 downgrade()）---
+        m036.downgrade()
+        await bind.flush(conn)
+        d1 = await _m036_read_fence(
+            conn, tenant_id=tenant_id, conversation_id=cid_rev1,
+            owner_key="workspace.core.v1")
+        d2 = await _m036_read_fence(
+            conn, tenant_id=tenant_id, conversation_id=cid_rev2,
+            owner_key="workspace.core.v1")
+        for row in (d1, d2):
+            assert _json.loads(row["cp"]) == {}
+            assert row["dg"] == _M036_LEGACY_DIGEST  # legacy digest 一并还原
+        # 未知/非空行 downgrade 仍不动。
+        du = await _m036_read_fence(
+            conn, tenant_id=tenant_id, conversation_id=cid_unknown,
+            owner_key="workspace.core.v1")
+        assert du["dg"] == _M036_UNKNOWN_DIGEST
+    finally:
+        # 清理播种行（不碰共享 alembic_version）。
+        await conn.execute(
+            "DELETE FROM metaedu.agent_erasure_fences WHERE tenant_id=$1", tenant_id
+        )
+        await conn.execute(
+            "DELETE FROM metaedu.agent_conversations WHERE tenant_id=$1", tenant_id
+        )
+        await conn.close()
 
 
 # ---------------------------------------------------------------------------

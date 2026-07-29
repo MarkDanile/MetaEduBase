@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.composition.agent_suppression_reasons import suppression_reason_code
 from app.contexts.agent_workspace.application.command_digest import (
     message_content_digest,
     message_part_digest,
@@ -24,6 +25,9 @@ from app.contexts.agent_workspace.domain import (
     MessagePartType,
     TurnDispatchState,
     WorkspaceIntegrationConflictError,
+)
+from app.contexts.agent_workspace.infrastructure.erasure_repository import (
+    AgentErasureRepository,
 )
 from app.contexts.agent_workspace.infrastructure.models import (
     ConversationModel,
@@ -581,9 +585,14 @@ class WorkspaceBridgeRepository:
         return True
 
     async def lock_projection_conversation(
-        self, event: AssistantMessagePublishRequestedV1
+        self,
+        event: AssistantMessagePublishRequestedV1,
+        *,
+        allow_purge_fenced: bool = False,
     ) -> None:
-        await self._lock_projection_conversation(event)
+        await self._lock_projection_conversation(
+            event, allow_purge_fenced=allow_purge_fenced
+        )
 
     async def project_assistant_message(
         self,
@@ -596,6 +605,18 @@ class WorkspaceBridgeRepository:
         consumed_at: datetime,
     ) -> None:
         conversation = await self._lock_projection_conversation(event)
+        # Spec §6.2 正文 writer fence：Conversation 行锁（含 purge_state 雏形）
+        # 之后取 owner lock + fence FOR UPDATE，仅 workspace.core.v1 fence active
+        # 才允许写 assistant 正文；purge 进行中/已完成 fail closed
+        # （late_body_write_rejected），不得复活正在清除路径上的正文。suppressed
+        # tombstone 路径（project_suppressed_output）不接正文 fence。
+        await AgentErasureRepository(
+            self._session
+        ).require_body_write_fence_for_update(
+            tenant_id=event.tenant_id,
+            conversation_id=event.conversation_id,
+            owner_key="workspace.core.v1",
+        )
         existing = await self._existing_output_message(event)
         if existing is not None:
             raise WorkspaceIntegrationConflictError(
@@ -637,6 +658,21 @@ class WorkspaceBridgeRepository:
         if conversation.state != ConversationState.DELETED.value:
             conversation.last_activity_at = consumed_at
         conversation.updated_at = consumed_at
+        # Spec §6.2 第 5 步（S2-C P1-1 复审）：assistant 正文写 + ingress
+        # checkpoint + receipt 同一事务 commit。body_messages source 的 watermark
+        # 记录本写分配到的真实 message seq（连续水位），epoch 取 Conversation 当前
+        # purge_revision——assistant 投影与用户正文同受 body ingress 水位约束。
+        await AgentErasureRepository(
+            self._session
+        ).advance_ingress_checkpoint_for_update(
+            tenant_id=event.tenant_id,
+            conversation_id=event.conversation_id,
+            owner_key="workspace.core.v1",
+            source_key="body_messages",
+            watermark=message.seq,
+            epoch=conversation.purge_revision,
+            now=consumed_at,
+        )
         await self._consume_output_receipt(event=event, consumed_at=consumed_at)
 
     async def project_suppressed_output(
@@ -646,7 +682,9 @@ class WorkspaceBridgeRepository:
         reason: str,
         consumed_at: datetime,
     ) -> None:
-        conversation = await self._lock_projection_conversation(event)
+        conversation = await self._lock_projection_conversation(
+            event, allow_purge_fenced=True
+        )
         existing = await self._existing_output_message(event)
         if existing is not None:
             raise WorkspaceIntegrationConflictError(
@@ -668,7 +706,8 @@ class WorkspaceBridgeRepository:
                 content_digest=event.output_digest,
                 created_at=consumed_at,
                 redacted_at=consumed_at,
-                redacted_reason=reason[:200],
+                # P2-5：tombstone 只存受控 reason code，自由文本不落库。
+                redacted_reason=suppression_reason_code(reason),
             )
         )
         conversation.next_message_seq += 1
@@ -718,7 +757,10 @@ class WorkspaceBridgeRepository:
         return event
 
     async def _lock_projection_conversation(
-        self, event: AssistantMessagePublishRequestedV1
+        self,
+        event: AssistantMessagePublishRequestedV1,
+        *,
+        allow_purge_fenced: bool = False,
     ) -> ConversationModel:
         conversation = (
             await self._session.execute(
@@ -732,7 +774,12 @@ class WorkspaceBridgeRepository:
         ).scalar_one_or_none()
         if conversation is None:
             raise ConversationNotFoundError("Conversation not found for output projection")
-        if conversation.purge_state in {"running", "completed"}:
+        # 正文投影（project_assistant_message）在 purge running/completed 时拒绝
+        # （另有正文 writer fence 双保险）；suppressed tombstone 路径
+        # （allow_purge_fenced=True，project_suppressed_output）只写无正文
+        # redacted 占位，purge 进行中落 tombstone 是联合契约要求的安全路径，
+        # 不得被拒进失败重试/死信。
+        if conversation.purge_state in {"running", "completed"} and not allow_purge_fenced:
             raise InvalidConversationStateError(
                 "output projection is fenced by Conversation purge"
             )

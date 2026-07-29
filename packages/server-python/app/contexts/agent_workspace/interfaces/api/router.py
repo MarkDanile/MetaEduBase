@@ -24,9 +24,14 @@ from app.contexts.agent_workspace.domain import (
     ConversationIdConflictError,
     ConversationNotFoundError,
     ConversationPurgedError,
+    ConversationPurgeInProgressError,
+    ConversationRecoveryExpiredError,
+    ConversationRestoreNotAllowedError,
     ConversationState,
+    DeletedConversationListingError,
     IdempotencyConflictError,
     InvalidConversationStateError,
+    LateBodyWriteRejectedError,
     Message,
     MessagePart,
     ResourceReferenceForbiddenError,
@@ -206,10 +211,37 @@ def _raise_workspace_error(exc: Exception) -> NoReturn:
             status_code=409,
             detail=_error_detail("idempotency_conflict", str(exc)),
         ) from exc
+    if isinstance(exc, ConversationRecoveryExpiredError):
+        raise HTTPException(
+            status_code=409,
+            detail=_error_detail("conversation_recovery_expired", str(exc)),
+        ) from exc
+    if isinstance(exc, ConversationPurgeInProgressError):
+        raise HTTPException(
+            status_code=409,
+            detail=_error_detail("conversation_purge_in_progress", str(exc)),
+        ) from exc
     if isinstance(exc, ConversationPurgedError):
         raise HTTPException(
             status_code=409,
             detail=_error_detail("conversation_purged", str(exc)),
+        ) from exc
+    if isinstance(exc, ConversationRestoreNotAllowedError):
+        raise HTTPException(
+            status_code=409,
+            detail=_error_detail("conversation_restore_not_allowed", str(exc)),
+        ) from exc
+    if isinstance(exc, LateBodyWriteRejectedError):
+        raise HTTPException(
+            status_code=409,
+            detail=_error_detail("late_body_write_rejected", str(exc)),
+        ) from exc
+    if isinstance(exc, DeletedConversationListingError):
+        # deleted/purged fail-closed：公开 list/search 不接受 deleted 状态。
+        # 410 Gone 表达「该视图永久不可用」，不泄露任何 deleted 会话存在性/内容。
+        raise HTTPException(
+            status_code=410,
+            detail=_error_detail("deleted_conversation_listing", str(exc)),
         ) from exc
     if isinstance(exc, TitleSourceConflictError):
         raise HTTPException(

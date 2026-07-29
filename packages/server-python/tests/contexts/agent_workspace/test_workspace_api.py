@@ -12,6 +12,10 @@ from app.contexts.agent_workspace.application.dto import MessagePartInput, TurnC
 from app.contexts.agent_workspace.domain import MessagePartType
 from app.main import app
 from app.shared.infrastructure.seed import DEFAULT_ADMIN_ID, DEFAULT_TENANT_ID
+from tests.contexts.agent_control_plane.helpers import (
+    create_baseline_fences_via_engine,
+    set_core_fence_erasing_via_engine,
+)
 from tests.contexts.identity._helpers import register_and_login
 
 pytestmark = pytest.mark.asyncio
@@ -127,12 +131,73 @@ async def test_owner_private_crud_cas_and_history(
     )
     assert archived.status_code == 200
     assert archived.json()["state"] == "archived"
+    # R1-S2：restore 要求预期 owner fence 集合完整且全部 active（backfill 基线）。
+    await create_baseline_fences_via_engine(
+        tenant_id=DEFAULT_TENANT_ID, conversation_id=conversation_id
+    )
     restored = await client.post(
         f"/api/v1/agent-workspace/conversations/{conversation_id}/restore",
         headers={**auth_headers, "If-Match": "3"},
     )
     assert restored.status_code == 200
     assert restored.json()["state"] == "active"
+
+
+async def test_late_body_write_rejected_returns_409_e2e(
+    client: AsyncClient, auth_headers: dict[str, str]
+):
+    """R1-S2 S2-C item 5：fence 非 active（erasing）时，经 API 的 title writer
+    （rename PATCH）必须返回 409 ``late_body_write_rejected``，而非 500——
+    LateBodyWriteRejectedError 在 router 映射为确定性 409，不得复活清除路径
+    上的 title。"""
+    create = await client.post(
+        "/api/v1/agent-workspace/conversations",
+        headers=auth_headers,
+        json={"title": "to be fenced"},
+    )
+    assert create.status_code == 201, create.text
+    conversation_id = uuid.UUID(create.json()["id"])
+    # 推进 workspace.core.v1 fence 到 erasing（独立 engine 经生产 CAS 路径）。
+    await set_core_fence_erasing_via_engine(
+        tenant_id=DEFAULT_TENANT_ID, conversation_id=conversation_id
+    )
+
+    rejected = await client.patch(
+        f"/api/v1/agent-workspace/conversations/{conversation_id}",
+        headers={**auth_headers, "If-Match": 'W/"1"'},
+        json={"title": "should be rejected"},
+    )
+    assert rejected.status_code == 409, rejected.text
+    assert rejected.json()["detail"]["code"] == "late_body_write_rejected"
+    # title 未被改写（清除路径上的 title 不得复活）。
+    detail = await client.get(
+        f"/api/v1/agent-workspace/conversations/{conversation_id}",
+        headers=auth_headers,
+    )
+    assert detail.json()["title"] == "to be fenced"
+
+
+async def test_deleted_state_listing_returns_410_e2e(
+    client: AsyncClient, auth_headers: dict[str, str]
+):
+    """R1-S2 S2-C P1-3 复审：公开 list/search 带 state=deleted 必须 fail closed
+    （410 deleted_conversation_listing），不得返回原始 title 或搜索正文——
+    deleted/purged fail-closed。deleted 恢复走 get include_deleted redacted 路径。"""
+    listed = await client.get(
+        "/api/v1/agent-workspace/conversations",
+        headers=auth_headers,
+        params={"state": "deleted"},
+    )
+    assert listed.status_code == 410, listed.text
+    assert listed.json()["detail"]["code"] == "deleted_conversation_listing"
+    # search 同样 fail closed。
+    searched = await client.get(
+        "/api/v1/agent-workspace/conversations",
+        headers=auth_headers,
+        params={"state": "deleted", "q": "anything"},
+    )
+    assert searched.status_code == 410
+    assert searched.json()["detail"]["code"] == "deleted_conversation_listing"
 
 
 async def test_super_admin_role_does_not_grant_other_owners_message_access(
