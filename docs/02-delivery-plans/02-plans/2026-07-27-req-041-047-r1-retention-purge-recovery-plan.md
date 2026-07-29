@@ -166,6 +166,68 @@ R1-S1 复审修订第六轮（2026-07-28，PR #506 复审第六轮 P0=0/P1=0/P2=
 
 验证：30 天冻结时钟、restore/delete/purge race、writer fence-check 后暂停、跨 tenant/actor、正文扫描和重复 participant ACK。
 
+#### S2-C 契约注记 / plan delta（2026-07-29，先于代码冻结）
+
+本轮冻结 S2-C 的设计决策与不变量，作为后续实现与独立 `max`/Codex 复审的事实源。不改 migration 034/035、不进 S2-D/E/S3、不启用 purge scheduler、不混入 TD-090 P3。
+
+**1. ingress_checkpoint / ingress_digest 的 canonical source key（Spec §5.1/§6.2，本 Slice 的核心设计）**
+
+`workspace.core.v1` 在 fence 内持有两类受管正文 ingress：`conversation_title`（title 能力）与 `message_part_body`（正文能力）。checkpoint 是**有界 canonical JSON**，只记录 source key 的 epoch/连续水位与 digest，**不保存正文、prompt、自由文本或原始 payload**：
+
+```text
+ingress_checkpoint = {
+  "schema_version": 1,
+  "sources": {
+    "body_messages":  {"watermark": <last written message seq>, "epoch": <conversation purge_revision>},
+    "title":          {"watermark": <last title-write conversation revision>, "epoch": <conversation purge_revision>},
+  }
+}
+ingress_digest = canonical_digest(ingress_checkpoint)   # JCS SHA-256（shared canonical_digest）
+```
+
+- **canonical source key = 受管能力类别**（`body_messages` / `title`），对应 registry 里 `workspace.core.v1` 的 `message_part_body` / `conversation_title` 能力。不引入第三份正文事实源。
+- **watermark = 连续水位**（§6.2「连续水位」）：
+  - `body_messages` → workspace **message `seq`**。`seq` 是 per-Conversation 连续序号（`ck_agent_msg_seq_positive` / `uq_agent_msg_seq`），在 Conversation 行锁下分配，是该 Conversation 正文的天然连续水位。记录「已写入正文的最后一个 seq」。
+  - `title` → Conversation **`revision`**（title 写经 revision CAS 后的值），是 title 这一 owner 类别的单调 token。
+- **epoch = Conversation `purge_revision`**：单调 fencing token；purge/restore 推进它即翻转 epoch，旧 epoch 的迟到写在新 epoch 下不得复活正文。
+- **digest 规则**：`ingress_digest = canonical_digest(ingress_checkpoint)`（JCS + SHA-256，复用 `shared/schemas/canonical_json.canonical_digest`，与 `_empty_ingress_digest()` 同一函数路径）。
+- **明确不伪造**：watermark/epoch 一律取真实 source 序号/token，**不得用 `last_body_write_at`（可观察时间戳）或 fence 自身 `revision`（CAS 计数器）冒充 ingress checkpoint**。`last_body_write_at` 保留为可观察字段，不参与 checkpoint。
+- **原子性（§6.2 第 5 步）**：checkpoint 与正文写、receipt 在**同一数据库事务** commit。实现上将 `require_body_write_fence_for_update` 的「建 fence + 校验 + 推进 token/revision」与「写正文」解耦为两步：先裁决 fence（不写 checkpoint），再在同一事务、拿到分配的 `seq`/CAS 后 `revision` 后写入 checkpoint，随正文一起 flush。独立 preflight read 不构成授权。
+
+**2. fence 推进原语拆分（支撑第 1 步原子性）**
+
+`require_body_write_fence_for_update` 当前把「裁决」与「推进 last_body_write_at/revision」耦合。S2-C 拆为：
+- 裁决阶段：owner lock → fence FOR UPDATE（缺失按 registry 建 `active`）→ 校验 owner_version/state/fencing token（与现有一致，fail closed → `LateBodyWriteRejectedError`）。
+- 推进阶段：仅裁决放行后，由 writer 传入本写的 `watermark`（body=seq / title=revision）与 `epoch`（conversation.purge_revision），在同一事务更新 `ingress_checkpoint`/`ingress_digest`/`last_body_write_at`/fence `revision` CAS。
+- title writer（rename/auto-title）与 body writer 复用同一推进原语，仅 source key/watermark 取值不同。
+
+**3. Conversation create 的 fence 接线（item 2 边界）**
+
+新 Conversation 须为 `workspace.core.v1` 建立 baseline `active` fence（缺失不得解释为安全）。create 用 `INSERT ... ON CONFLICT DO NOTHING RETURNING` + `creation_digest` 幂等：仅**真实新建分支**（`RETURNING` 非空）在同事务内经 `create_fence_under_owner_lock` 建 fence（该入口自带 Conversation 行锁 + owner lock，防 AB-BA）；幂等重放分支（行已存在）按既有契约返回、不重建 fence。title 初始为 `title_source=none` 的 tombstone，不算 title 正文写，不在 create 时推进 title ingress。
+
+**4. list/get/search/history fail-closed（item 1）**
+
+- `get_conversation`（`include_deleted=False`）、`list_conversations`（按 `state` 精确过滤）、`list_messages`（先 `_get_owned_row(include_deleted=False)`，缺失即 `ConversationNotFoundError`）现状已 fail-closed：已知 UUID 对 deleted/purged 返回稳定 gone/not-found。
+- 本 Slice **补负向契约测试**：已知 UUID 对 deleted/purged 的 get/search/history 不泄露 title、正文、actor 或可恢复元数据（purged title 已清为 tombstone，actor 经不可逆 audit digest）。`_to_conversation` 已对 deleted/purged 投影 tombstone title/不可逆 actor digest，不泄露真实 title/UUID。
+- 不改读路径的现有 fail-closed 谓词，只补回归证据。
+
+**5. 受控 backfill 命令（item 4）**
+
+S1 已交付 `app/composition/agent_erasure_backfill.py`（bounded cursor、分批、tenant 限流参数、幂等 ON CONFLICT、exit 0/1/2、next_after_id、失败行语义、`report.ok`≠完备）。S2-C **补齐锁序缺口**：现 `_backfill_conversation` 裸 `INSERT ... ON CONFLICT`，未持 Conversation 行锁/owner advisory lock——与正文 writer 形成 AB-BA 死锁风险，且绕过 `_create_fence` 的「非 baseline 行 fail closed」。改造为**逐 Conversation 经 `AgentErasureRepository.create_fence_under_owner_lock`**（自带 Conversation 行锁→owner lock→fence FOR UPDATE），保留既有幂等/分批/游标/退出码契约不变；`create_fence_under_owner_lock` 对非 baseline（version 漂移/非 active）行 fail closed，计入 `failure_count`。多 owner 逐 owner 建 fence（workspace.core.v1 等）。
+
+**6. reserve fence-before-replay（item 6）**
+
+`reserve_user_turn` 已在幂等 replay 查找（`client_message_id` 命中返回）**之前**调 `require_body_write_fence_for_update`——fence 校验先于幂等命中。补契约测试锁定该顺序：fence 非 active（purge 进行中）时，即使 `client_message_id` 已存在也 fail closed（`LateBodyWriteRejectedError`），不得因幂等命中而复活清除路径上的正文。
+
+**7. 补测试与 race（item 5/7/8）**
+
+- `late_body_write_rejected` API 409 E2E： fence 非 active 时经 API 提交 turn 返回 409（`LateBodyWriteRejectedError` → 409，而非 500）。
+- concurrent double-restore race：两个并发 restore 仅一个成功，另一个 CAS conflict fail closed（不双推进 purge_revision）。
+- hold 生效中的 restore：登记到 hold slice（S5），本 Slice 只在 S2-C 注记边界、不实现（hold lifecycle 归 S5）。
+- 不变量复核（item 8）：惰性建 fence 与 backfill 同走 `create_fence_under_owner_lock`/`_create_fence` 幂等路径、无 PK 冲突；purge/restore/writer 锁序统一 Conversation row→owner lock→fence，无 AB-BA；suppressed tombstone 路径（`project_suppressed_output`）不接正文 fence、不读写正文；跨 tenant/跨 actor/未知 owner/stale token 全部 fail closed。
+
+**验证**：S2-C 专项（fence ingress 推进原子性、title writer fence、create 建 fence、read fail-closed、backfill 锁序、reserve fence-before-replay、409 e2e、double-restore race）+ workspace/execution/control-plane 回归全绿；新增测试经变异验证；ruff 0；mypy baseline 0 回归；docs gate + git diff --check 通过。本轮**不改 migration 034/035**。
+
 ### R1-S3：Execution owner、RunEvent payload 与 compatibility output
 
 **复杂度/执行**：极高，Sol `xhigh`；独立 `max` 审查 terminal/projection 反例。
