@@ -31,7 +31,10 @@ class PurgeState(StrEnum):
 class Conversation:
     id: uuid.UUID
     tenant_id: uuid.UUID
-    created_by: uuid.UUID
+    # ``None`` 仅当行被清除/删除投影为 redacted recovery envelope（R1-S2 S2-C
+    # P1-3：deleted 读投影不泄露真实 actor）。创建命令必有 actor；active/archived
+    # 行恒为非 None。API DTO 不暴露本字段。
+    created_by: uuid.UUID | None
     creation_digest: str
     title: str | None
     title_source: ConversationTitleSource

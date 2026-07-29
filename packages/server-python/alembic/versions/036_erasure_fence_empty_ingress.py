@@ -4,20 +4,30 @@ Revision ID: 036_erasure_fence_empty_ingress
 Revises: 035_erasure_fence_ix_cleanup
 Create Date: 2026-07-29
 
-`034`/`035`（经 S1 backfill 与 S2 惰性建 fence）落地的 baseline ``active`` fence
-存在「存 ``{}`` 却 hash 另一对象形状」的天生不一致：
+`034`/`035`（经 S1 backfill 与 S2 惰性建 fence）落地的 legacy baseline fence 存在
+「存 ``{}`` 却 hash 另一对象形状」的天生不一致：
 
 - 持久化 ``ingress_checkpoint = {}``（空 JSON 对象）；
-- ``ingress_digest`` 却是 ``canonical_digest({"ingress": {}, "schema_version": 1})``。
+- ``ingress_digest = canonical_digest({"ingress": {}, "schema_version": 1})``（legacy
+  digest，S1/S2-A 冻结代码可确定）。
 
 因此这些 fence 在首次正文写入前都不满足冻结契约
 ``ingress_digest = canonical_digest(ingress_checkpoint)``（Spec §5.1）。
 
-本迁移把**仅从未写入正文**的 baseline fence（``ingress_checkpoint = {}`` 且
-``revision = 1``，即建 fence 后无任何正文/checkpoint 推进）归一到规范空 checkpoint
-``{"schema_version": 1, "sources": {}}`` 及其同源 digest。已推进正文 checkpoint 的
-fence（``ingress_checkpoint <> {}`` 或 ``revision > 1``）不动——它们的 digest 由
-S2-C ``advance_ingress_checkpoint_for_update`` 同事务写入，本就一致。
+upgrade（P1 复审修订）：把**精确 legacy pair**
+（``ingress_checkpoint = {} AND ingress_digest = LEGACY_EMPTY_DIGEST``）归一到规范空
+checkpoint ``{"schema_version": 1, "sources": {}}`` 及其同源 digest。
+
+- 不依赖 ``revision``：S2-A 可推进 fence revision 而未推进 ingress，``revision>1``
+  的 legacy 行同样需修复；``revision`` 不是 legacy 空 checkpoint 的可靠标记。
+- 不匹配「任意 digest」：未知 digest（异常/损坏数据）**保持不动**，不静默洗成正常
+  ——留待验证/reconcile。
+- 已推进正文 checkpoint 的 fence（``ingress_checkpoint <> {}``）不动——它们的
+  digest 由 S2-C ``advance_ingress_checkpoint_for_update`` 同事务写入，本就一致。
+
+downgrade（P1 复审修订）：同时还原 legacy checkpoint ``{}`` 与 legacy digest（旧
+digest 从冻结代码可复现），保证降级中间态两列一致；不留「checkpoint={} + 新结构
+digest」的失配。
 
 canonical digest 值由应用侧 ``app.shared.schemas.canonical_json.canonical_digest``
 （JCS + SHA-256）计算后内联，迁移不 import 应用代码（保持迁移自包含、可离线执行）。
@@ -46,33 +56,46 @@ _CANONICAL_EMPTY = '{"schema_version":1,"sources":{}}'
 _CANONICAL_EMPTY_DIGEST = (
     "3e17b54f0c02a2006978c6b820174145df71c6d2a864d6f255cfb7d188e581a1"
 )
+# legacy baseline 形状：checkpoint={} + digest=canonical_digest(
+# {"ingress": {}, "schema_version": 1})（S1/S2-A 冻结代码可确定）。
+_LEGACY_EMPTY_DIGEST = (
+    "f7552c7ea13f39feea276636a18d0553fe9f2ee545f3dfae8efcc4bf37f61d6f"
+)
 
 
 def upgrade() -> None:
-    # 仅归一「从未写入正文」的 baseline fence：checkpoint 为裸 {} 且 revision=1。
-    # 经 op.get_bind() 传位置/命名参数，避免 JSON 内 ':' 被 op.execute 当作 bind。
+    # 精确匹配 legacy pair（checkpoint={} AND digest=legacy），不依赖 revision、
+    # 不匹配未知 digest。经 op.get_bind() 传参避免 JSON 内 ':' 被当作 bind。
     op.get_bind().execute(
         text(
             f'UPDATE "{_SCHEMA}"."{_TABLE}" '
             "SET ingress_checkpoint = CAST(:canonical AS jsonb), "
-            "    ingress_digest = :digest "
+            "    ingress_digest = :new_digest "
             "WHERE ingress_checkpoint = '{}'::jsonb "
-            "  AND revision = 1"
+            "  AND ingress_digest = :legacy_digest"
         ),
-        {"canonical": _CANONICAL_EMPTY, "digest": _CANONICAL_EMPTY_DIGEST},
+        {
+            "canonical": _CANONICAL_EMPTY,
+            "new_digest": _CANONICAL_EMPTY_DIGEST,
+            "legacy_digest": _LEGACY_EMPTY_DIGEST,
+        },
     )
 
 
 def downgrade() -> None:
-    # 回滚：把规范空 checkpoint 还原为裸 {}。digest 的旧形状（hash 另一对象）已
-    # 从代码移除且不可复现；downgrade 仅还原 checkpoint 列用于开发回滚，digest
-    # 保持规范值（与升级后一致，保证 digest==canonical_digest(checkpoint) 不破）。
+    # 同时还原 legacy checkpoint {} 与 legacy digest（两列一致），不留
+    # 「checkpoint={} + 新 digest」失配。只回退规范空 pair，不碰其他行。
     op.get_bind().execute(
         text(
             f'UPDATE "{_SCHEMA}"."{_TABLE}" '
-            "SET ingress_checkpoint = '{}'::jsonb "
+            "SET ingress_checkpoint = '{}'::jsonb, "
+            "    ingress_digest = :legacy_digest "
             "WHERE ingress_checkpoint = CAST(:canonical AS jsonb) "
-            "  AND revision = 1"
+            "  AND ingress_digest = :new_digest"
         ),
-        {"canonical": _CANONICAL_EMPTY},
+        {
+            "canonical": _CANONICAL_EMPTY,
+            "legacy_digest": _LEGACY_EMPTY_DIGEST,
+            "new_digest": _CANONICAL_EMPTY_DIGEST,
+        },
     )

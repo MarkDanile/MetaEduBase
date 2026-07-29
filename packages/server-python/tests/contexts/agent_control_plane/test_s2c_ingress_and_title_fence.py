@@ -535,6 +535,42 @@ async def test_p1_3_list_rejects_deleted_state(db_session):
         )
 
 
+async def test_p1_3_include_deleted_returns_redacted_envelope(db_session):
+    """P1-3：deleted 恢复路径（get_conversation include_deleted=True）返回
+    redacted envelope——保留恢复所需 id/state/revision/purge_after，但 title
+    与 actor（created_by）置 None，不泄露原始标题/主体。"""
+    from app.composition.agent_control_plane import ConversationExecutionCoordinator
+
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title="sensitive title"
+    )
+    conversation_id = view.conversation.id
+    await db_session.commit()
+    await ConversationExecutionCoordinator(db_session).delete_conversation(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        expected_revision=1,
+    )
+    await db_session.commit()
+
+    deleted = await service.get_conversation(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        include_deleted=True,
+    )
+    conv = deleted.conversation
+    assert conv.state.value == "deleted"
+    # redacted envelope：恢复字段保留，title/actor 不泄露。
+    assert conv.title is None
+    assert conv.created_by is None
+    assert conv.id == conversation_id
+    assert conv.purge_after is not None
+    assert conv.revision >= 1
+
+
 async def test_p2_6_verdict_does_not_advance_on_idempotent_replay(db_session):
     """P2-6：verdict（require_body_write_fence_for_update）不推进
     last_body_write_at/revision——幂等 replay（不写新正文）不得空推进 fence。
@@ -749,3 +785,91 @@ async def test_p1_2_ensure_fence_returns_created_flag(db_session):
         owner_key=other,
     )
     assert created_new is True
+
+
+async def test_p2_4_existing_fence_writer_backfill_no_reversed_wait(
+    db_session, session_factory
+):
+    """P2-4（复审）：预建 committed fence，再并发 writer 与 backfill——双方经
+    ensure/require 的 Conversation 行锁 -> owner lock -> fence 同锁序串行，无
+    fence->Conversation 反向等待（AB-BA）。任一顺序都成功、fence 唯一 active。
+
+    与从缺 fence 出发的旧并发测试互补：本条覆盖「已有 fence + writer/backfill
+    并发」，检测未来 fence-before-Conversation 探测回归（反向锁序死锁）。"""
+    import asyncio
+
+    from app.contexts.agent_workspace.application.bridge import (
+        AgentWorkspaceBridgeService,
+    )
+
+    service = AgentWorkspaceService(db_session, cursor_secret="test-secret")
+    view, _ = await service.create_conversation(
+        tenant_id=TENANT_ID, actor_id=ACTOR_ID, title="existing fence"
+    )
+    conversation_id = view.conversation.id
+    # 预建 committed fence（全部 owner active），使 backfill 走「已有 fence」路径。
+    await create_baseline_fences(
+        db_session, tenant_id=TENANT_ID, conversation_id=conversation_id
+    )
+    await db_session.commit()
+
+    writer_holds_conv_lock = asyncio.Event()
+    release_writer = asyncio.Event()
+
+    async def writer():
+        # writer：先持 Conversation 行锁（与正文写一致），再经 require 取 owner
+        # lock + fence FOR UPDATE——同锁序。持有期间让 backfill 竞争。
+        async with session_factory() as session, session.begin():
+            await AgentWorkspaceBridgeService(session).lock_owned_conversation(
+                tenant_id=TENANT_ID,
+                actor_id=ACTOR_ID,
+                conversation_id=conversation_id,
+                include_deleted=False,
+            )
+            await AgentErasureRepository(
+                session
+            ).require_body_write_fence_for_update(
+                tenant_id=TENANT_ID,
+                conversation_id=conversation_id,
+                owner_key=_OWNER_KEY,
+            )
+            writer_holds_conv_lock.set()
+            await release_writer.wait()
+
+    async def backfill():
+        # backfill 经 ensure_fence_under_owner_lock（Conversation 行锁 -> owner
+        # lock -> fence）：对已有 fence 幂等返回，不得 fence-before-Conversation。
+        async with session_factory() as session, session.begin():
+            await AgentErasureRepository(
+                session
+            ).ensure_fence_under_owner_lock(
+                tenant_id=TENANT_ID,
+                conversation_id=conversation_id,
+                owner_key=_OWNER_KEY,
+            )
+
+    writer_task = asyncio.create_task(writer())
+    backfill_task: asyncio.Task | None = None
+    try:
+        await asyncio.wait_for(writer_holds_conv_lock.wait(), timeout=5)
+        backfill_task = asyncio.create_task(backfill())
+        # backfill 在 Conversation 行锁上等待 writer（同锁序串行，非死锁）；
+        # 不得抢先完成（否则说明它走了 fence-first 反向路径）。
+        await asyncio.sleep(0.5)
+        assert not backfill_task.done()
+        release_writer.set()
+        await asyncio.wait_for(writer_task, timeout=5)
+        # writer 释放后 backfill 串行完成（无 AB-BA 死锁）。
+        await asyncio.wait_for(backfill_task, timeout=5)
+    finally:
+        release_writer.set()
+        for task in (writer_task, backfill_task):
+            if task is not None and not task.done():
+                task.cancel()
+
+    async with session_factory() as session:
+        fence = await AgentErasureRepository(session).get_fence_for_update(
+            tenant_id=TENANT_ID, conversation_id=conversation_id, owner_key=_OWNER_KEY
+        )
+        assert fence is not None
+        assert fence.state is ErasureFenceState.ACTIVE

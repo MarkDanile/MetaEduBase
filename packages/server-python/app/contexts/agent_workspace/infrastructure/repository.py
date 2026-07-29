@@ -82,6 +82,9 @@ class AgentWorkspaceRepository:
             .returning(ConversationModel.id)
         )
         inserted_id = (await self._session.execute(stmt)).scalar_one_or_none()
+        # 创建命令必有 actor（create 路径 ``created_by`` 恒为非 None）；仅
+        # deleted 读投影才会 redact 为 None，不会出现在 create。
+        assert conversation.created_by is not None
         row = await self._get_owned_row(
             conversation.tenant_id,
             conversation.created_by,
@@ -689,13 +692,23 @@ class AgentWorkspaceRepository:
             raise ConversationIdConflictError(
                 "conversation actor is erased; snapshot unavailable"
             )
+        # R1-S2 S2-C P1-3 复审：deleted/purged fail-closed 适用于所有读投影，
+        # 包括 include_deleted 恢复路径与 DELETE 响应——已知 UUID 也不得泄露
+        # title、actor。deleted 会话只暴露恢复所需 envelope（id/state/revision/
+        # purge_after/deleted_at 等），title 置 None、actor（created_by/deleted_by/
+        # archived_by）置 None。active/archived 不受影响（正常返回 title/actor）。
+        is_deleted = row.state == ConversationState.DELETED.value
         return Conversation(
             id=row.id,
             tenant_id=row.tenant_id,
-            created_by=row.created_by,
+            created_by=None if is_deleted else row.created_by,
             creation_digest=row.creation_digest,
-            title=row.title,
-            title_source=ConversationTitleSource(row.title_source),
+            title=None if is_deleted else row.title,
+            title_source=(
+                ConversationTitleSource.NONE
+                if is_deleted
+                else ConversationTitleSource(row.title_source)
+            ),
             state=ConversationState(row.state),
             parent_conversation_id=row.parent_conversation_id,
             forked_from_message_id=row.forked_from_message_id,
@@ -703,9 +716,9 @@ class AgentWorkspaceRepository:
             next_run_queue_seq=row.next_run_queue_seq,
             last_activity_at=row.last_activity_at,
             archived_at=row.archived_at,
-            archived_by=row.archived_by,
+            archived_by=None if is_deleted else row.archived_by,
             deleted_at=row.deleted_at,
-            deleted_by=row.deleted_by,
+            deleted_by=None if is_deleted else row.deleted_by,
             purge_after=row.purge_after,
             purge_state=PurgeState(row.purge_state),
             purge_revision=row.purge_revision,

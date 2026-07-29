@@ -388,12 +388,16 @@ class AgentErasureRepository:
     ) -> ErasureFence:
         """正文 writer fence 裁决（Spec §6.2 第 1-5 步）：owner lock -> fence
         FOR UPDATE（缺失按 registry 建 active fence）-> 校验 state/token ->
-        仅 active 且 token 新鲜才允许写正文，并原子推进正文写 checkpoint。
+        仅 active 且 token 新鲜才允许写正文。
+
+        **本方法只做裁决（verdict）**：不推进 ``last_body_write_at``、fence
+        ``revision`` 或 ``ingress_checkpoint``——推进独占归属
+        ``advance_ingress_checkpoint_for_update``（S2-C P2-6 复审），仅在有真实
+        正文/checkpoint 推进时发生。否则幂等 replay（经本裁决放行但不写新正文）
+        会空推进 checkpoint/revision，把「裁决」误当「正文写」。
 
         锁序（模块 docstring）：调用方已持 Conversation 行锁 -> 本方法取
         owner advisory lock -> fence FOR UPDATE -> 同事务内更新 fence 行。
-        Conversation 行锁已串行所有正文写与 restore/delete 的 token 推进，
-        fence 行锁串行 purge 的状态/token CAS——三行同事务内读改写，原子。
 
         校验（Spec §6.2 第 3 步，fail closed -> LateBodyWriteRejectedError）：
         - owner_version 漂移：registry 已升级，不基于过期能力视图写正文。
@@ -408,10 +412,6 @@ class AgentErasureRepository:
           新 fence 必须携带当前 token，否则恢复/删除后的会话永远无法写正文。
         - **既有 active fence**：只校验相等、不推进 token——writer 无权改写
           fencing token（那是 purge/restore/delete 的职责）。
-
-        原子推进（Spec §6.2 第 4 步）：放行时推进 ``last_body_write_at`` 并以
-        fence revision CAS 落库；ingress_checkpoint 的真实 source-key 推进随
-        对应 writer 的 source 标识在后续 slice 落地（当前不伪造 source key）。
         """
         await acquire_owner_lock(
             self._session,
