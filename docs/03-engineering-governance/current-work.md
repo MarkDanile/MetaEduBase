@@ -27,7 +27,7 @@
 
 范围（plan §R1-S2 S2-D/E 契约注记）：S2-D = `workspace.core.v1` participant 正文清除原语（清 Conversation title、物理删除 MessagePart 正文行并把 Message 转 redacted tombstone、清 actor id 存不可逆 audit digest、物理删除 ConversationUserState）+ final workspace body scan；S2-E = participant ACK + purge operation/owner checkpoint 推进 + 完成门禁。锁序沿用 Conversation row→owner lock→fence（防 AB-BA）；redacted_reason 走受控 code；可重入幂等。明确不做：不启用 purge scheduler 自动 claim、不清 Execution/transport owner（S3/S4）、不改 legal hold lifecycle（S5）、不实现 external object erase、不改 migration 034/035/036。
 
-下一步：先实现 S2-D 清除原语 + body scan（Sol `xhigh`），再 S2-E ACK/完成门禁；完成后提交 PR，等待独立 `max` 复审清除完整性与竞态 + Codex 复审。验证基线（继承 S2-C 合并后 main）：全量 1849 passed。遗留前置（不提前做）：S3 purge worker claim 顺序 Guard→Conversation row→owner lock→fence→operation；dispatch_output 对 `LateBodyWriteRejectedError` 分类为 deterministic；hold 生效中 restore 测试随 hold slice 补齐（spec R1-AC7）。
+下一步：S2-D/E 已提交待复审（PR #513，基线 commit `6e489ec1`）——`WorkspaceErasureParticipant` 同一事务按锁序清除 workspace.core.v1 正文（title/Message 转 redacted tombstone + author 不可逆匿名化 + 物理删除 MessagePart/UserState，envelope 保留）+ final body scan 完成门禁（非零记 blocked + `workspace_body_scan_nonzero`，不把受影响行数当完成）+ participant ACK（fence erasing->erased ack_digest 无正文/actor 明文、owner checkpoint acked，只接单 owner 不伪造 completed）。契约注记已先于代码冻结（plan §R1-S2「S2-D/E 契约注记」commit `d8ba87de`）。验证：S2-D/E 专项 9 passed、全量 1858 passed、变异 M1-M4 全击杀、ruff 0、mypy baseline 0 回归、docs gate + diff-check 通过。模型 Sol `xhigh` 主实现。等待独立 `max` 复审清除完整性与竞态 + Codex 复审，**未合并**。遗留前置（不提前做）：S3 purge worker claim 顺序 Guard→Conversation row→owner lock→fence→operation；dispatch_output 对 `LateBodyWriteRejectedError` 分类为 deterministic；hold 生效中 restore 测试随 hold slice 补齐（spec R1-AC7）。
 
 ## 下一批候选任务
 
