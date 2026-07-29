@@ -14,24 +14,19 @@
 
 ## 当前进行中
 
-### REQ-041/047 R1-S2 Workspace owner 与恢复截止
+当前无进行中任务。REQ-041/047 R1-S2-C 已合并收口（见下方「最近完成」）。R1-S2 剩余 S2-D/E（正文清除、participant ACK 与 final body scan）尚未启动——启动前按本文件「使用规则」重新登记任务卡片（新建分支、范围、验证基线），再按 plan §R1-S2 进入实现。
 
-状态：🟡 进行中（S2-B restore 恢复截止已两轮复审清零收口；S2-A 正文 writer fence 已三轮复审清零收口——Codex 复审 P0=0/P1=3/P2=2/P3=1，返修 `3bf1a515` 全闭合：fencing token 校验 + checkpoint 原子推进、suppressed tombstone purge-state 可落、writer-win race 反例、create_fence 私有化 + AB-BA 死锁修复、tombstone reason 受控化；独立 `max` 复核 checkpoint/token 推进、writer-win race、purge-state tombstone 判 P0=0/P1=0/P2=1/P3=3 可进 S2-C，3 条 P3 已登记 TD-090；execution decision_reason 受控化 P2 补 `09de05ed`；模型 Sol `xhigh` 主实现）
+### REQ-041/047 R1-S2 后续（待启动）
+
+状态：⚪ 待启动（S2-A 正文 writer fence、S2-B restore 恢复截止、S2-C ingress checkpoint + title/create fence + backfill 锁序 已逐一多轮复审清零并合并）
 类型：Architecture / Backend / Data Governance
 领域：Conversation / Workspace / Erasure / Recovery
-分支：feat/req041-047-r1-s2-workspace-owner
 
 需求来源：
 - R1 Spec: [Retention、Purge 与恢复专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
 - R1 Plan: [R1 分 Slice 实施计划 §R1-S2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s2workspace-owner-与恢复截止)
 
-范围（plan §R1-S2）：`workspace.core.v1` participant 清 Conversation title、物理删除 MessagePart 正文行、清原 actor id 与 ConversationUserState（保留 Message envelope、digest、不可逆 actor audit digest）；正文路径接 writer fence；restore 强制 `now < purge_after`、无 started owner ACK、revision/hold/purge CAS；list/get/search/history 对 deleted/purged fail closed；final workspace body scan 作为完成门禁。明确不做：Execution 清除、transport cancellation、Scheduler API。
-
-前置已就绪：R1-S1 schema 基座已合并（PR #506，merge commit `b8cbdf14`）；TD-089 已收口（PR #508，merge commit `eccb0f37`），fence 冗余 ix 已清、dev `metaedu` 已应用 035（head=`035_erasure_fence_ix_cleanup`）。
-
-下一步：S2-C 已提交待最终复核（PR #511；复审代码/测试基线 `ad73083c`，本事实源提交见 Git 历史）——三轮独立 `max` 复审 P0/P1 清零，round 3 余 P2=2 已一并返修。S2-C 契约注记/plan delta 先于代码冻结（plan §R1-S2「S2-C 契约注记」2026-07-29，commit `c7bd356c`；round1/2 偏差落地见「S2-C 复审修订」块）：`ingress_checkpoint` 以 `workspace.core.v1` 能力类别为 canonical source key——`body_messages` 用 message `seq`、`title` 用 Conversation `revision`，epoch 取 `purge_revision`，digest 走 shared `canonical_digest`，不用 `last_body_write_at`/fence revision 冒充；正文/checkpoint/receipt 同事务 commit；create 带初始 title 推进 title ingress。核心返修：assistant projection 推进 body checkpoint、backfill 经 `ensure_fence_under_owner_lock` 消反向锁序、deleted list/search 映 410、`_to_conversation` 对 deleted 投影 redacted recovery envelope、migration 036 精确 legacy pair（不依赖 revision、未知 digest 不动）+ downgrade 同还原两列、verdict/advance 真正拆分。round3 P2：P2-4 race 测试改为 writer 仅持 Conversation 行锁 + instrument backfill 首次 `get_fence_for_update`——正确实现在 writer 释放前不触达 fence，pre-probe（fence-first）变异变红击杀。验证：S2-C 专项 20 + 复审专项全绿、全量 1849 passed、变异 M1-M5 + P2-4 pre-probe 全击杀、ruff 0、mypy baseline 0 回归、migration 036 round-trip、docs gate + diff-check 通过。模型 Sol `xhigh` 主实现、round3 P2 用 Sol `high`。等待只读 `max`/Codex 最终复核，**未合并**。
-
-S2-C 显性前置（独立 `max` P2-2）：交付 backfill 命令（经 owner lock 调 `create_fence_under_owner_lock`，可恢复/分批/tenant 限流）——当前普通 delete→restore 对无 fence 会话 fail-closed `conversation_restore_not_allowed`，backfill 落地前该产品入口事实退化，必须闭合。S2-C 顺手项（S2-A 独立 `max` P2-3）：补 `late_body_write_rejected` API 409 e2e 断言；reserve_user_turn fence 校验先于幂等重放查找的行为变化在 spec/计划注记。S3 前置（P2-3）：purge worker claim 顺序强制 Guard→Conversation row→owner lock→fence→operation，写入 S3 worker spec/实现防 AB-BA 死锁；purge 接线 slice 处理（S2-A 独立 `max` P2-2）：dispatch_output 对 `LateBodyWriteRejectedError` 分类为 deterministic，跳过重试/路由 suppressed tombstone，避免 purge 高峰死信被确定性拒绝淹没。S2-C/S3 补测（P2-4）：concurrent double-restore race 测试；hold 生效中 restore 测试随 hold slice 补齐（spec R1-AC7）。不提前进入 S3-S6。
+下一步：S2-D/E 正文清除（`workspace.core.v1` participant 清 Conversation title、物理删除 MessagePart 正文行、清原 actor id 与 ConversationUserState，保留 Message envelope/digest/不可逆 actor audit digest）、participant ACK 与 final workspace body scan 作为完成门禁。建议 Sol `xhigh` 主实施，独立 `max` 复审清除完整性与竞态。遗留前置：S3 purge worker claim 顺序强制 Guard→Conversation row→owner lock→fence→operation；dispatch_output 对 `LateBodyWriteRejectedError` 分类为 deterministic 路由 suppressed tombstone；hold 生效中 restore 测试随 hold slice 补齐（spec R1-AC7）。不提前进入 S3-S6。
 
 ## 下一批候选任务
 
@@ -50,6 +45,7 @@ S2-C 显性前置（独立 `max` P2-2）：交付 backfill 命令（经 owner lo
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-29 | R1-S2-C ingress checkpoint source key + title/create fence + backfill 锁序 | 🟢 完成 | ingress 真实 source key + verdict/advance 拆分 + title/create 接 fence + backfill 消 AB-BA + deleted 410/redacted envelope + migration 036 归一；四轮 max 复审清零；全量 1849 passed；三路 CI 全绿 | [PR #511](https://github.com/MarkDanile/MetaEduBase/pull/511)（merge `2ceaffd0`）/ [Plan §R1-S2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-07-28 | R1-S1 Fence/Hold/Purge schema 基座 | 🟢 完成 | owner key 锁 + owner registry + 四协调表 + tombstone + fence 状态机（16 边）+ backfill 恢复契约；六轮 max 复审 P0/P1/P2=0/0/0；全量 1777 passed；dev 已 reset 到 034 head | [PR #506](https://github.com/MarkDanile/MetaEduBase/pull/506)（merge `b8cbdf14`）/ [Plan §R1-S1](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-07-27 | REQ-060 Slice 4 移动端 + a11y + Playwright + 收口 | 🟢 完成 | useMobileDrawer + LayoutView 重构（30 新增 vitest）+ Playwright 3 组 spec（55/55）；326/326 vitest；三路 CI 全绿；六轮复审 P0/P1/P2=0/0/0；评分 95 | [PR #503](https://github.com/MarkDanile/MetaEduBase/pull/503)（）/ [Plan §Slice 4](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md) / [work-log](work-log.md) / [scorecard](04-retrospectives/review-score-log.md) |
 | 2026-07-25 | TD-087 模板管理 API 后端 RBAC | 🟢 完成 | 15 个管理端点统一高权守卫；tenant-local 最小 lookup DTO、403 脱敏与 92 例角色/租户矩阵完成；Template 124、Identity 47、Frontend 175 passed，三路 CI 全绿 | [PR #495](https://github.com/MarkDanile/MetaEduBase/pull/495)（`40a7bf46`）/ [Tech Debt](technical-debt.md#td-087-模板管理-api-缺少后端-rbac) |
