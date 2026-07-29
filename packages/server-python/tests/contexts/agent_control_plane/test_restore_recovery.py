@@ -514,6 +514,51 @@ async def test_restore_with_started_owner_checkpoint_fails_closed(db_session):
     assert persisted.state is PurgeOperationState.SCHEDULED
 
 
+async def test_restore_with_failed_owner_checkpoint_fails_closed(db_session):
+    """scheduled operation 的 owner checkpoint 为 failed：failed 蕴含已发生过
+    一次擦除尝试（pending->erasing->failed），并非「尚未开始」。与
+    erasing/blocked/acked 一样属清除路径上的状态 -> fail closed，不得恢复，
+    operation 保持 scheduled 不被误改（留 saga 恢复路径处理）。"""
+    conversation_id, _, _ = await bootstrap_workspace(db_session)
+    deleted = await _delete(db_session, conversation_id, now=_DELETED_AT)
+    await _create_baseline_fences(db_session, conversation_id)
+    repo = AgentErasureRepository(db_session)
+    operation = await repo.create_purge_operation(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        purge_revision=deleted.purge_revision,
+        retention_policy_snapshot={},
+        hold_revision_snapshot=0,
+    )
+    checkpoint = await repo.create_owner_checkpoint(
+        tenant_id=TENANT_ID,
+        purge_operation_id=operation.id,
+        owner_key=_OWNER_KEY,
+    )
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversation_purge_owners "
+            "SET state = 'failed' WHERE id = :id"
+        ),
+        {"id": checkpoint.id},
+    )
+    await db_session.commit()
+
+    with pytest.raises(ConversationPurgeInProgressError):
+        await _restore(
+            db_session, conversation_id, now=_DELETED_AT + timedelta(days=1)
+        )
+    await db_session.rollback()
+    await _assert_still_deleted(db_session, conversation_id)
+    persisted = await AgentErasureRepository(
+        db_session
+    ).get_purge_operation_for_update(
+        tenant_id=TENANT_ID, purge_operation_id=operation.id
+    )
+    assert persisted is not None
+    assert persisted.state is PurgeOperationState.SCHEDULED
+
+
 async def test_delete_deleted_at_and_purge_after_share_one_clock_sample(db_session):
     """delete：deleted_at 与 purge_after 必须来自同一时钟采样
     （purge_after = deleted_at + 30 天），不得分别取应用/数据库时钟。"""

@@ -423,7 +423,7 @@ class AgentErasureRepository:
         *,
         tenant_id: uuid.UUID,
         conversation_id: uuid.UUID,
-        now: datetime | None = None,
+        now: datetime,
     ) -> list[PurgeOperation]:
         """restore CAS（Spec §3-3）：把尚未开始的 purge operation 置 cancelled
         终态（保留审计行、清 next_retry_at、推进 revision），返回被取消行。
@@ -431,9 +431,10 @@ class AgentErasureRepository:
         scheduled operation 若已有 owner checkpoint 进入 erasing/blocked/acked，
         说明清除实际已开始（状态自相矛盾）-> fail closed，不得恢复也不得改写
         operation。operation 行锁 + state 谓词构成 CAS；调用方必须先持
-        Conversation 行锁，保证取消与 Conversation 状态恢复原子提交。
+        Conversation 行锁，保证取消与 Conversation 状态恢复原子提交。now 为
+        锁后采样的数据库时钟（必传），updated_at 不落应用时钟。
         """
-        effective_now = now or _utcnow()
+        effective_now = now
         result = await self._session.execute(
             select(PurgeOperationModel)
             .where(
@@ -444,11 +445,10 @@ class AgentErasureRepository:
             .with_for_update()
         )
         operations = list(result.scalars().all())
-        # 尚未开始的 operation 只允许 pending/failed checkpoint；出现
-        # erasing/blocked/acked 即「清除实际已开始」-> fail closed。
-        safe_checkpoint_states = frozenset(
-            {PurgeOwnerState.PENDING.value, PurgeOwnerState.FAILED.value}
-        )
+        # 尚未开始的 operation 只允许 pending checkpoint；出现 failed 即代表
+        # 已发生过一次擦除尝试（pending->erasing->failed），与
+        # erasing/blocked/acked 一样属「清除实际已开始」-> fail closed。
+        safe_checkpoint_states = frozenset({PurgeOwnerState.PENDING.value})
         for operation in operations:
             checkpoint_states = (
                 (
