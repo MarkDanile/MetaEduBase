@@ -16,7 +16,7 @@
 
 ### REQ-041/047 R1-S2 Workspace owner 与恢复截止
 
-状态：🟡 进行中（S2-B restore 恢复截止已两轮复审清零收口；S2-A 正文 writer fence 独立 `max` 复审 P0=0/P1=1/P2=3 有条件放行，P1 bridge 注入点测试已补齐 `31ccb510` + P2-1 docstring 顺手收口——两注入点（reserve_user_turn/project_assistant_message）接 fence、惰性首写建 fence、三态/version 漂移 fail-closed、R1-AC3 race 正文不复活、create_fence 幂等，全部 mutation 验证判别力；模型 Sol `xhigh` 主实现 + 独立 `max` 审查）
+状态：🟡 进行中（S2-B restore 恢复截止已两轮复审清零收口；S2-A 正文 writer fence 经 Codex 复审 P0=0/P1=3/P2=2/P3=1，返修 `3bf1a515` 全闭合：fencing token 校验 + checkpoint 原子推进、suppressed tombstone purge-state 可落、writer-win race 反例、create_fence 私有化 + AB-BA 死锁修复、tombstone reason 受控化；待独立 `max` 复核 checkpoint/token 推进、writer-win race、purge-state tombstone；模型 Sol `xhigh` 主实现）
 类型：Architecture / Backend / Data Governance
 领域：Conversation / Workspace / Erasure / Recovery
 分支：feat/req041-047-r1-s2-workspace-owner
