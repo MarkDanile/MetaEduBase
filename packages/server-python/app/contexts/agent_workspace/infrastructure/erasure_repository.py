@@ -200,6 +200,11 @@ class AgentErasureRepository:
         ``active`` 时直接返回既有行——正文 writer 首次写已惰性建 fence，backfill
         补齐不得与其 PK 冲突。版本漂移或非 active（清除路径上的状态）仍 fail
         closed，不把既有行当作可安全重建。
+
+        前置条件：get-then-create 的竞态安全依赖调用方已持 owner advisory lock
+        （``require_body_write_fence_for_update`` / ``get_or_create_fence_for_update``
+        均在 owner lock 内调用）。未来受控 backfill 命令必须经 owner lock 进入，
+        不得绕过直调本方法，否则与惰性 writer 并发时双 insert 撞唯一索引。
         """
         owner = require_owner(owner_key)
         existing = await self.get_fence_for_update(

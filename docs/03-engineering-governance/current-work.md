@@ -16,7 +16,7 @@
 
 ### REQ-041/047 R1-S2 Workspace owner 与恢复截止
 
-状态：🟡 进行中（S2-B restore 恢复截止已两轮复审清零收口；S2-A 正文 writer fence 已提交 `cd6cfdd4` 待独立 `max` 复审：reserve_user_turn + project_assistant_message 两注入点接 fence、惰性首写建 fence、三态/version 漂移 fail-closed、R1-AC3 race 正文不复活、create_fence 幂等；模型 Sol `xhigh` 主实现 + 独立 `max` 审查）
+状态：🟡 进行中（S2-B restore 恢复截止已两轮复审清零收口；S2-A 正文 writer fence 独立 `max` 复审 P0=0/P1=1/P2=3 有条件放行，P1 bridge 注入点测试已补齐 `31ccb510` + P2-1 docstring 顺手收口——两注入点（reserve_user_turn/project_assistant_message）接 fence、惰性首写建 fence、三态/version 漂移 fail-closed、R1-AC3 race 正文不复活、create_fence 幂等，全部 mutation 验证判别力；模型 Sol `xhigh` 主实现 + 独立 `max` 审查）
 类型：Architecture / Backend / Data Governance
 领域：Conversation / Workspace / Erasure / Recovery
 分支：feat/req041-047-r1-s2-workspace-owner
@@ -29,7 +29,7 @@
 
 前置已就绪：R1-S1 schema 基座已合并（PR #506，merge commit `b8cbdf14`）；TD-089 已收口（PR #508，merge commit `eccb0f37`），fence 冗余 ix 已清、dev `metaedu` 已应用 035（head=`035_erasure_fence_ix_cleanup`）。
 
-下一步：S2-A 独立 `max` 复审（writer fence 锁序、惰性建 fence 竞态、create_fence 幂等正确性、R1-AC3 race 真实性）→ 清零后进 S2-C（list/get/search/history fail-closed + title/create 接 fence/Guard + backfill 命令）。S2-C 显性前置（独立 `max` P2-2）：交付 backfill 命令——当前普通 delete→restore 对无 fence 会话 fail-closed `conversation_restore_not_allowed`，backfill 落地前该产品入口事实退化，必须闭合。S3 前置（P2-3）：purge worker claim 顺序强制 Guard→Conversation row→owner lock→fence→operation，写入 S3 worker spec/实现防 AB-BA 死锁。S2-C/S3 补测（P2-4）：concurrent double-restore race 测试；hold 生效中 restore 测试随 hold slice 补齐（spec R1-AC7）。不提前进入 S3-S6。
+下一步：进入 S2-C（list/get/search/history 对 deleted/purged fail-closed + title/create 接 fence/Guard + backfill 命令）。S2-C 显性前置（独立 `max` P2-2）：交付 backfill 命令（经 owner lock 调 `get_or_create_fence_for_update`，可恢复/分批/tenant 限流）——当前普通 delete→restore 对无 fence 会话 fail-closed `conversation_restore_not_allowed`，backfill 落地前该产品入口事实退化，必须闭合。S2-C 顺手项（S2-A 独立 `max` P2-3）：补 `late_body_write_rejected` API 409 e2e 断言；reserve_user_turn fence 校验先于幂等重放查找的行为变化在 spec/计划注记。S3 前置（P2-3）：purge worker claim 顺序强制 Guard→Conversation row→owner lock→fence→operation，写入 S3 worker spec/实现防 AB-BA 死锁；purge 接线 slice 处理（S2-A 独立 `max` P2-2）：dispatch_output 对 `LateBodyWriteRejectedError` 分类为 deterministic，跳过重试/路由 suppressed tombstone，避免 purge 高峰死信被确定性拒绝淹没。S2-C/S3 补测（P2-4）：concurrent double-restore race 测试；hold 生效中 restore 测试随 hold slice 补齐（spec R1-AC7）。不提前进入 S3-S6。
 
 ## 下一批候选任务
 
