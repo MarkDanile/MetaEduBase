@@ -237,6 +237,141 @@ S1 已交付 `app/composition/agent_erasure_backfill.py`（bounded cursor、分�
 - **§4 list/search fail-closed 增强**（round 1 P1-3）：`list_conversations`/`search` 对 `state=deleted` 不再精确过滤返回，而是 fail-closed 抛 `DeletedConversationListingError` → HTTP 410 `deleted_conversation_listing`，避免经 deleted 列表泄露 title 与正文匹配关系。
 - **migration 036 数据矩阵**（round 2 P1-1/P1-2）：upgrade 精确匹配 legacy pair（`ingress_checkpoint={} AND ingress_digest=LEGACY`，不依赖 revision），未知 digest 与非空 checkpoint 不动；downgrade 同时还原 legacy checkpoint 与 legacy digest 两列，不留失配。数据中间态由专门 036 数据矩阵测试锁定（rev1/rev>1 legacy 归一、未知 digest 不被覆盖、非空 checkpoint 不动、downgrade 两列正确）。
 
+#### S2-D/E 契约注记 / plan delta（2026-07-29，先于代码冻结）
+
+本轮冻结 S2-D/E（workspace.core.v1 正文清除 + participant ACK + final body scan）的设计决策与不变量，作为后续实现与独立 `max`/Codex 复审的事实源。不改已合并 migration 034/035/036、不进 S3（Execution owner）/S4/S5、**不启用 purge scheduler 对生产自动执行**（`conversation_purge_scheduler` 启用在 Spec §10 属独立 deploy 阶段，本 Slice 只交付可被 scheduler/受控命令调用的清除与 ACK 原语）、不混入 TD-090 P3。
+
+**范围切分**：S2-D = `workspace.core.v1` participant 正文清除原语 + final body scan（Spec §7.1 的执行器）；S2-E = participant ACK + purge operation/owner checkpoint 推进 + 完成门禁（Spec §5.2 的 saga 闭合）。两者共用同一锁序与 fencing token，故契约注记合并冻结、分两个 commit 实现。
+
+**1. 清除触发与锁序（Spec §6.1，与 writer/backfill 同序，防 AB-BA）**
+
+purge 对单 Conversation 的清除**必须**沿用固定锁序：`Conversation row FOR UPDATE -> owner advisory lock(workspace.core.v1) -> ErasureFence row FOR UPDATE -> owner aggregate rows（Conversation -> Message -> MessagePart -> ConversationUserState）`。清除执行器经 `ensure_fence_under_owner_lock`/`transition_fence_state` 取锁，**不得**绕开 Conversation 行锁直接锁 fence 或 Message（否则与 writer 的 Conversation->owner->fence 构成反向等待）。fence 缺失时在 owner lock 下创建（Spec §5.1「不能把缺行解释为安全」）。
+
+**2. workspace.core.v1 participant 清除动作（Spec §7.1，同事务、可重入）**
+
+单 Conversation、单 purge_revision 内，participant 在同一事务完成以下清除并推进 fence `active -> erasing`（首次）：
+
+- **Conversation title**：置 `title=NULL`、`title_source=none`（tombstone），保留 id/state/revision/purge_after/purged_at 等 envelope。**不**物理删除 Conversation 行（restore/审计 envelope 保留）。
+- **actor 不可逆匿名化**：`Conversation.created_by`/`Message.author_id` 置 NULL，另存 tenant-scoped 不可逆 `creator_identity_digest`/`actor_identity_digest`（HMAC-SHA256(tenant-scoped key, actor UUID)，64-hex，**不含可还原明文**）。沿用 S1 已建的 `actor_state='redacted'` + digest CHECK 约束（`ck_agent_conv_actor`/`ck_agent_msg_actor_digest`），不用真实 UUID 冒充匿名。
+- **Message 正文**：**物理删除** `agent_message_parts` 正文行（V1 不保留 Part envelope，避免空正文违反 part-type 约束），并把所属 `agent_messages` 转 redacted tombstone（`body_state='redacted'`、`content_state='redacted'`、`redacted_at`、`redacted_reason` 用受控 code），保留 Message id/seq/kind/`content_digest`/必要 opaque id。**不得**改写 seq 或删除 Message envelope。
+- **ConversationUserState**：物理删除 `agent_conversation_user_state`（pin/read 非审计必需 envelope，Spec §7.1）。
+- **redacted_reason 受控化**：一律走 shared `suppression_reason_code` 白名单 code，自由文本（可能含正文/prompt/secret）**绝不**入库（与 S2-A/B tombstone 一致）。
+
+可重入（Spec §8「重复 claim/ACK 丢失后从 checkpoint 恢复」）：对已 redacted Message、已删 Part/UserState、已匿名 actor 再次执行清除是幂等 no-op，不报错、不二次计数。重试复用同 purge_revision 与 owner checkpoint，不新建 revision。
+
+**3. final workspace body scan（完成门禁，Spec §5.2/§7.1）**
+
+清除后、ACK 前必须做 workspace 正文扫描：该 Conversation 下 `body_state='present'` 的 Message、`agent_message_parts` 残留行、`agent_conversation_user_state` 残留行、`actor_state='present'` 的 Conversation/Message 必须为 **0**。扫描结果（每类计数 + canonical digest）记入 owner `checkpoint_digest`。**扫描非零 -> 不得 ACK**，fence 保持/回 `blocked` 并记稳定 reason code（如 `workspace_body_scan_nonzero`），不把「已执行 DELETE 的受影响行数」当完成（Spec §4.2「没有查到正文不是隐式 ACK」）。
+
+**4. participant ACK 与 fencing（Spec §5.1/§5.2）**
+
+- 仅当 body scan 为零，participant 才提交 ACK：`transition_fence_state(erasing -> erased, ack_digest=canonical_digest(清除摘要))`，`ack_digest` 仅允许落在 erased 边（S1 状态机已强制）。ACK 摘要 = 排序后的 `{owner_key, owner_version, purge_revision, 各类清除计数, body_scan_digest}` 的 canonical digest，**不含正文/actor 明文**。
+- 推进 fencing token：`purge_revision` 单调不减（重试复用同 token），`hold_revision` 对当前 Conversation `hold_revision`。active legal hold 阻止 fence `active -> erasing`（Spec §5.3），purge operation 记 `blocked`，**不**清除任何正文。
+- purge operation/owner checkpoint 同步：`agent_conversation_purge_owners` 该 owner `pending/erasing -> acked`（带 `ack_digest`），operation 在**所有 snapshot owner acked 且 registry digest 匹配且最终 body scan 为零**后才写 `purge_state=completed`/`purged_at`（Spec §5.2）。本 Slice 只接 `workspace.core.v1` 单 owner；多 owner（execution/transport）的 operation 完成判定属 S3/S4，本 Slice 不伪造 completed。
+
+**5. 明确不做（边界）**
+
+- 不启用/不实现 `conversation_purge_scheduler` 对到期 Conversation 的自动 claim 循环（Spec §8/§10，独立 deploy + S3 worker claim 顺序一并交付）；本 Slice 的清除执行器以**受控入口/服务方法**形态供 scheduler 或运维命令调用。
+- 不清除 Execution/Runtime/transport owner 正文（S3/S4）。
+- 不改 legal hold lifecycle（S5）；仅消费 `hold_revision` 做 purge CAS 与 active-hold 阻止。
+- 不实现 external object erase（无生产 adapter，Spec §7.3 对未知 scheme fail closed `external_owner_unavailable`）。
+
+**6. 竞态与不变量复核（复审重点）**
+
+- 清除与并发正文 writer：清除在 owner lock 内推进 fence `active -> erasing` 后，writer 经 `require_body_write_fence_for_update` 裁决即被拒（`LateBodyWriteRejectedError`），清除期间不得有新正文复活（与 S2-A writer-win/purge-win race 互补）。
+- 清除与 restore：fence 已离开 `active` 后 restore fail closed（S2-B 已锁）；清除开始后 restore 不得复活正文。
+- 迟到写：fence `erasing/erased` 下旧事件只能写无正文 tombstone/receipt，不重建正文（Spec §6.2）。
+- 跨 tenant/跨 actor/未知 owner/stale fencing token/版本漂移 全部 fail closed。
+
+**验证**：S2-D/E 专项（title/Message/Part/UserState/actor 清除断言、tombstone envelope 保留、body scan 零/非零门禁、ACK digest 契约、active hold 阻止、清除中 writer 被拒、可重入幂等、跨 tenant/actor fail closed）+ workspace/control-plane 回归全绿；新增测试经变异验证（删除某清除动作 -> body scan 非零 / ACK 被拒）；ruff 0；mypy baseline 0 回归；docs gate + git diff --check 通过。本轮**不改 migration 034/035/036**、不启用 purge scheduler。
+
+#### S2-D/E 复审修订（2026-07-29，独立 `max` round 1 返修落点）
+
+首轮实现后独立 `max` 复审 P0/P1/P2=0/5/2，5 个 P1 阻塞项已按 Sol `xhigh` 返修，**优先于上面注记的对应旧陈述**：
+
+- **P1-1 purge 前置无条件强制**（Spec §3）：原实现未校验会话状态/恢复窗口，active/未到期会话可被直接擦除。修订为--执行器在锁 Conversation 行后强制 `state=deleted AND now >= purge_after AND purged_at IS NULL`，任一不满足 `ConversationNotPurgeableError` fail closed，不依赖 scheduler 只 claim 到期行。反例：active 会话、未到期（`now < purge_after`）、已 purged 三类均 fail closed。
+- **P1-2 actor digest 改 HMAC**：原实现用普通 `SHA-256(tenant||actor)`，不满足冻结契约的 HMAC。修订为--`HMAC(HMAC(secret, tenant_id), actor_id)`（SHA-256），tenant-scoped 派生 key、密钥隔离（`settings.jwt_secret` 回退，可注入测试值）。反例：digest != 普通 SHA-256、不同 tenant/secret 产生不同 digest。
+- **P1-3 archived_by/deleted_by 清除**：原实现只清 `created_by`，遗漏 `archived_by`/`deleted_by` 两个直接主体标识。修订为--`_anonymize_conversation_actors` 一并 NULL 这两列（V1 无独立 digest 列，删除/归档审计在事件账本非会话行）。反例：清除后两列为 NULL。
+- **P1-4 ACK 绑定具体 operation/checkpoint fencing**：原 ACK 用 `(conversation, purge_revision)` 子查询批量 UPDATE、无 CAS、无 registry drift 校验。修订为--`erase_conversation_body` 接 `purge_operation_id`，ACK 时加载具体 operation FOR UPDATE（校验 `purge_revision` 一致 + `registry_digest` 仍匹配已安装 registry，drift -> `OwnerRegistryChangedError`）+ 具体 owner checkpoint FOR UPDATE CAS（`pending/erasing/blocked -> acked`，落 `ack_digest` + `checkpoint_digest`，后者为 scan digest 与前者分离）。反例：purge_revision 不符/registry drift/non-existent operation 均 fail closed。
+- **P1-5 blocked 可靠提交 + 重试**：原实现 scan 非零时抛 `WorkspaceBodyScanNonZeroError`，异常致事务回滚、blocked 状态丢失；重试时 fence 已 erasing 致 CAS 冲突。修订为--blocked 改为**正常返回** `WorkspaceErasureOutcome(blocked=True, block_reason=...)`，调用方 commit 后 operation/checkpoint/fence 的 blocked 状态持久化；fence 状态机用 `erasing->blocked`（scan 非零）+ `blocked->erasing`（重试入口），清除幂等（已 redacted/已删除 no-op），重试 scan 归零即 `erasing->erased` ACK。`_record_blocked`/`_ack_owner_checkpoint` 用 state 谓词 CAS（不 clobber completed/cancelled）。active legal hold 也改为 blocked 正常返回（reason=`legal_hold_active`，retryable）。反例：blocked 状态 commit 后持久化、blocked->重试->ACK 全路径。
+- **P2（自审）**：`checkpoint_digest` 与 `ack_digest` 分离（scan digest vs 清除摘要 digest）；`conversation.purge_state` 投影与 operation/owner 行同事务保持一致（erasing->`running`、blocked->`blocked`，单 owner 不伪造 `completed`）。
+
+#### S2-D/E round-2 复审修订（2026-07-29，独立 `max` round 2 返修落点）
+
+round-1 返修后独立 `max` 复审 P0/P1/P2/P3=0/5/4/1，5 个 P1 阻塞项已按 Sol `xhigh` 返修，**优先于上面 round-1 注记的对应旧陈述**：
+
+- **P1-1 capability gate 放行**：原 registry 对所有 owner `erase_available=False`，workspace.core.v1 eraser 只能绕过能力门调用。修订为--`workspace.core.v1` 翻 `erase_available=True`，执行器入口经 `require_capability(workspace.core.v1, "erase")` 放行；其余 owner 仍 `False`（待 S3/S4）。`capability_digest` 因此含 `erase_available` 字段。
+- **P1-2 actor HMAC secret 隔离**：原实现回退 `settings.jwt_secret`，违反密钥用途隔离（JWT 轮换会改变审计身份摘要）。修订为--新增独立 `settings.actor_erasure_secret`（空值 dev 占位、生产 fail-fast、版本固定），`HMAC(HMAC(actor_erasure_secret, tenant_id), actor_id)`。
+- **P1-3 operation/checkpoint 完整 fencing**：原 ACK 仅校验 `purge_revision` + registry drift，`purge_operation_id` 可缺省，未校验 conversation_id/lease_epoch/hold_revision_snapshot/checkpoint owner_version/capability_digest。修订为--`purge_operation_id` 必填；`_load_verified_operation` 校验 conversation_id（跨 Conversation 误 ACK 防护）+ purge_revision + lease_epoch（stale lease）+ registry_digest + hold_revision_snapshot（hold 漂移）；`_load_verified_checkpoint` 校验 owner_version + capability_digest CAS。反例表驱动：跨 conversation / purge_revision / lease_epoch / hold_revision / owner_version / capability_digest 六类不符均 fail closed。
+- **P1-4 operation 投影 + erased fence 恢复**：原实现 operation 状态未投影（首成功可能留 scheduled、blocked 重试可能留 blocked），erased fence 重放在 `purged_at` 前置之后被拒、且不修复 pending checkpoint。修订为--erasing 开始 `_mark_operation_running`（scheduled->running）；erased fence 幂等重放**先于** purge 前置（`purged_at` 不阻断），`_repair_checkpoint_if_pending` 用 fence.ack_digest 补 ACK pending checkpoint + operation scheduled->running（ACK 丢失恢复）。反例：erased fence + pending checkpoint + purged_at 重放修复到 acked。
+- **P1-5 final scan + 幂等清除完整性**：原 scan 未计入 `archived_by`/`deleted_by`，`_redact_messages` 只选 `body_state=present`（已 redacted 但仍带 author_id 的 assistant/system Message 永久残留、blocked 无法自愈）。修订为--scan 含 archived_by/deleted_by；`_redact_messages` 选择 `or_(body_state=present, author_id IS NOT NULL)`，清除所有 author_id 残留；`_anonymize_conversation_actors` 清 created_by + archived_by + deleted_by。反例：scan 计 archived_by/deleted_by；已 redacted 带 author_id 的 assistant_output 经 erase 清除 author_id -> scan 归零 ACK。
+- **P2-1 scan tenant 谓词**：scan_body 的 Conversation 查询补 `tenant_id` 谓词（不用裸 get(PK)），跨 tenant 不误报 actor 残留。
+- **P2-2 blocked 路径 scan digest**：`_record_blocked` 也写 `checkpoint.checkpoint_digest = scan.digest()`（非零 scan 证据，不只 success ACK 路径）。
+- **P2-3 PostgreSQL 时钟**：purge 截止在 Conversation 锁后取 `clock_timestamp()`（非进程时钟），`now=None` 走 `_database_now()`。
+- **P2-4 reason code**：legal hold 用 Spec §9.2 `purge_blocked_by_legal_hold`（非 `legal_hold_active`）。
+- **P3**：round-1 注记 line 的前置表达式 typo 修正为 `now >= purge_after AND purged_at IS NULL`；PR 描述更新为 32 测试 / 1881 回归 / HMAC actor digest。
+
+**验证**：S2-D/E round-2 专项 32 测试（含 6 场景表驱动 fencing 反例 + erased fence pending checkpoint 恢复 + scan archived_by/deleted_by + 已 redacted author_id 残留清除 + DB 时钟 + tenant 谓词 + 生产 fail-fast）经 18 项变异验证全部 killed；ruff 0；mypy 0 回归；全量 `pytest -m 'not external_network'` 1881 passed；docs gate + git diff --check 通过。本轮**不改 migration 034/035/036**、不启用 purge scheduler。待独立 `max` 只读复核。
+
+#### S2-D/E round-3 复审修订（2026-07-29，独立 `max` round 3 返修落点）
+
+round-2 返修后独立 `max` 复审 P0/P1/P2=0/4/2，6 项已按 Sol `xhigh` 返修，**优先于 round-2 注记的对应旧陈述**：
+
+- **P1-1 blocked 重试状态一致**：round-2 `_mark_operation_running` 只 scheduled->running，blocked 重试后 operation 卡 blocked + failure_code 残留，与 checkpoint=acked / conversation.purge_state=running 不一致。修订为--`_mark_operation_running` 推进 scheduled/blocked->running 并清 failure_code + bump revision（`_mark_operation_running` 是 failure_code 唯一清除点，ACK 不再防御性清--可测）。反例：重试 ACK 后 operation=running + failure_code=None，与 checkpoint/purge_state 一致。
+- **P1-2 operation revision replay fencing**：round-2 ACK 无 operation revision CAS，跨事务 stale operation 可重放。修订为--`erase_conversation_body` 接 `expected_operation_revision` 必填；`_load_verified_operation` 支持 revision CAS（首次加载裁决，后续 mark_running/ack/record_blocked 复用锁内稳定 revision）；状态变化（scheduled/blocked->running、->blocked、repair scheduled->running）bump revision。反例：调用方观测 revision 过期（被并发 bump）-> "operation revision mismatch" fail closed。
+- **P1-3 erased repair 安全**：round-2 erased fence 重放不校验 scan 与 operation 状态，可在非零 scan 或终态 operation 上补 ACK。修订为--erased 重放先校验 `scan.total == 0`（非零 = 正文泄漏矛盾，fence 已终态不可 blocked，fail closed）；`_repair_checkpoint_if_pending` 校验 operation 处可修复状态（scheduled/running/blocked），cancelled/failed/completed 终态 fail closed。反例：erased + 非零 scan -> ValueError；erased + cancelled operation -> ValueError。
+- **P1-4 actor secret 强度 + 版本契约**：round-2 只校验非空，无强度阈值与版本机制。修订为--新增 `settings.actor_erasure_secret_version`（混入 HMAC key 派生 `HMAC(HMAC("{v}:{secret}", tenant), actor)`，轮换 = 新 secret + bump version）；`validate_production_actor_erasure_secret`（lifespan 启动期）+ 构造期双重校验：production secret >= 32 字符 + version >= 1，否则 fail-fast。反例：空/弱 secret -> RuntimeError；不同 version -> 不同 digest。
+- **P1-5 公开 now 参数绕过 DB 时钟**：round-2 `erase_conversation_body` 暴露 `now` 参数，调用方可传进程时钟绕过 `clock_timestamp()`。修订为--移除 `now` 参数，purge 截止始终用 `_database_now()`（Conversation 锁后采样）。反例：传 `now=` -> TypeError（参数不存在）；DB 时钟始终被调用。
+- **P2 owner_version 去硬编码**：round-2 `_record_blocked` / `_repair_checkpoint_if_pending` 硬编码 `fence_owner_version=1`。修订为--两处改用 `fence.owner_version`（与 `_ack_owner_checkpoint` 一致，未来 owner version bump 不会误判 mismatch）。反例：fence + checkpoint owner_version=2 同步时 blocked 路径仍匹配（硬编码 1 会误 raise）。
+
+**验证**：S2-D/E round-3 专项 40 测试（含 7 场景表驱动 fencing 反例 +operation revision CAS+ + erased 非零 scan fail closed + erased 终态 operation fail closed + blocked 重试状态一致 + secret 强度/版本/启动校验 + now 不被接受 + owner_version 去硬编码）经 8 项 round-3 变异全 killed；ruff 0；mypy 0 回归；docs gate + git diff --check 通过。本轮**不改 migration 034/035/036**、不启用 purge scheduler。待独立 `max` 只读复核。
+
+#### S2-D/E round-4 复审修订（2026-07-29，独立 `max` round 4 返修落点）
+
+round-3 返修后独立 `max` 复审 P0/P1/P2=0/5/0，5 项已按 Sol `xhigh` 返修，**优先于 round-3 注记的对应旧陈述**：
+
+- **P1-1 legal-hold 路径绕过 operation revision CAS**：round-3 `_record_blocked` 无 `expected_revision`，legal-hold 路径调用时不裁决 revision；stale caller（revision 过期）+ 活跃 hold 仍能把 operation/checkpoint 置 blocked。修订为--`_record_blocked` 新增 `expected_revision: int | None = None` 透传 `_load_verified_operation`；legal-hold 路径传 `expected_revision=expected_operation_revision`。反例：stale revision + 活跃 hold -> "operation revision mismatch" fail closed，零状态变更（operation 留 scheduled、checkpoint 留 pending）。
+- **P1-2 legal-hold blocked 投影不一致 + reason change 不 bump**：round-3 legal-hold 分支置 operation/checkpoint=blocked 但不投影 `Conversation.purge_state=blocked`（仍 scheduled），违反 Spec §5.2 同事务一致；且 `_record_blocked` 对已 blocked operation 的 reason 变化不更新 `failure_code`、不 bump revision。修订为--legal-hold 路径同事务置 `conversation.purge_state = BLOCKED`；`_record_blocked` 已 blocked 且 `failure_code != reason` 时更新 failure_code + bump revision（checkpoint 同理设 cp_changed）。反例：legal-hold 后 purge_state=blocked 与 operation/checkpoint 一致；scan_nonzero -> legal_hold reason 变化 revision 递增。
+- **P1-3 erased repair 接受/留下矛盾事实**：round-3 `_repair_checkpoint_if_pending` 对 ACKed checkpoint 不验证 `ack_digest`/`checkpoint_digest` 与 fence/scan 一致；对 blocked operation 只清 `failure_code` 不推进 running，Conversation 投影不修复。可得到 `fence=erased / checkpoint=acked / operation=blocked / failure_code=NULL`。修订为--ACKed checkpoint 必须验证 `ack_digest == fence.ack_digest` 且 `checkpoint_digest == scan.digest()`，矛盾 fail closed；blocked operation 推进到 running（不只清 failure_code）+ bump revision；erased 重放同事务修复 `conversation.purge_state = RUNNING`（三方一致）。反例：篡改 ack_digest -> "contradictory ACK fact"；blocked operation + purge_state=blocked -> 修复到 running + purge_state=running。
+- **P1-4 actor digest key version 未持久化**：round-3 `config.py` 声明 secret+version 轮换，但表只存 64-hex digest 无 version 列，actor UUID 清除后无法重算或判断历史 digest 版本。修订为--**V1 冻结契约**：生产环境 `actor_erasure_secret_version` 冻结为 1，**禁止轮换** secret/version，直至 migration 落地持久化 digest version；`validate_production_actor_erasure_secret` + 构造期双重校验 production `version != 1` -> RuntimeError；非生产允许 version>=1 供测试。反例：production version=2 -> "必须为 1" RuntimeError；version=0 -> 同样 fail。
+- **P1-5 agent-type Message author digest 不可逆丢失**：round-3 `_redact_messages` 只对 `author_type=="user"` 计算 digest 但清除**所有** `author_id`，违反 plan:255 `Message.author_id -> actor_identity_digest` 契约（assistant_output/system_notice 的 author_id 也应转 digest）。修订为--对所有 `author_id is not None` 的消息计算 `actor_identity_digest`（不再限定 author_type），然后清 author_id。反例：agent author 消息 redact 后 `actor_identity_digest` 为 64-hex HMAC（非 None），与 user author 一致。
+
+**验证**：S2-D/E round-4 专项 46 测试（+7 round-4：legal-hold stale revision fail closed / legal-hold purge_state=blocked 投影 / record_blocked reason change bump / erased ACKed digest mismatch fail closed / erased blocked->running + 三方一致 / V1 版本冻结 / agent author digest 全类型）经 8 项 round-4 变异全 killed（含唯一锚点修正）；ruff 0；mypy 0；agent_control_plane + composition + identity jwt 228 passed；全量 `pytest -m 'not external_network'` 1895 passed / 0 failed；docs gate + git diff --check 通过。本轮**不改 migration 034/035/036**、不启用 purge scheduler。待独立 `max` 只读复核。
+
+#### S2-D/E round-5 复审修订（2026-07-29，独立 `max` round 5 返修落点）
+
+round-4 返修后独立 `max` 复审 P0/P1/P2=0/2/1，3 项已按 Sol `xhigh` 返修，**优先于 round-4 注记的对应旧陈述**：
+
+- **P1-1 ACKed checkpoint 绕过 operation 状态修复**：round-4 `_repair_checkpoint_if_pending` 在 ACKed checkpoint digest 验证后早 return，跳过 operation 修复块。`checkpoint=acked + operation=blocked/scheduled` 矛盾组合漏过--Conversation 被改 running 但 operation 留旧状态。现有 round-4 测试把 checkpoint 回退为 pending 避开了此分支。修订为--ACKed digest 验证后不早 return，fall through 到统一 operation 修复块（`checkpoint_already_acked` 标记跳过 checkpoint 重写，但 operation 修复始终执行）。反例：ACKed+blocked -> operation 修复 running；ACKed+scheduled -> operation 修复 running + 补 started_at。
+- **P1-2 冻结 version 未冻结实际 secret**：round-4 只校验 secret 长度 + version=1，生产把 secret A 换 B（version 仍 1）启动/构造都通过，历史 digest 孤儿化。"禁止轮换" 只是文案。修订为--(1) 新增 migration 037 `system_key_fingerprints` 表 + `_actor_erasure_key_fingerprint`（HMAC-SHA256(secret, 域分隔符) 64-hex，非可逆）+ `validate_production_actor_erasure_key_fingerprint`（lifespan 启动期 upsert 持久化 fingerprint，首次锁定 / 不一致 fail closed，检测 secret 静默替换）；(2) 构造器生产环境禁覆盖 `audit_secret`/`audit_secret_version`（必须来自 settings，防调用方注入不同 key）。反例：secret A->B 同 version=1 -> fingerprint 不一致 RuntimeError；构造器传 audit_secret -> "does not accept override" RuntimeError。
+- **P2 模块文案与 V1 冻结契约冲突**：round-4 docstring/error 仍写"新 secret + bump version，审计可追溯"/"独立轮换"。修订为--统一改为"migration 落地前不可轮换"（docstring + `_actor_audit_digest` 注记 + error message）。
+
+**验证**：S2-D/E round-5 专项 52 测试（+6 round-5：ACKed+blocked operation 修复 / ACKed+scheduled operation 修复 / fingerprint lock-in+match / fingerprint mismatch fail closed / 构造器禁覆盖 / 非生产跳过）经 6 项 round-5 变异全 killed；ruff 0；mypy 0；migration roundtrip + schema 56 passed；agent_control_plane + composition + identity jwt 234 passed；全量 `pytest -m 'not external_network'` 回归通过；docs gate + git diff --check 通过。本轮**新增 migration 037**（不改 034/035/036）、不启用 purge scheduler。待独立 `max` 只读复核。
+
+#### S2-D/E round-6 复审修订（2026-07-29，独立 `max` round 6 返修落点）
+
+round-5 返修后独立 `max` 复审 P0/P1/P2=0/1/3，4 项已按 Sol `xhigh` 返修，**优先于 round-5 注记的对应旧陈述**：
+
+- **P1 生产部署未接入新密钥契约**：round-5 新增 `ACTOR_ERASURE_SECRET` + `ENVIRONMENT=production` 启动校验，但 `deploy/docker-compose.yml` 未传递两者，`deploy/.env.production` / `.env.example` 也未声明，应用沿用 `development` 默认跳过校验 + 用 dev 占位密钥生成 digest。修订为--Compose backend 注入 `ENVIRONMENT`（默认 production）+ `ACTOR_ERASURE_SECRET`（必填）；`.env.production` 声明两者；`.env.example` 补 `ACTOR_ERASURE_SECRET` 模板；`security.md` secret 表 + 生产节登记。
+- **P2 校验失败前提交调用方事务**：round-5 `validate_production_actor_erasure_key_fingerprint` 在 fingerprint 比对前 `session.commit()`，函数接受任意 `AsyncSession`，mismatch 抛错前已提交调用方已有写入。修订为--函数不自行 commit，由 lifespan 用 `async with async_session_factory.begin()` 持有事务（成功自动提交、失败自动回滚）。多 worker 并发首启由 PG 行锁串行化（第二个 upsert 阻塞到首个提交后走 on_conflict re-read）。
+- **P2 错误信息暴露 verifier + 非常量时间比较**：round-5 mismatch 异常含 `existing`/`fingerprint` 值（固定消息 HMAC 是密钥 verifier，可离线验证猜测），且用 `!=` 非常量时间。修订为--`hmac.compare_digest()` 常量时间比较；异常文本只保留通用 mismatch 信息（不泄露 fingerprint 值）。
+- **P2 037 与多 worker 契约缺专属回归**：round-5 只在 `test_alembic_migrations.py` 断言 head 版本，无 037 表/PK/CHECK + 真实 downgrade->upgrade；fingerprint 测试只用单共享 session，无并发首启覆盖。修订为--新增 `test_037_system_key_fingerprints_downgrade_upgrade_round_trip`（表 + pk + check 约束 + 真实降升级）；新增并发首启测试（两独立 session/事务：同 secret 都成功仅一行 / 不同 secret 恰一方成功一方 mismatch fail）；新增 mismatch error redaction 测试（异常不含 fingerprint 值）。
+
+**验证**：S2-D/E round-6 专项 55 测试（+3 round-6：并发同 secret / 并发不同 secret / mismatch redaction）+ 037 迁移往返 1 项；2 项 round-6 变异 killed（redaction + no-commit），compare_digest 变异 SURVIVED 是预期（timing-only 不可功能测试）；ruff 0；mypy 0；agent_control_plane + composition + identity jwt 238 passed；全量回归通过；docs gate + git diff --check 通过。本轮**新增 migration 037**（不改 034/035/036）、不启用 purge scheduler。待独立 `max` 只读复核。
+
+#### S2-D/E round-7 复审修订（2026-07-29，独立 `max` round 7 返修落点）
+
+round-6 返修后独立 `max` 复审 P0/P1/P2=0/1/1，2 项已按 Sol `xhigh` 返修，**优先于 round-6 注记的对应旧陈述**：
+
+- **P1 生产模板公开 placeholder 通过校验**：round-6 `.env.production` 模板值 `CHANGE_ME_random_jwt_secret_at_least_32_chars` / `CHANGE_ME_random_actor_erasure_secret_at_least_32_chars` 均 >=32 字符，当前校验接受--直接用模板启动会以公开 JWT 密钥运行，并把公开 actor key fingerprint 锁入 037（V1 冻结期不可轮换）。修订为--(1) `.env.production` 模板值留空（Compose `${VAR:?}` 必填检查阻止未配置启动）；(2) 启动期 + 构造期校验新增仓库已知 placeholder denylist（`_KNOWN_JWT_PLACEHOLDERS` / `_KNOWN_ACTOR_ERASURE_PLACEHOLDERS`，含 config 默认值 + deploy 模板值），公开值 fail-fast。反例：`dev-only-*` / `CHANGE_ME_*` -> RuntimeError；随机高熵值 -> 通过。
+- **P2 并发测试共享全局 settings**：round-6 并发协程直接覆盖 `settings.actor_erasure_secret`，不能稳定模拟两 worker 独立配置，调度变化时两任务可能读同一 secret；直接赋值也绕过 `monkeypatch` 恢复污染后续测试。修订为--每个协程传独立 `SimpleNamespace` cfg（不修改全局 settings）；`system_key_fingerprints` 加入 autouse TRUNCATE 清理防跨测试泄漏。反例：两独立 cfg 不同 secret -> 恰一方成功一方 mismatch fail。
+
+**验证**：S2-D/E round-7 专项 58 测试（+3 round-7：actor placeholder 拒绝 / JWT placeholder 拒绝 / ctor placeholder 拒绝；并发测试改独立 cfg）；3 项 round-7 变异全 killed（startup/ctor/JWT placeholder 拒绝）；ruff 0；mypy 0（jose stubs 历史忽略）；agent_control_plane + composition + identity 281 passed；全量回归通过；docs gate + git diff --check 通过。本轮不改 migration 034/035/036/037、不启用 purge scheduler。待独立 `max` 只读复核。
+
+
+
+
+
 ### R1-S3：Execution owner、RunEvent payload 与 compatibility output
 
 **复杂度/执行**：极高，Sol `xhigh`；独立 `max` 审查 terminal/projection 反例。

@@ -8,6 +8,12 @@ from app.config import settings
 # BUG-017: JWT 根信任硬约束。公开默认值与最低强度阈值，生产启动校验引用。
 JWT_DEFAULT_SECRET = "dev-only-change-in-production"
 JWT_SECRET_MIN_LENGTH = 32
+# round-7 P1：仓库已知 placeholder 拒绝表（公开值，长度 >=32 会通过强度校验，
+# 直接用模板启动会把公开 JWT 密钥带入生产）。含 config 默认值 + deploy 模板值。
+_KNOWN_JWT_PLACEHOLDERS = frozenset({
+    JWT_DEFAULT_SECRET,
+    "CHANGE_ME_random_jwt_secret_at_least_32_chars",
+})
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -44,9 +50,13 @@ def validate_production_jwt_secret(cfg=settings) -> None:
     if getattr(cfg, "environment", "development") != "production":
         return
     secret = getattr(cfg, "jwt_secret", "") or ""
-    if not secret or secret == JWT_DEFAULT_SECRET or len(secret) < JWT_SECRET_MIN_LENGTH:
+    if (
+        not secret
+        or secret in _KNOWN_JWT_PLACEHOLDERS
+        or len(secret) < JWT_SECRET_MIN_LENGTH
+    ):
         raise RuntimeError(
-            "JWT_SECRET 在 production 环境必须显式配置为非默认、"
+            "JWT_SECRET 在 production 环境必须显式配置为非默认、非仓库 placeholder、"
             f"不少于 {JWT_SECRET_MIN_LENGTH} 字符的值（当前不满足）。"
-            "请设置 JWT_SECRET 环境变量并轮换密钥。"
+            "请设置 JWT_SECRET 环境变量为随机高熵值（例：openssl rand -hex 32）。"
         )

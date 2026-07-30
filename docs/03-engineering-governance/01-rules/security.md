@@ -43,6 +43,7 @@
 |------|------|----------|
 | `DATABASE_URL` | 数据库连接串 | **必须保密** |
 | `JWT_SECRET` | JWT 签名密钥 | **必须保密** |
+| `ACTOR_ERASURE_SECRET` | actor erasure HMAC 密钥（审计身份摘要派生，与 JWT 隔离） | **必须保密** |
 | `MINIMAX_API_KEY` | LLM API Key | **必须保密** |
 | `QWEN_API_KEY` | Embedding API Key | **必须保密** |
 
@@ -51,9 +52,11 @@
 - 使用 `.env.example` 作为模板
 
 ### 生产环境
-- JWT 密钥**必须**替换为至少 32 位随机字符串
-- 数据库密码**必须**替换为强密码
-- API Keys 通过环境变量注入，**禁止**硬编码
+- `ENVIRONMENT=production` 触发启动校验（JWT/actor erasure secret 强度 + 版本冻结 + fingerprint 锁定）；缺失则沿用 `development` 默认，跳过校验并使用 dev 占位密钥（**生产禁止**）。
+- JWT 密钥**必须**替换为至少 32 位随机字符串。
+- `ACTOR_ERASURE_SECRET` **必须**替换为至少 32 位随机字符串（与 `JWT_SECRET` 隔离，密钥用途隔离）。V1 冻结期**禁止轮换** secret/version（digest key version 未持久化，轮换会使历史 actor digest 孤儿化）；启动期 fingerprint 比对 `system_key_fingerprints` 表检测静默替换，不一致 fail-fast。
+- 数据库密码**必须**替换为强密码。
+- API Keys 通过环境变量注入，**禁止**硬编码。
 
 ## 输入验证
 

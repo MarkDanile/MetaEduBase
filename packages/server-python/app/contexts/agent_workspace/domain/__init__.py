@@ -19,6 +19,7 @@ from app.contexts.agent_workspace.domain.errors import (
     AgentWorkspaceError,
     ConversationIdConflictError,
     ConversationNotFoundError,
+    ConversationNotPurgeableError,
     ConversationPurgedError,
     ConversationPurgeInProgressError,
     ConversationRecoveryExpiredError,
@@ -30,6 +31,7 @@ from app.contexts.agent_workspace.domain.errors import (
     ResourceReferenceForbiddenError,
     RevisionConflictError,
     TitleSourceConflictError,
+    WorkspaceBodyScanNonZeroError,
     WorkspaceIntegrationConflictError,
 )
 from app.contexts.agent_workspace.domain.message import (
@@ -51,6 +53,7 @@ __all__ = [
     "ConversationIdConflictError",
     "ConversationLegalHold",
     "ConversationNotFoundError",
+    "ConversationNotPurgeableError",
     "ConversationPurgeInProgressError",
     "ConversationPurgedError",
     "ConversationRecoveryExpiredError",
@@ -78,6 +81,7 @@ __all__ = [
     "ResourceReferenceForbiddenError",
     "RevisionConflictError",
     "TitleSourceConflictError",
+    "WorkspaceBodyScanNonZeroError",
     "WorkspaceIntegrationConflictError",
     "TurnDispatchState",
 ]

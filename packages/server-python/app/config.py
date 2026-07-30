@@ -30,6 +30,25 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
 
+    # R1-S2 S2-D：actor erasure HMAC secret（Spec §7.1 不可逆 actor audit digest）。
+    # 与 jwt_secret 隔离（密钥用途隔离）：JWT 轮换不得改变审计身份摘要。生产环境
+    # 必须显式设置（空值 / default / 低强度 fail-fast，见
+    # ``validate_production_actor_erasure_secret``）。
+    #
+    # round-4 P1-4 / round-5 P1-2 冻结契约：digest key version **未持久化**
+    # （Conversation/Message 表只存 64-hex digest，无 version 列），actor UUID 清除
+    # 后无法重算或判断历史 digest 用哪个版本。因此在 migration 落地持久化 digest
+    # version 之前，生产环境 ``actor_erasure_secret_version`` 冻结为 1，**禁止轮换**
+    # secret/version（轮换会使旧 digest 成为无法溯源的孤儿）。version 仍混入 HMAC
+    # key 派生，为未来持久化落地后的轮换预留。
+    #
+    # round-5 P1-2 强制机制（非文案约定）：(1) 启动期 ``validate_production_actor_
+    # erasure_key_fingerprint`` 比对 ``system_key_fingerprints`` 持久化 fingerprint
+    # （migration 037），首次锁定 / 不一致 fail closed，检测 secret 静默替换；
+    # (2) 构造器生产环境禁覆盖 audit_secret/audit_secret_version（必须来自 settings）。
+    actor_erasure_secret: str = ""
+    actor_erasure_secret_version: int = 1
+
     llm_default_provider: str = "minimax"
     minimax_api_key: str = ""
     minimax_base_url: str = "https://api.minimaxi.com/v1"

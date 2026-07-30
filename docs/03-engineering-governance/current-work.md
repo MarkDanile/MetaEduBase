@@ -14,19 +14,20 @@
 
 ## 当前进行中
 
-当前无进行中任务。REQ-041/047 R1-S2-C 已合并收口（见下方「最近完成」）。R1-S2 剩余 S2-D/E（正文清除、participant ACK 与 final body scan）尚未启动——启动前按本文件「使用规则」重新登记任务卡片（新建分支、范围、验证基线），再按 plan §R1-S2 进入实现。
+### REQ-041/047 R1-S2-D/E workspace 正文清除 + participant ACK + final body scan
 
-### REQ-041/047 R1-S2 后续（待启动）
-
-状态：⚪ 待启动（S2-A 正文 writer fence、S2-B restore 恢复截止、S2-C ingress checkpoint + title/create fence + backfill 锁序 已逐一多轮复审清零并合并）
+状态：🟡 进行中（契约注记/plan delta 已先于代码冻结；S2-A/S2-B/S2-C 已逐一多轮复审清零并合并——S2-C PR #511 merge `2ceaffd0`）
 类型：Architecture / Backend / Data Governance
 领域：Conversation / Workspace / Erasure / Recovery
+分支：feat/req041-047-r1-s2d-erasure-participant
 
 需求来源：
-- R1 Spec: [Retention、Purge 与恢复专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- R1 Plan: [R1 分 Slice 实施计划 §R1-S2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s2workspace-owner-与恢复截止)
+- R1 Spec: [Retention、Purge 与恢复专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)（§5.2 purge saga、§6.1 锁序、§7.1 workspace 清除语义、§8 retention worker）
+- R1 Plan: [R1 分 Slice 实施计划 §R1-S2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s2workspace-owner-与恢复截止)（「S2-D/E 契约注记」2026-07-29 已冻结）
 
-下一步：S2-D/E 正文清除（`workspace.core.v1` participant 清 Conversation title、物理删除 MessagePart 正文行、清原 actor id 与 ConversationUserState，保留 Message envelope/digest/不可逆 actor audit digest）、participant ACK 与 final workspace body scan 作为完成门禁。建议 Sol `xhigh` 主实施，独立 `max` 复审清除完整性与竞态。遗留前置：S3 purge worker claim 顺序强制 Guard→Conversation row→owner lock→fence→operation；dispatch_output 对 `LateBodyWriteRejectedError` 分类为 deterministic 路由 suppressed tombstone；hold 生效中 restore 测试随 hold slice 补齐（spec R1-AC7）。不提前进入 S3-S6。
+范围（plan §R1-S2 S2-D/E 契约注记）：S2-D = `workspace.core.v1` participant 正文清除原语（清 Conversation title、物理删除 MessagePart 正文行并把 Message 转 redacted tombstone、清 actor id 存不可逆 audit digest、物理删除 ConversationUserState）+ final workspace body scan；S2-E = participant ACK + purge operation/owner checkpoint 推进 + 完成门禁。锁序沿用 Conversation row→owner lock→fence（防 AB-BA）；redacted_reason 走受控 code；可重入幂等。明确不做：不启用 purge scheduler 自动 claim、不清 Execution/transport owner（S3/S4）、不改 legal hold lifecycle（S5）、不实现 external object erase、不改 migration 034/035/036。
+
+下一步：S2-D/E round-7 返修已提交待复审（PR #513，复审代码/测试基线见 Git 历史）--独立 `max` round 7 P0/P1/P2=0/1/1，2 项已按 Sol `xhigh` 返修：P1 生产模板公开 placeholder 通过校验（.env.production 模板值留空让 Compose ${VAR:?} 阻止启动；启动期+构造期新增仓库已知 placeholder denylist _KNOWN_JWT_PLACEHOLDERS / _KNOWN_ACTOR_ERASURE_PLACEHOLDERS，dev-only-* / CHANGE_ME_* 公开值 fail-fast）、P2 并发测试共享全局 settings（每个协程传独立 SimpleNamespace cfg 不污染全局；system_key_fingerprints 加入 autouse TRUNCATE 清理）。返修落点见 plan §R1-S2「S2-D/E round-7 复审修订」块。验证：S2-D/E round-7 专项 58 passed（+3 round-7 placeholder 拒绝测试）、3 项 round-7 变异全击杀、ruff 0、mypy 0、agent_control_plane+composition+identity 281 passed、全量回归通过、docs gate + diff-check 通过。等待独立 `max` 只读复核，**未合并**。遗留前置（不提前做）：S3 purge worker claim 顺序 Guard->Conversation row->owner lock->fence->operation；dispatch_output 对 `LateBodyWriteRejectedError` 分类为 deterministic；hold 生效中 restore 测试随 hold slice 补齐（spec R1-AC7）；digest version 持久化 migration（round-4 P1-4 V1 冻结解除前置，round-5 fingerprint 为过渡强制）。
 
 ## 下一批候选任务
 

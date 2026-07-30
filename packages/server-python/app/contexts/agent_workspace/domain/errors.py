@@ -49,8 +49,26 @@ class LateBodyWriteRejectedError(AgentWorkspaceError):
     """正文 writer 在 owner fence 非 active（purge 进行中/已完成）时写正文被拒。"""
 
 
+class WorkspaceBodyScanNonZeroError(AgentWorkspaceError):
+    """R1-S2 S2-D：workspace 正文清除后 final body scan 非零，participant 不得 ACK。
+
+    Spec §5.2/§7.1：只有正文扫描为零才允许 owner ACK；「已执行 DELETE 的受影响
+    行数」不构成完成（没有查到正文不是隐式 ACK 的反面——扫到残留正文必须
+    fail closed，fence 保持 erasing、记稳定 reason code，由重试/reconcile 处理）。
+    """
+
+
 class IdempotencyConflictError(AgentWorkspaceError):
     pass
+
+
+class ConversationNotPurgeableError(AgentWorkspaceError):
+    """R1-S2 S2-D：会话不满足 purge 前置条件（Spec §3）。
+
+    purge 只能作用于已删除且恢复窗口已过（``now >= purge_after``）、尚未被
+    purged（``purged_at IS NULL``）的会话。active/archived 或未到期的会话不得
+    被直接擦除--执行器无条件强制该前置，不依赖 scheduler 只 claim 到期行。
+    """
 
 
 class ResourceReferenceForbiddenError(AgentWorkspaceError, PermissionError):

@@ -5,10 +5,10 @@ Python 类名、模块路径或运行时随机顺序。registry snapshot 与 dig
 owner_key 字典序排序，保证顺序稳定。unknown owner、版本变化或缺失
 capability 一律 fail closed。
 
-R1-S1 只声明 owner 身份与能力，**不实现任何 owner 的 eraser**（S2-S4 才由真实
-participant 注册擦除能力）。因此 S1 阶段全部 owner 的 ``erase_available=False``，
-调用 ``require_capability(..., "erase")`` 一律 fail closed，不得对未实现的
-清除能力放行。
+R1-S2 S2-D：``workspace.core.v1`` 的 eraser 已由
+``WorkspaceErasureParticipant`` 实现（正文清除 + body scan + ACK），其
+``erase_available=True``；其余 owner 的 eraser 仍待 S3/S4 实现，保持
+``erase_available=False``，调用 ``require_capability(..., "erase")`` fail closed。
 """
 
 from __future__ import annotations
@@ -39,14 +39,16 @@ class OwnerDefinition:
     owner_key: str
     owner_version: int
     capabilities: tuple[str, ...]
-    # S1 未实现任何 owner 的 eraser（S2-S4 由真实 participant 注册），全部不可用。
+    # ``erase_available=True`` 表示该 owner 的 eraser 已安装（可经
+    # ``require_capability(owner, "erase")`` 放行）。S2-D 为 workspace.core.v1
+    # 翻 True；其余 owner 待 S3/S4。
     erase_available: bool
 
 
 # V1 固定 owner（Spec §4.1）。capabilities 只描述 owner 持有的正文/引用类别，
 # 不保存正文或 secret。顺序在代码中不承载语义；对外 snapshot 一律排序。
-# S1 不实现任何 eraser -> 全部 erase_available=False；后续 slice 接 participant
-# 时逐个翻 True 并补相应测试。
+# S2-D：workspace.core.v1 eraser 已实现（WorkspaceErasureParticipant），
+# erase_available=True；其余 owner 待 S3/S4。
 _OWNER_DEFINITIONS: tuple[OwnerDefinition, ...] = (
     OwnerDefinition(
         owner_key="workspace.core.v1",
@@ -57,7 +59,7 @@ _OWNER_DEFINITIONS: tuple[OwnerDefinition, ...] = (
             "actor_identity",
             "user_state",
         ),
-        erase_available=False,
+        erase_available=True,
     ),
     OwnerDefinition(
         owner_key="workspace.transport.v1",

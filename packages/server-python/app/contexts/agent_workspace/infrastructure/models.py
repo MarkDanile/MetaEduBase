@@ -825,3 +825,29 @@ class ConversationLegalHoldModel(Base):
     released_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
+
+
+class SystemKeyFingerprintModel(Base):
+    """round-5 P1-2：系统级密钥 fingerprint 持久化（V1 冻结契约强制）。
+
+    非 tenant-scoped 单行表（``key_name`` PK）。存储 ``actor_erasure_secret`` V1
+    key 的非可逆 fingerprint（``HMAC-SHA256(secret, domain_separator)``，64-hex）。
+    启动期 ``validate_production_actor_erasure_key_fingerprint`` 比对：首次锁定
+    （INSERT）、一致放行、不一致 fail closed（secret 被换，历史 digest 孤儿化）。
+    fingerprint 不含 secret 明文（HMAC 单向），只用于检测 secret 变更。
+    """
+
+    __tablename__ = "system_key_fingerprints"
+    __table_args__ = (
+        CheckConstraint(
+            "char_length(fingerprint) = 64",
+            name="ck_system_key_fingerprints_fingerprint",
+        ),
+        {"schema": "metaedu"},
+    )
+
+    key_name: Mapped[str] = mapped_column(String(100), primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    set_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )

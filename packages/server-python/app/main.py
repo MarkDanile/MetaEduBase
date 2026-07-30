@@ -11,6 +11,10 @@ from app.config import settings
 from app.contexts.agent_execution.interfaces.api.router import (
     router as agent_execution_router,
 )
+from app.contexts.agent_workspace.infrastructure.workspace_erasure_participant import (
+    validate_production_actor_erasure_key_fingerprint,
+    validate_production_actor_erasure_secret,
+)
 from app.contexts.agent_workspace.interfaces.api.router import (
     router as agent_workspace_router,
 )
@@ -70,6 +74,17 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     直接 fail-fast，不让进程带可伪造的根信任进入服务态。
     """
     validate_production_jwt_secret(settings)
+    # R1-S2 S2-D：actor erasure HMAC secret 启动期强度 + 版本契约校验（与 JWT
+    # secret 同模式，密钥用途隔离）。
+    validate_production_actor_erasure_secret(settings)
+    # round-5 P1-2 / round-6 P2-2：V1 key fingerprint 持久化校验--检测 secret
+    # 静默替换（启动期比对 system_key_fingerprints，首次锁定 / 不一致 fail closed）。
+    # 用 begin() 持有独立事务：校验成功自动提交、失败自动回滚（校验函数不自行 commit，
+    # 避免 mismatch 抛错前提交调用方事务）。需 DB session，在同步强度+版本校验之后。
+    async with async_session_factory.begin() as _fingerprint_session:
+        await validate_production_actor_erasure_key_fingerprint(
+            _fingerprint_session, settings
+        )
     app.state.query_service = QueryService(
         session_factory=async_session_factory,
     )

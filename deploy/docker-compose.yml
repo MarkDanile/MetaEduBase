@@ -69,6 +69,12 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY}
       MINIO_SECURE: "false"
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      # R1-S2 S2-D round-5/6：生产环境标识 + actor erasure HMAC secret（与 JWT_SECRET
+      # 隔离，V1 冻结期禁止轮换；启动期 fingerprint 比对 system_key_fingerprints）。
+      # ENVIRONMENT=production 触发启动校验（强度 + 版本冻结 + fingerprint 锁定），
+      # 缺失/弱值 fail-fast。ACTOR_ERASURE_SECRET_VERSION 冻结 1，不在此注入。
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      ACTOR_ERASURE_SECRET: ${ACTOR_ERASURE_SECRET:?Set ACTOR_ERASURE_SECRET}
       LLM_DEFAULT_PROVIDER: ${LLM_DEFAULT_PROVIDER:-minimax}
       MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
     mem_limit: 1g
