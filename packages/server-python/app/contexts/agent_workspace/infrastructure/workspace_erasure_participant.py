@@ -1,32 +1,33 @@
 """R1-S2 S2-D/E：workspace.core.v1 participant 正文清除 + final body scan + ACK。
 
-Spec §3/§5.2/§6.1/§7.1（plan §R1-S2「S2-D/E 契约注记」2026-07-29）：
+Spec §3/§5.2/§6.1/§7.1/§9.2（plan §R1-S2「S2-D/E 契约注记」+「S2-D/E 复审修订」）：
 
-- purge 前置（Spec §3）：仅作用于已删除（state=deleted）、恢复窗口已过
-  （now >= purge_after）、尚未 purged（purged_at IS NULL）的会话。执行器无
-  条件强制，不依赖 scheduler 只 claim 到期行（P1-1）。
-- 清除锁序与 writer/backfill 一致（Conversation row -> owner lock -> fence），
-  防 AB-BA；fence 缺失在 owner lock 下创建（不把缺行解释为安全）。
-- participant 在同一事务清除 Conversation title（tombstone）、Message 正文
-  （物理删除 MessagePart 行 + Message 转 redacted tombstone）、所有直接主体
-  标识（created_by/archived_by/deleted_by 与 Message.author_id）不可逆匿名化
-  （HMAC-SHA256 tenant-scoped digest，不留真实 UUID，P1-2/P1-3）、
-  ConversationUserState（物理删除），可重入幂等。
-- final body scan 是完成门禁：present 正文行/残留 Part/残留 UserState/未匿名
-  actor 全为 0 才允许 ACK；扫描非零 -> fence erasing->blocked + operation/
-  checkpoint 记 blocked + 稳定 reason code，**作为正常返回**提交（不抛异常致
-  回滚丢 blocked 状态，P1-5），不把受影响行数当完成。
-- 重试（P1-5）：fence blocked -> erasing 重新进入，清除幂等（已 redacted/已
-  删除 no-op），重新 scan；scan 归零即 ACK。
-- 仅 body scan 为零才提交 ACK：fence erasing->erased（ack_digest）、owner
-  checkpoint 经具体 operation CAS -> acked（绑定 purge_operation_id + registry
-  drift 校验，P1-4）。本 Slice 只接 workspace.core.v1 单 owner；多 owner 的
-  operation completed 判定属 S3/S4，不伪造 purge_state=completed。
+- capability gate（P1-1）：执行器入口经 ``require_capability(workspace.core.v1,
+  "erase")`` 放行；registry 已为 workspace.core.v1 翻 ``erase_available=True``。
+- purge 前置（Spec §3，P1-1）：仅 state=deleted + now>=purge_after +
+  purged_at IS NULL。但**已 erased fence 的幂等重放先于前置**（P1-4：purged_at
+  后不得在读 fence 前被拒绝）。
+- HMAC secret 隔离（P1-2）：actor audit digest 用独立
+  ``actor_erasure_secret``（非 jwt_secret），生产 fail-fast，版本固定。
+- 清除锁序 Conversation row -> owner lock -> fence（防 AB-BA）；清除所有直接
+  主体标识（created_by/archived_by/deleted_by + Message.author_id，P1-3/P1-5），
+  HMAC tenant-scoped 不可逆匿名化；物理删除 MessagePart/UserState。
+- final body scan 完成门禁（P1-5）：扫描含 archived_by/deleted_by；非零 ->
+  fence erasing->blocked + operation/checkpoint 记 blocked + scan digest（P2-2），
+  正常返回提交（P1-5，不抛异常致回滚）。
+- ACK fencing（P1-3）：``purge_operation_id`` 必填；ACK 绑定具体 operation--
+  校验 conversation_id / purge_revision / lease_epoch / registry drift /
+  hold_revision_snapshot / operation 允许状态 + checkpoint owner_version /
+  capability_digest CAS。同 tenant 同 revision 跨 Conversation operation 不得误 ACK。
+- operation 投影 + erased 恢复（P1-4）：erasing 开始 operation->running；blocked
+  ->blocked；erased fence 幂等重放时修复 pending checkpoint（ACK 丢失恢复）。
+- 重试（P1-5）：fence blocked->erasing 重新进入，清除幂等（已 redacted/已删除
+  no-op，P1-5：处理所有 author_id 残留不只是 body_state=present）。
+- 时钟（P2-3）：purge 截止在 Conversation 锁后取 PostgreSQL ``clock_timestamp()``。
+- reason code（P2-4）：legal hold 用 Spec §9.2 ``purge_blocked_by_legal_hold``。
 
-本模块组合既有 ``AgentErasureRepository``（锁序/fence CAS/operation/owner
-checkpoint），只新增正文清除与 body scan，不复制 fence/锁逻辑，也不撑大
-``erasure_repository.py``（td-032）。redacted_reason 走受控白名单，自由文本
-（可能含正文/prompt/secret）不落库。
+本模块组合既有 ``AgentErasureRepository``（锁序/fence CAS），只新增正文清除与
+body scan，不复制 fence/锁逻辑。redacted_reason 走受控白名单，自由文本不落库。
 """
 
 from __future__ import annotations
@@ -35,15 +36,17 @@ import hashlib
 import hmac
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.composition.agent_erasure_locks import acquire_owner_lock
 from app.composition.agent_erasure_registry import (
     OwnerRegistryChangedError,
+    capability_digest,
     registry_digest,
+    require_capability,
     require_owner,
 )
 from app.config import settings
@@ -73,26 +76,26 @@ from app.shared.schemas.canonical_json import canonical_digest
 # workspace.core.v1 owner key（Spec §4，唯一受管 workspace 正文 owner）。
 WORKSPACE_CORE_OWNER = "workspace.core.v1"
 
-# body scan 非零时的稳定 reason code（Spec §5.2 owner checkpoint reason_code，
-# 受控枚举、不含正文）。与 suppression_reason_code 同受控原则：不反射自由文本。
+# body scan 非零时的稳定 reason code（Spec §5.2 owner checkpoint reason_code）。
 REASON_WORKSPACE_BODY_SCAN_NONZERO = "workspace_body_scan_nonzero"
-# active legal hold 阻止 purge 时的稳定 reason code（retryable--hold 释放后重试）。
-REASON_LEGAL_HOLD_ACTIVE = "legal_hold_active"
+# active legal hold 阻止 purge（Spec §9.2 稳定错误码，P2-4）。
+REASON_PURGE_BLOCKED_BY_LEGAL_HOLD = "purge_blocked_by_legal_hold"
 
-# Message 转 redacted tombstone 时落的受控 reason（Spec §7.1 purge 到期清除）。
-# 用 suppression_reason_code 白名单里的 retention_expired，自由文本不落库。
+# Message 转 redacted tombstone 时落的受控 reason（Spec §7.1，白名单 code）。
 _ERASURE_REDACTED_REASON = "retention_expired"
+
+# 生产环境 actor_erasure_secret 必须显式设置（P1-2：fail-fast，不与 jwt_secret 共用）。
+_PROD_ENVS = frozenset({"production"})
 
 
 def _actor_audit_digest(
     *, secret: str, tenant_id: uuid.UUID, actor_id: uuid.UUID
 ) -> str:
-    """tenant-scoped 不可逆 actor audit digest（Spec §7.1，P1-2：HMAC）。
+    """tenant-scoped 不可逆 actor audit digest（Spec §7.1，P1-2：HMAC + 独立 secret）。
 
-    用 HMAC-SHA256，不用普通 SHA-256：先从 master secret 派生 tenant-scoped
-    key（``HMAC(secret, tenant_id)``），再 ``HMAC(tenant_key, actor_id)``。digest
-    不含 actor UUID 明文、不可逆；不同 tenant 同一 actor 产生不同 digest
-    （tenant-scoped）；同一 (secret, tenant, actor) 可复现。CHECK 要求 64-hex。
+    ``HMAC(HMAC(secret, tenant_id), actor_id)``（SHA-256）：tenant-scoped 派生
+    key、密钥隔离（独立 ``actor_erasure_secret``，非 jwt_secret）。digest 不含
+    actor UUID 明文、不可逆；不同 tenant/secret 产生不同 digest；可复现。64-hex。
     """
     tenant_key = hmac.new(
         secret.encode("utf-8"), tenant_id.bytes, hashlib.sha256
@@ -119,8 +122,7 @@ class WorkspaceBodyScan:
         )
 
     def digest(self) -> str:
-        """body scan 的 canonical digest（owner checkpoint 的 checkpoint_digest，
-        证明 ACK 时 scan 为零的具体度量，与 ack_digest 分离）。"""
+        """body scan 的 canonical digest（owner checkpoint 的 checkpoint_digest）。"""
         return canonical_digest(
             {
                 "schema_version": 1,
@@ -171,13 +173,7 @@ class WorkspaceErasureSummary:
 
 @dataclass(frozen=True, slots=True)
 class WorkspaceErasureOutcome:
-    """erase_conversation_body 的结果（P1-5：blocked 为正常返回，不抛异常）。
-
-    - ``erased``：fence 已 erased、ACK 已提交（ack_digest 非空）。
-    - ``blocked``：scan 非零或 active legal hold；fence 为 erasing/blocked/active，
-      operation/checkpoint 记 blocked + 稳定 reason code，调用方正常 commit 后
-      可重试（hold 释放或残留正文被处理）。
-    """
+    """erase_conversation_body 的结果（P1-5：blocked 为正常返回，不抛异常）。"""
 
     fence: ErasureFence
     body_scan: WorkspaceBodyScan
@@ -201,16 +197,26 @@ class WorkspaceErasureParticipant:
     ) -> None:
         self._session = session
         self._erasure = AgentErasureRepository(session)
-        # HMAC 密钥走 settings.jwt_secret 回退（与 cursor_secret 同模式）；可注入
-        # 测试值。tenant-scoped 派生在 _actor_audit_digest 内完成。
-        self._audit_secret = (
-            audit_secret if audit_secret is not None else settings.jwt_secret
-        )
+        # P1-2：独立 actor_erasure_secret，非 jwt_secret；生产 fail-fast。
+        secret = audit_secret if audit_secret is not None else settings.actor_erasure_secret
+        if not secret and settings.environment in _PROD_ENVS:
+            raise RuntimeError(
+                "actor_erasure_secret must be set in production; "
+                "refusing to derive actor audit digests from an empty secret"
+            )
+        self._audit_secret = secret or "dev-only-actor-erasure-secret"
+
+    async def _database_now(self) -> datetime:
+        """P2-3：purge 截止用 PostgreSQL ``clock_timestamp()``（非进程时钟）。"""
+        result = await self._session.scalar(select(func.clock_timestamp()))
+        # clock_timestamp() 在 PostgreSQL 始终返回一行一列；测试用 SQLite 也提供标量。
+        assert result is not None, "clock_timestamp() must return a value"
+        return result
 
     async def scan_body(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
     ) -> WorkspaceBodyScan:
-        """final workspace body scan：统计该 Conversation 下残留正文/未匿名 actor。"""
+        """final workspace body scan（P1-5：含 archived_by/deleted_by；P2-1：tenant 谓词）。"""
         present_body = await self._session.scalar(
             select(func.count())
             .select_from(MessageModel)
@@ -237,7 +243,7 @@ class WorkspaceErasureParticipant:
                 ConversationUserStateModel.conversation_id == conversation_id,
             )
         )
-        unanonymized = await self._session.scalar(
+        unanonymized_msgs = await self._session.scalar(
             select(func.count())
             .select_from(MessageModel)
             .where(
@@ -246,17 +252,33 @@ class WorkspaceErasureParticipant:
                 MessageModel.author_id.is_not(None),
             )
         )
-        conversation = await self._session.get(ConversationModel, conversation_id)
-        conversation_actor = (
-            1
-            if conversation is not None and conversation.actor_state == "present"
-            else 0
+        # P2-1：Conversation 查询带 tenant_id 谓词（不用裸 get(PK)）。
+        conversation = (
+            (
+                await self._session.execute(
+                    select(ConversationModel).where(
+                        ConversationModel.tenant_id == tenant_id,
+                        ConversationModel.id == conversation_id,
+                    )
+                )
+            )
+            .scalars()
+            .one_or_none()
         )
+        # P1-5：archived_by/deleted_by 也是直接主体标识，必须计入未匿名扫描。
+        conversation_actor = 0
+        if conversation is not None:
+            if conversation.actor_state == "present":
+                conversation_actor += 1
+            if conversation.archived_by is not None:
+                conversation_actor += 1
+            if conversation.deleted_by is not None:
+                conversation_actor += 1
         return WorkspaceBodyScan(
             present_body_messages=int(present_body or 0),
             message_parts=int(parts or 0),
             user_states=int(user_states or 0),
-            unanonymized_actors=int(unanonymized or 0) + conversation_actor,
+            unanonymized_actors=int(unanonymized_msgs or 0) + conversation_actor,
         )
 
     async def erase_conversation_body(
@@ -265,23 +287,20 @@ class WorkspaceErasureParticipant:
         tenant_id: uuid.UUID,
         conversation_id: uuid.UUID,
         purge_revision: int,
+        purge_operation_id: uuid.UUID,
         now: datetime | None = None,
-        purge_operation_id: uuid.UUID | None = None,
+        expected_lease_epoch: int = 0,
     ) -> WorkspaceErasureOutcome:
         """清除 workspace.core.v1 正文并 ACK（S2-D/E 主入口，同一事务）。
 
-        锁序（Spec §6.1）：Conversation row FOR UPDATE -> owner lock -> fence
-        FOR UPDATE -> owner aggregate rows。purge 前置强制 state=deleted +
-        now>=purge_after + purged_at IS NULL（P1-1）。active legal hold ->
-        blocked 返回（不清除）。fence 已 erased -> 幂等返回。body scan 非零 ->
-        fence erasing->blocked + operation/checkpoint 记 blocked（正常返回，不
-        抛异常，P1-5）。scan 为零 -> fence erasing->erased + owner checkpoint
-        CAS acked（绑定 purge_operation_id + registry drift 校验，P1-4）。
+        ``purge_operation_id`` 必填（P1-3：ACK 绑定具体 operation fencing）。
+        锁序：Conversation row -> owner lock -> fence -> owner aggregate rows。
         """
+        # P1-1：capability gate--workspace.core.v1 eraser 必须已安装。
+        require_capability(WORKSPACE_CORE_OWNER, "erase")
         require_owner(WORKSPACE_CORE_OWNER)
-        effective_now = now or datetime.now(UTC)
 
-        # 锁序第一步：Conversation 行锁（与 writer/backfill 一致，防 AB-BA）。
+        # 锁序第一步：Conversation 行锁。
         conversation = (
             await self._session.execute(
                 select(ConversationModel)
@@ -296,8 +315,8 @@ class WorkspaceErasureParticipant:
             raise ValueError(
                 f"conversation {conversation_id} not found for workspace erasure"
             )
-        # P1-1：purge 前置无条件强制。active/archived 或未到期会话不得擦除。
-        self._require_purgeable(conversation, now=effective_now)
+        # P2-3：锁后取 DB 时钟作为 purge 截止（不依赖进程时钟）。
+        effective_now = now if now is not None else await self._database_now()
 
         # 锁序第二步：owner advisory lock。
         await acquire_owner_lock(
@@ -306,7 +325,8 @@ class WorkspaceErasureParticipant:
             conversation_id=conversation_id,
             owner_key=WORKSPACE_CORE_OWNER,
         )
-        # 锁内探测 fence：已 erased -> 幂等返回；缺失 -> owner lock 下建。
+
+        # 锁内探测 fence：缺失 -> owner lock 下建。
         fence = await self._erasure.get_fence_for_update(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
@@ -318,44 +338,66 @@ class WorkspaceErasureParticipant:
                 conversation_id=conversation_id,
                 owner_key=WORKSPACE_CORE_OWNER,
             )
+
+        # P1-4：已 erased fence 的幂等重放先于 purge 前置（purged_at 后不得在读
+        # fence 前被拒绝）。修复 pending checkpoint（ACK 丢失恢复）。
         if fence.state is ErasureFenceState.ERASED:
+            # erased fence 必然携带 ack_digest（transition_fence_state 强制要求）。
+            fence_ack_digest = fence.ack_digest
+            assert fence_ack_digest is not None, "erased fence must carry ack_digest"
             scan = await self.scan_body(
                 tenant_id=tenant_id, conversation_id=conversation_id
+            )
+            await self._repair_checkpoint_if_pending(
+                purge_operation_id=purge_operation_id,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                purge_revision=purge_revision,
+                expected_lease_epoch=expected_lease_epoch,
+                hold_revision=conversation.hold_revision,
+                ack_digest=fence_ack_digest,
+                checkpoint_digest=scan.digest(),
+                now=effective_now,
             )
             return WorkspaceErasureOutcome(
                 fence=fence,
                 body_scan=scan,
                 blocked=False,
                 block_reason=None,
-                ack_digest=fence.ack_digest,
+                ack_digest=fence_ack_digest,
             )
 
-        # active legal hold 阻止 active -> erasing（Spec §5.3），不清除任何正文。
-        # 作为 blocked 正常返回（retryable：hold 释放后重试），不抛异常。
+        # P1-1：purge 前置（仅对非 erased fence = 新 purge 强制）。
+        self._require_purgeable(conversation, now=effective_now)
+
+        # active legal hold -> blocked 正常返回（P2-4：purge_blocked_by_legal_hold）。
         if await self._erasure.has_active_legal_hold(
             tenant_id=tenant_id, conversation_id=conversation_id
         ):
+            scan = await self.scan_body(
+                tenant_id=tenant_id, conversation_id=conversation_id
+            )
             await self._record_blocked(
                 purge_operation_id=purge_operation_id,
                 tenant_id=tenant_id,
                 conversation_id=conversation_id,
                 purge_revision=purge_revision,
-                reason=REASON_LEGAL_HOLD_ACTIVE,
+                expected_lease_epoch=expected_lease_epoch,
+                hold_revision=conversation.hold_revision,
+                reason=REASON_PURGE_BLOCKED_BY_LEGAL_HOLD,
+                scan=scan,
                 now=effective_now,
-            )
-            scan = await self.scan_body(
-                tenant_id=tenant_id, conversation_id=conversation_id
             )
             return WorkspaceErasureOutcome(
                 fence=fence,
                 body_scan=scan,
                 blocked=True,
-                block_reason=REASON_LEGAL_HOLD_ACTIVE,
+                block_reason=REASON_PURGE_BLOCKED_BY_LEGAL_HOLD,
                 ack_digest=None,
             )
 
         # 推进 fence -> erasing（首写 active->erasing；重试 blocked->erasing；
-        # crash 恢复 erasing 继续）。fencing token 单调；重试复用同 purge_revision。
+        # crash 恢复 erasing 继续）。
         if fence.state is ErasureFenceState.ACTIVE:
             fence = await self._erasure.transition_fence_state(
                 tenant_id=tenant_id,
@@ -380,12 +422,21 @@ class WorkspaceErasureParticipant:
                 hold_revision=conversation.hold_revision,
                 now=effective_now,
             )
-        # purge_state 投影与 operation/owner 行同事务保持一致（Spec §5.2）。
+
+        # P1-4：operation 投影 -> running；conversation.purge_state -> running。
+        await self._mark_operation_running(
+            purge_operation_id=purge_operation_id,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            purge_revision=purge_revision,
+            expected_lease_epoch=expected_lease_epoch,
+            hold_revision=conversation.hold_revision,
+            now=effective_now,
+        )
         conversation.purge_state = PurgeState.RUNNING.value
         conversation.updated_at = effective_now
 
-        # 锁序第四步：owner aggregate rows（Conversation -> Message -> Part ->
-        # UserState）清除正文（幂等：已 redacted/已删除/已匿名 no-op）。
+        # 锁序第四步：owner aggregate rows 清除正文（幂等）。
         titles_cleared = self._erase_conversation_title(conversation, now=effective_now)
         conversations_anonymized = self._anonymize_conversation_actors(
             conversation, tenant_id=tenant_id
@@ -407,8 +458,8 @@ class WorkspaceErasureParticipant:
             tenant_id=tenant_id, conversation_id=conversation_id
         )
         if scan.total != 0:
-            # 非零 -> fence erasing->blocked + operation/checkpoint 记 blocked。
-            # 正常返回（不抛异常），调用方 commit 后可重试（P1-5）。
+            # 非零 -> fence erasing->blocked + operation/checkpoint 记 blocked +
+            # scan digest（P2-2）。正常返回（不抛异常），调用方 commit 后可重试。
             fence = await self._erasure.transition_fence_state(
                 tenant_id=tenant_id,
                 conversation_id=conversation_id,
@@ -425,7 +476,10 @@ class WorkspaceErasureParticipant:
                 tenant_id=tenant_id,
                 conversation_id=conversation_id,
                 purge_revision=purge_revision,
+                expected_lease_epoch=expected_lease_epoch,
+                hold_revision=conversation.hold_revision,
                 reason=REASON_WORKSPACE_BODY_SCAN_NONZERO,
+                scan=scan,
                 now=effective_now,
             )
             conversation.purge_state = PurgeState.BLOCKED.value
@@ -438,9 +492,7 @@ class WorkspaceErasureParticipant:
                 ack_digest=None,
             )
 
-        # body scan 为零 -> ACK：fence erasing -> erased（ack_digest），owner
-        # checkpoint 经具体 operation CAS -> acked（P1-4）。ack_digest 只含清除
-        # 摘要 + scan digest，无正文/actor 明文。
+        # body scan 为零 -> ACK。
         summary = WorkspaceErasureSummary(
             owner_key=WORKSPACE_CORE_OWNER,
             owner_version=fence.owner_version,
@@ -465,17 +517,20 @@ class WorkspaceErasureParticipant:
             ack_digest=ack_digest,
             now=effective_now,
         )
-        if purge_operation_id is not None:
-            await self._ack_owner_checkpoint(
-                purge_operation_id=purge_operation_id,
-                tenant_id=tenant_id,
-                purge_revision=purge_revision,
-                ack_digest=ack_digest,
-                checkpoint_digest=scan.digest(),
-                now=effective_now,
-            )
-        # 单 owner ACK 不写 purge_state=completed（多 owner 完成判定属 S3/S4，
-        # 不伪造）；保持 running，由 operation/owner 行承载 saga 事实。
+        # P1-3：ACK 绑定具体 operation + 完整 fencing。
+        await self._ack_owner_checkpoint(
+            purge_operation_id=purge_operation_id,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            purge_revision=purge_revision,
+            expected_lease_epoch=expected_lease_epoch,
+            hold_revision=conversation.hold_revision,
+            fence_owner_version=fence.owner_version,
+            ack_digest=ack_digest,
+            checkpoint_digest=scan.digest(),
+            now=effective_now,
+        )
+        # 单 owner ACK 不写 purge_state=completed（多 owner 完成判定属 S3/S4）。
         return WorkspaceErasureOutcome(
             fence=fence,
             body_scan=scan,
@@ -483,6 +538,296 @@ class WorkspaceErasureParticipant:
             block_reason=None,
             ack_digest=ack_digest,
         )
+
+    # --- operation fencing（P1-3/P1-4）--------------------------------
+
+    async def _load_verified_operation(
+        self,
+        *,
+        purge_operation_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        purge_revision: int,
+        expected_lease_epoch: int,
+        hold_revision: int,
+    ) -> PurgeOperationModel:
+        """加载具体 operation FOR UPDATE + 完整 fencing（P1-3）。
+
+        校验 conversation_id（跨 Conversation 误 ACK 防护）、purge_revision、
+        lease_epoch（stale lease）、registry_digest（drift）、hold_revision_snapshot
+        （hold 状态漂移）。任一不符 fail closed。
+        """
+        operation = (
+            (
+                await self._session.execute(
+                    select(PurgeOperationModel)
+                    .where(
+                        PurgeOperationModel.tenant_id == tenant_id,
+                        PurgeOperationModel.id == purge_operation_id,
+                    )
+                    .with_for_update()
+                )
+            )
+            .scalars()
+            .one_or_none()
+        )
+        if operation is None:
+            raise ValueError(
+                f"purge operation {purge_operation_id} not found"
+            )
+        if operation.conversation_id != conversation_id:
+            raise ValueError(
+                f"operation conversation_id {operation.conversation_id} != "
+                f"erase target {conversation_id}; cross-conversation ACK rejected"
+            )
+        if operation.purge_revision != purge_revision:
+            raise ValueError(
+                f"purge_revision mismatch: operation={operation.purge_revision} "
+                f"request={purge_revision}"
+            )
+        if operation.lease_epoch != expected_lease_epoch:
+            raise ValueError(
+                f"lease_epoch mismatch: operation={operation.lease_epoch} "
+                f"expected={expected_lease_epoch}; stale lease rejected"
+            )
+        if operation.registry_digest != registry_digest():
+            raise OwnerRegistryChangedError(
+                "purge operation registry digest no longer matches installed "
+                "registry; cannot proceed on stale capability view"
+            )
+        if operation.hold_revision_snapshot != hold_revision:
+            raise ValueError(
+                f"hold_revision drift: operation snapshot "
+                f"{operation.hold_revision_snapshot} != conversation "
+                f"{hold_revision}; operation stale, create new purge_revision"
+            )
+        return operation
+
+    async def _load_verified_checkpoint(
+        self,
+        *,
+        purge_operation_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        fence_owner_version: int,
+    ) -> PurgeOwnerCheckpointModel:
+        """加载具体 owner checkpoint FOR UPDATE + 校验 owner_version/capability_digest
+        （P1-3）。"""
+        checkpoint = (
+            (
+                await self._session.execute(
+                    select(PurgeOwnerCheckpointModel)
+                    .where(
+                        PurgeOwnerCheckpointModel.tenant_id == tenant_id,
+                        PurgeOwnerCheckpointModel.purge_operation_id
+                        == purge_operation_id,
+                        PurgeOwnerCheckpointModel.owner_key == WORKSPACE_CORE_OWNER,
+                    )
+                    .with_for_update()
+                )
+            )
+            .scalars()
+            .one_or_none()
+        )
+        if checkpoint is None:
+            raise ValueError(
+                f"workspace owner checkpoint for operation "
+                f"{purge_operation_id} not found"
+            )
+        if checkpoint.owner_version != fence_owner_version:
+            raise ValueError(
+                f"checkpoint owner_version {checkpoint.owner_version} != "
+                f"fence {fence_owner_version}"
+            )
+        if checkpoint.capability_digest != capability_digest(WORKSPACE_CORE_OWNER):
+            raise ValueError(
+                "checkpoint capability_digest does not match installed "
+                "workspace.core.v1 capability"
+            )
+        return checkpoint
+
+    async def _mark_operation_running(
+        self,
+        *,
+        purge_operation_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        purge_revision: int,
+        expected_lease_epoch: int,
+        hold_revision: int,
+        now: datetime,
+    ) -> None:
+        """P1-4：operation scheduled->running（首次）；running/blocked 保持。"""
+        operation = await self._load_verified_operation(
+            purge_operation_id=purge_operation_id,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            purge_revision=purge_revision,
+            expected_lease_epoch=expected_lease_epoch,
+            hold_revision=hold_revision,
+        )
+        if operation.state not in (
+            PurgeOperationState.SCHEDULED.value,
+            PurgeOperationState.RUNNING.value,
+            PurgeOperationState.BLOCKED.value,
+        ):
+            raise ValueError(
+                f"operation not in runnable state: {operation.state!r}"
+            )
+        if operation.state == PurgeOperationState.SCHEDULED.value:
+            operation.state = PurgeOperationState.RUNNING.value
+            if operation.started_at is None:
+                operation.started_at = now
+            operation.updated_at = now
+            await self._session.flush()
+
+    async def _record_blocked(
+        self,
+        *,
+        purge_operation_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        purge_revision: int,
+        expected_lease_epoch: int,
+        hold_revision: int,
+        reason: str,
+        scan: WorkspaceBodyScan,
+        now: datetime,
+    ) -> None:
+        """记 blocked：operation + owner checkpoint 经 CAS 推进 blocked + 稳定
+        reason code + scan digest（P2-2）。正常返回路径调用，随调用方事务 commit。"""
+        operation = await self._load_verified_operation(
+            purge_operation_id=purge_operation_id,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            purge_revision=purge_revision,
+            expected_lease_epoch=expected_lease_epoch,
+            hold_revision=hold_revision,
+        )
+        if operation.state not in (
+            PurgeOperationState.SCHEDULED.value,
+            PurgeOperationState.RUNNING.value,
+            PurgeOperationState.BLOCKED.value,
+        ):
+            raise ValueError(
+                f"operation not in blockable state: {operation.state!r}"
+            )
+        if operation.state != PurgeOperationState.BLOCKED.value:
+            operation.state = PurgeOperationState.BLOCKED.value
+            operation.failure_code = reason
+            operation.updated_at = now
+        checkpoint = await self._load_verified_checkpoint(
+            purge_operation_id=purge_operation_id,
+            tenant_id=tenant_id,
+            fence_owner_version=1,  # workspace.core.v1 owner_version=1（registry 固定）
+        )
+        if checkpoint.state not in (
+            PurgeOwnerState.PENDING.value,
+            PurgeOwnerState.ERASING.value,
+            PurgeOwnerState.BLOCKED.value,
+        ):
+            raise ValueError(
+                f"checkpoint not blockable from state {checkpoint.state!r}"
+            )
+        checkpoint.state = PurgeOwnerState.BLOCKED.value
+        checkpoint.reason_code = reason
+        # P2-2：blocked 路径也写 scan digest（非零 scan 的证据）。
+        checkpoint.checkpoint_digest = scan.digest()
+        checkpoint.updated_at = now
+        await self._session.flush()
+
+    async def _ack_owner_checkpoint(
+        self,
+        *,
+        purge_operation_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        purge_revision: int,
+        expected_lease_epoch: int,
+        hold_revision: int,
+        fence_owner_version: int,
+        ack_digest: str,
+        checkpoint_digest: str,
+        now: datetime,
+    ) -> None:
+        """ACK owner checkpoint（P1-3：完整 fencing + CAS）。"""
+        operation = await self._load_verified_operation(
+            purge_operation_id=purge_operation_id,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            purge_revision=purge_revision,
+            expected_lease_epoch=expected_lease_epoch,
+            hold_revision=hold_revision,
+        )
+        if operation.state not in (
+            PurgeOperationState.RUNNING.value,
+            PurgeOperationState.BLOCKED.value,
+        ):
+            raise ValueError(
+                f"operation not in ackable state: {operation.state!r}"
+            )
+        checkpoint = await self._load_verified_checkpoint(
+            purge_operation_id=purge_operation_id,
+            tenant_id=tenant_id,
+            fence_owner_version=fence_owner_version,
+        )
+        if checkpoint.state not in (
+            PurgeOwnerState.PENDING.value,
+            PurgeOwnerState.ERASING.value,
+            PurgeOwnerState.BLOCKED.value,
+        ):
+            raise ValueError(
+                f"checkpoint not ackable from state {checkpoint.state!r}"
+            )
+        checkpoint.state = PurgeOwnerState.ACKED.value
+        checkpoint.ack_digest = ack_digest
+        checkpoint.checkpoint_digest = checkpoint_digest
+        checkpoint.reason_code = None
+        checkpoint.updated_at = now
+        # operation 保持 running（单 owner 不伪造 completed）。
+        await self._session.flush()
+
+    async def _repair_checkpoint_if_pending(
+        self,
+        *,
+        purge_operation_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        purge_revision: int,
+        expected_lease_epoch: int,
+        hold_revision: int,
+        ack_digest: str,
+        checkpoint_digest: str,
+        now: datetime,
+    ) -> None:
+        """P1-4：erased fence 幂等重放时修复 pending checkpoint（ACK 丢失恢复）。
+
+        fence 已 erased 但 checkpoint 未 acked（ACK 丢失/前次未绑定 operation）->
+        用 fence 的 ack_digest 补 ACK。已 acked 则 no-op。
+        """
+        operation = await self._load_verified_operation(
+            purge_operation_id=purge_operation_id,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            purge_revision=purge_revision,
+            expected_lease_epoch=expected_lease_epoch,
+            hold_revision=hold_revision,
+        )
+        checkpoint = await self._load_verified_checkpoint(
+            purge_operation_id=purge_operation_id,
+            tenant_id=tenant_id,
+            fence_owner_version=1,
+        )
+        if checkpoint.state == PurgeOwnerState.ACKED.value:
+            return  # 已 acked，无需修复。
+        checkpoint.state = PurgeOwnerState.ACKED.value
+        checkpoint.ack_digest = ack_digest
+        checkpoint.checkpoint_digest = checkpoint_digest
+        checkpoint.reason_code = None
+        checkpoint.updated_at = now
+        # operation 也修复到 running（ACK 丢失可能 operation 卡在 scheduled）。
+        if operation.state == PurgeOperationState.SCHEDULED.value:
+            operation.state = PurgeOperationState.RUNNING.value
+        await self._session.flush()
 
     # --- 前置校验 --------------------------------------------------------
 
@@ -525,9 +870,7 @@ class WorkspaceErasureParticipant:
     ) -> int:
         """Conversation 所有直接主体标识不可逆匿名化（P1-3）。
 
-        - created_by -> NULL + creator_identity_digest（HMAC tenant-scoped）。
-        - archived_by / deleted_by -> NULL（直接主体标识，Spec §7.1；无独立
-          digest 列，V1 仅清除，删除/归档审计在事件账本，非会话行）。
+        created_by -> NULL + HMAC digest；archived_by/deleted_by -> NULL。
         幂等：已 redacted/已 NULL no-op。
         """
         cleared = 0
@@ -542,7 +885,6 @@ class WorkspaceErasureParticipant:
                     actor_id=created_by,
                 )
                 cleared += 1
-        # archived_by / deleted_by 是直接主体标识，purge 时必须清除。
         if conversation.archived_by is not None:
             conversation.archived_by = None
             cleared += 1
@@ -554,11 +896,12 @@ class WorkspaceErasureParticipant:
     async def _redact_messages(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID, now: datetime
     ) -> int:
-        """Message 转 redacted tombstone + author 匿名化（per-row 取旧 author_id）。
+        """Message 转 redacted tombstone + author 匿名化（P1-5：处理所有
+        author_id 残留，不只 body_state=present）。
 
-        只对 body_state='present' 的 Message 生效（幂等：已 redacted 不动）。
-        author_id 置 NULL 前用其值生成 tenant-scoped HMAC digest；assistant_output
-        （agent author）只转 tombstone、不补 digest（非用户主体标识）。
+        选择 body_state=present **或** author_id 非空的所有 Message：已 redacted
+        但仍带 author_id 的 assistant/system Message 也清除（否则 scan 永久非零、
+        无法自愈）。幂等：已 redacted + author_id=NULL 的 no-op。
         """
         rows = (
             (
@@ -567,7 +910,10 @@ class WorkspaceErasureParticipant:
                     .where(
                         MessageModel.tenant_id == tenant_id,
                         MessageModel.conversation_id == conversation_id,
-                        MessageModel.body_state == "present",
+                        or_(
+                            MessageModel.body_state == "present",
+                            MessageModel.author_id.is_not(None),
+                        ),
                     )
                     .with_for_update()
                 )
@@ -576,11 +922,12 @@ class WorkspaceErasureParticipant:
             .all()
         )
         for message in rows:
+            if message.body_state == "present":
+                message.body_state = "redacted"
+                message.content_state = "redacted"
+                message.redacted_at = now
+                message.redacted_reason = _ERASURE_REDACTED_REASON
             author_id = message.author_id
-            message.body_state = "redacted"
-            message.content_state = "redacted"
-            message.redacted_at = now
-            message.redacted_reason = _ERASURE_REDACTED_REASON
             if author_id is not None and message.author_type == "user":
                 message.actor_identity_digest = _actor_audit_digest(
                     secret=self._audit_secret,
@@ -595,7 +942,7 @@ class WorkspaceErasureParticipant:
     async def _delete_message_parts(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
     ) -> int:
-        """物理删除该 Conversation 所有 MessagePart 正文行（V1 不保留 Part envelope）。"""
+        """物理删除该 Conversation 所有 MessagePart 正文行。"""
         result = await self._session.execute(
             delete(MessagePartModel).where(
                 MessagePartModel.tenant_id == tenant_id,
@@ -612,7 +959,7 @@ class WorkspaceErasureParticipant:
     async def _delete_user_states(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
     ) -> int:
-        """物理删除 ConversationUserState（pin/read 非审计必需 envelope，Spec §7.1）。"""
+        """物理删除 ConversationUserState。"""
         result = await self._session.execute(
             delete(ConversationUserStateModel).where(
                 ConversationUserStateModel.tenant_id == tenant_id,
@@ -621,161 +968,9 @@ class WorkspaceErasureParticipant:
         )
         return int(getattr(result, "rowcount", 0) or 0)
 
-    # --- purge operation/owner checkpoint 推进（P1-4/P1-5）-------------
-
-    async def _record_blocked(
-        self,
-        *,
-        purge_operation_id: uuid.UUID | None,
-        tenant_id: uuid.UUID,
-        conversation_id: uuid.UUID,
-        purge_revision: int,
-        reason: str,
-        now: datetime,
-    ) -> None:
-        """记 blocked：operation + owner checkpoint 经 CAS 推进 blocked + 稳定
-        reason code（P1-5：正常返回路径调用，随调用方事务 commit）。
-
-        无 purge_operation_id（直接调用）时为空操作--fence 状态（erasing/blocked）
-        已是安全记录，不阻塞 fail-closed 语义。有 operation 时用 state 谓词 CAS，
-        不 clobber 已 completed/cancelled/failed 的行（P2：CAS 安全）。
-        """
-        if purge_operation_id is None:
-            return
-        operation = (
-            (
-                await self._session.execute(
-                    select(PurgeOperationModel)
-                    .where(
-                        PurgeOperationModel.tenant_id == tenant_id,
-                        PurgeOperationModel.id == purge_operation_id,
-                    )
-                    .with_for_update()
-                )
-            )
-            .scalars()
-            .one_or_none()
-        )
-        if operation is None or operation.purge_revision != purge_revision:
-            return
-        if operation.state in (
-            PurgeOperationState.SCHEDULED.value,
-            PurgeOperationState.RUNNING.value,
-        ):
-            operation.state = PurgeOperationState.BLOCKED.value
-            operation.failure_code = reason
-            operation.updated_at = now
-        checkpoint = (
-            (
-                await self._session.execute(
-                    select(PurgeOwnerCheckpointModel)
-                    .where(
-                        PurgeOwnerCheckpointModel.tenant_id == tenant_id,
-                        PurgeOwnerCheckpointModel.purge_operation_id
-                        == purge_operation_id,
-                        PurgeOwnerCheckpointModel.owner_key == WORKSPACE_CORE_OWNER,
-                    )
-                    .with_for_update()
-                )
-            )
-            .scalars()
-            .one_or_none()
-        )
-        if checkpoint is not None and checkpoint.state in (
-            PurgeOwnerState.PENDING.value,
-            PurgeOwnerState.ERASING.value,
-        ):
-            checkpoint.state = PurgeOwnerState.BLOCKED.value
-            checkpoint.reason_code = reason
-            checkpoint.updated_at = now
-        await self._session.flush()
-
-    async def _ack_owner_checkpoint(
-        self,
-        *,
-        purge_operation_id: uuid.UUID,
-        tenant_id: uuid.UUID,
-        purge_revision: int,
-        ack_digest: str,
-        checkpoint_digest: str,
-        now: datetime,
-    ) -> None:
-        """ACK owner checkpoint（P1-4：绑定具体 operation + registry drift 校验 + CAS）。
-
-        - 加载具体 operation FOR UPDATE，校验 purge_revision 一致 + registry
-          digest 仍匹配已安装 registry（drift -> fail closed，不基于过期能力
-          视图 ACK）。
-        - 加载具体 owner checkpoint FOR UPDATE，CAS state（pending/erasing ->
-          acked），落 ack_digest + checkpoint_digest（scan digest，与 ack_digest
-          分离）。
-        """
-        operation = (
-            (
-                await self._session.execute(
-                    select(PurgeOperationModel)
-                    .where(
-                        PurgeOperationModel.tenant_id == tenant_id,
-                        PurgeOperationModel.id == purge_operation_id,
-                    )
-                    .with_for_update()
-                )
-            )
-            .scalars()
-            .one_or_none()
-        )
-        if operation is None:
-            raise ValueError(
-                f"purge operation {purge_operation_id} not found; cannot ACK"
-            )
-        if operation.purge_revision != purge_revision:
-            raise ValueError(
-                f"purge_revision mismatch: operation={operation.purge_revision} "
-                f"ack_request={purge_revision}"
-            )
-        if operation.registry_digest != registry_digest():
-            raise OwnerRegistryChangedError(
-                "purge operation registry digest no longer matches installed "
-                "registry; cannot ACK on stale capability view"
-            )
-        checkpoint = (
-            (
-                await self._session.execute(
-                    select(PurgeOwnerCheckpointModel)
-                    .where(
-                        PurgeOwnerCheckpointModel.tenant_id == tenant_id,
-                        PurgeOwnerCheckpointModel.purge_operation_id
-                        == purge_operation_id,
-                        PurgeOwnerCheckpointModel.owner_key == WORKSPACE_CORE_OWNER,
-                    )
-                    .with_for_update()
-                )
-            )
-            .scalars()
-            .one_or_none()
-        )
-        if checkpoint is None:
-            raise ValueError(
-                f"workspace owner checkpoint for operation {purge_operation_id} "
-                "not found; cannot ACK"
-            )
-        if checkpoint.state not in (
-            PurgeOwnerState.PENDING.value,
-            PurgeOwnerState.ERASING.value,
-            PurgeOwnerState.BLOCKED.value,
-        ):
-            raise ValueError(
-                f"owner checkpoint not ackable from state {checkpoint.state!r}"
-            )
-        checkpoint.state = PurgeOwnerState.ACKED.value
-        checkpoint.ack_digest = ack_digest
-        checkpoint.checkpoint_digest = checkpoint_digest
-        checkpoint.reason_code = None
-        checkpoint.updated_at = now
-        await self._session.flush()
-
 
 __all__ = [
-    "REASON_LEGAL_HOLD_ACTIVE",
+    "REASON_PURGE_BLOCKED_BY_LEGAL_HOLD",
     "REASON_WORKSPACE_BODY_SCAN_NONZERO",
     "WORKSPACE_CORE_OWNER",
     "WorkspaceBodyScan",

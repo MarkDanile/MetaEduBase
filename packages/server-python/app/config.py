@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
 
+    # R1-S2 S2-D：actor erasure HMAC secret（Spec §7.1 不可逆 actor audit digest）。
+    # 与 jwt_secret 隔离（密钥用途隔离）：JWT 轮换不得改变审计身份摘要。生产环境
+    # 必须显式设置（空值 fail-fast），版本固定--轮换需显式 bump 并重算 audit digest。
+    actor_erasure_secret: str = ""
+
     llm_default_provider: str = "minimax"
     minimax_api_key: str = ""
     minimax_base_url: str = "https://api.minimaxi.com/v1"

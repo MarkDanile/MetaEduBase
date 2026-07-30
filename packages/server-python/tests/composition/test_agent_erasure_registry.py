@@ -75,11 +75,16 @@ def test_missing_capability_fails_closed() -> None:
         registry.require_capability("runtime.private.v1", "session_destroy")
 
 
-def test_all_erasers_are_unavailable_in_s1() -> None:
+def test_only_workspace_core_eraser_available_in_s2d() -> None:
     registry = _import_registry()
-    # S1 不实现任何 owner 的 eraser（S2-S4 才接 participant）；全部 erase 必须
-    # fail closed，不得对未实现的清除能力放行。
+    # S2-D：workspace.core.v1 eraser 已实现（WorkspaceErasureParticipant），
+    # erase_available=True；其余 owner 待 S3/S4，erase 必须 fail closed。
+    workspace = registry.require_owner("workspace.core.v1")
+    assert workspace.erase_available is True
+    registry.require_capability("workspace.core.v1", "erase")  # 不抛
     for owner in registry.owner_registry():
+        if owner.owner_key == "workspace.core.v1":
+            continue
         assert owner.erase_available is False
         with pytest.raises(registry.OwnerCapabilityUnavailableError):
             registry.require_capability(owner.owner_key, "erase")

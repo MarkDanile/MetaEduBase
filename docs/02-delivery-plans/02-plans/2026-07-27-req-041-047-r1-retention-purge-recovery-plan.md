@@ -289,12 +289,29 @@ purge 对单 Conversation 的清除**必须**沿用固定锁序：`Conversation 
 
 首轮实现后独立 `max` 复审 P0/P1/P2=0/5/2，5 个 P1 阻塞项已按 Sol `xhigh` 返修，**优先于上面注记的对应旧陈述**：
 
-- **P1-1 purge 前置无条件强制**（Spec §3）：原实现未校验会话状态/恢复窗口，active/未到期会话可被直接擦除。修订为--执行器在锁 Conversation 行后强制 `state=deleted AND now>=purge_at IS NULL`，任一不满足 `ConversationNotPurgeableError` fail closed，不依赖 scheduler 只 claim 到期行。反例：active 会话、未到期（`now < purge_after`）、已 purged 三类均 fail closed。
+- **P1-1 purge 前置无条件强制**（Spec §3）：原实现未校验会话状态/恢复窗口，active/未到期会话可被直接擦除。修订为--执行器在锁 Conversation 行后强制 `state=deleted AND now >= purge_after AND purged_at IS NULL`，任一不满足 `ConversationNotPurgeableError` fail closed，不依赖 scheduler 只 claim 到期行。反例：active 会话、未到期（`now < purge_after`）、已 purged 三类均 fail closed。
 - **P1-2 actor digest 改 HMAC**：原实现用普通 `SHA-256(tenant||actor)`，不满足冻结契约的 HMAC。修订为--`HMAC(HMAC(secret, tenant_id), actor_id)`（SHA-256），tenant-scoped 派生 key、密钥隔离（`settings.jwt_secret` 回退，可注入测试值）。反例：digest != 普通 SHA-256、不同 tenant/secret 产生不同 digest。
 - **P1-3 archived_by/deleted_by 清除**：原实现只清 `created_by`，遗漏 `archived_by`/`deleted_by` 两个直接主体标识。修订为--`_anonymize_conversation_actors` 一并 NULL 这两列（V1 无独立 digest 列，删除/归档审计在事件账本非会话行）。反例：清除后两列为 NULL。
 - **P1-4 ACK 绑定具体 operation/checkpoint fencing**：原 ACK 用 `(conversation, purge_revision)` 子查询批量 UPDATE、无 CAS、无 registry drift 校验。修订为--`erase_conversation_body` 接 `purge_operation_id`，ACK 时加载具体 operation FOR UPDATE（校验 `purge_revision` 一致 + `registry_digest` 仍匹配已安装 registry，drift -> `OwnerRegistryChangedError`）+ 具体 owner checkpoint FOR UPDATE CAS（`pending/erasing/blocked -> acked`，落 `ack_digest` + `checkpoint_digest`，后者为 scan digest 与前者分离）。反例：purge_revision 不符/registry drift/non-existent operation 均 fail closed。
 - **P1-5 blocked 可靠提交 + 重试**：原实现 scan 非零时抛 `WorkspaceBodyScanNonZeroError`，异常致事务回滚、blocked 状态丢失；重试时 fence 已 erasing 致 CAS 冲突。修订为--blocked 改为**正常返回** `WorkspaceErasureOutcome(blocked=True, block_reason=...)`，调用方 commit 后 operation/checkpoint/fence 的 blocked 状态持久化；fence 状态机用 `erasing->blocked`（scan 非零）+ `blocked->erasing`（重试入口），清除幂等（已 redacted/已删除 no-op），重试 scan 归零即 `erasing->erased` ACK。`_record_blocked`/`_ack_owner_checkpoint` 用 state 谓词 CAS（不 clobber completed/cancelled）。active legal hold 也改为 blocked 正常返回（reason=`legal_hold_active`，retryable）。反例：blocked 状态 commit 后持久化、blocked->重试->ACK 全路径。
 - **P2（自审）**：`checkpoint_digest` 与 `ack_digest` 分离（scan digest vs 清除摘要 digest）；`conversation.purge_state` 投影与 operation/owner 行同事务保持一致（erasing->`running`、blocked->`blocked`，单 owner 不伪造 `completed`）。
+
+#### S2-D/E round-2 复审修订（2026-07-29，独立 `max` round 2 返修落点）
+
+round-1 返修后独立 `max` 复审 P0/P1/P2/P3=0/5/4/1，5 个 P1 阻塞项已按 Sol `xhigh` 返修，**优先于上面 round-1 注记的对应旧陈述**：
+
+- **P1-1 capability gate 放行**：原 registry 对所有 owner `erase_available=False`，workspace.core.v1 eraser 只能绕过能力门调用。修订为--`workspace.core.v1` 翻 `erase_available=True`，执行器入口经 `require_capability(workspace.core.v1, "erase")` 放行；其余 owner 仍 `False`（待 S3/S4）。`capability_digest` 因此含 `erase_available` 字段。
+- **P1-2 actor HMAC secret 隔离**：原实现回退 `settings.jwt_secret`，违反密钥用途隔离（JWT 轮换会改变审计身份摘要）。修订为--新增独立 `settings.actor_erasure_secret`（空值 dev 占位、生产 fail-fast、版本固定），`HMAC(HMAC(actor_erasure_secret, tenant_id), actor_id)`。
+- **P1-3 operation/checkpoint 完整 fencing**：原 ACK 仅校验 `purge_revision` + registry drift，`purge_operation_id` 可缺省，未校验 conversation_id/lease_epoch/hold_revision_snapshot/checkpoint owner_version/capability_digest。修订为--`purge_operation_id` 必填；`_load_verified_operation` 校验 conversation_id（跨 Conversation 误 ACK 防护）+ purge_revision + lease_epoch（stale lease）+ registry_digest + hold_revision_snapshot（hold 漂移）；`_load_verified_checkpoint` 校验 owner_version + capability_digest CAS。反例表驱动：跨 conversation / purge_revision / lease_epoch / hold_revision / owner_version / capability_digest 六类不符均 fail closed。
+- **P1-4 operation 投影 + erased fence 恢复**：原实现 operation 状态未投影（首成功可能留 scheduled、blocked 重试可能留 blocked），erased fence 重放在 `purged_at` 前置之后被拒、且不修复 pending checkpoint。修订为--erasing 开始 `_mark_operation_running`（scheduled->running）；erased fence 幂等重放**先于** purge 前置（`purged_at` 不阻断），`_repair_checkpoint_if_pending` 用 fence.ack_digest 补 ACK pending checkpoint + operation scheduled->running（ACK 丢失恢复）。反例：erased fence + pending checkpoint + purged_at 重放修复到 acked。
+- **P1-5 final scan + 幂等清除完整性**：原 scan 未计入 `archived_by`/`deleted_by`，`_redact_messages` 只选 `body_state=present`（已 redacted 但仍带 author_id 的 assistant/system Message 永久残留、blocked 无法自愈）。修订为--scan 含 archived_by/deleted_by；`_redact_messages` 选择 `or_(body_state=present, author_id IS NOT NULL)`，清除所有 author_id 残留；`_anonymize_conversation_actors` 清 created_by + archived_by + deleted_by。反例：scan 计 archived_by/deleted_by；已 redacted 带 author_id 的 assistant_output 经 erase 清除 author_id -> scan 归零 ACK。
+- **P2-1 scan tenant 谓词**：scan_body 的 Conversation 查询补 `tenant_id` 谓词（不用裸 get(PK)），跨 tenant 不误报 actor 残留。
+- **P2-2 blocked 路径 scan digest**：`_record_blocked` 也写 `checkpoint.checkpoint_digest = scan.digest()`（非零 scan 证据，不只 success ACK 路径）。
+- **P2-3 PostgreSQL 时钟**：purge 截止在 Conversation 锁后取 `clock_timestamp()`（非进程时钟），`now=None` 走 `_database_now()`。
+- **P2-4 reason code**：legal hold 用 Spec §9.2 `purge_blocked_by_legal_hold`（非 `legal_hold_active`）。
+- **P3**：round-1 注记 line 的前置表达式 typo 修正为 `now >= purge_after AND purged_at IS NULL`；PR 描述更新为 32 测试 / 1881 回归 / HMAC actor digest。
+
+**验证**：S2-D/E round-2 专项 32 测试（含 6 场景表驱动 fencing 反例 + erased fence pending checkpoint 恢复 + scan archived_by/deleted_by + 已 redacted author_id 残留清除 + DB 时钟 + tenant 谓词 + 生产 fail-fast）经 18 项变异验证全部 killed；ruff 0；mypy 0 回归；全量 `pytest -m 'not external_network'` 1881 passed；docs gate + git diff --check 通过。本轮**不改 migration 034/035/036**、不启用 purge scheduler。待独立 `max` 只读复核。
 
 ### R1-S3：Execution owner、RunEvent payload 与 compatibility output
 
