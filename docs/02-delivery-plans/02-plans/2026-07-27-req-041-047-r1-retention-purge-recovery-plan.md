@@ -388,6 +388,125 @@ round-6 返修后独立 `max` 复审 P0/P1/P2=0/1/1，2 项已按 Sol `xhigh` �
 
 验证：terminal/projection/delete/purge race、compatibility replay 在 purge 后不返回正文、event seq 连续、catalog 引用不被误删、365 天边界。
 
+#### S3 契约注记 / plan delta（2026-07-29，先于代码冻结）
+
+本轮冻结 S3（execution.core.v1 participant + 执行 writer fence + RunEvent/compatibility tombstone + dispatch_output deterministic 分类）的设计决策与不变量，作为后续实现与独立 `max`/Codex 复审的事实源。不改已合并 migration 034-037（S1 schema 已支持所需 tombstone 分支，本轮无新 migration）、不进 S4（transport/external payload/Runtime fake）、不启用 purge scheduler、不实现 Pi/Runtime session destroy。
+
+**1. execution.core.v1 participant 覆盖范围（Spec §4.1/§7.2）**
+
+- registry 翻 `execution.core.v1` `erase_available=True`（S3 交付 eraser）；其余 owner（workspace.transport/execution.transport/external.payload/runtime.private）保持 `False`，`require_capability(..., "erase")` 仍 fail closed。`capability_digest` 因此含 `erase_available` 字段变化（与 S2-D workspace.core.v1 翻 True 同模式）。
+- participant 清除的 Conversation-owned 执行正文（对应 registry capabilities）：
+  - `run_output_body`：completed Run 的 terminal output -> `output_publish_state=suppressed` + `terminal_output_ref/media_type/classification/message_id` = NULL，保留 `terminal_output_digest/terminal_output_size`。S1 `ck_agent_run_terminal_output` 已含 suppressed tombstone 分支（schema 不变）。
+  - `run_context_body`：Run `context_snapshot_ref/digest/classification` -> NULL（保留 Run status/时间/catalog refs envelope）。
+  - `compatibility_output`：`CompatibilityOutput.reply_text/response_envelope` -> NULL + `payload_state=redacted`，保留 `output_digest/response_digest`。S1 `ck_agent_compat_output_payload` 已支持。
+  - `run_event_payload`：`RunEvent.payload_inline` -> NULL + `payload_state=redacted`，保留 `seq/event_type/visibility/classification/payload_digest/payload_size/provenance`。**seq 不变**（seq 是不可变身份，tombstone 不改 seq，Spec §7.2/§8）。S1 `ck_agent_run_event_payload` 已支持。
+- **不拥有的正文**（边界，不清除）：`RuntimeSessionBinding.runtime_session_ref`（runtime.private.v1）、execution outbox `payload_inline/payload_ref`（execution.transport.v1，S4）、external object（external.payload.v1，S4）、catalog refs（`AgentDefinitionVersion`/`RuntimeProfile` 是 tenant catalog，Spec §4.1 明确不随 Conversation purge，FK 保留至 365 天 audit prune）。
+- **actor identity 边界**：execution.core.v1 capabilities **不含** `actor_identity`（该 capability 归 workspace.core.v1，仅清 workspace 表）。`AgentRun.created_by` / `TurnInput.created_by` 是审计 ref，不是 execution.core.v1 受管正文；purge 时**不**由 execution.core.v1 匿名化。Run/TurnInput envelope 服从 365 天 audit prune（S6）整体删除。**已知张力**（复审重点）：workspace 在 purge（30 天）即匿名 actor，execution 保留 created_by UUID 至 365 天；本 Slice 采 spec 对齐立场（execution envelope 是审计数据，365 天整体删除），若复审要求提前匿名化则登记 TD + 独立 migration（加 `actor_state`/`actor_identity_digest`），不混入 S3。
+- **正文型 JSONB snapshot 边界**：`runtime_capability_snapshot`/`run_config_snapshot`/`budget_snapshot`/`usage_summary` 是审计 config/指标，不是 Conversation-owned 正文；execution.core.v1 不清除。body scan 须验证这些字段不含可恢复正文（`terminal_reason` <= 500 字符是摘要非正文）；若发现正文泄漏，登记 TD。
+
+**2. 执行 writer fence 接线（Spec §6.2，与 workspace writer 同协议）**
+
+execution.core.v1 受管正文的 writer 必须在同一数据库事务执行 Spec §6.2 五步（Guard/Conversation row -> owner lock -> fence FOR UPDATE -> 校验 active/token -> 写正文 + 推进 checkpoint + receipt commit）。
+
+- **fence 接线位置**：在 composition 层（`direct_rag_compatibility.py` / `agent_control_plane.py`），不在 `agent_execution` application/infrastructure。原因：`agent_execution` 不 import `agent_workspace` coordination ORM（Spec §5 跨上下文边界）；composition 层已持 Guard + Conversation 行锁（`_acquire_write_guard` -> `ConversationExecutionGuard.acquire` + `lock_owned_conversation`），fence 裁决 + checkpoint 推进在此层围绕执行 body 写完成。`RunCoordinator`/`AgentExecutionRepository` 保持纯执行逻辑（不 import erasure repository）。
+- **需接 fence 的 writer**（按 capability）：
+  - `create_run`（`RunCoordinator.create_run` -> 写 Run + root TurnInput + `context_snapshot_ref`）-> `run_context_body` source key。
+  - `commit_terminal`（写 terminal output + `output_publish_state`）-> `run_output_body` source key。
+  - `CompatibilityOutputService.stage`（写 `reply_text`/`response_envelope`）-> `compatibility_output` source key。
+  - `append_event`/`ingest_runtime_event`（写 RunEvent `payload_inline`）-> `run_event_payload` source key。
+- **erased/erasing fence 下的迟到写**：fence 非 active 时，执行 writer 经 `require_body_write_fence_for_update` 裁决即被拒（`LateBodyWriteRejectedError`），迟到 event 只能落无正文 tombstone/receipt（Spec §6.2 第 4 步）。幂等 replay（如 `CompatibilityOutputService.stage` 命中 existing）不空推进 checkpoint（与 workspace S2-C P2-6 同理：verdict 与 checkpoint 推进解耦）。
+
+**3. ingress checkpoint source key 与水位（Spec §5.1/§6.2）**
+
+execution.core.v1 fence 的 `ingress_checkpoint` 扩展 source key（复用 `AgentErasureRepository.advance_ingress_checkpoint_for_update`，扩展 `INGRESS_SOURCE_KEYS`）：
+
+```text
+sources: {
+  "run_context_body":     {"watermark": <Run queue_seq>, "epoch": <conversation purge_revision>},
+  "run_output_body":      {"watermark": <Run queue_seq>, "epoch": <conversation purge_revision>},
+  "compatibility_output": {"watermark": <Run queue_seq>, "epoch": <conversation purge_revision>},
+  "run_event_payload":    {"watermark": <Run queue_seq>, "epoch": <conversation purge_revision>},
+}
+```
+
+- **watermark = Run `queue_seq`**（per-Conversation 连续序号，`uq_agent_run_queue_seq`，在 Conversation 行锁下分配），是 execution 受管正文的 per-Conversation 连续水位。RunEvent `seq` 是 per-Run（非 per-Conversation），**不**直接作 watermark；per-Run event 水位由 Run 自身 `last_event_seq` 跟踪，purge scan 跨该 Conversation 全部 Run 检查 event tombstone（scan 是完备性事实源，watermark 是水位提示）。
+- **epoch = Conversation `purge_revision`**（与 workspace 同）。
+- **不伪造**：watermark/epoch 取真实 source 序号/token，不用可观察时间戳冒充（与 S2-C 同约束）。
+- **原子性**：checkpoint 推进与正文写、receipt 同事务 commit（与 S2-C 第 5 步同）；verdict（`require_body_write_fence_for_update`）不推进 checkpoint。
+
+**4. purge 清除动作（Spec §7.2，同事务、可重入、锁序与 writer 一致）**
+
+purge 对单 Conversation 的 execution 清除沿用固定锁序：`Conversation row FOR UPDATE -> owner advisory lock(execution.core.v1) -> ErasureFence row FOR UPDATE -> owner aggregate rows`（AgentRun -> RunEvent -> CompatibilityOutput；Run 在 Conversation 行锁后取，与 workspace Message 的相对顺序按既有规则）。fence 缺失时在 owner lock 下建（Spec §5.1）。
+
+清除动作（幂等，已 tombstone/no-op）：
+- **terminal output suppress**：completed Run 的 `output_publish_state` pending/published/dead_letter -> suppressed + 清 `terminal_output_ref/media_type/classification/message_id`（保留 digest/size）。未投影 output（pending）先 suppress 投影；对应 execution outbox publish 事件的取消/suppress 归 execution.transport.v1（S4），S3 只做 `output_publish_state=suppressed` 投影 + dispatch deterministic 分类（§8），不清 transport owner payload。
+- **context snapshot 清除**：`context_snapshot_ref/digest/classification` -> NULL。
+- **compatibility output 清除**：`reply_text/response_envelope` -> NULL + `payload_state=redacted`。
+- **RunEvent payload tombstone**：`payload_inline` -> NULL + `payload_state=redacted`（seq 不变）。**external payload**（`payload_state=external`）：execution.core.v1 **不**清 `payload_ref`（external object 归 external.payload.v1），未 ACK 前 execution 不 ACK -> blocked（reason=`purge_owner_unavailable`，Spec §9.2；external.payload.v1 S4 未安装）。
+- **redacted_reason 受控化**：一律走 shared `suppression_reason_code` 白名单 code，自由文本不落库（与 S2-D 一致）。
+- **catalog refs 保留**：`agent_definition_version_id`/`runtime_profile_id` FK 不动（Spec §4.1）。
+
+**5. final execution body scan（完成门禁，Spec §5.2/§7.2）**
+
+ACK 前扫描该 Conversation 下 execution.core.v1 受管正文，必须为 0：
+- completed Run with `output_publish_state != suppressed` 且 `terminal_output_ref IS NOT NULL`（un-suppressed terminal output）。
+- Run with `context_snapshot_ref IS NOT NULL`（un-cleared context）。
+- CompatibilityOutput with `payload_state = present`（un-redacted）。
+- RunEvent with `payload_state = inline` 且 `payload_inline IS NOT NULL`（un-tombstoned inline payload）。
+- RunEvent with `payload_state = external`（unresolved external ref -> execution 不能 ACK，blocked）。
+
+扫描结果（每类计数 + canonical digest）记入 owner `checkpoint_digest`。**扫描非零 -> 不得 ACK**，fence erasing->blocked + operation/checkpoint 记 blocked + scan digest（与 S2-D P1-5/P2-2 同模式，正常返回不抛异常）。external payload 非零 -> blocked（reason=`purge_owner_unavailable`）。
+
+**6. participant ACK 与 fencing（Spec §5.1/§5.2，复用 S2-D/E 完整 fencing）**
+
+`ExecutionErasureParticipant.erase_execution_body` 复用 `WorkspaceErasureParticipant` 的 operation/checkpoint fencing 模式（S2-D/E round-2/3/4/5）：
+- `purge_operation_id` + `expected_operation_revision` 必填；`_load_verified_operation` 校验 conversation_id / purge_revision / lease_epoch / registry_digest / hold_revision_snapshot / operation revision CAS。
+- `_load_verified_checkpoint` 校验 owner_version（取自 fence，不硬编码）/ capability_digest CAS。
+- `_mark_operation_running` / `_record_blocked` / `_ack_owner_checkpoint` / `_repair_checkpoint_if_pending` 与 workspace 同语义（blocked 正常返回、reason change bump revision、erased fence 幂等重放修复 pending checkpoint + 三方一致、ACKed+blocked operation 修复 fall-through）。
+- **多 owner operation 完成判定**：S3 只接 `execution.core.v1` 单 owner ACK；operation `completed` 判定需所有 snapshot owner acked（workspace.core.v1 + execution.core.v1 + 后续 transport/external/runtime，Spec §5.2）。S3 **不伪造 completed**；operation 完成判定归 S5 scheduler。S3 participant ACK 只推进 execution.core.v1 checkpoint -> acked。
+- **ACK digest**：排序 `{owner_key, owner_version, purge_revision, 各类清除计数, body_scan_digest}` 的 canonical digest，不含正文/actor 明文（与 S2-D 同）。
+- **锁序与 workspace participant 可组合**：execution.core.v1 与 workspace.core.v1 各自独立 fence 行 + owner advisory lock（不同 owner_key）；两 participant 都遵循 Conversation row -> owner lock -> fence -> aggregate rows，同一 Conversation 行锁串行，无 AB-BA。多 owner purge 的 coordinator 调用顺序（按 owner_key 字典序 `execution.core.v1` < `workspace.core.v1`）与跨 owner 聚合行锁序归 S5。
+
+**7. RuntimeSessionBinding 处理（Spec §7.2，runtime.private.v1 边界）**
+
+- `RuntimeSessionBinding.runtime_session_ref` 归 `runtime.private.v1`（S4 fake / 后续真实 Runtime eraser）。execution.core.v1 **不**清 `runtime_session_ref`、**不**关 binding（status -> closed/invalid）。
+- execution.core.v1 ACK 前置：若 Conversation 有 binding 且 `runtime_session_ref IS NOT NULL`，execution.core.v1 blocked（reason=`purge_owner_unavailable`，runtime eraser 未安装）。runtime.private.v1 ACK 后 execution.core.v1 清本地 ref + 关 binding（S4 接力）。
+- compatibility Run（`runtime_kind=compatibility`，无 binding）：execution.core.v1 可直接 ACK（无 runtime ref 阻塞）。当前 Direct RAG compatibility 路径全走 compatibility Run，S3 可完整闭环。
+
+**8. dispatch_output LateBodyWriteRejectedError 分类（Spec §6.2/§9.2）**
+
+- `AgentBridgeDispatcher.dispatch_output`（execution outbox -> workspace assistant message publish）写 workspace 正文时，若 `workspace.core.v1` fence 非 active（purge 进行中）-> `LateBodyWriteRejectedError`。
+- S3 将该错误分类为 **deterministic**（不可重试）：outbox publish 事件不盲重试，标记稳定 reason code（`late_body_write_rejected`，Spec §9.2），不把 purge 路径上的迟到 publish 当瞬时故障重试。原因：Conversation 已在 purge，重试永远无法写入正文（R1-AC8 不盲重试正文写）。
+- **不清 transport owner**（S4）：dispatch_output 的 deterministic 分类只影响 outbox 事件重试策略与 reason code，不清 execution.transport.v1 owner 正文（outbox `payload_inline/payload_ref` 清理 + `status=suppressed` 归 S4 transport participant）。S3 的 outbox 事件在 deterministic 分类后由 S4 transport participant 在 purge 时统一 suppress。
+
+**9. 365 天 audit prune 边界（Spec §3/§8）**
+
+- S3 交付 execution.core.v1 participant（30 天 purge 与 365 天 audit prune 调用同一 participant，retention 语义不同）。365 天 audit prune worker 本身归 S6。
+- **catalog refs 不删**：purge 与 audit prune 都不删 `AgentDefinitionVersion`/`RuntimeProfile`（tenant catalog，Spec §4.1）。
+- **blocked 条件**（Spec §8 run_audit_retention）：非终态 Run、`outcome_unknown`、未解决审批/projection reconcile 未完成 -> blocked。E1 无 Tool/Approval（明确不做），outcome_unknown/unresolved action 目前为 no-op 守卫（future-proofing），但守卫必须存在并 fail closed。
+- **purge 前置**（30 天）：与 workspace 同（state=deleted + now>=purge_after + purged_at IS NULL，PostgreSQL `clock_timestamp()` 锁后采样）；另校验该 Conversation 全部 Run 终态（非终态 -> blocked，reason=`purge_blocked_by_unresolved_action`）。
+
+**10. 明确不做（边界）**
+
+- 不实现 `execution.transport.v1` / `external.payload.v1` / `runtime.private.v1` eraser（S4）。
+- 不启用 `conversation_purge_scheduler` 自动 claim 循环（S5）；participant 以受控入口/服务方法形态供 scheduler 调用。
+- 不实现 Pi/Runtime session destroy（Spec §8 RuntimeErasureParticipant fake 归 S4）。
+- 不改 migration 034-037（S1 schema 已支持所需 tombstone 分支）；不新增 migration（actor 匿名化若需要则独立 TD + migration）。
+- 不实现完整 Approval/Tool/Artifact/Evidence 模型（plan §R1-S3 明确不做）。
+- 不清 workspace.core.v1 正文（S2-D/E 已交付；S3 只清 execution.core.v1）。
+
+**11. 竞态与不变量复核（复审重点）**
+
+- **清除与并发执行 writer**：清除在 owner lock 内推进 fence active->erasing 后，执行 writer 经 `require_body_write_fence_for_update` 裁决即被拒（`LateBodyWriteRejectedError`），清除期间不得有新 execution 正文复活（与 S2-D writer-win/purge-win race 互补）。
+- **清除与 restore**：fence 已离开 active 后 restore fail closed（S2-B 已锁）；清除开始后 restore 不得复活 execution 正文。
+- **迟到 event**：fence erasing/erased 下旧 Runtime event 只能写无正文 tombstone/receipt，不重建正文（Spec §6.2）。Runtime binding 的 epoch/seq late-write 归 S4 RuntimeErasureParticipant conformance。
+- **dispatch_output race**：publish 事件 dispatch 与 purge 竞争时，fence 裁决保证 publish 要么在 purge 前 commit（正文已写，purge scan 覆盖）、要么被拒（deterministic 不重试），不部分写。
+- **跨 tenant/跨 actor/未知 owner/stale fencing token/版本漂移/registry drift** 全部 fail closed（复用 S2-D/E fencing）。
+- **TurnInput 覆盖**：TurnInput 无 execution 受管正文（`context_digest` 是 digest 非 body，`message_id` 是 workspace ref），participant 覆盖它仅验证无 body 泄漏（scan 不计 TurnInput body），不需清除动作。
+- **backfill 扩展**：S3 扩展 `agent_erasure_backfill.py` 为既有 Conversation 建 `execution.core.v1` baseline fence（与 workspace.core.v1 同 `create_fence_under_owner_lock` 路径，逐 owner）；writer 惰性首写建 fence；purge 遇缺失 fence 在 owner lock 下建（Spec §5.1 三重保障）。
+
+**验证**：S3 专项（terminal suppress + context/compatibility/event tombstone 断言、envelope/digest 保留、body scan 零/非零门禁、ACK digest 契约、external payload blocked、runtime binding blocked、compatibility Run 可 ACK、dispatch_output deterministic 分类、迟到 event tombstone、跨 tenant/actor fail closed、catalog refs 保留、非终态 Run blocked）+ execution/workspace/control-plane 回归全绿；新增测试经变异验证（删除某清除动作 -> body scan 非零 / ACK 被拒；dispatch_output 误重试 -> 测试变红）；ruff 0；mypy baseline 0 回归；docs gate + git diff --check 通过。本轮**不改 migration 034-037**、不启用 purge scheduler、不进 S4。
+
 ### R1-S4：Transport owner、external payload 与迟到写
 
 **复杂度/执行**：极高，Sol `xhigh`；GLM-5.2 `max` 独立故障审查。

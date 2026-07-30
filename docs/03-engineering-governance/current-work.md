@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无活跃任务。R1-S2-D/E 已合并（PR #513 merge `5db40361`），下一步入口为 R1-S3（Execution owner）。
+### TASK: REQ-041/047 R1-S3 Execution owner + RunEvent payload + compatibility output
+
+状态：🟡 进行中
+类型：新需求开发（R1 分 Slice）
+领域：agent_execution / erasure coordination
+当前执行模式：superpower / plan-do（契约注记先于代码冻结）
+最近接手工具：Claude Code (Opus 4.8)
+分支：feat/req041-047-r1-s3-execution-owner
+
+需求来源：
+- Spec: [R1 专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
+- 架构约束：Spec §4.1 execution.core.v1、§6.1/§6.2 锁序/writer fence、§7.2 Execution 清除语义
+
+当前进展：S3 契约注记/plan delta 已写入 plan §R1-S3（先于代码冻结）；registry flip、ExecutionErasureParticipant、composition 层 fence 接线、dispatch_output deterministic 分类待实现。
+下一步：S3 契约注记 PR（docs-only）-> 独立 `max`/Codex 复审 -> 实现代码 -> 变异验证 -> PR。
+验证状态：契约注记 docs gate + git diff --check 待跑。
+交接备注：不改 migration 034-037（S1 schema 已支持 tombstone）；不进 S4；不启用 purge scheduler。S2-D/E 已合并（PR #513 merge `5db40361`）。
 
 ## 下一批候选任务
 
@@ -22,7 +39,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-041/047 R1-S3 Execution owner + RunEvent payload + compatibility output | 🔵 Ready | purge worker claim 顺序 Guard->Conversation row->owner lock->fence->operation；dispatch_output 对 `LateBodyWriteRejectedError` 分类为 deterministic；不清 transport owner（S4） | [Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
