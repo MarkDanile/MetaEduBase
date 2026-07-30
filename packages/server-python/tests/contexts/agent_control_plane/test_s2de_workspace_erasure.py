@@ -34,6 +34,10 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import delete, func, select
 
+from app.composition.agent_actor_digest import (
+    actor_audit_digest,
+    actor_erasure_key_fingerprint,
+)
 from app.composition.agent_erasure_registry import (
     OwnerRegistryChangedError,
     registry_digest,
@@ -69,8 +73,6 @@ from app.contexts.agent_workspace.infrastructure.workspace_erasure_participant i
     REASON_WORKSPACE_BODY_SCAN_NONZERO,
     WORKSPACE_CORE_OWNER,
     WorkspaceErasureParticipant,
-    _actor_audit_digest,
-    _actor_erasure_key_fingerprint,
     validate_production_actor_erasure_key_fingerprint,
     validate_production_actor_erasure_secret,
 )
@@ -358,7 +360,7 @@ async def test_p1_2_actor_digest_is_hmac_not_plain_sha256():
     """P1-2：digest 必须是 HMAC-SHA256（tenant-scoped key），不是普通 SHA-256。"""
     tenant = uuid.UUID("71000000-0000-0000-0000-000000000001")
     actor = uuid.UUID("71000000-0000-0000-0000-000000000002")
-    digest = _actor_audit_digest(
+    digest = actor_audit_digest(
         secret=_AUDIT_SECRET,
         secret_version=_AUDIT_SECRET_VERSION,
         tenant_id=tenant,
@@ -367,7 +369,7 @@ async def test_p1_2_actor_digest_is_hmac_not_plain_sha256():
     assert len(digest) == 64  # SHA-256 hex
     plain = hashlib.sha256(tenant.bytes + actor.bytes).hexdigest()
     assert digest != plain
-    assert digest == _actor_audit_digest(
+    assert digest == actor_audit_digest(
         secret=_AUDIT_SECRET,
         secret_version=_AUDIT_SECRET_VERSION,
         tenant_id=tenant,
@@ -380,14 +382,14 @@ async def test_p1_2_actor_digest_is_tenant_scoped():
     actor = uuid.UUID("71000000-0000-0000-0000-000000000002")
     t1 = uuid.UUID("71000000-0000-0000-0000-000000000001")
     t2 = uuid.UUID("72000000-0000-0000-0000-000000000001")
-    d1 = _actor_audit_digest(
+    d1 = actor_audit_digest(
         secret=_AUDIT_SECRET, secret_version=1, tenant_id=t1, actor_id=actor
     )
-    d2 = _actor_audit_digest(
+    d2 = actor_audit_digest(
         secret=_AUDIT_SECRET, secret_version=1, tenant_id=t2, actor_id=actor
     )
     assert d1 != d2  # tenant-scoped
-    d3 = _actor_audit_digest(
+    d3 = actor_audit_digest(
         secret="other-secret", secret_version=1, tenant_id=t1, actor_id=actor
     )
     assert d1 != d3  # 密钥隔离
@@ -398,14 +400,14 @@ async def test_p1_2_round3_secret_version_in_digest():
     （轮换防跨版本碰撞），同版本可复现。"""
     tenant = uuid.UUID("71000000-0000-0000-0000-000000000001")
     actor = uuid.UUID("71000000-0000-0000-0000-000000000002")
-    d1 = _actor_audit_digest(
+    d1 = actor_audit_digest(
         secret=_AUDIT_SECRET, secret_version=1, tenant_id=tenant, actor_id=actor
     )
-    d2 = _actor_audit_digest(
+    d2 = actor_audit_digest(
         secret=_AUDIT_SECRET, secret_version=2, tenant_id=tenant, actor_id=actor
     )
     assert d1 != d2  # 版本不同 -> digest 不同
-    assert d1 == _actor_audit_digest(
+    assert d1 == actor_audit_digest(
         secret=_AUDIT_SECRET, secret_version=1, tenant_id=tenant, actor_id=actor
     )
 
@@ -426,7 +428,7 @@ async def test_p1_2_erase_produces_hmac_digest(db_session):
     await db_session.commit()
 
     conv = await db_session.get(ConversationModel, conversation_id)
-    expected = _actor_audit_digest(
+    expected = actor_audit_digest(
         secret=_AUDIT_SECRET,
         secret_version=_AUDIT_SECRET_VERSION,
         tenant_id=TENANT_ID,
@@ -461,13 +463,13 @@ async def test_p1_2_constructor_uses_actor_erasure_secret_not_jwt(
     await db_session.commit()
 
     conv = await db_session.get(ConversationModel, conversation_id)
-    expected = _actor_audit_digest(
+    expected = actor_audit_digest(
         secret="configured-actor-secret", secret_version=3,
         tenant_id=TENANT_ID, actor_id=ACTOR_ID,
     )
     assert conv.creator_identity_digest == expected
     # 与 jwt_secret 派生的 digest 不同（密钥隔离）。
-    jwt_digest = _actor_audit_digest(
+    jwt_digest = actor_audit_digest(
         secret="a-different-jwt-secret", secret_version=3,
         tenant_id=TENANT_ID, actor_id=ACTOR_ID,
     )
@@ -1020,7 +1022,7 @@ async def test_p1_5_redacts_author_id_on_already_redacted_messages(db_session):
     # round-4 P1-5：agent author 的 actor_identity_digest 必须保留（不可逆丢失审计身份）。
     assert msg.actor_identity_digest is not None
     assert len(msg.actor_identity_digest) == 64
-    assert msg.actor_identity_digest == _actor_audit_digest(
+    assert msg.actor_identity_digest == actor_audit_digest(
         secret=_AUDIT_SECRET,
         secret_version=_AUDIT_SECRET_VERSION,
         tenant_id=TENANT_ID,
@@ -1697,12 +1699,12 @@ async def test_p1_2_round5_fingerprint_lock_in_and_match(db_session, monkeypatch
             )
         )
     ).scalar_one()
-    assert row.fingerprint == _actor_erasure_key_fingerprint(secret_a)
+    assert row.fingerprint == actor_erasure_key_fingerprint(secret_a)
     assert len(row.fingerprint) == 64
     # 再次（同 secret）：一致放行，不抛、不改 fingerprint。
     await validate_production_actor_erasure_key_fingerprint(db_session, settings)
     await db_session.refresh(row)
-    assert row.fingerprint == _actor_erasure_key_fingerprint(secret_a)
+    assert row.fingerprint == actor_erasure_key_fingerprint(secret_a)
 
 
 async def test_p1_2_round5_fingerprint_mismatch_fail_closed(db_session, monkeypatch):
@@ -1808,7 +1810,7 @@ async def test_p1_2_round6_fingerprint_concurrent_same_secret_both_succeed(
             )
         ).scalars().all()
     assert len(rows) == 1
-    assert rows[0].fingerprint == _actor_erasure_key_fingerprint(secret)
+    assert rows[0].fingerprint == actor_erasure_key_fingerprint(secret)
 
 
 async def test_p1_2_round6_fingerprint_concurrent_different_secret_one_fails(
@@ -1843,8 +1845,8 @@ async def test_p1_2_round6_fingerprint_concurrent_different_secret_one_fails(
         ).scalars().all()
     assert len(rows) == 1
     assert rows[0].fingerprint in {
-        _actor_erasure_key_fingerprint(secret_a),
-        _actor_erasure_key_fingerprint(secret_b),
+        actor_erasure_key_fingerprint(secret_a),
+        actor_erasure_key_fingerprint(secret_b),
     }
 
 
@@ -1870,8 +1872,8 @@ async def test_p1_2_round6_fingerprint_mismatch_error_redacted(db_session, monke
     # 换 secret B，mismatch。
     secret_b = "b" * ACTOR_ERASURE_SECRET_MIN_LENGTH
     monkeypatch.setattr(settings, "actor_erasure_secret", secret_b)
-    fp_a = _actor_erasure_key_fingerprint(secret_a)
-    fp_b = _actor_erasure_key_fingerprint(secret_b)
+    fp_a = actor_erasure_key_fingerprint(secret_a)
+    fp_b = actor_erasure_key_fingerprint(secret_b)
     with pytest.raises(RuntimeError, match="不一致") as exc_info:
         async with db_session.begin():
             await validate_production_actor_erasure_key_fingerprint(db_session, settings)

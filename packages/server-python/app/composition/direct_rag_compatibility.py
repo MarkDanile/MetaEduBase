@@ -587,7 +587,7 @@ class DirectRagCompatibilityAdapter:
             )
         assistant = await self._require_assistant_message(
             tenant_id=tenant_id,
-            actor_id=run.created_by,
+            actor_id=run.created_by_or_raise,
             conversation_id=run.conversation_id,
             run_id=run.id,
         )

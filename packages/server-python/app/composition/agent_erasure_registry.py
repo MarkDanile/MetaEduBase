@@ -75,7 +75,13 @@ _OWNER_DEFINITIONS: tuple[OwnerDefinition, ...] = (
             "run_output_body",
             "compatibility_output",
             "run_event_payload",
+            # S3-B round-1 P1-2：execution 表直接主体标识（Run/TurnInput created_by）
+            # purge 时清除 + HMAC digest（Spec §7.1「等直接主体标识」）。与
+            # workspace.core.v1 actor_identity 同名 capability。
+            "actor_identity",
         ),
+        # S3-B round-2 P1-1：erase_available 保持 False（eraser 未安装）；S3-D 与
+        # participant + scan + ACK 同 commit 翻 True。
         erase_available=False,
     ),
     OwnerDefinition(

@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无活跃任务。R1-S3-A 契约注记已合并（PR #515 merge `2d4f8091`），下一步入口为 R1-S3-B（Schema 与基础契约 PR：migration 038 + 应用层 tombstone 契约 + owner/source key 闭集映射 + registry 增 actor_identity（erase_available 保持 False）+ shared actor digest helper + backfill 数据矩阵）。
+### TASK: REQ-041/047 R1-S3-B Schema 与基础契约
+
+状态：🟡 进行中
+类型：新需求开发（R1 分 Slice，S3-B schema/contract）
+领域：agent_execution / erasure coordination
+当前执行模式：superpower / plan-do（契约注记已冻结，S3-A PR #515）
+最近接手工具：Claude Code (Opus 4.8)
+分支：feat/req041-047-r1-s3b-schema-contract
+
+需求来源：
+- Spec: [R1 专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S3 契约注记 + round-1/round-2 修订）
+- 架构约束：Spec §4.1/§7.1/§6.2；migration 038 actor tombstone + 应用层 tombstone 契约 + downgrade 边界
+
+当前进展：S3-B 启动；按契约注记实现 migration 038（Run/TurnInput actor_state+actor_identity_digest）、提取 shared actor digest helper、registry 增 actor_identity（erase_available 保持 False）、owner/source key 闭集映射、应用层 tombstone 契约。
+下一步：实现 migration 038 + 代码 + 测试 -> 变异验证 -> PR -> 独立 max/Codex 复审。
+验证状态：待实现。
+交接备注：S3-A 已合并（PR #515 merge `2d4f8091`）；S3-B 不改 migration 034-037，新增 038；不进 S4；不启用 purge scheduler；erase_available 保持 False（S3-D 翻 True）。
 
 ## 下一批候选任务
 
@@ -22,7 +39,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-041/047 R1-S3-B Schema 与基础契约 | 🔵 Ready | migration 038（Run/TurnInput actor tombstone + 应用层 tombstone 契约 + downgrade 边界）、owner/source key 闭集映射、registry 增 `actor_identity`（`erase_available` 保持 False）、提取 shared actor digest helper、backfill 数据矩阵 | [Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 

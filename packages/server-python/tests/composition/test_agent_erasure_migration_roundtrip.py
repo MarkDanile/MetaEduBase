@@ -159,3 +159,165 @@ def test_037_system_key_fingerprints_downgrade_upgrade_round_trip():
     assert schema["exists"], "system_key_fingerprints should exist after upgrade to head"
     assert "pk_system_key_fingerprints" in schema["constraints"]
     assert "ck_system_key_fingerprints_fingerprint" in schema["constraints"]
+
+
+_038_TABLES = ("agent_runs", "agent_turn_inputs")
+
+
+async def _execution_actor_schema() -> dict:
+    """返回 038 actor tombstone 列 + CHECK 约束状态（每表）。"""
+    connection = await asyncpg.connect(_db_url())
+    try:
+        result: dict = {}
+        for table in _038_TABLES:
+            cols = await connection.fetch(
+                "SELECT column_name, is_nullable FROM information_schema.columns "
+                "WHERE table_schema='metaedu' AND table_name=$1 "
+                "AND column_name IN ('actor_state', 'actor_identity_digest', 'created_by')",
+                table,
+            )
+            result[table] = {r["column_name"]: r["is_nullable"] for r in cols}
+            rows = await connection.fetch(
+                "SELECT conname FROM pg_constraint c "
+                "JOIN pg_namespace n ON n.oid = c.connamespace "
+                "WHERE n.nspname='metaedu' AND c.conrelid = $1::regclass "
+                "AND c.contype='c'",
+                f"metaedu.{table}",
+            )
+            result[f"{table}_checks"] = {r["conname"] for r in rows}
+        return result
+    finally:
+        await connection.close()
+
+
+def test_038_execution_actor_tombstone_downgrade_upgrade_round_trip():
+    """S3-B：038 真实 downgrade->upgrade--actor_state/digest 列 + CHECK 重建。
+
+    验证：(1) head 状态 agent_runs/agent_turn_inputs 含 actor_state/
+    actor_identity_digest 列 + created_by nullable + ck_*_actor CHECK；
+    (2) downgrade 到 037 列消失、created_by NOT NULL、CHECK 消失；
+    (3) upgrade 回 head 列 + CHECK 重建。
+    """
+    schema = asyncio.run(_execution_actor_schema())
+    for table in _038_TABLES:
+        assert "actor_state" in schema[table], f"{table} missing actor_state"
+        assert "actor_identity_digest" in schema[table], f"{table} missing digest"
+        assert schema[table]["created_by"] == "YES", f"{table} created_by should be nullable"
+        assert f"ck_{table}_actor" in schema[f"{table}_checks"], f"{table} missing ck_actor"
+
+    try:
+        _run_alembic("downgrade", "037_system_key_fingerprints")
+        schema = asyncio.run(_execution_actor_schema())
+        for table in _038_TABLES:
+            assert "actor_state" not in schema[table], f"{table} actor_state should be dropped"
+            assert "actor_identity_digest" not in schema[table], f"{table} digest should be dropped"
+            assert schema[table]["created_by"] == "NO", f"{table} created_by should be NOT NULL"
+            assert f"ck_{table}_actor" not in schema[f"{table}_checks"], (
+                f"{table} ck_actor should be dropped"
+            )
+    finally:
+        _run_alembic("upgrade", "head")
+
+    schema = asyncio.run(_execution_actor_schema())
+    for table in _038_TABLES:
+        assert "actor_state" in schema[table]
+        assert "actor_identity_digest" in schema[table]
+        assert schema[table]["created_by"] == "YES"
+        assert f"ck_{table}_actor" in schema[f"{table}_checks"]
+
+
+async def _seed_redacted_run() -> tuple:
+    """插入一个 redacted Run（含 FK 链：definition + profile + run），返回 (run, tenant)。
+
+    使用 'queued' 非 terminal 状态避免 terminal envelope CHECK；redacted 满足
+    ck_agent_runs_actor（created_by NULL + actor_state redacted + 64-hex digest）。
+    """
+    import uuid as _uuid
+
+    connection = await asyncpg.connect(_db_url())
+    tid = _uuid.uuid4()
+    def_id = _uuid.uuid4()
+    prof_id = _uuid.uuid4()
+    run_id = _uuid.uuid4()
+    digest = "a" * 64
+    try:
+        await connection.execute(
+            "INSERT INTO metaedu.agent_definition_versions "
+            "(id, tenant_id, definition_key, version, status, "
+            "definition_digest, created_by, created_at) "
+            "VALUES ($1, $2, $3, 1, 'published', $4, $2, now())",
+            def_id, tid, f"def-{tid}", digest,
+        )
+        await connection.execute(
+            "INSERT INTO metaedu.agent_runtime_profiles "
+            "(id, tenant_id, profile_key, runtime_kind, adapter_key, config_digest, "
+            "capability_digest, enabled, revision, created_at, updated_at) "
+            "VALUES ($1, $2, $3, 'compatibility', 'compatibility', $4, $4, true, 1, now(), now())",
+            prof_id, tid, f"prof-{tid}", digest,
+        )
+        await connection.execute(
+            "INSERT INTO metaedu.agent_runs "
+            "(id, tenant_id, conversation_id, queue_seq, root_input_message_id, "
+            "agent_definition_version_id, runtime_profile_id, creation_digest, status, "
+            "status_revision, next_event_seq, first_available_event_seq, last_event_seq, "
+            "event_log_complete, queued_at, output_publish_state, created_by, actor_state, "
+            "actor_identity_digest, correlation_id, runtime_capability_snapshot, "
+            "run_config_snapshot, budget_snapshot, usage_summary) "
+            "VALUES ($1, $2, $1, 1, $1, $3, $4, $5, 'queued', 1, 1, 1, 0, true, now(), "
+            "'not_required', NULL, 'redacted', $5, $1, '{}'::jsonb, '{}'::jsonb, "
+            "'{}'::jsonb, '{}'::jsonb)",
+            run_id, tid, def_id, prof_id, digest,
+        )
+        return run_id, tid
+    finally:
+        await connection.close()
+
+
+async def _cleanup_redacted_run(tid) -> None:
+    connection = await asyncpg.connect(_db_url())
+    try:
+        await connection.execute(
+            "DELETE FROM metaedu.agent_runs WHERE tenant_id=$1", tid
+        )
+        await connection.execute(
+            "DELETE FROM metaedu.agent_runtime_profiles WHERE tenant_id=$1", tid
+        )
+        await connection.execute(
+            "DELETE FROM metaedu.agent_definition_versions WHERE tenant_id=$1", tid
+        )
+    finally:
+        await connection.close()
+
+
+def test_038_downgrade_fail_closed_on_redacted_rows():
+    """S3-B round-2 P2-3：anonymization 后 downgrade 必须 fail closed（不伪造 UUID）。
+
+    插入 redacted Run 后 downgrade 应 raise；清理 redacted 行后 downgrade 才成功。
+    """
+    run_id, tid = asyncio.run(_seed_redacted_run())
+    try:
+        # redacted 行存在 -> downgrade 必须 fail closed。
+        raised = False
+        try:
+            _run_alembic("downgrade", "037_system_key_fingerprints")
+        except Exception:
+            raised = True
+        assert raised, (
+            "downgrade must fail closed when redacted rows exist "
+            "(irreversible anonymization)"
+        )
+        # 确认仍在 head（038），downgrade 未执行。
+        schema = asyncio.run(_execution_actor_schema())
+        assert "actor_state" in schema["agent_runs"], "still at head after fail-closed downgrade"
+    finally:
+        asyncio.run(_cleanup_redacted_run(tid))
+
+    # 清理 redacted 行后 downgrade 成功（reversible path）。
+    try:
+        _run_alembic("downgrade", "037_system_key_fingerprints")
+        schema = asyncio.run(_execution_actor_schema())
+        assert "actor_state" not in schema["agent_runs"], (
+            "actor_state dropped after clean downgrade"
+        )
+    finally:
+        _run_alembic("upgrade", "head")

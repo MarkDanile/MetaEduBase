@@ -8,7 +8,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.contexts.agent_execution.domain.errors import InvalidRunTransitionError
+from app.contexts.agent_execution.domain.errors import (
+    InvalidRunTransitionError,
+    RunActorAnonymizedError,
+)
 from app.contexts.agent_execution.domain.snapshots import (
     RunBudgetSnapshot,
     RunConfigSnapshot,
@@ -200,7 +203,10 @@ class AgentRun:
     terminal_output_classification: SnapshotClassification | None
     terminal_message_id: uuid.UUID | None
     output_publish_state: OutputPublishState
-    created_by: uuid.UUID
+    # S3-B round-2 P1-4：``None`` 仅当行被 purge 匿名化（actor_state=redacted +
+    # actor_identity_digest）。创建命令必有 actor（present）；需 actor 的命令遇
+    # ``None`` fail closed（tombstone）。API DTO 不暴露本字段。
+    created_by: uuid.UUID | None
     correlation_id: uuid.UUID
     runtime_capability_snapshot: RuntimeCapabilitySnapshot
     run_config_snapshot: RunConfigSnapshot
@@ -216,6 +222,21 @@ class AgentRun:
     def is_terminal(self) -> bool:
         return self.status in TERMINAL_RUN_STATUSES
 
+    @property
+    def created_by_or_raise(self) -> uuid.UUID:
+        """S3-B round-2 P1-4：需 actor 的命令遇 tombstone（``created_by=None``）fail closed。
+
+        purge 匿名化后 ``created_by`` 为 None（``actor_state=redacted`` + 不可逆
+        digest）。需要 live actor 的命令应改用本属性，遇 None 抛
+        :class:`RunActorAnonymizedError`，不伪造 actor、不暴露 digest。
+        """
+        if self.created_by is None:
+            raise RunActorAnonymizedError(
+                "Agent Run actor has been anonymized (tombstone); "
+                "command requires a live actor"
+            )
+        return self.created_by
+
 
 @dataclass(frozen=True, slots=True)
 class TurnInput:
@@ -228,7 +249,8 @@ class TurnInput:
     request_id: uuid.UUID
     expected_runtime_epoch: int | None
     context_digest: str
-    created_by: uuid.UUID
+    # S3-B round-2 P1-4：``None`` 仅当行被 purge 匿名化（同 AgentRun）。
+    created_by: uuid.UUID | None
     created_at: datetime
 
 

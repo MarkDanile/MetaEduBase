@@ -64,9 +64,22 @@ def _utcnow() -> datetime:
 # （``schema_version=1`` + ``sources`` dict）。
 EMPTY_INGRESS_CHECKPOINT: dict = {"schema_version": 1, "sources": {}}
 
-# workspace.core.v1 受管正文 ingress 的 canonical source key（S2-C 契约注记）：
-# 只允许这两个受控类别，任意 key fail closed（防止脱离能力模型的 checkpoint 写入）。
-INGRESS_SOURCE_KEYS: frozenset[str] = frozenset({"body_messages", "title"})
+# 受管正文 ingress 的 canonical source key（S2-C 契约注记 + S3-B round-1 P1-5）：
+# per-owner 闭集映射，任意 key 或跨 owner key fail closed（防止脱离能力模型的
+# checkpoint 写入、防 workspace owner 写 execution source key）。
+INGRESS_SOURCE_KEYS_BY_OWNER: dict[str, frozenset[str]] = {
+    "workspace.core.v1": frozenset({"body_messages", "title"}),
+    "execution.core.v1": frozenset(
+        {
+            "run_context_body",
+            "run_output_body",
+            "compatibility_output",
+            "run_event_payload",
+        }
+    ),
+}
+# 向后兼容：全部 owner source key 的并集（只读视图，旧测试/外部引用兼容）。
+INGRESS_SOURCE_KEYS: frozenset[str] = frozenset().union(*INGRESS_SOURCE_KEYS_BY_OWNER.values())
 
 
 def empty_ingress_digest() -> str:
@@ -528,7 +541,8 @@ class AgentErasureRepository:
         S2-C P2-6/P2-7 复审：本方法**独占** checkpoint + ``last_body_write_at`` +
         fence ``revision`` 的推进（verdict 不再推进），并自校验输入、自取 fence
         行锁，不靠调用约定保证安全：
-        - ``source_key`` 必须是受控类别（``INGRESS_SOURCE_KEYS``），任意 key fail
+        - ``source_key`` 必须是该 ``owner_key`` 的受控类别
+          （``INGRESS_SOURCE_KEYS_BY_OWNER``），任意 key 或跨 owner key fail
           closed（``ValueError``）。
         - ``watermark`` 必须为正（真实 source 序号）。
         - ``epoch`` 必须等于 Conversation 当前 ``purge_revision``（stale epoch fail
@@ -536,10 +550,14 @@ class AgentErasureRepository:
         - fence 非 active（裁决后被并发 purge 接管）拒绝推进（writer-win race
           原子兜底），不在清除路径上为已拒正文补 checkpoint。
         """
-        if source_key not in INGRESS_SOURCE_KEYS:
+        # S3-B round-1 P1-5：per-owner source key 闭集校验--source_key 必须在
+        # ``owner_key`` 的允许集合中（防跨 owner 写 source key，如 workspace owner
+        # 写 execution source key）。未知 owner / 未知 key / 跨 owner key 均 fail closed。
+        allowed = INGRESS_SOURCE_KEYS_BY_OWNER.get(owner_key, frozenset())
+        if source_key not in allowed:
             raise ValueError(
-                f"unknown ingress source_key {source_key!r}; must be one of "
-                f"{sorted(INGRESS_SOURCE_KEYS)}"
+                f"unknown ingress source_key {source_key!r} for owner {owner_key!r}; "
+                f"must be one of {sorted(allowed)}"
             )
         if watermark < 1:
             raise ValueError(f"ingress watermark must be >= 1, got {watermark}")

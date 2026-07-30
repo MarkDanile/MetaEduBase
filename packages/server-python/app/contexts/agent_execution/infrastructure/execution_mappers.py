@@ -64,6 +64,10 @@ def run_values(run: AgentRun) -> dict[str, object]:
         "terminal_message_id": run.terminal_message_id,
         "output_publish_state": run.output_publish_state.value,
         "created_by": run.created_by,
+        # S3-B：新 Run 恒为 present（创建命令必有 actor）；purge 时 participant 直接
+        # 改 model 转 redacted（不经 run_values）。
+        "actor_state": "present",
+        "actor_identity_digest": None,
         "correlation_id": run.correlation_id,
         "runtime_capability_snapshot": run.runtime_capability_snapshot.model_dump(
             mode="json"
