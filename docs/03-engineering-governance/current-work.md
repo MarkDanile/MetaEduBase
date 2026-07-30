@@ -28,9 +28,9 @@
 - Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
 - 架构约束：Spec §4.1 execution.core.v1、§6.1/§6.2 锁序/writer fence、§7.2 Execution 清除语义
 
-当前进展：S3 契约注记 round-1 复审返修完成（P0=0/P1=5/P2=1 全部闭合）：① fenced port + 完整 writer 矩阵（覆盖 implicit event writer + cancel API 旁路）② migration 038 actor tombstone（Run/TurnInput created_by 匿名化，不延后 TD）③ terminal_reason 裁剪为受控 code ④ RunEvent scan 无条件 `payload_inline/payload_ref` ⑤ per-owner source key 闭集映射 + per-Conversation event 计数器（非 queue_seq）⑥ S3 Conversation-scoped body eraser 与 S6 Run-scoped prune worker 拆分。S3-A~E PR 拆分已冻结。
-下一步：PR #515 round-1 修订待独立 `max`/Codex 复审复核 -> 通过后启动 S3-B（schema/contract PR：migration 038 + owner/source key 映射 + registry flip）。
-验证状态：docs gate passed + `git diff --check` 干净（round-1 修订后）。
+当前进展：S3 契约注记 round-2 复审返修完成（P0=0/P1=4/P2=3 全部闭合）：① `erase_available` 时序（S3-B 保持 False，S3-D 与 participant 同 commit 翻 True）② create_run 真实入口 `consume_turn_requested`（非 `submit_turn`，后者只写 workspace outbox）③ `terminal_code` 也裁剪（任意 1-100 字符，非受控）④ migration 038 应用层 tombstone 契约（创建强制 UUID / domain 允许 erased / 需 actor 命令 fail closed / API 不暴露 digest / purge 后负向测试）⑤ event 计数器持久化于 fence checkpoint + baseline 0 + writer `created` 标志 ⑥ 提取 composition/shared actor digest helper（双 participant 共用，不复用 workspace 私有）⑦ migration 038 downgrade 边界（redacted 行 fail closed/forward-fix，不伪造 UUID）。
+下一步：PR #515 round-2 修订待轻量只读复核 -> 通过后合并 S3-A -> 启动 S3-B（schema/contract PR：migration 038 + 应用层 tombstone 契约 + owner/source key 映射 + registry 增 actor_identity（erase_available 保持 False）+ shared digest helper + backfill）。
+验证状态：docs gate passed + `git diff --check` 干净（round-2 修订后）。
 交接备注：S3-A 纯文档；S3-B 起新增 migration 038（不改 034-037）；不进 S4；不启用 purge scheduler。S2-D/E 已合并（PR #513 merge `5db40361`）。
 
 ## 下一批候选任务

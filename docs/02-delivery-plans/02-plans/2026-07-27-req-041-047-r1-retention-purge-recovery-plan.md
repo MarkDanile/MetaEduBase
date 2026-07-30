@@ -400,9 +400,18 @@ round-6 返修后独立 `max` 复审 P0/P1/P2=0/1/1，2 项已按 Sol `xhigh` �
 > 5. checkpoint source ownership + event 水位未闭合 -> §3 改为 per-owner source key 闭集映射 + per-Conversation event 计数器（非 queue_seq）。
 > 6. 30 天 purge 与 365 天 prune 不应共用 participant -> §9 拆分为 S3 Conversation-scoped body eraser + S6 Run-scoped prune worker。
 
+> **round-2 复审修订（2026-07-30，P0=0/P1=4/P2=3）**：round-1 方向已确认，但新暴露 7 处实现缺口，已直接改正下文：
+> 1. S3-B 不能提前翻 `erase_available=True`（eraser 未安装）-> §1/§PR 拆分：S3-B 增 `actor_identity` capability 但保持 `erase_available=False`，S3-D 与 participant/scan/ACK 同 commit 翻 `True`。
+> 2. create_run 真实入口是 `dispatch_turn -> consume_turn_event -> consume_turn_requested -> create_run`（bridge.py:70），`submit_turn` 只写 workspace outbox -> §2 改正生产入口。
+> 3. `terminal_code` 并非受控（`TerminalResult.code` 是任意 1-100 字符文本，run.py:131）-> §1/§4/§5 purge 同时裁剪 code，scan 验证 code+reason。
+> 4. migration 038 缺应用层 tombstone 契约 -> §Schema 增 domain/mapper/start/direct-RAG/API 对 `created_by=None` 的处理契约。
+> 5. event 计数器需持久化 + baseline 决策 + `created` 标志 -> §3 闭合。
+> 6. 不复用 workspace 私有 `_actor_audit_digest` -> §4 提取 composition/shared 公开版本化 helper。
+> 7. migration 038 downgrade 仅在无 redacted 行时可逆 -> §Schema 增 anonymization 后 fail-closed/forward-fix 边界。
+
 **1. execution.core.v1 participant 覆盖范围（Spec §4.1/§7.1/§7.2）**
 
-- registry 翻 `execution.core.v1` `erase_available=True`，并**新增 `actor_identity` capability**（覆盖 execution 表的直接主体标识，与 workspace.core.v1 同名 capability）。`capability_digest` 因此变化（与 S2-D workspace.core.v1 翻 True 同模式）。其余 owner（workspace.transport/execution.transport/external.payload/runtime.private）保持 `erase_available=False`，`require_capability(..., "erase")` 仍 fail closed。
+- registry **新增 `actor_identity` capability**（覆盖 execution 表的直接主体标识，与 workspace.core.v1 同名 capability）。**`erase_available` 时序**（round-2 P1-1）：S3-B 增 capability 但**保持 `erase_available=False`**（eraser 未安装，`require_capability("execution.core.v1", "erase")` 仍 fail closed）；S3-D 与 participant + scan + ACK 测试**同 commit 翻 `erase_available=True`**。`capability_digest` 因此分两次变化（S3-B 增 capability、S3-D 翻 erase_available）。其余 owner（workspace.transport/execution.transport/external.payload/runtime.private）保持 `erase_available=False`。
 - participant 清除的 Conversation-owned 执行正文（对应 registry capabilities）：
   - `run_output_body`：completed Run 的 terminal output -> `output_publish_state=suppressed` + `terminal_output_ref/media_type/classification/message_id` = NULL，保留 `terminal_output_digest/terminal_output_size`。S1 `ck_agent_run_terminal_output` 已含 suppressed tombstone 分支（schema 不变）。
   - `run_context_body`：Run `context_snapshot_ref/digest/classification` -> NULL（保留 Run status/时间/catalog refs envelope）。
@@ -410,7 +419,7 @@ round-6 返修后独立 `max` 复审 P0/P1/P2=0/1/1，2 项已按 Sol `xhigh` �
   - `run_event_payload`：`RunEvent.payload_inline` -> NULL + `payload_state=redacted`，保留 `seq/event_type/visibility/classification/payload_digest/payload_size/provenance`。**seq 不变**（seq 是不可变身份，tombstone 不改 seq，Spec §7.2/§8）。S1 `ck_agent_run_event_payload` 已支持。**external payload**（`payload_state=external`）：execution.core.v1 **不**清 `payload_ref`（归 external.payload.v1），blocked（§5）。
   - `actor_identity`（round-1 P1-2）：`AgentRun.created_by` / `TurnInput.created_by` -> NULL + tenant-scoped 不可逆 HMAC digest（复用 workspace `_actor_audit_digest` + `actor_erasure_secret` V1 冻结契约）。Spec §7.1「Conversation.created_by、Message.author_id **等**直接主体标识在 purge 时清除」覆盖 execution 表，**不**延后至 TD。
 - **不拥有的正文**（边界，不清除）：`RuntimeSessionBinding.runtime_session_ref`（runtime.private.v1）、execution outbox `payload_inline/payload_ref`（execution.transport.v1，S4）、external object（external.payload.v1，S4）、catalog refs（`AgentDefinitionVersion`/`RuntimeProfile` 是 tenant catalog，Spec §4.1 明确不随 Conversation purge，FK 保留至 365 天 audit prune）。
-- **terminal_reason 裁剪**（round-1 P1-3）：`TerminalResult.reason` 是任意 1-500 字符文本（`run.py:134`），长度限制 ≠ 脱敏。purge 将 `terminal_reason` 裁剪为受控 redaction code（走 `agent_suppression_reasons` 白名单，如 `retention_expired`，或专设受控 code），保留 `terminal_result_digest`（64-hex digest 非正文）与 `terminal_code`（已受控）。`ck_agent_run_terminal_envelope` 要求 terminal_reason 非空，受控 code 满足约束，无需 migration 放宽。
+- **terminal_reason + terminal_code 裁剪**（round-1 P1-3 + round-2 P1-3）：`TerminalResult.reason`（任意 1-500 字符，`run.py:134`）**与 `TerminalResult.code`（任意 1-100 字符，`run.py:131`）都是任意文本**，无枚举/白名单约束，长度限制 ≠ 脱敏；正文可被放进 code 逃过 purge。purge 将 `terminal_reason` 与 `terminal_code` 都裁剪为受控 redaction code（`agent_suppression_reasons` 白名单归一，未知 code 归一到 fallback），保留 `terminal_result_digest`（64-hex digest 非正文）。`ck_agent_run_terminal_envelope` 要求 terminal_code/terminal_reason 非空，受控 code 满足约束，无需 migration 放宽。冻结 versioned terminal code 白名单或稳定归一规则（S3-D 落地），purge 对历史未知 code 同样裁剪。
 - **正文型 JSONB snapshot 边界**：`runtime_capability_snapshot`/`run_config_snapshot`/`budget_snapshot`/`usage_summary` 是 `extra="forbid"` 结构字段 + 数字指标，不是 Conversation-owned 正文；execution.core.v1 不清除，body scan 验证无正文泄漏（若发现泄漏登记 TD）。
 
 **2. 执行 writer fence 接线（Spec §6.2，composition-owned fenced port + 完整 writer 矩阵；round-1 P1-1）**
@@ -432,7 +441,7 @@ round-6 返修后独立 `max` 复审 P0/P1/P2=0/1/1，2 项已按 Sol `xhigh` �
 | `ingest_runtime_event` | RunEvent payload | `run_event_payload` | explicit（idempotent replay 不推进） |
 | `CompatibilityOutputService.stage` | `reply_text`/`response_envelope` | `compatibility_output` | - |
 
-- **生产入口覆盖**：direct_rag_compatibility、`RunQueryService.request_cancel`（cancel API）、`ConversationExecutionCoordinator.submit_turn`（agent_control_plane）、Runtime ingest path。全部经 fenced port，无旁路。
+- **生产入口覆盖**（round-2 P1-2 改正）：`submit_turn`（agent_control_plane:124）**只写 workspace outbox**（workspace.core.v1 fence，S2 已覆盖），不创建 Run；Run 由 `dispatch_turn`（:510）-> `consume_turn_event`（:146）-> `AgentExecutionBridgeService.consume_turn_requested`（bridge.py:54，调 `create_run` @ bridge.py:70）创建。故 create_run 的 execution fence 入口是 **bridge dispatch 路径的 `consume_turn_requested`**，不是 `submit_turn`。完整入口矩阵：create_run = `consume_turn_requested`（经 dispatch_turn/Direct RAG activate_turn）；commit_terminal/cancel = `RunQueryService.request_cancel` + Direct RAG complete/fail_turn + Runtime terminal；event = Direct RAG append_event + Runtime ingest；compatibility_output = `CompatibilityOutputService.stage`（Direct RAG complete_turn）。全部经 fenced port，无旁路。
 - **erased/erasing fence 下的迟到写**：fence 非 active 时裁决即拒（`LateBodyWriteRejectedError`），迟到 event 只能落无正文 tombstone/receipt（Spec §6.2 第 4 步）。幂等 replay（`ingest_runtime_event` IDEMPOTENT_REPLAY / `stage` 命中 existing / `commit_terminal` terminal digest 命中）**不**推进 checkpoint（verdict 与 checkpoint 推进解耦，与 S2-C P2-6 同理）。
 
 **3. ingress checkpoint source key 与水位（Spec §5.1/§6.2，round-1 P1-5 闭合）**
@@ -440,7 +449,7 @@ round-6 返修后独立 `max` 复审 P0/P1/P2=0/1/1，2 项已按 Sol `xhigh` �
 - **per-owner source key 闭集映射**（替代全局 `INGRESS_SOURCE_KEYS`）：`advance_ingress_checkpoint_for_update` 校验 `source_key` 必须在 `owner_key -> allowed source keys` 映射中。workspace.core.v1 -> `{body_messages, title}`；execution.core.v1 -> `{run_context_body, run_output_body, compatibility_output, run_event_payload}`。跨 owner 写 source key fail closed（防 workspace owner 写 execution source key）。
 - **水位**：
   - `run_context_body` / `run_output_body` / `compatibility_output`：watermark = Run `queue_seq`（per-Conversation 连续序号，`uq_agent_run_queue_seq`）。这三类是 per-Run 单值正文（每 Run 至多一个 context snapshot / terminal output / compatibility output），queue_seq 是其 per-Conversation 连续水位。
-  - `run_event_payload`：watermark = **per-Conversation 单调递增 event 计数器**（int，初始 0），**不**用 queue_seq。原因：同一 Run 的所有 event 共享 queue_seq，queue_seq 不能表达 event ingress 进度。计数器仅在**真实新 event 插入**时 +1（`_append_event_locked` 实际插入），`ingest_runtime_event` IDEMPOTENT_REPLAY 不推进。有界（一个 int）、单调（只增）、幂等 replay 不推进。fenced port 据 writer 返回值（是否插入新 event）裁决是否推进计数器。
+  - `run_event_payload`：watermark = **per-Conversation 单调递增 event 计数器**（int），**不**用 queue_seq。原因：同一 Run 的所有 event 共享 queue_seq，queue_seq 不能表达 event ingress 进度。计数器仅在**真实新 event 插入**时 +1（`_append_event_locked` 实际插入），`ingest_runtime_event` IDEMPOTENT_REPLAY 不推进。有界（一个 int）、单调（只增）、幂等 replay 不推进。fenced port 据 writer 返回的**明确 `created` 标志**（禁止二次探测）裁决是否推进计数器。**round-2 P2-1 闭合**：(a) 计数器**持久化于 execution.core.v1 fence 的 `ingress_checkpoint`**（不是内存），在已锁 fence 行上按真实插入结果 `+1`；(b) **baseline = 0（部署后水位）**，不回填既有 event 实际计数（计数器仅用于 S3 部署后的迟到写检测，既有 event 由 purge scan 无条件覆盖，scan 是完备性事实源）；(c) `CompatibilityOutputService.stage` 等 writer 返回明确 `created: bool` 标志（复用既有 `created` 或新增），fenced port 仅在 `created=True` 时推进计数器，禁止「写后再查」二次探测。
 - **epoch = Conversation `purge_revision`**（与 workspace 同）。
 - **不伪造**：watermark/epoch/计数取真实 source 序号/token，不用可观察时间戳冒充。
 - **原子性**：checkpoint 推进与正文写、receipt 同事务 commit；verdict 不推进 checkpoint。
@@ -451,11 +460,11 @@ purge 对单 Conversation 的 execution 清除沿用固定锁序：`Conversation
 
 清除动作（幂等，已 tombstone/no-op）：
 - **terminal output suppress**：completed Run `output_publish_state` pending/published/dead_letter -> suppressed + 清 `terminal_output_ref/media_type/classification/message_id`（保留 digest/size）。对应 execution outbox publish 事件取消/suppress 归 execution.transport.v1（S4），S3 只做 `output_publish_state=suppressed` 投影 + dispatch deterministic 分类（§8），不清 transport owner payload。
-- **terminal_reason 裁剪**（round-1 P1-3）：`terminal_reason` -> 受控 redaction code（`agent_suppression_reasons` 白名单），保留 `terminal_result_digest`/`terminal_code`。
+- **terminal_reason + terminal_code 裁剪**（round-1 P1-3 + round-2 P1-3）：`terminal_reason` 与 `terminal_code` 都 -> 受控 redaction code（`agent_suppression_reasons` 白名单归一，未知 code 归一 fallback），保留 `terminal_result_digest`。
 - **context snapshot 清除**：`context_snapshot_ref/digest/classification` -> NULL。
 - **compatibility output 清除**：`reply_text/response_envelope` -> NULL + `payload_state=redacted`。
 - **RunEvent payload tombstone**：`payload_inline` -> NULL + `payload_state=redacted`（seq 不变）。**external payload**：不清 `payload_ref`（归 external.payload.v1），blocked（§5）。
-- **actor 匿名化**（round-1 P1-2）：`AgentRun.created_by` / `TurnInput.created_by` -> NULL + HMAC `actor_identity_digest`（复用 workspace `_actor_audit_digest` + `actor_erasure_secret` V1 冻结契约）。幂等：已 redacted + digest 已存 no-op。
+- **actor 匿名化**（round-1 P1-2 + round-2 P2-2）：`AgentRun.created_by` / `TurnInput.created_by` -> NULL + HMAC `actor_identity_digest`。**不复用 workspace 私有 `_actor_audit_digest`**；提取为 **composition/shared 公开版本化 helper**（`actor_erasure_secret` + `actor_erasure_secret_version` 派生，V1 冻结契约），workspace 与 execution 两 participant 共用，避免跨 context 私有依赖或双实现漂移。幂等：已 redacted + digest 已存 no-op。
 - **redacted_reason 受控化**：一律走 `agent_suppression_reasons` 白名单 code，自由文本不落库（与 S2-D 一致）。
 - **catalog refs 保留**：`agent_definition_version_id`/`runtime_profile_id` FK 不动（Spec §4.1）。
 
@@ -466,7 +475,7 @@ ACK 前扫描该 Conversation 下 execution.core.v1 受管正文，**任一非�
 - RunEvent with `payload_inline IS NOT NULL OR payload_ref IS NOT NULL`（**round-1 P1-4**：旧 scan 只计 `payload_state=inline`，漏 redacted 但仍带 ref 的行；CHECK 允许 `redacted/expired/archived` 带 ref。改为无条件统计任何非空 payload）。external ref 非零 -> execution 不能 ACK（external.payload.v1 S4 未安装），blocked（reason=`purge_owner_unavailable`）。
 - completed Run with `output_publish_state != suppressed` 且 `terminal_output_ref IS NOT NULL`（un-suppressed terminal output）。
 - Run with `context_snapshot_ref IS NOT NULL`（un-cleared context）。
-- Run with `terminal_reason` 非受控 redaction code（un-redacted terminal reason，round-1 P1-3）。
+- Run with `terminal_reason` 或 `terminal_code` 非受控 redaction code（un-redacted terminal reason/code，round-1 P1-3 + round-2 P1-3；scan 同时验证 code 与 reason 都在白名单）。
 - CompatibilityOutput with `payload_state = present`（un-redacted）。
 - Run with `created_by IS NOT NULL` 或 TurnInput with `created_by IS NOT NULL`（un-anonymized actor，round-1 P1-2）。
 
@@ -517,23 +526,33 @@ ACK 前扫描该 Conversation 下 execution.core.v1 受管正文，**任一非�
 - **清除与 restore**：fence 已离开 active 后 restore fail closed（S2-B 已锁）；清除开始后 restore 不得复活 execution 正文。
 - **迟到 event**：fence erasing/erased 下旧 Runtime event 只能写无正文 tombstone/receipt，不重建正文（Spec §6.2）。Runtime binding 的 epoch/seq late-write 归 S4 RuntimeErasureParticipant conformance。
 - **dispatch_output race**：publish 事件 dispatch 与 purge 竞争时，fence 裁决保证 publish 要么在 purge 前 commit（正文已写，purge scan 覆盖）、要么被拒（deterministic 不重试），不部分写。
-- **fenced port 无旁路**：所有生产入口（direct_rag/cancel/submit_turn/Runtime ingest）经 fenced port，无直调 `RunCoordinator` writer 的生产路径（round-1 P1-1 重点）。
-- **event 计数器幂等**：`ingest_runtime_event` IDEMPOTENT_REPLAY 不推进 run_event_payload 计数器；fenced port 据 writer 返回值裁决推进（round-1 P1-5 重点）。
+- **fenced port 无旁路**：所有生产入口（`consume_turn_requested` create_run / Direct RAG / cancel API / Runtime ingest）经 fenced port，无直调 `RunCoordinator` writer 的生产路径（round-1 P1-1 + round-2 P1-2 重点；`submit_turn` 只写 workspace outbox，不是 create_run 入口）。
+- **event 计数器持久化 + 幂等**：`ingest_runtime_event` IDEMPOTENT_REPLAY 不推进 run_event_payload 计数器；计数器持久化于 fence `ingress_checkpoint`，fenced port 据 writer `created` 标志在已锁 fence 行 `+1`，禁止二次探测（round-1 P1-5 + round-2 P2-1）。
 - **跨 tenant/跨 actor/未知 owner/stale fencing token/版本漂移/registry drift/跨 owner source key** 全部 fail closed。
 - **TurnInput 覆盖**：TurnInput `context_digest` 是 digest 非 body，`message_id` 是 workspace ref；但 `created_by` 是直接主体标识（round-1 P1-2，§4 actor 匿名化覆盖）。TurnInput 无 execution 受管正文 body，scan 不计 TurnInput body，但计其 `created_by`。
 - **backfill 扩展**：S3 扩展 `agent_erasure_backfill.py` 为既有 Conversation 建 `execution.core.v1` baseline fence（与 workspace.core.v1 同 `create_fence_under_owner_lock` 路径，逐 owner）；writer 惰性首写建 fence；purge 遇缺失 fence 在 owner lock 下建（Spec §5.1 三重保障）。
 
-**Schema 与 migration（round-1 P1-2）**：S3-B 新增 **migration 038**：`agent_runs` + `agent_turn_inputs` 增 `actor_state`（present/redacted）+ `actor_identity_digest`（64-hex nullable），放宽 `created_by` 为 nullable + CHECK（present 强制 created_by 非空、redacted 允许 NULL 但保留 digest），与 S1 workspace Conversation/Message actor tombstone 同模式。expand-only，downgrade 可逆。registry `execution.core.v1` 增 `actor_identity` capability（capability_digest 变化）。
+**Schema 与 migration（round-1 P1-2 + round-2 P1-4/P2-3）**：
+
+- **migration 038**（S3-B）：`agent_runs` + `agent_turn_inputs` 增 `actor_state`（present/redacted）+ `actor_identity_digest`（64-hex nullable），放宽 `created_by` 为 nullable + CHECK（present 强制 created_by 非空、redacted 允许 NULL 但保留 digest），与 S1 workspace Conversation/Message actor tombstone 同模式。expand-only。
+- **downgrade 边界**（round-2 P2-3）：downgrade **仅在无 redacted 行时可逆**（还原 nullable/放宽）；已产生 redacted 行（anonymization 后）downgrade 必须 **fail closed 或 forward-fix**，**不得伪造 UUID 回填** `created_by`（匿名化不可逆，伪造会破坏审计真实性）。migration 测试需明确覆盖这两条路径。
+- **应用层 tombstone 契约**（round-2 P1-4，不能只改 DB）：
+  - **创建命令仍强制 UUID**：`create_run` / `create_run_with_root` 的 `CreateRunCommand.created_by` 保持必填（`AgentRun`/`TurnInput` 创建时 `actor_state=present`、`created_by` 非 NULL）。
+  - **持久化 domain 显式允许 erased actor**：`AgentRun`/`TurnInput` domain 与 mapper 对 `created_by=None` + `actor_state=redacted` + `actor_identity_digest` 投影为 erased envelope（不抛 None 错误）。
+  - **需要 actor 的命令遇 tombstone fail closed**：start/direct-RAG/取消等需要 `run.created_by` 的路径遇 `actor_state=redacted` -> fail closed（稳定错误码，不伪造 actor，不暴露 digest）。
+  - **API 不暴露 digest**：Run/TurnInput query/projection 不返回 `actor_identity_digest`（仅内部审计）。
+  - **负向测试**：purge 后 query/start/replay/cancel 对 tombstone Run 的行为（fail closed / 稳定 gone 语义，不泄露 digest、不复活 actor）。
+- **registry**（S3-B）：`execution.core.v1` 增 `actor_identity` capability，**保持 `erase_available=False`**（round-2 P1-1）；S3-D 翻 `erase_available=True`。
 
 **S3 实施 PR 拆分**（按复审建议顺序，每 PR 独立复审）：
 
-- **S3-A**（本 PR #515）：契约注记/plan delta（含 round-1 修订）。
-- **S3-B**：Schema 与基础契约 PR - migration 038（actor tombstone）、owner/source key 映射、registry flip（`actor_identity` + `erase_available`）、backfill 数据矩阵。
-- **S3-C**：Writer fence PR - composition-owned fenced execution port，注入 bridge/Direct RAG/cancel API/Runtime ingest；禁止生产路径直调未 fenced writer；覆盖全部 implicit/explicit RunEvent writer。
-- **S3-D**：ExecutionErasureParticipant PR - terminal/context/compatibility/event/actor 清除、final scan（无条件 `payload_inline`/`payload_ref` + actor + terminal_reason）、external/runtime blocked、完整 operation/checkpoint CAS、幂等 repair。
+- **S3-A**（本 PR #515）：契约注记/plan delta（含 round-1/round-2 修订）。
+- **S3-B**：Schema 与基础契约 PR - migration 038（actor tombstone + 应用层 tombstone 契约 + downgrade 边界）、owner/source key 闭集映射、registry 增 `actor_identity` capability（**`erase_available` 保持 False**，round-2 P1-1）、提取 shared actor digest helper、backfill 数据矩阵。
+- **S3-C**：Writer fence PR - composition-owned fenced execution port，注入 `consume_turn_requested`（create_run 真实入口，round-2 P1-2）/Direct RAG/cancel API/Runtime ingest；禁止生产路径直调未 fenced writer；覆盖全部 implicit/explicit RunEvent writer；writer 返回 `created` 标志驱动 event 计数器。
+- **S3-D**：ExecutionErasureParticipant PR - terminal（output+reason+code）/context/compatibility/event/actor 清除、final scan（无条件 `payload_inline`/`payload_ref` + actor + terminal_reason + terminal_code）、external/runtime blocked、完整 operation/checkpoint CAS、幂等 repair、**翻 `erase_available=True`**（与 participant/scan/ACK 同 commit）。
 - **S3-E**：Dispatch、竞态与收口 PR - deterministic late-write 分类、backfill、writer-win/purge-win、取消/terminal/runtime race、变异测试、docs closeout。
 
-**验证**：S3 专项（terminal suppress + terminal_reason 裁剪 + context/compatibility/event tombstone + actor 匿名化断言、envelope/digest 保留、body scan 无条件覆盖 `payload_inline`/`payload_ref` + actor + terminal_reason、ACK digest 契约、external payload blocked、runtime binding blocked、compatibility Run 可 ACK、dispatch_output deterministic 分类、fenced port 无旁路、event 计数器幂等、迟到 event tombstone、跨 tenant/actor fail closed、catalog refs 保留、非终态 Run blocked、migration 038 往返）+ execution/workspace/control-plane 回归全绿；新增测试经变异验证；ruff 0；mypy baseline 0 回归；docs gate + git diff --check 通过。本轮（S3-A）纯文档；S3-B 起新增 migration 038（不改 034-037）；不启用 purge scheduler、不进 S4。
+**验证**：S3 专项（terminal suppress + terminal_reason+code 裁剪 + context/compatibility/event tombstone + actor 匿名化断言、envelope/digest 保留、body scan 无条件覆盖 `payload_inline`/`payload_ref` + actor + terminal_reason+code、ACK digest 契约、external payload blocked、runtime binding blocked、compatibility Run 可 ACK、dispatch_output deterministic 分类、fenced port 无旁路（含 `consume_turn_requested` 真实 create_run 入口）、event 计数器持久化+baseline 0+`created` 标志、迟到 event tombstone、跨 tenant/actor fail closed、catalog refs 保留、非终态 Run blocked、migration 038 往返 + downgrade 边界（redacted 行 fail closed/forward-fix）+ 应用层 tombstone 契约（创建强制 UUID / domain 允许 erased / 需 actor 命令 fail closed / API 不暴露 digest / purge 后 query/start/replay 负向测试）+ shared actor digest helper 双 participant 共用）+ execution/workspace/control-plane 回归全绿；新增测试经变异验证；ruff 0；mypy baseline 0 回归；docs gate + git diff --check 通过。本轮（S3-A）纯文档；S3-B 起新增 migration 038（不改 034-037）；不启用 purge scheduler、不进 S4。
 
 ### R1-S4：Transport owner、external payload 与迟到写
 
