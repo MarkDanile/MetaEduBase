@@ -348,6 +348,18 @@ round-4 返修后独立 `max` 复审 P0/P1/P2=0/2/1，3 项已按 Sol `xhigh` �
 
 **验证**：S2-D/E round-5 专项 52 测试（+6 round-5：ACKed+blocked operation 修复 / ACKed+scheduled operation 修复 / fingerprint lock-in+match / fingerprint mismatch fail closed / 构造器禁覆盖 / 非生产跳过）经 6 项 round-5 变异全 killed；ruff 0；mypy 0；migration roundtrip + schema 56 passed；agent_control_plane + composition + identity jwt 234 passed；全量 `pytest -m 'not external_network'` 回归通过；docs gate + git diff --check 通过。本轮**新增 migration 037**（不改 034/035/036）、不启用 purge scheduler。待独立 `max` 只读复核。
 
+#### S2-D/E round-6 复审修订（2026-07-29，独立 `max` round 6 返修落点）
+
+round-5 返修后独立 `max` 复审 P0/P1/P2=0/1/3，4 项已按 Sol `xhigh` 返修，**优先于 round-5 注记的对应旧陈述**：
+
+- **P1 生产部署未接入新密钥契约**：round-5 新增 `ACTOR_ERASURE_SECRET` + `ENVIRONMENT=production` 启动校验，但 `deploy/docker-compose.yml` 未传递两者，`deploy/.env.production` / `.env.example` 也未声明，应用沿用 `development` 默认跳过校验 + 用 dev 占位密钥生成 digest。修订为--Compose backend 注入 `ENVIRONMENT`（默认 production）+ `ACTOR_ERASURE_SECRET`（必填）；`.env.production` 声明两者；`.env.example` 补 `ACTOR_ERASURE_SECRET` 模板；`security.md` secret 表 + 生产节登记。
+- **P2 校验失败前提交调用方事务**：round-5 `validate_production_actor_erasure_key_fingerprint` 在 fingerprint 比对前 `session.commit()`，函数接受任意 `AsyncSession`，mismatch 抛错前已提交调用方已有写入。修订为--函数不自行 commit，由 lifespan 用 `async with async_session_factory.begin()` 持有事务（成功自动提交、失败自动回滚）。多 worker 并发首启由 PG 行锁串行化（第二个 upsert 阻塞到首个提交后走 on_conflict re-read）。
+- **P2 错误信息暴露 verifier + 非常量时间比较**：round-5 mismatch 异常含 `existing`/`fingerprint` 值（固定消息 HMAC 是密钥 verifier，可离线验证猜测），且用 `!=` 非常量时间。修订为--`hmac.compare_digest()` 常量时间比较；异常文本只保留通用 mismatch 信息（不泄露 fingerprint 值）。
+- **P2 037 与多 worker 契约缺专属回归**：round-5 只在 `test_alembic_migrations.py` 断言 head 版本，无 037 表/PK/CHECK + 真实 downgrade->upgrade；fingerprint 测试只用单共享 session，无并发首启覆盖。修订为--新增 `test_037_system_key_fingerprints_downgrade_upgrade_round_trip`（表 + pk + check 约束 + 真实降升级）；新增并发首启测试（两独立 session/事务：同 secret 都成功仅一行 / 不同 secret 恰一方成功一方 mismatch fail）；新增 mismatch error redaction 测试（异常不含 fingerprint 值）。
+
+**验证**：S2-D/E round-6 专项 55 测试（+3 round-6：并发同 secret / 并发不同 secret / mismatch redaction）+ 037 迁移往返 1 项；2 项 round-6 变异 killed（redaction + no-commit），compare_digest 变异 SURVIVED 是预期（timing-only 不可功能测试）；ruff 0；mypy 0；agent_control_plane + composition + identity jwt 238 passed；全量回归通过；docs gate + git diff --check 通过。本轮**新增 migration 037**（不改 034/035/036）、不启用 purge scheduler。待独立 `max` 只读复核。
+
+
 
 
 ### R1-S3：Execution owner、RunEvent payload 与 compatibility output

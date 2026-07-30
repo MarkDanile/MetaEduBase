@@ -25,6 +25,7 @@ Spec §3/§5.2/§6.1/§7.1/§9.2（plan §R1-S2「S2-D/E 契约注记」+「roun
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -1755,3 +1756,124 @@ async def test_p1_2_round5_fingerprint_non_production_skipped(db_session, monkey
         )
     ).scalar_one()
     assert count == 0
+
+
+# ---------------------------------------------------------------------------
+# round-6 复审返修测试（P2-4 并发首启 + 037 迁移已单独覆盖）
+# ---------------------------------------------------------------------------
+
+
+async def _validate_in_own_transaction(factory, secret: str) -> None:
+    """round-6 P2-2/P2-4：用独立 session + begin() 持有事务调用 fingerprint 校验。
+    成功自动提交、失败自动回滚（校验函数不自行 commit）。"""
+    from app.config import settings
+
+    settings.environment = "production"
+    settings.actor_erasure_secret = secret
+    settings.actor_erasure_secret_version = 1
+    async with factory() as session, session.begin():
+        await validate_production_actor_erasure_key_fingerprint(session, settings)
+
+
+async def test_p1_2_round6_fingerprint_concurrent_same_secret_both_succeed(
+    session_factory, monkeypatch
+):
+    """round-6 P2-4：两独立事务并发首启 + 同 secret -> 都成功，仅一行 fingerprint。
+    PG 行锁串行化：第二个 upsert 阻塞到首个提交后走 on_conflict re-read 匹配。"""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "environment", "production")
+    await _cleanup_fingerprint_rows_via_factory(session_factory)
+    secret = "s" * ACTOR_ERASURE_SECRET_MIN_LENGTH
+
+    results = await asyncio.gather(
+        _validate_in_own_transaction(session_factory, secret),
+        _validate_in_own_transaction(session_factory, secret),
+        return_exceptions=True,
+    )
+    assert all(r is None for r in results), (
+        f"both concurrent same-secret validations should succeed, got {results!r}"
+    )
+    # 仅一行，fingerprint 匹配。
+    async with session_factory() as session:
+        rows = (
+            await session.execute(
+                select(SystemKeyFingerprintModel).where(
+                    SystemKeyFingerprintModel.key_name == "actor_erasure_v1"
+                )
+            )
+        ).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].fingerprint == _actor_erasure_key_fingerprint(secret)
+
+
+async def test_p1_2_round6_fingerprint_concurrent_different_secret_one_fails(
+    session_factory, monkeypatch
+):
+    """round-6 P2-4：两独立事务并发首启 + 不同 secret -> 一方成功（插入），另一方
+    fail closed（mismatch）。PG 行锁串行化保证插入方先提交，比对方走 on_conflict
+    re-read 发现 mismatch。"""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "environment", "production")
+    await _cleanup_fingerprint_rows_via_factory(session_factory)
+    secret_a = "a" * ACTOR_ERASURE_SECRET_MIN_LENGTH
+    secret_b = "b" * ACTOR_ERASURE_SECRET_MIN_LENGTH
+
+    results = await asyncio.gather(
+        _validate_in_own_transaction(session_factory, secret_a),
+        _validate_in_own_transaction(session_factory, secret_b),
+        return_exceptions=True,
+    )
+    # 恰好一方成功、一方 mismatch fail。
+    successes = [r for r in results if r is None]
+    failures = [r for r in results if isinstance(r, RuntimeError)]
+    assert len(successes) == 1, f"expected 1 success, got {results!r}"
+    assert len(failures) == 1, f"expected 1 mismatch failure, got {results!r}"
+    assert "不一致" in str(failures[0])
+    # 仅一行 fingerprint（成功插入方的）。
+    async with session_factory() as session:
+        rows = (
+            await session.execute(
+                select(SystemKeyFingerprintModel).where(
+                    SystemKeyFingerprintModel.key_name == "actor_erasure_v1"
+                )
+            )
+        ).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].fingerprint in {
+        _actor_erasure_key_fingerprint(secret_a),
+        _actor_erasure_key_fingerprint(secret_b),
+    }
+
+
+async def _cleanup_fingerprint_rows_via_factory(factory) -> None:
+    """round-6 P2-4：并发测试用 session_factory 清空 fingerprint 行（独立 session）。"""
+    async with factory() as session, session.begin():
+        await session.execute(delete(SystemKeyFingerprintModel))
+
+
+async def test_p1_2_round6_fingerprint_mismatch_error_redacted(db_session, monkeypatch):
+    """round-6 P2-3：mismatch 异常不泄露 existing/current fingerprint 值（密钥
+    verifier 不应扩散到日志），且用 hmac.compare_digest 常量时间比较。"""
+    from app.config import settings
+
+    await _cleanup_fingerprint_rows(db_session)
+    monkeypatch.setattr(settings, "environment", "production")
+    secret_a = "a" * ACTOR_ERASURE_SECRET_MIN_LENGTH
+    monkeypatch.setattr(settings, "actor_erasure_secret", secret_a)
+    # 首次锁定。
+    async with db_session.begin():
+        await validate_production_actor_erasure_key_fingerprint(db_session, settings)
+    # 换 secret B，mismatch。
+    secret_b = "b" * ACTOR_ERASURE_SECRET_MIN_LENGTH
+    monkeypatch.setattr(settings, "actor_erasure_secret", secret_b)
+    fp_a = _actor_erasure_key_fingerprint(secret_a)
+    fp_b = _actor_erasure_key_fingerprint(secret_b)
+    with pytest.raises(RuntimeError, match="不一致") as exc_info:
+        async with db_session.begin():
+            await validate_production_actor_erasure_key_fingerprint(db_session, settings)
+    msg = str(exc_info.value)
+    # 异常文本不含 existing/current fingerprint 值。
+    assert fp_a not in msg, f"fingerprint leaked in error: {msg!r}"
+    assert fp_b not in msg, f"fingerprint leaked in error: {msg!r}"

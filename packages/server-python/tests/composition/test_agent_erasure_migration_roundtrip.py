@@ -100,3 +100,62 @@ async def _clean_tombstone_tables() -> None:
         )
     finally:
         await connection.close()
+
+
+# ---------------------------------------------------------------------------
+# round-6 P2-4：037 system_key_fingerprints 专属迁移回归
+# ---------------------------------------------------------------------------
+
+_037_TABLE = "system_key_fingerprints"
+
+
+async def _system_key_fingerprint_schema() -> dict:
+    """返回 037 表的存在性 + PK + CHECK 约束名集合。"""
+    connection = await asyncpg.connect(_db_url())
+    try:
+        exists = await connection.fetchval(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema='metaedu' AND table_name=$1)",
+            _037_TABLE,
+        )
+        if not exists:
+            return {"exists": False, "constraints": set()}
+        rows = await connection.fetch(
+            "SELECT conname FROM pg_constraint c "
+            "JOIN pg_namespace n ON n.oid = c.connamespace "
+            "WHERE n.nspname='metaedu' "
+            "AND c.conrelid = $1::regclass",
+            f"metaedu.{_037_TABLE}",
+        )
+        return {"exists": True, "constraints": {r["conname"] for r in rows}}
+    finally:
+        await connection.close()
+
+
+def test_037_system_key_fingerprints_downgrade_upgrade_round_trip():
+    """round-6 P2-4：037 真实 downgrade->upgrade--表 + PK + CHECK 重建。
+
+    037 是纯 expand（新建表），downgrade drop_table，upgrade recreate。
+    验证：(1) head 状态表存在且含 pk + check 约束；(2) downgrade 到 036 表消失；
+    (3) upgrade 回 head 表重建且约束齐全。
+    """
+    # head 状态：表存在 + PK + CHECK。
+    schema = asyncio.run(_system_key_fingerprint_schema())
+    assert schema["exists"], "system_key_fingerprints should exist at head"
+    assert "pk_system_key_fingerprints" in schema["constraints"]
+    assert "ck_system_key_fingerprints_fingerprint" in schema["constraints"]
+
+    try:
+        _run_alembic("downgrade", "036_erasure_fence_empty_ingress")
+        schema = asyncio.run(_system_key_fingerprint_schema())
+        assert not schema["exists"], (
+            "system_key_fingerprints should be dropped after downgrade to 036"
+        )
+    finally:
+        _run_alembic("upgrade", "head")
+
+    # upgrade 回 head：表 + 约束重建。
+    schema = asyncio.run(_system_key_fingerprint_schema())
+    assert schema["exists"], "system_key_fingerprints should exist after upgrade to head"
+    assert "pk_system_key_fingerprints" in schema["constraints"]
+    assert "ck_system_key_fingerprints_fingerprint" in schema["constraints"]

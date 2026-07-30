@@ -187,6 +187,10 @@ async def validate_production_actor_erasure_key_fingerprint(
     后者防弱密钥/版本 bump，本函数防 secret 静默替换。非生产跳过（dev/test 无
     持久化 fingerprint 需求）。在 app lifespan 调用（需 DB session），**必须在**
     :func:`validate_production_actor_erasure_secret` 之后调用（依赖其强度+版本前置）。
+
+    round-6 P2-2：本函数**不自行 commit**--调用方须用 ``async with
+    session_factory.begin() as session`` 持有事务（成功自动提交、异常自动回滚），
+    避免校验失败前提交调用方已有写入。多 worker 并发首启由 PG 行锁串行化。
     """
     if getattr(cfg, "environment", "development") != "production":
         return
@@ -199,6 +203,10 @@ async def validate_production_actor_erasure_key_fingerprint(
     fingerprint = _actor_erasure_key_fingerprint(secret)
     # upsert + returning：原子处理多 worker 首启竞争。returning 非 None = 本次插入
     # （fingerprint 是自己的，必然一致）；None = 冲突（行已存在），需 re-read 比对。
+    # round-6 P2-2：不在校验函数内 commit--由调用方（lifespan ``async with
+    # session_factory.begin()``）持有事务，成功才提交、失败自动回滚。多 worker
+    # 并发首启时，第二个 INSERT 会被 PG 行锁阻塞直到首个事务提交/回滚，再走
+    # on_conflict 分支 re-read 比对，不会误判 "row vanished"。
     stmt = (
         pg_insert(SystemKeyFingerprintModel)
         .values(
@@ -209,26 +217,28 @@ async def validate_production_actor_erasure_key_fingerprint(
         .returning(SystemKeyFingerprintModel.fingerprint)
     )
     inserted = (await session.execute(stmt)).scalar_one_or_none()
-    await session.commit()
     if inserted is not None:
-        return  # 首次锁定，fingerprint 是自己的。
+        return  # 首次锁定，fingerprint 是自己的（调用方提交）。
     existing = await session.scalar(
         select(SystemKeyFingerprintModel.fingerprint).where(
             SystemKeyFingerprintModel.key_name == _ACTOR_ERASURE_V1_KEY_NAME
         )
     )
-    # 冲突分支：行已存在（可能并发首启或历史锁定），existing 必非 None。
+    # 冲突分支：行已存在（并发首启对端已提交或历史锁定），existing 必非 None。
     if existing is None:
         raise RuntimeError(
             "system_key_fingerprints row vanished after upsert conflict; "
             "concurrent migration/downgrade in progress?"
         )
-    if existing != fingerprint:
+    # round-6 P2-3：常量时间比较（fingerprint 是密钥 verifier，防时序侧信道），
+    # 异常文本不泄露 existing/current 值（固定消息 HMAC 可离线验证密钥猜测，
+    # 不应扩散到日志）。
+    if not hmac.compare_digest(existing, fingerprint):
         raise RuntimeError(
-            "ACTOR_ERASURE_SECRET 在 production 不一致：持久化 fingerprint "
-            f"{existing} != 当前 {fingerprint}。secret 被替换会使历史 actor "
-            "digest 成为无法溯源的孤儿（digest key version 未持久化，V1 冻结期"
-            "禁止轮换 secret）。需先落地 migration 持久化 digest version 后才能轮换。"
+            "ACTOR_ERASURE_SECRET 在 production 不一致：持久化 fingerprint 与当前"
+            "不匹配。secret 被替换会使历史 actor digest 成为无法溯源的孤儿"
+            "（digest key version 未持久化，V1 冻结期禁止轮换 secret）。"
+            "需先落地 migration 持久化 digest version 后才能轮换。"
         )
 
 
