@@ -28,9 +28,9 @@
 - Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
 - 架构约束：Spec §4.1 execution.core.v1、§6.1/§6.2 锁序/writer fence、§7.2 Execution 清除语义
 
-当前进展：S3 契约注记/plan delta 已写入 plan §R1-S3（先于代码冻结）；registry flip、ExecutionErasureParticipant、composition 层 fence 接线、dispatch_output deterministic 分类待实现。
-下一步：S3 契约注记 PR（docs-only）-> 独立 `max`/Codex 复审 -> 实现代码 -> 变异验证 -> PR。
-验证状态：契约注记 docs gate + git diff --check 待跑。
+当前进展：S3 契约注记/plan delta 已写入 plan §R1-S3 并提 PR #515（docs-only，先于代码冻结）；三路 CI 全绿。registry flip、ExecutionErasureParticipant、composition 层 fence 接线、dispatch_output deterministic 分类待复审通过后实现。
+下一步：PR #515 待独立 `max`/Codex 复审 -> 实现代码 -> 变异验证 -> 实现 PR。
+验证状态：docs gate passed + `git diff --check` 干净；PR #515 Backend/Frontend/Engineering docs 全绿。
 交接备注：不改 migration 034-037（S1 schema 已支持 tombstone）；不进 S4；不启用 purge scheduler。S2-D/E 已合并（PR #513 merge `5db40361`）。
 
 ## 下一批候选任务
