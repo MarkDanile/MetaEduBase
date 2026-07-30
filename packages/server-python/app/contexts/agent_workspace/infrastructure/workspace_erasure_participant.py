@@ -102,6 +102,13 @@ _ERASURE_REDACTED_REASON = "retention_expired"
 ACTOR_ERASURE_SECRET_MIN_LENGTH = 32
 # 非生产环境空 secret 退化到此占位（仅 dev/test，生产 fail-fast 不走到这里）。
 _ACTOR_ERASURE_SECRET_DEV_PLACEHOLDER = "dev-only-actor-erasure-secret"
+# round-7 P1：仓库已知 placeholder 拒绝表（公开值，长度 >=32 会通过强度校验，
+# 直接用模板启动会把公开 actor key fingerprint 锁入 037，V1 冻结期不可轮换）。
+# 含 dev 占位 + deploy 模板值。
+_KNOWN_ACTOR_ERASURE_PLACEHOLDERS = frozenset({
+    _ACTOR_ERASURE_SECRET_DEV_PLACEHOLDER,
+    "CHANGE_ME_random_actor_erasure_secret_at_least_32_chars",
+})
 
 # 生产环境 actor_erasure_secret 必须显式设置（P1-2：fail-fast，不与 jwt_secret 共用）。
 _PROD_ENVS = frozenset({"production"})
@@ -144,12 +151,16 @@ def validate_production_actor_erasure_secret(cfg=settings) -> None:
         return
     secret = getattr(cfg, "actor_erasure_secret", "") or ""
     version = int(getattr(cfg, "actor_erasure_secret_version", 1))
-    if not secret or len(secret) < ACTOR_ERASURE_SECRET_MIN_LENGTH:
+    if (
+        not secret
+        or secret in _KNOWN_ACTOR_ERASURE_PLACEHOLDERS
+        or len(secret) < ACTOR_ERASURE_SECRET_MIN_LENGTH
+    ):
         raise RuntimeError(
-            "ACTOR_ERASURE_SECRET 在 production 环境必须显式配置为不少于 "
-            f"{ACTOR_ERASURE_SECRET_MIN_LENGTH} 字符的高强度值（当前不满足）。"
-            "请设置 ACTOR_ERASURE_SECRET 环境变量（与 JWT_SECRET 隔离；V1 冻结期"
-            "禁止轮换，详见 config 注记）。"
+            "ACTOR_ERASURE_SECRET 在 production 环境必须显式配置为非仓库 placeholder、"
+            f"不少于 {ACTOR_ERASURE_SECRET_MIN_LENGTH} 字符的高强度值（当前不满足）。"
+            "请设置 ACTOR_ERASURE_SECRET 环境变量为随机高熵值（例：openssl rand -hex 32；"
+            "与 JWT_SECRET 隔离；V1 冻结期禁止轮换，详见 config 注记）。"
         )
     if version != 1:
         raise RuntimeError(
@@ -353,11 +364,17 @@ class WorkspaceErasureParticipant:
             secret = settings.actor_erasure_secret
             version = settings.actor_erasure_secret_version
             # 生产：构造期 fail-fast（启动期 lifespan 也校验，双重保险防漏配 participant）。
-            if not secret or len(secret) < ACTOR_ERASURE_SECRET_MIN_LENGTH:
+            # round-7 P1：拒绝仓库已知 placeholder（公开值通过长度校验会把公开 key
+            # 锁入 037 fingerprint，V1 冻结期不可轮换）。
+            if (
+                not secret
+                or secret in _KNOWN_ACTOR_ERASURE_PLACEHOLDERS
+                or len(secret) < ACTOR_ERASURE_SECRET_MIN_LENGTH
+            ):
                 raise RuntimeError(
-                    "actor_erasure_secret must be set to a high-entropy value "
+                    "actor_erasure_secret must be a non-placeholder high-entropy value "
                     f"(>= {ACTOR_ERASURE_SECRET_MIN_LENGTH} chars) in production; "
-                    "refusing to derive actor audit digests from a weak/empty secret"
+                    "refusing to derive actor audit digests from a weak/empty/known secret"
                 )
             # round-4 P1-4：version 冻结 V1（digest version 未持久化，轮换会孤儿化
             # 历史 digest）。非生产允许任意 version 便于测试 digest 派生。

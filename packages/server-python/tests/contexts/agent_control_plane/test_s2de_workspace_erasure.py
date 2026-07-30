@@ -29,6 +29,7 @@ import asyncio
 import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import delete, func, select
@@ -1763,32 +1764,35 @@ async def test_p1_2_round5_fingerprint_non_production_skipped(db_session, monkey
 # ---------------------------------------------------------------------------
 
 
-async def _validate_in_own_transaction(factory, secret: str) -> None:
-    """round-6 P2-2/P2-4：用独立 session + begin() 持有事务调用 fingerprint 校验。
+async def _validate_in_own_transaction(factory, cfg) -> None:
+    """round-6 P2-2/P2-4 / round-7 P2：用独立 session + begin() 持有事务调用 fingerprint
+    校验。每个协程传独立 ``cfg``（SimpleNamespace），不修改全局 settings singleton，
     成功自动提交、失败自动回滚（校验函数不自行 commit）。"""
-    from app.config import settings
-
-    settings.environment = "production"
-    settings.actor_erasure_secret = secret
-    settings.actor_erasure_secret_version = 1
     async with factory() as session, session.begin():
-        await validate_production_actor_erasure_key_fingerprint(session, settings)
+        await validate_production_actor_erasure_key_fingerprint(session, cfg)
+
+
+def _prod_cfg(secret: str) -> SimpleNamespace:
+    """round-7 P2：构造独立生产配置（不污染全局 settings）。"""
+    return SimpleNamespace(
+        environment="production",
+        actor_erasure_secret=secret,
+        actor_erasure_secret_version=1,
+    )
 
 
 async def test_p1_2_round6_fingerprint_concurrent_same_secret_both_succeed(
-    session_factory, monkeypatch
+    session_factory,
 ):
-    """round-6 P2-4：两独立事务并发首启 + 同 secret -> 都成功，仅一行 fingerprint。
-    PG 行锁串行化：第二个 upsert 阻塞到首个提交后走 on_conflict re-read 匹配。"""
-    from app.config import settings
-
-    monkeypatch.setattr(settings, "environment", "production")
+    """round-6 P2-4 / round-7 P2：两独立事务 + 独立 cfg 并发首启 + 同 secret -> 都成功，
+    仅一行 fingerprint。PG 行锁串行化：第二个 upsert 阻塞到首个提交后走 on_conflict
+    re-read 匹配。不修改全局 settings。"""
     await _cleanup_fingerprint_rows_via_factory(session_factory)
     secret = "s" * ACTOR_ERASURE_SECRET_MIN_LENGTH
 
     results = await asyncio.gather(
-        _validate_in_own_transaction(session_factory, secret),
-        _validate_in_own_transaction(session_factory, secret),
+        _validate_in_own_transaction(session_factory, _prod_cfg(secret)),
+        _validate_in_own_transaction(session_factory, _prod_cfg(secret)),
         return_exceptions=True,
     )
     assert all(r is None for r in results), (
@@ -1808,21 +1812,18 @@ async def test_p1_2_round6_fingerprint_concurrent_same_secret_both_succeed(
 
 
 async def test_p1_2_round6_fingerprint_concurrent_different_secret_one_fails(
-    session_factory, monkeypatch
+    session_factory,
 ):
-    """round-6 P2-4：两独立事务并发首启 + 不同 secret -> 一方成功（插入），另一方
-    fail closed（mismatch）。PG 行锁串行化保证插入方先提交，比对方走 on_conflict
-    re-read 发现 mismatch。"""
-    from app.config import settings
-
-    monkeypatch.setattr(settings, "environment", "production")
+    """round-6 P2-4 / round-7 P2：两独立事务 + 独立 cfg 并发首启 + 不同 secret -> 一方
+    成功（插入），另一方 fail closed（mismatch）。PG 行锁串行化保证插入方先提交，
+    比对方走 on_conflict re-read 发现 mismatch。不修改全局 settings。"""
     await _cleanup_fingerprint_rows_via_factory(session_factory)
     secret_a = "a" * ACTOR_ERASURE_SECRET_MIN_LENGTH
     secret_b = "b" * ACTOR_ERASURE_SECRET_MIN_LENGTH
 
     results = await asyncio.gather(
-        _validate_in_own_transaction(session_factory, secret_a),
-        _validate_in_own_transaction(session_factory, secret_b),
+        _validate_in_own_transaction(session_factory, _prod_cfg(secret_a)),
+        _validate_in_own_transaction(session_factory, _prod_cfg(secret_b)),
         return_exceptions=True,
     )
     # 恰好一方成功、一方 mismatch fail。
@@ -1848,7 +1849,8 @@ async def test_p1_2_round6_fingerprint_concurrent_different_secret_one_fails(
 
 
 async def _cleanup_fingerprint_rows_via_factory(factory) -> None:
-    """round-6 P2-4：并发测试用 session_factory 清空 fingerprint 行（独立 session）。"""
+    """round-6 P2-4：并发测试用 session_factory 清空 fingerprint 行（独立 session）。
+    autouse _clean 也 TRUNCATE system_key_fingerprints，此为显式前置清理。"""
     async with factory() as session, session.begin():
         await session.execute(delete(SystemKeyFingerprintModel))
 
@@ -1877,3 +1879,83 @@ async def test_p1_2_round6_fingerprint_mismatch_error_redacted(db_session, monke
     # 异常文本不含 existing/current fingerprint 值。
     assert fp_a not in msg, f"fingerprint leaked in error: {msg!r}"
     assert fp_b not in msg, f"fingerprint leaked in error: {msg!r}"
+
+
+# ---------------------------------------------------------------------------
+# round-7 复审返修测试（P1 仓库已知 placeholder 拒绝）
+# ---------------------------------------------------------------------------
+
+
+async def test_p1_round7_rejects_known_actor_erasure_placeholders(monkeypatch):
+    """round-7 P1：生产校验拒绝仓库已知 placeholder（公开值通过长度校验会把公开
+    actor key fingerprint 锁入 037，V1 冻结期不可轮换）。"""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "environment", "production")
+    # dev 占位。
+    monkeypatch.setattr(
+        settings, "actor_erasure_secret", "dev-only-actor-erasure-secret"
+    )
+    with pytest.raises(RuntimeError, match="非仓库 placeholder"):
+        validate_production_actor_erasure_secret(settings)
+    # .env.production 旧模板值（>=32 字符但公开）。
+    monkeypatch.setattr(
+        settings,
+        "actor_erasure_secret",
+        "CHANGE_ME_random_actor_erasure_secret_at_least_32_chars",
+    )
+    with pytest.raises(RuntimeError, match="非仓库 placeholder"):
+        validate_production_actor_erasure_secret(settings)
+    # 随机高熵值 -> 通过。
+    monkeypatch.setattr(settings, "actor_erasure_secret", "x" * ACTOR_ERASURE_SECRET_MIN_LENGTH)
+    validate_production_actor_erasure_secret(settings)  # 不抛
+
+
+async def test_p1_round7_rejects_known_jwt_placeholders(monkeypatch):
+    """round-7 P1：JWT 生产校验拒绝仓库已知 placeholder（公开 JWT 密钥不得进入生产）。"""
+    from app.config import settings
+    from app.contexts.identity.application.auth_service import (
+        validate_production_jwt_secret,
+    )
+
+    monkeypatch.setattr(settings, "environment", "production")
+    # config 默认值。
+    monkeypatch.setattr(settings, "jwt_secret", "dev-only-change-in-production")
+    with pytest.raises(RuntimeError, match="非仓库 placeholder"):
+        validate_production_jwt_secret(settings)
+    # .env.production 旧模板值（>=32 字符但公开）。
+    monkeypatch.setattr(
+        settings, "jwt_secret", "CHANGE_ME_random_jwt_secret_at_least_32_chars"
+    )
+    with pytest.raises(RuntimeError, match="非仓库 placeholder"):
+        validate_production_jwt_secret(settings)
+    # 随机高熵值 -> 通过。
+    monkeypatch.setattr(settings, "jwt_secret", "y" * 32)
+    validate_production_jwt_secret(settings)  # 不抛
+
+
+async def test_p1_round7_constructor_rejects_known_actor_erasure_placeholder(
+    db_session, monkeypatch
+):
+    """round-7 P1：构造期也拒绝仓库已知 placeholder（与启动期双重保险）。"""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "actor_erasure_secret_version", 1)
+    # dev 占位 -> 构造期 fail。
+    monkeypatch.setattr(
+        settings, "actor_erasure_secret", "dev-only-actor-erasure-secret"
+    )
+    with pytest.raises(RuntimeError, match="non-placeholder"):
+        WorkspaceErasureParticipant(db_session)
+    # .env.production 旧模板值 -> 构造期 fail。
+    monkeypatch.setattr(
+        settings,
+        "actor_erasure_secret",
+        "CHANGE_ME_random_actor_erasure_secret_at_least_32_chars",
+    )
+    with pytest.raises(RuntimeError, match="non-placeholder"):
+        WorkspaceErasureParticipant(db_session)
+    # 随机高熵值 -> 通过。
+    monkeypatch.setattr(settings, "actor_erasure_secret", "z" * ACTOR_ERASURE_SECRET_MIN_LENGTH)
+    WorkspaceErasureParticipant(db_session)  # 不抛

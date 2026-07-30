@@ -359,6 +359,16 @@ round-5 返修后独立 `max` 复审 P0/P1/P2=0/1/3，4 项已按 Sol `xhigh` �
 
 **验证**：S2-D/E round-6 专项 55 测试（+3 round-6：并发同 secret / 并发不同 secret / mismatch redaction）+ 037 迁移往返 1 项；2 项 round-6 变异 killed（redaction + no-commit），compare_digest 变异 SURVIVED 是预期（timing-only 不可功能测试）；ruff 0；mypy 0；agent_control_plane + composition + identity jwt 238 passed；全量回归通过；docs gate + git diff --check 通过。本轮**新增 migration 037**（不改 034/035/036）、不启用 purge scheduler。待独立 `max` 只读复核。
 
+#### S2-D/E round-7 复审修订（2026-07-29，独立 `max` round 7 返修落点）
+
+round-6 返修后独立 `max` 复审 P0/P1/P2=0/1/1，2 项已按 Sol `xhigh` 返修，**优先于 round-6 注记的对应旧陈述**：
+
+- **P1 生产模板公开 placeholder 通过校验**：round-6 `.env.production` 模板值 `CHANGE_ME_random_jwt_secret_at_least_32_chars` / `CHANGE_ME_random_actor_erasure_secret_at_least_32_chars` 均 >=32 字符，当前校验接受--直接用模板启动会以公开 JWT 密钥运行，并把公开 actor key fingerprint 锁入 037（V1 冻结期不可轮换）。修订为--(1) `.env.production` 模板值留空（Compose `${VAR:?}` 必填检查阻止未配置启动）；(2) 启动期 + 构造期校验新增仓库已知 placeholder denylist（`_KNOWN_JWT_PLACEHOLDERS` / `_KNOWN_ACTOR_ERASURE_PLACEHOLDERS`，含 config 默认值 + deploy 模板值），公开值 fail-fast。反例：`dev-only-*` / `CHANGE_ME_*` -> RuntimeError；随机高熵值 -> 通过。
+- **P2 并发测试共享全局 settings**：round-6 并发协程直接覆盖 `settings.actor_erasure_secret`，不能稳定模拟两 worker 独立配置，调度变化时两任务可能读同一 secret；直接赋值也绕过 `monkeypatch` 恢复污染后续测试。修订为--每个协程传独立 `SimpleNamespace` cfg（不修改全局 settings）；`system_key_fingerprints` 加入 autouse TRUNCATE 清理防跨测试泄漏。反例：两独立 cfg 不同 secret -> 恰一方成功一方 mismatch fail。
+
+**验证**：S2-D/E round-7 专项 58 测试（+3 round-7：actor placeholder 拒绝 / JWT placeholder 拒绝 / ctor placeholder 拒绝；并发测试改独立 cfg）；3 项 round-7 变异全 killed（startup/ctor/JWT placeholder 拒绝）；ruff 0；mypy 0（jose stubs 历史忽略）；agent_control_plane + composition + identity 281 passed；全量回归通过；docs gate + git diff --check 通过。本轮不改 migration 034/035/036/037、不启用 purge scheduler。待独立 `max` 只读复核。
+
+
 
 
 
