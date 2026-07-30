@@ -32,8 +32,14 @@ class Settings(BaseSettings):
 
     # R1-S2 S2-D：actor erasure HMAC secret（Spec §7.1 不可逆 actor audit digest）。
     # 与 jwt_secret 隔离（密钥用途隔离）：JWT 轮换不得改变审计身份摘要。生产环境
-    # 必须显式设置（空值 fail-fast），版本固定--轮换需显式 bump 并重算 audit digest。
+    # 必须显式设置（空值 / default / 低强度 fail-fast，见
+    # ``validate_production_actor_erasure_secret``）。版本固定--轮换需显式 bump
+    # ``actor_erasure_secret_version`` 并重算 audit digest，不得静默替换 secret。
     actor_erasure_secret: str = ""
+    # actor erasure secret 的版本号（可持续轮换契约）：digest 派生混入版本，不同
+    # 版本产生不同 digest（防跨版本碰撞）；轮换 = 新 secret + bump version，审计
+    # 可追溯。version >= 1。
+    actor_erasure_secret_version: int = 1
 
     llm_default_provider: str = "minimax"
     minimax_api_key: str = ""

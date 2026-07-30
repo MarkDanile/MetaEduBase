@@ -313,6 +313,19 @@ round-1 返修后独立 `max` 复审 P0/P1/P2/P3=0/5/4/1，5 个 P1 阻塞项已
 
 **验证**：S2-D/E round-2 专项 32 测试（含 6 场景表驱动 fencing 反例 + erased fence pending checkpoint 恢复 + scan archived_by/deleted_by + 已 redacted author_id 残留清除 + DB 时钟 + tenant 谓词 + 生产 fail-fast）经 18 项变异验证全部 killed；ruff 0；mypy 0 回归；全量 `pytest -m 'not external_network'` 1881 passed；docs gate + git diff --check 通过。本轮**不改 migration 034/035/036**、不启用 purge scheduler。待独立 `max` 只读复核。
 
+#### S2-D/E round-3 复审修订（2026-07-29，独立 `max` round 3 返修落点）
+
+round-2 返修后独立 `max` 复审 P0/P1/P2=0/4/2，6 项已按 Sol `xhigh` 返修，**优先于 round-2 注记的对应旧陈述**：
+
+- **P1-1 blocked 重试状态一致**：round-2 `_mark_operation_running` 只 scheduled->running，blocked 重试后 operation 卡 blocked + failure_code 残留，与 checkpoint=acked / conversation.purge_state=running 不一致。修订为--`_mark_operation_running` 推进 scheduled/blocked->running 并清 failure_code + bump revision（`_mark_operation_running` 是 failure_code 唯一清除点，ACK 不再防御性清--可测）。反例：重试 ACK 后 operation=running + failure_code=None，与 checkpoint/purge_state 一致。
+- **P1-2 operation revision replay fencing**：round-2 ACK 无 operation revision CAS，跨事务 stale operation 可重放。修订为--`erase_conversation_body` 接 `expected_operation_revision` 必填；`_load_verified_operation` 支持 revision CAS（首次加载裁决，后续 mark_running/ack/record_blocked 复用锁内稳定 revision）；状态变化（scheduled/blocked->running、->blocked、repair scheduled->running）bump revision。反例：调用方观测 revision 过期（被并发 bump）-> "operation revision mismatch" fail closed。
+- **P1-3 erased repair 安全**：round-2 erased fence 重放不校验 scan 与 operation 状态，可在非零 scan 或终态 operation 上补 ACK。修订为--erased 重放先校验 `scan.total == 0`（非零 = 正文泄漏矛盾，fence 已终态不可 blocked，fail closed）；`_repair_checkpoint_if_pending` 校验 operation 处可修复状态（scheduled/running/blocked），cancelled/failed/completed 终态 fail closed。反例：erased + 非零 scan -> ValueError；erased + cancelled operation -> ValueError。
+- **P1-4 actor secret 强度 + 版本契约**：round-2 只校验非空，无强度阈值与版本机制。修订为--新增 `settings.actor_erasure_secret_version`（混入 HMAC key 派生 `HMAC(HMAC("{v}:{secret}", tenant), actor)`，轮换 = 新 secret + bump version）；`validate_production_actor_erasure_secret`（lifespan 启动期）+ 构造期双重校验：production secret >= 32 字符 + version >= 1，否则 fail-fast。反例：空/弱 secret -> RuntimeError；不同 version -> 不同 digest。
+- **P1-5 公开 now 参数绕过 DB 时钟**：round-2 `erase_conversation_body` 暴露 `now` 参数，调用方可传进程时钟绕过 `clock_timestamp()`。修订为--移除 `now` 参数，purge 截止始终用 `_database_now()`（Conversation 锁后采样）。反例：传 `now=` -> TypeError（参数不存在）；DB 时钟始终被调用。
+- **P2 owner_version 去硬编码**：round-2 `_record_blocked` / `_repair_checkpoint_if_pending` 硬编码 `fence_owner_version=1`。修订为--两处改用 `fence.owner_version`（与 `_ack_owner_checkpoint` 一致，未来 owner version bump 不会误判 mismatch）。反例：fence + checkpoint owner_version=2 同步时 blocked 路径仍匹配（硬编码 1 会误 raise）。
+
+**验证**：S2-D/E round-3 专项 40 测试（含 7 场景表驱动 fencing 反例 +operation revision CAS+ + erased 非零 scan fail closed + erased 终态 operation fail closed + blocked 重试状态一致 + secret 强度/版本/启动校验 + now 不被接受 + owner_version 去硬编码）经 8 项 round-3 变异全 killed；ruff 0；mypy 0 回归；docs gate + git diff --check 通过。本轮**不改 migration 034/035/036**、不启用 purge scheduler。待独立 `max` 只读复核。
+
 ### R1-S3：Execution owner、RunEvent payload 与 compatibility output
 
 **复杂度/执行**：极高，Sol `xhigh`；独立 `max` 审查 terminal/projection 反例。
