@@ -30,6 +30,7 @@ from app.contexts.agent_execution.application.run_coordinator import RunCoordina
 from app.contexts.agent_execution.domain import (
     EventVisibility,
     OutputPublishState,
+    RunActorAnonymizedError,
     RunBudgetSnapshot,
     RunConfigSnapshot,
     RunEventPayload,
@@ -288,6 +289,14 @@ class DirectRagCompatibilityAdapter:
         except RunNotFoundError:
             raise DirectRagTurnPendingError(
                 "Direct RAG turn is pending execution acceptance"
+            ) from None
+        except RunActorAnonymizedError:
+            # S3-B round-4 P1-1：tombstone 是确定性 gone（actor 已匿名化，不可逆），
+            # 不应被通用 except 转成 pending（暂态重试）。映射为 DirectRagTerminalReplayError
+            # (确定性 replay/gone 语义，HTTP 410/409)，调用方据此稳定失败。
+            raise DirectRagTerminalReplayError(
+                "Direct RAG Run has been anonymized (tombstone); "
+                "cannot dispatch a purged Run"
             ) from None
         except DirectRagCompatibilityError:
             raise

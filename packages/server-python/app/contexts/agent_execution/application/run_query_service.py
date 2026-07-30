@@ -18,6 +18,7 @@ from app.contexts.agent_execution.domain import (
     EventCursorAheadError,
     EventGapDetectedError,
     EventHistoryExpiredError,
+    RunActorAnonymizedError,
     RunNotFoundError,
     RunStatus,
     TerminalResult,
@@ -50,6 +51,12 @@ class RunQueryService:
             actor_id=actor_id,
             run_id=run_id,
         )
+        # S3-B round-4 P2-1：tombstone Run 不能被 read/cancel/replay 返回（actor 已匿名化）。
+        if run.created_by is None:
+            raise RunActorAnonymizedError(
+                f"Agent Run {run_id} actor has been anonymized (tombstone); "
+                "live actor required"
+            )
         return run
 
     async def request_cancel(
@@ -65,6 +72,11 @@ class RunQueryService:
             actor_id=actor_id,
             run_id=run_id,
         )
+        if run.created_by is None:
+            raise RunActorAnonymizedError(
+                f"Agent Run {run_id} actor has been anonymized (tombstone); "
+                "live actor required"
+            )
         if not access.can_cancel:
             raise RunNotFoundError("Agent Run not found")
         current, reserved = await self._coordinator.reserve_cancel_intent(
@@ -150,6 +162,11 @@ class RunQueryService:
             actor_id=actor_id,
             run_id=run_id,
         )
+        if run.created_by is None:
+            raise RunActorAnonymizedError(
+                f"Agent Run {run_id} actor has been anonymized (tombstone); "
+                "live actor required"
+            )
         window = await self._repository.read_event_replay_window(
             tenant_id=tenant_id,
             run_id=run_id,

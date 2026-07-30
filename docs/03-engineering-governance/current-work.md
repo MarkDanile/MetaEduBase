@@ -28,9 +28,9 @@
 - Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S3-B 契约注记）
 - 架构约束：Spec §4.1/§7.1/§6.2；migration 038 actor tombstone + 应用层 tombstone 契约 + downgrade 边界
 
-当前进展：S3-B 实现 PR #517 已推送，独立 `max` 复审发现 P0=0/P1=2/P2=3，返修中：(1) P1-1 在所有 replay/idempotency 入口前置 live-actor 校验（`require_live_run` helper + direct_rag `activate_turn`/`completed_turn`/`complete_turn` + execution_repository create 幂等 replay）；(2) P1-2 `actor_identity_digest` CHECK 加 lowercase hex 正则约束 + PostgreSQL 真实反例（Run + TurnInput 拒绝 `z*64`/`A*64`）；(3) P2-3 domain/mapper 完整投影 `actor_state` + `actor_identity_digest` 字段（API DTO 不暴露）；(4) P2-4 加强 source-key 互斥 + TurnInput redacted 阻止 downgrade 测试。
-下一步：完成返修后 push -> 独立 `max` 只读复核 -> 按流程合并 S3-B -> 启动 S3-C（Writer fence PR）。
-验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；28 S3-B 专项 + 58 S2-D/E 回归 + 344 受影响领域子集 全绿。
+当前进展：S3-B round-4 复审返修完成（P0=0/P1=1/P2=3 → 全部闭合）。(1) P1-1 DirectRAG `RunActorAnonymizedError` 在 `activate_turn` 透传为 `DirectRagTerminalReplayError`（确定性 gone/conflict，HTTP 410/409），不被通用 except 转 pending；(2) P2-1 `run_query_service` get_run/request_cancel/read_event_batch 在 `_require_run_access` 后前置 tombstone guard（`run.created_by is None` raise `RunActorAnonymizedError`）；(3) P2-2 新增 `test_s3b_cross_owner_source_key.py` 真实调 `AgentErasureRepository.advance_ingress_checkpoint_for_update`（先建 conversation + fence），workspace↔execution 跨 owner 写 source key 必须 raise `ValueError`；(4) P2-3 `test_038_downgrade_fail_closed_on_redacted_turn_input` 改用 present 父 Run + 仅 redacted TurnInput，downgrade 失败仅由 TurnInput 分支触发（独立 kill 父 Run 检查删除）；(5) P2-4 删 hex 测试死代码（未 await `connection = asyncpg.connect()` + 未调用的 `_setup_and_attempt`），工作台同步为「round-4 返修完成，待复核」。
+下一步：待独立 `max` 只读复核 -> P0/P1 清零后按流程合并 S3-B -> 启动 S3-C（Writer fence PR）。
+验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；后台测试集运行中（33 passed，cross-owner/turn_input redacted/hex/registry/alembic/s2de regression）。
 交接备注：S3-A 已合并（PR #515 merge `2d4f8091`）；S3-B 新增 migration 038（不改 034-037）；erase_available 保持 False（S3-D 翻）；不进 S4；不启用 purge scheduler。
 
 ## 下一批候选任务

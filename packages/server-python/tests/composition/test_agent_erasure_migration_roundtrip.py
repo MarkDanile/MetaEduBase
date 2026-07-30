@@ -289,6 +289,76 @@ async def _cleanup_redacted_run(tid) -> None:
         await connection.close()
 
 
+async def _seed_present_run() -> tuple:
+    """插入一个 present Run（含 FK 链：definition + profile + run），返回 (run, tenant)。
+
+    使用 'queued' 非 terminal 状态避免 terminal envelope CHECK；created_by 非空 +
+    actor_state='present' + digest NULL（满足 ck_agent_runs_actor present 分支）。
+    供 TurnInput redacted downgrade 隔离测试使用——父 Run 保持 present，使
+    downgrade 失败仅由 TurnInput 分支触发。
+    """
+    import uuid as _uuid
+
+    connection = await asyncpg.connect(_db_url())
+    tid = _uuid.uuid4()
+    def_id = _uuid.uuid4()
+    prof_id = _uuid.uuid4()
+    run_id = _uuid.uuid4()
+    digest = "a" * 64
+    try:
+        await connection.execute(
+            "INSERT INTO metaedu.agent_definition_versions "
+            "(id, tenant_id, definition_key, version, status, definition_digest, "
+            "created_by, created_at) "
+            "VALUES ($1, $2, $3, 1, 'published', $4, $2, now())",
+            def_id, tid, f"def-{tid}", digest,
+        )
+        await connection.execute(
+            "INSERT INTO metaedu.agent_runtime_profiles "
+            "(id, tenant_id, profile_key, runtime_kind, adapter_key, config_digest, "
+            "capability_digest, enabled, revision, created_at, updated_at) "
+            "VALUES ($1, $2, $3, 'compatibility', 'compatibility', $4, $4, "
+            "true, 1, now(), now())",
+            prof_id, tid, f"prof-{tid}", digest,
+        )
+        creator_id = _uuid.uuid4()
+        await connection.execute(
+            "INSERT INTO metaedu.agent_runs "
+            "(id, tenant_id, conversation_id, queue_seq, root_input_message_id, "
+            "agent_definition_version_id, runtime_profile_id, creation_digest, status, "
+            "status_revision, next_event_seq, first_available_event_seq, last_event_seq, "
+            "event_log_complete, queued_at, output_publish_state, created_by, actor_state, "
+            "actor_identity_digest, correlation_id, runtime_capability_snapshot, "
+            "run_config_snapshot, budget_snapshot, usage_summary) "
+            "VALUES ($1, $2, $1, 1, $1, $3, $4, $5, 'queued', 1, 1, 1, 0, true, now(), "
+            "'not_required', $6, 'present', NULL, $1, '{}'::jsonb, '{}'::jsonb, "
+            "'{}'::jsonb, '{}'::jsonb)",
+            run_id, tid, def_id, prof_id, digest, creator_id,
+        )
+        return run_id, tid
+    finally:
+        await connection.close()
+
+
+async def _cleanup_present_run(tid) -> None:
+    connection = await asyncpg.connect(_db_url())
+    try:
+        await connection.execute(
+            "DELETE FROM metaedu.agent_turn_inputs WHERE tenant_id=$1", tid
+        )
+        await connection.execute(
+            "DELETE FROM metaedu.agent_runs WHERE tenant_id=$1", tid
+        )
+        await connection.execute(
+            "DELETE FROM metaedu.agent_runtime_profiles WHERE tenant_id=$1", tid
+        )
+        await connection.execute(
+            "DELETE FROM metaedu.agent_definition_versions WHERE tenant_id=$1", tid
+        )
+    finally:
+        await connection.close()
+
+
 def test_038_downgrade_fail_closed_on_redacted_rows():
     """S3-B round-2 P2-3：anonymization 后 downgrade 必须 fail closed（不伪造 UUID）。
 
@@ -353,8 +423,13 @@ async def _cleanup_redacted_turn_input(tid) -> None:
 
 
 def test_038_downgrade_fail_closed_on_redacted_turn_input() -> None:
-    """S3-B round-3 P2-4：redacted TurnInput 同样阻止 downgrade（与 agent_runs 同源）。"""
-    run_id, tid = asyncio.run(_seed_redacted_run())
+    """S3-B round-4 P2-3：redacted TurnInput 阻止 downgrade，父 Run 保持 present。
+
+    round-3 版本用 ``_seed_redacted_run()`` 创建 redacted 父 Run，downgrade
+    失败总是被父 Run 触发，不验证 TurnInput 分支。本测试改用 present 父 Run
+    + 仅 TurnInput redacted，downgrade 失败仅由 TurnInput 分支触发。
+    """
+    run_id, tid = asyncio.run(_seed_present_run())
     try:
         asyncio.run(_seed_redacted_turn_input(run_id, tid))
         raised = False
@@ -363,17 +438,17 @@ def test_038_downgrade_fail_closed_on_redacted_turn_input() -> None:
         except Exception:
             raised = True
         assert raised, (
-            "downgrade must fail closed when redacted TurnInput rows exist"
+            "downgrade must fail closed when redacted TurnInput rows exist "
+            "(with present parent Run)"
         )
         schema = asyncio.run(_execution_actor_schema())
         assert "actor_state" in schema["agent_turn_inputs"], (
             "still at head after fail-closed downgrade (turn_input)"
         )
     finally:
-        asyncio.run(_cleanup_redacted_turn_input(tid))
-        asyncio.run(_cleanup_redacted_run(tid))
+        asyncio.run(_cleanup_present_run(tid))
 
-    # 清理 redacted 行后 downgrade 成功。
+    # 清理 redacted TurnInput 后 downgrade 成功。
     try:
         _run_alembic("downgrade", "037_system_key_fingerprints")
         schema = asyncio.run(_execution_actor_schema())
@@ -388,22 +463,6 @@ def test_038_actor_digest_must_be_lowercase_hex() -> None:
     PostgreSQL 真实反例：长度 64 但含非 hex 字符（含大写 Z）应被 CHECK 拒绝。
     """
     import uuid as _uuid
-
-    connection = asyncpg.connect(_db_url())
-
-    async def _setup_and_attempt(digest_value: str, *, table: str, fk_col: str) -> str:
-        conn = await connection
-        try:
-            if table == "agent_runs":
-                # 复用既有 _seed_redacted_run 的 FK 链
-                run_id, tid, _def_id = await _seed_redacted_run()
-                await conn.execute(
-                    "DELETE FROM metaedu.agent_runs WHERE tenant_id=$1", tid
-                )
-                return run_id, tid
-            return None, None
-        finally:
-            await conn.close()
 
     async def _try_redacted_insert_redacted_run(digest_value: str) -> None:
         """尝试向 agent_runs 插入非 hex digest，期望 CHECK 拒绝。"""
