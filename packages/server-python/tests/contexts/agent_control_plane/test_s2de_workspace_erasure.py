@@ -30,7 +30,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from app.composition.agent_erasure_registry import (
     OwnerRegistryChangedError,
@@ -56,6 +56,7 @@ from app.contexts.agent_workspace.infrastructure.models import (
     MessagePartModel,
     PurgeOperationModel,
     PurgeOwnerCheckpointModel,
+    SystemKeyFingerprintModel,
 )
 from app.contexts.agent_workspace.infrastructure.repository import (
     AgentWorkspaceRepository,
@@ -67,6 +68,8 @@ from app.contexts.agent_workspace.infrastructure.workspace_erasure_participant i
     WORKSPACE_CORE_OWNER,
     WorkspaceErasureParticipant,
     _actor_audit_digest,
+    _actor_erasure_key_fingerprint,
+    validate_production_actor_erasure_key_fingerprint,
     validate_production_actor_erasure_secret,
 )
 from tests.contexts.agent_control_plane.helpers import (
@@ -1571,3 +1574,184 @@ async def test_body_scan_detects_residual(db_session):
     assert scan.present_body_messages == 1
     assert scan.total != 0
     await db_session.rollback()
+
+# ---------------------------------------------------------------------------
+# round-5 复审返修测试（P1-1 ACKed checkpoint operation 修复 + P1-2 V1 key fingerprint）
+# ---------------------------------------------------------------------------
+
+
+async def _cleanup_fingerprint_rows(db_session) -> None:
+    """round-5 P1-2：fingerprint 测试隔离--清空 system_key_fingerprints（db_session
+    fixture 末尾 commit，validate_*_key_fingerprint 内部也 commit，行会跨测试留存）。"""
+    await db_session.execute(delete(SystemKeyFingerprintModel))
+    await db_session.commit()
+
+
+async def test_p1_3_round5_erased_repair_acked_checkpoint_blocked_operation(db_session):
+    """round-5 P1-1：checkpoint=acked + operation=blocked 矛盾组合--ACKed 分支
+    不能早 return，必须 fall through 到 operation 修复块。现有 round-4 测试把
+    checkpoint 回退为 pending 避开了此分支；本测试保留 acked 验证修复。"""
+    conversation_id, purge_revision, operation_id, op_revision = (
+        await _seed_purgeable_with_operation(db_session)
+    )
+    first = await _participant(db_session).erase_conversation_body(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        purge_revision=purge_revision,
+        purge_operation_id=operation_id,
+        expected_operation_revision=op_revision,
+    )
+    await db_session.commit()
+    assert first.erased
+    fence_ack_digest = first.fence.ack_digest
+    op_revision_after = await _op_revision(db_session, operation_id)
+    # 模拟矛盾：fence erased + checkpoint=acked（digest 一致）但 operation=blocked。
+    # 关键：不回退 checkpoint（保留 acked + 正确 digest），只破坏 operation。
+    op = await _operation_model(db_session, operation_id)
+    op.state = "blocked"
+    op.failure_code = "stale"
+    op.revision = op_revision_after + 1  # 并发 bump
+    await db_session.commit()
+
+    outcome = await _participant(db_session).erase_conversation_body(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        purge_revision=purge_revision,
+        purge_operation_id=operation_id,
+        expected_operation_revision=op_revision_after + 1,
+    )
+    await db_session.commit()
+    assert outcome.erased
+    # operation 修复到 running（ACKed 分支也 fall through 到修复块）。
+    op = await _operation_model(db_session, operation_id)
+    assert op.state == "running"
+    assert op.failure_code is None
+    # checkpoint 保持 acked，digest 不变（未重写）。
+    cp = await _checkpoint_model(db_session, operation_id)
+    assert cp.state == PurgeOwnerState.ACKED.value
+    assert cp.ack_digest == fence_ack_digest
+    # conversation.purge_state 修复到 running（三方一致）。
+    conv = await db_session.get(ConversationModel, conversation_id)
+    assert conv.purge_state == "running"
+
+
+async def test_p1_3_round5_erased_repair_acked_checkpoint_scheduled_operation(db_session):
+    """round-5 P1-1：checkpoint=acked + operation=scheduled 矛盾组合--同样
+    fall through 到 operation 修复块，scheduled->running。"""
+    conversation_id, purge_revision, operation_id, op_revision = (
+        await _seed_purgeable_with_operation(db_session)
+    )
+    first = await _participant(db_session).erase_conversation_body(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        purge_revision=purge_revision,
+        purge_operation_id=operation_id,
+        expected_operation_revision=op_revision,
+    )
+    await db_session.commit()
+    assert first.erased
+    fence_ack_digest = first.fence.ack_digest
+    op_revision_after = await _op_revision(db_session, operation_id)
+    # 模拟矛盾：checkpoint=acked 但 operation 回退到 scheduled（started_at 清）。
+    op = await _operation_model(db_session, operation_id)
+    op.state = "scheduled"
+    op.started_at = None
+    op.revision = op_revision_after + 1
+    await db_session.commit()
+
+    outcome = await _participant(db_session).erase_conversation_body(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        purge_revision=purge_revision,
+        purge_operation_id=operation_id,
+        expected_operation_revision=op_revision_after + 1,
+    )
+    await db_session.commit()
+    assert outcome.erased
+    # operation 修复到 running，started_at 补设。
+    op = await _operation_model(db_session, operation_id)
+    assert op.state == "running"
+    assert op.started_at is not None
+    # checkpoint 保持 acked，digest 不变。
+    cp = await _checkpoint_model(db_session, operation_id)
+    assert cp.state == PurgeOwnerState.ACKED.value
+    assert cp.ack_digest == fence_ack_digest
+
+
+async def test_p1_2_round5_fingerprint_lock_in_and_match(db_session, monkeypatch):
+    """round-5 P1-2：V1 key fingerprint 首次锁定（INSERT）+ 一致放行。"""
+    from app.config import settings
+
+    await _cleanup_fingerprint_rows(db_session)
+    monkeypatch.setattr(settings, "environment", "production")
+    secret_a = "a" * ACTOR_ERASURE_SECRET_MIN_LENGTH
+    monkeypatch.setattr(settings, "actor_erasure_secret", secret_a)
+    # 首次：无行 -> INSERT 锁定。
+    await validate_production_actor_erasure_key_fingerprint(db_session, settings)
+    row = (
+        await db_session.execute(
+            select(SystemKeyFingerprintModel).where(
+                SystemKeyFingerprintModel.key_name == "actor_erasure_v1"
+            )
+        )
+    ).scalar_one()
+    assert row.fingerprint == _actor_erasure_key_fingerprint(secret_a)
+    assert len(row.fingerprint) == 64
+    # 再次（同 secret）：一致放行，不抛、不改 fingerprint。
+    await validate_production_actor_erasure_key_fingerprint(db_session, settings)
+    await db_session.refresh(row)
+    assert row.fingerprint == _actor_erasure_key_fingerprint(secret_a)
+
+
+async def test_p1_2_round5_fingerprint_mismatch_fail_closed(db_session, monkeypatch):
+    """round-5 P1-2：secret 被换（A -> B，同 version=1）-> fingerprint 不一致
+    -> fail closed（历史 digest 孤儿化检测）。"""
+    from app.config import settings
+
+    await _cleanup_fingerprint_rows(db_session)
+    monkeypatch.setattr(settings, "environment", "production")
+    secret_a = "a" * ACTOR_ERASURE_SECRET_MIN_LENGTH
+    monkeypatch.setattr(settings, "actor_erasure_secret", secret_a)
+    await validate_production_actor_erasure_key_fingerprint(db_session, settings)
+    # 换 secret B（version 仍 1），绕过版本冻结但 fingerprint 检测捕获。
+    secret_b = "b" * ACTOR_ERASURE_SECRET_MIN_LENGTH
+    monkeypatch.setattr(settings, "actor_erasure_secret", secret_b)
+    with pytest.raises(RuntimeError, match="不一致"):
+        await validate_production_actor_erasure_key_fingerprint(db_session, settings)
+
+
+async def test_p1_2_round5_constructor_forbids_production_override(db_session, monkeypatch):
+    """round-5 P1-2：生产构造器禁覆盖 audit_secret/audit_secret_version
+    --防调用方注入不同 secret 绕过 V1 冻结 + fingerprint 锁定。"""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "actor_erasure_secret", "x" * ACTOR_ERASURE_SECRET_MIN_LENGTH)
+    monkeypatch.setattr(settings, "actor_erasure_secret_version", 1)
+    # 显式 audit_secret 覆盖 -> fail。
+    with pytest.raises(RuntimeError, match="does not accept.*override"):
+        WorkspaceErasureParticipant(
+            db_session, audit_secret="y" * ACTOR_ERASURE_SECRET_MIN_LENGTH
+        )
+    # 显式 audit_secret_version 覆盖 -> fail。
+    with pytest.raises(RuntimeError, match="does not accept.*override"):
+        WorkspaceErasureParticipant(db_session, audit_secret_version=1)
+    # 无覆盖 -> 通过（用 settings 全局 key）。
+    WorkspaceErasureParticipant(db_session)  # 不抛
+
+
+async def test_p1_2_round5_fingerprint_non_production_skipped(db_session, monkeypatch):
+    """round-5 P1-2：非生产环境跳过 fingerprint 校验（dev/test 无持久化需求），
+    不写 system_key_fingerprints 行。"""
+    from app.config import settings
+
+    await _cleanup_fingerprint_rows(db_session)
+    monkeypatch.setattr(settings, "environment", "development")
+    monkeypatch.setattr(settings, "actor_erasure_secret", "")
+    await validate_production_actor_erasure_key_fingerprint(db_session, settings)
+    count = (
+        await db_session.execute(
+            select(func.count()).select_from(SystemKeyFingerprintModel)
+        )
+    ).scalar_one()
+    assert count == 0

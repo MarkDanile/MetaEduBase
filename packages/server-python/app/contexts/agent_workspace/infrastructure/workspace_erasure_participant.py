@@ -9,10 +9,13 @@ Spec §3/§5.2/§6.1/§7.1/§9.2（plan §R1-S2「S2-D/E 契约注记」+「S2-D
   purged_at IS NULL。但**已 erased fence 的幂等重放先于前置**（P1-4：purged_at
   后不得在读 fence 前被拒绝）；erased 重放还要求 scan 为零（round-3 P1-3：erased
   fence + 非零 scan = 正文泄漏矛盾，fail closed，不补 ACK）。
-- HMAC secret 隔离 + 版本契约（P1-2 / round-3 P1-4）：actor audit digest 用独立
-  ``actor_erasure_secret``（非 jwt_secret），生产启动期强度校验（>= 32 字符）+
-  版本固定（``actor_erasure_secret_version`` 混入 key 派生，轮换 = 新 secret +
-  bump version，审计可追溯）。
+- HMAC secret 隔离 + V1 冻结契约（P1-2 / round-3 P1-4 / round-5 P1-2）：actor
+  audit digest 用独立 ``actor_erasure_secret``（非 jwt_secret），生产启动期强度
+  校验（>= 32 字符）+ 版本固定（``actor_erasure_secret_version`` 混入 key 派生）。
+  round-4/5 P1-2：digest key version **未持久化**（表只存 64-hex digest），轮换
+  secret/version 会使历史 digest 成为无法溯源的孤儿，故 migration 落地持久化 digest
+  version 之前，生产 ``actor_erasure_secret_version`` 冻结为 1、**禁止轮换** secret
+  （启动期 fingerprint 比对 + 构造器禁覆盖全局 key 强制）。
 - 清除锁序 Conversation row -> owner lock -> fence（防 AB-BA）；清除所有直接
   主体标识（created_by/archived_by/deleted_by + Message.author_id），HMAC
   tenant-scoped 不可逆匿名化；物理删除 MessagePart/UserState。
@@ -48,6 +51,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import delete, func, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.composition.agent_erasure_locks import acquire_owner_lock
@@ -79,6 +83,7 @@ from app.contexts.agent_workspace.infrastructure.models import (
     MessagePartModel,
     PurgeOperationModel,
     PurgeOwnerCheckpointModel,
+    SystemKeyFingerprintModel,
 )
 from app.shared.schemas.canonical_json import canonical_digest
 
@@ -101,6 +106,11 @@ _ACTOR_ERASURE_SECRET_DEV_PLACEHOLDER = "dev-only-actor-erasure-secret"
 # 生产环境 actor_erasure_secret 必须显式设置（P1-2：fail-fast，不与 jwt_secret 共用）。
 _PROD_ENVS = frozenset({"production"})
 
+# round-5 P1-2：V1 key fingerprint 持久化键名（system_key_fingerprints.key_name）。
+_ACTOR_ERASURE_V1_KEY_NAME = "actor_erasure_v1"
+# round-5 P1-2：fingerprint 域分隔符（与 actor digest 的 tenant+actor 域隔离）。
+_ACTOR_ERASURE_KEY_FINGERPRINT_DOMAIN = b"actor-erasure-v1-key-fingerprint"
+
 
 def _actor_audit_digest(
     *, secret: str, secret_version: int, tenant_id: uuid.UUID, actor_id: uuid.UUID
@@ -109,10 +119,10 @@ def _actor_audit_digest(
     + 版本契约）。
 
     ``HMAC(HMAC("{version}:{secret}", tenant_id), actor_id)``（SHA-256）：版本混入
-    key 派生（轮换 = 新 secret + bump version，防跨版本碰撞）、tenant-scoped 派生
-    key、密钥隔离（独立 ``actor_erasure_secret``，非 jwt_secret）。digest 不含
-    actor UUID 明文、不可逆；不同 tenant/secret/version 产生不同 digest；可复现。
-    64-hex。
+    key 派生（防跨版本碰撞）、tenant-scoped 派生 key、密钥隔离（独立
+    ``actor_erasure_secret``，非 jwt_secret）。digest 不含 actor UUID 明文、不可逆；
+    不同 tenant/secret/version 产生不同 digest；可复现。64-hex。round-4/5 P1-2 V1
+    冻结：digest version 未持久化，migration 落地前生产禁止轮换 secret/version。
     """
     versioned_key = f"{secret_version}:{secret}".encode()
     tenant_key = hmac.new(versioned_key, tenant_id.bytes, hashlib.sha256).digest()
@@ -138,13 +148,87 @@ def validate_production_actor_erasure_secret(cfg=settings) -> None:
         raise RuntimeError(
             "ACTOR_ERASURE_SECRET 在 production 环境必须显式配置为不少于 "
             f"{ACTOR_ERASURE_SECRET_MIN_LENGTH} 字符的高强度值（当前不满足）。"
-            "请设置 ACTOR_ERASURE_SECRET 环境变量（与 JWT_SECRET 隔离，独立轮换）。"
+            "请设置 ACTOR_ERASURE_SECRET 环境变量（与 JWT_SECRET 隔离；V1 冻结期"
+            "禁止轮换，详见 config 注记）。"
         )
     if version != 1:
         raise RuntimeError(
             f"ACTOR_ERASURE_SECRET_VERSION 在 production 必须为 1（digest key version "
             f"未持久化，轮换会使历史 digest 成为无法溯源的孤儿，当前 {version}）；"
             "需先落地 migration 持久化 digest version 后才能 bump 版本轮换。"
+        )
+
+
+def _actor_erasure_key_fingerprint(secret: str) -> str:
+    """round-5 P1-2：V1 key 非可逆 fingerprint（检测 secret 变更，不泄露 secret）。
+
+    ``HMAC-SHA256(secret, _ACTOR_ERASURE_KEY_FINGERPRINT_DOMAIN)`` -> 64-hex。与
+    actor digest 的区别：digest 混入 tenant_id + actor_id（per-actor），fingerprint
+    只混入固定域分隔符（per-key），用于启动期比对持久化值。fingerprint 不含 secret
+    明文（HMAC 单向），但 secret 变更必然改变 fingerprint，可检测轮换。域分隔符与
+    actor digest 隔离，确保 fingerprint 不能被误当作 actor digest 或反之。
+    """
+    return hmac.new(
+        secret.encode(), _ACTOR_ERASURE_KEY_FINGERPRINT_DOMAIN, hashlib.sha256
+    ).hexdigest()
+
+
+async def validate_production_actor_erasure_key_fingerprint(
+    session: AsyncSession, cfg=settings
+) -> None:
+    """round-5 P1-2：生产环境启动期校验 actor erasure secret V1 key fingerprint。
+
+    计算 fingerprint 并与 ``system_key_fingerprints`` 持久化值比对：
+    - 首次（无行）：INSERT 锁定 fingerprint（upsert 防多 worker 首启竞争）。
+    - 一致：放行。
+    - 不一致：fail closed（secret 被换，历史 digest 孤儿化）。
+
+    与 :func:`validate_production_actor_erasure_secret`（同步强度+版本校验）互补：
+    后者防弱密钥/版本 bump，本函数防 secret 静默替换。非生产跳过（dev/test 无
+    持久化 fingerprint 需求）。在 app lifespan 调用（需 DB session），**必须在**
+    :func:`validate_production_actor_erasure_secret` 之后调用（依赖其强度+版本前置）。
+    """
+    if getattr(cfg, "environment", "development") != "production":
+        return
+    secret = getattr(cfg, "actor_erasure_secret", "") or ""
+    if not secret:
+        raise RuntimeError(
+            "validate_production_actor_erasure_key_fingerprint called with empty "
+            "secret; validate_production_actor_erasure_secret must run first"
+        )
+    fingerprint = _actor_erasure_key_fingerprint(secret)
+    # upsert + returning：原子处理多 worker 首启竞争。returning 非 None = 本次插入
+    # （fingerprint 是自己的，必然一致）；None = 冲突（行已存在），需 re-read 比对。
+    stmt = (
+        pg_insert(SystemKeyFingerprintModel)
+        .values(
+            key_name=_ACTOR_ERASURE_V1_KEY_NAME,
+            fingerprint=fingerprint,
+        )
+        .on_conflict_do_nothing(index_elements=[SystemKeyFingerprintModel.key_name])
+        .returning(SystemKeyFingerprintModel.fingerprint)
+    )
+    inserted = (await session.execute(stmt)).scalar_one_or_none()
+    await session.commit()
+    if inserted is not None:
+        return  # 首次锁定，fingerprint 是自己的。
+    existing = await session.scalar(
+        select(SystemKeyFingerprintModel.fingerprint).where(
+            SystemKeyFingerprintModel.key_name == _ACTOR_ERASURE_V1_KEY_NAME
+        )
+    )
+    # 冲突分支：行已存在（可能并发首启或历史锁定），existing 必非 None。
+    if existing is None:
+        raise RuntimeError(
+            "system_key_fingerprints row vanished after upsert conflict; "
+            "concurrent migration/downgrade in progress?"
+        )
+    if existing != fingerprint:
+        raise RuntimeError(
+            "ACTOR_ERASURE_SECRET 在 production 不一致：持久化 fingerprint "
+            f"{existing} != 当前 {fingerprint}。secret 被替换会使历史 actor "
+            "digest 成为无法溯源的孤儿（digest key version 未持久化，V1 冻结期"
+            "禁止轮换 secret）。需先落地 migration 持久化 digest version 后才能轮换。"
         )
 
 
@@ -243,14 +327,21 @@ class WorkspaceErasureParticipant:
     ) -> None:
         self._session = session
         self._erasure = AgentErasureRepository(session)
-        # P1-2 / round-3 P1-4：独立 actor_erasure_secret（非 jwt_secret）+ 版本契约。
-        secret = audit_secret if audit_secret is not None else settings.actor_erasure_secret
-        version = (
-            audit_secret_version
-            if audit_secret_version is not None
-            else settings.actor_erasure_secret_version
-        )
+        # P1-2 / round-3 P1-4 / round-5 P1-2：独立 actor_erasure_secret（非 jwt_secret）
+        # + V1 冻结契约 + 构造器禁覆盖。
         if settings.environment in _PROD_ENVS:
+            # round-5 P1-2：生产禁止构造器覆盖全局 key--防调用方注入不同 secret
+            # 绕过 V1 冻结 + 启动期 fingerprint 锁定。secret/version 必须来自
+            # settings 全局配置（启动期 fingerprint 已校验一致性）。
+            if audit_secret is not None or audit_secret_version is not None:
+                raise RuntimeError(
+                    "WorkspaceErasureParticipant constructor does not accept "
+                    "audit_secret/audit_secret_version overrides in production; "
+                    "the actor erasure key must come from settings (V1 freeze + "
+                    "fingerprint lock-in enforces no rotation)"
+                )
+            secret = settings.actor_erasure_secret
+            version = settings.actor_erasure_secret_version
             # 生产：构造期 fail-fast（启动期 lifespan 也校验，双重保险防漏配 participant）。
             if not secret or len(secret) < ACTOR_ERASURE_SECRET_MIN_LENGTH:
                 raise RuntimeError(
@@ -266,6 +357,16 @@ class WorkspaceErasureParticipant:
                     f"digest version not persisted, rotation would orphan historical "
                     f"digests), got {version}"
                 )
+        else:
+            # 非生产：允许测试显式注入 secret/version（digest 派生测试）。
+            secret = (
+                audit_secret if audit_secret is not None
+                else settings.actor_erasure_secret
+            )
+            version = (
+                audit_secret_version if audit_secret_version is not None
+                else settings.actor_erasure_secret_version
+            )
         self._audit_secret = secret or _ACTOR_ERASURE_SECRET_DEV_PLACEHOLDER
         self._audit_secret_version = version if version >= 1 else 1
 
@@ -977,6 +1078,11 @@ class WorkspaceErasureParticipant:
             tenant_id=tenant_id,
             fence_owner_version=fence_owner_version,
         )
+        # round-5 P1-1：checkpoint=acked + operation=blocked/scheduled 是矛盾组合
+        # （ACK 只在 operation=running 后发生）。round-4 的早 return 让此矛盾漏过--
+        # Conversation 被改 running 但 operation 留旧状态。现统一修复：已 acked 且
+        # digest 一致时 checkpoint 不重写，但仍 fall through 到 operation 修复块。
+        checkpoint_already_acked = False
         if checkpoint.state == PurgeOwnerState.ACKED.value:
             # round-4 P1-3：已 acked 也要验证 digest 一致--ack_digest 必须匹配
             # fence.ack_digest，checkpoint_digest 必须匹配当前零 scan。矛盾事实
@@ -991,8 +1097,8 @@ class WorkspaceErasureParticipant:
                     f"checkpoint_digest {checkpoint.checkpoint_digest} != scan "
                     f"{checkpoint_digest}; contradictory checkpoint fact on erased replay"
                 )
-            return  # 已 acked 且一致，无需修复。
-        if checkpoint.state not in (
+            checkpoint_already_acked = True
+        elif checkpoint.state not in (
             PurgeOwnerState.PENDING.value,
             PurgeOwnerState.ERASING.value,
             PurgeOwnerState.BLOCKED.value,
@@ -1000,15 +1106,16 @@ class WorkspaceErasureParticipant:
             raise ValueError(
                 f"checkpoint not repairable from state {checkpoint.state!r}"
             )
-        checkpoint.state = PurgeOwnerState.ACKED.value
-        checkpoint.ack_digest = ack_digest
-        checkpoint.checkpoint_digest = checkpoint_digest
-        checkpoint.reason_code = None
-        checkpoint.updated_at = now
-        # round-4 P1-3：operation 也修复到 running（ACK 丢失可能 operation 卡在
-        # scheduled 或 blocked）。blocked 必须推进到 running（不只清 failure_code），
-        # 否则留下 fence=erased / checkpoint=acked / operation=blocked 的矛盾。
-        # 状态变化 bump revision（round-3 P1-2）。
+        if not checkpoint_already_acked:
+            checkpoint.state = PurgeOwnerState.ACKED.value
+            checkpoint.ack_digest = ack_digest
+            checkpoint.checkpoint_digest = checkpoint_digest
+            checkpoint.reason_code = None
+            checkpoint.updated_at = now
+        # round-4 P1-3 / round-5 P1-1：operation 统一修复到 running（无论 checkpoint
+        # 是已 acked 还是刚补 ACK）。blocked/scheduled 必须推进到 running（不只清
+        # failure_code），否则留下 fence=erased / checkpoint=acked / operation=blocked
+        # 的矛盾。状态变化 bump revision（round-3 P1-2）。
         changed = False
         if operation.state in (
             PurgeOperationState.SCHEDULED.value,

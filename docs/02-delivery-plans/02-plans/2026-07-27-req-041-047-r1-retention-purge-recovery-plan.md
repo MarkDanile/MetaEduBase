@@ -338,6 +338,17 @@ round-3 返修后独立 `max` 复审 P0/P1/P2=0/5/0，5 项已按 Sol `xhigh` �
 
 **验证**：S2-D/E round-4 专项 46 测试（+7 round-4：legal-hold stale revision fail closed / legal-hold purge_state=blocked 投影 / record_blocked reason change bump / erased ACKed digest mismatch fail closed / erased blocked->running + 三方一致 / V1 版本冻结 / agent author digest 全类型）经 8 项 round-4 变异全 killed（含唯一锚点修正）；ruff 0；mypy 0；agent_control_plane + composition + identity jwt 228 passed；全量 `pytest -m 'not external_network'` 1895 passed / 0 failed；docs gate + git diff --check 通过。本轮**不改 migration 034/035/036**、不启用 purge scheduler。待独立 `max` 只读复核。
 
+#### S2-D/E round-5 复审修订（2026-07-29，独立 `max` round 5 返修落点）
+
+round-4 返修后独立 `max` 复审 P0/P1/P2=0/2/1，3 项已按 Sol `xhigh` 返修，**优先于 round-4 注记的对应旧陈述**：
+
+- **P1-1 ACKed checkpoint 绕过 operation 状态修复**：round-4 `_repair_checkpoint_if_pending` 在 ACKed checkpoint digest 验证后早 return，跳过 operation 修复块。`checkpoint=acked + operation=blocked/scheduled` 矛盾组合漏过--Conversation 被改 running 但 operation 留旧状态。现有 round-4 测试把 checkpoint 回退为 pending 避开了此分支。修订为--ACKed digest 验证后不早 return，fall through 到统一 operation 修复块（`checkpoint_already_acked` 标记跳过 checkpoint 重写，但 operation 修复始终执行）。反例：ACKed+blocked -> operation 修复 running；ACKed+scheduled -> operation 修复 running + 补 started_at。
+- **P1-2 冻结 version 未冻结实际 secret**：round-4 只校验 secret 长度 + version=1，生产把 secret A 换 B（version 仍 1）启动/构造都通过，历史 digest 孤儿化。"禁止轮换" 只是文案。修订为--(1) 新增 migration 037 `system_key_fingerprints` 表 + `_actor_erasure_key_fingerprint`（HMAC-SHA256(secret, 域分隔符) 64-hex，非可逆）+ `validate_production_actor_erasure_key_fingerprint`（lifespan 启动期 upsert 持久化 fingerprint，首次锁定 / 不一致 fail closed，检测 secret 静默替换）；(2) 构造器生产环境禁覆盖 `audit_secret`/`audit_secret_version`（必须来自 settings，防调用方注入不同 key）。反例：secret A->B 同 version=1 -> fingerprint 不一致 RuntimeError；构造器传 audit_secret -> "does not accept override" RuntimeError。
+- **P2 模块文案与 V1 冻结契约冲突**：round-4 docstring/error 仍写"新 secret + bump version，审计可追溯"/"独立轮换"。修订为--统一改为"migration 落地前不可轮换"（docstring + `_actor_audit_digest` 注记 + error message）。
+
+**验证**：S2-D/E round-5 专项 52 测试（+6 round-5：ACKed+blocked operation 修复 / ACKed+scheduled operation 修复 / fingerprint lock-in+match / fingerprint mismatch fail closed / 构造器禁覆盖 / 非生产跳过）经 6 项 round-5 变异全 killed；ruff 0；mypy 0；migration roundtrip + schema 56 passed；agent_control_plane + composition + identity jwt 234 passed；全量 `pytest -m 'not external_network'` 回归通过；docs gate + git diff --check 通过。本轮**新增 migration 037**（不改 034/035/036）、不启用 purge scheduler。待独立 `max` 只读复核。
+
+
 
 ### R1-S3：Execution owner、RunEvent payload 与 compatibility output
 
