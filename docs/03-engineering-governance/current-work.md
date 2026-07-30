@@ -14,20 +14,7 @@
 
 ## 当前进行中
 
-### REQ-041/047 R1-S2-D/E workspace 正文清除 + participant ACK + final body scan
-
-状态：🟡 进行中（契约注记/plan delta 已先于代码冻结；S2-A/S2-B/S2-C 已逐一多轮复审清零并合并——S2-C PR #511 merge `2ceaffd0`）
-类型：Architecture / Backend / Data Governance
-领域：Conversation / Workspace / Erasure / Recovery
-分支：feat/req041-047-r1-s2d-erasure-participant
-
-需求来源：
-- R1 Spec: [Retention、Purge 与恢复专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)（§5.2 purge saga、§6.1 锁序、§7.1 workspace 清除语义、§8 retention worker）
-- R1 Plan: [R1 分 Slice 实施计划 §R1-S2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s2workspace-owner-与恢复截止)（「S2-D/E 契约注记」2026-07-29 已冻结）
-
-范围（plan §R1-S2 S2-D/E 契约注记）：S2-D = `workspace.core.v1` participant 正文清除原语（清 Conversation title、物理删除 MessagePart 正文行并把 Message 转 redacted tombstone、清 actor id 存不可逆 audit digest、物理删除 ConversationUserState）+ final workspace body scan；S2-E = participant ACK + purge operation/owner checkpoint 推进 + 完成门禁。锁序沿用 Conversation row→owner lock→fence（防 AB-BA）；redacted_reason 走受控 code；可重入幂等。明确不做：不启用 purge scheduler 自动 claim、不清 Execution/transport owner（S3/S4）、不改 legal hold lifecycle（S5）、不实现 external object erase、不改 migration 034/035/036。
-
-下一步：S2-D/E round-7 返修已提交待复审（PR #513，复审代码/测试基线见 Git 历史）--独立 `max` round 7 P0/P1/P2=0/1/1，2 项已按 Sol `xhigh` 返修：P1 生产模板公开 placeholder 通过校验（.env.production 模板值留空让 Compose ${VAR:?} 阻止启动；启动期+构造期新增仓库已知 placeholder denylist _KNOWN_JWT_PLACEHOLDERS / _KNOWN_ACTOR_ERASURE_PLACEHOLDERS，dev-only-* / CHANGE_ME_* 公开值 fail-fast）、P2 并发测试共享全局 settings（每个协程传独立 SimpleNamespace cfg 不污染全局；system_key_fingerprints 加入 autouse TRUNCATE 清理）。返修落点见 plan §R1-S2「S2-D/E round-7 复审修订」块。验证：S2-D/E round-7 专项 58 passed（+3 round-7 placeholder 拒绝测试）、3 项 round-7 变异全击杀、ruff 0、mypy 0、agent_control_plane+composition+identity 281 passed、全量回归通过、docs gate + diff-check 通过。等待独立 `max` 只读复核，**未合并**。遗留前置（不提前做）：S3 purge worker claim 顺序 Guard->Conversation row->owner lock->fence->operation；dispatch_output 对 `LateBodyWriteRejectedError` 分类为 deterministic；hold 生效中 restore 测试随 hold slice 补齐（spec R1-AC7）；digest version 持久化 migration（round-4 P1-4 V1 冻结解除前置，round-5 fingerprint 为过渡强制）。
+当前无活跃任务。R1-S2-D/E 已合并（PR #513 merge `5db40361`），下一步入口为 R1-S3（Execution owner）。
 
 ## 下一批候选任务
 
@@ -35,6 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P0 | REQ-041/047 R1-S3 Execution owner + RunEvent payload + compatibility output | 🔵 Ready | purge worker claim 顺序 Guard->Conversation row->owner lock->fence->operation；dispatch_output 对 `LateBodyWriteRejectedError` 分类为 deterministic；不清 transport owner（S4） | [Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
@@ -46,6 +34,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-30 | R1-S2-D/E workspace 正文清除 + participant ACK + final body scan | 🟢 完成 | workspace.core.v1 participant 正文清除 + body scan + ACK；V1 冻结契约（fingerprint 持久化 migration 037 + 构造器禁覆盖 + placeholder denylist）；7 轮 max 复审 P0/P1/P2=0/0/0；全量 1908 passed；三路 CI 全绿 | [PR #513](https://github.com/MarkDanile/MetaEduBase/pull/513)（merge `5db40361`）/ [Plan §R1-S2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-07-29 | R1-S2-C ingress checkpoint source key + title/create fence + backfill 锁序 | 🟢 完成 | ingress 真实 source key + verdict/advance 拆分 + title/create 接 fence + backfill 消 AB-BA + deleted 410/redacted envelope + migration 036 归一；四轮 max 复审清零；全量 1849 passed；三路 CI 全绿 | [PR #511](https://github.com/MarkDanile/MetaEduBase/pull/511)（merge `2ceaffd0`）/ [Plan §R1-S2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-07-28 | R1-S1 Fence/Hold/Purge schema 基座 | 🟢 完成 | owner key 锁 + owner registry + 四协调表 + tombstone + fence 状态机（16 边）+ backfill 恢复契约；六轮 max 复审 P0/P1/P2=0/0/0；全量 1777 passed；dev 已 reset 到 034 head | [PR #506](https://github.com/MarkDanile/MetaEduBase/pull/506)（merge `b8cbdf14`）/ [Plan §R1-S1](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-07-27 | REQ-060 Slice 4 移动端 + a11y + Playwright + 收口 | 🟢 完成 | useMobileDrawer + LayoutView 重构（30 新增 vitest）+ Playwright 3 组 spec（55/55）；326/326 vitest；三路 CI 全绿；六轮复审 P0/P1/P2=0/0/0；评分 95 | [PR #503](https://github.com/MarkDanile/MetaEduBase/pull/503)（）/ [Plan §Slice 4](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md) / [work-log](work-log.md) / [scorecard](04-retrospectives/review-score-log.md) |
