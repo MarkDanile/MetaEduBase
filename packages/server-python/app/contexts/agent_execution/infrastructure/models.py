@@ -376,13 +376,13 @@ class AgentRunModel(Base):
         ),
         CheckConstraint(
             # S3-B：直接主体标识 actor tombstone（present 强制 created_by 非空 + digest
-            # NULL；redacted 强制 created_by NULL + 64-hex digest）。与 migration 038
-            # ck_agent_runs_actor 同源。
+            # NULL；redacted 强制 created_by NULL + 64-hex digest，round-3 P1-2 加
+            # lowercase hex 正则约束）。与 migration 038 ck_agent_runs_actor 同源。
             "(actor_state = 'present' AND created_by IS NOT NULL "
             "AND actor_identity_digest IS NULL) OR "
             "(actor_state = 'redacted' AND created_by IS NULL "
             "AND actor_identity_digest IS NOT NULL "
-            "AND char_length(actor_identity_digest) = 64)",
+            "AND actor_identity_digest ~ '^([0-9a-f]{64})$')",
             name="ck_agent_runs_actor",
         ),
         Index(
@@ -616,12 +616,12 @@ class TurnInputModel(Base):
         ),
         CheckConstraint(
             # S3-B：直接主体标识 actor tombstone（与 AgentRun 同模式，migration 038
-            # ck_agent_turn_inputs_actor 同源）。
+            # ck_agent_turn_inputs_actor 同源，round-3 P1-2 加 lowercase hex 正则约束）。
             "(actor_state = 'present' AND created_by IS NOT NULL "
             "AND actor_identity_digest IS NULL) OR "
             "(actor_state = 'redacted' AND created_by IS NULL "
             "AND actor_identity_digest IS NOT NULL "
-            "AND char_length(actor_identity_digest) = 64)",
+            "AND actor_identity_digest ~ '^([0-9a-f]{64})$')",
             name="ck_agent_turn_inputs_actor",
         ),
         Index(

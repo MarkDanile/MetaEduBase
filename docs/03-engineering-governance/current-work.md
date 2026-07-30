@@ -16,22 +16,22 @@
 
 ### TASK: REQ-041/047 R1-S3-B Schema 与基础契约
 
-状态：🟡 进行中
+状态：🟡 进行中（待返修）
 类型：新需求开发（R1 分 Slice，S3-B schema/contract）
 领域：agent_execution / erasure coordination
-当前执行模式：superpower / plan-do（契约注记已冻结，S3-A PR #515）
+当前执行模式：superpower / plan-do（契约注记已冻结）
 最近接手工具：Claude Code (Opus 4.8)
 分支：feat/req041-047-r1-s3b-schema-contract
 
 需求来源：
 - Spec: [R1 专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S3 契约注记 + round-1/round-2 修订）
+- Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S3-B 契约注记）
 - 架构约束：Spec §4.1/§7.1/§6.2；migration 038 actor tombstone + 应用层 tombstone 契约 + downgrade 边界
 
-当前进展：S3-B 启动；按契约注记实现 migration 038（Run/TurnInput actor_state+actor_identity_digest）、提取 shared actor digest helper、registry 增 actor_identity（erase_available 保持 False）、owner/source key 闭集映射、应用层 tombstone 契约。
-下一步：实现 migration 038 + 代码 + 测试 -> 变异验证 -> PR -> 独立 max/Codex 复审。
-验证状态：待实现。
-交接备注：S3-A 已合并（PR #515 merge `2d4f8091`）；S3-B 不改 migration 034-037，新增 038；不进 S4；不启用 purge scheduler；erase_available 保持 False（S3-D 翻 True）。
+当前进展：S3-B 实现 PR #517 已推送，独立 `max` 复审发现 P0=0/P1=2/P2=3，返修中：(1) P1-1 在所有 replay/idempotency 入口前置 live-actor 校验（`require_live_run` helper + direct_rag `activate_turn`/`completed_turn`/`complete_turn` + execution_repository create 幂等 replay）；(2) P1-2 `actor_identity_digest` CHECK 加 lowercase hex 正则约束 + PostgreSQL 真实反例（Run + TurnInput 拒绝 `z*64`/`A*64`）；(3) P2-3 domain/mapper 完整投影 `actor_state` + `actor_identity_digest` 字段（API DTO 不暴露）；(4) P2-4 加强 source-key 互斥 + TurnInput redacted 阻止 downgrade 测试。
+下一步：完成返修后 push -> 独立 `max` 只读复核 -> 按流程合并 S3-B -> 启动 S3-C（Writer fence PR）。
+验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；28 S3-B 专项 + 58 S2-D/E 回归 + 344 受影响领域子集 全绿。
+交接备注：S3-A 已合并（PR #515 merge `2d4f8091`）；S3-B 新增 migration 038（不改 034-037）；erase_available 保持 False（S3-D 翻）；不进 S4；不启用 purge scheduler。
 
 ## 下一批候选任务
 

@@ -207,6 +207,12 @@ class AgentRun:
     # actor_identity_digest）。创建命令必有 actor（present）；需 actor 的命令遇
     # ``None`` fail closed（tombstone）。API DTO 不暴露本字段。
     created_by: uuid.UUID | None
+    # S3-B round-3 P2-3：完整投影冻结的 erased envelope（plan §S3-B「domain/mapper
+    # 完整投影冻结的 erased envelope」）。actor_state 为 present/redacted 字符串，
+    # actor_identity_digest 为 64-hex lowercase digest（redacted 时）或 None（present 时）。
+    # API DTO 不暴露这两个字段（内部 envelope，仅 saga/participant 使用）。
+    actor_state: str
+    actor_identity_digest: str | None
     correlation_id: uuid.UUID
     runtime_capability_snapshot: RuntimeCapabilitySnapshot
     run_config_snapshot: RunConfigSnapshot
@@ -250,7 +256,10 @@ class TurnInput:
     expected_runtime_epoch: int | None
     context_digest: str
     # S3-B round-2 P1-4：``None`` 仅当行被 purge 匿名化（同 AgentRun）。
+    # S3-B round-3 P2-3：完整投影冻结的 erased envelope（同 AgentRun）。
     created_by: uuid.UUID | None
+    actor_state: str
+    actor_identity_digest: str | None
     created_at: datetime
 
 

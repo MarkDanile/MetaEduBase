@@ -35,12 +35,14 @@ depends_on: str | Sequence[str] | None = None
 _SCHEMA = "metaedu"
 
 # present/redacted actor tombstone CHECK（与 workspace ck_agent_conv_actor 同模式）。
+# actor_identity_digest 必须是 lowercase 64-hex（round-3 P1-2：原版只校验长度，
+# 接受非 hex 内容；现加正则约束）。
 _ACTOR_CHECK_SQL = (
     "(actor_state = 'present' AND created_by IS NOT NULL "
     "AND actor_identity_digest IS NULL) OR "
     "(actor_state = 'redacted' AND created_by IS NULL "
     "AND actor_identity_digest IS NOT NULL "
-    "AND char_length(actor_identity_digest) = 64)"
+    "AND actor_identity_digest ~ '^([0-9a-f]{64})$')"
 )
 
 

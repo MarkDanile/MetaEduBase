@@ -281,7 +281,7 @@ class DirectRagCompatibilityAdapter:
                 self._session_factory,
                 worker_id="direct-rag-compatibility",
             ).dispatch_turn(event_id=prepared.turn_event_id)
-            run = await RunCoordinator(self._session).require_run(
+            run = await RunCoordinator(self._session).require_live_run(
                 tenant_id=prepared.tenant_id,
                 run_id=prepared.recording.run_id,
             )
@@ -381,7 +381,8 @@ class DirectRagCompatibilityAdapter:
         if prepared.is_completed_replay:
             return prepared.recording
         await self._acquire_write_guard(prepared)
-        run = await RunCoordinator(self._session).require_run(
+        # S3-B round-3 P1-1：tombstone Run 不能 complete/fail（actor 已匿名化）。
+        run = await RunCoordinator(self._session).require_live_run(
             tenant_id=prepared.tenant_id,
             run_id=prepared.recording.run_id,
         )
@@ -568,7 +569,10 @@ class DirectRagCompatibilityAdapter:
         self, *, prepared: PreparedDirectRagTurn
     ) -> PreparedDirectRagTurn | None:
         tenant_id = prepared.tenant_id
-        run = await RunCoordinator(self._session).require_run(
+        # S3-B round-3 P1-1：tombstone replay 必须在任何 status 分支前 fail closed，
+        # 否则 suppressed/redacted completed Run 会返回 requires_output_publish=True
+        # 进入重新投影流程。
+        run = await RunCoordinator(self._session).require_live_run(
             tenant_id=tenant_id, run_id=prepared.recording.run_id
         )
         if run.status is not RunStatus.COMPLETED:

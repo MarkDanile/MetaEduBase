@@ -124,6 +124,9 @@ def to_run(row: AgentRunModel) -> AgentRun:
         terminal_message_id=row.terminal_message_id,
         output_publish_state=OutputPublishState(row.output_publish_state),
         created_by=row.created_by,
+        # S3-B round-3 P2-3：完整投影冻结的 erased envelope（内部字段，API DTO 不暴露）。
+        actor_state=row.actor_state,
+        actor_identity_digest=row.actor_identity_digest,
         correlation_id=row.correlation_id,
         runtime_capability_snapshot=RuntimeCapabilitySnapshot.model_validate(
             row.runtime_capability_snapshot

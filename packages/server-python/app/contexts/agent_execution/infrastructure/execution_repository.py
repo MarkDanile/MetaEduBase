@@ -197,7 +197,10 @@ class AgentExecutionRepository:
                     request_id=root_input.request_id,
                     expected_runtime_epoch=root_input.expected_runtime_epoch,
                     context_digest=root_input.context_digest,
+                    # S3-B round-3 P2-3：完整投影冻结的 erased envelope（同 AgentRun 新建）。
                     created_by=root_input.created_by,
+                    actor_state="present",
+                    actor_identity_digest=None,
                     created_at=root_input.created_at,
                 )
             )
@@ -208,6 +211,11 @@ class AgentExecutionRepository:
         )
         if row is None or row.creation_digest != run.creation_digest:
             raise RunConflictError("Run id is already used by another create command")
+        # S3-B round-3 P1-1：tombstone Run 不能被 create 幂等 replay 返回（actor 已匿名化）。
+        if row.created_by is None or row.actor_state == "redacted":
+            raise RunConflictError(
+                "Run has been anonymized (tombstone); create replay rejected"
+            )
         existing_root = (
             await self._session.execute(
                 select(TurnInputModel).where(

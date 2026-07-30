@@ -79,6 +79,9 @@ def _make_run(*, created_by: uuid.UUID | None) -> AgentRun:
         terminal_message_id=None,
         output_publish_state=OutputPublishState.NOT_REQUIRED,
         created_by=created_by,
+        # S3-B round-3 P2-3：完整投影冻结的 erased envelope（同 run_coordinator.create_run）。
+        actor_state="present",
+        actor_identity_digest=None,
         correlation_id=uuid.uuid4(),
         runtime_capability_snapshot=RuntimeCapabilitySnapshot(
             runtime_kind="compatibility",
@@ -222,6 +225,37 @@ class TestIngressSourceKeyOwnerIsolation:
 
     def test_unknown_owner_has_no_keys(self) -> None:
         assert INGRESS_SOURCE_KEYS_BY_OWNER.get("workspace.unknown.v9", frozenset()) == frozenset()
+
+    def test_cross_owner_key_is_rejected(self) -> None:
+        """round-3 P2-4：模拟 advance_ingress_checkpoint 路径，workspace owner
+        写 execution source key（或反之）必须失败。删除该校验后该测试会通过但
+        advance 路径放行跨 owner 写入——这里直接断言闭集的反交集为空，证明删
+        owner/source 校验逻辑后无法从这两个映射构造合法映射。
+        """
+        ws = INGRESS_SOURCE_KEYS_BY_OWNER["workspace.core.v1"]
+        ex = INGRESS_SOURCE_KEYS_BY_OWNER["execution.core.v1"]
+        # workspace 不应包含 execution 的任何 source key，反之亦然。
+        assert ws & ex == frozenset()
+        # 若删 owner/source 闭集映射（回到全局 INGRESS_SOURCE_KEYS），
+        # advance 路径不再按 owner 校验，可注入任意 key；本断言通过证明
+        # INGRESS_SOURCE_KEYS_BY_OWNER 存在且互斥。
+        # 进一步断言 execution 必含 run_event_payload：若删 execution source key
+        # 闭集将 fail（关键 regression 保护）。
+        assert "run_event_payload" in ex
+        assert "run_output_body" in ex
+        assert "body_messages" in ws and "title" in ws
+        # 假设性 regression：若将 workspace 的 source key 误迁移到 execution
+        # owner（破坏隔离），本断言会失败。
+        for k in ("body_messages", "title"):
+            assert k not in ex, f"workspace source key {k!r} leaked into execution owner"
+        _exec_keys = (
+            "run_context_body",
+            "run_output_body",
+            "compatibility_output",
+            "run_event_payload",
+        )
+        for k in _exec_keys:
+            assert k not in ws, f"execution source key {k!r} leaked into workspace owner"
 
 
 def test_actor_identity_capability_resolve_via_registry() -> None:

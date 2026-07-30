@@ -321,3 +321,195 @@ def test_038_downgrade_fail_closed_on_redacted_rows():
         )
     finally:
         _run_alembic("upgrade", "head")
+
+
+async def _seed_redacted_turn_input(run_id, tid) -> None:
+    """为既有 Run 追加一个 redacted root TurnInput（FK 链：run -> turn_input）。"""
+    connection = await asyncpg.connect(_db_url())
+    digest = "a" * 64
+    try:
+        await connection.execute(
+            "INSERT INTO metaedu.agent_turn_inputs "
+            "(id, tenant_id, run_id, ordinal, input_kind, message_id, request_id, "
+            "expected_runtime_epoch, context_digest, created_by, actor_state, "
+            "actor_identity_digest, created_at) "
+            "VALUES (gen_random_uuid(), $1, $2, 0, 'root', "
+            "gen_random_uuid(), gen_random_uuid(), NULL, $3, "
+            "NULL, 'redacted', $3, now())",
+            tid, run_id, digest,
+        )
+    finally:
+        await connection.close()
+
+
+async def _cleanup_redacted_turn_input(tid) -> None:
+    connection = await asyncpg.connect(_db_url())
+    try:
+        await connection.execute(
+            "DELETE FROM metaedu.agent_turn_inputs WHERE tenant_id=$1", tid
+        )
+    finally:
+        await connection.close()
+
+
+def test_038_downgrade_fail_closed_on_redacted_turn_input() -> None:
+    """S3-B round-3 P2-4：redacted TurnInput 同样阻止 downgrade（与 agent_runs 同源）。"""
+    run_id, tid = asyncio.run(_seed_redacted_run())
+    try:
+        asyncio.run(_seed_redacted_turn_input(run_id, tid))
+        raised = False
+        try:
+            _run_alembic("downgrade", "037_system_key_fingerprints")
+        except Exception:
+            raised = True
+        assert raised, (
+            "downgrade must fail closed when redacted TurnInput rows exist"
+        )
+        schema = asyncio.run(_execution_actor_schema())
+        assert "actor_state" in schema["agent_turn_inputs"], (
+            "still at head after fail-closed downgrade (turn_input)"
+        )
+    finally:
+        asyncio.run(_cleanup_redacted_turn_input(tid))
+        asyncio.run(_cleanup_redacted_run(tid))
+
+    # 清理 redacted 行后 downgrade 成功。
+    try:
+        _run_alembic("downgrade", "037_system_key_fingerprints")
+        schema = asyncio.run(_execution_actor_schema())
+        assert "actor_state" not in schema["agent_turn_inputs"]
+    finally:
+        _run_alembic("upgrade", "head")
+
+
+def test_038_actor_digest_must_be_lowercase_hex() -> None:
+    """S3-B round-3 P1-2：actor_identity_digest CHECK 强制 lowercase 64-hex。
+
+    PostgreSQL 真实反例：长度 64 但含非 hex 字符（含大写 Z）应被 CHECK 拒绝。
+    """
+    import uuid as _uuid
+
+    connection = asyncpg.connect(_db_url())
+
+    async def _setup_and_attempt(digest_value: str, *, table: str, fk_col: str) -> str:
+        conn = await connection
+        try:
+            if table == "agent_runs":
+                # 复用既有 _seed_redacted_run 的 FK 链
+                run_id, tid, _def_id = await _seed_redacted_run()
+                await conn.execute(
+                    "DELETE FROM metaedu.agent_runs WHERE tenant_id=$1", tid
+                )
+                return run_id, tid
+            return None, None
+        finally:
+            await conn.close()
+
+    async def _try_redacted_insert_redacted_run(digest_value: str) -> None:
+        """尝试向 agent_runs 插入非 hex digest，期望 CHECK 拒绝。"""
+        conn = await asyncpg.connect(_db_url())
+        try:
+            tid = _uuid.uuid4()
+            def_id = _uuid.uuid4()
+            prof_id = _uuid.uuid4()
+            creation_digest = "a" * 64
+            await conn.execute(
+                "INSERT INTO metaedu.agent_definition_versions "
+                "(id, tenant_id, definition_key, version, status, definition_digest, "
+                "created_by, created_at) "
+                "VALUES ($1, $2, $3, 1, 'published', $4, $2, now())",
+                def_id, tid, f"def-{tid}", creation_digest,
+            )
+            await conn.execute(
+                "INSERT INTO metaedu.agent_runtime_profiles "
+                "(id, tenant_id, profile_key, runtime_kind, adapter_key, "
+                "config_digest, capability_digest, enabled, revision, "
+                "created_at, updated_at) "
+                "VALUES ($1, $2, $3, 'compatibility', 'compatibility', $4, $4, "
+                "true, 1, now(), now())",
+                prof_id, tid, f"prof-{tid}", creation_digest,
+            )
+            try:
+                await conn.execute(
+                    "INSERT INTO metaedu.agent_runs "
+                    "(id, tenant_id, conversation_id, queue_seq, root_input_message_id, "
+                    "agent_definition_version_id, runtime_profile_id, creation_digest, "
+                    "status, status_revision, next_event_seq, first_available_event_seq, "
+                    "last_event_seq, event_log_complete, queued_at, output_publish_state, "
+                    "created_by, actor_state, actor_identity_digest, correlation_id, "
+                    "runtime_capability_snapshot, run_config_snapshot, budget_snapshot, "
+                    "usage_summary) "
+                    "VALUES ($1, $2, $1, 1, $1, $3, $4, $5, 'queued', 1, 1, 1, 0, true, "
+                    "now(), 'not_required', NULL, 'redacted', $6, $1, '{}'::jsonb, "
+                    "'{}'::jsonb, '{}'::jsonb, '{}'::jsonb)",
+                    _uuid.uuid4(),
+                    tid,
+                    def_id,
+                    prof_id,
+                    creation_digest,
+                    digest_value,
+                )
+                return False  # 未被拒绝 -> 失败
+            except asyncpg.exceptions.CheckViolationError:
+                return True  # 被 CHECK 拒绝 -> 通过
+            finally:
+                await conn.execute(
+                    "DELETE FROM metaedu.agent_runs WHERE tenant_id=$1", tid
+                )
+                await conn.execute(
+                    "DELETE FROM metaedu.agent_runtime_profiles WHERE tenant_id=$1",
+                    tid,
+                )
+                await conn.execute(
+                    "DELETE FROM metaedu.agent_definition_versions WHERE tenant_id=$1",
+                    tid,
+                )
+        finally:
+            await conn.close()
+
+    async def _try_redacted_insert_redacted_turn_input(digest_value: str) -> bool:
+        """尝试向 agent_turn_inputs 插入非 hex digest，期望 CHECK 拒绝。"""
+        # 先 seed 一个合法 Run 取得 FK
+        run_id, tid = await _seed_redacted_run()
+        conn = await asyncpg.connect(_db_url())
+        try:
+            try:
+                await conn.execute(
+                    "INSERT INTO metaedu.agent_turn_inputs "
+                    "(id, tenant_id, run_id, ordinal, input_kind, message_id, "
+                    "request_id, expected_runtime_epoch, context_digest, created_by, "
+                    "actor_state, actor_identity_digest, created_at) "
+                    "VALUES (gen_random_uuid(), $1, $2, 1, 'steer', "
+                    "gen_random_uuid(), gen_random_uuid(), 1, 'a' || repeat('a', 63), "
+                    "NULL, 'redacted', $3, now())",
+                    tid,
+                    run_id,
+                    digest_value,
+                )
+                return False
+            except asyncpg.exceptions.CheckViolationError:
+                return True
+        finally:
+            await conn.close()
+            await _cleanup_redacted_run(tid)
+
+    # "z"*64：长度对但含非 hex 字符（'z' 非 [0-9a-f]）— round-3 P1-2 反例。
+    bad_z = "z" * 64
+    # "A"*64：长度对但大写 — round-3 P1-2 反例。
+    bad_upper = "A" * 64
+
+    # 反例：长度 64 但非 hex 必须被 CHECK 拒绝。
+    assert asyncio.run(_try_redacted_insert_redacted_run(bad_z)), (
+        "agent_runs: 'z'*64 must fail ck_agent_runs_actor (not lowercase hex)"
+    )
+    assert asyncio.run(_try_redacted_insert_redacted_run(bad_upper)), (
+        "agent_runs: 'A'*64 must fail (uppercase hex rejected)"
+    )
+
+    # TurnInput 同源 CHECK。
+    assert asyncio.run(_try_redacted_insert_redacted_turn_input(bad_z)), (
+        "agent_turn_inputs: 'z'*64 must fail ck_agent_turn_inputs_actor"
+    )
+    assert asyncio.run(_try_redacted_insert_redacted_turn_input(bad_upper)), (
+        "agent_turn_inputs: 'A'*64 must fail (uppercase rejected)"
+    )
