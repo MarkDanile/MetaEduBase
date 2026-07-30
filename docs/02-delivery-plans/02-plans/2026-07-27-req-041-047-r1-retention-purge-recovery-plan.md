@@ -326,6 +326,19 @@ round-2 返修后独立 `max` 复审 P0/P1/P2=0/4/2，6 项已按 Sol `xhigh` �
 
 **验证**：S2-D/E round-3 专项 40 测试（含 7 场景表驱动 fencing 反例 +operation revision CAS+ + erased 非零 scan fail closed + erased 终态 operation fail closed + blocked 重试状态一致 + secret 强度/版本/启动校验 + now 不被接受 + owner_version 去硬编码）经 8 项 round-3 变异全 killed；ruff 0；mypy 0 回归；docs gate + git diff --check 通过。本轮**不改 migration 034/035/036**、不启用 purge scheduler。待独立 `max` 只读复核。
 
+#### S2-D/E round-4 复审修订（2026-07-29，独立 `max` round 4 返修落点）
+
+round-3 返修后独立 `max` 复审 P0/P1/P2=0/5/0，5 项已按 Sol `xhigh` 返修，**优先于 round-3 注记的对应旧陈述**：
+
+- **P1-1 legal-hold 路径绕过 operation revision CAS**：round-3 `_record_blocked` 无 `expected_revision`，legal-hold 路径调用时不裁决 revision；stale caller（revision 过期）+ 活跃 hold 仍能把 operation/checkpoint 置 blocked。修订为--`_record_blocked` 新增 `expected_revision: int | None = None` 透传 `_load_verified_operation`；legal-hold 路径传 `expected_revision=expected_operation_revision`。反例：stale revision + 活跃 hold -> "operation revision mismatch" fail closed，零状态变更（operation 留 scheduled、checkpoint 留 pending）。
+- **P1-2 legal-hold blocked 投影不一致 + reason change 不 bump**：round-3 legal-hold 分支置 operation/checkpoint=blocked 但不投影 `Conversation.purge_state=blocked`（仍 scheduled），违反 Spec §5.2 同事务一致；且 `_record_blocked` 对已 blocked operation 的 reason 变化不更新 `failure_code`、不 bump revision。修订为--legal-hold 路径同事务置 `conversation.purge_state = BLOCKED`；`_record_blocked` 已 blocked 且 `failure_code != reason` 时更新 failure_code + bump revision（checkpoint 同理设 cp_changed）。反例：legal-hold 后 purge_state=blocked 与 operation/checkpoint 一致；scan_nonzero -> legal_hold reason 变化 revision 递增。
+- **P1-3 erased repair 接受/留下矛盾事实**：round-3 `_repair_checkpoint_if_pending` 对 ACKed checkpoint 不验证 `ack_digest`/`checkpoint_digest` 与 fence/scan 一致；对 blocked operation 只清 `failure_code` 不推进 running，Conversation 投影不修复。可得到 `fence=erased / checkpoint=acked / operation=blocked / failure_code=NULL`。修订为--ACKed checkpoint 必须验证 `ack_digest == fence.ack_digest` 且 `checkpoint_digest == scan.digest()`，矛盾 fail closed；blocked operation 推进到 running（不只清 failure_code）+ bump revision；erased 重放同事务修复 `conversation.purge_state = RUNNING`（三方一致）。反例：篡改 ack_digest -> "contradictory ACK fact"；blocked operation + purge_state=blocked -> 修复到 running + purge_state=running。
+- **P1-4 actor digest key version 未持久化**：round-3 `config.py` 声明 secret+version 轮换，但表只存 64-hex digest 无 version 列，actor UUID 清除后无法重算或判断历史 digest 版本。修订为--**V1 冻结契约**：生产环境 `actor_erasure_secret_version` 冻结为 1，**禁止轮换** secret/version，直至 migration 落地持久化 digest version；`validate_production_actor_erasure_secret` + 构造期双重校验 production `version != 1` -> RuntimeError；非生产允许 version>=1 供测试。反例：production version=2 -> "必须为 1" RuntimeError；version=0 -> 同样 fail。
+- **P1-5 agent-type Message author digest 不可逆丢失**：round-3 `_redact_messages` 只对 `author_type=="user"` 计算 digest 但清除**所有** `author_id`，违反 plan:255 `Message.author_id -> actor_identity_digest` 契约（assistant_output/system_notice 的 author_id 也应转 digest）。修订为--对所有 `author_id is not None` 的消息计算 `actor_identity_digest`（不再限定 author_type），然后清 author_id。反例：agent author 消息 redact 后 `actor_identity_digest` 为 64-hex HMAC（非 None），与 user author 一致。
+
+**验证**：S2-D/E round-4 专项 46 测试（+7 round-4：legal-hold stale revision fail closed / legal-hold purge_state=blocked 投影 / record_blocked reason change bump / erased ACKed digest mismatch fail closed / erased blocked->running + 三方一致 / V1 版本冻结 / agent author digest 全类型）经 8 项 round-4 变异全 killed（含唯一锚点修正）；ruff 0；mypy 0；agent_control_plane + composition + identity jwt 228 passed；全量 `pytest -m 'not external_network'` 1895 passed / 0 failed；docs gate + git diff --check 通过。本轮**不改 migration 034/035/036**、不启用 purge scheduler。待独立 `max` 只读复核。
+
+
 ### R1-S3：Execution owner、RunEvent payload 与 compatibility output
 
 **复杂度/执行**：极高，Sol `xhigh`；独立 `max` 审查 terminal/projection 反例。

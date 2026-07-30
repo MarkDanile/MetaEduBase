@@ -120,11 +120,15 @@ def _actor_audit_digest(
 
 
 def validate_production_actor_erasure_secret(cfg=settings) -> None:
-    """round-3 P1-4：生产环境启动校验 actor erasure secret 强度 + 版本契约。
+    """round-3 P1-4 / round-4 P1-4：生产环境启动校验 actor erasure secret 强度
+    + 版本冻结契约。
 
     development 环境保留空值（退化到 dev 占位）便于本地启动；production 必须显式
-    配置一个不少于 :data:`ACTOR_ERASURE_SECRET_MIN_LENGTH` 字符的 secret 且版本
-    >= 1。与 ``validate_production_jwt_secret`` 同模式（在 app lifespan 调用）。
+    配置一个不少于 :data:`ACTOR_ERASURE_SECRET_MIN_LENGTH` 字符的 secret。round-4
+    P1-4：digest key version 未持久化（表只存 64-hex digest），轮换会使历史 digest
+    成为无法溯源的孤儿，故生产 ``actor_erasure_secret_version`` 冻结为 1，禁止
+    轮换直到 migration 落地持久化 digest version。与 ``validate_production_jwt_secret``
+    同模式（在 app lifespan 调用）。
     """
     if getattr(cfg, "environment", "development") != "production":
         return
@@ -136,10 +140,11 @@ def validate_production_actor_erasure_secret(cfg=settings) -> None:
             f"{ACTOR_ERASURE_SECRET_MIN_LENGTH} 字符的高强度值（当前不满足）。"
             "请设置 ACTOR_ERASURE_SECRET 环境变量（与 JWT_SECRET 隔离，独立轮换）。"
         )
-    if version < 1:
+    if version != 1:
         raise RuntimeError(
-            f"ACTOR_ERASURE_SECRET_VERSION 必须 >= 1（当前 {version}）；"
-            "轮换 secret 时需显式 bump 版本号。"
+            f"ACTOR_ERASURE_SECRET_VERSION 在 production 必须为 1（digest key version "
+            f"未持久化，轮换会使历史 digest 成为无法溯源的孤儿，当前 {version}）；"
+            "需先落地 migration 持久化 digest version 后才能 bump 版本轮换。"
         )
 
 
@@ -253,9 +258,13 @@ class WorkspaceErasureParticipant:
                     f"(>= {ACTOR_ERASURE_SECRET_MIN_LENGTH} chars) in production; "
                     "refusing to derive actor audit digests from a weak/empty secret"
                 )
-            if version < 1:
+            # round-4 P1-4：version 冻结 V1（digest version 未持久化，轮换会孤儿化
+            # 历史 digest）。非生产允许任意 version 便于测试 digest 派生。
+            if version != 1:
                 raise RuntimeError(
-                    f"actor_erasure_secret_version must be >= 1, got {version}"
+                    f"actor_erasure_secret_version must be 1 in production (frozen; "
+                    f"digest version not persisted, rotation would orphan historical "
+                    f"digests), got {version}"
                 )
         self._audit_secret = secret or _ACTOR_ERASURE_SECRET_DEV_PLACEHOLDER
         self._audit_secret_version = version if version >= 1 else 1
@@ -427,6 +436,12 @@ class WorkspaceErasureParticipant:
                 checkpoint_digest=scan.digest(),
                 now=effective_now,
             )
+            # round-4 P1-3：Conversation.purge_state 投影与修复后的 operation=running
+            # / checkpoint=acked / fence=erased 一致（Spec §5.2 三方一致性）。历史
+            # 矛盾（operation 曾 blocked -> purge_state=blocked）在此修复到 running。
+            if conversation.purge_state != PurgeState.RUNNING.value:
+                conversation.purge_state = PurgeState.RUNNING.value
+                conversation.updated_at = effective_now
             return WorkspaceErasureOutcome(
                 fence=fence,
                 body_scan=scan,
@@ -445,6 +460,9 @@ class WorkspaceErasureParticipant:
             scan = await self.scan_body(
                 tenant_id=tenant_id, conversation_id=conversation_id
             )
+            # round-4 P1-1：legal-hold 路径未经 _mark_operation_running，需在此裁决
+            # operation revision CAS--stale caller（revision 过期）不得改状态，零状态
+            # 变更 fail closed。
             await self._record_blocked(
                 purge_operation_id=purge_operation_id,
                 tenant_id=tenant_id,
@@ -456,7 +474,12 @@ class WorkspaceErasureParticipant:
                 reason=REASON_PURGE_BLOCKED_BY_LEGAL_HOLD,
                 scan=scan,
                 now=effective_now,
+                expected_revision=expected_operation_revision,
             )
+            # round-4 P1-2：Conversation.purge_state 投影与 operation/checkpoint
+            # 同事务一致（Spec §5.2）--legal-hold blocked 也投影 blocked。
+            conversation.purge_state = PurgeState.BLOCKED.value
+            conversation.updated_at = effective_now
             return WorkspaceErasureOutcome(
                 fence=fence,
                 body_scan=scan,
@@ -786,10 +809,16 @@ class WorkspaceErasureParticipant:
         reason: str,
         scan: WorkspaceBodyScan,
         now: datetime,
+        expected_revision: int | None = None,
     ) -> None:
         """记 blocked：operation + owner checkpoint 经 CAS 推进 blocked + 稳定
         reason code + scan digest（P2-2）。正常返回路径调用，随调用方事务 commit。
-        revision 不再校验（FOR UPDATE 锁已由 _mark_operation_running 持有）。"""
+
+        ``expected_revision`` 非 None 时校验 operation revision CAS（round-4 P1-1：
+        legal-hold 路径未经 ``_mark_operation_running``，需在此裁决 revision 防 stale
+        caller 改状态；scan 非零路径传 None--revision 已由 ``_mark_operation_running``
+        裁决并 bump）。round-4 P1-2：已 blocked 且 reason 变化也更新 failure_code +
+        bump revision（不保留旧 reason）。"""
         operation = await self._load_verified_operation(
             purge_operation_id=purge_operation_id,
             tenant_id=tenant_id,
@@ -797,6 +826,7 @@ class WorkspaceErasureParticipant:
             purge_revision=purge_revision,
             expected_lease_epoch=expected_lease_epoch,
             hold_revision=hold_revision,
+            expected_revision=expected_revision,
         )
         if operation.state not in (
             PurgeOperationState.SCHEDULED.value,
@@ -806,8 +836,15 @@ class WorkspaceErasureParticipant:
             raise ValueError(
                 f"operation not in blockable state: {operation.state!r}"
             )
+        # round-4 P1-2：首次 blocked（state 变化）或已 blocked 但 reason 变化（如
+        # scan_nonzero -> legal_hold）都更新 failure_code + bump revision；同 reason
+        # 重入不重复 bump。
         if operation.state != PurgeOperationState.BLOCKED.value:
             operation.state = PurgeOperationState.BLOCKED.value
+            operation.failure_code = reason
+            operation.revision = operation.revision + 1
+            operation.updated_at = now
+        elif operation.failure_code != reason:
             operation.failure_code = reason
             operation.revision = operation.revision + 1
             operation.updated_at = now
@@ -824,11 +861,18 @@ class WorkspaceErasureParticipant:
             raise ValueError(
                 f"checkpoint not blockable from state {checkpoint.state!r}"
             )
+        # round-4 P1-2：checkpoint 同理--reason/digest 变化才更新（无 revision 列）。
+        cp_changed = checkpoint.state != PurgeOwnerState.BLOCKED.value
         checkpoint.state = PurgeOwnerState.BLOCKED.value
-        checkpoint.reason_code = reason
+        if checkpoint.reason_code != reason:
+            checkpoint.reason_code = reason
+            cp_changed = True
         # P2-2：blocked 路径也写 scan digest（非零 scan 的证据）。
-        checkpoint.checkpoint_digest = scan.digest()
-        checkpoint.updated_at = now
+        if checkpoint.checkpoint_digest != scan.digest():
+            checkpoint.checkpoint_digest = scan.digest()
+            cp_changed = True
+        if cp_changed:
+            checkpoint.updated_at = now
         await self._session.flush()
 
     async def _ack_owner_checkpoint(
@@ -934,7 +978,20 @@ class WorkspaceErasureParticipant:
             fence_owner_version=fence_owner_version,
         )
         if checkpoint.state == PurgeOwnerState.ACKED.value:
-            return  # 已 acked，无需修复。
+            # round-4 P1-3：已 acked 也要验证 digest 一致--ack_digest 必须匹配
+            # fence.ack_digest，checkpoint_digest 必须匹配当前零 scan。矛盾事实
+            # （历史 ACK 用不同 digest / scan 漂移）fail closed，不接受孤立的 ACK。
+            if checkpoint.ack_digest != ack_digest:
+                raise ValueError(
+                    f"checkpoint ack_digest {checkpoint.ack_digest} != fence "
+                    f"{ack_digest}; contradictory ACK fact on erased replay"
+                )
+            if checkpoint.checkpoint_digest != checkpoint_digest:
+                raise ValueError(
+                    f"checkpoint_digest {checkpoint.checkpoint_digest} != scan "
+                    f"{checkpoint_digest}; contradictory checkpoint fact on erased replay"
+                )
+            return  # 已 acked 且一致，无需修复。
         if checkpoint.state not in (
             PurgeOwnerState.PENDING.value,
             PurgeOwnerState.ERASING.value,
@@ -948,10 +1005,15 @@ class WorkspaceErasureParticipant:
         checkpoint.checkpoint_digest = checkpoint_digest
         checkpoint.reason_code = None
         checkpoint.updated_at = now
-        # operation 也修复到 running（ACK 丢失可能 operation 卡在 scheduled 或带
-        # 残留 failure_code）；状态变化 bump revision（round-3 P1-2）。
+        # round-4 P1-3：operation 也修复到 running（ACK 丢失可能 operation 卡在
+        # scheduled 或 blocked）。blocked 必须推进到 running（不只清 failure_code），
+        # 否则留下 fence=erased / checkpoint=acked / operation=blocked 的矛盾。
+        # 状态变化 bump revision（round-3 P1-2）。
         changed = False
-        if operation.state == PurgeOperationState.SCHEDULED.value:
+        if operation.state in (
+            PurgeOperationState.SCHEDULED.value,
+            PurgeOperationState.BLOCKED.value,
+        ):
             operation.state = PurgeOperationState.RUNNING.value
             if operation.started_at is None:
                 operation.started_at = now
@@ -1064,7 +1126,11 @@ class WorkspaceErasureParticipant:
                 message.redacted_at = now
                 message.redacted_reason = _ERASURE_REDACTED_REASON
             author_id = message.author_id
-            if author_id is not None and message.author_type == "user":
+            # round-4 P1-5：所有 author 类型（user/agent/system）的 author_id 都必须
+            # 先存不可逆 actor_identity_digest 再清 NULL（plan §S2-D 契约：Message.
+            # author_id -> actor_identity_digest）。只给 user 算 digest 会不可逆丢失
+            # agent/system author 的审计身份。
+            if author_id is not None:
                 message.actor_identity_digest = _actor_audit_digest(
                     secret=self._audit_secret,
                     secret_version=self._audit_secret_version,

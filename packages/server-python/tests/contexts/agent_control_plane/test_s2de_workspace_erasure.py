@@ -489,8 +489,8 @@ async def test_p1_2_round3_production_strength_validation(db_session, monkeypatc
 
 
 async def test_p1_2_round3_startup_validation_contract(monkeypatch):
-    """round-3 P1-4：启动期 ``validate_production_actor_erasure_secret`` 强度 +
-    版本契约校验（development 不校验；production 空/弱/版本非法 fail）。"""
+    """round-3 P1-4 / round-4 P1-4：启动期 ``validate_production_actor_erasure_secret``
+    强度校验 + 版本冻结契约（development 不校验；production 空/弱/版本!=1 fail）。"""
     from app.config import settings
 
     # development -> 不校验（空也通过）。
@@ -506,14 +506,32 @@ async def test_p1_2_round3_startup_validation_contract(monkeypatch):
     monkeypatch.setattr(settings, "actor_erasure_secret", "short")
     with pytest.raises(RuntimeError, match="不少于 32"):
         validate_production_actor_erasure_secret(settings)
-    # production + 强但版本非法 -> fail。
+    # round-4 P1-4：production + 强但 version != 1（冻结）-> fail。
     monkeypatch.setattr(settings, "actor_erasure_secret", "x" * ACTOR_ERASURE_SECRET_MIN_LENGTH)
-    monkeypatch.setattr(settings, "actor_erasure_secret_version", 0)
-    with pytest.raises(RuntimeError, match="VERSION"):
-        validate_production_actor_erasure_secret(settings)
-    # production + 强 + 版本合法 -> 通过。
     monkeypatch.setattr(settings, "actor_erasure_secret_version", 2)
+    with pytest.raises(RuntimeError, match="必须为 1"):
+        validate_production_actor_erasure_secret(settings)
+    monkeypatch.setattr(settings, "actor_erasure_secret_version", 0)
+    with pytest.raises(RuntimeError, match="必须为 1"):
+        validate_production_actor_erasure_secret(settings)
+    # production + 强 + version=1（冻结 V1）-> 通过。
+    monkeypatch.setattr(settings, "actor_erasure_secret_version", 1)
     validate_production_actor_erasure_secret(settings)  # 不抛
+
+
+async def test_p1_2_round4_production_version_frozen_at_1(db_session, monkeypatch):
+    """round-4 P1-4：生产环境 actor_erasure_secret_version 冻结 V1--version != 1
+    -> 构造期 fail fast（digest version 未持久化，轮换会孤儿化历史 digest）。"""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "actor_erasure_secret", "x" * ACTOR_ERASURE_SECRET_MIN_LENGTH)
+    monkeypatch.setattr(settings, "actor_erasure_secret_version", 2)
+    with pytest.raises(RuntimeError, match="must be 1 in production"):
+        WorkspaceErasureParticipant(db_session)
+    # version=1 -> 通过。
+    monkeypatch.setattr(settings, "actor_erasure_secret_version", 1)
+    WorkspaceErasureParticipant(db_session)  # 不抛
 
 
 # ---------------------------------------------------------------------------
@@ -994,6 +1012,15 @@ async def test_p1_5_redacts_author_id_on_already_redacted_messages(db_session):
         .one()
     )
     assert msg.author_id is None
+    # round-4 P1-5：agent author 的 actor_identity_digest 必须保留（不可逆丢失审计身份）。
+    assert msg.actor_identity_digest is not None
+    assert len(msg.actor_identity_digest) == 64
+    assert msg.actor_identity_digest == _actor_audit_digest(
+        secret=_AUDIT_SECRET,
+        secret_version=_AUDIT_SECRET_VERSION,
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1106,6 +1133,217 @@ async def test_p1_3_round3_record_blocked_uses_fence_owner_version(db_session):
     assert outcome.block_reason == REASON_PURGE_BLOCKED_BY_LEGAL_HOLD
     checkpoint = await _checkpoint_model(db_session, operation_id)
     assert checkpoint.state == PurgeOwnerState.BLOCKED.value
+
+
+# ---------------------------------------------------------------------------
+# round-4：legal-hold revision CAS / 投影一致 / erased repair 矛盾事实
+# ---------------------------------------------------------------------------
+
+
+async def test_p1_1_round4_legal_hold_stale_revision_fail_closed(db_session):
+    """round-4 P1-1：legal-hold 路径也裁决 operation revision CAS--stale caller
+    （revision 过期）不得改状态，零状态变更 fail closed。"""
+    conversation_id, purge_revision, operation_id, op_revision = (
+        await _seed_purgeable_with_operation(db_session)
+    )
+    await AgentErasureRepository(db_session).create_legal_hold(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        reason_code="litigation",
+        purpose="ongoing case",
+        actor_id=ACTOR_ID,
+    )
+    await db_session.commit()
+    # 调用方观测的 revision 过期（operation 被并发 bump）。
+    with pytest.raises(ValueError, match="operation revision mismatch"):
+        await _participant(db_session).erase_conversation_body(
+            tenant_id=TENANT_ID,
+            conversation_id=conversation_id,
+            purge_revision=purge_revision,
+            purge_operation_id=operation_id,
+            expected_operation_revision=op_revision + 5,
+        )
+    await db_session.rollback()
+    # 零状态变更：operation/checkpoint 仍是初始 scheduled/pending，未被改成 blocked。
+    op = await _operation_model(db_session, operation_id)
+    assert op.state == "scheduled"
+    assert op.failure_code is None
+    cp = await _checkpoint_model(db_session, operation_id)
+    assert cp.state == PurgeOwnerState.PENDING.value
+    conv = await db_session.get(ConversationModel, conversation_id)
+    assert conv.purge_state != "blocked"
+
+
+async def test_p1_2_round4_legal_hold_projects_purge_state_blocked(db_session):
+    """round-4 P1-2：legal-hold blocked 路径把 Conversation.purge_state 投影为
+    blocked（与 operation/checkpoint 同事务一致，Spec §5.2）。"""
+    conversation_id, purge_revision, operation_id, op_revision = (
+        await _seed_purgeable_with_operation(db_session)
+    )
+    await AgentErasureRepository(db_session).create_legal_hold(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        reason_code="litigation",
+        purpose="ongoing case",
+        actor_id=ACTOR_ID,
+    )
+    await db_session.commit()
+    outcome = await _participant(db_session).erase_conversation_body(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        purge_revision=purge_revision,
+        purge_operation_id=operation_id,
+        expected_operation_revision=op_revision,
+    )
+    await db_session.commit()
+    assert outcome.blocked
+    conv = await db_session.get(ConversationModel, conversation_id)
+    assert conv.purge_state == "blocked"  # P1-2 投影一致
+    op = await _operation_model(db_session, operation_id)
+    assert op.state == "blocked"
+    assert op.failure_code == REASON_PURGE_BLOCKED_BY_LEGAL_HOLD
+
+
+async def test_p1_2_round4_record_blocked_reason_change_bumps_revision(
+    db_session, monkeypatch
+):
+    """round-4 P1-2：已 blocked operation 遇新 reason（scan_nonzero -> legal_hold）
+    更新 failure_code + bump revision（不保留旧 reason）。"""
+    conversation_id, purge_revision, operation_id, op_revision = (
+        await _seed_purgeable_with_operation(db_session)
+    )
+    # 第一次：scan 非零 -> blocked (reason=scan_nonzero)。
+    participant1 = _participant(db_session)
+    real_scan = participant1.scan_body
+
+    async def _nonzero_scan(*, tenant_id, conversation_id):
+        real = await real_scan(tenant_id=tenant_id, conversation_id=conversation_id)
+        return type(real)(
+            present_body_messages=real.present_body_messages + 1,
+            message_parts=real.message_parts,
+            user_states=real.user_states,
+            unanonymized_actors=real.unanonymized_actors,
+        )
+
+    monkeypatch.setattr(participant1, "scan_body", _nonzero_scan)
+    await participant1.erase_conversation_body(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        purge_revision=purge_revision,
+        purge_operation_id=operation_id,
+        expected_operation_revision=op_revision,
+    )
+    await db_session.commit()
+    op = await _operation_model(db_session, operation_id)
+    assert op.failure_code == REASON_WORKSPACE_BODY_SCAN_NONZERO
+    op_revision_after = op.revision
+
+    # 重试时 scan 归零（清除 monkeypatch）但加 legal hold -> legal-hold 路径把
+    # reason 从 scan_nonzero 改成 legal_hold。
+    await AgentErasureRepository(db_session).create_legal_hold(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        reason_code="litigation",
+        purpose="ongoing case",
+        actor_id=ACTOR_ID,
+    )
+    await db_session.commit()
+    outcome = await _participant(db_session).erase_conversation_body(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        purge_revision=purge_revision,
+        purge_operation_id=operation_id,
+        expected_operation_revision=op_revision_after,
+    )
+    await db_session.commit()
+    assert outcome.blocked
+    assert outcome.block_reason == REASON_PURGE_BLOCKED_BY_LEGAL_HOLD
+    op = await _operation_model(db_session, operation_id)
+    assert op.state == "blocked"
+    assert op.failure_code == REASON_PURGE_BLOCKED_BY_LEGAL_HOLD  # reason 更新
+    assert op.revision == op_revision_after + 1  # bump（state 已 blocked，仅 reason 变）
+
+
+async def test_p1_3_round4_erased_repair_acked_digest_mismatch_fail_closed(db_session):
+    """round-4 P1-3：erased 重放时 checkpoint 已 acked 但 ack_digest 与 fence 不一致
+    （矛盾事实）-> fail closed，不接受孤立 ACK。"""
+    conversation_id, purge_revision, operation_id, op_revision = (
+        await _seed_purgeable_with_operation(db_session)
+    )
+    first = await _participant(db_session).erase_conversation_body(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        purge_revision=purge_revision,
+        purge_operation_id=operation_id,
+        expected_operation_revision=op_revision,
+    )
+    await db_session.commit()
+    assert first.erased
+    op_revision_after = await _op_revision(db_session, operation_id)
+    # 篡改 checkpoint.ack_digest（模拟矛盾事实--与 fence.ack_digest 不一致）。
+    cp = await _checkpoint_model(db_session, operation_id)
+    cp.ack_digest = "0" * 64
+    await db_session.commit()
+    with pytest.raises(ValueError, match="contradictory ACK fact"):
+        await _participant(db_session).erase_conversation_body(
+            tenant_id=TENANT_ID,
+            conversation_id=conversation_id,
+            purge_revision=purge_revision,
+            purge_operation_id=operation_id,
+            expected_operation_revision=op_revision_after,
+        )
+
+
+async def test_p1_3_round4_erased_repair_blocked_operation_to_running(db_session):
+    """round-4 P1-3：erased 重放时 operation 卡 blocked + purge_state=blocked ->
+    修复到 running（不只清 failure_code），Conversation.purge_state 也修复到
+    running，三方一致（fence=erased / checkpoint=acked / operation=running）。"""
+    conversation_id, purge_revision, operation_id, op_revision = (
+        await _seed_purgeable_with_operation(db_session)
+    )
+    first = await _participant(db_session).erase_conversation_body(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        purge_revision=purge_revision,
+        purge_operation_id=operation_id,
+        expected_operation_revision=op_revision,
+    )
+    await db_session.commit()
+    assert first.erased
+    fence_ack_digest = first.fence.ack_digest
+    op_revision_after = await _op_revision(db_session, operation_id)
+    # 模拟矛盾：fence erased 但 operation=blocked + purge_state=blocked。
+    op = await _operation_model(db_session, operation_id)
+    op.state = "blocked"
+    op.failure_code = "stale"
+    op.revision = op_revision_after + 1  # 并发 bump
+    cp = await _checkpoint_model(db_session, operation_id)
+    cp.state = PurgeOwnerState.PENDING.value
+    cp.ack_digest = None
+    cp.checkpoint_digest = None
+    conv = await db_session.get(ConversationModel, conversation_id)
+    conv.purge_state = "blocked"
+    await db_session.commit()
+
+    outcome = await _participant(db_session).erase_conversation_body(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        purge_revision=purge_revision,
+        purge_operation_id=operation_id,
+        expected_operation_revision=op_revision_after + 1,
+    )
+    await db_session.commit()
+    assert outcome.erased
+    # operation 修复到 running（非 blocked），failure_code 清除。
+    op = await _operation_model(db_session, operation_id)
+    assert op.state == "running"
+    assert op.failure_code is None
+    # conversation.purge_state 修复到 running（三方一致）。
+    conv = await db_session.get(ConversationModel, conversation_id)
+    assert conv.purge_state == "running"
+    cp = await _checkpoint_model(db_session, operation_id)
+    assert cp.state == PurgeOwnerState.ACKED.value
+    assert cp.ack_digest == fence_ack_digest
 
 
 # ---------------------------------------------------------------------------
