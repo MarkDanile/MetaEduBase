@@ -31,6 +31,8 @@
 下一步：提交并创建独立 PR；保持未合并，等待评审。R1-S3-C 继续由 PR #519 的独立分支推进，本修复不触碰其代码。
 验证状态：`bash -n`、新增 5 条 contract tests、ruff、docs gate、diff-check 已通过；真实 `./dev.sh infra/status`、Redis `PONG`、Celery `1 node online / pong` 及登录 HTTP 200 已通过。
 交接备注：主工作区用户改动未触碰；`dev_setup` 的 AI application JSONB seed 异常不在本 BUG 范围。
+||||||| parent of 78d315e3 (docs(agent): R1-S3-C Writer fence 启动（工作台登记）)
+当前无活跃任务。R1-S3-B Schema 与基础契约已合并（PR #517 merge `7d1b21d3`），下一步入口为 R1-S3-C（Writer fence PR — composition-owned fenced execution port，注入 `consume_turn_requested` / Direct RAG / cancel API / Runtime ingest）。 78d315e3 (docs(agent): R1-S3-C Writer fence 启动（工作台登记）)
 
 ## 下一批候选任务
 
@@ -38,7 +40,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-041/047 R1-S3-C Writer fence | 🟡 Ready | composition-owned fenced execution port，注入 `consume_turn_requested` / Direct RAG / cancel API / Runtime ingest；禁止生产路径直调未 fenced writer；覆盖全部 implicit/explicit RunEvent writer；writer 返回 `created` 标志驱动 event 计数器 | [Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
