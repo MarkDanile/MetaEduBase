@@ -59,7 +59,7 @@ class AgentExecutionBridgeService:
         delivery_attempt: int,
         claimant_id: str,
         consumed_at: datetime,
-    ) -> tuple[AgentRun, InboxAckV1]:
+    ) -> tuple[AgentRun, InboxAckV1, bool]:
         if integration_event_digest(event) != payload_digest:
             raise ExecutionIntegrationConflictError("turn payload digest conflicts")
         should_create = await self._bridge_repo.begin_turn_receipt(
@@ -105,6 +105,7 @@ class AgentExecutionBridgeService:
                 )
             )
             run = result.run
+            created = result.created
             await self._bridge_repo.consume_turn_receipt(
                 event=event, consumed_at=consumed_at
             )
@@ -118,6 +119,7 @@ class AgentExecutionBridgeService:
                 raise ExecutionIntegrationConflictError(
                     "consumed turn receipt is missing its persisted Run"
                 )
+            created = False  # IDEMPOTENT_REPLAY / 命中 existing，不推进计数器
         return run, InboxAckV1(
             event_id=event.event_id,
             tenant_id=event.tenant_id,
@@ -126,7 +128,7 @@ class AgentExecutionBridgeService:
             delivery_attempt=delivery_attempt,
             claimant_id=claimant_id,
             consumed_at=consumed_at,
-        )
+        ), created
 
     async def has_turn_acceptance(
         self, event: TurnRequestedV1, *, payload_digest: str

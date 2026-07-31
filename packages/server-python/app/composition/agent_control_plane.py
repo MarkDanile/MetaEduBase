@@ -148,7 +148,7 @@ class ConversationExecutionCoordinator:
         claimed: ClaimedWorkspaceEvent,
         *,
         consumed_at: datetime,
-    ) -> tuple[AgentRun, InboxAckV1]:
+    ) -> tuple[AgentRun, InboxAckV1, bool]:
         event = claimed.event
         await self._guard.acquire(
             self._session,
@@ -162,13 +162,14 @@ class ConversationExecutionCoordinator:
             include_deleted=False,
         )
         await self._workspace.validate_turn_claim(claimed)
-        return await self._execution.consume_turn_requested(
+        run, ack, created = await self._execution.consume_turn_requested(
             event=event,
             payload_digest=claimed.payload_digest,
             delivery_attempt=claimed.attempt_count,
             claimant_id=claimed.claimant_id,
             consumed_at=consumed_at,
         )
+        return run, ack, created
 
     async def start_run(
         self,
@@ -519,10 +520,28 @@ class AgentBridgeDispatcher:
                 f"{claimed.error_code}"
             )
         try:
+            # S3-C M1a：fenced port 注入 create_run。verdict（owner lock + fence FOR UPDATE）
+            # 与 advance（run_event_payload 计数器 +1）必须与 consume 同事务；advance 仅
+            # 在 writer 返回 created=True（真实新插入）时调用，IDEMPOTENT_REPLAY / 命中
+            # existing 不推进。
+            from app.composition.execution_fenced_port import FencedExecutionPort
+
             async with self._session_factory() as session, session.begin():
-                run, ack = await ConversationExecutionCoordinator(
+                port = FencedExecutionPort(session)
+                fence = await port.require_active_fence(
+                    tenant_id=claimed.event.tenant_id,
+                    conversation_id=claimed.event.conversation_id,
+                    source_key="run_event_payload",
+                )
+                run, ack, created = await ConversationExecutionCoordinator(
                     session
                 ).consume_turn_event(claimed, consumed_at=datetime.now(UTC))
+                if created:
+                    await port.advance_run_event_checkpoint(
+                        fence=fence,
+                        conversation_id=claimed.event.conversation_id,
+                        epoch=getattr(claimed.event, "purge_revision", 0),
+                    )
             async with self._session_factory() as session, session.begin():
                 await AgentWorkspaceBridgeService(session).acknowledge_turn(ack)
             return run

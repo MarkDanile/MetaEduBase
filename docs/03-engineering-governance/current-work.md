@@ -33,6 +33,11 @@
 交接备注：主工作区用户改动未触碰；`dev_setup` 的 AI application JSONB seed 异常不在本 BUG 范围。
 ||||||| parent of 78d315e3 (docs(agent): R1-S3-C Writer fence 启动（工作台登记）)
 当前无活跃任务。R1-S3-B Schema 与基础契约已合并（PR #517 merge `7d1b21d3`），下一步入口为 R1-S3-C（Writer fence PR — composition-owned fenced execution port，注入 `consume_turn_requested` / Direct RAG / cancel API / Runtime ingest）。 78d315e3 (docs(agent): R1-S3-C Writer fence 启动（工作台登记）)
+||||||| parent of 6c24cf94 (feat(server): R1-S3-C M1a FencedExecutionPort + create_run_with_root 注入 + advance 反例)
+当前进展：S3-A（契约注记）+ S3-B（schema+contract）已合并（PR #515/517）。S3-C 按契约注记实现 composition-owned fenced execution port，注入 `consume_turn_requested`（create_run 真实入口，非 submit_turn）/ Direct RAG（activate_turn/complete_turn/fail_turn/publish_completed_turn）/ RunQueryService（get_run/request_cancel/read_event_batch）/ Runtime ingest（ingest_runtime_event）；覆盖全部 implicit event writer（start_run/transition_run/mark_run_resume_required/resume_run/commit_terminal 内部 _append_event_locked）；禁止生产路径直调未 fenced writer；writer 返回 `created` 标志驱动 event 计数器（round-2 P2-1 闭合）；cross-source-key 闭集已就位（round-1 P1-5）。
+下一步：实现 fenced execution port + 9 writer 注入 + writer `created` 标志 + 变异测试（删除 fence -> 旧 fence 行为复活 / 跨 owner 写失败 / `created` 标志丢失 fail）-> PR -> 独立 max/Codex 复审。
+验证状态：待实现。
+交接备注：S3-A 已合并（PR #515 merge `2d4f8091`）；S3-B 已合并（PR #517 merge `7d1b21d3`）；S3-C 复用 S3-B 的 fenced port + writer `created` 标志 + per-owner source key 闭集 + 6 处 fail-closed guard；erase_available 保持 False（S3-D 翻）；不进 S4；不启用 purge scheduler。 6c24cf94 (feat(server): R1-S3-C M1a FencedExecutionPort + create_run_with_root 注入 + advance 反例)
 
 ## 下一批候选任务
 
