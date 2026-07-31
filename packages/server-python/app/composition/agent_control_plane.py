@@ -14,9 +14,6 @@ from app.contexts.agent_execution.application.bridge import (
     ClaimedExecutionEvent,
     PoisonedExecutionEvent,
 )
-from app.contexts.agent_execution.application.fenced_execution_port import (
-    FencedExecutionPort,
-)
 from app.contexts.agent_execution.application.run_coordinator import RunCoordinator
 from app.contexts.agent_execution.domain import AgentRun
 from app.contexts.agent_workspace.application.bridge import (
@@ -189,10 +186,14 @@ class ConversationExecutionCoordinator:
             tenant_id=tenant_id,
             conversation_id=run.conversation_id,
         )
-        port = FencedExecutionPort(self._session)
-        return await port.fenced_start_run(
+        coordinator = RunCoordinator(
+            self._session,
+            start_barrier=WorkspaceRunStartBarrier(
+                self._workspace, actor_id=run.created_by_or_raise
+            ),
+        )
+        return await coordinator.start_run(
             tenant_id=tenant_id,
-            conversation_id=run.conversation_id,
             run_id=run_id,
             expected_revision=expected_revision,
         )

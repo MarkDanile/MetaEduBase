@@ -26,7 +26,6 @@ from app.contexts.agent_execution.application.execution_identity_service import 
     DIRECT_RAG_POLICY_VERSION,
     ExecutionIdentityService,
 )
-from app.contexts.agent_execution.application.fenced_execution_port import FencedExecutionPort
 from app.contexts.agent_execution.application.run_coordinator import RunCoordinator
 from app.contexts.agent_execution.domain import (
     EventVisibility,
@@ -352,17 +351,15 @@ class DirectRagCompatibilityAdapter:
                 f"Direct RAG idempotency key belongs to a {run.status.value} Run"
             )
         if run.status is RunStatus.QUEUED:
-            port = FencedExecutionPort(self._session)
-            run, _ = await port.fenced_start_run(
+            coordinator = RunCoordinator(self._session)
+            run, _ = await coordinator.start_run(
                 tenant_id=tenant_id,
-                conversation_id=run.conversation_id,
                 run_id=run.id,
                 expected_revision=run.status_revision,
             )
         if run.status is RunStatus.STARTING:
-            run, _ = await port.fenced_transition_run(
+            run, _ = await RunCoordinator(self._session).transition_run(
                 tenant_id=tenant_id,
-                conversation_id=run.conversation_id,
                 run_id=run.id,
                 expected_status=RunStatus.STARTING,
                 expected_revision=run.status_revision,
@@ -408,10 +405,9 @@ class DirectRagCompatibilityAdapter:
             )
 
         now = await self._database_now()
-        port = FencedExecutionPort(self._session)
-        await port.fenced_append_event(
+        coordinator = RunCoordinator(self._session)
+        await coordinator.append_event(
             tenant_id=run.tenant_id,
-            conversation_id=run.conversation_id,
             run_id=run.id,
             event=NewRunEvent(
                 event_type=RunEventType.PHASE_CHANGED,
@@ -428,9 +424,8 @@ class DirectRagCompatibilityAdapter:
             ),
         )
         usage = RunUsageSummary()
-        await port.fenced_append_event(
+        await coordinator.append_event(
             tenant_id=run.tenant_id,
-            conversation_id=run.conversation_id,
             run_id=run.id,
             event=NewRunEvent(
                 event_type=RunEventType.USAGE_UPDATED,
@@ -450,7 +445,7 @@ class DirectRagCompatibilityAdapter:
         output = response.reply.encode("utf-8")
         output_ref = f"compat-output:{run.id}"
         try:
-            snapshot, _created = await port.fenced_stage(
+            snapshot = await CompatibilityOutputService(self._session).stage(
                 tenant_id=run.tenant_id,
                 conversation_id=run.conversation_id,
                 run_id=run.id,
@@ -461,9 +456,8 @@ class DirectRagCompatibilityAdapter:
         except ValueError as exc:
             raise DirectRagOutputTooLargeError(str(exc)) from None
         assistant_message_id = uuid.uuid4()
-        _, terminal_event, _ = await port.fenced_commit_terminal(
+        _, terminal_event, _ = await coordinator.commit_terminal(
             tenant_id=run.tenant_id,
-            conversation_id=run.conversation_id,
             run_id=run.id,
             expected_status=RunStatus.RUNNING,
             expected_revision=run.status_revision,
@@ -551,10 +545,9 @@ class DirectRagCompatibilityAdapter:
                 f"Direct RAG Run cannot fail from {run.status.value}"
             )
         now = await self._database_now()
-        port = FencedExecutionPort(self._session)
-        await port.fenced_append_event(
+        coordinator = RunCoordinator(self._session)
+        await coordinator.append_event(
             tenant_id=tenant_id,
-            conversation_id=run.conversation_id,
             run_id=run_id,
             event=NewRunEvent(
                 event_type=RunEventType.ERROR_REPORTED,
@@ -570,9 +563,8 @@ class DirectRagCompatibilityAdapter:
                 correlation_id=run.correlation_id,
             ),
         )
-        await port.fenced_commit_terminal(
+        await coordinator.commit_terminal(
             tenant_id=tenant_id,
-            conversation_id=run.conversation_id,
             run_id=run_id,
             expected_status=run.status,
             expected_revision=run.status_revision,
