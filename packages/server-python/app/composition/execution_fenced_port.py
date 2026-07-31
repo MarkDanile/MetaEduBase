@@ -56,13 +56,25 @@ class FencedExecutionPort:
     async def advance_run_event_checkpoint(
         self, *, fence, conversation_id: uuid.UUID, epoch: int
     ) -> None:
-        """advance：run_event_payload 计数器 ``+1``（仅 created=True 时调）。"""
+        """advance：run_event_payload 计数器 ``+1``（仅 created=True 时调）。
+
+        读取 fence.ingress_checkpoint 中 run_event_payload 的当前 watermark，
+        传 ``current + 1`` 给 advance_ingress_checkpoint_for_update（该方法做
+        ``max(existing, new)``，保证单调递增 + 幂等 replay 不推进）。
+        """
+        sources = fence.ingress_checkpoint.get("sources", {})
+        existing_entry = sources.get(self.RUN_EVENT_SOURCE_KEY)
+        current_watermark = (
+            int(existing_entry.get("watermark", 0))
+            if existing_entry is not None
+            else 0
+        )
         await self._erasure.advance_ingress_checkpoint_for_update(
             tenant_id=fence.tenant_id,
             conversation_id=conversation_id,
             owner_key=self.EXECUTION_OWNER_KEY,
             source_key=self.RUN_EVENT_SOURCE_KEY,
-            watermark=0,
+            watermark=current_watermark + 1,
             epoch=epoch,
         )
 
