@@ -531,7 +531,6 @@ class AgentBridgeDispatcher:
                 fence = await port.require_active_fence(
                     tenant_id=claimed.event.tenant_id,
                     conversation_id=claimed.event.conversation_id,
-                    source_key="run_event_payload",
                 )
                 run, ack, created = await ConversationExecutionCoordinator(
                     session
