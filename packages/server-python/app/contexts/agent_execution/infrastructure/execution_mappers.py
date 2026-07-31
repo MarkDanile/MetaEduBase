@@ -64,6 +64,10 @@ def run_values(run: AgentRun) -> dict[str, object]:
         "terminal_message_id": run.terminal_message_id,
         "output_publish_state": run.output_publish_state.value,
         "created_by": run.created_by,
+        # S3-B：新 Run 恒为 present（创建命令必有 actor）；purge 时 participant 直接
+        # 改 model 转 redacted（不经 run_values）。
+        "actor_state": "present",
+        "actor_identity_digest": None,
         "correlation_id": run.correlation_id,
         "runtime_capability_snapshot": run.runtime_capability_snapshot.model_dump(
             mode="json"
@@ -120,6 +124,9 @@ def to_run(row: AgentRunModel) -> AgentRun:
         terminal_message_id=row.terminal_message_id,
         output_publish_state=OutputPublishState(row.output_publish_state),
         created_by=row.created_by,
+        # S3-B round-3 P2-3：完整投影冻结的 erased envelope（内部字段，API DTO 不暴露）。
+        actor_state=row.actor_state,
+        actor_identity_digest=row.actor_identity_digest,
         correlation_id=row.correlation_id,
         runtime_capability_snapshot=RuntimeCapabilitySnapshot.model_validate(
             row.runtime_capability_snapshot

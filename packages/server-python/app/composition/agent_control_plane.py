@@ -188,7 +188,7 @@ class ConversationExecutionCoordinator:
         coordinator = RunCoordinator(
             self._session,
             start_barrier=WorkspaceRunStartBarrier(
-                self._workspace, actor_id=run.created_by
+                self._workspace, actor_id=run.created_by_or_raise
             ),
         )
         return await coordinator.start_run(

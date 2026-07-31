@@ -90,6 +90,22 @@ def test_only_workspace_core_eraser_available_in_s2d() -> None:
             registry.require_capability(owner.owner_key, "erase")
 
 
+def test_execution_core_has_actor_identity_capability() -> None:
+    """S3-B round-1 P1-2：execution.core.v1 增 actor_identity capability（Spec §7.1）。
+
+    erase_available 仍 False（round-2 P1-1，S3-D 翻 True）；actor_identity capability
+    已声明，``require_capability`` 放行。
+    """
+    registry = _import_registry()
+    execution = registry.require_owner("execution.core.v1")
+    assert "actor_identity" in execution.capabilities
+    registry.require_capability("execution.core.v1", "actor_identity")  # 不抛
+    # erase 仍 fail closed（eraser 待 S3-D）。
+    assert execution.erase_available is False
+    with pytest.raises(registry.OwnerCapabilityUnavailableError):
+        registry.require_capability("execution.core.v1", "erase")
+
+
 def test_validate_snapshot_digest_detects_registry_change() -> None:
     registry = _import_registry()
     current = registry.registry_digest()

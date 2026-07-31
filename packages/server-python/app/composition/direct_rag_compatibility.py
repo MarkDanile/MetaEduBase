@@ -30,6 +30,7 @@ from app.contexts.agent_execution.application.run_coordinator import RunCoordina
 from app.contexts.agent_execution.domain import (
     EventVisibility,
     OutputPublishState,
+    RunActorAnonymizedError,
     RunBudgetSnapshot,
     RunConfigSnapshot,
     RunEventPayload,
@@ -281,13 +282,21 @@ class DirectRagCompatibilityAdapter:
                 self._session_factory,
                 worker_id="direct-rag-compatibility",
             ).dispatch_turn(event_id=prepared.turn_event_id)
-            run = await RunCoordinator(self._session).require_run(
+            run = await RunCoordinator(self._session).require_live_run(
                 tenant_id=prepared.tenant_id,
                 run_id=prepared.recording.run_id,
             )
         except RunNotFoundError:
             raise DirectRagTurnPendingError(
                 "Direct RAG turn is pending execution acceptance"
+            ) from None
+        except RunActorAnonymizedError:
+            # S3-B round-4 P1-1：tombstone 是确定性 gone（actor 已匿名化，不可逆），
+            # 不应被通用 except 转成 pending（暂态重试）。映射为 DirectRagTerminalReplayError
+            # (确定性 replay/gone 语义，_compatibility_http_error 固定返回 HTTP 409)。
+            raise DirectRagTerminalReplayError(
+                "Direct RAG Run has been anonymized (tombstone); "
+                "cannot dispatch a purged Run"
             ) from None
         except DirectRagCompatibilityError:
             raise
@@ -381,7 +390,8 @@ class DirectRagCompatibilityAdapter:
         if prepared.is_completed_replay:
             return prepared.recording
         await self._acquire_write_guard(prepared)
-        run = await RunCoordinator(self._session).require_run(
+        # S3-B round-3 P1-1：tombstone Run 不能 complete/fail（actor 已匿名化）。
+        run = await RunCoordinator(self._session).require_live_run(
             tenant_id=prepared.tenant_id,
             run_id=prepared.recording.run_id,
         )
@@ -568,7 +578,10 @@ class DirectRagCompatibilityAdapter:
         self, *, prepared: PreparedDirectRagTurn
     ) -> PreparedDirectRagTurn | None:
         tenant_id = prepared.tenant_id
-        run = await RunCoordinator(self._session).require_run(
+        # S3-B round-3 P1-1：tombstone replay 必须在任何 status 分支前 fail closed，
+        # 否则 suppressed/redacted completed Run 会返回 requires_output_publish=True
+        # 进入重新投影流程。
+        run = await RunCoordinator(self._session).require_live_run(
             tenant_id=tenant_id, run_id=prepared.recording.run_id
         )
         if run.status is not RunStatus.COMPLETED:
@@ -587,7 +600,7 @@ class DirectRagCompatibilityAdapter:
             )
         assistant = await self._require_assistant_message(
             tenant_id=tenant_id,
-            actor_id=run.created_by,
+            actor_id=run.created_by_or_raise,
             conversation_id=run.conversation_id,
             run_id=run.id,
         )

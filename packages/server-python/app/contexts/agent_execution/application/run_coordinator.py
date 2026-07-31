@@ -20,6 +20,7 @@ from app.contexts.agent_execution.application.ports import (
 from app.contexts.agent_execution.domain import (
     AgentRun,
     OutputPublishState,
+    RunActorAnonymizedError,
     RunConflictError,
     RunEvent,
     RunGuardBlockedError,
@@ -114,6 +115,9 @@ class RunCoordinator:
             terminal_message_id=None,
             output_publish_state=OutputPublishState.NOT_REQUIRED,
             created_by=command.created_by,
+            # S3-B round-3 P2-3：完整投影冻结的 erased envelope（present + None）。
+            actor_state="present",
+            actor_identity_digest=None,
             correlation_id=command.correlation_id,
             runtime_capability_snapshot=command.runtime_capability_snapshot,
             run_config_snapshot=command.run_config_snapshot,
@@ -136,6 +140,9 @@ class RunCoordinator:
             expected_runtime_epoch=None,
             context_digest=command.root_context_digest,
             created_by=command.created_by,
+            # S3-B round-3 P2-3：完整投影冻结的 erased envelope（present + None）。
+            actor_state="present",
+            actor_identity_digest=None,
             created_at=now,
         )
         persisted, created = await self._repository.create_run_with_root(run, root)
@@ -339,6 +346,23 @@ class RunCoordinator:
         run = await self._repository.get_run(tenant_id=tenant_id, run_id=run_id)
         if run is None:
             raise RunNotFoundError("Agent Run not found")
+        return run
+
+    async def require_live_run(
+        self, *, tenant_id: uuid.UUID, run_id: uuid.UUID
+    ) -> AgentRun:
+        """S3-B round-3 P1-1：前置 live-actor 校验（RunActorAnonymizedError）。
+
+        所有 replay/idempotency 入口（activate_turn/completed_turn/create replay
+        /query/start/cancel）须先调用本方法，确保 tombstone Run 在任何 status
+        分支前 fail closed（不返回 suppressed 投影，不进入重新投影流程）。
+        """
+        run = await self.require_run(tenant_id=tenant_id, run_id=run_id)
+        if run.created_by is None:
+            raise RunActorAnonymizedError(
+                f"Agent Run {run_id} actor has been anonymized (tombstone); "
+                "live actor required"
+            )
         return run
 
     async def list_events(

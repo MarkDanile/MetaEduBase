@@ -59,6 +59,14 @@ class RunRevisionConflictError(RunConflictError):
     """A Run command used a stale status revision."""
 
 
+class RunActorAnonymizedError(RunConflictError):
+    """S3-B round-2 P1-4：需 actor 的命令遇到已匿名化（tombstone）Run/TurnInput。
+
+    ``created_by`` 已被 purge 清除（``actor_state=redacted`` + 不可逆 digest），
+    需要 live actor 的命令 fail closed，不伪造 actor、不暴露 digest。
+    """
+
+
 class InvalidRunTransitionError(AgentExecutionError):
     """The requested Agent Run state transition is not allowed."""
 

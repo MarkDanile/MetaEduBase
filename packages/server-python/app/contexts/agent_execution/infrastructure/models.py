@@ -374,6 +374,17 @@ class AgentRunModel(Base):
             "AND output_publish_state = 'not_required')",
             name="ck_agent_run_terminal_output",
         ),
+        CheckConstraint(
+            # S3-B：直接主体标识 actor tombstone（present 强制 created_by 非空 + digest
+            # NULL；redacted 强制 created_by NULL + 64-hex digest，round-3 P1-2 加
+            # lowercase hex 正则约束）。与 migration 038 ck_agent_runs_actor 同源。
+            "(actor_state = 'present' AND created_by IS NOT NULL "
+            "AND actor_identity_digest IS NULL) OR "
+            "(actor_state = 'redacted' AND created_by IS NULL "
+            "AND actor_identity_digest IS NOT NULL "
+            "AND actor_identity_digest ~ '^([0-9a-f]{64})$')",
+            name="ck_agent_runs_actor",
+        ),
         Index(
             "uq_agent_run_one_active",
             "tenant_id",
@@ -461,7 +472,17 @@ class AgentRunModel(Base):
     output_publish_state: Mapped[str] = mapped_column(
         String(20), nullable=False, default="not_required"
     )
-    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    # S3-B round-1 P1-2 / round-2 P1-4：直接主体标识 purge 时清除 + 不可逆 HMAC digest
+    #（Spec §7.1「等直接主体标识」覆盖 execution 表；与 workspace Conversation/Message
+    # 同模式，复用 composition shared ``actor_audit_digest``）。created_by 创建时非空
+    #（present），purge 后 NULL + digest（redacted）。
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    actor_state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="present"
+    )
+    actor_identity_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
     correlation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     runtime_capability_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
     run_config_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
@@ -593,6 +614,16 @@ class TurnInputModel(Base):
             "char_length(context_digest) = 64",
             name="ck_agent_turn_input_context_digest",
         ),
+        CheckConstraint(
+            # S3-B：直接主体标识 actor tombstone（与 AgentRun 同模式，migration 038
+            # ck_agent_turn_inputs_actor 同源，round-3 P1-2 加 lowercase hex 正则约束）。
+            "(actor_state = 'present' AND created_by IS NOT NULL "
+            "AND actor_identity_digest IS NULL) OR "
+            "(actor_state = 'redacted' AND created_by IS NULL "
+            "AND actor_identity_digest IS NOT NULL "
+            "AND actor_identity_digest ~ '^([0-9a-f]{64})$')",
+            name="ck_agent_turn_inputs_actor",
+        ),
         Index(
             "uq_agent_turn_input_root",
             "tenant_id",
@@ -616,7 +647,14 @@ class TurnInputModel(Base):
         BigInteger, nullable=True
     )
     context_digest: Mapped[str] = mapped_column(String(64), nullable=False)
-    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    # S3-B round-1 P1-2 / round-2 P1-4：直接主体标识 actor tombstone（同 AgentRun）。
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    actor_state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="present"
+    )
+    actor_identity_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
