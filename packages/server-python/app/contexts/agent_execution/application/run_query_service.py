@@ -38,7 +38,6 @@ class RunQueryService:
         self._repository = AgentExecutionQueryRepository(session)
         self._coordinator = RunCoordinator(session)
         self._conversation_access = conversation_access
-        self._session = session
 
     async def get_run(
         self,

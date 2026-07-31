@@ -308,6 +308,7 @@ class DirectRagCompatibilityAdapter:
         actor_id = prepared.actor_id
         conversation_id = prepared.recording.conversation_id
         message_id = prepared.recording.user_message_id
+        coordinator = ConversationExecutionCoordinator(self._session)
 
         if run.status is RunStatus.COMPLETED:
             if run.output_publish_state is not OutputPublishState.PUBLISHED:
@@ -351,7 +352,6 @@ class DirectRagCompatibilityAdapter:
                 f"Direct RAG idempotency key belongs to a {run.status.value} Run"
             )
         if run.status is RunStatus.QUEUED:
-            coordinator = RunCoordinator(self._session)
             run, _ = await coordinator.start_run(
                 tenant_id=tenant_id,
                 run_id=run.id,
