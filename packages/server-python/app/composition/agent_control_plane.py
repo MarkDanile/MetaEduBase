@@ -14,6 +14,9 @@ from app.contexts.agent_execution.application.bridge import (
     ClaimedExecutionEvent,
     PoisonedExecutionEvent,
 )
+from app.contexts.agent_execution.application.fenced_execution_port import (
+    FencedExecutionPort,
+)
 from app.contexts.agent_execution.application.run_coordinator import RunCoordinator
 from app.contexts.agent_execution.domain import AgentRun
 from app.contexts.agent_workspace.application.bridge import (
@@ -186,14 +189,10 @@ class ConversationExecutionCoordinator:
             tenant_id=tenant_id,
             conversation_id=run.conversation_id,
         )
-        coordinator = RunCoordinator(
-            self._session,
-            start_barrier=WorkspaceRunStartBarrier(
-                self._workspace, actor_id=run.created_by_or_raise
-            ),
-        )
-        return await coordinator.start_run(
+        port = FencedExecutionPort(self._session)
+        return await port.fenced_start_run(
             tenant_id=tenant_id,
+            conversation_id=run.conversation_id,
             run_id=run_id,
             expected_revision=expected_revision,
         )
@@ -524,7 +523,9 @@ class AgentBridgeDispatcher:
             # 与 advance（run_event_payload 计数器 +1）必须与 consume 同事务；advance 仅
             # 在 writer 返回 created=True（真实新插入）时调用，IDEMPOTENT_REPLAY / 命中
             # existing 不推进。
-            from app.composition.execution_fenced_port import FencedExecutionPort
+            from app.contexts.agent_execution.application.fenced_execution_port import (
+                FencedExecutionPort,
+            )
 
             async with self._session_factory() as session, session.begin():
                 port = FencedExecutionPort(session)
@@ -539,7 +540,6 @@ class AgentBridgeDispatcher:
                     await port.advance_run_event_checkpoint(
                         fence=fence,
                         conversation_id=claimed.event.conversation_id,
-                        epoch=getattr(claimed.event, "purge_revision", 0),
                     )
             async with self._session_factory() as session, session.begin():
                 await AgentWorkspaceBridgeService(session).acknowledge_turn(ack)
