@@ -170,31 +170,72 @@ class TestRunQueryServiceTombstoneGuard:
 class TestDirectRagActivateTurnTombstone:
     """activate_turn 遇 tombstone 必须 raise DirectRagTerminalReplayError，不能 pending。
 
-    通过源码静态检查（inspect）验证 except 链包含 RunActorAnonymizedError
-    分支且转 DirectRagTerminalReplayError（确定性 gone/conflict），不被通用
-    except 转 DirectRagTurnPendingError（暂态重试）。
+    round-6 P2-1：动态调 activate_turn（mock AgentBridgeDispatcher + RunCoordinator
+    令 dispatch_turn 成功 + require_live_run 抛 RunActorAnonymizedError），断言最终
+    异常严格为 DirectRagTerminalReplayError（不是 DirectRagTurnPendingError 暂态重试）。
+    删除该转换后测试 fail。
     """
 
-    def test_activate_turn_excepts_run_actor_anonymized_to_terminal_replay(self) -> None:
-        import inspect
+    @pytest.mark.asyncio
+    async def test_activate_turn_returns_terminal_replay_on_tombstone(self) -> None:
+        """动态调 activate_turn：dispatch_turn 成功 → require_live_run 抛
+        RunActorAnonymizedError → activate_turn 严格 raise
+        DirectRagTerminalReplayError（不是 DirectRagTurnPendingError）。
+        """
+        from unittest.mock import patch
 
+        from app.composition import direct_rag_compatibility as drc
         from app.composition.direct_rag_compatibility import (
             DirectRagCompatibilityAdapter,
+            DirectRagTerminalReplayError,
+            DirectRagTurnPendingError,
         )
 
-        source = inspect.getsource(DirectRagCompatibilityAdapter.activate_turn)
-        # 必须包含 RunActorAnonymizedError 捕获
-        assert "RunActorAnonymizedError" in source, (
-            "activate_turn must explicitly catch RunActorAnonymizedError"
-        )
-        # 必须转 DirectRagTerminalReplayError（确定性 gone）
-        assert "DirectRagTerminalReplayError" in source, (
-            "activate_turn must convert tombstone to DirectRagTerminalReplayError"
-        )
-        # 捕获分支必须在通用 except 之前（不被转 pending）
-        anon_idx = source.index("except RunActorAnonymizedError")
-        generic_except_idx = source.index("except Exception:")
-        assert anon_idx < generic_except_idx, (
-            "RunActorAnonymizedError handler must come before generic "
-            "except Exception (otherwise tombstone becomes transient pending)"
-        )
+        # 构造 adapter（绕开 __init__ 的真实依赖）
+        adapter = DirectRagCompatibilityAdapter.__new__(DirectRagCompatibilityAdapter)
+        adapter._session = MagicMock()
+        adapter._session.rollback = AsyncMock()
+        adapter._session_factory = MagicMock()
+
+        # mock AgentBridgeDispatcher（dispatch_turn 成功）和 RunCoordinator
+        # （require_live_run 抛 RunActorAnonymizedError）
+        tombstone_error = drc.RunActorAnonymizedError("tombstoned")
+        with patch.object(
+            drc, "RunCoordinator"
+        ) as mock_run_coordinator_cls, patch.object(
+            drc, "AgentBridgeDispatcher"
+        ) as mock_dispatcher_cls:
+            mock_dispatcher = MagicMock()
+            mock_dispatcher.dispatch_turn = AsyncMock(return_value=None)
+            mock_dispatcher_cls.return_value = mock_dispatcher
+            mock_coordinator = MagicMock()
+            mock_coordinator.require_live_run = AsyncMock(side_effect=tombstone_error)
+            mock_run_coordinator_cls.return_value = mock_coordinator
+
+            # 构造最小 prepared turn
+            prepared = drc.PreparedDirectRagTurn(
+                tenant_id=uuid.uuid4(),
+                actor_id=uuid.uuid4(),
+                recording=drc.DirectRagRecording(
+                    conversation_id=uuid.uuid4(),
+                    user_message_id=uuid.uuid4(),
+                    run_id=uuid.uuid4(),
+                    assistant_message_id=None,
+                ),
+                turn_event_id=uuid.uuid4(),
+            )
+
+            with pytest.raises(DirectRagTerminalReplayError) as exc_info:
+                await adapter.activate_turn(prepared=prepared)
+            # 严格断言：是 DirectRagTerminalReplayError，不是 DirectRagTurnPendingError
+            assert not isinstance(
+                exc_info.value, DirectRagTurnPendingError
+            ), (
+                "tombstone must be DirectRagTerminalReplayError (deterministic), "
+                "NOT DirectRagTurnPendingError (transient pending retry)"
+            )
+
+            # 验证 dispatch_turn 被调（前置 step 成功）
+            mock_dispatcher.dispatch_turn.assert_awaited_once()
+            # 验证 RunCoordinator 构造（require_live_run 被调）
+            mock_coordinator.require_live_run.assert_awaited_once()

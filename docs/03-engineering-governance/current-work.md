@@ -28,9 +28,9 @@
 - Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S3-B 契约注记）
 - 架构约束：Spec §4.1/§7.1/§6.2；migration 038 actor tombstone + 应用层 tombstone 契约 + downgrade 边界
 
-当前进展：S3-B round-5 复审返修完成（独立 max 发现 P0=0/P1=1/P2=2 全部闭合）。(1) P1-1 cross-owner 测试 seed/cleanup 与 db_session 合并到同事务（避免 advance_ingress_checkpoint_for_update 持锁后另一 asyncpg DELETE 等待锁释放导致死锁），删除原独立 asyncpg 路径；(2) P2-1 新增 test_s3b_tombstone_production_paths.py：mock _require_run_access 返回 tombstoned run，RunQueryService.get_run/request_cancel/read_event_batch 实际抛 RunActorAnonymizedError（删除 guard 后 fail）；DirectRAG activate_turn except 链静态检查 RunActorAnonymizedError 捕获在通用 except 之前且转 DirectRagTerminalReplayError；(3) P2-2 DirectRAG 注释 410/409 修正为 _compatibility_http_error 实际固定的 409；工作台同步为 round-5 状态。
-下一步：待独立 max 只读复核 -> P0/P1 清零后按流程合并 S3-B -> 启动 S3-C（Writer fence PR）。
-验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；本地 composition conftest autouse clean 在 120s 内无法完成（多表 truncate + async 引擎），cross-owner 测试和 S3-B 合同测试已通过 conftest-bypass 直接调验证（逻辑 + 静态检查），CI 全量待确认。
+当前进展：S3-B round-6 复审返修完成（独立 max 发现 P0=0/P1=0/P2=2 全部闭合）。(1) P2-1 `test_s3b_tombstone_production_paths.py::TestDirectRagActivateTurnTombstone::test_activate_turn_returns_terminal_replay_on_tombstone` 改为**动态调** activate_turn：mock `AgentBridgeDispatcher.dispatch_turn`（成功 AsyncMock）+ `RunCoordinator.require_live_run`（抛 `RunActorAnonymizedError`），严格断言 `DirectRagTerminalReplayError` 且 `not isinstance(... DirectRagTurnPendingError)`；删除 round-4 转换后 fail（mutation kill 验证已通过 conftest-bypass）。(2) P2-2 工作台同步为 round-6 实际复审 + CI 状态（round-5 Backend pass 8m49s + 1 直接 P2 仍需 round-6 修复）。
+下一步：待独立 max 只读复核 -> P0/P1/P2 清零后按流程合并 S3-B -> 启动 S3-C（Writer fence PR）。
+验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；动态 activate_turn 测试 conftest-bypass 直接调通过（PASS: DirectRagTerminalReplayError，非 pending）。
 交接备注：S3-A 已合并（PR #515 merge `2d4f8091`）；S3-B 新增 migration 038（不改 034-037）；erase_available 保持 False（S3-D 翻）；不进 S4；不启用 purge scheduler。
 
 ## 下一批候选任务
