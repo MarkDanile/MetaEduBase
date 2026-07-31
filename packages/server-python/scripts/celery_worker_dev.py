@@ -33,6 +33,8 @@ os.chdir(SERVER_DIR)
 # Args to forward to the Celery worker. Keep aligned with the production
 # invocation in Dockerfile.backend / deploy scripts.
 CELERY_ARGS = [
+    sys.executable,
+    "-m",
     "celery",
     "-A",
     "app.celery_app",

@@ -24,6 +24,8 @@ set -euo pipefail
 #   METAEDU_INFRA   - infra 启动模式: docker | local (默认: auto-detect)
 #   METAEDU_PG_DIR  - 本地 PostgreSQL 数据目录 (默认: /opt/homebrew/var/postgresql@16)
 #   METAEDU_PG_BIN  - 本地 PostgreSQL bin 目录 (默认: /opt/homebrew/opt/postgresql@16/bin)
+#   METAEDU_PG_HOST - 本地 PostgreSQL readiness 地址 (默认: 127.0.0.1)
+#   METAEDU_PG_PORT - 本地 PostgreSQL readiness 端口 (默认: 5432)
 
 CYAN='\033[0;36m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; DIM='\033[2m'; NC='\033[0m'
 
@@ -40,7 +42,11 @@ DEPLOY_DIR="$PROJECT_ROOT/deploy"
 LOG_DIR="$PROJECT_ROOT/.dev-logs"
 PG_BIN="${METAEDU_PG_BIN:-/opt/homebrew/opt/postgresql@16/bin}"
 PG_DIR="${METAEDU_PG_DIR:-/opt/homebrew/var/postgresql@16}"
+PG_HOST="${METAEDU_PG_HOST:-127.0.0.1}"
+PG_PORT="${METAEDU_PG_PORT:-5432}"
 INFRA_MODE="${METAEDU_INFRA:-}"
+REDIS_PID_FILE="$LOG_DIR/redis.pid"
+REDIS_LOG_FILE="$LOG_DIR/redis.log"
 
 mkdir -p "$LOG_DIR"
 
@@ -64,6 +70,13 @@ colima_is_running() {
 
 docker_is_available() {
   command -v docker &>/dev/null && docker info &>/dev/null 2>&1
+}
+
+docker_service_is_running() {
+  local service=$1
+  docker_is_available \
+    && docker ps --format '{{.Names}}' 2>/dev/null \
+      | grep -Eq "(^|[-_])${service}([-_]|$)"
 }
 
 compose_cmd() {
@@ -112,7 +125,13 @@ detect_infra_mode() {
     echo "$INFRA_MODE"
     return
   fi
-  if docker_is_available; then
+  if docker_service_is_running postgres; then
+    echo "docker"
+  elif pg_is_running; then
+    # A Docker installation without this project's PostgreSQL must not override
+    # an already-running local PostgreSQL or try to claim the same port.
+    echo "local"
+  elif docker_is_available; then
     echo "docker"
   elif command -v colima &>/dev/null; then
     echo "docker"
@@ -135,7 +154,48 @@ ensure_colima() {
 }
 
 pg_is_running() {
-  "$PG_BIN/pg_isready" -q 2>/dev/null
+  "$PG_BIN/pg_isready" -q -h "$PG_HOST" -p "$PG_PORT" 2>/dev/null
+}
+
+redis_is_running() {
+  if command -v redis-cli &>/dev/null \
+    && [[ "$(redis-cli -h 127.0.0.1 -p 6379 ping 2>/dev/null || true)" == "PONG" ]]; then
+    return 0
+  fi
+  nc -z 127.0.0.1 6379 2>/dev/null
+}
+
+ensure_redis_local() {
+  if redis_is_running; then
+    ok "Redis 已运行"
+    return
+  fi
+  if ! command -v redis-server &>/dev/null; then
+    warn "本地 Redis 未安装，请执行: brew install redis"
+    return 1
+  fi
+
+  log "启动本地 Redis (127.0.0.1:6379)..."
+  redis-server \
+    --daemonize yes \
+    --bind 127.0.0.1 \
+    --protected-mode yes \
+    --port 6379 \
+    --dir "$LOG_DIR" \
+    --dbfilename redis.rdb \
+    --pidfile "$REDIS_PID_FILE" \
+    --logfile "$REDIS_LOG_FILE"
+
+  local elapsed=0
+  until redis_is_running; do
+    sleep 1
+    elapsed=$((elapsed + 1))
+    if [[ $elapsed -ge 10 ]]; then
+      warn "Redis 在 10s 内未就绪，请查看 $REDIS_LOG_FILE"
+      return 1
+    fi
+  done
+  ok "Redis 已启动 (localhost:6379)"
 }
 
 ensure_pg_local() {
@@ -194,14 +254,26 @@ ensure_docker_infra() {
     cp "$DEPLOY_DIR/.env.example" "$DEPLOY_DIR/.env"
   fi
 
-  if docker_is_available && docker ps --format '{{.Names}}' 2>/dev/null | grep -q postgres; then
+  local services=()
+  if ! docker_service_is_running postgres; then
+    services+=(postgres)
+  fi
+  if ! redis_is_running; then
+    services+=(redis)
+  fi
+  if ! docker_service_is_running minio \
+    && ! nc -z 127.0.0.1 9000 2>/dev/null; then
+    services+=(minio)
+  fi
+
+  if [[ ${#services[@]} -eq 0 ]]; then
     ok "Docker 基础设施已运行"
     return
   fi
 
-  log "启动 Docker 基础设施 (PostgreSQL + Redis + MinIO)..."
-  compose_cmd -f "$DEPLOY_DIR/docker-compose.dev.yml" up -d
-  ok "Docker 基础设施已启动"
+  log "补齐 Docker 基础设施: ${services[*]}..."
+  compose_cmd -f "$DEPLOY_DIR/docker-compose.dev.yml" up -d "${services[@]}"
+  ok "Docker 基础设施已就绪"
 }
 
 start_infra() {
@@ -215,14 +287,16 @@ start_infra() {
       warn "提示: 执行 'colima start' 启用 Docker 全栈模式 (含 Redis + MinIO)"
       ensure_pg_local
       ensure_db_and_user
-      warn "Redis 和 MinIO 未启动 (本地开发可选，部分功能受限)"
+      ensure_redis_local || warn "Redis 未启动，Celery 任务不可用"
+      warn "MinIO 未启动 (本地开发可选，部分功能受限)"
       return
     fi
     ensure_docker_infra
   else
     ensure_pg_local
     ensure_db_and_user
-    warn "Redis 和 MinIO 未启动 (本地开发可选，部分功能受限)"
+    ensure_redis_local || warn "Redis 未启动，Celery 任务不可用"
+    warn "MinIO 未启动 (本地开发可选，部分功能受限)"
   fi
 }
 
@@ -251,7 +325,7 @@ start_backend() {
   local db_ok=false
   if pg_is_running 2>/dev/null; then
     db_ok=true
-  elif docker_is_available && docker ps --format '{{.Names}}' 2>/dev/null | grep -q postgres; then
+  elif docker_service_is_running postgres; then
     db_ok=true
   fi
   if [[ "$db_ok" != "true" ]]; then
@@ -281,7 +355,7 @@ restart_backend() {
 
   local db_ok=false
   if pg_is_running 2>/dev/null; then db_ok=true
-  elif docker_is_available && docker ps --format '{{.Names}}' 2>/dev/null | grep -q postgres; then db_ok=true
+  elif docker_service_is_running postgres; then db_ok=true
   fi
   if [[ "$db_ok" != "true" ]]; then
     die "PostgreSQL 未运行，请先执行 ./dev.sh infra"
@@ -336,9 +410,7 @@ start_celery() {
   fi
 
   local redis_ok=false
-  if docker_is_available && docker ps --format '{{.Names}}' 2>/dev/null | grep -q redis; then
-    redis_ok=true
-  elif nc -z localhost 6379 2>/dev/null; then
+  if redis_is_running; then
     redis_ok=true
   fi
   if [[ "$redis_ok" != "true" ]]; then
@@ -368,6 +440,16 @@ stop_all() {
     rm -f "$LOG_DIR/celery.pid"
   fi
   pkill -f "celery.*worker" 2>/dev/null || true
+  if [[ -f "$REDIS_PID_FILE" ]]; then
+    local redis_pid
+    redis_pid="$(cat "$REDIS_PID_FILE")"
+    if kill -0 "$redis_pid" 2>/dev/null \
+      && ps -p "$redis_pid" -o command= 2>/dev/null | grep -q '[r]edis-server'; then
+      kill "$redis_pid" 2>/dev/null || true
+      ok "本地 Redis 已停止"
+    fi
+    rm -f "$REDIS_PID_FILE"
+  fi
   if [[ -f "$LOG_DIR/frontend.pid" ]]; then
     kill "$(cat "$LOG_DIR/frontend.pid")" 2>/dev/null || true
     rm -f "$LOG_DIR/frontend.pid"
@@ -393,7 +475,7 @@ show_status() {
   echo "│        MetaEduBase 服务状态                   │"
   echo "├──────────────────────────────────────────────┤"
 
-  if docker_is_available && docker ps --format '{{.Names}}' 2>/dev/null | grep -q postgres; then
+  if docker_service_is_running postgres; then
     echo "│  PostgreSQL    ✅ Docker (localhost:5432)      │"
   elif pg_is_running 2>/dev/null; then
     echo "│  PostgreSQL    ✅ 本地  (localhost:5432)       │"
@@ -401,13 +483,15 @@ show_status() {
     echo "│  PostgreSQL    ❌ 未运行                      │"
   fi
 
-  if docker_is_available && docker ps --format '{{.Names}}' 2>/dev/null | grep -q redis; then
+  if docker_service_is_running redis; then
     echo "│  Redis         ✅ Docker (localhost:6379)      │"
+  elif redis_is_running; then
+    echo "│  Redis         ✅ 本地  (localhost:6379)       │"
   else
     echo "│  Redis         — 未运行                      │"
   fi
 
-  if docker_is_available && docker ps --format '{{.Names}}' 2>/dev/null | grep -q minio; then
+  if docker_service_is_running minio; then
     echo "│  MinIO         ✅ Docker (localhost:9000)      │"
   else
     echo "│  MinIO         — 未运行                      │"
@@ -527,4 +611,6 @@ main() {
   esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
