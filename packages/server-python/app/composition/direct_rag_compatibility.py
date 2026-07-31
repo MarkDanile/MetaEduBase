@@ -293,7 +293,7 @@ class DirectRagCompatibilityAdapter:
         except RunActorAnonymizedError:
             # S3-B round-4 P1-1：tombstone 是确定性 gone（actor 已匿名化，不可逆），
             # 不应被通用 except 转成 pending（暂态重试）。映射为 DirectRagTerminalReplayError
-            # (确定性 replay/gone 语义，HTTP 410/409)，调用方据此稳定失败。
+            # (确定性 replay/gone 语义，_compatibility_http_error 固定返回 HTTP 409)。
             raise DirectRagTerminalReplayError(
                 "Direct RAG Run has been anonymized (tombstone); "
                 "cannot dispatch a purged Run"
