@@ -129,7 +129,7 @@ async def test_execution_commit_before_workspace_ack_replays_without_duplicate_r
         )
     assert claimed is not None
     async with session_factory() as session, session.begin():
-        _, first_ack = await ConversationExecutionCoordinator(
+        _, first_ack, _ = await ConversationExecutionCoordinator(
             session
         ).consume_turn_event(claimed, consumed_at=claimed_at)
 
