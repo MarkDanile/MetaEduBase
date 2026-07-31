@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无活跃任务。R1-S3-B Schema 与基础契约已合并（PR #517 merge `7d1b21d3`），下一步入口为 R1-S3-C（Writer fence PR — composition-owned fenced execution port，注入 `consume_turn_requested` / Direct RAG / cancel API / Runtime ingest）。
+### TASK: REQ-041/047 R1-S3-C Writer fence
+
+状态：🟡 进行中
+类型：新需求开发（R1 分 Slice，S3-C writer fence）
+领域：agent_execution / erasure coordination
+当前执行模式：superpower / plan-do（契约注记已冻结，S3-A 契约 / S3-B schema+contract 已合并）
+最近接手工具：Claude Code (Opus 4.8)
+分支：feat/req041-047-r1-s3c-writer-fence
+
+需求来源：
+- Spec: [R1 专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S3-C PR 拆分：Writer fence）
+- 架构约束：Spec §6.2 writer fence 协议；§7.2 Execution 清除语义；migration 038 actor tombstone 契约（execution.core.v1 `actor_identity` capability 已就位）
+
+当前进展：S3-A（契约注记）+ S3-B（schema+contract）已合并（PR #515/517）。S3-C 按契约注记实现 composition-owned fenced execution port，注入 `consume_turn_requested`（create_run 真实入口，非 submit_turn）/ Direct RAG（activate_turn/complete_turn/fail_turn/publish_completed_turn）/ RunQueryService（get_run/request_cancel/read_event_batch）/ Runtime ingest（ingest_runtime_event）；覆盖全部 implicit event writer（start_run/transition_run/mark_run_resume_required/resume_run/commit_terminal 内部 _append_event_locked）；禁止生产路径直调未 fenced writer；writer 返回 `created` 标志驱动 event 计数器（round-2 P2-1 闭合）；cross-source-key 闭集已就位（round-1 P1-5）。
+下一步：实现 fenced execution port + 9 writer 注入 + writer `created` 标志 + 变异测试（删除 fence -> 旧 fence 行为复活 / 跨 owner 写失败 / `created` 标志丢失 fail）-> PR -> 独立 max/Codex 复审。
+验证状态：待实现。
+交接备注：S3-A 已合并（PR #515 merge `2d4f8091`）；S3-B 已合并（PR #517 merge `7d1b21d3`）；S3-C 复用 S3-B 的 fenced port + writer `created` 标志 + per-owner source key 闭集 + 6 处 fail-closed guard；erase_available 保持 False（S3-D 翻）；不进 S4；不启用 purge scheduler。
 
 ## 下一批候选任务
 
@@ -22,7 +39,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-041/047 R1-S3-C Writer fence | 🟡 Ready | composition-owned fenced execution port，注入 `consume_turn_requested` / Direct RAG / cancel API / Runtime ingest；禁止生产路径直调未 fenced writer；覆盖全部 implicit/explicit RunEvent writer；writer 返回 `created` 标志驱动 event 计数器 | [Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
