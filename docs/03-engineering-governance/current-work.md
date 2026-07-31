@@ -14,24 +14,7 @@
 
 ## 当前进行中
 
-### TASK: REQ-041/047 R1-S3-B Schema 与基础契约
-
-状态：🟡 进行中（待返修）
-类型：新需求开发（R1 分 Slice，S3-B schema/contract）
-领域：agent_execution / erasure coordination
-当前执行模式：superpower / plan-do（契约注记已冻结）
-最近接手工具：Claude Code (Opus 4.8)
-分支：feat/req041-047-r1-s3b-schema-contract
-
-需求来源：
-- Spec: [R1 专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S3-B 契约注记）
-- 架构约束：Spec §4.1/§7.1/§6.2；migration 038 actor tombstone + 应用层 tombstone 契约 + downgrade 边界
-
-当前进展：S3-B round-6 复审返修完成（独立 max 发现 P0=0/P1=0/P2=2 全部闭合）。(1) P2-1 `test_s3b_tombstone_production_paths.py::TestDirectRagActivateTurnTombstone::test_activate_turn_returns_terminal_replay_on_tombstone` 改为**动态调** activate_turn：mock `AgentBridgeDispatcher.dispatch_turn`（成功 AsyncMock）+ `RunCoordinator.require_live_run`（抛 `RunActorAnonymizedError`），严格断言 `DirectRagTerminalReplayError` 且 `not isinstance(... DirectRagTurnPendingError)`；删除 round-4 转换后 fail（mutation kill 验证已通过 conftest-bypass）。(2) P2-2 工作台同步为 round-6 实际复审 + CI 状态（round-5 Backend pass 8m49s + 1 直接 P2 仍需 round-6 修复）。
-下一步：待独立 max 只读复核 -> P0/P1/P2 清零后按流程合并 S3-B -> 启动 S3-C（Writer fence PR）。
-验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；动态 activate_turn 测试 conftest-bypass 直接调通过（PASS: DirectRagTerminalReplayError，非 pending）。
-交接备注：S3-A 已合并（PR #515 merge `2d4f8091`）；S3-B 新增 migration 038（不改 034-037）；erase_available 保持 False（S3-D 翻）；不进 S4；不启用 purge scheduler。
+当前无活跃任务。R1-S3-B Schema 与基础契约已合并（PR #517 merge `7d1b21d3`），下一步入口为 R1-S3-C（Writer fence PR — composition-owned fenced execution port，注入 `consume_turn_requested` / Direct RAG / cancel API / Runtime ingest）。
 
 ## 下一批候选任务
 
@@ -39,6 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P0 | REQ-041/047 R1-S3-C Writer fence | 🟡 Ready | composition-owned fenced execution port，注入 `consume_turn_requested` / Direct RAG / cancel API / Runtime ingest；禁止生产路径直调未 fenced writer；覆盖全部 implicit/explicit RunEvent writer；writer 返回 `created` 标志驱动 event 计数器 | [Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
@@ -50,6 +34,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-07-31 | R1-S3-B Schema 与基础契约（actor tombstone + shared digest + per-owner source key） | 🟢 完成 |  migration 038 + shared digest helper + per-owner source key + tombstone 契约（6 处 fail-closed guard + `DirectRagTerminalReplayError` 透传）；6 轮 max 复审收口 0/0/0；23 文件 / 1689 增；三路 CI 全绿（Backend 8m52s） |
 | 2026-07-30 | R1-S3-A Execution owner 契约注记/plan delta（先于代码冻结） | 🟢 完成 | 纯文档冻结 execution.core.v1 participant 设计（fenced port + 9 writer 矩阵 + migration 038 actor tombstone + per-owner source key + event 计数器 + S3/S6 拆分）；两轮 max 复审 + 轻量复核 0/0/0；S3-A~E PR 拆分冻结；三路 CI 全绿 | [PR #515](https://github.com/MarkDanile/MetaEduBase/pull/515)（merge `2d4f8091`）/ [Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-07-30 | R1-S2-D/E workspace 正文清除 + participant ACK + final body scan | 🟢 完成 | workspace.core.v1 participant 正文清除 + body scan + ACK；V1 冻结契约（fingerprint 持久化 migration 037 + 构造器禁覆盖 + placeholder denylist）；7 轮 max 复审 P0/P1/P2=0/0/0；全量 1908 passed；三路 CI 全绿 | [PR #513](https://github.com/MarkDanile/MetaEduBase/pull/513)（merge `5db40361`）/ [Plan §R1-S2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-07-29 | R1-S2-C ingress checkpoint source key + title/create fence + backfill 锁序 | 🟢 完成 | ingress 真实 source key + verdict/advance 拆分 + title/create 接 fence + backfill 消 AB-BA + deleted 410/redacted envelope + migration 036 归一；四轮 max 复审清零；全量 1849 passed；三路 CI 全绿 | [PR #511](https://github.com/MarkDanile/MetaEduBase/pull/511)（merge `2ceaffd0`）/ [Plan §R1-S2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
