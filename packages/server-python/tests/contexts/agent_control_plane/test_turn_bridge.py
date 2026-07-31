@@ -144,7 +144,7 @@ async def test_execution_commit_before_workspace_ack_replays_without_duplicate_r
     assert replay is not None
     assert replay.attempt_count == 2
     async with session_factory() as session, session.begin():
-        _, replay_ack = await ConversationExecutionCoordinator(
+        _, replay_ack, _ = await ConversationExecutionCoordinator(
             session
         ).consume_turn_event(replay, consumed_at=retry_at)
     assert replay_ack.payload_digest == first_ack.payload_digest
