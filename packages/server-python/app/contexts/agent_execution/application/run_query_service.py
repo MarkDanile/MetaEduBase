@@ -8,9 +8,6 @@ from app.contexts.agent_execution.application.dto import EventReplayBatch
 from app.contexts.agent_execution.application.execution_identity_service import (
     DIRECT_RAG_POLICY_VERSION,
 )
-from app.contexts.agent_execution.application.fenced_execution_port import (
-    FencedExecutionPort,
-)
 from app.contexts.agent_execution.application.ports import (
     ConversationAccessDecision,
     RunConversationAccessPort,
@@ -90,12 +87,10 @@ class RunQueryService:
         )
         if not reserved or current.status is RunStatus.CANCELLING:
             return current
-        port = FencedExecutionPort(self._session)
         if current.run_config_snapshot.policy_version == DIRECT_RAG_POLICY_VERSION:
             if current.status in {RunStatus.QUEUED, RunStatus.RESUME_REQUIRED}:
-                cancelled, _, _ = await port.fenced_commit_terminal(
+                cancelled, _, _ = await self._coordinator.commit_terminal(
                     tenant_id=tenant_id,
-                    conversation_id=current.conversation_id,
                     run_id=run_id,
                     expected_status=current.status,
                     expected_revision=current.status_revision,
@@ -106,18 +101,16 @@ class RunQueryService:
                     ),
                 )
                 return cancelled
-            cancelling, _ = await port.fenced_transition_run(
+            cancelling, _ = await self._coordinator.transition_run(
                 tenant_id=tenant_id,
-                conversation_id=current.conversation_id,
                 run_id=run_id,
                 expected_status=current.status,
                 expected_revision=current.status_revision,
                 target_status=RunStatus.CANCELLING,
                 summary="Cancelling legacy Direct RAG compatibility request",
             )
-            cancelled, _, _ = await port.fenced_commit_terminal(
+            cancelled, _, _ = await self._coordinator.commit_terminal(
                 tenant_id=tenant_id,
-                conversation_id=current.conversation_id,
                 run_id=run_id,
                 expected_status=RunStatus.CANCELLING,
                 expected_revision=cancelling.status_revision,
@@ -129,9 +122,8 @@ class RunQueryService:
             )
             return cancelled
         if current.status in {RunStatus.QUEUED, RunStatus.RESUME_REQUIRED}:
-            cancelled, _, _ = await port.fenced_commit_terminal(
+            cancelled, _, _ = await self._coordinator.commit_terminal(
                 tenant_id=tenant_id,
-                conversation_id=current.conversation_id,
                 run_id=run_id,
                 expected_status=current.status,
                 expected_revision=expected_revision,
@@ -142,9 +134,8 @@ class RunQueryService:
                 ),
             )
             return cancelled
-        cancelling, _ = await port.fenced_transition_run(
+        cancelling, _ = await self._coordinator.transition_run(
             tenant_id=tenant_id,
-            conversation_id=current.conversation_id,
             run_id=run_id,
             expected_status=current.status,
             expected_revision=expected_revision,
