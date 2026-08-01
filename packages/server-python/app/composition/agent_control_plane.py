@@ -148,7 +148,7 @@ class ConversationExecutionCoordinator:
         claimed: ClaimedWorkspaceEvent,
         *,
         consumed_at: datetime,
-        pre_create_callback=None,
+        pre_create_callback,  # 必填：S3-C round-7 强制 verdict 无条件
     ) -> tuple[AgentRun, InboxAckV1, bool]:
         event = claimed.event
         await self._guard.acquire(
@@ -163,21 +163,19 @@ class ConversationExecutionCoordinator:
             include_deleted=False,
         )
         await self._workspace.validate_turn_claim(claimed)
-        # R1-S3-C round-6：verdict-before-writer 无条件 + advance 按 created 条件
-        # 推进。Guard + Conversation 行锁已持，调 ``pre_create_callback`` 在
-        # create_run_with_root 之前执行 fence 裁决（owner lock + fence FOR UPDATE
-        # + state=active 校验）。create AND replay 都走 verdict；erasing/erased
-        # fence raise LateBodyWriteRejectedError（replay 不允许 ACK downstream）。
+        # R1-S3-C round-7：verdict-before-writer unconditional。pre_create_callback
+        # 必填，create AND replay 都走 fence 裁决（Guard + Conversation 行锁
+        # 已持）；erasing/erased fence raise LateBodyWriteRejectedError（replay
+        # 不允许 ACK downstream）。advance 仅 created=True 时调（caller 侧）。
         #
-        # 锁环修复（commit 1）：``advance_ingress_checkpoint_for_update`` 不再重
-        # 取 Conversation 行锁（Guard 串行化），因此 verdict 在 Guard + Conversation
-        # 行锁内调 owner lock + fence FOR UPDATE 不会与并发 fenced_* writer 形成
-        # 2-way deadlock（writer 的 advance 现在用 SELECT 而非 FOR UPDATE）。
-        if pre_create_callback is not None:
-            await pre_create_callback(
-                tenant_id=event.tenant_id,
-                conversation_id=event.conversation_id,
-            )
+        # 锁环修复（commit 1）：``advance_ingress_checkpoint_for_update`` 已
+        # 恢复 Conversation FOR UPDATE，verdict 在 Guard + Conversation 行锁
+        # 内调 owner lock + fence FOR UPDATE 不再与 fenced_* writer 形成
+        # 2-way deadlock（writer 的 advance 现在用 caller 已持的 Conv 行锁）。
+        await pre_create_callback(
+            tenant_id=event.tenant_id,
+            conversation_id=event.conversation_id,
+        )
         run, ack, created = await self._execution.consume_turn_requested(
             event=event,
             payload_digest=claimed.payload_digest,
