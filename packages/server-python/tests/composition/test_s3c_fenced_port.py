@@ -1,13 +1,15 @@
 """S3-C fenced port 单元测试。
 
 R1-S3-C round-6：
-- 单元测试只覆盖 advance_checkpoint source_key/watermark 语义与 wrapper 调用
-  ``_assert_guard_held`` / ``require_active_fence`` / 内部 writer 的契约。
+- 单元测试只覆盖 advance_checkpoint source_key/watermark 语义与 erasing fence
+  verdict 契约。
 - 删除 round-5 AST/inspect 测试（dispatch_turn / consume_turn_event 顺序）—
   生产时序由 ``tests/composition/test_s3c_writer_fence_e2e.py`` 真实 PostgreSQL
   反例覆盖。
 - 删除 round-5 mock 测试（fenced_create_run / fenced_commit_terminal / fenced_stage
   wrapper 内部行为）— 同上，由真实 PostgreSQL 反例覆盖。
+- 删除 round-6 _assert_guard_held 单元测试（hotfix 后移除该方法，避免在
+  cancel+delete race 中引入额外 advisory 锁争用）。
 - 保留 ``test_advance_checkpoint_uses_correct_source_key_and_watermark`` 与
   ``test_advance_checkpoint_event_counter_increments``（advance_checkpoint 是
   port 的核心 advance 原语，单测足够）。
@@ -101,39 +103,3 @@ async def test_erasing_fence_rejects_create_via_verdict() -> None:
         await port.require_active_fence(
             tenant_id=uuid.uuid4(), conversation_id=uuid.uuid4()
         )
-
-
-# --- R1-S3-C round-6：wrapper 契约单元测试 ------------------------------
-
-
-@pytest.mark.asyncio
-async def test_assert_guard_held_raises_when_guard_not_held() -> None:
-    """Guard 未持时 _assert_guard_held 必须 raise RuntimeError。"""
-    from app.composition.execution_fenced_port import FencedExecutionPort
-
-    session = MagicMock()
-    port = FencedExecutionPort(session)
-    # pg_try_advisory_xact_lock 返回 false（Guard 未持或不同会话）
-    session.execute = AsyncMock(
-        return_value=MagicMock(scalar=lambda: False)
-    )
-    with pytest.raises(RuntimeError, match="without ConversationExecutionGuard"):
-        await port._assert_guard_held(
-            tenant_id=uuid.uuid4(), conversation_id=uuid.uuid4()
-        )
-
-
-@pytest.mark.asyncio
-async def test_assert_guard_held_passes_when_guard_held() -> None:
-    """Guard 已持时 _assert_guard_held 必须正常返回（不 raise）。
-
-    同事务内 reentrant：``pg_try_advisory_xact_lock`` 返回 true。
-    """
-    from app.composition.execution_fenced_port import FencedExecutionPort
-
-    session = MagicMock()
-    port = FencedExecutionPort(session)
-    session.execute = AsyncMock(return_value=MagicMock(scalar=lambda: True))
-    await port._assert_guard_held(
-        tenant_id=uuid.uuid4(), conversation_id=uuid.uuid4()
-    )

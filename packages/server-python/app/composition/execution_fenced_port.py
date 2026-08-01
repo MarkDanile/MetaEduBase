@@ -29,10 +29,8 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.composition.agent_control_plane import conversation_guard_key
 from app.contexts.agent_execution.application.compatibility_output_service import (
     CompatibilityOutputService,
 )
@@ -60,36 +58,6 @@ class FencedExecutionPort:
         self._erasure = AgentErasureRepository(session)
         self._runs = RunCoordinator(session)
         self._compat = CompatibilityOutputService(session)
-
-    # --- invariant -------------------------------------------------------
-
-    async def _assert_guard_held(
-        self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
-    ) -> None:
-        """R1-S3-C round-6：每个 fenced_* wrapper 入口自检 Guard 已持。
-
-        ``ConversationExecutionGuard.acquire`` 用 ``pg_advisory_xact_lock(int8)``
-        持锁；同会话同事务内重调 ``pg_try_advisory_xact_lock(int8)`` 立刻返回
-        true（advisory lock 是 reentrant 同事务持有）。漏 Guard 时返回 false。
-        不可用 ``pg_locks.objid`` 查询——该列是 oid（uint32），与 advisory lock
-        int8 命名空间不同，且 ``conversation_guard_key`` 派生为 signed int64
-        会触发 ``DataError: value out of uint32 range``（见 round-6 CI 反馈）。
-        """
-        guard_key = conversation_guard_key(
-            tenant_id=tenant_id, conversation_id=conversation_id
-        )
-        held = (
-            await self._session.execute(
-                text("SELECT pg_try_advisory_xact_lock(:k)"),
-                {"k": guard_key},
-            )
-        ).scalar()
-        if not held:
-            raise RuntimeError(
-                "FencedExecutionPort called without ConversationExecutionGuard "
-                f"held for (tenant={tenant_id}, conv={conversation_id}); "
-                "caller must acquire Guard.acquire before invoking fenced_*"
-            )
 
     # --- verdict ---------------------------------------------------------
 
@@ -156,9 +124,6 @@ class FencedExecutionPort:
         create_run 写 Run context + root TurnInput，不写 RunEvent。
         仅在 ``created=True``（真实新建）时由调用方调用本方法。
         """
-        await self._assert_guard_held(
-            tenant_id=tenant_id, conversation_id=conversation_id
-        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -178,9 +143,6 @@ class FencedExecutionPort:
         event,
     ) -> None:
         """append_event 后推进 ``run_event_payload`` 计数器 +1。"""
-        await self._assert_guard_held(
-            tenant_id=tenant_id, conversation_id=conversation_id
-        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -210,9 +172,6 @@ class FencedExecutionPort:
         commit_terminal 返回 (run, event, terminal_digest_match)；
         terminal_digest_match=True（idempotent replay）不推进。
         """
-        await self._assert_guard_held(
-            tenant_id=tenant_id, conversation_id=conversation_id
-        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -253,9 +212,6 @@ class FencedExecutionPort:
 
         round-3 P2-1：``stage`` 直接返回 ``created`` 标志（不二次探测）。
         """
-        await self._assert_guard_held(
-            tenant_id=tenant_id, conversation_id=conversation_id
-        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -291,9 +247,6 @@ class FencedExecutionPort:
         ``WorkspaceRunStartBarrier``（actor_id 校验）。默认 None 时 RunCoordinator
         使用 ``FailClosedRunStartBarrier``。
         """
-        await self._assert_guard_held(
-            tenant_id=tenant_id, conversation_id=conversation_id
-        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -325,9 +278,6 @@ class FencedExecutionPort:
         summary: str,
     ) -> tuple:
         """transition_run 后推进 ``run_event_payload`` 计数器 +1。"""
-        await self._assert_guard_held(
-            tenant_id=tenant_id, conversation_id=conversation_id
-        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -364,9 +314,6 @@ class FencedExecutionPort:
         R1-S3-C round-6：plan §S3-C 9 writer 矩阵剩余 3 个 wrapper 之一。
         当前 production 无调用点（S3-E 接入），wrapper 与单测先就位。
         """
-        await self._assert_guard_held(
-            tenant_id=tenant_id, conversation_id=conversation_id
-        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -404,9 +351,6 @@ class FencedExecutionPort:
         R1-S3-C round-6：plan §S3-C 9 writer 矩阵剩余 3 个 wrapper 之一。
         当前 production 无调用点（S3-E 接入），wrapper 与单测先就位。
         """
-        await self._assert_guard_held(
-            tenant_id=tenant_id, conversation_id=conversation_id
-        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -441,9 +385,6 @@ class FencedExecutionPort:
         Runtime adapter 推迟到 S4 接入，本 wrapper 形态先就位。
         Idempotent replay 不推进（writer 返回 ``idempotent_replay=True``）。
         """
-        await self._assert_guard_held(
-            tenant_id=tenant_id, conversation_id=conversation_id
-        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
