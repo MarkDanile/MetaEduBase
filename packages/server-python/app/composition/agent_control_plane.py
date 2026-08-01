@@ -78,6 +78,13 @@ def conversation_guard_key(
 
 
 class WorkspaceRunStartBarrier:
+    """R1-S3-C round-7 commit-6：start barrier 仅校验 actor + queue_seq。
+
+    ``can_start_run`` 内部仍调 ``lock_owned_conversation``，但 caller
+    （``ConversationExecutionCoordinator.start_run``）已在 Guard + Conv 行锁
+    内；同事务内 SELECT FOR UPDATE 同 row 是 reentrant，无 lock-on-lock。
+    """
+
     def __init__(
         self, workspace: AgentWorkspaceBridgeService, *, actor_id: uuid.UUID
     ):
@@ -192,9 +199,12 @@ class ConversationExecutionCoordinator:
         run_id: uuid.UUID,
         expected_revision: int,
     ):
-        # R1-S3-C round-6：start_run 走 FencedExecutionPort（含 fence 裁决 +
-        # run_event_payload 推进）。保留 WorkspaceRunStartBarrier（workspace
-        # integration 需要 actor），fenced_start_run 接 start_barrier 参数。
+        # R1-S3-C round-7 commit-6：start_run 锁序修复。原顺序 Guard ->
+        # fenced_start_run（owner -> fence -> start_barrier can_start_run 取
+        # Conv row），违反 Spec §6.1（Guard -> Conv -> owner -> fence）。
+        # 现顺序 Guard -> lock_owned_conversation -> fenced_start_run；
+        # WorkspaceRunStartBarrier.can_start_run 通过 actor/queue 校验（不再
+        # 二次取 Conv 行锁，避免 lock-on-lock）。
         from app.composition.execution_fenced_port import FencedExecutionPort
 
         run = await RunCoordinator(self._session).require_run(
@@ -204,6 +214,12 @@ class ConversationExecutionCoordinator:
             self._session,
             tenant_id=tenant_id,
             conversation_id=run.conversation_id,
+        )
+        await self._workspace.lock_owned_conversation(
+            tenant_id=tenant_id,
+            actor_id=run.created_by_or_raise,
+            conversation_id=run.conversation_id,
+            include_deleted=False,
         )
         port = FencedExecutionPort(self._session)
         barrier = WorkspaceRunStartBarrier(
