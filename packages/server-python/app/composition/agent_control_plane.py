@@ -78,11 +78,15 @@ def conversation_guard_key(
 
 
 class WorkspaceRunStartBarrier:
-    """R1-S3-C round-7 commit-6：start barrier 仅校验 actor + queue_seq。
+    """R1-S3-C round-7 commit-14：start barrier 仅校验 actor + queue_seq。
 
-    ``can_start_run`` 内部仍调 ``lock_owned_conversation``，但 caller
-    （``ConversationExecutionCoordinator.start_run``）已在 Guard + Conv 行锁
-    内；同事务内 SELECT FOR UPDATE 同 row 是 reentrant，无 lock-on-lock。
+    ``can_start_run`` 内部仍调 ``lock_owned_conversation``——caller（commit-6
+    修复后）已在 Guard + Conv 行锁内，同事务内 SELECT FOR UPDATE 同 row 是
+    reentrant（同 row 加 FOR UPDATE 多次不阻塞，已持锁事务可重取），不
+    引起 lock-on-lock；但 ``can_start_run`` 的二次取锁在事务日志里留下
+    痕迹。计划 S3-D 阶段把 ``can_start_run`` 拆为 ``can_start_check``（无锁）
+    + ``lock_owned_conversation``（caller 持锁调用），本次保留二次锁但
+    docstring 明确语义，避免误判"重复锁"为 AB-BA 风险。
     """
 
     def __init__(
