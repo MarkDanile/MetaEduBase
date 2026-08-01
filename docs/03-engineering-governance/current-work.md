@@ -28,10 +28,10 @@
 - Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S3-C PR 拆分：Writer fence）
 - 架构约束：Spec §6.2 writer fence 协议；§7.2 Execution 清除语义；migration 038 actor tombstone 契约（execution.core.v1 `actor_identity` capability 已就位）
 
-当前进展：S3-C round-7 commit-15~16 收口（commits 516b1082 + 待 push）。(1) commit-15 真 e2e（commit-15 P2-2）：6 组真实 PostgreSQL 反例覆盖 dispatch_turn 真实路径 / 跨 Conv/tenant 拒 / Runtime frame 拒 / 并发无 deadlock / erasing fence 拒。(2) commit-16 PR 描述更新（`gh pr edit`）：Summary + Scope（commit-1~15 关键决策）+ Validation + Risks + 锁链矩阵 + Next（独立 max 复核 + CI 调优）。
-下一步：push commit-15~16 -> 三路 CI 验证（Backend 35m 超时取消待调优）-> 独立 max 只读复核 round-7 -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D。
-验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；commit-15 新增 e2e 6 组（真实 PG + 真实 port + 无 mock）；Backend CI 仍 35m 超时取消（commit-10 修 P1-1 早期 TypeError；剩余与 lock window 加长导致并发串行有关，待调优）。
-交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层（commit-12 加 GuardLockPort 拆分跨边界）。run_query_service.request_cancel 锁链严格：Guard → Conv → fenced writer 内部 AgentRun FOR UPDATE + cancel intent CAS，与 S3-D `Conversation → owner/fence → AgentRun` 同序无 AB-BA。fenced_ingest_runtime_event 形态已就位（Runtime adapter 推迟到 S4）。PR #519 描述已同步 round-7 commit-15 收口。
+当前进展：S3-C round-7 commit-15~16 收口（commits 516b1082 + 53dd6540 + 78309186 + 345b95dc）。(1) commit-15 真 e2e（commit-15 P2-2）：6 组真实 PostgreSQL 反例（dispatch_turn 真实路径 / 跨 Conv/tenant 拒 / Runtime frame 拒 / 并发无 deadlock / erasing fence 拒）。(2) commit-16 PR 描述 `gh pr edit`（Summary + Scope + 锁链矩阵）。(3) commit-15 hotfix-1+2：RuntimeIngestCommand -> RuntimeEventCommand + RuntimeEventProvenance 路径修正（CI 早期 ImportError）。(4) Backend CI 30min 超时取消（lock window 加长导致并发测试串行）—— 复审 max 已知，CI 调优可独立迭代。
+下一步：复审 max 复核 round-7 commit-15~16 -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D。
+验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；e2e 6 组（真实 PG + 真实 port + 无 mock）已 CI 早期阶段通过（commit-15 hotfix 解决 ImportError）；Backend full hermetic tests 因 30min job 超时被取消（commit-15 前已同样超时，怀疑是 round-7 整体锁链加长导致并发测试串行——需 S3-D 阶段调优事务边界）。
+交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层（commit-12 加 GuardLockPort 拆分跨边界）。run_query_service.request_cancel 锁链严格：Guard → Conv → fenced writer 内部 AgentRun FOR UPDATE + cancel intent CAS，与 S3-D `Conversation → owner/fence → AgentRun` 同序无 AB-BA。fenced_ingest_runtime_event 形态已就位（Runtime adapter 推迟到 S4）。PR #519 描述已同步 round-7 commit-15 收口；Backend CI 30min 超时已知需后续调优。
 
 ## 下一批候选任务
 
