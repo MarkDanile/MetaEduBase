@@ -16,10 +16,12 @@ import pytest
 from sqlalchemy import text
 
 from app.composition.execution_fenced_port import FencedExecutionPort
+from app.contexts.agent_execution.application.dto import (
+    RuntimeEventCommand,
+    RuntimeEventProvenance,
+)
 from app.contexts.agent_execution.domain import (
     RunConversationMismatchError,
-    RuntimeEventProvenance,
-    RuntimeIngestCommand,
     RuntimeIngestFrame,
     RuntimeIngestIdentityMismatchError,
 )
@@ -333,7 +335,7 @@ async def test_fenced_ingest_runtime_event_rejects_outer_tenant_mismatch(
         ),
         event_digest="a" * 64,
     )
-    command = RuntimeIngestCommand(
+    command = RuntimeEventCommand(
         frame=frame,
         stream_id=uuid.uuid4(),
         event=None,
