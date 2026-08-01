@@ -550,7 +550,8 @@ class AgentErasureRepository:
         - fence 非 active（裁决后被并发 purge 接管）拒绝推进（writer-win race
           原子兜底），不在清除路径上为已拒正文补 checkpoint。
 
-        R1-S3-C round-6：本方法不重取 Conversation 行锁（Guard 串行化）。
+        R1-S3-C round-7：本方法恢复自取 Conversation 行锁。Caller 必须先持 Guard +
+        Conversation 行锁（Spec §6.1）。
         """
         # S3-B round-1 P1-5：per-owner source key 闭集校验--source_key 必须在
         # ``owner_key`` 的允许集合中（防跨 owner 写 source key，如 workspace owner
@@ -563,15 +564,17 @@ class AgentErasureRepository:
             )
         if watermark < 1:
             raise ValueError(f"ingress watermark must be >= 1, got {watermark}")
-        # R1-S3-C round-6：不重取 Conversation 行锁。Guard 已串行化
-        # (tenant, conv)，避免与 fenced_* writer 持 Owner lock + fence FOR UPDATE
-        # 形成 2-way deadlock。epoch 校验只需读 purge_revision。
+        # R1-S3-C round-7：恢复 Conversation FOR UPDATE。round-6 hotfix-2 曾取消
+        # 此重取（导致 cancel+STARTING replay 读到陈旧 purge_revision），已
+        # 被 round-7 caller 侧锁序修复取代（commit 5/6/7 补 Guard + Conv 锁）。
         conversation = (
             await self._session.execute(
-                select(ConversationModel).where(
+                select(ConversationModel)
+                .where(
                     ConversationModel.tenant_id == tenant_id,
                     ConversationModel.id == conversation_id,
                 )
+                .with_for_update()
             )
         ).scalar_one_or_none()
         if conversation is None:
