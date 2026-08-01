@@ -52,6 +52,10 @@ class RuntimeEventProvenance:
 @dataclass(frozen=True, slots=True)
 class RuntimeIngestFrame:
     tenant_id: uuid.UUID
+    # R1-S3-C round-7 commit-13：frame.conversation_id 由 Runtime 通道从
+    # binding.conversation_id 派生，用于 fenced_ingest_runtime_event 的外层
+    # conversation_id 绑定校验（防 Runtime 通道绕过 fenced port 校验）。
+    conversation_id: uuid.UUID
     run_id: uuid.UUID
     runtime_profile_id: uuid.UUID
     provenance: RuntimeEventProvenance

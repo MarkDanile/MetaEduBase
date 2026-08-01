@@ -98,6 +98,7 @@ def _runtime_command(
     return RuntimeEventCommand(
         frame=RuntimeIngestFrame(
             tenant_id=command.tenant_id,
+            conversation_id=command.conversation_id,
             run_id=command.run_id,
             runtime_profile_id=command.runtime_profile_id,
             provenance=RuntimeEventProvenance(
@@ -225,6 +226,7 @@ async def test_runtime_gap_and_boundary_fail_without_advancing_ack(db_session):
     wrong_profile = RuntimeEventCommand(
         frame=RuntimeIngestFrame(
             tenant_id=wrong_profile.frame.tenant_id,
+            conversation_id=wrong_profile.frame.conversation_id,
             run_id=wrong_profile.frame.run_id,
             runtime_profile_id=uuid.uuid4(),
             provenance=wrong_profile.frame.provenance,

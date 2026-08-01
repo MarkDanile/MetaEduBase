@@ -59,6 +59,7 @@ def _binding(*, next_seq: int = 4) -> RuntimeSessionBinding:
 def _frame(*, seq: int, event_id: uuid.UUID = EVENT, digest: str = "a" * 64):
     return RuntimeIngestFrame(
         tenant_id=TENANT,
+        conversation_id=uuid.UUID("30000000-0000-0000-0000-000000000002"),
         run_id=RUN,
         runtime_profile_id=PROFILE,
         provenance=RuntimeEventProvenance(
