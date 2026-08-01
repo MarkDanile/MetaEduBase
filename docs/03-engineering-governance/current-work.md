@@ -38,6 +38,11 @@
 下一步：实现 fenced execution port + 9 writer 注入 + writer `created` 标志 + 变异测试（删除 fence -> 旧 fence 行为复活 / 跨 owner 写失败 / `created` 标志丢失 fail）-> PR -> 独立 max/Codex 复审。
 验证状态：待实现。
 交接备注：S3-A 已合并（PR #515 merge `2d4f8091`）；S3-B 已合并（PR #517 merge `7d1b21d3`）；S3-C 复用 S3-B 的 fenced port + writer `created` 标志 + per-owner source key 闭集 + 6 处 fail-closed guard；erase_available 保持 False（S3-D 翻）；不进 S4；不启用 purge scheduler。 6c24cf94 (feat(server): R1-S3-C M1a FencedExecutionPort + create_run_with_root 注入 + advance 反例)
+||||||| parent of 39b6810e (fix(server): R1-S3-C round-4 复审返修（P1 verdict-before-writer + P2 测试 + P3 stage 去重）)
+当前进展：S3-C M1a 完成（FencedExecutionPort 抽象 + create_run_with_root 注入 + advance 反例测试）。(1) 新建 `app/composition/execution_fenced_port.py`：`FencedExecutionPort` 类（`require_active_fence` verdict + `advance_run_event_checkpoint` advance 原语），组合既有 `AgentErasureRepository`（不复制 fence/lock 逻辑）。(2) `bridge.consume_turn_requested` 返回类型改 `tuple[AgentRun, InboxAckV1, bool]`（透传 `created` 标志，IDEMPOTENT_REPLAY / 命中 existing 时 `created=False`）。(3) `agent_control_plane.consume_turn_event` 返回类型同步改 3-tuple。(4) `dispatch_turn` 注入 fenced port：verdict（owner lock + fence FOR UPDATE）+ advance（`run_event_payload` 计数器 +1，仅 `created=True` 时调）。(5) `test_s3c_fenced_port.py` 反例：删 advance 调用 -> `run_event_payload` source_key 计数器不推进 -> purge scan 误判 writer 路径未写过事件 -> 旧 fence 行为复活。
+下一步：M1b 注入其余 8 个 writer（start_run/transition_run/mark_run_resume_required/resume_run/commit_terminal/append_event/ingest_runtime_event/CompatibilityOutputService.stage）+ 端到端变异测试（删 `created` 检查 -> IDEMPOTENT_REPLAY 误推进计数器）。
+验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；advance 反例测试 conftest-bypass 直接调通过。
+交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C M1a 复用 S3-B 的 `actor_identity` capability + per-owner source key 闭集 + 6 处 fail-closed guard；erase_available 保持 False（S3-D 翻）；不进 S4；不启用 purge scheduler。 39b6810e (fix(server): R1-S3-C round-4 复审返修（P1 verdict-before-writer + P2 测试 + P3 stage 去重）)
 
 ## 下一批候选任务
 

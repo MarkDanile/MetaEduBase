@@ -45,43 +45,14 @@ class CompatibilityOutputService:
         reply: str,
         response_envelope: dict,
     ) -> CompatibilityOutputSnapshot:
-        output = reply.encode("utf-8")
-        if len(output) > MAX_COMPATIBILITY_OUTPUT_BYTES:
-            raise ValueError("compatibility output exceeds 65536 UTF-8 bytes")
-        envelope_size = len(canonical_json_bytes(response_envelope))
-        if envelope_size > MAX_COMPATIBILITY_ENVELOPE_BYTES:
-            raise ValueError("compatibility response envelope exceeds 262144 bytes")
-        snapshot = CompatibilityOutputSnapshot(
+        # S3-C round-4 P3: delegate to stage_with_created, discard created.
+        snapshot, _created = await self.stage_with_created(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             run_id=run_id,
             output_ref=output_ref,
-            output_digest=hashlib.sha256(output).hexdigest(),
-            response_digest=canonical_digest(response_envelope),
             reply=reply,
             response_envelope=response_envelope,
-        )
-        existing = await self._repository.get_by_run(
-            tenant_id=tenant_id, run_id=run_id
-        )
-        if existing is not None:
-            self._validate_existing(existing, snapshot)
-            return self._to_snapshot(existing)
-        await self._repository.add(
-            CompatibilityOutputModel(
-                id=uuid.uuid4(),
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
-                run_id=run_id,
-                output_ref=output_ref,
-                output_digest=snapshot.output_digest,
-                response_digest=snapshot.response_digest,
-                reply_text=reply,
-                response_envelope=response_envelope,
-                media_type="text/markdown",
-                classification="internal",
-                created_at=datetime.now(UTC),
-            )
         )
         return snapshot
 

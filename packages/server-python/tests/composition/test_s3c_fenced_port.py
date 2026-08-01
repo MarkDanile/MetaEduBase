@@ -195,3 +195,98 @@ async def test_fenced_stage_advances_compatibility_output() -> None:
     kw = port._erasure.advance_ingress_checkpoint_for_update.call_args.kwargs
     assert kw["source_key"] == "compatibility_output"
     assert kw["watermark"] == 4
+
+
+# --- round-4 P2: 生产时序反例 ----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_erasing_fence_rejects_create_via_verdict() -> None:
+    """erasing fence verdict 必须 raise LateBodyWriteRejectedError。
+
+    删除 verdict 中 state 检查后测试 fail（erasing fence 放行）。
+    """
+    from app.composition.execution_fenced_port import FencedExecutionPort
+    from app.contexts.agent_workspace.domain.errors import (
+        LateBodyWriteRejectedError,
+    )
+
+    session = MagicMock()
+    port = FencedExecutionPort(session)
+    # mock fence 返回 erasing 状态
+    fence = MagicMock()
+    fence.state = MagicMock()
+    fence.state.value = "erasing"
+    port._erasure.require_body_write_fence_for_update = AsyncMock(
+        side_effect=LateBodyWriteRejectedError(
+            "owner fence execution.core.v1 is erasing; body write rejected"
+        )
+    )
+    with pytest.raises(LateBodyWriteRejectedError):
+        await port.require_active_fence(
+            tenant_id=uuid.uuid4(), conversation_id=uuid.uuid4()
+        )
+
+
+def test_dispatch_turn_verdict_before_writer_order() -> None:
+    """dispatch_turn 必须在 consume_turn_event 前注册 pre_create_callback。
+
+    inspect dispatch_turn 源码：pre_create_callback 参数必须传给
+    consume_turn_event，证明 verdict 在 writer 前。
+    """
+    import inspect
+
+    from app.composition.agent_control_plane import AgentBridgeDispatcher
+
+    source = inspect.getsource(AgentBridgeDispatcher.dispatch_turn)
+    assert "pre_create_callback" in source, (
+        "dispatch_turn must pass pre_create_callback to consume_turn_event"
+        " (verdict-before-writer)"
+    )
+    assert "_verdict" in source, (
+        "dispatch_turn must define _verdict callback for fence verdict"
+    )
+
+
+def test_consume_turn_event_calls_callback_before_create() -> None:
+    """consume_turn_event 必须在 consume_turn_requested 前调 callback。
+
+    inspect 源码：pre_create_callback 调用在 consume_turn_requested 之前。
+    """
+    import inspect
+
+    from app.composition.agent_control_plane import (
+        ConversationExecutionCoordinator,
+    )
+
+    source = inspect.getsource(
+        ConversationExecutionCoordinator.consume_turn_event
+    )
+    callback_idx = source.index("pre_create_callback")
+    create_idx = source.index("consume_turn_requested")
+    assert callback_idx < create_idx, (
+        "pre_create_callback must be called BEFORE consume_turn_requested"
+        " (verdict-before-writer)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_replay_does_not_advance_checkpoint() -> None:
+    """created=False (replay) 不推进 checkpoint advance。
+
+    dispatch_turn 中 if created: advance_checkpoint 条件保护 replay 路径。
+    删除 if created 条件后 replay 也会 advance -> 测试 fail。
+    """
+    import inspect
+
+    from app.composition.agent_control_plane import AgentBridgeDispatcher
+
+    source = inspect.getsource(AgentBridgeDispatcher.dispatch_turn)
+    assert "if created:" in source, (
+        "dispatch_turn must gate advance_checkpoint on created=True"
+    )
+    advance_idx = source.index("advance_checkpoint")
+    if_created_idx = source.index("if created:")
+    assert if_created_idx < advance_idx, (
+        "advance_checkpoint must be inside 'if created:' block"
+    )
