@@ -53,6 +53,11 @@
 下一步：提交并 push -> 三路 CI 验证稳定（目标 8-9 分钟）-> 独立 max 只读复核 -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D（ExecutionErasureParticipant）。
 验证状态：ruff 待跑 / mypy 待跑 / docs gate 待跑；三路 CI 待确认。
 交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层；erase_available 保持 False（S3-D 翻）；不进 S4；不启用 purge scheduler。round-5 方案是 trade-off——verdict-after-writer 不在 writer 前，但同事务内仍由 Guard + Conversation 行锁串行化，避免 owner 环路。 114d0e7b (docs(agent): R1-S3-C round-5 revert 收口（CI 9m35s 全绿）)
+||||||| parent of c4390aa5 (feat(server): R1-S3-C round-6（无条件 verdict + 13 接线 + 9 writer 矩阵 + 真实 PostgreSQL 反例）)
+当前进展：S3-C round-5 revert 已推（commit `a9423134`）并通过三路 CI。回退 round-4 verdict-before-writer（pre_create_callback）方案：Backend CI 30+ 分钟挂起（Guard + Conversation 行锁内再取 owner lock + fence FOR UPDATE，与 backfill Conversation -> owner 形成环路）。回到 round-3 顺序：consume_turn_event 先持 Guard + Conversation 行锁 + commit writer；caller (dispatch_turn) 在 created=True 时调 fenced_create_run 取 owner lock + advance run_context_body=queue_seq。P3 stage 去重保留；erasing fence reject 测试保留（直接验 require_active_fence）；测试改 round-5 顺序断言（ast.unparse 剥离 docstring/comment 误报）。
+下一步：等独立 max 只读复核 round-5 revert -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D（ExecutionErasureParticipant）。
+验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；三路 CI 全绿（Backend 9m35s / Engineering docs 6s / Frontend 5s）。
+交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层；erase_available 保持 False（S3-D 翻）；不进 S4；不启用 purge scheduler。round-5 方案是 trade-off——verdict-after-writer 不在 writer 前，但同事务内仍由 Guard + Conversation 行锁串行化，避免 owner 环路。 c4390aa5 (feat(server): R1-S3-C round-6（无条件 verdict + 13 接线 + 9 writer 矩阵 + 真实 PostgreSQL 反例）)
 
 ## 下一批候选任务
 
