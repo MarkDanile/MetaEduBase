@@ -520,27 +520,22 @@ class AgentBridgeDispatcher:
                 f"{claimed.error_code}"
             )
         try:
-            # S3-C M1a：fenced port 注入 create_run。verdict（owner lock + fence FOR UPDATE）
-            # 与 advance（run_event_payload 计数器 +1）必须与 consume 同事务；advance 仅
-            # 在 writer 返回 created=True（真实新插入）时调用，IDEMPOTENT_REPLAY / 命中
-            # existing 不推进。
-            from app.contexts.agent_execution.application.fenced_execution_port import (
-                FencedExecutionPort,
-            )
+            # S3-C round-3 P1-1：锁序修正--consume_turn_event 先持 Guard + Conversation
+            # 行锁，created=True 时再调 fenced_create_run（取 owner lock + advance
+            # run_context_body=queue_seq）。round-3 P1-3：create_run 推进
+            # run_context_body（非 run_event_payload）。
+            from app.composition.execution_fenced_port import FencedExecutionPort
 
             async with self._session_factory() as session, session.begin():
-                port = FencedExecutionPort(session)
-                fence = await port.require_active_fence(
-                    tenant_id=claimed.event.tenant_id,
-                    conversation_id=claimed.event.conversation_id,
-                )
                 run, ack, created = await ConversationExecutionCoordinator(
                     session
                 ).consume_turn_event(claimed, consumed_at=datetime.now(UTC))
                 if created:
-                    await port.advance_run_event_checkpoint(
-                        fence=fence,
+                    port = FencedExecutionPort(session)
+                    await port.fenced_create_run(
+                        tenant_id=claimed.event.tenant_id,
                         conversation_id=claimed.event.conversation_id,
+                        queue_seq=run.queue_seq,
                     )
             async with self._session_factory() as session, session.begin():
                 await AgentWorkspaceBridgeService(session).acknowledge_turn(ack)
