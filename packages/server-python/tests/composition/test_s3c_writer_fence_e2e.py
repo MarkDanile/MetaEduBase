@@ -16,14 +16,14 @@ import pytest
 from sqlalchemy import text
 
 from app.composition.execution_fenced_port import FencedExecutionPort
-from app.contexts.agent_execution.application.dto import (
-    RuntimeEventCommand,
-    RuntimeEventProvenance,
-)
+from app.contexts.agent_execution.application.dto import RuntimeEventCommand
 from app.contexts.agent_execution.domain import (
     RunConversationMismatchError,
-    RuntimeIngestFrame,
     RuntimeIngestIdentityMismatchError,
+)
+from app.contexts.agent_execution.domain.runtime_ingest import (
+    RuntimeEventProvenance,
+    RuntimeIngestFrame,
 )
 from app.contexts.agent_workspace.domain.errors import LateBodyWriteRejectedError
 
