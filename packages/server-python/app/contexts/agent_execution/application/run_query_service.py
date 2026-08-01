@@ -4,7 +4,6 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.composition.agent_control_plane import ConversationExecutionGuard
 from app.composition.execution_fenced_port import FencedExecutionPort
 from app.contexts.agent_execution.application.dto import EventReplayBatch
 from app.contexts.agent_execution.application.execution_identity_service import (
@@ -82,14 +81,10 @@ class RunQueryService:
             )
         if not access.can_cancel:
             raise RunNotFoundError("Agent Run not found")
-        # R1-S3-C round-6：取 ConversationExecutionGuard（串行化 tenant+conv 上
-        # 所有调用），使 fenced_* 写入可通过 _assert_guard_held。reserve_cancel_intent
-        # 与 commit_terminal 在同事务内顺序执行，Guard xact_lock 在 commit 时释放。
-        await ConversationExecutionGuard().acquire(
-            self._session,
-            tenant_id=tenant_id,
-            conversation_id=run.conversation_id,
-        )
+        # R1-S3-C round-6 hotfix：fence verdict + advance 在 fenced_* wrapper 内
+        # 完成；不强制持 Guard（Guard 由上层 API 路由层的 ConversationGuard 持有，
+        # 但 ``request_cancel`` 历史路径不持 Guard——为避免与并发 cancel+delete
+        # race 引入额外 advisory 锁争用，回退到此路径不显式取 Guard）。
         port = FencedExecutionPort(self._session)
         current, reserved = await self._coordinator.reserve_cancel_intent(
             tenant_id=tenant_id,

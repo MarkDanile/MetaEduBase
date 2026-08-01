@@ -5,9 +5,13 @@ backtest 覆盖 create / replay / 9 writer / 生产调用顺序 / 并发 deadloc
 
 依赖：
 - ``tests.composition.conftest._clean_agent_tables``（autouse，每个测试前后清空）
-- ``tests.composition.conftest.db_session`` / ``session_factory``（NullPool，真实连接）
-- \`\`tests/composition/test_agent_erasure_schema.py\`\` 的 \`\`_insert_conversation\`\`
-  helper 复用于本文件（直接调用，不 import 避免跨测试依赖）。
+- ``tests.composition.conftest.session_factory``（NullPool，真实连接；测试体
+  自行 commit/rollback，符合 backfill / 并发测试需求）
+
+R1-S3-C round-6 hotfix：fence writer 不强制持 Guard（避免 cancel+delete race
+中的 advisory 锁争用）。Guard 由 caller 路径（如 dispatch_turn 的
+``consume_turn_event``、direct_rag 的 ``_acquire_write_guard``）按 Spec §6.1
+自然持有；fenced_* wrapper 不自检。
 """
 
 from __future__ import annotations
@@ -93,41 +97,30 @@ async def _read_fence_state(
 
 
 @pytest.mark.asyncio
-async def test_erasing_fence_rejects_fenced_create_run(db_session) -> None:
-    """non-active fence 下 fenced_create_run（advance）必须 raise。
-
-    模拟：先 require_active_fence 建立 active fence（行存在）-> UPDATE state=erasing ->
-    调 fenced_create_run（含 _assert_guard_held + require_active_fence + advance）。
-    """
-    from app.composition.agent_control_plane import ConversationExecutionGuard
-
+async def test_erasing_fence_rejects_fenced_create_run(session_factory) -> None:
+    """non-active fence 下 fenced_create_run（advance）必须 raise。"""
     tenant_id = uuid.uuid4()
-    conversation_id = await _insert_conversation(db_session, tenant_id=tenant_id)
+    async with session_factory() as setup, setup.begin():
+        conversation_id = await _insert_conversation(setup, tenant_id=tenant_id)
 
-    async with db_session.begin():
-        port = FencedExecutionPort(db_session)
+    async with session_factory() as session, session.begin():
+        port = FencedExecutionPort(session)
         # 先建 active fence
         await port.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
         # 强切 erasing（绕开 CAS 校验，仅用于测试）
         await _force_fence_state(
-            db_session,
+            session,
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             owner_key="execution.core.v1",
             new_state="erasing",
         )
 
-    # 第二个事务：Guard 持有 + 调 fenced_create_run
-    async with db_session.begin():
-        # Guard 持有（_assert_guard_held 需要）
-        await ConversationExecutionGuard().acquire(
-            db_session,
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-        )
-        port = FencedExecutionPort(db_session)
+    # 第二个事务：调 fenced_create_run（hotfix 后无需 Guard 强制）
+    async with session_factory() as session, session.begin():
+        port = FencedExecutionPort(session)
         with pytest.raises(LateBodyWriteRejectedError):
             await port.fenced_create_run(
                 tenant_id=tenant_id,
@@ -137,27 +130,15 @@ async def test_erasing_fence_rejects_fenced_create_run(db_session) -> None:
 
 
 @pytest.mark.asyncio
-async def test_active_fence_advance_writes_ingress_checkpoint(db_session) -> None:
+async def test_active_fence_advance_writes_ingress_checkpoint(session_factory) -> None:
     """active fence 下 advance 必须写入 ingress_checkpoint.sources[run_event_payload]."""
-    from app.composition.agent_control_plane import ConversationExecutionGuard
-
     tenant_id = uuid.uuid4()
-    conversation_id = await _insert_conversation(db_session, tenant_id=tenant_id)
+    async with session_factory() as setup, setup.begin():
+        conversation_id = await _insert_conversation(setup, tenant_id=tenant_id)
 
-    async with db_session.begin():
+    async with session_factory() as session, session.begin():
         # 建 active fence
-        await FencedExecutionPort(db_session).require_active_fence(
-            tenant_id=tenant_id, conversation_id=conversation_id
-        )
-
-    async with db_session.begin():
-        await ConversationExecutionGuard().acquire(
-            db_session,
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-        )
-        port = FencedExecutionPort(db_session)
-        # 先调一次 require_active_fence 拿到 fence 对象，再 advance
+        port = FencedExecutionPort(session)
         fence = await port.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -169,27 +150,28 @@ async def test_active_fence_advance_writes_ingress_checkpoint(db_session) -> Non
         )
 
     # 验证落库
-    state = await _read_fence_state(
-        db_session,
-        tenant_id=tenant_id,
-        conversation_id=conversation_id,
-        owner_key="execution.core.v1",
-    )
-    assert state == "active"
-    row = (
-        await db_session.execute(
-            text(
-                "SELECT ingress_checkpoint FROM metaedu.agent_erasure_fences "
-                "WHERE tenant_id = :tenant AND conversation_id = :conv "
-                "AND owner_key = :owner"
-            ),
-            {"tenant": tenant_id, "conv": conversation_id, "owner": "execution.core.v1"},
+    async with session_factory() as verify:
+        state = await _read_fence_state(
+            verify,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key="execution.core.v1",
         )
-    ).first()
-    assert row is not None
-    sources = (row[0] or {}).get("sources", {})
-    assert "run_event_payload" in sources
-    assert sources["run_event_payload"]["watermark"] == 1
+        assert state == "active"
+        row = (
+            await verify.execute(
+                text(
+                    "SELECT ingress_checkpoint FROM metaedu.agent_erasure_fences "
+                    "WHERE tenant_id = :tenant AND conversation_id = :conv "
+                    "AND owner_key = :owner"
+                ),
+                {"tenant": tenant_id, "conv": conversation_id, "owner": "execution.core.v1"},
+            )
+        ).first()
+        assert row is not None
+        sources = (row[0] or {}).get("sources", {})
+        assert "run_event_payload" in sources
+        assert sources["run_event_payload"]["watermark"] == 1
 
 
 @pytest.mark.asyncio
@@ -199,38 +181,32 @@ async def test_concurrent_dispatch_no_deadlock(session_factory) -> None:
     用 asyncio.gather 启动 3 个并发事务，捕获 pg_stat_activity 与 pg_locks
     快照，断言无 advisory 锁 2-way wait（lock wait 时间 < 30 秒）。
     """
-    from app.composition.agent_control_plane import (
-        ConversationExecutionCoordinator,
-        ConversationExecutionGuard,
-    )
+    from app.composition.agent_control_plane import ConversationExecutionGuard
 
     tenant_id = uuid.uuid4()
     # 单一 conversation 上 3 个并发事务
-    async with session_factory() as setup_session, setup_session.begin():
-        conversation_id = await _insert_conversation(
-            setup_session, tenant_id=tenant_id
-        )
+    async with session_factory() as setup, setup.begin():
+        conversation_id = await _insert_conversation(setup, tenant_id=tenant_id)
 
     async def dispatch_one() -> None:
         async with session_factory() as session, session.begin():
             await ConversationExecutionGuard().acquire(
                 session, tenant_id=tenant_id, conversation_id=conversation_id
             )
-            # consume_turn_event 内部会做 Conversation 行锁 + writer 插入；这里
-            # 我们只测 Guard 串行化与 fence 集成，不验证 writer 业务正确性。
-            await ConversationExecutionCoordinator(session)
+            # 这里只测 Guard 串行化与 fence 集成，不验证 writer 业务正确性。
 
     # 启动 3 个并发事务
     tasks = [asyncio.create_task(dispatch_one()) for _ in range(3)]
-    # 等所有任务完成或超时（30 秒）
     try:
-        await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=30)
+        await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True), timeout=30
+        )
     except TimeoutError:
         for t in tasks:
             t.cancel()
         pytest.fail("并发 dispatch 30 秒内未完成（疑似 deadlock）")
 
-    # 捕获 pg_stat_activity 验证无 active lock wait
+    # 捕获 pg_stat_activity 验证无 active advisory lock 等待
     async with session_factory() as diag:
         active_backends = (
             await diag.execute(
@@ -240,7 +216,6 @@ async def test_concurrent_dispatch_no_deadlock(session_factory) -> None:
                 )
             )
         ).scalar()
-    # 此时所有任务已结束，active backends 中不应有 advisory lock 等待
     assert active_backends == 0, (
         f"pg_stat_activity 中仍有 {active_backends} 个 advisory lock 等待 "
         "（疑似 deadlock 未清理）"
