@@ -78,6 +78,11 @@
 下一步：commit-15 真 PostgreSQL 反例覆盖被测路径 + commit-16 PR 描述更新 + 解决 Backend CI 30min 超时（lock window 加长使并发测试串行——可能需要把 lock_owned_conversation 缩短或拆分事务边界）。
 验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；Backend CI 触发了两次 run（30702134432 / 30705833152），均超时取消。Backend 运行 11% 进度时仍有早期 F（commit-10 已修复 P1-1，剩余 F 大概率与新增 Conv 行锁延长串行相关，待 commit-15/16 + lock window 调优后回归）。
 交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层（commit-12 加 GuardLockPort 拆分跨边界）。run_query_service.request_cancel 锁链严格：Guard -> Conv -> fenced writer 内部 AgentRun FOR UPDATE + cancel intent CAS，与 S3-D `Conversation -> owner/fence -> AgentRun` 同序无 AB-BA。fenced_ingest_runtime_event 形态已就位（Runtime adapter 推迟到 S4）。 53dd6540 (docs(agent): R1-S3-C round-7 final sync（commit-15~16 完成 P2-2 + PR 描述）)
+||||||| parent of a3b30dfa (docs(agent): R1-S3-C round-7 final（commit-15~16 + hotfix + CI 超时已知）)
+当前进展：S3-C round-7 commit-15~16 收口（commits 516b1082 + 待 push）。(1) commit-15 真 e2e（commit-15 P2-2）：6 组真实 PostgreSQL 反例覆盖 dispatch_turn 真实路径 / 跨 Conv/tenant 拒 / Runtime frame 拒 / 并发无 deadlock / erasing fence 拒。(2) commit-16 PR 描述更新（`gh pr edit`）：Summary + Scope（commit-1~15 关键决策）+ Validation + Risks + 锁链矩阵 + Next（独立 max 复核 + CI 调优）。
+下一步：push commit-15~16 -> 三路 CI 验证（Backend 35m 超时取消待调优）-> 独立 max 只读复核 round-7 -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D。
+验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；commit-15 新增 e2e 6 组（真实 PG + 真实 port + 无 mock）；Backend CI 仍 35m 超时取消（commit-10 修 P1-1 早期 TypeError；剩余与 lock window 加长导致并发串行有关，待调优）。
+交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层（commit-12 加 GuardLockPort 拆分跨边界）。run_query_service.request_cancel 锁链严格：Guard → Conv → fenced writer 内部 AgentRun FOR UPDATE + cancel intent CAS，与 S3-D `Conversation → owner/fence → AgentRun` 同序无 AB-BA。fenced_ingest_runtime_event 形态已就位（Runtime adapter 推迟到 S4）。PR #519 描述已同步 round-7 commit-15 收口。 a3b30dfa (docs(agent): R1-S3-C round-7 final（commit-15~16 + hotfix + CI 超时已知）)
 
 ## 下一批候选任务
 
