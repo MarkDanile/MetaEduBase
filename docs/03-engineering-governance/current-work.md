@@ -28,10 +28,10 @@
 - Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S3-C PR 拆分：Writer fence）
 - 架构约束：Spec §6.2 writer fence 协议；§7.2 Execution 清除语义；migration 038 actor tombstone 契约（execution.core.v1 `actor_identity` capability 已就位）
 
-当前进展：S3-C M1a 完成（FencedExecutionPort 抽象 + create_run_with_root 注入 + advance 反例测试）。(1) 新建 `app/composition/execution_fenced_port.py`：`FencedExecutionPort` 类（`require_active_fence` verdict + `advance_run_event_checkpoint` advance 原语），组合既有 `AgentErasureRepository`（不复制 fence/lock 逻辑）。(2) `bridge.consume_turn_requested` 返回类型改 `tuple[AgentRun, InboxAckV1, bool]`（透传 `created` 标志，IDEMPOTENT_REPLAY / 命中 existing 时 `created=False`）。(3) `agent_control_plane.consume_turn_event` 返回类型同步改 3-tuple。(4) `dispatch_turn` 注入 fenced port：verdict（owner lock + fence FOR UPDATE）+ advance（`run_event_payload` 计数器 +1，仅 `created=True` 时调）。(5) `test_s3c_fenced_port.py` 反例：删 advance 调用 -> `run_event_payload` source_key 计数器不推进 -> purge scan 误判 writer 路径未写过事件 -> 旧 fence 行为复活。
-下一步：M1b 注入其余 8 个 writer（start_run/transition_run/mark_run_resume_required/resume_run/commit_terminal/append_event/ingest_runtime_event/CompatibilityOutputService.stage）+ 端到端变异测试（删 `created` 检查 -> IDEMPOTENT_REPLAY 误推进计数器）。
-验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；advance 反例测试 conftest-bypass 直接调通过。
-交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C M1a 复用 S3-B 的 `actor_identity` capability + per-owner source key 闭集 + 6 处 fail-closed guard；erase_available 保持 False（S3-D 翻）；不进 S4；不启用 purge scheduler。
+当前进展：S3-C round-4 复审返修完成（独立 max 发现 P0=0/P1=1/P2=2/P3=1 全部闭合）。(1) P1 verdict-before-writer：consume_turn_event 新增 pre_create_callback 参数，dispatch_turn 传 _verdict 回调（require_active_fence 在 Guard+Conversation 锁后、create/replay 前执行），replay 也经过 verdict；advance 仅 created=True 时调。(2) P2 测试：新增 erasing fence reject + dispatch_turn verdict 顺序 inspect + replay 不推进条件检查。(3) P2 工作台同步为 round-4 实际状态。(4) P3 stage 去重：stage 内部调 stage_with_created 丢弃 created。
+下一步：待独立 max 只读复核 -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D（ExecutionErasureParticipant）。
+验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；三路 CI 待确认。
+交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层（不违反跨上下文边界）；erase_available 保持 False（S3-D 翻）；不进 S4；不启用 purge scheduler。
 
 ## 下一批候选任务
 

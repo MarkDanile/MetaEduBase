@@ -148,6 +148,7 @@ class ConversationExecutionCoordinator:
         claimed: ClaimedWorkspaceEvent,
         *,
         consumed_at: datetime,
+        pre_create_callback=None,
     ) -> tuple[AgentRun, InboxAckV1, bool]:
         event = claimed.event
         await self._guard.acquire(
@@ -162,6 +163,13 @@ class ConversationExecutionCoordinator:
             include_deleted=False,
         )
         await self._workspace.validate_turn_claim(claimed)
+        # S3-C round-4 P1: fence verdict after Guard+Conversation lock,
+        # before create/replay. Replay also passes verdict.
+        if pre_create_callback is not None:
+            await pre_create_callback(
+                tenant_id=event.tenant_id,
+                conversation_id=event.conversation_id,
+            )
         run, ack, created = await self._execution.consume_turn_requested(
             event=event,
             payload_digest=claimed.payload_digest,
@@ -520,22 +528,34 @@ class AgentBridgeDispatcher:
                 f"{claimed.error_code}"
             )
         try:
-            # S3-C round-3 P1-1：锁序修正--consume_turn_event 先持 Guard + Conversation
-            # 行锁，created=True 时再调 fenced_create_run（取 owner lock + advance
-            # run_context_body=queue_seq）。round-3 P1-3：create_run 推进
-            # run_context_body（非 run_event_payload）。
+            # S3-C round-4 P1: verdict-before-writer. Guard + Conversation lock
+            # (inside consume_turn_event) -> fence verdict (pre_create_callback)
+            # -> create/replay -> advance (created=True only). Replay also
+            # passes verdict; erasing/erased fail closed.
             from app.composition.execution_fenced_port import FencedExecutionPort
 
             async with self._session_factory() as session, session.begin():
+                port = FencedExecutionPort(session)
+                fence_holder: dict = {}
+
+                async def _verdict(*, tenant_id, conversation_id):
+                    fence_holder["fence"] = await port.require_active_fence(
+                        tenant_id=tenant_id, conversation_id=conversation_id
+                    )
+
                 run, ack, created = await ConversationExecutionCoordinator(
                     session
-                ).consume_turn_event(claimed, consumed_at=datetime.now(UTC))
+                ).consume_turn_event(
+                    claimed,
+                    consumed_at=datetime.now(UTC),
+                    pre_create_callback=_verdict,
+                )
                 if created:
-                    port = FencedExecutionPort(session)
-                    await port.fenced_create_run(
-                        tenant_id=claimed.event.tenant_id,
+                    await port.advance_checkpoint(
+                        fence=fence_holder["fence"],
                         conversation_id=claimed.event.conversation_id,
-                        queue_seq=run.queue_seq,
+                        source_key="run_context_body",
+                        watermark=run.queue_seq,
                     )
             async with self._session_factory() as session, session.begin():
                 await AgentWorkspaceBridgeService(session).acknowledge_turn(ack)
