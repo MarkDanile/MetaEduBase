@@ -43,6 +43,11 @@
 下一步：M1b 注入其余 8 个 writer（start_run/transition_run/mark_run_resume_required/resume_run/commit_terminal/append_event/ingest_runtime_event/CompatibilityOutputService.stage）+ 端到端变异测试（删 `created` 检查 -> IDEMPOTENT_REPLAY 误推进计数器）。
 验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；advance 反例测试 conftest-bypass 直接调通过。
 交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C M1a 复用 S3-B 的 `actor_identity` capability + per-owner source key 闭集 + 6 处 fail-closed guard；erase_available 保持 False（S3-D 翻）；不进 S4；不启用 purge scheduler。 39b6810e (fix(server): R1-S3-C round-4 复审返修（P1 verdict-before-writer + P2 测试 + P3 stage 去重）)
+||||||| parent of a9423134 (fix(server): R1-S3-C round-5 revert（verdict-after-writer in same txn）)
+当前进展：S3-C round-4 复审返修完成（独立 max 发现 P0=0/P1=1/P2=2/P3=1 全部闭合）。(1) P1 verdict-before-writer：consume_turn_event 新增 pre_create_callback 参数，dispatch_turn 传 _verdict 回调（require_active_fence 在 Guard+Conversation 锁后、create/replay 前执行），replay 也经过 verdict；advance 仅 created=True 时调。(2) P2 测试：新增 erasing fence reject + dispatch_turn verdict 顺序 inspect + replay 不推进条件检查。(3) P2 工作台同步为 round-4 实际状态。(4) P3 stage 去重：stage 内部调 stage_with_created 丢弃 created。
+下一步：待独立 max 只读复核 -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D（ExecutionErasureParticipant）。
+验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；三路 CI 待确认。
+交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层（不违反跨上下文边界）；erase_available 保持 False（S3-D 翻）；不进 S4；不启用 purge scheduler。 a9423134 (fix(server): R1-S3-C round-5 revert（verdict-after-writer in same txn）)
 
 ## 下一批候选任务
 

@@ -1,7 +1,9 @@
 """S3-C fenced port 单元测试。
 
-round-3 修正：
-- import 从 composition 版本（非 application）。
+round-5 revert：
+- 回退 round-4 verdict-before-writer（pre_create_callback 触发 CI 30+ 分钟
+  挂起）；回到 round-3 顺序（verdict after writer in same txn）。
+- 保留 round-4 erasing fence reject 用例（直接验证 require_active_fence）。
 - advance_checkpoint 按 source_key + watermark 推进（非固定 run_event_payload）。
 - create_run 推进 run_context_body=queue_seq（非 run_event_payload 计数器）。
 - commit_terminal 推进 run_output_body=queue_seq + event 计数器。
@@ -197,7 +199,7 @@ async def test_fenced_stage_advances_compatibility_output() -> None:
     assert kw["watermark"] == 4
 
 
-# --- round-4 P2: 生产时序反例 ----------------------------------------
+# --- round-5 revert P2: 生产时序反例（round-3 顺序） -------------------
 
 
 @pytest.mark.asyncio
@@ -228,30 +230,50 @@ async def test_erasing_fence_rejects_create_via_verdict() -> None:
         )
 
 
-def test_dispatch_turn_verdict_before_writer_order() -> None:
-    """dispatch_turn 必须在 consume_turn_event 前注册 pre_create_callback。
+def test_dispatch_turn_uses_fenced_create_run_after_writer() -> None:
+    """dispatch_turn 必须在 consume_turn_event 之后调 fenced_create_run。
 
-    inspect dispatch_turn 源码：pre_create_callback 参数必须传给
-    consume_turn_event，证明 verdict 在 writer 前。
+    inspect dispatch_turn 源码：round-3 顺序——writer 先 commit（同事务持
+    Guard + Conversation 行锁），created=True 时再调 fenced_create_run
+    （取 owner lock + advance run_context_body=queue_seq）。
+    删除 fenced_create_run 调用会破坏 round-3 契约 → 测试 fail。
     """
+    import ast
     import inspect
+    import textwrap
 
     from app.composition.agent_control_plane import AgentBridgeDispatcher
 
     source = inspect.getsource(AgentBridgeDispatcher.dispatch_turn)
-    assert "pre_create_callback" in source, (
-        "dispatch_turn must pass pre_create_callback to consume_turn_event"
-        " (verdict-before-writer)"
+    tree = ast.parse(textwrap.dedent(source))
+    func_body = tree.body[0]
+    assert isinstance(func_body, (ast.FunctionDef, ast.AsyncFunctionDef))
+    body_src = ast.unparse(func_body)
+    # round-5 revert：dispatch_turn 函数体不再用 pre_create_callback
+    # （verdict-before-writer）。注释里允许提及历史决策（explanation）；
+    # 只检查函数体（unparse 后注释已剥离）。
+    assert "pre_create_callback" not in body_src, (
+        "dispatch_turn body must NOT pass pre_create_callback to consume_turn_event"
+        " (round-5 reverted: verdict-after-writer in same txn; round-4"
+        " callback caused Backend CI 30+ min hang)"
     )
-    assert "_verdict" in source, (
-        "dispatch_turn must define _verdict callback for fence verdict"
+    # round-3 顺序：consume_turn_event 先，fenced_create_run 在其后
+    assert "fenced_create_run" in body_src, (
+        "dispatch_turn must call fenced_create_run when created=True"
+    )
+    consume_idx = body_src.index("consume_turn_event")
+    fenced_idx = body_src.index("fenced_create_run")
+    assert consume_idx < fenced_idx, (
+        "fenced_create_run must be called AFTER consume_turn_event"
+        " (round-3 verdict-after-writer in same txn)"
     )
 
 
-def test_consume_turn_event_calls_callback_before_create() -> None:
-    """consume_turn_event 必须在 consume_turn_requested 前调 callback。
+def test_consume_turn_event_signature_no_callback() -> None:
+    """consume_turn_event 不再接受 pre_create_callback 参数。
 
-    inspect 源码：pre_create_callback 调用在 consume_turn_requested 之前。
+    round-5 revert：consume_turn_event 回归原始签名（无 callback），所有
+    verdict 推迟到 writer commit 之后。
     """
     import inspect
 
@@ -259,34 +281,38 @@ def test_consume_turn_event_calls_callback_before_create() -> None:
         ConversationExecutionCoordinator,
     )
 
-    source = inspect.getsource(
+    sig = inspect.signature(
         ConversationExecutionCoordinator.consume_turn_event
     )
-    callback_idx = source.index("pre_create_callback")
-    create_idx = source.index("consume_turn_requested")
-    assert callback_idx < create_idx, (
-        "pre_create_callback must be called BEFORE consume_turn_requested"
-        " (verdict-before-writer)"
+    assert "pre_create_callback" not in sig.parameters, (
+        "consume_turn_event must NOT expose pre_create_callback"
+        " (round-5 reverted; verdict happens in caller after writer commit)"
     )
 
 
-@pytest.mark.asyncio
-async def test_replay_does_not_advance_checkpoint() -> None:
-    """created=False (replay) 不推进 checkpoint advance。
+def test_dispatch_turn_advance_only_when_created() -> None:
+    """dispatch_turn 仅 created=True 时推进 checkpoint。
 
-    dispatch_turn 中 if created: advance_checkpoint 条件保护 replay 路径。
-    删除 if created 条件后 replay 也会 advance -> 测试 fail。
+    round-3 顺序：consume_turn_event 返回 created；False（idempotent replay）
+    不调 fenced_create_run，watermark 不动。
+    删除 if created 条件后 replay 也会 advance → 测试 fail。
     """
+    import ast
     import inspect
+    import textwrap
 
     from app.composition.agent_control_plane import AgentBridgeDispatcher
 
     source = inspect.getsource(AgentBridgeDispatcher.dispatch_turn)
-    assert "if created:" in source, (
-        "dispatch_turn must gate advance_checkpoint on created=True"
+    tree = ast.parse(textwrap.dedent(source))
+    func_body = tree.body[0]
+    assert isinstance(func_body, (ast.FunctionDef, ast.AsyncFunctionDef))
+    body_src = ast.unparse(func_body)
+    assert "if created:" in body_src, (
+        "dispatch_turn must gate fenced_create_run on created=True"
     )
-    advance_idx = source.index("advance_checkpoint")
-    if_created_idx = source.index("if created:")
-    assert if_created_idx < advance_idx, (
-        "advance_checkpoint must be inside 'if created:' block"
+    fenced_idx = body_src.index("fenced_create_run")
+    if_created_idx = body_src.index("if created:")
+    assert if_created_idx < fenced_idx, (
+        "fenced_create_run must be inside 'if created:' block"
     )
