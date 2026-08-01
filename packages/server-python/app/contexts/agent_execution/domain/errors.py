@@ -67,6 +67,28 @@ class RunActorAnonymizedError(RunConflictError):
     """
 
 
+class RunConversationMismatchError(AgentExecutionError):
+    """R1-S3-C round-7：caller 传的 Run 身份与实际 Run 不一致。
+
+    Wrapper 入口校验：
+    - ``tenant_id / conversation_id / run_id`` 三元组与 ``AgentRun`` 自身字段不一致
+    - ``queue_seq`` 与 ``AgentRun.queue_seq`` 不一致（仅 fenced_create_run /
+      fenced_commit_terminal / fenced_stage 涉及 queue_seq）
+    - ``fenced_ingest_runtime_event``：``command.frame.tenant_id / run_id`` 与
+      外层 ``tenant_id / run_id`` 不一致
+
+    防止用 Conversation A 的 active fence 授权 Conversation B 的 writer。
+    """
+
+
+class RuntimeIngestIdentityMismatchError(AgentExecutionError):
+    """R1-S3-C round-7：``fenced_ingest_runtime_event`` 的 frame 身份与外层不一致。
+
+    ``command.frame.tenant_id / frame.run_id`` 必须等于外层
+    ``tenant_id / run_id``，避免 Runtime 通道绕过 fenced port 的归属校验。
+    """
+
+
 class InvalidRunTransitionError(AgentExecutionError):
     """The requested Agent Run state transition is not allowed."""
 

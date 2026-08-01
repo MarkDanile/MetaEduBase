@@ -35,6 +35,10 @@ from app.contexts.agent_execution.application.compatibility_output_service impor
     CompatibilityOutputService,
 )
 from app.contexts.agent_execution.application.run_coordinator import RunCoordinator
+from app.contexts.agent_execution.domain import (
+    RunConversationMismatchError,
+    RuntimeIngestIdentityMismatchError,
+)
 from app.contexts.agent_workspace.infrastructure.erasure_repository import (
     AgentErasureRepository,
 )
@@ -58,6 +62,60 @@ class FencedExecutionPort:
         self._erasure = AgentErasureRepository(session)
         self._runs = RunCoordinator(session)
         self._compat = CompatibilityOutputService(session)
+
+    # --- identity binding -------------------------------------------------
+
+    async def _require_run_identity(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        run_id: uuid.UUID,
+        queue_seq: int | None = None,
+    ) -> None:
+        """R1-S3-C round-7：caller 传 (tenant, conv, run, queue_seq) 必须与
+        AgentRun 自身字段一致，防止 Conversation A 的 active fence 授权
+        Conversation B 的 writer。
+
+        ``queue_seq`` 仅 fenced_create_run / fenced_commit_terminal / fenced_stage
+        涉及（其他 writer 不接收 queue_seq，调用方传 None 跳过校验）。
+        """
+        run = await self._runs.require_run(
+            tenant_id=tenant_id, run_id=run_id
+        )
+        if run.conversation_id != conversation_id:
+            raise RunConversationMismatchError(
+                f"Run {run_id} belongs to conversation {run.conversation_id}, "
+                f"not {conversation_id}"
+            )
+        if queue_seq is not None and run.queue_seq != queue_seq:
+            raise RunConversationMismatchError(
+                f"Run {run_id} queue_seq is {run.queue_seq}, "
+                f"caller supplied {queue_seq}"
+            )
+
+    def _require_frame_identity(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+        command,
+    ) -> None:
+        """R1-S3-C round-7：``fenced_ingest_runtime_event`` 的 frame 身份
+        （``command.frame.tenant_id / frame.run_id``）必须等于外层
+        ``tenant_id / run_id``，避免 Runtime 通道绕过 fenced port 校验。
+        """
+        frame = command.frame
+        if frame.tenant_id != tenant_id:
+            raise RuntimeIngestIdentityMismatchError(
+                f"Runtime frame tenant_id {frame.tenant_id} does not match "
+                f"outer tenant_id {tenant_id}"
+            )
+        if frame.run_id != run_id:
+            raise RuntimeIngestIdentityMismatchError(
+                f"Runtime frame run_id {frame.run_id} does not match "
+                f"outer run_id {run_id}"
+            )
 
     # --- verdict ---------------------------------------------------------
 
@@ -117,13 +175,21 @@ class FencedExecutionPort:
         *,
         tenant_id: uuid.UUID,
         conversation_id: uuid.UUID,
+        run_id: uuid.UUID,
         queue_seq: int,
     ) -> None:
-        """create_run 后推进 ``run_context_body=queue_seq``（round-3 P1-3）。
+        """create_run 后推进 ``run_context_body=queue_seq``。
 
-        create_run 写 Run context + root TurnInput，不写 RunEvent。
-        仅在 ``created=True``（真实新建）时由调用方调用本方法。
+        仅在 ``created=True``（真实新建）时由 caller 调用本方法。
+        R1-S3-C round-7：校验 caller 传 (tenant, conv, queue_seq) 与刚
+        创建的 Run 一致（防跨 Conversation 写 watermark）。
         """
+        await self._require_run_identity(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            run_id=run_id,
+            queue_seq=queue_seq,
+        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -141,12 +207,21 @@ class FencedExecutionPort:
         conversation_id: uuid.UUID,
         run_id: uuid.UUID,
         event,
-    ) -> None:
-        """append_event 后推进 ``run_event_payload`` 计数器 +1。"""
+    ):
+        """append_event 后推进 ``run_event_payload`` 计数器 +1。
+
+        R1-S3-C round-7 commit-4：保留原 writer 返回值 RunEvent（原
+        RunCoordinator.append_event 直接返回 RunEvent）。
+        """
+        await self._require_run_identity(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            run_id=run_id,
+        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
-        await self._runs.append_event(
+        run_event = await self._runs.append_event(
             tenant_id=tenant_id, run_id=run_id, event=event
         )
         await self.advance_checkpoint(
@@ -155,6 +230,7 @@ class FencedExecutionPort:
             source_key=_RUN_EVENT_SOURCE_KEY,
             watermark=0,  # advance_checkpoint 内部 +1
         )
+        return run_event
 
     async def fenced_commit_terminal(
         self,
@@ -169,9 +245,16 @@ class FencedExecutionPort:
     ):
         """commit_terminal 后推进 ``run_output_body=queue_seq`` + event 计数器。
 
-        commit_terminal 返回 (run, event, terminal_digest_match)；
-        terminal_digest_match=True（idempotent replay）不推进。
+        ``commit_terminal`` 返回 ``(run, event, terminal_digest_match)``；
+        ``terminal_digest_match=True``（idempotent replay）不推进。
+        R1-S3-C round-7：caller 传 queue_seq 必须与 Run 一致。
         """
+        await self._require_run_identity(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            run_id=run_id,
+            queue_seq=queue_seq,
+        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -210,8 +293,15 @@ class FencedExecutionPort:
     ):
         """stage 后推进 ``compatibility_output=queue_seq``。
 
-        round-3 P2-1：``stage`` 直接返回 ``created`` 标志（不二次探测）。
+        ``stage`` 返回 ``(snapshot, created)``；``created=False`` 不推进。
+        R1-S3-C round-7：caller 传 queue_seq 必须与 Run 一致。
         """
+        await self._require_run_identity(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            run_id=run_id,
+            queue_seq=queue_seq,
+        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -244,9 +334,14 @@ class FencedExecutionPort:
         """start_run 后推进 ``run_event_payload`` 计数器 +1。
 
         ``start_barrier`` 可选：workspace integration 注入
-        ``WorkspaceRunStartBarrier``（actor_id 校验）。默认 None 时 RunCoordinator
-        使用 ``FailClosedRunStartBarrier``。
+        ``WorkspaceRunStartBarrier``（actor_id 校验）。
+        R1-S3-C round-7：caller 传 (tenant, conv, run_id) 必须与 Run 一致。
         """
+        await self._require_run_identity(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            run_id=run_id,
+        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -277,7 +372,15 @@ class FencedExecutionPort:
         target_status,
         summary: str,
     ) -> tuple:
-        """transition_run 后推进 ``run_event_payload`` 计数器 +1。"""
+        """transition_run 后推进 ``run_event_payload`` 计数器 +1。
+
+        R1-S3-C round-7：caller 传 (tenant, conv, run_id) 必须与 Run 一致。
+        """
+        await self._require_run_identity(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            run_id=run_id,
+        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -311,13 +414,19 @@ class FencedExecutionPort:
     ) -> tuple:
         """mark_run_resume_required 后推进 ``run_event_payload`` 计数器 +1。
 
-        R1-S3-C round-6：plan §S3-C 9 writer 矩阵剩余 3 个 wrapper 之一。
-        当前 production 无调用点（S3-E 接入），wrapper 与单测先就位。
+        R1-S3-C round-7 commit-4：保留原 writer 返回值
+        ``(AgentRun, RunEvent, RuntimeSessionBinding)``（之前 round-6
+        丢弃了 binding）。
         """
+        await self._require_run_identity(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            run_id=run_id,
+        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
-        run, event, _binding = await self._runs.mark_run_resume_required(
+        run, event, binding = await self._runs.mark_run_resume_required(
             tenant_id=tenant_id,
             run_id=run_id,
             expected_status=expected_status,
@@ -332,7 +441,7 @@ class FencedExecutionPort:
             source_key=_RUN_EVENT_SOURCE_KEY,
             watermark=0,  # +1
         )
-        return run, event
+        return run, event, binding
 
     async def fenced_resume_run(
         self,
@@ -348,13 +457,19 @@ class FencedExecutionPort:
     ) -> tuple:
         """resume_run 后推进 ``run_event_payload`` 计数器 +1。
 
-        R1-S3-C round-6：plan §S3-C 9 writer 矩阵剩余 3 个 wrapper 之一。
-        当前 production 无调用点（S3-E 接入），wrapper 与单测先就位。
+        R1-S3-C round-7 commit-4：保留原 writer 返回值
+        ``(AgentRun, RunEvent, RuntimeSessionBinding)``（之前 round-6
+        丢弃了 binding）。
         """
+        await self._require_run_identity(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            run_id=run_id,
+        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
-        run, event, _binding = await self._runs.resume_run(
+        run, event, binding = await self._runs.resume_run(
             tenant_id=tenant_id,
             run_id=run_id,
             expected_run_revision=expected_run_revision,
@@ -369,7 +484,7 @@ class FencedExecutionPort:
             source_key=_RUN_EVENT_SOURCE_KEY,
             watermark=0,  # +1
         )
-        return run, event
+        return run, event, binding
 
     async def fenced_ingest_runtime_event(
         self,
@@ -381,10 +496,15 @@ class FencedExecutionPort:
     ):
         """ingest_runtime_event 后推进 ``run_event_payload`` 计数器 +1。
 
-        R1-S3-C round-6：plan §S3-C 9 writer 矩阵剩余 3 个 wrapper 之一。
-        Runtime adapter 推迟到 S4 接入，本 wrapper 形态先就位。
+        R1-S3-C round-7：校验 ``command.frame.tenant_id / frame.run_id``
+        与外层一致（防止 Runtime 通道绕过 fenced port 校验）。
         Idempotent replay 不推进（writer 返回 ``idempotent_replay=True``）。
         """
+        self._require_frame_identity(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            command=command,
+        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
