@@ -180,6 +180,7 @@ class RunCoordinator:
         expected_revision: int,
         target_status: RunStatus,
         summary: str,
+        cancel_intent_revision: int | None = None,
     ) -> tuple[AgentRun, RunEvent]:
         if target_status in {RunStatus.STARTING, RunStatus.RESUME_REQUIRED}:
             raise RunConflictError(
@@ -209,6 +210,7 @@ class RunCoordinator:
             expected_revision=expected_revision,
             target_status=target_status,
             summary=summary,
+            cancel_intent_revision=cancel_intent_revision,
         )
 
     async def mark_run_resume_required(
@@ -308,6 +310,7 @@ class RunCoordinator:
         expected_status: RunStatus,
         expected_revision: int,
         result: TerminalResult,
+        cancel_intent_revision: int | None = None,
     ) -> tuple[AgentRun, RunEvent | None, bool]:
         run = await self.require_run(tenant_id=tenant_id, run_id=run_id)
         if not run.is_terminal:
@@ -323,6 +326,7 @@ class RunCoordinator:
             expected_status=expected_status,
             expected_revision=expected_revision,
             result=result,
+            cancel_intent_revision=cancel_intent_revision,
         )
 
     async def reserve_cancel_intent(

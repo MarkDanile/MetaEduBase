@@ -60,7 +60,15 @@ class WorkspaceOwnedConversationAccess(RunConversationAccessPort):
 
 
 def build_run_query_service(session: AsyncSession) -> RunQueryService:
+    # R1-S3-C round-7 commit-5：注入 WorkspaceReadPort（AgentWorkspaceBridgeService
+    # 实现），使 RunQueryService.request_cancel 能取 Conv 行锁而不反向 import
+    # concrete bridge。
+    from app.contexts.agent_workspace.application.bridge import (
+        AgentWorkspaceBridgeService,
+    )
+
     return RunQueryService(
         session,
         conversation_access=WorkspaceOwnedConversationAccess(session),
+        workspace_read=AgentWorkspaceBridgeService(session),
     )
