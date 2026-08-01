@@ -68,28 +68,23 @@ class FencedExecutionPort:
     ) -> None:
         """R1-S3-C round-6：每个 fenced_* wrapper 入口自检 Guard 已持。
 
-        ``ConversationExecutionGuard.acquire`` 用 ``pg_advisory_xact_lock`` 持
-        锁，本会话在持有期间 ``pg_locks`` 中存在 ``locktype='advisory'`` 且
-        ``pid=pg_backend_pid()`` 的行。漏 Guard 时 raise，防止 fenced_* 在
-        Guard 外被调（会与 fenced_* writer 形成 2-way deadlock 或读到陈旧
-        purge_revision）。同事务内 Guard 已持时查询 0 行开销。
+        ``ConversationExecutionGuard.acquire`` 用 ``pg_advisory_xact_lock(int8)``
+        持锁；同会话同事务内重调 ``pg_try_advisory_xact_lock(int8)`` 立刻返回
+        true（advisory lock 是 reentrant 同事务持有）。漏 Guard 时返回 false。
+        不可用 ``pg_locks.objid`` 查询——该列是 oid（uint32），与 advisory lock
+        int8 命名空间不同，且 ``conversation_guard_key`` 派生为 signed int64
+        会触发 ``DataError: value out of uint32 range``（见 round-6 CI 反馈）。
         """
         guard_key = conversation_guard_key(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
-        row = (
+        held = (
             await self._session.execute(
-                text(
-                    "SELECT 1 FROM pg_locks "
-                    "WHERE locktype = 'advisory' "
-                    "AND objid = :k "
-                    "AND pid = pg_backend_pid() "
-                    "LIMIT 1"
-                ),
+                text("SELECT pg_try_advisory_xact_lock(:k)"),
                 {"k": guard_key},
             )
-        ).scalar_one_or_none()
-        if row is None:
+        ).scalar()
+        if not held:
             raise RuntimeError(
                 "FencedExecutionPort called without ConversationExecutionGuard "
                 f"held for (tenant={tenant_id}, conv={conversation_id}); "
