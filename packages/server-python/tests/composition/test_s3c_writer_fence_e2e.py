@@ -176,10 +176,11 @@ async def test_active_fence_advance_writes_ingress_checkpoint(session_factory) -
 
 @pytest.mark.asyncio
 async def test_concurrent_dispatch_no_deadlock(session_factory) -> None:
-    """并发 dispatch_turn / fenced_* 在 pg_stat_activity / pg_locks 快照下无 deadlock cycle。
+    """并发 dispatch_turn / fenced_* 在 30s 内完成（无 deadlock）。
 
-    用 asyncio.gather 启动 3 个并发事务，捕获 pg_stat_activity 与 pg_locks
-    快照，断言无 advisory 锁 2-way wait（lock wait 时间 < 30 秒）。
+    用 asyncio.gather 启动 3 个并发事务，每个事务持 Guard；如 Guard
+    串行化失效则 gather 超时报 TimeoutError。``pg_stat_activity`` 是全库
+    快照，无法精确归属本测试的残留连接，因此只断言 gather 成功。
     """
     from app.composition.agent_control_plane import ConversationExecutionGuard
 
@@ -206,17 +207,11 @@ async def test_concurrent_dispatch_no_deadlock(session_factory) -> None:
             t.cancel()
         pytest.fail("并发 dispatch 30 秒内未完成（疑似 deadlock）")
 
-    # 捕获 pg_stat_activity 验证无 active advisory lock 等待
-    async with session_factory() as diag:
-        active_backends = (
-            await diag.execute(
-                text(
-                    "SELECT count(*) FROM pg_stat_activity "
-                    "WHERE state = 'active' AND query LIKE '%pg_advisory_xact_lock%'"
-                )
-            )
-        ).scalar()
-    assert active_backends == 0, (
-        f"pg_stat_activity 中仍有 {active_backends} 个 advisory lock 等待 "
-        "（疑似 deadlock 未清理）"
-    )
+    # 捕获 pg_stat_activity 验证本测试 3 个并发任务全部完成（gather 不抛
+    # TimeoutError 即视为无 deadlock；pg_stat_activity 是全库快照，可能含
+    # 其他测试的残留 advisory lock，因此只断言 gather 成功）。
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    for i, r in enumerate(results):
+        assert not isinstance(r, BaseException), (
+            f"dispatch task {i} 失败：{r!r}"
+        )
