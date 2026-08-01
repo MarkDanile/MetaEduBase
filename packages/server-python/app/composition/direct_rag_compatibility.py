@@ -17,6 +17,7 @@ from app.composition.agent_control_plane import (
     ConversationExecutionCoordinator,
     ConversationExecutionGuard,
 )
+from app.composition.execution_fenced_port import FencedExecutionPort
 from app.contexts.agent_execution.application.compatibility_output_service import (
     CompatibilityOutputReader,
     CompatibilityOutputService,
@@ -358,8 +359,13 @@ class DirectRagCompatibilityAdapter:
                 expected_revision=run.status_revision,
             )
         if run.status is RunStatus.STARTING:
-            run, _ = await RunCoordinator(self._session).transition_run(
+            # R1-S3-C round-6：transition_run 走 fenced wrapper（含 fence 裁决
+            # + run_event_payload 推进）。coordinator 已在 dispatch_turn 路径
+            # 持 Guard；activate_turn 通过此处已有的 Coordinator guard 上下文
+            # 复用同一会话，Guard 已序列化 (tenant, conv)。
+            run, _ = await FencedExecutionPort(self._session).fenced_transition_run(
                 tenant_id=tenant_id,
+                conversation_id=run.conversation_id,
                 run_id=run.id,
                 expected_status=RunStatus.STARTING,
                 expected_revision=run.status_revision,
@@ -405,9 +411,12 @@ class DirectRagCompatibilityAdapter:
             )
 
         now = await self._database_now()
-        coordinator = RunCoordinator(self._session)
-        await coordinator.append_event(
+        # R1-S3-C round-6：complete_turn 4 处 writer 全走 FencedExecutionPort。
+        # ``_acquire_write_guard`` 已持 Guard + Conversation 行锁。
+        port = FencedExecutionPort(self._session)
+        await port.fenced_append_event(
             tenant_id=run.tenant_id,
+            conversation_id=run.conversation_id,
             run_id=run.id,
             event=NewRunEvent(
                 event_type=RunEventType.PHASE_CHANGED,
@@ -424,8 +433,9 @@ class DirectRagCompatibilityAdapter:
             ),
         )
         usage = RunUsageSummary()
-        await coordinator.append_event(
+        await port.fenced_append_event(
             tenant_id=run.tenant_id,
+            conversation_id=run.conversation_id,
             run_id=run.id,
             event=NewRunEvent(
                 event_type=RunEventType.USAGE_UPDATED,
@@ -445,10 +455,11 @@ class DirectRagCompatibilityAdapter:
         output = response.reply.encode("utf-8")
         output_ref = f"compat-output:{run.id}"
         try:
-            snapshot = await CompatibilityOutputService(self._session).stage(
+            snapshot, _created = await port.fenced_stage(
                 tenant_id=run.tenant_id,
                 conversation_id=run.conversation_id,
                 run_id=run.id,
+                queue_seq=run.queue_seq,
                 output_ref=output_ref,
                 reply=response.reply,
                 response_envelope=self._response_envelope(response.sources),
@@ -456,9 +467,11 @@ class DirectRagCompatibilityAdapter:
         except ValueError as exc:
             raise DirectRagOutputTooLargeError(str(exc)) from None
         assistant_message_id = uuid.uuid4()
-        _, terminal_event, _ = await coordinator.commit_terminal(
+        _, terminal_event, _ = await port.fenced_commit_terminal(
             tenant_id=run.tenant_id,
+            conversation_id=run.conversation_id,
             run_id=run.id,
+            queue_seq=run.queue_seq,
             expected_status=RunStatus.RUNNING,
             expected_revision=run.status_revision,
             result=TerminalResult(
@@ -536,8 +549,11 @@ class DirectRagCompatibilityAdapter:
         run_id = prepared.recording.run_id
         tenant_id = prepared.tenant_id
         await self._acquire_write_guard(prepared)
-        coordinator = RunCoordinator(self._session)
-        run = await coordinator.require_run(tenant_id=tenant_id, run_id=run_id)
+        # R1-S3-C round-6：fail_turn 2 处 writer 走 FencedExecutionPort。
+        port = FencedExecutionPort(self._session)
+        run = await RunCoordinator(self._session).require_run(
+            tenant_id=tenant_id, run_id=run_id
+        )
         if run.is_terminal:
             return
         if run.status not in {RunStatus.STARTING, RunStatus.RUNNING}:
@@ -545,9 +561,9 @@ class DirectRagCompatibilityAdapter:
                 f"Direct RAG Run cannot fail from {run.status.value}"
             )
         now = await self._database_now()
-        coordinator = RunCoordinator(self._session)
-        await coordinator.append_event(
+        await port.fenced_append_event(
             tenant_id=tenant_id,
+            conversation_id=run.conversation_id,
             run_id=run_id,
             event=NewRunEvent(
                 event_type=RunEventType.ERROR_REPORTED,
@@ -563,9 +579,11 @@ class DirectRagCompatibilityAdapter:
                 correlation_id=run.correlation_id,
             ),
         )
-        await coordinator.commit_terminal(
+        await port.fenced_commit_terminal(
             tenant_id=tenant_id,
+            conversation_id=run.conversation_id,
             run_id=run_id,
+            queue_seq=run.queue_seq,
             expected_status=run.status,
             expected_revision=run.status_revision,
             result=TerminalResult(

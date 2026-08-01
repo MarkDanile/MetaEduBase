@@ -1,13 +1,18 @@
 """S3-C fenced port 单元测试。
 
-round-5 revert：
-- 回退 round-4 verdict-before-writer（pre_create_callback 触发 CI 30+ 分钟
-  挂起）；回到 round-3 顺序（verdict after writer in same txn）。
-- 保留 round-4 erasing fence reject 用例（直接验证 require_active_fence）。
-- advance_checkpoint 按 source_key + watermark 推进（非固定 run_event_payload）。
-- create_run 推进 run_context_body=queue_seq（非 run_event_payload 计数器）。
-- commit_terminal 推进 run_output_body=queue_seq + event 计数器。
-- stage 推进 compatibility_output=queue_seq（非 event 计数器）。
+R1-S3-C round-6：
+- 单元测试只覆盖 advance_checkpoint source_key/watermark 语义与 wrapper 调用
+  ``_assert_guard_held`` / ``require_active_fence`` / 内部 writer 的契约。
+- 删除 round-5 AST/inspect 测试（dispatch_turn / consume_turn_event 顺序）—
+  生产时序由 ``tests/composition/test_s3c_writer_fence_e2e.py`` 真实 PostgreSQL
+  反例覆盖。
+- 删除 round-5 mock 测试（fenced_create_run / fenced_commit_terminal / fenced_stage
+  wrapper 内部行为）— 同上，由真实 PostgreSQL 反例覆盖。
+- 保留 ``test_advance_checkpoint_uses_correct_source_key_and_watermark`` 与
+  ``test_advance_checkpoint_event_counter_increments``（advance_checkpoint 是
+  port 的核心 advance 原语，单测足够）。
+- 保留 ``test_erasing_fence_rejects_create_via_verdict``（直接验证
+  ``require_active_fence`` 在非 active fence 下 raise）。
 """
 
 from __future__ import annotations
@@ -78,136 +83,8 @@ async def test_advance_checkpoint_event_counter_increments() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fenced_create_run_advances_run_context_body() -> None:
-    """fenced_create_run 推进 run_context_body=queue_seq（非 run_event_payload）。"""
-    from app.composition.execution_fenced_port import FencedExecutionPort
-
-    session = MagicMock()
-    port = FencedExecutionPort(session)
-    fence = MagicMock()
-    fence.tenant_id = uuid.uuid4()
-    fence.purge_revision = 0
-    fence.ingress_checkpoint = {"schema_version": 1, "sources": {}}
-
-    port._erasure.require_body_write_fence_for_update = AsyncMock(return_value=fence)
-    port._erasure.advance_ingress_checkpoint_for_update = AsyncMock(return_value=None)
-
-    await port.fenced_create_run(
-        tenant_id=fence.tenant_id,
-        conversation_id=uuid.uuid4(),
-        queue_seq=3,
-    )
-    kw = port._erasure.advance_ingress_checkpoint_for_update.call_args.kwargs
-    assert kw["source_key"] == "run_context_body"
-    assert kw["watermark"] == 3
-
-
-@pytest.mark.asyncio
-async def test_fenced_commit_terminal_advances_run_output_and_event() -> None:
-    """fenced_commit_terminal 推进 run_output_body=queue_seq + event +1。"""
-    from app.composition.execution_fenced_port import FencedExecutionPort
-
-    session = MagicMock()
-    port = FencedExecutionPort(session)
-    fence = MagicMock()
-    fence.tenant_id = uuid.uuid4()
-    fence.purge_revision = 0
-    fence.ingress_checkpoint = {"schema_version": 1, "sources": {}}
-
-    port._erasure.require_body_write_fence_for_update = AsyncMock(return_value=fence)
-    port._erasure.advance_ingress_checkpoint_for_update = AsyncMock(return_value=None)
-    port._runs.commit_terminal = AsyncMock(
-        return_value=(MagicMock(), MagicMock(), False)
-    )
-
-    await port.fenced_commit_terminal(
-        tenant_id=fence.tenant_id,
-        conversation_id=uuid.uuid4(),
-        run_id=uuid.uuid4(),
-        queue_seq=7,
-        expected_status=MagicMock(),
-        expected_revision=1,
-        result=MagicMock(),
-    )
-    calls = port._erasure.advance_ingress_checkpoint_for_update.call_args_list
-    assert len(calls) == 2
-    assert calls[0].kwargs["source_key"] == "run_output_body"
-    assert calls[0].kwargs["watermark"] == 7
-    assert calls[1].kwargs["source_key"] == "run_event_payload"
-    assert calls[1].kwargs["watermark"] == 1
-
-
-@pytest.mark.asyncio
-async def test_fenced_commit_terminal_idempotent_replay_no_advance() -> None:
-    """terminal_digest_match=True（idempotent replay）不推进 checkpoint。"""
-    from app.composition.execution_fenced_port import FencedExecutionPort
-
-    session = MagicMock()
-    port = FencedExecutionPort(session)
-    fence = MagicMock()
-    fence.tenant_id = uuid.uuid4()
-    fence.purge_revision = 0
-    fence.ingress_checkpoint = {"schema_version": 1, "sources": {}}
-
-    port._erasure.require_body_write_fence_for_update = AsyncMock(return_value=fence)
-    port._erasure.advance_ingress_checkpoint_for_update = AsyncMock(return_value=None)
-    port._runs.commit_terminal = AsyncMock(
-        return_value=(MagicMock(), MagicMock(), True)
-    )
-
-    await port.fenced_commit_terminal(
-        tenant_id=fence.tenant_id,
-        conversation_id=uuid.uuid4(),
-        run_id=uuid.uuid4(),
-        queue_seq=7,
-        expected_status=MagicMock(),
-        expected_revision=1,
-        result=MagicMock(),
-    )
-    port._erasure.advance_ingress_checkpoint_for_update.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_fenced_stage_advances_compatibility_output() -> None:
-    """fenced_stage 推进 compatibility_output=queue_seq（非 event 计数器）。"""
-    from app.composition.execution_fenced_port import FencedExecutionPort
-
-    session = MagicMock()
-    port = FencedExecutionPort(session)
-    fence = MagicMock()
-    fence.tenant_id = uuid.uuid4()
-    fence.purge_revision = 0
-    fence.ingress_checkpoint = {"schema_version": 1, "sources": {}}
-
-    port._erasure.require_body_write_fence_for_update = AsyncMock(return_value=fence)
-    port._erasure.advance_ingress_checkpoint_for_update = AsyncMock(return_value=None)
-    port._compat.stage_with_created = AsyncMock(
-        return_value=(MagicMock(), True)
-    )
-
-    await port.fenced_stage(
-        tenant_id=fence.tenant_id,
-        conversation_id=uuid.uuid4(),
-        run_id=uuid.uuid4(),
-        queue_seq=4,
-        output_ref="ref",
-        reply="reply",
-        response_envelope={},
-    )
-    kw = port._erasure.advance_ingress_checkpoint_for_update.call_args.kwargs
-    assert kw["source_key"] == "compatibility_output"
-    assert kw["watermark"] == 4
-
-
-# --- round-5 revert P2: 生产时序反例（round-3 顺序） -------------------
-
-
-@pytest.mark.asyncio
 async def test_erasing_fence_rejects_create_via_verdict() -> None:
-    """erasing fence verdict 必须 raise LateBodyWriteRejectedError。
-
-    删除 verdict 中 state 检查后测试 fail（erasing fence 放行）。
-    """
+    """erasing fence verdict 必须 raise LateBodyWriteRejectedError。"""
     from app.composition.execution_fenced_port import FencedExecutionPort
     from app.contexts.agent_workspace.domain.errors import (
         LateBodyWriteRejectedError,
@@ -215,10 +92,6 @@ async def test_erasing_fence_rejects_create_via_verdict() -> None:
 
     session = MagicMock()
     port = FencedExecutionPort(session)
-    # mock fence 返回 erasing 状态
-    fence = MagicMock()
-    fence.state = MagicMock()
-    fence.state.value = "erasing"
     port._erasure.require_body_write_fence_for_update = AsyncMock(
         side_effect=LateBodyWriteRejectedError(
             "owner fence execution.core.v1 is erasing; body write rejected"
@@ -230,89 +103,37 @@ async def test_erasing_fence_rejects_create_via_verdict() -> None:
         )
 
 
-def test_dispatch_turn_uses_fenced_create_run_after_writer() -> None:
-    """dispatch_turn 必须在 consume_turn_event 之后调 fenced_create_run。
+# --- R1-S3-C round-6：wrapper 契约单元测试 ------------------------------
 
-    inspect dispatch_turn 源码：round-3 顺序——writer 先 commit（同事务持
-    Guard + Conversation 行锁），created=True 时再调 fenced_create_run
-    （取 owner lock + advance run_context_body=queue_seq）。
-    删除 fenced_create_run 调用会破坏 round-3 契约 → 测试 fail。
-    """
-    import ast
-    import inspect
-    import textwrap
 
-    from app.composition.agent_control_plane import AgentBridgeDispatcher
+@pytest.mark.asyncio
+async def test_assert_guard_held_raises_when_guard_not_held() -> None:
+    """Guard 未持时 _assert_guard_held 必须 raise RuntimeError。"""
+    from app.composition.execution_fenced_port import FencedExecutionPort
 
-    source = inspect.getsource(AgentBridgeDispatcher.dispatch_turn)
-    tree = ast.parse(textwrap.dedent(source))
-    func_body = tree.body[0]
-    assert isinstance(func_body, (ast.FunctionDef, ast.AsyncFunctionDef))
-    body_src = ast.unparse(func_body)
-    # round-5 revert：dispatch_turn 函数体不再用 pre_create_callback
-    # （verdict-before-writer）。注释里允许提及历史决策（explanation）；
-    # 只检查函数体（unparse 后注释已剥离）。
-    assert "pre_create_callback" not in body_src, (
-        "dispatch_turn body must NOT pass pre_create_callback to consume_turn_event"
-        " (round-5 reverted: verdict-after-writer in same txn; round-4"
-        " callback caused Backend CI 30+ min hang)"
+    session = MagicMock()
+    port = FencedExecutionPort(session)
+    # pg_locks 查询返回 None（Guard 未持）
+    session.execute = AsyncMock(
+        return_value=MagicMock(scalar_one_or_none=lambda: None)
     )
-    # round-3 顺序：consume_turn_event 先，fenced_create_run 在其后
-    assert "fenced_create_run" in body_src, (
-        "dispatch_turn must call fenced_create_run when created=True"
+    with pytest.raises(RuntimeError, match="without ConversationExecutionGuard"):
+        await port._assert_guard_held(
+            tenant_id=uuid.uuid4(), conversation_id=uuid.uuid4()
+        )
+
+
+@pytest.mark.asyncio
+async def test_assert_guard_held_passes_when_guard_held() -> None:
+    """Guard 已持时 _assert_guard_held 必须正常返回（不 raise）。"""
+    from app.composition.execution_fenced_port import FencedExecutionPort
+
+    session = MagicMock()
+    port = FencedExecutionPort(session)
+    # pg_locks 查询返回 1（Guard 已持）
+    session.execute = AsyncMock(
+        return_value=MagicMock(scalar_one_or_none=lambda: 1)
     )
-    consume_idx = body_src.index("consume_turn_event")
-    fenced_idx = body_src.index("fenced_create_run")
-    assert consume_idx < fenced_idx, (
-        "fenced_create_run must be called AFTER consume_turn_event"
-        " (round-3 verdict-after-writer in same txn)"
-    )
-
-
-def test_consume_turn_event_signature_no_callback() -> None:
-    """consume_turn_event 不再接受 pre_create_callback 参数。
-
-    round-5 revert：consume_turn_event 回归原始签名（无 callback），所有
-    verdict 推迟到 writer commit 之后。
-    """
-    import inspect
-
-    from app.composition.agent_control_plane import (
-        ConversationExecutionCoordinator,
-    )
-
-    sig = inspect.signature(
-        ConversationExecutionCoordinator.consume_turn_event
-    )
-    assert "pre_create_callback" not in sig.parameters, (
-        "consume_turn_event must NOT expose pre_create_callback"
-        " (round-5 reverted; verdict happens in caller after writer commit)"
-    )
-
-
-def test_dispatch_turn_advance_only_when_created() -> None:
-    """dispatch_turn 仅 created=True 时推进 checkpoint。
-
-    round-3 顺序：consume_turn_event 返回 created；False（idempotent replay）
-    不调 fenced_create_run，watermark 不动。
-    删除 if created 条件后 replay 也会 advance → 测试 fail。
-    """
-    import ast
-    import inspect
-    import textwrap
-
-    from app.composition.agent_control_plane import AgentBridgeDispatcher
-
-    source = inspect.getsource(AgentBridgeDispatcher.dispatch_turn)
-    tree = ast.parse(textwrap.dedent(source))
-    func_body = tree.body[0]
-    assert isinstance(func_body, (ast.FunctionDef, ast.AsyncFunctionDef))
-    body_src = ast.unparse(func_body)
-    assert "if created:" in body_src, (
-        "dispatch_turn must gate fenced_create_run on created=True"
-    )
-    fenced_idx = body_src.index("fenced_create_run")
-    if_created_idx = body_src.index("if created:")
-    assert if_created_idx < fenced_idx, (
-        "fenced_create_run must be inside 'if created:' block"
+    await port._assert_guard_held(
+        tenant_id=uuid.uuid4(), conversation_id=uuid.uuid4()
     )

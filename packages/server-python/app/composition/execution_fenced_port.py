@@ -29,8 +29,10 @@ from __future__ import annotations
 
 import uuid
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.composition.agent_control_plane import conversation_guard_key
 from app.contexts.agent_execution.application.compatibility_output_service import (
     CompatibilityOutputService,
 )
@@ -58,6 +60,41 @@ class FencedExecutionPort:
         self._erasure = AgentErasureRepository(session)
         self._runs = RunCoordinator(session)
         self._compat = CompatibilityOutputService(session)
+
+    # --- invariant -------------------------------------------------------
+
+    async def _assert_guard_held(
+        self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> None:
+        """R1-S3-C round-6：每个 fenced_* wrapper 入口自检 Guard 已持。
+
+        ``ConversationExecutionGuard.acquire`` 用 ``pg_advisory_xact_lock`` 持
+        锁，本会话在持有期间 ``pg_locks`` 中存在 ``locktype='advisory'`` 且
+        ``pid=pg_backend_pid()`` 的行。漏 Guard 时 raise，防止 fenced_* 在
+        Guard 外被调（会与 fenced_* writer 形成 2-way deadlock 或读到陈旧
+        purge_revision）。同事务内 Guard 已持时查询 0 行开销。
+        """
+        guard_key = conversation_guard_key(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
+        row = (
+            await self._session.execute(
+                text(
+                    "SELECT 1 FROM pg_locks "
+                    "WHERE locktype = 'advisory' "
+                    "AND objid = :k "
+                    "AND pid = pg_backend_pid() "
+                    "LIMIT 1"
+                ),
+                {"k": guard_key},
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            raise RuntimeError(
+                "FencedExecutionPort called without ConversationExecutionGuard "
+                f"held for (tenant={tenant_id}, conv={conversation_id}); "
+                "caller must acquire Guard.acquire before invoking fenced_*"
+            )
 
     # --- verdict ---------------------------------------------------------
 
@@ -124,8 +161,9 @@ class FencedExecutionPort:
         create_run 写 Run context + root TurnInput，不写 RunEvent。
         仅在 ``created=True``（真实新建）时由调用方调用本方法。
         """
-        # created 标志由调用方从 RunCoordinator.create_run 返回值获取，
-        # 调用方在 created=True 时调本方法。
+        await self._assert_guard_held(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -145,6 +183,9 @@ class FencedExecutionPort:
         event,
     ) -> None:
         """append_event 后推进 ``run_event_payload`` 计数器 +1。"""
+        await self._assert_guard_held(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -174,6 +215,9 @@ class FencedExecutionPort:
         commit_terminal 返回 (run, event, terminal_digest_match)；
         terminal_digest_match=True（idempotent replay）不推进。
         """
+        await self._assert_guard_held(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -214,6 +258,9 @@ class FencedExecutionPort:
 
         round-3 P2-1：``stage`` 直接返回 ``created`` 标志（不二次探测）。
         """
+        await self._assert_guard_held(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -241,12 +288,24 @@ class FencedExecutionPort:
         conversation_id: uuid.UUID,
         run_id: uuid.UUID,
         expected_revision: int,
+        start_barrier=None,
     ) -> tuple:
-        """start_run 后推进 ``run_event_payload`` 计数器 +1。"""
+        """start_run 后推进 ``run_event_payload`` 计数器 +1。
+
+        ``start_barrier`` 可选：workspace integration 注入
+        ``WorkspaceRunStartBarrier``（actor_id 校验）。默认 None 时 RunCoordinator
+        使用 ``FailClosedRunStartBarrier``。
+        """
+        await self._assert_guard_held(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
-        run, event = await self._runs.start_run(
+        runs = self._runs if start_barrier is None else RunCoordinator(
+            self._session, start_barrier=start_barrier
+        )
+        run, event = await runs.start_run(
             tenant_id=tenant_id,
             run_id=run_id,
             expected_revision=expected_revision,
@@ -271,6 +330,9 @@ class FencedExecutionPort:
         summary: str,
     ) -> tuple:
         """transition_run 后推进 ``run_event_payload`` 计数器 +1。"""
+        await self._assert_guard_held(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -289,3 +351,113 @@ class FencedExecutionPort:
             watermark=0,  # +1
         )
         return run, event
+
+    async def fenced_mark_run_resume_required(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        run_id: uuid.UUID,
+        expected_status,
+        expected_run_revision: int,
+        expected_runtime_epoch: int,
+        expected_binding_revision: int,
+        summary: str,
+    ) -> tuple:
+        """mark_run_resume_required 后推进 ``run_event_payload`` 计数器 +1。
+
+        R1-S3-C round-6：plan §S3-C 9 writer 矩阵剩余 3 个 wrapper 之一。
+        当前 production 无调用点（S3-E 接入），wrapper 与单测先就位。
+        """
+        await self._assert_guard_held(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
+        fence = await self.require_active_fence(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
+        run, event, _binding = await self._runs.mark_run_resume_required(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            expected_status=expected_status,
+            expected_run_revision=expected_run_revision,
+            expected_runtime_epoch=expected_runtime_epoch,
+            expected_binding_revision=expected_binding_revision,
+            summary=summary,
+        )
+        await self.advance_checkpoint(
+            fence=fence,
+            conversation_id=conversation_id,
+            source_key=_RUN_EVENT_SOURCE_KEY,
+            watermark=0,  # +1
+        )
+        return run, event
+
+    async def fenced_resume_run(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        run_id: uuid.UUID,
+        expected_run_revision: int,
+        expected_runtime_epoch: int,
+        expected_binding_revision: int,
+        runtime_session_ref: str,
+        summary: str,
+    ) -> tuple:
+        """resume_run 后推进 ``run_event_payload`` 计数器 +1。
+
+        R1-S3-C round-6：plan §S3-C 9 writer 矩阵剩余 3 个 wrapper 之一。
+        当前 production 无调用点（S3-E 接入），wrapper 与单测先就位。
+        """
+        await self._assert_guard_held(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
+        fence = await self.require_active_fence(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
+        run, event, _binding = await self._runs.resume_run(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            expected_run_revision=expected_run_revision,
+            expected_runtime_epoch=expected_runtime_epoch,
+            expected_binding_revision=expected_binding_revision,
+            runtime_session_ref=runtime_session_ref,
+            summary=summary,
+        )
+        await self.advance_checkpoint(
+            fence=fence,
+            conversation_id=conversation_id,
+            source_key=_RUN_EVENT_SOURCE_KEY,
+            watermark=0,  # +1
+        )
+        return run, event
+
+    async def fenced_ingest_runtime_event(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        run_id: uuid.UUID,
+        command,
+    ):
+        """ingest_runtime_event 后推进 ``run_event_payload`` 计数器 +1。
+
+        R1-S3-C round-6：plan §S3-C 9 writer 矩阵剩余 3 个 wrapper 之一。
+        Runtime adapter 推迟到 S4 接入，本 wrapper 形态先就位。
+        Idempotent replay 不推进（writer 返回 ``idempotent_replay=True``）。
+        """
+        await self._assert_guard_held(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
+        fence = await self.require_active_fence(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
+        result = await self._runs.ingest_runtime_event(command)
+        if not result.idempotent_replay:
+            await self.advance_checkpoint(
+                fence=fence,
+                conversation_id=conversation_id,
+                source_key=_RUN_EVENT_SOURCE_KEY,
+                watermark=0,  # +1
+            )
+        return result

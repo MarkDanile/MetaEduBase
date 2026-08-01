@@ -28,10 +28,10 @@
 - Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S3-C PR 拆分：Writer fence）
 - 架构约束：Spec §6.2 writer fence 协议；§7.2 Execution 清除语义；migration 038 actor tombstone 契约（execution.core.v1 `actor_identity` capability 已就位）
 
-当前进展：S3-C round-5 revert 已推（commit `a9423134`）并通过三路 CI。回退 round-4 verdict-before-writer（pre_create_callback）方案：Backend CI 30+ 分钟挂起（Guard + Conversation 行锁内再取 owner lock + fence FOR UPDATE，与 backfill Conversation -> owner 形成环路）。回到 round-3 顺序：consume_turn_event 先持 Guard + Conversation 行锁 + commit writer；caller (dispatch_turn) 在 created=True 时调 fenced_create_run 取 owner lock + advance run_context_body=queue_seq。P3 stage 去重保留；erasing fence reject 测试保留（直接验 require_active_fence）；测试改 round-5 顺序断言（ast.unparse 剥离 docstring/comment 误报）。
-下一步：等独立 max 只读复核 round-5 revert -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D（ExecutionErasureParticipant）。
-验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；三路 CI 全绿（Backend 9m35s / Engineering docs 6s / Frontend 5s）。
-交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层；erase_available 保持 False（S3-D 翻）；不进 S4；不启用 purge scheduler。round-5 方案是 trade-off——verdict-after-writer 不在 writer 前，但同事务内仍由 Guard + Conversation 行锁串行化，避免 owner 环路。
+当前进展：S3-C round-6 完成。(1) P1-2 verdict-before-writer unconditional + advance conditional：consume_turn_event 加 pre_create_callback 参数（Guard + Conversation 行锁内、writer commit 前调 fence 裁决），dispatch_turn 传 _verdict 回调；create AND replay 都走 verdict（erasing/erased raise 不 ACK）；advance 仅 created=True 时调。(2) P1-1 13 处 writer 接线：direct_rag_compatibility（activate_turn transition_run / complete_turn append_event x2 + stage + commit_terminal / fail_turn append_event + commit_terminal 共 8 处）+ agent_control_plane.start_run + run_query_service.request_cancel 加 Guard + 5 处 fenced_commit_terminal / fenced_transition_run。(3) 9 writer 矩阵全 wrapper：新增 fenced_mark_run_resume_required / fenced_resume_run / fenced_ingest_runtime_event。(4) 锁链修复：advance_ingress_checkpoint_for_update 不再独立 SELECT FOR UPDATE Conversation（Guard 串行化即可；round-4 2-way deadlock 根因）；FencedExecutionPort 加 _assert_guard_held 自检（pg_locks 查 pid+objid，漏 Guard 时 raise）。(5) 真实 PostgreSQL 反例：新增 test_s3c_writer_fence_e2e.py（erasing fence reject / active advance 落库 / 并发 dispatch_30s 无 deadlock）；重写 test_s3c_fenced_port.py（保留 advance_checkpoint + _assert_guard_held 单元测试，删除 AST/inspect 测试）。(6) workbench + PR 描述同步。
+下一步：提交并 push -> 三路 CI 验证 -> 独立 max 只读复核 round-6 -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D（ExecutionErasureParticipant）。
+验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；三路 CI 待确认。
+交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层（不违反跨上下文边界）；erase_available 保持 False（S3-D 翻）；不进 S4；不启用 purge scheduler。round-6 锁链修复需 E2E 验证：CI 通过 + pg_stat_activity 快照无 lock wait；如 CI 仍挂起需保留 pg_stat_activity 快照证据（不回退锁链修复）。
 
 ## 下一批候选任务
 

@@ -4,6 +4,8 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.composition.agent_control_plane import ConversationExecutionGuard
+from app.composition.execution_fenced_port import FencedExecutionPort
 from app.contexts.agent_execution.application.dto import EventReplayBatch
 from app.contexts.agent_execution.application.execution_identity_service import (
     DIRECT_RAG_POLICY_VERSION,
@@ -35,6 +37,7 @@ class RunQueryService:
         *,
         conversation_access: RunConversationAccessPort,
     ):
+        self._session = session
         self._repository = AgentExecutionQueryRepository(session)
         self._coordinator = RunCoordinator(session)
         self._conversation_access = conversation_access
@@ -79,6 +82,15 @@ class RunQueryService:
             )
         if not access.can_cancel:
             raise RunNotFoundError("Agent Run not found")
+        # R1-S3-C round-6：取 ConversationExecutionGuard（串行化 tenant+conv 上
+        # 所有调用），使 fenced_* 写入可通过 _assert_guard_held。reserve_cancel_intent
+        # 与 commit_terminal 在同事务内顺序执行，Guard xact_lock 在 commit 时释放。
+        await ConversationExecutionGuard().acquire(
+            self._session,
+            tenant_id=tenant_id,
+            conversation_id=run.conversation_id,
+        )
+        port = FencedExecutionPort(self._session)
         current, reserved = await self._coordinator.reserve_cancel_intent(
             tenant_id=tenant_id,
             run_id=run_id,
@@ -88,9 +100,11 @@ class RunQueryService:
             return current
         if current.run_config_snapshot.policy_version == DIRECT_RAG_POLICY_VERSION:
             if current.status in {RunStatus.QUEUED, RunStatus.RESUME_REQUIRED}:
-                cancelled, _, _ = await self._coordinator.commit_terminal(
+                cancelled, _, _ = await port.fenced_commit_terminal(
                     tenant_id=tenant_id,
+                    conversation_id=run.conversation_id,
                     run_id=run_id,
+                    queue_seq=current.queue_seq,
                     expected_status=current.status,
                     expected_revision=current.status_revision,
                     result=TerminalResult(
@@ -100,17 +114,20 @@ class RunQueryService:
                     ),
                 )
                 return cancelled
-            cancelling, _ = await self._coordinator.transition_run(
+            cancelling, _ = await port.fenced_transition_run(
                 tenant_id=tenant_id,
+                conversation_id=run.conversation_id,
                 run_id=run_id,
                 expected_status=current.status,
                 expected_revision=current.status_revision,
                 target_status=RunStatus.CANCELLING,
                 summary="Cancelling legacy Direct RAG compatibility request",
             )
-            cancelled, _, _ = await self._coordinator.commit_terminal(
+            cancelled, _, _ = await port.fenced_commit_terminal(
                 tenant_id=tenant_id,
+                conversation_id=run.conversation_id,
                 run_id=run_id,
+                queue_seq=current.queue_seq,
                 expected_status=RunStatus.CANCELLING,
                 expected_revision=cancelling.status_revision,
                 result=TerminalResult(
@@ -121,9 +138,11 @@ class RunQueryService:
             )
             return cancelled
         if current.status in {RunStatus.QUEUED, RunStatus.RESUME_REQUIRED}:
-            cancelled, _, _ = await self._coordinator.commit_terminal(
+            cancelled, _, _ = await port.fenced_commit_terminal(
                 tenant_id=tenant_id,
+                conversation_id=run.conversation_id,
                 run_id=run_id,
+                queue_seq=current.queue_seq,
                 expected_status=current.status,
                 expected_revision=expected_revision,
                 result=TerminalResult(
@@ -133,8 +152,9 @@ class RunQueryService:
                 ),
             )
             return cancelled
-        cancelling, _ = await self._coordinator.transition_run(
+        cancelling, _ = await port.fenced_transition_run(
             tenant_id=tenant_id,
+            conversation_id=run.conversation_id,
             run_id=run_id,
             expected_status=current.status,
             expected_revision=expected_revision,
