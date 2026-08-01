@@ -7,12 +7,22 @@
 - 9 writer 入口：create_run_with_root / start_run / transition_run /
   mark_run_resume_required / resume_run / commit_terminal / append_event /
   ingest_runtime_event / CompatibilityOutputService.stage。
-- advance 仅在 writer 返回 ``created=True``（真实新插入）时调用 ``+1``；
+- advance 仅在 writer 返回 ``created=True``（真实新插入）时调用；
   IDEMPOTENT_REPLAY / 命中 existing 不推进计数器。
 - 跨 owner source key fail closed（已在 erasure_repository 闭集校验）。
+- **锁序**（round-3 P1-1 修正）：调用方必须先持 Guard + Conversation 行锁，
+  再调 ``require_active_fence``（owner lock + fence FOR UPDATE）。
+  ``dispatch_turn`` 中 ``consume_turn_event`` 已持 Guard + Conversation 行锁，
+  port verdict 在其后调用。
 
 本模块组合既有 ``AgentErasureRepository``（verdict/advance 原语）和
 ``RunCoordinator`` / ``CompatibilityOutputService``（writer 原语），不复制 fence/lock 逻辑。
+
+**source key 语义**（round-3 P1-3/P1-4 修正）：
+- ``run_context_body``：watermark = Run ``queue_seq``（create_run 推进）。
+- ``run_output_body``：watermark = Run ``queue_seq``（commit_terminal 推进）。
+- ``compatibility_output``：watermark = Run ``queue_seq``（stage 推进）。
+- ``run_event_payload``：watermark = per-Conversation 单调递增计数器（每个新 event +1）。
 """
 
 from __future__ import annotations
@@ -29,12 +39,19 @@ from app.contexts.agent_workspace.infrastructure.erasure_repository import (
     AgentErasureRepository,
 )
 
+_EXECUTION_OWNER_KEY = "execution.core.v1"
+_RUN_EVENT_SOURCE_KEY = "run_event_payload"
+
 
 class FencedExecutionPort:
-    """composition-owned fenced execution port（单一受控入口）。"""
+    """composition-owned fenced execution port（单一受控入口）。
 
-    EXECUTION_OWNER_KEY = "execution.core.v1"
-    RUN_EVENT_SOURCE_KEY = "run_event_payload"
+    **锁序前置**：调用方必须先持 Guard + Conversation 行锁（Spec §6.1）。
+    本 port 的 ``require_active_fence`` 在此前提下取 owner lock + fence FOR UPDATE。
+    """
+
+    EXECUTION_OWNER_KEY = _EXECUTION_OWNER_KEY
+    RUN_EVENT_SOURCE_KEY = _RUN_EVENT_SOURCE_KEY
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -42,65 +59,120 @@ class FencedExecutionPort:
         self._runs = RunCoordinator(session)
         self._compat = CompatibilityOutputService(session)
 
+    # --- verdict ---------------------------------------------------------
+
     async def require_active_fence(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
     ):
-        """verdict：owner lock + fence FOR UPDATE，state=active 才放行。"""
+        """verdict：owner lock + fence FOR UPDATE，state=active 才放行。
+
+        **前置**：调用方已持 Guard + Conversation 行锁（Spec §6.1 锁序）。
+        """
         return await self._erasure.require_body_write_fence_for_update(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
-            owner_key=self.EXECUTION_OWNER_KEY,
+            owner_key=_EXECUTION_OWNER_KEY,
             now=None,
         )
 
-    async def advance_run_event_checkpoint(
-        self, *, fence, conversation_id: uuid.UUID, epoch: int
-    ) -> None:
-        """advance：run_event_payload 计数器 ``+1``（仅 created=True 时调）。
+    # --- advance 原语 ----------------------------------------------------
 
-        读取 fence.ingress_checkpoint 中 run_event_payload 的当前 watermark，
-        传 ``current + 1`` 给 advance_ingress_checkpoint_for_update（该方法做
-        ``max(existing, new)``，保证单调递增 + 幂等 replay 不推进）。
+    async def advance_checkpoint(
+        self,
+        *,
+        fence,
+        conversation_id: uuid.UUID,
+        source_key: str,
+        watermark: int,
+    ) -> None:
+        """advance：按 ``source_key`` + ``watermark`` 推进 fence.ingress_checkpoint。
+
+        - per-Run source key（``run_context_body`` / ``run_output_body`` /
+          ``compatibility_output``）：watermark = Run ``queue_seq``。
+        - ``run_event_payload``：watermark = per-Conversation 计数器（current + 1）。
+        epoch 取自 ``fence.purge_revision``。
         """
-        sources = fence.ingress_checkpoint.get("sources", {})
-        existing_entry = sources.get(self.RUN_EVENT_SOURCE_KEY)
-        current_watermark = (
-            int(existing_entry.get("watermark", 0))
-            if existing_entry is not None
-            else 0
-        )
+        if source_key == _RUN_EVENT_SOURCE_KEY:
+            sources = fence.ingress_checkpoint.get("sources", {})
+            existing_entry = sources.get(_RUN_EVENT_SOURCE_KEY)
+            current_watermark = (
+                int(existing_entry.get("watermark", 0))
+                if existing_entry is not None
+                else 0
+            )
+            watermark = current_watermark + 1
         await self._erasure.advance_ingress_checkpoint_for_update(
             tenant_id=fence.tenant_id,
             conversation_id=conversation_id,
-            owner_key=self.EXECUTION_OWNER_KEY,
-            source_key=self.RUN_EVENT_SOURCE_KEY,
-            watermark=current_watermark + 1,
-            epoch=epoch,
+            owner_key=_EXECUTION_OWNER_KEY,
+            source_key=source_key,
+            watermark=watermark,
+            epoch=fence.purge_revision,
+        )
+
+    # --- writer 包装 -----------------------------------------------------
+
+    async def fenced_create_run(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        queue_seq: int,
+    ) -> None:
+        """create_run 后推进 ``run_context_body=queue_seq``（round-3 P1-3）。
+
+        create_run 写 Run context + root TurnInput，不写 RunEvent。
+        仅在 ``created=True``（真实新建）时由调用方调用本方法。
+        """
+        # created 标志由调用方从 RunCoordinator.create_run 返回值获取，
+        # 调用方在 created=True 时调本方法。
+        fence = await self.require_active_fence(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
+        await self.advance_checkpoint(
+            fence=fence,
+            conversation_id=conversation_id,
+            source_key="run_context_body",
+            watermark=queue_seq,
         )
 
     async def fenced_append_event(
-        self, *, tenant_id, conversation_id, run_id, event, epoch
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        run_id: uuid.UUID,
+        event,
     ) -> None:
-        """fenced append_event：verdict + append + advance（append 总是新插入 -> created=True）。"""
+        """append_event 后推进 ``run_event_payload`` 计数器 +1。"""
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
         await self._runs.append_event(
             tenant_id=tenant_id, run_id=run_id, event=event
         )
-        await self.advance_run_event_checkpoint(
-            fence=fence, conversation_id=conversation_id, epoch=epoch
+        await self.advance_checkpoint(
+            fence=fence,
+            conversation_id=conversation_id,
+            source_key=_RUN_EVENT_SOURCE_KEY,
+            watermark=0,  # advance_checkpoint 内部 +1
         )
 
     async def fenced_commit_terminal(
-        self, *, tenant_id, conversation_id, run_id, expected_status,
-        expected_revision, result, epoch
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        run_id: uuid.UUID,
+        queue_seq: int,
+        expected_status,
+        expected_revision: int,
+        result,
     ):
-        """fenced commit_terminal：verdict + commit + advance。
+        """commit_terminal 后推进 ``run_output_body=queue_seq`` + event 计数器。
 
         commit_terminal 返回 (run, event, terminal_digest_match)；
-        terminal_digest_match=True 表示 idempotent replay（terminal digest 命中），
-        不推进计数器。
+        terminal_digest_match=True（idempotent replay）不推进。
         """
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
@@ -113,29 +185,39 @@ class FencedExecutionPort:
             result=result,
         )
         if not terminal_digest_match:
-            await self.advance_run_event_checkpoint(
-                fence=fence, conversation_id=conversation_id, epoch=epoch
+            await self.advance_checkpoint(
+                fence=fence,
+                conversation_id=conversation_id,
+                source_key="run_output_body",
+                watermark=queue_seq,
+            )
+            await self.advance_checkpoint(
+                fence=fence,
+                conversation_id=conversation_id,
+                source_key=_RUN_EVENT_SOURCE_KEY,
+                watermark=0,  # +1
             )
         return run, event, terminal_digest_match
 
     async def fenced_stage(
-        self, *, tenant_id, conversation_id, run_id, output_ref, reply,
-        response_envelope, epoch
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        run_id: uuid.UUID,
+        queue_seq: int,
+        output_ref: str,
+        reply: str,
+        response_envelope: dict,
     ):
-        """fenced CompatibilityOutputService.stage：verdict + stage + advance（created=True 时）。
+        """stage 后推进 ``compatibility_output=queue_seq``。
 
-        stage 返回 snapshot（无 created 标志）；本方法通过 get_by_run 二次检查判断
-        是否新插入（created=True）。round-2 P2-1 要求 writer 返回 created 标志禁止
-        二次探测--但 stage 当前不支持，M1b 暂用二次检查（M2 改 stage 返回 created）。
+        round-3 P2-1：``stage`` 直接返回 ``created`` 标志（不二次探测）。
         """
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
-        # 检查 existing（判断 created）
-        existing = await self._compat._repository.get_by_run(
-            tenant_id=tenant_id, run_id=run_id
-        )
-        snapshot = await self._compat.stage(
+        snapshot, created = await self._compat.stage_with_created(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             run_id=run_id,
@@ -143,9 +225,67 @@ class FencedExecutionPort:
             reply=reply,
             response_envelope=response_envelope,
         )
-        created = existing is None
         if created:
-            await self.advance_run_event_checkpoint(
-                fence=fence, conversation_id=conversation_id, epoch=epoch
+            await self.advance_checkpoint(
+                fence=fence,
+                conversation_id=conversation_id,
+                source_key="compatibility_output",
+                watermark=queue_seq,
             )
         return snapshot, created
+
+    async def fenced_start_run(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        run_id: uuid.UUID,
+        expected_revision: int,
+    ) -> tuple:
+        """start_run 后推进 ``run_event_payload`` 计数器 +1。"""
+        fence = await self.require_active_fence(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
+        run, event = await self._runs.start_run(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            expected_revision=expected_revision,
+        )
+        await self.advance_checkpoint(
+            fence=fence,
+            conversation_id=conversation_id,
+            source_key=_RUN_EVENT_SOURCE_KEY,
+            watermark=0,  # +1
+        )
+        return run, event
+
+    async def fenced_transition_run(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        run_id: uuid.UUID,
+        expected_status,
+        expected_revision: int,
+        target_status,
+        summary: str,
+    ) -> tuple:
+        """transition_run 后推进 ``run_event_payload`` 计数器 +1。"""
+        fence = await self.require_active_fence(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
+        run, event = await self._runs.transition_run(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            expected_status=expected_status,
+            expected_revision=expected_revision,
+            target_status=target_status,
+            summary=summary,
+        )
+        await self.advance_checkpoint(
+            fence=fence,
+            conversation_id=conversation_id,
+            source_key=_RUN_EVENT_SOURCE_KEY,
+            watermark=0,  # +1
+        )
+        return run, event
