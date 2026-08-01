@@ -4,8 +4,6 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.composition.agent_control_plane import ConversationExecutionGuard
-from app.composition.execution_fenced_port import FencedExecutionPort
 from app.contexts.agent_execution.application.dto import EventReplayBatch
 from app.contexts.agent_execution.application.execution_identity_service import (
     DIRECT_RAG_POLICY_VERSION,
@@ -13,6 +11,7 @@ from app.contexts.agent_execution.application.execution_identity_service import 
 from app.contexts.agent_execution.application.ports import (
     ConversationAccessDecision,
     FencedWriterPort,
+    GuardLockPort,
     RunConversationAccessPort,
 )
 from app.contexts.agent_execution.application.run_coordinator import RunCoordinator
@@ -33,28 +32,30 @@ from app.contexts.agent_workspace.application.ports import WorkspaceReadPort
 
 
 class RunQueryService:
+    """R1-S3-C round-7 commit-12：跨边界协议注入（必填）。
+
+    三个依赖（Guard、Conversation row lock、fenced writer）都是必填本地
+    Protocol。production 在 composition 层组装实现（``build_run_query_service``）；
+    单测可注入 mock。不接受任何无锁 fallback——conversation row lock 必填
+    保证 Spec §6.1 锁序。
+    """
+
     def __init__(
         self,
         session: AsyncSession,
         *,
         conversation_access: RunConversationAccessPort,
-        workspace_read: WorkspaceReadPort | None = None,
-        fenced_writer: FencedWriterPort | None = None,
+        workspace_read: WorkspaceReadPort,
+        guard: GuardLockPort,
+        fenced_writer: FencedWriterPort,
     ):
         self._session = session
         self._repository = AgentExecutionQueryRepository(session)
         self._coordinator = RunCoordinator(session)
         self._conversation_access = conversation_access
-        # R1-S3-C round-7 commit-5：跨边界 protocol 依赖。默认从 composition
-        # 实例化（用于生产）；单测可注入 mock。
-        self._fenced_writer: FencedWriterPort = (
-            fenced_writer if fenced_writer is not None
-            else FencedExecutionPort(session)  # type: ignore[assignment]
-        )
-        # WorkspaceReadPort 提供 lock_owned_conversation（与 dispatch_turn /
-        # delete_conversation 同路径），避免反向 import AgentWorkspaceBridgeService
-        # 触发跨上下文违规。
-        self._workspace_read: WorkspaceReadPort | None = workspace_read
+        self._workspace_read = workspace_read
+        self._guard = guard
+        self._fenced_writer = fenced_writer
 
     async def get_run(
         self,
@@ -96,31 +97,22 @@ class RunQueryService:
             )
         if not access.can_cancel:
             raise RunNotFoundError("Agent Run not found")
-        # R1-S3-C round-7 commit-5：取消 AB-BA 锁序。``request_cancel`` 之前先
-        # 调 ``reserve_cancel_intent`` 锁 AgentRun FOR UPDATE，与 S3-D
-        # ``Conversation -> owner/fence -> AgentRun`` 形成 AB-BA 死锁。现
-        # 在 caller 侧严格持 Guard + Conv 行锁（与 ``delete_conversation``
-        # 同序），cancel intent CAS 下推到 fenced_commit_terminal /
-        # fenced_transition_run 内部 SQL（``cancel_intent_revision`` 参数）。
-        # Writer 内部先取 ``_require_run_for_update`` 再做 CAS，锁链为：
-        # ``Guard -> Conv row -> owner lock -> fence row -> AgentRun FOR UPDATE``。
-        await ConversationExecutionGuard().acquire(
+        # R1-S3-C round-7 commit-11：cancel intent CAS preconditions + idempotency
+        # 由 writer 内部 ``_require_run_for_update`` -> cancel intent 校验
+        # -> status_revision 校验 -> terminal 拒绝 完整执行。Caller 只提供
+        # Guard + Conv 行锁（Spec §6.1），不持有 AgentRun 行锁（避免与
+        # S3-D ``Conversation -> owner/fence -> AgentRun`` 形成 AB-BA）。
+        await self._guard.acquire(
             self._session,
             tenant_id=tenant_id,
             conversation_id=run.conversation_id,
         )
-        # Conv 行锁：复用 lock_owned_conversation（与 dispatch_turn /
-        # delete_conversation 同路径）。通过 WorkspaceReadPort protocol 注入，
-        # 避免反向 import AgentWorkspaceBridgeService 触发跨上下文违规。
-        # 单测可传 None 跳过（绕开 lock_owned_conversation，依赖现有 fixture
-        # 上下文）。
-        if self._workspace_read is not None:
-            await self._workspace_read.lock_owned_conversation(
-                tenant_id=tenant_id,
-                actor_id=actor_id,
-                conversation_id=run.conversation_id,
-                include_deleted=False,
-            )
+        await self._workspace_read.lock_owned_conversation(
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            conversation_id=run.conversation_id,
+            include_deleted=False,
+        )
 
         if run.status is RunStatus.CANCELLING:
             return run

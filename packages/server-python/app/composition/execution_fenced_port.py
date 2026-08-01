@@ -98,12 +98,14 @@ class FencedExecutionPort:
         self,
         *,
         tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
         run_id: uuid.UUID,
         command,
     ) -> None:
         """R1-S3-C round-7：``fenced_ingest_runtime_event`` 的 frame 身份
-        （``command.frame.tenant_id / frame.run_id``）必须等于外层
-        ``tenant_id / run_id``，避免 Runtime 通道绕过 fenced port 校验。
+        （``command.frame.tenant_id / frame.conversation_id / frame.run_id``）
+        必须等于外层 ``tenant_id / conversation_id / run_id``，避免 Runtime 通道
+        绕过 fenced port 校验（跨 Conversation 写）。
         """
         frame = command.frame
         if frame.tenant_id != tenant_id:
@@ -111,10 +113,34 @@ class FencedExecutionPort:
                 f"Runtime frame tenant_id {frame.tenant_id} does not match "
                 f"outer tenant_id {tenant_id}"
             )
+        if frame.conversation_id != conversation_id:
+            raise RuntimeIngestIdentityMismatchError(
+                f"Runtime frame conversation_id {frame.conversation_id} does "
+                f"not match outer conversation_id {conversation_id}"
+            )
         if frame.run_id != run_id:
             raise RuntimeIngestIdentityMismatchError(
                 f"Runtime frame run_id {frame.run_id} does not match "
                 f"outer run_id {run_id}"
+            )
+
+    def _require_fence_identity(
+        self,
+        *,
+        fence,
+        conversation_id: uuid.UUID,
+    ) -> None:
+        """R1-S3-C round-7 commit-13：``advance_checkpoint`` 必须验证
+        ``fence.conversation_id == conversation_id``，防止用 Conversation A
+        的 active fence 快照推进 Conversation B 的 checkpoint（即使 caller
+        已通过 ``_require_run_identity`` 校验 Run 归属，fence 本身仍是
+        按 ``(tenant, conv, owner_key)`` 加载，跨 Conv 调用会让 fence
+        状态错配）。
+        """
+        if fence.conversation_id != conversation_id:
+            raise RunConversationMismatchError(
+                f"Fence {fence.owner_key} belongs to conversation "
+                f"{fence.conversation_id}, not {conversation_id}"
             )
 
     # --- verdict ---------------------------------------------------------
@@ -159,6 +185,11 @@ class FencedExecutionPort:
                 else 0
             )
             watermark = current_watermark + 1
+        # R1-S3-C round-7 commit-13：fence.conversation_id 必须等于 caller 传
+        # 的 conversation_id，防跨 Conv 推进 checkpoint。
+        self._require_fence_identity(
+            fence=fence, conversation_id=conversation_id
+        )
         await self._erasure.advance_ingress_checkpoint_for_update(
             tenant_id=fence.tenant_id,
             conversation_id=conversation_id,
@@ -242,12 +273,15 @@ class FencedExecutionPort:
         expected_status,
         expected_revision: int,
         result,
+        cancel_intent_revision: int | None = None,
     ):
         """commit_terminal 后推进 ``run_output_body=queue_seq`` + event 计数器。
 
         ``commit_terminal`` 返回 ``(run, event, terminal_digest_match)``；
         ``terminal_digest_match=True``（idempotent replay）不推进。
-        R1-S3-C round-7：caller 传 queue_seq 必须与 Run 一致。
+        R1-S3-C round-7 commit-10：透传 ``cancel_intent_revision`` 到
+        RunCoordinator.commit_terminal（commit-11 在仓库层做 cancel intent
+        CAS 校验 + status_revision 校验 + terminal 拒绝）。
         """
         await self._require_run_identity(
             tenant_id=tenant_id,
@@ -264,6 +298,7 @@ class FencedExecutionPort:
             expected_status=expected_status,
             expected_revision=expected_revision,
             result=result,
+            cancel_intent_revision=cancel_intent_revision,
         )
         if not terminal_digest_match:
             await self.advance_checkpoint(
@@ -371,10 +406,14 @@ class FencedExecutionPort:
         expected_revision: int,
         target_status,
         summary: str,
+        cancel_intent_revision: int | None = None,
     ) -> tuple:
         """transition_run 后推进 ``run_event_payload`` 计数器 +1。
 
-        R1-S3-C round-7：caller 传 (tenant, conv, run_id) 必须与 Run 一致。
+        R1-S3-C round-7 commit-10：透传 ``cancel_intent_revision`` 到
+        RunCoordinator.transition_run（commit-11 在仓库层做 cancel intent
+        CAS 校验 + status_revision 校验 + terminal 拒绝）。
+        R1-S3-C round-7 commit-3：caller 传 (tenant, conv, run_id) 必须与 Run 一致。
         """
         await self._require_run_identity(
             tenant_id=tenant_id,
@@ -391,6 +430,7 @@ class FencedExecutionPort:
             expected_revision=expected_revision,
             target_status=target_status,
             summary=summary,
+            cancel_intent_revision=cancel_intent_revision,
         )
         await self.advance_checkpoint(
             fence=fence,
@@ -502,6 +542,7 @@ class FencedExecutionPort:
         """
         self._require_frame_identity(
             tenant_id=tenant_id,
+            conversation_id=conversation_id,
             run_id=run_id,
             command=command,
         )

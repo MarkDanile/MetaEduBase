@@ -60,15 +60,22 @@ class WorkspaceOwnedConversationAccess(RunConversationAccessPort):
 
 
 def build_run_query_service(session: AsyncSession) -> RunQueryService:
-    # R1-S3-C round-7 commit-5：注入 WorkspaceReadPort（AgentWorkspaceBridgeService
-    # 实现），使 RunQueryService.request_cancel 能取 Conv 行锁而不反向 import
-    # concrete bridge。
+    # R1-S3-C round-7 commit-12：注入三个必填 Protocol（WorkspaceReadPort +
+    # GuardLockPort + FencedWriterPort），消除 RunQueryService 对 composition
+    # 实现（ConversationExecutionGuard / FencedExecutionPort）的反向 import。
+    from app.composition.agent_control_plane import ConversationExecutionGuard
+    from app.composition.execution_fenced_port import FencedExecutionPort
     from app.contexts.agent_workspace.application.bridge import (
         AgentWorkspaceBridgeService,
     )
 
+    workspace_read = AgentWorkspaceBridgeService(session)
+    guard = ConversationExecutionGuard()
+    fenced_writer = FencedExecutionPort(session)
     return RunQueryService(
         session,
         conversation_access=WorkspaceOwnedConversationAccess(session),
-        workspace_read=AgentWorkspaceBridgeService(session),
+        workspace_read=workspace_read,
+        guard=guard,
+        fenced_writer=fenced_writer,
     )

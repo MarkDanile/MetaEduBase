@@ -4,6 +4,8 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.contexts.agent_execution.domain.event import EventVisibility, RunEvent
 from app.contexts.agent_execution.domain.run import AgentRun
 from app.shared.schemas.agent_integration import TurnRequestedV1
@@ -34,6 +36,23 @@ class RunConversationAccessPort(Protocol):
         actor_id: uuid.UUID,
         conversation_id: uuid.UUID,
     ) -> ConversationAccessDecision | None: ...
+
+
+class GuardLockPort(Protocol):
+    """R1-S3-C round-7 commit-12：ConversationExecutionGuard 的 Protocol 抽象。
+
+    实现由 composition 层 ``ConversationExecutionGuard`` 提供；application 层
+    依赖 Protocol 不反向 import composition，避免跨上下文违规（与 commit-5
+    FencedWriterPort 拆分层级一致）。
+    """
+
+    async def acquire(
+        self,
+        session: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> None: ...
 
 
 class GuardStatePort(Protocol):
