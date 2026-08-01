@@ -359,10 +359,24 @@ class DirectRagCompatibilityAdapter:
                 expected_revision=run.status_revision,
             )
         if run.status is RunStatus.STARTING:
-            # R1-S3-C round-6：transition_run 走 fenced wrapper（含 fence 裁决
-            # + run_event_payload 推进）。coordinator 已在 dispatch_turn 路径
-            # 持 Guard；activate_turn 通过此处已有的 Coordinator guard 上下文
-            # 复用同一会话，Guard 已序列化 (tenant, conv)。
+            # R1-S3-C round-7 commit-7：transition_run 走 fenced wrapper（含
+            # fence 裁决 + run_event_payload 推进）。复审 P1-3：dispatch_turn
+            # 用独立 session + rollback，Guard 在 activate_turn 此处不持。
+            # 现 caller 严格取 Guard + Conv 行锁（与 delete_conversation /
+            # request_cancel / start_run 同序）。
+            await ConversationExecutionGuard().acquire(
+                self._session,
+                tenant_id=tenant_id,
+                conversation_id=run.conversation_id,
+            )
+            await AgentWorkspaceBridgeService(
+                self._session
+            ).lock_owned_conversation(
+                tenant_id=tenant_id,
+                actor_id=prepared.actor_id,
+                conversation_id=run.conversation_id,
+                include_deleted=False,
+            )
             run, _ = await FencedExecutionPort(self._session).fenced_transition_run(
                 tenant_id=tenant_id,
                 conversation_id=run.conversation_id,
