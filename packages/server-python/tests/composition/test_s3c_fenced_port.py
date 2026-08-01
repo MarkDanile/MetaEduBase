@@ -113,9 +113,9 @@ async def test_assert_guard_held_raises_when_guard_not_held() -> None:
 
     session = MagicMock()
     port = FencedExecutionPort(session)
-    # pg_locks 查询返回 None（Guard 未持）
+    # pg_try_advisory_xact_lock 返回 false（Guard 未持或不同会话）
     session.execute = AsyncMock(
-        return_value=MagicMock(scalar_one_or_none=lambda: None)
+        return_value=MagicMock(scalar=lambda: False)
     )
     with pytest.raises(RuntimeError, match="without ConversationExecutionGuard"):
         await port._assert_guard_held(
@@ -125,15 +125,15 @@ async def test_assert_guard_held_raises_when_guard_not_held() -> None:
 
 @pytest.mark.asyncio
 async def test_assert_guard_held_passes_when_guard_held() -> None:
-    """Guard 已持时 _assert_guard_held 必须正常返回（不 raise）。"""
+    """Guard 已持时 _assert_guard_held 必须正常返回（不 raise）。
+
+    同事务内 reentrant：``pg_try_advisory_xact_lock`` 返回 true。
+    """
     from app.composition.execution_fenced_port import FencedExecutionPort
 
     session = MagicMock()
     port = FencedExecutionPort(session)
-    # pg_locks 查询返回 1（Guard 已持）
-    session.execute = AsyncMock(
-        return_value=MagicMock(scalar_one_or_none=lambda: 1)
-    )
+    session.execute = AsyncMock(return_value=MagicMock(scalar=lambda: True))
     await port._assert_guard_held(
         tenant_id=uuid.uuid4(), conversation_id=uuid.uuid4()
     )
