@@ -29,7 +29,7 @@ PR：#519（CLEAN / MERGEABLE）
 - Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S3-C PR 拆分：Writer fence）
 - 架构约束：Spec §6.2 writer fence 协议；§7.2 Execution 清除语义；migration 038 actor tombstone 契约（execution.core.v1 `actor_identity` capability 已就位）
 
-当前进展：S3-C round-7 commit-21 收口（HEAD b1436505）。
+当前进展：S3-C round-7 commit-21 收口（代码/测试基线 `9cf70a1f`，Backend 1951 passed 0 failed）。
 锁链修复：13 writer 接线 + 9 writer 矩阵全 wrapper；Guard -> Conv -> owner -> fence -> AgentRun 全路径遵循 Spec §6.1，与 S3-D 同序无 AB-BA。
 commit-20：cancel 锁后权威重读 + tombstone 校验 + Direct RAG 锁后完整状态分流 + 真 dispatch_turn e2e。
 commit-21：P2-1 cancel tombstone 变异测试（present -> redacted, fenced_writer 未调）+ P2-2 activate_turn 锁后分流变异测试（QUEUED -> COMPLETED replay / QUEUED -> CANCELLED terminal）。
@@ -37,7 +37,7 @@ commit-18：consume_turn_event verdict 内建（返回 4-tuple，无 callback �
 Protocol 拆分：FencedWriterPort + GuardLockPort + WorkspaceReadPort（必填无 fallback）。
 Run 归属绑定：每个 fenced_* wrapper 校验 (tenant, conv, run, queue_seq) 与 AgentRun 一致；advance_checkpoint 校验 fence.conversation_id。
 下一步：独立 max 只读复核 round-7 -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D（ExecutionErasureParticipant，flush erase_available=True）。
-验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed / git diff --check clean；三路 CI 全绿（run 30742558409 HEAD 9cf70a1f：Backend 1951 passed 1 skipped 4 deselected 0 failed / Engineering docs success / Frontend success）。
+验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed / git diff --check clean；三路 CI 全绿（run 30742558409 基线 9cf70a1f：Backend 1951 passed 1 skipped 4 deselected 0 failed / Engineering docs success / Frontend success）。
 交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层。fenced_ingest_runtime_event 形态已就位（Runtime adapter 推迟到 S4）。BUG-021 已合并（PR #520），本分支已 rebase onto main。
 
 ## 下一批候选任务
