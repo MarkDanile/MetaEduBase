@@ -266,7 +266,9 @@ async def test_fenced_commit_terminal_rejects_cross_conversation_run(
         )
         # Run 属于 Conversation B
         command = replace(
-            make_run_command(identity, tenant_id=tenant_id, conversation_id=conv_b.id),
+            make_run_command(
+                identity, tenant_id=tenant_id, conversation_id=conv_b.conversation.id
+            ),
             created_by=actor_id,
         )
         result = await RunCoordinator(setup).create_run(command)
@@ -278,7 +280,7 @@ async def test_fenced_commit_terminal_rejects_cross_conversation_run(
         with pytest.raises(RunConversationMismatchError):
             await port.fenced_commit_terminal(
                 tenant_id=tenant_id,
-                conversation_id=conv_a.id,  # 故意传 A，Run 属于 B
+                conversation_id=conv_a.conversation.id,  # 故意传 A，Run 属于 B
                 run_id=run_b.id,
                 queue_seq=run_b.queue_seq,
                 expected_status=run_b.status,
@@ -321,7 +323,9 @@ async def test_fenced_commit_terminal_rejects_cross_tenant_run(
             tenant_id=tenant_b, actor_id=actor_id
         )
         command = replace(
-            make_run_command(identity, tenant_id=tenant_b, conversation_id=conv_b.id),
+            make_run_command(
+                identity, tenant_id=tenant_b, conversation_id=conv_b.conversation.id
+            ),
             created_by=actor_id,
         )
         result = await RunCoordinator(setup).create_run(command)
@@ -332,7 +336,7 @@ async def test_fenced_commit_terminal_rejects_cross_tenant_run(
         with pytest.raises(RunNotFoundError):
             await port.fenced_commit_terminal(
                 tenant_id=tenant_a,  # 故意传 A，Run 属于 B
-                conversation_id=conv_b.id,
+                conversation_id=conv_b.conversation.id,
                 run_id=run_b.id,
                 queue_seq=run_b.queue_seq,
                 expected_status=run_b.status,

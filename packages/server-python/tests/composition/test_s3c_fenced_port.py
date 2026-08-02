@@ -79,7 +79,7 @@ async def test_advance_checkpoint_event_counter_increments() -> None:
         "sources": {"run_event_payload": {"watermark": 1, "epoch": 0}},
     }
     await port.advance_checkpoint(
-        fence=fence, conversation_id=uuid.uuid4(),
+        fence=fence, conversation_id=fence.conversation_id,
         source_key="run_event_payload", watermark=0,
     )
     kw = port._erasure.advance_ingress_checkpoint_for_update.call_args.kwargs
