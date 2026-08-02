@@ -93,6 +93,11 @@
 下一步：push commit-19 + CI 重跑验证 0 failed -> 独立 max 复核 -> 合并 S3-C。
 验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；e2e 6 组（真实 PG + 真实 port + 无 mock）已 CI 早期阶段通过（commit-15 hotfix 解决 ImportError）；Backend full hermetic tests 因 30min job 超时被取消（commit-15 前已同样超时，怀疑是 round-7 整体锁链加长导致并发测试串行——需 S3-D 阶段调优事务边界）。
 交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层（commit-12 加 GuardLockPort 拆分跨边界）。run_query_service.request_cancel 锁链严格：Guard → Conv → fenced writer 内部 AgentRun FOR UPDATE + cancel intent CAS，与 S3-D `Conversation → owner/fence → AgentRun` 同序无 AB-BA。fenced_ingest_runtime_event 形态已就位（Runtime adapter 推迟到 S4）。PR #519 描述已同步 round-7 commit-15 收口；Backend CI 30min 超时已知需后续调优。 df643350 (docs(agent): R1-S3-C round-7 收口（三路 CI 全绿，0 failed）)
+||||||| parent of 58fb9842 (docs(agent): R1-S3-C round-7 commit-20 收口（三路 CI 全绿 on HEAD 6781376b）)
+当前进展：S3-C round-7 commit-17~19 收口（commits d3258846 + ef844af0 + cc5f0e28）。复审 P1-1/P1-2/P1-3 全部修复 + CI 全绿。(1) commit-17 P1-2：request_cancel Guard 前置于 access resolution（消除 Conv SHARE -> Guard vs Guard -> Conv UPDATE AB-BA）；锁后重读 Run + cancel intent CAS 幂等 + status_revision precondition。(2) commit-17 P1-1：activate_turn 顶层 Guard + Conv 锁（消除 TOCTOU）。(3) commit-18 P1-3：consume_turn_event verdict 内建（不再 callback 参数，返回 4-tuple）；7 个 test_turn_bridge 调用者改 4-tuple；2 个 race-condition 测试重写；tombstone helper 补 mock。(4) commit-19：修 9 个 CI 失败（tombstone AsyncMock + advance_checkpoint fence.conversation_id + e2e 改用 RunCoordinator.create_run + ConversationView.conversation.id）。
+下一步：独立 max 只读复核 round-7 commit-17~19 -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D。
+验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；三路 CI 全绿（run 30726330298：Backend success / Engineering docs success / Frontend success）；1939+ passed / 0 failed。
+交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层（commit-12 加 GuardLockPort 拆分跨边界）。request_cancel 锁链：Guard -> Conv FOR UPDATE -> fenced writer 内部 AgentRun FOR UPDATE + cancel intent CAS，与 S3-D 同序无 AB-BA。consume_turn_event verdict 内建（commit-18），不再有 fail-open callback。 58fb9842 (docs(agent): R1-S3-C round-7 commit-20 收口（三路 CI 全绿 on HEAD 6781376b）)
 
 ## 下一批候选任务
 
