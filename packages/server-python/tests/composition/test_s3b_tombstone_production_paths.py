@@ -345,7 +345,7 @@ class TestDirectRagActivateTurnLockAfterStateRedispatch:
         terminal_message_id = uuid.uuid4()
 
         # 锁前 read：QUEUED；锁后 read：COMPLETED + assistant_message_id
-        run_queued = drc.AgentRun(
+        run_queued = AgentRun(
             id=run_id,
             tenant_id=uuid.uuid4(),
             conversation_id=conversation_id,
@@ -473,6 +473,7 @@ class TestDirectRagActivateTurnLockAfterStateRedispatch:
             DirectRagTurnPendingError,
         )
         from app.contexts.agent_execution.domain import (
+            AgentRun,
             OutputPublishState,
             RunStatus,
         )
@@ -480,7 +481,7 @@ class TestDirectRagActivateTurnLockAfterStateRedispatch:
         conversation_id = uuid.uuid4()
         run_id = uuid.uuid4()
 
-        run_queued = drc.AgentRun(
+        run_queued = AgentRun(
             id=run_id,
             tenant_id=uuid.uuid4(),
             conversation_id=conversation_id,
