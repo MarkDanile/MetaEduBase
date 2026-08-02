@@ -52,10 +52,10 @@
 ### TASK: REQ-041/047 R1-S3-C Writer fence
 
 状态：🟡 进行中（round-7 commit-21 锁链 + tombstone + 锁后重分流 + 变异测试落地）
-分支：`feat/req041-047-r1-s3c-writer-fence`（HEAD `d52d64f4` rebase 解除 CONFLICTING）
+分支：`feat/req041-047-r1-s3c-writer-fence`（HEAD `9cf70a1f` rebase 解除 CONFLICTING + CI 1951 passed 0 failed）
 
-当前进展：R1-S3-C round-7 commit-15~21 完成锁链修复 + 13 接线 + 9 writer 矩阵 + commit-20 锁后 tombstone 校验 + 锁后状态重分流 + 真 dispatch_turn e2e + P2-1/P2-2 变异测试（P2-1 cancel 锁后 present->redacted raise + fenced_writer 未调；P2-2 activate_turn 锁后 QUEUED->COMPLETED replay / QUEUED->CANCELLED terminal）。Backend CI 三路全绿（1943 passed 0 failed）。
-下一步：触发 HEAD CI 复跑验证；独立 max 只读复核 round-7 -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D（ExecutionErasureParticipant）。
+当前进展：R1-S3-C round-7 commit-15~21 完成锁链修复 + 13 接线 + 9 writer 矩阵 + commit-20 锁后 tombstone 校验 + 锁后状态重分流 + 真 dispatch_turn e2e + P2-1/P2-2 变异测试（P2-1 cancel 锁后 present->redacted raise + fenced_writer 未调；P2-2 activate_turn 锁后 QUEUED->COMPLETED replay / QUEUED->CANCELLED terminal）。Backend CI 三路全绿（HEAD 9cf70a1f run 30742558409：1951 passed 0 failed）。
+下一步：独立 max 只读复核 round-7 -> P0/P1 清零后按流程合并 S3-C（PR #519 CLEAN/MERGEABLE）；独立 max 只读复核 round-7 -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D（ExecutionErasureParticipant）。
 验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；上轮 CI（run 30734946579 HEAD 6781376b）：Backend success 1942 passed / Engineering docs success / Frontend success（注：复审指本次为 1943，可能因并发用例 watermark 累加到 3 触发 1 额外计数）。
 交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层。commit-18 verdict 内建（`consume_turn_event` 返回 4-tuple `(run, ack, created, fence)`，无 callback 参数）。commit-20 锁后 tombstone + 锁后状态重分流覆盖完整 AB-BA + TOCTOU。fenced_ingest_runtime_event 形态已就位（Runtime adapter 推迟到 S4）。
 ## 下一批候选任务
