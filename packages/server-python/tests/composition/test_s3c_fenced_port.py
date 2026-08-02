@@ -34,9 +34,10 @@ async def test_advance_checkpoint_uses_correct_source_key_and_watermark() -> Non
     port = FencedExecutionPort(session)
     fence = MagicMock()
     fence.tenant_id = uuid.uuid4()
+    fence.conversation_id = uuid.uuid4()  # commit-13 _require_fence_identity
     fence.purge_revision = 0
     fence.ingress_checkpoint = {"schema_version": 1, "sources": {}}
-    conversation_id = uuid.uuid4()
+    conversation_id = fence.conversation_id  # 必须与 fence 一致
 
     port._erasure.advance_ingress_checkpoint_for_update = AsyncMock(return_value=None)
 
@@ -60,12 +61,13 @@ async def test_advance_checkpoint_event_counter_increments() -> None:
     port = FencedExecutionPort(session)
     fence = MagicMock()
     fence.tenant_id = uuid.uuid4()
+    fence.conversation_id = uuid.uuid4()  # commit-13 _require_fence_identity
     fence.purge_revision = 0
     fence.ingress_checkpoint = {"schema_version": 1, "sources": {}}
 
     port._erasure.advance_ingress_checkpoint_for_update = AsyncMock(return_value=None)
     await port.advance_checkpoint(
-        fence=fence, conversation_id=uuid.uuid4(),
+        fence=fence, conversation_id=fence.conversation_id,
         source_key="run_event_payload", watermark=0,
     )
     kw = port._erasure.advance_ingress_checkpoint_for_update.call_args.kwargs
