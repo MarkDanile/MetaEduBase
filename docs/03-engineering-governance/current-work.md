@@ -16,48 +16,30 @@
 
 ### TASK: REQ-041/047 R1-S3-C Writer fence
 
-状态：🟡 进行中
+状态：🟡 进行中（round-7 commit-21 收口，三路 CI 全绿，PR CLEAN/MERGEABLE）
 类型：新需求开发（R1 分 Slice，S3-C writer fence）
 领域：agent_execution / erasure coordination
 当前执行模式：superpower / plan-do（契约注记已冻结，S3-A 契约 / S3-B schema+contract 已合并）
 最近接手工具：Claude Code (Opus 4.8)
-分支：feat/req041-047-r1-s3c-writer-fence
+分支：`feat/req041-047-r1-s3c-writer-fence`（HEAD `b1436505`）
+PR：#519（CLEAN / MERGEABLE）
 
 需求来源：
 - Spec: [R1 专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
 - Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S3-C PR 拆分：Writer fence）
 - 架构约束：Spec §6.2 writer fence 协议；§7.2 Execution 清除语义；migration 038 actor tombstone 契约（execution.core.v1 `actor_identity` capability 已就位）
 
-当前进展：S3-C round-7 commit-20 收口（HEAD 6781376b，三路 CI 全绿）。复审 P1（cancel tombstone）+ P2（Direct RAG 锁后分流 + 真 dispatch e2e）全部修复。(1) P1：request_cancel 锁后权威重读后校验 created_by is None -> RunActorAnonymizedError（防等待 Guard 期间匿名化漏进 cancel writer）。(2) P2：activate_turn 锁后重读后完整状态分流（COMPLETED/terminal/QUEUED/STARTING）。(3) P2：新增真实 AgentBridgeDispatcher.dispatch_turn e2e（验证 run_context_body 落库）+ 同 key 并发测试。
-下一步：独立 max 只读复核 round-7 commit-20 -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D。
-验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；三路 CI 全绿（run 30734946579 HEAD 6781376b：Backend success 1942 passed 0 failed / Engineering docs success / Frontend success）。
-交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层。request_cancel 锁链：Guard -> Conv FOR UPDATE -> 锁后重读 + tombstone -> fenced writer AgentRun FOR UPDATE + cancel CAS，与 S3-D 同序无 AB-BA。consume_turn_event verdict 内建（commit-18），无 fail-open callback。PR #519 描述已同步 commit-20。
+当前进展：S3-C round-7 commit-21 收口（HEAD b1436505）。
+锁链修复：13 writer 接线 + 9 writer 矩阵全 wrapper；Guard -> Conv -> owner -> fence -> AgentRun 全路径遵循 Spec §6.1，与 S3-D 同序无 AB-BA。
+commit-20：cancel 锁后权威重读 + tombstone 校验 + Direct RAG 锁后完整状态分流 + 真 dispatch_turn e2e。
+commit-21：P2-1 cancel tombstone 变异测试（present -> redacted, fenced_writer 未调）+ P2-2 activate_turn 锁后分流变异测试（QUEUED -> COMPLETED replay / QUEUED -> CANCELLED terminal）。
+commit-18：consume_turn_event verdict 内建（返回 4-tuple，无 callback 参数）。
+Protocol 拆分：FencedWriterPort + GuardLockPort + WorkspaceReadPort（必填无 fallback）。
+Run 归属绑定：每个 fenced_* wrapper 校验 (tenant, conv, run, queue_seq) 与 AgentRun 一致；advance_checkpoint 校验 fence.conversation_id。
+下一步：独立 max 只读复核 round-7 -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D（ExecutionErasureParticipant，flush erase_available=True）。
+验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed / git diff --check clean；三路 CI 全绿（run 30742558409 HEAD 9cf70a1f：Backend 1951 passed 1 skipped 4 deselected 0 failed / Engineering docs success / Frontend success）。
+交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层。fenced_ingest_runtime_event 形态已就位（Runtime adapter 推迟到 S4）。BUG-021 已合并（PR #520），本分支已 rebase onto main。
 
-状态：🟡 进行中
-类型：bug fix / infrastructure
-领域：本地开发 / Redis / MinIO / Celery
-当前执行模式：bug fix
-最近接手工具：Codex
-分支：`codex/bug-dev-sh-services`（隔离 worktree：`/private/tmp/metaedu-bug-dev-sh-services`）
-
-需求来源：
-- Bug: [BUG-021](../01-product-planning/05-requirements/BUG-021-dev-sh-skips-redis-minio-and-celery.md)
-- 本地开发约束：[Local Development](01-rules/local-development.md)
-
-当前进展：已定位 Docker infra 提前返回、local 模式不启动 Redis、Celery wrapper 找不到裸 `celery` 三条根因；实现逐服务补齐、本地 Redis 生命周期管理及当前 Python `-m celery` 启动。现场 PostgreSQL / Redis / MinIO / Backend / Frontend 已在线，Celery `inspect ping` 返回 `pong`；登录缺 seed 的独立问题已用标准 init seed 恢复为 HTTP 200。
-下一步：提交并创建独立 PR；保持未合并，等待评审。R1-S3-C 继续由 PR #519 的独立分支推进，本修复不触碰其代码。
-验证状态：`bash -n`、新增 5 条 contract tests、ruff、docs gate、diff-check 已通过；真实 `./dev.sh infra/status`、Redis `PONG`、Celery `1 node online / pong` 及登录 HTTP 200 已通过。
-交接备注：主工作区用户改动未触碰；`dev_setup` 的 AI application JSONB seed 异常不在本 BUG 范围。
-
-### TASK: REQ-041/047 R1-S3-C Writer fence
-
-状态：🟡 进行中（round-7 commit-21 锁链 + tombstone + 锁后重分流 + 变异测试落地）
-分支：`feat/req041-047-r1-s3c-writer-fence`（HEAD `9cf70a1f` rebase 解除 CONFLICTING + CI 1951 passed 0 failed）
-
-当前进展：R1-S3-C round-7 commit-15~21 完成锁链修复 + 13 接线 + 9 writer 矩阵 + commit-20 锁后 tombstone 校验 + 锁后状态重分流 + 真 dispatch_turn e2e + P2-1/P2-2 变异测试（P2-1 cancel 锁后 present->redacted raise + fenced_writer 未调；P2-2 activate_turn 锁后 QUEUED->COMPLETED replay / QUEUED->CANCELLED terminal）。Backend CI 三路全绿（HEAD 9cf70a1f run 30742558409：1951 passed 0 failed）。
-下一步：独立 max 只读复核 round-7 -> P0/P1 清零后按流程合并 S3-C（PR #519 CLEAN/MERGEABLE）；独立 max 只读复核 round-7 -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D（ExecutionErasureParticipant）。
-验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；上轮 CI（run 30734946579 HEAD 6781376b）：Backend success 1942 passed / Engineering docs success / Frontend success（注：复审指本次为 1943，可能因并发用例 watermark 累加到 3 触发 1 额外计数）。
-交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层。commit-18 verdict 内建（`consume_turn_event` 返回 4-tuple `(run, ack, created, fence)`，无 callback 参数）。commit-20 锁后 tombstone + 锁后状态重分流覆盖完整 AB-BA + TOCTOU。fenced_ingest_runtime_event 形态已就位（Runtime adapter 推迟到 S4）。
 ## 下一批候选任务
 
 按"建议执行顺序"排序；候选区只保留近期 1 到 3 个入口，完整任务池回 `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/technical-debt.md`。
