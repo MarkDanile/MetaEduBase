@@ -129,7 +129,7 @@ async def test_execution_commit_before_workspace_ack_replays_without_duplicate_r
         )
     assert claimed is not None
     async with session_factory() as session, session.begin():
-        _, first_ack, _ = await ConversationExecutionCoordinator(
+        _, first_ack, _, _ = await ConversationExecutionCoordinator(
             session
         ).consume_turn_event(claimed, consumed_at=claimed_at)
 
@@ -144,7 +144,7 @@ async def test_execution_commit_before_workspace_ack_replays_without_duplicate_r
     assert replay is not None
     assert replay.attempt_count == 2
     async with session_factory() as session, session.begin():
-        _, replay_ack, _ = await ConversationExecutionCoordinator(
+        _, replay_ack, _, _ = await ConversationExecutionCoordinator(
             session
         ).consume_turn_event(replay, consumed_at=retry_at)
     assert replay_ack.payload_digest == first_ack.payload_digest
@@ -444,7 +444,7 @@ async def test_stale_turn_claim_is_fenced_after_a_new_delivery_attempt(
         select(func.count()).select_from(AgentRunModel)
     ) == 0
     async with session_factory() as session, session.begin():
-        run, ack, _ = await ConversationExecutionCoordinator(session).consume_turn_event(
+        run, ack, _, _ = await ConversationExecutionCoordinator(session).consume_turn_event(
             second_claim, consumed_at=retry_at
         )
     async with session_factory() as session, session.begin():
@@ -508,7 +508,7 @@ async def test_turn_ack_and_abandon_share_outbox_then_message_lock_order(
         )
     assert claimed is not None
     async with session_factory() as session, session.begin():
-        _, _, _ = await ConversationExecutionCoordinator(session).consume_turn_event(
+        _, _, _, _ = await ConversationExecutionCoordinator(session).consume_turn_event(
             claimed, consumed_at=now
         )
 
@@ -572,7 +572,7 @@ async def test_abandon_fails_closed_on_conflicting_execution_acceptance(
         )
     assert claimed is not None
     async with session_factory() as session, session.begin():
-        run, _, _ = await ConversationExecutionCoordinator(session).consume_turn_event(
+        run, _, _, _ = await ConversationExecutionCoordinator(session).consume_turn_event(
             claimed, consumed_at=now
         )
     await db_session.execute(
