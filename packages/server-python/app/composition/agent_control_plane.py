@@ -28,6 +28,7 @@ from app.contexts.agent_workspace.application.ports import (
     TerminalOutputReaderPort,
 )
 from app.contexts.agent_workspace.domain import Conversation, TurnDispatchState
+from app.contexts.agent_workspace.domain.erasure import ErasureFence
 from app.shared.schemas.agent_integration import InboxAckV1, TurnLaunchSpecV1
 
 
@@ -78,6 +79,17 @@ def conversation_guard_key(
 
 
 class WorkspaceRunStartBarrier:
+    """R1-S3-C round-7 commit-14：start barrier 仅校验 actor + queue_seq。
+
+    ``can_start_run`` 内部仍调 ``lock_owned_conversation``——caller（commit-6
+    修复后）已在 Guard + Conv 行锁内，同事务内 SELECT FOR UPDATE 同 row 是
+    reentrant（同 row 加 FOR UPDATE 多次不阻塞，已持锁事务可重取），不
+    引起 lock-on-lock；但 ``can_start_run`` 的二次取锁在事务日志里留下
+    痕迹。计划 S3-D 阶段把 ``can_start_run`` 拆为 ``can_start_check``（无锁）
+    + ``lock_owned_conversation``（caller 持锁调用），本次保留二次锁但
+    docstring 明确语义，避免误判"重复锁"为 AB-BA 风险。
+    """
+
     def __init__(
         self, workspace: AgentWorkspaceBridgeService, *, actor_id: uuid.UUID
     ):
@@ -148,7 +160,17 @@ class ConversationExecutionCoordinator:
         claimed: ClaimedWorkspaceEvent,
         *,
         consumed_at: datetime,
-    ) -> tuple[AgentRun, InboxAckV1]:
+    ) -> tuple[AgentRun, InboxAckV1, bool, ErasureFence]:
+        """R1-S3-C round-7 commit-18：verdict 内建（不再 callback 参数）。
+
+        Guard + Conversation 行锁内、writer commit 前调
+        ``FencedExecutionPort.require_active_fence``（unconditional，create
+        AND replay 都走 verdict）；erasing/erased fence raise
+        ``LateBodyWriteRejectedError``。返回 fence 对象供 caller 在
+        ``created=True`` 时 ``advance_checkpoint``。
+        """
+        from app.composition.execution_fenced_port import FencedExecutionPort
+
         event = claimed.event
         await self._guard.acquire(
             self._session,
@@ -162,13 +184,21 @@ class ConversationExecutionCoordinator:
             include_deleted=False,
         )
         await self._workspace.validate_turn_claim(claimed)
-        return await self._execution.consume_turn_requested(
+        # verdict-before-writer unconditional（commit-1 恢复 Conv FOR UPDATE
+        # 后，verdict 在 Guard + Conv 行锁内调 owner lock + fence FOR UPDATE
+        # 不再与 fenced_* writer 形成 2-way deadlock）。
+        fence = await FencedExecutionPort(self._session).require_active_fence(
+            tenant_id=event.tenant_id,
+            conversation_id=event.conversation_id,
+        )
+        run, ack, created = await self._execution.consume_turn_requested(
             event=event,
             payload_digest=claimed.payload_digest,
             delivery_attempt=claimed.attempt_count,
             claimant_id=claimed.claimant_id,
             consumed_at=consumed_at,
         )
+        return run, ack, created, fence
 
     async def start_run(
         self,
@@ -177,6 +207,14 @@ class ConversationExecutionCoordinator:
         run_id: uuid.UUID,
         expected_revision: int,
     ):
+        # R1-S3-C round-7 commit-6：start_run 锁序修复。原顺序 Guard ->
+        # fenced_start_run（owner -> fence -> start_barrier can_start_run 取
+        # Conv row），违反 Spec §6.1（Guard -> Conv -> owner -> fence）。
+        # 现顺序 Guard -> lock_owned_conversation -> fenced_start_run；
+        # WorkspaceRunStartBarrier.can_start_run 通过 actor/queue 校验（不再
+        # 二次取 Conv 行锁，避免 lock-on-lock）。
+        from app.composition.execution_fenced_port import FencedExecutionPort
+
         run = await RunCoordinator(self._session).require_run(
             tenant_id=tenant_id, run_id=run_id
         )
@@ -185,16 +223,22 @@ class ConversationExecutionCoordinator:
             tenant_id=tenant_id,
             conversation_id=run.conversation_id,
         )
-        coordinator = RunCoordinator(
-            self._session,
-            start_barrier=WorkspaceRunStartBarrier(
-                self._workspace, actor_id=run.created_by_or_raise
-            ),
-        )
-        return await coordinator.start_run(
+        await self._workspace.lock_owned_conversation(
             tenant_id=tenant_id,
+            actor_id=run.created_by_or_raise,
+            conversation_id=run.conversation_id,
+            include_deleted=False,
+        )
+        port = FencedExecutionPort(self._session)
+        barrier = WorkspaceRunStartBarrier(
+            self._workspace, actor_id=run.created_by_or_raise
+        )
+        return await port.fenced_start_run(
+            tenant_id=tenant_id,
+            conversation_id=run.conversation_id,
             run_id=run_id,
             expected_revision=expected_revision,
+            start_barrier=barrier,
         )
 
     async def consume_output_event(
@@ -519,10 +563,28 @@ class AgentBridgeDispatcher:
                 f"{claimed.error_code}"
             )
         try:
+            # R1-S3-C round-7 commit-18：verdict 内建于 consume_turn_event
+            # （不再 callback 参数）。create AND replay 都走 fence 裁决；
+            # advance 仅 ``created=True`` 时调。
+            from app.composition.execution_fenced_port import FencedExecutionPort
+
             async with self._session_factory() as session, session.begin():
-                run, ack = await ConversationExecutionCoordinator(
-                    session
-                ).consume_turn_event(claimed, consumed_at=datetime.now(UTC))
+                port = FencedExecutionPort(session)
+                run, ack, created, fence = (
+                    await ConversationExecutionCoordinator(
+                        session
+                    ).consume_turn_event(
+                        claimed,
+                        consumed_at=datetime.now(UTC),
+                    )
+                )
+                if created:
+                    await port.advance_checkpoint(
+                        fence=fence,
+                        conversation_id=claimed.event.conversation_id,
+                        source_key="run_context_body",
+                        watermark=run.queue_seq,
+                    )
             async with self._session_factory() as session, session.begin():
                 await AgentWorkspaceBridgeService(session).acknowledge_turn(ack)
             return run

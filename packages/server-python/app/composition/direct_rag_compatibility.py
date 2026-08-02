@@ -17,6 +17,7 @@ from app.composition.agent_control_plane import (
     ConversationExecutionCoordinator,
     ConversationExecutionGuard,
 )
+from app.composition.execution_fenced_port import FencedExecutionPort
 from app.contexts.agent_execution.application.compatibility_output_service import (
     CompatibilityOutputReader,
     CompatibilityOutputService,
@@ -351,6 +352,74 @@ class DirectRagCompatibilityAdapter:
             raise DirectRagTerminalReplayError(
                 f"Direct RAG idempotency key belongs to a {run.status.value} Run"
             )
+        # R1-S3-C round-7 commit-17（P1-1）：QUEUED/STARTING 分支是 mutation，
+        # 必须在 status 检查后、act 前统一取 Guard + Conv 行锁，避免 TOCTOU
+        # （锁前读 status -> purge 竞态 -> act 基于陈旧 status）。锁后重读 run
+        # 拿 authoritative snapshot。coordinator.start_run / fenced_transition_run
+        # 内部的 Guard/Conv 重取是同事务 reentrant（无 lock-on-lock）。
+        await ConversationExecutionGuard().acquire(
+            self._session,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+        await AgentWorkspaceBridgeService(
+            self._session
+        ).lock_owned_conversation(
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            conversation_id=conversation_id,
+            include_deleted=False,
+        )
+        run = await RunCoordinator(self._session).require_live_run(
+            tenant_id=tenant_id,
+            run_id=run.id,
+        )
+        # R1-S3-C round-7 commit-20（P2）：锁后权威重读必须重新执行完整状态
+        # 裁决。等待锁期间 Run 可能从 QUEUED/STARTING 变为 COMPLETED/
+        # CANCELLED/FAILED/EXPIRED（并发 commit_terminal/cancel）。pre-lock
+        # 的 COMPLETED/terminal 分支用旧快照；此处权威重读后重新分流，
+        # 保留 replay/terminal 语义（不落入通用 DirectRagCompatibilityError）。
+        if run.status is RunStatus.COMPLETED:
+            if run.output_publish_state is not OutputPublishState.PUBLISHED:
+                return PreparedDirectRagTurn(
+                    tenant_id=tenant_id,
+                    actor_id=actor_id,
+                    recording=DirectRagRecording(
+                        conversation_id=conversation_id,
+                        user_message_id=message_id,
+                        run_id=run.id,
+                        assistant_message_id=run.terminal_message_id,
+                    ),
+                    requires_output_publish=True,
+                )
+            assistant = await self._require_assistant_message(
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                conversation_id=conversation_id,
+                run_id=run.id,
+            )
+            return PreparedDirectRagTurn(
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                recording=DirectRagRecording(
+                    conversation_id=conversation_id,
+                    user_message_id=message_id,
+                    run_id=run.id,
+                    assistant_message_id=assistant.id,
+                ),
+                replay_reply=self._message_text(assistant),
+                replay_sources=await self._replay_sources(
+                    tenant_id=tenant_id, run_id=run.id
+                ),
+            )
+        if run.status in {
+            RunStatus.FAILED,
+            RunStatus.CANCELLED,
+            RunStatus.EXPIRED,
+        }:
+            raise DirectRagTerminalReplayError(
+                f"Direct RAG idempotency key belongs to a {run.status.value} Run"
+            )
         if run.status is RunStatus.QUEUED:
             run, _ = await coordinator.start_run(
                 tenant_id=tenant_id,
@@ -358,8 +427,10 @@ class DirectRagCompatibilityAdapter:
                 expected_revision=run.status_revision,
             )
         if run.status is RunStatus.STARTING:
-            run, _ = await RunCoordinator(self._session).transition_run(
+            # commit-17：Guard + Conv 已在上方统一获取（不再在此重复取）。
+            run, _ = await FencedExecutionPort(self._session).fenced_transition_run(
                 tenant_id=tenant_id,
+                conversation_id=conversation_id,
                 run_id=run.id,
                 expected_status=RunStatus.STARTING,
                 expected_revision=run.status_revision,
@@ -405,9 +476,12 @@ class DirectRagCompatibilityAdapter:
             )
 
         now = await self._database_now()
-        coordinator = RunCoordinator(self._session)
-        await coordinator.append_event(
+        # R1-S3-C round-6：complete_turn 4 处 writer 全走 FencedExecutionPort。
+        # ``_acquire_write_guard`` 已持 Guard + Conversation 行锁。
+        port = FencedExecutionPort(self._session)
+        await port.fenced_append_event(
             tenant_id=run.tenant_id,
+            conversation_id=run.conversation_id,
             run_id=run.id,
             event=NewRunEvent(
                 event_type=RunEventType.PHASE_CHANGED,
@@ -424,8 +498,9 @@ class DirectRagCompatibilityAdapter:
             ),
         )
         usage = RunUsageSummary()
-        await coordinator.append_event(
+        await port.fenced_append_event(
             tenant_id=run.tenant_id,
+            conversation_id=run.conversation_id,
             run_id=run.id,
             event=NewRunEvent(
                 event_type=RunEventType.USAGE_UPDATED,
@@ -445,10 +520,11 @@ class DirectRagCompatibilityAdapter:
         output = response.reply.encode("utf-8")
         output_ref = f"compat-output:{run.id}"
         try:
-            snapshot = await CompatibilityOutputService(self._session).stage(
+            snapshot, _created = await port.fenced_stage(
                 tenant_id=run.tenant_id,
                 conversation_id=run.conversation_id,
                 run_id=run.id,
+                queue_seq=run.queue_seq,
                 output_ref=output_ref,
                 reply=response.reply,
                 response_envelope=self._response_envelope(response.sources),
@@ -456,9 +532,11 @@ class DirectRagCompatibilityAdapter:
         except ValueError as exc:
             raise DirectRagOutputTooLargeError(str(exc)) from None
         assistant_message_id = uuid.uuid4()
-        _, terminal_event, _ = await coordinator.commit_terminal(
+        _, terminal_event, _ = await port.fenced_commit_terminal(
             tenant_id=run.tenant_id,
+            conversation_id=run.conversation_id,
             run_id=run.id,
+            queue_seq=run.queue_seq,
             expected_status=RunStatus.RUNNING,
             expected_revision=run.status_revision,
             result=TerminalResult(
@@ -536,8 +614,11 @@ class DirectRagCompatibilityAdapter:
         run_id = prepared.recording.run_id
         tenant_id = prepared.tenant_id
         await self._acquire_write_guard(prepared)
-        coordinator = RunCoordinator(self._session)
-        run = await coordinator.require_run(tenant_id=tenant_id, run_id=run_id)
+        # R1-S3-C round-6：fail_turn 2 处 writer 走 FencedExecutionPort。
+        port = FencedExecutionPort(self._session)
+        run = await RunCoordinator(self._session).require_run(
+            tenant_id=tenant_id, run_id=run_id
+        )
         if run.is_terminal:
             return
         if run.status not in {RunStatus.STARTING, RunStatus.RUNNING}:
@@ -545,8 +626,9 @@ class DirectRagCompatibilityAdapter:
                 f"Direct RAG Run cannot fail from {run.status.value}"
             )
         now = await self._database_now()
-        await coordinator.append_event(
+        await port.fenced_append_event(
             tenant_id=tenant_id,
+            conversation_id=run.conversation_id,
             run_id=run_id,
             event=NewRunEvent(
                 event_type=RunEventType.ERROR_REPORTED,
@@ -562,9 +644,11 @@ class DirectRagCompatibilityAdapter:
                 correlation_id=run.correlation_id,
             ),
         )
-        await coordinator.commit_terminal(
+        await port.fenced_commit_terminal(
             tenant_id=tenant_id,
+            conversation_id=run.conversation_id,
             run_id=run_id,
+            queue_seq=run.queue_seq,
             expected_status=run.status,
             expected_revision=run.status_revision,
             result=TerminalResult(

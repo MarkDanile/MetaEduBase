@@ -374,6 +374,7 @@ class AgentExecutionRepository:
         expected_revision: int,
         target_status: RunStatus,
         summary: str,
+        cancel_intent_revision: int | None = None,
     ) -> tuple[AgentRun, RunEvent]:
         if target_status in TERMINAL_RUN_STATUSES:
             raise RunConflictError("terminal transitions require commit_terminal")
@@ -387,6 +388,18 @@ class AgentExecutionRepository:
             expected_status=expected_status,
             expected_revision=expected_revision,
         )
+        # R1-S3-C round-7 commit-5：可选 cancel_intent CAS（commit 5 把
+        # ``request_cancel`` 原本调 ``reserve_cancel_intent`` 的 CAS 下推到
+        # ``transition_run`` / ``commit_terminal`` SQL，避免 caller 路径先
+        # 锁 AgentRun FOR UPDATE 形成与 S3-D 的 AB-BA 锁序）。
+        if cancel_intent_revision is not None:
+            if row.cancel_requested_revision is not None:
+                if row.cancel_requested_revision != cancel_intent_revision:
+                    raise RunRevisionConflictError(
+                        "Agent Run cancel intent belongs to another revision"
+                    )
+            else:
+                row.cancel_requested_revision = cancel_intent_revision
         require_run_transition(expected_status, target_status)
         now = await self.database_now()
         row.status = target_status.value
@@ -710,6 +723,7 @@ class AgentExecutionRepository:
         expected_status: RunStatus,
         expected_revision: int,
         result: TerminalResult,
+        cancel_intent_revision: int | None = None,
     ) -> tuple[AgentRun, RunEvent | None, bool]:
         digest = snapshot_digest(result.model_dump(mode="json"))
         row = await self._require_run_for_update(tenant_id=tenant_id, run_id=run_id)
@@ -725,6 +739,25 @@ class AgentExecutionRepository:
             expected_status=expected_status,
             expected_revision=expected_revision,
         )
+        # R1-S3-C round-7 commit-11：恢复 cancel intent CAS 完整语义。
+        # 替代 ``reserve_cancel_intent``（被 caller 删除以避免 AB-BA 锁序）；
+        # 校验下推到 writer 内部 ``_require_run_for_update`` 之后：
+        # - 若 ``cancel_requested_revision`` 已存在且不等于 caller 传值：raise
+        #   ``RunRevisionConflictError``（拒绝冲突 intent）。
+        # - 若已存在且等于 caller 传值：幂等，writer 内部已写入，再次写入同值安全。
+        # - 若不存在：写入 caller 传值（cancel intent CAS 落盘）。
+        # commit-5/10/11 链路：request_cancel 开头取 Guard + Conv 行锁，
+        # 不持 AgentRun 行锁；writer 内部 ``_require_run_for_update`` 持
+        # AgentRun 行锁（Spec §6.1 锁链尾部），完整序列化 cancel intent CAS。
+        if cancel_intent_revision is not None:
+            if (
+                row.cancel_requested_revision is not None
+                and row.cancel_requested_revision != cancel_intent_revision
+            ):
+                raise RunRevisionConflictError(
+                    "Agent Run cancel intent belongs to another revision"
+                )
+            row.cancel_requested_revision = cancel_intent_revision
         target_status = RunStatus(result.outcome)
         require_run_transition(expected_status, target_status)
         now = await self.database_now()

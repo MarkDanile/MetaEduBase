@@ -10,6 +10,8 @@ from app.contexts.agent_execution.application.execution_identity_service import 
 )
 from app.contexts.agent_execution.application.ports import (
     ConversationAccessDecision,
+    FencedWriterPort,
+    GuardLockPort,
     RunConversationAccessPort,
 )
 from app.contexts.agent_execution.application.run_coordinator import RunCoordinator
@@ -20,24 +22,41 @@ from app.contexts.agent_execution.domain import (
     EventHistoryExpiredError,
     RunActorAnonymizedError,
     RunNotFoundError,
+    RunRevisionConflictError,
     RunStatus,
     TerminalResult,
 )
 from app.contexts.agent_execution.infrastructure.execution_query_repository import (
     AgentExecutionQueryRepository,
 )
+from app.contexts.agent_workspace.application.ports import WorkspaceReadPort
 
 
 class RunQueryService:
+    """R1-S3-C round-7 commit-12：跨边界协议注入（必填）。
+
+    三个依赖（Guard、Conversation row lock、fenced writer）都是必填本地
+    Protocol。production 在 composition 层组装实现（``build_run_query_service``）；
+    单测可注入 mock。不接受任何无锁 fallback——conversation row lock 必填
+    保证 Spec §6.1 锁序。
+    """
+
     def __init__(
         self,
         session: AsyncSession,
         *,
         conversation_access: RunConversationAccessPort,
+        workspace_read: WorkspaceReadPort,
+        guard: GuardLockPort,
+        fenced_writer: FencedWriterPort,
     ):
+        self._session = session
         self._repository = AgentExecutionQueryRepository(session)
         self._coordinator = RunCoordinator(session)
         self._conversation_access = conversation_access
+        self._workspace_read = workspace_read
+        self._guard = guard
+        self._fenced_writer = fenced_writer
 
     async def get_run(
         self,
@@ -67,11 +86,29 @@ class RunQueryService:
         run_id: uuid.UUID,
         expected_revision: int,
     ) -> AgentRun:
-        run, access = await self._require_run_access(
+        # R1-S3-C round-7 commit-17（P1-2）：Guard 必须前置于 access resolution。
+        # round-7 commit-5/11 的顺序 ``_require_run_access``（含
+        # ``share_owned_conversation FOR SHARE``）-> ``Guard.acquire`` ->
+        # ``lock_owned_conversation FOR UPDATE`` 与 delete 路径
+        # ``Guard -> Conversation FOR UPDATE`` 形成 AB-BA
+        # （Conv SHARE -> Guard vs Guard -> Conv UPDATE）。修复：先读-only
+        # 拿 conversation_id，再 Guard，再 access resolve（SHARE 在 Guard 内），
+        # 再 Conv FOR UPDATE，再锁后重读 Run（authoritative），再 fenced writer。
+        run = await self._repository.get_run(tenant_id=tenant_id, run_id=run_id)
+        if run is None:
+            raise RunNotFoundError("Agent Run not found")
+        await self._guard.acquire(
+            self._session,
+            tenant_id=tenant_id,
+            conversation_id=run.conversation_id,
+        )
+        access = await self._conversation_access.resolve(
             tenant_id=tenant_id,
             actor_id=actor_id,
-            run_id=run_id,
+            conversation_id=run.conversation_id,
         )
+        if access is None:
+            raise RunNotFoundError("Agent Run not found")
         if run.created_by is None:
             raise RunActorAnonymizedError(
                 f"Agent Run {run_id} actor has been anonymized (tombstone); "
@@ -79,38 +116,77 @@ class RunQueryService:
             )
         if not access.can_cancel:
             raise RunNotFoundError("Agent Run not found")
-        current, reserved = await self._coordinator.reserve_cancel_intent(
+        await self._workspace_read.lock_owned_conversation(
             tenant_id=tenant_id,
-            run_id=run_id,
-            expected_revision=expected_revision,
+            actor_id=actor_id,
+            conversation_id=run.conversation_id,
+            include_deleted=False,
         )
-        if not reserved or current.status is RunStatus.CANCELLING:
-            return current
-        if current.run_config_snapshot.policy_version == DIRECT_RAG_POLICY_VERSION:
-            if current.status in {RunStatus.QUEUED, RunStatus.RESUME_REQUIRED}:
-                cancelled, _, _ = await self._coordinator.commit_terminal(
+        # 锁后重读 Run（authoritative snapshot）。round-7 commit-11 之前的
+        # early-return ``if run.status is CANCELLING: return run`` 用锁前旧
+        # 快照，可能返回旧状态或让同 revision 并发 cancel 错误变成 revision
+        # conflict。现重读后做权威幂等检查：
+        # - cancel_requested_revision == expected_revision -> 幂等返回（已记录）
+        # - cancel_requested_revision != expected_revision -> RunRevisionConflictError
+        # - 无 cancel intent -> 走 fenced writer（writer 内 FOR UPDATE + CAS 写入）
+        run = await self._repository.get_run(tenant_id=tenant_id, run_id=run_id)
+        assert run is not None  # lock_owned_conversation 已保证 Conversation 存在
+        # R1-S3-C round-7 commit-20（P1）：锁后权威重读必须重新校验 tombstone。
+        # 等待 Guard 期间 Run 可能被 purge 匿名化（created_by -> None,
+        # actor_state -> redacted）。pre-lock 快照的 tombstone 校验（line 112）
+        # 用旧快照，漏掉 present -> 等锁 -> redacted 竞态。此处权威重读后
+        # 再校验，确保 anonymized Run 不进入 fenced cancel writer。
+        if run.created_by is None:
+            raise RunActorAnonymizedError(
+                f"Agent Run {run_id} actor has been anonymized (tombstone) "
+                "during cancel; live actor required"
+            )
+        if run.cancel_requested_revision is not None:
+            if run.cancel_requested_revision != expected_revision:
+                raise RunRevisionConflictError(
+                    "Agent Run cancel intent belongs to another revision"
+                )
+            return run  # 幂等：同 revision cancel intent 已记录（CANCELLING/CANCELLED）
+        # caller 的 expected_revision 必须匹配当前 status_revision（authoritative）。
+        # 若 run 已被并发推进（如 start_run），caller 的 stale revision -> conflict。
+        # 等价于原 ``reserve_cancel_intent`` 的 ``status_revision != expected_revision`` 校验。
+        if run.status_revision != expected_revision:
+            raise RunRevisionConflictError(
+                "Agent Run cancel revision precondition failed"
+            )
+
+        if run.run_config_snapshot.policy_version == DIRECT_RAG_POLICY_VERSION:
+            if run.status in {RunStatus.QUEUED, RunStatus.RESUME_REQUIRED}:
+                cancelled, _, _ = await self._fenced_writer.fenced_commit_terminal(
                     tenant_id=tenant_id,
+                    conversation_id=run.conversation_id,
                     run_id=run_id,
-                    expected_status=current.status,
-                    expected_revision=current.status_revision,
+                    queue_seq=run.queue_seq,
+                    expected_status=run.status,
+                    expected_revision=run.status_revision,
                     result=TerminalResult(
                         outcome="cancelled",
                         code="direct_rag_cancelled",
                         reason="Legacy Direct RAG compatibility request was cancelled",
                     ),
+                    cancel_intent_revision=expected_revision,
                 )
                 return cancelled
-            cancelling, _ = await self._coordinator.transition_run(
+            cancelling, _ = await self._fenced_writer.fenced_transition_run(
                 tenant_id=tenant_id,
+                conversation_id=run.conversation_id,
                 run_id=run_id,
-                expected_status=current.status,
-                expected_revision=current.status_revision,
+                expected_status=run.status,
+                expected_revision=run.status_revision,
                 target_status=RunStatus.CANCELLING,
                 summary="Cancelling legacy Direct RAG compatibility request",
+                cancel_intent_revision=expected_revision,
             )
-            cancelled, _, _ = await self._coordinator.commit_terminal(
+            cancelled, _, _ = await self._fenced_writer.fenced_commit_terminal(
                 tenant_id=tenant_id,
+                conversation_id=run.conversation_id,
                 run_id=run_id,
+                queue_seq=run.queue_seq,
                 expected_status=RunStatus.CANCELLING,
                 expected_revision=cancelling.status_revision,
                 result=TerminalResult(
@@ -118,28 +194,34 @@ class RunQueryService:
                     code="direct_rag_cancelled",
                     reason="Legacy Direct RAG compatibility request was cancelled",
                 ),
+                cancel_intent_revision=expected_revision,
             )
             return cancelled
-        if current.status in {RunStatus.QUEUED, RunStatus.RESUME_REQUIRED}:
-            cancelled, _, _ = await self._coordinator.commit_terminal(
+        if run.status in {RunStatus.QUEUED, RunStatus.RESUME_REQUIRED}:
+            cancelled, _, _ = await self._fenced_writer.fenced_commit_terminal(
                 tenant_id=tenant_id,
+                conversation_id=run.conversation_id,
                 run_id=run_id,
-                expected_status=current.status,
+                queue_seq=run.queue_seq,
+                expected_status=run.status,
                 expected_revision=expected_revision,
                 result=TerminalResult(
                     outcome="cancelled",
                     code="user_cancel_requested",
                     reason="Cancellation requested by the conversation owner",
                 ),
+                cancel_intent_revision=expected_revision,
             )
             return cancelled
-        cancelling, _ = await self._coordinator.transition_run(
+        cancelling, _ = await self._fenced_writer.fenced_transition_run(
             tenant_id=tenant_id,
+            conversation_id=run.conversation_id,
             run_id=run_id,
-            expected_status=current.status,
+            expected_status=run.status,
             expected_revision=expected_revision,
             target_status=RunStatus.CANCELLING,
             summary="Cancellation requested by the conversation owner",
+            cancel_intent_revision=expected_revision,
         )
         return cancelling
 

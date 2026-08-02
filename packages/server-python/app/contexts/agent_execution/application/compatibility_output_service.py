@@ -45,6 +45,32 @@ class CompatibilityOutputService:
         reply: str,
         response_envelope: dict,
     ) -> CompatibilityOutputSnapshot:
+        # S3-C round-4 P3: delegate to stage_with_created, discard created.
+        snapshot, _created = await self.stage_with_created(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            run_id=run_id,
+            output_ref=output_ref,
+            reply=reply,
+            response_envelope=response_envelope,
+        )
+        return snapshot
+
+    async def stage_with_created(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        run_id: uuid.UUID,
+        output_ref: str,
+        reply: str,
+        response_envelope: dict,
+    ) -> tuple[CompatibilityOutputSnapshot, bool]:
+        """S3-C round-3 P2-1：stage 直接返回 ``(snapshot, created)``，不二次探测。
+
+        ``created=True`` 表示本次调用真实新建（非幂等 replay 命中 existing）。
+        fenced port 据此决定是否推进 checkpoint。
+        """
         output = reply.encode("utf-8")
         if len(output) > MAX_COMPATIBILITY_OUTPUT_BYTES:
             raise ValueError("compatibility output exceeds 65536 UTF-8 bytes")
@@ -66,7 +92,7 @@ class CompatibilityOutputService:
         )
         if existing is not None:
             self._validate_existing(existing, snapshot)
-            return self._to_snapshot(existing)
+            return self._to_snapshot(existing), False
         await self._repository.add(
             CompatibilityOutputModel(
                 id=uuid.uuid4(),
@@ -83,7 +109,7 @@ class CompatibilityOutputService:
                 created_at=datetime.now(UTC),
             )
         )
-        return snapshot
+        return snapshot, True
 
     async def require_by_run(
         self, *, tenant_id: uuid.UUID, run_id: uuid.UUID

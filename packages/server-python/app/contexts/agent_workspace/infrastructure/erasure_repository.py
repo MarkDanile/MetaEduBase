@@ -538,7 +538,7 @@ class AgentErasureRepository:
         （body=seq / title=revision CAS 后值）。本方法与正文写同一事务 commit，
         实现「正文写 + checkpoint + receipt 一起 commit」。
 
-        S2-C P2-6/P2-7 复审：本方法**独占** checkpoint + ``last_body_write_at`` +
+        S2-C P2-6/P2-7 复审：本方法独占 checkpoint + ``last_body_write_at`` +
         fence ``revision`` 的推进（verdict 不再推进），并自校验输入、自取 fence
         行锁，不靠调用约定保证安全：
         - ``source_key`` 必须是该 ``owner_key`` 的受控类别
@@ -549,6 +549,9 @@ class AgentErasureRepository:
           closed，不把旧 purge epoch 的写记到新 epoch）。
         - fence 非 active（裁决后被并发 purge 接管）拒绝推进（writer-win race
           原子兜底），不在清除路径上为已拒正文补 checkpoint。
+
+        R1-S3-C round-7：本方法恢复自取 Conversation 行锁。Caller 必须先持 Guard +
+        Conversation 行锁（Spec §6.1）。
         """
         # S3-B round-1 P1-5：per-owner source key 闭集校验--source_key 必须在
         # ``owner_key`` 的允许集合中（防跨 owner 写 source key，如 workspace owner
@@ -561,7 +564,9 @@ class AgentErasureRepository:
             )
         if watermark < 1:
             raise ValueError(f"ingress watermark must be >= 1, got {watermark}")
-        # 自取 Conversation（读 purge_revision 校验 epoch）+ fence 行锁。
+        # R1-S3-C round-7：恢复 Conversation FOR UPDATE。round-6 hotfix-2 曾取消
+        # 此重取（导致 cancel+STARTING replay 读到陈旧 purge_revision），已
+        # 被 round-7 caller 侧锁序修复取代（commit 5/6/7 补 Guard + Conv 锁）。
         conversation = (
             await self._session.execute(
                 select(ConversationModel)

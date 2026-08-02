@@ -14,23 +14,31 @@
 
 ## 当前进行中
 
-### BUG-021: `dev.sh` 跳过 Redis / MinIO 且 Celery Worker 无法启动
+### TASK: REQ-041/047 R1-S3-C Writer fence
 
-状态：🟡 进行中
-类型：bug fix / infrastructure
-领域：本地开发 / Redis / MinIO / Celery
-当前执行模式：bug fix
-最近接手工具：Codex
-分支：`codex/bug-dev-sh-services`（隔离 worktree：`/private/tmp/metaedu-bug-dev-sh-services`）
+状态：🟡 进行中（round-7 commit-21 收口，三路 CI 全绿，PR CLEAN/MERGEABLE）
+类型：新需求开发（R1 分 Slice，S3-C writer fence）
+领域：agent_execution / erasure coordination
+当前执行模式：superpower / plan-do（契约注记已冻结，S3-A 契约 / S3-B schema+contract 已合并）
+最近接手工具：Claude Code (Opus 4.8)
+分支：`feat/req041-047-r1-s3c-writer-fence`（代码/测试基线 `9cf70a1f`，Backend 1951 passed 0 failed）
+PR：#519（CLEAN / MERGEABLE）
 
 需求来源：
-- Bug: [BUG-021](../01-product-planning/05-requirements/BUG-021-dev-sh-skips-redis-minio-and-celery.md)
-- 本地开发约束：[Local Development](01-rules/local-development.md)
+- Spec: [R1 专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S3-C PR 拆分：Writer fence）
+- 架构约束：Spec §6.2 writer fence 协议；§7.2 Execution 清除语义；migration 038 actor tombstone 契约（execution.core.v1 `actor_identity` capability 已就位）
 
-当前进展：已定位 Docker infra 提前返回、local 模式不启动 Redis、Celery wrapper 找不到裸 `celery` 三条根因；实现逐服务补齐、本地 Redis 生命周期管理及当前 Python `-m celery` 启动。现场 PostgreSQL / Redis / MinIO / Backend / Frontend 已在线，Celery `inspect ping` 返回 `pong`；登录缺 seed 的独立问题已用标准 init seed 恢复为 HTTP 200。
-下一步：提交并创建独立 PR；保持未合并，等待评审。R1-S3-C 继续由 PR #519 的独立分支推进，本修复不触碰其代码。
-验证状态：`bash -n`、新增 5 条 contract tests、ruff、docs gate、diff-check 已通过；真实 `./dev.sh infra/status`、Redis `PONG`、Celery `1 node online / pong` 及登录 HTTP 200 已通过。
-交接备注：主工作区用户改动未触碰；`dev_setup` 的 AI application JSONB seed 异常不在本 BUG 范围。
+当前进展：S3-C round-7 commit-21 收口（代码/测试基线 `9cf70a1f`，Backend 1951 passed 0 failed）。
+锁链修复：13 writer 接线 + 9 writer 矩阵全 wrapper；Guard -> Conv -> owner -> fence -> AgentRun 全路径遵循 Spec §6.1，与 S3-D 同序无 AB-BA。
+commit-20：cancel 锁后权威重读 + tombstone 校验 + Direct RAG 锁后完整状态分流 + 真 dispatch_turn e2e。
+commit-21：P2-1 cancel tombstone 变异测试（present -> redacted, fenced_writer 未调）+ P2-2 activate_turn 锁后分流变异测试（QUEUED -> COMPLETED replay / QUEUED -> CANCELLED terminal）。
+commit-18：consume_turn_event verdict 内建（返回 4-tuple，无 callback 参数）。
+Protocol 拆分：FencedWriterPort + GuardLockPort + WorkspaceReadPort（必填无 fallback）。
+Run 归属绑定：每个 fenced_* wrapper 校验 (tenant, conv, run, queue_seq) 与 AgentRun 一致；advance_checkpoint 校验 fence.conversation_id。
+下一步：独立 max 只读复核 round-7 -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D（ExecutionErasureParticipant，flush erase_available=True）。
+验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed / git diff --check clean；三路 CI 全绿（run 30742558409 基线 9cf70a1f：Backend 1951 passed 1 skipped 4 deselected 0 failed / Engineering docs success / Frontend success）。
+交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层。fenced_ingest_runtime_event 形态已就位（Runtime adapter 推迟到 S4）。BUG-021 已合并（PR #520），本分支已 rebase onto main。
 
 ## 下一批候选任务
 
@@ -38,7 +46,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-041/047 R1-S3-C Writer fence | 🟡 Ready | composition-owned fenced execution port，注入 `consume_turn_requested` / Direct RAG / cancel API / Runtime ingest；禁止生产路径直调未 fenced writer；覆盖全部 implicit/explicit RunEvent writer；writer 返回 `created` 标志驱动 event 计数器 | [Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
@@ -56,10 +63,3 @@
 | 2026-07-29 | R1-S2-C ingress checkpoint source key + title/create fence + backfill 锁序 | 🟢 完成 | ingress 真实 source key + verdict/advance 拆分 + title/create 接 fence + backfill 消 AB-BA + deleted 410/redacted envelope + migration 036 归一；四轮 max 复审清零；全量 1849 passed；三路 CI 全绿 | [PR #511](https://github.com/MarkDanile/MetaEduBase/pull/511)（merge `2ceaffd0`）/ [Plan §R1-S2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-07-28 | R1-S1 Fence/Hold/Purge schema 基座 | 🟢 完成 | owner key 锁 + owner registry + 四协调表 + tombstone + fence 状态机（16 边）+ backfill 恢复契约；六轮 max 复审 P0/P1/P2=0/0/0；全量 1777 passed；dev 已 reset 到 034 head | [PR #506](https://github.com/MarkDanile/MetaEduBase/pull/506)（merge `b8cbdf14`）/ [Plan §R1-S1](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-07-27 | REQ-060 Slice 4 移动端 + a11y + Playwright + 收口 | 🟢 完成 | useMobileDrawer + LayoutView 重构（30 新增 vitest）+ Playwright 3 组 spec（55/55）；326/326 vitest；三路 CI 全绿；六轮复审 P0/P1/P2=0/0/0；评分 95 | [PR #503](https://github.com/MarkDanile/MetaEduBase/pull/503)（）/ [Plan §Slice 4](../02-delivery-plans/02-plans/2026-07-23-req060-console-ia-nav-rbac-plan.md) / [work-log](work-log.md) / [scorecard](04-retrospectives/review-score-log.md) |
-| 2026-07-25 | TD-087 模板管理 API 后端 RBAC | 🟢 完成 | 15 个管理端点统一高权守卫；tenant-local 最小 lookup DTO、403 脱敏与 92 例角色/租户矩阵完成；Template 124、Identity 47、Frontend 175 passed，三路 CI 全绿 | [PR #495](https://github.com/MarkDanile/MetaEduBase/pull/495)（`40a7bf46`）/ [Tech Debt](technical-debt.md#td-087-模板管理-api-缺少后端-rbac) |
-| 2026-07-25 | Agent Control Plane D1 Direct RAG compatibility recording | 🟢 完成 | 旧 evidence API 持久化 Conversation/Message/Run/Event/terminal；双向 bridge 恢复、scoped identity、隔离 execution claim 与 `033` staging；全量 1623 passed，三路 CI 与 `max` 复审全绿 | [PR #489](https://github.com/MarkDanile/MetaEduBase/pull/489)（`56de6bf1`） |
-| 2026-07-24 | Agent Control Plane A1 Run query 与 SSE replay | 🟢 完成 | owner-private GET Run、持久化幂等 cancel intent、PostgreSQL ledger SSE replay/live polling、权限重验和 gap/retention/cursor 错误；`032` migration；全量 1605 passed，三路 CI 全绿 | [PR #487](https://github.com/MarkDanile/MetaEduBase/pull/487)（`2f91bed8`） |
-| 2026-07-24 | Agent Control Plane B1 Workspace/Execution bridge | 🟢 完成 | shared schema/JCS、双向 inbox/outbox、fencing、Guard、真实 FIFO barrier、terminal projection、dead-letter/reconcile、guarded DELETE/restore 与 `031` migration；全量 1587 passed，三路 CI 全绿 | [PR #485](https://github.com/MarkDanile/MetaEduBase/pull/485)（`e113904b`） |
-| 2026-07-24 | Agent Execution E1 durable core | 🟢 完成 | `AgentRun/TurnInput/RunEvent`、FIFO/one-active、连续 Runtime ACK、atomic resume、canonical terminal、组合 FK 与 `030` migration；无 B1/API/Pi/extended entity 越界；全量 1562 passed | [PR #483](https://github.com/MarkDanile/MetaEduBase/pull/483)（`d66f50d3`） |
-| 2026-07-24 | Agent Execution E0 identity、Binding 与 Snapshot | 🟢 完成 | `agent_execution` 最小 catalog、版本化 Snapshot、Direct RAG compatibility identity、Binding epoch/DB-clock lease/cursor 契约与 `029` migration；无 Run/Event/API/Runtime 越界；全量 1411 passed | [PR #481](https://github.com/MarkDanile/MetaEduBase/pull/481)（`37417149`） |
-| 2026-07-24 | Agent Workspace W1 durable store | 🟢 完成 | `agent_workspace` 四业务表 + inbox/outbox、owner-private API、CAS/keyset、双 seq 与完整摘要落地；DELETE/`/turns` 保持关闭；全量 1390 passed | [PR #479](https://github.com/MarkDanile/MetaEduBase/pull/479)（`88bf3c35`） |
