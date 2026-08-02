@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-### BUG-021: `dev.sh` 跳过 Redis / MinIO 且 Celery Worker 无法启动
+### TASK: REQ-041/047 R1-S3-C Writer fence
+
+状态：🟡 进行中
+类型：新需求开发（R1 分 Slice，S3-C writer fence）
+领域：agent_execution / erasure coordination
+当前执行模式：superpower / plan-do（契约注记已冻结，S3-A 契约 / S3-B schema+contract 已合并）
+最近接手工具：Claude Code (Opus 4.8)
+分支：feat/req041-047-r1-s3c-writer-fence
+
+需求来源：
+- Spec: [R1 专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S3-C PR 拆分：Writer fence）
+- 架构约束：Spec §6.2 writer fence 协议；§7.2 Execution 清除语义；migration 038 actor tombstone 契约（execution.core.v1 `actor_identity` capability 已就位）
+
+当前进展：S3-C round-7 commit-20 收口（HEAD 6781376b，三路 CI 全绿）。复审 P1（cancel tombstone）+ P2（Direct RAG 锁后分流 + 真 dispatch e2e）全部修复。(1) P1：request_cancel 锁后权威重读后校验 created_by is None -> RunActorAnonymizedError（防等待 Guard 期间匿名化漏进 cancel writer）。(2) P2：activate_turn 锁后重读后完整状态分流（COMPLETED/terminal/QUEUED/STARTING）。(3) P2：新增真实 AgentBridgeDispatcher.dispatch_turn e2e（验证 run_context_body 落库）+ 同 key 并发测试。
+下一步：独立 max 只读复核 round-7 commit-20 -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D。
+验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed；三路 CI 全绿（run 30734946579 HEAD 6781376b：Backend success 1942 passed 0 failed / Engineering docs success / Frontend success）。
+交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层。request_cancel 锁链：Guard -> Conv FOR UPDATE -> 锁后重读 + tombstone -> fenced writer AgentRun FOR UPDATE + cancel CAS，与 S3-D 同序无 AB-BA。consume_turn_event verdict 内建（commit-18），无 fail-open callback。PR #519 描述已同步 commit-20。
 
 状态：🟡 进行中
 类型：bug fix / infrastructure
