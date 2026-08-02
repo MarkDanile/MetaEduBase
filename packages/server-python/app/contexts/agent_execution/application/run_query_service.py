@@ -131,6 +131,16 @@ class RunQueryService:
         # - 无 cancel intent -> 走 fenced writer（writer 内 FOR UPDATE + CAS 写入）
         run = await self._repository.get_run(tenant_id=tenant_id, run_id=run_id)
         assert run is not None  # lock_owned_conversation 已保证 Conversation 存在
+        # R1-S3-C round-7 commit-20（P1）：锁后权威重读必须重新校验 tombstone。
+        # 等待 Guard 期间 Run 可能被 purge 匿名化（created_by -> None,
+        # actor_state -> redacted）。pre-lock 快照的 tombstone 校验（line 112）
+        # 用旧快照，漏掉 present -> 等锁 -> redacted 竞态。此处权威重读后
+        # 再校验，确保 anonymized Run 不进入 fenced cancel writer。
+        if run.created_by is None:
+            raise RunActorAnonymizedError(
+                f"Agent Run {run_id} actor has been anonymized (tombstone) "
+                "during cancel; live actor required"
+            )
         if run.cancel_requested_revision is not None:
             if run.cancel_requested_revision != expected_revision:
                 raise RunRevisionConflictError(
