@@ -22,6 +22,7 @@ from app.contexts.agent_execution.domain import (
     EventHistoryExpiredError,
     RunActorAnonymizedError,
     RunNotFoundError,
+    RunRevisionConflictError,
     RunStatus,
     TerminalResult,
 )
@@ -85,11 +86,29 @@ class RunQueryService:
         run_id: uuid.UUID,
         expected_revision: int,
     ) -> AgentRun:
-        run, access = await self._require_run_access(
+        # R1-S3-C round-7 commit-17（P1-2）：Guard 必须前置于 access resolution。
+        # round-7 commit-5/11 的顺序 ``_require_run_access``（含
+        # ``share_owned_conversation FOR SHARE``）-> ``Guard.acquire`` ->
+        # ``lock_owned_conversation FOR UPDATE`` 与 delete 路径
+        # ``Guard -> Conversation FOR UPDATE`` 形成 AB-BA
+        # （Conv SHARE -> Guard vs Guard -> Conv UPDATE）。修复：先读-only
+        # 拿 conversation_id，再 Guard，再 access resolve（SHARE 在 Guard 内），
+        # 再 Conv FOR UPDATE，再锁后重读 Run（authoritative），再 fenced writer。
+        run = await self._repository.get_run(tenant_id=tenant_id, run_id=run_id)
+        if run is None:
+            raise RunNotFoundError("Agent Run not found")
+        await self._guard.acquire(
+            self._session,
+            tenant_id=tenant_id,
+            conversation_id=run.conversation_id,
+        )
+        access = await self._conversation_access.resolve(
             tenant_id=tenant_id,
             actor_id=actor_id,
-            run_id=run_id,
+            conversation_id=run.conversation_id,
         )
+        if access is None:
+            raise RunNotFoundError("Agent Run not found")
         if run.created_by is None:
             raise RunActorAnonymizedError(
                 f"Agent Run {run_id} actor has been anonymized (tombstone); "
@@ -97,25 +116,34 @@ class RunQueryService:
             )
         if not access.can_cancel:
             raise RunNotFoundError("Agent Run not found")
-        # R1-S3-C round-7 commit-11：cancel intent CAS preconditions + idempotency
-        # 由 writer 内部 ``_require_run_for_update`` -> cancel intent 校验
-        # -> status_revision 校验 -> terminal 拒绝 完整执行。Caller 只提供
-        # Guard + Conv 行锁（Spec §6.1），不持有 AgentRun 行锁（避免与
-        # S3-D ``Conversation -> owner/fence -> AgentRun`` 形成 AB-BA）。
-        await self._guard.acquire(
-            self._session,
-            tenant_id=tenant_id,
-            conversation_id=run.conversation_id,
-        )
         await self._workspace_read.lock_owned_conversation(
             tenant_id=tenant_id,
             actor_id=actor_id,
             conversation_id=run.conversation_id,
             include_deleted=False,
         )
-
-        if run.status is RunStatus.CANCELLING:
-            return run
+        # 锁后重读 Run（authoritative snapshot）。round-7 commit-11 之前的
+        # early-return ``if run.status is CANCELLING: return run`` 用锁前旧
+        # 快照，可能返回旧状态或让同 revision 并发 cancel 错误变成 revision
+        # conflict。现重读后做权威幂等检查：
+        # - cancel_requested_revision == expected_revision -> 幂等返回（已记录）
+        # - cancel_requested_revision != expected_revision -> RunRevisionConflictError
+        # - 无 cancel intent -> 走 fenced writer（writer 内 FOR UPDATE + CAS 写入）
+        run = await self._repository.get_run(tenant_id=tenant_id, run_id=run_id)
+        assert run is not None  # lock_owned_conversation 已保证 Conversation 存在
+        if run.cancel_requested_revision is not None:
+            if run.cancel_requested_revision != expected_revision:
+                raise RunRevisionConflictError(
+                    "Agent Run cancel intent belongs to another revision"
+                )
+            return run  # 幂等：同 revision cancel intent 已记录（CANCELLING/CANCELLED）
+        # caller 的 expected_revision 必须匹配当前 status_revision（authoritative）。
+        # 若 run 已被并发推进（如 start_run），caller 的 stale revision -> conflict。
+        # 等价于原 ``reserve_cancel_intent`` 的 ``status_revision != expected_revision`` 校验。
+        if run.status_revision != expected_revision:
+            raise RunRevisionConflictError(
+                "Agent Run cancel revision precondition failed"
+            )
 
         if run.run_config_snapshot.policy_version == DIRECT_RAG_POLICY_VERSION:
             if run.status in {RunStatus.QUEUED, RunStatus.RESUME_REQUIRED}:

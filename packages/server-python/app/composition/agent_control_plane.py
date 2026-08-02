@@ -28,6 +28,7 @@ from app.contexts.agent_workspace.application.ports import (
     TerminalOutputReaderPort,
 )
 from app.contexts.agent_workspace.domain import Conversation, TurnDispatchState
+from app.contexts.agent_workspace.domain.erasure import ErasureFence
 from app.shared.schemas.agent_integration import InboxAckV1, TurnLaunchSpecV1
 
 
@@ -159,8 +160,17 @@ class ConversationExecutionCoordinator:
         claimed: ClaimedWorkspaceEvent,
         *,
         consumed_at: datetime,
-        pre_create_callback,  # 必填：S3-C round-7 强制 verdict 无条件
-    ) -> tuple[AgentRun, InboxAckV1, bool]:
+    ) -> tuple[AgentRun, InboxAckV1, bool, ErasureFence]:
+        """R1-S3-C round-7 commit-18：verdict 内建（不再 callback 参数）。
+
+        Guard + Conversation 行锁内、writer commit 前调
+        ``FencedExecutionPort.require_active_fence``（unconditional，create
+        AND replay 都走 verdict）；erasing/erased fence raise
+        ``LateBodyWriteRejectedError``。返回 fence 对象供 caller 在
+        ``created=True`` 时 ``advance_checkpoint``。
+        """
+        from app.composition.execution_fenced_port import FencedExecutionPort
+
         event = claimed.event
         await self._guard.acquire(
             self._session,
@@ -174,16 +184,10 @@ class ConversationExecutionCoordinator:
             include_deleted=False,
         )
         await self._workspace.validate_turn_claim(claimed)
-        # R1-S3-C round-7：verdict-before-writer unconditional。pre_create_callback
-        # 必填，create AND replay 都走 fence 裁决（Guard + Conversation 行锁
-        # 已持）；erasing/erased fence raise LateBodyWriteRejectedError（replay
-        # 不允许 ACK downstream）。advance 仅 created=True 时调（caller 侧）。
-        #
-        # 锁环修复（commit 1）：``advance_ingress_checkpoint_for_update`` 已
-        # 恢复 Conversation FOR UPDATE，verdict 在 Guard + Conversation 行锁
-        # 内调 owner lock + fence FOR UPDATE 不再与 fenced_* writer 形成
-        # 2-way deadlock（writer 的 advance 现在用 caller 已持的 Conv 行锁）。
-        await pre_create_callback(
+        # verdict-before-writer unconditional（commit-1 恢复 Conv FOR UPDATE
+        # 后，verdict 在 Guard + Conv 行锁内调 owner lock + fence FOR UPDATE
+        # 不再与 fenced_* writer 形成 2-way deadlock）。
+        fence = await FencedExecutionPort(self._session).require_active_fence(
             tenant_id=event.tenant_id,
             conversation_id=event.conversation_id,
         )
@@ -194,7 +198,7 @@ class ConversationExecutionCoordinator:
             claimant_id=claimed.claimant_id,
             consumed_at=consumed_at,
         )
-        return run, ack, created
+        return run, ack, created, fence
 
     async def start_run(
         self,
@@ -559,36 +563,24 @@ class AgentBridgeDispatcher:
                 f"{claimed.error_code}"
             )
         try:
-            # R1-S3-C round-6：verdict-before-writer 无条件 + advance 按 created
-            # 条件。``pre_create_callback`` 在 Guard + Conversation 行锁内、
-            # writer commit 前执行 fence 裁决；create AND replay 都走 verdict
-            # （erasing/erased fence raise，不 ACK downstream）。advance 仅
-            # ``created=True`` 时调。
-            #
-            # 锁环修复（commit 1）：``advance_ingress_checkpoint_for_update`` 不再
-            # 重取 Conversation 行锁，verdict 在 Guard + Conversation 行锁内调
-            # owner lock + fence FOR UPDATE 不再与并发 fenced_* writer 死锁。
+            # R1-S3-C round-7 commit-18：verdict 内建于 consume_turn_event
+            # （不再 callback 参数）。create AND replay 都走 fence 裁决；
+            # advance 仅 ``created=True`` 时调。
             from app.composition.execution_fenced_port import FencedExecutionPort
 
             async with self._session_factory() as session, session.begin():
                 port = FencedExecutionPort(session)
-                fence_holder: dict = {}
-
-                async def _verdict(*, tenant_id, conversation_id):
-                    fence_holder["fence"] = await port.require_active_fence(
-                        tenant_id=tenant_id, conversation_id=conversation_id
+                run, ack, created, fence = (
+                    await ConversationExecutionCoordinator(
+                        session
+                    ).consume_turn_event(
+                        claimed,
+                        consumed_at=datetime.now(UTC),
                     )
-
-                run, ack, created = await ConversationExecutionCoordinator(
-                    session
-                ).consume_turn_event(
-                    claimed,
-                    consumed_at=datetime.now(UTC),
-                    pre_create_callback=_verdict,
                 )
                 if created:
                     await port.advance_checkpoint(
-                        fence=fence_holder["fence"],
+                        fence=fence,
                         conversation_id=claimed.event.conversation_id,
                         source_key="run_context_body",
                         watermark=run.queue_seq,

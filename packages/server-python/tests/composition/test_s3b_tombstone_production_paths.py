@@ -113,18 +113,29 @@ def _make_tombstoned_run() -> AgentRun:
 
 
 def _make_service_with_tombstoned_run(run: AgentRun) -> RunQueryService:
-    """构造 RunQueryService，mock _require_run_access 返回 (tombstoned_run, access)。
+    """构造 RunQueryService，mock _require_run_access + _repository.get_run 返回
+    tombstoned_run。
 
     验证 get_run/request_cancel/read_event_batch 遇 tombstone 必须 raise
     RunActorAnonymizedError。删除 service 内的 tombstone guard 后测试 fail。
+
+    R1-S3-C round-7 commit-17：request_cancel 不再调 _require_run_access
+    （Guard 前置于 access resolution）；改为 mock _repository.get_run +
+    _conversation_access.resolve。
     """
     access = MagicMock()
     service = RunQueryService(
         session=MagicMock(),
         conversation_access=MagicMock(),
+        workspace_read=MagicMock(),
+        guard=MagicMock(),
+        fenced_writer=MagicMock(),
     )
-    # mock _require_run_access 返回 tombstoned run
+    # get_run / read_event_batch 走 _require_run_access
     service._require_run_access = AsyncMock(return_value=(run, access))  # type: ignore[method-assign]
+    # request_cancel 走 _repository.get_run + _conversation_access.resolve
+    service._repository.get_run = AsyncMock(return_value=run)  # type: ignore[method-assign]
+    service._conversation_access.resolve = AsyncMock(return_value=access)  # type: ignore[method-assign]
     return service
 
 

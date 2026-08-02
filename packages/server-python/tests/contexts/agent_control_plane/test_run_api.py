@@ -65,6 +65,36 @@ class _ConnectedRequest:
         return False
 
 
+class _AllowCancel:
+    """R1-S3-C round-7 commit-17：Guard-first 后不再能在 resolve 中做并发 mutation
+    （会死锁等 Guard）。改用 committed-before-cancel 模式，access resolve 只返回
+    can_cancel=True。"""
+
+    async def resolve(self, **_kwargs):
+        return ConversationAccessDecision(
+            audience_key=f"conversation_owner.v1:{DEFAULT_ADMIN_ID}",
+            visible_event_scopes=frozenset({EventVisibility.USER}),
+            can_cancel=True,
+        )
+
+
+def _build_cancel_service(session: AsyncSession) -> RunQueryService:
+    """构造 RunQueryService 注入三个必填 Protocol（commit-12）。"""
+    from app.composition.agent_control_plane import ConversationExecutionGuard
+    from app.composition.execution_fenced_port import FencedExecutionPort
+    from app.contexts.agent_workspace.application.bridge import (
+        AgentWorkspaceBridgeService,
+    )
+
+    return RunQueryService(
+        session,
+        conversation_access=_AllowCancel(),
+        workspace_read=AgentWorkspaceBridgeService(session),
+        guard=ConversationExecutionGuard(),
+        fenced_writer=FencedExecutionPort(session),
+    )
+
+
 @pytest_asyncio.fixture
 async def run_client(client: AsyncClient, session_factory):
     app.dependency_overrides[get_session_factory] = lambda: session_factory
@@ -299,34 +329,29 @@ async def test_cancel_losing_to_start_returns_revision_conflict(
     session_factory,
 ):
     run = await _create_run(db_session, title="cancel start race")
+    await db_session.commit()
 
-    class _StartOnAccess:
-        async def resolve(self, **_kwargs):
-            async with session_factory() as session, session.begin():
-                await RunCoordinator(
-                    session,
-                    start_barrier=AllowStartBarrier(),
-                ).start_run(
-                    tenant_id=run.tenant_id,
-                    run_id=run.id,
-                    expected_revision=run.status_revision,
-                )
-            return ConversationAccessDecision(
-                audience_key=f"conversation_owner.v1:{DEFAULT_ADMIN_ID}",
-                visible_event_scopes=frozenset({EventVisibility.USER}),
-                can_cancel=True,
-            )
+    # R1-S3-C round-7 commit-17：Guard-first 后 cancel 不会在 resolve 期间被
+    # start 抢先（Guard 串行化）。改为先 committed start（separate session），
+    # 再用 stale revision cancel -> RunRevisionConflictError。
+    stale_revision = run.status_revision
+    async with session_factory() as session, session.begin():
+        await RunCoordinator(
+            session,
+            start_barrier=AllowStartBarrier(),
+        ).start_run(
+            tenant_id=run.tenant_id,
+            run_id=run.id,
+            expected_revision=stale_revision,
+        )
 
-    service = RunQueryService(
-        db_session,
-        conversation_access=_StartOnAccess(),
-    )
+    service = _build_cancel_service(db_session)
     with pytest.raises(RunRevisionConflictError):
         await service.request_cancel(
             tenant_id=run.tenant_id,
             actor_id=DEFAULT_ADMIN_ID,
             run_id=run.id,
-            expected_revision=run.status_revision,
+            expected_revision=stale_revision,
         )
     await db_session.rollback()
 
@@ -354,48 +379,42 @@ async def test_cancel_losing_to_terminal_returns_revision_conflict(
     )
     await db_session.commit()
 
-    class _FinishOnAccess:
-        async def resolve(self, **_kwargs):
-            result_kwargs: dict[str, object] = {}
-            if outcome == "completed":
-                result_kwargs = {
-                    "output_ref": "artifact:terminal-output",
-                    "output_digest": "0" * 64,
-                    "output_size": 1,
-                    "output_media_type": "text/plain",
-                    "output_classification": SnapshotClassification.INTERNAL,
-                    "terminal_message_id": uuid.uuid4(),
-                }
-            async with session_factory() as session, session.begin():
-                await RunCoordinator(session).commit_terminal(
-                    tenant_id=run.tenant_id,
-                    run_id=run.id,
-                    expected_status=RunStatus.RUNNING,
-                    expected_revision=run.status_revision,
-                    result=TerminalResult(
-                        outcome=outcome,
-                        code=f"concurrent_{outcome}",
-                        reason="Concurrent terminal transition won the Run lock",
-                        **result_kwargs,
-                    ),
-                )
-            return ConversationAccessDecision(
-                audience_key=f"conversation_owner.v1:{DEFAULT_ADMIN_ID}",
-                visible_event_scopes=frozenset({EventVisibility.USER}),
-                can_cancel=True,
-            )
+    # R1-S3-C round-7 commit-17：先 committed terminal（separate session），
+    # 再用 stale revision cancel -> RunRevisionConflictError。
+    stale_revision = run.status_revision
+    result_kwargs: dict[str, object] = {}
+    if outcome == "completed":
+        result_kwargs = {
+            "output_ref": "artifact:terminal-output",
+            "output_digest": "0" * 64,
+            "output_size": 1,
+            "output_media_type": "text/plain",
+            "output_classification": SnapshotClassification.INTERNAL,
+            "terminal_message_id": uuid.uuid4(),
+        }
+    async with session_factory() as session, session.begin():
+        await RunCoordinator(session).commit_terminal(
+            tenant_id=run.tenant_id,
+            run_id=run.id,
+            expected_status=RunStatus.RUNNING,
+            expected_revision=stale_revision,
+            result=TerminalResult(
+                outcome=outcome,
+                code=f"concurrent_{outcome}",
+                reason="Concurrent terminal transition won the Run lock",
+                **result_kwargs,
+            ),
+        )
 
-    service = RunQueryService(
-        db_session,
-        conversation_access=_FinishOnAccess(),
-    )
+    service = _build_cancel_service(db_session)
     with pytest.raises(RunRevisionConflictError):
         await service.request_cancel(
             tenant_id=run.tenant_id,
             actor_id=DEFAULT_ADMIN_ID,
             run_id=run.id,
-            expected_revision=run.status_revision,
+            expected_revision=stale_revision,
         )
+    await db_session.rollback()
     await db_session.rollback()
 
 

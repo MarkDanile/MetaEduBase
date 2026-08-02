@@ -352,6 +352,28 @@ class DirectRagCompatibilityAdapter:
             raise DirectRagTerminalReplayError(
                 f"Direct RAG idempotency key belongs to a {run.status.value} Run"
             )
+        # R1-S3-C round-7 commit-17（P1-1）：QUEUED/STARTING 分支是 mutation，
+        # 必须在 status 检查后、act 前统一取 Guard + Conv 行锁，避免 TOCTOU
+        # （锁前读 status -> purge 竞态 -> act 基于陈旧 status）。锁后重读 run
+        # 拿 authoritative snapshot。coordinator.start_run / fenced_transition_run
+        # 内部的 Guard/Conv 重取是同事务 reentrant（无 lock-on-lock）。
+        await ConversationExecutionGuard().acquire(
+            self._session,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+        await AgentWorkspaceBridgeService(
+            self._session
+        ).lock_owned_conversation(
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            conversation_id=conversation_id,
+            include_deleted=False,
+        )
+        run = await RunCoordinator(self._session).require_live_run(
+            tenant_id=tenant_id,
+            run_id=run.id,
+        )
         if run.status is RunStatus.QUEUED:
             run, _ = await coordinator.start_run(
                 tenant_id=tenant_id,
@@ -359,27 +381,10 @@ class DirectRagCompatibilityAdapter:
                 expected_revision=run.status_revision,
             )
         if run.status is RunStatus.STARTING:
-            # R1-S3-C round-7 commit-7：transition_run 走 fenced wrapper（含
-            # fence 裁决 + run_event_payload 推进）。复审 P1-3：dispatch_turn
-            # 用独立 session + rollback，Guard 在 activate_turn 此处不持。
-            # 现 caller 严格取 Guard + Conv 行锁（与 delete_conversation /
-            # request_cancel / start_run 同序）。
-            await ConversationExecutionGuard().acquire(
-                self._session,
-                tenant_id=tenant_id,
-                conversation_id=run.conversation_id,
-            )
-            await AgentWorkspaceBridgeService(
-                self._session
-            ).lock_owned_conversation(
-                tenant_id=tenant_id,
-                actor_id=prepared.actor_id,
-                conversation_id=run.conversation_id,
-                include_deleted=False,
-            )
+            # commit-17：Guard + Conv 已在上方统一获取（不再在此重复取）。
             run, _ = await FencedExecutionPort(self._session).fenced_transition_run(
                 tenant_id=tenant_id,
-                conversation_id=run.conversation_id,
+                conversation_id=conversation_id,
                 run_id=run.id,
                 expected_status=RunStatus.STARTING,
                 expected_revision=run.status_revision,
