@@ -124,11 +124,15 @@ def _make_service_with_tombstoned_run(run: AgentRun) -> RunQueryService:
     _conversation_access.resolve。
     """
     access = MagicMock()
+    guard = MagicMock()
+    guard.acquire = AsyncMock(return_value=None)
+    workspace_read = MagicMock()
+    workspace_read.lock_owned_conversation = AsyncMock(return_value=None)
     service = RunQueryService(
         session=MagicMock(),
         conversation_access=MagicMock(),
-        workspace_read=MagicMock(),
-        guard=MagicMock(),
+        workspace_read=workspace_read,
+        guard=guard,
         fenced_writer=MagicMock(),
     )
     # get_run / read_event_batch 走 _require_run_access
