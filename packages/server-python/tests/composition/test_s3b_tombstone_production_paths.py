@@ -407,6 +407,27 @@ class TestDirectRagActivateTurnLockAfterStateRedispatch:
         adapter._workspace = MagicMock()
         adapter._message_text = MagicMock()
         adapter._replay_sources = AsyncMock(return_value=[])
+        # R1-S3-C round-7 commit-17：activate_turn 现在调 Guard.acquire +
+        # AgentWorkspaceBridgeService.lock_owned_conversation +
+        # FencedExecutionPort.fenced_transition_run。mock session.execute
+        # 返回一个 awaitable 且支持 scalar / scalar_one_or_none 的对象。
+        adapter._session.execute = AsyncMock(
+            return_value=MagicMock(
+                scalar=lambda: None,
+                scalar_one_or_none=lambda: None,
+            )
+        )
+        # require_active_fence 内部 session.get(ConversationModel, ...) PK 读
+        adapter._session.get = AsyncMock(return_value=MagicMock(purge_revision=0, hold_revision=0))
+        # require_active_fence 内部 session.get(ErasureFenceModel, ...)
+        def _get_side_effect(*args, **kwargs):
+            # 第一次 get 是 ConversationModel（已经返回 MagicMock）
+            # 第二次 get 是 ErasureFenceModel
+            if "ErasureFenceModel" in str(args):
+                return MagicMock(state="active", purge_revision=0, hold_revision=0)
+            return MagicMock(purge_revision=0, hold_revision=0)
+        _mock_fence = MagicMock(state="active", purge_revision=0, hold_revision=0, owner_version=1)
+        adapter._session.get = AsyncMock(side_effect=lambda *a, **kw: _mock_fence)
 
         # 第一次 require_live_run 返回 QUEUED；锁后第二次返回 COMPLETED
         require_live_run_call_count = {"n": 0}
@@ -541,6 +562,27 @@ class TestDirectRagActivateTurnLockAfterStateRedispatch:
         adapter._workspace = MagicMock()
         adapter._message_text = MagicMock()
         adapter._replay_sources = AsyncMock(return_value=[])
+        # R1-S3-C round-7 commit-17：activate_turn 现在调 Guard.acquire +
+        # AgentWorkspaceBridgeService.lock_owned_conversation +
+        # FencedExecutionPort.fenced_transition_run。mock session.execute
+        # 返回一个 awaitable 且支持 scalar / scalar_one_or_none 的对象。
+        adapter._session.execute = AsyncMock(
+            return_value=MagicMock(
+                scalar=lambda: None,
+                scalar_one_or_none=lambda: None,
+            )
+        )
+        # require_active_fence 内部 session.get(ConversationModel, ...) PK 读
+        adapter._session.get = AsyncMock(return_value=MagicMock(purge_revision=0, hold_revision=0))
+        # require_active_fence 内部 session.get(ErasureFenceModel, ...)
+        def _get_side_effect(*args, **kwargs):
+            # 第一次 get 是 ConversationModel（已经返回 MagicMock）
+            # 第二次 get 是 ErasureFenceModel
+            if "ErasureFenceModel" in str(args):
+                return MagicMock(state="active", purge_revision=0, hold_revision=0)
+            return MagicMock(purge_revision=0, hold_revision=0)
+        _mock_fence = MagicMock(state="active", purge_revision=0, hold_revision=0, owner_version=1)
+        adapter._session.get = AsyncMock(side_effect=lambda *a, **kw: _mock_fence)
 
         require_live_run_call_count = {"n": 0}
 
