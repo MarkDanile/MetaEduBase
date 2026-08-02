@@ -411,10 +411,13 @@ class TestDirectRagActivateTurnLockAfterStateRedispatch:
         # AgentWorkspaceBridgeService.lock_owned_conversation +
         # FencedExecutionPort.fenced_transition_run。mock session.execute
         # 返回一个 awaitable 且支持 scalar / scalar_one_or_none 的对象。
+        # scalar_one_or_none 返回 Conversation mock（非 None）给 lock_owned_conversation，
+        # 否则 bridge_repository 抛 ConversationNotFoundError。
+        _conv = MagicMock(state="active", purge_revision=0, hold_revision=0, revision=1)
         adapter._session.execute = AsyncMock(
             return_value=MagicMock(
                 scalar=lambda: None,
-                scalar_one_or_none=lambda: None,
+                scalar_one_or_none=lambda: _conv,
             )
         )
         # require_active_fence 内部 session.get(ConversationModel, ...) PK 读
@@ -566,10 +569,13 @@ class TestDirectRagActivateTurnLockAfterStateRedispatch:
         # AgentWorkspaceBridgeService.lock_owned_conversation +
         # FencedExecutionPort.fenced_transition_run。mock session.execute
         # 返回一个 awaitable 且支持 scalar / scalar_one_or_none 的对象。
+        # scalar_one_or_none 返回 Conversation mock（非 None）给 lock_owned_conversation，
+        # 否则 bridge_repository 抛 ConversationNotFoundError。
+        _conv = MagicMock(state="active", purge_revision=0, hold_revision=0, revision=1)
         adapter._session.execute = AsyncMock(
             return_value=MagicMock(
                 scalar=lambda: None,
-                scalar_one_or_none=lambda: None,
+                scalar_one_or_none=lambda: _conv,
             )
         )
         # require_active_fence 内部 session.get(ConversationModel, ...) PK 读
