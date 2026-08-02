@@ -125,43 +125,107 @@ async def test_fenced_ingest_runtime_event_rejects_outer_tenant_mismatch(
 
 
 # ---------------------------------------------------------------------------
-# P2-2：并发 Guard + fenced_* 不死锁（real port，无 mock）
+# P2-2：真实 AgentBridgeDispatcher.dispatch_turn 走 fenced port（run_context_body 落库）
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_concurrent_dispatch_turn_completes_within_60s(
+async def test_dispatch_turn_real_path_writes_run_context_checkpoint(
+    db_session, session_factory
+) -> None:
+    """真实 ``AgentBridgeDispatcher.dispatch_turn`` 经 consume_turn_event 内建
+    verdict + fenced_create_run advance，验证 fence.ingress_checkpoint 落库
+    ``run_context_body`` watermark == run.queue_seq。
+
+    R1-S3-C round-7 commit-20（P2-3）：复审要求覆盖生产 dispatch_turn 入口
+    （不只 Guard + port 直调）。用 ``bootstrap_workspace`` + ``submit_turn``
+    + ``AgentBridgeDispatcher.dispatch_turn`` 完整链路。
+    """
+    from app.composition.agent_control_plane import (
+        AgentBridgeDispatcher,
+        ConversationExecutionCoordinator,
+    )
+    from tests.contexts.agent_control_plane.helpers import (
+        ACTOR_ID,
+        TENANT_ID,
+        bootstrap_workspace,
+        turn_command,
+    )
+
+    conversation_id, identity, launch = await bootstrap_workspace(db_session)
+    receipt = await ConversationExecutionCoordinator(db_session).submit_turn(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        command=turn_command(identity, "trigger"),
+        launch=launch,
+    )
+    await db_session.commit()
+    run = await AgentBridgeDispatcher(
+        session_factory, worker_id="s3c-e2e-dispatch"
+    ).dispatch_turn(event_id=receipt.event_id)
+    assert run is not None
+
+    # 验证 fence.ingress_checkpoint 落库 run_context_body watermark == queue_seq
+    async with session_factory() as verify:
+        row = (
+            await verify.execute(
+                text(
+                    "SELECT ingress_checkpoint FROM metaedu.agent_erasure_fences "
+                    "WHERE tenant_id = :t AND conversation_id = :c "
+                    "AND owner_key = :o"
+                ),
+                {
+                    "t": TENANT_ID,
+                    "c": conversation_id,
+                    "o": "execution.core.v1",
+                },
+            )
+        ).first()
+        assert row is not None
+        sources = (row[0] or {}).get("sources", {})
+        assert "run_context_body" in sources
+        assert sources["run_context_body"]["watermark"] == run.queue_seq
+
+
+# ---------------------------------------------------------------------------
+# P2-2：同 key 并发 Guard + fenced_* 不死锁（real port，same conversation）
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_concurrent_same_key_guard_completes_within_60s(
     session_factory,
 ) -> None:
     """3 个并发 ``ConversationExecutionGuard`` + ``FencedExecutionPort`` 任务
-    在 60s 内完成（无死锁）。Guard 串行化 (tenant, conv) 上所有调用。
+    在**同一** (tenant, conv) 上 60s 内完成（无死锁）。Guard 串行化同 key
+    调用；advance_checkpoint 推进 run_event_payload watermark 1->2->3。
+
+    R1-S3-C round-7 commit-20（P2-3）：复审要求同 key 竞争（非 3 个不同 Conv）。
     """
     from app.composition.agent_control_plane import ConversationExecutionGuard
 
     tenant_id = uuid.uuid4()
     async with session_factory() as setup, setup.begin():
-        conversation_ids = []
-        for _ in range(3):
-            cid = await _insert_conversation(setup, tenant_id=tenant_id)
-            conversation_ids.append(cid)
+        conversation_id = await _insert_conversation(setup, tenant_id=tenant_id)
 
-    async def dispatch_one(cid: uuid.UUID) -> None:
+    async def advance_one() -> None:
         async with session_factory() as session, session.begin():
             await ConversationExecutionGuard().acquire(
-                session, tenant_id=tenant_id, conversation_id=cid
+                session, tenant_id=tenant_id, conversation_id=conversation_id
             )
             port = FencedExecutionPort(session)
             fence = await port.require_active_fence(
-                tenant_id=tenant_id, conversation_id=cid
+                tenant_id=tenant_id, conversation_id=conversation_id
             )
             await port.advance_checkpoint(
                 fence=fence,
-                conversation_id=cid,
+                conversation_id=conversation_id,
                 source_key="run_event_payload",
                 watermark=0,
             )
 
-    tasks = [asyncio.create_task(dispatch_one(cid)) for cid in conversation_ids]
+    tasks = [asyncio.create_task(advance_one()) for _ in range(3)]
     try:
         await asyncio.wait_for(
             asyncio.gather(*tasks, return_exceptions=True), timeout=60
@@ -169,23 +233,23 @@ async def test_concurrent_dispatch_turn_completes_within_60s(
     except TimeoutError:
         for t in tasks:
             t.cancel()
-        pytest.fail("并发 dispatch 60 秒内未完成（疑似 deadlock）")
+        pytest.fail("同 key 并发 60 秒内未完成（疑似 deadlock）")
 
+    # 验证 watermark == 3（3 次串行 advance）
     async with session_factory() as verify:
-        for cid in conversation_ids:
-            row = (
-                await verify.execute(
-                    text(
-                        "SELECT ingress_checkpoint FROM metaedu.agent_erasure_fences "
-                        "WHERE tenant_id = :t AND conversation_id = :c "
-                        "AND owner_key = :o"
-                    ),
-                    {"t": tenant_id, "c": cid, "o": "execution.core.v1"},
-                )
-            ).first()
-            assert row is not None
-            sources = (row[0] or {}).get("sources", {})
-            assert sources.get("run_event_payload", {}).get("watermark") == 1
+        row = (
+            await verify.execute(
+                text(
+                    "SELECT ingress_checkpoint FROM metaedu.agent_erasure_fences "
+                    "WHERE tenant_id = :t AND conversation_id = :c "
+                    "AND owner_key = :o"
+                ),
+                {"t": tenant_id, "c": conversation_id, "o": "execution.core.v1"},
+            )
+        ).first()
+        assert row is not None
+        sources = (row[0] or {}).get("sources", {})
+        assert sources.get("run_event_payload", {}).get("watermark") == 3
 
 
 # ---------------------------------------------------------------------------

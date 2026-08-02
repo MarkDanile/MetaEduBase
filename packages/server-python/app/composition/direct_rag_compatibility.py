@@ -374,6 +374,52 @@ class DirectRagCompatibilityAdapter:
             tenant_id=tenant_id,
             run_id=run.id,
         )
+        # R1-S3-C round-7 commit-20（P2）：锁后权威重读必须重新执行完整状态
+        # 裁决。等待锁期间 Run 可能从 QUEUED/STARTING 变为 COMPLETED/
+        # CANCELLED/FAILED/EXPIRED（并发 commit_terminal/cancel）。pre-lock
+        # 的 COMPLETED/terminal 分支用旧快照；此处权威重读后重新分流，
+        # 保留 replay/terminal 语义（不落入通用 DirectRagCompatibilityError）。
+        if run.status is RunStatus.COMPLETED:
+            if run.output_publish_state is not OutputPublishState.PUBLISHED:
+                return PreparedDirectRagTurn(
+                    tenant_id=tenant_id,
+                    actor_id=actor_id,
+                    recording=DirectRagRecording(
+                        conversation_id=conversation_id,
+                        user_message_id=message_id,
+                        run_id=run.id,
+                        assistant_message_id=run.terminal_message_id,
+                    ),
+                    requires_output_publish=True,
+                )
+            assistant = await self._require_assistant_message(
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                conversation_id=conversation_id,
+                run_id=run.id,
+            )
+            return PreparedDirectRagTurn(
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                recording=DirectRagRecording(
+                    conversation_id=conversation_id,
+                    user_message_id=message_id,
+                    run_id=run.id,
+                    assistant_message_id=assistant.id,
+                ),
+                replay_reply=self._message_text(assistant),
+                replay_sources=await self._replay_sources(
+                    tenant_id=tenant_id, run_id=run.id
+                ),
+            )
+        if run.status in {
+            RunStatus.FAILED,
+            RunStatus.CANCELLED,
+            RunStatus.EXPIRED,
+        }:
+            raise DirectRagTerminalReplayError(
+                f"Direct RAG idempotency key belongs to a {run.status.value} Run"
+            )
         if run.status is RunStatus.QUEUED:
             run, _ = await coordinator.start_run(
                 tenant_id=tenant_id,
