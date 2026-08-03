@@ -14,31 +14,7 @@
 
 ## 当前进行中
 
-### TASK: REQ-041/047 R1-S3-C Writer fence
-
-状态：🟡 进行中（round-7 commit-21 收口，三路 CI 全绿，PR CLEAN/MERGEABLE）
-类型：新需求开发（R1 分 Slice，S3-C writer fence）
-领域：agent_execution / erasure coordination
-当前执行模式：superpower / plan-do（契约注记已冻结，S3-A 契约 / S3-B schema+contract 已合并）
-最近接手工具：Claude Code (Opus 4.8)
-分支：`feat/req041-047-r1-s3c-writer-fence`（代码/测试基线 `9cf70a1f`，Backend 1951 passed 0 failed）
-PR：#519（CLEAN / MERGEABLE）
-
-需求来源：
-- Spec: [R1 专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S3-C PR 拆分：Writer fence）
-- 架构约束：Spec §6.2 writer fence 协议；§7.2 Execution 清除语义；migration 038 actor tombstone 契约（execution.core.v1 `actor_identity` capability 已就位）
-
-当前进展：S3-C round-7 commit-21 收口（代码/测试基线 `9cf70a1f`，Backend 1951 passed 0 failed）。
-锁链修复：13 writer 接线 + 9 writer 矩阵全 wrapper；Guard -> Conv -> owner -> fence -> AgentRun 全路径遵循 Spec §6.1，与 S3-D 同序无 AB-BA。
-commit-20：cancel 锁后权威重读 + tombstone 校验 + Direct RAG 锁后完整状态分流 + 真 dispatch_turn e2e。
-commit-21：P2-1 cancel tombstone 变异测试（present -> redacted, fenced_writer 未调）+ P2-2 activate_turn 锁后分流变异测试（QUEUED -> COMPLETED replay / QUEUED -> CANCELLED terminal）。
-commit-18：consume_turn_event verdict 内建（返回 4-tuple，无 callback 参数）。
-Protocol 拆分：FencedWriterPort + GuardLockPort + WorkspaceReadPort（必填无 fallback）。
-Run 归属绑定：每个 fenced_* wrapper 校验 (tenant, conv, run, queue_seq) 与 AgentRun 一致；advance_checkpoint 校验 fence.conversation_id。
-下一步：独立 max 只读复核 round-7 -> P0/P1 清零后按流程合并 S3-C -> 启动 S3-D（ExecutionErasureParticipant，flush erase_available=True）。
-验证状态：ruff passed / mypy baseline 0 回归 / docs gate passed / git diff --check clean；三路 CI 全绿（run 30742558409 基线 9cf70a1f：Backend 1951 passed 1 skipped 4 deselected 0 failed / Engineering docs success / Frontend success）。
-交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C fenced port 在 composition 层。fenced_ingest_runtime_event 形态已就位（Runtime adapter 推迟到 S4）。BUG-021 已合并（PR #520），本分支已 rebase onto main。
+当前无活跃任务。R1-S3-C Writer fence 已合并（PR #519 merge `eb911b9a`），下一步入口为 R1-S3-D（ExecutionErasureParticipant，flush `execution.core.v1.erase_available=True`）。
 
 ## 下一批候选任务
 
@@ -46,6 +22,7 @@ Run 归属绑定：每个 fenced_* wrapper 校验 (tenant, conv, run, queue_seq)
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P0 | REQ-041/047 R1-S3-D ExecutionErasureParticipant | ⚫ Ready | 新增独立 `execution_erasure_participant.py`；固定锁序 + clock_timestamp + terminal/context/compatibility/event/actor 清除 + external/runtime/nonterminal blocked + final scan + 完整 fencing + erased 幂等重放 + pending checkpoint repair；同 commit 翻 `erase_available=True` | [Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
@@ -57,6 +34,7 @@ Run 归属绑定：每个 fenced_* wrapper 校验 (tenant, conv, run, queue_seq)
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-08-02 | R1-S3-C Writer fence（13 接线 + 9 writer 矩阵 + 锁链修复 + 真 e2e） | 🟢 完成 | composition-owned FencedExecutionPort + 9 writer wrapper + 13 call site；锁链全路径 Spec §6.1 与 S3-D 同序无 AB-BA；verdict 内建 + Run 归属绑定 + 跨边界 Protocol；变异 2 组 + 真 e2e 6 组；复审 0/0/0；Backend 1951 passed | [PR #519](https://github.com/MarkDanile/MetaEduBase/pull/519)（merge `eb911b9a`）/ [work-log](work-log.md) / [score 88](04-retrospectives/review-score-log.md) |
 | 2026-07-31 | R1-S3-B Schema 与基础契约（actor tombstone + shared digest + per-owner source key） | 🟢 完成 |  migration 038 + shared digest helper + per-owner source key + tombstone 契约（6 处 fail-closed guard + `DirectRagTerminalReplayError` 透传）；6 轮 max 复审收口 0/0/0；23 文件 / 1689 增；三路 CI 全绿（Backend 8m52s） |
 | 2026-07-30 | R1-S3-A Execution owner 契约注记/plan delta（先于代码冻结） | 🟢 完成 | 纯文档冻结 execution.core.v1 participant 设计（fenced port + 9 writer 矩阵 + migration 038 actor tombstone + per-owner source key + event 计数器 + S3/S6 拆分）；两轮 max 复审 + 轻量复核 0/0/0；S3-A~E PR 拆分冻结；三路 CI 全绿 | [PR #515](https://github.com/MarkDanile/MetaEduBase/pull/515)（merge `2d4f8091`）/ [Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-07-30 | R1-S2-D/E workspace 正文清除 + participant ACK + final body scan | 🟢 完成 | workspace.core.v1 participant 正文清除 + body scan + ACK；V1 冻结契约（fingerprint 持久化 migration 037 + 构造器禁覆盖 + placeholder denylist）；7 轮 max 复审 P0/P1/P2=0/0/0；全量 1908 passed；三路 CI 全绿 | [PR #513](https://github.com/MarkDanile/MetaEduBase/pull/513)（merge `5db40361`）/ [Plan §R1-S2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
