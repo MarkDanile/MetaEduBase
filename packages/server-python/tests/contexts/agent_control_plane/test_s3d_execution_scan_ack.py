@@ -135,6 +135,11 @@ async def test_ack_digest_deterministic_and_no_plaintext(db_session):
 
     两次独立 seed + erase（同 body 形状）-> ack_digest 一致（owner_version/
     purge_revision/计数器/body_scan_digest 同源）。digest 是 hex，不含 'sensitive'。
+
+    **round-1 P1-6**：ACK digest 含**真实清除计数**（不是从必为零的 final scan
+    取值）。增加反例：构造一个清除 0 个 terminal output 的 conversation，与
+    标准 fixture 的清除量不同，digest 必须不同——这能杀回「清除计数恒零」的旧
+    实现。
     """
     ctx1 = await h.seed_purgeable_with_run(db_session, title="sensitive A")
     out1 = await h.participant(db_session).erase_execution_body(
@@ -160,7 +165,11 @@ async def test_ack_digest_deterministic_and_no_plaintext(db_session):
     assert "sensitive" not in out1.ack_digest  # hex，无明文
     assert len(out1.ack_digest) == 64
 
-    # _compute_ack_digest 与落库 ack_digest 同源（body_scan 全零）。
+    # round-1 P1-6：清除 0 个 terminal output 的 conversation 与标准 fixture 的
+    # 清除量不同，digest 必须不同（杀回「从必为零的 final scan 取值」的实现）。
+    from app.contexts.agent_execution.infrastructure.execution_erasure_participant import (
+        ExecutionErasureSummary,
+    )
     zero_scan = ExecutionBodyScan(
         unredacted_terminal_outputs=0,
         uncleared_context_snapshots=0,
@@ -170,12 +179,74 @@ async def test_ack_digest_deterministic_and_no_plaintext(db_session):
         unanonymized_run_actors=0,
         unanonymized_turn_input_actors=0,
     )
-    manual = h.participant(db_session)._compute_ack_digest(
+    # 1. 全零计数的 digest 一定不等于真实清除的 digest
+    zero_summary = ExecutionErasureSummary(
+        owner_key="execution.core.v1",
+        owner_version=out1.fence.owner_version,
         purge_revision=1,
-        fence_owner_version=out1.fence.owner_version,
+        terminal_outputs_suppressed=0,
+        terminal_codes_redacted=0,
+        context_snapshots_cleared=0,
+        compatibility_outputs_redacted=0,
+        event_payloads_redacted=0,
+        run_actors_anonymized=0,
+        turn_input_actors_anonymized=0,
         body_scan=zero_scan,
     )
-    assert manual == out1.ack_digest
+    assert zero_summary.ack_digest() != out1.ack_digest, (
+        "ACK digest must differ when all clear counts are zero — guards "
+        "against falling back to final-scan readings (which would be zero)"
+    )
+
+    # 2. 真实清除计数非零（用所有计数+1 与全零对比，digest 必须不同）—— 与
+    # canonical_digest 的字段敏感性绑定。
+    nonzero_summary = ExecutionErasureSummary(
+        owner_key="execution.core.v1",
+        owner_version=out1.fence.owner_version,
+        purge_revision=1,
+        terminal_outputs_suppressed=1,
+        terminal_codes_redacted=1,
+        context_snapshots_cleared=1,
+        compatibility_outputs_redacted=1,
+        event_payloads_redacted=1,
+        run_actors_anonymized=1,
+        turn_input_actors_anonymized=1,
+        body_scan=zero_scan,
+    )
+    assert nonzero_summary.ack_digest() != out1.ack_digest, (
+        "All counts=1 with body_scan=0 still produces a digest (zero counts) "
+        "different from real clear — confirms field-level digest sensitivity"
+    )
+    # 仅一项计数差异 digest 必须不同（最小粒度敏感性，锁定 P1-6 计数契约）。
+    one_field_diff = ExecutionErasureSummary(
+        owner_key="execution.core.v1",
+        owner_version=out1.fence.owner_version,
+        purge_revision=1,
+        terminal_outputs_suppressed=1,
+        terminal_codes_redacted=1,
+        context_snapshots_cleared=1,
+        compatibility_outputs_redacted=1,
+        event_payloads_redacted=1,
+        run_actors_anonymized=1,  # ← non_zero fixture 真实值
+        turn_input_actors_anonymized=2,  # ← 仅这一项不同
+        body_scan=zero_scan,
+    )
+    one_field_same = ExecutionErasureSummary(
+        owner_key="execution.core.v1",
+        owner_version=out1.fence.owner_version,
+        purge_revision=1,
+        terminal_outputs_suppressed=1,
+        terminal_codes_redacted=1,
+        context_snapshots_cleared=1,
+        compatibility_outputs_redacted=1,
+        event_payloads_redacted=1,
+        run_actors_anonymized=1,
+        turn_input_actors_anonymized=1,
+        body_scan=zero_scan,
+    )
+    assert one_field_diff.ack_digest() != one_field_same.ack_digest, (
+        "Summary diff of 1 must change digest — guards against silent truncation"
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -76,12 +76,22 @@ def test_missing_capability_fails_closed() -> None:
 
 
 def test_only_workspace_core_eraser_available_in_s2d() -> None:
+    """S2-D 时点回归：S3-B 落 migration 038 + capability 但 eraser 未实现，
+    execution.core.v1 erase_available 仍 False。
+
+    **S3-D round-1 P1-7**：S3-D 落 eraser 后，本测试**预期失败**——保留它仅
+    作为时序快照（CI 会在本测试上 XFAIL），由
+    ``test_workspace_and_execution_eraser_available_in_s3d`` 接续为最新事实源。
+    旧测试不删除，便于历史 replay 对比。
+    """
+    import pytest
+    pytest.xfail(
+        "S3-D already flipped execution.core.v1.erase_available=True; "
+        "see test_workspace_and_execution_eraser_available_in_s3d for current"
+    )
     registry = _import_registry()
-    # S2-D：workspace.core.v1 eraser 已实现（WorkspaceErasureParticipant），
-    # erase_available=True；其余 owner 待 S3/S4，erase 必须 fail closed。
     workspace = registry.require_owner("workspace.core.v1")
     assert workspace.erase_available is True
-    registry.require_capability("workspace.core.v1", "erase")  # 不抛
     for owner in registry.owner_registry():
         if owner.owner_key == "workspace.core.v1":
             continue
@@ -90,20 +100,42 @@ def test_only_workspace_core_eraser_available_in_s2d() -> None:
             registry.require_capability(owner.owner_key, "erase")
 
 
+def test_workspace_and_execution_eraser_available_in_s3d() -> None:
+    """S3-D round-1 P1-7：S3-D 落 execution.core.v1 eraser 后，workspace + execution
+    双 owner erase_available=True；其余 owner（transport/external/runtime）仍 False。
+
+    替换 S2-D 的 ``test_only_workspace_core_eraser_available_in_s2d`` 在同
+    commit 的事实源——S3-B 时点 capability 已增但 erase 仍 fail closed（上一测试
+    锁定 S2-D 时点；S3-D 时点见本测试）。两个测试共同表达时序契约。
+    """
+    registry = _import_registry()
+    # S3-D：workspace + execution eraser 都已落地
+    for owner_key in ("workspace.core.v1", "execution.core.v1"):
+        owner = registry.require_owner(owner_key)
+        assert owner.erase_available is True, (
+            f"{owner_key} eraser not available after S3-D"
+        )
+        registry.require_capability(owner_key, "erase")  # 不抛
+    # 其余 owner erase 仍 fail closed
+    for owner in registry.owner_registry():
+        if owner.owner_key in ("workspace.core.v1", "execution.core.v1"):
+            continue
+        assert owner.erase_available is False
+        with pytest.raises(registry.OwnerCapabilityUnavailableError):
+            registry.require_capability(owner.owner_key, "erase")
+
+
 def test_execution_core_has_actor_identity_capability() -> None:
     """S3-B round-1 P1-2：execution.core.v1 增 actor_identity capability（Spec §7.1）。
-
-    erase_available 仍 False（round-2 P1-1，S3-D 翻 True）；actor_identity capability
-    已声明，``require_capability`` 放行。
+    S3-D round-1 P1-7：erase_available 翻 True（与 participant/scan/ACK 同 commit）。
     """
     registry = _import_registry()
     execution = registry.require_owner("execution.core.v1")
     assert "actor_identity" in execution.capabilities
     registry.require_capability("execution.core.v1", "actor_identity")  # 不抛
-    # erase 仍 fail closed（eraser 待 S3-D）。
-    assert execution.erase_available is False
-    with pytest.raises(registry.OwnerCapabilityUnavailableError):
-        registry.require_capability("execution.core.v1", "erase")
+    # S3-D：erase 已可用，require_capability 不再抛
+    assert execution.erase_available is True
+    registry.require_capability("execution.core.v1", "erase")  # 不抛
 
 
 def test_validate_snapshot_digest_detects_registry_change() -> None:

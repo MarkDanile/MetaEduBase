@@ -14,12 +14,17 @@ operation/checkpoint 记 blocked + reason_code，可重试。
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 from app.contexts.agent_execution.infrastructure.execution_erasure_participant import (
     REASON_PURGE_BLOCKED_BY_LEGAL_HOLD,
     REASON_PURGE_BLOCKED_BY_UNRESOLVED_ACTION,
     REASON_PURGE_OWNER_UNAVAILABLE,
+)
+from app.contexts.agent_execution.infrastructure.models import (
+    RuntimeSessionBindingModel,
 )
 from app.contexts.agent_workspace.domain import ErasureFenceState, PurgeOwnerState
 from app.contexts.agent_workspace.infrastructure.erasure_repository import (
@@ -216,3 +221,133 @@ async def test_blocked_body_untouched(db_session):
     assert completed.terminal_output_ref is not None  # 未清
     assert completed.output_publish_state == "published"  # 未 suppress
     assert completed.created_by == h.ACTOR_ID  # 未匿名化
+
+
+# ---------------------------------------------------------------------------
+# round-1 复审返修反例（P1-1/3/5/6）
+# ---------------------------------------------------------------------------
+
+
+async def test_round1_p1_3_binding_without_run_blocks(db_session):
+    """P1-3：RuntimeSessionBinding 不被任何 Run 引用也须 blocked（直查 binding 表）。
+
+    旧实现从 AgentRunModel join binding，只看被 Run 引用的 binding；存在
+    ``runtime_session_ref`` 活跃但无 Run 引用时，execution 会错误 ACK。本测试
+    不建任何 Run，仅建 binding -- 旧实现会被此场景放行。
+    变异杀手：把 blocker 改回 ``AgentRunModel JOIN RuntimeSessionBindingModel`` ->
+    binding_count=0（因为无 Run 引用）-> 进入清除路径（runtime ref 不被清）-> blocked 断言失败。
+    """
+    conversation_id, identity, purge_revision = await h.seed_purgeable(db_session)
+    profile_id, binding_id = await h.seed_native_binding(
+        db_session, conversation_id=conversation_id
+    )
+    await db_session.commit()  # 注意：未建任何 AgentRun，binding 是孤儿
+    operation_id, op_revision = await h.make_purge_operation(
+        db_session, conversation_id, purge_revision
+    )
+    ctx = {
+        "conversation_id": conversation_id,
+        "identity": identity,
+        "purge_revision": purge_revision,
+        "operation_id": operation_id,
+        "op_revision": op_revision,
+        "run_id": uuid.uuid4(),  # placeholder
+    }
+    outcome = await _erase(db_session, ctx)
+    await db_session.commit()
+    assert outcome.blocked
+    assert outcome.block_reason == REASON_PURGE_OWNER_UNAVAILABLE
+    op = await h.operation_model(db_session, operation_id)
+    assert op.state == "blocked"
+    # 验证 binding 仍在（execution 不清 binding）
+    binding = await db_session.get(
+        RuntimeSessionBindingModel, binding_id
+    )
+    assert binding is not None
+    assert binding.runtime_session_ref is not None
+
+
+async def test_round1_p1_5_blocked_projects_purge_state_and_scan_digest(
+    db_session,
+):
+    """P1-5：blocked 路径必须同事务投影 ``Conversation.purge_state=blocked`` 并把
+    ``scan.digest()`` 写入 ``checkpoint.checkpoint_digest``。
+
+    旧实现 ``_record_blocked`` 不接 conversation/scan，blocked 后
+    ``purge_state`` 仍为 running、``checkpoint_digest`` 为空。
+    变异杀手：移除 ``conversation.purge_state = BLOCKED`` 赋值或
+    ``checkpoint.checkpoint_digest = scan.digest()`` 赋值 -> 本测试变红。
+    """
+    ctx = await h.seed_purgeable_with_run(db_session)
+    await h.seed_nonterminal_run(
+        db_session,
+        conversation_id=ctx["conversation_id"],
+        identity=ctx["identity"],
+        queue_seq=2,
+        status="running",
+    )
+    await db_session.commit()
+    outcome = await _erase(db_session, ctx)
+    await db_session.commit()
+    assert outcome.blocked
+
+    from sqlalchemy import select
+
+    from app.contexts.agent_workspace.infrastructure.models import (
+        ConversationModel,
+    )
+    conv = (
+        await db_session.execute(
+            select(ConversationModel).where(
+                ConversationModel.id == ctx["conversation_id"]
+            )
+        )
+    ).scalar_one()
+    assert conv.purge_state == "blocked", (
+        "Conversation.purge_state must be blocked after blocked outcome "
+        "(P1-5: blocked projection gap)"
+    )
+    cp = await h.checkpoint_model(db_session, ctx["operation_id"])
+    assert cp.state == "blocked"
+    assert cp.checkpoint_digest, (
+        "checkpoint_digest must be populated with scan.digest() on blocked "
+        "(P1-5: scan evidence missing)"
+    )
+    assert cp.checkpoint_digest == outcome.body_scan.digest()
+
+
+async def test_round1_p1_1_suppressed_envelope_acked_zero_scan(db_session):
+    """P1-1：已 suppressed 但保留完整 terminal envelope 的 Run 必须被清除并 ACK。
+
+    旧实现清除与 scan 都按 ``output_publish_state != 'suppressed'`` 跳过这类行，
+    故会保留 ``terminal_output_ref/media_type/classification/message_id`` 而
+    body_scan 报告非零，blocked 而非 erased。``ck_agent_run_terminal_output`` 的
+    第一分支明确允许 suppressed 保留完整 envelope（合法 B1 审计状态），所以旧
+    实现把这种行留在 DB 头也不回地 ACKed。
+
+    变异杀手：把清除谓词改回 ``output_publish_state != 'suppressed'`` 或
+    把 scan 谓词改回 ``output_publish_state != 'suppressed' AND ...`` ->
+    本测试变红。
+    """
+    from sqlalchemy import update as _sa_update  # noqa: F401  (unused, doc reference)
+    ctx = await h.seed_purgeable_with_run(db_session)
+    # 强制把该 Run 改为 suppressed+完整 envelope（合法 B1 状态）。
+    from sqlalchemy import text
+    await db_session.execute(text(
+        "UPDATE metaedu.agent_runs SET output_publish_state='suppressed' "
+        "WHERE id=:r"
+    ), {"r": ctx["run_id"]})
+    await db_session.commit()
+
+    outcome = await _erase(db_session, ctx)
+    await db_session.commit()
+    # P1-1 修订后，suppressed+完整 envelope 的行也被清，scan 应为零，erased。
+    assert outcome.erased, (
+        f"expected erased (suppressed envelope should be cleared too), "
+        f"got blocked={outcome.blocked} reason={outcome.block_reason}"
+    )
+    completed = await h.run_model(db_session, ctx["run_id"])
+    assert completed.terminal_output_ref is None
+    assert completed.terminal_output_media_type is None
+    assert completed.terminal_output_classification is None
+    assert completed.terminal_message_id is None

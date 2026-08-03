@@ -104,6 +104,16 @@ REASON_PURGE_BLOCKED_BY_LEGAL_HOLD = "purge_blocked_by_legal_hold"
 # RunEvent / terminal tombstone 落的受控 reason code（Spec §7.2，白名单）。
 _ERASURE_REDACTED_REASON = "retention_expired"
 
+# round-1 P1-4：可运行 operation 状态白名单（与 workspace participant 同规格）。
+# 终态（completed/cancelled/failed）一律 fail closed，不得穿透到清除与 ACK。
+_RUNNABLE_OPERATION_STATES = frozenset(
+    {
+        PurgeOperationState.SCHEDULED.value,
+        PurgeOperationState.RUNNING.value,
+        PurgeOperationState.BLOCKED.value,
+    }
+)
+
 
 @dataclass(frozen=True, slots=True)
 class ExecutionBodyScan:
@@ -144,6 +154,50 @@ class ExecutionBodyScan:
                 "unredacted_terminal_codes": self.unredacted_terminal_codes,
                 "unanonymized_run_actors": self.unanonymized_run_actors,
                 "unanonymized_turn_input_actors": self.unanonymized_turn_input_actors,
+            }
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionErasureSummary:
+    """单 owner 清除 + ACK 摘要（ACK digest 的 canonical 输入，不含正文）。
+
+    **round-1 P1-6**：各字段是清除动作的**真实受影响行数**，不是 final scan 读数。
+    ACK 的前置条件是 ``scan.total == 0``，故从成功后的 scan 取值必然全零、无法表达
+    任何清除事实；与 workspace ``WorkspaceErasureSummary`` 同规格改为真实计数。
+    """
+
+    owner_key: str
+    owner_version: int
+    purge_revision: int
+    terminal_outputs_suppressed: int
+    terminal_codes_redacted: int
+    context_snapshots_cleared: int
+    compatibility_outputs_redacted: int
+    event_payloads_redacted: int
+    run_actors_anonymized: int
+    turn_input_actors_anonymized: int
+    body_scan: ExecutionBodyScan
+
+    def ack_digest(self) -> str:
+        """ACK digest = 真实清除摘要 + body scan digest 的 canonical digest。
+
+        不含正文/actor 明文（Spec §5.2 / §7.2）。
+        """
+        return canonical_digest(
+            {
+                "schema_version": 1,
+                "owner_key": self.owner_key,
+                "owner_version": self.owner_version,
+                "purge_revision": self.purge_revision,
+                "terminal_outputs_suppressed": self.terminal_outputs_suppressed,
+                "terminal_codes_redacted": self.terminal_codes_redacted,
+                "context_snapshots_cleared": self.context_snapshots_cleared,
+                "compatibility_outputs_redacted": self.compatibility_outputs_redacted,
+                "event_payloads_redacted": self.event_payloads_redacted,
+                "run_actors_anonymized": self.run_actors_anonymized,
+                "turn_input_actors_anonymized": self.turn_input_actors_anonymized,
+                "body_scan_digest": self.body_scan.digest(),
             }
         )
 
@@ -207,7 +261,8 @@ class ExecutionErasureParticipant:
 
         无条件统计任何非空 payload（不按 payload_state 分类跳过）：
         - RunEvent ``payload_inline IS NOT NULL OR payload_ref IS NOT NULL``
-        - completed Run ``output_publish_state != suppressed AND terminal_output_ref IS NOT NULL``
+        - completed Run 仍携带任一 terminal output 正文字段（round-1 P1-1：**不**
+          按 ``output_publish_state`` 跳过，suppressed 也可能保留完整 envelope）
         - Run ``context_snapshot_ref IS NOT NULL``
         - Run ``terminal_code`` 或 ``terminal_reason`` 非受控 redaction code
         - CompatibilityOutput ``payload_state = present``
@@ -229,7 +284,10 @@ class ExecutionErasureParticipant:
                 ),
             )
         )
-        # completed Run un-suppressed terminal output
+        # completed Run 仍携带 terminal output 正文（round-1 P1-1：**不**按
+        # output_publish_state 跳过。ck_agent_run_terminal_output 允许
+        # suppressed 同时保留完整 envelope，旧谓词 `!= 'suppressed'` 会漏扫这类行，
+        # 使 purge 在正文仍在时 ACK）。
         unredacted_terminal = await self._session.scalar(
             select(func.count())
             .select_from(AgentRunModel)
@@ -237,8 +295,12 @@ class ExecutionErasureParticipant:
                 AgentRunModel.tenant_id == tenant_id,
                 AgentRunModel.conversation_id == conversation_id,
                 AgentRunModel.status == "completed",
-                AgentRunModel.output_publish_state != "suppressed",
-                AgentRunModel.terminal_output_ref.isnot(None),
+                or_(
+                    AgentRunModel.terminal_output_ref.isnot(None),
+                    AgentRunModel.terminal_output_media_type.isnot(None),
+                    AgentRunModel.terminal_output_classification.isnot(None),
+                    AgentRunModel.terminal_message_id.isnot(None),
+                ),
             )
         )
         # uncleared context snapshot
@@ -450,14 +512,16 @@ class ExecutionErasureParticipant:
                 tenant_id=tenant_id,
                 fence_owner_version=fence.owner_version,
             )
+            scan = await self.scan_execution_body(
+                tenant_id=tenant_id, conversation_id=conversation_id
+            )
             await self._record_blocked(
                 operation=operation,
                 checkpoint=checkpoint,
+                conversation=conversation,
+                scan=scan,
                 reason_code=REASON_PURGE_BLOCKED_BY_LEGAL_HOLD,
                 now=effective_now,
-            )
-            scan = await self.scan_execution_body(
-                tenant_id=tenant_id, conversation_id=conversation_id
             )
             return ExecutionErasureOutcome(
                 fence=fence,
@@ -497,14 +561,16 @@ class ExecutionErasureParticipant:
                 tenant_id=tenant_id,
                 fence_owner_version=fence.owner_version,
             )
+            scan = await self.scan_execution_body(
+                tenant_id=tenant_id, conversation_id=conversation_id
+            )
             await self._record_blocked(
                 operation=operation,
                 checkpoint=checkpoint,
+                conversation=conversation,
+                scan=scan,
                 reason_code=REASON_PURGE_BLOCKED_BY_UNRESOLVED_ACTION,
                 now=effective_now,
-            )
-            scan = await self.scan_execution_body(
-                tenant_id=tenant_id, conversation_id=conversation_id
             )
             return ExecutionErasureOutcome(
                 fence=fence,
@@ -539,14 +605,16 @@ class ExecutionErasureParticipant:
                 tenant_id=tenant_id,
                 fence_owner_version=fence.owner_version,
             )
+            scan = await self.scan_execution_body(
+                tenant_id=tenant_id, conversation_id=conversation_id
+            )
             await self._record_blocked(
                 operation=operation,
                 checkpoint=checkpoint,
+                conversation=conversation,
+                scan=scan,
                 reason_code=REASON_PURGE_OWNER_UNAVAILABLE,
                 now=effective_now,
-            )
-            scan = await self.scan_execution_body(
-                tenant_id=tenant_id, conversation_id=conversation_id
             )
             return ExecutionErasureOutcome(
                 fence=fence,
@@ -556,18 +624,18 @@ class ExecutionErasureParticipant:
                 ack_digest=None,
             )
 
-        # 3. runtime binding ref 存在（非 compatibility Run）-> purge_owner_unavailable
+        # 3. runtime binding ref 存在 -> purge_owner_unavailable
+        # round-1 P1-3：直接查 RuntimeSessionBinding，**不**经 AgentRun join。
+        # binding 自身持有 tenant_id + conversation_id，可先于 Run 创建或不被任何
+        # Run 引用（如 create -> activate 后 Run 尚未创建）；经 AgentRun join 会漏掉
+        # 这类活跃 runtime_session_ref，导致 execution.core.v1 错误 ACK（违反 §7
+        # owner 边界：runtime ref 归 runtime.private.v1，S4 未安装）。
         runtime_ref_count = await self._session.scalar(
             select(func.count())
-            .select_from(AgentRunModel)
-            .join(
-                RuntimeSessionBindingModel,
-                AgentRunModel.runtime_binding_id == RuntimeSessionBindingModel.id,
-            )
+            .select_from(RuntimeSessionBindingModel)
             .where(
-                AgentRunModel.tenant_id == tenant_id,
-                AgentRunModel.conversation_id == conversation_id,
-                AgentRunModel.runtime_binding_id.isnot(None),
+                RuntimeSessionBindingModel.tenant_id == tenant_id,
+                RuntimeSessionBindingModel.conversation_id == conversation_id,
                 RuntimeSessionBindingModel.runtime_session_ref.isnot(None),
             )
         )
@@ -586,14 +654,16 @@ class ExecutionErasureParticipant:
                 tenant_id=tenant_id,
                 fence_owner_version=fence.owner_version,
             )
+            scan = await self.scan_execution_body(
+                tenant_id=tenant_id, conversation_id=conversation_id
+            )
             await self._record_blocked(
                 operation=operation,
                 checkpoint=checkpoint,
+                conversation=conversation,
+                scan=scan,
                 reason_code=REASON_PURGE_OWNER_UNAVAILABLE,
                 now=effective_now,
-            )
-            scan = await self.scan_execution_body(
-                tenant_id=tenant_id, conversation_id=conversation_id
             )
             return ExecutionErasureOutcome(
                 fence=fence,
@@ -637,22 +707,27 @@ class ExecutionErasureParticipant:
             hold_revision=conversation.hold_revision,
             expected_operation_revision=expected_operation_revision,
         )
-        await self._mark_operation_running(operation=operation, now=effective_now)
+        await self._mark_operation_running(
+            operation=operation, conversation=conversation, now=effective_now
+        )
 
         # --- 清除动作（幂等，已 tombstone/no-op）---
-        await self._clear_terminal_outputs(
+        # round-1 P1-6：各动作返回**真实受影响行数**，聚合为 ExecutionErasureSummary
+        # 驱动 ACK digest。此前 digest 取自成功后的 final scan，而 ACK 前置正是
+        # scan 全零，故清除计数恒为 0，digest 不表达任何清除事实。
+        outputs_suppressed, codes_redacted = await self._clear_terminal_outputs(
             tenant_id=tenant_id, conversation_id=conversation_id, now=effective_now
         )
-        await self._clear_context_snapshots(
+        contexts_cleared = await self._clear_context_snapshots(
             tenant_id=tenant_id, conversation_id=conversation_id, now=effective_now
         )
-        await self._clear_compatibility_outputs(
+        compat_redacted = await self._clear_compatibility_outputs(
             tenant_id=tenant_id, conversation_id=conversation_id, now=effective_now
         )
-        await self._clear_event_payloads(
+        events_redacted = await self._clear_event_payloads(
             tenant_id=tenant_id, conversation_id=conversation_id, now=effective_now
         )
-        await self._anonymize_actors(
+        run_actors, turn_actors = await self._anonymize_actors(
             tenant_id=tenant_id, conversation_id=conversation_id, now=effective_now
         )
 
@@ -681,6 +756,8 @@ class ExecutionErasureParticipant:
             await self._record_blocked(
                 operation=operation,
                 checkpoint=checkpoint,
+                conversation=conversation,
+                scan=scan,
                 reason_code=REASON_EXECUTION_BODY_SCAN_NONZERO,
                 now=effective_now,
             )
@@ -693,11 +770,20 @@ class ExecutionErasureParticipant:
             )
 
         # --- ACK：scan 为零 -> fence erasing->erased + checkpoint acked ---
-        ack_digest = self._compute_ack_digest(
+        summary = ExecutionErasureSummary(
+            owner_key=EXECUTION_CORE_OWNER,
+            owner_version=fence.owner_version,
             purge_revision=purge_revision,
-            fence_owner_version=fence.owner_version,
+            terminal_outputs_suppressed=outputs_suppressed,
+            terminal_codes_redacted=codes_redacted,
+            context_snapshots_cleared=contexts_cleared,
+            compatibility_outputs_redacted=compat_redacted,
+            event_payloads_redacted=events_redacted,
+            run_actors_anonymized=run_actors,
+            turn_input_actors_anonymized=turn_actors,
             body_scan=scan,
         )
+        ack_digest = summary.ack_digest()
         fence = await self._erasure.transition_fence_state(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
@@ -734,23 +820,38 @@ class ExecutionErasureParticipant:
 
     async def _clear_terminal_outputs(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID, now: datetime
-    ) -> None:
+    ) -> tuple[int, int]:
         """terminal output suppress + terminal_code/reason 裁剪（Spec §7.2）。
 
-        completed Run ``output_publish_state`` -> suppressed + 清
+        completed Run -> ``output_publish_state=suppressed`` + 清
         ``terminal_output_ref/media_type/classification/message_id``（保留
         ``terminal_result_digest/terminal_output_digest/terminal_output_size``）。
         ``terminal_code/terminal_reason`` -> 受控 ``suppression_reason_code``。
-        """
-        from sqlalchemy import update
 
-        await self._session.execute(
+        **round-1 P1-1**：清除谓词**不**按 ``output_publish_state`` 跳过。
+        ``ck_agent_run_terminal_output`` 的第一分支允许
+        ``output_publish_state='suppressed'`` **同时保留完整** terminal envelope
+        （B1 suppress 审计路径的合法状态）；旧谓词 ``!= 'suppressed'`` 会跳过这类
+        行，purge 得以在正文仍在时 ACK。现改为按**是否仍携带正文字段**筛选。
+
+        返回 ``(terminal_outputs_suppressed, terminal_codes_redacted)`` 真实计数
+        （round-1 P1-6：ACK digest 需要真实清除计数）。
+        """
+        from sqlalchemy import or_, update
+
+        result = await self._session.execute(
             update(AgentRunModel)
             .where(
                 AgentRunModel.tenant_id == tenant_id,
                 AgentRunModel.conversation_id == conversation_id,
                 AgentRunModel.status == "completed",
-                AgentRunModel.output_publish_state != "suppressed",
+                # round-1 P1-1：任一正文字段非空即须清除，与 publish_state 无关。
+                or_(
+                    AgentRunModel.terminal_output_ref.isnot(None),
+                    AgentRunModel.terminal_output_media_type.isnot(None),
+                    AgentRunModel.terminal_output_classification.isnot(None),
+                    AgentRunModel.terminal_message_id.isnot(None),
+                ),
             )
             .values(
                 output_publish_state="suppressed",
@@ -767,10 +868,16 @@ class ExecutionErasureParticipant:
                 updated_at=now,
             )
         )
-        # 已 suppressed 但 terminal_code/reason 未归一的行
+        outputs_suppressed = int(getattr(result, "rowcount", 0) or 0)
+        # 已 suppressed 但 terminal_code/reason 未归一的行（含非 completed 终态 Run：
+        # failed/cancelled/expired 也带 terminal_code/reason，同样须归一到白名单）。
         rows = (
             await self._session.execute(
-                select(AgentRunModel.id, AgentRunModel.terminal_code, AgentRunModel.terminal_reason)
+                select(
+                    AgentRunModel.id,
+                    AgentRunModel.terminal_code,
+                    AgentRunModel.terminal_reason,
+                )
                 .where(
                     AgentRunModel.tenant_id == tenant_id,
                     AgentRunModel.conversation_id == conversation_id,
@@ -779,6 +886,7 @@ class ExecutionErasureParticipant:
             )
         ).all()
         from app.composition.agent_suppression_reasons import SUPPRESSION_REASON_CODES
+        codes_redacted = 0
         for row_id, code, reason in rows:
             updates: dict[str, str | datetime] = {}
             if code is not None and code not in SUPPRESSION_REASON_CODES:
@@ -792,14 +900,19 @@ class ExecutionErasureParticipant:
                     .where(AgentRunModel.id == row_id)
                     .values(**updates)
                 )
+                codes_redacted += 1
+        return outputs_suppressed, codes_redacted
 
     async def _clear_context_snapshots(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID, now: datetime
-    ) -> None:
-        """清 ``context_snapshot_ref/digest/classification`` -> NULL。"""
+    ) -> int:
+        """清 ``context_snapshot_ref/digest/classification`` -> NULL。
+
+        返回真实受影响行数（round-1 P1-6）。
+        """
         from sqlalchemy import update
 
-        await self._session.execute(
+        result = await self._session.execute(
             update(AgentRunModel)
             .where(
                 AgentRunModel.tenant_id == tenant_id,
@@ -813,14 +926,18 @@ class ExecutionErasureParticipant:
                 updated_at=now,
             )
         )
+        return int(getattr(result, "rowcount", 0) or 0)
 
     async def _clear_compatibility_outputs(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID, now: datetime
-    ) -> None:
-        """清 ``reply_text/response_envelope`` -> NULL + ``payload_state=redacted``。"""
+    ) -> int:
+        """清 ``reply_text/response_envelope`` -> NULL + ``payload_state=redacted``。
+
+        返回真实受影响行数（round-1 P1-6）。
+        """
         from sqlalchemy import update
 
-        await self._session.execute(
+        result = await self._session.execute(
             update(CompatibilityOutputModel)
             .where(
                 CompatibilityOutputModel.tenant_id == tenant_id,
@@ -833,28 +950,29 @@ class ExecutionErasureParticipant:
                 payload_state="redacted",
             )
         )
+        return int(getattr(result, "rowcount", 0) or 0)
 
     async def _clear_event_payloads(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID, now: datetime
-    ) -> None:
+    ) -> int:
         """RunEvent ``payload_inline`` -> NULL + ``payload_state=redacted``（seq 不变）。
 
         payload_ref 不清（external.payload.v1 S4）；存在 payload_ref 的行在
         blocked 前置检查已被拦截，此处只清 inline。
 
         ``agent_run_events`` E1 是 append-only（migration 030 触发器
-        ``trg_agent_run_event_append_only`` BEFORE UPDATE OR DELETE RAISE），但
-        Spec §7.2 R1 purge 路径明确要求墓碑化 payload_inline。R1 purge 路径在
-        同一事务内 DROP TRIGGER → UPDATE → CREATE TRIGGER；事务失败回滚时 DROP
-        也回滚，触发器自动恢复（DB 安全状态）。正常 writer 路径触发器仍生效。
-        """
-        from sqlalchemy import text, update
+        ``trg_agent_run_event_append_only``）。**round-1 P1-2**：本方法曾在事务内
+        ``DROP TRIGGER -> UPDATE -> CREATE TRIGGER`` 绕过守卫，有两个缺陷--
+        ``DROP TRIGGER`` 需表级 ``ACCESS EXCLUSIVE``，与同事务早前 event scan 持有的
+        ``ACCESS SHARE`` 构成锁升级，两个并发 eraser 互等即死锁；且普通运行角色未必
+        有该表 DDL 权限。现改为 **migration 039** 把守卫重定义为行级白名单（只放行
+        受控 tombstone 形态），运行期只做普通 UPDATE，**不执行任何 DDL**。
 
-        await self._session.execute(
-            text("DROP TRIGGER IF EXISTS trg_agent_run_event_append_only "
-                 "ON metaedu.agent_run_events")
-        )
-        await self._session.execute(
+        返回真实受影响行数（round-1 P1-6：ACK digest 需要真实清除计数）。
+        """
+        from sqlalchemy import update
+
+        result = await self._session.execute(
             update(RunEventModel)
             .where(
                 RunEventModel.tenant_id == tenant_id,
@@ -866,21 +984,18 @@ class ExecutionErasureParticipant:
                 payload_state="redacted",
             )
         )
-        await self._session.execute(
-            text(
-                "CREATE TRIGGER trg_agent_run_event_append_only "
-                "BEFORE UPDATE OR DELETE ON metaedu.agent_run_events "
-                "FOR EACH ROW EXECUTE FUNCTION metaedu.guard_agent_run_event_append_only()"
-            )
-        )
+        return int(getattr(result, "rowcount", 0) or 0)
 
     async def _anonymize_actors(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID, now: datetime
-    ) -> None:
+    ) -> tuple[int, int]:
         """AgentRun/TurnInput ``created_by`` -> NULL + ``actor_state=redacted``
         + HMAC ``actor_identity_digest``（共享版本化 helper）。
 
         幂等：已 redacted（``actor_state=redacted``）no-op。
+
+        返回 ``(run_actors_anonymized, turn_input_actors_anonymized)`` 真实计数
+        （round-1 P1-6）。
         """
         from sqlalchemy import update
 
@@ -942,34 +1057,7 @@ class ExecutionErasureParticipant:
                     actor_identity_digest=digest,
                 )
             )
-
-    # --- ACK digest ------------------------------------------------------
-
-    def _compute_ack_digest(
-        self,
-        *,
-        purge_revision: int,
-        fence_owner_version: int,
-        body_scan: ExecutionBodyScan,
-    ) -> str:
-        """ACK digest：排序 ``{owner_key, owner_version, purge_revision, 各类清除计数,
-        body_scan_digest}`` canonical digest，不含正文/actor 明文。"""
-        return canonical_digest(
-            {
-                "schema_version": 1,
-                "owner_key": EXECUTION_CORE_OWNER,
-                "owner_version": fence_owner_version,
-                "purge_revision": purge_revision,
-                "cleared_terminal_outputs": body_scan.unredacted_terminal_outputs,
-                "cleared_context_snapshots": body_scan.uncleared_context_snapshots,
-                "cleared_compatibility_outputs": body_scan.unredacted_compatibility_outputs,
-                "cleared_event_payloads": body_scan.unredacted_event_payloads,
-                "cleared_terminal_codes": body_scan.unredacted_terminal_codes,
-                "anonymized_run_actors": body_scan.unanonymized_run_actors,
-                "anonymized_turn_input_actors": body_scan.unanonymized_turn_input_actors,
-                "body_scan_digest": body_scan.digest(),
-            }
-        )
+        return len(run_rows), len(turn_rows)
 
     # --- fencing helpers（复用 workspace participant 模式，execution.core.v1 专用）---
 
@@ -985,15 +1073,29 @@ class ExecutionErasureParticipant:
         expected_operation_revision: int,
     ) -> PurgeOperationModel:
         """校验 purge operation（conversation_id / purge_revision / lease_epoch /
-        registry_digest / hold_revision_snapshot / operation revision CAS）。"""
+        registry_digest / hold_revision_snapshot / operation revision CAS）。
+
+        **round-1 P1-4**：加 ``FOR UPDATE``（与 workspace participant 一致）--否则
+        并发 scheduler 更新可与 revision 裁决竞态；并强制 operation 处于**可运行
+        状态**（scheduled/running/blocked），``failed`` 等终态一律 fail closed。旧版
+        只拒 cancelled/completed，``failed`` operation 会穿透 ``_mark_operation_running``
+        （只处理 scheduled/blocked）继续执行全部清除并 ACK checkpoint，留下
+        ``operation=failed / checkpoint=acked / fence=erased`` 的矛盾三方事实。
+        """
         operation = (
-            await self._session.execute(
-                select(PurgeOperationModel).where(
-                    PurgeOperationModel.tenant_id == tenant_id,
-                    PurgeOperationModel.id == purge_operation_id,
+            (
+                await self._session.execute(
+                    select(PurgeOperationModel)
+                    .where(
+                        PurgeOperationModel.tenant_id == tenant_id,
+                        PurgeOperationModel.id == purge_operation_id,
+                    )
+                    .with_for_update()
                 )
             )
-        ).scalar_one_or_none()
+            .scalars()
+            .one_or_none()
+        )
         if operation is None:
             raise ValueError(f"purge operation {purge_operation_id} not found")
         if operation.conversation_id != conversation_id:
@@ -1007,10 +1109,12 @@ class ExecutionErasureParticipant:
             raise OwnerRegistryChangedError("registry digest mismatch")
         if operation.hold_revision_snapshot != hold_revision:
             raise ValueError("purge operation hold_revision_snapshot mismatch")
-        if operation.state == PurgeOperationState.CANCELLED.value:
-            raise ValueError("purge operation cancelled")
-        if operation.state == PurgeOperationState.COMPLETED.value:
-            raise ValueError("purge operation completed")
+        # round-1 P1-4：可运行状态白名单（与 workspace participant 同规格）。
+        # cancelled/completed/failed 等终态一律 fail closed，不得穿透到清除与 ACK。
+        if operation.state not in _RUNNABLE_OPERATION_STATES:
+            raise ValueError(
+                f"operation not in runnable state: {operation.state!r}"
+            )
         if operation.revision != expected_operation_revision:
             raise ValueError("purge operation revision CAS mismatch")
         return operation
@@ -1057,40 +1161,70 @@ class ExecutionErasureParticipant:
         return checkpoint
 
     async def _mark_operation_running(
-        self, *, operation: PurgeOperationModel, now: datetime
+        self,
+        *,
+        operation: PurgeOperationModel,
+        conversation: ConversationModel,
+        now: datetime,
     ) -> None:
-        """operation scheduled/blocked -> running（清 failure_code + bump revision）。"""
+        """operation scheduled/blocked -> running（清 failure_code + bump revision）。
+
+        round-1 P2-1：首次进入 running 设 ``started_at``（与 workspace participant
+        一致，此前从不设值）。round-1 P1-5：同事务把 ``Conversation.purge_state``
+        投影为 running--blocked 重试成功后必须离开 blocked，否则三方不一致。
+        """
         if operation.state in (
             PurgeOperationState.SCHEDULED.value,
             PurgeOperationState.BLOCKED.value,
         ):
             operation.state = PurgeOperationState.RUNNING.value
             operation.failure_code = None
+            if operation.started_at is None:
+                operation.started_at = now
             operation.revision += 1
             operation.updated_at = now
+        conversation.purge_state = PurgeState.RUNNING.value
+        conversation.updated_at = now
 
     async def _record_blocked(
         self,
         *,
         operation: PurgeOperationModel,
         checkpoint: PurgeOwnerCheckpointModel,
+        conversation: ConversationModel,
+        scan: ExecutionBodyScan,
         reason_code: str,
         now: datetime,
     ) -> None:
-        """operation -> blocked + checkpoint -> blocked（reason change bump revision）。
+        """operation -> blocked + checkpoint -> blocked + Conversation 投影 blocked。
 
-        checkpoint 同步推进到 BLOCKED + reason_code 持久化（与 workspace participant
-        同模式，Spec §5.2 三方一致：operation / checkpoint / conversation.purge_state
-        同步表达 blocked 状态）。
+        **round-1 P1-5**：此前只改 operation/checkpoint，既不投影
+        ``Conversation.purge_state=blocked``，也不持久化 scan digest，违反 S2-D/E
+        round-4 P1-2 冻结的「三方一致」与 P2-2「blocked 记 scan digest」。现在
+        ``conversation`` 与 ``scan`` 必填，全部 blocked 路径（legal hold / 非终态
+        Run / external payload_ref / runtime binding / final scan 非零）统一投影。
+
+        **round-1 P2-1**：同 reason 重入不再无条件 bump revision（与 workspace
+        一致）--仅首次 blocked 或 reason 变化时 bump，否则重试噪声会推高 revision
+        并使调用方的 CAS 无谓失效。
         """
-        operation.state = PurgeOperationState.BLOCKED.value
-        operation.failure_code = reason_code
-        operation.revision += 1
-        operation.updated_at = now
+        if operation.state != PurgeOperationState.BLOCKED.value:
+            operation.state = PurgeOperationState.BLOCKED.value
+            operation.failure_code = reason_code
+            operation.revision += 1
+            operation.updated_at = now
+        elif operation.failure_code != reason_code:
+            operation.failure_code = reason_code
+            operation.revision += 1
+            operation.updated_at = now
         if checkpoint.state != PurgeOwnerState.BLOCKED.value:
             checkpoint.state = PurgeOwnerState.BLOCKED.value
         checkpoint.reason_code = reason_code
+        # P1-5：blocked 也须绑定 scan 证据（冻结事实，供复查与重试比对）。
+        checkpoint.checkpoint_digest = scan.digest()
         checkpoint.updated_at = now
+        conversation.purge_state = PurgeState.BLOCKED.value
+        conversation.updated_at = now
 
     async def _ack_owner_checkpoint(
         self,

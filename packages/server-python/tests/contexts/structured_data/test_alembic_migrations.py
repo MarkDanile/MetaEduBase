@@ -51,8 +51,8 @@ async def test_alembic_012_015_create_schema():
         version = await conn.fetchval(
             "SELECT version_num FROM metaedu.alembic_version"
         )
-        assert version == "038_execution_actor_tombstone", (
-            f"alembic head should be 038_execution_actor_tombstone, got {version!r}"
+        assert version == "039_run_event_tombstone_guard", (
+            f"alembic head should be 039_run_event_tombstone_guard, got {version!r}"
         )
 
         # All 4 tables must exist.

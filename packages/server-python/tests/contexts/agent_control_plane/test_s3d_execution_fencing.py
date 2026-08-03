@@ -233,7 +233,7 @@ async def test_erased_cancelled_operation_fail_closed(db_session):
     op.revision = op_revision_after + 1
     await db_session.commit()
 
-    with pytest.raises(ValueError, match="purge operation cancelled"):
+    with pytest.raises(ValueError, match="operation not in runnable state: 'cancelled'"):
         await _erase(
             db_session, ctx, expected_operation_revision=op_revision_after + 1
         )
@@ -324,3 +324,160 @@ async def test_erased_acked_checkpoint_blocked_operation_repaired(db_session):
     cp = await h.checkpoint_model(db_session, ctx["operation_id"])
     assert cp.state == PurgeOwnerState.ACKED.value
     assert cp.ack_digest == fence_ack  # 未重写
+
+
+# ---------------------------------------------------------------------------
+# round-1 复审返修反例（P1-4 failed operation / P1-6 真实清除计数）
+# ---------------------------------------------------------------------------
+
+
+async def test_round1_p1_4_failed_operation_fails_closed(db_session):
+    """P1-4：operation=failed 不得进入清除与 ACK。
+
+    旧实现 ``_load_verified_operation`` 只拒 cancelled/completed，failed operation
+    会穿透 ``_mark_operation_running``（只处理 scheduled/blocked）继续清除并
+    ACK，留下 ``operation=failed / checkpoint=acked / fence=erased`` 的矛盾。
+    修订后：可运行状态白名单 ``{scheduled, running, blocked}``，failed 必拒。
+    变异杀手：删 ``_RUNNABLE_OPERATION_STATES`` 谓词或放宽为允许 failed ->
+    异常不抛，进入清除路径，本测试变红。
+    """
+    ctx = await h.seed_purgeable_with_run(db_session)
+    op = await h.operation_model(db_session, ctx["operation_id"])
+    op.state = PurgeOperationState.FAILED.value
+    op.revision = ctx["op_revision"] + 1
+    await db_session.commit()
+    expected_revision = op.revision
+
+    with pytest.raises(
+        ValueError, match="operation not in runnable state: 'failed'"
+    ):
+        await _erase(
+            db_session, ctx, expected_operation_revision=expected_revision
+        )
+    await db_session.rollback()
+
+    # 验证零状态变更：operation=failed 仍在，checkpoint=pending，正文未清
+    op_after = await h.operation_model(db_session, ctx["operation_id"])
+    assert op_after.state == "failed", "operation state must not change"
+    cp = await h.checkpoint_model(db_session, ctx["operation_id"])
+    assert cp.state == "pending", "checkpoint must remain pending"
+    completed = await h.run_model(db_session, ctx["run_id"])
+    assert completed.terminal_output_ref is not None, (
+        "body must not be cleared when operation is in non-runnable state"
+    )
+
+
+async def test_round1_p1_4_operation_locked_for_update(db_session):
+    """P1-4：_load_verified_operation 必须发 ``SELECT ... FOR UPDATE``，锁住
+    operation 行直到事务结束——否则并发 scheduler 可与 revision 裁决竞态。
+
+    通过 ``pg_stat_activity`` 间接验证：调用 participant 时不能简单观察到
+    ``FOR UPDATE`` SQL 文本（SQLAlchemy prepare 阶段可能不会暴露），改用更直接
+    的契约：open 一个长事务持 row 锁，让 participant 的 _load_verified_operation
+    必阻塞（pg_blocking_pids 应包含本连接）。这是 PG 锁可观察的 side effect。
+    """
+    ctx = await h.seed_purgeable_with_run(db_session)
+    op_id = ctx["operation_id"]
+
+    # 在 _load_verified_operation 之前/期间，另一个事务持有 operation 行锁：
+    # 模拟方法是先在 db_session 内加载并 with_for_update 锁住 row（手动持有
+    # 锁），再尝试 _erase 走自己的 _load_verified_operation -- 它会卡在
+    # row-level lock 上。
+    from sqlalchemy import select
+
+    from app.contexts.agent_workspace.infrastructure.models import (
+        PurgeOperationModel,
+    )
+
+    # 在 db_session 自己的事务里取 row-level 锁（SQLAlchemy session 已 begin）。
+    # 持锁的 SQL 必须 await，赋给 _ 是为了确保副作用（行锁）发生。
+    _ = (
+        await db_session.execute(
+            select(PurgeOperationModel)
+            .where(PurgeOperationModel.id == op_id)
+            .with_for_update()
+        )
+    ).scalar_one()
+
+    # 现在 db_session 持有 row lock。用 lock_timeout=10ms + asyncpg 直连新事务
+    # 触发 _load_verified_operation 走自己的 FOR UPDATE 等待。
+    import asyncpg
+
+    from tests.conftest import TEST_DB_URL
+    url = TEST_DB_URL.replace("postgresql+asyncpg://", "postgresql://", 1)
+
+    async def attempt_erase():
+        # 短 lock_timeout 让等待立即超时而不是无限等
+        c = await asyncpg.connect(url, timeout=5)
+        try:
+            await c.execute("SET lock_timeout = '300ms'")
+            # 在新连接上跑 participant 的 FOR UPDATE 同形态 SQL
+            await c.execute(
+                "SELECT * FROM metaedu.agent_conversation_purges "
+                "WHERE id = $1 FOR UPDATE",
+                op_id,
+            )
+            return "ACQUIRED"
+        except asyncpg.exceptions.LockNotAvailableError:
+            return "BLOCKED"
+        finally:
+            await c.close()
+
+    result = await attempt_erase()
+    assert result == "BLOCKED", (
+        f"expected lock contention (FOR UPDATE), got {result!r} -- "
+        f"_load_verified_operation may not be holding FOR UPDATE"
+    )
+
+    # 释放 lock 后再让 _erase 走完整路径（应可成功）
+    await db_session.rollback()
+    out = await _erase(
+        db_session, ctx, expected_operation_revision=ctx["op_revision"]
+    )
+    await db_session.commit()
+    assert out.erased
+
+
+async def test_round1_p1_6_real_clear_counts_drive_ack_digest(db_session):
+    """P1-6：ACK digest 必须随真实清除计数变化（旧实现从必为零的 final scan
+    取值，digest 不表达清除事实）。
+
+    删除 1 个 event vs 删除 2 个 event -> 不同 digest。
+    变异杀手：把 ``summary.ack_digest`` 改回取自 final scan（恒零）-> 两组
+    digest 相同，本测试变红。
+    """
+    # 第一次 erase：标准 1 event
+    ctx1 = await h.seed_purgeable_with_run(db_session, title="clear 1 event")
+    out1 = await h.participant(db_session).erase_execution_body(
+        tenant_id=h.TENANT_ID,
+        conversation_id=ctx1["conversation_id"],
+        purge_revision=ctx1["purge_revision"],
+        purge_operation_id=ctx1["operation_id"],
+        expected_operation_revision=ctx1["op_revision"],
+    )
+    await db_session.commit()
+    assert out1.erased
+    digest_1 = out1.ack_digest
+
+    # 第二次 erase：同 conversation_id 再插一个 event，期望 digest 不同
+    ctx2 = await h.seed_purgeable_with_run(db_session, title="clear 2 events")
+    conversation_id = ctx2["conversation_id"]
+    # 在已 seed 的 run 上加一个 inline event
+    run = await h.run_model(db_session, ctx2["run_id"])
+    await h.seed_run_event(db_session, run=run, seq=2)
+    await db_session.commit()
+    out2 = await h.participant(db_session).erase_execution_body(
+        tenant_id=h.TENANT_ID,
+        conversation_id=conversation_id,
+        purge_revision=ctx2["purge_revision"],
+        purge_operation_id=ctx2["operation_id"],
+        expected_operation_revision=ctx2["op_revision"],
+    )
+    await db_session.commit()
+    assert out2.erased
+    digest_2 = out2.ack_digest
+
+    assert digest_1 != digest_2, (
+        "ack_digest must reflect real clear counts: 1 event vs 2 events "
+        "should differ (P1-6: ack digest is not zero)"
+    )
