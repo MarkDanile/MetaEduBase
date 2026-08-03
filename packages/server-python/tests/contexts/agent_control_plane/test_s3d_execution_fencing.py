@@ -495,27 +495,43 @@ async def test_round1_p1_6_real_clear_counts_drive_ack_digest(db_session):
 # ---------------------------------------------------------------------------
 
 
-async def test_codex_p1_1_failed_checkpoint_fails_closed_on_blocked(db_session):
+async def test_codex_p1_1_failed_checkpoint_fails_closed_on_blocked(
+    db_session, session_factory
+):
     """codex P1-1：failed checkpoint 不得被 _record_blocked 复活为 blocked。
 
     旧实现 ``_record_blocked`` 对 checkpoint 无白名单，任意非 blocked 状态
     （含 failed）都会被改为 blocked，failed -> blocked -> acked 是可能的复活链。
-    变异杀手：删 checkpoint 白名单 raise -> 本测试变红。
+
+    **round-3 P1（codex）**：``ValueError`` 不会使 SQLAlchemy 事务失效——若
+    ``_record_blocked`` 先改 operation（state/revision/failure_code）再校验
+    checkpoint 并 raise，调用方捕获异常后**提交**，部分复活（operation 已
+    blocked、revision 已 bump、checkpoint 仍 failed）就会落库。故修复后必须先
+    完成 checkpoint 白名单裁决、再改任何实体。本测试**捕获异常后主动 commit**，
+    并用**新 session** 读回验证 operation/checkpoint/conversation 三方零变更——
+    不再靠 rollback 掩盖部分提交路径。
+
+    变异杀手：把 checkpoint 白名单判定移回 operation 赋值之后 -> commit 后
+    operation 已变 blocked、revision 已 +1 -> 新 session 读回发现变更 -> 变红。
     """
     from app.contexts.agent_workspace.infrastructure.models import (
         ConversationModel,
     )
 
     ctx = await h.seed_purgeable_with_run(db_session)
-    cp = await h.checkpoint_model(db_session, ctx["operation_id"])
-    op = await h.operation_model(db_session, ctx["operation_id"])
-    conv = await db_session.get(ConversationModel, ctx["conversation_id"])
+    op_id = ctx["operation_id"]
+    conv_id = ctx["conversation_id"]
+    cp = await h.checkpoint_model(db_session, op_id)
+    op = await h.operation_model(db_session, op_id)
+    conv = await db_session.get(ConversationModel, conv_id)
     # 人为制造 failed checkpoint（绕过正常状态机，只验证白名单语义）
     cp.state = PurgeOwnerState.FAILED.value
     await db_session.commit()
+    op_rev_before = op.revision
+    op_state_before = op.state
+    conv_purge_state_before = conv.purge_state
 
-    # 直接调用 participant._record_blocked（带 failed checkpoint），应 raise
-    # checkpoint not blockable from state。
+    # 直接调用 participant._record_blocked（带 failed checkpoint），应 raise。
     from app.contexts.agent_execution.infrastructure.execution_erasure_participant import (
         ExecutionBodyScan,
     )
@@ -540,11 +556,33 @@ async def test_codex_p1_1_failed_checkpoint_fails_closed_on_blocked(db_session):
             reason_code="execution_body_scan_nonzero",
             now=datetime.now(UTC),
         )
-    await db_session.rollback()
+    # round-3 P1：捕获异常后**提交**（不 rollback）——若 _record_blocked 在裁决前
+    # 已改 operation，此次提交会把部分复活落库。
+    await db_session.commit()
 
-    # 验证零状态变更：checkpoint 仍 failed，正文未被清除
-    cp_after = await h.checkpoint_model(db_session, ctx["operation_id"])
-    assert cp_after.state == "failed", "checkpoint state must not change"
+    # 用**新 session** 读回（绕过当前 session identity map），验证三方零变更。
+    async with session_factory() as fresh:
+        op_after = await h.operation_model(fresh, op_id)
+        cp_after = await h.checkpoint_model(fresh, op_id)
+        conv_after = await fresh.get(ConversationModel, conv_id)
+    assert cp_after.state == "failed", (
+        f"checkpoint must remain failed, got {cp_after.state!r}"
+    )
+    assert op_after.state == op_state_before, (
+        f"operation state must not change (partial resurrection), "
+        f"{op_state_before!r} -> {op_after.state!r}"
+    )
+    assert op_after.revision == op_rev_before, (
+        f"operation revision must not bump (partial resurrection), "
+        f"{op_rev_before} -> {op_after.revision}"
+    )
+    assert op_after.failure_code is None, (
+        f"operation failure_code must not be set, got {op_after.failure_code!r}"
+    )
+    assert conv_after.purge_state == conv_purge_state_before, (
+        f"conversation purge_state must not change, "
+        f"{conv_purge_state_before!r} -> {conv_after.purge_state!r}"
+    )
 
 
 async def test_codex_p1_1_erased_replay_rejects_failed_checkpoint(db_session):

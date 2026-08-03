@@ -43,14 +43,15 @@ class OwnerDefinition:
     capabilities: tuple[str, ...]
     # ``erase_available=True`` 表示该 owner 的 eraser 已安装（可经
     # ``require_capability(owner, "erase")`` 放行）。S2-D 为 workspace.core.v1
-    # 翻 True；其余 owner 待 S3/S4。
+    # 翻 True；S3-D 为 execution.core.v1 翻 True；其余 owner 待 S4。
     erase_available: bool
 
 
 # V1 固定 owner（Spec §4.1）。capabilities 只描述 owner 持有的正文/引用类别，
 # 不保存正文或 secret。顺序在代码中不承载语义；对外 snapshot 一律排序。
-# S2-D：workspace.core.v1 eraser 已实现（WorkspaceErasureParticipant），
-# erase_available=True；其余 owner 待 S3/S4。
+# S2-D：workspace.core.v1 eraser 已实现（WorkspaceErasureParticipant）；
+# S3-D：execution.core.v1 eraser 已实现（ExecutionErasureParticipant）；
+# 两者 erase_available=True，其余 owner 待 S4。
 _OWNER_DEFINITIONS: tuple[OwnerDefinition, ...] = (
     OwnerDefinition(
         owner_key="workspace.core.v1",

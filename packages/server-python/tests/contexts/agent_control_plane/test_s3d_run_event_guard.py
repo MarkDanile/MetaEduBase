@@ -220,25 +220,33 @@ async def test_guard_rejects_tombstone_on_already_null_payload(db_session):
 async def test_migration_039_roundtrip_downgrade_restores_unconditional_guard(
     db_session,
 ):
-    """codex P2-4：039 downgrade -> 038（守卫还原为无条件 RAISE）-> upgrade -> 039
-    （守卫再放行 tombstone）的 roundtrip。
+    """codex round-3 P2-2：真实调用迁移入口 ``downgrade()``/``upgrade()`` 跑
+    039 -> 038 -> 039 roundtrip，并验证守卫行为随之切换。
 
-    迁移的 ``upgrade()``/``downgrade()`` 就是 ``op.execute(<守卫函数 SQL>)``
-    （``CREATE OR REPLACE FUNCTION``，无表级 DDL、无 ACCESS EXCLUSIVE）。本测试直接
-    取迁移模块里的两段守卫 SQL 文本经当前会话执行，等价于 ``op.execute`` 的效果，
-    依次断言：
+    round-2 的实现只直接执行迁移模块里的 SQL 常量（``_GUARD_UNCONDITIONAL`` /
+    ``_GUARD_WITH_PURGE_TOMBSTONE``），交换、清空 ``upgrade()``/``downgrade()``
+    函数体后测试仍绿——迁移入口本身是死代码。本测试改为：把 alembic ``op`` 通过
+    ``MigrationContext.configure`` 绑定到当前真实连接，然后**真实调用**
+    ``mig.downgrade()`` 与 ``mig.upgrade()``（其内部的 ``op.execute`` 即对真实 PG
+    执行），依次断言：
 
-    - 应用 038 守卫（无条件 RAISE）后：合法 tombstone 也被拒（030 行为还原）。
-    - 应用 039 守卫（白名单）后：合法 tombstone 重新放行。
+    - ``downgrade()`` 后：合法 tombstone 被无条件 RAISE 拒绝（030/038 行为还原）。
+    - ``upgrade()`` 后：合法 tombstone 重新放行（白名单恢复）。
 
     守卫只作用于**新写**，已产生的 tombstone 行不受影响，故 roundtrip 无条件可逆
-    （区别于 038 的不可逆边界）。try/finally 保证结束时守卫回到 039 版本，不污染
-    同库其他用例。
+    （区别于 038 的不可逆边界）。try/finally 结束时再调一次 ``upgrade()`` 把守卫
+    恢复到 039 版本，不污染同库其他用例。
     """
     import importlib.util
     from pathlib import Path
 
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
     from sqlalchemy import text as _text
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from tests.conftest import TEST_DB_URL
 
     # 按文件路径加载迁移模块（revision id 以数字开头，无法作为包名 import）。
     mig_path = (
@@ -256,9 +264,19 @@ async def test_migration_039_roundtrip_downgrade_restores_unconditional_guard(
     run_id = event.run_id
     await db_session.commit()  # 提交基线，后续 guard 切换的 rollback 不丢失 event。
 
-    async def _apply(sql: str) -> None:
-        await db_session.execute(_text(sql))
-        await db_session.flush()
+    # 真实迁移入口在**专用 engine 连接**上执行（避免与 db_session 在同一连接上
+    # 叠加两个事务）。迁移模块内的 ``op.execute`` 经 ``_install_proxy`` 注入的
+    # alembic.op 模块级 ``_proxy`` 解析到该连接的 Operations，即真实对 PG 执行。
+    engine = create_async_engine(TEST_DB_URL, echo=False, poolclass=NullPool)
+
+    async def _run_migration(fn) -> None:
+        def _do(sync_conn) -> None:
+            mig_ctx = MigrationContext.configure(sync_conn)
+            Operations(mig_ctx)._install_proxy()
+            fn()
+
+        async with engine.begin() as conn:
+            await conn.run_sync(_do)
 
     async def _seed_fresh_event() -> object:
         # 在新事务内 seed 一个 inline event（_expect_rejected 的 rollback 只回滚本
@@ -269,11 +287,9 @@ async def test_migration_039_roundtrip_downgrade_restores_unconditional_guard(
         return fresh
 
     try:
-        # --- downgrade -> 038：守卫还原为无条件 RAISE ---
-        await _apply(mig._GUARD_UNCONDITIONAL)
-        await db_session.commit()  # 持久化 038 守卫（guard 切换不被后续 rollback 回退）。
+        # --- 真实 downgrade() -> 038：守卫还原为无条件 RAISE ---
+        await _run_migration(mig.downgrade)
 
-        # 038 守卫下：合法 tombstone 也被无条件 RAISE 拒绝。
         e1 = await _seed_fresh_event()
         await _expect_rejected(
             db_session,
@@ -282,9 +298,8 @@ async def test_migration_039_roundtrip_downgrade_restores_unconditional_guard(
             e1.id,
         )
 
-        # --- upgrade -> 039：白名单恢复，合法 tombstone 重新放行 ---
-        await _apply(mig._GUARD_WITH_PURGE_TOMBSTONE)
-        await db_session.commit()
+        # --- 真实 upgrade() -> 039：白名单恢复，合法 tombstone 重新放行 ---
+        await _run_migration(mig.upgrade)
         await db_session.execute(
             _text(
                 f"UPDATE {_TABLE} SET payload_inline = NULL, "
@@ -301,59 +316,80 @@ async def test_migration_039_roundtrip_downgrade_restores_unconditional_guard(
         ).one()
         assert row.payload_state == "redacted", "upgrade 后 tombstone 应重新放行"
     finally:
-        # 无论断言成败，结束时把守卫恢复到 039 版本，避免污染同库其他用例。
+        # 无论断言成败，结束时装回 039 守卫，避免污染同库其他用例。
         await db_session.rollback()
-        await _apply(mig._GUARD_WITH_PURGE_TOMBSTONE)
-        await db_session.commit()
+        await _run_migration(mig.upgrade)
+        await engine.dispose()
 
 
-async def test_erase_path_emits_no_ddl(db_session, session_factory):
-    """codex P2-4（restricted runtime role 的可表达等价物）：erase 全程**不发任何
-    DDL**（无 DROP/CREATE TRIGGER/FUNCTION）——这是 039 消除运行时 DDL 的设计目标。
+async def test_erase_path_emits_no_ddl(db_session):
+    """codex round-3 P2-3：erase 全程**实际发出**的 SQL 不含任何 DDL——这是 039
+    消除运行时 DDL 的设计目标，也是 restricted runtime role 的可表达等价物。
 
-    测试环境角色是 superuser（``pg_roles.rolsuper``），**基于权限的** restricted-role
-    测试在本环境无法表达（superuser 绕过一切权限检查）。但「erase 不需 DDL 权限」的
-    可证等价物是「erase 根本不发 DDL」：若 erase 路径不含任何 DDL 语句，则任意无
-    DDL 权限的角色都能跑通。本测试用 AST 提取 participant 模块里**实际执行**的全部
-    字符串字面量（剔除 docstring/注释），断言其中不含任何 DDL 关键字；再以一次真实
-    erase 在真实 PG 跑通佐证（行为不因角色有无 DDL 权限而不同）。
+    测试环境角色是 superuser（``pg_roles.rolsuper``），基于权限的 restricted-role
+    测试在本环境无法表达（superuser 绕过一切权限检查）。可证等价物是「erase 根本
+    不发 DDL」：若 erase 实际执行的语句里没有任何 DDL，则任意无 DDL 权限的角色都
+    能跑通。
+
+    **执行轨迹（非 AST 静态扫描）**：round-2 的 AST 扫描只覆盖直接作为调用实参的
+    字符串常量，变量 SQL、动态拼接及 helper 发出的 SQL 都能绕过。本测试在独立
+    engine 上挂 ``before_cursor_execute`` 事件监听器，捕获一次**真实 erase** 实际
+    发给 PG 的全部语句，断言无 DDL 关键字。变量/拼接/helper SQL 都逃不掉——它们
+    最终都要过 cursor execute。
     """
-    import ast
-    import inspect
-
-    from app.contexts.agent_execution.infrastructure import (
-        execution_erasure_participant as mod,
+    from sqlalchemy import event
+    from sqlalchemy.ext.asyncio import (
+        AsyncSession,
+        async_sessionmaker,
+        create_async_engine,
     )
+    from sqlalchemy.pool import NullPool
 
-    # 取模块中所有作为表达式/调用实参的字符串字面量（ast 自动排除 docstring——
-    # docstring 是 Expr(value=Constant) 且不作为 SQL 执行；真正的 SQL 出现在
-    # ``text(...)``/``execute(...)`` 调用实参中）。
-    tree = ast.parse(inspect.getsource(mod))
-    executed_strings: list[str] = []
-    for node in ast.walk(tree):
-        # 只收集出现在调用实参里的字符串（SQL 都经 text()/execute() 传入）。
-        if isinstance(node, ast.Call):
-            for arg in node.args:
-                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-                    executed_strings.append(arg.value)
-    joined = "\n".join(executed_strings).upper()
-    for ddl in ("DROP TRIGGER", "CREATE TRIGGER", "CREATE OR REPLACE FUNCTION",
-                "ALTER TABLE", "DROP FUNCTION"):
-        assert ddl not in joined, (
-            f"erase 路径不得含运行时 DDL {ddl!r}（039 的目标即消除它）"
-        )
+    from tests.conftest import TEST_DB_URL
 
-    # 真实 erase 在 superuser 下也应成功（行为不因角色有无 DDL 权限而不同）。
+    # 先用常规会话 seed（事件监听只挂在 erase 用的独立 engine 上）。
     ctx = await h.seed_purgeable_with_run(db_session)
-    out = await h.participant(db_session).erase_execution_body(
-        tenant_id=h.TENANT_ID,
-        conversation_id=ctx["conversation_id"],
-        purge_revision=ctx["purge_revision"],
-        purge_operation_id=ctx["operation_id"],
-        expected_operation_revision=ctx["op_revision"],
-    )
     await db_session.commit()
-    assert out.erased
+
+    statements: list[str] = []
+    engine = create_async_engine(TEST_DB_URL, echo=False, poolclass=NullPool)
+
+    @event.listens_for(engine.sync_engine, "before_cursor_execute")
+    def _capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    try:
+        factory = async_sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with factory() as session:
+            out = await h.participant(session).erase_execution_body(
+                tenant_id=h.TENANT_ID,
+                conversation_id=ctx["conversation_id"],
+                purge_revision=ctx["purge_revision"],
+                purge_operation_id=ctx["operation_id"],
+                expected_operation_revision=ctx["op_revision"],
+            )
+            await session.commit()
+        assert out.erased
+    finally:
+        await engine.dispose()
+
+    assert statements, "erase 应实际发出 SQL（监听未失效）"
+    joined = "\n".join(statements).upper()
+    for ddl in (
+        "DROP TRIGGER",
+        "CREATE TRIGGER",
+        "CREATE OR REPLACE FUNCTION",
+        "CREATE FUNCTION",
+        "ALTER TABLE",
+        "DROP FUNCTION",
+        "ALTER TRIGGER",
+    ):
+        assert ddl not in joined, (
+            f"erase 实际执行轨迹含运行时 DDL {ddl!r}（039 的目标即消除它）：\n"
+            + "\n".join(s for s in statements if ddl in s.upper())
+        )
 
 
 async def test_concurrent_erase_two_conversations_no_deadlock(

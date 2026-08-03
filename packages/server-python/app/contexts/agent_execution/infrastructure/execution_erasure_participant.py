@@ -1207,7 +1207,26 @@ class ExecutionErasureParticipant:
         **round-1 P2-1**：同 reason 重入不再无条件 bump revision（与 workspace
         一致）--仅首次 blocked 或 reason 变化时 bump，否则重试噪声会推高 revision
         并使调用方的 CAS 无谓失效。
+
+        **round-3 P1（codex）**：先完成**全部**实体状态裁决，再改任何实体。
+        ``ValueError`` 不会使 SQLAlchemy 事务失效——若先改 operation 再校验
+        checkpoint 并 raise，调用方捕获后提交会把「operation 已 blocked + revision
+        已 bump」落库而 checkpoint 仍为 failed，造成部分复活。故 checkpoint 白名单
+        判定必须前移到所有赋值之前，保证 raise 时三方零变更（原子 fail closed）。
         """
+        # 1) 状态裁决（零副作用）：checkpoint 白名单——只允许 pending/erasing/blocked
+        # 三态进入 blocked；failed/cancelled/acked 等终态不得被复活（与 workspace
+        # participant 对齐，防 saga fail-closed 语义被旁路）。failed -> blocked ->
+        # acked 是可能的复活链，必须在任何赋值之前截断。
+        if checkpoint.state not in (
+            PurgeOwnerState.PENDING.value,
+            PurgeOwnerState.ERASING.value,
+            PurgeOwnerState.BLOCKED.value,
+        ):
+            raise ValueError(
+                f"checkpoint not blockable from state {checkpoint.state!r}"
+            )
+        # 2) 裁决通过后才落变更：operation -> blocked -> checkpoint -> Conversation。
         if operation.state != PurgeOperationState.BLOCKED.value:
             operation.state = PurgeOperationState.BLOCKED.value
             operation.failure_code = reason_code
@@ -1217,18 +1236,6 @@ class ExecutionErasureParticipant:
             operation.failure_code = reason_code
             operation.revision += 1
             operation.updated_at = now
-        # round-1 P1（codex）：checkpoint 白名单——只允许 pending/erasing/blocked
-        # 三态进入 blocked；failed/cancelled/acked 等终态不得被复活（与 workspace
-        # participant 对齐，防 saga fail-closed 语义被旁路）。failed -> blocked ->
-        # acked 是可能的复活链，必须在此截断。
-        if checkpoint.state not in (
-            PurgeOwnerState.PENDING.value,
-            PurgeOwnerState.ERASING.value,
-            PurgeOwnerState.BLOCKED.value,
-        ):
-            raise ValueError(
-                f"checkpoint not blockable from state {checkpoint.state!r}"
-            )
         if checkpoint.state != PurgeOwnerState.BLOCKED.value:
             checkpoint.state = PurgeOwnerState.BLOCKED.value
         checkpoint.reason_code = reason_code
