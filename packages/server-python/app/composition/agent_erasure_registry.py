@@ -5,10 +5,12 @@ Python 类名、模块路径或运行时随机顺序。registry snapshot 与 dig
 owner_key 字典序排序，保证顺序稳定。unknown owner、版本变化或缺失
 capability 一律 fail closed。
 
-R1-S2 S2-D：``workspace.core.v1`` 的 eraser 已由
-``WorkspaceErasureParticipant`` 实现（正文清除 + body scan + ACK），其
-``erase_available=True``；其余 owner 的 eraser 仍待 S3/S4 实现，保持
-``erase_available=False``，调用 ``require_capability(..., "erase")`` fail closed。
+R1-S2 S2-D：``workspace.core.v1`` 的 eraser 由 ``WorkspaceErasureParticipant``
+实现（正文清除 + body scan + ACK）。R1-S3 S3-D：``execution.core.v1`` 的
+eraser 由 ``ExecutionErasureParticipant`` 实现（terminal/context/compatibility/
+event/actor 清除 + final scan + ACK）。两者 ``erase_available=True``；其余
+owner 的 eraser 仍待 S4 实现，保持 ``erase_available=False``，调用
+``require_capability(..., "erase")`` fail closed。
 """
 
 from __future__ import annotations
@@ -41,14 +43,15 @@ class OwnerDefinition:
     capabilities: tuple[str, ...]
     # ``erase_available=True`` 表示该 owner 的 eraser 已安装（可经
     # ``require_capability(owner, "erase")`` 放行）。S2-D 为 workspace.core.v1
-    # 翻 True；其余 owner 待 S3/S4。
+    # 翻 True；S3-D 为 execution.core.v1 翻 True；其余 owner 待 S4。
     erase_available: bool
 
 
 # V1 固定 owner（Spec §4.1）。capabilities 只描述 owner 持有的正文/引用类别，
 # 不保存正文或 secret。顺序在代码中不承载语义；对外 snapshot 一律排序。
-# S2-D：workspace.core.v1 eraser 已实现（WorkspaceErasureParticipant），
-# erase_available=True；其余 owner 待 S3/S4。
+# S2-D：workspace.core.v1 eraser 已实现（WorkspaceErasureParticipant）；
+# S3-D：execution.core.v1 eraser 已实现（ExecutionErasureParticipant）；
+# 两者 erase_available=True，其余 owner 待 S4。
 _OWNER_DEFINITIONS: tuple[OwnerDefinition, ...] = (
     OwnerDefinition(
         owner_key="workspace.core.v1",
@@ -80,9 +83,9 @@ _OWNER_DEFINITIONS: tuple[OwnerDefinition, ...] = (
             # workspace.core.v1 actor_identity 同名 capability。
             "actor_identity",
         ),
-        # S3-B round-2 P1-1：erase_available 保持 False（eraser 未安装）；S3-D 与
-        # participant + scan + ACK 同 commit 翻 True。
-        erase_available=False,
+        # S3-D：ExecutionErasureParticipant 已实现 + final body scan + ACK 测试
+        # 同 commit 就位，erase_available 翻 True（require_capability('erase') 放行）。
+        erase_available=True,
     ),
     OwnerDefinition(
         owner_key="execution.transport.v1",

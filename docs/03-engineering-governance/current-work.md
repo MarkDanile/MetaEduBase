@@ -14,7 +14,28 @@
 
 ## 当前进行中
 
-当前无活跃任务。R1-S3-C Writer fence 已合并（PR #519 merge `eb911b9a`），下一步入口为 R1-S3-D（ExecutionErasureParticipant，flush `execution.core.v1.erase_available=True`）。
+### TASK: REQ-041/047 R1-S3-D ExecutionErasureParticipant
+
+状态：🟡 进行中
+类型：新需求开发（R1 分 Slice，S3-D execution erasure participant）
+领域：agent_execution / erasure coordination
+当前执行模式：superpower / plan-do（S3-A 契约 / S3-B schema+contract / S3-C writer fence 已合并）
+最近接手工具：Claude Code (Opus 4.8)
+分支：`feat/req041-047-r1-s3d-execution-erasure`
+
+需求来源：
+- Spec: [R1 专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)（§6.1 锁序 / §7.2 Execution 清除语义）
+- Plan: [R1 Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S3-D participant）
+- 架构约束：S3-C fenced port 已就位（PR #519 merge `eb911b9a`）；migration 038 actor tombstone 契约 + shared `agent_actor_digest` helper 已就位（PR #517）；workspace participant（S2-D/E）作为锁序与 ACK 模式参考
+
+当前进展：S3-D round-3 复审返修进行中（独立 codex round-3 报 P0/P1/P2/P3 = 0/1/3/1）。已落地：P1 `_record_blocked` 先完成 checkpoint 白名单裁决再改任何实体（原子 fail closed，防 ValueError 后 commit 造成部分复活；测试改为捕获异常后 commit + 新 session 读回验证三方零变更，已变异验证 KILLED）+ P2-2 migration 039 roundtrip 改为真实调用 `downgrade()`/`upgrade()`（经 `_install_proxy` 绑定的 alembic op 在专用连接上执行；变异验证 emptied upgrade 即转红）+ P2-3 erase 无运行时 DDL 改为执行轨迹断言（独立 engine 挂 `before_cursor_execute` 捕获真实 erase 全部语句）+ P3 registry 两处行内注释同步 S3-D。round-1/round-2 全部修订维持。**待独立 codex round-3 复审（不合并）**。
+round-2 复审返修已完成（独立 codex round-2 报 P0/P1/P2/P3 = 0/1/5/2）：P1-1 checkpoint 状态白名单（`_record_blocked`/`_repair_checkpoint_if_pending` 收窄为 pending/erasing/blocked）+ P2-2 erased-replay operation repair 完整化（补 started_at + 清残留 failure_code）+ P2-3 FOR UPDATE 测试重写为真变异杀手（真实 participant 第二会话并发 erase + 主会话 FOR KEY SHARE 持锁；KILLED）+ P2-4 migration 039 验收闭环 + P3-1 删永久 xfail 死测试 + P3-2 registry 模块注释 + P2-6 移除提前登记的「最近完成」行。本地全量 2016 passed / 0 failed；三路 CI 全绿。
+round-1 复审返修已完成（独立 `max` round-1 报 P0/P1/P2/P3 = 0/7/2/0，全部按 [Plan §S3-D round-1 复审修订](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) 落地）。7 项 P1（suppressed terminal 无条件清除 / migration 039 守卫白名单 / binding 直查 / operation FOR UPDATE + 状态白名单 / blocked 三方一致 / 真实清除计数 ACK digest / registry 回归更新）均含变异验证（5/5 KILLED）+ 真实 PostgreSQL 守卫放行矩阵（13/13 passed）。2 项 P2（started_at / reason bump）已对齐 workspace 冻结语义。
+必须实现：固定锁序（Conv FOR UPDATE -> execution.core.v1 owner lock -> fence FOR UPDATE -> AgentRun/RunEvent/CompatibilityOutput）+ clock_timestamp 入口不暴露 now + terminal suppressed（清 ref/media type/classification/message id，保留 digest/size）+ terminal code/reason 归一受控 suppression code + 清 Run context snapshot + compatibility output 清 reply/envelope 投影 payload_state=redacted 保留 digest + RunEvent 清 payload_inline 投影 redacted 保持 seq + payload_ref 存在时 purge_owner_unavailable blocked 禁假 ACK + actor 共享版本化 HMAC helper 匿名化 + Runtime binding ref 不清不关闭存在时 blocked + 非终态 Run blocked + final scan 无条件覆盖 + 完整 fencing（conversation/purge revision/lease epoch/registry digest/hold revision/operation revision/owner version/capability digest）+ blocked 正常返回可重试 + erased 幂等重放 + pending checkpoint repair + 三方状态一致 + ACK 只推进 execution.core.v1 checkpoint + ACK digest 仅含 owner/version/revision/清除计数/scan digest + 同 commit 翻 erase_available=True。
+明确禁止：不做 S3-E dispatch_output 分类/backfill/收口；不实现 execution transport/external payload/runtime private eraser；不启用 purge scheduler；不实现 Pi/Runtime session destroy；不实现 365 天 Run prune；不改 migration 034-038（**round-1 P1-2 定向解除「不新增」约束：仅允许新增 migration 039 重定义 append-only 守卫，消除运行时 DDL**）；不清 workspace 正文不删 catalog refs；不混入 Approval/Tool/Artifact/Evidence。
+下一步：提交 round-3 返修（P1 裁决前移 + P2-2 真实迁移入口 roundtrip + P2-3 执行轨迹 DDL 断言 + P3 注释 + TD-032/工作台收口）-> 全量回归 -> push -> 独立 codex round-3 只读复审 -> 等待三路 CI -> 合并。
+验证状态：本地全量 2016 passed / 0 failed；GitHub 三路 CI 全绿（Backend/Frontend/Engineering docs 均 SUCCESS，对应 PR #522 当前 HEAD）。
+交接备注：S3-A 已合并（PR #515）；S3-B 已合并（PR #517）；S3-C 已合并（PR #519 merge `eb911b9a`，score 88）；S3-D round-1 返修已完成本地验证（变异 5/5 KILLED、守卫矩阵 13/13、ruff 0、mypy 0、docs gate 0），本轮**新增 migration 039**（不改 034-038）是复审 P1-2 的唯一合规解（运行时 DDL 有死锁与权限缺陷）；不进 S4，不启用 purge scheduler。
 
 ## 下一批候选任务
 
@@ -22,7 +43,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-041/047 R1-S3-D ExecutionErasureParticipant | ⚫ Ready | 新增独立 `execution_erasure_participant.py`；固定锁序 + clock_timestamp + terminal/context/compatibility/event/actor 清除 + external/runtime/nonterminal blocked + final scan + 完整 fencing + erased 幂等重放 + pending checkpoint repair；同 commit 翻 `erase_available=True` | [Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
