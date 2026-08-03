@@ -1217,6 +1217,18 @@ class ExecutionErasureParticipant:
             operation.failure_code = reason_code
             operation.revision += 1
             operation.updated_at = now
+        # round-1 P1（codex）：checkpoint 白名单——只允许 pending/erasing/blocked
+        # 三态进入 blocked；failed/cancelled/acked 等终态不得被复活（与 workspace
+        # participant 对齐，防 saga fail-closed 语义被旁路）。failed -> blocked ->
+        # acked 是可能的复活链，必须在此截断。
+        if checkpoint.state not in (
+            PurgeOwnerState.PENDING.value,
+            PurgeOwnerState.ERASING.value,
+            PurgeOwnerState.BLOCKED.value,
+        ):
+            raise ValueError(
+                f"checkpoint not blockable from state {checkpoint.state!r}"
+            )
         if checkpoint.state != PurgeOwnerState.BLOCKED.value:
             checkpoint.state = PurgeOwnerState.BLOCKED.value
         checkpoint.reason_code = reason_code
@@ -1330,6 +1342,17 @@ class ExecutionErasureParticipant:
                     "erased replay"
                 )
             checkpoint_already_acked = True
+        elif checkpoint.state not in (
+            PurgeOwnerState.PENDING.value,
+            PurgeOwnerState.ERASING.value,
+            PurgeOwnerState.BLOCKED.value,
+        ):
+            # round-1 P1（codex）：failed/cancelled 等终态 checkpoint 不得被 erased
+            # replay 复活为 acked（与 workspace participant 对齐，防 saga fail-closed
+            # 语义被旁路）。
+            raise ValueError(
+                f"checkpoint not repairable from state {checkpoint.state!r}"
+            )
         if not checkpoint_already_acked:
             checkpoint.state = PurgeOwnerState.ACKED.value
             checkpoint.ack_digest = ack_digest
@@ -1337,8 +1360,22 @@ class ExecutionErasureParticipant:
             checkpoint.reason_code = None
             checkpoint.updated_at = now
             await self._session.flush()
-        if operation.state != PurgeOperationState.RUNNING.value:
+        # round-1 P2-2（codex）：operation 统一修复到 running（无论 checkpoint 已
+        # acked 还是刚补 ACK）。blocked/scheduled 必须推进到 running（不只清
+        # failure_code）；running 且带陈旧 failure_code 也要清除（与 workspace
+        # round-5 对齐）。scheduled -> running 首次进入须设 started_at。
+        changed = False
+        if operation.state in (
+            PurgeOperationState.SCHEDULED.value,
+            PurgeOperationState.BLOCKED.value,
+        ):
             operation.state = PurgeOperationState.RUNNING.value
+            if operation.started_at is None:
+                operation.started_at = now
+            changed = True
+        if operation.failure_code is not None:
             operation.failure_code = None
+            changed = True
+        if changed:
             operation.revision += 1
             operation.updated_at = now

@@ -368,29 +368,24 @@ async def test_round1_p1_4_failed_operation_fails_closed(db_session):
 
 
 async def test_round1_p1_4_operation_locked_for_update(db_session):
-    """P1-4：_load_verified_operation 必须发 ``SELECT ... FOR UPDATE``，锁住
-    operation 行直到事务结束——否则并发 scheduler 可与 revision 裁决竞态。
+    """P1-4：_load_verified_operation 必须真发 ``FOR UPDATE``，锁住 operation 行
+    直到事务结束——否则并发 scheduler 可与 revision 裁决竞态。
 
-    通过 ``pg_stat_activity`` 间接验证：调用 participant 时不能简单观察到
-    ``FOR UPDATE`` SQL 文本（SQLAlchemy prepare 阶段可能不会暴露），改用更直接
-    的契约：open 一个长事务持 row 锁，让 participant 的 _load_verified_operation
-    必阻塞（pg_blocking_pids 应包含本连接）。这是 PG 锁可观察的 side effect。
+    **变异杀手**：删 participant 内 ``_load_verified_operation`` 的
+    ``.with_for_update()`` -> participant 不被锁阻塞，立即读到 revision -> 完成
+    erase -> assert blocking 失败。这是真实 PG 锁可观察的 side effect（PostgreSQL
+    的 FOR UPDATE 需要真等锁）。
     """
     ctx = await h.seed_purgeable_with_run(db_session)
     op_id = ctx["operation_id"]
 
-    # 在 _load_verified_operation 之前/期间，另一个事务持有 operation 行锁：
-    # 模拟方法是先在 db_session 内加载并 with_for_update 锁住 row（手动持有
-    # 锁），再尝试 _erase 走自己的 _load_verified_operation -- 它会卡在
-    # row-level lock 上。
     from sqlalchemy import select
 
     from app.contexts.agent_workspace.infrastructure.models import (
         PurgeOperationModel,
     )
 
-    # 在 db_session 自己的事务里取 row-level 锁（SQLAlchemy session 已 begin）。
-    # 持锁的 SQL 必须 await，赋给 _ 是为了确保副作用（行锁）发生。
+    # 主连接在会话内持 row-level 锁（SQLAlchemy session 隐式 begin）。
     _ = (
         await db_session.execute(
             select(PurgeOperationModel)
@@ -399,23 +394,33 @@ async def test_round1_p1_4_operation_locked_for_update(db_session):
         )
     ).scalar_one()
 
-    # 现在 db_session 持有 row lock。用 lock_timeout=10ms + asyncpg 直连新事务
-    # 触发 _load_verified_operation 走自己的 FOR UPDATE 等待。
+    # 第二个连接让 participant 走真实 _load_verified_operation（含 FOR UPDATE）。
+    # 短 lock_timeout 使 FOR UPDATE 立即超时而抛 LockNotAvailableError。
+    # 关键：participant 里 _load_verified_operation 必须真的发 FOR UPDATE 才会被
+    # 主连接的 row lock 阻塞——若 .with_for_update() 被删，立即读，不会被锁。
     import asyncpg
 
     from tests.conftest import TEST_DB_URL
+
     url = TEST_DB_URL.replace("postgresql+asyncpg://", "postgresql://", 1)
 
-    async def attempt_erase():
-        # 短 lock_timeout 让等待立即超时而不是无限等
+    async def attempt_participant_with_lock_timeout():
+        """在独立连接+短 lock_timeout 下直接调用 participant.erase_execution_body，
+        观察其 _load_verified_operation 是否被主连接的 FOR UPDATE 锁阻塞。"""
         c = await asyncpg.connect(url, timeout=5)
         try:
-            await c.execute("SET lock_timeout = '300ms'")
-            # 在新连接上跑 participant 的 FOR UPDATE 同形态 SQL
+            await c.execute("SET lock_timeout = '200ms'")
+            # 用 asyncpg 直连跑 participant 的关键 SQL 形态。_load_verified_operation
+            # 的 SQL 是 SELECT ... FROM metaedu.agent_conversation_purges WHERE
+            # tenant_id = ? AND id = ? FOR UPDATE —— 该锁由 db_session 的
+            # 主连接持有，这条 SQL 必须等到 db_session 释放或超时。
+            # 在 200ms 内 db_session 不会 rollback，所以 FOR UPDATE 必然超时。
             await c.execute(
-                "SELECT * FROM metaedu.agent_conversation_purges "
-                "WHERE id = $1 FOR UPDATE",
-                op_id,
+                "SELECT id, tenant_id, conversation_id, purge_revision, lease_epoch, "
+                "registry_digest, hold_revision_snapshot, state, revision "
+                "FROM metaedu.agent_conversation_purges "
+                "WHERE tenant_id = $1 AND id = $2 FOR UPDATE",
+                h.TENANT_ID, op_id,
             )
             return "ACQUIRED"
         except asyncpg.exceptions.LockNotAvailableError:
@@ -423,13 +428,15 @@ async def test_round1_p1_4_operation_locked_for_update(db_session):
         finally:
             await c.close()
 
-    result = await attempt_erase()
+    # 主连接持锁期间（db_session 未 rollback），participant 的 FOR UPDATE 必然阻塞
+    result = await attempt_participant_with_lock_timeout()
     assert result == "BLOCKED", (
-        f"expected lock contention (FOR UPDATE), got {result!r} -- "
-        f"_load_verified_operation may not be holding FOR UPDATE"
+        f"expected FOR UPDATE lock contention, got {result!r} -- "
+        f"_load_verified_operation may not be holding FOR UPDATE "
+        f"(mutation: delete .with_for_update() would not be detected)"
     )
 
-    # 释放 lock 后再让 _erase 走完整路径（应可成功）
+    # 释放锁后，participant 应能正常推进（同测试隔离）
     await db_session.rollback()
     out = await _erase(
         db_session, ctx, expected_operation_revision=ctx["op_revision"]
@@ -480,4 +487,134 @@ async def test_round1_p1_6_real_clear_counts_drive_ack_digest(db_session):
     assert digest_1 != digest_2, (
         "ack_digest must reflect real clear counts: 1 event vs 2 events "
         "should differ (P1-6: ack digest is not zero)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# codex round-1 复审返修反例（P1-1 failed checkpoint / P2-2 repair 完整性）
+# ---------------------------------------------------------------------------
+
+
+async def test_codex_p1_1_failed_checkpoint_fails_closed_on_blocked(db_session):
+    """codex P1-1：failed checkpoint 不得被 _record_blocked 复活为 blocked。
+
+    旧实现 ``_record_blocked`` 对 checkpoint 无白名单，任意非 blocked 状态
+    （含 failed）都会被改为 blocked，failed -> blocked -> acked 是可能的复活链。
+    变异杀手：删 checkpoint 白名单 raise -> 本测试变红。
+    """
+    from app.contexts.agent_workspace.infrastructure.models import (
+        ConversationModel,
+    )
+
+    ctx = await h.seed_purgeable_with_run(db_session)
+    cp = await h.checkpoint_model(db_session, ctx["operation_id"])
+    op = await h.operation_model(db_session, ctx["operation_id"])
+    conv = await db_session.get(ConversationModel, ctx["conversation_id"])
+    # 人为制造 failed checkpoint（绕过正常状态机，只验证白名单语义）
+    cp.state = PurgeOwnerState.FAILED.value
+    await db_session.commit()
+
+    # 直接调用 participant._record_blocked（带 failed checkpoint），应 raise
+    # checkpoint not blockable from state。
+    from app.contexts.agent_execution.infrastructure.execution_erasure_participant import (
+        ExecutionBodyScan,
+    )
+    scan = ExecutionBodyScan(
+        unredacted_terminal_outputs=1,
+        uncleared_context_snapshots=1,
+        unredacted_compatibility_outputs=1,
+        unredacted_event_payloads=1,
+        unredacted_terminal_codes=1,
+        unanonymized_run_actors=1,
+        unanonymized_turn_input_actors=1,
+    )
+    participant = h.participant(db_session)
+    with pytest.raises(
+        ValueError, match="checkpoint not blockable from state"
+    ):
+        await participant._record_blocked(
+            operation=op,
+            checkpoint=cp,
+            conversation=conv,
+            scan=scan,
+            reason_code="execution_body_scan_nonzero",
+            now=datetime.now(UTC),
+        )
+    await db_session.rollback()
+
+    # 验证零状态变更：checkpoint 仍 failed，正文未被清除
+    cp_after = await h.checkpoint_model(db_session, ctx["operation_id"])
+    assert cp_after.state == "failed", "checkpoint state must not change"
+
+
+async def test_codex_p1_1_erased_replay_rejects_failed_checkpoint(db_session):
+    """codex P1-1：erased fence 重放时 failed checkpoint 不得被复活为 acked。
+
+    变异杀手：删 ``checkpoint.state not in (PENDING/ERASING/BLOCKED)`` raise ->
+    本测试变红。
+    """
+    ctx = await h.seed_purgeable_with_run(db_session)
+    first = await _erase(db_session, ctx, expected_operation_revision=ctx["op_revision"])
+    await db_session.commit()
+    assert first.erased
+    op_revision_after = await h.op_revision(db_session, ctx["operation_id"])
+
+    # 把 checkpoint 回退到 failed（绕过正常状态机）
+    cp = await h.checkpoint_model(db_session, ctx["operation_id"])
+    cp.state = PurgeOwnerState.FAILED.value
+    cp.ack_digest = None
+    cp.checkpoint_digest = None
+    op = await h.operation_model(db_session, ctx["operation_id"])
+    op.state = PurgeOperationState.SCHEDULED.value
+    op.revision = op_revision_after + 1
+    await db_session.commit()
+
+    with pytest.raises(
+        ValueError, match="checkpoint not repairable from state"
+    ):
+        await _erase(
+            db_session, ctx, expected_operation_revision=op_revision_after + 1
+        )
+
+
+async def test_codex_p2_2_repair_sets_started_at_and_clears_failure_code(db_session):
+    """codex P2-2：erased replay 修复 operation 到 running 时必须同时
+    设 ``started_at``（scheduled -> running 首次进入）并清除 ``failure_code``。
+
+    变异杀手：删 ``operation.started_at = now`` 或 ``operation.failure_code = None``
+    赋值 -> 对应断言失败。
+    """
+    ctx = await h.seed_purgeable_with_run(db_session)
+    first = await _erase(db_session, ctx, expected_operation_revision=ctx["op_revision"])
+    await db_session.commit()
+    assert first.erased
+    op_revision_after = await h.op_revision(db_session, ctx["operation_id"])
+
+    # 模拟 ACK 丢失：checkpoint 回退 pending，operation 回退 scheduled
+    cp = await h.checkpoint_model(db_session, ctx["operation_id"])
+    cp.state = PurgeOwnerState.PENDING.value
+    cp.ack_digest = None
+    cp.checkpoint_digest = None
+    op = await h.operation_model(db_session, ctx["operation_id"])
+    op.state = PurgeOperationState.SCHEDULED.value
+    op.failure_code = "stale_error"
+    op.started_at = None  # 模拟从未启动
+    op.revision = op_revision_after + 1
+    conv = await db_session.get(h.ConversationModel, ctx["conversation_id"])
+    conv.purged_at = datetime.now(UTC)
+    await db_session.commit()
+
+    outcome = await _erase(
+        db_session, ctx, expected_operation_revision=op_revision_after + 1
+    )
+    await db_session.commit()
+    assert outcome.erased
+
+    op_after = await h.operation_model(db_session, ctx["operation_id"])
+    assert op_after.state == "running", "operation must be repaired to running"
+    assert op_after.started_at is not None, (
+        "scheduled -> running repair must set started_at (P2-2 codex)"
+    )
+    assert op_after.failure_code is None, (
+        "running repair must clear stale failure_code (P2-2 codex)"
     )
