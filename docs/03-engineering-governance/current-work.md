@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无进行中任务。从下方「下一批候选任务」或 `docs/01-product-planning/04-backlog.md` 选取新任务并登记任务卡片后开工。
+### TASK-R1-S3E: R1-S3-E Dispatch、竞态与收口
+
+状态：🟡 进行中
+类型：新需求开发（Slice 收口）
+领域：Backend（agent_execution / agent_control_plane / composition）
+当前执行模式：superpower / plan-do
+最近接手工具：Claude Code
+分支：feat/req041-047-r1-s3e-dispatch-race-closeout
+
+需求来源：
+- Spec: docs/02-delivery-plans/01-specs（REQ-041/047 retention/purge/recovery）
+- Plan: docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s3execution-ownerrunevent-payload-与-compatibility-output（§S3-E 拆分 + §8 dispatch_output deterministic 分类 + §11 竞态复核）
+- 技术债：TD-032（源文件行数基线）
+- 架构约束：docs/03-engineering-governance/01-rules/architecture.md
+
+当前进展：勘察完成（§8 deterministic 分类未实现 / §11 backfill 功能已实现但缺钉住测试 / §11 race 测试缺失）。已完成全部 4 项：§8 dispatch_output deterministic 分类生产改动（agent_control_plane + execution bridge `mark_output_late_write_rejected`，复用 suppress_output_projection 落 deterministic 终态：outbox cancelled + reason code + Run suppressed + 清零 claim，不重试、不清 transport payload）+ 测试（变异 KILLED）；backfill 钉住 execution fence 测试 + docstring 更新（变异 KILLED）；§6 fenced port 无旁路行为守卫（start_run/consume_turn_event erased fence 下实抛 LateBodyWriteRejectedError，变异 KILLED）；§11 执行侧 race/幂等测试（purge-win/writer-win/迟到 event/IDEMPOTENT_REPLAY，6 例，对照 workspace test_writer_fence）。Plan §R1-S3「S3-E 实施落点」delta 已冻结。
+下一步：全量回归绿 -> 提交 -> 独立 max/Codex 复审。
+验证状态：S3-E 新增测试全绿（§8 2 + 无旁路 2 + race 6 + backfill 1 = 11 例）；control-plane+composition 348 全绿；全量 `pytest -m 'not external_network'` **2027 passed / 0 failed**（较 S3-D 基线 2016 +11）；ruff 0；mypy 3 生产文件 0；docs gate 通过；git diff --check 通过；变异逐项 KILLED。
+交接备注：S3-D（execution.core.v1 eraser）已合并（PR #522 `99142f15`）；本 Slice 不改 migration 034-039、不进 S4、不启用 purge scheduler；erase_available 已在 S3-D 翻 True，本 Slice 不重开。
 
 ## 下一批候选任务
 

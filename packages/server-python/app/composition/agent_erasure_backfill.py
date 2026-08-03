@@ -1,6 +1,15 @@
 """R1-S1 baseline fence backfill（可恢复、幂等、分批、tenant 限流）。
 
-为既有 Conversation 补当前已安装 owner 的 baseline ``active`` fence。设计约束：
+为既有 Conversation 补当前已安装 owner 的 baseline ``active`` fence。owner 覆盖是
+**注册表驱动**（``for owner in owner_registry()``），随 registry 扩展自动纳入新
+owner：R1-S1/S2-C 时为 workspace.core.v1；R1-S3 起 execution.core.v1 已注册
+（S3-B 增 capability、S3-D 翻 ``erase_available=True``），故本 backfill 同时为既有
+Conversation 建 execution.core.v1 baseline fence——这就是 plan §11「S3 扩展
+backfill 为 execution.core.v1 建 fence」的落地形态（无需对 backfill 本身做 S3
+代码改动；钉住该行为的测试见
+``tests/composition/test_agent_erasure_schema.py::test_backfill_creates_execution_core_fence``）。
+
+设计约束：
 
 - 不做单一全表大事务：每个 Conversation 一个短事务，崩溃/重启后从下一个
   Conversation 继续。
@@ -21,7 +30,7 @@
 是从 tenant 起点（不带 ``--after-id``）幂等重跑到 exit 0。fence 写入幂等
 （``create_fence_under_owner_lock`` 对既有 active 行幂等返回），重跑不会重复创建。
 
-R1-S1/S2-C 只补 fence；不建立 purge operation、不改 Conversation purge_state、
+backfill 只补 fence；不建立 purge operation、不改 Conversation purge_state、
 不清正文。
 """
 

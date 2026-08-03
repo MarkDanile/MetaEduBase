@@ -1222,6 +1222,40 @@ async def test_backfill_is_idempotent_batched_and_resumable(session_factory):
 
 
 @pytest.mark.asyncio
+async def test_backfill_creates_execution_core_fence(session_factory):
+    """R1-S3-E §11：钉住 backfill 为既有 Conversation 建 execution.core.v1 fence。
+
+    既有 backfill 测试的期望值都用 ``len(owner_registry())`` 推导（3*owners），
+    若 execution.core.v1 被移出 registry 或被 backfill 跳过，``owners`` 同步变小、
+    测试仍全绿（变异隐患）。本测试**显式断言每个既有 Conversation 存在
+    owner_key='execution.core.v1' 的 active fence 行**，与 registry 大小解耦。
+
+    变异验证：从 backfill 的 owner 循环或 registry 中剔除 execution.core.v1 ->
+    本测试转红。
+    """
+    async with session_factory() as session, session.begin():
+        tenant_id = uuid.uuid4()
+        conv_ids = [await _insert_conversation(session, tenant_id=tenant_id) for _ in range(2)]
+
+    report = await backfill_baseline_fences(session_factory, tenant_id=tenant_id)
+    assert report.ok
+
+    async with session_factory() as session:
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT conversation_id, state FROM metaedu.agent_erasure_fences "
+                    "WHERE tenant_id = :t AND owner_key = 'execution.core.v1'"
+                ),
+                {"t": tenant_id},
+            )
+        ).all()
+    assert len(rows) == 2, "每个既有 Conversation 都应有 execution.core.v1 fence"
+    assert {str(r[0]) for r in rows} == {str(c) for c in conv_ids}
+    assert all(r[1] == "active" for r in rows), "backfill 建的是 active baseline fence"
+
+
+@pytest.mark.asyncio
 async def test_backfill_max_conversations_is_resumable(session_factory):
     async with session_factory() as session, session.begin():
         tenant_id = uuid.uuid4()

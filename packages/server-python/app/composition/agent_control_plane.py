@@ -29,6 +29,7 @@ from app.contexts.agent_workspace.application.ports import (
 )
 from app.contexts.agent_workspace.domain import Conversation, TurnDispatchState
 from app.contexts.agent_workspace.domain.erasure import ErasureFence
+from app.contexts.agent_workspace.domain.errors import LateBodyWriteRejectedError
 from app.shared.schemas.agent_integration import InboxAckV1, TurnLaunchSpecV1
 
 
@@ -611,6 +612,16 @@ class AgentBridgeDispatcher:
             async with self._session_factory() as session, session.begin():
                 await AgentExecutionBridgeService(session).acknowledge_output(ack)
             return True
+        except LateBodyWriteRejectedError:
+            # R1-S3-E §8：purge 进行中/已完成拦截的迟到 publish 是 deterministic
+            # 结果（重试永远无法写入正文，R1-AC8 不盲重试正文写）。不排
+            # next_attempt_at 重试、不走 backoff，直接把 outbox 事件转为不可重试
+            # 终态（row.status=cancelled + Run.output_publish_state=suppressed +
+            # decision_reason=late_body_write_rejected + decision_digest），并清零
+            # 在途 claim，防止 claim 租约过期后 stale-claim 复活重试。不清
+            # transport owner 正文（payload_inline/payload_ref 归 S4）。
+            await self._record_output_late_write_rejected(claimed=claimed)
+            raise
         except Exception as exc:
             await self._record_output_failure(claimed=claimed, exc=exc)
             raise
@@ -674,6 +685,21 @@ class AgentBridgeDispatcher:
                     expected_attempt=claimed.attempt_count,
                     claimant_id=claimed.claimant_id,
                 )
+
+    async def _record_output_late_write_rejected(
+        self, *, claimed: ClaimedExecutionEvent
+    ) -> None:
+        """R1-S3-E §8：把 purge 拦截的迟到 publish 落为 deterministic 终态。
+
+        与 ``_record_output_failure``（transient，排 next_attempt_at backoff 重试）
+        相对：本路径**不重试**，直接把 outbox 事件转为不可重试终态并清零在途 claim。
+        """
+        async with self._session_factory() as session, session.begin():
+            await AgentExecutionBridgeService(session).mark_output_late_write_rejected(
+                tenant_id=claimed.event.tenant_id,
+                run_id=claimed.event.run_id,
+                decided_at=datetime.now(UTC),
+            )
 
     def _backoff(self, attempt_count: int) -> timedelta:
         seconds = min(

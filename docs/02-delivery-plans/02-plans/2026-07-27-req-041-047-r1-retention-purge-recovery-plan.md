@@ -588,6 +588,22 @@ round-2 复审（P0/P1/P2/P3 = 0/1/5/2）已收口；本轮为 round-3 复审（
 
 **验证**：S3-D 专项 + migration 039 往返 + P1 catch+commit 反例及 mutation kill + S3-C/S2-D/E 邻近回归 + 全量 `pytest -m 'not external_network'` 0 failed + ruff + mypy baseline + docs gate + `git diff --check`；推送后等同一 HEAD 三路 CI 全绿。不扩范围、不进 S3-E/S4、不合并，返修后提交独立 Codex 轻量复核。
 
+#### S3-E 实施落点（2026-08-04，Dispatch、竞态与收口）
+
+S3-E 按 §553 交付 S3 收口：deterministic late-write 分类、backfill 钉住、writer-win/purge-win、迟到 event、计数器幂等、无旁路守卫、变异验证。冻结以下工程决策作为复审事实源。**不改 migration 034-039、不进 S4、不启用 purge scheduler、不重开 erase_available（S3-D 已翻 True）。**
+
+- **§8 dispatch_output deterministic late-write 分类（本 Slice 唯一生产改动）**：`AgentBridgeDispatcher.dispatch_output` 捕获 `LateBodyWriteRejectedError`（workspace.core.v1 fence 非 active，`project_assistant_message` 抛出）时**不走** transient 的 `_record_output_failure` backoff 重试，改走新增的 `_record_output_late_write_rejected` -> `AgentExecutionBridgeService.mark_output_late_write_rejected` -> 复用 `suppress_output_projection` 落 **deterministic 终态**：outbox 事件 `status='cancelled'`（脱离 pending/claimed 可重试集）、`decision_reason='late_body_write_rejected'`（受控 code，经 `suppression_reason_code` 归一）、`decision_digest` 落库、`Run.output_publish_state='suppressed'`、清零在途 claim（`claimed_by`/`claimed_at`），**不排 `next_attempt_at`、不重试**。边界（不清 transport owner，S4）：`suppress_output_projection` 不动 outbox `payload_inline`/`payload_ref`。transient 故障（非 `LateBodyWriteRejectedError`）维持既有 backoff 重试语义不变。**反例**：erased fence 下 dispatch_output -> outbox `cancelled` + reason code + 不重回可重试集（变异：移除 deterministic 分支退回 backoff -> `cancelled` 退化为 `pending`，转红）；transient 对照组仍 `pending` 重试。
+- **§11 backfill 钉住 execution fence（无生产改动）**：backfill 为注册表驱动（`for owner in owner_registry()`），execution.core.v1 自 S3-B 注册即被自动覆盖，与 workspace 同 `ensure_fence_under_owner_lock` 锁序。本 Slice **仅补钉住测试** `test_backfill_creates_execution_core_fence`（显式断言每个既有 Conversation 存在 `owner_key='execution.core.v1'` 的 active fence，与 `len(owner_registry())` 推导解耦——变异：从 backfill owner 循环剔除 execution owner -> 转红）+ 更新 `agent_erasure_backfill.py` 模块 docstring（原「R1-S1/S2-C 只补 fence」改为记录注册表驱动覆盖 execution 的事实）。
+- **§6 fenced port 无旁路守卫（行为断言版，替代 round-5 被删的脆弱 AST 测试）**：静态字符串/AST 断言检出不了「接了 port 却绕过裁决」（变异 SURVIVED，已实证），改用**行为守卫** `test_s3e_fenced_port_no_bypass.py`：execution fence 翻 erasing 后，production 写正文入口 `start_run` / `consume_turn_event`（create_run 真实入口，round-2 P1-2）必须实抛 `LateBodyWriteRejectedError` 且报错来自 fence 裁决。若绕过 fence 直调 `RunCoordinator` writer，写会成功或抛下游 `RunConflictError` 而非 fence 拒绝 -> 转红（变异 KILLED）。execution 应用层保持纯执行逻辑（不 import erasure/fence），fence 裁决只在 composition 层。
+- **§11 执行侧 race/幂等测试**（`test_s3e_execution_race.py`，对照 workspace `test_writer_fence.py` 同构 race）：
+  - **purge-win race**（erasing/erased 参数化）：purge 按锁序（Conversation 行锁 -> owner lock -> fence CAS）持锁暂停，writer（`fenced_append_event`）在同一锁链上串行等待、不得插队；purge 提交非 active fence 后 writer fail closed（`LateBodyWriteRejectedError`），正文不复活（无新 RunEvent/AgentRun、seed terminal output 未改写）。
+  - **writer-win race**：writer 过 active fence 裁决后持锁暂停，真实 `ExecutionErasureParticipant.erase_execution_body` 在 Conversation 行锁上等待不插队；writer 提交完整 completed Run 链（create->start->running->commit_terminal + context snapshot）后 purge 接管，清除 + final scan 覆盖这份迟到正文（terminal output/context/event payload/actor 归零、tombstone digest 保留、terminal_code/reason 归一受控白名单、fence erased + ACK digest 一致），`outcome.erased=True`。
+  - **迟到 runtime event**（erasing/erased 参数化）：fence 非 active 下 `fenced_ingest_runtime_event` 抛 `LateBodyWriteRejectedError`、不重建正文（无新 RunEvent、seed 正文未改写）、不推进 `run_event_payload` watermark。
+  - **IDEMPOTENT_REPLAY 不推进计数器**：真实 PG 同一 runtime event ingest 两次，第二次 `idempotent_replay=True` 不推进，`run_event_payload` watermark 精确 +1（不 +2），与 `execution_fenced_port.py` 的 `if not result.idempotent_replay` 一致。
+- **变异验证**：本 Slice 每个改动/测试配反例——§8 移除 deterministic 分支转红；backfill 剔除 execution owner 转红；无旁路绕过 fence 转红。race 测试的不变量由 S3-D 已变异验证的 participant/scan/ACK 防线承载（本 Slice 不重开）。
+
+**验证**：S3-E 新增测试（§8 2 + 无旁路 2 + race 6 + backfill 1）+ S3-D/S3-C/S2-D/E 邻近回归 + control-plane/composition 全量 + 全量 `pytest -m 'not external_network'` 0 failed + ruff 0 + mypy baseline 0 回归 + docs gate + `git diff --check`；推送后等同一 HEAD 三路 CI 全绿。返修后提交独立 `max`/Codex 复审。
+
 ### R1-S4：Transport owner、external payload 与迟到写
 
 **复杂度/执行**：极高，Sol `xhigh`；GLM-5.2 `max` 独立故障审查。

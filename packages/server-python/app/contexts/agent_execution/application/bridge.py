@@ -213,6 +213,30 @@ class AgentExecutionBridgeService:
             claimant_id=claimant_id,
         )
 
+    async def mark_output_late_write_rejected(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+        decided_at: datetime,
+    ) -> None:
+        """R1-S3-E §8：purge 拦截的迟到 publish -> deterministic 终态（不重试）。
+
+        dispatcher 捕获 ``LateBodyWriteRejectedError`` 后调用：复用
+        ``suppress_output_projection`` 的 tombstone 落库（row.status=cancelled +
+        decision_reason=late_body_write_rejected + decision_digest），把 outbox 事件
+        从「可重试 claim」转为不可重试终态。不清 transport owner 正文
+        （``payload_inline``/``payload_ref`` 归 execution.transport.v1，S4）。
+        """
+        await self._bridge_repo.suppress_output_projection(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            # 系统裁决，无操作员 actor；decision_digest 以全零 actor 派生。
+            actor_id=uuid.UUID(int=0),
+            reason="late_body_write_rejected",
+            decided_at=decided_at,
+        )
+
     async def reconcile_output_published(
         self,
         *,
