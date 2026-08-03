@@ -269,14 +269,31 @@ async def test_migration_039_roundtrip_downgrade_restores_unconditional_guard(
     # alembic.op 模块级 ``_proxy`` 解析到该连接的 Operations，即真实对 PG 执行。
     engine = create_async_engine(TEST_DB_URL, echo=False, poolclass=NullPool)
 
-    async def _run_migration(fn) -> None:
+    async def _run_migration(fn, to_rev: str) -> None:
         def _do(sync_conn) -> None:
             mig_ctx = MigrationContext.configure(sync_conn)
             Operations(mig_ctx)._install_proxy()
             fn()
 
+        # 真实迁移入口（CREATE OR REPLACE FUNCTION）。
         async with engine.begin() as conn:
             await conn.run_sync(_do)
+        # 真实 alembic 在迁移后 stamp version_num；039 守卫迁移的 upgrade/downgrade
+        # 本身不写版本表（纯函数重定义），故测试用显式 UPDATE 模拟 alembic 的 stamp
+        # 步骤，使 roundtrip 每一步都能断言 alembic_version（codex round-3 P2-2）。
+        async with engine.begin() as conn:
+            await conn.execute(
+                _text("UPDATE metaedu.alembic_version SET version_num = :v"),
+                {"v": to_rev},
+            )
+
+    async def _version() -> str:
+        async with engine.connect() as conn:
+            return (
+                await conn.execute(
+                    _text("SELECT version_num FROM metaedu.alembic_version")
+                )
+            ).scalar_one()
 
     async def _seed_fresh_event() -> object:
         # 在新事务内 seed 一个 inline event（_expect_rejected 的 rollback 只回滚本
@@ -287,8 +304,9 @@ async def test_migration_039_roundtrip_downgrade_restores_unconditional_guard(
         return fresh
 
     try:
-        # --- 真实 downgrade() -> 038：守卫还原为无条件 RAISE ---
-        await _run_migration(mig.downgrade)
+        # --- 真实 downgrade() -> 038：守卫还原为无条件 RAISE + 版本戳 038 ---
+        await _run_migration(mig.downgrade, "038_execution_actor_tombstone")
+        assert await _version() == "038_execution_actor_tombstone"
 
         e1 = await _seed_fresh_event()
         await _expect_rejected(
@@ -298,8 +316,9 @@ async def test_migration_039_roundtrip_downgrade_restores_unconditional_guard(
             e1.id,
         )
 
-        # --- 真实 upgrade() -> 039：白名单恢复，合法 tombstone 重新放行 ---
-        await _run_migration(mig.upgrade)
+        # --- 真实 upgrade() -> 039：白名单恢复 + 版本戳 039，tombstone 重新放行 ---
+        await _run_migration(mig.upgrade, "039_run_event_tombstone_guard")
+        assert await _version() == "039_run_event_tombstone_guard"
         await db_session.execute(
             _text(
                 f"UPDATE {_TABLE} SET payload_inline = NULL, "
@@ -316,9 +335,9 @@ async def test_migration_039_roundtrip_downgrade_restores_unconditional_guard(
         ).one()
         assert row.payload_state == "redacted", "upgrade 后 tombstone 应重新放行"
     finally:
-        # 无论断言成败，结束时装回 039 守卫，避免污染同库其他用例。
+        # 无论断言成败，结束时装回 039 守卫 + 版本戳，避免污染同库其他用例。
         await db_session.rollback()
-        await _run_migration(mig.upgrade)
+        await _run_migration(mig.upgrade, "039_run_event_tombstone_guard")
         await engine.dispose()
 
 

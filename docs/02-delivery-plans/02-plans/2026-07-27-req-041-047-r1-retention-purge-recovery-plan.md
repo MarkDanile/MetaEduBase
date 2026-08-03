@@ -577,6 +577,17 @@ S3-D 首次实现（PR #522）后独立 `max` 复审 P0/P1/P2/P3 = 0/7/2/0，**�
 
 **S3-D 返修验证**：上述 7 项 P1 + 2 项 P2 各自反例 + 变异验证（逐项还原缺陷实现均应被测试击杀）+ S3-D 专项全绿 + S3-C writer fence/E2E 回归 + S2-D/E workspace participant 回归 + agent_execution/agent_control_plane/composition 回归 + migration 039 往返与守卫矩阵 + 全量 `pytest -m 'not external_network'` 0 failed + ruff 0 + mypy baseline 0 回归 + docs gate + `git diff --check`。本轮**新增 migration 039**（不改 034-038）、不启用 purge scheduler、不进 S3-E/S4。返修后重新提交独立 `max`/Codex 只读复审。
 
+#### S3-D round-3 Codex 复审修订（2026-08-03，独立 Codex round 3 返修落点）
+
+round-2 复审（P0/P1/P2/P3 = 0/1/5/2）已收口；本轮为 round-3 复审（P0/P1/P2/P3 = 0/1/3/1）的落点。原 checkpoint/replay 核心防线、operation repair、真实 `FOR UPDATE` 变异测试均已被复审确认有效，本轮不改动这些语义，只修订以下工程实现与验收方式。
+
+- **P1 `_record_blocked` 原子 fail closed（先裁决后变更）**：`_record_blocked` 必须先完成 operation/checkpoint 的**全部**状态裁决，再修改任何 ORM 实体。fail-closed 异常不得依赖调用方 `rollback` 才维持原状态——`ValueError` 不会使 SQLAlchemy 事务失效，若先改 operation（state/revision/failure_code）再校验 checkpoint 并 raise，调用方捕获异常后 `commit` 会把「operation 已 blocked + revision 已 bump、checkpoint 仍 failed」的**部分复活**落库。**反例**：真实 PostgreSQL 下调用 `_record_blocked` 抛错后**不 rollback、直接 commit**，用**新 session** 重读并断言 operation/checkpoint/Conversation 三方均未变化；对该「裁决前移」做 mutation kill（把白名单移回 operation 赋值之后应被检出）。
+- **P2-2 migration 039 验收必须经真实 migration entry point**：roundtrip 测试不得直接执行迁移模块的 SQL 常量（否则交换/清空 `upgrade()`/`downgrade()` 函数体仍绿）。须用真实 Alembic `op`（经 `Operations._install_proxy()` 绑定到专用连接的 `MigrationContext`）真实执行 `039 -> 038 -> 039`，每一步断言 `alembic_version` 与 RunEvent guard 行为（downgrade 后 tombstone 被无条件 RAISE、upgrade 后重新放行）；并验证破坏/交换 `upgrade()`/`downgrade()` 后测试转红。
+- **P2-3「erase 无运行时 DDL」由实际 SQL 执行轨迹证明**：静态 AST 只能作为补充（只覆盖直接作调用实参的字符串常量，变量 SQL、动态拼接及 helper 发出的 SQL 都能绕过）。须在真实 participant erase 外挂 SQLAlchemy `before_cursor_execute`，捕获实际执行的全部语句，断言不存在 `DROP/CREATE/ALTER` 等 DDL。保留双 Conversation 并发 erase 无死锁测试。
+- **事实同步**：current-work 更新为 round-3 返修状态及最新 `2016 passed / 0 failed`、三路 CI 全绿基线；TD-032 participant 行数更新为实际值；修正 `agent_erasure_registry.py` 两处仍称「只有 workspace 开启」的旧注释；不提前移入「最近完成」。
+
+**验证**：S3-D 专项 + migration 039 往返 + P1 catch+commit 反例及 mutation kill + S3-C/S2-D/E 邻近回归 + 全量 `pytest -m 'not external_network'` 0 failed + ruff + mypy baseline + docs gate + `git diff --check`；推送后等同一 HEAD 三路 CI 全绿。不扩范围、不进 S3-E/S4、不合并，返修后提交独立 Codex 轻量复核。
+
 ### R1-S4：Transport owner、external payload 与迟到写
 
 **复杂度/执行**：极高，Sol `xhigh`；GLM-5.2 `max` 独立故障审查。
