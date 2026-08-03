@@ -367,82 +367,82 @@ async def test_round1_p1_4_failed_operation_fails_closed(db_session):
     )
 
 
-async def test_round1_p1_4_operation_locked_for_update(db_session):
+async def test_round1_p1_4_operation_locked_for_update(
+    db_session, session_factory
+):
     """P1-4：_load_verified_operation 必须真发 ``FOR UPDATE``，锁住 operation 行
     直到事务结束——否则并发 scheduler 可与 revision 裁决竞态。
 
-    **变异杀手**：删 participant 内 ``_load_verified_operation`` 的
-    ``.with_for_update()`` -> participant 不被锁阻塞，立即读到 revision -> 完成
-    erase -> assert blocking 失败。这是真实 PG 锁可观察的 side effect（PostgreSQL
-    的 FOR UPDATE 需要真等锁）。
+    **真变异杀手（codex P2-3 修订）**：主会话先对 operation 行持 ``FOR UPDATE``
+    锁且不提交；随后**真实 participant** 在**第二会话**上 erase 同一 operation。
+    主会话用 ``FOR KEY SHARE`` 持锁。锁强度矩阵（PG 行级锁冲突表）：
+
+    - ``FOR KEY SHARE`` 与 participant 的 operation ``FOR UPDATE``
+      （``_load_verified_operation``）**互斥** -> 保留 ``.with_for_update()`` 时
+      participant 卡在 FOR UPDATE -> 超时窗口内无法完成 -> 断言 blocking 成立。
+    - ``FOR KEY SHARE`` 与 participant 投影的 ``UPDATE state/started_at``
+      （``_mark_operation_running``，隐式 ``FOR NO KEY UPDATE`` 强度）**不互斥**，
+      且主会话是 reader 不进入 updater 的 xid-wait 路径 -> 删除 ``.with_for_update()``
+      后 participant 直通、清除并投影、erase 在超时窗口内**完成** -> 断言失败（转红）。
+
+    不用 ``FOR SHARE``/``FOR NO KEY UPDATE``：前者经 ORM versioning 调
+    ``pg_current_xact_id_if_assigned`` 置 xmax，把 participant 的 UPDATE 卡在主会话
+    xmin；后者本身就是 updater 锁，updater-vs-updater 进入 xid-wait。两者都让
+    变异（无 FOR UPDATE）仍因投影 UPDATE 阻塞而假绿。``FOR KEY SHARE`` 是纯 reader
+    锁，不触发这些路径，成败只由 ``.with_for_update()`` 决定。
     """
+    import asyncio
+
+    from sqlalchemy import text
+
     ctx = await h.seed_purgeable_with_run(db_session)
     op_id = ctx["operation_id"]
+    op_rev = ctx["op_revision"]
 
-    from sqlalchemy import select
-
-    from app.contexts.agent_workspace.infrastructure.models import (
-        PurgeOperationModel,
-    )
-
-    # 主连接在会话内持 row-level 锁（SQLAlchemy session 隐式 begin）。
+    # 主会话对 operation 行持 FOR KEY SHARE 锁（不提交）。
     _ = (
         await db_session.execute(
-            select(PurgeOperationModel)
-            .where(PurgeOperationModel.id == op_id)
-            .with_for_update()
+            text(
+                "SELECT id FROM metaedu.agent_conversation_purges "
+                "WHERE id = :oid FOR KEY SHARE"
+            ),
+            {"oid": op_id},
         )
-    ).scalar_one()
+    ).one()
 
-    # 第二个连接让 participant 走真实 _load_verified_operation（含 FOR UPDATE）。
-    # 短 lock_timeout 使 FOR UPDATE 立即超时而抛 LockNotAvailableError。
-    # 关键：participant 里 _load_verified_operation 必须真的发 FOR UPDATE 才会被
-    # 主连接的 row lock 阻塞——若 .with_for_update() 被删，立即读，不会被锁。
-    import asyncpg
-
-    from tests.conftest import TEST_DB_URL
-
-    url = TEST_DB_URL.replace("postgresql+asyncpg://", "postgresql://", 1)
-
-    async def attempt_participant_with_lock_timeout():
-        """在独立连接+短 lock_timeout 下直接调用 participant.erase_execution_body，
-        观察其 _load_verified_operation 是否被主连接的 FOR UPDATE 锁阻塞。"""
-        c = await asyncpg.connect(url, timeout=5)
-        try:
-            await c.execute("SET lock_timeout = '200ms'")
-            # 用 asyncpg 直连跑 participant 的关键 SQL 形态。_load_verified_operation
-            # 的 SQL 是 SELECT ... FROM metaedu.agent_conversation_purges WHERE
-            # tenant_id = ? AND id = ? FOR UPDATE —— 该锁由 db_session 的
-            # 主连接持有，这条 SQL 必须等到 db_session 释放或超时。
-            # 在 200ms 内 db_session 不会 rollback，所以 FOR UPDATE 必然超时。
-            await c.execute(
-                "SELECT id, tenant_id, conversation_id, purge_revision, lease_epoch, "
-                "registry_digest, hold_revision_snapshot, state, revision "
-                "FROM metaedu.agent_conversation_purges "
-                "WHERE tenant_id = $1 AND id = $2 FOR UPDATE",
-                h.TENANT_ID, op_id,
+    async def run_real_participant():
+        """在第二会话上跑**真实 participant** 的 erase（含 operation FOR UPDATE）。"""
+        async with session_factory() as session:
+            outcome = await h.participant(session).erase_execution_body(
+                tenant_id=h.TENANT_ID,
+                conversation_id=ctx["conversation_id"],
+                purge_revision=ctx["purge_revision"],
+                purge_operation_id=op_id,
+                expected_operation_revision=op_rev,
             )
-            return "ACQUIRED"
-        except asyncpg.exceptions.LockNotAvailableError:
-            return "BLOCKED"
-        finally:
-            await c.close()
+            await session.commit()
+            return outcome
 
-    # 主连接持锁期间（db_session 未 rollback），participant 的 FOR UPDATE 必然阻塞
-    result = await attempt_participant_with_lock_timeout()
-    assert result == "BLOCKED", (
-        f"expected FOR UPDATE lock contention, got {result!r} -- "
-        f"_load_verified_operation may not be holding FOR UPDATE "
-        f"(mutation: delete .with_for_update() would not be detected)"
-    )
+    # 主会话持锁期间，participant 的 operation FOR UPDATE 必然等待 -> 无法完成。
+    participant_task = asyncio.create_task(run_real_participant())
+    try:
+        completed = await asyncio.wait_for(
+            asyncio.shield(participant_task), timeout=1.0
+        )
+        # 能走到这说明 participant 在持锁窗口内完成了 erase -> operation 读取未被
+        # 行锁阻塞 -> .with_for_update() 缺失（变异存活）。本测试应变红。
+        raise AssertionError(
+            f"participant completed erase while operation row lock was held "
+            f"(outcome={completed!r}) -- _load_verified_operation is not holding "
+            f"FOR UPDATE (mutation: delete .with_for_update() survives)"
+        )
+    except TimeoutError:
+        pass  # 期望：participant 被 operation FOR UPDATE 行锁阻塞，超时未完成。
 
-    # 释放锁后，participant 应能正常推进（同测试隔离）
+    # 释放主会话行锁后，被阻塞的 participant 继续推进并完成 erase。
     await db_session.rollback()
-    out = await _erase(
-        db_session, ctx, expected_operation_revision=ctx["op_revision"]
-    )
-    await db_session.commit()
-    assert out.erased
+    outcome = await asyncio.wait_for(participant_task, timeout=10)
+    assert outcome.erased
 
 
 async def test_round1_p1_6_real_clear_counts_drive_ack_digest(db_session):

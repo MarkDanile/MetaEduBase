@@ -5,10 +5,12 @@ Python 类名、模块路径或运行时随机顺序。registry snapshot 与 dig
 owner_key 字典序排序，保证顺序稳定。unknown owner、版本变化或缺失
 capability 一律 fail closed。
 
-R1-S2 S2-D：``workspace.core.v1`` 的 eraser 已由
-``WorkspaceErasureParticipant`` 实现（正文清除 + body scan + ACK），其
-``erase_available=True``；其余 owner 的 eraser 仍待 S3/S4 实现，保持
-``erase_available=False``，调用 ``require_capability(..., "erase")`` fail closed。
+R1-S2 S2-D：``workspace.core.v1`` 的 eraser 由 ``WorkspaceErasureParticipant``
+实现（正文清除 + body scan + ACK）。R1-S3 S3-D：``execution.core.v1`` 的
+eraser 由 ``ExecutionErasureParticipant`` 实现（terminal/context/compatibility/
+event/actor 清除 + final scan + ACK）。两者 ``erase_available=True``；其余
+owner 的 eraser 仍待 S4 实现，保持 ``erase_available=False``，调用
+``require_capability(..., "erase")`` fail closed。
 """
 
 from __future__ import annotations
