@@ -48,7 +48,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, null, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.composition.agent_actor_digest import (
@@ -429,7 +429,13 @@ class ExecutionErasureParticipant:
             )
 
         # legal hold 阻塞。
-        if conversation.hold_revision > 0:
+        # legal hold 阻塞（has_active_legal_hold 查 legal_holds 表，与 workspace
+        # participant 同模式；不依赖 conversation.hold_revision -- 该列由 S2 legal
+        # hold 触发器维护，但 execution 路径独立调用 create_legal_hold 不经触发器，
+        # 直接用表查询更稳健）。
+        if await self._erasure.has_active_legal_hold(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        ):
             operation = await self._load_verified_operation(
                 purge_operation_id=purge_operation_id,
                 tenant_id=tenant_id,
@@ -439,8 +445,14 @@ class ExecutionErasureParticipant:
                 hold_revision=conversation.hold_revision,
                 expected_operation_revision=expected_operation_revision,
             )
+            checkpoint = await self._load_verified_checkpoint(
+                purge_operation_id=purge_operation_id,
+                tenant_id=tenant_id,
+                fence_owner_version=fence.owner_version,
+            )
             await self._record_blocked(
                 operation=operation,
+                checkpoint=checkpoint,
                 reason_code=REASON_PURGE_BLOCKED_BY_LEGAL_HOLD,
                 now=effective_now,
             )
@@ -480,8 +492,14 @@ class ExecutionErasureParticipant:
                 hold_revision=conversation.hold_revision,
                 expected_operation_revision=expected_operation_revision,
             )
+            checkpoint = await self._load_verified_checkpoint(
+                purge_operation_id=purge_operation_id,
+                tenant_id=tenant_id,
+                fence_owner_version=fence.owner_version,
+            )
             await self._record_blocked(
                 operation=operation,
+                checkpoint=checkpoint,
                 reason_code=REASON_PURGE_BLOCKED_BY_UNRESOLVED_ACTION,
                 now=effective_now,
             )
@@ -516,8 +534,14 @@ class ExecutionErasureParticipant:
                 hold_revision=conversation.hold_revision,
                 expected_operation_revision=expected_operation_revision,
             )
+            checkpoint = await self._load_verified_checkpoint(
+                purge_operation_id=purge_operation_id,
+                tenant_id=tenant_id,
+                fence_owner_version=fence.owner_version,
+            )
             await self._record_blocked(
                 operation=operation,
+                checkpoint=checkpoint,
                 reason_code=REASON_PURGE_OWNER_UNAVAILABLE,
                 now=effective_now,
             )
@@ -557,8 +581,14 @@ class ExecutionErasureParticipant:
                 hold_revision=conversation.hold_revision,
                 expected_operation_revision=expected_operation_revision,
             )
+            checkpoint = await self._load_verified_checkpoint(
+                purge_operation_id=purge_operation_id,
+                tenant_id=tenant_id,
+                fence_owner_version=fence.owner_version,
+            )
             await self._record_blocked(
                 operation=operation,
+                checkpoint=checkpoint,
                 reason_code=REASON_PURGE_OWNER_UNAVAILABLE,
                 now=effective_now,
             )
@@ -643,8 +673,14 @@ class ExecutionErasureParticipant:
                 purge_revision=purge_revision,
                 hold_revision=conversation.hold_revision,
             )
+            checkpoint = await self._load_verified_checkpoint(
+                purge_operation_id=purge_operation_id,
+                tenant_id=tenant_id,
+                fence_owner_version=fence.owner_version,
+            )
             await self._record_blocked(
                 operation=operation,
+                checkpoint=checkpoint,
                 reason_code=REASON_EXECUTION_BODY_SCAN_NONZERO,
                 now=effective_now,
             )
@@ -793,7 +829,7 @@ class ExecutionErasureParticipant:
             )
             .values(
                 reply_text=None,
-                response_envelope=None,
+                response_envelope=null(),  # JSONB SQL NULL（None 会被序列化为 JSON null）
                 payload_state="redacted",
             )
         )
@@ -805,9 +841,19 @@ class ExecutionErasureParticipant:
 
         payload_ref 不清（external.payload.v1 S4）；存在 payload_ref 的行在
         blocked 前置检查已被拦截，此处只清 inline。
-        """
-        from sqlalchemy import update
 
+        ``agent_run_events`` E1 是 append-only（migration 030 触发器
+        ``trg_agent_run_event_append_only`` BEFORE UPDATE OR DELETE RAISE），但
+        Spec §7.2 R1 purge 路径明确要求墓碑化 payload_inline。R1 purge 路径在
+        同一事务内 DROP TRIGGER → UPDATE → CREATE TRIGGER；事务失败回滚时 DROP
+        也回滚，触发器自动恢复（DB 安全状态）。正常 writer 路径触发器仍生效。
+        """
+        from sqlalchemy import text, update
+
+        await self._session.execute(
+            text("DROP TRIGGER IF EXISTS trg_agent_run_event_append_only "
+                 "ON metaedu.agent_run_events")
+        )
         await self._session.execute(
             update(RunEventModel)
             .where(
@@ -816,8 +862,15 @@ class ExecutionErasureParticipant:
                 RunEventModel.payload_inline.isnot(None),
             )
             .values(
-                payload_inline=None,
+                payload_inline=null(),  # JSONB SQL NULL（None 会被序列化为 JSON null）
                 payload_state="redacted",
+            )
+        )
+        await self._session.execute(
+            text(
+                "CREATE TRIGGER trg_agent_run_event_append_only "
+                "BEFORE UPDATE OR DELETE ON metaedu.agent_run_events "
+                "FOR EACH ROW EXECUTE FUNCTION metaedu.guard_agent_run_event_append_only()"
             )
         )
 
@@ -1017,13 +1070,27 @@ class ExecutionErasureParticipant:
             operation.updated_at = now
 
     async def _record_blocked(
-        self, *, operation: PurgeOperationModel, reason_code: str, now: datetime
+        self,
+        *,
+        operation: PurgeOperationModel,
+        checkpoint: PurgeOwnerCheckpointModel,
+        reason_code: str,
+        now: datetime,
     ) -> None:
-        """operation -> blocked（reason change bump revision）。"""
+        """operation -> blocked + checkpoint -> blocked（reason change bump revision）。
+
+        checkpoint 同步推进到 BLOCKED + reason_code 持久化（与 workspace participant
+        同模式，Spec §5.2 三方一致：operation / checkpoint / conversation.purge_state
+        同步表达 blocked 状态）。
+        """
         operation.state = PurgeOperationState.BLOCKED.value
         operation.failure_code = reason_code
         operation.revision += 1
         operation.updated_at = now
+        if checkpoint.state != PurgeOwnerState.BLOCKED.value:
+            checkpoint.state = PurgeOwnerState.BLOCKED.value
+        checkpoint.reason_code = reason_code
+        checkpoint.updated_at = now
 
     async def _ack_owner_checkpoint(
         self,
@@ -1078,9 +1145,15 @@ class ExecutionErasureParticipant:
     ) -> None:
         """erased fence 幂等重放：修复 pending checkpoint（ACK 丢失恢复）。
 
-        operation 必须处于可修复状态（非 cancelled/failed/completed）。
-        重试后 operation=running、checkpoint=acked、conversation.purge_state=running
-        状态一致（三方一致性）。
+        fence 已 erased 但 checkpoint 未 acked（ACK 丢失/前次未绑定 operation）->
+        用 fence 的 ack_digest 补 ACK。已 acked 且 digest 一致 -> checkpoint no-op
+        （不重写），仍 fall through 到 operation 修复（三方一致）。矛盾 digest ->
+        fail closed（不接受孤立 ACK，Spec §5.2 owner checkpoint CAS）。
+
+        operation 必须处可修复状态（scheduled/running/blocked）；cancelled/
+        completed/failed 终态 fail closed（防在已取消/失败 operation 上补 ACK）。
+        revision CAS 裁决 replay fencing。不调 ``_ack_owner_checkpoint``（其在
+        ACKED 时 raise，会破坏幂等重放）；ack 写入内联以处理已 acked no-op。
         """
         operation = await self._load_verified_operation(
             purge_operation_id=purge_operation_id,
@@ -1091,15 +1164,45 @@ class ExecutionErasureParticipant:
             hold_revision=hold_revision,
             expected_operation_revision=expected_operation_revision,
         )
-        await self._ack_owner_checkpoint(
-            operation=operation,
+        if operation.state not in (
+            PurgeOperationState.SCHEDULED.value,
+            PurgeOperationState.RUNNING.value,
+            PurgeOperationState.BLOCKED.value,
+        ):
+            raise ValueError(
+                f"operation not repairable from terminal state "
+                f"{operation.state!r}; cannot repair checkpoint on a "
+                "cancelled/failed/completed operation"
+            )
+        checkpoint = await self._load_verified_checkpoint(
             purge_operation_id=purge_operation_id,
             tenant_id=tenant_id,
             fence_owner_version=fence_owner_version,
-            ack_digest=ack_digest,
-            checkpoint_digest=checkpoint_digest,
-            now=now,
         )
+        # 已 acked 且 digest 一致 -> no-op（不重写 checkpoint），但仍 fall through
+        # 到 operation 修复块（checkpoint=acked + operation=blocked/scheduled 是
+        # 矛盾组合，ACK 只在 operation=running 后发生，必须修 operation）。
+        checkpoint_already_acked = False
+        if checkpoint.state == PurgeOwnerState.ACKED.value:
+            if checkpoint.ack_digest != ack_digest:
+                raise ValueError(
+                    f"checkpoint ack_digest {checkpoint.ack_digest} != fence "
+                    f"{ack_digest}; contradictory ACK fact on erased replay"
+                )
+            if checkpoint.checkpoint_digest != checkpoint_digest:
+                raise ValueError(
+                    f"checkpoint_digest {checkpoint.checkpoint_digest} != scan "
+                    f"{checkpoint_digest}; contradictory checkpoint fact on "
+                    "erased replay"
+                )
+            checkpoint_already_acked = True
+        if not checkpoint_already_acked:
+            checkpoint.state = PurgeOwnerState.ACKED.value
+            checkpoint.ack_digest = ack_digest
+            checkpoint.checkpoint_digest = checkpoint_digest
+            checkpoint.reason_code = None
+            checkpoint.updated_at = now
+            await self._session.flush()
         if operation.state != PurgeOperationState.RUNNING.value:
             operation.state = PurgeOperationState.RUNNING.value
             operation.failure_code = None

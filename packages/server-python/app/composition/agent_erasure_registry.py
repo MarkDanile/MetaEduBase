@@ -80,9 +80,9 @@ _OWNER_DEFINITIONS: tuple[OwnerDefinition, ...] = (
             # workspace.core.v1 actor_identity 同名 capability。
             "actor_identity",
         ),
-        # S3-D：ExecutionErasureParticipant 已实现，但 erase_available 保持 False
-        # 直到 participant + final scan + ACK 测试同 commit 翻 True（待测试就位）。
-        erase_available=False,
+        # S3-D：ExecutionErasureParticipant 已实现 + final body scan + ACK 测试
+        # 同 commit 就位，erase_available 翻 True（require_capability('erase') 放行）。
+        erase_available=True,
     ),
     OwnerDefinition(
         owner_key="execution.transport.v1",
