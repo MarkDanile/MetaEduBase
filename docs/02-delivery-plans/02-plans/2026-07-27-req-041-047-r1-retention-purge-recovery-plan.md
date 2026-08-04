@@ -641,6 +641,43 @@ S3-E round-1 返修后独立复审 P0/P1/P2/P3 = 0/1/2/0，**暂不可合并**�
 
 验证：每个 inbox/outbox crash point、claim 与 purge lock inversion、历史回填不确定行、external erase timeout/outcome unknown、旧 runtime seq tombstone。
 
+#### R1-S4-A 契约冻结（2026-08-04，先于代码冻结，纯文档，不写业务代码）
+
+进入条件已满足：R1-S3 全部合并（S3-E PR #524 `916699db`）、main 干净、migration head=`039`、`LateBodyWriteRejectedError`/`LateOutputReadRejectedError` 已按 deterministic suppression 处理（S3-E）。本轮盘点 transport/external 边界并冻结契约，作为后续 S4-B~F 实现与独立 `max`/Codex 复审的事实源。**不改 migration 034-039、不写业务代码、不启用 purge scheduler。**
+
+**1. transport owner 与表映射（4 张 integration 表，均已存在）**
+
+| owner | 表 | 正文列 | receipt 列 | 当前聚合溯源列 |
+|-------|----|--------|-----------|----------------|
+| `workspace.transport.v1` | `agent_workspace_outbox` | `payload_inline`/`payload_ref`（≤32KB inline） | — | `aggregate_type='workspace.message'` + `aggregate_id=message_id`（**非** conversation_id） |
+| `workspace.transport.v1` | `agent_workspace_inbox` | — | `payload_digest`（仅 digest，无正文） | `consumer_name` + `event_id`（无 conversation 列） |
+| `execution.transport.v1` | `agent_execution_outbox` | `payload_inline`/`payload_ref` | — | `aggregate_type='execution.run'` + `aggregate_id=run_id`（**非** conversation_id） |
+| `execution.transport.v1` | `agent_execution_inbox` | — | `payload_digest`（仅 digest） | `consumer_name` + `event_id`（无 conversation 列） |
+
+registry 已冻结 owner 定义（`erase_available=False`，S4 翻 True）：`workspace.transport.v1` capabilities `workspace_outbox_payload`/`workspace_inbox_receipt`；`execution.transport.v1` capabilities `execution_outbox_payload`/`execution_inbox_receipt`；`external.payload.v1` capabilities `external_object_ref`/`staging_object`；`runtime.private.v1` capabilities `runtime_session_ref`/`runtime_spool`。
+
+**2. 冻结决策**
+
+- **D1 结构化 owner scope**：4 张 inbox/outbox 增 `conversation_id`（nullable，expand-only）+ `producer_purge_revision`（nullable BigInteger）。outbox 现有 `aggregate_type`+`aggregate_id` 是 message_id/run_id，**不是** conversation scope，purge 时无法稳定溯源 -> 必须新增列；inbox 当前无 conversation 溯源，同样新增。
+- **D2 producer epoch 用 `Conversation.purge_revision`（不变量 2）+ 完整传播链（transport metadata，不改 V1 payload digest）**：新事件在产生同事务快照当时 `Conversation.purge_revision` 写入 `producer_purge_revision`；**不得**用 fence 行 CAS `revision` 冒充。消费/清除阶段 old/missing producer revision -> 只能 tombstone/reconcile，不得复活正文。**传播链冻结为**：`Conversation snapshot -> outbox metadata -> Claimed* envelope -> inbox metadata`。现状缺口：`ClaimedWorkspaceEvent`/`ClaimedExecutionEvent` 不携带 producer revision，V1 event schema 也无该字段，consumer 无法稳定写入 inbox。修订为--`producer_purge_revision` 作为 **transport metadata** 在 outbox 行持久化、claim 时装入 `Claimed*` envelope、consumer 消费时写入 inbox metadata；**不并入 V1 event payload**（避免静默改变 `integration_event_digest`/payload digest）。Guard 内消费/清除阶段必须 CAS 校验 `event_id` + `payload_digest` + `attempt_count` + `claimant_id` + `conversation_id` + `producer_purge_revision` 六元组，不符 fail closed。
+- **D3 历史不确定行三态分类（不变量 3，替代「阻止对应 Conversation purge」的不可实现表述）**：backfill 无法可靠回填 owner scope 时按可溯源程度分三类，**均 fail closed，不静默丢弃、不猜 UUID**：
+  - **已知候选 Conversation**（aggregate 可唯一映射到现存 Conversation）：阻塞**该 Conversation** 的 purge，进入具名 reconcile。
+  - **scope 真正未知**（无法确定对应 Conversation）：进入 **tenant-scoped reconcile ledger**，并**阻断该 tenant 的 scheduler/canary enable**（S5 门禁读取此 ledger，存在未决项即 fail closed）。
+  - **Conversation 已物理删除**：走**具名 orphan transport/external reconcile**（记录原 event/aggregate/tenant 溯源，不重建正文），**不猜 UUID**、不并入任何现存 Conversation。
+- **D4 suppressed/cancelled envelope tombstone（不变量 4）**：transport 清除 = 清 `payload_inline`/`payload_ref`，**保留** `payload_digest`；禁止 `{}`、空串、伪 ref。与 S1 `ck_agent_*_outbox_payload` 的 `suppressed` 分支一致（清正文保留 digest）。**inbox receipt tombstone 表达（冻结）**：现有 `ck_agent_*_inbox_status` 仅允许 `processing/consumed/rejected`，无 tombstone 态。采用**保留现有 `status` 集合 + 新增独立 tombstone marker + digest envelope**（S4-B expand-only 新增列，如 `receipt_tombstone_state`/`receipt_tombstone_digest`），**不改** `processing/consumed/rejected` 语义、不新增 inbox status 枚举值；receipt 本就只有 digest 无正文，tombstone 标记 + 既有 `payload_digest` 即满足「保留 digest、禁空占位」。
+- **D5 external ref 状态机与 ledger（覆盖所有 ref-bearing source + 清除顺序）**：**所有** `payload_ref` 承载点都是 external object 引用——`RunEvent.payload_ref`、`agent_execution_outbox.payload_ref`、**`agent_workspace_outbox.payload_ref`**（先前仅点名前两者，workspace outbox 同有 `payload_ref`，一并冻结）。新增 external ref ledger（external.payload.v1 owner）记录 ref/scheme/state，覆盖全部 ref-bearing source。**清除顺序冻结**：先登记/删除 external object 并取得 receipt，**再**清 transport DB ref——避免对象失去追踪入口（先清 DB ref 会让 external object 成为无溯源孤儿）。erase 语义：`known DB-local ref` 可实装删除并 ACK；`unknown scheme` / `erase outcome unknown` / `timeout` / `digest mismatch` 一律 **blocked（不变量 5），不得 ACK**。S3-D 已在 execution.core.v1 把现存 `payload_ref`/`runtime_session_ref` 判 `purge_owner_unavailable` blocked 移交 S4。
+- **D6 transport/external 部分 ACK 不得标 completed（不变量 6）**：`workspace.transport.v1`/`execution.transport.v1`/`external.payload.v1` 各自 ACK；任一 owner 未 ACK，整个 purge operation 不得写 `purge_state=completed`。沿用 S1 operation/checkpoint 完成判定。
+- **D7 Runtime fake 只证明协议（不变量 7）**：`RuntimeErasureParticipant` conformance fake 覆盖 session ref、epoch/seq late write、destroy ACK 重放；`runtime.private.v1` `erase_available` 仍 **False**，fake 不冒充 Pi/ACP/LangGraph 或真实 spool 已完成。
+- **D8 claim 锁与 Guard 顺序（不变量 1，现状已合规，冻结保持）**：claim 在独立短事务（`_claim_output`/`_claim_turn` 各自 `session.begin()`，`skip_locked`），**不持 outbox row lock 等待 Guard**；消费在另一事务（`consume_output_event`/`consume_turn_event`）按 Guard -> Conversation 行锁（`lock_output_conversation`/`lock_projection_conversation`）-> owner lock -> fence 重验。S4-C/D 的 claim 外短事务 + Guard 内 cancel/suppress/tombstone 必须保持此顺序，不得引入 AB-BA。
+
+**3. 明确不做（S4-A 边界）**：不写 schema/migration（S4-B）；不改 writer/claim 代码（S4-C）；不实现 transport/external/runtime participant（S4-D/E）；不做 fault 矩阵（S4-F）；不启用 purge scheduler（S5）；不实现真实 Pi Worker、云对象存储生产 adapter、Approval/Tool/Artifact/Evidence。
+
+**4. 后续拆分与 PR 顺序（不变量：禁止单超大 PR，S2-D/E 7 轮复审教训）**：`S4-A/B`（schema+backfill）、`S4-C/D`（writer+claim fence + transport participant）、`S4-E/F`（external+runtime fake + fault）、docs closeout，至少 4 个 PR。
+
+**S4-A 验证**：纯文档；docs gate + `git diff --check` 通过；三路 CI 全绿。返修后提交独立 `max`/Codex 复审。
+
+**S4-A round-1 复审修订（2026-08-04，独立复核 P0/P1/P2/P3=0/2/3/0）**：复核确认总体方向正确、属契约补全（不重做架构）。上述 D2/D3/D4/D5 已按复核意见就地修订（D2 补完整 epoch 传播链 + 六元组 CAS；D3 改三态分类替代不可实现的「阻止对应 Conversation purge」；D4 冻结 inbox tombstone 为独立 marker + digest envelope；D5 补 workspace outbox `payload_ref` 并冻结「先删 external object 取 receipt、再清 transport DB ref」顺序）。P2 工作台交接状态过期问题已同步修正（PR HEAD 与三路 CI 全绿如实回填）。修订后仅需一次轻量 diff 复核。
+
 ### R1-S5：Legal hold、Scheduler 与运维闭环
 
 **复杂度/执行**：极高，Sol `xhigh`；人工数据/安全签字。
