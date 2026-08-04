@@ -14,24 +14,24 @@
 
 ## 当前进行中
 
-### TASK-R1-S4B: R1-S4-B Transport/External Schema 与 Backfill
+### TASK-R1-S4B-IMPL: R1-S4-B 实现（migration 040 + backfill）
 
-状态：🟡 进行中
-类型：新需求开发（Slice schema+backfill）
-领域：Backend（composition / agent_workspace / agent_execution transport schema）
+状态：🔵 待启动（契约已冻结，待建实现分支）
+类型：新需求开发（Slice schema+backfill 实现）
+领域：Backend（composition / agent_workspace / agent_execution transport schema + backfill）
 当前执行模式：superpower / plan-do
 最近接手工具：Claude Code
 分支：（待建 feat/req041-047-r1-s4b-schema-backfill）
 
 需求来源：
 - Spec: docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md（§5.2/§6/§7 owner 边界、external ref、迟到写）
-- Plan: docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4transport-ownerexternal-payload-与迟到写（§S4-A 契约冻结 D1-D8 + §S4-B 拆分）
+- Plan: docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4transport-ownerexternal-payload-与迟到写（§S4-A D1-D8 + §S4-B B1-B8 契约冻结块）
 - 架构约束：docs/03-engineering-governance/01-rules/architecture.md
 
-当前进展：S4-A 契约冻结已合并（PR #526 `cf4c8374`，三轮复审 0/0/0/0）。S4-B plan delta 已起草完成（纯文档，不创建 migration 040、不改业务代码）：按 S4-A D1-D8 冻结 B1-B8——B1 migration 040 精确 schema（4 张 inbox/outbox 各增 conversation_id/producer_purge_revision/scope_reconcile_state + 部分唯一索引 + 条件 FK ON DELETE RESTRICT；新表 agent_transport_scope_reconcile 三态 ledger + agent_external_object_refs external ref ledger；2 张 inbox 增 receipt_tombstone_state/digest，全部 nullable/expand-only）；B2 回填来源矩阵（workspace outbox 经 Message、execution outbox 经 Run、两 inbox 经源 outbox 关联）；B3 历史 producer_purge_revision 不可推断保持 NULL + 进 reconcile，禁伪造 epoch；B4 三态 reconcile 语义（conversation_scope 阻塞该 Conversation / tenant_scope 阻断该 tenant scheduler-canary / orphan 不猜 UUID）+ 封闭 issue_code（scope 类/epoch 类）+ open->acknowledged->resolved 状态机；B5 external ref ledger 覆盖 RunEvent + 两张 outbox + 来源唯一性 + erase receipt 状态机；B6 inbox tombstone marker/digest schema；B7 backfill 分批/keyset 游标/tenant 限流/幂等恢复/并发新写 NULL 行处理/最终 verify；B8 验收矩阵（upgrade/downgrade、跨 tenant、歧义映射、Conversation 已删除、重复执行、中断恢复、未知 epoch、全 ref-bearing source）。`erase_available` 保持 False。
-下一步：等待最终轻量复核；通过（P0/P1 清零）后按流程合并 PR #528，再创建 S4-B 实现分支（migration 040 + backfill）。不自行合并。
-验证状态：纯文档；docs gate + `git diff --check` 通过；三路 CI 全绿（对应 PR #528 当前 HEAD，见 Git 历史，不钉漂移 SHA/时长）。round-1 复审（0/5/4/0）、定向复审（0/4/3/0）、两轮轻量复核（0/2/2/0、0/1/1/0）、三轮定向复核（0/1/0/0、0/1/0/0、0/1/0/0）均已就地修订并落成 round-1..7 注记：gate 改 state<>'resolved'、issue_code 拆 scope/epoch 类 + class/scope CHECK + 多 issue 投影聚合 + 事务级 advisory lock 集合锁（不依赖源行存在 + 独立 key 前缀分域 + 接入 D8 全局锁序防 AB-BA）、epoch_unresolvable 按 scope 状态三分归类、ref_scheme allowlist 冻结为空、041 guard 覆盖全持 ref 旧状态、弃 UUID max 高水位改 S4-C 幂等全量重扫、verify 分 scope/epoch 双维度各匹配具名 issue、ledger 增 revision 乐观锁、issue_code/owner_key/blocked_reason 封闭枚举 CHECK、downgrade fail-closed。
-交接备注：S4 拆分 S4-A~F；PR 至少 4 个（S4-A/B、S4-C/D、S4-E/F、docs closeout），禁止单超大 PR。明确排除：S4-C/D/E/F、S5 scheduler、真实 Pi Worker、云对象存储生产 adapter；migration 034-039 已冻结，S4-B 新增 040（expand-only）；erase_available 保持 False。
+当前进展：S4-B 契约冻结已合并（PR #528 `b2020d4c`，七轮复审 0/0/0/1 仅 P3 文案，P0/P1 清零）。migration 040 精确 schema（B1 四表 scope 列 + reconcile/external 两 ledger + inbox tombstone）、B2 回填来源矩阵、B3 历史 epoch 保持 NULL + epoch_unresolvable、B4 三态 reconcile（state<>'resolved' gate + advisory lock 集合锁 + D8 锁序）、B5 external ref ledger（ref_scheme 空 allowlist + 041 guard 冻结）、B7 两阶段收敛 + scope/epoch 双维度 verify、B8 验收矩阵均已冻结。
+下一步：创建实现分支 feat/req041-047-r1-s4b-schema-backfill，按 B1 落地 migration 040（expand-only）+ B2/B7 backfill；遵守 D8 锁序与 advisory lock 契约；真实 PG 验证 upgrade/downgrade/backfill/中断恢复。交独立 max/Codex 复审，不自行合并。
+验证状态：待实现；契约阶段 docs gate + `git diff --check` 通过，三路 CI 全绿（PR #528 已合并）。
+交接备注：S4 拆分 S4-A~F；PR 至少 4 个。明确排除：S4-C/D/E/F、S5 scheduler、真实 Pi Worker、云对象存储生产 adapter；migration 034-039 已冻结，S4-B 新增 040（expand-only）；erase_available 保持 False（writer fence 在 S4-C，purge 在 S5）。
 
 ## 下一批候选任务
 
@@ -50,6 +50,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-08-04 | R1-S4-B Transport/External Schema + Backfill 契约冻结 | 🟢 完成 | 冻结 migration 040 schema（四表 scope 列 + 两 ledger + inbox tombstone）+ 回填矩阵 + 三态 reconcile（advisory lock 集合锁入 D8）+ external 空 allowlist + 041 guard 冻结 + scope/epoch 双维 verify；七轮复审 0/0/0/1 | [PR #528](https://github.com/MarkDanile/MetaEduBase/pull/528)（squash merge `b2020d4c`）/ [Plan §R1-S4](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-08-04 | R1-S4-A Transport/External/Late-write 契约冻结 | 🟢 完成 | 盘点 4 张 inbox/outbox 与 transport owner 映射；冻结 D1-D8（结构化 owner scope、epoch 传播链 + 六元组 CAS、历史不确定行三态 reconcile、tombstone 留 digest、external ref ledger 全覆盖、部分 ACK 不标 completed、runtime fake 仅证明协议、claim/Guard 顺序）；三轮复审 0/0/0/0 | [PR #526](https://github.com/MarkDanile/MetaEduBase/pull/526)（squash merge `cf4c8374`）/ [Plan §R1-S4](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-08-04 | R1-S3-E Dispatch、竞态与收口 | 🟢 完成 | dispatch_output deterministic late-write 终态化（幂等原语 + claim CAS）+ purge-fenced projection/read 重分类 deterministic + race/幂等真实 PG 反例 + backfill 钉住 execution.core.v1 + no-bypass 守卫；三轮复审 0/0/0/0；变异逐项 KILLED；三路 CI 全绿 | [PR #524](https://github.com/MarkDanile/MetaEduBase/pull/524)（squash merge `916699db`）/ [work-log](work-log.md) / [Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | 2026-08-03 | R1-S3-D ExecutionErasureParticipant（execution.core.v1 正文清除 + final scan + ACK fencing） | 🟢 完成 | migration 039 行级守卫白名单 + 正文清除 + final scan + 完整 fencing + blocked 三方一致 + 真实计数 ACK digest；四轮复审 0/0/0/0；变异逐项 KILLED；erase_available 翻 True；Backend 2016 passed / 0 failed；三路 CI 全绿 | [PR #522](https://github.com/MarkDanile/MetaEduBase/pull/522)（squash merge `99142f15`）/ [work-log](work-log.md) / [Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
