@@ -14,24 +14,24 @@
 
 ## 当前进行中
 
-### TASK-R1-S4A: R1-S4-A Transport/External/Late-write 契约冻结
+### TASK-R1-S4B: R1-S4-B Transport/External Schema 与 Backfill
 
 状态：🟡 进行中
-类型：新需求开发（Slice 契约冻结，纯文档，不写业务代码）
-领域：Backend（composition / agent_workspace / agent_execution transport 边界）
+类型：新需求开发（Slice schema+backfill）
+领域：Backend（composition / agent_workspace / agent_execution transport schema）
 当前执行模式：superpower / plan-do
 最近接手工具：Claude Code
-分支：docs/req041-047-r1-s4a-contract-freeze
+分支：（待建 feat/req041-047-r1-s4b-schema-backfill）
 
 需求来源：
 - Spec: docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md（§5.2/§6/§7 owner 边界、external ref、迟到写）
-- Plan: docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4transport-ownerexternal-payload-与迟到写（§S4 拆分 S4-A~F + 7 不变量 + 验收矩阵）
+- Plan: docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4transport-ownerexternal-payload-与迟到写（§S4-A 契约冻结 D1-D8 + §S4-B 拆分）
 - 架构约束：docs/03-engineering-governance/01-rules/architecture.md
 
-当前进展：S4-A 契约冻结已交付 PR #526（三路 CI 全绿，对应 PR 当前 HEAD，见 Git 历史，不钉漂移 SHA/时长），独立复核 `P0/P1/P2/P3=0/2/3/0`（契约补全，不重做架构）-> 已按复核意见就地修订 Plan §R1-S4 delta：D2 补完整 epoch 传播链（Conversation snapshot -> outbox metadata -> Claimed* envelope -> inbox metadata，transport metadata 不改 V1 payload digest + Guard 内六元组 CAS）；D3 改三态分类（已知候选 Conversation 阻塞该 Conversation / scope 真正未知进 tenant-scoped reconcile ledger 阻断该 tenant scheduler/canary / Conversation 已删除走具名 orphan reconcile 不猜 UUID）；D4 冻结 inbox tombstone 为独立 marker + digest envelope（不改现有 processing/consumed/rejected 枚举）；D5 补 workspace outbox `payload_ref` 并冻结「先删 external object 取 receipt、再清 transport DB ref」顺序。工作台交接状态同步修正。
-下一步：推送修订后停在 PR #526 交接，交独立 max/Codex 轻量 diff 复核；复核通过后合并，再启动 S4-B（schema+backfill）。不自行合并。
-验证状态：纯文档；docs gate + `git diff --check` 通过；三路 CI 全绿（对应 PR #526 当前 HEAD，见 Git 历史，不钉漂移 SHA/时长）。
-交接备注：S4 拆分 S4-A~F（契约冻结/schema+backfill/writer+claim fence/transport participant/external+runtime fake/fault+closeout）；PR 至少 4 个（S4-A/B、S4-C/D、S4-E/F、docs closeout），禁止单超大 PR（S2-D/E 教训）。明确排除：S5 scheduler/legal-hold API、S6 retention、真实 Pi Worker、云对象存储生产 adapter。
+当前进展：S4-A 契约冻结已合并（PR #526 `cf4c8374`，三轮复审 0/0/0/0）。启动 S4-B：按 S4-A D1-D8 冻结契约做 expand migration + 可恢复/分批/tenant 限流 backfill——4 张 inbox/outbox 增结构化 `conversation_id` + `producer_purge_revision` + reconcile 状态，新增 external ref ledger（含 workspace outbox `payload_ref`），inbox tombstone 独立 marker + digest envelope。本 Slice 不改 writer/claim 代码（S4-C）、不实现 transport/external/runtime participant（S4-D/E）、不做 fault 矩阵（S4-F）、不启用 scheduler（S5）。
+下一步：建分支 -> 起草 S4-B plan delta（schema 决策 + backfill 契约，先于代码冻结）-> 独立 max/Codex 复审 -> 实现 migration + backfill。不自行合并。
+验证状态：启动中；后续以 plan delta + migration 往返 + backfill 恢复验证为准。
+交接备注：S4 拆分 S4-A~F；PR 至少 4 个（S4-A/B、S4-C/D、S4-E/F、docs closeout），禁止单超大 PR。明确排除：S5 scheduler/legal-hold API、S6 retention、真实 Pi Worker、云对象存储生产 adapter。migration 034-039 已冻结，S4-B 新增 040（expand-only）。
 
 ## 下一批候选任务
 
@@ -50,6 +50,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-08-04 | R1-S4-A Transport/External/Late-write 契约冻结 | 🟢 完成 | 盘点 4 张 inbox/outbox 与 transport owner 映射；冻结 D1-D8（结构化 owner scope、epoch 传播链 + 六元组 CAS、历史不确定行三态 reconcile、tombstone 留 digest、external ref ledger 全覆盖、部分 ACK 不标 completed、runtime fake 仅证明协议、claim/Guard 顺序）；三轮复审 0/0/0/0 | [PR #526](https://github.com/MarkDanile/MetaEduBase/pull/526)（squash merge `cf4c8374`）/ [Plan §R1-S4](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-08-04 | R1-S3-E Dispatch、竞态与收口 | 🟢 完成 | dispatch_output deterministic late-write 终态化（幂等原语 + claim CAS）+ purge-fenced projection/read 重分类 deterministic + race/幂等真实 PG 反例 + backfill 钉住 execution.core.v1 + no-bypass 守卫；三轮复审 0/0/0/0；变异逐项 KILLED；三路 CI 全绿 | [PR #524](https://github.com/MarkDanile/MetaEduBase/pull/524)（squash merge `916699db`）/ [work-log](work-log.md) / [Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | 2026-08-03 | R1-S3-D ExecutionErasureParticipant（execution.core.v1 正文清除 + final scan + ACK fencing） | 🟢 完成 | migration 039 行级守卫白名单 + 正文清除 + final scan + 完整 fencing + blocked 三方一致 + 真实计数 ACK digest；四轮复审 0/0/0/0；变异逐项 KILLED；erase_available 翻 True；Backend 2016 passed / 0 failed；三路 CI 全绿 | [PR #522](https://github.com/MarkDanile/MetaEduBase/pull/522)（squash merge `99142f15`）/ [work-log](work-log.md) / [Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | 2026-08-02 | R1-S3-C Writer fence（13 接线 + 9 writer 矩阵 + 锁链修复 + 真 e2e） | 🟢 完成 | composition-owned FencedExecutionPort + 9 writer wrapper + 13 call site；锁链全路径 Spec §6.1 与 S3-D 同序无 AB-BA；verdict 内建 + Run 归属绑定 + 跨边界 Protocol；变异 2 组 + 真 e2e 6 组；复审 0/0/0；Backend 1951 passed | [PR #519](https://github.com/MarkDanile/MetaEduBase/pull/519)（merge `eb911b9a`）/ [work-log](work-log.md) / [score 88](04-retrospectives/review-score-log.md) |
