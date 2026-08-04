@@ -19,7 +19,7 @@ from app.contexts.agent_workspace.domain import (
     ContentClassification,
     ConversationNotFoundError,
     ConversationState,
-    InvalidConversationStateError,
+    LateBodyWriteRejectedError,
     MessageContentState,
     MessageKind,
     MessagePartType,
@@ -780,7 +780,12 @@ class WorkspaceBridgeRepository:
         # redacted 占位，purge 进行中落 tombstone 是联合契约要求的安全路径，
         # 不得被拒进失败重试/死信。
         if conversation.purge_state in {"running", "completed"} and not allow_purge_fenced:
-            raise InvalidConversationStateError(
+            # R1-S3-E round-2：purge 围栏下的正文投影是 deterministic（Conversation
+            # 已在 purge，重试永不成功，R1-AC8 不盲重试正文写）。分类为
+            # ``LateBodyWriteRejectedError``（与 owner fence 非 active 同语义），
+            # 而非笼统 ``InvalidConversationStateError``（会被 dispatcher 当
+            # transient 盲重试，在 Run 已 suppressed 时触发 terminal CHECK 冲突）。
+            raise LateBodyWriteRejectedError(
                 "output projection is fenced by Conversation purge"
             )
         return conversation

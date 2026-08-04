@@ -63,12 +63,11 @@ async def test_late_write_after_s3d_erasure_terminalizes_idempotently(
     ``claimed`` 继续重试（变异可检出）。专用 ``terminalize_output_late_write``
     幂等接受 already-suppressed Run。
 
-    说明：S3-D erase 在「publish 已失败且 Run 回 pending」的状态下会让
-    ``output_publish_state='pending'`` 违反 ``ck_agent_run_terminal_output``
-    （terminal output 已清，pending 不再合法）——这是 erase 与 outbox 投影的
-    真实耦合边界，归 S4 transport owner 一并处理（见 plan §S3-E round-1 P1 注）。
-    本测试直接构造 S3-D 的终态结果（Run suppressed + outbox 保留 pending），
-    聚焦验证 deterministic terminalize 对 already-suppressed Run 的幂等接受。
+    round-2 P2：本测试**跑真实** ``ExecutionErasureParticipant.erase_execution_body``
+    （completed Run + pending outbox -> erase -> Run suppressed + outbox 保留），
+    而非手工造状态——真实 eraser 在同一 UPDATE 原子设置 suppressed 并清 terminal
+    字段，**不触发** ``ck_agent_run_terminal_output`` 冲突（round-1 的错误假设已
+    从 plan/工作台删除）。
     """
     conversation_id, run, outbox = await _completed_run_with_pending_outbox(
         db_session, session_factory, content=b"# erased answer"
@@ -76,17 +75,34 @@ async def test_late_write_after_s3d_erasure_terminalizes_idempotently(
     payload_before = outbox.payload_inline
     await db_session.commit()
 
-    # 构造 S3-D 终态：Run output_publish_state=suppressed（terminal output 已清，
-    # suppressed 满足 ck_agent_run_terminal_output），outbox 保留 pending（S3-D
-    # 不清 transport owner）。
+    # 真实 S3-D eraser 前置：Conversation deleted + purge_after 已过（Spec §3）。
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversations SET state = 'deleted', "
+            "purge_after = clock_timestamp() - interval '1 second' "
+            "WHERE tenant_id = :t AND id = :c"
+        ),
+        {"t": TENANT_ID, "c": conversation_id},
+    )
+    await db_session.commit()
+    # 真实 participant erase：completed Run（output_publish_state=pending）原子
+    # suppressed + 清 terminal 字段；execution outbox 保留给 S4（不清 transport）。
+    op_id, op_rev = await h.make_purge_operation(db_session, conversation_id, 1)
+    outcome = await h.participant(db_session).erase_execution_body(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        purge_revision=1,
+        purge_operation_id=op_id,
+        expected_operation_revision=op_rev,
+    )
+    assert outcome.erased
+    await db_session.commit()
+
+    # erase 后：Run suppressed、outbox 仍 pending（S3-D 不清 transport owner）。
     erased_run = await db_session.get(AgentRunModel, run.id)
     assert erased_run is not None
-    erased_run.terminal_output_ref = None
-    erased_run.terminal_output_media_type = None
-    erased_run.terminal_output_classification = None
-    erased_run.terminal_message_id = None
-    erased_run.output_publish_state = OutputPublishState.SUPPRESSED.value
-    await db_session.commit()
+    await db_session.refresh(erased_run)
+    assert erased_run.output_publish_state == OutputPublishState.SUPPRESSED.value
     persisted = await _read_outbox(session_factory, outbox.id)
     assert persisted.status == "pending", "S3-D 保留 outbox 给 S4"
 
@@ -172,6 +188,98 @@ async def test_late_write_terminalize_rejects_stale_claim(db_session, session_fa
     assert after.status == "claimed"
     assert after.attempt_count == 1
     assert after.claimed_by == "worker-2"
+    assert after.decision_reason is None
+
+
+async def test_late_write_terminalize_fails_closed_when_takeover_returns_to_pending(
+    db_session, session_factory
+):
+    """round-2 P1 反例：``claim N -> takeover N+1 -> transient 回 pending -> stale
+    terminalize（attempt N）`` 必须 fail closed，事件仍 ``pending``（继续重试集）。
+
+    round-1 实现对所有 ``status != 'claimed'`` 直接 return（幂等 no-op），导致
+    takeover 后回 pending 的事件被 stale worker 误判「已 terminalize」而放任重试
+    （事件仍 pending、decision_reason=None）。修订后仅完整匹配的既有 late-write
+    终态 no-op，pending 一律 fail closed。变异：恢复「非 claimed 即 return」->
+    本测试转红。
+    """
+    _, run, outbox = await _completed_run_with_pending_outbox(
+        db_session, session_factory, content=b"takeover pending output"
+    )
+    await db_session.commit()
+    base = await _read_outbox(session_factory, outbox.id)
+    digest = base.payload_digest
+
+    # worker1 claim（pending[0] -> claimed[1]）。
+    async with session_factory() as session, session.begin():
+        repo = ExecutionBridgeRepository(session)
+        now = await session.scalar(text("SELECT clock_timestamp()"))
+        stale = await session.scalar(
+            text("SELECT clock_timestamp() - interval '60 seconds'")
+        )
+        assert (
+            await repo.claim_output_outbox(
+                worker_id="worker-1", now=now, stale_before=stale, event_id=outbox.id
+            )
+            is not None
+        )
+    # worker1 transient 失败 -> 回 pending（attempt 1, next_attempt 未来）。
+    async with session_factory() as session, session.begin():
+        repo = ExecutionBridgeRepository(session)
+        now = await session.scalar(text("SELECT clock_timestamp()"))
+        await repo.record_output_delivery_failure(
+            tenant_id=TENANT_ID,
+            event_id=outbox.id,
+            payload_digest=digest,
+            error_code="RuntimeError",
+            next_attempt_at=now,
+            max_attempts=5,
+            expected_attempt=1,
+            claimant_id="worker-1",
+        )
+    # worker2 接管（pending[1] -> claimed[2]）再 transient 回 pending。
+    async with session_factory() as session, session.begin():
+        repo = ExecutionBridgeRepository(session)
+        now = await session.scalar(text("SELECT clock_timestamp()"))
+        stale = await session.scalar(
+            text("SELECT clock_timestamp() - interval '60 seconds'")
+        )
+        assert (
+            await repo.claim_output_outbox(
+                worker_id="worker-2", now=now, stale_before=stale, event_id=outbox.id
+            )
+            is not None
+        )
+        await repo.record_output_delivery_failure(
+            tenant_id=TENANT_ID,
+            event_id=outbox.id,
+            payload_digest=digest,
+            error_code="RuntimeError",
+            next_attempt_at=now,
+            max_attempts=5,
+            expected_attempt=2,
+            claimant_id="worker-2",
+        )
+    current = await _read_outbox(session_factory, outbox.id)
+    assert current.status == "pending"
+    assert current.attempt_count == 2
+
+    # 过期 worker1（仍持 attempt 1 + 自己 claimant）terminalize -> fail closed。
+    async with session_factory() as session, session.begin():
+        repo = ExecutionBridgeRepository(session)
+        with pytest.raises(ExecutionIntegrationConflictError):
+            await repo.terminalize_output_late_write(
+                tenant_id=TENANT_ID,
+                event_id=outbox.id,
+                payload_digest=digest,
+                expected_attempt=1,
+                claimant_id="worker-1",
+                decided_at=await session.scalar(text("SELECT clock_timestamp()")),
+            )
+
+    # 事件仍 pending（可重试集），未被 stale worker 静默吞掉。
+    after = await _read_outbox(session_factory, outbox.id)
+    assert after.status == "pending"
     assert after.decision_reason is None
 
 

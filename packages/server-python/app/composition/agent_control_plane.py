@@ -15,7 +15,10 @@ from app.contexts.agent_execution.application.bridge import (
     PoisonedExecutionEvent,
 )
 from app.contexts.agent_execution.application.run_coordinator import RunCoordinator
-from app.contexts.agent_execution.domain import AgentRun
+from app.contexts.agent_execution.domain import (
+    AgentRun,
+    LateOutputReadRejectedError,
+)
 from app.contexts.agent_workspace.application.bridge import (
     AgentWorkspaceBridgeService,
     ClaimedWorkspaceEvent,
@@ -612,14 +615,18 @@ class AgentBridgeDispatcher:
             async with self._session_factory() as session, session.begin():
                 await AgentExecutionBridgeService(session).acknowledge_output(ack)
             return True
-        except LateBodyWriteRejectedError:
-            # R1-S3-E §8：purge 进行中/已完成拦截的迟到 publish 是 deterministic
-            # 结果（重试永远无法写入正文，R1-AC8 不盲重试正文写）。不排
-            # next_attempt_at 重试、不走 backoff，直接把 outbox 事件转为不可重试
-            # 终态（row.status=cancelled + Run.output_publish_state=suppressed +
+        except (LateBodyWriteRejectedError, LateOutputReadRejectedError):
+            # R1-S3-E §8：purge 拦截的迟到 publish 是 deterministic 结果（重试永远
+            # 无法写入正文，R1-AC8 不盲重试正文写）。两类来源统一处理：
+            # - ``LateBodyWriteRejectedError``：workspace.core.v1 fence 非 active
+            #   （project_assistant_message 裁决）。
+            # - ``LateOutputReadRejectedError``（round-2）：terminal/compatibility
+            #   正文已被 purge 清除，迟到 publish 在 fence 裁决前的 terminal-read
+            #   阶段即无法读取正文。
+            # 不排 next_attempt_at 重试、不走 backoff，直接把 outbox 事件转为不可
+            # 重试终态（row.status=cancelled + Run.output_publish_state=suppressed +
             # decision_reason=late_body_write_rejected + decision_digest），并清零
-            # 在途 claim，防止 claim 租约过期后 stale-claim 复活重试。不清
-            # transport owner 正文（payload_inline/payload_ref 归 S4）。
+            # 在途 claim。不清 transport owner 正文（payload_* 归 S4）。
             await self._record_output_late_write_rejected(claimed=claimed)
             raise
         except Exception as exc:

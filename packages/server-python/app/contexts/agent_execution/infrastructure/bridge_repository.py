@@ -541,10 +541,30 @@ class ExecutionBridgeRepository:
         )
         if row.payload_digest != payload_digest:
             raise ExecutionIntegrationConflictError("output late-write digest conflicts")
-        # 幂等：当前 claim 已不在（被他人 terminalize / 人工裁决接管）时，
-        # 同一 deterministic 结论下不覆盖他人终态，直接 no-op 返回。
+        # round-2 P1：仅对**完整匹配的既有 late-write 终态**幂等 no-op；其余非
+        # claimed 状态（pending/dead_letter/published/其他 cancelled）一律 fail
+        # closed，不静默吞掉——否则 takeover 后回 pending 的事件会被 stale worker
+        # 误判为「已 terminalize」而放任继续重试。
         if row.status != "claimed":
-            return
+            expected_digest = snapshot_digest(
+                {
+                    "actor_id": str(uuid.UUID(int=0)),
+                    "reason": suppression_reason_code("late_body_write_rejected"),
+                    "output_digest": run.terminal_output_digest,
+                }
+            )
+            already_terminal = (
+                row.status == "cancelled"
+                and row.decision_reason
+                == suppression_reason_code("late_body_write_rejected")
+                and row.decision_digest == expected_digest
+                and run.output_publish_state == OutputPublishState.SUPPRESSED.value
+            )
+            if already_terminal:
+                return
+            raise ExecutionIntegrationConflictError(
+                f"output late-write cannot terminalize from status {row.status!r}"
+            )
         if row.attempt_count != expected_attempt or row.claimed_by != claimant_id:
             raise ExecutionIntegrationConflictError(
                 "output late-write does not own the current delivery claim"
