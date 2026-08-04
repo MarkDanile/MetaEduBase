@@ -30,7 +30,7 @@
 
 当前进展：S4-A 契约冻结已合并（PR #526 `cf4c8374`，三轮复审 0/0/0/0）。S4-B plan delta 已起草完成（纯文档，不创建 migration 040、不改业务代码）：按 S4-A D1-D8 冻结 B1-B8——B1 migration 040 精确 schema（4 张 inbox/outbox 各增 conversation_id/producer_purge_revision/scope_reconcile_state + 部分唯一索引 + 条件 FK ON DELETE RESTRICT；新表 agent_transport_scope_reconcile 三态 ledger + agent_external_object_refs external ref ledger；2 张 inbox 增 receipt_tombstone_state/digest，全部 nullable/expand-only）；B2 回填来源矩阵（workspace outbox 经 Message、execution outbox 经 Run、两 inbox 经源 outbox 关联）；B3 历史 producer_purge_revision 不可推断保持 NULL + 进 reconcile，禁伪造 epoch；B4 三态 reconcile 语义（conversation_scope 阻塞该 Conversation / tenant_scope 阻断该 tenant scheduler-canary / orphan 不猜 UUID）+ 封闭 reason_code + open->acknowledged->resolved 状态机；B5 external ref ledger 覆盖 RunEvent + 两张 outbox + 来源唯一性 + erase receipt 状态机；B6 inbox tombstone marker/digest schema；B7 backfill 分批/keyset 游标/tenant 限流/幂等恢复/并发新写 NULL 行处理/最终 verify；B8 验收矩阵（upgrade/downgrade、跨 tenant、歧义映射、Conversation 已删除、重复执行、中断恢复、未知 epoch、全 ref-bearing source）。`erase_available` 保持 False。
 下一步：推送 plan delta 到 PR，交独立 max/Codex 复审；P0/P1 清零后再实现 migration 040 + backfill。不自行合并。
-验证状态：纯文档；docs gate + `git diff --check` 通过；三路 CI 待跑。
+验证状态：纯文档；docs gate + `git diff --check` 通过；三路 CI 全绿（对应 PR #528 当前 HEAD，见 Git 历史，不钉漂移 SHA/时长）。round-1 复审（0/5/4/0）已就地修订：reconcile ledger 加 issue 维度 + resolution evidence 约束、external ledger 跨列防伪 + ref_scheme allowlist + migration 041 guard 演进冻结、两阶段收敛不按时间豁免、downgrade fail-closed 边界、digest lowercase hex、ledger 唯一事实源。
 交接备注：S4 拆分 S4-A~F；PR 至少 4 个（S4-A/B、S4-C/D、S4-E/F、docs closeout），禁止单超大 PR。明确排除：S4-C/D/E/F、S5 scheduler、真实 Pi Worker、云对象存储生产 adapter；migration 034-039 已冻结，S4-B 新增 040（expand-only）；erase_available 保持 False。
 
 ## 下一批候选任务
