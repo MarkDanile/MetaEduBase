@@ -115,6 +115,19 @@ Agent Apps
 - [2026-W30 P3 企业 Agent 平台控制面塑形](../03-iterations/2026-W30-p3-enterprise-agent-platform.md)
 - REQ-059 Architecture Gate 与 REQ-060 已完成；REQ-041/047 的 W1/E0/E1/B1/A1/D1 已合并。近期固定顺序为 R1-S0 契约确认 -> R1-S1..S6 -> C1 Durable Core 总验收 -> REQ-042 Workspace -> TD-085 -> REQ-043 Runtime/Tool Gateway；REQ-042 只允许并行文档塑形，不直接跳到 Pi Worker。
 
+### 阶段目标：2026-08 Durable Core Close
+
+本节是**阶段目标**，不降低下方 `Completion Criteria` 的 P3 最终验收标准。口径界定（R1-S4-A 复审 2026-08-04 冻结）：**整个 P3 Completion Criteria 无法在 8 月收底**（剩余 Workspace、Runtime/Tool Gateway、Pi、HITL/Sandbox/L3、ACP/LangGraph、Memory、主动任务及多个真实应用验收；REQ-059 估算企业治理 V1 即需 16-24 周）。**可收底的口径 = R1-S4~S6 + C1 Durable Core**，激进但有机会，预计还需约 3.5-5 周，更稳妥落点为 2026-08 底至 2026-09 上旬。
+
+「2026-08 Durable Core Close」阶段目标：
+
+- R1 全部完成（S4/S5/S6），C1 Durable Core 总验收通过。
+- REQ-041 标记 Done。
+- REQ-047 标记 Durable Core Done；extended entities（Approval/Artifact/Evidence）继续后续阶段，不在本阶段收口。
+- REQ-042 完成可实施 spec/plan；**不承诺** 8 月完成全部 Workspace UI 代码。
+- REQ-063 完成授权来源 spike（Connector 仍等 Tool Gateway）。
+- Runtime、Pi、治理能力和真实应用验收保留为 P3 后续波次，不在本阶段目标内。
+
 ## Completion Criteria
 
 - MetaEduBase 持有 Conversation、Message、AgentDefinitionVersion、RuntimeProfile、AgentRun、RunEvent、RuntimeSessionBinding、TurnInput、HumanInputRequest、ToolCall、ApprovalRequest、Artifact、EvidenceItem、运行 Snapshot 和 MemoryItem 的企业事实源或已批准阶段边界。

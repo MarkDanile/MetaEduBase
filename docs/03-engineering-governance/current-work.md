@@ -28,9 +28,9 @@
 - Plan: docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4transport-ownerexternal-payload-与迟到写（§S4 拆分 S4-A~F + 7 不变量 + 验收矩阵）
 - 架构约束：docs/03-engineering-governance/01-rules/architecture.md
 
-当前进展：S4-A 启动。进入条件已满足（R1-S3 全部合并，main 干净，migration head=039，`LateBodyWriteRejectedError` 已按 deterministic suppression 处理）。本 Slice 只做契约冻结：盘点 inbox/outbox producer/consumer、冻结 owner scope / `producer_purge_revision` / 历史不确定行 reconcile / external ref 状态机，先交 plan delta，不写业务代码、不改 migration、不启用 scheduler。
-下一步：完成盘点（4 张 inbox/outbox + RuntimeSessionBinding.runtime_session_ref + RunEvent.payload_ref）后起草 Plan §R1-S4「S4-A 契约冻结」delta，交独立 max/Codex 复审。不自行合并。
-验证状态：纯文档；docs gate + `git diff --check` 通过；三路 CI 待跑。
+当前进展：S4-A 契约冻结已交付 PR #526（HEAD `8a2f041d`，三路 CI 全绿），独立复核 `P0/P1/P2/P3=0/2/3/0`（契约补全，不重做架构）-> 已按复核意见就地修订 Plan §R1-S4 delta：D2 补完整 epoch 传播链（Conversation snapshot -> outbox metadata -> Claimed* envelope -> inbox metadata，transport metadata 不改 V1 payload digest + Guard 内六元组 CAS）；D3 改三态分类（已知候选 Conversation 阻塞该 Conversation / scope 真正未知进 tenant-scoped reconcile ledger 阻断该 tenant scheduler/canary / Conversation 已删除走具名 orphan reconcile 不猜 UUID）；D4 冻结 inbox tombstone 为独立 marker + digest envelope（不改现有 processing/consumed/rejected 枚举）；D5 补 workspace outbox `payload_ref` 并冻结「先删 external object 取 receipt、再清 transport DB ref」顺序。工作台交接状态同步修正。
+下一步：推送修订后停在 PR #526 交接，交独立 max/Codex 轻量 diff 复核；复核通过后合并，再启动 S4-B（schema+backfill）。不自行合并。
+验证状态：纯文档；docs gate + `git diff --check` 通过；三路 CI 全绿（对应 PR #526 当前 HEAD，见 Git 历史，不钉漂移 SHA/时长）。
 交接备注：S4 拆分 S4-A~F（契约冻结/schema+backfill/writer+claim fence/transport participant/external+runtime fake/fault+closeout）；PR 至少 4 个（S4-A/B、S4-C/D、S4-E/F、docs closeout），禁止单超大 PR（S2-D/E 教训）。明确排除：S5 scheduler/legal-hold API、S6 retention、真实 Pi Worker、云对象存储生产 adapter。
 
 ## 下一批候选任务
