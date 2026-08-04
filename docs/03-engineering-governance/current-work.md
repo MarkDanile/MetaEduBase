@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-（当前无进行中任务；R1-S3-E 已合并收口，见下方最近完成。下一任务按候选区建议顺序启动 R1-S4。）
+### TASK-R1-S4A: R1-S4-A Transport/External/Late-write 契约冻结
+
+状态：🟡 进行中
+类型：新需求开发（Slice 契约冻结，纯文档，不写业务代码）
+领域：Backend（composition / agent_workspace / agent_execution transport 边界）
+当前执行模式：superpower / plan-do
+最近接手工具：Claude Code
+分支：docs/req041-047-r1-s4a-contract-freeze
+
+需求来源：
+- Spec: docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md（§5.2/§6/§7 owner 边界、external ref、迟到写）
+- Plan: docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4transport-ownerexternal-payload-与迟到写（§S4 拆分 S4-A~F + 7 不变量 + 验收矩阵）
+- 架构约束：docs/03-engineering-governance/01-rules/architecture.md
+
+当前进展：S4-A 启动。进入条件已满足（R1-S3 全部合并，main 干净，migration head=039，`LateBodyWriteRejectedError` 已按 deterministic suppression 处理）。本 Slice 只做契约冻结：盘点 inbox/outbox producer/consumer、冻结 owner scope / `producer_purge_revision` / 历史不确定行 reconcile / external ref 状态机，先交 plan delta，不写业务代码、不改 migration、不启用 scheduler。
+下一步：完成盘点（4 张 inbox/outbox + RuntimeSessionBinding.runtime_session_ref + RunEvent.payload_ref）后起草 Plan §R1-S4「S4-A 契约冻结」delta，交独立 max/Codex 复审。不自行合并。
+验证状态：纯文档；docs gate + `git diff --check` 通过；三路 CI 待跑。
+交接备注：S4 拆分 S4-A~F（契约冻结/schema+backfill/writer+claim fence/transport participant/external+runtime fake/fault+closeout）；PR 至少 4 个（S4-A/B、S4-C/D、S4-E/F、docs closeout），禁止单超大 PR（S2-D/E 教训）。明确排除：S5 scheduler/legal-hold API、S6 retention、真实 Pi Worker、云对象存储生产 adapter。
 
 ## 下一批候选任务
 
@@ -22,7 +39,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | R1-S4 Transport/External Payload/Late-write | 🔵 Ready | R1-S3 已全部合并（S3-E PR #524 收口）；按进入条件启动 S4-A 契约冻结（盘点 inbox/outbox producer/consumer、owner scope、producer_purge_revision、external ref 状态机，先交 plan delta 不写业务代码） | [Plan §R1-S4](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
