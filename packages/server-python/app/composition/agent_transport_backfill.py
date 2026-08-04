@@ -630,15 +630,15 @@ async def backfill_transport_scope(
     cursor = after_id
     while not (max_rows is not None and processed >= max_rows):
         async with session_factory() as session, session.begin():
-            batch = await _select_ref_event_batch(
+            event_batch = await _select_ref_event_batch(
                 session,
                 tenant_id=tenant_id,
                 after_id=cursor,
                 batch_size=batch_size,
             )
-        if not batch:
+        if not event_batch:
             break
-        for source_row_id, conversation_id, _run_id, ref_value in batch:
+        for source_row_id, conversation_id, _run_id, ref_value in event_batch:
             if max_rows is not None and processed >= max_rows:
                 exhausted = False
                 break
@@ -667,7 +667,7 @@ async def backfill_transport_scope(
             processed += 1
             cursor = source_row_id
             report.next_after_id = cursor
-        if len(batch) < batch_size:
+        if len(event_batch) < batch_size:
             break
     report.completed = exhausted
     # 最终 verify（scope/epoch 双维 fail closed）。

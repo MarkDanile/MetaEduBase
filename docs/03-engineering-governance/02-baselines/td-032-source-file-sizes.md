@@ -50,6 +50,8 @@
 | `scripts/engineering/check_engineering_docs.py` | 131 | 🟢 已拆分 | 切片 2 已合并 ([PR #93](https://github.com/MarkDanile/MetaEduBase/pull/93) / merge `7e468fb`)：原 1003 行单文件拆为入口主文件 72 行 + 8 个聚焦 `checks/*.py` 模块（38-233 行）+ `checks/__init__.py` 注册表 `KNOWN_CHECKS`；入口脚本 `scripts/check-engineering-docs` (17 行 `runpy.run_path`) 不动；16 个 pytest 行为零变化 |
 | `scripts/validate_req024_p2_real_validation.py` | 23 | 🟢 已拆分 | TD-032 slice 8 已合并 ([PR #373](https://github.com/MarkDanile/MetaEduBase/pull/373))：原 1955 行单文件（REQ-024 起算 ~600 → REQ-026/028/030/031/032/033/034 长链叠加至 1955）拆为薄入口 23 行 + `scripts/rag_validation/` 包 9 文件（`__init__.py` 9 / `models.py` 119 / `loader.py` 86 / `coverage.py` 305 / `runner.py` 374 / `report.py` 397 / `report_quality.py` 196 / `report_chain.py` 457 / `main.py` 142）；全部 ≤500 行；调用路径 `python scripts/validate_req024_p2_real_validation.py ...` 不变（`run_req027_validation.py` subprocess 引用未动）；零业务逻辑变化，dry-run 同输入下新 render 路径输出与拆分前 byte-identical（喂入拆分前 ScenarioRun JSON 经新 `_render_report` 重渲染，除 db_url mask 输入串外完全一致） |
 
+| `packages/server-python/app/contexts/agent_execution/infrastructure/models.py` | 1005 | 🟢 已登记（待拆分） | REQ-041/047 R1-S4-B migration 040 落地：`ExecutionOutboxModel`/`ExecutionInboxModel` 各加 3 个 owner scope 列（`conversation_id`/`producer_purge_revision`/`scope_reconcile_state`）+ inbox 2 个 receipt_tombstone 列（state/digest），单文件聚合至 1005 行（979 + 26）超 1000 硬限制。本次只登记新增风险，不在 R1-S4-B 中拆 ORM models。后续应按上下文内聚切片（如按聚合拆 `run.py`/`run_event.py`/`outbox_inbox.py`/`runtime.py` 等模型模块），目标单文件 ≤500 行。 |
+
 ### >500 行业务 / 工程源码
 
 | 文件 | 行数 | 状态 | 例外 / 拆分说明 |
