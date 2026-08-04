@@ -17,11 +17,15 @@ import pytest
 from sqlalchemy import text
 
 from app.composition.agent_control_plane import AgentBridgeDispatcher
+from app.contexts.agent_execution.application.compatibility_output_service import (
+    CompatibilityOutputReader,
+)
 from app.contexts.agent_execution.domain import (
     OutputPublishState,
 )
 from app.contexts.agent_execution.domain.errors import (
     ExecutionIntegrationConflictError,
+    LateOutputReadRejectedError,
 )
 from app.contexts.agent_execution.infrastructure.bridge_repository import (
     ExecutionBridgeRepository,
@@ -31,6 +35,7 @@ from app.contexts.agent_execution.infrastructure.models import (
     ExecutionOutboxModel,
 )
 from app.contexts.agent_workspace.domain.errors import LateBodyWriteRejectedError
+from app.contexts.agent_workspace.infrastructure.models import ConversationModel
 from tests.contexts.agent_control_plane import s3d_helpers as h
 from tests.contexts.agent_control_plane.helpers import TENANT_ID, StaticOutputReader
 from tests.contexts.agent_control_plane.test_s3e_dispatch_output_late_write import (
@@ -333,3 +338,99 @@ async def test_late_write_terminalize_idempotent_when_already_terminal(
     second = await _read_outbox(session_factory, outbox.id)
     assert second.status == "cancelled"
     assert second.decision_digest == first_digest, "幂等 no-op 不改写已落终态"
+
+
+async def test_erased_compatibility_output_read_terminalizes_deterministically(
+    db_session, session_factory
+):
+    """P2 反例（round-2 复核补测）：redacted CompatibilityOutput 且 Conversation 处于
+    **放行** ``read_terminal_output`` 的 purge 状态（``blocked``，非 running/completed），
+    真实 ``dispatch_output`` 必须确定性 terminalize，**不退回 transient 重试**。
+
+    与既有真实 eraser 反例的差别：后者 workspace ``purge_state='running'`` 在
+    ``_lock_projection_conversation`` 处先抛 ``LateBodyWriteRejectedError``，**不经过**
+    output reader。本反例把 Conversation 置 ``blocked``（部分清除/阻塞态），
+    ``lock_projection_conversation`` 放行，``CompatibilityOutputReader.read_terminal_output``
+    读到 ``payload_state='redacted'``（``reply_text``/``response_envelope`` 已为 NULL）的
+    compatibility output -> ``_to_snapshot`` 抛 ``LateOutputReadRejectedError``。dispatcher
+    据此 deterministic terminalize（outbox cancelled + 固定 reason + 不重试）。
+
+    变异验证：把 ``compatibility_output_service._to_snapshot`` 的
+    ``LateOutputReadRejectedError`` 改回 ``RunConflictError``，dispatcher 走通用
+    ``except Exception`` 的 ``_record_output_failure`` backoff 重试 -> outbox 回
+    ``pending``、``decision_reason`` 为空 -> 本测试转红。
+    """
+    conversation_id, run, outbox = await _completed_run_with_pending_outbox(
+        db_session, session_factory, content=b"# redacted output"
+    )
+    payload_before = outbox.payload_inline
+    # commit_terminal 只写 terminal ref/digest，不建 compatibility output 行；reader
+    # 读的是 compatibility output，故先经真实 staged 写入（fenced port 路径）建
+    # ``payload_state='present'`` 行（content 与 Run terminal digest 一致）。
+    from app.composition.execution_fenced_port import FencedExecutionPort
+
+    staged = await FencedExecutionPort(db_session).fenced_stage(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        run_id=run.id,
+        queue_seq=run.queue_seq,
+        output_ref=run.terminal_output_ref,
+        reply="# redacted output",
+        response_envelope={"run_id": str(run.id), "outcome": "completed"},
+    )
+    assert staged[1] is True, "应真实新建 compatibility output 行"
+    await db_session.commit()
+
+    # compatibility output 正文被 R1 purge 清除（redacted tombstone：reply_text/
+    # response_envelope NULL，digests 保留）——满足 ck_agent_compat_output_payload。
+    compat = await db_session.scalar(
+        text(
+            "UPDATE metaedu.agent_compatibility_outputs "
+            "SET payload_state='redacted', reply_text=NULL, response_envelope=NULL "
+            "WHERE tenant_id=:t AND run_id=:r RETURNING id"
+        ),
+        {"t": TENANT_ID, "r": run.id},
+    )
+    assert compat is not None, "completed Run 应有 compatibility output 行"
+    # Conversation 置 ``blocked``（非 running/completed）-> ``_lock_projection_conversation``
+    # 放行，使迟到 publish 能到达 reader 的 terminal-read 阶段。
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversations SET purge_state='blocked' "
+            "WHERE tenant_id=:t AND id=:c"
+        ),
+        {"t": TENANT_ID, "c": conversation_id},
+    )
+    await db_session.commit()
+    blocked_conv = await db_session.get(ConversationModel, conversation_id)
+    assert blocked_conv is not None and blocked_conv.purge_state == "blocked"
+
+    # 真实 output reader（CompatibilityOutputReader，非 StaticOutputReader）：
+    # 读 redacted compatibility output -> LateOutputReadRejectedError。
+    dispatcher = AgentBridgeDispatcher(
+        session_factory,
+        worker_id="s3e-redacted-read",
+        output_reader=CompatibilityOutputReader(session_factory),
+    )
+    with pytest.raises(LateOutputReadRejectedError):
+        await dispatcher.dispatch_output(event_id=outbox.id)
+
+    final = await _read_outbox(session_factory, outbox.id)
+    assert final.status == "cancelled", "deterministic: 脱离可重试集"
+    assert final.decision_reason == "late_body_write_rejected"
+    assert final.decision_digest is not None
+    assert final.claimed_by is None and final.claimed_at is None
+    # S4 边界：不清 transport owner 正文（payload 原样保留）。
+    assert final.payload_inline == payload_before
+    final_run = await db_session.get(AgentRunModel, run.id)
+    assert final_run is not None
+    await db_session.refresh(final_run)
+    assert final_run.output_publish_state == OutputPublishState.SUPPRESSED.value
+
+    # 不重试：事件已离开 pending/claimed，再 dispatch 无事件可 claim。
+    again = AgentBridgeDispatcher(
+        session_factory,
+        worker_id="s3e-redacted-read-retry",
+        output_reader=CompatibilityOutputReader(session_factory),
+    )
+    assert await again.dispatch_output(event_id=outbox.id) is False
