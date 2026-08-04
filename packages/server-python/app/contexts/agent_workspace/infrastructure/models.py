@@ -474,6 +474,17 @@ class WorkspaceOutboxModel(Base):
         DateTime(timezone=True), nullable=True
     )
     last_error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # R1-S4-B（migration 040）：结构化 owner scope 与回填状态。全部 nullable，
+    # backfill 前保持 NULL；条件 FK/部分唯一索引/CHECK 由 migration 持有。
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    producer_purge_revision: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True
+    )
+    scope_reconcile_state: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )
 
 
 class WorkspaceInboxModel(Base):
@@ -517,6 +528,22 @@ class WorkspaceInboxModel(Base):
         DateTime(timezone=True), nullable=True
     )
     last_error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # R1-S4-B（migration 040）：owner scope + receipt tombstone。全部 nullable。
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    producer_purge_revision: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True
+    )
+    scope_reconcile_state: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )
+    receipt_tombstone_state: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )
+    receipt_tombstone_digest: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
 
 
 # ---------------------------------------------------------------------------
