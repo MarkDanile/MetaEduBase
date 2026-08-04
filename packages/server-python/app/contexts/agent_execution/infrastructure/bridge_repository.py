@@ -509,6 +509,99 @@ class ExecutionBridgeRepository:
         run.updated_at = decided_at
         await self._session.flush()
 
+    async def terminalize_output_late_write(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        event_id: uuid.UUID,
+        payload_digest: str,
+        expected_attempt: int,
+        claimant_id: str,
+        decided_at: datetime,
+    ) -> None:
+        """R1-S3-E round-1 P1/P2：purge 拦截的迟到 publish -> deterministic 终态。
+
+        与人工 ``suppress_output_projection`` 两点不同（round-1 复审）：
+
+        - **幂等接受 already-suppressed Run**（P1）：S3-D eraser 先把 completed Run
+          翻 ``suppressed`` 并保留 execution outbox 给 S4；此后迟到的 publish 仍会
+          经 dispatch 到达。本原语接受 Run 已 ``suppressed``（或飞行中
+          ``pending``/``dead_letter``），仍把 outbox 事件置终态，不因 Run 已
+          suppressed 抛冲突而放任 outbox 重试。Run 已 ``suppressed`` 时不再改
+          ``output_publish_state``（幂等）。
+        - **绑定当前 delivery claim**（P2）：与 ``record_output_delivery_failure``
+          同一组 CAS（payload_digest + status=claimed + attempt_count + claimed_by），
+          过期 worker 不得清掉后来 worker 的 claim 或覆盖同期人工裁决。
+
+        不清 transport owner 正文（``payload_inline``/``payload_ref`` 原样保留，
+        归 execution.transport.v1，S4）。
+        """
+        run, row = await self._lock_output_then_run(
+            tenant_id=tenant_id, event_id=event_id
+        )
+        if row.payload_digest != payload_digest:
+            raise ExecutionIntegrationConflictError("output late-write digest conflicts")
+        # round-2 P1：仅对**完整匹配的既有 late-write 终态**幂等 no-op；其余非
+        # claimed 状态（pending/dead_letter/published/其他 cancelled）一律 fail
+        # closed，不静默吞掉——否则 takeover 后回 pending 的事件会被 stale worker
+        # 误判为「已 terminalize」而放任继续重试。
+        if row.status != "claimed":
+            expected_digest = snapshot_digest(
+                {
+                    "actor_id": str(uuid.UUID(int=0)),
+                    "reason": suppression_reason_code("late_body_write_rejected"),
+                    "output_digest": run.terminal_output_digest,
+                }
+            )
+            already_terminal = (
+                row.status == "cancelled"
+                and row.decision_reason
+                == suppression_reason_code("late_body_write_rejected")
+                and row.decision_digest == expected_digest
+                and run.output_publish_state == OutputPublishState.SUPPRESSED.value
+            )
+            if already_terminal:
+                return
+            raise ExecutionIntegrationConflictError(
+                f"output late-write cannot terminalize from status {row.status!r}"
+            )
+        if row.attempt_count != expected_attempt or row.claimed_by != claimant_id:
+            raise ExecutionIntegrationConflictError(
+                "output late-write does not own the current delivery claim"
+            )
+        if RunStatus(run.status) is not RunStatus.COMPLETED:
+            raise ExecutionIntegrationConflictError(
+                "only completed output can be terminalized for late write"
+            )
+        if run.output_publish_state not in {
+            OutputPublishState.PENDING.value,
+            OutputPublishState.DEAD_LETTER.value,
+            OutputPublishState.SUPPRESSED.value,
+        }:
+            raise ExecutionIntegrationConflictError(
+                "resolved output projection cannot be terminalized for late write"
+            )
+        stored_reason = suppression_reason_code("late_body_write_rejected")
+        row.status = "cancelled"
+        row.claimed_at = None
+        row.claimed_by = None
+        row.last_error_code = "late_body_write_rejected"
+        row.decision_actor_id = uuid.UUID(int=0)  # 系统裁决，无操作员 actor
+        row.decision_reason = stored_reason
+        row.decision_digest = snapshot_digest(
+            {
+                "actor_id": str(uuid.UUID(int=0)),
+                "reason": stored_reason,
+                "output_digest": run.terminal_output_digest,
+            }
+        )
+        row.decided_at = decided_at
+        # Run 已 suppressed（S3-D 先行）时保持；否则投影终态 suppressed。
+        if run.output_publish_state != OutputPublishState.SUPPRESSED.value:
+            run.output_publish_state = OutputPublishState.SUPPRESSED.value
+        run.updated_at = decided_at
+        await self._session.flush()
+
     async def require_publish_outbox(
         self,
         *,

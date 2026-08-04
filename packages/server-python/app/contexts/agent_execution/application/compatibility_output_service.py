@@ -7,7 +7,10 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.contexts.agent_execution.domain import RunConflictError
+from app.contexts.agent_execution.domain import (
+    LateOutputReadRejectedError,
+    RunConflictError,
+)
 from app.contexts.agent_execution.infrastructure.compatibility_output_repository import (
     CompatibilityOutputRepository,
 )
@@ -154,8 +157,11 @@ class CompatibilityOutputService:
         # 该快照只用于已完成的 terminal output 读取/重放，对应
         # ``payload_state='present'``（正文非空）。redacted tombstone 是 R1 purge
         # 后的状态，不会出现在此路径；在此断言边界，不让 Optional 泄漏到快照。
+        # R1-S3-E round-2：redacted tombstone（R1 purge 已清正文）-> 抛
+        # ``LateOutputReadRejectedError``（deterministic，dispatcher 据此不重试），
+        # 而非笼统 RunConflictError（会被当 transient 盲重试）。
         if row.reply_text is None or row.response_envelope is None:
-            raise RunConflictError(
+            raise LateOutputReadRejectedError(
                 "compatibility output body is erased; snapshot unavailable"
             )
         return CompatibilityOutputSnapshot(

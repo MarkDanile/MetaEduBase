@@ -55,6 +55,18 @@ class RunConflictError(AgentExecutionError):
     """A Run idempotency, revision, FIFO, or ownership precondition failed."""
 
 
+class LateOutputReadRejectedError(RunConflictError):
+    """R1-S3-E round-2：purge 已清除 terminal/compatibility 正文，迟到的 output
+    publish 无法再读取正文——deterministic（重试永远无法成功），不可走 transient
+    backoff 重试。
+
+    与 workspace 侧 ``LateBodyWriteRejectedError``（fence 非 active 拒写）同语义：
+    二者都表示「Conversation 已在 purge，迟到 publish 永不成功」。dispatcher 对二者
+    统一 deterministic terminalize（outbox cancelled + late_body_write_rejected +
+    不重试）。
+    """
+
+
 class RunRevisionConflictError(RunConflictError):
     """A Run command used a stale status revision."""
 

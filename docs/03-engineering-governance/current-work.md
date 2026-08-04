@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无进行中任务。从下方「下一批候选任务」或 `docs/01-product-planning/04-backlog.md` 选取新任务并登记任务卡片后开工。
+### TASK-R1-S3E: R1-S3-E Dispatch、竞态与收口
+
+状态：🟡 进行中
+类型：新需求开发（Slice 收口）
+领域：Backend（agent_execution / agent_control_plane / composition）
+当前执行模式：superpower / plan-do
+最近接手工具：Claude Code
+分支：feat/req041-047-r1-s3e-dispatch-race-closeout
+
+需求来源：
+- Spec: docs/02-delivery-plans/01-specs（REQ-041/047 retention/purge/recovery）
+- Plan: docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s3execution-ownerrunevent-payload-与-compatibility-output（§S3-E 拆分 + §8 dispatch_output deterministic 分类 + §11 竞态复核）
+- 技术债：TD-032（源文件行数基线）
+- 架构约束：docs/03-engineering-governance/01-rules/architecture.md
+
+当前进展：round-2 复审（P0/P1/P2/P3=0/1/2/0）返修完成，随后 round-2 轻量复核（P0/P1/P2/P3=0/0/2/0）两项 P2 亦已返修关闭。核心状态机：P1 非-claimed 状态不再无条件幂等成功——仅完整匹配既有 late-write 终态（cancelled + late_body_write_rejected + digest 匹配 + Run suppressed）才 no-op，其余一律 fail closed（修 takeover 回 pending 后 stale worker 静默吞掉）；P1 反例改跑真实 ExecutionErasureParticipant（发现根因：purge-fenced output projection 走 InvalidConversationStateError transient 路径 + redacted CompatibilityOutput read 抛 RunConflictError，均在 fence 裁决前 -> 新增 InvalidConversationStateError→LateBodyWriteRejectedError 重分类 + 新 LateOutputReadRejectedError 统一 deterministic）；删除 plan/工作台错误的 S4 defer。round-2 复核补测：新增 redacted CompatibilityOutput read 真实反例（Conversation purge_state=blocked 放行到 reader，直接覆盖 LateOutputReadRejectedError 分支，变异改回 RunConflictError 转红）；TD-091 如实修正 clean-main 基线 f1002bea 复跑 0 failed。Plan §R1-S3 delta 与工作台事实源同步冻结。
+下一步：停在 PR #524 交接，交独立 max/Codex 轻量复核；复核通过后方可合并。不自行合并。
+验证状态：S3-E 全部测试（§8 2 + 无旁路 2 + race 6 + backfill 1 + round-1/2 5 = 16 例）全绿；P1/P2 变异逐项 KILLED（含 round-2 复核新增 redacted-read 反例：改回 `RunConflictError` 转红）；composition+control-plane 352 passed、execution+workspace 194 passed 邻近回归全绿。**三路 CI 全绿，对应 PR #524 当前 HEAD（见 Git 历史，不钉漂移 SHA/时长）**；本地全量套件历史曾观测非确定性隔离 flake（早前干净 main 记 27 failed，当时未落盘逐条日志；本轮在 clean-main 基线 `f1002bea` 独立 worktree 干净复跑为 2016 passed / 0 failed，无法复现），与本 Slice 无关，已登记 TD-091 独立标定。
+交接备注：S3-D（execution.core.v1 eraser）已合并（PR #522 `99142f15`）；本 Slice 不改 migration 034-039、不进 S4、不启用 purge scheduler；erase_available 已在 S3-D 翻 True，本 Slice 不重开。
 
 ## 下一批候选任务
 
