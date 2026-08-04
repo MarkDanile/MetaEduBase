@@ -217,23 +217,32 @@ class AgentExecutionBridgeService:
         self,
         *,
         tenant_id: uuid.UUID,
-        run_id: uuid.UUID,
+        event_id: uuid.UUID,
+        payload_digest: str,
+        expected_attempt: int,
+        claimant_id: str,
         decided_at: datetime,
     ) -> None:
         """R1-S3-E §8：purge 拦截的迟到 publish -> deterministic 终态（不重试）。
 
-        dispatcher 捕获 ``LateBodyWriteRejectedError`` 后调用：复用
-        ``suppress_output_projection`` 的 tombstone 落库（row.status=cancelled +
-        decision_reason=late_body_write_rejected + decision_digest），把 outbox 事件
-        从「可重试 claim」转为不可重试终态。不清 transport owner 正文
-        （``payload_inline``/``payload_ref`` 归 execution.transport.v1，S4）。
+        dispatcher 捕获 ``LateBodyWriteRejectedError`` 后调用。round-1 复审修订为
+        专用幂等原语 ``terminalize_output_late_write``（不复用人工
+        ``suppress_output_projection``）：
+
+        - **幂等接受 already-suppressed Run**（P1）：S3-D eraser 先把 Run 翻
+          ``suppressed`` 并保留 outbox 给 S4；本原语仍把 outbox 置 ``cancelled``、
+          写 ``decision_reason=late_body_write_rejected`` + digest、清 claim。
+        - **绑定当前 delivery claim**（P2）：``event_id``/``payload_digest``/
+          ``expected_attempt``/``claimant_id`` CAS，过期 worker 不覆盖新 claim。
+
+        不清 transport owner 正文（``payload_inline``/``payload_ref`` 归 S4）。
         """
-        await self._bridge_repo.suppress_output_projection(
+        await self._bridge_repo.terminalize_output_late_write(
             tenant_id=tenant_id,
-            run_id=run_id,
-            # 系统裁决，无操作员 actor；decision_digest 以全零 actor 派生。
-            actor_id=uuid.UUID(int=0),
-            reason="late_body_write_rejected",
+            event_id=event_id,
+            payload_digest=payload_digest,
+            expected_attempt=expected_attempt,
+            claimant_id=claimant_id,
             decided_at=decided_at,
         )
 

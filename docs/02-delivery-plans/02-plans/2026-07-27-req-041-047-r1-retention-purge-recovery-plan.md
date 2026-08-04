@@ -604,6 +604,16 @@ S3-E 按 §553 交付 S3 收口：deterministic late-write 分类、backfill 钉
 
 **验证**：S3-E 新增测试（§8 2 + 无旁路 2 + race 6 + backfill 1）+ S3-D/S3-C/S2-D/E 邻近回归 + control-plane/composition 全量 + 全量 `pytest -m 'not external_network'` 0 failed + ruff 0 + mypy baseline 0 回归 + docs gate + `git diff --check`；推送后等同一 HEAD 三路 CI 全绿。返修后提交独立 `max`/Codex 复审。
 
+#### S3-E round-1 复审修订（2026-08-04，独立 Codex round 1 返修落点）
+
+S3-E 首次实现（PR #524）后独立复审 P0/P1/P2/P3 = 0/1/2/0，**暂不可合并**。以下修订**优先于上面 S3-E 落点的对应旧陈述**，是返修实现的事实源。
+
+- **P1 专用幂等 late-write terminalize 原语（替代复用 `suppress_output_projection`）**：首实现复用人工 `suppress_output_projection`，它只接受 Run `output_publish_state ∈ {pending, dead_letter}`。但 **S3-D eraser 先把 completed Run 翻 `suppressed` 并保留 execution outbox 给 S4**；此后迟到的 `dispatch_output` 在 workspace fence 抛 `LateBodyWriteRejectedError`，而复用的原语遇 already-suppressed Run 抛 `ExecutionIntegrationConflictError`，outbox 卡 `claimed`、租约到期后继续重试——违反 deterministic 不重试契约。修订为--新增**专用幂等**原语 `terminalize_output_late_write`：接受 Run 已 `suppressed`（S3-D 先行）或 `pending/dead_letter`（publish 飞行中被 purge 拦截），仍把当前 outbox 事件置 `cancelled`、写 `decision_reason='late_body_write_rejected'` + `decision_digest`、清 claim、保持 `payload_inline`/`payload_ref` 不变（S4 边界）；Run 已 `suppressed` 时不再改 `output_publish_state`（幂等）。**反例**：构造 S3-D 终态（Run suppressed + outbox 保留 pending）后 dispatch -> `cancelled` + reason code + 不重回可重试集（变异：原语仍按 `suppress_output_projection` 拒 already-suppressed -> 转红）。**附带边界（归 S4）**：S3-D erase 在「publish 已失败且 Run 回 `pending`」的状态下会让 `output_publish_state='pending'` 违反 `ck_agent_run_terminal_output`（terminal output 已清，pending 不再合法）——这是 erase 与 outbox 投影的真实耦合，与 transport owner 的 outbox suppress/payload 清理一并在 S4 处理，本 Slice 不扩范围。
+- **P2 terminalize 必须绑定当前 delivery claim（claim CAS）**：首实现的 deterministic 落库只按 `tenant_id/run_id` 选行，未像 `acknowledge_output`/`record_output_failure` 校验 `event_id/payload_digest/attempt_count/claimant_id`；过期 worker 可清掉后来 worker 的 claim 或覆盖同期人工裁决。修订为--专用原语复用现有 claim CAS：校验 `row.payload_digest == payload_digest`、`row.status == 'claimed'`、`row.attempt_count == expected_attempt`、`row.claimed_by == claimant_id`，不满足 fail closed（`ExecutionIntegrationConflictError`），不盲写。**反例**：attempt N 被 attempt N+1 接管后，旧 worker（attempt N）的 terminalize 被拒、不覆盖新 claim（变异：去掉 attempt/claimant CAS -> 转红）。
+- **P2 PR HEAD 必须含最新工作台交接状态**：评审时本地 `current-work.md` 有未提交修改、PR HEAD 仍是旧「全量回归绿 -> 提交」状态。修订为--返修落地同批提交工作台与全部事实源，保持 PR HEAD 即最新交接状态、工作树干净。
+
+**S3-E round-1 返修验证**：P1/P2 反例（真实 S3-D eraser 先行 + stale-claim 接管）+ 各 mutation kill + S3-E/S3-D/S3-C 邻近回归 + 全量 `pytest -m 'not external_network'` 0 failed + ruff + mypy baseline + docs gate + `git diff --check`；推送后等同一 HEAD 三路 CI 全绿。不扩范围、不进 S4、不合并，返修后提交独立 `max`/Codex 轻量复核。
+
 ### R1-S4：Transport owner、external payload 与迟到写
 
 **复杂度/执行**：极高，Sol `xhigh`；GLM-5.2 `max` 独立故障审查。

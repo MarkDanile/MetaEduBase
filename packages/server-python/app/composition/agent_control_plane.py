@@ -693,11 +693,16 @@ class AgentBridgeDispatcher:
 
         与 ``_record_output_failure``（transient，排 next_attempt_at backoff 重试）
         相对：本路径**不重试**，直接把 outbox 事件转为不可重试终态并清零在途 claim。
+        round-1 P2：传完整 claim 身份（event_id/payload_digest/attempt_count/
+        claimant_id）做 CAS，过期 worker 不得覆盖后来 worker 的 claim 或人工裁决。
         """
         async with self._session_factory() as session, session.begin():
             await AgentExecutionBridgeService(session).mark_output_late_write_rejected(
                 tenant_id=claimed.event.tenant_id,
-                run_id=claimed.event.run_id,
+                event_id=claimed.event.event_id,
+                payload_digest=claimed.payload_digest,
+                expected_attempt=claimed.attempt_count,
+                claimant_id=claimed.claimant_id,
                 decided_at=datetime.now(UTC),
             )
 
