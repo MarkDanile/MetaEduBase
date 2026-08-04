@@ -678,6 +678,131 @@ registry 已冻结 owner 定义（`erase_available=False`，S4 翻 True）：`wo
 
 **S4-A round-1 复审修订（2026-08-04，独立复核 P0/P1/P2/P3=0/2/3/0）**：复核确认总体方向正确、属契约补全（不重做架构）。上述 D2/D3/D4/D5 已按复核意见就地修订（D2 补完整 epoch 传播链 + 六元组 CAS；D3 改三态分类替代不可实现的「阻止对应 Conversation purge」；D4 冻结 inbox tombstone 为独立 marker + digest envelope；D5 补 workspace outbox `payload_ref` 并冻结「先删 external object 取 receipt、再清 transport DB ref」顺序）。P2 工作台交接状态过期问题已同步修正（PR HEAD 与三路 CI 全绿如实回填）。修订后仅需一次轻量 diff 复核。
 
+#### R1-S4-B Schema + Backfill 契约冻结（2026-08-04，先于代码冻结，纯文档）
+
+按 S4-A D1-D8 冻结契约细化 schema 与 backfill。**本 delta 只写文档：不创建 migration 040、不改业务代码、不启用 scheduler；`erase_available` 在 S4-B 全程保持 `False`。** migration 034-039 已冻结，S4-B 新增 `040`（expand-only）。命名/类型沿现有约定（`agent_*` 表、`metaedu` schema、BigInteger revision、64-hex digest、`ck_/uq_/ix_/fk_` 前缀）。
+
+**B1. migration 040 精确 schema（全部 nullable / expand-only，不收紧既有约束）**
+
+*(a) 4 张既有 inbox/outbox 各增 3 列（全部 nullable，无默认值回填在 backfill 完成前保持 NULL）：*
+
+| 列 | 类型 | 约束 | 说明 |
+|----|------|------|------|
+| `conversation_id` | `UUID` NULL | 见 (b) 部分唯一索引 + 条件 FK | 结构化 owner scope（D1） |
+| `producer_purge_revision` | `BigInteger` NULL | `ck_*_producer_purge_revision`: `producer_purge_revision IS NULL OR producer_purge_revision >= 0` | 生产时 `Conversation.purge_revision` 快照（D2）；历史未知保持 NULL |
+| `scope_reconcile_state` | `String(20)` NULL | `ck_*_scope_reconcile_state`: `scope_reconcile_state IS NULL OR scope_reconcile_state IN ('pending','reconciled','orphan')` | D3 三态回填结果标记；NULL=未回填/新写已带 scope |
+
+涉及表：`agent_workspace_outbox`、`agent_workspace_inbox`、`agent_execution_outbox`、`agent_execution_inbox`。
+
+*(b) 部分唯一索引（防 backfill/新写并发产生重复 scope 行；新写未接线前仍可能 NULL，故为部分索引，见 B7）：*
+
+```text
+uq_agent_ws_outbox_scope    ON agent_workspace_outbox  (tenant_id, conversation_id, event_type, aggregate_id) WHERE conversation_id IS NOT NULL
+uq_agent_exec_outbox_scope  ON agent_execution_outbox  (tenant_id, conversation_id, event_type, aggregate_id) WHERE conversation_id IS NOT NULL
+uq_agent_ws_inbox_scope     ON agent_workspace_inbox   (tenant_id, conversation_id, consumer_name, event_id)  WHERE conversation_id IS NOT NULL
+uq_agent_exec_inbox_scope   ON agent_execution_inbox   (tenant_id, conversation_id, consumer_name, event_id)  WHERE conversation_id IS NOT NULL
+```
+
+*(c) 条件外键（仅在已知候选 Conversation 时约束；orphan/未知保持 NULL 不约束）：*
+
+```text
+fk_agent_ws_outbox_scope_conv   agent_workspace_outbox  (tenant_id, conversation_id) -> agent_conversations(tenant_id, id) ON DELETE RESTRICT  -- 仅当 conversation_id IS NOT NULL（PostgreSQL 复合 FK 对含 NULL 行自动放行）
+fk_agent_exec_outbox_scope_conv agent_execution_outbox  (tenant_id, conversation_id) -> agent_conversations(tenant_id, id) ON DELETE RESTRICT
+fk_agent_ws_inbox_scope_conv    agent_workspace_inbox   (tenant_id, conversation_id) -> agent_conversations(tenant_id, id) ON DELETE RESTRICT
+fk_agent_exec_inbox_scope_conv  agent_execution_inbox   (tenant_id, conversation_id) -> agent_conversations(tenant_id, id) ON DELETE RESTRICT
+```
+
+`ON DELETE RESTRICT`：Conversation 物理删除前必须先处理 transport scope 引用（配合 D3 orphan 路径）。PostgreSQL 复合 FK 对任一列 NULL 的行不做约束检查，故 orphan/未知行（`conversation_id IS NULL`）天然放行。
+
+*(d) `agent_transport_scope_reconcile`（D3 三态 reconcile ledger，新表）：*
+
+| 列 | 类型 | 约束 |
+|----|------|------|
+| `id` | `UUID` PK default uuid4 | — |
+| `tenant_id` | `UUID` NOT NULL | `fk_..._tenant` -> `tenants(id)` |
+| `owner_key` | `String(40)` NOT NULL | 属 `workspace.transport.v1`/`execution.transport.v1`/`external.payload.v1` |
+| `source_table` | `String(40)` NOT NULL | `ck_..._source_table`: `IN ('agent_workspace_outbox','agent_workspace_inbox','agent_execution_outbox','agent_execution_inbox','agent_run_events')` |
+| `source_row_id` | `UUID` NOT NULL | 源表主键 |
+| `conversation_id` | `UUID` NULL | 已知候选时填；未知/已删除保持 NULL |
+| `reconcile_class` | `String(20)` NOT NULL | `ck_..._class`: `IN ('conversation_scope','tenant_scope','orphan')`（D3 三态） |
+| `reason_code` | `String(64)` NOT NULL | 受控枚举（B4） |
+| `state` | `String(20)` NOT NULL default `'open'` | `ck_..._state`: `IN ('open','acknowledged','resolved')` |
+| `created_at` / `resolved_at` | `DateTime(tz)` NOT NULL / NULL | — |
+
+唯一键：`uq_agent_transport_reconcile_source (tenant_id, owner_key, source_table, source_row_id)`（同一源行同一 owner 只一条 reconcile 记录，幂等重放命中既有行）。索引：`ix_agent_transport_reconcile_tenant_state (tenant_id, state)`（tenant scheduler gate 查询）、`ix_agent_transport_reconcile_conv (tenant_id, conversation_id) WHERE conversation_id IS NOT NULL`（conversation purge gate 查询）。
+
+*(e) `agent_external_object_refs`（D5 external ref ledger，新表）：*
+
+| 列 | 类型 | 约束 |
+|----|------|------|
+| `id` | `UUID` PK default uuid4 | — |
+| `tenant_id` | `UUID` NOT NULL | `fk_..._tenant` -> `tenants(id)` |
+| `conversation_id` | `UUID` NULL | 溯源；可 NULL（源行 scope 未知时） |
+| `owner_key` | `String(40)` NOT NULL default `'external.payload.v1'` | — |
+| `ref_scheme` | `String(40)` NOT NULL | `db_local` / 其他 scheme；`ck_..._ref_scheme`: `char_length>0` |
+| `ref_value` | `String(500)` NOT NULL | external object 引用值 |
+| `source_table` | `String(40)` NOT NULL | `ck_..._source_table`: `IN ('agent_run_events','agent_workspace_outbox','agent_execution_outbox')`（D5 全覆盖） |
+| `source_row_id` | `UUID` NOT NULL | 源行主键 |
+| `erase_state` | `String(20)` NOT NULL default `'pending'` | `ck_..._erase_state`: `IN ('pending','registered','erased','blocked','unknown')`（B5） |
+| `receipt_digest` | `String(64)` NULL | `ck_..._receipt_digest`: `receipt_digest IS NULL OR char_length=64`；erase 取得 receipt 后填（先删对象取 receipt、再清 DB ref 的证据） |
+| `blocked_reason` | `String(64)` NULL | unknown scheme/timeout/digest mismatch 等 |
+| `created_at` / `updated_at` | `DateTime(tz)` NOT NULL | — |
+
+唯一键：`uq_agent_external_ref_source (tenant_id, source_table, source_row_id, ref_value)`（同一源行的同一 ref 只登记一次，幂等）。索引：`ix_agent_external_refs_conv (tenant_id, conversation_id)`、`ix_agent_external_refs_state (tenant_id, erase_state)`。
+
+*(f) inbox tombstone marker/digest（D4，2 张 inbox 各增 2 列）：*
+
+| 列 | 类型 | 约束 |
+|----|------|------|
+| `receipt_tombstone_state` | `String(16)` NULL | `ck_*_receipt_tombstone_state`: `receipt_tombstone_state IS NULL OR receipt_tombstone_state IN ('redacted')` |
+| `receipt_tombstone_digest` | `String(64)` NULL | `ck_*_receipt_tombstone`: `(receipt_tombstone_state IS NULL AND receipt_tombstone_digest IS NULL) OR (receipt_tombstone_state = 'redacted' AND char_length(receipt_tombstone_digest) = 64)`（marker 与 digest 同生同灭；digest 非空 64-hex） |
+
+不改既有 `ck_agent_*_inbox_status`（`processing/consumed/rejected`）枚举。
+
+**B2. 回填来源矩阵（conversation_id 溯源）**
+
+| 目标表 | 源关联 | 映射规则 | 歧义/缺失 |
+|--------|--------|----------|-----------|
+| `agent_workspace_outbox` | `aggregate_id = agent_messages.id`（event_type='turn.requested.v1'，`aggregate_type='workspace.message'`） | `conversation_id = message.conversation_id`（Message 该列 NOT NULL，1:1） | message 缺失/跨 tenant -> `tenant_scope`/`orphan` reconcile |
+| `agent_execution_outbox` | `aggregate_id = agent_runs.id`（event_type='assistant_message.publish_requested.v1'，`aggregate_type='execution.run'`） | `conversation_id = run.conversation_id`（Run 该列 NOT NULL，1:1） | run 缺失/跨 tenant -> reconcile |
+| `agent_workspace_inbox` | `event_id = agent_execution_outbox.id`（assistant_publish 消费的源事件） | `conversation_id = 源 execution_outbox.conversation_id`（先回填 outbox 再回填 inbox，保证可 join） | 源 outbox 缺失/scope 未知 -> reconcile |
+| `agent_execution_inbox` | `event_id = agent_workspace_outbox.id`（turn_requested 消费的源事件） | `conversation_id = 源 workspace_outbox.conversation_id` | 同上 |
+
+回填顺序：先两张 outbox（直接经 Message/Run），再两张 inbox（经已回填的源 outbox）。所有 UPDATE 带 `tenant_id` 谓词 + 源行 tenant 一致性校验（跨 tenant 不映射，记 reconcile）。
+
+**B3. 历史 `producer_purge_revision` 不可推断 -> 保持未知（NULL）**：backfill **只**回填 `conversation_id`；`producer_purge_revision` 对历史行**保持 NULL（未知）并进入 reconcile**，**禁止**拿当前 `Conversation.purge_revision` 伪造历史 epoch（生产时快照无法事后重建）。仅新写（S4-C 起）在产生同事务快照真实 `purge_revision`。含历史行的 Conversation 在 purge 时须由 reconcile/S4-C 消费端按「未知 epoch -> tombstone/reconcile」处理（不变量 2/3），不得当作当前 epoch。
+
+**B4. 三态 reconcile ledger 语义（`agent_transport_scope_reconcile`）**
+
+- `reconcile_class` / 触发 / gate：
+  - `conversation_scope`：已知候选 Conversation、但 scope 回填有冲突（如同 conversation 多源不一致）-> **阻塞该 Conversation purge**（purge 前置查 `conversation_scope AND state='open'` 命中即 blocked）。
+  - `tenant_scope`：scope 真正未知（源 Message/Run/outbox 缺失或歧义，无法确定 Conversation）-> **阻断该 tenant scheduler/canary enable**（S5 scheduler 启动前查 `tenant_scope AND state='open'` 命中即 fail closed）。
+  - `orphan`：Conversation 已物理删除（源行 conversation_id 在 `agent_conversations` 无对应）-> 具名 orphan reconcile，**不猜 UUID、不并入现存 Conversation**；不阻塞 purge（对象已删），但需运维确认 `acknowledged/resolved`。
+- `reason_code` 受控枚举（封闭集，新增需新版本）：`source_message_missing`、`source_run_missing`、`source_outbox_missing`、`cross_tenant_mismatch`、`ambiguous_mapping`、`conversation_deleted_orphan`、`epoch_unresolvable`。
+- 状态机：`open -> acknowledged -> resolved`（单向，不回退；`resolved` 需 digest/证据）。幂等：同一 `(tenant_id, owner_key, source_table, source_row_id)` 重放命中既有行不新建（唯一键 + ON CONFLICT DO NOTHING）。
+
+**B5. external ref ledger 语义（`agent_external_object_refs`）**
+
+- 来源唯一性：`uq_agent_external_ref_source (tenant_id, source_table, source_row_id, ref_value)`——每个 ref-bearing source 行（`agent_run_events.payload_ref`、`agent_workspace_outbox.payload_ref`、`agent_execution_outbox.payload_ref`）的每个非空 ref 恰好一条 ledger 记录。
+- `erase_state` 状态机：`pending -> registered -> erased | blocked | unknown`。`registered`：已登记待删；`erased`：external object 已删并取得 `receipt_digest`（**先于**清 transport DB ref）；`blocked`：unknown scheme/timeout/digest mismatch（记 `blocked_reason`，不得 ACK，不变量 5）；`unknown`：erase outcome 未知（不得 ACK）。仅 `erased` 允许后续清对应 transport `payload_ref`。
+- 仅 `db_local` scheme 在 S4-E 可实装删除；其余 scheme 一律 `blocked`/`unknown`。
+
+**B6. inbox tombstone（D4）**：purge 清 receipt 时置 `receipt_tombstone_state='redacted'` + `receipt_tombstone_digest=<64-hex digest of receipt envelope>`（marker 与 digest 同写同事务）；`status` 保持既有 `consumed`/`rejected` 等不变，不新增枚举。digest 复用 shared `canonical_digest`，禁空串/`{}`/伪值。
+
+**B7. backfill 执行契约（可恢复 / 分批 / tenant 限流 / 幂等 / 并发安全 / 最终 verify）**
+
+- **分批 + keyset 游标**：按 `(tenant_id, id)` keyset 分页，`batch_size>=1`，报告带 `next_after_id` + `completed`；失败样本封顶，游标越过失败行不重试（沿用 S1 backfill 契约）。
+- **tenant 限流**：逐 tenant 处理 + 每批间隔；不锁整表。
+- **幂等恢复**：所有回填 UPDATE 仅命中 `conversation_id IS NULL`（或 scope 未决）的行，重复执行/中断重跑不产生重复或覆盖已填值；reconcile 写入 ON CONFLICT DO NOTHING。
+- **并发新写处理**：S4-C 完成前旧 writer 仍可能产生 `conversation_id`/`producer_purge_revision` 为 NULL 的新行 -> backfill 与部分唯一索引均以 `IS NOT NULL` 为作用域，NULL 行不参与唯一约束、不阻塞新写；**不得在本 Slice 收紧 NOT NULL 或开启 purge**（scheduler 在 S5，且需 reconcile ledger 清零前置）。
+- **最终 verify**：backfill 后校验（每表）——`conversation_id IS NULL` 的行要么是新写（`created_at` 晚于 backfill 起点），要么已登记 reconcile；存在既未填 scope 又未登记 reconcile 的历史行则 verify 失败（fail closed）。
+
+**B8. 验收矩阵（S4-B 实现时逐项验证）**：migration 040 upgrade/downgrade 往返（含既有数据 + downgrade 还原）；跨 tenant（A tenant 行不得映射到 B tenant Conversation）；歧义映射（多源不一致 -> conversation_scope reconcile）；Conversation 已删除（-> orphan reconcile，不猜 UUID）；重复执行（幂等，不产生重复 reconcile/ledger 行）；中断恢复（keyset 游标续跑）；未知 epoch（历史行 `producer_purge_revision` 保持 NULL + 登记，不伪造）；全 ref-bearing source（`agent_run_events` + 两张 outbox 的非空 `payload_ref` 均登记 ledger，无遗漏）；backfill 期间并发新写 NULL 行不被唯一索引阻塞、不被误回填。
+
+**S4-B 边界（明确不做）**：不创建 migration 040、不改业务代码（本 delta 纯文档）；不改 writer/claim（S4-C）；不实现 transport/external/runtime participant（S4-D/E）；不做 fault 矩阵（S4-F）；不启用 scheduler（S5）；`erase_available` 保持 `False`；不收紧既有列为 NOT NULL。
+
+**S4-B 验证（本 delta 阶段）**：纯文档；docs gate + `git diff --check` 通过；三路 CI 全绿。返修后提交独立 `max`/Codex 复审；P0/P1 清零后再实现 migration 040 + backfill。
+
 ### R1-S5：Legal hold、Scheduler 与运维闭环
 
 **复杂度/执行**：极高，Sol `xhigh`；人工数据/安全签字。
