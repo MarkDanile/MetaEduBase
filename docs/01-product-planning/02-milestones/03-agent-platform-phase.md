@@ -113,7 +113,7 @@ Agent Apps
 ## Current Iteration
 
 - [2026-W30 P3 企业 Agent 平台控制面塑形](../03-iterations/2026-W30-p3-enterprise-agent-platform.md)
-- REQ-059 Architecture Gate 与 REQ-060 已完成；REQ-041/047 的 W1/E0/E1/B1/A1/D1 已合并。近期固定顺序为 R1-S0 契约确认 -> R1-S1..S6 -> C1 Durable Core 总验收 -> REQ-042 Workspace -> TD-085 -> REQ-043 Runtime/Tool Gateway；REQ-042 只允许并行文档塑形，不直接跳到 Pi Worker。
+- REQ-059 Architecture Gate 与 REQ-060 已完成；REQ-041/047 的 W1/E0/E1/B1/A1/D1 已合并；R1-S1..S3（Fence/Hold/Purge schema 基座、Workspace owner、Execution owner 含 dispatch/竞态收口）已全部合并。近期固定顺序为 R1-S4 -> R1-S5 -> R1-S6 -> C1 Durable Core 总验收 -> REQ-042 Workspace -> TD-085 -> REQ-043 Runtime/Tool Gateway；当前正在 R1-S4（S4-A 契约冻结），REQ-042 只允许并行文档塑形，不直接跳到 Pi Worker。
 
 ### 阶段目标：2026-08 Durable Core Close
 
@@ -155,8 +155,8 @@ Agent Apps
 
 | ID | 状态 | 说明 | 事实源 |
 |----|------|------|--------|
-| REQ-041 | 🟡 Doing（R1 Planning） | W1/E0/E1/B1/A1/D1 已合并；下一步 R1-S1..S6 与 C1，新 Workspace submit-turn 保持关闭 | [Requirement](../05-requirements/REQ-041-ai-workspace-conversation-persistence.md) / [R1 Spec](../../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md) / [R1 Plan](../../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
-| REQ-047 | 🟣 Shaping（Durable Core D1 Done / R1 Planning） | D1 已由 PR #489 合并；下一步 R1/C1，extended contracts 继续独立塑形 | [Requirement](../05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [R1 Spec](../../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md) |
+| REQ-041 | 🟡 Doing（R1-S1..S3 完成，当前 R1-S4） | W1/E0/E1/B1/A1/D1 已合并；R1-S1..S3 已合并，当前 R1-S4（S4-A 契约冻结），后续 S5/S6 与 C1，新 Workspace submit-turn 保持关闭 | [Requirement](../05-requirements/REQ-041-ai-workspace-conversation-persistence.md) / [R1 Spec](../../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md) / [R1 Plan](../../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
+| REQ-047 | 🟣 Shaping（Durable Core D1 Done / R1-S1..S3 完成，当前 R1-S4） | D1 已由 PR #489 合并；R1-S1..S3 已合并，当前 R1-S4，后续 S5/S6 与 C1，extended contracts 继续独立塑形 | [Requirement](../05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [R1 Spec](../../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md) |
 | REQ-060 | 🟢 Done（Slice 1-4 全部合并 PR #497/#499/#501/#503；326/326 vitest + 55/55 Playwright；三路 CI 全绿；评分 95） | 控制台信息架构和权限化导航，可与 Durable State 并行 | [Requirement](../05-requirements/REQ-060-enterprise-console-information-architecture.md) |
 | REQ-042 | ⚫ Candidate | Codex 式 Agent Workspace | [Requirement](../05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | TD-085 | ⚫ 待办 | 收口 AI Chat、Skill 与 Agent App 上下文边界倒置 | [Technical Debt](../../03-engineering-governance/technical-debt.md#td-085-收口-ai-chatskill-与-agent-app-的上下文边界倒置) |
