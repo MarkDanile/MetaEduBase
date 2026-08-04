@@ -7,6 +7,8 @@ TRUNCATE TABLE
     metaedu.agent_conversation_purges,
     metaedu.agent_erasure_fences,
     metaedu.agent_compatibility_outputs,
+    metaedu.agent_transport_scope_reconcile,
+    metaedu.agent_external_object_refs,
     metaedu.agent_run_events,
     metaedu.agent_turn_inputs,
     metaedu.agent_execution_inbox,

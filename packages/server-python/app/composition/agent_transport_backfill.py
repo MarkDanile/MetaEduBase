@@ -29,7 +29,10 @@ conversation_id，阻塞该 Conversation purge）；scope 未知（源缺失/歧
 
 **external ref（B5）**：所有 ref-bearing source（RunEvent + 两张 outbox 的非空
 ``payload_ref``）登记 ledger；无可证明 DB-local 格式 -> ``ref_scheme='unknown'``
-且 ``erase_state='blocked'``（``blocked_reason='unknown_scheme'``）。
+且 ``erase_state='blocked'``（``blocked_reason='unknown_scheme'``）。run_events
+恒有 scope（``conversation_id`` NOT NULL、无 scope 列），故不参与 scope 回填 /
+reconcile / epoch verify，只对非空 ``payload_ref`` 行做 external ref 登记（独立
+批次，``SELECT ... FOR UPDATE SKIP LOCKED`` 原子 claim，多并发不重复处理）。
 
 **并发新写（B7）**：S4-C 前旧 writer 仍可能产生 scope NULL 新行 -> backfill 与
 部分唯一索引均以 ``IS NOT NULL`` 为作用域，NULL 行不阻塞新写、不被误回填。
@@ -115,18 +118,17 @@ async def _select_null_scope_batch(
     after_id: uuid.UUID | None,
     batch_size: int,
 ) -> list[tuple[uuid.UUID, uuid.UUID, str | None]]:
-    """取一批 ``conversation_id IS NULL`` 的源行 (id, aggregate_or_event_id, ref)。
+    """取一批 ``conversation_id IS NULL`` 的 4 张 transport 源行 (id, join_key, ref)。
 
     返回 (source_row_id, join_key, payload_ref)。join_key 对 outbox 是
-    aggregate_id、对 inbox 是 event_id、对 run_events 是 run_id。payload_ref 仅
-    outbox/run_events 用于 external ledger 登记。
+    aggregate_id、对 inbox 是 event_id。payload_ref 仅 outbox 用于 external
+    ledger 登记。run_events 不经此函数（它无 scope 列，恒有 conversation_id，
+    只做 external ref 登记，见 ``_select_ref_event_batch``）。
     """
     if table in ("agent_workspace_outbox", "agent_execution_outbox"):
         join_col, ref_col = "aggregate_id", "payload_ref"
-    elif table in ("agent_workspace_inbox", "agent_execution_inbox"):
+    else:  # agent_workspace_inbox / agent_execution_inbox
         join_col, ref_col = "event_id", "NULL"
-    else:  # agent_run_events
-        join_col, ref_col = "run_id", "payload_ref"
     sql = (
         f"SELECT id, {join_col} AS join_key, {ref_col} AS payload_ref "
         f"FROM metaedu.{table} "
@@ -140,6 +142,34 @@ async def _select_null_scope_batch(
         params["after"] = after_id
     result = await session.execute(text(sql), params)
     return [(row[0], row[1], row[2]) for row in result.all()]
+
+
+async def _select_ref_event_batch(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    after_id: uuid.UUID | None,
+    batch_size: int,
+) -> list[tuple[uuid.UUID, uuid.UUID, uuid.UUID, str]]:
+    """取一批带非空 ``payload_ref`` 的 RunEvent (id, conversation_id, run_id, ref)。
+
+    用 ``FOR UPDATE ... SKIP LOCKED`` 对 ``uq_agent_run_event_tenant_id
+    (tenant_id, id)`` 命中的行做原子 claim，多并发 backfill 不重复处理同一行；
+    行锁随事务提交释放，不长期持有。run_events 恒有 scope（conversation_id NOT
+    NULL），故只登记 external ref、不参与 reconcile/scope 回填。
+    """
+    sql = (
+        "SELECT id, conversation_id, run_id, payload_ref FROM metaedu.agent_run_events "
+        "WHERE tenant_id = :t AND payload_ref IS NOT NULL"
+    )
+    if after_id is not None:
+        sql += " AND id > :after"
+    sql += " ORDER BY id LIMIT :lim FOR UPDATE SKIP LOCKED"
+    params = {"t": tenant_id, "lim": batch_size}
+    if after_id is not None:
+        params["after"] = after_id
+    result = await session.execute(text(sql), params)
+    return [(row[0], row[1], row[2], row[3]) for row in result.all()]
 
 
 # ---------------------------------------------------------------------------
@@ -168,10 +198,8 @@ async def _resolve_source_conversation(
         src = "agent_runs"
     elif table == "agent_workspace_inbox":
         src = "agent_execution_outbox"
-    elif table == "agent_execution_inbox":
+    else:  # agent_execution_inbox
         src = "agent_workspace_outbox"
-    else:  # agent_run_events：conversation_id 由 Run 提供（join_key=run_id）
-        src = "agent_runs"
     row = (
         await session.execute(
             text(
@@ -404,7 +432,7 @@ async def _backfill_source_row(
         issue_code="epoch_unresolvable",
     ):
         report.reconcile_issues_registered += 1
-    # external ref（B5）：仅 outbox/run_events 的非空 payload_ref。
+    # external ref（B5）：仅 outbox 的非空 payload_ref（run_events 走独立路径）。
     if payload_ref is not None and await _register_external_ref(
         session,
         tenant_id=tenant_id,
@@ -420,14 +448,50 @@ async def _backfill_source_row(
     )
 
 
+async def _register_run_event_ref(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    source_row_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    ref_value: str,
+    report: ScopeBackfillReport,
+) -> None:
+    """登记单条 RunEvent 的 external ref（调用方在独立短事务内调用）。
+
+    run_events 恒有 scope（conversation_id NOT NULL），不做 scope 回填/epoch
+    登记/投影；唯一职责是把非空 ``payload_ref`` 登记进 external ledger
+    （unknown+blocked）。同事务取集合 advisory lock 与 4 张 transport 表保持
+    一致的串行化边界；行已由 SELECT FOR UPDATE SKIP LOCKED claim。
+    """
+    await acquire_transport_aggregate_lock(
+        session,
+        tenant_id=tenant_id,
+        owner_key=_EXTERNAL_OWNER,
+        source_table="agent_run_events",
+        source_row_id=source_row_id,
+    )
+    if await _register_external_ref(
+        session,
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        table="agent_run_events",
+        source_row_id=source_row_id,
+        ref_value=ref_value,
+    ):
+        report.external_refs_registered += 1
+
+
 async def _verify_scope_epoch(
     session_factory, *, tenant_id: uuid.UUID
 ) -> tuple[bool, str]:
     """scope/epoch 双维最终 verify（fail closed，互不豁免）。
 
-    scope 维：每表凡 ``conversation_id IS NULL`` 的行必须有对应 scope 类 issue；
-    epoch 维：凡 ``producer_purge_revision IS NULL`` 的行必须有 ``epoch_unresolvable``
-    issue（仅对 4 张 transport 表；run_events 无 producer_purge_revision 列）。
+    scope 维：4 张 transport 表凡 ``conversation_id IS NULL`` 的行必须有对应
+    scope 类 issue；epoch 维：凡 ``producer_purge_revision IS NULL`` 的行必须有
+    ``epoch_unresolvable`` issue。run_events 不参与——它恒有 scope
+    （conversation_id NOT NULL，无 NULL-scope 行），且无
+    ``producer_purge_revision`` 列。
     """
     problems: list[str] = []
     scope_tables = [
@@ -437,7 +501,7 @@ async def _verify_scope_epoch(
         "agent_execution_inbox",
     ]
     async with session_factory() as session, session.begin():
-        for table in scope_tables + ["agent_run_events"]:
+        for table in scope_tables:
             # scope 维：未填 scope 且无 scope 类 issue 的行数。
             scope_missing = (
                 await session.execute(
@@ -501,13 +565,13 @@ async def backfill_transport_scope(
         raise ValueError(f"max_rows must be None or >= 1, got {max_rows}")
 
     report = ScopeBackfillReport(tenant_id=tenant_id)
-    # 先 outbox（经 Message/Run），再 inbox（经已回填源 outbox），最后 run_events。
+    # 先 outbox（经 Message/Run），再 inbox（经已回填源 outbox）。run_events 无
+    # scope 列（恒有 conversation_id），不走 NULL-scope 扫描，单独做 ref 登记。
     tables = [
         "agent_workspace_outbox",
         "agent_execution_outbox",
         "agent_workspace_inbox",
         "agent_execution_inbox",
-        "agent_run_events",
     ]
     processed = 0
     exhausted = True
@@ -559,6 +623,51 @@ async def backfill_transport_scope(
             if len(batch) < batch_size:
                 break
         if max_rows is not None and processed >= max_rows:
+            break
+    # run_events external ref 登记（独立批次：SELECT FOR UPDATE SKIP LOCKED claim
+    # 带非空 payload_ref 的行，登记 external ledger unknown+blocked）。幂等：
+    # ledger 唯一键 ON CONFLICT 兜底，重跑不重复。
+    cursor = after_id
+    while not (max_rows is not None and processed >= max_rows):
+        async with session_factory() as session, session.begin():
+            batch = await _select_ref_event_batch(
+                session,
+                tenant_id=tenant_id,
+                after_id=cursor,
+                batch_size=batch_size,
+            )
+        if not batch:
+            break
+        for source_row_id, conversation_id, _run_id, ref_value in batch:
+            if max_rows is not None and processed >= max_rows:
+                exhausted = False
+                break
+            try:
+                async with session_factory() as session, session.begin():
+                    await _register_run_event_ref(
+                        session,
+                        tenant_id=tenant_id,
+                        source_row_id=source_row_id,
+                        conversation_id=conversation_id,
+                        ref_value=ref_value,
+                        report=report,
+                    )
+                report.rows_scanned += 1
+            except Exception as exc:  # noqa: BLE001 - fail closed 计入 failures
+                report.failure_count += 1
+                if len(report.failures) < _MAX_FAILURE_SAMPLES:
+                    report.failures.append(
+                        ScopeBackfillFailure(
+                            source_table="agent_run_events",
+                            source_row_id=source_row_id,
+                            reason_code="external_ref_register_failed",
+                            error_type=type(exc).__name__,
+                        )
+                    )
+            processed += 1
+            cursor = source_row_id
+            report.next_after_id = cursor
+        if len(batch) < batch_size:
             break
     report.completed = exhausted
     # 最终 verify（scope/epoch 双维 fail closed）。
