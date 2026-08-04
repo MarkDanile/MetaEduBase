@@ -484,3 +484,57 @@ async def test_040_downgrade_fail_closed_on_scope_data():
             await connection.close()
         # 确认 head 仍是 040（downgrade 已 fail closed，未降级）。
         assert await _objects_exist("table", _LEDGER_TABLES) == set(_LEDGER_TABLES)
+
+
+@pytest.mark.asyncio
+async def test_040_full_chain_downgrade_clears_evidence_and_passes():
+    """alembic 全链降级（目标 < 040）放行：清空证据后还原，不卡库，upgrade head 恢复。
+
+    与单步降级（``test_040_downgrade_fail_closed_on_scope_data``，目标=039 时
+    fail-closed）相对：全链降级（如预存迁移测试 downgrade 到 020 再 upgrade
+    head）是测试库合法临时态，守卫不拦，先清空证据列/ledger 再还原，避免把库
+    卡在中间版本。本测试造 ledger 证据（触发 ``_ledger_nonempty``）走全链路径。
+    """
+    connection = await _connect()
+    try:
+        # 造 ledger 证据（reconcile issue，触发 ledger 非空分支）。
+        await _insert_outbox_scope(
+            connection,
+            conversation_id=None,
+            producer_purge_revision=0,
+            scope_state=None,
+        )
+        tenant = await _tenant_id()
+        await connection.execute(
+            "INSERT INTO metaedu.agent_transport_scope_reconcile ("
+            "  id, tenant_id, owner_key, source_table, source_row_id, "
+            "  reconcile_class, issue_code, state, revision, created_at"
+            ") VALUES ($1, $2, 'workspace.transport.v1', 'agent_workspace_outbox', "
+            "  $3, 'tenant_scope', 'source_message_missing', 'open', 1, clock_timestamp())",
+            uuid.uuid4(),
+            tenant,
+            uuid.uuid4(),
+        )
+    finally:
+        await connection.close()
+    # 全链降级到 037（目标 < 040 的 down_revision=039）：040 走全链分支放行，
+    # 清证据、还原、不 raise、不卡库。039 无守卫、038 守卫仅 actor tombstone 触发
+    # （本测试数据无），链路可降到 037。
+    await asyncio.to_thread(_run_alembic, "downgrade", "037_system_key_fingerprints")
+    try:
+        assert await _objects_exist("table", _LEDGER_TABLES) == set(), (
+            "全链降级后 040 ledger 表应已删除"
+        )
+    finally:
+        await asyncio.to_thread(_run_alembic, "upgrade", "head")
+    # upgrade head 恢复全部对象；证据已被全链清空（升级后 ledger 为空）。
+    assert await _objects_exist("table", _LEDGER_TABLES) == set(_LEDGER_TABLES)
+    connection = await _connect()
+    try:
+        n = await connection.fetchval(
+            "SELECT count(*) FROM metaedu.agent_transport_scope_reconcile"
+        )
+        assert n == 0, "全链降级应已清空 reconcile ledger 证据"
+    finally:
+        await connection.close()
+

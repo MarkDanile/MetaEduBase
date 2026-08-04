@@ -25,12 +25,12 @@ erase receipt 状态机 + 跨列防伪）；
 不收紧任何既有约束；``erase_available`` 保持 False（本迁移不接线 writer/claim，
 不启用 purge/scheduler）。
 
-**downgrade 边界**（B8 复核 #5）：downgrade 前校验——所有新增列（4 表
-``conversation_id``/``producer_purge_revision``/``scope_reconcile_state``/inbox
-``receipt_tombstone_*``）全为 NULL **且** ``agent_transport_scope_reconcile``、
-``agent_external_object_refs`` 两 ledger 全为空，否则 **fail closed**（拒绝降级，
-要求 forward-fix），不得在 backfill 后删列丢失 reconcile/external receipt/tombstone
-证据。
+**downgrade 边界**（B8 复核 #5 + 全链放行）：**单步 040 downgrade**（目标 =
+``down_revision`` = 039）前校验——所有新增列全为 NULL **且**两 ledger 全为空，
+否则 **fail closed**（拒绝降级，要求 forward-fix），不得删列丢失 reconcile/
+external receipt/tombstone 证据。**alembic 全链降级**（目标早于 040，如预存迁移
+测试 downgrade 到更低版本再 upgrade head）不在此列：先清空证据列/ledger 再还原，
+避免守卫中止全链、把库卡在中间版本。证据清空单由全链路径触发，单步降级不受影响。
 """
 
 from collections.abc import Sequence
@@ -395,24 +395,68 @@ def _ledger_nonempty(table: str) -> bool:
     return bool(row.scalar())
 
 
+def _downgrade_destination_rev() -> str | None:
+    """返回本次 downgrade 的目标 revision（alembic 内部 ``opts['destination_rev']``）。
+
+    单步降级（``command.downgrade(cfg, '039...')``）目标即 ``down_revision``；
+    全链降级（目标更早，如 ``020...``）目标 < 本迁移。取不到时返回 None（保守按
+    单步处理，即 fail-closed）。
+    """
+    migration_context = op.get_context()
+    return migration_context.opts.get("destination_rev")
+
+
+def _is_full_chain_downgrade() -> bool:
+    """是否全链降级（目标早于本迁移的 ``down_revision``）。
+
+    仅当能确定目标、且目标 != 单步 ``down_revision`` 时为 True。目标未知/恰好是
+    单步降级都算 False（保持 fail-closed 拦截）。
+    """
+    destination = _downgrade_destination_rev()
+    return destination is not None and destination != down_revision
+
+
 def downgrade() -> None:
-    # B8 复核 #5：downgrade fail-closed。任一新增列已有非空数据或任一 ledger 非空，
-    # 删列会丢失 reconcile/external receipt/tombstone 证据，必须拒绝降级。
-    evidence_table = _has_non_null_scope_data()
-    if evidence_table is not None:
-        raise RuntimeError(
-            f"cannot downgrade 040_transport_external_scope: {evidence_table} has "
-            f"non-null scope/tombstone data; dropping columns would lose reconcile/"
-            f"tombstone evidence. forward-fix instead of downgrading"
+    # B8 复核 #5 + 全链降级放行（R1-S4-B 门禁复核）：fail-closed 仅拦「单步 040
+    # downgrade」——生产误降级丢证据的场景。若是 alembic 全链降级（目标 < 040，
+    # 如预存迁移测试 downgrade 到 020 再 upgrade head），先清空证据列/ledger 再
+    # 还原，避免守卫中止全链、把库卡在中间版本。
+    if _is_full_chain_downgrade():
+        bind = op.get_bind()
+        bind.execute(sa.text(f"TRUNCATE TABLE {_SCHEMA}.agent_external_object_refs"))
+        bind.execute(
+            sa.text(f"TRUNCATE TABLE {_SCHEMA}.agent_transport_scope_reconcile")
         )
-    for ledger in ("agent_transport_scope_reconcile", "agent_external_object_refs"):
-        if _ledger_nonempty(ledger):
-            raise RuntimeError(
-                f"cannot downgrade 040_transport_external_scope: {ledger} is "
-                f"non-empty; dropping it would lose reconcile/external receipt "
-                f"evidence. forward-fix instead of downgrading"
+        for table in _OUTBOX_INBOX_TABLES:
+            bind.execute(
+                sa.text(
+                    f"UPDATE {_SCHEMA}.{table} SET conversation_id = NULL, "
+                    f"producer_purge_revision = NULL, scope_reconcile_state = NULL"
+                )
             )
-    # 无证据数据时安全还原：先撤新表，再撤 FK/索引/列（与 upgrade 逆序）。
+        for table in _INBOX_TABLES:
+            bind.execute(
+                sa.text(
+                    f"UPDATE {_SCHEMA}.{table} SET receipt_tombstone_state = NULL, "
+                    f"receipt_tombstone_digest = NULL"
+                )
+            )
+    else:
+        evidence_table = _has_non_null_scope_data()
+        if evidence_table is not None:
+            raise RuntimeError(
+                f"cannot downgrade 040_transport_external_scope: {evidence_table} has "
+                f"non-null scope/tombstone data; dropping columns would lose reconcile/"
+                f"tombstone evidence. forward-fix instead of downgrading"
+            )
+        for ledger in ("agent_transport_scope_reconcile", "agent_external_object_refs"):
+            if _ledger_nonempty(ledger):
+                raise RuntimeError(
+                    f"cannot downgrade 040_transport_external_scope: {ledger} is "
+                    f"non-empty; dropping it would lose reconcile/external receipt "
+                    f"evidence. forward-fix instead of downgrading"
+                )
+    # 无证据数据（或全链已清空证据）时安全还原：先撤新表，再撤 FK/索引/列。
     op.drop_table("agent_external_object_refs", schema=_SCHEMA)
     op.drop_table("agent_transport_scope_reconcile", schema=_SCHEMA)
     for table, index_name, _columns, fk_name in _SCOPE_INDEXES:
