@@ -94,9 +94,10 @@ async def test_030_schema_indexes_trigger_and_context_local_foreign_keys():
             "AND owner.relname = ANY($1::text[])",
             list(TABLES),
         )
+        # 子集断言（非全集相等）：030 只保证「自己创建的 FK」都在；后续 expand
+        # migration（如 040 给 agent_execution_outbox/agent_workspace_outbox 加
+        # scope FK -> agent_conversations）会往这些表加新 FK，全集相等会随之过严。
         assert {
-            (row["owner_table"], row["referenced_table"]) for row in referenced
-        } == {
             ("agent_runs", "agent_definition_versions"),
             ("agent_runs", "agent_runtime_profiles"),
             ("agent_runs", "agent_runtime_session_bindings"),
@@ -105,7 +106,7 @@ async def test_030_schema_indexes_trigger_and_context_local_foreign_keys():
             ("agent_run_events", "agent_runs"),
             ("agent_run_events", "agent_runtime_profiles"),
             ("agent_run_events", "agent_runtime_session_bindings"),
-        }
+        } <= {(row["owner_table"], row["referenced_table"]) for row in referenced}
         assert {
             "fk_agent_run_binding_owner",
             "fk_agent_run_event_conversation",
