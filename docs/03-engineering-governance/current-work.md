@@ -30,8 +30,8 @@
 - 架构约束：docs/03-engineering-governance/01-rules/architecture.md
 
 当前进展：round-1 复审（P0/P1/P2/P3=0/1/2/0）返修完成。P1 改专用幂等原语 `terminalize_output_late_write`（接受 already-suppressed Run，S3-D 先行后迟到 dispatch 仍 terminalize）；P2 terminalize 绑定当前 claim（event_id/payload_digest/attempt/claimant CAS，过期 worker 不覆盖）；P2 工作台交接状态同批入库。新增 3 反例（already-suppressed 幂等 / stale-claim CAS / 已 terminal 幂等 no-op），P1/P2 变异各 KILLED。附带发现：erase 在 Run 回 pending 状态下违反 ck_agent_run_terminal_output（归 S4，已注 plan）。Plan §R1-S3「S3-E round-1 复审修订」delta 已冻结。
-下一步：全量回归绿 -> 提交 -> 三路 CI -> 独立 max/Codex 轻量复核；不自行合并。
-验证状态：S3-E 全部测试（§8 2 + 无旁路 2 + race 6 + backfill 1 + round-1 3 = 14 例）全绿；control-plane+composition 351 全绿；ruff 0；P1/P2 变异逐项 KILLED；全量回归进行中。
+下一步：停在 PR #524 交接，提交独立 max/Codex 轻量复核；复审通过后按流程收口（评分 + 工作台归档 + work-log + score-log + 授权后合并）。不自行合并。
+验证状态：S3-E 全部测试（§8 2 + 无旁路 2 + race 6 + backfill 1 + round-1 3 = 14 例）全绿；control-plane+composition 351 全绿；ruff 0；mypy 3 生产文件 0；docs gate 通过；git diff --check 通过；P1/P2 变异逐项 KILLED。PR #524 HEAD `31e25994` 三路 CI 全绿（Backend 9m41s / Engineering docs / Frontend 均 SUCCESS），OPEN + MERGEABLE。全量套件存在 main 预存的非确定性隔离 flake（干净 main 对照 27 failed：test_ai_chat/direct_rag/e2e/turn_bridge/writer_fence），与本 Slice 无关，待登记 TD 独立处理。
 交接备注：S3-D（execution.core.v1 eraser）已合并（PR #522 `99142f15`）；本 Slice 不改 migration 034-039、不进 S4、不启用 purge scheduler；erase_available 已在 S3-D 翻 True，本 Slice 不重开。
 
 ## 下一批候选任务
