@@ -149,9 +149,26 @@ async def _objects_exist(kind: str, names: tuple[str, ...]) -> set[str]:
 
 
 async def _tenant_id() -> uuid.UUID:
+    """取一个可用 tenant id；干净库无 tenant 时自建一个（测试隔离，不依赖前序用例残留）。
+
+    composition 的 autouse clean 不清 ``tenants``，但干净 fresh 库（CI 容器）里
+    ``tenants`` 为空；若直接 ``LIMIT 1`` 会拿到 None，使 NOT NULL ``tenant_id`` 在
+    反例插入处误触发 NotNullViolation 而非预期的 CHECK/FK 违规。故此处自给自足。
+    """
     connection = await _connect()
     try:
-        return await connection.fetchval("SELECT id FROM metaedu.tenants LIMIT 1")
+        existing = await connection.fetchval("SELECT id FROM metaedu.tenants LIMIT 1")
+        if existing is not None:
+            return existing
+        new_id = uuid.uuid4()
+        await connection.execute(
+            "INSERT INTO metaedu.tenants (id, name, school_name, created_at, updated_at) "
+            "VALUES ($1, $2, $2, clock_timestamp(), clock_timestamp()) "
+            "ON CONFLICT (id) DO NOTHING",
+            new_id,
+            f"probe-{new_id.hex[:8]}",
+        )
+        return new_id
     finally:
         await connection.close()
 
