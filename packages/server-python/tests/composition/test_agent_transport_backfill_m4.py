@@ -710,10 +710,8 @@ async def test_p4_scope_conflict_registers_ambiguous_mapping():
     engine, factory = _factory()
     report = await backfill_transport_scope(factory, tenant_id=tenant)
     await engine.dispose()
-    # 冲突行 scope=A 与来源 B 持续不一致（不覆盖 A），第三轮 #2 verify 第五维检出 ->
-    # fail closed（report.ok=False、verify_failed=True），不静默通过。
-    assert report.verify_failed, "A≠B 冲突须被 #2 verify 检出 fail closed"
-    assert "agent_workspace_outbox" in report.verify_detail and "不一致" in report.verify_detail
+    # 第四轮 #1 discovery：冲突行被扫描登记 ambiguous_mapping，verify 闭环通过（不静默）。
+    assert report.ok, f"A≠B 冲突须被 discovery 登记、verify 闭环通过：{report.verify_detail}"
 
     connection = await _connect()
     try:
@@ -927,13 +925,12 @@ async def test_p1_bounded_rerun_progresses_past_registered_rows():
         await connection.close()
 
 
-async def test_p2_verify_catches_non_scanned_scope_conflict():
-    """第三轮复核 #2：scope-set 无 ref 的 outbox 不进扫描，#4 扫描级检测够不着，
-    verify 第五维（scope vs 来源矩阵）直接 JOIN 检出 A≠B 冲突 fail closed。
+async def test_p2_discovery_registers_non_scanned_scope_conflict():
+    """第四轮复核 #1：scope-set 无 ref 的 outbox 不进 actionable 扫描，discovery pass
+    的 mismatch 分支选中并登记 tenant_scope/ambiguous_mapping，verify 闭环通过。
 
-    反例：旧实现 A≠B 冲突只在行进入扫描时检测；scope=A、来源 B、无 ref 的 outbox 不进
-    扫描，四维 verify 也不比 scope vs 来源 -> report.ok=True，冲突静默。修复：verify 加
-    第五维 JOIN 来源检全。
+    反例：第三轮 #2 只用 verify 第五维报错、不登记 issue -> 冲突行永久 verify 失败、
+    无 issue 可供运维 resolved。第四轮改为 discovery 登记 + verify 只读验证 issue 已存在。
     """
     connection = await _connect()
     try:
@@ -941,7 +938,8 @@ async def test_p2_verify_catches_non_scanned_scope_conflict():
         conv_a = await _make_conversation(connection, tenant)
         conv_b = await _make_conversation(connection, tenant)
         msg_b = await _make_message(connection, tenant, conv_b)
-        # scope=conv_a、aggregate_id=msg_b（源->conv_b）、无 payload_ref -> 不进扫描。
+        # scope=conv_a、aggregate_id=msg_b（源->conv_b）、无 payload_ref、epoch=0 ->
+        # 不进 actionable 扫描（scope 已填、无 ref），但 discovery mismatch 分支选中。
         oid = uuid.uuid4()
         await connection.execute(
             "INSERT INTO metaedu.agent_workspace_outbox ("
@@ -964,16 +962,106 @@ async def test_p2_verify_catches_non_scanned_scope_conflict():
     engine, factory = _factory()
     report = await backfill_transport_scope(factory, tenant_id=tenant)
     await engine.dispose()
-    # 不进扫描 -> 无 issue 登记；但 #2 verify 第五维检出 A≠B -> fail closed。
-    assert report.verify_failed, "scope-set 无 ref 的 A≠B 冲突须被 verify 第五维检出"
-    assert "agent_workspace_outbox" in report.verify_detail and "不一致" in report.verify_detail
+    assert report.ok, f"discovery 须登记冲突、verify 闭环通过：{report.verify_detail}"
+
     connection = await _connect()
     try:
-        n = await connection.fetchval(
-            "SELECT count(*) FROM metaedu.agent_transport_scope_reconcile "
-            "WHERE source_row_id=$1",
+        issue = await connection.fetchrow(
+            "SELECT reconcile_class, issue_code, conversation_id FROM "
+            "metaedu.agent_transport_scope_reconcile "
+            "WHERE source_row_id=$1 AND issue_code='ambiguous_mapping'",
             oid,
         )
-        assert n == 0, "未扫描行不应登记 issue（由 verify fail closed 暴露）"
+        assert issue is not None, "discovery 须为非扫描 A≠B 冲突登记 ambiguous_mapping"
+        assert issue["reconcile_class"] == "tenant_scope"
+        assert issue["conversation_id"] is None
+        scope = await connection.fetchval(
+            "SELECT conversation_id FROM metaedu.agent_workspace_outbox WHERE id=$1",
+            oid,
+        )
+        assert scope == conv_a, "冲突时不得覆盖行内既有 scope（fail closed，不猜）"
     finally:
         await connection.close()
+
+
+
+
+# --- 第四轮复核 #3：CLI 退出码契约（0=完成 / 1=失败 / 2=未完成）----------------
+
+
+class _NullEngine:
+    async def dispose(self) -> None:
+        return None
+
+
+def _cli_args(**overrides):
+    import argparse
+
+    defaults = {
+        "tenant_id": str(uuid.uuid4()),
+        "batch_size": 100,
+        "max_rows": None,
+        "batch_interval_seconds": 0.0,
+    }
+    defaults.update(overrides)
+    return argparse.Namespace(**defaults)
+
+
+def _patch_session_factory(monkeypatch, session_factory):
+    from app.composition import agent_transport_backfill as backfill_module
+
+    monkeypatch.setattr(
+        backfill_module,
+        "_make_session_factory",
+        lambda: (session_factory, _NullEngine()),
+    )
+    return backfill_module
+
+
+async def test_cli_exit_0_when_complete(session_factory, monkeypatch):
+    """CLI 退出码契约：空 tenant（无待处理行）-> completed=True、verify 全绿 -> exit 0。"""
+    connection = await _connect()
+    try:
+        tenant = await _make_tenant(connection)
+    finally:
+        await connection.close()
+    module = _patch_session_factory(monkeypatch, session_factory)
+    exit_code = await module._run_cli(_cli_args(tenant_id=str(tenant)))
+    assert exit_code == 0
+
+
+async def test_cli_exit_2_when_incomplete(session_factory, monkeypatch):
+    """CLI 退出码契约：--max-rows=1 截断 -> incomplete -> exit 2。"""
+    connection = await _connect()
+    try:
+        tenant = await _make_tenant(connection)
+        conv = await _make_conversation(connection, tenant)
+        for i in range(2):
+            run = await _make_run(connection, tenant, conv, queue_seq=i + 1)
+            await _make_exec_outbox(connection, tenant, run)
+    finally:
+        await connection.close()
+    module = _patch_session_factory(monkeypatch, session_factory)
+    exit_code = await module._run_cli(_cli_args(tenant_id=str(tenant), max_rows=1))
+    assert exit_code == 2
+
+
+async def test_cli_exit_1_when_failure(session_factory, monkeypatch):
+    """CLI 退出码契约：backfill 行失败 -> exit 1（失败恢复从 tenant 起点重跑）。"""
+    from app.composition import agent_transport_backfill as _tbf
+
+    async def _always_fail(session, **kwargs):
+        raise RuntimeError("simulated systematic failure")
+
+    monkeypatch.setattr(_tbf, "_backfill_source_row", _always_fail)
+    connection = await _connect()
+    try:
+        tenant = await _make_tenant(connection)
+        conv = await _make_conversation(connection, tenant)
+        run = await _make_run(connection, tenant, conv)
+        await _make_exec_outbox(connection, tenant, run)
+    finally:
+        await connection.close()
+    module = _patch_session_factory(monkeypatch, session_factory)
+    exit_code = await module._run_cli(_cli_args(tenant_id=str(tenant)))
+    assert exit_code == 1

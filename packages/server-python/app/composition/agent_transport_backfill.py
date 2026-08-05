@@ -46,6 +46,7 @@ scope-vs-来源矩阵维（scope-set 行的 conversation_id 与来源 Message/Ru
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from dataclasses import dataclass, field
 from typing import cast
@@ -88,6 +89,16 @@ _SOURCE_TYPE_BY_TABLE: dict[str, tuple[str, str]] = {
 }
 
 
+# 第三轮复核 #1 discovery：scope-set 行 mismatch 检测的来源表 + join 列。
+# outbox 来源是 Message/Run（aggregate_id）；inbox 来源是对端 outbox（event_id）。
+_MISMATCH_SOURCE_BY_TABLE: dict[str, tuple[str, str]] = {
+    "agent_workspace_outbox": ("agent_messages", "aggregate_id"),
+    "agent_execution_outbox": ("agent_runs", "aggregate_id"),
+    "agent_workspace_inbox": ("agent_execution_outbox", "event_id"),
+    "agent_execution_inbox": ("agent_workspace_outbox", "event_id"),
+}
+
+
 @dataclass(frozen=True, slots=True)
 class ScopeBackfillFailure:
     """单行回填失败的稳定诊断（不持久化正文）。"""
@@ -109,7 +120,7 @@ class ScopeBackfillReport:
     failures: list[ScopeBackfillFailure] = field(default_factory=list)
     failure_count: int = 0
     completed: bool = False
-    # verify 结果（scope/epoch/external-ref/投影一致性 四维）。
+    # verify 结果（scope/epoch/external-ref/投影一致性/scope-vs-来源 五维）。
     verify_failed: bool = False
     verify_detail: str = ""
 
@@ -123,7 +134,7 @@ class ScopeBackfillReport:
 # ---------------------------------------------------------------------------
 
 
-async def _select_null_scope_batch(
+async def _select_actionable_batch(
     session: AsyncSession,
     *,
     table: str,
@@ -133,46 +144,59 @@ async def _select_null_scope_batch(
 ) -> list[tuple[uuid.UUID, uuid.UUID, str | None]]:
     """取一批待处理的 4 张 transport 源行 (id, join_key, ref)。
 
-    返回 (source_row_id, join_key, payload_ref)。join_key 对 outbox 是
-    aggregate_id、对 inbox 是 event_id。
+    返回 (source_row_id, join_key, payload_ref)。join_key 对 outbox 是 aggregate_id、
+    对 inbox 是 event_id。
 
-    **选取范围（P1-1 修复）**：
-    - inbox：``conversation_id IS NULL``（inbox 无 payload_ref 列，唯一职责是 scope）。
-    - outbox：``conversation_id IS NULL`` **或** 带非空 ``payload_ref`` 但尚未在
-      external ledger 登记的行。仅扫 NULL-scope 会漏掉「已有 scope 但带 ref」的
-      outbox 行，使 external ref 静默漏登记；故 outbox 额外覆盖 ref 未登记行，
-      由 ``_backfill_source_row`` 幂等回填 scope（已带则跳过）并补登 ref。
-    run_events 不经此函数（它无 scope 列，恒有 conversation_id，只做 external ref
-    登记，见 ``_select_ref_event_batch``）。
+    **选取范围（第三轮复核 #1 discovery + P1-1/#2/#6）**：
+    - NULL-scope 未处理行（``conversation_id IS NULL AND scope_reconcile_state IS NULL``）：
+      回填 scope 或登记 scope 类 issue。
+    - outbox ref 未登记行（``payload_ref IS NOT NULL AND NOT EXISTS(external ledger
+      ref_value 匹配)``）：
+      补登 external ref（复核 #2：按 ref_value 匹配）。
+    - scope-set mismatch 行（``conversation_id IS NOT NULL AND
+      scope_reconcile_state IS NULL
+      AND <来源 conversation_id 不一致或跨 tenant>``）：第三轮复核 #1 discovery--登记
+      tenant_scope/ambiguous_mapping 或 cross_tenant_mismatch，形成可处理 reconcile 闭环
+      （verify 第五维只读验证 issue 已存在）。无来源且 scope 已填的行不在 mismatch 范围
+      （scope 仍有效、FK 保护），不登记。已登记 issue 的行（``scope_reconcile_state IS NOT NULL``）
+      退出扫描，不饥饿（#1）。run_events 不经此函数（见 ``_select_ref_event_batch``）。
     """
-    if table in ("agent_workspace_outbox", "agent_execution_outbox"):
-        join_col = "aggregate_id"
-        # conversation_id IS NULL -> 需回填 scope；或 payload_ref 非空但**当前 ref_value**
-        # 未登记 -> 补登 ref（复核 #2：匹配 er.ref_value = t.payload_ref，不只看 source_row_id，
-        # 否则 ref 被改写后旧登记会让新 ref 静默漏登）。B2 类型约束（复核 #6）**不在扫描层
-        # 过滤**--mismatch 行同样被扫描，由 _backfill_source_row 路由到 ambiguous（不盲 join）
-        # 并登记 tenant_scope/ambiguous_mapping，使 B7:817/B3:778「每行必登记」无类型豁免。
-        scope_or_ref_predicate = (
-            "((conversation_id IS NULL AND scope_reconcile_state IS NULL)"
-            " OR (payload_ref IS NOT NULL AND NOT EXISTS ("
+    src_table, join_col = _MISMATCH_SOURCE_BY_TABLE[table]
+    is_outbox = table in _SOURCE_TYPE_BY_TABLE
+    ref_select = "payload_ref" if is_outbox else "NULL"
+    # mismatch EXISTS：来源同 tenant 但 conversation_id 不同（A≠B），或来源跨 tenant。
+    # inbox 源 outbox scope 可能未填（NULL）-> s.conversation_id IS NOT NULL 守卫；
+    # outbox 源 Message/Run conversation_id NOT NULL，守卫无害。
+    mismatch = (
+        f"(EXISTS(SELECT 1 FROM metaedu.{src_table} s WHERE s.id = t.{join_col} "
+        f"AND s.tenant_id = t.tenant_id AND s.conversation_id IS NOT NULL "
+        f"AND s.conversation_id <> t.conversation_id)"
+        f" OR EXISTS(SELECT 1 FROM metaedu.{src_table} s WHERE s.id = t.{join_col} "
+        f"AND s.tenant_id <> t.tenant_id))"
+    )
+    if is_outbox:
+        ref_branch = (
+            " OR (t.payload_ref IS NOT NULL AND NOT EXISTS ("
             "  SELECT 1 FROM metaedu.agent_external_object_refs er "
-            "  WHERE er.tenant_id = metaedu." + table + ".tenant_id AND er.source_table = '"
-            + table + "' AND er.source_row_id = metaedu." + table + ".id"
-            " AND er.ref_value = metaedu." + table + ".payload_ref)))"
+            "  WHERE er.tenant_id = t.tenant_id AND er.source_table = '" + table + "'"
+            " AND er.source_row_id = t.id AND er.ref_value = t.payload_ref))"
         )
-        ref_select = "payload_ref"
-    else:  # agent_workspace_inbox / agent_execution_inbox
-        join_col = "event_id"
-        scope_or_ref_predicate = "(conversation_id IS NULL AND scope_reconcile_state IS NULL)"
-        ref_select = "NULL"
+    else:
+        ref_branch = ""
+    predicate = (
+        "((t.conversation_id IS NULL AND t.scope_reconcile_state IS NULL)"
+        + ref_branch
+        + f" OR (t.conversation_id IS NOT NULL AND t.scope_reconcile_state IS NULL"
+        f" AND {mismatch}))"
+    )
     sql = (
-        f"SELECT id, {join_col} AS join_key, {ref_select} AS payload_ref "
-        f"FROM metaedu.{table} "
-        f"WHERE tenant_id = :t AND {scope_or_ref_predicate}"
+        f"SELECT t.id, t.{join_col} AS join_key, {ref_select} AS payload_ref "
+        f"FROM metaedu.{table} t "
+        f"WHERE t.tenant_id = :t AND ({predicate})"
     )
     if after_id is not None:
-        sql += " AND id > :after"
-    sql += " ORDER BY id LIMIT :lim"
+        sql += " AND t.id > :after"
+    sql += " ORDER BY t.id LIMIT :lim"
     params = {"t": tenant_id, "lim": batch_size}
     if after_id is not None:
         params["after"] = after_id
@@ -470,21 +494,36 @@ async def _backfill_source_row(
         ):
             report.reconcile_issues_registered += 1
     elif resolution == "resolved":
-            # 回填 scope（幂等：仅命中仍 NULL 的行；已有且一致 -> scope_already_present）。
-            result = cast(
-                CursorResult,
-                await session.execute(
-                    text(
-                        f"UPDATE metaedu.{table} SET conversation_id = :c "
-                        f"WHERE tenant_id = :t AND id = :sr AND conversation_id IS NULL"
-                    ),
-                    {"c": conversation_id, "t": tenant_id, "sr": source_row_id},
+        # 回填 scope（幂等：仅命中仍 NULL 的行；已有且一致 -> scope_already_present）。
+        result = cast(
+            CursorResult,
+            await session.execute(
+                text(
+                    f"UPDATE metaedu.{table} SET conversation_id = :c "
+                    f"WHERE tenant_id = :t AND id = :sr AND conversation_id IS NULL"
                 ),
-            )
-            if result.rowcount > 0:
-                report.scope_backfilled += 1
-            else:
-                report.scope_already_present += 1
+                {"c": conversation_id, "t": tenant_id, "sr": source_row_id},
+            ),
+        )
+        if result.rowcount > 0:
+            report.scope_backfilled += 1
+        else:
+            report.scope_already_present += 1
+    elif had_scope and resolution == "cross_tenant":
+        # 第三轮复核 #1 discovery：scope 已填但来源跨 tenant（数据腐败）--登记
+        # tenant_scope/cross_tenant_mismatch（不带 conversation_id），形成可处理 reconcile
+        # 闭环；不覆盖行内 scope（fail closed，不猜）。由 discovery 扫描 mismatch 分支选中。
+        if await _register_issue(
+            session,
+            tenant_id=tenant_id,
+            owner_key=owner_key,
+            table=table,
+            source_row_id=source_row_id,
+            conversation_id=None,
+            reconcile_class="tenant_scope",
+            issue_code="cross_tenant_mismatch",
+        ):
+            report.reconcile_issues_registered += 1
     elif not had_scope:
         # scope 未知/orphan/跨 tenant 且本行确无 scope：登记 scope 类 issue。
         # （已带 scope 的 ref-bearing 行跳过 scope issue——它不属于 scope 维问题。）
@@ -606,7 +645,7 @@ async def _register_run_event_ref(
 async def _verify_scope_epoch(
     session_factory, *, tenant_id: uuid.UUID
 ) -> tuple[bool, str]:
-    """scope/epoch/external-ref/投影一致性 四维最终 verify（fail closed，互不豁免）。
+    """scope/epoch/external-ref/投影一致性/scope-vs-来源 五维最终 verify（fail closed，互不豁免）。
 
     scope 维：4 张 transport 表凡 ``conversation_id IS NULL`` 的行必须有对应
     scope 类 issue；epoch 维：凡 ``producer_purge_revision IS NULL`` 的行必须有
@@ -706,40 +745,45 @@ async def _verify_scope_epoch(
                 problems.append(
                     f"{table}: {ref_missing} ref-bearing 行未登记 external ref"
                 )
-        # scope vs 来源矩阵一致性维（第三轮复核 #2）：scope-set 行的 conversation_id 须与
-        # 来源（Message/Run/源 outbox）的 conversation_id 一致。A≠B 冲突不只靠扫描命中
-        # （scope-set 无 ref 的 outbox 与两张 inbox 不进扫描，#4 扫描级检测够不着），verify
-        # 直接 JOIN 来源检全。outbox 限 B2 受支持类型（mismatch 行非 B2 映射，aggregate_id
-        # 非来源引用，不在此检）；inbox 源 outbox scope 未填（NULL）时跳过（非冲突，属未回填）。
-        scope_source_pairs = [
-            ("agent_workspace_outbox", "agent_messages", "aggregate_id", True),
-            ("agent_execution_outbox", "agent_runs", "aggregate_id", True),
-            ("agent_workspace_inbox", "agent_execution_outbox", "event_id", False),
-            ("agent_execution_inbox", "agent_workspace_outbox", "event_id", False),
-        ]
-        for table, src_table, join_col, is_outbox in scope_source_pairs:
-            type_filter = ""
-            if is_outbox:
-                et, at = _SOURCE_TYPE_BY_TABLE[table]
-                type_filter = f" AND t.event_type = '{et}' AND t.aggregate_type = '{at}'"
-            src_null_guard = "" if is_outbox else " AND src.conversation_id IS NOT NULL"
-            conflict_n = (
+        # scope vs 来源矩阵一致性维（第三轮复核 #1/#2，read-only）：discovery pass 已在
+        # 集合锁下为 scope-set mismatch 行登记 tenant_scope issue（ambiguous_mapping /
+        # cross_tenant_mismatch）；verify 只读验证「每个 mismatch 行都有对应 issue」--
+        # 形成可处理 reconcile 闭环（运维可 resolved），而非永久 verify 失败无 issue。
+        # mismatch = 来源同 tenant 但 conv 不同（A≠B）或来源跨 tenant；无来源且 scope
+        # 已填的行不在 mismatch 范围（scope 仍有效、FK 保护）。mismatch 定义与
+        # _select_actionable_batch discovery 分支完全一致。
+        for table, src_table, join_col in [
+            ("agent_workspace_outbox", "agent_messages", "aggregate_id"),
+            ("agent_execution_outbox", "agent_runs", "aggregate_id"),
+            ("agent_workspace_inbox", "agent_execution_outbox", "event_id"),
+            ("agent_execution_inbox", "agent_workspace_outbox", "event_id"),
+        ]:
+            mismatch = (
+                f"(EXISTS(SELECT 1 FROM metaedu.{src_table} s WHERE s.id = t.{join_col} "
+                f"AND s.tenant_id = t.tenant_id AND s.conversation_id IS NOT NULL "
+                f"AND s.conversation_id <> t.conversation_id)"
+                f" OR EXISTS(SELECT 1 FROM metaedu.{src_table} s WHERE s.id = t.{join_col} "
+                f"AND s.tenant_id <> t.tenant_id))"
+            )
+            unregistered = (
                 await session.execute(
                     text(
                         f"SELECT count(*) FROM metaedu.{table} t "
-                        f"JOIN metaedu.{src_table} src ON src.id = t.{join_col} "
-                        f"  AND src.tenant_id = t.tenant_id "
-                        f"WHERE t.tenant_id = :t AND t.conversation_id IS NOT NULL"
-                        f"{type_filter}{src_null_guard}"
-                        f" AND src.conversation_id <> t.conversation_id"
+                        f"WHERE t.tenant_id = :t AND t.conversation_id IS NOT NULL "
+                        f"AND ({mismatch})"
+                        f" AND NOT EXISTS ("
+                        f"  SELECT 1 FROM metaedu.agent_transport_scope_reconcile r "
+                        f"  WHERE r.tenant_id = t.tenant_id AND r.source_table = :st "
+                        f"  AND r.source_row_id = t.id "
+                        f"  AND r.issue_code IN ('ambiguous_mapping','cross_tenant_mismatch'))"
                     ),
-                    {"t": tenant_id},
+                    {"t": tenant_id, "st": table},
                 )
             ).scalar()
-            if conflict_n:
+            if unregistered:
                 problems.append(
-                    f"{table}: {conflict_n} 行 scope 与来源 conversation_id 不一致"
-                    f"（A≠B 冲突，未登记或扫描未命中）"
+                    f"{table}: {unregistered} mismatch 行未登记 scope 类 issue"
+                    f"（A≠B 或跨 tenant，discovery 未覆盖）"
                 )
         # 投影↔ledger 一致性维（复核 #5 / B4 复核 #8）：行内 scope_reconcile_state 是
         # 派生只读投影，必须与该 owner 的完整 issue 集一致——「行内已 reconciled 但
@@ -781,11 +825,13 @@ async def backfill_transport_scope(
     tenant_id: uuid.UUID,
     batch_size: int = 100,
     max_rows: int | None = None,
+    batch_interval_seconds: float = 0.0,
 ) -> ScopeBackfillReport:
     """为指定 tenant 回填 transport/external scope（可恢复、分批、幂等）。
 
     每行在独立短事务处理（取集合 advisory lock）；任一行失败计入 failures 并
-    继续（fail closed 由 report.ok 体现）。
+    继续（fail closed 由 report.ok 体现）。``batch_interval_seconds`` 为每批之间
+    的休眠（B7 tenant 限流：逐 tenant + 每批间隔，避免压库）。
 
     **恢复路径（复核 #3 / B7）**：不提供跨调用游标——随机 UUID 主键的 keyset 游标
     跨表复用会跳行、且 point-in-time 本就非完备性证明（B7）。中断/失败恢复一律
@@ -818,7 +864,7 @@ async def backfill_transport_scope(
         while not _hit_cap():
             cursor = cursors[table]
             async with session_factory() as session, session.begin():
-                batch = await _select_null_scope_batch(
+                batch = await _select_actionable_batch(
                     session,
                     table=table,
                     tenant_id=tenant_id,
@@ -857,6 +903,8 @@ async def backfill_transport_scope(
                 cursors[table] = source_row_id
             if len(batch) < batch_size:
                 break
+            if batch_interval_seconds > 0:
+                await asyncio.sleep(batch_interval_seconds)
         if _hit_cap():
             break
     # run_events external ref 登记（P1-1：扫描谓词 = payload_ref 非空且**未登记**，
@@ -903,13 +951,148 @@ async def backfill_transport_scope(
             run_event_cursor = source_row_id
         if len(event_batch) < batch_size:
             break
+        if batch_interval_seconds > 0:
+            await asyncio.sleep(batch_interval_seconds)
     # P2-3：completed 仅当**没有因 max_rows 截断**且本次扫描已覆盖全部待处理行。
     # 判定依据是截断标志（一旦 _hit_cap() 中断任一循环即未完成），而非易错的
     # exhausted 标志（max_rows == batch_size 且恰好到边界时 exhausted 误判）。
     truncated = _hit_cap()
     report.completed = not truncated
-    # 最终 verify（scope/epoch/external-ref 三维 fail closed）。
+    # 最终 verify（scope/epoch/external-ref/投影一致性/scope-vs-来源 五维 fail closed）。
     verify_ok, detail = await _verify_scope_epoch(session_factory, tenant_id=tenant_id)
     report.verify_failed = not verify_ok
     report.verify_detail = detail
     return report
+
+
+# ---------------------------------------------------------------------------
+# 可执行入口（运维命令）：python -m app.composition.agent_transport_backfill
+#
+# 退出码契约（自动化调用）：
+#   0 = 全部 tenant 完成、无失败、verify 全绿；
+#   1 = 有失败（report.failures）或 verify_failed；
+#   2 = 未完成（--max-rows 截断），须重跑（tenant 起点幂等重扫，无游标续跑）。
+# ---------------------------------------------------------------------------
+
+
+def _make_session_factory():
+    """构造生产 session factory（独立可注入以便测试替换）。
+
+    使用方负责在结束后 dispose 引擎；返回 (session_factory, engine)。
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from app.config import settings
+
+    engine = create_async_engine(settings.database_url, echo=False, poolclass=NullPool)
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    return factory, engine
+
+
+async def _list_tenant_ids(session_factory) -> list[uuid.UUID]:
+    """取全部 tenant id（按 id 排序，逐 tenant 处理，B7）。"""
+    async with session_factory() as session:
+        rows = await session.execute(text("SELECT id FROM metaedu.tenants ORDER BY id"))
+        return [row[0] for row in rows.all()]
+
+
+async def _run_cli(args: object) -> int:
+    factory, engine = _make_session_factory()
+    try:
+        if args.tenant_id:  # type: ignore[attr-defined]
+            tenant_ids = [uuid.UUID(args.tenant_id)]  # type: ignore[attr-defined]
+        else:
+            tenant_ids = await _list_tenant_ids(factory)
+        total_failures = 0
+        total_scanned = 0
+        any_incomplete = False
+        any_verify_failed = False
+        for tid in tenant_ids:
+            if args.max_rows is not None:  # type: ignore[attr-defined]
+                remaining = args.max_rows - total_scanned  # type: ignore[attr-defined]
+                if remaining <= 0:
+                    any_incomplete = True
+                    break
+            else:
+                remaining = None
+            report = await backfill_transport_scope(
+                factory,
+                tenant_id=tid,
+                batch_size=args.batch_size,  # type: ignore[attr-defined]
+                max_rows=remaining,
+                batch_interval_seconds=args.batch_interval_seconds,  # type: ignore[attr-defined]
+            )
+            total_scanned += report.rows_scanned
+            total_failures += report.failure_count
+            if report.verify_failed:
+                any_verify_failed = True
+            print(  # noqa: T201
+                f"tenant {tid}: scanned={report.rows_scanned} "
+                f"scope_backfilled={report.scope_backfilled} "
+                f"scope_already_present={report.scope_already_present} "
+                f"issues={report.reconcile_issues_registered} "
+                f"refs={report.external_refs_registered} "
+                f"failed={report.failure_count} completed={report.completed} "
+                f"verify_failed={report.verify_failed}"
+            )
+            for failure in report.failures:
+                print(  # noqa: T201
+                    f"  failed: table={failure.source_table} "
+                    f"row={failure.source_row_id} reason={failure.reason_code} "
+                    f"error={failure.error_type}"
+                )
+            if not report.completed:
+                any_incomplete = True
+                break  # --max-rows 截断：重跑续行（tenant 起点幂等重扫，无游标）
+    finally:
+        await engine.dispose()
+    # 退出码优先级：1（失败/已完成的 verify_failed）先于 2（--max-rows 截断未完成）。
+    # 截断状态下 verify_failed 是未处理行的预期结果，不按失败计（算子重跑续行即可）。
+    if total_failures > 0 or (any_verify_failed and not any_incomplete):
+        print(  # noqa: T201
+            "failures/verify_failed present: rerun from tenant start (no cursor) "
+            "to retry idempotently: python -m app.composition.agent_transport_backfill"
+        )
+        return 1
+    if any_incomplete:
+        print(  # noqa: T201
+            "incomplete (--max-rows hit): rerun to continue (tenant-start rescan, idempotent)"
+        )
+        return 2
+    return 0
+
+
+def main() -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="python -m app.composition.agent_transport_backfill",
+        description=(
+            "为既有 transport/external 行幂等回填 owner scope + reconcile/external"
+            " ledger（可恢复/分批/tenant 限流）。"
+        ),
+    )
+    parser.add_argument(
+        "--tenant-id",
+        default=None,
+        help="目标 tenant UUID；省略则逐 tenant 处理全部 tenant（B7）",
+    )
+    parser.add_argument("--batch-size", type=int, default=100)
+    parser.add_argument(
+        "--max-rows",
+        type=int,
+        default=None,
+        help="单次全局行数上限（across tenants）；达到后 exit 2，重跑续行（幂等）",
+    )
+    parser.add_argument(
+        "--batch-interval-seconds",
+        type=float,
+        default=0.0,
+        help="每批之间的休眠秒数（B7 tenant 限流，避免压库）",
+    )
+    return asyncio.run(_run_cli(parser.parse_args()))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -30,7 +30,7 @@
 
 当前进展：M1-M4 已实现完成 + 第三轮独立复核 6 项（P1×4/P2×2）已全部修复。第三轮：#1 bounded 重跑饥饿（NULL-scope 扫描加 scope_reconcile_state IS NULL 守卫，已登记行退出 actionable 扫描）+ #2 A≠B 冲突检测补全（verify 第五维 scope vs 来源矩阵，覆盖不进扫描的 scope-set 行）+ #3 A≠B 冲突 gating 降级 tenant_scope/ambiguous_mapping（不带 conversation_id，保守 gate tenant scheduler；推翻第二轮 #4 的 conversation_scope(B) 决策）+ #4 downgrade TOCTOU（检查前 LOCK TABLE ACCESS EXCLUSIVE，关闭检查↔DROP 窗口）+ #5 resolution_evidence CHECK 收紧（显式 OR，拒单边证据）+ #6 Plan↔impl 恢复契约同步（B7 删 next_after_id/跨调用游标，改 tenant 起点重扫+守卫；B4/B8 同步）。前两轮修复（第二轮 #1-#7）均已闭合。
 下一步：PR #530 已建，第三轮 6 项已全部修复并补真实反例回归测试（#1 饥饿 + #2 非扫描冲突 + #4 TOCTOU 并发 + #5 单边 CHECK×2），待第四轮独立 max/Codex 定向复审，不自行合并。erase_available 保持 False。
-验证状态：ruff / mypy baseline（0 回归）/ docs gate / git diff --check 全绿；S4-B 专项 47 passed（含第三轮 5 新测试）；迁移 round-trip 53 passed；第三轮修复点变异验证全 KILLED（#1 扫描守卫 / #2 verify 第五维 / #4 LOCK TABLE / #5 CHECK 收紧）；全量回归 fresh 库 pytest tests/ 2079 passed / 0 failed / 4 skipped。
+验证状态：ruff / mypy baseline（0 回归）/ docs gate / git diff --check 全绿；S4-B 专项 50 passed（含第四轮 3 新测试）；迁移 round-trip 53 passed；第四轮修复点变异验证全 KILLED（discovery mismatch 分支 / LOCK TABLE）；全量回归 fresh 库 pytest tests/ 2082 passed / 0 failed / 4 skipped。
 交接备注：S4 拆分 S4-A~F；PR 至少 4 个。明确排除：S4-C/D/E/F、S5 scheduler、真实 Pi Worker、云对象存储生产 adapter；migration 034-039 已冻结，S4-B 新增 040（expand-only）；erase_available 保持 False（writer fence 在 S4-C，purge 在 S5）。
 
 ## 下一批候选任务

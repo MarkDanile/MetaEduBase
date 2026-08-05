@@ -808,7 +808,7 @@ fk_agent_exec_inbox_scope_conv  agent_execution_inbox   (tenant_id, conversation
 **B7. backfill 执行契约（可恢复 / 分批 / tenant 限流 / 幂等 / 并发安全 / 最终 verify）**
 
 - **分批 + tenant 起点重扫（第三轮复核 #1/#3/#6）**：按 `(tenant_id, id)` keyset 分页，`batch_size>=1`，报告带 `completed`（**不**带 `next_after_id`--跨调用/跨表游标复用会跳行）；中断/失败恢复一律从 tenant 起点全量幂等重扫，已登记 issue 的行经 ``scope_reconcile_state IS NULL`` 守卫退出 actionable 扫描（不饥饿后续行），失败样本封顶。（erasure backfill `backfill_baseline_fences` 是独立 CLI，保留其 `next_after_id` 游标契约，不受影响。）
-- **tenant 限流**：逐 tenant 处理 + 每批间隔；不锁整表。
+- **tenant 限流**：逐 tenant 处理 + 每批间隔（`--batch-interval-seconds`）；不锁整表。运维入口 `python -m app.composition.agent_transport_backfill`（第四轮复核 #3）：`--tenant-id` 省略则逐 tenant 全部处理；`--max-rows` 全局行数上限截断；退出码 0=完成 / 1=失败或已完成的 verify_failed / 2=截断未完成（重跑续行，幂等）。
 - **幂等恢复**：所有回填 UPDATE 仅命中 `conversation_id IS NULL`（或 scope 未决）的行，重复执行/中断重跑不产生重复或覆盖已填值；reconcile 写入 ON CONFLICT DO NOTHING。
 - **并发新写处理**：S4-C 完成前旧 writer 仍可能产生 `conversation_id`/`producer_purge_revision` 为 NULL 的新行 -> backfill 与部分唯一索引均以 `IS NOT NULL` 为作用域，NULL 行不参与唯一约束、不阻塞新写；**不得在本 Slice 收紧 NOT NULL 或开启 purge**（scheduler 在 S5，且需 reconcile ledger 清零前置）。
 - **两阶段收敛（复核 #2，不用 UUID max 当高水位 + 不按时间豁免）**：主键是随机 UUID，`max(id)` **不是**单调插入序列——后插入行可能小于旧最大值，用 UUID max 切分 point-in-time/catch-up 会漏行（S1 backfill 已在 `BackfillReport.completed` docstring 明确记录此缺陷：point-in-time 非完备性证明）。**不引入持久化单调序列**（超 expand-only 范围，且改主键/序列代价高）。冻结为**幂等全量重扫**：
@@ -846,7 +846,14 @@ fk_agent_exec_inbox_scope_conv  agent_execution_inbox   (tenant_id, conversation
 - **#4 downgrade TOCTOU**：``downgrade()`` 检查前按固定顺序 ``LOCK TABLE ... ACCESS EXCLUSIVE``（4 transport + 2 ledger），关闭 EXISTS 检查与 DROP 之间的 TOCTOU 窗口（ACCESS SHARE 不挡并发 INSERT）；并发写在检查后提交的证据不再被 DROP 丢失。
 - **#5 resolution_evidence CHECK 收紧**：从 ``(state='resolved') = (digest IS NOT NULL AND resolved_at IS NOT NULL)`` 改为显式 OR（resolved 两列全有 / 非 resolved 两列全空），拒绝 ``state='open'`` 单边证据（digest-only 或 resolved_at-only）。
 - **#6 Plan↔impl 恢复契约同步**：B7 删 ``next_after_id``/跨调用 keyset 断点续跑，改 tenant 起点幂等重扫 + ``scope_reconcile_state IS NULL`` 守卫；B8 验收「中断恢复」与「歧义映射」同步；erasure backfill 独立 CLI 的 ``next_after_id`` 契约不受影响。
-5 修复点（#1/#2/#4/#5/#6 守卫与检测）变异验证全 KILLED。全量回归 fresh 库 2074 passed / 0 failed。停在 PR #530 交第四轮独立复审，不自行合并。
+5 修复点（#1/#2/#4/#5/#6 守卫与检测）变异验证全 KILLED。全量回归 fresh 库 2079 passed / 0 failed。停在 PR #530 交第四轮独立复审，不自行合并。
+
+**S4-B 实现第四轮独立复核修订（2026-08-05，P0/P1/P2/P3=0/3/0/1，实现态）**：第三轮修订均已正确落入。就地修订：
+- **#1 mismatch 闭环**：#2 verify 第五维从「直接报错」改为「只读验证 mismatch 行有 issue」；新增 **discovery pass**（`_select_actionable_batch` mismatch 分支：EXISTS 检出来源同 tenant A≠B 或跨 tenant），`_backfill_source_row` 在集合锁下登记 `tenant_scope/ambiguous_mapping`（A≠B）或 `cross_tenant_mismatch`（跨 tenant）+ 重算投影，形成可处理 reconcile 闭环。无来源且 scope 已填的行不在 mismatch 范围（scope 仍有效、FK 保护）。
+- **#2 downgrade 锁序 AB-BA**：`_lock_tables_access_exclusive` 锁序从 ledger 优先反转为 **transport 优先、ledger 后**，与 backfill「读 transport 源行 -> 写 ledger」一致，消除 migration（锁 ledger->transport）与 backfill（持 transport ACCESS SHARE -> 写 ledger ROW EXCLUSIVE）的 AB-BA 死锁。
+- **#3 CLI/runner + tenant 限流**：新增 `python -m app.composition.agent_transport_backfill`（沿用 erasure backfill 模式）：`--tenant-id` 省略则逐 tenant 全部处理、`--batch-size`、`--max-rows` 全局行数上限、`--batch-interval-seconds` 每批间隔；退出码 0=完成 / 1=失败或已完成的 verify_failed / 2=截断未完成（tenant 起点幂等重跑续行，无游标）。`backfill_transport_scope` 增 `batch_interval_seconds` 参数（B7 每批间隔）。
+- **#4 文案漂移**：verify 五维、report 注释、调用处注释同步；round-3 备注 2074->2079。
+变异验证：#1 discovery（移除 mismatch 分支后非扫描冲突不再登记）/ #2 锁序（LOCK TABLE 移除后 TOCTOU 测试失败）均 KILLED。全量回归 fresh 库 2082 passed / 0 failed。停在 PR #530 交第五轮独立复审，不自行合并。
 
 ### R1-S5：Legal hold、Scheduler 与运维闭环
 
