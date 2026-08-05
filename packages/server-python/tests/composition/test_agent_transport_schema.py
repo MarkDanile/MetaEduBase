@@ -420,6 +420,70 @@ async def test_040_reconcile_resolution_evidence_rejected():
 
 
 @pytest.mark.asyncio
+async def test_040_reconcile_open_with_digest_only_rejected():
+    """第三轮复核 #5：state='open' 但仅 resolution_digest 非空（resolved_at=NULL）-> CHECK 违规。
+
+    旧 CHECK ``(state='resolved') = (digest IS NOT NULL AND resolved_at IS NOT NULL)``
+    接受此单边证据（LHS=False, RHS=False -> True）；新 CHECK 要求非 resolved 两列全空。
+    """
+    tenant = await _tenant_id()
+    connection = await _connect()
+    try:
+        async with connection.transaction():
+            with pytest.raises(asyncpg.CheckViolationError):
+                await connection.execute(
+                    """
+                    INSERT INTO metaedu.agent_transport_scope_reconcile (
+                        id, tenant_id, owner_key, source_table, source_row_id,
+                        reconcile_class, issue_code, state, revision,
+                        resolution_digest, created_at, resolved_at
+                    ) VALUES (
+                        $1, $2, 'workspace.transport.v1', 'agent_workspace_outbox', $3,
+                        'tenant_scope', 'source_message_missing', 'open', 1,
+                        $4, clock_timestamp(), NULL
+                    )
+                    """,
+                    uuid.uuid4(),
+                    tenant,
+                    uuid.uuid4(),
+                    "a" * 64,
+                )
+    finally:
+        await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_040_reconcile_open_with_resolved_at_only_rejected():
+    """第三轮复核 #5：state='open' 但仅 resolved_at 非空（resolution_digest=NULL）-> CHECK 违规。
+
+    旧 CHECK 接受此反向单边证据；新 CHECK 要求非 resolved 两列全空。
+    """
+    tenant = await _tenant_id()
+    connection = await _connect()
+    try:
+        async with connection.transaction():
+            with pytest.raises(asyncpg.CheckViolationError):
+                await connection.execute(
+                    """
+                    INSERT INTO metaedu.agent_transport_scope_reconcile (
+                        id, tenant_id, owner_key, source_table, source_row_id,
+                        reconcile_class, issue_code, state, revision,
+                        resolution_digest, created_at, resolved_at
+                    ) VALUES (
+                        $1, $2, 'workspace.transport.v1', 'agent_workspace_outbox', $3,
+                        'tenant_scope', 'source_message_missing', 'open', 1,
+                        NULL, clock_timestamp(), clock_timestamp()
+                    )
+                    """,
+                    uuid.uuid4(),
+                    tenant,
+                    uuid.uuid4(),
+                )
+    finally:
+        await connection.close()
+
+
+@pytest.mark.asyncio
 async def test_040_reconcile_class_scope_binding_rejected():
     """conversation_scope 必须带 conversation_id（ck_..._class_scope）。"""
     tenant = await _tenant_id()
@@ -582,3 +646,70 @@ async def test_040_full_chain_downgrade_also_fail_closed():
         assert await _objects_exist("index", _SCOPE_INDEXES) == set(_SCOPE_INDEXES)
         cols = await _columns("agent_workspace_outbox")
         assert "conversation_id" in cols, "fail closed 后 040 scope 列应保持存在"
+
+
+@pytest.mark.asyncio
+async def test_040_downgrade_toctuu_concurrent_writer_blocked():
+    """第三轮复核 #4：downgrade 先 LOCK TABLE ACCESS EXCLUSIVE 再查证据，并发写者在检查
+    后提交的证据不会被 DROP 丢失（TOCTOU 修复）。
+
+    反例：旧 downgrade 先 EXISTS（ACCESS SHARE，不挡并发 INSERT）再 DROP（ACCESS
+    EXCLUSIVE），并发写可在检查通过后提交证据、随后被 DROP 删除。修复：检查前 LOCK
+    TABLE ACCESS EXCLUSIVE，使检查+DROP 对并发写原子。本测试：B 持未提交证据占锁，
+    A 跑 downgrade 阻塞在 LOCK TABLE，B COMMIT 后 A 取锁检见证据 -> raise（不丢证据）。
+    """
+    await _clear_040_evidence()
+    tenant = await _tenant_id()
+    db_url = _db_url()
+    # B：持有未提交证据（ROW EXCLUSIVE 锁）。
+    conn_b = await asyncpg.connect(db_url)
+    tr = conn_b.transaction()
+    await tr.start()
+    await conn_b.execute(
+        "INSERT INTO metaedu.agent_transport_scope_reconcile ("
+        "  id, tenant_id, owner_key, source_table, source_row_id, "
+        "  reconcile_class, issue_code, state, revision, created_at"
+        ") VALUES ($1, $2, 'workspace.transport.v1', 'agent_workspace_outbox', $3, "
+        "  'tenant_scope', 'source_message_missing', 'open', 1, clock_timestamp())",
+        uuid.uuid4(),
+        tenant,
+        uuid.uuid4(),
+    )
+    holder = {}
+    try:
+
+        async def _run_downgrade() -> None:
+            try:
+                await asyncio.to_thread(
+                    _run_alembic, "downgrade", "039_run_event_tombstone_guard"
+                )
+            except RuntimeError as exc:
+                holder["exc"] = exc
+
+        task = asyncio.create_task(_run_downgrade())
+        # 轮询 pg_locks 直到 A 阻塞（reconcile 表上有未授予的锁请求）。
+        conn_poll = await asyncpg.connect(db_url)
+        try:
+            blocked = False
+            for _ in range(50):  # 5s
+                await asyncio.sleep(0.1)
+                n = await conn_poll.fetchval(
+                    "SELECT count(*) FROM pg_locks "
+                    "WHERE relation = 'metaedu.agent_transport_scope_reconcile'::regclass "
+                    "AND granted = false"
+                )
+                if n and n > 0:
+                    blocked = True
+                    break
+            assert blocked, "downgrade 应阻塞在 B 的锁上（LOCK TABLE 生效）"
+        finally:
+            await conn_poll.close()
+        # B COMMIT（释放锁）；A 取锁后检查证据（已提交）-> raise。
+        await tr.commit()
+        await task
+        assert "exc" in holder, "downgrade 应 raise（证据已提交，不得 DROP 丢失）"
+        assert "cannot downgrade" in str(holder["exc"])
+    finally:
+        await conn_b.close()
+    # 清理：downgrade raise 了，库仍 040；清证据。
+    await _clear_040_evidence()

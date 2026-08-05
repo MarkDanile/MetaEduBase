@@ -2,7 +2,7 @@
 
 按 Plan §R1-S4 B2/B3/B4/B5/B7 落地：为 4 张既有 inbox/outbox 与 RunEvent 回填
 结构化 owner scope（``conversation_id``）、登记三态 reconcile issue、登记
-external ref ledger，并做 scope/epoch 双维度最终 verify。
+external ref ledger，并做五维度最终 verify（scope/epoch/external-ref/投影一致性/scope-vs-来源）。
 
 **回填顺序（B2）**：先两张 outbox（直接经 Message/Run），再两张 inbox（经已回填
 的源 outbox）。所有 UPDATE 带 ``tenant_id`` 谓词 + 源行 tenant 一致性校验（跨
@@ -36,9 +36,12 @@ reconcile / epoch verify，只对非空 ``payload_ref`` 行做 external ref 登�
 
 **并发新写（B7）**：S4-C 前旧 writer 仍可能产生 scope NULL 新行 -> backfill 与
 部分唯一索引均以 ``IS NOT NULL`` 为作用域，NULL 行不阻塞新写、不被误回填。
-**verify（B7）**：scope 维（``conversation_id IS NULL`` -> 具名 scope 类 issue）与
-epoch 维（``producer_purge_revision IS NULL`` -> ``epoch_unresolvable``）各自独立
-fail closed，互不豁免。
+**verify（B7，五维 fail closed，互不豁免）**：scope 维（``conversation_id IS NULL`` ->
+具名 scope 类 issue）、epoch 维（``producer_purge_revision IS NULL`` ->
+``epoch_unresolvable``）、external-ref 维（``payload_ref IS NOT NULL`` -> external ledger
+登记）、投影一致性维（行内 ``scope_reconcile_state`` 与 ledger issue 集重算一致）、
+scope-vs-来源矩阵维（scope-set 行的 conversation_id 与来源 Message/Run/源 outbox 一致，
+覆盖不进扫描的冲突行）。
 """
 
 from __future__ import annotations
@@ -150,7 +153,8 @@ async def _select_null_scope_batch(
         # 过滤**--mismatch 行同样被扫描，由 _backfill_source_row 路由到 ambiguous（不盲 join）
         # 并登记 tenant_scope/ambiguous_mapping，使 B7:817/B3:778「每行必登记」无类型豁免。
         scope_or_ref_predicate = (
-            "(conversation_id IS NULL OR (payload_ref IS NOT NULL AND NOT EXISTS ("
+            "((conversation_id IS NULL AND scope_reconcile_state IS NULL)"
+            " OR (payload_ref IS NOT NULL AND NOT EXISTS ("
             "  SELECT 1 FROM metaedu.agent_external_object_refs er "
             "  WHERE er.tenant_id = metaedu." + table + ".tenant_id AND er.source_table = '"
             + table + "' AND er.source_row_id = metaedu." + table + ".id"
@@ -159,7 +163,7 @@ async def _select_null_scope_batch(
         ref_select = "payload_ref"
     else:  # agent_workspace_inbox / agent_execution_inbox
         join_col = "event_id"
-        scope_or_ref_predicate = "conversation_id IS NULL"
+        scope_or_ref_predicate = "(conversation_id IS NULL AND scope_reconcile_state IS NULL)"
         ref_select = "NULL"
     sql = (
         f"SELECT id, {join_col} AS join_key, {ref_select} AS payload_ref "
@@ -447,26 +451,25 @@ async def _backfill_source_row(
         resolution, conversation_id = await _resolve_source_conversation(
             session, table=table, tenant_id=tenant_id, join_key=join_key
         )
-    if resolution == "resolved":
-        # 复核 #4（B4 conversation_scope 冲突）：行已有 scope 且与源解析值**不一致** ->
-        # 多源/前后冲突，登记具名 ambiguous_mapping（conversation_scope 类，带**解析值**，
-        # 即 B2 来源矩阵权威映射出的候选 Conversation）fail closed，不静默计
-        # scope_already_present、不覆盖既有值。conversation_id 填解析值而非当前值：行内
-        # 当前值已被 040 条件复合 FK（ON DELETE RESTRICT）物理保护，**解析值无任何物理
-        # 保护**，ledger gate 须指向解析值才能在 purge 该 Conversation 前 fail closed。
-        if had_scope and current[0] != conversation_id:
-            if await _register_issue(
-                session,
-                tenant_id=tenant_id,
-                owner_key=owner_key,
-                table=table,
-                source_row_id=source_row_id,
-                conversation_id=conversation_id,
-                reconcile_class="conversation_scope",
-                issue_code="ambiguous_mapping",
-            ):
-                report.reconcile_issues_registered += 1
-        else:
+    # 第三轮复核 #3：A≠B 冲突（行内 scope=A、源解析值=B）降级 tenant_scope/
+    # ambiguous_mapping（**不带** conversation_id）。唯一键 (…,issue_code) 无法表示 A/B
+    # 双候选，且只 gate B 会让 A 的 ledger purge gate 漏掉（FK 仅挡物理删除）；tenant_scope
+    # 阻断该 tenant scheduler-enable 直到运维 resolved，保守且不声称 gate 单一 Conversation。
+    # 不覆盖行内 A（fail closed，不猜）；external ref / epoch 同降 tenant_scope（见下）。
+    conflict = resolution == "resolved" and had_scope and current[0] != conversation_id
+    if conflict:
+        if await _register_issue(
+            session,
+            tenant_id=tenant_id,
+            owner_key=owner_key,
+            table=table,
+            source_row_id=source_row_id,
+            conversation_id=None,
+            reconcile_class="tenant_scope",
+            issue_code="ambiguous_mapping",
+        ):
+            report.reconcile_issues_registered += 1
+    elif resolution == "resolved":
             # 回填 scope（幂等：仅命中仍 NULL 的行；已有且一致 -> scope_already_present）。
             result = cast(
                 CursorResult,
@@ -520,7 +523,10 @@ async def _backfill_source_row(
     # epoch 类按 scope 状态归 class（B4 复核）：resolved->conversation_scope（带
     # conversation_id）；orphan->orphan；其余->tenant_scope。
     if epoch_is_null:
-        if resolution == "resolved":
+        if conflict:
+            # 冲突行 scope 争议 -> epoch 同降 tenant_scope（不带 conversation_id）。
+            epoch_class, epoch_conv = "tenant_scope", None
+        elif resolution == "resolved":
             epoch_class, epoch_conv = "conversation_scope", conversation_id
         elif resolution == "orphan":
             epoch_class, epoch_conv = "orphan", None
@@ -538,11 +544,16 @@ async def _backfill_source_row(
         ):
             report.reconcile_issues_registered += 1
     # external ref（B5）：仅 outbox 的非空 payload_ref（run_events 走独立路径）。
-    # 用行当前/回填后的 conversation_id（已带 scope 行用其原值）。
+    # conversation_id：冲突行用 NULL（tenant_scope 降级，不 bind 单一 Conversation）；
+    # 正常 resolved 用解析值；非 resolved 用行当前 scope（可能 NULL）。
     if payload_ref is not None and await _register_external_ref(
         session,
         tenant_id=tenant_id,
-        conversation_id=conversation_id if resolution == "resolved" else current[0],
+        conversation_id=(
+            None
+            if conflict
+            else (conversation_id if resolution == "resolved" else current[0])
+        ),
         table=table,
         source_row_id=source_row_id,
         ref_value=payload_ref,
@@ -694,6 +705,41 @@ async def _verify_scope_epoch(
             if ref_missing:
                 problems.append(
                     f"{table}: {ref_missing} ref-bearing 行未登记 external ref"
+                )
+        # scope vs 来源矩阵一致性维（第三轮复核 #2）：scope-set 行的 conversation_id 须与
+        # 来源（Message/Run/源 outbox）的 conversation_id 一致。A≠B 冲突不只靠扫描命中
+        # （scope-set 无 ref 的 outbox 与两张 inbox 不进扫描，#4 扫描级检测够不着），verify
+        # 直接 JOIN 来源检全。outbox 限 B2 受支持类型（mismatch 行非 B2 映射，aggregate_id
+        # 非来源引用，不在此检）；inbox 源 outbox scope 未填（NULL）时跳过（非冲突，属未回填）。
+        scope_source_pairs = [
+            ("agent_workspace_outbox", "agent_messages", "aggregate_id", True),
+            ("agent_execution_outbox", "agent_runs", "aggregate_id", True),
+            ("agent_workspace_inbox", "agent_execution_outbox", "event_id", False),
+            ("agent_execution_inbox", "agent_workspace_outbox", "event_id", False),
+        ]
+        for table, src_table, join_col, is_outbox in scope_source_pairs:
+            type_filter = ""
+            if is_outbox:
+                et, at = _SOURCE_TYPE_BY_TABLE[table]
+                type_filter = f" AND t.event_type = '{et}' AND t.aggregate_type = '{at}'"
+            src_null_guard = "" if is_outbox else " AND src.conversation_id IS NOT NULL"
+            conflict_n = (
+                await session.execute(
+                    text(
+                        f"SELECT count(*) FROM metaedu.{table} t "
+                        f"JOIN metaedu.{src_table} src ON src.id = t.{join_col} "
+                        f"  AND src.tenant_id = t.tenant_id "
+                        f"WHERE t.tenant_id = :t AND t.conversation_id IS NOT NULL"
+                        f"{type_filter}{src_null_guard}"
+                        f" AND src.conversation_id <> t.conversation_id"
+                    ),
+                    {"t": tenant_id},
+                )
+            ).scalar()
+            if conflict_n:
+                problems.append(
+                    f"{table}: {conflict_n} 行 scope 与来源 conversation_id 不一致"
+                    f"（A≠B 冲突，未登记或扫描未命中）"
                 )
         # 投影↔ledger 一致性维（复核 #5 / B4 复核 #8）：行内 scope_reconcile_state 是
         # 派生只读投影，必须与该 owner 的完整 issue 集一致——「行内已 reconciled 但

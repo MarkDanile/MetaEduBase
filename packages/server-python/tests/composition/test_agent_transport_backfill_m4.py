@@ -104,9 +104,10 @@ async def _make_run(connection, tenant_id, conversation_id, *, queue_seq=1) -> u
 
 
 async def _make_exec_outbox(
-    connection, tenant_id, run_id, *, payload_ref=None
+    connection, tenant_id, run_id, *, payload_ref=None, oid=None
 ) -> uuid.UUID:
-    oid = uuid.uuid4()
+    if oid is None:
+        oid = uuid.uuid4()
     inline = None if payload_ref else "{}"
     await connection.execute(
         "INSERT INTO metaedu.agent_execution_outbox ("
@@ -686,11 +687,12 @@ async def test_p3_multitable_rescan_converges():
 
 
 async def test_p4_scope_conflict_registers_ambiguous_mapping():
-    """复核 #4：行已带 scope=A、源解析值=B（A≠B）时登记 conversation_scope/ambiguous_mapping。
+    """复核 #4 + 第三轮 #3：行已带 scope=A、源解析值=B（A≠B）登记 tenant_scope/ambiguous_mapping。
 
     反例：旧 UPDATE ... WHERE conversation_id IS NULL 命中 0 行 -> 计 scope_already_present，
-    冲突静默接受。新实现：检测 A≠B，登记 ambiguous_mapping（带**解析值 B**--B 无物理 FK
-    保护，ledger gate 须指向 B 才能在 purge B 前 fail closed），不覆盖行内 A。
+    冲突静默接受。修复：检测 A≠B，登记 ambiguous_mapping。第三轮 #3 降级 tenant_scope
+    （不带 conversation_id）--唯一键无法表示 A/B 双候选、只 gate B 会漏 A 的 ledger gate；
+    tenant_scope 阻断 tenant scheduler 直到 resolved，不覆盖行内 A（fail closed，不猜）。
     """
     connection = await _connect()
     try:
@@ -708,7 +710,10 @@ async def test_p4_scope_conflict_registers_ambiguous_mapping():
     engine, factory = _factory()
     report = await backfill_transport_scope(factory, tenant_id=tenant)
     await engine.dispose()
-    assert report.ok, f"{report.failures} / {report.verify_detail}"
+    # 冲突行 scope=A 与来源 B 持续不一致（不覆盖 A），第三轮 #2 verify 第五维检出 ->
+    # fail closed（report.ok=False、verify_failed=True），不静默通过。
+    assert report.verify_failed, "A≠B 冲突须被 #2 verify 检出 fail closed"
+    assert "agent_workspace_outbox" in report.verify_detail and "不一致" in report.verify_detail
 
     connection = await _connect()
     try:
@@ -719,9 +724,11 @@ async def test_p4_scope_conflict_registers_ambiguous_mapping():
             oid,
         )
         assert issue is not None, "A≠B 冲突须登记 ambiguous_mapping"
-        assert issue["reconcile_class"] == "conversation_scope"
-        assert issue["conversation_id"] == conv_b, (
-            "ambiguous_mapping 须带解析值 B（B 无 FK 保护，ledger gate 须指向 B）"
+        assert issue["reconcile_class"] == "tenant_scope", (
+            "第三轮 #3：A≠B 冲突降级 tenant_scope（不 bind 单一 Conversation）"
+        )
+        assert issue["conversation_id"] is None, (
+            "tenant_scope 不带 conversation_id（保守 gate tenant scheduler）"
         )
         scope = await connection.fetchval(
             "SELECT conversation_id FROM metaedu.agent_workspace_outbox WHERE id=$1",
@@ -866,5 +873,107 @@ async def test_p6_mismatch_type_row_routed_to_ambiguous():
             mismatch,
         )
         assert epoch == 1, "mismatch 行 NULL-epoch 须登记 epoch_unresolvable"
+    finally:
+        await connection.close()
+
+
+async def test_p1_bounded_rerun_progresses_past_registered_rows():
+    """第三轮复核 #1：bounded 重跑不饥饿--已登记 source_missing 的行退出 actionable 扫描。
+
+    反例：旧扫描只看 ``conversation_id IS NULL``，source_missing 行 scope 永久 NULL，
+    每次从 tenant 起点重扫都被选中；``max_rows=1`` 连续调用只处理同一行，后续正常行
+    永不推进。修复：NULL-scope 扫描分支加 ``scope_reconcile_state IS NULL`` 守卫，已登记
+    issue 的行（投影非 NULL）退出扫描，后续行推进。用排序 UUID 控制 id 顺序（phantom < good）。
+    """
+    connection = await _connect()
+    try:
+        tenant = await _make_tenant(connection)
+        conv = await _make_conversation(connection, tenant)
+        ids = sorted([uuid.uuid4(), uuid.uuid4()])
+        phantom_id, good_id = ids[0], ids[1]
+        # phantom: aggregate_id 指向不存在的 run -> source_run_missing（永久 NULL scope）。
+        await _make_exec_outbox(connection, tenant, uuid.uuid4(), oid=phantom_id)
+        # good: aggregate_id 指向真实 run -> 可回填 scope。
+        good_run = await _make_run(connection, tenant, conv, queue_seq=1)
+        await _make_exec_outbox(connection, tenant, good_run, oid=good_id)
+    finally:
+        await connection.close()
+
+    engine, factory = _factory()
+    # 三次 max_rows=1：第一次处理 phantom（id 最小，登记 source_missing），后两次须推进到 good。
+    for _ in range(3):
+        await backfill_transport_scope(factory, tenant_id=tenant, max_rows=1)
+    await engine.dispose()
+
+    connection = await _connect()
+    try:
+        good_scope = await connection.fetchval(
+            "SELECT conversation_id FROM metaedu.agent_execution_outbox WHERE id=$1",
+            good_id,
+        )
+        assert good_scope == conv, "bounded 重跑须推进过已登记行到后续正常行（不饥饿）"
+        phantom_scope = await connection.fetchval(
+            "SELECT conversation_id FROM metaedu.agent_execution_outbox WHERE id=$1",
+            phantom_id,
+        )
+        assert phantom_scope is None, "source_missing 行 scope 永久 NULL"
+        phantom_issue = await connection.fetchval(
+            "SELECT count(*) FROM metaedu.agent_transport_scope_reconcile "
+            "WHERE source_row_id=$1 AND issue_code='source_run_missing'",
+            phantom_id,
+        )
+        assert phantom_issue == 1, "phantom 须登记 source_run_missing（幂等，不重复）"
+    finally:
+        await connection.close()
+
+
+async def test_p2_verify_catches_non_scanned_scope_conflict():
+    """第三轮复核 #2：scope-set 无 ref 的 outbox 不进扫描，#4 扫描级检测够不着，
+    verify 第五维（scope vs 来源矩阵）直接 JOIN 检出 A≠B 冲突 fail closed。
+
+    反例：旧实现 A≠B 冲突只在行进入扫描时检测；scope=A、来源 B、无 ref 的 outbox 不进
+    扫描，四维 verify 也不比 scope vs 来源 -> report.ok=True，冲突静默。修复：verify 加
+    第五维 JOIN 来源检全。
+    """
+    connection = await _connect()
+    try:
+        tenant = await _make_tenant(connection)
+        conv_a = await _make_conversation(connection, tenant)
+        conv_b = await _make_conversation(connection, tenant)
+        msg_b = await _make_message(connection, tenant, conv_b)
+        # scope=conv_a、aggregate_id=msg_b（源->conv_b）、无 payload_ref -> 不进扫描。
+        oid = uuid.uuid4()
+        await connection.execute(
+            "INSERT INTO metaedu.agent_workspace_outbox ("
+            "  id, tenant_id, event_type, schema_version, aggregate_id, aggregate_type, "
+            "  payload_inline, payload_ref, payload_digest, correlation_id, status, "
+            "  attempt_count, next_attempt_at, created_at, conversation_id, "
+            "  producer_purge_revision"
+            ") VALUES ($1,$2,'turn.requested.v1',1,$3,'workspace.message',"
+            "  '{}'::jsonb,NULL,$4,$5,'pending',0,clock_timestamp(),clock_timestamp(),$6,0)",
+            oid,
+            tenant,
+            msg_b,
+            "a" * 64,
+            uuid.uuid4(),
+            conv_a,
+        )
+    finally:
+        await connection.close()
+
+    engine, factory = _factory()
+    report = await backfill_transport_scope(factory, tenant_id=tenant)
+    await engine.dispose()
+    # 不进扫描 -> 无 issue 登记；但 #2 verify 第五维检出 A≠B -> fail closed。
+    assert report.verify_failed, "scope-set 无 ref 的 A≠B 冲突须被 verify 第五维检出"
+    assert "agent_workspace_outbox" in report.verify_detail and "不一致" in report.verify_detail
+    connection = await _connect()
+    try:
+        n = await connection.fetchval(
+            "SELECT count(*) FROM metaedu.agent_transport_scope_reconcile "
+            "WHERE source_row_id=$1",
+            oid,
+        )
+        assert n == 0, "未扫描行不应登记 issue（由 verify fail closed 暴露）"
     finally:
         await connection.close()

@@ -209,8 +209,10 @@ def _create_reconcile_ledger() -> None:
             name="ck_agent_transport_reconcile_resolution_digest",
         ),
         sa.CheckConstraint(
-            "(state = 'resolved') = "
-            "(resolution_digest IS NOT NULL AND resolved_at IS NOT NULL)",
+            "((state = 'resolved') AND resolution_digest IS NOT NULL "
+            "AND resolved_at IS NOT NULL) "
+            "OR (state <> 'resolved' AND resolution_digest IS NULL "
+            "AND resolved_at IS NULL)",
             name="ck_agent_transport_reconcile_resolution_evidence",
         ),
         sa.CheckConstraint(
@@ -396,12 +398,33 @@ def _ledger_nonempty(table: str) -> bool:
     return bool(row.scalar())
 
 
+def _lock_tables_access_exclusive(bind) -> None:
+    """按固定顺序对 040 涉及的全部表取 ACCESS EXCLUSIVE（第三轮复核 #4 TOCTOU 修复）。"""
+    tables = [
+        "agent_transport_scope_reconcile",
+        "agent_external_object_refs",
+        "agent_workspace_outbox",
+        "agent_workspace_inbox",
+        "agent_execution_outbox",
+        "agent_execution_inbox",
+    ]
+    for tbl in tables:
+        bind.execute(sa.text(f"LOCK TABLE {_SCHEMA}.{tbl} IN ACCESS EXCLUSIVE MODE"))
+
+
 def downgrade() -> None:
     # B8 复核 #5 + 第二轮独立复核 #1（生产 fail-closed 语义）：downgrade **无论单步
     # 还是全链**，凡有证据（非空 scope/tombstone 数据或非空 ledger）一律 fail closed
     # raise，要求 forward-fix——**不得**按目标版本放行 TRUNCATE/清列，否则生产
     # `alembic downgrade <早期版本>` 会静默丢失 reconcile/external receipt/tombstone
     # 证据。测试库的全链往返须在**测试准备阶段**清空证据（B8：downgrade 永不删证据）。
+    # 第三轮复核 #4（TOCTOU）：EXISTS 检查取 ACCESS SHARE，不挡并发 INSERT/UPDATE--
+    # 并发写可在检查通过后、DROP 前提交证据，随后 DROP 取 ACCESS EXCLUSIVE 时证据已落盘
+    # 并被删除。检查前按固定顺序 LOCK TABLE ... ACCESS EXCLUSIVE，使「检查 + DROP」在
+    # 同一事务内对并发写原子：并发写者阻塞到 DROP 完成（表已删，写入失败）或检查 raise
+    # （证据已提交则被检见 -> fail closed）。
+    bind = op.get_bind()
+    _lock_tables_access_exclusive(bind)
     evidence_table = _has_non_null_scope_data()
     if evidence_table is not None:
         raise RuntimeError(
