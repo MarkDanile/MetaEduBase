@@ -16,21 +16,21 @@
 
 ### TASK-R1-S4B-IMPL: R1-S4-B 实现（migration 040 + backfill）
 
-状态：🔵 待启动（契约已冻结，待建实现分支）
+状态：🟡 实现完成，停在 PR 交接（待独立 max/Codex 复审，不自行合并）
 类型：新需求开发（Slice schema+backfill 实现）
 领域：Backend（composition / agent_workspace / agent_execution transport schema + backfill）
 当前执行模式：superpower / plan-do
 最近接手工具：Claude Code
-分支：（待建 feat/req041-047-r1-s4b-schema-backfill）
+分支：feat/req041-047-r1-s4b-schema-backfill
 
 需求来源：
 - Spec: docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md（§5.2/§6/§7 owner 边界、external ref、迟到写）
 - Plan: docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4transport-ownerexternal-payload-与迟到写（§S4-A D1-D8 + §S4-B B1-B8 契约冻结块）
 - 架构约束：docs/03-engineering-governance/01-rules/architecture.md
 
-当前进展：S4-B 契约冻结已合并（PR #528 `b2020d4c`，七轮复审 0/0/0/1 仅 P3 文案，P0/P1 清零）。migration 040 精确 schema（B1 四表 scope 列 + reconcile/external 两 ledger + inbox tombstone）、B2 回填来源矩阵、B3 历史 epoch 保持 NULL + epoch_unresolvable、B4 三态 reconcile（state<>'resolved' gate + advisory lock 集合锁 + D8 锁序）、B5 external ref ledger（ref_scheme 空 allowlist + 041 guard 冻结）、B7 两阶段收敛 + scope/epoch 双维度 verify、B8 验收矩阵均已冻结。
-下一步：创建实现分支 feat/req041-047-r1-s4b-schema-backfill，按 B1 落地 migration 040（expand-only）+ B2/B7 backfill；遵守 D8 锁序与 advisory lock 契约；真实 PG 验证 upgrade/downgrade/backfill/中断恢复。交独立 max/Codex 复审，不自行合并。
-验证状态：待实现；契约阶段 docs gate + `git diff --check` 通过，三路 CI 全绿（PR #528 已合并）。
+当前进展：M1-M4 已实现完成。M1 migration 040 + ORM（B1 四表 scope 列 + reconcile/external 两 ledger + inbox tombstone，13 测试）→ M2 版本化 aggregate advisory-lock（前缀 metaedu.agent.transport.agg.v1 与 guard/owner 分域 + D8 锁序，7 测试）→ M3 分批/tenant 限流/可恢复 backfill（B2 来源矩阵 + B3 epoch 保持 NULL + B4 三态 reconcile 集合锁 + B5 external ledger + B7 scope/epoch 双维 verify，8 测试）→ M4 run_events 独立 ref 路径 + 并发/中断/跨源测试（3 测试）。040 downgrade fail-closed 仅拦单步降级、全链降级放行清证据（B8 #5 + 门禁复核决策1）。根治本地全量回归交叉污染：test_s3d_run_event_guard 手动 stamp 039→当前 head、structured_data head 断言 039→040、040 schema 测试 tenant 自给自足。决策2（同法修 031/038）经实证为多余——031/038 守卫在全链降级从未触发。
+下一步：创建实现 PR，交独立 max/Codex 复审，不自行合并。erase_available 保持 False。
+验证状态：ruff check / mypy baseline（0 回归）/ docs gate 全绿；迁移 round-trip 干净 fresh 库 14 passed；M4 变异 KILLED（run_events ref 路径）；全量回归（fresh 库 pytest tests/）2064 passed / 0 failed。
 交接备注：S4 拆分 S4-A~F；PR 至少 4 个。明确排除：S4-C/D/E/F、S5 scheduler、真实 Pi Worker、云对象存储生产 adapter；migration 034-039 已冻结，S4-B 新增 040（expand-only）；erase_available 保持 False（writer fence 在 S4-C，purge 在 S5）。
 
 ## 下一批候选任务
