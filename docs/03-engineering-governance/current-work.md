@@ -30,7 +30,7 @@
 
 当前进展：M1-M4 已实现完成。M1 migration 040 + ORM（B1 四表 scope 列 + reconcile/external 两 ledger + inbox tombstone，13 测试）→ M2 版本化 aggregate advisory-lock（前缀 metaedu.agent.transport.agg.v1 与 guard/owner 分域 + D8 锁序，7 测试）→ M3 分批/tenant 限流/可恢复 backfill（B2 来源矩阵 + B3 epoch 保持 NULL + B4 三态 reconcile 集合锁 + B5 external ledger + B7 scope/epoch 双维 verify，8 测试）→ M4 run_events 独立 ref 路径 + 并发/中断/跨源测试（3 测试）。040 downgrade fail-closed 仅拦单步降级、全链降级放行清证据（B8 #5 + 门禁复核决策1）。根治本地全量回归交叉污染：test_s3d_run_event_guard 手动 stamp 039→当前 head、structured_data head 断言 039→040、040 schema 测试 tenant 自给自足。决策2（同法修 031/038）经实证为多余——031/038 守卫在全链降级从未触发。
 下一步：PR #530 已建，独立复核 P1×2/P2×3 已修复（external ref 完整性 verify + 按表独立游标 + owner 维度投影/verify + 批次边界 completed + EOF 空行），待重新跑 Backend + Engineering docs 后进入下一轮独立 max/Codex 复审，不自行合并。erase_available 保持 False。
-验证状态：ruff check / mypy baseline（0 回归）/ docs gate 全绿；迁移 round-trip 干净 fresh 库 14 passed；M4 变异 KILLED（run_events ref 路径 + 复核 4 修复点变异全 KILLED）；S4-B 专项 36 passed；全量回归（fresh 库 pytest tests/）2064 passed / 0 failed。
+验证状态：ruff check / mypy baseline（0 回归）/ docs gate / git diff --check 全绿；迁移 round-trip 干净 fresh 库 14 passed；M4 变异 KILLED（run_events ref 路径 + 复核 4 修复点变异全 KILLED）；S4-B 专项 36 passed；复核修复后全量回归（fresh 库 pytest tests/）2068 passed / 0 failed。
 交接备注：S4 拆分 S4-A~F；PR 至少 4 个。明确排除：S4-C/D/E/F、S5 scheduler、真实 Pi Worker、云对象存储生产 adapter；migration 034-039 已冻结，S4-B 新增 040（expand-only）；erase_available 保持 False（writer fence 在 S4-C，purge 在 S5）。
 
 ## 下一批候选任务
