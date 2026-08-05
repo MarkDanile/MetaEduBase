@@ -314,3 +314,224 @@ async def test_interrupted_backfill_resumes_idempotently():
             assert n == 1, "重跑不得产生重复 epoch issue"
     finally:
         await connection.close()
+
+
+# --- 复核修复回归测试（P1-1 / P1-2 / P2-2 / P2-3）----------------------------
+
+
+async def _make_message(connection, tenant_id, conversation_id) -> uuid.UUID:
+    """最小 agent_messages 行（ws outbox 的 scope 源：aggregate_id=messages.id）。
+
+    仅填 NOT NULL 列（id/tenant/conversation/seq/message_kind/author_type/
+    content_state/content_digest/body_state），replica 角色绕 FK。
+    """
+    mid = uuid.uuid4()
+    async with connection.transaction():
+        await connection.execute("SET LOCAL session_replication_role = replica")
+        # message_kind='system_notice'（envelope 最简分支：origin_run_id/output_ordinal
+        # 均 NULL）；content_state='visible' + body_state='present' 满足 content/body CHECK。
+        await connection.execute(
+            "INSERT INTO metaedu.agent_messages ("
+            "  id, tenant_id, conversation_id, seq, message_kind, author_type, "
+            "  content_state, content_digest, body_state, created_at"
+            ") VALUES ($1,$2,$3,1,'system_notice','system',"
+            "  'visible',$4,'present',clock_timestamp())",
+            mid,
+            tenant_id,
+            conversation_id,
+            "c" * 64,
+        )
+    return mid
+
+
+async def _make_ws_outbox_with_scope_and_ref(
+    connection, tenant_id, message_id, conversation_id, *, payload_ref
+) -> uuid.UUID:
+    """造一条**已带 scope**（conversation_id 非空）且带 payload_ref 的 ws outbox。
+
+    P1-1 场景：旧 backfill 只扫 ``conversation_id IS NULL``，此类行从不被扫描，
+    其 payload_ref 静默漏登记 external ledger。
+    """
+    oid = uuid.uuid4()
+    await connection.execute(
+        "INSERT INTO metaedu.agent_workspace_outbox ("
+        "  id, tenant_id, event_type, schema_version, aggregate_id, aggregate_type, "
+        "  payload_inline, payload_ref, payload_digest, correlation_id, status, "
+        "  attempt_count, next_attempt_at, created_at, conversation_id"
+        ") VALUES ($1,$2,'turn.requested.v1',1,$3,'workspace.message',"
+        "  NULL::jsonb,$4,$5,$6,'pending',0,clock_timestamp(),clock_timestamp(),$7)",
+        oid,
+        tenant_id,
+        message_id,
+        payload_ref,
+        "a" * 64,
+        uuid.uuid4(),
+        conversation_id,
+    )
+    return oid
+
+
+async def test_p11_scoped_outbox_with_ref_registers_external_ref():
+    """P1-1：已带 scope 的 ref-bearing outbox 行也须登记 external ledger（不漏）。"""
+    connection = await _connect()
+    try:
+        tenant = await _make_tenant(connection)
+        conv = await _make_conversation(connection, tenant)
+        msg = await _make_message(connection, tenant, conv)
+        scoped_ref_outbox = await _make_ws_outbox_with_scope_and_ref(
+            connection, tenant, msg, conv, payload_ref="scoped-ref-1"
+        )
+    finally:
+        await connection.close()
+
+    engine, factory = _factory()
+    report = await backfill_transport_scope(factory, tenant_id=tenant)
+    await engine.dispose()
+    assert report.ok, f"{report.failures} / {report.verify_detail}"
+
+    connection = await _connect()
+    try:
+        ref = await connection.fetchrow(
+            "SELECT ref_scheme, erase_state, source_table FROM "
+            "metaedu.agent_external_object_refs WHERE source_row_id=$1",
+            scoped_ref_outbox,
+        )
+        assert ref is not None, "已带 scope 的 ref-bearing outbox 须登记 external ledger"
+        assert ref["source_table"] == "agent_workspace_outbox"
+        assert ref["erase_state"] == "blocked"
+        # 该行已带 scope，不得重复登记 epoch_unresolvable（epoch 已是历史 NULL 才登记；
+        # 此处 producer_purge_revision 默认 NULL，会登记一条——但 scope 类 issue 不得有）。
+        scope_issues = await connection.fetchval(
+            "SELECT count(*) FROM metaedu.agent_transport_scope_reconcile "
+            "WHERE source_row_id=$1 AND issue_code IN ("
+            "  'source_message_missing','source_run_missing','source_outbox_missing',"
+            "  'cross_tenant_mismatch','ambiguous_mapping','conversation_deleted_orphan')",
+            scoped_ref_outbox,
+        )
+        assert scope_issues == 0, "已带 scope 行不得登记 scope 类 issue"
+    finally:
+        await connection.close()
+
+
+async def test_p11_verify_catches_unregistered_run_event_ref():
+    """P1-1 verify 第三维：ref-bearing 行漏登记 external ledger 时 verify_failed=True。"""
+    connection = await _connect()
+    try:
+        tenant = await _make_tenant(connection)
+        conv = await _make_conversation(connection, tenant)
+        run = await _make_run(connection, tenant, conv)
+        # 造一条 ref-bearing RunEvent，但**不**让 backfill 登记（直接 verify）。
+        await _make_run_event(
+            connection, tenant, conv, run, seq=1, payload_ref="unregistered-ref"
+        )
+    finally:
+        await connection.close()
+
+    # 直接调 verify（不跑 backfill）：ref 未登记 -> external 维 fail closed。
+    engine, factory = _factory()
+    from app.composition.agent_transport_backfill import _verify_scope_epoch
+
+    verify_ok, detail = await _verify_scope_epoch(factory, tenant_id=tenant)
+    await engine.dispose()
+    assert not verify_ok, "ref-bearing RunEvent 漏登记 external ledger 时 verify 应 fail"
+    assert "agent_run_events" in detail and "external ref" in detail
+
+
+async def test_p23_completed_false_at_exact_batch_boundary():
+    """P2-3：max_rows 恰好等于待处理行数但仍有后续表/行时，completed 不得误报 True。"""
+    connection = await _connect()
+    try:
+        tenant = await _make_tenant(connection)
+        conv = await _make_conversation(connection, tenant)
+        # 造 2 条 exec outbox（待回填 scope），加 1 条 ref-bearing RunEvent。
+        for i in range(2):
+            run = await _make_run(connection, tenant, conv, queue_seq=i + 1)
+            await _make_exec_outbox(connection, tenant, run)
+        await _make_run_event(
+            connection, tenant, conv, run, seq=1, payload_ref="boundary-ref"
+        )
+    finally:
+        await connection.close()
+
+    engine, factory = _factory()
+    # max_rows=2 恰好覆盖 2 条 outbox，但还剩 RunEvent 未处理 -> completed 必须 False。
+    r = await backfill_transport_scope(factory, tenant_id=tenant, max_rows=2)
+    await engine.dispose()
+    assert not r.completed, (
+        "max_rows 命中边界且仍有 RunEvent 未处理时 completed 不得误报 True"
+    )
+
+
+async def test_p22_projection_is_owner_scoped():
+    """P2-2：投影按 owner 聚合——其它 owner 对同一 source row 的 issue 不影响本 owner 投影。"""
+    connection = await _connect()
+    try:
+        tenant = await _make_tenant(connection)
+        await _make_conversation(connection, tenant)
+        # 一条源缺失的 exec outbox（run 指向不存在 -> source_run_missing issue，投影 pending）。
+        orphan_outbox = await _make_exec_outbox(connection, tenant, uuid.uuid4())
+    finally:
+        await connection.close()
+
+    engine, factory = _factory()
+    report = await backfill_transport_scope(factory, tenant_id=tenant)
+    await engine.dispose()
+    assert report.ok, f"{report.failures} / {report.verify_detail}"
+
+    connection = await _connect()
+    try:
+        # 本 owner（execution.transport.v1）有 source_run_missing + epoch issue -> 投影 pending。
+        state = await connection.fetchval(
+            "SELECT scope_reconcile_state FROM metaedu.agent_execution_outbox WHERE id=$1",
+            orphan_outbox,
+        )
+        assert state == "pending", f"本 owner 有未决 issue 时投影应为 pending（实际 {state}）"
+        # 手工把本 owner 的 issue 全标 resolved，再塞一条**其它 owner** 的 open issue，
+        # 重算投影应得 'reconciled'（不被其它 owner 的 open issue 拉成 pending）。
+        await connection.execute(
+            "UPDATE metaedu.agent_transport_scope_reconcile SET state='resolved', "
+            "resolution_digest=$2, resolved_at=clock_timestamp() "
+            "WHERE source_row_id=$1 AND owner_key='execution.transport.v1'",
+            orphan_outbox,
+            "e" * 64,
+        )
+        await connection.execute(
+            "INSERT INTO metaedu.agent_transport_scope_reconcile ("
+            "  id, tenant_id, owner_key, source_table, source_row_id, "
+            "  reconcile_class, issue_code, state, revision, created_at"
+            ") VALUES ($1,$2,'external.payload.v1','agent_execution_outbox',$3,"
+            "  'tenant_scope','ambiguous_mapping','open',1,clock_timestamp())",
+            uuid.uuid4(),
+            tenant,
+            orphan_outbox,
+        )
+    finally:
+        await connection.close()
+
+    # 触发投影重算（本 owner 无 NULL-scope/epoch 行，但投影按本 owner issue 集）。
+    engine, factory = _factory()
+    from app.composition.agent_transport_backfill import _recompute_projection
+
+    async with factory() as session, session.begin():
+        await _recompute_projection(
+            session,
+            table="agent_execution_outbox",
+            tenant_id=tenant,
+            owner_key="execution.transport.v1",
+            source_row_id=orphan_outbox,
+        )
+    await engine.dispose()
+
+    connection = await _connect()
+    try:
+        state = await connection.fetchval(
+            "SELECT scope_reconcile_state FROM metaedu.agent_execution_outbox WHERE id=$1",
+            orphan_outbox,
+        )
+        assert state == "reconciled", (
+            f"投影应按本 owner issue 集聚合（本 owner 全 resolved -> reconciled，"
+            f"不受 external.payload.v1 的 open issue 影响），实际 {state}"
+        )
+    finally:
+        await connection.close()
+

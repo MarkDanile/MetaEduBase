@@ -585,4 +585,3 @@ async def test_040_full_chain_downgrade_clears_evidence_and_passes():
         assert n == 0, "全链降级应已清空 reconcile ledger 证据"
     finally:
         await connection.close()
-

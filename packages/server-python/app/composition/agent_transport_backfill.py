@@ -118,21 +118,43 @@ async def _select_null_scope_batch(
     after_id: uuid.UUID | None,
     batch_size: int,
 ) -> list[tuple[uuid.UUID, uuid.UUID, str | None]]:
-    """取一批 ``conversation_id IS NULL`` 的 4 张 transport 源行 (id, join_key, ref)。
+    """取一批待处理的 4 张 transport 源行 (id, join_key, ref)。
 
     返回 (source_row_id, join_key, payload_ref)。join_key 对 outbox 是
-    aggregate_id、对 inbox 是 event_id。payload_ref 仅 outbox 用于 external
-    ledger 登记。run_events 不经此函数（它无 scope 列，恒有 conversation_id，
-    只做 external ref 登记，见 ``_select_ref_event_batch``）。
+    aggregate_id、对 inbox 是 event_id。
+
+    **选取范围（P1-1 修复）**：
+    - inbox：``conversation_id IS NULL``（inbox 无 payload_ref 列，唯一职责是 scope）。
+    - outbox：``conversation_id IS NULL`` **或** 带非空 ``payload_ref`` 但尚未在
+      external ledger 登记的行。仅扫 NULL-scope 会漏掉「已有 scope 但带 ref」的
+      outbox 行，使 external ref 静默漏登记；故 outbox 额外覆盖 ref 未登记行，
+      由 ``_backfill_source_row`` 幂等回填 scope（已带则跳过）并补登 ref。
+    run_events 不经此函数（它无 scope 列，恒有 conversation_id，只做 external ref
+    登记，见 ``_select_ref_event_batch``）。
     """
     if table in ("agent_workspace_outbox", "agent_execution_outbox"):
-        join_col, ref_col = "aggregate_id", "payload_ref"
+        join_col = "aggregate_id"
+        # conversation_id IS NULL -> 需回填 scope；或 payload_ref 非空但未登记 -> 补登 ref。
+        scope_or_ref_predicate = (
+            "(conversation_id IS NULL OR (payload_ref IS NOT NULL AND NOT EXISTS ("
+            "  SELECT 1 FROM metaedu.agent_external_object_refs er "
+            "  WHERE er.tenant_id = metaedu."
+            + table
+            + ".tenant_id AND er.source_table = '"
+            + table
+            + "' AND er.source_row_id = metaedu."
+            + table
+            + ".id)))"
+        )
+        ref_select = "payload_ref"
     else:  # agent_workspace_inbox / agent_execution_inbox
-        join_col, ref_col = "event_id", "NULL"
+        join_col = "event_id"
+        scope_or_ref_predicate = "conversation_id IS NULL"
+        ref_select = "NULL"
     sql = (
-        f"SELECT id, {join_col} AS join_key, {ref_col} AS payload_ref "
+        f"SELECT id, {join_col} AS join_key, {ref_select} AS payload_ref "
         f"FROM metaedu.{table} "
-        f"WHERE tenant_id = :t AND conversation_id IS NULL"
+        f"WHERE tenant_id = :t AND {scope_or_ref_predicate}"
     )
     if after_id is not None:
         sql += " AND id > :after"
@@ -151,16 +173,22 @@ async def _select_ref_event_batch(
     after_id: uuid.UUID | None,
     batch_size: int,
 ) -> list[tuple[uuid.UUID, uuid.UUID, uuid.UUID, str]]:
-    """取一批带非空 ``payload_ref`` 的 RunEvent (id, conversation_id, run_id, ref)。
+    """取一批带非空 ``payload_ref`` 且**尚未登记** external ref 的 RunEvent。
 
-    用 ``FOR UPDATE ... SKIP LOCKED`` 对 ``uq_agent_run_event_tenant_id
-    (tenant_id, id)`` 命中的行做原子 claim，多并发 backfill 不重复处理同一行；
-    行锁随事务提交释放，不长期持有。run_events 恒有 scope（conversation_id NOT
-    NULL），故只登记 external ref、不参与 reconcile/scope 回填。
+    返回 (id, conversation_id, run_id, payload_ref)。扫描谓词 = ``payload_ref IS
+    NOT NULL AND NOT EXISTS(external ledger 登记)``（P1-1：与 verify 的 external
+    维一致）——被并发 ``SKIP LOCKED`` 跳过而漏登记的行下次重跑会被重新选中补登，
+    自愈；``FOR UPDATE SKIP LOCKED`` 仅作并发去重优化，不再是完备性依赖。
+    run_events 恒有 scope（conversation_id NOT NULL），故只登记 external ref、不
+    参与 reconcile/scope 回填。
     """
     sql = (
         "SELECT id, conversation_id, run_id, payload_ref FROM metaedu.agent_run_events "
-        "WHERE tenant_id = :t AND payload_ref IS NOT NULL"
+        "WHERE tenant_id = :t AND payload_ref IS NOT NULL AND NOT EXISTS ("
+        "  SELECT 1 FROM metaedu.agent_external_object_refs er "
+        "  WHERE er.tenant_id = metaedu.agent_run_events.tenant_id "
+        "  AND er.source_table = 'agent_run_events' "
+        "  AND er.source_row_id = metaedu.agent_run_events.id)"
     )
     if after_id is not None:
         sql += " AND id > :after"
@@ -310,6 +338,7 @@ async def _recompute_projection(
     *,
     table: str,
     tenant_id: uuid.UUID,
+    owner_key: str,
     source_row_id: uuid.UUID,
 ) -> None:
     """按 ledger 当前 issue 集重算行内 ``scope_reconcile_state`` 投影（同事务）。
@@ -318,6 +347,10 @@ async def _recompute_projection(
     state<>'resolved' -> 'pending'；全部 resolved -> 'reconciled'。源行已回填
     scope（conversation_id 非 NULL）时同样按 issue 集投影（无 issue 即 NULL=已带
     scope，不参与 reconcile）。
+
+    **owner 维度（P2-2）**：ledger 唯一键含 ``owner_key``、集合锁按 owner 派生，
+    故投影聚合必须限定同一 owner——否则后续不同 owner 对同一 source row 写入的
+    issue 集会被错误聚合。
     """
     state = (
         await session.execute(
@@ -327,9 +360,10 @@ async def _recompute_projection(
                 "  WHEN bool_or(state <> 'resolved') THEN 'pending' "
                 "  ELSE 'reconciled' END "
                 "FROM metaedu.agent_transport_scope_reconcile "
-                "WHERE tenant_id = :t AND source_table = :st AND source_row_id = :sr"
+                "WHERE tenant_id = :t AND owner_key = :o "
+                "AND source_table = :st AND source_row_id = :sr"
             ),
-            {"t": tenant_id, "st": table, "sr": source_row_id},
+            {"t": tenant_id, "o": owner_key, "st": table, "sr": source_row_id},
         )
     ).scalar()
     if state is None:
@@ -368,6 +402,22 @@ async def _backfill_source_row(
         source_table=table,
         source_row_id=source_row_id,
     )
+    # 先查行当前 scope/epoch 状态（P1-1：outbox 已带 scope 的 ref-bearing 行只做
+    # ref 补登，不重复 epoch_unresolvable；epoch issue 只对 producer_purge_revision
+    # 仍为 NULL 的 history 行登记一次）。
+    current = (
+        await session.execute(
+            text(
+                f"SELECT conversation_id, producer_purge_revision FROM metaedu.{table} "
+                f"WHERE tenant_id = :t AND id = :sr"
+            ),
+            {"t": tenant_id, "sr": source_row_id},
+        )
+    ).first()
+    if current is None:
+        return  # 行已被并发删除：集合锁边界内安全跳过（下一跑若重现再处理）。
+    had_scope = current[0] is not None
+    epoch_is_null = current[1] is None
     resolution, conversation_id = await _resolve_source_conversation(
         session, table=table, tenant_id=tenant_id, join_key=join_key
     )
@@ -387,8 +437,9 @@ async def _backfill_source_row(
             report.scope_backfilled += 1
         else:
             report.scope_already_present += 1
-    else:
-        # scope 未知/orphan/跨 tenant：登记 scope 类 issue。
+    elif not had_scope:
+        # scope 未知/orphan/跨 tenant 且本行确无 scope：登记 scope 类 issue。
+        # （已带 scope 的 ref-bearing 行跳过 scope issue——它不属于 scope 维问题。）
         if resolution == "orphan":
             reconcile_class = "orphan"
             issue_code = "conversation_deleted_orphan"
@@ -412,39 +463,46 @@ async def _backfill_source_row(
             issue_code=issue_code,
         ):
             report.reconcile_issues_registered += 1
-    # epoch（B3）：历史行 producer_purge_revision 保持 NULL，登记 epoch_unresolvable。
+    # epoch（B3）：仅当 producer_purge_revision 仍为 NULL 时登记 epoch_unresolvable
+    # （幂等唯一键兜底，且已带 epoch 的行——如 S4-C 后新写入——不再补 issue）。
     # epoch 类按 scope 状态归 class（B4 复核）：resolved->conversation_scope（带
     # conversation_id）；orphan->orphan；其余->tenant_scope。
-    if resolution == "resolved":
-        epoch_class, epoch_conv = "conversation_scope", conversation_id
-    elif resolution == "orphan":
-        epoch_class, epoch_conv = "orphan", None
-    else:
-        epoch_class, epoch_conv = "tenant_scope", None
-    if await _register_issue(
-        session,
-        tenant_id=tenant_id,
-        owner_key=owner_key,
-        table=table,
-        source_row_id=source_row_id,
-        conversation_id=epoch_conv,
-        reconcile_class=epoch_class,
-        issue_code="epoch_unresolvable",
-    ):
-        report.reconcile_issues_registered += 1
+    if epoch_is_null:
+        if resolution == "resolved":
+            epoch_class, epoch_conv = "conversation_scope", conversation_id
+        elif resolution == "orphan":
+            epoch_class, epoch_conv = "orphan", None
+        else:
+            epoch_class, epoch_conv = "tenant_scope", None
+        if await _register_issue(
+            session,
+            tenant_id=tenant_id,
+            owner_key=owner_key,
+            table=table,
+            source_row_id=source_row_id,
+            conversation_id=epoch_conv,
+            reconcile_class=epoch_class,
+            issue_code="epoch_unresolvable",
+        ):
+            report.reconcile_issues_registered += 1
     # external ref（B5）：仅 outbox 的非空 payload_ref（run_events 走独立路径）。
+    # 用行当前/回填后的 conversation_id（已带 scope 行用其原值）。
     if payload_ref is not None and await _register_external_ref(
         session,
         tenant_id=tenant_id,
-        conversation_id=conversation_id,
+        conversation_id=conversation_id if resolution == "resolved" else current[0],
         table=table,
         source_row_id=source_row_id,
         ref_value=payload_ref,
     ):
         report.external_refs_registered += 1
-    # 重算行内投影（同事务，仅对有 issue 的源行）。
+    # 重算行内投影（同事务，仅对有 issue 的源行；owner 维度绑定见 _recompute_projection）。
     await _recompute_projection(
-        session, table=table, tenant_id=tenant_id, source_row_id=source_row_id
+        session,
+        table=table,
+        tenant_id=tenant_id,
+        owner_key=owner_key,
+        source_row_id=source_row_id,
     )
 
 
@@ -485,13 +543,20 @@ async def _register_run_event_ref(
 async def _verify_scope_epoch(
     session_factory, *, tenant_id: uuid.UUID
 ) -> tuple[bool, str]:
-    """scope/epoch 双维最终 verify（fail closed，互不豁免）。
+    """scope/epoch/external-ref 三维最终 verify（fail closed，互不豁免）。
 
     scope 维：4 张 transport 表凡 ``conversation_id IS NULL`` 的行必须有对应
     scope 类 issue；epoch 维：凡 ``producer_purge_revision IS NULL`` 的行必须有
-    ``epoch_unresolvable`` issue。run_events 不参与——它恒有 scope
-    （conversation_id NOT NULL，无 NULL-scope 行），且无
-    ``producer_purge_revision`` 列。
+    ``epoch_unresolvable`` issue。两维的 issue 匹配均限定 ``owner_key``（P2-2：
+    ledger 唯一键含 owner_key，verify 不绑定 owner 会让跨 owner 的 issue 错误满足
+    本 owner 的 verify）。
+
+    external ref 维（P1-1）：两张 outbox + RunEvent 凡 ``payload_ref IS NOT NULL``
+    的行必须在 external ledger 有登记（owner=external.payload.v1）。否则 SKIP LOCKED
+    跳过 / 已带 scope 的 ref-bearing 行会静默漏登记而 verify 误报 ok。
+
+    run_events 不参与 scope/epoch 维——它恒有 scope（conversation_id NOT NULL，
+    无 NULL-scope 行），且无 ``producer_purge_revision`` 列。
     """
     problems: list[str] = []
     scope_tables = [
@@ -500,9 +565,11 @@ async def _verify_scope_epoch(
         "agent_workspace_inbox",
         "agent_execution_inbox",
     ]
+    ref_tables = ["agent_workspace_outbox", "agent_execution_outbox", "agent_run_events"]
     async with session_factory() as session, session.begin():
         for table in scope_tables:
-            # scope 维：未填 scope 且无 scope 类 issue 的行数。
+            owner = OWNER_BY_TABLE[table]
+            # scope 维：未填 scope 且无 scope 类 issue 的行数（owner 绑定）。
             scope_missing = (
                 await session.execute(
                     text(
@@ -510,19 +577,21 @@ async def _verify_scope_epoch(
                         f"WHERE t.tenant_id = :t AND t.conversation_id IS NULL "
                         f"AND NOT EXISTS ("
                         f"  SELECT 1 FROM metaedu.agent_transport_scope_reconcile r "
-                        f"  WHERE r.tenant_id = t.tenant_id AND r.source_table = :st "
+                        f"  WHERE r.tenant_id = t.tenant_id AND r.owner_key = :o "
+                        f"  AND r.source_table = :st "
                         f"  AND r.source_row_id = t.id AND r.issue_code IN ("
                         f"    'source_message_missing','source_run_missing',"
                         f"    'source_outbox_missing','cross_tenant_mismatch',"
                         f"    'ambiguous_mapping','conversation_deleted_orphan'))"
                     ),
-                    {"t": tenant_id, "st": table},
+                    {"t": tenant_id, "o": owner, "st": table},
                 )
             ).scalar()
             if scope_missing:
                 problems.append(f"{table}: {scope_missing} NULL-scope 行无 scope 类 issue")
-        # epoch 维（仅 4 张 transport 表有 producer_purge_revision 列）。
+        # epoch 维（仅 4 张 transport 表有 producer_purge_revision 列；owner 绑定）。
         for table in scope_tables:
+            owner = OWNER_BY_TABLE[table]
             epoch_missing = (
                 await session.execute(
                     text(
@@ -530,16 +599,36 @@ async def _verify_scope_epoch(
                         f"WHERE t.tenant_id = :t AND t.producer_purge_revision IS NULL "
                         f"AND NOT EXISTS ("
                         f"  SELECT 1 FROM metaedu.agent_transport_scope_reconcile r "
-                        f"  WHERE r.tenant_id = t.tenant_id AND r.source_table = :st "
+                        f"  WHERE r.tenant_id = t.tenant_id AND r.owner_key = :o "
+                        f"  AND r.source_table = :st "
                         f"  AND r.source_row_id = t.id "
                         f"  AND r.issue_code = 'epoch_unresolvable')"
                     ),
-                    {"t": tenant_id, "st": table},
+                    {"t": tenant_id, "o": owner, "st": table},
                 )
             ).scalar()
             if epoch_missing:
                 problems.append(
                     f"{table}: {epoch_missing} NULL-epoch 行无 epoch_unresolvable issue"
+                )
+        # external ref 维：ref-bearing 行须在 external ledger 登记（P1-1）。
+        for table in ref_tables:
+            ref_missing = (
+                await session.execute(
+                    text(
+                        f"SELECT count(*) FROM metaedu.{table} t "
+                        f"WHERE t.tenant_id = :t AND t.payload_ref IS NOT NULL "
+                        f"AND NOT EXISTS ("
+                        f"  SELECT 1 FROM metaedu.agent_external_object_refs er "
+                        f"  WHERE er.tenant_id = t.tenant_id AND er.owner_key = :o "
+                        f"  AND er.source_table = :st AND er.source_row_id = t.id)"
+                    ),
+                    {"t": tenant_id, "o": _EXTERNAL_OWNER, "st": table},
+                )
+            ).scalar()
+            if ref_missing:
+                problems.append(
+                    f"{table}: {ref_missing} ref-bearing 行未登记 external ref"
                 )
     return (not problems), "; ".join(problems)
 
@@ -574,10 +663,16 @@ async def backfill_transport_scope(
         "agent_execution_inbox",
     ]
     processed = 0
-    exhausted = True
+    # P1-2：每张表用独立游标（同表内 keyset 单调推进），不跨表复用单一 after_id——
+    # 否则某表在 max_rows 处返回的 UUID 被下一张表复用，会跳过 UUID 更小的行。
+    cursors: dict[str, uuid.UUID | None] = {t: after_id for t in tables}
+
+    def _hit_cap() -> bool:
+        return max_rows is not None and processed >= max_rows
+
     for table in tables:
-        cursor = after_id
-        while True:
+        while not _hit_cap():
+            cursor = cursors[table]
             async with session_factory() as session, session.begin():
                 batch = await _select_null_scope_batch(
                     session,
@@ -589,8 +684,7 @@ async def backfill_transport_scope(
             if not batch:
                 break
             for source_row_id, join_key, payload_ref in batch:
-                if max_rows is not None and processed >= max_rows:
-                    exhausted = False
+                if _hit_cap():
                     break
                 try:
                     async with session_factory() as session, session.begin():
@@ -616,31 +710,29 @@ async def backfill_transport_scope(
                             )
                         )
                 processed += 1
-                cursor = source_row_id
-                report.next_after_id = cursor
-            if max_rows is not None and processed >= max_rows:
-                break
+                cursors[table] = source_row_id
+                report.next_after_id = source_row_id
             if len(batch) < batch_size:
                 break
-        if max_rows is not None and processed >= max_rows:
+        if _hit_cap():
             break
-    # run_events external ref 登记（独立批次：SELECT FOR UPDATE SKIP LOCKED claim
-    # 带非空 payload_ref 的行，登记 external ledger unknown+blocked）。幂等：
+    # run_events external ref 登记（P1-1：扫描谓词 = payload_ref 非空且**未登记**，
+    # 与 verify 的 external 维一致——被并发 SKIP LOCKED 跳过而漏登记的行下次重跑会
+    # 被重新选中补登，自愈；SKIP LOCKED 仅并发去重优化，不再是完备性依赖）。幂等：
     # ledger 唯一键 ON CONFLICT 兜底，重跑不重复。
-    cursor = after_id
-    while not (max_rows is not None and processed >= max_rows):
+    run_event_cursor = after_id
+    while not _hit_cap():
         async with session_factory() as session, session.begin():
             event_batch = await _select_ref_event_batch(
                 session,
                 tenant_id=tenant_id,
-                after_id=cursor,
+                after_id=run_event_cursor,
                 batch_size=batch_size,
             )
         if not event_batch:
             break
         for source_row_id, conversation_id, _run_id, ref_value in event_batch:
-            if max_rows is not None and processed >= max_rows:
-                exhausted = False
+            if _hit_cap():
                 break
             try:
                 async with session_factory() as session, session.begin():
@@ -665,12 +757,16 @@ async def backfill_transport_scope(
                         )
                     )
             processed += 1
-            cursor = source_row_id
-            report.next_after_id = cursor
+            run_event_cursor = source_row_id
+            report.next_after_id = source_row_id
         if len(event_batch) < batch_size:
             break
-    report.completed = exhausted
-    # 最终 verify（scope/epoch 双维 fail closed）。
+    # P2-3：completed 仅当**没有因 max_rows 截断**且本次扫描已覆盖全部待处理行。
+    # 判定依据是截断标志（一旦 _hit_cap() 中断任一循环即未完成），而非易错的
+    # exhausted 标志（max_rows == batch_size 且恰好到边界时 exhausted 误判）。
+    truncated = _hit_cap()
+    report.completed = not truncated
+    # 最终 verify（scope/epoch/external-ref 三维 fail closed）。
     verify_ok, detail = await _verify_scope_epoch(session_factory, tenant_id=tenant_id)
     report.verify_failed = not verify_ok
     report.verify_detail = detail
