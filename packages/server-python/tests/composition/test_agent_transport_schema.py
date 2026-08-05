@@ -97,6 +97,30 @@ async def _columns(table: str) -> set[str]:
         await connection.close()
 
 
+async def _clear_040_evidence() -> None:
+    """清空 040 全部证据（scope 列置 NULL + 两 ledger 清空 + inbox tombstone 置 NULL）。
+
+    供 sync 的 downgrade round-trip 测试前置调用，确保「空证据」前提，避免单步
+    downgrade fail-closed 在全量回归残留证据下误触发。仅清数据，不动 schema。
+    """
+    connection = await _connect()
+    try:
+        for table in _LEDGER_TABLES:
+            await connection.execute(f"TRUNCATE TABLE metaedu.{table}")
+        for table in _SCOPE_TABLES:
+            await connection.execute(
+                f"UPDATE metaedu.{table} SET conversation_id = NULL, "
+                f"producer_purge_revision = NULL, scope_reconcile_state = NULL"
+            )
+        for table in _INBOX_TABLES:
+            await connection.execute(
+                f"UPDATE metaedu.{table} SET receipt_tombstone_state = NULL, "
+                f"receipt_tombstone_digest = NULL"
+            )
+    finally:
+        await connection.close()
+
+
 async def _objects_exist(kind: str, names: tuple[str, ...]) -> set[str]:
     """返回给定对象名中当前存在的集合。kind ∈ {index, table, fk}。"""
     connection = await _connect()
@@ -438,7 +462,14 @@ async def test_040_external_erase_evidence_rejected():
 
 
 def test_040_downgrade_upgrade_round_trip_empty():
-    """空证据时 downgrade 完整还原全部新增对象，upgrade 可重入。"""
+    """空证据时 downgrade 完整还原全部新增对象，upgrade 可重入。
+
+    前置显式清空 040 证据：本测试是 sync（无 autouse async clean fixture），全量
+    回归中可能排在写了 scope/reconcile 证据的测试之后，库残留证据会让单步
+    downgrade fail-closed raise（B8 #5 语义），进而 finally 的 upgrade head 撞
+    「列已存在」把库卡在不一致态。先清空证据确保「empty」前提，与测试名一致。
+    """
+    asyncio.run(_clear_040_evidence())
     try:
         _run_alembic("downgrade", "039_run_event_tombstone_guard")
         assert asyncio.run(_objects_exist("table", _LEDGER_TABLES)) == set()
