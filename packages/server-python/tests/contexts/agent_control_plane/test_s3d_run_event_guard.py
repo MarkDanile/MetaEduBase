@@ -319,7 +319,8 @@ async def test_migration_039_roundtrip_downgrade_restores_unconditional_guard(
         return fresh
 
     # 进入时把库对齐到守卫 home（039）：head > 039 时用真实 alembic 全链降级到 039
-    # （040 全链降级会清空证据并还原列/表，不卡库），使后续 mig.downgrade/upgrade 的
+    # （040 downgrade 一律 fail-closed：本测试基线无 040 证据，全链降级安全放行；
+    # 一旦有证据则 raise，须测试准备阶段清空），使后续 mig.downgrade/upgrade 的
     # 手动 stamp 与物理 schema 一致。结束 finally 用真实 upgrade 装回 head。
     from alembic import command as _alembic_command
 

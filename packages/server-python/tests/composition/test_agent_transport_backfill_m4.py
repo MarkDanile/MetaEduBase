@@ -534,3 +534,337 @@ async def test_p22_projection_is_owner_scoped():
         )
     finally:
         await connection.close()
+
+
+# --- 第二轮独立复核回归测试（#2 ref_value / #3 多表重扫 / #4 冲突 / #5 投影 / #6 mismatch）-
+
+
+async def _make_ws_outbox_null_scope(connection, tenant_id, message_id) -> uuid.UUID:
+    """造一条 NULL-scope 的 ws outbox（aggregate_id=message_id，待 backfill 回填）。"""
+    oid = uuid.uuid4()
+    await connection.execute(
+        "INSERT INTO metaedu.agent_workspace_outbox ("
+        "  id, tenant_id, event_type, schema_version, aggregate_id, aggregate_type, "
+        "  payload_inline, payload_ref, payload_digest, correlation_id, status, "
+        "  attempt_count, next_attempt_at, created_at"
+        ") VALUES ($1,$2,'turn.requested.v1',1,$3,'workspace.message',"
+        "  '{}'::jsonb,NULL,$4,$5,'pending',0,clock_timestamp(),clock_timestamp())",
+        oid,
+        tenant_id,
+        message_id,
+        "a" * 64,
+        uuid.uuid4(),
+    )
+    return oid
+
+
+async def _make_ws_outbox_mismatch_type(
+    connection, tenant_id, *, payload_ref=None
+) -> uuid.UUID:
+    """造一条 (event_type, aggregate_type) 不在 B2 矩阵的 ws outbox（复核 #6）。
+
+    event_type='future.event.v1'、aggregate_type='future.aggregate'，aggregate_id 随机。
+    B2 无此类型映射，backfill 须路由到 ambiguous（不盲 join aggregate_id）。
+    """
+    oid = uuid.uuid4()
+    inline = None if payload_ref else "{}"
+    await connection.execute(
+        "INSERT INTO metaedu.agent_workspace_outbox ("
+        "  id, tenant_id, event_type, schema_version, aggregate_id, aggregate_type, "
+        "  payload_inline, payload_ref, payload_digest, correlation_id, status, "
+        "  attempt_count, next_attempt_at, created_at"
+        ") VALUES ($1,$2,'future.event.v1',1,$3,'future.aggregate',"
+        "  $4::jsonb,$5,$6,$7,'pending',0,clock_timestamp(),clock_timestamp())",
+        oid,
+        tenant_id,
+        uuid.uuid4(),  # aggregate_id 随机（不指向真实 Message）
+        inline,
+        payload_ref,
+        "a" * 64,
+        uuid.uuid4(),
+    )
+    return oid
+
+
+async def test_p2_ref_value_mismatch_reregisters():
+    """复核 #2：external ref 按 (source_row, ref_value) 唯一，旧 ref_value 不算数。
+
+    反例：旧 NOT EXISTS 只匹配 (source_row_id)，source_row 上有任意 ref_value 登记即跳过
+    -> payload_ref 对应的新 ref 静默漏登记，verify 也误报 ok。新实现：NOT EXISTS 额外匹配
+    ``er.ref_value = t.payload_ref``，当前 ref 须登记。
+    """
+    connection = await _connect()
+    try:
+        tenant = await _make_tenant(connection)
+        conv = await _make_conversation(connection, tenant)
+        msg = await _make_message(connection, tenant, conv)
+        oid = await _make_ws_outbox_with_scope_and_ref(
+            connection, tenant, msg, conv, payload_ref="ref-A"
+        )
+        # 手工塞一条**不同 ref_value** 的 external ledger 行（模拟旧 ref 残留）。
+        await connection.execute(
+            "INSERT INTO metaedu.agent_external_object_refs ("
+            "  id, tenant_id, conversation_id, owner_key, ref_scheme, ref_value, "
+            "  source_table, source_row_id, erase_state, blocked_reason, "
+            "  created_at, updated_at"
+            ") VALUES ($1,$2,$3,'external.payload.v1','unknown','stale-ref-X',"
+            "  'agent_workspace_outbox',$4,'blocked','unknown_scheme',"
+            "  clock_timestamp(),clock_timestamp())",
+            uuid.uuid4(),
+            tenant,
+            conv,
+            oid,
+        )
+    finally:
+        await connection.close()
+
+    engine, factory = _factory()
+    report = await backfill_transport_scope(factory, tenant_id=tenant)
+    await engine.dispose()
+    assert report.ok, f"{report.failures} / {report.verify_detail}"
+
+    connection = await _connect()
+    try:
+        n = await connection.fetchval(
+            "SELECT count(*) FROM metaedu.agent_external_object_refs "
+            "WHERE source_row_id=$1 AND ref_value='ref-A'",
+            oid,
+        )
+        assert n == 1, "payload_ref='ref-A' 须按当前 ref_value 登记一条"
+        # 旧 ref_value 不被删除（expand-only，仅补登新 ref）。
+        stale = await connection.fetchval(
+            "SELECT count(*) FROM metaedu.agent_external_object_refs "
+            "WHERE source_row_id=$1 AND ref_value='stale-ref-X'",
+            oid,
+        )
+        assert stale == 1, "旧 ref_value 不被删除（仅补登新 ref）"
+    finally:
+        await connection.close()
+
+
+async def test_p3_multitable_rescan_converges():
+    """复核 #3：max_rows 跨多表截断，从 tenant 起点重扫收敛 ws+exec outbox 全部行。
+
+    反例：旧跨调用/跨表游标复用会跳过后续表的行。新实现：每表独立进程内游标，跨调用
+    从 tenant 起点全量幂等重扫，已填行幂等跳过。
+    """
+    connection = await _connect()
+    try:
+        tenant = await _make_tenant(connection)
+        conv = await _make_conversation(connection, tenant)
+        msg = await _make_message(connection, tenant, conv)
+        ws_oid = await _make_ws_outbox_null_scope(connection, tenant, msg)
+        exec_oids = []
+        for i in range(2):
+            run = await _make_run(connection, tenant, conv, queue_seq=i + 1)
+            exec_oids.append(await _make_exec_outbox(connection, tenant, run))
+    finally:
+        await connection.close()
+
+    engine, factory = _factory()
+    r1 = await backfill_transport_scope(factory, tenant_id=tenant, max_rows=1)
+    assert not r1.completed, "max_rows=1 截断后应未完成"
+    r2 = await backfill_transport_scope(factory, tenant_id=tenant)
+    await engine.dispose()
+    assert r2.ok, f"{r2.failures} / {r2.verify_detail}"
+
+    connection = await _connect()
+    try:
+        ws_scope = await connection.fetchval(
+            "SELECT conversation_id FROM metaedu.agent_workspace_outbox WHERE id=$1",
+            ws_oid,
+        )
+        assert ws_scope == conv, "重扫后 ws outbox 应回填 scope"
+        for oid in exec_oids:
+            s = await connection.fetchval(
+                "SELECT conversation_id FROM metaedu.agent_execution_outbox WHERE id=$1",
+                oid,
+            )
+            assert s == conv, "重扫后 exec outbox 应回填 scope"
+    finally:
+        await connection.close()
+
+
+async def test_p4_scope_conflict_registers_ambiguous_mapping():
+    """复核 #4：行已带 scope=A、源解析值=B（A≠B）时登记 conversation_scope/ambiguous_mapping。
+
+    反例：旧 UPDATE ... WHERE conversation_id IS NULL 命中 0 行 -> 计 scope_already_present，
+    冲突静默接受。新实现：检测 A≠B，登记 ambiguous_mapping（带**解析值 B**--B 无物理 FK
+    保护，ledger gate 须指向 B 才能在 purge B 前 fail closed），不覆盖行内 A。
+    """
+    connection = await _connect()
+    try:
+        tenant = await _make_tenant(connection)
+        conv_a = await _make_conversation(connection, tenant)
+        conv_b = await _make_conversation(connection, tenant)
+        msg_b = await _make_message(connection, tenant, conv_b)
+        # aggregate_id=msg_b（源解析->conv_b），行内 conversation_id=conv_a（A≠B）。
+        oid = await _make_ws_outbox_with_scope_and_ref(
+            connection, tenant, msg_b, conv_a, payload_ref="conflict-ref"
+        )
+    finally:
+        await connection.close()
+
+    engine, factory = _factory()
+    report = await backfill_transport_scope(factory, tenant_id=tenant)
+    await engine.dispose()
+    assert report.ok, f"{report.failures} / {report.verify_detail}"
+
+    connection = await _connect()
+    try:
+        issue = await connection.fetchrow(
+            "SELECT reconcile_class, issue_code, conversation_id FROM "
+            "metaedu.agent_transport_scope_reconcile "
+            "WHERE source_row_id=$1 AND issue_code='ambiguous_mapping'",
+            oid,
+        )
+        assert issue is not None, "A≠B 冲突须登记 ambiguous_mapping"
+        assert issue["reconcile_class"] == "conversation_scope"
+        assert issue["conversation_id"] == conv_b, (
+            "ambiguous_mapping 须带解析值 B（B 无 FK 保护，ledger gate 须指向 B）"
+        )
+        scope = await connection.fetchval(
+            "SELECT conversation_id FROM metaedu.agent_workspace_outbox WHERE id=$1",
+            oid,
+        )
+        assert scope == conv_a, "冲突时不得覆盖行内既有 scope（fail closed，不猜）"
+    finally:
+        await connection.close()
+
+
+async def test_p5_zero_issue_row_projection_stays_null():
+    """复核 #5 连带：零 issue 的干净行投影保持 NULL（不误盖 'reconciled'）。
+
+    反例：``_recompute_projection`` 与第四维 verify 的 ``CASE WHEN bool_or(...) ... ELSE
+    'reconciled'`` 无 GROUP BY，空集 bool_or=NULL -> ELSE 'reconciled'，零 issue 行被误盖
+    'reconciled'；第四维 verify 期望 NULL、行内 'reconciled' -> 漂移 fail。修复：加
+    ``WHEN count(*) = 0 THEN NULL``。本测试造一条已带 scope+epoch（不扫描、零 issue）的干净
+    行，verify 须通过（无漂移）。
+    """
+    connection = await _connect()
+    try:
+        tenant = await _make_tenant(connection)
+        conv = await _make_conversation(connection, tenant)
+        msg = await _make_message(connection, tenant, conv)
+        oid = uuid.uuid4()
+        # 已带 scope（conv）+ epoch（0），无 ref -> 不被扫描、零 issue 的干净行。
+        await connection.execute(
+            "INSERT INTO metaedu.agent_workspace_outbox ("
+            "  id, tenant_id, event_type, schema_version, aggregate_id, aggregate_type, "
+            "  payload_inline, payload_ref, payload_digest, correlation_id, status, "
+            "  attempt_count, next_attempt_at, created_at, conversation_id, "
+            "  producer_purge_revision"
+            ") VALUES ($1,$2,'turn.requested.v1',1,$3,'workspace.message',"
+            "  '{}'::jsonb,NULL,$4,$5,'pending',0,clock_timestamp(),clock_timestamp(),$6,0)",
+            oid,
+            tenant,
+            msg,
+            "a" * 64,
+            uuid.uuid4(),
+            conv,
+        )
+    finally:
+        await connection.close()
+
+    engine, factory = _factory()
+    report = await backfill_transport_scope(factory, tenant_id=tenant)
+    await engine.dispose()
+    # 干净行零 issue：第四维 verify 期望投影 NULL、行内 NULL -> 不漂移 -> ok。
+    # （未修空集 bug 时：期望 'reconciled'、行内 NULL -> 漂移 -> verify_failed=True。）
+    assert report.ok, f"零 issue 干净行不应触发投影漂移：{report.verify_detail}"
+    connection = await _connect()
+    try:
+        state = await connection.fetchval(
+            "SELECT scope_reconcile_state FROM metaedu.agent_workspace_outbox WHERE id=$1",
+            oid,
+        )
+        assert state is None, f"零 issue 干净行投影应保持 NULL（实际 {state}）"
+    finally:
+        await connection.close()
+
+
+async def test_p5_projection_ledger_drift_verify_fails():
+    """复核 #5：行内 scope_reconcile_state 与 ledger issue 集漂移时 verify fail closed。
+
+    反例：旧 verify 无投影一致性维，行内标 'reconciled' 但 ledger 有 open issue 静默通过。
+    新实现：第四维 LATERAL 重算期望投影，与行内值不一致即 fail closed。
+    """
+    connection = await _connect()
+    try:
+        tenant = await _make_tenant(connection)
+        # 源缺失 exec outbox -> backfill 登记 source_run_missing + epoch_unresolvable ->
+        # 投影 'pending'。
+        oid = await _make_exec_outbox(connection, tenant, uuid.uuid4())
+    finally:
+        await connection.close()
+
+    engine, factory = _factory()
+    await backfill_transport_scope(factory, tenant_id=tenant)
+    await engine.dispose()
+
+    connection = await _connect()
+    try:
+        # 篡改行内投影为 'reconciled'（与 ledger open issue 集漂移）。
+        await connection.execute(
+            "UPDATE metaedu.agent_execution_outbox SET scope_reconcile_state='reconciled' "
+            "WHERE id=$1",
+            oid,
+        )
+    finally:
+        await connection.close()
+
+    engine, factory = _factory()
+    from app.composition.agent_transport_backfill import _verify_scope_epoch
+
+    verify_ok, detail = await _verify_scope_epoch(factory, tenant_id=tenant)
+    await engine.dispose()
+    assert not verify_ok, "投影与 ledger 漂移时 verify 应 fail closed"
+    assert "agent_execution_outbox" in detail and "投影" in detail
+
+
+async def test_p6_mismatch_type_row_routed_to_ambiguous():
+    """复核 #6：非 B2 类型的 outbox 行路由到 ambiguous，登记 tenant_scope/ambiguous_mapping。
+
+    反例：旧实现按表名盲 join aggregate_id->agent_messages，aggregate_id 碰巧指向某 Message
+    会错配 scope；或被 type_filter 跳过 -> B7:817 NULL-scope 无 issue -> verify fail。新实现：
+    不盲 join、登记 ambiguous_mapping（conversation_id=NULL，tenant_scope），verify 通过。
+    """
+    connection = await _connect()
+    try:
+        tenant = await _make_tenant(connection)
+        await _make_conversation(connection, tenant)
+        mismatch = await _make_ws_outbox_mismatch_type(connection, tenant)
+    finally:
+        await connection.close()
+
+    engine, factory = _factory()
+    report = await backfill_transport_scope(factory, tenant_id=tenant)
+    await engine.dispose()
+    assert report.ok, f"{report.failures} / {report.verify_detail}"
+
+    connection = await _connect()
+    try:
+        scope = await connection.fetchval(
+            "SELECT conversation_id FROM metaedu.agent_workspace_outbox WHERE id=$1",
+            mismatch,
+        )
+        assert scope is None, "mismatch 类型行不得盲 join 回填 scope"
+        issue = await connection.fetchrow(
+            "SELECT reconcile_class, issue_code, conversation_id FROM "
+            "metaedu.agent_transport_scope_reconcile WHERE source_row_id=$1",
+            mismatch,
+        )
+        assert issue is not None, "mismatch 行须登记 scope 类 issue"
+        assert issue["reconcile_class"] == "tenant_scope"
+        assert issue["issue_code"] == "ambiguous_mapping"
+        assert issue["conversation_id"] is None, (
+            "无候选 Conversation 时 ambiguous_mapping 须 tenant_scope/不带 conversation_id"
+        )
+        epoch = await connection.fetchval(
+            "SELECT count(*) FROM metaedu.agent_transport_scope_reconcile "
+            "WHERE source_row_id=$1 AND issue_code='epoch_unresolvable'",
+            mismatch,
+        )
+        assert epoch == 1, "mismatch 行 NULL-epoch 须登记 epoch_unresolvable"
+    finally:
+        await connection.close()

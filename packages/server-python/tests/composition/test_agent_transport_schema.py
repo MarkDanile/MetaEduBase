@@ -535,21 +535,25 @@ async def test_040_downgrade_fail_closed_on_scope_data():
 
 
 @pytest.mark.asyncio
-async def test_040_full_chain_downgrade_clears_evidence_and_passes():
-    """alembic 全链降级（目标 < 040）放行：清空证据后还原，不卡库，upgrade head 恢复。
+async def test_040_full_chain_downgrade_also_fail_closed():
+    """全链降级（目标 < 040）与单步一致 fail closed：有证据即 raise，库保持 040 不降级。
 
-    与单步降级（``test_040_downgrade_fail_closed_on_scope_data``，目标=039 时
-    fail-closed）相对：全链降级（如预存迁移测试 downgrade 到 020 再 upgrade
-    head）是测试库合法临时态，守卫不拦，先清空证据列/ledger 再还原，避免把库
-    卡在中间版本。本测试造 ledger 证据（触发 ``_ledger_nonempty``）走全链路径。
+    第二轮独立复核 #1（生产 fail-closed 语义，推翻此前全链放行决策）：B8 要求 040
+    downgrade 永不删证据——无论单步还是全链降级，凡有非空 scope/tombstone 数据或非空
+    ledger 一律 fail closed，要求 forward-fix。测试库全链往返须在**测试准备阶段**清
+    证据（本文件 ``_clear_040_evidence``），migration 不按目标版本放行数据删除。
+    本测试造 ledger 证据（触发 ``_ledger_nonempty``）走全链路径，断言 fail closed。
     """
     connection = await _connect()
     try:
-        # 造 ledger 证据（reconcile issue，触发 ledger 非空分支）。
+        # 造 ledger 证据：outbox 行 scope 列全 NULL（不触发 _has_non_null_scope_data），
+        # 仅在 reconcile ledger 插一条 open issue（触发 _ledger_nonempty 分支）--
+        # 与单步 test_040_downgrade_fail_closed_on_scope_data（scope 数据分支）互补，
+        # 验证全链路径下 ledger 非空同样 fail closed。
         await _insert_outbox_scope(
             connection,
             conversation_id=None,
-            producer_purge_revision=0,
+            producer_purge_revision=None,
             scope_state=None,
         )
         tenant = await _tenant_id()
@@ -565,23 +569,16 @@ async def test_040_full_chain_downgrade_clears_evidence_and_passes():
         )
     finally:
         await connection.close()
-    # 全链降级到 037（目标 < 040 的 down_revision=039）：040 走全链分支放行，
-    # 清证据、还原、不 raise、不卡库。039 无守卫、038 守卫仅 actor tombstone 触发
-    # （本测试数据无），链路可降到 037。
-    await asyncio.to_thread(_run_alembic, "downgrade", "037_system_key_fingerprints")
+    # 全链降级到 037（目标 < 040）：与单步一致 fail closed（不 TRUNCATE 证据）。
     try:
-        assert await _objects_exist("table", _LEDGER_TABLES) == set(), (
-            "全链降级后 040 ledger 表应已删除"
-        )
+        with pytest.raises(RuntimeError, match="cannot downgrade"):
+            await asyncio.to_thread(_run_alembic, "downgrade", "037_system_key_fingerprints")
     finally:
-        await asyncio.to_thread(_run_alembic, "upgrade", "head")
-    # upgrade head 恢复全部对象；证据已被全链清空（升级后 ledger 为空）。
-    assert await _objects_exist("table", _LEDGER_TABLES) == set(_LEDGER_TABLES)
-    connection = await _connect()
-    try:
-        n = await connection.fetchval(
-            "SELECT count(*) FROM metaedu.agent_transport_scope_reconcile"
-        )
-        assert n == 0, "全链降级应已清空 reconcile ledger 证据"
-    finally:
-        await connection.close()
+        # 清理证据（downgrade 应在 raise 前回滚，保持 040 不降级、不删证据）。
+        await _clear_040_evidence()
+        # 确认仍在 040（fail closed 未降级），且证据未被全链删除路径清空后又删列——
+        # downgrade 整体回滚，证据行已被上方 _clear_040_evidence 清掉、schema 完整。
+        assert await _objects_exist("table", _LEDGER_TABLES) == set(_LEDGER_TABLES)
+        assert await _objects_exist("index", _SCOPE_INDEXES) == set(_SCOPE_INDEXES)
+        cols = await _columns("agent_workspace_outbox")
+        assert "conversation_id" in cols, "fail closed 后 040 scope 列应保持存在"
