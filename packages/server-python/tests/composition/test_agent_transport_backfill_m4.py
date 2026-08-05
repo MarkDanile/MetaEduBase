@@ -534,4 +534,3 @@ async def test_p22_projection_is_owner_scoped():
         )
     finally:
         await connection.close()
-
