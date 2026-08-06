@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-R1-S4C-DELTA: R1-S4-C Writer/Claim Scope + Epoch Fence 契约冻结
+
+状态：🟡 进行中（Docs Only 阶段）
+类型：新需求开发（Slice contract delta，先于代码冻结）
+领域：Backend（composition / agent_workspace / agent_execution writer+claim+consumer 接线）
+当前执行模式：superpower / plan-do
+最近接手工具：Claude Code
+分支：docs/req041-047-r1-s4c-contract-delta
+
+需求来源：
+- Spec: docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md（§5.2/§6/§7 owner 边界、external ref、迟到写）
+- Plan: docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4transport-ownerexternal-payload-与迟到写（§S4-A D1-D8 + §S4-B B1-B8 契约冻结块 + 本轮 S4-C delta）
+- 技术债：docs/03-engineering-governance/technical-debt.md（TD-092 解除 S4-C 暂停，三轮收敛/连续两轮新 P1 拆分为后续验证任务）
+- 架构约束：docs/03-engineering-governance/01-rules/architecture.md
+
+当前进展：本轮只提交纯文档 S4-C contract/plan delta，不写业务代码、不改 migration 040、`erase_available` 保持 False。契约冻结范围：Conversation snapshot → outbox metadata → claim envelope → inbox metadata 的 scope/epoch 传播链；writer 写真实 `conversation_id` 与 `producer_purge_revision`（禁拿当前 revision 伪造历史 epoch）；consumer 在 Guard 内执行六元组 CAS（event_id / digest / attempt / claimant / conversation_id / producer_purge_revision）；claim 独立短事务；锁序 Guard → Conversation → owner → fence → 集合 advisory lock（最内层）；S4-B catch-up 自 tenant 起点、不保留跨调用 UUID 游标、verify 不豁免 NULL 行；stale epoch/跨 tenant/scope mismatch/unknown epoch/orphan/takeover/重放/purge-win 反例。
+下一步：同 HEAD 三面首轮并行复审（数据/状态机、并发/锁序、测试/运维），P0/P1 清零后再开单主要风险域实现 PR；范围过大时拆 producer propagation 与 claim/consumer CAS 两 PR。
+验证状态：docs-only——`scripts/check-engineering-docs` + `git diff --check`；三路 CI 全绿；不实现 migration 041、不启用 S5 scheduler。
+交接备注：实现阶段保持 Draft、`Backend iteration` risk-targeted；代码稳定后转 Ready 最新 HEAD 执行 Backend full；收敛目标 2-3 轮，连续两轮新 P1 立即回契约或拆分/重构。
 
 ## 下一批候选任务
 
@@ -22,7 +40,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-041/047 R1-S4-C Writer/Claim Scope + Epoch Fence | 🔵 Ready for Docs Only | CC 先提交纯文档 contract delta，冻结 writer 传播、claim envelope、Guard 内六元组 CAS、S4-B catch-up 与锁序矩阵；首轮同 HEAD 三面并行复审，P0/P1 清零后再开单风险域实现 PR | [R1 Plan §R1-S4](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
