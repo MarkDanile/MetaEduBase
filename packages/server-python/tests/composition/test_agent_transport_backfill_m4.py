@@ -47,8 +47,9 @@ def _factory():
     return engine, async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
-async def _make_tenant(connection) -> uuid.UUID:
-    tid = uuid.uuid4()
+async def _make_tenant(connection, tid=None) -> uuid.UUID:
+    if tid is None:
+        tid = uuid.uuid4()
     await connection.execute(
         "INSERT INTO metaedu.tenants (id, name, school_name, created_at, updated_at) "
         "VALUES ($1, $2, $3, clock_timestamp(), clock_timestamp())",
@@ -57,6 +58,21 @@ async def _make_tenant(connection) -> uuid.UUID:
         "m4 school",
     )
     return tid
+
+
+def _ordered_tenant_ids(seed: int) -> tuple[uuid.UUID, uuid.UUID]:
+    """返回两个**排序可控且不撞库**的 tenant UUID：低位种子 + 随机高位。
+
+    tenants 表在测试间不清空（autouse clean 只 TRUNCATE agent 控制面表），固定
+    UUID（如 uuid.UUID(int=1)）会在复跑时撞 tenants_pkey。用随机高位保证唯一、
+    低位保证 ``_list_tenant_ids`` 的 ORDER BY id（UUID 字节序，低字节最后比较）
+    中 first 恒排在 second 前。
+    """
+    high = uuid.uuid4().int & ~0xFFFF
+    first_id = uuid.UUID(int=high | seed)
+    second_id = uuid.UUID(int=high | (seed + 1))
+    assert first_id < second_id
+    return first_id, second_id
 
 
 async def _make_conversation(connection, tenant_id) -> uuid.UUID:
@@ -1065,3 +1081,245 @@ async def test_cli_exit_1_when_failure(session_factory, monkeypatch):
     module = _patch_session_factory(monkeypatch, session_factory)
     exit_code = await module._run_cli(_cli_args(tenant_id=str(tenant)))
     assert exit_code == 1
+
+
+# --- 第五轮复核回归测试（#2 CLI exit 优先级 / #4 rows_attempted 预算 / #3 verify 绑定）---
+
+
+async def test_cli_exit1_priority_over_incomplete_after_completed_verify_failed(
+    session_factory, monkeypatch,
+):
+    """第五轮复核 #2：已 completed 的 tenant 若 verify 失败，优先级高于后续 tenant 的截断。
+
+    反例（真实两 tenant 组合）：A 已扫描完（completed=True）但 verify 漂移失败、B 因
+    --max-rows 截断未完成。旧实现 ``any_verify_failed and not any_incomplete`` 在
+    any_incomplete=True 时返回 2，掩盖 A 的真实数据问题；修复：completed 的
+    verify_failed 单独累计（completed_verify_failed），exit 1 优先。
+    """
+    from app.composition import agent_transport_backfill as _tbf
+
+    # Tenant A：一个 exec outbox 行。先用单 tenant backfill 回填（登记 issue、verify
+    # 通过），再手工 UPDATE 行内 scope_reconcile_state 制造投影↔ledger 漂移，使 A
+    # completed 但 verify_failed。UUID 排序保证 _list_tenant_ids 中 A 先于 B。
+    conn = await _connect()
+    try:
+        tenant_a, tenant_b = _ordered_tenant_ids(0x1001)
+        await _make_tenant(conn, tenant_a)
+        await _make_tenant(conn, tenant_b)
+        conv_a = await _make_conversation(conn, tenant_a)
+        run_a = await _make_run(conn, tenant_a, conv_a)
+        oid_a = await _make_exec_outbox(conn, tenant_a, run_a)
+        # Tenant B：2 行正常 exec outbox（--max-rows=1 截断）。UUID 排序后于 A。
+        conv_b = await _make_conversation(conn, tenant_b)
+        for i in range(2):
+            run = await _make_run(conn, tenant_b, conv_b, queue_seq=i + 1)
+            await _make_exec_outbox(conn, tenant_b, run)
+    finally:
+        await conn.close()
+
+    module = _patch_session_factory(monkeypatch, session_factory)
+    # 第一遍：A 完整回填（登记 issue、completed=True、verify 通过）。
+    report_a = await _tbf.backfill_transport_scope(
+        session_factory, tenant_id=tenant_a
+    )
+    assert report_a.ok and report_a.completed
+
+    # 制造 A 的投影漂移：行内 scope_reconcile_state 改为 'reconciled'（ledger 有 open
+    # issue）-> 投影维 verify fail，而 backfill 无待处理行可截断（completed 仍 True）。
+    conn = await _connect()
+    try:
+        await conn.execute(
+            "UPDATE metaedu.agent_execution_outbox SET scope_reconcile_state='reconciled' "
+            "WHERE id=$1",
+            oid_a,
+        )
+    finally:
+        await conn.close()
+
+    # 多 tenant CLI：--max-rows=1（tenant_id=None 走 _list_tenant_ids 全量循环）。
+    # 用 monkeypatch 固定 tenant 列表为 [A, B]，避免处理测试库遗留 tenant（无 agent
+    # 行的空 tenant 会拖慢每次运行）；CLI 多 tenant 循环逻辑本身仍真实执行。A 先处理：
+    # 0 行可截断 -> completed、verify 漂移失败 -> completed_verify_failed=True；B：剩
+    # 1 行预算 -> 截断 -> any_incomplete=True。退出码须为 1（completed_verify_failed
+    # 优先），而非旧实现的 2。
+    async def _fixed_tenants(_f):
+        return [tenant_a, tenant_b]
+
+    monkeypatch.setattr(module, "_list_tenant_ids", _fixed_tenants)
+    exit_code = await module._run_cli(_cli_args(max_rows=1, tenant_id=None))
+    assert exit_code == 1, "completed 的 verify_failed 须 exit 1（优先于后续截断）"
+
+
+async def test_cli_global_budget_counts_attempted_across_tenants(
+    session_factory, monkeypatch,
+):
+    """第五轮复核 #4：--max-rows 全局预算跨 tenant 按 rows_attempted（含失败行）扣，不超发。
+
+    反例（真实两 tenant 组合）：A 有失败行但未截断（completed=True），旧实现全局
+    remaining 只扣 rows_scanned（失败行不计入），A 后 B 仍拿到全额预算，实际尝试数
+    超过 --max-rows。修复：预算按 rows_attempted 扣，B 只拿到剩余额度。
+    """
+    from app.composition import agent_transport_backfill as _tbf
+
+    attempts = {"n": 0}
+
+    async def _counting_fail(session, **kwargs):
+        attempts["n"] += 1
+        raise RuntimeError("simulated systematic failure")
+
+    monkeypatch.setattr(_tbf, "_backfill_source_row", _counting_fail)
+    conn = await _connect()
+    try:
+        # Tenant A：3 行全部失败（排序最前先处理）。--max-rows=4 下 A 尝试 3 行
+        # 未截断（completed=True，旧实现 rows_scanned=0 使预算仍满额）。
+        tenant_a, tenant_b = _ordered_tenant_ids(0x2002)
+        await _make_tenant(conn, tenant_a)
+        await _make_tenant(conn, tenant_b)
+        conv_a = await _make_conversation(conn, tenant_a)
+        for i in range(3):
+            run = await _make_run(conn, tenant_a, conv_a, queue_seq=i + 1)
+            await _make_exec_outbox(conn, tenant_a, run)
+        # Tenant B：5 行（也全部失败）。旧实现 A 后 B 拿全额 4 行预算（共 7 次尝试）；
+        # 新实现 B 只剩 1 行预算（共 4 次尝试）。
+        conv_b = await _make_conversation(conn, tenant_b)
+        for i in range(5):
+            run = await _make_run(conn, tenant_b, conv_b, queue_seq=i + 1)
+            await _make_exec_outbox(conn, tenant_b, run)
+    finally:
+        await conn.close()
+    module = _patch_session_factory(monkeypatch, session_factory)
+    # 固定 tenant 列表为 [A, B]（避免处理测试库遗留 tenant）；CLI 多 tenant 预算循环
+    # 逻辑本身仍真实执行。
+    async def _fixed_tenants(_f):
+        return [tenant_a, tenant_b]
+
+    monkeypatch.setattr(module, "_list_tenant_ids", _fixed_tenants)
+    exit_code = await module._run_cli(_cli_args(max_rows=4, tenant_id=None))
+    # A(3) + B(1) = 4 次尝试；旧实现 rows_scanned=0 会 A(3)+B(4)=7 次（超发）。
+    assert attempts["n"] == 4, "全局预算须按尝试数（含失败行）跨 tenant 截断，不得超发"
+    # A completed 但 verify_failed（全失败行无 issue）+ B 截断 -> exit 1（失败优先）。
+    assert exit_code == 1
+
+
+async def test_batch_interval_validated(session_factory, monkeypatch):
+    """第五轮复核 #4：batch_interval_seconds 须非负有限数（NaN/负/Inf 拒绝）。"""
+
+    from app.composition import agent_transport_backfill as _tbf
+
+    conn = await _connect()
+    try:
+        tenant = await _make_tenant(conn)
+    finally:
+        await conn.close()
+    engine, factory = _factory()
+    for bad in (-1.0, float("nan"), float("inf")):
+        try:
+            await _tbf.backfill_transport_scope(
+                factory, tenant_id=tenant, batch_interval_seconds=bad
+            )
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"batch_interval_seconds={bad} 应被拒绝")
+    await engine.dispose()
+
+
+async def test_partial_batch_still_respects_batch_interval(session_factory, monkeypatch):
+    """第五轮复核 #4：不足 batch_size 的 partial batch 也须休眠（旧实现 break 在
+    sleep 之前，小 tenant 的单批直接退出、无批间隔）。"""
+    from app.composition import agent_transport_backfill as _tbf
+
+    _ = session_factory  # 本测试用 _factory() 直连（与同文件其它 verify 测试一致）
+    sleeps: list[float] = []
+    real_sleep = asyncio.sleep
+
+    async def _record_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        await real_sleep(0)  # 不真睡，仅记录
+
+    monkeypatch.setattr(_tbf.asyncio, "sleep", _record_sleep)
+    conn = await _connect()
+    try:
+        # 单 tenant、单行（必然 partial batch：1 < batch_size）。
+        tenant = await _make_tenant(conn)
+        conv = await _make_conversation(conn, tenant)
+        run = await _make_run(conn, tenant, conv)
+        await _make_exec_outbox(conn, tenant, run)
+    finally:
+        await conn.close()
+    engine, factory = _factory()
+    try:
+        report = await _tbf.backfill_transport_scope(
+            factory,
+            tenant_id=tenant,
+            batch_size=100,
+            batch_interval_seconds=0.5,
+        )
+    finally:
+        await engine.dispose()
+    assert report.ok, f"{report.failures} / {report.verify_detail}"
+    assert sleeps, "partial batch 也须触发批间隔休眠（不得在休眠前退出）"
+    assert all(s == 0.5 for s in sleeps)
+
+
+async def test_p3_verify_binds_owner_and_issue_code(session_factory, monkeypatch):
+    """第五轮复核 #3：verify 第五维按 owner_key + 精确 issue_code 绑定，防错 owner/冒充假绿。
+
+    两个反例（同一 tenant）：
+    1. 错 owner 的 ambiguous_mapping（external.payload.v1）不得满足 A≠B 行（应为
+       workspace.transport.v1）。
+    2. 对 owner 但**冒充**的 issue code（cross_tenant_mismatch 顶替 ambiguous_mapping）
+       不得满足 A≠B 行。
+    """
+    from app.composition import agent_transport_backfill as _tbf
+
+    conn = await _connect()
+    try:
+        tenant = await _make_tenant(conn)
+        conv_a = await _make_conversation(conn, tenant)
+        conv_b = await _make_conversation(conn, tenant)
+        conv_c = await _make_conversation(conn, tenant)
+        msg_b = await _make_message(conn, tenant, conv_b)
+        msg_c = await _make_message(conn, tenant, conv_c)
+        oid1 = uuid.uuid4()
+        oid2 = uuid.uuid4()
+        # 两行 A≠B 冲突（行内 scope=conv_a、源分别为 msg_b/msg_c 的 conv_b/conv_c）。
+        for oid, msg in ((oid1, msg_b), (oid2, msg_c)):
+            await conn.execute(
+                "INSERT INTO metaedu.agent_workspace_outbox ("
+                "  id, tenant_id, event_type, schema_version, aggregate_id, aggregate_type, "
+                "  payload_inline, payload_ref, payload_digest, correlation_id, status, "
+                "  attempt_count, next_attempt_at, created_at, conversation_id, "
+                "  producer_purge_revision"
+                ") VALUES ($1,$2,'turn.requested.v1',1,$3,'workspace.message',"
+                "  '{}'::jsonb,NULL,$4,$5,'pending',0,clock_timestamp(),clock_timestamp(),$6,0)",
+                oid, tenant, msg, "a" * 64, uuid.uuid4(), conv_a,
+            )
+        # 行 1：错 owner（external.payload.v1）的 ambiguous_mapping。
+        await conn.execute(
+            "INSERT INTO metaedu.agent_transport_scope_reconcile ("
+            "  id, tenant_id, owner_key, source_table, source_row_id, "
+            "  reconcile_class, issue_code, state, revision, created_at"
+            ") VALUES ($1,$2,'external.payload.v1','agent_workspace_outbox',"
+            "  $3,'tenant_scope','ambiguous_mapping','open',1,clock_timestamp())",
+            uuid.uuid4(), tenant, oid1,
+        )
+        # 行 2：对 owner（workspace.transport.v1）但冒充 issue code
+        # （cross_tenant_mismatch 顶替 ambiguous_mapping）。
+        await conn.execute(
+            "INSERT INTO metaedu.agent_transport_scope_reconcile ("
+            "  id, tenant_id, owner_key, source_table, source_row_id, "
+            "  reconcile_class, issue_code, state, revision, created_at"
+            ") VALUES ($1,$2,'workspace.transport.v1','agent_workspace_outbox',"
+            "  $3,'tenant_scope','cross_tenant_mismatch','open',1,clock_timestamp())",
+            uuid.uuid4(), tenant, oid2,
+        )
+    finally:
+        await conn.close()
+
+    engine, factory = _factory()
+    v_ok, detail = await _tbf._verify_scope_epoch(factory, tenant_id=tenant)
+    await engine.dispose()
+    assert not v_ok, "错 owner / 冒充 issue code 的 reconcile 不得让 verify 假绿"
+    assert "agent_workspace_outbox" in detail
+    assert "ambiguous_mapping" in detail

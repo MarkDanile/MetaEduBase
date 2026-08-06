@@ -713,3 +713,79 @@ async def test_040_downgrade_toctuu_concurrent_writer_blocked():
         await conn_b.close()
     # 清理：downgrade raise 了，库仍 040；清证据。
     await _clear_040_evidence()
+
+
+@pytest.mark.asyncio
+async def test_040_downgrade_lock_order_follows_dependency_graph():
+    """第五轮复核 #1：migration 锁序按依赖图（exec_inbox 先于 ws_outbox），
+    backfill 持 exec_inbox 等 ws_outbox、migration 持 ws_outbox 等 exec_inbox 的
+    跨 transport AB-BA 已消除。
+
+    反例：旧锁序 ws_outbox->...->exec_inbox 与 backfill 读序「exec_inbox->ws_outbox」相反
+    （exec_inbox 经 event_id 读其源 ws_outbox），backfill 持 exec_inbox ACCESS SHARE 等
+    ws_outbox、migration 持 ws_outbox ACCESS EXCLUSIVE 等 exec_inbox -> 死锁。修复：
+    exec_inbox 先于 ws_outbox，migration 阻塞在 exec_inbox 时尚未取 ws_outbox，backfill
+    可继续读 ws_outbox 完成，不形成 AB-BA。
+    """
+    await _clear_040_evidence()
+    tenant = await _tenant_id()
+    db_url = _db_url()
+    # B：backfill 状——持 exec_inbox ACCESS SHARE（读），并插 reconcile 证据（提交后
+    # 让 downgrade raise 保持库在 040）。
+    conn_b = await asyncpg.connect(db_url)
+    tr = conn_b.transaction()
+    await tr.start()
+    await conn_b.fetch("SELECT id FROM metaedu.agent_execution_inbox LIMIT 1")
+    await conn_b.execute(
+        "INSERT INTO metaedu.agent_transport_scope_reconcile ("
+        "  id, tenant_id, owner_key, source_table, source_row_id, "
+        "  reconcile_class, issue_code, state, revision, created_at"
+        ") VALUES ($1, $2, 'execution.transport.v1', 'agent_execution_inbox', $3, "
+        "  'tenant_scope', 'source_outbox_missing', 'open', 1, clock_timestamp())",
+        uuid.uuid4(),
+        tenant,
+        uuid.uuid4(),
+    )
+    holder = {}
+    try:
+
+        async def _run_downgrade() -> None:
+            try:
+                await asyncio.to_thread(
+                    _run_alembic, "downgrade", "039_run_event_tombstone_guard"
+                )
+            except RuntimeError as exc:
+                holder["exc"] = exc
+
+        task = asyncio.create_task(_run_downgrade())
+        # 轮询：A 阻塞在 exec_inbox（依赖图第一个锁）。
+        conn_poll = await asyncpg.connect(db_url)
+        try:
+            blocked = False
+            for _ in range(50):  # 5s
+                await asyncio.sleep(0.1)
+                n = await conn_poll.fetchval(
+                    "SELECT count(*) FROM pg_locks "
+                    "WHERE relation = 'metaedu.agent_execution_inbox'::regclass "
+                    "AND granted = false"
+                )
+                if n and n > 0:
+                    blocked = True
+                    break
+            assert blocked, "downgrade 应阻塞在 exec_inbox（依赖图第一个锁）"
+        finally:
+            await conn_poll.close()
+        # KEY：B 读 ws_outbox 应成功——A 阻塞在 exec_inbox 时尚未取 ws_outbox，
+        # 无 AB-BA（旧锁序下 A 持 ws_outbox ACCESS EXCLUSIVE，B 读会 lock_timeout）。
+        await conn_b.execute("SET LOCAL lock_timeout = '1s'")
+        ws = await conn_b.fetchval("SELECT count(*) FROM metaedu.agent_workspace_outbox")
+        assert ws is not None, "backfill 读 ws_outbox 不应被 migration 阻塞（AB-BA 已消除）"
+        # B COMMIT（释放 exec_inbox + reconcile）；A 取锁后检见证据 -> raise（库保持 040）。
+        await tr.commit()
+        await task
+        assert "exc" in holder, "downgrade 应 raise（证据已提交）"
+        assert "cannot downgrade" in str(holder["exc"])
+    finally:
+        await conn_b.close()
+    # 清理：downgrade raise 了，库仍 040；清证据。
+    await _clear_040_evidence()

@@ -400,14 +400,15 @@ def _ledger_nonempty(table: str) -> bool:
 
 def _lock_tables_access_exclusive(bind) -> None:
     """按固定顺序对 040 涉及的全部表取 ACCESS EXCLUSIVE（第三轮复核 #4 TOCTOU 修复）。"""
-    # 锁序：transport 表先、ledger 表后--与 backfill「读 transport 源行 -> 写 ledger」
-    # 一致，避免 migration（锁 ledger->transport）与 backfill（持 transport ACCESS SHARE
-    # -> 写 ledger ROW EXCLUSIVE）AB-BA 死锁（第三轮复核 #2）。
+    # 锁序（第五轮复核 #1）：按 backfill 依赖图冻结 transport 内部顺序--每个 inbox
+    # 先于其源 outbox（exec_inbox 读 ws_outbox、ws_inbox 读 exec_outbox），避免 migration
+    # 持 ws_outbox ACCESS EXCLUSIVE 等 exec_inbox、backfill 持 exec_inbox ACCESS SHARE
+    # 等 ws_outbox 的跨 transport AB-BA；ledger 恒最后（backfill 读 transport -> 写 ledger）。
     tables = [
+        "agent_execution_inbox",
         "agent_workspace_outbox",
         "agent_workspace_inbox",
         "agent_execution_outbox",
-        "agent_execution_inbox",
         "agent_transport_scope_reconcile",
         "agent_external_object_refs",
     ]
