@@ -859,14 +859,40 @@ fk_agent_exec_inbox_scope_conv  agent_execution_inbox   (tenant_id, conversation
 
 按 S4-A D1-D8 / S4-B B1-B8 冻结 S4-C 的 writer 传播、claim envelope 与 Guard 内六元组 CAS。**本 delta 只写文档：不写业务代码、不改 migration 040、不实现 migration 041、`erase_available` 全程保持 `False`、不启用 purge scheduler（S5）、不进 S4-D/E/F。** 现状盘点基于 main `a52d8c03`（migration 040 + backfill 已合并，S4-B 第五轮复审 P0/P1 已清零）。TD-092（PR #532）已解除 S4-C 暂停并登记收敛治理：三轮内收敛、连续两轮新 P1 即拆分或重构。
 
+> **首轮三面独立复审修订（2026-08-06，数据/状态 + 并发/锁序 + 测试/运维三面并行，round-1 返修落点，优先于下文对应旧陈述）**：三面合计 P0=3 / P1=9 / P2=12 / P3=4。按根因族一次返修，直接改正下文（round-1 修订），横向覆盖 writer/claim/consumer/heal/verify 及等价入口。三面 P0 均为「契约表述与实际锁/列/代码形态不符」，round-1 修订直接消除；round-2 复审仍须重点核对 R1-R6 落点与代码。
+
+**R1（旧 C1 hop1/C2，P0-1 数据面 + P1-4 并发面）— epoch 快照源与「禁止伪造」拆分，统一为 Conversation 列 + 同事务行锁**：`add_turn_outbox`（workspace `bridge_repository.py:62`）当前在 `reserve_user_turn` 释放 Conversation 行锁后才创建 outbox 行；`commit_terminal` publish 分支（`execution_repository.py:853`）经 `fenced_commit_terminal` 持 execution fence 但未持 Conversation 行锁读。**冻结为**——C1 hop1/hop2 必须同事务、Conversation `FOR UPDATE` 行锁仍持有时读取并写入：workspace 侧在 `add_turn_outbox` 内写 scope/epoch 时须仍持有 `submit_turn` 的 Guard + Conversation 行锁（或在 `add_turn_outbox` 内显式重取该行锁），`producer_purge_revision` = 该 Conversation 行 `purge_revision`；execution 侧在 `commit_terminal` 建 outbox 行前显式取（或复用调用方持有的）Conversation 行锁并读 `Conversation.purge_revision`，**不得**用 `fence.purge_revision` 或 `fence.revision` 冒充（`require_body_write_fence_for_update` 在 active 下会把 fence token 单调对齐到 Conversation token `erasure_repository.py:475-487`，是「已同步值」而非「生产时快照」，不满足 R1 快照语义）。C1 hop1「禁止用 fence 行 CAS `revision`、Conversation `revision`、checkpoint、时间戳冒充」增补为「含 fence `purge_revision`」。epoch > 当前分支改为：fence 对齐路径可能制造「列已推进但 fence 未对齐」窗口，一律 fail closed 不消费、不登记（数据异常，无受控 issue_code，不新增枚举，C7 不变）。
+
+**R2（旧 C1 hop3/C3，P0-2 数据面 + P1-1/P1-4/P2-1 并发面）— 六元 CAS 收敛为「claim-装载源固定 + 非 NULL 成员比对 + 两/三源一致性按路径定」**：claim 装载源固定为**claim 短事务内对 outbox 行 `FOR UPDATE SKIP LOCKED` 的锁定读取**（C1 hop3），且该读取与 `status='claimed'`/`attempt_count+=1` 同事务原子。六元 CAS（C3）成员比对规则：
+- `event_id`/`payload_digest`/`attempt_count`/`claimant_id`：行值在**消费事务内 `FOR UPDATE` 重读**后取得（与 claim 装载隔离，防 claim→consume 间被接管），逐项与 envelope 比对，不符 `*IntegrationConflictError`（takeover 拒绝仍完全由 `attempt_count`+`claimant_id` 承载，两新列不参与接管拒绝、C6 takeover 行措辞改正）。
+- `conversation_id`：**当该成员非 NULL 时**参与比对；turn 路径 row 无独立 scope 列（040 列 NULL），三方收敛为**两源**：`envelope == event`（payload 内部，由 `_validate_outbox` 强制）+ `envelope.conversation_id == Guard 锁定的 Conversation.id`；output 路径 row scope 独立产生，为**三源** `row == envelope == event`，且三者都与 Guard 锁定 Conversation 一致。任一非 NULL 成员不符即 fail closed。
+- `producer_purge_revision`：**当该成员非 NULL 时**参与比对（行 == envelope，均 claim 装载自同锁行）；消费事务内重读后与 envelope 比对。NULL（历史/backfill 期行）不参与 CAS 值比对，由 C3 epoch 分类处理。
+- **NULL-scope 行处理**：envelope/event `conversation_id` 非 NULL 但 row 为 NULL（历史未回填行）→ **fail closed、不消费**，由 S4-C catch-up 回填 scope（已填后重试成功）或登记 `tenant_scope` scope 类 issue（不可解析则事件保持未消费、随 backfill 收敛，最终 verify 双维 fail closed）——**不得**因 claim 时 NULL 而静默接受，也**不得**在消费路径把 NULL-scope 行当作当前 scope 消费（防复活正文到未知会话）。
+
+**R3（旧 C4，P0-3 并发面 + P1-2/P2-1 并发面）— consumer 集合锁目标、owner_key 与「锁序-行锁-注册」不变量**：consumer 登记 `epoch_unresolvable`/scope 冲突 issue 时，集合锁目标 = **ledger 行自身的 `source_table/source_row_id`**（inbox 行用 inbox 行 PK），**不是** B2 scope 来源的 outbox 行；`owner_key` = 该 source_table 的 transport owner（`workspace.transport.v1`/`execution.transport.v1`，与 backfill `OWNER_BY_TABLE` 同源），**不得**用 consumer 的正文 owner（`workspace.core.v1`/`execution.core.v1`）——否则 consumer 与 backfill 对同一源行 issue 集用不同 advisory key，投影 lost-update（B4 要防的失效）。锁序不变量：consumer 的 Guard 事务在**同一事务**内完成 (a) inbox metadata 写 + (b) receipt/状态写 + (c) issue 插入 + (d) 投影重算，(c)(d) 在集合锁临界区内、按 D8「集合锁 → 源行 FOR UPDATE」取锁，**先取集合锁再写 inbox 行投影**；`begin_*_receipt` 的 inbox 行 `FOR UPDATE`（幂等重读）与集合锁之间无「先持 inbox 行锁再等集合锁」的反向等待——envelope 在 claim 时已携带 epoch/scope 状态，consumer 在 begin_receipt 前即可判定是否需要集合锁。scope 冲突（A≠B，两源均非 NULL）检测在 6 元 CAS（fence 前）fail closed，**冲突降级 `tenant_scope` 的登记归 backfill discovery**（B4 已实现），consumer 不登记 scope 冲突（C4/C6 措辞改正，防「CAS 拒绝后注册路径不可达」自矛盾）。S4-D/E transport participant 取集合锁时点须位于 Conversation 行锁/owner 之后（与消费者同序），禁止在取得 Conversation 行锁前取集合锁（C4 补一句，P2-2 并发面）。
+
+**R4（旧 C3/C6，P1-3 并发面 + P1-2 测试面 + P1-3 测试面）— stale/unknown epoch 的确定性终态与 tombstome-resolve 双相**：stale epoch（< 当前）在**消费时点**（Guard + Conversation 行锁后、fence 裁决位置）判定：workspace 走 `LateBodyWriteRejectedError`（`consume_turn_event` 在写 inbox 前 raise，确定性不重试），execution 走 `LateOutputReadRejectedError`（`dispatch_output` 已确定性 terminalize）；**turn 侧新增确定性终态**：`consume_turn_event` 的 stale/unknown epoch 不得 retry-forever→dead_letter，须落 deterministic 终态（镜像 `terminalize_output_late_write` 的 claim-CAS + `decision_reason` 语义，round-1 P1-3 并发面）。unknown epoch（NULL）tombstone-resolve 双相：**先**在集合锁临界区内写 inbox `receipt_tombstone_state='redacted'` + `receipt_tombstone_digest`（B1f，同事务），**再**登记 `epoch_unresolvable`；B4 resolved 证据只能从集合锁临界区内产生。epoch 分类与 purge_state 关系：stale 判定必须**同时**考虑 fence 状态（`purge_state in {running, completed}` 或 fence erasing/erased 才 stale）；soft-delete（SCHEDULED）/restore 推进 `Conversation.purge_revision` 但 fence 仍 active 时，pre-existing 事件**不得**仅因 token 推进被 tombstone（正文从未 erase、fence 允许写，R1 快照语义下该事件 epoch 本就该是旧值但正文可写）——若契约坚持 token 比较，则须显式声明「pre-delete 在途事件在 SCHEDULED/restore 后一律 tombstone」及产品代价（首轮 P1-1 并发面，数据面 P0-3 同源）。
+
+**R5（旧 C5/C6/C8，P1-3/P2-1/P2-2/P2-5/P2-6/P3-1 测试面 + P2-4 数据面）— catch-up 扫描谓词、verify 与验收矩阵明细化**：
+- C5 catch-up 扫描谓词写全：`_select_actionable_batch` 四分支（NULL-scope 未处理 + ref 未登记 + scope-set mismatch + scope-set 但 epoch NULL），不只 NULL-scope 一行；catch-up 扫描的 `scope_reconcile_state IS NULL` 守卫**只用于扫描去重，不得**用于 final verify——verify 按原始数据维度逐行检查（`conversation_id IS NULL`→scope 类 issue、`producer_purge_revision IS NULL`→`epoch_unresolvable`），已投影 pending 的行同样必须通过（修复「投影非 NULL 后 verify 豁免」歧义）。
+- C5 「capability 清零」定义：删除该抽象，改为「S4-C writer 全量部署且新写路径已带 scope/epoch（040 列新写非 NULL）后」触发 catch-up，并绑定 C8「四跳一致」验收。
+- C6 补两行：**claim lease 过期**（`claimed_at <= stale_before` B 重 claim 同一事件、A 旧 attempt 仍持旧 epoch）→ claim CAS 拒旧 attempt；**partial ACK**（transport/external owner 未全 ACK 不得写 `completed`，D6）→ 不复活正文、不推进 completed。
+- C6 takeover 措辞改正：接管拒绝由 `attempt_count`+`claimant_id` 承载（6 元扩展是身份/scope 校验，NULL 成员不参与，非接管拒绝增强）。
+- C8 改为编号矩阵（对齐 B8 命名项）：六元 CAS 表驱动 / 幂等重放不重写 / claim 短事务无死锁（并发 claim）/ inbox metadata 与 receipt 同事务 / unknown epoch 集合锁 + tombstone-resolve / catch-up 无游标 + verify 双维 / 反例矩阵逐项真实 PG + 变异 kill / S4-B 专项 + 邻近回归 + 全量 pytest。C8 是 **merged-boundary 验收**：若拆两 PR，producer propagation PR 只验证 outbox 行真实性与重放，claim/consumer PR 只验证 CAS 与 inbox，不得单 PR 声明「六元 CAS」「四跳一致」。
+- C9 补一句：三面首轮复审结果（P0/P1/P2/P3 计数）必须记录到 work-log，P0/P1 清零后才开实现 PR。
+
+**R6（旧 C2/C6，P3-1 数据面 + P3-2 数据面 + P3 测试面）— 措辞与 NULL 细节**：C2「已持久化即保留」增补「重放遇 040 列仍 NULL 的旧行不得由 S4-C writer 回填（NULL 不补写，归 backfill/catch-up）」，与 B3「禁拿当前值伪造历史 epoch」一致；C1/C3 措辞统一「六元全部从 claim 短事务锁定读取的 outbox 行装载（event_id 取 row.id；event 仅作 payload 校验），不从 event parse 派生任何 CAS 字段」；C8 全量测试表述用「全量 pytest 0 failed（`external_network` 手工 opt-in 除外）」。
+
+**R 复核提示（round-1 修订落点，round-2 复审重点）**：R1 epoch 快照同事务行锁；R2 claim 装载原子性 + NULL 成员不参与 + turn 两源/output 三源；R3 consumer 集合锁目标/owner_key + 先集合锁后 inbox 行；R4 stale/unknown 确定性终态 + tombstone-resolve 双相 + fence 状态 gating；R5 catch-up 全谓词 + verify 不用守卫 + C6 两新行 + C8 编号矩阵；R6 措辞。
+
 **C1. scope/epoch 传播链（D2 完整化，冻结四跳）**
 
 传播链冻结为四跳，每跳都是**同事务**写入、不并入 V1 event payload（`integration_event_digest`/payload digest 不变，D2）：
 
-1. **Conversation snapshot**：epoch = `Conversation.purge_revision`（Conversation 行的 fencing token，在 Guard + Conversation 行锁内同事务读取）。**值域唯一**：`Conversation.purge_revision`；**禁止**用 fence 行 CAS `revision`（`agent_erasure_fences.revision`）、Conversation `revision`、checkpoint 或可观察时间戳冒充（B3/不变量 2）。
-2. **outbox metadata**：workspace turn outbox 与 execution output outbox 在**产生同事务**写入 `conversation_id`（该 Conversation UUID）与 `producer_purge_revision`（第 1 跳快照值）。
-3. **claim envelope**：`ClaimedWorkspaceEvent`/`ClaimedExecutionEvent` 增 `conversation_id` + `producer_purge_revision` 两字段，claim 短事务内从 outbox 行装载（**不**从 event parse 派生）。
-4. **inbox metadata**：consumer 在 Guard 内消费时，把 envelope 的 scope/epoch 写入 inbox 行的 `conversation_id`/`producer_purge_revision`（与 receipt 同事务）。
+1. **Conversation snapshot**：epoch = `Conversation.purge_revision`（Conversation 行的 fencing token，**在 Guard + Conversation 行锁仍持有时同事务读取**）。**值域唯一**：`Conversation.purge_revision`；**禁止**用 fence 行 CAS `revision`（`agent_erasure_fences.revision`）、fence 行 `purge_revision`、Conversation `revision`、checkpoint 或可观察时间戳冒充（R1，B3/不变量 2）。`require_body_write_fence_for_update`（`erasure_repository.py:475-487`）在 active 下把 fence token 单调对齐到 Conversation token，是「已同步值」而非「生产时快照」，**不得**作为 epoch 源。
+2. **outbox metadata**：workspace turn outbox 与 execution output outbox 在**产生同事务**写入 `conversation_id`（该 Conversation UUID）与 `producer_purge_revision`（第 1 跳快照值）。**与第 1 跳同事务、Conversation 行锁仍持有时**写入（R1）：workspace 侧在 `add_turn_outbox` 内写 scope/epoch 时须仍持有 `submit_turn` 的 Guard + Conversation 行锁（或在 `add_turn_outbox` 内显式重取该行锁）；execution 侧在 `commit_terminal` 建 outbox 行前显式取（或复用调用方持有的）Conversation 行锁并读 `Conversation.purge_revision`。
+3. **claim envelope**：`ClaimedWorkspaceEvent`/`ClaimedExecutionEvent` 增 `conversation_id` + `producer_purge_revision` 两字段，claim 短事务内**从 outbox 行 `FOR UPDATE SKIP LOCKED` 锁定读取**装载（**不**从 event parse 派生任何 CAS 字段），且与 `status='claimed'`/`attempt_count+=1` 同事务原子（R2）。
+4. **inbox metadata**：consumer 在 Guard 内消费时，把 **envelope 的** scope/epoch 写入 inbox 行的 `conversation_id`/`producer_purge_revision`（与 receipt 同事务）；合法源为**消费事务内重读的源 outbox 行当前值**，且须与 envelope 字段一致（不符 fail closed，R2；对齐 B2 inbox 回填源规则）。
 
 现状盘点（main `a52d8c03`）——S4-C 需要接线的**真实生产入口**：
 - workspace turn outbox 生产在 `WorkspaceBridgeRepository.add_turn_outbox`（workspace `bridge_repository.py:62`）；execution output outbox 生产在 `ExecutionRepository.commit_terminal` publish 分支（`execution_repository.py:853`）。两处当前都不写 `conversation_id`/`producer_purge_revision`（040 列保持 NULL）。
@@ -876,8 +902,8 @@ fk_agent_exec_inbox_scope_conv  agent_execution_inbox   (tenant_id, conversation
 
 **C2. writer 真实 scope/epoch 契约（禁止伪造）**
 
-- 新写（S4-C 起）必须写真实 `conversation_id` 与 `producer_purge_revision`（产生同事务快照的 `Conversation.purge_revision`）。workspace 侧直接读被锁 Conversation 行；execution 侧经 fenced execution port 透传已验证的 Conversation epoch（`fence.purge_revision`，`require_body_write_fence_for_update` 在 active 下与 `Conversation.purge_revision` 保持同步，`erasure_repository.py:475-487`）到 outbox 行创建。
-- **幂等重放不重写**：`add_turn_outbox` 命中既有行 / `commit_terminal` `terminal_digest_match=True`（idempotent replay）时，scope/epoch 已持久化即保留，重放不重写、不推进（与 S3 `created`/`idempotent_replay` 标志驱动的 checkpoint 推进解耦）。
+- 新写（S4-C 起）必须写真实 `conversation_id` 与 `producer_purge_revision`（产生同事务快照的 `Conversation.purge_revision`）。**workspace 与 execution 两侧都从 Conversation 行锁内读 `Conversation.purge_revision`（R1）**：workspace 侧直接读被锁 Conversation 行；execution 侧在 `commit_terminal` 建 outbox 行前显式取 Conversation 行锁并读其 `purge_revision`。**不得**用 `fence.purge_revision`（对齐值非快照）或 `fence.revision` 冒充（R1）。
+- **幂等重放不重写**：`add_turn_outbox` 命中既有行 / `commit_terminal` `terminal_digest_match=True`（idempotent replay）时，scope/epoch 已持久化即保留，重放不重写、不推进（与 S3 `created`/`idempotent_replay` 标志驱动的 checkpoint 推进解耦）。**重放遇 040 列仍 NULL 的旧行不得由 S4-C writer 回填（NULL 不补写，归 backfill/catch-up）**（R6，与 B3 禁伪造历史 epoch 一致）。
 - 身份一致性：writer 写 scope/epoch 前必须与 event 身份一致（跨 Conversation 写防 A→B；沿用 S3-C `_require_run_identity`/`_require_fence_identity` 同模式）。
 - **回填边界**：历史行 `producer_purge_revision` 保持 NULL + 登记 `epoch_unresolvable`（B3），S4-C 只负责新写，**不得**拿当前值回填历史行。
 
@@ -890,30 +916,39 @@ event_id（= outbox row.id = envelope.event.event_id）
 + payload_digest（row = envelope）
 + attempt_count（row = envelope）
 + claimant_id（row = envelope）
-+ conversation_id（row = envelope = event 三方一致）
++ conversation_id（row = envelope = event 两/三源一致，见下）
 + producer_purge_revision（row = envelope）
 ```
 
+**成员比对规则（R2）**：
+- 行值一律在**消费事务内 `FOR UPDATE` 重读**后取得（与 claim 装载隔离，防 claim→consume 间被接管）；不持行锁的陈旧读取不得用于 CAS。
+- `event_id`/`payload_digest`/`attempt_count`/`claimant_id`：逐项与 envelope 比对，不符 `*IntegrationConflictError`。**takeover 拒绝仍完全由 `attempt_count`+`claimant_id` 承载**（worker A 的 envelope 携 attempt N，行现为 N+1/claimant B → 拒绝），两新列不参与接管拒绝（C6 takeover 措辞改正）。
+- `conversation_id`：**当该成员非 NULL 时**参与比对。turn 路径 row 无独立 scope 列（040 列 NULL），收敛为**两源**：`envelope == event`（payload 内部，由 `_validate_outbox` 强制）+ `envelope.conversation_id == Guard 锁定的 Conversation.id`；output 路径 row scope 独立产生，为**三源** `row == envelope == event`，且三者都与 Guard 锁定 Conversation 一致。任一非 NULL 成员不符即 fail closed。
+- `producer_purge_revision`：**当该成员非 NULL 时**参与比对（行 == envelope，均 claim 装载自同锁行）；消费事务内重读后与 envelope 比对。NULL（历史/backfill 期行）不参与 CAS 值比对，由下方 epoch 分类处理。
+- **NULL-scope 行处理**：envelope/event `conversation_id` 非 NULL 但 row 为 NULL（历史未回填行）→ **fail closed、不消费**，由 S4-C catch-up 回填 scope（已填后重试成功）或登记 `tenant_scope` scope 类 issue（不可解析则事件保持未消费、随 backfill 收敛，最终 verify 双维 fail closed）；**不得**因 claim 时 NULL 而静默接受，也**不得**在消费路径把 NULL-scope 行当作当前 scope 消费。
+
 任一不符 fail closed（`*IntegrationConflictError`），不盲写 inbox、不复活正文。
 
-**epoch 语义**（消费时点在 Guard + Conversation 行锁后比对当前 `Conversation.purge_revision`）：
-- producer epoch == 当前 → 正常消费，scope/epoch 写入 inbox（C1 第 4 跳）。
-- producer epoch < 当前（purge/restore 已推进 epoch）→ **stale epoch**：迟到写，只能 tombstone/reconcile，**不得复活正文**（workspace 走 `LateBodyWriteRejectedError` deterministic；execution 走 `LateBodyWriteRejectedError`/`LateOutputReadRejectedError`，S3-E §8）。
-- producer epoch > 当前 → **不可能**（producer 无法见到未来），fail closed（数据异常，登记）。
-- producer epoch NULL/缺失（历史行）→ **unknown epoch**：登记 `epoch_unresolvable` reconcile（scope 已知 `conversation_scope` 阻该 Conversation purge / scope 未知 `tenant_scope` 阻 tenant enable / Conversation 已删 `orphan`；B4 三分），**不得当作当前 epoch 正常消费**。
+**epoch 语义**（消费时点在 Guard + Conversation 行锁后、fence 裁决位置比对当前 `Conversation.purge_revision` 与 fence 状态）：
+- producer epoch == 当前 且 fence active → 正常消费，scope/epoch 写入 inbox（C1 第 4 跳）。
+- producer epoch < 当前（purge/restore 已推进 epoch）→ **stale epoch**：迟到写，只能 tombstone/reconcile，**不得复活正文**。**判定须同时看 fence/purge_state**（R4）：仅当 `purge_state in {running, completed}` 或 fence erasing/erased 才 stale；soft-delete（SCHEDULED）/restore 推进 `Conversation.purge_revision` 但 fence 仍 active 时，pre-existing 事件**不得**仅因 token 推进被 tombstone（正文从未 erase、fence 允许写）——workspace 走 `LateBodyWriteRejectedError`（`consume_turn_event` 在写 inbox 前 raise，确定性不重试），execution 走 `LateOutputReadRejectedError`（`dispatch_output` 已确定性 terminalize）。**turn 侧新增确定性终态**：`consume_turn_event` 的 stale/unknown epoch 不得 retry-forever→dead_letter，须落 deterministic 终态（镜像 `terminalize_output_late_write` 的 claim-CAS + `decision_reason` 语义）。
+- producer epoch > 当前 → **数据异常**：fence 对齐路径可能制造「列已推进但 fence 未对齐」窗口（R1），一律 fail closed 不消费、不登记（无受控 issue_code，不新增枚举，C7 不变），不得伪造终态。
+- producer epoch NULL/缺失（历史行）→ **unknown epoch**：tombstone-resolve 双相（R4）——**先**在集合锁临界区内写 inbox `receipt_tombstone_state='redacted'` + `receipt_tombstone_digest`（B1f，同事务），**再**登记 `epoch_unresolvable` reconcile（scope 已知 `conversation_scope` 阻该 Conversation purge / scope 未知 `tenant_scope` 阻 tenant enable / Conversation 已删 `orphan`；B4 三分），**不得当作当前 epoch 正常消费**；B4 resolved 证据只能从集合锁临界区内产生。
 
 **C4. claim 独立短事务 + 锁序矩阵（D8 保持 + 扩展）**
 
-- claim 保持独立短事务：`_claim_turn`/`_claim_output` 各自 `session.begin()`、`skip_locked`，**不持 outbox row lock 等待 Guard**（不变量 1）。S4-C 不改变 claim 事务边界；仅在 claim 事务内多装载两字段到 envelope（C1 第 3 跳）。
+- claim 保持独立短事务：`_claim_turn`/`_claim_output` 各自 `session.begin()`、`skip_locked`，**不持 outbox row lock 等待 Guard**（不变量 1）。S4-C 不改变 claim 事务边界；仅在 claim 事务内**锁定读取**两字段到 envelope（R2，C1 第 3 跳），scope/epoch 列在 outbox 行写入后**不可变**（`uq_agent_*_outbox_scope` + backfill `IS NULL`-only 更新隐含；backfill `_backfill_source_row` 对仍 claimed 行不写 scope，防 claim 后漂移）。
 - 消费锁序（D8 冻结保持）：`Guard -> Conversation 行锁 -> owner advisory lock -> fence 重验 -> **transport/external aggregate 集合 advisory lock（最内层）** -> 源 transport 行 FOR UPDATE 投影写`。任何路径不得在链前取集合锁（禁 `aggregate -> Guard` 与 `Guard -> owner/fence -> aggregate` 反向 AB-BA）。
-- **集合锁何时取**：仅当同事务写该源行的 reconcile issue / 重算投影时才取集合锁（S4-B B4 流程）；纯 outbox/inbox metadata 写（不含 ledger）不取集合锁。consumer 登记 unknown/missing epoch 或 scope 冲突 issue 时，在 fence 之后、写 inbox 行投影之前取该 inbox 源行的集合锁（最内层）。
-- 锁序矩阵（S4-C 生产路径全集）：writer 生产 outbox / consumer 消费 + 写 inbox / consumer 或 writer 登记 reconcile issue 三条路径均遵循 `Guard -> Conversation -> owner -> fence -> [集合锁]`；纯 backfill/运维路径只取集合锁（B4）。
+- **集合锁何时取（R3）**：仅当同事务写该源行的 reconcile issue / 重算投影时才取集合锁（S4-B B4 流程）；纯 outbox/inbox metadata 写（不含 ledger）不取集合锁。consumer 登记 `epoch_unresolvable`（unknown epoch）时，**集合锁目标 = ledger 行自身的 `source_table/source_row_id`**（inbox 行用 inbox 行 PK），**不是** B2 scope 来源的 outbox 行；`owner_key` = 该 source_table 的 transport owner（`workspace.transport.v1`/`execution.transport.v1`，与 backfill `OWNER_BY_TABLE` 同源），**不得**用 consumer 的正文 owner。锁序不变量：consumer 的 Guard 事务在**同一事务**内完成 (a) inbox metadata 写 + (b) receipt/状态写 + (c) issue 插入 + (d) 投影重算，(c)(d) 在集合锁临界区内、按 D8 先取集合锁再写 inbox 行投影；`begin_*_receipt` 的 inbox 行 `FOR UPDATE`（幂等重读）不得先于集合锁——envelope 在 claim 时已携带 epoch/scope 状态，consumer 在 begin_receipt 前即可判定是否需要集合锁（防「先持 inbox 行锁再等集合锁」反向等待）。
+- **scope 冲突降级登记归 backfill（R3）**：A≠B（两源均非 NULL）在 6 元 CAS（fence 前）fail closed；冲突降级 `tenant_scope`/`ambiguous_mapping` 的**登记由 backfill discovery 完成**（B4 已实现），consumer 不登记 scope 冲突（防「CAS 拒绝后注册路径不可达」自矛盾）。
+- 锁序矩阵（S4-C 生产路径全集）：writer 生产 outbox / consumer 消费 + 写 inbox / consumer 登记 `epoch_unresolvable` 三条路径均遵循 `Guard -> Conversation -> owner -> fence -> [集合锁]`；纯 backfill/运维路径只取集合锁（B4）。**S4-D/E transport participant 取集合锁时点须位于 Conversation 行锁/owner 之后**（与消费者同序），禁止在取得 Conversation 行锁前取集合锁。
 
 **C5. S4-B catch-up 与 verify 门禁（B7 收敛）**
 
-- **触发时机**：S4-C writer 全量部署、旧（不带 scope/epoch 的）capability 清零后，从 **tenant 起点**执行 S4-B catch-up（`python -m app.composition.agent_transport_backfill` 幂等重扫）。
-- **不保留跨调用 UUID 游标**：每表 `conversation_id IS NULL AND scope_reconcile_state IS NULL` 存量行做完整幂等重扫；`--max-rows` 仅截断单次调用，续跑从 tenant 起点重扫、不跨调用持久化游标（B7，弃 UUID max 高水位）。已登记 issue 的行经 `scope_reconcile_state IS NULL` 守卫退出 actionable 扫描（不饥饿后续行）。
-- **最终 verify 不豁免 NULL 行**：每表凡 `conversation_id IS NULL` 必须匹配**具名 scope 类 issue**；凡 `producer_purge_revision IS NULL` 必须匹配 `epoch_unresolvable`——双维度各自独立 fail closed、互不豁免（B7）；禁时间谓词豁免、禁以任意 issue 充数。
+- **触发时机（R5）**：S4-C writer 全量部署且新写路径已带 scope/epoch（040 列新写非 NULL）后，从 **tenant 起点**执行 S4-B catch-up（`python -m app.composition.agent_transport_backfill` 幂等重扫）。「capability 清零」抽象删除，绑定 C8「四跳一致」验收。
+- **不保留跨调用 UUID 游标**：每表存量行做完整幂等重扫；`--max-rows` 仅截断单次调用，续跑从 tenant 起点重扫、不跨调用持久化游标（B7，弃 UUID max 高水位）。
+- **catch-up 扫描谓词写全（R5）**：对齐 `_select_actionable_batch` 四分支——(1) `conversation_id IS NULL AND scope_reconcile_state IS NULL`（NULL-scope 未处理）、(2) ref-bearing outbox 行 ref 未登记、(3) scope-set 但 A≠B mismatch（discovery）、(4) `conversation_id IS NOT NULL AND producer_purge_revision IS NULL AND scope_reconcile_state IS NULL AND 无 mismatch`（epoch-only）。已登记 issue 的行经 `scope_reconcile_state IS NULL` 守卫退出 actionable 扫描（不饥饿后续行）。
+- **最终 verify 不豁免 NULL 行 + 不用扫描守卫（R5）**：每表凡 `conversation_id IS NULL` 必须匹配**具名 scope 类 issue**；凡 `producer_purge_revision IS NULL` 必须匹配 `epoch_unresolvable`——双维度各自独立 fail closed、互不豁免（B7）；禁时间谓词豁免、禁以任意 issue 充数。**verify 按原始数据维度逐行检查，`scope_reconcile_state IS NULL` 守卫只用于扫描去重、不得用于 verify**——已投影为 pending 的行同样必须通过（修复「投影非 NULL 后 verify 豁免」歧义）。
 - **catch-up 幂等性**：已填行不被覆盖、已登记 reconcile 不重复（ON CONFLICT DO NOTHING），全量重扫安全且能捕获 point-in-time 窗口漏掉的并发新写。
 - **期间并发新写**：S4-C 部署窗口内旧 writer 仍可能产生 NULL scope 行 → 部分唯一索引（`IS NOT NULL` 作用域）不阻塞、不误回填；catch-up 收敛 + verify 清零后才允许 purge（S5 scheduler gate 前置，B7 并发新写处理）。
 
@@ -921,23 +956,37 @@ event_id（= outbox row.id = envelope.event.event_id）
 
 | 反例 | 触发 | 期望行为（fail closed） | 不得发生 |
 |------|------|------------------------|----------|
-| stale epoch | producer 在 purge_revision=5 写 outbox；Conversation 已 purge（=7）；consumer 读 fence=7、envelope epoch=5 | 迟到写 tombstone/reconcile（`LateBodyWriteRejectedError`/`LateOutputReadRejectedError` deterministic），正文不复活 | 按当前 epoch 正常消费并写正文 |
+| stale epoch | producer 在 purge_revision=5 写 outbox；Conversation 已 erase（=7，fence erasing/erased 或 purge_state running/completed）；consumer 读 fence 非 active、envelope epoch=5 | 迟到写 tombstone/reconcile（`LateBodyWriteRejectedError`/`LateOutputReadRejectedError` deterministic），正文不复活 | 按当前 epoch 正常消费并写正文 |
+| stale epoch（soft-delete/restore） | Conversation 仅 SCHEDULED 或已 restore（token 推进但 fence 仍 active、正文从未 erase） | **不**仅因 token 推进 tombstone（R4：stale 判定须看 fence/purge_state）；pre-existing 事件按当前 epoch 处理 | 把 token 推进误判为 stale 并 tombstone 未 erase 的正文 |
 | 跨 tenant | envelope.tenant_id ≠ outbox 行 tenant，或事件 tenant ≠ Conversation tenant | fail closed；不跨 tenant 映射（B2 tenant 谓词） | 把 A tenant 行映射到 B tenant Conversation |
-| scope mismatch | envelope.conversation_id ≠ row.conversation_id / ≠ event.conversation_id（三方任一不等） | 6 元 CAS fail closed；A≠B 冲突按 S4-B 第三轮 #3 降级 `tenant_scope`/`ambiguous_mapping`（不 bind 单一 Conversation） | 用任意一方继续消费 |
-| unknown epoch | `producer_purge_revision IS NULL`（历史行） | 登记 `epoch_unresolvable`（scope 已知 `conversation_scope` 阻 purge / 未知 `tenant_scope` 阻 enable / 已删 `orphan`），不当作当前 epoch | 当作当前 epoch 消费 / 静默通过 gate |
+| scope mismatch（A≠B） | row.conversation_id ≠ event.conversation_id（两源均非 NULL） | 6 元 CAS fail closed；`tenant_scope`/`ambiguous_mapping` 降级登记归 backfill discovery（R3） | 用任意一方继续消费 / consumer 登记冲突 |
+| NULL-scope 行 | row.conversation_id NULL 但 event 非 NULL（历史未回填） | fail closed、不消费；catch-up 回填 scope 或登记 `tenant_scope`；verify 双维收敛 | 因 claim 时 NULL 而静默接受 / 当当前 scope 消费 |
+| unknown epoch | `producer_purge_revision IS NULL`（历史行） | tombstone-resolve 双相（R4）：集合锁内先写 inbox receipt tombstone 证据、再登记 `epoch_unresolvable`（scope 已知 `conversation_scope` / 未知 `tenant_scope` / 已删 `orphan`），不当作当前 epoch | 当作当前 epoch 消费 / 静默通过 gate / resolved 无证据 |
 | orphan | 源 Conversation 已物理删除 | 具名 orphan reconcile，不猜 UUID、不并入现存 Conversation；不阻塞 purge、需运维确认到 resolved | 猜测 UUID / 并入现存 Conversation / 复活正文 |
-| takeover | worker A claim attempt N；B 接管 attempt N+1；A 的 stale consume/terminalize | claim CAS（claimant+attempt）拒绝，不覆盖新 claim（S3-E round-2 语义扩展至 6 元） | 清掉后来 worker 的 claim 或覆盖同期裁决 |
+| takeover | worker A claim attempt N；B 接管 attempt N+1；A 的 stale consume/terminalize | claim CAS 拒绝（`attempt_count`+`claimant_id` 承载，R2），不覆盖新 claim | 清掉后来 worker 的 claim 或覆盖同期裁决 |
+| claim lease 过期 | `claimed_at <= stale_before` B 重 claim 同一事件、A 旧 attempt 仍持旧 epoch | claim CAS 拒 A 旧 attempt；新 delivery 按新 claim 处理 | 旧 attempt 覆盖新 claim / 复用旧 epoch 消费 |
+| partial ACK | transport/external owner 未全部 ACK | 任一 owner 未 ACK，purge operation 不得写 `completed`（D6）；不复活正文、不推进 completed | 部分 ACK 把 operation 标 completed |
 | 重放（replay） | 同一事件重复 delivery（inbox receipt 已 consumed / terminal digest 命中） | 幂等命中，不新建 Run、不重写 scope/epoch、不推进 checkpoint（`created=False`）；purge 后重放被 fence verdict 拒 | 重复建 Run / 重写 producer metadata / 复活正文 |
-| purge-win | purge suppress/erase 与 claim 竞争（purge-before-claim 或 claim-before-purge） | suppressed/cancelled envelope 不再被正常 claim；claim-before-purge 暂停后 purge suppress，worker 恢复但 fence 裁决拒正文写 | 在 purge 后经 claim 复活正文 |
+| purge-win | purge suppress/erase 与 claim 竞争（purge-before-claim 或 claim-before-purge） | claim-before-purge 暂停后 purge suppress，worker 恢复但 fence 裁决拒正文写（deterministic）；purge-before-claim 的 tombstone 行不再被正常 claim（S4-D 态） | 在 purge 后经 claim 复活正文 |
 
 **C7. 明确不做（S4-C 边界）**：不写 schema/migration（不改 040）；不实现 041 guard 演进（S4-E）；不实现 `workspace.transport.v1`/`execution.transport.v1`/`external.payload.v1`/`runtime.private.v1` participant（S4-D/E）；不做 fault 矩阵（S4-F）；不启用 purge scheduler（S5）；`erase_available` 保持 `False`；不收紧既有列为 NOT NULL；不新增 inbox status 枚举；不实现真实 Pi Worker / 云对象存储生产 adapter。
 
-**C8. 验收矩阵（S4-C 实现时逐项验证）**：scope/epoch 传播链四跳一致（新写 outbox 行带真实 conversation_id/purge_revision、claim envelope 携带、inbox 行带）；六元组 CAS 表驱动反例；C6 各反例真实 PostgreSQL 复现 + 变异验证（逐项还原缺陷实现均被测试击杀）；writer 禁伪造 epoch（不用 `fence.revision`/Conversation `revision`/时间戳）；幂等重放不重写 scope/epoch；claim 短事务不持 outbox 行锁等 Guard（并发 claim 无死锁）；consumer 写 inbox metadata 与 receipt 同事务；unknown/missing epoch 登记 `epoch_unresolvable` 走集合锁流程；catch-up 自 tenant 起点、无跨调用游标、verify 不豁免 NULL 行；S4-B 专项 + 邻近回归全绿 + 全量 `pytest -m 'not external_network'` 0 failed + ruff 0 + mypy baseline 0 回归 + docs gate + `git diff --check`。
+**C8. 验收矩阵（S4-C 实现时逐项验证，merged-boundary 验收）**：C8 为**合并边界验收**——若拆两 PR，各 PR 只验证其风险域子集（见 C9），不得单 PR 声明「六元 CAS」「四跳一致」。编号矩阵（对齐 B8 命名项）：
+1. 传播链四跳一致：新写 outbox 行带真实 `conversation_id`/`purge_revision`（Conversation 行锁内读，R1）、claim envelope 携带（claim 短事务锁定装载，R2）、inbox 行带（消费事务内重读源 outbox 一致，R2）。
+2. 六元组 CAS 表驱动：行值 `FOR UPDATE` 重读、非 NULL 成员比对、turn 两源/output 三源、NULL-scope fail closed、takeover 由 attempt+claimant 承载（R2）。
+3. C6 各反例（含 stale soft-delete/restore、NULL-scope、claim lease、partial ACK）真实 PostgreSQL 复现 + 变异验证（逐项还原缺陷实现均被测试击杀）。
+4. writer 禁伪造 epoch（不用 `fence.purge_revision`/`fence.revision`/Conversation `revision`/时间戳，R1）。
+5. 幂等重放不重写 scope/epoch、NULL 旧行不补写（R6）。
+6. claim 短事务不持 outbox 行锁等 Guard（并发 claim 无死锁）；两新列与 claim 同事务锁定读取。
+7. consumer 写 inbox metadata 与 receipt 同事务；unknown/missing epoch 集合锁临界区 tombstone-resolve 双相（先证据后 `epoch_unresolvable`，R4）。
+8. consumer 集合锁目标/owner_key 正确（inbox PK + transport owner，R3）；先集合锁后 inbox 行 FOR UPDATE，无反向等待。
+9. catch-up 自 tenant 起点、无跨调用游标、扫描谓词四分支（R5）；verify 双维独立 fail closed、不用 `scope_reconcile_state IS NULL` 守卫豁免。
+10. S4-B 专项 + 邻近回归全绿 + 全量 pytest 0 failed（`external_network` 手工 opt-in 除外，R6）+ ruff 0 + mypy baseline 0 回归 + docs gate + `git diff --check`。
 
 **C9. PR 拆分与评审/收敛流程（接 TD-092）**
 
-- **第一 PR（本 PR）纯文档**：本 delta，docs gate + `git diff --check`；同 HEAD 三面首轮并行复审（数据/状态机、并发/锁序、测试/运维），P0/P1 清零后再开实现 PR。
-- **实现 PR**：契约 P0/P1 清零后开**单一主要风险域**实现 PR；范围过大时拆为 **producer propagation**（writer 写 scope/epoch + catch-up）与 **claim/consumer CAS**（envelope 扩展 + 六元 CAS + inbox 写）两个 PR。禁止单超大 PR（S2-D/E 7 轮复审教训）。
+- **第一 PR（本 PR）纯文档**：本 delta，docs gate + `git diff --check`；同 HEAD 三面首轮并行复审（数据/状态机、并发/锁序、测试/运维），P0/P1 清零后再开实现 PR。**三面首轮复审结果（P0/P1/P2/P3 计数）必须记录到 work-log，P0/P1 清零后才可开实现 PR（R5）**。
+- **实现 PR**：契约 P0/P1 清零后开**单一主要风险域**实现 PR；范围过大时拆为 **producer propagation**（writer 写 scope/epoch + catch-up）与 **claim/consumer CAS**（envelope 扩展 + 六元 CAS + inbox 写）两个 PR。禁止单超大 PR（S2-D/E 7 轮复审教训）。拆两 PR 时：producer PR 只验证 outbox 行真实性与重放（C8 项 1/4/5），consumer PR 只验证 CAS 与 inbox（C8 项 2/6/7/8），「六元 CAS」「四跳一致」为合并边界验收（R5）。
 - **实现期间保持 Draft**，`Backend iteration` risk-targeted（TD-092 治理：Draft 只产生非 required check）；代码稳定后转 Ready，最新 HEAD 执行 Backend full。
 - **收敛目标 2-3 轮**；连续两轮出现新 P1 立即停止补丁式修复，回契约或拆分/重构（TD-092 首个后续验证任务）。
 - **findings 按根因族一次返修**，并横向检查等价入口：writer（`add_turn_outbox`/`commit_terminal` outbox 生产）、claim（`claim_turn_outbox`/`claim_output_outbox` + envelope 装载）、consumer（`consume_turn_event`/`consume_output_event` + 6 元 CAS + inbox 写）、heal（reconcile issue `open->acknowledged->resolved` CAS + 投影重算）、verify（S4-B 五维 + catch-up 重扫）及 S3-E 迟到写/terminalize 等价路径。
