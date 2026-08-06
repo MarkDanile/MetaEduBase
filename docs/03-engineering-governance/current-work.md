@@ -14,7 +14,34 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-TD-092: 高风险 PR CI 反馈周期与复审收敛治理
+
+状态：🟡 进行中
+类型：technical-debt / infrastructure
+领域：CI 性能、后端测试选择、复审流程
+当前执行模式：plan-do；先 CI 分层，再复审治理
+最近接手工具：Codex
+分支：`codex/td-092-ci-review-throughput`
+
+需求来源：
+- Spec: [TD-092](../02-delivery-plans/01-specs/2026-08-06-td-092-ci-review-throughput.md)
+- Plan: [TD-092 Implementation Plan](../02-delivery-plans/02-plans/2026-08-06-td-092-ci-review-throughput-plan.md)
+- 技术债：[TD-092](technical-debt.md#td-092-高风险-pr-ci-反馈周期与复审收敛治理)
+- 架构约束：不改 R1 业务逻辑；保留最终 full/main/nightly 门禁
+
+当前进展：
+- 已确认 PR #530 Backend `10m22s` 中 pytest full 占 `9m06s`；040 migration 使后续 PR 修订持续判定 full。
+- 已冻结 Draft risk-targeted、Ready full、main/nightly full 的分层策略。
+
+下一步：
+- 为 selector 增加 Draft/Ready 风险模式及 Agent/migration risk suite。
+- 接入 GitHub Actions 事件状态和选择摘要；再更新复审包与升级规则。
+
+验证状态：
+- 基线：PR #530 Backend `2102 passed / 0 failed`；治理改造尚未完成。
+
+交接备注：
+- R1-S4-C 暂停，待 TD-092 完整 Git 闭环后恢复。
 
 ## 下一批候选任务
 
