@@ -896,3 +896,73 @@ async def test_040_downgrade_lock_order_follows_dependency_graph():
         await conn_b.close()
     # 清理：downgrade raise 了，库仍 040；清证据。
     await _clear_040_evidence()
+
+
+@pytest.mark.asyncio
+async def test_040_reconcile_source_issue_binding_rejected():
+    """第八轮复核 #2：source_table 与 issue_code 错绑定必须被 CHECK 拒绝。
+
+    反例：workspace outbox 塞 execution 专属的 ``source_run_missing``——旧 CHECK 只
+    约束枚举，此组合可入库；但 verify 按表精确匹配后该错表 code 不满足 ws outbox
+    的 scope 维。新 CHECK（ck_..._source_issue）须直接拒绝。
+    """
+    tenant = await _tenant_id()
+    connection = await _connect()
+    try:
+        async with connection.transaction():
+            with pytest.raises(asyncpg.CheckViolationError):
+                await connection.execute(
+                    """
+                    INSERT INTO metaedu.agent_transport_scope_reconcile (
+                        id, tenant_id, owner_key, source_table, source_row_id,
+                        conversation_id, reconcile_class, issue_code, state, revision,
+                        created_at
+                    ) VALUES (
+                        $1, $2, 'workspace.transport.v1', 'agent_workspace_outbox', $3,
+                        NULL, 'tenant_scope', 'source_run_missing', 'open', 1,
+                        clock_timestamp()
+                    )
+                    """,
+                    uuid.uuid4(),
+                    tenant,
+                    uuid.uuid4(),
+                )
+        # 反向：execution outbox 塞 workspace 专属的 source_message_missing 也须拒绝。
+        async with connection.transaction():
+            with pytest.raises(asyncpg.CheckViolationError):
+                await connection.execute(
+                    """
+                    INSERT INTO metaedu.agent_transport_scope_reconcile (
+                        id, tenant_id, owner_key, source_table, source_row_id,
+                        conversation_id, reconcile_class, issue_code, state, revision,
+                        created_at
+                    ) VALUES (
+                        $1, $2, 'execution.transport.v1', 'agent_execution_outbox', $3,
+                        NULL, 'tenant_scope', 'source_message_missing', 'open', 1,
+                        clock_timestamp()
+                    )
+                    """,
+                    uuid.uuid4(),
+                    tenant,
+                    uuid.uuid4(),
+                )
+        # 合法组合仍可入库（ws outbox + source_message_missing）。
+        async with connection.transaction():
+            await connection.execute(
+                """
+                INSERT INTO metaedu.agent_transport_scope_reconcile (
+                    id, tenant_id, owner_key, source_table, source_row_id,
+                    conversation_id, reconcile_class, issue_code, state, revision,
+                    created_at
+                ) VALUES (
+                    $1, $2, 'workspace.transport.v1', 'agent_workspace_outbox', $3,
+                    NULL, 'tenant_scope', 'source_message_missing', 'open', 1,
+                    clock_timestamp()
+                )
+                """,
+                uuid.uuid4(),
+                tenant,
+                uuid.uuid4(),
+            )
+    finally:
+        await connection.close()

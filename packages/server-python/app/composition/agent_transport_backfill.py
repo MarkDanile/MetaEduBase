@@ -150,7 +150,7 @@ async def _select_actionable_batch(
     返回 (source_row_id, join_key, payload_ref)。join_key 对 outbox 是 aggregate_id、
     对 inbox 是 event_id。
 
-    **选取范围（第三轮复核 #1 discovery + P1-1/#2/#6）**：
+    **选取范围（第三轮复核 #1 discovery + P1-1/#2/#6 + 第八轮复核 #1）**：
     - NULL-scope 未处理行（``conversation_id IS NULL AND scope_reconcile_state IS NULL``）：
       回填 scope 或登记 scope 类 issue。
     - outbox ref 未登记行（``payload_ref IS NOT NULL AND NOT EXISTS(external ledger
@@ -163,17 +163,25 @@ async def _select_actionable_batch(
       （verify 第五维只读验证 issue 已存在）。无来源且 scope 已填的行不在 mismatch 范围
       （scope 仍有效、FK 保护），不登记。已登记 issue 的行（``scope_reconcile_state IS NOT NULL``）
       退出扫描，不饥饿（#1）。run_events 不经此函数（见 ``_select_ref_event_batch``）。
+    - **epoch-only 行（第八轮复核 #1）**：``conversation_id IS NOT NULL AND
+      producer_purge_revision IS NULL AND scope_reconcile_state IS NULL AND 无 mismatch``
+      ——已带 scope 但 epoch 未知的行须被选中补登 ``epoch_unresolvable``（否则 verify
+      epoch 维永久 fail、无法收敛）。
     """
     src_table, join_col = _MISMATCH_SOURCE_BY_TABLE[table]
     is_outbox = table in _SOURCE_TYPE_BY_TABLE
     ref_select = "payload_ref" if is_outbox else "NULL"
-    # mismatch EXISTS：来源同 tenant 但 conversation_id 不同（A≠B），或来源跨 tenant。
-    # inbox 源 outbox scope 可能未填（NULL）-> s.conversation_id IS NOT NULL 守卫；
-    # outbox 源 Message/Run conversation_id NOT NULL，守卫无害。
+    # mismatch EXISTS（第八轮复核 #4：含源 conversation_id IS NULL——inbox 的源 outbox
+    # scope 未知时，inbox 的 scope-set 行也是未知派生的，须登记 issue 而非假绿）：
+    # 来源同 tenant 但 conversation_id 不同（A≠B）、来源 conversation_id 为 NULL
+    # （源 scope 未知）、或来源跨 tenant。
+    # outbox 源 Message/Run conversation_id NOT NULL，NULL 分支对 outbox 无害。
     mismatch = (
         f"(EXISTS(SELECT 1 FROM metaedu.{src_table} s WHERE s.id = t.{join_col} "
         f"AND s.tenant_id = t.tenant_id AND s.conversation_id IS NOT NULL "
         f"AND s.conversation_id <> t.conversation_id)"
+        f" OR EXISTS(SELECT 1 FROM metaedu.{src_table} s WHERE s.id = t.{join_col} "
+        f"AND s.tenant_id = t.tenant_id AND s.conversation_id IS NULL)"
         f" OR EXISTS(SELECT 1 FROM metaedu.{src_table} s WHERE s.id = t.{join_col} "
         f"AND s.tenant_id <> t.tenant_id))"
     )
@@ -190,7 +198,10 @@ async def _select_actionable_batch(
         "((t.conversation_id IS NULL AND t.scope_reconcile_state IS NULL)"
         + ref_branch
         + f" OR (t.conversation_id IS NOT NULL AND t.scope_reconcile_state IS NULL"
-        f" AND {mismatch}))"
+        f" AND {mismatch})"
+        # 第八轮复核 #1：scope 已填但 epoch 未知的行补登 epoch_unresolvable（收敛）。
+        f" OR (t.conversation_id IS NOT NULL AND t.producer_purge_revision IS NULL"
+        f" AND t.scope_reconcile_state IS NULL AND NOT ({mismatch})))"
     )
     sql = (
         f"SELECT t.id, t.{join_col} AS join_key, {ref_select} AS payload_ref "
@@ -527,6 +538,22 @@ async def _backfill_source_row(
             issue_code="cross_tenant_mismatch",
         ):
             report.reconcile_issues_registered += 1
+    elif had_scope and resolution == "source_missing":
+        # 第八轮复核 #4：scope 已填但**源 scope 未知**（inbox 的源 outbox scope 为
+        # NULL——源解析返回 source_missing）-> 行内 scope 是未知派生的，登记
+        # tenant_scope/ambiguous_mapping（不带 conversation_id），形成可处理闭环；
+        # 不覆盖行内 scope（fail closed，不猜）。
+        if await _register_issue(
+            session,
+            tenant_id=tenant_id,
+            owner_key=owner_key,
+            table=table,
+            source_row_id=source_row_id,
+            conversation_id=None,
+            reconcile_class="tenant_scope",
+            issue_code="ambiguous_mapping",
+        ):
+            report.reconcile_issues_registered += 1
     elif not had_scope:
         # scope 未知/orphan/跨 tenant 且本行确无 scope：登记 scope 类 issue。
         # （已带 scope 的 ref-bearing 行跳过 scope issue——它不属于 scope 维问题。）
@@ -586,15 +613,18 @@ async def _backfill_source_row(
         ):
             report.reconcile_issues_registered += 1
     # external ref（B5）：仅 outbox 的非空 payload_ref（run_events 走独立路径）。
-    # conversation_id：冲突行用 NULL（tenant_scope 降级，不 bind 单一 Conversation）；
-    # 正常 resolved 用解析值；非 resolved 用行当前 scope（可能 NULL）。
+    # conversation_id（第八轮复核 #3）：仅 resolved（或 conflict——含 A≠B 且不猜）时
+    # bind Conversation；**非 resolved（cross-tenant / source_missing / orphan /
+    # ambiguous）一律 NULL**——不继承行内旧 scope（跨 tenant 不映射、不 gate 单一
+    # Conversation；B4/B5 tenant/orphan 语义）。ref 与 scope 解耦：即使行内 scope
+    # 已知，external ref 仍可登记（erase 按行独立推进）。
     if payload_ref is not None and await _register_external_ref(
         session,
         tenant_id=tenant_id,
         conversation_id=(
             None
-            if conflict
-            else (conversation_id if resolution == "resolved" else current[0])
+            if resolution != "resolved"
+            else (None if conflict else conversation_id)
         ),
         table=table,
         source_row_id=source_row_id,
@@ -686,6 +716,13 @@ async def _verify_scope_epoch(
             # ambiguous 已登记 ambiguous_mapping，故 verify 覆盖全部 NULL-scope 行。
             # 第七轮复核 #1：issue_code 与 reconcile_class 须同时精确匹配（防错 class
             # 冒充——DB CHECK 只能挡新写，存量/绕过 CHECK 的错 class 行须由 verify 检出）。
+            # 第八轮复核 #2：issue_code 还须**按来源表**精确匹配——每表只接受自己的
+            # source-missing code（_SOURCE_MISSING_ISSUE[table]）+ 通用 mismatch/ambiguous/
+            # orphan code；错表 code（如 ws outbox 塞 source_run_missing）不得满足。
+            scope_issue_codes = (
+                "'" + _SOURCE_MISSING_ISSUE[table] + "','cross_tenant_mismatch',"
+                "'ambiguous_mapping','conversation_deleted_orphan'"
+            )
             scope_missing = (
                 await session.execute(
                     text(
@@ -696,9 +733,7 @@ async def _verify_scope_epoch(
                         f"  WHERE r.tenant_id = t.tenant_id AND r.owner_key = :o "
                         f"  AND r.source_table = :st "
                         f"  AND r.source_row_id = t.id AND r.issue_code IN ("
-                        f"    'source_message_missing','source_run_missing',"
-                        f"    'source_outbox_missing','cross_tenant_mismatch',"
-                        f"    'ambiguous_mapping','conversation_deleted_orphan')"
+                        f"    {scope_issue_codes})"
                         f"  AND r.reconcile_class = CASE "
                         f"    WHEN r.issue_code = 'conversation_deleted_orphan' "
                         f"    THEN 'orphan' ELSE 'tenant_scope' END)"
@@ -710,19 +745,27 @@ async def _verify_scope_epoch(
                 problems.append(f"{table}: {scope_missing} NULL-scope 行无 scope 类 issue")
         # epoch 维（仅 4 张 transport 表有 producer_purge_revision 列；owner 绑定；
         # B3:778「每行必登记」无类型豁免，mismatch 行经 ambiguous 路径已登记
-        # epoch_unresolvable）。第七轮复核 #1：epoch_unresolvable 的 class 须与行状态
-        # 精确匹配——已解析 scope（conversation_id NOT NULL 且无冲突 issue）-> 须为
-        # conversation_scope（阻断该 Conversation purge，防「已知 Conversation 的
-        # epoch + tenant_scope」漏 purge gate）；冲突/未知/orphan（conversation_id
-        # NULL 或有 ambiguous/cross_tenant issue）-> tenant_scope 或 orphan 均可。
+        # epoch_unresolvable）。第七轮复核 #1 + 第八轮复核 #5：epoch_unresolvable 的
+        # class 须与行状态**精确**一一对应——已解析 scope（无冲突/无 orphan issue）->
+        # conversation_scope（阻断该 Conversation purge）；orphan（有
+        # conversation_deleted_orphan issue）-> orphan；其余（冲突/未知）->
+        # tenant_scope。不得互换（孤儿 gate 错配 tenant_scope 会漏 Conversation purge
+        # gate / 错 gate tenant）。
         for table in scope_tables:
             owner = OWNER_BY_TABLE[table]
+            orphan = (
+                "EXISTS(SELECT 1 FROM metaedu.agent_transport_scope_reconcile ro "
+                "WHERE ro.tenant_id = t.tenant_id AND ro.owner_key = :o "
+                "AND ro.source_table = :st AND ro.source_row_id = t.id "
+                "AND ro.issue_code = 'conversation_deleted_orphan')"
+            )
             resolved = (
                 "(t.conversation_id IS NOT NULL AND NOT EXISTS ("
                 "  SELECT 1 FROM metaedu.agent_transport_scope_reconcile rc "
                 "  WHERE rc.tenant_id = t.tenant_id AND rc.owner_key = :o "
                 "  AND rc.source_table = :st AND rc.source_row_id = t.id "
-                "  AND rc.issue_code IN ('ambiguous_mapping','cross_tenant_mismatch')))"
+                "  AND rc.issue_code IN ('ambiguous_mapping','cross_tenant_mismatch',"
+                "    'conversation_deleted_orphan')))"
             )
             epoch_missing = (
                 await session.execute(
@@ -735,9 +778,11 @@ async def _verify_scope_epoch(
                         f"  AND r.source_table = :st "
                         f"  AND r.source_row_id = t.id "
                         f"  AND r.issue_code = 'epoch_unresolvable'"
-                        f"  AND (({resolved} AND r.reconcile_class = 'conversation_scope')"
-                        f"    OR (NOT {resolved} AND r.reconcile_class IN "
-                        f"      ('tenant_scope','orphan'))))"
+                        f"  AND (({orphan} AND r.reconcile_class = 'orphan')"
+                        f"    OR (NOT {orphan} AND {resolved}"
+                        f"      AND r.reconcile_class = 'conversation_scope')"
+                        f"    OR (NOT {orphan} AND NOT {resolved}"
+                        f"      AND r.reconcile_class = 'tenant_scope')))"
                     ),
                     {"t": tenant_id, "o": owner, "st": table},
                 )
@@ -782,11 +827,15 @@ async def _verify_scope_epoch(
             ("agent_execution_outbox", "agent_runs", "aggregate_id"),
         ]:
             owner = OWNER_BY_TABLE[table]
-            # A≠B 分支：来源同 tenant 但 conversation_id 不同 -> 须有 ambiguous_mapping。
+            # A≠B/未知分支（第八轮复核 #4 含源 scope NULL）：来源同 tenant 但
+            # conversation_id 不同，或来源 conversation_id 为 NULL（源 scope 未知）-> 须有
+            # ambiguous_mapping。mismatch 定义与 _select_actionable_batch discovery 一致。
             same_tenant_diff = (
-                f"EXISTS(SELECT 1 FROM metaedu.{src_table} s WHERE s.id = t.{join_col} "
+                f"(EXISTS(SELECT 1 FROM metaedu.{src_table} s WHERE s.id = t.{join_col} "
                 f"AND s.tenant_id = t.tenant_id AND s.conversation_id IS NOT NULL "
                 f"AND s.conversation_id <> t.conversation_id)"
+                f" OR EXISTS(SELECT 1 FROM metaedu.{src_table} s WHERE s.id = t.{join_col} "
+                f"AND s.tenant_id = t.tenant_id AND s.conversation_id IS NULL))"
             )
             ab_missing = (
                 await session.execute(

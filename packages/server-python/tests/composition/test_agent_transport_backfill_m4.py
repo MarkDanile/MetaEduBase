@@ -1466,3 +1466,321 @@ async def test_p7_verify_rejects_wrong_reconcile_class(session_factory, monkeypa
 
     assert not v_ok, "错 reconcile_class 的存量 issue 不得让 verify 假绿"
     assert "agent_workspace_outbox" in detail
+
+
+# --- 第八轮复核回归测试（#1 epoch-only 收敛 / #3 external ref 绑定 / #4 inbox 源 NULL）---
+
+
+async def test_p8_epoch_only_row_converges(session_factory, monkeypatch):
+    """第八轮复核 #1：已带 scope 但 epoch 未知（producer_purge_revision NULL）的行
+    必须被扫描补登 epoch_unresolvable，verify 才能闭环收敛。
+
+    反例：旧扫描只选 NULL-scope / ref 未登记 / mismatch 行，scope-set + epoch-NULL
+    行永不进扫描 -> verify epoch 维永久 fail、无法收敛（S4-C catch-up 全量重扫前
+    S4-B 自己就该闭环）。
+    """
+    from app.composition import agent_transport_backfill as _tbf
+
+    conn = await _connect()
+    try:
+        tenant = await _make_tenant(conn)
+        conv = await _make_conversation(conn, tenant)
+        msg = await _make_message(conn, tenant, conv)
+        oid = uuid.uuid4()
+        # 已带 scope（conv）+ epoch NULL + 无 ref：第八轮前的谓词不选中。
+        await conn.execute(
+            "INSERT INTO metaedu.agent_workspace_outbox ("
+            "  id, tenant_id, event_type, schema_version, aggregate_id, aggregate_type, "
+            "  payload_inline, payload_ref, payload_digest, correlation_id, status, "
+            "  attempt_count, next_attempt_at, created_at, conversation_id, "
+            "  producer_purge_revision"
+            ") VALUES ($1,$2,'turn.requested.v1',1,$3,'workspace.message',"
+            "  '{}'::jsonb,NULL,$4,$5,'pending',0,clock_timestamp(),clock_timestamp(),$6,NULL)",
+            oid, tenant, msg, "a" * 64, uuid.uuid4(), conv,
+        )
+    finally:
+        await conn.close()
+
+    engine, factory = _factory()
+    report = await _tbf.backfill_transport_scope(factory, tenant_id=tenant)
+    await engine.dispose()
+    assert report.ok, (
+        f"epoch-only 行须补登 epoch_unresolvable 并 verify 闭环：{report.verify_detail}"
+    )
+    conn = await _connect()
+    try:
+        issue = await conn.fetchrow(
+            "SELECT reconcile_class, issue_code, conversation_id FROM "
+            "metaedu.agent_transport_scope_reconcile "
+            "WHERE source_row_id=$1 AND issue_code='epoch_unresolvable'",
+            oid,
+        )
+        assert issue is not None, "epoch-only 行须登记 epoch_unresolvable"
+        assert issue["reconcile_class"] == "conversation_scope"
+        assert issue["conversation_id"] == conv
+    finally:
+        await conn.close()
+
+
+async def test_p8_external_ref_not_bound_on_cross_tenant(session_factory, monkeypatch):
+    """第八轮复核 #3：来源 cross-tenant 的行，external ref 不得继承行内旧 scope。
+
+    反例：旧实现非 resolved 一律用 current[0]（行内 scope），cross-tenant 行会把
+    external ref 错绑到行内 Conversation——违反 B4/B5 tenant 语义（跨 tenant 不映射、
+    不 gate 单一 Conversation）。
+    """
+    from app.composition import agent_transport_backfill as _tbf
+
+    conn = await _connect()
+    try:
+        # 行所在 tenant 与来源 tenant 不同。
+        tenant_a = await _make_tenant(conn)
+        tenant_b = await _make_tenant(conn)
+        conv_b = await _make_conversation(conn, tenant_b)
+        msg_b = await _make_message(conn, tenant_b, conv_b)
+        oid = await _make_ws_outbox_with_scope_and_ref(
+            conn, tenant_a, msg_b, None, payload_ref="ref-cross"
+        )
+        # 行内 scope 指向 tenant_a 的 conv（旧实现会继承它）。
+        conv_a = await _make_conversation(conn, tenant_a)
+        await conn.execute(
+            "UPDATE metaedu.agent_workspace_outbox SET conversation_id=$1 "
+            "WHERE id=$2",
+            conv_a, oid,
+        )
+    finally:
+        await conn.close()
+
+    engine, factory = _factory()
+    report = await _tbf.backfill_transport_scope(factory, tenant_id=tenant_a)
+    await engine.dispose()
+    assert report.ok, f"跨 tenant + ref 行应 discovery 闭环：{report.verify_detail}"
+    conn = await _connect()
+    try:
+        ref = await conn.fetchrow(
+            "SELECT conversation_id FROM metaedu.agent_external_object_refs "
+            "WHERE source_row_id=$1",
+            oid,
+        )
+        assert ref is not None
+        assert ref["conversation_id"] is None, (
+            "跨 tenant 行 external ref 不得继承行内 scope（应 NULL，不 gate 单一 Conversation）"
+        )
+        # 行内 scope 不得被跨 tenant 源覆盖（fail closed，不猜）。
+        scope = await conn.fetchval(
+            "SELECT conversation_id FROM metaedu.agent_workspace_outbox WHERE id=$1",
+            oid,
+        )
+        assert scope == conv_a, "跨 tenant 不得覆盖行内既有 scope"
+    finally:
+        await conn.close()
+
+
+async def test_p8_inbox_source_scope_null_not_skipped(session_factory, monkeypatch):
+    """第八轮复核 #4：inbox 已有 scope、源 outbox scope 为 NULL 时不得被 verify 假绿。
+
+    反例：旧 mismatch EXISTS 要求源 conversation_id IS NOT NULL——源 outbox scope 未知
+    时 inbox 的 scope-set 行既不进 discovery 也不被 verify 第五维检出，五维全绿。
+    """
+    from app.composition import agent_transport_backfill as _tbf
+
+    conn = await _connect()
+    try:
+        tenant = await _make_tenant(conn)
+        conv = await _make_conversation(conn, tenant)
+        # 源 ws_outbox 是 phantom（aggregate_id 指向不存在的 message）-> scope 永久
+        # NULL（source_missing，登记 issue 而非回填）。
+        phantom_msg = uuid.uuid4()
+        ws_outbox = await _make_ws_outbox_null_scope(conn, tenant, phantom_msg)
+        # exec_inbox 已带 scope（conv），源 ws_outbox scope NULL。
+        iid = uuid.uuid4()
+        await conn.execute(
+            "INSERT INTO metaedu.agent_execution_inbox ("
+            "  id, tenant_id, consumer_name, event_id, event_type, schema_version, "
+            "  payload_digest, correlation_id, status, created_at, conversation_id, "
+            "  producer_purge_revision"
+            ") VALUES ($1,$2,'turn_requested',$3,'turn.requested.v1',1,$4,$5,'consumed',"
+            "  clock_timestamp(),$6,NULL)",
+            iid, tenant, ws_outbox, "b" * 64, uuid.uuid4(), conv,
+        )
+    finally:
+        await conn.close()
+
+    engine, factory = _factory()
+    report = await _tbf.backfill_transport_scope(factory, tenant_id=tenant)
+    await engine.dispose()
+    # 修复后：源 outbox scope 未知 -> inbox 的 scope-set 行被 discovery 选中并登记
+    # ambiguous_mapping（不假绿），verify 闭环通过。判别：issue 必须存在。
+    assert report.ok, f"inbox 源 scope NULL 须登记 issue 并闭环：{report.verify_detail}"
+    conn = await _connect()
+    try:
+        issue = await conn.fetchrow(
+            "SELECT reconcile_class, issue_code FROM "
+            "metaedu.agent_transport_scope_reconcile "
+            "WHERE source_row_id=$1 AND issue_code='ambiguous_mapping'",
+            iid,
+        )
+        assert issue is not None, "inbox 源 scope NULL 须登记 ambiguous_mapping"
+        assert issue["reconcile_class"] == "tenant_scope"
+    finally:
+        await conn.close()
+
+
+async def test_p8_verify_rejects_wrong_source_table_issue(session_factory, monkeypatch):
+    """第八轮复核 #2：verify 必须按来源表精确匹配 issue_code（防错表冒充假绿）。
+
+    反例：workspace outbox 行登记 ``source_run_missing``（execution 专属 code）——
+    旧 verify 对每张表接受全部 source-missing code，错表 code 也能满足 scope 维。
+    """
+    from app.composition import agent_transport_backfill as _tbf
+
+    conn = await _connect()
+    try:
+        tenant = await _make_tenant(conn)
+        conv = await _make_conversation(conn, tenant)
+        msg = await _make_message(conn, tenant, conv)
+        oid = uuid.uuid4()
+        # NULL-scope 的 ws outbox（epoch 已知=0，只触发 scope 维）。
+        await conn.execute(
+            "INSERT INTO metaedu.agent_workspace_outbox ("
+            "  id, tenant_id, event_type, schema_version, aggregate_id, aggregate_type, "
+            "  payload_inline, payload_ref, payload_digest, correlation_id, status, "
+            "  attempt_count, next_attempt_at, created_at, conversation_id, "
+            "  producer_purge_revision"
+            ") VALUES ($1,$2,'turn.requested.v1',1,$3,'workspace.message',"
+            "  '{}'::jsonb,NULL,$4,$5,'pending',0,clock_timestamp(),clock_timestamp(),NULL,0)",
+            oid, tenant, msg, "a" * 64, uuid.uuid4(),
+        )
+        # 临时 DROP 新 CHECK（模拟存量库），塞**错表**的 source_run_missing
+        #（issue_class + source_issue 都挡，先 DROP）。
+        await conn.execute(
+            "ALTER TABLE metaedu.agent_transport_scope_reconcile "
+            "DROP CONSTRAINT IF EXISTS ck_agent_transport_reconcile_issue_class"
+        )
+        await conn.execute(
+            "ALTER TABLE metaedu.agent_transport_scope_reconcile "
+            "DROP CONSTRAINT IF EXISTS ck_agent_transport_reconcile_source_issue"
+        )
+        await conn.execute(
+            "INSERT INTO metaedu.agent_transport_scope_reconcile ("
+            "  id, tenant_id, owner_key, source_table, source_row_id, "
+            "  conversation_id, reconcile_class, issue_code, state, revision, created_at"
+            ") VALUES ($1,$2,'workspace.transport.v1','agent_workspace_outbox',"
+            "  $3,NULL,'tenant_scope','source_run_missing','open',1,clock_timestamp())",
+            uuid.uuid4(), tenant, oid,
+        )
+
+        # verify 在 try 内、DELETE 前执行——ledger 保留错表 issue（判别核心）。
+        engine, factory = _factory()
+        try:
+            v_ok, detail = await _tbf._verify_scope_epoch(factory, tenant_id=tenant)
+        finally:
+            await engine.dispose()
+    finally:
+        await conn.execute(
+            "DELETE FROM metaedu.agent_transport_scope_reconcile "
+            "WHERE source_row_id=$1",
+            oid,
+        )
+        await conn.execute(
+            "ALTER TABLE metaedu.agent_transport_scope_reconcile "
+            "ADD CONSTRAINT ck_agent_transport_reconcile_issue_class CHECK ("
+            "  ((issue_code = 'epoch_unresolvable')"
+            "  OR (issue_code IN ('ambiguous_mapping','cross_tenant_mismatch',"
+            "    'source_message_missing','source_run_missing','source_outbox_missing')"
+            "    AND reconcile_class = 'tenant_scope')"
+            "  OR (issue_code = 'conversation_deleted_orphan'"
+            "    AND reconcile_class = 'orphan')))"
+        )
+        await conn.execute(
+            "ALTER TABLE metaedu.agent_transport_scope_reconcile "
+            "ADD CONSTRAINT ck_agent_transport_reconcile_source_issue CHECK ("
+            "  (issue_code NOT IN ('source_message_missing','source_run_missing',"
+            "    'source_outbox_missing')"
+            "  OR (source_table = 'agent_workspace_outbox'"
+            "    AND issue_code = 'source_message_missing')"
+            "  OR (source_table = 'agent_execution_outbox'"
+            "    AND issue_code = 'source_run_missing')"
+            "  OR (source_table IN ('agent_workspace_inbox','agent_execution_inbox')"
+            "    AND issue_code = 'source_outbox_missing')))"
+        )
+        await conn.close()
+
+    assert not v_ok, "错表 issue_code 不得让 verify 假绿"
+    assert "agent_workspace_outbox" in detail
+
+
+async def test_p8_epoch_class_exact_for_unresolved(session_factory, monkeypatch):
+    """第八轮复核 #5：epoch_unresolvable 的 class 须按来源 resolution 精确区分。
+
+    反例：orphan 行（Conversation 已删）的 epoch 应为 orphan，但旧 verify 对所有
+    未解析行同时接受 tenant_scope/orphan——若错登记 tenant_scope（gate tenant 而非
+    orphan）verify 仍绿。须精确到 resolution。
+    """
+    from app.composition import agent_transport_backfill as _tbf
+
+    conn = await _connect()
+    try:
+        tenant = await _make_tenant(conn)
+        # orphan：Conversation 已物理删除（不建 conv，源 message 指向幽灵 conv）。
+        ghost_conv = uuid.uuid4()
+        msg = await _make_message(conn, tenant, ghost_conv)  # replica 绕过 FK
+        oid = uuid.uuid4()
+        await conn.execute(
+            "INSERT INTO metaedu.agent_workspace_outbox ("
+            "  id, tenant_id, event_type, schema_version, aggregate_id, aggregate_type, "
+            "  payload_inline, payload_ref, payload_digest, correlation_id, status, "
+            "  attempt_count, next_attempt_at, created_at, conversation_id, "
+            "  producer_purge_revision, scope_reconcile_state"
+            ") VALUES ($1,$2,'turn.requested.v1',1,$3,'workspace.message',"
+            "  '{}'::jsonb,NULL,$4,$5,'pending',0,clock_timestamp(),clock_timestamp(),"
+            "  NULL,NULL,'orphan')",
+            oid, tenant, msg, "a" * 64, uuid.uuid4(),
+        )
+        # 手工塞：epoch_unresolvable + tenant_scope（应为 orphan）+ scope 类 orphan issue。
+        await conn.execute(
+            "ALTER TABLE metaedu.agent_transport_scope_reconcile "
+            "DROP CONSTRAINT IF EXISTS ck_agent_transport_reconcile_issue_class"
+        )
+        await conn.execute(
+            "INSERT INTO metaedu.agent_transport_scope_reconcile ("
+            "  id, tenant_id, owner_key, source_table, source_row_id, "
+            "  conversation_id, reconcile_class, issue_code, state, revision, created_at"
+            ") VALUES ($1,$2,'workspace.transport.v1','agent_workspace_outbox',"
+            "  $3,NULL,'tenant_scope','epoch_unresolvable','open',1,clock_timestamp())",
+            uuid.uuid4(), tenant, oid,
+        )
+        await conn.execute(
+            "INSERT INTO metaedu.agent_transport_scope_reconcile ("
+            "  id, tenant_id, owner_key, source_table, source_row_id, "
+            "  conversation_id, reconcile_class, issue_code, state, revision, created_at"
+            ") VALUES ($1,$2,'workspace.transport.v1','agent_workspace_outbox',"
+            "  $3,NULL,'orphan','conversation_deleted_orphan','open',1,clock_timestamp())",
+            uuid.uuid4(), tenant, oid,
+        )
+
+        # verify 在 try 内、DELETE 前执行——ledger 保留错 class epoch issue。
+        engine, factory = _factory()
+        try:
+            v_ok, detail = await _tbf._verify_scope_epoch(factory, tenant_id=tenant)
+        finally:
+            await engine.dispose()
+    finally:
+        await conn.execute(
+            "DELETE FROM metaedu.agent_transport_scope_reconcile WHERE source_row_id=$1",
+            oid,
+        )
+        await conn.execute(
+            "ALTER TABLE metaedu.agent_transport_scope_reconcile "
+            "ADD CONSTRAINT ck_agent_transport_reconcile_issue_class CHECK ("
+            "  ((issue_code = 'epoch_unresolvable')"
+            "  OR (issue_code IN ('ambiguous_mapping','cross_tenant_mismatch',"
+            "    'source_message_missing','source_run_missing','source_outbox_missing')"
+            "    AND reconcile_class = 'tenant_scope')"
+            "  OR (issue_code = 'conversation_deleted_orphan'"
+            "    AND reconcile_class = 'orphan')))"
+        )
+        await conn.close()
+
+    assert not v_ok, "orphan 行的 epoch 错配 tenant_scope 不得让 verify 假绿"
+    assert "epoch_unresolvable" in detail

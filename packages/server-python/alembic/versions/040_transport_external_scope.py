@@ -213,6 +213,23 @@ def _create_reconcile_ledger() -> None:
             name="ck_agent_transport_reconcile_issue_class",
         ),
         sa.CheckConstraint(
+            # 第八轮复核 #2：source_table 与 issue_code 绑定——source_*_missing 只能
+            # 出现在自己的来源表（ws outbox -> source_message_missing、exec outbox ->
+            # source_run_missing、inbox -> source_outbox_missing）；通用 code
+            # （ambiguous_mapping / cross_tenant_mismatch / conversation_deleted_orphan /
+            # epoch_unresolvable）各表均合法。防错表 code（如 ws outbox 塞
+            # source_run_missing）绕过 verify 假绿。
+            "(issue_code NOT IN ('source_message_missing','source_run_missing',"
+            "  'source_outbox_missing')"
+            " OR (source_table = 'agent_workspace_outbox'"
+            "  AND issue_code = 'source_message_missing')"
+            " OR (source_table = 'agent_execution_outbox'"
+            "  AND issue_code = 'source_run_missing')"
+            " OR (source_table IN ('agent_workspace_inbox','agent_execution_inbox')"
+            "  AND issue_code = 'source_outbox_missing'))",
+            name="ck_agent_transport_reconcile_source_issue",
+        ),
+        sa.CheckConstraint(
             "state IN ('open','acknowledged','resolved')",
             name="ck_agent_transport_reconcile_state",
         ),
