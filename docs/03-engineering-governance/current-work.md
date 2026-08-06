@@ -31,14 +31,16 @@
 
 当前进展：
 - 已确认 PR #530 Backend `10m22s` 中 pytest full 占 `9m06s`；040 migration 使后续 PR 修订持续判定 full。
-- 已冻结 Draft risk-targeted、Ready full、main/nightly full 的分层策略。
+- 已实现 Draft `Backend iteration` risk-targeted、Ready required `Backend` full、main/nightly full 的分层策略，并隔离 check 名称防中间结果冒充最终门禁。
+- Agent risk suite 从首版 `693 passed / 174.09s` 收敛到 `297 passed / 79.10s`；直接改动测试仍自动加入。
 
 下一步：
-- 为 selector 增加 Draft/Ready 风险模式及 Agent/migration risk suite。
-- 接入 GitHub Actions 事件状态和选择摘要；再更新复审包与升级规则。
+- 推送并创建 Draft PR，验证 CI 自身修改保持 full fail-closed。
+- 以临时 Agent probe 验证 Draft risk-targeted 与 Ready full 的真实 Actions 行为和 wall time。
 
 验证状态：
-- 基线：PR #530 Backend `2102 passed / 0 failed`；治理改造尚未完成。
+- selector/workflow policy `38 passed`；engineering `96 passed`；Agent risk suite `297 passed / 79.10s`；Ruff、mypy baseline、docs gate、diff-check 通过。
+- 远端 Draft/Ready probe 与最终 full 待执行。
 
 交接备注：
 - R1-S4-C 暂停，待 TD-092 完整 Git 闭环后恢复。

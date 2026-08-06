@@ -216,6 +216,7 @@
 - PR #530 Backend required check：`10m22s`；full pytest：`2102 passed / 1 skipped / 4 deselected`，用时 `9m06s`。
 - 选择器明确以 `database-migration:alembic/versions/040_transport_external_scope.py` 判定 full；后续修订仍处于同一 PR base/head 差异内。
 - PR #530 一次包含约 `6021` 行变更、17 个文件，混合 migration、ledger、锁、backfill、verify、CLI 与大型测试文件，最终经历 11 轮复审。
+- 本任务本地实测：首版整目录 Agent risk suite `693 passed / 174.09s`；按稳定 Agent core + transport/erasure/migration 追加专项后为 `297 passed / 79.10s`。
 
 **问题**
 
@@ -237,7 +238,7 @@
 
 **交付记录**
 
-- 进行中；R1-S4-C 在本任务完整闭环前暂停。
+- 进行中；本地 selector/workflow policy `38 passed`、engineering `96 passed`、Ruff/mypy/docs/diff-check 全绿；远端 Draft/Ready probe 待验证。R1-S4-C 在本任务完整闭环前暂停。
 
 ### TD-087: 模板管理 API 缺少后端 RBAC
 
