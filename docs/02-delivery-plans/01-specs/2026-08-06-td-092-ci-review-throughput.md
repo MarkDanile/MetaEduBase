@@ -44,7 +44,7 @@ Risk-targeted 采用稳定 Agent core 文件集，并按 transport、erasure、m
 - 按改动路径追加 transport、erasure 或 migration/schema/roundtrip 专项；
 - `tests/shared/test_health.py` 与数据库不可用 smoke。
 
-该套件只服务 Draft 反馈，不是最终合并门禁。最终 full 仍执行 `pytest -m "not external_network"`。
+该套件只服务 Draft 反馈，不是最终合并门禁。risk-targeted 保留 Ruff、数据库初始化与风险定向 pytest；mypy baseline 由 pre-push 和 Ready full 承担。普通 targeted、Draft fail-closed full 与最终 full 仍执行 mypy；最终 full 仍执行 `pytest -m "not external_network"`。
 
 ### Draft/Ready 事件
 

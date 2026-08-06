@@ -26,6 +26,7 @@
 ### Draft / Ready 复审门禁
 
 - Draft PR 是返修迭代状态，不得合并，并只产生非 required 的 `Backend iteration` check。普通叶子 Context 运行 targeted；可迭代高风险路径运行 risk-targeted；CI、selector、shared、identity/security、全局 fixture、依赖锁和未知路径仍 full fail-safe。
+- risk-targeted 保留 Ruff、数据库初始化和风险定向 pytest；约 11 秒的 mypy baseline 延后到本地 pre-push 与 Ready `Backend` full。普通 targeted、Draft fail-closed full、Ready/main/schedule/manual 仍运行 mypy baseline。
 - PR 转为 Ready 后才产生 required `Backend` check；高风险 PR 的当前最新 HEAD 必须运行完整 hermetic Backend。Ready 状态下的每次代码推送都会重新触发 `Backend` full；需要继续返修时先转回 Draft，避免把中间提交误当最终验收。
 - `main` push、schedule、workflow_dispatch 始终运行 full；risk-targeted 只能提供中间反馈，不能作为高风险 PR 的合并证据。
 - PR 交接必须记录 selector mode、reason、pytest scope 和当前 HEAD；复审方必须以该 HEAD 重新同步，过期 HEAD 的 finding 不进入返修批次。
