@@ -19,6 +19,8 @@ migration 039 改为行级白名单：只放行受控 purge tombstone 形态。
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from sqlalchemy import text
 
@@ -240,8 +242,10 @@ async def test_migration_039_roundtrip_downgrade_restores_unconditional_guard(
     import importlib.util
     from pathlib import Path
 
+    from alembic.config import Config
     from alembic.migration import MigrationContext
     from alembic.operations import Operations
+    from alembic.script import ScriptDirectory
     from sqlalchemy import text as _text
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy.pool import NullPool
@@ -258,6 +262,17 @@ async def test_migration_039_roundtrip_downgrade_restores_unconditional_guard(
     spec = importlib.util.spec_from_file_location("mig_039", mig_path)
     mig = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mig)
+
+    # 本测试只验证 039 守卫在 039<->038 间的切换（业务断言需库处于 039）。它用
+    # 手动 UPDATE alembic_version 模拟 stamp——这只在「039 恰是 head」时安全。一旦
+    # 后续迁移把 head 推进到 040+，结束时若仍 stamp 039，会留下「版本戳 039 但物理
+    # 是 040 列/表」的脱节，后续 round-trip 会跳过 040 downgrade 而撞「列已存在」。
+    # 故：测试体固定操作 039<->038，结束时**装回当前 head**（而非硬编码 039）。
+    server_root = Path(__file__).resolve().parents[3]
+    head_cfg = Config(str(server_root / "alembic.ini"))
+    head_cfg.set_main_option("script_location", str(server_root / "alembic"))
+    head_rev = ScriptDirectory.from_config(head_cfg).get_current_head()
+    guard_home = "039_run_event_tombstone_guard"
 
     event = await _seed_inline_event(db_session)
     event_id = event.id
@@ -303,6 +318,39 @@ async def test_migration_039_roundtrip_downgrade_restores_unconditional_guard(
         await db_session.flush()
         return fresh
 
+    # 进入时把库对齐到守卫 home（039）：head > 039 时用真实 alembic 全链降级到 039
+    # （040 downgrade 一律 fail-closed：本测试基线无 040 证据，全链降级安全放行；
+    # 一旦有证据则 raise，须测试准备阶段清空），使后续 mig.downgrade/upgrade 的
+    # 手动 stamp 与物理 schema 一致。结束 finally 用真实 upgrade 装回 head。
+    from alembic import command as _alembic_command
+
+    def _sync_db_url() -> str:
+        return TEST_DB_URL.replace("postgresql+asyncpg://", "postgresql://", 1).replace(
+            "postgresql://", "postgresql+asyncpg://", 1
+        )
+
+    def _real_migrate(direction: str, rev: str) -> None:
+        from app.config import settings as _settings
+
+        original = _settings.database_url
+        _settings.database_url = _sync_db_url()
+        try:
+            cfg = Config(str(server_root / "alembic.ini"))
+            cfg.set_main_option("script_location", str(server_root / "alembic"))
+            fn = (
+                _alembic_command.upgrade
+                if direction == "upgrade"
+                else _alembic_command.downgrade
+            )
+            fn(cfg, rev)
+        finally:
+            _settings.database_url = original
+
+    current = await _version()
+    if current != guard_home:
+        # head 已推进（如 040）：真实全链降级到守卫 home，再走 039<->038 验证。
+        await asyncio.to_thread(_real_migrate, "downgrade", guard_home)
+
     try:
         # --- 真实 downgrade() -> 038：守卫还原为无条件 RAISE + 版本戳 038 ---
         await _run_migration(mig.downgrade, "038_execution_actor_tombstone")
@@ -317,8 +365,8 @@ async def test_migration_039_roundtrip_downgrade_restores_unconditional_guard(
         )
 
         # --- 真实 upgrade() -> 039：白名单恢复 + 版本戳 039，tombstone 重新放行 ---
-        await _run_migration(mig.upgrade, "039_run_event_tombstone_guard")
-        assert await _version() == "039_run_event_tombstone_guard"
+        await _run_migration(mig.upgrade, guard_home)
+        assert await _version() == guard_home
         await db_session.execute(
             _text(
                 f"UPDATE {_TABLE} SET payload_inline = NULL, "
@@ -335,10 +383,13 @@ async def test_migration_039_roundtrip_downgrade_restores_unconditional_guard(
         ).one()
         assert row.payload_state == "redacted", "upgrade 后 tombstone 应重新放行"
     finally:
-        # 无论断言成败，结束时装回 039 守卫 + 版本戳，避免污染同库其他用例。
+        # 无论断言成败，结束时装回守卫并把库真实恢复到当前 head（而非硬编码 039），
+        # 避免「版本戳 039 但物理是 040+」的脱节污染同库其它用例/迁移 round-trip。
         await db_session.rollback()
-        await _run_migration(mig.upgrade, "039_run_event_tombstone_guard")
+        await _run_migration(mig.upgrade, guard_home)
         await engine.dispose()
+        if head_rev != guard_home:
+            await asyncio.to_thread(_real_migrate, "upgrade", head_rev)
 
 
 async def test_erase_path_emits_no_ddl(db_session):

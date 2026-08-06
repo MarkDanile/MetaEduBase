@@ -50,6 +50,10 @@
 | `scripts/engineering/check_engineering_docs.py` | 131 | 🟢 已拆分 | 切片 2 已合并 ([PR #93](https://github.com/MarkDanile/MetaEduBase/pull/93) / merge `7e468fb`)：原 1003 行单文件拆为入口主文件 72 行 + 8 个聚焦 `checks/*.py` 模块（38-233 行）+ `checks/__init__.py` 注册表 `KNOWN_CHECKS`；入口脚本 `scripts/check-engineering-docs` (17 行 `runpy.run_path`) 不动；16 个 pytest 行为零变化 |
 | `scripts/validate_req024_p2_real_validation.py` | 23 | 🟢 已拆分 | TD-032 slice 8 已合并 ([PR #373](https://github.com/MarkDanile/MetaEduBase/pull/373))：原 1955 行单文件（REQ-024 起算 ~600 → REQ-026/028/030/031/032/033/034 长链叠加至 1955）拆为薄入口 23 行 + `scripts/rag_validation/` 包 9 文件（`__init__.py` 9 / `models.py` 119 / `loader.py` 86 / `coverage.py` 305 / `runner.py` 374 / `report.py` 397 / `report_quality.py` 196 / `report_chain.py` 457 / `main.py` 142）；全部 ≤500 行；调用路径 `python scripts/validate_req024_p2_real_validation.py ...` 不变（`run_req027_validation.py` subprocess 引用未动）；零业务逻辑变化，dry-run 同输入下新 render 路径输出与拆分前 byte-identical（喂入拆分前 ScenarioRun JSON 经新 `_render_report` 重渲染，除 db_url mask 输入串外完全一致） |
 
+| `packages/server-python/app/contexts/agent_execution/infrastructure/models.py` | 1005 | 🟢 已登记（待拆分）
+| `packages/server-python/tests/composition/test_agent_transport_backfill_m4.py` | 1067 | 🟢 已登记（待拆分）
+| `packages/server-python/app/composition/agent_transport_backfill.py` | 1098 | 🟢 已登记（待拆分） | REQ-041/047 R1-S4-B backfill 主模块（扫描/discovery + 源解析 + 冲突/epoch/external 登记 + 五维 verify + CLI/runner），三轮独立复核返修（#1-#6 / discovery / 锁序 / batch interval）聚合至 1098 行超 1000 硬限制。本次只登记新增风险，不在 R1-S4-B 中拆模块。后续应按职责切片：(a) 扫描/discovery 批次选择；(b) 源解析与冲突登记；(c) verify 五维；(d) CLI/runner（独立 `main.py`）；目标单文件 ≤500 行。 | | REQ-041/047 R1-S4-B M4 并发/中断/全 ref-bearing + 三轮独立复核真实反例（P1-1 ref / P2-2 投影 owner / P2-3 批次边界 / #1 饥饿 / #2 ref_value / #3 多表重扫 / #4 冲突 / #5 投影漂移+零 issue / #6 mismatch / 第三轮 #2 非扫描冲突 + CLI 退出码 0/1/2）单文件聚合至 1067 行超 1000 硬限制。本次只登记新增风险，不在 R1-S4-B 中拆测试。后续应按测试主题拆成聚焦文件：(a) 并发集合锁 / 中断恢复 / 幂等；(b) 冲突登记 （A≠B / 跨 tenant / mismatch / ref_value）；(c) verify 各维反例；(d) CLI 退出码契约；目标单文件 ≤500 行。 | | REQ-041/047 R1-S4-B migration 040 落地：`ExecutionOutboxModel`/`ExecutionInboxModel` 各加 3 个 owner scope 列（`conversation_id`/`producer_purge_revision`/`scope_reconcile_state`）+ inbox 2 个 receipt_tombstone 列（state/digest），单文件聚合至 1005 行（979 + 26）超 1000 硬限制。本次只登记新增风险，不在 R1-S4-B 中拆 ORM models。后续应按上下文内聚切片（如按聚合拆 `run.py`/`run_event.py`/`outbox_inbox.py`/`runtime.py` 等模型模块），目标单文件 ≤500 行。 |
+
 ### >500 行业务 / 工程源码
 
 | 文件 | 行数 | 状态 | 例外 / 拆分说明 |
@@ -116,3 +120,5 @@
 - 2026-06-09（TD-032 评审后回写）：扫描命令改为 `rg --files -0 ... | xargs -0 wc -l`，并显式排除 `.venv` / `uploads` / `node_modules` / `dist`，避免本地未跟踪文件或带空格路径污染行数基线；脚本化候选入账 `DOC-042`。
 - 2026-06-09：`main.css` 设计系统级 CSS 模块化从 TD-032 例外转为独立就绪任务 `TD-033`。
 - 2026-06-09：TD-033 完成（[PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103) / merge `25ca165`）：`main.css` 1343 → 9 行（`@import` 入口）+ 8 个 CSS 模块（全部 ≤500 行）；以 `pnpm typecheck / lint / build` 退出码 0 与 `git diff --check` 退出码 0 为依据（Vite 产物未做 hash / diff 机械对比，详见 DOC-045）；TD-032 >1000 / >500 / 500 附近全部收口。
+
+- 2026-08-05：REQ-041/047 R1-S4-B 第四轮复核返修后回写 - `test_agent_transport_backfill_m4.py` 1067 行（三轮复核真实反例 + CLI 退出码契约叠加），新增登记为 🟢 已登记（待拆分）；本次仅登记，不在 R1-S4-B 中拆测试，后续按并发/冲突登记/verify 反例/CLI 退出码测试主题切片。
