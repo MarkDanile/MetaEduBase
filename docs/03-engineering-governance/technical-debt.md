@@ -241,7 +241,7 @@
 **交付记录**
 
 - 进行中；远端 Draft/Ready probe 已验证 risk-targeted `2m44s`、Ready full 与 Ready 后提交重跑 full。PR #532 最新独立复核的 `0/2/2/1` 已按根因批次返修：删除/类型变化纳入两级 Git diff、direct-root fixture/helper 运行整根测试、selector mode 白名单 fail-closed、Agent test-only 契约和三面复审强制性统一。
-- 本轮真实 Git 与策略反例首轮在旧逻辑为 `7 failed / 49 passed`；横向引用审计再确认 `tests/shared` helper 跨 composition/AI/e2e 使用，并以新增定向 RED 证明仅运行 `tests/shared` 仍会假绿，改为全量 fail-closed。第一批定向 `56 passed`、engineering 全套 `105 passed`；随后定向复核再以 `4 failed / 50 passed` 证明 rename 隐藏原路径及 context helper 跨域消费者仍可降级，已增加 `--no-renames` 双路径分类并将 context 非测试 helper 收紧为 full。第二批定向 `61 passed`、engineering 全套 `110 passed`，静态门禁全绿；PR #532 Draft/Ready 最终门禁与合并待执行，R1-S4-C 在本任务完整闭环前暂停。
+- 本轮真实 Git 与策略反例首轮在旧逻辑为 `7 failed / 49 passed`；横向引用审计再确认 `tests/shared` helper 跨 composition/AI/e2e 使用，并以新增定向 RED 证明仅运行 `tests/shared` 仍会假绿，改为全量 fail-closed。第一批定向 `56 passed`、engineering 全套 `105 passed`；随后定向复核再以 `4 failed / 50 passed` 证明 rename 隐藏原路径及 context helper 跨域消费者仍可降级，已增加 `--no-renames` 双路径分类并将 context 非测试 helper 收紧为 full。第二批定向 `61 passed`、engineering 全套 `110 passed`，静态门禁全绿；远端 Draft full `10m23s` 且独立复核 `0/0/0/0`。PR #532 Ready 最终门禁与合并待执行，R1-S4-C 在本任务完整闭环前暂停。
 
 ### TD-087: 模板管理 API 缺少后端 RBAC
 
