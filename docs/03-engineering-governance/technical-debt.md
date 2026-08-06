@@ -185,6 +185,7 @@
 | TD-089 | `agent_erasure_fences` 冗余/无效索引（PK 蕴含的 UK 声明 + PK 前缀 ix） | 🟢 完成 | P3 | 后端 / 数据库迁移 / 性能 / Erasure | 2026-07-28 收口（[PR #508](https://github.com/MarkDanile/MetaEduBase/pull/508)，squash merge `eccb0f37`）：`models.py` 删 `uq_agent_erasure_fence_owner` 死声明（PostgreSQL 对「UK 列 ⊆ PK 列」去重，UK 从不创建）与 `ix_agent_erasure_fence_conversation` 冗余 `Index`（PK btree 已服务 conversation 前缀查询）；新增 migration `035_erasure_fence_ix_cleanup`（`034` 合并后冻结故新迁移，`034` 全程未改）：upgrade 真实 DROP 冗余 ix + 幂等 `DROP CONSTRAINT IF EXISTS` 死 UK，downgrade `DROP INDEX IF EXISTS` 幂等重建。新增 8 测试 + 全量 1785 passed + ruff 0 + mypy baseline 0 regressions。dev `metaedu` 已 `alembic upgrade head` 应用 035，四项证据：`alembic_version=035_erasure_fence_ix_cleanup` / `ix_agent_erasure_fence_conversation` 不存在 / `pk_agent_erasure_fences` 存在 / 死 UK 约束数=0 |
 | TD-090 | writer fence 三处健壮性硬化（公开无锁原语 / hold_revision 高端降级 / Conversation 读无 tenant 谓词） | 🔵 就绪 | P3 | 后端 / Erasure / 锁序 / 健壮性 | R1-S2 S2-A 独立 `max` 复核（commit `3bf1a515` 返修后）P0=0/P1=0/P2=1/P3=3 判可进 S2-C；3 条 P3 登记跟踪：见 [详情](#td-090-writer-fence-三处健壮性硬化公开无锁原语--hold_revision-高端降级--conversation-读无-tenant-谓词) |
 | TD-091 | 后端全量套件历史非确定性隔离 flake（曾记 27 failed，**当前基线复跑为 0 failed**，待标定） | ⚫ 待办 | P2 | 后端 / 测试基础设施 / 稳定性 / 隔离 | R1-S3-E round-2 独立复核要求登记（与本 Slice 修复解耦，不混入 S3-E）。**clean-main 基线**：`f1002bea`（R1-S3-D 收口，main HEAD，2026-08-04）。**命令**：`cd packages/server-python && uv run pytest -m 'not external_network'`。**历史记录**：早前（round-1 期间、共享本机测试 PG 有残留负载）一次干净 main 全量观测 **27 failed**，签名涉 `test_ai_chat` / `direct_rag` / e2e / `turn_bridge` / `writer_fence` 组——**当时未落盘逐条 node ID 日志，本登记即如实说明该次证据不完整**。**当前可复核复跑（本轮，f1002bea 独立 git worktree 干净工作树）**：全量 **2016 passed / 0 failed / 4 deselected**（`tests/contexts/agent_control_plane` 子集亦 225/225），即早前 27 failed **无法复现**，且 R1-S3-E 分支与干净 main 目标套件均绿 -> 既有的「27 failed 非 S3-E 引入」判断由本复跑（干净 main 全绿）佐证，但该 flake 本身历史上确出现、当前不稳定。**疑似根因（待标定）**：全量套件共享同一测试 PostgreSQL；`agent_control_plane`/`composition` conftest 有 autouse `TRUNCATE`，`tests/contexts/ai/` 无对应清理，叠加共享库历史残留负载可能在特定时机污染。**后续动作**：先给全量套件加**逐条失败 node ID + 环境指纹落盘**（`--junitxml` / `-rA` 存档），再连续多次 hermetic 全量复跑标定是否仍有非确定性；为 `tests/contexts/ai/` 补 autouse TRUNCATE 或 per-package 隔离。**完成标准**：连续 3 次全量 hermetic 回归无重跑通过（0 failed），且失败可复现性被证据标定或排除。 |
+| TD-092 | 高风险 PR CI 反馈周期与复审收敛治理 | 🟡 进行中 | P1 | 工程基础设施 / CI 性能 / 测试 / 评审流程 | [Spec](../02-delivery-plans/01-specs/2026-08-06-td-092-ci-review-throughput.md) / [Plan](../02-delivery-plans/02-plans/2026-08-06-td-092-ci-review-throughput-plan.md) |
 | DOC-056 | `check_req_status_consistency` 把父任务 `REQ-NNN` 与子任务 `REQ-NNN-K` 状态混聚到同一集合的算法 bug | 🟢 完成 | P2 | 文档 / 工程脚本 / 质量门禁 | REQ-002-3 收口 / 修复 `\bREQ-\d{3}\b` → `\bREQ-\d{3}(?:-\d+)?(?![-\d])` + 新增 `test_parent_and_child_req_with_different_status_do_not_collide` 锁定 / 顺带修 main `current-work.md:19` REQ-002-3 残留 Ready 行 |
 | DOC-057 | `current-work.md` L38 / L40 等历史"全量 pytest XXX passed"最近完成行摘要缺可复核证据 | 🟢 完成 | P3 | 文档 / 工程脚本 / 质量门禁 | 1 docs-only PR 收口：current-work.md L37-L40 历史最近完成行（DOC-058 / TD-049 / TD-048 / TD-050）通过历史任务自然补齐 evidence；本任务修复要求在 main 上已满足（`scripts/check-engineering-docs` 当前 0 条 `validation-claim` issue）。本轮仅按任务卡交付项收口：技术债总账 L148 翻 🟢 完成 + L1948 任务卡补 PR 链接 + work-log 索引行追加 DOC-057 行；0 业务代码 / 0 脚本 / 0 测试代码变更。`scripts/check-engineering-docs` 退出码 1 含 6 条 pre-existing 警告（3 条 "最近完成摘要过长" + 3 条 "Markdown 链接目标不存在"，均与本任务无关）；`git diff --check` clean。 | [PR #204](https://github.com/MarkDanile/MetaEduBase/pull/204) |
 | DOC-058 | 显式加"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"规则（workbench.md + git-workflow.md） | 🟢 完成 | P2 | 文档 / 工程流程 / 跨 AI 交接 | TD-048 漂移回退（[`work-log.md#2026-06-11-td-048-事实源漂移回退`](work-log.md#2026-06-11-td-048-事实源漂移回退)）的教训入账：在 `workbench.md#状态同步规则` 末尾追加 1 段硬规则（"任务分支未合 main 不得翻 🟢 完成；`gh pr view <PR>` state 必须为 MERGED"）；`git-workflow.md#完整交付闭环` 6 阶段后追加 `### 翻完成前硬条件` 段（state=MERGED / pr checks 无阻塞 / 本地 main pull --ff-only / merge-base 4 条硬条件）；`quality-gates.md#完成门禁#3` 补"任务分支未合 main 视为未走完 Git 阶段"。1 docs-only PR（#202，merge commit `8b0ceb8`）收口。0 业务代码 / 0 测试代码 / 0 脚本变更（DOC-059 负责 `check_task_completion_pr_consistency` 脚本维度）；20 pytest passed 零回归；`scripts/check-engineering-docs` 退出码 0（本任务新增 0 警告）；`git diff --check` clean。 | [PR #202](https://github.com/MarkDanile/MetaEduBase/pull/202) (merge `8b0ceb8`) |
@@ -198,6 +199,49 @@
 | DOC-067 | 分布式临时编号与正式任务编号归并规则 | 🟢 完成 | P2 | 文档 / 工程脚本 / 任务池 / 跨设备协作 | PR #248 merged `9bf177b`：保留正式短编号，`DRAFT-*` 只作临时来源，主表门禁已实现。 |
 
 ## 任务详情
+
+### TD-092: 高风险 PR CI 反馈周期与复审收敛治理
+
+状态：🟡 进行中
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 工程基础设施 / CI 性能 / 测试 / 评审流程 |
+| 事实源 | [Spec](../02-delivery-plans/01-specs/2026-08-06-td-092-ci-review-throughput.md) / [Plan](../02-delivery-plans/02-plans/2026-08-06-td-092-ci-review-throughput-plan.md) |
+| 任务分支 | `codex/td-092-ci-review-throughput` |
+
+**证据**
+
+- PR #530 Backend required check：`10m22s`；full pytest：`2102 passed / 1 skipped / 4 deselected`，用时 `9m06s`。
+- 选择器明确以 `database-migration:alembic/versions/040_transport_external_scope.py` 判定 full；后续修订仍处于同一 PR base/head 差异内。
+- PR #530 一次包含约 `6021` 行变更、17 个文件，混合 migration、ledger、锁、backfill、verify、CLI 与大型测试文件，最终经历 11 轮复审。
+- 本任务本地实测：首版整目录 Agent risk suite `693 passed / 174.09s`；按稳定 Agent core + transport/erasure/migration 追加专项后为 `297 passed / 79.10s`。
+- 临时 [Draft probe #533](https://github.com/MarkDanile/MetaEduBase/pull/533) 首跑 [run #31090808619](https://github.com/MarkDanile/MetaEduBase/actions/runs/31090808619) 为 `Backend iteration 3m04s / 297 passed / pytest 104.74s`；risk-targeted 延后约 `11.4s` 的 mypy 后，[run #31092783892](https://github.com/MarkDanile/MetaEduBase/actions/runs/31092783892) 为 `2m44s / 297 passed / pytest 100.20s`。
+- probe 转 Ready 后 [run #31091161030](https://github.com/MarkDanile/MetaEduBase/actions/runs/31091161030) required `Backend` full 为 `10m21s`；Ready 追加代码提交后的 [run #31091973570](https://github.com/MarkDanile/MetaEduBase/actions/runs/31091973570) 再次 full 为 `10m11s / 2102 passed / 1 skipped / 4 deselected`，证明 check 名称隔离与最新 HEAD 重跑生效。
+
+**问题**
+
+- Draft 中间修订和 Ready 最终验收没有不同的后端测试层级，导致每次高风险返修都等待完整回归。
+- 复审按轮次串行发现单个 finding，未在同一 HEAD 对数据/并发/测试运维风险做并行横向审计。
+
+**完成标准**
+
+- Draft 高风险 PR 使用风险定向套件；Ready 高风险最新 HEAD、main push、schedule/manual 仍执行 full。
+- CI/selector/shared/identity/全局 fixture/未知路径始终 fail closed 为 full；required check 名称不变。
+- 复审包、三路并行首轮、根因族横向审计、两轮新 P1 升级规则和单一主要风险域 PR 拆分规则写入治理事实源。
+- 临时 Draft/Ready 探针记录真实耗时，风险定向反馈目标不超过 3 分钟；不减少测试或新增绕过。
+
+**验证方式**
+
+- 选择器工程测试、Ruff、mypy baseline、docs gate、diff-check。
+- Draft 高风险探针、Ready 最新 HEAD full、Ready 后追加提交再次 full。
+- main push、schedule/manual、未知路径和 CI 自身修改的 full fail-safe 验证。
+
+**交付记录**
+
+- 进行中；远端 Draft/Ready probe 已验证 risk-targeted `2m44s`、Ready full 与 Ready 后提交重跑 full。PR #532 最新独立复核的 `0/2/2/1` 已按根因批次返修：删除/类型变化纳入两级 Git diff、direct-root fixture/helper 运行整根测试、selector mode 白名单 fail-closed、Agent test-only 契约和三面复审强制性统一。
+- 本轮真实 Git 与策略反例首轮在旧逻辑为 `7 failed / 49 passed`；横向引用审计再确认 `tests/shared` helper 跨 composition/AI/e2e 使用，并以新增定向 RED 证明仅运行 `tests/shared` 仍会假绿，改为全量 fail-closed。第一批定向 `56 passed`、engineering 全套 `105 passed`；随后定向复核再以 `4 failed / 50 passed` 证明 rename 隐藏原路径及 context helper 跨域消费者仍可降级，已增加 `--no-renames` 双路径分类并将 context 非测试 helper 收紧为 full。第二批定向 `61 passed`、engineering 全套 `110 passed`，静态门禁全绿；远端 Draft full `10m23s` 且独立复核 `0/0/0/0`。PR #532 Ready 最终门禁与合并待执行，R1-S4-C 在本任务完整闭环前暂停。
 
 ### TD-087: 模板管理 API 缺少后端 RBAC
 

@@ -19,6 +19,31 @@ SPEC.loader.exec_module(MODULE)
 select_backend_tests = MODULE.select_backend_tests
 
 
+def _git(repo: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def _commit(repo: Path, message: str) -> None:
+    _git(repo, "add", "--all")
+    _git(
+        repo,
+        "-c",
+        "user.name=CI Test",
+        "-c",
+        "user.email=ci-test@example.invalid",
+        "commit",
+        "-m",
+        message,
+    )
+
+
 @pytest.mark.parametrize(
     ("context", "expected"),
     [
@@ -115,6 +140,44 @@ def test_context_conftest_runs_whole_context() -> None:
     assert "tests/contexts/mcp_registry" in result.pytest_paths
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "tests/contexts/agent_control_plane/helpers.py",
+        "tests/contexts/agent_execution/e1_helpers.py",
+    ],
+)
+def test_cross_context_helper_fails_closed_to_full(path: str) -> None:
+    result = select_backend_tests([f"packages/server-python/{path}"])
+    assert result.mode == "full"
+    assert result.reason == f"cross-context-test-helper:{path}"
+
+
+@pytest.mark.parametrize(
+    ("path", "expected_root"),
+    [
+        ("tests/composition/conftest.py", "tests/composition"),
+        ("tests/internal_mcp/conftest.py", "tests/internal_mcp"),
+        ("tests/scripts/_script_loader.py", "tests/scripts"),
+    ],
+)
+def test_direct_root_fixture_and_helper_changes_run_whole_root(
+    path: str, expected_root: str
+) -> None:
+    result = select_backend_tests([f"packages/server-python/{path}"])
+    assert result.mode == "targeted"
+    assert expected_root in result.pytest_paths
+    assert path not in result.pytest_paths
+
+
+def test_cross_root_shared_test_helper_fails_closed_to_full() -> None:
+    result = select_backend_tests(
+        ["packages/server-python/tests/shared/agent_control_plane.py"]
+    )
+    assert result.mode == "full"
+    assert result.reason == "global-test-helper:tests/shared/agent_control_plane.py"
+
+
 def test_irrelevant_documentation_returns_none() -> None:
     result = select_backend_tests(["docs/README.md", "packages/web/src/main.ts"])
     assert result.mode == "none"
@@ -149,7 +212,201 @@ def test_cli_writes_json_and_github_outputs(tmp_path: Path) -> None:
     assert "tests/contexts/resource" in github_output
 
 
+def test_cli_draft_writes_risk_targeted_mode(tmp_path: Path) -> None:
+    output = tmp_path / "github-output"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--draft",
+            "--github-output",
+            str(output),
+            "packages/server-python/alembic/versions/040_transport_external_scope.py",
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "risk-targeted"
+    assert "mode=risk-targeted\n" in output.read_text()
+
+
 def test_explicit_full_mode() -> None:
     result = select_backend_tests([], force_full=True)
     assert result.mode == "full"
     assert result.reason == "explicit-full"
+
+
+def test_draft_migration_uses_risk_targeted_suite() -> None:
+    result = select_backend_tests(
+        ["packages/server-python/alembic/versions/040_transport_external_scope.py"],
+        draft=True,
+    )
+    assert result.mode == "risk-targeted"
+    assert "draft" in result.reason
+    assert "tests/composition/test_agent_transport_schema.py" in result.pytest_paths
+    assert "tests/contexts/structured_data/test_alembic_migrations.py" in result.pytest_paths
+
+
+def test_ready_migration_remains_full() -> None:
+    result = select_backend_tests(
+        ["packages/server-python/alembic/versions/040_transport_external_scope.py"],
+        draft=False,
+    )
+    assert result.mode == "full"
+
+
+def test_draft_agent_composition_uses_risk_targeted_suite() -> None:
+    result = select_backend_tests(
+        ["packages/server-python/app/composition/agent_transport_backfill.py"],
+        draft=True,
+    )
+    assert result.mode == "risk-targeted"
+    assert "tests/composition/test_agent_transport_backfill.py" in result.pytest_paths
+    assert "tests/contexts/agent_control_plane/test_run_api.py" in result.pytest_paths
+    assert "tests/contexts/agent_execution/test_run_coordinator.py" in result.pytest_paths
+    assert "tests/contexts/agent_workspace" in result.pytest_paths
+
+
+def test_ready_agent_composition_remains_full() -> None:
+    result = select_backend_tests(
+        ["packages/server-python/app/composition/agent_transport_backfill.py"],
+        draft=False,
+    )
+    assert result.mode == "full"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".github/workflows/ci.yml",
+        "packages/server-python/app/shared/infrastructure/database.py",
+        "packages/server-python/app/contexts/identity/application/auth_service.py",
+        "new-runtime/file.py",
+    ],
+)
+def test_draft_always_full_paths_cannot_use_risk_targeted(path: str) -> None:
+    result = select_backend_tests([path], draft=True)
+    assert result.mode == "full"
+
+
+@pytest.mark.parametrize("draft", [False, True])
+def test_agent_test_file_stays_targeted_in_draft_and_ready(draft: bool) -> None:
+    result = select_backend_tests(
+        ["packages/server-python/tests/contexts/agent_execution/test_run_coordinator.py"],
+        draft=draft,
+    )
+    assert result.mode == "targeted"
+    assert "tests/contexts/agent_execution/test_run_coordinator.py" in result.pytest_paths
+
+
+def test_always_full_path_dominates_draft_risk_path() -> None:
+    result = select_backend_tests(
+        [
+            "packages/server-python/alembic/versions/040_transport_external_scope.py",
+            "packages/server-python/app/shared/infrastructure/database.py",
+        ],
+        draft=True,
+    )
+    assert result.mode == "full"
+    assert result.reason.startswith("shared-runtime:")
+
+
+def test_draft_risk_keeps_leaf_context_reverse_dependencies() -> None:
+    result = select_backend_tests(
+        [
+            "packages/server-python/alembic/versions/040_transport_external_scope.py",
+            "packages/server-python/app/contexts/resource/application/service.py",
+        ],
+        draft=True,
+    )
+    assert result.mode == "risk-targeted"
+    assert "tests/contexts/resource" in result.pytest_paths
+    assert "tests/composition/test_agent_transport_schema.py" in result.pytest_paths
+
+
+def test_git_diff_includes_deleted_shared_runtime_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    deleted_path = (
+        repo
+        / "packages"
+        / "server-python"
+        / "app"
+        / "shared"
+        / "deleted_runtime.py"
+    )
+    deleted_path.parent.mkdir(parents=True)
+    deleted_path.write_text("VALUE = 1\n")
+    _git(repo, "init", "-q")
+    _commit(repo, "add shared runtime")
+    base = _git(repo, "rev-parse", "HEAD")
+
+    deleted_path.unlink()
+    _commit(repo, "delete shared runtime")
+    monkeypatch.setattr(MODULE, "REPO_ROOT", repo)
+
+    paths = MODULE._git_changed_paths(base, "HEAD")
+    assert paths == [
+        "packages/server-python/app/shared/deleted_runtime.py",
+    ]
+    assert select_backend_tests(paths).mode == "full"
+
+
+def test_git_diff_classifies_both_sides_of_shared_runtime_rename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    source = (
+        repo / "packages" / "server-python" / "app" / "shared" / "critical.py"
+    )
+    destination = (
+        repo
+        / "packages"
+        / "server-python"
+        / "app"
+        / "contexts"
+        / "resource"
+        / "critical.py"
+    )
+    source.parent.mkdir(parents=True)
+    source.write_text("VALUE = 1\n")
+    _git(repo, "init", "-q")
+    _commit(repo, "add shared runtime")
+    base = _git(repo, "rev-parse", "HEAD")
+
+    destination.parent.mkdir(parents=True)
+    _git(repo, "mv", str(source.relative_to(repo)), str(destination.relative_to(repo)))
+    _commit(repo, "move shared runtime")
+    monkeypatch.setattr(MODULE, "REPO_ROOT", repo)
+
+    paths = MODULE._git_changed_paths(base, "HEAD")
+    assert set(paths) == {
+        "packages/server-python/app/shared/critical.py",
+        "packages/server-python/app/contexts/resource/critical.py",
+    }
+    assert select_backend_tests(paths).mode == "full"
+
+
+def test_git_diff_includes_type_changed_shared_runtime_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    path = repo / "packages" / "server-python" / "app" / "shared" / "critical.py"
+    path.parent.mkdir(parents=True)
+    path.write_text("VALUE = 1\n")
+    _git(repo, "init", "-q")
+    _commit(repo, "add shared runtime")
+    base = _git(repo, "rev-parse", "HEAD")
+
+    path.unlink()
+    path.symlink_to("replacement.py")
+    _commit(repo, "change shared runtime file type")
+    monkeypatch.setattr(MODULE, "REPO_ROOT", repo)
+
+    paths = MODULE._git_changed_paths(base, "HEAD")
+    assert paths == ["packages/server-python/app/shared/critical.py"]
+    assert select_backend_tests(paths).mode == "full"
