@@ -22,6 +22,31 @@ def _classify(*paths: str) -> dict[str, str]:
     return dict(line.split("=", 1) for line in result.stdout.splitlines())
 
 
+def _git(repo: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def _commit(repo: Path, message: str) -> None:
+    _git(repo, "add", "--all")
+    _git(
+        repo,
+        "-c",
+        "user.name=CI Test",
+        "-c",
+        "user.email=ci-test@example.invalid",
+        "commit",
+        "-m",
+        message,
+    )
+
+
 def test_docs_only_activates_engineering() -> None:
     assert _classify("docs/README.md") == {
         "backend": "false",
@@ -98,6 +123,32 @@ def test_github_output_matches_stdout() -> None:
         assert Path(output_path).read_text() == result.stdout
     finally:
         os.unlink(output_path)
+
+
+def test_git_diff_classifies_deleted_ci_path_fail_closed(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    deleted_path = repo / ".github" / "workflows" / "deleted.yml"
+    deleted_path.parent.mkdir(parents=True)
+    deleted_path.write_text("name: deleted\n")
+    _git(repo, "init", "-q")
+    _commit(repo, "add workflow")
+    base = _git(repo, "rev-parse", "HEAD")
+
+    deleted_path.unlink()
+    _commit(repo, "delete workflow")
+
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "--base", base, "--head", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    scopes = dict(line.split("=", 1) for line in result.stdout.splitlines())
+    assert all(
+        scopes[key] == "true"
+        for key in ("backend", "frontend", "mcp", "engineering", "engineering_tests")
+    )
 
 
 def test_ci_uses_node24_actions_and_hermetic_pytest_boundary() -> None:

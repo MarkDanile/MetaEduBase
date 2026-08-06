@@ -88,11 +88,19 @@ jobs:
             echo "- Pytest paths: \`${TEST_PATHS//$'\n'/, }\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Reject empty backend test selection
-        if: steps.scopes.outputs.backend == 'true' && steps.backend_tests.outputs.mode == 'none'
+      - name: Validate backend test selection
+        if: steps.scopes.outputs.backend == 'true'
+        env:
+          TEST_MODE: ${{ steps.backend_tests.outputs.mode }}
         run: |
-          echo "Backend scope was active but no backend tests were selected." >&2
-          exit 1
+          case "$TEST_MODE" in
+            targeted|risk-targeted|full)
+              ;;
+            *)
+              echo "Unknown backend test selection mode: $TEST_MODE" >&2
+              exit 1
+              ;;
+          esac
 
       - name: Install uv
         if: steps.scopes.outputs.backend == 'true' || steps.scopes.outputs.mcp == 'true'

@@ -240,7 +240,8 @@
 
 **交付记录**
 
-- 进行中；本地 selector/workflow policy `39 passed`、engineering `97 passed`、Ruff/mypy/docs/diff-check 全绿；远端 Draft/Ready probe 已验证 risk-targeted `2m44s`、Ready full 与 Ready 后提交重跑 full。PR #532 最终 Ready full 与合并待执行；R1-S4-C 在本任务完整闭环前暂停。
+- 进行中；远端 Draft/Ready probe 已验证 risk-targeted `2m44s`、Ready full 与 Ready 后提交重跑 full。PR #532 最新独立复核的 `0/2/2/1` 已按根因批次返修：删除/类型变化纳入两级 Git diff、direct-root fixture/helper 运行整根测试、selector mode 白名单 fail-closed、Agent test-only 契约和三面复审强制性统一。
+- 本轮真实 Git 与策略反例首轮在旧逻辑为 `7 failed / 49 passed`；横向引用审计再确认 `tests/shared` helper 跨 composition/AI/e2e 使用，并以新增定向 RED 证明仅运行 `tests/shared` 仍会假绿，改为全量 fail-closed。最终定向 `56 passed`、engineering 全套 `105 passed`；Ruff、mypy baseline（243 historical / 0 regressions）、docs gate（32 allowlisted）、bash syntax、Python compile 和 diff-check 通过。PR #532 Draft/Ready 最终门禁与合并待执行，R1-S4-C 在本任务完整闭环前暂停。
 
 ### TD-087: 模板管理 API 缺少后端 RBAC
 

@@ -31,7 +31,7 @@ PR #530 的 Backend required check 用时 `10m22s`，其中全量 pytest 用时 
 | Ready | targeted | full | full |
 | main/schedule/manual | full | full | full |
 
-可迭代高风险范围包含 migration、`app/composition` Agent 组合根、`agent_workspace`、`agent_execution` 及其直接测试；始终全量范围包含 CI/workflow、选择器、shared、identity/security、全局 fixture、依赖锁和未知路径。
+可迭代高风险范围包含 migration、`app/composition` Agent 组合根、`agent_workspace`、`agent_execution` 的生产实现。直接修改 `test_*.py` 在 Draft/Ready 均按 test-only targeted 运行该测试与 smoke；根目录内生效的 `conftest.py` 和非 `test_*.py` helper 运行其测试根目录，跨域复用的 `tests/shared` helper 与顶层全局 fixture 仍 full。始终全量范围包含 CI/workflow、选择器、shared runtime、identity/security、全局 fixture、依赖锁和未知路径。
 
 ### Risk-targeted 套件
 

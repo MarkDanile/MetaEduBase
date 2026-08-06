@@ -173,8 +173,13 @@ def _select_test_change(relative: str) -> tuple[set[str], str | None]:
         "tests/internal_mcp/",
         "tests/composition/",
     )
-    if relative.startswith(direct_roots) and relative.endswith(".py"):
-        return {relative}, None
+    for direct_root in direct_roots:
+        if relative.startswith(direct_root) and relative.endswith(".py"):
+            if parts[-1].startswith("test_"):
+                return {relative}, None
+            if direct_root == "tests/shared/":
+                return set(), f"global-test-helper:{relative}"
+            return {direct_root.rstrip("/")}, None
     if len(parts) == 2 and parts[0] == "tests" and parts[1].startswith("test_"):
         return {relative}, None
 
@@ -292,7 +297,7 @@ def select_backend_tests(
 
 def _git_changed_paths(base: str, head: str) -> list[str]:
     result = subprocess.run(
-        ["git", "diff", "--name-only", "--diff-filter=ACMR", "-z", base, head],
+        ["git", "diff", "--name-only", "-z", base, head],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,

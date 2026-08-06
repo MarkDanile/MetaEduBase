@@ -33,7 +33,7 @@
 - [x] Add tests asserting the same migration change with `draft=False` returns `full`.
 - [x] Add tests asserting Draft `app/composition` and Agent context changes return `risk-targeted`, while Ready returns `full`.
 - [x] Add tests asserting CI/selector/shared/identity/unknown changes remain `full` even in Draft.
-- [x] Add tests asserting direct Agent test changes remain targeted and do not silently become full.
+- [x] Add tests asserting direct Agent test changes remain targeted in both Draft and Ready and do not silently become full.
 - [x] Run `cd packages/server-python && uv run pytest ../../tests/engineering/test_backend_test_selection.py -q`; the new tests must fail before the implementation changes.
 
 ### Task 3: Implement the risk-tiered selector

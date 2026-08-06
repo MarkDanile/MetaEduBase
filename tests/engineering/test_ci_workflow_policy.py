@@ -27,6 +27,13 @@ def test_ci_runs_risk_targeted_through_targeted_step() -> None:
     assert "steps.backend_tests.outputs.mode == 'full'" in workflow
 
 
+def test_ci_rejects_every_unknown_backend_selector_mode() -> None:
+    workflow = CI_WORKFLOW.read_text()
+    assert "case \"$TEST_MODE\" in" in workflow
+    assert "targeted|risk-targeted|full)" in workflow
+    assert "Unknown backend test selection mode" in workflow
+
+
 def test_risk_targeted_defers_mypy_to_ready_full() -> None:
     workflow = CI_WORKFLOW.read_text()
     mypy_step = workflow.split("- name: mypy baseline", maxsplit=1)[1].split(

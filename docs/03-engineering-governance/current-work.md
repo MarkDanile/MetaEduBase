@@ -35,13 +35,16 @@
 - Agent risk suite 从首版 `693 passed / 174.09s` 收敛到 `297 passed / 79.10s`；直接改动测试仍自动加入。
 - 临时 Agent probe 的 Draft 首跑为 `3m04s / 297 passed`；仅将 risk-targeted 的 mypy 延后到 pre-push + Ready full 后，复跑为 `2m44s / 297 passed`，达到 3 分钟目标。
 - 同一 probe 转 Ready 后 full 为 `10m21s`；Ready 状态追加代码提交后再次 full 为 `10m11s / 2102 passed`，证明旧 Draft success 不可冒充最终门禁且最新 HEAD 必须重跑。
+- PR #532 最新独立复核发现删除路径漏分类、direct-root fixture/helper 假绿、未知 selector mode fail-open 及两处契约措辞漂移；PR 已转回 Draft，并按同一根因批次修复。
+- 新增真实 Git 删除、direct-root fixture/helper、跨域 shared helper、未知 mode 与 Agent test-only Draft/Ready 反例；两轮 RED 分别为 `7 failed / 49 passed` 和定向 `1 failed`。
 
 下一步：
-- PR #532 保持 Ready；以当前 HEAD 的 required `Backend`、Frontend、Engineering docs 为最终门禁。
-- 三路全绿后保持 PR OPEN / MERGEABLE 等待明确合并授权，不再修改仓库文件、不自行合并。
+- 一批提交并推送本轮返修；Draft HEAD 因修改 CI/selector 自身必须 fail-closed full。
+- Draft CI 通过后做定向轻量复核；P0/P1 清零后再转 Ready，由最新 HEAD 重新运行 required `Backend` full。
 
 验证状态：
-- selector/workflow policy `39 passed`；engineering `97 passed`；本地 Agent risk suite `297 passed / 79.10s`；Ruff、mypy baseline、docs gate、diff-check 通过。
+- 本轮 selector/workflow/change-scope 定向回归 `56 passed`、engineering 全套 `105 passed`；Ruff、mypy baseline（243 historical / 0 regressions）、docs gate（32 allowlisted）、bash syntax、Python compile 和 diff-check 通过。
+- 既有 selector/workflow policy `39 passed`；engineering `97 passed`；本地 Agent risk suite `297 passed / 79.10s`；Ruff、mypy baseline、docs gate、diff-check 通过。
 - 远端 probe：Draft risk-targeted `2m44s / 297 passed`；Ready full `10m21s`；Ready 后代码提交再次 full `10m11s / 2102 passed`；Frontend / Engineering docs 同步通过。
 
 交接备注：
