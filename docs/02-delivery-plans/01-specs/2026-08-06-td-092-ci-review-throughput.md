@@ -9,7 +9,7 @@ PR #530 的 Backend required check 用时 `10m22s`，其中全量 pytest 用时 
 ## 目标
 
 1. Draft 高风险 PR 的中间修订使用可审计的风险定向套件，目标 Backend 反馈时间不超过 3 分钟；不降低最终 full 门禁。
-2. 高风险 PR 在 Ready 状态的最新 HEAD 运行完整 hermetic Backend；Ready 后任何代码推送重新触发 full。
+2. Draft 只产生非 required 的 `Backend iteration`；高风险 PR 在 Ready 状态的最新 HEAD 才产生 required `Backend` 并运行完整 hermetic Backend，Ready 后任何代码推送重新触发 full。
 3. main push、schedule、workflow_dispatch、未知路径和 CI/选择器/共享基础设施修改继续 full fail-closed。
 4. 复审由“串行找一个修一个”改为同一 HEAD 的数据/并发/测试运维三路并行审查，再统一按根因族返修。
 5. 高风险 Slice 按单一主要风险域拆分 PR，避免 schema、writer、participant、CLI/fault 混在一个实现 PR。
@@ -35,12 +35,13 @@ PR #530 的 Backend required check 用时 `10m22s`，其中全量 pytest 用时 
 
 ### Risk-targeted 套件
 
-Risk-targeted 至少包含：
+Risk-targeted 采用稳定 Agent core 文件集，并按 transport、erasure、migration 追加专项：
 
-- `tests/composition`；
-- `tests/contexts/agent_control_plane`、`agent_execution`、`agent_workspace`；
-- `tests/contexts/ai`；
-- 已存在的 migration roundtrip 测试；
+- S3-C writer fence、S3-E no-bypass 和 late-write 核心测试；
+- Agent control-plane 的 run/turn/output bridge、writer fence 与竞态测试；
+- Agent execution 的 coordinator/state/runtime/snapshot 测试；
+- `agent_workspace` 与 Direct RAG compatibility；
+- 按改动路径追加 transport、erasure 或 migration/schema/roundtrip 专项；
 - `tests/shared/test_health.py` 与数据库不可用 smoke。
 
 该套件只服务 Draft 反馈，不是最终合并门禁。最终 full 仍执行 `pytest -m "not external_network"`。
@@ -48,6 +49,8 @@ Risk-targeted 至少包含：
 ### Draft/Ready 事件
 
 workflow 必须监听 `opened`、`synchronize`、`reopened`、`ready_for_review`、`converted_to_draft`。Draft 返修期间保持 Draft；完成返修后转 Ready，使用最新 HEAD 重新执行 full。
+
+Draft 与 Ready 不复用同一 check context：Draft job 名为 `Backend iteration`，Ready/main job 名为 required `Backend`。这样同一 SHA 上旧的 Draft success 不能冒充 Ready 最终门禁；PR 转 Ready 后必须等待新的 `Backend` check。
 
 ## 复审策略
 

@@ -44,7 +44,7 @@
 
 - [ ] Add an explicit `draft` input and a `risk-targeted` selection mode.
 - [ ] Keep all existing always-full paths fail-closed.
-- [ ] Define a stable risk suite containing `tests/composition`, the three Agent context test roots, `tests/contexts/ai`, migration roundtrip coverage, and health/database smoke tests.
+- [ ] Define a stable Agent core risk suite and append transport, erasure, or migration/schema/roundtrip tests by changed path; always include health/database smoke tests and directly changed test files.
 - [ ] Ensure the selector evaluates all changed paths before deciding; one always-full path must dominate any targeted selection.
 - [ ] Keep selected paths deterministic, sorted, deduplicated, and non-empty.
 - [ ] Add CLI support for `--draft` and include selection reason in JSON/GitHub output.
@@ -60,10 +60,10 @@
 - [ ] Extend `pull_request` activity types to include `ready_for_review` and `converted_to_draft` while preserving `opened`, `synchronize`, and `reopened`.
 - [ ] Pass `github.event.pull_request.draft` to the selector for PR events.
 - [ ] Run both `targeted` and `risk-targeted` through the targeted pytest step.
-- [ ] Keep `Backend`, `Frontend`, and `Engineering docs` check names stable.
+- [ ] Use non-required `Backend iteration` for Draft and preserve required `Backend` for Ready/main; keep `Frontend` and `Engineering docs` stable.
 - [ ] Keep main push, schedule, workflow dispatch, unknown paths, and CI/selector changes full.
 - [ ] Add a concise `$GITHUB_STEP_SUMMARY` selection report with mode, reason, and test scope.
-- [ ] Do not use Draft risk-targeted output as a Ready/high-risk merge result; the latest Ready high-risk HEAD must execute the full step.
+- [ ] Do not use Draft risk-targeted output as a Ready/high-risk merge result; the different Draft/Ready check names must force the latest Ready high-risk HEAD to execute the full step.
 - [ ] Run YAML/static checks and the selector tests locally.
 
 ### Task 5: Freeze PR shape and review packet rules

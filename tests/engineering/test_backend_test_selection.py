@@ -149,7 +149,115 @@ def test_cli_writes_json_and_github_outputs(tmp_path: Path) -> None:
     assert "tests/contexts/resource" in github_output
 
 
+def test_cli_draft_writes_risk_targeted_mode(tmp_path: Path) -> None:
+    output = tmp_path / "github-output"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--draft",
+            "--github-output",
+            str(output),
+            "packages/server-python/alembic/versions/040_transport_external_scope.py",
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "risk-targeted"
+    assert "mode=risk-targeted\n" in output.read_text()
+
+
 def test_explicit_full_mode() -> None:
     result = select_backend_tests([], force_full=True)
     assert result.mode == "full"
     assert result.reason == "explicit-full"
+
+
+def test_draft_migration_uses_risk_targeted_suite() -> None:
+    result = select_backend_tests(
+        ["packages/server-python/alembic/versions/040_transport_external_scope.py"],
+        draft=True,
+    )
+    assert result.mode == "risk-targeted"
+    assert "draft" in result.reason
+    assert "tests/composition/test_agent_transport_schema.py" in result.pytest_paths
+    assert "tests/contexts/structured_data/test_alembic_migrations.py" in result.pytest_paths
+
+
+def test_ready_migration_remains_full() -> None:
+    result = select_backend_tests(
+        ["packages/server-python/alembic/versions/040_transport_external_scope.py"],
+        draft=False,
+    )
+    assert result.mode == "full"
+
+
+def test_draft_agent_composition_uses_risk_targeted_suite() -> None:
+    result = select_backend_tests(
+        ["packages/server-python/app/composition/agent_transport_backfill.py"],
+        draft=True,
+    )
+    assert result.mode == "risk-targeted"
+    assert "tests/composition/test_agent_transport_backfill.py" in result.pytest_paths
+    assert "tests/contexts/agent_control_plane/test_run_api.py" in result.pytest_paths
+    assert "tests/contexts/agent_execution/test_run_coordinator.py" in result.pytest_paths
+    assert "tests/contexts/agent_workspace" in result.pytest_paths
+
+
+def test_ready_agent_composition_remains_full() -> None:
+    result = select_backend_tests(
+        ["packages/server-python/app/composition/agent_transport_backfill.py"],
+        draft=False,
+    )
+    assert result.mode == "full"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".github/workflows/ci.yml",
+        "packages/server-python/app/shared/infrastructure/database.py",
+        "packages/server-python/app/contexts/identity/application/auth_service.py",
+        "new-runtime/file.py",
+    ],
+)
+def test_draft_always_full_paths_cannot_use_risk_targeted(path: str) -> None:
+    result = select_backend_tests([path], draft=True)
+    assert result.mode == "full"
+
+
+def test_agent_test_file_stays_targeted() -> None:
+    result = select_backend_tests(
+        ["packages/server-python/tests/contexts/agent_execution/test_run_api.py"],
+        draft=True,
+    )
+    assert result.mode == "targeted"
+    assert "tests/contexts/agent_execution/test_run_api.py" in result.pytest_paths
+
+
+def test_always_full_path_dominates_draft_risk_path() -> None:
+    result = select_backend_tests(
+        [
+            "packages/server-python/alembic/versions/040_transport_external_scope.py",
+            "packages/server-python/app/shared/infrastructure/database.py",
+        ],
+        draft=True,
+    )
+    assert result.mode == "full"
+    assert result.reason.startswith("shared-runtime:")
+
+
+def test_draft_risk_keeps_leaf_context_reverse_dependencies() -> None:
+    result = select_backend_tests(
+        [
+            "packages/server-python/alembic/versions/040_transport_external_scope.py",
+            "packages/server-python/app/contexts/resource/application/service.py",
+        ],
+        draft=True,
+    )
+    assert result.mode == "risk-targeted"
+    assert "tests/contexts/resource" in result.pytest_paths
+    assert "tests/composition/test_agent_transport_schema.py" in result.pytest_paths

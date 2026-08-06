@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   push:
     branches:
       - main
@@ -18,7 +19,7 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend
+    name: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft && 'Backend iteration' || 'Backend' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
@@ -50,17 +51,42 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR_DRAFT: ${{ github.event.pull_request.draft || false }}
         run: |
           if [[ "$EVENT_NAME" == "schedule" || "$EVENT_NAME" == "workflow_dispatch" || "$EVENT_NAME" == "push" ]]; then
             python3 scripts/ci/select_backend_tests.py \
               --all \
               --github-output "$GITHUB_OUTPUT"
           else
-            python3 scripts/ci/select_backend_tests.py \
-              --base "$BASE_SHA" \
-              --head "$HEAD_SHA" \
+            selector_args=(
+              --base "$BASE_SHA"
+              --head "$HEAD_SHA"
               --github-output "$GITHUB_OUTPUT"
+            )
+            if [[ "$PR_DRAFT" == "true" ]]; then
+              selector_args+=(--draft)
+            fi
+            python3 scripts/ci/select_backend_tests.py \
+              "${selector_args[@]}"
           fi
+
+      - name: Summarize backend test selection
+        if: steps.scopes.outputs.backend == 'true'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_DRAFT: ${{ github.event.pull_request.draft || false }}
+          TEST_MODE: ${{ steps.backend_tests.outputs.mode }}
+          TEST_REASON: ${{ steps.backend_tests.outputs.reason }}
+          TEST_PATHS: ${{ steps.backend_tests.outputs.pytest_paths }}
+        run: |
+          {
+            echo "### Backend test selection"
+            echo "- Event: \`$EVENT_NAME\`"
+            echo "- Draft: \`$PR_DRAFT\`"
+            echo "- Mode: \`$TEST_MODE\`"
+            echo "- Reason: \`$TEST_REASON\`"
+            echo "- Pytest paths: \`${TEST_PATHS//$'\n'/, }\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Reject empty backend test selection
         if: steps.scopes.outputs.backend == 'true' && steps.backend_tests.outputs.mode == 'none'
@@ -141,7 +167,8 @@ jobs:
         if: >-
           steps.scopes.outputs.backend == 'true' &&
           steps.scopes.outputs.full != 'true' &&
-          steps.backend_tests.outputs.mode == 'targeted'
+          (steps.backend_tests.outputs.mode == 'targeted' ||
+           steps.backend_tests.outputs.mode == 'risk-targeted')
         working-directory: packages/server-python
         env:
           PYTEST_PATHS: ${{ steps.backend_tests.outputs.pytest_paths }}
