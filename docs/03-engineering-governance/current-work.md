@@ -14,24 +14,7 @@
 
 ## 当前进行中
 
-### TASK-R1-S4B-IMPL: R1-S4-B 实现（migration 040 + backfill）
-
-状态：🟡 实现完成，停在 PR 交接（待独立 max/Codex 复审，不自行合并）
-类型：新需求开发（Slice schema+backfill 实现）
-领域：Backend（composition / agent_workspace / agent_execution transport schema + backfill）
-当前执行模式：superpower / plan-do
-最近接手工具：Claude Code
-分支：feat/req041-047-r1-s4b-schema-backfill
-
-需求来源：
-- Spec: docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md（§5.2/§6/§7 owner 边界、external ref、迟到写）
-- Plan: docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4transport-ownerexternal-payload-与迟到写（§S4-A D1-D8 + §S4-B B1-B8 契约冻结块）
-- 架构约束：docs/03-engineering-governance/01-rules/architecture.md
-
-当前进展：M1-M4 已实现完成 + 前十轮独立复核全部修复闭合（第一轮 #1-#7 / 第二轮 #1-#7 / 第三轮 6 项 / 第四轮 4 项 / 第五轮 5 项 / 第六轮 3 项 / 第七轮 2 项 / 第八轮 5 项 / 第九轮 2 项 / 第十轮 2 项：orphan+ref expected 完整解析 + RunEvent/outbox 绑定 heal）。**第十一轮独立复审（当前）**：P1×1——external expected binding 遗漏 B2 类型裁决（生产对未知类型判 ambiguous、ref 绑定 NULL，verify/selector 只查 aggregate_id 命中即期望源 conv，future 类型行 aggregate_id 碰巧命中真实 Message 时永久 verify_failed；抽共用 `_expected_ref_binding_expr`（含 `_SOURCE_TYPE_BY_TABLE` 类型裁决）供 verify 绑定维与 selector heal 分支复用）。十一轮修复全部落地并有判别力回归测试（TDD red/green 已验证）。
-下一步：PR #530 已建，当前 HEAD 见 Git 历史（本工作台不写死 SHA），第十一轮修复随本次提交推送，等待第十二轮独立 max/Codex 定向复审，不自行合并。erase_available 保持 False。
-验证状态：`uv run ruff check`（changed files 0 错误）/ `scripts/check_mypy_baseline.py`（243 historical，0 回归）/ `scripts/check-engineering-docs --full` 通过（32 allowlisted）/ `git diff --check` 干净；`pytest tests/composition/test_agent_transport_*.py` S4-B 专项 71 passed（含第十一轮 1 新测试）；`pytest tests/composition/test_agent_erasure_migration_roundtrip.py test_agent_erasure_schema.py` 迁移 round-trip 54 passed；第十一轮 1 测试 TDD red/green 已验证（旧逻辑红、修复后绿）；全量回归 `pytest tests/ -q -m "not external_network"` 2103 passed / 0 failed / 4 deselected（7m01s）。
-交接备注：S4 拆分 S4-A~F；PR 至少 4 个。明确排除：S4-C/D/E/F、S5 scheduler、真实 Pi Worker、云对象存储生产 adapter；migration 034-039 已冻结，S4-B 新增 040（expand-only）；erase_available 保持 False（writer fence 在 S4-C，purge 在 S5）。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -50,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-08-06 | R1-S4-B Transport/External Schema + Backfill 实现 | 🟢 完成 | migration 040（四表 scope 列 + 两 ledger + inbox tombstone）+ 五维 verify backfill（scope/epoch/external-ref/投影/scope-vs-来源）+ CLI；十二轮独立复审 0/0/0/0（含 epoch-only 收敛、表↔issue 绑定、external ref 绑定 heal、B2 类型裁决共用 expected）；全量 2103 passed | [PR #530](https://github.com/MarkDanile/MetaEduBase/pull/530)（squash merge `0fb43ccb`）/ [Plan §R1-S4](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-08-04 | R1-S4-B Transport/External Schema + Backfill 契约冻结 | 🟢 完成 | 冻结 migration 040 schema（四表 scope 列 + 两 ledger + inbox tombstone）+ 回填矩阵 + 三态 reconcile（advisory lock 集合锁入 D8）+ external 空 allowlist + 041 guard 冻结 + scope/epoch 双维 verify；七轮复审 0/0/0/1 | [PR #528](https://github.com/MarkDanile/MetaEduBase/pull/528)（squash merge `b2020d4c`）/ [Plan §R1-S4](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-08-04 | R1-S4-A Transport/External/Late-write 契约冻结 | 🟢 完成 | 盘点 4 张 inbox/outbox 与 transport owner 映射；冻结 D1-D8（结构化 owner scope、epoch 传播链 + 六元组 CAS、历史不确定行三态 reconcile、tombstone 留 digest、external ref ledger 全覆盖、部分 ACK 不标 completed、runtime fake 仅证明协议、claim/Guard 顺序）；三轮复审 0/0/0/0 | [PR #526](https://github.com/MarkDanile/MetaEduBase/pull/526)（squash merge `cf4c8374`）/ [Plan §R1-S4](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-08-04 | R1-S3-E Dispatch、竞态与收口 | 🟢 完成 | dispatch_output deterministic late-write 终态化（幂等原语 + claim CAS）+ purge-fenced projection/read 重分类 deterministic + race/幂等真实 PG 反例 + backfill 钉住 execution.core.v1 + no-bypass 守卫；三轮复审 0/0/0/0；变异逐项 KILLED；三路 CI 全绿 | [PR #524](https://github.com/MarkDanile/MetaEduBase/pull/524)（squash merge `916699db`）/ [work-log](work-log.md) / [Plan §R1-S3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
