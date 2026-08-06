@@ -30,7 +30,7 @@
 - 架构约束：docs/03-engineering-governance/01-rules/architecture.md
 
 当前进展：本轮只提交纯文档 S4-C contract/plan delta，不写业务代码、不改 migration 040、`erase_available` 保持 False。契约冻结范围：Conversation snapshot → outbox metadata → claim envelope → inbox metadata 的 scope/epoch 传播链；writer 写真实 `conversation_id` 与 `producer_purge_revision`（禁拿当前 revision 伪造历史 epoch）；consumer 在 Guard 内执行六元组 CAS（event_id / digest / attempt / claimant / conversation_id / producer_purge_revision）；claim 独立短事务；锁序 Guard → Conversation → owner → fence → 集合 advisory lock（最内层）；S4-B catch-up 自 tenant 起点、不保留跨调用 UUID 游标、verify 不豁免 NULL 行；stale epoch/跨 tenant/scope mismatch/unknown epoch/orphan/takeover/重放/purge-win 反例。
-下一步：round-1 三面首轮复审（P0/P1/P2/P3=3/12/11/4）按根因族 R1-R6 一次返修；round-2 复核落点修正；round-3 独立复核（0/3/4/0）已修三个 P1（S1 turn 三源 CAS、S2 unknown/stale 双事务协议、S3 orphan 仅 catch-up/discovery 可达）+ 四个 P2（R1 workspace 锁事实、计数修正、PR HEAD 稳定表述、实现 PR 冻结两 PR 拆分）。契约 P0/P1 清零达成，待一次轻量 diff 复审核对 round-3 落点后开实现 PR（冻结为 producer propagation + replay/catch-up 与 claim/consumer CAS + deterministic terminalization 两 PR）。
+下一步：round-1 三面首轮复审（P0/P1/P2/P3=3/12/11/4）按根因族 R1-R6 一次返修；round-2 落点修正；round-3 独立复核（0/3/4/0）修 S1 turn 三源 CAS、S2 双事务协议、S3 orphan 可达性；round-4 独立复核（0/3/1/0，TD-092 连续两轮新 P1 升级）把 S2 重写为状态表（unknown/stale 拆开、inbox 冻结 rejected、workspace outbox 无 migration 证据）。契约 P0/P1 清零达成，待一次轻量表格核对后开实现 PR（冻结为 producer propagation + replay/catch-up 与 claim/consumer CAS + deterministic terminalization 两 PR）。
 验证状态：docs-only——`scripts/check-engineering-docs` + `git diff --check` 通过；PR #535 三路 CI 全绿；不实现 migration 041、不启用 S5 scheduler。
 交接备注：实现阶段保持 Draft、`Backend iteration` risk-targeted；代码稳定后转 Ready 最新 HEAD 执行 Backend full；收敛目标 2-3 轮，连续两轮新 P1 立即回契约或拆分/重构。round-1 三面复审结果须在实现 PR 前记入 work-log。
 
