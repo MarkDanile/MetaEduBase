@@ -12,6 +12,7 @@
 - 最终回复不是事实源；PR 是默认交付事实源。
 - 插件输出不是唯一事实源；spec/plan 必须迁移或镜像到 `docs/02-delivery-plans/01-specs/*` / `02-plans/*`。
 - 复核、测试、PR review 或验收发现的问题必须修复或入账，不停留在聊天记录。
+- 高风险 PR 的 Draft 返修使用非 required `Backend iteration` risk-targeted 反馈，Ready 最新 HEAD 使用 required `Backend` full；不以中间反馈替代最终门禁。
 
 ## 开发前检查
 
@@ -71,6 +72,18 @@ AI 查找任务时优先 `rg "REQ-xxx|TD-xxx|BUG-xxx|DOC-xxx"` 精确定位，�
 6. 需要长期追踪的完成项写入 `work-log.md`。
 7. 用户要求提交时，按 `01-rules/git-workflow.md#快速交付通道` 推进到指定阶段。
 8. 完整 Git 闭环后，清除交付占位；PR 未 merge 不得写 `🟢 完成`。
+
+## 高风险复审收敛
+
+高风险 Slice 首轮复审必须针对同一 HEAD 并行覆盖三个面：
+
+1. 数据、migration、状态机、tenant 和证据完整性。
+2. 锁序、事务边界、幂等、lease、故障和 late write。
+3. 测试判别力、CLI 退出语义、运维、文档和事实源交接。
+
+各复审面先完整列出 findings，再由协调者去重并按根因族形成一批返修任务。每个 P1/P2 修复都必须横向检查 selector、writer、heal、verify 和等价入口；不能只修触发当前 finding 的单个样例。
+
+连续两轮出现新的 P1 时，停止补丁式返修，先进行架构复盘或拆分 PR。实现 PR 默认只承担一个主要风险域；schema、writer、participant、CLI/fault 不应合并成一个超大实现 PR。新源文件超过 1000 行不得在功能 PR 中新增例外，测试文件按不变量拆分。
 
 ## 插件使用规则
 
