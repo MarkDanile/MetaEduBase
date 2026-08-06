@@ -1994,3 +1994,54 @@ async def test_p10_run_event_wrong_binding_healed(session_factory, monkeypatch):
         )
     finally:
         await conn.close()
+
+
+# --- 第十一轮复核回归测试（#1 expected binding 含 B2 类型裁决）---
+
+
+async def test_p11_ambiguous_type_ref_binds_null(session_factory, monkeypatch):
+    """第十一轮复核 #1：B2 类型不命中的 outbox（ambiguous），即使 aggregate_id 碰巧
+    命中真实 Message，external ref 绑定也须为 NULL 且 verify 闭环。
+
+    反例：旧 expected binding 只查 aggregate_id/tenant/Conversation 存活，未校验
+    (event_type, aggregate_type)——future 类型行 aggregate_id 命中现存 Message 时
+    生产登记 NULL、verify 却期望 Message 的 conv -> 永久 verify_failed。
+    """
+    from app.composition import agent_transport_backfill as _tbf
+
+    conn = await _connect()
+    try:
+        tenant = await _make_tenant(conn)
+        conv = await _make_conversation(conn, tenant)
+        msg = await _make_message(conn, tenant, conv)
+        # future 类型 outbox：aggregate_id 碰巧指向真实 Message + 带 ref。
+        oid = uuid.uuid4()
+        await conn.execute(
+            "INSERT INTO metaedu.agent_workspace_outbox ("
+            "  id, tenant_id, event_type, schema_version, aggregate_id, aggregate_type, "
+            "  payload_inline, payload_ref, payload_digest, correlation_id, status, "
+            "  attempt_count, next_attempt_at, created_at"
+            ") VALUES ($1,$2,'future.event.v1',1,$3,'future.aggregate',"
+            "  NULL::jsonb,'amb-ref',$4,$5,'pending',0,clock_timestamp(),clock_timestamp())",
+            oid, tenant, msg, "a" * 64, uuid.uuid4(),
+        )
+    finally:
+        await conn.close()
+
+    engine, factory = _factory()
+    report = await _tbf.backfill_transport_scope(factory, tenant_id=tenant)
+    await engine.dispose()
+    assert report.ok, (
+        f"ambiguous 类型行 ref 绑定 NULL 应闭环（不得期望 Message conv）："
+        f"{report.verify_detail}"
+    )
+    conn = await _connect()
+    try:
+        binding = await conn.fetchval(
+            "SELECT conversation_id FROM metaedu.agent_external_object_refs "
+            "WHERE source_row_id=$1",
+            oid,
+        )
+        assert binding is None, "ambiguous 类型行的 ref 绑定应为 NULL"
+    finally:
+        await conn.close()

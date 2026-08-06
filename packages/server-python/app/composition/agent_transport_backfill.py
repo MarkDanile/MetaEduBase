@@ -101,6 +101,44 @@ _MISMATCH_SOURCE_BY_TABLE: dict[str, tuple[str, str]] = {
 }
 
 
+def _expected_ref_binding_expr(table: str) -> str:
+    """生成 external ref expected conversation_id 的 LATERAL CASE 表达式（第十一轮 #1）。
+
+    **与生产登记路径（_backfill_source_row）完全一致**：仅当
+    （outbox 时）B2 类型命中 _SOURCE_TYPE_BY_TABLE、来源同 tenant、源 conv 非空、
+    Conversation 存活、且与行内 scope 一致（无冲突）时返回源 conv，其余一律 NULL
+    （orphan / 跨 tenant / 源缺失 / ambiguous / 冲突——ref 不 gate 单一 Conversation）。
+    verify 绑定一致性维与 selector heal 分支共用，杜绝两处漂移。
+    注意：类型检查须在 CASE **内部**（首个 WHEN），不得拼在 LATERAL 之后（JOIN 语法
+    错误）；LATERAL 内引用的 ``t.*`` 解析到外层主表别名。
+    """
+    src_table, join_col = _MISMATCH_SOURCE_BY_TABLE[table]
+    expected_type = _SOURCE_TYPE_BY_TABLE.get(table)
+    type_guard = ""
+    if expected_type is not None:
+        type_guard = (
+            f"WHEN NOT (t.event_type = '{expected_type[0]}'"
+            f" AND t.aggregate_type = '{expected_type[1]}') THEN NULL "
+        )
+    return (
+        f"LATERAL (SELECT CASE {type_guard}"
+        f"  WHEN NOT EXISTS(SELECT 1 FROM metaedu.{src_table} s "
+        f"    WHERE s.id = t.{join_col} AND s.tenant_id = t.tenant_id) THEN NULL "
+        f"  WHEN EXISTS(SELECT 1 FROM metaedu.{src_table} s "
+        f"    WHERE s.id = t.{join_col} AND s.tenant_id = t.tenant_id "
+        f"    AND (s.conversation_id IS NULL"
+        f"      OR s.conversation_id <> t.conversation_id"
+        f"      OR NOT EXISTS(SELECT 1 FROM metaedu.agent_conversations c "
+        f"        WHERE c.tenant_id = t.tenant_id AND c.id = s.conversation_id)))"
+        f"    THEN NULL "
+        f"  ELSE (SELECT s.conversation_id FROM metaedu.{src_table} s "
+        f"    WHERE s.id = t.{join_col} AND s.tenant_id = t.tenant_id LIMIT 1) "
+        f"  END AS exp"
+        f"  FROM metaedu.{src_table} s WHERE s.id = t.{join_col} "
+        f"  AND s.tenant_id = t.tenant_id LIMIT 1)"
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class ScopeBackfillFailure:
     """单行回填失败的稳定诊断（不持久化正文）。"""
@@ -191,22 +229,19 @@ async def _select_actionable_batch(
             "  SELECT 1 FROM metaedu.agent_external_object_refs er "
             "  WHERE er.tenant_id = t.tenant_id AND er.source_table = '" + table + "'"
             " AND er.source_row_id = t.id AND er.ref_value = t.payload_ref))"
-            # 第十轮复核 #2（outbox 同缺口）：已登记但绑定不一致的 blocked 记录进入
-            # 修复路径（_register_external_ref DO UPDATE 修正），否则永不重扫。
+            # 第十轮复核 #2（outbox 同缺口）+ 第十一轮复核 #1：已登记但绑定不一致的
+            # blocked 记录进入修复路径（_register_external_ref DO UPDATE 修正），否则
+            # 永不重扫。expected 用 _expected_ref_binding_expr（含 B2 类型裁决，与
+            # verify/生产登记一致）。
             " OR (t.payload_ref IS NOT NULL AND EXISTS ("
             "  SELECT 1 FROM metaedu.agent_external_object_refs er3 "
             "  WHERE er3.tenant_id = t.tenant_id AND er3.source_table = '" + table + "'"
             " AND er3.source_row_id = t.id AND er3.ref_value = t.payload_ref "
             " AND er3.erase_state = 'blocked' AND er3.blocked_reason = 'unknown_scheme'"
             " AND er3.conversation_id IS DISTINCT FROM ("
-            "  SELECT CASE WHEN s.id IS NOT NULL AND s.tenant_id = t.tenant_id "
-            "    AND s.conversation_id IS NOT NULL"
-            "    AND s.conversation_id = t.conversation_id"
-            "    AND EXISTS(SELECT 1 FROM metaedu.agent_conversations c "
-            "      WHERE c.tenant_id = t.tenant_id AND c.id = s.conversation_id)"
-            "    THEN s.conversation_id ELSE NULL END"
-            "  FROM metaedu." + src_table + " s WHERE s.id = t." + join_col + " "
-            "  LIMIT 1)))"
+            "  SELECT exp.exp FROM metaedu." + table + " tb "
+            "  LEFT JOIN " + _expected_ref_binding_expr(table) + " exp ON true "
+            "  WHERE tb.id = t.id LIMIT 1)))"
         )
     else:
         ref_branch = ""
@@ -866,36 +901,17 @@ async def _verify_scope_epoch(
                 problems.append(
                     f"{table}: {ref_missing} ref-bearing 行未登记 external ref"
                 )
-            # 第九轮复核 #2 + 第十轮复核 #1：绑定一致性——已登记 ref 的
-            # conversation_id 须与**完整来源解析**的 expected 绑定一致。expected 按
-            # LATERAL CASE：仅 resolved && !conflict 取源 Conversation，其余（orphan /
-            # 跨 tenant / 源缺失 / ambiguous / 冲突）一律 NULL——与生产登记路径
-            # （_backfill_source_row）完全一致，杜绝 orphan+ref 合法行误报。
+            # 第九轮复核 #2 + 第十轮复核 #1 + 第十一轮复核 #1：绑定一致性——已登记
+            # ref 的 conversation_id 须与**完整来源解析**的 expected 绑定一致
+            # （_expected_ref_binding_expr：含 B2 类型裁决，仅 resolved && !conflict
+            # 取源 Conversation，其余一律 NULL——与生产登记路径完全一致，杜绝
+            # orphan/ambiguous+ref 合法行误报）。
             if table != "agent_run_events":
-                src_table_r, join_col_r = _MISMATCH_SOURCE_BY_TABLE[table]
                 ref_binding = (
                     await session.execute(
                         text(
                             f"SELECT count(*) FROM metaedu.{table} t "
-                            f"LEFT JOIN LATERAL ("
-                            f"  SELECT CASE "
-                            f"    WHEN NOT EXISTS(SELECT 1 FROM metaedu.{src_table_r} s "
-                            f"      WHERE s.id = t.{join_col_r} "
-                            f"      AND s.tenant_id = t.tenant_id) THEN NULL "
-                            f"    WHEN EXISTS(SELECT 1 FROM metaedu.{src_table_r} s "
-                            f"      WHERE s.id = t.{join_col_r} "
-                            f"      AND s.tenant_id = t.tenant_id "
-                            f"      AND (s.conversation_id IS NULL"
-                            f"        OR s.conversation_id <> t.conversation_id"
-                            f"        OR NOT EXISTS(SELECT 1 FROM "
-                            f"          metaedu.agent_conversations c "
-                            f"          WHERE c.tenant_id = t.tenant_id "
-                            f"          AND c.id = s.conversation_id))) THEN NULL "
-                            f"    ELSE (SELECT s.conversation_id FROM "
-                            f"      metaedu.{src_table_r} s WHERE s.id = t.{join_col_r} "
-                            f"      AND s.tenant_id = t.tenant_id LIMIT 1) END AS exp "
-                            f"  FROM metaedu.{src_table_r} s WHERE s.id = t.{join_col_r} "
-                            f"  AND s.tenant_id = t.tenant_id LIMIT 1) exp ON true "
+                            f"LEFT JOIN {_expected_ref_binding_expr(table)} exp ON true "
                             f"WHERE t.tenant_id = :t AND t.payload_ref IS NOT NULL "
                             f"AND EXISTS ("
                             f"  SELECT 1 FROM metaedu.agent_external_object_refs er "
