@@ -1224,6 +1224,48 @@ async def test_batch_interval_validated(session_factory, monkeypatch):
     await engine.dispose()
 
 
+async def test_cli_rejects_max_rows_zero(session_factory, monkeypatch):
+    """第六轮复核 #2：--max-rows=0 是非法参数，CLI 须拒绝（ValueError / exit 1），
+    不得返回 2（旧实现进循环后 remaining<=0 误报“截断未完成”）。"""
+    conn = await _connect()
+    try:
+        # 有实际待处理行（确保旧实现会真的走 remaining<=0 分支返回 2）。
+        tenant = await _make_tenant(conn)
+        conv = await _make_conversation(conn, tenant)
+        run = await _make_run(conn, tenant, conv)
+        await _make_exec_outbox(conn, tenant, run)
+    finally:
+        await conn.close()
+    module = _patch_session_factory(monkeypatch, session_factory)
+    try:
+        exit_code = await module._run_cli(
+            _cli_args(tenant_id=str(tenant), max_rows=0)
+        )
+    except ValueError:
+        exit_code = None
+    assert exit_code is None, "max_rows=0 应被拒绝（ValueError），不得返回 2"
+
+
+async def test_cli_rejects_invalid_params_with_empty_tenants(session_factory, monkeypatch):
+    """第六轮复核 #2：空 tenant 时 CLI 也须前置校验并拒绝非法参数（batch_size=0 /
+    max_rows=-1 / NaN interval），不得静默返回 0（旧实现完全不进循环、直接 0）。"""
+    module = _patch_session_factory(monkeypatch, session_factory)
+    for overrides in (
+        {"batch_size": 0},
+        {"max_rows": -1},
+        {"batch_interval_seconds": float("nan")},
+    ):
+        args = _cli_args(tenant_id=None, **overrides)
+        try:
+            exit_code = await module._run_cli(args)
+        except ValueError:
+            continue  # 拒绝：预期
+        else:
+            raise AssertionError(
+                f"空 tenant 下 {overrides} 应被拒绝（ValueError），不得返回 {exit_code}"
+            )
+
+
 async def test_partial_batch_still_respects_batch_interval(session_factory, monkeypatch):
     """第五轮复核 #4：不足 batch_size 的 partial batch 也须休眠（旧实现 break 在
     sleep 之前，小 tenant 的单批直接退出、无批间隔）。"""

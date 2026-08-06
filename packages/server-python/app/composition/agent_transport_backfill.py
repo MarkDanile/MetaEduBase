@@ -21,11 +21,12 @@ tenant 不映射，记 reconcile）。
 对历史行保持 NULL（未知），且**每个 NULL 行登记一条 ``epoch_unresolvable``
 reconcile issue**——不得拿当前 ``Conversation.purge_revision`` 伪造历史 epoch。
 
-**三态 reconcile（B4）**：scope 已知但冲突 -> ``conversation_scope``（带
-conversation_id，阻塞该 Conversation purge）；scope 未知（源缺失/歧义）->
-``tenant_scope``（阻断该 tenant scheduler-enable）；Conversation 已物理删除 ->
-``orphan``（不猜 UUID）。gate 一律 ``state <> 'resolved'`` fail closed。集合级并发
-用事务级 advisory lock（``acquire_transport_aggregate_lock``，不依赖源行存在）。
+**三态 reconcile（B4）**：scope 已知但冲突（A≠B：行内与来源 conversation 不同，
+或来源跨 tenant）-> ``tenant_scope``（**不带** conversation_id，阻断该 tenant
+scheduler-enable；第三轮复核 #3 推翻 conversation_scope 降级决策——不猜、不 gate
+单一 Conversation）；scope 未知（源缺失/歧义）-> ``tenant_scope``；Conversation 已
+物理删除 -> ``orphan``（不猜 UUID）。gate 一律 ``state <> 'resolved'`` fail closed。
+集合级并发用事务级 advisory lock（``acquire_transport_aggregate_lock``，不依赖源行存在）。
 
 **external ref（B5）**：所有 ref-bearing source（RunEvent + 两张 outbox 的非空
 ``payload_ref``）登记 ledger；无可证明 DB-local 格式 -> ``ref_scheme='unknown'``
@@ -851,6 +852,26 @@ async def _verify_scope_epoch(
     return (not problems), "; ".join(problems)
 
 
+def _validate_backfill_params(
+    *, batch_size: int, max_rows: int | None, batch_interval_seconds: float
+) -> None:
+    """CLI / API 共用参数校验（第六轮复核 #2：CLI 在 tenant 循环前统一拒绝非法参数）。
+
+    规则与 backfill_transport_scope 一致：batch_size>=1；max_rows 为 None 或 >=1；
+    batch_interval_seconds 为非负有限数（NaN/负/Inf 拒绝）。放这里使 `_run_cli`
+    在空 tenant 时也拒绝非法参数，而非静默返回 0。
+    """
+    if batch_size < 1:
+        raise ValueError(f"batch_size must be >= 1, got {batch_size}")
+    if max_rows is not None and max_rows < 1:
+        raise ValueError(f"max_rows must be None or >= 1, got {max_rows}")
+    if not math.isfinite(batch_interval_seconds) or batch_interval_seconds < 0:
+        raise ValueError(
+            f"batch_interval_seconds must be a finite non-negative float, "
+            f"got {batch_interval_seconds}"
+        )
+
+
 async def backfill_transport_scope(
     session_factory,
     *,
@@ -870,17 +891,11 @@ async def backfill_transport_scope(
     从 tenant 起点（每次调用即全量幂等重扫，已填/已登记行幂等跳过）；``max_rows``
     仅用于限流分批，``completed`` 由截断标志判定。
     """
-    if batch_size < 1:
-        raise ValueError(f"batch_size must be >= 1, got {batch_size}")
-    if max_rows is not None and max_rows < 1:
-        raise ValueError(f"max_rows must be None or >= 1, got {max_rows}")
-    # 第五轮复核 #4：batch_interval_seconds 须非负有限数（NaN/负/Inf 拒绝）。
-    if not math.isfinite(batch_interval_seconds) or batch_interval_seconds < 0:
-        raise ValueError(
-            f"batch_interval_seconds must be a finite non-negative float, "
-            f"got {batch_interval_seconds}"
-        )
-
+    _validate_backfill_params(
+        batch_size=batch_size,
+        max_rows=max_rows,
+        batch_interval_seconds=batch_interval_seconds,
+    )
     report = ScopeBackfillReport(tenant_id=tenant_id)
     # 先 outbox（经 Message/Run），再 inbox（经已回填源 outbox）。run_events 无
     # scope 列（恒有 conversation_id），不走 NULL-scope 扫描，单独做 ref 登记。
@@ -1043,6 +1058,13 @@ async def _list_tenant_ids(session_factory) -> list[uuid.UUID]:
 async def _run_cli(args: object) -> int:
     factory, engine = _make_session_factory()
     try:
+        # 第六轮复核 #2：CLI 参数在 tenant 枚举/循环前统一校验，空 tenant 也拒绝
+        # 非法参数（此前只靠 backfill_transport_scope 间接触发，空 tenant 直接返回 0）。
+        _validate_backfill_params(
+            batch_size=args.batch_size,  # type: ignore[attr-defined]
+            max_rows=args.max_rows,  # type: ignore[attr-defined]
+            batch_interval_seconds=args.batch_interval_seconds,  # type: ignore[attr-defined]
+        )
         if args.tenant_id:  # type: ignore[attr-defined]
             tenant_ids = [uuid.UUID(args.tenant_id)]  # type: ignore[attr-defined]
         else:
