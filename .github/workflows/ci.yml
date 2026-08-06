@@ -159,7 +159,9 @@ jobs:
         run: uv run --frozen --extra dev ruff check .
 
       - name: mypy baseline
-        if: steps.scopes.outputs.backend == 'true'
+        if: >-
+          steps.scopes.outputs.backend == 'true' &&
+          steps.backend_tests.outputs.mode != 'risk-targeted'
         working-directory: packages/server-python
         run: uv run --frozen --extra dev python scripts/check_mypy_baseline.py
 
