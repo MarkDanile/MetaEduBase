@@ -37,8 +37,8 @@
 - 同一 probe 转 Ready 后 full 为 `10m21s`；Ready 状态追加代码提交后再次 full 为 `10m11s / 2102 passed`，证明旧 Draft success 不可冒充最终门禁且最新 HEAD 必须重跑。
 
 下一步：
-- 回填 PR #532 最终 review packet 与远端实测证据。
-- 将 PR #532 转 Ready，在最终 HEAD 执行 required `Backend` full 后停在合并交接。
+- PR #532 保持 Ready；以当前 HEAD 的 required `Backend`、Frontend、Engineering docs 为最终门禁。
+- 三路全绿后保持 PR OPEN / MERGEABLE 等待明确合并授权，不再修改仓库文件、不自行合并。
 
 验证状态：
 - selector/workflow policy `39 passed`；engineering `97 passed`；本地 Agent risk suite `297 passed / 79.10s`；Ruff、mypy baseline、docs gate、diff-check 通过。
