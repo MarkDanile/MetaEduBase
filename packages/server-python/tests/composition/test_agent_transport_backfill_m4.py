@@ -1899,3 +1899,98 @@ async def test_p9_external_ref_wrong_binding_healed(session_factory, monkeypatch
         )
     finally:
         await conn.close()
+
+
+# --- 第十轮复核回归测试（#1 orphan+ref expected / #2 RunEvent 绑定 heal）---
+
+
+async def test_p10_orphan_with_ref_verify_passes(session_factory, monkeypatch):
+    """第十轮复核 #1：orphan 来源 + payload_ref 的行，external ref 绑定 NULL（生产
+    路径），verify 不得误报「与来源解析不一致」。
+
+    反例：旧 verify expected 直接取源 Message 的幽灵 conversation_id，orphan 行
+    生产登记 NULL -> 永久 verify_failed。修复：expected 按完整来源解析——仅
+    resolved && !conflict 取源 conv，其余（含 orphan）为 NULL。
+    """
+    from app.composition import agent_transport_backfill as _tbf
+
+    conn = await _connect()
+    try:
+        tenant = await _make_tenant(conn)
+        # orphan：源 message 指向幽灵 conv（不建 conv，replica 绕过 FK）。
+        ghost_conv = uuid.uuid4()
+        msg = await _make_message(conn, tenant, ghost_conv)
+        # NULL-scope + ref 的 ws outbox（backfill 解析 orphan -> 登记 NULL 绑定）。
+        oid = await _make_ws_outbox_null_scope(conn, tenant, msg)
+        await conn.execute(
+            "UPDATE metaedu.agent_workspace_outbox SET payload_ref='orphan-ref', "
+            "payload_inline=NULL WHERE id=$1",
+            oid,
+        )
+    finally:
+        await conn.close()
+
+    engine, factory = _factory()
+    report = await _tbf.backfill_transport_scope(factory, tenant_id=tenant)
+    await engine.dispose()
+    assert report.ok, f"orphan+ref 行应闭环（ref 绑定 NULL）：{report.verify_detail}"
+    conn = await _connect()
+    try:
+        binding = await conn.fetchval(
+            "SELECT conversation_id FROM metaedu.agent_external_object_refs "
+            "WHERE source_row_id=$1",
+            oid,
+        )
+        assert binding is None, "orphan 来源的 ref 绑定应为 NULL"
+    finally:
+        await conn.close()
+
+
+async def test_p10_run_event_wrong_binding_healed(session_factory, monkeypatch):
+    """第十轮复核 #2：RunEvent external ref 错误绑定须被重跑 heal + verify 检出。
+
+    反例：旧 verify 跳过 run_events + 扫描只选未登记——预置错误 conversation_id 的
+    blocked 记录既不重跑修正也不被 verify 检出（假绿）。修复：run_events expected =
+    行内 conversation_id，错误 blocked 记录进入修复路径。
+    """
+    from app.composition import agent_transport_backfill as _tbf
+
+    conn = await _connect()
+    try:
+        tenant = await _make_tenant(conn)
+        conv_a = await _make_conversation(conn, tenant)
+        conv_b = await _make_conversation(conn, tenant)
+        run = await _make_run(conn, tenant, conv_a)
+        event = await _make_run_event(
+            conn, tenant, conv_a, run, seq=1, payload_ref="evt-r1"
+        )
+        # 预置**错误绑定**（conv_b）的 blocked 记录。
+        await conn.execute(
+            "INSERT INTO metaedu.agent_external_object_refs ("
+            "  id, tenant_id, conversation_id, owner_key, ref_scheme, ref_value, "
+            "  source_table, source_row_id, erase_state, blocked_reason, "
+            "  created_at, updated_at"
+            ") VALUES ($1,$2,$3,'external.payload.v1','unknown','evt-r1',"
+            "  'agent_run_events',$4,'blocked','unknown_scheme',"
+            "  clock_timestamp(),clock_timestamp())",
+            uuid.uuid4(), tenant, conv_b, event,
+        )
+    finally:
+        await conn.close()
+
+    engine, factory = _factory()
+    report = await _tbf.backfill_transport_scope(factory, tenant_id=tenant)
+    await engine.dispose()
+    assert report.ok, f"RunEvent 错误绑定应被 heal 并闭环：{report.verify_detail}"
+    conn = await _connect()
+    try:
+        binding = await conn.fetchval(
+            "SELECT conversation_id FROM metaedu.agent_external_object_refs "
+            "WHERE source_row_id=$1",
+            event,
+        )
+        assert binding == conv_a, (
+            f"RunEvent ref 绑定应被修正为行内 conv_a（实际 {binding}）"
+        )
+    finally:
+        await conn.close()

@@ -191,6 +191,22 @@ async def _select_actionable_batch(
             "  SELECT 1 FROM metaedu.agent_external_object_refs er "
             "  WHERE er.tenant_id = t.tenant_id AND er.source_table = '" + table + "'"
             " AND er.source_row_id = t.id AND er.ref_value = t.payload_ref))"
+            # 第十轮复核 #2（outbox 同缺口）：已登记但绑定不一致的 blocked 记录进入
+            # 修复路径（_register_external_ref DO UPDATE 修正），否则永不重扫。
+            " OR (t.payload_ref IS NOT NULL AND EXISTS ("
+            "  SELECT 1 FROM metaedu.agent_external_object_refs er3 "
+            "  WHERE er3.tenant_id = t.tenant_id AND er3.source_table = '" + table + "'"
+            " AND er3.source_row_id = t.id AND er3.ref_value = t.payload_ref "
+            " AND er3.erase_state = 'blocked' AND er3.blocked_reason = 'unknown_scheme'"
+            " AND er3.conversation_id IS DISTINCT FROM ("
+            "  SELECT CASE WHEN s.id IS NOT NULL AND s.tenant_id = t.tenant_id "
+            "    AND s.conversation_id IS NOT NULL"
+            "    AND s.conversation_id = t.conversation_id"
+            "    AND EXISTS(SELECT 1 FROM metaedu.agent_conversations c "
+            "      WHERE c.tenant_id = t.tenant_id AND c.id = s.conversation_id)"
+            "    THEN s.conversation_id ELSE NULL END"
+            "  FROM metaedu." + src_table + " s WHERE s.id = t." + join_col + " "
+            "  LIMIT 1)))"
         )
     else:
         ref_branch = ""
@@ -225,23 +241,34 @@ async def _select_ref_event_batch(
     after_id: uuid.UUID | None,
     batch_size: int,
 ) -> list[tuple[uuid.UUID, uuid.UUID, uuid.UUID, str]]:
-    """取一批带非空 ``payload_ref`` 且**尚未登记** external ref 的 RunEvent。
+    """取一批带非空 ``payload_ref`` 且**尚未登记或绑定错误**的 RunEvent。
 
     返回 (id, conversation_id, run_id, payload_ref)。扫描谓词 = ``payload_ref IS
-    NOT NULL AND NOT EXISTS(external ledger 登记)``（P1-1：与 verify 的 external
-    维一致）——被并发 ``SKIP LOCKED`` 跳过而漏登记的行下次重跑会被重新选中补登，
+    NOT NULL AND (NOT EXISTS(external ledger 登记) OR EXISTS(blocked 记录绑定不一致))``
+    （P1-1 + 第十轮复核 #2：错误绑定进入修复路径——`_register_external_ref` 的
+    DO UPDATE 对 blocked/unknown_scheme 记录修正 conversation_id；verify 同判据
+    保证闭环）。被并发 ``SKIP LOCKED`` 跳过而漏登记的行下次重跑会被重新选中补登，
     自愈；``FOR UPDATE SKIP LOCKED`` 仅作并发去重优化，不再是完备性依赖。
     run_events 恒有 scope（conversation_id NOT NULL），故只登记 external ref、不
     参与 reconcile/scope 回填。
     """
     sql = (
         "SELECT id, conversation_id, run_id, payload_ref FROM metaedu.agent_run_events "
-        "WHERE tenant_id = :t AND payload_ref IS NOT NULL AND NOT EXISTS ("
-        "  SELECT 1 FROM metaedu.agent_external_object_refs er "
-        "  WHERE er.tenant_id = metaedu.agent_run_events.tenant_id "
-        "  AND er.source_table = 'agent_run_events' "
-        "  AND er.source_row_id = metaedu.agent_run_events.id "
-        "  AND er.ref_value = metaedu.agent_run_events.payload_ref)"
+        "WHERE tenant_id = :t AND payload_ref IS NOT NULL AND ("
+        "  NOT EXISTS ("
+        "    SELECT 1 FROM metaedu.agent_external_object_refs er "
+        "    WHERE er.tenant_id = metaedu.agent_run_events.tenant_id "
+        "    AND er.source_table = 'agent_run_events' "
+        "    AND er.source_row_id = metaedu.agent_run_events.id "
+        "    AND er.ref_value = metaedu.agent_run_events.payload_ref)"
+        "  OR EXISTS ("
+        "    SELECT 1 FROM metaedu.agent_external_object_refs er2 "
+        "    WHERE er2.tenant_id = metaedu.agent_run_events.tenant_id "
+        "    AND er2.source_table = 'agent_run_events' "
+        "    AND er2.source_row_id = metaedu.agent_run_events.id "
+        "    AND er2.ref_value = metaedu.agent_run_events.payload_ref "
+        "    AND er2.conversation_id IS DISTINCT FROM "
+        "      metaedu.agent_run_events.conversation_id))"
     )
     if after_id is not None:
         sql += " AND id > :after"
@@ -839,14 +866,54 @@ async def _verify_scope_epoch(
                 problems.append(
                     f"{table}: {ref_missing} ref-bearing 行未登记 external ref"
                 )
-            # 第九轮复核 #2：绑定一致性——已登记 ref 的 conversation_id 须与**来源独立
-            # 解析**的 expected 绑定一致（outbox 经 Message/Run 解析；run_events 恒有
-            # scope 直接取行内）。错误绑定（旧版本/并发/中断残留）未及 heal（如 erase
-            # 已推进到 registered）时 verify fail closed，不假绿。**冲突行豁免**：A≠B
-            # 冲突时 external ref 绑定为 NULL（第八轮 #3：不 gate 单一 Conversation），
-            # expected 解析值（源的 conv）与 NULL 不一致是设计行为，不报。
+            # 第九轮复核 #2 + 第十轮复核 #1：绑定一致性——已登记 ref 的
+            # conversation_id 须与**完整来源解析**的 expected 绑定一致。expected 按
+            # LATERAL CASE：仅 resolved && !conflict 取源 Conversation，其余（orphan /
+            # 跨 tenant / 源缺失 / ambiguous / 冲突）一律 NULL——与生产登记路径
+            # （_backfill_source_row）完全一致，杜绝 orphan+ref 合法行误报。
             if table != "agent_run_events":
                 src_table_r, join_col_r = _MISMATCH_SOURCE_BY_TABLE[table]
+                ref_binding = (
+                    await session.execute(
+                        text(
+                            f"SELECT count(*) FROM metaedu.{table} t "
+                            f"LEFT JOIN LATERAL ("
+                            f"  SELECT CASE "
+                            f"    WHEN NOT EXISTS(SELECT 1 FROM metaedu.{src_table_r} s "
+                            f"      WHERE s.id = t.{join_col_r} "
+                            f"      AND s.tenant_id = t.tenant_id) THEN NULL "
+                            f"    WHEN EXISTS(SELECT 1 FROM metaedu.{src_table_r} s "
+                            f"      WHERE s.id = t.{join_col_r} "
+                            f"      AND s.tenant_id = t.tenant_id "
+                            f"      AND (s.conversation_id IS NULL"
+                            f"        OR s.conversation_id <> t.conversation_id"
+                            f"        OR NOT EXISTS(SELECT 1 FROM "
+                            f"          metaedu.agent_conversations c "
+                            f"          WHERE c.tenant_id = t.tenant_id "
+                            f"          AND c.id = s.conversation_id))) THEN NULL "
+                            f"    ELSE (SELECT s.conversation_id FROM "
+                            f"      metaedu.{src_table_r} s WHERE s.id = t.{join_col_r} "
+                            f"      AND s.tenant_id = t.tenant_id LIMIT 1) END AS exp "
+                            f"  FROM metaedu.{src_table_r} s WHERE s.id = t.{join_col_r} "
+                            f"  AND s.tenant_id = t.tenant_id LIMIT 1) exp ON true "
+                            f"WHERE t.tenant_id = :t AND t.payload_ref IS NOT NULL "
+                            f"AND EXISTS ("
+                            f"  SELECT 1 FROM metaedu.agent_external_object_refs er "
+                            f"  WHERE er.tenant_id = t.tenant_id AND er.owner_key = :o "
+                            f"  AND er.source_table = :st AND er.source_row_id = t.id "
+                            f"  AND er.ref_value = t.payload_ref "
+                            f"  AND er.conversation_id IS DISTINCT FROM exp.exp)"
+                        ),
+                        {"t": tenant_id, "o": _EXTERNAL_OWNER, "st": table},
+                    )
+                ).scalar()
+                if ref_binding:
+                    problems.append(
+                        f"{table}: {ref_binding} ref 绑定 conversation_id 与来源解析不一致"
+                    )
+            else:
+                # 第十轮复核 #2：run_events expected = 行内 conversation_id（恒有
+                # scope），错误绑定须被 verify 检出（fail closed）。
                 ref_binding = (
                     await session.execute(
                         text(
@@ -857,30 +924,14 @@ async def _verify_scope_epoch(
                             f"  WHERE er.tenant_id = t.tenant_id AND er.owner_key = :o "
                             f"  AND er.source_table = :st AND er.source_row_id = t.id "
                             f"  AND er.ref_value = t.payload_ref "
-                            f"  AND er.conversation_id IS DISTINCT FROM ("
-                            f"    SELECT s.conversation_id FROM metaedu.{src_table_r} s "
-                            f"    WHERE s.id = t.{join_col_r} AND s.tenant_id = t.tenant_id"
-                            f"    LIMIT 1))"
-                            f"  AND NOT EXISTS ("
-                            f"    SELECT 1 FROM metaedu.agent_transport_scope_reconcile rc "
-                            f"    WHERE rc.tenant_id = t.tenant_id AND rc.owner_key = "
-                            f"      :o2 "
-                            f"    AND rc.source_table = :st2 AND rc.source_row_id = t.id "
-                            f"    AND rc.issue_code IN "
-                            f"      ('ambiguous_mapping','cross_tenant_mismatch'))"
+                            f"  AND er.conversation_id IS DISTINCT FROM t.conversation_id)"
                         ),
-                        {
-                            "t": tenant_id,
-                            "o": _EXTERNAL_OWNER,
-                            "st": table,
-                            "o2": OWNER_BY_TABLE[table],
-                            "st2": table,
-                        },
+                        {"t": tenant_id, "o": _EXTERNAL_OWNER, "st": table},
                     )
                 ).scalar()
                 if ref_binding:
                     problems.append(
-                        f"{table}: {ref_binding} ref 绑定 conversation_id 与来源解析不一致"
+                        f"{table}: {ref_binding} ref 绑定 conversation_id 与行内不一致"
                     )
         # scope vs 来源矩阵一致性维（第三轮复核 #1/#2 + 第五轮复核 #3，read-only）：
         # discovery pass 已在集合锁下为 scope-set mismatch 行登记 tenant_scope issue；verify
