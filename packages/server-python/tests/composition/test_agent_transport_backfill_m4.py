@@ -1365,3 +1365,104 @@ async def test_p3_verify_binds_owner_and_issue_code(session_factory, monkeypatch
     assert not v_ok, "错 owner / 冒充 issue code 的 reconcile 不得让 verify 假绿"
     assert "agent_workspace_outbox" in detail
     assert "ambiguous_mapping" in detail
+
+
+async def test_p7_verify_rejects_wrong_reconcile_class(session_factory, monkeypatch):
+    """第七轮复核 #1：verify 必须检出「错 reconcile_class」的存量 issue（防假绿）。
+
+    反例 1：NULL-scope 行只有 ``source_message_missing + conversation_scope``（带真实
+    conversation_id，通过 class_scope/外键；应为 tenant_scope）——scheduler 只查
+    tenant_scope 会漏 gate tenant。
+    反例 2：已知 Conversation 行（epoch 未知）只有 ``epoch_unresolvable + tenant_scope``
+    （conversation_id NULL，通过 class_scope；应为 conversation_scope）——Conversation
+    purge gate 会漏检。
+    为让「仅错 class」成为唯一失败点：行状态 scope_reconcile_state='pending'（与
+    ledger issue 集重算一致，消除投影维漂移）；行 2 来源与 scope 同 conv（消除
+    mismatch 维）。DB CHECK 挡新写，故临时 DROP 模拟存量库，插完重建。
+    """
+    from app.composition import agent_transport_backfill as _tbf
+
+    conn = await _connect()
+    try:
+        tenant = await _make_tenant(conn)
+        conv_a = await _make_conversation(conn, tenant)
+        conv_b = await _make_conversation(conn, tenant)
+        # 行 1 用 msg_b（NULL scope 不参与 mismatch 维）、行 2 用 msg_a（与 scope 同
+        # conv，消除 mismatch）；uq_agent_ws_outbox_turn 唯一 (tenant, aggregate_id)。
+        msg_a = await _make_message(conn, tenant, conv_a)
+        msg_b = await _make_message(conn, tenant, conv_b)
+        oid1 = uuid.uuid4()
+        oid2 = uuid.uuid4()
+        # 行 1：无 scope（conv NULL）+ epoch 已知（=0）-> 只触发 scope 维。
+        # 行 2：已带 scope（conv_a）+ epoch 未知（NULL）-> 只触发 epoch 维。
+        # 两行 scope_reconcile_state='pending'：与 ledger issue 集重算一致（任一
+        # issue 存在即 pending）——消除投影维漂移干扰，使「仅错 class」成为唯一失败点
+        #（判别力：旧 verify 只按 issue_code 匹配 -> 通过；新 verify 按 class 匹配
+        # -> 失败）。
+        for oid, msg, scope_conv, epoch_val in (
+            (oid1, msg_b, None, 0),
+            (oid2, msg_a, conv_a, None),
+        ):
+            await conn.execute(
+                "INSERT INTO metaedu.agent_workspace_outbox ("
+                "  id, tenant_id, event_type, schema_version, aggregate_id, "
+                "  aggregate_type, payload_inline, payload_ref, payload_digest, "
+                "  correlation_id, status, attempt_count, next_attempt_at, created_at, "
+                "  conversation_id, producer_purge_revision, scope_reconcile_state"
+                ") VALUES ($1,$2,'turn.requested.v1',1,$3,'workspace.message',"
+                "  '{}'::jsonb,NULL,$4,$5,'pending',0,clock_timestamp(),clock_timestamp(),"
+                "  $6,$7,'pending')",
+                oid, tenant, msg, "a" * 64, uuid.uuid4(), scope_conv, epoch_val,
+            )
+        # 临时 DROP 新 CHECK（模拟 pre-fix 存量库），塞错 class issue。
+        await conn.execute(
+            "ALTER TABLE metaedu.agent_transport_scope_reconcile "
+            "DROP CONSTRAINT IF EXISTS ck_agent_transport_reconcile_issue_class"
+        )
+        # 行 1：错 class——source_message_missing 配 conversation_scope（带真实 conv）。
+        await conn.execute(
+            "INSERT INTO metaedu.agent_transport_scope_reconcile ("
+            "  id, tenant_id, owner_key, source_table, source_row_id, "
+            "  conversation_id, reconcile_class, issue_code, state, revision, created_at"
+            ") VALUES ($1,$2,'workspace.transport.v1','agent_workspace_outbox',"
+            "  $3,$4,'conversation_scope','source_message_missing','open',1,"
+            "  clock_timestamp())",
+            uuid.uuid4(), tenant, oid1, conv_a,
+        )
+        # 行 2：错 class——epoch_unresolvable 配 tenant_scope（conv NULL，已知行 scope）。
+        await conn.execute(
+            "INSERT INTO metaedu.agent_transport_scope_reconcile ("
+            "  id, tenant_id, owner_key, source_table, source_row_id, "
+            "  conversation_id, reconcile_class, issue_code, state, revision, created_at"
+            ") VALUES ($1,$2,'workspace.transport.v1','agent_workspace_outbox',"
+            "  $3,NULL,'tenant_scope','epoch_unresolvable','open',1,clock_timestamp())",
+            uuid.uuid4(), tenant, oid2,
+        )
+
+        # verify 在 try 块内、DELETE 前执行——ledger 保留错 class issue（判别核心）。
+        engine, factory = _factory()
+        try:
+            v_ok, detail = await _tbf._verify_scope_epoch(factory, tenant_id=tenant)
+        finally:
+            await engine.dispose()
+    finally:
+        # 先删违规行再重建 CHECK（ADD 会校验存量行）；autouse clean 后续清数据。
+        await conn.execute(
+            "DELETE FROM metaedu.agent_transport_scope_reconcile "
+            "WHERE source_row_id IN ($1, $2)",
+            oid1, oid2,
+        )
+        await conn.execute(
+            "ALTER TABLE metaedu.agent_transport_scope_reconcile "
+            "ADD CONSTRAINT ck_agent_transport_reconcile_issue_class CHECK ("
+            "  ((issue_code = 'epoch_unresolvable')"
+            "  OR (issue_code IN ('ambiguous_mapping','cross_tenant_mismatch',"
+            "    'source_message_missing','source_run_missing','source_outbox_missing')"
+            "    AND reconcile_class = 'tenant_scope')"
+            "  OR (issue_code = 'conversation_deleted_orphan'"
+            "    AND reconcile_class = 'orphan')))"
+        )
+        await conn.close()
+
+    assert not v_ok, "错 reconcile_class 的存量 issue 不得让 verify 假绿"
+    assert "agent_workspace_outbox" in detail

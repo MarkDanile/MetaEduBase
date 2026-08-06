@@ -684,6 +684,8 @@ async def _verify_scope_epoch(
             # scope 维：未填 scope 且无 scope 类 issue 的行数（owner 绑定）。B7:817「每行
             # 必登记」无类型豁免（复核 #6）：mismatch 行经 _backfill_source_row 路由到
             # ambiguous 已登记 ambiguous_mapping，故 verify 覆盖全部 NULL-scope 行。
+            # 第七轮复核 #1：issue_code 与 reconcile_class 须同时精确匹配（防错 class
+            # 冒充——DB CHECK 只能挡新写，存量/绕过 CHECK 的错 class 行须由 verify 检出）。
             scope_missing = (
                 await session.execute(
                     text(
@@ -696,7 +698,10 @@ async def _verify_scope_epoch(
                         f"  AND r.source_row_id = t.id AND r.issue_code IN ("
                         f"    'source_message_missing','source_run_missing',"
                         f"    'source_outbox_missing','cross_tenant_mismatch',"
-                        f"    'ambiguous_mapping','conversation_deleted_orphan'))"
+                        f"    'ambiguous_mapping','conversation_deleted_orphan')"
+                        f"  AND r.reconcile_class = CASE "
+                        f"    WHEN r.issue_code = 'conversation_deleted_orphan' "
+                        f"    THEN 'orphan' ELSE 'tenant_scope' END)"
                     ),
                     {"t": tenant_id, "o": owner, "st": table},
                 )
@@ -705,9 +710,20 @@ async def _verify_scope_epoch(
                 problems.append(f"{table}: {scope_missing} NULL-scope 行无 scope 类 issue")
         # epoch 维（仅 4 张 transport 表有 producer_purge_revision 列；owner 绑定；
         # B3:778「每行必登记」无类型豁免，mismatch 行经 ambiguous 路径已登记
-        # epoch_unresolvable）。
+        # epoch_unresolvable）。第七轮复核 #1：epoch_unresolvable 的 class 须与行状态
+        # 精确匹配——已解析 scope（conversation_id NOT NULL 且无冲突 issue）-> 须为
+        # conversation_scope（阻断该 Conversation purge，防「已知 Conversation 的
+        # epoch + tenant_scope」漏 purge gate）；冲突/未知/orphan（conversation_id
+        # NULL 或有 ambiguous/cross_tenant issue）-> tenant_scope 或 orphan 均可。
         for table in scope_tables:
             owner = OWNER_BY_TABLE[table]
+            resolved = (
+                "(t.conversation_id IS NOT NULL AND NOT EXISTS ("
+                "  SELECT 1 FROM metaedu.agent_transport_scope_reconcile rc "
+                "  WHERE rc.tenant_id = t.tenant_id AND rc.owner_key = :o "
+                "  AND rc.source_table = :st AND rc.source_row_id = t.id "
+                "  AND rc.issue_code IN ('ambiguous_mapping','cross_tenant_mismatch')))"
+            )
             epoch_missing = (
                 await session.execute(
                     text(
@@ -718,7 +734,10 @@ async def _verify_scope_epoch(
                         f"  WHERE r.tenant_id = t.tenant_id AND r.owner_key = :o "
                         f"  AND r.source_table = :st "
                         f"  AND r.source_row_id = t.id "
-                        f"  AND r.issue_code = 'epoch_unresolvable')"
+                        f"  AND r.issue_code = 'epoch_unresolvable'"
+                        f"  AND (({resolved} AND r.reconcile_class = 'conversation_scope')"
+                        f"    OR (NOT {resolved} AND r.reconcile_class IN "
+                        f"      ('tenant_scope','orphan'))))"
                     ),
                     {"t": tenant_id, "o": owner, "st": table},
                 )

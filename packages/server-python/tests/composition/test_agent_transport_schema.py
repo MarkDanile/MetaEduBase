@@ -173,6 +173,36 @@ async def _tenant_id() -> uuid.UUID:
         await connection.close()
 
 
+async def _ensure_conversation() -> uuid.UUID:
+    """取或建一条 (tenant, conversation)，供带 conversation_id 的 CHECK 反例通过 FK。"""
+    connection = await _connect()
+    try:
+        tenant = await _tenant_id()
+        existing = await connection.fetchval(
+            "SELECT id FROM metaedu.agent_conversations WHERE tenant_id=$1 LIMIT 1",
+            tenant,
+        )
+        if existing is not None:
+            return existing
+        cid = uuid.uuid4()
+        async with connection.transaction():
+            await connection.execute(
+                "SET LOCAL session_replication_role = replica"
+            )
+            await connection.execute(
+                "INSERT INTO metaedu.agent_conversations ("
+                "  id, tenant_id, creation_digest, created_by"
+                ") VALUES ($1, $2, $3, $4)",
+                cid,
+                tenant,
+                "d" * 64,
+                uuid.uuid4(),
+            )
+        return cid
+    finally:
+        await connection.close()
+
+
 @pytest.mark.asyncio
 async def test_040_columns_indexes_fks_ledgers_present():
     """upgrade 后：4 表 scope 列、2 张 inbox tombstone 列、4 索引、4 FK、2 ledger。"""
@@ -507,6 +537,83 @@ async def test_040_reconcile_class_scope_binding_rejected():
                     tenant,
                     uuid.uuid4(),
                 )
+    finally:
+        await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_040_reconcile_issue_class_binding_rejected():
+    """issue_code 与 reconcile_class 错组合必须被 CHECK 拒绝（第七轮复核 #1）。
+
+    反例 1：``source_message_missing + conversation_scope``（带 conversation_id，
+    通过 class_scope/外键，仅 issue_class 拒绝）——NULL-scope 行本应 tenant_scope，
+    conversation_scope 会让未来 scheduler 只查 tenant_scope 漏 gate tenant。
+    反例 2：已知 Conversation 的 ``epoch_unresolvable + tenant_scope``（带
+    conversation_id，通过 class_scope/外键，仅 issue_class 拒绝）——Conversation
+    purge gate 会漏检。
+    """
+    tenant = await _tenant_id()
+    conversation = await _ensure_conversation()
+    connection = await _connect()
+    try:
+        # 反例 1：source_message_missing + conversation_scope（带 conversation_id）。
+        async with connection.transaction():
+            with pytest.raises(asyncpg.CheckViolationError):
+                await connection.execute(
+                    """
+                    INSERT INTO metaedu.agent_transport_scope_reconcile (
+                        id, tenant_id, owner_key, source_table, source_row_id,
+                        conversation_id, reconcile_class, issue_code, state, revision,
+                        created_at
+                    ) VALUES (
+                        $1, $2, 'workspace.transport.v1', 'agent_workspace_outbox', $3,
+                        $4, 'conversation_scope', 'source_message_missing', 'open', 1,
+                        clock_timestamp()
+                    )
+                    """,
+                    uuid.uuid4(),
+                    tenant,
+                    uuid.uuid4(),
+                    conversation,
+                )
+        # 反例 2：epoch_unresolvable + tenant_scope（带 conversation_id）。
+        async with connection.transaction():
+            with pytest.raises(asyncpg.CheckViolationError):
+                await connection.execute(
+                    """
+                    INSERT INTO metaedu.agent_transport_scope_reconcile (
+                        id, tenant_id, owner_key, source_table, source_row_id,
+                        conversation_id, reconcile_class, issue_code, state, revision,
+                        created_at
+                    ) VALUES (
+                        $1, $2, 'workspace.transport.v1', 'agent_workspace_outbox', $3,
+                        $4, 'tenant_scope', 'epoch_unresolvable', 'open', 1,
+                        clock_timestamp()
+                    )
+                    """,
+                    uuid.uuid4(),
+                    tenant,
+                    uuid.uuid4(),
+                    conversation,
+                )
+        # 合法组合仍可入库（ambiguous_mapping + tenant_scope）。
+        async with connection.transaction():
+            await connection.execute(
+                """
+                INSERT INTO metaedu.agent_transport_scope_reconcile (
+                    id, tenant_id, owner_key, source_table, source_row_id,
+                    conversation_id, reconcile_class, issue_code, state, revision,
+                    created_at
+                ) VALUES (
+                    $1, $2, 'workspace.transport.v1', 'agent_workspace_outbox', $3,
+                    NULL, 'tenant_scope', 'ambiguous_mapping', 'open', 1,
+                    clock_timestamp()
+                )
+                """,
+                uuid.uuid4(),
+                tenant,
+                uuid.uuid4(),
+            )
     finally:
         await connection.close()
 

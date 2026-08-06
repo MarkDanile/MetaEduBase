@@ -197,6 +197,22 @@ def _create_reconcile_ledger() -> None:
             name="ck_agent_transport_reconcile_issue_code",
         ),
         sa.CheckConstraint(
+            # 第七轮复核 #1：issue_code 与 reconcile_class 的合法组合绑定（D3 三态语义）。
+            # epoch_unresolvable 按 scope 状态归 class（resolved->conversation_scope、
+            # orphan->orphan、其余->tenant_scope，见 backfill B4 复核），故允许三态；
+            # 其余 issue 固定 class：ambiguous_mapping / cross_tenant_mismatch /
+            # source_*_missing -> tenant_scope；conversation_deleted_orphan -> orphan。
+            # 防止「source_message_missing + conversation_scope」等错 class 组合在未来
+            # scheduler/purge gate 按 class 查询时漏检。
+            "((issue_code = 'epoch_unresolvable')"
+            " OR (issue_code IN ('ambiguous_mapping','cross_tenant_mismatch',"
+            "  'source_message_missing','source_run_missing','source_outbox_missing')"
+            "  AND reconcile_class = 'tenant_scope')"
+            " OR (issue_code = 'conversation_deleted_orphan'"
+            "  AND reconcile_class = 'orphan'))",
+            name="ck_agent_transport_reconcile_issue_class",
+        ),
+        sa.CheckConstraint(
             "state IN ('open','acknowledged','resolved')",
             name="ck_agent_transport_reconcile_state",
         ),
