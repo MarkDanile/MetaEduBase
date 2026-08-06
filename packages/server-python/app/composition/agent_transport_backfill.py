@@ -359,7 +359,13 @@ async def _register_external_ref(
     source_row_id: uuid.UUID,
     ref_value: str,
 ) -> bool:
-    """幂等登记 external ref（无可证明 DB-local 格式 -> unknown + blocked）。"""
+    """幂等登记 external ref（无可证明 DB-local 格式 -> unknown + blocked）。
+
+    **第九轮复核 #2（可收敛）**：ON CONFLICT 不再 DO NOTHING——已存在但**仍处
+    blocked/unknown_scheme** 的记录（旧版本/中断恢复留下的错误绑定）安全 UPDATE 修正
+    ``conversation_id`` 为当前解析值（erase 尚未推进，仅 blocked 态可修正；已
+    registered/erased 的记录不覆盖，由 verify fail closed 暴露）。返回是否新建。
+    """
     result = cast(
         CursorResult,
         await session.execute(
@@ -370,7 +376,13 @@ async def _register_external_ref(
                 "  created_at, updated_at"
                 ") VALUES (:id, :t, :c, :o, 'unknown', :rv, :st, :sr, 'blocked', "
                 "  'unknown_scheme', clock_timestamp(), clock_timestamp()) "
-                "ON CONFLICT ON CONSTRAINT uq_agent_external_ref_source DO NOTHING"
+                "ON CONFLICT ON CONSTRAINT uq_agent_external_ref_source DO UPDATE SET "
+                "  conversation_id = EXCLUDED.conversation_id, "
+                "  updated_at = clock_timestamp() "
+                "WHERE agent_external_object_refs.erase_state = 'blocked' "
+                "  AND agent_external_object_refs.blocked_reason = 'unknown_scheme' "
+                "  AND agent_external_object_refs.conversation_id IS DISTINCT FROM "
+                "    EXCLUDED.conversation_id"
             ),
             {
                 "id": uuid.uuid4(),
@@ -745,32 +757,49 @@ async def _verify_scope_epoch(
                 problems.append(f"{table}: {scope_missing} NULL-scope 行无 scope 类 issue")
         # epoch 维（仅 4 张 transport 表有 producer_purge_revision 列；owner 绑定；
         # B3:778「每行必登记」无类型豁免，mismatch 行经 ambiguous 路径已登记
-        # epoch_unresolvable）。第七轮复核 #1 + 第八轮复核 #5：epoch_unresolvable 的
-        # class 须与行状态**精确**一一对应——已解析 scope（无冲突/无 orphan issue）->
-        # conversation_scope（阻断该 Conversation purge）；orphan（有
-        # conversation_deleted_orphan issue）-> orphan；其余（冲突/未知）->
-        # tenant_scope。不得互换（孤儿 gate 错配 tenant_scope 会漏 Conversation purge
-        # gate / 错 gate tenant）。
+        # epoch_unresolvable）。第七轮复核 #1 + 第八轮复核 #5 + 第九轮复核 #1：
+        # epoch_unresolvable 的 class 须与行状态**精确**一一对应，且 orphan 判据
+        # **独立于 ledger**（不得由 conversation_deleted_orphan issue 自证——DB CHECK
+        # 只约束 code/class 组合、无法验证来源已删；伪 orphan issue 会让 live
+        # Conversation 的未知 epoch 不触发 purge gate）。每行按来源矩阵独立解析
+        # resolution（resolved / orphan / unknown），再要求对应 class：
+        # resolved（来源存在且同 tenant 且 Conversation 存在且无冲突）->
+        # conversation_scope；orphan（来源解析的 Conversation 已物理删除）-> orphan；
+        # 其余（源缺失 / 跨 tenant / ambiguous / 冲突）-> tenant_scope。
         for table in scope_tables:
             owner = OWNER_BY_TABLE[table]
-            orphan = (
-                "EXISTS(SELECT 1 FROM metaedu.agent_transport_scope_reconcile ro "
-                "WHERE ro.tenant_id = t.tenant_id AND ro.owner_key = :o "
-                "AND ro.source_table = :st AND ro.source_row_id = t.id "
-                "AND ro.issue_code = 'conversation_deleted_orphan')"
-            )
-            resolved = (
-                "(t.conversation_id IS NOT NULL AND NOT EXISTS ("
-                "  SELECT 1 FROM metaedu.agent_transport_scope_reconcile rc "
-                "  WHERE rc.tenant_id = t.tenant_id AND rc.owner_key = :o "
-                "  AND rc.source_table = :st AND rc.source_row_id = t.id "
-                "  AND rc.issue_code IN ('ambiguous_mapping','cross_tenant_mismatch',"
-                "    'conversation_deleted_orphan')))"
+            src_table_s, join_col_s = _MISMATCH_SOURCE_BY_TABLE[table]
+            # LATERAL 按来源矩阵独立解析 expected class（不读 ledger 自证）。
+            # 注意：f-string 隐式拼接无换行，SQL 内不得使用 -- 注释（会吞掉后续语句）。
+            expected_class = (
+                f"LATERAL (SELECT CASE "
+                f"  WHEN NOT EXISTS(SELECT 1 FROM metaedu.{src_table_s} s "
+                f"    WHERE s.id = t.{join_col_s} AND s.tenant_id = t.tenant_id) "
+                f"    THEN 'tenant_scope' "
+                f"  WHEN EXISTS(SELECT 1 FROM metaedu.{src_table_s} s "
+                f"    WHERE s.id = t.{join_col_s} AND s.tenant_id = t.tenant_id "
+                f"    AND s.conversation_id IS NULL) THEN 'tenant_scope' "
+                f"  WHEN EXISTS(SELECT 1 FROM metaedu.{src_table_s} s "
+                f"    WHERE s.id = t.{join_col_s} AND s.tenant_id = t.tenant_id "
+                f"    AND s.conversation_id IS NOT NULL "
+                f"    AND NOT EXISTS(SELECT 1 FROM metaedu.agent_conversations c "
+                f"      WHERE c.tenant_id = t.tenant_id AND c.id = s.conversation_id)) "
+                f"    THEN 'orphan' "
+                f"  WHEN EXISTS(SELECT 1 FROM metaedu.agent_transport_scope_reconcile rc "
+                f"    WHERE rc.tenant_id = t.tenant_id AND rc.owner_key = :o "
+                f"    AND rc.source_table = :st AND rc.source_row_id = t.id "
+                f"    AND rc.issue_code IN ('ambiguous_mapping','cross_tenant_mismatch')) "
+                f"    THEN 'tenant_scope' "
+                f"  ELSE 'conversation_scope' END AS cls "
+                f"  FROM metaedu.{src_table_s} s WHERE s.id = t.{join_col_s} "
+                f"  AND s.tenant_id = t.tenant_id "
+                f"  LIMIT 1) exp ON true "
             )
             epoch_missing = (
                 await session.execute(
                     text(
                         f"SELECT count(*) FROM metaedu.{table} t "
+                        f"LEFT JOIN {expected_class}"
                         f"WHERE t.tenant_id = :t AND t.producer_purge_revision IS NULL "
                         f"AND NOT EXISTS ("
                         f"  SELECT 1 FROM metaedu.agent_transport_scope_reconcile r "
@@ -778,11 +807,7 @@ async def _verify_scope_epoch(
                         f"  AND r.source_table = :st "
                         f"  AND r.source_row_id = t.id "
                         f"  AND r.issue_code = 'epoch_unresolvable'"
-                        f"  AND (({orphan} AND r.reconcile_class = 'orphan')"
-                        f"    OR (NOT {orphan} AND {resolved}"
-                        f"      AND r.reconcile_class = 'conversation_scope')"
-                        f"    OR (NOT {orphan} AND NOT {resolved}"
-                        f"      AND r.reconcile_class = 'tenant_scope')))"
+                        f"  AND r.reconcile_class = COALESCE(exp.cls, 'tenant_scope'))"
                     ),
                     {"t": tenant_id, "o": owner, "st": table},
                 )
@@ -814,6 +839,49 @@ async def _verify_scope_epoch(
                 problems.append(
                     f"{table}: {ref_missing} ref-bearing 行未登记 external ref"
                 )
+            # 第九轮复核 #2：绑定一致性——已登记 ref 的 conversation_id 须与**来源独立
+            # 解析**的 expected 绑定一致（outbox 经 Message/Run 解析；run_events 恒有
+            # scope 直接取行内）。错误绑定（旧版本/并发/中断残留）未及 heal（如 erase
+            # 已推进到 registered）时 verify fail closed，不假绿。**冲突行豁免**：A≠B
+            # 冲突时 external ref 绑定为 NULL（第八轮 #3：不 gate 单一 Conversation），
+            # expected 解析值（源的 conv）与 NULL 不一致是设计行为，不报。
+            if table != "agent_run_events":
+                src_table_r, join_col_r = _MISMATCH_SOURCE_BY_TABLE[table]
+                ref_binding = (
+                    await session.execute(
+                        text(
+                            f"SELECT count(*) FROM metaedu.{table} t "
+                            f"WHERE t.tenant_id = :t AND t.payload_ref IS NOT NULL "
+                            f"AND EXISTS ("
+                            f"  SELECT 1 FROM metaedu.agent_external_object_refs er "
+                            f"  WHERE er.tenant_id = t.tenant_id AND er.owner_key = :o "
+                            f"  AND er.source_table = :st AND er.source_row_id = t.id "
+                            f"  AND er.ref_value = t.payload_ref "
+                            f"  AND er.conversation_id IS DISTINCT FROM ("
+                            f"    SELECT s.conversation_id FROM metaedu.{src_table_r} s "
+                            f"    WHERE s.id = t.{join_col_r} AND s.tenant_id = t.tenant_id"
+                            f"    LIMIT 1))"
+                            f"  AND NOT EXISTS ("
+                            f"    SELECT 1 FROM metaedu.agent_transport_scope_reconcile rc "
+                            f"    WHERE rc.tenant_id = t.tenant_id AND rc.owner_key = "
+                            f"      :o2 "
+                            f"    AND rc.source_table = :st2 AND rc.source_row_id = t.id "
+                            f"    AND rc.issue_code IN "
+                            f"      ('ambiguous_mapping','cross_tenant_mismatch'))"
+                        ),
+                        {
+                            "t": tenant_id,
+                            "o": _EXTERNAL_OWNER,
+                            "st": table,
+                            "o2": OWNER_BY_TABLE[table],
+                            "st2": table,
+                        },
+                    )
+                ).scalar()
+                if ref_binding:
+                    problems.append(
+                        f"{table}: {ref_binding} ref 绑定 conversation_id 与来源解析不一致"
+                    )
         # scope vs 来源矩阵一致性维（第三轮复核 #1/#2 + 第五轮复核 #3，read-only）：
         # discovery pass 已在集合锁下为 scope-set mismatch 行登记 tenant_scope issue；verify
         # 只读验证「每个 mismatch 行都有**精确**对应 issue」--按 mismatch 分支要求准确的

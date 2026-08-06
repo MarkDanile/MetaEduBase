@@ -1784,3 +1784,118 @@ async def test_p8_epoch_class_exact_for_unresolved(session_factory, monkeypatch)
 
     assert not v_ok, "orphan 行的 epoch 错配 tenant_scope 不得让 verify 假绿"
     assert "epoch_unresolvable" in detail
+
+
+# --- 第九轮复核回归测试（#1 pseudo-orphan 自证 / #2 external ref 绑定收敛）---
+
+
+async def test_p9_epoch_orphan_not_self_proving(session_factory, monkeypatch):
+    """第九轮复核 #1：epoch 的 orphan 判据不得由 ledger 自证。
+
+    反例：来源仍解析到 live Conversation，但 ledger 同时存在伪
+    ``conversation_deleted_orphan/orphan`` + ``epoch_unresolvable/orphan``（DB CHECK
+    只约束 code/class 组合、无法验证来源已删）——旧 verify 读 ledger 的 orphan issue
+    判定 orphan，epoch orphan 自证通过，live Conversation 的未知 epoch 不触发 purge
+    gate。须从来源矩阵独立解析（此处应 resolved -> conversation_scope）并 fail。
+    """
+    from app.composition import agent_transport_backfill as _tbf
+
+    conn = await _connect()
+    try:
+        tenant = await _make_tenant(conn)
+        conv_a = await _make_conversation(conn, tenant)
+        msg_a = await _make_message(conn, tenant, conv_a)
+        oid = uuid.uuid4()
+        # 行：scope=conv_a（live）、epoch NULL、源 msg_a（live、同 conv）——独立解析
+        # 应 resolved -> epoch 须 conversation_scope。投影 'orphan' 与 ledger 一致
+        #（伪 orphan issue 存在 -> 投影 orphan），消除投影维干扰。
+        await conn.execute(
+            "INSERT INTO metaedu.agent_workspace_outbox ("
+            "  id, tenant_id, event_type, schema_version, aggregate_id, aggregate_type, "
+            "  payload_inline, payload_ref, payload_digest, correlation_id, status, "
+            "  attempt_count, next_attempt_at, created_at, conversation_id, "
+            "  producer_purge_revision, scope_reconcile_state"
+            ") VALUES ($1,$2,'turn.requested.v1',1,$3,'workspace.message',"
+            "  '{}'::jsonb,NULL,$4,$5,'pending',0,clock_timestamp(),clock_timestamp(),"
+            "  $6,NULL,'orphan')",
+            oid, tenant, msg_a, "a" * 64, uuid.uuid4(), conv_a,
+        )
+        # 伪 orphan issue（来源 live，DB CHECK 无法验证来源已删，合法入库）。
+        await conn.execute(
+            "INSERT INTO metaedu.agent_transport_scope_reconcile ("
+            "  id, tenant_id, owner_key, source_table, source_row_id, "
+            "  conversation_id, reconcile_class, issue_code, state, revision, created_at"
+            ") VALUES ($1,$2,'workspace.transport.v1','agent_workspace_outbox',"
+            "  $3,NULL,'orphan','conversation_deleted_orphan','open',1,clock_timestamp())",
+            uuid.uuid4(), tenant, oid,
+        )
+        await conn.execute(
+            "INSERT INTO metaedu.agent_transport_scope_reconcile ("
+            "  id, tenant_id, owner_key, source_table, source_row_id, "
+            "  conversation_id, reconcile_class, issue_code, state, revision, created_at"
+            ") VALUES ($1,$2,'workspace.transport.v1','agent_workspace_outbox',"
+            "  $3,NULL,'orphan','epoch_unresolvable','open',1,clock_timestamp())",
+            uuid.uuid4(), tenant, oid,
+        )
+    finally:
+        await conn.close()
+
+    engine, factory = _factory()
+    try:
+        v_ok, detail = await _tbf._verify_scope_epoch(factory, tenant_id=tenant)
+    finally:
+        await engine.dispose()
+    assert not v_ok, "伪 orphan issue 不得让 epoch verify 自证通过"
+    assert "epoch_unresolvable" in detail
+
+
+async def test_p9_external_ref_wrong_binding_healed(session_factory, monkeypatch):
+    """第九轮复核 #2：external ref 错误绑定须在重跑中安全修正（不永久保留假绿）。
+
+    反例：旧实现 ON CONFLICT DO NOTHING + verify 只查 ref 存在——预置错误
+    conversation_id 的 blocked 记录在重跑中永久保留、verify 假绿。修复：verify 校验
+    expected 绑定（fail closed）；_register_external_ref 对 blocked/unknown_scheme 记录
+    安全 UPDATE 修正绑定（收敛）。
+    """
+    from app.composition import agent_transport_backfill as _tbf
+
+    conn = await _connect()
+    try:
+        tenant = await _make_tenant(conn)
+        conv_a = await _make_conversation(conn, tenant)
+        conv_b = await _make_conversation(conn, tenant)
+        msg_a = await _make_message(conn, tenant, conv_a)
+        oid = await _make_ws_outbox_with_scope_and_ref(
+            conn, tenant, msg_a, conv_a, payload_ref="r1"
+        )
+        # 预置**错误绑定**（conv_b）的 blocked 记录（epoch NULL -> 行会被 epoch-only
+        # 扫描选中处理 -> 触发 heal）。
+        await conn.execute(
+            "INSERT INTO metaedu.agent_external_object_refs ("
+            "  id, tenant_id, conversation_id, owner_key, ref_scheme, ref_value, "
+            "  source_table, source_row_id, erase_state, blocked_reason, "
+            "  created_at, updated_at"
+            ") VALUES ($1,$2,$3,'external.payload.v1','unknown','r1',"
+            "  'agent_workspace_outbox',$4,'blocked','unknown_scheme',"
+            "  clock_timestamp(),clock_timestamp())",
+            uuid.uuid4(), tenant, conv_b, oid,
+        )
+    finally:
+        await conn.close()
+
+    engine, factory = _factory()
+    report = await _tbf.backfill_transport_scope(factory, tenant_id=tenant)
+    await engine.dispose()
+    assert report.ok, f"heal 后应 verify 闭环：{report.verify_detail}"
+    conn = await _connect()
+    try:
+        binding = await conn.fetchval(
+            "SELECT conversation_id FROM metaedu.agent_external_object_refs "
+            "WHERE source_row_id=$1 AND ref_value='r1'",
+            oid,
+        )
+        assert binding == conv_a, (
+            f"错误绑定须被修正为解析值 conv_a（实际 {binding}）"
+        )
+    finally:
+        await conn.close()
