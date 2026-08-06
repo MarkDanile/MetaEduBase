@@ -141,6 +141,19 @@ def test_context_conftest_runs_whole_context() -> None:
 
 
 @pytest.mark.parametrize(
+    "path",
+    [
+        "tests/contexts/agent_control_plane/helpers.py",
+        "tests/contexts/agent_execution/e1_helpers.py",
+    ],
+)
+def test_cross_context_helper_fails_closed_to_full(path: str) -> None:
+    result = select_backend_tests([f"packages/server-python/{path}"])
+    assert result.mode == "full"
+    assert result.reason == f"cross-context-test-helper:{path}"
+
+
+@pytest.mark.parametrize(
     ("path", "expected_root"),
     [
         ("tests/composition/conftest.py", "tests/composition"),
@@ -340,4 +353,60 @@ def test_git_diff_includes_deleted_shared_runtime_path(
     assert paths == [
         "packages/server-python/app/shared/deleted_runtime.py",
     ]
+    assert select_backend_tests(paths).mode == "full"
+
+
+def test_git_diff_classifies_both_sides_of_shared_runtime_rename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    source = (
+        repo / "packages" / "server-python" / "app" / "shared" / "critical.py"
+    )
+    destination = (
+        repo
+        / "packages"
+        / "server-python"
+        / "app"
+        / "contexts"
+        / "resource"
+        / "critical.py"
+    )
+    source.parent.mkdir(parents=True)
+    source.write_text("VALUE = 1\n")
+    _git(repo, "init", "-q")
+    _commit(repo, "add shared runtime")
+    base = _git(repo, "rev-parse", "HEAD")
+
+    destination.parent.mkdir(parents=True)
+    _git(repo, "mv", str(source.relative_to(repo)), str(destination.relative_to(repo)))
+    _commit(repo, "move shared runtime")
+    monkeypatch.setattr(MODULE, "REPO_ROOT", repo)
+
+    paths = MODULE._git_changed_paths(base, "HEAD")
+    assert set(paths) == {
+        "packages/server-python/app/shared/critical.py",
+        "packages/server-python/app/contexts/resource/critical.py",
+    }
+    assert select_backend_tests(paths).mode == "full"
+
+
+def test_git_diff_includes_type_changed_shared_runtime_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    path = repo / "packages" / "server-python" / "app" / "shared" / "critical.py"
+    path.parent.mkdir(parents=True)
+    path.write_text("VALUE = 1\n")
+    _git(repo, "init", "-q")
+    _commit(repo, "add shared runtime")
+    base = _git(repo, "rev-parse", "HEAD")
+
+    path.unlink()
+    path.symlink_to("replacement.py")
+    _commit(repo, "change shared runtime file type")
+    monkeypatch.setattr(MODULE, "REPO_ROOT", repo)
+
+    paths = MODULE._git_changed_paths(base, "HEAD")
+    assert paths == ["packages/server-python/app/shared/critical.py"]
     assert select_backend_tests(paths).mode == "full"

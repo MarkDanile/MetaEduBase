@@ -37,13 +37,14 @@
 - 同一 probe 转 Ready 后 full 为 `10m21s`；Ready 状态追加代码提交后再次 full 为 `10m11s / 2102 passed`，证明旧 Draft success 不可冒充最终门禁且最新 HEAD 必须重跑。
 - PR #532 最新独立复核发现删除路径漏分类、direct-root fixture/helper 假绿、未知 selector mode fail-open 及两处契约措辞漂移；PR 已转回 Draft，并按同一根因批次修复。
 - 新增真实 Git 删除、direct-root fixture/helper、跨域 shared helper、未知 mode 与 Agent test-only Draft/Ready 反例；两轮 RED 分别为 `7 failed / 49 passed` 和定向 `1 failed`。
+- 最新定向复核继续发现 rename 只暴露目标路径、context helper 跨域消费者两项 P1；真实 Git rename/type 与两类跨 context helper 反例在旧逻辑为 `4 failed / 50 passed`，已按同一 fail-closed 原则修复。
 
 下一步：
-- 一批提交并推送本轮返修；Draft HEAD 因修改 CI/selector 自身必须 fail-closed full。
-- Draft CI 通过后做定向轻量复核；P0/P1 清零后再转 Ready，由最新 HEAD 重新运行 required `Backend` full。
+- PR #532 保持 Draft；因修改 CI/selector 自身，远端当前 HEAD 必须 fail-closed full。
+- Draft CI 通过后做最终定向轻量复核；P0/P1 清零后再转 Ready，由最新 HEAD 重新运行 required `Backend` full。
 
 验证状态：
-- 本轮 selector/workflow/change-scope 定向回归 `56 passed`、engineering 全套 `105 passed`；Ruff、mypy baseline（243 historical / 0 regressions）、docs gate（32 allowlisted）、bash syntax、Python compile 和 diff-check 通过。
+- 第二批完成后 selector/workflow/change-scope 定向回归 `61 passed`、engineering 全套 `110 passed`；Ruff、mypy baseline（243 historical / 0 regressions）、docs gate（32 allowlisted）、bash syntax、Python compile 和 diff-check 通过。
 - 既有 selector/workflow policy `39 passed`；engineering `97 passed`；本地 Agent risk suite `297 passed / 79.10s`；Ruff、mypy baseline、docs gate、diff-check 通过。
 - 远端 probe：Draft risk-targeted `2m44s / 297 passed`；Ready full `10m21s`；Ready 后代码提交再次 full `10m11s / 2102 passed`；Frontend / Engineering docs 同步通过。
 

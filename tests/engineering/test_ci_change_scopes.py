@@ -151,6 +151,34 @@ def test_git_diff_classifies_deleted_ci_path_fail_closed(tmp_path: Path) -> None
     )
 
 
+def test_git_diff_classifies_renamed_ci_source_fail_closed(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    source = repo / "scripts" / "ci" / "guard"
+    destination = repo / "docs" / "guard.md"
+    source.parent.mkdir(parents=True)
+    source.write_text("guard\n")
+    _git(repo, "init", "-q")
+    _commit(repo, "add ci guard")
+    base = _git(repo, "rev-parse", "HEAD")
+
+    destination.parent.mkdir(parents=True)
+    _git(repo, "mv", str(source.relative_to(repo)), str(destination.relative_to(repo)))
+    _commit(repo, "move ci guard to docs")
+
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "--base", base, "--head", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    scopes = dict(line.split("=", 1) for line in result.stdout.splitlines())
+    assert all(
+        scopes[key] == "true"
+        for key in ("backend", "frontend", "mcp", "engineering", "engineering_tests")
+    )
+
+
 def test_ci_uses_node24_actions_and_hermetic_pytest_boundary() -> None:
     workflow = WORKFLOW.read_text()
     expected_actions = {

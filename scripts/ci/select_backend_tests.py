@@ -163,8 +163,10 @@ def _select_test_change(relative: str) -> tuple[set[str], str | None]:
         context = parts[2]
         if context not in set(CONTEXT_TESTS) | {"ai"}:
             return set(), f"unknown-test-context:{context}"
-        if parts[-1] == "conftest.py" or not parts[-1].startswith("test_"):
+        if parts[-1] == "conftest.py":
             return {f"tests/contexts/{context}"}, None
+        if not parts[-1].startswith("test_"):
+            return set(), f"cross-context-test-helper:{relative}"
         return {relative}, None
 
     direct_roots = (
@@ -297,7 +299,7 @@ def select_backend_tests(
 
 def _git_changed_paths(base: str, head: str) -> list[str]:
     result = subprocess.run(
-        ["git", "diff", "--name-only", "-z", base, head],
+        ["git", "diff", "--no-renames", "--name-only", "-z", base, head],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,
