@@ -14,44 +14,7 @@
 
 ## 当前进行中
 
-### TASK-TD-092: 高风险 PR CI 反馈周期与复审收敛治理
-
-状态：🟡 进行中
-类型：technical-debt / infrastructure
-领域：CI 性能、后端测试选择、复审流程
-当前执行模式：plan-do；先 CI 分层，再复审治理
-最近接手工具：Codex
-分支：`codex/td-092-ci-review-throughput`
-
-需求来源：
-- Spec: [TD-092](../02-delivery-plans/01-specs/2026-08-06-td-092-ci-review-throughput.md)
-- Plan: [TD-092 Implementation Plan](../02-delivery-plans/02-plans/2026-08-06-td-092-ci-review-throughput-plan.md)
-- 技术债：[TD-092](technical-debt.md#td-092-高风险-pr-ci-反馈周期与复审收敛治理)
-- 架构约束：不改 R1 业务逻辑；保留最终 full/main/nightly 门禁
-
-当前进展：
-- 已确认 PR #530 Backend `10m22s` 中 pytest full 占 `9m06s`；040 migration 使后续 PR 修订持续判定 full。
-- 已实现 Draft `Backend iteration` risk-targeted、Ready required `Backend` full、main/nightly full 的分层策略，并隔离 check 名称防中间结果冒充最终门禁。
-- Agent risk suite 从首版 `693 passed / 174.09s` 收敛到 `297 passed / 79.10s`；直接改动测试仍自动加入。
-- 临时 Agent probe 的 Draft 首跑为 `3m04s / 297 passed`；仅将 risk-targeted 的 mypy 延后到 pre-push + Ready full 后，复跑为 `2m44s / 297 passed`，达到 3 分钟目标。
-- 同一 probe 转 Ready 后 full 为 `10m21s`；Ready 状态追加代码提交后再次 full 为 `10m11s / 2102 passed`，证明旧 Draft success 不可冒充最终门禁且最新 HEAD 必须重跑。
-- PR #532 最新独立复核发现删除路径漏分类、direct-root fixture/helper 假绿、未知 selector mode fail-open 及两处契约措辞漂移；PR 已转回 Draft，并按同一根因批次修复。
-- 新增真实 Git 删除、direct-root fixture/helper、跨域 shared helper、未知 mode 与 Agent test-only Draft/Ready 反例；两轮 RED 分别为 `7 failed / 49 passed` 和定向 `1 failed`。
-- 最新定向复核继续发现 rename 只暴露目标路径、context helper 跨域消费者两项 P1；真实 Git rename/type 与两类跨 context helper 反例在旧逻辑为 `4 failed / 50 passed`，已按同一 fail-closed 原则修复。
-- 最终 Draft 代码 HEAD 的 full fail-closed 为 `Backend iteration 10m23s`，Frontend/Engineering docs 同步通过；最终定向独立复核 `P0/P1/P2/P3 = 0/0/0/0`。
-
-下一步：
-- 以 PR #532 最新 Ready HEAD 的 required `Backend` full、Frontend、Engineering docs 为最终门禁，状态与 HEAD 以 GitHub 为准。
-- 三路全绿后保持 PR OPEN / MERGEABLE，等待明确合并授权；不自行合并、不启动 R1-S4-C。
-
-验证状态：
-- 第二批完成后 selector/workflow/change-scope 定向回归 `61 passed`、engineering 全套 `110 passed`；Ruff、mypy baseline（243 historical / 0 regressions）、docs gate（32 allowlisted）、bash syntax、Python compile 和 diff-check 通过。
-- 远端 Draft full：Backend iteration `10m23s`、Frontend `3m17s`、Engineering docs `16s`，全部通过；独立复核 `0/0/0/0`。
-- 既有 selector/workflow policy `39 passed`；engineering `97 passed`；本地 Agent risk suite `297 passed / 79.10s`；Ruff、mypy baseline、docs gate、diff-check 通过。
-- 远端 probe：Draft risk-targeted `2m44s / 297 passed`；Ready full `10m21s`；Ready 后代码提交再次 full `10m11s / 2102 passed`；Frontend / Engineering docs 同步通过。
-
-交接备注：
-- R1-S4-C 暂停，待 TD-092 完整 Git 闭环后恢复。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -59,6 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P0 | REQ-041/047 R1-S4-C Writer/Claim Scope + Epoch Fence | 🔵 Ready for Docs Only | CC 先提交纯文档 contract delta，冻结 writer 传播、claim envelope、Guard 内六元组 CAS、S4-B catch-up 与锁序矩阵；首轮同 HEAD 三面并行复审，P0/P1 清零后再开单风险域实现 PR | [R1 Plan §R1-S4](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
@@ -70,6 +34,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-08-06 | TD-092 高风险 PR CI 反馈周期与复审收敛治理 | 🟢 完成 | Draft risk-targeted `2m44s / 297 passed`，Ready 最新 HEAD 保留 Backend full；三面首轮复审、根因族返修、连续两轮新 P1 升级与单风险域 PR 规则落地；独立复核 0/0/0/0，评分 93 | [PR #532](https://github.com/MarkDanile/MetaEduBase/pull/532)（squash merge `fb6058ac`）/ [TD-092](technical-debt.md#td-092-高风险-pr-ci-反馈周期与复审收敛治理) / [work-log](work-log.md) |
 | 2026-08-06 | R1-S4-B Transport/External Schema + Backfill 实现 | 🟢 完成 | migration 040（四表 scope 列 + 两 ledger + inbox tombstone）+ 五维 verify backfill（scope/epoch/external-ref/投影/scope-vs-来源）+ CLI；十二轮独立复审 0/0/0/0（含 epoch-only 收敛、表↔issue 绑定、external ref 绑定 heal、B2 类型裁决共用 expected）；全量 2103 passed | [PR #530](https://github.com/MarkDanile/MetaEduBase/pull/530)（squash merge `0fb43ccb`）/ [Plan §R1-S4](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-08-04 | R1-S4-B Transport/External Schema + Backfill 契约冻结 | 🟢 完成 | 冻结 migration 040 schema（四表 scope 列 + 两 ledger + inbox tombstone）+ 回填矩阵 + 三态 reconcile（advisory lock 集合锁入 D8）+ external 空 allowlist + 041 guard 冻结 + scope/epoch 双维 verify；七轮复审 0/0/0/1 | [PR #528](https://github.com/MarkDanile/MetaEduBase/pull/528)（squash merge `b2020d4c`）/ [Plan §R1-S4](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-08-04 | R1-S4-A Transport/External/Late-write 契约冻结 | 🟢 完成 | 盘点 4 张 inbox/outbox 与 transport owner 映射；冻结 D1-D8（结构化 owner scope、epoch 传播链 + 六元组 CAS、历史不确定行三态 reconcile、tombstone 留 digest、external ref ledger 全覆盖、部分 ACK 不标 completed、runtime fake 仅证明协议、claim/Guard 顺序）；三轮复审 0/0/0/0 | [PR #526](https://github.com/MarkDanile/MetaEduBase/pull/526)（squash merge `cf4c8374`）/ [Plan §R1-S4](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |

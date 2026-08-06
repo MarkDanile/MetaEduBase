@@ -95,5 +95,7 @@
 - [x] Convert the probe to Ready and verify the exact latest HEAD reports `full`; add a code commit while Ready and verify full is triggered again.
 - [x] Verify main push, manual/schedule, unknown path, and selector/CI changes remain full.
 - [x] Record actual timing and test counts; do not claim a target based on estimates.
-- [ ] Update TD-092 completion evidence and workbench state only after the PR is merged.
-- [ ] Run the full Backend once on the final HEAD and keep R1-S4-C paused until TD-092 is fully closed.
+- [x] Update TD-092 completion evidence and workbench state only after the PR is merged.
+- [x] Run the full Backend once on the final HEAD and keep R1-S4-C paused until TD-092 is fully closed.
+
+**Closeout evidence (2026-08-06):** [PR #532](https://github.com/MarkDanile/MetaEduBase/pull/532) squash merged as `fb6058ac`. Final Ready HEAD `2ad3a76c` passed Backend full in `10m33s`, Frontend in `2m46s`, and Engineering docs in `13s`; final independent review was `P0/P1/P2/P3 = 0/0/0/0`, with score `93/100`. R1-S4-C is unpaused and must use the new Draft risk-targeted / Ready full workflow plus the review escalation rules.
