@@ -33,14 +33,16 @@
 - 已确认 PR #530 Backend `10m22s` 中 pytest full 占 `9m06s`；040 migration 使后续 PR 修订持续判定 full。
 - 已实现 Draft `Backend iteration` risk-targeted、Ready required `Backend` full、main/nightly full 的分层策略，并隔离 check 名称防中间结果冒充最终门禁。
 - Agent risk suite 从首版 `693 passed / 174.09s` 收敛到 `297 passed / 79.10s`；直接改动测试仍自动加入。
+- 临时 Agent probe 的 Draft 首跑为 `3m04s / 297 passed`；仅将 risk-targeted 的 mypy 延后到 pre-push + Ready full 后，复跑为 `2m44s / 297 passed`，达到 3 分钟目标。
+- 同一 probe 转 Ready 后 full 为 `10m21s`；Ready 状态追加代码提交后再次 full 为 `10m11s / 2102 passed`，证明旧 Draft success 不可冒充最终门禁且最新 HEAD 必须重跑。
 
 下一步：
-- 推送并创建 Draft PR，验证 CI 自身修改保持 full fail-closed。
-- 以临时 Agent probe 验证 Draft risk-targeted 与 Ready full 的真实 Actions 行为和 wall time。
+- 回填 PR #532 最终 review packet 与远端实测证据。
+- 将 PR #532 转 Ready，在最终 HEAD 执行 required `Backend` full 后停在合并交接。
 
 验证状态：
-- selector/workflow policy `38 passed`；engineering `96 passed`；Agent risk suite `297 passed / 79.10s`；Ruff、mypy baseline、docs gate、diff-check 通过。
-- 远端 Draft/Ready probe 与最终 full 待执行。
+- selector/workflow policy `39 passed`；engineering `97 passed`；本地 Agent risk suite `297 passed / 79.10s`；Ruff、mypy baseline、docs gate、diff-check 通过。
+- 远端 probe：Draft risk-targeted `2m44s / 297 passed`；Ready full `10m21s`；Ready 后代码提交再次 full `10m11s / 2102 passed`；Frontend / Engineering docs 同步通过。
 
 交接备注：
 - R1-S4-C 暂停，待 TD-092 完整 Git 闭环后恢复。

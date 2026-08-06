@@ -217,6 +217,8 @@
 - 选择器明确以 `database-migration:alembic/versions/040_transport_external_scope.py` 判定 full；后续修订仍处于同一 PR base/head 差异内。
 - PR #530 一次包含约 `6021` 行变更、17 个文件，混合 migration、ledger、锁、backfill、verify、CLI 与大型测试文件，最终经历 11 轮复审。
 - 本任务本地实测：首版整目录 Agent risk suite `693 passed / 174.09s`；按稳定 Agent core + transport/erasure/migration 追加专项后为 `297 passed / 79.10s`。
+- 临时 [Draft probe #533](https://github.com/MarkDanile/MetaEduBase/pull/533) 首跑 [run #31090808619](https://github.com/MarkDanile/MetaEduBase/actions/runs/31090808619) 为 `Backend iteration 3m04s / 297 passed / pytest 104.74s`；risk-targeted 延后约 `11.4s` 的 mypy 后，[run #31092783892](https://github.com/MarkDanile/MetaEduBase/actions/runs/31092783892) 为 `2m44s / 297 passed / pytest 100.20s`。
+- probe 转 Ready 后 [run #31091161030](https://github.com/MarkDanile/MetaEduBase/actions/runs/31091161030) required `Backend` full 为 `10m21s`；Ready 追加代码提交后的 [run #31091973570](https://github.com/MarkDanile/MetaEduBase/actions/runs/31091973570) 再次 full 为 `10m11s / 2102 passed / 1 skipped / 4 deselected`，证明 check 名称隔离与最新 HEAD 重跑生效。
 
 **问题**
 
@@ -238,7 +240,7 @@
 
 **交付记录**
 
-- 进行中；本地 selector/workflow policy `38 passed`、engineering `96 passed`、Ruff/mypy/docs/diff-check 全绿；远端 Draft/Ready probe 待验证。R1-S4-C 在本任务完整闭环前暂停。
+- 进行中；本地 selector/workflow policy `39 passed`、engineering `97 passed`、Ruff/mypy/docs/diff-check 全绿；远端 Draft/Ready probe 已验证 risk-targeted `2m44s`、Ready full 与 Ready 后提交重跑 full。PR #532 最终 Ready full 与合并待执行；R1-S4-C 在本任务完整闭环前暂停。
 
 ### TD-087: 模板管理 API 缺少后端 RBAC
 
