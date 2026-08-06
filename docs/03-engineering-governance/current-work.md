@@ -30,7 +30,7 @@
 - 架构约束：docs/03-engineering-governance/01-rules/architecture.md
 
 当前进展：本轮只提交纯文档 S4-C contract/plan delta，不写业务代码、不改 migration 040、`erase_available` 保持 False。契约冻结范围：Conversation snapshot → outbox metadata → claim envelope → inbox metadata 的 scope/epoch 传播链；writer 写真实 `conversation_id` 与 `producer_purge_revision`（禁拿当前 revision 伪造历史 epoch）；consumer 在 Guard 内执行六元组 CAS（event_id / digest / attempt / claimant / conversation_id / producer_purge_revision）；claim 独立短事务；锁序 Guard → Conversation → owner → fence → 集合 advisory lock（最内层）；S4-B catch-up 自 tenant 起点、不保留跨调用 UUID 游标、verify 不豁免 NULL 行；stale epoch/跨 tenant/scope mismatch/unknown epoch/orphan/takeover/重放/purge-win 反例。
-下一步：round-1 三面首轮复审已完成（数据/状态 P0=3 P1=4 P2=2 P3=1、并发/锁序 P0=0 P1=4 P2=3 P3=1、测试/运维 P0=0 P1=4 P2=6 P3=2），按根因族 R1-R6 已一次返修并入契约；待 round-2 定向复审核对 R1-R6 落点，P0/P1 清零后再开单主要风险域实现 PR；范围过大时拆 producer propagation 与 claim/consumer CAS 两 PR。
+下一步：round-1 三面首轮复审已完成（数据/状态 P0=3 P1=4 P2=2 P3=1、并发/锁序 P0=0 P1=4 P2=3 P3=1、测试/运维 P0=0 P1=4 P2=6 P3=2），按根因族 R1-R6 一次返修并入契约；round-2 复核逐一核对 R1-R6 落点，round-1 P0/P1 全部封闭（含一处代码事实修正：backfill 无 status 谓词可回填 claimed 行 → 消费事务 FOR UPDATE 重读为准）。契约 P0/P1 清零达成，待独立只读复审后开单主要风险域实现 PR；范围过大时拆 producer propagation 与 claim/consumer CAS 两 PR。
 验证状态：docs-only——`scripts/check-engineering-docs` + `git diff --check` 通过；PR #535 三路 CI 全绿；不实现 migration 041、不启用 S5 scheduler。
 交接备注：实现阶段保持 Draft、`Backend iteration` risk-targeted；代码稳定后转 Ready 最新 HEAD 执行 Backend full；收敛目标 2-3 轮，连续两轮新 P1 立即回契约或拆分/重构。round-1 三面复审结果须在实现 PR 前记入 work-log。
 
