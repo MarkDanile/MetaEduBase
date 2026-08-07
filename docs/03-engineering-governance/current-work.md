@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-R1-S4C-PRB: R1-S4-C 实现 PR-B（Claim/consumer CAS + deterministic terminalization）
+
+状态：🟡 进行中（实现，Draft）
+类型：新需求开发（Slice 实现，契约已冻结）
+领域：Backend（composition / agent_workspace / agent_execution claim+consumer 接线 + ledger）
+当前执行模式：superpower / plan-do
+最近接手工具：Claude Code
+分支：feat/req041-047-r1-s4c-claim-consumer-cas
+
+需求来源：
+- Spec: docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md（§5.2/§6/§7 owner 边界、external ref、迟到写）
+- Plan: docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md（§R1-S4-C C1-C9 契约冻结块 + round-1~10 修订 + PR-A round-1/2 复审记录；本 PR 范围 C8 项 2/6/7/8/10/11）
+- 技术债：docs/03-engineering-governance/technical-debt.md（TD-092 收敛治理；TD-032 源码行数登记）
+- 架构约束：docs/03-engineering-governance/01-rules/architecture.md
+
+当前进展：PR-B 范围 = claim envelope 扩展 + Guard 内六元 CAS（turn/output 三源）+ inbox 写 + unknown/stale 双事务协议状态表（Tx1 inbox rejected + tombstone 证据 + 具名 code、Tx2 claim CAS 终态化）+ consumer 集合锁（R3）+ 重放恢复三分支 + allowlist（epoch_unknown_rejected/epoch_stale_rejected）+ C8 项 11 参数化测试。
+下一步：三批次实现——批次1（epoch 读锁序前置 `require_active_fence` + 并发判别测试；claim envelope 扩展 + 六元 CAS）、批次2（allowlist + C8 项 11 同提交；unknown/stale 双事务终态）、批次3（consumer 集合锁 + 重放恢复三分支）。三批次完成后再统一三面首轮复审，按根因族一次返修。
+验证状态：待实现——Draft + `Backend iteration` risk-targeted；三批次完成后三面首轮复审，P0/P1 清零后转 Ready 最新 HEAD Backend full；`erase_available` 保持 False；不改 migration 040、不实现 041。
+交接备注：PR-B 合并前不得宣称完整「四跳一致」，最终以 PR-A + PR-B merged-boundary 联合验收为准；承接 PR-A 两项 P2 认知（epoch 读前置 `require_active_fence`；anti-forgery 代码级来源证明）。
 
 ## 下一批候选任务
 
@@ -22,7 +40,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-041/047 R1-S4-C 实现 PR-B（Claim/consumer CAS + deterministic terminalization） | 🔵 Ready（PR-A 已合并，可启动） | 从最新 main 启动；承接 allowlist（epoch_unknown_rejected/epoch_stale_rejected）+ C8 项 11 参数化回归测试；验证 C8 项 2/6/7/8/10/11；PR-A 两项 P2 认知：epoch 读前置 `require_active_fence` | [Plan §R1-S4 C1-C9](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
