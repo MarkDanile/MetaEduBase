@@ -14,25 +14,7 @@
 
 ## 当前进行中
 
-### TASK-R1-S4C-PRA: R1-S4-C 实现 PR-A（Producer propagation + replay/catch-up）
-
-状态：🟡 进行中（实现，Draft）
-类型：新需求开发（Slice 实现，契约已冻结）
-领域：Backend（composition / agent_workspace / agent_execution writer 接线 + backfill）
-当前执行模式：superpower / plan-do
-最近接手工具：Claude Code
-分支：feat/req041-047-r1-s4c-producer-propagation
-
-需求来源：
-- Spec: docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md（§5.2/§6/§7 owner 边界、external ref、迟到写）
-- Plan: docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md（§R1-S4-C C1-C9 契约冻结块 + round-1~10 修订；本 PR 范围 C8 项 1/4/5/9）
-- 技术债：docs/03-engineering-governance/technical-debt.md（TD-092 收敛治理；TD-032 源码行数登记）
-- 架构约束：docs/03-engineering-governance/01-rules/architecture.md
-
-当前进展：PR-A 范围 = writer 真实 scope/epoch（workspace `add_turn_outbox` 复用 `submit_turn` 既有 Conversation 行锁、execution `commit_terminal` 建 outbox 行前取 Conversation 行锁读 `Conversation.purge_revision`；幂等重放不重写、NULL 旧行不补写）+ S4-B catch-up（自 tenant 起点、无跨调用游标、扫描四分支、verify 双维不用守卫）。
-下一步：round-1 三面复审（P1=10）按 4 根因族一次返修完成；round-2 定向复核（P0=0/P1=1/P2=2/P3=2）P1 已修复、P0/P1 清零达成，两项 P2 记为认知（① fenced_commit_terminal 内 epoch 读后置取锁建议 PR-B 前置；② anti-forgery 以代码级来源证明 + 真实 PG 为准）。转 Ready 最新 HEAD 跑一次 Backend full，全绿后停止新增修订进入最终合并确认；合并后启动 PR-B。
-验证状态：转 Ready 中——Draft + `Backend iteration` risk-targeted 绿；PR-A 专项 8 passed + 邻近 agent_execution 174 + control_plane/composition 430 + transport 专项全绿；ruff 0；mypy baseline 0 回归；`erase_available` 保持 False；不改 migration 040、不实现 041。
-交接备注：本 PR 只验证其风险域子集，不声明「六元 CAS」「四跳一致」（C8 merged-boundary 验收）；PR-B（Claim/consumer CAS + deterministic terminalization）在 PR-A 合并后启动。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -40,7 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-041/047 R1-S4-C 实现 PR-B（Claim/consumer CAS + deterministic terminalization） | 🔵 Ready（待 PR-A 合并后启动） | PR-A 合并后启动；承接 allowlist（epoch_unknown_rejected/epoch_stale_rejected）+ C8 项 11 参数化回归测试；验证 C8 项 2/6/7/8/10/11 | [Plan §R1-S4 C1-C9](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
+| P0 | REQ-041/047 R1-S4-C 实现 PR-B（Claim/consumer CAS + deterministic terminalization） | 🔵 Ready（PR-A 已合并，可启动） | 从最新 main 启动；承接 allowlist（epoch_unknown_rejected/epoch_stale_rejected）+ C8 项 11 参数化回归测试；验证 C8 项 2/6/7/8/10/11；PR-A 两项 P2 认知：epoch 读前置 `require_active_fence` | [Plan §R1-S4 C1-C9](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
@@ -52,6 +34,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-08-07 | R1-S4-C 实现 PR-A（Producer propagation + replay/catch-up） | 🟢 完成 | writer 真实 scope/epoch + COMPLETED 非 NULL epoch 守卫 + existing 校验 + replay 不重写 + catch-up 收敛；round-1 三面 4 根因族返修 + round-2 P0/P1 清零，评分 89；Backend full 绿 | [PR #537](https://github.com/MarkDanile/MetaEduBase/pull/537)（squash merge `2e70c1df`）/ [Plan §R1-S4-C](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-08-07 | R1-S4-C Writer/Claim Scope + Epoch Fence 契约冻结 | 🟢 完成 | 冻结 scope/epoch 四跳传播链、六元 CAS（turn/output 三源）、claim 短事务 + 锁序矩阵、unknown/stale 双事务协议状态表（具名 code + digest envelope + 重放精确终态三分支）、C6 11 反例 + C8 11 项验收矩阵；10 轮收敛终审 0/0/0/0，评分 87；契约 PR 恢复纯文档 | [PR #535](https://github.com/MarkDanile/MetaEduBase/pull/535)（squash merge `c2e1af42`）/ [Plan §R1-S4 C1-C9](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-08-06 | TD-092 高风险 PR CI 反馈周期与复审收敛治理 | 🟢 完成 | Draft risk-targeted `2m44s / 297 passed`，Ready 最新 HEAD 保留 Backend full；三面首轮复审、根因族返修、连续两轮新 P1 升级与单风险域 PR 规则落地；独立复核 0/0/0/0，评分 93 | [PR #532](https://github.com/MarkDanile/MetaEduBase/pull/532)（squash merge `fb6058ac`）/ [TD-092](technical-debt.md#td-092-高风险-pr-ci-反馈周期与复审收敛治理) / [work-log](work-log.md) |
 | 2026-08-06 | R1-S4-B Transport/External Schema + Backfill 实现 | 🟢 完成 | migration 040（四表 scope 列 + 两 ledger + inbox tombstone）+ 五维 verify backfill（scope/epoch/external-ref/投影/scope-vs-来源）+ CLI；十二轮独立复审 0/0/0/0（含 epoch-only 收敛、表↔issue 绑定、external ref 绑定 heal、B2 类型裁决共用 expected）；全量 2103 passed | [PR #530](https://github.com/MarkDanile/MetaEduBase/pull/530)（squash merge `0fb43ccb`）/ [Plan §R1-S4](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
