@@ -63,6 +63,19 @@ class PoisonedIntegrationEventError(AgentControlPlaneError):
     pass
 
 
+class EpochRejectedError(AgentControlPlaneError):
+    """R1-S4-C（S4-C C3/R4）：消费 epoch 分类为 stale/unknown。
+
+    consume 协调器在 Guard + Conversation 行锁 + fence 裁决后抛出，携带
+    verdict 供 dispatcher 走双事务协议（Tx1 inbox tombstone 证据 + ledger
+    注册 + Tx2 outbox claim-CAS 终态化）。
+    """
+
+    def __init__(self, verdict: ConsumeEpochVerdict):
+        self.verdict = verdict
+        super().__init__(f"consume epoch rejected: {verdict.kind}")
+
+
 class ConversationExecutionGuard:
     """Transaction-scoped serialization for one tenant Conversation."""
 
@@ -266,6 +279,20 @@ class ConversationExecutionCoordinator:
             tenant_id=event.tenant_id,
             conversation_id=event.conversation_id,
         )
+        # R1-S4-C（S4-C C3/R4）：epoch 分类（Guard + Conversation 行锁 +
+        # fence 裁决后）。stale/unknown -> EpochRejectedError 走双事务协议；
+        # normal 保持现有消费路径。
+        current_revision, _purge_state = await self._conversation_epoch_state(
+            tenant_id=event.tenant_id,
+            conversation_id=event.conversation_id,
+        )
+        verdict = classify_consume_epoch(
+            producer_purge_revision=claimed.producer_purge_revision,
+            current_purge_revision=current_revision,
+            fence_state=fence.state,
+        )
+        if verdict.kind in {"stale", "unknown", "data_anomaly"}:
+            raise EpochRejectedError(verdict)
         run, ack, created = await self._execution.consume_turn_requested(
             event=event,
             payload_digest=claimed.payload_digest,
@@ -318,6 +345,8 @@ class ConversationExecutionCoordinator:
         *,
         consumed_at: datetime,
     ) -> InboxAckV1:
+        from app.composition.execution_fenced_port import FencedExecutionPort
+
         event = claimed.event
         await self._guard.acquire(
             self._session,
@@ -326,6 +355,24 @@ class ConversationExecutionCoordinator:
         )
         await self._workspace.lock_output_conversation(event)
         await self._execution.validate_output_claim(claimed)
+        # R1-S4-C（S4-C C3/R4）：output 路径取 execution.core.v1 fence 状态做
+        # epoch 分类（消费 execution outbox 事件）。stale/unknown ->
+        # EpochRejectedError 走双事务协议；normal 保持现有消费路径。
+        fence = await FencedExecutionPort(self._session).require_active_fence(
+            tenant_id=event.tenant_id,
+            conversation_id=event.conversation_id,
+        )
+        current_revision, _purge_state = await self._conversation_epoch_state(
+            tenant_id=event.tenant_id,
+            conversation_id=event.conversation_id,
+        )
+        verdict = classify_consume_epoch(
+            producer_purge_revision=claimed.producer_purge_revision,
+            current_purge_revision=current_revision,
+            fence_state=fence.state,
+        )
+        if verdict.kind in {"stale", "unknown", "data_anomaly"}:
+            raise EpochRejectedError(verdict)
         return await self._workspace.consume_assistant_publish(
             event=event,
             payload_digest=claimed.payload_digest,
