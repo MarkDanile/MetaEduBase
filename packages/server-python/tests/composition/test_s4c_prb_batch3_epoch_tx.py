@@ -99,6 +99,38 @@ async def _advance_conversation_purge(
     await db_session.flush()
 
 
+@pytest.fixture(autouse=True)
+async def _ensure_test_tenant(db_session):
+    """确保 ``TENANT_ID`` 存在于 ``metaedu.tenants``（幂等）。
+
+    ledger（``agent_transport_scope_reconcile``）有 ``fk_agent_transport_reconcile_
+    tenant`` 外键（migration 040 绑定 ``metaedu.tenants.id``）；conftest 只种子
+    ``DEFAULT_TENANT_ID``（``00000000-...``），而本套件用 helpers 的固定
+    ``TENANT_ID``（``71000000-...``）——CI fresh 容器库无该 tenant 时登记
+    ``epoch_unresolvable`` 会 FK 违规（CI 实测）。本 fixture 在每个测试前幂等
+    补种，本地与 CI 一致。
+    """
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+    await db_session.execute(
+        text(
+            "INSERT INTO metaedu.tenants "
+            "(id, name, school_name, isolation, is_active, created_at, updated_at) "
+            "VALUES (:id, :name, :school_name, :isolation, true, :now, :now) "
+            "ON CONFLICT (id) DO NOTHING"
+        ),
+        {
+            "id": TENANT_ID,
+            "name": "b3-tenant",
+            "school_name": "b3 school",
+            "isolation": "shared",
+            "now": now,
+        },
+    )
+    await db_session.flush()
+
+
 async def _force_fence_state(
     db_session, *, conversation_id: uuid.UUID, owner: str, state: str
 ) -> None:
