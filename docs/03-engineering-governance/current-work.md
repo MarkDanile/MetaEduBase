@@ -29,9 +29,9 @@
 - 技术债：docs/03-engineering-governance/technical-debt.md（TD-092 收敛治理；TD-032 源码行数登记）
 - 架构约束：docs/03-engineering-governance/01-rules/architecture.md
 
-当前进展：PR-B 范围 = claim envelope 扩展 + Guard 内六元 CAS（turn/output 三源）+ inbox 写 + unknown/stale 双事务协议状态表（Tx1 inbox rejected + tombstone 证据 + 具名 code、Tx2 claim CAS 终态化）+ consumer 集合锁（R3）+ 重放恢复三分支 + allowlist（epoch_unknown_rejected/epoch_stale_rejected）+ C8 项 11 参数化测试。
-下一步：三批次实现——批次1（epoch 读锁序前置 `require_active_fence` + 并发判别测试；claim envelope 扩展 + 六元 CAS）、批次2（allowlist + C8 项 11 同提交；unknown/stale 双事务终态）、批次3（consumer 集合锁 + 重放恢复三分支）。三批次完成后再统一三面首轮复审，按根因族一次返修。
-验证状态：待实现——Draft + `Backend iteration` risk-targeted；三批次完成后三面首轮复审，P0/P1 清零后转 Ready 最新 HEAD Backend full；`erase_available` 保持 False；不改 migration 040、不实现 041。
+当前进展：PR-B 范围 = claim envelope 扩展 + Guard 内六元 CAS（turn/output 三源）+ inbox 写 + unknown/stale 双事务协议状态表（Tx1 inbox rejected + tombstone 证据 + 具名 code、Tx2 claim CAS 终态化）+ consumer 集合锁（R3）+ 重放恢复三分支 + allowlist（epoch_unknown_rejected/epoch_stale_rejected）+ C8 项 11 参数化测试。三批次已全部提交：批次1（epoch 读锁序前置 + claim envelope + 六元 CAS）、批次2（allowlist + epoch 分类 + C8 项 11）、批次3（unknown/stale 双事务 Tx1/Tx2 + 重放三分支 + output 侧对称实现 + data_anomaly fail-closed + 8 测试；epoch 分类前置 read_fence_state 修复 stale 可达性）。
+下一步：三批次完成后统一三面首轮复审（数据/状态 + 并发/锁序 + 测试/运维），按根因族一次返修；P0/P1 清零后转 Ready 最新 HEAD Backend full。
+验证状态：批次3 提交 `581fd650`；ruff/mypy 0 回归；S4-C 批次1-3 + S3-E 邻近 46 passed；`erase_available` 保持 False；不改 migration 040、不实现 041。待三面首轮复审。
 交接备注：PR-B 合并前不得宣称完整「四跳一致」，最终以 PR-A + PR-B merged-boundary 联合验收为准；承接 PR-A 两项 P2 认知（epoch 读前置 `require_active_fence`；anti-forgery 代码级来源证明）。
 
 ## 下一批候选任务
