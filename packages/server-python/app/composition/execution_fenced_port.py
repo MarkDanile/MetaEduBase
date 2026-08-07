@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contexts.agent_execution.application.compatibility_output_service import (
@@ -42,6 +43,7 @@ from app.contexts.agent_execution.domain import (
 from app.contexts.agent_workspace.infrastructure.erasure_repository import (
     AgentErasureRepository,
 )
+from app.contexts.agent_workspace.infrastructure.models import ConversationModel
 
 _EXECUTION_OWNER_KEY = "execution.core.v1"
 _RUN_EVENT_SOURCE_KEY = "run_event_payload"
@@ -158,6 +160,33 @@ class FencedExecutionPort:
             owner_key=_EXECUTION_OWNER_KEY,
             now=None,
         )
+
+    async def conversation_purge_revision(
+        self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> int:
+        """R1-S4-C（S4-C C1）：execution 侧 producer epoch 的真实来源。
+
+        读取 ``Conversation.purge_revision`` 并**自持 Conversation 行锁
+        （FOR UPDATE，round-1 P1-2 修订）**——不依赖调用方已持锁的隐式约定，
+        R1 的「行锁内同事务读取」由本方法自身保证。**不得**用 fence CAS
+        revision / fence ``purge_revision``（对齐值非快照）/ Conversation
+        revision / 时间戳冒充（R1）。
+        """
+        value = (
+            await self._session.execute(
+                select(ConversationModel.purge_revision)
+                .where(
+                    ConversationModel.tenant_id == tenant_id,
+                    ConversationModel.id == conversation_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if value is None:
+            raise RunConversationMismatchError(
+                f"conversation {conversation_id} not found for producer epoch"
+            )
+        return int(value)
 
     # --- advance 原语 ----------------------------------------------------
 
@@ -292,6 +321,12 @@ class FencedExecutionPort:
         fence = await self.require_active_fence(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
+        # R1-S4-C（S4-C C2）：producer epoch = Conversation.purge_revision
+        # （行锁内读，R1 禁伪造）；传给 commit_terminal 写入 execution outbox。
+        producer_purge_revision = await self.conversation_purge_revision(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
         run, event, terminal_digest_match = await self._runs.commit_terminal(
             tenant_id=tenant_id,
             run_id=run_id,
@@ -299,6 +334,7 @@ class FencedExecutionPort:
             expected_revision=expected_revision,
             result=result,
             cancel_intent_revision=cancel_intent_revision,
+            producer_purge_revision=producer_purge_revision,
         )
         if not terminal_digest_match:
             await self.advance_checkpoint(

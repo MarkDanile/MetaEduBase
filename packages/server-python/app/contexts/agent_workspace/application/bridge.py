@@ -201,7 +201,25 @@ class AgentWorkspaceBridgeService:
                 launch=launch,
                 occurred_at=occurred_at,
             )
-            await self._bridge_repo.add_turn_outbox(event)
+            # R1-S4-C（S4-C C1/C2）：outbox 新写带结构化 owner scope。epoch 必须是
+            # 产生同事务、Conversation 行锁内读到的真实 purge_revision；禁拿
+            # fence CAS revision/fence purge_revision/时间戳冒充（R1）。该行已被
+            # reserve_user_turn 在同一事务 FOR UPDATE 锁住，此处重读同值不新增锁。
+            conversation_row = await self._workspace_repo.get_conversation(
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                conversation_id=conversation_id,
+            )
+            if conversation_row is None:
+                raise WorkspaceIntegrationConflictError(
+                    "conversation disappeared during turn outbox write"
+                )
+            conversation, _ = conversation_row
+            await self._bridge_repo.add_turn_outbox(
+                event,
+                conversation_id=conversation_id,
+                producer_purge_revision=conversation.purge_revision,
+            )
         return SubmitTurnReceipt(
             reserved=reserved,
             event_id=event.event_id,

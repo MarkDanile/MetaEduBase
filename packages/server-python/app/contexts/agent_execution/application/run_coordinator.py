@@ -311,6 +311,7 @@ class RunCoordinator:
         expected_revision: int,
         result: TerminalResult,
         cancel_intent_revision: int | None = None,
+        producer_purge_revision: int | None = None,
     ) -> tuple[AgentRun, RunEvent | None, bool]:
         run = await self.require_run(tenant_id=tenant_id, run_id=run_id)
         if not run.is_terminal:
@@ -327,6 +328,7 @@ class RunCoordinator:
             expected_revision=expected_revision,
             result=result,
             cancel_intent_revision=cancel_intent_revision,
+            producer_purge_revision=producer_purge_revision,
         )
 
     async def reserve_cancel_intent(

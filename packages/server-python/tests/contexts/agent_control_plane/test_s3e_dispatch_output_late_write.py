@@ -48,7 +48,10 @@ from app.contexts.agent_workspace.domain.errors import LateBodyWriteRejectedErro
 from app.contexts.agent_workspace.infrastructure.erasure_repository import (
     AgentErasureRepository,
 )
-from app.contexts.agent_workspace.infrastructure.models import ErasureFenceModel
+from app.contexts.agent_workspace.infrastructure.models import (
+    ConversationModel,
+    ErasureFenceModel,
+)
 from tests.contexts.agent_control_plane.helpers import (
     ACTOR_ID,
     TENANT_ID,
@@ -110,6 +113,15 @@ async def _completed_run_with_pending_outbox(
                 output_media_type="text/markdown",
                 output_classification=SnapshotClassification.INTERNAL,
                 terminal_message_id=terminal_message_id,
+            ),
+            # R1-S4-C（S4-C C2）：COMPLETED 写 publish outbox 需带真实 epoch。
+            producer_purge_revision=(
+                await session.scalar(
+                    select(ConversationModel.purge_revision).where(
+                        ConversationModel.tenant_id == TENANT_ID,
+                        ConversationModel.id == conversation_id,
+                    )
+                )
             ),
         )
     outbox = await db_session.scalar(

@@ -6,7 +6,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -39,6 +39,7 @@ from app.contexts.agent_execution.infrastructure.models import (
     RunEventModel,
     RuntimeSessionBindingModel,
 )
+from app.contexts.agent_workspace.infrastructure.models import ConversationModel
 from tests.conftest import TEST_DB_URL
 from tests.contexts.agent_execution.e1_helpers import (
     READONLY_NATIVE_CAPABILITIES,
@@ -685,6 +686,21 @@ async def test_pending_or_unknown_durable_state_blocks_terminal(db_session, guar
 async def test_canonical_terminal_is_atomic_idempotent_and_conflict_closed(db_session):
     identity = await bootstrap_compatibility(db_session)
     command = make_run_command(identity)
+    # R1-S4-C（S4-C C2）：execution outbox 新写带 conversation_id，触发
+    # migration 040 条件 FK——fixture 必须建对应 agent_conversations 行。
+    await db_session.execute(
+        text(
+            "INSERT INTO metaedu.agent_conversations "
+            "(id, tenant_id, creation_digest, created_by) "
+            "VALUES (:id, :tenant, :digest, :actor)"
+        ),
+        {
+            "id": command.conversation_id,
+            "tenant": TENANT_A,
+            "digest": "d" * 64,
+            "actor": uuid.uuid4(),
+        },
+    )
     coordinator = RunCoordinator(db_session, start_barrier=AllowStartBarrier())
     created = await coordinator.create_run(command)
     run, _ = await coordinator.start_run(
@@ -719,6 +735,15 @@ async def test_canonical_terminal_is_atomic_idempotent_and_conflict_closed(db_se
         expected_status=RunStatus.RUNNING,
         expected_revision=run.status_revision,
         result=result,
+        # R1-S4-C（S4-C C2）：COMPLETED 写 publish outbox 需带真实 epoch。
+        producer_purge_revision=(
+            await db_session.scalar(
+                select(ConversationModel.purge_revision).where(
+                    ConversationModel.tenant_id == TENANT_A,
+                    ConversationModel.id == command.conversation_id,
+                )
+            )
+        ),
     )
     assert transient.status is RunStatus.COMPLETED
     assert transient.output_publish_state is OutputPublishState.PENDING
@@ -748,6 +773,15 @@ async def test_canonical_terminal_is_atomic_idempotent_and_conflict_closed(db_se
         expected_status=RunStatus.RUNNING,
         expected_revision=run.status_revision,
         result=result,
+        # R1-S4-C（S4-C C2）：COMPLETED 写 publish outbox 需带真实 epoch。
+        producer_purge_revision=(
+            await db_session.scalar(
+                select(ConversationModel.purge_revision).where(
+                    ConversationModel.tenant_id == TENANT_A,
+                    ConversationModel.id == command.conversation_id,
+                )
+            )
+        ),
     )
     assert terminal.status is RunStatus.COMPLETED
     assert event is not None

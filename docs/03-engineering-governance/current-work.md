@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-R1-S4C-PRA: R1-S4-C 实现 PR-A（Producer propagation + replay/catch-up）
+
+状态：🟡 进行中（实现，Draft）
+类型：新需求开发（Slice 实现，契约已冻结）
+领域：Backend（composition / agent_workspace / agent_execution writer 接线 + backfill）
+当前执行模式：superpower / plan-do
+最近接手工具：Claude Code
+分支：feat/req041-047-r1-s4c-producer-propagation
+
+需求来源：
+- Spec: docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md（§5.2/§6/§7 owner 边界、external ref、迟到写）
+- Plan: docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md（§R1-S4-C C1-C9 契约冻结块 + round-1~10 修订；本 PR 范围 C8 项 1/4/5/9）
+- 技术债：docs/03-engineering-governance/technical-debt.md（TD-092 收敛治理；TD-032 源码行数登记）
+- 架构约束：docs/03-engineering-governance/01-rules/architecture.md
+
+当前进展：PR-A 范围 = writer 真实 scope/epoch（workspace `add_turn_outbox` 复用 `submit_turn` 既有 Conversation 行锁、execution `commit_terminal` 建 outbox 行前取 Conversation 行锁读 `Conversation.purge_revision`；幂等重放不重写、NULL 旧行不补写）+ S4-B catch-up（自 tenant 起点、无跨调用游标、扫描四分支、verify 双维不用守卫）。
+下一步：round-1 三面复审（P1=10）按 4 根因族一次返修完成；round-2 定向复核（P0=0/P1=1/P2=2/P3=2）P1 已修复、P0/P1 清零达成，两项 P2 记为认知（① fenced_commit_terminal 内 epoch 读后置取锁建议 PR-B 前置；② anti-forgery 以代码级来源证明 + 真实 PG 为准）。转 Ready 最新 HEAD 跑一次 Backend full，全绿后停止新增修订进入最终合并确认；合并后启动 PR-B。
+验证状态：转 Ready 中——Draft + `Backend iteration` risk-targeted 绿；PR-A 专项 8 passed + 邻近 agent_execution 174 + control_plane/composition 430 + transport 专项全绿；ruff 0；mypy baseline 0 回归；`erase_available` 保持 False；不改 migration 040、不实现 041。
+交接备注：本 PR 只验证其风险域子集，不声明「六元 CAS」「四跳一致」（C8 merged-boundary 验收）；PR-B（Claim/consumer CAS + deterministic terminalization）在 PR-A 合并后启动。
 
 ## 下一批候选任务
 
@@ -22,7 +40,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-041/047 R1-S4-C 实现（Writer/Claim Scope + Epoch Fence） | 🔵 Ready（契约已冻结） | 按 Plan C9 拆两实现 PR：Producer propagation + replay/catch-up / Claim/consumer CAS + deterministic terminalization；实现期 Draft + risk-targeted，稳定后 Ready Backend full；第二 PR 承接 allowlist（epoch_unknown_rejected/epoch_stale_rejected）+ C8 项 11 参数化回归测试 | [Plan §R1-S4 C1-C9](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
+| P0 | REQ-041/047 R1-S4-C 实现 PR-B（Claim/consumer CAS + deterministic terminalization） | 🔵 Ready（待 PR-A 合并后启动） | PR-A 合并后启动；承接 allowlist（epoch_unknown_rejected/epoch_stale_rejected）+ C8 项 11 参数化回归测试；验证 C8 项 2/6/7/8/10/11 | [Plan §R1-S4 C1-C9](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 

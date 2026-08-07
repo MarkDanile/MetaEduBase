@@ -393,6 +393,18 @@ async def test_cancel_losing_to_terminal_returns_revision_conflict(
             "terminal_message_id": uuid.uuid4(),
         }
     async with session_factory() as session, session.begin():
+        # R1-S4-C（S4-C C2）：COMPLETED 写 publish outbox 需带真实 epoch。
+        producer_purge_revision = (
+            outcome == "completed"
+            and (
+                await session.scalar(
+                    select(ConversationModel.purge_revision).where(
+                        ConversationModel.tenant_id == run.tenant_id,
+                        ConversationModel.id == run.conversation_id,
+                    )
+                )
+            )
+        )
         await RunCoordinator(session).commit_terminal(
             tenant_id=run.tenant_id,
             run_id=run.id,
@@ -404,6 +416,7 @@ async def test_cancel_losing_to_terminal_returns_revision_conflict(
                 reason="Concurrent terminal transition won the Run lock",
                 **result_kwargs,
             ),
+            producer_purge_revision=producer_purge_revision,
         )
 
     service = _build_cancel_service(db_session)
