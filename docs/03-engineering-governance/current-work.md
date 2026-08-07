@@ -30,15 +30,17 @@
 
 当前进展：
 - S4-D 契约 ↔ 落点对账完成（registry 4 owner 待翻、集合锁已冻结、backfill 私有 ledger 函数待升共享层、无 resolve 路径）。
-- 用户调整：registry 不在 S4-D-A 翻 True（S4-D-B merged-boundary 验收后统一翻）；两类 gate 区分（conversation_scope 内嵌 fail closed / tenant_scope 仅共享查询 / orphan 不阻塞）。
-- 已建分支，契约细化 delta 提交中。
+- 用户调整：registry 不在 S4-D-A 翻 True（S4-D-B 最终激活提交统一翻）；两类 gate 区分（conversation_scope 内嵌 fail closed / tenant_scope 仅共享查询 / orphan 不阻塞）。
+- 契约细化 delta 已提交（`32a3e9de`）+ 三面首轮复审完成（P0=0 / P1=8 / P2=10 / P3=9，跨面同源归 5 根因族）→ 按 5 族 + 5 项细节冻结一次返修（outbox 正文事实谓词、inbox 状态矩阵、resolve 边界、阶段隔离、验收矩阵分开命名）。
 
 下一步：
-- 提交契约细化 delta（文档门禁 + 三面首轮 P0/P1 清零）。
-- 实现 transport participant 主体：Guard → Conversation → owner → fence → 集合锁锁序 + outbox/inbox tombstone + final scan + ACK 重放 + 真实 PG 反例 + mutation kill。
-- 完成门禁（quality-gates）→ 三面首轮 + 定向复核 → Ready Backend full。
+- 推送返修后的契约 PR #541（纯文档，docs gate + diff-check）→ 一次定向复核确认 P0/P1 清零。
+- 合并契约 PR #541 → 从最新 `main` 创建 S4-D-A Draft 实现 PR（TD-092：Draft 只跑 `Backend iteration`）。
+- S4-D-A 实现：两 participant 主体（outbox/inbox tombstone + 正文事实谓词 final scan + ACK 重放 fencing + 锁序集合锁），registry 保持 False、不 resolve、不导入 backfill 私有。
 
-验证状态：契约 delta 未提交；实现未开始。
+验证状态：
+- 契约 delta 已提交 `32a3e9de`、PR #541 已开（OPEN/CLEAN，2 docs 文件 +75/-1）；三面首轮复审完成（0/8/10/9）；返修中，docs gate + diff-check 待跑。
+- 实现未开始。
 
 交接备注：
 - 本 PR **不**翻 registry `erase_available`（两 transport owner 保持 False），**不**导入 backfill 私有函数，**不**实现 ledger resolve（归 S4-D-B）。
