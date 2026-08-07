@@ -14,25 +14,7 @@
 
 ## 当前进行中
 
-### TASK-R1-S4C-DELTA: R1-S4-C Writer/Claim Scope + Epoch Fence 契约冻结
-
-状态：🟡 进行中（Docs Only 阶段）
-类型：新需求开发（Slice contract delta，先于代码冻结）
-领域：Backend（composition / agent_workspace / agent_execution writer+claim+consumer 接线）
-当前执行模式：superpower / plan-do
-最近接手工具：Claude Code
-分支：docs/req041-047-r1-s4c-contract-delta
-
-需求来源：
-- Spec: docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md（§5.2/§6/§7 owner 边界、external ref、迟到写）
-- Plan: docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4transport-ownerexternal-payload-与迟到写（§S4-A D1-D8 + §S4-B B1-B8 契约冻结块 + 本轮 S4-C delta）
-- 技术债：docs/03-engineering-governance/technical-debt.md（TD-092 解除 S4-C 暂停，三轮收敛/连续两轮新 P1 拆分为后续验证任务）
-- 架构约束：docs/03-engineering-governance/01-rules/architecture.md
-
-当前进展：本轮只提交纯文档 S4-C contract/plan delta，不写业务代码、不改 migration 040、`erase_available` 保持 False。契约冻结范围：Conversation snapshot → outbox metadata → claim envelope → inbox metadata 的 scope/epoch 传播链；writer 写真实 `conversation_id` 与 `producer_purge_revision`（禁拿当前 revision 伪造历史 epoch）；consumer 在 Guard 内执行六元组 CAS（event_id / digest / attempt / claimant / conversation_id / producer_purge_revision）；claim 独立短事务；锁序 Guard → Conversation → owner → fence → 集合 advisory lock（最内层）；S4-B catch-up 自 tenant 起点、不保留跨调用 UUID 游标、verify 不豁免 NULL 行；stale epoch/跨 tenant/scope mismatch/unknown epoch/orphan/takeover/重放/purge-win 反例。
-下一步：round-1 三面首轮复审（P0/P1/P2/P3=3/12/11/4）按根因族 R1-R6 一次返修；round-2 落点修正；round-3（0/3/4/0）S1 turn 三源 CAS、S2 双事务协议、S3 orphan 可达性；round-4（0/3/1/0）S2 重写为状态表；round-5（0/3/0/0）三项定向修正；round-6（0/1/1/0）重放锁后检查 outbox 精确终态三分支；round-7（0/1/0/1）精确终态谓词冻结；round-8（0/1/0/0）具名 code + decision_digest envelope 冻结；round-9（0/0/1/1）allowlist 源码改动回退到第二实现 PR（配参数化回归测试，C8 项 11），契约 PR 恢复纯文档（round-9 曾误判回退成功，round-10 核对 git diff main...HEAD 发现 round-8 提交仍含源码，已真正 restore --source=main 并提交 revert）。契约 P0/P1 清零达成，待最终合并确认后开实现 PR（冻结为 producer propagation + replay/catch-up 与 claim/consumer CAS + deterministic terminalization 两 PR）。
-验证状态：纯文档——`scripts/check-engineering-docs` + `git diff --check` 通过；PR #535 最新 HEAD 三路 required checks SUCCESS、PR OPEN（此前 CANCELLED 为基建/取消重跑所致，非测试失败，已重跑复绿）；不实现 migration 041、不启用 S5 scheduler。
-交接备注：实现阶段保持 Draft、`Backend iteration` risk-targeted；代码稳定后转 Ready 最新 HEAD 执行 Backend full；收敛目标 2-3 轮，连续两轮新 P1 立即回契约或拆分/重构。round-1 三面复审结果须在实现 PR 前记入 work-log。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -40,6 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P0 | REQ-041/047 R1-S4-C 实现（Writer/Claim Scope + Epoch Fence） | 🔵 Ready（契约已冻结） | 按 Plan C9 拆两实现 PR：Producer propagation + replay/catch-up / Claim/consumer CAS + deterministic terminalization；实现期 Draft + risk-targeted，稳定后 Ready Backend full；第二 PR 承接 allowlist（epoch_unknown_rejected/epoch_stale_rejected）+ C8 项 11 参数化回归测试 | [Plan §R1-S4 C1-C9](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
@@ -51,6 +34,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-08-07 | R1-S4-C Writer/Claim Scope + Epoch Fence 契约冻结 | 🟢 完成 | 冻结 scope/epoch 四跳传播链、六元 CAS（turn/output 三源）、claim 短事务 + 锁序矩阵、unknown/stale 双事务协议状态表（具名 code + digest envelope + 重放精确终态三分支）、C6 11 反例 + C8 11 项验收矩阵；10 轮收敛终审 0/0/0/0，评分 87；契约 PR 恢复纯文档 | [PR #535](https://github.com/MarkDanile/MetaEduBase/pull/535)（squash merge `c2e1af42`）/ [Plan §R1-S4 C1-C9](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-08-06 | TD-092 高风险 PR CI 反馈周期与复审收敛治理 | 🟢 完成 | Draft risk-targeted `2m44s / 297 passed`，Ready 最新 HEAD 保留 Backend full；三面首轮复审、根因族返修、连续两轮新 P1 升级与单风险域 PR 规则落地；独立复核 0/0/0/0，评分 93 | [PR #532](https://github.com/MarkDanile/MetaEduBase/pull/532)（squash merge `fb6058ac`）/ [TD-092](technical-debt.md#td-092-高风险-pr-ci-反馈周期与复审收敛治理) / [work-log](work-log.md) |
 | 2026-08-06 | R1-S4-B Transport/External Schema + Backfill 实现 | 🟢 完成 | migration 040（四表 scope 列 + 两 ledger + inbox tombstone）+ 五维 verify backfill（scope/epoch/external-ref/投影/scope-vs-来源）+ CLI；十二轮独立复审 0/0/0/0（含 epoch-only 收敛、表↔issue 绑定、external ref 绑定 heal、B2 类型裁决共用 expected）；全量 2103 passed | [PR #530](https://github.com/MarkDanile/MetaEduBase/pull/530)（squash merge `0fb43ccb`）/ [Plan §R1-S4](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-08-04 | R1-S4-B Transport/External Schema + Backfill 契约冻结 | 🟢 完成 | 冻结 migration 040 schema（四表 scope 列 + 两 ledger + inbox tombstone）+ 回填矩阵 + 三态 reconcile（advisory lock 集合锁入 D8）+ external 空 allowlist + 041 guard 冻结 + scope/epoch 双维 verify；七轮复审 0/0/0/1 | [PR #528](https://github.com/MarkDanile/MetaEduBase/pull/528)（squash merge `b2020d4c`）/ [Plan §R1-S4](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
