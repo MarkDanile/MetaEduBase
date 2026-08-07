@@ -318,14 +318,17 @@ class FencedExecutionPort:
             run_id=run_id,
             queue_seq=queue_seq,
         )
-        fence = await self.require_active_fence(
-            tenant_id=tenant_id, conversation_id=conversation_id
-        )
-        # R1-S4-C（S4-C C2）：producer epoch = Conversation.purge_revision
-        # （行锁内读，R1 禁伪造）；传给 commit_terminal 写入 execution outbox。
+        # PR-A round-2 P2 认知（PR-B 批次1 落地）：producer epoch 读**前置**
+        # require_active_fence——先取 Conversation 行锁再取 owner/fence，与
+        # purge eraser（Conversation -> owner -> fence）同序。R1 的「行锁内同
+        # 事务读取」由 conversation_purge_revision 自持 FOR UPDATE 保证，且锁
+        # 序不再依赖调用方预持的隐式前置。
         producer_purge_revision = await self.conversation_purge_revision(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
+        )
+        fence = await self.require_active_fence(
+            tenant_id=tenant_id, conversation_id=conversation_id
         )
         run, event, terminal_digest_match = await self._runs.commit_terminal(
             tenant_id=tenant_id,
