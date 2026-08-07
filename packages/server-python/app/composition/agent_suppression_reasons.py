@@ -17,12 +17,6 @@ SUPPRESSION_REASON_CODES: frozenset[str] = frozenset(
         "late_body_write_rejected",
         "operator_suppressed",
         "retention_expired",
-        # R1-S4-C（S2 双事务协议，round-8 冻结）：unknown/stale epoch 消费的
-        # 具名 deterministic 终态 code。与 late_body_write_rejected 同域受控
-        # 枚举；自由文本不落库、不被归一成 operator_suppressed（否则精确幂等
-        # 判定失去可区分身份）。
-        "epoch_unknown_rejected",
-        "epoch_stale_rejected",
     }
 )
 SUPPRESSION_REASON_FALLBACK = "operator_suppressed"
