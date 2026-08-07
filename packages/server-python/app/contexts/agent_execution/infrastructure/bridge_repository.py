@@ -312,6 +312,8 @@ class ExecutionBridgeRepository:
         payload_digest: str,
         expected_attempt: int,
         claimant_id: str,
+        expected_conversation_id: uuid.UUID | None,
+        expected_producer_purge_revision: int | None,
     ) -> None:
         _, row = await self._lock_output_then_run(
             tenant_id=tenant_id, event_id=event_id
@@ -324,6 +326,20 @@ class ExecutionBridgeRepository:
         ):
             raise ExecutionIntegrationConflictError(
                 "output claim was superseded or no longer owns delivery"
+            )
+        # R1-S4-C（S4-C C3）：六元 CAS 追加 scope/epoch——仅当行值非 NULL 时
+        # 比对（历史 NULL 行不参与值比较，由消费 epoch 分类处理）。
+        if row.conversation_id is not None and (
+            row.conversation_id != expected_conversation_id
+        ):
+            raise ExecutionIntegrationConflictError(
+                "output claim conversation scope drifted between claim and consume"
+            )
+        if row.producer_purge_revision is not None and (
+            row.producer_purge_revision != expected_producer_purge_revision
+        ):
+            raise ExecutionIntegrationConflictError(
+                "output claim producer epoch drifted between claim and consume"
             )
 
     async def record_output_delivery_failure(

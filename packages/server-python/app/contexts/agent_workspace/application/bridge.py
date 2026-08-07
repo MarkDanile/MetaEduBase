@@ -74,6 +74,10 @@ class ClaimedWorkspaceEvent:
     payload_digest: str
     attempt_count: int
     claimant_id: str
+    # R1-S4-C（S4-C C1 hop3）：claim 短事务内从 outbox 行锁定读取的
+    # scope/epoch，供消费事务六元 CAS 比对（C3）。
+    conversation_id: uuid.UUID | None
+    producer_purge_revision: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,6 +260,10 @@ class AgentWorkspaceBridgeService:
             payload_digest=row.payload_digest,
             attempt_count=row.attempt_count,
             claimant_id=row.claimed_by,
+            # R1-S4-C（S4-C C1 hop3）：从 claim 短事务内 FOR UPDATE 锁定的
+            # outbox 行装载 scope/epoch（非 NULL 成员供六元 CAS 比对）。
+            conversation_id=row.conversation_id,
+            producer_purge_revision=row.producer_purge_revision,
         )
 
     async def require_turn_event(
@@ -278,6 +286,9 @@ class AgentWorkspaceBridgeService:
             payload_digest=claimed.payload_digest,
             expected_attempt=claimed.attempt_count,
             claimant_id=claimed.claimant_id,
+            # R1-S4-C（S4-C C3）：六元 CAS 追加 scope/epoch（非 NULL 成员比对）。
+            expected_conversation_id=claimed.conversation_id,
+            expected_producer_purge_revision=claimed.producer_purge_revision,
         )
 
     async def record_turn_failure(

@@ -30,6 +30,7 @@ from app.composition.agent_control_plane import (
 from app.composition.execution_fenced_port import FencedExecutionPort
 from app.contexts.agent_execution.application.run_coordinator import RunCoordinator
 from app.contexts.agent_execution.domain import RunStatus, TerminalResult
+from app.contexts.agent_workspace.application.bridge import PoisonedWorkspaceEvent
 from app.contexts.agent_workspace.infrastructure.models import ConversationModel
 from tests.conftest import TEST_DB_URL
 from tests.contexts.agent_control_plane.helpers import (
@@ -186,3 +187,52 @@ async def test_epoch_read_serializes_on_conversation_row_lock(session_factory):
         conv = await session.get(ConversationModel, conversation_id)
         assert outbox.producer_purge_revision == conv.purge_revision
     await engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# 六元 CAS：claim envelope 携带 scope/epoch，消费事务比对通过（C3）
+# ---------------------------------------------------------------------------
+
+
+async def test_claimed_turn_envelope_carries_scope_and_epoch(
+    db_session, session_factory
+):
+    """claim envelope 必须携带 conversation_id + producer_purge_revision
+    （C1 hop3）；消费事务经 Guard 内六元 CAS（含 scope/epoch）通过。"""
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import func
+
+    from app.contexts.agent_workspace.application.bridge import (
+        AgentWorkspaceBridgeService,
+    )
+
+    conversation_id, identity, launch = await bootstrap_workspace(db_session)
+    coordinator = ConversationExecutionCoordinator(db_session)
+    await coordinator.submit_turn(
+        tenant_id=TENANT_ID,
+        actor_id=ACTOR_ID,
+        conversation_id=conversation_id,
+        command=turn_command(identity, "claim envelope scope"),
+        launch=launch,
+    )
+    await db_session.commit()
+
+    async with session_factory() as session, session.begin():
+        now = await session.scalar(select(func.clock_timestamp()))
+        claimed = await AgentWorkspaceBridgeService(session).claim_turn_event(
+            worker_id="cas-worker",
+            now=now,
+            stale_before=now - timedelta(minutes=1),
+        )
+        assert claimed is not None and not isinstance(
+            claimed, PoisonedWorkspaceEvent
+        )
+        assert claimed.conversation_id == conversation_id
+        assert claimed.producer_purge_revision is not None
+        # 消费事务 Guard + 行锁后六元 CAS（含 scope/epoch）通过。
+        coordinator = ConversationExecutionCoordinator(session)
+        run, _ack, _created, _fence = await coordinator.consume_turn_event(
+            claimed, consumed_at=datetime.now(UTC)
+        )
+        assert run is not None

@@ -203,6 +203,8 @@ class WorkspaceBridgeRepository:
         payload_digest: str,
         expected_attempt: int,
         claimant_id: str,
+        expected_conversation_id: uuid.UUID | None,
+        expected_producer_purge_revision: int | None,
     ) -> None:
         row = await self._require_outbox_for_update(
             tenant_id=tenant_id, event_id=event_id
@@ -215,6 +217,22 @@ class WorkspaceBridgeRepository:
         ):
             raise WorkspaceIntegrationConflictError(
                 "turn claim was superseded or no longer owns delivery"
+            )
+        # R1-S4-C（S4-C C3）：六元 CAS 追加 scope/epoch——仅当行值非 NULL 时
+        # 比对（历史 NULL 行不参与值比较，由消费 epoch 分类处理）。消费事务
+        # FOR UPDATE 重读的行值与 claim 装载的 envelope 值必须一致（防
+        # claim→consume 间 scope/epoch 漂移）。
+        if row.conversation_id is not None and (
+            row.conversation_id != expected_conversation_id
+        ):
+            raise WorkspaceIntegrationConflictError(
+                "turn claim conversation scope drifted between claim and consume"
+            )
+        if row.producer_purge_revision is not None and (
+            row.producer_purge_revision != expected_producer_purge_revision
+        ):
+            raise WorkspaceIntegrationConflictError(
+                "turn claim producer epoch drifted between claim and consume"
             )
 
     async def acknowledge_turn_outbox(
