@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from pydantic import ValidationError
 from sqlalchemy import and_, or_, select
@@ -81,6 +81,129 @@ class ExecutionBridgeRepository:
         )
         await self._session.flush()
         return True
+
+    async def register_epoch_unresolvable_issue(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        owner_key: str,
+        source_table: str,
+        source_row_id: uuid.UUID,
+        conversation_id: uuid.UUID | None,
+    ) -> None:
+        """R1-S4-C（S4-C round-4/5 状态表 Tx1）：登记 ``epoch_unresolvable`` ledger。
+
+        幂等（唯一键 ON CONFLICT DO NOTHING）。scope 已知 -> ``conversation_scope``
+        （带 conversation_id，ck_..._class_scope 强制）；未知 -> ``tenant_scope``
+        （不带）。
+        """
+        from app.composition.agent_erasure_locks import (
+            acquire_transport_aggregate_lock,
+        )
+
+        # 集合锁（D8 最内层 owner aggregate 位置）；消费路径已持 Guard +
+        # Conversation 行锁 + owner + fence，此处取集合锁与 backfill 同序。
+        await acquire_transport_aggregate_lock(
+            self._session,
+            tenant_id=tenant_id,
+            owner_key=owner_key,
+            source_table=source_table,
+            source_row_id=source_row_id,
+        )
+        from app.composition.agent_transport_backfill import (
+            _recompute_projection,
+            _register_issue,
+        )
+
+        await _register_issue(
+            self._session,
+            tenant_id=tenant_id,
+            owner_key=owner_key,
+            table=source_table,
+            source_row_id=source_row_id,
+            conversation_id=conversation_id,
+            reconcile_class=(
+                "conversation_scope" if conversation_id is not None else "tenant_scope"
+            ),
+            issue_code="epoch_unresolvable",
+        )
+        # R3 (d)：投影重算与 issue 插入同在集合锁临界区内（ledger 唯一事实源，
+        # 行内 scope_reconcile_state 为派生投影）。
+        await _recompute_projection(
+            self._session,
+            table=source_table,
+            tenant_id=tenant_id,
+            owner_key=owner_key,
+            source_row_id=source_row_id,
+        )
+
+    async def create_turn_receipt_rejected(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        event_id: uuid.UUID,
+        payload_digest: str,
+        consumer_name: str,
+        reason: str,
+        receipt_tombstone_digest: str,
+        correlation_id: uuid.UUID,
+    ) -> uuid.UUID:
+        """R1-S4-C（S4-C round-4/5 状态表 Tx1）：新建 execution inbox receipt 为
+        ``rejected`` + tombstone 证据（epoch unknown/stale 拒绝）。
+
+        消费 epoch 分类在 ``begin_turn_receipt`` 之前，故此处直接 INSERT rejected
+        receipt（不进入 processing）。reason 为具名 code（``epoch_unknown_rejected``
+        / ``epoch_stale_rejected``），``receipt_tombstone_digest`` 为 64-hex 证据
+        （B1f）。幂等：已有行则校验 tombstone 一致返回。
+
+        返回 **inbox 行 PK**：R3 集合锁目标/ledger ``source_row_id`` = inbox 行 PK
+        （与 backfill/verify 的 ``r.source_row_id = t.id`` 匹配），不是 event_id。
+        """
+        from app.contexts.agent_execution.infrastructure.models import (
+            ExecutionInboxModel,
+        )
+
+        existing = (
+            await self._session.execute(
+                select(ExecutionInboxModel)
+                .where(
+                    ExecutionInboxModel.tenant_id == tenant_id,
+                    ExecutionInboxModel.consumer_name == consumer_name,
+                    ExecutionInboxModel.event_id == event_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            if (
+                existing.status != "rejected"
+                or existing.receipt_tombstone_digest != receipt_tombstone_digest
+            ):
+                raise ExecutionIntegrationConflictError(
+                    "turn receipt rejected state conflicts with existing receipt"
+                )
+            return existing.id
+        receipt_id = uuid.uuid4()
+        self._session.add(
+            ExecutionInboxModel(
+                id=receipt_id,
+                tenant_id=tenant_id,
+                consumer_name=consumer_name,
+                event_id=event_id,
+                event_type=TURN_REQUESTED_V1,
+                schema_version=1,
+                payload_digest=payload_digest,
+                correlation_id=correlation_id,
+                causation_id=None,
+                status="rejected",
+                last_error_code=reason,
+                receipt_tombstone_state="redacted",
+                receipt_tombstone_digest=receipt_tombstone_digest,
+                created_at=datetime.now(UTC),
+            )
+        )
+        await self._session.flush()
+        return receipt_id
 
     async def consume_turn_receipt(
         self, *, event: TurnRequestedV1, consumed_at: datetime
@@ -611,6 +734,86 @@ class ExecutionBridgeRepository:
                 "output_digest": run.terminal_output_digest,
             }
         )
+        row.decided_at = decided_at
+        # Run 已 suppressed（S3-D 先行）时保持；否则投影终态 suppressed。
+        if run.output_publish_state != OutputPublishState.SUPPRESSED.value:
+            run.output_publish_state = OutputPublishState.SUPPRESSED.value
+        run.updated_at = decided_at
+        await self._session.flush()
+
+    async def terminalize_output_epoch_rejected(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        event_id: uuid.UUID,
+        payload_digest: str,
+        expected_attempt: int,
+        claimant_id: str,
+        reason: str,
+        receipt_tombstone_digest: str,
+        decided_at: datetime,
+    ) -> None:
+        """R1-S4-C（S4-C round-4/5 状态表 Tx2）：epoch unknown/stale 拒绝 ->
+        execution output outbox 确定性终态。
+
+        与 ``terminalize_output_late_write`` 同构，两点差异（round-7/8 冻结）：
+        - **decision digest envelope 冻结**：``snapshot_digest({schema_version,
+          actor_id=UUID(0), reason=<具名 code>, event_id,
+          receipt_tombstone_digest=<Tx1 证据>})``——键名/版本/helper 冻结，不得
+          自造 digest 输入（round-8 P1）。
+        - **精确终态谓词**：``cancelled`` + 清 claim + decision 四元精确匹配
+          （actor_id=UUID(0) + reason 同一具名 code + digest 重算匹配 +
+          decided_at 非空）+ Run ``suppressed`` -> no-op；``status='claimed'``
+          且 claim 四元匹配 -> 终态化；其余（pending/dead_letter/published/其他
+          cancelled）-> fail closed（round-6/7 三分支）。
+        """
+        run, row = await self._lock_output_then_run(
+            tenant_id=tenant_id, event_id=event_id
+        )
+        if row.payload_digest != payload_digest:
+            raise ExecutionIntegrationConflictError(
+                "output epoch-reject digest conflicts"
+            )
+        expected_digest = snapshot_digest(
+            {
+                "schema_version": 1,
+                "actor_id": str(uuid.UUID(int=0)),
+                "reason": reason,
+                "event_id": str(event_id),
+                "receipt_tombstone_digest": receipt_tombstone_digest,
+            }
+        )
+        already_terminal = (
+            row.status == "cancelled"
+            and row.claimed_at is None
+            and row.claimed_by is None
+            and row.decision_actor_id == uuid.UUID(int=0)
+            and row.decision_reason == reason
+            and row.decision_digest == expected_digest
+            and row.decided_at is not None
+            and run.output_publish_state == OutputPublishState.SUPPRESSED.value
+        )
+        if already_terminal:
+            return
+        if row.status != "claimed":
+            raise ExecutionIntegrationConflictError(
+                f"output epoch-reject cannot terminalize from status {row.status!r}"
+            )
+        if row.attempt_count != expected_attempt or row.claimed_by != claimant_id:
+            raise ExecutionIntegrationConflictError(
+                "output epoch-reject does not own the current delivery claim"
+            )
+        if RunStatus(run.status) is not RunStatus.COMPLETED:
+            raise ExecutionIntegrationConflictError(
+                "only completed output can be terminalized for epoch reject"
+            )
+        row.status = "cancelled"
+        row.claimed_at = None
+        row.claimed_by = None
+        row.last_error_code = reason
+        row.decision_actor_id = uuid.UUID(int=0)  # 系统裁决，无操作员 actor
+        row.decision_reason = reason
+        row.decision_digest = expected_digest
         row.decided_at = decided_at
         # Run 已 suppressed（S3-D 先行）时保持；否则投影终态 suppressed。
         if run.output_publish_state != OutputPublishState.SUPPRESSED.value:

@@ -590,6 +590,70 @@ class WorkspaceBridgeRepository:
         ).scalar_one_or_none()
         return unresolved_predecessor is None
 
+    async def create_output_receipt_rejected(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        event_id: uuid.UUID,
+        payload_digest: str,
+        consumer_name: str,
+        reason: str,
+        receipt_tombstone_digest: str,
+        correlation_id: uuid.UUID,
+    ) -> uuid.UUID:
+        """R1-S4-C（S4-C round-4/5 状态表 Tx1）：新建 workspace inbox receipt 为
+        ``rejected`` + tombstone 证据（epoch unknown/stale 拒绝，output 侧）。
+
+        消费 epoch 分类在 ``begin_output_receipt`` 之前，故此处直接 INSERT rejected
+        receipt（不进入 processing）。reason 为具名 code（``epoch_unknown_rejected``
+        / ``epoch_stale_rejected``），``receipt_tombstone_digest`` 为 64-hex 证据
+        （B1f）。幂等：已有行则校验 tombstone 一致返回。
+
+        返回 **inbox 行 PK**：R3 集合锁目标/ledger ``source_row_id`` = inbox 行 PK
+        （与 backfill/verify 的 ``r.source_row_id = t.id`` 匹配），不是 event_id。
+        """
+        existing = (
+            await self._session.execute(
+                select(WorkspaceInboxModel)
+                .where(
+                    WorkspaceInboxModel.tenant_id == tenant_id,
+                    WorkspaceInboxModel.consumer_name == consumer_name,
+                    WorkspaceInboxModel.event_id == event_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            if (
+                existing.status != "rejected"
+                or existing.receipt_tombstone_digest != receipt_tombstone_digest
+            ):
+                raise WorkspaceIntegrationConflictError(
+                    "output receipt rejected state conflicts with existing receipt"
+                )
+            return existing.id
+        receipt_id = uuid.uuid4()
+        self._session.add(
+            WorkspaceInboxModel(
+                id=receipt_id,
+                tenant_id=tenant_id,
+                consumer_name=consumer_name,
+                event_id=event_id,
+                event_type=ASSISTANT_MESSAGE_PUBLISH_REQUESTED_V1,
+                schema_version=1,
+                payload_digest=payload_digest,
+                correlation_id=correlation_id,
+                causation_id=None,
+                status="rejected",
+                last_error_code=reason,
+                receipt_tombstone_state="redacted",
+                receipt_tombstone_digest=receipt_tombstone_digest,
+                created_at=datetime.now(UTC),
+            )
+        )
+        await self._session.flush()
+        return receipt_id
+
     async def begin_output_receipt(
         self,
         *,
@@ -970,6 +1034,130 @@ class WorkspaceBridgeRepository:
         if for_update:
             statement = statement.with_for_update()
         return (await self._session.execute(statement)).scalar_one_or_none()
+
+    async def register_epoch_unresolvable_issue(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        owner_key: str,
+        source_table: str,
+        source_row_id: uuid.UUID,
+        conversation_id: uuid.UUID | None,
+    ) -> None:
+        """R1-S4-C（S4-C round-4/5 状态表 Tx1）：登记 ``epoch_unresolvable`` ledger。
+
+        幂等（唯一键 ON CONFLICT DO NOTHING）。scope 已知 -> ``conversation_scope``
+        （带 conversation_id，ck_..._class_scope 强制）；未知 -> ``tenant_scope``
+        （不带）。
+        """
+        from app.composition.agent_erasure_locks import (
+            acquire_transport_aggregate_lock,
+        )
+
+        # 集合锁（D8 最内层 owner aggregate 位置）；消费路径已持 Guard +
+        # Conversation 行锁 + owner + fence，此处取集合锁与 backfill 同序。
+        await acquire_transport_aggregate_lock(
+            self._session,
+            tenant_id=tenant_id,
+            owner_key=owner_key,
+            source_table=source_table,
+            source_row_id=source_row_id,
+        )
+        from app.composition.agent_transport_backfill import (
+            _recompute_projection,
+            _register_issue,
+        )
+
+        await _register_issue(
+            self._session,
+            tenant_id=tenant_id,
+            owner_key=owner_key,
+            table=source_table,
+            source_row_id=source_row_id,
+            conversation_id=conversation_id,
+            reconcile_class=(
+                "conversation_scope" if conversation_id is not None else "tenant_scope"
+            ),
+            issue_code="epoch_unresolvable",
+        )
+        # R3 (d)：投影重算与 issue 插入同在集合锁临界区内（ledger 唯一事实源，
+        # 行内 scope_reconcile_state 为派生投影）。
+        await _recompute_projection(
+            self._session,
+            table=source_table,
+            tenant_id=tenant_id,
+            owner_key=owner_key,
+            source_row_id=source_row_id,
+        )
+
+    async def terminalize_turn_epoch_rejected(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        event_id: uuid.UUID,
+        payload_digest: str,
+        expected_attempt: int,
+        claimant_id: str,
+        reason: str,
+        decided_at: datetime,
+    ) -> None:
+        """R1-S4-C（S4-C round-4/5 状态表 Tx2）：按 claim CAS 终态化 turn outbox。
+
+        round-7 精确终态三分支：
+        - 已精确终态（``cancelled`` + 清 claim + ``last_error_code=<具名 code>`` +
+          Message ``abandoned`` + 同一 code）-> no-op。
+        - ``status='claimed'`` 且 claim 四元匹配 -> 终态化（``cancelled`` + 清
+          claim + ``last_error_code=reason`` + Message abandoned + 同一 code）。
+        - 其余（pending/dead_letter/published/其他 cancelled）-> fail closed。
+        """
+        from sqlalchemy import select
+
+        row = (
+            await self._session.execute(
+                select(WorkspaceOutboxModel)
+                .where(
+                    WorkspaceOutboxModel.tenant_id == tenant_id,
+                    WorkspaceOutboxModel.id == event_id,
+                    WorkspaceOutboxModel.event_type == TURN_REQUESTED_V1,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            raise WorkspaceIntegrationConflictError("turn outbox event not found")
+        if row.payload_digest != payload_digest:
+            raise WorkspaceIntegrationConflictError("turn epoch-reject digest conflicts")
+        message = await self._require_message_for_update(
+            tenant_id=tenant_id,
+            message_id=row.aggregate_id,
+            conversation_id=row.conversation_id,
+        )
+        already_terminal = (
+            row.status == "cancelled"
+            and row.claimed_by is None
+            and row.claimed_at is None
+            and row.last_error_code == reason
+            and message.turn_dispatch_state == TurnDispatchState.ABANDONED.value
+            and message.turn_dispatch_error_code == reason
+        )
+        if already_terminal:
+            return
+        if (
+            row.status != "claimed"
+            or row.attempt_count != expected_attempt
+            or row.claimed_by != claimant_id
+        ):
+            raise WorkspaceIntegrationConflictError(
+                "turn epoch-reject does not own the current delivery claim"
+            )
+        row.status = "cancelled"
+        row.claimed_at = None
+        row.claimed_by = None
+        row.last_error_code = reason
+        message.turn_dispatch_state = TurnDispatchState.ABANDONED.value
+        message.turn_dispatch_error_code = reason
+        message.turn_dispatch_updated_at = decided_at
+        await self._session.flush()
 
     async def _require_outbox_for_update(
         self, *, tenant_id: uuid.UUID, event_id: uuid.UUID

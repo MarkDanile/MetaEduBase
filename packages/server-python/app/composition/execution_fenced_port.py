@@ -40,6 +40,7 @@ from app.contexts.agent_execution.domain import (
     RunConversationMismatchError,
     RuntimeIngestIdentityMismatchError,
 )
+from app.contexts.agent_workspace.domain.erasure import ErasureFenceState
 from app.contexts.agent_workspace.infrastructure.erasure_repository import (
     AgentErasureRepository,
 )
@@ -160,6 +161,34 @@ class FencedExecutionPort:
             owner_key=_EXECUTION_OWNER_KEY,
             now=None,
         )
+
+    async def read_fence_state(
+        self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> ErasureFenceState:
+        """R1-S4-C（S4-C R4）：**非抛**读取 execution fence 状态（epoch 分类用）。
+
+        与 ``require_active_fence`` 不同：fence 非 active 时**不 raise**，返回
+        真实状态供 ``classify_consume_epoch`` 判定 stale（fence erasing/erased
+        才 stale，round-5 P1-1：stale 走 Tx1/Tx2 双事务而非 raise）。owner lock
+        + fence FOR UPDATE 与 require 同序（Guard -> Conversation -> owner ->
+        fence），缺 fence 按 registry 惰性建 active（与 require 同语义）。仅读
+        状态不裁决、不推进 checkpoint。
+        """
+        from app.composition.agent_erasure_locks import acquire_owner_lock
+
+        await acquire_owner_lock(
+            self._session,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key=_EXECUTION_OWNER_KEY,
+        )
+        fence = await self._erasure.get_or_create_fence_for_update(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key=_EXECUTION_OWNER_KEY,
+            now=None,
+        )
+        return fence.state
 
     async def conversation_purge_revision(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID

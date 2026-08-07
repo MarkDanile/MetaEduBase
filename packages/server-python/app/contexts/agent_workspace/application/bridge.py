@@ -314,6 +314,86 @@ class AgentWorkspaceBridgeService:
             claimant_id=claimant_id,
         )
 
+    async def register_epoch_unresolvable(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        owner_key: str,
+        source_table: str,
+        source_row_id: uuid.UUID,
+        conversation_id: uuid.UUID | None,
+    ) -> None:
+        """R1-S4-C（S4-C round-4/5 状态表 Tx1）：登记 ``epoch_unresolvable`` ledger
+        issue（仅 unknown epoch）。
+
+        幂等（唯一键 ON CONFLICT DO NOTHING）。scope 已知 -> ``conversation_scope``
+        （带 conversation_id）；未知 -> ``tenant_scope``（不带）。
+        """
+        await self._bridge_repo.register_epoch_unresolvable_issue(
+            tenant_id=tenant_id,
+            owner_key=owner_key,
+            source_table=source_table,
+            source_row_id=source_row_id,
+            conversation_id=conversation_id,
+        )
+
+    async def record_output_receipt_rejected(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        event_id: uuid.UUID,
+        payload_digest: str,
+        consumer_name: str,
+        reason: str,
+        receipt_tombstone_digest: str,
+        correlation_id: uuid.UUID,
+    ) -> uuid.UUID:
+        """R1-S4-C（S4-C round-4/5 状态表 Tx1）：workspace inbox receipt 落
+        ``rejected`` + tombstone 证据（epoch unknown/stale 拒绝，output 侧）。
+
+        消费 epoch 分类在 ``begin_output_receipt`` 之前，故此处**新建** receipt 行
+        为 rejected（不进入 processing/consumed）。reason 为具名 code
+        （``epoch_unknown_rejected``/``epoch_stale_rejected``）。返回 inbox 行 PK
+        （R3 ledger ``source_row_id``）。
+        """
+        return await self._bridge_repo.create_output_receipt_rejected(
+            tenant_id=tenant_id,
+            event_id=event_id,
+            payload_digest=payload_digest,
+            consumer_name=consumer_name,
+            reason=reason,
+            receipt_tombstone_digest=receipt_tombstone_digest,
+            correlation_id=correlation_id,
+        )
+
+    async def terminalize_turn_epoch_rejected(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        event_id: uuid.UUID,
+        payload_digest: str,
+        expected_attempt: int,
+        claimant_id: str,
+        reason: str,
+        decided_at: datetime,
+    ) -> None:
+        """R1-S4-C（S4-C round-4/5 状态表 Tx2）：按 claim CAS 终态化 workspace
+        turn outbox（epoch unknown/stale 拒绝）。
+
+        round-7 精确终态：outbox ``cancelled`` + 清 claim + ``last_error_code=<具名
+        code>`` + Message ``abandoned`` + 同一 code；已精确终态 no-op；非 claimed
+        且未精确终态 fail closed（三分支）。
+        """
+        await self._bridge_repo.terminalize_turn_epoch_rejected(
+            tenant_id=tenant_id,
+            event_id=event_id,
+            payload_digest=payload_digest,
+            expected_attempt=expected_attempt,
+            claimant_id=claimant_id,
+            reason=reason,
+            decided_at=decided_at,
+        )
+
     async def retry_turn_dispatch(
         self,
         *,

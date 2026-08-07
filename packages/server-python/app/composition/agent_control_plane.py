@@ -110,6 +110,20 @@ class ConsumeEpochVerdict:
     current_purge_revision: int
 
 
+@dataclass(frozen=True, slots=True)
+class ConsumeEpochOutcome:
+    """R1-S4-C（S4-C round-4/5 状态表）：epoch 拒绝的具名 outcome。
+
+    consume 协调器在 stale/unknown 时**在消费事务内执行 Tx1**（inbox rejected +
+    tombstone 证据 + unknown 时 ledger ``epoch_unresolvable``），**正常提交不
+    raise**（契约 round-5 P1-1）。dispatcher 收到 outcome 后走 Tx2（第二独立
+    事务按 claim CAS 终态化 outbox）。
+    """
+
+    verdict: ConsumeEpochVerdict
+    receipt_tombstone_digest: str  # Tx1 已提交的 64-hex 证据（B1f）
+
+
 def classify_consume_epoch(
     *,
     producer_purge_revision: int | None,
@@ -248,7 +262,10 @@ class ConversationExecutionCoordinator:
         claimed: ClaimedWorkspaceEvent,
         *,
         consumed_at: datetime,
-    ) -> tuple[AgentRun, InboxAckV1, bool, ErasureFence]:
+    ) -> (
+        tuple[AgentRun, InboxAckV1, bool, ErasureFence]
+        | ConsumeEpochOutcome
+    ):
         """R1-S3-C round-7 commit-18：verdict 内建（不再 callback 参数）。
 
         Guard + Conversation 行锁内、writer commit 前调
@@ -256,6 +273,11 @@ class ConversationExecutionCoordinator:
         AND replay 都走 verdict）；erasing/erased fence raise
         ``LateBodyWriteRejectedError``。返回 fence 对象供 caller 在
         ``created=True`` 时 ``advance_checkpoint``。
+
+        R1-S4-C（S4-C round-4/5 状态表）：stale/unknown epoch 时**在消费事务内
+        执行 Tx1**（inbox rejected + tombstone 证据 + unknown 时 ledger
+        ``epoch_unresolvable``），**正常提交不 raise**，返回 ``ConsumeEpochOutcome``
+        供 dispatcher 走 Tx2（第二独立事务终态化 outbox）。
         """
         from app.composition.execution_fenced_port import FencedExecutionPort
 
@@ -272,16 +294,15 @@ class ConversationExecutionCoordinator:
             include_deleted=False,
         )
         await self._workspace.validate_turn_claim(claimed)
-        # verdict-before-writer unconditional（commit-1 恢复 Conv FOR UPDATE
-        # 后，verdict 在 Guard + Conv 行锁内调 owner lock + fence FOR UPDATE
-        # 不再与 fenced_* writer 形成 2-way deadlock）。
-        fence = await FencedExecutionPort(self._session).require_active_fence(
+        # R1-S4-C（S4-C C3/R4）：epoch 分类**先于** fence 裁决（round-5 P1-1）——
+        # ``require_active_fence`` 在 fence 非 active 时 raise，会吞掉 stale 分支
+        # （stale 必须走 Tx1/Tx2 双事务而非 raise）。用非抛 fence 状态读取做分类；
+        # normal 才继续进 require_active_fence（S3-E fence 裁决语义保持）。
+        port = FencedExecutionPort(self._session)
+        fence_state = await port.read_fence_state(
             tenant_id=event.tenant_id,
             conversation_id=event.conversation_id,
         )
-        # R1-S4-C（S4-C C3/R4）：epoch 分类（Guard + Conversation 行锁 +
-        # fence 裁决后）。stale/unknown -> EpochRejectedError 走双事务协议；
-        # normal 保持现有消费路径。
         current_revision, _purge_state = await self._conversation_epoch_state(
             tenant_id=event.tenant_id,
             conversation_id=event.conversation_id,
@@ -289,10 +310,23 @@ class ConversationExecutionCoordinator:
         verdict = classify_consume_epoch(
             producer_purge_revision=claimed.producer_purge_revision,
             current_purge_revision=current_revision,
-            fence_state=fence.state,
+            fence_state=fence_state,
         )
-        if verdict.kind in {"stale", "unknown", "data_anomaly"}:
+        if verdict.kind in {"stale", "unknown"}:
+            return await self._tx1_epoch_rejected(
+                claimed=claimed,
+                verdict=verdict,
+            )
+        if verdict.kind == "data_anomaly":
+            # R1（round-1 P0-2 数据面）：epoch > 当前分支 fail closed——不消费、
+            # 不登记 issue（无受控 issue_code，C7 不变），消息留在 outbox 不处理。
             raise EpochRejectedError(verdict)
+        # normal：fence 裁决（owner lock + fence FOR UPDATE，state=active 才放行；
+        # erasing/erased -> LateBodyWriteRejectedError，S3-E 语义保持）。
+        fence = await port.require_active_fence(
+            tenant_id=event.tenant_id,
+            conversation_id=event.conversation_id,
+        )
         run, ack, created = await self._execution.consume_turn_requested(
             event=event,
             payload_digest=claimed.payload_digest,
@@ -301,6 +335,65 @@ class ConversationExecutionCoordinator:
             consumed_at=consumed_at,
         )
         return run, ack, created, fence
+
+    async def _tx1_epoch_rejected(
+        self,
+        *,
+        claimed: ClaimedWorkspaceEvent,
+        verdict: ConsumeEpochVerdict,
+    ) -> ConsumeEpochOutcome:
+        """R1-S4-C（S4-C round-4/5 状态表）Tx1：消费事务内写 inbox 证据。
+
+        - inbox receipt：``status='rejected'`` + 具名 code（``epoch_unknown_rejected``
+          / ``epoch_stale_rejected``）+ ``receipt_tombstone_state='redacted'`` +
+          ``receipt_tombstone_digest=<64-hex>``（B1f，同事务）。
+        - ledger（仅 unknown）：登记 ``epoch_unresolvable``（scope 已知
+          ``conversation_scope`` / 未知 ``tenant_scope``）。
+
+        消费事务**正常提交不 raise**；返回 outcome 供 dispatcher 走 Tx2。
+        """
+        event = claimed.event
+        reason = (
+            "epoch_unknown_rejected"
+            if verdict.kind == "unknown"
+            else "epoch_stale_rejected"
+        )
+        # inbox tombstone 证据 = canonical digest（含 reason + event_id，B1f）。
+        from app.contexts.agent_execution.domain.snapshots import snapshot_digest
+
+        receipt_tombstone_digest = snapshot_digest(
+            {
+                "schema_version": 1,
+                "reason": reason,
+                "event_id": str(event.event_id),
+            }
+        )
+        receipt_id = await self._execution.record_turn_receipt_rejected(
+            tenant_id=event.tenant_id,
+            event_id=event.event_id,
+            payload_digest=claimed.payload_digest,
+            consumer_name="agent_execution.turn_requested.v1",
+            reason=reason,
+            receipt_tombstone_digest=receipt_tombstone_digest,
+            correlation_id=event.correlation_id,
+        )
+        if verdict.kind == "unknown":
+            # 登记 epoch_unresolvable（unknown epoch 才登记；stale 不登记，round-4
+            # P1-b）。scope 已知 -> conversation_scope（带 conversation_id）；未知
+            # -> tenant_scope（不带）。
+            await self._execution.register_epoch_unresolvable(
+                tenant_id=event.tenant_id,
+                owner_key="execution.transport.v1",
+                source_table="agent_execution_inbox",
+                # R3：ledger source_row_id = inbox 行 PK（与 backfill/verify 的
+                # r.source_row_id = t.id 匹配），不是 event_id。
+                source_row_id=receipt_id,
+                conversation_id=event.conversation_id,
+            )
+        return ConsumeEpochOutcome(
+            verdict=verdict,
+            receipt_tombstone_digest=receipt_tombstone_digest,
+        )
 
     async def start_run(
         self,
@@ -344,7 +437,7 @@ class ConversationExecutionCoordinator:
         claimed: ClaimedExecutionEvent,
         *,
         consumed_at: datetime,
-    ) -> InboxAckV1:
+    ) -> InboxAckV1 | ConsumeEpochOutcome:
         from app.composition.execution_fenced_port import FencedExecutionPort
 
         event = claimed.event
@@ -355,10 +448,11 @@ class ConversationExecutionCoordinator:
         )
         await self._workspace.lock_output_conversation(event)
         await self._execution.validate_output_claim(claimed)
-        # R1-S4-C（S4-C C3/R4）：output 路径取 execution.core.v1 fence 状态做
-        # epoch 分类（消费 execution outbox 事件）。stale/unknown ->
-        # EpochRejectedError 走双事务协议；normal 保持现有消费路径。
-        fence = await FencedExecutionPort(self._session).require_active_fence(
+        # R1-S4-C（S4-C C3/R4）：epoch 分类**先于** fence 裁决（round-5 P1-1）——
+        # ``require_active_fence`` 在 fence 非 active 时 raise，会吞掉 stale 分支。
+        # 用非抛 fence 状态读取做分类；normal 才继续进 require_active_fence。
+        port = FencedExecutionPort(self._session)
+        fence_state = await port.read_fence_state(
             tenant_id=event.tenant_id,
             conversation_id=event.conversation_id,
         )
@@ -369,16 +463,92 @@ class ConversationExecutionCoordinator:
         verdict = classify_consume_epoch(
             producer_purge_revision=claimed.producer_purge_revision,
             current_purge_revision=current_revision,
-            fence_state=fence.state,
+            fence_state=fence_state,
         )
-        if verdict.kind in {"stale", "unknown", "data_anomaly"}:
+        if verdict.kind in {"stale", "unknown"}:
+            # R1-S4-C（S4-C round-4/5 状态表）：Tx1 在消费事务内正常提交 inbox
+            # rejected + tombstone 证据（+ unknown 时 ledger）；返回 outcome 供
+            # dispatcher 在下一独立事务走 Tx2。
+            return await self._tx1_output_epoch_rejected(
+                claimed=claimed,
+                verdict=verdict,
+            )
+        if verdict.kind == "data_anomaly":
+            # R1（round-1 P0-2 数据面）：epoch > 当前分支 fail closed——不消费、
+            # 不登记 issue（无受控 issue_code，C7 不变），消息留在 outbox 不处理。
             raise EpochRejectedError(verdict)
+        # normal：fence 裁决（owner lock + fence FOR UPDATE，state=active 才放行；
+        # erasing/erased -> LateBodyWriteRejectedError，S3-E 语义保持）。
+        await port.require_active_fence(
+            tenant_id=event.tenant_id,
+            conversation_id=event.conversation_id,
+        )
         return await self._workspace.consume_assistant_publish(
             event=event,
             payload_digest=claimed.payload_digest,
             delivery_attempt=claimed.attempt_count,
             claimant_id=claimed.claimant_id,
             consumed_at=consumed_at,
+        )
+
+    async def _tx1_output_epoch_rejected(
+        self,
+        *,
+        claimed: ClaimedExecutionEvent,
+        verdict: ConsumeEpochVerdict,
+    ) -> ConsumeEpochOutcome:
+        """R1-S4-C（S4-C round-4/5 状态表）Tx1（output 侧）：消费事务内写 workspace
+        inbox 证据。
+
+        - inbox receipt：``status='rejected'`` + 具名 code（``epoch_unknown_rejected``
+          / ``epoch_stale_rejected``）+ ``receipt_tombstone_state='redacted'`` +
+          ``receipt_tombstone_digest=<64-hex>``（B1f，同事务）。
+        - ledger（仅 unknown）：登记 ``epoch_unresolvable``（scope 已知
+          ``conversation_scope`` / 未知 ``tenant_scope``）。
+
+        消费事务**正常提交不 raise**；返回 outcome 供 dispatcher 走 Tx2。
+        """
+        event = claimed.event
+        reason = (
+            "epoch_unknown_rejected"
+            if verdict.kind == "unknown"
+            else "epoch_stale_rejected"
+        )
+        # inbox tombstone 证据 = canonical digest（含 reason + event_id，B1f）。
+        from app.contexts.agent_execution.domain.snapshots import snapshot_digest
+
+        receipt_tombstone_digest = snapshot_digest(
+            {
+                "schema_version": 1,
+                "reason": reason,
+                "event_id": str(event.event_id),
+            }
+        )
+        receipt_id = await self._workspace.record_output_receipt_rejected(
+            tenant_id=event.tenant_id,
+            event_id=event.event_id,
+            payload_digest=claimed.payload_digest,
+            consumer_name="agent_workspace.assistant_publish.v1",
+            reason=reason,
+            receipt_tombstone_digest=receipt_tombstone_digest,
+            correlation_id=event.correlation_id,
+        )
+        if verdict.kind == "unknown":
+            # 登记 epoch_unresolvable（unknown epoch 才登记；stale 不登记，round-4
+            # P1-b）。scope 已知 -> conversation_scope（带 conversation_id）；未知
+            # -> tenant_scope（不带）。
+            await self._workspace.register_epoch_unresolvable(
+                tenant_id=event.tenant_id,
+                owner_key="workspace.transport.v1",
+                source_table="agent_workspace_inbox",
+                # R3：ledger source_row_id = inbox 行 PK（与 backfill/verify 的
+                # r.source_row_id = t.id 匹配），不是 event_id。
+                source_row_id=receipt_id,
+                conversation_id=event.conversation_id,
+            )
+        return ConsumeEpochOutcome(
+            verdict=verdict,
+            receipt_tombstone_digest=receipt_tombstone_digest,
         )
 
     async def delete_conversation(
@@ -675,24 +845,40 @@ class AgentBridgeDispatcher:
             # advance 仅 ``created=True`` 时调。
             from app.composition.execution_fenced_port import FencedExecutionPort
 
+            outcome: ConsumeEpochOutcome | None = None
             async with self._session_factory() as session, session.begin():
                 port = FencedExecutionPort(session)
-                run, ack, created, fence = await ConversationExecutionCoordinator(
+                result = await ConversationExecutionCoordinator(
                     session
                 ).consume_turn_event(
                     claimed,
                     consumed_at=datetime.now(UTC),
                 )
-                if created:
-                    await port.advance_checkpoint(
-                        fence=fence,
-                        conversation_id=claimed.event.conversation_id,
-                        source_key="run_context_body",
-                        watermark=run.queue_seq,
-                    )
+                if isinstance(result, ConsumeEpochOutcome):
+                    # R1-S4-C（S4-C round-4/5 状态表）：Tx1 已在消费事务内提交
+                    # （inbox rejected + tombstone 证据 + unknown 时 ledger）。
+                    # 消费事务正常提交（不 raise）；Tx2 在下一独立事务终态化 outbox。
+                    outcome = result
+                else:
+                    run, ack, created, fence = result
+                    if created:
+                        await port.advance_checkpoint(
+                            fence=fence,
+                            conversation_id=claimed.event.conversation_id,
+                            source_key="run_context_body",
+                            watermark=run.queue_seq,
+                        )
+            if outcome is not None:
+                await self._tx2_epoch_rejected(claimed=claimed, outcome=outcome)
+                return None
             async with self._session_factory() as session, session.begin():
                 await AgentWorkspaceBridgeService(session).acknowledge_turn(ack)
             return run
+        except EpochRejectedError:
+            # R1-S4-C（R1/round-1 P0-2）：data_anomaly（producer epoch > 当前）
+            # fail closed——不消费、不登记 issue、**不记 delivery failure**（不
+            # retry-forever→dead_letter），事件留在 outbox 由运维/backfill 收敛。
+            raise
         except Exception as exc:
             await self._record_turn_failure(claimed=claimed, exc=exc)
             raise
@@ -706,13 +892,29 @@ class AgentBridgeDispatcher:
                 f"execution event {claimed.event_id} was quarantined: {claimed.error_code}"
             )
         try:
+            outcome: ConsumeEpochOutcome | None = None
             async with self._session_factory() as session, session.begin():
-                ack = await ConversationExecutionCoordinator(
+                result = await ConversationExecutionCoordinator(
                     session, output_reader=self._output_reader
                 ).consume_output_event(claimed, consumed_at=datetime.now(UTC))
+                if isinstance(result, ConsumeEpochOutcome):
+                    # R1-S4-C（S4-C round-4/5 状态表）：Tx1 已在消费事务内提交
+                    # （inbox rejected + tombstone 证据 + unknown 时 ledger）。
+                    # 消费事务正常提交（不 raise）；Tx2 在下一独立事务终态化 outbox。
+                    outcome = result
+                else:
+                    ack = result
+            if outcome is not None:
+                await self._tx2_output_epoch_rejected(claimed=claimed, outcome=outcome)
+                return True
             async with self._session_factory() as session, session.begin():
                 await AgentExecutionBridgeService(session).acknowledge_output(ack)
             return True
+        except EpochRejectedError:
+            # R1-S4-C（R1/round-1 P0-2）：data_anomaly（producer epoch > 当前）
+            # fail closed——不消费、不登记 issue、**不记 delivery failure**（不
+            # retry-forever→dead_letter），事件留在 outbox 由运维/backfill 收敛。
+            raise
         except (LateBodyWriteRejectedError, LateOutputReadRejectedError):
             # R1-S3-E §8：purge 拦截的迟到 publish 是 deterministic 结果（重试永远
             # 无法写入正文，R1-AC8 不盲重试正文写）。两类来源统一处理：
@@ -730,6 +932,77 @@ class AgentBridgeDispatcher:
         except Exception as exc:
             await self._record_output_failure(claimed=claimed, exc=exc)
             raise
+
+    async def _tx2_epoch_rejected(
+        self,
+        *,
+        claimed: ClaimedWorkspaceEvent,
+        outcome: ConsumeEpochOutcome,
+    ) -> None:
+        """R1-S4-C（S4-C round-4/5 状态表 Tx2）：第二独立事务按 claim CAS 终态化
+        workspace turn outbox。
+
+        - outbox：``status='cancelled'`` + 清 claim + ``last_error_code=<具名 code>``
+          （round-8：workspace 两个 error_code 字段同 code）。
+        - Message：``turn_dispatch_state='abandoned'`` + ``turn_dispatch_error_code``
+          = 同一具名 code（schema 已支持 abandoned，round-7 精确终态）。
+        - 幂等：outbox 已处精确终态（cancelled + 清 claim + 同一 code + Message
+          abandoned）-> no-op；``status='claimed'`` 且 claim 匹配 -> 续做；其余
+          fail closed（round-7 三分支）。
+        """
+        event = claimed.event
+        reason = (
+            "epoch_unknown_rejected"
+            if outcome.verdict.kind == "unknown"
+            else "epoch_stale_rejected"
+        )
+        async with self._session_factory() as session, session.begin():
+            await AgentWorkspaceBridgeService(session).terminalize_turn_epoch_rejected(
+                tenant_id=event.tenant_id,
+                event_id=event.event_id,
+                payload_digest=claimed.payload_digest,
+                expected_attempt=claimed.attempt_count,
+                claimant_id=claimed.claimant_id,
+                reason=reason,
+                decided_at=datetime.now(UTC),
+            )
+
+    async def _tx2_output_epoch_rejected(
+        self,
+        *,
+        claimed: ClaimedExecutionEvent,
+        outcome: ConsumeEpochOutcome,
+    ) -> None:
+        """R1-S4-C（S4-C round-4/5 状态表 Tx2）：第二独立事务按 claim CAS 终态化
+        execution output outbox（epoch unknown/stale 拒绝）。
+
+        - outbox：``status='cancelled'`` + 清 claim + decision 四元全写
+          （``decision_actor_id=UUID(0)`` + ``decision_reason=<具名 code>`` +
+          ``decision_digest=snapshot_digest(envelope)`` + ``decided_at``，满足
+          ``ck_agent_exec_outbox_decision`` 全有或全无 CHECK）。
+        - Run：``output_publish_state='suppressed'``（同事务，S3-E 同模式）。
+        - 幂等三分支：已精确终态 no-op；``status='claimed'`` 且 claim 匹配续做；
+          其余 fail closed（round-7）。
+        """
+        event = claimed.event
+        reason = (
+            "epoch_unknown_rejected"
+            if outcome.verdict.kind == "unknown"
+            else "epoch_stale_rejected"
+        )
+        async with self._session_factory() as session, session.begin():
+            await AgentExecutionBridgeService(
+                session
+            ).terminalize_output_epoch_rejected(
+                tenant_id=event.tenant_id,
+                event_id=event.event_id,
+                payload_digest=claimed.payload_digest,
+                expected_attempt=claimed.attempt_count,
+                claimant_id=claimed.claimant_id,
+                reason=reason,
+                receipt_tombstone_digest=outcome.receipt_tombstone_digest,
+                decided_at=datetime.now(UTC),
+            )
 
     async def _claim_turn(
         self, *, event_id: uuid.UUID | None
