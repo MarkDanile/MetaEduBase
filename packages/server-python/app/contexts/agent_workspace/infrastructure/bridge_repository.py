@@ -59,7 +59,20 @@ class WorkspaceBridgeRepository:
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def add_turn_outbox(self, event: TurnRequestedV1) -> WorkspaceOutboxModel:
+    async def add_turn_outbox(
+        self,
+        event: TurnRequestedV1,
+        *,
+        conversation_id: uuid.UUID,
+        producer_purge_revision: int,
+    ) -> WorkspaceOutboxModel:
+        """R1-S4-C（S4-C C1/C2）：turn outbox 新写带结构化 owner scope。
+
+        ``conversation_id`` 与 ``producer_purge_revision`` 由调用方在产生同
+        事务、Conversation 行锁仍持有时传入（epoch 必须是该锁下行读到的
+        ``Conversation.purge_revision``，禁拿 fence CAS revision/时间戳冒充，
+        R1）。幂等重放（命中既有行）不重写 scope/epoch（R2/C2）。
+        """
         digest = integration_event_digest(event)
         existing = await self._turn_outbox_for_message(
             tenant_id=event.tenant_id,
@@ -81,6 +94,8 @@ class WorkspaceBridgeRepository:
             payload_digest=digest,
             correlation_id=event.correlation_id,
             causation_id=event.causation_id,
+            conversation_id=conversation_id,
+            producer_purge_revision=producer_purge_revision,
             status="pending",
             attempt_count=0,
             next_attempt_at=event.occurred_at,

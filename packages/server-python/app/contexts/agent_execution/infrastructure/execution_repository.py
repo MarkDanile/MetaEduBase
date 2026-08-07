@@ -724,7 +724,14 @@ class AgentExecutionRepository:
         expected_revision: int,
         result: TerminalResult,
         cancel_intent_revision: int | None = None,
+        producer_purge_revision: int | None = None,
     ) -> tuple[AgentRun, RunEvent | None, bool]:
+        """R1-S4-C（S4-C C2）：``producer_purge_revision`` 由 composition 层
+        （fenced_commit_terminal）在 Conversation 行锁内读真实
+        ``Conversation.purge_revision`` 传入；本层只接收值、不读 workspace
+        ORM（跨 bounded-context 边界）。idempotent replay（terminal digest
+        命中）不重写 scope/epoch（C2/R6）。
+        """
         digest = snapshot_digest(result.model_dump(mode="json"))
         row = await self._require_run_for_update(tenant_id=tenant_id, run_id=run_id)
         current_status = RunStatus(row.status)
@@ -862,6 +869,8 @@ class AgentExecutionRepository:
                     payload_digest=integration_event_digest(publish_event),
                     correlation_id=row.correlation_id,
                     causation_id=event.id,
+                    conversation_id=row.conversation_id,
+                    producer_purge_revision=producer_purge_revision,
                     status="pending",
                     attempt_count=0,
                     next_attempt_at=now,
