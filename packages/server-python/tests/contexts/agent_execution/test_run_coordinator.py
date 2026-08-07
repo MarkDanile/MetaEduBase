@@ -31,6 +31,7 @@ from app.contexts.agent_execution.infrastructure.models import (
     RunEventModel,
     TurnInputModel,
 )
+from app.contexts.agent_workspace.infrastructure.models import ConversationModel
 from tests.contexts.agent_execution.e1_helpers import (
     TENANT_A,
     TENANT_B,
@@ -276,6 +277,15 @@ async def test_fifo_and_predecessor_projection_barrier(db_session):
             output_media_type="text/markdown",
             output_classification=SnapshotClassification.INTERNAL,
             terminal_message_id=uuid.uuid4(),
+        ),
+        # R1-S4-C（S4-C C2）：COMPLETED 写 publish outbox 需带真实 epoch。
+        producer_purge_revision=(
+            await db_session.scalar(
+                select(ConversationModel.purge_revision).where(
+                    ConversationModel.tenant_id == TENANT_A,
+                    ConversationModel.id == conversation_id,
+                )
+            )
         ),
     )
     assert terminal_event is not None

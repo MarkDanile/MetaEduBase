@@ -39,6 +39,7 @@ from app.contexts.agent_execution.infrastructure.models import (
     RunEventModel,
     RuntimeSessionBindingModel,
 )
+from app.contexts.agent_workspace.infrastructure.models import ConversationModel
 from tests.conftest import TEST_DB_URL
 from tests.contexts.agent_execution.e1_helpers import (
     READONLY_NATIVE_CAPABILITIES,
@@ -734,6 +735,15 @@ async def test_canonical_terminal_is_atomic_idempotent_and_conflict_closed(db_se
         expected_status=RunStatus.RUNNING,
         expected_revision=run.status_revision,
         result=result,
+        # R1-S4-C（S4-C C2）：COMPLETED 写 publish outbox 需带真实 epoch。
+        producer_purge_revision=(
+            await db_session.scalar(
+                select(ConversationModel.purge_revision).where(
+                    ConversationModel.tenant_id == TENANT_A,
+                    ConversationModel.id == command.conversation_id,
+                )
+            )
+        ),
     )
     assert transient.status is RunStatus.COMPLETED
     assert transient.output_publish_state is OutputPublishState.PENDING
@@ -763,6 +773,15 @@ async def test_canonical_terminal_is_atomic_idempotent_and_conflict_closed(db_se
         expected_status=RunStatus.RUNNING,
         expected_revision=run.status_revision,
         result=result,
+        # R1-S4-C（S4-C C2）：COMPLETED 写 publish outbox 需带真实 epoch。
+        producer_purge_revision=(
+            await db_session.scalar(
+                select(ConversationModel.purge_revision).where(
+                    ConversationModel.tenant_id == TENANT_A,
+                    ConversationModel.id == command.conversation_id,
+                )
+            )
+        ),
     )
     assert terminal.status is RunStatus.COMPLETED
     assert event is not None

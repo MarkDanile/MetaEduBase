@@ -90,6 +90,15 @@ async def _completed_run(db_session, session_factory, *, content: bytes):
                 output_classification=SnapshotClassification.INTERNAL,
                 terminal_message_id=terminal_message_id,
             ),
+            # R1-S4-C（S4-C C2）：COMPLETED 写 publish outbox 需带真实 epoch。
+            producer_purge_revision=(
+                await session.scalar(
+                    select(ConversationModel.purge_revision).where(
+                        ConversationModel.tenant_id == TENANT_ID,
+                        ConversationModel.id == conversation_id,
+                    )
+                )
+            ),
         )
     return conversation_id, completed, terminal_message_id
 

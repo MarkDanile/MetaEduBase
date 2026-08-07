@@ -81,6 +81,20 @@ class WorkspaceBridgeRepository:
         )
         if existing is not None:
             self._validate_outbox(existing, event=event, payload_digest=digest)
+            # R1-S4-C（S4-C C2，round-1 P1-3）：existing 分支（幂等命中）必须
+            # 校验传入的 scope/epoch 与既有行一致——防 A→B 用不同 conversation
+            # 重放命中后静默接受。既有行 scope/epoch 为 NULL（历史行）时不做
+            # 值比较（重放不补写，R6）；非 NULL 必须与传入值一致。
+            if (
+                existing.conversation_id is not None
+                and existing.conversation_id != conversation_id
+            ) or (
+                existing.producer_purge_revision is not None
+                and existing.producer_purge_revision != producer_purge_revision
+            ):
+                raise WorkspaceIntegrationConflictError(
+                    "turn outbox scope/epoch conflicts with the existing row"
+                )
             return existing
         row = WorkspaceOutboxModel(
             id=event.event_id,

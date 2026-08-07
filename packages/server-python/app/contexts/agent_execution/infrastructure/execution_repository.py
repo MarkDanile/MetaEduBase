@@ -798,6 +798,16 @@ class AgentExecutionRepository:
         row.terminal_result_digest = digest
         row.usage_summary = result.usage.model_dump(mode="json")
         if target_status is RunStatus.COMPLETED:
+            # R1-S4-C（S4-C C2，round-1 P1-1）：COMPLETED 会写 publish outbox，
+            # 新写必须带真实 epoch（Conversation.purge_revision，行锁内读）。
+            # 禁止裸调用产出「conversation_id 非 NULL + epoch NULL」行——否则
+            # R5 verify 无法与历史 unknown-epoch 行区分（epoch_unresolvable）。
+            if producer_purge_revision is None:
+                raise RunConflictError(
+                    "completed terminal requires producer_purge_revision "
+                    "(Conversation.purge_revision under lock); refusing to "
+                    "write a NULL-epoch publish outbox"
+                )
             assert result.output_ref is not None
             assert result.output_digest is not None
             assert result.output_size is not None

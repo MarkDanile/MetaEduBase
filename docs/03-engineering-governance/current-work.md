@@ -30,8 +30,8 @@
 - 架构约束：docs/03-engineering-governance/01-rules/architecture.md
 
 当前进展：PR-A 范围 = writer 真实 scope/epoch（workspace `add_turn_outbox` 复用 `submit_turn` 既有 Conversation 行锁、execution `commit_terminal` 建 outbox 行前取 Conversation 行锁读 `Conversation.purge_revision`；幂等重放不重写、NULL 旧行不补写）+ S4-B catch-up（自 tenant 起点、无跨调用游标、扫描四分支、verify 双维不用守卫）。
-下一步：TDD 逐 writer 实现 + 反例（禁伪造 epoch：不用 fence.purge_revision/fence.revision/Conversation revision/时间戳）+ catch-up 幂等重扫测试；Draft + `Backend iteration` risk-targeted；稳定后转 Ready 最新 HEAD Backend full。
-验证状态：待实现——C8 项 1/4/5/9（传播链四跳一致、禁伪造 epoch、幂等重放不重写、catch-up 无游标 + verify 双维）；`erase_available` 保持 False；不改 migration 040、不实现 041。
+下一步：round-1 三面复审完成（P0=0 / P1=10 / P2=10 / P3=6），按根因族一次返修——① 仓库层 COMPLETED 写 outbox 强制非 NULL epoch + 裸测试调用方补 epoch；② `conversation_purge_revision` 自持 FOR UPDATE 锁；③ workspace existing 分支校验 scope/epoch 一致；④ 测试判别力（execution anti-forgery、catch-up NULL-scope 行、R6 execution 重放不重写、跨 tenant fail-closed）。返修完成待复核；Draft + `Backend iteration` risk-targeted 绿；P0/P1 清零、定向回归稳定后转 Ready 最新 HEAD Backend full。
+验证状态：Draft + `Backend iteration` risk-targeted 绿（HEAD `119cdd34` 基线 + round-1 返修后待重跑）；PR-A 专项 8 passed + 邻近 agent_execution 174 + control_plane/composition 430 + transport 专项全绿；ruff 0；mypy baseline 0 回归；`erase_available` 保持 False；不改 migration 040、不实现 041。
 交接备注：本 PR 只验证其风险域子集，不声明「六元 CAS」「四跳一致」（C8 merged-boundary 验收）；PR-B（Claim/consumer CAS + deterministic terminalization）在 PR-A 合并后启动。
 
 ## 下一批候选任务

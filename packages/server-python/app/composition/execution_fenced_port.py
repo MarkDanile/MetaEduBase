@@ -166,17 +166,20 @@ class FencedExecutionPort:
     ) -> int:
         """R1-S4-C（S4-C C1）：execution 侧 producer epoch 的真实来源。
 
-        读取 ``Conversation.purge_revision``（Conversation 行锁内同事务读，
-        调用方已持 Guard + Conversation 行锁）。**不得**用 fence CAS revision /
-        fence ``purge_revision``（对齐值非快照）/ Conversation revision /
-        时间戳冒充（R1）。
+        读取 ``Conversation.purge_revision`` 并**自持 Conversation 行锁
+        （FOR UPDATE，round-1 P1-2 修订）**——不依赖调用方已持锁的隐式约定，
+        R1 的「行锁内同事务读取」由本方法自身保证。**不得**用 fence CAS
+        revision / fence ``purge_revision``（对齐值非快照）/ Conversation
+        revision / 时间戳冒充（R1）。
         """
         value = (
             await self._session.execute(
-                select(ConversationModel.purge_revision).where(
+                select(ConversationModel.purge_revision)
+                .where(
                     ConversationModel.tenant_id == tenant_id,
                     ConversationModel.id == conversation_id,
                 )
+                .with_for_update()
             )
         ).scalar_one_or_none()
         if value is None:
