@@ -31,8 +31,15 @@ from app.contexts.agent_workspace.application.ports import (
     TerminalOutputReaderPort,
 )
 from app.contexts.agent_workspace.domain import Conversation, TurnDispatchState
-from app.contexts.agent_workspace.domain.erasure import ErasureFence
-from app.contexts.agent_workspace.domain.errors import LateBodyWriteRejectedError
+from app.contexts.agent_workspace.domain.erasure import (
+    ErasureFence,
+    ErasureFenceState,
+)
+from app.contexts.agent_workspace.domain.errors import (
+    ConversationNotFoundError,
+    LateBodyWriteRejectedError,
+)
+from app.contexts.agent_workspace.infrastructure.models import ConversationModel
 from app.shared.schemas.agent_integration import InboxAckV1, TurnLaunchSpecV1
 
 
@@ -73,13 +80,53 @@ class ConversationExecutionGuard:
         )
 
 
-def conversation_guard_key(
-    tenant_id: uuid.UUID, conversation_id: uuid.UUID
-) -> int:
+@dataclass(frozen=True, slots=True)
+class ConsumeEpochVerdict:
+    """R1-S4-C（S4-C C3/R4）：消费时点的 epoch 分类（deterministic outcome）。
+
+    - ``normal``：producer epoch == 当前且 fence active -> 正常消费。
+    - ``stale``：producer epoch < 当前且 fence 非 active（purge 已推进）-> 迟到
+      写，Tx1 tombstone 证据 + Tx2 终态化，**不**登记 ledger。
+    - ``unknown``：producer epoch 缺失（历史 NULL 行）-> Tx1 inbox rejected +
+      tombstone 证据 + ledger ``epoch_unresolvable`` + Tx2 终态化。
+    - ``data_anomaly``：producer epoch > 当前（fence 对齐窗口制造）-> fail
+      closed，不消费、不登记（C3）。
+    """
+
+    kind: str  # normal | stale | unknown | data_anomaly
+    current_purge_revision: int
+
+
+def classify_consume_epoch(
+    *,
+    producer_purge_revision: int | None,
+    current_purge_revision: int,
+    fence_state: ErasureFenceState,
+) -> ConsumeEpochVerdict:
+    """按契约 R4 分类消费 epoch（Guard + Conversation 行锁后、fence 裁决处）。
+
+    stale 判定须同时看 fence 状态：仅当 fence erasing/erased（purge 已推进）才
+    stale；soft-delete（SCHEDULED）/restore 推进 token 但 fence 仍 active 时，
+    pre-existing 事件**不得**仅因 token 推进被 tombstone（R4 carve-out）。
+    """
+    if producer_purge_revision is None:
+        return ConsumeEpochVerdict(kind="unknown", current_purge_revision=current_purge_revision)
+    if producer_purge_revision > current_purge_revision:
+        return ConsumeEpochVerdict(
+            kind="data_anomaly", current_purge_revision=current_purge_revision
+        )
+    if producer_purge_revision < current_purge_revision:
+        # 仅 fence 非 active（purge 进行中/已完成）才 stale；fence active
+        # （soft-delete/restore）视为 normal（R4）。
+        if fence_state not in {ErasureFenceState.ERASING, ErasureFenceState.ERASED}:
+            return ConsumeEpochVerdict(kind="normal", current_purge_revision=current_purge_revision)
+        return ConsumeEpochVerdict(kind="stale", current_purge_revision=current_purge_revision)
+    return ConsumeEpochVerdict(kind="normal", current_purge_revision=current_purge_revision)
+
+
+def conversation_guard_key(tenant_id: uuid.UUID, conversation_id: uuid.UUID) -> int:
     material = tenant_id.bytes + conversation_id.bytes
-    return int.from_bytes(
-        hashlib.sha256(material).digest()[:8], byteorder="big", signed=True
-    )
+    return int.from_bytes(hashlib.sha256(material).digest()[:8], byteorder="big", signed=True)
 
 
 class WorkspaceRunStartBarrier:
@@ -94,9 +141,7 @@ class WorkspaceRunStartBarrier:
     docstring 明确语义，避免误判"重复锁"为 AB-BA 风险。
     """
 
-    def __init__(
-        self, workspace: AgentWorkspaceBridgeService, *, actor_id: uuid.UUID
-    ):
+    def __init__(self, workspace: AgentWorkspaceBridgeService, *, actor_id: uuid.UUID):
         self._workspace = workspace
         self._actor_id = actor_id
 
@@ -136,6 +181,32 @@ class ConversationExecutionCoordinator:
             resource_access=resource_access,
         )
         self._execution = AgentExecutionBridgeService(session)
+
+    async def _conversation_epoch_state(
+        self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> tuple[int, str]:
+        """Guard + Conversation 行锁内读当前 purge_revision + purge_state。
+
+        R1-S4-C（S4-C C3/R4）：epoch 分类用 Conversation 当前 purge_revision
+        （行锁内读，非 fence 对齐值）。调用方已持 Guard + Conversation 行锁，
+        此处重读同值不新增锁。
+        """
+        row = (
+            await self._session.execute(
+                select(
+                    ConversationModel.purge_revision,
+                    ConversationModel.purge_state,
+                ).where(
+                    ConversationModel.tenant_id == tenant_id,
+                    ConversationModel.id == conversation_id,
+                )
+            )
+        ).one_or_none()
+        if row is None:
+            raise ConversationNotFoundError(
+                f"conversation {conversation_id} not found for epoch verdict"
+            )
+        return int(row[0]), str(row[1])
 
     async def submit_turn(
         self,
@@ -219,9 +290,7 @@ class ConversationExecutionCoordinator:
         # 二次取 Conv 行锁，避免 lock-on-lock）。
         from app.composition.execution_fenced_port import FencedExecutionPort
 
-        run = await RunCoordinator(self._session).require_run(
-            tenant_id=tenant_id, run_id=run_id
-        )
+        run = await RunCoordinator(self._session).require_run(tenant_id=tenant_id, run_id=run_id)
         await self._guard.acquire(
             self._session,
             tenant_id=tenant_id,
@@ -234,9 +303,7 @@ class ConversationExecutionCoordinator:
             include_deleted=False,
         )
         port = FencedExecutionPort(self._session)
-        barrier = WorkspaceRunStartBarrier(
-            self._workspace, actor_id=run.created_by_or_raise
-        )
+        barrier = WorkspaceRunStartBarrier(self._workspace, actor_id=run.created_by_or_raise)
         return await port.fenced_start_run(
             tenant_id=tenant_id,
             conversation_id=run.conversation_id,
@@ -302,17 +369,13 @@ class ConversationExecutionCoordinator:
                 "execution state is unavailable; deletion failed closed"
             ) from exc
         if has_non_terminal:
-            raise ConversationHasNonTerminalRunError(
-                "Conversation has a non-terminal Agent Run"
-            )
+            raise ConversationHasNonTerminalRunError("Conversation has a non-terminal Agent Run")
         # 裁决时间必须在 Guard + Conversation 行锁之后采样；生产默认读数据库
         # clock_timestamp（测试经 now 注入）。deleted_at 与 purge_after 同源
         # （purge_after = deleted_at + 30 天恢复窗口，Spec §3）。
         effective_now = now
         if effective_now is None:
-            effective_now = await self._session.scalar(
-                select(func.clock_timestamp())
-            )
+            effective_now = await self._session.scalar(select(func.clock_timestamp()))
             assert effective_now is not None
         return await self._workspace.soft_delete_after_guard(
             tenant_id=tenant_id,
@@ -414,9 +477,7 @@ class ConversationExecutionCoordinator:
         event, payload_digest = await self._workspace.require_turn_event(
             tenant_id=tenant_id, message_id=message_id
         )
-        accepted = await self._execution.has_turn_acceptance(
-            event, payload_digest=payload_digest
-        )
+        accepted = await self._execution.has_turn_acceptance(event, payload_digest=payload_digest)
         return await self._workspace.abandon_or_reconcile_turn(
             tenant_id=tenant_id,
             actor_id=actor_id,
@@ -434,9 +495,7 @@ class ConversationExecutionCoordinator:
         run_id: uuid.UUID,
         now: datetime | None = None,
     ) -> None:
-        event, _ = await self._execution.require_publish_event(
-            tenant_id=tenant_id, run_id=run_id
-        )
+        event, _ = await self._execution.require_publish_event(tenant_id=tenant_id, run_id=run_id)
         await self._guard.acquire(
             self._session,
             tenant_id=tenant_id,
@@ -555,16 +614,13 @@ class AgentBridgeDispatcher:
         self._output_reader = output_reader
         self._policy = policy or DispatchPolicy()
 
-    async def dispatch_turn(
-        self, *, event_id: uuid.UUID | None = None
-    ) -> AgentRun | None:
+    async def dispatch_turn(self, *, event_id: uuid.UUID | None = None) -> AgentRun | None:
         claimed = await self._claim_turn(event_id=event_id)
         if claimed is None:
             return None
         if isinstance(claimed, PoisonedWorkspaceEvent):
             raise PoisonedIntegrationEventError(
-                f"workspace event {claimed.event_id} was quarantined: "
-                f"{claimed.error_code}"
+                f"workspace event {claimed.event_id} was quarantined: {claimed.error_code}"
             )
         try:
             # R1-S3-C round-7 commit-18：verdict 内建于 consume_turn_event
@@ -574,13 +630,11 @@ class AgentBridgeDispatcher:
 
             async with self._session_factory() as session, session.begin():
                 port = FencedExecutionPort(session)
-                run, ack, created, fence = (
-                    await ConversationExecutionCoordinator(
-                        session
-                    ).consume_turn_event(
-                        claimed,
-                        consumed_at=datetime.now(UTC),
-                    )
+                run, ack, created, fence = await ConversationExecutionCoordinator(
+                    session
+                ).consume_turn_event(
+                    claimed,
+                    consumed_at=datetime.now(UTC),
                 )
                 if created:
                     await port.advance_checkpoint(
@@ -596,16 +650,13 @@ class AgentBridgeDispatcher:
             await self._record_turn_failure(claimed=claimed, exc=exc)
             raise
 
-    async def dispatch_output(
-        self, *, event_id: uuid.UUID | None = None
-    ) -> bool:
+    async def dispatch_output(self, *, event_id: uuid.UUID | None = None) -> bool:
         claimed = await self._claim_output(event_id=event_id)
         if claimed is None:
             return False
         if isinstance(claimed, PoisonedExecutionEvent):
             raise PoisonedIntegrationEventError(
-                f"execution event {claimed.event_id} was quarantined: "
-                f"{claimed.error_code}"
+                f"execution event {claimed.event_id} was quarantined: {claimed.error_code}"
             )
         try:
             async with self._session_factory() as session, session.begin():
@@ -642,8 +693,7 @@ class AgentBridgeDispatcher:
             return await AgentWorkspaceBridgeService(session).claim_turn_event(
                 worker_id=self._worker_id,
                 now=database_now,
-                stale_before=database_now
-                - timedelta(seconds=self._policy.claim_timeout_seconds),
+                stale_before=database_now - timedelta(seconds=self._policy.claim_timeout_seconds),
                 event_id=event_id,
             )
 
@@ -656,14 +706,11 @@ class AgentBridgeDispatcher:
             return await AgentExecutionBridgeService(session).claim_output_event(
                 worker_id=self._worker_id,
                 now=database_now,
-                stale_before=database_now
-                - timedelta(seconds=self._policy.claim_timeout_seconds),
+                stale_before=database_now - timedelta(seconds=self._policy.claim_timeout_seconds),
                 event_id=event_id,
             )
 
-    async def _record_turn_failure(
-        self, *, claimed: ClaimedWorkspaceEvent, exc: Exception
-    ) -> None:
+    async def _record_turn_failure(self, *, claimed: ClaimedWorkspaceEvent, exc: Exception) -> None:
         now = datetime.now(UTC)
         async with self._session_factory() as session, session.begin():
             await AgentWorkspaceBridgeService(session).record_turn_failure(
@@ -672,10 +719,10 @@ class AgentBridgeDispatcher:
                 payload_digest=claimed.payload_digest,
                 error_code=type(exc).__name__,
                 next_attempt_at=now + self._backoff(claimed.attempt_count),
-                    max_attempts=self._policy.max_attempts,
-                    expected_attempt=claimed.attempt_count,
-                    claimant_id=claimed.claimant_id,
-                )
+                max_attempts=self._policy.max_attempts,
+                expected_attempt=claimed.attempt_count,
+                claimant_id=claimed.claimant_id,
+            )
 
     async def _record_output_failure(
         self, *, claimed: ClaimedExecutionEvent, exc: Exception
@@ -688,14 +735,12 @@ class AgentBridgeDispatcher:
                 payload_digest=claimed.payload_digest,
                 error_code=type(exc).__name__,
                 next_attempt_at=now + self._backoff(claimed.attempt_count),
-                    max_attempts=self._policy.max_attempts,
-                    expected_attempt=claimed.attempt_count,
-                    claimant_id=claimed.claimant_id,
-                )
+                max_attempts=self._policy.max_attempts,
+                expected_attempt=claimed.attempt_count,
+                claimant_id=claimed.claimant_id,
+            )
 
-    async def _record_output_late_write_rejected(
-        self, *, claimed: ClaimedExecutionEvent
-    ) -> None:
+    async def _record_output_late_write_rejected(self, *, claimed: ClaimedExecutionEvent) -> None:
         """R1-S3-E §8：把 purge 拦截的迟到 publish 落为 deterministic 终态。
 
         与 ``_record_output_failure``（transient，排 next_attempt_at backoff 重试）
