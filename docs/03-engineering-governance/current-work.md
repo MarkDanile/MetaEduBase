@@ -25,22 +25,22 @@
 
 需求来源：
 - Spec: [R1 专项契约 §4.1/§7](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- Plan: [R1-S4-D 契约细化 delta（提交后链接）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-d-transport-participant-契约细化)
+- Plan: [R1-S4-D 契约细化（已合并）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-d-transport-participant-契约细化)
 - 技术债：TD-092（高风险 PR 收敛治理，Draft risk-targeted）
 
 当前进展：
-- S4-D 契约 ↔ 落点对账完成（registry 4 owner 待翻、集合锁已冻结、backfill 私有 ledger 函数待升共享层、无 resolve 路径）。
+- S4-D 契约 ↔ 落点对账完成；契约细化 delta 已冻结（PR #541 已合并 `51a12df6`，三面 0/8/10/9 → 5 根因族返修 → 定向复核 0/0/3/2，P0/P1 清零）。
 - 用户调整：registry 不在 S4-D-A 翻 True（S4-D-B 最终激活提交统一翻）；两类 gate 区分（conversation_scope 内嵌 fail closed / tenant_scope 仅共享查询 / orphan 不阻塞）。
-- 契约细化 delta 已提交（`32a3e9de`）+ 三面首轮复审完成（P0=0 / P1=8 / P2=10 / P3=9，跨面同源归 5 根因族）→ 按 5 族 + 5 项细节冻结一次返修（outbox 正文事实谓词、inbox 状态矩阵、resolve 边界、阶段隔离、验收矩阵分开命名）。
+- 实现分支已建（`feat/req041-047-r1-s4d-transport-participant-core`，基于 main `51a12df6`）。
 
 下一步：
-- 推送返修后的契约 PR #541（纯文档，docs gate + diff-check）→ 一次定向复核确认 P0/P1 清零。
-- 合并契约 PR #541 → 从最新 `main` 创建 S4-D-A Draft 实现 PR（TD-092：Draft 只跑 `Backend iteration`）。
-- S4-D-A 实现：两 participant 主体（outbox/inbox tombstone + 正文事实谓词 final scan + ACK 重放 fencing + 锁序集合锁），registry 保持 False、不 resolve、不导入 backfill 私有。
+- 首个提交（工作台同步）→ 立即创建 Draft PR，启用 `Backend iteration`（TD-092）。
+- 先建 workspace/execution 对称测试矩阵（TDD red），再实现 participant。
+- 消化定向复核 P2：scan SQL 显式绑定 `tenant_id + conversation_id + transport owner/source + payload 事实谓词`（禁裸谓词全表扫描）；receipt tombstone digest 版本/键名/输入来源按冻结契约落成共享 helper + 两侧一致性测试。
 
 验证状态：
-- 契约 delta 已提交 `32a3e9de`、PR #541 已开（OPEN/CLEAN，2 docs 文件 +75/-1）；三面首轮复审完成（0/8/10/9）；返修中，docs gate + diff-check 待跑。
-- 实现未开始。
+- 契约 PR #541 已合并 `51a12df6`（2 docs 文件，纯文档）；P0/P1 清零。
+- 实现未开始；Draft 稳定后统一三面首轮复审，当前不跑 Backend full。
 
 交接备注：
 - 本 PR **不**翻 registry `erase_available`（两 transport owner 保持 False），**不**导入 backfill 私有函数，**不**实现 ledger resolve（归 S4-D-B）。
