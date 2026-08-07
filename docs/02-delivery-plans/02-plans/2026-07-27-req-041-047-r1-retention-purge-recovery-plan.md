@@ -1038,6 +1038,51 @@ event_id（= outbox row.id = envelope.event.event_id）
 - **收敛目标 2-3 轮**；连续两轮出现新 P1 立即停止补丁式修复，回契约或拆分/重构（TD-092 首个后续验证任务）。
 - **findings 按根因族一次返修**，并横向检查等价入口：writer（`add_turn_outbox`/`commit_terminal` outbox 生产）、claim（`claim_turn_outbox`/`claim_output_outbox` + envelope 装载）、consumer（`consume_turn_event`/`consume_output_event` + 6 元 CAS + inbox 写）、heal（reconcile issue `open->acknowledged->resolved` CAS + 投影重算）、verify（S4-B 五维 + catch-up 重扫）及 S3-E 迟到写/terminalize 等价路径。
 
+#### R1-S4-D Transport Participant 契约细化（2026-08-07，先于代码冻结，纯文档）
+
+按 S4-A D1-D8 / S4-B B1-B8 / S4-C C1-C9 冻结 `workspace.transport.v1` / `execution.transport.v1` participant。**本 delta 只写文档：不写业务代码、不改 migration 040、不实现 migration 041、`erase_available` 全程保持 `False`、不启用 purge scheduler（S5）、不进 S4-E/F。** 现状盘点基于 main `5ff4b620`（S4-C PR-A/PR-B 已合并，四跳一致声明成立）。
+
+**D 边界与 PR 拆分（TD-092 单风险域约束）**：transport participant 拆两个串行 PR，**不并行修改共享 ledger/registry**：
+
+1. **S4-D-A：Transport Participant Core**——两个 participant（`WorkspaceTransportErasureParticipant`/`ExecutionTransportErasureParticipant`）、outbox/inbox tombstone、final scan、ACK/重放、锁序与集合锁。**registry 两个 transport owner 保持 `erase_available=False`**（ledger resolve 与 purge gate 尚未闭环，不得对外声明完整 erase 能力）；**不导入 backfill 私有函数、不实现 ledger resolve**。
+2. **S4-D-B：Ledger Resolve + Activation**——提取共享 ledger API（backfill/consumer/participant 同一投影实现）；`epoch_unresolvable` evidence/CAS resolve；两类 gate 查询；participant 接入 resolve；**merged-boundary 联合验收通过后 registry 统一翻 True**（缺 participant/缺 resolve 做 mutation kill 实证）。
+
+**D-A-1. transport participant 主体（S4-D-A）**
+
+- 两个 participant 分别持有 `workspace.transport.v1` / `execution.transport.v1`，镜像 S2-D/S3-D 模式（scan + erase + ACK + 锁序）。**锁序固定**：`Guard -> Conversation 行锁 -> owner advisory lock（transport owner）-> fence 重验 -> transport aggregate 集合 advisory lock（最内层）-> 源 transport 行 FOR UPDATE 投影写`；集合锁复用 `acquire_transport_aggregate_lock`（`agent_erasure_locks.py`，key 独立前缀 `metaedu.agent.transport.agg.v1\x00`）；**禁止**在 Guard/Conversation/owner/fence 之前取集合锁（R3/C4，防 AB-BA）。
+- **outbox tombstone（D4）**：清 `payload_inline`/`payload_ref`，保留 `payload_digest`；workspace outbox `status='suppressed'`（既有 CHECK，`models.py:411`）、execution outbox `status='suppressed'`（`models.py:853`）+ 对应 Run `output_publish_state='suppressed'`（S3-E 同模式）。**inbox receipt tombstone（B6）**：置 `receipt_tombstone_state='redacted'` + `receipt_tombstone_digest=<64-hex digest of receipt envelope>`（marker 与 digest 同生同灭，`ck_*_receipt_tombstone`）；`status` 保持 `consumed`/`rejected` 不变、不新增枚举。**禁**空串/`{}`/伪值。
+- **final transport scan**：workspace 侧扫 outbox（非 `suppressed`/`cancelled` 的行内 `payload_inline IS NOT NULL OR payload_ref IS NOT NULL`）+ inbox（`receipt_tombstone_state IS NULL` 且 `status='processing'` 未决 receipt）；execution 侧同表结构扫描 + Run `output_publish_state` 未终态。scan 为零才 ACK。
+- **ACK/重放（Spec §4.2「没有查到正文不是隐式 ACK」）**：镜像 S2-D `erase_conversation_body`——`purge_operation_id` + `expected_operation_revision` 必填、fence 缺失时 owner lock 下建立、`active->erasing`（重试 `blocked->erasing`；crash 恢复 `erasing` 继续）、`erasing->erased` + owner checkpoint CAS->acked；**erased fence 幂等重放先于 purge 前置**（ACK 丢失恢复，修复 pending checkpoint）；active legal hold -> blocked 正常返回。**不复活正文**：purge 前 fence 裁决拒正文写、六元 CAS 已保证消费侧旧 attempt 不得覆盖新 claim（C6 takeover/claim lease）。
+- **不实现**：ledger resolve（S4-D-B）、external ref / runtime（S4-E）、fault 矩阵（S4-F）。
+
+**D-B-1. ledger 共享层（S4-D-B）**
+
+- 提取 `_register_issue`/`_recompute_projection`（当前 backfill 模块私有，`agent_transport_backfill.py:378/463`）为共享层（如 `agent_transport_ledger.py`），backfill、consumer（S4-C PR-B 已写 ledger）、participant（resolve）**同一投影实现**，杜绝两份投影漂移（B4 唯一事实源 + 同事务一致性）。
+- 共享层保持：集合锁临界区内调用、owner 维度绑定（`_recompute_projection` P2-2）、`(id, revision)` 单 issue CAS、`ON CONFLICT DO NOTHING` 幂等。
+
+**D-B-2. `epoch_unresolvable` resolve（S4-D-B，round-5 P1-2 + round-6 P1 冻结落地）**
+
+- participant 完成对未达 fence 的旧 epoch 事件 tombstone 后，以 **inbox `receipt_tombstone_digest`**（Tx1 已提交 64-hex）作为 `resolution_digest` 写入并置 `resolved` + `resolved_at`（`ck_..._resolution_evidence` 强制）；**不得**在未 tombstone 情况下置 resolved（B4）。
+- resolve 流程：集合锁临界区内 → 读该源行完整 issue 集（ledger 唯一事实源）→ `(id, revision)` CAS `open/acknowledged -> resolved`（`revision+1` 不回退）→ 重算行内投影（任一 unresolved -> `pending`；全 resolved -> `reconciled`）。
+- **重放匹配（round-6/7 修正不变）**：ledger `resolved` 只证明 tombstone evidence 有效，**不代替** S4-C Tx2 已把 outbox 置精确终态——resolve 与 Tx2 是两个独立动作；重放仍须锁后检查 outbox 精确终态三分支（S4-C 状态表 Tx2 后重放行）。
+
+**D-B-3. 两类 gate（区分）**
+
+- **conversation_scope gate**：`conversation_scope AND state <> 'resolved'` 命中即 blocked——S4-D-B 必须在 participant 内对目标 Conversation fail closed（防直接调用绕过 scheduler；purge 前置查与 S5 同一谓词）。
+- **tenant_scope gate**：`tenant_scope AND state <> 'resolved'` 命中即该 tenant scheduler/canary enable fail closed——**只提供共享查询/API，由 S5 scheduler 消费**；**不**让单个 Conversation participant 因租户内无法归属的历史行全部阻塞。
+- **orphan**：不阻塞 Conversation purge（对象已删），需运维确认到 resolved 才清零（B4，冻结保持）。
+
+**D-Act-1. registry 翻 True 时序（S4-D-B merged-boundary）**
+
+- `workspace.transport.v1` / `execution.transport.v1` 的 `erase_available` 在 **S4-D-B 联合验收通过后**统一翻 True（`agent_erasure_registry.py`）；`external.payload.v1`（S4-E）、`runtime.private.v1`（E/fake）保持 False。
+- 翻 True 须带 mutation kill：缺 participant（回退 `erase_available=False`）与缺 resolve（回退为只登记不 resolve）对应测试变红。
+
+**D 验收矩阵（S4-D 实现时逐项验证）**：
+
+1. S4-D-A：两 participant 同锁序（Guard -> Conversation -> owner -> fence -> 集合锁）真实 PG 并发反例无 AB-BA；outbox tombstone 清正文留 digest（`payload_digest` 保留）；inbox receipt tombstone marker/digest 同生同灭；final scan 为零才 ACK；ACK 丢失重放幂等（erased fence 先于 purge 前置）；takeover/claim lease 后旧 attempt 不复活正文；mutation kill（缺 tombstone、跳过 scan、退化 ACK 谓词）。
+2. S4-D-B：`epoch_unresolvable` resolve 证据（`receipt_tombstone_digest` -> `resolution_digest`）+ CAS + 投影重算同事务；重放三分支（已 resolved + digest 匹配幂等 / 未 resolved 续做 / 终态 digest 不符 fail closed）；conversation_scope gate 内嵌 fail closed；tenant_scope gate 共享查询（S5 消费）；backfill/consumer/participant 同一共享层投影实现（无两份漂移）；registry 翻 True 带 mutation kill。
+3. 全量：S4-B/S4-C 专项 + 邻近回归全绿 + 全量 pytest 0 failed + ruff 0 + mypy baseline 0 回归 + docs gate + `git diff --check`；`erase_available` 在 S4-D-A 保持 False、S4-D-B 联合验收后翻 True；不改 migration 040、不实现 041、不启用 S5。
+
 ### R1-S5：Legal hold、Scheduler 与运维闭环
 
 **复杂度/执行**：极高，Sol `xhigh`；人工数据/安全签字。
