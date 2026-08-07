@@ -33,6 +33,10 @@ class ClaimedExecutionEvent:
     payload_digest: str
     attempt_count: int
     claimant_id: str
+    # R1-S4-C（S4-C C1 hop3）：claim 短事务内从 outbox 行锁定读取的
+    # scope/epoch，供消费事务六元 CAS 比对（C3）。
+    conversation_id: uuid.UUID | None
+    producer_purge_revision: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +134,63 @@ class AgentExecutionBridgeService:
             consumed_at=consumed_at,
         ), created
 
+    async def record_turn_receipt_rejected(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        event_id: uuid.UUID,
+        payload_digest: str,
+        consumer_name: str,
+        reason: str,
+        receipt_tombstone_digest: str,
+        correlation_id: uuid.UUID,
+        conversation_id: uuid.UUID | None,
+        producer_purge_revision: int | None,
+    ) -> uuid.UUID:
+        """R1-S4-C（S4-C round-4/5 状态表 Tx1）：execution inbox receipt 落
+        ``rejected`` + tombstone 证据（epoch unknown/stale 拒绝）。
+
+        消费 epoch 分类在 ``begin_turn_receipt`` 之前，故此处**新建** receipt 行
+        为 rejected（不进入 processing/consumed）。reason 为具名 code
+        （``epoch_unknown_rejected``/``epoch_stale_rejected``）。返回 inbox 行 PK
+        （R3 ledger ``source_row_id``）。scope/epoch（C1 第 4 跳）取自 claim
+        envelope：stale 写原 producer epoch、unknown 保持 NULL。
+        """
+        return await self._bridge_repo.create_turn_receipt_rejected(
+            tenant_id=tenant_id,
+            event_id=event_id,
+            payload_digest=payload_digest,
+            consumer_name=consumer_name,
+            reason=reason,
+            receipt_tombstone_digest=receipt_tombstone_digest,
+            correlation_id=correlation_id,
+            conversation_id=conversation_id,
+            producer_purge_revision=producer_purge_revision,
+        )
+
+    async def register_epoch_unresolvable(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        owner_key: str,
+        source_table: str,
+        source_row_id: uuid.UUID,
+        conversation_id: uuid.UUID | None,
+    ) -> None:
+        """R1-S4-C（S4-C round-4/5 状态表 Tx1）：登记 ``epoch_unresolvable`` ledger
+        issue（仅 unknown epoch）。
+
+        幂等（唯一键 ON CONFLICT DO NOTHING）。scope 已知 -> ``conversation_scope``
+        （带 conversation_id）；未知 -> ``tenant_scope``（不带）。
+        """
+        await self._bridge_repo.register_epoch_unresolvable_issue(
+            tenant_id=tenant_id,
+            owner_key=owner_key,
+            source_table=source_table,
+            source_row_id=source_row_id,
+            conversation_id=conversation_id,
+        )
+
     async def has_turn_acceptance(
         self, event: TurnRequestedV1, *, payload_digest: str
     ) -> bool:
@@ -174,6 +235,10 @@ class AgentExecutionBridgeService:
             payload_digest=row.payload_digest,
             attempt_count=row.attempt_count,
             claimant_id=row.claimed_by,
+            # R1-S4-C（S4-C C1 hop3）：从 claim 短事务内 FOR UPDATE 锁定的
+            # outbox 行装载 scope/epoch（非 NULL 成员供六元 CAS 比对）。
+            conversation_id=row.conversation_id,
+            producer_purge_revision=row.producer_purge_revision,
         )
 
     async def acknowledge_output(self, ack: InboxAckV1) -> None:
@@ -188,6 +253,9 @@ class AgentExecutionBridgeService:
             payload_digest=claimed.payload_digest,
             expected_attempt=claimed.attempt_count,
             claimant_id=claimed.claimant_id,
+            # R1-S4-C（S4-C C3）：六元 CAS 追加 scope/epoch（非 NULL 成员比对）。
+            expected_conversation_id=claimed.conversation_id,
+            expected_producer_purge_revision=claimed.producer_purge_revision,
         )
 
     async def record_output_failure(
@@ -243,6 +311,38 @@ class AgentExecutionBridgeService:
             payload_digest=payload_digest,
             expected_attempt=expected_attempt,
             claimant_id=claimant_id,
+            decided_at=decided_at,
+        )
+
+    async def terminalize_output_epoch_rejected(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        event_id: uuid.UUID,
+        payload_digest: str,
+        expected_attempt: int,
+        claimant_id: str,
+        reason: str,
+        receipt_tombstone_digest: str,
+        decided_at: datetime,
+    ) -> None:
+        """R1-S4-C（S4-C round-4/5 状态表 Tx2）：按 claim CAS 终态化 execution
+        output outbox（epoch unknown/stale 拒绝）。
+
+        round-7 精确终态：outbox ``cancelled`` + 清 claim + decision 四元全写
+        （``decision_actor_id=UUID(0)`` + ``decision_reason=<具名 code>`` +
+        ``decision_digest=snapshot_digest(envelope)`` + ``decided_at``）+ Run
+        ``output_publish_state='suppressed'``；已精确终态 no-op；非 claimed 且未
+        精确终态 fail closed（三分支）。
+        """
+        await self._bridge_repo.terminalize_output_epoch_rejected(
+            tenant_id=tenant_id,
+            event_id=event_id,
+            payload_digest=payload_digest,
+            expected_attempt=expected_attempt,
+            claimant_id=claimant_id,
+            reason=reason,
+            receipt_tombstone_digest=receipt_tombstone_digest,
             decided_at=decided_at,
         )
 

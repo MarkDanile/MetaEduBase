@@ -40,6 +40,7 @@ from app.contexts.agent_execution.domain import (
     RunConversationMismatchError,
     RuntimeIngestIdentityMismatchError,
 )
+from app.contexts.agent_workspace.domain.erasure import ErasureFenceState
 from app.contexts.agent_workspace.infrastructure.erasure_repository import (
     AgentErasureRepository,
 )
@@ -160,6 +161,43 @@ class FencedExecutionPort:
             owner_key=_EXECUTION_OWNER_KEY,
             now=None,
         )
+
+    async def read_fence_state(
+        self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> ErasureFenceState:
+        """R1-S4-C（S4-C R4）：**非抛**读取 execution fence 状态（epoch 分类用）。
+
+        与 ``require_active_fence`` 不同：fence 非 active 时**不 raise**，返回
+        真实状态供 ``classify_consume_epoch`` 判定 stale（fence erasing/erased
+        才 stale，round-5 P1-1：stale 走 Tx1/Tx2 双事务而非 raise）。owner lock
+        + fence FOR UPDATE 与 require 同序（Guard -> Conversation -> owner ->
+        fence），缺 fence 按 registry 惰性建 active（与 require 同语义）。仅读
+        状态不裁决、不推进 checkpoint。
+
+        **TOCTOU 关闭前提（并发面 round-1 复审，认知固化）**：本方法在 owner
+        advisory lock 内读取 fence 状态；fence 的 ACTIVE→ERASING/ERASED 转移
+        持有**同一把 owner lock**（``transition_fence_state`` 前置 owner lock，
+        既有锁序纪律），故分类读到 ACTIVE 时 purge 尚无法推进 fence——分类与
+        后续 ``require_active_fence`` 裁决之间无跨并发实体 TOCTOU。**该不变量
+        依赖「所有 fence 状态转移路径都持本 owner lock」**；未来新增 purge 路径
+        （S5 scheduler / S4-D/E participant 直推 fence）必须保持此纪律，否则
+        本方法产生 P1 级 TOCTOU。
+        """
+        from app.composition.agent_erasure_locks import acquire_owner_lock
+
+        await acquire_owner_lock(
+            self._session,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key=_EXECUTION_OWNER_KEY,
+        )
+        fence = await self._erasure.get_or_create_fence_for_update(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            owner_key=_EXECUTION_OWNER_KEY,
+            now=None,
+        )
+        return fence.state
 
     async def conversation_purge_revision(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
@@ -318,14 +356,17 @@ class FencedExecutionPort:
             run_id=run_id,
             queue_seq=queue_seq,
         )
-        fence = await self.require_active_fence(
-            tenant_id=tenant_id, conversation_id=conversation_id
-        )
-        # R1-S4-C（S4-C C2）：producer epoch = Conversation.purge_revision
-        # （行锁内读，R1 禁伪造）；传给 commit_terminal 写入 execution outbox。
+        # PR-A round-2 P2 认知（PR-B 批次1 落地）：producer epoch 读**前置**
+        # require_active_fence——先取 Conversation 行锁再取 owner/fence，与
+        # purge eraser（Conversation -> owner -> fence）同序。R1 的「行锁内同
+        # 事务读取」由 conversation_purge_revision 自持 FOR UPDATE 保证，且锁
+        # 序不再依赖调用方预持的隐式前置。
         producer_purge_revision = await self.conversation_purge_revision(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
+        )
+        fence = await self.require_active_fence(
+            tenant_id=tenant_id, conversation_id=conversation_id
         )
         run, event, terminal_digest_match = await self._runs.commit_terminal(
             tenant_id=tenant_id,

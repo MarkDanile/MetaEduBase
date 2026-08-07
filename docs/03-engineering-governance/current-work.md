@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-R1-S4C-PRB: R1-S4-C 实现 PR-B（Claim/consumer CAS + deterministic terminalization）
+
+状态：🟡 进行中（实现，Draft）
+类型：新需求开发（Slice 实现，契约已冻结）
+领域：Backend（composition / agent_workspace / agent_execution claim+consumer 接线 + ledger）
+当前执行模式：superpower / plan-do
+最近接手工具：Claude Code
+分支：feat/req041-047-r1-s4c-claim-consumer-cas
+
+需求来源：
+- Spec: docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md（§5.2/§6/§7 owner 边界、external ref、迟到写）
+- Plan: docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md（§R1-S4-C C1-C9 契约冻结块 + round-1~10 修订 + PR-A round-1/2 复审记录；本 PR 范围 C8 项 2/6/7/8/10/11）
+- 技术债：docs/03-engineering-governance/technical-debt.md（TD-092 收敛治理；TD-032 源码行数登记）
+- 架构约束：docs/03-engineering-governance/01-rules/architecture.md
+
+当前进展：PR-B 范围 = claim envelope 扩展 + Guard 内六元 CAS（turn/output 三源）+ inbox 写 + unknown/stale 双事务协议状态表（Tx1 inbox rejected + tombstone 证据 + 具名 code、Tx2 claim CAS 终态化）+ consumer 集合锁（R3）+ 重放恢复三分支 + allowlist（epoch_unknown_rejected/epoch_stale_rejected）+ C8 项 11 参数化测试。三批次已全部提交：批次1（epoch 读锁序前置 + claim envelope + 六元 CAS）、批次2（allowlist + epoch 分类 + C8 项 11）、批次3（unknown/stale 双事务 Tx1/Tx2 + 重放三分支 + output 侧对称实现 + data_anomaly fail-closed + 8 测试；epoch 分类前置 read_fence_state 修复 stale 可达性）。**round-1 三面首轮复审已结束**（数据/状态 0/0/2/2、并发/锁序 0/2/6/3、测试/运维 0/4/6/5，合计 P1=6），按三根因族一次返修（commit `da90e3ac` + CI 修复 `e0146706`）：① output stale 可达性（consume_output_event 投影锁 `allow_purge_fenced=True` 仅放宽消费分类入口，normal 才进正文 fence 裁决）；② C1 第 4 跳落实（两侧 inbox 写 scope/epoch 取自 claim envelope，stale 写原 producer epoch、unknown 保持 NULL，幂等不重写 + 不一致 fail closed）；③ 测试判别力（ledger owner_key 断言 + output takeover CAS 拒绝 + 精确终态负例 + 推进 revision 重放不重写，5 项 mutation kill 全部验证转红）。顺带加固：read_fence_state TOCTOU 前提注释、existing rejected receipt 补 payload_digest 校验。**round-2 定向复核已结束（HEAD `e09e4b8e`）：P0/P1 清零，6 项指定检查全 ✅**（allow_purge_fenced 仅放宽消费入口 / 三态同锁定快照分流 / 两侧 inbox 第四跳取自已验证 claim metadata / existing receipt 冲突原子 fail closed / 5 项 mutation kill 真实库实证转红 / tenant fixture 隔离幂等不污染）。残留记录型：P2-1（`create_*_receipt_rejected` existing 查询不按 consumer_name 过滤，当前消费者与 event_type 一一对应无现实冲突）、P2-2（output 侧 NULL 断言盲区——变异取 current revision 时 `is None` 不区分，turn 侧无此缺口，生产实现已验证写 claimed 值）、P3×2（batch3 模块 docstring 变异描述残留 + execution 侧 consumer_name 注释与实现不符）。均不阻断，转 Ready 后由合并前评审/后续任务处理。
+下一步：转 Ready（P0/P1 清零已达成），最新 HEAD 跑 Backend iteration 验证；CI 绿后由合并评审（merge review）收口。
+验证状态：HEAD `e09e4b8e`（round-1 返修 + CI 修复 + 工作台同步）；ruff/mypy 0 回归；S4-C 批次1-3 + S3-E 邻近 48 passed（batch3 10 tests 含 2 新增判别力）；round-1 后三路 iteration CI 全绿（run `31171138749`）；round-2 定向复核 P0/P1 清零（6 项 ✅，5 项 mutation kill 实证转红）；`erase_available` 保持 False；不改 migration 040、不实现 041。待转 Ready 后 Backend iteration。
+交接备注：PR-B 合并前不得宣称完整「四跳一致」，最终以 PR-A + PR-B merged-boundary 联合验收为准；承接 PR-A 两项 P2 认知（epoch 读前置 `require_active_fence`；anti-forgery 代码级来源证明）。
 
 ## 下一批候选任务
 
@@ -22,7 +40,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-041/047 R1-S4-C 实现 PR-B（Claim/consumer CAS + deterministic terminalization） | 🔵 Ready（PR-A 已合并，可启动） | 从最新 main 启动；承接 allowlist（epoch_unknown_rejected/epoch_stale_rejected）+ C8 项 11 参数化回归测试；验证 C8 项 2/6/7/8/10/11；PR-A 两项 P2 认知：epoch 读前置 `require_active_fence` | [Plan §R1-S4 C1-C9](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
