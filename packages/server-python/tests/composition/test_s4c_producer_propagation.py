@@ -535,6 +535,18 @@ async def test_execution_outbox_idempotent_replay_does_not_rewrite_scope_epoch(
         assert outbox_before.conversation_id == conversation_id
         assert outbox_before.producer_purge_revision is not None
 
+    # round-2 P1：推进 Conversation.purge_revision（模拟 restore/delete），使
+    # 「重放时重写当前值」的实现会产生不同 epoch——重放必须保持第一次写入的
+    # 旧值（byte-identical），重写当前 5 会失败。
+    async with session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "UPDATE metaedu.agent_conversations SET purge_revision = 5 "
+                "WHERE tenant_id = :tenant AND id = :conv"
+            ),
+            {"tenant": TENANT_ID, "conv": conversation_id},
+        )
+
     # 幂等重放：同一 terminal digest 命中 -> terminal_digest_match=True，不重写。
     async with session_factory() as session, session.begin():
         port = FencedExecutionPort(session)
@@ -557,7 +569,7 @@ async def test_execution_outbox_idempotent_replay_does_not_rewrite_scope_epoch(
                 .limit(1)
             )
         ).scalar_one()
-    # 幂等重放不重写 scope/epoch（byte-identical）。
+    # 幂等重放不重写 scope/epoch（byte-identical，即使 Conversation 已推进到 5）。
     assert outbox_after.conversation_id == outbox_before.conversation_id
     assert (
         outbox_after.producer_purge_revision
