@@ -147,6 +147,8 @@ class ExecutionBridgeRepository:
         reason: str,
         receipt_tombstone_digest: str,
         correlation_id: uuid.UUID,
+        conversation_id: uuid.UUID | None,
+        producer_purge_revision: int | None,
     ) -> uuid.UUID:
         """R1-S4-C（S4-C round-4/5 状态表 Tx1）：新建 execution inbox receipt 为
         ``rejected`` + tombstone 证据（epoch unknown/stale 拒绝）。
@@ -155,6 +157,13 @@ class ExecutionBridgeRepository:
         receipt（不进入 processing）。reason 为具名 code（``epoch_unknown_rejected``
         / ``epoch_stale_rejected``），``receipt_tombstone_digest`` 为 64-hex 证据
         （B1f）。幂等：已有行则校验 tombstone 一致返回。
+
+        **C1 第 4 跳（R1-S4-C round-1 P1-1 返修）**：scope/epoch 取自 claim
+        envelope（六元 CAS 已验证的源 outbox 行重读值），**不得**读当前
+        Conversation revision 伪造——stale 写原 ``producer_purge_revision``（旧值，
+        迟到写证据）、unknown 保持 ``None``（NULL-epoch 行由 backfill 收敛）；
+        ``conversation_id`` 恒写（envelope 非 NULL 成员）。幂等命中时校验既有行
+        scope/epoch 与本次一致（不一致 fail closed，重放不重写旧值）。
 
         返回 **inbox 行 PK**：R3 集合锁目标/ledger ``source_row_id`` = inbox 行 PK
         （与 backfill/verify 的 ``r.source_row_id = t.id`` 匹配），不是 event_id。
@@ -178,9 +187,20 @@ class ExecutionBridgeRepository:
             if (
                 existing.status != "rejected"
                 or existing.receipt_tombstone_digest != receipt_tombstone_digest
+                or existing.payload_digest != payload_digest
             ):
                 raise ExecutionIntegrationConflictError(
                     "turn receipt rejected state conflicts with existing receipt"
+                )
+            # C1 第 4 跳幂等：scope/epoch 已持久化即保留；与本次 envelope 值不一致
+            # fail closed（防投影漂移后重放静默改写）。
+            if existing.conversation_id != conversation_id:
+                raise ExecutionIntegrationConflictError(
+                    "turn receipt rejected scope conflicts with existing receipt"
+                )
+            if existing.producer_purge_revision != producer_purge_revision:
+                raise ExecutionIntegrationConflictError(
+                    "turn receipt rejected epoch conflicts with existing receipt"
                 )
             return existing.id
         receipt_id = uuid.uuid4()
@@ -200,6 +220,9 @@ class ExecutionBridgeRepository:
                 receipt_tombstone_state="redacted",
                 receipt_tombstone_digest=receipt_tombstone_digest,
                 created_at=datetime.now(UTC),
+                # C1 第 4 跳：inbox scope/epoch 与 receipt 同事务（取自 envelope）。
+                conversation_id=conversation_id,
+                producer_purge_revision=producer_purge_revision,
             )
         )
         await self._session.flush()

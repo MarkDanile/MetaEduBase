@@ -260,6 +260,11 @@ async def test_turn_stale_epoch_tx1_tx2(db_session, session_factory):
         assert inbox.last_error_code == _EPOCH_STALE
         assert inbox.receipt_tombstone_state == "redacted"
         assert inbox.receipt_tombstone_digest is not None
+        # C1 第 4 跳：inbox scope/epoch = claim envelope 值（stale 写原 producer
+        # epoch——迟到写证据，不得读当前 revision 伪造）。
+        assert inbox.conversation_id == conversation_id
+        assert inbox.producer_purge_revision is not None
+        assert inbox.producer_purge_revision < 7  # 原 producer epoch（旧值）
         ledger = (
             await check.execute(
                 text(
@@ -323,11 +328,16 @@ async def test_turn_unknown_epoch_registers_ledger_conversation_scope(
         ).scalar_one()
         assert inbox.status == "rejected"
         assert inbox.last_error_code == _EPOCH_UNKNOWN
-        # ledger：conversation_scope（scope 已知，带 conversation_id）。
+        # C1 第 4 跳：unknown 写 scope（envelope conversation_id）、epoch 保持
+        # NULL（NULL-epoch 行由 backfill 收敛，不得伪造当前 revision）。
+        assert inbox.conversation_id == conversation_id
+        assert inbox.producer_purge_revision is None
+        # ledger：conversation_scope（scope 已知，带 conversation_id）+ owner_key
+        # 必须是 transport owner（R3，变异击杀：错 owner 全绿）。
         issue = (
             await check.execute(
                 text(
-                    "SELECT reconcile_class, issue_code, conversation_id "
+                    "SELECT reconcile_class, issue_code, conversation_id, owner_key "
                     "FROM metaedu.agent_transport_scope_reconcile "
                     "WHERE tenant_id = :t AND source_table = 'agent_execution_inbox' "
                     "AND source_row_id = :rid"
@@ -339,6 +349,7 @@ async def test_turn_unknown_epoch_registers_ledger_conversation_scope(
         assert issue[0] == "conversation_scope"
         assert issue[1] == "epoch_unresolvable"
         assert issue[2] == conversation_id
+        assert issue[3] == "execution.transport.v1"
 
         # Tx2 终态。
         outbox = (
@@ -351,6 +362,19 @@ async def test_turn_unknown_epoch_registers_ledger_conversation_scope(
         ).scalar_one()
         assert outbox.status == "cancelled"
         assert outbox.last_error_code == _EPOCH_UNKNOWN
+        # C1 第 4 跳幂等：重放不重写——inbox 的 scope/epoch 保持首次 Tx1 写入值
+        # （unknown 保持 NULL），不得因 Conversation 已推进到 9 而改写。
+        inbox = (
+            await check.execute(
+                select(ExecutionInboxModel).where(
+                    ExecutionInboxModel.tenant_id == TENANT_ID,
+                    ExecutionInboxModel.event_id == receipt.event_id,
+                )
+            )
+        ).scalar_one()
+        assert inbox.conversation_id == conversation_id
+        assert inbox.producer_purge_revision is None  # 未被重写为 9
+        assert inbox.last_error_code == _EPOCH_UNKNOWN
         message = await check.get(MessageModel, outbox.aggregate_id)
         assert message.turn_dispatch_state == "abandoned"
         assert message.turn_dispatch_error_code == _EPOCH_UNKNOWN
@@ -402,6 +426,17 @@ async def test_tx2_replay_after_tx1_only_continues(db_session, session_factory):
                 "t": TENANT_ID,
                 "id": receipt.event_id,
             },
+        )
+        # 重放前再推进 Conversation purge_revision（模拟重放期间 purge 继续推进）——
+        # C1 第 4 跳幂等：inbox 已写 scope/epoch 即保留，重放不得读当前 revision
+        # 重写旧值（变异：推进 revision 后重放重写 -> 本断言转红）。同 session
+        # 内执行（避免跨 session 行锁竞争）。
+        await session.execute(
+            text(
+                "UPDATE metaedu.agent_conversations SET purge_revision = 9 "
+                "WHERE tenant_id = :t AND id = :c"
+            ),
+            {"t": TENANT_ID, "c": conversation_id},
         )
 
     dispatcher = AgentBridgeDispatcher(session_factory, worker_id="b3-replay2")
@@ -457,6 +492,67 @@ async def test_tx2_replay_when_outbox_already_terminal_is_noop(
         ).scalar_one()
         assert outbox.status == "cancelled"
         assert outbox.last_error_code == _EPOCH_UNKNOWN
+
+
+async def test_tx2_replay_other_cancelled_fails_closed_not_noop(
+    db_session, session_factory
+):
+    """精确终态负例（round-7，变异 (f) 击杀）：outbox 已 cancelled 但**非**本次
+    精确终态（错 code / Message 未 abandoned）——重放必须 fail closed
+    （WorkspaceIntegrationConflictError），不得当 no-op 吞掉。
+
+    退化实现（任意 cancelled+清 claim 即 no-op）在此转红。
+    """
+    from app.contexts.agent_workspace.domain import WorkspaceIntegrationConflictError
+
+    conversation_id, receipt = await _seed_turn_outbox(db_session, session_factory)
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_workspace_outbox "
+            "SET producer_purge_revision = NULL "
+            "WHERE tenant_id = :t AND id = :id"
+        ),
+        {"t": TENANT_ID, "id": receipt.event_id},
+    )
+    await db_session.commit()
+
+    # Tx1：claim + consume（提交 rejected receipt）。Tx2 不执行。
+    claimed = await _claim_turn(db_session, worker_id="b3-neg-1")
+    assert claimed is not None and not isinstance(claimed, PoisonedWorkspaceEvent)
+    async with session_factory() as session, session.begin():
+        await ConversationExecutionCoordinator(session).consume_turn_event(
+            claimed, consumed_at=datetime.now(UTC)
+        )
+
+    # 人为把 outbox 置「其他原因 cancelled」：错误 code（非具名 code）、Message
+    # 未 abandoned——精确终态谓词不成立。
+    async with session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "UPDATE metaedu.agent_workspace_outbox "
+                "SET status='cancelled', claimed_by=NULL, claimed_at=NULL, "
+                "last_error_code='operator_suppressed' "
+                "WHERE tenant_id = :t AND id = :id"
+            ),
+            {"t": TENANT_ID, "id": receipt.event_id},
+        )
+
+    # 旧 worker 重放 Tx2（outbox 非精确终态）-> fail closed：status 非 claimed
+    # 且非精确终态（错 code）-> WorkspaceIntegrationConflictError。独立新
+    # session 内调 terminalize（cancelled 行不可再 claim，行锁可正常取得）。
+    async with session_factory() as session, session.begin():
+        with pytest.raises(WorkspaceIntegrationConflictError):
+            await AgentWorkspaceBridgeService(
+                session
+            ).terminalize_turn_epoch_rejected(
+                tenant_id=TENANT_ID,
+                event_id=receipt.event_id,
+                payload_digest=claimed.payload_digest,
+                expected_attempt=claimed.attempt_count,
+                claimant_id=claimed.claimant_id,
+                reason=_EPOCH_UNKNOWN,
+                decided_at=datetime.now(UTC),
+            )
 
 
 async def test_tx2_replay_claim_mismatch_fails_closed(db_session, session_factory):
@@ -589,6 +685,11 @@ async def test_output_stale_epoch_tx1_tx2(db_session, session_factory):
         assert inbox.last_error_code == _EPOCH_STALE
         assert inbox.receipt_tombstone_state == "redacted"
         assert inbox.receipt_tombstone_digest is not None
+        # C1 第 4 跳：inbox scope/epoch = claim envelope 值（stale 写原 producer
+        # epoch——迟到写证据，不得读当前 revision 伪造）。
+        assert inbox.conversation_id == conversation_id
+        assert inbox.producer_purge_revision is not None
+        assert inbox.producer_purge_revision < 7  # 原 producer epoch（旧值）
         ledger = (
             await check.execute(
                 text(
@@ -656,11 +757,16 @@ async def test_output_unknown_epoch_registers_ledger_and_decision(
         ).scalar_one()
         assert inbox.status == "rejected"
         assert inbox.last_error_code == _EPOCH_UNKNOWN
-        # ledger：conversation_scope（scope 已知，带 conversation_id）。
+        # C1 第 4 跳：unknown 写 scope（envelope conversation_id）、epoch 保持
+        # NULL（NULL-epoch 行由 backfill 收敛，不得伪造当前 revision）。
+        assert inbox.conversation_id == conversation_id
+        assert inbox.producer_purge_revision is None
+        # ledger：conversation_scope（scope 已知，带 conversation_id）+ owner_key
+        # 必须是 transport owner（R3，变异击杀：错 owner 全绿）。
         issue = (
             await check.execute(
                 text(
-                    "SELECT reconcile_class, issue_code, conversation_id "
+                    "SELECT reconcile_class, issue_code, conversation_id, owner_key "
                     "FROM metaedu.agent_transport_scope_reconcile "
                     "WHERE tenant_id = :t AND source_table = 'agent_workspace_inbox' "
                     "AND source_row_id = :rid"
@@ -672,6 +778,7 @@ async def test_output_unknown_epoch_registers_ledger_and_decision(
         assert issue[0] == "conversation_scope"
         assert issue[1] == "epoch_unresolvable"
         assert issue[2] == conversation_id
+        assert issue[3] == "workspace.transport.v1"
 
         # Tx2：decision 四元 + digest envelope（round-8 冻结键名）。
         persisted = await check.get(ExecutionOutboxModel, outbox.id)
@@ -694,6 +801,106 @@ async def test_output_unknown_epoch_registers_ledger_and_decision(
         assert persisted_run is not None
         assert (
             persisted_run.output_publish_state == OutputPublishState.SUPPRESSED.value
+        )
+
+
+async def test_output_tx2_claim_cas_rejection_fails_closed(
+    db_session, session_factory
+):
+    """output 侧 Tx2 claim CAS 拒绝（变异 (d)-output 击杀）：outbox claim 被新
+    worker 接管后，旧 worker 的 ``terminalize_output_epoch_rejected`` 必须 raise
+    （ExecutionIntegrationConflictError）且 **零变更**（B 的 claim、decision 列、
+    Run 状态全不被覆盖）。
+
+    退化实现（跳过 claim CAS 直接终态化）在此转红。
+    """
+    from app.contexts.agent_execution.domain import ExecutionIntegrationConflictError
+
+    content = b"# output takeover"
+    conversation_id, outbox = await _seed_run_with_pending_output(
+        db_session, session_factory, content=content
+    )
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_execution_outbox "
+            "SET producer_purge_revision = NULL "
+            "WHERE tenant_id = :t AND id = :id"
+        ),
+        {"t": TENANT_ID, "id": outbox.id},
+    )
+    await db_session.commit()
+
+    # A 执行 Tx1（claim + consume，提交 rejected receipt）。Tx2 不执行。
+    from sqlalchemy import func
+
+    from app.contexts.agent_execution.application.bridge import (
+        AgentExecutionBridgeService,
+    )
+
+    async with session_factory() as session, session.begin():
+        now = await session.scalar(select(func.clock_timestamp()))
+        claimed = await AgentExecutionBridgeService(session).claim_output_event(
+            worker_id="b3-out-a",
+            now=now,
+            stale_before=now - timedelta(minutes=1),
+        )
+        assert claimed is not None and not isinstance(
+            claimed, PoisonedWorkspaceEvent
+        )
+        await ConversationExecutionCoordinator(session).consume_output_event(
+            claimed, consumed_at=datetime.now(UTC)
+        )
+
+    # 模拟 claim 租约过期 + B 接管（attempt+1，claimant 变 B）。
+    async with session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "UPDATE metaedu.agent_execution_outbox SET claimed_at = :old "
+                "WHERE tenant_id = :t AND id = :id"
+            ),
+            {
+                "old": datetime.now(UTC) - timedelta(minutes=10),
+                "t": TENANT_ID,
+                "id": outbox.id,
+            },
+        )
+        now = await session.scalar(select(func.clock_timestamp()))
+        await AgentExecutionBridgeService(session).claim_output_event(
+            worker_id="b3-out-b",
+            now=now,
+            stale_before=now - timedelta(minutes=1),
+        )
+
+    # 旧 worker A 携旧 claim -> Tx2 CAS 不匹配 fail closed + 零变更。
+    async with session_factory() as session, session.begin():
+        with pytest.raises(ExecutionIntegrationConflictError):
+            await AgentExecutionBridgeService(
+                session
+            ).terminalize_output_epoch_rejected(
+                tenant_id=TENANT_ID,
+                event_id=outbox.id,
+                payload_digest=claimed.payload_digest,
+                expected_attempt=claimed.attempt_count,
+                claimant_id=claimed.claimant_id,
+                reason=_EPOCH_UNKNOWN,
+                receipt_tombstone_digest="0" * 64,
+                decided_at=datetime.now(UTC),
+            )
+
+    async with session_factory() as check:
+        persisted = await check.get(ExecutionOutboxModel, outbox.id)
+        assert persisted is not None
+        # 零变更：B 的 claim 保持、attempt 未回退、decision 列未写。
+        assert persisted.status == "claimed"
+        assert persisted.claimed_by == "b3-out-b"
+        assert persisted.attempt_count == claimed.attempt_count + 1
+        assert persisted.decision_actor_id is None
+        assert persisted.decision_reason is None
+        persisted_run = await check.get(AgentRunModel, outbox.aggregate_id)
+        assert persisted_run is not None
+        assert (
+            persisted_run.output_publish_state
+            != OutputPublishState.SUPPRESSED.value
         )
 
 

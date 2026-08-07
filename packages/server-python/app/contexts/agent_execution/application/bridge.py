@@ -144,6 +144,8 @@ class AgentExecutionBridgeService:
         reason: str,
         receipt_tombstone_digest: str,
         correlation_id: uuid.UUID,
+        conversation_id: uuid.UUID | None,
+        producer_purge_revision: int | None,
     ) -> uuid.UUID:
         """R1-S4-C（S4-C round-4/5 状态表 Tx1）：execution inbox receipt 落
         ``rejected`` + tombstone 证据（epoch unknown/stale 拒绝）。
@@ -151,7 +153,8 @@ class AgentExecutionBridgeService:
         消费 epoch 分类在 ``begin_turn_receipt`` 之前，故此处**新建** receipt 行
         为 rejected（不进入 processing/consumed）。reason 为具名 code
         （``epoch_unknown_rejected``/``epoch_stale_rejected``）。返回 inbox 行 PK
-        （R3 ledger ``source_row_id``）。
+        （R3 ledger ``source_row_id``）。scope/epoch（C1 第 4 跳）取自 claim
+        envelope：stale 写原 producer epoch、unknown 保持 NULL。
         """
         return await self._bridge_repo.create_turn_receipt_rejected(
             tenant_id=tenant_id,
@@ -161,6 +164,8 @@ class AgentExecutionBridgeService:
             reason=reason,
             receipt_tombstone_digest=receipt_tombstone_digest,
             correlation_id=correlation_id,
+            conversation_id=conversation_id,
+            producer_purge_revision=producer_purge_revision,
         )
 
     async def register_epoch_unresolvable(

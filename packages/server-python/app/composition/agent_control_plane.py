@@ -376,6 +376,11 @@ class ConversationExecutionCoordinator:
             reason=reason,
             receipt_tombstone_digest=receipt_tombstone_digest,
             correlation_id=event.correlation_id,
+            # C1 第 4 跳：scope/epoch 取自 claim envelope（六元 CAS 已验证的源
+            # outbox 行重读值）——stale 写原 producer epoch（迟到写证据）、unknown
+            # 保持 None（NULL-epoch 行由 backfill 收敛）；不得读当前 revision 伪造。
+            conversation_id=claimed.conversation_id,
+            producer_purge_revision=claimed.producer_purge_revision,
         )
         if verdict.kind == "unknown":
             # 登记 epoch_unresolvable（unknown epoch 才登记；stale 不登记，round-4
@@ -446,7 +451,16 @@ class ConversationExecutionCoordinator:
             tenant_id=event.tenant_id,
             conversation_id=event.conversation_id,
         )
-        await self._workspace.lock_output_conversation(event)
+        # R1-S4-C（S4-C round-1 P1-1 返修）：epoch 分类路径以
+        # ``allow_purge_fenced=True`` 锁投影 Conversation——``purge_state in
+        # {running, completed}`` 时仍能锁定并完成 stale/unknown 分类（否则
+        # output 侧 stale 在锁前置 raise 下不可达，永远落
+        # ``late_body_write_rejected`` 而非具名 ``epoch_stale_rejected``）。
+        # 正文写裁决仍由 normal 路径的 ``consume_assistant_publish`` ->
+        # ``project_assistant_message`` fence 双保险把关。
+        await self._workspace.lock_output_conversation(
+            event, allow_purge_fenced=True
+        )
         await self._execution.validate_output_claim(claimed)
         # R1-S4-C（S4-C C3/R4）：epoch 分类**先于** fence 裁决（round-5 P1-1）——
         # ``require_active_fence`` 在 fence 非 active 时 raise，会吞掉 stale 分支。
@@ -532,6 +546,11 @@ class ConversationExecutionCoordinator:
             reason=reason,
             receipt_tombstone_digest=receipt_tombstone_digest,
             correlation_id=event.correlation_id,
+            # C1 第 4 跳：scope/epoch 取自 claim envelope（六元 CAS 已验证的源
+            # outbox 行重读值）——stale 写原 producer epoch（迟到写证据）、unknown
+            # 保持 None（NULL-epoch 行由 backfill 收敛）；不得读当前 revision 伪造。
+            conversation_id=claimed.conversation_id,
+            producer_purge_revision=claimed.producer_purge_revision,
         )
         if verdict.kind == "unknown":
             # 登记 epoch_unresolvable（unknown epoch 才登记；stale 不登记，round-4

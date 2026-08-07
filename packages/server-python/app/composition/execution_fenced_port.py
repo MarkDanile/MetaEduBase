@@ -173,6 +173,15 @@ class FencedExecutionPort:
         + fence FOR UPDATE 与 require 同序（Guard -> Conversation -> owner ->
         fence），缺 fence 按 registry 惰性建 active（与 require 同语义）。仅读
         状态不裁决、不推进 checkpoint。
+
+        **TOCTOU 关闭前提（并发面 round-1 复审，认知固化）**：本方法在 owner
+        advisory lock 内读取 fence 状态；fence 的 ACTIVE→ERASING/ERASED 转移
+        持有**同一把 owner lock**（``transition_fence_state`` 前置 owner lock，
+        既有锁序纪律），故分类读到 ACTIVE 时 purge 尚无法推进 fence——分类与
+        后续 ``require_active_fence`` 裁决之间无跨并发实体 TOCTOU。**该不变量
+        依赖「所有 fence 状态转移路径都持本 owner lock」**；未来新增 purge 路径
+        （S5 scheduler / S4-D/E participant 直推 fence）必须保持此纪律，否则
+        本方法产生 P1 级 TOCTOU。
         """
         from app.composition.agent_erasure_locks import acquire_owner_lock
 
