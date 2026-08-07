@@ -4,7 +4,7 @@ import uuid
 from dataclasses import replace
 
 import pytest
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.contexts.agent_execution.application.execution_identity_service import (
@@ -216,6 +216,17 @@ async def test_start_is_fail_closed_by_default_and_uses_revision_cas(db_session)
 async def test_fifo_and_predecessor_projection_barrier(db_session):
     identity = await bootstrap_compatibility(db_session)
     conversation_id = uuid.uuid4()
+    # R1-S4-C（S4-C C2）：execution outbox 新写带 conversation_id，触发
+    # migration 040 条件 FK fk_agent_exec_outbox_scope_conv——fixture 必须建
+    # 对应 agent_conversations 行。
+    await db_session.execute(
+        text(
+            "INSERT INTO metaedu.agent_conversations "
+            "(id, tenant_id, creation_digest, created_by) "
+            "VALUES (:id, :tenant, :digest, :actor)"
+        ),
+        {"id": conversation_id, "tenant": TENANT_A, "digest": "d" * 64, "actor": uuid.uuid4()},
+    )
     first_command = make_run_command(
         identity,
         conversation_id=conversation_id,
