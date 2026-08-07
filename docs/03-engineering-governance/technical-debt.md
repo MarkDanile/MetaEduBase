@@ -244,6 +244,7 @@
 - [PR #532](https://github.com/MarkDanile/MetaEduBase/pull/532) 已于 2026-08-06 squash merge 为 `fb6058ac`。Draft/Ready probe 验证 risk-targeted `2m44s / 297 passed`，Ready 最新 HEAD、main、schedule/manual 保留 full；Draft/Ready check 名称隔离，旧 Draft success 不可冒充最终门禁。
 - 真实 Git 与策略反例首轮在旧逻辑为 `7 failed / 49 passed`；横向审计再以 `4 failed / 50 passed` 证明 rename 隐藏原路径及 context helper 跨域消费者仍可降级。最终实现覆盖删除/type-change/rename 双路径、direct-root 与跨域 helper、未知 selector mode 和 CI/selector/shared/identity fail-closed；定向 `61 passed`、engineering `110 passed`。
 - 最终独立复核 `P0/P1/P2/P3 = 0/0/0/0`，正式评分 `93/100`。PR 最终 Ready HEAD `2ad3a76c` 三路 CI 全绿：Backend full `10m33s`、Frontend `2m46s`、Engineering docs `13s`。R1-S4-C 已解除暂停，并以三轮内收敛、连续两轮新 P1 即拆分或重构作为首个后续验证任务。
+- **首个后续验证任务完成（R1-S4-C 契约冻结，2026-08-07，PR #535 squash merge `c2e1af42`）**：收敛目标"三轮内"未达成（实际 10 轮），但**连续两轮新 P1 升级规则被验证有效**——round-3 后 round-4 再出新 P1 时，按 TD-092 升级为「状态表重写 + 根因批次」而非逐项补丁叠加（S2 双事务协议从解释性段落重写为 unknown/stale × workspace/execution × Tx1/Tx2/replay 状态表）。终审 P0/P1/P2/P3=`0/0/0/0`，评分 87。**复盘归因**：收敛轮数超目标是多轮「契约占位值/代码事实核对」（round-8 具名 code 占位、round-9 误判回退、round-10 真正 restore）非实现缺陷；新增规则信号——「契约 PR 净变更须纯文档且无 `.py`，用 `git diff main...HEAD` 复核而非 `git status clean`」已记录，可作合并门禁候选。
 
 ### TD-087: 模板管理 API 缺少后端 RBAC
 
