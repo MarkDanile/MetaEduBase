@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import func, select
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.composition.agent_erasure_locks import acquire_owner_lock
@@ -70,6 +71,13 @@ REASON_PURGE_BLOCKED_BY_LEGAL_HOLD = "purge_blocked_by_legal_hold"
 # Tx1 消费侧用具名 code（epoch_unknown_rejected/epoch_stale_rejected）；purge 侧
 # 清 receipt 用本值——冻结于 plan §R1-S4-D D-A-1，S4-D-B resolve 重放按此比对。
 RECEIPT_TOMBSTONE_REASON = "purge_erasure"
+
+# S4-C Tx1 消费侧合法写入的具名 reason code（互操作：purge 侧须接受并保留证据，
+# 否则含 Tx1 epoch-rejected receipt 的 conversation purge 永久 fail closed）。
+S4C_EPOCH_TOMBSTONE_REASONS = (
+    "epoch_unknown_rejected",
+    "epoch_stale_rejected",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,9 +159,45 @@ class TransportErasureParticipantBase(ABC):
         now: datetime,
     ) -> None:
         """清除 transport 正文（outbox -> suppressed 留 digest；inbox -> rejected
-        + tombstone；execution 侧同事务 Run suppressed）。幂等。"""
+        + tombstone）。幂等。Run ``output_publish_state`` 由 execution 侧
+        scan 只读判定（不在此清除——归 S3-D execution.core.v1）。"""
 
     # --- 共享管道（从 S2-D/S3-D plumbing 收敛，owner 参数化）-----------------
+
+    def _receipt_tombstone_digest_matches(self, row: RowMapping) -> bool:
+        """判定已 tombstone inbox 行的 digest 是否为本 purge 的合法证据。
+
+        互操作（终态/证据互操作批次）：接受两类精确匹配——
+        (a) purge 侧自写：reason=`purge_erasure`（RECEIPT_TOMBSTONE_REASON）重算匹配；
+        (b) S4-C Tx1 消费侧合法证据：`status='rejected'` + `last_error_code` 为
+        `epoch_unknown_rejected`/`epoch_stale_rejected` 之一，且按该 code 重算
+        digest 精确匹配——保留原证据（no-op），不得因 purge 重算差异 fail closed
+        卡死含 Tx1 epoch-rejected receipt 的 conversation。
+        其余不匹配 -> fail closed（调用方 raise）。
+        """
+        from app.contexts.agent_execution.domain.snapshots import snapshot_digest
+
+        event_id = str(row["event_id"])
+        if row["receipt_tombstone_digest"] == snapshot_digest(
+            {
+                "schema_version": 1,
+                "reason": RECEIPT_TOMBSTONE_REASON,
+                "event_id": event_id,
+            }
+        ):
+            return True
+        return (
+            row["status"] == "rejected"
+            and row["last_error_code"] in S4C_EPOCH_TOMBSTONE_REASONS
+            and row["receipt_tombstone_digest"]
+            == snapshot_digest(
+                {
+                    "schema_version": 1,
+                    "reason": row["last_error_code"],
+                    "event_id": event_id,
+                }
+            )
+        )
 
     async def _database_now(self) -> datetime:
         """purge 截止用 PostgreSQL ``clock_timestamp()``（S2-D P2-3 冻结）。"""

@@ -116,19 +116,23 @@ class WorkspaceTransportErasureParticipant(TransportErasureParticipantBase):
             {"t": tenant_id, "c": conversation_id},
         )
 
-        # inbox 状态矩阵（契约 D-A-1 冻结）：
+        # inbox 状态矩阵（契约 D-A-1 冻结 + 终态/证据互操作修订）：
         # - processing -> rejected + tombstone（与 S4-C Tx1 对齐）；
         # - 已 consumed/rejected -> 保留原 status，仅补幂等 tombstone；
-        # - 已 tombstone 且 digest 精确匹配 -> no-op（幂等重放）；
-        # - 已 tombstone 但 digest 不匹配 -> fail closed（不静默）。
+        # - 已 tombstone digest 精确匹配（purge_erasure）-> no-op（幂等重放）；
+        # - 已 tombstone 且为 S4-C Tx1 合法证据（status='rejected' + last_error_code
+        #   为 epoch_unknown_rejected/epoch_stale_rejected + 按该 code 重算 digest
+        #   精确匹配）-> no-op，保留原证据（互操作：S4-C 终态不因 purge 卡死）；
+        # - 其余已 tombstone digest 不匹配 -> fail closed（不静默）。
         # receipt tombstone digest = snapshot_digest({schema_version:1, reason,
-        # event_id})（S4-C Tx1 冻结键名，同一 helper）。
+        # event_id})（S4-C Tx1 冻结键名，同一 helper；reason 为冻结键值）。
         from app.contexts.agent_execution.domain.snapshots import snapshot_digest
 
         rows = (
             await self._session.execute(
                 text(
-                    "SELECT id, event_id, status, receipt_tombstone_digest "
+                    "SELECT id, event_id, status, last_error_code, "
+                    "receipt_tombstone_digest "
                     "FROM metaedu.agent_workspace_inbox "
                     "WHERE tenant_id = :t AND conversation_id = :c"
                 ),
@@ -138,19 +142,12 @@ class WorkspaceTransportErasureParticipant(TransportErasureParticipantBase):
         for row in rows:
             # 已 tombstone：digest 精确匹配 no-op；不匹配 fail closed。
             if row["receipt_tombstone_digest"] is not None:
-                expected = snapshot_digest(
-                    {
-                        "schema_version": 1,
-                        "reason": RECEIPT_TOMBSTONE_REASON,
-                        "event_id": str(row["event_id"]),
-                    }
+                if self._receipt_tombstone_digest_matches(row):
+                    continue  # no-op（幂等重放 / S4-C 合法证据保留）
+                raise WorkspaceIntegrationConflictError(
+                    "workspace inbox receipt tombstone digest mismatch on "
+                    "purge; refusing to overwrite existing evidence"
                 )
-                if row["receipt_tombstone_digest"] != expected:
-                    raise WorkspaceIntegrationConflictError(
-                        "workspace inbox receipt tombstone digest mismatch on "
-                        "purge; refusing to overwrite existing evidence"
-                    )
-                continue  # no-op（幂等重放，不改 status）
             # 未 tombstone：processing -> rejected+tombstone；已 consumed/rejected
             # 保留原 status 仅补幂等 tombstone。
             digest = snapshot_digest(

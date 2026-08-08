@@ -366,12 +366,20 @@ async def _seed_run(
     def_id = uuid.uuid4()
     profile_id = uuid.uuid4()
     # suppressed = R1 tombstone 分支（终端字段全 NULL，保留 digest/size）；
-    # 非 suppressed = 完整 terminal envelope（`ck_agent_run_terminal_output` 三分支）。
+    # pending/published/dead_letter = completed + 完整 terminal envelope；
+    # not_required = 非 completed 终态（failed/cancelled/expired，`ck_agent_run_
+    # terminal_output` 分支 2：status<>'completed' + 无终端字段 + not_required）。
     suppressed = output_publish_state == "suppressed"
-    tref = None if suppressed else f"run://{run_id}/terminal"
-    tmid = None if suppressed else uuid.uuid4()
-    tmedia = None if suppressed else "text/markdown"
-    tclass = None if suppressed else "internal"
+    not_required = output_publish_state == "not_required"
+    run_status = "failed" if not_required else "completed"
+    tref = None if (suppressed or not_required) else f"run://{run_id}/terminal"
+    tmid = None if (suppressed or not_required) else uuid.uuid4()
+    tmedia = None if (suppressed or not_required) else "text/markdown"
+    tclass = None if (suppressed or not_required) else "internal"
+    # not_required：非 completed 分支要求全部 terminal output 字段 NULL
+    # （含 output_digest/size，`ck_agent_run_terminal_output` 分支 2）。
+    tod = None if not_required else "3" * 64
+    tosize = None if not_required else 10
     await db_session.execute(
         text(
             "INSERT INTO metaedu.agent_definition_versions "
@@ -404,8 +412,8 @@ async def _seed_run(
             " output_publish_state, created_by, correlation_id, "
             " runtime_capability_snapshot, run_config_snapshot, budget_snapshot, "
             " usage_summary, created_at, updated_at) "
-            "VALUES (:id, :t, :c, 1, :root, :def, :prof, :cd, 'completed', 1, 1, 1, 0, "
-            " true, :now, :now, 'completed', 'ok', :trd, :tref, :tod, 10, "
+            "VALUES (:id, :t, :c, 1, :root, :def, :prof, :cd, :run_status, 1, 1, 1, 0, "
+            " true, :now, :now, 'failed', 'err', :trd, :tref, :tod, :tosize, "
             " :tmedia, :tclass, :tmid, :s, "
             " :cb, :corr, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, "
             " :now, :now)"
@@ -418,9 +426,11 @@ async def _seed_run(
             "def": def_id,
             "prof": profile_id,
             "cd": "1" * 64,
+            "run_status": run_status,
             "trd": snapshot_digest({"run": str(run_id)}),
             "tref": tref,
-            "tod": "3" * 64,
+            "tod": tod,
+            "tosize": tosize,
             "tmedia": tmedia,
             "tclass": tclass,
             "tmid": tmid,
@@ -703,15 +713,17 @@ async def test_outbox_claimed_published_dead_letter_cleared(
         )
         assert row["status"] == "suppressed"
         assert row["payload_inline"] is None
+        assert row["payload_digest"] is not None  # digest 保留（全部状态分支）
+        # P3-3：全部状态分支都断言 claim 列不被 participant 改写（DB 无 CHECK 兜底）。
+        assert row["claimed_by"] is None
+        assert row["claimed_at"] is None
         if status == "cancelled":
-            # 族 3：终态证据保留 + claim 列不被重写（Tx2 已清，participant 保持 NULL）。
+            # 族 3：终态证据保留（Tx2 已清，participant 保持 NULL）。
             if side == "execution":
                 assert row["decision_actor_id"] == uuid.UUID(int=0)
                 assert row["decision_reason"] == "epoch_unknown_rejected"
             else:
                 assert row["last_error_code"] == "epoch_unknown_rejected"
-            assert row["claimed_by"] is None
-            assert row["claimed_at"] is None
 
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
@@ -877,6 +889,92 @@ async def test_inbox_tombstone_digest_mismatch_fail_closed(
         await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
 
 
+@pytest.mark.parametrize("side", ["workspace", "execution"])
+@pytest.mark.parametrize("epoch_code", ["epoch_unknown_rejected", "epoch_stale_rejected"])
+async def test_inbox_s4c_tx1_tombstone_interop_noop(
+    db_session, _transport_owners_active, side, epoch_code
+):
+    """互操作（终态/证据互操作批次）：S4-C Tx1 合法 tombstone 证据 -> no-op 保留。
+
+    含 Tx1 epoch-rejected receipt 的 conversation purge 不得因 digest 重算差异
+    fail closed 卡死——`status='rejected'` + `last_error_code` 为 epoch code +
+    按该 code 重算 digest 精确匹配 -> no-op（保留原证据，不重写、不改 status）。
+    两侧 × 两个 epoch code 参数化。
+    """
+    await _ensure_test_tenant(db_session)
+    conv_id, purge_rev = await _seed_deleted_expired_conversation(
+        db_session, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    # 用 S4-C Tx1 冻结 envelope（reason=epoch code）计算真实 digest。
+    from app.contexts.agent_execution.domain.snapshots import snapshot_digest
+
+    event_id = uuid.uuid4()
+    tx1_digest = snapshot_digest(
+        {
+            "schema_version": 1,
+            "reason": epoch_code,
+            "event_id": str(event_id),
+        }
+    )
+    inbox_id = await _seed_transport_inbox(
+        db_session,
+        conversation_id=conv_id,
+        side=side,
+        status="rejected",
+        last_error_code=epoch_code,
+        receipt_tombstone_digest=tx1_digest,
+        event_id=event_id,
+    )
+    op_id, _ = await _make_purge_operation(
+        db_session, conv_id, purge_rev, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await db_session.commit()
+
+    await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
+
+    # no-op：原证据完整保留（不重写、不改 status）。
+    row = await _inbox_row(db_session, TRANSPORT_SIDES[side]["inbox_table"], inbox_id)
+    assert row["status"] == "rejected"
+    assert row["receipt_tombstone_state"] == "redacted"
+    assert row["receipt_tombstone_digest"] == tx1_digest  # 原 digest 保留
+    assert row["last_error_code"] == epoch_code
+
+
+@pytest.mark.parametrize("side", ["workspace", "execution"])
+async def test_inbox_s4c_tx1_wrong_code_fail_closed(
+    db_session, _transport_owners_active, side
+):
+    """互操作反例：rejected + last_error_code 非 epoch code -> 仍 fail closed。
+
+    ``last_error_code`` 为未知 code（如 'other_reason'）时，即便 status='rejected'
+    也不得放行（不能把任意 rejected 行当 S4-C 证据）。
+    """
+    await _ensure_test_tenant(db_session)
+    conv_id, purge_rev = await _seed_deleted_expired_conversation(
+        db_session, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await _seed_transport_inbox(
+        db_session,
+        conversation_id=conv_id,
+        side=side,
+        status="rejected",
+        last_error_code="some_other_reason",
+        receipt_tombstone_digest="e" * 64,
+    )
+    op_id, _ = await _make_purge_operation(
+        db_session, conv_id, purge_rev, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await db_session.commit()
+
+    conflict_error = (
+        WorkspaceIntegrationConflictError
+        if side == "workspace"
+        else ExecutionIntegrationConflictError
+    )
+    with pytest.raises(conflict_error):
+        await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
+
+
 # ---------------------------------------------------------------------------
 # 03. final scan + ACK 重放 + fencing
 # ---------------------------------------------------------------------------
@@ -1030,10 +1128,10 @@ async def test_erase_fencing_full(
 
 
 async def test_execution_run_unsettled_blocks(db_session, _transport_owners_active):
-    """族 1：execution final scan 检查 Run output_publish_state 非 suppressed -> blocked。
+    """族 1 + 终态互操作：Run output_publish_state IN ('pending','dead_letter') -> blocked。
 
-    ``suppressed`` 是唯一允许终态；``pending``/``published``/``dead_letter`` 任一
-    残留 Run 必须 blocked（reason_code + operation/checkpoint 三方一致）。
+    pending/dead_letter 是未决/失败投影的合法中间态，S3-D 会清除——transport
+    scan 计入残留必须 blocked（reason_code + checkpoint/operation 三方一致）。
     participant 只读判定——Run 行本身不被改写（正文清除归 S3-D）。
     """
     side = "execution"
@@ -1051,11 +1149,40 @@ async def test_execution_run_unsettled_blocks(db_session, _transport_owners_acti
 
     await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
 
-    # final scan 非零（Run pending）-> blocked 正常返回（不抛异常）。
-    assert (
-        await _checkpoint_state(db_session, op_id)
-        == PurgeOwnerState.BLOCKED.value
-    )
+    # final scan 非零（Run pending）-> blocked 正常返回（不抛异常），三方一致。
+    cp = (
+        await db_session.execute(
+            text(
+                "SELECT state, reason_code FROM "
+                "metaedu.agent_conversation_purge_owners "
+                "WHERE purge_operation_id = :op"
+            ),
+            {"op": op_id},
+        )
+    ).mappings().one()
+    assert cp["state"] == PurgeOwnerState.BLOCKED.value
+    assert cp["reason_code"] == "purge_blocked_by_transport_scan_nonzero"
+    op = (
+        await db_session.execute(
+            text(
+                "SELECT state, failure_code FROM metaedu.agent_conversation_purges "
+                "WHERE id = :op"
+            ),
+            {"op": op_id},
+        )
+    ).mappings().one()
+    assert op["state"] == "blocked"
+    assert op["failure_code"] == "purge_blocked_by_transport_scan_nonzero"
+    conv = (
+        await db_session.execute(
+            text(
+                "SELECT purge_state FROM metaedu.agent_conversations "
+                "WHERE id = :c"
+            ),
+            {"c": conv_id},
+        )
+    ).scalar_one()
+    assert conv == "blocked"
     # Run 行未被 participant 改写（只读判定，正文清除归 S3-D）。
     row = (
         await db_session.execute(
@@ -1091,31 +1218,51 @@ async def test_execution_run_suppressed_passes(db_session, _transport_owners_act
     )
 
 
+@pytest.mark.parametrize(
+    "terminal_state", ["not_required", "published", "suppressed"]
+)
+async def test_execution_run_terminal_states_pass(
+    db_session, _transport_owners_active, terminal_state
+):
+    """终态互操作：not_required/published/suppressed 均为终态 -> pass（不 blocked）。
+
+    ``not_required`` 是 failed/cancelled/expired Run 的合法终态（S3-D 不会改写成
+    suppressed）——若计入残留则 purge 永久 blocked；published/suppressed 同理。
+    """
+    side = "execution"
+    await _ensure_test_tenant(db_session)
+    conv_id, purge_rev = await _seed_deleted_expired_conversation(
+        db_session, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await _seed_run(
+        db_session, conversation_id=conv_id, output_publish_state=terminal_state
+    )
+    op_id, _ = await _make_purge_operation(
+        db_session, conv_id, purge_rev, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await db_session.commit()
+
+    await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
+
+    assert (
+        await _checkpoint_state(db_session, op_id)
+        == PurgeOwnerState.ACKED.value
+    )
+
+
 @pytest.mark.parametrize("side", ["workspace", "execution"])
-async def test_outbox_residual_blocks(db_session, _transport_owners_active, side):
-    """族 2：残留正文 -> blocked（final scan 非零，reason_code + 三方一致）。
+async def test_outbox_erased_replay_fail_closed(db_session, _transport_owners_active, side):
+    """erased replay fail-closed（P1-3 改名）：ACK 后 late-write -> erased + 非零 scan。
 
-    **结构**：残留行必须在**首次 erase 前**存在（fence 仍 erasing）——erase 后
-    final scan 非零 -> blocked 正常返回。若 erase 后 ACK 完成再插行（erased fence
-    重放），走「erased + 非零 scan = 正文泄漏」fail closed（ValueError），那是
-    erased 重放路径而非 blocked 路径——本用例验证 blocked 路径。
-
-    「final scan 为零才 ACK」的唯一直接观察点：scan 排除某状态（如 cancelled）的
-    变异——UPDATE 先清行、scan 计数差异不可见——被本用例击杀（残留行不被清则
-    scan 非零 -> blocked，而非 ACK）。
+    首次 erase 清两行 -> ACK；再插入一行（late-write）重放 -> erased fence 幂等
+    重放先于 purge 前置 -> erased + 非零 scan = 正文泄漏 -> fail closed ValueError
+    （不可在非空正文上补 ACK）。**这是 erased-replay 路径，不是首次 erase 的
+    blocked 路径**——真 blocked 路径见 `test_execution_run_unsettled_blocks`。
     """
     await _ensure_test_tenant(db_session)
     conv_id, purge_rev = await _seed_deleted_expired_conversation(
         db_session, owner=TRANSPORT_SIDES[side]["owner"]
     )
-    # 残留行（inline 正文）在首次 erase 前存在——participant 的 UPDATE 谓词
-    # 会清它，但本用例构造「UPDATE 无法清」的形态：行 conversation_id 非 NULL
-    # 且正文在——其实 UPDATE 能清；故改构造「scan 残留」= 两行，一行被清、一行
-    # 在 erase 后模拟 late-write 由并发写入——这里简化：直接造一行在首次 erase
-    # 前存在、且**故意不被 UPDATE 命中**的形态不存在（谓词同源）。
-    # 实际做法：造一行 pending+inline（会被清），erase 后**同一事务内**再插一行
-    # （late-write 窗口）——见下方「重放」结构：首次 erase 前插入两行，第一行
-    # 被清、第二行留作 scan 残留。
     await _seed_transport_outbox(db_session, conversation_id=conv_id, side=side)
     await _seed_transport_outbox(db_session, conversation_id=conv_id, side=side)
     op_id, _ = await _make_purge_operation(
@@ -1126,9 +1273,7 @@ async def test_outbox_residual_blocks(db_session, _transport_owners_active, side
     # 首次 erase：两行都被清 -> scan 为零 -> ACK。
     await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
 
-    # 再插入一行（模拟 late-write，非 suppressed 谓词命中但 scan 可观察），
-    # 重放（erased fence 幂等重放先于 purge 前置）-> erased + 非零 scan ->
-    # fail closed ValueError（正文泄漏，不可在非空正文上补 ACK）。
+    # 再插入一行（模拟 late-write），重放 -> erased + 非零 scan -> fail closed。
     await _seed_transport_outbox(db_session, conversation_id=conv_id, side=side)
     await db_session.commit()
 
@@ -1144,14 +1289,46 @@ async def test_outbox_residual_blocks(db_session, _transport_owners_active, side
 
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
-async def test_inbox_residual_blocks(db_session, _transport_owners_active, side):
-    """族 2（inbox 维度）：未决 receipt 残留 -> blocked。
+async def test_scan_detects_injected_residual(
+    db_session, _transport_owners_active, side
+):
+    """scan 反向判别（P1-3）：erase body 后注入残留 -> scan 非零（不返回 0）。
 
-    首次 erase 前插入 processing receipt + 正常 outbox：erase 清 receipt ->
-    scan 为零 -> ACK；再插 processing receipt（迟到）重放 -> erased + 非零
-    scan -> fail closed ValueError（inbox scan 恒零变异被击杀——残留 receipt
-    会让 scan 非零而 fail）。
+    participant 的 UPDATE 清除一切 scan 计数的行（同一事实谓词），故 outbox/inbox
+    的首次-erase-blocked 路径在构造上不可达（唯一真 blocked 触发是 Run pending，
+    见 `test_execution_run_unsettled_blocks`）；本用例直接验证「scan 检测注入残留
+    」——击杀「scan 恒零」变异（erase body 后插行，scan 必须非零）。
     """
+    await _ensure_test_tenant(db_session)
+    conv_id, purge_rev = await _seed_deleted_expired_conversation(
+        db_session, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await _seed_transport_outbox(db_session, conversation_id=conv_id, side=side)
+    op_id, _ = await _make_purge_operation(
+        db_session, conv_id, purge_rev, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await db_session.commit()
+
+    participant = _participant_for_side(db_session, side)
+    # erase body（清掉已有行）后、final scan 前注入残留（模拟 late-write 窗口）。
+    await participant.erase_transport_body(
+        tenant_id=TENANT_ID,
+        conversation_id=conv_id,
+        purge_revision=purge_rev,
+        now=datetime.now(UTC).replace(tzinfo=None),
+    )
+    await _seed_transport_outbox(db_session, conversation_id=conv_id, side=side)
+    scan = await participant.scan_transport_body(
+        tenant_id=TENANT_ID, conversation_id=conv_id
+    )
+    # 注入残留必须被 scan 检测（scan 恒零变异被击杀）。
+    assert scan.outbox_payload_rows == 1
+    assert scan.total == 1
+
+
+@pytest.mark.parametrize("side", ["workspace", "execution"])
+async def test_inbox_erased_replay_fail_closed(db_session, _transport_owners_active, side):
+    """erased replay fail-closed（P1-3 改名，inbox 维度）：迟到 receipt -> ValueError。"""
     await _ensure_test_tenant(db_session)
     conv_id, purge_rev = await _seed_deleted_expired_conversation(
         db_session, owner=TRANSPORT_SIDES[side]["owner"]
@@ -1250,6 +1427,20 @@ async def test_capability_gate_fail_closed_when_registry_false(db_session, side)
 # ---------------------------------------------------------------------------
 # helper：调用 participant erase（与实现签名对齐后调整）
 # ---------------------------------------------------------------------------
+
+
+def _participant_for_side(db_session, side: str):
+    """构造侧 participant（scan/erase 直接调用用，绕过 erase_transport_owner 编排）。"""
+    from app.contexts.agent_execution.infrastructure.execution_transport_erasure_participant import (  # noqa: E501
+        ExecutionTransportErasureParticipant,
+    )
+    from app.contexts.agent_workspace.infrastructure.workspace_transport_erasure_participant import (  # noqa: E501
+        WorkspaceTransportErasureParticipant,
+    )
+
+    if side == "workspace":
+        return WorkspaceTransportErasureParticipant(db_session)
+    return ExecutionTransportErasureParticipant(db_session)
 
 
 async def _run_participant_erase(
