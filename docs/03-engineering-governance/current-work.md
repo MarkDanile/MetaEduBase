@@ -16,12 +16,12 @@
 
 ### TASK-REQ041-047-S4D-A: R1-S4-D-A Transport Participant Core
 
-状态：🟡 进行中
+状态：🟡 进行中（Draft，待 Ready）
 类型：实现（Draft risk-targeted）
 领域：R1-S4-D Transport Participants（workspace/execution transport eraser）
 当前执行模式：TD-092 Draft + `Backend iteration`
 最近接手工具：Claude Code
-分支：`feat/req041-047-r1-s4d-transport-participant`
+分支：`feat/req041-047-r1-s4d-transport-participant-core`
 
 需求来源：
 - Spec: [R1 专项契约 §4.1/§7](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
@@ -33,15 +33,15 @@
 - 用户调整：registry 不在 S4-D-A 翻 True（S4-D-B 最终激活提交统一翻）；两类 gate 区分（conversation_scope 内嵌 fail closed / tenant_scope 仅共享查询 / orphan 不阻塞）。
 - 实现分支 `feat/req041-047-r1-s4d-transport-participant-core`，Draft PR #542。
 - **实现完成**：共享基类 `TransportErasureParticipantBase`（S2-D/S3-D 管道收敛，owner 参数化）+ `Workspace/ExecutionTransportErasureParticipant`；outbox 正文事实谓词 scan（含 cancelled 行，保留终态证据）+ inbox 状态矩阵 + capability gate + fencing 全套。
-- **三面首轮复审完成**（0/0/6/9/8 归 5 根因族，commit `24c2b601`）→ **定向复核**（P1=3）→ **互操作批次**（commit `f9903e9e`：S4-C tombstone 互操作 + Run 终态谓词统一 + blocked 三方）→ **判别力批次**（commit 待填：epoch code 三元反例 + dead_letter 参数化）。
+- **三面首轮复审**（归 5 根因族，commit `24c2b601`）→ **定向复核**（P1=3）→ **互操作批次**（commit `f9903e9e`：S4-C tombstone 互操作 + Run 终态谓词统一 + blocked 三方）→ **判别力批次**（commit `312da9f1`：epoch code 三元反例 + dead_letter 参数化）→ **最终定向核对 P0/P1=0 通过**。
 
 下一步：
-- 一次最终定向核对（判别力批次后）→ P0/P1 清零后转 Ready → 只跑一次 Backend full。
+- 转 Ready → 只跑一次 Backend full（失败只接受 clean-main/PR-HEAD 对照）。
 
 验证状态：
-- 矩阵 43 passed（判别力批次后 51 待跑）+ 邻近 133 + S2-D/E = 176 passed（互操作批次口径）；ruff 0；mypy 0。
+- 矩阵 52 passed + 邻近 133 = **185 passed**；ruff 0；mypy 0；docs gate 通过。
 - registry 全程保持 False（capability gate fail closed 是预期）；不 resolve、不改 ledger 投影、不导入 backfill 私有；不翻 registry、不启动 S4-D-B。
-- Draft PR #542（HEAD `35510c83`，Draft iteration 三路 CI SUCCESS）。
+- Draft PR #542（Draft iteration 三路 CI SUCCESS）。
 
 交接备注：
 - 本 PR **不**翻 registry `erase_available`（两 transport owner 保持 False），**不**导入 backfill 私有函数，**不**实现 ledger resolve（归 S4-D-B）。

@@ -87,7 +87,8 @@ class TransportBodyScan:
 
     ``total`` 为 0 才允许 ACK（final scan 为零）；digest 为扫描摘要的 canonical
     digest（证据绑定，不承载正文）。``run_unsettled_rows`` 仅 execution 侧非零
-    （Run ``output_publish_state <> 'suppressed'`` 计数）；workspace 侧恒 0。
+    （Run ``output_publish_state IN ('pending','dead_letter')`` 计数；
+    ``not_required``/``published``/``suppressed`` 为终态不计）；workspace 侧恒 0。
     """
 
     outbox_payload_rows: int
