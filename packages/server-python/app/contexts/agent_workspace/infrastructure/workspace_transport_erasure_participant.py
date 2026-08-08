@@ -30,6 +30,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.composition.transport_erasure_participant import (
+    RECEIPT_TOMBSTONE_REASON,
     TransportBodyScan,
     TransportErasureParticipantBase,
 )
@@ -140,7 +141,7 @@ class WorkspaceTransportErasureParticipant(TransportErasureParticipantBase):
                 expected = snapshot_digest(
                     {
                         "schema_version": 1,
-                        "reason": "purge_erasure",
+                        "reason": RECEIPT_TOMBSTONE_REASON,
                         "event_id": str(row["event_id"]),
                     }
                 )
@@ -155,7 +156,7 @@ class WorkspaceTransportErasureParticipant(TransportErasureParticipantBase):
             digest = snapshot_digest(
                 {
                     "schema_version": 1,
-                    "reason": "purge_erasure",
+                    "reason": RECEIPT_TOMBSTONE_REASON,
                     "event_id": str(row["event_id"]),
                 }
             )

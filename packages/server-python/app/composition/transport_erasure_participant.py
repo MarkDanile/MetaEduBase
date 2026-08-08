@@ -66,21 +66,28 @@ from app.contexts.agent_workspace.infrastructure.models import (
 REASON_TRANSPORT_SCAN_NONZERO = "purge_blocked_by_transport_scan_nonzero"
 REASON_PURGE_BLOCKED_BY_LEGAL_HOLD = "purge_blocked_by_legal_hold"
 
+# receipt tombstone digest 的 reason 键值（族 5：plan 冻结，禁 participant 自造）。
+# Tx1 消费侧用具名 code（epoch_unknown_rejected/epoch_stale_rejected）；purge 侧
+# 清 receipt 用本值——冻结于 plan §R1-S4-D D-A-1，S4-D-B resolve 重放按此比对。
+RECEIPT_TOMBSTONE_REASON = "purge_erasure"
+
 
 @dataclass(frozen=True, slots=True)
 class TransportBodyScan:
-    """transport 正文扫描结果（outbox 正文残留 + inbox 未决 receipt）。
+    """transport 正文扫描结果（outbox 正文残留 + inbox 未决 receipt + Run 投影）。
 
     ``total`` 为 0 才允许 ACK（final scan 为零）；digest 为扫描摘要的 canonical
-    digest（证据绑定，不承载正文）。
+    digest（证据绑定，不承载正文）。``run_unsettled_rows`` 仅 execution 侧非零
+    （Run ``output_publish_state <> 'suppressed'`` 计数）；workspace 侧恒 0。
     """
 
     outbox_payload_rows: int
     inbox_unsettled_rows: int
+    run_unsettled_rows: int = 0
 
     @property
     def total(self) -> int:
-        return self.outbox_payload_rows + self.inbox_unsettled_rows
+        return self.outbox_payload_rows + self.inbox_unsettled_rows + self.run_unsettled_rows
 
     def digest(self) -> str:
         from app.contexts.agent_execution.domain.snapshots import snapshot_digest
@@ -90,6 +97,7 @@ class TransportBodyScan:
                 "schema_version": 1,
                 "outbox_payload_rows": self.outbox_payload_rows,
                 "inbox_unsettled_rows": self.inbox_unsettled_rows,
+                "run_unsettled_rows": self.run_unsettled_rows,
             }
         )
 
@@ -120,10 +128,6 @@ class TransportErasureParticipantBase(ABC):
 
     #: 本 participant 持有的 transport owner key（子类冻结）。
     owner_key: str
-    #: 锁序第一步：Conversation 行锁（与正文 writer / S2-D 对齐，防 AB-BA）。
-    conversation_lock_first: bool = True
-    #: 集合锁 key 的 source_table（子类按侧冻结）。
-    source_table: str | None = None
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -706,10 +710,14 @@ class TransportErasureParticipantBase(ABC):
             now=effective_now,
         )
 
-        # 集合 advisory lock（最内层）：仅对需写 inbox 投影/ledger 的路径——
-        # transport participant 只做 outbox/inbox 行清除（不 resolve、不改
-        # ledger 投影），故本 PR 不取集合锁（S4-D-B 接入 resolve 时按 D8 取）。
-        # 源 transport 行 FOR UPDATE 投影写在清除动作内完成（幂等）。
+        # 集合 advisory lock（最内层）——**免取条件（plan §R1-S4-D D-A-1 冻结）**：
+        # 纯 outbox/inbox metadata 写 + transport scan **不写 ledger/投影**时可免取
+        # （本 PR：S4-D-A 只清 outbox/inbox 行，不 resolve、不写 reconcile issue、
+        # 不重算行内投影）。一旦写 reconcile issue 或投影（S4-D-B 接入 resolve），
+        # 必须按全局锁序取集合锁（Guard -> Conversation -> owner -> fence ->
+        # 集合锁最内层），禁止在此链前取。
+        # 源 transport 行 UPDATE 隐式取得行锁（S3-D P3-3 对齐：不再额外
+        # SELECT ... FOR UPDATE）。
 
         # 正文清除（outbox -> suppressed 留 digest；inbox -> rejected+tombstone）。
         await self.erase_transport_body(

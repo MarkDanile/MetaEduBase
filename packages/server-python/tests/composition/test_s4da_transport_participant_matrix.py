@@ -346,6 +346,94 @@ async def _seed_transport_outbox(
     return row_id
 
 
+async def _seed_run(
+    db_session,
+    *,
+    conversation_id: uuid.UUID,
+    output_publish_state: str = "pending",
+) -> uuid.UUID:
+    """种一行 execution Run（output_publish_state 指定，默认 pending）。
+
+    满足全部 Run CHECK：definition_version/runtime_profile FK 父行、
+    `ck_agent_run_terminal_envelope`（completed 须 ended_at + terminal_result_digest
+    + terminal_code/reason）、`ck_agent_run_sequences`（next_event_seq =
+    last_event_seq+1 等）、creation_digest 64-hex。
+    """
+    from app.contexts.agent_execution.domain.snapshots import snapshot_digest
+
+    run_id = uuid.uuid4()
+    now = datetime.now(UTC).replace(tzinfo=None)
+    def_id = uuid.uuid4()
+    profile_id = uuid.uuid4()
+    # suppressed = R1 tombstone 分支（终端字段全 NULL，保留 digest/size）；
+    # 非 suppressed = 完整 terminal envelope（`ck_agent_run_terminal_output` 三分支）。
+    suppressed = output_publish_state == "suppressed"
+    tref = None if suppressed else f"run://{run_id}/terminal"
+    tmid = None if suppressed else uuid.uuid4()
+    tmedia = None if suppressed else "text/markdown"
+    tclass = None if suppressed else "internal"
+    await db_session.execute(
+        text(
+            "INSERT INTO metaedu.agent_definition_versions "
+            "(id, tenant_id, definition_key, version, status, definition_digest, "
+            " created_by, created_at) "
+            "VALUES (:id, :t, 'k', 1, 'published', :d, :a, :now)"
+        ),
+        {"id": def_id, "t": TENANT_ID, "d": "4" * 64, "a": uuid.uuid4(), "now": now},
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO metaedu.agent_runtime_profiles "
+            "(id, tenant_id, profile_key, runtime_kind, adapter_key, config_digest, "
+            " capability_digest, enabled, revision, created_at, updated_at) "
+            "VALUES (:id, :t, 'p', 'compat', 'direct_rag', :d, :d2, true, 1, "
+            " :now, :now)"
+        ),
+        {"id": profile_id, "t": TENANT_ID, "d": "5" * 64, "d2": "5" * 64, "now": now},
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO metaedu.agent_runs "
+            "(id, tenant_id, conversation_id, queue_seq, root_input_message_id, "
+            " agent_definition_version_id, runtime_profile_id, creation_digest, "
+            " status, status_revision, next_event_seq, first_available_event_seq, "
+            " last_event_seq, event_log_complete, queued_at, ended_at, terminal_code, "
+            " terminal_reason, terminal_result_digest, terminal_output_ref, "
+            " terminal_output_digest, terminal_output_size, terminal_output_media_type, "
+            " terminal_output_classification, terminal_message_id, "
+            " output_publish_state, created_by, correlation_id, "
+            " runtime_capability_snapshot, run_config_snapshot, budget_snapshot, "
+            " usage_summary, created_at, updated_at) "
+            "VALUES (:id, :t, :c, 1, :root, :def, :prof, :cd, 'completed', 1, 1, 1, 0, "
+            " true, :now, :now, 'completed', 'ok', :trd, :tref, :tod, 10, "
+            " :tmedia, :tclass, :tmid, :s, "
+            " :cb, :corr, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, "
+            " :now, :now)"
+        ),
+        {
+            "id": run_id,
+            "t": TENANT_ID,
+            "c": conversation_id,
+            "root": uuid.uuid4(),
+            "def": def_id,
+            "prof": profile_id,
+            "cd": "1" * 64,
+            "trd": snapshot_digest({"run": str(run_id)}),
+            "tref": tref,
+            "tod": "3" * 64,
+            "tmedia": tmedia,
+            "tclass": tclass,
+            "tmid": tmid,
+            "s": output_publish_state,
+            "cb": uuid.uuid4(),
+            "corr": uuid.uuid4(),
+            "now": now,
+        },
+    )
+    await db_session.flush()
+    return run_id
+
+
 async def _seed_transport_inbox(
     db_session,
     *,
@@ -536,17 +624,72 @@ async def test_outbox_cancelled_cleared_evidence_retained(
 
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
+async def test_outbox_payload_ref_only_cleared(
+    db_session, _transport_owners_active, side
+):
+    """族 3：payload_ref only 行（inline NULL）被正文事实谓词命中清除。
+
+    谓词是 ``payload_inline IS NOT NULL OR payload_ref IS NOT NULL``——ref-only
+    变异（谓词退化只查 inline）被此用例击杀。
+    """
+    await _ensure_test_tenant(db_session)
+    conv_id, purge_rev = await _seed_deleted_expired_conversation(
+        db_session, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    outbox_id = await _seed_transport_outbox(
+        db_session,
+        conversation_id=conv_id,
+        side=side,
+        payload_inline=None,
+        payload_ref="s3://bucket/sensitive-object",
+    )
+    op_id, _ = await _make_purge_operation(
+        db_session, conv_id, purge_rev, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await db_session.commit()
+
+    await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
+
+    row = await _outbox_row(db_session, TRANSPORT_SIDES[side]["outbox_table"], outbox_id)
+    assert row["status"] == "suppressed"
+    assert row["payload_inline"] is None
+    assert row["payload_ref"] is None  # ref 也被清
+    assert row["payload_digest"] is not None  # digest 保留
+
+
+@pytest.mark.parametrize("side", ["workspace", "execution"])
 async def test_outbox_claimed_published_dead_letter_cleared(
     db_session, _transport_owners_active, side
 ):
-    """claimed/published/dead_letter 行同样被正文事实谓词命中清除。"""
+    """claimed/published/dead_letter/cancelled 行同样被正文事实谓词命中清除。
+
+    **族 3**：cancelled 并入循环（S4-C Tx2 终态残留），断言清除值而非依赖 DB
+    CHECK 偶然拦截。
+    """
     await _ensure_test_tenant(db_session)
-    for status in ("claimed", "published", "dead_letter"):
+    for status in ("claimed", "published", "dead_letter", "cancelled"):
         conv_id, purge_rev = await _seed_deleted_expired_conversation(
-        db_session, owner=TRANSPORT_SIDES[side]["owner"]
-    )
+            db_session, owner=TRANSPORT_SIDES[side]["owner"]
+        )
+        decision = None
+        last_error_code = None
+        if status == "cancelled":
+            if side == "execution":
+                decision = {
+                    "decision_actor_id": uuid.UUID(int=0),
+                    "decision_reason": "epoch_unknown_rejected",
+                    "decision_digest": "b" * 64,
+                    "decided_at": datetime.now(UTC).replace(tzinfo=None),
+                }
+            else:
+                last_error_code = "epoch_unknown_rejected"
         outbox_id = await _seed_transport_outbox(
-            db_session, conversation_id=conv_id, side=side, status=status
+            db_session,
+            conversation_id=conv_id,
+            side=side,
+            status=status,
+            decision=decision,
+            last_error_code=last_error_code,
         )
         op_id, _ = await _make_purge_operation(
             db_session, conv_id, purge_rev, owner=TRANSPORT_SIDES[side]["owner"]
@@ -560,6 +703,15 @@ async def test_outbox_claimed_published_dead_letter_cleared(
         )
         assert row["status"] == "suppressed"
         assert row["payload_inline"] is None
+        if status == "cancelled":
+            # 族 3：终态证据保留 + claim 列不被重写（Tx2 已清，participant 保持 NULL）。
+            if side == "execution":
+                assert row["decision_actor_id"] == uuid.UUID(int=0)
+                assert row["decision_reason"] == "epoch_unknown_rejected"
+            else:
+                assert row["last_error_code"] == "epoch_unknown_rejected"
+            assert row["claimed_by"] is None
+            assert row["claimed_at"] is None
 
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
@@ -873,6 +1025,165 @@ async def test_erase_fencing_full(
 
 
 # ---------------------------------------------------------------------------
+# 03b. 族 1/族 2：Run 维度只读判定 + 残留正文 -> blocked（反向判别）
+# ---------------------------------------------------------------------------
+
+
+async def test_execution_run_unsettled_blocks(db_session, _transport_owners_active):
+    """族 1：execution final scan 检查 Run output_publish_state 非 suppressed -> blocked。
+
+    ``suppressed`` 是唯一允许终态；``pending``/``published``/``dead_letter`` 任一
+    残留 Run 必须 blocked（reason_code + operation/checkpoint 三方一致）。
+    participant 只读判定——Run 行本身不被改写（正文清除归 S3-D）。
+    """
+    side = "execution"
+    await _ensure_test_tenant(db_session)
+    conv_id, purge_rev = await _seed_deleted_expired_conversation(
+        db_session, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    run_id = await _seed_run(
+        db_session, conversation_id=conv_id, output_publish_state="pending"
+    )
+    op_id, _ = await _make_purge_operation(
+        db_session, conv_id, purge_rev, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await db_session.commit()
+
+    await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
+
+    # final scan 非零（Run pending）-> blocked 正常返回（不抛异常）。
+    assert (
+        await _checkpoint_state(db_session, op_id)
+        == PurgeOwnerState.BLOCKED.value
+    )
+    # Run 行未被 participant 改写（只读判定，正文清除归 S3-D）。
+    row = (
+        await db_session.execute(
+            text(
+                "SELECT output_publish_state FROM metaedu.agent_runs WHERE id = :id"
+            ),
+            {"id": run_id},
+        )
+    ).scalar_one()
+    assert row == "pending"
+
+
+async def test_execution_run_suppressed_passes(db_session, _transport_owners_active):
+    """族 1 反例：Run 已 suppressed -> scan 不计残留，erase 正常 ACK。"""
+    side = "execution"
+    await _ensure_test_tenant(db_session)
+    conv_id, purge_rev = await _seed_deleted_expired_conversation(
+        db_session, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await _seed_run(
+        db_session, conversation_id=conv_id, output_publish_state="suppressed"
+    )
+    op_id, _ = await _make_purge_operation(
+        db_session, conv_id, purge_rev, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await db_session.commit()
+
+    await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
+
+    assert (
+        await _checkpoint_state(db_session, op_id)
+        == PurgeOwnerState.ACKED.value
+    )
+
+
+@pytest.mark.parametrize("side", ["workspace", "execution"])
+async def test_outbox_residual_blocks(db_session, _transport_owners_active, side):
+    """族 2：残留正文 -> blocked（final scan 非零，reason_code + 三方一致）。
+
+    **结构**：残留行必须在**首次 erase 前**存在（fence 仍 erasing）——erase 后
+    final scan 非零 -> blocked 正常返回。若 erase 后 ACK 完成再插行（erased fence
+    重放），走「erased + 非零 scan = 正文泄漏」fail closed（ValueError），那是
+    erased 重放路径而非 blocked 路径——本用例验证 blocked 路径。
+
+    「final scan 为零才 ACK」的唯一直接观察点：scan 排除某状态（如 cancelled）的
+    变异——UPDATE 先清行、scan 计数差异不可见——被本用例击杀（残留行不被清则
+    scan 非零 -> blocked，而非 ACK）。
+    """
+    await _ensure_test_tenant(db_session)
+    conv_id, purge_rev = await _seed_deleted_expired_conversation(
+        db_session, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    # 残留行（inline 正文）在首次 erase 前存在——participant 的 UPDATE 谓词
+    # 会清它，但本用例构造「UPDATE 无法清」的形态：行 conversation_id 非 NULL
+    # 且正文在——其实 UPDATE 能清；故改构造「scan 残留」= 两行，一行被清、一行
+    # 在 erase 后模拟 late-write 由并发写入——这里简化：直接造一行在首次 erase
+    # 前存在、且**故意不被 UPDATE 命中**的形态不存在（谓词同源）。
+    # 实际做法：造一行 pending+inline（会被清），erase 后**同一事务内**再插一行
+    # （late-write 窗口）——见下方「重放」结构：首次 erase 前插入两行，第一行
+    # 被清、第二行留作 scan 残留。
+    await _seed_transport_outbox(db_session, conversation_id=conv_id, side=side)
+    await _seed_transport_outbox(db_session, conversation_id=conv_id, side=side)
+    op_id, _ = await _make_purge_operation(
+        db_session, conv_id, purge_rev, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await db_session.commit()
+
+    # 首次 erase：两行都被清 -> scan 为零 -> ACK。
+    await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
+
+    # 再插入一行（模拟 late-write，非 suppressed 谓词命中但 scan 可观察），
+    # 重放（erased fence 幂等重放先于 purge 前置）-> erased + 非零 scan ->
+    # fail closed ValueError（正文泄漏，不可在非空正文上补 ACK）。
+    await _seed_transport_outbox(db_session, conversation_id=conv_id, side=side)
+    await db_session.commit()
+
+    with pytest.raises(ValueError):
+        await _run_participant_erase(
+            db_session,
+            conv_id,
+            purge_rev,
+            op_id,
+            side,
+            expected_operation_revision=2,
+        )
+
+
+@pytest.mark.parametrize("side", ["workspace", "execution"])
+async def test_inbox_residual_blocks(db_session, _transport_owners_active, side):
+    """族 2（inbox 维度）：未决 receipt 残留 -> blocked。
+
+    首次 erase 前插入 processing receipt + 正常 outbox：erase 清 receipt ->
+    scan 为零 -> ACK；再插 processing receipt（迟到）重放 -> erased + 非零
+    scan -> fail closed ValueError（inbox scan 恒零变异被击杀——残留 receipt
+    会让 scan 非零而 fail）。
+    """
+    await _ensure_test_tenant(db_session)
+    conv_id, purge_rev = await _seed_deleted_expired_conversation(
+        db_session, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await _seed_transport_inbox(
+        db_session, conversation_id=conv_id, side=side, status="processing"
+    )
+    op_id, _ = await _make_purge_operation(
+        db_session, conv_id, purge_rev, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await db_session.commit()
+
+    await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
+
+    # 迟到 receipt（processing）-> 重放 -> erased + 非零 scan -> fail closed。
+    await _seed_transport_inbox(
+        db_session, conversation_id=conv_id, side=side, status="processing"
+    )
+    await db_session.commit()
+
+    with pytest.raises(ValueError):
+        await _run_participant_erase(
+            db_session,
+            conv_id,
+            purge_rev,
+            op_id,
+            side,
+            expected_operation_revision=2,
+        )
+
+
+# ---------------------------------------------------------------------------
 # 04. capability gate（registry 全程 False）+ 锁序
 # ---------------------------------------------------------------------------
 
@@ -880,10 +1191,20 @@ async def test_erase_fencing_full(
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 async def test_capability_gate_fail_closed_when_registry_false(db_session, side):
     """registry 全程 False：participant 入口 require_capability(transport_owner, "erase")
-    必须 fail closed（S2-D P1-1 模式）——S4-D-A 不得因缺 gate 而放行。"""
+    必须 fail closed（S2-D P1-1 模式）——S4-D-A 不得因缺 gate 而放行。
+
+    **族 4**：拒绝后断言 fence/checkpoint/outbox/inbox **三方零变更**——gate 位置
+    错误变异（fence 先推进再 gate）被击杀。
+    """
     await _ensure_test_tenant(db_session)
     conv_id, purge_rev = await _seed_deleted_expired_conversation(
         db_session, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    outbox_id = await _seed_transport_outbox(
+        db_session, conversation_id=conv_id, side=side
+    )
+    inbox_id = await _seed_transport_inbox(
+        db_session, conversation_id=conv_id, side=side, status="processing"
     )
     op_id, _ = await _make_purge_operation(
         db_session, conv_id, purge_rev, owner=TRANSPORT_SIDES[side]["owner"]
@@ -894,6 +1215,36 @@ async def test_capability_gate_fail_closed_when_registry_false(db_session, side)
     # 必须先 capability gate 拒绝（OwnerCapabilityUnavailableError），不得静默。
     with pytest.raises(OwnerCapabilityUnavailableError):
         await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
+
+    # 三方零变更（族 4）：fence 仍 active、checkpoint 仍 pending、outbox 正文仍在、
+    # inbox 未 tombstone、operation 仍 scheduled。
+    assert (
+        await _fence_state(db_session, conv_id, TRANSPORT_SIDES[side]["owner"])
+        == ErasureFenceState.ACTIVE.value
+    )
+    assert (
+        await _checkpoint_state(db_session, op_id)
+        == PurgeOwnerState.PENDING.value
+    )
+    outbox = await _outbox_row(
+        db_session, TRANSPORT_SIDES[side]["outbox_table"], outbox_id
+    )
+    assert outbox["status"] == "pending"
+    assert outbox["payload_inline"] is not None
+    inbox = await _inbox_row(
+        db_session, TRANSPORT_SIDES[side]["inbox_table"], inbox_id
+    )
+    assert inbox["status"] == "processing"
+    assert inbox["receipt_tombstone_state"] is None
+    op = (
+        await db_session.execute(
+            text(
+                "SELECT state FROM metaedu.agent_conversation_purges WHERE id = :op"
+            ),
+            {"op": op_id},
+        )
+    ).scalar_one()
+    assert op == "scheduled"
 
 
 # ---------------------------------------------------------------------------

@@ -6,8 +6,10 @@
   NOT NULL OR payload_ref IS NOT NULL`` 命中即清（**不排除 ``cancelled``**），
   统一清 ``payload_inline``/``payload_ref`` 转 ``status='suppressed'`` 保留
   ``payload_digest``；``cancelled`` 行保留 S4-C 终态证据（``decision_*`` 四元
-  ——``ck_agent_exec_outbox_decision`` 全有或全无，不得清除或重写）；同事务把
-  对应 Run 置 ``output_publish_state='suppressed'``（S3-E 同模式）。
+  ——``ck_agent_exec_outbox_decision`` 全有或全无，不得清除或重写）。
+- **Run 只读判定**（族 1）：final scan 检查 Run ``output_publish_state`` 非
+  ``suppressed`` 即计入残留（blocked）；**不清理 execution.core 字段**——Run
+  正文清除归 S3-D execution.core.v1 ``_clear_terminal_outputs``。
 - **inbox**（``agent_execution_inbox``）状态矩阵：``processing`` ->
   ``rejected``+tombstone；已 ``consumed/rejected`` 保留原 status 仅补幂等
   tombstone；已 tombstone digest 精确匹配 no-op / 不匹配 fail closed
@@ -29,6 +31,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.composition.transport_erasure_participant import (
+    RECEIPT_TOMBSTONE_REASON,
     TransportBodyScan,
     TransportErasureParticipantBase,
 )
@@ -57,11 +60,18 @@ class ExecutionTransportErasureParticipant(TransportErasureParticipantBase):
     async def scan_transport_body(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
     ) -> TransportBodyScan:
-        """final transport scan：outbox 正文残留 + inbox 未决 receipt。
+        """final transport scan：outbox 正文残留 + inbox 未决 receipt + Run 投影未终态。
 
         谓词 = 正文事实（``payload_inline IS NOT NULL OR payload_ref IS NOT
         NULL``，**不排除 ``cancelled``**）+ 显式 ``tenant_id + conversation_id``
         维度（定向复核 P2-1：禁止裸谓词全表扫描）。
+
+        **Run 维度（族 1 修复）**：``output_publish_state <> 'suppressed'`` 的 Run
+        计入残留——``suppressed`` 是唯一允许的终态，其他状态（``pending``/
+        ``published``/``dead_letter``/``not_required`` 等）必须 blocked。participant
+        **只读判定并报告**（不清理 execution.core 字段——Run 正文清除归 S3-D
+        execution.core.v1 ``_clear_terminal_outputs``，本 participant 不碰
+        ``terminal_output_ref`` 等正文字段）。
         """
         outbox_rows = (
             await self._session.scalar(
@@ -84,9 +94,20 @@ class ExecutionTransportErasureParticipant(TransportErasureParticipantBase):
                 {"t": tenant_id, "c": conversation_id},
             )
         )
+        run_rows = (
+            await self._session.scalar(
+                text(
+                    "SELECT count(*) FROM metaedu.agent_runs "
+                    "WHERE tenant_id = :t AND conversation_id = :c "
+                    "AND output_publish_state <> 'suppressed'"
+                ),
+                {"t": tenant_id, "c": conversation_id},
+            )
+        )
         return TransportBodyScan(
             outbox_payload_rows=int(outbox_rows or 0),
             inbox_unsettled_rows=int(inbox_rows or 0),
+            run_unsettled_rows=int(run_rows or 0),
         )
 
     # --- 正文清除（outbox -> suppressed 留 digest；inbox 状态矩阵）------------
@@ -115,17 +136,9 @@ class ExecutionTransportErasureParticipant(TransportErasureParticipantBase):
             {"t": tenant_id, "c": conversation_id},
         )
 
-        # 同事务把对应 Run 置 output_publish_state='suppressed'（S3-E 同模式，
-        # 契约 D-A-1：execution 侧 outbox 转 suppressed 时 Run 投影同步）。
-        await self._session.execute(
-            text(
-                "UPDATE metaedu.agent_runs SET output_publish_state = 'suppressed' "
-                "WHERE tenant_id = :t AND conversation_id = :c "
-                "AND output_publish_state IN ('pending', 'published', "
-                "'dead_letter')"
-            ),
-            {"t": tenant_id, "c": conversation_id},
-        )
+        # 注意：Run ``output_publish_state`` **不在此清除**——participant 只读判定
+        # （scan 报告 Run 维度），Run 正文清除归 S3-D execution.core.v1
+        # ``_clear_terminal_outputs``（族 1/族 5：不清理 execution.core 字段）。
 
         # inbox 状态矩阵（契约 D-A-1 冻结）：
         # - processing -> rejected + tombstone（与 S4-C Tx1 对齐）；
@@ -152,7 +165,7 @@ class ExecutionTransportErasureParticipant(TransportErasureParticipantBase):
                 expected = snapshot_digest(
                     {
                         "schema_version": 1,
-                        "reason": "purge_erasure",
+                        "reason": RECEIPT_TOMBSTONE_REASON,
                         "event_id": str(row["event_id"]),
                     }
                 )
@@ -167,7 +180,7 @@ class ExecutionTransportErasureParticipant(TransportErasureParticipantBase):
             digest = snapshot_digest(
                 {
                     "schema_version": 1,
-                    "reason": "purge_erasure",
+                    "reason": RECEIPT_TOMBSTONE_REASON,
                     "event_id": str(row["event_id"]),
                 }
             )
