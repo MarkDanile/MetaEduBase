@@ -29,19 +29,19 @@
 - 技术债：TD-092（高风险 PR 收敛治理，Draft risk-targeted）
 
 当前进展：
-- S4-D 契约 ↔ 落点对账完成；契约细化 delta 已冻结（PR #541 已合并 `51a12df6`，三面 0/8/10/9 → 5 根因族返修 → 定向复核 0/0/3/2，P0/P1 清零）。
+- S4-D 契约细化 delta 已冻结（PR #541 已合并 `51a12df6`，三面 0/8/10/9 → 5 根因族返修 → 定向复核 0/0/3/2，P0/P1 清零）。
 - 用户调整：registry 不在 S4-D-A 翻 True（S4-D-B 最终激活提交统一翻）；两类 gate 区分（conversation_scope 内嵌 fail closed / tenant_scope 仅共享查询 / orphan 不阻塞）。
 - 实现分支 `feat/req041-047-r1-s4d-transport-participant-core`，Draft PR #542。
-- **实现完成**（commit `cbf63f4b`）：共享基类 `TransportErasureParticipantBase`（S2-D/S3-D 管道收敛，owner 参数化）+ `Workspace/ExecutionTransportErasureParticipant`；outbox 正文事实谓词 scan（含 cancelled 行，保留终态证据）+ inbox 状态矩阵 + receipt tombstone digest 冻结 envelope + capability gate + fencing 全套。对称测试矩阵 24/24 passed（测试内临时激活 registry fixture，生产保持 False）。
+- **实现完成**：共享基类 `TransportErasureParticipantBase`（S2-D/S3-D 管道收敛，owner 参数化）+ `Workspace/ExecutionTransportErasureParticipant`；outbox 正文事实谓词 scan（含 cancelled 行，保留终态证据）+ inbox 状态矩阵 + capability gate + fencing 全套。
+- **三面首轮复审完成**（0/0/6/9/8 归 5 根因族，commit `24c2b601`）→ **定向复核**（P1=3）→ **互操作批次**（commit `f9903e9e`：S4-C tombstone 互操作 + Run 终态谓词统一 + blocked 三方）→ **判别力批次**（commit 待填：epoch code 三元反例 + dead_letter 参数化）。
 
 下一步：
-- Draft 稳定：邻近回归 99 passed（含 transport schema/locks + erasure schema），跑 Draft `Backend iteration`（TD-092）。
-- 统一三面首轮复审（数据/状态机、并发/锁序、测试/运维）→ 按根因族返修 → 定向复核 → Ready Backend full。
+- 一次最终定向核对（判别力批次后）→ P0/P1 清零后转 Ready → 只跑一次 Backend full。
 
 验证状态：
-- 24 passed（矩阵）+ 75 邻近 = 99 passed；ruff 0；mypy 0。
-- registry 全程保持 False（capability gate fail closed 是预期）；不 resolve、不改 ledger 投影、不导入 backfill 私有。
-- Draft PR #542 待三面首轮复审。
+- 矩阵 43 passed（判别力批次后 51 待跑）+ 邻近 133 + S2-D/E = 176 passed（互操作批次口径）；ruff 0；mypy 0。
+- registry 全程保持 False（capability gate fail closed 是预期）；不 resolve、不改 ledger 投影、不导入 backfill 私有；不翻 registry、不启动 S4-D-B。
+- Draft PR #542（HEAD `35510c83`，Draft iteration 三路 CI SUCCESS）。
 
 交接备注：
 - 本 PR **不**翻 registry `erase_available`（两 transport owner 保持 False），**不**导入 backfill 私有函数，**不**实现 ledger resolve（归 S4-D-B）。

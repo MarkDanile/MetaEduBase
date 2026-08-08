@@ -69,7 +69,8 @@ REASON_PURGE_BLOCKED_BY_LEGAL_HOLD = "purge_blocked_by_legal_hold"
 
 # receipt tombstone digest 的 reason 键值（族 5：plan 冻结，禁 participant 自造）。
 # Tx1 消费侧用具名 code（epoch_unknown_rejected/epoch_stale_rejected）；purge 侧
-# 清 receipt 用本值——冻结于 plan §R1-S4-D D-A-1，S4-D-B resolve 重放按此比对。
+# 清 receipt 用本值——冻结于 plan §R1-S4-D D-A-1；S4-D-B resolve 重放按
+# **已验证的 receipt digest 留证**（含 purge_erasure + S4-C 两 epoch code）比对。
 RECEIPT_TOMBSTONE_REASON = "purge_erasure"
 
 # S4-C Tx1 消费侧合法写入的具名 reason code（互操作：purge 侧须接受并保留证据，

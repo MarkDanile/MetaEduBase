@@ -975,9 +975,87 @@ async def test_inbox_s4c_tx1_wrong_code_fail_closed(
         await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
 
 
-# ---------------------------------------------------------------------------
-# 03. final scan + ACK 重放 + fencing
-# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("side", ["workspace", "execution"])
+@pytest.mark.parametrize("epoch_code", ["epoch_unknown_rejected", "epoch_stale_rejected"])
+async def test_inbox_s4c_tx1_code_ok_wrong_digest_fail_closed(
+    db_session, _transport_owners_active, side, epoch_code
+):
+    """判别力反例：合法 epoch code + 错误 digest -> fail closed。
+
+    若实现退化为只检查 code 不检查 digest，本用例变红——精确三元条件
+    （status + last_error_code + digest 重算）逐项都必须成立。
+    """
+    await _ensure_test_tenant(db_session)
+    conv_id, purge_rev = await _seed_deleted_expired_conversation(
+        db_session, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await _seed_transport_inbox(
+        db_session,
+        conversation_id=conv_id,
+        side=side,
+        status="rejected",
+        last_error_code=epoch_code,
+        receipt_tombstone_digest="f" * 64,  # 合法 code 但错误 digest
+    )
+    op_id, _ = await _make_purge_operation(
+        db_session, conv_id, purge_rev, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await db_session.commit()
+
+    conflict_error = (
+        WorkspaceIntegrationConflictError
+        if side == "workspace"
+        else ExecutionIntegrationConflictError
+    )
+    with pytest.raises(conflict_error):
+        await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
+
+
+@pytest.mark.parametrize("side", ["workspace", "execution"])
+@pytest.mark.parametrize("epoch_code", ["epoch_unknown_rejected", "epoch_stale_rejected"])
+async def test_inbox_s4c_tx1_code_ok_non_rejected_fail_closed(
+    db_session, _transport_owners_active, side, epoch_code
+):
+    """判别力反例：合法 epoch code + 正确 digest 但 status != 'rejected' -> fail closed。
+
+    若实现忽略 ``status='rejected'`` 条件（把任意 status 的 epoch-code 行当证据），
+    本用例变红。
+    """
+    await _ensure_test_tenant(db_session)
+    conv_id, purge_rev = await _seed_deleted_expired_conversation(
+        db_session, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    from app.contexts.agent_execution.domain.snapshots import snapshot_digest
+
+    event_id = uuid.uuid4()
+    tx1_digest = snapshot_digest(
+        {
+            "schema_version": 1,
+            "reason": epoch_code,
+            "event_id": str(event_id),
+        }
+    )
+    await _seed_transport_inbox(
+        db_session,
+        conversation_id=conv_id,
+        side=side,
+        status="consumed",  # 非 rejected：不是 S4-C Tx1 证据形态
+        last_error_code=epoch_code,
+        receipt_tombstone_digest=tx1_digest,
+        event_id=event_id,
+    )
+    op_id, _ = await _make_purge_operation(
+        db_session, conv_id, purge_rev, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await db_session.commit()
+
+    conflict_error = (
+        WorkspaceIntegrationConflictError
+        if side == "workspace"
+        else ExecutionIntegrationConflictError
+    )
+    with pytest.raises(conflict_error):
+        await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
 
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
@@ -1127,11 +1205,15 @@ async def test_erase_fencing_full(
 # ---------------------------------------------------------------------------
 
 
-async def test_execution_run_unsettled_blocks(db_session, _transport_owners_active):
+@pytest.mark.parametrize("run_state", ["pending", "dead_letter"])
+async def test_execution_run_unsettled_blocks(
+    db_session, _transport_owners_active, run_state
+):
     """族 1 + 终态互操作：Run output_publish_state IN ('pending','dead_letter') -> blocked。
 
     pending/dead_letter 是未决/失败投影的合法中间态，S3-D 会清除——transport
     scan 计入残留必须 blocked（reason_code + checkpoint/operation 三方一致）。
+    两者参数化（谓词退化为只保留 pending 的变异被击杀）。
     participant 只读判定——Run 行本身不被改写（正文清除归 S3-D）。
     """
     side = "execution"
@@ -1140,7 +1222,7 @@ async def test_execution_run_unsettled_blocks(db_session, _transport_owners_acti
         db_session, owner=TRANSPORT_SIDES[side]["owner"]
     )
     run_id = await _seed_run(
-        db_session, conversation_id=conv_id, output_publish_state="pending"
+        db_session, conversation_id=conv_id, output_publish_state=run_state
     )
     op_id, _ = await _make_purge_operation(
         db_session, conv_id, purge_rev, owner=TRANSPORT_SIDES[side]["owner"]
@@ -1192,7 +1274,7 @@ async def test_execution_run_unsettled_blocks(db_session, _transport_owners_acti
             {"id": run_id},
         )
     ).scalar_one()
-    assert row == "pending"
+    assert row == run_state
 
 
 async def test_execution_run_suppressed_passes(db_session, _transport_owners_active):
