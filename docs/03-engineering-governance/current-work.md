@@ -27,11 +27,12 @@
 - Spec: [R1 专项契约 §4.1/§10.2/§10.3](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
 
 当前进展：
-- S4-E 契约与落点对账完成；plan delta 冻结 7 根因（E-0 根因 1 冲突修复、E-1 ledger 事实源、E-2 双事务协议、E-3 状态机、E-4 registry 激活、E-5 三 PR 拆分、E-6 反例矩阵、E-7 边界）。
+- S4-E 契约与落点对账完成；plan delta 冻结 7 根因（E-0 根因 1 冲突修复、E-1/E-1a/E-1b ledger 事实源 + source-NULL 兼容 + 唯一 ref 清除者、E-2/E-2a/E-2b 双事务协议 + Tx2 重验 + idempotency key/receipt envelope、E-3/E-3a 状态机 + timeout/unknown 矩阵、E-4 registry 确定选择、E-5 三 PR 拆分、E-6 验收矩阵、E-7 边界）。
 - 根因 1 实证：S4-D transport participant 提前清 outbox `payload_ref`（workspace/execution `transport_erasure_participant.py:197/218`）违反 D5「external receipt 先于清 DB ref」——E-0 冻结修复归 S4-E-A。
+- **根因批次修正（第二轮）**：external ledger 复用现有 `registered` + purge checkpoint `lease_epoch`（不扩 schema 入 041，不引入 erasing/(id,revision) CAS）；Tx2 重验改 erasing fence + lease_epoch + registry digest + hold revision（非「fence active」）；source 已 NULL 历史兼容 + 不同 ref 冲突 fail closed；idempotency key + receipt envelope 冻结；timeout/unknown 矩阵（unknown 禁自动重试）；E-4 registry 确定选择（external/runtime 均 False、移除激活验收，无生产 db_local adapter）；E-1b 唯一 ref 清除者（external participant 统一清三处、transport 保留 ref blocked）。
 
 下一步：
-- 汇报精确状态表、锁序/事务表、三 PR 边界、验收矩阵 → 三面首轮复审 → 按根因族一次返修 → P0/P1 清零。
+- 契约内部一致性核对（通过后）→ 三面首轮复审 → 按根因族一次返修 → P0/P1 清零。
 
 验证状态：纯文档；docs gate + diff-check 待跑。
 
@@ -45,7 +46,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | REQ-041/047 R1-S4-E-A Ref Tombstone | 🔵 就绪 | migration 041 guard 演进（清 RunEvent.payload_ref）+ transport participant 只清 inline 保留 ref（E-0 修复）；契约 delta 三面首轮 P0/P1 清零后开实现 | [Plan §R1-S4-E](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) |
+| P1 | REQ-041/047 R1-S4-E-A Ref Tombstone | 🔵 就绪 | migration 041 guard 演进（清 RunEvent.payload_ref）+ transport participant 只清 inline 保留 ref（E-0 修复，ref 存在时 blocked）；契约 delta 一致性核对 + 三面首轮 P0/P1 清零后开实现 | [Plan §R1-S4-E](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
