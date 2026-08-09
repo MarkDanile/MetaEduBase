@@ -1,11 +1,16 @@
-"""R1-S4-D-A：workspace/execution transport participant 对称测试矩阵。
+"""R1-S4-D-A/S4-E-A：workspace/execution transport participant 对称测试矩阵。
 
-契约事实源：Plan §R1-S4-D 契约细化（PR #541 已合并 `51a12df6`）：
+契约事实源：Plan §R1-S4-D 契约细化（PR #541 已合并 `51a12df6`）+ §R1-S4-E E-0a
+（PR #546 已合并 `c243c36d`）：
 
 - **outbox scan 正文事实谓词**：`payload_inline IS NOT NULL OR payload_ref IS NOT NULL`
-  命中即清（**不排除 `cancelled`**——S4-C Tx2 终态化残留、S3-E terminalize 产物），
-  统一清正文转 `status='suppressed'` 保留 `payload_digest`；`cancelled` 行保留 S4-C
-  终态证据（execution `decision_*` 四元 / workspace `last_error_code` 不得清除或重写）。
+  命中即残留（**不排除 `cancelled`**——S4-C Tx2 终态化残留、S3-E terminalize 产物）。
+  **S4-E-A E-0a 起清除只针对 inline-only 行**（`payload_ref IS NULL`）转
+  `status='suppressed'` 保留 `payload_digest`；**ref-bearing 行（`payload_ref IS
+  NOT NULL`）transport 零修改并 blocked（`purge_owner_unavailable`）**——external
+  object 未取得 receipt 前不得清 ref（D5），ref 归 external.payload.v1（S4-E-B2）
+  清除；`cancelled` 行保留 S4-C 终态证据（execution `decision_*` 四元 / workspace
+  `last_error_code` 不得清除或重写）。
 - **inbox 状态矩阵**：`processing` -> `rejected`+tombstone（与 S4-C Tx1 对齐）；
   已 `consumed/rejected` 保留原 status 仅补幂等 tombstone；已 tombstone digest 精确
   匹配 no-op / 不匹配 fail closed。
@@ -17,7 +22,7 @@
   放行（`require_capability(transport_owner, "erase")` 不抛）——S4-D-A 阶段该 gate
   fail closed 是预期，S4-D-B 翻 True 后断言同 commit 更新（S3-D P1-7 先例）。
 - **边界**：resolve 只处理 `conversation_scope` 行（`tenant_scope`/`orphan` 不
-  resolve 留 S5/运维）、不导入 backfill 私有函数。
+  resolve 留 S5/运维）、不导入 backfill 私有函数、不实现 ExternalPayloadErasureParticipant。
 
 两侧对称：workspace（`WorkspaceOutboxModel`/`WorkspaceInboxModel`，owner
 `workspace.transport.v1`）与 execution（`ExecutionOutboxModel`/`ExecutionInboxModel`，
@@ -41,6 +46,7 @@ from app.contexts.agent_execution.domain.errors import (
 )
 from app.contexts.agent_workspace.domain import (
     ErasureFenceState,
+    PurgeOperationState,
     PurgeOwnerState,
 )
 from app.contexts.agent_workspace.domain.errors import (
@@ -502,6 +508,58 @@ async def _outbox_row(db_session, table: str, row_id: uuid.UUID) -> dict:
     return dict(row)
 
 
+async def _operation_state(db_session, operation_id: uuid.UUID) -> str:
+    row = (
+        await db_session.execute(
+            text(
+                "SELECT state FROM metaedu.agent_conversation_purges "
+                "WHERE id = :op"
+            ),
+            {"op": operation_id},
+        )
+    ).scalar_one()
+    return row
+
+
+async def _operation_failure_code(db_session, operation_id: uuid.UUID) -> str | None:
+    row = (
+        await db_session.execute(
+            text(
+                "SELECT failure_code FROM metaedu.agent_conversation_purges "
+                "WHERE id = :op"
+            ),
+            {"op": operation_id},
+        )
+    ).scalar_one()
+    return row
+
+
+async def _checkpoint_reason(db_session, operation_id: uuid.UUID) -> str | None:
+    row = (
+        await db_session.execute(
+            text(
+                "SELECT reason_code FROM metaedu.agent_conversation_purge_owners "
+                "WHERE purge_operation_id = :op"
+            ),
+            {"op": operation_id},
+        )
+    ).scalar_one()
+    return row
+
+
+async def _conversation_purge_state(db_session, conversation_id: uuid.UUID) -> str:
+    row = (
+        await db_session.execute(
+            text(
+                "SELECT purge_state FROM metaedu.agent_conversations "
+                "WHERE id = :c"
+            ),
+            {"c": conversation_id},
+        )
+    ).scalar_one()
+    return row
+
+
 async def _inbox_row(db_session, table: str, row_id: uuid.UUID) -> dict:
     row = (
         await db_session.execute(
@@ -598,13 +656,23 @@ async def test_outbox_cancelled_cleared_evidence_retained(
 
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
-async def test_outbox_payload_ref_only_cleared(
+async def test_outbox_payload_ref_only_blocked_zero_change(
     db_session, side
 ):
-    """族 3：payload_ref only 行（inline NULL）被正文事实谓词命中清除。
+    """S4-E-A E-0a/E-6 transport-before-external：ref-only outbox 行 transport
+    零修改并 blocked（`purge_owner_unavailable`），external receipt 前不清 ref。
 
-    谓词是 ``payload_inline IS NOT NULL OR payload_ref IS NOT NULL``——ref-only
-    变异（谓词退化只查 inline）被此用例击杀。
+    S4-D-A 时代该用例断言 ref 也被清转 suppressed（`payload_ref IS None`）——那是
+    E-0 要废除的旧行为（D5 顺序违规：transport 提前清 ref 让 external object 失去
+    追踪入口）。S4-E-A 迁移为断言**零修改 + blocked**（E-0b 测试迁移：ref-only 用例
+    改 blocked 零修改；「external receipt 后清 ref + 转 suppressed」断言移 S4-E-B2
+    互操作矩阵，不再由本测试承担）。
+
+    **五方零变更（判别点）**：outbox 行（payload_ref 仍存在、status 不变、
+    payload_inline 仍 NULL、digest 不变）、fence（保持 active，未推进 erasing）、
+    checkpoint（pending，未 blocked/acked）、operation（state 不变）、Conversation
+    purge_state（不变）。变异：transport 仍清 ref（旧行为）/ 转 suppressed 保留 ref
+    （违反现 CHECK）-> 红。
     """
     await _ensure_test_tenant(db_session)
     conv_id, purge_rev = await _seed_deleted_expired_conversation(
@@ -622,13 +690,123 @@ async def test_outbox_payload_ref_only_cleared(
     )
     await db_session.commit()
 
-    await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
+    outcome = await _run_participant_erase_blocked(
+        db_session, conv_id, purge_rev, op_id, side
+    )
+    assert outcome.blocked is True
+    assert outcome.block_reason == "purge_owner_unavailable"
 
+    # 五方零变更（源行 + fence）：outbox 行零修改、fence 保持 active（blocked
+    # 在 fence -> erasing 推进**之前**，external 未完成前不得推进 erasing）。
     row = await _outbox_row(db_session, TRANSPORT_SIDES[side]["outbox_table"], outbox_id)
-    assert row["status"] == "suppressed"
-    assert row["payload_inline"] is None
-    assert row["payload_ref"] is None  # ref 也被清
-    assert row["payload_digest"] is not None  # digest 保留
+    assert row["status"] == "pending", "ref-bearing 行 status 不得变"
+    assert row["payload_ref"] == "s3://bucket/sensitive-object", "ref 不得被清"
+    assert row["payload_inline"] is None, "ref-only 行 inline 本就 NULL，不得改"
+    assert row["payload_digest"] is not None, "digest 保留"
+    assert (
+        await _fence_state(db_session, conv_id, TRANSPORT_SIDES[side]["owner"])
+        == ErasureFenceState.ACTIVE.value
+    )
+    # purge 级 blocked 三方一致（operation/checkpoint blocked + reason 冻结值）。
+    assert await _checkpoint_state(db_session, op_id) == PurgeOwnerState.BLOCKED.value
+    assert await _operation_state(db_session, op_id) == PurgeOperationState.BLOCKED.value
+    assert await _checkpoint_reason(db_session, op_id) == "purge_owner_unavailable"
+    assert await _conversation_purge_state(db_session, conv_id) == "blocked"
+
+
+@pytest.mark.parametrize("side", ["workspace", "execution"])
+async def test_mixed_inline_and_ref_whole_op_blocked(db_session, side):
+    """S4-E-A E-0a receipt-before-clear：同 Conversation 混合 inline-only + ref-bearing
+    outbox 行 -> **整次 purge blocked**（不部分清除）。
+
+    镜像 execution.core.v1 的 external-ref 前置守卫：external object 未完成前，
+    inline-only 行也不得提前清除（purge 级原子 blocked，ref 归 external.payload.v1
+    B2 清除后一并处理）。若实现只清 inline-only 行而放过 ref-bearing 行（部分进度），
+    本测试红——判别点：ref-bearing 存在时**任何** outbox 行都不得转 suppressed。
+    """
+    await _ensure_test_tenant(db_session)
+    conv_id, purge_rev = await _seed_deleted_expired_conversation(
+        db_session, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    inline_outbox_id = await _seed_transport_outbox(
+        db_session, conversation_id=conv_id, side=side  # default pending + inline
+    )
+    ref_outbox_id = await _seed_transport_outbox(
+        db_session,
+        conversation_id=conv_id,
+        side=side,
+        payload_inline=None,
+        payload_ref="s3://bucket/sensitive-object",
+    )
+    op_id, _ = await _make_purge_operation(
+        db_session, conv_id, purge_rev, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await db_session.commit()
+
+    outcome = await _run_participant_erase_blocked(
+        db_session, conv_id, purge_rev, op_id, side
+    )
+    assert outcome.blocked is True
+    assert outcome.block_reason == "purge_owner_unavailable"
+
+    # 整次 blocked：inline-only 行**也不得**被提前清除（receipt-before-clear）。
+    inline_row = await _outbox_row(
+        db_session, TRANSPORT_SIDES[side]["outbox_table"], inline_outbox_id
+    )
+    assert inline_row["status"] == "pending", "mixed 场景 inline-only 行不得提前清"
+    assert inline_row["payload_inline"] is not None
+    ref_row = await _outbox_row(
+        db_session, TRANSPORT_SIDES[side]["outbox_table"], ref_outbox_id
+    )
+    assert ref_row["status"] == "pending"
+    assert ref_row["payload_ref"] == "s3://bucket/sensitive-object"
+    # fence 保持 active + operation/checkpoint blocked（三方一致）。
+    assert (
+        await _fence_state(db_session, conv_id, TRANSPORT_SIDES[side]["owner"])
+        == ErasureFenceState.ACTIVE.value
+    )
+    assert await _operation_state(db_session, op_id) == PurgeOperationState.BLOCKED.value
+    assert await _checkpoint_reason(db_session, op_id) == "purge_owner_unavailable"
+
+
+@pytest.mark.parametrize("side", ["workspace", "execution"])
+async def test_ref_bearing_blocked_mutation_old_clear_revived(db_session, side):
+    """S4-E-A mutation kill：恢复 S4-D-A 旧实现（`erase_transport_body` 清
+    payload_ref 转 suppressed，或无 ref-bearing 前置 blocked）-> 本测试变红。
+
+    变异 1：transport 仍清 ref（旧行为）-> ref-only 行转 suppressed + ref 被清
+    -> ``test_outbox_payload_ref_only_blocked_zero_change`` 断言 ``status=='pending'``
+    红。
+    变异 2：无 ref-bearing 前置 blocked（直接走 erase）-> 同前红。
+    变异 3：转 suppressed 保留 ref -> 违反现 outbox CHECK（UPDATE 报错）-> 红。
+
+    本用例直接断言判别力锚点（outcome.blocked + reason），变异击杀由
+    ``test_outbox_payload_ref_only_blocked_zero_change`` 的五方零变更断言承担。
+    """
+    await _ensure_test_tenant(db_session)
+    conv_id, purge_rev = await _seed_deleted_expired_conversation(
+        db_session, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    outbox_id = await _seed_transport_outbox(
+        db_session,
+        conversation_id=conv_id,
+        side=side,
+        payload_inline=None,
+        payload_ref="s3://bucket/sensitive-object",
+    )
+    op_id, _ = await _make_purge_operation(
+        db_session, conv_id, purge_rev, owner=TRANSPORT_SIDES[side]["owner"]
+    )
+    await db_session.commit()
+
+    outcome = await _run_participant_erase_blocked(
+        db_session, conv_id, purge_rev, op_id, side
+    )
+    assert outcome.blocked is True, "ref-bearing 行必须 blocked 而非清除"
+    assert outcome.block_reason == "purge_owner_unavailable"
+    row = await _outbox_row(db_session, TRANSPORT_SIDES[side]["outbox_table"], outbox_id)
+    assert row["status"] == "pending"
+    assert row["payload_ref"] == "s3://bucket/sensitive-object"
 
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
@@ -1491,6 +1669,42 @@ async def _run_participant_erase(
         else ExecutionTransportErasureParticipant(db_session)
     )
     await participant.erase_transport_owner(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        purge_revision=purge_revision,
+        purge_operation_id=op_id,
+        expected_operation_revision=expected_operation_revision,
+        expected_lease_epoch=0,
+    )
+
+
+async def _run_participant_erase_blocked(
+    db_session,
+    conversation_id: uuid.UUID,
+    purge_revision: int,
+    op_id: uuid.UUID,
+    side: str,
+    *,
+    expected_operation_revision: int = 1,
+):
+    """调用 transport participant erase 主入口并断言**正常返回 blocked**（不抛异常）。
+
+    S4-E-A E-0a ref-bearing blocked 是正常返回（``TransportErasureOutcome`` 的
+    ``blocked=True``），非异常路径——与 S2-D/S3-D 的 blocked 契约一致。
+    """
+    from app.contexts.agent_execution.infrastructure.execution_transport_erasure_participant import (  # noqa: E501
+        ExecutionTransportErasureParticipant,
+    )
+    from app.contexts.agent_workspace.infrastructure.workspace_transport_erasure_participant import (  # noqa: E501
+        WorkspaceTransportErasureParticipant,
+    )
+
+    participant = (
+        WorkspaceTransportErasureParticipant(db_session)
+        if side == "workspace"
+        else ExecutionTransportErasureParticipant(db_session)
+    )
+    return await participant.erase_transport_owner(
         tenant_id=TENANT_ID,
         conversation_id=conversation_id,
         purge_revision=purge_revision,

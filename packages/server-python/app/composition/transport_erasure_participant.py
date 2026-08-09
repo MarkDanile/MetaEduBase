@@ -11,9 +11,14 @@
   源 transport 行 FOR UPDATE 投影写``；禁止在 Guard/Conversation/owner/fence
   之前取集合锁（防 AB-BA）。
 - final scan 以**正文事实**为核心：``payload_inline IS NOT NULL OR
-  payload_ref IS NOT NULL`` 命中即清（不排除 ``cancelled``），统一清正文转
-  ``status='suppressed'`` 保留 ``payload_digest``；``cancelled`` 行保留 S4-C
-  终态证据（execution ``decision_*`` 四元 / workspace ``last_error_code``）。
+  payload_ref IS NOT NULL`` 命中即残留（不排除 ``cancelled``）。**清除只针对
+  inline-only 行**（``payload_ref IS NULL``）转 ``status='suppressed'`` 保留
+  ``payload_digest``；``cancelled`` 行保留 S4-C 终态证据（execution ``decision_*``
+  四元 / workspace ``last_error_code``）。
+- **S4-E-A E-0a ref-bearing blocked**：outbox 存在 ``payload_ref IS NOT NULL`` 行
+  -> transport 零修改并 blocked（``purge_owner_unavailable``），fence 保持 active
+  ——external object 未取得 receipt 前不得清 ref（D5），ref 归 external.payload.v1
+  （S4-E-B2）清除。
 - inbox 状态矩阵：``processing`` -> ``rejected``+tombstone；已
   ``consumed/rejected`` 保留原 status 仅补幂等 tombstone；已 tombstone digest
   精确匹配 no-op / 不匹配 fail closed（``*IntegrationConflictError``）。
@@ -30,11 +35,12 @@
   不 resolve（留 S5/运维）。
 - registry：S4-D-A 保持 ``erase_available=False``；**S4-D-B merged-boundary 后
   两 transport owner 翻 True**（capability gate 放行）。
-- 边界：不导入 backfill 私有函数、不实现 migration 041、不启用 S5。
+- 边界：不导入 backfill 私有函数、不实现 ExternalPayloadErasureParticipant、
+  不启用 S5。
 
-子类只实现两侧差异：``scan_transport_body`` / ``erase_transport_body`` /
-``_resolve_epoch_issues_after_erase``（outbox + inbox 的清除动作与 scan 谓词，
-表结构两侧对称）。
+子类只实现两侧差异：``scan_transport_body`` / ``count_ref_bearing_outbox_rows``
+/ ``erase_transport_body`` / ``_resolve_epoch_issues_after_erase``（outbox + inbox
+的清除动作与 scan 谓词，表结构两侧对称）。
 """
 
 from __future__ import annotations
@@ -79,6 +85,13 @@ REASON_PURGE_BLOCKED_BY_LEGAL_HOLD = "purge_blocked_by_legal_hold"
 #: D-B-3 conversation_scope gate 命中（该 Conversation 有未 resolved 的
 #: conversation_scope issue——purge 前置查与 S5 同一谓词）。
 REASON_CONVERSATION_SCOPE_GATE = "purge_blocked_by_conversation_scope_gate"
+#: S4-E-A E-0a：outbox 存在 ref-bearing 行（payload_ref IS NOT NULL）——external
+#: object 未取得 receipt 前，transport 不得清 ref（D5「先删 external object 取
+#: receipt，再清 transport DB ref」）。ref-bearing 行零修改并 blocked，fence 保持
+#: active（external receipt 后由 ExternalPayloadErasureParticipant 清 ref）。镜像
+#: execution.core.v1 的 external-ref 前置守卫（execution_erasure_participant.py
+#: REASON_PURGE_OWNER_UNAVAILABLE，Plan §R1-S4-E E-0a 冻结 reason）。
+REASON_PURGE_OWNER_UNAVAILABLE = "purge_owner_unavailable"
 
 # receipt tombstone digest 的 reason 键值（族 5：plan 冻结，禁 participant 自造）。
 # Tx1 消费侧用具名 code（epoch_unknown_rejected/epoch_stale_rejected）；purge 侧
@@ -163,6 +176,19 @@ class TransportErasureParticipantBase(ABC):
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
     ) -> TransportBodyScan:
         """final transport scan（两侧对称，见子类）。"""
+
+    @abstractmethod
+    async def count_ref_bearing_outbox_rows(
+        self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> int:
+        """ref-bearing outbox 行计数（S4-E-A E-0a，两侧对称）。
+
+        统计 ``payload_ref IS NOT NULL`` 的 outbox 行数。**ref-bearing 行 transport
+        零修改并 blocked（`purge_owner_unavailable`）**——external object 未取得
+        receipt 前不得清 ref（D5「先删 external object 取 receipt，再清 transport
+        DB ref」），ref 归 external.payload.v1（S4-E-B2）清除。仅 inline-only 行
+        可被 transport 清除。
+        """
 
     @abstractmethod
     async def erase_transport_body(
@@ -750,6 +776,44 @@ class TransportErasureParticipantBase(ABC):
                 body_scan=scan,
                 blocked=True,
                 block_reason=REASON_PURGE_BLOCKED_BY_LEGAL_HOLD,
+                ack_digest=None,
+            )
+
+        # S4-E-A E-0a：ref-bearing outbox 行 -> purge_owner_unavailable blocked
+        # （零修改，fence 保持 active）。external object 未取得 receipt 前不得清
+        # ref（D5「先删 external object 取 receipt，再清 transport DB ref」）；ref
+        # 归 external.payload.v1（S4-E-B2）清除。镜像 execution.core.v1 的
+        # external-ref 前置守卫（execution_erasure_participant.py:583+）。检查在
+        # fence -> erasing 推进**之前**，blocked 后 fence 仍 active、源行全未动。
+        ref_bearing_count = await self.count_ref_bearing_outbox_rows(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+        if ref_bearing_count:
+            scan = await self.scan_transport_body(
+                tenant_id=tenant_id, conversation_id=conversation_id
+            )
+            await self._record_blocked(
+                purge_operation_id=purge_operation_id,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                purge_revision=purge_revision,
+                expected_lease_epoch=expected_lease_epoch,
+                hold_revision=conversation.hold_revision,
+                fence_owner_version=fence.owner_version,
+                reason=REASON_PURGE_OWNER_UNAVAILABLE,
+                scan=scan,
+                conversation=conversation,
+                now=effective_now,
+                # 本 pre-check 在 _mark_operation_running 之前（revision 未 bump），
+                # 传 expected_operation_revision 与 legal-hold 分支对齐。
+                expected_revision=expected_operation_revision,
+            )
+            return TransportErasureOutcome(
+                fence=fence,
+                body_scan=scan,
+                blocked=True,
+                block_reason=REASON_PURGE_OWNER_UNAVAILABLE,
                 ack_digest=None,
             )
 
