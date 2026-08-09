@@ -27,14 +27,14 @@
 - 技术债：TD-092（高风险 PR 收敛治理，Draft risk-targeted）
 
 当前进展：
-- 落点对账完成：`_register_issue`/`_recompute_projection` 为 backfill 私有（`agent_transport_backfill.py:378/463`），consumer 两侧已 import 私有（bridge_repository workspace:1061 / execution:85）——共享层消除该导入；无 resolve 路径；无 gate 查询；registry 两 transport owner 保持 False。
-- 分支已建（`feat/req041-047-r1-s4d-ledger-resolve`，基于 main `5e4f35b7`）。
+- 落点对账完成；共享 ledger service（`agent_transport_ledger_service.py`）+ resolve + gate 查询 + registry 激活已实现（commit 待回填）。
+- backfill/consumer 两侧改共享层（消除导入 backfill 私有）；S4-D-A 矩阵删 `_transport_owners_active` fixture、capability gate 测试翻转为放行断言（S4-D-A「翻 True 后删 fixture 主体测试不变」承诺验证，52 passed 不变）。
 
 下一步：
-- 提取共享 ledger service（`agent_transport_ledger_service.py`，禁止落 `agent_transport_ledger.py`）→ epoch_unresolvable evidence/CAS resolve → 两类 gate 查询 → merged-boundary 后 registry 翻 True（mutation kill）。
-- 首提交后建 Draft PR；Draft 稳定后三面首轮复审 → 根因族一次返修 → 一次定向复核 → P0/P1 清零后 Ready + 唯一一次 Backend full。
+- 提交后建 Draft PR #544（已建）→ Draft Backend iteration 稳定 → 三面首轮复审 → 根因族一次返修 → 一次定向复核 → P0/P1 清零后 Ready + 唯一一次 Backend full。
 
-验证状态：实现未开始。
+验证状态：
+- S4-D-B 矩阵 16 passed + 邻近 133 = 149 passed；ruff 0；mypy 0；docs gate 通过。
 
 交接备注：
 - 只 resolve `conversation_scope` 行；`tenant_scope`/`orphan` 不 resolve（留 S5/运维）。
