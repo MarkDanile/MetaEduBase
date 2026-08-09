@@ -178,6 +178,20 @@ class TransportErasureParticipantBase(ABC):
         scan 只读判定（不在此清除——归 S3-D execution.core.v1）。"""
 
     @abstractmethod
+    async def _acquire_inbox_aggregate_locks(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> None:
+        """**源行 UPDATE 之前**取该 Conversation 全部 inbox 行的集合锁（三面 P0-1）。
+
+        锁序修正：集合锁必须在源行 UPDATE 之前取（D8 冻结「集合锁 -> 源行 FOR
+        UPDATE」）——否则 participant「行锁->集合锁」与 backfill「集合锁->行锁」
+        构成 AB-BA 死锁。子类按两侧 inbox 表实现（先查该 Conversation 的 inbox
+        行 id，逐行 `acquire_transport_aggregate_lock`）。"""
+
+    @abstractmethod
     async def _resolve_epoch_issues_after_erase(
         self,
         *,
@@ -807,7 +821,10 @@ class TransportErasureParticipantBase(ABC):
                 scan=scan,
                 conversation=conversation,
                 now=effective_now,
-                expected_revision=expected_operation_revision,
+                # revision CAS 已由 _mark_operation_running 裁决并 bump（N->N+1）；
+                # 此处传 None（与同位置 final-scan 分支对齐）——传 N 会与
+                # 已 bump 的 N+1 恒不匹配导致 gate 命中必 raise（三面 P1-1）。
+                expected_revision=None,
             )
             return TransportErasureOutcome(
                 fence=fence,
@@ -822,8 +839,17 @@ class TransportErasureParticipantBase(ABC):
         # **S4-D-B 起**：participant 在 inbox tombstone 后 resolve（写 reconcile
         # issue 证据 + 重算投影）——写 ledger/投影，必须按全局锁序取集合锁
         # （Guard -> Conversation -> owner -> fence -> 集合锁最内层），禁止在此链前取。
-        # 源 transport 行 UPDATE 隐式取得行锁（S3-D P3-3 对齐：不再额外
-        # SELECT ... FOR UPDATE）。
+        #
+        # **锁序修正（三面 P0-1）**：集合锁必须在**源行 UPDATE 之前**取——否则
+        # participant「行锁->集合锁」与 backfill「集合锁->行锁」构成 AB-BA 死锁
+        # （真实 PG 双连接实验复现 DeadlockDetectedError）。本基类在 erase 前取
+        # 该 Conversation 所有 inbox 行的集合锁（`_acquire_inbox_aggregate_locks`），
+        # erase + resolve 全在临界区内——全链路「集合锁->行锁」与 backfill/consumer
+        # 同序。源 transport 行 UPDATE 隐式取得行锁（S3-D P3-3 对齐）。
+        await self._acquire_inbox_aggregate_locks(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
 
         # 正文清除（outbox -> suppressed 留 digest；inbox -> rejected+tombstone）。
         await self.erase_transport_body(

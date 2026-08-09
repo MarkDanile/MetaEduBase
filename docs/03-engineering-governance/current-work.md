@@ -27,14 +27,17 @@
 - 技术债：TD-092（高风险 PR 收敛治理，Draft risk-targeted）
 
 当前进展：
-- 落点对账完成；共享 ledger service（`agent_transport_ledger_service.py`）+ resolve + gate 查询 + registry 激活已实现（commit 待回填）。
-- backfill/consumer 两侧改共享层（消除导入 backfill 私有）；S4-D-A 矩阵删 `_transport_owners_active` fixture、capability gate 测试翻转为放行断言（S4-D-A「翻 True 后删 fixture 主体测试不变」承诺验证，52 passed 不变）。
+- 落点对账完成；共享 ledger service（`agent_transport_ledger_service.py`）+ resolve + gate 查询 + registry 激活已实现。
+- backfill/consumer 两侧改共享层（消除导入 backfill 私有）；S4-D-A 矩阵删 `_transport_owners_active` fixture、capability gate 测试翻转为放行断言（52 passed 不变）。
+- 三面首轮复审完成（P0=1/P1=8/P2=8/P3=5，归 5 根因族）→ **5 族一次返修完成**（集合锁前置修 P0 AB-BA、gate expected_revision=None + 集成测试、replay/consumed 反例、CAS 0 行、口径修正）。
 
 下一步：
-- 提交后建 Draft PR #544（已建）→ Draft Backend iteration 稳定 → 三面首轮复审 → 根因族一次返修 → 一次定向复核 → P0/P1 清零后 Ready + 唯一一次 Backend full。
+- 返修批次提交 → 一次定向复核 → P0/P1 清零后 Ready + 唯一一次 Backend full。
 
 验证状态：
-- S4-D-B 矩阵 16 passed + 邻近 133 = 149 passed；ruff 0；mypy 0；docs gate 通过。
+- S4-D-B 矩阵 24 passed + 邻近（S4-D-A 52 + backfill 44 + registry 10）= 130 passed（专项小集合）；ruff 0；mypy 0。
+- **CI 口径（族 5 修正）**：Draft `Backend iteration` risk-targeted 实际 **613 passed / 4m45s**（run 31286310836）——非专项 149；Ready 后 Backend full 以最新 HEAD 为准。
+- **batch3 顺序污染记录失效**（族 5）：现 main 单独跑 batch3 10 passed 全绿、与 S4-D-A 同跑 62 passed 全绿——原「既有 main 污染」在当前 main 不可复现，已修正记录。
 
 交接备注：
 - 只 resolve `conversation_scope` 行；`tenant_scope`/`orphan` 不 resolve（留 S5/运维）。
