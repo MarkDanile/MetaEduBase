@@ -1080,7 +1080,6 @@ event_id（= outbox row.id = envelope.event.event_id）
 - resolve 流程：集合锁临界区内 → 读该源行完整 issue 集（ledger 唯一事实源）→ `(id, revision)` CAS `open/acknowledged -> resolved`（`revision+1` 不回退，0 行命中即并发冲突重读重试，B1(d) CAS 规则）→ 重算行内投影（**orphan 类 issue 存在 -> 'orphan' 最高优先级**；其次任一 unresolved -> `pending`；全 resolved -> `reconciled`——与 `_recompute_projection` 逐条对齐，冻结为共享层唯一实现）。
 - **重放匹配（round-6/7 修正不变）**：ledger `resolved` 只证明 tombstone evidence 有效，**不代替** S4-C Tx2 已把 outbox 置精确终态——resolve 与 Tx2 是两个独立动作；重放仍须锁后检查 outbox 精确终态三分支（S4-C 状态表 Tx2 后重放行）。
 - **历史 consumed 行出口（三面 P1 冻结）**：backfill（B3）为历史 `producer_purge_revision IS NULL` 的**已 `consumed`** inbox 行（无 receipt_tombstone 证据）登记 `conversation_scope/epoch_unresolvable`——participant 的 resolve 谓词只命中已 tombstone 行，这类行**无法由 participant resolve**（无证据不伪造，fail closed），gate 持续命中。**出口冻结**：历史 consumed 行的 resolve 由 S5 scheduler/运维路径处理（本 PR 只冻结 Tx1 新写场景的 resolve）；participant 不得为无证据行伪造 resolution_digest。
-- **历史 consumed 行出口（三面 P1 冻结）**：backfill（B3）为历史 `producer_purge_revision IS NULL` 的**已 `consumed`** inbox 行（无 receipt_tombstone 证据）登记 `conversation_scope/epoch_unresolvable`——participant 的 resolve 谓词只命中已 tombstone 行，这类行**无法由 participant resolve**（无证据不伪造，fail closed），gate 持续命中。**出口冻结**：历史 consumed 行的 resolve 由 S5 scheduler/运维路径处理（本 PR 只冻结 Tx1 新写场景的 resolve）；participant 不得为无证据行伪造 resolution_digest。
 
 **D-B-3. 两类 gate（区分）**
 
