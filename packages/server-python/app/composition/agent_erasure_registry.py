@@ -8,9 +8,12 @@ capability 一律 fail closed。
 R1-S2 S2-D：``workspace.core.v1`` 的 eraser 由 ``WorkspaceErasureParticipant``
 实现（正文清除 + body scan + ACK）。R1-S3 S3-D：``execution.core.v1`` 的
 eraser 由 ``ExecutionErasureParticipant`` 实现（terminal/context/compatibility/
-event/actor 清除 + final scan + ACK）。两者 ``erase_available=True``；其余
-owner 的 eraser 仍待 S4 实现，保持 ``erase_available=False``，调用
-``require_capability(..., "erase")`` fail closed。
+event/actor 清除 + final scan + ACK）。R1-S4-D-A：两个 transport participant
+实现（outbox/inbox tombstone + scan + ACK），registry 保持 False；**R1-S4-D-B：
+merged-boundary 验收后 ``workspace.transport.v1``/``execution.transport.v1``
+翻 True**（resolve 接入 + mutation kill）。其余 owner（external/runtime）仍待
+S4-E 实现，保持 ``erase_available=False``，调用 ``require_capability(..., "erase")``
+fail closed。
 """
 
 from __future__ import annotations
@@ -68,7 +71,9 @@ _OWNER_DEFINITIONS: tuple[OwnerDefinition, ...] = (
         owner_key="workspace.transport.v1",
         owner_version=1,
         capabilities=("workspace_outbox_payload", "workspace_inbox_receipt"),
-        erase_available=False,
+        # S4-D-B：WorkspaceTransportErasureParticipant 已实现 + resolve 接入 +
+        # merged-boundary 验收通过，erase_available 翻 True（S4-D-A 保持 False）。
+        erase_available=True,
     ),
     OwnerDefinition(
         owner_key="execution.core.v1",
@@ -91,7 +96,9 @@ _OWNER_DEFINITIONS: tuple[OwnerDefinition, ...] = (
         owner_key="execution.transport.v1",
         owner_version=1,
         capabilities=("execution_outbox_payload", "execution_inbox_receipt"),
-        erase_available=False,
+        # S4-D-B：ExecutionTransportErasureParticipant 已实现 + resolve 接入 +
+        # merged-boundary 验收通过，erase_available 翻 True（S4-D-A 保持 False）。
+        erase_available=True,
     ),
     OwnerDefinition(
         owner_key="external.payload.v1",

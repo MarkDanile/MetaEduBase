@@ -76,20 +76,33 @@ def test_missing_capability_fails_closed() -> None:
 
 
 def test_workspace_and_execution_eraser_available_in_s3d() -> None:
-    """S3-D round-1 P1-7：S3-D 落 execution.core.v1 eraser 后，workspace + execution
-    双 owner erase_available=True；其余 owner（transport/external/runtime）仍 False。
+    """S3-D round-1 P1-7 + S4-D-B：S3-D 落 execution.core.v1、S4-D-B 落两个
+    transport eraser 后，workspace.core/execution.core/workspace.transport/
+    execution.transport 四 owner erase_available=True；其余 owner
+    （external/runtime）仍 False。
     """
     registry = _import_registry()
-    # S3-D：workspace + execution eraser 都已落地
-    for owner_key in ("workspace.core.v1", "execution.core.v1"):
+    # S3-D：workspace + execution core eraser 已落地；S4-D-B：两 transport eraser
+    # merged-boundary 验收后翻 True。
+    for owner_key in (
+        "workspace.core.v1",
+        "execution.core.v1",
+        "workspace.transport.v1",
+        "execution.transport.v1",
+    ):
         owner = registry.require_owner(owner_key)
         assert owner.erase_available is True, (
-            f"{owner_key} eraser not available after S3-D"
+            f"{owner_key} eraser not available after S3-D/S4-D-B"
         )
         registry.require_capability(owner_key, "erase")  # 不抛
-    # 其余 owner erase 仍 fail closed
+    # 其余 owner erase 仍 fail closed（external.payload.v1 / runtime.private.v1 待 S4-E）
     for owner in registry.owner_registry():
-        if owner.owner_key in ("workspace.core.v1", "execution.core.v1"):
+        if owner.owner_key in (
+            "workspace.core.v1",
+            "execution.core.v1",
+            "workspace.transport.v1",
+            "execution.transport.v1",
+        ):
             continue
         assert owner.erase_available is False
         with pytest.raises(registry.OwnerCapabilityUnavailableError):

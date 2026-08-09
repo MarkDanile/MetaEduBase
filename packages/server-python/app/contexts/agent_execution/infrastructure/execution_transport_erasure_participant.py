@@ -112,6 +112,68 @@ class ExecutionTransportErasureParticipant(TransportErasureParticipantBase):
             run_unsettled_rows=int(run_rows or 0),
         )
 
+    # --- resolve（D-B-2：inbox tombstone 后，集合锁临界区内）-----------------
+
+    async def _resolve_epoch_issues_after_erase(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> None:
+        """resolve 目标 Conversation 的 conversation_scope `epoch_unresolvable` issue。
+
+        inbox tombstone 已取得证据（``receipt_tombstone_digest`` 为已验证 64-hex）；
+        集合锁临界区内（写 ledger 证据 + 投影重算，D-A-1 免取条件不再适用）。
+        只 resolve ``conversation_scope`` 行（带 conversation_id）；``tenant_scope``/
+        ``orphan`` 不 resolve（留 S5/运维）。
+        """
+        from app.composition.agent_erasure_locks import (
+            acquire_transport_aggregate_lock,
+        )
+        from app.composition.agent_transport_ledger_service import (
+            recompute_projection,
+            resolve_epoch_unresolvable_issue,
+        )
+
+        # 该 Conversation 的 execution inbox 行（scope=conversation_id）。
+        inbox_rows = (
+            await self._session.execute(
+                text(
+                    "SELECT id, receipt_tombstone_digest FROM "
+                    "metaedu.agent_execution_inbox "
+                    "WHERE tenant_id = :t AND conversation_id = :c "
+                    "AND receipt_tombstone_state = 'redacted' "
+                    "AND receipt_tombstone_digest IS NOT NULL"
+                ),
+                {"t": tenant_id, "c": conversation_id},
+            )
+        ).mappings().all()
+        for row in inbox_rows:
+            # 集合锁（最内层）：ledger 源行 = inbox 行自身（source_table +
+            # source_row_id=inbox 行 PK，R3）。
+            await acquire_transport_aggregate_lock(
+                self._session,
+                tenant_id=tenant_id,
+                owner_key=self.owner_key,
+                source_table="agent_execution_inbox",
+                source_row_id=row["id"],
+            )
+            await resolve_epoch_unresolvable_issue(
+                self._session,
+                tenant_id=tenant_id,
+                owner_key=self.owner_key,
+                table="agent_execution_inbox",
+                source_row_id=row["id"],
+                resolution_digest=row["receipt_tombstone_digest"],
+            )
+            await recompute_projection(
+                self._session,
+                table="agent_execution_inbox",
+                tenant_id=tenant_id,
+                owner_key=self.owner_key,
+                source_row_id=row["id"],
+            )
+
     # --- 正文清除（outbox -> suppressed 留 digest；inbox 状态矩阵）------------
 
     async def erase_transport_body(
