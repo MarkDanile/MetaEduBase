@@ -38,7 +38,7 @@
 
 交接备注：
 - 不写业务代码、不改 migration 040、不实现 migration 041、`erase_available` 全程 False、不启用 S5、不进 S4-F/S6。
-- 三 PR：S4-E-A ref tombstone（041 + transport 只清 inline）、S4-E-B external lifecycle participant（+ 生产 db_local 激活）、S4-E-C runtime conformance（runtime 保持 False）。
+- 三 PR：S4-E-A ref tombstone（041 + transport 只清 inline）、S4-E-B external lifecycle participant、S4-E-C runtime conformance；external/runtime registry 均保持 False（无生产 db_local adapter，移除激活验收）。
 
 ## 下一批候选任务
 
