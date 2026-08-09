@@ -1052,89 +1052,100 @@ event_id（= outbox row.id = envelope.event.event_id）
 >
 > #### R1-S4-E External payload + Runtime conformance 契约细化（2026-08-09，先于代码冻结，纯文档）
 >
-> 按 S4-A D1-D8 / S4-B B1-B8 / S4-C C1-C9 / S4-D D-A-1~D-B-3/D-Act-1 冻结 `external.payload.v1` / `runtime.private.v1` 契约。**本 delta 只写文档：不写业务代码、不改 migration 040、不实现 migration 041、`erase_available` 全程保持 `False`、不启用 purge scheduler（S5）、不进 S4-F/S6。** 现状盘点基于 main `f7a8a850`（S4-D-A/S4-D-B 已合并，transport 两 owner 激活）。
+> 按 S4-A D1-D8 / S4-B B1-B8 / S4-C C1-C9 / S4-D D-A-1~D-B-3/D-Act-1 冻结 `external.payload.v1` / `runtime.private.v1` 契约。**本 delta 只写文档：不写业务代码、不改 migration 040、不新增 outbox CHECK migration、不实现 migration 041、`erase_available` 全程保持 `False`、不启用 purge scheduler（S5）、不进 S4-F/S6。** 现状盘点基于 main `f7a8a850`（S4-D-A/S4-D-B 已合并，transport 两 owner 激活）。
+>
+> **三面首轮复审与 8 根因族一次返修（2026-08-09，HEAD `5f655281`，commit `XXXX`）**：三面（数据/状态机 1/9/3/1、并发/锁序 2/6/4/1、测试/运维 3/5/5/0，P0=6/P1=20/P2=12/P3=2）横向消化全部 findings，按 8 根因族一次重写本段（不逐条补丁）：① **E-0a 与现 CHECK/已合并测试硬冲突**——冻结「inline-only 清除 + ref-bearing 行 transport 零修改 blocked + external receipt 后清 ref」，**不新增 outbox CHECK migration**（无「suppressed 保留 ref」形态）；② **`registered` 产生者缺失**——冻结由 **staging/reference lifecycle port（B1）** 产生，eraser 只消费；③ **并发 token 无推进者**——`lease_epoch` 推进/接管归 **S5**（S4-E 只验证），`checkpoint.attempt` 按 **participant invocation** 增，测试手动推进 lease 模拟 takeover；④ **`checkpoint_digest` 双语义**——冻结**状态相关语义**（erasing=intent.v1、acked=final scan）；⑤ **receipt 证据链**——`receipt_digest` 直接承载 canonical adapter receipt evidence，不新增列，重放走 receipt lookup/同 key 重算；⑥ **timeout**——可能已生效统一 `unknown`，可证明未发送才 `blocked/erase_timeout`；⑦ **运维**——S4-E 只做 blocked/unknown 查询 + 有证据 reconcile，HTTP/CLI 归 S5，禁无 receipt 强制 erased；⑧ **测试迁移**——inline 用例保持、ref-only 用例改 blocked 零修改、receipt 后清 ref 断言移 B2 互操作矩阵。
 >
 > **E-0 根因 1：S4-D transport participant 提前清 payload_ref 与 D5 顺序冲突（先冻结修复）**
 >
 > - 现状（代码实证）：S4-D `erase_transport_body`（workspace/execution `transport_erasure_participant.py:197/218`）用正文事实谓词 `payload_inline IS NOT NULL OR payload_ref IS NOT NULL` **同时清两列**转 `suppressed`——`payload_ref` 被提前清除。
 > - 冲突：D5（S4-A）冻结「**先删 external object 取 receipt，再清 transport DB ref**」——transport 提前清 ref 时 external object 可能未删，违反 **receipt-before-clear 顺序**（先清 DB ref 会让 external object 失去追踪入口，`ledger` 仍可定位——问题在**清除顺序违规**而非无法定位）。且 transport 清 ref 无 external receipt 证据。
-> - **冻结修复（E-0a）**：S4-D transport participant 的 outbox 清除改为**只清 `payload_inline`、保留 `payload_ref`**（`payload_ref` 归 external.payload.v1 清除，D5）；`payload_ref` 存在时 transport 侧 `suppressed` 分支须满足 CHECK（`ck_*_outbox_payload`：suppressed 清正文留 digest——**payload_ref 也是正文列，需评估 CHECK 是否允许 suppressed 保留 ref**；若不允许，transport 侧对 ref-only 行 blocked 移交 external）。**E-0b**：本修复作为 S4-E-A 的一部分落地（改 transport participant + 补「transport-before-external」反例）；契约冻结在 S4-E 本 delta。
+> - **冻结修复（E-0a）**：transport participant 的 outbox 清除改为**只清 inline-only 行**（`payload_ref IS NULL`）——`SET payload_inline = NULL, status='suppressed'`，满足现 `ck_*_outbox_payload` suppressed 分支（inline/ref 均 NULL）。**ref-bearing 行（`payload_ref IS NOT NULL`，含 inline+ref 混合行）transport 零修改并 blocked（`purge_owner_unavailable`）**——不清 inline、不清 ref、不转 suppressed，整行原样保留。**不新增 outbox CHECK migration**：本契约下不存在「suppressed 保留 ref」形态，`suppressed` 仅由 ref 已 NULL 的行达到；external receipt 后由 `ExternalPayloadErasureParticipant` 清 ref 与 inline 并转 `suppressed`（满足现 CHECK）。
+> - **E-0b（落地归属）**：本修复作为 **S4-E-A** 的一部分落地——改 transport `scan_transport_body`/`erase_transport_body`（清除谓词收窄为 inline-only + ref-bearing 行提前 blocked）+ 补「transport-before-external」反例 + **已合并测试迁移**（见 E-6 判别点）：inline-only 用例保持原断言；`test_outbox_payload_ref_only_cleared` 等 ref-only 用例**改为断言 transport blocked 且行零修改**（`payload_ref` 仍存在、status 不变）；「external receipt 后清 ref + 转 suppressed」断言**移入 S4-E-B2 互操作矩阵**，不再由 S4-D-A 测试承担。
 >
 > **E-1 根因 2：external ledger 为删除事实源（source 已空/源行缺失不得漏删或伪造 receipt）**
 >
 > - external ledger（`agent_external_object_refs`）是 external object 删除的**唯一事实源**（B5）。purge 时以 ledger 为准扫 3 个 ref-bearing source（RunEvent/两 outbox payload_ref）。
-> - **source ref 匹配规则（新增）**：source 同 ref 时（source ref 仍存在且 == ledger `ref_value`）-> receipt 后清除（D5）；**source 已 NULL/缺失时仍可凭已验证 ledger 完成删除留证**（E-1a 历史兼容——source ref 被并发清但 ledger 未 erased 的场景，ledger 是唯一事实源，不因 source 已空而漏删）；**不同非 NULL ref 或绑定冲突 -> fail closed**（source ref 存在但 != ledger `ref_value`，或 ledger 绑定与 source 身份冲突，不覆盖、不伪造 receipt）。
-> - 源行生命周期：ledger 未 erased 前源行不得物理删除（保留至少为 tombstone，与 B4 源行规则对齐）；orphan（Conversation 已删）由运维/S5 确认。
+> - **`registered` 的产生者（冻结）**：**staging/reference lifecycle port（S4-E-B1）是 `registered` 的唯一正常生产者**——对象 staging/publish 时登记并转 `registered`；external eraser（B2）**只消费 `registered` 行，不生产**。当前 backfill 写 `blocked/unknown_scheme`（`_register_external_ref` 一律 `unknown` scheme，backfill L406-407）——**`blocked/unknown_scheme -> registered` 仅当 scheme 被明确识别且 adapter capability 验证通过时允许**（B1 adapter contract 判定），不满足则保持 blocked。
+> - **source ref 匹配规则（新增）**：source 同 ref 时（source ref 仍存在且 == ledger `ref_value`）-> receipt 后清除（D5）；**source 已 NULL/缺失时仍可凭已验证 ledger 完成删除留证**（E-1a 历史兼容——source ref 被并发清但 ledger registered 未 erased，ledger 是唯一事实源，不因 source 已空而漏删）；**不同非 NULL ref 或绑定冲突 -> fail closed**（source ref 存在但 != ledger `ref_value`，或 ledger 绑定与 source 身份冲突，不覆盖、不伪造 receipt）。
+> - 源行生命周期：ledger 未 erased 前源行不得物理删除（保留至少为 tombstone，与 B4 源行规则对齐）；orphan（Conversation 已删）由运维/S5 确认；ledger 行自身生命周期（erased 后何时清理）与 S6 365 天 audit prune 一并处理，不并入本 Slice。
 > - **E-1a 历史兼容**：source ref 已 NULL（历史/并发清除）但 ledger `registered` 未 erased——仍执行 adapter 删除（以 ledger 为事实源）并写 `erased` + receipt；不伪造「source 仍存在」的假象。
 >
-> **E-1b 三 source DB ref 唯一写入者（根因 6 补充）**
+> **E-1b 三 source DB ref 唯一清除者（根因 6 补充）**
 >
-> - **`ExternalPayloadErasureParticipant` 是 3 个 source 的 DB ref 唯一清除者**：RunEvent.payload_ref（经 migration 041 guard）、workspace outbox payload_ref、execution outbox payload_ref——均在 external receipt 后统一清除。
-> - **transport participant（S4-D）在 receipt 前保留 ref 并 blocked，不再提前清除**：E-0 修复后 transport 只清 `payload_inline` 保留 `payload_ref`；`payload_ref` 存在时 transport 侧 blocked（`purge_owner_unavailable`，external 未完成前不清 ref）——transport-before-external 反例验证。
+> - **`ExternalPayloadErasureParticipant`（B2）是 3 个 source 的 DB ref 唯一清除者**：RunEvent.payload_ref（经 migration 041 guard）、workspace outbox payload_ref、execution outbox payload_ref——均在 external receipt 后统一清除（清 ref 与 inline 并转 `suppressed`，满足现 outbox CHECK）。
+> - **transport participant（S4-D）在 receipt 前零修改 ref-bearing 行并 blocked**：E-0a 修复后 transport 只清 inline-only 行；`payload_ref` 存在时 transport blocked（`purge_owner_unavailable`），不清 inline/ref/status——transport-before-external 反例验证。
+> - **清除者之外的其他写路径（不构成 ref 清除）**：backfill `_register_external_ref` 只改 ledger 行（blocked 时修 `conversation_id`），不清 source DB ref；execution.core.v1 gate（RunEvent.payload_ref 存在即 blocked，S3-D）是前置守卫，不清 ref。
+> - **ref 承载点边界**：`RuntimeSessionBinding.runtime_session_ref` 归 `runtime.private.v1`（E-5-C），不在 external 扫描范围；`staging_object` capability 当前**无实现、无清除路径**（无 staging 表/列），S4-E 不覆盖，登记 B2 边界外。
 >
 > **E-2 根因 3：adapter 调用双事务协议（禁持锁做外部 I/O；双事务身份与证据）**
 >
-> - 冻结为**双事务协议**（镜像 S4-C Tx1/Tx2 模式）。**并发承载**：operation 用 `lease_epoch`；checkpoint 用 `state='erasing'` + `attempt` + `checkpoint_digest`（checkpoint state 枚举已含 `erasing`，`attempt`/`checkpoint_digest` 列已存在，无需扩 schema；**不使用** external ledger `(id, revision)` CAS 或 `updated_at` CAS——external ledger 无 revision 列）。external ledger 保持 `registered`（adapter 调用窗口期间不变）。
->   - **Tx1（短事务）**：原子推进——purge operation `lease_epoch` CAS（同 purge_revision）+ checkpoint `state: pending/blocked -> erasing` + `attempt += 1` + **持久化 intent digest**（E-2c）至 `checkpoint_digest`；external ledger 确认 `registered`；**提交释放全部数据库锁**。
->   - **adapter 调用（无锁）**：释放锁后调用外部 adapter 删除 object；携带**跨 takeover 稳定的 idempotency key**（E-2b）与 adapter version。
->   - **Tx2（第二独立事务）**：**精确重验**（E-2a）后写 `erased` + `receipt_digest` **再清对应 DB ref**（RunEvent 经 migration 041 / outbox 经 transport）。
->   - **禁止持锁做外部 I/O**（外部调用的延迟/超时不得阻塞数据库锁）。
+> - 冻结为**双事务协议**（镜像 S4-C Tx1/Tx2 模式）。**并发承载（冻结）**：operation 用 `lease_epoch`（**推进/接管归 S5，S4-E participant 只验证**）；checkpoint 用 `state='erasing'` + `attempt`（**按 participant invocation 增**，跨 takeover 递增）+ `checkpoint_digest`（**状态相关语义，E-2c**）。**不使用** external ledger `(id, revision)` CAS 或 `updated_at` CAS——external ledger 无 revision 列，且并发身份不由 ledger 状态承载。
+> - **E-2c checkpoint_digest 状态相关语义（冻结，消解 body-scan/intent 双语义）**：`state='erasing'` 时 `checkpoint_digest` = **`external_delete_intent.v1` digest**——对**完整稳定 ledger identity 集合**（`ref_scheme`/`ref_value`/`source_table`/`source_row_id`/`conversation_id` 的 canonical digest，版本化键名 `schema_version:1 + kind:'external_delete_intent'`）的持久化 intent；**`state='acked'` 时 `checkpoint_digest` = final scan digest**（与 workspace/execution/transport 现语义一致）。**attempt 可变但 intent digest 跨 takeover 不变**——takeover 重跑 Tx1 重算 intent digest 与已持久化值精确相等，旧 attempt 的 intent 不覆盖新 intent。
+> - **Tx1（短事务）**：原子推进——checkpoint `state: pending/blocked -> erasing`（条件 CAS，**单一 adapter 窗口准入点**）+ `attempt += 1` + 持久化 `external_delete_intent.v1` 至 `checkpoint_digest`；operation `lease_epoch` **验证**（与当前 operation 精确匹配，推进由 S5）；external ledger 确认 `registered`（窗口内保持）；**提交释放全部数据库锁**。
+> - **adapter 调用（无锁）**：释放锁后调用外部 adapter 删除 object；携带**跨 takeover 稳定的 idempotency key**（E-2b）与 adapter version。**禁持锁做外部 I/O**——S4-E 不实现 claim lease/调度，双事务窗口的并发正确性由 Tx1 checkpoint CAS + E-2a 精确重验 + idempotency key 承载（见 E-2b/E-6）。
+> - **Tx2（第二独立事务）**：**精确重验**（E-2a）后写 `erased` + `receipt_digest` **再清对应 DB ref**（RunEvent 经 migration 041 / outbox 由 external participant 清 ref 与 inline 并转 suppressed）。
+> - **锁序（冻结，对齐 D8）**：Tx1/Tx2 取锁顺序与既有链一致（Guard/Conversation -> owner lock -> fence -> 集合锁 -> 源行，D8 全局链）；Tx2 清 RunEvent 经 **041 行级白名单 guard**（沿 039 行级函数扩展，**非 DDL**，不引入 ACCESS EXECLUSIVE 升级——参考 execution round-1 P1-2 DROP TRIGGER 死锁教训）；`source_table+source_row_id` 多态无 FK，E-1a 的「source 已 NULL/缺失」路径即多态空行场景，Tx2 清 ref 时集合锁仍可获但行级锁可能落空，须按 D8 矩阵显式入链。
 >
-> **E-2a Tx2 精确重验（非「fence 仍 active」）**：Tx2 重验改为——**operation `lease_epoch` 精确匹配**（同 purge_revision）+ **checkpoint `state='erasing'` + `attempt` 匹配 + `checkpoint_digest` 匹配（== Tx1 持久化的 intent digest）** + **fence（本 purge 的 erasing）** + **registry digest** 匹配 + **hold revision** 匹配；任一不符 fail closed（stale lease / 旧 attempt 拒绝）。不得写「fence 仍 active」。
+> **E-2a Tx2 精确重验（非「fence 仍 active」）**：Tx2 重验改为——**operation `lease_epoch` 精确匹配**（同 purge_revision）+ **checkpoint `state='erasing'` + `attempt` 匹配 + `checkpoint_digest` 匹配（== Tx1 持久化的 intent digest，跨 takeover 不变）** + **fence（`state='erasing'` 且 `purge_revision` == operation.purge_revision，即同一 purge 实例）** + **registry digest** 匹配 + **hold revision** 匹配；且 **external ledger 仍为 `registered` 且 `receipt_digest IS NULL`**（adapter 调用窗口内不变——`registered` 是窗口不变量，但**并发身份由 lease_epoch + checkpoint state/attempt/intent digest 承载**，非 ledger 状态）。任一不符 fail closed（stale lease / 旧 attempt 拒绝）。不得写「fence 仍 active」。
 >
-> **E-2b adapter idempotency key 与 receipt digest envelope（冻结，跨 takeover 稳定）**：idempotency key = canonical digest（`ref_scheme` + `ref_value` + `adapter_key`/`adapter_version` 派生，**不含 lease_epoch/attempt**——takeover 后 key 不变，防「新 lease 用旧 key 误去重」）；adapter 支持幂等重放/`receipt lookup` 时用 key 去重。**receipt digest envelope 冻结**：`snapshot_digest({schema_version:1, adapter_key, adapter_version, idempotency_key, adapter_receipt_digest, ref_digest, erase_outcome})`（同一 helper，版本化键名）。**禁止仅凭本地 outcome 自造 receipt**——`receipt_digest` 必须含 adapter 返回的可验证 `adapter_receipt_digest`（E-6 反例：伪造本地 outcome 无 adapter receipt 不得 `erased`）。**崩溃后可能重复调用 adapter**——承认重复调用存在，但**不得重复产生副作用**（幂等删除）；`unknown outcome` 默认**不自动重试**（见 E-3a）。
+> **E-2b adapter idempotency key 与 receipt digest（冻结，跨 takeover 稳定）**：idempotency key = canonical digest（`ref_scheme` + `ref_value` + `adapter_key`/`adapter_version` 派生，**不含 lease_epoch/attempt**——takeover 后 key 不变，防「新 lease 用旧 key 误去重」）；**adapter 支持幂等重放或 `receipt lookup` 是 B1 adapter contract 的硬性前置**（不满足则 S4-E-B1/B2 不得开工，E-6 反例验证）。**`receipt_digest` 直接承载 canonical adapter receipt evidence**：`receipt_digest = canonical_digest({schema_version:1, adapter_key, adapter_version, idempotency_key, adapter_receipt_evidence, ref_digest, erase_outcome})`（64-hex，满足 `ck_*_receipt_digest`；**不新增 `adapter_receipt_digest` 列**）。**禁止仅凭本地 outcome 自造 receipt**——`receipt_digest` 必须由 adapter 返回的可验证 `adapter_receipt_evidence` 重算（E-6 反例：伪造本地 outcome 无 adapter evidence 不得 `erased`）。**重放比对（冻结）**：崩溃后重放经 adapter `receipt lookup`（同 stable idempotency key）取回 evidence，或按同 key 重算 canonical digest，与已持久化 `receipt_digest` **精确匹配**——匹配则 no-op 终态，不匹配 fail closed。**分工（冻结）**：`checkpoint.attempt` 匹配**识别旧 Tx2**（防写错证据），idempotency key **抑制副作用**（防重复删）——attempt 是每 participant invocation 一次，不是去重机制本身。**崩溃后可能重复调用 adapter**——承认重复调用存在，但**不得重复产生副作用**（幂等删除，fake adapter 调用计数断言 == 1）；`unknown outcome` 默认**不自动重试**（见 E-3a）。
 >
-> - 崩溃恢复：Tx1 提交后崩溃 -> operation lease_epoch + checkpoint `erasing`/attempt/intent digest 已持久化；重放时精确重验（E-2a）后重做 adapter/Tx2 或回退（幂等，idempotency key 防副作用）。
+> - 崩溃恢复（冻结）：Tx1 提交后崩溃 -> checkpoint `erasing`/attempt/intent digest 已持久化；**重放 = 同 invocation 重做**（attempt 不变，adapter 幂等去重）——区别于**重试**（`blocked/unknown -> registered` 后重新发起，E-3a/E-3b）。重放精确重验（E-2a）后重做 adapter/Tx2 或回退；idempotency key 防副作用。
 >
 > **E-3 根因 4：external ledger 状态机合法迁移 + timeout/unknown 矩阵**
 >
-> - 状态（**复用现有枚举，不新增 `erasing`**）：`pending -> registered -> erased | blocked | unknown`。`registered` = 已登记待删（adapter 调用窗口期间保持 `registered`，并发承载靠 purge checkpoint `lease_epoch` + `updated_at` 乐观比对，E-2）。
-> - 合法迁移：`pending->registered`（登记）；`registered->erased`（Tx2 成功 + receipt）；`registered->blocked`（timeout 且请求可能未生效 / digest mismatch / adapter unavailable，记 `blocked_reason`）；`registered->unknown`（请求可能已生效但 outcome 未知）。禁 `erased` 回退；`blocked/unknown -> registered`（重试，须满足 E-3a 条件）。
-> - **E-3a timeout/unknown 状态矩阵（请求是否可能已生效决定 blocked vs unknown，禁止笼统 `unknown->registered` 自动重试）**：
+> - 状态（**复用现有枚举，不新增 `erasing`**）：`pending -> registered -> erased | blocked | unknown`。`pending`/`registered` 由 **staging/reference lifecycle port（B1）** 产生；`registered` = 已登记待删（adapter 调用窗口期间保持 `registered`）。
+> - 合法迁移：`pending->registered`（B1 登记）；`registered->erased`（Tx2 成功 + receipt）；`registered->blocked`（timeout 且**可证明未发送** / digest mismatch / adapter unavailable，记 `blocked_reason`）；`registered->unknown`（请求**可能已生效**但 outcome 未知）；`blocked/unknown_scheme -> registered`（仅当 **scheme 明确识别 + adapter capability 验证通过**，B1 判定；其余 blocked/unknown 见 E-3b）。禁 `erased` 回退。
+> - **E-3a timeout/unknown 状态矩阵（请求是否可能已生效决定 blocked vs unknown；可能已生效统一 `unknown`，可证明未发送才 `blocked/erase_timeout`）**：
 >
 > | adapter 结果 | 请求是否可能已生效 | 状态 | 是否自动重试 |
 > |--------------|-------------------|------|-------------|
-> | 明确失败（非幂等错误，**可证明未产生副作用**） | 否 | `blocked`（`adapter_unavailable`/`erase_timeout`） | 可重试（重试 `registered`） |
-> | 超时（请求可能已发出，**无法证明未生效**） | 是 | **`unknown`/`outcome_unknown`**（统一进入，不排除已生效） | **不自动重试**；仅 adapter 支持幂等重放/`receipt lookup` 时允许（E-2b idempotency key 去重），否则运维/人工确认 |
-> | 超时（确定未发出，连接前失败） | 否 | `blocked`（`erase_timeout`） | 可重试 |
+> | 明确失败（非幂等错误，**可证明未产生副作用**） | 否 | `blocked`（`adapter_unavailable`） | 可重试（重试 `registered`，须满足 B1 capability 判定） |
+> | 超时（请求可能已发出，**无法证明未发送**） | 是 | **`unknown`/`outcome_unknown`**（统一进入，不排除已生效） | **不自动重试**；仅 adapter 支持幂等重放/`receipt lookup` 时允许（E-2b key 去重），否则运维/人工确认（E-3b 查询入口） |
+> | 超时（**可证明未发送**，连接前失败） | 否 | `blocked`（`erase_timeout`） | 可重试 |
 > | outcome 未知（adapter 返回 unknown） | 是 | `unknown` | **不自动重试**；仅 adapter 支持幂等重放或 `receipt lookup` 时才允许，否则运维/人工确认 |
-> | 成功 + 可验证 adapter receipt | — | `erased`（receipt_digest 冻结 envelope，须含 `adapter_receipt_digest`） | 终态 |
+> | 成功 + 可验证 adapter evidence | — | `erased`（receipt_digest 由 adapter evidence 重算，E-2b） | 终态 |
 > | digest mismatch | — | `blocked`（`digest_mismatch`）不得 ACK | 不自动重试 |
 >
-> - 崩溃恢复：Tx1 提交后崩溃 -> operation lease_epoch + checkpoint `erasing`/attempt/intent digest 已持久化；重放精确重验（E-2a）后重做 adapter/Tx2 或回退（幂等，idempotency key 防副作用）。并发重放：checkpoint `erasing`+attempt 承载防双删；重复删除 -> 已 `erased` + digest 匹配 no-op。`blocked`/`unknown` **不得 ACK**（不变量 5）。
+> - **「可证明未发送」判据（冻结）**：adapter 在**建立连接/发出请求前**失败（连接错误、前置校验失败）即为可证明未发送；无法区分是否已发出的一律视为**可能已生效** -> `unknown`。fake/conformance adapter 须支持注入两类失败（发送前连接错误 / 发送后 TimeoutError）以分别验证两行（E-6）。
+> - **E-3b blocked/unknown 处理（运维可观察性，冻结）**：S4-E-B2 实现 **blocked/unknown 行查询**（`agent_external_object_refs` 按 `erase_state` + `blocked_reason` 过滤）与**有证据 reconcile service**（仅当 adapter `receipt lookup` 返回可验证 evidence 时补写 `erased` + receipt；**禁止无 receipt 强制 `erased`**）。HTTP/CLI 接线与操作入口归 **S5**，本 Slice 只提供查询/reconcile 能力与测试。**收场（冻结）**：Tx2 fail closed 但 adapter 副作用已发生（registry/hold 变化等）时——若 `receipt lookup` 可得 evidence -> reconcile 补写 `erased`；否则转 `unknown` 交运维人工确认（E-3a）。
+> - 崩溃恢复：并发重放：checkpoint `erasing`+attempt 承载防双删；重复删除 -> 已 `erased` + `receipt_digest` 匹配 no-op。`blocked`/`unknown` **不得 ACK**（不变量 5）。
 >
 > **E-4 根因 5：registry 激活条件（确定选择——external/runtime 均保持 False）**
 >
-> - **确定性选择（根因 7 修正）**：当前仓库**没有具体生产级 db_local adapter**（B5 db_local allowlist 为空、无可证明 DB-local 格式、无 adapter 实现）——因此 `external.payload.v1` / `runtime.private.v1` **`erase_available` 均保持 False，并移除本 Slice 的激活验收**（不再把「registry 激活」列为 S4-E 验收项）。
+> - **确定性选择（根因 7 修正）**：当前仓库**没有具体生产级 db_local adapter**（B5 db_local allowlist 为空、无可证明 DB-local 格式、无 adapter 实现）——因此 `external.payload.v1` / `runtime.private.v1` **`erase_available` 均保持 `False`**。**registry owner 定义固定不可删**（spec §4.1 V1 owner registry），本 Slice 只是**不把「registry 激活」列为验收项**（不含任何 registry 定义/断言改动）。
 > - **fake adapter / conformance fake 不构成激活依据**（spec §10.2「fake 只证明契约，不得宣称生产对象已删除」）。`RuntimeErasureParticipant` 是 conformance fake，`runtime.private.v1` 全程 False；真实 Runtime eraser 归 REQ-043。
 > - 若未来引入**具体生产级 db_local 格式与 adapter**（可证明格式 + 真实删除 + receipt），`external.payload.v1` 才允许**同 commit 激活**（S3-D P1-7：断言测试同 commit 更新 + mutation kill 缺 adapter 变红）——届时作为独立任务入账，不并入本 Slice。
 >
-> **E-5 根因 6：三串行风险域拆分（TD-092 单风险域）**
+> **E-5 根因 6：四串行风险域拆分（TD-092 单风险域）**
 >
-> 1. **S4-E-A：ref tombstone**——migration 041 guard 演进（清 RunEvent.payload_ref 严格 tombstone）+ **E-0 修复**（transport participant 只清 payload_inline 保留 payload_ref，ref 存在时 blocked）+ transport-before-external 反例。验证 041 roundtrip + 变异（清 ref 复活 inline 击杀）+ E-0 反例。
-> 2. **S4-E-B：external lifecycle participant**——`ExternalPayloadErasureParticipant`（scan 3 source + E-1b 唯一 ref 清除者 + ledger 状态机 E-3 + 双事务协议 E-2 + 清除顺序 D5 + source-NULL 历史兼容 E-1a）。**registry 不激活**（E-4：external.payload.v1 保持 False，无生产 db_local adapter）。验证 E-1/E-2/E-3 反例 + mutation kill（缺 adapter/缺 participant 变红但 registry 仍 False）。
-> 3. **S4-E-C：runtime conformance fake**——`RuntimeErasureParticipant` conformance suite（session destroy + 旧 epoch event + 迟到 seq + unknown outcome + ACK 重放，spec §10.3）；`runtime.private.v1` 保持 False。验证 conformance 各反例 + fake 不冒充真实 spool。
+> 1. **S4-E-A：ref tombstone + transport 清除边界**——migration 041 guard 演进（清 RunEvent.payload_ref 严格 tombstone，行级白名单，非 DDL）+ **E-0 修复**（transport 只清 inline-only 行；ref-bearing 行零修改 blocked）+ **已合并测试迁移**（inline 用例保持；ref-only 用例改 blocked 零修改）。验证 041 roundtrip + 变异（清 ref 复活 inline 击杀）+ E-0 反例。
+> 2. **S4-E-B1：lifecycle registration + adapter contract**——staging/reference lifecycle port（`registered` 唯一正常生产者；`blocked/unknown_scheme -> registered` 仅 scheme 明确识别 + adapter capability 验证通过）+ **adapter contract**（幂等重放/`receipt lookup` 硬前置 + 失败分类注入：发送前连接错误 / 发送后 TimeoutError）。
+> 3. **S4-E-B2：external erasure participant**——`ExternalPayloadErasureParticipant`（消费 `registered` 行 + scan 3 source + E-1b 唯一 ref 清除者 + ledger 状态机 E-3 + 双事务协议 E-2 + 清除顺序 D5 + source-NULL 历史兼容 E-1a + blocked/unknown 查询与有证据 reconcile E-3b）。**registry 不激活**（E-4）。验证 E-1/E-2/E-3 反例 + mutation kill（「缺 adapter/缺 participant」变红指调用被 capability gate 拒绝或扫描逻辑报错，而 registry 断言仍 False）+ **B2 互操作矩阵**（「receipt 后清 ref + 转 suppressed」「transport 已 suppressed 行再扫 no-op」）。
+> 4. **S4-E-C：runtime conformance fake**——`RuntimeErasureParticipant` conformance suite（session destroy + 旧 epoch event + 迟到 seq + unknown outcome + ACK 重放，spec §10.3）；`runtime.private.v1` 保持 False。验证 conformance 各反例 + fake 不冒充真实 spool。
 >
-> **E-6 根因 7：验收反例矩阵（S4-E 实现时逐项）**
+> **E-6 根因 7：验收反例矩阵（S4-E 实现时逐项，含判别点/注入机制）**
 >
-> | 反例 | 触发 | 期望行为（fail closed） |
-> |------|------|------------------------|
-> | transport-before-external | S4-D transport 提前清 outbox payload_ref | E-0 修复后 transport 只清 inline 保留 ref；`payload_ref` 存在时 transport blocked（`purge_owner_unavailable`），external receipt 前不清 ref |
-> | receipt 写入前崩溃 | Tx1 提交后、Tx2 receipt 前崩溃 | ledger 保持 `registered` + checkpoint `erasing`/attempt/intent digest；重放精确重验（E-2a）后重做 adapter/Tx2 或回退（幂等，idempotency key 防副作用）；不伪造 receipt |
-> | adapter 成功但 Tx2 崩溃 | adapter 删 object 后、Tx2 写 receipt 前崩溃 | 重放精确重验（E-2a）后写 receipt 清 ref；不重复删（幂等 key + checkpoint attempt） |
-> | stale lease Tx2 | Tx2 时 operation lease_epoch 已被接管/过期 | Tx2 精确重验（E-2a：operation lease_epoch + checkpoint `erasing`/attempt/digest + fence/registry/hold）不符 -> fail closed；不写 receipt |
-> | **lease takeover 后 idempotency key 不变** | purge 被接管（新 lease_epoch），adapter 重调用 | idempotency key 不含 lease_epoch/attempt（E-2b），跨 takeover 稳定——新 lease 用同 key 去重，不重复删 |
-> | **旧 attempt Tx2 被拒** | Tx1 attempt=1 提交、另一 attempt=2 推进，旧 attempt Tx2 重放 | Tx2 精确重验 checkpoint attempt 匹配失败 -> fail closed（不覆盖新 attempt 的 intent） |
-> | **伪造本地 outcome 无 adapter receipt** | adapter 未返回可验证 receipt，仅凭本地「已调用」写 erased | receipt_digest 须含 `adapter_receipt_digest`（E-2b envelope）；缺 adapter receipt -> 不得 `erased`（伪造本地 outcome 被击杀） |
-> | **可能已生效 timeout -> unknown** | adapter 超时且无法证明未生效 | 统一进入 `unknown`/`outcome_unknown`（E-3a），不自动重试；仅幂等重放/receipt lookup 时允许 |
-> | source 已 NULL 的历史兼容 | source ref 被并发清但 ledger `registered` 未 erased | 仍凭已验证 ledger 完成删除留证（E-1a：ledger 是唯一事实源），写 `erased` + receipt；不伪造「source 仍存在」 |
-> | 不同 ref 冲突 | source ref 存在但 != ledger `ref_value`，或绑定冲突 | fail closed（不覆盖、不伪造 receipt） |
-> | 重复删除 | 同一 object 两 purge 并发 | checkpoint `erasing`+attempt 承载防双删；已 `erased` + digest 匹配 no-op；不双删 |
-> | 错误 receipt digest | adapter 返回 digest 与 E-2b envelope 不符 | `blocked`（`digest_mismatch`）不得 ACK；不自动重试 |
-> | 未知 scheme | ref_scheme 不在 allowlist | blocked（`unknown_scheme`）禁 ACK（B5） |
-> | unknown outcome 禁自动重试 | adapter 返回 unknown（请求可能已生效） | `unknown` 状态，**不自动重试**（E-3a）；仅 adapter 支持幂等重放或 receipt lookup 时才允许，否则运维/人工确认 |
+> | 反例 | 触发 | 期望行为（fail closed） | 判别点 / 注入 |
+> |------|------|------------------------|--------------|
+> | transport-before-external | S4-D transport 提前清 outbox payload_ref | E-0 修复后 transport 只清 inline-only 行；ref-bearing 行**零修改 blocked**（`purge_owner_unavailable`），external receipt 前不清 ref | 断言 ref-only 行 transport 后 `payload_ref` 仍存在、status 不变；变异：transport 仍清 ref（旧行为）/ 转 suppressed 保留 ref（违反现 CHECK）-> 红 |
+> | receipt 写入前崩溃 | Tx1 提交后、Tx2 receipt 前崩溃 | ledger 保持 `registered` + checkpoint `erasing`/attempt/intent；重放（同 invocation）精确重验（E-2a）后重做 adapter/Tx2；不伪造 receipt | **崩溃注入机制（冻结）**：test 可控 adapter 回调抛异常 + 事务分离回滚（S4-C 先例，模拟 Tx2 前崩溃）；断言 ledger 仍 registered + checkpoint erasing + receipt_digest NULL |
+> | adapter 成功但 Tx2 崩溃 | adapter 删 object 后、Tx2 写 receipt 前崩溃 | 重放精确重验（E-2a）后写 receipt 清 ref；不重复删 | fake adapter **调用计数 == 1**（幂等 key + checkpoint attempt 去重） |
+> | stale lease Tx2 | Tx2 时 operation lease_epoch 已被接管/过期 | Tx2 精确重验（E-2a：lease_epoch + checkpoint erasing/attempt/intent + fence/registry/hold）不符 -> fail closed；不写 receipt | **测试手动推进 operation `lease_epoch` 模拟 takeover**（S4-E 不实现 scheduler claim，只测验证侧） |
+> | **lease takeover 后 idempotency key 不变** | purge 被接管（新 lease_epoch），adapter 重调用 | idempotency key 不含 lease_epoch/attempt（E-2b），跨 takeover 稳定——新 lease 用同 key 去重，不重复删 | 固定 ref_scheme+ref_value+adapter_key 输入下 key 值相等断言；fake adapter 计数仍 == 1 |
+> | **旧 attempt Tx2 被拒** | Tx1 attempt=N 提交、takeover 后 attempt=N+1 推进，旧 Tx2 重放 | Tx2 精确重验 checkpoint attempt 匹配失败 -> fail closed（不覆盖新 intent）；intent digest 跨 takeover 不变 | 断言旧 Tx2 拒绝 + checkpoint_digest 仍为新 intent；变异：Tx2 不校验 attempt -> 红 |
+> | **伪造本地 outcome 无 adapter evidence** | adapter 未返回可验证 evidence，仅凭本地「已调用」写 erased | receipt_digest 须由 adapter evidence 重算（E-2b）；缺 evidence -> 不得 `erased` | 测试按固定字段集**重算 canonical digest** 比对 receipt_digest；变异：写本地自造 receipt -> 重算不匹配红 |
+> | **可能已生效 timeout -> unknown** | adapter 超时且无法证明未发送 | 统一进入 `unknown`/`outcome_unknown`（E-3a），不自动重试；仅幂等重放/receipt lookup 时允许 | fake adapter 注入**发送后 TimeoutError** -> 断言 unknown + blocked_reason 为 outcome_unknown；变异：一律 blocked 自动重试 -> 红 |
+> | **可证明未发送 timeout -> blocked** | adapter 连接前失败（请求未发出） | `blocked`（`erase_timeout`）可重试 | fake adapter 注入**连接前错误** -> 断言 blocked + erase_timeout；与上行区分（E-3a「可证明未发送」判据） |
+> | source 已 NULL 的历史兼容 | source ref 被并发清但 ledger `registered` 未 erased | 仍凭已验证 ledger 完成删除留证（E-1a），写 `erased` + receipt；不伪造「source 仍存在」 | 种子：B1 登记 registered 行 + 将 source ref 置 NULL；断言 adapter 仍被调用 + erased |
+> | 不同 ref 冲突 | source ref 存在但 != ledger `ref_value`，或绑定冲突 | fail closed（不覆盖、不伪造 receipt） | 与 source-NULL 反例的**判别边界**：source 有非 NULL ref 且不同 -> 拒绝；source 无 ref -> 继续（E-1a） |
+> | 重复删除 | 同一 object 两 purge 并发 | Tx1 checkpoint CAS（pending/blocked->erasing + attempt+=1）只放行一个 adapter 窗口；重放/takeover 靠幂等 key + attempt 去重；已 `erased` + receipt_digest 匹配 no-op | fake adapter **调用计数 == 1**；双 purge 并发（两事务）断言只一次 adapter 调用 |
+> | 错误 receipt digest | adapter 返回 evidence 与 E-2b canonical envelope 重算不符 | `blocked`（`digest_mismatch`）不得 ACK；不自动重试 | 断言 blocked_reason == digest_mismatch；adapter 返回被篡改 evidence |
+> | 未知 scheme | ref_scheme 不在 allowlist | blocked（`unknown_scheme`）禁 ACK（B5） | B1 判定未通过则保持 blocked；不转 registered |
+> | unknown outcome 禁自动重试 | adapter 返回 unknown（请求可能已生效） | `unknown` 状态，**不自动重试**（E-3a）；仅幂等重放/receipt lookup 时允许，否则运维/人工确认（E-3b 查询入口） | 断言无自动重试（后续 scheduler 不 claim）+ reconcile service 仅在 evidence 可验证时补 erased |
 >
-> **E-7 边界（明确不做）**：不实现 S4-F（fault 矩阵）、不启用 S5 scheduler、不实现 S6（365 天 audit prune）、不实现真实 Pi Worker/云对象存储生产 adapter（REQ-043/生产）、`runtime.private.v1` 不激活；不改 migration 040、不新增 inbox status 枚举。
+> **E-7 边界（明确不做）**：不实现 S4-F（fault 矩阵）、不启用 S5 scheduler、不实现 S6（365 天 audit prune）、不实现真实 Pi Worker/云对象存储生产 adapter（REQ-043/生产）、`runtime.private.v1` 不激活；不改 migration 040、不新增 outbox CHECK migration、不新增 inbox status 枚举；不实现 operation `lease_epoch` 推进/接管（归 S5）；不实现 blocked/unknown 的 HTTP/CLI 接线（归 S5）；不实现 scheduler claim/租约（S4-E 双事务窗口并发正确性由 Tx1 checkpoint CAS + E-2a 精确重验 + idempotency key 承载）。
 
 
 按 S4-A D1-D8 / S4-B B1-B8 / S4-C C1-C9 冻结 `workspace.transport.v1` / `execution.transport.v1` participant。**本 delta 只写文档：不写业务代码、不改 migration 040、不实现 migration 041、`erase_available` 全程保持 `False`、不启用 purge scheduler（S5）、不进 S4-E/F。** 现状盘点基于 main `5ff4b620`（S4-C PR-A/PR-B 已合并，四跳一致声明成立）。
