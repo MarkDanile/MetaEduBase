@@ -14,7 +14,31 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-REQ041-047-S4E-CONTRACT: R1-S4-E External payload + Runtime conformance 契约细化
+
+状态：🟡 进行中（纯文档 Draft）
+类型：契约细化（纯文档，先于代码冻结）
+领域：R1-S4-E External payload + Runtime conformance
+最近接手工具：Claude Code
+分支：`docs/req041-047-r1-s4e-contract-delta`
+
+需求来源：
+- Plan: [R1-S4-E 契约细化（本 delta）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化)
+- Spec: [R1 专项契约 §4.1/§10.2/§10.3](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+
+当前进展：
+- S4-E 契约与落点对账完成；plan delta 冻结 7 根因（E-0 根因 1 冲突修复、E-1/E-1a/E-1b ledger 事实源 + source-NULL 兼容 + 唯一 ref 清除者、E-2/E-2a/E-2b/E-2c 双事务协议 + Tx2 重验 + idempotency key/receipt evidence + checkpoint_digest 状态相关语义、E-3/E-3a/E-3b 状态机 + timeout/unknown 矩阵 + blocked/unknown 查询与有证据 reconcile、E-4 registry 确定选择、E-5 四 PR 拆分、E-6 验收矩阵、E-7 边界）。
+- 根因 1 实证：S4-D transport participant 提前清 outbox `payload_ref`（workspace/execution `transport_erasure_participant.py:197/218`）违反 D5「external receipt 先于清 DB ref」——E-0 冻结修复归 S4-E-A（inline-only 清除 + ref-bearing 行零修改 blocked，不新增 outbox CHECK migration）。
+- **三面首轮复审与 8 根因族一次返修（第二轮）**：三面（数据/状态机 1/9/3/1、并发/锁序 2/6/4/1、测试/运维 3/5/5/0，P0=6/P1=20/P2=12/P3=2）按 8 根因族一次重写 delta——E-0a 改 inline-only 清除 + ref-bearing blocked（消解 CHECK/已合并测试冲突）；`registered` 由 staging/reference lifecycle port（S4-E-B1）产生、eraser 只消费；`lease_epoch` 推进/接管归 S5（participant 只验证）、`attempt` 按 participant invocation 增；`checkpoint_digest` 状态相关语义（erasing=intent.v1、acked=final scan）；`receipt_digest` 直接承载 canonical adapter receipt evidence（不新增列，重放走 receipt lookup/同 key 重算）；timeout 可能已生效统一 unknown、可证明未发送才 blocked/erase_timeout；S4-E 只做 blocked/unknown 查询 + 有证据 reconcile（HTTP/CLI 归 S5，禁无 receipt 强制 erased）；测试迁移策略（inline 用例保持、ref-only 改 blocked、receipt 后清 ref 断言移 B2 互操作矩阵）。
+
+下一步：
+- 根因族定向复核（HEAD 固定后）→ P0/P1 清零 → 契约一致性核对 → 开 S4-E-A 实现。
+
+验证状态：纯文档；docs gate 已过（返修 commit `ba881ee4`，pre-commit 全绿）；根因族定向复核进行中。
+
+交接备注：
+- 不写业务代码、不改 migration 040、不新增 outbox CHECK migration、不实现 migration 041、`erase_available` 全程 False、不启用 S5、不进 S4-F/S6；`lease_epoch` 推进/接管归 S5（participant 只验证）；HTTP/CLI 接线归 S5。
+- 四 PR：S4-E-A ref tombstone + transport 清除边界（041 + transport inline-only/ref-bearing blocked + 已合并测试迁移）、S4-E-B1 lifecycle registration + adapter contract（registered 唯一生产者）、S4-E-B2 external erasure participant（消费 registered + 双事务 + blocked/unknown 查询与有证据 reconcile）、S4-E-C runtime conformance；external/runtime registry 均保持 False（无生产 db_local adapter，不列为激活验收）。
 
 ## 下一批候选任务
 
@@ -22,7 +46,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | REQ-041/047 R1-S4-E External payload + Runtime fake | 🔵 就绪 | external.payload.v1 participant（external ref ledger erase + db_local allowlist + migration 041 guard 演进）+ RuntimeErasureParticipant conformance fake；外部/runtime owner registry 激活待 merged-boundary | [Plan §R1-S4-E](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
+| P1 | REQ-041/047 R1-S4-E-A Ref Tombstone | 🔵 就绪 | migration 041 guard 演进（清 RunEvent.payload_ref）+ transport participant 只清 inline-only、ref-bearing 行零修改 blocked（E-0 修复）+ 已合并测试迁移；根因族定向复核 P0/P1 清零后开实现 | [Plan §R1-S4-E](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
