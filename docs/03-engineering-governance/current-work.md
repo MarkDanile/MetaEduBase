@@ -14,39 +14,7 @@
 
 ## 当前进行中
 
-### TASK-REQ041-047-S4D-A: R1-S4-D-A Transport Participant Core
-
-状态：🟡 进行中（Draft，待 Ready）
-类型：实现（Draft risk-targeted）
-领域：R1-S4-D Transport Participants（workspace/execution transport eraser）
-当前执行模式：TD-092 Draft + `Backend iteration`
-最近接手工具：Claude Code
-分支：`feat/req041-047-r1-s4d-transport-participant-core`
-
-需求来源：
-- Spec: [R1 专项契约 §4.1/§7](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- Plan: [R1-S4-D 契约细化（已合并）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-d-transport-participant-契约细化)
-- 技术债：TD-092（高风险 PR 收敛治理，Draft risk-targeted）
-
-当前进展：
-- S4-D 契约细化 delta 已冻结（PR #541 已合并 `51a12df6`，三面 0/8/10/9 → 5 根因族返修 → 定向复核 0/0/3/2，P0/P1 清零）。
-- 用户调整：registry 不在 S4-D-A 翻 True（S4-D-B 最终激活提交统一翻）；两类 gate 区分（conversation_scope 内嵌 fail closed / tenant_scope 仅共享查询 / orphan 不阻塞）。
-- 实现分支 `feat/req041-047-r1-s4d-transport-participant-core`，Draft PR #542。
-- **实现完成**：共享基类 `TransportErasureParticipantBase`（S2-D/S3-D 管道收敛，owner 参数化）+ `Workspace/ExecutionTransportErasureParticipant`；outbox 正文事实谓词 scan（含 cancelled 行，保留终态证据）+ inbox 状态矩阵 + capability gate + fencing 全套。
-- **三面首轮复审**（归 5 根因族，commit `24c2b601`）→ **定向复核**（P1=3）→ **互操作批次**（commit `f9903e9e`：S4-C tombstone 互操作 + Run 终态谓词统一 + blocked 三方）→ **判别力批次**（commit `312da9f1`：epoch code 三元反例 + dead_letter 参数化）→ **最终定向核对 P0/P1=0 通过**。
-
-下一步：
-- 转 Ready → 只跑一次 Backend full（失败只接受 clean-main/PR-HEAD 对照）。
-
-验证状态：
-- 矩阵 52 passed + 邻近 133 = **185 passed**；ruff 0；mypy 0；docs gate 通过。
-- registry 全程保持 False（capability gate fail closed 是预期）；不 resolve、不改 ledger 投影、不导入 backfill 私有；不翻 registry、不启动 S4-D-B。
-- Draft PR #542（Draft iteration 三路 CI SUCCESS）。
-
-交接备注：
-- 本 PR **不**翻 registry `erase_available`（两 transport owner 保持 False），**不**导入 backfill 私有函数，**不**实现 ledger resolve（归 S4-D-B）。
-- 集合锁复用 `acquire_transport_aggregate_lock`（`agent_erasure_locks.py`）。
-- 两个 participant 串行执行、不并行修改共享 ledger/registry。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -54,6 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P1 | REQ-041/047 R1-S4-D-B Ledger Resolve + Activation | 🔵 就绪 | 提取共享 ledger API（backfill/consumer/participant 同一投影）+ `epoch_unresolvable` evidence/CAS resolve + 两类 gate 查询 + participant 接入 resolve；merged-boundary 验收后 registry 统一翻 True（含 mutation kill） | [Plan §R1-S4-D](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-d-transport-participant-契约细化) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
@@ -65,6 +34,8 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-08-09 | R1-S4-D-A Transport Participant Core（workspace/execution transport eraser） | 🟢 完成 | 共享基类（S2-D/S3-D 管道收敛）+ 两 participant + S4-C tombstone 互操作；三面 5 根因族 → 定向 → 轻量 → 最终核对 P0/P1=0，评分 93；Backend full 三路 CI 全绿；registry 保持 False | [PR #542](https://github.com/MarkDanile/MetaEduBase/pull/542)（squash merge `5fc5c33b`）/ [Plan §R1-S4-D](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) / [score 93](04-retrospectives/review-score-log.md) |
+| 2026-08-07 | R1-S4-D 契约细化（transport participant 拆分） | 🟢 完成 | 冻结 S4-D-A Core / S4-D-B Resolve+Activation 两 PR 拆分；S4-D-A 不翻 registry、S4-D-B 统一翻（merged-boundary）；两类 gate 区分（conversation_scope 内嵌 fail closed / tenant_scope 共享查询）；集合锁免取条件冻结；三面 0/8/10/9 → 5 根因族 → 定向复核 0/0/3/2 | [PR #541](https://github.com/MarkDanile/MetaEduBase/pull/541)（squash merge `51a12df6`）/ [Plan §R1-S4-D](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-08-07 | R1-S4-C 实现 PR-B（Claim/consumer CAS + deterministic terminalization） | 🟢 完成 | 六元 CAS + unknown/stale 双事务协议 + C1 第 4 跳 + allowlist + C8 项 11；round-1 三面 3 根因族返修 + round-2 定向复核 P0/P1 清零，评分 90；Draft iteration + Ready Backend full 三路 CI 全绿 | [PR #539](https://github.com/MarkDanile/MetaEduBase/pull/539)（squash merge `8f184935`）/ [Plan §R1-S4-C](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) / [score 90](04-retrospectives/review-score-log.md) |
 | 2026-08-07 | R1-S4-C 实现 PR-A（Producer propagation + replay/catch-up） | 🟢 完成 | writer 真实 scope/epoch + COMPLETED 非 NULL epoch 守卫 + existing 校验 + replay 不重写 + catch-up 收敛；round-1 三面 4 根因族返修 + round-2 P0/P1 清零，评分 89；Backend full 绿 | [PR #537](https://github.com/MarkDanile/MetaEduBase/pull/537)（squash merge `2e70c1df`）/ [Plan §R1-S4-C](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-08-07 | R1-S4-C Writer/Claim Scope + Epoch Fence 契约冻结 | 🟢 完成 | 冻结 scope/epoch 四跳传播链、六元 CAS（turn/output 三源）、claim 短事务 + 锁序矩阵、unknown/stale 双事务协议状态表（具名 code + digest envelope + 重放精确终态三分支）、C6 11 反例 + C8 11 项验收矩阵；10 轮收敛终审 0/0/0/0，评分 87；契约 PR 恢复纯文档 | [PR #535](https://github.com/MarkDanile/MetaEduBase/pull/535)（squash merge `c2e1af42`）/ [Plan §R1-S4 C1-C9](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
