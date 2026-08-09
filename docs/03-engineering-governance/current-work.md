@@ -14,7 +14,32 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-REQ041-047-S4D-B: R1-S4-D-B Ledger Resolve + Activation
+
+状态：🟡 进行中（Draft risk-targeted）
+类型：实现（TD-092 Draft + `Backend iteration`）
+领域：R1-S4-D Transport Participants（ledger resolve + registry 激活）
+最近接手工具：Claude Code
+分支：`feat/req041-047-r1-s4d-ledger-resolve`
+
+需求来源：
+- Plan: [R1-S4-D 契约细化 §D-B-1/D-B-2/D-B-3/D-Act-1](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-d-transport-participant-契约细化)
+- 技术债：TD-092（高风险 PR 收敛治理，Draft risk-targeted）
+
+当前进展：
+- 落点对账完成：`_register_issue`/`_recompute_projection` 为 backfill 私有（`agent_transport_backfill.py:378/463`），consumer 两侧已 import 私有（bridge_repository workspace:1061 / execution:85）——共享层消除该导入；无 resolve 路径；无 gate 查询；registry 两 transport owner 保持 False。
+- 分支已建（`feat/req041-047-r1-s4d-ledger-resolve`，基于 main `5e4f35b7`）。
+
+下一步：
+- 提取共享 ledger service（`agent_transport_ledger_service.py`，禁止落 `agent_transport_ledger.py`）→ epoch_unresolvable evidence/CAS resolve → 两类 gate 查询 → merged-boundary 后 registry 翻 True（mutation kill）。
+- 首提交后建 Draft PR；Draft 稳定后三面首轮复审 → 根因族一次返修 → 一次定向复核 → P0/P1 清零后 Ready + 唯一一次 Backend full。
+
+验证状态：实现未开始。
+
+交接备注：
+- 只 resolve `conversation_scope` 行；`tenant_scope`/`orphan` 不 resolve（留 S5/运维）。
+- ledger `resolved` 不代替 S4-C Tx2 精确终态（重放三分支保持）。
+- 不扩入 S4-E/F、migration 041、S5 scheduler、S6、external/runtime owner；不自动合并。
 
 ## 下一批候选任务
 
@@ -22,7 +47,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | REQ-041/047 R1-S4-D-B Ledger Resolve + Activation | 🔵 就绪 | 提取共享 ledger API（backfill/consumer/participant 同一投影）+ `epoch_unresolvable` evidence/CAS resolve + 两类 gate 查询 + participant 接入 resolve；merged-boundary 验收后 registry 统一翻 True（含 mutation kill） | [Plan §R1-S4-D](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-d-transport-participant-契约细化) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
