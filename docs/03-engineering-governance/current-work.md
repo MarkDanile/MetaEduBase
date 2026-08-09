@@ -34,7 +34,7 @@
 下一步：
 - 根因族定向复核（HEAD 固定后）→ P0/P1 清零 → 契约一致性核对 → 开 S4-E-A 实现。
 
-验证状态：纯文档；docs gate + diff-check 待跑。
+验证状态：纯文档；docs gate 已过（返修 commit `ba881ee4`，pre-commit 全绿）；根因族定向复核进行中。
 
 交接备注：
 - 不写业务代码、不改 migration 040、不新增 outbox CHECK migration、不实现 migration 041、`erase_available` 全程 False、不启用 S5、不进 S4-F/S6；`lease_epoch` 推进/接管归 S5（participant 只验证）；HTTP/CLI 接线归 S5。
