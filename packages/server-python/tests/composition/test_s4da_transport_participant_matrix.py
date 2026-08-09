@@ -13,9 +13,11 @@
   registry drift/hold revision/operation revision/owner version/capability digest CAS）。
 - **锁序**：Guard -> Conversation 行锁 -> transport owner advisory lock -> fence 重验 ->
   transport aggregate 集合 advisory lock（最内层）-> 源 transport 行 FOR UPDATE 投影写。
-- **registry 全程保持 `erase_available=False`**：participant 入口 capability gate
-  fail closed（`require_capability(transport_owner, "erase")`）是预期、不是缺陷。
-- **边界**：不 resolve、不改 ledger 投影、不导入 backfill 私有函数。
+- **registry（S4-D-B merged-boundary 后翻 True）**：participant 入口 capability gate
+  放行（`require_capability(transport_owner, "erase")` 不抛）——S4-D-A 阶段该 gate
+  fail closed 是预期，S4-D-B 翻 True 后断言同 commit 更新（S3-D P1-7 先例）。
+- **边界**：resolve 只处理 `conversation_scope` 行（`tenant_scope`/`orphan` 不
+  resolve 留 S5/运维）、不导入 backfill 私有函数。
 
 两侧对称：workspace（`WorkspaceOutboxModel`/`WorkspaceInboxModel`，owner
 `workspace.transport.v1`）与 execution（`ExecutionOutboxModel`/`ExecutionInboxModel`，
@@ -28,11 +30,9 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-import pytest_asyncio
 from sqlalchemy import text
 
 from app.composition.agent_erasure_registry import (
-    OwnerCapabilityUnavailableError,
     OwnerRegistryChangedError,
     registry_digest,
 )
@@ -49,42 +49,6 @@ from app.contexts.agent_workspace.domain.errors import (
 from tests.contexts.agent_control_plane.helpers import TENANT_ID
 
 pytestmark = pytest.mark.asyncio
-
-
-@pytest_asyncio.fixture
-async def _transport_owners_active(monkeypatch):
-    """测试内临时激活两个 transport owner 的 ``erase_available``。
-
-    **阶段隔离（契约 D-Act-1）**：生产 registry 全程保持 ``erase_available=
-    False``（翻 True 只属 S4-D-B 最终激活提交）。本 fixture 用
-    ``dataclasses.replace`` 把两个 transport owner 的 ``erase_available`` 临时
-    置 True 并替换 registry 模块的 ``_OWNER_DEFINITIONS``/``_OWNERS_BY_KEY``
-    （其余 owner 保持原值），仅作用于本测试进程——**正文/ACK/scan/fencing 测试
-    仍调用真实公共入口、真实执行 ``require_capability``**，测试的是未来 S4-D-B
-    激活后的完整入口，而非绕过能力门的内部实现。S4-D-B 真正翻 True 后删除本
-    fixture，主体测试应保持不变。
-
-    capability fail-closed 测试（``test_capability_gate_*``）**不使用**本
-    fixture，保持生产 registry=False，断言入口拒绝且三方零变更。
-    """
-    from dataclasses import replace
-
-    import app.composition.agent_erasure_registry as registry_module
-
-    def _activate(owner: registry_module.OwnerDefinition):
-        if owner.owner_key in ("workspace.transport.v1", "execution.transport.v1"):
-            return replace(owner, erase_available=True)
-        return owner
-
-    original_defs = registry_module._OWNER_DEFINITIONS
-    activated = tuple(_activate(o) for o in original_defs)
-    monkeypatch.setattr(registry_module, "_OWNER_DEFINITIONS", activated)
-    monkeypatch.setattr(
-        registry_module,
-        "_OWNERS_BY_KEY",
-        {owner.owner_key: owner for owner in activated},
-    )
-    yield
 
 # 两侧对称定义（owner_key / ORM 表名 / 状态枚举）。scan/erase 用裸 SQL 断言
 # 行值（避免 import 对方 context 的 ORM——integration 表经元数据同 schema）。
@@ -554,7 +518,7 @@ async def _inbox_row(db_session, table: str, row_id: uuid.UUID) -> dict:
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 async def test_outbox_pending_inline_cleared_to_suppressed(
-    db_session, _transport_owners_active, side
+    db_session, side
 ):
     """pending + inline 正文 -> scan 命中 -> 转 suppressed 清正文留 digest。"""
     await _ensure_test_tenant(db_session)
@@ -581,7 +545,7 @@ async def test_outbox_pending_inline_cleared_to_suppressed(
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 async def test_outbox_cancelled_cleared_evidence_retained(
-    db_session, _transport_owners_active, side
+    db_session, side
 ):
     """S4-C Tx2 终态化残留：cancelled + 保留 payload -> 仍 scan 命中清正文。
 
@@ -635,7 +599,7 @@ async def test_outbox_cancelled_cleared_evidence_retained(
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 async def test_outbox_payload_ref_only_cleared(
-    db_session, _transport_owners_active, side
+    db_session, side
 ):
     """族 3：payload_ref only 行（inline NULL）被正文事实谓词命中清除。
 
@@ -669,7 +633,7 @@ async def test_outbox_payload_ref_only_cleared(
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 async def test_outbox_claimed_published_dead_letter_cleared(
-    db_session, _transport_owners_active, side
+    db_session, side
 ):
     """claimed/published/dead_letter/cancelled 行同样被正文事实谓词命中清除。
 
@@ -728,7 +692,7 @@ async def test_outbox_claimed_published_dead_letter_cleared(
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 async def test_outbox_suppressed_skipped(
-    db_session, _transport_owners_active, side
+    db_session, side
 ):
     """已 suppressed（无正文）行不命中 scan，无状态变化。"""
     await _ensure_test_tenant(db_session)
@@ -765,7 +729,7 @@ async def test_outbox_suppressed_skipped(
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 async def test_inbox_processing_rejected_tombstone(
-    db_session, _transport_owners_active, side
+    db_session, side
 ):
     """processing -> rejected + tombstone（与 S4-C Tx1 对齐）。"""
     await _ensure_test_tenant(db_session)
@@ -791,7 +755,7 @@ async def test_inbox_processing_rejected_tombstone(
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 async def test_inbox_consumed_rejected_idempotent_tombstone(
-    db_session, _transport_owners_active, side
+    db_session, side
 ):
     """已 consumed/rejected 保留原 status 仅补幂等 tombstone。"""
     await _ensure_test_tenant(db_session)
@@ -819,7 +783,7 @@ async def test_inbox_consumed_rejected_idempotent_tombstone(
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 async def test_inbox_already_tombstoned_digest_match_noop(
-    db_session, _transport_owners_active, side
+    db_session, side
 ):
     """已 tombstone + digest 精确匹配 -> no-op（幂等重放，不改 status）。"""
     await _ensure_test_tenant(db_session)
@@ -860,7 +824,7 @@ async def test_inbox_already_tombstoned_digest_match_noop(
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 async def test_inbox_tombstone_digest_mismatch_fail_closed(
-    db_session, _transport_owners_active, side
+    db_session, side
 ):
     """已 tombstone + digest 不匹配 -> fail closed（*IntegrationConflictError 不静默）。"""
     await _ensure_test_tenant(db_session)
@@ -892,7 +856,7 @@ async def test_inbox_tombstone_digest_mismatch_fail_closed(
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 @pytest.mark.parametrize("epoch_code", ["epoch_unknown_rejected", "epoch_stale_rejected"])
 async def test_inbox_s4c_tx1_tombstone_interop_noop(
-    db_session, _transport_owners_active, side, epoch_code
+    db_session, side, epoch_code
 ):
     """互操作（终态/证据互操作批次）：S4-C Tx1 合法 tombstone 证据 -> no-op 保留。
 
@@ -942,7 +906,7 @@ async def test_inbox_s4c_tx1_tombstone_interop_noop(
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 async def test_inbox_s4c_tx1_wrong_code_fail_closed(
-    db_session, _transport_owners_active, side
+    db_session, side
 ):
     """互操作反例：rejected + last_error_code 非 epoch code -> 仍 fail closed。
 
@@ -978,7 +942,7 @@ async def test_inbox_s4c_tx1_wrong_code_fail_closed(
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 @pytest.mark.parametrize("epoch_code", ["epoch_unknown_rejected", "epoch_stale_rejected"])
 async def test_inbox_s4c_tx1_code_ok_wrong_digest_fail_closed(
-    db_session, _transport_owners_active, side, epoch_code
+    db_session, side, epoch_code
 ):
     """判别力反例：合法 epoch code + 错误 digest -> fail closed。
 
@@ -1014,7 +978,7 @@ async def test_inbox_s4c_tx1_code_ok_wrong_digest_fail_closed(
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 @pytest.mark.parametrize("epoch_code", ["epoch_unknown_rejected", "epoch_stale_rejected"])
 async def test_inbox_s4c_tx1_code_ok_non_rejected_fail_closed(
-    db_session, _transport_owners_active, side, epoch_code
+    db_session, side, epoch_code
 ):
     """判别力反例：合法 epoch code + 正确 digest 但 status != 'rejected' -> fail closed。
 
@@ -1060,7 +1024,7 @@ async def test_inbox_s4c_tx1_code_ok_non_rejected_fail_closed(
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 async def test_erase_acks_checkpoint_and_fence(
-    db_session, _transport_owners_active, side
+    db_session, side
 ):
     """正文全清 + scan 为零 -> fence erasing->erased + checkpoint pending->acked。"""
     await _ensure_test_tenant(db_session)
@@ -1082,7 +1046,7 @@ async def test_erase_acks_checkpoint_and_fence(
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 async def test_ack_lost_erased_fence_repairs_pending_checkpoint(
-    db_session, _transport_owners_active, side
+    db_session, side
 ):
     """ACK 丢失恢复：fence 已 erased 但 checkpoint 仍 pending -> 幂等重放补 ACK。"""
     await _ensure_test_tenant(db_session)
@@ -1124,7 +1088,7 @@ async def test_ack_lost_erased_fence_repairs_pending_checkpoint(
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 async def test_erase_fencing_full(
-    db_session, _transport_owners_active, monkeypatch, side
+    db_session, monkeypatch, side
 ):
     """fencing 全套：lease_epoch / registry drift（operation 后 registry 变化）fail closed。
 
@@ -1207,7 +1171,7 @@ async def test_erase_fencing_full(
 
 @pytest.mark.parametrize("run_state", ["pending", "dead_letter"])
 async def test_execution_run_unsettled_blocks(
-    db_session, _transport_owners_active, run_state
+    db_session, run_state
 ):
     """族 1 + 终态互操作：Run output_publish_state IN ('pending','dead_letter') -> blocked。
 
@@ -1277,7 +1241,7 @@ async def test_execution_run_unsettled_blocks(
     assert row == run_state
 
 
-async def test_execution_run_suppressed_passes(db_session, _transport_owners_active):
+async def test_execution_run_suppressed_passes(db_session):
     """族 1 反例：Run 已 suppressed -> scan 不计残留，erase 正常 ACK。"""
     side = "execution"
     await _ensure_test_tenant(db_session)
@@ -1304,7 +1268,7 @@ async def test_execution_run_suppressed_passes(db_session, _transport_owners_act
     "terminal_state", ["not_required", "published", "suppressed"]
 )
 async def test_execution_run_terminal_states_pass(
-    db_session, _transport_owners_active, terminal_state
+    db_session, terminal_state
 ):
     """终态互操作：not_required/published/suppressed 均为终态 -> pass（不 blocked）。
 
@@ -1333,7 +1297,7 @@ async def test_execution_run_terminal_states_pass(
 
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
-async def test_outbox_erased_replay_fail_closed(db_session, _transport_owners_active, side):
+async def test_outbox_erased_replay_fail_closed(db_session, side):
     """erased replay fail-closed（P1-3 改名）：ACK 后 late-write -> erased + 非零 scan。
 
     首次 erase 清两行 -> ACK；再插入一行（late-write）重放 -> erased fence 幂等
@@ -1372,7 +1336,7 @@ async def test_outbox_erased_replay_fail_closed(db_session, _transport_owners_ac
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 async def test_scan_detects_injected_residual(
-    db_session, _transport_owners_active, side
+    db_session, side
 ):
     """scan 反向判别（P1-3）：erase body 后注入残留 -> scan 非零（不返回 0）。
 
@@ -1409,7 +1373,7 @@ async def test_scan_detects_injected_residual(
 
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
-async def test_inbox_erased_replay_fail_closed(db_session, _transport_owners_active, side):
+async def test_inbox_erased_replay_fail_closed(db_session, side):
     """erased replay fail-closed（P1-3 改名，inbox 维度）：迟到 receipt -> ValueError。"""
     await _ensure_test_tenant(db_session)
     conv_id, purge_rev = await _seed_deleted_expired_conversation(
@@ -1443,67 +1407,42 @@ async def test_inbox_erased_replay_fail_closed(db_session, _transport_owners_act
 
 
 # ---------------------------------------------------------------------------
-# 04. capability gate（registry 全程 False）+ 锁序
+# 04. capability gate（registry S4-D-B 已翻 True）+ 锁序
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
-async def test_capability_gate_fail_closed_when_registry_false(db_session, side):
-    """registry 全程 False：participant 入口 require_capability(transport_owner, "erase")
-    必须 fail closed（S2-D P1-1 模式）——S4-D-A 不得因缺 gate 而放行。
+async def test_capability_gate_passes_when_registry_true(db_session, side):
+    """registry S4-D-B 已翻 True：participant 入口 require_capability(transport_owner,
+    "erase") **放行**（S2-D P1-1 模式反向——缺 gate 时此测试仍绿但 erase 主体
+    被其他用例覆盖）。
 
-    **族 4**：拒绝后断言 fence/checkpoint/outbox/inbox **三方零变更**——gate 位置
-    错误变异（fence 先推进再 gate）被击杀。
+    S4-D-A 阶段该测试断言 fail-closed（registry False）；S4-D-B merged-boundary
+    后 registry 翻 True，本测试翻转为断言放行——断言与翻 True 同 commit 更新
+    （S3-D P1-7 先例：registry 断言测试须与翻 True 同 commit，否则全量 CI 红被
+    误判为回归）。
     """
     await _ensure_test_tenant(db_session)
     conv_id, purge_rev = await _seed_deleted_expired_conversation(
         db_session, owner=TRANSPORT_SIDES[side]["owner"]
-    )
-    outbox_id = await _seed_transport_outbox(
-        db_session, conversation_id=conv_id, side=side
-    )
-    inbox_id = await _seed_transport_inbox(
-        db_session, conversation_id=conv_id, side=side, status="processing"
     )
     op_id, _ = await _make_purge_operation(
         db_session, conv_id, purge_rev, owner=TRANSPORT_SIDES[side]["owner"]
     )
     await db_session.commit()
 
-    # 直接调用 participant erase 入口（绕过任何编排）——registry 仍 False 时
-    # 必须先 capability gate 拒绝（OwnerCapabilityUnavailableError），不得静默。
-    with pytest.raises(OwnerCapabilityUnavailableError):
-        await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
+    # 直接调用 participant erase 入口——registry True 时 gate 放行（不抛）。
+    await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
 
-    # 三方零变更（族 4）：fence 仍 active、checkpoint 仍 pending、outbox 正文仍在、
-    # inbox 未 tombstone、operation 仍 scheduled。
+    # erase 正常推进：fence erased + checkpoint acked。
     assert (
         await _fence_state(db_session, conv_id, TRANSPORT_SIDES[side]["owner"])
-        == ErasureFenceState.ACTIVE.value
+        == ErasureFenceState.ERASED.value
     )
     assert (
         await _checkpoint_state(db_session, op_id)
-        == PurgeOwnerState.PENDING.value
+        == PurgeOwnerState.ACKED.value
     )
-    outbox = await _outbox_row(
-        db_session, TRANSPORT_SIDES[side]["outbox_table"], outbox_id
-    )
-    assert outbox["status"] == "pending"
-    assert outbox["payload_inline"] is not None
-    inbox = await _inbox_row(
-        db_session, TRANSPORT_SIDES[side]["inbox_table"], inbox_id
-    )
-    assert inbox["status"] == "processing"
-    assert inbox["receipt_tombstone_state"] is None
-    op = (
-        await db_session.execute(
-            text(
-                "SELECT state FROM metaedu.agent_conversation_purges WHERE id = :op"
-            ),
-            {"op": op_id},
-        )
-    ).scalar_one()
-    assert op == "scheduled"
 
 
 # ---------------------------------------------------------------------------

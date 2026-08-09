@@ -527,10 +527,10 @@ async def test_p22_projection_is_owner_scoped():
 
     # 触发投影重算（本 owner 无 NULL-scope/epoch 行，但投影按本 owner issue 集）。
     engine, factory = _factory()
-    from app.composition.agent_transport_backfill import _recompute_projection
+    from app.composition.agent_transport_ledger_service import recompute_projection
 
     async with factory() as session, session.begin():
-        await _recompute_projection(
+        await recompute_projection(
             session,
             table="agent_execution_outbox",
             tenant_id=tenant,

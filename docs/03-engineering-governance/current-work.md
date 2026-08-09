@@ -14,7 +14,35 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-REQ041-047-S4D-B: R1-S4-D-B Ledger Resolve + Activation
+
+状态：🟡 进行中（Draft risk-targeted）
+类型：实现（TD-092 Draft + `Backend iteration`）
+领域：R1-S4-D Transport Participants（ledger resolve + registry 激活）
+最近接手工具：Claude Code
+分支：`feat/req041-047-r1-s4d-ledger-resolve`
+
+需求来源：
+- Plan: [R1-S4-D 契约细化 §D-B-1/D-B-2/D-B-3/D-Act-1](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-d-transport-participant-契约细化)
+- 技术债：TD-092（高风险 PR 收敛治理，Draft risk-targeted）
+
+当前进展：
+- 落点对账完成；共享 ledger service（`agent_transport_ledger_service.py`）+ resolve + gate 查询 + registry 激活已实现。
+- backfill/consumer 两侧改共享层（消除导入 backfill 私有）；S4-D-A 矩阵删 `_transport_owners_active` fixture、capability gate 测试翻转为放行断言（52 passed 不变）。
+- 三面首轮复审完成（P0=1/P1=8/P2=8/P3=5，归 5 根因族）→ **5 族一次返修完成**（集合锁前置修 P0 AB-BA、gate expected_revision=None + 集成测试、replay/consumed 反例、CAS 0 行、口径修正）。
+
+下一步：
+- 返修批次提交 → 一次定向复核 → P0/P1 清零后 Ready + 唯一一次 Backend full。
+
+验证状态：
+- S4-D-B 矩阵 24 passed + 邻近（S4-D-A 52 + backfill 44 + registry 10）= 130 passed（专项小集合）；ruff 0；mypy 0。
+- **CI 口径（族 5 修正）**：Draft `Backend iteration` risk-targeted 实际 **613 passed / 4m45s**（run 31286310836）——非专项 149；Ready 后 Backend full 以最新 HEAD 为准。
+- **batch3 顺序污染记录失效**（族 5）：现 main 单独跑 batch3 10 passed 全绿、与 S4-D-A 同跑 62 passed 全绿——原「既有 main 污染」在当前 main 不可复现，已修正记录。
+
+交接备注：
+- 只 resolve `conversation_scope` 行；`tenant_scope`/`orphan` 不 resolve（留 S5/运维）。
+- ledger `resolved` 不代替 S4-C Tx2 精确终态（重放三分支保持）。
+- 不扩入 S4-E/F、migration 041、S5 scheduler、S6、external/runtime owner；不自动合并。
 
 ## 下一批候选任务
 
@@ -22,7 +50,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | REQ-041/047 R1-S4-D-B Ledger Resolve + Activation | 🔵 就绪 | 提取共享 ledger API（backfill/consumer/participant 同一投影）+ `epoch_unresolvable` evidence/CAS resolve + 两类 gate 查询 + participant 接入 resolve；merged-boundary 验收后 registry 统一翻 True（含 mutation kill） | [Plan §R1-S4-D](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-d-transport-participant-契约细化) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 

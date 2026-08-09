@@ -91,6 +91,92 @@ class WorkspaceTransportErasureParticipant(TransportErasureParticipantBase):
             inbox_unsettled_rows=int(inbox_rows or 0),
         )
 
+    # --- resolve（D-B-2：inbox tombstone 后，集合锁临界区内）-----------------
+
+    async def _acquire_inbox_aggregate_locks(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> None:
+        """源行 UPDATE 之前取该 Conversation 全部 workspace inbox 行的集合锁。
+
+        锁序修正（三面 P0-1）：集合锁必须先于源行 UPDATE（D8「集合锁 -> 源行
+        FOR UPDATE」）——与 backfill「集合锁->行锁」同序，消除 AB-BA 死锁。
+        """
+        from app.composition.agent_erasure_locks import (
+            acquire_transport_aggregate_lock,
+        )
+
+        inbox_ids = (
+            await self._session.execute(
+                text(
+                    "SELECT id FROM metaedu.agent_workspace_inbox "
+                    "WHERE tenant_id = :t AND conversation_id = :c"
+                ),
+                {"t": tenant_id, "c": conversation_id},
+            )
+        ).scalars().all()
+        for inbox_id in inbox_ids:
+            await acquire_transport_aggregate_lock(
+                self._session,
+                tenant_id=tenant_id,
+                owner_key=self.owner_key,
+                source_table="agent_workspace_inbox",
+                source_row_id=inbox_id,
+            )
+
+    async def _resolve_epoch_issues_after_erase(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> None:
+        """resolve 目标 Conversation 的 conversation_scope `epoch_unresolvable` issue。
+
+        inbox tombstone 已取得证据（``receipt_tombstone_digest`` 为已验证 64-hex）；
+        集合锁已由 ``_acquire_inbox_aggregate_locks`` 在源行 UPDATE 之前取得
+        （临界区内写 ledger 证据 + 投影重算，D-A-1 免取条件不再适用）。
+        只 resolve ``conversation_scope`` 行（带 conversation_id）；``tenant_scope``/
+        ``orphan`` 不 resolve（留 S5/运维）。
+        """
+        from app.composition.agent_transport_ledger_service import (
+            recompute_projection,
+            resolve_epoch_unresolvable_issue,
+        )
+
+        # 该 Conversation 的 workspace inbox 行（scope=conversation_id）——
+        # 每条已 tombstone 的 receipt 是其源行的证据。
+        inbox_rows = (
+            await self._session.execute(
+                text(
+                    "SELECT id, receipt_tombstone_digest FROM "
+                    "metaedu.agent_workspace_inbox "
+                    "WHERE tenant_id = :t AND conversation_id = :c "
+                    "AND receipt_tombstone_state = 'redacted' "
+                    "AND receipt_tombstone_digest IS NOT NULL"
+                ),
+                {"t": tenant_id, "c": conversation_id},
+            )
+        ).mappings().all()
+        for row in inbox_rows:
+            # 集合锁已预先取得（_acquire_inbox_aggregate_locks）。
+            await resolve_epoch_unresolvable_issue(
+                self._session,
+                tenant_id=tenant_id,
+                owner_key=self.owner_key,
+                table="agent_workspace_inbox",
+                source_row_id=row["id"],
+                resolution_digest=row["receipt_tombstone_digest"],
+            )
+            await recompute_projection(
+                self._session,
+                table="agent_workspace_inbox",
+                tenant_id=tenant_id,
+                owner_key=self.owner_key,
+                source_row_id=row["id"],
+            )
+
     # --- 正文清除（outbox -> suppressed 留 digest；inbox 状态矩阵）------------
 
     async def erase_transport_body(

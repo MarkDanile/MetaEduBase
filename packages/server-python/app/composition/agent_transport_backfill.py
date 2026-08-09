@@ -58,6 +58,10 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.composition.agent_erasure_locks import acquire_transport_aggregate_lock
+from app.composition.agent_transport_ledger_service import (
+    recompute_projection,
+    register_issue,
+)
 
 # 失败样本上限（内存有界，系统性失败时不 O(N) 增长）。
 _MAX_FAILURE_SAMPLES = 16
@@ -375,43 +379,6 @@ async def _resolve_source_conversation(
     return "resolved", conversation_id
 
 
-async def _register_issue(
-    session: AsyncSession,
-    *,
-    tenant_id: uuid.UUID,
-    owner_key: str,
-    table: str,
-    source_row_id: uuid.UUID,
-    conversation_id: uuid.UUID | None,
-    reconcile_class: str,
-    issue_code: str,
-) -> bool:
-    """幂等登记一条 reconcile issue（唯一键 ON CONFLICT DO NOTHING）。返回是否新建。"""
-    result = cast(
-        CursorResult,
-        await session.execute(
-            text(
-                "INSERT INTO metaedu.agent_transport_scope_reconcile ("
-                "  id, tenant_id, owner_key, source_table, source_row_id, "
-                "  conversation_id, reconcile_class, issue_code, state, revision, created_at"
-                ") VALUES (:id, :t, :o, :st, :sr, :c, :rc, :ic, 'open', 1, clock_timestamp()) "
-                "ON CONFLICT ON CONSTRAINT uq_agent_transport_reconcile_issue DO NOTHING"
-            ),
-            {
-                "id": uuid.uuid4(),
-                "t": tenant_id,
-                "o": owner_key,
-                "st": table,
-                "sr": source_row_id,
-                "c": conversation_id,
-                "rc": reconcile_class,
-                "ic": issue_code,
-            },
-        ),
-    )
-    return result.rowcount > 0
-
-
 async def _register_external_ref(
     session: AsyncSession,
     *,
@@ -458,51 +425,6 @@ async def _register_external_ref(
         ),
     )
     return result.rowcount > 0
-
-
-async def _recompute_projection(
-    session: AsyncSession,
-    *,
-    table: str,
-    tenant_id: uuid.UUID,
-    owner_key: str,
-    source_row_id: uuid.UUID,
-) -> None:
-    """按 ledger 当前 issue 集重算行内 ``scope_reconcile_state`` 投影（同事务）。
-
-    规则（B4）：orphan 类 issue 存在 -> 'orphan'（最高优先级）；任一 issue
-    state<>'resolved' -> 'pending'；全部 resolved -> 'reconciled'。源行已回填
-    scope（conversation_id 非 NULL）时同样按 issue 集投影（无 issue 即 NULL=已带
-    scope，不参与 reconcile）。
-
-    **owner 维度（P2-2）**：ledger 唯一键含 ``owner_key``、集合锁按 owner 派生，
-    故投影聚合必须限定同一 owner——否则后续不同 owner 对同一 source row 写入的
-    issue 集会被错误聚合。
-    """
-    state = (
-        await session.execute(
-            text(
-                "SELECT CASE "
-                "  WHEN count(*) = 0 THEN NULL "
-                "  WHEN bool_or(reconcile_class = 'orphan') THEN 'orphan' "
-                "  WHEN bool_or(state <> 'resolved') THEN 'pending' "
-                "  ELSE 'reconciled' END "
-                "FROM metaedu.agent_transport_scope_reconcile "
-                "WHERE tenant_id = :t AND owner_key = :o "
-                "AND source_table = :st AND source_row_id = :sr"
-            ),
-            {"t": tenant_id, "o": owner_key, "st": table, "sr": source_row_id},
-        )
-    ).scalar()
-    if state is None:
-        return  # 无 issue 行：投影保持 NULL（已带 scope / 无需 reconcile）
-    await session.execute(
-        text(
-            f"UPDATE metaedu.{table} SET scope_reconcile_state = :s "
-            f"WHERE tenant_id = :t AND id = :sr"
-        ),
-        {"s": state, "t": tenant_id, "sr": source_row_id},
-    )
 
 
 async def _backfill_source_row(
@@ -570,7 +492,7 @@ async def _backfill_source_row(
     # 不覆盖行内 A（fail closed，不猜）；external ref / epoch 同降 tenant_scope（见下）。
     conflict = resolution == "resolved" and had_scope and current[0] != conversation_id
     if conflict:
-        if await _register_issue(
+        if await register_issue(
             session,
             tenant_id=tenant_id,
             owner_key=owner_key,
@@ -601,7 +523,7 @@ async def _backfill_source_row(
         # 第三轮复核 #1 discovery：scope 已填但来源跨 tenant（数据腐败）--登记
         # tenant_scope/cross_tenant_mismatch（不带 conversation_id），形成可处理 reconcile
         # 闭环；不覆盖行内 scope（fail closed，不猜）。由 discovery 扫描 mismatch 分支选中。
-        if await _register_issue(
+        if await register_issue(
             session,
             tenant_id=tenant_id,
             owner_key=owner_key,
@@ -617,7 +539,7 @@ async def _backfill_source_row(
         # NULL——源解析返回 source_missing）-> 行内 scope 是未知派生的，登记
         # tenant_scope/ambiguous_mapping（不带 conversation_id），形成可处理闭环；
         # 不覆盖行内 scope（fail closed，不猜）。
-        if await _register_issue(
+        if await register_issue(
             session,
             tenant_id=tenant_id,
             owner_key=owner_key,
@@ -650,7 +572,7 @@ async def _backfill_source_row(
             reconcile_class = "tenant_scope"
             issue_code = _SOURCE_MISSING_ISSUE[table]
             issue_conv = None
-        if await _register_issue(
+        if await register_issue(
             session,
             tenant_id=tenant_id,
             owner_key=owner_key,
@@ -675,7 +597,7 @@ async def _backfill_source_row(
             epoch_class, epoch_conv = "orphan", None
         else:
             epoch_class, epoch_conv = "tenant_scope", None
-        if await _register_issue(
+        if await register_issue(
             session,
             tenant_id=tenant_id,
             owner_key=owner_key,
@@ -705,8 +627,8 @@ async def _backfill_source_row(
         ref_value=payload_ref,
     ):
         report.external_refs_registered += 1
-    # 重算行内投影（同事务，仅对有 issue 的源行；owner 维度绑定见 _recompute_projection）。
-    await _recompute_projection(
+    # 重算行内投影（同事务，仅对有 issue 的源行；owner 维度绑定见 recompute_projection）。
+    await recompute_projection(
         session,
         table=table,
         tenant_id=tenant_id,
@@ -1024,7 +946,7 @@ async def _verify_scope_epoch(
         # 投影↔ledger 一致性维（复核 #5 / B4 复核 #8）：行内 scope_reconcile_state 是
         # 派生只读投影，必须与该 owner 的完整 issue 集一致——「行内已 reconciled 但
         # ledger 无对应 resolved 行」或任何投影/ledger 漂移即数据异常，fail closed。
-        # 聚合规则与 _recompute_projection 完全一致（orphan > pending > reconciled，
+        # 聚合规则与 recompute_projection 完全一致（orphan > pending > reconciled，
         # 无 issue -> 投影须为 NULL），owner 绑定（P2-2）。
         for table in scope_tables:
             owner = OWNER_BY_TABLE[table]

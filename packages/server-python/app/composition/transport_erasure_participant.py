@@ -1,10 +1,10 @@
-"""R1-S4-D-A：transport erasure participant 共享基类。
+"""R1-S4-D：transport erasure participant 共享基类。
 
 ``workspace.transport.v1`` / ``execution.transport.v1`` 的 purge eraser 共用本
 基类的 ACK/fencing 管道（S2-D/S3-D 各复制了一份 320-400 行 plumbing，S4-D-A 是
 第三处使用——抽取共享基类消除重复，不动既有 workspace/execution participant）。
 
-契约事实源：Plan §R1-S4-D 契约细化（PR #541 已合并 `51a12df6`）D-A-1：
+契约事实源：Plan §R1-S4-D 契约细化（PR #541 已合并 `51a12df6`）D-A-1/D-B-2/D-B-3：
 
 - 锁序固定：``Guard -> Conversation 行锁 -> owner advisory lock（transport
   owner）-> fence 重验 -> transport aggregate 集合 advisory lock（最内层）->
@@ -21,13 +21,20 @@
   epoch/registry drift/hold revision/operation revision/owner version/
   capability digest CAS）；scan 非零 -> blocked 三方一致；erased fence 幂等
   重放修复 pending checkpoint（ACK 丢失恢复）。
-- registry 全程保持 ``erase_available=False``：入口 capability gate fail
-  closed（``require_capability(owner_key, "erase")``）是预期、不是缺陷。
-- 边界：**不 resolve**（S4-D-B）、不改 ledger 投影、不导入 backfill 私有函数、
-  不实现 migration 041、不启用 S5。
+- **D-B-3 conversation_scope gate**（S4-D-B）：该 Conversation 有未 resolved 的
+  conversation_scope issue 即 blocked（purge 前置查与 S5 同一谓词，防直接调用
+  绕过 scheduler）。
+- **D-B-2 resolve**（S4-D-B）：inbox tombstone 后对 conversation_scope
+  `epoch_unresolvable` issue 置 resolved（集合锁临界区内，以 inbox
+  `receipt_tombstone_digest` 为 `resolution_digest`）；`tenant_scope`/`orphan`
+  不 resolve（留 S5/运维）。
+- registry：S4-D-A 保持 ``erase_available=False``；**S4-D-B merged-boundary 后
+  两 transport owner 翻 True**（capability gate 放行）。
+- 边界：不导入 backfill 私有函数、不实现 migration 041、不启用 S5。
 
-子类只实现两侧差异：``scan_transport_body`` / ``erase_transport_body``（outbox
-+ inbox 的清除动作与 scan 谓词，表结构两侧对称）。
+子类只实现两侧差异：``scan_transport_body`` / ``erase_transport_body`` /
+``_resolve_epoch_issues_after_erase``（outbox + inbox 的清除动作与 scan 谓词，
+表结构两侧对称）。
 """
 
 from __future__ import annotations
@@ -48,6 +55,9 @@ from app.composition.agent_erasure_registry import (
     registry_digest,
     require_capability,
 )
+from app.composition.agent_transport_ledger_service import (
+    conversation_scope_gate_hits,
+)
 from app.contexts.agent_workspace.domain import (
     ErasureFenceState,
     PurgeOperationState,
@@ -66,6 +76,9 @@ from app.contexts.agent_workspace.infrastructure.models import (
 # blocked reason（与 S2-D/S3-D 同域受控枚举，plan §R1-S4-D D-A-1）。
 REASON_TRANSPORT_SCAN_NONZERO = "purge_blocked_by_transport_scan_nonzero"
 REASON_PURGE_BLOCKED_BY_LEGAL_HOLD = "purge_blocked_by_legal_hold"
+#: D-B-3 conversation_scope gate 命中（该 Conversation 有未 resolved 的
+#: conversation_scope issue——purge 前置查与 S5 同一谓词）。
+REASON_CONVERSATION_SCOPE_GATE = "purge_blocked_by_conversation_scope_gate"
 
 # receipt tombstone digest 的 reason 键值（族 5：plan 冻结，禁 participant 自造）。
 # Tx1 消费侧用具名 code（epoch_unknown_rejected/epoch_stale_rejected）；purge 侧
@@ -163,6 +176,35 @@ class TransportErasureParticipantBase(ABC):
         """清除 transport 正文（outbox -> suppressed 留 digest；inbox -> rejected
         + tombstone）。幂等。Run ``output_publish_state`` 由 execution 侧
         scan 只读判定（不在此清除——归 S3-D execution.core.v1）。"""
+
+    @abstractmethod
+    async def _acquire_inbox_aggregate_locks(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> None:
+        """**源行 UPDATE 之前**取该 Conversation 全部 inbox 行的集合锁（三面 P0-1）。
+
+        锁序修正：集合锁必须在源行 UPDATE 之前取（D8 冻结「集合锁 -> 源行 FOR
+        UPDATE」）——否则 participant「行锁->集合锁」与 backfill「集合锁->行锁」
+        构成 AB-BA 死锁。子类按两侧 inbox 表实现（先查该 Conversation 的 inbox
+        行 id，逐行 `acquire_transport_aggregate_lock`）。"""
+
+    @abstractmethod
+    async def _resolve_epoch_issues_after_erase(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> None:
+        """inbox tombstone 后 resolve（D-B-2）：对目标 Conversation 的
+        ``conversation_scope`` `epoch_unresolvable` issue 置 resolved。
+
+        集合锁临界区内（写 ledger 证据 + 投影重算，D-A-1 免取条件不再适用），
+        以 inbox ``receipt_tombstone_digest`` 为 ``resolution_digest``；只 resolve
+        ``conversation_scope`` 行（``tenant_scope``/``orphan`` 不 resolve 留
+        S5/运维）。子类按两侧 inbox 表实现。"""
 
     # --- 共享管道（从 S2-D/S3-D plumbing 收敛，owner 参数化）-----------------
 
@@ -756,14 +798,58 @@ class TransportErasureParticipantBase(ABC):
             now=effective_now,
         )
 
+        # conversation_scope gate（D-B-3）：purge 前置查与 S5 同一谓词——该
+        # Conversation 有未 resolved 的 conversation_scope issue 即 blocked
+        # （防直接调用绕过 scheduler；S4-D-B participant 内嵌 fail closed）。
+        if await conversation_scope_gate_hits(
+            self._session,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        ):
+            scan = await self.scan_transport_body(
+                tenant_id=tenant_id, conversation_id=conversation_id
+            )
+            await self._record_blocked(
+                purge_operation_id=purge_operation_id,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                purge_revision=purge_revision,
+                expected_lease_epoch=expected_lease_epoch,
+                hold_revision=conversation.hold_revision,
+                fence_owner_version=fence.owner_version,
+                reason=REASON_CONVERSATION_SCOPE_GATE,
+                scan=scan,
+                conversation=conversation,
+                now=effective_now,
+                # revision CAS 已由 _mark_operation_running 裁决并 bump（N->N+1）；
+                # 此处传 None（与同位置 final-scan 分支对齐）——传 N 会与
+                # 已 bump 的 N+1 恒不匹配导致 gate 命中必 raise（三面 P1-1）。
+                expected_revision=None,
+            )
+            return TransportErasureOutcome(
+                fence=fence,
+                body_scan=scan,
+                blocked=True,
+                block_reason=REASON_CONVERSATION_SCOPE_GATE,
+                ack_digest=None,
+            )
+
         # 集合 advisory lock（最内层）——**免取条件（plan §R1-S4-D D-A-1 冻结）**：
-        # 纯 outbox/inbox metadata 写 + transport scan **不写 ledger/投影**时可免取
-        # （本 PR：S4-D-A 只清 outbox/inbox 行，不 resolve、不写 reconcile issue、
-        # 不重算行内投影）。一旦写 reconcile issue 或投影（S4-D-B 接入 resolve），
-        # 必须按全局锁序取集合锁（Guard -> Conversation -> owner -> fence ->
-        # 集合锁最内层），禁止在此链前取。
-        # 源 transport 行 UPDATE 隐式取得行锁（S3-D P3-3 对齐：不再额外
-        # SELECT ... FOR UPDATE）。
+        # 纯 outbox/inbox metadata 写 + transport scan **不写 ledger/投影**时可免取。
+        # **S4-D-B 起**：participant 在 inbox tombstone 后 resolve（写 reconcile
+        # issue 证据 + 重算投影）——写 ledger/投影，必须按全局锁序取集合锁
+        # （Guard -> Conversation -> owner -> fence -> 集合锁最内层），禁止在此链前取。
+        #
+        # **锁序修正（三面 P0-1）**：集合锁必须在**源行 UPDATE 之前**取——否则
+        # participant「行锁->集合锁」与 backfill「集合锁->行锁」构成 AB-BA 死锁
+        # （真实 PG 双连接实验复现 DeadlockDetectedError）。本基类在 erase 前取
+        # 该 Conversation 所有 inbox 行的集合锁（`_acquire_inbox_aggregate_locks`），
+        # erase + resolve 全在临界区内——全链路「集合锁->行锁」与 backfill/consumer
+        # 同序。源 transport 行 UPDATE 隐式取得行锁（S3-D P3-3 对齐）。
+        await self._acquire_inbox_aggregate_locks(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
 
         # 正文清除（outbox -> suppressed 留 digest；inbox -> rejected+tombstone）。
         await self.erase_transport_body(
@@ -771,6 +857,14 @@ class TransportErasureParticipantBase(ABC):
             conversation_id=conversation_id,
             purge_revision=purge_revision,
             now=effective_now,
+        )
+
+        # resolve（D-B-2）：inbox tombstone 已取得证据后，对目标 Conversation 的
+        # conversation_scope `epoch_unresolvable` issue 置 resolved（集合锁临界区内，
+        # 以 inbox receipt_tombstone_digest 为 resolution_digest，投影重算同事务）。
+        await self._resolve_epoch_issues_after_erase(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
         )
 
         # final scan 为零才 ACK；非零 -> blocked（三方一致）。

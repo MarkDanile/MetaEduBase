@@ -1086,12 +1086,12 @@ class WorkspaceBridgeRepository:
             source_table=source_table,
             source_row_id=source_row_id,
         )
-        from app.composition.agent_transport_backfill import (
-            _recompute_projection,
-            _register_issue,
+        from app.composition.agent_transport_ledger_service import (
+            recompute_projection,
+            register_issue,
         )
 
-        await _register_issue(
+        await register_issue(
             self._session,
             tenant_id=tenant_id,
             owner_key=owner_key,
@@ -1105,7 +1105,7 @@ class WorkspaceBridgeRepository:
         )
         # R3 (d)：投影重算与 issue 插入同在集合锁临界区内（ledger 唯一事实源，
         # 行内 scope_reconcile_state 为派生投影）。
-        await _recompute_projection(
+        await recompute_projection(
             self._session,
             table=source_table,
             tenant_id=tenant_id,
