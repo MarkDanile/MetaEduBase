@@ -8,8 +8,8 @@
   evidence）至少一个，否则 B1/B2 不得开工——``adapter_satisfies_prerequisite`` 返回
   False / ``require_adapter_prerequisite`` raise。
 - **失败分类注入（E-3a「可证明未发送」判据）**：adapter 须能注入两类失败——发送前
-  连接错误（``ExternalEraseNotSent``，**可证明未发送** -> ``blocked/erase_timeout``，
-  可重试）与发送后超时（``ExternalEraseTimeout``，**可能已生效** ->
+  连接错误（``ExternalEraseNotSentError``，**可证明未发送** -> ``blocked/erase_timeout``，
+  可重试）与发送后超时（``ExternalEraseTimeoutError``，**可能已生效** ->
   ``unknown/outcome_unknown``，不自动重试）；``classify_adapter_outcome`` 承载 E-3a
   矩阵（纯映射，B2 消费）。
 - **idempotency key / receipt digest（E-2b）**：idempotency key 由 ``ref_scheme`` +

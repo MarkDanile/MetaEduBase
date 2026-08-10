@@ -29,9 +29,9 @@
 - 技术债：
 - 架构约束：[architecture.md](../03-engineering-governance/01-rules/architecture.md)、[contracts.md](../03-engineering-governance/01-rules/contracts.md)、[data-integrity.md](../03-engineering-governance/01-rules/data-integrity.md)
 
-当前进展：S4-E-A 已合并（PR #548），从 main `59d2d935` 开工；分支已建；落点对账完成（ledger schema / backfill `_register_external_ref` / E-1/E-2b/E-3a 契约核对）；实现完成——`external_object_adapter.py`（E-2b 硬前置 + E-3a 失败分类 + idempotency key/receipt digest）+ `external_ref_lifecycle.py`（`register_external_object_ref` registered 唯一生产者 + `promote_external_ref_to_registered` blocked/unknown_scheme->registered 唯一受控入口）+ 两套测试（25 passed，含 E-6 反例判别点）；mypy 0 基线、ruff clean、engineering docs 通过。
-下一步：Draft PR + Backend iteration -> 三面首轮 -> 根因族返修 -> 定向复核。
-验证状态：B1 新测试 25/25 passed（compose 套件 326 passed / 1 failed = `test_s4c_producer_propagation` 顺序污染既有 main 问题 TD-080 类，单跑 8 passed）；mypy baseline 通过；ruff clean；engineering docs passed。
+当前进展：S4-E-A 已合并（PR #548），从 main `59d2d935` 开工；分支已建；落点对账完成；实现完成——`external_object_adapter.py`（E-2b 硬前置 + E-3a 失败分类 + idempotency key/receipt digest）+ `external_ref_lifecycle.py`（register registered 唯一生产者 + promote blocked/unknown_scheme->registered 唯一受控入口 + 集合锁 owner 与 backfill 同源）+ 两套测试（29 passed，含 E-6 反例判别点 + 真实并发串行化）。Draft PR #550 已建，Backend iteration + Engineering docs + Frontend 全绿。三面首轮：数据/状态机 + 并发/锁序独立复核完成，按根因族一次返修（① 集合锁 owner 与 backfill 同源 P0-1/P1-1；② promote 锁内诚实返回域 P1-2；③ 补锁 owner 一致 + 并发串行化测试）。
+下一步：根因族返修定向复核（不重开三面）-> 重跑验证 -> 推送 PR -> 定向复核通过后转 Ready Backend full。
+验证状态：`pytest tests/composition/test_s4eb1_*.py` 29/29 passed（adapter contract 17 + lifecycle registration 12，含 4 并发/锁一致）；`pytest tests/composition/test_agent_transport_backfill*.py` 54 passed；ruff check clean；`scripts/check_mypy_baseline.py` 0 新增；engineering docs passed；Draft PR #550 Backend iteration 绿（HEAD 4123221f）。
 交接备注：范围仅 B1（lifecycle registration + adapter contract）；不得启动 B2/C、S4-F、S5，不改 migration 040/041、不翻 external/runtime registry、不实现真实 Pi Worker/云存储生产 adapter。
 
 ## 下一批候选任务

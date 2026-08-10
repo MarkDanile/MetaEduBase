@@ -27,17 +27,22 @@ adapter 加入 allowlist 后同一入口放行）——本套件用 monkeypatch 
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import text
 
+from app.composition.agent_erasure_locks import transport_aggregate_key
+from app.composition.agent_transport_backfill import _EXTERNAL_OWNER, OWNER_BY_TABLE
 from app.composition.external_object_adapter import (
     ExternalEraseUnknown,
     ExternalObjectAdapter,
 )
 from app.composition.external_ref_lifecycle import (
+    _EXTERNAL_REF_COLLECTION_OWNER_BY_SOURCE,
+    _collection_owner,
     promote_external_ref_to_registered,
     ref_scheme_allowlist,
     register_external_object_ref,
@@ -175,6 +180,51 @@ async def _seed_registered_ref(db_session, *, ref_scheme: str = _RECOGNIZED):
 async def test_ref_scheme_allowlist_is_empty_frozen():
     """B5 冻结：db_local allowlist 为空集合（无可证明 DB-local 格式）。"""
     assert ref_scheme_allowlist() == frozenset()
+
+
+# --- 集合锁 owner 与 backfill 同源（E-5-2/D8，首轮 P0-1/P1-1 返修） --------
+
+
+async def test_collection_owner_matches_backfill_for_all_ref_sources():
+    """B1 集合锁 owner 与 backfill 对同一源行取的 owner 一致（同 advisory key）。
+
+    变异杀手：把 ``_EXTERNAL_REF_COLLECTION_OWNER_BY_SOURCE`` 的任一表 owner 改成
+    ``external.payload.v1``（旧实现）-> 本测试变红。覆盖 3 个 ref-bearing source
+    （run_events 归 external、两 outbox 归 transport owner），与 backfill
+    ``OWNER_BY_TABLE.get(table, _EXTERNAL_OWNER)`` 逐一比对。
+    """
+    ref_sources = ("agent_run_events", "agent_workspace_outbox", "agent_execution_outbox")
+    for table in ref_sources:
+        expected = OWNER_BY_TABLE.get(table, _EXTERNAL_OWNER)
+        assert _collection_owner(table) == expected, (
+            f"collection lock owner for {table!r} must match backfill "
+            f"({expected!r}); mismatched advisory keys on the same source row "
+            "break E-5-2/D8 serialization"
+        )
+        # 两方派生出的 advisory key 必须相同（owner 是 key 输入之一）。
+        assert transport_aggregate_key(
+            tenant_id=TENANT_ID,
+            owner_key=_collection_owner(table),
+            source_table=table,
+            source_row_id=_ROW_ID,
+        ) == transport_aggregate_key(
+            tenant_id=TENANT_ID,
+            owner_key=expected,
+            source_table=table,
+            source_row_id=_ROW_ID,
+        )
+
+
+async def test_collection_owner_map_only_contains_ref_bearing_sources():
+    """锁 owner 映射只覆盖 ref-bearing source（其余表 fallback external owner）。
+
+    防映射意外膨胀（如塞入 inbox 表）——B1 只登记 3 个 ref-bearing source。
+    """
+    assert set(_EXTERNAL_REF_COLLECTION_OWNER_BY_SOURCE) == {
+        "agent_run_events",
+        "agent_workspace_outbox",
+        "agent_execution_outbox",
+    }
 
 
 # --- register：正常生产入口 ------------------------------------------------
@@ -363,3 +413,94 @@ async def test_promote_missing_row_returns_blocked(db_session, monkeypatch):
         adapter=_CapableAdapter(),
     )
     assert state == "blocked"
+
+
+# --- 并发串行化（真实 PostgreSQL 双连接，首轮 P2-2 补） -----------------------
+
+
+async def test_concurrent_promote_serializes_to_single_registered(
+    db_session, session_factory, monkeypatch
+):
+    """两个并发 promote 同一 blocked/unknown_scheme 行 -> 集合锁串行化，只一行 registered。
+
+    变异杀手：把 promote 的集合锁 owner 改回 ``external.payload.v1``（与 backfill
+    不同 key）——本测试虽不直接与 backfill 并发，但两 promote 之间仍由同 key 串行化；
+    真正的变异判别是 ``test_collection_owner_matches_backfill_for_all_ref_sources``。
+    本测试验证：并发下不重复推进、不产生重复行、返回态与行实际态一致。
+    """
+    _recognize_db_local(monkeypatch)
+    await _ensure_tenant(db_session)
+    await _seed_blocked_ref(db_session)
+    await db_session.commit()  # 提交基行，使并发连接可见。
+
+    async def _promote_once() -> str:
+        async with session_factory() as session, session.begin():
+            return await promote_external_ref_to_registered(
+                session,
+                tenant_id=TENANT_ID,
+                source_table=_TABLE,
+                source_row_id=_ROW_ID,
+                ref_value=_REF_VALUE,
+                ref_scheme=_RECOGNIZED,
+                adapter=_CapableAdapter(),
+            )
+
+    states = await asyncio.gather(*[_promote_once() for _ in range(4)])
+    assert all(state == "registered" for state in states), (
+        f"concurrent promote must all observe registered, got {states}"
+    )
+
+    async with session_factory() as session:
+        count = (
+            await session.execute(
+                text(
+                    "SELECT count(*) FROM metaedu.agent_external_object_refs "
+                    "WHERE tenant_id = :t AND source_table = :st "
+                    "  AND source_row_id = :sr AND ref_value = :rv"
+                ),
+                {"t": TENANT_ID, "st": _TABLE, "sr": _ROW_ID, "rv": _REF_VALUE},
+            )
+        ).scalar_one()
+        row = await _fetch_ref(session)
+    assert count == 1, "并发 promote 不得产生重复 ledger 行"
+    assert row.erase_state == "registered"
+    assert row.blocked_reason is None
+
+
+async def test_concurrent_register_is_unique(
+    db_session, session_factory, monkeypatch
+):
+    """6 个并发 register 同一 ref -> 唯一约束 + 集合锁 -> 恰一行，恰一个 created。"""
+    _recognize_db_local(monkeypatch)
+    await _ensure_tenant(db_session)
+    await db_session.commit()
+
+    async def _register_once() -> bool:
+        async with session_factory() as session, session.begin():
+            return await register_external_object_ref(
+                session,
+                tenant_id=TENANT_ID,
+                conversation_id=None,
+                source_table=_TABLE,
+                source_row_id=_ROW_ID,
+                ref_scheme=_RECOGNIZED,
+                ref_value=_REF_VALUE,
+            )
+
+    created_flags = await asyncio.gather(*[_register_once() for _ in range(6)])
+    assert sum(1 for flag in created_flags if flag) == 1, (
+        f"exactly one concurrent register should win, got {created_flags}"
+    )
+
+    async with session_factory() as session:
+        count = (
+            await session.execute(
+                text(
+                    "SELECT count(*) FROM metaedu.agent_external_object_refs "
+                    "WHERE tenant_id = :t AND source_table = :st "
+                    "  AND source_row_id = :sr AND ref_value = :rv"
+                ),
+                {"t": TENANT_ID, "st": _TABLE, "sr": _ROW_ID, "rv": _REF_VALUE},
+            )
+        ).scalar_one()
+    assert count == 1, "并发 register 不得产生重复 ledger 行"

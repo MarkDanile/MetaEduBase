@@ -18,13 +18,16 @@ external eraser（B2）只消费 ``registered`` 行，不生产。
   scheme 被明确识别（进入 allowlist）**且** adapter capability 验证通过（E-2b 硬
   前置）时放行（把 ``ref_scheme`` 更新为已识别值 + 清 ``blocked_reason``）；不满足
   保持 ``blocked``（E-6 未知 scheme 反例）。已 ``registered``/``erased`` 的行不覆盖
-  （由 verify/后续流程 fail closed 暴露）。
-- **锁序（E-5-2）**：本模块只写 ledger 行（不写 outbox `payload_ref` 源行），入口
-  统一在**事务内先取集合 advisory lock**（``acquire_transport_aggregate_lock``，
-  backfill 同款）——纯 backfill/运维路径不经 Guard/owner 只取集合锁再写，顺序一致
-  （不引入第二顺序）；生产路径若未来写 outbox `payload_ref` 行必须按 D8 全局链
-  ``Guard -> Conversation 行锁 -> owner advisory lock -> fence -> 集合锁 -> 源行``，
-  本 Slice 不接线该写路径。
+  （UPDATE 谓词限定 ``blocked/unknown_scheme``，0 行命中读当前态诚实返回——首轮
+  P1-2 返修）。
+- **锁序（E-5-2/D8）**：本模块只写 ledger 行（不写 outbox `payload_ref` 源行），入口
+  统一在**事务内先取集合 advisory lock**（``acquire_transport_aggregate_lock``），且
+  集合锁 **owner 与 backfill 同源**（outbox 归 transport owner、run_events 归 external
+  owner，见 ``_EXTERNAL_REF_COLLECTION_OWNER_BY_SOURCE``——同一源行的 ledger 写与
+  backfill 的 scope/ref 处理互斥，首轮 P0-1/P1-1 返修）；纯 backfill/运维路径不经
+  Guard/owner 只取集合锁再写，顺序一致（不引入第二顺序）；生产路径若未来写 outbox
+  `payload_ref` 行必须按 D8 全局链 ``Guard -> Conversation 行锁 -> owner advisory
+  lock -> fence -> 集合锁 -> 源行``，本 Slice 不接线该写路径。
 """
 
 from __future__ import annotations
@@ -43,12 +46,36 @@ from app.composition.external_object_adapter import (
 
 _EXTERNAL_OWNER = "external.payload.v1"
 
+# 集合锁 owner 选取（E-5-2/D8「同一源行集合必须由同一 advisory key 串行化」）：
+# 与 ``agent_transport_backfill`` 保持同源——outbox/inbox 源行归 transport owner
+# （``_backfill_source_row`` 用 ``OWNER_BY_TABLE``，``agent_transport_backfill.py:446``）、
+# ``agent_run_events`` 归 external owner（``_register_run_event_ref``
+# ``agent_transport_backfill.py:659``）。**ledger 行 owner_key 仍为
+# ``external.payload.v1``**（外部对象擦除 owner 固定，DB 层由
+# ``ck_agent_transport_reconcile_owner_key`` 等约束）；这里只决定**集合 advisory
+# lock 的 key**，使 B1 对同一源行的 ledger 写与 backfill 的 scope/ref 处理互斥。
+# 若此映射与 backfill ``OWNER_BY_TABLE`` 漂移，同源行并发写会落在两把不同锁上——
+# 由 ``test_collection_owner_matches_backfill`` 锁定两者一致。
+_EXTERNAL_REF_COLLECTION_OWNER_BY_SOURCE: dict[str, str] = {
+    "agent_run_events": _EXTERNAL_OWNER,
+    "agent_workspace_outbox": "workspace.transport.v1",
+    "agent_execution_outbox": "execution.transport.v1",
+}
+
+
+def _collection_owner(source_table: str) -> str:
+    """源行集合 advisory lock 的 owner（与 backfill 同源，未知表 fail-safe external）。"""
+    return _EXTERNAL_REF_COLLECTION_OWNER_BY_SOURCE.get(source_table, _EXTERNAL_OWNER)
+
 
 # B5 冻结：db_local allowlist 为空集合。**禁止猜测 scheme**——任何非空 scheme
 # 值当前都不在 allowlist，登记一律 ``unknown`` + ``blocked/unknown_scheme``。
 # S4-E 引入真实 DB-local staging adapter 时须先定义可证明的 ref 格式并加入本
 # allowlist（配套新 migration 扩 ``ck_agent_external_refs_ref_scheme`` 语义/登记
-# 规则），此前 ``db_local`` 不可达。
+# 规则），此前 ``db_local`` 不可达。**canonical 校验 = 集合成员判定**：通过
+# ``scheme_is_recognized`` 的值即原样写入（allowlist 成员即 canonical），不存在的
+# 变体/别名值（大小写/拼写差异）不在集合内 -> 拒绝——未来 allowlist 多值化后此
+# 判定仍成立，不新增第二份校验。
 _EXTERNAL_REF_SCHEME_ALLOWLIST: frozenset[str] = frozenset()
 
 
@@ -90,7 +117,7 @@ async def register_external_object_ref(
     await acquire_transport_aggregate_lock(
         session,
         tenant_id=tenant_id,
-        owner_key=_EXTERNAL_OWNER,
+        owner_key=_collection_owner(source_table),
         source_table=source_table,
         source_row_id=source_row_id,
     )
@@ -133,25 +160,44 @@ async def promote_external_ref_to_registered(
     """``blocked/unknown_scheme -> registered`` 唯一受控入口（E-1）。
 
     仅当 **scheme 明确识别（allowlist）+ adapter capability 验证通过（E-2b 硬
-    前置）** 时放行：把 ``ref_scheme`` 更新为已识别值 + 清 ``blocked_reason`` +
+    前置）** 时推进：把 ``ref_scheme`` 更新为已识别值 + 清 ``blocked_reason`` +
     转 ``registered``（``ck_agent_external_refs_erase_evidence`` 要求 registered
     行不带 reason）。不满足保持 ``blocked``（E-6 未知 scheme 反例）。
 
-    返回最终 erase_state（``'registered'`` 或 ``'blocked'``）。已推进
-    ``registered``/``erased`` 的行不覆盖——0 行命中时读当前态返回（由 verify/后续
-    流程 fail closed 暴露）。
+    返回**操作后该 ledger 行的实际当前 ``erase_state``**（诚实返回，不谎报）：
+    成功推进 -> ``'registered'``；行不存在 -> ``'blocked'``（fail-closed，无法推进）；
+    scheme 未识别 / adapter 前置不满足时**不推进**但返回行实际当前态（若已被并发
+    推进为 ``registered``/``erased`` 则如实返回，不误报 ``blocked``）。已推进
+    ``registered``/``erased`` 的行不覆盖（UPDATE 谓词限定 ``blocked/unknown_scheme``，
+    0 行命中读当前态返回）。
     """
-    if not scheme_is_recognized(ref_scheme):
-        return "blocked"
-    if not adapter_satisfies_prerequisite(adapter):
-        return "blocked"
+    # 集合锁（owner 与 backfill 同源，E-5-2/D8）先于一切 DB 读/写；锁内读实际当前态
+    # + 条件推进，保证返回态与并发写一致（避免 gate 早退谎报——首轮 P1-2）。
     await acquire_transport_aggregate_lock(
         session,
         tenant_id=tenant_id,
-        owner_key=_EXTERNAL_OWNER,
+        owner_key=_collection_owner(source_table),
         source_table=source_table,
         source_row_id=source_row_id,
     )
+
+    async def _current_state() -> str:
+        current = (
+            await session.execute(
+                text(
+                    "SELECT erase_state FROM metaedu.agent_external_object_refs "
+                    "WHERE tenant_id = :t AND source_table = :st "
+                    "  AND source_row_id = :sr AND ref_value = :rv"
+                ),
+                {"t": tenant_id, "st": source_table, "sr": source_row_id, "rv": ref_value},
+            )
+        ).scalar()
+        return current if current is not None else "blocked"
+
+    if not scheme_is_recognized(ref_scheme):
+        return await _current_state()
+    if not adapter_satisfies_prerequisite(adapter):
+        return await _current_state()
     result = cast(
         CursorResult,
         await session.execute(
@@ -174,16 +220,4 @@ async def promote_external_ref_to_registered(
     )
     if result.rowcount == 1:
         return "registered"
-    # 行不存在或已不在 blocked/unknown_scheme：读当前态返回（不覆盖已推进的
-    # registered/erased 行）。
-    current = (
-        await session.execute(
-            text(
-                "SELECT erase_state FROM metaedu.agent_external_object_refs "
-                "WHERE tenant_id = :t AND source_table = :st "
-                "  AND source_row_id = :sr AND ref_value = :rv"
-            ),
-            {"t": tenant_id, "st": source_table, "sr": source_row_id, "rv": ref_value},
-        )
-    ).scalar()
-    return current if current is not None else "blocked"
+    return await _current_state()
