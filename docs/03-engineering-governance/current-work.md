@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-REQ-041-047-S4-E-B1: R1-S4-E-B1 Lifecycle Registration + Adapter Contract
+
+状态：🟡 进行中
+类型：REQ 新需求开发（S4-E 拆分实现）
+领域：server / external.payload.v1（staging/reference lifecycle port + adapter contract）
+当前执行模式：superpower / plan-do（TD-092 高风险流程：Draft iteration -> Ready Backend full -> 三面首轮 -> 根因族返修 -> 定向复核）
+最近接手工具：Claude Code
+分支：feat/req041-047-r1-s4e-lifecycle-registration
+
+需求来源：
+- Spec: [REQ-041/047 联合核心契约](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md) / [R1 Retention 专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- Plan: [R1-S4-E E-5-2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化)
+- 技术债：
+- 架构约束：[architecture.md](../03-engineering-governance/01-rules/architecture.md)、[contracts.md](../03-engineering-governance/01-rules/contracts.md)、[data-integrity.md](../03-engineering-governance/01-rules/data-integrity.md)
+
+当前进展：S4-E-A 已合并（PR #548），从 main `59d2d935` 开工；分支已建；落点对账完成；实现完成——`external_object_adapter.py`（E-2b 硬前置 + E-3a 失败分类 + idempotency key/receipt digest）+ `external_ref_lifecycle.py`（register registered 唯一生产者 + promote blocked/unknown_scheme->registered 唯一受控入口 + 集合锁 owner 与 backfill 同源）+ 两套测试（32 passed，含 E-6 反例判别点 + 真实并发串行化）。Draft PR #550 已建，Backend iteration + Engineering docs + Frontend 全绿。三面首轮（数据/状态机 + 并发/锁序独立复核）按 3 根因族一次返修（① 集合锁 owner 与 backfill 同源 P0-1/P1-1；② promote 锁内诚实返回域 P1-2；③ 补锁 owner 一致 + 并发串行化测试），定向复核 3 根因族全消解。独立测试/运维面首轮（P0=0/P1=3/P2=4/P3=1，HEAD `b45f9e32`）统一返修：验证口径更正（P1-1 顺序污染不可复现、P1-3 backfill 44 非 54）+ 补 erased 不覆盖（P2-2）、gate 诚实返回判别（P2-3）、并发 erased 覆盖（P1-2）测试。
+下一步：PR 转 Ready 后最新 HEAD 跑 Backend full（高风险 PR 合并证据）-> 最终评分与合并（等待用户指令，不自动合并）。
+验证状态：`pytest tests/composition/test_s4eb1_adapter_contract.py tests/composition/test_s4eb1_lifecycle_registration.py` 32/32 passed（adapter contract 17 + lifecycle registration 15，含 5 并发/锁一致 + 3 边界判别）；定向复核套件 `118 passed`（B1 32 + backfill 44 + S4-E-A guard + locks + registry，逐文件可复核）；当前 HEAD 全 composition `334 passed / 0 failed`（main `59d2d935` 基线 `302 passed / 0 failed`——此前「326/1 顺序污染」声明不可复现，已更正）；ruff check clean；`scripts/check_mypy_baseline.py` 0 新增；engineering docs passed；Draft PR #550 Backend iteration + Engineering docs + Frontend 全绿（HEAD `c5d51865`）。
+交接备注：范围仅 B1（lifecycle registration + adapter contract）；不得启动 B2/C、S4-F、S5，不改 migration 040/041、不翻 external/runtime registry、不实现真实 Pi Worker/云存储生产 adapter。等待用户「按流程评审/按流程合并」明确指令。
 
 ## 下一批候选任务
 
@@ -22,7 +40,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | REQ-041/047 R1-S4-E-B1 Lifecycle Registration + Adapter Contract | 🔵 就绪 | staging/reference lifecycle port（`registered` 唯一正常生产者；`blocked/unknown_scheme -> registered` 仅 scheme 明确识别 + adapter capability 验证通过）+ adapter contract（幂等重放/`receipt lookup` 硬前置 + 失败分类注入）；S4-E-A 已合并（PR #548），待下一条明确开工指令 | [Plan §R1-S4-E E-5-2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
