@@ -1,6 +1,6 @@
 """S4-E-A: agent_run_events append-only 守卫扩展——放行 external ref 严格 tombstone。
 
-Revision ID: 041_run_event_external_ref_tombstone
+Revision ID: 041_run_event_ref_tombstone
 Revises: 040_transport_external_scope
 Create Date: 2026-08-10
 
@@ -24,29 +24,32 @@ payload_ref）不变。
   形态，见 ck_agent_run_event_payload）；``to_jsonb`` 差集在原豁免列
   （payload_inline/payload_state）基础上**仅再豁免 payload_ref**，其余 envelope 列
   强制不变。
+- ``TG_OP = 'UPDATE'`` 防御子句与分支 1 对齐：DELETE 触发时 PL/pgSQL 的 ``NEW``
+  是未赋值记录，``NEW.payload_state = 'redacted'`` 求值为 NULL 而非 true，IF 判定为
+  假即落到 RAISE，故删除该子句 DELETE 仍被拒——保留是为显式表达「只放行 UPDATE」
+  的意图，避免后续改写分支 2 时无意开洞（与 039 对分支 1 的 ``TG_OP='UPDATE'``
+  防御性冗余同规格，039 docstring L49-54）。
 
 expand-only，不改业务表结构；沿 039 行级白名单（非 DDL，CREATE OR REPLACE FUNCTION
 保留既有 trigger 绑定，无 ACCESS EXCLUSIVE 需求，不引入运行时 DDL）。
 
-**alembic 版本表加宽**：``metaedu.alembic_version.version_num`` 是 alembic 默认
-``varchar(32)``，而本迁移 revision id ``041_run_event_external_ref_tombstone`` 为
-36 字符（Plan §R1-S4-E B5 冻结具名）——``upgrade()`` 先把它加宽到 ``varchar(64)``
-再让 alembic 写入新 revision。``downgrade()`` **不加宽还原**：降级运行时刻
-``version_num`` 仍持有 36 字符的 041，缩回 varchar(32) 会因值超长失败；加宽是无害
-的向前兼容（不影响证据/数据），且后续更长 revision id 也受益，故只还原守卫函数
-（039 白名单）。
+**revision id 长度**：``041_run_event_ref_tombstone``（27 字符）≤ alembic 默认
+``varchar(32)`` 版本表列宽，无需加宽 ``metaedu.alembic_version``——revision id 保持
+≤32 字符是本迁移的约束（Plan §R1-S4-E B5 具名 migration 的缩短形式；原始冻结名
+``041_run_event_external_ref_tombstone`` 36 字符溢出列宽，三面首轮 P1 后缩短并同步
+plan file/revision 映射）。
 
 **downgrade 边界**：还原 039 的白名单（仅分支 1）。守卫是 ``BEFORE UPDATE OR
 DELETE`` 触发器，只作用于**新写**，已产生的 ref-tombstone 行不受影响，故 downgrade
-**无条件可逆**（版本表宽度除外，见上）——与 038 的不可逆边界不同，测试须明确区分，
-不可套用 038 断言。
+**无条件可逆**（无任何 schema/元数据残留——版本表宽度不变）——与 038 的不可逆边界
+不同，测试须明确区分，不可套用 038 断言。
 """
 
 from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "041_run_event_external_ref_tombstone"
+revision: str = "041_run_event_ref_tombstone"
 down_revision: str | None = "040_transport_external_scope"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -73,7 +76,8 @@ $$
 """
 
 # 041 白名单：两个放行分支。分支 2（ref tombstone）的 to_jsonb 差集额外豁免
-# payload_ref；payload_inline 必须 OLD/NEW 均 NULL（清 ref 不得复活 inline）。
+# payload_ref；payload_inline 必须 OLD/NEW 均 NULL（清 ref 不得复活 inline）；
+# TG_OP='UPDATE' 与分支 1 对齐（防御性冗余，DELETE 仍被拒）。
 _GUARD_041 = """
 CREATE OR REPLACE FUNCTION metaedu.guard_agent_run_event_append_only()
 RETURNS trigger LANGUAGE plpgsql AS $$
@@ -109,17 +113,10 @@ $$
 
 
 def upgrade() -> None:
-    # 版本表加宽（revision id 36 字符 > alembic 默认 varchar(32)，见模块 docstring）。
-    op.execute(
-        "ALTER TABLE metaedu.alembic_version "
-        "ALTER COLUMN version_num TYPE varchar(64)"
-    )
     # CREATE OR REPLACE 保留既有 trigger 绑定（触发器引用函数名，不需重建触发器，
-    # 因此升级路径不做任何业务表级 DDL，无 ACCESS EXCLUSIVE 需求）。
+    # 因此升级路径不做任何表级 DDL，无 ACCESS EXCLUSIVE 需求）。
     op.execute(_GUARD_041)
 
 
 def downgrade() -> None:
-    # 只还原守卫函数（039 白名单）。版本表宽度**不**缩回——降级时刻 version_num
-    # 仍持 36 字符的 041，缩回 varchar(32) 会因值超长失败；加宽向前兼容且无害。
     op.execute(_GUARD_039)

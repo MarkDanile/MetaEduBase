@@ -711,6 +711,10 @@ async def test_outbox_payload_ref_only_blocked_zero_change(
     assert await _checkpoint_state(db_session, op_id) == PurgeOwnerState.BLOCKED.value
     assert await _operation_state(db_session, op_id) == PurgeOperationState.BLOCKED.value
     assert await _checkpoint_reason(db_session, op_id) == "purge_owner_unavailable"
+    assert (
+        await _operation_failure_code(db_session, op_id)
+        == "purge_owner_unavailable"
+    ), "operation.failure_code 必须落 reason 冻结值（区分 legal-hold/scan-nonzero）"
     assert await _conversation_purge_state(db_session, conv_id) == "blocked"
 
 
@@ -766,22 +770,28 @@ async def test_mixed_inline_and_ref_whole_op_blocked(db_session, side):
         == ErasureFenceState.ACTIVE.value
     )
     assert await _operation_state(db_session, op_id) == PurgeOperationState.BLOCKED.value
+    assert await _checkpoint_state(db_session, op_id) == PurgeOwnerState.BLOCKED.value
     assert await _checkpoint_reason(db_session, op_id) == "purge_owner_unavailable"
 
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
 async def test_ref_bearing_blocked_mutation_old_clear_revived(db_session, side):
-    """S4-E-A mutation kill：恢复 S4-D-A 旧实现（`erase_transport_body` 清
-    payload_ref 转 suppressed，或无 ref-bearing 前置 blocked）-> 本测试变红。
+    """S4-E-A mutation kill：恢复 S4-D-A 旧实现 -> 本测试变红（**复合击杀**）。
 
-    变异 1：transport 仍清 ref（旧行为）-> ref-only 行转 suppressed + ref 被清
-    -> ``test_outbox_payload_ref_only_blocked_zero_change`` 断言 ``status=='pending'``
-    红。
-    变异 2：无 ref-bearing 前置 blocked（直接走 erase）-> 同前红。
-    变异 3：转 suppressed 保留 ref -> 违反现 outbox CHECK（UPDATE 报错）-> 红。
+    **复合变异归因（三面首轮 T-6 修正）**：pre-check（``count_ref_bearing_outbox_rows``
+    前置 blocked）在 fence -> erasing 推进**之前**（transport_erasure_participant.py
+    L788-818），``ref_bearing_count > 0`` 即 blocked 返回，``erase_transport_body``
+    对 ref-bearing 行**不可达**——因此**单独**把 ``erase_transport_body`` 改回
+    ``SET payload_ref=NULL``（保留 pre-check）是死代码，无断言变红。要触发旧行为
+    必须**同时**删除 pre-check 与还原 SQL（复合变异）：此时 fence 推进 erasing、
+    ``erase_transport_body`` 清 ref 转 suppressed——本用例的 ``block_reason`` 断言、
+    ``test_outbox_payload_ref_only_blocked_zero_change`` 的 ``status=='pending'`` +
+    fence ACTIVE 断言（final scan-nonzero blocked 不还原 fence 到 ACTIVE）全部变红。
 
-    本用例直接断言判别力锚点（outcome.blocked + reason），变异击杀由
-    ``test_outbox_payload_ref_only_blocked_zero_change`` 的五方零变更断言承担。
+    变异 3（转 suppressed 保留 ref）违反现 outbox CHECK（UPDATE 报错）-> 红。
+
+    本用例直接断言判别力锚点（outcome.blocked + reason），五方零变更断言由
+    ``test_outbox_payload_ref_only_blocked_zero_change`` 承担。
     """
     await _ensure_test_tenant(db_session)
     conv_id, purge_rev = await _seed_deleted_expired_conversation(

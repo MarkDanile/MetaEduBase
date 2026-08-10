@@ -17,15 +17,21 @@ external receipt 后无法清 ``RunEvent.payload_ref``。migration 041 扩展守
   其余列不变）-> 放行。
 - 清 ref 同时复活 inline（``NEW.payload_inline`` 非 NULL）-> 拒绝（变异杀手：
   删 ``NEW.payload_inline IS NULL`` 子句）。
-- 清 ref 但旧行已有 inline（``OLD.payload_inline`` 非 NULL）-> 拒绝（变异杀手：
-  删 ``OLD.payload_inline IS NULL`` 子句）。
+- 清 ref 但旧行已有 inline（``OLD.payload_inline`` 非 NULL）-> 拒绝（**防御性**，
+  无法构造直接击杀输入——CHECK 禁 inline+ref 并存；保留为显式表达「ref tombstone
+  只允许无 inline 旧状态」，与 039 ``TG_OP='UPDATE'`` 同规格，见
+  ``test_guard_rejects_ref_tombstone_with_inline_on_old`` docstring）。
+- 无 ref 旧行（``OLD.payload_ref IS NULL``，如 ``archived`` 无 ref）改 redacted
+  -> 拒绝（变异杀手：删 ``OLD.payload_ref IS NOT NULL`` 子句）。
 - 清 ref 但 payload_state 不转 redacted -> 拒绝。
 - 清 ref 同时改其他 envelope 列（seq/digest/classification/visibility/size）-> 拒绝。
 - ref 未真正清（NEW.payload_ref 仍非空）-> 拒绝。
 - 任意 DELETE -> 拒绝（E1 append-only 不变）。
 - 039 分支 1（inline tombstone）仍放行（041 不得削弱既有白名单）。
 
-变异验证：把 041 守卫分支 2 的任一 AND 子句删除，对应「拒绝」用例即变红。
+变异验证：把 041 守卫分支 2 的任一 AND 子句删除，对应「拒绝」用例即变红（除
+``OLD.payload_inline IS NULL`` 与 ``TG_OP='UPDATE'`` 两个防御性 equivalent-mutant——
+前者无构造输入、后者 DELETE 已由 NEW 未赋值语义兜底，二者均文档化存活）。
 """
 from __future__ import annotations
 
@@ -48,7 +54,7 @@ _MIG_041 = (
     Path(__file__).resolve().parents[3]
     / "alembic"
     / "versions"
-    / "041_run_event_external_ref_tombstone.py"
+    / "041_run_event_ref_tombstone.py"
 )
 
 
@@ -208,6 +214,35 @@ async def test_guard_rejects_ref_tombstone_with_inline_on_old(db_session):
     )
 
 
+async def test_guard_rejects_tombstone_on_old_row_without_ref(db_session):
+    """无 ref 旧行（OLD.payload_ref IS NULL）改 redacted -> 拒绝。
+
+    变异杀手：删分支 2 的 ``OLD.payload_ref IS NOT NULL`` 子句 -> 本测试变红。
+    ``archived``（inline NULL、可带可不带 ref）无 ref 的旧行：分支 2 其余条件
+    （OLD/NEW inline 均 NULL、NEW.payload_state='redacted'、to_jsonb 差集相等——
+    OLD 已是 archived 无 ref，NEW 转 redacted 无 ref，差集仅 state 变化）在删掉
+    ``OLD.payload_ref IS NOT NULL`` 后全部通过，会被错误放行——本用例锁定「ref
+    未真正存在时不得走 ref tombstone 分支」。
+    """
+    conversation_id, identity, _ = await h.seed_purgeable(db_session)
+    run = await h.seed_completed_run(
+        db_session, conversation_id=conversation_id, identity=identity
+    )
+    event = await h.seed_run_event(
+        db_session,
+        run=run,
+        payload_inline=None,
+        payload_ref=None,
+        payload_state="archived",
+    )
+    await db_session.flush()
+    await _expect_rejected(
+        db_session,
+        f"UPDATE {_TABLE} SET payload_state = 'redacted' WHERE id = :eid",
+        event.id,
+    )
+
+
 async def test_guard_rejects_ref_tombstone_not_redacted(db_session):
     """清 ref 但 payload_state 不转 redacted -> 拒绝。
 
@@ -228,7 +263,7 @@ async def test_guard_rejects_ref_tombstone_not_redacted(db_session):
         ("seq", "seq = 999"),
         ("payload_digest", "payload_digest = repeat('b', 64)"),
         ("classification", "classification = 'public'"),
-        ("visibility", "visibility = 'system'"),
+        ("visibility", "visibility = 'internal'"),
         ("payload_size", "payload_size = 999"),
         ("event_type", "event_type = 'run.tampered'"),
     ],
@@ -306,7 +341,7 @@ async def test_migration_041_roundtrip_restores_039_on_downgrade(db_session):
     head_cfg = Config(str(server_root / "alembic.ini"))
     head_cfg.set_main_option("script_location", str(server_root / "alembic"))
     head_rev = ScriptDirectory.from_config(head_cfg).get_current_head()
-    guard_home = "041_run_event_external_ref_tombstone"
+    guard_home = "041_run_event_ref_tombstone"
 
     event = await _seed_external_event(db_session)
     event_id = event.id
