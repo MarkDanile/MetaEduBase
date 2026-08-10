@@ -399,6 +399,78 @@ async def test_promote_does_not_overwrite_registered(db_session, monkeypatch):
     assert row.blocked_reason is None
 
 
+async def test_promote_does_not_overwrite_erased(db_session, monkeypatch):
+    """已 erased 的行不被覆盖（0 行命中 -> 返回当前态，不降级）。
+
+    变异杀手：把 promote 的 UPDATE 谓词从「blocked/unknown_scheme」放宽为任何
+    blocked（如去掉 ``blocked_reason = 'unknown_scheme'`` 限定）或去掉谓词 ->
+    本测试变红（erased 行被错误覆盖）。对应 docstring「已 registered/**erased**
+    的行不被覆盖」——首轮 P2-2 补。
+    """
+    _recognize_db_local(monkeypatch)
+    await _ensure_tenant(db_session)
+    await _seed_blocked_ref(db_session)
+    # 把 blocked 行推进到 erased（带合法 receipt digest，满足
+    # ck_agent_external_refs_erase_evidence：erased 必有 receipt_digest）。
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_external_object_refs "
+            "SET erase_state = 'erased', blocked_reason = NULL, "
+            "  receipt_digest = :rd, ref_scheme = 'db_local', "
+            "  updated_at = clock_timestamp() "
+            "WHERE tenant_id = :t AND source_table = :st "
+            "  AND source_row_id = :sr AND ref_value = :rv"
+        ),
+        {
+            "t": TENANT_ID,
+            "st": _TABLE,
+            "sr": _ROW_ID,
+            "rv": _REF_VALUE,
+            "rd": "a" * 64,
+        },
+    )
+    await db_session.flush()
+    state = await promote_external_ref_to_registered(
+        db_session,
+        tenant_id=TENANT_ID,
+        source_table=_TABLE,
+        source_row_id=_ROW_ID,
+        ref_value=_REF_VALUE,
+        ref_scheme=_RECOGNIZED,
+        adapter=_CapableAdapter(),
+    )
+    assert state == "erased", "已 erased 行返回当前态，不覆盖"
+    row = await _fetch_ref(db_session)
+    assert row.erase_state == "erased", "已 erased 行不得被 promote 改回 registered"
+    assert row.receipt_digest == "a" * 64, "receipt 证据保留"
+
+
+async def test_promote_unknown_scheme_returns_real_state_when_already_registered(
+    db_session, monkeypatch
+):
+    """scheme 未识别但行已被并发推进为 registered -> 返回真实态（不谎报 blocked）。
+
+    变异杀手：把 promote 改回首轮 P1-2 的「gate 早退」实现（scheme 未识别
+    直接 return 'blocked'，不取锁不读当前态）-> 本测试变红。锁定
+    「锁内诚实返回实际当前态」语义。
+    """
+    # allowlist 保持空（scheme 未识别），但种一条已 registered 行。
+    await _ensure_tenant(db_session)
+    await _seed_registered_ref(db_session, ref_scheme="db_local")
+    state = await promote_external_ref_to_registered(
+        db_session,
+        tenant_id=TENANT_ID,
+        source_table=_TABLE,
+        source_row_id=_ROW_ID,
+        ref_value=_REF_VALUE,
+        ref_scheme=_RECOGNIZED,
+        adapter=_CapableAdapter(),
+    )
+    assert state == "registered", "scheme 未识别也应返回行真实当前态（不谎报 blocked）"
+    row = await _fetch_ref(db_session)
+    assert row.erase_state == "registered"
+
+
 async def test_promote_missing_row_returns_blocked(db_session, monkeypatch):
     """行不存在 -> 返回 blocked（保持 fail-closed 语义）。"""
     _recognize_db_local(monkeypatch)
@@ -465,6 +537,63 @@ async def test_concurrent_promote_serializes_to_single_registered(
     assert count == 1, "并发 promote 不得产生重复 ledger 行"
     assert row.erase_state == "registered"
     assert row.blocked_reason is None
+
+
+async def test_concurrent_promote_does_not_overwrite_erased(
+    db_session, session_factory, monkeypatch
+):
+    """并发 promote 命中已被推进为 erased 的行 -> 不覆盖、保留 receipt 证据。
+
+    判别点（首轮 P1-2 补）：promote 若被改成无条件覆盖（删除或放宽
+    ``blocked/unknown_scheme`` 谓词），在无并发的
+    ``test_promote_does_not_overwrite_erased`` 中已变红；本测试补充**并发组合**：
+    一行先从 blocked 推进为 erased，再并发 promote 同一行，最终仍为 erased。
+    """
+    _recognize_db_local(monkeypatch)
+    await _ensure_tenant(db_session)
+    await _seed_blocked_ref(db_session)
+    await db_session.commit()
+
+    # 先把基行推进为 erased（带合法 receipt digest，满足 erase_evidence）。
+    async with session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "UPDATE metaedu.agent_external_object_refs "
+                "SET erase_state = 'erased', blocked_reason = NULL, "
+                "  receipt_digest = :rd, ref_scheme = 'db_local', "
+                "  updated_at = clock_timestamp() "
+                "WHERE tenant_id = :t AND source_table = :st "
+                "  AND source_row_id = :sr AND ref_value = :rv"
+            ),
+            {
+                "t": TENANT_ID,
+                "st": _TABLE,
+                "sr": _ROW_ID,
+                "rv": _REF_VALUE,
+                "rd": "b" * 64,
+            },
+        )
+
+    async def _promote_once() -> str:
+        async with session_factory() as session, session.begin():
+            return await promote_external_ref_to_registered(
+                session,
+                tenant_id=TENANT_ID,
+                source_table=_TABLE,
+                source_row_id=_ROW_ID,
+                ref_value=_REF_VALUE,
+                ref_scheme=_RECOGNIZED,
+                adapter=_CapableAdapter(),
+            )
+
+    states = await asyncio.gather(*[_promote_once() for _ in range(3)])
+    assert all(state == "erased" for state in states), (
+        f"concurrent promote on erased row must observe erased, got {states}"
+    )
+    async with session_factory() as session:
+        row = await _fetch_ref(session)
+    assert row.erase_state == "erased", "并发 promote 不得把 erased 改回 registered"
+    assert row.receipt_digest == "b" * 64, "receipt 证据保留"
 
 
 async def test_concurrent_register_is_unique(
