@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-REQ-041-047-S4-E-B1: R1-S4-E-B1 Lifecycle Registration + Adapter Contract
+
+状态：🟡 进行中
+类型：REQ 新需求开发（S4-E 拆分实现）
+领域：server / external.payload.v1（staging/reference lifecycle port + adapter contract）
+当前执行模式：superpower / plan-do（TD-092 高风险流程：Draft iteration -> Ready Backend full -> 三面首轮 -> 根因族返修 -> 定向复核）
+最近接手工具：Claude Code
+分支：feat/req041-047-r1-s4e-lifecycle-registration
+
+需求来源：
+- Spec: [REQ-041/047 联合核心契约](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md) / [R1 Retention 专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- Plan: [R1-S4-E E-5-2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化)
+- 技术债：
+- 架构约束：[architecture.md](../03-engineering-governance/01-rules/architecture.md)、[contracts.md](../03-engineering-governance/01-rules/contracts.md)、[data-integrity.md](../03-engineering-governance/01-rules/data-integrity.md)
+
+当前进展：S4-E-A 已合并（PR #548），从 main `59d2d935` 开工；分支已建；落点对账完成（ledger schema / backfill `_register_external_ref` / E-1/E-2b/E-3a 契约核对）；实现完成——`external_object_adapter.py`（E-2b 硬前置 + E-3a 失败分类 + idempotency key/receipt digest）+ `external_ref_lifecycle.py`（`register_external_object_ref` registered 唯一生产者 + `promote_external_ref_to_registered` blocked/unknown_scheme->registered 唯一受控入口）+ 两套测试（25 passed，含 E-6 反例判别点）；mypy 0 基线、ruff clean、engineering docs 通过。
+下一步：Draft PR + Backend iteration -> 三面首轮 -> 根因族返修 -> 定向复核。
+验证状态：B1 新测试 25/25 passed（compose 套件 326 passed / 1 failed = `test_s4c_producer_propagation` 顺序污染既有 main 问题 TD-080 类，单跑 8 passed）；mypy baseline 通过；ruff clean；engineering docs passed。
+交接备注：范围仅 B1（lifecycle registration + adapter contract）；不得启动 B2/C、S4-F、S5，不改 migration 040/041、不翻 external/runtime registry、不实现真实 Pi Worker/云存储生产 adapter。
 
 ## 下一批候选任务
 
@@ -22,7 +40,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | REQ-041/047 R1-S4-E-B1 Lifecycle Registration + Adapter Contract | 🔵 就绪 | staging/reference lifecycle port（`registered` 唯一正常生产者；`blocked/unknown_scheme -> registered` 仅 scheme 明确识别 + adapter capability 验证通过）+ adapter contract（幂等重放/`receipt lookup` 硬前置 + 失败分类注入）；S4-E-A 已合并（PR #548），待下一条明确开工指令 | [Plan §R1-S4-E E-5-2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
