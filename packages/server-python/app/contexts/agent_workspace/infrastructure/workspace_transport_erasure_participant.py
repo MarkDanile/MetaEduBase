@@ -1,12 +1,15 @@
-"""R1-S4-D-A：``workspace.transport.v1`` erasure participant。
+"""R1-S4-D-A/S4-E-A：``workspace.transport.v1`` erasure participant。
 
-清除范围（Plan §R1-S4-D 契约细化 D-A-1，两侧对称）：
+清除范围（Plan §R1-S4-D 契约细化 D-A-1 / §R1-S4-E E-0a，两侧对称）：
 
-- **outbox**（``agent_workspace_outbox``）：正文事实谓词 ``payload_inline IS
-  NOT NULL OR payload_ref IS NOT NULL`` 命中即清（**不排除 ``cancelled``**——
-  S4-C Tx2 终态化残留、S3-E terminalize 产物），统一清 ``payload_inline``/
-  ``payload_ref`` 转 ``status='suppressed'`` 保留 ``payload_digest``；``cancelled``
+- **outbox**（``agent_workspace_outbox``）：**只清 inline-only 行**（``payload_ref
+  IS NULL``）转 ``status='suppressed'`` 保留 ``payload_digest``（**不排除
+  ``cancelled``**——S4-C Tx2 终态化残留、S3-E terminalize 产物）；``cancelled``
   行保留 S4-C 终态证据（``last_error_code`` 具名 code）不得清除或重写。
+- **ref-bearing 行（``payload_ref IS NOT NULL``）transport 零修改并 blocked
+  （``purge_owner_unavailable``，S4-E-A E-0a）**——external object 未取得 receipt
+  前不得清 ref（D5「先删 external object 取 receipt，再清 transport DB ref」），
+  ref 归 external.payload.v1（S4-E-B2）清除。
 - **inbox**（``agent_workspace_inbox``）状态矩阵：``processing`` ->
   ``rejected``+tombstone（与 S4-C Tx1 对齐）；已 ``consumed/rejected`` 保留原
   status 仅补幂等 tombstone；已 tombstone digest 精确匹配 no-op / 不匹配 fail
@@ -179,6 +182,26 @@ class WorkspaceTransportErasureParticipant(TransportErasureParticipantBase):
 
     # --- 正文清除（outbox -> suppressed 留 digest；inbox 状态矩阵）------------
 
+    async def count_ref_bearing_outbox_rows(
+        self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> int:
+        """ref-bearing workspace outbox 行计数（S4-E-A E-0a）。
+
+        ``payload_ref IS NOT NULL`` 的行 transport 零修改并 blocked（ref 归
+        external.payload.v1 清除）；仅 inline-only 行可清。
+        """
+        return int(
+            await self._session.scalar(
+                text(
+                    "SELECT count(*) FROM metaedu.agent_workspace_outbox "
+                    "WHERE tenant_id = :t AND conversation_id = :c "
+                    "AND payload_ref IS NOT NULL"
+                ),
+                {"t": tenant_id, "c": conversation_id},
+            )
+            or 0
+        )
+
     async def erase_transport_body(
         self,
         *,
@@ -187,16 +210,19 @@ class WorkspaceTransportErasureParticipant(TransportErasureParticipantBase):
         purge_revision: int,
         now: datetime,
     ) -> None:
-        # outbox：正文事实谓词命中 -> 清 payload_inline/payload_ref 转 suppressed
-        # 保留 payload_digest（+ last_error_code 终态证据，不动）。显式绑定
-        # tenant + conversation 维度；suppressed 分支满足 ck_agent_ws_outbox_payload
-        # （清正文留 digest）。幂等：已 suppressed 行不命中。
+        # outbox：**只清 inline-only 行**（payload_ref IS NULL）转 suppressed 保留
+        # payload_digest（+ last_error_code 终态证据，不动）。ref-bearing 行已由
+        # `count_ref_bearing_outbox_rows` 前置 blocked（purge_owner_unavailable），
+        # 不会走到这里——**不清 payload_ref**（D5：external receipt 前不清 ref，
+        # ref 归 external.payload.v1 清除）。显式绑定 tenant + conversation 维度；
+        # suppressed 分支满足 ck_agent_ws_outbox_payload（清正文留 digest）。
+        # 幂等：已 suppressed 行不命中。
         await self._session.execute(
             text(
                 "UPDATE metaedu.agent_workspace_outbox "
-                "SET payload_inline = NULL, payload_ref = NULL, status = 'suppressed' "
+                "SET payload_inline = NULL, status = 'suppressed' "
                 "WHERE tenant_id = :t AND conversation_id = :c "
-                "AND (payload_inline IS NOT NULL OR payload_ref IS NOT NULL) "
+                "AND payload_inline IS NOT NULL AND payload_ref IS NULL "
                 "AND status <> 'suppressed'"
             ),
             {"t": tenant_id, "c": conversation_id},
