@@ -26,6 +26,20 @@ registry**（registry 断言与实现分离，测试作用域内自动还原）�
   unknown->unknown / failed->blocked+adapter_unavailable；digest mismatch->blocked；
 - B2 互操作：receipt 后清 ref + 转 suppressed（outbox）/ redacted（RunEvent）；
   transport 已 suppressed 行再扫 no-op。
+
+**定向复核后仅测试判别力增强批次（HEAD `1728bd7f` 基线，DR-1/DR-2/DR-3）**：
+- DR-1：`test_concurrent_double_b2_erase_serializes` 改共享可计数 adapter，断言同一
+  ref/idempotency key 的外部删除总调用恰为 1（E-6「无重复副作用」判别点）+ 最终
+  receipt/ref/ACK 状态。
+- DR-2：`test_erase_crash_after_tx1_replays_to_completion` 断言第一次 adapter 副作用
+  已发生但 Tx2 未落地（calls==1 + ledger registered + receipt NULL + source ref 未清），
+  重放后 calls 仍 1 + 完成 receipt/ref 清除/ACK。
+- DR-3：`test_erase_tx2_fence_not_erasing_after_tx1` 用 adapter 协调并发（asyncio.
+  Event）在 Tx1 提交后、Tx2 前把 fence 改 erased，**真实命中**「Tx2 检 fence 非
+  erasing」fail-closed 分支（不用 Tx1 首写失败替代；不新增生产测试钩子）。
+- DR-4（P3，仅记录不修改）：reconcile 清源 ref 前的源行 SELECT 是 plain read（集合锁
+  内已串行化 B1/B2/backfill 写，无跨锁序风险）；若未来新增不走集合锁的写者则有
+  TOCTOU——防御性观察，本次**不修改生产锁序**。
 """
 
 from __future__ import annotations
@@ -1034,6 +1048,33 @@ async def test_erase_crash_after_tx1_replays_to_completion(db_session):
     assert checkpoint["state"] == PurgeOwnerState.ERASING.value
     assert checkpoint["attempt"] == 1
     assert checkpoint["checkpoint_digest"] is not None
+    # DR-2 判别力：第一次 adapter 副作用已发生（calls==1）但 Tx2 **未落地**——
+    # ledger 仍 registered + receipt_digest NULL + source ref 未清（E-6「receipt
+    # 写入前崩溃」：崩溃在 adapter 副作用后、Tx2 写 erased 前）。
+    assert crash_adapter.calls == 1
+    crash_ref_id = (
+        await db_session.execute(
+            text(
+                "SELECT id FROM metaedu.agent_external_object_refs "
+                "WHERE source_row_id = :sr"
+            ),
+            {"sr": outbox_id},
+        )
+    ).scalar_one()
+    crash_state = await _ledger_state(db_session, crash_ref_id)
+    assert crash_state["erase_state"] == "registered"
+    assert crash_state["receipt_digest"] is None
+    crash_outbox = (
+        await db_session.execute(
+            text(
+                "SELECT payload_ref, status FROM metaedu.agent_workspace_outbox "
+                "WHERE id = :id"
+            ),
+            {"id": outbox_id},
+        )
+    ).mappings().one()
+    assert crash_outbox["payload_ref"] == _REF_VALUE  # 源 ref 尚未清除（Tx2 未跑）
+    assert crash_outbox["status"] == "pending"
     await db_session.commit()
 
     # 同 invocation 重放（同一 operation revision 语义——operation 已 running，
@@ -1057,9 +1098,10 @@ async def test_erase_crash_after_tx1_replays_to_completion(db_session):
         purge_operation_id=op_id,
         expected_operation_revision=op_rev,
     )
-    # adapter 幂等去重：崩溃调用 1 次 + 重放 1 次 = 2（同一 object 两处调用）。
-    # 但重放走 checkpoint ERASING 续做分支（attempt 不变、intent 匹配），
-    # Tx2 完整执行——源 ref 清 + ledger erased + ACK。
+    # DR-2：重放完整执行 Tx2（checkpoint ERASING 续做分支，attempt 不变、intent
+    # 匹配）——ledger erased + 源 ref 清 + ACK；重放进程的 adapter 调用恰为 1
+    # （幂等 key 去重；若重放重复调用 adapter 本断言转红）。
+    assert adapter2.calls == 1
     ref = (
         await db_session.execute(
             text(
@@ -1128,6 +1170,10 @@ async def test_concurrent_double_b2_erase_serializes(session_factory):
         await seed_session.commit()
     await engine.dispose()
 
+    # 共享可计数 adapter（DR-1：同一 ref/idempotency key 的外部删除总调用恰为 1——
+    # 共享 fence 串行化 + 幂等 key 抑制副作用，E-6「无重复副作用」判别点）。
+    shared_adapter = _SuccessAdapter()
+
     async def _erase_with_new_session():
         eng = create_async_engine(TEST_DB_URL, poolclass=NullPool)
         fact = async_sessionmaker(eng, class_=AsyncSession, expire_on_commit=False)
@@ -1147,7 +1193,7 @@ async def test_concurrent_double_b2_erase_serializes(session_factory):
                     )
                 ).scalar_one()
                 participant = ExternalPayloadErasureParticipant(
-                    sess, _SuccessAdapter()
+                    sess, shared_adapter
                 )
                 try:
                     await participant.erase_external_payload(
@@ -1177,6 +1223,12 @@ async def test_concurrent_double_b2_erase_serializes(session_factory):
     # 两个调用都必须成功（一个完成 + ACK，一个 erased-fence 重放 no-op）；无异常。
     for r in results:
         assert not isinstance(r, Exception), f"concurrent erase raised: {r}"
+
+    # DR-1 判别力：同一 ref/idempotency key 的外部删除总调用**恰为 1**——共享
+    # fence 串行化保证只有一个 operation 进 adapter 窗口，另一个走 erased-fence
+    # 幂等重放 no-op（不重复调用 adapter）。若实现重复调用 adapter 但靠幂等 key
+    # 抑制副作用，本断言转红（E-6「adapter 调用计数 == 1」）。
+    assert shared_adapter.calls == 1
 
     # 最终态：ledger erased + 源 ref 清 + fence erased + checkpoint acked。
     engine2 = create_async_engine(TEST_DB_URL, poolclass=NullPool)
@@ -1314,6 +1366,129 @@ async def test_erase_fence_not_erasing_in_tx2_fail_closed(db_session):
             purge_operation_id=op_id,
             expected_operation_revision=1,
         )
+
+
+async def test_erase_tx2_fence_not_erasing_after_tx1(session_factory):
+    """E-2a DR-3 判别力：**真实命中**「Tx1 已提交、Tx2 重验时 fence 非 erasing」的
+    fail-closed 分支（participant 行 663-667）。
+
+    之前 `test_erase_fence_not_erasing_in_tx2_fail_closed` 预置 fence=erased 使 Tx1
+    首写 active->erasing 即冲突，未触达真实路径。本测试用 **adapter 协调并发**：
+    会话 A 跑 erase（Tx1 提交后调用 adapter），adapter 在 `delete_object` 内 set 一个
+    ``asyncio.Event`` 并等待——此窗口内会话 B 把 fence 改到 erased（模拟并发 purge
+    完成）；随后 A 放行 adapter、进入 Tx2 重验，检出 fence 非 erasing -> fail closed。
+    不新增任何生产测试钩子（用现有 adapter 故障注入 + 独立连接）。
+    """
+    from sqlalchemy.ext.asyncio import (
+        AsyncSession,
+        async_sessionmaker,
+        create_async_engine,
+    )
+    from sqlalchemy.pool import NullPool
+
+    from tests.conftest import TEST_DB_URL
+
+    # 种数据（独立 session commit）。
+    engine = create_async_engine(TEST_DB_URL, poolclass=NullPool)
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as seed_session:
+        await _ensure_test_tenant(seed_session)
+        conv_id, purge_rev = await _seed_deleted_expired_conversation(seed_session)
+        await _seed_workspace_outbox_ref(seed_session, conv_id)
+        op_id, _ = await _make_purge_operation(seed_session, conv_id, purge_rev)
+        await seed_session.commit()
+    await engine.dispose()
+
+    adapter_entered = asyncio.Event()
+    adapter_release = asyncio.Event()
+
+    class _FenceRaceAdapter(_SuccessAdapter):
+        """Tx1 提交后进入 adapter 窗口：set entered、等 release（模拟 Tx2 前暂停）。"""
+
+        async def delete_object(self, **kwargs):
+            self.calls += 1
+            adapter_entered.set()
+            await adapter_release.wait()
+            return ExternalEraseSuccess(
+                adapter_receipt_evidence=f"ev:{kwargs['idempotency_key'][:16]}"
+            )
+
+    race_adapter = _FenceRaceAdapter()
+    tx2_error: list[Exception] = []
+
+    async def _run_erase_a():
+        eng = create_async_engine(TEST_DB_URL, poolclass=NullPool)
+        fact = async_sessionmaker(eng, class_=AsyncSession, expire_on_commit=False)
+        try:
+            async with fact() as sess:
+                participant = ExternalPayloadErasureParticipant(sess, race_adapter)
+                try:
+                    await participant.erase_external_payload(
+                        tenant_id=TENANT_ID,
+                        conversation_id=conv_id,
+                        purge_revision=purge_rev,
+                        purge_operation_id=op_id,
+                        expected_operation_revision=1,
+                    )
+                except ValueError as exc:
+                    # Tx2 重验 fail closed（fence 非 erasing）——正是本测试判别的路径。
+                    tx2_error.append(exc)
+        finally:
+            await eng.dispose()
+
+    async def _race_fence_to_erased():
+        """等待 A 进入 adapter 窗口（Tx1 已提交、锁已释放）后，把 fence 改 erased。"""
+        await adapter_entered.wait()
+        eng = create_async_engine(TEST_DB_URL, poolclass=NullPool)
+        fact = async_sessionmaker(eng, class_=AsyncSession, expire_on_commit=False)
+        now = datetime.now(UTC).replace(tzinfo=None)
+        try:
+            async with fact() as sess:
+                await sess.execute(
+                    text(
+                        "UPDATE metaedu.agent_erasure_fences "
+                        "SET state = 'erased', ack_digest = :ad, acked_at = :now "
+                        "WHERE tenant_id = :t AND conversation_id = :c AND owner_key = :o"
+                    ),
+                    {
+                        "t": TENANT_ID,
+                        "c": conv_id,
+                        "o": EXTERNAL_PAYLOAD_OWNER,
+                        "ad": "e" * 64,
+                        "now": now,
+                    },
+                )
+                await sess.commit()
+        finally:
+            await eng.dispose()
+            adapter_release.set()  # 放行 A 进入 Tx2 重验
+
+    await asyncio.gather(_run_erase_a(), _race_fence_to_erased())
+    # Tx2 重验检出 fence 非 erasing -> fail closed（ValueError）。
+    assert len(tx2_error) == 1, f"expected Tx2 fence-not-erasing fail closed, got {tx2_error}"
+    assert "fence no longer erasing" in str(tx2_error[0]) or "stale fence" in str(tx2_error[0])
+    # adapter 副作用已发生（calls==1）但 ledger 未写 erased（Tx2 fail closed 回滚）。
+    assert race_adapter.calls == 1
+    eng3 = create_async_engine(TEST_DB_URL, poolclass=NullPool)
+    fact3 = async_sessionmaker(eng3, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with fact3() as check_session:
+            rows = (
+                await check_session.execute(
+                    text(
+                        "SELECT id, erase_state, receipt_digest FROM "
+                        "metaedu.agent_external_object_refs "
+                        "WHERE tenant_id = :t AND conversation_id = :c"
+                    ),
+                    {"t": TENANT_ID, "c": conv_id},
+                )
+            ).mappings().all()
+            # Tx2 fail closed -> 整个事务回滚，ledger 仍 registered（receipt 未写）。
+            assert len(rows) == 1
+            assert rows[0]["erase_state"] == "registered"
+            assert rows[0]["receipt_digest"] is None
+    finally:
+        await eng3.dispose()
 
 
 # ---------------------------------------------------------------------------
