@@ -93,7 +93,14 @@ REASON_EXTERNAL_REF_SCAN_NONZERO = "purge_blocked_by_external_ref_scan_nonzero"
 REASON_EXTERNAL_ADAPTER_UNAVAILABLE = "purge_blocked_by_external_adapter_unavailable"
 REASON_EXTERNAL_OUTCOME_UNKNOWN = "purge_blocked_by_external_outcome_unknown"
 REASON_EXTERNAL_ERASE_TIMEOUT = "purge_blocked_by_external_erase_timeout"
-REASON_EXTERNAL_DIGEST_MISMATCH = "purge_blocked_by_external_digest_mismatch"
+# E-3a「digest mismatch -> blocked/digest_mismatch」：在 B2 设计下为 **vacuous**——
+# Tx2 的 ``receipt_digest`` 由 adapter evidence 现算现写（无已持久化值可比），
+# reconcile 同样现算现写；不存在「已持久化 digest 与重算不匹配」的比对点。重放/
+# reconcile 的 evidence 缺失走保持原状态（E-3b）而非 digest_mismatch。E-2b 的
+# 「重放比对」在 B2 无持久化 receipt 可比（Tx2 原子写），归 S5/运维 reconcile 的
+# receipt lookup evidence 存在性判定。故 **不定义 REASON_EXTERNAL_DIGEST_MISMATCH
+# 常量**（避免死代码），CHECK 枚举 `digest_mismatch` 保留给未来需要持久化比对
+# 的路径。
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,12 +109,15 @@ class ExternalRefScan:
 
     ``total`` 为该 Conversation 未 erased 的 external ref 行数（``registered`` +
     ``blocked`` + ``unknown``）——final scan 非零 -> blocked（E-3 矩阵：非 erased
-    即未完成，object 可能仍存在）。
+    即未完成，object 可能仍存在）。``blocked_reasons`` 携带 blocked 行的
+    ``blocked_reason`` 分布（首轮复审 C-7/D-10/T-6：conversation 级 reason 归并
+    须保留 erase_timeout 等可诊断身份，不得一律折叠为 adapter_unavailable）。
     """
 
     registered_refs: int
     blocked_refs: int
     unknown_refs: int
+    blocked_reasons: tuple[str, ...] = ()
 
     @property
     def total(self) -> int:
@@ -120,6 +130,7 @@ class ExternalRefScan:
                 "registered_refs": self.registered_refs,
                 "blocked_refs": self.blocked_refs,
                 "unknown_refs": self.unknown_refs,
+                "blocked_reasons": sorted(self.blocked_reasons),
             }
         )
 
@@ -313,23 +324,34 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
     async def _scan_external_refs(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
     ) -> ExternalRefScan:
-        """该 Conversation 的 external ref 残留计数（final scan 判定用）。"""
+        """该 Conversation 的 external ref 残留计数（final scan 判定用）。
+
+        blocked 行同时收集 ``blocked_reason`` 分布（供 conversation 级 reason
+        归并分派，首轮复审 C-7/D-10/T-6）。
+        """
         counts = (
             await self._session.execute(
                 text(
-                    "SELECT erase_state, count(*) FROM "
-                    "metaedu.agent_external_object_refs "
+                    "SELECT erase_state, count(*), "
+                    "  (CASE WHEN erase_state = 'blocked' THEN blocked_reason END) "
+                    "  AS reason FROM metaedu.agent_external_object_refs "
                     "WHERE tenant_id = :t AND conversation_id = :c "
-                    "GROUP BY erase_state"
+                    "GROUP BY erase_state, reason"
                 ),
                 {"t": tenant_id, "c": conversation_id},
             )
         ).all()
-        by_state = {state: int(count) for state, count in counts}
+        by_state: dict[str, int] = {}
+        blocked_reasons: set[str] = set()
+        for state, count, reason in counts:
+            by_state[state] = by_state.get(state, 0) + int(count)
+            if state == "blocked" and reason is not None:
+                blocked_reasons.add(reason)
         return ExternalRefScan(
             registered_refs=by_state.get("registered", 0),
             blocked_refs=by_state.get("blocked", 0),
             unknown_refs=by_state.get("unknown", 0),
+            blocked_reasons=tuple(sorted(blocked_reasons)),
         )
 
     async def _load_conversation_for_update(
@@ -418,11 +440,12 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
                     f"erased fence {self.owner_key!r} but external ref scan non-zero "
                     f"(total={scan.total}); external object leaked after erase"
                 )
-            body_scan = TransportBodyScan(
-                outbox_payload_rows=scan.registered_refs,
-                inbox_unsettled_rows=0,
-                run_unsettled_rows=0,
-            )
+            # checkpoint_digest 必须用 final scan digest（ExternalRefScan 形式）——
+            # 正常 ACK 持久化的也是该形式（``_ack_owner_checkpoint`` 处
+            # ``checkpoint_digest=final_scan.digest()``）。**不得**包
+            # ``TransportBodyScan``（其 digest 键域不同，sha256 必不匹配 ->
+            # ``_repair_checkpoint_if_pending`` 的 digest 一致性校验必 fail closed，
+            # 幂等重放失效——首轮复审 D-1）。
             await self._repair_checkpoint_if_pending(
                 purge_operation_id=purge_operation_id,
                 tenant_id=tenant_id,
@@ -433,7 +456,7 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
                 expected_operation_revision=expected_operation_revision,
                 fence_owner_version=fence.owner_version,
                 ack_digest=fence_ack_digest,
-                checkpoint_digest=body_scan.digest(),
+                checkpoint_digest=scan.digest(),
                 conversation=conversation,
                 now=effective_now,
             )
@@ -498,7 +521,12 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
                 scan=body_scan,
                 conversation=conversation,
                 now=effective_now,
-                expected_revision=None,
+                # 本 gate 在 _mark_operation_running（bump revision）**之前**检查，
+                # 与同位置 legal-hold 分支对齐——operation revision 尚未 bump，传
+                # expected_operation_revision 做 revision CAS（首轮复审 D-4：不得
+                # 用基类 transport 的 None——那是 gate 在 mark_running 之后才有的
+                # N->N+1 依据，此处不成立）。
+                expected_revision=expected_operation_revision,
             )
             return self._blocked_summary(
                 fence=fence,
@@ -683,6 +711,13 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
                 if not isinstance(outcome, ExternalEraseSuccess):
                     raise ValueError(
                         "classify_adapter_outcome erased without success evidence"
+                    )
+                # E-2b「可验证 evidence」：空/空白 evidence 视为无 evidence，fail
+                # closed（首轮复审 D-9：不得凭空 evidence 写 erased）。
+                if not outcome.adapter_receipt_evidence.strip():
+                    raise ValueError(
+                        "external erase success without non-empty "
+                        "adapter_receipt_evidence; cannot forge erased receipt"
                     )
                 idempotency_key = external_erase_idempotency_key(
                     ref_scheme=ref.ref_scheme,
@@ -881,12 +916,17 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
           envelope 列不变）。
         - 两 outbox：``payload_ref=NULL + status='suppressed'``（ref-bearing 行 inline
           本已 NULL，满足现 outbox CHECK suppressed 分支）。
+
+        校验 rowcount（首轮复审 C-6/D-13）：调用方已确认 ``source payload_ref ==
+        ledger ref_value``（E-1 绑定匹配），UPDATE 必须命中 1 行——0 行命中说明
+        041 guard 拒行或并发已清，fail closed（ledger 已写 erased + receipt，源 ref
+        未清 -> 必须由事务回滚保持原子一致，不得静默继续）。
         """
         if ref.source_table == "agent_run_events":
             # 041 guard 分支 2：OLD/NEW inline 均 NULL、ref 被清、转 redacted、其余
             # envelope 列不变（to_jsonb 差集仅豁免 payload_ref/payload_state）——
             # **不得** SET updated_at（RunEvent 无该列，且会破坏差集豁免）。
-            await self._session.execute(
+            result = await self._session.execute(
                 text(
                     "UPDATE metaedu.agent_run_events "
                     "SET payload_ref = NULL, payload_state = 'redacted' "
@@ -901,14 +941,24 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
                 else "metaedu.agent_execution_outbox"
             )
             # 两 outbox 无 updated_at 列（只有 created_at）——不 SET updated_at。
-            await self._session.execute(
-                text(
-                    f"UPDATE {table} "
-                    "SET payload_ref = NULL, status = 'suppressed' "
-                    "WHERE tenant_id = :t AND id = :id AND payload_ref = :rv "
-                    "AND payload_inline IS NULL"
+            result = cast(
+                CursorResult,
+                await self._session.execute(
+                    text(
+                        f"UPDATE {table} "
+                        "SET payload_ref = NULL, status = 'suppressed' "
+                        "WHERE tenant_id = :t AND id = :id AND payload_ref = :rv "
+                        "AND payload_inline IS NULL"
+                    ),
+                    {"t": tenant_id, "id": ref.source_row_id, "rv": ref.ref_value},
                 ),
-                {"t": tenant_id, "id": ref.source_row_id, "rv": ref.ref_value},
+            )
+        cleared = cast(CursorResult, result).rowcount
+        if cleared != 1:
+            raise ValueError(
+                f"external ref {ref.id} source ref clear hit {cleared} row(s); "
+                "expected 1 (matched ref_value). 041 guard rejection or concurrent "
+                "clear -> fail closed to keep ledger-erased + source-ref-removed atomic"
             )
 
     @staticmethod
@@ -968,14 +1018,28 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
         -> 保持原状态（blocked/unknown 不动，交运维/人工确认）。收场（冻结）：
         Tx2 fail closed 但 adapter 副作用已发生时，若 receipt 可得则补写 erased，
         否则保持 blocked/unknown（E-3a）。
+
+        **锁序（首轮复审 C-3/D-5 返修）**：写 ledger + 清源 ref 前按源行取集合
+        advisory lock（``_collection_owner(source_table)`` 与 backfill 同源，
+        E-5-2/D8）——与 B1/backfill 对同源行的 ledger 写互斥，防「行锁->集合锁」
+        与「集合锁->行锁」AB-BA。**持锁期间不执行外部 I/O**：receipt lookup 在
+        取锁前无锁调用（evidence 是幂等 key 查询，不依赖锁内状态）。
+
+        **清源 ref（首轮复审 D-3/T-7 返修）**：补写 ``erased`` + receipt 后按
+        E-1/E-1a 绑定校验清对应 DB ref（E-1b：B2 是 3 source ref 唯一清除者）——
+        source 已 NULL/缺失跳过（历史兼容）、非 NULL 且 != ledger ``ref_value``
+        fail closed、匹配则清。否则 conversation 永久 blocked（B2 不再消费
+        reconciled-erased 行、transport 对 ref-bearing 行永久 ``purge_owner_
+        unavailable``）。
         """
+        # 先无锁查 evidence（receipt lookup 是外部 I/O，E-2「禁持锁做外部 I/O」）。
         row = (
             await self._session.execute(
                 text(
                     "SELECT id, conversation_id, ref_scheme, ref_value, "
                     "source_table, source_row_id, erase_state, receipt_digest "
                     "FROM metaedu.agent_external_object_refs "
-                    "WHERE tenant_id = :t AND id = :id FOR UPDATE"
+                    "WHERE tenant_id = :t AND id = :id"
                 ),
                 {"t": tenant_id, "id": ref_id},
             )
@@ -984,7 +1048,6 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
             raise ValueError(f"external ref {ref_id} not found for reconcile")
         if row["erase_state"] == "erased":
             return "erased"  # 已终态 no-op
-        # 仅当 adapter 支持 receipt lookup 且返回可验证 evidence 才补写。
         if not self._adapter.supports_receipt_lookup:
             return row["erase_state"]
         idempotency_key = external_erase_idempotency_key(
@@ -996,9 +1059,31 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
         evidence = await self._adapter.receipt_lookup(
             idempotency_key=idempotency_key
         )
-        if evidence is None:
-            return row["erase_state"]  # 无 receipt，禁止强制 erased
-        # 有证据：按冻结 envelope 重算 receipt_digest（E-2b，禁自造）。
+        if evidence is None or not evidence.strip():
+            return row["erase_state"]  # 无 receipt / 空 evidence，禁止强制 erased
+        # 有证据：取集合锁（与 backfill 同源，D8）+ 锁内校验 + 补写 + 清 ref。
+        await acquire_transport_aggregate_lock(
+            self._session,
+            tenant_id=tenant_id,
+            owner_key=_collection_owner(row["source_table"]),
+            source_table=row["source_table"],
+            source_row_id=row["source_row_id"],
+        )
+        locked = (
+            await self._session.execute(
+                text(
+                    "SELECT erase_state, blocked_reason FROM "
+                    "metaedu.agent_external_object_refs "
+                    "WHERE tenant_id = :t AND id = :id FOR UPDATE"
+                ),
+                {"t": tenant_id, "id": ref_id},
+            )
+        ).mappings().one_or_none()
+        if locked is None:
+            raise ValueError(f"external ref {ref_id} not found for reconcile")
+        if locked["erase_state"] == "erased":
+            return "erased"  # 并发已 reconcile，no-op
+        # 按冻结 envelope 重算 receipt_digest（E-2b，禁自造）。
         receipt_digest = external_erase_receipt_digest(
             adapter_key=self._adapter.adapter_key,
             adapter_version=self._adapter.adapter_version,
@@ -1028,12 +1113,52 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
                 f"external ref {ref_id} not blocked/unknown for reconcile; "
                 "concurrent state change"
             )
+        # 补清源 ref（E-1/E-1a 绑定校验；source 已 NULL/缺失跳过）。
+        ref = ExternalRefRow(
+            id=row["id"],
+            tenant_id=tenant_id,
+            conversation_id=row["conversation_id"],
+            ref_scheme=row["ref_scheme"],
+            ref_value=row["ref_value"],
+            source_table=row["source_table"],
+            source_row_id=row["source_row_id"],
+        )
+        current = (
+            await self._session.execute(
+                text(
+                    "SELECT payload_ref FROM "
+                    + self._source_table_ref_sql(ref.source_table)
+                    + " WHERE tenant_id = :t AND id = :id"
+                ),
+                {"t": tenant_id, "id": ref.source_row_id},
+            )
+        ).scalar_one_or_none()
+        if current is not None and current != ref.ref_value:
+            raise ValueError(
+                f"external ref {ref.id} source payload_ref {current!r} != "
+                f"ledger ref_value {ref.ref_value!r}; binding conflict, "
+                "refusing to clear after reconcile"
+            )
+        if current == ref.ref_value:
+            await self._clear_source_ref(tenant_id=tenant_id, ref=ref)
         return "erased"
 
     def _owner_blocked_reason(self, scan: ExternalRefScan) -> str:
-        """E-3a 矩阵 -> conversation 级 blocked reason（purge 无法完成）。"""
+        """E-3a 矩阵 -> conversation 级 blocked reason（purge 无法完成）。
+
+        reason 归并按**具体 blocked_reason 分派**（首轮复审 C-7/D-10/T-6）——不
+        得一律折叠为 ``adapter_unavailable``：erase_timeout 是「可证明未发送、可
+        重试」、adapter_unavailable 是「可证明无副作用、可重试」、outcome_unknown
+        是「可能已生效、不自动重试」——三者运维语义不同，future S5 须据此判断
+        重试策略。优先级：unknown（最严重，不自动重试）> erase_timeout >
+        adapter_unavailable > registered 残留 > 兜底。
+        """
         if scan.unknown_refs:
             return REASON_EXTERNAL_OUTCOME_UNKNOWN
+        if "erase_timeout" in scan.blocked_reasons:
+            return REASON_EXTERNAL_ERASE_TIMEOUT
+        if scan.blocked_refs:
+            return REASON_EXTERNAL_ADAPTER_UNAVAILABLE
         if scan.registered_refs:
             return REASON_EXTERNAL_REF_SCAN_NONZERO
         return REASON_EXTERNAL_ADAPTER_UNAVAILABLE
