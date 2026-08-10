@@ -35,9 +35,10 @@ expand-only，不改业务表结构；沿 039 行级白名单（非 DDL，CREATE
 
 **revision id 长度**：``041_run_event_ref_tombstone``（27 字符）≤ alembic 默认
 ``varchar(32)`` 版本表列宽，无需加宽 ``metaedu.alembic_version``——revision id 保持
-≤32 字符是本迁移的约束（Plan §R1-S4-E B5 具名 migration 的缩短形式；原始冻结名
-``041_run_event_external_ref_tombstone`` 36 字符溢出列宽，三面首轮 P1 后缩短并同步
-plan file/revision 映射）。
+≤32 字符是本迁移的约束。**文件名（``041_run_event_external_ref_tombstone.py``）沿用
+plan B5 冻结名，与 revision id 解耦**（alembic 以 revision id 为准，二者不必同名；
+原始 36 字符 revision id 溢出列宽，三面首轮 P1 后缩短并同步 plan file/revision 映射
+——见 plan L804）。
 
 **downgrade 边界**：还原 039 的白名单（仅分支 1）。守卫是 ``BEFORE UPDATE OR
 DELETE`` 触发器，只作用于**新写**，已产生的 ref-tombstone 行不受影响，故 downgrade

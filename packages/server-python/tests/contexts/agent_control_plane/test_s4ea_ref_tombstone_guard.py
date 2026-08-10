@@ -49,12 +49,14 @@ _TABLE = "metaedu.agent_run_events"
 
 _APPEND_ONLY_ERROR = "append-only"
 
-# migration 041 文件路径（revision id 以数字开头，无法作为包名 import）。
+# migration 041 文件路径（revision id 以数字开头，无法作为包名 import；文件名沿用
+# plan B5 冻结名 `041_run_event_external_ref_tombstone.py`，revision id 为缩短形式
+# `041_run_event_ref_tombstone`——二者可不同，见 plan L804 file/revision 映射注记）。
 _MIG_041 = (
     Path(__file__).resolve().parents[3]
     / "alembic"
     / "versions"
-    / "041_run_event_ref_tombstone.py"
+    / "041_run_event_external_ref_tombstone.py"
 )
 
 
