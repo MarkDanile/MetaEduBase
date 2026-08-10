@@ -14,25 +14,7 @@
 
 ## 当前进行中
 
-### TASK-REQ-041-047-S4-E-B2: R1-S4-E-B2 External Erasure Participant
-
-状态：🟡 进行中
-类型：REQ 新需求开发（S4-E 拆分实现）
-领域：server / external.payload.v1（external object eraser + 3 source DB ref 唯一清除者）
-当前执行模式：superpower / plan-do（TD-092 高风险流程：Draft iteration -> Ready Backend full -> 三面首轮 -> 根因族返修 -> 定向复核）
-最近接手工具：Claude Code
-分支：feat/req041-047-r1-s4e-external-erasure
-
-需求来源：
-- Spec: [REQ-041/047 联合核心契约](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md) / [R1 Retention 专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- Plan: [R1-S4-E E-1/E-2/E-3/E-5-2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化)
-- 技术债：
-- 架构约束：[architecture.md](../03-engineering-governance/01-rules/architecture.md)、[contracts.md](../03-engineering-governance/01-rules/contracts.md)、[data-integrity.md](../03-engineering-governance/01-rules/data-integrity.md)
-
-当前进展：S4-E-B1 已合并（PR #550，`683d8c06`），从 main `d4f2f3dd` 开工；分支已建；落点对账完成（E-1/E-1a/E-1b/E-2/E-2a/E-2b/E-2c/E-3/E-3a/E-3b/E-5-2 + B1 adapter contract + S4-D 基类 ACK/fencing/锁序）。实现完成——`external_ref_erasure_participant.py`：双事务协议（Tx1 checkpoint pending/blocked->erasing + attempt+1 + intent digest，提交释放锁；无锁 adapter 调用跨 takeover 稳定 idempotency key；Tx2 E-2a 精确重验 + 写 erased+receipt 再清源 ref + ACK）+ 3 source ref 清除（RunEvent 经 041 guard 转 redacted / 两 outbox 转 suppressed）+ E-1a source 已 NULL 历史兼容 + E-3a 失败矩阵（success/not-sent/timeout/unknown/failed）+ E-3b blocked/unknown 查询 + 有证据 reconcile + registry fail closed。**三面首轮复审**（数据/状态机 P0=0/P1=3/P2=4/P3=6 + 并发/锁序 P0=2/P1=3/P2=4/P3=1 + 测试/运维 P0=0/P1=4/P2=3/P3=3）-> P0 降级后 **P0=0/P1=12** 按 5 根因族一次返修（commit 待定）：① 并发/重放证据缺失（补崩溃重放正向 + 双 B2 并发串行化测试）；② checkpoint_digest 双形式（erased-fence 重放统一 final_scan.digest）+ digest_mismatch 冻结 vacuous；③ reconcile 收场闭环（补清源 ref + 取集合锁 D8）；④ 验证口径（349->353）+ reason 分派（erase_timeout 保留）+ rowcount 校验 + gate revision CAS；⑤ execution outbox 源覆盖 + 空 evidence 拒。
-下一步：定向复核 5 根因族全消解 -> 重跑验证 -> 推送 PR（等待用户「定向复核」指令）。
-验证状态：`pytest tests/composition/test_s4eb2_external_erasure.py` 24/24 passed（E-1b 三 source 清除 + E-1a 历史兼容 + E-1 冲突 fail closed + E-2 双事务 + E-2a 重验 + E-2b key 稳定 + E-3a 矩阵 5 行 + E-3b 查询/reconcile 4 例 + 崩溃重放正向 + 双 B2 并发 + 空 evidence 拒 + reason 分派 + registry gate）；B1 + S4-D 邻近 198 passed 无回归；全 composition `358 passed`（main 基线 334）；ruff/mypy clean；docs gate passed（TD-032 登记 participant 1072 行 + 测试 1214 行待拆分）。
-交接备注：范围仅 B2（external erasure participant）；不得启动 S4-E-C、S4-F、S5、S6，不改 migration 040/041、不翻 external/runtime registry、不实现真实云对象存储/Pi adapter；`external.payload.v1` registry 保持 `erase_available=False`（E-4），测试用 monkeypatch 临时翻 True 验证主体。等待用户「定向复核 / 转 Ready」明确指令。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -40,6 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P1 | REQ-041/047 R1-S4-E-C Runtime Conformance Fake | 🔵 就绪 | `RuntimeErasureParticipant` conformance fake（证明 `runtime.private.v1` 擦除协议，不激活 registry）；S4-E-B2 已合并（PR #552），待下一条明确开工指令 | [Plan §R1-S4-E E-5-4/E-5-5](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
@@ -51,6 +34,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-08-11 | R1-S4-E-B2 External Erasure Participant | 🟢 完成 | external erasure participant（3 source DB ref 唯一清除者 + 双事务协议 Tx1/Tx2 + E-3a 失败矩阵 + E-3b 查询/reconcile 闭环）；三面 3 根因族 + 判别力增强批次，评分 91；registry 保持 False；Backend full 全绿 | [PR #552](https://github.com/MarkDanile/MetaEduBase/pull/552)（squash merge `a6aee2e7`）/ [Plan §R1-S4-E](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) / [work-log](work-log.md) / [score 91](04-retrospectives/review-score-log.md) |
 | 2026-08-10 | R1-S4-E-B1 Lifecycle Registration + Adapter Contract | 🟢 完成 | lifecycle registration port（registered 唯一生产者 + promote blocked->registered）+ adapter contract（E-2b 硬前置 + E-3a 分类 + idempotency key/receipt digest）；集合锁 owner 与 backfill 同源；三面 3 根因族 + 独立测试/运维面 P1 清零，评分 90；registry False | [PR #550](https://github.com/MarkDanile/MetaEduBase/pull/550)（squash merge `683d8c06`）/ [Plan §R1-S4-E](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) / [work-log](work-log.md) / [score 90](04-retrospectives/review-score-log.md) |
 | 2026-08-10 | R1-S4-E-A Ref Tombstone | 🟢 完成 | migration 041 guard 扩展（持 ref 旧状态 -> redacted 无 ref，revision id 缩短避免版本表 DDL）+ transport inline-only 清 / ref-bearing 零修改 blocked；三面 0/2/12/10 → 12 条决策返修 → P0/P1=0，评分 91；Backend full 全绿 | [PR #548](https://github.com/MarkDanile/MetaEduBase/pull/548)（squash merge `0797e70c`）/ [Plan §R1-S4-E](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) / [work-log](work-log.md) / [score 91](04-retrospectives/review-score-log.md) |
 | 2026-08-09 | R1-S4-E External payload + Runtime conformance 契约细化 | 🟢 完成 | 纯文档冻结 external/runtime 契约（7 根因 + 四 PR 拆分 + 双事务协议 + 验收矩阵）；三面首轮 6/20/12/2 → 8 根因族一次返修 → 定向复核 P0/P1=0；external/runtime registry 全程 False；三路 CI 全绿 | [PR #546](https://github.com/MarkDanile/MetaEduBase/pull/546)（squash merge `c243c36d`）/ [Plan §R1-S4-E](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) / [work-log](work-log.md) |
@@ -62,4 +46,3 @@
 | 2026-08-07 | R1-S4-C Writer/Claim Scope + Epoch Fence 契约冻结 | 🟢 完成 | 冻结 scope/epoch 四跳传播链、六元 CAS（turn/output 三源）、claim 短事务 + 锁序矩阵、unknown/stale 双事务协议状态表（具名 code + digest envelope + 重放精确终态三分支）、C6 11 反例 + C8 11 项验收矩阵；10 轮收敛终审 0/0/0/0，评分 87；契约 PR 恢复纯文档 | [PR #535](https://github.com/MarkDanile/MetaEduBase/pull/535)（squash merge `c2e1af42`）/ [Plan §R1-S4 C1-C9](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
 | 2026-08-06 | TD-092 高风险 PR CI 反馈周期与复审收敛治理 | 🟢 完成 | Draft risk-targeted `2m44s / 297 passed`，Ready 最新 HEAD 保留 Backend full；三面首轮复审、根因族返修、连续两轮新 P1 升级与单风险域 PR 规则落地；独立复核 0/0/0/0，评分 93 | [PR #532](https://github.com/MarkDanile/MetaEduBase/pull/532)（squash merge `fb6058ac`）/ [TD-092](technical-debt.md#td-092-高风险-pr-ci-反馈周期与复审收敛治理) / [work-log](work-log.md) |
 | 2026-08-06 | R1-S4-B Transport/External Schema + Backfill 实现 | 🟢 完成 | migration 040（四表 scope 列 + 两 ledger + inbox tombstone）+ 五维 verify backfill（scope/epoch/external-ref/投影/scope-vs-来源）+ CLI；十二轮独立复审 0/0/0/0（含 epoch-only 收敛、表↔issue 绑定、external ref 绑定 heal、B2 类型裁决共用 expected）；全量 2103 passed | [PR #530](https://github.com/MarkDanile/MetaEduBase/pull/530)（squash merge `0fb43ccb`）/ [Plan §R1-S4](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
-| 2026-08-04 | R1-S4-B Transport/External Schema + Backfill 契约冻结 | 🟢 完成 | 冻结 migration 040 schema（四表 scope 列 + 两 ledger + inbox tombstone）+ 回填矩阵 + 三态 reconcile（advisory lock 集合锁入 D8）+ external 空 allowlist + 041 guard 冻结 + scope/epoch 双维 verify；七轮复审 0/0/0/1 | [PR #528](https://github.com/MarkDanile/MetaEduBase/pull/528)（squash merge `b2020d4c`）/ [Plan §R1-S4](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [work-log](work-log.md) |
