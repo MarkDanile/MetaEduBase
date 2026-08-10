@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-REQ-041-047-S4-E-B2: R1-S4-E-B2 External Erasure Participant
+
+状态：🟡 进行中
+类型：REQ 新需求开发（S4-E 拆分实现）
+领域：server / external.payload.v1（external object eraser + 3 source DB ref 唯一清除者）
+当前执行模式：superpower / plan-do（TD-092 高风险流程：Draft iteration -> Ready Backend full -> 三面首轮 -> 根因族返修 -> 定向复核）
+最近接手工具：Claude Code
+分支：feat/req041-047-r1-s4e-external-erasure
+
+需求来源：
+- Spec: [REQ-041/047 联合核心契约](../02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md) / [R1 Retention 专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- Plan: [R1-S4-E E-1/E-2/E-3/E-5-2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化)
+- 技术债：
+- 架构约束：[architecture.md](../03-engineering-governance/01-rules/architecture.md)、[contracts.md](../03-engineering-governance/01-rules/contracts.md)、[data-integrity.md](../03-engineering-governance/01-rules/data-integrity.md)
+
+当前进展：S4-E-B1 已合并（PR #550，`683d8c06`），从 main `d4f2f3dd` 开工；分支已建；落点对账完成（E-1/E-1a/E-1b/E-2/E-2a/E-2b/E-2c/E-3/E-3a/E-3b/E-5-2 + B1 adapter contract + S4-D 基类 ACK/fencing/锁序）。实现完成——`external_ref_erasure_participant.py`：双事务协议（Tx1 checkpoint pending/blocked->erasing + attempt+1 + intent digest，提交释放锁；无锁 adapter 调用跨 takeover 稳定 idempotency key；Tx2 E-2a 精确重验 + 写 erased+receipt 再清源 ref + ACK）+ 3 source ref 清除（RunEvent 经 041 guard 转 redacted / 两 outbox 转 suppressed）+ E-1a source 已 NULL 历史兼容 + E-3a 失败矩阵（success/not-sent/timeout/unknown/failed）+ E-3b blocked/unknown 查询 + 有证据 reconcile + registry fail closed。
+下一步：补测试（E-1/E-2/E-3 反例 + E-3b 查询/reconcile + B2 互操作矩阵）-> Draft PR -> Backend iteration -> 三面首轮复审（等待用户指令）。
+验证状态：`pytest tests/composition/test_s4eb2_external_erasure.py` 19/19 passed（E-1b 三 source 清除 + E-1a 历史兼容 + E-1 冲突 fail closed + E-2 双事务 + E-2a 重验 + E-2b key 稳定 + E-3a 矩阵 5 行 + E-3b 查询/reconcile 4 例 + B2 互操作 + registry gate）；B1 + S4-D 邻近 120 passed 无回归；全 composition `349 passed`（含本套件 19）；ruff/mypy clean；docs gate passed（TD-032 登记 participant 1072 行 + 测试 1214 行待拆分）。
+交接备注：范围仅 B2（external erasure participant）；不得启动 S4-E-C、S4-F、S5、S6，不改 migration 040/041、不翻 external/runtime registry、不实现真实云对象存储/Pi adapter；`external.payload.v1` registry 保持 `erase_available=False`（E-4），测试用 monkeypatch 临时翻 True 验证主体。等待用户「Draft iteration / 三面首轮」明确指令。
 
 ## 下一批候选任务
 
@@ -22,7 +40,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | REQ-041/047 R1-S4-E-B2 External Erasure Participant | 🔵 就绪 | `ExternalPayloadErasureParticipant`（消费 `registered` 行 + scan 3 source + E-1b 唯一 ref 清除者 + ledger 状态机 E-3 + 双事务协议 E-2 + 清除顺序 D5 + source-NULL 历史兼容 E-1a + blocked/unknown 查询与有证据 reconcile E-3b）；registry 不激活；S4-E-B1 已合并（PR #550），待下一条明确开工指令 | [Plan §R1-S4-E E-1/E-2/E-3/E-5-2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) |
 | P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
