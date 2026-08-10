@@ -197,8 +197,81 @@
 | DOC-065 | 规则瘦身、任务池插入规则与开工硬门禁收口 | 🟢 完成 | P1 | 文档 / 工程治理 / 跨 AI 协作 | PR #244 merged `6c31fe5`：压缩规则、补开工三连、禁止绕过门禁、统一任务池索引与插入顺序。 |
 | DOC-066 | 任务池主表插入顺序门禁 | 🟢 完成 | P2 | 文档 / 工程脚本 / 任务池 / 质量门禁 | PR #246 merged `4a58906`：Backlog / technical-debt 主表最新编号位置已脚本化。 |
 | DOC-067 | 分布式临时编号与正式任务编号归并规则 | 🟢 完成 | P2 | 文档 / 工程脚本 / 任务池 / 跨设备协作 | PR #248 merged `9bf177b`：保留正式短编号，`DRAFT-*` 只作临时来源，主表门禁已实现。 |
+| DOC-080 | 固化正式评分提交原子边界与 Metrics Snapshot 所有权 | 🔵 就绪 | P1 | 文档 / 工程流程 / 评分 / 质量门禁 / 跨 AI 协作 | PR #550 与 #552 的正式评分提交连续两次把工作台和 Metrics 重算混入评分净 diff；规则、快照所有权和基线检查器统一见 [详情](#doc-080-固化正式评分提交原子边界与-metrics-snapshot-所有权)。 |
 
 ## 任务详情
+
+### DOC-080: 固化正式评分提交原子边界与 Metrics Snapshot 所有权
+
+状态：🔵 就绪
+
+| 字段 | 内容 |
+|------|------|
+| 优先级 | P1 |
+| 领域 | 文档 / 工程流程 / 评分 / 质量门禁 / 跨 AI 协作 |
+| 来源 | PR #550 / PR #552 正式评分提交范围纠偏；`review-scorecard.md`、`git-workflow.md` 与 `workbench.md` 的阶段边界冲突 |
+| 建议实施分支 | `docs/doc-080-implement-review-score-boundary` |
+| 建议交付 | 本登记 PR 只入账；实施阶段用 1 个独立治理 PR 将规则、检查器和回归测试原子落地 |
+
+**证据**
+
+- PR #550 评分基线 `06c048dc` 后，评分提交 `4f4fcef4` 除新增 90 分记录外，同时重算 Metrics Snapshot 并更新 `current-work.md`；随后以 `17b0dd93` 纠偏为相对基线仅 `review-score-log.md` 新增 1 行。
+- PR #552 评分基线 `54fb1d50` 后，评分提交 `8af21ad8` 再次混入 Metrics Snapshot 和工作台更新；随后以 `41be58e2` 纠偏，最终净 diff 才恢复为评分总账单行追加。
+- `review-scorecard.md#按流程评审边界` 只要求“正式评分和 follow-up 写入 review-score-log 并推送”，未冻结评分提交的允许文件、允许 hunk 和净 diff。
+- `current-work.md` 要求“代码、验证或 Git 阶段变化后必须同步”，`workbench.md` 又要求提交前回读工作台；但 `git-workflow.md` 把任务完成态和事实源收口放在 merge 后 closeout。评分阶段没有显式例外，导致两种解释都能从规则中找到依据。
+- `review-scorecard.md#复盘数据口径` 只列出指标名称，未规定 Metrics Snapshot 的更新时机、基线和责任阶段。当前 Score Log 有 91 条记录，Snapshot 仍标记 76 条“当前值”，说明它实为历史复盘快照而非逐评分实时投影。
+- `DOC-079` 已被 `work-log.md` 中 2026-07-21 的 req-status-consistency 治理修复占用；本任务使用 `DOC-080`，避免继续扩大历史编号碰撞。
+
+**问题**
+
+1. “按流程评审”同时覆盖 finding、返修、follow-up 入账、正式评分和重新验证，却没有定义进入正式评分子阶段的前置条件。
+2. 正式评分提交没有原子边界，agent 容易把“更新评分总账”扩张为更新 Metrics、工作台、plan 或其他事实源。
+3. 工作台实时同步规则与 merge 后 closeout 规则在评分阶段冲突；评分成功究竟是否需要改 `current-work.md` 没有唯一答案。
+4. Metrics Snapshot 使用“当前值”措辞，却没有逐评分重算规则、脚本或复盘基线，导致每次评分都可能触发昂贵且不可审计的历史补算。
+5. 现有 `scripts/check-engineering-docs` 只能检查文档形状，不能证明“implementation baseline 到评分 HEAD 仅新增一条评分记录”。
+
+**冻结决策**
+
+1. “按流程评审”保留为一个用户启动语，但内部拆成两个子阶段：
+   - finding/返修阶段：允许修改当前任务完成标准内的代码、测试、契约和必要 follow-up 事实源；完成后重新验证。
+   - 正式评分提交阶段：P0/P1 已清零或已明确阻断、所有 follow-up 已有稳定编号、implementation baseline HEAD 已冻结后才能进入。
+2. 正式评分以 implementation baseline 到评分 HEAD 的**净 diff**为准，不以最后一个 commit 为准。合规净 diff只能修改 `review-score-log.md`，并在 Score Log 表头下新增当前 PR 的 1 条 `Original` 记录。
+3. 正式评分净 diff 禁止修改 Metrics Snapshot、`current-work.md`、`work-log.md`、plan、Requirement、Backlog、technical-debt、业务代码、测试、migration、registry 或 CI 配置。
+4. 评分时若新发现必须入账的 follow-up 或事实源缺口，退出正式评分子阶段，先在 finding/返修阶段登记并重新冻结 implementation baseline；不得借评分提交顺带扩写其他事实源。
+5. 评分提交不触发工作台同步。PR 未 merge 前工作台保持 Ready / 待合并语义；评分摘要、merge SHA、完成态和候选任务由 merge 后 closeout 统一更新。
+6. Metrics Snapshot 归“按流程复盘”或独立治理任务所有，必须记录 `as of` 日期、基线 SHA 和样本数；单 PR 正式评分不得重算。现有 76 条快照的历史补算不属于本任务。
+7. 评分记录纠偏仍以原 implementation baseline 检查最终净 diff；允许多个纯文档纠偏 commit，但最终净 diff 必须回到单行追加，不以“后续恢复了”掩盖中间越界。
+
+**完成标准**
+
+- `review-scorecard.md` 新增“正式评分提交不变量”作为唯一规则正文，冻结上述前置条件、允许范围、follow-up 回退、工作台例外和 Metrics 所有权。
+- `git-workflow.md`、`task-modes.md`、`workbench.md` 只补短链接或例外说明，不复制第二份长规则；明确评分提交与 merge 后 closeout 的责任边界。
+- `review-score-log.md` 的使用规则把 Metrics Snapshot 定义为带 `as of` 的复盘快照，不再称作需随每条评分实时更新的“当前值”；本任务不重算历史指标。
+- 新增 `scripts/check-review-score-submit --base <implementation-head> --pr <number>`。检查器比较 `<base>..HEAD` 净 diff，并验证：
+  - 仅 `docs/03-engineering-governance/04-retrospectives/review-score-log.md` 有变化；
+  - Score Log 恰好新增 1 条、删除 0 条、修改 0 条；
+  - 新行是指定 PR 的 `Original` 记录并包含可解析的评分基线 HEAD；
+  - Metrics Snapshot 与 implementation baseline 字节一致；
+  - 新行位于 Score Log 表头下方第一行。
+- `quality-gates.md` 将该命令登记为正式评分提交的必跑门禁；不把它无条件塞入普通 PR 的 `scripts/check-engineering-docs`，因为普通实现 PR 没有 implementation baseline 参数。
+- 回归测试至少覆盖 5 个反例：混入 `current-work.md`、修改 Metrics、增加两条评分、缺失/错误 PR、评分基线与 `--base` 不一致；另有 1 个合法单行追加正例。
+- 用一个临时 Git fixture 或等价可复现仓库夹具证明检查基于净 diff：先产生超范围评分 commit、再纠偏，最终净 diff 合规时通过；只检查最后一个 commit 的退化实现必须被测试击杀。
+
+**验证方式**
+
+- `python -m pytest tests/engineering/ -q`：新增检查器正反例全部通过，既有工程门禁测试无回归。
+- `ruff check scripts/engineering/ tests/engineering/`：退出码 0。
+- `scripts/check-review-score-submit --base <fixture-implementation-head> --pr <fixture-pr>`：合法 fixture 退出码 0；5 个非法 fixture 均非 0 且错误原因可区分。
+- `scripts/check-engineering-docs`：退出码 0。
+- `git diff --check`：退出码 0。
+- 人工跨工具 dry-run：Codex 与 Claude Code 各读取一次“按流程评审”入口，均能复述“评分净 diff 单行追加、工作台 closeout、Metrics 复盘所有”三个边界。
+
+**不在范围**
+
+- 不重新计算或修正现有 Metrics Snapshot 的 76 条历史口径；另由独立复盘任务处理。
+- 不修改既有 Score Log 行、PR #550/#552 评分或任何业务实现。
+- 不改变 Ready 状态下 score-only push 是否触发 Backend full；CI 路径提速若需要，另立 TD/DOC。
+- 不拆分 `按流程评审` 为新的用户必记启动语；本任务只明确其内部子阶段和机器门禁。
 
 ### TD-092: 高风险 PR CI 反馈周期与复审收敛治理
 

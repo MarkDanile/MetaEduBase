@@ -23,7 +23,7 @@
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
 | P1 | REQ-041/047 R1-S4-E-C Runtime Conformance Fake | 🔵 就绪 | `RuntimeErasureParticipant` conformance fake（证明 `runtime.private.v1` 擦除协议，不激活 registry）；S4-E-B2 已合并（PR #552），待下一条明确开工指令 | [Plan §R1-S4-E E-5-4/E-5-5](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) |
-| P1-P | REQ-042 Agent Workspace 塑形 | 🔵 Ready for Docs Only | 可并行塑形 Conversation/Run/Event UI 契约；完整代码实现等待 R1/C1 | [Requirement](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
+| P1 | DOC-080 正式评分提交原子边界与 Metrics 所有权 | 🔵 就绪 | 独立治理 PR：冻结 score-only 净 diff、工作台 closeout 例外和 Metrics 复盘所有权，并新增 `check-review-score-submit` 基线门禁 | [Technical Debt](technical-debt.md#doc-080-固化正式评分提交原子边界与-metrics-snapshot-所有权) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
