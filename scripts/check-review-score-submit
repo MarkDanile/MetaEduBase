@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+"""CLI wrapper for the baseline-aware formal score submission check."""
+
+from __future__ import annotations
+
+import runpy
+from pathlib import Path
+
+
+TOOL = Path(__file__).resolve().parent / "engineering" / "review_score_submit.py"
+
+
+if __name__ == "__main__":
+    runpy.run_path(str(TOOL), run_name="__main__")

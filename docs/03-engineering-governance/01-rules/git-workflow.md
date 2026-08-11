@@ -7,7 +7,7 @@
 - `main` 只读；任何仓库文件修改都必须先建任务分支。
 - 一个分支服务一个清晰任务或强相关切片；一个提交表达一个原子变更。
 - 用户说“按流程开发”或“按流程提交”时，默认只推进到 commit / push / PR，报告 CI 状态后停止，不自动合并。
-- 用户说“按流程评审”时，按评分卡评审当前 PR、处理发现、更新评分总账并重新验证；评审完成后仍保持 PR 未合并。
+- 用户说“按流程评审”时，按 `review-scorecard.md#正式评分提交不变量` 评审当前 PR、处理发现、更新评分总账并重新验证；评审完成后仍保持 PR 未合并。
 - 只有用户明确说“按流程合并”“提交至合并”或“完整 Git 闭环”时，才继续执行 merge main、文档收口和 clean check。
 - 进入 `git add` 前必须执行 `quality-gates.md#完成门禁`。
 - PR 是默认交付事实源；merge commit 只在文档已有占位或审计需要时回填。
@@ -32,7 +32,7 @@
 ### 评审阶段
 
 6. 用户明确说“按流程评审”后，按 `review-scorecard.md` 评审当前待合并 PR Head；当前任务范围内的阻塞 finding 优先修复，非阻塞问题绑定稳定 follow-up。
-7. 完成正式评分并更新 `review-score-log.md`；评审修复和评分记录推送到同一 PR，重新执行受影响验证并等待 required checks。
+7. 完成正式评分并按 `review-scorecard.md#正式评分提交不变量` 运行 `scripts/check-review-score-submit --base <implementation-head> --pr <number>`；评分记录只能新增一行到 `review-score-log.md`，与评审修复一起推送到同一 PR，重新执行受影响验证并等待 required checks。
 8. 报告评分、finding、follow-up 和 CI 状态，然后停止并保持 PR 开放。评分记录本身的纯文档提交不使评审失效；评分后若代码、测试或契约继续变化，合并前必须复核变化范围并更新评审结论。
 
 ### 合并阶段
