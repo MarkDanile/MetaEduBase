@@ -29,9 +29,9 @@
 - 技术债：[DOC-080](technical-debt.md#doc-080-固化正式评分提交原子边界与-metrics-snapshot-所有权)
 - 架构约束：[quality-gates.md](01-rules/quality-gates.md)、[git-workflow.md](01-rules/git-workflow.md)、[review-scorecard.md](01-rules/review-scorecard.md)
 
-当前进展：从 `main=26d9a192` 创建实施分支并完成 Draft PR #555；首轮评审数据/状态 P0=0/P1=1、测试/运维 P0=0/P1=1/P2=1、并发面无共享状态 finding，归并为“Score Log 行契约完整性”一个根因族并完成返修（精确 10 列、P0/P1 清零结论、稳定 follow-up、重复 PR 格式同源、文件 mode 零漂移）。
-下一步：提交并推送根因族返修，等待最新 Draft checks；P0/P1 定向核对清零后冻结 implementation baseline，再按正式评分提交不变量追加唯一评分行。
-验证状态：`tests/engineering/` 131 passed（其中 score-submit 正反例 21 passed）；`ruff check scripts/engineering/ tests/engineering/`、`scripts/check-engineering-docs`（31 项历史 allowlist）和 `git diff --check` 均通过。
+当前进展：从 `main=26d9a192` 创建实施分支并完成 Draft PR #555；首轮评审数据/状态 P0=0/P1=1、测试/运维 P0=0/P1=1/P2=1、并发面无共享状态 finding，归并为“Score Log 行契约完整性”一个根因族并完成返修（精确 10 列、P0/P1 清零结论、稳定 follow-up、重复 PR 格式同源、文件 mode 零漂移）；定向复核 P0/P1=0。
+下一步：等待本状态同步 HEAD 的 Draft checks；全绿后冻结 implementation baseline，按正式评分提交不变量追加唯一评分行并停止，保持 PR OPEN。
+验证状态：`tests/engineering/` 131 passed（其中 score-submit 正反例 21 passed）；`ruff check scripts/engineering/ tests/engineering/`、`scripts/check-engineering-docs`（31 项历史 allowlist）和 `git diff --check` 均通过；返修 HEAD `4e40ec91` Draft CI 三路全绿（Backend iteration 11m6s、Frontend 2m38s、Engineering docs 18s）。
 交接备注：[PR #555](https://github.com/MarkDanile/MetaEduBase/pull/555)；评分提交只允许 `review-score-log.md` 新增 1 行；工作台/完成态归 merge 后 closeout；Metrics 归独立复盘任务。
 
 ## 下一批候选任务
