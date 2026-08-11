@@ -59,7 +59,7 @@ def init_fixture(tmp_path: Path) -> tuple[Path, str]:
 def score_row(base: str, pr: str = "123", score: str = "91") -> str:
     return (
         f"| 2026-08-11 | Original | DOC-080 | [#{pr}](https://example.test/{pr}) | "
-        f"{score} | 优秀；评分基线 HEAD `{base[:8]}` | 无 | 无 | 无 | Fixture |\n"
+        f"{score} | 优秀；P0/P1=0；评分基线 HEAD `{base[:8]}` | 无 | 无 | 无 | Fixture |\n"
     )
 
 
@@ -173,6 +173,108 @@ def test_score_submit_rejects_two_new_rows(tmp_path: Path) -> None:
 
     assert result.returncode != 0
     assert "exactly one inserted line" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "expected"),
+    [
+        (
+            "优秀；P0/P1=0；评分基线 HEAD",
+            "优秀；评分基线 HEAD",
+            "cleared P0/P1 conclusion",
+        ),
+        (
+            "P0/P1=0",
+            "P0/P1=2",
+            "cleared P0/P1 conclusion",
+        ),
+        (
+            "| 无 | 无 | 无 | Fixture |",
+            "| investigate later | 无 | 无 | Fixture |",
+            "stable task id",
+        ),
+        (
+            "| Fixture |",
+            "| Fixture | Extra |",
+            "exactly 10 Score Log cells",
+        ),
+        (
+            "Original | DOC-080",
+            "Backfilled | DOC-080",
+            "must be typed `Original`",
+        ),
+        (
+            "| 91 | 优秀",
+            "| 101 | 优秀",
+            "score from 0 to 100",
+        ),
+        (
+            "| 无 | 无 | 无 | Fixture |",
+            "| TD-080-FOLLOWUP | 无 | 无 | Fixture |",
+            "stable task id",
+        ),
+        (
+            "| 无 | 无 | 无 | Fixture |",
+            "| TD-080X | 无 | 无 | Fixture |",
+            "stable task id",
+        ),
+        (
+            "| 无 | 无 | 无 | Fixture |",
+            "|  | 无 | 无 | Fixture |",
+            "must not contain empty",
+        ),
+    ],
+)
+def test_score_submit_rejects_incomplete_row_contract(
+    tmp_path: Path, old: str, new: str, expected: str
+) -> None:
+    root, base = init_fixture(tmp_path)
+    add_score_row(root, base)
+    path = root / SCORE_LOG
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(old, new, 1),
+        encoding="utf-8",
+    )
+    commit(root, "add invalid score row")
+
+    result = run_check(root, base)
+
+    assert result.returncode != 0
+    assert expected in result.stderr
+
+
+def test_score_submit_rejects_duplicate_pr_with_plain_text_baseline(tmp_path: Path) -> None:
+    root, base = init_fixture(tmp_path)
+    path = root / SCORE_LOG
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "[#1](https://example.test/1)",
+            "PR #1",
+        ),
+        encoding="utf-8",
+    )
+    commit(root, "normalize existing PR reference")
+    baseline = git(root, "rev-parse", "HEAD")
+    add_score_row(root, baseline, pr="1")
+    commit(root, "add duplicate score")
+
+    result = run_check(root, baseline, pr="1")
+
+    assert result.returncode != 0
+    assert "already contains a row for PR #1" in result.stderr
+
+
+def test_score_submit_rejects_file_mode_change(tmp_path: Path) -> None:
+    root, base = init_fixture(tmp_path)
+    add_score_row(root, base)
+    git(root, "add", ".")
+    git(root, "update-index", "--chmod=+x", str(SCORE_LOG))
+    git(root, "commit", "-m", "add score with mode change")
+
+    result = run_check(root, base)
+
+    assert result.returncode != 0
+    assert "file mode changed" in result.stderr
 
 
 @pytest.mark.parametrize(

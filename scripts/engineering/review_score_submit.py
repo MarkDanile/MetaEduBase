@@ -16,6 +16,10 @@ from pathlib import Path
 
 SCORE_LOG = "docs/03-engineering-governance/04-retrospectives/review-score-log.md"
 BASE_SHA_RE = re.compile(r"(?<![0-9a-f])([0-9a-f]{7,40})(?![0-9a-f])", re.I)
+FOLLOW_UP_RE = re.compile(r"\b(?:REQ|BUG|TD|DOC)-\d{3}\b(?!-)")
+P0_P1_CLEAR_RE = re.compile(
+    r"(?:P0\s*/\s*P1\s*=\s*0|P0\s*=\s*0\s*/\s*P1\s*=\s*0|P0\s*/\s*P1\s*(?:已)?清零)"
+)
 
 
 class CheckFailure(Exception):
@@ -47,6 +51,12 @@ def _table_cells(line: str) -> list[str]:
     if not body.lstrip().startswith("|") or not body.rstrip().endswith("|"):
         return []
     return [cell.strip() for cell in body.split("|")[1:-1]]
+
+
+def _targets_pr(cells: list[str], pr_number: str) -> bool:
+    return len(cells) >= 4 and bool(
+        re.search(rf"(?:\[#|PR\s*#){re.escape(pr_number)}(?:\]|\b)", cells[3])
+    )
 
 
 def _single_inserted_line(before: list[str], after: list[str]) -> tuple[int, str]:
@@ -86,14 +96,22 @@ def _validate_inserted_row(
     baseline: str,
 ) -> None:
     cells = _table_cells(row)
-    if len(cells) < 10:
-        raise CheckFailure("the inserted score row is not a complete Score Log table row")
+    if len(cells) != 10:
+        raise CheckFailure("the inserted score row must contain exactly 10 Score Log cells")
+    if any(not cell for cell in cells):
+        raise CheckFailure("the inserted score row must not contain empty Score Log cells")
     if cells[1] != "Original":
         raise CheckFailure("the inserted score row must be typed `Original`")
-    if not re.search(rf"(?:\[#|PR\s*#){re.escape(pr_number)}(?:\]|\b)", cells[3]):
+    if not _targets_pr(cells, pr_number):
         raise CheckFailure(f"the inserted score row does not target PR #{pr_number}")
     if not re.fullmatch(r"\d{1,3}", cells[4]) or not 0 <= int(cells[4]) <= 100:
         raise CheckFailure("the inserted score row must contain a score from 0 to 100")
+    if not P0_P1_CLEAR_RE.search(cells[5]):
+        raise CheckFailure("the inserted score row must include a cleared P0/P1 conclusion")
+    if cells[6] != "无" and not FOLLOW_UP_RE.search(cells[6]):
+        raise CheckFailure(
+            "the inserted score row follow-up must be `无` or contain a stable task id"
+        )
     if not re.search(r"(?:基线|baseline)", row, re.I):
         raise CheckFailure("the inserted score row must identify its implementation baseline")
     baseline_tokens = {token.lower() for token in BASE_SHA_RE.findall(row)}
@@ -102,7 +120,7 @@ def _validate_inserted_row(
             "the inserted score row does not contain the requested implementation baseline "
             f"{base_oid[:12]}"
         )
-    if re.search(r"\[#" + re.escape(pr_number) + r"\]", baseline):
+    if any(_targets_pr(_table_cells(line), pr_number) for line in baseline.splitlines()):
         raise CheckFailure(f"review-score-log.md already contains a row for PR #{pr_number}")
 
 
@@ -118,6 +136,16 @@ def validate(root: Path, *, base: str, pr_number: str) -> None:
             "final score submission may change only review-score-log.md; "
             f"detected: {changed_lines or ['no changes']}"
         )
+    mode_changes = _git(
+        root,
+        "diff",
+        "--summary",
+        f"{base_oid}..HEAD",
+        "--",
+        SCORE_LOG,
+    )
+    if mode_changes.strip():
+        raise CheckFailure("review-score-log.md file mode changed during the score submission")
 
     baseline_metrics = baseline.split("\n## Metrics Snapshot", 1)
     current_metrics = current.split("\n## Metrics Snapshot", 1)
