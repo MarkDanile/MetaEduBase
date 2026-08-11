@@ -29,10 +29,10 @@
 - 技术债：[DOC-080](technical-debt.md#doc-080-固化正式评分提交原子边界与-metrics-snapshot-所有权)
 - 架构约束：[quality-gates.md](01-rules/quality-gates.md)、[git-workflow.md](01-rules/git-workflow.md)、[review-scorecard.md](01-rules/review-scorecard.md)
 
-当前进展：从 `main=26d9a192` 创建实施分支；已落实正式评分提交不变量、工作台/closeout 边界、Metrics 复盘所有权，以及基于 implementation baseline 最终净 diff 的 `scripts/check-review-score-submit`。
-下一步：提交并推送实现，创建 Draft PR；保持历史 Metrics 数值和既有评分记录不变，待独立评审后再进入正式评分。
+当前进展：从 `main=26d9a192` 创建实施分支；已落实正式评分提交不变量、工作台/closeout 边界、Metrics 复盘所有权，以及基于 implementation baseline 最终净 diff 的 `scripts/check-review-score-submit`；Draft PR #555 已创建。
+下一步：等待 Draft checks，并对 PR #555 执行独立评审；保持历史 Metrics 数值和既有评分记录不变，finding 收敛后再进入正式评分。
 验证状态：`tests/engineering/` 118 passed（其中 score-submit 正反例 8 passed）；`ruff check scripts/engineering/ tests/engineering/`、`scripts/check-engineering-docs`（31 项历史 allowlist）和 `git diff --check` 均通过。
-交接备注：评分提交只允许 `review-score-log.md` 新增 1 行；工作台/完成态归 merge 后 closeout；Metrics 归独立复盘任务。
+交接备注：[PR #555](https://github.com/MarkDanile/MetaEduBase/pull/555)；评分提交只允许 `review-score-log.md` 新增 1 行；工作台/完成态归 merge 后 closeout；Metrics 归独立复盘任务。
 
 ## 下一批候选任务
 

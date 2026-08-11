@@ -211,7 +211,7 @@
 | 领域 | 文档 / 工程流程 / 评分 / 质量门禁 / 跨 AI 协作 |
 | 来源 | PR #550 / PR #552 正式评分提交范围纠偏；`review-scorecard.md`、`git-workflow.md` 与 `workbench.md` 的阶段边界冲突 |
 | 实施分支 | `docs/doc-080-implement-review-score-boundary` |
-| 交付 PR | 待创建 |
+| 交付 PR | [#555](https://github.com/MarkDanile/MetaEduBase/pull/555)（Draft） |
 
 **证据**
 
