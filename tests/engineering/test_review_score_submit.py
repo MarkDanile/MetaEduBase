@@ -189,6 +189,11 @@ def test_score_submit_rejects_two_new_rows(tmp_path: Path) -> None:
             "cleared P0/P1 conclusion",
         ),
         (
+            "P0/P1=0",
+            "P0/P1=01",
+            "cleared P0/P1 conclusion",
+        ),
+        (
             "| 无 | 无 | 无 | Fixture |",
             "| investigate later | 无 | 无 | Fixture |",
             "stable task id",
@@ -275,6 +280,17 @@ def test_score_submit_rejects_file_mode_change(tmp_path: Path) -> None:
 
     assert result.returncode != 0
     assert "file mode changed" in result.stderr
+
+
+def test_score_submit_rejects_non_numeric_pr_argument(tmp_path: Path) -> None:
+    root, base = init_fixture(tmp_path)
+    add_score_row(root, base)
+    commit(root, "add score")
+
+    result = run_check(root, base, pr="not-a-number")
+
+    assert result.returncode != 0
+    assert "positive numeric pull request number" in result.stderr
 
 
 @pytest.mark.parametrize(

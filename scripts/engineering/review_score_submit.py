@@ -18,7 +18,7 @@ SCORE_LOG = "docs/03-engineering-governance/04-retrospectives/review-score-log.m
 BASE_SHA_RE = re.compile(r"(?<![0-9a-f])([0-9a-f]{7,40})(?![0-9a-f])", re.I)
 FOLLOW_UP_RE = re.compile(r"\b(?:REQ|BUG|TD|DOC)-\d{3}\b(?!-)")
 P0_P1_CLEAR_RE = re.compile(
-    r"(?:P0\s*/\s*P1\s*=\s*0|P0\s*=\s*0\s*/\s*P1\s*=\s*0|P0\s*/\s*P1\s*(?:已)?清零)"
+    r"(?:P0\s*/\s*P1\s*=\s*0\b|P0\s*=\s*0\b\s*/\s*P1\s*=\s*0\b|P0\s*/\s*P1\s*(?:已)?清零)"
 )
 
 
@@ -126,6 +126,8 @@ def _validate_inserted_row(
 
 def validate(root: Path, *, base: str, pr_number: str) -> None:
     """Validate a final score-only tree against an implementation baseline."""
+    if not re.fullmatch(r"[1-9]\d*", pr_number):
+        raise CheckFailure("--pr must be a positive numeric pull request number")
     base_oid, baseline = _read_baseline(root, base)
     current = _git(root, "show", f"HEAD:{SCORE_LOG}")
 
