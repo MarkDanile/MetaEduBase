@@ -14,25 +14,7 @@
 
 ## 当前进行中
 
-### TASK-DOC-080: 正式评分提交原子边界与 Metrics Snapshot 所有权
-
-状态：🟡 进行中
-类型：DOC 治理任务
-领域：工程流程 / 评审评分 / 质量门禁 / 跨 AI 协作
-当前执行模式：plan-do（规则 + 基线检查器 + 工程测试）
-最近接手工具：Codex
-分支：docs/doc-080-implement-review-score-boundary
-
-需求来源：
-- Spec: 不适用（规则治理任务）
-- Plan: [Technical Debt DOC-080](technical-debt.md#doc-080-固化正式评分提交原子边界与-metrics-snapshot-所有权)
-- 技术债：[DOC-080](technical-debt.md#doc-080-固化正式评分提交原子边界与-metrics-snapshot-所有权)
-- 架构约束：[quality-gates.md](01-rules/quality-gates.md)、[git-workflow.md](01-rules/git-workflow.md)、[review-scorecard.md](01-rules/review-scorecard.md)
-
-当前进展：从 `main=26d9a192` 创建实施分支并完成 Draft PR #555；首轮评审数据/状态 P0=0/P1=1、测试/运维 P0=0/P1=1/P2=1、并发面无共享状态 finding，归并为“Score Log 行契约完整性”一个根因族并完成返修（精确 10 列、P0/P1 清零结论、稳定 follow-up、重复 PR 格式同源、文件 mode 零漂移）；定向复核 P0/P1=0。
-下一步：等待本状态同步 HEAD 的 Draft checks；全绿后冻结 implementation baseline，按正式评分提交不变量追加唯一评分行并停止，保持 PR OPEN。
-验证状态：`tests/engineering/` 131 passed（其中 score-submit 正反例 21 passed）；`ruff check scripts/engineering/ tests/engineering/`、`scripts/check-engineering-docs`（31 项历史 allowlist）和 `git diff --check` 均通过；返修 HEAD `4e40ec91` Draft CI 三路全绿（Backend iteration 11m6s、Frontend 2m38s、Engineering docs 18s）。
-交接备注：[PR #555](https://github.com/MarkDanile/MetaEduBase/pull/555)；评分提交只允许 `review-score-log.md` 新增 1 行；工作台/完成态归 merge 后 closeout；Metrics 归独立复盘任务。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -51,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-08-12 | DOC-080 正式评分提交原子边界与 Metrics Snapshot 所有权 | 🟢 完成 | 冻结 finding/返修与正式评分子阶段、Score Log 单行净 diff、工作台 merge 后 closeout 和 Metrics 独立复盘边界；新增基线感知检查器与 21 个 Git fixture；首轮两项 P1 归一根因族返修后 P0/P1=0，评分 91；Ready Backend full 全绿 | [PR #555](https://github.com/MarkDanile/MetaEduBase/pull/555)（squash merge `2b801a60`）/ [DOC-080](technical-debt.md#doc-080-固化正式评分提交原子边界与-metrics-snapshot-所有权) / [work-log](work-log.md) / [score 91](04-retrospectives/review-score-log.md) |
 | 2026-08-11 | R1-S4-E-B2 External Erasure Participant | 🟢 完成 | external erasure participant（3 source DB ref 唯一清除者 + 双事务协议 Tx1/Tx2 + E-3a 失败矩阵 + E-3b 查询/reconcile 闭环）；三面 3 根因族 + 判别力增强批次，评分 91；registry 保持 False；Backend full 全绿 | [PR #552](https://github.com/MarkDanile/MetaEduBase/pull/552)（squash merge `a6aee2e7`）/ [Plan §R1-S4-E](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) / [work-log](work-log.md) / [score 91](04-retrospectives/review-score-log.md) |
 | 2026-08-10 | R1-S4-E-B1 Lifecycle Registration + Adapter Contract | 🟢 完成 | lifecycle registration port（registered 唯一生产者 + promote blocked->registered）+ adapter contract（E-2b 硬前置 + E-3a 分类 + idempotency key/receipt digest）；集合锁 owner 与 backfill 同源；三面 3 根因族 + 独立测试/运维面 P1 清零，评分 90；registry False | [PR #550](https://github.com/MarkDanile/MetaEduBase/pull/550)（squash merge `683d8c06`）/ [Plan §R1-S4-E](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) / [work-log](work-log.md) / [score 90](04-retrospectives/review-score-log.md) |
 | 2026-08-10 | R1-S4-E-A Ref Tombstone | 🟢 完成 | migration 041 guard 扩展（持 ref 旧状态 -> redacted 无 ref，revision id 缩短避免版本表 DDL）+ transport inline-only 清 / ref-bearing 零修改 blocked；三面 0/2/12/10 → 12 条决策返修 → P0/P1=0，评分 91；Backend full 全绿 | [PR #548](https://github.com/MarkDanile/MetaEduBase/pull/548)（squash merge `0797e70c`）/ [Plan §R1-S4-E](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) / [work-log](work-log.md) / [score 91](04-retrospectives/review-score-log.md) |

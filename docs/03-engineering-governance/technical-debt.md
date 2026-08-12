@@ -197,13 +197,13 @@
 | DOC-065 | 规则瘦身、任务池插入规则与开工硬门禁收口 | 🟢 完成 | P1 | 文档 / 工程治理 / 跨 AI 协作 | PR #244 merged `6c31fe5`：压缩规则、补开工三连、禁止绕过门禁、统一任务池索引与插入顺序。 |
 | DOC-066 | 任务池主表插入顺序门禁 | 🟢 完成 | P2 | 文档 / 工程脚本 / 任务池 / 质量门禁 | PR #246 merged `4a58906`：Backlog / technical-debt 主表最新编号位置已脚本化。 |
 | DOC-067 | 分布式临时编号与正式任务编号归并规则 | 🟢 完成 | P2 | 文档 / 工程脚本 / 任务池 / 跨设备协作 | PR #248 merged `9bf177b`：保留正式短编号，`DRAFT-*` 只作临时来源，主表门禁已实现。 |
-| DOC-080 | 固化正式评分提交原子边界与 Metrics Snapshot 所有权 | 🟡 进行中 | P1 | 文档 / 工程流程 / 评分 / 质量门禁 / 跨 AI 协作 | 独立实施分支 `docs/doc-080-implement-review-score-boundary`；正在落实正式评分净 diff 门禁、工作台 closeout 例外和 Metrics 复盘所有权。 |
+| DOC-080 | 固化正式评分提交原子边界与 Metrics Snapshot 所有权 | 🟢 完成 | P1 | 文档 / 工程流程 / 评分 / 质量门禁 / 跨 AI 协作 | [PR #555](https://github.com/MarkDanile/MetaEduBase/pull/555)（squash merge `2b801a60`）：正式评分原子边界、工作台 closeout 例外、Metrics 复盘所有权及基线感知检查器已落地；评分 91。 |
 
 ## 任务详情
 
 ### DOC-080: 固化正式评分提交原子边界与 Metrics Snapshot 所有权
 
-状态：🟡 进行中
+状态：🟢 完成
 
 | 字段 | 内容 |
 |------|------|
@@ -211,7 +211,8 @@
 | 领域 | 文档 / 工程流程 / 评分 / 质量门禁 / 跨 AI 协作 |
 | 来源 | PR #550 / PR #552 正式评分提交范围纠偏；`review-scorecard.md`、`git-workflow.md` 与 `workbench.md` 的阶段边界冲突 |
 | 实施分支 | `docs/doc-080-implement-review-score-boundary` |
-| 交付 PR | [#555](https://github.com/MarkDanile/MetaEduBase/pull/555)（Draft） |
+| 交付 PR | [#555](https://github.com/MarkDanile/MetaEduBase/pull/555)（squash merge `2b801a60`） |
+| Merge Commit | `2b801a60` |
 
 **证据**
 
@@ -272,6 +273,13 @@
 - 不修改既有 Score Log 行、PR #550/#552 评分或任何业务实现。
 - 不改变 Ready 状态下 score-only push 是否触发 Backend full；CI 路径提速若需要，另立 TD/DOC。
 - 不拆分 `按流程评审` 为新的用户必记启动语；本任务只明确其内部子阶段和机器门禁。
+
+**交付记录**
+
+- PR #555 以 `2b801a60` squash merge；正式评分 91（Original，implementation baseline `74e5a7cf`），评分提交净 diff 仅向 `review-score-log.md` 新增一行，既有 Metrics Snapshot 数值未修改。
+- 首轮评审为数据/状态 P0=0/P1=1、测试/运维 P0=0/P1=1/P2=1、并发面无共享状态 finding；两项 P1 归并为“Score Log 行契约完整性”根因族，返修后定向复核 P0/P1=0。
+- 验证（Environment：本地 Git fixture + GitHub Actions）：Command `python -m pytest tests/engineering/test_review_score_submit.py -q` → Result 21 passed；Command `python -m pytest tests/engineering/ -q` → Result 131 passed；Command `ruff check scripts/engineering/ tests/engineering/` → Result exit 0；Command `scripts/check-engineering-docs` → Result 31 项历史 allowlist、exit 0；CI run `31550461439` 的 Ready Backend full 11m33s、Frontend 2m41s、Engineering docs 19s 均 success。
+- 历史 Metrics Snapshot 76 条补算继续归独立复盘或治理任务，不因 DOC-080 完成而隐式更新。
 
 ### TD-092: 高风险 PR CI 反馈周期与复审收敛治理
 
