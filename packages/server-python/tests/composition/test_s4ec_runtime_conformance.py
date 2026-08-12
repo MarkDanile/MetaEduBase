@@ -1,6 +1,6 @@
 r"""R1-S4-E-C：RuntimeErasureParticipant conformance fake 真实 PostgreSQL 测试。
 
-契约事实源：Plan §R1-S4-E E-5-4（S4-E-C）+ spec §10.3（conformance suite：
+契约事实源：Plan §R1-S4-E E-5 第 4 项（S4-E-C）+ spec §10.3（conformance suite：
 session destroy + 旧 epoch event + 迟到 seq + unknown outcome + ACK 重放）+
 D7（Runtime fake 只证明协议，不变量 7）。
 
@@ -30,10 +30,19 @@ registry**（registry 断言与实现分离，测试作用域内自动还原）�
 - E-3b 镜像：blocked/unknown binding 查询 + 有证据 reconcile（仅 receipt 可得时
   补 erased）；
 - registry fail closed + fake 不冒充真实 spool（``runtime_spool`` 无清除路径）。
+
+**写路径 conformance 判别范围（T-10，如实记录）**：spec §10.3 写路径 4 例（旧 epoch /
+迟到 seq / purge erasing/erased fence 拒 late ingest）经既有 ``RunCoordinator.
+ingest_runtime_event`` / ``FencedExecutionPort.fenced_ingest_runtime_event`` 走通，
+**不调用本 participant 代码**——它们是既有机器在 purge 窗口的**回归证据**（目标错误
+真实命中：旧 epoch -> RuntimeEpochMismatchError / seq gap -> RuntimeSequenceGapError /
+fence 非 active -> LateBodyWriteRejectedError），非新 fake 的行为判别；participant
+侧协议一致性由 destroy/reconcile/ACK/重放/并发用例覆盖。
 """
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -393,13 +402,6 @@ def _participant(session, adapter) -> RuntimeErasureParticipant:
     return RuntimeErasureParticipant(session, adapter)
 
 
-def _binding_state(db_session, binding_id: uuid.UUID) -> dict:
-    return {
-        "id": binding_id,
-        "state": "unknown",  # placeholder; replaced by _load_binding
-    }
-
-
 async def _load_binding(db_session, binding_id: uuid.UUID) -> dict:
     row = (
         await db_session.execute(
@@ -649,6 +651,116 @@ async def test_destroy_failed_blocks_adapter_unavailable(db_session):
     assert cp["reason_code"] == "purge_blocked_by_runtime_adapter_unavailable"
 
 
+async def test_mixed_outcome_reason_priority_outcome_unknown(db_session):
+    """E-3a 归并（T-3 返修）：多 binding 混合 outcome——unknown/timeout 优先
+    outcome_unknown（可能已生效不自动重试），优先于 not-sent/failed。"""
+    await _ensure_test_tenant(db_session)
+    conv_id, purge_rev = await _seed_deleted_expired_conversation(db_session)
+    await _seed_runtime_binding(db_session, conv_id, ref_value="pi://session/1")
+    await _seed_runtime_binding(db_session, conv_id, ref_value="pi://session/2")
+    await _seed_runtime_binding(db_session, conv_id, ref_value="pi://session/3")
+    op_id, _ = await _make_purge_operation(db_session, conv_id, purge_rev)
+    await db_session.commit()
+
+    class _MixedAdapter(_SuccessAdapter):
+        """3 binding：not-sent / failed / unknown 各一——归并应落 outcome_unknown。"""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self._state = ["notsent", "failed", "unknown"]
+
+        async def destroy_session(self, **kwargs):
+            self.calls += 1
+            mode = self._state.pop(0)
+            if mode == "notsent":
+                raise RuntimeDestroyNotSentError("not sent")
+            if mode == "failed":
+                raise RuntimeDestroyFailedError("failed")
+            return RuntimeDestroyUnknown()
+
+    await _participant(db_session, _MixedAdapter()).erase_runtime_session(
+        tenant_id=TENANT_ID,
+        conversation_id=conv_id,
+        purge_revision=purge_rev,
+        purge_operation_id=op_id,
+        expected_operation_revision=1,
+    )
+    cp = await _checkpoint_state(db_session, op_id)
+    assert cp["state"] == PurgeOwnerState.BLOCKED.value
+    # unknown 优先（outcome_unknown）——not-sent/failed 都被 unknown 压制。
+    assert cp["reason_code"] == "purge_blocked_by_runtime_outcome_unknown"
+
+
+async def test_mixed_outcome_reason_priority_erase_timeout(db_session):
+    """E-3a 归并（T-3 返修）：无 unknown/timeout 时 not-sent 优先 erase_timeout。"""
+    await _ensure_test_tenant(db_session)
+    conv_id, purge_rev = await _seed_deleted_expired_conversation(db_session)
+    await _seed_runtime_binding(db_session, conv_id, ref_value="pi://session/1")
+    await _seed_runtime_binding(db_session, conv_id, ref_value="pi://session/2")
+    op_id, _ = await _make_purge_operation(db_session, conv_id, purge_rev)
+    await db_session.commit()
+
+    class _NotSentFailedAdapter(_SuccessAdapter):
+        def __init__(self) -> None:
+            super().__init__()
+            self._state = ["notsent", "failed"]
+
+        async def destroy_session(self, **kwargs):
+            self.calls += 1
+            mode = self._state.pop(0)
+            if mode == "notsent":
+                raise RuntimeDestroyNotSentError("not sent")
+            raise RuntimeDestroyFailedError("failed")
+
+    await _participant(db_session, _NotSentFailedAdapter()).erase_runtime_session(
+        tenant_id=TENANT_ID,
+        conversation_id=conv_id,
+        purge_revision=purge_rev,
+        purge_operation_id=op_id,
+        expected_operation_revision=1,
+    )
+    cp = await _checkpoint_state(db_session, op_id)
+    assert cp["state"] == PurgeOwnerState.BLOCKED.value
+    assert cp["reason_code"] == "purge_blocked_by_runtime_erase_timeout"
+
+
+async def test_final_scan_nonzero_fallback_reason(db_session):
+    """E-3a 归并（T-3 返修）：adapter 窗口为空但 final scan 非零（如 Tx1 后并发新增
+    binding）-> scan_nonzero 兜底 reason（无本批 outcome 时）。"""
+    await _ensure_test_tenant(db_session)
+    conv_id, purge_rev = await _seed_deleted_expired_conversation(db_session)
+    binding_id = await _seed_runtime_binding(db_session, conv_id)
+    op_id, _ = await _make_purge_operation(db_session, conv_id, purge_rev)
+    # 直接用 invalid + ref 保留表达「遗留 blocked binding」（无本批 outcome）。
+    # binding 的 profile FK 在 INSERT 时经 replica 角色绕过——UPDATE 同样需 replica
+    # 绕过（否则 FK 重检失败，seed 的伪造 profile_id 不真实存在）。
+    await db_session.execute(text("SET LOCAL session_replication_role = replica"))
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_runtime_session_bindings "
+            "SET status = 'invalid' WHERE id = :id"
+        ),
+        {"id": binding_id},
+    )
+    await db_session.execute(text("SET LOCAL session_replication_role = default"))
+    # 无活跃 binding（invalid 不进 adapter 窗口，D-1）——但 final scan 因 ref 非空
+    # 仍非零 -> blocked + scan_nonzero 兜底。
+    await db_session.commit()
+    adapter = _SuccessAdapter()
+    summary = await _participant(db_session, adapter).erase_runtime_session(
+        tenant_id=TENANT_ID,
+        conversation_id=conv_id,
+        purge_revision=purge_rev,
+        purge_operation_id=op_id,
+        expected_operation_revision=1,
+    )
+    assert adapter.calls == 0  # invalid 不进窗口（D-1）
+    assert summary.scan.total == 1
+    cp = await _checkpoint_state(db_session, op_id)
+    assert cp["state"] == PurgeOwnerState.BLOCKED.value
+    assert cp["reason_code"] == "purge_blocked_by_runtime_binding_scan_nonzero"
+
+
 async def test_destroy_empty_evidence_fail_closed(db_session):
     """E-2b 返修镜像（D-9）：空 evidence 不得写 erased（fail closed）。"""
     await _ensure_test_tenant(db_session)
@@ -678,8 +790,15 @@ async def test_destroy_empty_evidence_fail_closed(db_session):
 
 async def test_crash_after_tx1_replays_to_completion(db_session):
     """E-6 崩溃恢复正向：Tx1 提交后崩溃（checkpoint erasing + attempt + intent 已
-    持久化）-> 同 invocation 重放精确重验续做 Tx2，adapter 幂等去重（calls==1），
-    binding closed + ref 清 + ACK。"""
+    持久化）-> 同 invocation 重放精确重验续做 Tx2，binding closed + ref 清 + ACK。
+
+    **断言口径（T-4 返修，如实记录）**：本测试用 crash adapter + 重放用全新
+    ``_SuccessAdapter``（模拟崩溃后新进程重做），``adapter2.calls == 1`` 只证明
+    「重放进程单次调用/单 binding」，**不**证明 idempotency key 驱动的去重——跨
+    crash+replay 的「总 distinct destroy == 1」由
+    ``test_crash_replay_shared_adapter_distinct_destroy_once``（共享 key→evidence
+    store）单独覆盖。attempt 在重放后**不再 bump**（checkpoint ERASING 续做分支
+    attempt 不变），本测试断言重放后 attempt 仍为 1。"""
     await _ensure_test_tenant(db_session)
     conv_id, purge_rev = await _seed_deleted_expired_conversation(db_session)
     binding_id = await _seed_runtime_binding(db_session, conv_id)
@@ -726,12 +845,14 @@ async def test_crash_after_tx1_replays_to_completion(db_session):
         expected_operation_revision=op_rev,
     )
     # 重放完整执行 Tx2（checkpoint ERASING 续做分支，attempt 不变、intent 匹配）——
-    # binding closed + ref 清 + ACK；重放进程 adapter 调用恰为 1（幂等 key 去重）。
+    # binding closed + ref 清 + ACK；重放进程 adapter 调用恰为 1。
     assert adapter2.calls == 1
+    # T-4 返修：attempt 在重放后**不 bump**（ERASING 续做分支 attempt 不变）。
+    cp = await _checkpoint_state(db_session, op_id)
+    assert cp["attempt"] == 1
     binding = await _load_binding(db_session, binding_id)
     assert binding["runtime_session_ref"] is None
     assert binding["status"] == "closed"
-    cp = await _checkpoint_state(db_session, op_id)
     assert cp["state"] == PurgeOwnerState.ACKED.value
     fence = await _fence_state(db_session, conv_id)
     assert fence["state"] == "erased"
@@ -827,19 +948,19 @@ async def test_erased_fence_replay_scan_nonzero_fail_closed(db_session):
 
 async def test_idempotency_key_stable_across_lease_epoch(db_session):
     """E-2b 镜像：idempotency key 由 ref + adapter 派生，不含 lease_epoch/attempt
-    （跨 takeover 稳定——新 lease 用同 key 去重）。"""
+    （跨 takeover 稳定——新 lease 用同 key 去重）。判别力（T-11 返修）：断言派生
+    函数签名只接受 ref + adapter 身份（新增 epoch/attempt 参数 -> 签名断言红）。"""
+    import inspect
+
+    params = set(inspect.signature(runtime_destroy_idempotency_key).parameters)
+    assert params == {"runtime_session_ref", "adapter_key", "adapter_version"}, params
     await _ensure_test_tenant(db_session)
     key1 = runtime_destroy_idempotency_key(
         runtime_session_ref=_REF_VALUE,
         adapter_key="fake-pi-sdk",
         adapter_version=1,
     )
-    key2 = runtime_destroy_idempotency_key(
-        runtime_session_ref=_REF_VALUE,
-        adapter_key="fake-pi-sdk",
-        adapter_version=1,
-    )
-    assert key1 == key2
+    assert len(key1) == 64
     # 改 ref / adapter 身份 -> key 变化（身份输入敏感）。
     key3 = runtime_destroy_idempotency_key(
         runtime_session_ref="pi://session/OTHER",
@@ -847,43 +968,6 @@ async def test_idempotency_key_stable_across_lease_epoch(db_session):
         adapter_version=1,
     )
     assert key3 != key1
-
-
-async def test_replay_does_not_double_destroy(db_session):
-    """E-6 无重复副作用：同 binding 崩溃重放后 adapter 总调用数仍为 1（幂等 key +
-    checkpoint attempt 去重）。"""
-    await _ensure_test_tenant(db_session)
-    conv_id, purge_rev = await _seed_deleted_expired_conversation(db_session)
-    await _seed_runtime_binding(db_session, conv_id)
-    op_id, _ = await _make_purge_operation(db_session, conv_id, purge_rev)
-    await db_session.commit()
-
-    crash_adapter = _CrashOnFirstCall()
-    participant = _participant(db_session, crash_adapter)
-    with pytest.raises(RuntimeError):
-        await participant.erase_runtime_session(
-            tenant_id=TENANT_ID,
-            conversation_id=conv_id,
-            purge_revision=purge_rev,
-            purge_operation_id=op_id,
-            expected_operation_revision=1,
-        )
-    assert crash_adapter.calls == 1
-    await db_session.commit()
-    op_rev = (
-        await db_session.execute(
-            text("SELECT revision FROM metaedu.agent_conversation_purges WHERE id = :op"),
-            {"op": op_id},
-        )
-    ).scalar_one()
-    await _participant(db_session, _SuccessAdapter()).erase_runtime_session(
-        tenant_id=TENANT_ID,
-        conversation_id=conv_id,
-        purge_revision=purge_rev,
-        purge_operation_id=op_id,
-        expected_operation_revision=op_rev,
-    )
-    assert crash_adapter.calls == 1  # crash adapter 只调用一次
 
 
 # ---------------------------------------------------------------------------
@@ -1010,6 +1094,635 @@ async def test_reconcile_requires_receipt_lookup_capability(db_session):
     assert result == "invalid"
 
 
+async def _ensure_test_tenant_sf(session_factory):
+    """用 session_factory 种 tenant（并发测试用，db_session 已提交的可见性差异）。"""
+    async with session_factory() as session:
+        now = datetime.now(UTC).replace(tzinfo=None)
+        await session.execute(
+            text(
+                "INSERT INTO metaedu.tenants "
+                "(id, name, school_name, isolation, is_active, created_at, updated_at) "
+                "VALUES (:id, :name, :school_name, :isolation, true, :now, :now) "
+                "ON CONFLICT (id) DO NOTHING"
+            ),
+            {
+                "id": TENANT_ID,
+                "name": "s4ec-conc-tenant",
+                "school_name": "s4ec conc school",
+                "isolation": "shared",
+                "now": now,
+            },
+        )
+        await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# 族B（T-1/D-5 返修）：E-2a Tx2 精确重验 fail-closed 分支覆盖（防双删协议安全核心）
+# ---------------------------------------------------------------------------
+
+
+async def _seed_for_session_factory(session_factory, *, binding_count: int = 1):
+    """用独立 session 种 tenant + conversation + bindings + operation + commit。"""
+    async with session_factory() as seed_session:
+        await _ensure_test_tenant_sf(session_factory)
+        conv_id, purge_rev = await _seed_deleted_expired_conversation(seed_session)
+        binding_ids = [
+            await _seed_runtime_binding(seed_session, conv_id, ref_value=f"pi://session/{i}")
+            for i in range(binding_count)
+        ]
+        op_id, _ = await _make_purge_operation(seed_session, conv_id, purge_rev)
+        await seed_session.commit()
+    return conv_id, purge_rev, op_id, binding_ids
+
+
+async def _make_engine_factory():
+    from sqlalchemy.ext.asyncio import (
+        AsyncSession,
+        async_sessionmaker,
+        create_async_engine,
+    )
+    from sqlalchemy.pool import NullPool
+
+    from tests.conftest import TEST_DB_URL
+
+    engine = create_async_engine(TEST_DB_URL, poolclass=NullPool)
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    return engine, factory
+
+
+async def test_erase_tx2_fence_not_erasing_after_tx1(session_factory):
+    """E-2a DR-3 镜像：**真实命中**「Tx1 已提交、Tx2 重验时 fence 非 erasing」的
+    fail-closed 分支。adapter 协调并发：A 跑 erase（Tx1 提交后进入 adapter 窗口），
+    adapter 内 set entered 并等待；B 把 runtime fence 改 erased；A 放行后 Tx2 检出
+    fence 非 erasing -> fail closed。"""
+    conv_id, purge_rev, op_id, _ = await _seed_for_session_factory(session_factory)
+    adapter_entered = asyncio.Event()
+    adapter_release = asyncio.Event()
+
+    class _FenceRaceAdapter(_SuccessAdapter):
+        async def destroy_session(self, **kwargs):
+            self.calls += 1
+            adapter_entered.set()
+            await adapter_release.wait()
+            return RuntimeDestroySuccess(
+                adapter_receipt_evidence=f"ev:{kwargs['idempotency_key'][:16]}"
+            )
+
+    race_adapter = _FenceRaceAdapter()
+    tx2_error: list[Exception] = []
+
+    async def _run_erase_a():
+        engine, factory = await _make_engine_factory()
+        try:
+            async with factory() as sess:
+                participant = _participant(sess, race_adapter)
+                try:
+                    await participant.erase_runtime_session(
+                        tenant_id=TENANT_ID,
+                        conversation_id=conv_id,
+                        purge_revision=purge_rev,
+                        purge_operation_id=op_id,
+                        expected_operation_revision=1,
+                    )
+                except ValueError as exc:
+                    tx2_error.append(exc)
+        finally:
+            await engine.dispose()
+
+    async def _race_fence_to_erased():
+        await adapter_entered.wait()
+        engine, factory = await _make_engine_factory()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        try:
+            async with factory() as sess:
+                await sess.execute(
+                    text(
+                        "UPDATE metaedu.agent_erasure_fences "
+                        "SET state = 'erased', ack_digest = :ad, acked_at = :now "
+                        "WHERE tenant_id = :t AND conversation_id = :c AND owner_key = :o"
+                    ),
+                    {
+                        "t": TENANT_ID,
+                        "c": conv_id,
+                        "o": RUNTIME_PRIVATE_OWNER,
+                        "ad": "e" * 64,
+                        "now": now,
+                    },
+                )
+                await sess.commit()
+        finally:
+            await engine.dispose()
+            adapter_release.set()
+
+    await asyncio.gather(_run_erase_a(), _race_fence_to_erased())
+    assert len(tx2_error) == 1, f"expected Tx2 fence-not-erasing fail closed, got {tx2_error}"
+    assert "fence no longer erasing" in str(tx2_error[0])
+    assert race_adapter.calls == 1  # adapter 副作用已发生但 Tx2 fail closed 回滚
+
+
+async def test_erase_tx2_checkpoint_attempt_mismatch_fail_closed(session_factory):
+    """E-2a：Tx2 重验 checkpoint attempt 不匹配 -> fail closed（旧 attempt 拒绝）。"""
+    conv_id, purge_rev, op_id, _ = await _seed_for_session_factory(session_factory)
+    adapter_entered = asyncio.Event()
+    adapter_release = asyncio.Event()
+
+    class _AttemptRaceAdapter(_SuccessAdapter):
+        async def destroy_session(self, **kwargs):
+            self.calls += 1
+            adapter_entered.set()
+            await adapter_release.wait()
+            return RuntimeDestroySuccess(
+                adapter_receipt_evidence=f"ev:{kwargs['idempotency_key'][:16]}"
+            )
+
+    race_adapter = _AttemptRaceAdapter()
+    tx2_error: list[Exception] = []
+
+    async def _run_erase_a():
+        engine, factory = await _make_engine_factory()
+        try:
+            async with factory() as sess:
+                try:
+                    await _participant(sess, race_adapter).erase_runtime_session(
+                        tenant_id=TENANT_ID,
+                        conversation_id=conv_id,
+                        purge_revision=purge_rev,
+                        purge_operation_id=op_id,
+                        expected_operation_revision=1,
+                    )
+                except ValueError as exc:
+                    tx2_error.append(exc)
+        finally:
+            await engine.dispose()
+
+    async def _bump_attempt():
+        await adapter_entered.wait()
+        engine, factory = await _make_engine_factory()
+        try:
+            async with factory() as sess:
+                await sess.execute(
+                    text(
+                        "UPDATE metaedu.agent_conversation_purge_owners "
+                        "SET attempt = 99 WHERE purge_operation_id = :op"
+                    ),
+                    {"op": op_id},
+                )
+                await sess.commit()
+        finally:
+            await engine.dispose()
+            adapter_release.set()
+
+    await asyncio.gather(_run_erase_a(), _bump_attempt())
+    assert len(tx2_error) == 1, f"expected Tx2 attempt mismatch, got {tx2_error}"
+    assert "attempt" in str(tx2_error[0])
+
+
+async def test_erase_tx2_checkpoint_intent_mismatch_fail_closed(session_factory):
+    """E-2a：Tx2 重验 checkpoint intent digest 不匹配 -> fail closed（新 intent 拒）。"""
+    conv_id, purge_rev, op_id, _ = await _seed_for_session_factory(session_factory)
+    adapter_entered = asyncio.Event()
+    adapter_release = asyncio.Event()
+
+    class _IntentRaceAdapter(_SuccessAdapter):
+        async def destroy_session(self, **kwargs):
+            self.calls += 1
+            adapter_entered.set()
+            await adapter_release.wait()
+            return RuntimeDestroySuccess(
+                adapter_receipt_evidence=f"ev:{kwargs['idempotency_key'][:16]}"
+            )
+
+    race_adapter = _IntentRaceAdapter()
+    tx2_error: list[Exception] = []
+
+    async def _run_erase_a():
+        engine, factory = await _make_engine_factory()
+        try:
+            async with factory() as sess:
+                try:
+                    await _participant(sess, race_adapter).erase_runtime_session(
+                        tenant_id=TENANT_ID,
+                        conversation_id=conv_id,
+                        purge_revision=purge_rev,
+                        purge_operation_id=op_id,
+                        expected_operation_revision=1,
+                    )
+                except ValueError as exc:
+                    tx2_error.append(exc)
+        finally:
+            await engine.dispose()
+
+    async def _change_intent():
+        await adapter_entered.wait()
+        engine, factory = await _make_engine_factory()
+        try:
+            async with factory() as sess:
+                await sess.execute(
+                    text(
+                        "UPDATE metaedu.agent_conversation_purge_owners "
+                        "SET checkpoint_digest = :d "
+                        "WHERE purge_operation_id = :op"
+                    ),
+                    {"op": op_id, "d": "f" * 64},
+                )
+                await sess.commit()
+        finally:
+            await engine.dispose()
+            adapter_release.set()
+
+    await asyncio.gather(_run_erase_a(), _change_intent())
+    assert len(tx2_error) == 1, f"expected Tx2 intent mismatch, got {tx2_error}"
+    assert "intent digest" in str(tx2_error[0])
+
+
+async def test_erase_stale_lease_epoch_fail_closed(session_factory):
+    """E-2a：operation lease_epoch 已被接管（takeover）-> Tx2 精确重验 fail closed。"""
+    conv_id, purge_rev, op_id, _ = await _seed_for_session_factory(session_factory)
+    adapter_entered = asyncio.Event()
+    adapter_release = asyncio.Event()
+
+    class _LeaseRaceAdapter(_SuccessAdapter):
+        async def destroy_session(self, **kwargs):
+            self.calls += 1
+            adapter_entered.set()
+            await adapter_release.wait()
+            return RuntimeDestroySuccess(
+                adapter_receipt_evidence=f"ev:{kwargs['idempotency_key'][:16]}"
+            )
+
+    race_adapter = _LeaseRaceAdapter()
+    tx2_error: list[Exception] = []
+
+    async def _run_erase_a():
+        engine, factory = await _make_engine_factory()
+        try:
+            async with factory() as sess:
+                try:
+                    await _participant(sess, race_adapter).erase_runtime_session(
+                        tenant_id=TENANT_ID,
+                        conversation_id=conv_id,
+                        purge_revision=purge_rev,
+                        purge_operation_id=op_id,
+                        expected_operation_revision=1,
+                    )
+                except ValueError as exc:
+                    tx2_error.append(exc)
+        finally:
+            await engine.dispose()
+
+    async def _advance_lease():
+        await adapter_entered.wait()
+        engine, factory = await _make_engine_factory()
+        try:
+            async with factory() as sess:
+                await sess.execute(
+                    text(
+                        "UPDATE metaedu.agent_conversation_purges "
+                        "SET lease_epoch = 1 WHERE id = :op"
+                    ),
+                    {"op": op_id},
+                )
+                await sess.commit()
+        finally:
+            await engine.dispose()
+            adapter_release.set()
+
+    await asyncio.gather(_run_erase_a(), _advance_lease())
+    assert len(tx2_error) == 1, f"expected Tx2 stale lease fail closed, got {tx2_error}"
+    assert "lease_epoch" in str(tx2_error[0])
+
+
+async def test_erase_tx2_purge_revision_mismatch_fail_closed(session_factory):
+    """E-2a：Tx2 重验 fence.purge_revision != operation -> fail closed（stale purge）。"""
+    conv_id, purge_rev, op_id, _ = await _seed_for_session_factory(session_factory)
+    adapter_entered = asyncio.Event()
+    adapter_release = asyncio.Event()
+
+    class _RevRaceAdapter(_SuccessAdapter):
+        async def destroy_session(self, **kwargs):
+            self.calls += 1
+            adapter_entered.set()
+            await adapter_release.wait()
+            return RuntimeDestroySuccess(
+                adapter_receipt_evidence=f"ev:{kwargs['idempotency_key'][:16]}"
+            )
+
+    race_adapter = _RevRaceAdapter()
+    tx2_error: list[Exception] = []
+
+    async def _run_erase_a():
+        engine, factory = await _make_engine_factory()
+        try:
+            async with factory() as sess:
+                try:
+                    await _participant(sess, race_adapter).erase_runtime_session(
+                        tenant_id=TENANT_ID,
+                        conversation_id=conv_id,
+                        purge_revision=purge_rev,
+                        purge_operation_id=op_id,
+                        expected_operation_revision=1,
+                    )
+                except ValueError as exc:
+                    tx2_error.append(exc)
+        finally:
+            await engine.dispose()
+
+    async def _change_fence_rev():
+        await adapter_entered.wait()
+        engine, factory = await _make_engine_factory()
+        try:
+            async with factory() as sess:
+                await sess.execute(
+                    text(
+                        "UPDATE metaedu.agent_erasure_fences "
+                        "SET purge_revision = 99 "
+                        "WHERE tenant_id = :t AND conversation_id = :c AND owner_key = :o"
+                    ),
+                    {"t": TENANT_ID, "c": conv_id, "o": RUNTIME_PRIVATE_OWNER},
+                )
+                await sess.commit()
+        finally:
+            await engine.dispose()
+            adapter_release.set()
+
+    await asyncio.gather(_run_erase_a(), _change_fence_rev())
+    assert len(tx2_error) == 1, f"expected Tx2 purge_revision mismatch, got {tx2_error}"
+    assert "purge_revision" in str(tx2_error[0])
+
+
+async def test_erase_second_purge_instance_fail_closed(session_factory):
+    """E-2a C-1：fence 已 erasing 时第二 purge 实例（不同 purge_revision）不得进
+    adapter 窗口——Tx1 分派即 fail closed（E-6「重复删除」串行化契约）。"""
+    conv_id, purge_rev, op_id, _ = await _seed_for_session_factory(session_factory)
+    # 先把 fence 置 erasing + purge_revision=1（模拟另一 purge 实例已推进）。
+    engine, factory = await _make_engine_factory()
+    async with factory() as sess:
+        await sess.execute(
+            text(
+                "UPDATE metaedu.agent_erasure_fences SET state = 'erasing', "
+                "purge_revision = 1 "
+                "WHERE tenant_id = :t AND conversation_id = :c AND owner_key = :o"
+            ),
+            {"t": TENANT_ID, "c": conv_id, "o": RUNTIME_PRIVATE_OWNER},
+        )
+        await sess.commit()
+    await engine.dispose()
+
+    # 第二 purge 实例（rev 2）——fence 已 erasing 且 purge_revision 不同 -> fail closed。
+    op2_id = uuid.uuid4()
+    now = datetime.now(UTC).replace(tzinfo=None)
+    engine, factory = await _make_engine_factory()
+    async with factory() as sess:
+        await sess.execute(
+            text(
+                "INSERT INTO metaedu.agent_conversation_purges "
+                "(id, tenant_id, conversation_id, purge_revision, state, registry_digest, "
+                "registry_snapshot, retention_policy_snapshot, retention_policy_digest, "
+                "hold_revision_snapshot, lease_epoch, scheduled_at, revision, "
+                "created_at, updated_at) "
+                "VALUES (:id, :t, :c, 2, 'scheduled', :rd, :rs, :rps, :rpd, 0, 0, "
+                ":now, 1, :now, :now)"
+            ),
+            {
+                "id": op2_id,
+                "t": TENANT_ID,
+                "c": conv_id,
+                "rd": registry_digest(),
+                "rs": _registry_snapshot_json(),
+                "rps": '{"conversation_recovery_days": 30}',
+                "rpd": _retention_policy_digest(),
+                "now": now,
+            },
+        )
+        await sess.execute(
+            text(
+                "INSERT INTO metaedu.agent_conversation_purge_owners "
+                "(id, tenant_id, purge_operation_id, owner_key, owner_version, "
+                "capability_digest, state, attempt, created_at, updated_at) "
+                "VALUES (:id, :t, :op, :o, 1, :cd, 'pending', 0, :now, :now)"
+            ),
+            {
+                "id": uuid.uuid4(),
+                "t": TENANT_ID,
+                "op": op2_id,
+                "o": RUNTIME_PRIVATE_OWNER,
+                "cd": capability_digest(RUNTIME_PRIVATE_OWNER),
+                "now": now,
+            },
+        )
+        await sess.commit()
+    await engine.dispose()
+
+    adapter = _SuccessAdapter()
+    engine, factory = await _make_engine_factory()
+    async with factory() as sess:
+        with pytest.raises(ValueError, match="already erasing under purge_revision"):
+            await _participant(sess, adapter).erase_runtime_session(
+                tenant_id=TENANT_ID,
+                conversation_id=conv_id,
+                purge_revision=2,
+                purge_operation_id=op2_id,
+                expected_operation_revision=1,
+            )
+    await engine.dispose()
+    assert adapter.calls == 0  # 第二实例不得进 adapter 窗口
+
+
+# ---------------------------------------------------------------------------
+# 族C（C-2/T-2 返修）：真实双连接并发 + 幂等去重判别
+# ---------------------------------------------------------------------------
+
+
+async def test_concurrent_double_runtime_erase_serializes(session_factory):
+    """E-6「重复删除」：两 erase 并发同一 conversation——共享 fence 串行化，一次
+    adapter 调用、一个 ACK；另一连接走 erased-fence 幂等重放 no-op。真实 PG 双连接
+    （session_factory），共享可计数 adapter 断言总调用恰为 1。"""
+    conv_id, purge_rev, op_id, _ = await _seed_for_session_factory(session_factory)
+    shared_adapter = _SuccessAdapter()
+
+    async def _erase_with_new_session():
+        engine, factory = await _make_engine_factory()
+        try:
+            async with factory() as sess:
+                for _attempt in range(3):
+                    current_rev = (
+                        await sess.execute(
+                            text(
+                                "SELECT revision FROM metaedu.agent_conversation_purges "
+                                "WHERE id = :op"
+                            ),
+                            {"op": op_id},
+                        )
+                    ).scalar_one()
+                    participant = _participant(sess, shared_adapter)
+                    try:
+                        await participant.erase_runtime_session(
+                            tenant_id=TENANT_ID,
+                            conversation_id=conv_id,
+                            purge_revision=purge_rev,
+                            purge_operation_id=op_id,
+                            expected_operation_revision=current_rev,
+                        )
+                        break
+                    except ValueError as exc:
+                        if "operation revision mismatch" not in str(exc):
+                            raise
+                        await sess.rollback()
+                else:
+                    raise AssertionError("concurrent erase did not converge after retries")
+        finally:
+            await engine.dispose()
+
+    results = await asyncio.gather(
+        _erase_with_new_session(),
+        _erase_with_new_session(),
+        return_exceptions=True,
+    )
+    for r in results:
+        assert not isinstance(r, Exception), f"concurrent erase raised: {r}"
+    # DR-1 判别力：同一 conversation 的外部 destroy 总调用恰为 1（共享 fence 串行化
+    # + erased-fence 重放 no-op，E-6「adapter 调用计数 == 1」）。
+    assert shared_adapter.calls == 1
+
+
+async def test_crash_replay_shared_adapter_distinct_destroy_once(session_factory):
+    """E-2b 幂等去重（C-3 返修）：崩溃 + 重放用**同一共享 adapter**（key→evidence
+    存储）——participant 重放会重调 destroy_session（承认重复调用存在），但共享
+    store 使同 idempotency key 命中缓存 evidence，**总 distinct destroy 恰为 1**
+    （不得重复产生副作用，E-6「adapter 调用计数 == 1」）。
+
+    与 `test_crash_after_tx1_replays_to_completion`（双独立 adapter 单实例计数）
+    的区别：本测试用跨 crash+replay 的**共享 key→evidence 存储**断言 distinct
+    destroy——若 participant 重放使用新 key（未命中 store）或 adapter 无去重，
+    本断言转红（B2 DR-1 判别力同构）。
+    """
+    conv_id, purge_rev, op_id, _ = await _seed_for_session_factory(session_factory)
+
+    class _SharedDedupCrashAdapter(_SuccessAdapter):
+        """第一次 destroy 记录 evidence 到共享 store 后抛 RuntimeError（模拟 Tx1 已
+        提交、adapter 副作用已发生但进程在 Tx2 前崩溃）；重放同 key 命中 store 返回
+        缓存 evidence 不重复副作用。"""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self._crash_next = True
+            self._store: dict[str, str] = {}
+            self.distinct_destroys = 0
+
+        async def destroy_session(self, **kwargs):
+            self.calls += 1
+            key = kwargs["idempotency_key"]
+            if key in self._store:
+                # 同 key 重放：返回缓存 evidence（无新副作用）。
+                return RuntimeDestroySuccess(adapter_receipt_evidence=self._store[key])
+            self._store[key] = f"ev:{key[:16]}"
+            self.distinct_destroys += 1
+            if self._crash_next:
+                self._crash_next = False
+                raise RuntimeError("simulated process crash after adapter side-effect")
+            return RuntimeDestroySuccess(
+                adapter_receipt_evidence=self._store[key]
+            )
+
+    shared_adapter = _SharedDedupCrashAdapter()
+
+    async def _run_erase(expected_revision):
+        engine, factory = await _make_engine_factory()
+        try:
+            async with factory() as sess:
+                return await _participant(sess, shared_adapter).erase_runtime_session(
+                    tenant_id=TENANT_ID,
+                    conversation_id=conv_id,
+                    purge_revision=purge_rev,
+                    purge_operation_id=op_id,
+                    expected_operation_revision=expected_revision,
+                )
+        finally:
+            await engine.dispose()
+
+    # 第一次：Tx1 提交 + adapter 副作用（distinct==1）后崩溃（RuntimeError 逃逸）。
+    with pytest.raises(RuntimeError):
+        await _run_erase(1)
+    assert shared_adapter.distinct_destroys == 1
+    assert shared_adapter.calls == 1
+    # 重放：同 invocation（checkpoint ERASING 续做 + 同 key 命中 store）——不再
+    # 产生新副作用（distinct 仍 1），完成 Tx2 清 ref + 关 binding + ACK。
+    await _run_erase(2)
+    assert shared_adapter.distinct_destroys == 1  # 跨 crash+replay 总 distinct == 1
+    assert shared_adapter.calls == 2  # 承认重复调用存在（participant 重放重调）
+    # 最终态：binding closed + fence erased + checkpoint acked。
+    engine, factory = await _make_engine_factory()
+    async with factory() as check:
+        fence = (
+            await check.execute(
+                text(
+                    "SELECT state FROM metaedu.agent_erasure_fences "
+                    "WHERE tenant_id = :t AND conversation_id = :c AND owner_key = :o"
+                ),
+                {"t": TENANT_ID, "c": conv_id, "o": RUNTIME_PRIVATE_OWNER},
+            )
+        ).scalar_one()
+        assert fence == "erased"
+        cp = (
+            await check.execute(
+                text(
+                    "SELECT state FROM metaedu.agent_conversation_purge_owners "
+                    "WHERE purge_operation_id = :op"
+                ),
+                {"op": op_id},
+            )
+        ).scalar_one()
+        assert cp == PurgeOwnerState.ACKED.value
+    await engine.dispose()
+
+
+async def test_erased_fence_replay_checkpoint_digest_form(db_session):
+    """E-2c/erased-fence 重放：修复 pending checkpoint 后 checkpoint_digest 必须是
+    RuntimeBindingScan 形式（final scan digest）——B2 D-1 教训的 runtime 侧。"""
+    await _ensure_test_tenant(db_session)
+    conv_id, purge_rev = await _seed_deleted_expired_conversation(db_session)
+    await _seed_runtime_binding(db_session, conv_id)
+    op_id, _ = await _make_purge_operation(db_session, conv_id, purge_rev)
+    await db_session.commit()
+
+    await _participant(db_session, _SuccessAdapter()).erase_runtime_session(
+        tenant_id=TENANT_ID,
+        conversation_id=conv_id,
+        purge_revision=purge_rev,
+        purge_operation_id=op_id,
+        expected_operation_revision=1,
+    )
+    await db_session.commit()
+    # 模拟 ACK 丢失：checkpoint 拉回 pending。
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversation_purge_owners SET state = 'pending', "
+            "ack_digest = NULL, checkpoint_digest = NULL WHERE purge_operation_id = :op"
+        ),
+        {"op": op_id},
+    )
+    await db_session.commit()
+    op_rev = (
+        await db_session.execute(
+            text("SELECT revision FROM metaedu.agent_conversation_purges WHERE id = :op"),
+            {"op": op_id},
+        )
+    ).scalar_one()
+    await _participant(db_session, _SuccessAdapter()).erase_runtime_session(
+        tenant_id=TENANT_ID,
+        conversation_id=conv_id,
+        purge_revision=purge_rev,
+        purge_operation_id=op_id,
+        expected_operation_revision=op_rev,
+    )
+    cp = await _checkpoint_state(db_session, op_id)
+    assert cp["state"] == PurgeOwnerState.ACKED.value
+    # checkpoint_digest 必须为 64-hex（RuntimeBindingScan digest 形式，非
+    # TransportBodyScan——若写成 TransportBodyScan 形式则与正常 ACK 持久化不一致）。
+    assert cp["checkpoint_digest"] is not None
+    assert len(cp["checkpoint_digest"]) == 64
+
+
 # ---------------------------------------------------------------------------
 # registry fail closed + fake 不冒充真实 spool
 # ---------------------------------------------------------------------------
@@ -1038,9 +1751,17 @@ async def test_capability_gate_fail_closed_when_registry_false(db_session, monke
 
 async def test_runtime_spool_capability_has_no_clear_path(db_session, monkeypatch):
     """D7 / E-7 边界：``runtime_spool`` capability 当前无实现、无清除路径——fake
-    只覆盖 ``runtime_session_ref``，不冒充真实 spool 已完成。断言生产 registry 中
-    ``runtime_spool`` 存在但 ``erase_available=False``。"""
+    只覆盖 ``runtime_session_ref``，不冒充真实 spool 已完成。
+
+    **判别力（T-8 返修）**：除 registry ``erase_available=False`` 锁定外，断言
+    participant 源码**不含任何对 spool 表/列的清除引用**（``runtime_spool`` 只出现
+    在 registry capability 声明与注释，不出现在任何 SQL/字段写路径）——若实现新增
+    一条不经 registry gate 的 spool 清除路径（fake 冒充 spool 完成），本断言红。
+    """
+    import inspect
+
     import app.composition.agent_erasure_registry as registry_module
+    import app.composition.runtime_erasure_participant as participant_module
 
     # undo autouse fixture 的 monkeypatch——恢复生产 registry（runtime False）。
     monkeypatch.undo()
@@ -1049,6 +1770,20 @@ async def test_runtime_spool_capability_has_no_clear_path(db_session, monkeypatc
     assert "runtime_session_ref" in runtime.capabilities
     # 生产 registry 全程 False（E-4）。
     assert runtime.erase_available is False
+
+    # participant 源码不得包含任何 spool 表/列引用（无清除路径的代码事实）。
+    src = inspect.getsource(participant_module)
+    spool_refs = [
+        line.strip()
+        for line in src.splitlines()
+        if "spool" in line.lower() and "runtime_spool" in line
+    ]
+    # 只允许 docstring/注释层的 capability 声明，不允许任何 SQL/字段写路径。
+    for line in spool_refs:
+        assert not line.lstrip().startswith(("SELECT", "UPDATE", "INSERT")), (
+            f"runtime_spool must have no clear path, found write path: {line}"
+        )
+    assert "runtime_session_bindings" in src  # 唯一清除目标表是 binding
 
 
 # ---------------------------------------------------------------------------

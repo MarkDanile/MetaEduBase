@@ -1,6 +1,6 @@
 """R1-S4-E-C：``runtime.private.v1`` RuntimeErasureParticipant conformance fake。
 
-契约事实源：Plan §R1-S4-E E-5-4（S4-E-C）+ spec §10.3（conformance suite：
+契约事实源：Plan §R1-S4-E E-5 第 4 项（S4-E-C）+ spec §10.3（conformance suite：
 session destroy + 旧 epoch event + 迟到 seq + unknown outcome + ACK 重放）+
 D7（Runtime fake 只证明协议，不变量 7）。
 
@@ -148,13 +148,19 @@ class RuntimeBindingScan:
 
 @dataclass(frozen=True, slots=True)
 class RuntimeErasureSummary:
-    """单 owner 清除 + ACK 摘要（ACK digest 的 canonical 输入，不含正文/receipt）。"""
+    """单 owner 清除 + ACK 摘要（ACK digest 的 canonical 输入，不含正文）。
+
+    ``receipt_digests``：本批 destroyed binding 的 adapter-evidence 派生
+    receipt digest（E-2b 证据链，D-2 返修）——折进 ACK digest，使 ACK 可证明
+    「凭何 evidence 清除」（非本地自造，reconcile/运维可用同 envelope 重算比对）。
+    """
 
     owner_key: str
     owner_version: int
     purge_revision: int
     destroyed_bindings: int
     scan: RuntimeBindingScan
+    receipt_digests: tuple[str, ...] = ()
 
     def ack_digest(self) -> str:
         return snapshot_digest(
@@ -164,6 +170,7 @@ class RuntimeErasureSummary:
                 "owner_version": self.owner_version,
                 "purge_revision": self.purge_revision,
                 "destroyed_bindings": self.destroyed_bindings,
+                "receipt_digests": sorted(self.receipt_digests),
                 "scan": {
                     "active_bindings": self.scan.active_bindings,
                     "destroyed_bindings": self.scan.destroyed_bindings,
@@ -271,6 +278,7 @@ class RuntimeErasureParticipant(TransportErasureParticipantBase):
         *,
         tenant_id: uuid.UUID,
         conversation_id: uuid.UUID,
+        bindings: list[RuntimeBindingRow] | None = None,
     ) -> None:
         """该 Conversation 全部 runtime binding 源行的集合锁（E-5-2/D8）。
 
@@ -278,10 +286,16 @@ class RuntimeErasureParticipant(TransportErasureParticipantBase):
         ``runtime.private.v1``（该 owner 是 binding 行的唯一 erase 写者）。源行
         UPDATE（清 ref + 关 binding）必须在集合锁临界区内（D8「集合锁 -> 源行
         FOR UPDATE」）。
+
+        ``bindings`` 复用调用方已加载的 adapter 窗口（Tx1 主流程
+        ``_load_active_bindings`` 的结果）——**不重复读窗口**（并发面 D-6：两读间
+        并发插入 binding 会让锁集含之而窗口不含，adapter 窗口/集合锁发散）。None
+        时回退自身加载（满足基类抽象签名兼容）。
         """
-        bindings = await self._load_active_bindings(
-            tenant_id=tenant_id, conversation_id=conversation_id
-        )
+        if bindings is None:
+            bindings = await self._load_active_bindings(
+                tenant_id=tenant_id, conversation_id=conversation_id
+            )
         for binding in bindings:
             await acquire_transport_aggregate_lock(
                 self._session,
@@ -306,9 +320,11 @@ class RuntimeErasureParticipant(TransportErasureParticipantBase):
     ) -> list[RuntimeBindingRow]:
         """加载该 Conversation 的 binding 行（adapter 窗口）。
 
-        窗口 = ``runtime_session_ref IS NOT NULL``（**不看 status**——invalid 行持
-        ref 仍需重试 destroy，closed 行 ref 已 NULL 自然排除）。显式绑定 tenant +
-        conversation 维度。
+        窗口 = ``runtime_session_ref IS NOT NULL AND status NOT IN ('closed',
+        'invalid')``（**B2 registered-only 窗口镜像**：blocked/unknown 行——status
+        'invalid'——**不**进入 adapter 窗口，不自动重试 destroy；恢复只经
+        ``reconcile_runtime_binding``（E-3b）。closed 行 ref 已 NULL 自然排除）。
+        显式绑定 tenant + conversation 维度。
         """
         rows = (
             await self._session.execute(
@@ -316,7 +332,8 @@ class RuntimeErasureParticipant(TransportErasureParticipantBase):
                     "SELECT id, runtime_profile_id, runtime_session_ref "
                     "FROM metaedu.agent_runtime_session_bindings "
                     "WHERE tenant_id = :t AND conversation_id = :c "
-                    "AND runtime_session_ref IS NOT NULL"
+                    "AND runtime_session_ref IS NOT NULL "
+                    "AND status NOT IN ('closed', 'invalid')"
                 ),
                 {"t": tenant_id, "c": conversation_id},
             )
@@ -437,6 +454,16 @@ class RuntimeErasureParticipant(TransportErasureParticipantBase):
 
         # erased fence 幂等重放先于 purge 前置（ACK 丢失恢复）。
         if fence.state is ErasureFenceState.ERASED:
+            # 并发面 P1 C-4：erased-fence 修复必须限定**同一 purge_revision**——
+            # 否则同 conversation 新 purge（rev 2）会拿 purge 1 的 fence ack_digest
+            # 把 op2 的 pending checkpoint 置 ACKED（跨 purge 实例的 ack 摘要污染）。
+            # scan 非零 guard 只拦 session 泄漏，拦不住 ack 摘要不一致——此处补门禁。
+            if fence.purge_revision != purge_revision:
+                raise ValueError(
+                    f"erased fence {self.owner_key!r} under purge_revision "
+                    f"{fence.purge_revision}, requested {purge_revision}; "
+                    "cross-purge-instance ACK repair rejected (E-2a)"
+                )
             fence_ack_digest = fence.ack_digest
             assert fence_ack_digest is not None, "erased fence must carry ack_digest"
             scan = await self._scan_runtime_bindings(
@@ -466,6 +493,9 @@ class RuntimeErasureParticipant(TransportErasureParticipantBase):
             return self._summary_from_fence(
                 fence=fence,
                 purge_revision=purge_revision,
+                # 重放返回摘要的 destroyed_bindings = scan 全量已关（含历史 closed）；
+                # 与持久化 ACK 的 destroyed_count（本次 Tx2）仅在**返回值**上可能不同
+                # （D-10，不落库——持久化事实是 fence.ack_digest，已由 repair 复用）。
                 destroyed_bindings=scan.destroyed_bindings,
                 scan=scan,
             )
@@ -561,7 +591,20 @@ class RuntimeErasureParticipant(TransportErasureParticipantBase):
                 hold_revision=conversation.hold_revision,
                 now=effective_now,
             )
-        elif fence.state is not ErasureFenceState.ERASING:
+        elif fence.state is ErasureFenceState.ERASING:
+            # E-2a 同一 purge 实例门禁（并发面 P1 C-1）：fence 已 erasing 时必须是
+            # **同一 purge_revision**（本 operation 的崩溃后重放，checkpoint ERASING
+            # 续做分支继续）——不同 purge_revision 的第二 purge 实例在 fence erasing
+            # 下**不得**进入 adapter 窗口（否则两 operation 同时 destroy，E-6「重复
+            # 删除」串行化契约）。fence.purge_revision 由 transition_fence_state 写入
+            # 推进的 purge_revision，与 operation.purge_revision 对齐校验。
+            if fence.purge_revision != purge_revision:
+                raise ValueError(
+                    f"fence {self.owner_key!r} already erasing under purge_revision "
+                    f"{fence.purge_revision}, requested {purge_revision}; concurrent "
+                    "purge instance rejected (E-2a same-instance gate)"
+                )
+        else:
             raise ValueError(
                 f"fence {self.owner_key!r} in state {fence.state.value}; "
                 "cannot erase runtime session"
@@ -585,7 +628,9 @@ class RuntimeErasureParticipant(TransportErasureParticipantBase):
             tenant_id=tenant_id, conversation_id=conversation_id
         )
         await self._acquire_inbox_aggregate_locks(
-            tenant_id=tenant_id, conversation_id=conversation_id
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            bindings=bindings,
         )
 
         # checkpoint -> erasing + attempt += 1 + intent digest（E-2c 镜像）。
@@ -641,6 +686,15 @@ class RuntimeErasureParticipant(TransportErasureParticipantBase):
             outcomes.append((binding, outcome))
 
         # ===== Tx2（第二独立事务：E-2a 精确重验 + 写结果 + 清 ref + ACK）=====
+        # E-2a 精确重验必须观察**已提交状态**（并发面 C-1/T-1 返修）：Tx2 是第二独立
+        # 事务，但 ORM identity map 会把 Tx1 时期的 checkpoint/operation 对象按 PK
+        # 复用，`_load_verified_checkpoint`/`_load_verified_operation` 的 SELECT 返回
+        # **未过期实例**（expire_on_commit=False），并发 takeover（另一进程 bump
+        # attempt/lease_epoch/intent）无法被 Tx2 重验观测——防双删失效。此处
+        # ``expire_all`` 使后续重验按已提交行重读（fence 是 domain 重建不受影响）。
+        # 先 expire（清 Tx1 时代 ORM 缓存），**再**重载 Conversation FOR UPDATE
+        # （避免 expire_all 后 conversation2 的属性惰性读走无锁 SELECT）。
+        self._session.expire_all()
         conversation2 = await self._load_conversation_for_update(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
@@ -694,12 +748,16 @@ class RuntimeErasureParticipant(TransportErasureParticipantBase):
             hold_revision=conversation2.hold_revision,
         )
 
-        # 集合锁临界区内写 binding + 清 ref（D8 同序）。
+        # 集合锁临界区内写 binding + 清 ref（D8 同序）。Tx2 的窗口 = outcomes 的
+        # binding 集合（Tx1 已加载、adapter 已调用）——不重复读窗口。
         await self._acquire_inbox_aggregate_locks(
-            tenant_id=tenant_id, conversation_id=conversation_id
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            bindings=[binding for binding, _ in outcomes],
         )
 
         destroyed_count = 0
+        receipt_digests: list[str] = []
         for binding, outcome in outcomes:
             classification = classify_destroy_outcome(outcome)
             state = classification.erase_state
@@ -740,6 +798,7 @@ class RuntimeErasureParticipant(TransportErasureParticipantBase):
                     tenant_id=tenant_id,
                 )
                 destroyed_count += 1
+                receipt_digests.append(receipt_digest)
             else:
                 # blocked/unknown：写 binding 状态（invalid，ref 保留）+ reason 聚合，
                 # 不清 ref（E-3a 矩阵镜像；E-3b reconcile/查询在 S5，本 Slice 只写
@@ -787,6 +846,7 @@ class RuntimeErasureParticipant(TransportErasureParticipantBase):
             purge_revision=purge_revision,
             destroyed_bindings=destroyed_count,
             scan=final_scan,
+            receipt_digests=tuple(receipt_digests),
         )
         ack_digest = summary.ack_digest()
         fence3 = await self._erasure.transition_fence_state(
@@ -824,18 +884,23 @@ class RuntimeErasureParticipant(TransportErasureParticipantBase):
         binding: RuntimeBindingRow,
         receipt_digest: str,
         tenant_id: uuid.UUID,
-    ) -> None:
-        """Tx2：binding identity 重验 -> 清 ref + 关 binding。
+    ) -> bool:
+        """Tx2：binding identity 重验 -> 清 ref + 关 binding。返回是否实际 close。
 
         runtime 无独立 erased ledger——binding 行自身即事实源：
         - binding ref 重验：``runtime_session_ref`` 仍为窗口内快照值才清（ref 已
           NULL/缺失可跳过清除，历史兼容——binding 已关但 purge 尚未 ACK 的崩溃恢复）；
           非 NULL 且不匹配 -> **先 fail closed**（不关 binding、不伪造 receipt）。
-        - 清 ref + 关 binding（``runtime_session_ref = NULL, status = 'closed'``）：
-          满足现 binding CHECK（``ck_agent_runtime_binding_status`` 含 closed；
-          ref NULL 合法）。**不看 status 前置**——invalid 行（前次 blocked/unknown）
-          重试成功时同样可关（blocked -> erased 迁移）。0 行命中 -> 并发推进 ->
-          fail closed。
+        - **C-6（并发面返修）**：binding 行**缺失**（`current is None`）是异常态
+          （binding 行只由本 participant 关、执行侧不删），fail closed——不得
+          no-op 跳过并仍计 destroyed（无本 invocation 可验证 evidence 却计入）。
+        - 清 ref + 关 binding（``runtime_session_ref = NULL, status = 'closed'``）+
+          **同时清流租约（``active_stream_id = NULL, stream_lease_expires_at =
+          NULL``，D-4 返修）**：closed 行不得残留「活跃流租约」外观；两列同 NULL
+          满足现 binding CHECK（``ck_agent_runtime_binding_stream_lease``）。
+          满足 ``ck_agent_runtime_binding_status``（closed）/ ref NULL 合法。
+          **不看 status 前置**——invalid 行（前次 blocked/unknown）重试成功时同样
+          可关（blocked -> erased 迁移）。0 行命中 -> 并发推进 -> fail closed。
         """
         # identity 重验必须在写 erased 之前（ref 冲突 -> 不关 binding）。
         current = (
@@ -848,7 +913,12 @@ class RuntimeErasureParticipant(TransportErasureParticipantBase):
                 {"t": tenant_id, "id": binding.id},
             )
         ).scalar_one_or_none()
-        if current is not None and current != binding.runtime_session_ref:
+        if current is None:
+            raise ValueError(
+                f"runtime binding {binding.id} row missing in Tx2; "
+                "binding deleted mid-window (abnormal) -> fail closed"
+            )
+        if current != binding.runtime_session_ref:
             raise ValueError(
                 f"runtime binding {binding.id} runtime_session_ref {current!r} != "
                 f"window ref {binding.runtime_session_ref!r}; binding conflict, "
@@ -856,29 +926,31 @@ class RuntimeErasureParticipant(TransportErasureParticipantBase):
             )
 
         # binding 无 receipt_digest 列（无独立 ledger）——receipt evidence 承载于
-        # ACK digest + Tx2 后 final scan digest（checkpoint.checkpoint_digest）。
-        if current == binding.runtime_session_ref:
-            result = await self._session.execute(
-                text(
-                    "UPDATE metaedu.agent_runtime_session_bindings "
-                    "SET runtime_session_ref = NULL, status = 'closed', "
-                    "  revision = revision + 1, updated_at = clock_timestamp() "
-                    "WHERE tenant_id = :t AND id = :id "
-                    "AND runtime_session_ref = :rv"
-                ),
-                {
-                    "t": tenant_id,
-                    "id": binding.id,
-                    "rv": binding.runtime_session_ref,
-                },
+        # ACK digest（RuntimeErasureSummary.receipt_digests）+ Tx2 后 final scan
+        # digest（checkpoint.checkpoint_digest）。
+        result = await self._session.execute(
+            text(
+                "UPDATE metaedu.agent_runtime_session_bindings "
+                "SET runtime_session_ref = NULL, status = 'closed', "
+                "  active_stream_id = NULL, stream_lease_expires_at = NULL, "
+                "  revision = revision + 1, updated_at = clock_timestamp() "
+                "WHERE tenant_id = :t AND id = :id "
+                "AND runtime_session_ref = :rv"
+            ),
+            {
+                "t": tenant_id,
+                "id": binding.id,
+                "rv": binding.runtime_session_ref,
+            },
+        )
+        cleared = cast(CursorResult, result).rowcount
+        if cleared != 1:
+            raise ValueError(
+                f"runtime binding {binding.id} close hit {cleared} row(s); "
+                "expected 1 (matched ref_value). Concurrent close or ref "
+                "clear -> fail closed to keep erased + closed atomic"
             )
-            cleared = cast(CursorResult, result).rowcount
-            if cleared != 1:
-                raise ValueError(
-                    f"runtime binding {binding.id} close hit {cleared} row(s); "
-                    "expected 1 (matched ref_value). Concurrent close or ref "
-                    "clear -> fail closed to keep erased + closed atomic"
-                )
+        return True
 
     async def _write_binding_failure(
         self,

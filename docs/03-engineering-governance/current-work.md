@@ -25,7 +25,7 @@
 
 需求来源：
 - Spec: `docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md` §10.3
-- Plan: `docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md` §R1-S4-E E-5-4 / D7
+- Plan: `docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md` §R1-S4-E E-5 第 4 项 / D7
 
 当前进展：
 - `RuntimeErasureParticipant` conformance fake 已实现（`runtime_erasure_participant.py` + `runtime_erasure_adapter.py`）：session destroy 双事务协议（Tx1 checkpoint erasing + attempt + intent digest / 无锁 adapter / Tx2 精确重验 + 清 binding ref + 关 binding + ACK）+ E-3a 失败矩阵 + E-3b 查询/reconcile + ACK/fencing/重放复用基类；`runtime.private.v1` registry 保持 False。

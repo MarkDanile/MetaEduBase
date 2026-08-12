@@ -1,6 +1,6 @@
 r"""R1-S4-E-C：RuntimeErasureParticipant conformance adapter contract 单元测试。
 
-契约事实源：Plan §R1-S4-E E-5-4 + spec §10.3 + E-2b/E-3a 镜像（runtime adapter
+契约事实源：Plan §R1-S4-E E-5 第 4 项 + spec §10.3 + E-2b/E-3a 镜像（runtime adapter
 contract，REQ-043 的每个 Runtime Adapter 启用前必须通过 conformance suite）。
 纯单元测试（无 DB），镜像 ``test_s4eb1_adapter_contract.py``。
 
@@ -149,20 +149,24 @@ def test_idempotency_key_changes_on_ref_identity():
 
 
 def test_idempotency_key_does_not_include_lease_epoch_or_attempt():
-    """E-2b 镜像：idempotency key 派生输入只有 ref + adapter 身份——任意
-    lease_epoch/attempt 变化不改变 key（跨 takeover 稳定）。"""
+    """E-2b 镜像：idempotency key 派生输入**只有** ref + adapter 身份——跨 takeover
+    稳定（epoch/attempt 变化不改变 key）。
+
+    **判别力（T-11 返修）**：直接断言派生函数签名只接受 ``runtime_session_ref``/
+    ``adapter_key``/``adapter_version`` 三个入参——若实现给派生函数新增
+    ``lease_epoch``/``attempt`` 参数（哪怕带默认值），本签名断言转红（变异击杀）。
+    不再用「同输入重算两次断言相等」的 vacuous 写法（那在加可选参数时仍绿）。
+    """
+    import inspect
+
+    params = set(inspect.signature(runtime_destroy_idempotency_key).parameters)
+    assert params == {"runtime_session_ref", "adapter_key", "adapter_version"}, params
     key = runtime_destroy_idempotency_key(
         runtime_session_ref="pi://session/1",
         adapter_key="fake-pi-sdk",
         adapter_version=1,
     )
-    # 同一 ref 的两次 takeover（epoch/attempt 不同）必须是同一 key——派生函数
-    # 不接受 epoch/attempt 参数，天然满足（变异：给派生函数加 epoch 参数 -> 红）。
-    assert key == runtime_destroy_idempotency_key(
-        runtime_session_ref="pi://session/1",
-        adapter_key="fake-pi-sdk",
-        adapter_version=1,
-    )
+    assert len(key) == 64
 
 
 # ---------------------------------------------------------------------------

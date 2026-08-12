@@ -1,6 +1,6 @@
 """R1-S4-E-C runtime.private.v1 session-destroy adapter 契约（conformance）。
 
-契约事实源：Plan §R1-S4-E E-5-4（S4-E-C Runtime conformance fake）+
+契约事实源：Plan §R1-S4-E E-5 第 4 项（S4-E-C Runtime conformance fake）+
 spec §10.3（conformance suite：session destroy + 旧 epoch event + 迟到 seq +
 unknown outcome + ACK 重放）。镜像 ``external_object_adapter.py``（S4-E-B1/B2
 external adapter contract）的失败分类/idempotency/receipt 结构——REQ-043 的每个
