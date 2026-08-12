@@ -571,7 +571,19 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
                 hold_revision=conversation.hold_revision,
                 now=effective_now,
             )
-        elif fence.state is not ErasureFenceState.ERASING:
+        elif fence.state is ErasureFenceState.ERASING:
+            # S4-F 族 A（并发面 P1-1）：E-2a 同一 purge 实例门禁（镜像 runtime
+            # ``:594-606``）。fence 已 erasing 时必须是**同一 purge_revision**（本
+            # operation 的崩溃后重放，checkpoint ERASING 续做分支继续）——不同
+            # purge_revision 的第二 purge 实例在 fence erasing 下**不得**进入 adapter
+            # 窗口（否则两 operation 同时 destroy，E-6「重复删除」串行化契约）。
+            if fence.purge_revision != purge_revision:
+                raise ValueError(
+                    f"fence {self.owner_key!r} already erasing under purge_revision "
+                    f"{fence.purge_revision}, requested {purge_revision}; concurrent "
+                    "purge instance rejected (E-2a same-instance gate)"
+                )
+        else:
             raise ValueError(
                 f"fence {self.owner_key!r} in state {fence.state.value}; "
                 "cannot erase external payload"

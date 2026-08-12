@@ -3,8 +3,8 @@
 契约事实源：Plan §R1-S4-F F-0~F-7（PR #559 契约冻结）+ S4-E E-6 已覆盖清单。
 
 本文件只补 S4-F **新增**反例（F-1 标注「需新增 / 族 B」）；已由 E-6 冻结并实现的
-故障点**不在本文件重复实现**（迟到 runtime write + 旧 producer revision 归既有
-S4-E-C/S4-C 套件，本文件只互操作确认，见 F-6 行 10/11）。
+故障点**不在本文件重复实现**——迟到 runtime write + 旧 producer revision（F-6 行
+10/11）由既有 S4-E-C/S4-C 套件承载，本 PR 通过全 composition 回归做互操作确认。
 
 **生产修复（同 commit 最小改动，镜像 runtime E-C 先例）**：
 - ``external_ref_erasure_participant`` Tx2 起点 ``expire_all()``——跨进程 takeover
@@ -28,9 +28,11 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime
+from typing import cast
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -197,7 +199,34 @@ async def _seed_erased_external_fence(
             "now": now,
         },
     )
-    assert result.rowcount == 1, "external fence must exist to set erased"
+    assert cast(CursorResult, result).rowcount == 1, "external fence must exist to set erased"
+
+
+async def _seed_erasing_external_fence(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    purge_revision: int,
+) -> None:
+    """把 external fence 置为 erasing + 指定 purge_revision（模拟 op1 中段）。"""
+    now = datetime.now(UTC).replace(tzinfo=None)
+    result = await session.execute(
+        text(
+            "UPDATE metaedu.agent_erasure_fences "
+            "SET state = 'erasing', purge_revision = :r, "
+            "  revision = revision + 1, updated_at = :now "
+            "WHERE tenant_id = :t AND conversation_id = :c AND owner_key = :o"
+        ),
+        {
+            "t": tenant_id,
+            "c": conversation_id,
+            "o": EXTERNAL_PAYLOAD_OWNER,
+            "r": purge_revision,
+            "now": now,
+        },
+    )
+    assert cast(CursorResult, result).rowcount == 1, "external fence must exist to set erasing"
 
 
 async def _seed_erased_transport_fence(
@@ -226,7 +255,7 @@ async def _seed_erased_transport_fence(
             "now": now,
         },
     )
-    assert result.rowcount == 1, "transport fence must exist to set erased"
+    assert cast(CursorResult, result).rowcount == 1, "transport fence must exist to set erased"
 
 
 async def _checkpoint_state(
@@ -258,6 +287,57 @@ async def _operation_state(
         )
     ).mappings().one()
     return dict(row)
+
+
+async def _erase_external_concurrent(
+    *,
+    conv_id: uuid.UUID,
+    op_id: uuid.UUID,
+    purge_rev: int,
+    adapter: object,
+) -> None:
+    """在独立 session 跑 external erase（F-6 行 5 并发 gather 用）。
+
+    operation 由测试 seed 预置 running/revision=2（S5 已标 running 再分发 owner），
+    此处固定传 ``expected_operation_revision=2``——``_mark_operation_running`` 对已
+    running 不 bump，无 revision-CAS 竞态（避免并发重试回滚 op 状态的 flaky）。
+    """
+    f, e = await _make_factory()
+    try:
+        async with f() as sess:
+            await _ext_participant(sess, adapter).erase_external_payload(
+                tenant_id=TENANT_ID,
+                conversation_id=conv_id,
+                purge_revision=purge_rev,
+                purge_operation_id=op_id,
+                expected_operation_revision=2,
+            )
+            await sess.commit()
+    finally:
+        await e.dispose()
+
+
+async def _erase_runtime_concurrent(
+    *,
+    conv_id: uuid.UUID,
+    op_id: uuid.UUID,
+    purge_rev: int,
+    adapter: object,
+) -> None:
+    """同 ``_erase_external_concurrent``，runtime 侧（expected_operation_revision=2）。"""
+    f, e = await _make_factory()
+    try:
+        async with f() as sess:
+            await _runtime_participant(sess, adapter).erase_runtime_session(
+                tenant_id=TENANT_ID,
+                conversation_id=conv_id,
+                purge_revision=purge_rev,
+                purge_operation_id=op_id,
+                expected_operation_revision=2,
+            )
+            await sess.commit()
+    finally:
+        await e.dispose()
 
 
 # ---------------------------------------------------------------------------
@@ -318,11 +398,13 @@ async def test_external_tx2_cross_process_takeover_fail_closed(monkeypatch, sess
 
     async def _takeover_bump():
         """等待 A 进入 adapter 窗口（Tx1 已提交、锁已释放）后，模拟另一进程 takeover：
-        **只 bump checkpoint.attempt**（F-6 判别点注入）。operation.lease_epoch 不动
-        ——``_load_verified_operation`` 在 SQLAlchemy FOR UPDATE 重选下恒读已提交值
-        （operation 重验不受 identity-map 陈旧影响），bump lease 会掩盖 checkpoint
-        陈旧读；attempt 才是本测试判别的 checkpoint 陈旧路径（``expire_all`` 清除
-        Tx1 时代 checkpoint ORM 缓存后按已提交行重读）。"""
+        **只 bump checkpoint.attempt**。说明：无 ``expire_all`` 时 checkpoint **和**
+        operation 都是 identity-map 陈旧实例（SQLAlchemy FOR UPDATE 重选不刷新
+        已入 identity-map 实体的属性，须 ``expire_all`` 才按已提交行重读）——bump
+        attempt 或 lease 任一都会被陈旧读掩盖；选择 attempt 是因为 checkpoint 重验
+        在 ``_load_verified_operation`` **之前**（external Tx2 顺序），使本测试断言
+        `"attempt" in error` 精确命中 checkpoint 陈旧路径（bump lease 会落在 operation
+        检查、attempt 断言不成立）。"""
         await adapter_entered.wait()
         factory, engine = await _make_factory()
         try:
@@ -348,6 +430,34 @@ async def test_external_tx2_cross_process_takeover_fail_closed(monkeypatch, sess
     )
     # 判别：attempt mismatch 被观测到即 checkpoint 陈旧读已被 expire_all 修复。
     assert "attempt" in str(tx2_error[0]), str(tx2_error[0])
+
+    # F-6 行 5「fail closed + 零写」：takeover 拒绝后 ledger 保持 registered + receipt
+    # NULL、fence 仍 erasing、checkpoint 仍 erasing（Tx2 在写任何终态前 raise）。
+    async with session_factory() as check:
+        fence_state = (
+            await check.execute(
+                text(
+                    "SELECT state FROM metaedu.agent_erasure_fences "
+                    "WHERE tenant_id=:t AND conversation_id=:c AND owner_key=:o"
+                ),
+                {"t": TENANT_ID, "c": conv_id, "o": EXTERNAL_PAYLOAD_OWNER},
+            )
+        ).scalar_one()
+        assert fence_state == "erasing", fence_state
+        cp = await _checkpoint_state(check, purge_operation_id=op_id)
+        assert cp["state"] == PurgeOwnerState.ERASING.value, cp
+        ledger = (
+            await check.execute(
+                text(
+                    "SELECT erase_state, receipt_digest FROM "
+                    "metaedu.agent_external_object_refs "
+                    "WHERE tenant_id=:t AND conversation_id=:c"
+                ),
+                {"t": TENANT_ID, "c": conv_id},
+            )
+        ).mappings().one()
+        assert ledger["erase_state"] == "registered", ledger
+        assert ledger["receipt_digest"] is None, ledger
 
 
 # ---------------------------------------------------------------------------
@@ -447,6 +557,60 @@ async def test_erased_fence_cross_purge_instance_rejected_transport(session_fact
         await engine.dispose()
 
 
+async def test_external_erasing_fence_second_purge_instance_rejected(
+    monkeypatch, session_factory
+):
+    """族 A（并发面 P1-1）：external fence 已 erasing（op1 中段）时 op2（rev2）不得
+    进入 adapter 窗口——ERASING 分支 same-purge-instance 门禁（镜像 runtime
+    ``:594-606``；E-6「重复删除」串行化契约）。
+
+    判别点：**去掉 external ERASING 分支 ``fence.purge_revision == purge_revision``
+    门禁（变异）-> op2 穿透进入 adapter 窗口、adapter.delete_object 被调用（重复
+    外部副作用）-> 本测试红（adapter.calls==0 不成立）**。
+    """
+    _enable_external_registry(monkeypatch)
+
+    factory, engine = await _make_factory()
+    try:
+        async with factory() as seed:
+            await _ensure_test_tenant(seed)
+            conv_id, _ = await _ext_seed_conversation(seed)
+            # op1 中段：external fence 已 erasing + purge_revision=1。
+            await _seed_erasing_external_fence(
+                seed,
+                tenant_id=TENANT_ID,
+                conversation_id=conv_id,
+                purge_revision=1,
+            )
+            await _seed_workspace_outbox_ref(seed, conv_id)
+            # op2：purge_revision=2 + pending checkpoint。
+            op2_id, _ = await _ext_make_purge_operation(seed, conv_id, 2)
+            await seed.commit()
+
+        adapter = _ExternalSuccessAdapter()
+        async with factory() as sess:
+            participant = _ext_participant(sess, adapter)
+            with pytest.raises(ValueError, match="same-instance gate"):
+                await participant.erase_external_payload(
+                    tenant_id=TENANT_ID,
+                    conversation_id=conv_id,
+                    purge_revision=2,
+                    purge_operation_id=op2_id,
+                    expected_operation_revision=1,
+                )
+        # op2 不得进入 adapter 窗口（重复外部副作用为 0）——门禁在窗口准入点之前。
+        assert adapter.calls == 0, (
+            "second purge instance must not enter the adapter window; "
+            "if this fires, the ERASING same-purge-instance gate was removed"
+        )
+        # op2 checkpoint 仍 pending（未推进 erasing）。
+        async with factory() as check:
+            cp = await _checkpoint_state(check, purge_operation_id=op2_id)
+            assert cp["state"] == PurgeOwnerState.PENDING.value, cp
+    finally:
+        await engine.dispose()
+
+
 # ---------------------------------------------------------------------------
 # F-6 R1-AC9：跨 tenant / owner scope mismatch / operation revision 重放
 # ---------------------------------------------------------------------------
@@ -525,6 +689,32 @@ async def test_cross_tenant_forged_ack_fail_closed(monkeypatch, session_factory)
                     purge_operation_id=op_a,
                     expected_operation_revision=1,
                 )
+
+        # F-6 行 1「断言零变更」：tenant-B 侧 fence 仍 active、无新增 checkpoint
+        # （operation 身份/tenant scope fail closed 且事务回滚，无持久化写）。
+        async with factory() as check:
+            fence_b = (
+                await check.execute(
+                    text(
+                        "SELECT state FROM metaedu.agent_erasure_fences "
+                        "WHERE tenant_id=:t AND conversation_id=:c AND owner_key=:o"
+                    ),
+                    {"t": tenant_b, "c": conv_b, "o": EXTERNAL_PAYLOAD_OWNER},
+                )
+            ).scalar_one()
+            assert fence_b == "active", fence_b
+            # tenant-A 的 op_a 在 tenant-B 不得产生 checkpoint（跨 tenant 零写）。
+            op_a_cp = (
+                await check.execute(
+                    text(
+                        "SELECT count(*) FROM "
+                        "metaedu.agent_conversation_purge_owners "
+                        "WHERE tenant_id = :t AND purge_operation_id = :op"
+                    ),
+                    {"t": tenant_b, "op": op_a},
+                )
+            ).scalar_one()
+            assert op_a_cp == 0, f"cross-tenant forged ACK wrote checkpoint, count={op_a_cp}"
     finally:
         await engine.dispose()
 
@@ -545,7 +735,7 @@ async def test_owner_scope_mismatch_capability_gate(monkeypatch, session_factory
                 seed, owner="workspace.transport.v1"
             )
             # purge operation 只登记 transport owner checkpoint（external 无 checkpoint）。
-            await _transport_make_purge_operation(
+            op_id, _ = await _transport_make_purge_operation(
                 seed, conv_id, purge_rev, owner="workspace.transport.v1"
             )
             await seed.commit()
@@ -557,16 +747,7 @@ async def test_owner_scope_mismatch_capability_gate(monkeypatch, session_factory
                     tenant_id=TENANT_ID,
                     conversation_id=conv_id,
                     purge_revision=purge_rev,
-                    purge_operation_id=(  # 读取 op_id 需要——见下方修正
-                        (await sess.execute(
-                            text(
-                                "SELECT id FROM metaedu.agent_conversation_purges "
-                                "WHERE tenant_id = :t AND conversation_id = :c "
-                                "ORDER BY created_at DESC LIMIT 1"
-                            ),
-                            {"t": TENANT_ID, "c": conv_id},
-                        )).scalar_one()
-                    ),
+                    purge_operation_id=op_id,
                     expected_operation_revision=1,
                 )
     finally:
@@ -731,10 +912,14 @@ async def test_mixed_multi_family_faults_five_party_consistent(monkeypatch, sess
     （timeout -> unknown）混合故障——五方状态各自一致（F-2），互不误伤；
     partial ACK 不 completed（D6 负向）。
 
-    断言（F-2 矩阵）：external fence erased + checkpoint acked；runtime fence
-    erasing + checkpoint blocked（outcome_unknown）+ binding invalid；operation
-    **running（非 completed）**；Conversation.purge_state 依最后写者（runtime
-    blocked -> blocked）。
+    断言（F-2 五方矩阵）：external fence erased + checkpoint acked + external ledger
+    erased；runtime fence erasing + checkpoint blocked（`outcome_unknown`）+ binding
+    invalid；operation **blocked（非 completed，D6 负向）** + failure_code ==
+    checkpoint.reason_code（blocked 三方一致精确相等）；Conversation.state='deleted'
+    + purge_state='blocked'（最后写者 runtime blocked 投影）+ purged_at IS NULL。
+    执行按 F-6 行 5 冻结的 ``asyncio.gather`` 并发；operation 预置 running/revision=2
+    （S5 已标 running 再分发 owner），两 owner 均以 expected_revision=2 跑，无
+    revision-CAS 竞态（避免并发重试回滚 op 状态的 flaky）。
     """
     _enable_external_registry(monkeypatch)
     _enable_runtime_registry(monkeypatch)
@@ -744,6 +929,9 @@ async def test_mixed_multi_family_faults_five_party_consistent(monkeypatch, sess
         async with factory() as seed:
             await _ensure_test_tenant(seed)
             conv_id, purge_rev = await _ext_seed_conversation(seed)
+            # external ref（workspace outbox -> ledger registered）+ runtime binding
+            # 同一 conversation（external erase 实际清除 1 个 ref，ledger 落 erased）。
+            await _seed_workspace_outbox_ref(seed, conv_id)
             # runtime fence + binding（同一 conversation）。
             now = datetime.now(UTC).replace(tzinfo=None)
             await seed.execute(
@@ -811,41 +999,40 @@ async def test_mixed_multi_family_faults_five_party_consistent(monkeypatch, sess
                         "now": now,
                     },
                 )
+            # operation 预置 running + revision=2（模拟 S5 已把 operation 标 running
+            # 后再分发 owner）——两 owner 均以 expected_revision=2 跑，_mark_operation_running
+            # 对已 running 不 bump，**无 revision-CAS 竞态**（避免并发下重试回滚 op
+            # 状态；F-6 行 5 并发用 asyncio.gather，Deterministic）。
+            await seed.execute(
+                text(
+                    "UPDATE metaedu.agent_conversation_purges "
+                    "SET state = 'running', revision = 2, started_at = :now, "
+                    "updated_at = :now WHERE id = :op"
+                ),
+                {"op": op_id, "now": now},
+            )
             await seed.commit()
 
-        # external success（operation revision 1 -> 2）。
-        async with factory() as sess:
-            await _ext_participant(sess, _ExternalSuccessAdapter()).erase_external_payload(
-                tenant_id=TENANT_ID,
-                conversation_id=conv_id,
-                purge_revision=purge_rev,
-                purge_operation_id=op_id,
-                expected_operation_revision=1,
-            )
-            await sess.commit()
-        # external 已 bump operation revision（_mark_operation_running 1->2），runtime
-        # 续跑须传当前 revision（stale expected_revision 会被 _load_verified_operation
-        # 拒绝——这是 revision CAS 的正确行为，不是本测试要判别的路径）。
-        async with factory() as sess:
-            current_rev = (
-                await sess.execute(
-                    text(
-                        "SELECT revision FROM metaedu.agent_conversation_purges "
-                        "WHERE id = :op"
-                    ),
-                    {"op": op_id},
-                )
-            ).scalar_one()
-        # runtime timeout -> unknown（E-3a）。
-        async with factory() as sess:
-            await _runtime_participant(sess, _RuntimeTimeoutAdapter()).erase_runtime_session(
-                tenant_id=TENANT_ID,
-                conversation_id=conv_id,
-                purge_revision=purge_rev,
-                purge_operation_id=op_id,
-                expected_operation_revision=int(current_rev),
-            )
-            await sess.commit()
+        # F-6 行 5 冻结「asyncio.gather 并发」：external（success -> erased）+ runtime
+        # （timeout -> unknown）并发驱动；operation 预置 running/rev2，两 owner 都以
+        # expected_operation_revision=2 调用（Conversation 行锁使 Tx1 入口串行化，
+        # 无 revision-CAS 竞态、无重试）。最终 op blocked：external ACK 不改 op 状态
+        # （_ack_owner_checkpoint 只要求 running/blocked 可 ACK），runtime blocked 是
+        # 最后写——无论 ACK/block 顺序均收敛 blocked。
+        await asyncio.gather(
+            _erase_external_concurrent(
+                conv_id=conv_id,
+                op_id=op_id,
+                purge_rev=purge_rev,
+                adapter=_ExternalSuccessAdapter(),
+            ),
+            _erase_runtime_concurrent(
+                conv_id=conv_id,
+                op_id=op_id,
+                purge_rev=purge_rev,
+                adapter=_RuntimeTimeoutAdapter(),
+            ),
+        )
 
         async with factory() as check:
             # external：fence erased + checkpoint acked。
@@ -904,9 +1091,45 @@ async def test_mixed_multi_family_faults_five_party_consistent(monkeypatch, sess
             ).scalars().first()
             assert binding == "invalid"
 
-            # operation 非 completed（D6 负向：external ACK + runtime blocked）。
+            # F-2 五方一致（数据面 P1-1 返修补齐）：
+            # ① Conversation：state='deleted' + purge_state='blocked'（最后写者 runtime
+            #    blocked 投影）+ purged_at IS NULL。
+            conv = (
+                await check.execute(
+                    text(
+                        "SELECT state, purge_state, purged_at FROM "
+                        "metaedu.agent_conversations WHERE tenant_id=:t AND id=:c"
+                    ),
+                    {"t": TENANT_ID, "c": conv_id},
+                )
+            ).mappings().one()
+            assert conv["state"] == "deleted"
+            assert conv["purge_state"] == "blocked", conv
+            assert conv["purged_at"] is None
+            # ② operation：runtime timeout->unknown 后 operation blocked（F-2 unknown
+            #    行），非 completed（D6 负向）。
             op = await _operation_state(check, purge_operation_id=op_id)
-            assert op["state"] != PurgeOperationState.COMPLETED.value, op
+            assert op["state"] == PurgeOperationState.BLOCKED.value, op
+            assert (
+                op["failure_code"] == "purge_blocked_by_runtime_outcome_unknown"
+            ), op
+            # ③ checkpoint.reason_code == operation.failure_code（F-2 blocked 三方一致
+            #    精确相等）。
+            assert rt_cp["reason_code"] == op["failure_code"], (
+                rt_cp["reason_code"],
+                op["failure_code"],
+            )
+            # ④ external ledger：external success 后全部 erased（receipt 留证）。
+            ext_ledger = (
+                await check.execute(
+                    text(
+                        "SELECT count(*) FROM metaedu.agent_external_object_refs "
+                        "WHERE tenant_id=:t AND conversation_id=:c AND erase_state='erased'"
+                    ),
+                    {"t": TENANT_ID, "c": conv_id},
+                )
+            ).scalar_one()
+            assert ext_ledger == 1, f"external ledger must be erased, got {ext_ledger}"
     finally:
         await engine.dispose()
 

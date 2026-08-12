@@ -855,7 +855,18 @@ class TransportErasureParticipantBase(ABC):
                 hold_revision=conversation.hold_revision,
                 now=effective_now,
             )
-        elif fence.state is not ErasureFenceState.ERASING:
+        elif fence.state is ErasureFenceState.ERASING:
+            # S4-F 族 A（并发面 P1-1）：E-2a 同一 purge 实例门禁（镜像 runtime
+            # ``:594-606`` + external 同修复）。transport 单事务下 fence=erasing 不
+            # 单独提交（仅同 session 崩溃重放触达），但为跨族一致仍须校验——不同
+            # purge_revision 的第二 purge 实例不得进入 adapter 窗口（E-6 串行化）。
+            if fence.purge_revision != purge_revision:
+                raise ValueError(
+                    f"fence {self.owner_key!r} already erasing under purge_revision "
+                    f"{fence.purge_revision}, requested {purge_revision}; concurrent "
+                    "purge instance rejected (E-2a same-instance gate)"
+                )
+        else:
             raise ValueError(
                 f"fence {self.owner_key!r} in state {fence.state.value}; "
                 "cannot erase transport body"
