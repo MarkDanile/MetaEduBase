@@ -197,21 +197,21 @@
 | DOC-065 | 规则瘦身、任务池插入规则与开工硬门禁收口 | 🟢 完成 | P1 | 文档 / 工程治理 / 跨 AI 协作 | PR #244 merged `6c31fe5`：压缩规则、补开工三连、禁止绕过门禁、统一任务池索引与插入顺序。 |
 | DOC-066 | 任务池主表插入顺序门禁 | 🟢 完成 | P2 | 文档 / 工程脚本 / 任务池 / 质量门禁 | PR #246 merged `4a58906`：Backlog / technical-debt 主表最新编号位置已脚本化。 |
 | DOC-067 | 分布式临时编号与正式任务编号归并规则 | 🟢 完成 | P2 | 文档 / 工程脚本 / 任务池 / 跨设备协作 | PR #248 merged `9bf177b`：保留正式短编号，`DRAFT-*` 只作临时来源，主表门禁已实现。 |
-| DOC-080 | 固化正式评分提交原子边界与 Metrics Snapshot 所有权 | 🔵 就绪 | P1 | 文档 / 工程流程 / 评分 / 质量门禁 / 跨 AI 协作 | PR #550 与 #552 的正式评分提交连续两次把工作台和 Metrics 重算混入评分净 diff；规则、快照所有权和基线检查器统一见 [详情](#doc-080-固化正式评分提交原子边界与-metrics-snapshot-所有权)。 |
+| DOC-080 | 固化正式评分提交原子边界与 Metrics Snapshot 所有权 | 🟡 进行中 | P1 | 文档 / 工程流程 / 评分 / 质量门禁 / 跨 AI 协作 | 独立实施分支 `docs/doc-080-implement-review-score-boundary`；正在落实正式评分净 diff 门禁、工作台 closeout 例外和 Metrics 复盘所有权。 |
 
 ## 任务详情
 
 ### DOC-080: 固化正式评分提交原子边界与 Metrics Snapshot 所有权
 
-状态：🔵 就绪
+状态：🟡 进行中
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P1 |
 | 领域 | 文档 / 工程流程 / 评分 / 质量门禁 / 跨 AI 协作 |
 | 来源 | PR #550 / PR #552 正式评分提交范围纠偏；`review-scorecard.md`、`git-workflow.md` 与 `workbench.md` 的阶段边界冲突 |
-| 建议实施分支 | `docs/doc-080-implement-review-score-boundary` |
-| 建议交付 | 本登记 PR 只入账；实施阶段用 1 个独立治理 PR 将规则、检查器和回归测试原子落地 |
+| 实施分支 | `docs/doc-080-implement-review-score-boundary` |
+| 交付 PR | [#555](https://github.com/MarkDanile/MetaEduBase/pull/555)（Draft） |
 
 **证据**
 

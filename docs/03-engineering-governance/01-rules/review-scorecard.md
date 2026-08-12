@@ -20,6 +20,26 @@
 - 正式评分和 follow-up 写入 `review-score-log.md` 并推送到当前 PR；评分记录本身不代表任务已完成。
 - 评审阶段禁止调用 merge 或开启 auto-merge。评分完成后报告结果并停止，等待用户明确下达“按流程合并”等合并指令。
 
+## 正式评分提交不变量
+
+正式评分提交是评审阶段的最后一个原子提交。评分前必须固定待合并实现 HEAD、PR 编号和实现基线 SHA，并对当前 HEAD 完成受影响验证。
+
+- P0/P1 finding 必须有可复核的“已清零”或“仍阻塞”结论；仍阻塞时停止评分，回到返修、拆分或阻塞登记，不提交 `Original` 评分行。
+- 所有保留的 follow-up 必须已有稳定的 `REQ` / `BUG` / `TD` / `DOC` 编号；新发现若尚未登记稳定编号，退出评分阶段，先完成 finding / 事实源登记，再重新评分。
+- 以实现基线到评分提交最终 HEAD 的净 diff（`base..HEAD`）为准，不以中间提交或工作区曾经出现过的文件判断范围。
+- 正式评分净 diff 只能修改 `review-score-log.md`：只能在 `## Score Log` 表头下一行新增一条 `Original` 记录，且不得修改、删除或重排既有记录。
+- 评分记录必须包含目标 PR、0 到 100 的总分、实现基线 SHA、P0/P1 结论、follow-up 和流程扣分点。Metrics Snapshot、`current-work.md`、`work-log.md`、plan、Requirement、Backlog、technical-debt、代码、测试、migration、registry 和 CI 配置均不得进入该净 diff。
+- 评分提交不更新工作台状态，也不把任务翻为完成；PR 合并后的 docs closeout 才负责工作台、plan、work-log 和其他完成态事实源收口。
+- Metrics Snapshot 是独立复盘快照，不是实时投影。它由复盘或独立治理任务按明确的 `as of`、基线 SHA 和样本量更新；正式评分提交不得重算、补算或改写它。
+
+提交前必须运行并记录：
+
+```bash
+scripts/check-review-score-submit --base <implementation-head> --pr <number>
+```
+
+该检查器按基线到最终 HEAD 的净 diff 验证上述不变量；失败时不得以临时提交、回退工作区或手工解释替代修复。
+
 ## 首轮复审包
 
 复杂或高风险 PR 在请求独立复审前，PR 描述必须附当前 HEAD SHA 和以下复审包：

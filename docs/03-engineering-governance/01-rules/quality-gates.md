@@ -46,6 +46,7 @@
 9. 收口方式：工作台状态变更、工程治理事实源变更必须走 PR；禁止 `git push origin main` 直推。
 10. 门禁失败：先修被拦截对象；禁止在当前任务内修改门禁脚本、`KNOWN_ISSUES`、忽略列表、阈值或 CI 配置来绕过失败。
 11. AI / RAG 效果型任务：完成态必须写最高验证层级；代码接入、mock、dry-run、真实 PG、真实 LLM / 用户验收不得互相冒充。
+12. 正式评分提交：以实现基线到最终 HEAD 的净 diff 为准，运行 `scripts/check-review-score-submit --base <implementation-head> --pr <number>`；失败时不得提交评分行。该检查仅适用于正式评分提交，不替代普通 PR 的文档门禁。
 
 文档、规则、spec、plan、任务状态或交接信息变化时，额外运行：
 
@@ -77,6 +78,7 @@ scripts/check-engineering-docs
 | 声明“零业务逻辑变更”时检查行为变化信号 | 候选 | 防止重构 / lint PR 隐含行为变化 |
 | 非门禁治理任务修改门禁脚本或 `KNOWN_ISSUES` | 已实现 / [DOC-073](../../01-product-planning/04-backlog.md) | 防止“改裁判”绕过当前失败 |
 | AI / RAG 效果型任务完成态分层声明 | 候选 / [DOC-074](../../01-product-planning/04-backlog.md) | 防止代码接入被误写成真实效果验收 |
+| 正式评分提交基线净 diff 与 Score Log 单行不变量 | 独立参数化门禁已落地 / DOC-080 | 防止评分提交夹带工作台、Metrics、历史评分或业务变更；因需要 implementation baseline 和 PR 参数，不并入普通文档门禁 |
 
 ## 验证矩阵
 

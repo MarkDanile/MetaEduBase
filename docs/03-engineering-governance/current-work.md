@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-DOC-080: 正式评分提交原子边界与 Metrics Snapshot 所有权
+
+状态：🟡 进行中
+类型：DOC 治理任务
+领域：工程流程 / 评审评分 / 质量门禁 / 跨 AI 协作
+当前执行模式：plan-do（规则 + 基线检查器 + 工程测试）
+最近接手工具：Codex
+分支：docs/doc-080-implement-review-score-boundary
+
+需求来源：
+- Spec: 不适用（规则治理任务）
+- Plan: [Technical Debt DOC-080](technical-debt.md#doc-080-固化正式评分提交原子边界与-metrics-snapshot-所有权)
+- 技术债：[DOC-080](technical-debt.md#doc-080-固化正式评分提交原子边界与-metrics-snapshot-所有权)
+- 架构约束：[quality-gates.md](01-rules/quality-gates.md)、[git-workflow.md](01-rules/git-workflow.md)、[review-scorecard.md](01-rules/review-scorecard.md)
+
+当前进展：从 `main=26d9a192` 创建实施分支并完成 Draft PR #555；首轮评审数据/状态 P0=0/P1=1、测试/运维 P0=0/P1=1/P2=1、并发面无共享状态 finding，归并为“Score Log 行契约完整性”一个根因族并完成返修（精确 10 列、P0/P1 清零结论、稳定 follow-up、重复 PR 格式同源、文件 mode 零漂移）；定向复核 P0/P1=0。
+下一步：等待本状态同步 HEAD 的 Draft checks；全绿后冻结 implementation baseline，按正式评分提交不变量追加唯一评分行并停止，保持 PR OPEN。
+验证状态：`tests/engineering/` 131 passed（其中 score-submit 正反例 21 passed）；`ruff check scripts/engineering/ tests/engineering/`、`scripts/check-engineering-docs`（31 项历史 allowlist）和 `git diff --check` 均通过；返修 HEAD `4e40ec91` Draft CI 三路全绿（Backend iteration 11m6s、Frontend 2m38s、Engineering docs 18s）。
+交接备注：[PR #555](https://github.com/MarkDanile/MetaEduBase/pull/555)；评分提交只允许 `review-score-log.md` 新增 1 行；工作台/完成态归 merge 后 closeout；Metrics 归独立复盘任务。
 
 ## 下一批候选任务
 
@@ -23,7 +41,6 @@
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
 | P1 | REQ-041/047 R1-S4-E-C Runtime Conformance Fake | 🔵 就绪 | `RuntimeErasureParticipant` conformance fake（证明 `runtime.private.v1` 擦除协议，不激活 registry）；S4-E-B2 已合并（PR #552），待下一条明确开工指令 | [Plan §R1-S4-E E-5-4/E-5-5](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) |
-| P1 | DOC-080 正式评分提交原子边界与 Metrics 所有权 | 🔵 就绪 | 独立治理 PR：冻结 score-only 净 diff、工作台 closeout 例外和 Metrics 复盘所有权，并新增 `check-review-score-submit` 基线门禁 | [Technical Debt](technical-debt.md#doc-080-固化正式评分提交原子边界与-metrics-snapshot-所有权) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成

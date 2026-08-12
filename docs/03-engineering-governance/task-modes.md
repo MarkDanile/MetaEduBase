@@ -46,7 +46,7 @@
 | `按流程规划这个需求` | 更新 Backlog；必要时新建 Requirement；不直接实现。 |
 | `按流程开发这个新需求` | 判断是否需要 spec/plan；复杂需求先塑形；完成实现、验证、commit、push 和 PR 创建后停止，报告 CI 状态并提示后续评审，不自动合并。 |
 | `按流程提交` | 读 `git-workflow.md`；推进 commit / push / PR 后停止，不自动合并。 |
-| `按流程评审 XXX` | 先确认当前 HEAD；高风险首轮按数据/状态、并发/故障、测试/运维/文档三个面并行审查并按根因族汇总；处理或登记 finding，完成正式评分并更新评分总账，重新验证后停止，保持 PR 未合并。 |
+| `按流程评审 XXX` | 先确认当前 HEAD；高风险首轮按数据/状态、并发/故障、测试/运维/文档三个面并行审查并按根因族汇总；处理或登记 finding，按 `review-scorecard.md#正式评分提交不变量` 完成正式评分和基线净 diff 检查，重新验证后停止，保持 PR 未合并。 |
 | `按流程合并` / `提交至合并` / `完整 Git 闭环` | 读 `git-workflow.md`；确认评审评分、当前 PR Head、阻塞 finding 和 required checks 后执行合并、文档收口与 clean check。 |
 | `按流程复盘 XXX` | 区分实现问题、规则缺口、工具习惯、需求塑形不足；必要时登记 follow-up。 |
 | `按流程复核 P1` / `收口当前迭代` | 对齐 Roadmap、Milestone、Iteration、Backlog、current-work、TD。 |
