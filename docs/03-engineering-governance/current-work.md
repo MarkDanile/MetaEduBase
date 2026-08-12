@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-REQ041-047-S4F: REQ-041/047 R1-S4-F Fault 矩阵 + S4 收口（契约冻结阶段）
+
+状态：🟡 进行中
+类型：需求实现（当前阶段：契约冻结，纯文档）
+领域：数据删除 / Retention / Purge（R1-S4 阶段收口）
+当前执行模式：plan-do（契约冻结纯文档 PR；评审通过后另开实现 PR）
+最近接手工具：Claude Code
+分支：feat/req041-047-r1-s4f-fault-matrix
+
+需求来源：
+- Plan: [R1-S4-F Fault 矩阵 + S4 收口 契约细化](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-f-fault-矩阵--s4-收口-契约细化2026-08-12先于实现冻结纯文档)（F-0~F-7）
+- Spec: [R1 spec §8/§11/§12](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- 技术债：—
+- 架构约束：不启用 S5 scheduler / S6 / C1；不翻 registry（external/runtime 保持 False）；无契约依据不新增 migration/schema；不改 S4-C/D/E 已合并终态语义
+
+当前进展：落点对账完成——S4-F 在 plan 无冻结矩阵（真实故障矩阵归 S6），用户裁定先做契约冻结 PR；契约冻结 delta 已写入 plan（F-0 定位/证据层次、F-1 故障点清单 16 项、F-2 五方状态一致不变量、F-3 注入机制、F-4 互操作回归、F-5 与 S5/S6 分工、F-6 验收反例矩阵、F-7 S4 验收证据与收口）。
+下一步：验证文档门禁（check-engineering-docs + git diff --check）→ 创建 Draft PR → Backend iteration → 三面首轮复审 → 根因族一次返修 → 独立定向复核。
+验证状态：待验证（纯文档，docs gate + git diff --check + 三路 CI）。
+交接备注：契约冻结评审通过（P0/P1=0）后停止，另开 S4-F 实现 PR；不自动转 Ready、不评分、不合并、不启动 S5/S6/C1。
 
 ## 下一批候选任务
 
@@ -22,7 +40,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | REQ-041/047 R1-S4-F Fault 矩阵与收口 | 🔵 就绪 | S4-E-C 已合并（PR #557），下一风险域为 fault 矩阵（crash-point/lease/ACK 丢失/重复 delivery/external timeout/跨 tenant/日志脱敏）——实现前契约冻结 + 单风险域 PR；`external.payload.v1`/`runtime.private.v1` registry 保持 False | [Plan §R1-S4-E E-7](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
