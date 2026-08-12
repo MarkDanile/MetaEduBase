@@ -14,25 +14,7 @@
 
 ## 当前进行中
 
-### TASK-REQ041-047-S4F: REQ-041/047 R1-S4-F Fault 矩阵 + S4 收口（契约冻结阶段）
-
-状态：🟡 进行中
-类型：需求实现（当前阶段：契约冻结，纯文档）
-领域：数据删除 / Retention / Purge（R1-S4 阶段收口）
-当前执行模式：plan-do（契约冻结纯文档 PR；评审通过后另开实现 PR）
-最近接手工具：Claude Code
-分支：feat/req041-047-r1-s4f-fault-matrix
-
-需求来源：
-- Plan: [R1-S4-F Fault 矩阵 + S4 收口 契约细化](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-f-fault-矩阵--s4-收口-契约细化2026-08-12先于实现冻结纯文档)（F-0~F-7）
-- Spec: [R1 spec §8/§11/§12](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- 技术债：—
-- 架构约束：不启用 S5 scheduler / S6 / C1；不翻 registry（external/runtime 保持 False）；无契约依据不新增 migration/schema；不改 S4-C/D/E 已合并终态语义
-
-当前进展：落点对账完成——S4-F 在 plan 无冻结矩阵（真实故障矩阵归 S6），用户裁定先做契约冻结 PR；契约冻结 delta 已写入 plan（F-0~F-7）。Draft PR #559 三路 CI 全绿；三面首轮复审（数据/状态机 P0=0/P1=4/P2=5/P3=3、并发/锁序 P0=0/P1=2/P2=3/P3=2、测试/运维/文档 P0=0/P1=0/P2=1/P3=4，**首轮原始合计 P0=0/P1=6/P2=9/P3=9 保留**）按 5 根因族一次返修：族 A F-2 五方矩阵与实现对齐（fence 三族发散/fail-closed 零写/Conversation 两层/checkpoint_digest 三形式/reason 三层）、族 B runtime 独有并发防护跨族化（external expire_all + 跨 purge 实例门禁 + 集合锁 owner 同源）、族 C completed 正向归 S5、族 D 矩阵精度、族 E 文档引用/穷举。独立定向复核：6 项 P1 返修落点全部与已合并实现精确一致；**定向复核曾发现 1 条返修引入的新 P1（F-2 blocked 行 reason_code 误写为 scan digest，实际 reason_code==failure_code、digest 落 checkpoint_digest）已纠正（commit `facd8768`）**，未引入新不一致 → 最终 **P0/P1=0**。
-下一步：Draft 转 Ready 后等待 Backend/Frontend/Engineering docs required checks 全绿 → 核对 OPEN/Ready/CLEAN/MERGEABLE → 停止汇报（不评分、不合并；另开 S4-F 实现 PR 待指令）。
-验证状态：`check-engineering-docs`/`--full` + `git diff --check` 通过；三面首轮 P0=0/P1=6/P2=9/P3=9（保留）→ 5 根因族返修 → 定向复核最终 **P0/P1=0**；Draft 三路 CI 全绿。
-交接备注：契约冻结评审通过（P0/P1=0）后停止，另开 S4-F 实现 PR；不自动转 Ready、不评分、不合并、不启动 S5/S6/C1。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -40,6 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P1 | REQ-041/047 R1-S4-F Fault 矩阵实现 | 🔵 就绪 | S4-F 契约冻结已合并（PR #559），按 plan F-6 反例矩阵实现 S4-F fault 矩阵（external Tx2 `expire_all` 移植 + 跨 purge 实例门禁补齐 external/transport + 跨 tenant/日志脱敏/partial ACK 负向/互操作回归）——单风险域 PR，`external.payload.v1`/`runtime.private.v1` registry 保持 False，不启用 S5/S6 | [Plan §R1-S4-F F-6](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-f-fault-矩阵--s4-收口-契约细化2026-08-12先于实现冻结纯文档) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
@@ -50,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-08-12 | R1-S4-F Fault 矩阵 + S4 收口 契约细化 | 🟢 完成 | 纯文档冻结 S4-F 契约（F-0~F-7：故障点清单 16 项 + 五方状态一致矩阵 + 注入机制 + 互操作回归 + 与 S5/S6 分工 + 反例矩阵 11 项 + S4 收口）；首轮 P0=0/P1=6/P2=9/P3=9，5 根因族返修（含纠正 1 条返修引入新 P1）→ P0/P1=0，评分 92；净 diff 仅 2 纯文档文件；registry 保持 external/runtime False | [PR #559](https://github.com/MarkDanile/MetaEduBase/pull/559)（squash merge `d658f6eb`）/ [work-log](work-log.md) / [score 92](04-retrospectives/review-score-log.md) |
 | 2026-08-12 | R1-S4-E-C Runtime Conformance Fake | 🟢 完成 | `RuntimeErasureParticipant` conformance fake（`runtime.private.v1`）：session destroy 双事务 + 旧 epoch/迟到 seq/unknown outcome/ACK 重放 + E-3a/E-3b；首轮 P0=0/P1=3/P2=9/P3=16，5 根因族返修 + 定向复核 P0/P1/P2=0，评分 92；registry False | [PR #557](https://github.com/MarkDanile/MetaEduBase/pull/557)（squash merge `c31df023`）/ [work-log](work-log.md) / [score 92](04-retrospectives/review-score-log.md) |
 | 2026-08-12 | DOC-080 正式评分提交原子边界与 Metrics Snapshot 所有权 | 🟢 完成 | 冻结 finding/返修与正式评分子阶段、Score Log 单行净 diff、工作台 merge 后 closeout 和 Metrics 独立复盘边界；新增基线感知检查器与 21 个 Git fixture；首轮两项 P1 归一根因族返修后 P0/P1=0，评分 91；Ready Backend full 全绿 | [PR #555](https://github.com/MarkDanile/MetaEduBase/pull/555)（squash merge `2b801a60`）/ [DOC-080](technical-debt.md#doc-080-固化正式评分提交原子边界与-metrics-snapshot-所有权) / [work-log](work-log.md) / [score 91](04-retrospectives/review-score-log.md) |
 | 2026-08-11 | R1-S4-E-B2 External Erasure Participant | 🟢 完成 | external erasure participant（3 source DB ref 唯一清除者 + 双事务协议 Tx1/Tx2 + E-3a 失败矩阵 + E-3b 查询/reconcile 闭环）；三面 3 根因族 + 判别力增强批次，评分 91；registry 保持 False；Backend full 全绿 | [PR #552](https://github.com/MarkDanile/MetaEduBase/pull/552)（squash merge `a6aee2e7`）/ [Plan §R1-S4-E](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) / [work-log](work-log.md) / [score 91](04-retrospectives/review-score-log.md) |
