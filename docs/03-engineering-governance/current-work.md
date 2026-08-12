@@ -29,9 +29,9 @@
 - 技术债：TD-032（test_s4f_fault_matrix.py 1080 行已登记待拆分）
 - 架构约束：不启用 S5/S6/C1；不翻 registry（external/runtime False）；不改 migration 040/041；不改 S4-C/D/E 已合并终态语义
 
-当前进展：落点对账完成（F-6 覆盖映射：2 项已有覆盖互操作确认、9 项新增反例）；3 处最小生产修复已落地（external Tx2 `expire_all` + external/transport erased-fence 跨 purge 实例门禁）且**判别力变异验证通过**（变异转红/恢复绿）；新增 10 个反例测试（跨 tenant 伪造 ACK / owner scope mismatch / operation revision 重放 / 跨 purge 实例×2 / 跨进程 takeover / 跨 Conversation 双删 / 混合多族五方一致 / 日志脱敏 / partial ACK 负向），本地全绿。
-下一步：Draft PR + Backend iteration → 三面首轮复审 → 根因族一次返修 → 独立定向复核（P0/P1 清零）→ 停止汇报。
-验证状态：本地 10 passed + 全 composition 422 passed/0 failed + ruff clean + mypy 0 回归 + docs gate 通过；待 Draft CI 与三面复审。
+当前进展：落点对账完成（F-6 覆盖映射：2 项已有覆盖互操作确认、9 项新增反例）；生产修复 4 处已落地（external Tx2 `expire_all` + external/transport erased-fence 门禁 + **external/transport ERASING same-instance 门禁**，判别力变异验证通过）；新增 11 个反例测试（含 ERASING 门禁判别）。Draft PR #561 三路 CI 全绿；**三面首轮复审（数据/状态机 P0=0/P1=1/P2=2/P3=6、并发/锁序 P0=0/P1=2/P2=4/P3=3、测试/运维/文档 P0=0/P1=0/P2=3/P3=4，首轮原始合计 P0=0/P1=3/P2=9/P3=13 保留）**按 4 根因族一次返修：族 A external/transport ERASING 同实例门禁、族 B 混合测试五方断言 + asyncio.gather 并发（op 预置 running 消除 revision-CAS 竞态）、族 C 零写/零变更断言、族 D 注释/mypy/plan 措辞。独立定向复核 **P0/P1=0**（3 项 P1 落点与已合并实现精确一致，未引入新 P1）。
+下一步：Draft 稳定 + P0/P1=0，停止汇报（不自动转 Ready、不评分、不合并；S4-F 实现 PR 评审/合并待指令）。
+验证状态：11 passed（新增）+ 全 composition 423 passed/0 failed + ruff clean + mypy 0 回归 + docs gate 通过；返修 HEAD 三路 CI 全绿。
 交接备注：Draft 稳定且 P0/P1 清零后停止，不自动转 Ready、不评分、不合并；不启动 S5/S6/C1。
 
 ## 下一批候选任务
