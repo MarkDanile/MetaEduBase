@@ -35,17 +35,17 @@
 - PR #557 Draft 已建。
 
 下一步：
-- 定向复核（不重开三面）：核对 5 根因族 P0/P1 消解 + 返修后验证口径一致。
+- **已到停止点**：定向复核 P0/P1=0，Draft 稳定，保持 PR Draft，等待“转 Ready 跑 Backend full”明确指令；不自动转 Ready、不评分、不合并。
 
 验证状态：
 - Environment: `TEST_DATABASE_URL=postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test`（docker metaedu-ci-postgres，migration head `041_run_event_ref_tombstone`）。
-- Command: `pytest tests/composition/test_s4ec_runtime_conformance.py tests/composition/test_s4ec_runtime_adapter_contract.py` → Result: `53 passed in 9.98s`（conformance 35 真实 PG + adapter contract 18 纯单元）。
-- Command: `pytest tests/composition/` → Result: `412 passed in 86.08s`（含 S4-E-C 新增，main 基线 334）。
+- Command: `pytest tests/composition/test_s4ec_runtime_conformance.py tests/composition/test_s4ec_runtime_adapter_contract.py` → Result: `53 passed`（conformance 35 真实 PG + adapter contract 18 纯单元）。
+- Command: `pytest tests/composition/` → Result: `412 passed`（含 S4-E-C 新增，main 基线 334）。
 - Command: `ruff check` / `mypy app/composition/` → Result: `All checks passed!` / `Success: no issues found in 19 source files`。
-- Command: `scripts/check-engineering-docs` → Result: `engineering docs checks passed (31 known issue(s) allowlisted)`；`git diff --check` clean。
-- CI（PR #557，Draft）：Backend iteration `339 passed` ✅ / Engineering docs ✅ / Frontend ✅；返修后新 HEAD 三路 required checks 等待重跑。
+- Command: `scripts/check-engineering-docs` → Result: `engineering docs checks passed`；`git diff --check` clean。
+- CI（PR #557，Draft，HEAD `aeb2349f`）：Backend iteration `350 passed in 122s` ✅ / Engineering docs ✅ / Frontend ✅ 三路 required checks 全绿。
 - 首轮原始计数保留：P0=0/P1=3/P2=9/P3=16（不覆盖）。
-- 返修后待定向复核确认 P0/P1=0。
+- 定向复核（不重开三面，HEAD `aeb2349f`）：**P0=0/P1=0/P2=0**——5 根因族全部消解（D-1/C-1 窗口 + same-purge-instance 门禁 + erased 重放 purge_revision；C-3 共享 adapter distinct destroy==1；T-1 Tx2 五重 fail-closed 真实双连接 race + expire_all 观察已提交态；D-2 receipt_digests 折入 ACK digest；T-3 reason 归并 3 例）+ P3 清理（重复测试/死代码/签名断言/TD-032/E-5 引用/流租约/缺失行 fail closed）全落实。
 
 交接备注：
 - Draft 稳定且 P0/P1 清零后停止，保持 Draft，等待“转 Ready 跑 Backend full”明确指令；不自动转 Ready、不评分、不合并。
