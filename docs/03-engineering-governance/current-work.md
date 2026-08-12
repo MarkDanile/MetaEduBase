@@ -29,17 +29,23 @@
 
 当前进展：
 - `RuntimeErasureParticipant` conformance fake 已实现（`runtime_erasure_participant.py` + `runtime_erasure_adapter.py`）：session destroy 双事务协议（Tx1 checkpoint erasing + attempt + intent digest / 无锁 adapter / Tx2 精确重验 + 清 binding ref + 关 binding + ACK）+ E-3a 失败矩阵 + E-3b 查询/reconcile + ACK/fencing/重放复用基类；`runtime.private.v1` registry 保持 False。
-- 测试 42 例全绿（conformance 24 真实 PG + adapter contract 18 纯单元）；全 composition 401 passed；ruff/mypy/docs gate 通过。
-- PR #557 Draft 已建（HEAD `fde45ce4`）。
+- **三面首轮复审（TD-092）**：数据/状态机 P0=0/P1=1/P2=4/P3=5 + 并发/锁序 P0=0/P1=1/P2=3/P3=3 + 测试/运维 P0=0/P1=1/P2=2/P3=8，合计 P0=0/P1=3/P2=9/P3=16。
+- **5 根因族一次返修（HEAD `cbdad3a9`）**：族A invalid 不进 adapter 窗口 + same-purge-instance 门禁（Tx1 + erased-fence 重放 purge_revision）；族B Tx2 精确重验 fail-closed 6 例（真实双连接 race，含 expire_all 观察已提交态生产修复）；族C 双连接并发串行化 + 共享 key→evidence distinct destroy==1；族D receipt_digests 折入 ACK digest + 关 binding 清流租约 + 缺失行 fail closed；族E P3 清理（idempotency key 签名判别、spool 无清除路径判别、写路径判别范围记录）。
+- 测试 53 例全绿（conformance 35 真实 PG + adapter contract 18 纯单元）；全 composition 412 passed；ruff/mypy/docs gate 通过。
+- PR #557 Draft 已建。
 
 下一步：
-- 等待 Draft 三路 CI（Backend iteration / Frontend / Engineering docs）全绿。
-- 三面首轮复审（数据/状态机、并发/锁序、测试/运维）→ 根因族一次返修 → 定向复核。
+- 定向复核（不重开三面）：核对 5 根因族 P0/P1 消解 + 返修后验证口径一致。
 
 验证状态：
-- 本地：S4-E-C 42 passed；全 composition 401 passed；CI 等价 risk-targeted 339 passed（3 次稳定）；ruff clean；mypy clean；docs gate passed。
-- CI（PR #557 Draft，HEAD `4c73567f`）：Backend iteration `339 passed in 112.93s` ✅ / Engineering docs ✅ / Frontend ✅ 三路 required checks 全绿。
-- 下一阶段：三面首轮复审（数据/状态机、并发/锁序、测试/运维）→ 根因族一次返修 → 定向复核。
+- Environment: `TEST_DATABASE_URL=postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test`（docker metaedu-ci-postgres，migration head `041_run_event_ref_tombstone`）。
+- Command: `pytest tests/composition/test_s4ec_runtime_conformance.py tests/composition/test_s4ec_runtime_adapter_contract.py` → Result: `53 passed in 9.98s`（conformance 35 真实 PG + adapter contract 18 纯单元）。
+- Command: `pytest tests/composition/` → Result: `412 passed in 86.08s`（含 S4-E-C 新增，main 基线 334）。
+- Command: `ruff check` / `mypy app/composition/` → Result: `All checks passed!` / `Success: no issues found in 19 source files`。
+- Command: `scripts/check-engineering-docs` → Result: `engineering docs checks passed (31 known issue(s) allowlisted)`；`git diff --check` clean。
+- CI（PR #557，Draft）：Backend iteration `339 passed` ✅ / Engineering docs ✅ / Frontend ✅；返修后新 HEAD 三路 required checks 等待重跑。
+- 首轮原始计数保留：P0=0/P1=3/P2=9/P3=16（不覆盖）。
+- 返修后待定向复核确认 P0/P1=0。
 
 交接备注：
 - Draft 稳定且 P0/P1 清零后停止，保持 Draft，等待“转 Ready 跑 Backend full”明确指令；不自动转 Ready、不评分、不合并。
