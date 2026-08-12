@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-REQ041-047-S4F: REQ-041/047 R1-S4-F Fault 矩阵 + S4 收口（契约冻结阶段）
+
+状态：🟡 进行中
+类型：需求实现（当前阶段：契约冻结，纯文档）
+领域：数据删除 / Retention / Purge（R1-S4 阶段收口）
+当前执行模式：plan-do（契约冻结纯文档 PR；评审通过后另开实现 PR）
+最近接手工具：Claude Code
+分支：feat/req041-047-r1-s4f-fault-matrix
+
+需求来源：
+- Plan: [R1-S4-F Fault 矩阵 + S4 收口 契约细化](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-f-fault-矩阵--s4-收口-契约细化2026-08-12先于实现冻结纯文档)（F-0~F-7）
+- Spec: [R1 spec §8/§11/§12](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- 技术债：—
+- 架构约束：不启用 S5 scheduler / S6 / C1；不翻 registry（external/runtime 保持 False）；无契约依据不新增 migration/schema；不改 S4-C/D/E 已合并终态语义
+
+当前进展：落点对账完成——S4-F 在 plan 无冻结矩阵（真实故障矩阵归 S6），用户裁定先做契约冻结 PR；契约冻结 delta 已写入 plan（F-0~F-7）。Draft PR #559 三路 CI 全绿；三面首轮复审（数据/状态机 P0=0/P1=4/P2=5/P3=3、并发/锁序 P0=0/P1=2/P2=3/P3=2、测试/运维/文档 P0=0/P1=0/P2=1/P3=4，**首轮原始合计 P0=0/P1=6/P2=9/P3=9 保留**）按 5 根因族一次返修：族 A F-2 五方矩阵与实现对齐（fence 三族发散/fail-closed 零写/Conversation 两层/checkpoint_digest 三形式/reason 三层）、族 B runtime 独有并发防护跨族化（external expire_all + 跨 purge 实例门禁 + 集合锁 owner 同源）、族 C completed 正向归 S5、族 D 矩阵精度、族 E 文档引用/穷举。独立定向复核：6 项 P1 返修落点全部与已合并实现精确一致；**定向复核曾发现 1 条返修引入的新 P1（F-2 blocked 行 reason_code 误写为 scan digest，实际 reason_code==failure_code、digest 落 checkpoint_digest）已纠正（commit `facd8768`）**，未引入新不一致 → 最终 **P0/P1=0**。
+下一步：Draft 转 Ready 后等待 Backend/Frontend/Engineering docs required checks 全绿 → 核对 OPEN/Ready/CLEAN/MERGEABLE → 停止汇报（不评分、不合并；另开 S4-F 实现 PR 待指令）。
+验证状态：`check-engineering-docs`/`--full` + `git diff --check` 通过；三面首轮 P0=0/P1=6/P2=9/P3=9（保留）→ 5 根因族返修 → 定向复核最终 **P0/P1=0**；Draft 三路 CI 全绿。
+交接备注：契约冻结评审通过（P0/P1=0）后停止，另开 S4-F 实现 PR；不自动转 Ready、不评分、不合并、不启动 S5/S6/C1。
 
 ## 下一批候选任务
 
@@ -22,7 +40,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | REQ-041/047 R1-S4-F Fault 矩阵与收口 | 🔵 就绪 | S4-E-C 已合并（PR #557），下一风险域为 fault 矩阵（crash-point/lease/ACK 丢失/重复 delivery/external timeout/跨 tenant/日志脱敏）——实现前契约冻结 + 单风险域 PR；`external.payload.v1`/`runtime.private.v1` registry 保持 False | [Plan §R1-S4-E E-7](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
