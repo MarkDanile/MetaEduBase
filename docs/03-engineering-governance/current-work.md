@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-REQ041-047-S4F-IMPL: REQ-041/047 R1-S4-F Fault Matrix 实现
+
+状态：🟡 进行中
+类型：需求实现
+领域：数据删除 / Retention / Purge（R1-S4 阶段收口）
+当前执行模式：TD-092（Draft → Backend iteration → 三面 → 根因族返修 → 定向复核）
+最近接手工具：Claude Code
+分支：feat/req041-047-r1-s4f-fault-matrix-implementation
+
+需求来源：
+- Plan: [R1-S4-F Fault 矩阵 + S4 收口 契约细化（F-6 反例矩阵）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-f-fault-矩阵--s4-收口-契约细化2026-08-12先于实现冻结纯文档)
+- Spec: [R1 spec §11 R1-AC2/AC4/AC8/AC9/AC10](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- 技术债：TD-032（test_s4f_fault_matrix.py 1080 行已登记待拆分）
+- 架构约束：不启用 S5/S6/C1；不翻 registry（external/runtime False）；不改 migration 040/041；不改 S4-C/D/E 已合并终态语义
+
+当前进展：落点对账完成（F-6 覆盖映射：2 项已有覆盖互操作确认、9 项新增反例）；3 处最小生产修复已落地（external Tx2 `expire_all` + external/transport erased-fence 跨 purge 实例门禁）且**判别力变异验证通过**（变异转红/恢复绿）；新增 10 个反例测试（跨 tenant 伪造 ACK / owner scope mismatch / operation revision 重放 / 跨 purge 实例×2 / 跨进程 takeover / 跨 Conversation 双删 / 混合多族五方一致 / 日志脱敏 / partial ACK 负向），本地全绿。
+下一步：Draft PR + Backend iteration → 三面首轮复审 → 根因族一次返修 → 独立定向复核（P0/P1 清零）→ 停止汇报。
+验证状态：本地 10 passed + 全 composition 422 passed/0 failed + ruff clean + mypy 0 回归 + docs gate 通过；待 Draft CI 与三面复审。
+交接备注：Draft 稳定且 P0/P1 清零后停止，不自动转 Ready、不评分、不合并；不启动 S5/S6/C1。
 
 ## 下一批候选任务
 
@@ -22,7 +40,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | REQ-041/047 R1-S4-F Fault 矩阵实现 | 🔵 就绪 | S4-F 契约冻结已合并（PR #559），按 plan F-6 反例矩阵实现 S4-F fault 矩阵（external Tx2 `expire_all` 移植 + 跨 purge 实例门禁补齐 external/transport + 跨 tenant/日志脱敏/partial ACK 负向/互操作回归）——单风险域 PR，`external.payload.v1`/`runtime.private.v1` registry 保持 False，不启用 S5/S6 | [Plan §R1-S4-F F-6](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-f-fault-矩阵--s4-收口-契约细化2026-08-12先于实现冻结纯文档) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成

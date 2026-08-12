@@ -714,6 +714,18 @@ class TransportErasureParticipantBase(ABC):
 
         # erased fence 幂等重放先于 purge 前置（ACK 丢失恢复）。
         if fence.state is ErasureFenceState.ERASED:
+            # S4-F 族 B（F-6「跨 purge 实例 erased-fence 重放」）：erased-fence 修复
+            # 必须限定**同一 purge_revision**——否则同 conversation 新 purge（rev 2）
+            # 会拿 purge 1 的 fence ack_digest 把 op2 的 pending checkpoint 置 ACKED
+            # （跨 purge 实例的 ack 摘要污染）。scan 非零 guard 只拦 session 泄漏，
+            # 拦不住 ack 摘要不一致——此处补门禁（runtime/external 侧同修复，
+            # E-C C-4 / S4-F 族 B）。
+            if fence.purge_revision != purge_revision:
+                raise ValueError(
+                    f"erased fence {self.owner_key!r} under purge_revision "
+                    f"{fence.purge_revision}, requested {purge_revision}; "
+                    "cross-purge-instance ACK repair rejected (E-2a)"
+                )
             fence_ack_digest = fence.ack_digest
             assert fence_ack_digest is not None, "erased fence must carry ack_digest"
             scan = await self.scan_transport_body(

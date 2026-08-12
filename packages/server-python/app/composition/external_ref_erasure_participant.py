@@ -430,6 +430,17 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
 
         # erased fence 幂等重放先于 purge 前置（ACK 丢失恢复）。
         if fence.state is ErasureFenceState.ERASED:
+            # S4-F 族 B（F-6「跨 purge 实例 erased-fence 重放」）：erased-fence 修复
+            # 必须限定**同一 purge_revision**——否则同 conversation 新 purge（rev 2）
+            # 会拿 purge 1 的 fence ack_digest 把 op2 的 pending checkpoint 置 ACKED
+            # （跨 purge 实例的 ack 摘要污染）。scan 非零 guard 只拦 session 泄漏，
+            # 拦不住 ack 摘要不一致——此处补门禁（runtime 侧同修复，E-C C-4）。
+            if fence.purge_revision != purge_revision:
+                raise ValueError(
+                    f"erased fence {self.owner_key!r} under purge_revision "
+                    f"{fence.purge_revision}, requested {purge_revision}; "
+                    "cross-purge-instance ACK repair rejected (E-2a)"
+                )
             fence_ack_digest = fence.ack_digest
             assert fence_ack_digest is not None, "erased fence must carry ack_digest"
             scan = await self._scan_external_refs(
@@ -645,6 +656,16 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
             outcomes.append((ref, outcome))
 
         # ===== Tx2（第二独立事务：E-2a 精确重验 + 写结果 + 清 ref + ACK）=====
+        # S4-F 族 B（F-6「external 跨进程 takeover」）：E-2a 精确重验必须观察**已提交
+        # 状态**——Tx2 是第二独立事务，但 ORM identity map 会把 Tx1 时期的
+        # checkpoint/operation 对象按 PK 复用，`_load_verified_checkpoint`/
+        # `_load_verified_operation` 的 SELECT 返回**未过期实例**（expire_on_commit
+        # =False），并发 takeover（另一进程 bump attempt/lease_epoch/intent）无法被
+        # Tx2 重验观测——防双删失效（runtime 侧同修复，E-C C-1/T-1）。此处
+        # ``expire_all`` 使后续重验按已提交行重读（fence 是 domain 重建不受影响）。
+        # 先 expire（清 Tx1 时代 ORM 缓存），**再**重载 Conversation FOR UPDATE
+        # （避免 expire_all 后 conversation2 的属性惰性读走无锁 SELECT）。
+        self._session.expire_all()
         conversation2 = await self._load_conversation_for_update(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
