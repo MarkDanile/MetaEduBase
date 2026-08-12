@@ -37,8 +37,9 @@
 - 三面首轮复审（数据/状态机、并发/锁序、测试/运维）→ 根因族一次返修 → 定向复核。
 
 验证状态：
-- 本地：S4-E-C 42 passed；全 composition 401 passed；ruff clean；mypy clean；docs gate passed。
-- CI：等待 Draft checks。
+- 本地：S4-E-C 42 passed；全 composition 401 passed；CI 等价 risk-targeted 339 passed（3 次稳定）；ruff clean；mypy clean；docs gate passed。
+- CI（PR #557 Draft，HEAD `4c73567f`）：Backend iteration `339 passed in 112.93s` ✅ / Engineering docs ✅ / Frontend ✅ 三路 required checks 全绿。
+- 下一阶段：三面首轮复审（数据/状态机、并发/锁序、测试/运维）→ 根因族一次返修 → 定向复核。
 
 交接备注：
 - Draft 稳定且 P0/P1 清零后停止，保持 Draft，等待“转 Ready 跑 Backend full”明确指令；不自动转 Ready、不评分、不合并。
