@@ -14,7 +14,41 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-041/047 R1-S4-E-C: Runtime Conformance Fake
+
+状态：🟡 进行中
+类型：实现
+领域：server-python / composition
+当前执行模式：TD-092 高风险流程（Draft iteration → 三面首轮 → 根因族返修 → 定向复核）
+最近接手工具：Claude Code
+分支：`feat/req041-047-r1-s4e-runtime-conformance`
+
+需求来源：
+- Spec: `docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md` §10.3
+- Plan: `docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md` §R1-S4-E E-5 第 4 项 / D7
+
+当前进展：
+- `RuntimeErasureParticipant` conformance fake 已实现（`runtime_erasure_participant.py` + `runtime_erasure_adapter.py`）：session destroy 双事务协议（Tx1 checkpoint erasing + attempt + intent digest / 无锁 adapter / Tx2 精确重验 + 清 binding ref + 关 binding + ACK）+ E-3a 失败矩阵 + E-3b 查询/reconcile + ACK/fencing/重放复用基类；`runtime.private.v1` registry 保持 False。
+- **三面首轮复审（TD-092）**：数据/状态机 P0=0/P1=1/P2=4/P3=5 + 并发/锁序 P0=0/P1=1/P2=3/P3=3 + 测试/运维 P0=0/P1=1/P2=2/P3=8，合计 P0=0/P1=3/P2=9/P3=16。
+- **5 根因族一次返修（HEAD `cbdad3a9`）**：族A invalid 不进 adapter 窗口 + same-purge-instance 门禁（Tx1 + erased-fence 重放 purge_revision）；族B Tx2 精确重验 fail-closed 6 例（真实双连接 race，含 expire_all 观察已提交态生产修复）；族C 双连接并发串行化 + 共享 key→evidence distinct destroy==1；族D receipt_digests 折入 ACK digest + 关 binding 清流租约 + 缺失行 fail closed；族E P3 清理（idempotency key 签名判别、spool 无清除路径判别、写路径判别范围记录）。
+- 测试 53 例全绿（conformance 35 真实 PG + adapter contract 18 纯单元）；全 composition 412 passed；ruff/mypy/docs gate 通过。
+- PR #557 Draft 已建。
+
+下一步：
+- **已到停止点**：定向复核 P0/P1=0，Draft 稳定，保持 PR Draft，等待“转 Ready 跑 Backend full”明确指令；不自动转 Ready、不评分、不合并。
+
+验证状态：
+- Environment: `TEST_DATABASE_URL=postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test`（docker metaedu-ci-postgres，migration head `041_run_event_ref_tombstone`）。
+- Command: `pytest tests/composition/test_s4ec_runtime_conformance.py tests/composition/test_s4ec_runtime_adapter_contract.py` → Result: `53 passed`（conformance 35 真实 PG + adapter contract 18 纯单元）。
+- Command: `pytest tests/composition/` → Result: `412 passed`（含 S4-E-C 新增，main 基线 334）。
+- Command: `ruff check` / `mypy app/composition/` → Result: `All checks passed!` / `Success: no issues found in 19 source files`。
+- Command: `scripts/check-engineering-docs` → Result: `engineering docs checks passed`；`git diff --check` clean。
+- CI（PR #557，Draft，HEAD `aeb2349f`）：Backend iteration `350 passed in 122s` ✅ / Engineering docs ✅ / Frontend ✅ 三路 required checks 全绿。
+- 首轮原始计数保留：P0=0/P1=3/P2=9/P3=16（不覆盖）。
+- 定向复核（不重开三面，HEAD `aeb2349f`）：**P0=0/P1=0/P2=0**——5 根因族全部消解（D-1/C-1 窗口 + same-purge-instance 门禁 + erased 重放 purge_revision；C-3 共享 adapter distinct destroy==1；T-1 Tx2 五重 fail-closed 真实双连接 race + expire_all 观察已提交态；D-2 receipt_digests 折入 ACK digest；T-3 reason 归并 3 例）+ P3 清理（重复测试/死代码/签名断言/TD-032/E-5 引用/流租约/缺失行 fail closed）全落实。
+
+交接备注：
+- Draft 稳定且 P0/P1 清零后停止，保持 Draft，等待“转 Ready 跑 Backend full”明确指令；不自动转 Ready、不评分、不合并。
 
 ## 下一批候选任务
 
@@ -22,7 +56,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | REQ-041/047 R1-S4-E-C Runtime Conformance Fake | 🔵 就绪 | `RuntimeErasureParticipant` conformance fake（证明 `runtime.private.v1` 擦除协议，不激活 registry）；S4-E-B2 已合并（PR #552），待下一条明确开工指令 | [Plan §R1-S4-E E-5-4/E-5-5](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
