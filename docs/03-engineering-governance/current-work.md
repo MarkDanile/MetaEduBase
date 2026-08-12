@@ -29,9 +29,9 @@
 - 技术债：—
 - 架构约束：不启用 S5 scheduler / S6 / C1；不翻 registry（external/runtime 保持 False）；无契约依据不新增 migration/schema；不改 S4-C/D/E 已合并终态语义
 
-当前进展：落点对账完成——S4-F 在 plan 无冻结矩阵（真实故障矩阵归 S6），用户裁定先做契约冻结 PR；契约冻结 delta 已写入 plan（F-0 定位/证据层次、F-1 故障点清单 16 项、F-2 五方状态一致不变量、F-3 注入机制、F-4 互操作回归、F-5 与 S5/S6 分工、F-6 验收反例矩阵、F-7 S4 验收证据与收口）。
-下一步：验证文档门禁（check-engineering-docs + git diff --check）→ 创建 Draft PR → Backend iteration → 三面首轮复审 → 根因族一次返修 → 独立定向复核。
-验证状态：待验证（纯文档，docs gate + git diff --check + 三路 CI）。
+当前进展：落点对账完成——S4-F 在 plan 无冻结矩阵（真实故障矩阵归 S6），用户裁定先做契约冻结 PR；契约冻结 delta 已写入 plan（F-0~F-7）。Draft PR #559 三路 CI 全绿；三面首轮复审（数据/状态机 P0=0/P1=4/P2=5/P3=3、并发/锁序 P0=0/P1=2/P2=3/P3=2、测试/运维/文档 P0=0/P1=0/P2=1/P3=4，**首轮原始合计 P0=0/P1=6/P2=9/P3=9 保留**）按 5 根因族一次返修：族 A F-2 五方矩阵与实现对齐（fence 三族发散/fail-closed 零写/Conversation 两层/checkpoint_digest 三形式/reason 三层）、族 B runtime 独有并发防护跨族化（external expire_all + 跨 purge 实例门禁 + 集合锁 owner 同源）、族 C completed 正向归 S5、族 D 矩阵精度、族 E 文档引用/穷举。
+下一步：定向复核（独立只读核对根因族返修落点，P0/P1=0）→ 停止汇报。
+验证状态：返修后 `check-engineering-docs`/`--full` + `git diff --check` 通过；待定向复核确认。
 交接备注：契约冻结评审通过（P0/P1=0）后停止，另开 S4-F 实现 PR；不自动转 Ready、不评分、不合并、不启动 S5/S6/C1。
 
 ## 下一批候选任务
