@@ -1392,4 +1392,3 @@ async def test_purge_fence_erased_rejects_late_runtime_ingest(db_session):
         )
     ).scalar_one()
     assert count == 0
-
