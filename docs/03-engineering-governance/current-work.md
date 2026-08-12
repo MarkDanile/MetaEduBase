@@ -14,7 +14,34 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-041/047 R1-S4-E-C: Runtime Conformance Fake
+
+状态：🟡 进行中
+类型：实现
+领域：server-python / composition
+当前执行模式：TD-092 高风险流程（Draft iteration → 三面首轮 → 根因族返修 → 定向复核）
+最近接手工具：Claude Code
+分支：`feat/req041-047-r1-s4e-runtime-conformance`
+
+需求来源：
+- Spec: `docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md` §10.3
+- Plan: `docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md` §R1-S4-E E-5-4 / D7
+
+当前进展：
+- `RuntimeErasureParticipant` conformance fake 已实现（`runtime_erasure_participant.py` + `runtime_erasure_adapter.py`）：session destroy 双事务协议（Tx1 checkpoint erasing + attempt + intent digest / 无锁 adapter / Tx2 精确重验 + 清 binding ref + 关 binding + ACK）+ E-3a 失败矩阵 + E-3b 查询/reconcile + ACK/fencing/重放复用基类；`runtime.private.v1` registry 保持 False。
+- 测试 42 例全绿（conformance 24 真实 PG + adapter contract 18 纯单元）；全 composition 401 passed；ruff/mypy/docs gate 通过。
+- PR #557 Draft 已建（HEAD `fde45ce4`）。
+
+下一步：
+- 等待 Draft 三路 CI（Backend iteration / Frontend / Engineering docs）全绿。
+- 三面首轮复审（数据/状态机、并发/锁序、测试/运维）→ 根因族一次返修 → 定向复核。
+
+验证状态：
+- 本地：S4-E-C 42 passed；全 composition 401 passed；ruff clean；mypy clean；docs gate passed。
+- CI：等待 Draft checks。
+
+交接备注：
+- Draft 稳定且 P0/P1 清零后停止，保持 Draft，等待“转 Ready 跑 Backend full”明确指令；不自动转 Ready、不评分、不合并。
 
 ## 下一批候选任务
 
@@ -22,7 +49,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | REQ-041/047 R1-S4-E-C Runtime Conformance Fake | 🔵 就绪 | `RuntimeErasureParticipant` conformance fake（证明 `runtime.private.v1` 擦除协议，不激活 registry）；S4-E-B2 已合并（PR #552），待下一条明确开工指令 | [Plan §R1-S4-E E-5-4/E-5-5](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-e-external-payload--runtime-conformance-契约细化) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
