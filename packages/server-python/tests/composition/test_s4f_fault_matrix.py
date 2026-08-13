@@ -62,7 +62,7 @@ from tests.composition.test_s4eb2_external_erasure import (
     EXTERNAL_PAYLOAD_OWNER,
     TENANT_ID,
     _ensure_test_tenant,
-    _seed_run_event_ref,
+    _seed_external_ledger_ref,
     _seed_workspace_outbox_ref,
 )
 from tests.composition.test_s4eb2_external_erasure import (
@@ -82,6 +82,9 @@ from tests.composition.test_s4eb2_external_erasure import (
 )
 from tests.composition.test_s4ec_runtime_conformance import (
     _FailedAdapter as _RuntimeFailedAdapter,
+)
+from tests.composition.test_s4ec_runtime_conformance import (
+    _make_purge_operation as _runtime_make_purge_operation,
 )
 from tests.composition.test_s4ec_runtime_conformance import (
     _participant as _runtime_participant,
@@ -312,12 +315,23 @@ async def _snapshot_purge(
     op_id: uuid.UUID,
     owner_key: str,
 ) -> dict:
-    """F-6 零变更判别力：捕获 operation + fence + checkpoint 状态（前后快照比对）。"""
+    """F-6 零变更判别力：捕获 operation + Conversation + fence + checkpoint + source
+    状态（前后快照比对，覆盖身份与状态列，非仅显式 rollback 后"当然没写"）。"""
     op = await _operation_state(session, purge_operation_id=op_id)
+    conv_row = (
+        await session.execute(
+            text(
+                "SELECT state, purge_state, purged_at, revision FROM "
+                "metaedu.agent_conversations WHERE tenant_id=:t AND id=:c"
+            ),
+            {"t": TENANT_ID, "c": conv_id},
+        )
+    ).mappings().one()
     fence_row = (
         await session.execute(
             text(
-                "SELECT state, revision FROM metaedu.agent_erasure_fences "
+                "SELECT state, revision, purge_revision, ack_digest FROM "
+                "metaedu.agent_erasure_fences "
                 "WHERE tenant_id=:t AND conversation_id=:c AND owner_key=:o"
             ),
             {"t": TENANT_ID, "c": conv_id, "o": owner_key},
@@ -326,16 +340,49 @@ async def _snapshot_purge(
     cp_row = (
         await session.execute(
             text(
-                "SELECT state, attempt FROM metaedu.agent_conversation_purge_owners "
+                "SELECT state, attempt, reason_code, checkpoint_digest, ack_digest "
+                "FROM metaedu.agent_conversation_purge_owners "
                 "WHERE purge_operation_id=:op AND owner_key=:o"
             ),
             {"op": op_id, "o": owner_key},
         )
     ).mappings().one_or_none()
+    # source：outbox / binding / ledger 身份与状态列（可能不存在则 None）。
+    outbox_row = (
+        await session.execute(
+            text(
+                "SELECT id, payload_ref, payload_inline, status FROM "
+                "metaedu.agent_workspace_outbox WHERE tenant_id=:t AND conversation_id=:c"
+            ),
+            {"t": TENANT_ID, "c": conv_id},
+        )
+    ).mappings().one_or_none()
+    binding_row = (
+        await session.execute(
+            text(
+                "SELECT id, runtime_session_ref, status FROM "
+                "metaedu.agent_runtime_session_bindings WHERE conversation_id=:c"
+            ),
+            {"c": conv_id},
+        )
+    ).mappings().one_or_none()
+    ledger_row = (
+        await session.execute(
+            text(
+                "SELECT id, ref_value, erase_state, blocked_reason FROM "
+                "metaedu.agent_external_object_refs WHERE tenant_id=:t AND conversation_id=:c"
+            ),
+            {"t": TENANT_ID, "c": conv_id},
+        )
+    ).mappings().one_or_none()
     return {
         "operation": op,
+        "conversation": dict(conv_row),
         "fence": dict(fence_row) if fence_row else None,
         "checkpoint": dict(cp_row) if cp_row else None,
+        "source_outbox": dict(outbox_row) if outbox_row else None,
+        "source_binding": dict(binding_row) if binding_row else None,
+        "source_ledger": dict(ledger_row) if ledger_row else None,
     }
 
 
@@ -1334,35 +1381,9 @@ async def test_mixed_multi_family_faults_five_party_consistent(monkeypatch, sess
             ).scalars().first()
             assert binding == "invalid"
 
-            # F-2 五方一致（数据面 P1-1 返修补齐）：
-            # ① Conversation：state='deleted' + purge_state='blocked'（最后写者 runtime
-            #    blocked 投影）+ purged_at IS NULL。
-            conv = (
-                await check.execute(
-                    text(
-                        "SELECT state, purge_state, purged_at FROM "
-                        "metaedu.agent_conversations WHERE tenant_id=:t AND id=:c"
-                    ),
-                    {"t": TENANT_ID, "c": conv_id},
-                )
-            ).mappings().one()
-            assert conv["state"] == "deleted"
-            assert conv["purge_state"] == "blocked", conv
-            assert conv["purged_at"] is None
-            # ② operation：runtime timeout->unknown 后 operation blocked（F-2 unknown
-            #    行），非 completed（D6 负向）。
-            op = await _operation_state(check, purge_operation_id=op_id)
-            assert op["state"] == PurgeOperationState.BLOCKED.value, op
-            assert (
-                op["failure_code"] == "purge_blocked_by_runtime_outcome_unknown"
-            ), op
-            # ③ checkpoint.reason_code == operation.failure_code（F-2 blocked 三方一致
-            #    精确相等）。
-            assert rt_cp["reason_code"] == op["failure_code"], (
-                rt_cp["reason_code"],
-                op["failure_code"],
-            )
-            # ④ external ledger：external success 后全部 erased（receipt 留证）。
+            # owner-scoped 断言（架构裁决后：不断 operation.failure_code/Conversation
+            # 聚合——那是 S5 reducer 职责；只断各 owner 的 checkpoint/fence/ledger/binding）：
+            # external ledger：external success 后全部 erased（receipt 留证）。
             ext_ledger = (
                 await check.execute(
                     text(
@@ -1380,17 +1401,22 @@ async def test_mixed_multi_family_faults_five_party_consistent(monkeypatch, sess
 async def test_three_owner_mixed_faults_deterministic_aggregation(
     monkeypatch, session_factory
 ):
-    """F-2a 三 owner 混合故障确定性聚合：external（timeout -> outcome_unknown 600）+
-    runtime（failed -> adapter_unavailable 400）+ transport（ref-bearing ->
-    purge_owner_unavailable 200）三族并发。
+    """F-6 三 owner 混合故障 + **同源互操作**（架构裁决后：只断 owner-scoped，不断
+    operation.failure_code/Conversation 聚合——那是 S5 reducer 职责）。
 
-    ``checkpoint.reason_code`` 逐 owner 精确（owner-specific）；``operation.failure_code``
-    是聚合投影，按 F-2a 严重度优先级取最高（external outcome_unknown），**与提交顺序
-    无关**；``Conversation.purge_state='blocked'``；operation 非 completed（partial ACK）。
+    external（timeout -> outcome_unknown）+ runtime（failed -> adapter_unavailable）
+    + transport（ref-bearing -> purge_owner_unavailable）三族并发，其中 **external 与
+    transport 真实处理同一 workspace outbox payload_ref**（经 `_seed_workspace_outbox_ref`
+    注册到 external ledger，非「另一条 RunEvent ref」冒充同源）。
 
-    判别点：把 ``_record_blocked`` 改回 last-committer-wins（``elif failure_code !=
-    reason: 覆盖``）-> 三 owner 并发下 failure_code 依赖提交顺序 -> 本测试的确定性
-    断言（恒等于 external outcome_unknown）非确定失败。
+    断言（owner-scoped，逐 owner）：
+    - external checkpoint blocked + reason=`purge_blocked_by_external_outcome_unknown`、
+      external ledger `unknown`（timeout 不清 source ref）；
+    - runtime checkpoint blocked + reason=`purge_blocked_by_runtime_adapter_unavailable`、
+      binding `invalid`；
+    - transport checkpoint blocked + reason=`purge_owner_unavailable`（ref-bearing 前置
+      命中，fence 保持 active）。
+    **不断** operation.failure_code 聚合（临时投影，归 S5）。
     """
     _enable_external_registry(monkeypatch)
     _enable_runtime_registry(monkeypatch)
@@ -1439,14 +1465,18 @@ async def test_three_owner_mixed_faults_deterministic_aggregation(
             )
             # runtime binding（runtime 的清除对象）。
             await _seed_runtime_binding(seed, conv_id, ref_value=_RUNTIME_REF)
-            # transport ref-bearing workspace outbox（NOT 入 external ledger——transport
-            # 的 ref-bearing 前置命中 purge_owner_unavailable，独立于 external）。
-            await _seed_transport_outbox(
+            # 同源 outbox：workspace outbox payload_ref（设 conversation_id scope 列，
+            # 使 transport 的 ref-bearing 前置可见）**同时**按 B1 lifecycle 注册到
+            # external ledger——external（清 ledger）与 transport（ref-bearing 前置）
+            # 真实处理同一 source/ref。
+            outbox_id = await _seed_transport_outbox(
                 seed, conversation_id=conv_id, side="workspace",
-                payload_ref="obj://transport/ref/s4f",
+                payload_ref=_REF_VALUE,
             )
-            # external RunEvent ref（external 的唯一清除对象，入 external ledger）。
-            await _seed_run_event_ref(seed, conv_id)
+            await _seed_external_ledger_ref(
+                seed, conversation_id=conv_id, source_table="agent_workspace_outbox",
+                source_row_id=outbox_id, ref_value=_REF_VALUE,
+            )
             op_id = await _seed_multi_owner_operation(
                 seed,
                 conv_id=conv_id,
@@ -1463,15 +1493,15 @@ async def test_three_owner_mixed_faults_deterministic_aggregation(
         await asyncio.gather(
             _erase_external_concurrent(
                 conv_id=conv_id, op_id=op_id, purge_rev=purge_rev,
-                adapter=_ExternalTimeoutAdapter(),  # timeout -> outcome_unknown 600
+                adapter=_ExternalTimeoutAdapter(),  # timeout -> outcome_unknown
             ),
             _erase_runtime_concurrent(
                 conv_id=conv_id, op_id=op_id, purge_rev=purge_rev,
-                adapter=_RuntimeFailedAdapter(),  # failed -> adapter_unavailable 400
+                adapter=_RuntimeFailedAdapter(),  # failed -> adapter_unavailable
             ),
             _erase_transport_concurrent(
                 conv_id=conv_id, op_id=op_id, purge_rev=purge_rev,
-                # ref-bearing -> purge_owner_unavailable 200
+                # ref-bearing -> purge_owner_unavailable
             ),
         )
 
@@ -1501,23 +1531,52 @@ async def test_three_owner_mixed_faults_deterministic_aggregation(
             assert tp_cp["state"] == PurgeOwnerState.BLOCKED.value
             assert tp_cp["reason_code"] == "purge_owner_unavailable"
 
-            # operation.failure_code = 最高严重度（external outcome_unknown 600），
-            # 与提交顺序无关（F-2a 确定性聚合）。
-            op = await _operation_state(check, purge_operation_id=op_id)
-            assert op["state"] == PurgeOperationState.BLOCKED.value, op
-            assert op["failure_code"] == "purge_blocked_by_external_outcome_unknown", op
-
-            # Conversation.purge_state = blocked（boolean 聚合）。
-            conv = (
+            # 同源互操作断言（owner-scoped）：
+            # ① external ledger 落 unknown（timeout 可能已生效），source ref 未清。
+            ledger = (
                 await check.execute(
                     text(
-                        "SELECT purge_state FROM metaedu.agent_conversations "
-                        "WHERE tenant_id=:t AND id=:c"
+                        "SELECT erase_state, ref_value FROM "
+                        "metaedu.agent_external_object_refs "
+                        "WHERE tenant_id=:t AND conversation_id=:c"
+                    ),
+                    {"t": TENANT_ID, "c": conv_id},
+                )
+            ).mappings().one()
+            assert ledger["erase_state"] == "unknown", ledger
+            assert ledger["ref_value"] == _REF_VALUE, ledger
+            src_ref = (
+                await check.execute(
+                    text(
+                        "SELECT payload_ref FROM metaedu.agent_workspace_outbox "
+                        "WHERE tenant_id=:t AND conversation_id=:c"
                     ),
                     {"t": TENANT_ID, "c": conv_id},
                 )
             ).scalar_one()
-            assert conv == "blocked", conv
+            assert src_ref == _REF_VALUE, "timeout must not clear source ref"
+            # ② runtime binding 落 invalid（ref 保留）。
+            binding = (
+                await check.execute(
+                    text(
+                        "SELECT status FROM metaedu.agent_runtime_session_bindings "
+                        "WHERE conversation_id=:c AND runtime_session_ref IS NOT NULL"
+                    ),
+                    {"c": conv_id},
+                )
+            ).scalars().first()
+            assert binding == "invalid", binding
+            # ③ transport fence 保持 active（ref-bearing 前置在 fence→erasing 之前）。
+            tp_fence = (
+                await check.execute(
+                    text(
+                        "SELECT state FROM metaedu.agent_erasure_fences "
+                        "WHERE tenant_id=:t AND conversation_id=:c AND owner_key=:o"
+                    ),
+                    {"t": TENANT_ID, "c": conv_id, "o": WORKSPACE_TRANSPORT_OWNER},
+                )
+            ).scalar_one()
+            assert tp_fence == "active", tp_fence
     finally:
         await engine.dispose()
 
@@ -1527,19 +1586,10 @@ async def test_three_owner_mixed_faults_deterministic_aggregation(
 # ---------------------------------------------------------------------------
 
 
-async def test_purge_log_redaction_no_body_or_ref(monkeypatch, session_factory):
-    """F-6 R1-AC10 脱敏（批次 C 契约重写）：正文/external ref/runtime ref 三类
-    **可判别 sentinel 真实种入源数据**，核验 purge 后——
-
-    - operation/checkpoint/fence **不含三类 sentinel**（正文/ref 原值不入 purge 元数据）；
-    - external ledger **仅允许 external ref identity**（`ref_value` 保留 sentinel，E-1
-      ledger 是唯一事实源），**不得含正文/runtime ref**；
-    - reason 落冻结 code 集合（禁自由文本 reason）。
-
-    CoT/secret 结构性不可达（spec §9.3 不落库）、日志结构性无（S4 无 logger）——不做
-    caplog/sentinel 假判别。判别点：把 external ref sentinel 写入 operation.failure_code
-    / checkpoint.reason_code -> 红。
-    """
+async def test_external_redaction_ref_identity_only(monkeypatch, session_factory):
+    """F-6 R1-AC10（external 真实路径）：external ref sentinel 穿过 external participant
+    —— operation/checkpoint/fence 不含 ref sentinel；external ledger 仅允许 ref_value
+    身份例外（E-1 唯一事实源）；reason 落冻结 code 集合。"""
     _enable_external_registry(monkeypatch)
 
     factory, engine = await _make_factory()
@@ -1547,83 +1597,42 @@ async def test_purge_log_redaction_no_body_or_ref(monkeypatch, session_factory):
         async with factory() as seed:
             await _ensure_test_tenant(seed)
             conv_id, purge_rev = await _ext_seed_conversation(seed)
-            # ① 正文 sentinel（transport outbox inline body——external purge 不碰它）。
-            await _seed_transport_outbox(
-                seed, conversation_id=conv_id, side="workspace",
-                payload_inline={"body": _BODY_SENTINEL},
-            )
-            # ② external ref sentinel（ledger ref_value——允许保留）。
             await _seed_workspace_outbox_ref(seed, conv_id, ref_value=_EXTERNAL_REF_SENTINEL)
-            # ③ runtime ref sentinel（binding runtime_session_ref——external 不碰它）。
-            await _seed_runtime_binding(seed, conv_id, ref_value=_RUNTIME_REF_SENTINEL)
             op_id, _ = await _ext_make_purge_operation(seed, conv_id, purge_rev)
             await seed.commit()
 
         async with factory() as sess:
-            await _ext_participant(
-                sess, _ExternalTimeoutAdapter()
-            ).erase_external_payload(
-                tenant_id=TENANT_ID,
-                conversation_id=conv_id,
-                purge_revision=purge_rev,
-                purge_operation_id=op_id,
-                expected_operation_revision=1,
+            await _ext_participant(sess, _ExternalTimeoutAdapter()).erase_external_payload(
+                tenant_id=TENANT_ID, conversation_id=conv_id, purge_revision=purge_rev,
+                purge_operation_id=op_id, expected_operation_revision=1,
             )
             await sess.commit()
 
         async with factory() as check:
             op = (
-                await check.execute(
-                    text(
-                        "SELECT registry_snapshot, retention_policy_snapshot, "
-                        "failure_code FROM metaedu.agent_conversation_purges "
-                        "WHERE id = :op"
-                    ),
+                (await check.execute(
+                    text("SELECT failure_code FROM metaedu.agent_conversation_purges WHERE id=:op"),
                     {"op": op_id},
-                )
-            ).mappings().one()
+                )).mappings().one()
+            )
             cp = await _checkpoint_state(check, purge_operation_id=op_id)
             fence = (
-                await check.execute(
-                    text(
-                        "SELECT ingress_checkpoint, ingress_digest FROM "
-                        "metaedu.agent_erasure_fences "
-                        "WHERE tenant_id=:t AND conversation_id=:c AND owner_key=:o"
-                    ),
+                (await check.execute(
+                    text("SELECT ingress_digest FROM metaedu.agent_erasure_fences "
+                         "WHERE tenant_id=:t AND conversation_id=:c AND owner_key=:o"),
                     {"t": TENANT_ID, "c": conv_id, "o": EXTERNAL_PAYLOAD_OWNER},
-                )
-            ).mappings().one()
-            ledger = (
-                await check.execute(
-                    text(
-                        "SELECT ref_scheme, ref_value, blocked_reason FROM "
-                        "metaedu.agent_external_object_refs "
-                        "WHERE tenant_id=:t AND conversation_id=:c"
-                    ),
-                    {"t": TENANT_ID, "c": conv_id},
-                )
-            ).mappings().one()
-
-        # ① operation/checkpoint/fence 不含三类可判别 sentinel（正文/ref 原值不入
-        #    purge 元数据；真判别——三类均已种入源数据）。
-        purge_metadata = str(op) + str(cp) + str(fence)
-        for sentinel in (_BODY_SENTINEL, _EXTERNAL_REF_SENTINEL, _RUNTIME_REF_SENTINEL):
-            assert sentinel not in purge_metadata, (
-                f"sentinel {sentinel!r} leaked into purge metadata"
+                )).mappings().one()
             )
-        # ② external ledger 仅允许 external ref identity（ref_value 保留 sentinel），
-        #    不得含正文/runtime ref。
-        assert ledger["ref_value"] == _EXTERNAL_REF_SENTINEL, (
-            "ledger must retain external ref identity (necessary exception)"
-        )
-        assert ledger["blocked_reason"] in (
-            "outcome_unknown",
-            "erase_timeout",
-            "adapter_unavailable",
-            "unknown_scheme",
-            None,
-        ), ledger["blocked_reason"]
-        # ③ reason 必须落冻结 code 集合（禁自由文本）。
+            ledger = (
+                (await check.execute(
+                    text("SELECT ref_value, blocked_reason FROM metaedu.agent_external_object_refs "
+                         "WHERE tenant_id=:t AND conversation_id=:c"),
+                    {"t": TENANT_ID, "c": conv_id},
+                )).mappings().one()
+            )
+
+        assert _EXTERNAL_REF_SENTINEL not in str(op) + str(cp) + str(fence)
+        assert ledger["ref_value"] == _EXTERNAL_REF_SENTINEL  # 身份例外
         assert cp["reason_code"] in (
             "purge_blocked_by_external_outcome_unknown",
             "purge_blocked_by_external_erase_timeout",
@@ -1634,18 +1643,142 @@ async def test_purge_log_redaction_no_body_or_ref(monkeypatch, session_factory):
         await engine.dispose()
 
 
+async def test_transport_redaction_no_body_in_metadata(session_factory):
+    """F-6 R1-AC10（transport 真实路径）：正文 sentinel 穿过 transport participant
+    （outbox inline body）——transport 清除正文后 operation/checkpoint/fence 不含 body
+    sentinel；outbox 正文被清除（转 suppressed）。"""
+    factory, engine = await _make_factory()
+    try:
+        async with factory() as seed:
+            await _ensure_test_tenant(seed)
+            conv_id, purge_rev = await _transport_seed_conversation(
+                seed, owner=WORKSPACE_TRANSPORT_OWNER,
+            )
+            await _seed_transport_outbox(
+                seed, conversation_id=conv_id, side="workspace",
+                payload_inline={"body": _BODY_SENTINEL},
+            )
+            op_id, _ = await _transport_make_purge_operation(
+                seed, conv_id, purge_rev, owner=WORKSPACE_TRANSPORT_OWNER,
+            )
+            await seed.commit()
+
+        async with factory() as sess:
+            await WorkspaceTransportErasureParticipant(sess).erase_transport_owner(
+                tenant_id=TENANT_ID, conversation_id=conv_id, purge_revision=purge_rev,
+                purge_operation_id=op_id, expected_operation_revision=1,
+            )
+            await sess.commit()
+
+        async with factory() as check:
+            op = (
+                (await check.execute(
+                    text("SELECT failure_code FROM metaedu.agent_conversation_purges WHERE id=:op"),
+                    {"op": op_id},
+                )).mappings().one()
+            )
+            cp = await _checkpoint_state(check, purge_operation_id=op_id)
+            fence = (
+                (await check.execute(
+                    text("SELECT ack_digest FROM metaedu.agent_erasure_fences "
+                         "WHERE tenant_id=:t AND conversation_id=:c AND owner_key=:o"),
+                    {"t": TENANT_ID, "c": conv_id, "o": WORKSPACE_TRANSPORT_OWNER},
+                )).mappings().one()
+            )
+            outbox = (
+                (await check.execute(
+                    text("SELECT payload_inline, status FROM metaedu.agent_workspace_outbox "
+                         "WHERE tenant_id=:t AND conversation_id=:c"),
+                    {"t": TENANT_ID, "c": conv_id},
+                )).mappings().one()
+            )
+
+        assert _BODY_SENTINEL not in str(op) + str(cp) + str(fence)
+        assert outbox["payload_inline"] is None  # 正文被清除
+        assert outbox["status"] == "suppressed"
+    finally:
+        await engine.dispose()
+
+
+async def test_runtime_redaction_no_ref_in_metadata(monkeypatch, session_factory):
+    """F-6 R1-AC10（runtime 真实路径）：runtime ref sentinel 穿过 runtime participant
+    （binding runtime_session_ref）——operation/checkpoint/fence 不含 runtime ref
+    sentinel；binding 落 invalid（timeout 保留 ref）。"""
+    _enable_runtime_registry(monkeypatch)
+
+    factory, engine = await _make_factory()
+    try:
+        async with factory() as seed:
+            await _ensure_test_tenant(seed)
+            conv_id, purge_rev = await _ext_seed_conversation(seed)
+            now = datetime.now(UTC).replace(tzinfo=None)
+            await seed.execute(
+                text(
+                    "INSERT INTO metaedu.agent_erasure_fences "
+                    "(tenant_id, conversation_id, owner_key, owner_version, state, "
+                    "purge_revision, hold_revision, ingress_checkpoint, ingress_digest, "
+                    "revision, created_at, updated_at) "
+                    "VALUES (:t, :c, :o, 1, 'active', 1, 0, '{}'::jsonb, "
+                    ":ed, 1, :now, :now) ON CONFLICT DO NOTHING"
+                ),
+                {
+                    "t": TENANT_ID, "c": conv_id, "o": RUNTIME_PRIVATE_OWNER,
+                    "ed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                    "now": now,
+                },
+            )
+            await _seed_runtime_binding(seed, conv_id, ref_value=_RUNTIME_REF_SENTINEL)
+            op_id, _ = await _runtime_make_purge_operation(seed, conv_id, purge_rev)
+            await seed.commit()
+
+        async with factory() as sess:
+            await _runtime_participant(sess, _RuntimeTimeoutAdapter()).erase_runtime_session(
+                tenant_id=TENANT_ID, conversation_id=conv_id, purge_revision=purge_rev,
+                purge_operation_id=op_id, expected_operation_revision=1,
+            )
+            await sess.commit()
+
+        async with factory() as check:
+            op = (
+                (await check.execute(
+                    text("SELECT failure_code FROM metaedu.agent_conversation_purges WHERE id=:op"),
+                    {"op": op_id},
+                )).mappings().one()
+            )
+            cp = await _checkpoint_state(check, purge_operation_id=op_id)
+            fence = (
+                (await check.execute(
+                    text("SELECT ingress_digest FROM metaedu.agent_erasure_fences "
+                         "WHERE tenant_id=:t AND conversation_id=:c AND owner_key=:o"),
+                    {"t": TENANT_ID, "c": conv_id, "o": RUNTIME_PRIVATE_OWNER},
+                )).mappings().one()
+            )
+            binding = (
+                (await check.execute(
+                    text("SELECT status FROM metaedu.agent_runtime_session_bindings "
+                         "WHERE conversation_id=:c AND runtime_session_ref IS NOT NULL"),
+                    {"c": conv_id},
+                )).scalars().first()
+            )
+
+        assert _RUNTIME_REF_SENTINEL not in str(op) + str(cp) + str(fence)
+        assert binding == "invalid"  # timeout 保留 ref
+        assert cp["reason_code"] == "purge_blocked_by_runtime_outcome_unknown", cp
+    finally:
+        await engine.dispose()
+
+
 # ---------------------------------------------------------------------------
 # F-6 D6：partial ACK 负向（任一 owner 未 ACK -> operation 不 completed）
 # ---------------------------------------------------------------------------
 
 
 async def test_partial_ack_operation_not_completed(monkeypatch, session_factory):
-    """F-6 D6 负向：external ACK、runtime **未调用**（pending 保持）——
-    operation 不得 completed（部分 owner ACK 不是 completed，S1/D6）。
+    """F-6 D6 负向（owner-scoped）：external ACK、runtime **未调用**（pending 保持）。
 
-    判别点：external erased + acked、runtime checkpoint 仍 pending、
-    operation.state == 'running'（非 completed）；**变异：把部分 ACK 判为 completed
-    -> 红**。
+    架构裁决后：completed 正向判定归 S5，本测试只断 owner-scoped——external checkpoint
+    acked + runtime checkpoint 仍 pending（部分 owner ACK 不构成该 owner 的 acked）。
+    **不断** operation.completed（S5 reducer 职责）。
     """
     _enable_external_registry(monkeypatch)
 
@@ -1717,9 +1850,7 @@ async def test_partial_ack_operation_not_completed(monkeypatch, session_factory)
             await sess.commit()
 
         async with factory() as check:
-            op = await _operation_state(check, purge_operation_id=op_id)
-            assert op["state"] != PurgeOperationState.COMPLETED.value, op
-            # 已 ACK owner acked、未 ACK owner 保持 pending。
+            # 已 ACK owner acked、未 ACK owner 保持 pending（owner-scoped）。
             states = (
                 (await check.execute(
                     text(

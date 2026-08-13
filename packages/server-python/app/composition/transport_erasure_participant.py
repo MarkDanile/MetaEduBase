@@ -107,47 +107,14 @@ S4C_EPOCH_TOMBSTONE_REASONS = (
 )
 
 # ---------------------------------------------------------------------------
-# F-2a 多 owner 同时 blocked 的聚合严重度优先级（冻结，S4-F 实现纠偏）。
-#
-# ``operation.failure_code`` 是聚合投影（operation 只有单个 failure_code，多个 owner
-# 可能各自 blocked 于不同 reason）；聚合规则必须**确定性**，不得依赖最后提交者 /
-# asyncio 调度顺序。故按冻结的 conversation 级 reason 严重度优先级**取最高**——
-# ``_record_blocked`` 的「elif failure_code != reason: 覆盖」是 last-committer-wins
-# 非确定性，改为 keep-highest-severity。严重度（高→低）与 plan F-2a 逐项一致；
-# 未知 reason 记 0（最低），任何已知 reason 均胜出（防未来新增 reason 静默覆盖）。
-# 键值用**字面量**（不 import 各 participant 模块，避免 external/runtime/workspace/
-# execution 反向依赖基类造成环）。
+# F-2a 多 owner 聚合架构裁决（Option A，冻结）：`operation.state`/`failure_code` 与
+# `Conversation.purge_state` 的最终聚合归 **S5 scheduler**（从全部 owner checkpoint
+# 计算，严重度优先级 + owner_key 字典序 tie-break，见 plan F-2a）。本 participant
+# 是 owner-scoped eraser，只写自己的 checkpoint/fence/ledger/binding；`_record_blocked`
+# /`_mark_operation_running`/`_repair_checkpoint_if_pending` 对 operation/Conversation
+# 的写入是 **S5 未实现期间的临时投影**（last-writer-wins 占位），**不构成最终聚合
+# 事实源**——S5 reducer 实现后由独立 contract-first PR 替换。
 # ---------------------------------------------------------------------------
-_REASON_SEVERITY: dict[str, int] = {
-    "purge_blocked_by_legal_hold": 900,
-    "purge_blocked_by_unresolved_action": 800,
-    "purge_blocked_by_conversation_scope_gate": 700,
-    # outcome_unknown 族：可能已生效、不自动重试（最严重擦除态）。
-    "purge_blocked_by_external_outcome_unknown": 600,
-    "purge_blocked_by_runtime_outcome_unknown": 600,
-    # erase_timeout 族：可证明未发送、可重试。
-    "purge_blocked_by_external_erase_timeout": 500,
-    "purge_blocked_by_runtime_erase_timeout": 500,
-    # adapter_unavailable 族：可证明无副作用、可重试。
-    "purge_blocked_by_external_adapter_unavailable": 400,
-    "purge_blocked_by_runtime_adapter_unavailable": 400,
-    # scan_nonzero 族：残留判定。
-    "purge_blocked_by_external_ref_scan_nonzero": 300,
-    "purge_blocked_by_runtime_binding_scan_nonzero": 300,
-    "purge_blocked_by_transport_scan_nonzero": 300,
-    "workspace_body_scan_nonzero": 300,
-    "execution_body_scan_nonzero": 300,
-    # owner 未安装 / 兜底。
-    "purge_owner_unavailable": 200,
-    "operator_suppressed": 100,
-}
-
-
-def _reason_severity(reason: str | None) -> int:
-    """F-2a：conversation 级 reason -> 严重度（未知 reason 记 0 最低）。"""
-    if reason is None:
-        return -1
-    return _REASON_SEVERITY.get(reason, 0)
 
 
 @dataclass(frozen=True, slots=True)
@@ -439,15 +406,12 @@ class TransportErasureParticipantBase(ABC):
         conversation: ConversationModel,
         now: datetime,
     ) -> None:
-        """operation scheduled/blocked -> running（bump revision）
+        """operation scheduled/blocked -> running（清 failure_code + bump revision）
         + Conversation.purge_state 投影 running（三方一致）。revision CAS 在此裁决。
 
-        F-2a 多 owner 聚合：**不在此清 failure_code**——``failure_code`` 是聚合投影
-        （多个 owner 可能各自 blocked，``_record_blocked`` 按 keep-highest-severity
-        聚合），BLOCKED->RUNNING（并发下另一 owner 在本 owner blocked 后开始）清
-        failure_code 会 clobber 前 owner 的 blocked reason。SCHEDULED->RUNNING 时
-        failure_code 本为 NULL（no-op）。重试成功后 failure_code 的清除归 S5 的
-        completed 迁移，不在本方法。
+        **F-2a 临时投影**：此处清 failure_code / 写 Conversation.purge_state 是 S5
+        未实现期间的 last-writer-wins 占位，**不构成最终聚合事实源**——S5 reducer
+        （独立 contract-first PR）从 blocked checkpoint 集合确定性聚合后替换本投影。
         """
         operation = await self._load_verified_operation(
             purge_operation_id=purge_operation_id,
@@ -471,6 +435,7 @@ class TransportErasureParticipantBase(ABC):
             PurgeOperationState.BLOCKED.value,
         ):
             operation.state = PurgeOperationState.RUNNING.value
+            operation.failure_code = None
             if operation.started_at is None:
                 operation.started_at = now
             operation.revision = operation.revision + 1
@@ -532,20 +497,16 @@ class TransportErasureParticipantBase(ABC):
             raise ValueError(
                 f"checkpoint not blockable from state {checkpoint.state!r}"
             )
-        # 裁决通过后才落变更。F-2a 聚合：failure_code 是聚合投影，**始终**按最高
-        # 严重度 keep-highest（非 last-committer-wins；非「state != BLOCKED 时无条件
-        # 覆盖」——后者在多 owner 并发下，后 owner 的 _mark_operation_running 把
-        # state 从 BLOCKED 推回 RUNNING 后，_record_blocked 的「state != BLOCKED」
-        # 分支会无条件覆盖前 owner 的 failure_code）。
-        state_changed = operation.state != PurgeOperationState.BLOCKED.value
-        reason_escalated = _reason_severity(reason) > _reason_severity(
-            operation.failure_code
-        )
-        if state_changed:
+        # 裁决通过后才落变更。**F-2a 临时投影**：operation.failure_code 是 S5 未实现
+        # 期间的 last-writer-wins 占位（S5 reducer 实现后由独立 PR 替换为从 blocked
+        # checkpoint 集合确定性聚合 + owner_key tie-break；见 plan F-2a）。
+        if operation.state != PurgeOperationState.BLOCKED.value:
             operation.state = PurgeOperationState.BLOCKED.value
-        if reason_escalated:
             operation.failure_code = reason
-        if state_changed or reason_escalated:
+            operation.revision = operation.revision + 1
+            operation.updated_at = now
+        elif operation.failure_code != reason:
+            operation.failure_code = reason
             operation.revision = operation.revision + 1
             operation.updated_at = now
         cp_changed = checkpoint.state != PurgeOwnerState.BLOCKED.value
@@ -697,10 +658,11 @@ class TransportErasureParticipantBase(ABC):
             if operation.started_at is None:
                 operation.started_at = now
             changed = True
-        # F-2a 聚合：erased-fence 重放**不**清 failure_code（镜像 _mark_operation_running）
-        # ——failure_code 是聚合投影，本 owner erased-fence 重放时其他 owner 可能已
-        # blocked；无条件清空会 clobber 已 blocked owner 的 reason。清除归 S5 completed
-        # 迁移。
+        # F-2a 临时投影：清 failure_code / 写 Conversation.purge_state 是 S5 未实现
+        # 期间的 last-writer-wins 占位（S5 reducer 实现后替换）。
+        if operation.failure_code is not None:
+            operation.failure_code = None
+            changed = True
         if changed:
             operation.revision = operation.revision + 1
             operation.updated_at = now

@@ -1277,6 +1277,8 @@ event_id（= outbox row.id = envelope.event.event_id）
 > 5. 全部 owner ACK 后 completed / failure_code 清除仍归 S5。
 > 6. 单 owner 重试（S5 重跑该 owner）与多 owner 聚合（S5 重算全部 checkpoint）语义分离——「本 owner 重试」不得清除其他 owner 的 blocked 事实。
 >
+> **临时投影方法 × owner 横向审计（冻结，S4-F 纠偏）**：`_mark_operation_running`/`_record_blocked`/`_repair_checkpoint_if_pending` 三方法对 operation/Conversation 的写是 S4 期间临时投影，**共 3 份独立实现**（非单一基类）：① `transport_erasure_participant.py` 基类（workspace.transport.v1 / execution.transport.v1 / external.payload.v1 / runtime.private.v1 共 4 owner 复用）；② `workspace_erasure_participant.py`（workspace.core.v1 自有 last-writer-wins 副本）；③ `execution_erasure_participant.py`（execution.core.v1 自有 last-writer-wins 副本）。**不得只改 transport 基类却声明全 owner 聚合已落地**；core 两 owner 的 last-writer-wins 副本由「owner-scoped 重构 + S5 reducer」独立 PR 一并替换。#561 的 fault 矩阵测试只断 owner-scoped（checkpoint/fence/ledger/binding），**不断 operation/Conversation 聚合**（S5 reducer 职责）。
+>
 > | 故障终态 | operation（`agent_conversation_purges`） | checkpoint（`agent_conversation_purge_owners`） | fence（`agent_erasure_fences`） | Conversation（`state`+`purge_state`+`purged_at`） | external ledger / runtime binding |
 > |---------|-----------------------------------------|-----------------------------------------------|-------------------------------|----------------------------------|----------------------------------|
 > | 已合并可达成功态（单 owner ACK） | `running`（**`completed` 正向判定归 S5，S4-F 只断负向**，族 C） | `acked` + `ack_digest`（owner summary digest）+ `checkpoint_digest`（=final scan digest） | `erased` + `ack_digest` + `acked_at`（`ck_..._ack` 强制） | `state='deleted'` + `purge_state='running'` + `purged_at IS NULL` | external `erased`+`receipt_digest`；runtime `closed`（ref 清空） |
