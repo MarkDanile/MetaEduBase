@@ -28,10 +28,10 @@
 - Plan: [R1-S5-A 契约（本 PR）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
 - 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
 
-当前进展：横向事实对账完成（Spec §5.2/§8、Plan F-2/F-2a、三份 participant 临时投影实现、schema、#561 五项延期）；契约正文已冻结（S5-A-0~S5-A-8）。
-下一步：三面首轮复审（数据/状态机、并发/锁序、测试/运维）→ 根因族返修 → 定向复核 → 保持 Draft 停止。
-验证状态：未运行（待 Draft 稳定后 `scripts/check-engineering-docs` + `git diff --check`）。
-交接备注：不实现 reducer、不改六 owner participant、不改 schema/migration 040/041/registry、不启动 S5/S6/C1。本轮按用户指令停在 Draft（不转 Ready、不评分、不合并）；契约 PR 的「转 Ready → 评分 → 合并」由用户后续单独指令触发，且 reducer 实现 PR 前必须先把本契约 PR 合并为冻结基线。
+当前进展：契约已冻结（S5-A-0~S5-A-9）。三面首轮 P0=0/P1=7/P2=12/P3=5 → 9 根因族一次返修 + 定向复核 PASS；HEAD `2ef4a6c6` 独立广域复核新增 P0=0/P1=5/P2=3 → 触发 TD-092 架构再裁决（6 项：I1 legal-hold fencing producer / calculator+coordinator 拆分 / fencing token 保留 / 状态表全函数 / completed 五方验证 / I1-I2 实现拆分），裁决已落地契约。
+下一步：全新广域三面复审（非定向）→ 若再出新 P1 按 TD-092 再次拆分，否则保持 Draft 停止。
+验证状态：`scripts/check-engineering-docs` + `git diff --check` 已跑绿（待本轮裁决提交后重跑）。
+交接备注：不实现 reducer、不改六 owner participant、不改 schema/migration 040/041/registry、不启动 S5/S6/C1。本轮按用户指令停在 Draft（不转 Ready、不评分、不合并）；契约 PR 的「转 Ready → 评分 → 合并」由用户后续单独指令触发，且 I1/I2 实现前必须先把本契约 PR 合并为冻结基线。
 
 ## 下一批候选任务
 
