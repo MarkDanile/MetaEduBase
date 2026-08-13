@@ -26,12 +26,12 @@
 需求来源：
 - Plan: [R1-S4-F Fault 矩阵 + S4 收口 契约细化（F-6 反例矩阵）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-f-fault-矩阵--s4-收口-契约细化2026-08-12先于实现冻结纯文档)
 - Spec: [R1 spec §11 R1-AC2/AC4/AC8/AC9/AC10](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- 技术债：TD-032（test_s4f_fault_matrix.py 1080 行已登记待拆分）
+- 技术债：TD-032（test_s4f_fault_matrix.py 2007 行已登记待拆分）
 - 架构约束：不启用 S5/S6/C1；不翻 registry（external/runtime False）；不改 migration 040/041；不改 S4-C/D/E 已合并终态语义
 
 当前进展：正式评分 92 被推翻，PR 转回 Draft + 删除过期评分行。独立复核新增 P0=0/P1=5/P2=2 触发 TD-092 升级，**架构裁决 Option A 聚合归 S5 已确认并冻结入 plan F-2a**（六不变量 + owner_key tie-break + 写者所有权 + 横向审计）。#561 剩余证据补强完成：临时投影标注（撤销 keep-highest/no-clear，恢复 last-writer-wins）+ owner-scoped 重构（三 owner 同源互操作 + 混合多族 + partial ACK 移除聚合断言）+ AC10 拆 external/transport/runtime 三真实路径 + 零变更快照扩展 + 同源正序列测试。广域三面复审：数据/状态机 P0=0/P1=0/P2=1/P3=3、并发/锁序 P0=0/P1=0/P2=3/P3=2、测试/运维 **P0=0/P1=1**/P2=1/P3=4（plan F-6 行 5 与 F-2a 事实源矛盾，已随 docstring/命名/快照/正序列一并修订）。
 下一步：全验证 + 提交 → 复核 P1 清零 → 待用户指令决定 Draft checks → Ready + Backend full → 重新评分。
-验证状态：17 passed（新增）+ 全 composition 428 passed/0 failed + ruff clean + mypy 0 回归 + docs gate 通过。首轮原始计数 P0=0/P1=3/P2=9/P3=13 + 前次独立复审 P1=3/P2=1 + HEAD 523be1c1 广域复核新增 P1=5/P2=2 保留不覆盖。
+验证状态：17 passed（新增）+ 全 composition 429 passed/0 failed + ruff clean + mypy 0 回归 + docs gate 通过。首轮原始计数 P0=0/P1=3/P2=9/P3=13 + 前次独立复审 P1=3/P2=1 + HEAD 523be1c1 广域复核新增 P1=5/P2=2 保留不覆盖。
 交接备注：Draft 稳定且 P0/P1 清零后停止，不自动转 Ready、不评分、不合并；不启动 S5/S6/C1。
 
 ## 下一批候选任务

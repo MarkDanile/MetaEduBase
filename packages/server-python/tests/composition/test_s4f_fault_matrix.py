@@ -1906,11 +1906,12 @@ async def test_runtime_redaction_no_ref_in_metadata(monkeypatch, session_factory
 
 
 async def test_partial_ack_operation_not_completed(monkeypatch, session_factory):
-    """F-6 D6 负向（owner-scoped）：external ACK、runtime **未调用**（pending 保持）。
+    """F-6 D6 负向：external ACK、runtime **未调用**（pending 保持）——operation 不得
+    completed（partial ACK 不 completed，S1/D6）。
 
-    架构裁决后：completed 正向判定归 S5，本测试只断 owner-scoped——external checkpoint
-    acked + runtime checkpoint 仍 pending（部分 owner ACK 不构成该 owner 的 acked）。
-    **不断** operation.completed（S5 reducer 职责）。
+    架构裁决 Option A：正向 completed 判定归 S5，但「operation 非 completed」是 S4 的
+    **稳定负向事实**（S4 无任何写者写 completed）——可断且不依赖聚合；external checkpoint
+    acked + runtime checkpoint 保持 pending（owner-scoped）。
     """
     _enable_external_registry(monkeypatch)
 
@@ -1982,6 +1983,10 @@ async def test_partial_ack_operation_not_completed(monkeypatch, session_factory)
             await sess.commit()
 
         async with factory() as check:
+            # F-6 D6 负向断言（S4 稳定事实，非聚合值）：S4 无任何写者写 operation
+            # completed（正向判定归 S5），故 partial ACK 后 operation 必非 completed。
+            op = await _operation_state(check, purge_operation_id=op_id)
+            assert op["state"] != PurgeOperationState.COMPLETED.value, op
             # 已 ACK owner acked、未 ACK owner 保持 pending（owner-scoped）。
             states = (
                 (await check.execute(

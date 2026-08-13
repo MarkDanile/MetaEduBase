@@ -660,7 +660,10 @@ class TransportErasureParticipantBase(ABC):
                 operation.started_at = now
             changed = True
         # F-2a 临时投影：清 failure_code / 写 Conversation.purge_state 是 S5 未实现
-        # 期间的 last-writer-wins 占位（S5 reducer 实现后替换）。
+        # 期间的 last-writer-wins 占位（S5 reducer 实现后替换）。**invariant-1 风险
+        # 提示**：本 owner erased-fence 重放会重开 RUNNING + 清他 owner 已 blocked 的
+        # failure_code（F-2a 六不变量 1「blocked 不得被后到 ACK 重开 running」在 S5
+        # 前可观测违反）——归「owner-scoped 重构 + S5 reducer」独立 PR 闭环。
         if operation.failure_code is not None:
             operation.failure_code = None
             changed = True
