@@ -31,7 +31,7 @@
 当前进展：横向事实对账完成（Spec §5.2/§8、Plan F-2/F-2a、三份 participant 临时投影实现、schema、#561 五项延期）；契约正文已冻结（S5-A-0~S5-A-8）。
 下一步：三面首轮复审（数据/状态机、并发/锁序、测试/运维）→ 根因族返修 → 定向复核 → 保持 Draft 停止。
 验证状态：未运行（待 Draft 稳定后 `scripts/check-engineering-docs` + `git diff --check`）。
-交接备注：不实现 reducer、不改六 owner participant、不改 schema/migration 040/041/registry、不启动 S5/S6/C1、不评分、不转 Ready、不合并。
+交接备注：不实现 reducer、不改六 owner participant、不改 schema/migration 040/041/registry、不启动 S5/S6/C1。本轮按用户指令停在 Draft（不转 Ready、不评分、不合并）；契约 PR 的「转 Ready → 评分 → 合并」由用户后续单独指令触发，且 reducer 实现 PR 前必须先把本契约 PR 合并为冻结基线。
 
 ## 下一批候选任务
 
