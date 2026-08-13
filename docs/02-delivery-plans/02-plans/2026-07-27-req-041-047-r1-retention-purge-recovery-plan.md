@@ -1368,6 +1368,8 @@ event_id（= outbox row.id = envelope.event.event_id）
 | `_repair_checkpoint_if_pending` | `scheduled/blocked → running`；**无条件清 `failure_code`（非 None 即清，不论 owner）**；`revision+1` | 无条件写 `running` | **invariant-1 可观测违反**：erased-fence 重放重开 running + 清他 owner blocked failure_code |
 | `_ack_owner_checkpoint` | **不写**（写 checkpoint `acked` + `ack_digest` + `checkpoint_digest` + 清 `reason_code`；transport/workspace 副本锁 operation FOR UPDATE，execution 副本不锁 operation） | 不写 | 无 |
 
+> 注：上表「Conversation.purge_state 写」列是 **transport 基类**（4 owner 复用）的精确形态；`workspace.core.v1` 三方法不写 `purge_state`（caller `erase_conversation_body` 写），`execution.core.v1` 的 `_repair_checkpoint_if_pending` 不写（caller 写）、`_mark_operation_running`/`_record_blocked` 写——完整移除范围以 S5-A-1 与 S5-A-7 ② 为准。
+
 关键事实（冻结）：
 - **`operation.completed_at` 与 `Conversation.purged_at` 在全部 participant 中均从不写入**——终态只作为 guard 读取（`completed/failed/cancelled` 拒绝继续写）。但 **`cancelled` 已有合并写者**：restore 路径 `cancel_scheduled_operations_for_restore`（erasure_repository.py:871）把 `scheduled` operation 置 `cancelled`（保留审计行）。故 `operation.state` 共有**三类写者**：`create_purge_operation`（`scheduled`）、restore-cancel（`cancelled`）、participant 临时投影（`running/blocked`）；`completed`/`failed`/`completed_at`/`purged_at` 仍无写者（S5 保留态）。
 - **`Conversation.purge_state` 的写者分两层**：`not_scheduled/scheduled` + `purge_revision++` 是 workspace 的**合法生命周期写**（`soft_delete_after_guard` / `restore_after_guard`），**必须保留**；`running/blocked/failed/completed` + `purged_at` 才是聚合投影（目标归 S5，当前是 participant 临时投影）。**去共享写只移除 `running/blocked` 投影，不得移除 delete/restore 的 `scheduled/not_scheduled` 写。**
@@ -1448,7 +1450,7 @@ event_id（= outbox row.id = envelope.event.event_id）
 - **锁序（reducer 重验点/CAS 谓词，冻结）**：reducer 完整聚合取锁顺序固定为 `Conversation 行锁 FOR UPDATE → operation 行 FOR UPDATE → 全 owner checkpoint FOR UPDATE（按 owner_key 字典序）→ 最终扫描 → 写 operation + Conversation`。**不取 owner advisory lock、不取 fence**——operation 行锁已串行全部 participant（每 participant 都先锁 operation 再锁其 checkpoint，与 reducer 的 operation→checkpoint 同序，无 AB-BA）。Conversation 行锁**必取**：reducer 写 `purge_state/purged_at`，须与 delete/restore（`soft_delete_after_guard`/`restore_after_guard`）串行；否则锁序 reverse 成 operation→Conversation，与 participant 的 Conversation→operation 形成 AB-BA 死锁，且 restore 可提交 `state=ACTIVE` 却带 `purged_at`。
 - **一致性快照**：reducer 聚合前**全部 owner checkpoint 行已存在**（scheduler 先建全 owner checkpoint 再放行任何 participant 进 `erasing`）；snapshot owner 缺 checkpoint 行视为 `pending`（绝不 `completed`）。若 `create_owner_checkpoint` 采用惰性逐 owner 建行，须在 reducer 聚合前完成，或改「取 operation 行 FOR UPDATE 后 INSERT」——否则 READ COMMITTED 下 `SELECT FOR UPDATE` 不阻并发 INSERT，读到过期 `running` 态。
 - **单 owner 重试（S5 重跑该 owner）**：复用 participant 入口，取锁顺序 = `Conversation 行锁 → 该 owner advisory lock → fence FOR UPDATE → operation 行 FOR UPDATE → 其 checkpoint FOR UPDATE`（与 participant 完全一致）。**任何路径不得在持 operation 行锁时反取 owner advisory lock / fence，也不得先取 checkpoint 再取 operation。** 重试的 operation CAS = `(lease_epoch, revision)` 匹配 + `_load_verified_operation` 的 fencing 全集。
-- **hold_revision 生产者前置（冻结，S5 legal-hold slice 落地）**：当前 `create_legal_hold`/release **不推进 `Conversation.hold_revision`**，故 `hold_revision_snapshot` 漂移永不触发、completed 条件(d) 空洞。冻结两条：(a) S5 legal-hold slice 必须在 Conversation 行锁下推进 `Conversation.hold_revision`（create 与 release 均 bump）；(b) 该生产者落地前，reducer 的 completed 门禁必须以 live `has_active_legal_hold` 查询为准（S5-A-2(d)）。
+- **hold_revision 生产者前置（冻结，S5 legal-hold slice 落地）**：当前 `create_legal_hold`/release **不推进 `Conversation.hold_revision`**，故 `hold_revision_snapshot` 漂移永不触发、completed 条件(d) 空洞。冻结两条：(a) S5 legal-hold slice 必须在 Conversation 行锁下推进 `Conversation.hold_revision`（create 与 release 均 bump）；(b) 该生产者落地前，reducer 的 completed 门禁必须以 live `has_active_legal_hold` 查询为准（S5-A-2(d)）。**已接受的残余 TOCTOU**：`create_legal_hold` 不取 Conversation 行锁，故 live hold 查询与并发 hold 创建仍不串行；因 Spec §5.3「purge completed 后新增 hold 只审计、不恢复正文」，该残余为已记录、可接受（非 unnoticed P1），由生产者 (a) 落地后的 hold_revision 串行消除。
 - **CAS 谓词** = `(operation.lease_epoch, operation.revision)` 匹配 + state 白名单。
 - **takeover / 重复 scheduler / participant 重放**：重复 scheduler 经 `lease_epoch` CAS 串行，败者退避；participant 重放（erased-fence replay）只写 owner-scoped checkpoint/fence，**不再**触及 operation/Conversation（S5-A-1 移除后重放天然无跨 owner 副作用）。reducer 对任意输入幂等：同一 checkpoint 集合重复聚合得到同一 `(state, failure_code)`。
 
@@ -1472,7 +1474,7 @@ event_id（= outbox row.id = envelope.event.event_id）
 | # | 延期项（#561 登记） | 归属任务 | 验收方式 |
 |---|-------------------|---------|---------|
 | ① | `_repair_checkpoint_if_pending` 对共享 `failure_code` 的临时投影风险（erased-fence 重放清他 owner blocked failure_code） | 实现 PR（六 owner 去共享写） | 移除该方法内 `operation.state/failure_code/started_at/revision` 写 + `conversation.purge_state` 写；反例「erased replay after blocked」落地为失败反例（reducer 接管后重放不改 operation/Conversation） |
-| ② | 六 owner 移除 operation/Conversation 写入 | 实现 PR | 移除**全部** `operation`/`Conversation.purge_state ∈ {running,blocked}` 写：transport 基类在三方法内（`_mark_operation_running`/`_record_blocked`/`_repair_checkpoint_if_pending`）；workspace/execution 的投影写在 **caller**（`erase_conversation_body`/`erase_execution_body`）而非三方法内，须一并移除；mutation-kill 测试删除写后变红；`_ack_owner_checkpoint` docstring 漂移同步修正 |
+| ② | 六 owner 移除 operation/Conversation 写入 | 实现 PR | 移除**全部** `operation`/`Conversation.purge_state ∈ {running,blocked}` 写：transport 基类在三方法内（`_mark_operation_running`/`_record_blocked`/`_repair_checkpoint_if_pending`）；workspace 的投影写在 **caller**（`erase_conversation_body`）而非三方法内；execution 的投影写在 **三方法内**（`_mark_operation_running`/`_record_blocked`）+ **caller**（`erase_execution_body`）两处，须一并移除；mutation-kill 测试删除写后变红；`_ack_owner_checkpoint` docstring 漂移同步修正 |
 | ③ | S5 aggregation reducer + blocked 单调性 + reason tie-break + completed/failure_code 清除权 | 实现 PR（reducer 本体） | 本契约 S5-A-2/S5-A-3 状态表与聚合规则全反例（S5-A-8）落地；`failure_code` 仅 reducer 写、清仅两条路径；blocked 单调 + tie-break 双顺序等价测试 |
 | ④ | receipt-lookup-only adapter 的 Tx2 双重外部 I/O 约束 | 后续 S5 运维 slice（实现 PR 不触及 adapter，无条件归后续） | 冻结「receipt-lookup-only 无幂等重放能力时，Tx2 精确重验不得二次调用外部删除」；单 conversation 内 distinct delete==1 由 adapter conformance 测试锁定；跨 conversation 去重对 receipt-lookup-only 由 adapter 层负责（S4-F F-6 已冻结），本契约不做 reducer 层保证 |
 | ⑤ | `_load_registered_refs` 锁序 `ORDER BY`（除非测试证明结果依赖顺序） | 实现 PR（external participant 去共享写时一并） | 要么给 `_load_registered_refs`（external_ref_erasure_participant.py:292）加确定性 `ORDER BY`，要么补测试证明其结果顺序不影响聚合/锁序正确性；不得留「无 ORDER BY 但静默依赖自然序」 |
@@ -1494,9 +1496,21 @@ event_id（= outbox row.id = envelope.event.event_id）
 | 11 | 重复 scheduler / takeover | 双连接并发 reducer 写 / stale `lease_epoch` 接管 | reducer 写以 `(lease_epoch, revision)` CAS 串行，stale 方零写，无 AB-BA | 双连接并发断言单写者 + 锁序；claim/lease 接管半程 deferred 到 scheduler slice（S5-A-6） |
 | 12 | 切换时已有 operation 重算与幂等 | in-flight operation 带污染 projection 交给 reducer | reducer 从 checkpoint 重算覆盖 projection；重复聚合幂等 | 断言重算后 `(state,failure_code)` 由 checkpoint 决定 + 幂等 |
 | 13 | 全 owner ACK 但最终扫描非零 | 全 checkpoint `acked` 但正文/ref 残留 | operation `blocked` + `failure_code` = scan 族聚合（**不** completed） | 变异「省略最终扫描 gate 直接 completed」→红；断言 `state=blocked` + scan 族 failure_code |
-| 14 | S5 重试唯一 blocked owner 但另有 owner 仍 blocked | 严重度最高 owner 被 S5 重试，另一 owner 仍 `blocked` | operation 保持 `blocked`，`failure_code` 从**剩余** blocked 集合重算（非 None、非不变） | 断言重试不清 failure_code、operation 不重开 running、failure_code=剩余 owner reason；变异「重试无条件清 failure_code」→红 |
+| 14 | S5 重试某 blocked owner，另有 owner 仍 blocked | 严重度最高 owner 被 S5 重试，另一 owner 仍 `blocked` | operation 保持 `blocked`，`failure_code` 从**剩余** blocked 集合重算（非 None、非不变） | 断言重试不清 failure_code、operation 不重开 running、failure_code=剩余 owner reason；变异「重试无条件清 failure_code」→红 |
 
 > 反例矩阵覆盖 F-2a 六不变量 + 本契约 S5-A-2/S5-A-3 规则；实现 PR 的测试必须映射到本矩阵（每行一个失败反例 + 变异判别），复用 S4-F 已冻结的注入机制（真实 PostgreSQL、fake adapter 故障注入、双连接 `asyncio.gather`、DB 篡改、跨 tenant/跨 Conversation）。行 10/11 的 scheduler 半程（新 revision 重建、claim/lease 接管）明确 deferred 到 S5 scheduler slice，不在 reducer 实现 PR 落地。
+
+#### S5-A-9 三面首轮复审与返修记录（Draft 状态，未 merge）
+
+**首轮三面原始计数（保留不覆盖）**：数据/状态机 P0=0/P1=2/P2=4/P3=1 + 并发/锁序 P0=0/P1=2/P2=3/P3=1 + 测试/运维 P0=0/P1=3/P2=5/P3=3 → **合计 P0=0/P1=7/P2=12/P3=5**（24 findings）。
+
+**根因族（一次返修，9 族）**：①写者归属不完整（`cancelled` restore 写者 + caller 级 `purge_state` 写 + operation.state 三类写者）②reducer 锁序/切换欠定（Conversation 行锁必取 + 一致性快照 + 单 owner 重试锁序 + 生产调用点 + 滚动发布前提）③`hold_revision` 无生产者（completed 条件(d) 空洞 → live `has_active_legal_hold` + 生产者前置）④状态表组合不完备（scan-nonzero 行 + 优先级 + 重试清除语义限定）⑤三份实现事实过度泛化（checkpoint `erasing` 分叉 / `_ack_owner_checkpoint` 细节 / failure_code 值域）⑥registry-changed 命名分层 ⑦反例矩阵判别力（row 6/8/10/11 修复 + 补 row 13/14）⑧注释漂移计数与延期④归属 ⑨文档精度。
+
+**返修**：commit `e7746b1d`（9 根因族一次返修）+ 定向复核后 4 处 P2 精度修正（row 14 标题自相矛盾、S5-A-7 ② execution 投影写位置、S5-A-0 表过度泛化注、completed(d) 残余 TOCTOU 明示）。
+
+**独立定向复核结论**：**PASS——无新 P1，7 项 P1 全清零，24 findings 全 RESOLVED（逐项核对代码/spec，非橡皮图章）**；残余 4 处 P2 已修。未触发 TD-092（返修未引入新 P1）。
+
+**状态**：Draft 稳定。按用户指令停在 Draft（不转 Ready、不评分、不合并）；「转 Ready → 评分 → 合并」由用户后续单独指令触发，reducer 实现 PR 前必须先把本契约 PR 合并为冻结基线。
 
 ### R1-S5：Legal hold、Scheduler 与运维闭环
 
