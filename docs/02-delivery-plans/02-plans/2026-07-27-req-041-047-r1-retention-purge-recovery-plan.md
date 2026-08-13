@@ -1240,7 +1240,9 @@ event_id（= outbox row.id = envelope.event.event_id）
 >
 > **F-2. 五方状态一致不变量（冻结）**——每个故障终态断言 operation/checkpoint/fence/Conversation/ledger（runtime 为 binding）五方一致。`reason_code` 按**三层冻结**（participant 不得自造字符串）：① **conversation 级 reason**（`REASON_EXTERNAL_*`/`REASON_RUNTIME_*`/`purge_blocked_by_*_scan_nonzero` 等）；② **行级 `blocked_reason`**（`erase_timeout`/`outcome_unknown`/`adapter_unavailable`/`unknown_scheme`，写入 external ledger 行 / runtime binding）；③ **tombstone/epoch reason**（`RECEIPT_TOMBSTONE_REASON='purge_erasure'`、S4-C epoch code，inbox/outbox 证据保留）。**blocked 三方一致断言**：**单 owner blocked** 时 `checkpoint.reason_code == operation.failure_code`（精确相等，conversation 级 reason 键值）**且** `Conversation.state='deleted'` 且 `purge_state IN ('running','blocked')`（非终态，可重试/运维）**且 fence 终态按触发点三族发散**（见矩阵，不得写死单一值）。**`Conversation` 列一律用 `state` + `purge_state` + `purged_at` 三元表达**：`purge_state` CHECK 仅允许 `not_scheduled/scheduled/running/blocked/failed/completed`（`deleted` 是 `conversation.state` 值、`purged` 不是任何列值——不得混淆两层）。**`checkpoint_digest` 三形式（按状态固定，E-2c/D-1 不可互换）**：`erasing`=intent digest（`external_delete_intent.v1`/`runtime_destroy_intent.v1`）、`blocked`=`TransportBodyScan.digest()`、`acked`=owner final scan digest——S4-F 断言必须按状态选对形式。
 >
-> **F-2a. 多 owner 同时 blocked 的聚合语义（冻结，S4-F 实现纠偏）**——`checkpoint.reason_code` 是 **owner-specific**（每 owner 各自的 blocked reason，逐 checkpoint 精确）；`operation.failure_code` 与 `Conversation.purge_state` 是 **聚合投影**（operation 只有单个 `failure_code`，Conversation 只有单个 `purge_state`）。**F-2 的「逐 checkpoint 精确相等」只在单 owner blocked 时成立**；多 owner 同时 blocked（不同 owner 不同 reason）时，`operation.failure_code` **不等于**每个 `checkpoint.reason_code`，而是**确定性聚合**——由**冻结的 conversation 级 reason 严重度优先级**决定（最高严重度胜出），**不得依赖最后提交者 / asyncio 调度顺序**（`_record_blocked` 的「`elif operation.failure_code != reason: 覆盖`」是 last-committer-wins 非确定性，**必须改为 keep-highest-severity**）。严重度优先级（高→低，冻结常量，`operation.failure_code` 取已 blocked owner reason 集合中的最高者）：
+> **F-2a. 多 owner 聚合架构裁决（Option A：聚合完全归 S5，冻结，S4-F 纠偏升级）**——独立复核新增 P0=0/P1=5/P2=2 触发 TD-092 升级规则，停止在 `_mark_operation_running`/`_record_blocked` 上叠加局部条件，改为架构裁决。**裁决：S4 participant 是 owner-scoped eraser（只写自己的 checkpoint/fence/ledger/binding），不再把共享 operation/Conversation 当作最终聚合事实源；`operation.state`/`failure_code` 与 `Conversation.purge_state` 由 S5 scheduler 按全部 owner checkpoint 统一计算。** `checkpoint.reason_code` owner-specific（逐 checkpoint 精确）；`operation.failure_code` 是 S5 从 blocked checkpoint 集合确定性计算的聚合投影（非任何 participant 的单次写入）。
+>
+> **失败 reason 严重度优先级（S5 reducer 的排序，高→低；`failure_code` 取 blocked reason 集合最高者）**：
 >
 > 1. `purge_blocked_by_legal_hold`（法律 hold，最高）
 > 2. `purge_blocked_by_unresolved_action`
@@ -1252,7 +1254,28 @@ event_id（= outbox row.id = envelope.event.event_id）
 > 8. `purge_owner_unavailable`
 > 9. `operator_suppressed`（fallback，最低）
 >
-> **Conversation.purge_state 聚合**：任一 owner blocked 即 `blocked`（boolean 聚合，与 reason 无关）；全部 owner ACK 后的 `completed` 正向判定归 S5（S4-F 只断负向）。**S5 owner 顺序边界**：本优先级与 S5 的固定 owner 处理顺序兼容（S5 可复用同一 `failure_code` 做重试/运维决策；S4-F 不实现 completed 迁移）。**判别测试**：三 owner（external/runtime/transport）各注入**不同** reason 的故障，`asyncio.gather` 并发，断言 `operation.failure_code` 恒等于最高严重度 reason（与提交顺序无关，重复跑确定性）；每个 `checkpoint.reason_code` 逐 owner 精确；`Conversation.purge_state='blocked'`。
+> **同严重度 tie-break（冻结）**：同严重度 reason（如 external outcome_unknown 600 vs runtime outcome_unknown 600）按 **owner_key 字典序**（registry 排序）取最小者——确定性、与 S5 固定 owner 处理顺序一致；**禁用「先提交者保留」与「最后提交者覆盖」**。
+>
+> **写者所有权（冻结）**：
+>
+> | 实体 | 写者 | 状态迁移 |
+> |------|------|---------|
+> | owner checkpoint | participant | `pending -> erasing -> acked/blocked` |
+> | owner fence | participant | `active -> erasing -> erased/blocked` |
+> | external ledger / runtime binding | participant | `registered -> erased/blocked/unknown` |
+> | operation.state / failure_code | **S5** | `scheduled -> running -> blocked/completed`（从全部 checkpoint 集合聚合） |
+> | Conversation.purge_state | **S5** | 投影 operation.state |
+>
+> **S4 期间临时投影与 S5 接管边界（冻结）**：当前 S2-D/S3-D/S4-D/E participant 直接写 operation/Conversation 是 **S4 期间临时投影**（S5 未实现的占位），**不构成最终聚合事实源**——S5 实现后由 reducer 替换。本 PR（S4-F）**只冻结本裁决，不越界实现 S5 reducer、不改 core participant 的临时投影写者**；「owner-scoped participant 重构（6 owner 移除对 operation/Conversation 的写）+ S5 聚合 reducer」拆为**独立 contract-first PR**（先冻结 reducer 状态表/写者所有权/迁移边界，再实现）。
+>
+> **六不变量（冻结，任何实现须满足）**：
+>
+> 1. 任一 checkpoint blocked → operation/Conversation **不得被后到 ACK owner 重开 running**。
+> 2. `failure_code` 从**当前 blocked checkpoint 集合**确定性计算（非 last-writer-wins）。
+> 3. 同严重度 reason 用 owner_key 字典序 tie-break（非先提交者保留 / 最后提交者覆盖）。
+> 4. ACK / blocked / erased-replay / retry 任意提交顺序结果一致。
+> 5. 全部 owner ACK 后 completed / failure_code 清除仍归 S5。
+> 6. 单 owner 重试（S5 重跑该 owner）与多 owner 聚合（S5 重算全部 checkpoint）语义分离——「本 owner 重试」不得清除其他 owner 的 blocked 事实。
 >
 > | 故障终态 | operation（`agent_conversation_purges`） | checkpoint（`agent_conversation_purge_owners`） | fence（`agent_erasure_fences`） | Conversation（`state`+`purge_state`+`purged_at`） | external ledger / runtime binding |
 > |---------|-----------------------------------------|-----------------------------------------------|-------------------------------|----------------------------------|----------------------------------|

@@ -29,9 +29,9 @@
 - 技术债：TD-032（test_s4f_fault_matrix.py 1080 行已登记待拆分）
 - 架构约束：不启用 S5/S6/C1；不翻 registry（external/runtime False）；不改 migration 040/041；不改 S4-C/D/E 已合并终态语义
 
-当前进展：正式评分 92 被独立广域复审推翻，PR 转回 Draft + 删除过期评分行。按「契约可满足性」根因批次返修（批次 A 三 owner 聚合 keep-highest + 不清 failure_code / B takeover 3 race / C AC10 多 sentinel / D 零变更判别力）。**独立广域复审（并发/锁序 P0=0/P1=0/P2=3/P3=2 + 测试/运维 P0=0/P1=2/P2=1/P3=3）发现 2 条新 P1（AC10 脱敏 4/6 sentinel 空真 + caplog 空真）+ 1 P2（`_repair_checkpoint_if_pending` 清 failure_code）**——按 TD-092 升级为**契约重写**：AC10 契约改为「可判别 sentinel（正文/external ref/runtime ref 三类真种入）vs 结构性不可达（CoT/secret 无字段、日志无 logger）」；`_repair_checkpoint_if_pending` 镜像 `_mark_operation_running` 不清 failure_code；snapshot 补 revision 轴。首轮原始计数 P0=0/P1=3/P2=9/P3=13 保留；广域复审新增 P1=2/P2=1 已通过契约重写收口。
-下一步：PR 保持 Draft，等待最终 HEAD 三路 CI 全绿 → 停止汇报（不转 Ready、不评分、不合并）。
-验证状态：14 passed（新增）+ 全 composition 426 passed/0 failed + ruff clean + mypy 0 回归 + docs gate 通过；契约重写 commit `f41af637` 待 CI。
+当前进展：正式评分 92 被推翻，PR 转回 Draft + 删除过期评分行。独立复核确认新增 P0=0/P1=5/P2=2（blocked→ACK 重开 running、同严重度 tie-break、erased-replay 清 failure_code、core owner last-writer-wins 等），触发 TD-092 升级规则——**停止在 `_mark_operation_running`/`_record_blocked` 上叠加局部条件，完成多 owner 聚合架构裁决**。裁决：**Option A 聚合完全归 S5**（S4 participant 只写 checkpoint/fence/ledger/binding，operation.state/failure_code 与 Conversation.purge_state 由 S5 从全部 owner checkpoint 统一计算；严重度优先级 + owner_key 字典序 tie-break；六不变量 + S4 临时投影/S5 接管边界 + PR 拆分已冻结入 plan F-2a）。横向审计：3 份独立聚合逻辑（transport 基类 4 owner + workspace.core/execution.core 各一份 last-writer-wins）。
+下一步：**实现前先汇报架构裁决与 PR 拆分判断，经确认后再实施**（失败反例三 owner 同源测试 + AC10 真实路径 + 零变更快照 + 横向矩阵）；PR 保持 Draft，不转 Ready/评分/合并。
+验证状态：架构裁决已落 plan（未改生产代码）；首轮原始计数 P0=0/P1=3/P2=9/P3=13 + 前次独立复审 P1=3/P2=1 + HEAD 523be1c1 广域复核新增 P1=5/P2=2 保留不覆盖。
 交接备注：Draft 稳定且 P0/P1 清零后停止，不自动转 Ready、不评分、不合并；不启动 S5/S6/C1。
 
 ## 下一批候选任务
