@@ -55,10 +55,14 @@ from tests.composition.test_s4da_transport_participant_matrix import (
 from tests.composition.test_s4da_transport_participant_matrix import (
     _seed_deleted_expired_conversation as _transport_seed_conversation,
 )
+from tests.composition.test_s4da_transport_participant_matrix import (
+    _seed_transport_outbox,
+)
 from tests.composition.test_s4eb2_external_erasure import (
     EXTERNAL_PAYLOAD_OWNER,
     TENANT_ID,
     _ensure_test_tenant,
+    _seed_run_event_ref,
     _seed_workspace_outbox_ref,
 )
 from tests.composition.test_s4eb2_external_erasure import (
@@ -77,6 +81,9 @@ from tests.composition.test_s4eb2_external_erasure import (
     _TimeoutAdapter as _ExternalTimeoutAdapter,
 )
 from tests.composition.test_s4ec_runtime_conformance import (
+    _FailedAdapter as _RuntimeFailedAdapter,
+)
+from tests.composition.test_s4ec_runtime_conformance import (
     _participant as _runtime_participant,
 )
 from tests.composition.test_s4ec_runtime_conformance import (
@@ -91,6 +98,25 @@ pytestmark = pytest.mark.asyncio
 
 _REF_VALUE = "obj://staging/object/s4f"
 _RUNTIME_REF = "pi://session/s4f"
+WORKSPACE_TRANSPORT_OWNER = "workspace.transport.v1"
+
+# F-6 R1-AC10 脱敏 sentinel（批次 C 纠偏）：external ref 是 ledger 必要身份例外，
+# 其余（正文/runtime ref/CoT/secret/自由文本 reason）禁入 operation/checkpoint/fence/
+# ledger/日志。
+_BODY_SENTINEL = "BODY_SECRET_MARKER_9f8a7b6c"
+_EXTERNAL_REF_SENTINEL = "obj://staging/sentinel-ext-ref-4d2e"
+_RUNTIME_REF_SENTINEL = "pi://session/sentinel-runtime-7c3f"
+_COT_SENTINEL = "COT_CHAIN_OF_THOUGHT_MARKER_3c2d5e"
+_SECRET_SENTINEL = "API_SECRET_KEY_8b4e6a"
+_FREETEXT_SENTINEL = "operator_free_text_reason_1f2a"
+# 除 external ref 身份外，全部 sentinel 禁入 purge 元数据/日志/ledger。
+_FORBIDDEN_SENTINELS = (
+    _BODY_SENTINEL,
+    _RUNTIME_REF_SENTINEL,
+    _COT_SENTINEL,
+    _SECRET_SENTINEL,
+    _FREETEXT_SENTINEL,
+)
 
 
 def _enable_external_registry(monkeypatch) -> None:
@@ -289,6 +315,78 @@ async def _operation_state(
     return dict(row)
 
 
+async def _snapshot_purge(
+    session: AsyncSession,
+    *,
+    conv_id: uuid.UUID,
+    op_id: uuid.UUID,
+    owner_key: str,
+) -> dict:
+    """F-6 零变更判别力：捕获 operation + fence + checkpoint 状态（前后快照比对）。"""
+    op = await _operation_state(session, purge_operation_id=op_id)
+    fence_row = (
+        await session.execute(
+            text(
+                "SELECT state, revision FROM metaedu.agent_erasure_fences "
+                "WHERE tenant_id=:t AND conversation_id=:c AND owner_key=:o"
+            ),
+            {"t": TENANT_ID, "c": conv_id, "o": owner_key},
+        )
+    ).mappings().one_or_none()
+    cp_row = (
+        await session.execute(
+            text(
+                "SELECT state, attempt FROM metaedu.agent_conversation_purge_owners "
+                "WHERE purge_operation_id=:op AND owner_key=:o"
+            ),
+            {"op": op_id, "o": owner_key},
+        )
+    ).mappings().one_or_none()
+    return {
+        "operation": op,
+        "fence": dict(fence_row) if fence_row else None,
+        "checkpoint": dict(cp_row) if cp_row else None,
+    }
+
+
+async def _current_operation_revision(
+    session: AsyncSession, *, op_id: uuid.UUID
+) -> int:
+    return int(
+        (
+            await session.execute(
+                text(
+                    "SELECT revision FROM metaedu.agent_conversation_purges "
+                    "WHERE id = :op"
+                ),
+                {"op": op_id},
+            )
+        ).scalar_one()
+    )
+
+
+async def _run_erase_with_retry(*, op_id: uuid.UUID, erase_fn) -> None:
+    """S5 风格 owner-walk：并发下每 owner 的 ``_record_blocked`` 会 bump operation
+    revision，``_mark_operation_running`` 的 revision CAS 冲突时重读当前 revision
+    重试（F-2a「asyncio.gather 并发」需要；S5 顺序处理 owner 时同机制）。"""
+    for _ in range(10):
+        f, e = await _make_factory()
+        try:
+            async with f() as sess:
+                rev = await _current_operation_revision(sess, op_id=op_id)
+                try:
+                    await erase_fn(sess, rev)
+                    await sess.commit()
+                    return
+                except ValueError as exc:
+                    if "revision" not in str(exc):
+                        raise
+                    await sess.rollback()  # revision CAS miss -> 重读重试
+        finally:
+            await e.dispose()
+    raise AssertionError("concurrent erase revision-CAS retry exhausted")
+
+
 async def _erase_external_concurrent(
     *,
     conv_id: uuid.UUID,
@@ -296,25 +394,18 @@ async def _erase_external_concurrent(
     purge_rev: int,
     adapter: object,
 ) -> None:
-    """在独立 session 跑 external erase（F-6 行 5 并发 gather 用）。
+    """在独立 session 跑 external erase（F-6 行 5 / F-2a 并发 gather 用）。"""
 
-    operation 由测试 seed 预置 running/revision=2（S5 已标 running 再分发 owner），
-    此处固定传 ``expected_operation_revision=2``——``_mark_operation_running`` 对已
-    running 不 bump，无 revision-CAS 竞态（避免并发重试回滚 op 状态的 flaky）。
-    """
-    f, e = await _make_factory()
-    try:
-        async with f() as sess:
-            await _ext_participant(sess, adapter).erase_external_payload(
-                tenant_id=TENANT_ID,
-                conversation_id=conv_id,
-                purge_revision=purge_rev,
-                purge_operation_id=op_id,
-                expected_operation_revision=2,
-            )
-            await sess.commit()
-    finally:
-        await e.dispose()
+    async def _call(sess, rev):
+        await _ext_participant(sess, adapter).erase_external_payload(
+            tenant_id=TENANT_ID,
+            conversation_id=conv_id,
+            purge_revision=purge_rev,
+            purge_operation_id=op_id,
+            expected_operation_revision=rev,
+        )
+
+    await _run_erase_with_retry(op_id=op_id, erase_fn=_call)
 
 
 async def _erase_runtime_concurrent(
@@ -324,20 +415,102 @@ async def _erase_runtime_concurrent(
     purge_rev: int,
     adapter: object,
 ) -> None:
-    """同 ``_erase_external_concurrent``，runtime 侧（expected_operation_revision=2）。"""
-    f, e = await _make_factory()
-    try:
-        async with f() as sess:
-            await _runtime_participant(sess, adapter).erase_runtime_session(
-                tenant_id=TENANT_ID,
-                conversation_id=conv_id,
-                purge_revision=purge_rev,
-                purge_operation_id=op_id,
-                expected_operation_revision=2,
-            )
-            await sess.commit()
-    finally:
-        await e.dispose()
+    """同 ``_erase_external_concurrent``，runtime 侧。"""
+
+    async def _call(sess, rev):
+        await _runtime_participant(sess, adapter).erase_runtime_session(
+            tenant_id=TENANT_ID,
+            conversation_id=conv_id,
+            purge_revision=purge_rev,
+            purge_operation_id=op_id,
+            expected_operation_revision=rev,
+        )
+
+    await _run_erase_with_retry(op_id=op_id, erase_fn=_call)
+
+
+async def _erase_transport_concurrent(
+    *,
+    conv_id: uuid.UUID,
+    op_id: uuid.UUID,
+    purge_rev: int,
+) -> None:
+    """同 ``_erase_external_concurrent``，workspace.transport.v1 侧（真实调用
+    ``WorkspaceTransportErasureParticipant.erase_transport_owner``，不冒充）。"""
+
+    async def _call(sess, rev):
+        await WorkspaceTransportErasureParticipant(sess).erase_transport_owner(
+            tenant_id=TENANT_ID,
+            conversation_id=conv_id,
+            purge_revision=purge_rev,
+            purge_operation_id=op_id,
+            expected_operation_revision=rev,
+        )
+
+    await _run_erase_with_retry(op_id=op_id, erase_fn=_call)
+
+
+async def _seed_multi_owner_operation(
+    session: AsyncSession,
+    *,
+    conv_id: uuid.UUID,
+    purge_rev: int,
+    owner_keys: tuple[str, ...],
+) -> uuid.UUID:
+    """种 running/rev2 的 purge operation + 各 owner pending checkpoint（F-6 多 owner）。
+
+    operation 预置 running + revision=2（S5 已标 running 再分发 owner），各 owner 以
+    expected_operation_revision=2 调用无 revision-CAS 竞态；返回 operation_id。
+    """
+    from app.composition.agent_erasure_registry import capability_digest as _cd
+    from app.composition.agent_erasure_registry import registry_digest as _rd
+    from tests.composition.test_s4eb2_external_erasure import (
+        _registry_snapshot_json as _ext_snapshot,
+    )
+
+    op_id = uuid.uuid4()
+    now = datetime.now(UTC).replace(tzinfo=None)
+    await session.execute(
+        text(
+            "INSERT INTO metaedu.agent_conversation_purges "
+            "(id, tenant_id, conversation_id, purge_revision, state, registry_digest, "
+            "registry_snapshot, retention_policy_snapshot, retention_policy_digest, "
+            "hold_revision_snapshot, lease_epoch, scheduled_at, started_at, revision, "
+            "created_at, updated_at) "
+            "VALUES (:id, :t, :c, :r, 'running', :rd, :rs, :rps, :rpd, "
+            "0, 0, :now, :now, 2, :now, :now)"
+        ),
+        {
+            "id": op_id,
+            "t": TENANT_ID,
+            "c": conv_id,
+            "r": purge_rev,
+            "rd": _rd(),
+            "rs": _ext_snapshot(),
+            "rps": '{"conversation_recovery_days": 30}',
+            "rpd": "e" * 64,
+            "now": now,
+        },
+    )
+    for owner_key in owner_keys:
+        await session.execute(
+            text(
+                "INSERT INTO metaedu.agent_conversation_purge_owners "
+                "(id, tenant_id, purge_operation_id, owner_key, owner_version, "
+                "capability_digest, state, attempt, created_at, updated_at) "
+                "VALUES (:id, :t, :op, :o, 1, :cd, 'pending', 0, :now, :now)"
+            ),
+            {
+                "id": uuid.uuid4(),
+                "t": TENANT_ID,
+                "op": op_id,
+                "o": owner_key,
+                "cd": _cd(owner_key),
+                "now": now,
+            },
+        )
+    await session.flush()
+    return op_id
 
 
 # ---------------------------------------------------------------------------
@@ -345,13 +518,26 @@ async def _erase_runtime_concurrent(
 # ---------------------------------------------------------------------------
 
 
-async def test_external_tx2_cross_process_takeover_fail_closed(monkeypatch, session_factory):
-    """F-6 族 B：Tx1 提交后由第二连接 bump operation.lease_epoch / checkpoint.attempt，
-    Tx2 精确重验必须 fail closed + 零写（external 侧 ``expire_all`` 判别）。
+_TAKEOVER_BUMPS = (
+    # (bump_kind, 期望命中 Tx2 检查的错误子串)
+    ("attempt", "attempt"),
+    ("checkpoint_digest", "intent"),
+    ("lease_epoch", "lease"),
+)
 
-    判别点：**去掉 ``expire_all``（变异）-> Tx2 重验读 identity-map 陈旧实例，
-    takeover 不可观测，fail-closed 分支不命中 -> 本测试红**。runtime 侧同修复
-    （E-C C-1/T-1）先例。
+
+@pytest.mark.parametrize(("bump_kind", "expected_substr"), _TAKEOVER_BUMPS)
+async def test_external_tx2_cross_process_takeover_fail_closed(
+    monkeypatch, session_factory, bump_kind, expected_substr
+):
+    """F-6 族 B：Tx1 提交后由第二连接篡改**单一**字段（attempt / checkpoint_digest /
+    lease_epoch），Tx2 精确重验（E-2a）必须独立命中对应检查并 fail closed + 零写。
+
+    每项独立篡改，避免前一检查遮蔽后一检查（external Tx2 检查顺序：fence -> attempt
+    -> intent digest -> ``_load_verified_operation`` lease）；每项断言 ledger 保持
+    registered + receipt NULL、source ref 未清、fence/checkpoint 保持 Tx1 窗口态
+    （erasing），禁止终态写入。判别点：去掉 ``expire_all`` -> Tx2 读 identity-map
+    陈旧实例、篡改不可观测 -> 本测试红（E-2a stale-identity）。
     """
     _enable_external_registry(monkeypatch)
 
@@ -397,26 +583,39 @@ async def test_external_tx2_cross_process_takeover_fail_closed(monkeypatch, sess
             await engine.dispose()
 
     async def _takeover_bump():
-        """等待 A 进入 adapter 窗口（Tx1 已提交、锁已释放）后，模拟另一进程 takeover：
-        **只 bump checkpoint.attempt**。说明：无 ``expire_all`` 时 checkpoint **和**
-        operation 都是 identity-map 陈旧实例（SQLAlchemy FOR UPDATE 重选不刷新
-        已入 identity-map 实体的属性，须 ``expire_all`` 才按已提交行重读）——bump
-        attempt 或 lease 任一都会被陈旧读掩盖；选择 attempt 是因为 checkpoint 重验
-        在 ``_load_verified_operation`` **之前**（external Tx2 顺序），使本测试断言
-        `"attempt" in error` 精确命中 checkpoint 陈旧路径（bump lease 会落在 operation
-        检查、attempt 断言不成立）。"""
+        """等待 A 进入 adapter 窗口（Tx1 已提交、锁已释放）后，第二连接篡改**单一**
+        字段模拟另一进程 takeover。"""
         await adapter_entered.wait()
         factory, engine = await _make_factory()
         try:
             async with factory() as sess:
-                await sess.execute(
-                    text(
-                        "UPDATE metaedu.agent_conversation_purge_owners "
-                        "SET attempt = attempt + 1, updated_at = clock_timestamp() "
-                        "WHERE tenant_id = :t AND purge_operation_id = :op"
-                    ),
-                    {"t": TENANT_ID, "op": op_id},
-                )
+                if bump_kind == "attempt":
+                    await sess.execute(
+                        text(
+                            "UPDATE metaedu.agent_conversation_purge_owners "
+                            "SET attempt = attempt + 1, updated_at = clock_timestamp() "
+                            "WHERE tenant_id = :t AND purge_operation_id = :op"
+                        ),
+                        {"t": TENANT_ID, "op": op_id},
+                    )
+                elif bump_kind == "checkpoint_digest":
+                    await sess.execute(
+                        text(
+                            "UPDATE metaedu.agent_conversation_purge_owners "
+                            "SET checkpoint_digest = :d, updated_at = clock_timestamp() "
+                            "WHERE tenant_id = :t AND purge_operation_id = :op"
+                        ),
+                        {"t": TENANT_ID, "op": op_id, "d": "f" * 64},
+                    )
+                elif bump_kind == "lease_epoch":
+                    await sess.execute(
+                        text(
+                            "UPDATE metaedu.agent_conversation_purges "
+                            "SET lease_epoch = lease_epoch + 5, updated_at = clock_timestamp() "
+                            "WHERE tenant_id = :t AND id = :op"
+                        ),
+                        {"t": TENANT_ID, "op": op_id},
+                    )
                 await sess.commit()
         finally:
             await engine.dispose()
@@ -428,11 +627,13 @@ async def test_external_tx2_cross_process_takeover_fail_closed(monkeypatch, sess
         "external Tx2 must fail closed on cross-process takeover; "
         "if this assertion fires, `expire_all` was removed/moved (E-2a stale-identity bug)"
     )
-    # 判别：attempt mismatch 被观测到即 checkpoint 陈旧读已被 expire_all 修复。
-    assert "attempt" in str(tx2_error[0]), str(tx2_error[0])
+    # 判别：该篡改字段独立命中对应 Tx2 检查（非被前一检查遮蔽）。
+    assert expected_substr in str(tx2_error[0]), (
+        f"expected {expected_substr!r} in error, got {tx2_error[0]}"
+    )
 
-    # F-6 行 5「fail closed + 零写」：takeover 拒绝后 ledger 保持 registered + receipt
-    # NULL、fence 仍 erasing、checkpoint 仍 erasing（Tx2 在写任何终态前 raise）。
+    # F-6 行 5「fail closed + 零写」：ledger 保持 registered + receipt NULL、source
+    # ref 未清、fence/checkpoint 保持 Tx1 窗口态（erasing），禁止终态写入。
     async with session_factory() as check:
         fence_state = (
             await check.execute(
@@ -458,6 +659,18 @@ async def test_external_tx2_cross_process_takeover_fail_closed(monkeypatch, sess
         ).mappings().one()
         assert ledger["erase_state"] == "registered", ledger
         assert ledger["receipt_digest"] is None, ledger
+        # source ref 未清（Tx2 在清 ref 前 raise）。B2 seed 用 aggregate_id 链接
+        # conversation（outbox 的 conversation_id 列为 NULL）。
+        src_ref = (
+            await check.execute(
+                text(
+                    "SELECT payload_ref FROM metaedu.agent_workspace_outbox "
+                    "WHERE tenant_id=:t AND aggregate_id=:c AND aggregate_type='conversation'"
+                ),
+                {"t": TENANT_ID, "c": conv_id},
+            )
+        ).scalar_one()
+        assert src_ref is not None, "source ref must not be cleared on failed Tx2"
 
 
 # ---------------------------------------------------------------------------
@@ -723,7 +936,10 @@ async def test_owner_scope_mismatch_capability_gate(monkeypatch, session_factory
     """F-6 R1-AC9：conversation 已登记 owner 与直调 participant 不符 -> fail closed。
 
     判别点：external 直调 conversation 上 workspace.transport.v1 的 owner checkpoint
-    缺 external 行 -> ``_load_verified_checkpoint`` 找不到 -> fail closed。
+    缺 external 行 -> ``_load_verified_checkpoint`` 找不到 -> fail closed。**零变更
+    判别力**：异常前无持久化副作用——external fence 未被创建、operation 仍 scheduled/
+    rev1、transport checkpoint 仍 pending（前后快照一致；Tx1 的 fence 创建/推进/mark
+    running 均回滚，不落库）。
     """
     _enable_external_registry(monkeypatch)
 
@@ -740,6 +956,13 @@ async def test_owner_scope_mismatch_capability_gate(monkeypatch, session_factory
             )
             await seed.commit()
 
+        # 前后快照（external owner 维度）。
+        async with factory() as before_sess:
+            before = await _snapshot_purge(
+                before_sess, conv_id=conv_id, op_id=op_id,
+                owner_key=EXTERNAL_PAYLOAD_OWNER,
+            )
+
         async with factory() as sess:
             participant = _ext_participant(sess, _ExternalSuccessAdapter())
             with pytest.raises(ValueError, match="checkpoint"):
@@ -750,6 +973,17 @@ async def test_owner_scope_mismatch_capability_gate(monkeypatch, session_factory
                     purge_operation_id=op_id,
                     expected_operation_revision=1,
                 )
+            await sess.rollback()  # 失败路径显式回滚（S5 调用方回滚语义）
+
+        async with factory() as after_sess:
+            after = await _snapshot_purge(
+                after_sess, conv_id=conv_id, op_id=op_id,
+                owner_key=EXTERNAL_PAYLOAD_OWNER,
+            )
+        assert before == after, (
+            f"owner scope mismatch must leave zero persistent side effect;\n"
+            f"before={before}\nafter={after}"
+        )
     finally:
         await engine.dispose()
 
@@ -758,7 +992,9 @@ async def test_operation_revision_replay_rejected(monkeypatch, session_factory):
     """F-6 R1-AC9：旧 revision 的 purge operation 重放 -> revision CAS 拒绝。
 
     判别点：seed operation revision=2，重放 expected_operation_revision=1 ->
-    ``_load_verified_operation`` revision mismatch -> fail closed。
+    ``_load_verified_operation`` revision mismatch -> fail closed。**零变更判别力**：
+    异常前无持久化副作用——operation revision 不变、external fence 保持 active、
+    checkpoint 保持 pending（前后快照一致）。
     """
     _enable_external_registry(monkeypatch)
 
@@ -779,6 +1015,12 @@ async def test_operation_revision_replay_rejected(monkeypatch, session_factory):
             )
             await seed.commit()
 
+        async with factory() as before_sess:
+            before = await _snapshot_purge(
+                before_sess, conv_id=conv_id, op_id=op_id,
+                owner_key=EXTERNAL_PAYLOAD_OWNER,
+            )
+
         async with factory() as sess:
             participant = _ext_participant(sess, _ExternalSuccessAdapter())
             with pytest.raises(ValueError, match="revision"):
@@ -789,6 +1031,17 @@ async def test_operation_revision_replay_rejected(monkeypatch, session_factory):
                     purge_operation_id=op_id,
                     expected_operation_revision=1,  # 旧 revision -> CAS 拒绝
                 )
+            await sess.rollback()  # 失败路径显式回滚
+
+        async with factory() as after_sess:
+            after = await _snapshot_purge(
+                after_sess, conv_id=conv_id, op_id=op_id,
+                owner_key=EXTERNAL_PAYLOAD_OWNER,
+            )
+        assert before == after, (
+            f"stale revision replay must leave zero persistent side effect;\n"
+            f"before={before}\nafter={after}"
+        )
     finally:
         await engine.dispose()
 
@@ -1134,16 +1387,168 @@ async def test_mixed_multi_family_faults_five_party_consistent(monkeypatch, sess
         await engine.dispose()
 
 
+async def test_three_owner_mixed_faults_deterministic_aggregation(
+    monkeypatch, session_factory
+):
+    """F-2a 三 owner 混合故障确定性聚合：external（timeout -> outcome_unknown 600）+
+    runtime（failed -> adapter_unavailable 400）+ transport（ref-bearing ->
+    purge_owner_unavailable 200）三族并发。
+
+    ``checkpoint.reason_code`` 逐 owner 精确（owner-specific）；``operation.failure_code``
+    是聚合投影，按 F-2a 严重度优先级取最高（external outcome_unknown），**与提交顺序
+    无关**；``Conversation.purge_state='blocked'``；operation 非 completed（partial ACK）。
+
+    判别点：把 ``_record_blocked`` 改回 last-committer-wins（``elif failure_code !=
+    reason: 覆盖``）-> 三 owner 并发下 failure_code 依赖提交顺序 -> 本测试的确定性
+    断言（恒等于 external outcome_unknown）非确定失败。
+    """
+    _enable_external_registry(monkeypatch)
+    _enable_runtime_registry(monkeypatch)
+
+    factory, engine = await _make_factory()
+    try:
+        async with factory() as seed:
+            await _ensure_test_tenant(seed)
+            conv_id, purge_rev = await _ext_seed_conversation(seed)  # external fence
+            now = datetime.now(UTC).replace(tzinfo=None)
+            # runtime fence + binding（同一 conversation）。
+            await seed.execute(
+                text(
+                    "INSERT INTO metaedu.agent_erasure_fences "
+                    "(tenant_id, conversation_id, owner_key, owner_version, state, "
+                    "purge_revision, hold_revision, ingress_checkpoint, ingress_digest, "
+                    "revision, created_at, updated_at) "
+                    "VALUES (:t, :c, :o, 1, 'active', 1, 0, '{}'::jsonb, "
+                    ":ed, 1, :now, :now) ON CONFLICT DO NOTHING"
+                ),
+                {
+                    "t": TENANT_ID,
+                    "c": conv_id,
+                    "o": RUNTIME_PRIVATE_OWNER,
+                    "ed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                    "now": now,
+                },
+            )
+            # transport fence（同一 conversation）。
+            await seed.execute(
+                text(
+                    "INSERT INTO metaedu.agent_erasure_fences "
+                    "(tenant_id, conversation_id, owner_key, owner_version, state, "
+                    "purge_revision, hold_revision, ingress_checkpoint, ingress_digest, "
+                    "revision, created_at, updated_at) "
+                    "VALUES (:t, :c, :o, 1, 'active', 1, 0, '{}'::jsonb, "
+                    ":ed, 1, :now, :now) ON CONFLICT DO NOTHING"
+                ),
+                {
+                    "t": TENANT_ID,
+                    "c": conv_id,
+                    "o": WORKSPACE_TRANSPORT_OWNER,
+                    "ed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                    "now": now,
+                },
+            )
+            # runtime binding（runtime 的清除对象）。
+            await _seed_runtime_binding(seed, conv_id, ref_value=_RUNTIME_REF)
+            # transport ref-bearing workspace outbox（NOT 入 external ledger——transport
+            # 的 ref-bearing 前置命中 purge_owner_unavailable，独立于 external）。
+            await _seed_transport_outbox(
+                seed, conversation_id=conv_id, side="workspace",
+                payload_ref="obj://transport/ref/s4f",
+            )
+            # external RunEvent ref（external 的唯一清除对象，入 external ledger）。
+            await _seed_run_event_ref(seed, conv_id)
+            op_id = await _seed_multi_owner_operation(
+                seed,
+                conv_id=conv_id,
+                purge_rev=purge_rev,
+                owner_keys=(
+                    EXTERNAL_PAYLOAD_OWNER,
+                    RUNTIME_PRIVATE_OWNER,
+                    WORKSPACE_TRANSPORT_OWNER,
+                ),
+            )
+            await seed.commit()
+
+        # 三族并发，各注入不同 reason 的故障（真实 PG + asyncio.gather）。
+        await asyncio.gather(
+            _erase_external_concurrent(
+                conv_id=conv_id, op_id=op_id, purge_rev=purge_rev,
+                adapter=_ExternalTimeoutAdapter(),  # timeout -> outcome_unknown 600
+            ),
+            _erase_runtime_concurrent(
+                conv_id=conv_id, op_id=op_id, purge_rev=purge_rev,
+                adapter=_RuntimeFailedAdapter(),  # failed -> adapter_unavailable 400
+            ),
+            _erase_transport_concurrent(
+                conv_id=conv_id, op_id=op_id, purge_rev=purge_rev,
+                # ref-bearing -> purge_owner_unavailable 200
+            ),
+        )
+
+        async with factory() as check:
+            # checkpoint.reason_code 逐 owner 精确（owner-specific）。
+            async def _cp(owner_key):
+                return (
+                    (
+                        await check.execute(
+                            text(
+                                "SELECT state, reason_code FROM "
+                                "metaedu.agent_conversation_purge_owners "
+                                "WHERE purge_operation_id=:op AND owner_key=:o"
+                            ),
+                            {"op": op_id, "o": owner_key},
+                        )
+                    ).mappings().one()
+                )
+
+            ext_cp = await _cp(EXTERNAL_PAYLOAD_OWNER)
+            rt_cp = await _cp(RUNTIME_PRIVATE_OWNER)
+            tp_cp = await _cp(WORKSPACE_TRANSPORT_OWNER)
+            assert ext_cp["state"] == PurgeOwnerState.BLOCKED.value
+            assert ext_cp["reason_code"] == "purge_blocked_by_external_outcome_unknown"
+            assert rt_cp["state"] == PurgeOwnerState.BLOCKED.value
+            assert rt_cp["reason_code"] == "purge_blocked_by_runtime_adapter_unavailable"
+            assert tp_cp["state"] == PurgeOwnerState.BLOCKED.value
+            assert tp_cp["reason_code"] == "purge_owner_unavailable"
+
+            # operation.failure_code = 最高严重度（external outcome_unknown 600），
+            # 与提交顺序无关（F-2a 确定性聚合）。
+            op = await _operation_state(check, purge_operation_id=op_id)
+            assert op["state"] == PurgeOperationState.BLOCKED.value, op
+            assert op["failure_code"] == "purge_blocked_by_external_outcome_unknown", op
+
+            # Conversation.purge_state = blocked（boolean 聚合）。
+            conv = (
+                await check.execute(
+                    text(
+                        "SELECT purge_state FROM metaedu.agent_conversations "
+                        "WHERE tenant_id=:t AND id=:c"
+                    ),
+                    {"t": TENANT_ID, "c": conv_id},
+                )
+            ).scalar_one()
+            assert conv == "blocked", conv
+    finally:
+        await engine.dispose()
+
+
 # ---------------------------------------------------------------------------
 # F-6 R1-AC10：日志/operation/checkpoint 脱敏
 # ---------------------------------------------------------------------------
 
 
 async def test_purge_log_redaction_no_body_or_ref(monkeypatch, session_factory, caplog):
-    """F-6 R1-AC10：正文/ref 原值不入 purge operation、checkpoint、日志。
+    """F-6 R1-AC10 脱敏（批次 C 纠偏）：正文/external ref/runtime ref/CoT/secret/自由
+    文本 reason 的 **distinct sentinel** 分别种入源数据，核验 purge 后——
 
-    判别点：断言 operation.registry_snapshot / retention_policy_snapshot、
-    checkpoint.reason_code、捕获日志均不含 external ref 原值（R1-AC10 / spec §9.3）。
+    - operation/checkpoint/fence/日志 **不含任何 sentinel**（含 external ref sentinel）；
+    - external ledger **仅允许契约要求的 external ref identity**（`ref_value` 保留
+      sentinel，E-1 ledger 是唯一事实源），**不得**含正文/runtime ref/CoT/secret/
+      自由文本 reason；
+    - `blocked_reason`/`reason_code` 必须落在冻结 code 集合（禁自由文本）。
+
+    判别点：把 external ref sentinel 写入 operation.failure_code / checkpoint.reason_code
+    -> 红（ref 原值不得入 purge 元数据）。
     """
     _enable_external_registry(monkeypatch)
 
@@ -1152,7 +1557,10 @@ async def test_purge_log_redaction_no_body_or_ref(monkeypatch, session_factory, 
         async with factory() as seed:
             await _ensure_test_tenant(seed)
             conv_id, purge_rev = await _ext_seed_conversation(seed)
-            await _seed_workspace_outbox_ref(seed, conv_id, ref_value=_REF_VALUE)
+            # external ref（external ref sentinel）+ runtime binding（runtime ref
+            # sentinel）——正文 sentinel 由 transport outbox inline 承载。
+            await _seed_workspace_outbox_ref(seed, conv_id, ref_value=_EXTERNAL_REF_SENTINEL)
+            await _seed_runtime_binding(seed, conv_id, ref_value=_RUNTIME_REF_SENTINEL)
             op_id, _ = await _ext_make_purge_operation(seed, conv_id, purge_rev)
             await seed.commit()
 
@@ -1181,13 +1589,48 @@ async def test_purge_log_redaction_no_body_or_ref(monkeypatch, session_factory, 
                 )
             ).mappings().one()
             cp = await _checkpoint_state(check, purge_operation_id=op_id)
+            fence = (
+                await check.execute(
+                    text(
+                        "SELECT ingress_checkpoint, ingress_digest FROM "
+                        "metaedu.agent_erasure_fences "
+                        "WHERE tenant_id=:t AND conversation_id=:c AND owner_key=:o"
+                    ),
+                    {"t": TENANT_ID, "c": conv_id, "o": EXTERNAL_PAYLOAD_OWNER},
+                )
+            ).mappings().one()
+            ledger = (
+                await check.execute(
+                    text(
+                        "SELECT ref_scheme, ref_value, blocked_reason FROM "
+                        "metaedu.agent_external_object_refs "
+                        "WHERE tenant_id=:t AND conversation_id=:c"
+                    ),
+                    {"t": TENANT_ID, "c": conv_id},
+                )
+            ).mappings().one()
 
-        joined = str(op) + str(cp) + "\n".join(r.message for r in caplog.records)
-        # ref 原值 / body 不得出现在 operation/checkpoint/日志（R1-AC10 / §9.3）。
-        assert (
-            _REF_VALUE not in joined
-        ), "external ref original value leaked into purge metadata/logs"
-        # reason 必须落冻结 code 集合（自由文本 reason 禁止）。
+        # ① operation/checkpoint/fence/日志 不含任何 sentinel（含 external ref）。
+        purge_metadata = (
+            str(op) + str(cp) + str(fence) + "\n".join(r.message for r in caplog.records)
+        )
+        for sentinel in (_EXTERNAL_REF_SENTINEL, *_FORBIDDEN_SENTINELS):
+            assert sentinel not in purge_metadata, (
+                f"sentinel {sentinel!r} leaked into purge metadata/logs"
+            )
+        # ② external ledger 仅允许 external ref identity（ref_value 保留 sentinel），
+        #    不得含正文/runtime ref/CoT/secret/自由文本 reason。
+        assert ledger["ref_value"] == _EXTERNAL_REF_SENTINEL, (
+            "ledger must retain external ref identity (necessary exception)"
+        )
+        assert ledger["blocked_reason"] in (
+            "outcome_unknown",
+            "erase_timeout",
+            "adapter_unavailable",
+            "unknown_scheme",
+            None,
+        ), ledger["blocked_reason"]
+        # ③ reason 必须落冻结 code 集合（禁自由文本）。
         assert cp["reason_code"] in (
             "purge_blocked_by_external_outcome_unknown",
             "purge_blocked_by_external_erase_timeout",
