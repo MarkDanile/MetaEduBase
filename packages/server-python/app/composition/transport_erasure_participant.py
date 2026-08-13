@@ -106,6 +106,16 @@ S4C_EPOCH_TOMBSTONE_REASONS = (
     "epoch_stale_rejected",
 )
 
+# ---------------------------------------------------------------------------
+# F-2a 多 owner 聚合架构裁决（Option A，冻结）：`operation.state`/`failure_code` 与
+# `Conversation.purge_state` 的最终聚合归 **S5 scheduler**（从全部 owner checkpoint
+# 计算，严重度优先级 + owner_key 字典序 tie-break，见 plan F-2a）。本 participant
+# 是 owner-scoped eraser，只写自己的 checkpoint/fence/ledger/binding；`_record_blocked`
+# /`_mark_operation_running`/`_repair_checkpoint_if_pending` 对 operation/Conversation
+# 的写入是 **S5 未实现期间的临时投影**（last-writer-wins 占位），**不构成最终聚合
+# 事实源**——S5 reducer 实现后由独立 contract-first PR 替换。
+# ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True, slots=True)
 class TransportBodyScan:
@@ -397,7 +407,12 @@ class TransportErasureParticipantBase(ABC):
         now: datetime,
     ) -> None:
         """operation scheduled/blocked -> running（清 failure_code + bump revision）
-        + Conversation.purge_state 投影 running（三方一致）。revision CAS 在此裁决。"""
+        + Conversation.purge_state 投影 running（三方一致）。revision CAS 在此裁决。
+
+        **F-2a 临时投影**：此处清 failure_code / 写 Conversation.purge_state 是 S5
+        未实现期间的 last-writer-wins 占位，**不构成最终聚合事实源**——S5 reducer
+        （独立 contract-first PR）从 blocked checkpoint 集合确定性聚合后替换本投影。
+        """
         operation = await self._load_verified_operation(
             purge_operation_id=purge_operation_id,
             tenant_id=tenant_id,
@@ -482,7 +497,10 @@ class TransportErasureParticipantBase(ABC):
             raise ValueError(
                 f"checkpoint not blockable from state {checkpoint.state!r}"
             )
-        # 裁决通过后才落变更。
+        # 裁决通过后才落变更。**F-2a 临时投影**：operation.failure_code 与
+        # Conversation.purge_state 是 S5 未实现期间的 last-writer-wins 占位（S5
+        # reducer 实现后由独立 PR 替换为从 blocked checkpoint 集合确定性聚合 +
+        # owner_key tie-break；见 plan F-2a）。
         if operation.state != PurgeOperationState.BLOCKED.value:
             operation.state = PurgeOperationState.BLOCKED.value
             operation.failure_code = reason
@@ -641,6 +659,11 @@ class TransportErasureParticipantBase(ABC):
             if operation.started_at is None:
                 operation.started_at = now
             changed = True
+        # F-2a 临时投影：清 failure_code / 写 Conversation.purge_state 是 S5 未实现
+        # 期间的 last-writer-wins 占位（S5 reducer 实现后替换）。**invariant-1 风险
+        # 提示**：本 owner erased-fence 重放会重开 RUNNING + 清他 owner 已 blocked 的
+        # failure_code（F-2a 六不变量 1「blocked 不得被后到 ACK 重开 running」在 S5
+        # 前可观测违反）——归「owner-scoped 重构 + S5 reducer」独立 PR 闭环。
         if operation.failure_code is not None:
             operation.failure_code = None
             changed = True
@@ -714,6 +737,18 @@ class TransportErasureParticipantBase(ABC):
 
         # erased fence 幂等重放先于 purge 前置（ACK 丢失恢复）。
         if fence.state is ErasureFenceState.ERASED:
+            # S4-F 族 B（F-6「跨 purge 实例 erased-fence 重放」）：erased-fence 修复
+            # 必须限定**同一 purge_revision**——否则同 conversation 新 purge（rev 2）
+            # 会拿 purge 1 的 fence ack_digest 把 op2 的 pending checkpoint 置 ACKED
+            # （跨 purge 实例的 ack 摘要污染）。scan 非零 guard 只拦 session 泄漏，
+            # 拦不住 ack 摘要不一致——此处补门禁（runtime/external 侧同修复，
+            # E-C C-4 / S4-F 族 B）。
+            if fence.purge_revision != purge_revision:
+                raise ValueError(
+                    f"erased fence {self.owner_key!r} under purge_revision "
+                    f"{fence.purge_revision}, requested {purge_revision}; "
+                    "cross-purge-instance ACK repair rejected (E-2a)"
+                )
             fence_ack_digest = fence.ack_digest
             assert fence_ack_digest is not None, "erased fence must carry ack_digest"
             scan = await self.scan_transport_body(
@@ -843,7 +878,18 @@ class TransportErasureParticipantBase(ABC):
                 hold_revision=conversation.hold_revision,
                 now=effective_now,
             )
-        elif fence.state is not ErasureFenceState.ERASING:
+        elif fence.state is ErasureFenceState.ERASING:
+            # S4-F 族 A（并发面 P1-1）：E-2a 同一 purge 实例门禁（镜像 runtime
+            # ``:594-606`` + external 同修复）。transport 单事务下 fence=erasing 不
+            # 单独提交（仅同 session 崩溃重放触达），但为跨族一致仍须校验——不同
+            # purge_revision 的第二 purge 实例不得进入 adapter 窗口（E-6 串行化）。
+            if fence.purge_revision != purge_revision:
+                raise ValueError(
+                    f"fence {self.owner_key!r} already erasing under purge_revision "
+                    f"{fence.purge_revision}, requested {purge_revision}; concurrent "
+                    "purge instance rejected (E-2a same-instance gate)"
+                )
+        else:
             raise ValueError(
                 f"fence {self.owner_key!r} in state {fence.state.value}; "
                 "cannot erase transport body"
