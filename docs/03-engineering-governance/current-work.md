@@ -14,24 +14,24 @@
 
 ## 当前进行中
 
-### R1-S5-A: Owner Aggregation Reducer 契约冻结（contract-first）
+### R1-S5-B: Purge Revision Rebuild & Evidence Seeding 契约冻结（stacked contract-first）
 
 状态：🟡 进行中
-类型：契约冻结（contract-first，纯文档）
+类型：契约冻结（contract-first，纯文档，stacked PR）
 领域：R1 保留/清除（retention/purge/recovery）
 当前执行模式：plan-do（文档契约）
 最近接手工具：Claude Code
-分支：docs/req041-047-r1-s5a-owner-aggregation-contract
+分支：docs/req041-047-r1-s5b-rebuild-seeding-contract（stacked 于 #563 HEAD efde24e4）
 
 需求来源：
-- Spec: [R1 §5.2/§8](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- Plan: [R1-S5-A 契约（本 PR）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
+- Spec: [R1 §4.2/§5.2/§8](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- Plan: [R1-S5-A 契约（#563，本分支起点）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) + 本 PR 新增 R1-S5-B 契约段
 - 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
 
-当前进展：契约冻结三轮复审后触发 TD-092 二次拆分。计数：首轮 P0=0/P1=7/P2=12/P3=5 → 2ef4a6c6 广域 P0=0/P1=5/P2=3 → 883068a2 全新广域三面 P0=0/P1=10/P2=9/P3=10（8 个独立新 P1）→ 二次拆分裁决 S1-S7 已落地（S5-A-10）：锁序统一（Conversation 全局互斥 + fence 只读）、真值表全函数重构（五方验证去 scan 化）、failed 产生者归 scheduler slice、聚合公式分层、Tx2 token 语义按代码事实、hold 漂移 rebuild 移出本契约归 scheduler slice、反例矩阵域修正（21 行 + 逐行 mutation）。
-下一步：拆分裁决待用户复核确认；确认后由用户裁决下一轮复审或收口。
-验证状态：待跑（拆分裁决提交后 `scripts/check-engineering-docs` + `git diff --check`）。
-交接备注：不实现 reducer、不改六 owner participant、不改 schema/migration 040/041/registry、不启动 S5/S6/C1。本轮按用户指令停在 Draft（不转 Ready、不评分、不合并）；契约 PR 的「转 Ready → 评分 → 合并」由用户后续单独指令触发，且 I1/I2 实现前必须先把本契约 PR 合并为冻结基线。scheduler 的 rebuild/seeding/重试预算语义为 scheduler slice 契约 PR 的前置契约项（本 PR 已登记）。
+当前进展：schema/状态机事实对账完成（fence 唯一/erased 终态/cross-purge 拒绝/按 revision 建 operation+checkpoint/registry 可表达性）；契约正文 S5-B-0~S5-B-8 冻结中。
+下一步：Draft 稳定后全新三面首轮复审；若出新 P1 按 TD-092 停止补词、裁决 schema/versioned-fence 方案。
+验证状态：未运行（待 `scripts/check-engineering-docs` + `git diff --check`）。
+交接备注：stacked 于 #563（S5-A），不合并本 PR、不恢复 #563、不启动 I1/I2/S5 实现/S6/C1、不评分不转 Ready。S5-A 状态：Draft #563 冻结在 efde24e4（二次拆分裁决 S1-S7 已落地，待 S5-B P0/P1 清零后回填 S5-B→S5-A 接口并组合广域三面）。
 
 ## 下一批候选任务
 
