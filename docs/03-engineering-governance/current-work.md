@@ -14,25 +14,7 @@
 
 ## 当前进行中
 
-### TASK-REQ041-047-S4F-IMPL: REQ-041/047 R1-S4-F Fault Matrix 实现
-
-状态：🟡 进行中
-类型：需求实现
-领域：数据删除 / Retention / Purge（R1-S4 阶段收口）
-当前执行模式：TD-092（Draft → Backend iteration → 三面 → 根因族返修 → 定向复核）
-最近接手工具：Claude Code
-分支：feat/req041-047-r1-s4f-fault-matrix-implementation
-
-需求来源：
-- Plan: [R1-S4-F Fault 矩阵 + S4 收口 契约细化（F-6 反例矩阵）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-f-fault-矩阵--s4-收口-契约细化2026-08-12先于实现冻结纯文档)
-- Spec: [R1 spec §11 R1-AC2/AC4/AC8/AC9/AC10](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- 技术债：TD-032（test_s4f_fault_matrix.py 2083 行已登记待拆分）
-- 架构约束：不启用 S5/S6/C1；不翻 registry（external/runtime False）；不改 migration 040/041；不改 S4-C/D/E 已合并终态语义
-
-当前进展：正式评分 92 被推翻，PR 转回 Draft + 删除过期评分行。独立复核新增 P0=0/P1=5/P2=2 触发 TD-092 升级，**架构裁决 Option A 聚合归 S5 已确认并冻结入 plan F-2a**（六不变量 + owner_key tie-break + 写者所有权 + 横向审计）。#561 剩余证据补强完成：临时投影标注（撤销 keep-highest/no-clear，恢复 last-writer-wins）+ owner-scoped 重构（三 owner 同源互操作 + 混合多族 + partial ACK 移除聚合断言）+ AC10 拆 external/transport/runtime 三真实路径 + 零变更快照扩展 + 同源正序列测试。广域三面复审：数据/状态机 P0=0/P1=0/P2=1/P3=3、并发/锁序 P0=0/P1=0/P2=3/P3=2、测试/运维 **P0=0/P1=1**/P2=1/P3=4（plan F-6 行 5 与 F-2a 事实源矛盾，已随 docstring/命名/快照/正序列一并修订）。
-下一步：全验证 + 提交 → 复核 P1 清零 → 待用户指令决定 Draft checks → Ready + Backend full → 重新评分。
-验证状态：18 passed（新增）+ 全 composition 430 passed/0 failed + ruff clean + mypy 0 回归 + docs gate 通过。首轮原始计数 P0=0/P1=3/P2=9/P3=13 + 前次独立复审 P1=3/P2=1 + HEAD 523be1c1 广域复核新增 P1=5/P2=2 保留不覆盖。
-交接备注：Draft 稳定且 P0/P1 清零后停止，不自动转 Ready、不评分、不合并；不启动 S5/S6/C1。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -40,6 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P1 | REQ-041/047 owner-scoped participant 重构 + S5 aggregation reducer 契约冻结 | 🔵 就绪 | 独立 contract-first PR：先冻结 reducer 状态表、六 owner 写者所有权、读写边界、失败 reason 聚合及 tie-break、blocked 单调性、completed/failure_code 清除权、迁移边界（含 #561 登记的 5 项延期：_repair 临时投影风险、六 owner 移除 operation/Conversation 写入、receipt-lookup-only Tx2 双重 I/O、_load_registered_refs ORDER BY）——不得并入 #561，不得直接实现 S5 | [Plan §R1-S4-F F-2a](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-f-fault-矩阵--s4-收口-契约细化2026-08-12先于实现冻结纯文档) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
@@ -50,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-08-13 | R1-S4-F Fault Matrix 实现（架构裁决 Option A） | 🟢 完成 | 多轮 P1 触发 TD-092 升级，Option A（聚合归 S5，现写标注临时投影）；18 反例 + expire_all/双门禁；#561 未实现 S5 reducer；最终 P0/P1/P2=0，评分 90，Backend full 2364 | [PR #561](https://github.com/MarkDanile/MetaEduBase/pull/561)（squash merge `bc3234bd`）/ [work-log](work-log.md) / [score 90](04-retrospectives/review-score-log.md) |
 | 2026-08-12 | R1-S4-F Fault 矩阵 + S4 收口 契约细化 | 🟢 完成 | 纯文档冻结 S4-F 契约（F-0~F-7：故障点清单 16 项 + 五方状态一致矩阵 + 注入机制 + 互操作回归 + 与 S5/S6 分工 + 反例矩阵 11 项 + S4 收口）；首轮 P0=0/P1=6/P2=9/P3=9，5 根因族返修（含纠正 1 条返修引入新 P1）→ P0/P1=0，评分 92；净 diff 仅 2 纯文档文件；registry 保持 external/runtime False | [PR #559](https://github.com/MarkDanile/MetaEduBase/pull/559)（squash merge `d658f6eb`）/ [work-log](work-log.md) / [score 92](04-retrospectives/review-score-log.md) |
 | 2026-08-12 | R1-S4-E-C Runtime Conformance Fake | 🟢 完成 | `RuntimeErasureParticipant` conformance fake（`runtime.private.v1`）：session destroy 双事务 + 旧 epoch/迟到 seq/unknown outcome/ACK 重放 + E-3a/E-3b；首轮 P0=0/P1=3/P2=9/P3=16，5 根因族返修 + 定向复核 P0/P1/P2=0，评分 92；registry False | [PR #557](https://github.com/MarkDanile/MetaEduBase/pull/557)（squash merge `c31df023`）/ [work-log](work-log.md) / [score 92](04-retrospectives/review-score-log.md) |
 | 2026-08-12 | DOC-080 正式评分提交原子边界与 Metrics Snapshot 所有权 | 🟢 完成 | 冻结 finding/返修与正式评分子阶段、Score Log 单行净 diff、工作台 merge 后 closeout 和 Metrics 独立复盘边界；新增基线感知检查器与 21 个 Git fixture；首轮两项 P1 归一根因族返修后 P0/P1=0，评分 91；Ready Backend full 全绿 | [PR #555](https://github.com/MarkDanile/MetaEduBase/pull/555)（squash merge `2b801a60`）/ [DOC-080](technical-debt.md#doc-080-固化正式评分提交原子边界与-metrics-snapshot-所有权) / [work-log](work-log.md) / [score 91](04-retrospectives/review-score-log.md) |
