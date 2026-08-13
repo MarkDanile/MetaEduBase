@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### R1-S5-A: Owner Aggregation Reducer 契约冻结（contract-first）
+
+状态：🟡 进行中
+类型：契约冻结（contract-first，纯文档）
+领域：R1 保留/清除（retention/purge/recovery）
+当前执行模式：plan-do（文档契约）
+最近接手工具：Claude Code
+分支：docs/req041-047-r1-s5a-owner-aggregation-contract
+
+需求来源：
+- Spec: [R1 §5.2/§8](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- Plan: [R1-S5-A 契约（本 PR）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
+- 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
+
+当前进展：横向事实对账完成（Spec §5.2/§8、Plan F-2/F-2a、三份 participant 临时投影实现、schema、#561 五项延期）；契约正文已冻结（S5-A-0~S5-A-8）。
+下一步：三面首轮复审（数据/状态机、并发/锁序、测试/运维）→ 根因族返修 → 定向复核 → 保持 Draft 停止。
+验证状态：未运行（待 Draft 稳定后 `scripts/check-engineering-docs` + `git diff --check`）。
+交接备注：不实现 reducer、不改六 owner participant、不改 schema/migration 040/041/registry、不启动 S5/S6/C1、不评分、不转 Ready、不合并。
 
 ## 下一批候选任务
 
@@ -22,7 +39,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | REQ-041/047 owner-scoped participant 重构 + S5 aggregation reducer 契约冻结 | 🔵 就绪 | 独立 contract-first PR：先冻结 reducer 状态表、六 owner 写者所有权、读写边界、失败 reason 聚合及 tie-break、blocked 单调性、completed/failure_code 清除权、迁移边界（含 #561 登记的 5 项延期：_repair 临时投影风险、六 owner 移除 operation/Conversation 写入、receipt-lookup-only Tx2 双重 I/O、_load_registered_refs ORDER BY）——不得并入 #561，不得直接实现 S5 | [Plan §R1-S4-F F-2a](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-f-fault-矩阵--s4-收口-契约细化2026-08-12先于实现冻结纯文档) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
