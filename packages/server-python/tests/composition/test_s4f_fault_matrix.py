@@ -248,6 +248,33 @@ async def _seed_erasing_external_fence(
     assert cast(CursorResult, result).rowcount == 1, "external fence must exist to set erasing"
 
 
+async def _seed_erasing_transport_fence(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    purge_revision: int,
+) -> None:
+    """把 workspace.transport.v1 fence 置为 erasing + 指定 purge_revision（op1 中段）。"""
+    now = datetime.now(UTC).replace(tzinfo=None)
+    result = await session.execute(
+        text(
+            "UPDATE metaedu.agent_erasure_fences "
+            "SET state = 'erasing', purge_revision = :r, "
+            "  revision = revision + 1, updated_at = :now "
+            "WHERE tenant_id = :t AND conversation_id = :c AND owner_key = :o"
+        ),
+        {
+            "t": tenant_id,
+            "c": conversation_id,
+            "o": WORKSPACE_TRANSPORT_OWNER,
+            "r": purge_revision,
+            "now": now,
+        },
+    )
+    assert cast(CursorResult, result).rowcount == 1, "transport fence must exist to set erasing"
+
+
 async def _seed_erased_transport_fence(
     session: AsyncSession,
     *,
@@ -594,7 +621,8 @@ async def test_external_tx2_cross_process_takeover_fail_closed(
         async def delete_object(self, **kwargs):
             self.calls += 1
             adapter_entered.set()
-            await adapter_release.wait()
+            # 有界等待：若 _takeover_bump 未能 set release（seed 异常），Tx2 不得无限挂起。
+            await asyncio.wait_for(adapter_release.wait(), timeout=15)
             return ExternalEraseSuccess(
                 adapter_receipt_evidence=f"ev:{kwargs['idempotency_key'][:16]}"
             )
@@ -621,8 +649,9 @@ async def test_external_tx2_cross_process_takeover_fail_closed(
 
     async def _takeover_bump():
         """等待 A 进入 adapter 窗口（Tx1 已提交、锁已释放）后，第二连接篡改**单一**
-        字段模拟另一进程 takeover。"""
-        await adapter_entered.wait()
+        字段模拟另一进程 takeover。有界等待：若 _run_erase_a 未触达 adapter 即失败，
+        不得无限挂起（TimeoutError 明确报出卡在 adapter_entered 阶段）。"""
+        await asyncio.wait_for(adapter_entered.wait(), timeout=15)
         factory, engine = await _make_factory()
         try:
             async with factory() as sess:
@@ -854,6 +883,46 @@ async def test_external_erasing_fence_second_purge_instance_rejected(
             "if this fires, the ERASING same-purge-instance gate was removed"
         )
         # op2 checkpoint 仍 pending（未推进 erasing）。
+        async with factory() as check:
+            cp = await _checkpoint_state(check, purge_operation_id=op2_id)
+            assert cp["state"] == PurgeOwnerState.PENDING.value, cp
+    finally:
+        await engine.dispose()
+
+
+async def test_transport_erasing_fence_second_purge_instance_rejected(session_factory):
+    """族 A：transport fence 已 erasing（op1 中段）时 op2（rev2）不得进入——
+    ERASING 分支 same-purge-instance 门禁（镜像 runtime/external；transport 单事务下
+    偏防御，但为跨族一致判别）。
+
+    判别点：**去掉 transport ERASING 分支 ``fence.purge_revision == purge_revision``
+    门禁（变异）-> op2 穿透（fence erasing 续做 / mark running / 清 body）-> 不 raise
+    -> 本测试红**。
+    """
+    factory, engine = await _make_factory()
+    try:
+        async with factory() as seed:
+            await _ensure_test_tenant(seed)
+            conv_id, _ = await _transport_seed_conversation(
+                seed, owner=WORKSPACE_TRANSPORT_OWNER,
+            )
+            # op1 中段：transport fence 已 erasing + purge_revision=1。
+            await _seed_erasing_transport_fence(
+                seed, tenant_id=TENANT_ID, conversation_id=conv_id, purge_revision=1,
+            )
+            # op2：purge_revision=2 + pending transport checkpoint。
+            op2_id, _ = await _transport_make_purge_operation(
+                seed, conv_id, 2, owner=WORKSPACE_TRANSPORT_OWNER,
+            )
+            await seed.commit()
+
+        async with factory() as sess:
+            with pytest.raises(ValueError, match="same-instance gate"):
+                await WorkspaceTransportErasureParticipant(sess).erase_transport_owner(
+                    tenant_id=TENANT_ID, conversation_id=conv_id, purge_revision=2,
+                    purge_operation_id=op2_id, expected_operation_revision=1,
+                )
+        # op2 checkpoint 仍 pending（门禁在 mark running 之前）。
         async with factory() as check:
             cp = await _checkpoint_state(check, purge_operation_id=op2_id)
             assert cp["state"] == PurgeOwnerState.PENDING.value, cp
@@ -1565,17 +1634,24 @@ async def test_three_owner_mixed_faults_owner_scoped(
                 )
             ).scalars().first()
             assert binding == "invalid", binding
-            # ③ transport fence 保持 active（ref-bearing 前置在 fence→erasing 之前）。
-            tp_fence = (
-                await check.execute(
-                    text(
-                        "SELECT state FROM metaedu.agent_erasure_fences "
-                        "WHERE tenant_id=:t AND conversation_id=:c AND owner_key=:o"
-                    ),
-                    {"t": TENANT_ID, "c": conv_id, "o": WORKSPACE_TRANSPORT_OWNER},
-                )
-            ).scalar_one()
-            assert tp_fence == "active", tp_fence
+            # ③ 各 owner fence 终态（owner-scoped）：
+            #    external/runtime 双事务：Tx1 推进 fence→erasing，Tx2 `_record_blocked`
+            #    不碰 fence → 终态 erasing；transport ref-bearing 前置在 fence→erasing
+            #    之前 → 终态 active。
+            async def _fence_state(owner_key):
+                return (
+                    await check.execute(
+                        text(
+                            "SELECT state FROM metaedu.agent_erasure_fences "
+                            "WHERE tenant_id=:t AND conversation_id=:c AND owner_key=:o"
+                        ),
+                        {"t": TENANT_ID, "c": conv_id, "o": owner_key},
+                    )
+                ).scalar_one()
+
+            assert await _fence_state(EXTERNAL_PAYLOAD_OWNER) == "erasing"
+            assert await _fence_state(RUNTIME_PRIVATE_OWNER) == "erasing"
+            assert await _fence_state(WORKSPACE_TRANSPORT_OWNER) == "active"
     finally:
         await engine.dispose()
 

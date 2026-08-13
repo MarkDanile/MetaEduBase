@@ -1266,7 +1266,7 @@ event_id（= outbox row.id = envelope.event.event_id）
 > | operation.state / failure_code | **S5** | `scheduled -> running -> blocked/completed`（从全部 checkpoint 集合聚合） |
 > | Conversation.purge_state | **S5** | 投影 operation.state |
 >
-> **S4 期间临时投影与 S5 接管边界（冻结）**：当前 S2-D/S3-D/S4-D/E participant 直接写 operation/Conversation 是 **S4 期间临时投影**（S5 未实现的占位），**不构成最终聚合事实源**——S5 实现后由 reducer 替换。本 PR（S4-F）**只冻结本裁决，不越界实现 S5 reducer、不改 core participant 的临时投影写者**；「owner-scoped participant 重构（6 owner 移除对 operation/Conversation 的写）+ S5 聚合 reducer」拆为**独立 contract-first PR**（先冻结 reducer 状态表/写者所有权/迁移边界，再实现）。
+> **S4 期间临时投影与 S5 接管边界（冻结）**：当前 S2-D/S3-D/S4-D/E participant 直接写 operation/Conversation 是 **S4 期间临时投影**（S5 未实现的占位），**不构成最终聚合事实源**——S5 实现后由 reducer 替换。本 PR（S4-F）**只冻结本裁决，不越界实现 S5 reducer、不改 core participant 的临时投影写者**；「owner-scoped participant 重构（6 owner 移除对 operation/Conversation 的写）+ S5 聚合 reducer」拆为**独立 contract-first PR**（先冻结 reducer 状态表/写者所有权/迁移边界，再实现）。**延期项登记（归独立 contract-first PR，不在 #561）**：① `_repair_checkpoint_if_pending` 对共享 failure_code 的临时投影风险（erased-fence 重放清他 owner blocked failure_code）；② 六 owner 移除 operation/Conversation 写入；③ S5 aggregation reducer + blocked 单调性 + reason tie-break + completed/failure_code 清除权；④ receipt-lookup-only adapter 的 Tx2 双重外部 I/O 约束；⑤ `_load_registered_refs` 锁序 `ORDER BY`（除非测试证明结果依赖顺序）。
 >
 > **六不变量（冻结，任何实现须满足）**：
 >
