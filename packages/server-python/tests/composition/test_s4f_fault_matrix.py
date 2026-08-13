@@ -100,23 +100,13 @@ _REF_VALUE = "obj://staging/object/s4f"
 _RUNTIME_REF = "pi://session/s4f"
 WORKSPACE_TRANSPORT_OWNER = "workspace.transport.v1"
 
-# F-6 R1-AC10 脱敏 sentinel（批次 C 纠偏）：external ref 是 ledger 必要身份例外，
-# 其余（正文/runtime ref/CoT/secret/自由文本 reason）禁入 operation/checkpoint/fence/
-# ledger/日志。
+# F-6 R1-AC10 脱敏 sentinel（批次 C 契约重写）：external ref 是 ledger 必要身份
+# 例外（可判别——ref_value 保留）；正文/runtime ref 是可判别 sentinel（真实种入源
+# 数据，不得流入 operation/checkpoint/fence）。CoT/secret 结构性不可达（spec §9.3
+# 不落库）、日志结构性无（S4 无 logger），不做 caplog/sentinel 假判别。
 _BODY_SENTINEL = "BODY_SECRET_MARKER_9f8a7b6c"
 _EXTERNAL_REF_SENTINEL = "obj://staging/sentinel-ext-ref-4d2e"
 _RUNTIME_REF_SENTINEL = "pi://session/sentinel-runtime-7c3f"
-_COT_SENTINEL = "COT_CHAIN_OF_THOUGHT_MARKER_3c2d5e"
-_SECRET_SENTINEL = "API_SECRET_KEY_8b4e6a"
-_FREETEXT_SENTINEL = "operator_free_text_reason_1f2a"
-# 除 external ref 身份外，全部 sentinel 禁入 purge 元数据/日志/ledger。
-_FORBIDDEN_SENTINELS = (
-    _BODY_SENTINEL,
-    _RUNTIME_REF_SENTINEL,
-    _COT_SENTINEL,
-    _SECRET_SENTINEL,
-    _FREETEXT_SENTINEL,
-)
 
 
 def _enable_external_registry(monkeypatch) -> None:
@@ -306,7 +296,7 @@ async def _operation_state(
     row = (
         await session.execute(
             text(
-                "SELECT state, failure_code, lease_epoch FROM "
+                "SELECT state, failure_code, lease_epoch, revision FROM "
                 "metaedu.agent_conversation_purges WHERE id = :op"
             ),
             {"op": purge_operation_id},
@@ -1537,18 +1527,18 @@ async def test_three_owner_mixed_faults_deterministic_aggregation(
 # ---------------------------------------------------------------------------
 
 
-async def test_purge_log_redaction_no_body_or_ref(monkeypatch, session_factory, caplog):
-    """F-6 R1-AC10 脱敏（批次 C 纠偏）：正文/external ref/runtime ref/CoT/secret/自由
-    文本 reason 的 **distinct sentinel** 分别种入源数据，核验 purge 后——
+async def test_purge_log_redaction_no_body_or_ref(monkeypatch, session_factory):
+    """F-6 R1-AC10 脱敏（批次 C 契约重写）：正文/external ref/runtime ref 三类
+    **可判别 sentinel 真实种入源数据**，核验 purge 后——
 
-    - operation/checkpoint/fence/日志 **不含任何 sentinel**（含 external ref sentinel）；
-    - external ledger **仅允许契约要求的 external ref identity**（`ref_value` 保留
-      sentinel，E-1 ledger 是唯一事实源），**不得**含正文/runtime ref/CoT/secret/
-      自由文本 reason；
-    - `blocked_reason`/`reason_code` 必须落在冻结 code 集合（禁自由文本）。
+    - operation/checkpoint/fence **不含三类 sentinel**（正文/ref 原值不入 purge 元数据）；
+    - external ledger **仅允许 external ref identity**（`ref_value` 保留 sentinel，E-1
+      ledger 是唯一事实源），**不得含正文/runtime ref**；
+    - reason 落冻结 code 集合（禁自由文本 reason）。
 
-    判别点：把 external ref sentinel 写入 operation.failure_code / checkpoint.reason_code
-    -> 红（ref 原值不得入 purge 元数据）。
+    CoT/secret 结构性不可达（spec §9.3 不落库）、日志结构性无（S4 无 logger）——不做
+    caplog/sentinel 假判别。判别点：把 external ref sentinel 写入 operation.failure_code
+    / checkpoint.reason_code -> 红。
     """
     _enable_external_registry(monkeypatch)
 
@@ -1557,25 +1547,29 @@ async def test_purge_log_redaction_no_body_or_ref(monkeypatch, session_factory, 
         async with factory() as seed:
             await _ensure_test_tenant(seed)
             conv_id, purge_rev = await _ext_seed_conversation(seed)
-            # external ref（external ref sentinel）+ runtime binding（runtime ref
-            # sentinel）——正文 sentinel 由 transport outbox inline 承载。
+            # ① 正文 sentinel（transport outbox inline body——external purge 不碰它）。
+            await _seed_transport_outbox(
+                seed, conversation_id=conv_id, side="workspace",
+                payload_inline={"body": _BODY_SENTINEL},
+            )
+            # ② external ref sentinel（ledger ref_value——允许保留）。
             await _seed_workspace_outbox_ref(seed, conv_id, ref_value=_EXTERNAL_REF_SENTINEL)
+            # ③ runtime ref sentinel（binding runtime_session_ref——external 不碰它）。
             await _seed_runtime_binding(seed, conv_id, ref_value=_RUNTIME_REF_SENTINEL)
             op_id, _ = await _ext_make_purge_operation(seed, conv_id, purge_rev)
             await seed.commit()
 
-        with caplog.at_level("INFO"):
-            async with factory() as sess:
-                await _ext_participant(
-                    sess, _ExternalTimeoutAdapter()
-                ).erase_external_payload(
-                    tenant_id=TENANT_ID,
-                    conversation_id=conv_id,
-                    purge_revision=purge_rev,
-                    purge_operation_id=op_id,
-                    expected_operation_revision=1,
-                )
-                await sess.commit()
+        async with factory() as sess:
+            await _ext_participant(
+                sess, _ExternalTimeoutAdapter()
+            ).erase_external_payload(
+                tenant_id=TENANT_ID,
+                conversation_id=conv_id,
+                purge_revision=purge_rev,
+                purge_operation_id=op_id,
+                expected_operation_revision=1,
+            )
+            await sess.commit()
 
         async with factory() as check:
             op = (
@@ -1610,16 +1604,15 @@ async def test_purge_log_redaction_no_body_or_ref(monkeypatch, session_factory, 
                 )
             ).mappings().one()
 
-        # ① operation/checkpoint/fence/日志 不含任何 sentinel（含 external ref）。
-        purge_metadata = (
-            str(op) + str(cp) + str(fence) + "\n".join(r.message for r in caplog.records)
-        )
-        for sentinel in (_EXTERNAL_REF_SENTINEL, *_FORBIDDEN_SENTINELS):
+        # ① operation/checkpoint/fence 不含三类可判别 sentinel（正文/ref 原值不入
+        #    purge 元数据；真判别——三类均已种入源数据）。
+        purge_metadata = str(op) + str(cp) + str(fence)
+        for sentinel in (_BODY_SENTINEL, _EXTERNAL_REF_SENTINEL, _RUNTIME_REF_SENTINEL):
             assert sentinel not in purge_metadata, (
-                f"sentinel {sentinel!r} leaked into purge metadata/logs"
+                f"sentinel {sentinel!r} leaked into purge metadata"
             )
         # ② external ledger 仅允许 external ref identity（ref_value 保留 sentinel），
-        #    不得含正文/runtime ref/CoT/secret/自由文本 reason。
+        #    不得含正文/runtime ref。
         assert ledger["ref_value"] == _EXTERNAL_REF_SENTINEL, (
             "ledger must retain external ref identity (necessary exception)"
         )

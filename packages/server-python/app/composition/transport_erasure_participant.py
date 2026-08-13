@@ -697,9 +697,10 @@ class TransportErasureParticipantBase(ABC):
             if operation.started_at is None:
                 operation.started_at = now
             changed = True
-        if operation.failure_code is not None:
-            operation.failure_code = None
-            changed = True
+        # F-2a 聚合：erased-fence 重放**不**清 failure_code（镜像 _mark_operation_running）
+        # ——failure_code 是聚合投影，本 owner erased-fence 重放时其他 owner 可能已
+        # blocked；无条件清空会 clobber 已 blocked owner 的 reason。清除归 S5 completed
+        # 迁移。
         if changed:
             operation.revision = operation.revision + 1
             operation.updated_at = now
