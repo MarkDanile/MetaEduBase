@@ -1199,17 +1199,16 @@ async def test_cross_conversation_same_object_double_delete_once(monkeypatch, se
 
 async def test_mixed_multi_family_faults_five_party_consistent(monkeypatch, session_factory):
     """F-4/F-6：同一 conversation 内 external（success -> erased）+ runtime
-    （timeout -> unknown）混合故障——五方状态各自一致（F-2），互不误伤；
-    partial ACK 不 completed（D6 负向）。
+    （timeout -> unknown）混合故障——各 owner 的 checkpoint/fence/ledger/binding 各自
+    一致（owner-scoped），互不误伤。
 
-    断言（F-2 五方矩阵）：external fence erased + checkpoint acked + external ledger
-    erased；runtime fence erasing + checkpoint blocked（`outcome_unknown`）+ binding
-    invalid；operation **blocked（非 completed，D6 负向）** + failure_code ==
-    checkpoint.reason_code（blocked 三方一致精确相等）；Conversation.state='deleted'
-    + purge_state='blocked'（最后写者 runtime blocked 投影）+ purged_at IS NULL。
+    断言（owner-scoped，架构裁决后不断 operation/Conversation 聚合）：
+    external fence erased + checkpoint acked + external ledger erased；runtime fence
+    erasing + checkpoint blocked（`outcome_unknown`）+ binding invalid。
+    operation/Conversation 的聚合是 S5 reducer 职责（临时投影，不断言）。
     执行按 F-6 行 5 冻结的 ``asyncio.gather`` 并发；operation 预置 running/revision=2
     （S5 已标 running 再分发 owner），两 owner 均以 expected_revision=2 跑，无
-    revision-CAS 竞态（避免并发重试回滚 op 状态的 flaky）。
+    revision-CAS 竞态。
     """
     _enable_external_registry(monkeypatch)
     _enable_runtime_registry(monkeypatch)
@@ -1398,7 +1397,7 @@ async def test_mixed_multi_family_faults_five_party_consistent(monkeypatch, sess
         await engine.dispose()
 
 
-async def test_three_owner_mixed_faults_deterministic_aggregation(
+async def test_three_owner_mixed_faults_owner_scoped(
     monkeypatch, session_factory
 ):
     """F-6 三 owner 混合故障 + **同源互操作**（架构裁决后：只断 owner-scoped，不断
@@ -1581,7 +1580,132 @@ async def test_three_owner_mixed_faults_deterministic_aggregation(
         await engine.dispose()
 
 
-# ---------------------------------------------------------------------------
+async def test_external_transport_same_source_receipt_then_replay(monkeypatch, session_factory):
+    """F-6 同源互操作**正序列**（P2-1 补强）：external 与 transport 处理同一 workspace
+    outbox payload_ref（registered 到 external ledger），三段顺序：
+
+    1. transport 先跑（ref-bearing）-> `purge_owner_unavailable` blocked，源行零修改；
+    2. external success -> 写 ledger erased+receipt 再清同一 source ref 转 suppressed；
+    3. transport replay -> `count_ref_bearing_outbox_rows` 归 0 -> 放行 -> ACK。
+
+    证明「先删 external object 取 receipt，再清 transport DB ref（D5）」后 transport
+    可重跑 ACK，且两步互斥（receipt 前 transport 零修改 blocked、receipt 后放行）。
+    """
+    _enable_external_registry(monkeypatch)
+
+    factory, engine = await _make_factory()
+    try:
+        async with factory() as seed:
+            await _ensure_test_tenant(seed)
+            # external fence（ext_seed_conversation）+ transport fence 同 conversation。
+            conv_id, purge_rev = await _ext_seed_conversation(seed)
+            now = datetime.now(UTC).replace(tzinfo=None)
+            await seed.execute(
+                text(
+                    "INSERT INTO metaedu.agent_erasure_fences "
+                    "(tenant_id, conversation_id, owner_key, owner_version, state, "
+                    "purge_revision, hold_revision, ingress_checkpoint, ingress_digest, "
+                    "revision, created_at, updated_at) "
+                    "VALUES (:t, :c, :o, 1, 'active', 1, 0, '{}'::jsonb, "
+                    ":ed, 1, :now, :now) ON CONFLICT DO NOTHING"
+                ),
+                {
+                    "t": TENANT_ID, "c": conv_id, "o": WORKSPACE_TRANSPORT_OWNER,
+                    "ed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                    "now": now,
+                },
+            )
+            # 同源 outbox ref（conversation_id scope + payload_ref）+ ledger registered。
+            outbox_id = await _seed_transport_outbox(
+                seed, conversation_id=conv_id, side="workspace", payload_ref=_REF_VALUE,
+            )
+            await _seed_external_ledger_ref(
+                seed, conversation_id=conv_id, source_table="agent_workspace_outbox",
+                source_row_id=outbox_id, ref_value=_REF_VALUE,
+            )
+            op_id = await _seed_multi_owner_operation(
+                seed, conv_id=conv_id, purge_rev=purge_rev,
+                owner_keys=(EXTERNAL_PAYLOAD_OWNER, WORKSPACE_TRANSPORT_OWNER),
+            )
+            await seed.commit()
+
+        # ① transport 先跑：ref-bearing 前置 -> blocked，源行零修改。
+        async with factory() as sess:
+            rev = await _current_operation_revision(sess, op_id=op_id)
+            await WorkspaceTransportErasureParticipant(sess).erase_transport_owner(
+                tenant_id=TENANT_ID, conversation_id=conv_id, purge_revision=purge_rev,
+                purge_operation_id=op_id, expected_operation_revision=rev,
+            )
+            await sess.commit()
+        async with factory() as check:
+            tp_cp = (
+                (await check.execute(
+                    text("SELECT state, reason_code FROM metaedu.agent_conversation_purge_owners "
+                         "WHERE purge_operation_id=:op AND owner_key=:o"),
+                    {"op": op_id, "o": WORKSPACE_TRANSPORT_OWNER},
+                )).mappings().one()
+            )
+            assert tp_cp["state"] == PurgeOwnerState.BLOCKED.value
+            assert tp_cp["reason_code"] == "purge_owner_unavailable"
+            src = (
+                (await check.execute(
+                    text("SELECT payload_ref, status FROM metaedu.agent_workspace_outbox "
+                         "WHERE tenant_id=:t AND conversation_id=:c"),
+                    {"t": TENANT_ID, "c": conv_id},
+                )).mappings().one()
+            )
+            assert src["payload_ref"] == _REF_VALUE  # transport 前置零修改
+
+        # ② external success：写 erased+receipt 再清同一 source ref。
+        async with factory() as sess:
+            rev = await _current_operation_revision(sess, op_id=op_id)
+            await _ext_participant(sess, _ExternalSuccessAdapter()).erase_external_payload(
+                tenant_id=TENANT_ID, conversation_id=conv_id, purge_revision=purge_rev,
+                purge_operation_id=op_id, expected_operation_revision=rev,
+            )
+            await sess.commit()
+        async with factory() as check:
+            ledger = (
+                (await check.execute(
+                    text(
+                        "SELECT erase_state, receipt_digest FROM "
+                        "metaedu.agent_external_object_refs "
+                        "WHERE tenant_id=:t AND conversation_id=:c"
+                    ),
+                    {"t": TENANT_ID, "c": conv_id},
+                )).mappings().one()
+            )
+            assert ledger["erase_state"] == "erased"
+            assert ledger["receipt_digest"] is not None
+            src = (
+                (await check.execute(
+                    text("SELECT payload_ref, status FROM metaedu.agent_workspace_outbox "
+                         "WHERE tenant_id=:t AND conversation_id=:c"),
+                    {"t": TENANT_ID, "c": conv_id},
+                )).mappings().one()
+            )
+            assert src["payload_ref"] is None  # external receipt 后清 ref
+            assert src["status"] == "suppressed"
+
+        # ③ transport replay：ref-bearing 归 0 -> 放行 -> ACK。
+        async with factory() as sess:
+            rev = await _current_operation_revision(sess, op_id=op_id)
+            await WorkspaceTransportErasureParticipant(sess).erase_transport_owner(
+                tenant_id=TENANT_ID, conversation_id=conv_id, purge_revision=purge_rev,
+                purge_operation_id=op_id, expected_operation_revision=rev,
+            )
+            await sess.commit()
+        async with factory() as check:
+            tp_cp = (
+                (await check.execute(
+                    text("SELECT state FROM metaedu.agent_conversation_purge_owners "
+                         "WHERE purge_operation_id=:op AND owner_key=:o"),
+                    {"op": op_id, "o": WORKSPACE_TRANSPORT_OWNER},
+                )).scalar_one()
+            )
+            assert tp_cp == PurgeOwnerState.ACKED.value
+    finally:
+        await engine.dispose()
 # F-6 R1-AC10：日志/operation/checkpoint 脱敏
 # ---------------------------------------------------------------------------
 
@@ -1633,6 +1757,14 @@ async def test_external_redaction_ref_identity_only(monkeypatch, session_factory
 
         assert _EXTERNAL_REF_SENTINEL not in str(op) + str(cp) + str(fence)
         assert ledger["ref_value"] == _EXTERNAL_REF_SENTINEL  # 身份例外
+        # ledger blocked_reason 落冻结 code 集合（禁自由文本 reason）。
+        assert ledger["blocked_reason"] in (
+            "outcome_unknown",
+            "erase_timeout",
+            "adapter_unavailable",
+            "unknown_scheme",
+            None,
+        ), ledger["blocked_reason"]
         assert cp["reason_code"] in (
             "purge_blocked_by_external_outcome_unknown",
             "purge_blocked_by_external_erase_timeout",

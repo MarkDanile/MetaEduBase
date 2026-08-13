@@ -497,9 +497,10 @@ class TransportErasureParticipantBase(ABC):
             raise ValueError(
                 f"checkpoint not blockable from state {checkpoint.state!r}"
             )
-        # 裁决通过后才落变更。**F-2a 临时投影**：operation.failure_code 是 S5 未实现
-        # 期间的 last-writer-wins 占位（S5 reducer 实现后由独立 PR 替换为从 blocked
-        # checkpoint 集合确定性聚合 + owner_key tie-break；见 plan F-2a）。
+        # 裁决通过后才落变更。**F-2a 临时投影**：operation.failure_code 与
+        # Conversation.purge_state 是 S5 未实现期间的 last-writer-wins 占位（S5
+        # reducer 实现后由独立 PR 替换为从 blocked checkpoint 集合确定性聚合 +
+        # owner_key tie-break；见 plan F-2a）。
         if operation.state != PurgeOperationState.BLOCKED.value:
             operation.state = PurgeOperationState.BLOCKED.value
             operation.failure_code = reason
