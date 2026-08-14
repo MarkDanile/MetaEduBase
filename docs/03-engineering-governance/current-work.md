@@ -14,7 +14,7 @@
 
 ## 当前进行中
 
-### R1-S5-B: Purge Revision Rebuild & Evidence Seeding 契约冻结（stacked contract-first）
+### R1-S5-B: Purge Revision Rebuild & Evidence Seeding 契约（stacked contract-first，Option D 架构重写）
 
 状态：🟡 进行中
 类型：契约冻结（contract-first，纯文档，stacked PR）
@@ -28,10 +28,10 @@
 - Plan: [R1-S5-A 契约（#563，本分支起点）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) + 本 PR 新增 R1-S5-B 契约段
 - 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
 
-当前进展：契约正文 S5-B-0~S5-B-8 已冻结；三面首轮 P0=0/P1=8/P2=12/P3=11（数据/状态机 0/3/4/3 + 并发/锁序 0/3/3/4 + 测试/运维 0/2/5/4，去重 7 个独立 P1）→ 按任务指令停止补词，已裁决 schema/versioned-fence 方案（S5-B-9）：**保持 schema-free**（不新增 versioned-fence/provenance），fence 单行 + 两个新 primitive（erasing-fence token 迁移、core owner family-B 门禁 backport）+ discriminator 锁内限定 + S5-A 调整清单扩展至 8 项 + 反例矩阵 18 行。裁决已落地本 PR。
-下一步：待用户裁决——（a）对裁决后契约再跑全新三面；（b）先回 #563 回填 S5-B→S5-A 接口后对组合 #563 跑广域三面；（c）其他拆分方向。
-验证状态：已跑 `scripts/check-engineering-docs`（exit 0）+ `git diff --check`（exit 0）。
-交接备注：stacked 于 #563（S5-A），不合并本 PR #564、不恢复 #563、不启动 I1/I2/S5 实现/S6/C1、不评分不转 Ready。S5-A 状态：Draft #563 冻结在 efde24e4（待 S5-B P0/P1 清零后回填 S5-B→S5-A 接口并组合广域三面）。
+当前进展：两轮三面后按 TD-092 做 **Option D（quiesce-and-finalize）架构重写**已落地——核心状态机（Tx1 commit 线性化点、quiesce 门禁、settlement-only 通道）、owner obligation 全函数矩阵（checkpoint×fence×added/removed/re-added/version-changed）、adapter 恢复契约（S5-B-7）、lineage 结论收窄（信任锚点只留 `fence.ack_digest`）、rebuild DELETED 门禁、S5-B→S5-A 八项接口。**删除 erasing-fence token 迁移 primitive**。两轮原始计数已落盘：首轮 P0=0/P1=8/P2=12/P3=11（去重 7 P1）；本轮 P0=0/P1=6/P2=18/P3=12（去重 6 P1）。
+下一步：提交架构重写 commit → 跑 `scripts/check-engineering-docs` → 对重写后 #564 做全新广域三面；若再现新 P1 且根因指向 adapter 恢复，停止并把 S5-B-7 拆为独立 S5-C contract-first PR，不得扩大 #564。
+验证状态：待跑 docs gate。
+交接备注：stacked 于 #563（S5-A），不合并本 PR #564、不恢复 #563、不启动 I1/I2/S5 实现/S6/C1、不评分不转 Ready。S5-A 状态：Draft #563 冻结在 efde24e4（待 S5-B P0/P1 清零后回填 S5-B→S5-A 八项接口并组合广域三面）。
 
 ## 下一批候选任务
 
