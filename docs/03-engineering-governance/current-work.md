@@ -29,8 +29,8 @@
 - 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
 
 当前进展：两轮三面 + Option D（quiesce-and-finalize）架构重写落地；第三轮广域三面 P0=0/P1=10/P2=17/P3=13（去重 9 族）→ 按指令停止并拆分 S5-C；scope-cleanup 落地（`da57b947`）。**S5-C stacked child 已合并入本分支**（#565 squash `6e98c546`，评分 92；**尚未进入 main**——不进「最近完成」/work-log，随本 PR 一并走完 #564 闭环）。族 E/F 返修 + S5-A 前向回填待本轮落地。
-下一步：**收口批次三面出现新 P1，按停止条件停下**——组合广域三面 P0=0/P1=5/P2=19/P3=11，去重 4 根因族（阶段 2 conflict 落账载体缺口 / reconcile-only 封闭性缺口 / seeded 行缺失裁决冲突 / 阶段 2 读集论证缺失），不做局部补词、不转 Ready，待用户裁决是否再次架构拆分或定向返修（S5-B-12 记录）。
-验证状态：docs gate（含 --full）exit 0；本轮三面 P0=0/P1=5/P2=19/P3=11（历史计数保留不覆盖）。
+下一步：**四族统一定向返修已落地**（架构裁决：derived lineage conflict——G4 gate 先于聚合、coordinator 只写投影、不新增 checkpoint 写者/转移/值域豁免；显式重试 reason 白名单封闭 3/5/6；expected_obligation_kind 缺行裁决；阶段 2 读集一致论证）；四族定向复核待执行——P0/P1=0 保持 Draft 停止；新 P0/P1 停止并报告是否推翻 derived-conflict 裁决。
+验证状态：docs gate 待跑（返修后）；本轮三面 P0=0/P1=5/P2=19/P3=11（历史计数保留不覆盖）。
 交接备注：#564 保持 Draft；不修改 #563（冻结 `efde24e4`）、不写实现/测试/schema/migration/registry、不启动 I1/I2/S5 实现/S6/C1、不转 Ready/评分/合并/不创建 main closeout。S5-A 状态：Draft #563 冻结在 `efde24e4`。
 
 ## 下一批候选任务
