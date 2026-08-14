@@ -1997,7 +1997,7 @@ event_id（= outbox row.id = envelope.event.event_id）
 4. **S5-C-9 rebuild 输入映射表**：六输出态 + 已落账 blocked + failed/dirty-data **逐项唯一**映射到 S5-B-2 case A。
 5. S5-C-9 对 S5-A 登记同步（三项补登记已在 S5-B-8 展开）+ current-work 同步。
 
-**边界审计计数（独立 stacked 接口定向复核，待执行；首轮三面与事实载体纠偏历史计数保留不覆盖）**：待登记。
+**边界审计计数（独立 stacked 接口定向复核；首轮三面与事实载体纠偏历史计数保留不覆盖）**：**P0=0/P1=0/P2=3/P3=3**。四项结论：①六输出态 + 已落账 + failed/dirty 共 9 个 terminal fact 逐项唯一映射（无缺漏无歧义；`settlement_deadline_expired`/`adapter_unresolvable` 在硬约束/carry/映射三处逐字一致）；②blocked reason 空间与 S5-A-0 12 层逐一对号全覆盖，checkpoint×fence 组合每组合恰一行，hold-release 序列仍通；③#564 边界无具体 settlement 机制裁决残留（S5-B-1/6/7 全部为消费/引用 S5-C 形态）；④S5-B-8 第 9/10/11 项与 S5-C-2/7/1 逐项对应无缺无多，RecoveryDescriptor 正确排除出 reducer/calculator 输入。P2×3（已落账「其他/NULL」与 pre-window 具名域归类分叉待核、case E 分态行未具名输出态 5/6、S5-B-0 item 7 末句建议补 S5-C-1 交叉引用）+ P3×3（记号/措辞精度）为后续精度项，不计入本轮清零要求。
 
 **状态**：Draft。按任务指令：不回 #563、不处理 S5-B 族 E/F、不转 Ready、不评分、不合并、不启动实现或 migration。
 

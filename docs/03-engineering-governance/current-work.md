@@ -29,7 +29,7 @@
 - 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
 
 当前进展：拆分归一化完成——#564 落地 scope-cleanup commit（S5-B-1/S5-B-7 具体 settlement/adapter 裁决移除，只留「rebuild 输入必须已满足 S5-C settlement terminal contract」依赖接口；S5-B-9 行 14/19/20/24 编号占位移交；第三轮计数与拆分记录保留不覆盖），#564 新 HEAD `da57b947` 已推送；S5-C stacked 于该 HEAD，净 diff 仅 S5-C 契约 + 工作台状态。契约正文按「先冻结状态机」组织：S5-C-1 输入/输出态全函数（六输出态 + 已落账/failed 收敛 + fence 收敛规则）、S5-C-2 写域与 drift 绕过（frozen-snapshot 基准六条 + 禁新 Tx1 作用域限定）、S5-C-3/4/5/6 四项单独裁决（旧 adapter 身份 = 历史 resolver + fail closed / 自动恢复期限有界载体 / receipt 语义三态 / replay-only 收敛）、S5-C-7 并发与写者（锁序逐方法核对含 runtime/transport repair、互斥机制两层重写、erasing→blocked 边写者登记 + CAS token、ACK-lost 第三路径）、S5-C-8 反例矩阵 16 行、S5-C-9 接口与变更登记（S4-F 两项变更 + S5-A 补登记绑定 S5-B-8 回填载体第 9/10/11 项）。**首轮全新三面完成：P0=1/P1=7/P2=15/P3=4（27 findings）→ 去重 11 根因族 → 一次统一返修落地**；**Ready 前事实载体纠偏批次已落地**（RecoveryDescriptor 六字段 + 强不变量、deadline 进入点判定、输出态 3/5/6 独立 reason code、lookup 可重放、反例行 14/15/16）——（S5-C-10 记录）。
-下一步：**Ready 前 stacked 边界纠偏批次落地**（S5-B-2 reason 分区四命名域 + dirty 兜底、failed×erased 矛盾 fail closed、S5-B-6 幂等收窄引用 S5-C、S5-B-8 消费 terminal facts + 展开第 9/10/11 项、S5-C-9 rebuild 输入映射逐项唯一）；独立 stacked 接口定向复核待执行——P0/P1=0 则保持 Draft 停下汇报；不转 Ready/评分/合并、不回 #564 处理 E/F。
+下一步：**Ready 前 stacked 边界纠偏批次闭环**——独立 stacked 接口定向复核 P0/P1=0（P2×3/P3×3 留后续精度项）；PR #565 保持 Draft，停下待用户指令。不转 Ready/评分/合并、不回 #564 处理 E/F。
 验证状态：docs gate exit 0（返修后重跑）；首轮三面 P0=1/P1=7/P2=15/P3=4（27 findings）→ 11 根因族一次返修 + 定向复核闭环（S5-C-10 记录）。
 交接备注：Draft；不回 #563（保持 `efde24e4`）、不处理 S5-B 族 E/F、不转 Ready、不评分、不合并、不启动实现或 migration。S5-B 状态见下。
 
