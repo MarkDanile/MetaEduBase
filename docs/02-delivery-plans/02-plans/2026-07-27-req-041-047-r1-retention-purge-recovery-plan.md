@@ -1838,7 +1838,7 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 - **C. seeded 缺行**：`expected=inherited_acked`（或 carried_blocked/carried_failed）缺行 → `lineage_status=conflict` → G4，禁止当 pending 重跑；仅 `expected=native_pending` 缺行按 pending/running；不新增 provenance 列；反例行 30（删 seeded 行落 running 或再次调用 adapter → 红）。
 - **D. 阶段 2 读集一致性**：明示 Conversation FOR UPDATE 窗口内全部合法写者被统一首锁串行 + predecessor 非 top revision（purge_revision 门禁拒绝 participant 写）+ 写者清单（六 owner erase 入口 / settlement 三进入点 / rebuild / coordinator / hold / delete-restore，任一绕过首锁即契约失败）；predecessor/fence 只读不加 FOR UPDATE 成立；反例行 32（移除首锁或允许绕过 → 撕裂读转红）。
 
-**四族定向复核（本轮返修后，不重开完整三面；历史计数保留不覆盖）**：待执行。
+**四族定向复核（本轮返修后，不重开完整三面；历史计数保留不覆盖）**：**P0=0/P1=1/P2=4/P3=2**。架构裁决约束 1-4 全部核验通过（derived normalized fact / 不新增第四写者 / 无 acked→blocked 转移 / coordinator 不写 reason_code）；B/C/D 三族全过（白名单 7 拒绝项、S5-C-2 排除 3/5/6、行 31/30/32 mutation 具名可执行、写者清单七类齐全）。**新 P1-1（族 A）**：`expected_obligation_kind` 重算输入集两处分叉——S5-A-2 输入增补与 G4 可重算性共用「operation snapshot + immediate predecessor + predecessor checkpoint + fence 原生锚点」公式，漏 S5-B-3 阶段 2 冻结公式中的「registry diff（新/re-added owner 判别）与 S5-C terminal facts（carried_blocked/carried_failed 判别）」两个输入源。P2×4（阶段 1 残留旧载体术语、S5-A-8 行 20 未同步 G4 表述、S5-A-4 缺行语句未带 native-only 限定、写者清单 workspace:270 引证漂移）+ P3×2。**按任务指令停止：不继续局部返修；derived-conflict 裁决本身未被推翻**（新 P1 为族 A 回填两处公式对齐缺陷，非裁决机制失效），待用户裁决是否允许一次公式对齐修正。
 
 ### R1-S5-C：Settlement-only Adapter Recovery 契约（contract-first，拆分自 #564）
 
