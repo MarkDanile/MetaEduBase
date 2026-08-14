@@ -1580,7 +1580,7 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 
 ### R1-S5-B：Purge Revision Rebuild & Evidence Seeding 契约（stacked contract-first）
 
-> Status: Draft（stacked PR，base = `docs/req041-047-r1-s5a-owner-aggregation-contract` @ `efde24e4`，#563 正文不在本 PR 修改）
+> Status: Draft（stacked PR，base = `docs/req041-047-r1-s5a-owner-aggregation-contract` @ `efde24e4`，#563 正文不在本 PR 修改。**历史 stacked child**：#564 已 squash 合并入 root #563 @ `bb792547`（评分 87，2026-08-14），尚未进入 main）
 > 分支：`docs/req041-047-r1-s5b-rebuild-seeding-contract`
 > 仅纯文档（plan + current-work）；不写代码/测试/schema/migration/registry；不启动 I1/I2/S5 实现/S6/C1。
 > 本契约是 S5-A-10 S6 拆分裁决移出项（「hold 漂移 rebuild / evidence seeding」）的独立冻结，也是 S5-A-2 五方验证「inherited ACK 例外」的前置契约。
@@ -1725,7 +1725,7 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 
 > 本小节原冻结 settlement（Tx2/crash replay）对 adapter 恢复行为的边界（协议语义修正、idempotent replay 自动恢复承诺、receipt-lookup-only、双支持优先 lookup、settlement 衔接）。第三轮广域三面后按任务指令**停止扩大 #564**，承载族 A/B/C/D/G/H/I 七族 P1 的具体裁决整体拆出，由 **R1-S5-C Settlement-only Adapter Recovery 契约**（独立 contract-first PR）接管冻结（S5-B-11 拆分裁决落地）。本 PR 只保留依赖接口：**rebuild 输入必须已满足 S5-C settlement terminal contract**（见 S5-B-1）；族 G 的 merged 代码事实源（external/runtime adapter Protocol docstring）回填归属亦随 S5-C 登记。
 
-#### S5-B-8 与 S5-A/I2 的接口（冻结，八项；本 PR 不回填 #563 正文）
+#### S5-B-8 与 S5-A/I2 的接口（冻结，八项 + S5-C 增补第 9/10/11 项；11 项已随 #564 squash 合并回填 root #563 @ bb792547）
 
 **coordinator/calculator 输入的 normalized facts（冻结，六种）**：
 
@@ -1826,7 +1826,7 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 8. **idempotent replay 承诺 vacuous（族 H）**：去重窗口无载体 + 「最大恢复周期」含无界人工 reconcile 延迟 → 条件不可测、row 20 无法落地。（测试 P1-2）
 9. **replay-only 死路（族 I）**：双支持优先 lookup 与承诺节冲突；「降级 reconcile」对无 lookup adapter 是零动作死路。（测试 P1-3）
 
-**S5-C 拆分裁决（按任务指令：停止扩大 #564）**：9 个独立 P1 中，族 A/B/C/D/G/H/I（7 族）聚集在 **settlement-only adapter recovery**（settlement-only 通道 S5-B-1 + adapter 恢复契约 S5-B-7）；族 E/F（2 族）在 rebuild/obligation 矩阵（S5-B-2/S5-B-3）。按指令停止本 PR 继续返修，**把 settlement-only adapter recovery 拆为独立 S5-C contract-first PR**（scope = settlement-only 通道 + adapter 恢复契约，承载族 A/B/C/D/G/H/I 七族冻结），族 E/F 留在 S5-B 主体作后续返修项。不得继续扩大 #564；#563 保持 `efde24e4` 不动。
+**S5-C 拆分裁决（按任务指令：停止扩大 #564）**：9 个独立 P1 中，族 A/B/C/D/G/H/I（7 族）聚集在 **settlement-only adapter recovery**（settlement-only 通道 S5-B-1 + adapter 恢复契约 S5-B-7）；族 E/F（2 族）在 rebuild/obligation 矩阵（S5-B-2/S5-B-3）。按指令停止本 PR 继续返修，**把 settlement-only adapter recovery 拆为独立 S5-C contract-first PR**（scope = settlement-only 通道 + adapter 恢复契约，承载族 A/B/C/D/G/H/I 七族冻结），族 E/F 留在 S5-B 主体作后续返修项（**历史裁决**：族 E/F 已于 #564 收口批次完成，commit f1c4a9de）。不得继续扩大 #564；#563 保持 `efde24e4` 不动（**当时状态**：#564 已于 2026-08-14 squash 合并入 #563，root HEAD `bb792547`）。
 
 **scope-cleanup（拆分归一化，本 commit 落地）**：S5-B-1 settlement-only 通道/事实源/outcome 落账与 S5-B-7 adapter 恢复契约的**具体裁决从本 PR 正文移除**，S5-B 只保留「**rebuild 输入必须已满足 S5-C settlement terminal contract**」依赖接口（S5-B-1）；S5-B-9 反例矩阵行 14/19/20/24 移入 S5-C 反例矩阵（本 PR 保留编号占位与归属）；S5-B-4/S5-B-8 的 settlement 引用改指 S5-C。第三轮计数与本拆分记录保留不覆盖；族 E/F 不在本 commit 返修（留 S5-B 主体后续）。
 
@@ -1854,12 +1854,14 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 
 **公式同一性 + 无循环依赖定向复核（终结批次后，不重开完整三面；历史计数保留不覆盖）**：**P0=0/P1=0/P2=3/P3=2**。核验结论：四处 `expected_obligation_kind` 公式串字节级逐字同构（S5-B-3 权威唯一 + 三处引用带指针，四值映射一致）；无循环依赖成立（四输入无一指向当前待判定 checkpoint，删 seeded 行后完整可重算，缺行处置「先重算 kind 再判缺行」单一方向）；G1 边界四子句齐全（两端持久快照/禁 live registry/live drift 只归 G1/同 operation 重算不变），G1>G4 自洽；行 33 四变异全部具名可执行并与四输入一一挂钩。P2×3（lineage_status 旧短语同区残留、矩阵行 4/25 旧载体术语、行 19/表 6-7 字面未带 native-only）+ P3×2（指针前缀、引用口径）为同族精度项，**按指令不再补词**，登记归属：**REQ-047 / R1-S5 implementation conformance follow-up**（不宣称已修复）。
 
+**Stack 收尾（历史叙述）**：#565（评分 92）→ #564 收口批次（族 E/F 完成）→ #564 正式评分 87 → **#564 squash 合并入 root #563（`bb792547`，2026-08-14）**，S5-B/S5-C 子 PR 分支已清理；A/B/C 三层契约随 root #563 一并走完剩余闭环（尚未进入 main）。
+
 ### R1-S5-C：Settlement-only Adapter Recovery 契约（contract-first，拆分自 #564）
 
-> Status: Draft（stacked PR，base = #564 @ `da57b947`（scope-cleanup 后 HEAD）；#563/#564 正文不在本 PR 修改）
+> Status: Draft（stacked PR，base = #564 @ `da57b947`（scope-cleanup 后 HEAD）；#563/#564 正文不在本 PR 修改。**历史 stacked child**：本契约已随 #565（评分 92）squash 合并入 #564，再随 #564（评分 87）squash 合并入 root #563 @ `bb792547`，尚未进入 main）
 > 分支：`docs/req041-047-r1-s5c-settlement-adapter-recovery-contract`
 > 仅纯文档；不写代码/测试/schema/migration/registry；不启动 I1/I2/S5 实现/S6/C1。
-> 本契约拆分自 #564 的 settlement-only adapter recovery（S5-B-1 settlement-only 通道 + S5-B-7 adapter 恢复契约），承载 S5-B-11 族 A/B/C/D/G/H/I 七族 P1 冻结；S5-B 主体保留 rebuild/obligation/lineage，族 E/F 归 S5-B 后续返修。#564 已落地 scope-cleanup：S5-B 正文只保留「rebuild 输入必须已满足 S5-C settlement terminal contract」依赖接口。冻结后回 #564 回填「settlement/adapter 契约指向本契约」的前向指针。
+> 本契约拆分自 #564 的 settlement-only adapter recovery（S5-B-1 settlement-only 通道 + S5-B-7 adapter 恢复契约），承载 S5-B-11 族 A/B/C/D/G/H/I 七族 P1 冻结；S5-B 主体保留 rebuild/obligation/lineage，族 E/F 归 S5-B 后续返修（**已完成**：#564 收口批次，commit f1c4a9de）。#564 已落地 scope-cleanup：S5-B 正文只保留「rebuild 输入必须已满足 S5-C settlement terminal contract」依赖接口。冻结后回 #564 回填「settlement/adapter 契约指向本契约」的前向指针（**已完成**：#565/#564 均已合并入 root #563）。
 > **冻结方式（按任务指令）**：先冻结状态机，不按七族逐条补词——七族 P1 作为输入证据映射到各节（S5-C-0），正文按「状态机 → 四项裁决 → 并发与写者 → 反例矩阵 → 接口」组织。
 
 #### S5-C-0 冻结范围与七族 P1 映射（输入证据；正文按风险域组织，不再逐族补词）
@@ -1874,7 +1876,7 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 | H | idempotent replay 承诺 vacuous（去重窗口无载体、「最大恢复周期」无界） | S5-C-4 自动恢复期限 + S5-C-8 行 6 |
 | I | replay-only 死路（「降级 reconcile」对无 lookup adapter 是零动作死路） | S5-C-5 三态 + S5-C-6 replay-only + S5-C-8 行 7 |
 
-（其余 S5-B-1/S5-B-7 的 settlement/adapter 相关小节由本契约接管；S5-B 主体的 rebuild/obligation/lineage 保持 #564。族 E/F 的 seeding/聚合阶段分离、re-added reason 分派在 S5-B 主体后续返修。）
+（其余 S5-B-1/S5-B-7 的 settlement/adapter 相关小节由本契约接管；S5-B 主体的 rebuild/obligation/lineage 保持 #564。族 E/F 的 seeding/聚合阶段分离、re-added reason 分派**已在 #564 收口批次完成**（commit f1c4a9de，历史叙述）。）
 
 #### S5-C-1 状态机：输入域、输出态全函数与 fence 收敛（先冻结状态机）
 
@@ -2014,9 +2016,9 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 | failed × `erased` 矛盾 / 其他未知·NULL reason | 矛盾/不可判定（S5-B-2 dirty-data 行） | **dirty-data fail closed**，禁止普通 carry/重开 |
 
 - **对 S4-F 的显式变更（本契约登记，两项）**：①「Tx2 不碰 fence」→ settlement 收口写 fence `erasing→blocked`（4 非 core owner，S5-C-7）；② erased-fence repair 枚举为 settlement 第三路径（I2 后仅修 checkpoint，S5-C-7）。
-- **对 S5-A**：S5-A-4 Tx2 重验集在 drift 下的 settlement 例外（frozen-snapshot 基准，S5-C-2 六条校验条件，其中三条硬绑定 = 旧 operation 仍为 top revision / 精确 attempt·intent·fence token / 禁新 Tx1；含 S5-C-7 ACK-lost repair 的 revision 重基准）；S5-A-1 写者表补「settlement fence `erasing→blocked` 写者（4 非 core owner）+ scheduler settlement 进入点」；**S5-A-0 reason 值域 7 层内新增 4 个 code**（external/runtime × `settlement_deadline_expired`/`adapter_unresolvable`，S5-C-1 输出态 5/6）。**三项补登记已在本 PR 展开为 S5-B-8 清单第 9/10/11 项增补**——随 #564 前向指针回填 #563 时不得遗漏；本契约不回填 #563 正文。
+- **对 S5-A**：S5-A-4 Tx2 重验集在 drift 下的 settlement 例外（frozen-snapshot 基准，S5-C-2 六条校验条件，其中三条硬绑定 = 旧 operation 仍为 top revision / 精确 attempt·intent·fence token / 禁新 Tx1；含 S5-C-7 ACK-lost repair 的 revision 重基准）；S5-A-1 写者表补「settlement fence `erasing→blocked` 写者（4 非 core owner）+ scheduler settlement 进入点」；**S5-A-0 reason 值域 7 层内新增 4 个 code**（external/runtime × `settlement_deadline_expired`/`adapter_unresolvable`，S5-C-1 输出态 5/6）。**三项补登记已在本 PR 展开为 S5-B-8 清单第 9/10/11 项增补**——**已随 #564 squash 合并入 root #563（`bb792547`）生效**（历史动作已完成；本契约正文随合并生效，不再存在「待回填」状态）。
 - **实现回填归属（族 G/H，scheduler slice 前置项）**：external/runtime adapter Protocol docstring 幂等矛盾消除 + receipt 三态/否定证据类型扩展 + 版本化 adapter resolver（S5-C-3，返回 immutable RecoveryDescriptor + descriptor/路由变化必须 bump owner_version 强不变量）+ **scheduler 写 failed 时同步收敛 fence（S5-C-1 failed 收敛）** → scheduler slice 实现 PR 落地；本契约不启动实现/migration。
-- **收尾约束（按任务指令）**：不回 #563（保持 `efde24e4`）；不处理 S5-B 族 E/F；不转 Ready、不评分、不合并、不启动 I1/I2/S5 实现/S6/C1。
+- **收尾约束（当时状态，历史叙述）**：#565 合并前不回 #563（保持 `efde24e4`）、不处理 S5-B 族 E/F、不转 Ready、不评分、不合并、不启动 I1/I2/S5 实现/S6/C1——**均已按序完成**：#565（评分 92）→ #564 收口批次（族 E/F 完成）→ #564（评分 87）→ 合并入 root #563（`bb792547`）。
 
 #### S5-C-10 三面复审记录（Draft 状态，未 merge）
 
@@ -2060,7 +2062,7 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 
 **边界审计计数（独立 stacked 接口定向复核；首轮三面与事实载体纠偏历史计数保留不覆盖）**：**P0=0/P1=0/P2=3/P3=3**。四项结论：①六输出态 + 已落账 + failed/dirty 共 9 个 terminal fact 逐项唯一映射（无缺漏无歧义；`settlement_deadline_expired`/`adapter_unresolvable` 在硬约束/carry/映射三处逐字一致）；②blocked reason 空间与 S5-A-0 12 层逐一对号全覆盖，checkpoint×fence 组合每组合恰一行，hold-release 序列仍通；③#564 边界无具体 settlement 机制裁决残留（S5-B-1/6/7 全部为消费/引用 S5-C 形态）；④S5-B-8 第 9/10/11 项与 S5-C-2/7/1 逐项对应无缺无多，RecoveryDescriptor 正确排除出 reducer/calculator 输入。P2×3（已落账「其他/NULL」与 pre-window 具名域归类分叉待核、case E 分态行未具名输出态 5/6、S5-B-0 item 7 末句建议补 S5-C-1 交叉引用）+ P3×3（记号/措辞精度）为后续精度项，不计入本轮清零要求。
 
-**状态**：Draft。按任务指令：不回 #563、不处理 S5-B 族 E/F、不转 Ready、不评分、不合并、不启动实现或 migration。
+**状态**：Draft（当时状态，历史叙述）。按任务指令：不回 #563、不处理 S5-B 族 E/F、不转 Ready、不评分、不合并、不启动实现或 migration——**均已按序完成**：#565 已 squash 合并入 #564（2026-08-14，评分 92），再随 #564（评分 87）合并入 root #563（`bb792547`），尚未进入 main。
 
 ### R1-S5：Legal hold、Scheduler 与运维闭环
 

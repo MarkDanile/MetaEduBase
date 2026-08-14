@@ -14,24 +14,24 @@
 
 ## 当前进行中
 
-### R1-S5-B: Purge Revision Rebuild & Evidence Seeding 契约（stacked contract-first，Option D）
+### R1-S5-A/B/C: Owner Aggregation + Rebuild + Settlement Contract Stack Root
 
 状态：🟡 进行中
-类型：契约冻结（contract-first，纯文档，stacked PR）
-领域：R1 保留/清除（rebuild/seeding/lineage + settlement 接口闭包）
+类型：契约冻结（contract-first，纯文档，stacked 三层 root）
+领域：R1 保留/清除（S5-A reducer/写者所有权 + S5-B rebuild/seeding/lineage + S5-C settlement/adapter recovery）
 当前执行模式：plan-do（文档契约）
 最近接手工具：Claude Code
-分支：docs/req041-047-r1-s5b-rebuild-seeding-contract（#564 Draft，contract implementation `c538491f`，final review record `004eb57b`，stacked 于 #563 `efde24e4`）
+分支：docs/req041-047-r1-s5a-owner-aggregation-contract（#563 Draft，HEAD `bb792547`，base main @ `99a3ffac`）
 
 需求来源：
 - Spec: [R1 §4.2/§5.2/§8](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- Plan: [R1-S5-B 契约段 + R1-S5-C 契约段](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S5-B-11 拆分裁决）
+- Plan: [R1-S5-A/B/C 三层契约段](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
 - 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
 
-当前进展：两轮三面 + Option D（quiesce-and-finalize）架构重写落地；第三轮广域三面 P0=0/P1=10/P2=17/P3=13（去重 9 族）→ 按指令停止并拆分 S5-C；scope-cleanup 落地（`da57b947`）。**S5-C stacked child 已合并入本分支**（#565 squash `6e98c546`，评分 92；**尚未进入 main**——不进「最近完成」/work-log，随本 PR 一并走完 #564 闭环）。**收口批次已完成**：族 E（seeding/聚合分阶段）、族 F（reason 全函数）、derived-conflict G4 gate、S5-A 11 项前向回填、33 行反例矩阵全部落地，组合广域三面 → 四族统一定向返修 → 公式对齐终结批次，**最终 P0/P1=0**。
-下一步：Ready 前治理元数据收口 + 转 Ready（按用户指令执行）；P2×3/P3×2 同族精度项登记归属 **REQ-047 / R1-S5 implementation conformance follow-up**（不宣称已修复）。
-验证状态：docs gate（含 --full）exit 0；公式定向复核 P0=0/P1=0/P2=3/P3=2；四族定向复核 P0=0/P1=1/P2=4/P3=2；本轮三面 P0=0/P1=5/P2=19/P3=11（历史计数保留不覆盖）。
-交接备注：#564 保持 Draft 至转 Ready 指令完成；不修改 #563（冻结 `efde24e4`）、不写实现/测试/schema/migration/registry、不启动 I1/I2/S5 实现/S6/C1、不评分/合并/不创建 main closeout。S5-A 状态：Draft #563 冻结在 `efde24e4`。
+当前进展：A/B/C 三层契约齐备——S5-A（reducer/coordinator/写者所有权，11 项前向回填全部落点）、S5-B（Option D rebuild/seeding/lineage + 族 E/F 全函数 + derived-conflict G4 + expected_obligation_kind 权威公式）、S5-C（settlement/adapter recovery，六输出态全函数）。**子 PR #565（评分 92）与 #564（评分 87）已分别 squash 合并入本 root（`bb792547`，2026-08-14），子 PR 分支已清理，尚未进入 main**；历史计数全部保留不覆盖，最终 P0/P1=0；follow-up REQ-047（R1-S5 implementation conformance，保留 P2×3/P3×2）稳定登记。
+下一步：根层边界审计（五面）+ 元数据归一化 → 根层定向复核 → P0/P1=0 后转 Ready（按用户指令执行）。
+验证状态：docs gate（含 --full）exit 0；Draft 三路 checks 待跑（归一化提交后）；历史复审链：S5-A 三轮 + S5-B 三轮 + S5-C 三轮 + 组合三面 + 四族定向 + 公式终结，全部 P0/P1=0 收口。
+交接备注：#563 无评分行（子 PR #564/#565 两条 inherited 评分行保留）；不评分、不合并、不启动实现/migration/I1/I2/S5/S6/C1、不创建 main closeout；root Ready 待本批次完成。
 
 ## 下一批候选任务
 
