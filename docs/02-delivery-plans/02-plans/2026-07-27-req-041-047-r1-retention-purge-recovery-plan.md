@@ -2064,6 +2064,8 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 
 **状态**：Draft（当时状态，历史叙述）。按任务指令：不回 #563、不处理 S5-B 族 E/F、不转 Ready、不评分、不合并、不启动实现或 migration——**均已按序完成**：#565 已 squash 合并入 #564（2026-08-14，评分 92），再随 #564（评分 87）合并入 root #563（`bb792547`），尚未进入 main。
 
+> **merged-boundary（2026-08-14）**：#563 root squash merge `6f86f959`（评分 86）；子 PR #564（评分 87）/#565（评分 92）已随 root 进入 main；**R1-S5-A/B/C 三层契约冻结完成**；REQ-047 / R1-S5 implementation conformance follow-up 保留（P2×5/P3×3 精度项，不宣称已修复）；**尚未实现** I1/I2/scheduler/运维 API/S6/C1——本 merged-boundary 是契约冻结的完成边界，不是 S5 实现完成。
+
 ### R1-S5：Legal hold、Scheduler 与运维闭环
 
 **复杂度/执行**：极高，Sol `xhigh`；人工数据/安全签字。
