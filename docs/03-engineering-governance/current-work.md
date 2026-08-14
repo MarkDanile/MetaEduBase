@@ -21,7 +21,7 @@
 领域：R1 保留/清除（settlement / adapter recovery）
 当前执行模式：plan-do（文档契约）
 最近接手工具：Claude Code
-分支：docs/req041-047-r1-s5c-settlement-adapter-recovery-contract（stacked 于 #564 scope-cleanup 后 HEAD `da57b947`）
+分支：docs/req041-047-r1-s5c-settlement-adapter-recovery-contract（stacked 于 #564 scope-cleanup 后 HEAD `da57b947`；PR #565 Draft）
 
 需求来源：
 - Spec: [R1 §4.2/§5.2/§8](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
@@ -29,7 +29,7 @@
 - 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
 
 当前进展：拆分归一化完成——#564 落地 scope-cleanup commit（S5-B-1/S5-B-7 具体 settlement/adapter 裁决移除，只留「rebuild 输入必须已满足 S5-C settlement terminal contract」依赖接口；S5-B-9 行 14/19/20/24 编号占位移交；第三轮计数与拆分记录保留不覆盖），#564 新 HEAD `da57b947` 已推送；S5-C stacked 于该 HEAD，净 diff 仅 S5-C 契约 + 工作台状态。契约正文按「先冻结状态机」组织：S5-C-1 输入/输出态全函数（六输出态 + 已落账/failed 收敛 + fence 收敛规则）、S5-C-2 写域与 drift 绕过（frozen-snapshot 基准六条 + 禁新 Tx1 作用域限定）、S5-C-3/4/5/6 四项单独裁决（旧 adapter 身份 = 历史 resolver + fail closed / 自动恢复期限有界载体 / receipt 语义三态 / replay-only 收敛）、S5-C-7 并发与写者（锁序逐方法核对含 runtime/transport repair、互斥机制两层重写、erasing→blocked 边写者登记 + CAS token、ACK-lost 第三路径）、S5-C-8 反例矩阵 13 行、S5-C-9 接口与变更登记（S4-F 两项变更 + S5-A 写者表补登记绑定 S5-B-8 回填载体）。**首轮全新三面完成：P0=1/P1=7/P2=15/P3=4（27 findings）→ 去重 11 根因族 → 一次统一返修已落地**（S5-C-10 记录）。
-下一步：**S5-C 首轮三面 → 11 族统一返修 → 定向复核已闭环**（无新状态机级 P1，未触发上层架构裁决）；停在 Draft，等用户指令决定是否推送 S5-C 分支/后续评审。
+下一步：**S5-C 首轮三面 → 11 族统一返修 → 定向复核已闭环**（无新状态机级 P1，未触发上层架构裁决）；PR #565 Draft 已创建（净 diff = S5-C 契约 + 工作台）；停在 Draft，等用户指令决定后续评审/是否继续。
 验证状态：docs gate exit 0（返修后重跑）；首轮三面 P0=1/P1=7/P2=15/P3=4（27 findings）→ 11 根因族一次返修 + 定向复核闭环（S5-C-10 记录）。
 交接备注：Draft；不回 #563（保持 `efde24e4`）、不处理 S5-B 族 E/F、不转 Ready、不评分、不合并、不启动实现或 migration。S5-B 状态见下。
 
