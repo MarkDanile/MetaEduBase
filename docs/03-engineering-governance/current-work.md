@@ -14,24 +14,7 @@
 
 ## 当前进行中
 
-### R1-S5-I1: Legal Hold Revision Fencing Producer
-
-状态：🟡 进行中
-类型：前置实现（TD-092 拆分；S5-A-6 I1，先于 I2 合并）
-领域：R1 保留/清除（legal hold producer primitive）
-当前执行模式：plan-do
-最近接手工具：Claude Code
-分支：feature/req041-047-r1-s5i1-hold-revision-fencing（#567 Draft，最终实现 HEAD `121ea8bd`）
-
-需求来源：
-- Spec: [R1 §9.1/§12.4 数据治理](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- Plan: [R1-S5-A-4/S5-A-6 I1 契约（已冻结）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
-- 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
-
-当前进展：实现已落地（最终 HEAD `121ea8bd`）——create/release producer primitives（Conversation-first FOR UPDATE + 同事务 SQL 侧原子自增 bump + 不 commit + fail-closed 矩阵）；**Ready 前纠偏已落地**：release hold 锁谓词 tenant-scoped（id + tenant_id + conversation_id FOR UPDATE）、统一 missing-or-scope-mismatch fail-closed（零外租户信息泄露）、外租户行锁零等待反例（8d，裸 id mutation 实杀转红）；14 用例真实 PG；六项 mutation kill + 裸 id mutation kill 记录于 PR body。首轮三面 P0=1/P1=5/P2=13/P3=4（P0 为复核 agent 实证变异遗留的工作区污染，已恢复）→ 统一返修 → 独立定向复核 P0=0/P1=0/P2=2/P3=0 → Ready 前纠偏批次 P0=0/P1=1/P2=1/P3=0（本轮计数保留不覆盖）。
-下一步：纠偏定向复核 → Draft checks → 等待转 Ready 指令。
-验证状态（纠偏批次重跑实测）：I1 专项 14 passed；受影响回归 116 passed；全 composition 444 passed；ruff 全绿；mypy 243 historical/0 regressions；docs gate（含 --full）exit 0；git diff --check 干净。
-交接备注：只实现 repository/domain producer primitive；不实现 I2/scheduler/完整 HTTP/CLI API；不改 schema/migration/registry/CI；不转 Ready/评分/合并。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -39,6 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P1 | R1-S5-I2 Owner Aggregation Reducer 原子实现 | 🔵 就绪（未开工） | 同一原子 PR 交付：纯 projection calculator + transactional projection coordinator + 六 owner participant 移除 operation/Conversation 临时投影写；保留 participant fencing token、operation 行锁和 owner-scoped 写；**不包含** full scheduler、claim/lease、rebuild/retry、完整 legal-hold API、S6、C1 | [Plan §R1-S5-A-6 I2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
@@ -49,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-08-15 | R1-S5-I1 Legal Hold Revision Fencing Producer 实现 | 🟢 完成 | create/release producer primitive（Conversation-first FOR UPDATE + 同事务 SQL 原子 bump + tenant-scoped 锁谓词 + fail-closed）；14 真实 PG 用例 + 7 mutation kill；评分 90，Backend full 2379；仅 primitive，不代表 I2/S5 完成 | [PR #567](https://github.com/MarkDanile/MetaEduBase/pull/567)（squash merge `edeabcd0`）/ [work-log](work-log.md) / [score 90](04-retrospectives/review-score-log.md) |
 | 2026-08-14 | R1-S5-A/B/C Contract Stack Root 契约冻结（三层 stacked，纯文档） | 🟢 完成 | S5-A reducer + S5-B rebuild（Option D/族 E/F/derived G4/权威公式）+ S5-C settlement（六输出态）冻结并入 main；root 评分 86、子 PR 87/92，P0/P1=0；契约冻结≠S5 实现完成；follow-up REQ-047 | [PR #563](https://github.com/MarkDanile/MetaEduBase/pull/563)（squash merge `6f86f959`）/ [work-log](work-log.md) / [score 86](04-retrospectives/review-score-log.md) |
 | 2026-08-13 | R1-S4-F Fault Matrix 实现（架构裁决 Option A） | 🟢 完成 | 多轮 P1 触发 TD-092 升级，Option A（聚合归 S5，现写标注临时投影）；18 反例 + expire_all/双门禁；#561 未实现 S5 reducer；最终 P0/P1/P2=0，评分 90，Backend full 2364 | [PR #561](https://github.com/MarkDanile/MetaEduBase/pull/561)（squash merge `bc3234bd`）/ [work-log](work-log.md) / [score 90](04-retrospectives/review-score-log.md) |
 | 2026-08-12 | R1-S4-F Fault 矩阵 + S4 收口 契约细化 | 🟢 完成 | 纯文档冻结 S4-F 契约（F-0~F-7：故障点清单 16 项 + 五方状态一致矩阵 + 注入机制 + 互操作回归 + 与 S5/S6 分工 + 反例矩阵 11 项 + S4 收口）；首轮 P0=0/P1=6/P2=9/P3=9，5 根因族返修（含纠正 1 条返修引入新 P1）→ P0/P1=0，评分 92；净 diff 仅 2 纯文档文件；registry 保持 external/runtime False | [PR #559](https://github.com/MarkDanile/MetaEduBase/pull/559)（squash merge `d658f6eb`）/ [work-log](work-log.md) / [score 92](04-retrospectives/review-score-log.md) |
