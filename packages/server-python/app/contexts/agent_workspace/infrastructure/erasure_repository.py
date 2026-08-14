@@ -1032,14 +1032,20 @@ class AgentErasureRepository:
         """I1 producer primitive：释放 ACTIVE hold 并同事务推进 hold fencing token。
 
         锁序（S5-A-4/S5-A-6 I1 契约，固定）：**Conversation `FOR UPDATE` →
-        指定 hold `FOR UPDATE`**。仅允许**同 tenant、同 conversation** 的
-        ACTIVE hold 转 RELEASED；写 `released_at`/`released_by`、hold 自身
-        `revision` 单调 +1，同事务 `Conversation.hold_revision += 1`（锁内
-        持久值递增）。本 primitive **不得 commit()**，原子性归调用方。
+        指定 hold `FOR UPDATE`**。hold 行锁的查询谓词**必须携带本租户/本
+        conversation 维度**（`id + tenant_id + conversation_id`），禁止按裸
+        `hold_id` 查锁后再做 Python 后验——否则外租户 hold 行会被本事务短暂
+        锁住（锁域越界）且错误语义依赖锁后校验。无匹配（missing 或跨 tenant/
+        跨 conversation 同语义）→ 统一 fail closed（`ValueError`，通用消息，
+        **不泄露外租户 tenant/conversation 信息**）。仅允许同 tenant、同
+        conversation 的 ACTIVE hold 转 RELEASED；写 `released_at`/`released_by`、
+        hold 自身 `revision` 单调 +1，同事务 `Conversation.hold_revision += 1`
+        （锁内持久值递增）。本 primitive **不得 commit()**，原子性归调用方。
 
-        fail closed（均零写零 bump）：missing Conversation、missing hold、
-        跨 tenant、跨 conversation、stale revision（`expected_revision` 与
-        锁内 hold.revision 不符）、重复 release / 非 ACTIVE 状态。
+        fail closed（均零写零 bump）：missing Conversation、missing 或跨
+        tenant/跨 conversation hold（统一语义）、stale revision
+        （`expected_revision` 与锁内 hold.revision 不符）、重复 release /
+        非 ACTIVE 状态。
         """
         conversation = (
             await self._session.execute(
@@ -1055,24 +1061,25 @@ class AgentErasureRepository:
             raise LateBodyWriteRejectedError(
                 f"conversation {conversation_id} not found for legal hold release"
             )
+        # tenant-scoped 锁谓词（Ready 前纠偏）：查询即校验——不匹配即无行，
+        # 不会锁到或读到外租户 hold 行；禁止裸 hold_id fallback 查询。
         hold = (
             await self._session.execute(
                 select(ConversationLegalHoldModel)
-                .where(ConversationLegalHoldModel.id == hold_id)
+                .where(
+                    ConversationLegalHoldModel.id == hold_id,
+                    ConversationLegalHoldModel.tenant_id == tenant_id,
+                    ConversationLegalHoldModel.conversation_id == conversation_id,
+                )
                 .with_for_update()
             )
         ).scalar_one_or_none()
         if hold is None:
-            raise ValueError(f"legal hold {hold_id} missing; cannot release")
-        if hold.tenant_id != tenant_id:
+            # 统一 missing-or-scope-mismatch fail-closed；通用消息，不泄露
+            # 外租户 tenant/conversation 归属。
             raise ValueError(
-                f"legal hold {hold_id} tenant {hold.tenant_id} != "
-                f"{tenant_id}; cross-tenant release rejected"
-            )
-        if hold.conversation_id != conversation_id:
-            raise ValueError(
-                f"legal hold {hold_id} conversation {hold.conversation_id} != "
-                f"{conversation_id}; cross-conversation release rejected"
+                f"legal hold {hold_id} not found for this tenant/conversation; "
+                "cannot release"
             )
         if hold.state != LegalHoldState.ACTIVE.value:
             raise ValueError(

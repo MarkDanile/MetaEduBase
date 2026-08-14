@@ -636,11 +636,11 @@ async def test_missing_conversation_fails_closed_zero_write(db_session):
 
 
 async def test_cross_tenant_and_cross_conversation_release_fail_closed(db_session):
-    """用例 8b：跨 tenant / 跨 conversation 的 hold release -> fail closed，零 bump。
+    """用例 8b：跨 tenant / 跨 conversation 的 hold release -> 统一
+    missing-or-scope-mismatch fail closed，零 bump，零信息泄露。
 
-    跨 tenant：用 tenant A 的 conversation 寻址 tenant B 的 hold——
-    Conversation-first 锁序下先按 (A, conversation) 查 conversation（存在），
-    再查 hold（属于 B）→ tenant 不符 fail closed。
+    Ready 前纠偏：hold 锁查询谓词含 tenant+conversation，跨 scope 与 missing
+    同语义（通用 ValueError），不再有「跨 tenant/跨 conversation 后验」分支。
     """
     tid, cid = await _seed_conversation(db_session)
     other_tid, other_cid = await _seed_conversation(db_session)
@@ -656,7 +656,7 @@ async def test_cross_tenant_and_cross_conversation_release_fail_closed(db_sessio
     await db_session.commit()
     assert await _hold_revision(db_session, other_cid) == 1
 
-    with pytest.raises(ValueError, match="tenant"):
+    with pytest.raises(ValueError, match="not found"):
         await repo.release_legal_hold(
             tenant_id=tid,
             conversation_id=cid,
@@ -664,7 +664,7 @@ async def test_cross_tenant_and_cross_conversation_release_fail_closed(db_sessio
             expected_revision=1,
             released_by=uuid.uuid4(),
         )
-    with pytest.raises(ValueError, match="conversation"):
+    with pytest.raises(ValueError, match="not found"):
         await repo.release_legal_hold(
             tenant_id=other_tid,
             conversation_id=third_cid,
@@ -742,7 +742,7 @@ async def test_release_missing_conversation_and_missing_hold_fail_closed(db_sess
             expected_revision=1,
             released_by=uuid.uuid4(),
         )
-    with pytest.raises(ValueError, match="missing"):
+    with pytest.raises(ValueError, match="not found"):
         await repo.release_legal_hold(
             tenant_id=tid,
             conversation_id=cid,
@@ -751,6 +751,60 @@ async def test_release_missing_conversation_and_missing_hold_fail_closed(db_sess
             released_by=uuid.uuid4(),
         )
     assert await _hold_revision(db_session, cid) == 0
+
+
+async def test_release_foreign_hold_fails_closed_without_waiting_foreign_lock(
+    session_factory,
+):
+    """用例 8d（Ready 前纠偏反例）：外租户 hold 行被他人持锁时，release 必须在
+    有界时间内直接 fail closed，**不得等待外租户行锁**。
+
+    构造：连接 A 持外租户 hold 行 FOR UPDATE；连接 B 用本租户 Conversation +
+    外租户 hold_id 调 release。正确实现（hold 查询谓词含 tenant+conversation）
+    → 无匹配行 → 立即 ValueError；裸 id 查询 mutation → B 阻塞在 A 的行锁上
+    → wait_for 超时 → 本测试转红。外租户 hold 与双方 Conversation.hold_revision
+    均零变化。
+    """
+    async with session_factory() as seed:
+        tid, cid = await _seed_conversation(seed)
+        foreign_tid, foreign_cid = await _seed_conversation(seed)
+        foreign_hold = await AgentErasureRepository(seed).create_legal_hold(
+            tenant_id=foreign_tid,
+            conversation_id=foreign_cid,
+            reason_code="litigation",
+            purpose="foreign locked case",
+            actor_id=uuid.uuid4(),
+        )
+        await seed.commit()
+
+    async with session_factory() as locker:
+        await locker.execute(
+            text(
+                "SELECT id FROM metaedu.agent_conversation_legal_holds "
+                "WHERE id = :hid FOR UPDATE"
+            ),
+            {"hid": foreign_hold.id},
+        )
+        async with session_factory() as releaser:
+            with pytest.raises(ValueError, match="not found"):
+                await asyncio.wait_for(
+                    AgentErasureRepository(releaser).release_legal_hold(
+                        tenant_id=tid,
+                        conversation_id=cid,
+                        hold_id=foreign_hold.id,
+                        expected_revision=1,
+                        released_by=uuid.uuid4(),
+                    ),
+                    timeout=5.0,
+                )
+        await locker.rollback()
+
+    async with session_factory() as verify:
+        row = await _hold_by_id(verify, foreign_hold.id)
+        assert row.state == LegalHoldState.ACTIVE.value
+        assert row.revision == 1
+        assert await _hold_revision(verify, cid) == 0
+        assert await _hold_revision(verify, foreign_cid) == 1
 
 
 async def test_outer_transaction_rollback_rolls_back_hold_and_bump(session_factory):
