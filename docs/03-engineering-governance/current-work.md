@@ -14,24 +14,24 @@
 
 ## 当前进行中
 
-### R1-S5-A: Owner Aggregation Reducer 契约冻结（contract-first）
+### R1-S5-B: Purge Revision Rebuild & Evidence Seeding 契约（stacked contract-first，Option D）
 
 状态：🟡 进行中
-类型：契约冻结（contract-first，纯文档）
-领域：R1 保留/清除（retention/purge/recovery）
+类型：契约冻结（contract-first，纯文档，stacked PR）
+领域：R1 保留/清除（rebuild/seeding/lineage + settlement 接口闭包）
 当前执行模式：plan-do（文档契约）
 最近接手工具：Claude Code
-分支：docs/req041-047-r1-s5a-owner-aggregation-contract
+分支：docs/req041-047-r1-s5b-rebuild-seeding-contract（#564 Draft，contract implementation `c538491f`，final review record `004eb57b`，stacked 于 #563 `efde24e4`）
 
 需求来源：
-- Spec: [R1 §5.2/§8](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- Plan: [R1-S5-A 契约（本 PR）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
+- Spec: [R1 §4.2/§5.2/§8](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- Plan: [R1-S5-B 契约段 + R1-S5-C 契约段](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S5-B-11 拆分裁决）
 - 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
 
-当前进展：契约冻结三轮复审后触发 TD-092 二次拆分。计数：首轮 P0=0/P1=7/P2=12/P3=5 → 2ef4a6c6 广域 P0=0/P1=5/P2=3 → 883068a2 全新广域三面 P0=0/P1=10/P2=9/P3=10（8 个独立新 P1）→ 二次拆分裁决 S1-S7 已落地（S5-A-10）：锁序统一（Conversation 全局互斥 + fence 只读）、真值表全函数重构（五方验证去 scan 化）、failed 产生者归 scheduler slice、聚合公式分层、Tx2 token 语义按代码事实、hold 漂移 rebuild 移出本契约归 scheduler slice、反例矩阵域修正（21 行 + 逐行 mutation）。
-下一步：拆分裁决待用户复核确认；确认后由用户裁决下一轮复审或收口。
-验证状态：待跑（拆分裁决提交后 `scripts/check-engineering-docs` + `git diff --check`）。
-交接备注：不实现 reducer、不改六 owner participant、不改 schema/migration 040/041/registry、不启动 S5/S6/C1。本轮按用户指令停在 Draft（不转 Ready、不评分、不合并）；契约 PR 的「转 Ready → 评分 → 合并」由用户后续单独指令触发，且 I1/I2 实现前必须先把本契约 PR 合并为冻结基线。scheduler 的 rebuild/seeding/重试预算语义为 scheduler slice 契约 PR 的前置契约项（本 PR 已登记）。
+当前进展：两轮三面 + Option D（quiesce-and-finalize）架构重写落地；第三轮广域三面 P0=0/P1=10/P2=17/P3=13（去重 9 族）→ 按指令停止并拆分 S5-C；scope-cleanup 落地（`da57b947`）。**S5-C stacked child 已合并入本分支**（#565 squash `6e98c546`，评分 92；**尚未进入 main**——不进「最近完成」/work-log，随本 PR 一并走完 #564 闭环）。**收口批次已完成**：族 E（seeding/聚合分阶段）、族 F（reason 全函数）、derived-conflict G4 gate、S5-A 11 项前向回填、33 行反例矩阵全部落地，组合广域三面 → 四族统一定向返修 → 公式对齐终结批次，**最终 P0/P1=0**。
+下一步：Ready 前治理元数据收口 + 转 Ready（按用户指令执行）；P2×3/P3×2 同族精度项登记归属 **REQ-047 / R1-S5 implementation conformance follow-up**（不宣称已修复）。
+验证状态：docs gate（含 --full）exit 0；公式定向复核 P0=0/P1=0/P2=3/P3=2；四族定向复核 P0=0/P1=1/P2=4/P3=2；本轮三面 P0=0/P1=5/P2=19/P3=11（历史计数保留不覆盖）。
+交接备注：#564 保持 Draft 至转 Ready 指令完成；不修改 #563（冻结 `efde24e4`）、不写实现/测试/schema/migration/registry、不启动 I1/I2/S5 实现/S6/C1、不评分/合并/不创建 main closeout。S5-A 状态：Draft #563 冻结在 `efde24e4`。
 
 ## 下一批候选任务
 
