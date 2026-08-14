@@ -1820,7 +1820,7 @@ event_id（= outbox row.id = envelope.event.event_id）
 - **族 F 全函数**：case C re-added 按「历史 checkpoint × reason × fence」全函数分派（acked+erased+lineage → seeded；reopenable 族/pre-window gate → pending；3/5/6 → carry 禁重开禁二次调用；failed+非 erased → failed carry；unknown/NULL/failed×erased/锚点缺失 → dirty-data 回滚；erasing → S5-C terminal contract 先行）；case E 对输出态 3/5/6/4 具名分态（**关闭已登记 P2**）。
 - **S5-A 前向回填（本分支内，不带 #563）**：S5-B-8 最终 11 项逐项回填进继承的 S5-A 正文——S5-A-0 reason 7 层增补 4 code、S5-A-1 写者增补（seeding 第三写者 + settlement fence 写者/进入点）、S5-A-2 输入增补/五方 fence.purge_revision 双分支/关键规则 3·5·6 reconcile-only、S5-A-4 settlement 例外 + I2 门禁、S5-A-8 行 16 收窄 + 行 22/23、S5-A-10 S6 前向指针；每点带「回填自 S5-B-8 第 N 项」精确引用，不复制第二套规则；RecoveryDescriptor 不进 reducer/calculator 输入。
 - **反例矩阵补强**：S5-B-9 行 25-29（seeding 回滚零新行、聚合冲突不回滚、re-added 参数化、version-changed 3/5/6、三 mutation 转红）。
-- **本轮计数（组合 S5-A+S5-B+S5-C 全新广域三面，待执行；历史计数保留不覆盖）**：待登记。
+- **本轮计数（组合 S5-A+S5-B+S5-C 全新广域三面，历史计数全部保留不覆盖）**：数据/状态机 P0=0/P1=3/P2=7/P3=5 + 并发/锁序 P0=0/P1=2/P2=4/P3=3 + 测试/运维/文档 P0=0/P1=0/P2=8/P3=3 → **合计 P0=0/P1=5/P2=19/P3=11**（35 findings）。去重 4 个 P1 根因族：①**阶段 2 conflict 落账载体缺口**（owner-level `purge_owner_ack_conflict` checkpoint 需未登记的第四写者（coordinator）+ `acked→blocked` 转移边 + level-4 值域豁免——数据 P1-1 + 并发 P1-2）；②**reconcile-only 封闭性缺口**（3/5/6 未从 S5-A-3 显式重试路径排除，禁二次 adapter 调用可被绕过——数据 P1-2）；③**seeded 行缺失裁决冲突**（阶段 2 conflict vs S5-A-2 缺行 pending 互斥——数据 P1-3）；④**阶段 2 predecessor 只读重验缺读集一致论证**（并发 P1-1）。**按任务停止条件：立即停止，不做局部补词、不转 Ready，待用户裁决是否再次架构拆分或定向返修。**
 
 ### R1-S5-C：Settlement-only Adapter Recovery 契约（contract-first，拆分自 #564）
 

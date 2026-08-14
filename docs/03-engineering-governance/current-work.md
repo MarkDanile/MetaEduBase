@@ -29,8 +29,8 @@
 - 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
 
 当前进展：两轮三面 + Option D（quiesce-and-finalize）架构重写落地；第三轮广域三面 P0=0/P1=10/P2=17/P3=13（去重 9 族）→ 按指令停止并拆分 S5-C；scope-cleanup 落地（`da57b947`）。**S5-C stacked child 已合并入本分支**（#565 squash `6e98c546`，评分 92；**尚未进入 main**——不进「最近完成」/work-log，随本 PR 一并走完 #564 闭环）。族 E/F 返修 + S5-A 前向回填待本轮落地。
-下一步：族 E（seeding/聚合阶段分离，S5-B-2/3/8/9）、族 F（re-added owner reason 全函数分派 + case E 对输出态 3/5/6 具名分态）、S5-A 前向回填（S5-B-8 最终 11 项逐项回填 S5-A-0/1/2/4/8）、反例矩阵补强 → docs gate（含 `--full`）→ 推送 Draft 确认三路 checks → 组合 S5-A+S5-B+S5-C 全新广域三面。
-验证状态：docs gate exit 0（scope-cleanup）；S5-C 侧历史计数保留不覆盖（首轮三面 P0=1/P1=7/P2=15/P3=4 → 11 族返修；事实载体纠偏 P0=0/P1=2/P2=3/P3=3 → 补正；stacked 边界审计 P0=0/P1=0/P2=3/P3=3）；本轮广域三面待执行。
+下一步：**收口批次三面出现新 P1，按停止条件停下**——组合广域三面 P0=0/P1=5/P2=19/P3=11，去重 4 根因族（阶段 2 conflict 落账载体缺口 / reconcile-only 封闭性缺口 / seeded 行缺失裁决冲突 / 阶段 2 读集论证缺失），不做局部补词、不转 Ready，待用户裁决是否再次架构拆分或定向返修（S5-B-12 记录）。
+验证状态：docs gate（含 --full）exit 0；本轮三面 P0=0/P1=5/P2=19/P3=11（历史计数保留不覆盖）。
 交接备注：#564 保持 Draft；不修改 #563（冻结 `efde24e4`）、不写实现/测试/schema/migration/registry、不启动 I1/I2/S5 实现/S6/C1、不转 Ready/评分/合并/不创建 main closeout。S5-A 状态：Draft #563 冻结在 `efde24e4`。
 
 ## 下一批候选任务
