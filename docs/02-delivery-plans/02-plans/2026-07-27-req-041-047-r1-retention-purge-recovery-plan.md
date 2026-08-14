@@ -1788,6 +1788,26 @@ event_id（= outbox row.id = envelope.event.event_id）
 
 **scope-cleanup（拆分归一化，本 commit 落地）**：S5-B-1 settlement-only 通道/事实源/outcome 落账与 S5-B-7 adapter 恢复契约的**具体裁决从本 PR 正文移除**，S5-B 只保留「**rebuild 输入必须已满足 S5-C settlement terminal contract**」依赖接口（S5-B-1）；S5-B-9 反例矩阵行 14/19/20/24 移入 S5-C 反例矩阵（本 PR 保留编号占位与归属）；S5-B-4/S5-B-8 的 settlement 引用改指 S5-C。第三轮计数与本拆分记录保留不覆盖；族 E/F 不在本 commit 返修（留 S5-B 主体后续）。
 
+### R1-S5-C：Settlement-only Adapter Recovery 契约（contract-first，拆分自 #564）
+
+> Status: Draft（stacked PR，base = #564 @ `b9ce3cc7`；#563/#564 正文不在本 PR 修改）
+> 分支：`docs/req041-047-r1-s5c-settlement-adapter-recovery-contract`
+> 仅纯文档；不写代码/测试/schema/migration/registry；不启动 I1/I2/S5 实现/S6/C1。
+> 本契约拆分自 #564 的 settlement-only adapter recovery（S5-B-1 settlement-only 通道 + S5-B-7 adapter 恢复契约），承载 S5-B-11 族 A/B/C/D/G/H/I 七族 P1 冻结；S5-B 主体保留 rebuild/obligation/lineage，族 E/F 归 S5-B 后续返修。冻结后回 #564 回填「settlement/adapter 契约指向本契约」的前向指针。
+
+#### S5-C-0 冻结范围与七族 P1（逐族冻结，不再延期裁决）
+
+1. **族 A：settlement fencing liveness**——settlement 通道使用 frozen-snapshot 基准的 operation 校验（operation 自身持久化的 `registry_digest`/`hold_revision_snapshot` + `purge_revision == conversation.purge_revision` + fence 态/`purge_revision` + checkpoint 态/attempt/intent），**不以当前值等值校验拒 settlement**；「禁新 Tx1」改由 checkpoint 状态机判别（仅 `erasing` 且 attempt≥1 且 intent 精确等值可续做）。
+2. **族 B：settlement 锁序**——settlement Tx2/crash replay 保持 participant 序（Conversation 行锁 → owner advisory → fence FOR UPDATE → checkpoint FOR UPDATE → operation FOR UPDATE），互斥由双方共享的 Conversation 行锁承担（S5-A-4 全局互斥）。
+3. **族 C：fence 收敛**——settlement 收口对 blocked/unknown 结果写 fence `erasing→blocked`（对齐 core 族），消除 4 个非 core owner 的 quiesce 卡死；并登记为对 S4-F「Tx2 不碰 fence」冻结行为的显式变更。
+4. **族 D：ACK-lost 第三路径**——erased-fence repair 列为 settlement 第三条路径（owner-scoped，I2 后零投影写、不清 drift failure_code），或显式把该态分类为 dirty-data reconcile-only。
+5. **族 G：Protocol 矛盾**——`delete_object`/`destroy_session` 不无条件幂等；`supports_idempotent_replay=False` 时只承诺 `supports_receipt_lookup`；登记 merged 代码事实源（external/runtime adapter Protocol docstring）的回填归属。
+6. **族 H：idempotent replay 承诺**——去重窗口载体 + 有界恢复周期定义；重放返回可验证 evidence 或明确 unknown（两条不满足即降级 reconcile）。
+7. **族 I：replay-only 恢复路径**——receipt-lookup-only 先 lookup、`None` 视为不确定禁再次 delete；replay-only（无 lookup）的恢复路径与 reconcile 兜底明确（不落零动作死路）。
+
+（其余 S5-B-1/S5-B-7 的 settlement/adapter 相关小节由本契约接管；S5-B 主体的 rebuild/obligation/lineage 保持 #564。族 E/F 的 seeding/聚合阶段分离、re-added reason 分派在 S5-B 主体后续返修。）
+
+>>>>>>> c976dab6 (docs(plan): R1-S5-C Settlement-only Adapter Recovery 契约骨架（拆分自 #564，承载七族 P1）)
 ### R1-S5：Legal hold、Scheduler 与运维闭环
 
 **复杂度/执行**：极高，Sol `xhigh`；人工数据/安全签字。

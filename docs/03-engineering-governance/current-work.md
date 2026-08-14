@@ -39,7 +39,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | R1-S5-C Settlement-only Adapter Recovery 契约冻结 | 🔵 就绪（拆分自 #564） | 新建分支，冻结 settlement-only 通道 + adapter 恢复契约（族 A/B/C/D/G/H/I 七族 P1） | [Plan §R1-S5-B-11](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
+| P1 | R1-S5-C Settlement-only Adapter Recovery 契约冻结 | 🟡 进行中（拆分自 #564，分支 docs/req041-047-r1-s5c-settlement-adapter-recovery-contract） | 冻结七族 P1（S5-C-0 已立骨架），三面清零后回 #564 回填前向指针 | [Plan §R1-S5-C](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
