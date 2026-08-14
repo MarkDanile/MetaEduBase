@@ -161,16 +161,37 @@ async def test_legal_hold_blocks(db_session):
     """active legal hold -> purge_blocked_by_legal_hold，正文不动，fence active。
 
     变异杀手：删 legal hold 检查 -> hold conversation 进入清除 -> assert blocked 失败。
+
+    I1 语义更新：create_legal_hold 推进 Conversation.hold_revision，operation
+    必须以 hold 后的 revision 为 snapshot（hold 先行 + snapshot=1），否则按
+    G2 drift 拒绝（先 operation 后 hold 的旧序列不再是合法 blocked 基线）。
     """
-    ctx = await h.seed_purgeable_with_run(db_session)
+    conversation_id, identity, purge_revision = await h.seed_purgeable(db_session)
+    run = await h.seed_completed_run(
+        db_session, conversation_id=conversation_id, identity=identity
+    )
+    await h.seed_run_event(db_session, run=run)
+    await h.seed_compatibility_output(db_session, run=run)
+    await h.seed_turn_input(db_session, run=run)
     await AgentErasureRepository(db_session).create_legal_hold(
         tenant_id=h.TENANT_ID,
-        conversation_id=ctx["conversation_id"],
+        conversation_id=conversation_id,
         reason_code="litigation",
         purpose="ongoing case",
         actor_id=h.ACTOR_ID,
     )
     await db_session.commit()
+    operation_id, op_revision = await h.make_purge_operation(
+        db_session, conversation_id, purge_revision, hold_revision_snapshot=1
+    )
+    ctx = {
+        "conversation_id": conversation_id,
+        "identity": identity,
+        "purge_revision": purge_revision,
+        "operation_id": operation_id,
+        "op_revision": op_revision,
+        "run_id": run.id,
+    }
 
     outcome = await _erase(db_session, ctx)
     await db_session.commit()
@@ -351,3 +372,55 @@ async def test_round1_p1_1_suppressed_envelope_acked_zero_scan(db_session):
     assert completed.terminal_output_media_type is None
     assert completed.terminal_output_classification is None
     assert completed.terminal_message_id is None
+
+
+async def test_i1_hold_drift_rejects_execution_entry(db_session):
+    """I1：hold create 推进 hold_revision 后，旧 snapshot 的 execution entry
+    必须被拒绝（G2 drift），正文/fence/checkpoint/operation 零变化。
+
+    与 workspace 侧 test_create_drift_rejects_participant_entry 同构——
+    execution `_load_verified_operation` 独立实现同校验（hold_revision_snapshot
+    != conversation.hold_revision），I1 后从 vacuous 变为 live，须有独立
+    mutation kill（删该校验即本测试转红）。
+    """
+    conversation_id, identity, purge_revision = await h.seed_purgeable(db_session)
+    run = await h.seed_completed_run(
+        db_session, conversation_id=conversation_id, identity=identity
+    )
+    await h.seed_run_event(db_session, run=run)
+    await h.seed_compatibility_output(db_session, run=run)
+    await h.seed_turn_input(db_session, run=run)
+    operation_id, op_revision = await h.make_purge_operation(
+        db_session, conversation_id, purge_revision, hold_revision_snapshot=0
+    )
+    await AgentErasureRepository(db_session).create_legal_hold(
+        tenant_id=h.TENANT_ID,
+        conversation_id=conversation_id,
+        reason_code="litigation",
+        purpose="drift case",
+        actor_id=h.ACTOR_ID,
+    )
+    await db_session.commit()
+    ctx = {
+        "conversation_id": conversation_id,
+        "identity": identity,
+        "purge_revision": purge_revision,
+        "operation_id": operation_id,
+        "op_revision": op_revision,
+        "run_id": run.id,
+    }
+
+    with pytest.raises(ValueError, match="hold_revision_snapshot"):
+        await _erase(db_session, ctx)
+    await db_session.rollback()
+
+    completed = await h.run_model(db_session, ctx["run_id"])
+    assert completed.terminal_output_ref is not None  # 正文未被清除
+    # 零写断言含 fence：entry 在同事务内惰性建 fence 后才在 hold 分支 raise
+    # drift；显式 rollback 后 fence 零行（整个失败 entry 的事务写全部归零）。
+    fence = await h.fence_model_or_none(db_session, ctx["conversation_id"])
+    assert fence is None
+    op = await h.operation_model(db_session, ctx["operation_id"])
+    assert op.state == "scheduled"
+    cp = await h.checkpoint_model(db_session, ctx["operation_id"])
+    assert cp.state == PurgeOwnerState.PENDING.value

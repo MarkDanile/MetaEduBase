@@ -960,6 +960,37 @@ class AgentErasureRepository:
         expires_at: datetime | None = None,
         now: datetime | None = None,
     ) -> ConversationLegalHold:
+        """I1 producer primitive：创建 ACTIVE hold 并同事务推进 hold fencing token。
+
+        锁序（S5-A-4/S5-A-6 I1 契约）：**第一锁必须是 tenant-scoped
+        Conversation 行锁**（`FOR UPDATE`），与 participant/coordinator 的
+        Conversation-first 全局锁序一致；hold 行插入与
+        `Conversation.hold_revision += 1` 位于**同一调用方事务**——本 primitive
+        **不得 commit()**，原子性归调用方（外层事务 rollback 时 hold 行与
+        bump 一起回滚）。bump 必须基于**锁内持久值递增**
+        （`conversation.hold_revision = conversation.hold_revision + 1`），
+        禁止接受调用方传值或覆盖绝对值。
+
+        fail closed：Conversation 缺失或 tenant 不匹配（WHERE 含 tenant_id，
+        缺失即覆盖跨 tenant）→ `LateBodyWriteRejectedError`，零写零 bump。
+
+        无 idempotency key：相同 create 参数**不定义为重放**，每次调用插入
+        新 hold 行并各自 bump（不发明去重协议）。
+        """
+        conversation = (
+            await self._session.execute(
+                select(ConversationModel)
+                .where(
+                    ConversationModel.tenant_id == tenant_id,
+                    ConversationModel.id == conversation_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if conversation is None:
+            raise LateBodyWriteRejectedError(
+                f"conversation {conversation_id} not found for legal hold create"
+            )
         effective_now = now or _utcnow()
         model = ConversationLegalHoldModel(
             tenant_id=tenant_id,
@@ -974,8 +1005,109 @@ class AgentErasureRepository:
             updated_at=effective_now,
         )
         self._session.add(model)
+        # 锁内持久值递增（SQL 侧原子自增）：数据库在 FOR UPDATE 行锁下执行
+        # `hold_revision = hold_revision + 1`，无调用方传值、无绝对值覆盖，
+        # 且不受 ORM identity map 过期实例影响（fencing token 不会回退）。
+        await self._session.execute(
+            update(ConversationModel)
+            .where(
+                ConversationModel.tenant_id == tenant_id,
+                ConversationModel.id == conversation_id,
+            )
+            .values(hold_revision=ConversationModel.hold_revision + 1)
+        )
         await self._session.flush()
         return _hold_to_domain(model)
+
+    async def release_legal_hold(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        hold_id: uuid.UUID,
+        expected_revision: int,
+        released_by: uuid.UUID,
+        now: datetime | None = None,
+    ) -> ConversationLegalHold:
+        """I1 producer primitive：释放 ACTIVE hold 并同事务推进 hold fencing token。
+
+        锁序（S5-A-4/S5-A-6 I1 契约，固定）：**Conversation `FOR UPDATE` →
+        指定 hold `FOR UPDATE`**。hold 行锁的查询谓词**必须携带本租户/本
+        conversation 维度**（`id + tenant_id + conversation_id`），禁止按裸
+        `hold_id` 查锁后再做 Python 后验——否则外租户 hold 行会被本事务短暂
+        锁住（锁域越界）且错误语义依赖锁后校验。无匹配（missing 或跨 tenant/
+        跨 conversation 同语义）→ 统一 fail closed（`ValueError`，通用消息，
+        **不泄露外租户 tenant/conversation 信息**）。仅允许同 tenant、同
+        conversation 的 ACTIVE hold 转 RELEASED；写 `released_at`/`released_by`、
+        hold 自身 `revision` 单调 +1，同事务 `Conversation.hold_revision += 1`
+        （锁内持久值递增）。本 primitive **不得 commit()**，原子性归调用方。
+
+        fail closed（均零写零 bump）：missing Conversation、missing 或跨
+        tenant/跨 conversation hold（统一语义）、stale revision
+        （`expected_revision` 与锁内 hold.revision 不符）、重复 release /
+        非 ACTIVE 状态。
+        """
+        conversation = (
+            await self._session.execute(
+                select(ConversationModel)
+                .where(
+                    ConversationModel.tenant_id == tenant_id,
+                    ConversationModel.id == conversation_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if conversation is None:
+            raise LateBodyWriteRejectedError(
+                f"conversation {conversation_id} not found for legal hold release"
+            )
+        # tenant-scoped 锁谓词（Ready 前纠偏）：查询即校验——不匹配即无行，
+        # 不会锁到或读到外租户 hold 行；禁止裸 hold_id fallback 查询。
+        hold = (
+            await self._session.execute(
+                select(ConversationLegalHoldModel)
+                .where(
+                    ConversationLegalHoldModel.id == hold_id,
+                    ConversationLegalHoldModel.tenant_id == tenant_id,
+                    ConversationLegalHoldModel.conversation_id == conversation_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if hold is None:
+            # 统一 missing-or-scope-mismatch fail-closed；通用消息，不泄露
+            # 外租户 tenant/conversation 归属。
+            raise ValueError(
+                f"legal hold {hold_id} not found for this tenant/conversation; "
+                "cannot release"
+            )
+        if hold.state != LegalHoldState.ACTIVE.value:
+            raise ValueError(
+                f"legal hold {hold_id} is {hold.state}; only active holds "
+                "can be released"
+            )
+        if hold.revision != expected_revision:
+            raise ValueError(
+                f"legal hold {hold_id} revision {hold.revision} != expected "
+                f"{expected_revision}; stale release rejected"
+            )
+        effective_now = now or _utcnow()
+        hold.state = LegalHoldState.RELEASED.value
+        hold.released_at = effective_now
+        hold.released_by = released_by
+        hold.revision = hold.revision + 1
+        hold.updated_at = effective_now
+        # 锁内持久值递增（SQL 侧原子自增）：与 create 同规则。
+        await self._session.execute(
+            update(ConversationModel)
+            .where(
+                ConversationModel.tenant_id == tenant_id,
+                ConversationModel.id == conversation_id,
+            )
+            .values(hold_revision=ConversationModel.hold_revision + 1)
+        )
+        await self._session.flush()
+        return _hold_to_domain(hold)
 
     async def has_active_legal_hold(
         self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID

@@ -490,11 +490,10 @@ class ExecutionErasureParticipant:
                 f"conversation {conversation_id} purge_after not yet reached"
             )
 
-        # legal hold 阻塞。
         # legal hold 阻塞（has_active_legal_hold 查 legal_holds 表，与 workspace
-        # participant 同模式；不依赖 conversation.hold_revision -- 该列由 S2 legal
-        # hold 触发器维护，但 execution 路径独立调用 create_legal_hold 不经触发器，
-        # 直接用表查询更稳健）。
+        # participant 同模式）。conversation.hold_revision 由 I1 producer
+        # primitive（AgentErasureRepository.create/release_legal_hold）推进，
+        # 无 DB 触发器；用表查询判定 active hold 与 fencing token 解耦，更稳健。
         if await self._erasure.has_active_legal_hold(
             tenant_id=tenant_id, conversation_id=conversation_id
         ):

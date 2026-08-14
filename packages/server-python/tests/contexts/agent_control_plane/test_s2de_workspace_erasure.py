@@ -179,6 +179,30 @@ async def _seed_purgeable_with_operation(db_session, *, title="sensitive title")
     return conversation_id, purge_revision, operation_id, op_revision
 
 
+async def _seed_hold_and_purgeable_with_operation(db_session, *, title="sensitive title"):
+    """I1：先建 hold（bump hold_revision 0->1），再建 operation（snapshot=1）。
+
+    I1 后 create_legal_hold 推进 Conversation.hold_revision；「先 operation 后
+    hold」的旧序列会构成 G2 drift（snapshot 0 < current 1），participant entry
+    按冻结契约拒绝——legal-hold blocked 路径的基线必须按「hold 先行」重建。
+    """
+    conversation_id, purge_revision = await _seed_deleted_expired_with_body(
+        db_session, title=title
+    )
+    await AgentErasureRepository(db_session).create_legal_hold(
+        tenant_id=TENANT_ID,
+        conversation_id=conversation_id,
+        reason_code="litigation",
+        purpose="ongoing case",
+        actor_id=ACTOR_ID,
+    )
+    await db_session.commit()
+    operation_id, op_revision = await _make_purge_operation(
+        db_session, conversation_id, purge_revision, hold_revision_snapshot=1
+    )
+    return conversation_id, purge_revision, operation_id, op_revision
+
+
 def _participant(db_session) -> WorkspaceErasureParticipant:
     return WorkspaceErasureParticipant(
         db_session,
@@ -925,16 +949,8 @@ async def test_p1_5_legal_hold_blocks_as_normal_return(db_session):
     """P1-5：active legal hold -> blocked 正常返回（不抛异常），不清除正文，
     fence 保持 active，operation/checkpoint 记 blocked（P2-4 reason code）。"""
     conversation_id, purge_revision, operation_id, op_revision = (
-        await _seed_purgeable_with_operation(db_session)
+        await _seed_hold_and_purgeable_with_operation(db_session)
     )
-    await AgentErasureRepository(db_session).create_legal_hold(
-        tenant_id=TENANT_ID,
-        conversation_id=conversation_id,
-        reason_code="litigation",
-        purpose="ongoing case",
-        actor_id=ACTOR_ID,
-    )
-    await db_session.commit()
 
     outcome = await _participant(db_session).erase_conversation_body(
         tenant_id=TENANT_ID,
@@ -1098,7 +1114,7 @@ async def test_p1_3_round3_record_blocked_uses_fence_owner_version(db_session):
     from app.contexts.agent_workspace.infrastructure.models import ErasureFenceModel
 
     conversation_id, purge_revision, operation_id, op_revision = (
-        await _seed_purgeable_with_operation(db_session)
+        await _seed_hold_and_purgeable_with_operation(db_session)
     )
     # 把 fence + checkpoint 的 owner_version 同步改 2（一致），模拟未来 owner
     # version bump 场景。legal-hold 路径不 transition fence（不触发
@@ -1115,15 +1131,6 @@ async def test_p1_3_round3_record_blocked_uses_fence_owner_version(db_session):
     fence_model.owner_version = 2
     cp = await _checkpoint_model(db_session, operation_id)
     cp.owner_version = 2
-    await db_session.commit()
-
-    await AgentErasureRepository(db_session).create_legal_hold(
-        tenant_id=TENANT_ID,
-        conversation_id=conversation_id,
-        reason_code="litigation",
-        purpose="ongoing case",
-        actor_id=ACTOR_ID,
-    )
     await db_session.commit()
 
     outcome = await _participant(db_session).erase_conversation_body(
@@ -1151,16 +1158,8 @@ async def test_p1_1_round4_legal_hold_stale_revision_fail_closed(db_session):
     """round-4 P1-1：legal-hold 路径也裁决 operation revision CAS--stale caller
     （revision 过期）不得改状态，零状态变更 fail closed。"""
     conversation_id, purge_revision, operation_id, op_revision = (
-        await _seed_purgeable_with_operation(db_session)
+        await _seed_hold_and_purgeable_with_operation(db_session)
     )
-    await AgentErasureRepository(db_session).create_legal_hold(
-        tenant_id=TENANT_ID,
-        conversation_id=conversation_id,
-        reason_code="litigation",
-        purpose="ongoing case",
-        actor_id=ACTOR_ID,
-    )
-    await db_session.commit()
     # 调用方观测的 revision 过期（operation 被并发 bump）。
     with pytest.raises(ValueError, match="operation revision mismatch"):
         await _participant(db_session).erase_conversation_body(
@@ -1185,16 +1184,8 @@ async def test_p1_2_round4_legal_hold_projects_purge_state_blocked(db_session):
     """round-4 P1-2：legal-hold blocked 路径把 Conversation.purge_state 投影为
     blocked（与 operation/checkpoint 同事务一致，Spec §5.2）。"""
     conversation_id, purge_revision, operation_id, op_revision = (
-        await _seed_purgeable_with_operation(db_session)
+        await _seed_hold_and_purgeable_with_operation(db_session)
     )
-    await AgentErasureRepository(db_session).create_legal_hold(
-        tenant_id=TENANT_ID,
-        conversation_id=conversation_id,
-        reason_code="litigation",
-        purpose="ongoing case",
-        actor_id=ACTOR_ID,
-    )
-    await db_session.commit()
     outcome = await _participant(db_session).erase_conversation_body(
         tenant_id=TENANT_ID,
         conversation_id=conversation_id,
@@ -1211,11 +1202,14 @@ async def test_p1_2_round4_legal_hold_projects_purge_state_blocked(db_session):
     assert op.failure_code == REASON_PURGE_BLOCKED_BY_LEGAL_HOLD
 
 
-async def test_p1_2_round4_record_blocked_reason_change_bumps_revision(
+async def test_i1_hold_created_mid_operation_drifts_retry_fail_closed(
     db_session, monkeypatch
 ):
-    """round-4 P1-2：已 blocked operation 遇新 reason（scan_nonzero -> legal_hold）
-    更新 failure_code + bump revision（不保留旧 reason）。"""
+    """I1 语义更新：operation 生命周期中途创建 hold（bump hold_revision）后，
+    旧 snapshot 的 participant 重试按 G2 drift fail closed——零状态变更、
+    failure_code 保留（不再存在「同 operation 上加 hold 后 legal-hold 路径
+    覆写 reason」的合法序列；reason 覆写行为改为 S5 实现期的普通 blocked 重试
+    场景，不属于 I1 验收）。"""
     conversation_id, purge_revision, operation_id, op_revision = (
         await _seed_purgeable_with_operation(db_session)
     )
@@ -1245,8 +1239,8 @@ async def test_p1_2_round4_record_blocked_reason_change_bumps_revision(
     assert op.failure_code == REASON_WORKSPACE_BODY_SCAN_NONZERO
     op_revision_after = op.revision
 
-    # 重试时 scan 归零（清除 monkeypatch）但加 legal hold -> legal-hold 路径把
-    # reason 从 scan_nonzero 改成 legal_hold。
+    # 中途创建 hold：Conversation.hold_revision 0->1，旧 operation snapshot=0
+    # 构成 G2 drift——重试必须 fail closed，零状态变更。
     await AgentErasureRepository(db_session).create_legal_hold(
         tenant_id=TENANT_ID,
         conversation_id=conversation_id,
@@ -1255,20 +1249,22 @@ async def test_p1_2_round4_record_blocked_reason_change_bumps_revision(
         actor_id=ACTOR_ID,
     )
     await db_session.commit()
-    outcome = await _participant(db_session).erase_conversation_body(
-        tenant_id=TENANT_ID,
-        conversation_id=conversation_id,
-        purge_revision=purge_revision,
-        purge_operation_id=operation_id,
-        expected_operation_revision=op_revision_after,
-    )
-    await db_session.commit()
-    assert outcome.blocked
-    assert outcome.block_reason == REASON_PURGE_BLOCKED_BY_LEGAL_HOLD
+    with pytest.raises(ValueError, match="hold_revision"):
+        await _participant(db_session).erase_conversation_body(
+            tenant_id=TENANT_ID,
+            conversation_id=conversation_id,
+            purge_revision=purge_revision,
+            purge_operation_id=operation_id,
+            expected_operation_revision=op_revision_after,
+        )
+    await db_session.rollback()
     op = await _operation_model(db_session, operation_id)
     assert op.state == "blocked"
-    assert op.failure_code == REASON_PURGE_BLOCKED_BY_LEGAL_HOLD  # reason 更新
-    assert op.revision == op_revision_after + 1  # bump（state 已 blocked，仅 reason 变）
+    assert op.failure_code == REASON_WORKSPACE_BODY_SCAN_NONZERO  # 保留不覆写
+    assert op.revision == op_revision_after  # 零 bump
+    cp = await _checkpoint_model(db_session, operation_id)
+    assert cp.state == PurgeOwnerState.BLOCKED.value
+    assert cp.reason_code == REASON_WORKSPACE_BODY_SCAN_NONZERO
 
 
 async def test_p1_3_round4_erased_repair_acked_digest_mismatch_fail_closed(db_session):
