@@ -1852,7 +1852,7 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 3. **P2×4/P3×2 同落点清理**：阶段 1「不产生 conflict 事实」术语、S5-A-8 行 20 G4 载体表述、S5-A-4 缺行规则 native_pending-only 限定、workspace 引证改 :319、G4 触发条件字面、零行 native-only 限定。
 4. **行 33 公式判别点**：删 registry diff → added/re-added 分类红；删 predecessor terminal fact → carried 分类红；错用 live registry → 部署漂移后同一 operation 重算变化红；删 seeded 行 → 仍推导 inherited_acked → G4 + 零 adapter 调用（同行 30）。
 
-**公式同一性 + 无循环依赖定向复核（终结批次后，不重开完整三面；历史计数保留不覆盖）**：**P0=0/P1=0/P2=3/P3=2**。核验结论：四处 `expected_obligation_kind` 公式串字节级逐字同构（S5-B-3 权威唯一 + 三处引用带指针，四值映射一致）；无循环依赖成立（四输入无一指向当前待判定 checkpoint，删 seeded 行后完整可重算，缺行处置「先重算 kind 再判缺行」单一方向）；G1 边界四子句齐全（两端持久快照/禁 live registry/live drift 只归 G1/同 operation 重算不变），G1>G4 自洽；行 33 四变异全部具名可执行并与四输入一一挂钩。P2×3（lineage_status 旧短语同区残留、矩阵行 4/25 旧载体术语、行 19/表 6-7 字面未带 native-only）+ P3×2（指针前缀、引用口径）为同族精度项，**按指令不再补词**，登记归属：随 #564 后续收口（族 E/F 已清零后）一并清理。
+**公式同一性 + 无循环依赖定向复核（终结批次后，不重开完整三面；历史计数保留不覆盖）**：**P0=0/P1=0/P2=3/P3=2**。核验结论：四处 `expected_obligation_kind` 公式串字节级逐字同构（S5-B-3 权威唯一 + 三处引用带指针，四值映射一致）；无循环依赖成立（四输入无一指向当前待判定 checkpoint，删 seeded 行后完整可重算，缺行处置「先重算 kind 再判缺行」单一方向）；G1 边界四子句齐全（两端持久快照/禁 live registry/live drift 只归 G1/同 operation 重算不变），G1>G4 自洽；行 33 四变异全部具名可执行并与四输入一一挂钩。P2×3（lineage_status 旧短语同区残留、矩阵行 4/25 旧载体术语、行 19/表 6-7 字面未带 native-only）+ P3×2（指针前缀、引用口径）为同族精度项，**按指令不再补词**，登记归属：**REQ-047 / R1-S5 implementation conformance follow-up**（不宣称已修复）。
 
 ### R1-S5-C：Settlement-only Adapter Recovery 契约（contract-first，拆分自 #564）
 

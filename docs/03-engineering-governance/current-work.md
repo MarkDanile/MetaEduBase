@@ -21,17 +21,17 @@
 领域：R1 保留/清除（rebuild/seeding/lineage + settlement 接口闭包）
 当前执行模式：plan-do（文档契约）
 最近接手工具：Claude Code
-分支：docs/req041-047-r1-s5b-rebuild-seeding-contract（#564 Draft，HEAD `6e98c546`，stacked 于 #563 `efde24e4`）
+分支：docs/req041-047-r1-s5b-rebuild-seeding-contract（#564 Draft，contract implementation `c538491f`，final review record `004eb57b`，stacked 于 #563 `efde24e4`）
 
 需求来源：
 - Spec: [R1 §4.2/§5.2/§8](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
 - Plan: [R1-S5-B 契约段 + R1-S5-C 契约段](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S5-B-11 拆分裁决）
 - 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
 
-当前进展：两轮三面 + Option D（quiesce-and-finalize）架构重写落地；第三轮广域三面 P0=0/P1=10/P2=17/P3=13（去重 9 族）→ 按指令停止并拆分 S5-C；scope-cleanup 落地（`da57b947`）。**S5-C stacked child 已合并入本分支**（#565 squash `6e98c546`，评分 92；**尚未进入 main**——不进「最近完成」/work-log，随本 PR 一并走完 #564 闭环）。族 E/F 返修 + S5-A 前向回填待本轮落地。
-下一步：**公式对齐终结批次闭环**——「公式同一性 + 无循环依赖」定向复核 **P0/P1=0**（P2×3/P3×2 同族精度项登记归属 #564 后续收口，不再补词）；PR #564 保持 Draft，停下待用户指令。不转 Ready/评分/合并、不修改 #563、不启动实现/migration/I1/I2/S5/S6/C1。
+当前进展：两轮三面 + Option D（quiesce-and-finalize）架构重写落地；第三轮广域三面 P0=0/P1=10/P2=17/P3=13（去重 9 族）→ 按指令停止并拆分 S5-C；scope-cleanup 落地（`da57b947`）。**S5-C stacked child 已合并入本分支**（#565 squash `6e98c546`，评分 92；**尚未进入 main**——不进「最近完成」/work-log，随本 PR 一并走完 #564 闭环）。**收口批次已完成**：族 E（seeding/聚合分阶段）、族 F（reason 全函数）、derived-conflict G4 gate、S5-A 11 项前向回填、33 行反例矩阵全部落地，组合广域三面 → 四族统一定向返修 → 公式对齐终结批次，**最终 P0/P1=0**。
+下一步：Ready 前治理元数据收口 + 转 Ready（按用户指令执行）；P2×3/P3×2 同族精度项登记归属 **REQ-047 / R1-S5 implementation conformance follow-up**（不宣称已修复）。
 验证状态：docs gate（含 --full）exit 0；公式定向复核 P0=0/P1=0/P2=3/P3=2；四族定向复核 P0=0/P1=1/P2=4/P3=2；本轮三面 P0=0/P1=5/P2=19/P3=11（历史计数保留不覆盖）。
-交接备注：#564 保持 Draft；不修改 #563（冻结 `efde24e4`）、不写实现/测试/schema/migration/registry、不启动 I1/I2/S5 实现/S6/C1、不转 Ready/评分/合并/不创建 main closeout。S5-A 状态：Draft #563 冻结在 `efde24e4`。
+交接备注：#564 保持 Draft 至转 Ready 指令完成；不修改 #563（冻结 `efde24e4`）、不写实现/测试/schema/migration/registry、不启动 I1/I2/S5 实现/S6/C1、不评分/合并/不创建 main closeout。S5-A 状态：Draft #563 冻结在 `efde24e4`。
 
 ## 下一批候选任务
 
