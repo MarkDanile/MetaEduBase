@@ -28,9 +28,9 @@
 - Plan: [R1-S5-C 契约段（本 PR 新增）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) + #564 S5-B-11 七族 P1（拆分源）
 - 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
 
-当前进展：拆分归一化完成——#564 落地 scope-cleanup commit（S5-B-1/S5-B-7 具体 settlement/adapter 裁决移除，只留「rebuild 输入必须已满足 S5-C settlement terminal contract」依赖接口；S5-B-9 行 14/19/20/24 编号占位移交；第三轮计数与拆分记录保留不覆盖），#564 新 HEAD `da57b947` 已推送；S5-C stacked 于该 HEAD，净 diff 仅 S5-C 契约 + 工作台状态。契约正文按「先冻结状态机」组织：S5-C-1 输入/输出态全函数（六输出态 + fence 收敛规则）、S5-C-2 写域与 drift 绕过（frozen-snapshot 基准 + 禁新 Tx1）、S5-C-3/4/5/6 四项单独裁决（旧 adapter 身份 = 历史 resolver + fail closed / 自动恢复期限有界载体 / receipt 语义三态 / replay-only 收敛）、S5-C-7 并发与写者（锁序逐方法核对、三进入点互斥、erasing→blocked 边写者登记 + CAS token、ACK-lost 第三路径）、S5-C-8 反例矩阵 13 行、S5-C-9 接口与变更登记（S4-F 两项变更 + S5-A 写者表补登记）。
-下一步：运行 docs gate → 对 S5-C 单独执行全新三面（保留 #564 七族 P1，不覆盖历史计数）；首轮 findings 归稳定根因族 → 一次统一返修 + 定向复核；返修后再现状态机级 P1 → 停止拆编号，重开「单行 fence + 双事务 adapter 窗口是否适合跨 hold/registry drift」上层架构裁决。
-验证状态：docs gate 待跑；全新三面待执行。
+当前进展：拆分归一化完成——#564 落地 scope-cleanup commit（S5-B-1/S5-B-7 具体 settlement/adapter 裁决移除，只留「rebuild 输入必须已满足 S5-C settlement terminal contract」依赖接口；S5-B-9 行 14/19/20/24 编号占位移交；第三轮计数与拆分记录保留不覆盖），#564 新 HEAD `da57b947` 已推送；S5-C stacked 于该 HEAD，净 diff 仅 S5-C 契约 + 工作台状态。契约正文按「先冻结状态机」组织：S5-C-1 输入/输出态全函数（六输出态 + 已落账/failed 收敛 + fence 收敛规则）、S5-C-2 写域与 drift 绕过（frozen-snapshot 基准六条 + 禁新 Tx1 作用域限定）、S5-C-3/4/5/6 四项单独裁决（旧 adapter 身份 = 历史 resolver + fail closed / 自动恢复期限有界载体 / receipt 语义三态 / replay-only 收敛）、S5-C-7 并发与写者（锁序逐方法核对含 runtime/transport repair、互斥机制两层重写、erasing→blocked 边写者登记 + CAS token、ACK-lost 第三路径）、S5-C-8 反例矩阵 13 行、S5-C-9 接口与变更登记（S4-F 两项变更 + S5-A 写者表补登记绑定 S5-B-8 回填载体）。**首轮全新三面完成：P0=1/P1=7/P2=15/P3=4（27 findings）→ 去重 11 根因族 → 一次统一返修已落地**（S5-C-10 记录）。
+下一步：**S5-C 首轮三面 → 11 族统一返修 → 定向复核已闭环**（无新状态机级 P1，未触发上层架构裁决）；停在 Draft，等用户指令决定是否推送 S5-C 分支/后续评审。
+验证状态：docs gate exit 0（返修后重跑）；首轮三面 P0=1/P1=7/P2=15/P3=4（27 findings）→ 11 根因族一次返修 + 定向复核闭环（S5-C-10 记录）。
 交接备注：Draft；不回 #563（保持 `efde24e4`）、不处理 S5-B 族 E/F、不转 Ready、不评分、不合并、不启动实现或 migration。S5-B 状态见下。
 
 ### R1-S5-B: Purge Revision Rebuild & Evidence Seeding 契约（stacked contract-first，Option D）
@@ -48,7 +48,7 @@
 当前进展：两轮三面 + Option D（quiesce-and-finalize）架构重写落地；第三轮广域三面 P0=0/P1=10/P2=17/P3=13（去重 9 族）→ 按指令停止并拆分 S5-C；scope-cleanup 落地（S5-B-1/S5-B-7 settlement/adapter 具体裁决移交 S5-C，只留依赖接口；S5-B-9 行 14/19/20/24 编号占位）。
 下一步：**暂停等待 S5-C 冻结**；S5-C 冻结后回填「settlement/adapter 契约指向 S5-C」前向指针；族 E/F（seeding/聚合阶段分离、re-added reason 分派）在 S5-B 主体后续返修。
 验证状态：docs gate exit 0（scope-cleanup commit pre-commit 通过）。
-交接备注：#564 保持 Draft 未合并；不恢复 #563、不启动 I1/I2/S5 实现/S6/C1、不评分不转 Ready。
+交接备注：#564 保持 Draft 未合并；不恢复 #563、不启动 I1/I2/S5 实现/S6/C1、不评分不转 Ready。S5-A 状态：Draft #563 冻结在 `efde24e4`。
 
 ## 下一批候选任务
 
