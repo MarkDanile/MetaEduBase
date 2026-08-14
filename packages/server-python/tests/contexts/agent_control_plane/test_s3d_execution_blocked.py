@@ -416,7 +416,8 @@ async def test_i1_hold_drift_rejects_execution_entry(db_session):
 
     completed = await h.run_model(db_session, ctx["run_id"])
     assert completed.terminal_output_ref is not None  # 正文未被清除
-    # 失败 entry 先于任何 fence 建立（惰性 fence 未创建）——零写包含 fence 零行。
+    # 零写断言含 fence：entry 在同事务内惰性建 fence 后才在 hold 分支 raise
+    # drift；显式 rollback 后 fence 零行（整个失败 entry 的事务写全部归零）。
     fence = await h.fence_model_or_none(db_session, ctx["conversation_id"])
     assert fence is None
     op = await h.operation_model(db_session, ctx["operation_id"])
