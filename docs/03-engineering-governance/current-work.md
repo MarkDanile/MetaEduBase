@@ -28,10 +28,10 @@
 - Plan: [R1-S5-A 契约（#563，本分支起点）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) + 本 PR 新增 R1-S5-B 契约段
 - 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
 
-当前进展：两轮三面后按 TD-092 做 **Option D（quiesce-and-finalize）架构重写**已落地——核心状态机（Tx1 commit 线性化点、quiesce 门禁、settlement-only 通道）、owner obligation 全函数矩阵（checkpoint×fence×added/removed/re-added/version-changed）、adapter 恢复契约（S5-B-7）、lineage 结论收窄（信任锚点只留 `fence.ack_digest`）、rebuild DELETED 门禁、S5-B→S5-A 八项接口。**删除 erasing-fence token 迁移 primitive**。两轮原始计数已落盘：首轮 P0=0/P1=8/P2=12/P3=11（去重 7 P1）；本轮 P0=0/P1=6/P2=18/P3=12（去重 6 P1）。
-下一步：提交架构重写 commit → 跑 `scripts/check-engineering-docs` → 对重写后 #564 做全新广域三面；若再现新 P1 且根因指向 adapter 恢复，停止并把 S5-B-7 拆为独立 S5-C contract-first PR，不得扩大 #564。
-验证状态：待跑 docs gate。
-交接备注：stacked 于 #563（S5-A），不合并本 PR #564、不恢复 #563、不启动 I1/I2/S5 实现/S6/C1、不评分不转 Ready。S5-A 状态：Draft #563 冻结在 efde24e4（待 S5-B P0/P1 清零后回填 S5-B→S5-A 八项接口并组合广域三面）。
+当前进展：两轮三面后按 TD-092 做 **Option D（quiesce-and-finalize）架构重写**已落地（commit `82c3f67f`）——核心状态机（Tx1 commit 线性化点、quiesce 门禁、settlement-only 通道）、owner obligation 全函数矩阵、adapter 恢复契约（S5-B-7）、lineage 结论收窄（信任锚点只留 `fence.ack_digest`）、rebuild DELETED 门禁、S5-B→S5-A 八项接口。**删除 erasing-fence token 迁移 primitive**。两轮原始计数已落盘：首轮 P0=0/P1=8/P2=12/P3=11（去重 7 P1）；本轮 P0=0/P1=6/P2=18/P3=12（去重 6 P1）。**第三轮广域三面（架构重写后）P0=0/P1=10/P2=17/P3=13，去重 9 个独立 P1** → 按指令停止，拆分 S5-C。
+下一步：**停止扩大 #564**；把 settlement-only adapter recovery（settlement-only 通道 S5-B-1 + adapter 恢复契约 S5-B-7，承载族 A/B/C/D/G/H/I 七族 P1）拆为独立 S5-C contract-first PR；族 E/F（seeding/聚合阶段分离、re-added reason 分派）留 S5-B 主体后续返修。
+验证状态：docs gate exit 0（pre-commit + 手动 `scripts/check-engineering-docs`）；三面 9 P1 已逐条核验代码事实。
+交接备注：stacked 于 #563（S5-A），不合并本 PR #564、不恢复 #563、不启动 I1/I2/S5 实现/S6/C1、不评分不转 Ready。S5-A 状态：Draft #563 冻结在 efde24e4。S5-C 拆分待开新分支（settlement-only adapter recovery）。
 
 ## 下一批候选任务
 
@@ -39,6 +39,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P1 | R1-S5-C Settlement-only Adapter Recovery 契约冻结 | 🔵 就绪（拆分自 #564） | 新建分支，冻结 settlement-only 通道 + adapter 恢复契约（族 A/B/C/D/G/H/I 七族 P1） | [Plan §R1-S5-B-11](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成

@@ -1785,7 +1785,25 @@ event_id（= outbox row.id = envelope.event.event_id）
 6. **lineage 结论收窄（P1 族 5）**：信任锚点只留 `fence.ack_digest`（原生终态锚点）；`checkpoint_digest` 无 fence 锚点 → 仅审计副本，不参与信任判定。见 S5-B-3。
 7. **S5-B→S5-A 八项接口补齐（P1 族 6）**：core family-B backport、旧 revision settlement 门禁、S5-A-8 反例归属与前向指针。见 S5-B-8。
 
-**状态**：Draft（Option D 架构重写已落地）。按任务指令：不合并 stacked PR #564、不恢复 #563、不启动 I1/I2/S5 实现/S6/C1、不评分不转 Ready。下一步：对重写后 #564 做全新广域三面；**若再现新 P1 且根因指向 adapter 恢复，停止并把 S5-B-7 拆为独立 S5-C contract-first PR，不得继续扩大 #564**。若 P0/P1 清零，则回 #563 回填 S5-B-8 八项接口后组合广域三面。
+**状态**：Draft（Option D 架构重写已落地；第三轮广域三面后按指令**停止**，拆分 S5-C）。不合并 stacked PR #564、不恢复 #563、不启动 I1/I2/S5 实现/S6/C1、不评分不转 Ready。
+
+#### S5-B-11 第三轮广域三面（架构重写后）与 S5-C 拆分裁决（TD-092）
+
+**第三轮三面原始计数（架构重写 commit `82c3f67f` 后，保留不覆盖）**：数据/状态机 P0=0/P1=5/P2=6/P3=4 + 并发/锁序 P0=0/P1=2/P2=3/P3=4 + 测试/运维 P0=0/P1=3/P2=8/P3=5 → **合计 P0=0/P1=10/P2=17/P3=13**（40 findings，去重后 9 个独立 P1，其中并发「settlement fencing liveness」与数据面同源去重）。
+
+**9 个独立 P1 根因族（逐条已核验代码事实）**：
+
+1. **settlement fencing liveness（族 A）**：settlement 通道（Tx2/同 revision crash replay）经 `_load_verified_operation` 的现行 `registry_digest`/`hold_revision_snapshot` 等值校验，在 G1/G2 drift 下必 raise——而 drift 恰是触发 quiesce 的条件，quiesce 永不收敛、adapter 已发生 outcome 无法落账。S5-B-1「drift 不得改变 settlement 判定输入」与 S5-A-4 Tx2 重验集及代码事实矛盾。（并发 P1-2 = 数据 P1-1）
+2. **settlement 锁序归因错误（族 B）**：S5-B-6「quiesce 判定锁序」把互斥归因到「owner lock + fence/operation 行锁」，但该锁集与 Conversation 行锁不同域、不互斥；真正互斥来自 settlement Tx2 自身先取 Conversation 行锁（S5-A-4 全局互斥）。（并发 P1-1）
+3. **fence 永留 erasing（族 C）**：4 个非 core owner 的 post-window blocked（含 outcome_unknown）fence 无 `erasing→blocked` 转移（S4-F 已冻结「Tx2 不碰 fence」），quiesce 门禁永不释放，rebuild 永久阻塞；矩阵 case A「blocked × active/blocked」对这 4 owner 是死行。（数据 P1-2）
+4. **ACK-lost 第三路径缺失（族 D）**：settlement 通道只列 Tx2/同 revision crash replay 两条路径，ACK-lost（fence=erased + checkpoint≠acked）无收口路径；S4-F 族 B erased-fence repair 未被枚举，且 I2 前该 repair 会清 drift failure_code、写投影。（数据 P1-5）
+5. **seeding/聚合阶段未分离（族 E）**：lineage 失败同一事实被冻结为两种互斥裁决——S5-B-2 兜底=rebuild 事务回滚 vs S5-B-3/S5-B-8 item 5=owner-level blocked；未区分 seeding 期与聚合期。（数据 P1-3）
+6. **re-added reason 分派缺失（族 F）**：case C「历史 fence active/blocked → 重开 pending」未检查历史 checkpoint reason_code，outcome_unknown 历史被重开 pending，违反硬约束「outcome_unknown 不得重开 pending」。（数据 P1-4）
+7. **Protocol 矛盾未消（族 G）**：`supports_idempotent_replay=False 但 delete_object 无条件称幂等`只在文档层消除，merged 代码事实源无回填归属。（测试 P1-1）
+8. **idempotent replay 承诺 vacuous（族 H）**：去重窗口无载体 + 「最大恢复周期」含无界人工 reconcile 延迟 → 条件不可测、row 20 无法落地。（测试 P1-2）
+9. **replay-only 死路（族 I）**：双支持优先 lookup 与承诺节冲突；「降级 reconcile」对无 lookup adapter 是零动作死路。（测试 P1-3）
+
+**S5-C 拆分裁决（按任务指令：停止扩大 #564）**：9 个独立 P1 中，族 A/B/C/D/G/H/I（7 族）聚集在 **settlement-only adapter recovery**（settlement-only 通道 S5-B-1 + adapter 恢复契约 S5-B-7）；族 E/F（2 族）在 rebuild/obligation 矩阵（S5-B-2/S5-B-3）。按指令停止本 PR 继续返修，**把 settlement-only adapter recovery 拆为独立 S5-C contract-first PR**（scope = settlement-only 通道 + adapter 恢复契约，承载族 A/B/C/D/G/H/I 七族冻结），族 E/F 留在 S5-B 主体作后续返修项。不得继续扩大 #564；#563 保持 `efde24e4` 不动。
 
 ### R1-S5：Legal hold、Scheduler 与运维闭环
 
