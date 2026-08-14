@@ -14,41 +14,24 @@
 
 ## 当前进行中
 
-### R1-S5-C: Settlement-only Adapter Recovery 契约（contract-first，拆分自 #564）
+### R1-S5-B: Purge Revision Rebuild & Evidence Seeding 契约（stacked contract-first，Option D）
 
 状态：🟡 进行中
 类型：契约冻结（contract-first，纯文档，stacked PR）
-领域：R1 保留/清除（settlement / adapter recovery）
+领域：R1 保留/清除（rebuild/seeding/lineage + settlement 接口闭包）
 当前执行模式：plan-do（文档契约）
 最近接手工具：Claude Code
-分支：docs/req041-047-r1-s5c-settlement-adapter-recovery-contract（stacked 于 #564 scope-cleanup 后 HEAD `da57b947`；PR #565 Draft）
+分支：docs/req041-047-r1-s5b-rebuild-seeding-contract（#564 Draft，HEAD `6e98c546`，stacked 于 #563 `efde24e4`）
 
 需求来源：
 - Spec: [R1 §4.2/§5.2/§8](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- Plan: [R1-S5-C 契约段（本 PR 新增）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) + #564 S5-B-11 七族 P1（拆分源）
+- Plan: [R1-S5-B 契约段 + R1-S5-C 契约段](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S5-B-11 拆分裁决）
 - 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
 
-当前进展：拆分归一化完成——#564 落地 scope-cleanup commit（S5-B-1/S5-B-7 具体 settlement/adapter 裁决移除，只留「rebuild 输入必须已满足 S5-C settlement terminal contract」依赖接口；S5-B-9 行 14/19/20/24 编号占位移交；第三轮计数与拆分记录保留不覆盖），#564 新 HEAD `da57b947` 已推送；S5-C stacked 于该 HEAD，净 diff 仅 S5-C 契约 + 工作台状态。契约正文按「先冻结状态机」组织：S5-C-1 输入/输出态全函数（六输出态 + 已落账/failed 收敛 + fence 收敛规则）、S5-C-2 写域与 drift 绕过（frozen-snapshot 基准六条 + 禁新 Tx1 作用域限定）、S5-C-3/4/5/6 四项单独裁决（旧 adapter 身份 = 历史 resolver + fail closed / 自动恢复期限有界载体 / receipt 语义三态 / replay-only 收敛）、S5-C-7 并发与写者（锁序逐方法核对含 runtime/transport repair、互斥机制两层重写、erasing→blocked 边写者登记 + CAS token、ACK-lost 第三路径）、S5-C-8 反例矩阵 16 行、S5-C-9 接口与变更登记（S4-F 两项变更 + S5-A 补登记绑定 S5-B-8 回填载体第 9/10/11 项）。**首轮全新三面完成：P0=1/P1=7/P2=15/P3=4（27 findings）→ 去重 11 根因族 → 一次统一返修落地**；**Ready 前事实载体纠偏批次已落地**（RecoveryDescriptor 六字段 + 强不变量、deadline 进入点判定、输出态 3/5/6 独立 reason code、lookup 可重放、反例行 14/15/16）——（S5-C-10 记录）。
-下一步：**Ready 前 stacked 边界纠偏批次闭环**——独立 stacked 接口定向复核 P0/P1=0（P2×3/P3×3 留后续精度项）；PR #565 保持 Draft，停下待用户指令。不转 Ready/评分/合并、不回 #564 处理 E/F。
-验证状态：docs gate exit 0（返修后重跑）；首轮三面 P0=1/P1=7/P2=15/P3=4（27 findings）→ 11 根因族一次返修 + 定向复核闭环（S5-C-10 记录）。
-交接备注：Draft；不回 #563（保持 `efde24e4`）、不处理 S5-B 族 E/F、不转 Ready、不评分、不合并、不启动实现或 migration。S5-B 状态见下。
-
-### R1-S5-B: Purge Revision Rebuild & Evidence Seeding 契约（stacked contract-first，Option D）
-
-状态：🔴 阻塞（Draft paused/blocked by S5-C）
-类型：契约冻结（contract-first，纯文档，stacked PR）
-领域：R1 保留/清除（rebuild/seeding/lineage）
-当前执行模式：plan-do（文档契约）
-最近接手工具：Claude Code
-分支：docs/req041-047-r1-s5b-rebuild-seeding-contract（#564，HEAD `da57b947`，stacked 于 #563 `efde24e4`）
-
-需求来源：
-- Plan: [R1-S5-B 契约段](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
-
-当前进展：两轮三面 + Option D（quiesce-and-finalize）架构重写落地；第三轮广域三面 P0=0/P1=10/P2=17/P3=13（去重 9 族）→ 按指令停止并拆分 S5-C；scope-cleanup 落地（S5-B-1/S5-B-7 settlement/adapter 具体裁决移交 S5-C，只留依赖接口；S5-B-9 行 14/19/20/24 编号占位）。
-下一步：**暂停等待 S5-C 冻结**；S5-C 冻结后回填「settlement/adapter 契约指向 S5-C」前向指针；族 E/F（seeding/聚合阶段分离、re-added reason 分派）在 S5-B 主体后续返修。
-验证状态：docs gate exit 0（scope-cleanup commit pre-commit 通过）。
-交接备注：#564 保持 Draft 未合并；不恢复 #563、不启动 I1/I2/S5 实现/S6/C1、不评分不转 Ready。S5-A 状态：Draft #563 冻结在 `efde24e4`。
+当前进展：两轮三面 + Option D（quiesce-and-finalize）架构重写落地；第三轮广域三面 P0=0/P1=10/P2=17/P3=13（去重 9 族）→ 按指令停止并拆分 S5-C；scope-cleanup 落地（`da57b947`）。**S5-C stacked child 已合并入本分支**（#565 squash `6e98c546`，评分 92；**尚未进入 main**——不进「最近完成」/work-log，随本 PR 一并走完 #564 闭环）。族 E/F 返修 + S5-A 前向回填待本轮落地。
+下一步：族 E（seeding/聚合阶段分离，S5-B-2/3/8/9）、族 F（re-added owner reason 全函数分派 + case E 对输出态 3/5/6 具名分态）、S5-A 前向回填（S5-B-8 最终 11 项逐项回填 S5-A-0/1/2/4/8）、反例矩阵补强 → docs gate（含 `--full`）→ 推送 Draft 确认三路 checks → 组合 S5-A+S5-B+S5-C 全新广域三面。
+验证状态：docs gate exit 0（scope-cleanup）；S5-C 侧历史计数保留不覆盖（首轮三面 P0=1/P1=7/P2=15/P3=4 → 11 族返修；事实载体纠偏 P0=0/P1=2/P2=3/P3=3 → 补正；stacked 边界审计 P0=0/P1=0/P2=3/P3=3）；本轮广域三面待执行。
+交接备注：#564 保持 Draft；不修改 #563（冻结 `efde24e4`）、不写实现/测试/schema/migration/registry、不启动 I1/I2/S5 实现/S6/C1、不转 Ready/评分/合并/不创建 main closeout。S5-A 状态：Draft #563 冻结在 `efde24e4`。
 
 ## 下一批候选任务
 
