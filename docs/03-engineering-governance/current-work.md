@@ -14,24 +14,41 @@
 
 ## 当前进行中
 
-### R1-S5-B: Purge Revision Rebuild & Evidence Seeding 契约（stacked contract-first，Option D 架构重写）
+### R1-S5-C: Settlement-only Adapter Recovery 契约（contract-first，拆分自 #564）
 
 状态：🟡 进行中
 类型：契约冻结（contract-first，纯文档，stacked PR）
-领域：R1 保留/清除（retention/purge/recovery）
+领域：R1 保留/清除（settlement / adapter recovery）
 当前执行模式：plan-do（文档契约）
 最近接手工具：Claude Code
-分支：docs/req041-047-r1-s5b-rebuild-seeding-contract（stacked 于 #563 HEAD efde24e4）
+分支：docs/req041-047-r1-s5c-settlement-adapter-recovery-contract（stacked 于 #564 scope-cleanup 后 HEAD `da57b947`；PR #565 Draft）
 
 需求来源：
 - Spec: [R1 §4.2/§5.2/§8](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- Plan: [R1-S5-A 契约（#563，本分支起点）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) + 本 PR 新增 R1-S5-B 契约段
+- Plan: [R1-S5-C 契约段（本 PR 新增）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) + #564 S5-B-11 七族 P1（拆分源）
 - 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
 
-当前进展：两轮三面后按 TD-092 做 **Option D（quiesce-and-finalize）架构重写**已落地（commit `82c3f67f`）——核心状态机（Tx1 commit 线性化点、quiesce 门禁、settlement-only 通道）、owner obligation 全函数矩阵、adapter 恢复契约（S5-B-7）、lineage 结论收窄（信任锚点只留 `fence.ack_digest`）、rebuild DELETED 门禁、S5-B→S5-A 八项接口。**删除 erasing-fence token 迁移 primitive**。两轮原始计数已落盘：首轮 P0=0/P1=8/P2=12/P3=11（去重 7 P1）；本轮 P0=0/P1=6/P2=18/P3=12（去重 6 P1）。**第三轮广域三面（架构重写后）P0=0/P1=10/P2=17/P3=13，去重 9 个独立 P1** → 按指令停止，拆分 S5-C。
-下一步：**停止扩大 #564**；把 settlement-only adapter recovery（settlement-only 通道 S5-B-1 + adapter 恢复契约 S5-B-7，承载族 A/B/C/D/G/H/I 七族 P1）拆为独立 S5-C contract-first PR；族 E/F（seeding/聚合阶段分离、re-added reason 分派）留 S5-B 主体后续返修。
-验证状态：docs gate exit 0（pre-commit + 手动 `scripts/check-engineering-docs`）；三面 9 P1 已逐条核验代码事实。
-交接备注：stacked 于 #563（S5-A），不合并本 PR #564、不恢复 #563、不启动 I1/I2/S5 实现/S6/C1、不评分不转 Ready。S5-A 状态：Draft #563 冻结在 efde24e4。S5-C 拆分待开新分支（settlement-only adapter recovery）。
+当前进展：拆分归一化完成——#564 落地 scope-cleanup commit（S5-B-1/S5-B-7 具体 settlement/adapter 裁决移除，只留「rebuild 输入必须已满足 S5-C settlement terminal contract」依赖接口；S5-B-9 行 14/19/20/24 编号占位移交；第三轮计数与拆分记录保留不覆盖），#564 新 HEAD `da57b947` 已推送；S5-C stacked 于该 HEAD，净 diff 仅 S5-C 契约 + 工作台状态。契约正文按「先冻结状态机」组织：S5-C-1 输入/输出态全函数（六输出态 + 已落账/failed 收敛 + fence 收敛规则）、S5-C-2 写域与 drift 绕过（frozen-snapshot 基准六条 + 禁新 Tx1 作用域限定）、S5-C-3/4/5/6 四项单独裁决（旧 adapter 身份 = 历史 resolver + fail closed / 自动恢复期限有界载体 / receipt 语义三态 / replay-only 收敛）、S5-C-7 并发与写者（锁序逐方法核对含 runtime/transport repair、互斥机制两层重写、erasing→blocked 边写者登记 + CAS token、ACK-lost 第三路径）、S5-C-8 反例矩阵 16 行、S5-C-9 接口与变更登记（S4-F 两项变更 + S5-A 补登记绑定 S5-B-8 回填载体第 9/10/11 项）。**首轮全新三面完成：P0=1/P1=7/P2=15/P3=4（27 findings）→ 去重 11 根因族 → 一次统一返修落地**；**Ready 前事实载体纠偏批次已落地**（RecoveryDescriptor 六字段 + 强不变量、deadline 进入点判定、输出态 3/5/6 独立 reason code、lookup 可重放、反例行 14/15/16）——（S5-C-10 记录）。
+下一步：**Ready 前 stacked 边界纠偏批次闭环**——独立 stacked 接口定向复核 P0/P1=0（P2×3/P3×3 留后续精度项）；PR #565 保持 Draft，停下待用户指令。不转 Ready/评分/合并、不回 #564 处理 E/F。
+验证状态：docs gate exit 0（返修后重跑）；首轮三面 P0=1/P1=7/P2=15/P3=4（27 findings）→ 11 根因族一次返修 + 定向复核闭环（S5-C-10 记录）。
+交接备注：Draft；不回 #563（保持 `efde24e4`）、不处理 S5-B 族 E/F、不转 Ready、不评分、不合并、不启动实现或 migration。S5-B 状态见下。
+
+### R1-S5-B: Purge Revision Rebuild & Evidence Seeding 契约（stacked contract-first，Option D）
+
+状态：🔴 阻塞（Draft paused/blocked by S5-C）
+类型：契约冻结（contract-first，纯文档，stacked PR）
+领域：R1 保留/清除（rebuild/seeding/lineage）
+当前执行模式：plan-do（文档契约）
+最近接手工具：Claude Code
+分支：docs/req041-047-r1-s5b-rebuild-seeding-contract（#564，HEAD `da57b947`，stacked 于 #563 `efde24e4`）
+
+需求来源：
+- Plan: [R1-S5-B 契约段](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
+
+当前进展：两轮三面 + Option D（quiesce-and-finalize）架构重写落地；第三轮广域三面 P0=0/P1=10/P2=17/P3=13（去重 9 族）→ 按指令停止并拆分 S5-C；scope-cleanup 落地（S5-B-1/S5-B-7 settlement/adapter 具体裁决移交 S5-C，只留依赖接口；S5-B-9 行 14/19/20/24 编号占位）。
+下一步：**暂停等待 S5-C 冻结**；S5-C 冻结后回填「settlement/adapter 契约指向 S5-C」前向指针；族 E/F（seeding/聚合阶段分离、re-added reason 分派）在 S5-B 主体后续返修。
+验证状态：docs gate exit 0（scope-cleanup commit pre-commit 通过）。
+交接备注：#564 保持 Draft 未合并；不恢复 #563、不启动 I1/I2/S5 实现/S6/C1、不评分不转 Ready。S5-A 状态：Draft #563 冻结在 `efde24e4`。
 
 ## 下一批候选任务
 
@@ -39,7 +56,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | R1-S5-C Settlement-only Adapter Recovery 契约冻结 | 🔵 就绪（拆分自 #564） | 新建分支，冻结 settlement-only 通道 + adapter 恢复契约（族 A/B/C/D/G/H/I 七族 P1） | [Plan §R1-S5-B-11](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
