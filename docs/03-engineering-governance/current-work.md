@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### R1-S5-A/B/C: Owner Aggregation + Rebuild + Settlement Contract Stack Root
+
+状态：🟡 进行中
+类型：契约冻结（contract-first，纯文档，stacked 三层 root）
+领域：R1 保留/清除（S5-A reducer/写者所有权 + S5-B rebuild/seeding/lineage + S5-C settlement/adapter recovery）
+当前执行模式：plan-do（文档契约）
+最近接手工具：Claude Code
+分支：docs/req041-047-r1-s5a-owner-aggregation-contract（#563 Draft，HEAD `bb792547`，base main @ `99a3ffac`）
+
+需求来源：
+- Spec: [R1 §4.2/§5.2/§8](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- Plan: [R1-S5-A/B/C 三层契约段](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
+- 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
+
+当前进展：A/B/C 三层契约齐备——S5-A（reducer/coordinator/写者所有权，11 项前向回填全部落点）、S5-B（Option D rebuild/seeding/lineage + 族 E/F 全函数 + derived-conflict G4 + expected_obligation_kind 权威公式）、S5-C（settlement/adapter recovery，六输出态全函数）。**子 PR #565（评分 92）与 #564（评分 87）已分别 squash 合并入本 root（`bb792547`，2026-08-14），子 PR 分支已清理，尚未进入 main**；历史计数全部保留不覆盖，最终 P0/P1=0；follow-up REQ-047（R1-S5 implementation conformance，保留 P2×3/P3×2）稳定登记。
+下一步：根层边界审计（五面）+ 元数据归一化 → 根层定向复核 → P0/P1=0 后转 Ready（按用户指令执行）。
+验证状态：docs gate（含 --full）exit 0；Draft 三路 checks 待跑（归一化提交后）；历史复审链：S5-A 三轮 + S5-B 三轮 + S5-C 三轮 + 组合三面 + 四族定向 + 公式终结，全部 P0/P1=0 收口。
+交接备注：#563 无评分行（子 PR #564/#565 两条 inherited 评分行保留）；不评分、不合并、不启动实现/migration/I1/I2/S5/S6/C1、不创建 main closeout；root Ready 待本批次完成。
 
 ## 下一批候选任务
 
@@ -22,7 +39,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | REQ-041/047 owner-scoped participant 重构 + S5 aggregation reducer 契约冻结 | 🔵 就绪 | 独立 contract-first PR：先冻结 reducer 状态表、六 owner 写者所有权、读写边界、失败 reason 聚合及 tie-break、blocked 单调性、completed/failure_code 清除权、迁移边界（含 #561 登记的 5 项延期：_repair 临时投影风险、六 owner 移除 operation/Conversation 写入、receipt-lookup-only Tx2 双重 I/O、_load_registered_refs ORDER BY）——不得并入 #561，不得直接实现 S5 | [Plan §R1-S4-F F-2a](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s4-f-fault-矩阵--s4-收口-契约细化2026-08-12先于实现冻结纯文档) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
