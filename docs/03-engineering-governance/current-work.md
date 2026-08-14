@@ -14,24 +14,7 @@
 
 ## 当前进行中
 
-### R1-S5-A/B/C: Owner Aggregation + Rebuild + Settlement Contract Stack Root
-
-状态：🟡 进行中
-类型：契约冻结（contract-first，纯文档，stacked 三层 root）
-领域：R1 保留/清除（S5-A reducer/写者所有权 + S5-B rebuild/seeding/lineage + S5-C settlement/adapter recovery）
-当前执行模式：plan-do（文档契约）
-最近接手工具：Claude Code
-分支：docs/req041-047-r1-s5a-owner-aggregation-contract（#563 Draft，HEAD `bb792547`，base main @ `99a3ffac`）
-
-需求来源：
-- Spec: [R1 §4.2/§5.2/§8](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- Plan: [R1-S5-A/B/C 三层契约段](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
-- 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
-
-当前进展：A/B/C 三层契约齐备——S5-A（reducer/coordinator/写者所有权，11 项前向回填全部落点）、S5-B（Option D rebuild/seeding/lineage + 族 E/F 全函数 + derived-conflict G4 + expected_obligation_kind 权威公式）、S5-C（settlement/adapter recovery，六输出态全函数）。**子 PR #565（评分 92）与 #564（评分 87）已分别 squash 合并入本 root（`bb792547`，2026-08-14），子 PR 分支已清理，尚未进入 main**；历史计数全部保留不覆盖，最终 P0/P1=0；follow-up REQ-047（R1-S5 implementation conformance，保留 P2×3/P3×2）稳定登记。
-下一步：根层边界审计（五面）+ 元数据归一化 → 根层定向复核 → P0/P1=0 后转 Ready（按用户指令执行）。
-验证状态：docs gate（含 --full）exit 0；Draft 三路 checks 待跑（归一化提交后）；历史复审链：S5-A 三轮 + S5-B 三轮 + S5-C 三轮 + 组合三面 + 四族定向 + 公式终结，全部 P0/P1=0 收口。
-交接备注：#563 无评分行（子 PR #564/#565 两条 inherited 评分行保留）；不评分、不合并、不启动实现/migration/I1/I2/S5/S6/C1、不创建 main closeout；root Ready 待本批次完成。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -39,6 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P1 | R1-S5-I1 Legal Hold Revision Fencing Producer | 🔵 就绪（未开工） | create/release 均 Conversation-first + 同事务 bump `hold_revision`；仅 producer primitive + pre-I2 真实 PG race（bump 串行化 + drift 拒绝 in-flight entry）；完整 permission/HTTP/CLI API 不在 I1 | [Plan §R1-S5-A-6 I1](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
@@ -49,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-08-14 | R1-S5-A/B/C Contract Stack Root 契约冻结（三层 stacked，纯文档） | 🟢 完成 | S5-A reducer + S5-B rebuild（Option D/族 E/F/derived G4/权威公式）+ S5-C settlement（六输出态）冻结并入 main；root 评分 86、子 PR 87/92，P0/P1=0；契约冻结≠S5 实现完成；follow-up REQ-047 | [PR #563](https://github.com/MarkDanile/MetaEduBase/pull/563)（squash merge `6f86f959`）/ [work-log](work-log.md) / [score 86](04-retrospectives/review-score-log.md) |
 | 2026-08-13 | R1-S4-F Fault Matrix 实现（架构裁决 Option A） | 🟢 完成 | 多轮 P1 触发 TD-092 升级，Option A（聚合归 S5，现写标注临时投影）；18 反例 + expire_all/双门禁；#561 未实现 S5 reducer；最终 P0/P1/P2=0，评分 90，Backend full 2364 | [PR #561](https://github.com/MarkDanile/MetaEduBase/pull/561)（squash merge `bc3234bd`）/ [work-log](work-log.md) / [score 90](04-retrospectives/review-score-log.md) |
 | 2026-08-12 | R1-S4-F Fault 矩阵 + S4 收口 契约细化 | 🟢 完成 | 纯文档冻结 S4-F 契约（F-0~F-7：故障点清单 16 项 + 五方状态一致矩阵 + 注入机制 + 互操作回归 + 与 S5/S6 分工 + 反例矩阵 11 项 + S4 收口）；首轮 P0=0/P1=6/P2=9/P3=9，5 根因族返修（含纠正 1 条返修引入新 P1）→ P0/P1=0，评分 92；净 diff 仅 2 纯文档文件；registry 保持 external/runtime False | [PR #559](https://github.com/MarkDanile/MetaEduBase/pull/559)（squash merge `d658f6eb`）/ [work-log](work-log.md) / [score 92](04-retrospectives/review-score-log.md) |
 | 2026-08-12 | R1-S4-E-C Runtime Conformance Fake | 🟢 完成 | `RuntimeErasureParticipant` conformance fake（`runtime.private.v1`）：session destroy 双事务 + 旧 epoch/迟到 seq/unknown outcome/ACK 重放 + E-3a/E-3b；首轮 P0=0/P1=3/P2=9/P3=16，5 根因族返修 + 定向复核 P0/P1/P2=0，评分 92；registry False | [PR #557](https://github.com/MarkDanile/MetaEduBase/pull/557)（squash merge `c31df023`）/ [work-log](work-log.md) / [score 92](04-retrospectives/review-score-log.md) |
