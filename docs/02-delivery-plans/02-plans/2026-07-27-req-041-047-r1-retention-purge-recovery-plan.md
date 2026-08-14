@@ -1605,7 +1605,7 @@ event_id（= outbox row.id = envelope.event.event_id）
 
 #### S5-B-2 Owner obligation 全函数矩阵（冻结）
 
-输入 = 旧 snapshot owner 集 ⊕ 当前 registry owner 集 + settlement 收敛后的旧 checkpoint/fence 状态。**三条硬约束**：不得静默丢弃旧清除义务；不得把 outcome_unknown 重开 pending；不得按普通新增 owner 建 pending 后撞 terminal fence。
+输入 = 旧 snapshot owner 集 ⊕ 当前 registry owner 集 + settlement 收敛后的旧 checkpoint/fence 状态。**四条硬约束**：不得静默丢弃旧清除义务；不得把 `outcome_unknown` / `settlement_deadline_expired` / `adapter_unresolvable`（S5-C 输出态 3/5/6）重开 pending；不得按普通新增 owner 建 pending 后撞 terminal fence；**reason 不可判定的 blocked（其他/NULL）不得落入通用 pending 分支**（dirty-data fail closed）。
 
 **quiesce 前置（所有 change 类型通用）**：`checkpoint.state == erasing` 或 `fence.state == erasing` 的行**不进入 rebuild**（quiesce 门禁，settle 后按 settlement 结果重判）。
 
@@ -1617,12 +1617,14 @@ event_id（= outbox row.id = envelope.event.event_id）
 |-----------|-------|-------------|--------------|
 | `acked` | `erased` | **合法继承**（S5-B-3 lineage 重验全过） | `acked`（seeded） |
 | `acked` | `active`/`blocked` | **矛盾** → fail closed（ack 但 fence 未 erased，S5-B-3 不满足） | — |
-| `blocked`（可证明未发送：`*_erase_timeout`/`*_adapter_unavailable`） | `active`/`blocked` | 义务重开 | `pending` |
-| `blocked`（`outcome_unknown`） | `active`/`blocked` | **保留 blocked/reconcile，不重开 pending** | `blocked`（carry，reason 保留） |
-| `blocked`（其他 participant reason） | `active`/`blocked` | 义务重开 | `pending` |
+| `blocked`（可证明未发送/未清除：`*_erase_timeout`/`*_adapter_unavailable`/scan 族——S5-C 输出态 2） | `active`/`blocked` | 义务重开 | `pending` |
+| `blocked`（`outcome_unknown` / `settlement_deadline_expired` / `adapter_unresolvable`——S5-C 输出态 3/5/6） | `active`/`blocked` | **保留 blocked/reconcile，不重开 pending** | `blocked`（carry，reason 保留） |
+| `blocked`（pre-window gate reason：`purge_blocked_by_legal_hold`/`purge_blocked_by_unresolved_action`/`purge_blocked_by_conversation_scope_gate`/`purge_owner_unavailable`/`operator_suppressed`——具名域，非 catch-all） | `active`/`blocked` | 义务重开（S5-B-5 hold-release 序列依赖此行为） | `pending` |
+| `blocked`（其他未知/NULL reason，不在任何命名域） | `active`/`blocked` | **dirty-data fail closed/reconcile，禁止落入通用 pending 分支** | — |
 | `pending` | `active`/`blocked` | 义务重开（保持未完成） | `pending` |
 | `pending` | `erased` | **矛盾** → fail closed（pending 但 fence 已 erased） | — |
-| `failed` | `active`/`blocked`/`erased` | 保留 failed（scheduler 重试预算语义，不重开） | `failed`（carry） |
+| `failed` | `active`/`blocked` | 保留 failed（scheduler 重试预算语义，不重开） | `failed`（carry） |
+| `failed` | `erased` | **矛盾组合 → dirty-data fail closed**（fence `erased` 证明清除已成功，与 failed 终态矛盾；不得按普通 failed carry 继续 rebuild） | — |
 | 缺行 | `active`/`blocked`/`erased` | **fail closed**（旧义务未表达，不得静默丢弃） | — |
 
 **B. added owner**（当前 registry 新增 owner_key，且**无历史 fence 行**）：新义务 → `pending`（owner_version/capability_digest 取当前 registry）。fence 行由 participant 首次写正文时按 registry 建 `active`（Spec §5.1「新正文 writer 在首次写事务中创建缺失 fence」）。
@@ -1688,7 +1690,7 @@ event_id（= outbox row.id = envelope.event.event_id）
 - **quiesce 判定锁序**：quiesce 门禁判定（扫描是否存在 `erasing` checkpoint/fence）在 Conversation 行锁下进行，与 rebuild 同锁串行——settlement 的 Tx2/crash replay 持 owner lock + fence FOR UPDATE + operation FOR UPDATE 写 owner-scoped 事实，与 rebuild 的 Conversation 行锁互斥，不存在「rebuild 半程某 owner 仍在 erasing」的撕裂读。
 - **crash/rollback**：单事务 → 不留半套 checkpoint（旧 operation 完整保留，可重放）。
 - **相同 drift 重放（锁内判别）**：幂等判别在 **Conversation 行锁内**评估，命中条件 = `purge_revision == conversation.purge_revision`（当前 top）+ `hold_revision_snapshot == 当前 hold_revision` + `registry_digest == 当前 digest` + `state != cancelled` + `conversation.state == DELETED`，且 predecessor 锁内重验仍为 max-revision 且 G1/G2-blocked → 幂等返回该 operation（同一 rebuild 结果），不重复建。restore interleave → 零新行幂等 no-op（见 DELETED 门禁）。
-- **settlement 幂等**：settlement 的 Tx2/crash replay 天然幂等（精确 token 匹配 + fence/checkpoint 状态机白名单；重放同 revision 意图返回同一 owner-scoped 结果，零跨 owner 副作用）。
+- **settlement 幂等（由 S5-C 契约承担，本 PR 不重复冻结机制）**：settlement 幂等由 S5-C 冻结的 descriptor/token 重验、lookup/replay 规则与 fence/checkpoint CAS 单写收敛承担（S5-C-5/6/7）；本 PR 只消费 S5-C settlement terminal facts（S5-B-2 映射）。
 - **rebuild 期间 registry/hold 再变化**：registry digest 变化（部署）→ rebuild 事务内 G1 校验失败 fail closed（不落库）；hold 变化 → Conversation 锁串行（见 S5-B-5）。
 
 #### S5-B-7 Settlement-only adapter 恢复契约（已拆出 → R1-S5-C）
@@ -1706,16 +1708,19 @@ event_id（= outbox row.id = envelope.event.event_id）
 5. **conflict**：lineage 失败 / predecessor 缺失或矛盾 / snapshot 外 owner 行 → owner-level blocked（`purge_owner_ack_conflict`，按 S5-A 优先级 4 参与聚合，**不限于「全 acked」**——lineage 失败在 partial-ACK 状态也必须即时浮出，不被优先级 6 掩蔽）。
 6. **failed obligation**：checkpoint=`failed`（scheduler 重试预算耗尽写）→ 按 S5-A-2 优先级 5 聚合（reason = 该 owner 最后一次 blocked reason）。
 
-**S5-A 需调整清单（八项，待 S5-B P0/P1 清零后回 #563 回填）**：
+**S5-A 需调整清单（八项 + S5-C 增补第 9/10/11 项，待 S5-B P0/P1 清零后随前向指针回 #563 回填）**：
 
 1. S5-A-2 五方验证 fence.purge_revision 条件改双分支（native 等值 / inherited 小于 + lineage 重验）。
-2. calculator 输入增加 predecessor 定位 facts + lineage 六项校验结果 + settlement outcome 三分类（success/可证明未发送/outcome_unknown）。
+2. calculator 输入增加 predecessor 定位 facts + lineage 六项校验结果 + **S5-C settlement terminal facts**（per-owner 收敛结果，按 S5-C-9 重建输入映射表消费——「settlement outcome 三分类」旧表述废弃，由 S5-C 六输出态/已落账/failed 收敛替代）。**RecoveryDescriptor 六字段及历史装配归 scheduler slice 前置项（settlement 路径专用消费），不得登记为 reducer/calculator 输入**。
 3. S5-A-8 反例矩阵**改行非补行**：row 16 的 purge_revision 不匹配参数化**收窄为 native 路径**；补 inherited-ACK 正/负行、forged-lineage 变异、outcome_unknown 不重开 pending 行（**前向指针**：本契约 S5-B-9 反例矩阵对应行）。
 4. S5-A-4 锁序不变（coordinator 读 fence 与 predecessor 均只读，不加 FOR UPDATE）；settlement-only 通道锁序归属（Tx2/crash replay 保持 participant 序 fence→operation，禁新 Tx1）随 settlement 契约**移入 S5-C**（S5-C 并发与写者节）。
 5. S5-A-10 S6「移出项」回填指向本契约（S5-B）——**前向指针**。
 6. S5-A-1 写者表补新写者例外：rebuild seeding 是 **checkpoint 第三写者**（一次事务、仅 quiesce 后 rebuild、证据可重验）；**删除**原「scheduler 的 erasing-fence token 迁移是 fence 受限新写者」条目（Option D 已删该 primitive）。
 7. S5-A-2 优先级表补 owner 级 lineage/conflict blocked（优先级 4 参与聚合）；`outcome_unknown` 归 reconcile-only（**不进优先级 4 重开路径，不重开 pending**）。
 8. **旧 revision settlement 门禁 + core owner family-B backport**（均归 I2）：五份 participant 的 `_load_verified_operation` 补 `operation.purge_revision == conversation.purge_revision` 门禁（旧 revision 拒绝一切写，含 `_repair_checkpoint_if_pending`/`_record_blocked`/`_ack_owner_checkpoint`/coordinator CAS）；`workspace.core.v1`/`execution.core.v1` 补 `fence.purge_revision == purge_revision` 门禁（镜像 transport:746，S5-B-0 item 3）。
+9. **S5-C 增补（随 #565 落地）**：S5-A-4 Tx2 重验集在 drift 下的 settlement 例外——frozen-snapshot 基准（S5-C-2 六条校验条件，三条硬绑定 = 旧 operation 仍为 top revision / 精确 attempt·intent·fence token / 禁新 Tx1）；含 S5-C-7 ACK-lost repair 的 revision 重基准（= 锁内当前 `operation.revision`）。
+10. **S5-C 增补（随 #565 落地）**：S5-A-1 写者表补「settlement fence `erasing→blocked` 写者（4 非 core owner）+ scheduler settlement 进入点」。
+11. **S5-C 增补（随 #565 落地）**：S5-A-0 reason 值域 level 7 内新增 4 个 code——`purge_blocked_by_*_settlement_deadline_expired` / `purge_blocked_by_*_adapter_unresolvable`（external/runtime 各一，S5-C-1 输出态 5/6）。
 
 #### S5-B-9 反例矩阵（冻结，scheduler slice 实现 PR 逐项落地）
 
@@ -1933,9 +1938,22 @@ event_id（= outbox row.id = envelope.event.event_id）
 
 #### S5-C-9 接口、变更登记与前向指针
 
-- **对 S5-B（#564）**：依赖接口 =「rebuild 输入必须已满足 S5-C settlement terminal contract」（已在 #564 scope-cleanup 落地）；S5-B-2 case A carry 规则消费本契约输出态（outcome_unknown/恢复超时/adapter 不可解析 → blocked carry，不重开 pending）。
+- **对 S5-B（#564）**：依赖接口 =「rebuild 输入必须已满足 S5-C settlement terminal contract」（已在 #564 scope-cleanup 落地）。**S5-B rebuild 输入映射（冻结，逐项唯一——每个 S5-C terminal fact 恰映射一行）**：
+
+| S5-C terminal fact | S5-B-2 case A rebuild 输入（checkpoint × fence） | rebuild 动作 |
+|--------------------|------------------------------------------------|--------------|
+| 输出态 1 success | `acked` × `erased` | lineage 可继承（S5-B-3 重验） |
+| 输出态 2 可证明未发送 | `blocked` + `erase_timeout`/`adapter_unavailable`/scan 族 × `blocked` | 义务重开 `pending` |
+| 输出态 3 outcome_unknown | `blocked` + `outcome_unknown` × `blocked` | **carry，不重开 pending** |
+| 输出态 4 ACK-lost repair | `acked` × `erased`（fence 零修改） | 同输出态 1（lineage 继承） |
+| 输出态 5 恢复超时 | `blocked` + `settlement_deadline_expired` × `blocked` | **carry，不重开 pending** |
+| 输出态 6 adapter 不可解析 | `blocked` + `adapter_unresolvable` × `blocked` | **carry，不重开 pending** |
+| 已落账 blocked（pre-fix 遗留，S5-C-1 已落账收敛） | 按已持久 reason 归上四类 blocked 行之一 | 同对应行（fence 已收敛） |
+| failed（非矛盾，S5-C-1 failed 收敛） | `failed` × `blocked`/`active` | failed carry（scheduler 重试预算语义） |
+| failed × `erased` 矛盾 / 其他未知·NULL reason | 矛盾/不可判定（S5-B-2 dirty-data 行） | **dirty-data fail closed**，禁止普通 carry/重开 |
+
 - **对 S4-F 的显式变更（本契约登记，两项）**：①「Tx2 不碰 fence」→ settlement 收口写 fence `erasing→blocked`（4 非 core owner，S5-C-7）；② erased-fence repair 枚举为 settlement 第三路径（I2 后仅修 checkpoint，S5-C-7）。
-- **对 S5-A**：S5-A-4 Tx2 重验集在 drift 下的 settlement 例外（frozen-snapshot 基准，S5-C-2 六条校验条件，其中三条硬绑定 = 旧 operation 仍为 top revision / 精确 attempt·intent·fence token / 禁新 Tx1；含 S5-C-7 ACK-lost repair 的 revision 重基准）；S5-A-1 写者表补「settlement fence `erasing→blocked` 写者（4 非 core owner）+ scheduler settlement 进入点」；**S5-A-0 reason 值域 7 层内新增 4 个 code**（external/runtime × `settlement_deadline_expired`/`adapter_unresolvable`，S5-C-1 输出态 5/6）。**三项补登记随「#564 前向指针回填」一并写入 S5-B-8 调整清单（作为第 9/10/11 项增补），回填 #563 时不得遗漏**——本契约不回填 #563/#564 正文。
+- **对 S5-A**：S5-A-4 Tx2 重验集在 drift 下的 settlement 例外（frozen-snapshot 基准，S5-C-2 六条校验条件，其中三条硬绑定 = 旧 operation 仍为 top revision / 精确 attempt·intent·fence token / 禁新 Tx1；含 S5-C-7 ACK-lost repair 的 revision 重基准）；S5-A-1 写者表补「settlement fence `erasing→blocked` 写者（4 非 core owner）+ scheduler settlement 进入点」；**S5-A-0 reason 值域 7 层内新增 4 个 code**（external/runtime × `settlement_deadline_expired`/`adapter_unresolvable`，S5-C-1 输出态 5/6）。**三项补登记已在本 PR 展开为 S5-B-8 清单第 9/10/11 项增补**——随 #564 前向指针回填 #563 时不得遗漏；本契约不回填 #563 正文。
 - **实现回填归属（族 G/H，scheduler slice 前置项）**：external/runtime adapter Protocol docstring 幂等矛盾消除 + receipt 三态/否定证据类型扩展 + 版本化 adapter resolver（S5-C-3，返回 immutable RecoveryDescriptor + descriptor/路由变化必须 bump owner_version 强不变量）+ **scheduler 写 failed 时同步收敛 fence（S5-C-1 failed 收敛）** → scheduler slice 实现 PR 落地；本契约不启动实现/migration。
 - **收尾约束（按任务指令）**：不回 #563（保持 `efde24e4`）；不处理 S5-B 族 E/F；不转 Ready、不评分、不合并、不启动 I1/I2/S5 实现/S6/C1。
 
@@ -1970,6 +1988,16 @@ event_id（= outbox row.id = envelope.event.event_id）
 5. **补三条反例**（S5-C-8 行 14/15/16）：frozen descriptor 语义（部署新版本不影响旧收口）、终态后 reason 精确判别输出态、lookup 落账前崩溃重放无分叉。
 
 **独立定向复核（本批次 commit 后执行，不重开完整三面）**：六项指令逐项核对——①✓ ②✓ ⑤✓ ⑥✓；③④主文落地但 **S5-C-8 行 8 残留旧表述**（「可重算」+ outcome_unknown reason，P1）；批次改窄例外条款 reason 映射致**偏函数缺口**（态 1/2 无码可写，P1）；另 P2×3（descriptor 缺 lookup 能力位映射声明、「无持久 attempt 载体」措辞不精确、已落账归类缺其他/NULL reason 兜底）+ P3×3（行 9 未具名新 code、S5-C-6 旧措辞残留、批次记录未登记例外条款映射变更）。**补正 commit**：行 8 改新 code + 终态不重算；例外条款 reason 映射改全函数（态 2 不降级、态 1/4 不适用）；`receipt_lookup_semantics_version` 非空 ⇔ supports_receipt_lookup 映射声明；「lookup 次数载体」措辞；归类兜底；行 9 具名；S5-C-6 措辞；记录登记。复核员判定两条 P1 均为**文档契约层事实载体问题（残留/回归）**，不触发上层架构裁决；补正后六项事实载体问题清零（补正 diff 逐项核对）。
+
+**Ready 前 stacked 边界纠偏批次（定向批次，不重开完整三面、不重开单行 fence + 双事务架构裁决；#564 base 保持 `da57b947`、#565 边界修正全部落地在本 PR）**：
+
+1. **S5-B-2 reason 分区（四命名域 + dirty 兜底，废除「其他 participant reason」catch-all）**：`erase_timeout`/`adapter_unavailable`/scan 族 → `pending`；`outcome_unknown`/`settlement_deadline_expired`/`adapter_unresolvable`（S5-C 输出态 3/5/6）→ blocked carry 禁止重开；pre-window gate reason（具名域：legal_hold/unresolved_action/conversation_scope/owner_unavailable/operator_suppressed）→ `pending`（S5-B-5 hold-release 序列依赖，具名非 catch-all）；其他未知/NULL → dirty-data fail closed/reconcile，禁止落入通用 pending 分支。`failed × erased` 矛盾组合 → dirty-data fail closed（不得按普通 failed carry 继续 rebuild）。
+2. **S5-B-6 settlement 幂等收窄**：删除「Tx2/crash replay 天然幂等」具体机制宣称，只引用 S5-C descriptor/token 重验、lookup/replay 与 fence/checkpoint CAS 契约。
+3. **S5-B-8 消费 S5-C terminal facts**：item 2「settlement outcome 三分类」旧表述由 S5-C 六输出态/已落账/failed 收敛替代；**RecoveryDescriptor 六字段及历史装配归 scheduler slice 前置项（settlement 路径专用），不误登记为 reducer/calculator 输入**；第 9/10/11 项增补展开（frozen-snapshot 基准 + ACK-lost revision 重基准 / settlement fence 写者 / 4 个 level-7 reason code）。
+4. **S5-C-9 rebuild 输入映射表**：六输出态 + 已落账 blocked + failed/dirty-data **逐项唯一**映射到 S5-B-2 case A。
+5. S5-C-9 对 S5-A 登记同步（三项补登记已在 S5-B-8 展开）+ current-work 同步。
+
+**边界审计计数（独立 stacked 接口定向复核，待执行；首轮三面与事实载体纠偏历史计数保留不覆盖）**：待登记。
 
 **状态**：Draft。按任务指令：不回 #563、不处理 S5-B 族 E/F、不转 Ready、不评分、不合并、不启动实现或 migration。
 
