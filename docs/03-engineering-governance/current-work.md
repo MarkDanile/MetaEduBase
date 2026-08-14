@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### R1-S5-I1: Legal Hold Revision Fencing Producer
+
+状态：🟡 进行中
+类型：前置实现（TD-092 拆分；S5-A-6 I1，先于 I2 合并）
+领域：R1 保留/清除（legal hold producer primitive）
+当前执行模式：plan-do
+最近接手工具：Claude Code
+分支：feature/req041-047-r1-s5i1-hold-revision-fencing
+
+需求来源：
+- Spec: [R1 §9.1/§12.4 数据治理](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- Plan: [R1-S5-A-4/S5-A-6 I1 契约（已冻结）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
+- 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
+
+当前进展：开工（代码事实对账进行中）。
+下一步：代码事实对账 → 测试先行（11 用例先红）→ producer primitive 实现（create/release）→ mutation 判别 → 全量验证 → 全新广域三面 → Draft PR。
+验证状态：未运行。
+交接备注：只实现 repository/domain producer primitive；不实现 I2/scheduler/完整 HTTP/CLI API；不改 schema/migration/registry/CI；不转 Ready/评分/合并。
 
 ## 下一批候选任务
 
@@ -22,7 +39,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | R1-S5-I1 Legal Hold Revision Fencing Producer | 🔵 就绪（未开工） | create/release 均 Conversation-first + 同事务 bump `hold_revision`；仅 producer primitive + pre-I2 真实 PG race（bump 串行化 + drift 拒绝 in-flight entry）；完整 permission/HTTP/CLI API 不在 I1 | [Plan §R1-S5-A-6 I1](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
