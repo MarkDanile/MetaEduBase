@@ -1005,8 +1005,17 @@ class AgentErasureRepository:
             updated_at=effective_now,
         )
         self._session.add(model)
-        # 锁内持久值递增：无调用方传值、无绝对值覆盖。
-        conversation.hold_revision = conversation.hold_revision + 1
+        # 锁内持久值递增（SQL 侧原子自增）：数据库在 FOR UPDATE 行锁下执行
+        # `hold_revision = hold_revision + 1`，无调用方传值、无绝对值覆盖，
+        # 且不受 ORM identity map 过期实例影响（fencing token 不会回退）。
+        await self._session.execute(
+            update(ConversationModel)
+            .where(
+                ConversationModel.tenant_id == tenant_id,
+                ConversationModel.id == conversation_id,
+            )
+            .values(hold_revision=ConversationModel.hold_revision + 1)
+        )
         await self._session.flush()
         return _hold_to_domain(model)
 
@@ -1081,8 +1090,15 @@ class AgentErasureRepository:
         hold.released_by = released_by
         hold.revision = hold.revision + 1
         hold.updated_at = effective_now
-        # 锁内持久值递增：与 create 同规则。
-        conversation.hold_revision = conversation.hold_revision + 1
+        # 锁内持久值递增（SQL 侧原子自增）：与 create 同规则。
+        await self._session.execute(
+            update(ConversationModel)
+            .where(
+                ConversationModel.tenant_id == tenant_id,
+                ConversationModel.id == conversation_id,
+            )
+            .values(hold_revision=ConversationModel.hold_revision + 1)
+        )
         await self._session.flush()
         return _hold_to_domain(hold)
 

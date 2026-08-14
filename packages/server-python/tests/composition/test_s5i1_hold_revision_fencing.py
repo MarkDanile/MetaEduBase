@@ -12,8 +12,9 @@ pre-I2 可测项（S5-A-6 I1 验收 re-scope）：
   -> 拒绝，正文/fence/checkpoint/operation/投影零变化）。
 
 本文件为 I1 专项独立测试文件（不并入既有 fault/schema 大文件）；
-全部使用真实 PostgreSQL + 独立 AsyncSession/连接；
-并发等待一律 `asyncio.wait_for(..., timeout=15)` 并标注阶段。
+全部使用真实 PostgreSQL + 独立 AsyncSession/连接。
+并发等待：正向等待一律 `asyncio.wait_for(..., timeout=15)`；负向判别窗口
+（锁序探测/插队判定的短超时）属刻意偏离，取值已在各用例注释标注阶段与预算。
 """
 
 from __future__ import annotations
@@ -394,8 +395,8 @@ async def test_release_holds_conversation_lock_blocks_late_create(session_factor
     async with session_factory() as verify:
         assert await _hold_revision(verify, cid) == 1
 
-    started = asyncio.Event()
-    release_committed = asyncio.Event()
+    # 负向判别窗口：create 必须在窗口内完成才判「插队」——窗口取 1.0s（实测
+    # create+commit 约 0.25-0.3s，留 3 倍余量；慢环境冷启动可再放宽）。
 
     async with session_factory() as blocker:
         # T1：模拟 release 先持 Conversation 行锁 + hold 行锁（与 release
@@ -414,7 +415,6 @@ async def test_release_holds_conversation_lock_blocks_late_create(session_factor
             ),
             {"hid": hold.id},
         )
-        started.set()
 
         async def _late_create():
             async with session_factory() as s:
@@ -431,7 +431,7 @@ async def test_release_holds_conversation_lock_blocks_late_create(session_factor
         # T2 必须被 T1 的 Conversation 锁挡住（release 持锁期间不得插队）。
         with pytest.raises(asyncio.TimeoutError):
             await asyncio.wait_for(
-                asyncio.shield(late_task), timeout=0.5
+                asyncio.shield(late_task), timeout=1.0
             )
         assert not late_task.done() or late_task.cancelled()
 
@@ -444,7 +444,6 @@ async def test_release_holds_conversation_lock_blocks_late_create(session_factor
             released_by=uuid.uuid4(),
         )
         await blocker.commit()
-        release_committed.set()
 
         # T2 排队完成：create 在 release 提交后落库，最终 +2。
         await asyncio.wait_for(late_task, timeout=_TIMEOUT)
@@ -728,6 +727,30 @@ async def test_stale_and_duplicate_release_fail_closed(db_session):
     assert await _hold_revision(db_session, cid) == 2
     row = await _hold_by_id(db_session, hold.id)
     assert row.revision == 2
+
+
+async def test_release_missing_conversation_and_missing_hold_fail_closed(db_session):
+    """用例 8c：release 侧 missing Conversation / missing hold -> fail closed 零写零 bump。"""
+    tid, cid = await _seed_conversation(db_session)
+    await db_session.commit()
+    repo = AgentErasureRepository(db_session)
+    with pytest.raises(LateBodyWriteRejectedError):
+        await repo.release_legal_hold(
+            tenant_id=uuid.uuid4(),
+            conversation_id=uuid.uuid4(),
+            hold_id=uuid.uuid4(),
+            expected_revision=1,
+            released_by=uuid.uuid4(),
+        )
+    with pytest.raises(ValueError, match="missing"):
+        await repo.release_legal_hold(
+            tenant_id=tid,
+            conversation_id=cid,
+            hold_id=uuid.uuid4(),
+            expected_revision=1,
+            released_by=uuid.uuid4(),
+        )
+    assert await _hold_revision(db_session, cid) == 0
 
 
 async def test_outer_transaction_rollback_rolls_back_hold_and_bump(session_factory):

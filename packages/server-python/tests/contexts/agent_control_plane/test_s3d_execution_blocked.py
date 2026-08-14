@@ -372,3 +372,54 @@ async def test_round1_p1_1_suppressed_envelope_acked_zero_scan(db_session):
     assert completed.terminal_output_media_type is None
     assert completed.terminal_output_classification is None
     assert completed.terminal_message_id is None
+
+
+async def test_i1_hold_drift_rejects_execution_entry(db_session):
+    """I1：hold create 推进 hold_revision 后，旧 snapshot 的 execution entry
+    必须被拒绝（G2 drift），正文/fence/checkpoint/operation 零变化。
+
+    与 workspace 侧 test_create_drift_rejects_participant_entry 同构——
+    execution `_load_verified_operation` 独立实现同校验（hold_revision_snapshot
+    != conversation.hold_revision），I1 后从 vacuous 变为 live，须有独立
+    mutation kill（删该校验即本测试转红）。
+    """
+    conversation_id, identity, purge_revision = await h.seed_purgeable(db_session)
+    run = await h.seed_completed_run(
+        db_session, conversation_id=conversation_id, identity=identity
+    )
+    await h.seed_run_event(db_session, run=run)
+    await h.seed_compatibility_output(db_session, run=run)
+    await h.seed_turn_input(db_session, run=run)
+    operation_id, op_revision = await h.make_purge_operation(
+        db_session, conversation_id, purge_revision, hold_revision_snapshot=0
+    )
+    await AgentErasureRepository(db_session).create_legal_hold(
+        tenant_id=h.TENANT_ID,
+        conversation_id=conversation_id,
+        reason_code="litigation",
+        purpose="drift case",
+        actor_id=h.ACTOR_ID,
+    )
+    await db_session.commit()
+    ctx = {
+        "conversation_id": conversation_id,
+        "identity": identity,
+        "purge_revision": purge_revision,
+        "operation_id": operation_id,
+        "op_revision": op_revision,
+        "run_id": run.id,
+    }
+
+    with pytest.raises(ValueError, match="hold_revision_snapshot"):
+        await _erase(db_session, ctx)
+    await db_session.rollback()
+
+    completed = await h.run_model(db_session, ctx["run_id"])
+    assert completed.terminal_output_ref is not None  # 正文未被清除
+    # 失败 entry 先于任何 fence 建立（惰性 fence 未创建）——零写包含 fence 零行。
+    fence = await h.fence_model_or_none(db_session, ctx["conversation_id"])
+    assert fence is None
+    op = await h.operation_model(db_session, ctx["operation_id"])
+    assert op.state == "scheduled"
+    cp = await h.checkpoint_model(db_session, ctx["operation_id"])
+    assert cp.state == PurgeOwnerState.PENDING.value

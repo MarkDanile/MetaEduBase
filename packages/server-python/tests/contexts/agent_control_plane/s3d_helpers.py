@@ -510,6 +510,23 @@ async def fence_model(db_session: AsyncSession, conversation_id: uuid.UUID):
     ).scalar_one()
 
 
+async def fence_model_or_none(
+    db_session: AsyncSession, conversation_id: uuid.UUID
+):
+    """I1 drift 零写断言用：失败 entry 先于惰性 fence 建立时返回 None。"""
+    from app.contexts.agent_workspace.infrastructure.models import ErasureFenceModel
+
+    return (
+        await db_session.execute(
+            select(ErasureFenceModel).where(
+                ErasureFenceModel.tenant_id == TENANT_ID,
+                ErasureFenceModel.conversation_id == conversation_id,
+                ErasureFenceModel.owner_key == EXECUTION_CORE_OWNER,
+            )
+        )
+    ).scalar_one_or_none()
+
+
 async def checkpoint_model(
     db_session: AsyncSession, operation_id: uuid.UUID
 ) -> PurgeOwnerCheckpointModel:

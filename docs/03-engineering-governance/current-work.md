@@ -28,9 +28,9 @@
 - Plan: [R1-S5-A-4/S5-A-6 I1 契约（已冻结）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
 - 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
 
-当前进展：开工（代码事实对账进行中）。
-下一步：代码事实对账 → 测试先行（11 用例先红）→ producer primitive 实现（create/release）→ mutation 判别 → 全量验证 → 全新广域三面 → Draft PR。
-验证状态：未运行。
+当前进展：实现已落地并推送（commit `d6b8f276`）——create/release producer primitives（Conversation-first FOR UPDATE + 同事务 SQL 侧原子自增 bump + 不 commit + fail-closed 矩阵）；12 用例真实 PG 先红后绿（含锁序观测判别 5b）；六项 mutation kill 逐项转红并恢复（M1 并发 create lost-update、M2 release 锁序、M3/M4 双侧 bump、M5 同事务边界、M6 participant drift 校验）；6 处既有 hold 测试按 hold 先行语义更新。首轮三面 P0=1/P1=5/P2=13/P3=4（P0 为复核 agent 实证变异遗留的工作区污染，已恢复）→ 根因族一次统一返修（SQL 侧自增、stale 注释、execution drift 测试、release 缺行测试、边际/文档精度）。
+下一步：统一返修后全量验证（I1 多轮稳定性 + 受影响回归 + 全 composition + ruff + mypy + gates）→ 独立定向复核 → Draft PR。
+验证状态：返修前基线——I1 专项 12 passed、受影响回归 127 passed、全 composition 442 passed（串行）、ruff 全绿、mypy 243 historical/0 regressions、docs gates（含 --full）exit 0；返修后待重跑。
 交接备注：只实现 repository/domain producer primitive；不实现 I2/scheduler/完整 HTTP/CLI API；不改 schema/migration/registry/CI；不转 Ready/评分/合并。
 
 ## 下一批候选任务
