@@ -1578,6 +1578,8 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 
 **拆分后边界**：本契约冻结「participant 去共享写 + coordinator 全函数 + I1 生产者 primitive」三层；**不冻结** scheduler 的 rebuild/seeding、重试预算/选择、claim/限流语义——后者在 scheduler slice 契约 PR 单独冻结，本 PR 仅登记为前置契约项。
 
+> **merged-boundary（2026-08-15，实现 PR #567，squash merge `edeabcd0`）**：I1 legal-hold revision fencing producer 已并入 main——`create_legal_hold`/`release_legal_hold` 均 Conversation-first `FOR UPDATE` + 同事务 SQL 侧原子自增 bump `Conversation.hold_revision`（均 bump，S5-A-4/S5-A-10 冻结语义不变）；**G2 hold_revision 生产者从 vacuous 变为可观测**（drift 拒绝 in-flight participant entry，双侧 participant 已接入测试可观测）；release hold 锁谓词 tenant-scoped（`id + tenant_id + conversation_id FOR UPDATE`）经 Ready 前纠偏落地（外租户行锁零等待反例 8d + 裸 id mutation 实杀转红）；评分 90（Original，基线 `3bbcba2b`），最终 P0/P1=0，Backend full 2379 passed。**边界**：仅 producer primitive——**尚未实现** I2（纯 projection calculator + transactional projection coordinator + 六 owner participant 移除 operation/Conversation 临时投影写）、full scheduler、claim/lease、rebuild/retry、完整 legal-hold permission/HTTP/CLI API、S6、C1；「hold-create vs completed 拦截」断言归 I2、「release 后 retry 续跑」断言归 scheduler slice（S5-A-10 S6 re-scope 保持）。REQ-047 / R1-S5 implementation conformance follow-up 保留（I1 并入后续 conformance；时间预算型判别随实现 PR 加固；td-032 拆分计划已登记）。
+
 ### R1-S5-B：Purge Revision Rebuild & Evidence Seeding 契约（stacked contract-first）
 
 > Status: Draft（stacked PR，base = `docs/req041-047-r1-s5a-owner-aggregation-contract` @ `efde24e4`，#563 正文不在本 PR 修改。**历史 stacked child**：#564 已 squash 合并入 root #563 @ `bb792547`（评分 87，2026-08-14），尚未进入 main）
