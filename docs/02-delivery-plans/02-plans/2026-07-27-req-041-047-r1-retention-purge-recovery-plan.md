@@ -1807,7 +1807,6 @@ event_id（= outbox row.id = envelope.event.event_id）
 
 （其余 S5-B-1/S5-B-7 的 settlement/adapter 相关小节由本契约接管；S5-B 主体的 rebuild/obligation/lineage 保持 #564。族 E/F 的 seeding/聚合阶段分离、re-added reason 分派在 S5-B 主体后续返修。）
 
->>>>>>> c976dab6 (docs(plan): R1-S5-C Settlement-only Adapter Recovery 契约骨架（拆分自 #564，承载七族 P1）)
 ### R1-S5：Legal hold、Scheduler 与运维闭环
 
 **复杂度/执行**：极高，Sol `xhigh`；人工数据/安全签字。
