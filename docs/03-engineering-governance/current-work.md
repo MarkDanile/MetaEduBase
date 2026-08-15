@@ -28,9 +28,9 @@
 - Plan: [R1-S5-A-1 至 S5-A-8（重点 S5-A-4/S5-A-5/S5-A-6）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
 - 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
 
-当前进展：实现已落地（HEAD `ecd109a4`）——纯 calculator（S5-A-2 全函数真值表，38 纯单元测试）+ transactional coordinator（Conversation-first 锁序 + 锁内 CAS + 零写 + 终态覆盖禁令，17 真实 PG 测试）+ 六 owner 去共享投影写（9 守卫测试 + 3 门禁测试，12 真实 PG）；I2 冻结门禁（五份 `_load_verified_operation` 旧 revision 拒绝 + workspace/execution core erased-fence 跨实例门禁）；11 项 mutation kill 全部实杀转红后恢复（M9 判别加强为 pg_locks 观测）。
-下一步：全新三面复审 → 根因族统一返修 → 独立定向复核 → Draft PR。
-验证状态（串行实测）：I2 专项 67 passed；受影响回归 508（composition）+ 451（contexts）全绿；全量 2438 passed / 4 skipped / 4 failed + 5 errors（全部为 tests/shared/test_task_lifecycle.py 本地缺 metaedu 库的环境问题，与 I2 无关，CI 有 TEST_DATABASE_URL）；ruff 全绿；mypy 243 historical/0 regressions；docs gate（含 --full）exit 0。
+当前进展：实现已落地（最终 HEAD `2e565007`）——纯 calculator（S5-A-2 全函数真值表，44 纯单元测试）+ transactional coordinator（Conversation-first 锁序 + 锁内 CAS + 零写 + 终态覆盖禁令 + 旧 revision 门禁，22 真实 PG 测试）+ 六 owner 去共享投影写（14 守卫/门禁测试）+ 组合根不可达门禁测试；I2 冻结门禁（五份 `_load_verified_operation` 旧 revision 拒绝 + core erased-fence 跨实例门禁 + coordinator CAS + hold-create vs completed 拦截 + S5-A-7 ⑤ ORDER BY）；16 项 mutation kill 全部实杀转红后恢复（M9/M12-M16 判别加强）。**首轮三面原始计数保留不覆盖：P0=1/P1=7/P2=10/P3=14** → 族 A~N 统一返修一次 → 独立定向复核 10 项全 ✅、零新 findings → **最终 P0/P1=0**。
+下一步：创建 Draft PR → 等 Draft checks 全绿 → 停止（不转 Ready/评分/合并）。
+验证状态（串行实测）：I2 专项 79 passed（calculator 44 + coordinator 22 + six-owner 14 + wiring 1）；受影响回归 973 passed（composition + 三 contexts）；全量 2449 passed / 4 skipped（4 failed + 5 errors 为 tests/shared/test_task_lifecycle.py 本地缺 metaedu 库的既有环境问题，与 I2 无关，CI 有 TEST_DATABASE_URL）；ruff 全绿；mypy 243 historical/0 regressions；docs gate（含 --full）exit 0。
 交接备注：不实现 scheduler claim/lease、rebuild/seeding、retry/reconcile、settlement、完整 legal-hold API；不改 schema/migration 040/041/registry/CI；不转 Ready/评分/合并。
 
 ## 下一批候选任务
