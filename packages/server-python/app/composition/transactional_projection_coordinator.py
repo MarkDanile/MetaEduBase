@@ -58,12 +58,16 @@ _COORDINATOR_PURGE_STATES = frozenset(
 
 class ScanResultLike(Protocol):
     """scan 提供者返回形状（WorkspaceBodyScan / ExecutionBodyScan /
-    TransportBodyScan 均满足）。"""
+    TransportBodyScan 均满足——``total`` 为只读 property）。"""
 
-    total: int
+    @property
+    def total(self) -> int: ...
 
 
-ScanProvider = Callable[[uuid.UUID, uuid.UUID], Awaitable[ScanResultLike]]
+# 三份 scan 实现均 keyword-only 签名；``Callable[..., Awaitable[...]]`` 只约束
+# 返回可等待性与结果形状，不约束参数形状（避免 mypy 对 bound async method 与
+# callable Protocol 的匹配失败）。
+ScanProvider = Callable[..., Awaitable[ScanResultLike]]
 
 
 # ---------------------------------------------------------------------------
