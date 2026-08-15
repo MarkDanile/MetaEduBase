@@ -542,3 +542,94 @@ async def test_runtime_ack_zero_shared_writes(db_session):
     assert checkpoint["state"] == "acked"
     fence = await _read_fence(db_session, cid, RUNTIME)
     assert fence["state"] == "erased"
+
+
+# ---------------------------------------------------------------------------
+# I2 冻结门禁（S5-A-4，回填自 S5-B-8 第 8 项）
+# ---------------------------------------------------------------------------
+
+
+async def test_stale_operation_purge_revision_gate_fail_closed(db_session):
+    """旧 revision 拒绝门禁：Conversation.purge_revision 已推进而 operation 仍为
+    旧 revision → participant entry fail closed（caller 参数与 operation 一致也
+    不得放行——首锁内 Conversation 当前值裁决）。"""
+    tid, cid = await _seed_conversation(db_session)
+    op_id, _ = await _seed_operation_and_checkpoint(db_session, tid, cid, WS_CORE)
+    # Conversation 推进到 purge_revision=2（operation 仍 1）。
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversations SET purge_revision=2 "
+            "WHERE id=:cid"
+        ),
+        {"cid": cid},
+    )
+    participant = WorkspaceErasureParticipant(
+        db_session,
+        audit_secret=_AUDIT_SECRET,
+        audit_secret_version=_AUDIT_SECRET_VERSION,
+    )
+    with pytest.raises(ValueError, match="stale operation revision rejected"):
+        await participant.erase_conversation_body(
+            tenant_id=tid,
+            conversation_id=cid,
+            purge_revision=1,  # 与 operation 一致（旧值）——仍须被门禁拒绝
+            purge_operation_id=op_id,
+            expected_operation_revision=1,
+        )
+    await db_session.rollback()
+
+
+async def test_workspace_core_erased_fence_cross_revision_gate_fail_closed(db_session):
+    """workspace.core.v1 erased-fence 跨 purge 实例门禁（镜像 transport:746）：fence
+    purge_revision 与请求不一致 → fail closed（跨实例 ack 摘要污染防护）。"""
+    tid, cid = await _seed_conversation(db_session)
+    op_id, _ = await _seed_operation_and_checkpoint(db_session, tid, cid, WS_CORE)
+    participant = WorkspaceErasureParticipant(
+        db_session,
+        audit_secret=_AUDIT_SECRET,
+        audit_secret_version=_AUDIT_SECRET_VERSION,
+    )
+    await participant.erase_conversation_body(
+        tenant_id=tid,
+        conversation_id=cid,
+        purge_revision=1,
+        purge_operation_id=op_id,
+        expected_operation_revision=1,
+    )
+    # 第二 purge 实例（purge_revision=2）重放旧 erased fence → fail closed。
+    with pytest.raises(ValueError, match="cross-purge-instance ACK repair rejected"):
+        await participant.erase_conversation_body(
+            tenant_id=tid,
+            conversation_id=cid,
+            purge_revision=2,
+            purge_operation_id=op_id,
+            expected_operation_revision=1,
+        )
+    await db_session.rollback()
+
+
+async def test_execution_core_erased_fence_cross_revision_gate_fail_closed(db_session):
+    """execution.core.v1 erased-fence 跨 purge 实例门禁（镜像 transport:746）。"""
+    tid, cid = await _seed_conversation(db_session)
+    op_id, _ = await _seed_operation_and_checkpoint(db_session, tid, cid, EX_CORE)
+    participant = ExecutionErasureParticipant(
+        db_session,
+        audit_secret=_AUDIT_SECRET,
+        audit_secret_version=_AUDIT_SECRET_VERSION,
+    )
+    await participant.erase_execution_body(
+        tenant_id=tid,
+        conversation_id=cid,
+        purge_revision=1,
+        purge_operation_id=op_id,
+        expected_operation_revision=1,
+    )
+    with pytest.raises(ValueError, match="cross-purge-instance ACK repair rejected"):
+        await participant.erase_execution_body(
+            tenant_id=tid,
+            conversation_id=cid,
+            purge_revision=2,
+            purge_operation_id=op_id,
+            expected_operation_revision=1,
+        )
+    await db_session.rollback()
