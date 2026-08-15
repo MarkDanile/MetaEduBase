@@ -33,7 +33,10 @@ _DEFINING_FILES = {
 
 
 def test_six_erase_entries_unreachable_from_production_composition():
-    app_root = Path(__file__).resolve().parents[3] / "app"
+    # 本文件位于 packages/server-python/tests/composition/ →
+    # parents[2] = packages/server-python → app/。
+    app_root = Path(__file__).resolve().parents[2] / "app"
+    assert app_root.is_dir(), f"app root not found: {app_root}"
     violations: list[tuple[str, str]] = []
     for path in sorted(app_root.rglob("*.py")):
         if path.name in _DEFINING_FILES:
