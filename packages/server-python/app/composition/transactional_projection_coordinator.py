@@ -214,13 +214,19 @@ class TransactionalProjectionCoordinator:
             )
         effective_now = now or await self._database_now()
 
-        # 锁序第二步：operation 行 FOR UPDATE。
+        # 锁序第二步：operation 行 FOR UPDATE。三键限定 tenant+id+conversation_id
+        # （纠偏 P1-1）：跨 Conversation 的 operation 查询必须 fail closed 且
+        # **不等待**目标 operation 行锁（裸 tenant+id 查询会先阻塞在被持行锁上，
+        # 再后验 conversation_id 失败——有界 fail-closed 要求查询谓词内限定 scope，
+        # missing-or-scope-mismatch 统一报 not found，无外租户/外 Conversation
+        # 信息泄露）。
         operation = (
             await self._session.execute(
                 select(PurgeOperationModel)
                 .where(
                     PurgeOperationModel.tenant_id == tenant_id,
                     PurgeOperationModel.id == purge_operation_id,
+                    PurgeOperationModel.conversation_id == conversation_id,
                 )
                 .with_for_update()
             )
@@ -417,20 +423,23 @@ class TransactionalProjectionCoordinator:
             target_started_at: datetime | None = now
         else:
             target_started_at = operation.started_at
-        if result.state == "completed" and operation.completed_at is None:
-            target_completed_at: datetime | None = now
+        # 纠偏 P1-2：终态时间归一化——completed 取既有值或 DB now；**非 completed
+        # 一律清 NULL**（旧投影污染预置的 completed_at/purged_at 不得残留，
+        # 六元组随聚合归一）。
+        if result.state == "completed":
+            target_completed_at: datetime | None = operation.completed_at or now
         else:
-            target_completed_at = operation.completed_at
+            target_completed_at = None
         # purge_state：聚合投影值域由 coordinator 写；scheduled 保持生命周期
         # 写者既有值（not_scheduled/scheduled 归 delete/restore，S5-A-1）。
         if result.purge_state in _COORDINATOR_PURGE_STATES:
             target_purge_state = result.purge_state
         else:
             target_purge_state = conversation.purge_state
-        if result.state == "completed" and conversation.purged_at is None:
-            target_purged_at: datetime | None = now
+        if result.state == "completed":
+            target_purged_at: datetime | None = conversation.purged_at or now
         else:
-            target_purged_at = conversation.purged_at
+            target_purged_at = None
 
         stored = (
             operation.state,

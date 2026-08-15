@@ -156,14 +156,23 @@ COORDINATOR_LEVEL_REASONS = frozenset(
     }
 )
 
-# unknown non-NULL reason 的确定性归属层（全函数边界：保留原 reason 作
-# failure_code，按 level 12 参与 severity-max——dirty-data 归运维，聚合不停摆）。
-UNKNOWN_REASON_SEVERITY = 12
-
 
 def severity_of(reason: str) -> int:
-    """reason 严重度；未知 reason 确定性归 UNKNOWN_REASON_SEVERITY。"""
-    return REASON_SEVERITY.get(reason, UNKNOWN_REASON_SEVERITY)
+    """reason 严重度。调用前提：reason 已通过 participant 域校验
+    （``_dirty_reason`` 先行，本表必然命中）。"""
+    return REASON_SEVERITY[reason]
+
+
+def _dirty_reason(reason: str | None) -> bool:
+    """reason 信任边界（纠偏 P1-3，normalized-fact 校验）：
+    checkpoint reason 只允许 participant 可写域（level 1/5-12）；level 2/3/4
+    coordinator-only 与 unknown non-NULL 均为 dirty/conflict——不得原样进入
+    operation.failure_code。NULL 不是 dirty（operator_suppressed 冻结语义）。"""
+    if reason is None:
+        return False
+    if reason not in REASON_SEVERITY:
+        return True  # unknown non-NULL
+    return reason in COORDINATOR_LEVEL_REASONS  # level 2/3/4
 
 
 def _severity_max_with_tie_break(
@@ -195,17 +204,22 @@ def _five_party_validation(
     operation_purge_revision: int,
     lineage_status: str,
 ) -> bool:
-    """checkpoint=acked + fence=erased + owner/version 匹配 + fence.purge_revision
-    双分支（native 等值 / inherited 例外）+ ack_digest 一致 + ingress 证据满足。
+    """checkpoint=acked + fence=erased + owner/version 匹配 + capability 一致
+    + fence.purge_revision 双分支（native 等值 / inherited 例外）+ ack_digest
+    一致 + ingress 证据满足。
 
     与 scan 结果无关（scan 是独立条件(c)，不参与五方）。任一矛盾 fail closed
-    （优先级 2，不先 completed 再等运维 reconcile）。
+    （优先级 2，不先 completed 再等运维 reconcile）。纠偏 P1-4：
+    checkpoint.capability_digest 与 snapshot owner fact 不一致（G1 已保证
+    snapshot 对应 installed registry）→ 五方矛盾，不得 completed。
     """
     if checkpoint is None or checkpoint.state != "acked":
         return False
     if fence_row is None or fence_row.state != "erased":
         return False
     if checkpoint.owner_version != owner.owner_version:
+        return False
+    if checkpoint.capability_digest != owner.capability_digest:
         return False
     if fence_row.owner_version != owner.owner_version:
         return False
@@ -335,11 +349,11 @@ def calculate_projection(inputs: ProjectionInput) -> ProjectionResult:
         rows: list[CheckpointFact],
     ) -> str | None:
         """优先级 4/5 共享的 reason 聚合：severity-max + owner_key tie-break；
-        全部 NULL → operator_suppressed（level 12 可达）；unknown 非 NULL reason
-        按 level 12 归属并保留原值（全函数边界，见 UNKNOWN_REASON_SEVERITY）。
+        全部 NULL → operator_suppressed（level 12 可达）。
 
         入参由调用方按优先级过滤（优先级 4 仅 blocked 行、优先级 5 仅 failed
-        行——S5-A-3「failure_code 取当前 blocked checkpoint 集合」）。
+        行——S5-A-3「failure_code 取当前 blocked checkpoint 集合」），且**入参
+        reason 已通过 participant 域校验**（dirty reason 在上游 fail closed）。
         """
         pairs = [
             (r.owner_key, r.reason_code)
@@ -363,6 +377,15 @@ def calculate_projection(inputs: ProjectionInput) -> ProjectionResult:
     # 4 blocked：任一 checkpoint blocked（不得被后到 ACK 重开 running）。
     blocked_rows = [r for r in all_rows if r.state == "blocked"]
     if blocked_rows:
+        # reason 信任边界（纠偏 P1-3）：dirty reason 不得进入 failure_code。
+        if any(_dirty_reason(r.reason_code) for r in blocked_rows):
+            return ProjectionResult(
+                state="blocked",
+                failure_code="purge_owner_ack_conflict",
+                purge_state="blocked",
+                completed=False,
+                purged=False,
+            )
         return ProjectionResult(
             state="blocked",
             failure_code=blocked_reason_aggregation(blocked_rows),
@@ -375,6 +398,16 @@ def calculate_projection(inputs: ProjectionInput) -> ProjectionResult:
     # 产生；coordinator 只读聚合。全部 reason NULL → None）。
     failed_rows = [r for r in all_rows if r.state == "failed"]
     if failed_rows:
+        # reason 信任边界（纠偏 P1-3）：failed 的 dirty reason 同样不得进入
+        # failure_code——稳定 fail closed 为 blocked + conflict。
+        if any(_dirty_reason(r.reason_code) for r in failed_rows):
+            return ProjectionResult(
+                state="blocked",
+                failure_code="purge_owner_ack_conflict",
+                purge_state="blocked",
+                completed=False,
+                purged=False,
+            )
         non_null = [
             (r.owner_key, r.reason_code)
             for r in failed_rows

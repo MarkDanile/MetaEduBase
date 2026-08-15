@@ -297,7 +297,9 @@ async def test_coordinator_overwrites_polluted_legacy_projection(db_session):
     # S5-A-8 行 12：in-flight operation 带污染投影 → coordinator 从 facts 重算覆盖。
     tid, cid = await _seed_conversation(db_session)
     op_id = await _seed_operation(db_session, tid, cid, owners=[WS_CORE])
-    await _block_checkpoint(db_session, tid, op_id, WS_CORE, "purge_blocked_by_erase_timeout")
+    await _block_checkpoint(
+        db_session, tid, op_id, WS_CORE, "purge_blocked_by_runtime_erase_timeout"
+    )
     # 污染：operation 投影被写成 running + 空 failure_code（旧临时投影残留）。
     await db_session.execute(
         text(
@@ -314,11 +316,11 @@ async def test_coordinator_overwrites_polluted_legacy_projection(db_session):
     )
     assert result is not None
     assert (result.state, result.failure_code) == (
-        "blocked", "purge_blocked_by_erase_timeout",
+        "blocked", "purge_blocked_by_runtime_erase_timeout",
     )
     op = await _read_operation(db_session, op_id)
     assert op["state"] == "blocked"
-    assert op["failure_code"] == "purge_blocked_by_erase_timeout"
+    assert op["failure_code"] == "purge_blocked_by_runtime_erase_timeout"
 
 
 async def test_terminal_state_overwrite_ban_fail_closed(db_session):
@@ -352,7 +354,9 @@ async def test_terminal_completed_not_reopened_by_later_block(db_session):
     assert result is not None and result.state == "completed"
     await db_session.commit()
     # facts 变化：checkpoint 被外部改成 blocked（脏数据）。
-    await _block_checkpoint(db_session, tid, op_id, WS_CORE, "purge_blocked_by_erase_timeout")
+    await _block_checkpoint(
+        db_session, tid, op_id, WS_CORE, "purge_blocked_by_runtime_erase_timeout"
+    )
     await db_session.commit()
     with pytest.raises(ValueError, match="terminal"):
         await coordinator.aggregate_projection(
@@ -711,7 +715,7 @@ async def test_concurrent_aggregation_after_change_bumps_revision_once(session_f
 
     # facts 变化：checkpoint -> blocked。
     change = session_factory()
-    await _block_checkpoint(change, tid, op_id, WS_CORE, "purge_blocked_by_erase_timeout")
+    await _block_checkpoint(change, tid, op_id, WS_CORE, "purge_blocked_by_runtime_erase_timeout")
     await change.commit()
 
     async def aggregate():
@@ -728,14 +732,14 @@ async def test_concurrent_aggregation_after_change_bumps_revision_once(session_f
         asyncio.gather(aggregate(), aggregate()), timeout=_TIMEOUT
     )
     blocked_ok = lambda r: r is None or (  # noqa: E731
-        r.state == "blocked" and r.failure_code == "purge_blocked_by_erase_timeout"
+        r.state == "blocked" and r.failure_code == "purge_blocked_by_runtime_erase_timeout"
     )
     assert blocked_ok(r1) and blocked_ok(r2)
     check = session_factory()
     try:
         op = await _read_operation(check, op_id)
         assert op["state"] == "blocked"
-        assert op["failure_code"] == "purge_blocked_by_erase_timeout"
+        assert op["failure_code"] == "purge_blocked_by_runtime_erase_timeout"
         assert op["revision"] == 3  # 真实变化只 bump 一次
     finally:
         await check.commit()
@@ -929,7 +933,7 @@ async def test_failed_checkpoint_aggregation_via_coordinator(db_session):
     await db_session.execute(
         text(
             "UPDATE metaedu.agent_conversation_purge_owners SET state='failed', "
-            "reason_code='purge_blocked_by_erase_timeout' WHERE purge_operation_id=:op"
+            "reason_code='purge_blocked_by_runtime_erase_timeout' WHERE purge_operation_id=:op"
         ),
         {"op": op_id},
     )
@@ -939,7 +943,7 @@ async def test_failed_checkpoint_aggregation_via_coordinator(db_session):
     )
     assert result is not None
     assert (result.state, result.failure_code) == (
-        "failed", "purge_blocked_by_erase_timeout",
+        "failed", "purge_blocked_by_runtime_erase_timeout",
     )
     op = await _read_operation(db_session, op_id)
     assert op["state"] == "failed"
@@ -997,3 +1001,159 @@ async def test_hold_create_vs_completed_interception(db_session):
         )
     ).scalar_one()
     assert hold_count == 0
+
+
+# ---------------------------------------------------------------------------
+# Ready 前纠偏（本轮 P1×4 失败反例，先于生产修正）
+# ---------------------------------------------------------------------------
+
+
+async def test_cross_conversation_operation_fail_closed_without_lock_wait(
+    session_factory,
+):
+    """纠偏 P1-1：连接 A 持 Conversation B 的 operation FOR UPDATE；连接 B 用
+    Conversation A + operation B 调 coordinator——必须有界 fail closed（不等待
+    operation B 锁）。operation 查询必须 tenant+id+conversation_id 三键限定，
+    missing-or-scope-mismatch 统一；变异「裸 tenant+id 查询」→ 本测试红（锁等待）。"""
+    seed = session_factory()
+    tid, cid_a = await _seed_conversation(seed, actor_state="redacted")
+    await _seed_operation(seed, tid, cid_a, owners=[WS_CORE])
+    # Conversation B 同 tenant（跨 Conversation 场景，非同 tenant）。
+    cid_b = uuid.uuid4()
+    await seed.execute(
+        text(
+            "INSERT INTO metaedu.agent_conversations "
+            "(id, tenant_id, created_by, actor_state, creation_digest, "
+            "creator_identity_digest, title, title_source, state, purge_after, "
+            "purge_state, purge_revision, hold_revision, revision, created_at, "
+            "updated_at) "
+            "VALUES (:id, :tid, NULL, 'redacted', :digest, :identity, "
+            "'sensitive title b', 'none', 'deleted', now() - interval '1 day', "
+            "'scheduled', 1, 0, 1, now(), now())"
+        ),
+        {"id": cid_b, "tid": tid, "digest": "b" * 64, "identity": "e" * 64},
+    )
+    op_b = await _seed_operation(seed, tid, cid_b, owners=[WS_CORE])
+    await seed.commit()
+
+    # 连接 A：持 operation B 行锁。
+    blocker = session_factory()
+    await blocker.execute(
+        text(
+            "SELECT * FROM metaedu.agent_conversation_purges "
+            "WHERE id=:op FOR UPDATE"
+        ),
+        {"op": op_b},
+    )
+
+    async def call_cross_conversation():
+        session = session_factory()
+        try:
+            coordinator = await _coordinator(session)
+            return await coordinator.aggregate_projection(
+                tenant_id=tid,
+                conversation_id=cid_a,  # 目标 Conversation A
+                purge_operation_id=op_b,  # 但 operation 属 Conversation B
+            )
+        finally:
+            await session.commit()
+
+    task = asyncio.create_task(call_cross_conversation())
+    await asyncio.sleep(1.5)
+    fail_closed_fast = task.done()
+    # 收尾先行：释放 operation B 锁让变异场景也能收尾，再断言。
+    await blocker.commit()
+    try:
+        await asyncio.wait_for(task, timeout=_TIMEOUT)
+    except ValueError as exc:
+        assert "not found" in str(exc)
+    else:
+        raise AssertionError(
+            "cross-conversation operation must fail closed"
+        )
+    assert fail_closed_fast, (
+        "coordinator waited on a cross-conversation operation row lock; "
+        "operation SELECT must scope conversation_id (bounded fail closed)"
+    )
+
+
+async def test_polluted_terminal_timestamps_normalized(db_session):
+    """纠偏 P1-2：scheduled/running/blocked facts 但 completed_at/purged_at 预置
+    非 NULL（旧投影污染）→ coordinator 必须清为 NULL；状态/failure_code/时间
+    六元组同时断言。变异「非 completed 保留旧时间」→ 红。"""
+    tid, cid = await _seed_conversation(db_session, actor_state="redacted")
+    op_id = await _seed_operation(db_session, tid, cid, owners=[WS_CORE])
+    await db_session.commit()
+    # 污染预置：running facts + 终态时间残留。
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversation_purges SET completed_at=now() "
+            "WHERE id=:op"
+        ),
+        {"op": op_id},
+    )
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversations SET purged_at=now() "
+            "WHERE id=:cid"
+        ),
+        {"cid": cid},
+    )
+    db_session.expire_all()
+    coordinator = await _coordinator(db_session)
+    result = await coordinator.aggregate_projection(
+        tenant_id=tid, conversation_id=cid, purge_operation_id=op_id
+    )
+    assert result is not None and result.state == "running"
+    op = await _read_operation(db_session, op_id)
+    conv = await _read_conversation(db_session, cid)
+    assert op["completed_at"] is None, "非 completed 必须清 completed_at"
+    assert conv["purged_at"] is None, "非 completed 必须清 purged_at"
+    assert (
+        op["state"],
+        op["failure_code"],
+        op["completed_at"],
+        conv["purge_state"],
+        conv["purged_at"],
+    ) == ("running", None, None, "running", None)
+    assert op["started_at"] is not None  # 冻结首次写语义保持
+
+
+async def test_dirty_checkpoint_reason_fail_closed_conflict(db_session):
+    """纠偏 P1-3（coordinator 级）：checkpoint blocked 携带 unknown/coordinator-only
+    reason → blocked + purge_owner_ack_conflict，不得原样进入 failure_code；
+    checkpoint 保持零修改。"""
+    tid, cid = await _seed_conversation(db_session)
+    op_id = await _seed_operation(db_session, tid, cid, owners=[WS_CORE])
+    # 写入 coordinator-only reason（level 3）——participant 越域写的脏形态。
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversation_purge_owners SET state='blocked', "
+            "reason_code='blocked_hold_revision_changed' "
+            "WHERE purge_operation_id=:op"
+        ),
+        {"op": op_id},
+    )
+    db_session.expire_all()
+    coordinator = await _coordinator(db_session)
+    result = await coordinator.aggregate_projection(
+        tenant_id=tid, conversation_id=cid, purge_operation_id=op_id
+    )
+    assert result is not None
+    assert (result.state, result.failure_code) == (
+        "blocked", "purge_owner_ack_conflict",
+    )
+    op = await _read_operation(db_session, op_id)
+    assert op["state"] == "blocked"
+    assert op["failure_code"] == "purge_owner_ack_conflict"
+    # checkpoint 零修改（reason 保留原脏值，只读聚合）。
+    cp_reason = (
+        await db_session.execute(
+            text(
+                "SELECT reason_code FROM metaedu.agent_conversation_purge_owners "
+                "WHERE purge_operation_id=:op"
+            ),
+            {"op": op_id},
+        )
+    ).scalar_one()
+    assert cp_reason == "blocked_hold_revision_changed"

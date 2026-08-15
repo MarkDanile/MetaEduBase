@@ -259,7 +259,7 @@ def test_priority5_failed_aggregates_severity_max():
     state, code, purge_state, completed, purged = result_of(
         snapshot=[WS_CORE, EX_CORE],
         checkpoints=[
-            cp(WS_CORE, "failed", reason="purge_blocked_by_erase_timeout"),
+            cp(WS_CORE, "failed", reason="purge_blocked_by_runtime_erase_timeout"),
             cp(EX_CORE, "failed", reason="purge_blocked_by_legal_hold"),
         ],
     )
@@ -282,18 +282,18 @@ def test_priority5_failed_is_not_shadowed_by_pending():
     state, code, _, _, _ = result_of(
         snapshot=[WS_CORE, EX_CORE],
         checkpoints=[
-            cp(WS_CORE, "failed", reason="purge_blocked_by_erase_timeout"),
+            cp(WS_CORE, "failed", reason="purge_blocked_by_runtime_erase_timeout"),
             cp(EX_CORE, "pending"),
         ],
     )
-    assert (state, code) == ("failed", "purge_blocked_by_erase_timeout")
+    assert (state, code) == ("failed", "purge_blocked_by_runtime_erase_timeout")
 
 
 def test_priority4_blocked_aggregates_highest_severity():
     state, code, _, completed, _ = result_of(
         snapshot=[WS_CORE, EX_CORE],
         checkpoints=[
-            cp(WS_CORE, "blocked", reason="purge_blocked_by_erase_timeout"),
+            cp(WS_CORE, "blocked", reason="purge_blocked_by_runtime_erase_timeout"),
             cp(EX_CORE, "blocked", reason="purge_blocked_by_legal_hold"),
         ],
     )
@@ -311,7 +311,9 @@ def test_priority4_all_null_reasons_fall_back_operator_suppressed():
 
 
 def test_priority4_unknown_reason_attributed_level12():
-    # 未知非 NULL reason：确定性归 12 层，保留原 reason 作 failure_code（全函数边界）。
+    # 纠偏 P1-3 语义迁移：未知非 NULL reason 不再归 level 12——dirty reason 使
+    # 整个 blocked 聚合 fail closed 为 conflict（任意 owner dirty 即定，不混入
+    # 合法 reason 的 severity-max）。
     state, code, _, _, _ = result_of(
         snapshot=[WS_CORE, EX_CORE],
         checkpoints=[
@@ -319,7 +321,7 @@ def test_priority4_unknown_reason_attributed_level12():
             cp(EX_CORE, "blocked", reason="purge_blocked_by_legal_hold"),
         ],
     )
-    assert (state, code) == ("blocked", "purge_blocked_by_legal_hold")
+    assert (state, code) == ("blocked", "purge_owner_ack_conflict")
 
 
 def test_priority4_blocked_not_reopened_by_later_ack():
@@ -344,11 +346,11 @@ def test_priority4_mixed_blocked_and_failed_excludes_failed_reason():
     state, code, _, _, _ = result_of(
         snapshot=[WS_CORE, EX_CORE],
         checkpoints=[
-            cp(WS_CORE, "blocked", reason="purge_blocked_by_erase_timeout"),
+            cp(WS_CORE, "blocked", reason="purge_blocked_by_runtime_erase_timeout"),
             cp(EX_CORE, "failed", reason="purge_blocked_by_legal_hold"),
         ],
     )
-    assert (state, code) == ("blocked", "purge_blocked_by_erase_timeout")
+    assert (state, code) == ("blocked", "purge_blocked_by_runtime_erase_timeout")
 
 
 def test_all_acked_missing_scan_fact_fail_closed():
@@ -439,7 +441,7 @@ def test_priority4_double_order_equivalence():
     a = result_of(
         snapshot=[WS_CORE, EX_CORE],
         checkpoints=[
-            cp(WS_CORE, "blocked", reason="purge_blocked_by_erase_timeout"),
+            cp(WS_CORE, "blocked", reason="purge_blocked_by_runtime_erase_timeout"),
             cp(EX_CORE, "blocked", reason="purge_blocked_by_legal_hold"),
         ],
     )
@@ -447,7 +449,7 @@ def test_priority4_double_order_equivalence():
         snapshot=[WS_CORE, EX_CORE],
         checkpoints=[
             cp(EX_CORE, "blocked", reason="purge_blocked_by_legal_hold"),
-            cp(WS_CORE, "blocked", reason="purge_blocked_by_erase_timeout"),
+            cp(WS_CORE, "blocked", reason="purge_blocked_by_runtime_erase_timeout"),
         ],
     )
     assert a == b == (
@@ -696,10 +698,10 @@ def test_carried_blocked_row_keeps_blocked_not_reopened():
 def test_carried_failed_row_keeps_failed():
     state, code, _, _, _ = result_of(
         snapshot=[WS_CORE],
-        checkpoints=[cp(WS_CORE, "failed", reason="purge_blocked_by_erase_timeout")],
+        checkpoints=[cp(WS_CORE, "failed", reason="purge_blocked_by_runtime_erase_timeout")],
         lineage_facts=[lineage(WS_CORE, "not_applicable", "carried_failed")],
     )
-    assert (state, code) == ("failed", "purge_blocked_by_erase_timeout")
+    assert (state, code) == ("failed", "purge_blocked_by_runtime_erase_timeout")
 
 
 # ---------------------------------------------------------------------------
@@ -716,7 +718,7 @@ def test_total_function_no_unhandled_combinations():
                 calc(
                     snapshot=[WS_CORE, EX_CORE],
                     checkpoints=[
-                        cp(WS_CORE, s1, reason="purge_blocked_by_erase_timeout"),
+                        cp(WS_CORE, s1, reason="purge_blocked_by_runtime_erase_timeout"),
                         cp(EX_CORE, s2, reason="purge_blocked_by_legal_hold"),
                     ],
                     fences=[
@@ -736,7 +738,7 @@ def test_deterministic_same_input_same_output():
     kwargs = dict(
         snapshot=[WS_CORE, EX_CORE],
         checkpoints=[
-            cp(WS_CORE, "blocked", reason="purge_blocked_by_erase_timeout"),
+            cp(WS_CORE, "blocked", reason="purge_blocked_by_runtime_erase_timeout"),
             cp(EX_CORE, "blocked", reason="purge_blocked_by_legal_hold"),
         ],
     )
@@ -745,3 +747,76 @@ def test_deterministic_same_input_same_output():
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+# ---------------------------------------------------------------------------
+# Ready 前纠偏（本轮 P1×4 失败反例，先于生产修正）
+# ---------------------------------------------------------------------------
+
+
+def test_blocked_unknown_reason_fail_closed_conflict():
+    # 纠偏 P1-3：unknown non-NULL reason 不得原样进入 failure_code（无 level-12
+    # 归属）——稳定 fail closed 为 blocked + purge_owner_ack_conflict。
+    state, code, _, _, _ = result_of(
+        snapshot=[WS_CORE],
+        checkpoints=[cp(WS_CORE, "blocked", reason="mystery_reason")],
+    )
+    assert (state, code) == ("blocked", "purge_owner_ack_conflict")
+
+
+def test_blocked_coordinator_only_reason_fail_closed_conflict():
+    # 纠偏 P1-3：checkpoint 写入 level 2/3/4 coordinator-only reason（participant
+    # 越域写的脏形态）→ 不得原样进入 failure_code → blocked + conflict。
+    for dirty_reason in (
+        "blocked_registry_changed",
+        "blocked_hold_revision_changed",
+        "purge_owner_ack_conflict",
+    ):
+        state, code, _, _, _ = result_of(
+            snapshot=[WS_CORE],
+            checkpoints=[cp(WS_CORE, "blocked", reason=dirty_reason)],
+        )
+        assert (state, code) == ("blocked", "purge_owner_ack_conflict"), dirty_reason
+
+
+def test_null_blocked_reason_operator_suppressed_unchanged():
+    # 纠偏 P1-3 边界保持：NULL blocked reason → operator_suppressed 冻结语义不变。
+    state, code, _, _, _ = result_of(
+        snapshot=[WS_CORE, EX_CORE],
+        checkpoints=[cp(WS_CORE, "blocked", reason=None), cp(EX_CORE, "blocked", reason=None)],
+    )
+    assert (state, code) == ("blocked", "operator_suppressed")
+
+
+def test_failed_all_null_reason_none_unchanged():
+    # 纠偏 P1-3 边界保持：failed 全 NULL → failure_code=None 冻结语义不变。
+    state, code, _, _, _ = result_of(
+        snapshot=[WS_CORE],
+        checkpoints=[cp(WS_CORE, "failed", reason=None)],
+    )
+    assert (state, code) == ("failed", None)
+
+
+def test_capability_digest_mismatch_blocks_completed():
+    # 纠偏 P1-4：checkpoint.capability_digest != snapshot capability_digest——
+    # 即使全 acked、fence erased、scan 全零，也不得 completed；blocked +
+    # purge_owner_ack_conflict。变异「删除 capability 校验」→ 红。
+    mismatched = CheckpointFact(
+        owner_key=WS_CORE,
+        state="acked",
+        reason_code=None,
+        attempt=0,
+        owner_version=1,
+        capability_digest="c" * 64,  # != snapshot D64
+        ack_digest=E64,
+        checkpoint_digest=None,
+    )
+    state, code, purge_state, completed, purged = result_of(
+        snapshot=[WS_CORE],
+        checkpoints=[mismatched],
+        fences=[fence(WS_CORE, "erased", ack_digest=E64)],
+        scans=[scan(WS_CORE, 0)],
+    )
+    assert (state, code, purge_state, completed, purged) == (
+        "blocked", "purge_owner_ack_conflict", "blocked", False, False,
+    )
