@@ -711,15 +711,23 @@ def test_carried_failed_row_keeps_failed():
 
 def test_total_function_no_unhandled_combinations():
     # 全 owner 状态枚举 × 缺 fence/缺行 的抽样组合都必须有唯一结果且不抛异常。
+    # 裁决收口：pending/erasing/acked 行 reason 必须 NULL（合法矩阵），枚举用
+    # blocked/failed 才携带 reason，否则整个枚举退化为 conflict 单一结果。
     states = ["pending", "erasing", "blocked", "failed", "acked"]
+
+    def reason_for(state: str) -> str | None:
+        return "purge_blocked_by_runtime_erase_timeout" if state in (
+            "blocked", "failed",
+        ) else None
+
     for s1 in states:
         for s2 in states:
             r = calculate_projection(
                 calc(
                     snapshot=[WS_CORE, EX_CORE],
                     checkpoints=[
-                        cp(WS_CORE, s1, reason="purge_blocked_by_runtime_erase_timeout"),
-                        cp(EX_CORE, s2, reason="purge_blocked_by_legal_hold"),
+                        cp(WS_CORE, s1, reason=reason_for(s1)),
+                        cp(EX_CORE, s2, reason=reason_for(s2)),
                     ],
                     fences=[
                         fence(WS_CORE, "erased", ack_digest=E64),
@@ -819,4 +827,70 @@ def test_capability_digest_mismatch_blocks_completed():
     )
     assert (state, code, purge_state, completed, purged) == (
         "blocked", "purge_owner_ack_conflict", "blocked", False, False,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 裁决收口（2026-08-15）：checkpoint state × reason_code 全函数校验
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "dirty_reason",
+    [
+        "mystery_reason",  # unknown
+        "blocked_registry_changed",  # level 2
+        "blocked_hold_revision_changed",  # level 3
+        "purge_owner_ack_conflict",  # level 4
+    ],
+)
+def test_failed_dirty_reason_fail_closed_conflict(dirty_reason):
+    # 裁决 P1：failed + dirty reason（unknown/coordinator-only）不得原样进入
+    # failure_code → blocked + purge_owner_ack_conflict。
+    state, code, _, _, _ = result_of(
+        snapshot=[WS_CORE],
+        checkpoints=[cp(WS_CORE, "failed", reason=dirty_reason)],
+    )
+    assert (state, code) == ("blocked", "purge_owner_ack_conflict")
+
+
+@pytest.mark.parametrize(
+    "acked_reason",
+    [
+        "purge_blocked_by_erase_timeout",  # participant 合法码
+        "mystery_reason",  # unknown
+        "blocked_hold_revision_changed",  # coordinator-only level 3
+    ],
+)
+def test_acked_non_null_reason_never_completed(acked_reason):
+    # 裁决新增 P1：acked 行 reason_code 必须 NULL——非 NULL（含 participant 合法码、
+    # unknown、coordinator-only 三类）在全 completed 条件下也不得 completed，
+    # 统一 blocked + purge_owner_ack_conflict（checkpoint 零修改由 coordinator 保证）。
+    state, code, purge_state, completed, purged = result_of(
+        snapshot=[WS_CORE, EX_CORE],
+        checkpoints=[
+            cp(WS_CORE, "acked", ack_digest=E64, reason=acked_reason),
+            cp(EX_CORE, "acked", ack_digest=E64),
+        ],
+        fences=[
+            fence(WS_CORE, "erased", ack_digest=E64),
+            fence(EX_CORE, "erased", ack_digest=E64),
+        ],
+        scans=[scan(WS_CORE, 0), scan(EX_CORE, 0)],
+    )
+    assert (state, code, purge_state, completed, purged) == (
+        "blocked", "purge_owner_ack_conflict", "blocked", False, False,
+    )
+
+
+@pytest.mark.parametrize("state", ["pending", "erasing"])
+def test_inflight_non_null_reason_never_running(state):
+    # 裁决收口：pending/erasing 行 reason_code 必须 NULL——非 NULL 不得静默进入
+    # running，统一 blocked + purge_owner_ack_conflict。
+    result_state, code, _, completed, _ = result_of(
+        snapshot=[WS_CORE],
+        checkpoints=[cp(WS_CORE, state, reason="mystery_reason")],
+    )
+    assert (result_state, code, completed) == (
+        "blocked", "purge_owner_ack_conflict", False,
     )

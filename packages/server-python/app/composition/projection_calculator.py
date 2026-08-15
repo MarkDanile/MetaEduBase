@@ -175,6 +175,37 @@ def _dirty_reason(reason: str | None) -> bool:
     return reason in COORDINATOR_LEVEL_REASONS  # level 2/3/4
 
 
+# checkpoint state 值域（DB CHECK 全函数镜像——超出即篡改形态）。
+_CHECKPOINT_STATES = frozenset({"pending", "erasing", "blocked", "failed", "acked"})
+
+# 非法 reason 组合统一投影（checkpoint 零修改——calculator 只产出投影）。
+_CONFLICT_BLOCKED = ProjectionResult(
+    state="blocked",
+    failure_code="purge_owner_ack_conflict",
+    purge_state="blocked",
+    completed=False,
+    purged=False,
+)
+
+
+def _state_reason_conflict(row: CheckpointFact) -> bool:
+    """state × reason_code 全函数合法矩阵（裁决收口，2026-08-15）：
+
+    - pending/erasing/acked：reason_code 必须 NULL
+    - blocked/failed：NULL 或 participant 域（level 1/5-12）
+    - unknown 或 level 2/3/4 coordinator-only：非法
+    - checkpoint 状态值域外（DB 篡改）：非法
+
+    任一非法组合 → conflict（acked 脏 reason 曾可绕过校验进入 completed，
+    裁决由 P2 提升为 P1 一并闭环）。
+    """
+    if row.state not in _CHECKPOINT_STATES:
+        return True
+    if row.state in ("pending", "erasing", "acked"):
+        return row.reason_code is not None
+    return _dirty_reason(row.reason_code)
+
+
 def _severity_max_with_tie_break(
     owner_reasons: list[tuple[str, str]],
 ) -> str | None:
@@ -327,6 +358,14 @@ def calculate_projection(inputs: ProjectionInput) -> ProjectionResult:
 
     # --- checkpoint 聚合层（gate 全过后按优先级 1→7 判定）---
 
+    # state × reason_code 全函数校验（裁决收口，2026-08-15）：G1-G4 之后、
+    # 优先级 1-7 聚合之前（不改变 gate 优先级）。任一非法组合统一投影为
+    # blocked + purge_owner_ack_conflict；checkpoint 零修改（calculator 只
+    # 产出投影，落账由 coordinator 承担）。
+    for row in inputs.checkpoints:
+        if _state_reason_conflict(row):
+            return _CONFLICT_BLOCKED
+
     # 缺行处理（S5-A-2 优先级唯一裁决）：
     # - expected_obligation_kind=native_pending 缺行 → 视为 pending（绝不 completed）
     # - inherited_acked / carried_blocked / carried_failed 缺行 → lineage conflict
@@ -375,17 +414,9 @@ def calculate_projection(inputs: ProjectionInput) -> ProjectionResult:
         )
 
     # 4 blocked：任一 checkpoint blocked（不得被后到 ACK 重开 running）。
+    # reason 域校验已由 state×reason 全函数校验前置（此处入参必然合法）。
     blocked_rows = [r for r in all_rows if r.state == "blocked"]
     if blocked_rows:
-        # reason 信任边界（纠偏 P1-3）：dirty reason 不得进入 failure_code。
-        if any(_dirty_reason(r.reason_code) for r in blocked_rows):
-            return ProjectionResult(
-                state="blocked",
-                failure_code="purge_owner_ack_conflict",
-                purge_state="blocked",
-                completed=False,
-                purged=False,
-            )
         return ProjectionResult(
             state="blocked",
             failure_code=blocked_reason_aggregation(blocked_rows),
@@ -395,19 +426,9 @@ def calculate_projection(inputs: ProjectionInput) -> ProjectionResult:
         )
 
     # 5 failed：任一 checkpoint failed 且无 blocked（failed 由 S5 scheduler slice
-    # 产生；coordinator 只读聚合。全部 reason NULL → None）。
+    # 产生；coordinator 只读聚合。全部 reason NULL → None；域校验前置）。
     failed_rows = [r for r in all_rows if r.state == "failed"]
     if failed_rows:
-        # reason 信任边界（纠偏 P1-3）：failed 的 dirty reason 同样不得进入
-        # failure_code——稳定 fail closed 为 blocked + conflict。
-        if any(_dirty_reason(r.reason_code) for r in failed_rows):
-            return ProjectionResult(
-                state="blocked",
-                failure_code="purge_owner_ack_conflict",
-                purge_state="blocked",
-                completed=False,
-                purged=False,
-            )
         non_null = [
             (r.owner_key, r.reason_code)
             for r in failed_rows
