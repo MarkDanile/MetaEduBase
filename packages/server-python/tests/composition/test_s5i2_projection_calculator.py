@@ -857,7 +857,7 @@ def test_failed_dirty_reason_fail_closed_conflict(dirty_reason):
 @pytest.mark.parametrize(
     "acked_reason",
     [
-        "purge_blocked_by_erase_timeout",  # participant 合法码
+        "purge_blocked_by_runtime_erase_timeout",  # participant 合法码（真实域 level 8）
         "mystery_reason",  # unknown
         "blocked_hold_revision_changed",  # coordinator-only level 3
     ],
@@ -885,11 +885,14 @@ def test_acked_non_null_reason_never_completed(acked_reason):
 
 @pytest.mark.parametrize("state", ["pending", "erasing"])
 def test_inflight_non_null_reason_never_running(state):
-    # 裁决收口：pending/erasing 行 reason_code 必须 NULL——非 NULL 不得静默进入
-    # running，统一 blocked + purge_owner_ack_conflict。
+    # 裁决收口：pending/erasing 行 reason_code 必须 NULL——非 NULL（含 participant
+    # 合法码，NULL 校验独立于域校验）不得静默进入 running，统一 blocked +
+    # purge_owner_ack_conflict。
     result_state, code, _, completed, _ = result_of(
         snapshot=[WS_CORE],
-        checkpoints=[cp(WS_CORE, state, reason="mystery_reason")],
+        checkpoints=[
+            cp(WS_CORE, state, reason="purge_blocked_by_runtime_erase_timeout")
+        ],
     )
     assert (result_state, code, completed) == (
         "blocked", "purge_owner_ack_conflict", False,
