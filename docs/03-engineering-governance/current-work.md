@@ -29,8 +29,8 @@
 - 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
 
 当前进展：实现已落地（当前本地 HEAD `34ea2cf3`，PR #569 Draft 远端尚待推送）——纯 calculator（S5-A-2 全函数真值表 + reason 信任边界 + capability 五方校验，47 纯单元测试）+ transactional coordinator（Conversation-first 锁序 + 三键限定 operation 查询 + 锁内 CAS + 零写 + 终态覆盖禁令 + 时间归一化 + 旧 revision 门禁，24 真实 PG 测试）+ 六 owner 去共享投影写（14 守卫/门禁测试）+ 组合根不可达门禁测试；I2 冻结门禁全落地；20 项 mutation kill 全部实杀转红后恢复。**历史计数链保留不覆盖**：首轮三面 P0=1/P1=7/P2=10/P3=14 → 族 A~N 统一返修 → 定向复核 10 项 ✅ → Ready 前纠偏 P0=0/P1=4/P2=1/P3=1 → 四变异实杀（M17-M20）→ **第二轮全新广域三面 P0=0/P1=2/P2=16/P3=20 → TD-092 停止**。两条原始 P1：PR body 仍含「未知 reason 契约待 closeout 回写」表述（指令落实缺口）+ failed 分支 dirty-reason 守卫零测试覆盖（变异不可杀）。**用户裁决（2026-08-15）**：不拆 PR；acked + 非 NULL reason 可绕过校验进入 completed 从 P2 提升为裁决新增 P1；pending/erasing 一并纳入 state×reason 全函数校验，统一收口。
-下一步：按裁决执行——停止记录单独提交 → state×reason 全函数校验统一收口 + 可杀变异 → PR body 同步 → 验证 + 独立定向复核 → 非 force 推送等 Draft checks 全绿 → 停止。
-验证状态（串行实测，纠偏批次后）：I2 专项 86 passed；受影响回归 981 passed；全量 2457 passed / 4 skipped（4 failed + 5 errors 为 tests/shared/test_task_lifecycle.py 本地缺 metaedu 库的既有环境问题，与 I2 无关，CI 有 TEST_DATABASE_URL）；ruff 全绿；mypy 243 historical/0 regressions；docs gate（含 --full）exit 0。
+下一步：裁决收口已落地（state×reason 合法矩阵 + M21/M22 实杀 + 990 回归 + 全量 2466）；剩余：独立定向复核 → 非 force 推送 → 等 Draft checks 全绿 → 停止。
+验证状态（串行实测，裁决收口后）：I2 专项 95 passed（calculator 56 + coordinator 24 + six-owner 14 + wiring 1）；受影响回归 990 passed；全量 2466 passed / 4 skipped（4 failed + 5 errors 为 tests/shared/test_task_lifecycle.py 本地缺 metaedu 库的既有环境问题，与 I2 无关，CI 有 TEST_DATABASE_URL）；ruff 全绿；mypy 243 historical/0 regressions；docs gate（含 --full）exit 0。
 交接备注：不实现 scheduler claim/lease、rebuild/seeding、retry/reconcile、settlement、完整 legal-hold API；不改 schema/migration 040/041/registry/CI；本轮不顺手处理 scheduled 生命周期写者边界与 participant 裸键镜像收窄（保留为 P2/conformance follow-up，未经裁决不得改）；不转 Ready/评分/合并。
 
 ## 下一批候选任务
