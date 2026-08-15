@@ -546,12 +546,43 @@ async def test_two_connections_concurrent_aggregation_single_final_writer(sessio
         await check.commit()
 
 
-async def test_concurrent_writer_after_change_bumps_revision_once(session_factory):
-    # facts 变化后并发聚合：最终状态由 facts 决定，revision 单调 +1 每次真实变化。
+async def test_coordinator_fence_read_only_does_not_block_on_fence_lock(session_factory):
+    """S5-A-8 row 21 变异判别：coordinator fence **只读**——另一连接持 fence 行
+    FOR UPDATE 时 coordinator 仍须完成聚合；变异「coordinator fence 加
+    FOR UPDATE」→ 阻塞 fence 行锁 → 本测试红（冻结锁序的击杀点）。"""
     seed = session_factory()
-    tid, cid = await _seed_conversation(seed)
+    tid, cid = await _seed_conversation(seed, actor_state="redacted")
     op_id = await _seed_operation(seed, tid, cid, owners=[WS_CORE])
+    # 先造一行 workspace fence（active），供 blocker 持锁。
+    import json
+
+    await seed.execute(
+        text(
+            "INSERT INTO metaedu.agent_erasure_fences "
+            "(tenant_id, conversation_id, owner_key, owner_version, state, "
+            "purge_revision, hold_revision, ingress_checkpoint, ingress_digest, "
+            "revision, created_at, updated_at) "
+            "VALUES (:t, :c, 'workspace.core.v1', 1, 'active', 0, 0, :ic, "
+            "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', "
+            "1, now(), now())"
+        ),
+        {
+            "t": tid,
+            "c": cid,
+            "ic": json.dumps({"schema_version": 1, "sources": {}}),
+        },
+    )
     await seed.commit()
+
+    blocker = session_factory()
+    await blocker.execute(
+        text(
+            "SELECT * FROM metaedu.agent_erasure_fences "
+            "WHERE conversation_id=:c AND owner_key='workspace.core.v1' "
+            "FOR UPDATE"
+        ),
+        {"c": cid},
+    )
 
     async def aggregate():
         session = session_factory()
@@ -563,16 +594,149 @@ async def test_concurrent_writer_after_change_bumps_revision_once(session_factor
         finally:
             await session.commit()
 
-    first, second = await asyncio.wait_for(
-        asyncio.gather(aggregate(), aggregate()), timeout=_TIMEOUT
+    task = asyncio.create_task(aggregate())
+    await asyncio.sleep(1.5)
+    coordinator_free = task.done()
+    # 收尾先行：释放 fence 锁让变异场景的 coordinator 也能收尾，再断言。
+    await blocker.commit()
+    result = await asyncio.wait_for(task, timeout=_TIMEOUT)
+    assert coordinator_free, (
+        "coordinator blocked on a fence row lock held by another connection; "
+        "fence must be read-only in coordinator lock order (row 21)"
     )
-    assert first is None or first.state == "running"
-    assert second is None or second.state == "running"
+    assert result is not None and result.state == "running"
+
+
+async def test_coordinator_concurrent_with_participant_no_deadlock(session_factory):
+    """S5-A-8 row 21：coordinator 聚合与 participant erase 双连接并发——无 AB-BA、
+    bounded 完成、coordinator 从 facts 重算（S5-A-5 调用点语义）。"""
+    from app.contexts.agent_workspace.infrastructure.workspace_erasure_participant import (
+        WorkspaceErasureParticipant,
+    )
+
+    seed = session_factory()
+    tid, cid = await _seed_conversation(seed, actor_state="redacted")
+    op_id = await _seed_operation(seed, tid, cid, owners=[WS_CORE])
+    await seed.commit()
+
+    async def run_coordinator():
+        session = session_factory()
+        try:
+            coordinator = await _coordinator(session)
+            return await coordinator.aggregate_projection(
+                tenant_id=tid, conversation_id=cid, purge_operation_id=op_id
+            )
+        finally:
+            await session.commit()
+
+    async def run_participant():
+        session = session_factory()
+        try:
+            participant = WorkspaceErasureParticipant(
+                session,
+                audit_secret="test-audit-secret",
+                audit_secret_version=1,
+            )
+            # S5-A-4 冻结「每 participant entry 前按当前 operation 行重读 revision」：
+            # coordinator 可能先落库 bump revision，stale CAS 拒绝后重读重试。
+            for _attempt in range(5):
+                current_rev = (
+                    await session.execute(
+                        text(
+                            "SELECT revision FROM "
+                            "metaedu.agent_conversation_purges WHERE id=:op"
+                        ),
+                        {"op": op_id},
+                    )
+                ).scalar_one()
+                try:
+                    return await participant.erase_conversation_body(
+                        tenant_id=tid,
+                        conversation_id=cid,
+                        purge_revision=1,
+                        purge_operation_id=op_id,
+                        expected_operation_revision=current_rev,
+                    )
+                except ValueError as exc:
+                    if "operation revision mismatch" not in str(exc):
+                        raise
+                    await session.rollback()
+                    await asyncio.sleep(0.1)
+            raise AssertionError("participant did not converge after retries")
+        finally:
+            await session.commit()
+
+    coordinator_result, participant_outcome = await asyncio.wait_for(
+        asyncio.gather(run_coordinator(), run_participant()), timeout=_TIMEOUT
+    )
+    assert participant_outcome.blocked is False
+    # Conversation 首锁串行后两者都完成；最终投影由 facts 决定（workspace acked +
+    # 其余五 owner 缺行 native → running）。
+    assert coordinator_result is None or coordinator_result.state == "running"
     check = session_factory()
     try:
         op = await _read_operation(check, op_id)
         assert op["state"] == "running"
-        assert op["revision"] == 2
+        assert op["revision"] == 2  # scheduled -> running 恰一次 bump
+        cp_state = (
+            await check.execute(
+                text(
+                    "SELECT state FROM metaedu.agent_conversation_purge_owners "
+                    "WHERE purge_operation_id=:op AND owner_key='workspace.core.v1'"
+                ),
+                {"op": op_id},
+            )
+        ).scalar_one()
+        assert cp_state == "acked"
+    finally:
+        await check.commit()
+
+
+async def test_concurrent_aggregation_after_change_bumps_revision_once(session_factory):
+    """族 K（三面 P3-1 修正）：与「同 facts 幂等零写」形成 distinct 场景——facts
+    真实变化（blocked 落账）后双连接并发聚合：变化只 bump 一次（revision 单调
+    +1），最终 failure_code 由事实决定。"""
+    seed = session_factory()
+    tid, cid = await _seed_conversation(seed)
+    op_id = await _seed_operation(seed, tid, cid, owners=[WS_CORE])
+    await seed.commit()
+
+    # 先单线程聚合一次：scheduled -> running（revision 2）。
+    first = session_factory()
+    coordinator_first = await _coordinator(first)
+    await coordinator_first.aggregate_projection(
+        tenant_id=tid, conversation_id=cid, purge_operation_id=op_id
+    )
+    await first.commit()
+
+    # facts 变化：checkpoint -> blocked。
+    change = session_factory()
+    await _block_checkpoint(change, tid, op_id, WS_CORE, "purge_blocked_by_erase_timeout")
+    await change.commit()
+
+    async def aggregate():
+        session = session_factory()
+        try:
+            coordinator = await _coordinator(session)
+            return await coordinator.aggregate_projection(
+                tenant_id=tid, conversation_id=cid, purge_operation_id=op_id
+            )
+        finally:
+            await session.commit()
+
+    r1, r2 = await asyncio.wait_for(
+        asyncio.gather(aggregate(), aggregate()), timeout=_TIMEOUT
+    )
+    blocked_ok = lambda r: r is None or (  # noqa: E731
+        r.state == "blocked" and r.failure_code == "purge_blocked_by_erase_timeout"
+    )
+    assert blocked_ok(r1) and blocked_ok(r2)
+    check = session_factory()
+    try:
+        op = await _read_operation(check, op_id)
+        assert op["state"] == "blocked"
+        assert op["failure_code"] == "purge_blocked_by_erase_timeout"
+        assert op["revision"] == 3  # 真实变化只 bump 一次
     finally:
         await check.commit()
 
@@ -678,6 +842,48 @@ async def test_missing_operation_fail_closed(db_session):
         )
 
 
+async def test_stale_operation_revision_gate_fail_closed(db_session):
+    """I2 门禁（S5-A-4「含 …/coordinator CAS」）：Conversation 已推进 purge_revision
+    （restore + 再次 delete），旧 operation 全 acked facts 也不得写回当前
+    Conversation——fail closed 零写零 bump（跨 purge 实例投影污染防护）。
+    变异「跳过该门禁」→ 本测试红。
+    """
+    tid, cid = await _seed_conversation(db_session, actor_state="redacted")
+    op_id = await _seed_all_acked_facts(db_session, tid, cid)
+    await db_session.commit()  # 先提交种子，rollback 不得抹掉父行
+    # 模拟 restore + 再次 delete：Conversation 推进到 purge_revision=2。
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversations SET purge_revision=2, "
+            "purge_state='scheduled', purged_at=NULL WHERE id=:cid"
+        ),
+        {"cid": cid},
+    )
+    db_session.expire_all()
+    revision_before = (
+        await db_session.execute(
+            text(
+                "SELECT revision FROM metaedu.agent_conversation_purges "
+                "WHERE id=:op"
+            ),
+            {"op": op_id},
+        )
+    ).scalar_one()
+    coordinator = await _coordinator(db_session)
+    with pytest.raises(ValueError, match="stale operation revision rejected"):
+        await coordinator.aggregate_projection(
+            tenant_id=tid, conversation_id=cid, purge_operation_id=op_id
+        )
+    await db_session.rollback()
+    # 零写零 bump：投影未被旧 operation 污染。
+    op = await _read_operation(db_session, op_id)
+    assert op["revision"] == revision_before
+    assert op["state"] == "scheduled"
+    conv = await _read_conversation(db_session, cid)
+    assert conv["purged_at"] is None
+    assert conv["purge_state"] == "scheduled"
+
+
 async def test_completed_result_sets_purged_at_and_completed_at(db_session):
     tid, cid = await _seed_conversation(db_session, actor_state="redacted")
     op_id = await _seed_all_acked_facts(db_session, tid, cid)
@@ -737,3 +943,57 @@ async def test_failed_checkpoint_aggregation_via_coordinator(db_session):
     )
     op = await _read_operation(db_session, op_id)
     assert op["state"] == "failed"
+
+
+async def test_hold_create_vs_completed_interception(db_session):
+    """I1 merged-boundary 交接（「hold-create vs completed 拦截」断言归 I2）：
+    coordinator 落 completed 后，create_legal_hold 必须 fail closed——正文已
+    清除，hold 义务不可追溯；零写零 bump。"""
+    tid, cid = await _seed_conversation(db_session, actor_state="redacted")
+    op_id = await _seed_all_acked_facts(db_session, tid, cid)
+    coordinator = await _coordinator(db_session)
+    result = await coordinator.aggregate_projection(
+        tenant_id=tid, conversation_id=cid, purge_operation_id=op_id
+    )
+    assert result is not None and result.state == "completed"
+    await db_session.commit()
+    repo = AgentErasureRepository(db_session)
+    hold_revision_before = (
+        await db_session.execute(
+            text(
+                "SELECT hold_revision FROM metaedu.agent_conversations "
+                "WHERE id=:cid"
+            ),
+            {"cid": cid},
+        )
+    ).scalar_one()
+    with pytest.raises(ValueError, match="already purged"):
+        await repo.create_legal_hold(
+            tenant_id=tid,
+            conversation_id=cid,
+            reason_code="litigation",
+            purpose="late hold on purged conversation",
+            actor_id=tid,
+        )
+    await db_session.rollback()
+    # 零写零 bump。
+    hold_revision_after = (
+        await db_session.execute(
+            text(
+                "SELECT hold_revision FROM metaedu.agent_conversations "
+                "WHERE id=:cid"
+            ),
+            {"cid": cid},
+        )
+    ).scalar_one()
+    assert hold_revision_after == hold_revision_before
+    hold_count = (
+        await db_session.execute(
+            text(
+                "SELECT count(*) FROM metaedu.agent_conversation_legal_holds "
+                "WHERE conversation_id=:cid"
+            ),
+            {"cid": cid},
+        )
+    ).scalar_one()
+    assert hold_count == 0

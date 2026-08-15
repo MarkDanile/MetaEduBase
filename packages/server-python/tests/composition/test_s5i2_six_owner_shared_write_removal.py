@@ -633,3 +633,53 @@ async def test_execution_core_erased_fence_cross_revision_gate_fail_closed(db_se
             expected_operation_revision=1,
         )
     await db_session.rollback()
+
+
+async def test_transport_family_stale_operation_gate_fail_closed(db_session):
+    """三面 P2-4：基类旧 revision 门禁（四 owner 复用 transport 基类实现）的 fail
+    路径判别——workspace.transport.v1 entry 走基类 `_load_verified_operation`。
+    变异「删除基类门禁」→ 本测试红。"""
+    tid, cid = await _seed_conversation(db_session)
+    op_id, _ = await _seed_operation_and_checkpoint(db_session, tid, cid, WS_TRANSPORT)
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversations SET purge_revision=2 "
+            "WHERE id=:cid"
+        ),
+        {"cid": cid},
+    )
+    participant = WorkspaceTransportErasureParticipant(db_session)
+    with pytest.raises(ValueError, match="stale operation revision rejected"):
+        await participant.erase_transport_owner(
+            tenant_id=tid,
+            conversation_id=cid,
+            purge_revision=1,
+            purge_operation_id=op_id,
+            expected_operation_revision=1,
+        )
+    await db_session.rollback()
+
+
+async def test_external_tx2_stale_operation_gate_fail_closed(db_session):
+    """三面 P2-5：external 双事务协议 Tx2 的旧 revision 门禁 fail 路径
+    （Tx2 `_load_verified_operation` 携带 conversation_purge_revision）。"""
+    tid, cid = await _seed_conversation(db_session)
+    op_id, _ = await _seed_operation_and_checkpoint(db_session, tid, cid, EXTERNAL)
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversations SET purge_revision=2 "
+            "WHERE id=:cid"
+        ),
+        {"cid": cid},
+    )
+    adapter = _SuccessExternalAdapter()
+    participant = ExternalPayloadErasureParticipant(db_session, adapter)
+    with pytest.raises(ValueError, match="stale operation revision rejected"):
+        await participant.erase_external_payload(
+            tenant_id=tid,
+            conversation_id=cid,
+            purge_revision=1,
+            purge_operation_id=op_id,
+            expected_operation_revision=1,
+        )
+    await db_session.rollback()

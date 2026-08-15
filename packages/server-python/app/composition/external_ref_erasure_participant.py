@@ -295,6 +295,8 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
         """加载该 Conversation 的 ``registered`` external ledger 行（adapter 窗口）。
 
         显式绑定 tenant + conversation 维度（定向复核 P2-1：禁裸谓词全表扫描）。
+        **S5-A-7 ⑤（I2 落地）**：确定性 ``ORDER BY id``——行序驱动 adapter 删除与
+        集合锁获取顺序，不得静默依赖自然序。
         """
         rows = (
             await self._session.execute(
@@ -303,7 +305,8 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
                     "source_table, source_row_id "
                     "FROM metaedu.agent_external_object_refs "
                     "WHERE tenant_id = :t AND conversation_id = :c "
-                    "AND erase_state = 'registered'"
+                    "AND erase_state = 'registered' "
+                    "ORDER BY id"
                 ),
                 {"t": tenant_id, "c": conversation_id},
             )

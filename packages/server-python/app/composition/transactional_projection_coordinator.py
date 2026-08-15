@@ -190,10 +190,11 @@ class TransactionalProjectionCoordinator:
         cancelled 存储态 fail closed；failed/completed 存储态仅允许零写幂等
         返回，任何差异 fail closed（终态覆盖禁令，CAS 层不变量）。
 
-        ``now`` 仅测试注入；生产为锁后 DB clock_timestamp()（不落应用时钟）。
+        ``now`` 仅测试注入；生产为 Conversation 锁后 DB clock_timestamp()
+        （不落应用时钟，与 participant「Conversation 锁后采样」惯例一致——
+        三面 P2-1：锁前采样会使 completed_at/purged_at 早于最后 owner checkpoint
+        的 updated_at，审计顺序反转）。
         """
-        effective_now = now or await self._database_now()
-
         # 锁序第一步：Conversation 行锁（必取——coordinator 写 purge_state/
         # purged_at 须与 delete/restore/participant 串行；否则 operation→
         # Conversation 逆序与 participant 的 Conversation→operation 构成 AB-BA）。
@@ -211,6 +212,7 @@ class TransactionalProjectionCoordinator:
             raise ValueError(
                 f"conversation {conversation_id} not found for projection"
             )
+        effective_now = now or await self._database_now()
 
         # 锁序第二步：operation 行 FOR UPDATE。
         operation = (
@@ -231,6 +233,17 @@ class TransactionalProjectionCoordinator:
             raise ValueError(
                 f"operation conversation_id {operation.conversation_id} != "
                 f"{conversation_id}; cross-conversation projection rejected"
+            )
+        # I2 门禁增补（S5-A-4，回填自 S5-B-8 第 8 项「含 …/coordinator CAS」）：
+        # operation 必须是 Conversation 当前 purge 周期的 operation——restore/
+        # 再次 delete 已推进 purge_revision 后，旧 operation 的 facts 聚合结果
+        # 不得写回当前 Conversation（跨 purge 实例投影污染；participant 侧同
+        # 门禁已拒绝旧 op 的一切写，coordinator 是旧 op 唯一残余写通道）。
+        if operation.purge_revision != conversation.purge_revision:
+            raise ValueError(
+                f"operation purge_revision {operation.purge_revision} != "
+                f"conversation {conversation.purge_revision}; stale operation "
+                "revision rejected (I2 gate)"
             )
 
         # 锁序第三/四步：全 owner checkpoint FOR UPDATE（owner_key 排序）→
@@ -268,6 +281,10 @@ class TransactionalProjectionCoordinator:
             .scalars()
             .all()
         )
+        # 注（三面 P3-3）：fence 读取不按 purge_revision 过滤——多 cycle 残留 fence
+        # 全量进入 calculator，五方验证按 fence.purge_revision 双分支（native 等值 /
+        # inherited 例外 / > 矛盾）裁决。I2 无 rebuild，单 cycle 下等价；scheduler
+        # slice 引入多 cycle 后由五方与 G4 兜底。
 
         snapshot = tuple(
             RegistryOwnerFact(
@@ -291,13 +308,19 @@ class TransactionalProjectionCoordinator:
         # G1：operation.registry_digest 与已安装 registry 一致。
         registry_matches = operation.registry_digest == registry_digest()
         # G2：hold_revision_snapshot < Conversation 当前 hold_revision。
+        # hold_revision 单调无回退写者（I1），`>` 为脏数据形态——契约仅冻结
+        # `<` 漂移判定；`>` 按无漂移处理（G1/snapshot 自洽已兜底篡改形态，
+        # 三面 P3-2 记录）。
         hold_drift = operation.hold_revision_snapshot < conversation.hold_revision
         # G3：live active hold 查询（I1 落地后无 TOCTOU 语义由 I2 门禁承接）。
         active_hold = await self._erasure.has_active_legal_hold(
             tenant_id=tenant_id, conversation_id=conversation_id
         )
 
-        # 最终扫描：per-owner，逐 owner 可归属（S5-A-2 输入契约）。
+        # 最终扫描：per-owner，逐 owner 可归属（S5-A-2 输入契约）。六次独立
+        # SELECT 在 READ COMMITTED 下各取新快照，跨 owner 撕裂窗口未定义——
+        # conversation 已 deleted 时正文写者被应用层阻断，且正确性不依赖投影
+        # 新鲜度（三面 P2-2 记录，后续 slice 可单语句收口）。
         scans: list[OwnerScanFact] = []
         for owner_key in snapshot_owners:
             provider = self._scan_providers.get(owner_key)

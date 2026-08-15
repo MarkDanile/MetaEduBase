@@ -336,11 +336,15 @@ def calculate_projection(inputs: ProjectionInput) -> ProjectionResult:
     ) -> str | None:
         """优先级 4/5 共享的 reason 聚合：severity-max + owner_key tie-break；
         全部 NULL → operator_suppressed（level 12 可达）；unknown 非 NULL reason
-        按 level 12 归属并保留原值（全函数边界，见 UNKNOWN_REASON_SEVERITY）。"""
+        按 level 12 归属并保留原值（全函数边界，见 UNKNOWN_REASON_SEVERITY）。
+
+        入参由调用方按优先级过滤（优先级 4 仅 blocked 行、优先级 5 仅 failed
+        行——S5-A-3「failure_code 取当前 blocked checkpoint 集合」）。
+        """
         pairs = [
             (r.owner_key, r.reason_code)
             for r in rows
-            if r.state in ("blocked", "failed") and r.reason_code is not None
+            if r.reason_code is not None
         ]
         if not pairs:
             return "operator_suppressed"
@@ -398,6 +402,16 @@ def calculate_projection(inputs: ProjectionInput) -> ProjectionResult:
         )
 
     # 全 acked 分支：优先级 1/2/3（partial ACK 已在上方 4/5/6 拦截）。
+    # completed 必要条件 (c)「最终扫描全零（逐 owner 可归属）」——任一 snapshot
+    # owner 缺 scan fact 即证据缺口，fail closed（与五方矛盾同族，不默认 0）。
+    if any(owner_key not in scans_by_owner for owner_key in snapshot_order):
+        return ProjectionResult(
+            state="blocked",
+            failure_code="purge_owner_ack_conflict",
+            purge_state="blocked",
+            completed=False,
+            purged=False,
+        )
     five_party_results = {
         owner_key: _five_party_validation(
             snapshot_owners[owner_key],

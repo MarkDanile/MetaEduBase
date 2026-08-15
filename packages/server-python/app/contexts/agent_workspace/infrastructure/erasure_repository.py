@@ -974,6 +974,11 @@ class AgentErasureRepository:
         fail closed：Conversation 缺失或 tenant 不匹配（WHERE 含 tenant_id，
         缺失即覆盖跨 tenant）→ `LateBodyWriteRejectedError`，零写零 bump。
 
+        **I2 落地（I1 merged-boundary 交接：「hold-create vs completed 拦截」
+        断言归 I2）**：purge 已完成（`purged_at IS NOT NULL`）的 Conversation
+        不得再挂 ACTIVE hold——正文已清除，hold 数据治理义务不可追溯，首锁内
+        判定 fail closed（`ValueError`），零写零 bump。
+
         无 idempotency key：相同 create 参数**不定义为重放**，每次调用插入
         新 hold 行并各自 bump（不发明去重协议）。
         """
@@ -990,6 +995,12 @@ class AgentErasureRepository:
         if conversation is None:
             raise LateBodyWriteRejectedError(
                 f"conversation {conversation_id} not found for legal hold create"
+            )
+        if conversation.purged_at is not None:
+            raise ValueError(
+                f"conversation {conversation_id} already purged "
+                f"(purged_at={conversation.purged_at}); cannot create legal "
+                "hold on purged conversation"
             )
         effective_now = now or _utcnow()
         model = ConversationLegalHoldModel(

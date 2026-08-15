@@ -24,8 +24,10 @@
   精确匹配 no-op / 不匹配 fail closed（``*IntegrationConflictError``）。
 - final scan 为零才 ACK + 全套 fencing（conversation/purge revision/lease
   epoch/registry drift/hold revision/operation revision/owner version/
-  capability digest CAS）；scan 非零 -> blocked 三方一致；erased fence 幂等
-  重放修复 pending checkpoint（ACK 丢失恢复）。
+  capability digest CAS）；scan 非零 -> fence erasing->blocked + owner
+  checkpoint 记 blocked + scan digest（R1-S5-I2 去共享写：operation/
+  Conversation 聚合投影归 coordinator，participant 零共享写）；erased fence
+  幂等重放修复 pending checkpoint（ACK 丢失恢复）。
 - **D-B-3 conversation_scope gate**（S4-D-B）：该 Conversation 有未 resolved 的
   conversation_scope issue 即 blocked（purge 前置查与 S5 同一谓词，防直接调用
   绕过 scheduler）。
@@ -965,7 +967,8 @@ class TransportErasureParticipantBase(ABC):
             conversation_id=conversation_id,
         )
 
-        # final scan 为零才 ACK；非零 -> blocked（三方一致）。
+        # final scan 为零才 ACK；非零 -> blocked（owner checkpoint 落账；
+        # R1-S5-I2：operation/Conversation 聚合投影归 coordinator）。
         final_scan = await self.scan_transport_body(
             tenant_id=tenant_id, conversation_id=conversation_id
         )

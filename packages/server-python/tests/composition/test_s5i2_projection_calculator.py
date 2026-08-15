@@ -337,6 +337,78 @@ def test_priority4_blocked_not_reopened_by_later_ack():
     )
 
 
+def test_priority4_mixed_blocked_and_failed_excludes_failed_reason():
+    # S5-A-3「failure_code 取当前 blocked checkpoint 集合」：优先级 4 只聚合
+    # blocked 行；同存 failed（严重度更高）也不得混入（failed 仅在无 blocked 时
+    # 经优先级 5 聚合）。变异「blocked 聚合混入 failed 行」→ 红。
+    state, code, _, _, _ = result_of(
+        snapshot=[WS_CORE, EX_CORE],
+        checkpoints=[
+            cp(WS_CORE, "blocked", reason="purge_blocked_by_erase_timeout"),
+            cp(EX_CORE, "failed", reason="purge_blocked_by_legal_hold"),
+        ],
+    )
+    assert (state, code) == ("blocked", "purge_blocked_by_erase_timeout")
+
+
+def test_all_acked_missing_scan_fact_fail_closed():
+    # completed 必要条件 (c) 逐 owner 可归属：任一 snapshot owner 缺 scan fact
+    # 即证据缺口 → fail closed（不得默认 0 达成 completed）。变异「缺 scan 默认 0」→红。
+    state, code, _, completed, _ = result_of(
+        snapshot=[WS_CORE, EX_CORE],
+        checkpoints=[
+            cp(WS_CORE, "acked", ack_digest=E64),
+            cp(EX_CORE, "acked", ack_digest=E64),
+        ],
+        fences=[
+            fence(WS_CORE, "erased", ack_digest=E64),
+            fence(EX_CORE, "erased", ack_digest=E64),
+        ],
+        scans=[scan(WS_CORE, 0)],  # EX_CORE 缺 scan fact
+    )
+    assert (state, code, completed) == (
+        "blocked", "purge_owner_ack_conflict", False,
+    )
+
+
+def test_priority2_ack_digest_both_null_fail_closed():
+    # acked 需 ack_digest 非空（CHECK）；双 NULL 显式拦截路径无测试锁定（三面 P3-5）。
+    null_ack = FenceFact(
+        owner_key=WS_CORE,
+        state="erased",
+        owner_version=1,
+        purge_revision=1,
+        ack_digest=None,  # 与 checkpoint 双 NULL
+        ingress_digest=ingress_digest_of({"schema_version": 1, "sources": {}}),
+        ingress_checkpoint={"schema_version": 1, "sources": {}},
+    )
+    state, code, _, _, _ = result_of(
+        snapshot=[WS_CORE],
+        checkpoints=[cp(WS_CORE, "acked", ack_digest=None)],
+        fences=[null_ack],
+        scans=[scan(WS_CORE, 0)],
+    )
+    assert (state, code) == ("blocked", "purge_owner_ack_conflict")
+
+
+def test_priority3_scan_tie_break_across_different_scan_codes():
+    # 三面 P3-6：scan 族双 owner 非零、同严重度（level 10）但不同 scan reason 码
+    # → owner_key 字典序取最小者（execution.transport.v1 < workspace.core.v1）。
+    state, code, _, _, _ = result_of(
+        snapshot=[WS_CORE, EX_TRANSPORT],
+        checkpoints=[
+            cp(WS_CORE, "acked", ack_digest=E64),
+            cp(EX_TRANSPORT, "acked", ack_digest=E64),
+        ],
+        fences=[
+            fence(WS_CORE, "erased", ack_digest=E64),
+            fence(EX_TRANSPORT, "erased", ack_digest=E64),
+        ],
+        scans=[scan(WS_CORE, 2), scan(EX_TRANSPORT, 1)],
+    )
+    assert (state, code) == ("blocked", "purge_blocked_by_transport_scan_nonzero")
+
+
 def test_priority4_tie_break_owner_key_dict_order():
     # 同严重度（level 10 scan 族双 owner）：owner_key 字典序取最小。
     state, code, _, _, _ = result_of(
@@ -452,6 +524,7 @@ def test_priority2_missing_fence_for_acked_owner_fail_closed():
     state, code, _, _, _ = result_of(
         snapshot=[WS_CORE],
         checkpoints=[cp(WS_CORE, "acked", ack_digest=E64)],
+        scans=[scan(WS_CORE, 0)],  # scan 证据齐备，判别五方缺 fence
     )
     assert (state, code) == ("blocked", "purge_owner_ack_conflict")
 

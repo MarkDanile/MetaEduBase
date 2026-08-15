@@ -133,3 +133,5 @@
 - 2026-06-09：TD-033 完成（[PR #103](https://github.com/MarkDanile/MetaEduBase/pull/103) / merge `25ca165`）：`main.css` 1343 → 9 行（`@import` 入口）+ 8 个 CSS 模块（全部 ≤500 行）；以 `pnpm typecheck / lint / build` 退出码 0 与 `git diff --check` 退出码 0 为依据（Vite 产物未做 hash / diff 机械对比，详见 DOC-045）；TD-032 >1000 / >500 / 500 附近全部收口。
 
 - 2026-08-05：REQ-041/047 R1-S4-B 第四轮复核返修后回写 - `test_agent_transport_backfill_m4.py` 1067 行（三轮复核真实反例 + CLI 退出码契约叠加），新增登记为 🟢 已登记（待拆分）；本次仅登记，不在 R1-S4-B 中拆测试，后续按并发/冲突登记/verify 反例/CLI 退出码测试主题切片。
+
+- 2026-08-15：REQ-041/047 R1-S5-I2 去共享写返修后回写 - `transport_erasure_participant.py` 1033→1071（I2 去共享写移除三方法共享投影写块 + 旧 revision 门禁，净 +38 但较 I2 前峰值 1079 下降）、`workspace_erasure_participant.py` 1319→1121（-198，三方法 + caller 共享写移除）、`execution_erasure_participant.py` 1388→1358（-30，`_mark_operation_running` 整方法删除）、`external_ref_erasure_participant.py` 1072→1235（S4-E-B2 后已累积至 1230；I2 净 +5：ORDER BY + 门禁参数接线）、`runtime_erasure_participant.py` 1149→1154（+5，门禁参数接线）、`erasure_repository.py` 1131→1142（+11，hold-create vs completed 拦截）。均维持 🟢 已登记（待拆分），不在 I2 中拆，后续按已登记的职责切片执行。

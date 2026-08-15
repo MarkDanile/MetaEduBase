@@ -1232,11 +1232,16 @@ async def test_concurrent_double_b2_erase_serializes(session_factory):
                     break
                 except ValueError as exc:
                     message = str(exc)
-                    if (
-                        "operation revision mismatch" not in message
-                        and "erasing" not in message
-                        and "stale fence" not in message
-                    ):
+                    # 三面 P3-3 收窄：仅 transient 串行化拒绝的精确短语重试
+                    # （stale revision / E-2a 同实例门禁 / Tx2 stale fence），
+                    # 其余异常照抛。
+                    transient_phrases = (
+                        "operation revision mismatch",
+                        "already erasing",
+                        "no longer erasing",
+                        "stale fence",
+                    )
+                    if not any(p in message for p in transient_phrases):
                         raise
                     # transient 串行化拒绝：回滚后 bounded yield 重试。
                     await sess.rollback()

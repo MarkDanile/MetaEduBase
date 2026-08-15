@@ -1595,11 +1595,14 @@ async def test_concurrent_double_runtime_erase_serializes(session_factory):
                         break
                     except ValueError as exc:
                         message = str(exc)
-                        if (
-                            "operation revision mismatch" not in message
-                            and "erasing" not in message
-                            and "stale fence" not in message
-                        ):
+                        # 三面 P3-3 收窄：仅 transient 串行化拒绝的精确短语重试。
+                        transient_phrases = (
+                            "operation revision mismatch",
+                            "already erasing",
+                            "no longer erasing",
+                            "stale fence",
+                        )
+                        if not any(p in message for p in transient_phrases):
                             raise
                         await sess.rollback()
                         await asyncio.sleep(0.1)

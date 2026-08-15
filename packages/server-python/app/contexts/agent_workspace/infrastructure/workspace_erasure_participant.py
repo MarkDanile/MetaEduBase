@@ -20,8 +20,9 @@ Spec §3/§5.2/§6.1/§7.1/§9.2（plan §R1-S2「S2-D/E 契约注记」+「S2-D
   主体标识（created_by/archived_by/deleted_by + Message.author_id），HMAC
   tenant-scoped 不可逆匿名化；物理删除 MessagePart/UserState。
 - final body scan 完成门禁（P1-5）：扫描含 archived_by/deleted_by；非零 ->
-  fence erasing->blocked + operation/checkpoint 记 blocked + scan digest（P2-2），
-  正常返回提交（P1-5，不抛异常致回滚）。
+  fence erasing->blocked + owner checkpoint 记 blocked + scan digest（P2-2，
+  R1-S5-I2：operation/Conversation 聚合投影归 coordinator，participant 零
+  共享写），正常返回提交（P1-5，不抛异常致回滚）。
 - ACK fencing（P1-3 / round-3 P1-2）：``purge_operation_id`` + ``expected_operation_revision``
   必填；ACK 绑定具体 operation--校验 conversation_id / purge_revision / lease_epoch /
   registry drift / hold_revision_snapshot / **operation revision CAS**（replay fencing）
