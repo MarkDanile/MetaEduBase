@@ -14,7 +14,23 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### R1-S5-I2: Owner Aggregation Reducer 原子实现
+
+状态：🟡 进行中
+类型：实现（TD-092 拆分；S5-A-6 I2，contract-first 契约已冻结并入 main）
+领域：R1 保留/清除（projection calculator + transactional coordinator + 六 owner 去共享投影写）
+当前执行模式：plan-do（测试先行）
+最近接手工具：Claude Code
+分支：feature/req041-047-r1-s5i2-owner-aggregation-reducer（尚未开 PR）
+
+需求来源：
+- Spec: [R1 §4.2/§5.2/§8](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- Plan: [R1-S5-A-1 至 S5-A-8（重点 S5-A-4/S5-A-5/S5-A-6）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
+- 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
+
+当前进展：契约已冻结（#563 merged-boundary）；实现未开始。
+下一步：代码事实对账 → 失败反例测试先行 → calculator/coordinator 实现 → 六 owner 去共享写 → mutation kill → 三面复审。
+交接备注：原子边界——calculator/coordinator/去共享写同一 PR；不实现 scheduler claim/lease、rebuild/seeding、retry/reconcile、settlement；不改 schema/migration 040/041/registry/CI；不转 Ready/评分/合并。
 
 ## 下一批候选任务
 
@@ -22,7 +38,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | R1-S5-I2 Owner Aggregation Reducer 原子实现 | 🔵 就绪（未开工） | 同一原子 PR 交付：纯 projection calculator + transactional projection coordinator + 六 owner participant 移除 operation/Conversation 临时投影写；保留 participant fencing token、operation 行锁和 owner-scoped 写；**不包含** full scheduler、claim/lease、rebuild/retry、完整 legal-hold API、S6、C1 | [Plan §R1-S5-A-6 I2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
