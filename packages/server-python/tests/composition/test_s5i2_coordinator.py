@@ -578,45 +578,78 @@ async def test_concurrent_writer_after_change_bumps_revision_once(session_factor
 
 
 async def test_coordinator_waits_on_conversation_lock(session_factory):
-    # Conversation-first 锁序观测：另一连接持 Conversation 行锁时 coordinator
-    # 必须阻塞（不绕过首锁）；释放后才完成。
+    # Conversation-first 锁序观测（pg_locks 直接判别）：另一连接持 Conversation
+    # 行锁时，coordinator 事务必须持有 agent_conversations 的 RowShareLock
+    # （FOR UPDATE）且**不得**持有 agent_conversation_purges 的任何 granted 锁
+    # （变异「跳过 Conversation 首锁」会先取 operation FOR UPDATE → purge 表
+    # granted RowShareLock → 红）。
     seed = session_factory()
     tid, cid = await _seed_conversation(seed)
     op_id = await _seed_operation(seed, tid, cid, owners=[WS_CORE])
     await seed.commit()
 
     blocker = session_factory()
+    await blocker.execute(
+        text(
+            "SELECT * FROM metaedu.agent_conversations WHERE id=:cid "
+            "FOR UPDATE"
+        ),
+        {"cid": cid},
+    )
+
+    coordinator_pid: dict[str, int] = {}
+
+    async def aggregate():
+        session = session_factory()
+        try:
+            pid = (
+                await session.execute(text("SELECT pg_backend_pid()"))
+            ).scalar_one()
+            coordinator_pid["pid"] = int(pid)
+            coordinator = await _coordinator(session)
+            return await coordinator.aggregate_projection(
+                tenant_id=tid, conversation_id=cid, purge_operation_id=op_id
+            )
+        finally:
+            await session.commit()
+
+    # 负向窗口：持锁期间聚合不得完成。
+    aggregate_task = asyncio.create_task(aggregate())
+    await asyncio.sleep(1.0)
+    aggregate_blocked = not aggregate_task.done()
+
+    # 锁序判别（pg_locks 观测 coordinator 事务自身）：只允许 conversations 的
+    # granted RowShareLock；purge 表 granted 锁 = 已先取 operation 锁。
+    diag = session_factory()
     try:
-        await blocker.execute(
-            text(
-                "SELECT * FROM metaedu.agent_conversations WHERE id=:cid "
-                "FOR UPDATE"
-            ),
-            {"cid": cid},
-        )
-
-        async def aggregate():
-            session = session_factory()
-            try:
-                coordinator = await _coordinator(session)
-                return await coordinator.aggregate_projection(
-                    tenant_id=tid, conversation_id=cid, purge_operation_id=op_id
-                )
-            finally:
-                await session.commit()
-
-        # 负向窗口（probe 模式，避免取消阻塞中的 SELECT）：持锁期间聚合不得完成。
-        task = asyncio.create_task(aggregate())
-        await asyncio.sleep(1.0)
-        assert not task.done(), (
-            "coordinator completed while another connection holds the "
-            "Conversation row lock; Conversation-first lock order violated"
-        )
+        rows = (
+            await diag.execute(
+                text(
+                    "SELECT mode, granted, relation::regclass::text AS rel "
+                    "FROM pg_locks WHERE pid=:p AND locktype='relation' "
+                    "AND granted AND relation::regclass::text LIKE "
+                    "'%agent_conversation_purges'"
+                ),
+                {"p": coordinator_pid["pid"]},
+            )
+        ).all()
+        purge_locks = [(mode, rel) for mode, _granted, rel in rows]
     finally:
-        await blocker.commit()
-    # 释放后可完成。
-    result = await asyncio.wait_for(task, timeout=_TIMEOUT)
-    assert result is not None and result.state == "running"
+        await diag.commit()
+
+    # 收尾：先释放 blocker → 等 aggregate 完成并提交 → 再断言。
+    await blocker.commit()
+    aggregate_result = await asyncio.wait_for(aggregate_task, timeout=_TIMEOUT)
+
+    assert aggregate_blocked, (
+        "coordinator completed while another connection holds the "
+        "Conversation row lock; Conversation-first lock order violated"
+    )
+    assert purge_locks == [], (
+        f"coordinator holds locks on purge table while blocked on "
+        f"Conversation: {purge_locks}; must take Conversation first"
+    )
+    assert aggregate_result is not None and aggregate_result.state == "running"
 
 
 # ---------------------------------------------------------------------------
