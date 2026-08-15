@@ -727,6 +727,7 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             purge_revision=purge_revision,
+            conversation_purge_revision=conversation2.purge_revision,
             expected_lease_epoch=expected_lease_epoch,
             hold_revision=conversation2.hold_revision,
         )
@@ -843,6 +844,7 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             purge_revision=purge_revision,
+            conversation_purge_revision=conversation2.purge_revision,
             expected_lease_epoch=expected_lease_epoch,
             hold_revision=conversation2.hold_revision,
             fence_owner_version=fence3.owner_version,

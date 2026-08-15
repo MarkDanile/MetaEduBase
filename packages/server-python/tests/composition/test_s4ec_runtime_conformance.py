@@ -97,6 +97,30 @@ class _SuccessAdapter(RuntimeSessionDestroyAdapter):
         return None
 
 
+class _SharedDedupAdapter(_SuccessAdapter):
+    """key→evidence 共享 store：同 idempotency key 重放命中缓存（无新副作用）。
+
+    E-2b 幂等重放承认重复 destroy_session 调用存在（``calls`` 可 >1），
+    **distinct 副作用**必须恰为 1（E-6 冻结判别点）。R1-S5-I2 后 participant
+    不再以 revision bump 串行化并发 entry——fence 串行化下 loser 可能以
+    erasing 续做分支重入窗口（同 key 重放），distinct==1 是不变量。
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._store: dict[str, str] = {}
+        self.distinct_destroys = 0
+
+    async def destroy_session(self, **kwargs):
+        self.calls += 1
+        key = kwargs["idempotency_key"]
+        if key in self._store:
+            return RuntimeDestroySuccess(adapter_receipt_evidence=self._store[key])
+        self._store[key] = f"ev:{key[:16]}"
+        self.distinct_destroys += 1
+        return RuntimeDestroySuccess(adapter_receipt_evidence=self._store[key])
+
+
 class _NotSentAdapter(_SuccessAdapter):
     """E-3a not-sent：调用前失败（可证明未发送）。"""
 
@@ -1534,17 +1558,22 @@ async def test_erase_second_purge_instance_fail_closed(session_factory):
 
 
 async def test_concurrent_double_runtime_erase_serializes(session_factory):
-    """E-6「重复删除」：两 erase 并发同一 conversation——共享 fence 串行化，一次
-    adapter 调用、一个 ACK；另一连接走 erased-fence 幂等重放 no-op。真实 PG 双连接
-    （session_factory），共享可计数 adapter 断言总调用恰为 1。"""
+    """E-6「重复删除」：两 erase 并发同一 conversation——共享 fence 串行化，
+    **distinct destroy 恰为 1**；另一连接走 erased-fence 幂等重放 no-op 或
+    erasing 续做（同 idempotency key 重放，E-2b 承认重复调用、共享 store 去重）。
+    真实 PG 双连接（session_factory）。"""
     conv_id, purge_rev, op_id, _ = await _seed_for_session_factory(session_factory)
-    shared_adapter = _SuccessAdapter()
+    shared_adapter = _SharedDedupAdapter()
 
     async def _erase_with_new_session():
         engine, factory = await _make_engine_factory()
         try:
             async with factory() as sess:
-                for _attempt in range(3):
+                # R1-S5-I2：participant 不再 bump operation.revision（聚合投影归
+                # coordinator）——并发串行化收敛由共享 fence 承担；transient
+                # fencing 拒绝（E-2a 同实例门禁 / Tx2 stale fence）重读重试，
+                # bounded yield 给前一个调用留出 Tx2 收口窗口。
+                for _attempt in range(5):
                     current_rev = (
                         await sess.execute(
                             text(
@@ -1565,9 +1594,15 @@ async def test_concurrent_double_runtime_erase_serializes(session_factory):
                         )
                         break
                     except ValueError as exc:
-                        if "operation revision mismatch" not in str(exc):
+                        message = str(exc)
+                        if (
+                            "operation revision mismatch" not in message
+                            and "erasing" not in message
+                            and "stale fence" not in message
+                        ):
                             raise
                         await sess.rollback()
+                        await asyncio.sleep(0.1)
                 else:
                     raise AssertionError("concurrent erase did not converge after retries")
         finally:
@@ -1580,9 +1615,12 @@ async def test_concurrent_double_runtime_erase_serializes(session_factory):
     )
     for r in results:
         assert not isinstance(r, Exception), f"concurrent erase raised: {r}"
-    # DR-1 判别力：同一 conversation 的外部 destroy 总调用恰为 1（共享 fence 串行化
-    # + erased-fence 重放 no-op，E-6「adapter 调用计数 == 1」）。
-    assert shared_adapter.calls == 1
+    # DR-1 判别力（E-6 冻结）：distinct destroy 恰为 1。R1-S5-I2 后 participant
+    # 不再以 revision bump 串行化并发 entry——共享 fence 串行化下 loser 可能以
+    # erasing 续做分支重入窗口（同 idempotency key 重放，E-2b 承认重复调用），
+    # 共享 store 保证无重复副作用；calls 可为 1（直接重放）或 2（续做重入）。
+    assert shared_adapter.distinct_destroys == 1
+    assert shared_adapter.calls in (1, 2)
 
 
 async def test_crash_replay_shared_adapter_distinct_destroy_once(session_factory):
@@ -1647,7 +1685,8 @@ async def test_crash_replay_shared_adapter_distinct_destroy_once(session_factory
     assert shared_adapter.calls == 1
     # 重放：同 invocation（checkpoint ERASING 续做 + 同 key 命中 store）——不再
     # 产生新副作用（distinct 仍 1），完成 Tx2 清 ref + 关 binding + ACK。
-    await _run_erase(2)
+    # R1-S5-I2：participant 不再 bump operation.revision，重放仍传 revision=1。
+    await _run_erase(1)
     assert shared_adapter.distinct_destroys == 1  # 跨 crash+replay 总 distinct == 1
     assert shared_adapter.calls == 2  # 承认重复调用存在（participant 重放重调）
     # 最终态：binding closed + fence erased + checkpoint acked。

@@ -292,6 +292,7 @@ class TransportErasureParticipantBase(ABC):
         tenant_id: uuid.UUID,
         conversation_id: uuid.UUID,
         purge_revision: int,
+        conversation_purge_revision: int,
         expected_lease_epoch: int,
         hold_revision: int,
         expected_revision: int | None = None,
@@ -301,6 +302,12 @@ class TransportErasureParticipantBase(ABC):
         校验 conversation_id / purge_revision / lease_epoch / registry_digest /
         hold_revision_snapshot；``expected_revision`` 非 None 时校验 operation
         revision CAS（replay fencing）。任一不符 fail closed。
+
+        **I2 门禁增补（S5-A-4，回填自 S5-B-8 第 8 项）**：
+        ``operation.purge_revision == conversation.purge_revision`` 旧 revision
+        拒绝门禁——caller 传入的 purge_revision 可能与已推进的 Conversation 脱节，
+        以首锁内读到的 Conversation 当前值裁决，旧 revision 的 operation 不得被
+        任何 participant 写（旧 operation 归 settlement/quiesce 通道）。
         """
         operation = (
             (
@@ -327,6 +334,12 @@ class TransportErasureParticipantBase(ABC):
             raise ValueError(
                 f"purge_revision mismatch: operation={operation.purge_revision} "
                 f"request={purge_revision}"
+            )
+        if operation.purge_revision != conversation_purge_revision:
+            raise ValueError(
+                f"operation purge_revision {operation.purge_revision} != "
+                f"conversation {conversation_purge_revision}; stale operation "
+                "revision rejected (I2 gate)"
             )
         if operation.lease_epoch != expected_lease_epoch:
             raise ValueError(
@@ -406,22 +419,26 @@ class TransportErasureParticipantBase(ABC):
         conversation: ConversationModel,
         now: datetime,
     ) -> None:
-        """operation scheduled/blocked -> running（清 failure_code + bump revision）
-        + Conversation.purge_state 投影 running（三方一致）。revision CAS 在此裁决。
+        """operation fencing 入口（I2：只校验不写）。
 
-        **F-2a 临时投影**：此处清 failure_code / 写 Conversation.purge_state 是 S5
-        未实现期间的 last-writer-wins 占位，**不构成最终聚合事实源**——S5 reducer
-        （独立 contract-first PR）从 blocked checkpoint 集合确定性聚合后替换本投影。
+        **R1-S5-I2 去共享写**：operation.state/failure_code/started_at/revision
+        与 Conversation.purge_state 是 coordinator 聚合投影——participant 永久
+        失去这些列的写权。本方法保留 operation 行锁 + 完整 fencing + 可运行状态
+        白名单 + revision CAS（replay fencing），**零 operation/Conversation 写**。
         """
         operation = await self._load_verified_operation(
             purge_operation_id=purge_operation_id,
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             purge_revision=purge_revision,
+            conversation_purge_revision=conversation.purge_revision,
             expected_lease_epoch=expected_lease_epoch,
             hold_revision=hold_revision,
             expected_revision=expected_operation_revision,
         )
+        # 终态覆盖禁令（participant 侧读守卫，只读不写）：cancelled/failed/
+        # completed 终态 operation 拒绝 participant 继续推进（coordinator 侧
+        # 同不变量已强化为 CAS 层）。
         if operation.state not in (
             PurgeOperationState.SCHEDULED.value,
             PurgeOperationState.RUNNING.value,
@@ -430,19 +447,6 @@ class TransportErasureParticipantBase(ABC):
             raise ValueError(
                 f"operation not in runnable state: {operation.state!r}"
             )
-        if operation.state in (
-            PurgeOperationState.SCHEDULED.value,
-            PurgeOperationState.BLOCKED.value,
-        ):
-            operation.state = PurgeOperationState.RUNNING.value
-            operation.failure_code = None
-            if operation.started_at is None:
-                operation.started_at = now
-            operation.revision = operation.revision + 1
-            operation.updated_at = now
-        conversation.purge_state = PurgeOperationState.RUNNING.value
-        conversation.updated_at = now
-        await self._session.flush()
 
     async def _record_blocked(
         self,
@@ -460,18 +464,24 @@ class TransportErasureParticipantBase(ABC):
         now: datetime,
         expected_revision: int | None = None,
     ) -> None:
-        """记 blocked：operation + owner checkpoint 经 CAS 推进 blocked + 稳定
-        reason code + scan digest + Conversation.purge_state 投影 blocked
-        （三方一致，S2-D round-4 P1-2 收敛）。
+        """记 blocked（I2：只写 owner checkpoint）。
 
         裁决先行（S3-D round-1 P1）：先完成全部实体状态裁决，再改任何实体——
         raise 时三方零变更（原子 fail closed）。
+
+        **R1-S5-I2 去共享写**：operation.state/failure_code 与
+        Conversation.purge_state 是 coordinator 聚合投影（从 blocked checkpoint
+        集合确定性聚合 + owner_key tie-break，S5-A-2/S5-A-3）——本方法只写
+        owner-scoped checkpoint（state/reason_code/checkpoint_digest），
+        **零 operation/Conversation 写**；participant 保留 operation 行锁 +
+        完整 fencing + revision CAS。
         """
         operation = await self._load_verified_operation(
             purge_operation_id=purge_operation_id,
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             purge_revision=purge_revision,
+            conversation_purge_revision=conversation.purge_revision,
             expected_lease_epoch=expected_lease_epoch,
             hold_revision=hold_revision,
             expected_revision=expected_revision,
@@ -497,19 +507,9 @@ class TransportErasureParticipantBase(ABC):
             raise ValueError(
                 f"checkpoint not blockable from state {checkpoint.state!r}"
             )
-        # 裁决通过后才落变更。**F-2a 临时投影**：operation.failure_code 与
-        # Conversation.purge_state 是 S5 未实现期间的 last-writer-wins 占位（S5
-        # reducer 实现后由独立 PR 替换为从 blocked checkpoint 集合确定性聚合 +
-        # owner_key tie-break；见 plan F-2a）。
-        if operation.state != PurgeOperationState.BLOCKED.value:
-            operation.state = PurgeOperationState.BLOCKED.value
-            operation.failure_code = reason
-            operation.revision = operation.revision + 1
-            operation.updated_at = now
-        elif operation.failure_code != reason:
-            operation.failure_code = reason
-            operation.revision = operation.revision + 1
-            operation.updated_at = now
+        # 裁决通过后只落 owner-scoped checkpoint 事实（reason 覆盖是逐 owner
+        # 精确事实更新；operation.failure_code 的 severity/tie-break 聚合归
+        # coordinator，S5-A-3）。
         cp_changed = checkpoint.state != PurgeOwnerState.BLOCKED.value
         checkpoint.state = PurgeOwnerState.BLOCKED.value
         if checkpoint.reason_code != reason:
@@ -520,8 +520,6 @@ class TransportErasureParticipantBase(ABC):
             cp_changed = True
         if cp_changed:
             checkpoint.updated_at = now
-        conversation.purge_state = PurgeOperationState.BLOCKED.value
-        conversation.updated_at = now
         await self._session.flush()
 
     async def _ack_owner_checkpoint(
@@ -531,6 +529,7 @@ class TransportErasureParticipantBase(ABC):
         tenant_id: uuid.UUID,
         conversation_id: uuid.UUID,
         purge_revision: int,
+        conversation_purge_revision: int,
         expected_lease_epoch: int,
         hold_revision: int,
         fence_owner_version: int,
@@ -538,17 +537,23 @@ class TransportErasureParticipantBase(ABC):
         checkpoint_digest: str,
         now: datetime,
     ) -> None:
-        """ACK：checkpoint -> acked + ack_digest/checkpoint_digest（CAS）。operation
-        状态已由 _mark_operation_running 推进到 running，ACK 不再改 operation 状态。"""
+        """ACK：checkpoint -> acked + ack_digest/checkpoint_digest（CAS）。
+
+        **R1-S5-I2 去共享写**：只写 owner-scoped checkpoint，不写
+        operation/Conversation（operation 聚合投影归 coordinator，S5-A-1）。
+        保留 operation 行锁 + 完整 fencing（含 I2 purge_revision 门禁）。
+        """
         operation = await self._load_verified_operation(
             purge_operation_id=purge_operation_id,
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             purge_revision=purge_revision,
+            conversation_purge_revision=conversation_purge_revision,
             expected_lease_epoch=expected_lease_epoch,
             hold_revision=hold_revision,
         )
         if operation.state not in (
+            PurgeOperationState.SCHEDULED.value,
             PurgeOperationState.RUNNING.value,
             PurgeOperationState.BLOCKED.value,
         ):
@@ -594,15 +599,20 @@ class TransportErasureParticipantBase(ABC):
         """erased fence 幂等重放：修复 pending checkpoint（ACK 丢失恢复）。
 
         fence 已 erased 但 checkpoint 未 acked -> 用 fence 的 ack_digest 补 ACK；
-        已 acked 且 digest 一致 -> no-op（不重写），仍 fall through 到 operation
-        修复（三方一致）；矛盾 digest -> fail closed。operation 必须处可修复状态
-        （scheduled/running/blocked）；终态 fail closed。
+        已 acked 且 digest 一致 -> no-op（不重写）。矛盾 digest -> fail closed。
+        operation 必须处可修复状态（scheduled/running/blocked）；终态 fail closed。
+
+        **R1-S5-I2 去共享写**：只写 owner-scoped checkpoint；不重开 operation、
+        不清 failure_code、不写 Conversation.purge_state（S5-A-7 ① 反例——
+        erased replay 清他 owner blocked failure_code 的临时投影风险随写权移除
+        而消除；聚合投影由 coordinator 从 facts 重算）。
         """
         operation = await self._load_verified_operation(
             purge_operation_id=purge_operation_id,
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             purge_revision=purge_revision,
+            conversation_purge_revision=conversation.purge_revision,
             expected_lease_epoch=expected_lease_epoch,
             hold_revision=hold_revision,
             expected_revision=expected_operation_revision,
@@ -650,29 +660,7 @@ class TransportErasureParticipantBase(ABC):
             checkpoint.checkpoint_digest = checkpoint_digest
             checkpoint.reason_code = None
             checkpoint.updated_at = now
-        changed = False
-        if operation.state in (
-            PurgeOperationState.SCHEDULED.value,
-            PurgeOperationState.BLOCKED.value,
-        ):
-            operation.state = PurgeOperationState.RUNNING.value
-            if operation.started_at is None:
-                operation.started_at = now
-            changed = True
-        # F-2a 临时投影：清 failure_code / 写 Conversation.purge_state 是 S5 未实现
-        # 期间的 last-writer-wins 占位（S5 reducer 实现后替换）。**invariant-1 风险
-        # 提示**：本 owner erased-fence 重放会重开 RUNNING + 清他 owner 已 blocked 的
-        # failure_code（F-2a 六不变量 1「blocked 不得被后到 ACK 重开 running」在 S5
-        # 前可观测违反）——归「owner-scoped 重构 + S5 reducer」独立 PR 闭环。
-        if operation.failure_code is not None:
-            operation.failure_code = None
-            changed = True
-        if changed:
-            operation.revision = operation.revision + 1
-            operation.updated_at = now
-        conversation.purge_state = PurgeOperationState.RUNNING.value
-        conversation.updated_at = now
-        await self._session.flush()
+            await self._session.flush()
 
     # --- 主入口（子类复用）--------------------------------------------------
 
@@ -1024,6 +1012,7 @@ class TransportErasureParticipantBase(ABC):
             tenant_id=tenant_id,
             conversation_id=conversation_id,
             purge_revision=purge_revision,
+            conversation_purge_revision=conversation.purge_revision,
             expected_lease_epoch=expected_lease_epoch,
             hold_revision=conversation.hold_revision,
             fence_owner_version=fence.owner_version,

@@ -1,0 +1,459 @@
+"""R1-S5-A-4 transactional projection coordinator（I2 实现，契约已冻结）。
+
+operation/Conversation 聚合投影的唯一写者。锁序（冻结，S1 拆分裁决）：
+Conversation 行锁 FOR UPDATE → operation 行 FOR UPDATE → 全 owner checkpoint
+FOR UPDATE（owner_key 字典序）→ 全 owner fence 只读（owner_key 字典序，不加
+FOR UPDATE）→ 最终扫描 / registry / hold facts → calculator → CAS 写 operation
++ Conversation。不取 owner advisory lock、fence 不加行锁。
+
+CAS 基线 = 锁内读到的当前 operation.revision/lease_epoch（不用外部传入的
+expected 值）。聚合结果与存储投影元组一致时零写（不 bump revision）——零写
+比较集 = 完整投影元组 (operation.state, failure_code, started_at, completed_at,
+Conversation.purge_state, purged_at)。终态覆盖禁令强化为 CAS 层不变量：
+cancelled/failed/completed 存储态一律不得被重开（failed/completed 仅允许
+零写幂等返回）。
+
+调用点（冻结，S5-A-5）：独立事务、participant 提交之后；由编排调用方在每次
+participant 入口返回后触发。S5 scheduler 仅增加定时/claim 全量重算与单 owner
+重试，不改此触发点。
+"""
+
+from __future__ import annotations
+
+import uuid
+from collections.abc import Awaitable, Callable, Mapping
+from datetime import datetime
+from typing import Protocol
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.composition.agent_erasure_registry import registry_digest, snapshot_digest
+from app.composition.projection_calculator import (
+    CheckpointFact,
+    FenceFact,
+    LineageFact,
+    OwnerScanFact,
+    ProjectionInput,
+    ProjectionResult,
+    RegistryOwnerFact,
+    calculate_projection,
+)
+from app.contexts.agent_workspace.infrastructure.erasure_repository import (
+    AgentErasureRepository,
+)
+from app.contexts.agent_workspace.infrastructure.models import (
+    ConversationModel,
+    ErasureFenceModel,
+    PurgeOperationModel,
+    PurgeOwnerCheckpointModel,
+)
+
+# purge_state 聚合投影值域（coordinator 写）；not_scheduled/scheduled 归
+# delete/restore 生命周期写者（S5-A-1），coordinator 不触碰。
+_COORDINATOR_PURGE_STATES = frozenset(
+    {"running", "blocked", "failed", "completed"}
+)
+
+
+class ScanResultLike(Protocol):
+    """scan 提供者返回形状（WorkspaceBodyScan / ExecutionBodyScan /
+    TransportBodyScan 均满足）。"""
+
+    total: int
+
+
+ScanProvider = Callable[[uuid.UUID, uuid.UUID], Awaitable[ScanResultLike]]
+
+
+# ---------------------------------------------------------------------------
+# 默认 scan 提供者装配（六 owner 复用 participant 的冻结扫描谓词，单一事实源）
+# ---------------------------------------------------------------------------
+
+
+class _ScanOnlyExternalAdapter:
+    """scan-only external adapter 桩（满足 ExternalObjectAdapter Protocol）。
+
+    仅用于装配 ExternalPayloadErasureParticipant 的 scan_transport_body——scan
+    是纯 DB 谓词、绝不调用 adapter；任何误调用 loud fail。
+    """
+
+    adapter_key = "scan-only-stub"
+    adapter_version = 1
+    supports_idempotent_replay = True
+    supports_receipt_lookup = True
+
+    async def delete_object(self, *, ref_scheme, ref_value, idempotency_key):
+        raise NotImplementedError("scan-only stub: delete_object must not be called")
+
+    async def receipt_lookup(self, *, idempotency_key):
+        raise NotImplementedError("scan-only stub: receipt_lookup must not be called")
+
+
+class _ScanOnlyRuntimeAdapter:
+    """scan-only runtime adapter 桩（满足 RuntimeSessionDestroyAdapter Protocol）。"""
+
+    adapter_key = "scan-only-stub"
+    adapter_version = 1
+    supports_idempotent_replay = True
+    supports_receipt_lookup = True
+
+    async def destroy_session(self, *, runtime_session_ref, idempotency_key):
+        raise NotImplementedError("scan-only stub: destroy_session must not be called")
+
+    async def receipt_lookup(self, *, idempotency_key):
+        raise NotImplementedError("scan-only stub: receipt_lookup must not be called")
+
+
+def build_scan_providers(session: AsyncSession) -> dict[str, ScanProvider]:
+    """六 owner 默认 scan 装配——复用 participant 冻结扫描谓词，不复制第二份。
+
+    - workspace/execution core：各自 participant.scan_*（S2-D/S3-D 冻结谓词）
+    - transport 两 owner：各自 TransportErasureParticipant 子类 scan（S4-D-A 冻结）
+    - external/runtime：scan-only adapter 桩装配 participant（scan 纯 DB 谓词，
+      不触 adapter；谓词与 S4-E-B2/S4-E-C 冻结实现同源）
+    """
+    from app.composition.external_ref_erasure_participant import (
+        ExternalPayloadErasureParticipant,
+    )
+    from app.composition.runtime_erasure_participant import (
+        RuntimeErasureParticipant,
+    )
+    from app.contexts.agent_execution.infrastructure.execution_erasure_participant import (  # noqa: E501
+        ExecutionErasureParticipant,
+    )
+    from app.contexts.agent_execution.infrastructure.execution_transport_erasure_participant import (  # noqa: E501
+        ExecutionTransportErasureParticipant,
+    )
+    from app.contexts.agent_workspace.infrastructure.workspace_erasure_participant import (  # noqa: E501
+        WorkspaceErasureParticipant,
+    )
+    from app.contexts.agent_workspace.infrastructure.workspace_transport_erasure_participant import (  # noqa: E501
+        WorkspaceTransportErasureParticipant,
+    )
+
+    workspace = WorkspaceErasureParticipant(session)
+    execution = ExecutionErasureParticipant(session)
+    ws_transport = WorkspaceTransportErasureParticipant(session)
+    ex_transport = ExecutionTransportErasureParticipant(session)
+    external = ExternalPayloadErasureParticipant(session, _ScanOnlyExternalAdapter())
+    runtime = RuntimeErasureParticipant(session, _ScanOnlyRuntimeAdapter())
+    return {
+        "workspace.core.v1": workspace.scan_body,
+        "execution.core.v1": execution.scan_execution_body,
+        "workspace.transport.v1": ws_transport.scan_transport_body,
+        "execution.transport.v1": ex_transport.scan_transport_body,
+        "external.payload.v1": external.scan_transport_body,
+        "runtime.private.v1": runtime.scan_transport_body,
+    }
+
+
+# ---------------------------------------------------------------------------
+# coordinator
+# ---------------------------------------------------------------------------
+
+
+class TransactionalProjectionCoordinator:
+    """transactional projection coordinator：facts 采集 → calculator → CAS 落库。
+
+    I2 边界：lineage 派生为「无 predecessor → 全 owner
+    not_applicable/native_pending」（rebuild/seeding 未实现，不存在继承义务）；
+    snapshot 外 owner 行由 calculator G4 直接裁决。完整 predecessor lineage
+    派生随 scheduler slice 扩展（权威公式 R1-S5-B S5-B-3 阶段 2）。
+    """
+
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        scan_providers: Mapping[str, ScanProvider],
+    ) -> None:
+        self._session = session
+        self._erasure = AgentErasureRepository(session)
+        self._scan_providers = scan_providers
+
+    async def aggregate_projection(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        purge_operation_id: uuid.UUID,
+        now: datetime | None = None,
+    ) -> ProjectionResult | None:
+        """聚合一次 operation 投影并 CAS 落库。
+
+        返回 None = 零写（计算投影与存储投影元组完全一致，未 bump revision）。
+        cancelled 存储态 fail closed；failed/completed 存储态仅允许零写幂等
+        返回，任何差异 fail closed（终态覆盖禁令，CAS 层不变量）。
+
+        ``now`` 仅测试注入；生产为锁后 DB clock_timestamp()（不落应用时钟）。
+        """
+        effective_now = now or await self._database_now()
+
+        # 锁序第一步：Conversation 行锁（必取——coordinator 写 purge_state/
+        # purged_at 须与 delete/restore/participant 串行；否则 operation→
+        # Conversation 逆序与 participant 的 Conversation→operation 构成 AB-BA）。
+        conversation = (
+            await self._session.execute(
+                select(ConversationModel)
+                .where(
+                    ConversationModel.tenant_id == tenant_id,
+                    ConversationModel.id == conversation_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if conversation is None:
+            raise ValueError(
+                f"conversation {conversation_id} not found for projection"
+            )
+
+        # 锁序第二步：operation 行 FOR UPDATE。
+        operation = (
+            await self._session.execute(
+                select(PurgeOperationModel)
+                .where(
+                    PurgeOperationModel.tenant_id == tenant_id,
+                    PurgeOperationModel.id == purge_operation_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if operation is None:
+            raise ValueError(
+                f"purge operation {purge_operation_id} not found for projection"
+            )
+        if operation.conversation_id != conversation_id:
+            raise ValueError(
+                f"operation conversation_id {operation.conversation_id} != "
+                f"{conversation_id}; cross-conversation projection rejected"
+            )
+
+        # 锁序第三/四步：全 owner checkpoint FOR UPDATE（owner_key 排序）→
+        # 全 owner fence 只读（owner_key 排序，不加 FOR UPDATE）。Conversation
+        # 首锁 = 本 coordination 域全局互斥（S1 不变量），fence 写全部发生在
+        # participant 取 operation 行锁之后，coordinator 持 operation 行锁期间
+        # fence 读集一致。
+        checkpoint_rows = (
+            (
+                await self._session.execute(
+                    select(PurgeOwnerCheckpointModel)
+                    .where(
+                        PurgeOwnerCheckpointModel.tenant_id == tenant_id,
+                        PurgeOwnerCheckpointModel.purge_operation_id
+                        == purge_operation_id,
+                    )
+                    .order_by(PurgeOwnerCheckpointModel.owner_key)
+                    .with_for_update()
+                )
+            )
+            .scalars()
+            .all()
+        )
+        fence_rows = (
+            (
+                await self._session.execute(
+                    select(ErasureFenceModel)
+                    .where(
+                        ErasureFenceModel.tenant_id == tenant_id,
+                        ErasureFenceModel.conversation_id == conversation_id,
+                    )
+                    .order_by(ErasureFenceModel.owner_key)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        snapshot = tuple(
+            RegistryOwnerFact(
+                owner_key=str(entry["owner_key"]),
+                owner_version=int(entry["owner_version"]),
+                capability_digest=str(entry["capability_digest"]),
+            )
+            for entry in operation.registry_snapshot
+        )
+        snapshot_owners = [entry.owner_key for entry in snapshot]
+
+        # snapshot↔digest 内部自洽（与 create_owner_checkpoint 同源校验）：
+        # 持久化 snapshot 被篡改而 digest 未同步 → fail closed，不在错误 owner
+        # 全集上聚合。
+        if snapshot_digest(list(operation.registry_snapshot)) != operation.registry_digest:
+            raise ValueError(
+                f"purge operation {purge_operation_id} registry snapshot/digest "
+                "mismatch; tampered snapshot, fail closed"
+            )
+
+        # G1：operation.registry_digest 与已安装 registry 一致。
+        registry_matches = operation.registry_digest == registry_digest()
+        # G2：hold_revision_snapshot < Conversation 当前 hold_revision。
+        hold_drift = operation.hold_revision_snapshot < conversation.hold_revision
+        # G3：live active hold 查询（I1 落地后无 TOCTOU 语义由 I2 门禁承接）。
+        active_hold = await self._erasure.has_active_legal_hold(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        )
+
+        # 最终扫描：per-owner，逐 owner 可归属（S5-A-2 输入契约）。
+        scans: list[OwnerScanFact] = []
+        for owner_key in snapshot_owners:
+            provider = self._scan_providers.get(owner_key)
+            if provider is None:
+                raise ValueError(
+                    f"no scan provider for snapshot owner {owner_key!r}; "
+                    "coordinator wiring incomplete, fail closed"
+                )
+            scan_result = await provider(
+                tenant_id=tenant_id, conversation_id=conversation_id
+            )
+            scans.append(OwnerScanFact(owner_key=owner_key, total=scan_result.total))
+
+        # lineage（I2 边界）：无 predecessor（rebuild 未实现）→ 全 owner
+        # not_applicable/native_pending。derived 非持久、重启重算同值。
+        lineage_facts = tuple(
+            LineageFact(
+                owner_key=owner_key,
+                lineage_status="not_applicable",
+                expected_obligation_kind="native_pending",
+            )
+            for owner_key in snapshot_owners
+        )
+
+        result = calculate_projection(
+            ProjectionInput(
+                snapshot=snapshot,
+                registry_digest_matches=registry_matches,
+                hold_drift=hold_drift,
+                active_legal_hold=active_hold,
+                operation_purge_revision=operation.purge_revision,
+                checkpoints=tuple(
+                    CheckpointFact(
+                        owner_key=row.owner_key,
+                        state=row.state,
+                        reason_code=row.reason_code,
+                        attempt=row.attempt,
+                        owner_version=row.owner_version,
+                        capability_digest=row.capability_digest,
+                        ack_digest=row.ack_digest,
+                        checkpoint_digest=row.checkpoint_digest,
+                    )
+                    for row in checkpoint_rows
+                ),
+                fences=tuple(
+                    FenceFact(
+                        owner_key=row.owner_key,
+                        state=row.state,
+                        owner_version=row.owner_version,
+                        purge_revision=row.purge_revision,
+                        ack_digest=row.ack_digest,
+                        ingress_digest=row.ingress_digest,
+                        ingress_checkpoint=row.ingress_checkpoint,
+                    )
+                    for row in fence_rows
+                ),
+                lineage=lineage_facts,
+                scans=tuple(scans),
+            )
+        )
+
+        # --- CAS 落库（锁内当前值基线，不用外部 expected 值）---
+        return await self._apply_projection(
+            operation=operation,
+            conversation=conversation,
+            result=result,
+            now=effective_now,
+        )
+
+    async def _database_now(self) -> datetime:
+        from sqlalchemy import func
+
+        value = await self._session.scalar(select(func.clock_timestamp()))
+        assert value is not None, "clock_timestamp() must return a value"
+        return value
+
+    async def _apply_projection(
+        self,
+        *,
+        operation: PurgeOperationModel,
+        conversation: ConversationModel,
+        result: ProjectionResult,
+        now: datetime,
+    ) -> ProjectionResult | None:
+        """CAS 写 operation + Conversation 投影；元组一致时零写返回 None。
+
+        终态覆盖禁令（CAS 层不变量）：cancelled 一律 fail closed；
+        failed/completed 只允许零写幂等返回，任何差异 fail closed。
+        """
+        # 目标投影元组（零写比较集 = 完整投影元组）。
+        target_state = result.state
+        target_failure_code = result.failure_code
+        if result.state == "running" and operation.started_at is None:
+            target_started_at: datetime | None = now
+        else:
+            target_started_at = operation.started_at
+        if result.state == "completed" and operation.completed_at is None:
+            target_completed_at: datetime | None = now
+        else:
+            target_completed_at = operation.completed_at
+        # purge_state：聚合投影值域由 coordinator 写；scheduled 保持生命周期
+        # 写者既有值（not_scheduled/scheduled 归 delete/restore，S5-A-1）。
+        if result.purge_state in _COORDINATOR_PURGE_STATES:
+            target_purge_state = result.purge_state
+        else:
+            target_purge_state = conversation.purge_state
+        if result.state == "completed" and conversation.purged_at is None:
+            target_purged_at: datetime | None = now
+        else:
+            target_purged_at = conversation.purged_at
+
+        stored = (
+            operation.state,
+            operation.failure_code,
+            operation.started_at,
+            operation.completed_at,
+            conversation.purge_state,
+            conversation.purged_at,
+        )
+        target = (
+            target_state,
+            target_failure_code,
+            target_started_at,
+            target_completed_at,
+            target_purge_state,
+            target_purged_at,
+        )
+        if stored == target:
+            # 零写：不 bump revision，保护 Tx1 _mark_operation_running/
+            # _record_blocked revision CAS 与编排方逐 entry 记账（S5-A-4）。
+            return None
+
+        # 终态覆盖禁令：终态存储值不得被任何非零写覆盖。
+        if operation.state == "cancelled":
+            raise ValueError(
+                f"purge operation {operation.id} is cancelled (restore-owned "
+                "terminal); coordinator must not overwrite"
+            )
+        if operation.state in ("failed", "completed"):
+            raise ValueError(
+                f"purge operation {operation.id} is terminal "
+                f"({operation.state!r}); coordinator must not reopen to "
+                f"{result.state!r}"
+            )
+
+        operation.state = target_state
+        operation.failure_code = target_failure_code
+        operation.started_at = target_started_at
+        operation.completed_at = target_completed_at
+        operation.revision = operation.revision + 1
+        operation.updated_at = now
+        conversation.purge_state = target_purge_state
+        conversation.purged_at = target_purged_at
+        conversation.updated_at = now
+        await self._session.flush()
+        return result
+
+
+__all__ = [
+    "ScanProvider",
+    "TransactionalProjectionCoordinator",
+    "build_scan_providers",
+]

@@ -488,6 +488,8 @@ async def test_participant_gate_blocks_then_resolve_unblocks(db_session, side):
     ).mappings().one()
     assert cp["state"] == "blocked"
     assert cp["reason_code"] == "purge_blocked_by_conversation_scope_gate"
+    # R1-S5-I2 去共享写：owner checkpoint blocked + reason 落账；
+    # operation/Conversation 聚合投影归 coordinator，保持 scheduled/NULL。
     op = (
         await db_session.execute(
             text(
@@ -497,8 +499,8 @@ async def test_participant_gate_blocks_then_resolve_unblocks(db_session, side):
             {"op": op_id},
         )
     ).mappings().one()
-    assert op["state"] == "blocked"
-    assert op["failure_code"] == "purge_blocked_by_conversation_scope_gate"
+    assert op["state"] == "scheduled"
+    assert op["failure_code"] is None
     conv = (
         await db_session.execute(
             text(
@@ -508,7 +510,7 @@ async def test_participant_gate_blocks_then_resolve_unblocks(db_session, side):
             {"c": conv_id2},
         )
     ).scalar_one()
-    assert conv == "blocked"
+    assert conv == "scheduled"
 
     # resolve 后 gate 解除 -> 重试正常 ACK（blocked->erasing 恢复）。
     # 用 inbox 行实际的 receipt_tombstone_digest（与 seed 的合法 digest 一致）。
@@ -541,7 +543,7 @@ async def test_participant_gate_blocks_then_resolve_unblocks(db_session, side):
         conversation_id=conv_id2,
         purge_revision=purge_rev,
         purge_operation_id=op_id,
-        expected_operation_revision=3,  # 首次 blocked 已 bump 1->2->3
+        expected_operation_revision=1,  # R1-S5-I2：participant 不再 bump revision
         expected_lease_epoch=0,
     )
     assert outcome2.blocked is False

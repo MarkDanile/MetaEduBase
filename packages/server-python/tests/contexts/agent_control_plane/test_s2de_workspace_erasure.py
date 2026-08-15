@@ -319,8 +319,9 @@ async def test_p1_1_already_purged_not_purgeable(db_session):
 
 
 async def test_p1_1_round3_blocked_retry_state_consistent(db_session, monkeypatch):
-    """round-3 P1-1：blocked 重试 ACK 后 operation=running（非 blocked）、
-    failure_code=None，与 checkpoint=acked / conversation.purge_state=running 一致。"""
+    """round-3 P1-1（R1-S5-I2 迁移）：blocked 重试 ACK 后 owner checkpoint=acked；
+    operation/Conversation 聚合投影归 coordinator——participant 零共享写，投影
+    保持 scheduled/NULL（blocked->running 重开判定由 coordinator 从 facts 重算）。"""
     conversation_id, purge_revision, operation_id, op_revision = (
         await _seed_purgeable_with_operation(db_session)
     )
@@ -347,13 +348,15 @@ async def test_p1_1_round3_blocked_retry_state_consistent(db_session, monkeypatc
     )
     await db_session.commit()
     assert blocked.blocked
-    # blocked 后 operation=blocked + failure_code=scan_nonzero。
+    # blocked 后 owner checkpoint=blocked + reason=scan_nonzero；operation 投影
+    # 归 coordinator，保持 scheduled/failure_code NULL。
     op = await _operation_model(db_session, operation_id)
-    assert op.state == "blocked"
-    assert op.failure_code == REASON_WORKSPACE_BODY_SCAN_NONZERO
+    assert op.state == "scheduled"
+    assert op.failure_code is None
     op_revision_after = op.revision
 
-    # 重试：scan 归零 -> ACK。expected_operation_revision = 当前 revision。
+    # 重试：scan 归零 -> ACK。expected_operation_revision = 当前 revision
+    # （R1-S5-I2：participant 不再 bump，revision 恒为初始值）。
     outcome = await _participant(db_session).erase_conversation_body(
         tenant_id=TENANT_ID,
         conversation_id=conversation_id,
@@ -364,15 +367,15 @@ async def test_p1_1_round3_blocked_retry_state_consistent(db_session, monkeypatc
     await db_session.commit()
     assert outcome.erased
 
-    # round-3 P1-1：重试 ACK 后状态一致--operation=running + failure_code=None
-    # （非 blocked），与 checkpoint=acked / conversation.purge_state=running 对齐。
+    # round-3 P1-1（I2 迁移）：重试 ACK 后 owner checkpoint=acked；operation/
+    # Conversation 投影由 coordinator 拥有，participant 零共享写。
     op = await _operation_model(db_session, operation_id)
-    assert op.state == "running"
+    assert op.state == "scheduled"
     assert op.failure_code is None
     cp = await _checkpoint_model(db_session, operation_id)
     assert cp.state == PurgeOwnerState.ACKED.value
     conv = await db_session.get(ConversationModel, conversation_id)
-    assert conv.purge_state == "running"
+    assert conv.purge_state == "scheduled"
 
 
 # ---------------------------------------------------------------------------
@@ -672,7 +675,8 @@ async def test_p1_3_operation_fencing_counterexamples(
 
 async def test_p1_4_ack_binds_to_operation_checkpoint_cas(db_session):
     """P1-4：ACK 绑定具体 operation_id + owner checkpoint CAS，ack_digest/
-    checkpoint_digest 落库且与 fence ack_digest 同源；operation=running。"""
+    checkpoint_digest 落库且与 fence ack_digest 同源；R1-S5-I2：operation
+    聚合投影归 coordinator，participant 零共享写（保持 scheduled/NULL）。"""
     conversation_id, purge_revision, operation_id, op_revision = (
         await _seed_purgeable_with_operation(db_session)
     )
@@ -692,7 +696,7 @@ async def test_p1_4_ack_binds_to_operation_checkpoint_cas(db_session):
     assert checkpoint.checkpoint_digest is not None
     assert checkpoint.checkpoint_digest != checkpoint.ack_digest
     operation = await _operation_model(db_session, operation_id)
-    assert operation.state == "running"
+    assert operation.state == "scheduled"
     assert operation.failure_code is None
 
 
@@ -765,8 +769,10 @@ async def test_p1_4_erased_fence_repairs_pending_checkpoint(db_session):
     assert cp.state == PurgeOwnerState.ACKED.value
     assert cp.ack_digest == fence_ack_digest
     op = await _operation_model(db_session, operation_id)
-    assert op.state == "running"  # scheduled -> running 修复
-    assert op.failure_code is None
+    # R1-S5-I2：participant 只修 owner checkpoint；operation 投影归 coordinator
+    #（保持回退后的 scheduled/stale 值——聚合由 coordinator 从 facts 重算）。
+    assert op.state == "scheduled"
+    assert op.failure_code == "stale"
 
 
 async def test_p1_4_round3_erased_fence_nonzero_scan_fail_closed(db_session):
@@ -855,7 +861,8 @@ async def test_p1_5_blocked_state_is_committed_not_rolled_back(
     db_session, monkeypatch
 ):
     """P1-5：scan 非零时 blocked 作为正常返回提交（不抛异常致回滚）。blocked 状态
-    + scan digest 持久化（P2-2），可重试。"""
+    + scan digest 持久化（P2-2），可重试。R1-S5-I2：operation/Conversation
+    聚合投影归 coordinator，participant 只写 owner checkpoint。"""
     conversation_id, purge_revision, operation_id, op_revision = (
         await _seed_purgeable_with_operation(db_session)
     )
@@ -893,10 +900,10 @@ async def test_p1_5_blocked_state_is_committed_not_rolled_back(
     assert checkpoint.reason_code == REASON_WORKSPACE_BODY_SCAN_NONZERO
     assert checkpoint.checkpoint_digest is not None  # P2-2
     op = await _operation_model(db_session, operation_id)
-    assert op.state == "blocked"
-    assert op.failure_code == REASON_WORKSPACE_BODY_SCAN_NONZERO
+    assert op.state == "scheduled"  # R1-S5-I2：投影归 coordinator
+    assert op.failure_code is None
     conv = await db_session.get(ConversationModel, conversation_id)
-    assert conv.purge_state == "blocked"
+    assert conv.purge_state == "scheduled"
 
 
 async def test_p1_5_retry_after_blocked_acks(db_session, monkeypatch):
@@ -1181,8 +1188,10 @@ async def test_p1_1_round4_legal_hold_stale_revision_fail_closed(db_session):
 
 
 async def test_p1_2_round4_legal_hold_projects_purge_state_blocked(db_session):
-    """round-4 P1-2：legal-hold blocked 路径把 Conversation.purge_state 投影为
-    blocked（与 operation/checkpoint 同事务一致，Spec §5.2）。"""
+    """round-4 P1-2（R1-S5-I2 迁移）：legal-hold blocked 路径只写 owner
+    checkpoint（blocked + reason）；Conversation.purge_state/operation 聚合投影
+    归 coordinator，participant 零共享写（原「投影 blocked 三方一致」断言迁移
+    为「投影保持生命周期值」）。"""
     conversation_id, purge_revision, operation_id, op_revision = (
         await _seed_hold_and_purgeable_with_operation(db_session)
     )
@@ -1196,10 +1205,13 @@ async def test_p1_2_round4_legal_hold_projects_purge_state_blocked(db_session):
     await db_session.commit()
     assert outcome.blocked
     conv = await db_session.get(ConversationModel, conversation_id)
-    assert conv.purge_state == "blocked"  # P1-2 投影一致
+    assert conv.purge_state == "scheduled"  # R1-S5-I2：投影归 coordinator
     op = await _operation_model(db_session, operation_id)
-    assert op.state == "blocked"
-    assert op.failure_code == REASON_PURGE_BLOCKED_BY_LEGAL_HOLD
+    assert op.state == "scheduled"
+    assert op.failure_code is None
+    cp = await _checkpoint_model(db_session, operation_id)
+    assert cp.state == PurgeOwnerState.BLOCKED.value
+    assert cp.reason_code == REASON_PURGE_BLOCKED_BY_LEGAL_HOLD
 
 
 async def test_i1_hold_created_mid_operation_drifts_retry_fail_closed(
@@ -1236,7 +1248,7 @@ async def test_i1_hold_created_mid_operation_drifts_retry_fail_closed(
     )
     await db_session.commit()
     op = await _operation_model(db_session, operation_id)
-    assert op.failure_code == REASON_WORKSPACE_BODY_SCAN_NONZERO
+    assert op.failure_code is None  # R1-S5-I2：投影归 coordinator，participant 不写
     op_revision_after = op.revision
 
     # 中途创建 hold：Conversation.hold_revision 0->1，旧 operation snapshot=0
@@ -1259,8 +1271,8 @@ async def test_i1_hold_created_mid_operation_drifts_retry_fail_closed(
         )
     await db_session.rollback()
     op = await _operation_model(db_session, operation_id)
-    assert op.state == "blocked"
-    assert op.failure_code == REASON_WORKSPACE_BODY_SCAN_NONZERO  # 保留不覆写
+    assert op.state == "scheduled"  # R1-S5-I2：投影归 coordinator，participant 零写
+    assert op.failure_code is None
     assert op.revision == op_revision_after  # 零 bump
     cp = await _checkpoint_model(db_session, operation_id)
     assert cp.state == PurgeOwnerState.BLOCKED.value
@@ -1298,9 +1310,11 @@ async def test_p1_3_round4_erased_repair_acked_digest_mismatch_fail_closed(db_se
 
 
 async def test_p1_3_round4_erased_repair_blocked_operation_to_running(db_session):
-    """round-4 P1-3：erased 重放时 operation 卡 blocked + purge_state=blocked ->
-    修复到 running（不只清 failure_code），Conversation.purge_state 也修复到
-    running，三方一致（fence=erased / checkpoint=acked / operation=running）。"""
+    """round-4 P1-3（R1-S5-I2 迁移）：erased 重放时 operation 卡 blocked +
+    purge_state=blocked（历史矛盾投影）——participant 只修 owner checkpoint
+    （pending -> acked）；operation/Conversation 聚合投影归 coordinator，
+    零共享写（原「修复到 running 三方一致」语义由 coordinator 从 facts 重算
+    替代，S5-A-7 ①）。"""
     conversation_id, purge_revision, operation_id, op_revision = (
         await _seed_purgeable_with_operation(db_session)
     )
@@ -1337,13 +1351,13 @@ async def test_p1_3_round4_erased_repair_blocked_operation_to_running(db_session
     )
     await db_session.commit()
     assert outcome.erased
-    # operation 修复到 running（非 blocked），failure_code 清除。
+    # R1-S5-I2：operation/Conversation 投影归 coordinator——participant 零共享
+    # 写，历史矛盾投影保持原值（由 coordinator 从 facts 重算覆盖）。
     op = await _operation_model(db_session, operation_id)
-    assert op.state == "running"
-    assert op.failure_code is None
-    # conversation.purge_state 修复到 running（三方一致）。
+    assert op.state == "blocked"
+    assert op.failure_code == "stale"
     conv = await db_session.get(ConversationModel, conversation_id)
-    assert conv.purge_state == "running"
+    assert conv.purge_state == "blocked"
     cp = await _checkpoint_model(db_session, operation_id)
     assert cp.state == PurgeOwnerState.ACKED.value
     assert cp.ack_digest == fence_ack_digest
@@ -1622,22 +1636,24 @@ async def test_p1_3_round5_erased_repair_acked_checkpoint_blocked_operation(db_s
     )
     await db_session.commit()
     assert outcome.erased
-    # operation 修复到 running（ACKed 分支也 fall through 到修复块）。
+    # R1-S5-I2：operation 投影归 coordinator——participant 零共享写，历史矛盾
+    # 投影保持原值（由 coordinator 从 facts 重算覆盖）。
     op = await _operation_model(db_session, operation_id)
-    assert op.state == "running"
-    assert op.failure_code is None
+    assert op.state == "blocked"
+    assert op.failure_code == "stale"
     # checkpoint 保持 acked，digest 不变（未重写）。
     cp = await _checkpoint_model(db_session, operation_id)
     assert cp.state == PurgeOwnerState.ACKED.value
     assert cp.ack_digest == fence_ack_digest
-    # conversation.purge_state 修复到 running（三方一致）。
     conv = await db_session.get(ConversationModel, conversation_id)
-    assert conv.purge_state == "running"
+    assert conv.purge_state == "scheduled"
 
 
 async def test_p1_3_round5_erased_repair_acked_checkpoint_scheduled_operation(db_session):
-    """round-5 P1-1：checkpoint=acked + operation=scheduled 矛盾组合--同样
-    fall through 到 operation 修复块，scheduled->running。"""
+    """round-5 P1-1（R1-S5-I2 迁移）：checkpoint=acked + operation=scheduled 矛盾
+    组合——participant 只保持 owner checkpoint 事实；operation 投影归
+    coordinator，零共享写（原「fall through 修复块 scheduled->running」语义由
+    coordinator 从 facts 重算替代）。"""
     conversation_id, purge_revision, operation_id, op_revision = (
         await _seed_purgeable_with_operation(db_session)
     )
@@ -1668,10 +1684,10 @@ async def test_p1_3_round5_erased_repair_acked_checkpoint_scheduled_operation(db
     )
     await db_session.commit()
     assert outcome.erased
-    # operation 修复到 running，started_at 补设。
+    # R1-S5-I2：operation 投影归 coordinator——participant 零共享写。
     op = await _operation_model(db_session, operation_id)
-    assert op.state == "running"
-    assert op.started_at is not None
+    assert op.state == "scheduled"
+    assert op.started_at is None
     # checkpoint 保持 acked，digest 不变。
     cp = await _checkpoint_model(db_session, operation_id)
     assert cp.state == PurgeOwnerState.ACKED.value

@@ -47,7 +47,8 @@ pytestmark = pytest.mark.asyncio
 async def test_erase_clears_all_body_and_acks(db_session):
     """主路径：completed Run（terminal output + context snapshot + event payload +
     compatibility output + actor）清除后 scan 为零、fence erased + ack_digest、
-    checkpoint acked、operation running、conversation.purge_state=running。
+    checkpoint acked；R1-S5-I2：operation/Conversation 聚合投影归 coordinator，
+    participant 零共享写（保持 scheduled/running 生命周期值）。
 
     逐项变异杀手：删任一清除动作 -> scan 非零 -> blocked（非 erased）。
     """
@@ -69,7 +70,7 @@ async def test_erase_clears_all_body_and_acks(db_session):
     assert outcome.fence.ack_digest == outcome.ack_digest
     assert outcome.body_scan.total == 0
 
-    # checkpoint acked + operation running + conversation purge_state=running。
+    # checkpoint acked（owner 事实）；operation/Conversation 投影归 coordinator。
     cp = await h.checkpoint_model(db_session, ctx["operation_id"])
     assert cp.state == PurgeOwnerState.ACKED.value
     assert cp.ack_digest == outcome.ack_digest
@@ -77,12 +78,12 @@ async def test_erase_clears_all_body_and_acks(db_session):
     assert cp.checkpoint_digest != cp.ack_digest
     assert cp.reason_code is None
     op = await h.operation_model(db_session, ctx["operation_id"])
-    assert op.state == "running"
+    assert op.state == "scheduled"  # R1-S5-I2
     assert op.failure_code is None
     conv = await db_session.get(
         h.ConversationModel, ctx["conversation_id"]
     )
-    assert conv.purge_state == "running"
+    assert conv.purge_state == "scheduled"
 
 
 async def test_terminal_output_suppressed_and_envelope_preserved(db_session):
@@ -368,8 +369,8 @@ async def test_scan_nonzero_blocks_ack(db_session, monkeypatch):
     fence = await h.fence_model(db_session, ctx["conversation_id"])
     assert fence.state == ErasureFenceState.BLOCKED.value
     op = await h.operation_model(db_session, ctx["operation_id"])
-    assert op.state == "blocked"
-    assert op.failure_code == REASON_EXECUTION_BODY_SCAN_NONZERO
+    assert op.state == "scheduled"  # R1-S5-I2：投影归 coordinator
+    assert op.failure_code is None
     cp = await h.checkpoint_model(db_session, ctx["operation_id"])
     assert cp.state == PurgeOwnerState.BLOCKED.value
     op_revision_after = op.revision
