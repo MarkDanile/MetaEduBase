@@ -2157,3 +2157,122 @@ git diff --check
 - external erase 返回 unknown 但实现准备自动重试或强制 ACK。
 - 为通过测试需要保存正文到 audit/checkpoint/log，或需要删除 catalog/业务源资产。
 - Runtime conformance 依赖尚不存在的 Pi Worker，却准备将 fake 结果标为生产完成。
+
+### R1-S5：Scheduler 契约（contract-first，纯文档；承接 S5-A-10 S6 拆分裁决 + S5-B/C 前置契约项）
+
+> Status: Draft（本 PR 仅纯文档契约冻结；不命名 I3，不写代码/测试/schema/migration/registry/CI，不启动任何 Scheduler 实现/S6/C1）
+> 依据：S5-A-10 S6 拆分裁决（「hold 漂移 rebuild / checkpoint seeding / 显式重试」移出项）、S5-B（Option D quiesce-and-finalize、rebuild/seeding/lineage、S5-B-6 并发与幂等）、S5-C（settlement-only adapter recovery、六输出态、RecoveryDescriptor、ACK-lost repair）、I1/I2 merged-boundary（#567/#569 已并入 main）。
+> 本契约冻结 scheduler 全函数状态机、统一锁序/事务边界/崩溃恢复点、写者所有权矩阵、单风险域实现 PR 拆分与反例矩阵；**不复制** S5-B/S5-C 已冻结规则，全部以精确指针引用。
+
+#### S5-SCH-0 横向事实对账（冻结，截至 main@ca0b64a0）
+
+**operation（agent_conversation_purges）写者全集**：
+| 写者 | 迁移/写值 | 事务 |
+|------|----------|------|
+| `create_purge_operation`（repository:742） | `scheduled` + registry/retention/hold snapshot | 调用方事务 |
+| `cancel_scheduled_operations_for_restore`（repository:809） | `scheduled → cancelled`（restore 生命周期，Conversation 锁内） | 调用方事务 |
+| transactional projection coordinator（`_apply_projection`） | `scheduled/running/blocked → running/blocked/failed/completed` + failure_code/started_at/completed_at + revision+1；零写六元组；终态覆盖禁令 | 独立事务（Conversation-first） |
+| **scheduler（本契约新增，唯一产生者）** | `lease_epoch` 单调推进（claim/takeover CAS）；`failed` 写仅经 checkpoint（见下）；rebuild 新 operation（新 purge_revision） | 见 S5-SCH-2 |
+
+**checkpoint（agent_conversation_purge_owners）写者全集**：
+`create_owner_checkpoint`（`pending`，repository:886）· participant 三方法（`blocked/acked`；external/runtime Tx1 加 `erasing`）· **scheduler 写 `failed`**（重试预算耗尽，S5-SCH-1.4；优先级 5 唯一产生者，S5-A-2 冻结）· rebuild seeding（S5-B-3 阶段 1，一次事务）。coordinator 不写 checkpoint（S5-A-1 冻结，derived-conflict 裁决）。
+
+**fence（agent_erasure_fences）写者全集**：
+participant（ensure/transition，owner lock 内）· **settlement fence `erasing→blocked` 写者（4 非 core owner，S5-C-7）**。scheduler 不直接写 fence；fence 同步收敛 = 经 settlement 通道（S5-C）或 participant 重试路径。
+
+**Conversation purge_state/purged_at 写者**：coordinator（`running/blocked/failed/completed` + `purged_at`，S5-A-1）；delete/restore 生命周期（`not_scheduled/scheduled` + `purge_revision`）。**零 checkpoint `scheduled` 投影唯一写者 = 生命周期**（S5-SCH-5 正式冻结，REQ-047 分流）。
+
+**I1/I2 接口（冻结事实）**：`create_legal_hold`/`release_legal_hold`（Conversation-first + 同事务 SQL 原子 bump + tenant-scoped 锁谓词 + completed 拦截）；coordinator `aggregate_projection`（Conversation-first + operation 三键限定 + 锁内 CAS + 零写 + 旧 revision 门禁 + 时间归一化 + state×reason 校验）；participant `_load_verified_operation`（fencing 全集 + 旧 revision 门禁；operation 锁查询三键收窄为 REQ-047 实现 PR 项，S5-SCH-5）。
+
+**组合根可达性**：六 participant erase 入口生产不可达（`test_s5i2_production_wiring_boundary` 静态守卫，S5-A-5 滚动发布前提）；coordinator 无生产调用方（S5-A-5 编排触发点由本契约 SCH-B 接线）；registry `erase_available` 值域 = 4 True / 2 False（生产）。
+
+**PostgreSQL 锁序（S1 不变量，冻结）**：Conversation 行锁 = 本 coordination 域全局互斥——任何取 operation/fence/checkpoint 行锁的事务必须先取 Conversation 行锁；participant `Conversation → owner advisory → fence FOR UPDATE → operation → checkpoint`；coordinator `Conversation → operation → checkpoints（owner_key 序）→ fence 只读 → scan → CAS`；Tx2 的 checkpoint→operation 逆序子序由 Conversation 首锁保护不成环（S5-A-4 已冻结并测试）；delete/restore 仅 Conversation；I1 hold `Conversation → hold 行`。时钟一律 `clock_timestamp()` 落库。
+
+#### S5-SCH-1 Scheduler 全函数状态机（冻结）
+
+**1.1 claim / lease / takeover / 限流退避**
+- claim 谓词（锁内判定）：`conversation.state=deleted` + `purged_at IS NULL` + `purge_after` 已过 + 无 active hold 阻塞判定（G3 由 coordinator 聚合承担，claim 不做 hold 业务裁决）+ 该 conversation 无在租 claim（lease 未到期）。
+- 无 operation 或 operation 属旧 purge_revision（drift/重建后）：按 S5-B-6 幂等判别在 Conversation 锁内创建新 operation（`create_purge_operation` + 全 owner checkpoint 建行，一致性快照：聚合前全 checkpoint 行已存在，S5-A-4）——**惰性建行必须在首次聚合前完成**。
+- bounded lease：claim 以 `lease_epoch+1` SQL 侧原子 CAS 推进（`operation.lease_epoch` 单调，CHECK 已锁）；lease 到期 = 锁内 `updated_at` 时钟比较 + 可配置上界；scheduler 单实例或多实例均以 Conversation 首锁 + lease_epoch CAS 串行。
+- takeover：仅 `expected_lease_epoch` CAS 推进；stale lease 败者**零写退避**（不写任何行）；重复 scheduler 同 conversation 由 Conversation 锁串行 + S5-B-6 幂等判别收敛为单一写者。
+- tenant 限流：per-tenant 并发 claim 上限 + 指数退避（`next_retry_at = clock_timestamp() + backoff(attempt)`，落库时钟）；退避上限与 jitter 冻结为配置项（默认值冻结，实现可覆盖）。
+
+**1.2 零 checkpoint `scheduled` 投影唯一写者**（S5-SCH-5 正式冻结）：`scheduled/not_scheduled` purge_state 与 `purge_revision` 唯一写者 = delete/restore 生命周期；coordinator 对 scheduled 聚合结果**保留** Conversation 既有 purge_state（I2 已实现语义，不再「未决」）；scheduler 不得直接写 `scheduled/not_scheduled`；全 owner checkpoint 建行后 coordinator 聚合自然离开 scheduled。
+
+**1.3 owner 顺序执行与编排**
+- 顺序：registry snapshot owner_key 字典序（与 coordinator 锁序/聚合 tie-break 同序）。
+- 每次 entry 前 token 重验（S5-A-4 冻结「每 participant entry 前按当前 operation 行重读 revision」扩展为调度语义）：重读 operation `(revision, lease_epoch, purge_revision)` + Conversation `(purge_revision, hold_revision)` + registry digest；任一不匹配 → 该 cycle fail closed 重入 claim 判定（不写任何行）。
+- 每 owner entry 返回后调用 coordinator `aggregate_projection`（独立事务，S5-A-5 触发点在本契约接线；错误 = participant 抛错/超时 → 记 blocked 或按白名单重试，不中断整 cycle 判定）。
+- 单 owner 重试复用 participant 入口，锁序与 participant 完全一致（S5-A-4 冻结），**任何路径不得持 operation 行锁时反取 owner advisory/fence，不得先 checkpoint 后 operation**。
+
+**1.4 checkpoint retry 白名单与 failed**
+- 重试白名单（S5-A-3 族 B 封闭，逐字引用）：`erase_timeout`/`adapter_unavailable`/scan 族 + pre-window gate 具名域（legal_hold/unresolved_action/conversation_scope_gate/owner_unavailable/operator_suppressed）；`outcome_unknown`/`settlement_deadline_expired`/`adapter_unresolvable`/`purge_owner_ack_conflict`/dirty-data/G1/G2-blocked **一律禁止重开**（零 adapter 调用、零状态推进，S5-C 输出态 3/5/6 reconcile-only）。
+- 预算耗尽（per-owner 重试计数上限，冻结默认值）：scheduler 写该 owner checkpoint `failed` + `reason_code` = 最后一次 blocked reason（全 NULL → NULL）+ 清 `next_retry_at`；**fence 同步收敛**：该 owner fence 保持 blocked 不推进不重置（settlement 通道归 S5-C）。coordinator 按优先级 5 只读聚合 failed（S5-A-2 冻结）。
+- `blocked → running` 唯一路径 = 本白名单内重试且被重试 owner 是唯一 blocked owner（S5-A-3 冻结）；G1/G2-blocked 只走重建（S5-B-5 全卷引用）。
+
+**1.5 G1/G2 drift、Option D quiesce 与 rebuild/seeding**
+- 检测：coordinator 写冻结 blocked（`blocked_registry_changed`/`blocked_hold_revision_changed`，I2 已实现）。
+- 序列（S5-B-1/B-5 逐字引用，不复制）：drift blocked → **Option D quiesce**（等全部 owner 离开 erasing；quiesce 判定在 Conversation 锁下）→ G3 消解（release hold）→ 新 purge_revision rebuild + seeding（S5-B-2 owner obligation 全函数矩阵 + S5-B-3 六项 lineage 重验 + S5-B-6 并发幂等/DELETED 门禁）。
+- rebuild 单事务：零新 operation/零新 checkpoint 或全提交；seeding 期失败 = 整事务回滚（S5-B-3 阶段 1）；聚合期漂移 → derived conflict（G4，阶段 2）。
+- 每 hold 变化事件至多一次 rebuild；重建幂等判别在 Conversation 锁内（S5-B-6）。
+
+**1.6 settlement 集成与内部命令**
+- 六输出态（S5-C-1）、ACK-lost repair（S5-C-6）、RecoveryDescriptor 六字段历史装配、adapter lookup/replay receipt 三态（S5-C-5）——scheduler settlement 进入点按 S5-C-7 锁序表接线；**不复制规则，只引用**。
+- inspect/retry/reconcile 内部命令边界：inspect = 只读；retry = 白名单内单 owner 重跑；reconcile = 有证据（receipt/ack_digest）才收敛（S5-C E-3b）；**无 force-skip ACK**——任何路径不得绕过五方验证/最终扫描/证据持有直接写 acked/completed。
+
+#### S5-SCH-2 并发与崩溃（冻结）
+
+**统一锁序**：scheduler 全部进入点 Conversation-first（claim/rebuild/quiesce 判定/settlement 进入/单 owner 重试编排）；claim 与 rebuild 的 Conversation 锁内判定/写入逐条见 S5-SCH-1；settlement 进入点锁序表 = S5-C-7 逐字引用。
+
+**事务边界**：claim = 短事务（lease 写 + operation/checkpoint 建行，不包含 participant 执行）；participant entry = 既有单事务/Tx1-Tx2 协议不变；coordinator = 独立事务；rebuild = 单事务（全有或全无）；settlement = S5-C 双事务协议。
+
+**崩溃恢复点**：claim 后崩溃 → lease 到期 takeover（lease_epoch CAS）；rebuild 崩溃 → 单事务回滚零残留（旧 operation 完整保留可重放）；settlement 崩溃 → E-2a 续做；participant 崩溃 → erased/erasing 幂等重放（已冻结）；每 entry 前 token 重验 = 恢复判定点（任何恢复路径重入前必须重验）。
+
+**旧 lease/revision 零写**：takeover CAS 败者零写退避；旧 purge_revision operation 的 participant/coordinator 写一律旧 revision 门禁拒绝（I2 已落地）；scheduler 对旧 token 的 claim/retry 重放零写（反例矩阵 SCH-4 行 7）。
+
+**写者所有权矩阵（目标态全表）**：
+
+| 实体/列 | 唯一写者 | 备注 |
+|---------|---------|------|
+| operation.state/failure_code/started_at/completed_at/revision | coordinator | 终态覆盖禁令；scheduler 不写 |
+| operation.lease_epoch | scheduler（claim/takeover CAS） | 单调；其余写者只读重验 |
+| operation.`scheduled` 初建 / `cancelled` | 生命周期 primitive / restore-cancel | S5-SCH-1.2 |
+| checkpoint 全列 | participant / scheduler（`failed`）/ seeding | coordinator 只读 |
+| fence 全列 | participant / settlement（S5-C-7） | scheduler 不直接写 |
+| Conversation.purge_state（running/blocked/failed/completed）+ purged_at | coordinator | — |
+| Conversation.purge_state（not_scheduled/scheduled）+ purge_revision | delete/restore 生命周期 | scheduler 不写 |
+| hold_revision | I1 producer | — |
+
+#### S5-SCH-3 实现 PR 拆分（单风险域，冻结；不预设一个大实现 PR）
+
+四个 slice 各自独立契约验收，每个 slice 一个原子实现 PR（merged-boundary 在各自 PR 记录）；不命名 I3。
+
+- **SCH-A Claim & Lease**：claim 谓词 + lease_epoch CAS/takeover + tenant 限流/退避 + operation/全 owner checkpoint 建行（惰性建行聚合前完成）+ 幂等 claim 判别。验收：重复 scheduler 单写者、stale lease 零写、跨 tenant、崩溃恢复（lease 到期 takeover）。
+- **SCH-B Owner Execution Orchestrator**：编排循环（owner 字典序 + 每 entry 前 token 重验 + 每 owner 后 coordinator，S5-A-5 触发点接线）+ retry 白名单 + 预算耗尽写 `failed` + fence 收敛 + **组合根启用门禁**（erase 入口生产可达性的 wiring 门禁在本 slice merged-boundary 翻转语义）。验收：SCH-4 反例行 1-8 中编排相关项 + participant/coordinator 互操作回归。
+- **SCH-C Rebuild & Seeding**：G1/G2 drift → quiesce → 新 revision rebuild/seeding（S5-B 全卷落地）+ 幂等判别。验收：S5-B 反例矩阵 33 行前向映射（S5-SCH-4）。
+- **SCH-D Settlement & Retry-Reconcile 集成**：S5-C 六输出态/ACK-lost repair/RecoveryDescriptor 装配/内部命令（inspect/retry/reconcile，无 force-skip ACK）。验收：S5-C 反例矩阵 16 行前向映射（S5-SCH-4）。
+- 依赖顺序：SCH-A → SCH-B → SCH-C / SCH-D（C/D 无相互依赖，可并行评估）。
+- **排除**：完整 legal-hold permission/HTTP/CLI API、指标与脱敏日志 pipeline、S6（retention clocks / 真实故障矩阵 / 备份恢复）、C1 总验收。
+
+#### S5-SCH-4 反例矩阵（冻结；前向映射 + 新增项）
+
+**前向映射（不复制第二套规则）**：S5-B-8 反例矩阵 33 行 → SCH-C 验收逐行映射（每行失败反例 + 变异判别，实施时逐行落地）；S5-C 反例矩阵 16 行 → SCH-D 验收逐行映射。S5-A-8 反例矩阵由 I2 已覆盖，SCH-B 回归复用。行间判别点与 mutation 命名沿用原矩阵（不新增第二套规则）。
+
+**新增反例（每项具名 mutation，实施 PR 逐项落地）**：
+
+| # | 反例 | 触发 | 期望行为 | 判别点（mutation） |
+|---|------|------|---------|-------------------|
+| SCH-1 | claim takeover | 双 scheduler 并发 claim 同一 conversation，lease 到期后第二个实例 takeover | 单一写者；lease_epoch 单调 +1；stale lease 败者零写退避 | 「stale 方仍写」→红 |
+| SCH-2 | 重复 scheduler 幂等 | 同 conversation 重复 claim（无 drift） | Conversation 锁内幂等判别：只产生一个 operation/一次全 owner 建行，重复 claim 返回既有 operation | 「重复建 operation」→红 |
+| SCH-3 | hold-release race | purge 进行中 create hold（G2）→ release → 新 revision 续跑 | 序列 = G2 blocked → quiesce → release → rebuild → 正常执行；每个 hold 变化至多一次 rebuild | 「release 后原地重试旧 operation」→红（S5-A-10 移交项闭环） |
+| SCH-4 | 预算耗尽写 failed | 白名单内 owner 重试达上限 | checkpoint `failed` + reason = 最后 blocked reason + next_retry_at 清 + fence 保持 blocked；coordinator 优先级 5 聚合 | 「failed 后 fence 被推进/重置」或「failed reason 丢失」→红 |
+| SCH-5 | 崩溃恢复三分支 | claim 后崩溃 / rebuild 崩溃 / settlement Tx1 后崩溃 | lease 到期 takeover / 单事务回滚零残留 / E-2a 续做；恢复路径重入前 token 重验 | 「恢复路径跳过 token 重验」→红 |
+| SCH-6 | 跨 tenant | claim/retry/takeover 携带错误 tenant | 全部谓词 tenant 限定，错配零写 fail closed | 「裸 id 谓词」→红 |
+| SCH-7 | 旧 token 重放 | 旧 lease_epoch / 旧 revision / 旧 purge_revision 重放 claim 与 retry | 零写（CAS/门禁拒绝） | 「旧 token 仍写」→红 |
+| SCH-8 | 组合根启用门禁 | SCH-B merged-boundary 前/后 | 前：erase 入口生产不可达（wiring 静态守卫）；后：编排方可达且每 entry 后 coordinator 触发 | 「未接线 coordinator 即启用 erase 入口」→红 |
+
+#### S5-SCH-5 REQ-047 follow-up 分流（冻结）
+
+- **零 checkpoint `scheduled` 生命周期写者边界**：本契约正式冻结（S5-SCH-1.2）——delete/restore 为唯一写者；coordinator 对 scheduled 结果保留语义正式化（I2 实现不再标注「未决」）；REQ-047 该项标记「已冻结」。
+- **五份 participant operation 锁查询三键收窄 + td-032 测试文件拆分**：指定实现 PR 承接（SCH-A 或独立 conformance PR，开工时由工作台指定）——本纯文档批次**不顺手修改**代码/测试。
+- 其余 REQ-047 项（现存 P2/P3 精度、TD-032 拆分计划）保留至 C1 conformance。
