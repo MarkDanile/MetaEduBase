@@ -2234,6 +2234,8 @@ participant（ensure/transition，owner lock 内）· **settlement fence `erasin
 
 ---
 
+> **merged-boundary（2026-08-16，契约 PR #571，squash merge `253e53e4`）**：R1-S5-D Scheduler 契约冻结并入 main（评分 87，Original，基线 `fcd40565`；首轮三面 P0=0/P1=7/P2=21/P3=14 → 族 A~G 统一返修 → 定向复核 8/8 → 最终 P0/P1=0）。**契约完成不代表 Scheduler 实现完成**：SCH-A Claim&Lease / SCH-B Owner Execution / SCH-C Rebuild&Seeding / SCH-D Settlement&Retry-Reconcile 均未开工（B/C/D 联合 merged-boundary 为启用门禁）；53 项反例矩阵（S5-B-9 实义 29 + S5-C-8 16 前向映射 + 新增 8）为冻结验收载体，随各实现 PR 逐行落地。REQ-047 / R1-S5 scheduler implementation conformance follow-up 保留（SCH-A..D 逐 slice 验收映射、B/C/D 联合 merged-boundary 门禁核验、零 checkpoint scheduled 写者与 participant 三键收窄随实现 PR 闭环；不宣称本契约已实现任何 scheduler 功能）。
+
 （契约段位置：R1-S5 综述区之后、## 4 之前；首轮三面返修版）
 
 ## 4. C1：Durable Core 总验收与文档收口

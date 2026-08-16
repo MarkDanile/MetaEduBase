@@ -14,23 +14,7 @@
 
 ## 当前进行中
 
-### R1-S5: Scheduler Contract（contract-first）
-
-状态：🟡 进行中
-类型：契约冻结（纯文档；不命名 I3，不写代码/测试/schema/migration/registry/CI）
-领域：R1 保留/清除（scheduler 全函数状态机 + 锁序/事务/崩溃恢复 + 写者所有权矩阵 + 实现 PR 拆分 + 反例矩阵）
-当前执行模式：plan-do（文档契约）
-最近接手工具：Claude Code
-分支：docs/req041-047-r1-s5-scheduler-contract（尚未开 PR）
-
-需求来源：
-- Spec: [R1 §4.2/§5.2/§8/§9.2](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- Plan: [R1-S5-A-10 S6 拆分裁决 + S5-B-1/S5-B-2/S5-B-3 + S5-C 全卷（前置契约项）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
-- 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
-
-当前进展：契约已冻结（Draft 本分支，返修 commit `0d605014`）——S5-SCH-0 横向事实对账 / S5-SCH-1 全函数状态机 / S5-SCH-2 并发与崩溃 / S5-SCH-3 四 slice 拆分 / S5-SCH-4 反例矩阵 / S5-SCH-5 REQ-047 分流；**首轮三面原始计数保留不覆盖：P0=0/P1=7/P2=21/P3=14**，按族 A~G 统一返修一次 → 独立定向复核 **8/8 ✅、零新 P0/P1**，复核新问题 P2×3（SCH-3 归属、lease/deadline 上界、卡片措辞）修正中。
-下一步：P2×3 修正提交 → 创建 Draft PR → 等 Draft checks 全绿 → 停止（不转 Ready/评分/合并）。
-交接备注：纯文档；REQ-047 零 checkpoint 写者已在本契约冻结，participant 三键收窄与拆分项归实现 PR；不转 Ready/评分/合并；不启动任何 Scheduler 实现/S6/C1。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -38,6 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P1 | R1-S5 SCH-A Claim & Lease implementation | 🔵 就绪（未开工，不创建分支） | 范围：PostgreSQL clock claim、bounded lease、续期心跳、takeover CAS/败者零写、tenant 限流与退避、operation/全 owner checkpoint 建行、takeover 后强制聚合（S5-SCH-1.1/1.3b-i）；验收 = SCH-4 行 1/2/5/6/7 | [Plan §R1-S5-D S5-SCH-3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
@@ -48,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-08-16 | R1-S5-D Scheduler 契约冻结（contract-first，纯文档） | 🟢 完成 | S5-SCH-0..5 全卷（状态机/锁序/写者矩阵/四 slice 拆分/53 项反例映射/REQ-047 分流）；评分 87（最终 P0/P1=0）；**契约完成不代表 Scheduler 实现完成**；SCH-A/B/C/D 未开工，B/C/D 联合 merged-boundary | [PR #571](https://github.com/MarkDanile/MetaEduBase/pull/571)（squash merge `253e53e4`）/ [work-log](work-log.md) / [score 87](04-retrospectives/review-score-log.md) |
 | 2026-08-16 | R1-S5-I2 Owner Aggregation Reducer 原子实现 | 🟢 完成 | calculator + coordinator + 六 owner 去共享写原子落地；评分 88（最终 P0/P1=0）；专项 95 + 22 mutation kill；Backend full 2474 passed/1 skipped/4 deselected；**I2 完成不代表 S5 scheduler 完成**；follow-up REQ-047 | [PR #569](https://github.com/MarkDanile/MetaEduBase/pull/569)（squash merge `ac77d563`）/ [work-log](work-log.md) / [score 88](04-retrospectives/review-score-log.md) |
 | 2026-08-15 | R1-S5-I1 Legal Hold Revision Fencing Producer 实现 | 🟢 完成 | create/release producer primitive（Conversation-first FOR UPDATE + 同事务 SQL 原子 bump + tenant-scoped 锁谓词 + fail-closed）；14 真实 PG 用例 + 7 mutation kill；评分 90，Backend full 2379；仅 primitive，不代表 I2/S5 完成 | [PR #567](https://github.com/MarkDanile/MetaEduBase/pull/567)（squash merge `edeabcd0`）/ [work-log](work-log.md) / [score 90](04-retrospectives/review-score-log.md) |
 | 2026-08-14 | R1-S5-A/B/C Contract Stack Root 契约冻结（三层 stacked，纯文档） | 🟢 完成 | S5-A reducer + S5-B rebuild（Option D/族 E/F/derived G4/权威公式）+ S5-C settlement（六输出态）冻结并入 main；root 评分 86、子 PR 87/92，P0/P1=0；契约冻结≠S5 实现完成；follow-up REQ-047 | [PR #563](https://github.com/MarkDanile/MetaEduBase/pull/563)（squash merge `6f86f959`）/ [work-log](work-log.md) / [score 86](04-retrospectives/review-score-log.md) |
