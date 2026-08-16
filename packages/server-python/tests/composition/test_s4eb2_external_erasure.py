@@ -96,6 +96,30 @@ class _SuccessAdapter(ExternalObjectAdapter):
         return None
 
 
+class _SharedDedupAdapter(_SuccessAdapter):
+    """key→evidence 共享 store：同 idempotency key 重放命中缓存（无新副作用）。
+
+    E-2b 幂等重放承认重复 delete_object 调用存在（``calls`` 可 >1），**distinct
+    副作用**必须恰为 1（E-6 冻结判别点）。R1-S5-I2 后 participant 不再以 revision
+    bump 串行化并发 entry——fence 串行化下 loser 可能以 erasing 续做分支重入
+    窗口（同 key 重放），distinct==1 是不变量。
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._store: dict[str, str] = {}
+        self.distinct_deletes = 0
+
+    async def delete_object(self, **kwargs):
+        self.calls += 1
+        key = kwargs["idempotency_key"]
+        if key in self._store:
+            return ExternalEraseSuccess(adapter_receipt_evidence=self._store[key])
+        self._store[key] = f"ev:{key[:16]}"
+        self.distinct_deletes += 1
+        return ExternalEraseSuccess(adapter_receipt_evidence=self._store[key])
+
+
 class _NotSentAdapter(_SuccessAdapter):
     """E-3a not-sent：连接前失败（可证明未发送）。"""
 
@@ -1172,17 +1196,19 @@ async def test_concurrent_double_b2_erase_serializes(session_factory):
 
     # 共享可计数 adapter（DR-1：同一 ref/idempotency key 的外部删除总调用恰为 1——
     # 共享 fence 串行化 + 幂等 key 抑制副作用，E-6「无重复副作用」判别点）。
-    shared_adapter = _SuccessAdapter()
+    shared_adapter = _SharedDedupAdapter()
 
     async def _erase_with_new_session():
         eng = create_async_engine(TEST_DB_URL, poolclass=NullPool)
         fact = async_sessionmaker(eng, class_=AsyncSession, expire_on_commit=False)
         async with fact() as sess:
-            # S5 scheduler 语义：调用前读当前 operation revision（replay 契约，
-            # C-2 返修——revision 由 _mark_operation_running 递增）；stale revision
-            # CAS 拒绝后重读重试（fence 串行化：前一个 operation 完成或续做后，
-            # 本调用以新 revision 走 erased-fence 幂等重放 no-op）。
-            for _attempt in range(3):
+            # R1-S5-I2：participant 不再 bump operation.revision（聚合投影归
+            # coordinator）——并发串行化收敛由共享 fence 承担：一个调用进
+            # adapter 窗口并 ACK，另一个或阻塞到前者完成后走 erased-fence
+            # 幂等重放 no-op，或 transient fencing 拒绝（E-2a 同实例门禁 /
+            # Tx2 stale fence）后重读重试；bounded yield 给前一个调用留出
+            # Tx2 收口窗口。
+            for _attempt in range(5):
                 current_rev = (
                     await sess.execute(
                         text(
@@ -1205,10 +1231,21 @@ async def test_concurrent_double_b2_erase_serializes(session_factory):
                     )
                     break
                 except ValueError as exc:
-                    if "operation revision mismatch" not in str(exc):
+                    message = str(exc)
+                    # 三面 P3-3 收窄：仅 transient 串行化拒绝的精确短语重试
+                    # （stale revision / E-2a 同实例门禁 / Tx2 stale fence），
+                    # 其余异常照抛。
+                    transient_phrases = (
+                        "operation revision mismatch",
+                        "already erasing",
+                        "no longer erasing",
+                        "stale fence",
+                    )
+                    if not any(p in message for p in transient_phrases):
                         raise
-                    # stale revision：并发 operation 已 bump——重读重试。
+                    # transient 串行化拒绝：回滚后 bounded yield 重试。
                     await sess.rollback()
+                    await asyncio.sleep(0.1)
             else:
                 raise AssertionError("concurrent erase did not converge after retries")
         await eng.dispose()
@@ -1224,11 +1261,12 @@ async def test_concurrent_double_b2_erase_serializes(session_factory):
     for r in results:
         assert not isinstance(r, Exception), f"concurrent erase raised: {r}"
 
-    # DR-1 判别力：同一 ref/idempotency key 的外部删除总调用**恰为 1**——共享
-    # fence 串行化保证只有一个 operation 进 adapter 窗口，另一个走 erased-fence
-    # 幂等重放 no-op（不重复调用 adapter）。若实现重复调用 adapter 但靠幂等 key
-    # 抑制副作用，本断言转红（E-6「adapter 调用计数 == 1」）。
-    assert shared_adapter.calls == 1
+    # DR-1 判别力（E-6 冻结）：distinct delete 恰为 1。R1-S5-I2 后 participant
+    # 不再以 revision bump 串行化并发 entry——共享 fence 串行化下 loser 可能以
+    # erasing 续做分支重入窗口（同 idempotency key 重放，E-2b 承认重复调用），
+    # 共享 store 保证无重复副作用；calls 可为 1（直接重放）或 2（续做重入）。
+    assert shared_adapter.distinct_deletes == 1
+    assert shared_adapter.calls in (1, 2)
 
     # 最终态：ledger erased + 源 ref 清 + fence erased + checkpoint acked。
     engine2 = create_async_engine(TEST_DB_URL, poolclass=NullPool)

@@ -670,8 +670,9 @@ async def test_outbox_payload_ref_only_blocked_zero_change(
 
     **五方零变更（判别点）**：outbox 行（payload_ref 仍存在、status 不变、
     payload_inline 仍 NULL、digest 不变）、fence（保持 active，未推进 erasing）、
-    checkpoint（pending，未 blocked/acked）、operation（state 不变）、Conversation
-    purge_state（不变）。变异：transport 仍清 ref（旧行为）/ 转 suppressed 保留 ref
+    checkpoint（pending -> blocked，owner-scoped 事实落账）、operation（state 不变，
+    **R1-S5-I2**：聚合投影归 coordinator，participant 零 operation/Conversation 写）。
+    变异：transport 仍清 ref（旧行为）/ 转 suppressed 保留 ref
     （违反现 CHECK）-> 红。
     """
     await _ensure_test_tenant(db_session)
@@ -707,15 +708,16 @@ async def test_outbox_payload_ref_only_blocked_zero_change(
         await _fence_state(db_session, conv_id, TRANSPORT_SIDES[side]["owner"])
         == ErasureFenceState.ACTIVE.value
     )
-    # purge 级 blocked 三方一致（operation/checkpoint blocked + reason 冻结值）。
+    # owner-scoped blocked 落账（checkpoint blocked + reason 冻结值）。R1-S5-I2
+    # 去共享写：operation/Conversation 聚合投影归 coordinator，participant 零
+    # 共享写——operation 保持 scheduled、failure_code 保持 NULL、
+    # Conversation.purge_state 保持生命周期值。
     assert await _checkpoint_state(db_session, op_id) == PurgeOwnerState.BLOCKED.value
-    assert await _operation_state(db_session, op_id) == PurgeOperationState.BLOCKED.value
+    assert await _operation_state(db_session, op_id) == PurgeOperationState.SCHEDULED.value
     assert await _checkpoint_reason(db_session, op_id) == "purge_owner_unavailable"
     assert (
-        await _operation_failure_code(db_session, op_id)
-        == "purge_owner_unavailable"
-    ), "operation.failure_code 必须落 reason 冻结值（区分 legal-hold/scan-nonzero）"
-    assert await _conversation_purge_state(db_session, conv_id) == "blocked"
+        await _operation_failure_code(db_session, op_id) is None
+    ), "operation.failure_code 聚合归 coordinator，participant 不得写"
 
 
 @pytest.mark.parametrize("side", ["workspace", "execution"])
@@ -764,12 +766,13 @@ async def test_mixed_inline_and_ref_whole_op_blocked(db_session, side):
     )
     assert ref_row["status"] == "pending"
     assert ref_row["payload_ref"] == "s3://bucket/sensitive-object"
-    # fence 保持 active + operation/checkpoint blocked（三方一致）。
+    # fence 保持 active + owner checkpoint blocked（R1-S5-I2 去共享写：
+    # operation 聚合投影归 coordinator，保持 scheduled）。
     assert (
         await _fence_state(db_session, conv_id, TRANSPORT_SIDES[side]["owner"])
         == ErasureFenceState.ACTIVE.value
     )
-    assert await _operation_state(db_session, op_id) == PurgeOperationState.BLOCKED.value
+    assert await _operation_state(db_session, op_id) == PurgeOperationState.SCHEDULED.value
     assert await _checkpoint_state(db_session, op_id) == PurgeOwnerState.BLOCKED.value
     assert await _checkpoint_reason(db_session, op_id) == "purge_owner_unavailable"
 
@@ -1260,15 +1263,15 @@ async def test_ack_lost_erased_fence_repairs_pending_checkpoint(
     await db_session.commit()
 
     # 重放：erased fence 先于 purge 前置 -> 修复 pending checkpoint 到 acked。
-    # 重放须传当前 operation revision（首次 erase 已 bump 1->2，S2-D _op_revision
-    # 追踪模式）。
+    # R1-S5-I2：participant 不再 bump operation.revision（聚合投影归 coordinator），
+    # 重放仍传 revision=1。
     await _run_participant_erase(
         db_session,
         conv_id,
         purge_rev,
         op_id,
         side,
-        expected_operation_revision=2,
+        expected_operation_revision=1,
     )
 
     assert await _checkpoint_state(db_session, op_id) == PurgeOwnerState.ACKED.value
@@ -1364,9 +1367,11 @@ async def test_execution_run_unsettled_blocks(
     """族 1 + 终态互操作：Run output_publish_state IN ('pending','dead_letter') -> blocked。
 
     pending/dead_letter 是未决/失败投影的合法中间态，S3-D 会清除——transport
-    scan 计入残留必须 blocked（reason_code + checkpoint/operation 三方一致）。
-    两者参数化（谓词退化为只保留 pending 的变异被击杀）。
+    scan 计入残留必须 blocked（reason_code 落 owner checkpoint）。两者参数化
+    （谓词退化为只保留 pending 的变异被击杀）。
     participant 只读判定——Run 行本身不被改写（正文清除归 S3-D）。
+    R1-S5-I2 去共享写：operation/Conversation 聚合投影归 coordinator，
+    participant 只写 owner checkpoint。
     """
     side = "execution"
     await _ensure_test_tenant(db_session)
@@ -1383,7 +1388,9 @@ async def test_execution_run_unsettled_blocks(
 
     await _run_participant_erase(db_session, conv_id, purge_rev, op_id, side)
 
-    # final scan 非零（Run pending）-> blocked 正常返回（不抛异常），三方一致。
+    # final scan 非零（Run pending）-> blocked 正常返回（不抛异常），owner
+    # checkpoint 落账；R1-S5-I2：operation/Conversation 投影归 coordinator，
+    # 保持 scheduled / failure_code NULL / purge_state 生命周期值。
     cp = (
         await db_session.execute(
             text(
@@ -1405,8 +1412,8 @@ async def test_execution_run_unsettled_blocks(
             {"op": op_id},
         )
     ).mappings().one()
-    assert op["state"] == "blocked"
-    assert op["failure_code"] == "purge_blocked_by_transport_scan_nonzero"
+    assert op["state"] == PurgeOperationState.SCHEDULED.value
+    assert op["failure_code"] is None
     conv = (
         await db_session.execute(
             text(
@@ -1416,7 +1423,7 @@ async def test_execution_run_unsettled_blocks(
             {"c": conv_id},
         )
     ).scalar_one()
-    assert conv == "blocked"
+    assert conv == "scheduled"
     # Run 行未被 participant 改写（只读判定，正文清除归 S3-D）。
     row = (
         await db_session.execute(

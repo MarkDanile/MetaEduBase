@@ -70,8 +70,8 @@ async def test_nonterminal_run_blocks(db_session):
     fence = await h.fence_model(db_session, ctx["conversation_id"])
     assert fence.state == ErasureFenceState.ACTIVE.value  # 未推进 erasing
     op = await h.operation_model(db_session, ctx["operation_id"])
-    assert op.state == "blocked"
-    assert op.failure_code == REASON_PURGE_BLOCKED_BY_UNRESOLVED_ACTION
+    assert op.state == "scheduled"  # R1-S5-I2：投影归 coordinator
+    assert op.failure_code is None
     cp = await h.checkpoint_model(db_session, ctx["operation_id"])
     assert cp.state == PurgeOwnerState.BLOCKED.value
     # completed Run 的正文未被动（terminal_output_ref 仍在）。
@@ -108,8 +108,11 @@ async def test_external_payload_ref_blocks(db_session):
     fence = await h.fence_model(db_session, ctx["conversation_id"])
     assert fence.state == ErasureFenceState.ACTIVE.value  # 未推进 erasing
     op = await h.operation_model(db_session, ctx["operation_id"])
-    assert op.state == "blocked"
-    assert op.failure_code == REASON_PURGE_OWNER_UNAVAILABLE
+    assert op.state == "scheduled"  # R1-S5-I2：投影归 coordinator
+    assert op.failure_code is None
+    cp = await h.checkpoint_model(db_session, ctx["operation_id"])
+    assert cp.state == PurgeOwnerState.BLOCKED.value
+    assert cp.reason_code == REASON_PURGE_OWNER_UNAVAILABLE
 
 
 async def test_runtime_binding_ref_blocks(db_session):
@@ -153,8 +156,11 @@ async def test_runtime_binding_ref_blocks(db_session):
     fence = await h.fence_model(db_session, conversation_id)
     assert fence.state == ErasureFenceState.ACTIVE.value
     op = await h.operation_model(db_session, operation_id)
-    assert op.state == "blocked"
-    assert op.failure_code == REASON_PURGE_OWNER_UNAVAILABLE
+    assert op.state == "scheduled"  # R1-S5-I2：投影归 coordinator
+    assert op.failure_code is None
+    cp = await h.checkpoint_model(db_session, operation_id)
+    assert cp.state == PurgeOwnerState.BLOCKED.value
+    assert cp.reason_code == REASON_PURGE_OWNER_UNAVAILABLE
 
 
 async def test_legal_hold_blocks(db_session):
@@ -202,8 +208,8 @@ async def test_legal_hold_blocks(db_session):
     fence = await h.fence_model(db_session, ctx["conversation_id"])
     assert fence.state == ErasureFenceState.ACTIVE.value
     op = await h.operation_model(db_session, ctx["operation_id"])
-    assert op.state == "blocked"
-    assert op.failure_code == REASON_PURGE_BLOCKED_BY_LEGAL_HOLD
+    assert op.state == "scheduled"  # R1-S5-I2：投影归 coordinator
+    assert op.failure_code is None
     cp = await h.checkpoint_model(db_session, ctx["operation_id"])
     assert cp.state == PurgeOwnerState.BLOCKED.value
     assert cp.reason_code == REASON_PURGE_BLOCKED_BY_LEGAL_HOLD
@@ -279,7 +285,7 @@ async def test_round1_p1_3_binding_without_run_blocks(db_session):
     assert outcome.blocked
     assert outcome.block_reason == REASON_PURGE_OWNER_UNAVAILABLE
     op = await h.operation_model(db_session, operation_id)
-    assert op.state == "blocked"
+    assert op.state == "scheduled"  # R1-S5-I2：投影归 coordinator
     # 验证 binding 仍在（execution 不清 binding）
     binding = await db_session.get(
         RuntimeSessionBindingModel, binding_id
@@ -291,13 +297,14 @@ async def test_round1_p1_3_binding_without_run_blocks(db_session):
 async def test_round1_p1_5_blocked_projects_purge_state_and_scan_digest(
     db_session,
 ):
-    """P1-5：blocked 路径必须同事务投影 ``Conversation.purge_state=blocked`` 并把
-    ``scan.digest()`` 写入 ``checkpoint.checkpoint_digest``。
+    """P1-5（R1-S5-I2 迁移）：blocked 路径必须把 ``scan.digest()`` 写入
+    ``checkpoint.checkpoint_digest``（owner-scoped 证据保留）；Conversation.
+    purge_state/operation 聚合投影归 coordinator，participant 零共享写（原
+    「同事务投影 purge_state=blocked」为 S5 未实现期临时投影，随 I2 移除）。
 
-    旧实现 ``_record_blocked`` 不接 conversation/scan，blocked 后
-    ``purge_state`` 仍为 running、``checkpoint_digest`` 为空。
-    变异杀手：移除 ``conversation.purge_state = BLOCKED`` 赋值或
-    ``checkpoint.checkpoint_digest = scan.digest()`` 赋值 -> 本测试变红。
+    旧实现 ``_record_blocked`` 不接 scan，blocked 后 ``checkpoint_digest`` 为空。
+    变异杀手：移除 ``checkpoint.checkpoint_digest = scan.digest()`` 赋值 ->
+    本测试变红。
     """
     ctx = await h.seed_purgeable_with_run(db_session)
     await h.seed_nonterminal_run(
@@ -324,10 +331,12 @@ async def test_round1_p1_5_blocked_projects_purge_state_and_scan_digest(
             )
         )
     ).scalar_one()
-    assert conv.purge_state == "blocked", (
-        "Conversation.purge_state must be blocked after blocked outcome "
-        "(P1-5: blocked projection gap)"
+    assert conv.purge_state == "scheduled", (
+        "R1-S5-I2: purge_state 投影归 coordinator，participant 不得写"
     )
+    op = await h.operation_model(db_session, ctx["operation_id"])
+    assert op.state == "scheduled"
+    assert op.failure_code is None
     cp = await h.checkpoint_model(db_session, ctx["operation_id"])
     assert cp.state == "blocked"
     assert cp.checkpoint_digest, (

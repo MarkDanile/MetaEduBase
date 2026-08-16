@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### R1-S5-I2: Owner Aggregation Reducer 原子实现
+
+状态：🟡 进行中
+类型：实现（TD-092 拆分；S5-A-6 I2，contract-first 契约已冻结并入 main）
+领域：R1 保留/清除（projection calculator + transactional coordinator + 六 owner 去共享投影写）
+当前执行模式：plan-do（测试先行）
+最近接手工具：Claude Code
+分支：feature/req041-047-r1-s5i2-owner-aggregation-reducer（PR #569 Draft，裁决收口已推送）
+
+需求来源：
+- Spec: [R1 §4.2/§5.2/§8](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- Plan: [R1-S5-A-1 至 S5-A-8（重点 S5-A-4/S5-A-5/S5-A-6）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
+- 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
+
+当前进展：实现已落地（最终代码/测试基线 `3d6e12a1`；PR #569 Draft，裁决收口已推送）——纯 calculator（S5-A-2 全函数真值表 + state×reason 合法矩阵 + capability 五方校验，56 纯单元测试）+ transactional coordinator（Conversation-first 锁序 + 三键限定 operation 查询 + 锁内 CAS + 零写 + 终态覆盖禁令 + 时间归一化 + 旧 revision 门禁，24 真实 PG 测试）+ 六 owner 去共享投影写（14 守卫/门禁测试）+ 组合根不可达门禁测试；I2 冻结门禁全落地；22 项 mutation kill 全部实杀转红后恢复。**历史计数链保留不覆盖**：首轮三面 P0=1/P1=7/P2=10/P3=14 → 族 A~N 统一返修 → 定向复核 10 项 ✅ → Ready 前纠偏 P0=0/P1=4/P2=1/P3=1 → 四变异实杀（M17-M20）→ **第二轮全新广域三面 P0=0/P1=2/P2=16/P3=20 → TD-092 停止**。两条原始 P1 已按裁决闭环：PR body「未知 reason 契约待 closeout 回写」表述已删除（复核 grep 零命中）；failed 分支 dirty-reason 守卫可杀变异测试已落地。**用户裁决（2026-08-15）**：不拆 PR；acked + 非 NULL reason 可绕过校验进入 completed 从 P2 提升为裁决新增 P1；pending/erasing 一并纳入 state×reason 全函数校验——收口已落地（M21/M22 实杀），独立定向复核 **9/9 ✅**（唯一 P2 为本文档 HEAD 引用漂移，轻量复核确认已补正）。
+下一步：等待最新 PR HEAD Draft checks 全绿后停止，等待转 Ready 指令。
+验证状态（串行实测，裁决收口后）：I2 专项 95 passed（calculator 56 + coordinator 24 + six-owner 14 + wiring 1）；受影响回归 990 passed；全量 2466 passed / 4 skipped（4 failed + 5 errors 为 tests/shared/test_task_lifecycle.py 本地缺 metaedu 库的既有环境问题，与 I2 无关，CI 有 TEST_DATABASE_URL）；ruff 全绿；mypy 243 historical/0 regressions；docs gate（含 --full）exit 0。
+交接备注：不实现 scheduler claim/lease、rebuild/seeding、retry/reconcile、settlement、完整 legal-hold API；不改 schema/migration 040/041/registry/CI；本轮不顺手处理 scheduled 生命周期写者边界与 participant 裸键镜像收窄（保留为 P2/conformance follow-up，未经裁决不得改）；不转 Ready/评分/合并。
 
 ## 下一批候选任务
 
@@ -22,7 +39,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | R1-S5-I2 Owner Aggregation Reducer 原子实现 | 🔵 就绪（未开工） | 同一原子 PR 交付：纯 projection calculator + transactional projection coordinator + 六 owner participant 移除 operation/Conversation 临时投影写；保留 participant fencing token、operation 行锁和 owner-scoped 写；**不包含** full scheduler、claim/lease、rebuild/retry、完整 legal-hold API、S6、C1 | [Plan §R1-S5-A-6 I2](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成

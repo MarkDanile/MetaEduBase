@@ -81,13 +81,23 @@ async def test_late_write_after_s3d_erasure_terminalizes_idempotently(
     await db_session.commit()
 
     # 真实 S3-D eraser 前置：Conversation deleted + purge_after 已过（Spec §3）。
+    # R1-S5-I2 门禁：conversation.purge_revision 必须与 operation 一致（1）；
+    # outbox 的 producer epoch 同步 stamp 1（生产语义：写时取当前 epoch）。
     await db_session.execute(
         text(
             "UPDATE metaedu.agent_conversations SET state = 'deleted', "
-            "purge_after = clock_timestamp() - interval '1 second' "
+            "purge_after = clock_timestamp() - interval '1 second', "
+            "purge_revision = 1, purge_state = 'scheduled' "
             "WHERE tenant_id = :t AND id = :c"
         ),
         {"t": TENANT_ID, "c": conversation_id},
+    )
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_execution_outbox "
+            "SET producer_purge_revision = 1 WHERE id = :id"
+        ),
+        {"id": outbox.id},
     )
     await db_session.commit()
     # 真实 participant erase：completed Run（output_publish_state=pending）原子
