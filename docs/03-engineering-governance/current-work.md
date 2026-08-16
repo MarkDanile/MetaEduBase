@@ -27,8 +27,8 @@
 - Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-D-A
 
 当前进展：SCH-A 开工核对发现阻塞性缺口——operation 无持久化租约截止时间；`updated_at`（models.py:722-724，`onupdate=_utcnow`）被 coordinator/restore-cancel 共同写，不可作 scheduler-only 租约事实源（隐式续租 → tenant 上限/takeover 判定失真）。
-下一步：冻结 S5-SCH-6..10（migration 042 + 租约 CAS 状态机 + 分阶段门禁 + SCH-9..14 反例）→ docs gates → 全新三面复审（TD-092，按根因族统一返修）→ Draft PR + 三路 checks 全绿后停止。
-验证状态：未运行 docs gates
+下一步：S5-SCH-6..10 冻结 + 首轮三面复审（P0=0/P1=2/P2=11/P3=16）→ 族 A~I 统一返修（本步）→ docs gates + 定向复审（P0/P1 清零核验）→ Draft PR + 三路 checks 全绿后停止。
+验证状态：初版 docs gates 通过（0298fe46）；返修后重跑
 交接备注：不重评 #571（评分 87 保留）、不改 Score Log/Metrics；不写 migration/代码；SCH-A 实现被本前置纠偏阻塞。
 
 ## 下一批候选任务
@@ -37,7 +37,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | R1-S5 SCH-A Claim & Lease implementation | 🔴 阻塞（前置：R1-S5-D-A Lease Carrier 契约纠偏） | 先合并 Lease Carrier 纠偏后开工；范围：PostgreSQL clock claim、bounded lease（migration 042 `lease_expires_at` CAS 载体）、续期心跳、takeover CAS/败者零写、tenant 限流与退避、operation/全 owner checkpoint 建行、takeover 后强制聚合（S5-SCH-1.1/1.3b-i）；验收 = SCH-4 行 1/2/5/6/7 + SCH-9..14 + migration 042 落地 | [Plan §R1-S5-D-A](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
+| P1 | R1-S5 SCH-A Claim & Lease implementation | 🔴 阻塞（前置：R1-S5-D-A Lease Carrier 契约纠偏） | 先合并 Lease Carrier 纠偏后开工；范围：PostgreSQL clock claim、bounded lease（migration 042 `lease_expires_at` CAS 载体）、acquire/takeover/renew 心跳 + release/yield/终态观察 release CAS/败者零写、tenant 限流与退避、operation/全 owner checkpoint 建行、takeover 后强制聚合（S5-SCH-1.1/1.3b-i）；验收 = SCH-4 行 1/2/5/6/7 + SCH-9..16 + migration 042 落地 | [Plan §R1-S5-D-A](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
