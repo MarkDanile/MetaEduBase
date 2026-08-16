@@ -2238,6 +2238,75 @@ participant（ensure/transition，owner lock 内）· **settlement fence `erasin
 
 （契约段位置：R1-S5 综述区之后、## 4 之前；首轮三面返修版）
 
+### R1-S5-D-A：SCH-A Lease Carrier 契约纠偏（contract-first，纯文档）
+
+> Status: Draft（本 PR 仅纯文档契约纠偏；不写代码/测试/schema/migration/registry/CI，不启动 SCH-A/B/C/D、S6 或 C1）
+> 依据：SCH-A 开工核对发现阻塞性契约缺口——operation 无持久化租约截止时间；#571（评分 87，`253e53e4`）不重评，S5-D 冻结规则除本段明确纠偏项外全部不变。
+> 本段冻结 migration 042（Lease Carrier）、租约状态机与统一 CAS 谓词、分阶段门禁边界与 6 项新增反例（SCH-9..14，全归 SCH-A）；首轮三面复审计数与返修记录见段尾（评审后回填）。
+
+#### S5-SCH-6 问题与横向事实对账（冻结，截至 main@49f58993）
+
+**缺口**：`agent_conversation_purges` 只有 `lease_epoch`（models.py:704，default 0；CHECK `lease_epoch >= 0` 见 :656）与通用 `updated_at`（models.py:722-724，`default=_utcnow, onupdate=_utcnow`；`_utcnow` = `datetime.now(UTC)`，models.py:24-25，应用时钟）。**无持久化租约截止时间**——takeover 到期判定与 tenant 并发上限均无可靠事实源。
+
+**`updated_at` 不可作为租约载体（正式冻结）**：
+- `onupdate` 使**任何** ORM UPDATE 都触发 `updated_at` 重写。operation 行写者含 coordinator `_apply_projection`（state/failure_code/started_at/completed_at）、restore-cancel 生命周期（`cancelled`）与 scheduler 自身租约写——若以 `updated_at` 为租约事实源，coordinator/生命周期每次写行都构成**隐式续租** → tenant 并发上限（S5-SCH-1.1，上限 4）失真、takeover 到期判定不可靠。
+- `updated_at` 由应用时钟（`_utcnow`）落库，违反 S5-D「时钟一律 `clock_timestamp()` 落库」冻结。
+- 纠偏冻结：`updated_at` 降级为通用审计列——**任何租约判定/续期/到期/计数逻辑不得读写 `updated_at`**；租约事实源 = `lease_epoch` + `lease_expires_at` 两列（后者由 migration 042 引入），唯一写者 = scheduler。
+
+#### S5-SCH-7 migration 042 冻结（Lease Carrier；由 SCH-A 实现 PR 落地，本契约不写 migration）
+
+- **expand-only 加列**：`ALTER TABLE metaedu.agent_conversation_purges ADD COLUMN lease_expires_at TIMESTAMPTZ NULL`（命名先例 = agent_execution 域 `stream_lease_expires_at`，nullable timestamptz 租约截止）。nullable——`NULL` = 未认领（初始/释放态），既有行天然合法；**不新增 CHECK**（终态行在 coordinator 终态写与 scheduler 终态观察 release 之间存在非 NULL 窗口，CHECK 会误杀；延续 S5-B「保持 schema-free」裁决）。
+- **partial index**：`ix_agent_purge_lease_active ON metaedu.agent_conversation_purges (tenant_id, lease_expires_at) WHERE lease_expires_at IS NOT NULL AND state NOT IN ('completed','cancelled')`——服务 tenant 并发上限计数谓词（S5-SCH-8）；claim 短事务不得退化为全表 scan（operation 表随 purge_revision 历史增长）。
+- **无 backfill**：Scheduler 尚未启用，既有行 `lease_expires_at` 全 NULL = 未认领，**不伪造历史租约**。
+- **downgrade**：先 DROP INDEX 后 DROP COLUMN（无 reader 依赖——SCH-A 未开工，042 先于任何 scheduler 代码合入）。
+- 写者边界：`lease_expires_at` 唯一写者 = scheduler（acquire/takeover/renew/release CAS）；coordinator、restore-cancel、participant、seeding **不写不读**该列。`lease_epoch` 继续充当 fencing identity，**不新增 `claimant_id` 列**——持有者身份仅存在于 scheduler 进程内存，持久化事实只有 epoch + expiry。
+
+#### S5-SCH-8 租约状态机与统一 CAS 谓词（冻结）
+
+**三态判定**（一律 `clock_timestamp()`、锁内判定、tenant 限定）：
+- `lease_expires_at IS NULL` → 未认领（可 claim）；
+- `lease_expires_at > clock_timestamp()` → 在租（仅持有者可 renew；不可 claim/takeover）；
+- `lease_expires_at <= clock_timestamp()` → 已过期（可 claim/takeover；旧持有者 renew 被拒）。
+
+**全部转移 = Conversation-first 短事务 + 行锁内「expected epoch CAS」**：预期不匹配 → 零写退避；成功一律 `lease_epoch = expected + 1`。S5-SCH-1.1 冻结的 lease 上界（默认 10 分钟、大于单 owner 最大执行时长、settlement_deadline ≤ 同值）不变，本段为其提供可判定载体：`lease_expires_at = clock_timestamp() + lease_ttl`（ttl 由该上界派生）。
+
+| 转移 | CAS 谓词（锁内；expected = 锁内当前 lease_epoch） | 成功后写 |
+|------|------|------|
+| acquire（首 claim / NULL 态再 claim） | `lease_expires_at IS NULL` | epoch+1；`lease_expires_at = clock_timestamp() + ttl` |
+| renew（续期心跳，每 owner entry 前） | `lease_epoch = expected` 且 `lease_expires_at > clock_timestamp()` | epoch+1；重写 expiry（重置 TTL） |
+| takeover（过期/释放后接管） | `lease_expires_at IS NULL OR lease_expires_at <= clock_timestamp()` | epoch+1；`lease_expires_at = clock_timestamp() + ttl` |
+| release/yield/终态观察 | `lease_epoch = expected`（expiry 无关：已过期未接管的旧持有者释放仍合法；已被 takeover 则 epoch 已推进 → CAS 拒 → 零写） | epoch+1；`lease_expires_at = NULL` |
+
+- 状态空间不变量（冻结）：`lease_expires_at IS NOT NULL ⇒ lease_epoch >= 1`——建行 default epoch 0 + NULL；任何写 expiry 的转移都同时推进 epoch。反向不成立（released 行 epoch ≥ 1 且 NULL）。
+- 终态观察 release：scheduler 观察到 operation `completed`/`cancelled`（写者 coordinator/生命周期均 Conversation 锁内 → 与租约短事务串行）后执行 release CAS 清 expiry（best-effort 收尾；终态行即使 expiry 未清也不占 tenant slot，见 SCH-13）。
+- 语义结论（对齐开工核对裁决）：**expired/NULL 才可 claim；未到期租约不可接管；败者零写**。claim 谓词「无在租 claim」（S5-SCH-1.1）正式化 = 该 operation `lease_expires_at IS NULL OR lease_expires_at <= clock_timestamp()`；「claim 后崩溃 → lease 到期 takeover」（S5-SCH-2 崩溃恢复分支 1）现由 `lease_expires_at` 可判定。
+- **tenant 并发上限计数谓词（冻结）**：只统计 `state NOT IN ('completed','cancelled') AND lease_expires_at IS NOT NULL AND lease_expires_at > clock_timestamp()` 的 operation——未认领（NULL）与已过期行**不占 slot**（否则 NULL 堆积锁死 claim、过期未接管行锁死 takeover，liveness 洞）。上限 4（S5-SCH-1.1）不变。
+- **写者所有权矩阵纠偏行**（S5-SCH-2 矩阵其余行不变）：`operation.lease_epoch` + `operation.lease_expires_at` | 唯一写者 = scheduler（acquire/takeover/renew/release CAS） | 单调由 CAS 保证；其余写者只读重验（`lease_expires_at` 其余写者不读不写）。
+
+#### S5-SCH-9 分阶段门禁与边界（冻结）
+
+- **SCH-A 不接生产 erase 入口**：组合根启用门禁不变（S5-SCH-3：erase 入口生产可达性翻转不得早于 B/C/D 联合 merged-boundary）；SCH-A 交付后 erase 入口仍不可达（wiring 静态守卫保持）。
+- **owner entry 门禁（冻结给 SCH-B 接线）**：B/C/D 联合启用前，owner entry 必须在锁内拒绝 (i) `lease_epoch = 0`（未认领——scheduler 未 claim 即进入 owner entry 属接线故障）；(ii) expired lease（当前实例不持有有效租约）；(iii) 旧 epoch（token 不匹配）。三者任一 → fail closed 重入 claim 判定，不写任何行。
+- **五份 participant operation 锁查询三键收窄仍归独立 REQ-047 conformance PR**（S5-SCH-5 冻结不变；本契约不顺手改代码/测试）。
+- #571 评分 87、Score Log、Metrics Snapshot 不受本纠偏影响（不重评）。
+
+#### S5-SCH-10 反例矩阵增补（冻结；S5-D 反例矩阵 53 → 59）
+
+新增 6 项全归 SCH-A，复用 S4-F 冻结注入机制（真实 PostgreSQL、双连接 `asyncio.gather`、DB 篡改、崩溃注入）；每项具名 mutation，SCH-A 实现 PR 逐项落地：
+
+| # | 反例 | 触发 | 期望行为 | 判别点（mutation） |
+|---|------|------|---------|-------------------|
+| SCH-9 | 通用 `updated_at` 变化不得续租 | 非租约写者（coordinator 投影 / restore-cancel）更新 operation 行（`updated_at` 被 onupdate 重写） | `lease_expires_at` 不变、租约不续期；租约逻辑不读 `updated_at` | 「以 updated_at 判定租约」→红 |
+| SCH-10 | 过期 token 不得 renew | 租约过期后旧持有者携当前 epoch renew | CAS 拒、零写；过期仅 takeover/claim 可推进 | 「renew 谓词缺到期检查」→红 |
+| SCH-11 | 双 claim/takeover 单写 | 双 scheduler 并发 claim/takeover 同一 conversation | 恰一写者胜出 epoch+1；败者零写退避 | 「缺 CAS 双写」→红 |
+| SCH-12 | release 使旧 token 失效 | release/yield/终态观察 CAS 后旧 token 重放 renew/retry | epoch 已推进，旧 token 全零写；NULL 态可再 claim | 「release 不推进 epoch」→红 |
+| SCH-13 | terminal/expired 不占 tenant slot | 一 operation 已 completed（或 cancelled）且 expiry 未清；另一 lease 已过期 | tenant 计数（上限 4）不含终态与过期行；终态观察 release 可收尾 | 「计数含终态/过期行」→红 |
+| SCH-14 | migration 042 往返 | alembic upgrade → downgrade → upgrade；既有 operation 行 | 往返无损；既有行全 NULL = 未认领；无伪造历史租约 | 「backfill/非空默认」→红 |
+
+**SCH-A 验收增补**：SCH-A 实现 PR 验收 = SCH-4 行 1/2/5/6/7（既有）+ SCH-9..14（本段）+ migration 042 落地（S5-SCH-7 逐字）。
+
+（本段位置：R1-S5-D merged-boundary 之后、## 4 之前；首轮三面复审返修版）
+
 ## 4. C1：Durable Core 总验收与文档收口
 
 **复杂度/执行**：高，Sol `high` 集成，Sol `xhigh` 最终 Review。
