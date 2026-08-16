@@ -14,7 +14,23 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### R1-S5: Scheduler Contract（contract-first）
+
+状态：🟡 进行中
+类型：契约冻结（纯文档；不命名 I3，不写代码/测试/schema/migration/registry/CI）
+领域：R1 保留/清除（scheduler 全函数状态机 + 锁序/事务/崩溃恢复 + 写者所有权矩阵 + 实现 PR 拆分 + 反例矩阵）
+当前执行模式：plan-do（文档契约）
+最近接手工具：Claude Code
+分支：docs/req041-047-r1-s5-scheduler-contract（尚未开 PR）
+
+需求来源：
+- Spec: [R1 §4.2/§5.2/§8/§9.2](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- Plan: [R1-S5-A-10 S6 拆分裁决 + S5-B-1/S5-B-2/S5-B-3 + S5-C 全卷（前置契约项）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
+- 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
+
+当前进展：契约未开始；前置事实（I1 producer、I2 calculator/coordinator/六 owner 去共享写、S5-B/C 冻结契约）已并入 main。
+下一步：横向事实对账 → 冻结状态机/锁序/写者矩阵 → 实现 PR 拆分 → 反例矩阵 → docs gates → 全新广域三面 → Draft PR 停止。
+交接备注：纯文档；REQ-047 零 checkpoint 生命周期写者边界在本契约冻结，participant 三键收窄与 td-032 拆分归实现 PR；不转 Ready/评分/合并；不启动任何 Scheduler 实现/S6/C1。
 
 ## 下一批候选任务
 
@@ -22,7 +38,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | R1-S5 Scheduler implementation | 🔵 就绪（未开工，不创建分支） | 范围含 claim/lease、owner execution、rebuild/seeding、retry/reconcile、settlement integration；开工前先冻结 scheduler slice 契约（S5-A-10 S6 拆分裁决移出项 + S5-B/C 前置契约项） | [Plan §R1-S5](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
