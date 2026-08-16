@@ -28,9 +28,9 @@
 - Plan: [R1-S5-A-10 S6 拆分裁决 + S5-B-1/S5-B-2/S5-B-3 + S5-C 全卷（前置契约项）](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
 - 架构约束: [architecture.md](../03-engineering-governance/01-rules/architecture.md)
 
-当前进展：契约未开始；前置事实（I1 producer、I2 calculator/coordinator/六 owner 去共享写、S5-B/C 冻结契约）已并入 main。
-下一步：横向事实对账 → 冻结状态机/锁序/写者矩阵 → 实现 PR 拆分 → 反例矩阵 → docs gates → 全新广域三面 → Draft PR 停止。
-交接备注：纯文档；REQ-047 零 checkpoint 生命周期写者边界在本契约冻结，participant 三键收窄与 td-032 拆分归实现 PR；不转 Ready/评分/合并；不启动任何 Scheduler 实现/S6/C1。
+当前进展：契约已冻结（Draft 本分支，commit `fe3f15f7` + 族 A~G 统一返修未提交）——S5-SCH-0 横向事实对账 / S5-SCH-1 全函数状态机 / S5-SCH-2 并发与崩溃 / S5-SCH-3 四 slice 拆分 / S5-SCH-4 反例矩阵 / S5-SCH-5 REQ-047 分流；**首轮三面原始计数保留不覆盖：P0=0/P1=7/P2=21/P3=14**，按族 A（claim 分派/quiesce/G3 门禁）、族 B（全量重算触发/lease 续期/循环崩溃恢复）、族 C（B/C/D 联合 merged-boundary）、族 D（写者矩阵补全）、族 E（验收口径/节号）、族 F（预算/仲裁/默认值）、族 G（章节结构/工作台）统一返修一次。
+下一步：返修提交 → 独立定向复核 → Draft PR → 等 Draft checks 全绿 → 停止（连续新 P1 暴露跨风险域耦合则按 TD-092 提交拆分裁决）。
+交接备注：纯文档；REQ-047 零 checkpoint 写者已在本契约冻结，participant 三键收窄与拆分项归实现 PR；不转 Ready/评分/合并；不启动任何 Scheduler 实现/S6/C1。
 
 ## 下一批候选任务
 
