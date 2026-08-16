@@ -2140,7 +2140,7 @@ participant（ensure/transition，owner lock 内）· **settlement fence `erasin
 **1.1 claim / lease / takeover / 限流退避**
 - claim 谓词（锁内判定，全部 tenant 限定）：`conversation.state=deleted` + `purged_at IS NULL` + `purge_after` 已过 + **无 active hold（S5-B-5 对齐：active hold 期间 claim 延迟——不产生「全 pending 新 op 被 G3 block、release 后再 rebuild」的中间态）** + **quiesce 门禁（S5-B-1：任一 owner 的 checkpoint/fence 仍 erasing → 不得创建新 operation，转入 settlement 收口等待）** + 无在租 claim（lease 未到期）。
 - 建行判据分两条（互斥，不合并术语）：(i) **无行/旧 purge_revision**：Conversation 锁内「首 claim 幂等判别」——top operation 行不存在 → `create_purge_operation`（当前 `conversation.purge_revision`）+ 全 owner checkpoint 建行（惰性建行必须在首次聚合前完成，一致性快照，S5-A-4）；存在同 purge_revision 行 → 幂等返回既有 operation（**首 claim 无 predecessor，S5-B-6 的 predecessor 子句不可评估、不适用**；重复 rebuild 的幂等判别方用 S5-B-6）；(ii) **同 revision G1/G2 drift**（operation 仍为 top revision、registry/hold snapshot 失配）：**不建行**，分派 S5-SCH-1.5 序列（quiesce → settlement 收口 → rebuild），详见 1.5。
-- bounded lease：claim 以 `lease_epoch` SQL 侧原子 CAS 推进（统一 CAS 谓词：expected = 锁内当前值，成功后 = current+1）；**lease 续期**：每 entry 前 scheduler 自有短事务（Conversation-first）推进 lease（心跳写），lease 上界冻结默认 10 分钟且必须大于单 owner 最大执行时长（含 settlement_deadline 上界）。
+- bounded lease：claim 以 `lease_epoch` SQL 侧原子 CAS 推进（统一 CAS 谓词：expected = 锁内当前值，成功后 = current+1）；**lease 续期**：每 entry 前 scheduler 自有短事务（Conversation-first）推进 lease（心跳写），lease 上界冻结默认 10 分钟且必须大于单 owner 最大执行时长；**settlement_deadline 上界冻结默认 ≤ 10 分钟（与 lease 上界一致；SCH-D 验收断言 descriptor deadline 不得越过该上界）**。
 - takeover：仅 `expected_lease_epoch` CAS 推进；stale lease 败者**零写退避**；重复 scheduler 同 conversation 由 Conversation 锁串行 + 幂等判别收敛为单一写者。
 - tenant 限流与退避（冻结默认值）：per-tenant 并发 claim 上限 4；退避 `next_retry_at = clock_timestamp() + min(5s × 2^attempt, 5m)`（attempt 为 per-owner checkpoint.attempt 锁内重算值）；**next_retry_at 仲裁 = min（多 owner 各自排程取最早者；takeover 后按 attempt 锁内重算，不依赖持久 jitter）**。
 
@@ -2202,7 +2202,7 @@ participant（ensure/transition，owner lock 内）· **settlement fence `erasin
 四个 slice 各自独立契约验收，每个 slice 一个原子实现 PR（merged-boundary 在各自 PR 记录）；不命名 I3。
 
 - **SCH-A Claim & Lease**：claim 谓词（含 quiesce 门禁 + active hold 延迟）+ 首 claim 幂等判别 + lease_epoch CAS/takeover/续期 + tenant 限流/退避 + operation/全 owner checkpoint 建行 + **takeover 后强制聚合（1.3b-i）**。验收：SCH-4 行 1/2/5/6/7 + 首 claim 幂等。
-- **SCH-B Owner Execution Orchestrator**：编排循环（owner 字典序 + 周期 token 重验 + owner 级态重读 + 每 owner 后 coordinator）+ 周期 tick（1.3b-ii）+ retry 白名单 + 预算耗尽写 `failed` + fence failed 收敛（经 settlement 进入点）+ **组合根启用门禁**（见下）。验收：SCH-4 行 3/4/8 编排相关项 + participant/coordinator 互操作回归。
+- **SCH-B Owner Execution Orchestrator**：编排循环（owner 字典序 + 周期 token 重验 + owner 级态重读 + 每 owner 后 coordinator）+ 周期 tick（1.3b-ii）+ retry 白名单 + 预算耗尽写 `failed` + fence failed 收敛（经 settlement 进入点）+ **组合根启用门禁**（见下）。验收：SCH-4 行 4/8 编排相关项 + SCH-3（hold-release race）跨 slice 联合验收（归 SCH-C，见 SCH-4 归属表）+ participant/coordinator 互操作回归。
 - **SCH-C Rebuild & Seeding**：G1/G2 drift → quiesce → 新 revision rebuild/seeding（S5-B 全卷落地）+ purge_revision 派生写回 + 幂等判别（S5-B-6）。验收：S5-B-9 反例矩阵**实义 29 行**前向映射（剔除占位行 14/19/20/24——其内容由 S5-C-8 承载、归 SCH-D）+ settlement 耦合行（13 等）标注跨 slice 联合验收。
 - **SCH-D Settlement & Retry-Reconcile 集成**：S5-C 六输出态/ACK-lost repair（S5-C-7）/RecoveryDescriptor 装配/内部命令（inspect/retry/reconcile，无 force-skip ACK）。验收：S5-C-8 反例矩阵 16 行前向映射 + S5-B-9 占位行 14/19/20/24。
 - **组合根启用门禁（冻结）**：SCH-B 的 erase 入口生产可达性翻转（wiring 门禁）**不得早于 SCH-C（quiesce+rebuild）与 SCH-D（settlement 进入点最小子集，含 failed 收敛）同窗口交付**——B/C/D 三 slice 联合 merged-boundary；否则 erase 入口保持不可达。S5-A-5 滚动发布前提由此延续：启用时 drift/窗口崩溃的收口路径必须已在网。
