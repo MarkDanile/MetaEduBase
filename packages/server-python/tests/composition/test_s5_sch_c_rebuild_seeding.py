@@ -710,12 +710,28 @@ async def test_rebuild_re_added_missing_cp_reopens(db_session, session_factory):
         ),
         {"snap": _json.dumps(old_snapshot), "digest": snapshot_digest(old_snapshot), "op": op1},
     )
-    # 其余 owner 重开域 + 无历史 fence 的 re-added owner 无 predecessor checkpoint。
+    # 其余 owner 重开域 + re-added owner（workspace.core.v1）有历史 fence（非 erased）
+    # 但 predecessor 无其 checkpoint → 命中 _re_added_lineage「cp 缺 + 非 erased →
+    # pending」分支。
     for k in _OWNER_KEYS[1:]:
         await _set_cp(
             db_session, op1, k, state="blocked",
             reason="purge_blocked_by_external_erase_timeout",
         )
+    await db_session.execute(
+        text(
+            "INSERT INTO metaedu.agent_erasure_fences "
+            "(tenant_id, conversation_id, owner_key, owner_version, state, "
+            "purge_revision, hold_revision, ingress_checkpoint, ingress_digest, "
+            "revision, created_at, updated_at) VALUES (:tid, :cid, :k, 1, "
+            "'active', 1, 0, :ic, :ing, 1, now(), now())"
+        ),
+        {
+            "tid": tid, "cid": cid, "k": _OWNER_KEYS[0],
+            "ic": json.dumps({"schema_version": 1, "sources": {}}, sort_keys=True),
+            "ing": canonical_digest({"schema_version": 1, "sources": {}}),
+        },
+    )
     await db_session.commit()
 
     outcome = await _rebuild(db_session, tid, cid)
@@ -813,3 +829,54 @@ async def test_rebuild_case_e_blocked_fence_carry(db_session, session_factory):
             cps[_OWNER_KEYS[0]]["reason_code"]
             == "purge_blocked_by_external_outcome_unknown"
         )
+
+
+async def test_rebuild_re_added_erased_fence_conflict(db_session, session_factory):
+    """族 D 返修：re-added + 历史 fence erased + predecessor 缺 checkpoint →
+    锚点缺失（无法验证「历史 acked」item 2）→ conflict 整事务回滚。"""
+    import json as _json
+
+    from app.composition.agent_erasure_registry import snapshot_digest
+
+    tid, cid = await _seed_conversation(db_session)
+    out = await _claim(db_session, tid, cid)
+    await db_session.commit()
+    op1 = out.token.purge_operation_id
+    await _g2_block(db_session, op1)
+    old_snapshot = [o for o in registry_snapshot() if o["owner_key"] != _OWNER_KEYS[0]]
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversation_purges SET "
+            "registry_snapshot = :snap, registry_digest = :digest WHERE id = :op"
+        ),
+        {"snap": _json.dumps(old_snapshot), "digest": snapshot_digest(old_snapshot), "op": op1},
+    )
+    for k in _OWNER_KEYS[1:]:
+        await _set_cp(
+            db_session, op1, k, state="blocked",
+            reason="purge_blocked_by_external_erase_timeout",
+        )
+    # workspace.core.v1 历史 fence erased（锚点存在但 predecessor 缺 cp）。
+    await db_session.execute(
+        text(
+            "INSERT INTO metaedu.agent_erasure_fences "
+            "(tenant_id, conversation_id, owner_key, owner_version, state, "
+            "purge_revision, hold_revision, ingress_checkpoint, ingress_digest, "
+            "ack_digest, acked_at, revision, created_at, updated_at) VALUES "
+            "(:tid, :cid, :k, 1, 'erased', 1, 0, :ic, :ing, :ack, now(), 1, "
+            "now(), now())"
+        ),
+        {
+            "tid": tid, "cid": cid, "k": _OWNER_KEYS[0],
+            "ic": json.dumps({"schema_version": 1, "sources": {}}, sort_keys=True),
+            "ing": canonical_digest({"schema_version": 1, "sources": {}}),
+            "ack": _ACK,
+        },
+    )
+    await db_session.commit()
+
+    with pytest.raises(ValueError, match="lineage stage-1"):
+        await _rebuild(db_session, tid, cid)
+    await db_session.rollback()
+    async with session_factory() as verify:
+        assert len(await _ops(verify, cid)) == 1, "re-added 锚点缺失零新行"

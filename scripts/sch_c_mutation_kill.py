@@ -1,4 +1,4 @@
-"""R1-S5 SCH-C 9 项具名 mutation kill 驱动（可复现证据链）。
+"""R1-S5 SCH-C 12 项具名 mutation kill 驱动（可复现证据链）。
 
 用法（须独占 metaedu_test）：
 
@@ -90,6 +90,13 @@ MUTATIONS = [
         ['        if fence == "erased":\n            # blocked × erased = S5-C-1 ACK-lost 输入态，非 rebuild 可判义务，dirty-data。\n            return LineageFact(entry.owner_key, "conflict", "native_pending")'],
         ['        if False:  # M：ACK-lost 放行'],
         f"{TEST}::test_rebuild_blocked_erased_fence_conflict",
+    ),
+    (
+        "M-SCH-C-re-added 缺 cp 非 erased 未重开 pending",
+        LINEAGE,
+        ['        # 缺 cp 且 fence 非 erased → 义务重开 pending（缺行不视为已完成）。\n        return LineageFact(entry.owner_key, "not_applicable", "native_pending")'],
+        ['        # 缺 cp 且 fence 非 erased → M：误判 conflict\n        return LineageFact(entry.owner_key, "conflict", "native_pending")'],
+        f"{TEST}::test_rebuild_re_added_missing_cp_reopens",
     ),
     (
         "M-SCH-C-six-item lineage 六项恒真",
