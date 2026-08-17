@@ -26,9 +26,9 @@
 需求来源：
 - Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-D / §R1-S5-D-A
 
-当前进展：开工，未写代码/测试。
-下一步：migration 042（`lease_expires_at` + partial index + upgrade/downgrade + 零 backfill）+ model/domain/repository 同步 + `conversation_purge_scheduler` claim/lease 服务（无后台循环）；13 反例（SCH-1/2/5/6/7 + SCH-9..16）失败先行 → mutation kill → 专项 + composition 回归 + migration 往返 + ruff/mypy/gates → 全新广域三面（TD-092）→ Draft PR + checks 全绿后停止。
-验证状态：未运行
+当前进展：实现完成（migration 042 + model + `conversation_purge_scheduler` claim/lease 服务）；25 专项 + 往返全绿；composition 全量 565 passed；13/13 mutation kill；ruff/mypy/gates 通过。
+下一步：全新广域三面复审（TD-092，保留原始计数）→ 按根因族统一返修一次 + 独立定向复核 → 复审通过后 Draft PR + checks 全绿后停止。
+验证状态：composition 565 passed（131s）；mypy 243 historical / 0 regressions；docs gates exit 0；mutation kill 13/13
 交接备注：不启动后台循环/owner execution/tick/rebuild/seeding/settlement/retry API；六 erase 入口保持生产不可达；不改 migration 040/041、registry、CI；participant 三键收窄归独立 REQ-047 PR；不转 Ready/评分/合并。
 
 ## 下一批候选任务
