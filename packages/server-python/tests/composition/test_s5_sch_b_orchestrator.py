@@ -515,7 +515,9 @@ async def test_cross_tenant_zero_entry(db_session, session_factory):
     orch = _orchestrator(
         session_factory, entries={k: _entry("ack", calls) for k in _OWNER_KEYS}
     )
-    with pytest.raises(ValueError):
+    # match 锁定 verify 层 conversation 首锁的 tenant 谓词——若该层被裸 id
+    # 化（mutation），失败会移到 renew 层（消息不同），match 失效即判红。
+    with pytest.raises(ValueError, match="not found for orchestration"):
         await orch.run_cycle(
             tenant_id=uuid.uuid4(), conversation_id=cid,
             purge_operation_id=op_id,
