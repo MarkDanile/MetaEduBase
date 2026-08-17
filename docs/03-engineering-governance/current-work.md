@@ -26,9 +26,9 @@
 需求来源：
 - Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-D S5-SCH-1/2/3
 
-当前进展：开工，未写代码/测试。
-下一步：owner 字典序循环 + 每 entry 前 renew lease + 锁内 token 重验（operation revision/lease epoch/expiry/purge revision + Conversation revision/hold + registry digest）+ checkpoint/fence 重读（acked/failed 跳过、erasing 交 settlement port、blocked 白名单重试）+ 每 owner 后 coordinator + takeover 账本恢复 + 显式 `tick()`（1 分钟周期重算，无后台循环）+ retry 预算 3/pre-window 豁免/next_retry_at 仲裁/预算耗尽 failed；窄 settlement port（erasing 收口 + failed-fence 收敛由 port 承担，SCH-B 不写 fence）；owner participant 经显式 port/map 注入（不建生产组合根，六 erase 入口静态守卫仍不可达）。
-验证状态：未运行
+当前进展：实现完成（`owner_execution_orchestrator` + owner entry/settlement 窄 port + 周期 token 重验 + 每 entry 前 renew + owner 状态重读 + 每 owner 后 coordinator + `tick()` + 预算 failed）；12 专项全绿；composition 全量 581 passed；10/10 mutation kill（驱动入库 `scripts/sch_b_mutation_kill.py`）；静态守卫通过（六 erase 入口仍不可达）；ruff/mypy 0 regressions。
+下一步：全新广域三面复审（TD-092，保留原始计数）→ 按根因族统一返修一次 + 独立定向复核 → 复审通过后 Draft root PR + checks 全绿后停止。
+验证状态：composition 581 passed（135s）；mypy 243 historical / 0 regressions；docs gates exit 0；mutation kill 10/10
 交接备注：**B/C/D stack root**——后续 SCH-C/SCH-D 将 stacked 进入本 root PR；本 PR 不实现 SCH-C rebuild/seeding、SCH-D settlement、完整 API、指标日志、participant 三键收窄、S6、C1；不转 Ready/评分/合并；不创建 SCH-C/SCH-D 分支、不启用生产 wiring。
 
 ## 下一批候选任务
