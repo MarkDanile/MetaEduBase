@@ -14,22 +14,7 @@
 
 ## 当前进行中
 
-### R1-S5 SCH-A: Claim & Lease implementation
-
-状态：🟡 进行中
-类型：实现（反例先行 + 13 项具名 mutation kill 判别锚点）
-领域：R1 retention/purge scheduler
-当前执行模式：plan-do（TD-092 三面复审）
-最近接手工具：Claude Code
-分支：feature/req041-047-r1-s5-sch-a-claim-lease
-
-需求来源：
-- Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-D / §R1-S5-D-A
-
-当前进展：实现完成（migration 042 + model + `conversation_purge_scheduler` claim/lease 服务）；29 专项 + 往返全绿；composition 全量 569 passed；13/13 mutation kill（驱动入库 `scripts/sch_a_mutation_kill.py`）；ruff/mypy/gates 通过。首轮广域三面 P0=0/P1=0/P2=8/P3=20 → 族 A~H 统一返修一次 → 独立定向复核 P2 清零（td-032 行数校正）、无新 P0/P1。
-下一步：创建 Draft PR → 等 Draft 三路 checks 全绿后停止（不转 Ready/评分/合并）。
-验证状态：composition 569 passed（123s）；mypy 243 historical / 0 regressions；docs gates exit 0；mutation kill 13/13；三面首轮原始计数保留（P0=0/P1=0/P2=8/P3=20）
-交接备注：不启动后台循环/owner execution/tick/rebuild/seeding/settlement/retry API；六 erase 入口保持生产不可达；不改 migration 040/041、registry、CI；participant 三键收窄归独立 REQ-047 PR；不转 Ready/评分/合并。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -37,6 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P1 | R1-S5 SCH-B Owner Execution Orchestrator implementation | 🔵 就绪（未开工，不创建分支） | 范围：owner 字典序循环、周期级/owner 级 token 重验（含 `lease_expires_at`）、owner 状态恢复（acked/failed 跳过、erasing 交 settlement、blocked 白名单重试）、每 owner 后 coordinator、周期 tick（1.3b-ii）、retry 白名单与预算耗尽写 `failed` + fence 收敛。**不得单独启用生产 wiring**：erase 入口保持不可达，直到 SCH-C（quiesce+rebuild）与 SCH-D（settlement 进入点最小子集）满足联合 merged-boundary；participant 三键收窄仍归独立 REQ-047 conformance PR | [Plan §R1-S5-D S5-SCH-1/2/3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
@@ -47,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-08-17 | R1-S5 SCH-A Claim & Lease 实现（migration 042 + ConversationPurgeScheduler） | 🟢 完成 | migration 042 + claim/lease 服务（四转移 expected-epoch CAS、tenant 上限 4、takeover 后强制聚合）；评分 93（最终 P0/P1/P2=0）；29 专项 + 13/13 mutation kill + Backend 2504/1/4；**SCH-A 完成不代表 Scheduler 已启用**；follow-up REQ-047 | [PR #575](https://github.com/MarkDanile/MetaEduBase/pull/575)（squash merge `36d091a4`）/ [work-log](work-log.md) / [score 93](04-retrospectives/review-score-log.md) |
 | 2026-08-17 | R1-S5-D-A SCH-A Lease Carrier 契约纠偏（contract-first，纯文档） | 🟢 完成 | durable lease carrier 契约已纠偏：`updated_at` 退出租约事实源、migration 042 冻结（SCH-A 落地）、三态×四转移 epoch CAS 全函数、owner entry 门禁、SCH-9..16（反例矩阵 53→61 冻结验收载体）；评分 90（最终 P0/P1=0）；**纠偏完成不代表 migration 042 或 SCH-A 已实现**；follow-up REQ-047 | [PR #573](https://github.com/MarkDanile/MetaEduBase/pull/573)（squash merge `3438c53b`）/ [work-log](work-log.md) / [score 90](04-retrospectives/review-score-log.md) |
 | 2026-08-16 | R1-S5-D Scheduler 契约冻结（contract-first，纯文档） | 🟢 完成 | S5-SCH-0..5 全卷（状态机/锁序/写者矩阵/四 slice 拆分/53 项反例映射/REQ-047 分流）；评分 87（最终 P0/P1=0）；**契约完成不代表 Scheduler 实现完成**；SCH-A/B/C/D 未开工，B/C/D 联合 merged-boundary | [PR #571](https://github.com/MarkDanile/MetaEduBase/pull/571)（squash merge `253e53e4`）/ [work-log](work-log.md) / [score 87](04-retrospectives/review-score-log.md) |
 | 2026-08-16 | R1-S5-I2 Owner Aggregation Reducer 原子实现 | 🟢 完成 | calculator + coordinator + 六 owner 去共享写原子落地；评分 88（最终 P0/P1=0）；专项 95 + 22 mutation kill；Backend full 2474 passed/1 skipped/4 deselected；**I2 完成不代表 S5 scheduler 完成**；follow-up REQ-047 | [PR #569](https://github.com/MarkDanile/MetaEduBase/pull/569)（squash merge `ac77d563`）/ [work-log](work-log.md) / [score 88](04-retrospectives/review-score-log.md) |

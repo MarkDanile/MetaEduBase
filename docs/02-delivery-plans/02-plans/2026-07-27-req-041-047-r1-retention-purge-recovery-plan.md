@@ -2313,6 +2313,8 @@ participant（ensure/transition，owner lock 内）· **settlement fence `erasin
 
 > **merged-boundary（2026-08-17，契约纠偏 PR #573，squash merge `3438c53b`）**：R1-S5-D-A SCH-A Lease Carrier 契约纠偏冻结并入 main（评分 90，Original，基线 `b15d766b`；首轮三面 P0=0/P1=2/P2=11/P3=16 → 族 A~I 统一返修 → 定向复审 P1 清零 → 最终 P0/P1=0）。**纠偏完成不代表 migration 042 或 SCH-A 已实现**：SCH-A Claim&Lease / SCH-B Owner Execution / SCH-C Rebuild&Seeding / SCH-D Settlement&Retry-Reconcile 均未开工（B/C/D 联合 merged-boundary 为启用门禁）；反例矩阵 53 → 61 项（SCH-9..16 新增 8，全归 SCH-A）为冻结验收载体，随各实现 PR 逐行落地。REQ-047 / R1-S5 scheduler implementation conformance follow-up 保留（SCH-A 实现 PR 逐 slice 验收映射含 migration 042 落地与 owner entry 门禁接线、B/C/D 联合 merged-boundary 门禁核验、participant 三键收窄独立 conformance PR；不宣称本契约已实现任何 scheduler 功能）。
 
+> **merged-boundary（2026-08-17，SCH-A 实现 PR #575，squash merge `36d091a4`）**：R1-S5 SCH-A Claim & Lease 实现并入 main（评分 93，Original，基线 `c3a81e91`；首轮三面 P0=0/P1=0/P2=8/P3=20 → 族 A~H 统一返修 → 定向复核 P2 清零 → 最终 P0/P1/P2=0）。落地 migration 042（`lease_expires_at` + partial index + 零 backfill）+ `ConversationPurgeScheduler` claim/lease 服务（claim 全谓词锁内判定、四转移 expected-epoch CAS、tenant 上限 4 + 退避 min 仲裁、takeover 后强制聚合、`updated_at` 零租约语义）；验证 29 专项 + 13/13 mutation kill（驱动入库 `scripts/sch_a_mutation_kill.py`）+ Ready Backend full 2504/1/4。**SCH-A 完成不代表 Scheduler 已启用**：生产 erase 入口仍不可达（组合根静态守卫），SCH-B/C/D、S6、C1 均未实现；SCH-B 不得单独启用 wiring（B/C/D 联合 merged-boundary 门禁）；participant 三键收窄归独立 REQ-047 conformance PR；042 生产量级迁移时长实测随 SCH-B 接线前运维演练。
+
 （本段位置：R1-S5-D merged-boundary 之后、## 4 之前；首轮三面复审返修版）
 
 ## 4. C1：Durable Core 总验收与文档收口
