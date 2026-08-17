@@ -161,6 +161,44 @@ def _blocking_entry(reason: str, calls: list[str]):
     return fn
 
 
+def _ack_with_db_write(calls: list[str]):
+    """entry fake：自记 acked checkpoint + erased fence（镜像真实 participant
+    的 DB 效果），供 coordinator 聚合收敛为 completed。"""
+
+    async def fn(request: OwnerEntryRequest) -> OwnerEntryOutcome:
+        calls.append(request.owner_key)
+        await request.session.execute(
+            text(
+                "UPDATE metaedu.agent_conversation_purge_owners SET "
+                "state='acked', ack_digest=:a, checkpoint_digest=:a, "
+                "reason_code=NULL WHERE purge_operation_id=:op AND owner_key=:k"
+            ),
+            {"a": "e" * 64, "op": request.purge_operation_id, "k": request.owner_key},
+        )
+        ic = {"schema_version": 1, "sources": {}}
+        await request.session.execute(
+            text(
+                "INSERT INTO metaedu.agent_erasure_fences "
+                "(tenant_id, conversation_id, owner_key, owner_version, state, "
+                "purge_revision, hold_revision, ingress_checkpoint, "
+                "ingress_digest, ack_digest, acked_at, revision, created_at, "
+                "updated_at) VALUES (:tid, :cid, :o, 1, 'erased', 1, 0, :ic, "
+                ":ing, :ack, now(), 1, now(), now())"
+            ),
+            {
+                "tid": request.tenant_id,
+                "cid": request.conversation_id,
+                "o": request.owner_key,
+                "ic": json.dumps(ic, sort_keys=True),
+                "ing": canonical_digest(ic),
+                "ack": "e" * 64,
+            },
+        )
+        return OwnerEntryOutcome(acked=True, blocked_reason=None)
+
+    return fn
+
+
 def _orchestrator(session_factory, *, entries, settlement=None):
     return OwnerExecutionOrchestrator(
         session_factory,
@@ -178,7 +216,11 @@ def _orchestrator(session_factory, *, entries, settlement=None):
 async def test_owner_lexicographic_order_and_per_owner_coordinator(
     db_session, session_factory
 ):
-    """owner 字典序循环 + 每 owner 后 coordinator（aggregation_count == 6）。"""
+    """owner 字典序循环 + 每 owner 后 coordinator（真实聚合效果）：
+    - 全 pending → 依字典序逐 owner entry；
+    - 每个 entry 后 coordinator 聚合——全 owner acked + erased fence 后
+      operation 收敛为 completed（漏聚合则仍 scheduled → mutation 判别点）。
+    """
     tid, cid = await _seed_conversation(db_session)
     out = await _claim(db_session, tid, cid)
     await db_session.commit()
@@ -186,13 +228,26 @@ async def test_owner_lexicographic_order_and_per_owner_coordinator(
 
     calls: list[str] = []
     orch = _orchestrator(
-        session_factory, entries={k: _entry("ack", calls) for k in _OWNER_KEYS}
+        session_factory,
+        entries={k: _ack_with_db_write(calls) for k in _OWNER_KEYS},
     )
     result = await orch.run_cycle(
         tenant_id=tid, conversation_id=cid, purge_operation_id=op_id
     )
     assert calls == _OWNER_KEYS, "owner 字典序循环"
     assert result.aggregation_count == len(_OWNER_KEYS), "每 owner 后 coordinator"
+
+    async with session_factory() as verify:
+        state = (
+            await verify.execute(
+                text(
+                    "SELECT state FROM metaedu.agent_conversation_purges "
+                    "WHERE id = :op"
+                ),
+                {"op": op_id},
+            )
+        ).scalar_one()
+        assert state == "completed", "每 owner 后 coordinator 收敛为 completed"
 
 
 async def test_skips_acked_and_failed(db_session, session_factory):
@@ -373,7 +428,7 @@ async def test_expired_lease_fails_closed(db_session, session_factory):
     orch = _orchestrator(
         session_factory, entries={k: _entry("ack", calls) for k in _OWNER_KEYS}
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="lease expired"):
         await orch.run_cycle(
             tenant_id=tid, conversation_id=cid, purge_operation_id=op_id
         )
