@@ -4,19 +4,15 @@
 rebuild/seeding + predecessor lineage。
 
 反例映射（S5-B-9 实义行，每项具名 mutation）：
-- 行 1/17 hold create→quiesce→release→rebuild 全序列 / active hold 不 eager rebuild
-- 行 3 继承证据（unchanged erased → inherited acked seed + fence 零修改）
-- 行 2/15 partial ACK 重开 / outcome_unknown 不重开
-- 行 5 新增 owner pending
-- 行 6 removed unresolved 不得丢失
-- 行 7 case-E version 迁移（active fence）
-- 行 8 并发 rebuild 单一 revision
-- 行 9/25 seeding 回滚零残留
-- 行 10 rebuild 后 coordinator 正向 completed（inherited ACK 计入全 acked）
-- 行 13 quiesce 门禁（erasing 挡 rebuild）
-- 行 18 restore interleave 零新行
-- 行 23 removed completed owner 无行
-- 行 30 seeded 缺行 → G4 conflict
+已覆盖：行 1（部分）、3、4、5、6、8、10、13、15、18、25、30 + 族 A/B/D 返修
+（blocked+NULL / case-E blocked fence / re-added 缺 cp）+ P2（ACK-lost）。
+已知未覆盖（登记归属）：行 2（partial ACK 混合）、7（case-E active fence 迁移，
+需 registry mock）、9（crash during seeding）、11（二次 rebuild 链）、12（跨
+tenant predecessor 伪造）、16（re-added+erased fence 锚点，需更早 revision 历史
+checkpoint）、17（active hold 不 eager rebuild，G3 gate 未实现）、21（core owner
+门禁，I2 backport）、22/26（双深链/阶段 2 篡改）、27/28（re-added/version-changed
+3/5/6 参数化）、31/32（retry 白名单/撕裂读，跨 slice）——见 REQ-047 conformance
+follow-up。
 
 边界：严守 Option D（erasing 只返回 QUIESCE）；不实现 SCH-D settlement；不新增
 migration 043、不改 registry；不启用生产 wiring。
@@ -672,3 +668,148 @@ async def test_rebuild_forged_ack_digest_rolls_back(db_session, session_factory)
     await db_session.rollback()
     async with session_factory() as verify:
         assert len(await _ops(verify, cid)) == 1, "伪造 ack_digest 零新行"
+
+
+async def test_rebuild_blocked_null_reason_rolls_back(db_session, session_factory):
+    """族 A 返修：blocked + NULL reason 不得落入 pending 重开（dirty-data fail
+    closed 整事务回滚）。"""
+    tid, cid = await _seed_conversation(db_session)
+    out = await _claim(db_session, tid, cid)
+    await db_session.commit()
+    op1 = out.token.purge_operation_id
+    await _g2_block(db_session, op1)
+    for k in _OWNER_KEYS:
+        await _set_cp(db_session, op1, k, state="blocked", reason=None)
+    await db_session.commit()
+
+    with pytest.raises(ValueError, match="lineage stage-1"):
+        await _rebuild(db_session, tid, cid)
+    await db_session.rollback()
+    async with session_factory() as verify:
+        assert len(await _ops(verify, cid)) == 1, "NULL reason 零新行"
+
+
+async def test_rebuild_re_added_missing_cp_reopens(db_session, session_factory):
+    """族 D 返修：re-added（有历史 fence + predecessor 缺 checkpoint + fence 非
+    erased）→ 义务重开 pending（缺行不视为已完成）。"""
+    import json as _json
+
+    from app.composition.agent_erasure_registry import snapshot_digest
+
+    tid, cid = await _seed_conversation(db_session)
+    out = await _claim(db_session, tid, cid)
+    await db_session.commit()
+    op1 = out.token.purge_operation_id
+    await _g2_block(db_session, op1)
+    # predecessor snapshot 缺 workspace.core.v1（模拟该 owner 曾移除、现 re-added）
+    old_snapshot = [o for o in registry_snapshot() if o["owner_key"] != _OWNER_KEYS[0]]
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversation_purges SET "
+            "registry_snapshot = :snap, registry_digest = :digest WHERE id = :op"
+        ),
+        {"snap": _json.dumps(old_snapshot), "digest": snapshot_digest(old_snapshot), "op": op1},
+    )
+    # 其余 owner 重开域 + 无历史 fence 的 re-added owner 无 predecessor checkpoint。
+    for k in _OWNER_KEYS[1:]:
+        await _set_cp(
+            db_session, op1, k, state="blocked",
+            reason="purge_blocked_by_external_erase_timeout",
+        )
+    await db_session.commit()
+
+    outcome = await _rebuild(db_session, tid, cid)
+    await db_session.commit()
+    assert outcome.kind is RebuildKind.REBUILT
+    async with session_factory() as verify:
+        new_op = (await _ops(verify, cid))[1]
+        cps = {c["owner_key"]: c for c in await _cp_rows(verify, new_op["id"])}
+        assert cps[_OWNER_KEYS[0]]["state"] == "pending", "re-added 缺 cp 重开 pending"
+
+
+async def test_rebuild_blocked_erased_fence_conflict(db_session, session_factory):
+    """P2 返修：blocked × erased fence（S5-C-1 ACK-lost 输入态）→ dirty-data
+    fail closed（不可按 reopen 处理）。"""
+    tid, cid = await _seed_conversation(db_session)
+    out = await _claim(db_session, tid, cid)
+    await db_session.commit()
+    op1 = out.token.purge_operation_id
+    await _g2_block(db_session, op1)
+    for k in _OWNER_KEYS:
+        await _set_cp(
+            db_session, op1, k, state="blocked",
+            reason="purge_blocked_by_external_erase_timeout",
+        )
+    await _seed_erased_fences(db_session, tid, cid, purge_revision=1)
+    await db_session.commit()
+
+    with pytest.raises(ValueError, match="lineage stage-1"):
+        await _rebuild(db_session, tid, cid)
+    await db_session.rollback()
+    async with session_factory() as verify:
+        assert len(await _ops(verify, cid)) == 1, "ACK-lost 零新行"
+
+
+async def test_rebuild_case_e_blocked_fence_carry(db_session, session_factory):
+    """族 B 返修：case-E version-changed + blocked fence（carry reason）→
+    carried_blocked（非 active fence 不迁移、不整事务回滚）。"""
+    import json as _json
+
+    from app.composition.agent_erasure_registry import snapshot_digest
+
+    tid, cid = await _seed_conversation(db_session)
+    out = await _claim(db_session, tid, cid)
+    await db_session.commit()
+    op1 = out.token.purge_operation_id
+    await _g2_block(db_session, op1)
+    # predecessor snapshot 把 workspace.core.v1 的 version 改为 2（模拟 registry 升级）
+    # → current registry version=1 → version_changed。
+    old_snapshot = [
+        dict(o, owner_version=2) if o["owner_key"] == _OWNER_KEYS[0] else o
+        for o in registry_snapshot()
+    ]
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversation_purges SET "
+            "registry_snapshot = :snap, registry_digest = :digest WHERE id = :op"
+        ),
+        {"snap": _json.dumps(old_snapshot), "digest": snapshot_digest(old_snapshot), "op": op1},
+    )
+    # workspace.core.v1 checkpoint blocked + carry reason（outcome_unknown）。
+    await _set_cp(
+        db_session, op1, _OWNER_KEYS[0], state="blocked",
+        reason="purge_blocked_by_external_outcome_unknown",
+    )
+    for k in _OWNER_KEYS[1:]:
+        await _set_cp(
+            db_session, op1, k, state="blocked",
+            reason="purge_blocked_by_external_erase_timeout",
+        )
+    # workspace.core.v1 历史 fence blocked（非 active）+ owner_version=2。
+    await db_session.execute(
+        text(
+            "INSERT INTO metaedu.agent_erasure_fences "
+            "(tenant_id, conversation_id, owner_key, owner_version, state, "
+            "purge_revision, hold_revision, ingress_checkpoint, ingress_digest, "
+            "revision, created_at, updated_at) VALUES (:tid, :cid, :k, 2, "
+            "'blocked', 1, 0, :ic, :ing, 1, now(), now())"
+        ),
+        {
+            "tid": tid, "cid": cid, "k": _OWNER_KEYS[0],
+            "ic": json.dumps({"schema_version": 1, "sources": {}}, sort_keys=True),
+            "ing": canonical_digest({"schema_version": 1, "sources": {}}),
+        },
+    )
+    await db_session.commit()
+
+    outcome = await _rebuild(db_session, tid, cid)
+    await db_session.commit()
+    assert outcome.kind is RebuildKind.REBUILT, "case-E blocked fence 不应回滚"
+    async with session_factory() as verify:
+        new_op = (await _ops(verify, cid))[1]
+        cps = {c["owner_key"]: c for c in await _cp_rows(verify, new_op["id"])}
+        assert cps[_OWNER_KEYS[0]]["state"] == "blocked", "version-changed carry"
+        assert (
+            cps[_OWNER_KEYS[0]]["reason_code"]
+            == "purge_blocked_by_external_outcome_unknown"
+        )

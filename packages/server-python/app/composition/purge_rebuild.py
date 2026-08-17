@@ -26,7 +26,7 @@ from typing import cast
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.composition.agent_erasure_registry import registry_snapshot
+from app.composition.agent_erasure_registry import registry_digest, registry_snapshot
 from app.composition.predecessor_lineage import (
     OwnerSnapshotEntry,
     PredecessorOwnerFact,
@@ -93,7 +93,8 @@ class PurgeRebuildService:
         ":ack, :reason, now(), now())"
     )
     _MIGRATE_FENCE_SQL = text(
-        "UPDATE metaedu.agent_erasure_fences SET owner_version = :new "
+        "UPDATE metaedu.agent_erasure_fences SET owner_version = :new, "
+        "revision = revision + 1, updated_at = now() "
         "WHERE tenant_id = :tid AND conversation_id = :cid AND owner_key = :k "
         "AND state = 'active' AND owner_version = :old "
         "RETURNING owner_version"
@@ -128,15 +129,22 @@ class PurgeRebuildService:
         if top is None:
             return RebuildOutcome(RebuildKind.NOT_DUE)
         if top.purge_revision != conversation.purge_revision:
-            # 旧 revision top（conversation 已推进）——异常形态，fail closed。
-            raise ValueError("stale operation revision rejected (rebuild)")
+            # 旧 revision top（restore→re-delete 生命周期 interleave）——非 rebuild
+            # 触发，NOT_DUE（S5-B-6 冻结幂等谓词外形态）。
+            return RebuildOutcome(RebuildKind.NOT_DUE)
         if top.state != "blocked" or top.failure_code not in _G1_G2_FAILURE_CODES:
-            # 无 drift：幂等返回既有 rebuild（S5-B-6）或非触发。
-            return RebuildOutcome(
-                RebuildKind.IDEMPOTENT,
-                purge_operation_id=top.id,
-                purge_revision=top.purge_revision,
-            )
+            # 无 drift：幂等返回既有 rebuild（S5-B-6）；若 hold/registry 已再漂移则
+            # 非幂等（drift 未消费），退回 NOT_DUE 等 coordinator 再 G-block。
+            if (
+                top.hold_revision_snapshot == conversation.hold_revision
+                and top.registry_digest == registry_digest()
+            ):
+                return RebuildOutcome(
+                    RebuildKind.IDEMPOTENT,
+                    purge_operation_id=top.id,
+                    purge_revision=top.purge_revision,
+                )
+            return RebuildOutcome(RebuildKind.NOT_DUE)
 
         predecessor = top
         predecessor_checkpoints = await self._checkpoints_by_owner(
@@ -151,6 +159,7 @@ class PurgeRebuildService:
 
         # S5-B-2 removed-owner-unfinished → fail closed（不得静默丢弃旧义务）。
         current_snapshot = self._current_snapshot()
+        current_digest = registry_digest()
         old_snapshot = self._snapshot_entries(predecessor.registry_snapshot)
         diff = diff_snapshots(old_snapshot, current_snapshot)
         if self._removed_unfinished(diff, predecessor_checkpoints, predecessor_fences):
@@ -180,6 +189,7 @@ class PurgeRebuildService:
             purge_revision=new_revision,
             retention_policy_snapshot=retention_policy_snapshot,
             hold_revision_snapshot=conversation.hold_revision,
+            expected_registry_digest=current_digest,
         )
         for entry in current_snapshot:
             await self._seed_checkpoint(
@@ -190,13 +200,16 @@ class PurgeRebuildService:
                 predecessor_fact=facts.get(entry.owner_key),
                 diff=diff,
             )
-        # case-E version-changed active fence 迁移。
+        # case-E version-changed：仅 active fence 迁移（S5-B-2 case E）；
+        # blocked/erased/缺失 fence 由 lineage 已裁决的 kind seed，不迁移。
         for key in diff.version_changed:
-            await self._migrate_active_fence(
-                tenant_id, conversation_id, key,
-                self._entry(current_snapshot, key).owner_version,
-                self._entry(old_snapshot, key).owner_version,
-            )
+            fence = predecessor_fences.get(key)
+            if fence is not None and fence.state == "active":
+                await self._migrate_active_fence(
+                    tenant_id, conversation_id, key,
+                    self._entry(current_snapshot, key).owner_version,
+                    self._entry(old_snapshot, key).owner_version,
+                )
         await self._session.execute(
             text(
                 "UPDATE metaedu.agent_conversations SET purge_revision = :r "
@@ -357,6 +370,8 @@ class PurgeRebuildService:
                 fence_owner_version=fence.owner_version if fence else None,
                 fence_purge_revision=fence.purge_revision if fence else None,
                 fence_ack_digest=fence.ack_digest if fence else None,
+                fence_ingress_digest=fence.ingress_digest if fence else None,
+                fence_ingress_checkpoint=dict(fence.ingress_checkpoint) if fence else None,
             )
         return facts
 

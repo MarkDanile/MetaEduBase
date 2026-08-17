@@ -78,6 +78,20 @@ MUTATIONS = [
         f"{TEST}::test_rebuild_g2_creates_new_revision_and_acquires_lease",
     ),
     (
+        "M-SCH-C-null-reason NULL 重开 pending",
+        LINEAGE,
+        ['        if reason is None:\n            # NULL reason 不得落入通用 pending 分支（S5-B-2 硬约束④）。\n            return LineageFact(entry.owner_key, "conflict", "native_pending")'],
+        ['        if reason is None:\n            return LineageFact(entry.owner_key, "not_applicable", "native_pending")  # M'],
+        f"{TEST}::test_rebuild_blocked_null_reason_rolls_back",
+    ),
+    (
+        "M-SCH-C-ack-lost blocked×erased 放行",
+        LINEAGE,
+        ['        if fence == "erased":\n            # blocked × erased = S5-C-1 ACK-lost 输入态，非 rebuild 可判义务，dirty-data。\n            return LineageFact(entry.owner_key, "conflict", "native_pending")'],
+        ['        if False:  # M：ACK-lost 放行'],
+        f"{TEST}::test_rebuild_blocked_erased_fence_conflict",
+    ),
+    (
         "M-SCH-C-six-item lineage 六项恒真",
         LINEAGE,
         ["    if fact.checkpoint_state != \"acked\":\n        return False  # 六项 2"],

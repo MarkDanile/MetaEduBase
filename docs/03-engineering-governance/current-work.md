@@ -26,9 +26,9 @@
 需求来源：
 - Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-B S5-B-0..9
 
-当前进展：实现完成（`predecessor_lineage` 快照 diff + lineage 派生 + `PurgeRebuildService` rebuild/seeding + coordinator 接线替换 I2 no-predecessor 路径）；14 专项全绿；composition 全量 597 passed；9/9 mutation kill（驱动入库 `scripts/sch_c_mutation_kill.py`）；ruff/mypy 0 regressions。
-下一步：全新广域三面复审（TD-092，保留原始计数）→ 按根因族统一返修一次 + 独立定向复核 → 复审通过后 stacked Draft PR + checks 全绿后停止。
-验证状态：composition 597 passed（141s）；mypy 243 historical / 0 regressions；docs gates exit 0；mutation kill 9/9
+当前进展：实现完成 + 首轮三面返修（族 A~E：blocked+NULL dirty-data、case-E 非 active fence 分态、六项 item 5 ingress、re-added 全函数分派、ACK-lost 门禁、registry 一致性守卫、幂等谓词补 hold/registry）；18 专项全绿；composition 全量 597 passed（**存在环境级偶发 flaky：Docker Desktop macOS 卷 + asyncpg 快速连接下 INSERT+COMMIT 偶发全局丢失，非本 PR 逻辑缺陷，登记 infra 核实**）；mutation kill 驱动入库；ruff/mypy 0 regressions。
+下一步：独立定向复核（P1 清零核验）→ 通过后 stacked Draft PR（base = SCH-B root）+ checks 全绿后停止。
+验证状态：composition 597 passed（141s，偶发 flaky）；mypy 243 historical / 0 regressions；docs gates exit 0；三面首轮原始计数保留（P0=0/P1=9/P2=11/P3=10）
 交接备注：**stacked child**——SCH-B root（0081ecd9）暂停等待子层；PR base = SCH-B root 分支（非 main）；保留 B/C/D 联合 merged-boundary；不实现 SCH-D concrete settlement、adapter lookup/replay、内部 API；不新增 migration 043、不改 registry；不启用生产 wiring。
 
 ## 下一批候选任务

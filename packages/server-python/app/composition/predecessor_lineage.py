@@ -22,6 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.composition.projection_calculator import LineageFact
+from app.shared.schemas.canonical_json import canonical_digest
 
 # G1/G2 coordinator-level gate failure_code（predecessor 必须是其中之一 blocked）。
 _G1_G2_FAILURE_CODES = frozenset(
@@ -124,6 +125,8 @@ class PredecessorOwnerFact:
     fence_owner_version: int | None
     fence_purge_revision: int | None
     fence_ack_digest: str | None
+    fence_ingress_digest: str | None
+    fence_ingress_checkpoint: dict | None
 
 
 def _six_item_lineage(
@@ -152,7 +155,14 @@ def _six_item_lineage(
         or fact.fence_ack_digest is None
         or fact.checkpoint_ack_digest != fact.fence_ack_digest
     ):
-        return False  # 六项 5（信任锚点一致）
+        return False  # 六项 5a（信任锚点一致）
+    if (
+        fact.fence_ingress_digest is None
+        or fact.fence_ingress_checkpoint is None
+        or fact.fence_ingress_digest
+        != canonical_digest(fact.fence_ingress_checkpoint)
+    ):
+        return False  # 六项 5b（ingress 证据自洽）
     # 六项 6（inherited：fence.purge_revision < operation.purge_revision）。
     return not (
         fact.fence_purge_revision is None
@@ -234,10 +244,16 @@ def _unchanged_lineage(
         return LineageFact(entry.owner_key, "conflict", "native_pending")
     if cp == "blocked":
         reason = fact.checkpoint_reason
-        if reason is not None and _is_carry_reason(reason):
+        if fence == "erased":
+            # blocked × erased = S5-C-1 ACK-lost 输入态，非 rebuild 可判义务，dirty-data。
+            return LineageFact(entry.owner_key, "conflict", "native_pending")
+        if reason is None:
+            # NULL reason 不得落入通用 pending 分支（S5-B-2 硬约束④）。
+            return LineageFact(entry.owner_key, "conflict", "native_pending")
+        if _is_carry_reason(reason):
             return LineageFact(entry.owner_key, "not_applicable", "carried_blocked")
-        if reason is not None and not _is_retryable_reason(reason):
-            # 未知/NULL 之外的非白名单 reason → dirty-data（S5-B-2 兜底）。
+        if not _is_retryable_reason(reason):
+            # 非白名单 reason → dirty-data（S5-B-2 兜底）。
             return LineageFact(entry.owner_key, "conflict", "native_pending")
         # reopenable（erase_timeout/adapter_unavailable/scan 族 + pre-window gate）
         # → 义务重开。
@@ -264,7 +280,13 @@ def _re_added_lineage(
     历史在更早 revision——SCH-C 用 predecessor_facts 里的 fence 态判定）。
     """
     if fact is None:
-        # 有历史 fence 但 predecessor 无 checkpoint：义务重开（缺行不视为已完成）。
+        return LineageFact(entry.owner_key, "not_applicable", "native_pending")
+    if fact.checkpoint_state is None:
+        if fact.fence_state == "erased":
+            # 历史 fence erased 但 predecessor 缺 checkpoint：无法验证「历史 acked」
+            # （item 2），锚点缺失 → fail closed（S5-B-2 case C 锚点缺失回滚）。
+            return LineageFact(entry.owner_key, "conflict", "native_pending")
+        # 缺 cp 且 fence 非 erased → 义务重开 pending（缺行不视为已完成）。
         return LineageFact(entry.owner_key, "not_applicable", "native_pending")
     return _unchanged_lineage(entry, fact, current_revision)
 
@@ -289,9 +311,11 @@ def _version_changed_lineage(
         return LineageFact(entry.owner_key, "conflict", "native_pending")
     # erasing/blocked：按 checkpoint reason 分态（S5-C terminal facts）。
     reason = fact.checkpoint_reason
-    if reason is not None and _is_carry_reason(reason):
+    if reason is None:
+        return LineageFact(entry.owner_key, "conflict", "native_pending")
+    if _is_carry_reason(reason):
         return LineageFact(entry.owner_key, "not_applicable", "carried_blocked")
-    if reason is not None and not _is_retryable_reason(reason):
+    if not _is_retryable_reason(reason):
         return LineageFact(entry.owner_key, "conflict", "native_pending")
     return LineageFact(entry.owner_key, "not_applicable", "native_pending")
 

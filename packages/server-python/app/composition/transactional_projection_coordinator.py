@@ -165,10 +165,10 @@ def build_scan_providers(session: AsyncSession) -> dict[str, ScanProvider]:
 class TransactionalProjectionCoordinator:
     """transactional projection coordinator：facts 采集 → calculator → CAS 落库。
 
-    I2 边界：lineage 派生为「无 predecessor → 全 owner
-    not_applicable/native_pending」（rebuild/seeding 未实现，不存在继承义务）；
-    snapshot 外 owner 行由 calculator G4 直接裁决。完整 predecessor lineage
-    派生随 scheduler slice 扩展（权威公式 R1-S5-B S5-B-3 阶段 2）。
+    lineage（S5-B-3 阶段 2）：经 predecessor 定位（MAX(< 当前) + G1/G2-blocked）
+    派生 per-owner lineage_status/expected_obligation_kind；无 predecessor 或
+    非 G1/G2-blocked → 全 not_applicable/native_pending（原生路径）。snapshot
+    外 owner 行由 calculator G4 直接裁决。
     """
 
     def __init__(
@@ -467,6 +467,8 @@ class TransactionalProjectionCoordinator:
                 fence_owner_version=f.owner_version if f else None,
                 fence_purge_revision=f.purge_revision if f else None,
                 fence_ack_digest=f.ack_digest if f else None,
+                fence_ingress_digest=f.ingress_digest if f else None,
+                fence_ingress_checkpoint=dict(f.ingress_checkpoint) if f else None,
             )
 
         facts = {key: _fact(key) for key in set(cp_by_owner) | set(fence_by_owner)}
