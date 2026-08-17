@@ -12,6 +12,8 @@
 - blocked 白名单 vs 拒绝域（M：拒绝域仍 entry）
 - pre-window 不耗预算（M：pre-window 计入预算）
 - 周期 tick 全量重算（M：tick 漏候选）
+- 旧 purge_revision 零写（M-SCH-B-stale-revision：旧 revision 放行）
+- failed 终态优雅停止（M-SCH-B-failed-stop：failed 未纳入终态停止）
 
 边界：owner participant 经显式 port 注入；SCH-B 不直接写 fence（erasing 收口
 与 failed-fence 收敛由窄 settlement port 承担）；不建生产组合根。
