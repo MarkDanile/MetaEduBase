@@ -710,14 +710,21 @@ async def test_rebuild_re_added_missing_cp_reopens(db_session, session_factory):
         ),
         {"snap": _json.dumps(old_snapshot), "digest": snapshot_digest(old_snapshot), "op": op1},
     )
-    # 其余 owner 重开域 + re-added owner（workspace.core.v1）有历史 fence（非 erased）
-    # 但 predecessor 无其 checkpoint → 命中 _re_added_lineage「cp 缺 + 非 erased →
-    # pending」分支。
+    # 其余 owner 重开域 + re-added owner（_OWNER_KEYS[0]）有历史 fence（非 erased）
+    # 但 predecessor 无其 checkpoint（claim 建行后删除该 owner 行）→ 命中
+    # _re_added_lineage「cp 缺 + 非 erased → pending」分支。
     for k in _OWNER_KEYS[1:]:
         await _set_cp(
             db_session, op1, k, state="blocked",
             reason="purge_blocked_by_external_erase_timeout",
         )
+    await db_session.execute(
+        text(
+            "DELETE FROM metaedu.agent_conversation_purge_owners "
+            "WHERE purge_operation_id = :op AND owner_key = :k"
+        ),
+        {"op": op1, "k": _OWNER_KEYS[0]},
+    )
     await db_session.execute(
         text(
             "INSERT INTO metaedu.agent_erasure_fences "
@@ -856,7 +863,14 @@ async def test_rebuild_re_added_erased_fence_conflict(db_session, session_factor
             db_session, op1, k, state="blocked",
             reason="purge_blocked_by_external_erase_timeout",
         )
-    # workspace.core.v1 历史 fence erased（锚点存在但 predecessor 缺 cp）。
+    await db_session.execute(
+        text(
+            "DELETE FROM metaedu.agent_conversation_purge_owners "
+            "WHERE purge_operation_id = :op AND owner_key = :k"
+        ),
+        {"op": op1, "k": _OWNER_KEYS[0]},
+    )
+    # _OWNER_KEYS[0] 历史 fence erased（锚点存在但 predecessor 缺 cp）。
     await db_session.execute(
         text(
             "INSERT INTO metaedu.agent_erasure_fences "
