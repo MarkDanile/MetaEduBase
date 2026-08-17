@@ -21,7 +21,7 @@ participant 入口返回后触发。S5 scheduler 仅增加定时/claim 全量重
 from __future__ import annotations
 
 import uuid
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import datetime
 from typing import Protocol
 
@@ -29,6 +29,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.composition.agent_erasure_registry import registry_digest, snapshot_digest
+from app.composition.predecessor_lineage import (
+    OwnerSnapshotEntry,
+    PredecessorOwnerFact,
+    compute_lineage,
+)
 from app.composition.projection_calculator import (
     CheckpointFact,
     FenceFact,
@@ -340,15 +345,15 @@ class TransactionalProjectionCoordinator:
             )
             scans.append(OwnerScanFact(owner_key=owner_key, total=scan_result.total))
 
-        # lineage（I2 边界）：无 predecessor（rebuild 未实现）→ 全 owner
-        # not_applicable/native_pending。derived 非持久、重启重算同值。
-        lineage_facts = tuple(
-            LineageFact(
-                owner_key=owner_key,
-                lineage_status="not_applicable",
-                expected_obligation_kind="native_pending",
-            )
-            for owner_key in snapshot_owners
+        # lineage（S5-B-3 阶段 2）：真实 predecessor 定位 + lineage 派生——
+        # 替换 I2 的「无 predecessor → 全 not_applicable/native_pending」临时
+        # 路径。predecessor/fence 在 Conversation 首锁窗口内只读（S5-B-3 阶段 2
+        # 读集一致性）。
+        lineage_facts = await self._assemble_lineage(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            operation=operation,
+            fence_rows=fence_rows,
         )
 
         result = calculate_projection(
@@ -395,6 +400,95 @@ class TransactionalProjectionCoordinator:
             result=result,
             now=effective_now,
         )
+
+    async def _assemble_lineage(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        operation: PurgeOperationModel,
+        fence_rows: Sequence[ErasureFenceModel],
+    ) -> tuple[LineageFact, ...]:
+        """S5-B-3 阶段 2：定位 immediate predecessor 并派生 per-owner lineage。
+
+        predecessor = 同一 (tenant, conversation) 下 purge_revision = MAX(< 当前)
+        且 state=blocked + failure_code ∈ G1/G2 的行；无 predecessor 或非
+        G1/G2-blocked → 全 not_applicable/native_pending（原生路径）。
+        """
+        predecessor = (
+            await self._session.execute(
+                select(PurgeOperationModel)
+                .where(
+                    PurgeOperationModel.tenant_id == tenant_id,
+                    PurgeOperationModel.conversation_id == conversation_id,
+                    PurgeOperationModel.purge_revision < operation.purge_revision,
+                )
+                .order_by(PurgeOperationModel.purge_revision.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        snapshot = self._snapshot_entries(operation.registry_snapshot)
+        if (
+            predecessor is None
+            or predecessor.state != "blocked"
+            or predecessor.failure_code
+            not in ("blocked_registry_changed", "blocked_hold_revision_changed")
+        ):
+            return tuple(
+                LineageFact(
+                    owner_key=e.owner_key,
+                    lineage_status="not_applicable",
+                    expected_obligation_kind="native_pending",
+                )
+                for e in snapshot
+            )
+
+        predecessor_checkpoints = (
+            await self._session.execute(
+                select(PurgeOwnerCheckpointModel).where(
+                    PurgeOwnerCheckpointModel.tenant_id == tenant_id,
+                    PurgeOwnerCheckpointModel.purge_operation_id == predecessor.id,
+                )
+            )
+        ).scalars().all()
+        cp_by_owner = {row.owner_key: row for row in predecessor_checkpoints}
+        fence_by_owner = {row.owner_key: row for row in fence_rows}
+
+        def _fact(key: str) -> PredecessorOwnerFact:
+            cp = cp_by_owner.get(key)
+            f = fence_by_owner.get(key)
+            return PredecessorOwnerFact(
+                checkpoint_state=cp.state if cp else None,
+                checkpoint_reason=cp.reason_code if cp else None,
+                checkpoint_owner_version=cp.owner_version if cp else None,
+                checkpoint_capability_digest=cp.capability_digest if cp else None,
+                checkpoint_ack_digest=cp.ack_digest if cp else None,
+                fence_state=f.state if f else None,
+                fence_owner_version=f.owner_version if f else None,
+                fence_purge_revision=f.purge_revision if f else None,
+                fence_ack_digest=f.ack_digest if f else None,
+            )
+
+        facts = {key: _fact(key) for key in set(cp_by_owner) | set(fence_by_owner)}
+        lineage = compute_lineage(
+            snapshot=snapshot,
+            predecessor_snapshot=self._snapshot_entries(predecessor.registry_snapshot),
+            predecessor_facts=facts,
+            current_revision=operation.purge_revision,
+            historical_fences=frozenset(fence_by_owner),
+        )
+        return tuple(lineage[e.owner_key] for e in snapshot)
+
+    @staticmethod
+    def _snapshot_entries(snapshot: list) -> list[OwnerSnapshotEntry]:
+        return [
+            OwnerSnapshotEntry(
+                owner_key=str(o["owner_key"]),
+                owner_version=int(o["owner_version"]),
+                capability_digest=str(o["capability_digest"]),
+            )
+            for o in snapshot
+        ]
 
     async def _database_now(self) -> datetime:
         from sqlalchemy import func

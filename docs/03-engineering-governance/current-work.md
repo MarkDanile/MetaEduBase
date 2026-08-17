@@ -14,22 +14,22 @@
 
 ## 当前进行中
 
-### R1-S5 SCH-B: Owner Execution Orchestrator（B/C/D 联合交付 stack root）
+### R1-S5 SCH-C: Rebuild & Seeding（stacked child，base = SCH-B root）
 
 状态：🟡 进行中
 类型：实现（反例先行 + 具名 mutation kill）
 领域：R1 retention/purge scheduler
 当前执行模式：plan-do（TD-092 三面复审）
 最近接手工具：Claude Code
-分支：feature/req041-047-r1-s5-sch-b-owner-execution-orchestrator
+分支：feature/req041-047-r1-s5-sch-c-rebuild-seeding
 
 需求来源：
-- Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-D S5-SCH-1/2/3
+- Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-B S5-B-0..9
 
-当前进展：实现完成 + 首轮三面返修（族 A~D：failed 纳入终态停止防异常循环、next_retry_at cycle 末仲裁、attempt 统一推进裁决、旧 revision 反例、td-032 登记、OrchestrationDriftError 异常统一、tick 隔离+退避过滤）；14 专项全绿；composition 全量 583 passed；12/12 mutation kill（驱动入库 `scripts/sch_b_mutation_kill.py`）；ruff/mypy 0 regressions。
-下一步：独立定向复核（P1 清零核验）→ 通过后 Draft root PR + checks 全绿后停止。
-验证状态：composition 583 passed（140s）；mypy 243 historical / 0 regressions；docs gates exit 0；mutation kill 12/12；三面首轮原始计数保留（P0=0/P1=3/P2=6/P3=14）
-交接备注：**B/C/D stack root**——后续 SCH-C/SCH-D 将 stacked 进入本 root PR；本 PR 不实现 SCH-C rebuild/seeding、SCH-D settlement、完整 API、指标日志、participant 三键收窄、S6、C1；不转 Ready/评分/合并；不创建 SCH-C/SCH-D 分支、不启用生产 wiring。
+当前进展：开工，未写代码/测试。
+下一步：G1/G2 blocked → Option D quiesce → 新 purge_revision 建 operation + 全 checkpoint 集合 + seeding + case-E active fence version migration + acquire lease **同事务**；predecessor/owner obligation 全函数矩阵（added/removed/re-added/version-changed + checkpoint 缺行/fence 四态）；lineage 六项阶段 1 失败整事务回滚、阶段 2 derived conflict 只进 coordinator facts；predecessor/lineage facts 接入 coordinator 替换 I2 no-predecessor 临时路径；S5-B-6 幂等；严守 Option D（erasing 只等 settlement port）；S5-B-9 实义 29 行逐行落地 + 具名 mutation。
+验证状态：未运行
+交接备注：**stacked child**——SCH-B root（0081ecd9）暂停等待子层；PR base = SCH-B root 分支（非 main）；保留 B/C/D 联合 merged-boundary；不实现 SCH-D concrete settlement、adapter lookup/replay、内部 API；不新增 migration 043、不改 registry；不启用生产 wiring。
 
 ## 下一批候选任务
 
