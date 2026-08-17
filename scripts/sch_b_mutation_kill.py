@@ -1,4 +1,4 @@
-"""R1-S5 SCH-B 10 项具名 mutation kill 驱动（可复现证据链）。
+"""R1-S5 SCH-B 12 项具名 mutation kill 驱动（可复现证据链）。
 
 用法（须独占 metaedu_test）：
 
@@ -25,7 +25,7 @@ MUTATIONS = [
     (
         "M-SCH-B-owner-order 未按字典序",
         ["        for owner_key in (str(o[\"owner_key\"]) for o in registry_snapshot()):"],
-        ["        for owner_key in reversed([str(o[\"owner_key\"]) for o in registry_snapshot()]):  # M"],
+        ["        for owner_key in reversed(\n            [str(o[\"owner_key\"]) for o in registry_snapshot()]\n        ):  # M"],
         f"{TEST}::test_owner_lexicographic_order_and_per_owner_coordinator",
     ),
     (
@@ -90,12 +90,24 @@ MUTATIONS = [
         ['                    "AND lease_expires_at IS NULL "  # M：反谓词漏候选'],
         f"{TEST}::test_tick_forces_aggregation",
     ),
+    (
+        "M-SCH-B-stale-revision 旧 purge_revision 放行",
+        ['            if operation.purge_revision != conversation.purge_revision:'],
+        ['            if False:  # M：旧 purge_revision 放行'],
+        f"{TEST}::test_stale_purge_revision_fails_closed",
+    ),
+    (
+        "M-SCH-B-failed-stop failed 未纳入终态停止",
+        ['    _TERMINAL_STATES = frozenset({"completed", "cancelled", "failed"})'],
+        ['    _TERMINAL_STATES = frozenset({"completed", "cancelled"})  # M：failed 放行'],
+        f"{TEST}::test_failed_operation_stops_cycle_gracefully",
+    ),
 ]
 
 
 def apply(olds: list[str], news: list[str]) -> None:
     src = ORCH.read_text()
-    for old, new in zip(olds, news):
+    for old, new in zip(olds, news, strict=True):
         assert old in src, f"anchor not found: {old[:60]!r}"
         src = src.replace(old, new, 1)
     ORCH.write_text(src)

@@ -352,6 +352,17 @@ async def test_budget_exhaustion_writes_failed(db_session, session_factory):
             await _cp(verify, op_id, _OWNER_KEYS[0], "reason_code")
             == _REASON_ERASE_TIMEOUT
         ), "failed 保留最后 blocked reason"
+        # SCH-4：预算耗尽后无 blocked owner 剩余 → next_retry_at 清 NULL。
+        next_retry_at = (
+            await verify.execute(
+                text(
+                    "SELECT next_retry_at FROM metaedu.agent_conversation_purges "
+                    "WHERE id = :op"
+                ),
+                {"op": op_id},
+            )
+        ).scalar_one_or_none()
+        assert next_retry_at is None, "failed 后 next_retry_at 清"
     assert settlement.converge == [_OWNER_KEYS[0]]
 
 
@@ -442,6 +453,13 @@ async def test_tick_forces_aggregation(db_session, session_factory):
     await db_session.commit()
     op_id = out.token.purge_operation_id
     async with session_factory() as s:
+        await s.execute(
+            text(
+                "UPDATE metaedu.agent_conversation_purges SET next_retry_at = NULL "
+                "WHERE id = :op"
+            ),
+            {"op": op_id},
+        )
         await s.execute(
             text(
                 "UPDATE metaedu.agent_conversation_purge_owners SET "
@@ -583,3 +601,64 @@ async def test_interop_real_workspace_participant(db_session, session_factory):
             )
         ).scalar_one()
         assert fence_state == "erased", "真实 participant 推进 fence 到 erased"
+
+
+async def test_stale_purge_revision_fails_closed(db_session, session_factory):
+    """SCH-7：旧 purge_revision（rebuild 后旧 operation）→ I2 gate fail closed，
+    零 entry。mutation（M-SCH-B-stale-revision）：verify 去 purge_revision gate。"""
+    tid, cid = await _seed_conversation(db_session)
+    out = await _claim(db_session, tid, cid)
+    await db_session.commit()
+    op_id = out.token.purge_operation_id
+    # 模拟 rebuild 推进 conversation.purge_revision 到 2（operation 仍 1）。
+    async with session_factory() as s:
+        await s.execute(
+            text(
+                "UPDATE metaedu.agent_conversations SET purge_revision = 2 "
+                "WHERE id = :cid"
+            ),
+            {"cid": cid},
+        )
+        await s.commit()
+
+    calls: list[str] = []
+    orch = _orchestrator(
+        session_factory, entries={k: _entry("ack", calls) for k in _OWNER_KEYS}
+    )
+    with pytest.raises(ValueError):
+        await orch.run_cycle(
+            tenant_id=tid, conversation_id=cid, purge_operation_id=op_id
+        )
+    assert calls == [], "旧 purge_revision 零 entry"
+
+
+async def test_failed_operation_stops_cycle_gracefully(
+    db_session, session_factory
+):
+    """并发面 P1 反例：operation 已 failed（coordinator 优先级 5 收敛）后，
+    run_cycle 必须优雅停止（verify 把 failed 纳入终态），不得再对 pending
+    owner 调 entry 抛 participant 终态守卫异常循环。"""
+    tid, cid = await _seed_conversation(db_session)
+    out = await _claim(db_session, tid, cid)
+    await db_session.commit()
+    op_id = out.token.purge_operation_id
+    # 模拟 coordinator 优先级 5 已把 operation 收敛为 failed。
+    async with session_factory() as s:
+        await s.execute(
+            text(
+                "UPDATE metaedu.agent_conversation_purges SET state = 'failed' "
+                "WHERE id = :op"
+            ),
+            {"op": op_id},
+        )
+        await s.commit()
+
+    calls: list[str] = []
+    orch = _orchestrator(
+        session_factory, entries={k: _entry("ack", calls) for k in _OWNER_KEYS}
+    )
+    with pytest.raises(ValueError, match="operation failed"):
+        await orch.run_cycle(
+            tenant_id=tid, conversation_id=cid, purge_operation_id=op_id
+        )
+    assert calls == [], "failed 后不得再调 entry（优雅停止）"

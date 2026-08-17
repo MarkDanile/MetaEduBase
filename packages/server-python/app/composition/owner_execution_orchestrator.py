@@ -8,12 +8,22 @@ pre-window 豁免 + 预算耗尽写 failed。
 
 边界（S5-SCH-9）：
 - owner participant 经显式 port（``OwnerEntryPort``）注入，本模块不 import
-  任何 participant，**六 erase 入口静态守卫保持不可达**；
+  任何 participant，**六 owner 的 erase 入口静态守卫保持不可达**；
 - SCH-B 不直接写 fence——erasing 收口（``closeout_erasing``）与 failed-fence
   收敛（``converge_failed_fence``）由窄 ``SettlementPort`` 承担（生产 concrete
   port 留给 SCH-D，B 测试用判别力 fake）；
 - 不实现 SCH-C rebuild/seeding、SCH-D settlement、完整 API、指标日志、
   participant 三键收窄；无后台循环（``tick()`` 由调用方显式驱动）。
+
+实现注记：
+- renew 为 operation 级心跳，先于 owner 级 checkpoint/fence 态重读——跳过
+  路径（acked/failed/erasing/拒绝域）仍会写 lease（S5-SCH-1.3(b)「零副作用」
+  字面放宽为「零 owner 副作用」：lease 心跳为 1.1 所需）。
+- attempt 统一 retry 计数：scan 族 owner 由编排方 entry 前推进，external/
+  runtime（Tx1 双事务）在 entry 内部自行推进（``_TX1_OWNERS``），避免
+  double-count。
+- next_retry_at 由 cycle 末 ``_arbitrate_retry`` 统一仲裁（min over 仍 blocked
+  的 owner，无则 NULL），收敛 renew 每 entry 重写的中间态。
 """
 
 from __future__ import annotations
@@ -43,6 +53,16 @@ from app.contexts.agent_workspace.infrastructure.models import (
 )
 
 RETRY_BUDGET = 3
+
+# Tx1 双事务 participant 在 entry 内部（pending/blocked→erasing）推进 attempt；
+# 编排方对这两 owner 不重复推进（否则 double-count）。其余 scan 族 owner 无
+# Tx1，attempt 推进由编排方承担（SCH-B 返修裁决：S5-SCH-1.4「participant
+# 承担」在 scan 族不成立，编排方补齐统一 retry 计数）。
+_TX1_OWNERS = frozenset({"external.payload.v1", "runtime.private.v1"})
+
+
+class OrchestrationDriftError(ValueError):
+    """编排 drift/租约失效/行缺失统一信号（fail-closed，重入 claim 判定）。"""
 
 # S5-A-3 族 B 封闭白名单：erase_timeout / adapter_unavailable / scan 族 + pre-window gate。
 _RETRYABLE_SUFFIXES = ("_erase_timeout", "_adapter_unavailable", "_scan_nonzero")
@@ -139,7 +159,7 @@ class CycleOutcome:
 class OwnerExecutionOrchestrator:
     """owner 顺序执行编排器。全部短事务、不 commit 外层（事务归各短事务）。"""
 
-    _TERMINAL_STATES = frozenset({"completed", "cancelled"})
+    _TERMINAL_STATES = frozenset({"completed", "cancelled", "failed"})
 
     def __init__(
         self,
@@ -190,6 +210,9 @@ class OwnerExecutionOrchestrator:
                 aggregations += 1
             elif action == "skipped":
                 skipped.append(owner_key)
+        # cycle 末统一仲裁 next_retry_at（min over 仍 blocked 的 owner；无则清
+        # NULL——renew 每 entry 重写 next_retry_at 的中间态在此被收敛）。
+        await self._arbitrate_retry(tenant_id, purge_operation_id, conversation_id)
         return CycleOutcome(
             aggregation_count=aggregations,
             owners_entered=tuple(entered),
@@ -197,11 +220,17 @@ class OwnerExecutionOrchestrator:
         )
 
     async def tick(self) -> int:
-        """1.3b-ii：对 claim 候选集（非终态 + 在租）全量聚合（无后台循环）。"""
+        """1.3b-ii：对 claim 候选集（非终态 + 在租 + 退避已到）全量聚合
+        （无后台循环）。单候选聚合异常不中止整个 tick。"""
         candidates = await self._candidate_operations()
+        aggregated = 0
         for op_id, tid, cid in candidates:
-            await self._aggregate(tid, cid, op_id)
-        return len(candidates)
+            try:
+                await self._aggregate(tid, cid, op_id)
+            except ValueError:
+                continue
+            aggregated += 1
+        return aggregated
 
     # -- 周期级 token 重验 --------------------------------------------------
 
@@ -223,7 +252,7 @@ class OwnerExecutionOrchestrator:
                 )
             ).scalar_one_or_none()
             if conversation is None:
-                raise ValueError(
+                raise OrchestrationDriftError(
                     f"conversation {conversation_id} not found for orchestration"
                 )
             operation = (
@@ -238,24 +267,30 @@ class OwnerExecutionOrchestrator:
                 )
             ).scalar_one_or_none()
             if operation is None:
-                raise ValueError(
+                raise OrchestrationDriftError(
                     f"purge operation {purge_operation_id} not found for "
                     "orchestration"
                 )
             if operation.purge_revision != conversation.purge_revision:
-                raise ValueError("stale operation revision rejected (I2 gate)")
+                raise OrchestrationDriftError(
+                    "stale operation revision rejected (I2 gate)"
+                )
             if operation.hold_revision_snapshot != conversation.hold_revision:
-                raise ValueError("hold_revision drift; cycle fail closed")
+                raise OrchestrationDriftError("hold_revision drift; cycle fail closed")
             if operation.registry_digest != registry_digest():
-                raise ValueError("registry drift; cycle fail closed")
+                raise OrchestrationDriftError("registry drift; cycle fail closed")
             if operation.state in self._TERMINAL_STATES:
-                raise ValueError(
+                if operation.state == "failed":
+                    raise OrchestrationDriftError(
+                        "operation failed; awaiting SCH-C rebuild"
+                    )
+                raise OrchestrationDriftError(
                     f"operation {operation.state!r} is terminal; nothing to "
                     "orchestrate"
                 )
             now = await self._db_now(session)
             if operation.lease_expires_at is None or operation.lease_expires_at <= now:
-                raise ValueError(
+                raise OrchestrationDriftError(
                     "lease expired or not held; re-enter claim (fail closed)"
                 )
 
@@ -281,7 +316,7 @@ class OwnerExecutionOrchestrator:
                 ),
             )
             if renewed.kind is not RenewOutcomeKind.RENEWED:
-                raise ValueError(
+                raise OrchestrationDriftError(
                     f"lease renew failed ({renewed.kind.value}); re-enter claim"
                 )
             assert renewed.token is not None  # RENEWED 必带 token
@@ -291,7 +326,7 @@ class OwnerExecutionOrchestrator:
                 session, tenant_id, purge_operation_id, owner_key
             )
             if checkpoint is None:
-                raise ValueError(
+                raise OrchestrationDriftError(
                     f"checkpoint missing for owner {owner_key!r}; fail closed"
                 )
             state = checkpoint.state
@@ -329,8 +364,20 @@ class OwnerExecutionOrchestrator:
                 # 白名单 / pre-window：重试。
 
             if entry_port is None:
-                raise ValueError(
+                raise OrchestrationDriftError(
                     f"no entry port for owner {owner_key!r}; fail closed"
+                )
+            # 统一 retry 计数：scan 族 owner 的 attempt 由编排方推进（Tx1 owner
+            # 在 entry 内自行推进，见 _TX1_OWNERS）。
+            if owner_key not in _TX1_OWNERS:
+                await session.execute(
+                    text(
+                        "UPDATE metaedu.agent_conversation_purge_owners SET "
+                        "attempt = attempt + 1 "
+                        "WHERE tenant_id = :tid AND purge_operation_id = :op "
+                        "AND owner_key = :k"
+                    ),
+                    {"tid": tenant_id, "op": purge_operation_id, "k": owner_key},
                 )
             operation_revision = await self._operation_revision(
                 session, tenant_id, purge_operation_id, conversation_id
@@ -349,10 +396,9 @@ class OwnerExecutionOrchestrator:
                     session=session,
                 )
             )
-            if not outcome.acked and outcome.blocked_reason is not None:
-                await self._schedule_retry(
-                    session, tenant_id, purge_operation_id, conversation_id
-                )
+            # outcome 仅用于 entry 副作用（participant 自记 blocked/acked），
+            # 编排方不据此写 checkpoint；blocked 态由下轮 cycle 锁内重读裁决。
+            _ = outcome
             return "entered"
 
     # -- 辅助 ---------------------------------------------------------------
@@ -381,7 +427,8 @@ class OwnerExecutionOrchestrator:
                     "metaedu.agent_conversation_purges "
                     "WHERE state NOT IN ('completed', 'cancelled') "
                     "AND lease_expires_at IS NOT NULL "
-                    "AND lease_expires_at > clock_timestamp()"
+                    "AND lease_expires_at > clock_timestamp() "
+                    "AND (next_retry_at IS NULL OR next_retry_at <= clock_timestamp())"
                 )
             )
             return [(r[0], r[1], r[2]) for r in rows]
@@ -404,33 +451,48 @@ class OwnerExecutionOrchestrator:
             {"tid": tenant_id, "op": purge_operation_id, "k": owner_key, "reason": reason},
         )
 
-    async def _schedule_retry(
+    async def _arbitrate_retry(
         self,
-        session: AsyncSession,
         tenant_id: uuid.UUID,
         purge_operation_id: uuid.UUID,
         conversation_id: uuid.UUID,
     ) -> None:
-        """blocked 后重算 next_retry_at（min 仲裁，不依赖持久 jitter）。"""
-        min_attempt = (
+        """cycle 末仲裁 next_retry_at：min over 仍 blocked 的 owner（不依赖
+        持久 jitter）；无 blocked owner 则清 NULL（acked/failed 不参与排程）。"""
+        async with self._session_factory() as session, session.begin():
+            min_attempt = (
+                await session.execute(
+                    text(
+                        "SELECT min(attempt) FROM "
+                        "metaedu.agent_conversation_purge_owners "
+                        "WHERE tenant_id = :tid AND purge_operation_id = :op "
+                        "AND state = 'blocked'"
+                    ),
+                    {"tid": tenant_id, "op": purge_operation_id},
+                )
+            ).scalar()
+            if min_attempt is None:
+                await session.execute(
+                    text(
+                        "UPDATE metaedu.agent_conversation_purges SET "
+                        "next_retry_at = NULL "
+                        "WHERE tenant_id = :tid AND id = :op "
+                        "AND conversation_id = :cid"
+                    ),
+                    {"tid": tenant_id, "op": purge_operation_id, "cid": conversation_id},
+                )
+                return
+            backoff = min(5 * (2 ** int(min_attempt)), 300)
             await session.execute(
                 text(
-                    "SELECT min(attempt) FROM "
-                    "metaedu.agent_conversation_purge_owners "
-                    "WHERE tenant_id = :tid AND purge_operation_id = :op"
+                    "UPDATE metaedu.agent_conversation_purges SET "
+                    "next_retry_at = clock_timestamp() + "
+                    "make_interval(secs => :b) "
+                    "WHERE tenant_id = :tid AND id = :op "
+                    "AND conversation_id = :cid"
                 ),
-                {"tid": tenant_id, "op": purge_operation_id},
+                {"tid": tenant_id, "op": purge_operation_id, "cid": conversation_id, "b": backoff},
             )
-        ).scalar()
-        backoff = min(5 * (2 ** int(min_attempt or 0)), 300)
-        await session.execute(
-            text(
-                "UPDATE metaedu.agent_conversation_purges SET "
-                "next_retry_at = clock_timestamp() + make_interval(secs => :b) "
-                "WHERE tenant_id = :tid AND id = :op AND conversation_id = :cid"
-            ),
-            {"tid": tenant_id, "op": purge_operation_id, "cid": conversation_id, "b": backoff},
-        )
 
     async def _checkpoint(
         self,
@@ -458,7 +520,7 @@ class OwnerExecutionOrchestrator:
         purge_operation_id: uuid.UUID,
         conversation_id: uuid.UUID,
     ) -> int:
-        return (
+        row = (
             await session.execute(
                 text(
                     "SELECT lease_epoch FROM metaedu.agent_conversation_purges "
@@ -466,7 +528,12 @@ class OwnerExecutionOrchestrator:
                 ),
                 {"tid": tenant_id, "op": purge_operation_id, "cid": conversation_id},
             )
-        ).scalar_one()
+        ).scalar_one_or_none()
+        if row is None:
+            raise OrchestrationDriftError(
+                f"purge operation {purge_operation_id} not found (lease epoch)"
+            )
+        return row
 
     async def _operation_revision(
         self,
@@ -475,7 +542,7 @@ class OwnerExecutionOrchestrator:
         purge_operation_id: uuid.UUID,
         conversation_id: uuid.UUID,
     ) -> int:
-        return (
+        row = (
             await session.execute(
                 text(
                     "SELECT revision FROM metaedu.agent_conversation_purges "
@@ -483,7 +550,12 @@ class OwnerExecutionOrchestrator:
                 ),
                 {"tid": tenant_id, "op": purge_operation_id, "cid": conversation_id},
             )
-        ).scalar_one()
+        ).scalar_one_or_none()
+        if row is None:
+            raise OrchestrationDriftError(
+                f"purge operation {purge_operation_id} not found (revision)"
+            )
+        return row
 
     async def _conversation_purge_revision(
         self,
@@ -491,7 +563,7 @@ class OwnerExecutionOrchestrator:
         tenant_id: uuid.UUID,
         conversation_id: uuid.UUID,
     ) -> int:
-        return (
+        row = (
             await session.execute(
                 text(
                     "SELECT purge_revision FROM metaedu.agent_conversations "
@@ -499,7 +571,12 @@ class OwnerExecutionOrchestrator:
                 ),
                 {"tid": tenant_id, "cid": conversation_id},
             )
-        ).scalar_one()
+        ).scalar_one_or_none()
+        if row is None:
+            raise OrchestrationDriftError(
+                f"conversation {conversation_id} not found (purge revision)"
+            )
+        return row
 
     async def _db_now(self, session: AsyncSession) -> datetime:
         return (await session.execute(text("SELECT clock_timestamp()"))).scalar_one()
@@ -507,6 +584,7 @@ class OwnerExecutionOrchestrator:
 
 __all__ = [
     "CycleOutcome",
+    "OrchestrationDriftError",
     "OwnerEntryOutcome",
     "OwnerEntryPort",
     "OwnerEntryRequest",
