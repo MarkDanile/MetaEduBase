@@ -14,7 +14,22 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### R1-S5 SCH-B: Owner Execution Orchestrator（B/C/D 联合交付 stack root）
+
+状态：🟡 进行中
+类型：实现（反例先行 + 具名 mutation kill）
+领域：R1 retention/purge scheduler
+当前执行模式：plan-do（TD-092 三面复审）
+最近接手工具：Claude Code
+分支：feature/req041-047-r1-s5-sch-b-owner-execution-orchestrator
+
+需求来源：
+- Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-D S5-SCH-1/2/3
+
+当前进展：开工，未写代码/测试。
+下一步：owner 字典序循环 + 每 entry 前 renew lease + 锁内 token 重验（operation revision/lease epoch/expiry/purge revision + Conversation revision/hold + registry digest）+ checkpoint/fence 重读（acked/failed 跳过、erasing 交 settlement port、blocked 白名单重试）+ 每 owner 后 coordinator + takeover 账本恢复 + 显式 `tick()`（1 分钟周期重算，无后台循环）+ retry 预算 3/pre-window 豁免/next_retry_at 仲裁/预算耗尽 failed；窄 settlement port（erasing 收口 + failed-fence 收敛由 port 承担，SCH-B 不写 fence）；owner participant 经显式 port/map 注入（不建生产组合根，六 erase 入口静态守卫仍不可达）。
+验证状态：未运行
+交接备注：**B/C/D stack root**——后续 SCH-C/SCH-D 将 stacked 进入本 root PR；本 PR 不实现 SCH-C rebuild/seeding、SCH-D settlement、完整 API、指标日志、participant 三键收窄、S6、C1；不转 Ready/评分/合并；不创建 SCH-C/SCH-D 分支、不启用生产 wiring。
 
 ## 下一批候选任务
 
@@ -22,7 +37,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | R1-S5 SCH-B Owner Execution Orchestrator implementation | 🔵 就绪（未开工，不创建分支） | 范围：owner 字典序循环、周期级/owner 级 token 重验（含 `lease_expires_at`）、owner 状态恢复（acked/failed 跳过、erasing 交 settlement、blocked 白名单重试）、每 owner 后 coordinator、周期 tick（1.3b-ii）、retry 白名单与预算耗尽写 `failed` + fence 收敛。**不得单独启用生产 wiring**：erase 入口保持不可达，直到 SCH-C（quiesce+rebuild）与 SCH-D（settlement 进入点最小子集）满足联合 merged-boundary；participant 三键收窄仍归独立 REQ-047 conformance PR | [Plan §R1-S5-D S5-SCH-1/2/3](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成
