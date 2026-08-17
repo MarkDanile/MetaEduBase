@@ -862,6 +862,36 @@ async def test_stale_epoch_zero_write_on_renew_takeover_release(
         assert rows[0]["lease_epoch"] == 1, "旧 token 零写"
 
 
+async def test_takeover_live_lease_rejected_in_lease(
+    db_session, session_factory
+):
+    """SCH-11：未到期租约不可接管——takeover 在租行零写（IN_LEASE），
+    不产生第二持有者。
+
+    mutation（SCH-11）：takeover 谓词缺在租检查（删
+    `lease_expires_at IS NULL OR <= clock_timestamp()`）-> 在租行被
+    takeover 成功、epoch 双推进转红。
+    """
+    tid, cid = await _seed_conversation(db_session)
+    first = await _claim(db_session, tid, cid)
+    await db_session.commit()
+    op_id = first.token.purge_operation_id
+
+    async with session_factory() as s:
+        rejected = await ConversationPurgeScheduler(s).takeover(
+            tenant_id=tid,
+            purge_operation_id=op_id,
+            conversation_id=cid,
+            expected_lease_epoch=1,
+        )
+        await s.rollback()
+    assert rejected.kind is TakeoverOutcomeKind.IN_LEASE
+
+    async with session_factory() as verify:
+        rows = await _purge_rows(verify, cid)
+        assert rows[0]["lease_epoch"] == 1, "在租 takeover 零写"
+
+
 async def test_lease_cas_missing_operation_fails_closed(db_session):
     """三键限定 + fail closed：不存在或跨 conversation 的 operation id ->
     ValueError 零写（不锁目标行、无外租户信息）。"""
