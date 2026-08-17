@@ -644,3 +644,31 @@ async def test_seeded_missing_row_g4_conflict(db_session, session_factory):
         ).one()
         assert state.state == "blocked"
         assert state.failure_code == "purge_owner_ack_conflict", "G4 conflict"
+
+
+async def test_rebuild_forged_ack_digest_rolls_back(db_session, session_factory):
+    """S5-B-9 行 4：inherited ACK 但 checkpoint.ack_digest != fence.ack_digest
+    （信任锚点不一致）→ lineage 六项 5 失败 → 整事务回滚。"""
+    tid, cid = await _seed_conversation(db_session)
+    out = await _claim(db_session, tid, cid)
+    await db_session.commit()
+    op1 = out.token.purge_operation_id
+    await _g2_block(db_session, op1)
+    for k in _OWNER_KEYS:
+        await _set_cp(db_session, op1, k, state="acked")
+    # erased fence 但 ack_digest 用不同值（"d"*64）→ 信任锚点不一致。
+    await _seed_erased_fences(db_session, tid, cid, purge_revision=1)
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_erasure_fences SET ack_digest = :bad "
+            "WHERE conversation_id = :cid"
+        ),
+        {"bad": "d" * 64, "cid": cid},
+    )
+    await db_session.commit()
+
+    with pytest.raises(ValueError, match="lineage stage-1"):
+        await _rebuild(db_session, tid, cid)
+    await db_session.rollback()
+    async with session_factory() as verify:
+        assert len(await _ops(verify, cid)) == 1, "伪造 ack_digest 零新行"

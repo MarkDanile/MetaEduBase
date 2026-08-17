@@ -80,9 +80,9 @@ MUTATIONS = [
     (
         "M-SCH-C-six-item lineage 六项恒真",
         LINEAGE,
-        ["    if fact.fence_state != \"erased\":\n        return False  # 六项 3"],
-        ["    if fact.fence_state != \"erased\" and False:\n        return False  # M：六项 3 放行"],
-        f"{TEST}::test_rebuild_seeding_lineage_fail_rolls_back",
+        ["    if fact.checkpoint_state != \"acked\":\n        return False  # 六项 2"],
+        ["    return True  # M：六项恒真\n    if fact.checkpoint_state != \"acked\":\n        return False  # 六项 2"],
+        f"{TEST}::test_rebuild_forged_ack_digest_rolls_back",
     ),
 ]
 
