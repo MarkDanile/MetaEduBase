@@ -225,6 +225,16 @@ async def test_rebuild_g2_creates_new_revision_and_acquires_lease(
         cps = await _cp_rows(verify, new_op["id"])
         assert len(cps) == len(_OWNER_KEYS)
         assert all(c["state"] == "pending" for c in cps), "重开义务 → pending"
+        conv_pr = (
+            await verify.execute(
+                text(
+                    "SELECT purge_revision FROM metaedu.agent_conversations "
+                    "WHERE id = :cid"
+                ),
+                {"cid": cid},
+            )
+        ).scalar_one()
+        assert conv_pr == 2, "rebuild 写回 conversation.purge_revision"
 
 
 async def test_rebuild_inherited_acked_seed(db_session, session_factory):
