@@ -1759,23 +1759,22 @@ async def test_schb_retry_whitelist_3_5_6_zero_side_effects(
 
 async def test_rebuild_stage2_read_consistency_first_lock(session_factory):
     """S5-B-9 行 32：阶段 2 撕裂读——rebuild 的 predecessor/fence 只读依赖
-    Conversation 首锁串行。判别：连接 A 持首锁时，连接 B 的 rebuild 必须在首锁
-    后串行（lock_timeout 阻塞）；变异「rebuild 取 Conversation 行锁省略 FOR
-    UPDATE」→ B 不再阻塞 → 红。"""
+    Conversation 首锁串行。判别：连接 A（合法写者）持首锁 + 在途未提交 fence 写
+    时，连接 B 的 rebuild 必须在首锁后串行（lock_timeout 阻塞）；变异「rebuild
+    取 Conversation 行锁省略 FOR UPDATE」→ B 不再等待、读到写者锁窗口内中间态
+    （acked 无 fence → lineage conflict 而非等待）→ 红。"""
     async with session_factory() as seed:
         tid, cid = await _seed_conversation(seed)
         out = await _claim(seed, tid, cid)
         op1 = out.token.purge_operation_id
         await _g2_block(seed, op1)
         for k in _OWNER_KEYS:
-            await _set_cp(
-                seed, op1, k, state="blocked",
-                reason="purge_blocked_by_external_erase_timeout",
-            )
+            await _set_cp(seed, op1, k, state="acked")
         await seed.commit()
 
     async with session_factory() as lock_holder:
-        # 连接 A 持 Conversation 首锁（模拟合法写者在锁窗口内）。
+        # 连接 A：持 Conversation 首锁 + 在途未提交 erased fence 写（写者锁窗口
+        # 内中间态——B 绕过首锁读到的是 pre-commit 无 fence 态 → lineage conflict）。
         await lock_holder.execute(
             text(
                 "SELECT id FROM metaedu.agent_conversations "
@@ -1783,17 +1782,18 @@ async def test_rebuild_stage2_read_consistency_first_lock(session_factory):
             ),
             {"t": tid, "c": cid},
         )
+        await _seed_erased_fence(lock_holder, tid, cid, _OWNER_KEYS[0])
+        # 不 commit —— A 在途持锁。
+
         blocked_on_first_lock = False
         async with session_factory() as writer:
             await writer.execute(text("SET LOCAL lock_timeout = '1s'"))
             try:
                 await _rebuild(writer, tid, cid)
             except Exception as exc:  # noqa: BLE001 - lock timeout → 首锁后串行
-                blocked_on_first_lock = (
-                    "lock timeout" in str(exc).lower()
-                    or "55p03" in str(exc).lower()
-                )
+                msg = str(exc).lower()
+                blocked_on_first_lock = "lock timeout" in msg or "55p03" in msg
         assert blocked_on_first_lock, (
-            "rebuild 必须阻塞在 Conversation 首锁后（绕过即撕裂读）"
+            "rebuild 必须阻塞在 Conversation 首锁后（绕过即撕裂读/读锁窗口中间态）"
         )
-        await lock_holder.commit()
+        await lock_holder.rollback()
