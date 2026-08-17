@@ -26,9 +26,9 @@
 需求来源：
 - Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-D / §R1-S5-D-A
 
-当前进展：实现完成（migration 042 + model + `conversation_purge_scheduler` claim/lease 服务）；25 专项 + 往返全绿；composition 全量 565 passed；13/13 mutation kill；ruff/mypy/gates 通过。
-下一步：全新广域三面复审（TD-092，保留原始计数）→ 按根因族统一返修一次 + 独立定向复核 → 复审通过后 Draft PR + checks 全绿后停止。
-验证状态：composition 565 passed（131s）；mypy 243 historical / 0 regressions；docs gates exit 0；mutation kill 13/13
+当前进展：实现完成（migration 042 + model + `conversation_purge_scheduler` claim/lease 服务）；29 专项 + 往返全绿；composition 全量 569 passed；13/13 mutation kill（驱动入库 `scripts/sch_a_mutation_kill.py`）；ruff/mypy/gates 通过。首轮广域三面 P0=0/P1=0/P2=8/P3=20 → 族 A~H 统一返修一次 → 独立定向复核 P2 清零（td-032 行数校正）、无新 P0/P1。
+下一步：创建 Draft PR → 等 Draft 三路 checks 全绿后停止（不转 Ready/评分/合并）。
+验证状态：composition 569 passed（123s）；mypy 243 historical / 0 regressions；docs gates exit 0；mutation kill 13/13；三面首轮原始计数保留（P0=0/P1=0/P2=8/P3=20）
 交接备注：不启动后台循环/owner execution/tick/rebuild/seeding/settlement/retry API；六 erase 入口保持生产不可达；不改 migration 040/041、registry、CI；participant 三键收窄归独立 REQ-047 PR；不转 Ready/评分/合并。
 
 ## 下一批候选任务
