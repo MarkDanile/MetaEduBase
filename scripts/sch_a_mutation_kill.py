@@ -48,8 +48,9 @@ MUTATIONS = [
         "M-SCH-5 takeover 缺 epoch CAS",
         SCHEDULER,
         '        "AND lease_epoch = :expected "\n'
-        "        \"AND state NOT IN ('completed', 'cancelled') \"",
-        '        "AND state NOT IN (\'completed\', \'cancelled\') "  # M-SCH-5',
+        "        # 终态行禁止 takeover（SCH-13 判别点）",
+        '        "AND true "  # M-SCH-5\n'
+        "        # 终态行禁止 takeover（SCH-13 判别点）",
         "tests/composition/test_s5_sch_a_claim_lease.py::test_stale_epoch_zero_write_on_renew_takeover_release",
     ),
     (
