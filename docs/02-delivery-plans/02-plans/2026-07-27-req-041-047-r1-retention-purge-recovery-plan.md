@@ -2311,6 +2311,8 @@ participant（ensure/transition，owner lock 内）· **settlement fence `erasin
 
 **SCH-A 范围与验收增补（supersede S5-SCH-3 SCH-A 行）**：S5-SCH-3 冻结范围清单补「lease acquire/takeover/renew/release + 终态观察 release（best-effort 直调路径）」——否则 SCH-12/13/15 验收无实现依据；组合根启用门禁与其余范围不变。SCH-A 实现 PR 验收 = SCH-4 行 1/2/5/6/7（既有）+ SCH-9..16（本段）+ migration 042 落地（S5-SCH-7 逐字）。
 
+> **merged-boundary（2026-08-17，契约纠偏 PR #573，squash merge `3438c53b`）**：R1-S5-D-A SCH-A Lease Carrier 契约纠偏冻结并入 main（评分 90，Original，基线 `b15d766b`；首轮三面 P0=0/P1=2/P2=11/P3=16 → 族 A~I 统一返修 → 定向复审 P1 清零 → 最终 P0/P1=0）。**纠偏完成不代表 migration 042 或 SCH-A 已实现**：SCH-A Claim&Lease / SCH-B Owner Execution / SCH-C Rebuild&Seeding / SCH-D Settlement&Retry-Reconcile 均未开工（B/C/D 联合 merged-boundary 为启用门禁）；反例矩阵 53 → 61 项（SCH-9..16 新增 8，全归 SCH-A）为冻结验收载体，随各实现 PR 逐行落地。REQ-047 / R1-S5 scheduler implementation conformance follow-up 保留（SCH-A 实现 PR 逐 slice 验收映射含 migration 042 落地与 owner entry 门禁接线、B/C/D 联合 merged-boundary 门禁核验、participant 三键收窄独立 conformance PR；不宣称本契约已实现任何 scheduler 功能）。
+
 （本段位置：R1-S5-D merged-boundary 之后、## 4 之前；首轮三面复审返修版）
 
 ## 4. C1：Durable Core 总验收与文档收口
