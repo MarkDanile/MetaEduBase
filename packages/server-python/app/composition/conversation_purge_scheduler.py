@@ -161,6 +161,8 @@ class ConversationPurgeScheduler:
         "lease_expires_at = clock_timestamp() + make_interval(secs => :ttl) "
         "WHERE tenant_id = :tid AND id = :op AND conversation_id = :cid "
         "AND lease_epoch = :expected "
+        # 终态行禁止 takeover（SCH-13 判别点）：公共 takeover() 直调路径无
+        # conversation 级谓词先行排除，op 级终态 guard 为兜底。
         "AND state NOT IN ('completed', 'cancelled') "
         "AND (lease_expires_at IS NULL OR lease_expires_at <= clock_timestamp()) "
         "RETURNING lease_epoch, lease_expires_at"
@@ -230,6 +232,21 @@ class ConversationPurgeScheduler:
             return await self._claim_existing(
                 tenant_id, conversation_id, top, now
             )
+        # 建行判据 (i) 的「无在租 claim」谓词同样约束旧 revision top：
+        # restore 后旧 worker 的租约未清（≤TTL）时不得建新行——否则同
+        # conversation 双活租约。旧行过期/NULL 则建新行（旧租约已不占 slot，
+        # 终态收尾由原 holder 的终态观察 release 承担）。
+        if (
+            top is not None
+            and top.lease_expires_at is not None
+            and top.lease_expires_at > now
+        ):
+            return ClaimOutcome(
+                ClaimKind.HELD,
+                purge_operation_id=top.id,
+                existing_lease_epoch=top.lease_epoch,
+                existing_lease_expires_at=top.lease_expires_at,
+            )
         return await self._claim_fresh(
             tenant_id, conversation_id, conversation, retention_policy_snapshot
         )
@@ -256,17 +273,37 @@ class ConversationPurgeScheduler:
             )
         if expires_at is not None:
             # 已过期：claim 走 takeover（含强制聚合）。
+            # 计数豁免（三面返修裁决固化）：expired 行此前不占 slot（S5-SCH-8
+            # 计数谓词），claim-takeover 是恢复语义而非新占 slot——不查 cap，
+            # 与公开 takeover() 一致（否则「4 active + 1 expired」的 tenant
+            # 会因 cap 锁死该 expired 行的恢复，liveness 洞）。顺序与公开
+            # takeover() 一致：先退避后聚合（终态行不写 next_retry_at）。
             taken = await self._takeover_cas(
                 tenant_id, conversation_id, op_id, epoch
             )
             if taken is None:
+                # CAS 失败分类（与公开 takeover 同语义）：在 Conversation
+                # 锁下唯一可达失败 = 终态 guard（completed/cancelled）——
+                # conversation 级谓词（purged_at/state=deleted）本应先行排除，
+                # 此处为防御纵深，fail closed。
+                epoch_now, expiry_now, state_now = (
+                    await self._lease_state_with_state(
+                        tenant_id, op_id, conversation_id
+                    )
+                )
+                if state_now in ("completed", "cancelled"):
+                    raise ValueError(
+                        f"purge operation {op_id} is terminal "
+                        f"({state_now}); claim fail closed"
+                    )
                 return ClaimOutcome(
                     ClaimKind.HELD,
                     purge_operation_id=op_id,
-                    existing_lease_epoch=epoch,
+                    existing_lease_epoch=epoch_now,
+                    existing_lease_expires_at=expiry_now,
                 )
-            await self._force_aggregation(tenant_id, conversation_id, op_id)
             await self._recompute_backoff(tenant_id, op_id, conversation_id)
+            await self._force_aggregation(tenant_id, conversation_id, op_id)
             return ClaimOutcome(
                 ClaimKind.CLAIMED, token=taken, purge_operation_id=op_id
             )
@@ -363,6 +400,8 @@ class ConversationPurgeScheduler:
             if epoch != expected_lease_epoch:
                 return RenewOutcome(RenewOutcomeKind.STALE)
             now = await self._db_now()
+            # NULL 视为已失效：renew 谓词要求 expiry > clock，未认领行
+            # （expiry NULL）不满足——分类归 EXPIRED（未持有有效租约）。
             if expiry is None or expiry <= now:
                 return RenewOutcome(RenewOutcomeKind.EXPIRED)
             return RenewOutcome(RenewOutcomeKind.STALE)
@@ -669,6 +708,9 @@ class ConversationPurgeScheduler:
     ) -> None:
         """退避锁内重算：min(5s × 2^min_attempt, 5m)，随 claim/renew/
         takeover 短事务写 next_retry_at（最早者仲裁，不依赖持久 jitter）。"""
+        # min(attempt) 只读查询按 purge_operation_id（全局唯一 UUID）+ tenant
+        # 限定；checkpoint 表无 conversation_id 列，三键收窄惯例不适用于该
+        # 查询（与 coordinator 的 checkpoint 查询形态一致）。
         min_attempt = (
             await self._session.execute(
                 text(
@@ -694,6 +736,8 @@ class ConversationPurgeScheduler:
                 "backoff": backoff,
             },
         )
+        # raw 写后 expire：后续任何 ORM 访问不得命中陈旧 next_retry_at。
+        self._session.expire_all()
 
     async def _force_aggregation(
         self,

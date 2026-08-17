@@ -3,20 +3,22 @@
 契约：Plan §R1-S5-D（S5-SCH-1.1/1.3b-i/2）+ §R1-S5-D-A（S5-SCH-7/8/9/10）——
 migration 042 lease carrier + 租约三态 × 四转移 expected-epoch CAS。
 
-反例映射（每项具名 mutation，随实现 kill）：
+反例映射（每项具名 mutation，驱动 = `scripts/sch_a_mutation_kill.py`，
+运行方式见该脚本 docstring）：
 
-- SCH-1 claim takeover 单写者 / SCH-11 双 claim 单写（mutation：acquire 缺 CAS 双谓词）
-- SCH-2 重复首 claim 幂等（mutation：全 owner checkpoint 建行不完整）
-- SCH-5 claim 后崩溃再 takeover、旧 token 零写（mutation：takeover 缺 epoch CAS）
-- SCH-6 跨 tenant 零写（mutation：裸 id 谓词）
-- SCH-7 旧 token 重放零写（mutation：release 不校验 epoch）
-- SCH-9 通用 updated_at 写不续租（mutation：以 updated_at 判定租约）
-- SCH-10 过期 token 不得 renew（mutation：renew 缺到期检查）
-- SCH-12 release 使旧 token 失效（mutation：release 不推进 epoch）
-- SCH-13 terminal/expired 不占 slot（mutation：计数含终态/过期行）
-- SCH-14 migration 042 往返（roundtrip 测试文件，mutation：backfill/非空默认）
-- SCH-15 epoch-0 NULL 行可 claim（mutation：claim 跳过 NULL 态 acquire）
-- SCH-16 写 expiry 必推进 epoch（mutation：acquire 写 expiry 不推进 epoch）
+- SCH-1 claim 过期行走 takeover 单写者（M-SCH-1：claim 对过期行跳过 takeover）
+- SCH-2 首 claim 原子建行与全 owner checkpoint（M-SCH-2：checkpoint 建行不完整）
+- SCH-5 崩溃恢复 takeover + 强制聚合 + 旧 token 零写（M-SCH-5：takeover 缺 epoch CAS）
+- SCH-6 跨 tenant 零写（M-SCH-6：Conversation 锁裸 id 谓词）
+- SCH-7 旧 token 重放零写（M-SCH-7：release 不校验 epoch）
+- SCH-9 通用 updated_at 写不续租（M-SCH-9：renew 谓词改用 updated_at）
+- SCH-10 过期 token 不得 renew（M-SCH-10：renew 缺到期检查）
+- SCH-11 未到期租约不可接管（M-SCH-11：takeover 缺在租检查）
+- SCH-12 release 使旧 token 失效（M-SCH-12：release 不推进 epoch）
+- SCH-13 terminal/expired 不占 slot（M-SCH-13：计数含终态行）
+- SCH-14 migration 042 往返（M-SCH-14：042 伪造 backfill，roundtrip 文件）
+- SCH-15 epoch-0 NULL 行可 claim（M-SCH-15：claim 跳过 NULL 态 acquire）
+- SCH-16 写 expiry 必推进 epoch（M-SCH-16：acquire 写 expiry 不推进 epoch）
 
 边界：本测试只覆盖 claim/lease 服务（无后台循环）；六 participant 擦除
 入口不参与（组合根静态守卫禁止本服务引用这些名字）。
@@ -348,10 +350,7 @@ async def test_repeated_claim_idempotent_single_row(
 ):
     """SCH-2：同 conversation 重复 claim（无 drift）-> 首 claim 建行一次，
     重复 claim 幂等返回既有 operation（HELD），零新增行零 lease 写。
-
-    mutation：claim 对已有同 revision 行仍建行 -> 断言行数==1 转红
-    （uq_agent_purge_revision 也会触发 IntegrityError，双保险）。
-    """
+    （建行唯一性判别点由 SCH-1 双 claim 单写者测试承载。）"""
     tid, cid = await _seed_conversation(db_session)
     first = await _claim(db_session, tid, cid)
     await db_session.commit()
@@ -377,10 +376,8 @@ async def test_concurrent_dual_claim_single_writer(session_factory):
     """SCH-1/SCH-11：双 scheduler 并发 claim 同一 conversation ->
     Conversation 锁串行 + 幂等判别收敛为单一写者：恰一 CLAIMED（epoch 1），
     另一 HELD 零写；全库仅一行 operation、一套 checkpoint。
-
-    mutation（SCH-1）：claim 跳过幂等判别（去掉 top-op 存在检查）-> 败者
-    重复建行（IntegrityError 或第二行）转红。
-    """
+    （锁串行阻塞判别由 test_dual_claim_serialized_by_conversation_lock
+    承载。）"""
     async with session_factory() as seed:
         tid, cid = await _seed_conversation(seed)
         await seed.commit()
@@ -410,7 +407,9 @@ async def test_claim_stale_revision_creates_new_operation(
     db_session, session_factory
 ):
     """建行判据 (i)：top operation 是旧 purge_revision（restore 已推进
-    conversation.purge_revision）-> 按当前 revision 建新行，旧行不动。"""
+    conversation.purge_revision）-> 旧 top 租约**过期/未认领**时按当前
+    revision 建新行，旧行不动；旧 top 仍在租（≤TTL 窗口）时 HELD 延迟
+    （「无在租 claim」谓词约束旧 revision 分支，防双活租约）。"""
     tid, cid = await _seed_conversation(db_session, purge_revision=1)
     outcome = await _claim(db_session, tid, cid)
     await db_session.commit()
@@ -425,8 +424,20 @@ async def test_claim_stale_revision_creates_new_operation(
     )
     await db_session.commit()
 
-    second = await _claim(db_session, tid, cid)
-    await db_session.commit()
+    # 旧 top 仍在租 -> HELD 延迟（零建行），不得双活租约。
+    async with session_factory() as s:
+        held = await _claim(s, tid, cid)
+        await s.rollback()
+    assert held.kind is ClaimKind.HELD
+    assert held.purge_operation_id == old_op
+
+    # 旧租约过期后 -> 按当前 revision 建新行。
+    async with session_factory() as s:
+        await _expire_lease(s, old_op)
+        await s.commit()
+    async with session_factory() as s:
+        second = await _claim(s, tid, cid)
+        await s.commit()
     assert second.kind is ClaimKind.CLAIMED
     assert second.token.purge_operation_id != old_op
     assert second.token.lease_epoch == 1
@@ -997,19 +1008,160 @@ async def test_tenant_cap_independent_across_tenants(
     assert outcome.kind is ClaimKind.CLAIMED, "tenant 隔离"
 
 
+async def test_claim_takeover_exempt_from_cap(db_session, session_factory):
+    """三面返修裁决固化：claim 引发的 takeover 豁免 cap 计数——expired 行
+    不占 slot（S5-SCH-8 计数谓词），claim-takeover 是恢复语义而非新占
+    slot；否则「4 active + 1 expired」的 tenant 无法恢复（liveness 洞）。"""
+    tid = uuid.uuid4()
+    claimed = []
+    for _ in range(4):
+        _, cid = await _seed_conversation(db_session, tenant_id=tid)
+        outcome = await _claim(db_session, tid, cid)
+        assert outcome.kind is ClaimKind.CLAIMED
+        claimed.append((cid, outcome.token.purge_operation_id))
+    await db_session.commit()
+    expired_cid, expired_op = claimed[0]
+
+    # 第 1 个租约过期（不占 slot）后，第 5 个 conversation 正常建行
+    # （active = 2,3,4,5 回到 4）。
+    async with session_factory() as s:
+        await _expire_lease(s, expired_op)
+        await s.commit()
+    _, cid5 = await _seed_conversation(db_session, tenant_id=tid)
+    await db_session.commit()
+    async with session_factory() as s:
+        fifth = await _claim(s, tid, cid5)
+        await s.commit()
+    assert fifth.kind is ClaimKind.CLAIMED
+
+    # claim 对过期行走 takeover，豁免 cap -> CLAIMED（epoch 2），瞬时
+    # active 越过 4（advisory 恢复语义）。
+    async with session_factory() as s:
+        again = await _claim(s, tid, expired_cid)
+        await s.commit()
+    assert again.kind is ClaimKind.CLAIMED
+    assert again.token.purge_operation_id == expired_op
+    assert again.token.lease_epoch == 2
+
+
+async def test_dual_claim_serialized_by_conversation_lock(session_factory):
+    """SCH-1 锁串行判别：会话 A 裸 SQL 持 Conversation 行锁，迟到 claim
+    （会话 B）必须阻塞排队——A 提交后 B 才完成（HELD，零写）。
+
+    负向短超时（1s）判定「被挡住」属刻意偏离，与 I1 锁序判别同规格。"""
+    async with session_factory() as seed:
+        tid, cid = await _seed_conversation(seed)
+        await seed.commit()
+
+    async with session_factory() as a:
+        # A 手动持锁（模拟正在执行的 claim 事务）。
+        await a.execute(
+            text(
+                "SELECT id FROM metaedu.agent_conversations "
+                "WHERE tenant_id = :tid AND id = :cid FOR UPDATE"
+            ),
+            {"tid": tid, "cid": cid},
+        )
+        late_task = asyncio.create_task(
+            _claim_in_fresh_session(tid, cid, session_factory)
+        )
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(
+                asyncio.shield(late_task), timeout=1.0
+            ), "迟到 claim 必须被 Conversation 行锁阻塞"
+        await a.commit()
+        late_outcome = await asyncio.wait_for(late_task, timeout=_TIMEOUT)
+    assert late_outcome.kind is ClaimKind.CLAIMED, (
+        "A 未建行（裸锁），B 排队后首个建行"
+    )
+
+
+async def _claim_in_fresh_session(tid, cid, factory):
+    async with factory() as s:
+        outcome = await _claim(s, tid, cid)
+        await s.commit()
+        return outcome
+
+
+async def test_takeover_aggregation_failure_rolls_back_zero_residue(
+    db_session, session_factory
+):
+    """三面返修补测：takeover 成功后强制聚合异常（旧 revision op 触发
+    coordinator I2 门禁）-> 异常传播 -> 调用方 rollback -> lease/backoff/
+    聚合写全部零残留（模块不 commit 的原子性边界）。"""
+    tid, cid = await _seed_conversation(db_session, purge_revision=1)
+    first = await _claim(db_session, tid, cid)
+    await db_session.commit()
+    op_id = first.token.purge_operation_id
+    # 推进 conversation.purge_revision 制造旧 revision op（聚合 I2 门禁会拒）。
+    async with session_factory() as s:
+        await s.execute(
+            text(
+                "UPDATE metaedu.agent_conversations SET purge_revision = 2 "
+                "WHERE id = :cid"
+            ),
+            {"cid": cid},
+        )
+        await _expire_lease(s, op_id)
+        await s.commit()
+
+    async with session_factory() as s:
+        with pytest.raises(ValueError):
+            await ConversationPurgeScheduler(s).takeover(
+                tenant_id=tid,
+                purge_operation_id=op_id,
+                conversation_id=cid,
+                expected_lease_epoch=1,
+            )
+        await s.rollback()
+
+    async with session_factory() as verify:
+        rows = await _purge_rows(verify, cid)
+        assert rows[0]["lease_epoch"] == 1, "rollback 后 lease 零残留"
+
+
+async def test_top_revision_exceeds_conversation_fail_closed(db_session):
+    """防御性 fail-closed：top operation purge_revision > conversation
+    purge_revision（数据异常形态）-> ValueError 零建行。"""
+    tid, cid = await _seed_conversation(db_session, purge_revision=1)
+    repo = AgentErasureRepository(db_session)
+    await repo.create_purge_operation(
+        tenant_id=tid,
+        conversation_id=cid,
+        purge_revision=2,  # 超过 conversation 当前 revision 1
+        retention_policy_snapshot={"conversation_recovery_days": 30},
+        hold_revision_snapshot=0,
+    )
+    await db_session.commit()
+    with pytest.raises(ValueError):
+        await _claim(db_session, tid, cid)
+    await db_session.rollback()
+
+
 # ---------------------------------------------------------------------------
 # 谓词延迟：not_deleted / purge_not_due / already_purged / active_hold / quiesce
 # ---------------------------------------------------------------------------
 
 
 async def test_claim_predicate_deferrals_zero_rows(db_session):
-    """谓词拒绝全部零建行：未 deleted、purge_after 未到、已 purged。"""
+    """谓词拒绝全部零建行：未 deleted、purge_after 未到、purge_after NULL
+    （永不到期推断）、已 purged。"""
     tid = uuid.uuid4()
     _, not_deleted = await _seed_conversation(
         db_session, tenant_id=tid, state="active"
     )
     _, not_due = await _seed_conversation(
         db_session, tenant_id=tid, purge_after_delta=timedelta(hours=1)
+    )
+    _, no_deadline = await _seed_conversation(
+        db_session, tenant_id=tid, purge_after_delta=timedelta(0)
+    )
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversations SET purge_after = NULL "
+            "WHERE id = :cid"
+        ),
+        {"cid": no_deadline},
     )
     _, purged = await _seed_conversation(
         db_session, tenant_id=tid, purged_at=True
@@ -1019,11 +1171,13 @@ async def test_claim_predicate_deferrals_zero_rows(db_session):
     assert o1.kind is ClaimKind.DEFERRED and o1.defer_reason is DeferReason.NOT_DELETED
     o2 = await _claim(db_session, tid, not_due)
     assert o2.kind is ClaimKind.DEFERRED and o2.defer_reason is DeferReason.PURGE_NOT_DUE
-    o3 = await _claim(db_session, tid, purged)
-    assert o3.kind is ClaimKind.DEFERRED and o3.defer_reason is DeferReason.ALREADY_PURGED
+    o3 = await _claim(db_session, tid, no_deadline)
+    assert o3.kind is ClaimKind.DEFERRED and o3.defer_reason is DeferReason.PURGE_NOT_DUE
+    o4 = await _claim(db_session, tid, purged)
+    assert o4.kind is ClaimKind.DEFERRED and o4.defer_reason is DeferReason.ALREADY_PURGED
     await db_session.commit()
 
-    for cid in (not_deleted, not_due, purged):
+    for cid in (not_deleted, not_due, no_deadline, purged):
         assert await _purge_rows(db_session, cid) == []
 
 

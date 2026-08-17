@@ -17,7 +17,7 @@
 ### R1-S5 SCH-A: Claim & Lease implementation
 
 状态：🟡 进行中
-类型：实现（TDD，失败反例先行 + mutation kill）
+类型：实现（反例先行 + 13 项具名 mutation kill 判别锚点）
 领域：R1 retention/purge scheduler
 当前执行模式：plan-do（TD-092 三面复审）
 最近接手工具：Claude Code

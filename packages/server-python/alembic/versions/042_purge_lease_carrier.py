@@ -22,6 +22,15 @@ Plan §R1-S5-D-A S5-SCH-7（契约冻结，评分 90 基线 `b15d766b`）：
 expand-only；downgrade 先 DROP INDEX 后 DROP COLUMN（无 reader 依赖——042 先于
 任何 scheduler 代码合入），行数据不受影响。
 
+**迁移时长评估（SCH-A 实现 PR 返修交付）**：测试库无代表性数据量，评估以
+结构与前提为据——(1) `ADD COLUMN` nullable 为 PG11+ fast-default，仅元数据
+变更，O(1)；(2) `CREATE INDEX` 非 CONCURRENTLY，持 `SHARE` 锁且需一次全表
+扫描，时长随 operation 表行数线性增长；042 落地时无并发写者前提（erase 入
+口不可达、scheduler 无生产调用方，S5-SCH-7 冻结），锁等待风险为零，扫描时
+长无并发放大；(3) 生产数据量级下的实测时长（含锁窗口监控）随 SCH-B 组合根
+接线前的运维演练执行——该项登记为 REQ-047 conformance follow-up，不在本 PR
+伪造实测数字。
+
 **revision id 长度**：``042_purge_lease_carrier``（22 字符）≤ alembic 默认
 ``varchar(32)`` 版本表列宽。
 """
