@@ -26,9 +26,9 @@
 需求来源：
 - Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-B S5-B-0..9
 
-当前进展：开工，未写代码/测试。
-下一步：G1/G2 blocked → Option D quiesce → 新 purge_revision 建 operation + 全 checkpoint 集合 + seeding + case-E active fence version migration + acquire lease **同事务**；predecessor/owner obligation 全函数矩阵（added/removed/re-added/version-changed + checkpoint 缺行/fence 四态）；lineage 六项阶段 1 失败整事务回滚、阶段 2 derived conflict 只进 coordinator facts；predecessor/lineage facts 接入 coordinator 替换 I2 no-predecessor 临时路径；S5-B-6 幂等；严守 Option D（erasing 只等 settlement port）；S5-B-9 实义 29 行逐行落地 + 具名 mutation。
-验证状态：未运行
+当前进展：实现完成（`predecessor_lineage` 快照 diff + lineage 派生 + `PurgeRebuildService` rebuild/seeding + coordinator 接线替换 I2 no-predecessor 路径）；14 专项全绿；composition 全量 597 passed；9/9 mutation kill（驱动入库 `scripts/sch_c_mutation_kill.py`）；ruff/mypy 0 regressions。
+下一步：全新广域三面复审（TD-092，保留原始计数）→ 按根因族统一返修一次 + 独立定向复核 → 复审通过后 stacked Draft PR + checks 全绿后停止。
+验证状态：composition 597 passed（141s）；mypy 243 historical / 0 regressions；docs gates exit 0；mutation kill 9/9
 交接备注：**stacked child**——SCH-B root（0081ecd9）暂停等待子层；PR base = SCH-B root 分支（非 main）；保留 B/C/D 联合 merged-boundary；不实现 SCH-D concrete settlement、adapter lookup/replay、内部 API；不新增 migration 043、不改 registry；不启用生产 wiring。
 
 ## 下一批候选任务
