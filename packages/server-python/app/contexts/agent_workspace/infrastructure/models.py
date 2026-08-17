@@ -678,6 +678,15 @@ class PurgeOperationModel(Base):
             "state",
             "scheduled_at",
         ),
+        Index(
+            "ix_agent_purge_lease_active",
+            "tenant_id",
+            "lease_expires_at",
+            postgresql_where=text(
+                "lease_expires_at IS NOT NULL "
+                "AND state NOT IN ('completed', 'cancelled')"
+            ),
+        ),
         {"schema": "metaedu"},
     )
 
@@ -702,6 +711,9 @@ class PurgeOperationModel(Base):
         BigInteger, nullable=False, default=0
     )
     lease_epoch: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     scheduled_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )

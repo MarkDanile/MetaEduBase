@@ -14,7 +14,22 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### R1-S5 SCH-A: Claim & Lease implementation
+
+状态：🟡 进行中
+类型：实现（反例先行 + 13 项具名 mutation kill 判别锚点）
+领域：R1 retention/purge scheduler
+当前执行模式：plan-do（TD-092 三面复审）
+最近接手工具：Claude Code
+分支：feature/req041-047-r1-s5-sch-a-claim-lease
+
+需求来源：
+- Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-D / §R1-S5-D-A
+
+当前进展：实现完成（migration 042 + model + `conversation_purge_scheduler` claim/lease 服务）；29 专项 + 往返全绿；composition 全量 569 passed；13/13 mutation kill（驱动入库 `scripts/sch_a_mutation_kill.py`）；ruff/mypy/gates 通过。首轮广域三面 P0=0/P1=0/P2=8/P3=20 → 族 A~H 统一返修一次 → 独立定向复核 P2 清零（td-032 行数校正）、无新 P0/P1。
+下一步：创建 Draft PR → 等 Draft 三路 checks 全绿后停止（不转 Ready/评分/合并）。
+验证状态：composition 569 passed（123s）；mypy 243 historical / 0 regressions；docs gates exit 0；mutation kill 13/13；三面首轮原始计数保留（P0=0/P1=0/P2=8/P3=20）
+交接备注：不启动后台循环/owner execution/tick/rebuild/seeding/settlement/retry API；六 erase 入口保持生产不可达；不改 migration 040/041、registry、CI；participant 三键收窄归独立 REQ-047 PR；不转 Ready/评分/合并。
 
 ## 下一批候选任务
 
@@ -22,7 +37,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | R1-S5 SCH-A Claim & Lease implementation | 🔵 就绪（未开工，不创建分支） | 范围：migration 042 `lease_expires_at`（S5-SCH-7 逐字落地）、acquire/renew/takeover/release epoch CAS（S5-SCH-8 四转移 + rebuild 并入 acquire + 终态观察 release）、tenant 上限与退避（advisory 4 + 同事务计数）、operation/全 owner checkpoint 原子建行、takeover 后强制聚合（1.3b-i）、保持生产 erase 入口不可达（组合根门禁不变）；验收 = SCH-1/2/5/6/7 + SCH-9..16 | [Plan §R1-S5-D-A](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1 | REQ-047 C1 Durable Core 总验收 | ⚫ Blocked by R1-S1..S6 | R1 全部验收后执行联合 conformance 与文档收口 | [Joint Plan](../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md#slice-c1durable-core-总验收与文档收口) |
 
 ## 最近完成

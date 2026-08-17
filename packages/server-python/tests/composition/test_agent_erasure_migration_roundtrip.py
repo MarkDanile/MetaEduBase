@@ -572,3 +572,115 @@ def test_038_actor_digest_must_be_lowercase_hex() -> None:
     assert asyncio.run(_try_redacted_insert_redacted_turn_input(bad_upper)), (
         "agent_turn_inputs: 'A'*64 must fail (uppercase rejected)"
     )
+
+
+# ---------------------------------------------------------------------------
+# 042 lease carrier（R1-S5 SCH-A）upgrade/downgrade/upgrade 往返
+# ---------------------------------------------------------------------------
+
+
+async def _lease_carrier_schema() -> dict:
+    """042 的列与 partial index 存在性（information_schema + pg_indexes）。"""
+    connection = await asyncpg.connect(_db_url())
+    try:
+        column = await connection.fetchval(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema = 'metaedu' "
+            "AND table_name = 'agent_conversation_purges' "
+            "AND column_name = 'lease_expires_at')"
+        )
+        index = await connection.fetchval(
+            "SELECT EXISTS (SELECT 1 FROM pg_indexes "
+            "WHERE schemaname = 'metaedu' "
+            "AND tablename = 'agent_conversation_purges' "
+            "AND indexname = 'ix_agent_purge_lease_active')"
+        )
+        return {"column": bool(column), "index": bool(index)}
+    finally:
+        await connection.close()
+
+
+async def _seed_lease_carrier_row() -> str:
+    """种子一行 operation（lease_expires_at 未写入 = NULL），模拟既有行。"""
+    connection = await asyncpg.connect(_db_url())
+    try:
+        tid = "73000000-0000-0000-0000-000000000042"
+        cid = "73000000-0000-0000-0000-000000000043"
+        await connection.execute(
+            "INSERT INTO metaedu.agent_conversations "
+            "(id, tenant_id, created_by, actor_state, creation_digest, title, "
+            "title_source, state, purge_after, purge_state, purge_revision, "
+            "hold_revision, revision, created_at, updated_at) "
+            "VALUES ($1, $2, $2, 'present', $3, 't', 'none', 'deleted', "
+            "now() - interval '1 day', 'scheduled', 1, 0, 1, now(), now())",
+            cid,
+            tid,
+            "a" * 64,
+        )
+        row_id = "73000000-0000-0000-0000-000000000044"
+        await connection.execute(
+            "INSERT INTO metaedu.agent_conversation_purges "
+            "(id, tenant_id, conversation_id, purge_revision, state, "
+            "registry_digest, registry_snapshot, retention_policy_snapshot, "
+            "retention_policy_digest, hold_revision_snapshot, lease_epoch, "
+            "scheduled_at, revision, created_at, updated_at) "
+            "VALUES ($1, $2, $3, 1, 'scheduled', $4, $5::jsonb, $6::jsonb, "
+            "$7, 0, 0, now(), 1, now(), now())",
+            row_id,
+            tid,
+            cid,
+            "b" * 64,
+            '[{"owner_key": "workspace.core.v1", "owner_version": 1, '
+            '"capability_digest": "cccccccccccccccccccccccccccccccccccccccc'
+            'cccccccccccccccccccccccccccc"}]',
+            '{"conversation_recovery_days": 30}',
+            "d" * 64,
+        )
+        return row_id
+    finally:
+        await connection.close()
+
+
+async def _lease_carrier_row_expiry_null(row_id: str) -> bool:
+    connection = await asyncpg.connect(_db_url())
+    try:
+        return (
+            await connection.fetchval(
+                "SELECT lease_expires_at IS NULL FROM "
+                "metaedu.agent_conversation_purges WHERE id = $1",
+                row_id,
+            )
+            is True
+        )
+    finally:
+        await connection.close()
+
+
+def test_042_lease_carrier_downgrade_upgrade_round_trip():
+    """SCH-14：migration 042 往返——head 有 nullable 列 + partial index；
+    既有行 lease_expires_at 全 NULL（零 backfill、不伪造历史租约）；
+    downgrade 先删 index 后删列（行数据保留）；再 upgrade 无损恢复。
+
+    mutation（SCH-14）：042 upgrade 给列加 backfill/非空 server_default ->
+    「既有行 NULL」断言转红。
+    """
+    schema = asyncio.run(_lease_carrier_schema())
+    assert schema == {"column": True, "index": True}, (
+        "head 状态应有 lease_expires_at 列 + ix_agent_purge_lease_active"
+    )
+
+    row_id = asyncio.run(_seed_lease_carrier_row())
+    try:
+        _run_alembic("downgrade", "041_run_event_ref_tombstone")
+        assert asyncio.run(_lease_carrier_schema()) == {
+            "column": False,
+            "index": False,
+        }, "downgrade 应删列 + 删 partial index"
+        _run_alembic("upgrade", "head")
+        schema = asyncio.run(_lease_carrier_schema())
+        assert schema == {"column": True, "index": True}, "再 upgrade 恢复"
+        assert asyncio.run(_lease_carrier_row_expiry_null(row_id)) is True, (
+            "零 backfill：既有行 lease_expires_at 必须全 NULL（未认领）"
+        )
+    finally:
+        _run_alembic("upgrade", "head")

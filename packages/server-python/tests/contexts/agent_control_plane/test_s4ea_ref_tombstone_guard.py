@@ -400,7 +400,12 @@ async def test_migration_041_roundtrip_restores_039_on_downgrade(db_session):
 
     current = await _version()
     if current != guard_home:
-        await _run_migration(mig.upgrade, guard_home)
+        # head > 041（如 042 lease carrier）：必须走真实 alembic 降级链——
+        # 裸 `mig.upgrade`（041 模块函数）只重建守卫函数，不会撤销 042 的
+        # 物理列，finally 的真升级回 head 会撞 DuplicateColumnError。
+        import asyncio
+
+        await asyncio.to_thread(_real_migrate, "downgrade", guard_home)
 
     try:
         # --- 真实 downgrade() -> 039：ref tombstone 拒绝，inline tombstone 放行 ---
