@@ -59,6 +59,7 @@ class RebuildKind(StrEnum):
     REBUILT = "rebuilt"
     QUIESCE = "quiesce"
     IDEMPOTENT = "idempotent"
+    HOLD_GATED = "hold_gated"  # G3 live active hold → rebuild 延迟（release 后再 rebuild）
     NOT_DUE = "not_due"  # 无 drift（top 非 G1/G2-blocked，非 rebuild 触发条件）
 
 
@@ -145,6 +146,15 @@ class PurgeRebuildService:
                     purge_revision=top.purge_revision,
                 )
             return RebuildOutcome(RebuildKind.NOT_DUE)
+
+        # G3 gate（S5-B-9 行 17）：live active hold → rebuild 延迟，不 eager 重建
+        # 全 pending 中间 op（release 后 G3 消解再 rebuild）。与 quiesce 正交
+        # （erasing 仍先 quiesce；G3 消解 + erasing 仍拦）。Conversation 首锁内
+        # 判定（I1 无 TOCTOU 语义由 I2 门禁承接，G3 live 查询同源）。
+        if await self._repo.has_active_legal_hold(
+            tenant_id=tenant_id, conversation_id=conversation_id
+        ):
+            return RebuildOutcome(RebuildKind.HOLD_GATED)
 
         predecessor = top
         predecessor_checkpoints = await self._checkpoints_by_owner(
