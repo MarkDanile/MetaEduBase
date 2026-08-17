@@ -86,11 +86,11 @@ class PurgeRebuildService:
     )
     _SEED_CHECKPOINT_SQL = text(
         "INSERT INTO metaedu.agent_conversation_purge_owners "
-        "(tenant_id, purge_operation_id, owner_key, owner_version, "
+        "(id, tenant_id, purge_operation_id, owner_key, owner_version, "
         "capability_digest, state, attempt, checkpoint_digest, ack_digest, "
         "reason_code, created_at, updated_at) "
-        "VALUES (:tid, :op, :owner, :ov, :cap, :state, :attempt, :cp, :ack, "
-        ":reason, now(), now())"
+        "VALUES (:id, :tid, :op, :owner, :ov, :cap, :state, :attempt, :cp, "
+        ":ack, :reason, now(), now())"
     )
     _MIGRATE_FENCE_SQL = text(
         "UPDATE metaedu.agent_erasure_fences SET owner_version = :new "
@@ -394,6 +394,7 @@ class PurgeRebuildService:
         await self._session.execute(
             self._SEED_CHECKPOINT_SQL,
             {
+                "id": uuid.uuid4(),
                 "tid": tenant_id,
                 "op": purge_operation_id,
                 "owner": entry.owner_key,
