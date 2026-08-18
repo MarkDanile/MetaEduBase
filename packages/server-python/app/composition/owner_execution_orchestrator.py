@@ -128,15 +128,14 @@ OwnerEntryPort = Callable[[OwnerEntryRequest], Awaitable[OwnerEntryOutcome]]
 class SettlementPort(Protocol):
     """窄 settlement port（SCH-D 依赖边界；SCH-B 只定义接口，不实现收口）。
 
-    ``session`` 是编排方本次 entry 事务的 session——settlement 必须在 entry 事务
-    内（同一 Conversation-first 锁上下文）运行，不能自建会话（否则与 entry 事务
-    持有的行锁死锁）。联合组合根以 ``session`` 构造 concrete SettlementService。
+    裁决二（2026-08-18）：settlement 自管事务（T1 锁内读 → 锁外 adapter I/O →
+    T2 重验落账），**不得在调用方事务内执行**——编排方在 entry 事务提交（释放
+    全部 DB 锁）后才调用本 port；adapter I/O 永不处于持锁事务中。
     """
 
     async def closeout_erasing(
         self,
         *,
-        session: AsyncSession,
         tenant_id: uuid.UUID,
         conversation_id: uuid.UUID,
         purge_operation_id: uuid.UUID,
@@ -146,7 +145,6 @@ class SettlementPort(Protocol):
     async def converge_failed_fence(
         self,
         *,
-        session: AsyncSession,
         tenant_id: uuid.UUID,
         conversation_id: uuid.UUID,
         purge_operation_id: uuid.UUID,
@@ -311,7 +309,15 @@ class OwnerExecutionOrchestrator:
         owner_key: str,
         entry_port: OwnerEntryPort | None,
     ) -> str:
-        """单个 owner 的 entry 事务：renew → 重读 → 决策 → entry。返回动作。"""
+        """单个 owner 的 entry 事务：renew → 重读 → 决策 → entry。返回动作。
+
+        裁决二（2026-08-18）：settlement 调用（closeout_erasing /
+        converge_failed_fence）在 entry 事务**提交（释放全部 DB 锁）之后**执行
+        ——settlement 自管事务（T1 锁内读 → 锁外 adapter I/O → T2 重验落账），
+        adapter I/O 永不处于持锁事务中。
+        """
+        erasing = False
+        budget_written = False
         async with self._session_factory() as session, session.begin():
             # renew lease（每 entry 前心跳，Conversation-first 短事务）。
             renewed = await ConversationPurgeScheduler(session).renew(
@@ -343,15 +349,9 @@ class OwnerExecutionOrchestrator:
             if state in ("acked", "failed"):
                 return "skipped"
             if state == "erasing":
-                await self._settlement.closeout_erasing(
-                    session=session,
-                    tenant_id=tenant_id,
-                    conversation_id=conversation_id,
-                    purge_operation_id=purge_operation_id,
-                    owner_key=owner_key,
-                )
-                return "skipped"
-            if state == "blocked":
+                # 交 settlement 收口：entry 事务先提交（释放锁），事务外调用。
+                erasing = True
+            elif state == "blocked":
                 if reason is not None and not is_retryable_reason(reason):
                     return "skipped"  # 拒绝域：reconcile-only，不重开
                 if (
@@ -362,55 +362,70 @@ class OwnerExecutionOrchestrator:
                     await self._write_failed(
                         session, tenant_id, purge_operation_id, owner_key, reason
                     )
-                    await self._settlement.converge_failed_fence(
-                        session=session,
+                    # fence 收敛经 settlement：entry 事务先提交（raw failed 落库 +
+                    # 释放锁），事务外调用 converge。
+                    budget_written = True
+                # 白名单 / pre-window：重试（走 entry）。
+
+            if not erasing and not budget_written:
+                if entry_port is None:
+                    raise OrchestrationDriftError(
+                        f"no entry port for owner {owner_key!r}; fail closed"
+                    )
+                # 统一 retry 计数：scan 族 owner 的 attempt 由编排方推进（Tx1 owner
+                # 在 entry 内自行推进，见 _TX1_OWNERS）。**pre-window gate reason
+                # 不计入重试预算**（S5-SCH-1.4 冻结）——gate 期重入不推进 attempt，
+                # 避免长期 gate 解除后首个真实失败即触发预算耗尽落 failed。
+                if owner_key not in _TX1_OWNERS and not is_pre_window_gate(reason):
+                    await session.execute(
+                        text(
+                            "UPDATE metaedu.agent_conversation_purge_owners SET "
+                            "attempt = attempt + 1 "
+                            "WHERE tenant_id = :tid AND purge_operation_id = :op "
+                            "AND owner_key = :k"
+                        ),
+                        {"tid": tenant_id, "op": purge_operation_id, "k": owner_key},
+                    )
+                operation_revision = await self._operation_revision(
+                    session, tenant_id, purge_operation_id, conversation_id
+                )
+                outcome = await entry_port(
+                    OwnerEntryRequest(
                         tenant_id=tenant_id,
                         conversation_id=conversation_id,
                         purge_operation_id=purge_operation_id,
+                        purge_revision=await self._conversation_purge_revision(
+                            session, tenant_id, conversation_id
+                        ),
+                        expected_operation_revision=operation_revision,
+                        expected_lease_epoch=renewed_epoch,
                         owner_key=owner_key,
+                        session=session,
                     )
-                    return "skipped"
-                # 白名单 / pre-window：重试。
-
-            if entry_port is None:
-                raise OrchestrationDriftError(
-                    f"no entry port for owner {owner_key!r}; fail closed"
                 )
-            # 统一 retry 计数：scan 族 owner 的 attempt 由编排方推进（Tx1 owner
-            # 在 entry 内自行推进，见 _TX1_OWNERS）。**pre-window gate reason
-            # 不计入重试预算**（S5-SCH-1.4 冻结）——gate 期重入不推进 attempt，
-            # 避免长期 gate 解除后首个真实失败即触发预算耗尽落 failed。
-            if owner_key not in _TX1_OWNERS and not is_pre_window_gate(reason):
-                await session.execute(
-                    text(
-                        "UPDATE metaedu.agent_conversation_purge_owners SET "
-                        "attempt = attempt + 1 "
-                        "WHERE tenant_id = :tid AND purge_operation_id = :op "
-                        "AND owner_key = :k"
-                    ),
-                    {"tid": tenant_id, "op": purge_operation_id, "k": owner_key},
-                )
-            operation_revision = await self._operation_revision(
-                session, tenant_id, purge_operation_id, conversation_id
+                # outcome 仅用于 entry 副作用（participant 自记 blocked/acked），
+                # 编排方不据此写 checkpoint；blocked 态由下轮 cycle 锁内重读裁决。
+                _ = outcome
+                return "entered"
+            # erasing / budget_written：事务提交（不 return），走事务外阶段。
+        # ---- entry 事务已提交（全部 DB 锁已释放）：settlement 阶段 ----
+        if erasing:
+            await self._settlement.closeout_erasing(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                purge_operation_id=purge_operation_id,
+                owner_key=owner_key,
             )
-            outcome = await entry_port(
-                OwnerEntryRequest(
-                    tenant_id=tenant_id,
-                    conversation_id=conversation_id,
-                    purge_operation_id=purge_operation_id,
-                    purge_revision=await self._conversation_purge_revision(
-                        session, tenant_id, conversation_id
-                    ),
-                    expected_operation_revision=operation_revision,
-                    expected_lease_epoch=renewed_epoch,
-                    owner_key=owner_key,
-                    session=session,
-                )
+            return "skipped"
+        if budget_written:
+            await self._settlement.converge_failed_fence(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                purge_operation_id=purge_operation_id,
+                owner_key=owner_key,
             )
-            # outcome 仅用于 entry 副作用（participant 自记 blocked/acked），
-            # 编排方不据此写 checkpoint；blocked 态由下轮 cycle 锁内重读裁决。
-            _ = outcome
-            return "entered"
+            return "skipped"
+        raise AssertionError("unreachable: settlement 阶段必须有 erasing/budget 标志")
 
     # -- 辅助 ---------------------------------------------------------------
 

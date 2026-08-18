@@ -459,7 +459,7 @@ async def test_settlement_post_window_blocked_converges(db_session, session_fact
     await db_session.commit()
 
     service = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session)
+        session_factory, scan_providers=build_scan_providers
     )
     await service.closeout_erasing(
         tenant_id=tid, conversation_id=cid, purge_operation_id=op1,
@@ -496,7 +496,7 @@ async def test_settlement_ack_lost_repair(db_session, session_factory):
     await db_session.commit()
 
     service = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session)
+        session_factory, scan_providers=build_scan_providers
     )
     await service.closeout_erasing(
         tenant_id=tid, conversation_id=cid, purge_operation_id=op1,
@@ -540,7 +540,7 @@ async def test_settlement_drift_frozen_snapshot(db_session, session_factory):
     await db_session.commit()
 
     service = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session),
+        session_factory, scan_providers=build_scan_providers,
         adapter_resolver=_noop_adapter_resolver(_LookupNoneAdapter()),
     )
     await service.closeout_erasing(
@@ -579,7 +579,7 @@ async def test_settlement_stale_revision_rejected(db_session, session_factory):
     await db_session.commit()
 
     service = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session)
+        session_factory, scan_providers=build_scan_providers
     )
     with pytest.raises(ValueError, match="stale operation"):
         await service.closeout_erasing(
@@ -597,7 +597,7 @@ async def test_settlement_success_lookup(db_session, session_factory):
     tid, cid, op1, _refs = await _settle_window_setup(db_session)
     adapter = _LookupEvidenceAdapter()
     service = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session),
+        session_factory, scan_providers=build_scan_providers,
         adapter_resolver=_noop_adapter_resolver(adapter),
     )
     await service.closeout_erasing(
@@ -619,7 +619,7 @@ async def test_settlement_lookup_none_unknown(db_session, session_factory, monke
     tid, cid, op1, _refs = await _settle_window_setup(db_session)
     adapter = _LookupNoneAdapter()
     service = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session),
+        session_factory, scan_providers=build_scan_providers,
         adapter_resolver=_noop_adapter_resolver(adapter),
     )
     await service.closeout_erasing(
@@ -645,7 +645,7 @@ async def test_settlement_replay_only_unknown(db_session, session_factory, monke
     tid, cid, op1, _refs = await _settle_window_setup(db_session)
     adapter = _ReplayOnlyUnknownAdapter()
     service = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session),
+        session_factory, scan_providers=build_scan_providers,
         adapter_resolver=_noop_adapter_resolver(adapter),
     )
     await service.closeout_erasing(
@@ -663,7 +663,7 @@ async def test_settlement_replay_only_unknown(db_session, session_factory, monke
     assert adapter.replay_calls == 1
     # 二次 closeout（同输入重放）不触发二次 replay——fence 已 blocked 白名单跳过。
     service2 = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session),
+        session_factory, scan_providers=build_scan_providers,
         adapter_resolver=_noop_adapter_resolver(adapter),
     )
     await service2.closeout_erasing(
@@ -680,7 +680,7 @@ async def test_settlement_replay_only_success(db_session, session_factory, monke
     tid, cid, op1, _refs = await _settle_window_setup(db_session)
     adapter = _ReplayOnlySuccessAdapter()
     service = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session),
+        session_factory, scan_providers=build_scan_providers,
         adapter_resolver=_noop_adapter_resolver(adapter),
     )
     await service.closeout_erasing(
@@ -712,7 +712,7 @@ async def test_settlement_deadline_expired(db_session, session_factory):
         await s.commit()
 
     service = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session),
+        session_factory, scan_providers=build_scan_providers,
         adapter_resolver=_noop_adapter_resolver(_LookupNoneAdapter()),
     )
     await service.closeout_erasing(
@@ -741,7 +741,7 @@ async def test_settlement_adapter_unresolvable(db_session, session_factory):
         raise AdapterUnresolvableError("not wired")
 
     service = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session),
+        session_factory, scan_providers=build_scan_providers,
         adapter_resolver=_unresolvable,
     )
     await service.closeout_erasing(
@@ -771,7 +771,7 @@ async def test_settlement_failed_convergence(db_session, session_factory):
     await db_session.commit()
 
     service = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session)
+        session_factory, scan_providers=build_scan_providers
     )
     await service.converge_failed_fence(
         tenant_id=tid, conversation_id=cid, purge_operation_id=op1,
@@ -796,7 +796,7 @@ async def test_settlement_reasons_distinct(db_session, session_factory, monkeypa
         )
         adapter = _LookupNoneAdapter()
         service = SettlementService(
-            db_session, scan_providers=build_scan_providers(db_session),
+            session_factory, scan_providers=build_scan_providers,
             adapter_resolver=_noop_adapter_resolver(adapter),
         )
         await service.closeout_erasing(
@@ -820,24 +820,27 @@ async def test_settlement_reasons_distinct(db_session, session_factory, monkeypa
 
 async def test_settlement_dual_connection_single_writer(session_factory, monkeypatch):
     """S5-C-8 行 10：双连接并发 closeout 同 owner → 结果落账单写者（fence CAS
-    唯一性），两方均幂等。"""
+    唯一性）。
+
+    裁决二（2026-08-18）：锁外 adapter 阶段不再被 DB 锁串行化——双方都可能发起
+    锁外 lookup/replay（同 stable key，幂等去重），T2 重验 + fence/checkpoint CAS
+    保证**落账单写者**：一方成功，另一方 T2 token 重验失败 fail closed 零写。
+    """
     _patch_resolver(monkeypatch, _replay_only_descriptor())
     async with session_factory() as seed:
         tid, cid, op1, _refs = await _settle_window_setup(seed)
 
     async def _one():
-        async with session_factory() as s:
-            adapter = _ReplayOnlyUnknownAdapter()
-            service = SettlementService(
-                s, scan_providers=build_scan_providers(s),
-                adapter_resolver=_noop_adapter_resolver(adapter),
-            )
-            await service.closeout_erasing(
-                tenant_id=tid, conversation_id=cid, purge_operation_id=op1,
-                owner_key=_EXTERNAL,
-            )
-            await s.commit()
-            return adapter.replay_calls
+        adapter = _ReplayOnlyUnknownAdapter()
+        service = SettlementService(
+            session_factory, scan_providers=build_scan_providers,
+            adapter_resolver=_noop_adapter_resolver(adapter),
+        )
+        await service.closeout_erasing(
+            tenant_id=tid, conversation_id=cid, purge_operation_id=op1,
+            owner_key=_EXTERNAL,
+        )
+        return adapter.replay_calls
 
     import asyncio
 
@@ -845,8 +848,9 @@ async def test_settlement_dual_connection_single_writer(session_factory, monkeyp
     async with session_factory() as verify:
         assert await _fence_state(verify, cid, _EXTERNAL) == "blocked"
         assert await _cp(verify, op1, _EXTERNAL, "state") == "blocked"
-    assert (r1, r2) == (1, 0) or (r1, r2) == (0, 1), "单写者：仅一方触发 recovery"
-    # 双连接下仅一个写者成功推进 fence；败者 zero-write 幂等。
+    assert (r1, r2) == (1, 1), (
+        "裁决二：锁外双方均尝试 replay（同 key 幂等），落账由 T2 CAS 单写者收敛"
+    )
 
 
 async def test_settlement_idempotent_replay(db_session, session_factory, monkeypatch):
@@ -856,7 +860,7 @@ async def test_settlement_idempotent_replay(db_session, session_factory, monkeyp
     tid, cid, op1, _refs = await _settle_window_setup(db_session)
     adapter = _ReplayOnlyUnknownAdapter()
     service = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session),
+        session_factory, scan_providers=build_scan_providers,
         adapter_resolver=_noop_adapter_resolver(adapter),
     )
     await service.closeout_erasing(
@@ -904,7 +908,7 @@ async def test_settlement_fence_write_failure_reconcile(
         _fence_write_fails,
     )
     service = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session),
+        session_factory, scan_providers=build_scan_providers,
         adapter_resolver=_noop_adapter_resolver(adapter),
     )
     # 不 crash：fence 写失败 → 具名 reconcile（例外条款）。
@@ -924,37 +928,56 @@ async def test_settlement_fence_write_failure_reconcile(
     assert adapter.lookup_calls == 1, "零自动重试 / 零二次 recovery"
 
 
+class _FirstLookupCrashAdapter:
+    """锁外阶段崩溃模拟：第一次 receipt_lookup 抛异常（T1 已提交、T2 未执行），
+    之后幂等返回 evidence。"""
+
+    supports_idempotent_replay = True
+    supports_receipt_lookup = True
+
+    def __init__(self):
+        self.calls = 0
+        self.lookup_keys: list[str] = []
+
+    async def receipt_lookup(self, *, idempotency_key):
+        self.calls += 1
+        self.lookup_keys.append(idempotency_key)
+        if self.calls == 1:
+            raise RuntimeError("simulated crash in lock-free phase (after T1)")
+        return _pad64(f"ev:{idempotency_key}")
+
+    async def delete_object(self, **kwargs):
+        raise AssertionError("evidence 后不得 replay")
+
+    async def destroy_session(self, **kwargs):
+        raise AssertionError("evidence 后不得 replay")
+
+
 async def test_settlement_lookup_crash_replay_no_fork(session_factory, monkeypatch):
-    """S5-C-8 行 16：lookup 返回后、fence/checkpoint CAS 落账前崩溃 → 重放同输入
-    → 同一 owner-scoped 终态（CAS 单写、无第二次删除副作用、无跨 owner 分叉）。"""
+    """S5-C-8 行 16（裁决二语义）：T1 提交后、锁外 lookup 崩溃 → 重放同输入 →
+    同一 owner-scoped 终态（T2 重验 + CAS 单写、同 stable key 幂等重放、无跨
+    owner 分叉）。"""
     _patch_resolver(monkeypatch, _lookup_only_descriptor())
     async with session_factory() as seed:
         tid, cid, op1, _refs = await _settle_window_setup(seed)
 
-    adapter = _LookupEvidenceAdapter()
-    # 第一轮：lookup 返回 evidence 后崩溃（session rollback 丢弃未提交 CAS）。
-    async with session_factory() as s:
-        service = SettlementService(
-            s, scan_providers=build_scan_providers(s),
-            adapter_resolver=_noop_adapter_resolver(adapter),
-        )
+    adapter = _FirstLookupCrashAdapter()
+    # 第一轮：T1 提交（checkpoint/fence 冻结）→ 锁外 lookup 崩溃（T2 未执行）。
+    service = SettlementService(
+        session_factory, scan_providers=build_scan_providers,
+        adapter_resolver=_noop_adapter_resolver(adapter),
+    )
+    with pytest.raises(RuntimeError, match="lock-free phase"):
         await service.closeout_erasing(
             tenant_id=tid, conversation_id=cid, purge_operation_id=op1,
             owner_key=_EXTERNAL,
         )
-        await s.rollback()  # 崩溃模拟
 
-    # 重放（同 token/idempotency key）：lookup 幂等再调用 → CAS 落账同一结果。
-    async with session_factory() as s:
-        service = SettlementService(
-            s, scan_providers=build_scan_providers(s),
-            adapter_resolver=_noop_adapter_resolver(adapter),
-        )
-        await service.closeout_erasing(
-            tenant_id=tid, conversation_id=cid, purge_operation_id=op1,
-            owner_key=_EXTERNAL,
-        )
-        await s.commit()
+    # 重放（同 token/idempotency key）：lookup 幂等再调用 → T2 重验 + CAS 落账。
+    await service.closeout_erasing(
+        tenant_id=tid, conversation_id=cid, purge_operation_id=op1,
+        owner_key=_EXTERNAL,
+    )
 
     async with session_factory() as verify:
         assert await _fence_state(verify, cid, _EXTERNAL) == "erased"
@@ -962,7 +985,8 @@ async def test_settlement_lookup_crash_replay_no_fork(session_factory, monkeypat
         for k in _OWNER_KEYS:
             if k != _EXTERNAL:
                 assert await _cp(verify, op1, k, "state") == "pending", "零跨 owner 分叉"
-    assert adapter.lookup_calls == 2, "重放同输入（lookup 幂等）"
+    assert adapter.calls == 2, "重放同输入（lookup 幂等，同 key）"
+    assert adapter.lookup_keys[0] == adapter.lookup_keys[1], "同 stable key 收口"
 
 
 async def test_settlement_new_tx1_not_created(db_session, session_factory):
@@ -980,7 +1004,7 @@ async def test_settlement_new_tx1_not_created(db_session, session_factory):
     await db_session.commit()
 
     service = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session)
+        session_factory, scan_providers=build_scan_providers
     )
     await service.closeout_erasing(
         tenant_id=tid, conversation_id=cid, purge_operation_id=op1,
@@ -1007,7 +1031,7 @@ async def test_settlement_erasing_without_token_rejected(db_session, session_fac
     await db_session.commit()
 
     service = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session)
+        session_factory, scan_providers=build_scan_providers
     )
     with pytest.raises(ValueError, match="attempt/intent token"):
         await service.closeout_erasing(
@@ -1039,7 +1063,7 @@ async def test_settlement_replay_window_insufficient(db_session, session_factory
     monkeypatch.setattr(_settlement_mod, "resolve_adapter", lambda o, v: narrow)
     adapter = _ReplayOnlyUnknownAdapter()
     service = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session),
+        session_factory, scan_providers=build_scan_providers,
         adapter_resolver=_noop_adapter_resolver(adapter),
     )
     await service.closeout_erasing(
@@ -1077,7 +1101,7 @@ async def test_settlement_frozen_descriptor(db_session, session_factory, monkeyp
     monkeypatch.setattr(_settlement_mod, "resolve_adapter", lambda o, v: current)
     adapter = _LookupEvidenceAdapter()
     service = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session),
+        session_factory, scan_providers=build_scan_providers,
         adapter_resolver=_noop_adapter_resolver(adapter),
     )
     # frozen descriptor 无 lookup 能力 → 走 replay（supports_idempotent_replay=True
@@ -1121,7 +1145,7 @@ async def test_retry_whitelist_allowed_and_rejected(db_session, session_factory)
     service = RetryReconcileService(
         db_session,
         settlement=SettlementService(
-            db_session, scan_providers=build_scan_providers(db_session)
+            session_factory, scan_providers=build_scan_providers
         ),
     )
     verdict = await service.retry(
@@ -1154,7 +1178,7 @@ async def test_reconcile_via_settlement_no_force_skip(db_session, session_factor
     service = RetryReconcileService(
         db_session,
         settlement=SettlementService(
-            db_session, scan_providers=build_scan_providers(db_session),
+            session_factory, scan_providers=build_scan_providers,
             adapter_resolver=_noop_adapter_resolver(adapter),
         ),
     )
@@ -1178,7 +1202,7 @@ async def test_inspect_readonly(db_session, session_factory):
     service = RetryReconcileService(
         db_session,
         settlement=SettlementService(
-            db_session, scan_providers=build_scan_providers(db_session)
+            session_factory, scan_providers=build_scan_providers
         ),
     )
     result = await service.inspect(

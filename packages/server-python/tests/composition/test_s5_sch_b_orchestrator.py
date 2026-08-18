@@ -128,12 +128,12 @@ class _RecordingSettlement(SettlementPort):
         self.converge: list[str] = []
 
     async def closeout_erasing(
-        self, *, session, tenant_id, conversation_id, purge_operation_id, owner_key
+        self, *, tenant_id, conversation_id, purge_operation_id, owner_key
     ) -> None:
         self.closeout.append(owner_key)
 
     async def converge_failed_fence(
-        self, *, session, tenant_id, conversation_id, purge_operation_id, owner_key
+        self, *, tenant_id, conversation_id, purge_operation_id, owner_key
     ) -> None:
         self.converge.append(owner_key)
 
@@ -391,6 +391,39 @@ async def test_pre_window_gate_exempts_budget(db_session, session_factory):
     async with session_factory() as verify:
         assert await _cp(verify, op_id, _OWNER_KEYS[0], "state") == "blocked"
     assert settlement.converge == [], "pre-window 不写 failed"
+
+
+async def test_scan_owner_attempt_increments_once_per_real_entry(
+    db_session, session_factory
+):
+    """S5-SCH-2 裁决一：scan/transport owner 每次真实 entry 恰好一次 attempt 推进
+    （SCH-B orchestrator 承担，owner entry 前）。
+
+    变异「entry 前推进两次」→ 红（double increment 消耗预算）。
+    """
+    ws_core = "workspace.core.v1"
+    tid, cid = await _seed_conversation(db_session)
+    out = await _claim(db_session, tid, cid)
+    await db_session.commit()
+    op_id = out.token.purge_operation_id
+    for k in _OWNER_KEYS:
+        if k != ws_core:
+            await _set_cp(db_session, op_id, k, state="acked")
+    await db_session.commit()
+
+    calls: list[str] = []
+    orch = _orchestrator(
+        session_factory,
+        entries={
+            k: _blocking_entry(_REASON_ERASE_TIMEOUT, calls) for k in _OWNER_KEYS
+        },
+    )
+    await orch.run_cycle(tenant_id=tid, conversation_id=cid, purge_operation_id=op_id)
+    await orch.run_cycle(tenant_id=tid, conversation_id=cid, purge_operation_id=op_id)
+    async with session_factory() as verify:
+        assert (
+            await _cp(verify, op_id, ws_core, "attempt") == 2
+        ), "每次真实 entry 恰好一次 attempt 推进"
 
 
 async def test_pre_window_gate_reentry_does_not_consume_budget(

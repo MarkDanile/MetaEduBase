@@ -329,7 +329,7 @@ def test_partial_wiring_fail_closed(session_factory):
     with pytest.raises(CompositionNotReadyError, match="PurgeRebuildService"):
         _require_joint_wiring(
             owner_entries=build_owner_entries(),
-            settlement=build_settlement_port(),
+            settlement=build_settlement_port(session_factory=session_factory),
             rebuild=None,
             claim=object(),
         )
@@ -353,7 +353,7 @@ async def test_joint_claim_cycle_coordinator_completes(db_session, session_facto
     comp = build_scheduler_composition(
         session_factory=session_factory,
         owner_entries=entries,
-        settlement=build_settlement_port(),
+        settlement=build_settlement_port(session_factory=session_factory),
     )
     await comp.run_cycle(tenant_id=tid, conversation_id=cid, purge_operation_id=op_id)
     await db_session.commit()
@@ -398,6 +398,7 @@ async def test_erasing_owner_settlement_in_entry_transaction(
     comp = build_scheduler_composition(
         session_factory=session_factory,
         settlement=build_settlement_port(
+            session_factory=session_factory,
             adapter_resolver=_noop_adapter_resolver(adapter),
         ),
     )
@@ -453,7 +454,7 @@ async def test_budget_exhaustion_concrete_settlement_converges_fence(
 
     comp = build_scheduler_composition(
         session_factory=session_factory,
-        settlement=build_settlement_port(),
+        settlement=build_settlement_port(session_factory=session_factory),
     )
     await comp.run_cycle(tenant_id=tid, conversation_id=cid, purge_operation_id=op_id)
     await db_session.commit()
@@ -470,6 +471,71 @@ async def test_budget_exhaustion_concrete_settlement_converges_fence(
         ).scalar_one()
         assert fence == "blocked", "预算耗尽后 concrete settlement 收敛 fence"
         assert await _cp(verify, op_id, ws_core, "state") == "failed"
+
+
+@pytest.fixture
+def _registry_enabled(monkeypatch):
+    """临时把全部 owner erase_available 翻 True（participant 入口放行；测试作用域
+    内 monkeypatch 自动还原）。"""
+    from app.composition import agent_erasure_registry as _reg
+
+    enabled = tuple(
+        _reg.OwnerDefinition(
+            owner_key=o.owner_key,
+            owner_version=o.owner_version,
+            capabilities=o.capabilities,
+            erase_available=True,
+        )
+        for o in _reg.owner_registry()
+    )
+    monkeypatch.setattr(_reg, "_OWNER_DEFINITIONS", enabled)
+    monkeypatch.setattr(_reg, "_OWNERS_BY_KEY", {o.owner_key: o for o in enabled})
+    return enabled
+
+
+async def test_external_tx1_no_double_attempt_increment(
+    db_session, session_factory
+):
+    """S5-SCH-2 裁决一：orchestrator 对 _TX1_OWNERS（external/runtime）不推进
+    attempt——attempt 只由 participant Tx1 承担，scheduler + Tx1 无双 increment。
+
+    变异「orchestrator 对 _TX1_OWNERS 也推进 attempt」→ 红（attempt=1）。
+    """
+    tid, cid = await _seed_conversation(db_session)
+    out = await _claim(db_session, tid, cid)
+    await db_session.commit()
+    op_id = out.token.purge_operation_id
+    for k in _OWNER_KEYS:
+        if k == _EXTERNAL:
+            await _set_cp(db_session, op_id, k, state="pending")
+        else:
+            await _set_cp(db_session, op_id, k, state="acked")
+    await db_session.commit()
+
+    entered: list[str] = []
+
+    async def _external_entry(request):
+        entered.append(request.owner_key)
+        from app.composition.owner_execution_orchestrator import OwnerEntryOutcome
+
+        return OwnerEntryOutcome(acked=False, blocked_reason=None)
+
+    from app.composition.scheduler_composition import build_owner_entries
+
+    entries = build_owner_entries()
+    entries[_EXTERNAL] = _external_entry
+    comp = build_scheduler_composition(
+        session_factory=session_factory,
+        owner_entries=entries,
+        settlement=build_settlement_port(session_factory=session_factory),
+    )
+    await comp.run_cycle(tenant_id=tid, conversation_id=cid, purge_operation_id=op_id)
+
+    assert entered == [_EXTERNAL], "external entry 被编排（pending）"
+    async with session_factory() as verify:
+        assert (
+            await _cp(verify, op_id, _EXTERNAL, "attempt") == 0
+        ), "orchestrator 对 Tx1 owner 不推进 attempt（attempt 归 participant Tx1）"
 
 
 async def test_external_slot_fail_closed_capability_zero_side_effect(

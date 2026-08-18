@@ -184,29 +184,29 @@ def coordinator_scan_providers(
 
 def build_settlement_port(
     *,
+    session_factory: async_sessionmaker,
     adapter_resolver=None,
 ) -> SettlementPort:
-    """SCH-D concrete SettlementPort（entry 事务内收口）。
+    """SCH-D concrete SettlementPort（裁决二：自管事务，adapter I/O 锁外）。
 
-    以编排方传入的 ``session`` 构造 ``SettlementService``（同一事务、同一
-    Conversation-first 锁上下文），不自建会话——否则与 entry 事务持有的行锁
-    死锁。默认 adapter resolver = ``FailClosedAdapterResolver``（态 6 fail
-    closed）。
+    ``SettlementService`` 以 ``session_factory`` 构造——closeout_erasing 在
+    T1（事务 1）读取并释放锁后，于锁外执行 receipt_lookup/replay，再在 T2
+    （事务 2）重验落账；adapter I/O 永不处于持锁事务中。默认 adapter resolver
+    = ``FailClosedAdapterResolver``（态 6 fail closed）。
     """
 
     class _ConcreteSettlementPort:
         async def closeout_erasing(
             self,
             *,
-            session: AsyncSession,
             tenant_id: uuid.UUID,
             conversation_id: uuid.UUID,
             purge_operation_id: uuid.UUID,
             owner_key: str,
         ) -> None:
             service = SettlementService(
-                session,
-                scan_providers=build_scan_providers(session),
+                session_factory,
+                scan_providers=coordinator_scan_providers,
                 adapter_resolver=adapter_resolver,
             )
             await service.closeout_erasing(
@@ -219,15 +219,14 @@ def build_settlement_port(
         async def converge_failed_fence(
             self,
             *,
-            session: AsyncSession,
             tenant_id: uuid.UUID,
             conversation_id: uuid.UUID,
             purge_operation_id: uuid.UUID,
             owner_key: str,
         ) -> None:
             service = SettlementService(
-                session,
-                scan_providers=build_scan_providers(session),
+                session_factory,
+                scan_providers=coordinator_scan_providers,
                 adapter_resolver=adapter_resolver,
             )
             await service.converge_failed_fence(
@@ -357,7 +356,9 @@ def build_scheduler_composition(
             runtime_adapter=runtime_adapter,
         )
     if settlement is None:
-        settlement = build_settlement_port(adapter_resolver=None)
+        settlement = build_settlement_port(
+            session_factory=session_factory, adapter_resolver=None
+        )
     _require_joint_wiring(
         owner_entries=owner_entries,
         settlement=settlement,

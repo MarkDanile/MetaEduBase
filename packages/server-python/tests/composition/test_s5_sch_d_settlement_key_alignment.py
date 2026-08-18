@@ -420,8 +420,8 @@ async def test_external_participant_tx1_and_settlement_same_key(
     lookup = _RecordingLookupAdapter()
     async with session_factory() as s:
         service = SettlementService(
-            s,
-            scan_providers=build_scan_providers(s),
+            session_factory,
+            scan_providers=build_scan_providers,
             adapter_resolver=_noop_adapter_resolver(lookup),
         )
         await service.closeout_erasing(
@@ -470,8 +470,8 @@ async def test_runtime_participant_tx1_and_settlement_same_key(
     lookup = _RecordingLookupRuntimeAdapter()
     async with session_factory() as s:
         service = SettlementService(
-            s,
-            scan_providers=build_scan_providers(s),
+            session_factory,
+            scan_providers=build_scan_providers,
             adapter_resolver=_noop_adapter_resolver(lookup),
         )
         await service.closeout_erasing(
@@ -503,8 +503,8 @@ async def test_key_stable_across_lease_epoch_and_attempt(session_factory):
     lookup1 = _closeout()
     async with session_factory() as s:
         service = SettlementService(
-            s,
-            scan_providers=build_scan_providers(s),
+            session_factory,
+            scan_providers=build_scan_providers,
             adapter_resolver=_noop_adapter_resolver(lookup1),
         )
         await service.closeout_erasing(
@@ -544,8 +544,8 @@ async def test_key_stable_across_lease_epoch_and_attempt(session_factory):
     lookup2 = _closeout()
     async with session_factory() as s:
         service = SettlementService(
-            s,
-            scan_providers=build_scan_providers(s),
+            session_factory,
+            scan_providers=build_scan_providers,
             adapter_resolver=_noop_adapter_resolver(lookup2),
         )
         await service.closeout_erasing(
@@ -580,8 +580,8 @@ async def test_key_uses_frozen_descriptor_not_current_adapter(session_factory):
     adapter = _NewIdentityAdapter()
     async with session_factory() as s:
         service = SettlementService(
-            s,
-            scan_providers=build_scan_providers(s),
+            session_factory,
+            scan_providers=build_scan_providers,
             adapter_resolver=_noop_adapter_resolver(adapter),
         )
         await service.closeout_erasing(
@@ -624,8 +624,8 @@ async def test_missing_ref_inputs_fail_closed_no_fallback(session_factory):
     adapter = _RecordingLookupAdapter()
     async with session_factory() as s:
         service = SettlementService(
-            s,
-            scan_providers=build_scan_providers(s),
+            session_factory,
+            scan_providers=build_scan_providers,
             adapter_resolver=_noop_adapter_resolver(adapter),
         )
         with pytest.raises(ValueError, match="intent digest mismatch"):
@@ -656,8 +656,8 @@ async def test_inconsistent_ref_inputs_fail_closed(session_factory):
     adapter = _RecordingLookupAdapter()
     async with session_factory() as s:
         service = SettlementService(
-            s,
-            scan_providers=build_scan_providers(s),
+            session_factory,
+            scan_providers=build_scan_providers,
             adapter_resolver=_noop_adapter_resolver(adapter),
         )
         with pytest.raises(ValueError, match="intent digest mismatch"):
@@ -680,8 +680,8 @@ async def test_multiple_refs_per_ref_key_granularity(session_factory):
     adapter = _RecordingLookupAdapter()
     async with session_factory() as s:
         service = SettlementService(
-            s,
-            scan_providers=build_scan_providers(s),
+            session_factory,
+            scan_providers=build_scan_providers,
             adapter_resolver=_noop_adapter_resolver(adapter),
         )
         await service.closeout_erasing(
@@ -714,3 +714,199 @@ async def test_settlement_default_key_formula_removed():
     )
     params = set(inspect.signature(SettlementService.__init__).parameters)
     assert "idempotency_key_provider" not in params, "旧 key provider 注入已移除"
+
+
+# ---------------------------------------------------------------------------
+# 裁决二判别：adapter I/O 锁外执行（T1 提交释放锁 → 锁外 lookup → T2 重验落账）
+# ---------------------------------------------------------------------------
+
+
+class _BlockingLookupAdapter:
+    """锁外 lookup 挂起/阻塞模拟：等待 release_event 才返回 evidence。
+
+    ``started_event`` 通知测试「锁外阶段已开始」（此时 T1 已提交、DB 锁已释放）。"""
+
+    supports_idempotent_replay = True
+    supports_receipt_lookup = True
+
+    def __init__(self, started_event, release_event):
+        self.started_event = started_event
+        self.release_event = release_event
+        self.lookup_keys: list[str] = []
+
+    async def receipt_lookup(self, *, idempotency_key):
+        self.lookup_keys.append(idempotency_key)
+        self.started_event.set()
+        await self.release_event.wait()
+        return _pad64(f"ev:{idempotency_key}")
+
+    async def delete_object(self, **kwargs):
+        raise AssertionError("evidence 后不得 replay")
+
+    async def destroy_session(self, **kwargs):
+        raise AssertionError("evidence 后不得 replay")
+
+
+class _MutateDuringLookupAdapter:
+    """锁外 lookup 期间由测试 hook 篡改 DB（模拟另一进程 takeover/并发推进）。"""
+
+    supports_idempotent_replay = True
+    supports_receipt_lookup = True
+
+    def __init__(self, mutate_hook):
+        self.mutate_hook = mutate_hook
+        self.lookup_keys: list[str] = []
+
+    async def receipt_lookup(self, *, idempotency_key):
+        self.lookup_keys.append(idempotency_key)
+        await self.mutate_hook()
+        return _pad64(f"ev:{idempotency_key}")
+
+    async def delete_object(self, **kwargs):
+        raise AssertionError("evidence 后不得 replay")
+
+    async def destroy_session(self, **kwargs):
+        raise AssertionError("evidence 后不得 replay")
+
+
+async def test_adapter_blocked_second_connection_acquires_locks(
+    session_factory,
+):
+    """裁决二核心判别：锁外 lookup 挂起期间（T1 已提交、DB 锁已释放），第二连接
+    仍能取得 Conversation/fence 所需锁（claim/takeover 不阻塞）。
+
+    变异「adapter 调用移回持锁事务内」→ 红（第二连接取锁被阻塞/超时）。
+    """
+    import asyncio
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+    adapter = _BlockingLookupAdapter(started, release)
+    async with session_factory() as seed:
+        tid, cid, op1, rows = await _seed_erasing_window(
+            seed, owner_key=_EXTERNAL
+        )
+
+    service = SettlementService(
+        session_factory,
+        scan_providers=build_scan_providers,
+        adapter_resolver=_noop_adapter_resolver(adapter),
+    )
+    close_task = asyncio.create_task(
+        service.closeout_erasing(
+            tenant_id=tid,
+            conversation_id=cid,
+            purge_operation_id=op1,
+            owner_key=_EXTERNAL,
+        )
+    )
+    # 等待锁外 lookup 开始（T1 已提交，全部 DB 锁已释放）。
+    await asyncio.wait_for(started.wait(), timeout=10)
+
+    # 第二连接：renew 推进 lease_epoch（需 Conversation/operation 行锁）——
+    # adapter 挂起期间必须立即可得，不阻塞（T1 已提交释放全部 DB 锁）。
+    from app.composition.conversation_purge_scheduler import (
+        ConversationPurgeScheduler,
+        RenewOutcomeKind,
+    )
+
+    try:
+        async with session_factory() as s2:
+            renewed = await asyncio.wait_for(
+                ConversationPurgeScheduler(s2).renew(
+                    tenant_id=tid,
+                    purge_operation_id=op1,
+                    conversation_id=cid,
+                    expected_lease_epoch=1,  # claim 后 lease_epoch=1
+                ),
+                timeout=5,
+            )
+            assert renewed.kind is RenewOutcomeKind.RENEWED, (
+                "第二连接在 adapter 挂起期间取得锁并推进 lease"
+                f"（{renewed.kind.value}）"
+            )
+            await s2.commit()
+    except TimeoutError:
+        # mutation（adapter I/O 在持锁事务内）→ 第二连接取锁被阻塞 → 清理并红。
+        release.set()
+        close_task.cancel()
+        raise AssertionError(
+            "第二连接在 adapter 挂起期间无法取得锁——adapter I/O 仍在持锁事务内"
+        ) from None
+
+    release.set()
+    # T2 重验 lease_epoch 变化（1→2）→ fail closed（旧 settlement 零写）。
+    with pytest.raises(ValueError, match="lease_epoch"):
+        await close_task
+    async with session_factory() as verify:
+        fence = (
+            await verify.execute(
+                text(
+                    "SELECT state FROM metaedu.agent_erasure_fences "
+                    "WHERE conversation_id=:cid AND owner_key=:k"
+                ),
+                {"cid": cid, "k": _EXTERNAL},
+            )
+        ).scalar_one()
+        assert fence == "erasing", "lease 推进后旧 settlement T2 零写（fence 不变）"
+
+
+async def test_t2_token_change_between_t1_and_t2_zero_write(session_factory):
+    """裁决二判别：T1 与 T2 之间发生 takeover（lease_epoch 变化）→ T2 重验失败
+    fail closed 零 DB 写（不自动发起第二次 adapter 调用）。"""
+    async with session_factory() as seed:
+        tid, cid, op1, rows = await _seed_erasing_window(
+            seed, owner_key=_EXTERNAL
+        )
+
+    async def _takeover_hook():
+        # 锁外 lookup 期间（T1 已提交）：另一进程 takeover 推进 lease_epoch。
+        from app.composition.conversation_purge_scheduler import (
+            ConversationPurgeScheduler,
+        )
+
+        async with session_factory() as s2:
+            await ConversationPurgeScheduler(s2).renew(
+                tenant_id=tid,
+                purge_operation_id=op1,
+                conversation_id=cid,
+                expected_lease_epoch=1,
+            )
+            await s2.commit()
+
+    adapter = _MutateDuringLookupAdapter(_takeover_hook)
+    service = SettlementService(
+        session_factory,
+        scan_providers=build_scan_providers,
+        adapter_resolver=_noop_adapter_resolver(adapter),
+    )
+    with pytest.raises(ValueError, match="lease_epoch"):
+        await service.closeout_erasing(
+            tenant_id=tid,
+            conversation_id=cid,
+            purge_operation_id=op1,
+            owner_key=_EXTERNAL,
+        )
+
+    # T2 fail closed：零 DB 写（fence/checkpoint 保持 erasing）。
+    async with session_factory() as verify:
+        fence = (
+            await verify.execute(
+                text(
+                    "SELECT state FROM metaedu.agent_erasure_fences "
+                    "WHERE conversation_id=:cid AND owner_key=:k"
+                ),
+                {"cid": cid, "k": _EXTERNAL},
+            )
+        ).scalar_one()
+        assert fence == "erasing", "T2 重验失败零写（fence 保持 erasing）"
+        assert (
+            await verify.execute(
+                text(
+                    "SELECT state FROM metaedu.agent_conversation_purge_owners "
+                    "WHERE purge_operation_id=:op AND owner_key=:k"
+                ),
+                {"op": op1, "k": _EXTERNAL},
+            )
+        ).scalar_one() == "erasing", "T2 重验失败零写（checkpoint 保持 erasing）"
+    assert len(adapter.lookup_keys) == 1, "失败后不自动发起第二次 adapter 调用"

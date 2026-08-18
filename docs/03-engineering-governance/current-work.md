@@ -16,12 +16,12 @@
 
 ### R1-S5 Root Integration: settlement idempotency key 对齐 + B/C/D 联合组合根（root PR #577 Draft）
 
-状态：🟡 进行中（root PR #577 Draft，独立广域三面复审进行中；不转 Ready/评分/合并）
+状态：🟡 进行中（root PR #577 Draft，两 P1 阻塞项裁决一/二已落地；不转 Ready/评分/合并）
 类型：实现（反例先行 + 具名 mutation kill）
 领域：R1 retention/purge scheduler
-当前执行模式：plan-do（root integration batch → 独立广域三面复审）
+当前执行模式：plan-do（root integration batch → 广域三面复审 → 裁决落地）
 最近接手工具：Claude Code
-分支：feature/req041-047-r1-s5-sch-b-owner-execution-orchestrator（HEAD 4252d8e4）
+分支：feature/req041-047-r1-s5-sch-b-owner-execution-orchestrator（HEAD 5df59513）
 
 需求来源：
 - Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-D S5-SCH-1.3/1.5/1.6 + S5-SCH-2/3/4/5
@@ -33,15 +33,22 @@ tenant/conversation/lease_epoch/attempt），adapter 调用携带 participant Tx
 稳定 ref 输入，E-2a 冻结 intent 重验（缺失/不一致 fail closed，禁 fallback 简化
 key）；B/C/D 联合组合根 `scheduler_composition.py`（六 owner participant map +
 concrete SettlementPort + rebuild + coordinator + claim/lease，partial wiring
-`CompositionNotReadyError` fail closed；orchestrator `SettlementPort` 携带 entry
-事务 session，concrete settlement 在调用方事务内收口）。
-下一步：独立 root 广域三面复审（三面计数独立记录；P0/P1 清零后停止，不转 Ready/评分/合并）。
-验证状态：SCH-A 29 + SCH-B 15（14+1 新判别）+ SCH-C 40 + SCH-D 23 + key 对齐 8 +
-联合 wiring 6（5+1 新判别）+ 生产 wiring 静态守卫 1 = **122 全绿**；composition 全量
-661 passed；ruff/mypy 0 regressions；docs gates exit 0；git diff --check clean；mutation
-kill（删除 ref/session 输入 / key 加入 lease_epoch-attempt / 去掉 SCH-C/SCH-D wiring /
-去掉 coordinator 触发 / 去掉 populate_existing / 去掉 pre-window 豁免）全部转红后恢复
-源码。
+`CompositionNotReadyError` fail closed）。**广域三面复审裁决一/二落地**：裁决一
+（checkpoint.attempt 写者矩阵回填 plan S5-SCH-0/2：participant Tx1 / orchestrator
+scan 族 entry 前 / rebuild 仅初始化 / coordinator 不写 / pre-window 不推进）；
+裁决二（settlement 禁持锁 adapter I/O——SettlementService 改自管事务，closeout
+拆 T1 锁内读 → 锁外 lookup/replay → T2 全 token 重验 + CAS 落账，T2 任一失败
+fail closed 零写；orchestrator 在 entry 事务提交后调用 settlement port；无
+adapter 路径保持单事务）。
+下一步：裁决一/二完整验证（fresh composition 全量 + mutation + docs gates）后
+停止，等待 Ready 指令（不转 Ready/评分/合并）。
+验证状态：SCH-A 29 + SCH-B 16（14+2 判别）+ SCH-C 40 + SCH-D 23 + key 对齐 10
+（8+2 裁决二判别）+ 联合 wiring 7（5+2 判别）+ 生产 wiring 静态守卫 1 = **126
+全绿**；composition 全量 665 passed（fresh PG 安静窗口）；ruff/mypy 0 regressions；docs gates exit 0；
+git diff --check clean；mutation kill（删除 ref/session 输入 / key 加入
+lease_epoch-attempt / 去掉 SCH-C/SCH-D wiring / 去掉 coordinator 触发 / 去掉
+populate_existing / 去掉 pre-window 豁免 / double increment / adapter 移回锁内）
+全部转红后恢复源码。
 交接备注：root PR #577 base=main，保持 Draft；不创建新 child PR；不新增 migration
 043、不改 registry（external/runtime 保持 `erase_available=False` + FailClosed 槽
 位，不伪造生产能力）、不启用生产 wiring、不启动 S6/C1。
