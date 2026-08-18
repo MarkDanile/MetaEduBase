@@ -28,6 +28,15 @@ drift 绕过（S5-C-2，settlement 是唯一绕过者）：frozen-snapshot 基�
 生产 wiring 不可达：默认 adapter resolver = ``FailClosedAdapterResolver``（一律输出
 态 6），测试经显式注入 fake adapter 覆盖态 1/2/3/5/6。本服务不 commit()（事务
 原子性归调用方）。
+
+idempotency key 对齐（R1-S5 root integration）：settlement 重读 participant Tx1 的
+冻结 ref/binding 窗口（external ``registered`` refs / runtime active bindings），以
+**frozen descriptor** 的 ``adapter_key``/``adapter_version`` 逐 ref 派生
+``external_erase_idempotency_key`` / ``runtime_destroy_idempotency_key``，**不含
+tenant_id/conversation_id/lease_epoch/attempt**；adapter 调用携带 participant Tx1
+所需稳定 ref 输入。E-2a 冻结 intent 重验：重读集合的 intent digest 必须等于
+checkpoint 冻结 token，缺失/不一致 fail closed（禁新 Tx1，不 fallback
+conversation 级简化 key）。
 """
 
 from __future__ import annotations
@@ -52,6 +61,16 @@ from app.composition.adapter_recovery import (
 from app.composition.agent_erasure_locks import acquire_owner_lock
 from app.composition.agent_erasure_registry import (
     snapshot_digest,
+)
+from app.composition.external_object_adapter import external_erase_idempotency_key
+from app.composition.external_ref_erasure_participant import (
+    ExternalRefRow,
+    external_delete_intent_digest,
+)
+from app.composition.runtime_erasure_adapter import runtime_destroy_idempotency_key
+from app.composition.runtime_erasure_participant import (
+    RuntimeBindingRow,
+    runtime_destroy_intent_digest,
 )
 from app.contexts.agent_workspace.domain.erasure import ErasureFenceState
 from app.contexts.agent_workspace.infrastructure.erasure_repository import (
@@ -143,28 +162,13 @@ class _ScanResult(Protocol):
 
 ScanProvider = Callable[..., Awaitable[_ScanResult]]
 
-IdempotencyKeyProvider = Callable[[str, str, uuid.UUID, uuid.UUID], str]
 
+@dataclass(frozen=True, slots=True)
+class _RefOutcome:
+    """单个冻结 ref/binding 的恢复结果（窗口重放后逐项判定）。"""
 
-def _default_idempotency_key(
-    owner_key: str, adapter_key: str, tenant_id: uuid.UUID,
-    conversation_id: uuid.UUID,
-) -> str:
-    """S5-C-3：跨 takeover 稳定 idempotency key（不含 lease_epoch/attempt）。
-
-    由旧 adapter 身份 + 稳定会话/Conversation 身份派生；settlement 侧默认实现不
-    读正文 ref（正文身份由 participant Tx1 落账时负责，settlement lookup/replay
-    以同一稳定 key 重放——测试注入 key 提供者验证一致性）。
-    """
-    return canonical_digest(
-        {
-            "schema_version": 1,
-            "kind": f"settlement:{owner_key}:idempotency",
-            "adapter_key": adapter_key,
-            "tenant_id": str(tenant_id),
-            "conversation_id": str(conversation_id),
-        }
-    )
+    state: OutputState
+    ack_evidence: str | None = None
 
 
 class SettlementService:
@@ -176,14 +180,12 @@ class SettlementService:
         *,
         scan_providers: Mapping[str, ScanProvider],
         adapter_resolver: AdapterImplementationResolver | None = None,
-        idempotency_key_provider: IdempotencyKeyProvider | None = None,
         now: datetime | None = None,
     ) -> None:
         self._session = session
         self._repo = AgentErasureRepository(session)
         self._scan_providers = scan_providers
         self._adapter_resolver = adapter_resolver or FailClosedAdapterResolver()
-        self._idempotency_key = idempotency_key_provider or _default_idempotency_key
         self._now = now
 
     # -- SettlementPort ------------------------------------------------------
@@ -574,7 +576,8 @@ class SettlementService:
         owner_key: str,
     ) -> _WindowOutcome:
         """S5-C-3/4/5/6：窗口态 adapter recovery（descriptor → deadline →
-        lookup/replay）。输出态 1/2/3/5/6。"""
+        frozen ref/session 重读 + E-2a intent 重验 → 逐 ref lookup/replay）。
+        输出态 1/2/3/5/6。"""
         try:
             descriptor = resolve_adapter(owner_key, frozen.owner_version)
         except AdapterUnresolvableError:
@@ -602,6 +605,14 @@ class SettlementService:
                     reason=_deadline_reason(owner_key),
                 )
 
+        # E-2a 禁新 Tx1：窗口 owner 必须有冻结 checkpoint intent token；缺失
+        # （checkpoint 行缺失）→ fail closed 零 adapter 调用。
+        if checkpoint is None:
+            raise ValueError(
+                "erasing window without frozen checkpoint intent; "
+                "new Tx1 rejected by settlement channel"
+            )
+
         try:
             raw_adapter = self._adapter_resolver(
                 owner_key=owner_key, owner_version=frozen.owner_version
@@ -613,9 +624,12 @@ class SettlementService:
             )
         adapter = cast(_RecoverableAdapter, raw_adapter)
 
-        idempotency_key = self._idempotency_key(
-            owner_key, descriptor.adapter_key, tenant_id, conversation_id
+        # 冻结 ref/session 输入：重读 Tx1 冻结窗口并精确重验 intent digest
+        # （缺失/不一致 → fail closed，不 fallback conversation 级简化 key）。
+        frozen_inputs = await self._load_frozen_window(
+            tenant_id, conversation_id, owner_key
         )
+        self._verify_frozen_intent(checkpoint, frozen_inputs, owner_key)
 
         # S5-C-3/5/6：恢复能力位以 **frozen descriptor** 为准（receipt_lookup
         # 语义版本非空 ⇔ supports_receipt_lookup；adapter 实例只是可调用载体，
@@ -623,80 +637,225 @@ class SettlementService:
         supports_lookup = descriptor.supports_receipt_lookup
         supports_replay = descriptor.supports_idempotent_replay
 
-        if supports_lookup:
-            # S5-C-5 三态：evidence → success；None → 不可判定（态 3），禁再次
-            # delete；否定证据（明确「未发送」）→ 态 2（当前 receipt_lookup 仅
-            # evidence/None，否定证据需 Protocol 扩展后落地）。
-            evidence = await adapter.receipt_lookup(idempotency_key=idempotency_key)
-            if evidence is not None:
-                return _WindowOutcome(
-                    OutputState.SUCCESS, ack_digest=evidence,
+        ref_outcomes = [
+            await self._recover_ref(
+                adapter, owner_key, descriptor, ref, supports_lookup, supports_replay
+            )
+            for ref in frozen_inputs
+        ]
+        return self._aggregate_window(ref_outcomes, owner_key)
+
+    # -- 冻结 ref/session 输入（E-2a 禁新 Tx1）--------------------------------
+
+    async def _load_frozen_window(
+        self,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        owner_key: str,
+    ) -> list[ExternalRefRow] | list[RuntimeBindingRow]:
+        """重读 participant Tx1 的冻结 adapter 窗口（与 Tx1 同窗、同序）。
+
+        external：``erase_state='registered'`` 的 ledger 行；runtime：
+        ``runtime_session_ref IS NOT NULL AND status NOT IN ('closed','invalid')``
+        binding 行。窗口 owner 之外的 owner 无此窗口 → fail closed。
+        """
+        if owner_key == "external.payload.v1":
+            rows = (
+                await self._session.execute(
+                    text(
+                        "SELECT id, conversation_id, ref_scheme, ref_value, "
+                        "source_table, source_row_id "
+                        "FROM metaedu.agent_external_object_refs "
+                        "WHERE tenant_id = :t AND conversation_id = :c "
+                        "AND erase_state = 'registered' ORDER BY id"
+                    ),
+                    {"t": tenant_id, "c": conversation_id},
                 )
-            if supports_replay and descriptor.dedup_window >= descriptor.settlement_deadline:
-                replay_outcome = await self._replay_adapter(
-                    adapter, owner_key, descriptor, idempotency_key
+            ).mappings().all()
+            return [
+                ExternalRefRow(
+                    id=row["id"],
+                    tenant_id=tenant_id,
+                    conversation_id=row["conversation_id"],
+                    ref_scheme=row["ref_scheme"],
+                    ref_value=row["ref_value"],
+                    source_table=row["source_table"],
+                    source_row_id=row["source_row_id"],
                 )
-                if replay_outcome is not None:
-                    return replay_outcome
-            return _WindowOutcome(
-                OutputState.OUTCOME_UNKNOWN,
-                reason=_outcome_unknown_reason(owner_key),
+                for row in rows
+            ]
+        if owner_key == "runtime.private.v1":
+            rows = (
+                await self._session.execute(
+                    text(
+                        "SELECT id, runtime_profile_id, runtime_session_ref "
+                        "FROM metaedu.agent_runtime_session_bindings "
+                        "WHERE tenant_id = :t AND conversation_id = :c "
+                        "AND runtime_session_ref IS NOT NULL "
+                        "AND status NOT IN ('closed', 'invalid') ORDER BY id"
+                    ),
+                    {"t": tenant_id, "c": conversation_id},
+                )
+            ).mappings().all()
+            return [
+                RuntimeBindingRow(
+                    id=row["id"],
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    runtime_profile_id=row["runtime_profile_id"],
+                    runtime_session_ref=row["runtime_session_ref"],
+                )
+                for row in rows
+            ]
+        raise ValueError(f"owner {owner_key!r} has no adapter ref window; fail closed")
+
+    def _verify_frozen_intent(
+        self,
+        checkpoint: PurgeOwnerCheckpointModel,
+        frozen_inputs: list[ExternalRefRow] | list[RuntimeBindingRow],
+        owner_key: str,
+    ) -> None:
+        """E-2a：重读冻结集合的 intent digest 与 checkpoint 冻结 token 精确一致。
+
+        任一 ref 缺失/新增/状态迁移导致集合变化 → intent 不匹配 → fail closed
+        零 adapter 调用（**禁新 Tx1**，不 fallback conversation 级简化 key）。
+        """
+        if owner_key == "external.payload.v1":
+            intent = external_delete_intent_digest(
+                cast(list[ExternalRefRow], frozen_inputs)
+            )
+        elif owner_key == "runtime.private.v1":
+            intent = runtime_destroy_intent_digest(
+                cast(list[RuntimeBindingRow], frozen_inputs)
+            )
+        else:
+            raise ValueError(f"owner {owner_key!r} has no frozen intent domain")
+        if checkpoint.checkpoint_digest != intent:
+            raise ValueError(
+                f"frozen {owner_key!r} intent digest mismatch: checkpoint "
+                f"{checkpoint.checkpoint_digest} != re-derived {intent}; "
+                "ref/session inputs missing or inconsistent, settlement fail closed"
             )
 
-        if supports_replay:
-            # S5-C-6 replay-only：deadline 内仅当去重窗口 ≥ deadline 才 replay；
-            # 窗口不足 → 不 replay → 态 3。
-            if descriptor.dedup_window >= descriptor.settlement_deadline:
-                replay_outcome = await self._replay_adapter(
-                    adapter, owner_key, descriptor, idempotency_key
-                )
-                if replay_outcome is not None:
-                    return replay_outcome
-            return _WindowOutcome(
-                OutputState.OUTCOME_UNKNOWN,
-                reason=_outcome_unknown_reason(owner_key),
-            )
+    def _frozen_ref_key(
+        self,
+        owner_key: str,
+        descriptor: RecoveryDescriptor,
+        ref: ExternalRefRow | RuntimeBindingRow,
+    ) -> str:
+        """E-2b：单 ref/binding 的跨 takeover 稳定 idempotency key。
 
-        # 无恢复能力 → 态 3（reconcile-only，不落零动作死路）。
-        return _WindowOutcome(
-            OutputState.OUTCOME_UNKNOWN,
-            reason=_outcome_unknown_reason(owner_key),
+        **只含冻结 ref 身份 + frozen descriptor 协议身份**（不含 tenant_id/
+        conversation_id/lease_epoch/attempt），与 participant Tx1 派生输入完全一致。
+        """
+        if owner_key == "runtime.private.v1":
+            assert isinstance(ref, RuntimeBindingRow), "runtime window must be bindings"
+            return runtime_destroy_idempotency_key(
+                runtime_session_ref=ref.runtime_session_ref,
+                adapter_key=descriptor.adapter_key,
+                adapter_version=descriptor.adapter_version,
+            )
+        assert isinstance(ref, ExternalRefRow), "external window must be refs"
+        return external_erase_idempotency_key(
+            ref_scheme=ref.ref_scheme,
+            ref_value=ref.ref_value,
+            adapter_key=descriptor.adapter_key,
+            adapter_version=descriptor.adapter_version,
         )
 
-    async def _replay_adapter(
+    async def _recover_ref(
         self,
         adapter: _RecoverableAdapter,
         owner_key: str,
         descriptor: RecoveryDescriptor,
+        ref: ExternalRefRow | RuntimeBindingRow,
+        supports_lookup: bool,
+        supports_replay: bool,
+    ) -> _RefOutcome:
+        """单个冻结 ref 的恢复：S5-C-5 lookup 三态 + S5-C-6 replay（同 key）。"""
+        key = self._frozen_ref_key(owner_key, descriptor, ref)
+        if supports_lookup:
+            # S5-C-5：evidence → success；None → 不可判定，仅当 replay 能力 + 去重
+            # 窗口充足才 replay；否定证据（明确「未发送」）→ 态 2（当前
+            # receipt_lookup 仅 evidence/None，否定证据需 Protocol 扩展后落地）。
+            evidence = await adapter.receipt_lookup(idempotency_key=key)
+            if evidence is not None:
+                return _RefOutcome(OutputState.SUCCESS, ack_evidence=str(evidence))
+            if (
+                supports_replay
+                and descriptor.dedup_window >= descriptor.settlement_deadline
+            ):
+                replayed = await self._replay_ref(adapter, owner_key, ref, key)
+                if replayed is not None:
+                    return _RefOutcome(OutputState.SUCCESS, ack_evidence=replayed)
+            return _RefOutcome(OutputState.OUTCOME_UNKNOWN)
+        if supports_replay:
+            # S5-C-6 replay-only：去重窗口 ≥ deadline 才 replay；窗口不足 → 态 3。
+            if descriptor.dedup_window >= descriptor.settlement_deadline:
+                replayed = await self._replay_ref(adapter, owner_key, ref, key)
+                if replayed is not None:
+                    return _RefOutcome(OutputState.SUCCESS, ack_evidence=replayed)
+            return _RefOutcome(OutputState.OUTCOME_UNKNOWN)
+        # 无恢复能力 → 态 3（reconcile-only）。
+        return _RefOutcome(OutputState.OUTCOME_UNKNOWN)
+
+    async def _replay_ref(
+        self,
+        adapter: _RecoverableAdapter,
+        owner_key: str,
+        ref: ExternalRefRow | RuntimeBindingRow,
         idempotency_key: str,
-    ) -> _WindowOutcome | None:
-        """S5-C-6 replay：成功 evidence → 态 1；unknown → 态 3（单次恢复周期至多
-        一次 replay 尝试，unknown 后不得再次 replay）。返回 None = 不 replay。"""
+    ) -> str | None:
+        """S5-C-6 replay：adapter 调用必须携带 participant Tx1 所需稳定 ref 输入
+        （不得只传 key）；成功 evidence → 返回，unknown/异常 → None。"""
         try:
             if owner_key == "runtime.private.v1":
+                assert isinstance(ref, RuntimeBindingRow), "runtime window must be bindings"
                 result = await adapter.destroy_session(
-                    idempotency_key=idempotency_key
+                    runtime_session_ref=ref.runtime_session_ref,
+                    idempotency_key=idempotency_key,
                 )
             else:
+                assert isinstance(ref, ExternalRefRow), "external window must be refs"
                 result = await adapter.delete_object(
-                    idempotency_key=idempotency_key
+                    ref_scheme=ref.ref_scheme,
+                    ref_value=ref.ref_value,
+                    idempotency_key=idempotency_key,
                 )
         except Exception:
+            return None
+        evidence = getattr(result, "adapter_receipt_evidence", None) or getattr(
+            result, "destroy_receipt_evidence", None
+        )
+        return str(evidence) if evidence else None
+
+    def _aggregate_window(
+        self,
+        ref_outcomes: list[_RefOutcome],
+        owner_key: str,
+    ) -> _WindowOutcome:
+        """owner 级聚合：任一 ref 不可判定 → 态 3；全部确认 → 态 1。
+
+        单 ref 的 ack evidence 原样承载；多 ref 合并为确定性 canonical digest
+        （与 lookup/replay 同一 per-ref key 派生链）。
+        """
+        if any(o.state is OutputState.OUTCOME_UNKNOWN for o in ref_outcomes):
             return _WindowOutcome(
                 OutputState.OUTCOME_UNKNOWN,
                 reason=_outcome_unknown_reason(owner_key),
             )
-        evidence = getattr(result, "adapter_receipt_evidence", None) or getattr(
-            result, "destroy_receipt_evidence", None
-        )
-        if evidence:
-            return _WindowOutcome(
-                OutputState.SUCCESS, ack_digest=str(evidence)
+        evidences = [o.ack_evidence for o in ref_outcomes if o.ack_evidence]
+        if len(evidences) == 1:
+            ack = evidences[0]
+        else:
+            ack = canonical_digest(
+                {
+                    "schema_version": 1,
+                    "kind": "settlement:ack",
+                    "receipts": sorted(evidences),
+                }
             )
-        return _WindowOutcome(
-            OutputState.OUTCOME_UNKNOWN,
-            reason=_outcome_unknown_reason(owner_key),
-        )
+        return _WindowOutcome(OutputState.SUCCESS, ack_digest=ack)
 
     async def _apply_window_outcome(
         self,

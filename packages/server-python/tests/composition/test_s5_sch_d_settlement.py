@@ -21,8 +21,16 @@ from app.composition.agent_erasure_registry import registry_snapshot
 from app.composition.conversation_purge_scheduler import (
     ConversationPurgeScheduler,
 )
+from app.composition.external_ref_erasure_participant import (
+    ExternalRefRow,
+    external_delete_intent_digest,
+)
 from app.composition.retry_reconcile import (
     RetryReconcileService,
+)
+from app.composition.runtime_erasure_participant import (
+    RuntimeBindingRow,
+    runtime_destroy_intent_digest,
 )
 from app.composition.settlement import (
     SettlementService,
@@ -170,6 +178,129 @@ async def _settle_setup(session, *, owner_key=_EXTERNAL):
     )
     await session.commit()
     return tid, cid, op1
+
+
+async def _ensure_tenant(session, tid):
+    """external ref ledger FK 前置（``fk_agent_external_refs_tenant``）。幂等。"""
+    await session.execute(
+        text(
+            "INSERT INTO metaedu.tenants "
+            "(id, name, school_name, isolation, is_active, created_at, updated_at) "
+            "VALUES (:id, 'sch-d-settlement-tenant', 'sch-d settlement school', "
+            "'shared', true, now(), now()) ON CONFLICT (id) DO NOTHING"
+        ),
+        {"id": tid},
+    )
+
+
+async def _seed_external_ref(
+    session, tid, cid, *, ref_value="obj://staging/object/x",
+    ref_scheme="db_local", source_table="agent_workspace_outbox",
+) -> ExternalRefRow:
+    """种 external ledger ``registered`` 行（冻结窗口成员）。返回行身份。"""
+    row = ExternalRefRow(
+        id=uuid.uuid4(),
+        tenant_id=tid,
+        conversation_id=cid,
+        ref_scheme=ref_scheme,
+        ref_value=ref_value,
+        source_table=source_table,
+        source_row_id=uuid.uuid4(),
+    )
+    await session.execute(
+        text(
+            "INSERT INTO metaedu.agent_external_object_refs "
+            "(id, tenant_id, conversation_id, owner_key, ref_scheme, ref_value, "
+            "source_table, source_row_id, erase_state, created_at, updated_at) "
+            "VALUES (:id, :t, :c, 'external.payload.v1', :rs, :rv, :st, :sr, "
+            "'registered', now(), now())"
+        ),
+        {
+            "id": row.id,
+            "t": tid,
+            "c": cid,
+            "rs": row.ref_scheme,
+            "rv": row.ref_value,
+            "st": row.source_table,
+            "sr": row.source_row_id,
+        },
+    )
+    await session.flush()
+    return row
+
+
+async def _seed_runtime_binding(
+    session, tid, cid, *, ref_value="pi://session/x",
+) -> RuntimeBindingRow:
+    """种 runtime session binding（active + ref 非空，冻结窗口成员）。返回行身份。"""
+    row = RuntimeBindingRow(
+        id=uuid.uuid4(),
+        tenant_id=tid,
+        conversation_id=cid,
+        runtime_profile_id=uuid.uuid4(),
+        runtime_session_ref=ref_value,
+    )
+    await session.execute(text("SET LOCAL session_replication_role = replica"))
+    await session.execute(
+        text(
+            "INSERT INTO metaedu.agent_runtime_session_bindings "
+            "(id, tenant_id, conversation_id, runtime_profile_id, "
+            "runtime_session_ref, status, current_epoch, next_expected_runtime_seq, "
+            "acked_through_runtime_seq, active_stream_id, stream_lease_expires_at, "
+            "revision, created_at, updated_at) "
+            "VALUES (:id, :t, :c, :rp, :rv, 'active', 1, 1, 0, NULL, NULL, "
+            "1, now(), now())"
+        ),
+        {
+            "id": row.id,
+            "t": tid,
+            "c": cid,
+            "rp": row.runtime_profile_id,
+            "rv": row.runtime_session_ref,
+        },
+    )
+    await session.execute(text("SET LOCAL session_replication_role = default"))
+    await session.flush()
+    return row
+
+
+async def _settle_window_setup(
+    session,
+    *,
+    owner_key=_EXTERNAL,
+    ref_values=("obj://staging/object/x",),
+    binding_refs=("pi://session/x",),
+):
+    """种子冻结 ref/binding 窗口 + 真实 intent digest 的 erasing 窗口 setup。
+
+    checkpoint_digest = 冻结窗口的 intent digest（Tx1 同源派生），settlement 重验
+    必须精确命中。返回 (tid, cid, op1, rows)。"""
+    tid, cid = await _seed_conversation(session)
+    await _ensure_tenant(session, tid)
+    out = await _claim(session, tid, cid)
+    op1 = out.token.purge_operation_id
+    for k in _OWNER_KEYS:
+        await _set_cp(session, op1, k, state="pending")
+    await _seed_fence(session, tid, cid, owner_key, state="erasing")
+    if owner_key == _EXTERNAL:
+        refs = [
+            await _seed_external_ref(session, tid, cid, ref_value=rv)
+            for rv in ref_values
+        ]
+        digest = external_delete_intent_digest(refs)
+        rows = refs
+    else:
+        bindings = [
+            await _seed_runtime_binding(session, tid, cid, ref_value=rv)
+            for rv in binding_refs
+        ]
+        digest = runtime_destroy_intent_digest(bindings)
+        rows = bindings
+    await _set_cp(
+        session, op1, owner_key, state="erasing", attempt=1, digest=digest,
+    )
+    await session.commit()
+    return tid, cid, op1, rows
 
 
 # ---------------------------------------------------------------------------
@@ -393,7 +524,7 @@ async def test_settlement_ack_lost_repair(db_session, session_factory):
 async def test_settlement_drift_frozen_snapshot(db_session, session_factory):
     """S5-C-8 行 1：G1/G2 drift 下 settlement 以 frozen-snapshot 放行（不 raise），
     fence 收敛；零 operation/Conversation 写。"""
-    tid, cid, op1 = await _settle_setup(db_session)
+    tid, cid, op1, _refs = await _settle_window_setup(db_session)
     # G2 drift：Conversation hold_revision 推进（1），op snapshot 仍 0。
     await db_session.execute(
         text("UPDATE metaedu.agent_conversations SET hold_revision=1 WHERE id=:cid"),
@@ -463,7 +594,7 @@ async def test_settlement_stale_revision_rejected(db_session, session_factory):
 async def test_settlement_success_lookup(db_session, session_factory):
     """S5-C-8 行 5：lookup evidence → success（fence erasing→erased +
     checkpoint→acked），禁 replay。"""
-    tid, cid, op1 = await _settle_setup(db_session)
+    tid, cid, op1, _refs = await _settle_window_setup(db_session)
     adapter = _LookupEvidenceAdapter()
     service = SettlementService(
         db_session, scan_providers=build_scan_providers(db_session),
@@ -485,7 +616,7 @@ async def test_settlement_success_lookup(db_session, session_factory):
 async def test_settlement_lookup_none_unknown(db_session, session_factory, monkeypatch):
     """S5-C-8 行 5：lookup None → 不可判定（态 3），禁再次 delete（无 replay 能力）。"""
     _patch_resolver(monkeypatch, _lookup_only_descriptor())
-    tid, cid, op1 = await _settle_setup(db_session)
+    tid, cid, op1, _refs = await _settle_window_setup(db_session)
     adapter = _LookupNoneAdapter()
     service = SettlementService(
         db_session, scan_providers=build_scan_providers(db_session),
@@ -511,7 +642,7 @@ async def test_settlement_lookup_none_unknown(db_session, session_factory, monke
 async def test_settlement_replay_only_unknown(db_session, session_factory, monkeypatch):
     """S5-C-8 行 7：replay-only 重放 unknown → outcome_unknown 终态（零二次 replay）。"""
     _patch_resolver(monkeypatch, _replay_only_descriptor())
-    tid, cid, op1 = await _settle_setup(db_session)
+    tid, cid, op1, _refs = await _settle_window_setup(db_session)
     adapter = _ReplayOnlyUnknownAdapter()
     service = SettlementService(
         db_session, scan_providers=build_scan_providers(db_session),
@@ -546,7 +677,7 @@ async def test_settlement_replay_only_unknown(db_session, session_factory, monke
 async def test_settlement_replay_only_success(db_session, session_factory, monkeypatch):
     """S5-C-8 行 6 正向：dedup_window >= deadline 时 replay 成功 → success。"""
     _patch_resolver(monkeypatch, _replay_only_descriptor())
-    tid, cid, op1 = await _settle_setup(db_session)
+    tid, cid, op1, _refs = await _settle_window_setup(db_session)
     adapter = _ReplayOnlySuccessAdapter()
     service = SettlementService(
         db_session, scan_providers=build_scan_providers(db_session),
@@ -660,7 +791,9 @@ async def test_settlement_reasons_distinct(db_session, session_factory, monkeypa
     # 态 3（outcome_unknown）：lookup None，external + runtime 各一。
     codes: dict[str, str] = {}
     for owner_key in (_EXTERNAL, _RUNTIME):
-        tid, cid, op1 = await _settle_setup(db_session, owner_key=owner_key)
+        tid, cid, op1, _refs = await _settle_window_setup(
+            db_session, owner_key=owner_key
+        )
         adapter = _LookupNoneAdapter()
         service = SettlementService(
             db_session, scan_providers=build_scan_providers(db_session),
@@ -690,7 +823,7 @@ async def test_settlement_dual_connection_single_writer(session_factory, monkeyp
     唯一性），两方均幂等。"""
     _patch_resolver(monkeypatch, _replay_only_descriptor())
     async with session_factory() as seed:
-        tid, cid, op1 = await _settle_setup(seed)
+        tid, cid, op1, _refs = await _settle_window_setup(seed)
 
     async def _one():
         async with session_factory() as s:
@@ -720,7 +853,7 @@ async def test_settlement_idempotent_replay(db_session, session_factory, monkeyp
     """S5-C-8 行 12：同输入重放 settlement → 同一 owner-scoped 结果，零跨 owner
     副作用（replay 跳过已收口 fence/checkpoint）。"""
     _patch_resolver(monkeypatch, _replay_only_descriptor())
-    tid, cid, op1 = await _settle_setup(db_session)
+    tid, cid, op1, _refs = await _settle_window_setup(db_session)
     adapter = _ReplayOnlyUnknownAdapter()
     service = SettlementService(
         db_session, scan_providers=build_scan_providers(db_session),
@@ -759,7 +892,7 @@ async def test_settlement_fence_write_failure_reconcile(
     )
 
     _patch_resolver(monkeypatch, _lookup_only_descriptor())
-    tid, cid, op1 = await _settle_setup(db_session)
+    tid, cid, op1, _refs = await _settle_window_setup(db_session)
     adapter = _LookupNoneAdapter()
 
     async def _fence_write_fails(self, **kwargs):
@@ -796,7 +929,7 @@ async def test_settlement_lookup_crash_replay_no_fork(session_factory, monkeypat
     → 同一 owner-scoped 终态（CAS 单写、无第二次删除副作用、无跨 owner 分叉）。"""
     _patch_resolver(monkeypatch, _lookup_only_descriptor())
     async with session_factory() as seed:
-        tid, cid, op1 = await _settle_setup(seed)
+        tid, cid, op1, _refs = await _settle_window_setup(seed)
 
     adapter = _LookupEvidenceAdapter()
     # 第一轮：lookup 返回 evidence 后崩溃（session rollback 丢弃未提交 CAS）。
@@ -894,7 +1027,7 @@ async def test_settlement_replay_window_insufficient(db_session, session_factory
     from app.composition import settlement as _settlement_mod
     from app.composition.adapter_recovery import RecoveryDescriptor
 
-    tid, cid, op1 = await _settle_setup(db_session)
+    tid, cid, op1, _refs = await _settle_window_setup(db_session)
     narrow = RecoveryDescriptor(
         adapter_key="external.object.v1",
         adapter_version=1,
@@ -932,7 +1065,7 @@ async def test_settlement_frozen_descriptor(db_session, session_factory, monkeyp
     from app.composition import settlement as _settlement_mod
     from app.composition.adapter_recovery import RecoveryDescriptor
 
-    tid, cid, op1 = await _settle_setup(db_session)
+    tid, cid, op1, _refs = await _settle_window_setup(db_session)
     # 当前版本 descriptor 无 lookup（部署后变化）；frozen 旧版本有 lookup。
     current = RecoveryDescriptor(
         adapter_key="external.object.v1", adapter_version=1,
@@ -1016,7 +1149,7 @@ async def test_retry_whitelist_allowed_and_rejected(db_session, session_factory)
 async def test_reconcile_via_settlement_no_force_skip(db_session, session_factory):
     """reconcile：经 settlement 以 evidence 收口（owner-scoped），无 force-skip
     ACK——无证据不写 erased/acked。"""
-    tid, cid, op1 = await _settle_setup(db_session)
+    tid, cid, op1, _refs = await _settle_window_setup(db_session)
     adapter = _LookupNoneAdapter()
     service = RetryReconcileService(
         db_session,

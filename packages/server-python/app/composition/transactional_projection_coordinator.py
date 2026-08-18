@@ -63,10 +63,18 @@ _COORDINATOR_PURGE_STATES = frozenset(
 
 class ScanResultLike(Protocol):
     """scan 提供者返回形状（WorkspaceBodyScan / ExecutionBodyScan /
-    TransportBodyScan 均满足——``total`` 为只读 property）。"""
+    TransportBodyScan / ExternalRefScan / RuntimeBindingScan 均满足——``total``
+    为只读 property，``digest()`` 为 final scan canonical digest）。
+
+    ``digest()`` 与 settlement ``_ScanResult`` 同形状（scan 对象全实现）；此处
+    声明使 coordinator 的 ``ScanProvider`` 与 settlement 的 ``ScanProvider``
+    类型兼容（联合组合根把同一 ``build_scan_providers`` 传给两侧）。
+    """
 
     @property
     def total(self) -> int: ...
+
+    def digest(self) -> str: ...
 
 
 # 三份 scan 实现均 keyword-only 签名；``Callable[..., Awaitable[...]]`` 只约束

@@ -14,22 +14,53 @@
 
 ## 当前进行中
 
-### R1-S5 SCH-D: Settlement & Retry-Reconcile（stacked child，base = SCH-B/C root）
+### R1-S5 Root Integration: settlement idempotency key 对齐 + B/C/D 联合组合根（root PR #577 Draft）
 
-状态：🟡 进行中（Draft PR #579，checks 全绿后停止；不转 Ready/评分/合并）
+状态：🟡 进行中（root PR #577 Draft，Draft checks 全绿后停止；不转 Ready/评分/合并）
+类型：实现（反例先行 + 具名 mutation kill）
+领域：R1 retention/purge scheduler
+当前执行模式：plan-do（root integration batch）
+最近接手工具：Claude Code
+分支：feature/req041-047-r1-s5-sch-b-owner-execution-orchestrator（HEAD 5033efc5）
+
+需求来源：
+- Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-D S5-SCH-1.3/1.5/1.6 + S5-SCH-2/3/4/5
+
+当前进展：settlement idempotency key 对齐——删除 `_default_idempotency_key` tenant+
+conversation 简化公式，逐 ref/binding 以 **frozen descriptor** 协议身份派生
+`external_erase_idempotency_key` / `runtime_destroy_idempotency_key`（不含
+tenant/conversation/lease_epoch/attempt），adapter 调用携带 participant Tx1 所需
+稳定 ref 输入，E-2a 冻结 intent 重验（缺失/不一致 fail closed，禁 fallback 简化
+key）；B/C/D 联合组合根 `scheduler_composition.py`（六 owner participant map +
+concrete SettlementPort + rebuild + coordinator + claim/lease，partial wiring
+`CompositionNotReadyError` fail closed；orchestrator `SettlementPort` 携带 entry
+事务 session，concrete settlement 在调用方事务内收口）。
+下一步：Draft checks 全绿后停止（不转 Ready/评分/合并）。
+验证状态：SCH-A/B/C/D + key 对齐 + 联合 wiring 120 专项全绿；composition 全量 659
+passed；ruff/mypy 0 regressions；docs gates 待 exit 0；mutation kill（删除 ref/
+session 输入 / key 加入 lease_epoch-attempt / 去掉 SCH-C/SCH-D wiring / 去掉
+coordinator 触发）全部转红后恢复源码。
+交接备注：root PR #577 base=main，保持 Draft；不创建新 child PR；不新增 migration
+043、不改 registry（external/runtime 保持 `erase_available=False` + FailClosed 槽
+位，不伪造生产能力）、不启用生产 wiring、不启动 S6/C1。
+
+### R1-S5 SCH-D: Settlement & Retry-Reconcile（已 squash 合并入 root，待联合评审）
+
+状态：🟡 进行中（已合并入 root `5033efc5`，root 保持 Draft；联合评审批次在 root
+integration 卡片承接）
 类型：实现（反例先行 + 具名 mutation kill）
 领域：R1 retention/purge scheduler
 当前执行模式：plan-do（TD-092 三面复审）
 最近接手工具：Claude Code
-分支：feature/req041-047-r1-s5-sch-d-settlement-retry-reconcile
+分支：feature/req041-047-r1-s5-sch-d-settlement-retry-reconcile（squash 入 root）
 
 需求来源：
 - Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-C S5-C-0..9 + §R1-S5-D S5-SCH-4 SCH-D 行
 
 当前进展：实现完成 + **反例矩阵完整性收口批次**：独立验收审计 P0=0/P1=1（根因 = S5-C-8 行 13/16 未覆盖，历史 P0=0/P1=0/P2=5/P3=4 保留不覆盖；不递延 REQ-047）——行 13（fence 写失败 → 具名 reconcile，S5-C-1 例外条款落地）+ 行 16（lookup 崩溃重放无分叉）；S5-C-8 16 行逐行映射表建立（PR body + 测试头）；`SettlementService`（六输出态 + 锁序 + frozen-snapshot + CAS 单写 + erasing→blocked + failed 收敛 + 禁新 Tx1）；`adapter_recovery`（RecoveryDescriptor + 历史 resolver + FailClosed 装配）；`retry_reconcile`（内部命令边界）。23 专项 + 12/12 mutation kill；composition 646 passed。
-下一步：独立定向复核（16 行逐行 PASS 已核）→ Draft checks 全绿后停止（不转 Ready/评分/合并）。
+下一步：root integration 批次已承接 key 对齐与联合评审（见 root integration 卡片）。
 验证状态：SCH-D 23 专项全绿；SCH-A/B/C+I1/I2 回归 158 passed；composition 646 passed；ruff/mypy 0 regressions；docs gates exit 0；mutation kill 12/12。
-交接备注：**stacked child**——base = SCH-B/C root（a8f4d561）；PR base = root 分支（非 main）；保留 B/C/D 联合 merged-boundary；不新增 migration 043、不改 registry、不启用生产 wiring、不启动 S6/C1。
+交接备注：**stacked child**——已 squash 入 root PR #577（`5033efc5`）；保留 B/C/D 联合 merged-boundary；不新增 migration 043、不改 registry、不启用生产 wiring、不启动 S6/C1。
 
 ### R1-S5 SCH-C: Rebuild & Seeding（已 squash 合并入 root，待 B/C/D 联合评审）
 

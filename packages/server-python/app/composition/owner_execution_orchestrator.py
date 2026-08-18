@@ -126,11 +126,17 @@ OwnerEntryPort = Callable[[OwnerEntryRequest], Awaitable[OwnerEntryOutcome]]
 
 
 class SettlementPort(Protocol):
-    """窄 settlement port（SCH-D 依赖边界；SCH-B 只定义接口，不实现收口）。"""
+    """窄 settlement port（SCH-D 依赖边界；SCH-B 只定义接口，不实现收口）。
+
+    ``session`` 是编排方本次 entry 事务的 session——settlement 必须在 entry 事务
+    内（同一 Conversation-first 锁上下文）运行，不能自建会话（否则与 entry 事务
+    持有的行锁死锁）。联合组合根以 ``session`` 构造 concrete SettlementService。
+    """
 
     async def closeout_erasing(
         self,
         *,
+        session: AsyncSession,
         tenant_id: uuid.UUID,
         conversation_id: uuid.UUID,
         purge_operation_id: uuid.UUID,
@@ -140,6 +146,7 @@ class SettlementPort(Protocol):
     async def converge_failed_fence(
         self,
         *,
+        session: AsyncSession,
         tenant_id: uuid.UUID,
         conversation_id: uuid.UUID,
         purge_operation_id: uuid.UUID,
@@ -337,6 +344,7 @@ class OwnerExecutionOrchestrator:
                 return "skipped"
             if state == "erasing":
                 await self._settlement.closeout_erasing(
+                    session=session,
                     tenant_id=tenant_id,
                     conversation_id=conversation_id,
                     purge_operation_id=purge_operation_id,
@@ -355,6 +363,7 @@ class OwnerExecutionOrchestrator:
                         session, tenant_id, purge_operation_id, owner_key, reason
                     )
                     await self._settlement.converge_failed_fence(
+                        session=session,
                         tenant_id=tenant_id,
                         conversation_id=conversation_id,
                         purge_operation_id=purge_operation_id,

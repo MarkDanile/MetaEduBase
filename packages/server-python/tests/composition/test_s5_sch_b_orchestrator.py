@@ -128,12 +128,12 @@ class _RecordingSettlement(SettlementPort):
         self.converge: list[str] = []
 
     async def closeout_erasing(
-        self, *, tenant_id, conversation_id, purge_operation_id, owner_key
+        self, *, session, tenant_id, conversation_id, purge_operation_id, owner_key
     ) -> None:
         self.closeout.append(owner_key)
 
     async def converge_failed_fence(
-        self, *, tenant_id, conversation_id, purge_operation_id, owner_key
+        self, *, session, tenant_id, conversation_id, purge_operation_id, owner_key
     ) -> None:
         self.converge.append(owner_key)
 
