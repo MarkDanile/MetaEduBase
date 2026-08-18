@@ -16,7 +16,7 @@
 
 ### R1-S5 SCH-D: Settlement & Retry-Reconcile（stacked child，base = SCH-B/C root）
 
-状态：🟡 进行中
+状态：🟡 进行中（Draft PR #579，checks 全绿后停止；不转 Ready/评分/合并）
 类型：实现（反例先行 + 具名 mutation kill）
 领域：R1 retention/purge scheduler
 当前执行模式：plan-do（TD-092 三面复审）
@@ -26,9 +26,9 @@
 需求来源：
 - Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-C S5-C-0..9 + §R1-S5-D S5-SCH-4 SCH-D 行
 
-当前进展：开工——SettlementPort concrete adapter（closeout_erasing / converge_failed_fence）接入 SCH-B 已冻结接口；S5-C 六输出态 + 锁序 + RecoveryDescriptor resolver + 内部 inspect/retry/reconcile 服务边界。
-下一步：实现 + 真实 PG 反例（S5-C-8 16 行 + S5-B-9 行 14/19/20/24）+ 具名 mutation kill + TD-092 三面 → Draft checks 全绿后停止（不转 Ready/评分/合并）。
-验证状态：待跑。
+当前进展：实现完成——`SettlementService`（S5-C 六输出态 + S5-C-7 锁序 + frozen-snapshot 校验 + fence/checkpoint CAS 单写收敛 + 4 非 core erasing→blocked + failed 收敛 + 禁新 Tx1）；`transition_fence_state_settlement`（settlement 专用 fence 写）；`adapter_recovery`（RecoveryDescriptor + 历史 resolver + FailClosed 装配）；`retry_reconcile`（内部 inspect/retry/reconcile 边界）。21 真实 PG 专项 + 10/10 mutation kill；composition 644 passed。
+下一步：三面复审（TD-092）→ Draft checks 全绿后停止（不转 Ready/评分/合并）。
+验证状态：SCH-D 21 专项全绿；SCH-A/B/C+I1/I2 回归 156 passed；composition 644 passed；ruff/mypy 0 regressions；docs gates exit 0；mutation kill 10/10。
 交接备注：**stacked child**——base = SCH-B/C root（a8f4d561）；PR base = root 分支（非 main）；保留 B/C/D 联合 merged-boundary；不新增 migration 043、不改 registry、不启用生产 wiring、不启动 S6/C1。
 
 ### R1-S5 SCH-C: Rebuild & Seeding（已 squash 合并入 root，待 B/C/D 联合评审）
