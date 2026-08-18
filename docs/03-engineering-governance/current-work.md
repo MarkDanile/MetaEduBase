@@ -14,14 +14,31 @@
 
 ## 当前进行中
 
-### R1-S5 SCH-C: Rebuild & Seeding（stacked child，base = SCH-B root）
+### R1-S5 SCH-D: Settlement & Retry-Reconcile（stacked child，base = SCH-B/C root）
 
-状态：🟡 进行中（Draft PR #578，checks 全绿后停止；不转 Ready/评分/合并）
+状态：🟡 进行中
+类型：实现（反例先行 + 具名 mutation kill）
+领域：R1 retention/purge scheduler
+当前执行模式：plan-do（TD-092 三面复审）
+最近接手工具：Claude Code
+分支：feature/req041-047-r1-s5-sch-d-settlement-retry-reconcile
+
+需求来源：
+- Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-C S5-C-0..9 + §R1-S5-D S5-SCH-4 SCH-D 行
+
+当前进展：开工——SettlementPort concrete adapter（closeout_erasing / converge_failed_fence）接入 SCH-B 已冻结接口；S5-C 六输出态 + 锁序 + RecoveryDescriptor resolver + 内部 inspect/retry/reconcile 服务边界。
+下一步：实现 + 真实 PG 反例（S5-C-8 16 行 + S5-B-9 行 14/19/20/24）+ 具名 mutation kill + TD-092 三面 → Draft checks 全绿后停止（不转 Ready/评分/合并）。
+验证状态：待跑。
+交接备注：**stacked child**——base = SCH-B/C root（a8f4d561）；PR base = root 分支（非 main）；保留 B/C/D 联合 merged-boundary；不新增 migration 043、不改 registry、不启用生产 wiring、不启动 S6/C1。
+
+### R1-S5 SCH-C: Rebuild & Seeding（已 squash 合并入 root，待 B/C/D 联合评审）
+
+状态：🟡 进行中（已合并入 SCH-B/C root `a8f4d561`，root 保持 Draft，联合评审待 SCH-D 后）
 类型：实现（反例先行 + 具名 mutation kill）
 领域：R1 retention/purge scheduler
 当前执行模式：plan-do（TD-092 三面复审 + 完整性收口批次）
 最近接手工具：Claude Code
-分支：feature/req041-047-r1-s5-sch-c-rebuild-seeding
+分支：feature/req041-047-r1-s5-sch-c-rebuild-seeding（已删除；squash 入 root）
 
 需求来源：
 - Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-B S5-B-0..9
