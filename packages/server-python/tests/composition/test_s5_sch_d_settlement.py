@@ -653,39 +653,36 @@ async def test_settlement_failed_convergence(db_session, session_factory):
         assert await _cp(verify, op1, _EXTERNAL, "state") == "failed", "failed 保留"
 
 
-async def test_settlement_reasons_distinct(db_session, session_factory):
-    """S5-C-8 行 15：输出态 3/5/6 reason 互异且稳定（逐 owner 变体）。"""
-    tid, cid, op1 = await _settle_setup(db_session)
-    async with session_factory() as s:
-        await s.execute(
-            text(
-                "UPDATE metaedu.agent_conversation_purge_owners SET "
-                "updated_at = now() - interval '30 days' "
-                "WHERE purge_operation_id=:op AND owner_key=:k"
-            ),
-            {"op": op1, "k": _EXTERNAL},
+async def test_settlement_reasons_distinct(db_session, session_factory, monkeypatch):
+    """S5-C-8 行 15：输出态 3/5/6 reason 互异且稳定（逐 owner 变体）。变异「3/5/6
+    共用同一 code」→红。"""
+    _patch_resolver(monkeypatch, _lookup_only_descriptor())
+    # 态 3（outcome_unknown）：lookup None，external + runtime 各一。
+    codes: dict[str, str] = {}
+    for owner_key in (_EXTERNAL, _RUNTIME):
+        tid, cid, op1 = await _settle_setup(db_session, owner_key=owner_key)
+        adapter = _LookupNoneAdapter()
+        service = SettlementService(
+            db_session, scan_providers=build_scan_providers(db_session),
+            adapter_resolver=_noop_adapter_resolver(adapter),
         )
-        await s.commit()
-    service = SettlementService(
-        db_session, scan_providers=build_scan_providers(db_session),
-        adapter_resolver=_noop_adapter_resolver(_LookupNoneAdapter()),
-    )
-    await service.closeout_erasing(
-        tenant_id=tid, conversation_id=cid, purge_operation_id=op1,
-        owner_key=_EXTERNAL,
-    )
-    await db_session.commit()
-    async with session_factory() as verify:
-        deadline_code = await _cp(verify, op1, _EXTERNAL, "reason_code")
-    assert deadline_code == _DEADLINE_REASON[_EXTERNAL]
-    assert deadline_code != _OUTCOME_UNKNOWN_REASON[_EXTERNAL]
-    assert deadline_code != _UNRESOLVABLE_REASON[_EXTERNAL]
+        await service.closeout_erasing(
+            tenant_id=tid, conversation_id=cid, purge_operation_id=op1,
+            owner_key=owner_key,
+        )
+        await db_session.commit()
+        async with session_factory() as verify:
+            codes[owner_key] = await _cp(verify, op1, owner_key, "reason_code")
+    assert codes[_EXTERNAL] == _OUTCOME_UNKNOWN_REASON[_EXTERNAL]
+    assert codes[_RUNTIME] == _OUTCOME_UNKNOWN_REASON[_RUNTIME]
+    assert codes[_EXTERNAL] != codes[_RUNTIME], "逐 owner 变体互异"
+    # 3/5/6 三码互异（跨态比较，由各态独立 reason 函数保证）。
     assert (
         len({_DEADLINE_REASON[_EXTERNAL], _DEADLINE_REASON[_RUNTIME],
              _UNRESOLVABLE_REASON[_EXTERNAL], _UNRESOLVABLE_REASON[_RUNTIME],
              _OUTCOME_UNKNOWN_REASON[_EXTERNAL], _OUTCOME_UNKNOWN_REASON[_RUNTIME]})
         == 6
-    ), "3/5/6 三码互异 + 逐 owner 变体"
+    )
 
 
 async def test_settlement_dual_connection_single_writer(session_factory, monkeypatch):

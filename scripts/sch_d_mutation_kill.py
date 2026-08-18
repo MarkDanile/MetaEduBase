@@ -74,8 +74,8 @@ MUTATIONS = [
     (
         "M-SCH-D-unresolvable fallback 当前 adapter",
         SETTLEMENT,
-        ['        except AdapterUnresolvableError:\n            return _WindowOutcome(\n                OutputState.ADAPTER_UNRESOLVABLE,\n                reason=_unresolvable_reason(owner_key),\n            )'],
-        ['        except AdapterUnresolvableError:\n            raise  # M：fallback 当前 adapter（不 fail closed）'],
+        ['        try:\n            raw_adapter = self._adapter_resolver(\n                owner_key=owner_key, owner_version=frozen.owner_version\n            )\n        except AdapterUnresolvableError:\n            return _WindowOutcome(\n                OutputState.ADAPTER_UNRESOLVABLE,\n                reason=_unresolvable_reason(owner_key),\n            )'],
+        ['        try:\n            raw_adapter = self._adapter_resolver(\n                owner_key=owner_key, owner_version=frozen.owner_version\n            )\n        except AdapterUnresolvableError:\n            raise  # M：fallback 当前 adapter（不 fail closed）'],
         [f"{_T}test_settlement_adapter_unresolvable"],
     ),
     (
