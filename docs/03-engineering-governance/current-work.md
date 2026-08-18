@@ -14,22 +14,22 @@
 
 ## 当前进行中
 
-### R1-S5 SCH-B: Owner Execution Orchestrator（B/C/D 联合交付 stack root）
+### R1-S5 SCH-C: Rebuild & Seeding（stacked child，base = SCH-B root）
 
-状态：🟡 进行中
+状态：🟡 进行中（Draft PR #578，checks 全绿后停止；不转 Ready/评分/合并）
 类型：实现（反例先行 + 具名 mutation kill）
 领域：R1 retention/purge scheduler
-当前执行模式：plan-do（TD-092 三面复审）
+当前执行模式：plan-do（TD-092 三面复审 + 完整性收口批次）
 最近接手工具：Claude Code
-分支：feature/req041-047-r1-s5-sch-b-owner-execution-orchestrator
+分支：feature/req041-047-r1-s5-sch-c-rebuild-seeding
 
 需求来源：
-- Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-D S5-SCH-1/2/3
+- Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-B S5-B-0..9
 
-当前进展：实现完成 + 首轮三面返修（族 A~D：failed 纳入终态停止防异常循环、next_retry_at cycle 末仲裁、attempt 统一推进裁决、旧 revision 反例、td-032 登记、OrchestrationDriftError 异常统一、tick 隔离+退避过滤）；14 专项全绿；composition 全量 583 passed；12/12 mutation kill（驱动入库 `scripts/sch_b_mutation_kill.py`）；ruff/mypy 0 regressions。
-下一步：独立定向复核（P1 清零核验）→ 通过后 Draft root PR + checks 全绿后停止。
-验证状态：composition 583 passed（140s）；mypy 243 historical / 0 regressions；docs gates exit 0；mutation kill 12/12；三面首轮原始计数保留（P0=0/P1=3/P2=6/P3=14）
-交接备注：**B/C/D stack root**——后续 SCH-C/SCH-D 将 stacked 进入本 root PR；本 PR 不实现 SCH-C rebuild/seeding、SCH-D settlement、完整 API、指标日志、participant 三键收窄、S6、C1；不转 Ready/评分/合并；不创建 SCH-C/SCH-D 分支、不启用生产 wiring。
+当前进展：实现完成 + 首轮三面返修（族 A~E）+ **反例矩阵完整性收口批次**：独立验收审计 P0=0/P1=1（根因 = 把 SCH-C 必验矩阵 14 行错误递延到 REQ-047，历史计数保留不覆盖；REQ-047 不承接缺口）——补齐行 2/7/9/11/12/16/17/22/26/27/28/31/32 真实 PG 判别 + 行 23（removed-completed）+ **G3 active-hold 门禁（`RebuildKind.HOLD_GATED`）**；行 21 复用 I2 已冻结 family-B 门禁（无 I2 回归，临时变异验证）；S5-B-9 实义 29 行逐行映射表建立（测试头 + `sch_c_mutation_kill.py` 27 项具名 mutation）；40 专项全绿；composition 全量 623 passed；ruff/mypy/docs gates 全绿。
+下一步：新 HEAD Draft checks 全绿后停止（已同步 PR body 与工作台；不转 Ready、不评分、不合并）。
+验证状态：composition 623 passed（145s）；mutation kill 27/27；mypy 243 historical / 0 regressions；docs gates exit 0；SCH-A/B+I1/I2 相关回归 192 passed；三面首轮原始计数保留（P0=0/P1=9/P2=11/P3=10）+ 本轮审计（P0=0/P1=1）不覆盖
+交接备注：**stacked child**——SCH-B root（0081ecd9）暂停等待子层；PR base = SCH-B root 分支（非 main）；保留 B/C/D 联合 merged-boundary；不实现 SCH-D concrete settlement、adapter lookup/replay、内部 API；不新增 migration 043、不改 registry；不启用生产 wiring。
 
 ## 下一批候选任务
 
