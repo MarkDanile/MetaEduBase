@@ -26,9 +26,9 @@
 需求来源：
 - Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-C S5-C-0..9 + §R1-S5-D S5-SCH-4 SCH-D 行
 
-当前进展：实现完成——`SettlementService`（S5-C 六输出态 + S5-C-7 锁序 + frozen-snapshot 校验 + fence/checkpoint CAS 单写收敛 + 4 非 core erasing→blocked + failed 收敛 + 禁新 Tx1）；`transition_fence_state_settlement`（settlement 专用 fence 写）；`adapter_recovery`（RecoveryDescriptor + 历史 resolver + FailClosed 装配）；`retry_reconcile`（内部 inspect/retry/reconcile 边界）。21 真实 PG 专项 + 10/10 mutation kill；composition 644 passed。
-下一步：三面复审（TD-092）→ Draft checks 全绿后停止（不转 Ready/评分/合并）。
-验证状态：SCH-D 21 专项全绿；SCH-A/B/C+I1/I2 回归 156 passed；composition 644 passed；ruff/mypy 0 regressions；docs gates exit 0；mutation kill 10/10。
+当前进展：实现完成 + **反例矩阵完整性收口批次**：独立验收审计 P0=0/P1=1（根因 = S5-C-8 行 13/16 未覆盖，历史 P0=0/P1=0/P2=5/P3=4 保留不覆盖；不递延 REQ-047）——行 13（fence 写失败 → 具名 reconcile，S5-C-1 例外条款落地）+ 行 16（lookup 崩溃重放无分叉）；S5-C-8 16 行逐行映射表建立（PR body + 测试头）；`SettlementService`（六输出态 + 锁序 + frozen-snapshot + CAS 单写 + erasing→blocked + failed 收敛 + 禁新 Tx1）；`adapter_recovery`（RecoveryDescriptor + 历史 resolver + FailClosed 装配）；`retry_reconcile`（内部命令边界）。23 专项 + 12/12 mutation kill；composition 646 passed。
+下一步：独立定向复核（16 行逐行 PASS 已核）→ Draft checks 全绿后停止（不转 Ready/评分/合并）。
+验证状态：SCH-D 23 专项全绿；SCH-A/B/C+I1/I2 回归 158 passed；composition 646 passed；ruff/mypy 0 regressions；docs gates exit 0；mutation kill 12/12。
 交接备注：**stacked child**——base = SCH-B/C root（a8f4d561）；PR base = root 分支（非 main）；保留 B/C/D 联合 merged-boundary；不新增 migration 043、不改 registry、不启用生产 wiring、不启动 S6/C1。
 
 ### R1-S5 SCH-C: Rebuild & Seeding（已 squash 合并入 root，待 B/C/D 联合评审）
