@@ -222,14 +222,14 @@ class SettlementService:
             conversation, operation, fence, checkpoint, owner_key
         )
         assert operation is not None, "frozen-snapshot 校验保证 operation 存在"
-        assert fence is not None, "frozen-snapshot 校验保证 fence 存在"
 
         # 输入态分类（S5-C-1 三类）。
         input_state = self._classify_input(checkpoint, fence)
         if input_state is None:
-            return  # 已收敛/无关 → 零写幂等
+            return  # 已收敛/无关/缺 fence → 零写幂等
 
         if input_state == "ack_lost":
+            assert fence is not None, "ack_lost 输入态必有 erased fence"
             assert checkpoint is not None, "ack_lost 输入态必有 checkpoint"
             await self._ack_lost_repair(
                 tenant_id, conversation_id, operation, checkpoint, fence, frozen,
@@ -237,6 +237,7 @@ class SettlementService:
             )
             return
         if input_state == "post_window_blocked":
+            assert fence is not None, "post_window_blocked 输入态必有 erasing fence"
             # S5-C-1 已落账收敛：只写 fence erasing→blocked，checkpoint 零修改。
             await self._fence_to_blocked(
                 tenant_id, conversation_id, fence, frozen, conversation.hold_revision
@@ -244,6 +245,7 @@ class SettlementService:
             return
 
         # window erasing（checkpoint 或 fence erasing）→ adapter recovery。
+        assert fence is not None, "window_erasing 输入态必有 erasing fence"
         outcome = await self._recover_erasing(
             tenant_id, conversation_id, operation, checkpoint, fence, frozen,
             owner_key,
@@ -489,25 +491,37 @@ class SettlementService:
         self,
         tenant_id: uuid.UUID,
         conversation_id: uuid.UUID,
-        fence: ErasureFenceModel,
+        fence: ErasureFenceModel | None,
         frozen: _FrozenSnapshot,
         hold_revision: int,
     ) -> None:
-        """S5-C-7 erasing→blocked 边（settlement 专用 fence 写，CAS）。"""
-        if fence.state != "erasing":
+        """S5-C-7 erasing→blocked 边 + S5-C-1 例外条款（settlement 专用 fence 写）。
+
+        fence 写本身无法完成（行缺失 / CAS 永久冲突，经 S5-C-2 校验后仍失败）→
+        **不 raise**：checkpoint 已按进入时判定的输出态落账（具名持久 reason），
+        fence 保持 erasing——具名 reconcile（可观察、禁止自动重试），零 adapter
+        再调用。态 1/4 不适用本条款（态 4 fence 零修改；态 1 同事务失败整事务
+        回滚由调用方承担，不在此捕获）。
+        """
+        if fence is None or fence.state != "erasing":
             return
-        await self._repo.transition_fence_state_settlement(
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-            owner_key=fence.owner_key,
-            expected_state=ErasureFenceState.ERASING,
-            expected_revision=fence.revision,
-            new_state=ErasureFenceState.BLOCKED,
-            expected_owner_version=frozen.owner_version,
-            purge_revision=frozen.purge_revision,
-            hold_revision=hold_revision,
-            now=await self._database_now(),
-        )
+        try:
+            await self._repo.transition_fence_state_settlement(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                owner_key=fence.owner_key,
+                expected_state=ErasureFenceState.ERASING,
+                expected_revision=fence.revision,
+                new_state=ErasureFenceState.BLOCKED,
+                expected_owner_version=frozen.owner_version,
+                purge_revision=frozen.purge_revision,
+                hold_revision=hold_revision,
+                now=await self._database_now(),
+            )
+        except ValueError:
+            # S5-C-1 例外条款：fence 写失败 → 具名 reconcile（checkpoint 已落账
+            # 输出态 reason），零自动重试。
+            return
 
     async def _ack_lost_repair(
         self,

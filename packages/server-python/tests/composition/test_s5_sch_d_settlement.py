@@ -748,6 +748,90 @@ async def test_settlement_idempotent_replay(db_session, session_factory, monkeyp
                 assert await _cp(verify, op1, k, "state") == "pending"
 
 
+async def test_settlement_fence_write_failure_reconcile(
+    db_session, session_factory, monkeypatch
+):
+    """S5-C-8 行 13：settlement fence 写永久失败（CAS/owner-version/stale 注入）→
+    具名 reconcile：checkpoint blocked + 进入时输出态对应持久 reason，fence 保持
+    erasing（可观察），零自动重试、零二次 recovery/adapter 调用。"""
+    from app.contexts.agent_workspace.infrastructure import (
+        erasure_repository as _repo_mod,
+    )
+
+    _patch_resolver(monkeypatch, _lookup_only_descriptor())
+    tid, cid, op1 = await _settle_setup(db_session)
+    adapter = _LookupNoneAdapter()
+
+    async def _fence_write_fails(self, **kwargs):
+        raise ValueError("fence write permanently failed (CAS conflict)")
+
+    monkeypatch.setattr(
+        _repo_mod.AgentErasureRepository,
+        "transition_fence_state_settlement",
+        _fence_write_fails,
+    )
+    service = SettlementService(
+        db_session, scan_providers=build_scan_providers(db_session),
+        adapter_resolver=_noop_adapter_resolver(adapter),
+    )
+    # 不 crash：fence 写失败 → 具名 reconcile（例外条款）。
+    await service.closeout_erasing(
+        tenant_id=tid, conversation_id=cid, purge_operation_id=op1,
+        owner_key=_EXTERNAL,
+    )
+    await db_session.commit()
+
+    async with session_factory() as verify:
+        assert await _cp(verify, op1, _EXTERNAL, "state") == "blocked", "具名 reconcile"
+        assert (
+            await _cp(verify, op1, _EXTERNAL, "reason_code")
+            == _OUTCOME_UNKNOWN_REASON[_EXTERNAL]
+        ), "进入时输出态对应持久 reason"
+        assert await _fence_state(verify, cid, _EXTERNAL) == "erasing", "fence 可观察"
+    assert adapter.lookup_calls == 1, "零自动重试 / 零二次 recovery"
+
+
+async def test_settlement_lookup_crash_replay_no_fork(session_factory, monkeypatch):
+    """S5-C-8 行 16：lookup 返回后、fence/checkpoint CAS 落账前崩溃 → 重放同输入
+    → 同一 owner-scoped 终态（CAS 单写、无第二次删除副作用、无跨 owner 分叉）。"""
+    _patch_resolver(monkeypatch, _lookup_only_descriptor())
+    async with session_factory() as seed:
+        tid, cid, op1 = await _settle_setup(seed)
+
+    adapter = _LookupEvidenceAdapter()
+    # 第一轮：lookup 返回 evidence 后崩溃（session rollback 丢弃未提交 CAS）。
+    async with session_factory() as s:
+        service = SettlementService(
+            s, scan_providers=build_scan_providers(s),
+            adapter_resolver=_noop_adapter_resolver(adapter),
+        )
+        await service.closeout_erasing(
+            tenant_id=tid, conversation_id=cid, purge_operation_id=op1,
+            owner_key=_EXTERNAL,
+        )
+        await s.rollback()  # 崩溃模拟
+
+    # 重放（同 token/idempotency key）：lookup 幂等再调用 → CAS 落账同一结果。
+    async with session_factory() as s:
+        service = SettlementService(
+            s, scan_providers=build_scan_providers(s),
+            adapter_resolver=_noop_adapter_resolver(adapter),
+        )
+        await service.closeout_erasing(
+            tenant_id=tid, conversation_id=cid, purge_operation_id=op1,
+            owner_key=_EXTERNAL,
+        )
+        await s.commit()
+
+    async with session_factory() as verify:
+        assert await _fence_state(verify, cid, _EXTERNAL) == "erased"
+        assert await _cp(verify, op1, _EXTERNAL, "state") == "acked"
+        for k in _OWNER_KEYS:
+            if k != _EXTERNAL:
+                assert await _cp(verify, op1, k, "state") == "pending", "零跨 owner 分叉"
+    assert adapter.lookup_calls == 2, "重放同输入（lookup 幂等）"
+
+
 async def test_settlement_new_tx1_not_created(db_session, session_factory):
     """S5-C-2 禁新 Tx1：blocked checkpoint + active fence → 无 settlement 输入态
     → 零写（settlement 通道不得推进 pending/blocked→erasing）。"""

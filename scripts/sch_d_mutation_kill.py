@@ -99,6 +99,20 @@ MUTATIONS = [
         ['        return "window_erasing"  # M：已 blocked fence 仍重收'],
         [f"{_T}test_settlement_idempotent_replay"],
     ),
+    (
+        "M-SCH-D-reconcile-exception 删例外映射（fence 写失败不收敛）",
+        SETTLEMENT,
+        ['        try:\n            await self._repo.transition_fence_state_settlement(\n                tenant_id=tenant_id,\n                conversation_id=conversation_id,\n                owner_key=fence.owner_key,\n                expected_state=ErasureFenceState.ERASING,\n                expected_revision=fence.revision,\n                new_state=ErasureFenceState.BLOCKED,\n                expected_owner_version=frozen.owner_version,\n                purge_revision=frozen.purge_revision,\n                hold_revision=hold_revision,\n                now=await self._database_now(),\n            )\n        except ValueError:\n            # S5-C-1 例外条款：fence 写失败 → 具名 reconcile（checkpoint 已落账\n            # 输出态 reason），零自动重试。\n            return'],
+        ['        try:\n            await self._repo.transition_fence_state_settlement(\n                tenant_id=tenant_id,\n                conversation_id=conversation_id,\n                owner_key=fence.owner_key,\n                expected_state=ErasureFenceState.ERASING,\n                expected_revision=fence.revision,\n                new_state=ErasureFenceState.BLOCKED,\n                expected_owner_version=frozen.owner_version,\n                purge_revision=frozen.purge_revision,\n                hold_revision=hold_revision,\n                now=await self._database_now(),\n            )\n        except ValueError:\n            raise  # M：删例外映射（fence 写失败崩溃）'],
+        [f"{_T}test_settlement_fence_write_failure_reconcile"],
+    ),
+    (
+        "M-SCH-D-lookup-nofork 去 CAS（重放不写 checkpoint）",
+        SETTLEMENT,
+        ['            if checkpoint is not None and checkpoint.state != "acked":\n                checkpoint.state = "acked"\n                checkpoint.ack_digest = ack'],
+        ['            if False:  # M：去 CAS（重放不收敛 checkpoint）\n                checkpoint.state = "acked"\n                checkpoint.ack_digest = ack'],
+        [f"{_T}test_settlement_lookup_crash_replay_no_fork"],
+    ),
 ]
 
 
