@@ -16,12 +16,12 @@
 
 ### R1-S5 Root Integration: settlement idempotency key 对齐 + B/C/D 联合组合根（root PR #577 Draft）
 
-状态：🟡 进行中（root PR #577 Draft，Draft checks 全绿后停止；不转 Ready/评分/合并）
+状态：🟡 进行中（root PR #577 Draft，独立广域三面复审进行中；不转 Ready/评分/合并）
 类型：实现（反例先行 + 具名 mutation kill）
 领域：R1 retention/purge scheduler
-当前执行模式：plan-do（root integration batch）
+当前执行模式：plan-do（root integration batch → 独立广域三面复审）
 最近接手工具：Claude Code
-分支：feature/req041-047-r1-s5-sch-b-owner-execution-orchestrator（HEAD 5033efc5）
+分支：feature/req041-047-r1-s5-sch-b-owner-execution-orchestrator（HEAD 4252d8e4）
 
 需求来源：
 - Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-D S5-SCH-1.3/1.5/1.6 + S5-SCH-2/3/4/5
@@ -35,11 +35,11 @@ key）；B/C/D 联合组合根 `scheduler_composition.py`（六 owner participan
 concrete SettlementPort + rebuild + coordinator + claim/lease，partial wiring
 `CompositionNotReadyError` fail closed；orchestrator `SettlementPort` 携带 entry
 事务 session，concrete settlement 在调用方事务内收口）。
-下一步：Draft checks 全绿后停止（不转 Ready/评分/合并）。
+下一步：独立 root 广域三面复审（三面计数独立记录；P0/P1 清零后停止，不转 Ready/评分/合并）。
 验证状态：SCH-A/B/C/D + key 对齐 + 联合 wiring 120 专项全绿；composition 全量 659
-passed；ruff/mypy 0 regressions；docs gates 待 exit 0；mutation kill（删除 ref/
-session 输入 / key 加入 lease_epoch-attempt / 去掉 SCH-C/SCH-D wiring / 去掉
-coordinator 触发）全部转红后恢复源码。
+passed；ruff/mypy 0 regressions；docs gates exit 0；git diff --check clean；mutation
+kill（删除 ref/session 输入 / key 加入 lease_epoch-attempt / 去掉 SCH-C/SCH-D
+wiring / 去掉 coordinator 触发）全部转红后恢复源码。
 交接备注：root PR #577 base=main，保持 Draft；不创建新 child PR；不新增 migration
 043、不改 registry（external/runtime 保持 `erase_available=False` + FailClosed 槽
 位，不伪造生产能力）、不启用生产 wiring、不启动 S6/C1。
