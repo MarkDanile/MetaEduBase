@@ -737,6 +737,87 @@ class AgentErasureRepository:
         await self._session.flush()
         return _fence_to_domain(model)
 
+    async def transition_fence_state_settlement(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        owner_key: str,
+        expected_state: ErasureFenceState,
+        expected_revision: int,
+        new_state: ErasureFenceState,
+        expected_owner_version: int,
+        purge_revision: int,
+        hold_revision: int,
+        ack_digest: str | None = None,
+        now: datetime | None = None,
+    ) -> ErasureFence:
+        """S5-C-2 第 6 条：settlement 专用 fence 写（scheduler slice 前置项）。
+
+        与 ``transition_fence_state`` 的差异**仅**为 owner_version 校验基准 =
+        **旧 operation frozen snapshot**（``expected_owner_version``），替代
+        ``require_owner_version`` 的已安装 registry 等值校验（drift/case-E 下
+        等值必 fail，族 A 根因）。**保留其余全部守卫**：状态机显式转移表、
+        purge_revision >= 1、purge/hold fencing token 单调非降、ack_digest 仅
+        erased 边可用、expected_state/revision CAS。**其他写者不得复用本路径**
+        （S5-C-2：settlement 是唯一绕过者）。
+        """
+        require_owner(owner_key)
+        effective_now = now or _utcnow()
+        result = await self._session.execute(
+            select(ErasureFenceModel)
+            .where(
+                ErasureFenceModel.tenant_id == tenant_id,
+                ErasureFenceModel.conversation_id == conversation_id,
+                ErasureFenceModel.owner_key == owner_key,
+            )
+            .with_for_update()
+        )
+        model = result.scalar_one_or_none()
+        if model is None:
+            raise ValueError("erasure fence missing; cannot transition")
+        # settlement 版本守卫：fence 行记录的 owner_version 必须匹配 frozen snapshot
+        # 基准（不对比已安装 registry）。
+        if model.owner_version != expected_owner_version:
+            raise ValueError(
+                f"erasure fence owner_version {model.owner_version} != frozen "
+                f"snapshot {expected_owner_version}; settlement fence write rejected"
+            )
+        if model.state != expected_state.value or model.revision != expected_revision:
+            raise ValueError("erasure fence CAS conflict")
+        current_state = ErasureFenceState(model.state)
+        if (current_state, new_state) not in _FENCE_ALLOWED_TRANSITIONS:
+            raise ValueError(
+                f"illegal erasure fence transition {current_state} -> {new_state}"
+            )
+        if purge_revision < 1:
+            raise ValueError(
+                f"erasure fence transition {current_state} -> {new_state} requires "
+                f"purge_revision >= 1, got {purge_revision}"
+            )
+        if purge_revision < model.purge_revision or hold_revision < model.hold_revision:
+            raise ValueError(
+                "erasure fence fencing token regression: purge_revision/hold_revision "
+                "must be monotonically non-decreasing"
+            )
+        if new_state is ErasureFenceState.ERASED and not ack_digest:
+            raise ValueError("erased fence requires ack_digest")
+        if new_state is not ErasureFenceState.ERASED and ack_digest is not None:
+            raise ValueError(
+                f"ack_digest only allowed on erased transition, got non-erased "
+                f"{current_state} -> {new_state}"
+            )
+        model.state = new_state.value
+        model.purge_revision = purge_revision
+        model.hold_revision = hold_revision
+        if new_state is ErasureFenceState.ERASED:
+            model.ack_digest = ack_digest
+            model.acked_at = effective_now
+        model.revision = model.revision + 1
+        model.updated_at = effective_now
+        await self._session.flush()
+        return _fence_to_domain(model)
+
     # --- PurgeOperation / owner checkpoint -------------------------------
 
     async def create_purge_operation(

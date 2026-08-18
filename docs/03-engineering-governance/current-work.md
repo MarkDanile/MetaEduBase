@@ -14,14 +14,31 @@
 
 ## 当前进行中
 
-### R1-S5 SCH-C: Rebuild & Seeding（stacked child，base = SCH-B root）
+### R1-S5 SCH-D: Settlement & Retry-Reconcile（stacked child，base = SCH-B/C root）
 
-状态：🟡 进行中（Draft PR #578，checks 全绿后停止；不转 Ready/评分/合并）
+状态：🟡 进行中（Draft PR #579，checks 全绿后停止；不转 Ready/评分/合并）
+类型：实现（反例先行 + 具名 mutation kill）
+领域：R1 retention/purge scheduler
+当前执行模式：plan-do（TD-092 三面复审）
+最近接手工具：Claude Code
+分支：feature/req041-047-r1-s5-sch-d-settlement-retry-reconcile
+
+需求来源：
+- Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-C S5-C-0..9 + §R1-S5-D S5-SCH-4 SCH-D 行
+
+当前进展：实现完成 + **反例矩阵完整性收口批次**：独立验收审计 P0=0/P1=1（根因 = S5-C-8 行 13/16 未覆盖，历史 P0=0/P1=0/P2=5/P3=4 保留不覆盖；不递延 REQ-047）——行 13（fence 写失败 → 具名 reconcile，S5-C-1 例外条款落地）+ 行 16（lookup 崩溃重放无分叉）；S5-C-8 16 行逐行映射表建立（PR body + 测试头）；`SettlementService`（六输出态 + 锁序 + frozen-snapshot + CAS 单写 + erasing→blocked + failed 收敛 + 禁新 Tx1）；`adapter_recovery`（RecoveryDescriptor + 历史 resolver + FailClosed 装配）；`retry_reconcile`（内部命令边界）。23 专项 + 12/12 mutation kill；composition 646 passed。
+下一步：独立定向复核（16 行逐行 PASS 已核）→ Draft checks 全绿后停止（不转 Ready/评分/合并）。
+验证状态：SCH-D 23 专项全绿；SCH-A/B/C+I1/I2 回归 158 passed；composition 646 passed；ruff/mypy 0 regressions；docs gates exit 0；mutation kill 12/12。
+交接备注：**stacked child**——base = SCH-B/C root（a8f4d561）；PR base = root 分支（非 main）；保留 B/C/D 联合 merged-boundary；不新增 migration 043、不改 registry、不启用生产 wiring、不启动 S6/C1。
+
+### R1-S5 SCH-C: Rebuild & Seeding（已 squash 合并入 root，待 B/C/D 联合评审）
+
+状态：🟡 进行中（已合并入 SCH-B/C root `a8f4d561`，root 保持 Draft，联合评审待 SCH-D 后）
 类型：实现（反例先行 + 具名 mutation kill）
 领域：R1 retention/purge scheduler
 当前执行模式：plan-do（TD-092 三面复审 + 完整性收口批次）
 最近接手工具：Claude Code
-分支：feature/req041-047-r1-s5-sch-c-rebuild-seeding
+分支：feature/req041-047-r1-s5-sch-c-rebuild-seeding（已删除；squash 入 root）
 
 需求来源：
 - Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-B S5-B-0..9
