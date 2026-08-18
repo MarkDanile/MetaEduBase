@@ -347,6 +347,9 @@ class SettlementService:
     async def _checkpoint_for_update(
         self, tenant_id: uuid.UUID, purge_operation_id: uuid.UUID, owner_key: str
     ) -> PurgeOwnerCheckpointModel | None:
+        """锁内重读 checkpoint（``populate_existing``：同事务内 raw SQL 写后必须
+        以数据库当前值重读——编排方预算耗尽路径先 raw UPDATE 为 failed 再进入
+        settlement，identity map 陈旧实例会导致 failed 收敛被静默跳过）。"""
         return (
             await self._session.execute(
                 select(PurgeOwnerCheckpointModel)
@@ -357,6 +360,7 @@ class SettlementService:
                     PurgeOwnerCheckpointModel.owner_key == owner_key,
                 )
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
 

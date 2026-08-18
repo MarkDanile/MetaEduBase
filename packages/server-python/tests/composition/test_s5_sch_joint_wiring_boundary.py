@@ -95,7 +95,10 @@ async def _claim(session, tid, cid):
     )
 
 
-async def _set_cp(session, op_id, owner_key, *, state, ack=None, digest=None, attempt=None):
+async def _set_cp(
+    session, op_id, owner_key, *, state, ack=None, digest=None, attempt=None,
+    reason=None,
+):
     sets = ["state = :state"]
     params = {"op": op_id, "k": owner_key, "state": state}
     if state == "acked":
@@ -110,6 +113,9 @@ async def _set_cp(session, op_id, owner_key, *, state, ack=None, digest=None, at
     if attempt is not None:
         sets.append("attempt = :attempt")
         params["attempt"] = attempt
+    if reason is not None:
+        sets.append("reason_code = :reason")
+        params["reason"] = reason
     await session.execute(
         text(
             "UPDATE metaedu.agent_conversation_purge_owners SET "
@@ -415,6 +421,55 @@ async def test_erasing_owner_settlement_in_entry_transaction(
         assert fence == "erased", "concrete settlement 收口 fence"
         assert await _cp(verify, op_id, _EXTERNAL, "state") == "acked"
     assert adapter.lookup_keys, "settlement lookup 执行（session 传递验证）"
+
+
+async def test_budget_exhaustion_concrete_settlement_converges_fence(
+    db_session, session_factory
+):
+    """预算耗尽路径：orchestrator raw SQL 写 failed 后经 concrete SettlementPort
+    同事务收敛 fence erasing→blocked。
+
+    变异「settlement checkpoint 重读不加 populate_existing（identity map 陈旧）」
+    → 红（converge 读 stale blocked 提前返回，fence 永留 erasing）。
+    """
+    from app.composition.owner_execution_orchestrator import RETRY_BUDGET
+
+    ws_core = "workspace.core.v1"
+    tid, cid = await _seed_conversation(db_session)
+    out = await _claim(db_session, tid, cid)
+    await db_session.commit()
+    op_id = out.token.purge_operation_id
+    for k in _OWNER_KEYS:
+        if k == ws_core:
+            await _set_cp(
+                db_session, op_id, k, state="blocked",
+                reason="purge_blocked_by_workspace_scan_nonzero",
+                attempt=RETRY_BUDGET,
+            )
+        else:
+            await _set_cp(db_session, op_id, k, state="acked")
+    await _seed_fence(db_session, tid, cid, ws_core, state="erasing")
+    await db_session.commit()
+
+    comp = build_scheduler_composition(
+        session_factory=session_factory,
+        settlement=build_settlement_port(),
+    )
+    await comp.run_cycle(tenant_id=tid, conversation_id=cid, purge_operation_id=op_id)
+    await db_session.commit()
+
+    async with session_factory() as verify:
+        fence = (
+            await verify.execute(
+                text(
+                    "SELECT state FROM metaedu.agent_erasure_fences "
+                    "WHERE conversation_id=:cid AND owner_key=:k"
+                ),
+                {"cid": cid, "k": ws_core},
+            )
+        ).scalar_one()
+        assert fence == "blocked", "预算耗尽后 concrete settlement 收敛 fence"
+        assert await _cp(verify, op_id, ws_core, "state") == "failed"
 
 
 async def test_external_slot_fail_closed_capability_zero_side_effect(

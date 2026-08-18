@@ -36,10 +36,12 @@ concrete SettlementPort + rebuild + coordinator + claim/lease，partial wiring
 `CompositionNotReadyError` fail closed；orchestrator `SettlementPort` 携带 entry
 事务 session，concrete settlement 在调用方事务内收口）。
 下一步：独立 root 广域三面复审（三面计数独立记录；P0/P1 清零后停止，不转 Ready/评分/合并）。
-验证状态：SCH-A/B/C/D + key 对齐 + 联合 wiring 120 专项全绿；composition 全量 659
-passed；ruff/mypy 0 regressions；docs gates exit 0；git diff --check clean；mutation
-kill（删除 ref/session 输入 / key 加入 lease_epoch-attempt / 去掉 SCH-C/SCH-D
-wiring / 去掉 coordinator 触发）全部转红后恢复源码。
+验证状态：SCH-A 29 + SCH-B 15（14+1 新判别）+ SCH-C 40 + SCH-D 23 + key 对齐 8 +
+联合 wiring 6（5+1 新判别）+ 生产 wiring 静态守卫 1 = **122 全绿**；composition 全量
+661 passed；ruff/mypy 0 regressions；docs gates exit 0；git diff --check clean；mutation
+kill（删除 ref/session 输入 / key 加入 lease_epoch-attempt / 去掉 SCH-C/SCH-D wiring /
+去掉 coordinator 触发 / 去掉 populate_existing / 去掉 pre-window 豁免）全部转红后恢复
+源码。
 交接备注：root PR #577 base=main，保持 Draft；不创建新 child PR；不新增 migration
 043、不改 registry（external/runtime 保持 `erase_available=False` + FailClosed 槽
 位，不伪造生产能力）、不启用生产 wiring、不启动 S6/C1。

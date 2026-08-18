@@ -84,7 +84,7 @@ _REJECT_SUFFIXES = (
 )
 
 
-def is_pre_window_gate(reason: str) -> bool:
+def is_pre_window_gate(reason: str | None) -> bool:
     return reason in _PRE_WINDOW_GATE_REASONS
 
 
@@ -377,8 +377,10 @@ class OwnerExecutionOrchestrator:
                     f"no entry port for owner {owner_key!r}; fail closed"
                 )
             # 统一 retry 计数：scan 族 owner 的 attempt 由编排方推进（Tx1 owner
-            # 在 entry 内自行推进，见 _TX1_OWNERS）。
-            if owner_key not in _TX1_OWNERS:
+            # 在 entry 内自行推进，见 _TX1_OWNERS）。**pre-window gate reason
+            # 不计入重试预算**（S5-SCH-1.4 冻结）——gate 期重入不推进 attempt，
+            # 避免长期 gate 解除后首个真实失败即触发预算耗尽落 failed。
+            if owner_key not in _TX1_OWNERS and not is_pre_window_gate(reason):
                 await session.execute(
                     text(
                         "UPDATE metaedu.agent_conversation_purge_owners SET "

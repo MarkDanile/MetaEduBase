@@ -393,6 +393,63 @@ async def test_pre_window_gate_exempts_budget(db_session, session_factory):
     assert settlement.converge == [], "pre-window 不写 failed"
 
 
+async def test_pre_window_gate_reentry_does_not_consume_budget(
+    db_session, session_factory
+):
+    """S5-SCH-1.4 判别：pre-window gate 重入不计入重试预算——attempt 不因 gate 期
+    entry 而推进；gate 解除后真实 entry 才消耗预算。
+
+    变异「gate 期仍推进 attempt」→ 红（长期 gate 后首个真实失败即预算耗尽落
+    failed，真实重试次数为零）。
+    """
+    tid, cid = await _seed_conversation(db_session)
+    out = await _claim(db_session, tid, cid)
+    await db_session.commit()
+    op_id = out.token.purge_operation_id
+    async with session_factory() as s:
+        await _set_cp(
+            s, op_id, _OWNER_KEYS[0], state="blocked",
+            reason=_REASON_LEGAL_HOLD, attempt=1,
+        )
+        await s.commit()
+
+    calls: list[str] = []
+    orch = _orchestrator(
+        session_factory,
+        entries={k: _blocking_entry(_REASON_LEGAL_HOLD, calls) for k in _OWNER_KEYS},
+    )
+    # gate 期两轮 cycle：attempt 不推进（不计预算）。
+    await orch.run_cycle(tenant_id=tid, conversation_id=cid, purge_operation_id=op_id)
+    await orch.run_cycle(tenant_id=tid, conversation_id=cid, purge_operation_id=op_id)
+
+    async with session_factory() as verify:
+        assert await _cp(verify, op_id, _OWNER_KEYS[0], "state") == "blocked"
+        assert (
+            await _cp(verify, op_id, _OWNER_KEYS[0], "attempt") == 1
+        ), "pre-window gate 重入不推进 attempt（不计入预算）"
+    # 对照：gate 解除（retryable 非 pre-window reason）后真实 entry 推进 attempt。
+    async with session_factory() as s:
+        await _set_cp(
+            s, op_id, _OWNER_KEYS[0], state="blocked",
+            reason="purge_blocked_by_workspace_erase_timeout", attempt=1,
+        )
+        await s.commit()
+    orch2 = _orchestrator(
+        session_factory,
+        entries={
+            k: _blocking_entry("purge_blocked_by_workspace_erase_timeout", calls)
+            for k in _OWNER_KEYS
+        },
+    )
+    await orch2.run_cycle(
+        tenant_id=tid, conversation_id=cid, purge_operation_id=op_id
+    )
+    async with session_factory() as verify:
+        assert (
+            await _cp(verify, op_id, _OWNER_KEYS[0], "attempt") == 2
+        ), "gate 解除后真实 entry 消耗预算（attempt 推进）"
+
+
 async def test_drift_fails_closed_zero_entry(db_session, session_factory):
     """周期级 token 重验：hold drift → fail closed（raise），零 entry。"""
     tid, cid = await _seed_conversation(db_session)
