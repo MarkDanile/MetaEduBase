@@ -36,8 +36,8 @@ MUTATIONS = [
     (
         "M-SCH-D-fence-write 删 settlement fence erasing→blocked 写",
         SETTLEMENT,
-        ['        await self._repo.transition_fence_state_settlement(\n            tenant_id=tenant_id,\n            conversation_id=conversation_id,\n            owner_key=fence.owner_key,\n            expected_state=ErasureFenceState.ERASING,\n            expected_revision=fence.revision,\n            new_state=ErasureFenceState.BLOCKED,\n            expected_owner_version=frozen.owner_version,\n            purge_revision=frozen.purge_revision,\n            hold_revision=hold_revision,\n            now=await self._database_now(),\n        )'],
-        ["        if False:  # M：删 settlement fence 写"],
+        ['        try:\n            await self._repo.transition_fence_state_settlement(\n                tenant_id=tenant_id,\n                conversation_id=conversation_id,\n                owner_key=fence.owner_key,\n                expected_state=ErasureFenceState.ERASING,\n                expected_revision=fence.revision,\n                new_state=ErasureFenceState.BLOCKED,\n                expected_owner_version=frozen.owner_version,\n                purge_revision=frozen.purge_revision,\n                hold_revision=hold_revision,\n                now=await self._database_now(),\n            )\n        except ValueError:\n            # S5-C-1 例外条款：fence 写失败 → 具名 reconcile（checkpoint 已落账\n            # 输出态 reason），零自动重试。\n            return'],
+        ['        # M：删 settlement fence 写（fence 保持 erasing）'],
         [
             f"{_T}test_settlement_post_window_blocked_converges",
             f"{_T}test_settlement_lookup_none_unknown",
