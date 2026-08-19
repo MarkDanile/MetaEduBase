@@ -14,79 +14,7 @@
 
 ## 当前进行中
 
-### R1-S5 Root Integration: settlement idempotency key 对齐 + B/C/D 联合组合根（root PR #577 Draft）
-
-状态：🟡 进行中（root PR #577 Draft，两 P1 阻塞项裁决一/二已落地；不转 Ready/评分/合并）
-类型：实现（反例先行 + 具名 mutation kill）
-领域：R1 retention/purge scheduler
-当前执行模式：plan-do（root integration batch → 广域三面复审 → 裁决落地）
-最近接手工具：Claude Code
-分支：feature/req041-047-r1-s5-sch-b-owner-execution-orchestrator（HEAD 5df59513）
-
-需求来源：
-- Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-D S5-SCH-1.3/1.5/1.6 + S5-SCH-2/3/4/5
-
-当前进展：settlement idempotency key 对齐——删除 `_default_idempotency_key` tenant+
-conversation 简化公式，逐 ref/binding 以 **frozen descriptor** 协议身份派生
-`external_erase_idempotency_key` / `runtime_destroy_idempotency_key`（不含
-tenant/conversation/lease_epoch/attempt），adapter 调用携带 participant Tx1 所需
-稳定 ref 输入，E-2a 冻结 intent 重验（缺失/不一致 fail closed，禁 fallback 简化
-key）；B/C/D 联合组合根 `scheduler_composition.py`（六 owner participant map +
-concrete SettlementPort + rebuild + coordinator + claim/lease，partial wiring
-`CompositionNotReadyError` fail closed）。**广域三面复审裁决一/二落地**：裁决一
-（checkpoint.attempt 写者矩阵回填 plan S5-SCH-0/2：participant Tx1 / orchestrator
-scan 族 entry 前 / rebuild 仅初始化 / coordinator 不写 / pre-window 不推进）；
-裁决二（settlement 禁持锁 adapter I/O——SettlementService 改自管事务，closeout
-拆 T1 锁内读 → 锁外 lookup/replay → T2 全 token 重验 + CAS 落账，T2 任一失败
-fail closed 零写；orchestrator 在 entry 事务提交后调用 settlement port；无
-adapter 路径保持单事务）。
-下一步：裁决一/二完整验证（fresh composition 全量 + mutation + docs gates）后
-停止，等待 Ready 指令（不转 Ready/评分/合并）。
-验证状态：SCH-A 29 + SCH-B 16（14+2 判别）+ SCH-C 40 + SCH-D 23 + key 对齐 10
-（8+2 裁决二判别）+ 联合 wiring 7（5+2 判别）+ 生产 wiring 静态守卫 1 = **126
-全绿**；composition 全量 665 passed（fresh PG 安静窗口）；ruff/mypy 0 regressions；docs gates exit 0；
-git diff --check clean；mutation kill（删除 ref/session 输入 / key 加入
-lease_epoch-attempt / 去掉 SCH-C/SCH-D wiring / 去掉 coordinator 触发 / 去掉
-populate_existing / 去掉 pre-window 豁免 / double increment / adapter 移回锁内）
-全部转红后恢复源码。
-交接备注：root PR #577 base=main，保持 Draft；不创建新 child PR；不新增 migration
-043、不改 registry（external/runtime 保持 `erase_available=False` + FailClosed 槽
-位，不伪造生产能力）、不启用生产 wiring、不启动 S6/C1。
-
-### R1-S5 SCH-D: Settlement & Retry-Reconcile（已 squash 合并入 root，待联合评审）
-
-状态：🟡 进行中（已合并入 root `5033efc5`，root 保持 Draft；联合评审批次在 root
-integration 卡片承接）
-类型：实现（反例先行 + 具名 mutation kill）
-领域：R1 retention/purge scheduler
-当前执行模式：plan-do（TD-092 三面复审）
-最近接手工具：Claude Code
-分支：feature/req041-047-r1-s5-sch-d-settlement-retry-reconcile（squash 入 root）
-
-需求来源：
-- Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-C S5-C-0..9 + §R1-S5-D S5-SCH-4 SCH-D 行
-
-当前进展：实现完成 + **反例矩阵完整性收口批次**：独立验收审计 P0=0/P1=1（根因 = S5-C-8 行 13/16 未覆盖，历史 P0=0/P1=0/P2=5/P3=4 保留不覆盖；不递延 REQ-047）——行 13（fence 写失败 → 具名 reconcile，S5-C-1 例外条款落地）+ 行 16（lookup 崩溃重放无分叉）；S5-C-8 16 行逐行映射表建立（PR body + 测试头）；`SettlementService`（六输出态 + 锁序 + frozen-snapshot + CAS 单写 + erasing→blocked + failed 收敛 + 禁新 Tx1）；`adapter_recovery`（RecoveryDescriptor + 历史 resolver + FailClosed 装配）；`retry_reconcile`（内部命令边界）。23 专项 + 12/12 mutation kill；composition 646 passed。
-下一步：root integration 批次已承接 key 对齐与联合评审（见 root integration 卡片）。
-验证状态：SCH-D 23 专项全绿；SCH-A/B/C+I1/I2 回归 158 passed；composition 646 passed；ruff/mypy 0 regressions；docs gates exit 0；mutation kill 12/12。
-交接备注：**stacked child**——已 squash 入 root PR #577（`5033efc5`）；保留 B/C/D 联合 merged-boundary；不新增 migration 043、不改 registry、不启用生产 wiring、不启动 S6/C1。
-
-### R1-S5 SCH-C: Rebuild & Seeding（已 squash 合并入 root，待 B/C/D 联合评审）
-
-状态：🟡 进行中（已合并入 SCH-B/C root `a8f4d561`，root 保持 Draft，联合评审待 SCH-D 后）
-类型：实现（反例先行 + 具名 mutation kill）
-领域：R1 retention/purge scheduler
-当前执行模式：plan-do（TD-092 三面复审 + 完整性收口批次）
-最近接手工具：Claude Code
-分支：feature/req041-047-r1-s5-sch-c-rebuild-seeding（已删除；squash 入 root）
-
-需求来源：
-- Plan: ../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md §R1-S5-B S5-B-0..9
-
-当前进展：实现完成 + 首轮三面返修（族 A~E）+ **反例矩阵完整性收口批次**：独立验收审计 P0=0/P1=1（根因 = 把 SCH-C 必验矩阵 14 行错误递延到 REQ-047，历史计数保留不覆盖；REQ-047 不承接缺口）——补齐行 2/7/9/11/12/16/17/22/26/27/28/31/32 真实 PG 判别 + 行 23（removed-completed）+ **G3 active-hold 门禁（`RebuildKind.HOLD_GATED`）**；行 21 复用 I2 已冻结 family-B 门禁（无 I2 回归，临时变异验证）；S5-B-9 实义 29 行逐行映射表建立（测试头 + `sch_c_mutation_kill.py` 27 项具名 mutation）；40 专项全绿；composition 全量 623 passed；ruff/mypy/docs gates 全绿。
-下一步：新 HEAD Draft checks 全绿后停止（已同步 PR body 与工作台；不转 Ready、不评分、不合并）。
-验证状态：composition 623 passed（145s）；mutation kill 27/27；mypy 243 historical / 0 regressions；docs gates exit 0；SCH-A/B+I1/I2 相关回归 192 passed；三面首轮原始计数保留（P0=0/P1=9/P2=11/P3=10）+ 本轮审计（P0=0/P1=1）不覆盖
-交接备注：**stacked child**——SCH-B root（0081ecd9）暂停等待子层；PR base = SCH-B root 分支（非 main）；保留 B/C/D 联合 merged-boundary；不实现 SCH-D concrete settlement、adapter lookup/replay、内部 API；不新增 migration 043、不改 registry；不启用生产 wiring。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -104,6 +32,9 @@ integration 卡片承接）
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|--------|
+| 2026-08-19 | R1-S5 Root Integration: settlement idempotency key 对齐 + B/C/D 联合组合根 | 🟢 完成 | root PR #577（squash `636fc425`）合并；评分 92（基线 `995aa223`）；126 专项 + composition 665 + mutation 8 组 + Backend 2600/1/4 + Frontend 326+55；production erase 入口仍不可达；follow-up REQ-047 + TD-093/095/096 + td-032 | [PR #577](https://github.com/MarkDanile/MetaEduBase/pull/577)（squash `636fc425`）/ [work-log](work-log.md) / [score 92](04-retrospectives/review-score-log.md) |
+| 2026-08-19 | R1-S5 SCH-D: Settlement & Retry-Reconcile（squash 入 root） | 🟢 完成 | 已 squash 入 root PR #577（`5033efc5`）并随 root 合并（`636fc425`）；child 正式评分 92（Original）；23 专项 + 12/12 mutation kill + composition 646 passed | [PR #579](https://github.com/MarkDanile/MetaEduBase/pull/579) / [score 92](04-retrospectives/review-score-log.md) |
+| 2026-08-19 | R1-S5 SCH-C: Rebuild & Seeding（squash 入 root） | 🟢 完成 | 已 squash 入 root PR #577（`a8f4d561`）并随 root 合并（`636fc425`）；child 正式评分 92（Original）；40 专项 + 27/27 mutation kill + composition 623 passed | [PR #578](https://github.com/MarkDanile/MetaEduBase/pull/578) / [score 92](04-retrospectives/review-score-log.md) |
 | 2026-08-17 | R1-S5 SCH-A Claim & Lease 实现（migration 042 + ConversationPurgeScheduler） | 🟢 完成 | migration 042 + claim/lease 服务（四转移 expected-epoch CAS、tenant 上限 4、takeover 后强制聚合）；评分 93（最终 P0/P1/P2=0）；29 专项 + 13/13 mutation kill + Backend 2504/1/4；**SCH-A 完成不代表 Scheduler 已启用**；follow-up REQ-047 | [PR #575](https://github.com/MarkDanile/MetaEduBase/pull/575)（squash merge `36d091a4`）/ [work-log](work-log.md) / [score 93](04-retrospectives/review-score-log.md) |
 | 2026-08-17 | R1-S5-D-A SCH-A Lease Carrier 契约纠偏（contract-first，纯文档） | 🟢 完成 | durable lease carrier 契约已纠偏：`updated_at` 退出租约事实源、migration 042 冻结（SCH-A 落地）、三态×四转移 epoch CAS 全函数、owner entry 门禁、SCH-9..16（反例矩阵 53→61 冻结验收载体）；评分 90（最终 P0/P1=0）；**纠偏完成不代表 migration 042 或 SCH-A 已实现**；follow-up REQ-047 | [PR #573](https://github.com/MarkDanile/MetaEduBase/pull/573)（squash merge `3438c53b`）/ [work-log](work-log.md) / [score 90](04-retrospectives/review-score-log.md) |
 | 2026-08-16 | R1-S5-D Scheduler 契约冻结（contract-first，纯文档） | 🟢 完成 | S5-SCH-0..5 全卷（状态机/锁序/写者矩阵/四 slice 拆分/53 项反例映射/REQ-047 分流）；评分 87（最终 P0/P1=0）；**契约完成不代表 Scheduler 实现完成**；SCH-A/B/C/D 未开工，B/C/D 联合 merged-boundary | [PR #571](https://github.com/MarkDanile/MetaEduBase/pull/571)（squash merge `253e53e4`）/ [work-log](work-log.md) / [score 87](04-retrospectives/review-score-log.md) |
