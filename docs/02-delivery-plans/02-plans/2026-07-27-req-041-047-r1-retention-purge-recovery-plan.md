@@ -2122,6 +2122,13 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 **checkpoint（agent_conversation_purge_owners）写者全集**：
 `create_owner_checkpoint`（`pending`，repository:886）· participant 三方法（`blocked/acked`；external/runtime Tx1 加 `erasing`）· **scheduler 写 `failed`**（重试预算耗尽，S5-SCH-1.4；优先级 5 唯一产生者，S5-A-2 冻结）· rebuild seeding（S5-B-3 阶段 1，一次事务）。coordinator 不写 checkpoint（S5-A-1 冻结，derived-conflict 裁决）。**编排方不写 blocked**——「记 blocked」一律经 participant 入口（`_record_blocked`），编排方只写 `failed` 与 `next_retry_at`。
 
+**checkpoint.attempt 推进写者（2026-08-18 root 广域三面复审裁决一，回填登记）**：
+- external.payload.v1 / runtime.private.v1：**participant Tx1 唯一推进**（pending/blocked→erasing 时 attempt+1；崩溃重放同 invocation 不重复推进）——SCH-B orchestrator 对这两 owner **不推进**（`_TX1_OWNERS` 排除，防 scheduler + Tx1 double increment）。
+- 无 Tx1 的 scan/transport owner（workspace.core.v1 / execution.core.v1 / workspace.transport.v1 / execution.transport.v1）：**SCH-B orchestrator 在 owner entry 前推进**（统一 retry 计数）；**pre-window gate reason（legal_hold 等，S5-SCH-1.4）不推进**——计数点与判定点一致，长期 gate 不得消耗预算。
+- rebuild/seeding：**仅初始化** attempt（新 checkpoint 建行 attempt=0；继承路径按 S5-B-3 冻结）。
+- coordinator 不写 checkpoint（含 attempt）。
+- 全部推进不变量：Conversation-first、owner-scoped、锁内重读、**每次真实 entry 至多推进一次**。
+
 **fence（agent_erasure_fences）写者全集**：
 participant（ensure/transition，owner lock 内）· **settlement fence `erasing→blocked` 写者（4 非 core owner，S5-C-7）**· **rebuild 的 case-E versioned fence migration（`fence.owner_version` 单调推进，仅 `active` fence，owner lock + fence FOR UPDATE 内，S5-B-2 case E / S5-B-4）**。scheduler **不写 fence 状态机边**（state 转移仅经 settlement/participant；case-E `owner_version` 迁移为唯一例外）。
 
@@ -2173,6 +2180,13 @@ participant（ensure/transition，owner lock 内）· **settlement fence `erasin
 
 **统一锁序**：scheduler 全部进入点 Conversation-first（claim/rebuild/quiesce 判定/settlement 进入/单 owner 重试编排/周期全量重算）；settlement 进入点锁序表 = S5-C-7 逐字引用（**单事务**：Conversation → owner advisory → fence FOR UPDATE → operation FOR UPDATE（frozen-snapshot）→ checkpoint FOR UPDATE，fence+checkpoint CAS 同事务原子；**Tx1-Tx2 双事务协议仅存在于 external/runtime participant 窗口期，settlement 通道禁新 Tx1**）。
 
+**settlement「单事务」语义澄清（2026-08-18 root 广域三面复审裁决二，回填登记）**：S5-C-7「单事务」只保证数据库锁内的读取与 fence/checkpoint CAS 落账原子；**adapter I/O（receipt_lookup / delete_object / destroy_session）不得在数据库锁内执行**（E-2「adapter 调用不得持锁做外部 I/O」）。settlement recovery 因此拆为两阶段：
+- **T1（读阶段，事务 1）**：Conversation-first 锁序读取 frozen descriptor、ref/session 冻结窗口、intent digest、attempt、lease/revision/fence/checkpoint token；提交释放全部 DB 锁。
+- **锁外阶段**：receipt_lookup 或同 key replay（无任何 DB 锁、无 session 复用）。
+- **T2（落账阶段，事务 2）**：重新按同一锁序加锁，精确重读并校验全部 token（purge_revision、lease_epoch、operation revision、frozen registry/descriptor、hold snapshot、fence revision/state/owner_version/purge_revision、checkpoint state/attempt/checkpoint_digest、external ref/runtime session ref、stable idempotency key），任一重验失败 → fail closed 零 DB 写、不自动发起第二次 adapter 调用、不创建新 Tx1；全部通过才执行 fence/checkpoint/receipt CAS 落账。
+- **无 adapter 路径（`converge_failed_fence`、ack_lost repair、post_window_blocked 收敛、输出态 5/6 与无恢复能力判定）保持单事务**。
+- 禁止通过 session 复用、隐式 begin 或调用方事务包装让 adapter I/O 处于持锁事务中。
+
 **scheduler 自有写事务清单（冻结，均 Conversation-first）**：(a) lease claim/takeover/续期（operation.lease_epoch CAS，短事务）；(b) 预算耗尽写 checkpoint `failed` + fence failed 收敛（经 settlement 进入点收口）；(c) `next_retry_at` 退避写（随 claim/续期短事务）；(d) rebuild 单事务（operation/checkpoint seeding + case-E fence.owner_version + Conversation.purge_revision+1）。S5-B-3 阶段 2 读集一致性写者清单前向增补：scheduler 上述四类写入均持 Conversation 首锁，符合「任一写者绕过 Conversation 首锁即契约失败」。
 
 **崩溃恢复点（四分支，冻结）**：claim 后崩溃 → lease 到期 takeover（lease_epoch CAS）；rebuild 崩溃 → 单事务回滚零残留（旧 operation 完整保留可重放）；participant Tx1 后崩溃（Tx2 未收口）→ E-2a 重放续做（settlement 收口前崩溃同路径）；**循环中途崩溃/接管 → 重入前按 checkpoint 态恢复账本**（1.3b 触发聚合 + 1.3 owner 级态重读：acked/failed 跳过、erasing 交 settlement、不得重跑已完成 owner）。任何恢复路径重入前必须 token 重验（1.3a）。
@@ -2189,6 +2203,7 @@ participant（ensure/transition，owner lock 内）· **settlement fence `erasin
 | operation `scheduled` 初建 | `create_purge_operation`（scheduler claim/rebuild 调用） | 见 S5-SCH-0 |
 | operation `cancelled` | restore-cancel（生命周期） | — |
 | checkpoint 全列 | participant / scheduler（`failed`）/ seeding | 编排方不写 blocked（经 participant 入口）；coordinator 只读 |
+| checkpoint.attempt | external/runtime：**participant Tx1**（pending/blocked→erasing 时 +1，重放不重复）；scan/transport：**SCH-B orchestrator**（owner entry 前 +1，**pre-window gate reason 不推进**）；rebuild/seeding 仅初始化 | 每次真实 entry 至多一次；Conversation-first + owner-scoped + 锁内重读；coordinator 不写（2026-08-18 裁决一回填） |
 | fence.state（状态机边） | participant / settlement（S5-C-7） | scheduler 不写状态机边 |
 | fence.owner_version（case E migration） | rebuild/scheduler（仅 active fence，owner lock + fence FOR UPDATE 内） | S5-B-2 case E / S5-B-4 |
 | ledger / binding | participant / settlement | — |
