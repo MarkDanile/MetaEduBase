@@ -14,23 +14,23 @@
 
 ## 当前进行中
 
-### TASK-R1-S6: Retention clocks 与真实故障矩阵（contract-first）
+### TASK-R1-S6-I1: Retention workers（run_event_retention + run_audit_retention + migration 043）
 
 状态：🟡 进行中
-类型：REQ-041/047 R1-S6（contract-first 冻结 + 分阶段实现）
+类型：REQ-041/047 R1-S6-I1（S6 契约冻结已批准，分阶段实现第一片）
 领域：scheduler / retention / purge-recovery
-当前执行模式：contract-first（本阶段仅冻结 spec/plan，不写业务实现）
+当前执行模式：实现（contract-first 已冻结并并入 main，本 PR 仅实现 S6-I1）
 最近接手工具：Claude Code
-分支：feature/req041-047-r1-s6-retention-clocks-fault-matrix-contract
+分支：feature/req041-047-r1-s6-retention-workers
 
 需求来源：
 - Spec: [R1 Retention/Purge/恢复专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)（R1-AC1..12）
-- Plan: [R1 分 Slice 实施计划 §R1-S6](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s6retention-clocks-与真实故障矩阵)
+- Plan: [R1 分 Slice 实施计划 §R1-S6-1/2/3/10](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s6retention-clocks-与真实故障矩阵)（契约冻结经 PR #581 并入 main `01524667`）
 
-当前进展：横向事实与风险审计完成（5 agent：execution/workspace 写者全集、retention 时钟、故障入口与测试基建、迁移/发布/恢复流程）；S6 契约冻结已写入 plan §R1-S6（S6-0 审计对账 + S6-1 时钟 + S6-2/3 retention workers + S6-4 写者全集矩阵 + S6-5 故障矩阵 + S6-6 巡检 + S6-7 发布 + S6-8 恢复 + S6-9 R1-AC1..12 映射 + S6-10 边界）。三面复审首轮原始计数 P0=1/P1=12/P2=17/P3=17（保留），按族 1~10 统一返修 + 定向复核（P0=0/P1=4/P2=6）二次返修闭环；**Draft PR #581 已创建（OPEN/Draft/MERGEABLE）**。
-下一步：停等用户明确批准进入 S6 实现 PR；在此之前不评分/不转 Ready/不合并。
-验证状态：docs gate 通过（31 known issue allowlisted）；净 diff 仅 plan + current-work 两纯文档文件（+183/-2）；三面 + 定向复核全部闭环（最终 P0/P1=0）。
-交接备注：**C1 仍 Blocked，禁止提前启动**；S5 production wiring 不在本任务；本阶段 PR 保持 Draft，不评分/不转 Ready/不合并；冻结后停等用户明确批准再进 S6 实现 PR。
+当前进展：S6-I1 实现完成——`run_event_retention`（payload expiry + 连续前缀 prune + `first_available_event_seq` 单调推进 + `event_log_complete=False` + hold 读侧裁决一 + DB clock + 幂等）、`run_audit_retention`（365 天 prune + children-first FK 顺序 + hold/非终态/outcome_unknown/未解决审批/projection/存活子 run blocked + tenant scope + 幂等）、migration 043（append-only guard 四分支白名单：expired/archived tombstone 写 + 已 tombstone 行 DELETE，downgrade 还原 041）、两处已登记 S5 兼容修复（裁决一 hold 到期谓词宽化；裁决二 settlement T2 补 checkpoint.state 重验）、16 项具名 mutation kill（`scripts/s6i1_retention_mutation_kill.py`）。**三面复审返修已闭环**：P1-1 audit hold 检查并入 DELETE WHERE（S6-3.1 P2-6）+ 写时点重验原子回滚；P1-2 未解决审批「剪除证据→fail closed blocked」按冻结字面实现；P2 audit 候选 SQL 侧排除 seen_blocked（饿死修复）+ event retention 写并入 hold EXISTS + output_publish_state/ref-bearing 判别补测。**裁决 A 实施：升级 pre-existing 测试兼容性**（保留 frozen S6-10 widening 与 043 行为）：test_s3d_run_event_guard 新增 `test_guard_allows_external_state_only_tombstone`（branch 2 widening 判别）+ `test_guard_allows_delete_of_tombstoned_row`（branch 4 DELETE 放行判别），`test_guard_allows_controlled_purge_tombstone` 参数化 redacted/expired/archived（branch 1 widening），原 failing 测试改为非法 state 拒绝；test_s4ea_ref_tombstone_guard 新增 `test_guard_allows_external_state_only_tombstone`（branch 2 跨 3 状态）+ `test_guard_allows_delete_of_tombstoned_ref_cleared_row`（branch 4），原 failing 测试改为 ref 保留下 plain update 拒绝；test_alembic_migrations head 期望 042→043（不删 roundtrip/downgrade 验证）。mutation driver 同步新增 M-043-3（branch 2 widening 还原映射 s3d 新增 allow 测试）+ M-043-4（branch 4 DELETE 还原映射 s3d 新增 DELETE 测试）；mutation script 修复 import 顺序（按 ruff E402 提升到顶部 + `import sys as _sys`），加 DB guard 重载（仅 M-043-*，asyncpg 直连同步 043 guard 到测试 DB，restore 阶段写回真实 043 guard 防污染）。
+下一步：post-fix 收口——决 A 修复提交 `29bf456d`（Ready→Backend full 2649 passed / 0 failed，87 分维持）；旧 #582 Original 评分基线 HEAD `2af39081` 已被 post-fix 变更取代，下一步移除旧 87 行（仅作为评分原子边界重建，不改 Metrics）→ 建立新 FINAL_IMPL_HEAD（含决 A 修复 + 2 处 P3 修正：s4ea `test_guard_rejects_ref_not_cleared` → `test_guard_rejects_plain_update` 重命名+docstring 对齐、current-work "待登记"措辞已与 TD-099 同步）→ 提交 push 保持 Draft → 重新三面独立复评 → 正式重评分（新增唯一 #582 Original 行覆盖 FINAL_IMPL_HEAD，旧 3f0705fc 提交可保留在 Git 历史中）→ check-review-score-submit passed → 评分 HEAD 固定 → 转 Ready → 等 CI Backend full 等三路 required checks 全绿 → 等待下一条 Ready/合并指令。
+验证状态：043 guard 三组测试（test_s3d 11 funcs + test_s4ea 10 funcs + test_alembic_migrations 11 funcs）本地全绿；mutation kill 18/18（先红后绿，DB guard 重载逻辑在 16/16 旧版 + M-043-3/4 新版验证通过）；S6-I1 专项 36 passed（event 13 + audit 16 + hold 7）；受影响回归 SCH-A/B/C/D + hold/claim/erasure + settlement + execution 352 passed；composition 全量 705 passed；migration 043 standalone upgrade/downgrade/upgrade 往返成功（head 稳定 043）；ruff clean；mypy baseline 0 回归（243 historical / 76 keys）；docs gate --full 通过（32 known issue allowlisted）；git diff --check 干净。**最终 Backend full 等转 Ready 后由 CI 给出**。
+交接备注：**C1 仍 Blocked，禁止提前启动**；S6-I2/S6-I3 不在本 PR；registry capability 未翻转、S5 production wiring 未启用、无 HTTP/CLI/API、Score Log/Metrics Snapshot 未改（重评后基线 HEAD `2af39081` 的 87 行已从最终树移除，新 Original 行覆盖 FINAL_IMPL_HEAD）；review follow-up 已登记 TD-097（健壮性族 10 项）+ TD-098（契约语义张力 + outcome_unknown 死路径契约修订建议）+ **TD-099 已登记**（test_s3d/test_s4ea/test_alembic 兼容升级 + mutation script 修复 + 契约修订评审建议）。
 
 ## 下一批候选任务
 

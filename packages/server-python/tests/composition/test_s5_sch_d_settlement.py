@@ -1213,3 +1213,88 @@ async def test_inspect_readonly(db_session, session_factory):
     await db_session.rollback()
     async with session_factory() as verify:
         assert await _cp(verify, op1, _OWNER_KEYS[0], "state") == "pending", "零写"
+
+
+# ---------------------------------------------------------------------------
+# R1-S6 S6-I1 裁决二（S5 修改点 #2）：T2 补 checkpoint.state 重验（S6-F11）
+# ---------------------------------------------------------------------------
+
+
+class _MutateCheckpointStateAdapter:
+    """S6-F11 mutate-during-lookup：锁外 lookup 阶段把 checkpoint.state 改出
+    ``erasing``（T1 已提交、T2 未执行）→ T2 重验应 fail closed 零写。"""
+
+    supports_idempotent_replay = True
+    supports_receipt_lookup = True
+    lookup_calls = 0
+
+    def __init__(self, session_factory, *, tenant_id, purge_operation_id, owner_key):
+        self._session_factory = session_factory
+        self._tenant_id = tenant_id
+        self._purge_operation_id = purge_operation_id
+        self._owner_key = owner_key
+
+    async def receipt_lookup(self, *, idempotency_key):
+        self.lookup_calls += 1
+        async with self._session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "UPDATE metaedu.agent_conversation_purge_owners "
+                    "SET state = 'pending' "
+                    "WHERE tenant_id = :tid AND purge_operation_id = :op "
+                    "AND owner_key = :k"
+                ),
+                {
+                    "tid": self._tenant_id,
+                    "op": self._purge_operation_id,
+                    "k": self._owner_key,
+                },
+            )
+        return _pad64(f"ev:{idempotency_key}")
+
+    async def delete_object(self, **kwargs):
+        raise AssertionError("证据后不得 replay")
+
+    async def destroy_session(self, **kwargs):
+        raise AssertionError("证据后不得 replay")
+
+
+async def test_settlement_t2_checkpoint_state_verified(session_factory, monkeypatch):
+    """S6-I1 裁决二（S5 修改点 #2）：``_verify_t2_tokens`` 补 ``checkpoint.state ==
+    'erasing'`` 重验（S5-SCH-2 T2 token 清单落地缺口）——T2 前篡改 checkpoint.state
+    → fail closed 零写（fence 保持 erasing、checkpoint 零 settle 写、无二次 adapter
+    调用）。"""
+    _patch_resolver(monkeypatch, _lookup_only_descriptor())
+    async with session_factory() as seed:
+        tid, cid, op1, _refs = await _settle_window_setup(seed)
+
+    adapter = _MutateCheckpointStateAdapter(
+        session_factory,
+        tenant_id=tid,
+        purge_operation_id=op1,
+        owner_key=_EXTERNAL,
+    )
+    service = SettlementService(
+        session_factory,
+        scan_providers=build_scan_providers,
+        adapter_resolver=_noop_adapter_resolver(adapter),
+    )
+    with pytest.raises(ValueError, match="T2 checkpoint state"):
+        await service.closeout_erasing(
+            tenant_id=tid,
+            conversation_id=cid,
+            purge_operation_id=op1,
+            owner_key=_EXTERNAL,
+        )
+
+    async with session_factory() as verify:
+        assert await _fence_state(verify, cid, _EXTERNAL) == "erasing", (
+            "T2 fail closed 零写：fence 保持 erasing"
+        )
+        assert await _cp(verify, op1, _EXTERNAL, "state") == "pending", (
+            "checkpoint 保持篡改值（settlement 零写）"
+        )
+        assert await _cp(verify, op1, _EXTERNAL, "ack_digest") is None, (
+            "未落账：ack_digest 仍 NULL"
+        )
+    assert adapter.lookup_calls == 1, "零自动重试 / 零二次 adapter 调用"

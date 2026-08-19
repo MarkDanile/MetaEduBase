@@ -16,7 +16,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import exists, select, update
+from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1202,17 +1202,42 @@ class AgentErasureRepository:
         return _hold_to_domain(hold)
 
     async def has_active_legal_hold(
-        self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        now: datetime | None = None,
     ) -> bool:
         """是否存在任一 active hold。同一 Conversation 允许多个 active hold，
-        用 EXISTS 语义而非 scalar_one_or_none（多行不得抛 MultipleResultsFound）。"""
+        用 EXISTS 语义而非 scalar_one_or_none（多行不得抛 MultipleResultsFound）。
+
+        R1-S6 S6-1 裁决一（S5 代码修改点 #1）：active 判定从 ``state='active'``
+        宽化为 ``state='active' AND (expires_at IS NULL OR expires_at > now)``，
+        now 默认 = PostgreSQL ``clock_timestamp()``（DB 时钟，禁止应用时钟）。
+        过期 active hold 不再视为 active（Spec §3「legal hold…至显式解除或
+        ``expires_at``」），不再阻塞 purge/participant/retention prune；**不
+        bump ``hold_revision``**（hold_revision 仍只由 create/release 推进）。
+        ``now`` 仅允许测试注入，生产调用不传。
+        """
+        if now is not None:
+            expiry_predicate = ConversationLegalHoldModel.expires_at > now
+        else:
+            expiry_predicate = (
+                ConversationLegalHoldModel.expires_at > func.clock_timestamp()
+            )
         result = await self._session.execute(
             select(
                 exists(
                     select(ConversationLegalHoldModel.id).where(
                         ConversationLegalHoldModel.tenant_id == tenant_id,
-                        ConversationLegalHoldModel.conversation_id == conversation_id,
-                        ConversationLegalHoldModel.state == LegalHoldState.ACTIVE.value,
+                        ConversationLegalHoldModel.conversation_id
+                        == conversation_id,
+                        ConversationLegalHoldModel.state
+                        == LegalHoldState.ACTIVE.value,
+                        or_(
+                            ConversationLegalHoldModel.expires_at.is_(None),
+                            expiry_predicate,
+                        ),
                     )
                 )
             )

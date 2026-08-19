@@ -1,20 +1,37 @@
-"""R1-S3-D round-1 P1-2：migration 039 append-only 守卫放行矩阵。
+"""R1-S3-D round-1 P1-2：migration 039 append-only 守卫放行矩阵 + 043 widening/DELETE。
 
 migration 030 的 ``guard_agent_run_event_append_only()`` 无条件 RAISE，首次实现
 用运行时 ``DROP TRIGGER -> UPDATE -> CREATE TRIGGER`` 绕过，有跨 Conversation
 死锁（ACCESS SHARE -> ACCESS EXCLUSIVE 锁升级）与运行角色 DDL 权限两个缺陷。
-migration 039 改为行级白名单：只放行受控 purge tombstone 形态。
+migration 039 改为行级白名单：只放行受控 purge tombstone。migration 043 进一步
+扩展（Plan §R1-S6-10 冻结矩阵 R1-S6-2/3）：
+
+- 分支 1 widening：inline tombstone 的 ``NEW.payload_state`` 从 ``'redacted'`` 放宽为
+  ``IN ('redacted','expired','archived')``（event retention 90 天到期 tombstone）。
+- 分支 2（新增）：external 行 state-only 变化（``payload_ref`` 保留，仅
+  ``payload_state`` 改为 tombstone 之一）合法——event retention external payload
+  到期 tombstone（**不**经 external.payload.v1 清 ref）。
+- 分支 4（新增 DELETE 放行）：``OLD.payload_state IN ('redacted','expired',
+  'archived')`` 且 ``payload_inline IS NULL`` 且 ``payload_ref IS NULL``——仅
+  payload 全清且状态为受控 tombstone 的行可删（event retention envelope prune）。
 
 本模块直接对真实 PostgreSQL 断言守卫行为（不经 participant），锁定放行边界：
 
-- 合法 purge tombstone（payload_inline 非空->NULL + payload_state=redacted +
-  其余列不变）-> 放行。
+- 合法 purge tombstone（payload_inline 非空->NULL + payload_state ∈
+  {redacted,expired,archived} + 其余列不变）-> 放行（039/043 branch 1 widening）。
+- 合法 external state-only tombstone（external 行 inline=NULL、ref 保留，仅
+  payload_state 改 tombstone 之一）-> 放行（043 branch 2 widening）。
+- 合法 DELETE（payload 全清且 state ∈ {redacted,expired,archived}）-> 放行
+  （043 branch 4）。
 - 任一其他列变化（seq / payload_digest / payload_ref / classification /
   visibility / payload_size）-> 拒绝。**seq 不变是 Spec §7.2/§8 的身份不变量。**
-- payload_state 不转 redacted、payload_inline 未真正清空 -> 拒绝。
-- 任意 DELETE -> 拒绝（E1 append-only 不变）。
+- payload_inline 未真正清空（正文改写/复活）-> 拒绝。
+- 普通 UPDATE（非 purge/state-only 形态）仍被拒 -> E1 append-only 语义不被削弱。
+- 非法 state（写非 tombstone 集 ``'redacted'/'expired'/'archived'``）-> 拒绝。
+- 任意 live DELETE（inline 非 NULL 或 ref 仍存在）-> 拒绝（043 branch 4 不开洞）。
 
-变异验证：把 039 守卫的任一 AND 子句删除，对应「拒绝」用例即变红。
+变异验证：把 039/043 守卫的任一 AND 子句删除，对应「拒绝」用例即变红；把分支 2/4
+widening 限制去掉，对应新放行用例变红。
 """
 
 from __future__ import annotations
@@ -61,11 +78,15 @@ async def _expect_rejected(db_session, sql: str, event_id) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_guard_allows_controlled_purge_tombstone(db_session):
-    """合法 purge tombstone（清 payload_inline + 转 redacted，其余列不变）-> 放行。
+@pytest.mark.parametrize("new_state", ["redacted", "expired", "archived"])
+async def test_guard_allows_controlled_purge_tombstone(db_session, new_state: str):
+    """合法 purge tombstone（清 payload_inline + 转为 ``new_state`` ∈
+    {redacted,expired,archived} + 其余列不变）-> 放行（039 存在理由 + 043 branch 1
+    widening：event retention 90 天到期 tombstone 允许 expired/archived）。
 
-    这是 039 存在的唯一理由：participant 的 RunEvent tombstone 不再需要运行时 DDL。
-    变异杀手：还原 030 无条件 RAISE -> 本测试变红。
+    变异杀手：还原 030 无条件 RAISE -> 本测试变红；去掉 043 branch 1 的
+    ``AND NEW.payload_state IN ('redacted','expired','archived')`` widening 子句
+    -> expired/archived 用例变红。
     """
     event = await _seed_inline_event(db_session)
     event_id = event.id
@@ -75,9 +96,9 @@ async def test_guard_allows_controlled_purge_tombstone(db_session):
     await db_session.execute(
         text(
             f"UPDATE {_TABLE} SET payload_inline = NULL, "
-            "payload_state = 'redacted' WHERE id = :eid"
+            "payload_state = :new_state WHERE id = :eid"
         ),
-        {"eid": event_id},
+        {"new_state": new_state, "eid": event_id},
     )
     await db_session.flush()
 
@@ -91,7 +112,7 @@ async def test_guard_allows_controlled_purge_tombstone(db_session):
         )
     ).one()
     assert row.payload_inline is None, "payload_inline should be cleared"
-    assert row.payload_state == "redacted"
+    assert row.payload_state == new_state
     # seq 与 digest 是身份/审计事实，tombstone 不得改动（Spec §7.2/§8）。
     assert row.seq == original_seq
     assert row.payload_digest == original_digest
@@ -138,15 +159,21 @@ async def test_guard_rejects_tombstone_with_other_column_change(
 # ---------------------------------------------------------------------------
 
 
-async def test_guard_rejects_non_redacted_payload_state(db_session):
-    """清 payload_inline 但 payload_state 不转 redacted -> 拒绝。
+async def test_guard_rejects_illegal_payload_state(db_session):
+    """非法 payload_state（写非 tombstone 集 ``'redacted'/'expired'/'archived'``）-> 拒绝。
 
-    变异杀手：删守卫的 ``NEW.payload_state = 'redacted'`` 子句 -> 本测试变红。
+    inline 行 payload_state 改回 ``'inline'`` 不构成 043 branch 1 widening
+    tombstone（branch 要求 NEW.payload_state IN (redacted,expired,archived)）；
+    branch 2 要求 OLD.payload_state='external'（本行是 inline）-> 也失败。守卫
+    任一放行分支不匹配 -> RAISE。保留为 widening 边界的「非法 state 拒绝」锚点。
+
+    变异杀手：去掉 043 branch 1 的 ``AND NEW.payload_state IN ('redacted',
+    'expired','archived')`` widening 限制 -> ``payload_state='inline'`` 被误放行。
     """
     event = await _seed_inline_event(db_session)
     await _expect_rejected(
         db_session,
-        f"UPDATE {_TABLE} SET payload_inline = NULL, payload_state = 'expired' "
+        f"UPDATE {_TABLE} SET payload_inline = NULL, payload_state = 'inline' "
         "WHERE id = :eid",
         event.id,
     )
@@ -187,12 +214,20 @@ async def test_guard_rejects_delete(db_session):
     )
 
 
-async def test_guard_rejects_tombstone_on_already_null_payload(db_session):
-    """payload_inline 本就为 NULL（external 事件）-> 拒绝。
+@pytest.mark.parametrize("new_state", ["redacted", "expired", "archived"])
+async def test_guard_allows_external_state_only_tombstone(
+    db_session, new_state: str
+):
+    """043 branch 2 widening（Plan §R1-S6-10 冻结矩阵）：external 行
+    ``payload_inline=NULL`` + ``payload_ref`` 保留，仅 ``payload_state`` 改为
+    {redacted,expired,archived} 之一 -> 放行（event retention external payload
+    到期 tombstone；**不**经 external.payload.v1 清 ref，ref 清除唯一者 =
+    external.payload.v1）。
 
-    守卫要求 ``OLD.payload_inline IS NOT NULL``：没有正文可清的行不构成 purge
-    tombstone，放行等于给 external 事件开了一条无谓的可写路径。
-    变异杀手：删 ``OLD.payload_inline IS NOT NULL`` 子句 -> 本测试变红。
+    to_jsonb 差集豁免 ``payload_state``，ref 与 inline 保持不变；envelope 其余列
+    强制不变。变异杀手：去掉分支 2 的
+    ``AND (to_jsonb(OLD) - 'payload_state') = (to_jsonb(NEW) - 'payload_state')``
+    差集子句 -> 本测试变红。
     """
     conversation_id, identity, _ = await h.seed_purgeable(db_session)
     run = await h.seed_completed_run(
@@ -205,13 +240,67 @@ async def test_guard_rejects_tombstone_on_already_null_payload(db_session):
         payload_ref="external://object/1",
         payload_state="external",
     )
-    await db_session.flush()
-    await _expect_rejected(
-        db_session,
-        f"UPDATE {_TABLE} SET payload_inline = NULL, payload_state = 'redacted' "
-        "WHERE id = :eid",
-        event.id,
+    event_id = event.id
+    original_seq = event.seq
+    original_digest = event.payload_digest
+    original_ref = event.payload_ref
+
+    await db_session.execute(
+        text(
+            f"UPDATE {_TABLE} SET payload_state = :new_state WHERE id = :eid"
+        ),
+        {"new_state": new_state, "eid": event_id},
     )
+    await db_session.flush()
+
+    row = (
+        await db_session.execute(
+            text(
+                "SELECT payload_inline, payload_ref, payload_state, seq, "
+                f"payload_digest FROM {_TABLE} WHERE id = :eid"
+            ),
+            {"eid": event_id},
+        )
+    ).one()
+    assert row.payload_inline is None, "state-only 不得复活 inline"
+    assert row.payload_ref == original_ref, "state-only 不得清 ref（唯一者 = external.payload.v1）"
+    assert row.payload_state == new_state
+    assert row.seq == original_seq, "envelope seq 强制不变（tombstone 不改身份）"
+    assert row.payload_digest == original_digest, "envelope digest 强制不变"
+
+
+async def test_guard_allows_delete_of_tombstoned_row(db_session):
+    """043 branch 4（Plan §R1-S6-10 冻结矩阵）：``OLD.payload_state IN
+    ('redacted','expired','archived')`` 且 ``payload_inline IS NULL`` 且
+    ``payload_ref IS NULL`` -> DELETE 放行（event retention envelope prune）。
+
+    inline 行先走 039/043 branch 1 写死为 redacted（清 inline + 转 redacted），
+    然后 DELETE -> branch 4 匹配 -> 放行。变异杀手：去掉分支 4 的
+    ``AND OLD.payload_ref IS NULL`` 限制 -> tombstoned 行被拒。
+    """
+    event = await _seed_inline_event(db_session)
+    event_id = event.id
+    await db_session.execute(
+        text(
+            f"UPDATE {_TABLE} SET payload_inline = NULL, "
+            "payload_state = 'redacted' WHERE id = :eid"
+        ),
+        {"eid": event_id},
+    )
+    await db_session.flush()
+    # 此刻行已 tombstoned（inline NULL + state='redacted'）。DELETE 放行。
+    await db_session.execute(
+        text(f"DELETE FROM {_TABLE} WHERE id = :eid"),
+        {"eid": event_id},
+    )
+    await db_session.flush()
+    row = (
+        await db_session.execute(
+            text(f"SELECT id FROM {_TABLE} WHERE id = :eid"),
+            {"eid": event_id},
+        )
+    ).first()
+    assert row is None, "tombstoned 行应被 branch 4 放行 DELETE"
 
 
 # ---------------------------------------------------------------------------
