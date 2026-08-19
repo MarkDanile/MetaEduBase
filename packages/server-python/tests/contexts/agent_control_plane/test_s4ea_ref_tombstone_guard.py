@@ -305,13 +305,12 @@ async def test_guard_rejects_ref_tombstone_with_other_column_change(
     )
 
 
-async def test_guard_rejects_ref_not_cleared(db_session):
-    """ref-bearing live 行任意 UPDATE（仅改 state 保留 ref 且 inline NULL，但 state
-    不在 043 branch 2 widening 集）-> 拒绝——``payload_state='redacted'`` 在
-    ``'redacted'/'expired'/'archived'`` 之内但本测试特化场景为 external 且 ref 保留
-    已由 ``test_guard_allows_external_state_only_tombstone_*`` 覆盖；此处保留为
-    "非 legal 写（inline 已 NULL 但 ref 保留且 state 不变）plain update" 的拒绝
-    锚点，防止 widening 滑入任意 state。
+async def test_guard_rejects_plain_update(db_session):
+    """external live 行（payload_inline NULL + payload_ref 保留）任意 plain
+    UPDATE（仅改非 tombstone 列如 visibility）-> 拒绝——``payload_state`` 不在 043
+    branch 2 widening 集 ``'redacted'/'expired'/'archived'`` 且非 branch 3（ref
+    未清除）-> 任一放行分支不匹配，guard RAISE。保留为 widening 边界拒绝锚点，
+    防止 043 branch 2 widening 滑入任意 state。
 
     变异杀手：去掉 ``NEW.payload_state IN ('redacted','expired','archived')``
     分支 2 widening 限制 -> branch 2 误放任意 state。
