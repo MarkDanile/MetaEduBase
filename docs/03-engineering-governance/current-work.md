@@ -27,9 +27,9 @@
 - Spec: [R1 Retention/Purge/恢复专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)（R1-AC1..12）
 - Plan: [R1 分 Slice 实施计划 §R1-S6](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s6retention-clocks-与真实故障矩阵)
 
-当前进展：横向事实与风险审计完成（5 agent：execution/workspace 写者全集、retention 时钟、故障入口与测试基建、迁移/发布/恢复流程）；S6 契约冻结已写入 plan §R1-S6（S6-0 审计对账 + S6-1 时钟 + S6-2/3 retention workers + S6-4 写者全集矩阵 + S6-5 故障矩阵 + S6-6 巡检 + S6-7 发布 + S6-8 恢复 + S6-9 R1-AC1..12 映射 + S6-10 边界）。三面复审首轮原始计数 P0=1/P1=12/P2=17/P3=17（保留），按族 1~10 统一返修一次（043 冻结需求、SSE 语义按代码事实纠正、audit 删除前置重写、两处 S5 修改点显式登记、restore 重放机制补齐等）。
-下一步：返修后定向复核（fresh-eyes 验证 agent 运行中）→ 通过后 docs gate 终检 → 报告 S6 契约冻结结果，停等用户批准再进 S6 实现 PR。
-验证状态：docs gate 通过（31 known issue allowlisted）；净 diff 仅 plan + current-work 两纯文档文件；定向复核进行中。
+当前进展：横向事实与风险审计完成（5 agent：execution/workspace 写者全集、retention 时钟、故障入口与测试基建、迁移/发布/恢复流程）；S6 契约冻结已写入 plan §R1-S6（S6-0 审计对账 + S6-1 时钟 + S6-2/3 retention workers + S6-4 写者全集矩阵 + S6-5 故障矩阵 + S6-6 巡检 + S6-7 发布 + S6-8 恢复 + S6-9 R1-AC1..12 映射 + S6-10 边界）。三面复审首轮原始计数 P0=1/P1=12/P2=17/P3=17（保留），按族 1~10 统一返修 + 定向复核（P0=0/P1=4/P2=6）二次返修闭环；**Draft PR #581 已创建（OPEN/Draft/MERGEABLE）**。
+下一步：停等用户明确批准进入 S6 实现 PR；在此之前不评分/不转 Ready/不合并。
+验证状态：docs gate 通过（31 known issue allowlisted）；净 diff 仅 plan + current-work 两纯文档文件（+183/-2）；三面 + 定向复核全部闭环（最终 P0/P1=0）。
 交接备注：**C1 仍 Blocked，禁止提前启动**；S5 production wiring 不在本任务；本阶段 PR 保持 Draft，不评分/不转 Ready/不合并；冻结后停等用户明确批准再进 S6 实现 PR。
 
 ## 下一批候选任务
