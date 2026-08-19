@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import warnings
 from pathlib import Path
 
@@ -684,3 +685,278 @@ def test_042_lease_carrier_downgrade_upgrade_round_trip():
         )
     finally:
         _run_alembic("upgrade", "head")
+
+
+# ---------------------------------------------------------------------------
+# R1-S6 S6-I1: migration 043 retention guard 往返 + 白名单行为（P0-1 裁决）
+# ---------------------------------------------------------------------------
+
+
+async def _seed_guard_run() -> tuple:
+    """种子 queued run + FK 链（definition + profile），返回 (run_id, tid)。"""
+    import uuid as _uuid
+
+    connection = await asyncpg.connect(_db_url())
+    tid = _uuid.uuid4()
+    def_id = _uuid.uuid4()
+    prof_id = _uuid.uuid4()
+    run_id = _uuid.uuid4()
+    digest = "a" * 64
+    try:
+        await connection.execute(
+            "INSERT INTO metaedu.agent_definition_versions "
+            "(id, tenant_id, definition_key, version, status, definition_digest, "
+            "created_by, created_at) "
+            "VALUES ($1, $2, $3, 1, 'published', $4, $2, now())",
+            def_id, tid, f"def-{tid}", digest,
+        )
+        await connection.execute(
+            "INSERT INTO metaedu.agent_runtime_profiles "
+            "(id, tenant_id, profile_key, runtime_kind, adapter_key, config_digest, "
+            "capability_digest, enabled, revision, created_at, updated_at) "
+            "VALUES ($1, $2, $3, 'compatibility', 'compatibility', $4, $4, "
+            "true, 1, now(), now())",
+            prof_id, tid, f"prof-{tid}", digest,
+        )
+        await connection.execute(
+            "INSERT INTO metaedu.agent_runs "
+            "(id, tenant_id, conversation_id, queue_seq, root_input_message_id, "
+            "agent_definition_version_id, runtime_profile_id, creation_digest, status, "
+            "status_revision, next_event_seq, first_available_event_seq, last_event_seq, "
+            "event_log_complete, queued_at, output_publish_state, created_by, actor_state, "
+            "actor_identity_digest, correlation_id, runtime_capability_snapshot, "
+            "run_config_snapshot, budget_snapshot, usage_summary) "
+            "VALUES ($1, $2, $1, 1, $1, $3, $4, $5, 'queued', 1, 1, 1, 0, true, now(), "
+            "'not_required', $2, 'present', NULL, $1, '{}'::jsonb, '{}'::jsonb, "
+            "'{}'::jsonb, '{}'::jsonb)",
+            run_id, tid, def_id, prof_id, digest,
+        )
+        return run_id, tid
+    finally:
+        await connection.close()
+
+
+async def _cleanup_guard_run(tid) -> None:
+    connection = await asyncpg.connect(_db_url())
+    try:
+        # guard 拒绝 live 行 DELETE——用 TRUNCATE（同 _clean_tombstone_tables 模式；
+        # 本文件独立运行，测试后清理 agent_run_events 全表）。
+        await connection.execute("TRUNCATE TABLE metaedu.agent_run_events")
+        await connection.execute(
+            "DELETE FROM metaedu.agent_runs WHERE tenant_id=$1", tid
+        )
+        await connection.execute(
+            "DELETE FROM metaedu.agent_runtime_profiles WHERE tenant_id=$1", tid
+        )
+        await connection.execute(
+            "DELETE FROM metaedu.agent_definition_versions WHERE tenant_id=$1", tid
+        )
+    finally:
+        await connection.close()
+
+
+async def _insert_guard_event(
+    run_id, tid, *, seq=1, payload_state="inline", ref=None
+) -> None:
+    """插入 event 行。inline 默认正文非空；external 需 ref；tombstone 态 inline NULL。
+    与 ``_seed_guard_run`` 一致：run.conversation_id == run.correlation_id == run_id。"""
+    connection = await asyncpg.connect(_db_url())
+    inline_json = None
+    if payload_state == "inline":
+        inline = {"summary": "guard"}
+        ref = None
+        inline_json = json.dumps(inline)
+    try:
+        await connection.execute(
+            "INSERT INTO metaedu.agent_run_events "
+            "(id, tenant_id, conversation_id, run_id, seq, event_type, schema_version, "
+            "occurred_at, persisted_at, visibility, classification, payload_inline, "
+            "payload_ref, payload_state, payload_digest, payload_size, media_type, "
+            "expires_at, correlation_id, causation_id) "
+            "VALUES (gen_random_uuid(), $1, $2, $2, $3, 'tool.completed', 1, "
+            "now(), now(), 'user', 'public', $4::jsonb, $5, $6, $7, 1, "
+            "'application/json', NULL, $2, NULL)",
+            tid, run_id, seq, inline_json, ref, payload_state, "b" * 64,
+        )
+    finally:
+        await connection.close()
+
+
+async def _try_guard_update(run_id, tid, *, seq, new_state, clear_inline=True) -> bool:
+    """尝试 guard 受控 UPDATE；返回是否被放行（True=放行，False=guard RAISE）。"""
+    connection = await asyncpg.connect(_db_url())
+    try:
+        try:
+            if clear_inline:
+                await connection.execute(
+                    "UPDATE metaedu.agent_run_events "
+                    "SET payload_inline = NULL, payload_state = $1 "
+                    "WHERE tenant_id=$2 AND run_id=$3 AND seq=$4",
+                    new_state, tid, run_id, seq,
+                )
+            else:
+                await connection.execute(
+                    "UPDATE metaedu.agent_run_events SET payload_state = $1 "
+                    "WHERE tenant_id=$2 AND run_id=$3 AND seq=$4",
+                    new_state, tid, run_id, seq,
+                )
+            return True
+        except asyncpg.exceptions.ObjectNotInPrerequisiteStateError:
+            return False
+    finally:
+        await connection.close()
+
+
+async def _try_guard_delete(run_id, tid, *, seq) -> bool:
+    connection = await asyncpg.connect(_db_url())
+    try:
+        try:
+            await connection.execute(
+                "DELETE FROM metaedu.agent_run_events "
+                "WHERE tenant_id=$1 AND run_id=$2 AND seq=$3",
+                tid, run_id, seq,
+            )
+            return True
+        except asyncpg.exceptions.ObjectNotInPrerequisiteStateError:
+            return False
+    finally:
+        await connection.close()
+
+
+def test_043_retention_guard_downgrade_upgrade_round_trip():
+    """043 往返：head（043）放行已 tombstone 行 DELETE + expired/archived tombstone
+    UPDATE；downgrade 到 042 还原 041 白名单（DELETE 与 non-redacted 写均 RAISE）；
+    upgrade 回 head 恢复 043 行为。守卫只作用于新写，downgrade 无条件可逆。"""
+    run_id, tid = asyncio.run(_seed_guard_run())
+    try:
+        # 强制重放当前迁移文件版本的 043（mutation kill 的 clean 阶段依赖此重置——
+        # 变异期间安装的 guard 必须被真实文件覆盖）。seed 不受 042 往返影响。
+        _run_alembic("downgrade", "042_purge_lease_carrier")
+        _run_alembic("upgrade", "head")
+        # head：043 放行 inline → expired。
+        asyncio.run(_insert_guard_event(run_id, tid, seq=1, payload_state="inline"))
+        assert asyncio.run(
+            _try_guard_update(run_id, tid, seq=1, new_state="expired")
+        ) is True, "head 应放行 inline → expired（043(a) 分支 1）"
+        # 已 tombstone（expired）行 DELETE 放行。
+        assert asyncio.run(
+            _try_guard_delete(run_id, tid, seq=1)
+        ) is True, "head 应放行已 tombstone 行 DELETE（043(b)）"
+
+        # downgrade 到 042（041 白名单）：DELETE 与 expired 写均 RAISE。
+        _run_alembic("downgrade", "042_purge_lease_carrier")
+        asyncio.run(_insert_guard_event(run_id, tid, seq=2, payload_state="inline"))
+        assert asyncio.run(
+            _try_guard_update(run_id, tid, seq=2, new_state="expired")
+        ) is False, "041 白名单拒绝 expired 写（redacted-only）"
+        assert asyncio.run(
+            _try_guard_update(run_id, tid, seq=2, new_state="redacted")
+        ) is True, "041 白名单放行 redacted 写"
+        assert asyncio.run(
+            _try_guard_delete(run_id, tid, seq=2)
+        ) is False, "041 白名单拒绝 DELETE（043 才开 DELETE 洞）"
+
+        # upgrade 回 head：043 行为恢复。
+        _run_alembic("upgrade", "head")
+        assert asyncio.run(
+            _try_guard_delete(run_id, tid, seq=2)
+        ) is True, "upgrade 回 head 恢复已 tombstone 行 DELETE"
+        # M-043-2 判别：upgrade 重放 043 文件后，expired/archived 写仍放行
+        # （widening 被还原 → 本断言转红）。
+        asyncio.run(_insert_guard_event(run_id, tid, seq=3, payload_state="inline"))
+        assert asyncio.run(
+            _try_guard_update(run_id, tid, seq=3, new_state="expired")
+        ) is True, "upgrade 后 043 仍放行 expired 写（widening 未还原）"
+    finally:
+        _run_alembic("upgrade", "head")
+        asyncio.run(_cleanup_guard_run(tid))
+
+
+def test_043_guard_rejects_live_delete_and_non_tombstone_write():
+    """043 不洞开：live（inline）行 DELETE 仍 RAISE；inline 行转非 tombstone
+    （非 redacted/expired/archived）仍 RAISE。"""
+    run_id, tid = asyncio.run(_seed_guard_run())
+    try:
+        asyncio.run(_insert_guard_event(run_id, tid, seq=1, payload_state="inline"))
+        assert asyncio.run(
+            _try_guard_delete(run_id, tid, seq=1)
+        ) is False, "live 行 DELETE 必须 RAISE"
+        # 清正文但转回 'inline'（非 tombstone 态）→ RAISE。
+        assert asyncio.run(
+            _try_guard_update(run_id, tid, seq=1, new_state="inline")
+        ) is False, "non-tombstone 写必须 RAISE"
+        # 其余列变化（顺带改 media_type）→ RAISE。
+        assert asyncio.run(
+            _try_guard_update_with_extra(run_id, tid, seq=1, new_state="expired")
+        ) is False, "其余列变化必须 RAISE"
+    finally:
+        asyncio.run(_cleanup_guard_run(tid))
+
+
+async def _try_guard_update_with_extra(run_id, tid, *, seq, new_state) -> bool:
+    """UPDATE 同时改动 media_type（其余列变化）→ guard 应 RAISE。"""
+    connection = await asyncpg.connect(_db_url())
+    try:
+        try:
+            await connection.execute(
+                "UPDATE metaedu.agent_run_events "
+                "SET payload_inline = NULL, payload_state = $1, media_type = 'text/plain' "
+                "WHERE tenant_id=$2 AND run_id=$3 AND seq=$4",
+                new_state, tid, run_id, seq,
+            )
+            return True
+        except asyncpg.exceptions.ObjectNotInPrerequisiteStateError:
+            return False
+    finally:
+        await connection.close()
+
+
+def test_043_guard_external_state_only_and_ref_branch():
+    """043 分支 2：external 行仅 state 变化（转 expired）放行且 ref 保留；分支 3
+    （041）ref 清除仍 redacted-only——转 expired 清除 ref 必须 RAISE。"""
+    run_id, tid = asyncio.run(_seed_guard_run())
+    try:
+        asyncio.run(
+            _insert_guard_event(run_id, tid, seq=1, payload_state="external", ref="ext-1")
+        )
+        # 仅 state → expired（ref 保留）：放行。
+        assert asyncio.run(
+            _try_guard_update(run_id, tid, seq=1, new_state="expired", clear_inline=False)
+        ) is True, "043(a) 分支 2 放行 external state-only"
+        # 清 ref + 转 expired（非 redacted）→ 分支 3 要求 redacted-only → RAISE。
+        assert asyncio.run(
+            _try_guard_update_clear_ref(run_id, tid, seq=1, new_state="expired")
+        ) is False, "ref 清除保持 redacted-only，expired 必须 RAISE"
+        # 清 ref + 转 redacted → 放行（041 分支 3）。
+        assert asyncio.run(
+            _try_guard_update_clear_ref(run_id, tid, seq=1, new_state="redacted")
+        ) is True, "ref 清除 + redacted 放行（041 分支 3）"
+        # 有 ref 的已 tombstone 行不可 DELETE（043(b) 要求 payload_ref IS NULL）。
+        asyncio.run(
+            _insert_guard_event(run_id, tid, seq=2, payload_state="external", ref="ext-2")
+        )
+        assert asyncio.run(
+            _try_guard_update(run_id, tid, seq=2, new_state="redacted", clear_inline=False)
+        ) is True
+        assert asyncio.run(
+            _try_guard_delete(run_id, tid, seq=2)
+        ) is False, "ref-bearing 行 DELETE 必须 RAISE（payload_ref 未清不满足 043(b)）"
+    finally:
+        asyncio.run(_cleanup_guard_run(tid))
+
+
+async def _try_guard_update_clear_ref(run_id, tid, *, seq, new_state) -> bool:
+    connection = await asyncpg.connect(_db_url())
+    try:
+        try:
+            await connection.execute(
+                "UPDATE metaedu.agent_run_events "
+                "SET payload_ref = NULL, payload_state = $1 "
+                "WHERE tenant_id=$2 AND run_id=$3 AND seq=$4",
+                new_state, tid, run_id, seq,
+            )
+            return True
+        except asyncpg.exceptions.ObjectNotInPrerequisiteStateError:
+            return False
+    finally:
+        await connection.close()

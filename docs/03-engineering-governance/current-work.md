@@ -14,23 +14,23 @@
 
 ## 当前进行中
 
-### TASK-R1-S6: Retention clocks 与真实故障矩阵（contract-first）
+### TASK-R1-S6-I1: Retention workers（run_event_retention + run_audit_retention + migration 043）
 
 状态：🟡 进行中
-类型：REQ-041/047 R1-S6（contract-first 冻结 + 分阶段实现）
+类型：REQ-041/047 R1-S6-I1（S6 契约冻结已批准，分阶段实现第一片）
 领域：scheduler / retention / purge-recovery
-当前执行模式：contract-first（本阶段仅冻结 spec/plan，不写业务实现）
+当前执行模式：实现（contract-first 已冻结并并入 main，本 PR 仅实现 S6-I1）
 最近接手工具：Claude Code
-分支：feature/req041-047-r1-s6-retention-clocks-fault-matrix-contract
+分支：feature/req041-047-r1-s6-retention-workers
 
 需求来源：
 - Spec: [R1 Retention/Purge/恢复专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)（R1-AC1..12）
-- Plan: [R1 分 Slice 实施计划 §R1-S6](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s6retention-clocks-与真实故障矩阵)
+- Plan: [R1 分 Slice 实施计划 §R1-S6-1/2/3/10](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#r1-s6retention-clocks-与真实故障矩阵)（契约冻结经 PR #581 并入 main `01524667`）
 
-当前进展：横向事实与风险审计完成（5 agent：execution/workspace 写者全集、retention 时钟、故障入口与测试基建、迁移/发布/恢复流程）；S6 契约冻结已写入 plan §R1-S6（S6-0 审计对账 + S6-1 时钟 + S6-2/3 retention workers + S6-4 写者全集矩阵 + S6-5 故障矩阵 + S6-6 巡检 + S6-7 发布 + S6-8 恢复 + S6-9 R1-AC1..12 映射 + S6-10 边界）。三面复审首轮原始计数 P0=1/P1=12/P2=17/P3=17（保留），按族 1~10 统一返修 + 定向复核（P0=0/P1=4/P2=6）二次返修闭环；**Draft PR #581 已创建（OPEN/Draft/MERGEABLE）**。
-下一步：停等用户明确批准进入 S6 实现 PR；在此之前不评分/不转 Ready/不合并。
-验证状态：docs gate 通过（31 known issue allowlisted）；净 diff 仅 plan + current-work 两纯文档文件（+183/-2）；三面 + 定向复核全部闭环（最终 P0/P1=0）。
-交接备注：**C1 仍 Blocked，禁止提前启动**；S5 production wiring 不在本任务；本阶段 PR 保持 Draft，不评分/不转 Ready/不合并；冻结后停等用户明确批准再进 S6 实现 PR。
+当前进展：S6-I1 实现完成——`run_event_retention`（payload expiry + 连续前缀 prune + `first_available_event_seq` 单调推进 + `event_log_complete=False` + hold 读侧裁决一 + DB clock + 幂等）、`run_audit_retention`（365 天 prune + children-first FK 顺序 + hold/非终态/outcome_unknown/未解决审批/projection/存活子 run blocked + tenant scope + 幂等）、migration 043（append-only guard 四分支白名单：expired/archived tombstone 写 + 已 tombstone 行 DELETE，downgrade 还原 041）、两处已登记 S5 兼容修复（裁决一 hold 到期谓词宽化；裁决二 settlement T2 补 checkpoint.state 重验）、16 项具名 mutation kill（`scripts/s6i1_retention_mutation_kill.py`）。
+下一步：创建 Draft implementation PR；不转 Ready/不评分/不合并；停等用户评审。
+验证状态：S6-I1 专项 41 passed（event 12 + audit 12 + hold expiry 6 + 043 roundtrip 10 + settlement T2 1）；mutation kill 16/16（先红后绿）；受影响回归 composition 699 + hold/claim/erasure 159 + settlement 24 + execution/run_api/race 198 全绿；migration 043 downgrade→042→upgrade 往返（roundtrip + standalone alembic）；ruff clean；mypy baseline 0 回归；docs gate --full 通过（32 known issue allowlisted）；git diff --check 干净。
+交接备注：**C1 仍 Blocked，禁止提前启动**；S6-I2（writer conformance suite + orphan 巡检）/S6-I3（故障矩阵 F1-F14 + 发布演练 + restore runbook）不在本 PR；registry capability 未翻转、S5 production wiring 未启用、无 HTTP/CLI/API、Score Log/Metrics Snapshot 未改；发现新增 writer、状态机边、schema 语义冲突、P0/P1 或不可执行的基础设施 drill 立即停止报告。
 
 ## 下一批候选任务
 

@@ -532,13 +532,18 @@ class ConversationPurgeScheduler:
     async def _has_active_hold(
         self, tenant_id: uuid.UUID, conversation_id: uuid.UUID
     ) -> bool:
+        """R1-S6 S6-1 裁决一（S5 代码修改点 #1）：active 判定宽化——过期
+        ``expires_at`` 的 hold 不再是 active（``clock_timestamp()`` DB 时钟），
+        R1-AC7 缺口（过期 hold 永久阻塞 purge）；``expires_at NULL`` 仍 active。
+        """
         return (
             await self._session.execute(
                 text(
                     "SELECT EXISTS (SELECT 1 FROM "
                     "metaedu.agent_conversation_legal_holds "
                     "WHERE tenant_id = :tid AND conversation_id = :cid "
-                    "AND state = 'active')"
+                    "AND state = 'active' "
+                    "AND (expires_at IS NULL OR expires_at > clock_timestamp()))"
                 ),
                 {"tid": tenant_id, "cid": conversation_id},
             )

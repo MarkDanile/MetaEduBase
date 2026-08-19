@@ -696,6 +696,15 @@ class SettlementService:
             raise ValueError(
                 f"T2 fence state {fence.state!r} != erasing; fail closed 零写"
             )
+        # R1-S6 S6-1 裁决二（S5 代码修改点 #2）：S5-SCH-2 T2 token 清单的
+        # `checkpoint state` 项落地——T2 现只验 attempt/digest 不验 state；
+        # 补 ``checkpoint.state == 'erasing'`` 重验（与 fence.state 校验同构，
+        # S6-F11 mutate-during-lookup 判别载体）。任一失败 fail closed 零写。
+        if checkpoint.state != "erasing":
+            raise ValueError(
+                f"T2 checkpoint state {checkpoint.state!r} != erasing; "
+                "fail closed 零写"
+            )
         if checkpoint.attempt != t1.checkpoint_attempt:
             raise ValueError("T2 checkpoint attempt != T1; fail closed 零写")
         if checkpoint.checkpoint_digest != t1.checkpoint_digest:
