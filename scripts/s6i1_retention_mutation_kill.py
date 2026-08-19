@@ -183,9 +183,12 @@ def main() -> int:
     results = []
     for name, path, old, new, test_id in MUTATIONS:
         apply(path, old, new)
-        mutated = pytest_cmd(test_id)
+        try:
+            mutated = pytest_cmd(test_id)
+        finally:
+            # 中断/异常也保证还原（P3-1：try/finally 兜底，不遗留变异文件）。
+            restore(path)
         kill = mutated.returncode != 0
-        restore(path)
         clean = pytest_cmd(test_id)
         ok = kill and clean.returncode == 0
         results.append(ok)

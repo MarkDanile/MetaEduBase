@@ -640,3 +640,44 @@ async def test_sse_409_when_event_log_complete_true(session_factory):
             await service.read_event_batch(
                 tenant_id=tid, actor_id=tid, run_id=run_id, after_seq=0
             )
+
+
+async def test_event_write_hold_reverify_blocks(session_factory):
+    """F-2 判别：payload expiry / prune 的 UPDATE/DELETE WHERE 并入语句级 hold
+    EXISTS——hold 在写时点存在 → 0 行写入（防御候选↔写窗口竞态）。"""
+    from app.composition.retention_workers import (
+        _expire_expired_payloads,
+        _prune_expired_prefix,
+    )
+
+    now_dt = datetime.now(UTC)
+    async with session_factory() as seed, seed.begin():
+        tid, cid = await _seed_conversation(seed)
+        run_id = await _seed_run(seed, tid=tid, cid=cid, last_seq=1)
+        await _seed_event(
+            seed, tid=tid, cid=cid, run_id=run_id, seq=1,
+            persisted_at=now_dt - timedelta(days=100),
+        )
+        await _seed_hold(seed, tid=tid, cid=cid, expires_at=None)
+
+    async with session_factory() as worker, worker.begin():
+        expired = await _expire_expired_payloads(
+            worker,
+            tenant_id=tid,
+            run_id=run_id,
+            conversation_id=cid,
+            now=now_dt,
+        )
+        assert expired == 0, "hold EXISTS 阻断 payload expiry 写"
+        pruned, advanced = await _prune_expired_prefix(
+            worker,
+            tenant_id=tid,
+            run_id=run_id,
+            conversation_id=cid,
+            now=now_dt,
+            first_available_event_seq=1,
+        )
+        assert pruned == 0 and advanced == 0, "hold EXISTS 阻断 prune 写"
+    async with session_factory() as verify:
+        state, inline, _ = await _event_state(verify, tid=tid, run_id=run_id, seq=1)
+        assert state == "inline", "写时点 hold 重验：正文未清"

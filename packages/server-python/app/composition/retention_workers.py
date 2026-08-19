@@ -42,6 +42,15 @@ _EVENT_APPROVAL_RESOLVE = ("approval.resolved", "approval.expired")
 # outbox 非终态（ck_agent_exec_outbox_status 终态 = published/cancelled/suppressed）。
 _OUTBOX_NON_TERMINAL = ("pending", "claimed", "dead_letter")
 
+# 写语句级 hold EXISTS 谓词片段（S6-3.1 P2-6 裁决：hold 检查并入 DELETE WHERE，
+# 语句级重验，消除「检查后、删除前 hold 提交」间隙；S6-2.1 谓词「AND 语句级 hold
+# EXISTS」同构并入 payload 写）。只读 EXISTS，不取 Conversation 行锁。
+_HOLD_EXISTS = (
+    "AND NOT EXISTS (SELECT 1 FROM metaedu.agent_conversation_legal_holds "
+    "WHERE tenant_id = :tid AND conversation_id = :cid "
+    "AND state = 'active' AND (expires_at IS NULL OR expires_at > :now))"
+)
+
 
 @dataclass(frozen=True, slots=True)
 class EventRetentionResult:
@@ -187,12 +196,17 @@ async def run_event_retention(
                     continue
                 run_now = await _effective_now(session, now)
                 expired = await _expire_expired_payloads(
-                    session, tenant_id=tenant_id, run_id=run_id, now=run_now
+                    session,
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                    conversation_id=conversation_id,
+                    now=run_now,
                 )
                 pruned, advanced = await _prune_expired_prefix(
                     session,
                     tenant_id=tenant_id,
                     run_id=run_id,
+                    conversation_id=conversation_id,
                     now=run_now,
                     first_available_event_seq=run_row["first_available_event_seq"],
                 )
@@ -249,13 +263,19 @@ async def _event_retention_candidates(
 
 
 async def _expire_expired_payloads(
-    session: AsyncSession, *, tenant_id: uuid.UUID, run_id: uuid.UUID, now: datetime
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    run_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    now: datetime,
 ) -> int:
     """payload expiry（S6-2.2）：inline 行清 payload_inline + 转 ``expired``；
     external 行仅 state 转 ``expired``（payload_ref 保留——ref 清除唯一者 =
     external.payload.v1）。两写均须经 migration 043 guard 白名单放行（043(a)
     分支 1/2）。保留 seq/type/digest/size/media_type/classification/provenance/
-    runtime 八元。"""
+    runtime 八元。**S6-2.1 谓词「AND 语句级 hold EXISTS」并入 UPDATE WHERE**
+    （写时点重验，收窄「检查→写」间隙）。"""
     payload_cutoff = now - timedelta(days=_EVENT_RETENTION_DAYS)
     inline_result = await session.execute(
         text(
@@ -264,9 +284,16 @@ async def _expire_expired_payloads(
             "WHERE tenant_id = :tid AND run_id = :rid "
             "AND payload_state = 'inline' "
             "AND ((expires_at IS NOT NULL AND expires_at <= :now) "
-            "     OR (expires_at IS NULL AND persisted_at <= :cutoff))"
+            "     OR (expires_at IS NULL AND persisted_at <= :cutoff)) "
+            + _HOLD_EXISTS
         ),
-        {"tid": tenant_id, "rid": run_id, "now": now, "cutoff": payload_cutoff},
+        {
+            "tid": tenant_id,
+            "rid": run_id,
+            "cid": conversation_id,
+            "now": now,
+            "cutoff": payload_cutoff,
+        },
     )
     external_result = await session.execute(
         text(
@@ -275,9 +302,16 @@ async def _expire_expired_payloads(
             "WHERE tenant_id = :tid AND run_id = :rid "
             "AND payload_state = 'external' "
             "AND ((expires_at IS NOT NULL AND expires_at <= :now) "
-            "     OR (expires_at IS NULL AND persisted_at <= :cutoff))"
+            "     OR (expires_at IS NULL AND persisted_at <= :cutoff)) "
+            + _HOLD_EXISTS
         ),
-        {"tid": tenant_id, "rid": run_id, "now": now, "cutoff": payload_cutoff},
+        {
+            "tid": tenant_id,
+            "rid": run_id,
+            "cid": conversation_id,
+            "now": now,
+            "cutoff": payload_cutoff,
+        },
     )
     if not isinstance(inline_result, CursorResult) or not isinstance(
         external_result, CursorResult
@@ -291,6 +325,7 @@ async def _prune_expired_prefix(
     *,
     tenant_id: uuid.UUID,
     run_id: uuid.UUID,
+    conversation_id: uuid.UUID,
     now: datetime,
     first_available_event_seq: int,
 ) -> tuple[int, int]:
@@ -299,7 +334,8 @@ async def _prune_expired_prefix(
     未到期/未 tombstone 行立即停止。删除后同事务推进
     ``first_available_event_seq``（单调，受 CHECK ``<= next_event_seq`` 约束）+
     置 ``event_log_complete=False``。返回 ``(envelopes_pruned, advanced)``：
-    ``advanced`` 恒等于 prune 是否发生（1=推进，0=未推进）。"""
+    ``advanced`` 恒等于 prune 是否发生（1=推进，0=未推进）。**DELETE WHERE 并入
+    语句级 hold EXISTS**（S6-2.1 谓词语义，写时点重验）。"""
     envelope_cutoff = now - timedelta(days=_EVENT_RETENTION_DAYS)
     prefix_rows = await session.execute(
         text(
@@ -331,9 +367,16 @@ async def _prune_expired_prefix(
     await session.execute(
         text(
             "DELETE FROM metaedu.agent_run_events "
-            "WHERE tenant_id = :tid AND run_id = :rid AND seq = ANY(:seqs)"
+            "WHERE tenant_id = :tid AND run_id = :rid AND seq = ANY(:seqs) "
+            + _HOLD_EXISTS
         ),
-        {"tid": tenant_id, "rid": run_id, "seqs": delete_seqs},
+        {
+            "tid": tenant_id,
+            "rid": run_id,
+            "cid": conversation_id,
+            "seqs": delete_seqs,
+            "now": now,
+        },
     )
     new_first_available = delete_seqs[-1] + 1
     await session.execute(
@@ -377,7 +420,8 @@ async def run_audit_retention(
     worker，二者对同一 run 的并发由 Run 行锁串行（S6-3.3）。
 
     blocked 的 run 在本轮 invocation 内保持 blocked（零写，无其他进程改状态），
-    用 ``_seen_blocked`` 排除后续批次候选，避免「全部 blocked → 死循环」。
+    用 ``_seen_blocked`` 在**候选 SQL 侧**排除（而非 LIMIT 后过滤），避免
+    「低 id 永久 blocked run 反复填满批次 → 饿死可删 run」（F-3/三面复审 P2）。
     """
     if batch_size < 1:
         raise ValueError("batch_size must be positive")
@@ -386,13 +430,12 @@ async def run_audit_retention(
     while True:
         async with session_factory() as session, session.begin():
             effective_now = await _effective_now(session, now)
-            candidates = [
-                (tid, rid, cid)
-                for (tid, rid, cid) in await _audit_retention_candidates(
-                    session, effective_now, limit=batch_size
-                )
-                if (tid, rid) not in seen_blocked
-            ]
+            candidates = await _audit_retention_candidates(
+                session,
+                effective_now,
+                limit=batch_size,
+                exclude_ids=sorted(rid for _tid, rid in seen_blocked),
+            )
             if not candidates:
                 break
             for tenant_id, run_id, conversation_id in candidates:
@@ -416,6 +459,7 @@ async def run_audit_retention(
                     run_id=run_id,
                     conversation_id=conversation_id,
                     now=run_now,
+                    first_available_event_seq=run_row["first_available_event_seq"],
                 )
                 if reason is not None:
                     seen_blocked.add((tenant_id, run_id))
@@ -427,15 +471,22 @@ async def run_audit_retention(
                     )
                     continue
                 await _delete_run_children_first(
-                    session, tenant_id=tenant_id, run_id=run_id
+                    session,
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                    conversation_id=conversation_id,
+                    now=run_now,
                 )
                 total = replace(total, runs_pruned=total.runs_pruned + 1)
     return total
 
 
 async def _audit_retention_candidates(
-    session: AsyncSession, now: datetime, *, limit: int
+    session: AsyncSession, now: datetime, *, limit: int, exclude_ids: list[uuid.UUID]
 ) -> list[tuple[uuid.UUID, uuid.UUID, uuid.UUID]]:
+    """audit 候选：终态 + ``ended_at`` 到期 + 无 active hold；本轮已 blocked 的
+    run 在 SQL 侧排除（``NOT (r.id = ANY(:exclude))``，空数组恒真），避免
+    LIMIT 后过滤导致的「低 id 永久 blocked run 饿死可删 run」。"""
     run_cutoff = now - timedelta(days=_AUDIT_RETENTION_DAYS)
     rows = await session.execute(
         text(
@@ -443,6 +494,7 @@ async def _audit_retention_candidates(
             "FROM metaedu.agent_runs r "
             "WHERE r.status = ANY(:statuses) "
             "AND r.ended_at IS NOT NULL AND r.ended_at <= :cutoff "
+            "AND NOT (r.id = ANY(:exclude)) "
             "AND NOT EXISTS ("
             "  SELECT 1 FROM metaedu.agent_conversation_legal_holds h "
             "  WHERE h.tenant_id = r.tenant_id "
@@ -456,6 +508,7 @@ async def _audit_retention_candidates(
             "statuses": list(_TERMINAL_RUN_STATUSES),
             "cutoff": run_cutoff,
             "now": now,
+            "exclude": exclude_ids,
             "limit": limit,
         },
     )
@@ -469,6 +522,7 @@ async def _audit_blocked_reason(
     run_id: uuid.UUID,
     conversation_id: uuid.UUID,
     now: datetime,
+    first_available_event_seq: int,
 ) -> str | None:
     """S6-3 item 1 blocked 前置（全真才可清理；任一命中 → 零写返回 reason code）。
     全部语句级重读，无附加行锁。"""
@@ -478,7 +532,12 @@ async def _audit_blocked_reason(
         session, tenant_id=tenant_id, run_id=run_id
     ):
         return "outcome_unknown"
-    if await _has_unresolved_approval(session, tenant_id=tenant_id, run_id=run_id):
+    if await _has_unresolved_approval(
+        session,
+        tenant_id=tenant_id,
+        run_id=run_id,
+        first_available_event_seq=first_available_event_seq,
+    ):
         return "unresolved_approval"
     if await _projection_reconcile_incomplete(
         session,
@@ -540,9 +599,21 @@ async def _has_outcome_unknown_unresolved(
 
 
 async def _has_unresolved_approval(
-    session: AsyncSession, *, tenant_id: uuid.UUID, run_id: uuid.UUID
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    run_id: uuid.UUID,
+    first_available_event_seq: int,
 ) -> bool:
-    """``approval.requested`` 无对应 ``approval.resolved/expired``（seq 比较）。"""
+    """``approval.requested`` 无对应 ``approval.resolved/expired``（seq 比较，
+    S6-3 item 1）。
+
+    **S6-3.1 三面复审裁决（fail closed）**：相关 envelope 已随连续前缀剪除 →
+    无法判定 → blocked——``first_available_event_seq > 1`` 表示前缀已被 event
+    retention 剪除，被删前缀中可能含 ``approval.requested`` 证据，无法排除未解决
+    审批 → 保守 blocked（同 ``unresolved_action`` 业务保留语义，人工处置）。"""
+    if first_available_event_seq > 1:
+        return True
     result = await session.execute(
         text(
             "SELECT EXISTS ("
@@ -629,41 +700,82 @@ async def _has_surviving_child_run(
 
 
 async def _delete_run_children_first(
-    session: AsyncSession, *, tenant_id: uuid.UUID, run_id: uuid.UUID
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    run_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    now: datetime,
 ) -> None:
     """children-first 显式删除顺序（S6-3.2 冻结）：``agent_turn_inputs`` →
     ``agent_run_events`` → ``agent_compatibility_outputs``（显式删，不依赖
     CASCADE 语义）→ ``agent_runs`` 行（最后）。``parent_run_id`` 自引用不在删除
     集合（父 run 仅当无存活子 run 时满足谓词）。``runtime_session_bindings`` /
-    outbox/inbox 已终态行不随 run 删（S6-3.2 冻结边界）。"""
+    outbox/inbox 已终态行不随 run 删（S6-3.2 冻结边界）。
+
+    **S6-3.1 P2-6 裁决（三面复审）**：hold 检查**并入 DELETE WHERE，语句级重验**，
+    消除「检查后、删除前 hold 提交」间隙。四条 DELETE 均带语句级 hold EXISTS；
+    ``agent_runs`` 行删除必须命中 1 行，否则（hold 在删除序列中途出现 → run 未删
+    但子行已删）raise 使整事务回滚，杜绝孤儿。
+    """
     await session.execute(
         text(
             "DELETE FROM metaedu.agent_turn_inputs "
-            "WHERE tenant_id = :tid AND run_id = :rid"
+            "WHERE tenant_id = :tid AND run_id = :rid " + _HOLD_EXISTS
         ),
-        {"tid": tenant_id, "rid": run_id},
+        {
+            "tid": tenant_id,
+            "rid": run_id,
+            "cid": conversation_id,
+            "now": now,
+        },
     )
     await session.execute(
         text(
             "DELETE FROM metaedu.agent_run_events "
-            "WHERE tenant_id = :tid AND run_id = :rid"
+            "WHERE tenant_id = :tid AND run_id = :rid " + _HOLD_EXISTS
         ),
-        {"tid": tenant_id, "rid": run_id},
+        {
+            "tid": tenant_id,
+            "rid": run_id,
+            "cid": conversation_id,
+            "now": now,
+        },
     )
     await session.execute(
         text(
             "DELETE FROM metaedu.agent_compatibility_outputs "
-            "WHERE tenant_id = :tid AND run_id = :rid"
+            "WHERE tenant_id = :tid AND run_id = :rid " + _HOLD_EXISTS
         ),
-        {"tid": tenant_id, "rid": run_id},
+        {
+            "tid": tenant_id,
+            "rid": run_id,
+            "cid": conversation_id,
+            "now": now,
+        },
     )
-    await session.execute(
+    run_result = await session.execute(
         text(
             "DELETE FROM metaedu.agent_runs "
-            "WHERE tenant_id = :tid AND id = :rid"
+            "WHERE tenant_id = :tid AND id = :rid " + _HOLD_EXISTS
         ),
-        {"tid": tenant_id, "rid": run_id},
+        {
+            "tid": tenant_id,
+            "rid": run_id,
+            "cid": conversation_id,
+            "now": now,
+        },
     )
+    if not isinstance(run_result, CursorResult) or run_result.rowcount != 1:
+        # hold 在删除序列中途出现或数据异常：整事务回滚（子行删除不 commit），
+        # 杜绝「子行已删 + run 保留」孤儿；重入幂等由谓词保证。
+        affected = (
+            run_result.rowcount if isinstance(run_result, CursorResult) else "?"
+        )
+        raise RuntimeError(
+            f"audit prune run delete affected {affected} rows "
+            "(expected 1); hold re-verify at delete time failed, rolling back"
+        )
 
 
 __all__ = [

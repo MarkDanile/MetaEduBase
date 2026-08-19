@@ -95,10 +95,15 @@ async def _seed_terminal_run(
     output_publish_state: str = "not_required",
     parent_run_id: uuid.UUID | None = None,
     queue_seq: int = 1,
+    run_id: uuid.UUID | None = None,
+    first_available: int = 1,
+    last_seq: int = 1,
 ):
     """终态 run（默认 failed，非 completed 简化 terminal output envelope）。
-    同一 conversation 内多个 run 必须传不同 ``queue_seq``（uq_agent_run_queue_seq）。"""
-    run_id = uuid.uuid4()
+    同一 conversation 内多个 run 必须传不同 ``queue_seq``（uq_agent_run_queue_seq）；
+    ``run_id`` 可显式传（排序/饿死判别）；``first_available``/``last_seq`` 可
+    显式传（前缀剪除 fail-closed 判别，满足 ck_agent_run_sequences）。"""
+    run_id = run_id or uuid.uuid4()
     def_id, prof_id = await _seed_catalog(session, tid=tid)
     ended_at = datetime.now(UTC) - timedelta(days=ended_days_ago)
     await session.execute(
@@ -113,16 +118,59 @@ async def _seed_terminal_run(
             "run_config_snapshot, budget_snapshot, usage_summary, parent_run_id, "
             "created_at, updated_at) "
             "VALUES (:rid, :tid, :cid, :qseq, :rid, :def_id, :prof_id, :digest, :status, "
-            "1, 2, 1, 1, true, now() - interval '400 days', :ended_at, 'fail', "
-            "'test failure', :digest, :opstate, :tid, 'present', NULL, :rid, "
-            "'{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, :parent, "
+            "1, :next_seq, :first_avail, :last_seq, true, now() - interval '400 days', "
+            ":ended_at, 'fail', 'test failure', :digest, :opstate, :tid, 'present', "
+            "NULL, :rid, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, :parent, "
             "now() - interval '400 days', now() - interval '400 days')"
         ),
         {
             "rid": run_id, "tid": tid, "cid": cid, "qseq": queue_seq,
             "def_id": def_id, "prof_id": prof_id,
             "digest": _DIGEST, "status": status, "ended_at": ended_at,
+            "next_seq": last_seq + 1, "first_avail": first_available,
+            "last_seq": last_seq,
             "opstate": output_publish_state, "parent": parent_run_id,
+        },
+    )
+    return run_id
+
+
+async def _seed_completed_run(
+    session,
+    *,
+    tid,
+    cid,
+    output_publish_state: str = "pending",
+    queue_seq: int = 1,
+    ended_days_ago: int = 400,
+):
+    """completed run（满足 ck_agent_run_terminal_output 完整 envelope）。"""
+    run_id = uuid.uuid4()
+    def_id, prof_id = await _seed_catalog(session, tid=tid)
+    ended_at = datetime.now(UTC) - timedelta(days=ended_days_ago)
+    await session.execute(
+        text(
+            "INSERT INTO metaedu.agent_runs "
+            "(id, tenant_id, conversation_id, queue_seq, root_input_message_id, "
+            "agent_definition_version_id, runtime_profile_id, creation_digest, status, "
+            "status_revision, next_event_seq, first_available_event_seq, last_event_seq, "
+            "event_log_complete, queued_at, ended_at, terminal_code, terminal_reason, "
+            "terminal_result_digest, output_publish_state, terminal_output_ref, "
+            "terminal_output_digest, terminal_output_size, terminal_output_media_type, "
+            "terminal_output_classification, terminal_message_id, created_by, actor_state, "
+            "actor_identity_digest, correlation_id, runtime_capability_snapshot, "
+            "run_config_snapshot, budget_snapshot, usage_summary, created_at, updated_at) "
+            "VALUES (:rid, :tid, :cid, :qseq, :rid, :def_id, :prof_id, :digest, "
+            "'completed', 1, 2, 1, 1, true, now() - interval '400 days', :ended_at, "
+            "'ok', 'completed', :digest, :opstate, 'output-ref', :digest, 100, "
+            "'text/markdown', 'public', gen_random_uuid(), :tid, 'present', NULL, :rid, "
+            "'{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, "
+            "now() - interval '400 days', now() - interval '400 days')"
+        ),
+        {
+            "rid": run_id, "tid": tid, "cid": cid, "qseq": queue_seq,
+            "def_id": def_id, "prof_id": prof_id, "digest": _DIGEST,
+            "ended_at": ended_at, "opstate": output_publish_state,
         },
     )
     return run_id
@@ -579,3 +627,161 @@ async def test_purged_conversation_shortcut(session_factory):
     assert result.runs_pruned == 1
     async with session_factory() as verify:
         assert await _run_exists(verify, tid=tid, run_id=run_id) is False
+
+
+# ---------------------------------------------------------------------------
+# 三面复审返修（P1-1 / F-3 / P2-2 测试面 / P2-3 测试面）判别测试
+# ---------------------------------------------------------------------------
+
+
+async def test_audit_delete_time_hold_blocks_and_rolls_back(session_factory):
+    """P1-1 判别（S6-3.1 P2-6 裁决）：hold 检查并入 DELETE WHERE——hold 在删除
+    序列时点存在 → ``agent_runs`` 删除 0 行 → 整事务回滚（run 与子行全部保留，
+    杜绝「子行已删 + run 保留」孤儿）。"""
+    from app.composition.retention_workers import _delete_run_children_first
+
+    async with session_factory() as seed, seed.begin():
+        tid, cid = await _seed_conversation(seed)
+        run_id = await _seed_terminal_run(seed, tid=tid, cid=cid)
+        await _seed_event(
+            seed, tid=tid, cid=cid, run_id=run_id, seq=1, event_type="run.failed"
+        )
+        await _seed_turn_input(seed, tid=tid, run_id=run_id)
+    # hold 在「检查后、删除前」时点存在（模拟提交间隙窗口）。
+    async with session_factory() as hold, hold.begin():
+        await _seed_hold(hold, tid=tid, cid=cid, expires_at=None)
+
+    async with session_factory() as worker, worker.begin():
+        with pytest.raises(RuntimeError, match="hold re-verify"):
+            await _delete_run_children_first(
+                worker,
+                tenant_id=tid,
+                run_id=run_id,
+                conversation_id=cid,
+                now=datetime.now(UTC),
+            )
+    async with session_factory() as verify:
+        assert await _run_exists(verify, tid=tid, run_id=run_id) is True, "run 保留"
+        events = await verify.scalar(
+            text(
+                "SELECT count(*) FROM metaedu.agent_run_events "
+                "WHERE tenant_id = :tid AND run_id = :rid"
+            ),
+            {"tid": tid, "rid": run_id},
+        )
+        assert events == 1, "整事务回滚：子行不 commit"
+        turns = await verify.scalar(
+            text(
+                "SELECT count(*) FROM metaedu.agent_turn_inputs "
+                "WHERE tenant_id = :tid AND run_id = :rid"
+            ),
+            {"tid": tid, "rid": run_id},
+        )
+        assert turns == 1, "整事务回滚：turn_input 不 commit"
+
+
+async def test_audit_starvation_avoided_by_seen_blocked_exclusion(session_factory):
+    """F-3 判别：低 id 永久 blocked run 反复填满批次 → 候选 SQL 侧排除
+    seen_blocked，可删 run 不被饿死。"""
+    async with session_factory() as seed, seed.begin():
+        tid, cid = await _seed_conversation(seed)
+        blocked_lo = await _seed_terminal_run(
+            seed, tid=tid, cid=cid, queue_seq=1, run_id=uuid.UUID(int=1)
+        )
+        await _seed_event(
+            seed, tid=tid, cid=cid, run_id=blocked_lo, seq=1,
+            event_type="tool.outcome_unknown",
+        )
+        await _seed_event(
+            seed, tid=tid, cid=cid, run_id=blocked_lo, seq=2, event_type="run.failed",
+        )
+        blocked_hi = await _seed_terminal_run(
+            seed, tid=tid, cid=cid, queue_seq=2, run_id=uuid.UUID(int=2)
+        )
+        await _seed_event(
+            seed, tid=tid, cid=cid, run_id=blocked_hi, seq=1,
+            event_type="tool.outcome_unknown",
+        )
+        await _seed_event(
+            seed, tid=tid, cid=cid, run_id=blocked_hi, seq=2, event_type="run.failed",
+        )
+        deletable = await _seed_terminal_run(
+            seed, tid=tid, cid=cid, queue_seq=3, run_id=uuid.UUID(int=100)
+        )
+        await _seed_event(
+            seed, tid=tid, cid=cid, run_id=deletable, seq=1, event_type="run.failed",
+        )
+
+    result = await run_audit_retention(session_factory, batch_size=1)
+
+    assert result.runs_blocked == 2
+    assert result.runs_pruned == 1, "可删 run 不被低 id blocked run 饿死"
+    async with session_factory() as verify:
+        assert await _run_exists(verify, tid=tid, run_id=deletable) is False
+        assert await _run_exists(verify, tid=tid, run_id=blocked_lo) is True
+        assert await _run_exists(verify, tid=tid, run_id=blocked_hi) is True
+
+
+async def test_blocked_on_output_publish_state_pending(session_factory):
+    """P2-2（测试面）：``output_publish_state='pending'``（completed run 分支）→
+    blocked（projection_reconcile_incomplete）。"""
+    async with session_factory() as seed, seed.begin():
+        tid, cid = await _seed_conversation(seed)
+        run_id = await _seed_completed_run(
+            seed, tid=tid, cid=cid, output_publish_state="pending"
+        )
+        await _seed_event(
+            seed, tid=tid, cid=cid, run_id=run_id, seq=1, event_type="run.completed",
+        )
+
+    result = await run_audit_retention(session_factory)
+
+    assert result.runs_blocked == 1
+    assert result.blocked_reasons["projection_reconcile_incomplete"] == 1
+    async with session_factory() as verify:
+        assert await _run_exists(verify, tid=tid, run_id=run_id) is True
+
+
+async def test_blocked_on_ref_bearing_event(session_factory):
+    """P2-3（测试面）：ref-bearing external event（payload_ref 未清）→ blocked
+    （events_payload_not_tombstoned；ref 清除唯一者 = external.payload.v1，
+    S6-3.1 定向复核 P1-2 判别载体）。"""
+    async with session_factory() as seed, seed.begin():
+        tid, cid = await _seed_conversation(seed)
+        run_id = await _seed_terminal_run(seed, tid=tid, cid=cid)
+        await _seed_event(
+            seed, tid=tid, cid=cid, run_id=run_id, seq=1,
+            event_type="run.failed", payload_state="external",
+            payload_ref="ref-still-held",
+        )
+
+    result = await run_audit_retention(session_factory)
+
+    assert result.runs_blocked == 1
+    assert result.blocked_reasons["events_payload_not_tombstoned"] == 1
+    async with session_factory() as verify:
+        assert await _run_exists(verify, tid=tid, run_id=run_id) is True
+
+
+async def test_blocked_when_approval_evidence_pruned(session_factory):
+    """P1-2 判别（S6-3.1 fail-closed）：前缀已被 event retention 剪除
+    （``first_available_event_seq > 1``）→ 无法判定是否存在未解决审批 →
+    blocked（业务保留，人工处置）。"""
+    async with session_factory() as seed, seed.begin():
+        tid, cid = await _seed_conversation(seed)
+        # 前缀 1-2 已剪除：first_available=3，仅 seq3 run.failed 存活（tombstoned）。
+        run_id = await _seed_terminal_run(
+            seed, tid=tid, cid=cid, first_available=3, last_seq=3
+        )
+        await _seed_event(
+            seed, tid=tid, cid=cid, run_id=run_id, seq=3, event_type="run.failed",
+        )
+
+    result = await run_audit_retention(session_factory)
+
+    assert result.runs_blocked == 1
+    assert result.blocked_reasons["unresolved_approval"] == 1, (
+        "剪除证据无法判定 → fail closed blocked"
+    )
+    async with session_factory() as verify:
+        assert await _run_exists(verify, tid=tid, run_id=run_id) is True
