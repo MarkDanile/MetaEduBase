@@ -407,9 +407,23 @@ async def _mark_event_gap_incomplete(
 ) -> None:
     """event gap 写者（plan §S6-4 N 类）：幂等置 Run.event_log_complete=False。
 
-    Run 行锁内短事务；不取 Conv/owner/fence。
+    Run 行锁内短事务（S6-4 冻结契约 / 与 ``run_event_retention`` 锁域一致）：
+    先 ``SELECT ... FOR UPDATE`` 取 Run 行锁（session reentrant，同 row 多次
+    FOR UPDATE 不阻塞），锁内再 ``UPDATE event_log_complete = FALSE``；多实例
+    并发由 Run 行锁串行。不取 Conv / owner / fence 锁。
     """
 
+    await session.execute(
+        text(
+            """
+            SELECT id
+              FROM metaedu.agent_runs
+             WHERE tenant_id = :tid AND id = :rid
+             FOR UPDATE
+            """
+        ),
+        {"tid": tenant_id, "rid": run_id},
+    )
     await session.execute(
         text(
             """

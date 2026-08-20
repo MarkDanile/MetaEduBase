@@ -692,8 +692,15 @@ async def test_report_to_dict_no_payload_leakage():
     )
     d = report_to_dict(report)
     serialized = json.dumps(d)
-    # 任何 payload / ref / reply / session 字面不应在序列化 JSON 中出现
-    forbidden_substrings = ("payload_inline", "payload_ref", "reply", "session_ref")
+    # 任何 payload / ref / reply / session / free reason / blocked 字面不应在序列化 JSON 中出现
+    forbidden_substrings = (
+        "payload_inline",
+        "payload_ref",
+        "reply",
+        "session_ref",
+        "free_reason",
+        "blocked_reason",
+    )
     for substring in forbidden_substrings:
         assert substring not in serialized, substring
 
@@ -729,13 +736,27 @@ async def test_exit_code_one_when_findings_present(
     assert report.exit_code == 1
 
 
-async def test_exit_code_two_when_invalid_inspection_name():
-    # 内部 inspect_arg 校验；如果传入未知 inspection，indeterminate=True
-    # 但当前 main 流程下 _INSPECTIONS 选择会触发 argparse choices；测试
-    # 不通过 CLI 路径而是直接调用内部 verify_inspection；此处仅验证：
-    # 未知 inspection 字符串应被忽略（不抛异常）但 deterministic=False 标记。
-    # 实际 verify_inspection 对未识别 inspection 走 continue + indeterminate=True。
-    pass  # 已通过 choices argparse 校验在 CLI 路径保证；此处不直接复测
+async def test_exit_code_two_when_invalid_inspection_name(
+    inspection_session_factory, db_session: AsyncSession
+):
+    # 退出码 2 = 不可判定（indeterminate=True）。CLI 路径下 argparse
+    # ``choices=_INSPECTIONS`` 已拒绝未知 inspection 名；此处直接调用
+    # ``verify_inspection`` 验证：传入未知 inspection 字符串 → 不抛异常 +
+    # ``indeterminate=True`` + ``exit_code=2``。
+    from app.composition.s6i2_orphan_inspection import verify_inspection
+
+    async with inspection_session_factory() as s, s.begin():
+        tid = await _seed_tenant(s)
+
+    report = await verify_inspection(
+        inspection_session_factory,
+        tenant_id=tid,
+        persist_event_gap=False,
+        inspections=("not_a_real_inspection",),
+    )
+    assert report.indeterminate is True
+    assert report.exit_code == 2
+    assert report.total_findings == 0
 
 
 # ---------------------------------------------------------------------------
