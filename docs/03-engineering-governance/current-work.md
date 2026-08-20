@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无活跃任务。上一任务 R1-S6-I1（Retention workers + migration 043）已于 2026-08-19 合并收口（PR #582，squash `f5072ec6`，评分 87，基线 `d1427567`），见下方「最近完成」首行；下一主线候选为 R1-S6-I2（writer conformance suite + orphan 巡检）→ R1-S6-I3（S6-F1..F14 故障矩阵 + 发布演练 + restore runbook）→ C1 总验收（仍 Blocked，禁止提前启动）。
+### TASK-R1-S6-I2: Writer conformance suite + body/ref orphan inspection
+
+状态：🟡 进行中
+类型：REQ-041/047 R1-S6-I2（S6-I1 已合并，本 PR 仅实现 writer conformance suite + 六类 verify 巡检）
+领域：scheduler / retention / purge-recovery / inspection
+当前执行模式：实现（contract-first S6-4/S6-6 已冻结并随 PR #581 并入 main，本 PR 仅实现 S6-I2）
+最近接手工具：Claude Code
+分支：feature/req041-047-r1-s6-i2-writer-conformance-orphan-inspection
+
+需求来源：
+- Spec: [R1 Retention/Purge/恢复专项契约](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)（R1-AC1..12）
+- Plan: [R1 分 Slice 实施计划 §R1-S6-4](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md#s6-4-conversation-owned-writer-全集与-conformance-suite)（S6 契约冻结经 PR #581 并入 main `01524667`）+ §R1-S6-6（六类 verify 巡检形态、只读为主、event gap 唯一写路径）
+
+下一步：实现 writer conformance suite（按 S6-4 矩阵全表枚举，含 S6 自身三 N 类写者（run_event_retention / run_audit_retention / event-gap 巡检写者）+ 一 M 类（restore 重放执行器仅登记 pending，**不得伪造已实现**））+ 六类 verify CLI（tenant mismatch / digest conflict / event gap / unknown ref scheme / missing fence or owner scope / orphan transport 行；退出码 0/1/2；写入仅限 reconcile ledger 幂等登记 + event gap `event_log_complete=False`；不写 operation/checkpoint/fence/lease、不清正文或 ref、不伪造 ACK、不自动 resolve）；真实 PG 判别测试 + 18+ 项 mutation kill（先红后绿，try/finally 恢复）。**仅当**三面复评 P0/P1=0 且决 A 收口后再允许 Ready。
+
+验证状态：待补——三路 required checks（Backend iteration / Engineering docs / Frontend）+ 独立 fresh PG mutation kill 全红后转绿。**严格停止条件**：发现 P0/P1、需新 schema/migration、需修改 S5 状态机/锁序/写者矩阵、需新增无稳定 owner、需翻转 capability、需生产 wiring——立即停止并报告，不自行裁决。**禁止修改**：Metrics、Score Log、migration 043、门禁脚本、KNOWN_ISSUES、CI 配置或阈值。
+
+交接备注：C1 仍 Blocked，禁止提前启动；S6-I3（故障矩阵 + 发布演练 + restore 重放/runbook）、S5 production wiring、registry capability 翻转均不在本 PR；restore 重放执行器仅登记 pending 不实现。
 
 ## 下一批候选任务
 
