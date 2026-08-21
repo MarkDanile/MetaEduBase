@@ -63,9 +63,10 @@ class ReplayVerdict(enum.Enum):
     UNRECOGNIZED_STATE = "unrecognized_state"  # 未识别的 operation state
 
 
-# 进行中 operation 状态枚举（agent_conversation_purges.state 列，contract frozen）
+# 进行中 operation 状态枚举（与 DB ``ck_agent_purge_state`` 冻结 enum 对齐：
+# scheduled/running/blocked/failed + replay 内部语义 erasing/rebuilding/quiesced）
 IN_PROGRESS_STATES: frozenset[str] = frozenset(
-    {"scheduled", "quiesced", "erasing", "rebuilding"}
+    {"scheduled", "running", "blocked", "failed", "quiesced", "erasing", "rebuilding"}
 )
 COMPLETED_STATE = "completed"
 CANCELLED_STATE = "cancelled"
@@ -209,10 +210,10 @@ async def run_replay_executor(
     # 仅以 frozen 标志承载；调用方须保证 replay 期间不并发跑 retention/audit。
     retentions_audits_paused = True  # frozen 字面：调用方冻结
 
-    # 索引 checkpoint by conversation_purge_id
+    # 索引 checkpoint by purge_operation_id
     cp_by_purge: dict[uuid.UUID, list[dict[str, Any]]] = {}
     for cp in ledger_checkpoints:
-        purge_id_raw = cp.get("conversation_purge_id")
+        purge_id_raw = cp.get("purge_operation_id")
         if not isinstance(purge_id_raw, (str, uuid.UUID)):
             continue
         purge_id = (
