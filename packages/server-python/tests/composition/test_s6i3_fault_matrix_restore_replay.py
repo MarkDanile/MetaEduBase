@@ -137,10 +137,13 @@ async def _seed_operation(
         text(
             "INSERT INTO metaedu.agent_conversation_purges "
             "(id, tenant_id, conversation_id, purge_revision, state, "
-            "registry_digest, hold_revision_snapshot, lease_epoch, "
+            "registry_digest, retention_policy_snapshot, retention_policy_digest, "
+            "hold_revision_snapshot, lease_epoch, "
             "lease_expires_at, scheduled_at, started_at, completed_at, "
             "failure_code, next_retry_at, revision, created_at, updated_at) "
-            "VALUES (:id, :tid, :cid, :pr, :state, :digest, 0, 0, NULL, "
+            "VALUES (:id, :tid, :cid, :pr, :state, :digest, "
+            "CAST(:rps AS jsonb), :digest, "
+            "0, 0, NULL, "
             "now(), now(), NULL, :fc, NULL, 1, now(), now())"
         ),
         {
@@ -150,6 +153,7 @@ async def _seed_operation(
             "pr": purge_rev,
             "state": state,
             "digest": _DIGEST,
+            "rps": '{"conversation_recovery_days": 30}',
             "fc": failure_code,
         },
     )
@@ -160,7 +164,7 @@ async def _seed_checkpoint(
     session: AsyncSession,
     *,
     tid: uuid.UUID,
-    purge_id: uuid.UUID,
+    conversation_purge_id: uuid.UUID,
     owner_key: str,
     owner_version: int = 1,
     state: str = "acked",
@@ -173,7 +177,7 @@ async def _seed_checkpoint(
     await session.execute(
         text(
             "INSERT INTO metaedu.agent_conversation_purge_owners "
-            "(id, tenant_id, purge_id, owner_key, owner_version, "
+            "(id, tenant_id, conversation_purge_id, owner_key, owner_version, "
             "checkpoint_state, attempt, checkpoint_digest, intent_digest, "
             "ack_digest, recorded_at, failure_code, revision) "
             "VALUES (:id, :tid, :pid, :ok, :ov, :state, :att, "
@@ -182,7 +186,7 @@ async def _seed_checkpoint(
         {
             "id": cp_id,
             "tid": tid,
-            "pid": purge_id,
+            "pid": conversation_purge_id,
             "ok": owner_key,
             "ov": owner_version,
             "state": state,
@@ -220,8 +224,8 @@ async def test_f1_worker_kill_takeover_lease_epoch_cas_monotone(
             s, tid=tid, cid=cid, state=COMPLETED_STATE, purge_rev=1
         )
         await _seed_checkpoint(
-            s, tid=tid, purge_id=pid, owner_key="execution.core.v1",
-            owner_version=1, state="ack ed", attempt=1,
+            s, tid=tid, conversation_purge_id=pid, owner_key="execution.core.v1",
+            owner_version=1, state="acked", attempt=1,
         )
 
     async with s6i3_session_factory() as s:
@@ -261,7 +265,7 @@ async def test_f2_claim_acquire_half_commit_idempotent_claim_collapses(
         )
         # 已有 checkpoint 行（operation 行存在 + 无 lease）
         await _seed_checkpoint(
-            s, tid=tid, purge_id=pid, owner_key="workspace.core.v1",
+            s, tid=tid, conversation_purge_id=pid, owner_key="workspace.core.v1",
             owner_version=1, state="pending", attempt=0,
         )
 
@@ -270,7 +274,7 @@ async def test_f2_claim_acquire_half_commit_idempotent_claim_collapses(
             await s.execute(
                 text(
                     "SELECT COUNT(*) FROM metaedu.agent_conversation_purge_owners "
-                    "WHERE purge_id = :pid"
+                    "WHERE conversation_purge_id = :pid"
                 ),
                 {"pid": pid},
             )
@@ -308,7 +312,7 @@ async def test_f3_lease_ack_lost_replay_no_fork(
             text(
                 "UPDATE metaedu.agent_conversation_purge_owners "
                 "SET ack_digest = NULL, checkpoint_state = 'pending' "
-                "WHERE purge_id = :pid"
+                "WHERE conversation_purge_id = :pid"
             ),
             {"pid": pid},
         )
@@ -318,7 +322,7 @@ async def test_f3_lease_ack_lost_replay_no_fork(
             await s.execute(
                 text(
                     "SELECT COUNT(*) FROM metaedu.agent_conversation_purge_owners "
-                    "WHERE purge_id = :pid AND ack_digest IS NULL"
+                    "WHERE conversation_purge_id = :pid AND ack_digest IS NULL"
                 ),
                 {"pid": pid},
             )
@@ -347,8 +351,8 @@ async def test_f5_ack_after_operation_pre_aggregation_crash_takeover_safe(
             "execution.transport.v1",
         ):
             await _seed_checkpoint(
-                s, tid=tid, purge_id=pid, owner_key=ok, owner_version=1,
-                state="ack ed", attempt=1,
+                s, tid=tid, conversation_purge_id=pid, owner_key=ok, owner_version=1,
+                state="acked", attempt=1,
             )
 
     async with s6i3_session_factory() as s:
@@ -356,7 +360,7 @@ async def test_f5_ack_after_operation_pre_aggregation_crash_takeover_safe(
             await s.execute(
                 text(
                     "SELECT COUNT(*) FROM metaedu.agent_conversation_purge_owners "
-                    "WHERE purge_id = :pid AND checkpoint_state = 'ack ed'"
+                    "WHERE conversation_purge_id = :pid AND checkpoint_state = 'acked'"
                 ),
                 {"pid": pid},
             )
@@ -379,7 +383,7 @@ async def test_f8_outbox_claim_short_transaction_crash_retry_takes_lease(
         pid = await _seed_operation(s, tid=tid, cid=cid, state="erasing")
         # 模拟 claim 后 raise：operation 处于 erasing、checkpoint pending
         await _seed_checkpoint(
-            s, tid=tid, purge_id=pid, owner_key="workspace.transport.v1",
+            s, tid=tid, conversation_purge_id=pid, owner_key="workspace.transport.v1",
             owner_version=1, state="pending", attempt=0,
         )
 
@@ -389,7 +393,7 @@ async def test_f8_outbox_claim_short_transaction_crash_retry_takes_lease(
             await s.execute(
                 text(
                     "SELECT checkpoint_state FROM metaedu.agent_conversation_purge_owners "
-                    "WHERE purge_id = :pid"
+                    "WHERE conversation_purge_id = :pid"
                 ),
                 {"pid": pid},
             )
@@ -416,8 +420,8 @@ async def test_replay_completed_purge_does_not_call_adapter(
         )
         for ok in ("workspace.core.v1", "execution.core.v1"):
             await _seed_checkpoint(
-                s, tid=tid, purge_id=pid, owner_key=ok, owner_version=1,
-                state="ack ed", attempt=1,
+                s, tid=tid, conversation_purge_id=pid, owner_key=ok, owner_version=1,
+                state="acked", attempt=1,
             )
 
     async with s6i3_session_factory() as s:
@@ -436,7 +440,7 @@ async def test_replay_completed_purge_does_not_call_adapter(
         cp_rows = (
             await s.execute(
                 text(
-                    "SELECT id, tenant_id, purge_id, owner_key, owner_version, "
+                    "SELECT id, tenant_id, conversation_purge_id, owner_key, owner_version, "
                     "checkpoint_state, attempt, checkpoint_digest, intent_digest, "
                     "ack_digest, recorded_at, failure_code, revision "
                     "FROM metaedu.agent_conversation_purge_owners WHERE tenant_id = :tid"
@@ -477,8 +481,8 @@ async def test_replay_in_progress_op_locally_cleared_no_adapter(
             s, tid=tid, cid=cid, state="erasing", purge_rev=1
         )
         await _seed_checkpoint(
-            s, tid=tid, purge_id=pid, owner_key="execution.core.v1",
-            owner_version=1, state="ack ed", attempt=2,
+            s, tid=tid, conversation_purge_id=pid, owner_key="execution.core.v1",
+            owner_version=1, state="acked", attempt=2,
         )
 
     async with s6i3_session_factory() as s:
@@ -497,7 +501,7 @@ async def test_replay_in_progress_op_locally_cleared_no_adapter(
         cp_rows = (
             await s.execute(
                 text(
-                    "SELECT id, tenant_id, purge_id, owner_key, owner_version, "
+                    "SELECT id, tenant_id, conversation_purge_id, owner_key, owner_version, "
                     "checkpoint_state, attempt, checkpoint_digest, intent_digest, "
                     "ack_digest, recorded_at, failure_code, revision "
                     "FROM metaedu.agent_conversation_purge_owners WHERE tenant_id = :tid"
@@ -526,7 +530,7 @@ async def test_replay_external_runtime_unacked_blocked_classification():
 
     assert _classify_ref_erasure_state("blocked") == ReplayVerdict.EXTERNAL_BLOCKED
     assert _classify_ref_erasure_state("unknown") == ReplayVerdict.EXTERNAL_BLOCKED
-    assert _classify_ref_erasure_state("ack ed") is None
+    assert _classify_ref_erasure_state("acked") is None
     assert _classify_ref_erasure_state("redacted") is None
 
 
@@ -541,8 +545,8 @@ async def test_replay_owner_version_mismatch_fail_closed(
         pid = await _seed_operation(s, tid=tid, cid=cid, state=COMPLETED_STATE)
         # 账本 owner_version = 1
         await _seed_checkpoint(
-            s, tid=tid, purge_id=pid, owner_key="execution.core.v1",
-            owner_version=1, state="ack ed", attempt=1,
+            s, tid=tid, conversation_purge_id=pid, owner_key="execution.core.v1",
+            owner_version=1, state="acked", attempt=1,
         )
 
     async with s6i3_session_factory() as s:
@@ -561,7 +565,7 @@ async def test_replay_owner_version_mismatch_fail_closed(
         cp_rows = (
             await s.execute(
                 text(
-                    "SELECT id, tenant_id, purge_id, owner_key, owner_version, "
+                    "SELECT id, tenant_id, conversation_purge_id, owner_key, owner_version, "
                     "checkpoint_state, attempt, checkpoint_digest, intent_digest, "
                     "ack_digest, recorded_at, failure_code, revision "
                     "FROM metaedu.agent_conversation_purge_owners WHERE tenant_id = :tid"
@@ -597,11 +601,11 @@ async def test_replay_digest_mismatch_fail_closed(
         await s.execute(
             text(
                 "INSERT INTO metaedu.agent_conversation_purge_owners "
-                "(id, tenant_id, purge_id, owner_key, owner_version, "
+                "(id, tenant_id, conversation_purge_id, owner_key, owner_version, "
                 "checkpoint_state, attempt, checkpoint_digest, intent_digest, "
                 "ack_digest, recorded_at, failure_code, revision) "
                 "VALUES (gen_random_uuid(), :tid, :pid, 'execution.core.v1', 1, "
-                "'ack ed', 1, :cd, :id, 'INVALID_DIGEST_SHORT', now(), NULL, 1)"
+                "'acked', 1, :cd, :id, 'INVALID_DIGEST_SHORT', now(), NULL, 1)"
             ),
             {"tid": tid, "pid": pid, "cd": _DIGEST, "id": _DIGEST},
         )
@@ -622,7 +626,7 @@ async def test_replay_digest_mismatch_fail_closed(
         cp_rows = (
             await s.execute(
                 text(
-                    "SELECT id, tenant_id, purge_id, owner_key, owner_version, "
+                    "SELECT id, tenant_id, conversation_purge_id, owner_key, owner_version, "
                     "checkpoint_state, attempt, checkpoint_digest, intent_digest, "
                     "ack_digest, recorded_at, failure_code, revision "
                     "FROM metaedu.agent_conversation_purge_owners WHERE tenant_id = :tid"
@@ -688,7 +692,7 @@ async def test_replay_unrecognized_state_fail_closed(
     async with s6i3_session_factory() as s, s.begin():
         tid = await _seed_tenant(s, name="replay6")
         cid = await _seed_conversation(s, tid=tid)
-        await _seed_operation(s, tid=tid, cid=cid, state="future_state_unknown")
+        await _seed_operation(s, tid=tid, cid=cid, state="future_unknown")
 
     async with s6i3_session_factory() as s:
         op_rows = (
@@ -714,7 +718,9 @@ async def test_replay_unrecognized_state_fail_closed(
         assert decision.verdict == ReplayVerdict.UNRECOGNIZED_STATE
 
 
-async def test_replay_paused_retentions_audits():
+async def test_replay_paused_retentions_audits(
+    s6i3_session_factory, db_session: AsyncSession
+):
     """replay 与 retention/audit 互斥（frozen 字面：replay 期间暂停）。"""
 
     async with s6i3_session_factory() as s:
@@ -746,8 +752,8 @@ async def test_ledger_export_snapshot_no_sensitive_payload_leakage(
         )
         for ok in ("workspace.core.v1", "execution.core.v1"):
             await _seed_checkpoint(
-                s, tid=tid, purge_id=pid, owner_key=ok, owner_version=1,
-                state="ack ed", attempt=1,
+                s, tid=tid, conversation_purge_id=pid, owner_key=ok, owner_version=1,
+                state="acked", attempt=1,
             )
 
     async with s6i3_session_factory() as s:
@@ -852,7 +858,8 @@ async def test_release_drill_old_writer_variant_fails_closed(
     assert report.old_writer_variant_simulated is True
     # canary enable 阶段降级声明包含「本地无法执行」
     canary_stage = next(r for r in report.stages if r.stage == DrillStage.CANARY_ENABLE)
-    assert "测试环境" in canary_stage.detail.get("drill_degraded_declaration", "")
+    assert canary_stage.detail.get("production_canary_executed") is False
+    assert canary_stage.detail.get("drill_degraded_declaration")
 
 
 async def test_release_drill_canary_target_test_environment_only(

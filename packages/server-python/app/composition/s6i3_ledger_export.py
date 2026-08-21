@@ -64,7 +64,7 @@ _OPERATION_FIELDS: tuple[str, ...] = (
 _CHECKPOINT_FIELDS: tuple[str, ...] = (
     "id",
     "tenant_id",
-    "purge_id",
+    "conversation_purge_id",
     "owner_key",
     "owner_version",
     "checkpoint_state",
@@ -251,7 +251,7 @@ async def export_ledger_snapshot(
     cp_rows = (
         await session.execute(
             text(
-                "SELECT id, tenant_id, purge_id, owner_key, owner_version, "
+                "SELECT id, tenant_id, conversation_purge_id, owner_key, owner_version, "
                 "checkpoint_state, attempt, checkpoint_digest, intent_digest, "
                 "ack_digest, recorded_at, failure_code, revision "
                 "FROM metaedu.agent_conversation_purge_owners WHERE tenant_id = :tid "

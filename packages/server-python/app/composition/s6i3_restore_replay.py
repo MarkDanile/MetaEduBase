@@ -209,10 +209,10 @@ async def run_replay_executor(
     # 仅以 frozen 标志承载；调用方须保证 replay 期间不并发跑 retention/audit。
     retentions_audits_paused = True  # frozen 字面：调用方冻结
 
-    # 索引 checkpoint by purge_id
+    # 索引 checkpoint by conversation_purge_id
     cp_by_purge: dict[uuid.UUID, list[dict[str, Any]]] = {}
     for cp in ledger_checkpoints:
-        purge_id_raw = cp.get("purge_id")
+        purge_id_raw = cp.get("conversation_purge_id")
         if not isinstance(purge_id_raw, (str, uuid.UUID)):
             continue
         purge_id = (
