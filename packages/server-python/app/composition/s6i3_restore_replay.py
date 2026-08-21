@@ -136,7 +136,7 @@ def _assert_owner_version_match(
 def _assert_digest_match(
     *,
     ledger_checkpoint_digest: str | None,
-    ledger_intent_digest: str | None,
+    ledger_capability_digest: str | None,
     ledger_ack_digest: str | None,
 ) -> tuple[bool, str]:
     """账本三 digest 任一缺失或异常 = fail closed。
@@ -145,7 +145,7 @@ def _assert_digest_match(
     """
     for name, value in (
         ("checkpoint_digest", ledger_checkpoint_digest),
-        ("intent_digest", ledger_intent_digest),
+        ("capability_digest", ledger_capability_digest),
         ("ack_digest", ledger_ack_digest),
     ):
         if value is None:
@@ -242,7 +242,7 @@ async def run_replay_executor(
         # digest 校验
         ok, reason = _assert_digest_match(
             ledger_checkpoint_digest=cp.get("checkpoint_digest"),
-            ledger_intent_digest=cp.get("intent_digest"),
+            ledger_capability_digest=cp.get("capability_digest"),
             ledger_ack_digest=cp.get("ack_digest"),
         )
         if not ok:

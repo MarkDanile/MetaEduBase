@@ -60,21 +60,20 @@ _OPERATION_FIELDS: tuple[str, ...] = (
     "updated_at",
 )
 
-# 检查点表（agent_conversation_purge_owners）字段白名单
+# 检查点表（agent_conversation_purge_owners）字段白名单（基于 migration 034 schema）
 _CHECKPOINT_FIELDS: tuple[str, ...] = (
     "id",
     "tenant_id",
     "purge_operation_id",
     "owner_key",
     "owner_version",
-    "checkpoint_state",
+    "capability_digest",
+    "state",
     "attempt",
     "checkpoint_digest",
-    "intent_digest",
     "ack_digest",
-    "recorded_at",
-    "failure_code",
-    "revision",
+    "reason_code",
+    "created_at",
 )
 
 # 外部引用表（agent_external_object_refs）字段白名单
@@ -252,10 +251,10 @@ async def export_ledger_snapshot(
         await session.execute(
             text(
                 "SELECT id, tenant_id, purge_operation_id, owner_key, owner_version, "
-                "checkpoint_state, attempt, checkpoint_digest, intent_digest, "
-                "ack_digest, recorded_at, failure_code, revision "
+                "capability_digest, state, attempt, "
+                "checkpoint_digest, ack_digest, reason_code, created_at "
                 "FROM metaedu.agent_conversation_purge_owners WHERE tenant_id = :tid "
-                "ORDER BY recorded_at, id"
+                "ORDER BY created_at, id"
             ),
             {"tid": tenant_id},
         )
