@@ -267,7 +267,7 @@ async def export_ledger_snapshot(
     ref_rows = (
         await session.execute(
             text(
-                "SELECT id, tenant_key, conversation_id, ref_scheme, "
+                "SELECT id, tenant_id, owner_key, conversation_id, ref_scheme, "
                 "source_table, source_row_id, erase_state, blocked_reason, "
                 "created_at, updated_at FROM metaedu.agent_external_object_refs "
                 "WHERE tenant_id = :tid ORDER BY created_at, id"
@@ -276,12 +276,7 @@ async def export_ledger_snapshot(
         )
     ).mappings().all()
     for r in ref_rows:
-        # owner_key 是冻结字段名（不是 tenant_key）；上面 SQL 误写为 tenant_key
-        # ——修正为 owner_key；此处按 row key 重命名以匹配白名单
-        raw = dict(r)
-        if "tenant_key" in raw and "owner_key" not in raw:
-            raw["owner_key"] = raw.pop("tenant_key")
-        projected = _project_fields(raw, _REF_FIELDS)
+        projected = _project_fields(dict(r), _REF_FIELDS)
         rows.append(LedgerSnapshotRow(table="ref", fields=projected))
 
     # 4. reconcile

@@ -958,6 +958,7 @@ async def test_in_progress_states_set_complete():
             "blocked",
             "failed",
             "quiesced",
+            "erasing",
             "rebuilding",
         }
     ) == IN_PROGRESS_STATES
