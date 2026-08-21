@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-（当前无进行中任务。下一批候选任务见下方。）
+### TASK-R1-S6-I3: S6-F1..F14 真实故障矩阵 + 发布演练 + restore replay 机制与 runbook
+
+状态：🟡 进行中
+类型：REQ-041/047 R1-S6-I3（R1-S6 最后一片实现；S6-I1/I2 已合并并 closeout）
+领域：scheduler / retention / purge-recovery / fault-matrix / release-drill / restore-replay
+当前执行模式：实现（contract-first S6-5/S6-7/S6-8 已随 PR #581 冻结并入 main；本 PR 仅实现 S6-I3 业务代码与测试）
+最近接手工具：Claude Code
+分支：feature/req041-047-r1-s6-i3-fault-matrix-restore-replay
+
+需求来源：
+- Spec: [R1 Retention/Purge/恢复专项契约 §10/§11](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- Plan: [R1 分 Slice 实施计划 §R1-S6-5/§R1-S6-7/§R1-S6-8/§R1-S6-9/§R1-S6-10](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（S6 契约冻结经 PR #581 并入 main `01524667`；S6-I1 经 PR #582 squash `f5072ec6`；S6-I2 经 PR #584 merge `ad7ac3e5` + closeout PR #585 merge `96ddc014`）
+
+下一步：实现（A）S6-F1..F14 真实 PG 故障矩阵 14 项测试（逐行映射真实 test nodeid、注入机制、持久状态结果、零写/单写判别、必要 mutation；F1 lease takeover 双连接 gather / F2 SQL 篡改半提交 / F3 checkpoint 退回 + ack_digest 清重放 / F4 单 owner 分步 ACK 多 ref 逐 ref 注入 / F5 ACK 落账后聚合前 crash / F6 seq gap 测试事务内 `DISABLE TRIGGER ALL` 隔离窗口 raw DELETE / F7 first_available_event_seq + SSE 410 稳定 / F8 outbox claim 短事务 crash + SKIP LOCKED 重入 / F9 hold create vs entry 真并发双连接 gather / F10 T1/T2 间 hold 推进 + 后续 `blocked_hold_revision_changed` G2 门禁 / F11 mutate-during-lookup T2 重验 `checkpoint.state == 'erasing'` 判别载体 / F12 writer/purge pause race + retention 与 writer Run 行锁串行 / F13 进程级 kill 等价注入 = 租约过期+中途 raise+双连接，仅证 DB 状态转移等价，登记生产门禁 / F14 跨 tenant/伪造 ACK/旧 revision 重放 fail closed）+ （B）发布演练脚本 expand → writer capability → batched backfill → verify → canary enable 五阶段 fail-closed 判别（不新增 migration，复用 034..043；writer capability = registry owner_version + conformance 事实承载；canary 仅测试环境/tenant 演练；external/runtime `erase_available=False` 保持不变）+ （C）restore replay 三件套（独立 ledger export 受控快照格式：仅计数/ID/digest/owner/version/受控状态，绝不输出正文/payload/ref 原值/Runtime session ref/自由文本 reason；replay executor M 类集合锁 + 与 retention/audit jobs 互斥 + 已完成 purge 按 ledger receipt/ack_digest 标记不重复 adapter 调用 + 进行中 operation 本地重放 + external/runtime 未 ACK → blocked+reconcile 不冒充已 erase + digest/version 失配 fail closed 转 runbook 人工处置；restore-before-open runbook：恢复后服务保持不可读写 → 导入/校验独立 ledger → replay → S5 六 owner body/ref scan + S6-I2 verify → 扫描为零且门禁通过才开放流量）+ 真实 PG 独立 fresh PG 数据库 + 双连接 `NullPool`/`asyncio.gather` + AC10 sentinel 全 substring 不泄露 + 具名 mutation kill 先红后绿 try/finally 恢复 零残留。**仅当**三面复评 P0/P1=0 且决 A 收口后再允许 Ready。
+
+验证状态：待补——三路 required checks（Backend full / Engineering docs / Frontend）+ 独立 fresh PG 全部 14 项 + release drill 5 阶段 + restore replay roundtrip 真实落地。**严格停止条件**：发现 P0/P1、需新 schema/migration、需修改 S5 状态机/锁序/写者矩阵、需翻转任一 registry capability、需 production scheduler wiring 或六 erase 入口可达、需真实生产 canary/backup/restore drill 才能宣称完成、replay 需调用 external/runtime adapter、无法证明旧 ledger owner_version/digest、发现与 S6-5/S6-7/S6-8 冻结语义冲突——立即停止并报告，不自行架构裁决。**禁止修改**：Metrics、Score Log、migration 043、门禁脚本、KNOWN_ISSUES、CI 配置或阈值。**未启动**：C1 Durable Core 总验收、S5 production wiring、registry capability 翻转（external/runtime 保持 `erase_available=False`）、六 erase 入口生产可达。
+
+交接备注：R1-S6-I1/I2 已合并 main `96ddc014`，本 PR 起点 = main `96ddc014`；S6-I3 是 R1-S6 最后一片实现；TD-097/098/099/100/101/102/103 保持历史和 follow-up 编号，不因本 PR 自动覆盖或关闭；REQ-047 保持后续联合验收归属；restore_replay_executor 仅 M 类登记 + 集合锁，不进入生产 wiring；S6I2_PENDING_WRITERS 中 restore_replay_executor 仍仅 pending，落地后转 registered 但不接生产 wiring。
 
 ## 下一批候选任务
 
