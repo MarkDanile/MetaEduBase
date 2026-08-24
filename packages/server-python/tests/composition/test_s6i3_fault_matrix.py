@@ -1,7 +1,6 @@
 """R1-S6-I3 故障矩阵（ledger/disk 族）：F1 / F2 / F3 / F5 / F8。
 
 契约：Plan §R1-S6-5（F1/F2/F3/F5/F8 行，已随 PR #581 并入 main）。
-
 从 ``test_s6i3_fault_matrix_restore_replay.py``（原 1040 行）拆分收口 td-032。本文件
 承载 lease/ACK/outbox-claim 五行的**浅层真实 PG 判别**——真实 DB 状态转移语义已由
 既有 S4-F / S4-E-B2 / S5-A / S5-D 各自的故障矩阵与双连接 gather 测试承载（详
@@ -27,6 +26,7 @@ helper 复用 ``tests/composition/s6i3_seeds.py``（repo 跨测试 import 惯例
 
 from __future__ import annotations
 
+# ruff: noqa: F401, F811  (pytest fixture imports + test signature reuse are intentional)
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +37,7 @@ from tests.composition.s6i3_seeds import (
     _seed_conversation,
     _seed_operation,
     _seed_tenant,
+    s6i3_session_factory,  # noqa: F401  (pytest fixture; F811 ruff误判)
 )
 
 pytestmark = pytest.mark.asyncio
@@ -45,7 +46,7 @@ _DIGEST = "a" * 64
 
 
 async def test_f1_worker_kill_takeover_lease_epoch_cas_monotone(
-    s6i3_session_factory, db_session: AsyncSession
+    s6i3_session_factory, db_session: AsyncSession  # noqa: F811  (pytest fixture; F401+F811 ruff误判)
 ):
     """F1: Worker kill（claim 后聚合前 raise/进程死 → 租约到期 → takeover）。
 

@@ -18,6 +18,7 @@ F4 载体复用 ``test_s4eb2_external_erasure``（participant 双事务）；F11
 
 from __future__ import annotations
 
+# ruff: noqa: F401, F811  (pytest fixture imports + test signature reuse are intentional)
 import asyncio
 
 import pytest
@@ -32,6 +33,7 @@ from app.composition.transactional_projection_coordinator import build_scan_prov
 from app.contexts.agent_workspace.domain import PurgeOwnerState
 from tests.composition.test_s4eb2_external_erasure import (
     _ensure_test_tenant,
+    _external_registry_enabled,  # noqa: F401  (pytest fixture; F811 ruff误判)
     _ledger_state,
     _make_purge_operation,
     _participant,
@@ -123,7 +125,7 @@ async def _ref_id_for_source(db_session, source_row_id):
 
 
 async def test_f4_single_owner_stepwise_ack_partial_ref_crash_replay(
-    db_session, _external_registry_enabled
+    db_session, _external_registry_enabled  # noqa: F811  (pytest fixture; F401+F811 ruff误判)
 ):
     """F4：单 owner 内分步 ACK（部分 ref 先 ACK、部分失败）。
 
