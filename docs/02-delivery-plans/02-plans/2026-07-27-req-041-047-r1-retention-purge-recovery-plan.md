@@ -2240,6 +2240,7 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 4. **restore-cancel 边界（冻结）**：既有 `cancel_scheduled_operations_for_restore`（erasure_repository.py:890-965）只处理**未开始**的 operation（scheduled→cancelled）；恢复重放覆盖**已完成** purge（item 2/3）+ **进行中** operation（item 3 执行器）——与 restore 生命周期互补，不冲突（restore 前进 purge_revision 使旧 lease/checkpoint 失效）。
 5. **body/ref 扫描（冻结）**：**复用 S5 六 owner 终态扫描**（scan_execution_body 等，execution_erasure_participant.py:263-379 谓词：payload_inline/payload_ref/terminal_output/compat output/context snapshot/actor 全覆盖）+ S6-6 巡检（tenant/digest/gap/ref/missing-fence 五类）——「复用 S6-6 巡检命令」原文不含正文扫描，三面复审 P2-1 纠正。
 6. **drill 降级声明（冻结）**：真实 pg_dump/恢复/流量开关演练**无法在本地执行**（无生产基础设施、无备份保留 runbook 执行环境）——**明确登记生产门禁**（docs/02-delivery-plans/03-runbooks/ 新增 restore-before-open runbook 文档 + 生产负责人承接标记），完成声明降级为「重放机制与扫描经真实 PG 验证（contract-tested 级别）」，**不冒充已跑 restore drill**（R1-AC12 字面降级）。
+7. **replay 持久状态域分层（R1-S6-I3-B 纠偏冻结，supersede 注）**：replay 状态路由表（operation 六态 × checkpoint 五态 × fence 四态分层，**禁止跨层混用**）与 replay 判定方式（`REPLAYABLE_OPERATION_STATES` 仅来自 operation CHECK 闭集 + owner 可重放六元组判定）以本计划 R1-S6-I3-B §S6-11..S6-14 为准——item 3「进行中 operation 处置」**不再许可**跨 operation/checkpoint/fence 层合并的单一「进行中」状态集合；可重放 operation 闭集收窄为 `running`/`blocked`（`scheduled` 归 restore-cancel、`failed` 默认 fail closed 人工处置、`completed` verify-only、`cancelled` 跳过）；`quiesced`/`rebuilding` 为 scheduler 派生阶段术语，**不是**持久化状态，不得作为 replay 输入合法值。
 
 ##### S6-9 R1-AC1..12 映射（冻结）
 
@@ -2266,11 +2267,87 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 - **不修改已合并 S5 代码**（**例外清单，显式登记两处**：#1 = S6-1 裁决一 hold 到期读侧谓词宽化（claim 谓词 + `has_active_legal_hold`，R1-AC7 明确缺口，最小谓词改动 + 判别测试）；#2 = S6-1 裁决二 settlement `_verify_t2_tokens` 补 `checkpoint.state == 'erasing'` 重验（S5-SCH-2 冻结清单落地缺口，settlement.py:699-702 现缺，伪造 ACK 防线 + 判别测试））；不修改 CR-1/2/4/10/13/16；不翻转任何 capability；不启动 C1；不启动 S5 production wiring。
 - **migration 043 冻结需求（P0-1 评审裁决）**：append-only guard（039/041）白名单扩展——(a) UPDATE tombstone 放行 `NEW.payload_state IN ('redacted','expired','archived')`（inline 清除分支；ref 分支保持 redacted-only，retention 禁清 ref）；(b) DELETE 仅限已 tombstone 行（`OLD.payload_state IN (redacted/expired/archived) AND payload_inline IS NULL AND payload_ref IS NULL`）；其余 UPDATE/DELETE 维持 RAISE；expand-only、downgrade 可逆（还原 039/041 行为）。**043 区间自此启用**；043 之外不再追加（writer capability 代码级承载、policy 无表）；若实现阶段契约裁决变化导致新增落库需求，必须先行契约修订评审，不自动加 migration。
 - **实现 PR 拆分（冻结方向，供批准后执行）**：S6-I1 retention workers（run_event_retention + run_audit_retention + hold 读侧裁决（S5 修改点 #1）+ **migration 043** + 判别测试）；S6-I2 writer conformance suite + orphan 巡检命令；S6-I3 真实故障矩阵专项（S6-F1..F14，含 settlement checkpoint.state 补验 = S5 修改点 #2）+ 发布演练脚本 + restore 重放机制（账本独立导出 + 执行器）与 runbook。每个 slice 一个原子 PR（merged-boundary 各自记录）；external/runtime fake 一律 contract-tested 标注。
+- **replay 持久状态域纠偏（R1-S6-I3-B，冻结）**：replay 输入状态合法性（仅 operation CHECK 闭集子集）、导入快照 record kind/table identity 要求、未知/跨层/不可证明状态一律 fail closed、owner 可重放六元组判定与后续拆分顺序（PR-A schema/test alignment → PR-C F1-F14 故障矩阵 → PR-D ledger export/replay executor + runbook → PR-E release drill）以 R1-S6-I3-B §S6-11..S6-14 为准；**不新增 enum、不新增 migration、不放宽 CHECK**（migration 034 三 CHECK 闭集 + ack 约束 + 040 ledger 约束全部保持原样）；PR #586（S6-I3 实现）保持 Draft，其处置（关闭并由拆分 PR supersede，或作为只读历史载体）待本纠偏合并后决定。
 - **停止条件核查（本契约）**：CR 未改（对照 CR-1/2/4/10/13/16 边界）；新增写者（retention workers/巡检）均有稳定 owner（execution.core.v1）；S5 状态机/写者矩阵仅两处显式登记例外（裁决一谓词宽化 + checkpoint.state 补验，均 S5-SCH 冻结契约落地缺口，非状态机改写）；capability 未翻转；Pi Worker/云 adapter 未宣称；drill 已登记生产门禁；P0/P1=0（本契约冻结评审返修后）；门禁脚本未改。
 
 > **merged-boundary（2026-08-19，S6-I1 实现 PR #582，squash merge `f5072ec6`，评分 87，Original，基线 `d1427567`）**：R1-S6-I1 retention workers 并入 main——`run_event_retention`（payload expiry：inline 清 `payload_inline` 转 `expired`、external 仅 state 转 `expired` 保留 `payload_ref`；连续前缀 envelope prune 头行条件 + 同事务单调推进 `first_available_event_seq` + 置 `event_log_complete=False`；Run 行 FOR UPDATE、DB clock `clock_timestamp()`、幂等、tenant scope、语句级 hold EXISTS）+ `run_audit_retention`（365 天 prune + children-first FK 删除顺序（turn_inputs→run_events→compat_outputs→run，命中 1 行否则整事务回滚）+ hold/非终态/`tool.outcome_unknown` 未解决/未解决审批剪除 fail-closed/projection reconcile 未完成/存活子 run 全部 blocked 零写 + seen_blocked SQL 侧排除饿死防护）+ **migration 043 已落地**（append-only guard 四分支白名单，downgrade 还原 041，standalone upgrade/downgrade/upgrade 往返稳定 head=043）+ S6-10 例外清单两处 S5 修改点落地（裁决一 hold 到期读侧谓词宽化，不 bump `hold_revision`；裁决二 settlement `_verify_t2_tokens` 补 `checkpoint.state=='erasing'` 重验，S6-F11）。历程（历史计数保留不覆盖）：首轮三面去重 P1×2/P2×5 统一返修闭环 → 首次评分 87（基线 `2af39081`）→ 首次 Ready Backend full 4 failed（migration 043 与 pre-existing 测试硬编码 039/041 期望冲突）→ 决 A pre-existing 测试兼容升级（test_s3d/test_s4ea/test_alembic 按 S6-10 冻结 widening 扩展判别矩阵，不改 043/契约、不回退 widening；mutation 驱动同步 M-043-3/4）→ post-fix 三面独立复评（main@01524667..d1427567）P0/P1/P2/P3 去重全 0 → 正式重评分 87（基线 `d1427567` = FINAL_IMPL_HEAD，实现基线 main `01524667`）。验证：S6-I1 专项 47 passed + composition 全量 705 passed + 18/18 具名 mutation kill（`scripts/s6i1_retention_mutation_kill.py`）+ Ready Backend full **2649 passed / 1 skipped / 4 deselected / 0 failed** + Frontend 326 unit + 55 e2e + Engineering docs + ruff clean + mypy 0 回归 + docs gates。**merged-boundary 结论**：S6-I1 完成，migration 043 已落地——**S6-I2（writer conformance suite + orphan 巡检命令）、S6-I3（S6-F1..F14 真实故障矩阵专项 + 发布演练脚本 + restore 重放机制与 runbook）、C1 总验收、registry capability 翻转（external/runtime 保持 `erase_available=False`）、S5 production wiring 均未启动**；retention workers 无生产 wiring（行为以测试为准）；除两处显式登记例外未修改 S5 冻结状态机/写者矩阵。follow-up TD-097（P3 健壮性/覆盖族 10 项）+ TD-098（audit 契约语义张力 + outcome_unknown 死路径契约修订建议）+ TD-099（pre-existing 测试兼容升级 + mutation script 修复 + 契约修订评审建议）+ REQ-047（R1-S6 implementation conformance 随后续 slice 闭环）。
 
 > **merged-boundary（2026-08-20，S6-I2 实现 PR #584，merge `ad7ac3e5`，评分 88，Original，基线 `1df93f54`，FINAL_IMPL_HEAD `655f36b0`）**：R1-S6-I2 writer conformance suite + body/ref orphan inspection 并入 main——`app/composition/s6i2_orphan_inspection.py`（1005 行，>1000 待拆分登记 td-032）+ `tests/composition/test_s6i2_orphan_inspection.py`（776 行，>500 高风险候选登记 td-032）。**writer 静态枚举层**（S6-4 落地）`_required_writer_specs()` 3 个 WriterSpec：`run_event_retention` / `run_audit_retention` / `event_gap_inspection_writer`（owner_key=`execution.core.v1`，FENCE_N，Run-locked，tenant-scoped，对齐 S6-4 矩阵行 +44 三 N 类）；`run_writer_conformance_static()` registry 完整性（`owner_registry()` 6 个 owner_key 全覆盖）+ capability_digest 漂移检测（`capability_digest()` fail closed 返回 None）+ stage_with_created caller 门禁（`_FENCED_CALLER_ALLOWLIST`）三层 fail closed；`S6I2_PENDING_WRITERS` 登记 `restore_replay_executor` 仅 pending 不实现（M 类归属 S6-I3）。**六类 verify 巡检**（S6-6 落地，`verify_inspection()` 主编排 + `_INSPECTIONS` 注册表）：`tenant_mismatch`（outbox 跨 tenant，`agent_workspace_outbox`/`agent_execution_outbox` UNION ALL NOT EXISTS 子查询）/ `digest_conflict`（`agent_erasure_fences` owner_version 漂移 + ingress/ack_digest 64-hex 正则）/ `event_gap`（**唯一写路径**：`SELECT id FROM agent_runs WHERE tenant_id=:tid AND id=:rid FOR UPDATE` 取 Run 行锁 + 锁内 `UPDATE event_log_complete = FALSE` + `_register_ledger_issue` 同事务幂等登记 `epoch_unresolvable`+`execution.transport.v1`+`run_events`）/ `unknown_ref_scheme`（ref_scheme='unknown' 巡检 + 已有 blocked 阻断兜底）/ `missing_fence_or_owner_scope`（5a 部署门禁占位 + 5b null conversation_id outbox 检出）/ `orphan_transport`（无 conversation 引用的 transport outbox 行，仅 report 零写）。`_register_ledger_issue` 受 migration 040 CHECK 约束（7 issue_codes × 3 owner_keys × 5 source_tables × 3 classes 合法性矩阵 + `ck_agent_transport_reconcile_class_scope` conversation_scope ↔ conversation_id NOT NULL / tenant_scope/orphan ↔ NULL 守卫）；`_mark_event_gap_incomplete` 仅写 `agent_runs.event_log_complete`（无 Conv/owner/fence 锁，符合 S6-4「Run 行锁内短事务」字面，与 `retention_workers._lock_run_row` 锁域一致）；`report_to_dict` sentinel JSON（不输出 `payload_inline`/`payload_ref`/`reply`/`session_ref`/`free_reason`/`blocked_reason` 字面）；CLI `main()` argparse exit 0/1/2（0=无发现/1=有发现/2=indeterminate）。**冻结契约字面执行**：仅 ledger + `event_log_complete=False` 两条写路径；零 operation/checkpoint/fence/lease/正文/ref 写入；不伪造 ACK；不自动 resolve；migration 043 / 门禁脚本 / KNOWN_ISSUES / CI 配置或阈值均未触碰。**历程（历史计数保留不覆盖）**：首轮三面独立复评（A 面 数据/状态机 P0=0/P1=0/P2=2/P3=0 + B 面 并发/锁序 P0=0/P1=2/P2=2/P3=1 + C 面 测试/运维 P0=0/P1=0/P2=3/P3=3 → 合计 P0=0/P1=2/P2=7/P3=4）→ 转 Draft（Round-1 B 面 P1-1 `_mark_event_gap_incomplete` 缺 Run 行锁补 `SELECT ... FOR UPDATE` 与 `retention_workers._lock_run_row` 锁域一致 + B 面 P1-2 同根原子覆盖随之闭合 + C 面 P2-2 `test_report_to_dict_no_payload_leakage` 补 `free_reason`/`blocked_reason` 断言 + C 面 P2-3 `test_exit_code_two_when_invalid_inspection_name` 空 pass 实装 + A 面 P2-1 td-032 行数 1007→1005 回写 + test 776 行登记）→ Round-1 commit `655f36b0` 一次性返修 → Round-1 定向复核 P0/P1=0 → 正式评分 88（基线 `1df93f54`，FINAL_IMPL_HEAD `655f36b0`，七维 15+18+18+14+15+9+0=88，check-review-score-submit passed，Metrics 未改）。**验证**：21/21 S6-I2 真实 PG 专项（静态枚举 7 + 六类巡检真实 PG 7 + ledger 合法性 2 + sentinel 1 + 退出码 3 + 并发 1）+ composition 全量 **726 passed**（含 S6-I1 + 全部 S5 + transport ledger + backfill + hold + claim + erasure + settlement + execution 全回归）+ ruff clean + mypy Success + git diff --check clean + `scripts/check-engineering-docs --full` → passed（32 known issue allowlisted）+ Draft CI run 32365886611 Backend iteration/Frontend/Engineering docs 全 SUCCESS + Ready CI run 32366205551 Backend full/Frontend/Engineering docs 全 SUCCESS + 评分 HEAD run 32368190755 Backend full（infra cancel 后 rerun）/Frontend/Engineering docs 全 SUCCESS。**merged-boundary 结论**：S6-I2 完成——**S6-I3（S6-F1..F14 真实故障矩阵专项 + 发布演练脚本 + restore 重放机制与 runbook）、C1 总验收、registry capability 翻转（external/runtime 保持 `erase_available=False`）、S5 production wiring、restore_replay_executor 实现（仍仅 pending 登记）、六 erase 入口生产可达性翻转（`scheduler_composition.py` 无生产调用方 + production wiring 静态守卫保持）均未启动**；writer conformance suite 验证 21 项已闭合契约 S6-4 + S6-6 范围；零契约 / 零 migration / 零 registry / 零 S5 状态机 / 零 S5 锁序 / 零 S5 写者矩阵修改；migration 043 / 门禁脚本 / KNOWN_ISSUES / CI 配置或阈值均未触碰；td-032 已登记 `s6i2_orphan_inspection.py` 1005 行（>1000 待拆分）+ `test_s6i2_orphan_inspection.py` 776 行（>500 高风险候选）。**follow-up TD-100**（P2 B面：verify 巡检并发写幂等测试补齐 — persist_event_gap=True × asyncio.gather）+ **TD-101**（P2 B/C面：missing_fence_or_owner_scope 5a 分支契约张力 — 部署门禁 vs 巡检实现边界）+ **TD-102**（P2 C面：digest_conflict 真实 PG 端到端测试补齐 — owner_version 漂移 + ingress/ack_digest 64-hex 注入）+ **TD-103**（P3 C面：mutation kill baseline 缺失 — 与 S6-I1 历次 18/18 mutation 比对；target 覆盖删 Run 行锁 / 改 class_scope 对齐 / 改 ON CONFLICT / 改 sentinel）+ **REQ-047**（R1-S6 implementation conformance 随后续 slice 闭环）。
+
+（契约段位置：S6 契约冻结区 merged-boundary 之后、S5-D 契约区之前；首轮三面复审版）
+
+### R1-S6-I3-B：restore replay 持久状态域契约纠偏（contract-first，纯文档）
+
+> Status: Draft（本 PR 仅纯文档契约纠偏；不写代码/测试/schema/migration/registry/CI，不启动 S6-I3 实现收尾、PR-A/C/D/E 或 C1；PR #586 保持 Draft，本 PR 不带入其任何代码/测试/runbook/实现提交）
+> 依据：S6-I3 实现（PR #586）四轮 schema/test alignment 修复后 Backend iteration 仍红，触发 fresh PG schema-fact audit（独立 fresh DB，alembic head=`043_run_event_retention_guard`）——发现 restore replay 状态域跨层混用：operation/checkpoint/fence 三层各自独立的 CHECK 闭集被实现合并为单一「进行中」集合，且混入 `quiesced`/`rebuilding` 两个非持久化派生术语。#581（S6 契约冻结，评分见 Score Log）不重评，S6 冻结规则除本段明确纠偏项外全部不变。
+> 本段冻结：三层 CHECK 闭集事实基线（S6-11）、replay 状态路由表（S6-12，禁止跨层混用）、replay 判定方式（S6-13，supersede S6-8 item 3「进行中 operation」的宽松读法）、后续拆分与 #586 处置（S6-14）。首轮三面复审原始计数（保留不覆盖）：数据/状态机 P0=0/P1=0/P2=0/P3=0 + 并发/锁序/恢复 P0=0/P1=0/P2=0/P3=0 + 测试/运维/文档 P0=0/P1=0/P2=0/P3=0 → 合计 P0=0/P1=0/P2=0/P3=0（docs-only 纠偏，三面各自独立过一遍路由表完备性/写权限边界/判别载体覆盖，无 finding）。
+
+#### S6-11 状态域事实对账（冻结，fresh PG alembic head=043 实测）
+
+**三层各自独立的 CHECK 闭集（migration 034 原文，fresh PG 复核一致）**：
+
+| 层 | 表 | CHECK | 闭集 |
+|----|----|-------|------|
+| operation | `agent_conversation_purges.state` | `ck_agent_purge_state`（034:473-477） | `scheduled` / `running` / `blocked` / `failed` / `completed` / `cancelled` |
+| checkpoint | `agent_conversation_purge_owners.state` | `ck_agent_purge_owner_state`（034:552-553） | `pending` / `erasing` / `blocked` / `failed` / `acked` |
+| fence | `agent_erasure_fences.state` | `ck_agent_erasure_fence_state`（034:372-375） | `active` / `erasing` / `erased` / `blocked` |
+
+配套约束：`ck_agent_purge_owner_ack`（034:567-571）——`state='acked'` ⇒ `ack_digest` 非 NULL 且 64-hex；`state<>'acked'` ⇒ `ack_digest` 为 NULL。
+
+**audit 发现（#586 实现偏差，仅作事实记录，本 PR 不改代码）**：
+- 实现侧 `IN_PROGRESS_STATES = {scheduled, running, blocked, failed, quiesced, erasing, rebuilding}` 把三层状态与派生术语合并为单一集合——`quiesced`/`rebuilding` **不在任何 DB 闭集**；`erasing` 是 checkpoint/fence 状态、**不是** operation 状态；`scheduled`/`failed` 在 operation 闭集内但**不属于** replay 可执行集（见 S6-12 路由表）。
+- ledger export 引用 `agent_transport_scope_reconcile.observed_at`——该列不存在（真实列为 `created_at`/`resolved_at`）；checkpoint 快照引用 `intent_digest`/`recorded_at`/`failure_code`/`revision`——均不存在（真实列为 `capability_digest`/`reason_code`/`created_at`）。
+- 负例 fixture `INVALID_DIGEST_SHORT` 配 `state='acked'` 违反 `ck_agent_purge_owner_ack`——负例不能靠「非法组合」构造。
+- audit 分类：**A**（仅测试 SQL/fixture 命名错，可修）× 3、**E**（负例 fixture 必须改合法值 + 独立约束拒绝断言）× 1、**C**（状态域跨层混用，需契约裁决——本段）× 1；**B/D = 0**（无生产代码引用错误 schema、无需新 schema/migration）。
+
+**派生术语归属（冻结）**：`quiesce` 是 S5-B-1 quiesce 门禁的**阶段判定**（任一 owner `checkpoint.state=='erasing'` 或 `fence.state=='erasing'` → scheduler 不得推进 purge_revision）；`rebuild` 是 S5-B-3 重建**流程**（阶段 1 seeding / 阶段 2 聚合）。二者由 operation/checkpoint/fence/reason/revision 组合**推导**，从不是、也不得成为持久化状态值。
+
+#### S6-12 replay 状态路由表（冻结；禁止跨层混用）
+
+**1. operation.state 路由（六态全覆盖，`ck_agent_purge_state` 闭集）**：
+
+| operation.state | replay 路由 | 冻结语义 |
+|-----------------|-------------|----------|
+| `scheduled` | **不执行**（restore-cancel 专属） | 未开始；只由既有 `cancel_scheduled_operations_for_restore` 处理（scheduled→cancelled，S6-8 item 4）；replay executor 对其**零写** |
+| `running` | **条件可重放**（owner 级） | 进行中；允许依据 checkpoint/ledger 对本地可证明清除的 owner 做维护重放（与 purge 同谓词、**无 adapter 调用**）；判定必须过 S6-13 六元组 |
+| `blocked` | **条件可重放**（owner 级） | 允许读取 owner checkpoint 决定本地可证明清除；external/runtime 未 ACK 继续 `blocked` + reconcile，**不调用 adapter、不冒充已 erase** |
+| `failed` | **默认不重放**（fail closed） | 重试预算耗尽终态；默认不自动重放，转 runbook 人工处置；若未来允许自动重放，必须另行状态机裁决（契约修订评审），本契约**不放行** |
+| `completed` | **只校验**（verify-only） | 只校验 ledger receipt/ack_digest 与 body/ref 扫描结果；**不重复清除、不调用 adapter** |
+| `cancelled` | **跳过** | 禁止重放；与 restore-cancel 越权边界不合并 |
+
+**2. checkpoint.state 路由（五态全覆盖，`ck_agent_purge_owner_state` 闭集）**：
+
+| checkpoint.state | owner 级 replay 候选 | 冻结语义 |
+|------------------|----------------------|----------|
+| `pending` | **条件候选** | 仅当 operation ∈ {`running`, `blocked`} 且 owner 为本地可证明清除者时作为候选；过 S6-13 六元组判定 |
+| `erasing` | **条件候选** | 同 `pending`；恢复点以 checkpoint_digest/attempt 重验为准（S5 既有崩溃恢复语义） |
+| `blocked` | **保持 blocked + reconcile** | external/runtime 或证据不足保持 `blocked` + reconcile；本地 owner 也必须按冻结 reason 白名单判定，**不得通用重开** |
+| `failed` | **不重放**（人工） | 不自动重放，runbook 人工处置 |
+| `acked` | **禁止重复 side effect** | 视为已落账（receipt/ack_digest 为准）；**禁止重复 owner side effect**；`ck_agent_purge_owner_ack` 要求 64-hex ack_digest |
+
+**3. fence.state 边界（`ck_agent_erasure_fence_state` 闭集：active/erasing/erased/blocked）**：`erasing` 只描述 owner fence 窗口（清除进行中），**不得写入或比较 operation.state**；fence 与 checkpoint 状态必须**分别读取、按各自 enum 判断**——同名值（如 `erasing`/`blocked`）在两层语义不同，禁止互代。
+
+**4. `quiesced`/`rebuilding`（派生术语，非持久化状态）**：定义为 scheduler 派生阶段或流程术语（S6-11 归属）；由 operation/checkpoint/fence/reason/revision 组合推导；**不得**作为数据库 operation.state、ledger operation state 或 replay 输入合法值；imported ledger 出现此类值必须 `UNRECOGNIZED_STATE` **fail closed，不做维护写**。
+
+#### S6-13 replay 判定方式（冻结）
+
+- **删除「统一 IN_PROGRESS_STATES 混合 operation/checkpoint/派生阶段」的契约许可**（supersede S6-8 item 3 的宽松读法）：`REPLAYABLE_OPERATION_STATES = {running, blocked}`，**只能来自** `ck_agent_purge_state` 闭集，不得混入 checkpoint/fence 状态或派生术语。
+- **owner 是否可重放必须再结合六元组判定**：`checkpoint.state` + `owner_key` + `ack_digest` + `owner_version` + `capability_digest` + `purge_revision`——**禁止只凭 operation.state 执行本地清除**；本地可证明清除 = 六元组全部与 ledger 快照自洽且 owner 属本地可清除类（workspace/execution/transport 域）。
+- **导入快照必须带 record kind/table identity**（operation/checkpoint/ref/reconcile 四类具名区分）：避免相同 `state` 字段跨 operation/checkpoint/fence 混读；快照 schema version 变更须显式 bump。
+- **未知状态、跨层状态、owner/version/digest 不可证明一律 fail closed**：`UNRECOGNIZED_STATE` / `OWNER_VERSION_MISMATCH` / `DIGEST_MISMATCH` 零写，转 runbook 人工处置（S6-8 item 3 digest 失配处置衔接）。
+- **不新增 enum、不新增 migration、不放宽 CHECK**：本纠偏不产生任何 schema 变更需求；若后续实现发现必须变更，立即停止并走契约修订评审（S6-10 既有条款）。
+
+#### S6-14 后续拆分与 #586 处置（冻结）
+
+1. **PR-A：schema/test alignment（bounded fix）**——`observed_at` → `created_at`/`resolved_at`；删除或替换不存在的 `intent_digest`/`recorded_at`/`failure_code`/`revision`（真实列以 migration 034/fresh PG 为准）；`acked` fixture 使用合法 64-hex `ack_digest`；另加**短 digest 触发 `ck_agent_purge_owner_ack` 拒绝的独立负例**（不靠非法组合构造）。已稳定登记 **TD-104**。
+2. **PR-C：S6-F1..F14 故障矩阵**（真实 PG，列名以 fresh PG 实测为准）。
+3. **PR-D：ledger export / replay executor + runbook**（按 S6-12/S6-13 路由表与判定方式实现；快照带 record kind/table identity）。
+4. **PR-E：release drill**（五阶段 fail-closed 判别 + canary 测试环境限定）。
+5. **#586 处置**：保持 Draft；待本纠偏合并后再决定关闭并由拆分 PR supersede，或作为只读历史载体；**本纠偏 PR 不关闭、不改写、不 rebase #586**，其分支与提交全部保留。
+
+**承接门禁（冻结）**：后续每个路由表行都必须有真实 PG 判别载体 + fail-closed 负例（PR-C/D 验收映射）；A/E 类修复（PR-A）不得顺手改 C 类语义；C 类语义以本段为唯一事实源。
+
+> **merged-boundary（2026-08-24，契约纠偏 PR #587，squash merge `66674f23`，评分 85，Original，基线 `96ddc014`，FINAL_IMPL_HEAD `eb4f3ffc`）**：R1-S6-I3-B restore replay 持久状态域契约纠偏冻结并入 main——S6-11 三层 CHECK 闭集事实基线（migration 034 行级引用 + fresh PG head=043 复核）+ S6-12 replay 状态路由表（operation 六态 × checkpoint 五态 × fence 四态分层，禁止跨层混用；`quiesced`/`rebuilding` 派生术语 → `UNRECOGNIZED_STATE` fail closed）+ S6-13 replay 判定方式（`REPLAYABLE_OPERATION_STATES={running,blocked}` 仅来自 operation CHECK 闭集 + owner 可重放六元组 + 快照 record kind/table identity + 未知/跨层/不可证明一律 fail closed）+ S6-14 后续拆分（PR-A schema/test alignment → PR-C F1-F14 → PR-D ledger export/replay executor + runbook → PR-E release drill）与 #586 处置（保持 Draft，关闭 supersede 或只读历史载体待决）+ §S6-8 item 7 / §S6-10 纠偏指针。正式三面复审 P0=0/P1=0/P2=0/P3=1（唯一 P3 = S6-11 audit 分类 A×3 vs 审计报告 A×5 计数口径，绑定 TD-104 备注）；`check-review-score-submit` passed（base=FINAL_IMPL_HEAD，Score Log 唯一 #587 Original 行，Metrics Snapshot 未变）；Draft / Ready / 评分三层三路 required checks 全 SUCCESS。**纠偏完成不代表 #586 已修复或 PR-A/C/D/E 已启动**：#586 仍 Draft（head=`3fb71cc6`，Backend iteration 红，未修复、未 rerun，分支与提交全部保留）；C1、S5 production wiring、registry capability 翻转（external/runtime 保持 `erase_available=False`）、六 erase 入口生产可达均未启动；零代码/测试/schema/migration/registry/CI 改动。follow-up **TD-104**（PR-A schema/test alignment 稳定承接：observed_at→created_at/resolved_at + 删除不存在列 + acked fixture 合法 64-hex + 独立 CHECK 拒绝负例）+ **REQ-047**（R1-S6 implementation conformance 随后续 slice 闭环）。
 
 
 
