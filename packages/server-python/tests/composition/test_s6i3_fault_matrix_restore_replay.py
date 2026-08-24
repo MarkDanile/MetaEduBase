@@ -37,6 +37,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -196,7 +197,11 @@ async def _seed_checkpoint(
             "state": state,
             "att": attempt,
             "cdigest": checkpoint_digest or _DIGEST,
-            "adigest": ack_digest or _DIGEST,
+            # ck_agent_purge_owner_ack（034:567-571）：state='acked' ⇒ 合法
+            # 64-hex ack_digest；state<>'acked' ⇒ ack_digest IS NULL
+            "adigest": ack_digest
+            if ack_digest is not None
+            else (_DIGEST if state == "acked" else None),
             "rc": reason_code,
         },
     )
@@ -311,7 +316,13 @@ async def test_f3_lease_ack_lost_replay_no_fork(
         tid = await _seed_tenant(s, name="f3")
         cid = await _seed_conversation(s, tid=tid)
         pid = await _seed_operation(s, tid=tid, cid=cid, state="completed")
-        # 模拟 ACK 丢失：ack_digest 清空 + state 退回 pending
+        # 先种合法 acked checkpoint（64-hex ack_digest，ck_agent_purge_owner_ack
+        # 合法），再模拟 ACK 丢失：ack_digest 清空 + state 退回 pending
+        # （pending ⇒ ack_digest IS NULL，CHECK 合法）
+        await _seed_checkpoint(
+            s, tid=tid, purge_operation_id=pid, owner_key="execution.core.v1",
+            owner_version=1, state="acked", attempt=1,
+        )
         await s.execute(
             text(
                 "UPDATE metaedu.agent_conversation_purge_owners "
@@ -445,8 +456,8 @@ async def test_replay_completed_purge_does_not_call_adapter(
             await s.execute(
                 text(
                     "SELECT id, tenant_id, purge_operation_id, owner_key, owner_version, "
-                    "state, attempt, checkpoint_digest, intent_digest, "
-                    "ack_digest, recorded_at, failure_code, revision "
+                    "capability_digest, state, attempt, checkpoint_digest, "
+                    "ack_digest, reason_code, created_at "
                     "FROM metaedu.agent_conversation_purge_owners WHERE tenant_id = :tid"
                 ),
                 {"tid": tid},
@@ -455,6 +466,23 @@ async def test_replay_completed_purge_does_not_call_adapter(
 
         ops = [dict(r) for r in op_rows]
         cps = [dict(r) for r in cp_rows]
+        # 真实 schema 键集断言（migration 034 + ORM 事实：checkpoint 表无
+        # intent_digest/recorded_at/failure_code/revision 列；版本事实 =
+        # owner_version + attempt，replay 六元组判定不含 revision）
+        assert set(cps[0].keys()) == {
+            "id",
+            "tenant_id",
+            "purge_operation_id",
+            "owner_key",
+            "owner_version",
+            "capability_digest",
+            "state",
+            "attempt",
+            "checkpoint_digest",
+            "ack_digest",
+            "reason_code",
+            "created_at",
+        }
         result = await run_replay_executor(
             s,
             tenant_id=tid,
@@ -506,8 +534,8 @@ async def test_replay_in_progress_op_locally_cleared_no_adapter(
             await s.execute(
                 text(
                     "SELECT id, tenant_id, purge_operation_id, owner_key, owner_version, "
-                    "state, attempt, checkpoint_digest, intent_digest, "
-                    "ack_digest, recorded_at, failure_code, revision "
+                    "capability_digest, state, attempt, checkpoint_digest, "
+                    "ack_digest, reason_code, created_at "
                     "FROM metaedu.agent_conversation_purge_owners WHERE tenant_id = :tid"
                 ),
                 {"tid": tid},
@@ -570,8 +598,8 @@ async def test_replay_owner_version_mismatch_fail_closed(
             await s.execute(
                 text(
                     "SELECT id, tenant_id, purge_operation_id, owner_key, owner_version, "
-                    "state, attempt, checkpoint_digest, intent_digest, "
-                    "ack_digest, recorded_at, failure_code, revision "
+                    "capability_digest, state, attempt, checkpoint_digest, "
+                    "ack_digest, reason_code, created_at "
                     "FROM metaedu.agent_conversation_purge_owners WHERE tenant_id = :tid"
                 ),
                 {"tid": tid},
@@ -601,7 +629,12 @@ async def test_replay_digest_mismatch_fail_closed(
         tid = await _seed_tenant(s, name="replay4")
         cid = await _seed_conversation(s, tid=tid)
         pid = await _seed_operation(s, tid=tid, cid=cid, state=COMPLETED_STATE)
-        # 模拟 ack_digest 长度异常（非 64-hex）
+        # digest 失配合法载体（migration 034 ck_agent_purge_owner_ack :567-571
+        # 事实：state<>'acked' ⇒ ack_digest IS NULL）——state='erasing' +
+        # ack_digest=NULL 合法入库，replay 侧 _assert_digest_match 判
+        # "ack_digest missing" → fail closed。原 INVALID_DIGEST_SHORT 组合
+        # 违反 CHECK 无法入库，已改为独立约束拒绝负例（见
+        # test_ck_agent_purge_owner_ack_rejects_short_ack_digest）。
         await s.execute(
             text(
                 "INSERT INTO metaedu.agent_conversation_purge_owners "
@@ -609,7 +642,7 @@ async def test_replay_digest_mismatch_fail_closed(
                 "capability_digest, state, attempt, "
                 "checkpoint_digest, ack_digest, reason_code, created_at) "
                 "VALUES (gen_random_uuid(), :tid, :pid, 'execution.core.v1', 1, "
-                ":cap, 'acked', 1, :cd, 'INVALID_DIGEST_SHORT', NULL, now())"
+                ":cap, 'erasing', 1, :cd, NULL, NULL, now())"
             ),
             {"tid": tid, "pid": pid, "cap": _DIGEST, "cd": _DIGEST},
         )
@@ -631,8 +664,8 @@ async def test_replay_digest_mismatch_fail_closed(
             await s.execute(
                 text(
                     "SELECT id, tenant_id, purge_operation_id, owner_key, owner_version, "
-                    "state, attempt, checkpoint_digest, intent_digest, "
-                    "ack_digest, recorded_at, failure_code, revision "
+                    "capability_digest, state, attempt, checkpoint_digest, "
+                    "ack_digest, reason_code, created_at "
                     "FROM metaedu.agent_conversation_purge_owners WHERE tenant_id = :tid"
                 ),
                 {"tid": tid},
@@ -646,6 +679,39 @@ async def test_replay_digest_mismatch_fail_closed(
             current_registry_owner_versions={"execution.core.v1": 1},
         )
         assert result.digest_mismatch_count == 1
+
+
+async def test_ck_agent_purge_owner_ack_rejects_short_ack_digest(
+    s6i3_session_factory, db_session: AsyncSession
+):
+    """负例：state='acked' + 短 ack_digest 必须被 ck_agent_purge_owner_ack 拒绝。
+
+    事实依据：migration 034 ``ck_agent_purge_owner_ack``（:567-571）——
+    ``state='acked'`` ⇒ ``ack_digest`` 非 NULL 且 ``char_length=64``。
+    本测试为原 ``INVALID_DIGEST_SHORT`` 非法组合的独立约束拒绝载体（该组合
+    无法入库，不能作为 replay digest 失配 fixture）；同时证明本次 schema/test
+    对齐**未掩盖**既有 CHECK 守卫（子事务回滚，保留外层种子）。
+    """
+
+    async with s6i3_session_factory() as s, s.begin():
+        tid = await _seed_tenant(s, name="replayneg1")
+        cid = await _seed_conversation(s, tid=tid)
+        pid = await _seed_operation(s, tid=tid, cid=cid, state=COMPLETED_STATE)
+        with pytest.raises(IntegrityError) as excinfo:
+            async with s.begin_nested():
+                await s.execute(
+                    text(
+                        "INSERT INTO metaedu.agent_conversation_purge_owners "
+                        "(id, tenant_id, purge_operation_id, owner_key, "
+                        "owner_version, capability_digest, state, attempt, "
+                        "checkpoint_digest, ack_digest, reason_code, created_at) "
+                        "VALUES (gen_random_uuid(), :tid, :pid, "
+                        "'execution.core.v1', 1, :cap, 'acked', 1, :cd, "
+                        "'INVALID_DIGEST_SHORT', NULL, now())"
+                    ),
+                    {"tid": tid, "pid": pid, "cap": _DIGEST, "cd": _DIGEST},
+                )
+        assert "ck_agent_purge_owner_ack" in str(excinfo.value)
 
 
 async def test_replay_cancelled_operation_skipped(
