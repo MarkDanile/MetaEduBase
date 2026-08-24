@@ -14,7 +14,16 @@
 
 ## 当前进行中
 
-（当前无进行中任务。下一批候选任务见下方。）
+### TASK-R1-S6-I3-F10: S6-F10 契约核对纠偏（contract-first，纯文档）
+
+状态：🟡 进行中（Draft 契约 PR，from main@`b28f84ab`，独立分支非 stacked）
+最新交接（2026-08-24）：F10 契约只读核对完成 + 契约纠偏段 §S6-15 冻结起草。核心发现：F10「契约冲突」**非**期望自相矛盾，而源于「T1/T2 锁外阶段」术语歧义——participant erase（Tx1/Tx2，`workspace_erasure_participant.py:657` **等值**检查，任何 drift fail-closed，管辖 F9）vs settlement closeout（T1/T2，`settlement.py:849` **单向**检查，推进放行，管辖 F10）。F10 期望「fence erased + checkpoint acked」仅 settlement T2 可产出（participant Tx2 只写 ref erased + source_ref cleared），且裁决二显式命名 settlement `_verify_t2_tokens` → 读法锁定 settlement T1/T2，自洽可实现、**无需任何契约/代码变更**。§S6-15 冻结：两套 hold-drift 路径事实基线 + 读法锁定 + 唯一可执行路由表 + 待裁决项 4 项（确认读法甲纠偏 #590 旧判定 / hold 释放或过期衔接 rebuild G3 HOLD_GATED / 解除 skip 登记 F10 实现 PR / 反向情形备案）。**边界**：纯文档；不改 S5 settlement/participant/terminal guard、不接 fake、不改 schema/migration/enum/CHECK/Score Log/Metrics/门禁脚本/KNOWN_ISSUES/CI；#590 保持 Draft 不改写；M-F3/M-F5（settlement 私有路径重构）+ M-F8（锁叠加不可观察）登记 follow-up；PR-D/E/C1/S5 wiring/capability 翻转未启动。
+类型：REQ-041/047 R1-S6-I3-F10（S6-F10 契约纠偏；参照 I3-B PR #587 先例）
+分支：docs/req041-047-r1-s6-i3-f10-contract
+
+下一步：推 Draft PR（base = main），等三路 checks 全绿 + 独立复审 P0/P1=0；停 Draft 不转 Ready/不评分/不合并/不创建 closeout；评审确认读法甲后由 TD-105 承接 F10 实现（另起测试 PR）。
+
+交接备注：F10 当前 skip（#590 `test_f10_contract_conflict_not_implemented`）；本纠偏不带入 #590 任何代码/测试；#590 = OPEN/Draft head=`aa889db8`（stacked on #586 `a2e30fed`）；main 保持 `b28f84ab`。验证：check-engineering-docs --full + git diff --check + Draft 三路 checks。若独立复审发现需代码/schema/S5 契约修改，立即保持 Draft 并报告，不自行裁决。follow-up TD-104 + TD-105 + REQ-047。
 
 ## 下一批候选任务
 
