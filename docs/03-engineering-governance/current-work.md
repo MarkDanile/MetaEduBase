@@ -14,24 +14,7 @@
 
 ## 当前进行中
 
-### TASK-R1-S6-I3-B: restore replay 持久状态域契约纠偏（contract-first，纯文档）
-
-状态：🟡 进行中
-类型：REQ-041/047 R1-S6-I3-B（S6-I3 实现前置契约纠偏；docs-only，不写代码/测试/schema/migration/registry/CI）
-领域：scheduler / purge-recovery / restore-replay / 状态域契约
-当前执行模式：契约纠偏（contract-first，纯文档）
-最近接手工具：Claude Code
-分支：docs/req041-047-r1-s6-i3-replay-state-contract-correction（自 main@`96ddc014` 新建）
-
-需求来源：
-- Plan: [R1 分 Slice 实施计划 §R1-S6-8/§R1-S6-10 + R1-S6-I3-B §S6-11..S6-14](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
-- 事实基线：fresh PG schema-fact audit（独立 fresh DB，alembic head=`043_run_event_retention_guard`）
-
-背景与事实：PR #586（S6-I3 实现）经四轮 schema/test alignment 修复后 Backend iteration 仍红，**停在 Draft**（head=`3fb71cc6`，分支与提交全部保留，不 reset/rebase/force-push）。schema-fact audit 分类：**A/E 类可修**（测试 SQL/fixture 命名错 + 负例 fixture 违反 `ck_agent_purge_owner_ack`——已稳定登记 TD-104，由后续 PR-A 承接）；**C 类状态域跨层混用由本契约 PR 裁决**（三层 CHECK 闭集分层 + replay 状态路由表 + 判定方式，plan §S6-11..S6-14）；B/D 类为零。
-
-下一步：三面复审（状态机/数据、并发/恢复、测试/运维）→ `scripts/check-engineering-docs --full` + `git diff --check` → 创建 Draft PR → 三路 Draft checks 全绿后停止（不转 Ready、不评分、不合并）。
-
-验证状态：待补——门禁脚本 + 三路 Draft checks（Backend iteration / Frontend / Engineering docs）。**严格边界**：净 diff 仅允许 plan / current-work / technical-debt；不带入 #586 任何代码/测试/runbook/实现提交；不新增 enum/migration、不放宽 CHECK、不改 S5 状态机/锁序/写者矩阵、不翻转 registry capability。**未启动**：PR-A/C/D/E、C1 Durable Core 总验收、S5 production wiring、registry capability 翻转（external/runtime 保持 `erase_available=False`）、六 erase 入口生产可达。
+（当前无进行中任务。下一批候选任务见下方。）
 
 ## 下一批候选任务
 
@@ -49,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-08-24 | R1-S6-I3-B restore replay 持久状态域契约纠偏（contract-first，纯文档） | 🟢 完成 | PR #587（squash `66674f23`）；评分 85；三层 CHECK 闭集 + replay 路由表 + 判定方式冻结；#586 仍 Draft 未修；PR-A/C/D/E、C1、S5 wiring、capability 未启动；TD-104 + REQ-047 | [PR #587](https://github.com/MarkDanile/MetaEduBase/pull/587)（squash `66674f23`）/ [work-log](work-log.md) / [score 85](04-retrospectives/review-score-log.md) |
 | 2026-08-20 | R1-S6-I2 Writer conformance suite + body/ref orphan inspection | 🟢 完成 | PR #584（merge `ad7ac3e5`）；评分 88；3 writer spec + 六类 verify 巡检 + Run 行锁；21 项专项 + 726 composition；TD-100~103 + REQ-047；S6-I3/C1/S5 wiring 未启动 | [PR #584](https://github.com/MarkDanile/MetaEduBase/pull/584)（merge `ad7ac3e5`）/ [work-log](work-log.md) / [score 88](04-retrospectives/review-score-log.md) |
 | 2026-08-19 | R1-S6-I1 Retention workers（run_event_retention + run_audit_retention + migration 043） | 🟢 完成 | PR #582（squash `f5072ec6`）；评分 87（基线 `d1427567`）；两 worker + 043 guard + 两处 S5 修复落地；三面返修+决 A 测试兼容升级后 P0/P1=0；Backend 2649/1/4/0 + mutation 18/18 + 043 往返稳定；S6-I2/I3/C1/S5 wiring 未启动；TD-097/098/099 + REQ-047 | [PR #582](https://github.com/MarkDanile/MetaEduBase/pull/582)（squash `f5072ec6`）/ [work-log](work-log.md) / [score 87](04-retrospectives/review-score-log.md) |
 | 2026-08-19 | R1-S5 Root Integration: settlement idempotency key 对齐 + B/C/D 联合组合根 | 🟢 完成 | root PR #577（squash `636fc425`）合并；评分 92（基线 `995aa223`）；126 专项 + composition 665 + mutation 8 组 + Backend 2600/1/4 + Frontend 326+55；production erase 入口仍不可达；follow-up REQ-047 + TD-093/095/096 + td-032 | [PR #577](https://github.com/MarkDanile/MetaEduBase/pull/577)（squash `636fc425`）/ [work-log](work-log.md) / [score 92](04-retrospectives/review-score-log.md) |

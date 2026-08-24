@@ -2347,6 +2347,8 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 
 **承接门禁（冻结）**：后续每个路由表行都必须有真实 PG 判别载体 + fail-closed 负例（PR-C/D 验收映射）；A/E 类修复（PR-A）不得顺手改 C 类语义；C 类语义以本段为唯一事实源。
 
+> **merged-boundary（2026-08-24，契约纠偏 PR #587，squash merge `66674f23`，评分 85，Original，基线 `96ddc014`，FINAL_IMPL_HEAD `eb4f3ffc`）**：R1-S6-I3-B restore replay 持久状态域契约纠偏冻结并入 main——S6-11 三层 CHECK 闭集事实基线（migration 034 行级引用 + fresh PG head=043 复核）+ S6-12 replay 状态路由表（operation 六态 × checkpoint 五态 × fence 四态分层，禁止跨层混用；`quiesced`/`rebuilding` 派生术语 → `UNRECOGNIZED_STATE` fail closed）+ S6-13 replay 判定方式（`REPLAYABLE_OPERATION_STATES={running,blocked}` 仅来自 operation CHECK 闭集 + owner 可重放六元组 + 快照 record kind/table identity + 未知/跨层/不可证明一律 fail closed）+ S6-14 后续拆分（PR-A schema/test alignment → PR-C F1-F14 → PR-D ledger export/replay executor + runbook → PR-E release drill）与 #586 处置（保持 Draft，关闭 supersede 或只读历史载体待决）+ §S6-8 item 7 / §S6-10 纠偏指针。正式三面复审 P0=0/P1=0/P2=0/P3=1（唯一 P3 = S6-11 audit 分类 A×3 vs 审计报告 A×5 计数口径，绑定 TD-104 备注）；`check-review-score-submit` passed（base=FINAL_IMPL_HEAD，Score Log 唯一 #587 Original 行，Metrics Snapshot 未变）；Draft / Ready / 评分三层三路 required checks 全 SUCCESS。**纠偏完成不代表 #586 已修复或 PR-A/C/D/E 已启动**：#586 仍 Draft（head=`3fb71cc6`，Backend iteration 红，未修复、未 rerun，分支与提交全部保留）；C1、S5 production wiring、registry capability 翻转（external/runtime 保持 `erase_available=False`）、六 erase 入口生产可达均未启动；零代码/测试/schema/migration/registry/CI 改动。follow-up **TD-104**（PR-A schema/test alignment 稳定承接：observed_at→created_at/resolved_at + 删除不存在列 + acked fixture 合法 64-hex + 独立 CHECK 拒绝负例）+ **REQ-047**（R1-S6 implementation conformance 随后续 slice 闭环）。
+
 
 
 > Status: Draft（本 PR 仅纯文档契约冻结；不命名 I3，不写代码/测试/schema/migration/registry/CI，不启动任何 Scheduler 实现/S6/C1）
