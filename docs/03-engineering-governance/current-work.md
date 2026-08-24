@@ -14,6 +14,17 @@
 
 ## 当前进行中
 
+### TASK-R1-S6-I3-C: S6-F1..F14 故障矩阵完整批（PR-C，stacked on #586）
+
+状态：🟡 进行中（Draft，stacked base = #586 head `a2e30fed`；本分支未推、待 PR-C Draft 创建）
+最新交接（2026-08-24）：F1-F14 真实 PG 故障矩阵实现（详细验证见 PR body 真实 HEAD/映射/验证数字；未推、未转 Ready）。**F9/F11/F13/F14 已落测试 + 真实 PG 实测通过（详见 PR body）**（4 行真实 PG 反例 = 9 项子测试）；F4 crash-replay 多 ref 分步 ACK + F6 seq gap raw DELETE 409/410 + F7 first_available 推进 + SSE 410 稳定 + F12 retention Run 行锁串行；**F10 契约冲突 → 不实现**（Plan §S6-5 F10 自相矛盾；不修 S5、不上 fake；skip 占位 + 待契约裁决 PR 纠偏，类似 I3-B）；**F1/F2/F3/F5/F8** 浅层真实 PG 判别迁移至 `test_s6i3_fault_matrix.py`（worker kill / claim 半提交 / ACK 丢失 / ACK 落账后 crash / outbox claim；真实覆盖分别在既有 test_s4eb2_external_erasure / test_s4f_fault_matrix / test_s5_sch_a_claim_lease / test_s6i1_event_retention 等）。文件拆分（td-032 闭合）：1040 行 → `s6i3_seeds.py`（155，fixture + helper）+ `test_s6i3_fault_matrix.py`（F1/F2/F3/F5/F8，264）+ `test_s6i3_fault_hold.py`（F9+F10，219）+ `test_s6i3_fault_external.py`（F4+F11，331）+ `test_s6i3_fault_events.py`（F6+F7+F12，480）+ `test_s6i3_fault_scheduler.py`（F13+F14，191）+ `test_s6i3_fault_matrix_restore_replay.py`（replay/ledger/drill/serialize，696）——所有文件 < 1000。具名 mutation kill `scripts/s6i3_fault_matrix_mutation_kill.py`（memory backup + try/finally 还原，**不裸 git restore**，避免抹掉本分支未提交源码）；**5/12 mutation 真实 red-then-green**（M-F13/M-F7/M-F9/M-F11/M-F14）；**7/12 注入定义完成但与测试执行路径解耦**（M-F2/M-F3/M-F4/M-F5/M-F6/M-F8/M-F12 注入 production helper 但映射测试用 raw SQL 或浅层断言，注入后测试仍绿——属测试判别力增强范围，归 PR-C 后续或独立测试 contract 增强 PR）。验证：ruff/mypy/git diff/engineering-docs/composition 命令与结果详见 PR body（未推、未转 Ready；本卡不复制完整数字以避免与 PR body 漂移）。**严格停止条件**：mutation 无法稳定转红即报告（本轮 7/12 即此情况）——已据实报告，不冒充。**未实现**：PR-D（ledger export executor + runbook）/ PR-E（release drill 真实 canary）/ C1 / S5 production wiring / registry capability 翻转。
+类型：REQ-041/047 R1-S6-I3-C（S6-I3 PR-C 拆分第三批；S6-I3-A/I3-B 已分别 squash 入 #586 / 入 main）
+分支：feature/req041-047-r1-s6-i3-c-fault-matrix-completion（新建，**未推**）
+
+下一步：创建 Draft PR（base = #586 分支 = `a2e30fed`，非 main），本地核对 local == origin == PR head + 干净工作树，停 Draft 不转 Ready/不评分/不合并/不创建 closeout；不启动 PR-D/E/C1/S5 production wiring；mutation 7/12 NOT-RED 的部分在 PR body 列明 + 留作 PR-C 后续或独立测试 contract 增强 PR；F10 契约冲突上报待契约裁决 PR 纠偏（不自行架构裁决）。
+
+交接备注：根 PR #586 = OPEN/Draft integration root，head=`a2e30fed`（I3-A + base sync merge），本 PR stacked on `#586` 分支 → squash merge 落地入 `#586`。main 保持 `b28f84ab`。S6-5 冻结契约未改；migration 043 未触碰；CHECK / enum / Score Log / Metrics / 门禁脚本 / KNOWN_ISSUES / CI 配置或阈值均未触碰。F10 契约冲突判定见 test_s6i3_fault_hold.py `test_f10_contract_conflict_not_implemented` skip 注释。S6I2_PENDING_WRITERS 中 restore_replay_executor 仍仅 pending。
+
 ### TASK-R1-S6-I3: S6-F1..F14 真实故障矩阵 + 发布演练 + restore replay 机制与 runbook
 
 状态：🟡 进行中（OPEN / Draft integration root；head=`f6062466` + parent base sync merge）
