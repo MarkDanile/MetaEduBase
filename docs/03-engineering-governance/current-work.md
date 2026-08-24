@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-（当前无进行中任务。下一批候选任务见下方。）
+### TASK-R1-S6-I3-B: restore replay 持久状态域契约纠偏（contract-first，纯文档）
+
+状态：🟡 进行中
+类型：REQ-041/047 R1-S6-I3-B（S6-I3 实现前置契约纠偏；docs-only，不写代码/测试/schema/migration/registry/CI）
+领域：scheduler / purge-recovery / restore-replay / 状态域契约
+当前执行模式：契约纠偏（contract-first，纯文档）
+最近接手工具：Claude Code
+分支：docs/req041-047-r1-s6-i3-replay-state-contract-correction（自 main@`96ddc014` 新建）
+
+需求来源：
+- Plan: [R1 分 Slice 实施计划 §R1-S6-8/§R1-S6-10 + R1-S6-I3-B §S6-11..S6-14](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
+- 事实基线：fresh PG schema-fact audit（独立 fresh DB，alembic head=`043_run_event_retention_guard`）
+
+背景与事实：PR #586（S6-I3 实现）经四轮 schema/test alignment 修复后 Backend iteration 仍红，**停在 Draft**（head=`3fb71cc6`，分支与提交全部保留，不 reset/rebase/force-push）。schema-fact audit 分类：**A/E 类可修**（测试 SQL/fixture 命名错 + 负例 fixture 违反 `ck_agent_purge_owner_ack`——已稳定登记 TD-104，由后续 PR-A 承接）；**C 类状态域跨层混用由本契约 PR 裁决**（三层 CHECK 闭集分层 + replay 状态路由表 + 判定方式，plan §S6-11..S6-14）；B/D 类为零。
+
+下一步：三面复审（状态机/数据、并发/恢复、测试/运维）→ `scripts/check-engineering-docs --full` + `git diff --check` → 创建 Draft PR → 三路 Draft checks 全绿后停止（不转 Ready、不评分、不合并）。
+
+验证状态：待补——门禁脚本 + 三路 Draft checks（Backend iteration / Frontend / Engineering docs）。**严格边界**：净 diff 仅允许 plan / current-work / technical-debt；不带入 #586 任何代码/测试/runbook/实现提交；不新增 enum/migration、不放宽 CHECK、不改 S5 状态机/锁序/写者矩阵、不翻转 registry capability。**未启动**：PR-A/C/D/E、C1 Durable Core 总验收、S5 production wiring、registry capability 翻转（external/runtime 保持 `erase_available=False`）、六 erase 入口生产可达。
 
 ## 下一批候选任务
 
