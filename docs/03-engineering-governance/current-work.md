@@ -31,6 +31,25 @@
 
 验证状态：待补——三路 required checks（Backend full / Engineering docs / Frontend）+ 独立 fresh PG 全部 14 项 + release drill 5 阶段 + restore replay roundtrip 真实落地。**严格停止条件**：发现 P0/P1、需新 schema/migration、需修改 S5 状态机/锁序/写者矩阵、需翻转任一 registry capability、需 production scheduler wiring 或六 erase 入口可达、需真实生产 canary/backup/restore drill 才能宣称完成、replay 需调用 external/runtime adapter、无法证明旧 ledger owner_version/digest、发现与 S6-5/S6-7/S6-8 冻结语义冲突——立即停止并报告，不自行架构裁决。**禁止修改**：Metrics、Score Log、migration 043、门禁脚本、KNOWN_ISSUES、CI 配置或阈值。**未启动**：C1 Durable Core 总验收、S5 production wiring、registry capability 翻转（external/runtime 保持 `erase_available=False`）、六 erase 入口生产可达。
 
+### TASK-R1-S6-I3-A: schema/test alignment bounded repair（stacked on #586）
+
+状态：🟡 进行中
+类型：REQ-041/047 R1-S6-I3-A（R1-S6-I3-B 契约纠偏（PR #587 squash `66674f23` 已合并）后首个拆分；bounded 修复）
+领域：scheduler / purge-recovery / restore-replay / 测试与 schema 事实对齐
+当前执行模式：bounded 修复（schema/test alignment；契约已由 PR #587 冻结）
+最近接手工具：Claude Code
+分支：feature/req041-047-r1-s6-i3-a-schema-test-alignment（stacked base = #586 head `3fb71cc6`）
+
+需求来源：
+- Plan: [R1-S6-I3-B §S6-14 PR-A 承接](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
+- 技术债：TD-104（schema/test alignment 稳定承接项）
+
+范围（严格 bounded）：(1) ledger export reconcile 幽灵列对齐真实 schema（observed_at→created_at、resolution_state→state，migration 040 :153-173 + ORM agent_transport_ledger.py 复核）+ datetime ISO 序列化；(2) 测试 checkpoint SELECT 对齐真实列（capability_digest/reason_code/created_at；无 intent_digest/recorded_at/failure_code/revision——版本事实 = owner_version + attempt）；(3) acked fixture 合法 64-hex + `_seed_checkpoint` 非 acked ⇒ ack_digest NULL（ck_agent_purge_owner_ack 034:567-571）+ 独立 CHECK 拒绝负例 `test_ck_agent_purge_owner_ack_rejects_short_ack_digest`；(4) F3 补种缺失 checkpoint 行使 ACK-丢失 UPDATE 语义可达。**不处理** quiesced/rebuilding enum drift（PR-B 契约已裁决，代码侧归 PR-D）；不实现 F6-F14；不深化 replay executor/ledger export/runbook/release drill。
+
+下一步：Draft checks 三路全绿后停止（不转 Ready、不评分、不合并、不创建 closeout）。
+
+验证状态：fresh PG（重建 metaedu_test，alembic head=043）24/24 S6-I3 专项 + composition 全量 750 passed + ruff clean + mypy clean + git diff --check clean + check-engineering-docs --full passed。**禁止修改**：migration 043 / 任何 schema/enum/CHECK / S5 状态机/锁序/写者矩阵 / Score Log / Metrics / 门禁脚本 / KNOWN_ISSUES / CI 配置或阈值。**未启动**：PR-C/D/E、C1、S5 production wiring、registry capability 翻转；#586 保持 OPEN/Draft 不改写、不 rerun。
+
 交接备注：R1-S6-I1/I2 已合并 main `96ddc014`，本 PR 起点 = main `96ddc014`；S6-I3 是 R1-S6 最后一片实现；TD-097/098/099/100/101/102/103 保持历史和 follow-up 编号，不因本 PR 自动覆盖或关闭；REQ-047 保持后续联合验收归属；restore_replay_executor 仅 M 类登记 + 集合锁，不进入生产 wiring；S6I2_PENDING_WRITERS 中 restore_replay_executor 仍仅 pending，落地后转 registered 但不接生产 wiring。
 
 ## 下一批候选任务

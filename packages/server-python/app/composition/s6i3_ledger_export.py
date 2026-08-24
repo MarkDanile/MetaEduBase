@@ -30,6 +30,7 @@ import json
 import uuid
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import text
@@ -92,6 +93,10 @@ _REF_FIELDS: tuple[str, ...] = (
 )
 
 # reconcile ledger 表（agent_transport_scope_reconcile）字段白名单
+# 事实依据：migration 040 `_create_reconcile_ledger`（:153-173）+ ORM
+# agent_transport_ledger.py——真实列为 state / revision / resolution_digest /
+# created_at / resolved_at；**无** observed_at / resolution_state（PR-A schema
+# fact 对齐：observed_at→created_at、resolution_state→state）。
 _RECONCILE_FIELDS: tuple[str, ...] = (
     "id",
     "tenant_id",
@@ -101,9 +106,9 @@ _RECONCILE_FIELDS: tuple[str, ...] = (
     "source_row_id",
     "issue_code",
     "reconcile_class",
-    "observed_at",
+    "created_at",
     "resolved_at",
-    "resolution_state",
+    "state",
 )
 
 # AC10 sentinel — 禁止出现在导出快照中的 substring 字面集合
@@ -142,6 +147,10 @@ class LedgerSnapshotRow:
             v = self.fields[k]
             if isinstance(v, uuid.UUID):
                 payload[k] = str(v)
+            elif isinstance(v, datetime):
+                # 真实 timestamptz 列（created_at/updated_at/resolved_at 等）
+                # JSON 序列化为 ISO 8601（schema-fact 对齐：真实列含时间戳）
+                payload[k] = v.isoformat()
             else:
                 payload[k] = v
         return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -284,10 +293,10 @@ async def export_ledger_snapshot(
         await session.execute(
             text(
                 "SELECT id, tenant_id, owner_key, conversation_id, source_table, "
-                "source_row_id, issue_code, reconcile_class, observed_at, "
-                "resolved_at, resolution_state "
+                "source_row_id, issue_code, reconcile_class, created_at, "
+                "resolved_at, state "
                 "FROM metaedu.agent_transport_scope_reconcile WHERE tenant_id = :tid "
-                "ORDER BY observed_at, id"
+                "ORDER BY created_at, id"
             ),
             {"tid": tenant_id},
         )
