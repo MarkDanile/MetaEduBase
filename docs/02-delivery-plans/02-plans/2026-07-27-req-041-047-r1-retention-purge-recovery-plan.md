@@ -2355,7 +2355,7 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 
 > Status: Draft（本段仅纯文档契约核对与冻结；不写代码/测试/schema/migration/enum/CHECK/registry/CI，不修改 S5 settlement/participant/terminal guard，不接 fake；PR #590 保持 Draft 不改写、不 rerun、不转 Ready）
 > 依据：S6-F10（§S6-5）在 R1-S6-I3-C（PR #590）中因「契约冲突」skip（`test_s6i3_fault_hold.py::test_f10_contract_conflict_not_implemented`）。本段以 main@`b28f84ab` 代码核对澄清：冲突**非** F10 冻结期望自相矛盾，而源于 F10「T1/T2 锁外阶段」术语在 **participant erase 双事务（Tx1/Tx2）** 与 **settlement closeout 双事务（T1/T2）** 之间的读法歧义——两套路径 hold-drift 语义不同（S6-15.1）。
-> 本段冻结：两套 hold-drift 代码路径事实基线（S6-15.1）、F10 读法锁定（S6-15.2，settlement T1/T2）、F10 唯一可执行路由表（S6-15.3）、两种语义冲突点与待裁决项（S6-15.4）、settlement SUCCESS ledger 写缺口事实核验 + 方案 A/B 决策材料（S6-15.5 = TD-106，待裁决）。S6 冻结规则除本段明确纠偏项外全部不变。
+> 本段冻结：两套 hold-drift 代码路径事实基线（S6-15.1）、F10 读法锁定（S6-15.2，settlement T1/T2）、F10 唯一可执行路由表（S6-15.3）、两种语义冲突点与待裁决项（S6-15.4）、settlement SUCCESS ledger 写缺口事实核验 + 方案 A/B 决策材料 + 方案 A 裁决（S6-15.5 = TD-106，**方案 A 已批准**，独立 stacked 实现 PR 承接）。S6 冻结规则除本段明确纠偏项外全部不变。
 
 ##### S6-15.1 两套 hold-drift 代码路径（事实基线，main@`b28f84ab` 复核）
 
@@ -2403,9 +2403,9 @@ F10 期望结果「T2 完成 erase（fence erased + checkpoint acked）」**仅 
 3. 正式解除 F10 skip 并登记后续 F10 实现 PR（#590 closure 后或独立测试 PR），沿用读法甲路由表 + S6-15.5 缺口前置。
 4. 反向情形备案：若评审认为 hold 推进**应**阻断已 erasing 收口（即读法乙为期望策略），则与裁决二「不阻止已进入 erasing 的收口」直接冲突，属 S5 冻结契约变更，须另行契约修订评审（本段不放行、不预审）。
 
-##### S6-15.5 settlement SUCCESS ledger 写缺口（TD-106 事实核验 + 方案 A/B 决策材料，待裁决）
+##### S6-15.5 settlement SUCCESS ledger 写缺口（TD-106 事实核验 + 方案 A/B 决策材料 + 方案 A 裁决）
 
-> Status: Draft（本段仅事实核验与决策材料，非本 PR 自行选择方案；不改代码/schema/migration/enum/CHECK/registry/CI；#590 保持 Draft 不改写、不 rerun、不转 Ready）
+> Status: Draft（**方案 A 已经用户批准（2026-08-25）**；实现由独立 stacked PR 承载（base = #590 分支），本 PR #591 仅契约核对与决策材料、不承载代码实现；不改代码/schema/migration/enum/CHECK/registry/CI；#590 保持 Draft 不改写、不 rerun、不转 Ready）
 
 **事实（冻结，main@`b28f84ab` + 对抗核验确认）**：`settlement._apply_window_outcome` SUCCESS 分支（`settlement.py:1187-1215`）仅写 `fence.erased` + `checkpoint.acked`（ack_digest + `checkpoint_digest` + `reason_code=None`），**不写 `agent_external_object_refs.erase_state`/`receipt_digest`、不清 source ref、不关 runtime binding**（`runtime_session_ref=NULL`/`status='closed'`）。全 `settlement.py` **零** 对 refs/bindings 的 UPDATE（仅 `_load_frozen_window` SELECT，`settlement.py:936-947`）。S5-C-1 冻结落账列明文为「态 1 同事务写 fence `erasing→erased` + checkpoint `→acked` + **ledger/binding `erased` + receipt**」（plan:1900），**实现 vs 冻结契约缺口**：ledger 一腿缺失。次要：态 1 的 `checkpoint_digest` 由**同一 registered-only scan**（缺口场景非零）算出（`_scan_digest_for`，`settlement.py:1237-1250`）——把脏 scan 记为 ACK 证据。
 
@@ -2453,16 +2453,25 @@ F10 期望结果「T2 完成 erase（fence erased + checkpoint acked）」**仅 
 
 **影响（冻结）**：**PR #590**——两方案均不改 #590（保持 Draft；F10 skip；TD-106 为 pre-existing 正交缺口）。**PR-D**（ledger export executor + runbook）——方案 A 下 settlement 落账含 per-ref receipt，export 格式须承载 settlement 来源 receipt；方案 B 下 settlement 时 ledger 未清，export 见 `registered` + reconcile 态；两方案 PR-D 均未启动。**REQ-047**（conformance）——TD-106 是 impl vs 冻结 S5-C-1 的 conformance 缺口，两方案以不同方式闭合，REQ-047 记录决议。**TD-105**（F10 实现承接）——阻塞于 TD-106 决议：方案 A 下 F10 第 5 环 completed 可达 → TD-105 实现到 completed；方案 B 下 F10 链尾 fail-closed → TD-105 实现到具名 reconcile 态（非 completed）。
 
-**待裁决项（上报用户，非本 PR 自行选择）**：
-1. 方案 A vs 方案 B 方向选择（或 A 的 minimal/full 变体、B 的 reason code 归并方式）。
-2. 方案 A：settlement 第二 ledger 写者并发幂等语义 + T2 集合锁扩展（D8）+ E-5-2「B2 唯一清除者」是否允许 settlement 清源 ref（或委托 B2 执行）。
-3. 方案 B：fail-close 触发条件归 态 3 子情形或新增独立持久 reason code（S5-A level 7 域，不改既有 code）。
-4. 无论 A/B：per-ref receipt 是否必须精确落 ledger 行（方案 A 必须；方案 B 由后续 participant/人工路径承担）。
-5. TD-106 保持 P1 不关闭；决议后另起实现 PR（不改本 PR #591 纯文档范围；不改 #590）。
+**裁决结果（2026-08-25，用户批准）**：
+1. **方案 A 已批准**——settlement 态 1 SUCCESS 同事务补 ledger/binding `erased`+receipt，闭合 S5-C-1 态 1 落账列，使 completed 可达。
+2. **方案 B 保留为兜底**——仅当实现中发现某路径无法安全落账（receipt 缺失/部分落账/token 不一致/B2 唯一清除者无法满足）时，该路径 fail-closed 落具名 reconcile-only blocked，禁止「checkpoint acked + registered ledger」假终态。
+3. **显式 descope S5-C-1 ledger 写不批准**——不得通过删除/弱化 S5-C-1 态 1 落账列来「闭合」缺口。
+4. **per-ref receipt 必须精确落 ledger 行**——禁止只写聚合 receipt 后丢失 per-ref receipt（`_aggregate_window` 合并仅用于 fence/checkpoint 的 ack_digest，不替代 per-ref `receipt_digest`）。
+5. **TD-106 在实现 PR 合并前保持 P1 open**；实现由**独立 stacked PR** 承载（branch `feature/req041-047-r1-s6-i3-td106-settlement-ledger-closure`，base = #590 分支 `feature/req041-047-r1-s6-i3-c-fault-matrix-completion`，非 main、非 #591）；本 PR #591 不承载代码实现，保持 Draft 不转 Ready/不评分/不合并。
 
-**处置（冻结）**：不属本 PR 修复范围（本 PR 仅契约核对 + 决策材料，不改代码）；**登记为 TD-105 前置条件**——F10 实现 PR 须先决议方向（方案 A 补齐 / 方案 B fail-closed / 显式 descope S5-C-1 ledger 写）并实现，方能闭合到 completed。登记独立 **TD-106**（P1，保持 open）跟踪 settlement SUCCESS ledger 写补齐。
+**方案 A 实现约束（裁决细化，实现 PR 须遵守）**：
+- settlement SUCCESS 只能在**所有** ledger/binding receipt 已可靠落账后报告成功；逐 ref/逐 binding 粒度，external ref、runtime binding、多 ref、多 binding 同构。
+- source `payload_ref` / runtime binding 的清除必须遵守 **E-5-2「B2 唯一清除者」**——若须委托 participant Tx2/B2，使用现有唯一写入路径（`_write_erased_and_clear_ref` / `_write_erased_and_close_binding`），**不复制第二个清除者**；不得把「ledger 已写、source ref 未清」作为成功终态。
+- 任何部分落账、receipt 缺失、写入冲突或 token drift 都必须 fail closed（用既有 reason，**不新增 reason code**，除非发现现有事实源无法表达且另行停下请求裁决）。
+- 不得在持有数据库锁时执行 adapter 或外部 I/O（E-2）；按 D8 重新核对加入 ledger/binding/source 行后的锁序、CAS、事务边界。
+- 双连接并发下只能有一个完整写者，败者只能幂等返回或零写。
+- **若现有 S5-C-2 写域不足以授权新增写者，立即停止并报告，不能静默修改写者矩阵。**
+- ACK-lost 路径保持现有语义，不因本修复重复调用 adapter；F10 四环保持（T2 单向放行 → fence erased/checkpoint acked → G2 hold-drift 投影 → rebuild G3 HOLD_GATED）；本修复不直接宣称 operation completed（completed 仍需满足 ledger/binding 完整性 + 现有后续路由条件）。
 
-**边界（冻结）**：本段不产生任何 schema/migration/enum/CHECK 变更需求；不修改 S5 settlement/participant/terminal guard；settlement T2 现行行为已满足 F10 主体（settlement 落账层，§S6-15.3）；读法甲前 4 环维持确认；#590 保持 Draft；PR-D/PR-E/C1/S5 production wiring/registry capability 翻转均未启动；不新增 Score Log 行、不修改 Metrics。follow-up **TD-105**（F10 实现承接，前置 TD-106 决议）+ **TD-106**（settlement SUCCESS ledger 写补齐，待方向裁决）+ **REQ-047**。
+**处置（冻结，方案 A 已批准）**：代码修复不属本 PR #591 范围（本 PR 仅契约核对 + 决策材料，不改代码）；由独立 stacked 实现 PR 承载（base = #590 分支）。**登记为 TD-105 前置条件**——F10 实现 PR 须在 TD-106 实现 PR 合并后承接（读法甲路由表 + 已补齐的 ledger 收口），方能闭合到 completed。**TD-106**（P1）在实现 PR 合并前保持 open。
+
+**边界（冻结）**：本段不产生任何 schema/migration/enum/CHECK 变更需求；不修改 S5 settlement/participant/terminal guard；settlement T2 现行行为已满足 F10 主体（settlement 落账层，§S6-15.3）；读法甲前 4 环维持确认；#590 保持 Draft；PR-D/PR-E/C1/S5 production wiring/registry capability 翻转均未启动；不新增 Score Log 行、不修改 Metrics。follow-up **TD-105**（F10 实现承接，前置 TD-106 实现合并）+ **TD-106**（settlement SUCCESS ledger 写补齐，**方案 A 已批准**，独立 stacked 实现 PR 承接，P1 保持 open 至合并）+ **REQ-047**。
 
 
 
