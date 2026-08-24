@@ -16,14 +16,14 @@
 
 ### TASK-R1-S6-I3-F10: S6-F10 契约核对纠偏（contract-first，纯文档）
 
-状态：🟡 进行中（Draft PR #591 = OPEN/Draft，base = main，head=`ee5db39d`，三路 checks 全绿；独立分支非 stacked）
-最新交接（2026-08-24）：F10 契约只读核对完成 + 契约纠偏段 §S6-15 冻结起草。核心发现：F10「契约冲突」**非**期望自相矛盾，而源于「T1/T2 锁外阶段」术语歧义——participant erase（Tx1/Tx2，`workspace_erasure_participant.py:657` **等值**检查，任何 drift fail-closed，管辖 F9）vs settlement closeout（T1/T2，`settlement.py:849` **单向**检查，推进放行，管辖 F10）。F10 期望「fence erased + checkpoint acked」仅 settlement T2 可产出（participant Tx2 只写 ref erased + source_ref cleared），且裁决二显式命名 settlement `_verify_t2_tokens` → 读法锁定 settlement T1/T2，自洽可实现、**无需任何契约/代码变更**。§S6-15 冻结：两套 hold-drift 路径事实基线 + 读法锁定 + 唯一可执行路由表 + 待裁决项 4 项（确认读法甲纠偏 #590 旧判定 / hold 释放或过期衔接 rebuild G3 HOLD_GATED / 解除 skip 登记 F10 实现 PR / 反向情形备案）。**边界**：纯文档；不改 S5 settlement/participant/terminal guard、不接 fake、不改 schema/migration/enum/CHECK/Score Log/Metrics/门禁脚本/KNOWN_ISSUES/CI；#590 保持 Draft 不改写；M-F3/M-F5（settlement 私有路径重构）+ M-F8（锁叠加不可观察）登记 follow-up；PR-D/E/C1/S5 wiring/capability 翻转未启动。
+状态：🟡 进行中（Draft PR #591 = OPEN/Draft，base = main，独立分支非 stacked；复评审发现 P0-1（§S6-15.2 论证支柱证伪 + §S6-15.3 前置行不可达）已文档级修正重推；§S6-15.5 新增 ledger 缺口登记为 TD-106）
+最新交接（2026-08-24）：F10 契约只读核对完成 + 契约纠偏段 §S6-15 冻结 + **独立三面+对抗质疑者复评审完成**：三面（数据/状态机 / 并发/锁序 / 文档一致性）+ 1 个对抗质疑者从 6 个攻击角度独立取证。**读法甲本身三面+对抗质疑者一致确认成立**（前 4 环：T2 单向放行 → fence erased + checkpoint acked → G2 blocked → rebuild HOLD_GATED，逐环代码验证通过）。但复评发现两处文档级错误须纯文档修正：**§S6-15.2 论证支柱 "participant Tx2 不 ack / 只由 settlement 落账" 被证伪**（external participant Tx2 原子写 fence ERASED + checkpoint acked + refs erased，单 commit `external_ref_erasure_participant.py:824-858`，orchestrator 明文「participant 自记 blocked/acked」`owner_execution_orchestrator.py:399-401`）——改挂三证据链：(1) 裁决二 plan:2136 显式命名 + 明文判别；(2) F10 注入前提（hold 推进）下 participant 等值检查在到达 ACK 写之前即 fail-closed；(3) 期望结果文本与 S5-C-1 frozen snapshot 验收三处锁定。**§S6-15.3 前置行不可达**（refs erased + checkpoint/fence 仍 erasing 经真实 participant 不可达）——改 "Tx1 已提交 + Tx2 未落账 → refs 仍 registered"。**对抗质疑者额外发现** settlement SUCCESS 不写 ledger/binding（pre-existing 实现 vs S5-C-1 冻结契约缺口）：任何带 external ref/binding 的 settlement recovery 完成后 final scan 非零 → 优先级 3 永久死锁；登记 §S6-15.5 + TD-106/P1（影响一切 settlement recovery 路径，与 F10 路由正交）。§S6-15 冻结：两套 hold-drift 路径事实基线（Tx1/Tx2 真锚点 = `transport_erasure_participant.py:356` 基线，§S6-15.1）+ 三证据链读法锁定 + 唯一可执行路由表（含可达前置 / 禁止构造状态 / → completed 链尾条件式）+ 待裁决项 4 项 + §S6-15.5 settlement SUCCESS ledger 写缺口。**边界**：纯文档；不改 S5 settlement/participant/terminal guard、不接 fake、不改 schema/migration/enum/CHECK/Score Log/Metrics/门禁脚本/KNOWN_ISSUES/CI；#590 保持 Draft 不改写；M-F3/M-F5（settlement 私有路径重构）+ M-F8（锁叠加不可观察）+ TD-106（settlement SUCCESS ledger 写补齐）登记 follow-up；PR-D/E/C1/S5 wiring/capability 翻转未启动。
 类型：REQ-041/047 R1-S6-I3-F10（S6-F10 契约纠偏；参照 I3-B PR #587 先例）
 分支：docs/req041-047-r1-s6-i3-f10-contract
 
-下一步：等独立复审 P0/P1=0（评审确认读法甲）；停 Draft 不转 Ready/不评分/不合并/不创建 closeout；评审确认读法甲后由 TD-105 承接 F10 实现（另起测试 PR）。
+下一步：推修订 commit → 等三路 checks 全绿 → 独立复评 P0/P1=0 后再决定 ready/评分；停 Draft 不转 Ready/不评分/不合并/不创建 closeout；评审确认读法甲 + TD-106 决议后由 TD-105 承接 F10 实现（另起测试 PR）。
 
-交接备注：F10 当前 skip（#590 `test_f10_contract_conflict_not_implemented`）；本纠偏不带入 #590 任何代码/测试；#590 = OPEN/Draft head=`aa889db8`（stacked on #586 `a2e30fed`）；main 保持 `b28f84ab`。验证：check-engineering-docs --full + git diff --check + Draft 三路 checks。若独立复审发现需代码/schema/S5 契约修改，立即保持 Draft 并报告，不自行裁决。follow-up TD-104 + TD-105 + REQ-047。
+交接备注：F10 当前 skip（#590 `test_f10_contract_conflict_not_implemented`）；本纠偏不带入 #590 任何代码/测试；#590 = OPEN/Draft head=`aa889db8`（stacked on #586 `a2e30fed`）；main 保持 `b28f84ab`。验证：check-engineering-docs --full + git diff --check + Draft 三路 checks。若发现需代码/schema/S5 契约修改，立即保持 Draft 并报告，不自行裁决。follow-up TD-104 + TD-105 + TD-106 + REQ-047。
 
 ## 下一批候选任务
 
