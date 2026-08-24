@@ -99,7 +99,7 @@ MUTATIONS = [
         CLAIM,
         '                .where(\n                    ConversationModel.tenant_id == tenant_id,\n                    ConversationModel.id == conversation_id,\n                )\n                .with_for_update()',
         '                .where(\n                    ConversationModel.tenant_id == tenant_id,\n                    ConversationModel.id == conversation_id,\n                )\n                # mutation: skip FOR UPDATE',
-        "tests/composition/test_s6i3_fault_matrix.py::test_f2_claim_acquire_half_commit_idempotent_claim_collapses",
+        "tests/composition/test_s6i3_fault_mutation_evidence.py::test_f2_f8_dual_connection_claim_collapses_to_single_writer",
     ),
     # --- F3 _ack_lost_repair 不写 ack_digest ---
     (
@@ -127,10 +127,10 @@ MUTATIONS = [
     ),
     # --- F6 _find_event_gap count 比较改 true ---
     (
-        "M-F6 _find_event_gap count 比较改 true（gap 永久 None）",
+        "M-F6 _find_event_gap 顶部强制 return None（gap 永远不检出）",
         EXEC_REPO,
-        '        if count == expected_count and minimum == lower_bound and maximum == upper_bound:\n            return None',
-        '        if False:  # mutation: never return None\n            return None\n        if count == expected_count and minimum == lower_bound and maximum == upper_bound:\n            return None',
+        '    async def _find_event_gap(\n        self,\n        *,\n        tenant_id: uuid.UUID,\n        run_id: uuid.UUID,\n        lower_bound: int,\n        upper_bound: int,\n    ) -> tuple[int, int | None] | None:\n        count, minimum, maximum = (',
+        '    async def _find_event_gap(\n        self,\n        *,\n        tenant_id: uuid.UUID,\n        run_id: uuid.UUID,\n        lower_bound: int,\n        upper_bound: int,\n    ) -> tuple[int, int | None] | None:\n        if True:  # mutation: gap 永远不检出\n            return None\n        count, minimum, maximum = (',
         "tests/composition/test_s6i3_fault_events.py::test_f6_seq_gap_raw_delete_window_409_and_stale_410",
     ),
     # --- F7 retention prune 不置 event_log_complete=false ---
@@ -147,7 +147,7 @@ MUTATIONS = [
         CLAIM,
         '                .order_by(PurgeOperationModel.purge_revision.desc())\n                .limit(1)\n                .with_for_update()',
         '                .order_by(PurgeOperationModel.purge_revision.desc())\n                .limit(1)\n                # mutation: skip FOR UPDATE',
-        "tests/composition/test_s6i3_fault_matrix.py::test_f8_outbox_claim_short_transaction_crash_retry_takes_lease",
+        "tests/composition/test_s6i3_fault_mutation_evidence.py::test_f2_f8_dual_connection_claim_collapses_to_single_writer",
     ),
     # --- F9 _load_verified_operation 跳过 hold_revision drift ---
     (

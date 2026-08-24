@@ -272,13 +272,18 @@ async def test_f6_seq_gap_raw_delete_window_409_and_stale_410(session_factory):
             )
         )
 
-    # 判别 1：窗口内空洞 → validate_full_range 走 ``_find_event_gap`` → 409。
+    # 判别 1：窗口内空洞 → 直接调 ``read_event_replay_window`` 走 ``_find_event_gap``
+    # → 409（绕开 RunQueryService line 279-285 loop 兜底，否则 mutation 失效后
+    # 兜底仍 throw——mutation 必须能唯一阻断 _find_event_gap 自身）。
     async with session_factory() as verify:
-        service = _build_query_service(verify)
+        from app.contexts.agent_execution.infrastructure.execution_query_repository import (
+            AgentExecutionQueryRepository,
+        )
+        repo = AgentExecutionQueryRepository(verify)
         with pytest.raises(EventGapDetectedError):
-            await service.read_event_batch(
-                tenant_id=tid, actor_id=tid, run_id=run_id, after_seq=0,
-                validate_full_range=True,
+            await repo.read_event_replay_window(
+                tenant_id=tid, run_id=run_id, after_seq=0,
+                limit=100, validate_full_range=True,
             )
 
     # 巡检置 event_log_complete=False（plan F6 第二分支；模拟巡检发现 gap 已巡检
@@ -431,7 +436,12 @@ async def test_f12_retention_run_row_lock_serializes_writers(session_factory):
     row lock（PG FK check 对不变 FK 列的 INSERT 不加 KEY SHARE），故「writer INSERT
     vs retention FOR UPDATE」非互斥关系——本测试按 S6-2.4 锁域判别，验证 Run 行锁
     在 retention 同质重复方间串行（多 worker 并发同一 Run 不撕裂）。
+
+    **执行路径（mutation 锚点观察）**：双连接都用 retention_workers._lock_run_row
+    helper（**而非 raw SQL**）——保证 M-F12 注入 production helper 后断言真实阻断。
     """
+    from app.composition.retention_workers import _lock_run_row
+
     async with session_factory() as seed, seed.begin():
         tid, cid = await _seed_conversation(seed)
         run_id = await _seed_run(seed, tid=tid, cid=cid, last_seq=1)
@@ -441,13 +451,8 @@ async def test_f12_retention_run_row_lock_serializes_writers(session_factory):
 
     async def _holder():
         async with session_factory() as a, a.begin():
-            await a.execute(
-                text(
-                    "SELECT id FROM metaedu.agent_runs "
-                    "WHERE tenant_id=:t AND id=:r FOR UPDATE"
-                ),
-                {"t": tid, "r": run_id},
-            )
+            # 真实 production helper：M-F12 注入此函数 FOR UPDATE 失效。
+            await _lock_run_row(a, tenant_id=tid, run_id=run_id)
             await probe_done.wait()
             # commit on context exit（释放 FOR UPDATE → contender 解锁）。
 
@@ -455,13 +460,7 @@ async def test_f12_retention_run_row_lock_serializes_writers(session_factory):
         await asyncio.sleep(0.2)  # 给 holder 抢先取锁
         async with session_factory() as b, b.begin():
             # 第二处保留行锁入口（同质 race = retention 双 worker）。
-            await b.execute(
-                text(
-                    "SELECT id FROM metaedu.agent_runs "
-                    "WHERE tenant_id=:t AND id=:r FOR UPDATE"
-                ),
-                {"t": tid, "r": run_id},
-            )
+            await _lock_run_row(b, tenant_id=tid, run_id=run_id)
             observed_lock["contender_done"] = True
 
     async def _lock_probe():

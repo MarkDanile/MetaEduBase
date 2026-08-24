@@ -202,6 +202,32 @@ async def test_f4_single_owner_stepwise_ack_partial_ref_crash_replay(
         assert state["erase_state"] == "erased"
         assert state["receipt_digest"] is not None
 
+    # source ref 清零断言（mutation M-F4 注入点观察：B2 是 source ref 唯一清除者——
+    # outbox `payload_ref=NULL + status='suppressed'`；RunEvent `payload_ref=NULL +
+    # payload_state='redacted'`）。mutation 跳过 `_clear_source_ref` 后断言失败 → red。
+    outbox_row = (
+        await db_session.execute(
+            text(
+                "SELECT payload_ref, status FROM metaedu.agent_workspace_outbox "
+                "WHERE id = :id"
+            ),
+            {"id": outbox_a},
+        )
+    ).mappings().one()
+    assert outbox_row["payload_ref"] is None, "outbox source ref 必须清零（B2 唯一）"
+    assert outbox_row["status"] == "suppressed"
+    event_row = (
+        await db_session.execute(
+            text(
+                "SELECT payload_ref, payload_state FROM metaedu.agent_run_events "
+                "WHERE id = :id"
+            ),
+            {"id": event_b},
+        )
+    ).mappings().one()
+    assert event_row["payload_ref"] is None, "RunEvent source ref 必须清零（B2 唯一）"
+    assert event_row["payload_state"] == "redacted"
+
 
 # ---------------------------------------------------------------------------
 # S6-F11：mutate-during-lookup（锁外窗口第二连接篡改 → T2 重验 fail closed 零写）
