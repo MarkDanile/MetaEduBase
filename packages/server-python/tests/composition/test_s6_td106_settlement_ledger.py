@@ -38,6 +38,7 @@ from app.composition.settlement import SettlementService
 from app.composition.transactional_projection_coordinator import (
     build_scan_providers,
 )
+from app.shared.schemas.canonical_json import canonical_digest
 from tests.composition.test_s5_sch_d_settlement import (
     _EXTERNAL,
     _OWNER_KEYS,
@@ -239,6 +240,29 @@ async def _settle_window_runtime(session, *, binding_refs):
     await _set_cp(session, op1, _RUNTIME, state="erasing", attempt=1, digest=digest)
     await session.commit()
     return tid, cid, op1, bindings
+
+
+async def _settle_empty_window(session, *, owner_key):
+    """种子**空冻结窗口**（P1-A）：零 registered ref/binding + erasing fence +
+    erasing checkpoint（intent digest = 空集 digest，Tx1 同源派生）。
+
+    对应真实场景：participant Tx1 对零 registered ref 窗口无短路、仍 commit
+    checkpoint→erasing（空集 intent）后崩溃/takeover → settlement 恢复接管。
+    返回 (tid, cid, op1)。"""
+    tid, cid = await _seed_conversation(session)
+    await _ensure_tenant(session, tid)
+    out = await _claim(session, tid, cid)
+    op1 = out.token.purge_operation_id
+    for k in _OWNER_KEYS:
+        await _set_cp(session, op1, k, state="pending")
+    await _seed_fence(session, tid, cid, owner_key, state="erasing")
+    if owner_key == _EXTERNAL:
+        digest = external_delete_intent_digest([])
+    else:
+        digest = runtime_destroy_intent_digest([])
+    await _set_cp(session, op1, owner_key, state="erasing", attempt=1, digest=digest)
+    await session.commit()
+    return tid, cid, op1
 
 
 async def _ref_row(session, ref_id):
@@ -753,6 +777,102 @@ async def test_external_closure_zeroes_scan_not_completed(db_session, session_fa
             {"op": op1},
         )
         assert op_state != "completed", "单 owner 收口不得直接宣称 operation completed"
+
+
+# ---------------------------------------------------------------------------
+# P1-A：合法空冻结窗口 → no-op SUCCESS（零 adapter/零 ledger 写，仅收敛 fence/
+# checkpoint，保留 aggregate 空计划确定性 ack digest）
+# ---------------------------------------------------------------------------
+
+
+async def test_external_empty_window_noop_success(db_session, session_factory):
+    """P1-A：external 空冻结窗口（零 registered ref）→ 合法 no-op SUCCESS。
+
+    严格前置：T1 冻结计划为空 + 全部 token/frozen-intent/fence/checkpoint/lease/
+    owner 校验通过 + ref_closures 为空 + 无被跳过 ref。no-op：零 adapter 调用、
+    不写 ledger/不清 source；保留 aggregate 空计划确定性 ack digest（空窗口完成
+    证明，非 adapter receipt）；仅收敛 fence erased + checkpoint acked。同输入
+    重放幂等零副作用。"""
+    tid, cid, op1 = await _settle_empty_window(db_session, owner_key=_EXTERNAL)
+    adapter = _LookupEvidenceAdapter()
+    service = _make_service(session_factory, adapter)
+    await service.closeout_erasing(
+        tenant_id=tid, conversation_id=cid, purge_operation_id=op1, owner_key=_EXTERNAL,
+    )
+    await db_session.commit()
+
+    expected_ack = canonical_digest(
+        {"schema_version": 1, "kind": "settlement:ack", "receipts": []}
+    )
+    async with session_factory() as v:
+        # 零 adapter lookup/replay/destroy 调用。
+        assert adapter.lookup_calls == 0, "空窗口零 adapter 调用"
+        # fence erasing→erased + checkpoint→acked，ack digest = 空窗口确定性 digest。
+        assert await _fence_state(v, cid, _EXTERNAL) == "erased"
+        assert await _cp(v, op1, _EXTERNAL, "state") == "acked"
+        assert await _cp(v, op1, _EXTERNAL, "ack_digest") == expected_ack
+        # ledger 零写：本 conversation 无任何 external ref 行。
+        n = await v.scalar(
+            text(
+                "SELECT count(*) FROM metaedu.agent_external_object_refs "
+                "WHERE conversation_id = :c"
+            ),
+            {"c": cid},
+        )
+        assert int(n or 0) == 0
+
+    # 同输入重放幂等：fence 已 erased → 零写返回，仍零 adapter 调用、终态不变。
+    await service.closeout_erasing(
+        tenant_id=tid, conversation_id=cid, purge_operation_id=op1, owner_key=_EXTERNAL,
+    )
+    await db_session.commit()
+    async with session_factory() as v:
+        assert adapter.lookup_calls == 0, "重放不得触发 adapter 调用"
+        assert await _fence_state(v, cid, _EXTERNAL) == "erased"
+        assert await _cp(v, op1, _EXTERNAL, "state") == "acked"
+        assert await _cp(v, op1, _EXTERNAL, "ack_digest") == expected_ack
+
+
+async def test_runtime_empty_window_noop_success(db_session, session_factory):
+    """P1-A 镜像：runtime 空冻结窗口（零 active binding）→ 合法 no-op SUCCESS。
+
+    零 adapter destroy、不关 binding（无 binding 可关）、fence erased +
+    checkpoint acked（空窗口确定性 ack digest）；重放幂等零副作用。"""
+    tid, cid, op1 = await _settle_empty_window(db_session, owner_key=_RUNTIME)
+    adapter = _LookupEvidenceAdapter()
+    service = _make_service(session_factory, adapter)
+    await service.closeout_erasing(
+        tenant_id=tid, conversation_id=cid, purge_operation_id=op1, owner_key=_RUNTIME,
+    )
+    await db_session.commit()
+
+    expected_ack = canonical_digest(
+        {"schema_version": 1, "kind": "settlement:ack", "receipts": []}
+    )
+    async with session_factory() as v:
+        assert adapter.lookup_calls == 0, "空窗口零 adapter 调用"
+        assert await _fence_state(v, cid, _RUNTIME) == "erased"
+        assert await _cp(v, op1, _RUNTIME, "state") == "acked"
+        assert await _cp(v, op1, _RUNTIME, "ack_digest") == expected_ack
+        # binding 零写：本 conversation 无任何 runtime binding 行。
+        n = await v.scalar(
+            text(
+                "SELECT count(*) FROM metaedu.agent_runtime_session_bindings "
+                "WHERE conversation_id = :c"
+            ),
+            {"c": cid},
+        )
+        assert int(n or 0) == 0
+
+    # 重放幂等零副作用。
+    await service.closeout_erasing(
+        tenant_id=tid, conversation_id=cid, purge_operation_id=op1, owner_key=_RUNTIME,
+    )
+    await db_session.commit()
+    async with session_factory() as v:
+        assert adapter.lookup_calls == 0
+        assert await _fence_state(v, cid, _RUNTIME) == "erased"
+        assert await _cp(v, op1, _RUNTIME, "state") == "acked"
 
 
 # ---------------------------------------------------------------------------

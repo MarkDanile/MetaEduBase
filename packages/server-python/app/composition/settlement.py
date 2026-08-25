@@ -1247,11 +1247,28 @@ class SettlementService:
           与 participant Tx2 / backfill 同源（``_collection_owner`` / runtime binding）。
         """
         closures = outcome.ref_closures
-        if not closures:
+        # P1-A 严格防混淆（逐 ref 粒度不变量）：
+        # - plan 非空而 closures 为空/数量不一 → 粒度丢失或存在被跳过的非空
+        #   ref/binding → fail closed 整体零写；
+        # - plan 为空而 closures 非空 → 不变量破坏 → fail closed。
+        # 仅「plan 严格为空 且 closures 严格为空」才是合法空窗口。
+        if len(closures) != len(t1.plan):
             raise ValueError(
-                f"settlement SUCCESS for {t1.owner_key!r} carries no per-ref "
-                "closure; cannot prove ledger/binding erased, fail closed"
+                f"settlement SUCCESS for {t1.owner_key!r} carries {len(closures)} "
+                f"per-ref closures for frozen plan of {len(t1.plan)}; per-ref "
+                "granularity lost or invariant broken, fail closed"
             )
+        if not closures:
+            # 合法空窗口（P1-A）：T1 冻结计划严格为空 + T2 全部既有 token/
+            # frozen-intent/fence/checkpoint/lease/owner 校验已通过（本函数在
+            # ``_verify_t2_tokens`` 之后调用）+ closures 严格为空 + 无被跳过的
+            # 非空 ref/binding。no-op return：不调 adapter、不伪造 per-ref
+            # receipt、不写 ledger/binding、不清 source ref；保留 aggregate 对空
+            # 计划产生的确定性窗口 ack digest（空窗口完成证明，非 adapter
+            # receipt）；随后仅按既有 SUCCESS 路径收敛 fence erasing→erased 与
+            # checkpoint→acked（``_apply_window_outcome``），operation completed
+            # 仍由现有 projection/G2/G3 路由决定。
+            return
         descriptor = t1.descriptor
         if t1.owner_key == "external.payload.v1":
             # 集合锁（D8 同序）：按 _collection_owner(source_table) 逐 source 行取锁。
