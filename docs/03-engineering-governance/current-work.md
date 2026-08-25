@@ -14,7 +14,16 @@
 
 ## 当前进行中
 
-（当前无进行中任务。下一批候选任务见下方。）
+### TASK-R1-S6-I3-F10: S6-F10 契约核对纠偏（contract-first，纯文档）
+
+状态：🟡 进行中（Draft PR #591 = OPEN/Draft，base = main，独立分支非 stacked；§S6-15 冻结：读法甲 + 唯一可执行路由表 + TD-106 方案 A 决策材料；**TD-106 方案 A 实现已通过 PR #592 squash 入 #590 parent（mergeCommit `e345c429`，评分 92 Original 已落入 Score Log）；#590 仍 OPEN/Draft、整体未完成，本 PR #591 不承载代码实现、保持 Draft**）
+最新交接（2026-08-25）：F10 契约只读核对完成 + 契约纠偏段 §S6-15 冻结 + **独立三面+对抗质疑者复评审完成**：三面（数据/状态机 / 并发/锁序 / 文档一致性）+ 1 个对抗质疑者从 6 个攻击角度独立取证。**读法甲本身三面+对抗质疑者一致确认成立**（前 4 环：T2 单向放行 → fence erased + checkpoint acked → G2 blocked → rebuild HOLD_GATED，逐环代码验证通过）。但复评发现两处文档级错误须纯文档修正：**§S6-15.2 论证支柱 "participant Tx2 不 ack / 只由 settlement 落账" 被证伪**（external participant Tx2 原子写 fence ERASED + checkpoint acked + refs erased，单 commit `external_ref_erasure_participant.py:824-858`，orchestrator 明文「participant 自记 blocked/acked」`owner_execution_orchestrator.py:399-401`）——改挂三证据链：(1) 裁决二 plan:2136 显式命名 + 明文判别；(2) F10 注入前提（hold 推进）下 participant 等值检查在到达 ACK 写之前即 fail-closed；(3) 期望结果文本与 S5-C-1 frozen snapshot 验收三处锁定。**§S6-15.3 前置行不可达**（refs erased + checkpoint/fence 仍 erasing 经真实 participant 不可达）——改 "Tx1 已提交 + Tx2 未落账 → refs 仍 registered"。**对抗质疑者额外发现** settlement SUCCESS 不写 ledger/binding（pre-existing 实现 vs S5-C-1 冻结契约缺口）：任何带 external ref/binding 的 settlement recovery 完成后 final scan 非零 → 优先级 3 永久死锁；登记 §S6-15.5 + TD-106/P1（影响一切 settlement recovery 路径，与 F10 路由正交）。§S6-15 冻结：两套 hold-drift 路径事实基线（Tx1/Tx2 真锚点 = `transport_erasure_participant.py:356` 基线，§S6-15.1）+ 三证据链读法锁定 + 唯一可执行路由表（含可达前置 / 禁止构造状态 / → completed 链尾条件式）+ 待裁决项 4 项 + §S6-15.5 settlement SUCCESS ledger 写缺口。**TD-106 决策门禁（2026-08-25）**：方案 A 已用户批准；实现由独立 stacked PR #592 承载（base = #590 分支），已 squash 入 #590 parent（mergeCommit `e345c429`，评分 92 Original 落入 Score Log）。**实现证据（2026-08-25 治理归位，plan §S6-15.5 追加）**：方案 A 实现落地（`_close_window_ledger` 严格计数守卫 + 空窗口合法 no-op SUCCESS + per-ref/binding 落 receipt+清源 ref + D8 集合锁 + B2 唯一清除路径）+ M8/M9 mutation 补齐冻结矩阵第 (5) 项 + 9/9 全真红 + 20 项 TD-106 专项 + composition 781 passed/1 skipped + P1-A/P1-B 定向复核 P0/P1=0；TD-106 状态改为"实现与评审已闭合并入 integration parent，待 #590/main merged-boundary"，**本登记不标记完成、不关闭**。**P2 三项保留未关**：(P2-1) runtime per-binding receipt 形参零使用（语义=ACK 证据链输入，不加列）；(P2-2) settlement↔participant 跨入口双写者并发用例（M9 shared-helper stale-CAS 不冒充全覆盖 = 裁决项 2a）；(P2-3) M4 receipt 复用深度。**F10 路由四环状态**：F10 测试仍未解除 skip（#590 `test_f10_contract_conflict_not_implemented` 保持 skip）；#590 整体未完成（F10 + M-F3/M-F5/M-F8 + PR-D/E + C1 + S5 production wiring + registry capability 翻转 仍未处理）；四环路由（T2 单向放行 → fence erased/checkpoint acked → G2 hold-drift 投影 → rebuild G3 HOLD_GATED）冻结不变。
+类型：REQ-041/047 R1-S6-I3-F10（S6-F10 契约纠偏；参照 I3-B PR #587 先例）
+分支：docs/req041-047-r1-s6-i3-f10-contract
+
+下一步：本 PR #591 仅追加治理文档（§S6-15.5 实现证据 + technical-debt TD-106 状态更新 + current-work 同步），保持 Draft 不转 Ready/不评分/不合并；最终复核 P0/P1=0 后转 Ready → 三路 required checks 全绿 → 评分（`scripts/check-review-score-submit --base FINAL_IMPL_HEAD --pr 591`，新增唯一 `#591 Original` 行，Metrics unchanged）。本轮不合并；TD-105（F10 实现承接）阻塞于 #590/main merged-boundary；不启动 PR-D/E/C1/S5 production wiring/registry capability 翻转。
+
+交接备注：F10 当前 skip（#590 `test_f10_contract_conflict_not_implemented`）；本纠偏不带入 #590 任何代码/测试；#590 = OPEN/Draft head=`733f1b2b`（PR #592 squash mergeCommit `e345c429` + parent 治理同步），stacked on #586 `a2e30fed`；main 保持 `b28f84ab`。验证：check-engineering-docs --full + git diff --check + Draft 三路 checks。若发现需代码/schema/S5 契约修改，立即保持 Draft 并报告，不自行裁决。follow-up TD-104 + TD-105 + TD-106 + REQ-047。
 
 ## 下一批候选任务
 

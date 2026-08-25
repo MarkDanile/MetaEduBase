@@ -2351,6 +2351,142 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 
 
 
+#### S6-15 S6-F10 契约路由表（冻结，契约核对纠偏）
+
+> Status: Draft（本段仅纯文档契约核对与冻结；不写代码/测试/schema/migration/enum/CHECK/registry/CI，不修改 S5 settlement/participant/terminal guard，不接 fake；PR #590 保持 Draft 不改写、不 rerun、不转 Ready）
+> 依据：S6-F10（§S6-5）在 R1-S6-I3-C（PR #590）中因「契约冲突」skip（`test_s6i3_fault_hold.py::test_f10_contract_conflict_not_implemented`）。本段以 main@`b28f84ab` 代码核对澄清：冲突**非** F10 冻结期望自相矛盾，而源于 F10「T1/T2 锁外阶段」术语在 **participant erase 双事务（Tx1/Tx2）** 与 **settlement closeout 双事务（T1/T2）** 之间的读法歧义——两套路径 hold-drift 语义不同（S6-15.1）。
+> 本段冻结：两套 hold-drift 代码路径事实基线（S6-15.1）、F10 读法锁定（S6-15.2，settlement T1/T2）、F10 唯一可执行路由表（S6-15.3）、两种语义冲突点与待裁决项（S6-15.4）、settlement SUCCESS ledger 写缺口事实核验 + 方案 A/B 决策材料 + 方案 A 裁决（S6-15.5 = TD-106，**方案 A 已批准**，独立 stacked 实现 PR 承接）。S6 冻结规则除本段明确纠偏项外全部不变。
+
+##### S6-15.1 两套 hold-drift 代码路径（事实基线，main@`b28f84ab` 复核）
+
+| 路径 | 代码锚点 | 谓词 | drift 行为 | 管辖故障行 |
+|------|----------|------|-----------|-----------|
+| participant erase（Tx1/Tx2，external/runtime/两个 transport） | `external_ref_erasure_participant.py:728-736` / `runtime_erasure_participant.py:742-750` 共享基类 `transport_erasure_participant.py:356`（同源等值谓词 `_load_verified_operation`，`workspace.core.v1` 沿用同基线） | `hold_revision_snapshot != conversation.hold_revision`（**等值**） | **任何** drift（推进或回退）→ fail-closed | **S6-F9**（hold create vs participant entry，active→erasing 入口） |
+| settlement closeout（T1/T2） | `settlement.py:849` `_validate_frozen_snapshot` | `hold_revision_snapshot > conversation.hold_revision`（**单向**） | 仅**回退/脏数据** fail-closed；**推进放行** | **S6-F10**（T1/T2 间 hold 推进，已 erasing 收口） |
+
+两路径均真实存在且语义分立，非 bug——participant 守 active→erasing 入口（等值，防任何 drift），settlement 守已 erasing 收口（单向，放行推进）。裁决二（§S6-1）明文冻结 settlement 语义：「T2 对 hold 只做单向回归检查（hold **推进**放行、**回退/脏数据** fail）…hold 只阻止 purge owner 从 `active` 进入 `erasing`（Spec §5.3），不阻止已进入 erasing 的收口」。
+
+##### S6-15.2 F10 读法锁定（冻结）
+
+F10 期望结果「T2 完成 erase（fence erased + checkpoint acked）」**仅 settlement T2 可在 F10 注入前提（T1/T2 间 hold 已推进）下产出**，由三条独立证据锁定：
+
+1. **冻结文本锁定**：裁决二（plan:2136）明文「本裁决**覆盖 S5-SCH-2 T2 token 清单的 hold snapshot 项**」，并以 S6-F10 为判别测试——「T1 提交后、T2 前 create hold → T2 照常完成 erase」。该判别文本精确匹配 `settlement.py:270-284` 的 T1-commit→锁外→T2 结构。
+2. **代码谓词锁定**：在 F10 注入前提（hold_revision 0→1）下，participant 等值检查（`transport_erasure_participant.py:356` 等）在到达 ACK 写**之前**即 fail-closed（external `:728-736` 的 `_load_verified_operation` 门控 `:833+` 的 ACK 写；runtime `:742-750` 同构）；participant Tx2 因此无法在 drift 下产出 `fence erased + checkpoint acked`。
+3. **结果产出锁定**：external/runtime participant Tx2 成功路径虽**原子**写 `fence ERASED` + `checkpoint acked` + `refs erased` + `source_ref cleared`（`external_ref_erasure_participant.py:824-858` 单 commit :858；runtime `:843-876`），orchestrator 明文「participant **自记 blocked/acked**」（`owner_execution_orchestrator.py:399-401`），但 settlement 才是 F10 注入点定义的"锁外窗口 T1 commit 后 T2 前的 hold 推进"对应的执行路径。
+
+**故**：F10「T1/T2 锁外阶段」= settlement `closeout_erasing` 的 T1-commit→T2 锁外窗口，非 participant Tx1→Tx2。F9/F10 域分立：F9 = participant entry（等值检查 fail-closed，S5-SCH 冻结语义）；F10 = settlement closeout（单向检查放行）。旧 skip 理由「Tx2 重验 hold fencing…必触发 drift → Tx2 fail-closed」误将 F10 读作 participant Tx2（等值检查）；「terminal-overwrite-ban 禁止 acked→blocked」同为误引——终态覆盖禁令（coordinator `_apply_projection` 写 operation 状态机边，§S5-SCH-0）只防覆盖真终态（`completed`/`cancelled`/`failed`，`coordinator:575-580` 同护 `failed`），`blocked` 非终态，running→blocked 合法，且 coordinator 不改 checkpoint（ack 保留，§S5-SCH-0「coordinator 不写 checkpoint」）。
+
+##### S6-15.3 F10 唯一可执行路由表（settlement 读法，冻结）
+
+| 阶段 | 状态/动作（真实代码锚点） |
+|------|--------------------------|
+| **前置（F10 注入定义可达形态）** | conversation `state=deleted`、purge running；external owner participant **Tx1 已提交（intent 冻结于 checkpoint）**、**Tx2 未落账**（进程 crash / 锁外窗口前 raise）→ refs 仍 `registered`（Tx2 写未提交）、checkpoint `erasing`、fence `erasing`、attempt=1、operation `hold_revision_snapshot=0` |
+| **禁止构造的状态** | "refs erased + checkpoint/fence 仍 erasing" 经真实 participant 不可达——Tx2 把 ref 写 + fence ERASED + checkpoint acked **同事务原子提交**（`external_ref_erasure_participant.py:683-858`），不存在「refs erased 但 checkpoint 仍 erasing」的已提交状态；合成种子撞 `_verify_frozen_intent` 空窗 fail-closed（`settlement.py:1006-1011`）或退化零 ref 平凡真 |
+| 注入点 | settlement T1 commit 释放锁后、T2 前，第二连接 `create_legal_hold` → `conversation.hold_revision` 0→1（active hold）。`create_legal_hold` 仅拒 `purged_at IS NOT NULL`（`erasure_repository.py:1080-1085`），无 `state='deleted'` / purge 进行中 / terminal operation 门禁；T1 commit 后锁全释，第二连接立即可行 |
+| T2 重验 | `_verify_t2_tokens` → `_validate_frozen_snapshot`（`settlement.py:849`）：`0 > 1`=False → **放行**；frozen-snapshot 六条 + fence `erasing` + checkpoint `erasing`（:703）+ attempt/digest/lease_epoch/intent 全部 token 重验无 hold_revision 等值项 → 全过 |
+| T2 落账 | `_apply_window_outcome` SUCCESS（:1187-1215）：fence `erasing→erased`（ack_digest）+ checkpoint `→acked`（64-hex ack_digest，`ck_agent_purge_owner_ack`）。**注：settlement SUCCESS 不写 `agent_external_object_refs.erase_state` / 不清 source ref / 不关 runtime binding——见 S6-15.5 缺口** |
+| 持久结果（settlement 落账即可确认部分） | fence `erased` + checkpoint `acked`；**零复活正文**（正文已清除，append-only guard migration 043 防复活）；hold 行持久保留（审计） |
+| 聚合投影 | G2 `hold_drift = (0 < 1)`=True（`transactional_projection_coordinator.py:333`）→ G1>G2 优先于 checkpoint 聚合（`projection_calculator.py:309-326`） → operation `blocked` + `blocked_hold_revision_changed`（:319-326）——**不得断言原 operation 直接 completed** |
+| rebuild 通道 | top `blocked`+G2 code → quiesce 通过（无 erasing）但 G3 active hold → **HOLD_GATED 延迟**（`purge_rebuild.py:154-157`）；hold **释放**（bump `hold_revision`，`erasure_repository.py:1193-1200`）或**过期**（不 bump，裁决一，`:1214-1219`）后 G3 消解 → 新 operation `purge_revision+1`（`:195`）+ `hold_revision_snapshot=conversation.hold_revision`（`:201`，released 后 snapshot==current 无 G2 drift、expired 后 snapshot<current 仍需释放后 G2 过） |
+| **→ completed 链尾条件** | 新 operation 聚合走完 G1/G2/G3 后，最终扫描全零（priority 1 completed 分支）方达 `completed`——`external_ref_erasure_participant.py:225-232` 的 final scan 谓词 = `erase_state='registered'` 计数；F10 注入后 refs 仍 `registered`（participant Tx2 未落账）→ scan≠0 → **优先级 3 落 `blocked + purge_blocked_by_external_ref_scan_nonzero`（`projection_calculator.py:491-507`），completed 在一般场景下不可达**。完整闭合须 S6-15.5 ledger 写缺口补齐 |
+| 零写/单写 | settlement T2 fence+checkpoint CAS 单写收敛；hold 推进不触发 settlement fail-closed；T2 前 fence 已非 `erasing` → 幂等零写返回（`settlement.py:653-654`） |
+| fail-closed 条件 | hold **回退**（snapshot > current）→ settlement fail-closed 零写；registry drift（G1）→ `blocked_registry_changed`；checkpoint/fence/state/digest/lease 任一 token 失配 → fail-closed 零写 |
+| adapter/restore/rebuild | T2 锁外 adapter（receipt_lookup）已完成；rebuild 不重复 adapter 调用、不冒充已 erase（S6-8）；restore replay 与本路径正交（S6-12/13） |
+
+##### S6-15.4 两种语义冲突点 + 待裁决项（冻结）
+
+**冲突点（已核对）**：读法甲（settlement T1/T2）→ hold 推进放行、T2 完成 fence erased + checkpoint acked、自洽可实现（settlement 落账层确认）；读法乙（participant Tx1/Tx2，旧 skip 理由误用）→ 等值检查 fail-closed、与「T2 完成 erase」期望矛盾。两读法冲突仅源于「T1/T2 锁外阶段」术语歧义，非 F10 冻结期望自相矛盾。本段采纳读法甲（被期望结果文本、裁决二、S5-C-1 frozen snapshot 验收三处强制锁定）。
+
+**待裁决项（上报评审，非本 PR 自行裁决）**：
+1. 确认读法甲（settlement T1/T2）为 F10 唯一冻结读法——此项**纠偏** I3-C（#590）「F10 契约冲突不实现」的旧判定，需评审确认。
+2. 钉死「hold 行保留为审计」与「rebuild 最终 completed」的衔接：F10 判别须显式释放或过期 hold（释放 bump `hold_revision`、过期不 bump，裁决一）使 rebuild 越过 G3 HOLD_GATED；rebuild→completed 在一般场景（refs 仍 registered）下**不可达**，须先解决 S6-15.5 ledger 写缺口。hold 行持久（审计）。
+3. 正式解除 F10 skip 并登记后续 F10 实现 PR（#590 closure 后或独立测试 PR），沿用读法甲路由表 + S6-15.5 缺口前置。
+4. 反向情形备案：若评审认为 hold 推进**应**阻断已 erasing 收口（即读法乙为期望策略），则与裁决二「不阻止已进入 erasing 的收口」直接冲突，属 S5 冻结契约变更，须另行契约修订评审（本段不放行、不预审）。
+
+##### S6-15.5 settlement SUCCESS ledger 写缺口（TD-106 事实核验 + 方案 A/B 决策材料 + 方案 A 裁决）
+
+> Status: Draft（**方案 A 已经用户批准（2026-08-25）**；实现由独立 stacked PR 承载（base = #590 分支），本 PR #591 仅契约核对与决策材料、不承载代码实现；不改代码/schema/migration/enum/CHECK/registry/CI；#590 保持 Draft 不改写、不 rerun、不转 Ready）
+
+**实现证据（#591 治理归位追加，2026-08-25；事实源 = PR #592 squash 入 #590 mergeCommit `e345c429`）**：
+- PR #592 已 squash merge 入 #590 parent（mergeCommit `e345c429`，2026-08-25T07:51:45Z），head = `367802f7`（impl）+ `e430c42c`（score）+ `538d21cd`（评分边界纠正）+ `733f1b2b`（parent 治理同步）；#590 parent 现 head = `733f1b2b`，**仍为 OPEN/Draft**，**未并入 main**。
+- 正式评分 92（Original）已落入 `review-score-log.md`；评审对象 `aa889db8..367802f7`（stacked base + FINAL_IMPL_HEAD 双记）；`367802f7..538d21cd` 净 diff = `review-score-log.md` +1 行；`scripts/check-review-score-submit --base 367802f7 --pr 592` PASS；Metrics byte-identical。
+- **空冻结窗口合法 no-op SUCCESS**：`SettlementService._close_window_ledger` 严格计数守卫 `len(ref_closures) != len(t1.plan)` → fail closed 整体零写（覆盖「plan 非空缺 closure」+「plan 空携 stray closure」两方向）；仅「plan 严格空+closures 严格空」走合法 no-op return——不调 adapter/不伪造 receipt/不写 ledger/不清 source；保留 `_aggregate_window` 空计划确定性 ack digest（`canonical_digest({"schema_version":1,"kind":"settlement:ack","receipts":[]})`，空窗口完成证明）；仅收敛 fence `erased`+checkpoint `acked`，**不写 operation completed**（projection/G2/G3 路由）。参与者 Tx1 对零 registered ref 窗口无短路仍 commit checkpoint→erasing（`external_ref_erasure_participant.py:743-752`），可达性实证。
+- **TD-106 具名 mutation 9/9 全真红**（`scripts/s6_td106_settlement_ledger_mutation_kill.py`）：M1 删 receipt 写 / M2 去 source 清除 / M3 聚合 receipt 冒充 per-ref / M4 单写 CAS / M5 空 evidence 守卫 / M6 E-1/B2 重验 / M7 token 重验（F11 载体）/ **M8 缺集合锁（lock-acquisition sentinel 替换 `settlement.acquire_transport_aggregate_lock`，断言任何 ledger/source/fence/checkpoint 写之前必调用集合锁，D8 锁协议强制调用，不冒充并发串行结论）** / **M9 败者 raise（真实 PG stale-CAS：`_CasInjectFactory` session_factory 包装在 CAS UPDATE 前由第二连接并发合法收口，第一连接 rowcount=0→raise+T2 整事务回滚无 partial fence/checkpoint ACK）**。
+- **P1-A（P1-A 严格计数守卫空窗口 no-op + 两 fail-closed 方向 + 空 evidence 保持 OUTCOME_UNKNOWN + 守卫独立 mutation red→green）**：**CLOSED**。
+- **P1-B（M8 sentinel 时序断言 + 零写 + mutation red + M9 真实 PG dual-connection stale-CAS + rollback + 无 fake rowcount + 跨边界零越界）**：**CLOSED**。
+- **P2 保留未关**（不借 P1 修复扩大范围；按已登记项承接）：(P2-1) runtime per-binding receipt 形参 `receipt_digest` 算出即丢弃（`write_erased_and_close_binding` 接收形参零使用，语义=ACK 证据链输入，不加列）；(P2-2) settlement↔participant 跨入口双写者并发用例（M9 shared-helper stale-CAS 不冒充全覆盖 = 裁决项 2a）；(P2-3) M4 receipt 复用深度（同 receipt 复用 unit 级）。
+- **实现边界约束（已遵守）**：无 schema/migration/enum/CHECK/reason code 新增；写者矩阵未变（S5-C-2 写域本含 ledger/binding）；participant Tx2 清除逻辑提取为模块级唯一写入路径（`write_erased_and_clear_ref`/`clear_external_source_ref`/`write_erased_and_close_binding`，E-5-2 B2），方法改薄委托——**不复制第二清除者**；per-ref receipt 必须精确落 ledger 行（不聚合丢失）已实现。
+- **F10 路由四环（§S6-15.3）状态**：F10 测试**仍未解除 skip**（#590 `test_f10_contract_conflict_not_implemented` 保持 skip；F10 链尾 completed 在 TD-106 实现 PR 合并后才可达——**当前 #590 整体未完成**）；四环路由（T2 单向放行 → fence erased/checkpoint acked → G2 `blocked_hold_revision_changed` → rebuild G3 HOLD_GATED）冻结不变。
+- **本 PR #591 状态**：仅契约核对 + 决策材料；不承载代码实现；保持 Draft 不转 Ready/不评分/不合并；#592 已 squash 入 #590 parent 并不意味本 PR 可宣告完成——TD-106 P1 在 **#592 + #590 整体并入 main** 后才关闭。
+
+**事实（冻结，main@`b28f84ab` + 对抗核验确认）**：`settlement._apply_window_outcome` SUCCESS 分支（`settlement.py:1187-1215`）仅写 `fence.erased` + `checkpoint.acked`（ack_digest + `checkpoint_digest` + `reason_code=None`），**不写 `agent_external_object_refs.erase_state`/`receipt_digest`、不清 source ref、不关 runtime binding**（`runtime_session_ref=NULL`/`status='closed'`）。全 `settlement.py` **零** 对 refs/bindings 的 UPDATE（仅 `_load_frozen_window` SELECT，`settlement.py:936-947`）。S5-C-1 冻结落账列明文为「态 1 同事务写 fence `erasing→erased` + checkpoint `→acked` + **ledger/binding `erased` + receipt**」（plan:1900），**实现 vs 冻结契约缺口**：ledger 一腿缺失。次要：态 1 的 `checkpoint_digest` 由**同一 registered-only scan**（缺口场景非零）算出（`_scan_digest_for`，`settlement.py:1237-1250`）——把脏 scan 记为 ACK 证据。
+
+**Phase 1 六场景核验（settlement SUCCESS 是否写/缺 ledger/binding，全部经真实代码 + 对抗核验）**：
+
+| 场景 | settlement 态 1 写 ledger/binding？ | 后果 |
+|------|-----------------------------------|------|
+| external ref | **缺**（无 UPDATE refs） | refs 仍 `registered` → external scan（**registered-only**，`external_ref_erasure_participant.py:225-232`）非零 → 死锁 |
+| runtime binding | **缺**（无 UPDATE bindings） | binding ref 仍非 NULL → runtime scan（**`runtime_session_ref IS NOT NULL`，status-decoupled**，`runtime_erasure_participant.py:243-250`）非零 → 死锁 |
+| 多 ref / 多 binding | **缺**（且 **per-ref receipt 丢失**） | `_recover_outside_locks` 逐 ref lookup/replay（`settlement.py:545-617`），`_aggregate_window` 把 N 个 per-ref evidence 合并为单 canonical digest（:1159-1170）——**丢失 per-ref receipt**；per-ref 公式 `external_erase_receipt_digest` 不参与 → 即便补写也无法从聚合 digest 反推每行 receipt_digest，audit 链永久不可恢复 |
+| replay / retry | replay **本身即缺口生产者** | `_replay_ref_outside`（:589-617）调 adapter 拿 evidence 但不写 ledger；retry（`retry_reconcile.py:175-176`）要求 checkpoint `blocked`，`acked` → 不允许；reconcile（:200-218）重调 `closeout_erasing` 零写 no-op |
+| ACK-lost recovery（态 4） | **不受影响** | `_ack_lost_repair` 前置 `scan.total==0`（:1125-1133）+ 输入态 fence `erased` + checkpoint `pending/blocked`（:901-906）；fence `erased` 仅经 participant Tx2（其 final scan `_scan_external_refs.total==0`，total=registered+blocked+unknown，:122-124/:797-800，即 ledger 已全 erased）或 settlement 态 1（同时 ack checkpoint，使 `pending/blocked` 前置为假）→ **态 4 在缺口场景不触发，触发时 ledger 已终态** |
+| hold-drift F10 路由 | 前 4 环确认（读法甲） | 第 5 环 completed 因本缺口不可达（§S6-15.3 链尾） |
+
+**缺口后果 4 问判定（冻结）**：(1) checkpoint/fence 终态但 ledger/binding 未清 —— **成立**（态 1）；(2) 后续 replay 无回执 / ref 不稳定 —— **成立**（receipt 仅在 checkpoint 聚合 ack_digest/checkpoint_digest，ledger 行 `receipt_digest` 永久 NULL，per-ref 回执不可恢复）；(3) external/runtime settlement 恢复永久死锁 —— **成立**（external 精确；runtime 有 latent 未接线 escape hatch `reconcile_runtime_binding`，零生产接线）；(4) owner 作用域 / 幂等分叉 —— **成立**（checkpoint `acked`=success 与 ledger `registered`=未完 同 owner 内分叉：projection 读 ledger→blocked，orchestrator 读 checkpoint acked→skip）。
+
+**死锁精确条件（对抗核验精化，冻结）**：缺口要求 participant Tx2 对整个窗口**完全未落账**——任一 ref 部分落账则 T2 frozen-intent 重验（`settlement.py:1006-1011`）fail-closed，态 1 不落账。external scan = registered-only（`blocked`/`unknown` 行**不挡** completed）；runtime scan = ref-non-NULL（status-decoupled）。**无线后修复路径**：external `reconcile_external_ref` 补写 gated `erase_state IN ('blocked','unknown')`（:1139-1148），`registered` 行 → raise；runtime `reconcile_runtime_binding` 仅 ref-match 无 status 门（:1106-1115）可关 stale binding，但两者均仅测试调用、零生产接线；无 janitor/backfill 写 `erase_state='erased'` 或清 binding ref（除两 participant Tx2 函数外）。
+
+**死锁链（对 F10 路由链尾的影响，冻结）**：态 1 落账后 refs 仍 `registered` → 聚合投影 priority-3 scan 非零（`projection_calculator.py:490-507`）落 `blocked + purge_blocked_by_external_ref_scan_nonzero`/`..._runtime_binding_scan_nonzero`（completed 需全零 scan，:509-516）→ orchestrator 对 `acked` checkpoint 一律 `skipped`（`owner_execution_orchestrator.py:349-350`）+ settlement 不再重跑（`_classify_input` 对 fence erased+checkpoint acked 返回 None，:901-906）+ retry 要 blocked（`retry_reconcile.py:175-176`）+ rebuild 对非 G1/G2 code 返回 NOT_DUE/IDEMPOTENT（`purge_rebuild.py:136-148`）→ **永久死锁，completed 不可达**。该缺口与 F10 路由正交（任何 settlement recovery 都受影响），属 pre-existing。
+
+---
+
+**方案 A（实现补齐：settlement 态 1 SUCCESS 同事务补 ledger/binding `erased` + receipt）**——闭合 S5-C-1 态 1 落账列，使 completed 可达：
+
+- **代码入口/写者**：`settlement._apply_window_outcome` SUCCESS 分支（:1187-1215）在 T2 事务内、与 fence+checkpoint CAS **同事务**，补 per-ref ledger 写。复用 participant 写 helper 语义：external `_write_erased_and_clear_ref`（`external_ref_erasure_participant.py:863-910`）、runtime `_write_erased_and_close_binding`（`runtime_erasure_participant.py:883-956`）。
+- **写者归属澄清（participant Tx1/Tx2 vs settlement T2）**：现 participant Tx2 是 ledger/binding `erased`+receipt 的**唯一写者**（B2，E-5-2 plan:1127）。settlement T2 成为第二写者须：同一 CAS 谓词（external `WHERE erase_state='registered' AND receipt_digest IS NULL`；runtime `WHERE runtime_session_ref=:rv`），并发败者 rowcount=0 → **重读确认已 erased+receipt（peer 已写）则幂等成功、否则 fail-closed**——区别于现行 helper 的 rowcount≠1 即 raise（单写者假设）。**或**：settlement 不复制写逻辑，**委托** participant 对象执行（写仍发生在 B2 代码内，保 E-5-2「B2 唯一写者」），但 T2 事务跨 participant 代码、须按 B2 锁序取集合锁。
+- **状态转移（单事务）**：external ledger `registered→erased`+`receipt_digest=<per-ref>`+`blocked_reason=NULL` + 清源 ref（`payload_ref=NULL`/`payload_state='redacted'`/outbox `suppressed`）；runtime binding `runtime_session_ref=NULL`+`status='closed'`+`active_stream_id=NULL`+`stream_lease_expires_at=NULL`+`revision+1`；fence `erasing→erased`(ack_digest)；checkpoint `→acked`(ack_digest + final scan digest, `reason_code=NULL`)；operation/Conversation **零写**（S5-C-2）。
+- **零写/单写/幂等**：fence+checkpoint CAS 单写（已有）；ledger CAS 单写 + 并发败者幂等确认（**新语义，需裁决**）；**多 ref 全行同事务**（与 fence+checkpoint 原子），且 **per-ref receipt 不得聚合**——须从 `_recover_outside_locks` 把 per-ref evidence 贯通到落账，不走 `_aggregate_window` 的单 digest 合并。
+- **adapter I/O 与锁边界**：adapter lookup/replay 保持锁外（E-2，`_recover_outside_locks`）；ledger 写在 T2 锁内。T2 锁序现为 Conversation→owner advisory→fence→operation→checkpoint；补 ledger 写须**扩展取源行集合锁**（E-5-2/D8：Guard→Conversation→owner→fence→**集合锁**→源行），集合锁在源行 UPDATE 之前——须核验不破坏 D8 冻结锁序、不引入 AB-BA。
+- **S5-C-1/S5-SCH-2 冻结契约是否需改**：S5-C-1 态 1 落账列**已要求** ledger/binding erased+receipt（plan:1900）、S5-C-2 写域**已含** ledger/binding（plan:1914）——**写域本身无需契约变更**。**需裁决**：(a) settlement 作为第二 ledger 写者的并发幂等语义；(b) T2 锁序扩展取集合锁（D8）；(c) **E-5-2「B2 唯一清除者」对源行的约束**——settlement 清源 ref 是否越权（见下「完整性关键」）。
+- **schema/migration**：external `receipt_digest`/`erase_state='erased'` 已存在；runtime binding `status='closed'`+ref NULL 用既有列/CHECK。**无需新增 schema/migration/enum/CHECK**（满足「不得未经批准新增」）。
+- **完整性关键（transport 耦合，对抗核验发现）**：混合会话中 ref-bearing outbox 行是 external ref 的源行，transport owner 对其 `purge_owner_unavailable` blocked 并委托 B2 清除（E-0a/E-5-2）。若 settlement 只擦 external **ledger 行**而**不清源 `payload_ref`**，external scan 归零但 **transport scan 仍非零**（outbox `payload_ref` 未清）→ transport owner 仍 blocked。故方案 A 须**连源 ref 一并清**（full `_write_erased_and_clear_ref` 语义）方能让混合会话真正 completed——此击中 E-5-2「B2 唯一清除者」，需裁决（或委托 B2 执行）。
+- **测试+mutation 证明矩阵**：(1) external 单 ref / 多 ref / runtime 单 binding / 多 binding 的「Tx2 未落账 → settlement 恢复 → ledger erased+receipt + fence erased + checkpoint acked 同事务」正向；(2) 并发 settlement/participant 双写者 CAS 败者幂等确认（不 raise、不双写）；(3) per-ref `receipt_digest` 精确等于 `external_erase_receipt_digest` 重算（非聚合 digest）；(4) final scan 归零 → rebuild → completed 链尾闭合；(5) mutation：删 ledger 写 / 聚合 digest 冒充 per-ref / 缺集合锁 / 败者 raise → 各转红。
+
+**方案 B（路由 fail-closed：ledger/binding receipt 缺失时禁止进入 completed / 禁止假 SUCCESS）**——不补 ledger 写，改为消除「假终态成功」分叉：
+
+- **核心**：settlement **不得**在无法同事务满足 ledger/binding 腿时声明 态 1 SUCCESS（fence erased + checkpoint acked）——否则即 S5-C-1 态 1 不符的部分落账（现行行为）。改为 fail-closed 到**具名 reconcile-only 态**，保持 checkpoint 非终态，使 owner 可经由「能补 ledger 的路径」（重跑 participant Tx2 / 人工 runbook / 后续 PR-D 受控 replay executor）收口。
+- **fence/checkpoint 可观察终态**：不落 fence erased + checkpoint acked；落 checkpoint `blocked` + **具名 reason**（reconcile-only、禁自动重试，镜像 态 3/5/6 的具名持久 code 机制，plan:1907），fence `erasing→blocked`。owner 处于「adapter 已确认但 ledger 未清」的可观察 reconcile 态。
+- **人工处理路径**：登记 runbook——人工/运维触发「能写 ledger 的 participant Tx2 重跑」（或 PR-D 受控 replay executor）补 ledger erased+receipt + 清源 ref，再 rebuild → completed。
+- **replay 边界**：fail-closed 后禁 settlement 自动二次 adapter 调用（裁决二）；重跑须以同一 idempotency key + 稳定 ref（S5-C-4 期限 + S5-C-6 条件）。
+- **证明无 false-terminal-success**：fail-closed 后 checkpoint 永不「`acked` 但 ledger `registered`」——消除 checkpoint 终态/ledger 非终态分叉；projection 由「checkpoint acked + scan 非零死锁」转为「checkpoint blocked + 具名 reconcile reason」可诊断。
+- **是否违反 S5-C-1 六输出态**：S5-C-1 态 1 已要求 ledger/binding erased+receipt（plan:1900），故「不写 ledger 的 态 1」本就不符；方案 B 拒绝发部分 态 1 = 使其**符合**冻结契约。**但**方案 B 新增一个 fail-close 触发条件（ledger 腿不可满足 → reconcile-only），改变 settlement 输出态判定边界（现行：adapter 确认即 态 1）——**需裁决**是否作为 态 3 outcome_unknown 的合法子情形，或新增独立持久 reason code（归 S5-A level 7 域，不修改既有 code）。**注意**：方案 B 自身**不产生** completed——completed 仍需外部路径（participant 重跑/人工）补 ledger；方案 B 的价值是把「假成功死锁」转为「具名可诊断 reconcile」。
+- **代码入口/写者**：`settlement._apply_window_outcome` SUCCESS 分支改为「ledger 腿可满足性」前置判定；不满足则走 blocked 落账分支（复用现有 态 2/3 落账 :1216-1234）+ 新具名 reason。无新写者、无锁序扩展、无 schema 变更。
+- **测试+mutation 证明矩阵**：(1) Tx2 未落账 + settlement 恢复 → **不**落 fence erased/checkpoint acked，落 blocked+具名 reason；(2) 断言不存在「checkpoint acked + ledger registered」分叉；(3) 人工/participant 重跑补 ledger 后可 completed；(4) mutation：补回「adapter 确认即 态 1」→ 转红（false-success 判别）。
+
+**影响（冻结）**：**PR #590**——两方案均不改 #590（保持 Draft；F10 skip；TD-106 为 pre-existing 正交缺口）。**PR-D**（ledger export executor + runbook）——方案 A 下 settlement 落账含 per-ref receipt，export 格式须承载 settlement 来源 receipt；方案 B 下 settlement 时 ledger 未清，export 见 `registered` + reconcile 态；两方案 PR-D 均未启动。**REQ-047**（conformance）——TD-106 是 impl vs 冻结 S5-C-1 的 conformance 缺口，两方案以不同方式闭合，REQ-047 记录决议。**TD-105**（F10 实现承接）——阻塞于 TD-106 决议：方案 A 下 F10 第 5 环 completed 可达 → TD-105 实现到 completed；方案 B 下 F10 链尾 fail-closed → TD-105 实现到具名 reconcile 态（非 completed）。
+
+**裁决结果（2026-08-25，用户批准）**：
+1. **方案 A 已批准**——settlement 态 1 SUCCESS 同事务补 ledger/binding `erased`+receipt，闭合 S5-C-1 态 1 落账列，使 completed 可达。
+2. **方案 B 保留为兜底**——仅当实现中发现某路径无法安全落账（receipt 缺失/部分落账/token 不一致/B2 唯一清除者无法满足）时，该路径 fail-closed 落具名 reconcile-only blocked，禁止「checkpoint acked + registered ledger」假终态。
+3. **显式 descope S5-C-1 ledger 写不批准**——不得通过删除/弱化 S5-C-1 态 1 落账列来「闭合」缺口。
+4. **per-ref receipt 必须精确落 ledger 行**——禁止只写聚合 receipt 后丢失 per-ref receipt（`_aggregate_window` 合并仅用于 fence/checkpoint 的 ack_digest，不替代 per-ref `receipt_digest`）。
+5. **TD-106 在实现 PR 合并前保持 P1 open**；实现由**独立 stacked PR** 承载（branch `feature/req041-047-r1-s6-i3-td106-settlement-ledger-closure`，base = #590 分支 `feature/req041-047-r1-s6-i3-c-fault-matrix-completion`，非 main、非 #591）；本 PR #591 不承载代码实现，保持 Draft 不转 Ready/不评分/不合并。
+
+**方案 A 实现约束（裁决细化，实现 PR 须遵守）**：
+- settlement SUCCESS 只能在**所有** ledger/binding receipt 已可靠落账后报告成功；逐 ref/逐 binding 粒度，external ref、runtime binding、多 ref、多 binding 同构。
+- source `payload_ref` / runtime binding 的清除必须遵守 **E-5-2「B2 唯一清除者」**——若须委托 participant Tx2/B2，使用现有唯一写入路径（`_write_erased_and_clear_ref` / `_write_erased_and_close_binding`），**不复制第二个清除者**；不得把「ledger 已写、source ref 未清」作为成功终态。
+- 任何部分落账、receipt 缺失、写入冲突或 token drift 都必须 fail closed（用既有 reason，**不新增 reason code**，除非发现现有事实源无法表达且另行停下请求裁决）。
+- 不得在持有数据库锁时执行 adapter 或外部 I/O（E-2）；按 D8 重新核对加入 ledger/binding/source 行后的锁序、CAS、事务边界。
+- 双连接并发下只能有一个完整写者，败者只能幂等返回或零写。
+- **若现有 S5-C-2 写域不足以授权新增写者，立即停止并报告，不能静默修改写者矩阵。**
+- ACK-lost 路径保持现有语义，不因本修复重复调用 adapter；F10 四环保持（T2 单向放行 → fence erased/checkpoint acked → G2 hold-drift 投影 → rebuild G3 HOLD_GATED）；本修复不直接宣称 operation completed（completed 仍需满足 ledger/binding 完整性 + 现有后续路由条件）。
+
+**处置（冻结，方案 A 已批准）**：代码修复不属本 PR #591 范围（本 PR 仅契约核对 + 决策材料，不改代码）；由独立 stacked 实现 PR 承载（base = #590 分支）。**登记为 TD-105 前置条件**——F10 实现 PR 须在 TD-106 实现 PR 合并后承接（读法甲路由表 + 已补齐的 ledger 收口），方能闭合到 completed。**TD-106**（P1）在实现 PR 合并前保持 open。
+
+**边界（冻结）**：本段不产生任何 schema/migration/enum/CHECK 变更需求；不修改 S5 settlement/participant/terminal guard；settlement T2 现行行为已满足 F10 主体（settlement 落账层，§S6-15.3）；读法甲前 4 环维持确认；#590 保持 Draft；PR-D/PR-E/C1/S5 production wiring/registry capability 翻转均未启动；不新增 Score Log 行、不修改 Metrics。follow-up **TD-105**（F10 实现承接，前置 TD-106 实现合并）+ **TD-106**（settlement SUCCESS ledger 写补齐，**方案 A 已批准**，独立 stacked 实现 PR 承接，P1 保持 open 至合并）+ **REQ-047**。
+
+
+
 > Status: Draft（本 PR 仅纯文档契约冻结；不命名 I3，不写代码/测试/schema/migration/registry/CI，不启动任何 Scheduler 实现/S6/C1）
 > 依据：S5-A-10 S6 拆分裁决、S5-B（Option D quiesce-and-finalize、rebuild/seeding/lineage、S5-B-6 并发与幂等）、S5-C（settlement-only adapter recovery、六输出态、RecoveryDescriptor、ACK-lost repair）、I1/I2 merged-boundary（#567/#569 已并入 main）。
 > 本契约冻结 scheduler 全函数状态机、统一锁序/事务边界/崩溃恢复点、写者所有权矩阵、单风险域实现 PR 拆分与反例矩阵；**不复制** S5-B/S5-C 已冻结规则，全部以精确指针引用。首轮三面复审原始计数（保留不覆盖）：数据/状态机 P0=0/P1=2/P2=12/P3=7 + 并发/锁序 P0=0/P1=3/P2=4/P3=3 + 测试/运维/文档 P0=0/P1=2/P2=5/P3=4 → 合计 P0=0/P1=7/P2=21/P3=14，按族 A~G 统一返修一次（本版）。
