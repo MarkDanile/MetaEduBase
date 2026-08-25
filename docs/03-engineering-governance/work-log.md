@@ -511,4 +511,3 @@
 2. **评审对象基线双记**（main HEAD + FINAL_IMPL_HEAD）成为契约 PR 评审标准格式（#587/#589/#591 三次复用）
 3. **"实现与评审已闭合并入 integration parent，待 parent/main merged-boundary"** 措辞精确避免冒充 main 完成（TD-106 P1 保持 open 至 #590/main merged-boundary 才关闭）
 4. **定向复核未启动独立 agent**（仅内联 8 项核验）属可优化项——可入 contract-first PR 评审清单的「定向复核外部 agent 实证」检查项
-
