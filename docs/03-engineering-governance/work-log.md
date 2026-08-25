@@ -443,3 +443,72 @@
 - 切片 2 PR：[#197](https://github.com/MarkDanile/MetaEduBase/pull/197) / merge `760d147` / 分支 `chore/td-048-remove-sourceitem-legacy-contract-2` 已删
 - 切片 3 PR（待提，分支 `docs/td-048-slice-3-cross-source-closure`）：docs-only 跨事实源收口
 - 原始 commit `23a54b1`（未合 main，分支 `chore/td-048-remove-sourceitem-legacy-contract`）：作为切片 2 cherry-pick 来源
+
+---
+
+## R1-S6-I3-F10 S6-F10 契约核对纠偏 + TD-106 决策门禁 closeout（2026-08-25）
+
+**任务**：REQ-041/047 R1-S6-I3-F10 契约核对纠偏（contract-first，纯文档）
+**分支**：`docs/req041-047-r1-s6-i3-f10-contract`
+**PR**：[#591](https://github.com/MarkDanile/MetaEduBase/pull/591)（squash merge `738be6f9`，2026-08-25T08:37:30Z）
+**评分**：89 Original（`docs/03-engineering-governance/04-retrospectives/review-score-log.md` 第 19 行；评审对象 main@`b28f84ab`..`5901e6d7`）
+**实现基线 / FINAL_IMPL_HEAD**：main `b28f84ab` / `5901e6d7`（governance归位 commit）
+
+### 完成内容
+
+1. **§S6-15 冻结（plan）**：
+   - §S6-15.1 两套 hold-drift 代码路径事实基线（participant erase Tx1/Tx2 等值检查 + settlement closeout T1/Tx2 单向放行，分立语义）
+   - §S6-15.2 F10 唯一读法锁定 settlement T1/T2（三证据链：冻结文本 + 代码谓词 + 结果产出；F9/F10 域分立）
+   - §S6-15.3 F10 唯一可执行路由表（settlement 读法；前置 / 禁止构造 / 注入点 / T2 重验 / T2 落账 / 持久结果 / 聚合投影 / rebuild / → completed 链尾条件）
+   - §S6-15.4 两种语义冲突点 + 待裁决项 4 项
+   - §S6-15.5 settlement SUCCESS ledger 写缺口（事实核验 + Phase 1 六场景 + 方案 A/B 决策材料 + 方案 A 裁决 + **实现证据块**）
+
+2. **TD-106 决策门禁**（plan §S6-15.5）：方案 A 已用户批准（2026-08-25）
+   - settlement 态 1 SUCCESS 同事务补 ledger/binding `erased`+receipt（闭合 S5-C-1 态 1 落账列）
+   - 方案 B 保留为 fail-closed 兜底
+   - per-ref receipt 必须精确落 ledger 行（不聚合丢失）
+   - source ref 清除遵守 E-5-2「B2 唯一清除者」（委托现有唯一写入路径）
+   - 实现由独立 stacked PR #592 承载（base = #590 分支，**非 main、非 #591**）
+
+3. **§S6-15.5 实现证据块（2026-08-25 治理归位追加）**：
+   - PR #592 squash mergeCommit `e345c429`（2026-08-25T07:51:45Z）→ #590 parent（head `733f1b2b`）
+   - 正式评分 92（Original）已落入 Score Log；`scripts/check-review-score-submit --base 367802f7 --pr 592` PASS
+   - 空冻结窗口合法 no-op SUCCESS（`_close_window_ledger` 严格计数守卫）
+   - TD-106 具名 mutation 9/9 全真红（M1-M7 + M8 缺集合锁 + M9 败者 raise）
+   - P1-A / P1-B CLOSED（定向复核合计 P0=0/P1=0/P2=0/P3=6）
+   - P2 三项保留（runtime per-binding receipt 形参零使用 / settlement↔participant 跨入口双写者并发用例 / M4 receipt 复用深度）
+
+4. **状态同步**：
+   - `current-work.md` F10 卡同步（状态/最新交接/下一步/交接备注四段）
+   - `technical-debt.md` TD-106 cell 状态 ⚫ 待办 → ⚫ 进行中（实现与评审已闭合）——**不**标完成、**不**关闭
+   - `current-work.md` 即时（main closeout 后）翻 🟢 契约阶段完成 + TD106 实现已入 integration parent
+
+### 三面最终 P0/P1/P2/P3
+
+- 数据/状态机：0/0/0/1（措辞精度）
+- 并发/锁序/边界：0/0/0/1（PR #590 head 引用一致性）
+- 测试/运维/文档：0/0/0/0
+- **合计：P0=0/P1=0/P2=0/P3=2**
+
+### 关键不变量（main closeout 时核对）
+
+- **#591 Original 行唯一，评分 89**；#592 Original 行**不应**在 main（仅在 #590 parent）
+- **Metrics byte-identical**（`git diff <b28f84ab>..<738be6f9> -- docs/03-engineering-governance/04-retrospectives/review-score-log.md` 仅新增 1 行）
+- migration 043 / schema / enum / CHECK / CI / 门禁脚本 / KNOWN_ISSUES **零触碰**
+- #586 / #590 仍 OPEN/Draft、不触碰
+- PR-D / PR-E / C1 / S5 production wiring / registry capability 翻转均未启动
+- 后续 stack 同步必须分两步：main → #586 root，再由更新后的 #586 → #590；**禁止**直接把 main merge 到 #590
+
+### follow-up（保持登记，不关闭）
+
+- **TD-104**：PR-A schema/test alignment（#586 后续）
+- **TD-105**：F10 实现承接（前置 #590/main merged-boundary；当前 F10 skip 保持）
+- **TD-106**：P2 三项保留未关（保持"进行中（实现与评审已闭合）"——**不**标完成、**不**关闭）
+- **REQ-047**：R1-S6 implementation conformance 随后续 slice 闭环
+
+### 教训入账（contract-first 治理归位模板）
+
+1. **§S6-15.5 实现证据块追加模式**（实施证据 + 技术债状态 + current-work 三处同步）成后续 stacked child 合并后可复用模式，与 #587/#589 模式一致
+2. **评审对象基线双记**（main HEAD + FINAL_IMPL_HEAD）成为契约 PR 评审标准格式（#587/#589/#591 三次复用）
+3. **"实现与评审已闭合并入 integration parent，待 parent/main merged-boundary"** 措辞精确避免冒充 main 完成（TD-106 P1 保持 open 至 #590/main merged-boundary 才关闭）
+4. **定向复核未启动独立 agent**（仅内联 8 项核验）属可优化项——可入 contract-first PR 评审清单的「定向复核外部 agent 实证」检查项
