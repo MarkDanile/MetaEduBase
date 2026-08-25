@@ -67,19 +67,34 @@ from app.composition.adapter_recovery import (
     RecoveryDescriptor,
     resolve_adapter,
 )
-from app.composition.agent_erasure_locks import acquire_owner_lock
+from app.composition.agent_erasure_locks import (
+    acquire_owner_lock,
+    acquire_transport_aggregate_lock,
+)
 from app.composition.agent_erasure_registry import (
     snapshot_digest,
 )
-from app.composition.external_object_adapter import external_erase_idempotency_key
+from app.composition.external_object_adapter import (
+    external_erase_idempotency_key,
+    external_erase_receipt_digest,
+    external_ref_identity_digest,
+)
 from app.composition.external_ref_erasure_participant import (
     ExternalRefRow,
     external_delete_intent_digest,
+    write_erased_and_clear_ref,
 )
-from app.composition.runtime_erasure_adapter import runtime_destroy_idempotency_key
+from app.composition.external_ref_lifecycle import _collection_owner
+from app.composition.runtime_erasure_adapter import (
+    runtime_destroy_idempotency_key,
+    runtime_destroy_receipt_digest,
+    runtime_session_identity_digest,
+)
 from app.composition.runtime_erasure_participant import (
+    RUNTIME_PRIVATE_OWNER,
     RuntimeBindingRow,
     runtime_destroy_intent_digest,
+    write_erased_and_close_binding,
 )
 from app.contexts.agent_workspace.domain.erasure import ErasureFenceState
 from app.contexts.agent_workspace.infrastructure.erasure_repository import (
@@ -141,11 +156,29 @@ class OutputState(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class _RefClosure:
+    """单个冻结 ref/binding 的收口输入（TD-106 方案 A per-ref 粒度）。
+
+    settlement 态 1 SUCCESS 时逐 ref/binding 落 ledger/binding receipt + 清源 ref，
+    **禁止只写聚合 receipt 后丢失 per-ref receipt**——``idempotency_key`` 与
+    ``ack_evidence``（per-ref adapter evidence）供 T2 重算 per-ref
+    ``receipt_digest``（external）/ session receipt（runtime）。
+    """
+
+    ref: ExternalRefRow | RuntimeBindingRow
+    idempotency_key: str
+    ack_evidence: str
+
+
+@dataclass(frozen=True, slots=True)
 class _WindowOutcome:
     state: OutputState
     reason: str | None = None
     ack_digest: str | None = None
     scan_digest: str | None = None
+    # TD-106 方案 A：仅 SUCCESS 携带 per-ref 收口清单（窗口内全部 ref/binding，
+    # 与 plan 同序）；其余输出态为空。
+    ref_closures: tuple[_RefClosure, ...] = ()
 
 
 # settlement 可重放的 adapter 接口（external/runtime Protocol 的窄投影）。
@@ -549,7 +582,7 @@ class SettlementService:
             await self._recover_ref_outside(t1, item)
             for item in t1.plan
         ]
-        return self._aggregate_window(ref_outcomes, t1.owner_key)
+        return self._aggregate_window(ref_outcomes, t1.owner_key, t1.plan)
 
     async def _recover_ref_outside(
         self, t1: _T1Context, item: _RefPlan
@@ -656,6 +689,11 @@ class SettlementService:
             session, t1, conversation, operation, fence, checkpoint
         )
         assert operation is not None and checkpoint is not None and fence is not None
+        # TD-106 方案 A：fence/checkpoint ACK 前同事务逐 ref/binding 落 ledger/binding
+        # receipt + 清源 ref（集合锁临界区内，D8 同序）。任一失败整体回滚零写，禁止
+        # 「checkpoint acked + registered ledger」假终态。
+        if outcome.state is OutputState.SUCCESS:
+            await self._close_window_ledger(session, t1, outcome)
         await self._apply_window_outcome(
             session, t1.tenant_id, t1.conversation_id, operation, checkpoint, fence,
             _FrozenSnapshot(
@@ -1145,13 +1183,24 @@ class SettlementService:
         self,
         ref_outcomes: list[_RefOutcome],
         owner_key: str,
+        plan: tuple[_RefPlan, ...],
     ) -> _WindowOutcome:
         """owner 级聚合：任一 ref 不可判定 → 态 3；全部确认 → 态 1。
 
         单 ref 的 ack evidence 原样承载；多 ref 合并为确定性 canonical digest
-        （与 lookup/replay 同一 per-ref key 派生链）。
+        （与 lookup/replay 同一 per-ref key 派生链）。TD-106 方案 A：态 1 同时
+        携带 per-ref 收口清单（``ref_closures``，与 ``plan`` 同序），供 T2 逐
+        ref/binding 落 ledger/binding receipt + 清源 ref；任一 ref evidence
+        空/空白 -> 态 3 fail closed（E-2b：不得凭空 evidence 写 erased/receipt）。
         """
         if any(o.state is OutputState.OUTCOME_UNKNOWN for o in ref_outcomes):
+            return _WindowOutcome(
+                OutputState.OUTCOME_UNKNOWN,
+                reason=_outcome_unknown_reason(owner_key),
+            )
+        # E-2b「可验证 evidence」：空/空白 evidence 视为无 evidence -> 态 3 fail
+        # closed（不写空 receipt、不伪造 erased）。
+        if any(not (o.ack_evidence or "").strip() for o in ref_outcomes):
             return _WindowOutcome(
                 OutputState.OUTCOME_UNKNOWN,
                 reason=_outcome_unknown_reason(owner_key),
@@ -1167,7 +1216,113 @@ class SettlementService:
                     "receipts": sorted(evidences),
                 }
             )
-        return _WindowOutcome(OutputState.SUCCESS, ack_digest=ack)
+        closures = tuple(
+            _RefClosure(
+                ref=item.ref,
+                idempotency_key=item.idempotency_key,
+                ack_evidence=o.ack_evidence or "",
+            )
+            for item, o in zip(plan, ref_outcomes, strict=True)
+        )
+        return _WindowOutcome(OutputState.SUCCESS, ack_digest=ack, ref_closures=closures)
+
+    async def _close_window_ledger(
+        self,
+        session: AsyncSession,
+        t1: _T1Context,
+        outcome: _WindowOutcome,
+    ) -> None:
+        """TD-106 方案 A：态 1 SUCCESS 同事务逐 ref/binding 落 ledger/binding receipt
+        + 清源 ref（集合锁临界区内，D8 同序）——fence/checkpoint ACK 之前调用。
+
+        - 逐 ref/binding 粒度（external ref / runtime binding / 多 ref / 多 binding
+          同构），per-ref ``receipt_digest`` 由 ``ack_evidence`` 重算（E-2b），
+          **禁止只写聚合 receipt 丢失 per-ref receipt**。
+        - 复用唯一清除路径（B2，E-5-2）：external ``write_erased_and_clear_ref``、
+          runtime ``write_erased_and_close_binding``——不复制第二清除者；source ref
+          清除与 receipt 落账同一完整性边界（同事务原子）。
+        - 任一 ref 缺失/部分落账/CAS 冲突/identity 不匹配 -> 抛错整体回滚零写
+          （fail closed，禁止「checkpoint acked + registered ledger」假终态）。
+        - 集合锁在 D8 锁序最内层（fence/checkpoint 之后、源行 UPDATE 之前）逐源行取，
+          与 participant Tx2 / backfill 同源（``_collection_owner`` / runtime binding）。
+        """
+        closures = outcome.ref_closures
+        if not closures:
+            raise ValueError(
+                f"settlement SUCCESS for {t1.owner_key!r} carries no per-ref "
+                "closure; cannot prove ledger/binding erased, fail closed"
+            )
+        descriptor = t1.descriptor
+        if t1.owner_key == "external.payload.v1":
+            # 集合锁（D8 同序）：按 _collection_owner(source_table) 逐 source 行取锁。
+            for closure in closures:
+                ref = cast(ExternalRefRow, closure.ref)
+                await acquire_transport_aggregate_lock(
+                    session,
+                    tenant_id=t1.tenant_id,
+                    owner_key=_collection_owner(ref.source_table),
+                    source_table=ref.source_table,
+                    source_row_id=ref.source_row_id,
+                )
+            for closure in closures:
+                ref = cast(ExternalRefRow, closure.ref)
+                receipt_digest = external_erase_receipt_digest(
+                    adapter_key=descriptor.adapter_key,
+                    adapter_version=descriptor.adapter_version,
+                    idempotency_key=closure.idempotency_key,
+                    adapter_receipt_evidence=closure.ack_evidence,
+                    ref_digest=external_ref_identity_digest(
+                        ref_scheme=ref.ref_scheme,
+                        ref_value=ref.ref_value,
+                        source_table=ref.source_table,
+                        source_row_id=ref.source_row_id,
+                        conversation_id=ref.conversation_id,
+                    ),
+                    erase_outcome="erased",
+                )
+                await write_erased_and_clear_ref(
+                    session,
+                    ref=ref,
+                    receipt_digest=receipt_digest,
+                    tenant_id=t1.tenant_id,
+                )
+            return
+        if t1.owner_key == "runtime.private.v1":
+            for closure in closures:
+                binding = cast(RuntimeBindingRow, closure.ref)
+                await acquire_transport_aggregate_lock(
+                    session,
+                    tenant_id=t1.tenant_id,
+                    owner_key=RUNTIME_PRIVATE_OWNER,
+                    source_table="agent_runtime_session_bindings",
+                    source_row_id=binding.id,
+                )
+            for closure in closures:
+                binding = cast(RuntimeBindingRow, closure.ref)
+                receipt_digest = runtime_destroy_receipt_digest(
+                    adapter_key=descriptor.adapter_key,
+                    adapter_version=descriptor.adapter_version,
+                    idempotency_key=closure.idempotency_key,
+                    adapter_receipt_evidence=closure.ack_evidence,
+                    session_digest=runtime_session_identity_digest(
+                        binding_id=binding.id,
+                        tenant_id=binding.tenant_id,
+                        conversation_id=binding.conversation_id,
+                        runtime_profile_id=binding.runtime_profile_id,
+                        runtime_session_ref=binding.runtime_session_ref,
+                    ),
+                    destroy_outcome="erased",
+                )
+                await write_erased_and_close_binding(
+                    session,
+                    binding=binding,
+                    receipt_digest=receipt_digest,
+                    tenant_id=t1.tenant_id,
+                )
+            return
+        raise ValueError(
+            f"owner {t1.owner_key!r} has no ledger/binding closure domain; settlement fail closed"
+        )
 
     async def _apply_window_outcome(
         self,

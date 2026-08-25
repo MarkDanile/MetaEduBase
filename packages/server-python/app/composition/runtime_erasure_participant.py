@@ -213,6 +213,86 @@ def runtime_destroy_intent_digest(bindings: list[RuntimeBindingRow]) -> str:
     )
 
 
+async def write_erased_and_close_binding(
+    session: AsyncSession,
+    *,
+    binding: RuntimeBindingRow,
+    receipt_digest: str,
+    tenant_id: uuid.UUID,
+) -> bool:
+    """Tx2：binding identity 重验 -> 清 ref + 关 binding。返回是否实际 close。
+
+    **唯一 runtime binding 收口路径（B2，E-5-2）**——participant Tx2 与 settlement
+    ledger 收口（TD-106 方案 A）共用本函数，**不复制第二清除者**。调用方负责在
+    D8 锁序内先取集合锁（``acquire_transport_aggregate_lock``，
+    ``agent_runtime_session_bindings``）再调本函数。
+
+    runtime 无独立 erased ledger——binding 行自身即事实源：
+    - binding ref 重验：``runtime_session_ref`` 仍为窗口内快照值才清（ref 已
+      NULL/缺失可跳过清除，历史兼容——binding 已关但 purge 尚未 ACK 的崩溃恢复）；
+      非 NULL 且不匹配 -> **先 fail closed**（不关 binding、不伪造 receipt）。
+    - **C-6（并发面返修）**：binding 行**缺失**（`current is None`）是异常态
+      （binding 行只由本 participant 关、执行侧不删），fail closed——不得
+      no-op 跳过并仍计 destroyed（无本 invocation 可验证 evidence 却计入）。
+    - 清 ref + 关 binding（``runtime_session_ref = NULL, status = 'closed'``）+
+      **同时清流租约（``active_stream_id = NULL, stream_lease_expires_at =
+      NULL``，D-4 返修）**：closed 行不得残留「活跃流租约」外观；两列同 NULL
+      满足现 binding CHECK（``ck_agent_runtime_binding_stream_lease``）。
+      满足 ``ck_agent_runtime_binding_status``（closed）/ ref NULL 合法。
+      **不看 status 前置**——invalid 行（前次 blocked/unknown）重试成功时同样
+      可关（blocked -> erased 迁移）。0 行命中 -> 并发推进 -> fail closed。
+    """
+    # identity 重验必须在写 erased 之前（ref 冲突 -> 不关 binding）。
+    current = (
+        await session.execute(
+            text(
+                "SELECT runtime_session_ref FROM "
+                "metaedu.agent_runtime_session_bindings "
+                "WHERE tenant_id = :t AND id = :id"
+            ),
+            {"t": tenant_id, "id": binding.id},
+        )
+    ).scalar_one_or_none()
+    if current is None:
+        raise ValueError(
+            f"runtime binding {binding.id} row missing in Tx2; "
+            "binding deleted mid-window (abnormal) -> fail closed"
+        )
+    if current != binding.runtime_session_ref:
+        raise ValueError(
+            f"runtime binding {binding.id} runtime_session_ref {current!r} != "
+            f"window ref {binding.runtime_session_ref!r}; binding conflict, "
+            "refusing to close binding"
+        )
+
+    # binding 无 receipt_digest 列（无独立 ledger）——receipt evidence 承载于
+    # ACK digest（RuntimeErasureSummary.receipt_digests）+ Tx2 后 final scan
+    # digest（checkpoint.checkpoint_digest）。
+    result = await session.execute(
+        text(
+            "UPDATE metaedu.agent_runtime_session_bindings "
+            "SET runtime_session_ref = NULL, status = 'closed', "
+            "  active_stream_id = NULL, stream_lease_expires_at = NULL, "
+            "  revision = revision + 1, updated_at = clock_timestamp() "
+            "WHERE tenant_id = :t AND id = :id "
+            "AND runtime_session_ref = :rv"
+        ),
+        {
+            "t": tenant_id,
+            "id": binding.id,
+            "rv": binding.runtime_session_ref,
+        },
+    )
+    cleared = cast(CursorResult, result).rowcount
+    if cleared != 1:
+        raise ValueError(
+            f"runtime binding {binding.id} close hit {cleared} row(s); "
+            "expected 1 (matched ref_value). Concurrent close or ref "
+            "clear -> fail closed to keep erased + closed atomic"
+        )
+    return True
+
+
 class RuntimeErasureParticipant(TransportErasureParticipantBase):
     """``runtime.private.v1``：conformance fake——擦除 runtime session ref + ACK。
 
@@ -887,72 +967,18 @@ class RuntimeErasureParticipant(TransportErasureParticipantBase):
         receipt_digest: str,
         tenant_id: uuid.UUID,
     ) -> bool:
-        """Tx2：binding identity 重验 -> 清 ref + 关 binding。返回是否实际 close。
+        """Tx2：委托唯一 binding 收口路径（模块级 ``write_erased_and_close_binding``，
 
-        runtime 无独立 erased ledger——binding 行自身即事实源：
-        - binding ref 重验：``runtime_session_ref`` 仍为窗口内快照值才清（ref 已
-          NULL/缺失可跳过清除，历史兼容——binding 已关但 purge 尚未 ACK 的崩溃恢复）；
-          非 NULL 且不匹配 -> **先 fail closed**（不关 binding、不伪造 receipt）。
-        - **C-6（并发面返修）**：binding 行**缺失**（`current is None`）是异常态
-          （binding 行只由本 participant 关、执行侧不删），fail closed——不得
-          no-op 跳过并仍计 destroyed（无本 invocation 可验证 evidence 却计入）。
-        - 清 ref + 关 binding（``runtime_session_ref = NULL, status = 'closed'``）+
-          **同时清流租约（``active_stream_id = NULL, stream_lease_expires_at =
-          NULL``，D-4 返修）**：closed 行不得残留「活跃流租约」外观；两列同 NULL
-          满足现 binding CHECK（``ck_agent_runtime_binding_stream_lease``）。
-          满足 ``ck_agent_runtime_binding_status``（closed）/ ref NULL 合法。
-          **不看 status 前置**——invalid 行（前次 blocked/unknown）重试成功时同样
-          可关（blocked -> erased 迁移）。0 行命中 -> 并发推进 -> fail closed。
+        与 settlement TD-106 方案 A ledger 收口共用同一实现，不复制第二清除者）。
+        集合锁已由 Tx2 主流程在锁序内先取（``_acquire_inbox_aggregate_locks``，D8）。
         """
-        # identity 重验必须在写 erased 之前（ref 冲突 -> 不关 binding）。
-        current = (
-            await self._session.execute(
-                text(
-                    "SELECT runtime_session_ref FROM "
-                    "metaedu.agent_runtime_session_bindings "
-                    "WHERE tenant_id = :t AND id = :id"
-                ),
-                {"t": tenant_id, "id": binding.id},
-            )
-        ).scalar_one_or_none()
-        if current is None:
-            raise ValueError(
-                f"runtime binding {binding.id} row missing in Tx2; "
-                "binding deleted mid-window (abnormal) -> fail closed"
-            )
-        if current != binding.runtime_session_ref:
-            raise ValueError(
-                f"runtime binding {binding.id} runtime_session_ref {current!r} != "
-                f"window ref {binding.runtime_session_ref!r}; binding conflict, "
-                "refusing to close binding"
-            )
-
-        # binding 无 receipt_digest 列（无独立 ledger）——receipt evidence 承载于
-        # ACK digest（RuntimeErasureSummary.receipt_digests）+ Tx2 后 final scan
-        # digest（checkpoint.checkpoint_digest）。
-        result = await self._session.execute(
-            text(
-                "UPDATE metaedu.agent_runtime_session_bindings "
-                "SET runtime_session_ref = NULL, status = 'closed', "
-                "  active_stream_id = NULL, stream_lease_expires_at = NULL, "
-                "  revision = revision + 1, updated_at = clock_timestamp() "
-                "WHERE tenant_id = :t AND id = :id "
-                "AND runtime_session_ref = :rv"
-            ),
-            {
-                "t": tenant_id,
-                "id": binding.id,
-                "rv": binding.runtime_session_ref,
-            },
+        return await write_erased_and_close_binding(
+            self._session,
+            binding=binding,
+            receipt_digest=receipt_digest,
+            tenant_id=tenant_id,
         )
-        cleared = cast(CursorResult, result).rowcount
-        if cleared != 1:
-            raise ValueError(
-                f"runtime binding {binding.id} close hit {cleared} row(s); "
-                "expected 1 (matched ref_value). Concurrent close or ref "
-                "clear -> fail closed to keep erased + closed atomic"
-            )
-        return True
+
 
     async def _write_binding_failure(
         self,

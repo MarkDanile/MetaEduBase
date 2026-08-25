@@ -14,6 +14,17 @@
 
 ## 当前进行中
 
+### TASK-R1-S6-I3-TD106: settlement SUCCESS ledger/binding 收口（TD-106 方案 A 实现，stacked on #590）
+
+状态：🟡 进行中（实现+验证完成，待创建 Draft PR）
+最新交接（2026-08-25）：TD-106 方案 A（#591 裁决，2026-08-25 批准）实现落地——settlement 态 1 SUCCESS 在 fence/checkpoint ACK 前同事务逐 ref/binding 落 ledger/binding receipt + 清源 ref（`_close_window_ledger`，集合锁 D8 同序），复用唯一清除路径（B2，E-5-2）：participant Tx2 清除逻辑提取为模块级 `write_erased_and_clear_ref` / `write_erased_and_close_binding`（方法改薄委托，不复制第二清除者）；`_aggregate_window` 态 1 携带 per-ref `ref_closures`（禁聚合 receipt 丢粒度）+ 空 evidence fail-closed 守卫。真实 PG 专项 12/12（单 ref/单 binding/多 ref 混合 source/多 binding/缺 evidence 零假成功/source 冲突整体回滚/双连接单写者/二次幂等/ACK-lost 回归/扫描清零/F10 hold-drift 四环/CAS 幂等护栏 unit 级）；具名 mutation 7/7 全真红（`scripts/s6_td106_settlement_ledger_mutation_kill.py`，memory backup + try/finally）；composition 全量 773 passed/1 skipped（F10 契约 skip 保持）。**1 项既有测试场景更新**：`test_s5_sch_d_settlement_key_alignment.py::test_key_stable_across_lease_epoch_and_attempt` reset 块补恢复 ledger 行（erase_state→registered、receipt_digest→NULL）——方案 A 后首次 closeout 真实落 ledger erased，人工重置窗口须同步恢复才能重放同一窗口；key 稳定性断言原样。**1 项 stacked 工具锚点更新**：#590 `s6i3_fault_matrix_mutation_kill.py` M-F4 锚点改指模块级唯一写入路径（原锚点会误绑 reconcile 调用点），已验证 red→green KILLED。边界：无 schema/migration/enum/CHECK/reason code 新增；写者矩阵未变（S5-C-2 写域本含 ledger/binding）；registry external/runtime 保持 erase_available=False。
+类型：REQ-041/047 R1-S6-I3 TD-106 方案 A 实现（技术债收口；#591 = 裁决载体纯文档 Draft）
+分支：feature/req041-047-r1-s6-i3-td106-settlement-ledger-closure（自 #590 head aa889db8 切出）
+
+下一步：创建 Draft PR（base = #590 分支 `feature/req041-047-r1-s6-i3-c-fault-matrix-completion`，非 main 非 #591），PR body 引用 #591 裁决并声明 #590/#591 未 Ready/未评分/未合并；推后等三路 checks 全绿；核对 local == origin == PR head + 干净工作树；停 Draft，不转 Ready/不评分/不合并/不建 closeout；不启动 PR-D/E/C1/S5 production wiring/registry capability 翻转。
+
+交接备注：验证基线——ruff 全包 All checks passed；mypy baseline 0 regressions；git diff --check clean；check-engineering-docs --full passed；migration 043/schema/enum/CHECK/Score Log/Metrics/CI 均未触碰（git diff name-only 核对）。mutation 证明矩阵：M1 receipt 写/M2 source 清除/M3 聚合 receipt/M4 单写 CAS（unit 级判别）/M5 空 evidence 守卫/M6 E-1 绑定重验/M7 token 重验（F11 载体）全部 red→green。本地测试库=docker colima `metaedu/postgres-zhparser:pg16`（homebrew pg16 无 zhparser 扩展，不可用）。
+
 ### TASK-R1-S6-I3-C: S6-F1..F14 故障矩阵完整批（PR-C，stacked on #586）
 
 状态：🟡 进行中（Draft，stacked base = #586 head `a2e30fed`；本分支未推、待 PR-C Draft 创建）

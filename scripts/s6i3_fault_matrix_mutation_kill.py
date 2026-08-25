@@ -109,12 +109,17 @@ MUTATIONS = [
         '        checkpoint.state = "acked"\n        checkpoint.ack_digest = None  # mutation: skip\n',
         "tests/composition/test_s6i3_fault_matrix.py::test_f3_lease_ack_lost_replay_no_fork",
     ),
-    # --- F4 external _write_erased_and_clear_ref 跳过 _clear_source_ref ---
+    # --- F4 external 唯一清除路径跳过 source-ref 清除 ---
+    # TD-106 方案 A（stacked impl PR）：participant Tx2 的清除逻辑已提取为模块级
+    # 唯一写入路径 ``write_erased_and_clear_ref``（E-5-2 B2，settlement 收口共用），
+    # 原 ``_write_erased_and_clear_ref`` 方法改为薄委托。锚点同步指向模块级实现
+    # （4 空格缩进 + ``clear_external_source_ref``），不再匹配 reconcile 路径的
+    # ``self._clear_source_ref`` 调用点。
     (
-        "M-F4 external _write_erased_and_clear_ref 跳过 _clear_source_ref",
+        "M-F4 external write_erased_and_clear_ref 跳过 clear_external_source_ref",
         EXTERNAL_PARTICIPANT,
-        '        if current == ref.ref_value:\n            await self._clear_source_ref(tenant_id=tenant_id, ref=ref)',
-        '        if False:  # mutation: skip _clear_source_ref\n            pass\n        if current == ref.ref_value:\n            pass  # mutation: no clear',
+        '    if current == ref.ref_value:\n        await clear_external_source_ref(session, tenant_id=tenant_id, ref=ref)',
+        '    if False and current == ref.ref_value:  # mutation: skip clear_external_source_ref\n        await clear_external_source_ref(session, tenant_id=tenant_id, ref=ref)',
         "tests/composition/test_s6i3_fault_external.py::test_f4_single_owner_stepwise_ack_partial_ref_crash_replay",
     ),
     # --- F5 closeout _classify_input 跳过 checkpoint.state == 'erasing' 分支 ---
