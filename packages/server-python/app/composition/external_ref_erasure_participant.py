@@ -198,6 +198,127 @@ def external_delete_intent_digest(refs: list[ExternalRefRow]) -> str:
     )
 
 
+def external_source_table_ref_sql(source_table: str) -> str:
+    """source 表名 -> 查询 SQL 片段（只允许 3 个合法 source，防注入）。"""
+    if source_table == "agent_run_events":
+        return "metaedu.agent_run_events"
+    if source_table == "agent_workspace_outbox":
+        return "metaedu.agent_workspace_outbox"
+    if source_table == "agent_execution_outbox":
+        return "metaedu.agent_execution_outbox"
+    raise ValueError(f"unexpected external ref source table: {source_table!r}")
+
+
+async def clear_external_source_ref(
+    session: AsyncSession, *, tenant_id: uuid.UUID, ref: ExternalRefRow
+) -> None:
+    """清对应 DB ref（E-1b：B2 是 3 source ref 唯一清除者）。
+
+    - ``agent_run_events``：``payload_ref=NULL + payload_state='redacted'``（041
+      guard 分支 2 放行——OLD/NEW inline 均 NULL、ref 被清、转 redacted、其余
+      envelope 列不变；**不得** SET updated_at）。
+    - 两 outbox：``payload_ref=NULL + status='suppressed'``（ref-bearing 行 inline
+      本已 NULL，满足现 outbox CHECK suppressed 分支；无 updated_at 列）。
+
+    校验 rowcount（首轮复审 C-6/D-13）：调用方已确认 ``source payload_ref ==
+    ledger ref_value``（E-1 绑定匹配），UPDATE 必须命中 1 行——0 行命中说明
+    041 guard 拒行或并发已清，fail closed（ledger 已写 erased + receipt，源 ref
+    未清 -> 必须由事务回滚保持原子一致，不得静默继续）。
+    """
+    if ref.source_table == "agent_run_events":
+        result = await session.execute(
+            text(
+                "UPDATE metaedu.agent_run_events "
+                "SET payload_ref = NULL, payload_state = 'redacted' "
+                "WHERE tenant_id = :t AND id = :id AND payload_ref = :rv"
+            ),
+            {"t": tenant_id, "id": ref.source_row_id, "rv": ref.ref_value},
+        )
+    else:
+        table = (
+            "metaedu.agent_workspace_outbox"
+            if ref.source_table == "agent_workspace_outbox"
+            else "metaedu.agent_execution_outbox"
+        )
+        result = cast(
+            CursorResult,
+            await session.execute(
+                text(
+                    f"UPDATE {table} "
+                    "SET payload_ref = NULL, status = 'suppressed' "
+                    "WHERE tenant_id = :t AND id = :id AND payload_ref = :rv "
+                    "AND payload_inline IS NULL"
+                ),
+                {"t": tenant_id, "id": ref.source_row_id, "rv": ref.ref_value},
+            ),
+        )
+    cleared = cast(CursorResult, result).rowcount
+    if cleared != 1:
+        raise ValueError(
+            f"external ref {ref.id} source ref clear hit {cleared} row(s); "
+            "expected 1 (matched ref_value). 041 guard rejection or concurrent "
+            "clear -> fail closed to keep ledger-erased + source-ref-removed atomic"
+        )
+
+
+async def write_erased_and_clear_ref(
+    session: AsyncSession,
+    *,
+    ref: ExternalRefRow,
+    receipt_digest: str,
+    tenant_id: uuid.UUID,
+) -> None:
+    """E-1 source identity 重验 -> 写 ``erased`` + receipt -> 清源 ref（D5 顺序）。
+
+    **唯一 source-ref 清除路径（B2，E-5-2）**——participant Tx2 与 settlement
+    ledger 收口（TD-106 方案 A）共用本函数，**不复制第二清除者**。调用方负责在
+    D8 锁序内先取集合锁（``acquire_transport_aggregate_lock``）再调本函数。
+
+    - source identity 重验（E-1/E-1a）：source ref 与 ledger ``ref_value`` 匹配
+      才清；source 已 NULL/缺失可跳过清除（历史兼容，ledger 为唯一事实源）；
+      非 NULL 且不匹配 -> **先 fail closed**（不写 erased、不伪造 receipt）。
+    - 写 ``erased`` + receipt（窗口不变量：registered + receipt_digest NULL）。
+      0 行命中 -> 并发推进/证据已写 -> fail closed。
+    - 清源 ref（D5「先删 external object 取 receipt，再清 transport DB ref」）。
+    """
+    # E-1 source identity 重验必须在写 erased 之前（绑定冲突 -> 不写证据）。
+    current = (
+        await session.execute(
+            text(
+                "SELECT payload_ref FROM "
+                + external_source_table_ref_sql(ref.source_table)
+                + " WHERE tenant_id = :t AND id = :id"
+            ),
+            {"t": tenant_id, "id": ref.source_row_id},
+        )
+    ).scalar_one_or_none()
+    if current is not None and current != ref.ref_value:
+        raise ValueError(
+            f"external ref {ref.id} source payload_ref {current!r} != "
+            f"ledger ref_value {ref.ref_value!r}; binding conflict, "
+            "refusing to write erased receipt"
+        )
+
+    result = await session.execute(
+        text(
+            "UPDATE metaedu.agent_external_object_refs "
+            "SET erase_state = 'erased', receipt_digest = :d, "
+            "  blocked_reason = NULL, updated_at = clock_timestamp() "
+            "WHERE tenant_id = :t AND id = :id "
+            "AND erase_state = 'registered' AND receipt_digest IS NULL"
+        ),
+        {"t": tenant_id, "id": ref.id, "d": receipt_digest},
+    )
+    if cast(CursorResult, result).rowcount != 1:
+        raise ValueError(
+            f"external ref {ref.id} not registered with NULL receipt in Tx2; "
+            "concurrent erase/evidence already written"
+        )
+    # source ref 仍存在且匹配 -> 清除（E-1b：B2 是唯一清除者，D5 receipt 后）。
+    if current == ref.ref_value:
+        await clear_external_source_ref(session, tenant_id=tenant_id, ref=ref)
+
+
 class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
     """``external.payload.v1``：擦除 external object + 清 3 source DB ref + ACK。
 
@@ -863,51 +984,15 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
     async def _write_erased_and_clear_ref(
         self, *, ref: ExternalRefRow, receipt_digest: str, tenant_id: uuid.UUID
     ) -> None:
-        """Tx2：E-1 source identity 重验 -> 写 ``erased`` + receipt -> 清源 ref（D5 顺序）。
+        """Tx2：委托唯一 source-ref 清除路径（模块级 ``write_erased_and_clear_ref``，
 
-        - source identity 重验（E-1/E-1a）：source ref 与 ledger ``ref_value`` 匹配
-          才清；source 已 NULL/缺失可跳过清除（历史兼容，ledger 为唯一事实源）；
-          非 NULL 且不匹配 -> **先 fail closed**（不写 erased、不伪造 receipt）。
-        - 写 ``erased`` + receipt（窗口不变量：registered + receipt_digest NULL）。
-          0 行命中 -> 并发推进/证据已写 -> fail closed。
-        - 清源 ref（D5「先删 external object 取 receipt，再清 transport DB ref」）。
+        与 settlement TD-106 方案 A ledger 收口共用同一实现，不复制第二清除者）。
+        集合锁已由 Tx2 主流程在锁序内先取（``_acquire_inbox_aggregate_locks``，D8）。
         """
-        # E-1 source identity 重验必须在写 erased 之前（绑定冲突 -> 不写证据）。
-        current = (
-            await self._session.execute(
-                text(
-                    "SELECT payload_ref FROM "
-                    + self._source_table_ref_sql(ref.source_table)
-                    + " WHERE tenant_id = :t AND id = :id"
-                ),
-                {"t": tenant_id, "id": ref.source_row_id},
-            )
-        ).scalar_one_or_none()
-        if current is not None and current != ref.ref_value:
-            raise ValueError(
-                f"external ref {ref.id} source payload_ref {current!r} != "
-                f"ledger ref_value {ref.ref_value!r}; binding conflict, "
-                "refusing to write erased receipt"
-            )
-
-        result = await self._session.execute(
-            text(
-                "UPDATE metaedu.agent_external_object_refs "
-                "SET erase_state = 'erased', receipt_digest = :d, "
-                "  blocked_reason = NULL, updated_at = clock_timestamp() "
-                "WHERE tenant_id = :t AND id = :id "
-                "AND erase_state = 'registered' AND receipt_digest IS NULL"
-            ),
-            {"t": tenant_id, "id": ref.id, "d": receipt_digest},
+        await write_erased_and_clear_ref(
+            self._session, ref=ref, receipt_digest=receipt_digest, tenant_id=tenant_id
         )
-        if cast(CursorResult, result).rowcount != 1:
-            raise ValueError(
-                f"external ref {ref.id} not registered with NULL receipt in Tx2; "
-                "concurrent erase/evidence already written"
-            )
-        # source ref 仍存在且匹配 -> 清除（E-1b：B2 是唯一清除者，D5 receipt 后）。
-        if current == ref.ref_value:
-            await self._clear_source_ref(tenant_id=tenant_id, ref=ref)
+
 
     async def _write_ledger_failure(
         self,
@@ -935,69 +1020,14 @@ class ExternalPayloadErasureParticipant(TransportErasureParticipantBase):
 
     @staticmethod
     def _source_table_ref_sql(source_table: str) -> str:
-        """source 表名 -> 查询 SQL 片段（只允许 3 个合法 source，防注入）。"""
-        if source_table == "agent_run_events":
-            return "metaedu.agent_run_events"
-        if source_table == "agent_workspace_outbox":
-            return "metaedu.agent_workspace_outbox"
-        if source_table == "agent_execution_outbox":
-            return "metaedu.agent_execution_outbox"
-        raise ValueError(f"unexpected external ref source table: {source_table!r}")
+        """委托模块级 ``external_source_table_ref_sql``（单一实现）。"""
+        return external_source_table_ref_sql(source_table)
 
-    async def _clear_source_ref(
-        self, *, tenant_id: uuid.UUID, ref: ExternalRefRow
-    ) -> None:
-        """清对应 DB ref（E-1b：B2 是 3 source ref 唯一清除者）。
 
-        - ``agent_run_events``：``payload_ref=NULL + payload_state='redacted'``（041
-          guard 分支 2 放行——OLD/NEW inline 均 NULL、ref 被清、转 redacted、其余
-          envelope 列不变）。
-        - 两 outbox：``payload_ref=NULL + status='suppressed'``（ref-bearing 行 inline
-          本已 NULL，满足现 outbox CHECK suppressed 分支）。
+    async def _clear_source_ref(self, *, tenant_id: uuid.UUID, ref: ExternalRefRow) -> None:
+        """委托唯一 source-ref 清除路径（模块级 ``clear_external_source_ref``）。"""
+        await clear_external_source_ref(self._session, tenant_id=tenant_id, ref=ref)
 
-        校验 rowcount（首轮复审 C-6/D-13）：调用方已确认 ``source payload_ref ==
-        ledger ref_value``（E-1 绑定匹配），UPDATE 必须命中 1 行——0 行命中说明
-        041 guard 拒行或并发已清，fail closed（ledger 已写 erased + receipt，源 ref
-        未清 -> 必须由事务回滚保持原子一致，不得静默继续）。
-        """
-        if ref.source_table == "agent_run_events":
-            # 041 guard 分支 2：OLD/NEW inline 均 NULL、ref 被清、转 redacted、其余
-            # envelope 列不变（to_jsonb 差集仅豁免 payload_ref/payload_state）——
-            # **不得** SET updated_at（RunEvent 无该列，且会破坏差集豁免）。
-            result = await self._session.execute(
-                text(
-                    "UPDATE metaedu.agent_run_events "
-                    "SET payload_ref = NULL, payload_state = 'redacted' "
-                    "WHERE tenant_id = :t AND id = :id AND payload_ref = :rv"
-                ),
-                {"t": tenant_id, "id": ref.source_row_id, "rv": ref.ref_value},
-            )
-        else:
-            table = (
-                "metaedu.agent_workspace_outbox"
-                if ref.source_table == "agent_workspace_outbox"
-                else "metaedu.agent_execution_outbox"
-            )
-            # 两 outbox 无 updated_at 列（只有 created_at）——不 SET updated_at。
-            result = cast(
-                CursorResult,
-                await self._session.execute(
-                    text(
-                        f"UPDATE {table} "
-                        "SET payload_ref = NULL, status = 'suppressed' "
-                        "WHERE tenant_id = :t AND id = :id AND payload_ref = :rv "
-                        "AND payload_inline IS NULL"
-                    ),
-                    {"t": tenant_id, "id": ref.source_row_id, "rv": ref.ref_value},
-                ),
-            )
-        cleared = cast(CursorResult, result).rowcount
-        if cleared != 1:
-            raise ValueError(
-                f"external ref {ref.id} source ref clear hit {cleared} row(s); "
-                "expected 1 (matched ref_value). 041 guard rejection or concurrent "
-                "clear -> fail closed to keep ledger-erased + source-ref-removed atomic"
-            )
 
     @staticmethod
     def _to_transport_scan(scan: ExternalRefScan) -> TransportBodyScan:
