@@ -2405,7 +2405,7 @@ F10 期望结果「T2 完成 erase（fence erased + checkpoint acked）」**仅 
 
 ##### S6-15.5 settlement SUCCESS ledger 写缺口（TD-106 事实核验 + 方案 A/B 决策材料 + 方案 A 裁决）
 
-> Status: Draft（**方案 A 已经用户批准（2026-08-25）**；实现由独立 stacked PR 承载（base = #590 分支），本 PR #591 仅契约核对与决策材料、不承载代码实现；不改代码/schema/migration/enum/CHECK/registry/CI；#590 保持 Draft 不改写、不 rerun、不转 Ready）
+> Status: Frozen — contract correction merged to main（**方案 A 已经用户批准（2026-08-25）**；**PR #591 已 squash merge 入 main，mergeCommit `738be6f9`（2026-08-25T08:37:30Z），正式评分 89（Original）落入 Score Log；评审对象 main@`b28f84ab`..`5901e6d7`**；§S6-15 整段含 §S6-15.1/15.2/15.3/15.4/15.5（事实核验 + Phase 1 六场景 + 方案 A/B 决策材料 + 方案 A 裁决 + 实现证据块）已入 main；本段不再承担契约核对工作；实现由独立 stacked PR #592 承载（base = #590 分支）已 squash 入 #590 parent（mergeCommit `e345c429`，评分 92 Original 已落入 Score Log），但 #590 仍未并入 main——TD-106 实现未在 main，P1 保持 open 至 #590/main merged-boundary；不改代码/schema/migration/enum/CHECK/registry/CI；#590 保持 Draft 不改写、不 rerun、不转 Ready）
 
 **实现证据（#591 治理归位追加，2026-08-25；事实源 = PR #592 squash 入 #590 mergeCommit `e345c429`）**：
 - PR #592 已 squash merge 入 #590 parent（mergeCommit `e345c429`，2026-08-25T07:51:45Z），head = `367802f7`（impl）+ `e430c42c`（score）+ `538d21cd`（评分边界纠正）+ `733f1b2b`（parent 治理同步）；#590 parent 现 head = `733f1b2b`，**仍为 OPEN/Draft**，**未并入 main**。
