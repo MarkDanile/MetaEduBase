@@ -22,6 +22,11 @@ F1-F14 跨测试映射见 PR body），本测试只断言「ledger 行可识别�
   state = 重入入口；SKIP LOCKED 重试可重取 lease）
 
 helper 复用 ``tests/composition/s6i3_seeds.py``（repo 跨测试 import 惯例）。
+
+附：``test_ck_agent_purge_owner_ack_rejects_short_ack_digest`` 为 #589（R1-S6-I3-A）
+schema CHECK 独立负例，因 root scope 收敛撤回 PR-D/E scaffold（``test_s6i3_fault_matrix_
+restore_replay.py`` 随 ``s6i3_ledger_export``/``s6i3_restore_replay``/``s6i3_release_drill``
+一并删除）而迁入本文件保留——它守卫 migration 034 CHECK，非 PR-D/E 范畴。
 """
 
 from __future__ import annotations
@@ -29,9 +34,9 @@ from __future__ import annotations
 # ruff: noqa: F401, F811  (pytest fixture imports + test signature reuse are intentional)
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.composition.s6i3_restore_replay import COMPLETED_STATE
 from tests.composition.s6i3_seeds import (
     _seed_checkpoint,
     _seed_conversation,
@@ -43,6 +48,10 @@ from tests.composition.s6i3_seeds import (
 pytestmark = pytest.mark.asyncio
 
 _DIGEST = "a" * 64
+
+# operation.state 终态字面量（原自 ``s6i3_restore_replay`` 导入；该 PR-D scaffold 已在
+# root scope 收敛中撤回，PR-D 落地前此处内联最小常量，不引入对 PR-D/E 模块的依赖）。
+COMPLETED_STATE = "completed"
 
 
 async def test_f1_worker_kill_takeover_lease_epoch_cas_monotone(
@@ -260,3 +269,38 @@ async def test_f8_outbox_claim_short_transaction_crash_retry_takes_lease(
         ).first()
         assert row is not None
         assert row[0] == "pending"
+
+
+async def test_ck_agent_purge_owner_ack_rejects_short_ack_digest(
+    s6i3_session_factory, db_session: AsyncSession
+):
+    """负例：state='acked' + 短 ack_digest 必须被 ck_agent_purge_owner_ack 拒绝。
+
+    事实依据：migration 034 ``ck_agent_purge_owner_ack``（:567-571）——
+    ``state='acked'`` ⇒ ``ack_digest`` 非 NULL 且 ``char_length=64``。
+    本测试为 #589（R1-S6-I3-A）新增的独立约束拒绝载体（原 ``INVALID_DIGEST_SHORT``
+    非法组合无法入库，不能作为 digest 失配 fixture）；证明 schema/test 对齐
+    **未掩盖**既有 CHECK 守卫（子事务回滚，保留外层种子）。原为 PR-D restore
+    replay 测试文件的一员，root scope 收敛撤回 PR-D/E scaffold 后迁入本文件保留
+    （本测试守卫 migration 034 CHECK，不依赖任何 PR-D/E 模块）。
+    """
+
+    async with s6i3_session_factory() as s, s.begin():
+        tid = await _seed_tenant(s, name="ckneg1")
+        cid = await _seed_conversation(s, tid=tid)
+        pid = await _seed_operation(s, tid=tid, cid=cid, state=COMPLETED_STATE)
+        with pytest.raises(IntegrityError) as excinfo:
+            async with s.begin_nested():
+                await s.execute(
+                    text(
+                        "INSERT INTO metaedu.agent_conversation_purge_owners "
+                        "(id, tenant_id, purge_operation_id, owner_key, "
+                        "owner_version, capability_digest, state, attempt, "
+                        "checkpoint_digest, ack_digest, reason_code, created_at) "
+                        "VALUES (gen_random_uuid(), :tid, :pid, "
+                        "'execution.core.v1', 1, :cap, 'acked', 1, :cd, "
+                        "'INVALID_DIGEST_SHORT', NULL, now())"
+                    ),
+                    {"tid": tid, "pid": pid, "cap": _DIGEST, "cd": _DIGEST},
+                )
+        assert "ck_agent_purge_owner_ack" in str(excinfo.value)
