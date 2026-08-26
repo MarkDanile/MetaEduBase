@@ -480,3 +480,107 @@
 2. **评审对象基线双记**（main HEAD + FINAL_IMPL_HEAD）成为契约 PR 评审标准格式（#587/#589/#591 三次复用）
 3. **"实现与评审已闭合并入 integration parent，待 parent/main merged-boundary"** 措辞精确避免冒充 main 完成（TD-106 P1 保持 open 至 #590/main merged-boundary 才关闭）
 4. **定向复核未启动独立 agent**（仅内联 8 项核验）属可优化项——可入 contract-first PR 评审清单的「定向复核外部 agent 实证」检查项
+
+## R1-S6-I3-F10 settlement T1/T2 hold 推进真实 PG 判别 + TD-105 closeout（2026-08-26）
+
+**任务**：REQ-041/047 R1-S6-I3-F10 真实 PG 判别 + TD-105 实现承接（解除 `test_f10_contract_conflict_not_implemented` skip）
+**分支**：`feature/req041-047-r1-s6-i3-f10-fault-matrix-tests`（已随 merge `--delete-branch` 删除）
+**PR**：[#596](https://github.com/MarkDanile/MetaEduBase/pull/596)（squash merge `c0ec008d4299e8a38e4b7f049146a14eb2b87cf8`，2026-08-26T12:42:58Z）
+**评分**：97 Original（`docs/03-engineering-governance/04-retrospectives/review-score-log.md` 第 19 行；评审对象 main@`695fed8e`..`7cc732ba`，FINAL_IMPL_HEAD = `7cc732ba`，PR source head = `f5cb0b34`）
+**实现基线 / FINAL_IMPL_HEAD**：main `695fed8e` / `7cc732ba`
+
+### 完成内容
+
+1. **F10 routing 四环（§S6-15.3）真实 PG 判别**：
+   - test_f10_t1_then_advance_hold_t2_completes：F10 canonical mid-flight hold advance via `_BlockingLookupAdapter` 撑开 T1→adapter I/O 锁外窗口 + `_create_legal_hold` 在 T1 commit 后、T2 前精确注入 hold_revision 0→1 → fence `erased` + checkpoint `acked` + TD-106 per-ref receipt + source 清除 + 零正文复活
+   - test_f10_t2_unidirectional_advance_passes：T2 单向 hold check advance 放行（hold_revision_snapshot=0, conversation.hold_revision=1）
+   - test_f10_t2_unidirectional_regression_fails_closed：T2 单向 hold check regression fail-closed（hold_revision_snapshot=2 > conversation=1）+ 零写判别（fence/checkpoint/ledger 均维持原状态）
+   - test_f10_projection_g2_blocked_hold_revision_changed_no_completed：projection G2 命中 + operation state=blocked + failure_code=`blocked_hold_revision_changed` ≠ completed（F10 不直接 completed 显式断言）
+   - test_f10_rebuild_hold_gated_with_active_hold：rebuild G3 HOLD_GATED（G3 active hold 命中 `has_active_legal_hold`）
+   - test_f10_rebuild_unblocks_after_hold_release_bumps_revision：释放路径（`_release_legal_hold` bump hold_revision 1→2 + 新 op hold_snapshot=2==current=2 → REBUILT）
+   - test_f10_rebuild_unblocks_after_hold_expire_no_bump：过期路径（`_expire_legal_hold` past `expires_at` + hold_revision 不 bump → REBUILT，裁决一读侧谓词宽化）
+   - test_f10_no_body_resurrection_no_repeated_adapter_replay_idempotent：三联不变式（append-only guard 正文零复活 + `lookup_calls` 不变 + 重放 idempotent）
+
+2. **TD-106 不变式（settlement SUCCESS ledger/binding 收口）保持**：
+   - per-ref `receipt_digest == _expected_external_receipt(ref, _evidence_for_external(ref))` 精确值断言
+   - `outbox_row["payload_ref"] IS NULL` 验证 B2 唯一清除者命中源行
+   - `ledger_row["erase_state"] == "erased"` 验证 ledger 收口
+   - D8 集合锁（external `_collection_owner(ref.source_table)` + runtime `RUNTIME_PRIVATE_OWNER`）保持
+
+3. **F10 mutation kill 脚本**（`scripts/s6i3_f10_mutation_kill.py`，269 行）：
+   - 8 项具名 mutation：M1 hold 推进误 fail-closed + M2 regression 漏 fail-closed + M3 fence 状态写错 + M4 G2 `blocked_hold_revision_changed` 缺失 + M5 rebuild 未进入 HOLD_GATED + M6 completed 绕过最终扫描（NOT-RED）+ M7 重复 adapter 调用 + M8 ledger/binding per-ref receipt 丢失或 source 未清
+   - M1-M5 + M7/M8 真红（7/8）；M6 NOT-RED 如实登记（判别载体与 F10 测试集正交：F10 链经 G2 在 priority 2 提前 return blocked_hold_revision_changed，永不到达 priority 3 scan check）
+   - memory-backup + try/finally 还原（不依赖 git restore）；同文件多 edit 仅首次 touch 备份原始 src
+
+4. **F9 占位迁出**（`test_s6i3_fault_hold.py`）：
+   - 删除 `test_f10_contract_conflict_not_implemented` skip 占位（23 行）
+   - 文件头 F1-F14 映射更新：F9 2 项保留 + F10 注释"已迁出至 test_s6i3_fault_f10.py"
+   - 文件 732 行（< td-032 1000 行限）
+
+5. **状态同步**：
+   - `current-work.md` TASK-R1-S6-I3 卡片 "下一步" 移除 F10（F10 已完成）+ 候选任务更新为 PR-D / PR-E / test contract 增强
+   - `current-work.md` "最近完成" 追加 PR #596 条目（首位）+ Plan §R1-S6-15 引用更新
+   - `current-work.md` 交接备注新增 PR #596 后接力序列
+   - `technical-debt.md` TD-105 状态翻 🟢 完成（含完整合并链 + 验证基线 + 三面独立复审 + 正式评分 + closeout 边界）
+   - plan §S6-15 末尾追加 **merged-boundary** 标注（PR #596 `c0ec008d` 入 main，F10 routing 四环 + TD-106 不变式 + 7/8 mutation 真红 + M6 NOT-RED 登记 + TD-105 关闭 + 后续 follow-up 边界）
+
+### 三面最终 P0/P1/P2/P3（独立三面复审）
+
+- 面 A 契约/状态机/范围：0/0/0/2（F10 只覆盖 external owner / completed 链尾 invariant 独立测试集范畴 — 观察不修）
+- 面 B 并发/锁序/数据完整性：0/0/0/0
+- 面 C 测试/mutation/运维/事实源：0/0/0/1（`_BlockingLookupAdapter` 局部复制可优化 — 观察不修）
+- **合计：P0=0/P1=0/P2=0/P3=3**
+
+### 正式评分（Ready 状态）
+
+- **P0/P1=0**（结论中明确锁定）
+- **总分 97 Original**（七维：范围与需求匹配 15/15 + 实现质量 19/20 + 测试与验证证据 19/20 + 事实源与流程遵守 15/15 + 风险与行为变化控制 15/15 + 可评审性与交接质量 10/10 + 持续改进信号 4/5）
+- `scripts/check-review-score-submit --base 7cc732ba --pr 596` PASS（one Original row, Metrics unchanged）
+- Score Log 净变化 +1 行（PR #596 Original）；历史评分行未触动、Metrics byte-identical
+
+### 关键不变量（main closeout 时核对）
+
+- **mergeCommit `c0ec008d4299e8a38e4b7f049146a14eb2b87cf8`** ≠ source head `f5cb0b34`（squash merge 正确语义）
+- **评审对象 main@`695fed8e`..`7cc732ba`（净 diff 3 文件 1005+/23-）**仅含：test_s6i3_fault_f10.py（732 行）+ test_s6i3_fault_hold.py（F10 占位迁出）+ scripts/s6i3_f10_mutation_kill.py（269 行）；无生产代码 / migration 043 / schema / enum / CHECK / S5 / registry / Score Log 历史行 / Metrics / CI / 门禁脚本 / KNOWN_ISSUES 改动
+- 验证：fresh PG head=043 + F10 专项 8 passed（5.64s）+ 关联回归 94 passed（32.20s）+ composition 全量 771 passed（204.25s）+ ruff/mypy baseline(0 reg)/git diff --check/engineering-docs --full 全绿
+- Ready 三路 required checks 全 SUCCESS（Backend full 15m0s + Engineering docs 18s + Frontend 2m45s）；push 后 Backend full 重跑 13m4s SUCCESS（评分提交后）
+
+### F10 完成边界（精确登记，不越界）
+
+- **已完成**：settlement T1/T2 hold 推进路径已验证 + T2 单向 hold 检查（advance 放行 / regression fail-closed）+ fence `erasing→erased` + checkpoint `erasing→acked` + G2 `blocked_hold_revision_changed` + rebuild G3 HOLD_GATED + release bump / expire no-bump 双路径 + 三联不变式
+- **未直接完成**：原 operation completed（依赖后续 rebuild → 新 operation → 最终扫描全零；plan §S6-15.3 链尾条件已冻结）
+- **未启动**：PR-D / PR-E / C1 / S5 production wiring / registry capability flip / 六 erase 入口生产可达
+- **NOT-RED 登记**：M6（completed 绕过最终扫描）+ F-matrix 7/12 mutation NOT-RED + M-F3/F5/F8 mutation 停止条件 — 均保持原编号与状态，留作后续独立 test contract 增强 PR
+
+### follow-up（保持登记，不关闭）
+
+- **TD-104**：PR-A schema/test alignment 残项
+- **TD-106**：P2 三项保留未关（runtime per-binding receipt 形参零使用 / settlement↔participant 跨入口双写者并发用例 / M4 receipt 复用深度）——**TD-106 已完成并关闭**，但 P2 三项保留属独立 contract 细化
+- **REQ-047**：R1-S6 implementation conformance 联合闭环（B/C/D 联合启用门禁）
+- **PR-D**：ledger export executor + restore-before-open runbook（plan §S6-8 / §S6-12 / §S6-13）
+- **PR-E**：release drill 五阶段 canary（plan §S6-7）
+- **F-matrix 7/12 + F10 M6 test contract 增强**：独立测试 contract 增强 PR
+- **C1 Durable Core 总验收**：未启动
+- **S5 production wiring**：未启动
+- **registry capability 翻转 / 六 erase 入口生产可达**：未启动
+
+### 教训入账（test contract + scope 严格 + mutation follow-up 处置模板）
+
+1. **F10 canonical mid-flight 注入**：`_BlockingLookupAdapter`（T1→adapter I/O 锁外窗口撑开）与 `test_s6i3_fault_external.py:237` 同形态，独立 class 局部复制可优化——可入 fault matrix 测试共享 helper（后续 PR）
+2. **scope 严格性**（3 文件 1005+/23- 无生产代码改动）+ helpers 复用既有（_BlockingLookupAdapter 同形态 / settlement fixtures 复用 / F9 占位迁出）成为后续 fault matrix 模板
+3. **M6 NOT-RED 处置路径**与 F-matrix 7/12 NOT-RED 同形态（test contract 增强 follow-up）——F10 链经 G2 在 priority 2 提前 return blocked_hold_revision_changed，永不到达 priority 3 scan check 的判别载体为零；F10 不冒充完成已通过 G2 断言显式表达
+4. **F10 不直接 completed** 显式断言（test_f10_projection_g2...` state=blocked` + `failure_code=blocked_hold_revision_changed` ≠ completed）+ 三联不变式 + G2→rebuild→新 op→scan 全零 chain-end 路径——settlement 完成 ≠ operation completed，F10 链尾条件保持冻结（plan §S6-15.3）
+5. **stacked PR 评审对象基线双记**（implementation baseline main `695fed8e` + FINAL_IMPL_HEAD `7cc732ba`）成为本轮第六次复用模板（#587/#589/#591/#592/#590/#586 + #596）
+6. **定向复核未启动独立 agent**（仅内联 10 项核验）属可优化项——可入 contract-first + test matrix PR 评审清单的「定向复核外部 agent 实证」检查项
+
+### 后续接力（按计划建议执行顺序）
+
+1. PR-D（ledger export executor + restore-before-open runbook）
+2. PR-E（release drill 五阶段 canary）
+3. F-matrix 7/12 + F10 M6 test contract 增强 PR
+4. TD-104（PR-A schema/test alignment 残项）
+5. C1 Durable Core 总验收
+6. S5 production wiring
+7. registry capability 翻转 / 六 erase 入口生产可达
+
+---
