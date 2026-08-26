@@ -35,13 +35,35 @@
 交接备注：R1-S6-I1/I2 已合并 main `96ddc014`；R1-S6-I3-A 已 squash 入 #586（PR #589 `f6062466` 评分 92）；R1-S6-I3-C 已 squash 入 #586（PR #590 mergeCommit `ee53b172` 评分 94，source head `cd5a437c`、FINAL_IMPL_HEAD `d3a12549`）；TD-106 方案 A 经 #592→#590→#586→main 完整闭合（mergeCommit `68fafd81` 评分 94 Original，source head `cca892b5`、FINAL_IMPL_HEAD `1a61ba6f`，评审对象 main@`ddcb87ca`..`1a61ba6f`）——**TD-106 已完成并关闭**；main closeout PR 已 squash merge 入 main（pure-docs）。**整体 S6-I3 仍未完成**：F10 仍 skip（TD-105 承接）+ PR-D/PR-E/C1/S5 wiring/capability flip 均未启动；TD-104/REQ-047 与既有 follow-up 不关闭；M-F3/M-F5/M-F8 mutation 停止条件登记保持；F-matrix 7/12 mutation NOT-RED（M-F2/F3/F4/F5/F6/F8/F12）留作独立测试 contract 增强 PR；restore_replay_executor 的 PR-D 骨架已随 scope 收敛撤回；S6I2_PENDING_WRITERS 中 restore_replay_executor 仍仅 pending（字符串登记、无 impl），待独立 PR-D 重建后转 registered，不接生产 wiring；TD-097/098/099/100/101/102/103 保持历史和 follow-up 编号，不因本 PR 自动覆盖或关闭；REQ-047 保持后续联合验收归属。后续收口顺序（已完成）：#590→#586（mergeCommit `ee53b172`）→ #586 root 三面复审/Ready/评分 → #586 squash→main（mergeCommit `68fafd81`）→ main closeout PR（squash merge 入 main）— **全流程闭合**。
 后续接力：PR #596 已 squash merge 入 main `c0ec008d`（source head `f5cb0b34` / implementation HEAD `7cc732ba`，评分 97 Original）。**F10 已完成**（TD-105 已关闭）——F10 routing 四环 + TD-106 per-ref receipt + source 清除不变式 + 7/8 mutation 真红 + M6 NOT-RED（如实登记为 test contract 增强 follow-up）；后续接力：(1) PR-D / (2) PR-E / (3) F-matrix 7/12 + F10 M6 test contract 增强 PR / (4) TD-104（PR-A schema/test alignment）/ (5) C1 Durable Core 总验收 / (6) S5 production wiring / (7) registry capability 翻转 / (8) 六 erase 入口生产可达。
 
+### TASK-R1-S6-I3-D: 独立 ledger export/archive + restore replay executor + restore-before-open runbook（**事实审计中，尚未实现** — 不宣称 executor/archive/runbook 已交付）
+
+状态：🟡 进行中（2026-08-27，**事实审计阶段 — 仅读事实源 + Draft PR 占位**；**禁止本轮进入业务代码实现 / Ready / 评分 / 合并 / closeout**）
+最新交接（2026-08-27）：**任务卡登记 + 独立分支 + Draft PR + 事实审计阶段**。本任务卡严格声明：当前**仅做事实审计 + Draft 验证**，尚未启动 ledger export executor / archive sink / restore replay executor / restore-before-open runbook 的代码实现。Plan §S6-8 / §S6-12 / §S6-13 / §S6-14 已冻结的 ledger export 与 restore replay 路由表 + 判定方式为唯一事实源；旧 PR-D scaffold（`s6i3_ledger_export.py` / `s6i3_restore_replay.py` / `restore-before-open.md` 等）已随 #586 scope 收敛撤回，本任务从冻结契约与当前 main 重新推导，**禁止 cherry-pick / 恢复 / 复制旧 `c07c031c` scaffold**。`S6I2_PENDING_WRITERS` 中 `restore_replay_executor` 仅字符串 pending 登记（PR #584 I3 merge `ad7ac3e5` 后），待独立 PR-D 落地后转 `registered`。
+分支：`feature/req041-047-r1-s6-i3-d-ledger-restore-replay`（从 main `aff54883` 创建）
+当前执行模式：事实审计（contract-to-code）——冻结契约 + Plan §S6-8/12/13/14 + §S6-15.5 TD-106 收口 + 当前 main 实现能力，逐项输出实现矩阵；**不实现 / 不修改生产代码 / 不修改 schema / 不修改 migration 043 / 不修改 S5 状态机 / 不修改 registry capability / 不修改 CI 配置 / 不修改 Score Log / 不修改 Metrics**
+最近接手工具：Claude Code
+类型：REQ-041/047 R1-S6-I3-D（PR-D：独立 ledger 连续导出/归档 + restore replay 执行器 + restore-before-open runbook）
+领域：scheduler / retention / purge-recovery / restore-replay（M 类维护路径）
+需求来源：
+- Spec: [R1 Retention/Purge/恢复专项契约 §3 / §10 / §11](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)（§3「从**独立保存**的 erasure operation/receipt 账本重放」字面要求 + §10 发布迁移流程 + §11 R1-AC12 验收标准）
+- Plan: [R1 分 Slice 实施计划 §R1-S6-8 / §R1-S6-12 / §R1-S6-13 / §R1-S6-14 / §R1-S6-15](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)（§S6-8 备份恢复门禁 + §S6-12 replay 状态路由表 + §S6-13 replay 判定方式 + §S6-14 后续拆分）
+- 需求: [REQ-047 Agent Run/产物/证据与人工确认中心](../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md)（R1-S6 implementation conformance 联合闭环承接）
+- 技术债: `S6I2_PENDING_WRITERS` 登记（`restore_replay_executor` 仅 pending）
+
+下一步（本任务卡分两阶段）：
+- **第一阶段（任务卡 + Draft PR，本轮已完成）**：从 main `aff54883` 建任务分支 + current-work.md 新增 TASK-R1-S6-I3-D + push + Draft PR（base=main）+ 等三路 Draft checks 全绿后停止
+- **第二阶段（只读事实审计，本轮禁止实现）**：逐项输出实现矩阵——ledger 连续导出/归档 / 快照格式与导入校验 / replay operation 六态 / owner 六元组 / 实际执行语义 / M 类维护路径 / restore-before-open / writer-conformance 登记 / 测试与 mutation；重点回答 6 项阻塞问题；audit 完成后停留 Draft 等候用户裁决是否进入实现阶段
+
+验证状态：**本轮暂无验证结果**（仅做事实审计 + Draft 验证；尚未实现任何业务代码）。Draft PR 三路 required checks 状态待 PR 创建后确认（Engineering docs / Backend iteration / Frontend 预计 docs-only + pytest zero change 全 SUCCESS）。**严格停止条件**（事实审计阶段禁止越过）：需要新 schema/migration/enum/CHECK；需要修改 S5 状态机/锁序/写者矩阵；需要原始敏感 ref 才能重放（external/runtime ref_value / runtime_session_ref）；需要调用 external/runtime adapter；缺少独立 archive sink 或维护互斥机制；owner 六元组或 receipt 无法证明；需要 production wiring/capability flip；冻结契约与当前可执行能力冲突；或需越过 specs §10.5「人工签字后按 tenant/canary 开启 scheduler」/§S6-7.1「V1 不支持 purge 开启时仍有旧 Writer 进程在线」——立即停在 Draft 并报告方案，不自行架构裁决。**禁止修改**：Score Log、Metrics、migration 043、schema、registry capability、门禁脚本、KNOWN_ISSUES、CI 配置或阈值；F10/TD-105 已合并内容；C1 / PR-E / S5 production wiring / capability flip 不在本任务范围启动。**数据库硬边界**：禁止 drop / truncate / reseed / 重建开发库 `metaedu`；后续测试只能使用 `metaedu_test`；任何 destructive DB 命令前必须先打印并确认实际 database name，若不是 `metaedu_test` 立即停止。
+
+交接备注：本任务承接 TASK-R1-S6-I3 后续接力序列的 (1) PR-D 入口；从冻结契约 §S6-8/12/13/14 + §S6-15.5 TD-106 收口与当前 main 实现能力出发重新推导，不复制旧 scaffold；S6I2_PENDING_WRITERS `restore_replay_executor` 待本任务完成后转 `registered`；M 类维护路径（replay executor）与 retention/audit jobs 互斥（冻结声明）；external/runtime 未 ACK 项经 replay 保持 `blocked` + reconcile（**不调用 adapter、不冒充已 erase**）。
+
 ## 下一批候选任务
 
 按"建议执行顺序"排序；候选区只保留近期 1 到 3 个入口，完整任务池回 `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/technical-debt.md`。
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | R1-S6 PR-D ledger export executor + restore-before-open runbook | ⚫ 待办，独立后续 PR | 在 #586 bounded integration + #596 F10 已并 main 基础上重建 restore_replay_executor（PR-D 骨架已随 scope 收敛撤回）；S6I2_PENDING_WRITERS 中 restore_replay_executor 仍仅 pending，待 PR-D 落地后转 registered | [Plan §S6-8 / §S6-12 / §S6-13](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1 | R1-S6 PR-E release drill 五阶段 canary（真实 PG / 备份 / 流量开关） | ⚫ 待办，独立后续 PR | 本地无法执行（无生产基础设施 + 无备份保留 runbook 执行环境）——按 R1-AC12 字面降级为 contract-tested 验证；登记生产门禁 | [Plan §S6-7](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
 | P1 | R1-S6 F-matrix 7/12 + F10 M6 test contract 增强 | ⚫ 待办，独立后续 PR | F-matrix 7/12 mutation NOT-RED（M-F2/F3/F4/F5/F6/F8/F12）+ F10 M6（completed 绕过最终扫描）判别载体补齐；M6 真实 PG 路径需 G1/G2/G3 cleared + 所有 owner acked + final scan 非零 → blocked (scan reason) 的测试矩阵 | [TD-105](technical-debt.md#td-105-r1-s6-f10-实现承接契约纠偏后解除-skip--真实-pg-判别) closeout note / F-matrix #590 mutation follow-up |
 
