@@ -533,6 +533,20 @@ async def test_key_stable_across_lease_epoch_and_attempt(session_factory):
             ),
             {"op": op1},
         )
+        # TD-106 方案 A：首次 closeout SUCCESS 已同事务落 ledger erased+receipt
+        # （旧实现只写 fence/checkpoint、ledger 滞留 registered）。本用例构造
+        # 「同一窗口跨 lease_epoch/attempt 重放」验证 key 派生稳定，重置窗口时
+        # 须一并恢复 ledger 行为 registered（receipt_digest/blocked_reason 归 NULL，
+        # 满足 ck_agent_external_refs_erase_evidence）；否则冻结窗口重读
+        # （erase_state='registered' 过滤）为空 → intent 重导出失配 fail closed。
+        # 真实 takeover 路径不产生此状态：T2 完成后操作终态、不再重入 closeout。
+        await s.execute(
+            text(
+                "UPDATE metaedu.agent_external_object_refs SET erase_state='registered', "
+                "receipt_digest=NULL, blocked_reason=NULL WHERE id=:rid"
+            ),
+            {"rid": ref.id},
+        )
         # 首次 success 会把 checkpoint_digest 覆写为 final scan digest；重置窗口时
         # 恢复原始冻结 intent（attempt 推进为 2）。
         await _set_cp(
