@@ -1,14 +1,14 @@
-"""R1-S6-I3 故障矩阵（legal-hold 族）：F9 + F10（契约冲突标记）。
+"""R1-S6-I3 故障矩阵（legal-hold × participant entry 交互）：F9。
 
-契约：Plan §R1-S6-5（S6-F9 / S6-F10 行，已随 PR #581 并入 main）。
+契约：Plan §R1-S6-5（S6-F9 行，已随 PR #581 并入 main）。
 从 ``test_s6i3_fault_matrix_restore_replay.py``（1040 行）拆分的一部分；本文件
 承载 legal-hold × participant entry 交互。
 
 F1-F14 逐行映射（本文件承担的行）：
 - F9  → ``test_f9_create_before_entry_blocks_entry_fail_closed``
         + ``test_f9_entry_before_create_completes_then_create_lands``
-- F10 → **契约冲突，本 PR 不实现**（见 ``test_f10_contract_conflict_not_implemented``
-        的 skip 原因；不自行架构裁决，上报待契约裁决）。
+- F10 → 已迁出至 ``test_s6i3_fault_f10.py``（settlement T1/T2 hold 推进路由表判别，
+        TD-105 承接实现；本文件保留 F9 + 不再持有 F10 占位）。
 
 helper 复用 ``test_s5i1_hold_revision_fencing``（repo 跨测试 import 惯例）；并发用
 composition ``session_factory``（NullPool，独立物理连接）。
@@ -197,22 +197,3 @@ async def test_f9_entry_before_create_completes_then_create_lands(
     assert create_error == [], f"entry-first 下 create 不应报错: {create_error}"
     async with session_factory() as verify:
         assert await _hold_revision(verify, cid) == 1
-
-
-@pytest.mark.skip(
-    reason=(
-        "F10 契约冲突，本 PR 不实现（不自行架构裁决，上报待契约裁决）："
-        "Plan §S6-5 F10 冻结期望同时要求 (a) T1/T2 间 hold 推进后 T2 完成 erase "
-        "(fence erased + checkpoint acked) 与 (b) 零复活正文 + 后续聚合投影 "
-        "blocked_hold_revision_changed (G2) + rebuild + 不得断言原 operation 直接 "
-        "completed。现行代码：Tx2 重验 hold fencing，hold create bump "
-        "hold_revision 0→1 必触发 drift → Tx2 在任何写入前 fail-closed（fence/"
-        "checkpoint 停留 erasing），且 terminal-overwrite-ban 禁止 acked 后再投影 "
-        "blocked。两种自洽读法均需裁决（改 S5 participant Tx2 hold 重验 = S5 契约 "
-        "变更 [排除项]，或经 contract-first PR 纠偏 F10 冻结期望 [如 R1-S6-I3-B "
-        "先例]）。实现该契约自洽行为（Tx2 fail-closed → G2 → rebuild）本身即构成 "
-        "对冻结语义的单方裁决，故本 PR 排除 F10。"
-    )
-)
-async def test_f10_contract_conflict_not_implemented():
-    """F10 占位（skip）：契约冲突，不实现，不上 fake，不改 S5。详见 skip 原因。"""
