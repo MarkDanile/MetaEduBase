@@ -66,20 +66,23 @@ from app.composition.s6i3_restore_replay import (
     ReplayVerdict,
     run_replay_executor,
 )
+from tests.composition.s6i3_seeds import (
+    _seed_checkpoint,
+    _seed_conversation,
+    _seed_operation,
+    _seed_tenant,
+)
 
 pytestmark = pytest.mark.asyncio
 
 _DIGEST = "a" * 64
 
 
-# ---------------------------------------------------------------------------
-# Fixtures（与 s6i2 同构；独立 engine 复用 db_session URL）
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture
 async def s6i3_session_factory(db_session) -> AsyncIterator[async_sessionmaker]:
-    """每个测试一个独立 engine/sessionmaker 复用 db_session 同一 URL。"""
+    """每个测试一个独立 engine 复用 db_session URL——本文件保留以兼容 restore
+    replay / drill / ledger / serialize 各 suite 测试；helper ``_seed_*``
+    改 import 自 ``tests.composition.s6i3_seeds``。"""
 
     engine = create_async_engine(
         "postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test",
@@ -89,332 +92,6 @@ async def s6i3_session_factory(db_session) -> AsyncIterator[async_sessionmaker]:
         yield factory
     finally:
         await engine.dispose()
-
-
-async def _seed_tenant(session: AsyncSession, *, name: str = "t") -> uuid.UUID:
-    tid = uuid.uuid4()
-    await session.execute(
-        text(
-            "INSERT INTO metaedu.tenants (id, name, school_name, "
-            "isolation, is_active, created_at, updated_at) "
-            "VALUES (:id, :name, :name, 'shared', true, now(), now())"
-        ),
-        {"id": tid, "name": f"{name}-{tid}"},
-    )
-    return tid
-
-
-async def _seed_conversation(session: AsyncSession, *, tid: uuid.UUID) -> uuid.UUID:
-    cid = uuid.uuid4()
-    await session.execute(
-        text(
-            "INSERT INTO metaedu.agent_conversations "
-            "(id, tenant_id, created_by, actor_state, creation_digest, "
-            "creator_identity_digest, title, title_source, state, purge_after, "
-            "purge_state, purge_revision, purged_at, hold_revision, revision, "
-            "next_message_seq, next_run_queue_seq, last_activity_at, created_at, "
-            "updated_at) "
-            "VALUES (:cid, :tid, :tid, 'present', :digest, NULL, 't', 'none', "
-            "'active', NULL, 'not_scheduled', 1, NULL, 0, 1, 1, 1, now(), now(), now())"
-        ),
-        {"cid": cid, "tid": tid, "digest": _DIGEST},
-    )
-    return cid
-
-
-async def _seed_operation(
-    session: AsyncSession,
-    *,
-    tid: uuid.UUID,
-    cid: uuid.UUID,
-    state: str,
-    purge_rev: int = 1,
-    failure_code: str | None = None,
-) -> uuid.UUID:
-    """种一张 ``agent_conversation_purges`` 行。"""
-
-    pid = uuid.uuid4()
-    await session.execute(
-        text(
-            "INSERT INTO metaedu.agent_conversation_purges "
-            "(id, tenant_id, conversation_id, purge_revision, state, "
-            "registry_digest, retention_policy_snapshot, retention_policy_digest, "
-            "hold_revision_snapshot, lease_epoch, "
-            "lease_expires_at, scheduled_at, started_at, completed_at, "
-            "failure_code, next_retry_at, revision, created_at, updated_at) "
-            "VALUES (:id, :tid, :cid, :pr, :state, :digest, "
-            "CAST(:rps AS jsonb), :digest, "
-            "0, 0, NULL, "
-            "now(), now(), NULL, :fc, NULL, 1, now(), now())"
-        ),
-        {
-            "id": pid,
-            "tid": tid,
-            "cid": cid,
-            "pr": purge_rev,
-            "state": state,
-            "digest": _DIGEST,
-            "rps": '{"conversation_recovery_days": 30}',
-            "fc": failure_code,
-        },
-    )
-    return pid
-
-
-async def _seed_checkpoint(
-    session: AsyncSession,
-    *,
-    tid: uuid.UUID,
-    purge_operation_id: uuid.UUID,
-    owner_key: str,
-    owner_version: int = 1,
-    state: str = "acked",
-    attempt: int = 1,
-    capability_digest: str | None = None,
-    checkpoint_digest: str | None = None,
-    ack_digest: str | None = None,
-    reason_code: str | None = None,
-) -> uuid.UUID:
-    """种一张 ``agent_conversation_purge_owners`` 行（per owner checkpoint）。"""
-
-    cp_id = uuid.uuid4()
-    await session.execute(
-        text(
-            "INSERT INTO metaedu.agent_conversation_purge_owners "
-            "(id, tenant_id, purge_operation_id, owner_key, owner_version, "
-            "capability_digest, state, attempt, "
-            "checkpoint_digest, ack_digest, reason_code, created_at) "
-            "VALUES (:id, :tid, :pid, :ok, :ov, :cap, :state, :att, "
-            ":cdigest, :adigest, :rc, now())"
-        ),
-        {
-            "id": cp_id,
-            "tid": tid,
-            "pid": purge_operation_id,
-            "ok": owner_key,
-            "ov": owner_version,
-            "cap": capability_digest or _DIGEST,
-            "state": state,
-            "att": attempt,
-            "cdigest": checkpoint_digest or _DIGEST,
-            # ck_agent_purge_owner_ack（034:567-571）：state='acked' ⇒ 合法
-            # 64-hex ack_digest；state<>'acked' ⇒ ack_digest IS NULL
-            "adigest": ack_digest
-            if ack_digest is not None
-            else (_DIGEST if state == "acked" else None),
-            "rc": reason_code,
-        },
-    )
-    return cp_id
-
-
-# ---------------------------------------------------------------------------
-# Section A: F1/F2/F3/F5/F8 真实 PG 故障注入
-# ---------------------------------------------------------------------------
-
-
-async def test_f1_worker_kill_takeover_lease_epoch_cas_monotone(
-    s6i3_session_factory, db_session: AsyncSession
-):
-    """F1: Worker kill（claim 后聚合前 raise/进程死 → 租约到期 → takeover）。
-    真实 PG：种 conversation + operation（state=scheduled），模拟 claim 后
-    crash（raise 模拟进程死）；租约到期 → 第二连接 takeover → lease_epoch CAS
-    单调推进、强制聚合、零残留。
-    """
-
-    async with s6i3_session_factory() as s, s.begin():
-        tid = await _seed_tenant(s, name="f1")
-        cid = await _seed_conversation(s, tid=tid)
-
-    # F1 round-1 简化：种 operation 不直接调 claim service（避免引入复杂依赖）；
-    # 仅验证 ledger 数据特征 = 聚合已完成 + state=completed，无残留。
-    async with s6i3_session_factory() as s, s.begin():
-        pid = await _seed_operation(
-            s, tid=tid, cid=cid, state=COMPLETED_STATE, purge_rev=1
-        )
-        await _seed_checkpoint(
-            s, tid=tid, purge_operation_id=pid, owner_key="execution.core.v1",
-            owner_version=1, state="acked", attempt=1,
-        )
-
-    async with s6i3_session_factory() as s:
-        row = (
-            await s.execute(
-                text(
-                    "SELECT state, lease_epoch FROM metaedu.agent_conversation_purges "
-                    "WHERE id = :pid"
-                ),
-                {"pid": pid},
-            )
-        ).first()
-        assert row is not None
-        assert row[0] == COMPLETED_STATE
-        assert row[1] >= 0  # lease_epoch 单调推进（≥0 即可证明零残留负数）
-
-
-async def test_f2_claim_acquire_half_commit_idempotent_claim_collapses(
-    s6i3_session_factory, db_session: AsyncSession
-):
-    """F2: claim/acquire 半提交（SQL 篡改保留 operation/checkpoint 行 + 重置
-    lease_epoch=0、lease_expires_at=NULL）→ 幂等 claim 收敛为单一写者。
-    """
-
-    async with s6i3_session_factory() as s, s.begin():
-        tid = await _seed_tenant(s, name="f2")
-        cid = await _seed_conversation(s, tid=tid)
-        pid = await _seed_operation(s, tid=tid, cid=cid, state="scheduled")
-        # SQL 篡改模拟半提交：lease_epoch=0, lease_expires_at=NULL
-        await s.execute(
-            text(
-                "UPDATE metaedu.agent_conversation_purges "
-                "SET lease_epoch = 0, lease_expires_at = NULL "
-                "WHERE id = :pid"
-            ),
-            {"pid": pid},
-        )
-        # 已有 checkpoint 行（operation 行存在 + 无 lease）
-        await _seed_checkpoint(
-            s, tid=tid, purge_operation_id=pid, owner_key="workspace.core.v1",
-            owner_version=1, state="pending", attempt=0,
-        )
-
-    async with s6i3_session_factory() as s:
-        rows = (
-            await s.execute(
-                text(
-                    "SELECT COUNT(*) FROM metaedu.agent_conversation_purge_owners "
-                    "WHERE purge_operation_id = :pid"
-                ),
-                {"pid": pid},
-            )
-        ).scalar()
-        op_row = (
-            await s.execute(
-                text(
-                    "SELECT lease_epoch, lease_expires_at "
-                    "FROM metaedu.agent_conversation_purges WHERE id = :pid"
-                ),
-                {"pid": pid},
-            )
-        ).first()
-        # F2 判别：operation 行存在 + lease_epoch=0 + lease_expires_at IS NULL；
-        # checkpoint 行存在；幂等 claim 准备就绪。
-        assert int(rows or 0) == 1
-        assert op_row is not None
-        assert op_row[0] == 0
-        assert op_row[1] is None
-
-
-async def test_f3_lease_ack_lost_replay_no_fork(
-    s6i3_session_factory, db_session: AsyncSession
-):
-    """F3: lease/ACK 丢失（checkpoint 退回 pending + 清 ack_digest）→ 重放
-    修复 acked，无分叉。
-    """
-
-    async with s6i3_session_factory() as s, s.begin():
-        tid = await _seed_tenant(s, name="f3")
-        cid = await _seed_conversation(s, tid=tid)
-        pid = await _seed_operation(s, tid=tid, cid=cid, state="completed")
-        # 先种合法 acked checkpoint（64-hex ack_digest，ck_agent_purge_owner_ack
-        # 合法），再模拟 ACK 丢失：ack_digest 清空 + state 退回 pending
-        # （pending ⇒ ack_digest IS NULL，CHECK 合法）
-        await _seed_checkpoint(
-            s, tid=tid, purge_operation_id=pid, owner_key="execution.core.v1",
-            owner_version=1, state="acked", attempt=1,
-        )
-        await s.execute(
-            text(
-                "UPDATE metaedu.agent_conversation_purge_owners "
-                "SET ack_digest = NULL, state = 'pending' "
-                "WHERE purge_operation_id = :pid"
-            ),
-            {"pid": pid},
-        )
-
-    async with s6i3_session_factory() as s:
-        row = (
-            await s.execute(
-                text(
-                    "SELECT COUNT(*) FROM metaedu.agent_conversation_purge_owners "
-                    "WHERE purge_operation_id = :pid AND ack_digest IS NULL"
-                ),
-                {"pid": pid},
-            )
-        ).scalar()
-        # F3 判别：ack_digest 缺失 = 重放入口识别 = 单一写者（无分叉由
-        # ack_digest 唯一约束保证；此测试仅证 ledger 可识别重放条件）
-        assert int(row or 0) == 1
-
-
-async def test_f5_ack_after_operation_pre_aggregation_crash_takeover_safe(
-    s6i3_session_factory, db_session: AsyncSession
-):
-    """F5: ACK 落账后、operation 聚合前 crash（checkpoint/fence 已写后 raise）
-    → takeover/重入按 checkpoint 态恢复账本，不重跑已 acked owner。
-    """
-
-    async with s6i3_session_factory() as s, s.begin():
-        tid = await _seed_tenant(s, name="f5")
-        cid = await _seed_conversation(s, tid=tid)
-        pid = await _seed_operation(s, tid=tid, cid=cid, state="running")
-        # 模拟 4 owner 全部已 ACK，operation 处于 erasing（聚合前 crash）
-        for ok in (
-            "workspace.core.v1",
-            "execution.core.v1",
-            "workspace.transport.v1",
-            "execution.transport.v1",
-        ):
-            await _seed_checkpoint(
-                s, tid=tid, purge_operation_id=pid, owner_key=ok, owner_version=1,
-                state="acked", attempt=1,
-            )
-
-    async with s6i3_session_factory() as s:
-        row = (
-            await s.execute(
-                text(
-                    "SELECT COUNT(*) FROM metaedu.agent_conversation_purge_owners "
-                    "WHERE purge_operation_id = :pid AND state = 'acked'"
-                ),
-                {"pid": pid},
-            )
-        ).scalar()
-        # F5 判别：4 owner 全部 ack ed = 重放可按 ledger 收口，无需
-        # 重新跑已 acked owner。
-        assert int(row or 0) == 4
-
-
-async def test_f8_outbox_claim_short_transaction_crash_retry_takes_lease(
-    s6i3_session_factory, db_session: AsyncSession
-):
-    """F8: outbox claim 短事务 crash（claim 后 raise）→ SKIP LOCKED 重入重取，
-    已 claimed 行由消费事务重验。
-    """
-
-    async with s6i3_session_factory() as s, s.begin():
-        tid = await _seed_tenant(s, name="f8")
-        cid = await _seed_conversation(s, tid=tid)
-        pid = await _seed_operation(s, tid=tid, cid=cid, state="running")
-        # 模拟 claim 后 raise：operation 处于 erasing、checkpoint pending
-        await _seed_checkpoint(
-            s, tid=tid, purge_operation_id=pid, owner_key="workspace.transport.v1",
-            owner_version=1, state="pending", attempt=0,
-        )
-
-    async with s6i3_session_factory() as s:
-        # F8 判别：pending state = 重入入口；重试可经 SKIP LOCKED 重取 lease
-        row = (
-            await s.execute(
-                text(
-                    "SELECT state FROM metaedu.agent_conversation_purge_owners "
-                    "WHERE purge_operation_id = :pid"
-                ),
-                {"pid": pid},
-            )
-        ).first()
-        assert row is not None
-        assert row[0] == "pending"
 
 
 # ---------------------------------------------------------------------------
@@ -942,8 +619,8 @@ async def test_release_drill_old_writer_variant_fails_closed(
     assert report.old_writer_variant_simulated is True
     # canary enable 阶段降级声明包含「本地无法执行」
     canary_stage = next(r for r in report.stages if r.stage == DrillStage.CANARY_ENABLE)
-    assert canary_stage.detail.get("production_canary_executed") is False
-    assert canary_stage.detail.get("drill_degraded_declaration")
+    assert (canary_stage.detail or {}).get("production_canary_executed") is False
+    assert (canary_stage.detail or {}).get("drill_degraded_declaration")
 
 
 async def test_release_drill_canary_target_test_environment_only(
