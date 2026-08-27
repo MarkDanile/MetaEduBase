@@ -52,7 +52,11 @@
 
 下一步（本任务卡分两阶段）：
 - **第一阶段（任务卡 + Draft PR，本轮已完成）**：从 main `aff54883` 建任务分支 + current-work.md 新增 TASK-R1-S6-I3-D + push + Draft PR（base=main）+ 等三路 Draft checks 全绿后停止
-- **第二阶段（只读事实审计，本轮禁止实现）**：逐项输出实现矩阵——ledger 连续导出/归档 / 快照格式与导入校验 / replay operation 六态 / owner 六元组 / 实际执行语义 / M 类维护路径 / restore-before-open / writer-conformance 登记 / 测试与 mutation；重点回答 6 项阻塞问题；audit 完成后停留 Draft 等候用户裁决是否进入实现阶段
+- **第二阶段（只读事实审计 + correction，本轮已完成）**：逐项输出实现矩阵——ledger 连续导出/归档 / 快照格式与导入校验 / replay operation 六态 / owner 六元组 / 实际执行语义 / M 类维护路径 / restore-before-open / writer-conformance 登记 / 测试与 mutation；重点回答 6 项阻塞问题；**fact-audit correction 已落**（修正 ack 约束三层职责分离 / 修正 M 类互斥结论不强制新 flag / 区分 CLI ≠ sink / runtime 无独立 receipt 列事实 / D1a/D1b/D2 三步拆分替代 D1/D2）；audit 完成后停留 Draft 等候用户裁决：
+  1. Sink 选型（本地 minio / 外部 object store / 文件系统）
+  2. M 类互斥方案（A. advisory lock / B. external coordinator / C. persistent lease）
+  3. D1a + D1b 是否合并为单 PR D1
+  4. D1b / D2 启动顺序
 
 验证状态：**本轮暂无验证结果**（仅做事实审计 + Draft 验证；尚未实现任何业务代码）。Draft PR 三路 required checks 状态待 PR 创建后确认（Engineering docs / Backend iteration / Frontend 预计 docs-only + pytest zero change 全 SUCCESS）。**严格停止条件**（事实审计阶段禁止越过）：需要新 schema/migration/enum/CHECK；需要修改 S5 状态机/锁序/写者矩阵；需要原始敏感 ref 才能重放（external/runtime ref_value / runtime_session_ref）；需要调用 external/runtime adapter；缺少独立 archive sink 或维护互斥机制；owner 六元组或 receipt 无法证明；需要 production wiring/capability flip；冻结契约与当前可执行能力冲突；或需越过 specs §10.5「人工签字后按 tenant/canary 开启 scheduler」/§S6-7.1「V1 不支持 purge 开启时仍有旧 Writer 进程在线」——立即停在 Draft 并报告方案，不自行架构裁决。**禁止修改**：Score Log、Metrics、migration 043、schema、registry capability、门禁脚本、KNOWN_ISSUES、CI 配置或阈值；F10/TD-105 已合并内容；C1 / PR-E / S5 production wiring / capability flip 不在本任务范围启动。**数据库硬边界**：禁止 drop / truncate / reseed / 重建开发库 `metaedu`；后续测试只能使用 `metaedu_test`；任何 destructive DB 命令前必须先打印并确认实际 database name，若不是 `metaedu_test` 立即停止。
 
