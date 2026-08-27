@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from typing import Any
 
 import pytest
 from sqlalchemy import text
@@ -56,7 +57,8 @@ from tests.composition.s6i3_seeds import (
     _seed_tenant,
 )
 
-pytestmark = pytest.mark.asyncio
+# 异步测试由 pytest-asyncio asyncio_mode="auto" 自动标记；模块级 pytestmark
+# 显式移除以允许同步纯内存测试存在（避免 PytestWarning 噪音）
 
 _DIGEST = "a" * 64
 _OTHER_DIGEST = "b" * 64
@@ -1371,3 +1373,541 @@ async def test_d1a_reconstruct_owner_facts_defensive_no_silent_overwrite(snapsho
         reconstruct_owner_facts(bad_manifest)
     assert exc.value.reason == "OWNER_SIX_TUPLE_INCOMPLETE"
     assert "owner_key" in exc.value.detail["missing_fields"]
+
+
+# --- 第三轮 P1：纯内存 decoder 负例 + reconstruct 防御性归一化 ---
+
+
+_DIGEST_HEX = "a" * 64
+
+
+def _build_envelope_one_record(
+    *,
+    tid: uuid.UUID,
+    op_id: uuid.UUID,
+    cp_id: uuid.UUID,
+    ext_id: uuid.UUID,
+    rec_id: uuid.UUID,
+    op_state: str = "running",
+    cp_state: str = "erasing",
+    cp_owner_key: str = "external.payload.v1",
+    cp_owner_version: int = 1,
+    cp_capability_digest: str = _DIGEST_HEX,
+    op_purge_revision: int = 1,
+    cp_ack_digest: str | None = None,
+) -> dict:
+    """纯内存构造一份含 1 op / 1 cp / 1 ext / 1 rec 的合法 envelope dict。
+
+    所有字段均按真实 DB 列语义填齐；content_digest 由 ``_envelope_with_digest`` 重算。
+    """
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "tenant_id": str(tid),
+        "manifest": {},  # 由 _envelope_with_digest 重算
+        "runtime_per_binding_proof_available": False,
+        "records": {
+            "operation": [
+                {
+                    "stable_identity": f"operation:{op_id}",
+                    "table_identity": "agent_conversation_purges",
+                    "fields": {
+                        "id": str(op_id),
+                        "tenant_id": str(tid),
+                        "conversation_id": str(uuid.uuid4()),
+                        "purge_revision": op_purge_revision,
+                        "state": op_state,
+                        "registry_digest": _DIGEST_HEX,
+                        "retention_policy_digest": _DIGEST_HEX,
+                        "hold_revision_snapshot": 0,
+                        "lease_epoch": 1,
+                        "failure_code": None,
+                        "revision": 1,
+                        "scheduled_at": None,
+                        "started_at": None,
+                        "completed_at": None,
+                        "next_retry_at": None,
+                    },
+                }
+            ],
+            "checkpoint": [
+                {
+                    "stable_identity": f"checkpoint:{cp_id}",
+                    "table_identity": "agent_conversation_purge_owners",
+                    "fields": {
+                        "id": str(cp_id),
+                        "tenant_id": str(tid),
+                        "purge_operation_id": str(op_id),
+                        "owner_key": cp_owner_key,
+                        "owner_version": cp_owner_version,
+                        "capability_digest": cp_capability_digest,
+                        "state": cp_state,
+                        "attempt": 1,
+                        "checkpoint_digest": _DIGEST_HEX,
+                        "ack_digest": cp_ack_digest,
+                        "reason_code": None,
+                    },
+                }
+            ],
+            "external_ref": [
+                {
+                    "stable_identity": f"external_ref:{ext_id}",
+                    "table_identity": "agent_external_object_refs",
+                    "fields": {
+                        "id": str(ext_id),
+                        "tenant_id": str(tid),
+                        "conversation_id": str(uuid.uuid4()),
+                        "owner_key": cp_owner_key,
+                        "ref_scheme": "db_local",
+                        "source_table": "agent_workspace_outbox",
+                        "source_row_id": str(uuid.uuid4()),
+                        "erase_state": "registered",
+                        "receipt_digest": None,
+                        "blocked_reason": None,
+                        "created_at": None,
+                        "updated_at": None,
+                    },
+                }
+            ],
+            "reconcile": [
+                {
+                    "stable_identity": f"reconcile:{rec_id}",
+                    "table_identity": "agent_transport_scope_reconcile",
+                    "fields": {
+                        "id": str(rec_id),
+                        "tenant_id": str(tid),
+                        "owner_key": "workspace.transport.v1",
+                        "source_table": "agent_workspace_outbox",
+                        "source_row_id": str(uuid.uuid4()),
+                        "conversation_id": None,
+                        "reconcile_class": "tenant_scope",
+                        "issue_code": "source_message_missing",
+                        "state": "open",
+                        "resolution_digest": None,
+                        "revision": 1,
+                        "created_at": None,
+                        "resolved_at": None,
+                    },
+                }
+            ],
+        },
+    }
+
+
+def _envelope_with_digest(env: dict) -> dict:
+    """按 envelope 内容重算 manifest count + content_digest，返回完整 envelope。"""
+    from app.shared.schemas.canonical_json import canonical_digest as _cd
+
+    out = dict(env)
+    records = env["records"]
+    manifest: dict[str, dict[str, Any]] = {}
+    for kind, recs in records.items():
+        manifest[kind] = {
+            "count": len(recs),
+            "content_digest": _cd(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "kind": kind,
+                    "records": [
+                        {
+                            "stable_identity": r["stable_identity"],
+                            "table_identity": r["table_identity"],
+                            "fields": r["fields"],
+                        }
+                        for r in recs
+                    ],
+                }
+            ),
+        }
+    out["manifest"] = manifest
+    return out
+
+
+def _envelope_to_bytes(env: dict) -> bytes:
+    import json as _json
+
+    return _json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _make_seed_ids() -> tuple[uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID]:
+    return (
+        uuid.uuid4(),
+        uuid.uuid4(),
+        uuid.uuid4(),
+        uuid.uuid4(),
+        uuid.uuid4(),
+    )
+
+
+def test_d1a_schema_version_bool_rejected_memory():
+    """schema_version=True（bool 是 int 子类）⇒ SCHEMA_VERSION_MISSING_OR_INVALID。
+
+    纯内存反例——不依赖 PG；攻击者构造 envelope 时若把 schema_version 设 True，
+    decoder 必须按严格 int（排除 bool）拒绝。
+    """
+    tid, op_id, cp_id, ext_id, rec_id = _make_seed_ids()
+    env = _envelope_with_digest(
+        _build_envelope_one_record(
+            tid=tid, op_id=op_id, cp_id=cp_id, ext_id=ext_id, rec_id=rec_id
+        )
+    )
+    env["schema_version"] = True
+    bad = _envelope_to_bytes(env)
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=tid)
+    assert exc.value.reason == "SCHEMA_VERSION_MISSING_OR_INVALID"
+    assert exc.value.detail.get("reason") == "strict_int_required"
+
+
+def test_d1a_manifest_count_bool_rejected_memory():
+    """manifest[*].count=False ⇒ MANIFEST_COUNT_MISSING_OR_INVALID（按 strict int）。"""
+    tid, op_id, cp_id, ext_id, rec_id = _make_seed_ids()
+    env = _envelope_with_digest(
+        _build_envelope_one_record(
+            tid=tid, op_id=op_id, cp_id=cp_id, ext_id=ext_id, rec_id=rec_id
+        )
+    )
+    env["manifest"]["operation"]["count"] = False
+    bad = _envelope_to_bytes(env)
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=tid)
+    assert exc.value.reason == "MANIFEST_COUNT_MISSING_OR_INVALID"
+    assert exc.value.detail["found_type"] == "bool"
+
+
+def test_d1a_tenant_uppercase_uuid_rejected_memory():
+    """大写 UUID（非 canonical）⇒ TENANT_ID_NOT_CANONICAL_UUID。
+
+    ``str(uuid.UUID(tid))`` 必须 == tid；大写形式 fail closed。
+    """
+    tid, op_id, cp_id, ext_id, rec_id = _make_seed_ids()
+    env = _envelope_with_digest(
+        _build_envelope_one_record(
+            tid=tid, op_id=op_id, cp_id=cp_id, ext_id=ext_id, rec_id=rec_id
+        )
+    )
+    # 用大写形式重置 envelope 顶层 tenant_id（虽然 uuid.UUID 解析后 str() 会 lowercase）
+    env["tenant_id"] = str(uuid.UUID(str(tid))).upper()
+    bad = _envelope_to_bytes(env)
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=tid)
+    assert exc.value.reason == "TENANT_ID_NOT_CANONICAL_UUID"
+
+
+def test_d1a_tenant_no_hyphens_rejected_memory():
+    """去连字符 UUID（非 canonical）⇒ TENANT_ID_NOT_CANONICAL_UUID。
+
+    uuid.UUID() 接受无连字符 hex，但 str() 会重规范化为连字符形式。
+    """
+    tid, op_id, cp_id, ext_id, rec_id = _make_seed_ids()
+    env = _envelope_with_digest(
+        _build_envelope_one_record(
+            tid=tid, op_id=op_id, cp_id=cp_id, ext_id=ext_id, rec_id=rec_id
+        )
+    )
+    env["tenant_id"] = str(tid).replace("-", "")
+    bad = _envelope_to_bytes(env)
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=tid)
+    assert exc.value.reason == "TENANT_ID_NOT_CANONICAL_UUID"
+
+
+def test_d1a_manifest_digest_uppercase_hex_rejected_memory():
+    """manifest.content_digest 含大写 hex（长度合法但非小写）⇒ MANIFEST_CONTENT_DIGEST_NOT_64HEX。"""
+    tid, op_id, cp_id, ext_id, rec_id = _make_seed_ids()
+    env = _envelope_with_digest(
+        _build_envelope_one_record(
+            tid=tid, op_id=op_id, cp_id=cp_id, ext_id=ext_id, rec_id=rec_id
+        )
+    )
+    env["manifest"]["operation"]["content_digest"] = "A" * 64
+    bad = _envelope_to_bytes(env)
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=tid)
+    assert exc.value.reason == "MANIFEST_CONTENT_DIGEST_NOT_64HEX"
+
+
+def test_d1a_manifest_digest_non_hex_rejected_memory():
+    """manifest.content_digest 64 字符但非 hex（含 'Z'）⇒ MANIFEST_CONTENT_DIGEST_NOT_64HEX。"""
+    tid, op_id, cp_id, ext_id, rec_id = _make_seed_ids()
+    env = _envelope_with_digest(
+        _build_envelope_one_record(
+            tid=tid, op_id=op_id, cp_id=cp_id, ext_id=ext_id, rec_id=rec_id
+        )
+    )
+    env["manifest"]["operation"]["content_digest"] = "Z" * 64
+    bad = _envelope_to_bytes(env)
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=tid)
+    assert exc.value.reason == "MANIFEST_CONTENT_DIGEST_NOT_64HEX"
+
+
+def test_d1a_operation_purge_revision_bool_rejected_memory():
+    """operation.purge_revision=True（bool）⇒ OPERATION_PURGE_REVISION_TYPE_INVALID。"""
+    tid, op_id, cp_id, ext_id, rec_id = _make_seed_ids()
+    env = _build_envelope_one_record(
+        tid=tid, op_id=op_id, cp_id=cp_id, ext_id=ext_id, rec_id=rec_id,
+        op_purge_revision=1,
+    )
+    env["records"]["operation"][0]["fields"]["purge_revision"] = True
+    env = _envelope_with_digest(env)
+    bad = _envelope_to_bytes(env)
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=tid)
+    assert exc.value.reason == "OPERATION_PURGE_REVISION_TYPE_INVALID"
+    assert exc.value.detail["reason"] == "strict_int_required"
+
+
+def test_d1a_checkpoint_owner_version_bool_rejected_memory():
+    """checkpoint.owner_version=True ⇒ CHECKPOINT_OWNER_VERSION_TYPE_INVALID。"""
+    tid, op_id, cp_id, ext_id, rec_id = _make_seed_ids()
+    env = _build_envelope_one_record(
+        tid=tid, op_id=op_id, cp_id=cp_id, ext_id=ext_id, rec_id=rec_id,
+        cp_owner_version=1,
+    )
+    env["records"]["checkpoint"][0]["fields"]["owner_version"] = True
+    env = _envelope_with_digest(env)
+    bad = _envelope_to_bytes(env)
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=tid)
+    assert exc.value.reason == "CHECKPOINT_OWNER_VERSION_TYPE_INVALID"
+
+
+def test_d1a_checkpoint_owner_key_int_rejected_memory():
+    """checkpoint.owner_key 是 int ⇒ CHECKPOINT_OWNER_KEY_TYPE_INVALID（string 字段）。"""
+    tid, op_id, cp_id, ext_id, rec_id = _make_seed_ids()
+    env = _build_envelope_one_record(
+        tid=tid, op_id=op_id, cp_id=cp_id, ext_id=ext_id, rec_id=rec_id,
+        cp_owner_key="external.payload.v1",
+    )
+    env["records"]["checkpoint"][0]["fields"]["owner_key"] = 12345
+    env = _envelope_with_digest(env)
+    bad = _envelope_to_bytes(env)
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=tid)
+    assert exc.value.reason == "CHECKPOINT_OWNER_KEY_TYPE_INVALID"
+
+
+def test_d1a_checkpoint_capability_digest_int_rejected_memory():
+    """checkpoint.capability_digest 是 int ⇒ CHECKPOINT_CAPABILITY_DIGEST_TYPE_INVALID。"""
+    tid, op_id, cp_id, ext_id, rec_id = _make_seed_ids()
+    env = _build_envelope_one_record(
+        tid=tid, op_id=op_id, cp_id=cp_id, ext_id=ext_id, rec_id=rec_id,
+        cp_capability_digest=_DIGEST_HEX,
+    )
+    env["records"]["checkpoint"][0]["fields"]["capability_digest"] = 12345
+    env = _envelope_with_digest(env)
+    bad = _envelope_to_bytes(env)
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=tid)
+    # int 先撞 _assert_string_field 的 TYPE_INVALID 路径（非 FORMAT_INVALID）
+    assert exc.value.reason == "CHECKPOINT_CAPABILITY_DIGEST_TYPE_INVALID"
+
+
+def test_d1a_checkpoint_id_not_canonical_uuid_rejected_memory():
+    """checkpoint.id 是非 canonical UUID ⇒ CHECKPOINT_ID_NOT_CANONICAL_UUID。"""
+    tid, op_id, cp_id, ext_id, rec_id = _make_seed_ids()
+    env = _build_envelope_one_record(
+        tid=tid, op_id=op_id, cp_id=cp_id, ext_id=ext_id, rec_id=rec_id,
+    )
+    env["records"]["checkpoint"][0]["fields"]["id"] = str(cp_id).upper()
+    env["records"]["checkpoint"][0]["stable_identity"] = f"checkpoint:{str(cp_id).upper()}"
+    env = _envelope_with_digest(env)
+    bad = _envelope_to_bytes(env)
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=tid)
+    assert exc.value.reason == "CHECKPOINT_ID_NOT_CANONICAL_UUID"
+
+
+def test_d1a_reconstruct_direct_manifest_normalizes_type_error():
+    """caller 直接构造 Manifest 绕过 decoder——owner_version 是字符串 "abc"。
+
+    不应漏出 ``int("abc")`` ValueError；必须归一化为
+    ``RECONSTRUCT_OWNER_VERSION_TYPE_INVALID``。
+    """
+    from app.composition.s6i3_ledger_snapshot import (
+        ExportedRecord,
+        Manifest,
+    )
+
+    tid, op_id, cp_id, ext_id, rec_id = _make_seed_ids()
+    env = _envelope_with_digest(
+        _build_envelope_one_record(
+            tid=tid, op_id=op_id, cp_id=cp_id, ext_id=ext_id, rec_id=rec_id
+        )
+    )
+    m = decode_ledger_segment(_envelope_to_bytes(env), expected_tenant_id=tid)
+    # 直接篡改 Manifest 内部 records（绕过 decoder）
+    cp0 = m.records["checkpoint"][0]
+    tampered_fields = dict(cp0.fields)
+    tampered_fields["owner_version"] = "abc"  # 非 strict int
+    tampered = ExportedRecord(
+        record_kind=cp0.record_kind,
+        table_identity=cp0.table_identity,
+        stable_identity=cp0.stable_identity,
+        fields=tampered_fields,
+    )
+    new_records = dict(m.records)
+    new_records["checkpoint"] = (tampered,)
+    bad_manifest = Manifest(
+        schema_version=m.schema_version,
+        tenant_id=m.tenant_id,
+        record_count=m.record_count,
+        content_digest=m.content_digest,
+        runtime_per_binding_proof_available=m.runtime_per_binding_proof_available,
+        records=new_records,
+        raw=m.raw,
+    )
+    with pytest.raises(LedgerSnapshotError) as exc:
+        reconstruct_owner_facts(bad_manifest)
+    # 防御性归一化：必须是 LedgerSnapshotError，**不**是 ValueError
+    assert exc.value.reason == "RECONSTRUCT_OWNER_VERSION_TYPE_INVALID"
+
+
+def test_d1a_reconstruct_direct_manifest_ack_field_format_invalid():
+    """caller 直接构造 Manifest——ack_digest 长度 64 但含大写（state=acked）。"""
+    from app.composition.s6i3_ledger_snapshot import (
+        ExportedRecord,
+        Manifest,
+    )
+
+    tid, op_id, cp_id, ext_id, rec_id = _make_seed_ids()
+    env = _envelope_with_digest(
+        _build_envelope_one_record(
+            tid=tid, op_id=op_id, cp_id=cp_id, ext_id=ext_id, rec_id=rec_id,
+            cp_state="acked",
+            cp_ack_digest="a" * 64,
+        )
+    )
+    m = decode_ledger_segment(_envelope_to_bytes(env), expected_tenant_id=tid)
+    cp0 = m.records["checkpoint"][0]
+    tampered_fields = dict(cp0.fields)
+    tampered_fields["ack_digest"] = "Z" * 64  # 64 chars but uppercase Z
+    tampered = ExportedRecord(
+        record_kind=cp0.record_kind,
+        table_identity=cp0.table_identity,
+        stable_identity=cp0.stable_identity,
+        fields=tampered_fields,
+    )
+    new_records = dict(m.records)
+    new_records["checkpoint"] = (tampered,)
+    bad_manifest = Manifest(
+        schema_version=m.schema_version,
+        tenant_id=m.tenant_id,
+        record_count=m.record_count,
+        content_digest=m.content_digest,
+        runtime_per_binding_proof_available=m.runtime_per_binding_proof_available,
+        records=new_records,
+        raw=m.raw,
+    )
+    with pytest.raises(LedgerSnapshotError) as exc:
+        reconstruct_owner_facts(bad_manifest)
+    assert exc.value.reason == "RECONSTRUCT_ACK_DIGEST_FORMAT_INVALID"
+
+
+def test_d1a_reconstruct_direct_manifest_normalizes_internal_type_error():
+    """caller 直接构造 Manifest——capability_digest 是 list（不应漏出 TypeError）。
+
+    防御性归一化路径：``_HEX_LOWER_64.match(list)`` 抛 TypeError，应被 wrapper
+    归一化为 ``RECONSTRUCT_INTERNAL_TYPE_ERROR``（按用户裁决 三-2 末段）。
+    """
+    from app.composition.s6i3_ledger_snapshot import (
+        ExportedRecord,
+        Manifest,
+    )
+
+    tid, op_id, cp_id, ext_id, rec_id = _make_seed_ids()
+    env = _envelope_with_digest(
+        _build_envelope_one_record(
+            tid=tid, op_id=op_id, cp_id=cp_id, ext_id=ext_id, rec_id=rec_id
+        )
+    )
+    m = decode_ledger_segment(_envelope_to_bytes(env), expected_tenant_id=tid)
+    cp0 = m.records["checkpoint"][0]
+    tampered_fields = dict(cp0.fields)
+    tampered_fields["capability_digest"] = [1, 2, 3]  # list，不是 str
+    tampered = ExportedRecord(
+        record_kind=cp0.record_kind,
+        table_identity=cp0.table_identity,
+        stable_identity=cp0.stable_identity,
+        fields=tampered_fields,
+    )
+    new_records = dict(m.records)
+    new_records["checkpoint"] = (tampered,)
+    bad_manifest = Manifest(
+        schema_version=m.schema_version,
+        tenant_id=m.tenant_id,
+        record_count=m.record_count,
+        content_digest=m.content_digest,
+        runtime_per_binding_proof_available=m.runtime_per_binding_proof_available,
+        records=new_records,
+        raw=m.raw,
+    )
+    with pytest.raises(LedgerSnapshotError) as exc:
+        reconstruct_owner_facts(bad_manifest)
+    # capability_digest 是 list，_assert_string_field helper 抛
+    # RECONSTRUCT_CAPABILITY_DIGEST_FORMAT_INVALID（更具体的子路径）。
+    # 关键是**不**漏出原生 TypeError。
+    assert isinstance(exc.value, LedgerSnapshotError)
+    assert exc.value.reason in (
+        "RECONSTRUCT_CAPABILITY_DIGEST_FORMAT_INVALID",
+        "RECONSTRUCT_INTERNAL_TYPE_ERROR",
+    )
+
+
+def test_d1a_consumer_segment_limit_exceeded_memory():
+    """10001 条合法摘要 artifact 在 consumer 端被强制拦截（按用户裁决 三-3）。
+
+    producer 端 ``_select_all_for_kind`` 用 SQL LIMIT 截断；本测试模拟 caller
+    直接构造 10001 条 record + 合法 manifest 的 artifact——decoder 必须 fail closed。
+    """
+    tid = uuid.uuid4()
+    n = MAX_RECORDS_PER_KIND + 1
+    # 构造 10001 条 operation record（stable_identity 按字典序排序以通过 RECORDS_NOT_SORTED）
+    op_records: list[dict[str, Any]] = []
+    for i in range(n):
+        op_id = uuid.uuid4()
+        op_records.append(
+            {
+                "stable_identity": f"operation:{op_id}",
+                "table_identity": "agent_conversation_purges",
+                "fields": {
+                    "id": str(op_id),
+                    "tenant_id": str(tid),
+                    "conversation_id": str(uuid.uuid4()),
+                    "purge_revision": i + 1,
+                    "state": "running",
+                    "registry_digest": _DIGEST_HEX,
+                    "retention_policy_digest": _DIGEST_HEX,
+                    "hold_revision_snapshot": 0,
+                    "lease_epoch": 1,
+                    "failure_code": None,
+                    "revision": 1,
+                    "scheduled_at": None,
+                    "started_at": None,
+                    "completed_at": None,
+                    "next_retry_at": None,
+                },
+            }
+        )
+    # 按 stable_identity 字典序排序，确保 RECORDS_NOT_SORTED 不抢先
+    op_records.sort(key=lambda r: r["stable_identity"])
+    env = {
+        "schema_version": SCHEMA_VERSION,
+        "tenant_id": str(tid),
+        "manifest": {},
+        "runtime_per_binding_proof_available": False,
+        "records": {
+            "operation": op_records,
+            "checkpoint": [],
+            "external_ref": [],
+            "reconcile": [],
+        },
+    }
+    env = _envelope_with_digest(env)
+    bad = _envelope_to_bytes(env)
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=tid)
+    assert exc.value.reason == "SEGMENT_LIMIT_EXCEEDED"
+    assert exc.value.detail["kind"] == "operation"
+    assert exc.value.detail["actual"] == n
+    assert exc.value.detail["max_records_per_kind"] == MAX_RECORDS_PER_KIND

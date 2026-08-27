@@ -72,7 +72,7 @@ import re
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
@@ -88,6 +88,12 @@ SCHEMA_VERSION = 1
 # 防止恶意/巨型 tenant 撑爆 exporter / decoder 的硬上限（每类 record）。
 # 超限即抛 SEGMENT_LIMIT_EXCEEDED，**不**截断后冒充完整 snapshot（按用户裁决 1）。
 # 不持久推进 watermark；仍属 D1a（**不**形成 continuous archive）。
+#
+# 应用边界：
+# - **Producer 端**：`_select_all_for_kind` 通过 ``ORDER BY id LIMIT max+1`` 强制，
+#   超限抛 ``SEGMENT_LIMIT_EXCEEDED``（按用户裁决 1）
+# - **Consumer 端（第三轮 P1 闭合）**：``_assert_max_records_per_kind`` 在 decoder 端
+#   强制——即便 artifact 由 caller 直接构造绕过 producer，consumer 仍 fail closed
 MAX_RECORDS_PER_KIND = 10_000
 
 # --- record kinds ---
@@ -123,6 +129,104 @@ REQUIRED_READ_ONLY = "on"
 # migration 034 ck_agent_purge_owner_ack 仅约束 ``length(ack_digest)=64``；本常量是**附加**
 # 应用层门禁——要求 64 位小写 hex。**不得**误称为"migration 034 要求 64-hex"。
 _HEX_LOWER_64 = re.compile(r"^[0-9a-f]{64}$")
+
+
+# --- 严格类型 helpers（第三轮 P1）---
+
+
+def _is_strict_int(value: Any) -> bool:
+    """严格 int：排除 bool（Python 中 ``bool`` 是 ``int`` 子类）。
+
+    按用户裁决 三-1：schema_version / count / owner_version / purge_revision 等
+    整数字段必须严格 int；bool 不得视为 int。
+    """
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _assert_canonical_uuid(value: Any, *, field: str, hint: str = "") -> str:
+    """强制 ``value`` 为规范 UUID 字符串（lowercase + 8-4-4-4-12 连字符形式）。
+
+    规则（按用户裁决 三-1）：
+    - 非 str ⇒ ``<FIELD>_NOT_STRING``
+    - 不可解析为 UUID ⇒ ``<FIELD>_NOT_UUID``
+    - 可解析但非规范形式（大写 / 去连字符 / 其他变体）⇒ ``<FIELD>_NOT_CANONICAL_UUID``
+
+    任何 ValueError / TypeError / AttributeError 都被归一化为 ``LedgerSnapshotError``，
+    绝不向 caller 漏出原生 Python 异常。
+    """
+    if not isinstance(value, str):
+        raise LedgerSnapshotError(
+            f"{field}_NOT_STRING",
+            detail={"field": field, "found_type": type(value).__name__, "hint": hint},
+        )
+    try:
+        parsed = uuid.UUID(value)
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise LedgerSnapshotError(
+            f"{field}_NOT_UUID",
+            detail={"field": field, "found": value, "hint": hint},
+        ) from exc
+    canonical = str(parsed)
+    if value != canonical:
+        raise LedgerSnapshotError(
+            f"{field}_NOT_CANONICAL_UUID",
+            detail={"field": field, "found": value, "canonical": canonical, "hint": hint},
+        )
+    return canonical
+
+
+def _assert_strict_int_field(
+    value: Any, *, field: str, kind: str, stable_identity: str
+) -> int:
+    """严格 int 字段校验（排除 bool）。"""
+    if not _is_strict_int(value):
+        raise LedgerSnapshotError(
+            f"{field}_TYPE_INVALID",
+            detail={
+                "kind": kind,
+                "stable_identity": stable_identity,
+                "field": field,
+                "found_type": type(value).__name__,
+                "reason": "strict_int_required",
+            },
+        )
+    return int(value)
+
+
+def _assert_string_field(
+    value: Any, *, field: str, kind: str, stable_identity: str
+) -> str:
+    """string 字段校验（必须为 str；不接受 None — None 由 OWNER_SIX_TUPLE_INCOMPLETE 负责）。"""
+    if not isinstance(value, str):
+        raise LedgerSnapshotError(
+            f"{field}_TYPE_INVALID",
+            detail={
+                "kind": kind,
+                "stable_identity": stable_identity,
+                "field": field,
+                "found_type": type(value).__name__,
+                "reason": "string_required",
+            },
+        )
+    return value
+
+
+def _assert_strict_64hex_field(
+    value: Any, *, field: str, kind: str, stable_identity: str
+) -> str:
+    """64 位小写 hex 字段校验：先类型校验再格式校验。"""
+    s = _assert_string_field(value, field=field, kind=kind, stable_identity=stable_identity)
+    if not _HEX_LOWER_64.match(s):
+        raise LedgerSnapshotError(
+            f"{field}_FORMAT_INVALID",
+            detail={
+                "kind": kind,
+                "stable_identity": stable_identity,
+                "field": field,
+                "reason": "64hex_lowercase_required",
+            },
+        )
+    return s
 
 # --- table identity ---
 
@@ -562,9 +666,21 @@ def _envelope_typed(payload: bytes) -> dict[str, Any]:
 
 
 def _assert_schema_version(env: Mapping[str, Any]) -> int:
+    """schema_version 严格 int（排除 bool；按用户裁决 三-1）。
+
+    Python 中 ``bool`` 是 ``int`` 子类（``isinstance(True, int) == True``），普通
+    ``isinstance(sv, int)`` 接受 True/False。必须使用 ``_is_strict_int`` 显式排除。
+    """
     sv = env.get("schema_version")
-    if not isinstance(sv, int):
-        raise LedgerSnapshotError("SCHEMA_VERSION_MISSING_OR_INVALID")
+    if not _is_strict_int(sv):
+        raise LedgerSnapshotError(
+            "SCHEMA_VERSION_MISSING_OR_INVALID",
+            detail={
+                "found": sv,
+                "found_type": type(sv).__name__,
+                "reason": "strict_int_required",
+            },
+        )
     if sv != SCHEMA_VERSION:
         raise LedgerSnapshotError(
             "SCHEMA_VERSION_UNKNOWN",
@@ -574,21 +690,23 @@ def _assert_schema_version(env: Mapping[str, Any]) -> int:
 
 
 def _assert_tenant(env: Mapping[str, Any]) -> str:
+    """tenant_id 必须是规范 UUID 字符串（lowercase + 8-4-4-4-12 连字符形式）。
+
+    按用户裁决 三-1：``uuid.UUID(tid)`` 可解析**还不够**——必须满足
+    ``str(uuid.UUID(tid)) == tid``。大写 UUID、去连字符、含其他字符等非规范形式
+    均 fail closed（``TENANT_ID_NOT_CANONICAL_UUID``）。
+    """
     tid = env.get("tenant_id")
     if not isinstance(tid, str):
-        raise LedgerSnapshotError("TENANT_ID_MISSING_OR_INVALID")
-    # tenant_id 必须是规范 UUID（canonical 8-4-4-4-12 形式）
-    try:
-        canonical = str(uuid.UUID(tid))
-    except (ValueError, AttributeError, TypeError) as exc:
         raise LedgerSnapshotError(
-            "TENANT_ID_NOT_UUID",
-            detail={
-                "found": tid,
-                "hint": "tenant_id must be a canonical UUID string",
-            },
-        ) from exc
-    return canonical
+            "TENANT_ID_MISSING_OR_INVALID",
+            detail={"found_type": type(tid).__name__},
+        )
+    return _assert_canonical_uuid(
+        tid,
+        field="TENANT_ID",
+        hint="tenant_id must be canonical lowercase UUID 8-4-4-4-12 form",
+    )
 
 
 def _assert_tenant_binding(declared_tenant: str, expected_tenant_id: uuid.UUID) -> None:
@@ -630,15 +748,24 @@ def _assert_manifest(env: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
         entry = manifest[kind]
         if not isinstance(entry, dict):
             raise LedgerSnapshotError("MANIFEST_ENTRY_INVALID", detail={"kind": kind})
-        if "count" not in entry or not isinstance(entry["count"], int):
-            raise LedgerSnapshotError("MANIFEST_COUNT_MISSING_OR_INVALID", detail={"kind": kind})
-        if "content_digest" not in entry or not isinstance(entry["content_digest"], str):
+        # count 严格 int（排除 bool；按用户裁决 三-1）
+        cnt = entry.get("count")
+        if not _is_strict_int(cnt):
             raise LedgerSnapshotError(
-                "MANIFEST_CONTENT_DIGEST_MISSING_OR_INVALID", detail={"kind": kind}
+                "MANIFEST_COUNT_MISSING_OR_INVALID",
+                detail={"kind": kind, "found": cnt, "found_type": type(cnt).__name__},
             )
-        if len(entry["content_digest"]) != 64:
+        # content_digest 严格 64 位小写 hex（不仅是长度；按用户裁决 三-1）
+        d = entry.get("content_digest")
+        if not isinstance(d, str):
             raise LedgerSnapshotError(
-                "MANIFEST_CONTENT_DIGEST_NOT_64HEX", detail={"kind": kind}
+                "MANIFEST_CONTENT_DIGEST_MISSING_OR_INVALID",
+                detail={"kind": kind, "found_type": type(d).__name__},
+            )
+        if not _HEX_LOWER_64.match(d):
+            raise LedgerSnapshotError(
+                "MANIFEST_CONTENT_DIGEST_NOT_64HEX",
+                detail={"kind": kind, "reason": "64hex_lowercase_required"},
             )
     return manifest
 
@@ -919,6 +1046,116 @@ def _assert_owner_six_tuple_complete(
             )
 
 
+def _assert_field_types(records: Mapping[str, list[dict[str, Any]]]) -> None:
+    """校验 ``reconstruct_owner_facts`` 会消费的所有字段的类型/域（按用户裁决 三-2）。
+
+    **不**只检查 None——禁止 ``str()`` / ``int()`` 隐式纠正不可信 artifact；任意非法
+    输入必须在 decoder 阶段具名抛出。
+
+    字段语义（按真实 DB 列）：
+    - operation: id (canonical UUID) / purge_revision (strict int) — 其余字段类型不在
+      reconstruct 消费范围内，本校验**不**重复（已有 ``_assert_no_cross_layer_state_mix``
+      + ``_assert_state_whitelist`` 覆盖）
+    - checkpoint: id (canonical UUID) / purge_operation_id (canonical UUID) /
+      owner_key (string) / owner_version (strict int) / capability_digest
+      (64-hex lowercase string) / state (string) — ack_digest 由
+      ``_assert_checkpoint_ack_invariant`` 覆盖
+
+    任何原生 ``ValueError`` / ``TypeError`` / ``AttributeError`` 在 helper 中已被
+    归一化为 ``LedgerSnapshotError``；本函数自身不再抛原生异常。
+    """
+    for r in records.get(RECORD_KIND_OPERATION, ()):
+        sid = r.get("stable_identity", "")
+        fields = r.get("fields", {})
+        _assert_canonical_uuid(
+            fields.get("id"),
+            field="OPERATION_ID",
+            hint="operation.id must be canonical UUID",
+        )
+        pr = fields.get("purge_revision")
+        if pr is not None:
+            _assert_strict_int_field(
+                pr,
+                field="OPERATION_PURGE_REVISION",
+                kind=RECORD_KIND_OPERATION,
+                stable_identity=sid,
+            )
+    for r in records.get(RECORD_KIND_CHECKPOINT, ()):
+        sid = r.get("stable_identity", "")
+        fields = r.get("fields", {})
+        _assert_canonical_uuid(
+            fields.get("id"),
+            field="CHECKPOINT_ID",
+            hint="checkpoint.id must be canonical UUID",
+        )
+        _assert_canonical_uuid(
+            fields.get("purge_operation_id"),
+            field="CHECKPOINT_PURGE_OPERATION_ID",
+            hint="checkpoint.purge_operation_id must be canonical UUID",
+        )
+        ok = fields.get("owner_key")
+        if ok is not None:
+            _assert_string_field(
+                ok,
+                field="CHECKPOINT_OWNER_KEY",
+                kind=RECORD_KIND_CHECKPOINT,
+                stable_identity=sid,
+            )
+        ov = fields.get("owner_version")
+        if ov is not None:
+            _assert_strict_int_field(
+                ov,
+                field="CHECKPOINT_OWNER_VERSION",
+                kind=RECORD_KIND_CHECKPOINT,
+                stable_identity=sid,
+            )
+        cd = fields.get("capability_digest")
+        if cd is not None:
+            _assert_strict_64hex_field(
+                cd,
+                field="CHECKPOINT_CAPABILITY_DIGEST",
+                kind=RECORD_KIND_CHECKPOINT,
+                stable_identity=sid,
+            )
+        st = fields.get("state")
+        if st is not None:
+            _assert_string_field(
+                st,
+                field="CHECKPOINT_STATE",
+                kind=RECORD_KIND_CHECKPOINT,
+                stable_identity=sid,
+            )
+
+
+def _assert_max_records_per_kind(
+    records: Mapping[str, list[dict[str, Any]]],
+) -> None:
+    """Consumer 端 per-kind 上限闭合（按用户裁决 三-3）。
+
+    Producer 端 ``_select_all_for_kind`` 已通过 ``ORDER BY id LIMIT max+1`` 强制；
+    本检查为 consumer-side defense-in-depth——artifact 由 caller 直接构造绕过
+    producer 时仍 fail closed。
+
+    任意 kind 长度 > ``MAX_RECORDS_PER_KIND`` ⇒ ``SEGMENT_LIMIT_EXCEEDED``。
+    """
+    for kind in RECORD_KINDS:
+        n = len(records[kind])
+        if n > MAX_RECORDS_PER_KIND:
+            raise LedgerSnapshotError(
+                "SEGMENT_LIMIT_EXCEEDED",
+                detail={
+                    "kind": kind,
+                    "max_records_per_kind": MAX_RECORDS_PER_KIND,
+                    "actual": n,
+                    "hint": (
+                        "consumer-side guard; refuse artifacts exceeding per-kind "
+                        "limit (producer-side _select_all_for_kind enforces same "
+                        "limit via ORDER BY id LIMIT max+1)"
+                    ),
+                },
+            )
+
+
 def _assert_no_cross_layer_state_mix(records: Mapping[str, list[dict[str, Any]]]) -> None:
     """operation.checkpoint.state / fence.state 跨层混读防御。
 
@@ -1162,27 +1399,29 @@ def decode_ledger_segment(
             否则 ``TENANT_BINDING_MISMATCH``。该绑定校验在 records 解析之前执行，
             确保即使 artifact 全空（records 全 0）也不能跨 tenant 注入。
 
-    校验顺序（按用户裁决 + 本轮 P1）：
+    校验顺序（按用户裁决 + 第二轮 P1 + 第三轮 P1）：
     1. 顶层 envelope 类型
-    2. schema_version
-    3. tenant_id 类型 + UUID 格式（canonical）
+    2. schema_version（严格 int，排除 bool）
+    3. tenant_id 规范 UUID（lowercase + 8-4-4-4-12）
     4. tenant 绑定：declared == expected_tenant_id（在 records 解析之前）
-    5. manifest 结构 + 顶层 keys 严格 == RECORD_KINDS + 每 kind count/digest 长度
+    5. manifest 结构 + 顶层 keys 严格 == RECORD_KINDS + 每 kind count（严格 int）+ content_digest（64-hex lowercase）
     6. records 顶层结构 + 每 record 类型 + stable_identity 类型 + 升序
     7. stable_identity 严格 == f"{kind}:{fields.id}"（所有 kind）；operation / checkpoint
        重复逻辑身份检测
-    8. kind / table_identity 配对
-    9. manifest count == records count
-    10. content_digest 校验
-    11. 跨 tenant 检测（record fields.tenant_id == declared）
-    12. 跨 kind stable_identity 去重（catch-all；同 kind 已由 7 处理）
-    13. 六元组完整性（OWNER_SIX_TUPLE_INCOMPLETE）
-    14. operation.state / checkpoint.state 闭集
-    15. checkpoint.state / ack_digest 关系（64-hex lowercase，应用层门禁）
-    16. 跨层字段混读
-    17. runtime 敏感值防御（ref_value / runtime_session_ref）
-    18. checkpoint 必须有对应 operation（purge_operation_id 缺失也 fail closed）
-    19. runtime_per_binding_proof_available 严格 false
+    8. consumer 端 per-kind 上限（SEGMENT_LIMIT_EXCEEDED；producer 端由 SELECT LIMIT 强制）
+    9. kind / table_identity 配对
+    10. manifest count == records count
+    11. content_digest 校验
+    12. 跨 tenant 检测（record fields.tenant_id == declared）
+    13. 跨 kind stable_identity 去重（catch-all；同 kind 已由 7 处理）
+    14. 六元组完整性（OWNER_SIX_TUPLE_INCOMPLETE）
+    15. reconstruct 消费字段的类型/域（canonical UUID / strict int / string / 64-hex）
+    16. operation.state / checkpoint.state 闭集
+    17. checkpoint.state / ack_digest 关系（64-hex lowercase，应用层门禁）
+    18. 跨层字段混读
+    19. runtime 敏感值防御（ref_value / runtime_session_ref）
+    20. checkpoint 必须有对应 operation（purge_operation_id 缺失也 fail closed）
+    21. runtime_per_binding_proof_available 严格 false
     """
     env = _envelope_typed(payload)
     _assert_schema_version(env)
@@ -1192,12 +1431,17 @@ def decode_ledger_segment(
     manifest = _assert_manifest(env)
     records = _assert_records(env)
     _assert_logical_identity_binding(records)
+    # consumer 端 per-kind 上限闭合（producer 端由 SELECT LIMIT 强制；本检查为
+    # defense-in-depth，避免 caller 直接构造 artifact 绕过）
+    _assert_max_records_per_kind(records)
     _assert_kind_table_match(records)
     _assert_count_match(manifest, records)
     _assert_content_digest(manifest, records)
     _assert_cross_tenant(env, declared_tenant)
     _assert_no_duplicate_stable_identity(records)
     _assert_owner_six_tuple_complete(records)
+    # reconstruct 消费字段的类型/域校验（按用户裁决 三-2）
+    _assert_field_types(records)
     _assert_state_whitelist(records)
     _assert_checkpoint_ack_invariant(records)
     _assert_no_cross_layer_state_mix(records)
@@ -1261,17 +1505,46 @@ def reconstruct_owner_facts(
     内两个 operation 共享同一 owner_key 时，**均**进入 facts（不得仅以 owner_key
     为键覆盖前一个）。
 
-    按用户裁决 一-3：decoder 阶段已严格 fail closed（``OWNER_SIX_TUPLE_INCOMPLETE``、
-    ``CHECKPOINT_WITHOUT_OPERATION`` 等）；本函数**不**再做二次校验，只完成
-    key = (operation_id, owner_key) 的查找与构造。所有字段读取若仍因 envelope 异常
-    返回 None（防御性 fallback），同样以 ``OWNER_SIX_TUPLE_INCOMPLETE`` 抛出——
-    绝不静默覆盖或用 sentinel 值伪造 owner fact。
+    按用户裁决 一-3 + 三-2：decoder 阶段已严格 fail closed（``OWNER_SIX_TUPLE_INCOMPLETE``、
+    ``CHECKPOINT_WITHOUT_OPERATION``、字段类型/域错误等）；本函数**不**再做二次校验，
+    只完成 key = (operation_id, owner_key) 的查找与构造。
+
+    防御性归一化（按用户裁决 三-2 末段）：即使调用方直接构造 ``Manifest`` 绕过
+    decoder，本函数**绝不**让 ``ValueError`` / ``TypeError`` / ``KeyError`` /
+    ``AttributeError`` 等原生 Python 异常漏出——任何此类异常都被归一化为
+    ``LedgerSnapshotError("RECONSTRUCT_INTERNAL_TYPE_ERROR", ...)``。绝不静默
+    转换或覆盖（不留 fallback sentinel 值）。
     """
+    try:
+        return _reconstruct_owner_facts_impl(manifest)
+    except LedgerSnapshotError:
+        # 已具名异常直接透传
+        raise
+    except (ValueError, TypeError, KeyError, AttributeError) as exc:
+        # 防御性归一化：decoder 阶段已校验，但 caller 可能绕过；任何原生异常
+        # **绝不**漏出。归一化为具名 LedgerSnapshotError。
+        raise LedgerSnapshotError(
+            "RECONSTRUCT_INTERNAL_TYPE_ERROR",
+            detail={
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "hint": (
+                    "reconstruct defensive normalization; caller may have bypassed "
+                    "decoder; do not silently coerce"
+                ),
+            },
+        ) from exc
+
+
+def _reconstruct_owner_facts_impl(
+    manifest: Manifest,
+) -> dict[tuple[str, str], OwnerFacts]:
+    """``reconstruct_owner_facts`` 实现主体（异常归一化在 wrapper 处理）。"""
     operation_by_id = _operation_lookup(manifest.records[RECORD_KIND_OPERATION])
     out: dict[tuple[str, str], OwnerFacts] = {}
     for cp in manifest.records[RECORD_KIND_CHECKPOINT]:
         f = cp.fields
-        # decoder 已校验：必需字段非 None；此处仍防御性检查并具名抛出，
+        # decoder 已校验：必需字段非 None 且类型/域合法；此处仍防御性检查并具名抛出，
         # **绝不**用 sentinel 值或默认字符串静默构造 owner fact
         owner_key = f.get("owner_key")
         operation_id = f.get("purge_operation_id")
@@ -1303,6 +1576,80 @@ def reconstruct_owner_facts(
                     ),
                 },
             )
+        # 类型/域二次校验（防御性，避免 caller 直接构造 Manifest 绕过 decoder）：
+        # 任意字段类型异常都被 helper 归一化为 LedgerSnapshotError
+        _assert_canonical_uuid(
+            f.get("id"),
+            field="CHECKPOINT_ID",
+            hint="checkpoint.id must be canonical UUID",
+        )
+        _assert_canonical_uuid(
+            operation_id,
+            field="CHECKPOINT_PURGE_OPERATION_ID",
+            hint="checkpoint.purge_operation_id must be canonical UUID",
+        )
+        # owner_key / state 必须为 string（不允许 int / bool）
+        if not isinstance(owner_key, str):
+            raise LedgerSnapshotError(
+                "RECONSTRUCT_OWNER_KEY_TYPE_INVALID",
+                detail={
+                    "stable_identity": cp.stable_identity,
+                    "field": "owner_key",
+                    "found_type": type(owner_key).__name__,
+                },
+            )
+        if not isinstance(state, str):
+            raise LedgerSnapshotError(
+                "RECONSTRUCT_CHECKPOINT_STATE_TYPE_INVALID",
+                detail={
+                    "stable_identity": cp.stable_identity,
+                    "field": "state",
+                    "found_type": type(state).__name__,
+                },
+            )
+        # owner_version 严格 int（排除 bool）
+        if not _is_strict_int(owner_version):
+            raise LedgerSnapshotError(
+                "RECONSTRUCT_OWNER_VERSION_TYPE_INVALID",
+                detail={
+                    "stable_identity": cp.stable_identity,
+                    "field": "owner_version",
+                    "found_type": type(owner_version).__name__,
+                },
+            )
+        # capability_digest 必须为 64-hex lowercase
+        if not isinstance(capability_digest, str) or not _HEX_LOWER_64.match(
+            capability_digest
+        ):
+            raise LedgerSnapshotError(
+                "RECONSTRUCT_CAPABILITY_DIGEST_FORMAT_INVALID",
+                detail={
+                    "stable_identity": cp.stable_identity,
+                    "field": "capability_digest",
+                    "reason": "64hex_lowercase_required",
+                },
+            )
+        # ack_digest 在 state<>'acked' 时必须 None，否则 64-hex lowercase
+        if state == "acked":
+            if not isinstance(ack_digest, str) or not _HEX_LOWER_64.match(ack_digest):
+                raise LedgerSnapshotError(
+                    "RECONSTRUCT_ACK_DIGEST_FORMAT_INVALID",
+                    detail={
+                        "stable_identity": cp.stable_identity,
+                        "field": "ack_digest",
+                        "reason": "acked_requires_64hex_lowercase",
+                    },
+                )
+        else:
+            if ack_digest is not None:
+                raise LedgerSnapshotError(
+                    "RECONSTRUCT_ACK_DIGEST_NOT_NULL_FOR_NON_ACKED",
+                    detail={
+                        "stable_identity": cp.stable_identity,
+                        "field": "ack_digest",
+                        "state": state,
+                    },
+                )
         op = operation_by_id.get(str(operation_id))
         if op is None:
             raise LedgerSnapshotError(
@@ -1317,8 +1664,15 @@ def reconstruct_owner_facts(
                     ),
                 },
             )
+        # operation.id 必须 canonical UUID（防御性）
+        _assert_canonical_uuid(
+            op.get("id"),
+            field="OPERATION_ID",
+            hint="operation.id must be canonical UUID",
+        )
+        # purge_revision 严格 int
         purge_revision = op.get("purge_revision")
-        if purge_revision is None:
+        if not _is_strict_int(purge_revision):
             raise LedgerSnapshotError(
                 "OWNER_SIX_TUPLE_INCOMPLETE",
                 detail={
@@ -1332,14 +1686,15 @@ def reconstruct_owner_facts(
                     ),
                 },
             )
+        purge_revision_int = cast(int, purge_revision)
         out[(str(operation_id), str(owner_key))] = OwnerFacts(
             owner_key=str(owner_key),
             operation_id=str(operation_id),
             ack_digest=str(ack_digest) if ack_digest is not None else None,
-            owner_version=int(owner_version),  # type: ignore[arg-type]
+            owner_version=cast(int, owner_version),
             capability_digest=str(capability_digest),
             checkpoint_state=str(state),
-            purge_revision=int(purge_revision),  # type: ignore[arg-type]
+            purge_revision=purge_revision_int,
             runtime_per_binding_proof_available=manifest.runtime_per_binding_proof_available,
         )
     return out

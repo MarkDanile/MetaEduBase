@@ -21,6 +21,12 @@ mutation 项（按用户裁决）：
 - M12：duplicate owner-fact key bypass（移除 per-kind 重复检测，仅保留 cross-kind stable_identity 去重）→ 红：op / checkpoint owner 重复不被拒
 - M13：owner tuple completeness bypass（移除 _assert_owner_six_tuple_complete）→ 红：六元组缺失不被拒
 - M14：expected tenant binding bypass（移除 _assert_tenant_binding）→ 红：declared != expected 不被拒
+- M15：schema_version strict_int bypass（接受 bool True）→ 红：SCHEMA_VERSION_MISSING_OR_INVALID（strict_int_required）不被拒
+- M16：tenant canonical bypass（接受大写 / 去连字符 UUID）→ 红：TENANT_ID_NOT_CANONICAL_UUID 不被拒
+- M17：manifest count strict_int bypass（接受 bool False）→ 红：MANIFEST_COUNT_MISSING_OR_INVALID（strict_int_required）不被拒
+- M18：manifest content_digest 64-hex bypass（仅检查长度，不要求小写 hex）→ 红：MANIFEST_CONTENT_DIGEST_NOT_64HEX 不被拒
+- M19：field type bypass（owner_version / purge_revision 接受 bool）→ 红：CHECKPOINT_OWNER_VERSION_TYPE_INVALID / OPERATION_PURGE_REVISION_TYPE_INVALID 不被拒
+- M20：consumer MAX_RECORDS_PER_KIND bypass（移除 _assert_max_records_per_kind）→ 红：10001 条合法摘要 artifact 不被拒
 
 NOT-RED 如实登记（不计入 kill 分母）：
 - N1：mutate 7 类 checkpoint state 字段 rename → 不影响 D1a 行为（D1a 不解析 state 跨层语义）
@@ -135,8 +141,8 @@ MUTATIONS = [
         [
             (
                 TARGET,
-                "def _assert_schema_version(env: Mapping[str, Any]) -> int:\n    sv = env.get(\"schema_version\")\n    if not isinstance(sv, int):\n        raise LedgerSnapshotError(\"SCHEMA_VERSION_MISSING_OR_INVALID\")\n    if sv != SCHEMA_VERSION:\n        raise LedgerSnapshotError(\n            \"SCHEMA_VERSION_UNKNOWN\",\n            detail={\"found\": sv, \"supported\": SCHEMA_VERSION},\n        )\n    return sv",
-                "def _assert_schema_version(env: Mapping[str, Any]) -> int:\n    sv = env.get(\"schema_version\")\n    return sv if isinstance(sv, int) else SCHEMA_VERSION  # mutation M5: accept any",
+                "    if sv != SCHEMA_VERSION:\n        raise LedgerSnapshotError(\n            \"SCHEMA_VERSION_UNKNOWN\",\n            detail={\"found\": sv, \"supported\": SCHEMA_VERSION},\n        )\n    return sv",
+                "    # mutation M5: accept any version\n    return sv",
             )
         ],
         [f"{D1A_TEST}::test_d1a_schema_version_mismatch_fails"],
@@ -265,6 +271,90 @@ MUTATIONS = [
             f"{D1A_TEST}::test_d1a_tenant_binding_mismatch_empty_artifact_fails",
             f"{D1A_TEST}::test_d1a_tenant_not_uuid_fails",
         ],
+    ),
+    # --- M15：schema_version strict_int bypass ---
+    (
+        "M15 schema_version strict_int bypass（_assert_schema_version 接受 bool True）",
+        [
+            (
+                TARGET,
+                "    sv = env.get(\"schema_version\")\n    if not _is_strict_int(sv):\n        raise LedgerSnapshotError(\n            \"SCHEMA_VERSION_MISSING_OR_INVALID\",\n            detail={\n                \"found\": sv,\n                \"found_type\": type(sv).__name__,\n                \"reason\": \"strict_int_required\",\n            },\n        )",
+                "    # mutation M15: relax to isinstance(int) (accepts bool True)\n    sv = env.get(\"schema_version\")\n    if not isinstance(sv, int):\n        raise LedgerSnapshotError(\"SCHEMA_VERSION_MISSING_OR_INVALID\")",
+            )
+        ],
+        [f"{D1A_TEST}::test_d1a_schema_version_bool_rejected_memory"],
+    ),
+    # --- M16：tenant canonical bypass ---
+    (
+        "M16 tenant canonical bypass（_assert_tenant 仅检查可解析，不强制 canonical）",
+        [
+            (
+                TARGET,
+                "    return _assert_canonical_uuid(\n        tid,\n        field=\"TENANT_ID\",\n        hint=\"tenant_id must be canonical lowercase UUID 8-4-4-4-12 form\",\n    )",
+                "    # mutation M16: drop canonical check, accept any parseable UUID\n    try:\n        return str(uuid.UUID(tid))\n    except (ValueError, AttributeError, TypeError):\n        raise LedgerSnapshotError(\"TENANT_ID_NOT_UUID\")",
+            )
+        ],
+        [
+            f"{D1A_TEST}::test_d1a_tenant_uppercase_uuid_rejected_memory",
+            f"{D1A_TEST}::test_d1a_tenant_no_hyphens_rejected_memory",
+        ],
+    ),
+    # --- M17：manifest count strict_int bypass ---
+    (
+        "M17 manifest count strict_int bypass（_assert_manifest 接受 bool False）",
+        [
+            (
+                TARGET,
+                "        # count 严格 int（排除 bool；按用户裁决 三-1）\n        cnt = entry.get(\"count\")\n        if not _is_strict_int(cnt):\n            raise LedgerSnapshotError(\n                \"MANIFEST_COUNT_MISSING_OR_INVALID\",\n                detail={\"kind\": kind, \"found\": cnt, \"found_type\": type(cnt).__name__},\n            )",
+                "        # mutation M17: relax to isinstance(int) (accepts bool)\n        if not isinstance(entry.get(\"count\"), int):\n            raise LedgerSnapshotError(\"MANIFEST_COUNT_MISSING_OR_INVALID\", detail={\"kind\": kind})",
+            )
+        ],
+        [f"{D1A_TEST}::test_d1a_manifest_count_bool_rejected_memory"],
+    ),
+    # --- M18：manifest content_digest 64-hex bypass ---
+    (
+        "M18 manifest content_digest 64-hex bypass（_assert_manifest 仅检查长度 64，不要求小写 hex）",
+        [
+            (
+                TARGET,
+                "        if not _HEX_LOWER_64.match(d):\n            raise LedgerSnapshotError(\n                \"MANIFEST_CONTENT_DIGEST_NOT_64HEX\",\n                detail={\"kind\": kind, \"reason\": \"64hex_lowercase_required\"},\n            )",
+                "        if len(d) != 64:  # mutation M18: only check length, not hex lowercase\n            raise LedgerSnapshotError(\n                \"MANIFEST_CONTENT_DIGEST_NOT_64HEX\", detail={\"kind\": kind}\n            )",
+            )
+        ],
+        [
+            f"{D1A_TEST}::test_d1a_manifest_digest_uppercase_hex_rejected_memory",
+            f"{D1A_TEST}::test_d1a_manifest_digest_non_hex_rejected_memory",
+        ],
+    ),
+    # --- M19：field type bypass ---
+    (
+        "M19 field type bypass（_assert_field_types owner_version/purge_revision 接受 bool）",
+        [
+            (
+                TARGET,
+                "def _assert_field_types(records: Mapping[str, list[dict[str, Any]]]) -> None:",
+                "def _assert_field_types(records: Mapping[str, list[dict[str, Any]]]) -> None:\n    return  # mutation M19: bypass field type/domain checks",
+            )
+        ],
+        [
+            f"{D1A_TEST}::test_d1a_operation_purge_revision_bool_rejected_memory",
+            f"{D1A_TEST}::test_d1a_checkpoint_owner_version_bool_rejected_memory",
+            f"{D1A_TEST}::test_d1a_checkpoint_owner_key_int_rejected_memory",
+            f"{D1A_TEST}::test_d1a_checkpoint_capability_digest_int_rejected_memory",
+            f"{D1A_TEST}::test_d1a_checkpoint_id_not_canonical_uuid_rejected_memory",
+        ],
+    ),
+    # --- M20：consumer MAX_RECORDS_PER_KIND bypass ---
+    (
+        "M20 consumer MAX_RECORDS_PER_KIND bypass（_assert_max_records_per_kind 直接 return）",
+        [
+            (
+                TARGET,
+                "def _assert_max_records_per_kind(\n    records: Mapping[str, list[dict[str, Any]]],\n) -> None:",
+                "def _assert_max_records_per_kind(\n    records: Mapping[str, list[dict[str, Any]]],\n) -> None:\n    return  # mutation M20: bypass consumer-side segment limit check",
+            )
+        ],
+        [f"{D1A_TEST}::test_d1a_consumer_segment_limit_exceeded_memory"],
     ),
 ]
 
