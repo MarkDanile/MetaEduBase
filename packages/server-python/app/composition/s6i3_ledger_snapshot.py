@@ -180,6 +180,7 @@ async def _export_operation(
 ) -> tuple[ExportedRecord, ...]:
     columns = (
         "id",
+        "tenant_id",
         "conversation_id",
         "purge_revision",
         "state",
@@ -218,6 +219,7 @@ async def _export_checkpoint(
 ) -> tuple[ExportedRecord, ...]:
     columns = (
         "id",
+        "tenant_id",
         "purge_operation_id",
         "owner_key",
         "owner_version",
@@ -255,6 +257,7 @@ async def _export_external_ref(
     # 严禁序列化到 artifact）
     columns = (
         "id",
+        "tenant_id",
         "conversation_id",
         "owner_key",
         "ref_scheme",
@@ -293,6 +296,7 @@ async def _export_reconcile(
 ) -> tuple[ExportedRecord, ...]:
     columns = (
         "id",
+        "tenant_id",
         "owner_key",
         "source_table",
         "source_row_id",
@@ -610,7 +614,16 @@ def _assert_cross_tenant(env: Mapping[str, Any], declared_tenant: str) -> None:
         for r in recs:
             fields = r.get("fields", {})
             t = fields.get("tenant_id")
-            if t is not None and t != declared_tenant:
+            if t is None:
+                raise LedgerSnapshotError(
+                    "CROSS_TENANT_RECORD",
+                    detail={
+                        "kind": kind,
+                        "stable_identity": r.get("stable_identity"),
+                        "reason": "tenant_id_missing",
+                    },
+                )
+            if t != declared_tenant:
                 raise LedgerSnapshotError(
                     "CROSS_TENANT_RECORD",
                     detail={"kind": kind, "stable_identity": r.get("stable_identity")},

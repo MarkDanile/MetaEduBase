@@ -299,19 +299,18 @@ async def _first_tenant(session: AsyncSession) -> uuid.UUID:
 
 
 async def test_d1a_tenant_isolation(snapshot_factory):
-    """不同 tenant 数据严格隔离——export_a 不含 tenant_b 的 record。"""
+    """不同 tenant 数据严格隔离——export_a 不含 tenant_b 的 record。
+
+    注意：必须使用 ``_seed_minimal_ledger`` 返回的 tid（**不能**通过 tenants.name 字母序
+    反查——metaedu_test 残留大量 prior run 的 A-*/B-* 租户，字母序首个 A-* 与本测试
+    种入的 A-* 不同，会造成 SELECT 返回 0 行 + 断言空过，CI fresh DB 下立即暴露。
+    """
     factory = snapshot_factory
     async with factory() as seed:
-        await _seed_minimal_ledger(seed, tenant_label="A")
-        await _seed_minimal_ledger(seed, tenant_label="B")
-
-    async with factory() as session:
-        rows = (
-            await session.execute(text("SELECT id, name FROM metaedu.tenants ORDER BY name"))
-        ).mappings().all()
-        # name = "A-<uuid>" / "B-<uuid>"
-        tid_a = next(r["id"] for r in rows if str(r["id"]) in str(r["name"]) and r["name"].startswith("A-"))
-        tid_b = next(r["id"] for r in rows if r["name"].startswith("B-"))
+        ids_a = await _seed_minimal_ledger(seed, tenant_label="A")
+        ids_b = await _seed_minimal_ledger(seed, tenant_label="B")
+        tid_a = ids_a["tid"]
+        tid_b = ids_b["tid"]
 
     async with factory() as session, session.begin():
         await session.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"))

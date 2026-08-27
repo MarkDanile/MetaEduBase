@@ -179,7 +179,7 @@ MUTATIONS = [
         [
             (
                 TARGET,
-                "def _assert_cross_tenant(env: Mapping[str, Any], declared_tenant: str) -> None:\n    for kind, recs in env[\"records\"].items():\n        for r in recs:\n            fields = r.get(\"fields\", {})\n            t = fields.get(\"tenant_id\")\n            if t is not None and t != declared_tenant:\n                raise LedgerSnapshotError(\n                    \"CROSS_TENANT_RECORD\",\n                    detail={\"kind\": kind, \"stable_identity\": r.get(\"stable_identity\")},\n                )",
+                "def _assert_cross_tenant(env: Mapping[str, Any], declared_tenant: str) -> None:\n    for kind, recs in env[\"records\"].items():\n        for r in recs:\n            fields = r.get(\"fields\", {})\n            t = fields.get(\"tenant_id\")\n            if t is None:\n                raise LedgerSnapshotError(\n                    \"CROSS_TENANT_RECORD\",\n                    detail={\n                        \"kind\": kind,\n                        \"stable_identity\": r.get(\"stable_identity\"),\n                        \"reason\": \"tenant_id_missing\",\n                    },\n                )\n            if t != declared_tenant:\n                raise LedgerSnapshotError(\n                    \"CROSS_TENANT_RECORD\",\n                    detail={\"kind\": kind, \"stable_identity\": r.get(\"stable_identity\")},\n                )",
                 "def _assert_cross_tenant(env: Mapping[str, Any], declared_tenant: str) -> None:\n    return  # mutation M9: bypass cross-tenant check",
             )
         ],
