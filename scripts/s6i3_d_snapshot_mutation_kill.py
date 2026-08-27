@@ -83,8 +83,8 @@ MUTATIONS = [
         [
             (
                 TARGET,
-                "        f\"WHERE tenant_id = :tenant_id\"",
-                "        \"\"  # mutation M1: remove tenant_id filter",
+                "        f\"WHERE tenant_id = :tenant_id \"\n        f\"ORDER BY id \"\n        f\"LIMIT :limit\"",
+                "        \"\"  # mutation M1: remove tenant_id filter\n        f\"ORDER BY id \"\n        f\"LIMIT :limit\"",
             )
         ],
         [f"{D1A_TEST}::test_d1a_tenant_isolation"],
@@ -123,7 +123,7 @@ MUTATIONS = [
                 "def _assert_count_match(\n    manifest: Mapping[str, dict[str, Any]],\n    records: Mapping[str, list[dict[str, Any]]],\n) -> None:\n    return  # mutation M4: bypass count check",
             )
         ],
-        [f"{D1A_TEST}::test_d1a_manifest_digest_and_count_consistency"],
+        [f"{D1A_TEST}::test_d1a_count_tamper_fails"],
     ),
     # --- M5：schema_version 校验 bypass ---
     (
@@ -151,15 +151,15 @@ MUTATIONS = [
     ),
     # --- M7：stable sort bypass ---
     (
-        "M7 stable sort bypass（_records_to_envelope 不按 stable_identity 排序）",
+        "M7 stable sort bypass（_records_to_envelope 反转 records 顺序）",
         [
             (
                 TARGET,
                 "    by_kind: dict[str, tuple[ExportedRecord, ...]] = {\n        RECORD_KIND_OPERATION: tuple(sorted(operation, key=lambda r: r.stable_identity)),\n        RECORD_KIND_CHECKPOINT: tuple(sorted(checkpoint, key=lambda r: r.stable_identity)),\n        RECORD_KIND_EXTERNAL_REF: tuple(sorted(external_ref, key=lambda r: r.stable_identity)),\n        RECORD_KIND_RECONCILE: tuple(sorted(reconcile, key=lambda r: r.stable_identity)),\n    }",
-                "    by_kind: dict[str, tuple[ExportedRecord, ...]] = {\n        RECORD_KIND_OPERATION: tuple(operation),  # mutation M7: no sort\n        RECORD_KIND_CHECKPOINT: tuple(checkpoint),\n        RECORD_KIND_EXTERNAL_REF: tuple(external_ref),\n        RECORD_KIND_RECONCILE: tuple(reconcile),\n    }",
+                "    by_kind: dict[str, tuple[ExportedRecord, ...]] = {\n        RECORD_KIND_OPERATION: tuple(reversed(operation)),  # mutation M7: reverse\n        RECORD_KIND_CHECKPOINT: tuple(reversed(checkpoint)),\n        RECORD_KIND_EXTERNAL_REF: tuple(reversed(external_ref)),\n        RECORD_KIND_RECONCILE: tuple(reversed(reconcile)),\n    }",
             )
         ],
-        [f"{D1A_TEST}::test_d1a_deterministic_bytes"],
+        [f"{D1A_TEST}::test_d1a_records_out_of_order_fails"],
     ),
     # --- M8：duplicate identity 校验 bypass ---
     (
@@ -183,7 +183,7 @@ MUTATIONS = [
                 "def _assert_cross_tenant(env: Mapping[str, Any], declared_tenant: str) -> None:\n    return  # mutation M9: bypass cross-tenant check",
             )
         ],
-        [f"{D1A_TEST}::test_d1a_tenant_isolation"],
+        [f"{D1A_TEST}::test_d1a_cross_tenant_tamper_fails"],
     ),
     # --- M10：runtime per-binding proof 显式标记 bypass ---
     (
