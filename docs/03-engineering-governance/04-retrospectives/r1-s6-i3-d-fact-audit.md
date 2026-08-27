@@ -6,11 +6,11 @@
 >
 > PR：#598（Draft, base=main `aff54883`）
 >
-> 当前 head：`061ad1398a555c6e9d99c30834c6212396379dee`（本地 == 远端）
+> 本轮输入 baseline：`4cf3ab369af240873754d6e6c9890a92c2c03e39`（不要在 committed 文档写"当前 HEAD"——每次提交后自我陈旧）
 >
 > 冻结契约：Plan §S6-8 / §S6-12 / §S6-13 / §S6-14 / §S6-15.5（已随 PR #586 / #591 / #592 / #596 合入 main）
 >
-> 净 diff（vs main `aff54883`）：`docs/03-engineering-governance/04-retrospectives/r1-s6-i3-d-fact-audit.md` 662+/0- + `docs/03-engineering-governance/current-work.md` 27+/1- = **2 文件 689+/1-**
+> 净 diff 统计仅在 PR body 记录，不嵌入 committed 文档（易漂移）
 
 ## 0. 审计范围与边界 + 本轮 correction 目标
 
@@ -105,10 +105,10 @@
 | **DB 结构层 #2（owner row UNIQUE）** | `uq_agent_purge_owner(tenant_id, purge_operation_id, owner_key)`（migration 034）| **同一 conversation + owner 仅允许一行 checkpoint**——不同 owner 可独立 ACK；同一 owner 重 ACK 必走同一 row CAS | ack_digest 唯一性、external ref CAS 幂等、runtime binding CAS 幂等、digest 正确性 |
 | **应用层 digest 生成** | `external_erase_receipt_digest(adapter_key, adapter_version, idempotency_key, adapter_receipt_evidence, ref_digest, erase_outcome='erased')` | 64-char hex digest 计算（`canonical_digest` via SHA-256 over canonical JSON envelope，schema_version=1） | DB 落账成功、CAS 收敛、idempotency_key 全局唯一 |
 | **应用层 digest 生成（runtime）** | `runtime_destroy_receipt_digest(adapter_key, adapter_version, idempotency_key, adapter_receipt_evidence, session_digest, destroy_outcome)` | 同上（runtime private envelope） | DB 落账成功、CAS 收敛、idempotency_key 全局唯一 |
-| **CAS 收敛层 #1（checkpoint ACK CAS）** | `_apply_window_outcome` SUCCESS 路径 `UPDATE ... WHERE id = :id AND state='erasing' AND ack_digest IS NULL`（settlement.py:1361-1377）| **checkpoint 写 ack_digest 幂等**（rowcount=1 收敛） | hex 校验、digest 全局唯一、外部 ref 写、binding 写 |
-| **CAS 收敛层 #2（external ref CAS）** | `write_erased_and_clear_ref` 路径（`external_ref_erasure_participant.py:308`）`UPDATE agent_external_object_refs SET erase_state='erased', receipt_digest=:d, blocked_reason=NULL WHERE id = :id AND erase_state='registered' AND receipt_digest IS NULL` + 随后按 source row 匹配清 `payload_ref` | **external ref 写幂等**（rowcount=1 收敛） | checkpoint 写幂等、binding 写幂等、digest 重算正确性（需 adapter evidence）|
-| **CAS 收敛层 #3（runtime binding CAS）** | `write_erased_and_close_binding` 路径（`runtime_erasure_participant.py`）`UPDATE agent_runtime_session_bindings SET runtime_session_ref=NULL, status='closed', ... WHERE tenant_id = :t AND id = :id AND runtime_session_ref = :rv` | **binding 写幂等**（rowcount=1 收敛） | checkpoint 写幂等、external ref 写幂等、digest 重算正确性（需 adapter evidence）|
-| **CAS 收敛层 #4（runtime binding invalid CAS）** | `close_binding_invalid` 路径 `WHERE tenant_id = :t AND id = :id AND runtime_session_ref IS NOT NULL` | **binding invalid 标记幂等**（rowcount=1 收敛） | 同上 |
+| **CAS 收敛层 #1（checkpoint ACK 写）** | `_apply_window_outcome` SUCCESS 路径（settlement.py:1361-1377）| **ORM 状态转换 + flush**（Conversation/operation/checkpoint 锁 + T2 token 重验保护下）| checkpoint 写幂等需由 `uq_agent_purge_owner`（同 operation+owner 仅一行）+ ORM transaction 保证；**不是 SQL rowcount CAS 谓词** |
+| **CAS 收敛层 #2（external ref 写）** | `write_erased_and_clear_ref` 路径（`external_ref_erasure_participant.py:308`）`UPDATE agent_external_object_refs SET erase_state='erased', receipt_digest=:d, blocked_reason=NULL WHERE id = :id AND erase_state='registered' AND receipt_digest IS NULL` + 随后按 source row 匹配清 `payload_ref` | **single-writer guarded transition**——rowcount=1 成功；rowcount=0 fail closed（不冒充 helper 自身幂等成功）| checkpoint 写幂等、binding 写幂等、digest 重算正确性（需 adapter evidence）|
+| **CAS 收敛层 #3（runtime binding 写）** | `write_erased_and_close_binding` 路径（`runtime_erasure_participant.py`）`UPDATE agent_runtime_session_bindings SET runtime_session_ref=NULL, status='closed', ... WHERE tenant_id = :t AND id = :id AND runtime_session_ref = :rv` | **single-writer guarded transition**——rowcount=1 成功；rowcount=0 fail closed | checkpoint 写幂等、external ref 写幂等、digest 重算正确性（需 adapter evidence）|
+| **CAS 收敛层 #4（runtime binding failure 写）** | `_write_binding_failure` 路径（`runtime_erasure_participant.py:983`）`UPDATE agent_runtime_session_bindings SET status='invalid', revision=revision+1, ... WHERE tenant_id = :t AND id = :id AND runtime_session_ref IS NOT NULL` | **single-writer guarded transition**——rowcount=1 成功；rowcount=0 fail closed | 同上 |
 
 ### 重要修正（明确删除前版错误表述）
 
@@ -571,11 +571,11 @@ D1b 与 D1a **不可合并于**「D1a 是只读 codec + decoder + bounded export
 | Owner | per-ref/binding receipt 状态 | 证明载体 | 恢复端可独立重算？ |
 |------|---------------------------|----------|---------------|
 | **`external.payload.v1`** | ✅ **per-ref 持久化**：`agent_external_object_refs.receipt_digest` | `external_erase_receipt_digest(adapter_key, adapter_version, idempotency_key, adapter_receipt_evidence, ref_digest, erase_outcome='erased')` 重算（64-char hex，SHA-256 over canonical JSON envelope，schema_version=1）| ⚠️ **条件性可重算**——**仅当 `adapter_receipt_evidence` 可重建**（如 adapter log / 第三方 receipt service 持久化）；缺 evidence 时**重算失败** |
-| | CAS 收敛 | `WHERE id = :id AND erase_state = 'registered' AND receipt_digest IS NULL`（CAS 幂等） | ✅ rowcount=1 收敛 |
+| | CAS 收敛 | `WHERE id = :id AND erase_state = 'registered' AND receipt_digest IS NULL`（CAS 幂等） | ✅ single-writer guarded transition（rowcount=1 成功；rowcount=0 fail closed） |
 | | | ⚠️ `receipt_digest` 列**可从 DB 导出**（是 64-char hex）；但**不能**从列值重算原始 envelope | ❌ 缺 `adapter_receipt_evidence` |
 | **`runtime.private.v1`** | ❌ **无 per-binding 持久化**——`agent_runtime_session_bindings` 表**无 `receipt_digest` 列** | `RuntimeErasureSummary.receipt_digests`（**内存态**）→ 折叠为聚合 `ack_digest` → 写入 `agent_conversation_purge_owners.ack_digest` | ❌ **不可逐 binding 重算**——`adapter_receipt_evidence` 未持久化 |
 | | 持久化载体 | binding 行 `runtime_session_ref IS NULL` + `status='closed'`（**仅 session 终止证明**） | ✅ session ref → NULL（adapter 已 destroy 副作用）|
-| | CAS 收敛 | `write_erased_and_close_binding`：`WHERE tenant_id = :t AND id = :id AND runtime_session_ref = :rv` | ✅ rowcount=1 收敛 |
+| | CAS 收敛 | `write_erased_and_close_binding`：`WHERE tenant_id = :t AND id = :id AND runtime_session_ref = :rv` | ✅ single-writer guarded transition（rowcount=1 成功；rowcount=0 fail closed） |
 | | 聚合载体 | `agent_conversation_purge_owners.ack_digest`（聚合 digest，**不是 per-binding receipt**）| ⚠️ 聚合收口证明 + 不可逆 |
 | | ⚠️ **TD-106 P2-1 仍登记未关**（runtime per-binding receipt 形参零使用） | — | 不得标记已解决 |
 
@@ -631,10 +631,10 @@ D1b 与 D1a **不可合并于**「D1a 是只读 codec + decoder + bounded export
 | 维度 | 保证机制 |
 |------|---------|
 | `completed` 不重复 side effect | §S6-12.1 字面「verify-only」——**只校验 ledger receipt + body/ref scan**；**不调用 adapter、不执行本地清除** |
-| `running`/`blocked` 不重复 owner side effect | `uq_agent_purge_owner(tenant_id, purge_operation_id, owner_key)` 同 owner 仅一行 checkpoint + 应用层 CAS（checkpoint ACK / external ref / runtime binding 三种独立 rowcount=1 收敛）|
-| checkpoint ACK CAS | `UPDATE ... WHERE id = :id AND state='erasing' AND ack_digest IS NULL` | rowcount=1 收敛；rowcount=0 ⇒ raise fail closed |
-| external ref CAS | `UPDATE ... WHERE id = :id AND erase_state='registered' AND receipt_digest IS NULL` + 源 row `payload_ref` 匹配 | rowcount=1 收敛 |
-| runtime binding CAS | `UPDATE ... WHERE id = :id AND runtime_session_ref = :rv` | rowcount=1 收敛 |
+| `running`/`blocked` 不重复 owner side effect | `uq_agent_purge_owner(tenant_id, purge_operation_id, owner_key)` 同 owner 仅一行 checkpoint + 单事务保护（Conversation/operation/checkpoint 锁 + T2 token 重验）|
+| checkpoint ACK 写 | ORM 状态转换 + flush（Conversation/operation/checkpoint 锁 + T2 token 重验保护下）| ORM 单事务保证（**不是 SQL rowcount CAS 谓词**）|
+| external ref 写 | `UPDATE ... WHERE id = :id AND erase_state='registered' AND receipt_digest IS NULL` + 源 row `payload_ref` 匹配 | single-writer guarded transition（rowcount=1 成功；rowcount=0 fail closed）|
+| runtime binding 写 | `UPDATE ... WHERE id = :id AND runtime_session_ref = :rv` | single-writer guarded transition（rowcount=1 成功；rowcount=0 fail closed）|
 | `ack_digest` 唯一性 | ❌ **`ack_digest` 没有 DB 唯一约束**——仅有 `ck_agent_purge_owner_ack` 约束长度 64 | 幂等性由 owner row 唯一 + 应用层 CAS 共同保证 |
 | M 类路径一次性维护事务 | replay executor 一次性 commit；不留中间状态 | |
 | 不调用 adapter | §S6-8.3 + §S6-13 字面要求 | |
@@ -643,7 +643,7 @@ D1b 与 D1a **不可合并于**「D1a 是只读 codec + decoder + bounded export
 
 **关键修正**：
 - ❌ 不得用 `ack_digest` "唯一性"作为幂等保证——`ack_digest` 不唯一约束
-- ✅ 幂等保证 = 四层 CAS（`uq_agent_purge_owner` owner row 唯一 + checkpoint ACK CAS rowcount=1 + external ref CAS rowcount=1 + runtime binding CAS rowcount=1）——**互不替代**
+- ✅ 幂等保证 = `uq_agent_purge_owner`（owner row 唯一）+ 四层 single-writer guarded transition（checkpoint ORM 状态转换 + external ref rowcount guard + runtime binding rowcount guard + runtime binding failure rowcount guard）——**互不替代** |
 
 ### Q6：快照后完成、但数据库备份中不存在 ledger 记录的 purge
 
@@ -670,7 +670,7 @@ D1b 与 D1a **不可合并于**「D1a 是只读 codec + decoder + bounded export
 | TD-106 P2-1 runtime per-binding receipt | ⚠️ **仍登记未关**（详见 §10 + technical-debt.md#td-106 P2-1）——**不得写成已解决** |
 | `ck_agent_purge_owner_ack` | ✅ 长度 64 + state 条件非 NULL/IS NULL（**不校验 hex**） |
 | `uq_agent_purge_owner` | ✅ (tenant_id, purge_operation_id, owner_key) 唯一——**owner row CAS 幂等层**（**不证明** ref/binding CAS 幂等） |
-| 四层 CAS 收敛 | ✅ checkpoint ACK CAS + external ref CAS + runtime binding CAS + runtime binding invalid CAS（详见 §2 表）|
+| 四层 single-writer guarded transition | ✅ checkpoint ORM 状态转换 + external ref rowcount guard + runtime binding rowcount guard + runtime binding failure rowcount guard（详见 §2 表）|
 | Owner 六元组持久化（5/6 字段） | ✅ `agent_conversation_purge_owners`（5 字段）+ `agent_conversation_purges.purge_revision`（跨表）|
 | 集合锁 API（D8） | ✅ `acquire_transport_aggregate_lock` / `acquire_owner_lock`（`agent_erasure_locks.py`）|
 | Body/ref 六 owner 终态扫描 | ✅ `scan_execution_body` 等 + S6-6 `verify_inspection` 巡检 CLI |
@@ -685,7 +685,7 @@ D1b 与 D1a **不可合并于**「D1a 是只读 codec + decoder + bounded export
 | 能力 | 触发停止条件 / 依赖 |
 |------|------------|
 | **D1a**：codec + manifest + bounded snapshot/segment exporter + decode/validate + 只读 identity reconstruction | 缺失（**D1a 是后续代码 PR**）——不动 schema / 不持久推进 watermark / 不发布 sink / 不做 DB mutation |
-| **D1b**：archive sink port + 原子发布 + 持久 cursor/watermark + crash/retry/idempotency | 缺失 ——**依赖 sink 选型用户裁决**（本地 minio / 外部 S3 / 文件系统） |
+| **D1b**：archive sink port + 原子发布 + 持久 cursor/watermark + crash/retry/idempotency | 缺失 ——**用户裁决**：专用 MinIO archive bucket（不复用 `minio_bucket=metaedu-resources`）；本轮不实现 D1b |
 | **D2**：replay executor + 维护互斥 + 六态路由 + restore-before-open | 缺失 ——**依赖**：(1) M 类互斥方案裁决（A / B / C）(2) runtime proof 路径裁决（a / b / c）(3) D1a codec 就绪 |
 | **§6 M 类互斥机制具体载体** | 缺失（**具体载体由用户裁决**） |
 | **§10 runtime per-binding proof 路径** | 缺失（**具体路径由用户裁决**）——TD-106 P2-1 仍登记未关 |
@@ -815,6 +815,18 @@ D1b 与 D1a **不可合并于**「D1a 是只读 codec + decoder + bounded export
    - D1b 可与 D2 并行（sink port 与互斥机制独立），但 D1b 须在 sink 选型（#2）裁决后启动
 
 ---
+
+## 17.5. 用户裁决记录（Phase 0 启动，D1a only）
+
+| 议题 | 裁决 | 含义 |
+|------|------|------|
+| 1. Runtime per-binding proof 路径 | **c** | archived completed runtime 缺 per-binding proof 时返回具名 `RUNTIME_BINDING_EVIDENCE_UNPROVABLE`；**零 DB 写**、不修改 terminal operation、不伪造 blocked/acked、不写假 receipt；restore-before-open 保持关闭，转 runbook 人工处置；running/blocked + runtime 未 ACK 仍按冻结契约 `blocked` + reconcile |
+| 2. D1b sink 选型 | **专用 MinIO archive bucket**（后续）| 不复用 `minio_bucket=metaedu-resources`；本轮**不实现 D1b** |
+| 3. D2 维护互斥方案 | **A**（后续）| 全局 transaction-level advisory lock；retention/audit 每个事务取 `pg_advisory_xact_lock_shared`；replay 事务取 `pg_advisory_xact_lock`；新锁必须在 Run/Conversation/owner/collection 锁**之前**取得；同一稳定 namespace/scope；本轮**不实现 D2**、不修改冻结 Plan |
+| 4. D1a / D1b / D2 阶段 | **独立 PR** | 各自独立 PR 阶段 |
+| 5. 固定顺序 | **D1a → D1b → D2** | |
+
+**Phase 1 启动 D1a only**——本轮实施 D1a（只读 codec + bounded snapshot/segment exporter + decode/validate + 只读 identity reconstruction），不实现 D1b / D2 / PR-E / C1 / S5 production wiring / capability flip。
 
 ## 18. 关键引用
 
