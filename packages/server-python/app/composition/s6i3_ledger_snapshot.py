@@ -7,43 +7,68 @@
 **D1a 范围（严格限定）**：
 - 只读：所有 DB 操作在 REPEATABLE READ + READ ONLY 事务中
 - export_ledger_segment → 字节级 deterministic canonical output（**不写文件 / 不接 sink / 不持久推进 watermark / 不写 DB mutation**）
-- decode_ledger_segment → 严格解析 + 9 类 fail closed 校验
+- decode_ledger_segment(payload, *, expected_tenant_id) → 严格解析 + 多类 fail closed 校验
 - reconstruct_owner_facts → 纯内存六元组重构
 - 严禁调用 adapter / 严禁 replay side effect / 严禁改 owner / checkpoint / fence / operation
 
 **Artifact 契约**：
 - 顶层 `schema_version` (int)
-- 顶层 `tenant_id` (uuid)
+- 顶层 `tenant_id` (规范 UUID 字符串)
 - `manifest[record_kind].count` + `manifest[record_kind].content_digest` (SHA-256 over canonical-sorted records)
-- 四类 record（operation / checkpoint / external_ref / reconcile），按 `stable_identity` 稳定排序
+- 顶层 manifest keys 严格 == ``RECORD_KINDS``（不接受额外 / 缺失未知 kind）
+- 四类 record（operation / checkpoint / external_ref / reconcile），按 ``stable_identity`` 稳定排序
+- 每条 record 的 ``stable_identity`` 严格 == ``f"{record_kind}:{fields.id}"``
 - 字节级 deterministic（同一 DB state 多次 export 必须字节相同）
 - **external_ref 严禁输出 `ref_value`**（spec §10 末段「不持久化原始敏感 ref」）
 - **runtime 严禁输出 `runtime_session_ref` / 正文 / payload / token / 自由文本敏感值**
-- **runtime 仅输出当前可持久化聚合事实**（`runtime_acked_count` / `runtime_invalid_count` / `runtime_open_count`） + 显式标记 `runtime_per_binding_proof_available: false` + 关联 `agent_conversation_purge_owners.ack_digest` 聚合 digest（不重算 per-binding）
+- **runtime 仅显式声明 ``runtime_per_binding_proof_available=False``**（用户裁决 c）；
+  checkpoint records 才是 owner 聚合事实的权威载体——历史上有过的 ``runtime_acked_count /
+  invalid_count / open_count`` 聚合字段已**全部删除**（用户裁决 2：这些聚合易误导为 runtime
+  owner state 统计，故 envelope + manifest 不再承载）
 
-**Decoder fail closed**（任一触发即 raise `LedgerSnapshotError`）：
-- `SCHEMA_VERSION_UNKNOWN`
-- `RECORD_KIND_UNKNOWN`
-- `KIND_TABLE_MISMATCH`
-- `COUNT_MISMATCH`
-- `CONTENT_DIGEST_MISMATCH`
-- `CROSS_TENANT_RECORD`
-- `DUPLICATE_STABLE_IDENTITY`
-- `CROSS_LAYER_STATE_MIX`（operation/checkpoint/fence 状态跨层混读）
-- `CHECKPOINT_WITHOUT_OPERATION`
-- `OWNER_SIX_TUPLE_INCOMPLETE`
+**Decoder fail closed**（任一触发即 raise ``LedgerSnapshotError``）：
+- ``SCHEMA_VERSION_MISSING_OR_INVALID`` / ``SCHEMA_VERSION_UNKNOWN``
+- ``TENANT_ID_MISSING_OR_INVALID`` / ``TENANT_ID_NOT_UUID``
+- ``TENANT_BINDING_MISMATCH``（declared tenant_id ≠ caller-provided ``expected_tenant_id``）
+- ``MANIFEST_MISSING_OR_INVALID`` / ``MANIFEST_KIND_UNKNOWN`` / ``MANIFEST_KIND_MISSING``
+  / ``MANIFEST_ENTRY_INVALID`` / ``MANIFEST_COUNT_MISSING_OR_INVALID``
+  / ``MANIFEST_CONTENT_DIGEST_MISSING_OR_INVALID`` / ``MANIFEST_CONTENT_DIGEST_NOT_64HEX``
+- ``RECORDS_MISSING_OR_INVALID`` / ``RECORDS_KIND_MISSING`` / ``UNKNOWN_KIND``
+  / ``RECORDS_NOT_LIST`` / ``RECORD_NOT_OBJECT`` / ``RECORD_FIELDS_NOT_MAPPING``
+  / ``STABLE_IDENTITY_INVALID`` / ``STABLE_IDENTITY_BINDING_MISMATCH``
+  / ``RECORDS_NOT_SORTED``
+- ``KIND_TABLE_MISMATCH`` / ``COUNT_MISMATCH`` / ``CONTENT_DIGEST_MISMATCH``
+- ``CROSS_TENANT_RECORD``（record ``fields.tenant_id`` 缺失或不等于 declared tenant）
+- ``DUPLICATE_STABLE_IDENTITY`` / ``DUPLICATE_OPERATION_ID`` / ``DUPLICATE_CHECKPOINT_OWNER_KEY``
+- ``OWNER_SIX_TUPLE_INCOMPLETE``（六元组必需字段在 decode 阶段缺失；不再等到 ``reconstruct`` 才暴露）
+- ``CROSS_LAYER_STATE_MIX``（operation/checkpoint state 越界 + 跨层字段混读）
+- ``CHECKPOINT_WITHOUT_OPERATION``（checkpoint ``purge_operation_id`` 缺失 / 不指向 operation）
+- ``ACK_INVARIANT_VIOLATED``（state='acked' ⇒ ack_digest 必须为 64-hex lowercase hex；应用层严格校验）
+  注：DB migration 034 仅约束 ``length(ack_digest)=64``，64-hex 校验为**应用层**附加门禁，
+  **不得**在文档/代码中误称为"migration 034 要求 64-hex"
+- ``EXTERNAL_REF_VALUE_LEAKED`` / ``RUNTIME_SESSION_REF_LEAKED``
+- ``RUNTIME_PROOF_FLAG_MISSING`` / ``RUNTIME_PROOF_FLAG_TRUE``
+- ``SEGMENT_LIMIT_EXCEEDED``（producer 端不截断后冒充完整 snapshot）
+- ``ENVELOPE_NOT_JSON`` / ``ENVELOPE_NOT_OBJECT``
+- ``EXPORT_REQUIRES_TRANSACTION`` / ``TX_ISOLATION_NOT_REPEATABLE_READ`` / ``TX_NOT_READ_ONLY``
 
 **禁止行为**（contract 边界）：
 - ❌ 不调 external / runtime adapter
 - ❌ 不写文件 / 不接 sink / 不推 watermark
 - ❌ 不做 DB mutation
 - ❌ 不重新计算 per-binding runtime receipt（adapter_receipt_evidence 未持久化）
-- ❌ 输出原始 `ref_value` / `runtime_session_ref` / 正文 / payload / token / 自由文本
+- ❌ 输出原始 ``ref_value`` / ``runtime_session_ref`` / 正文 / payload / token / 自由文本
+- ❌ envelope 承载任何 ``runtime_*_count`` 聚合字段
+
+**D1b 后续边界（仅登记，不在本轮实现）**：archive object identity / content digest
+仍须绑定 tenant；export digest + archive digest 必须可由 caller 对账；本模块仅产出
+bytes，archive sink + 持久 cursor + 幂等发布属 D1b 范畴。
 """
 
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -79,7 +104,7 @@ RECORD_KINDS: tuple[str, ...] = (
     RECORD_KIND_RECONCILE,
 )
 
-# --- state whitelists（migration 034: ck_agent_purge_state / ck_agent_purge_owner_state） ---
+# --- state whitelists（migration 034 CHECK 闭集） ---
 
 OPERATION_STATE_WHITELIST: frozenset[str] = frozenset(
     {"scheduled", "running", "blocked", "failed", "completed", "cancelled"}
@@ -92,6 +117,12 @@ CHECKPOINT_STATE_WHITELIST: frozenset[str] = frozenset(
 
 REQUIRED_ISOLATION = "repeatable read"
 REQUIRED_READ_ONLY = "on"
+
+# --- ACK digest format（应用层严格校验） ---
+
+# migration 034 ck_agent_purge_owner_ack 仅约束 ``length(ack_digest)=64``；本常量是**附加**
+# 应用层门禁——要求 64 位小写 hex。**不得**误称为"migration 034 要求 64-hex"。
+_HEX_LOWER_64 = re.compile(r"^[0-9a-f]{64}$")
 
 # --- table identity ---
 
@@ -134,7 +165,7 @@ class ExportedRecord:
 
     record_kind: str
     table_identity: str
-    stable_identity: str  # 用于 decoder 端去重 + 稳定排序
+    stable_identity: str  # 严格 == f"{record_kind}:{fields.id}"
     fields: Mapping[str, Any]  # 字段已 redact；顺序无关（canonical_digest 序列化时排序）
 
 
@@ -142,10 +173,10 @@ class ExportedRecord:
 class Manifest:
     """导出 manifest 摘要 + records 集合。
 
-    注意：本类**不**再承载 runtime_acked_count / runtime_invalid_count / runtime_open_count
-    ——这些聚合易误导为「runtime owner state 统计」（按用户裁决 2 已删除）。
-    checkpoint records 才是 owner 聚合事实的权威载体；runtime 端只显式声明
-    ``runtime_per_binding_proof_available=False``（用户裁决 c）。
+    本类**不**承载任何 runtime 聚合字段（acked_count / invalid_count / open_count 已在
+    用户裁决 2 中删除——这些聚合易误导为「runtime owner state 统计」）。checkpoint records
+    才是 owner 聚合事实的权威载体；runtime 端只显式声明 ``runtime_per_binding_proof_available
+    =False``（用户裁决 c）。
     """
 
     schema_version: int
@@ -425,8 +456,8 @@ def _records_to_envelope(
 ) -> dict[str, Any]:
     """构造 envelope dict（按 stable_identity 稳定排序 → 字节级 deterministic）。
 
-    注意：本 envelope **不**再包含 ``runtime_aggregate``（acked_count / invalid_count /
-    open_count 等聚合易被误读为 runtime owner state 统计，按用户裁决 2 已删除）。
+    envelope **不**包含任何 ``runtime_*_count`` 聚合字段（acked_count / invalid_count /
+    open_count 等聚合易被误读为 runtime owner state 统计，按用户裁决 2 已**全部删除**）。
     checkpoint records 才是 owner 聚合事实的权威载体；envelope 顶层只显式声明
     ``runtime_per_binding_proof_available=False``（用户裁决 c），由 decoder 强制严格 false。
     """
@@ -517,7 +548,7 @@ async def export_ledger_segment(
     return export_ledger_segment_to_bytes(envelope)
 
 
-# --- decoder + 9 类 fail-closed 校验 ---
+# --- decoder + 多类 fail-closed 校验 ---
 
 
 def _envelope_typed(payload: bytes) -> dict[str, Any]:
@@ -546,18 +577,56 @@ def _assert_tenant(env: Mapping[str, Any]) -> str:
     tid = env.get("tenant_id")
     if not isinstance(tid, str):
         raise LedgerSnapshotError("TENANT_ID_MISSING_OR_INVALID")
-    return tid
+    # tenant_id 必须是规范 UUID（canonical 8-4-4-4-12 形式）
+    try:
+        canonical = str(uuid.UUID(tid))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise LedgerSnapshotError(
+            "TENANT_ID_NOT_UUID",
+            detail={
+                "found": tid,
+                "hint": "tenant_id must be a canonical UUID string",
+            },
+        ) from exc
+    return canonical
+
+
+def _assert_tenant_binding(declared_tenant: str, expected_tenant_id: uuid.UUID) -> None:
+    """强制 envelope tenant_id 与 caller 可信 tenant 严格绑定（按用户裁决 D1a-tenant-binding）。
+
+    校验在 records 解析**之前**执行，确保即使 artifact 全空（records 全 0）也不能跨 tenant 注入。
+    """
+    expected_str = str(expected_tenant_id)
+    if declared_tenant != expected_str:
+        raise LedgerSnapshotError(
+            "TENANT_BINDING_MISMATCH",
+            detail={
+                "declared_tenant_id": declared_tenant,
+                "expected_tenant_id": expected_str,
+                "hint": (
+                    "envelope tenant_id must match caller-provided expected_tenant_id; "
+                    "decoder rejects cross-tenant artifact regardless of records payload"
+                ),
+            },
+        )
 
 
 def _assert_manifest(env: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     manifest = env.get("manifest")
     if not isinstance(manifest, dict):
         raise LedgerSnapshotError("MANIFEST_MISSING_OR_INVALID")
+    # manifest keys 必须严格 == RECORD_KINDS（拒绝多/少未知 kind；按用户裁决 三-1）
+    extra_kinds = set(manifest.keys()) - set(RECORD_KINDS)
+    if extra_kinds:
+        raise LedgerSnapshotError(
+            "MANIFEST_KIND_UNKNOWN", detail={"extra_kinds": sorted(extra_kinds)}
+        )
+    missing_kinds = set(RECORD_KINDS) - set(manifest.keys())
+    if missing_kinds:
+        raise LedgerSnapshotError(
+            "MANIFEST_KIND_MISSING", detail={"missing_kinds": sorted(missing_kinds)}
+        )
     for kind in RECORD_KINDS:
-        if kind not in manifest:
-            raise LedgerSnapshotError(
-                "MANIFEST_KIND_MISSING", detail={"kind": kind}
-            )
         entry = manifest[kind]
         if not isinstance(entry, dict):
             raise LedgerSnapshotError("MANIFEST_ENTRY_INVALID", detail={"kind": kind})
@@ -627,6 +696,80 @@ def _assert_records(env: Mapping[str, Any]) -> dict[str, list[dict[str, Any]]]:
                 )
             prev_sid = sid
     return records
+
+
+def _assert_logical_identity_binding(
+    records: Mapping[str, list[dict[str, Any]]],
+) -> None:
+    """强制每条 record 的 stable_identity 严格绑定 f"{record_kind}:{fields.id}"；
+    并按 kind 拒绝逻辑身份重复（按用户裁决 一-1 + 一-2）。
+
+    - stable_identity 与 fields.id 不匹配 / 缺 id → STABLE_IDENTITY_BINDING_MISMATCH
+    - operation.fields.id 重复 → DUPLICATE_OPERATION_ID
+    - checkpoint (purge_operation_id, owner_key) 重复 → DUPLICATE_CHECKPOINT_OWNER_KEY
+
+    external_ref / reconcile 的 fields.id 重复由 ``DUPLICATE_STABLE_IDENTITY`` 覆盖——
+    因为 stable_identity 严格绑定后，同 fields.id 必推出同 stable_identity 字符串。
+    """
+    # 1. stable_identity 严格 == f"{record_kind}:{fields.id}"（所有 kind）
+    for kind in RECORD_KINDS:
+        for r in records.get(kind, ()):
+            fields = r.get("fields", {})
+            rid = fields.get("id")
+            if rid is None:
+                raise LedgerSnapshotError(
+                    "STABLE_IDENTITY_BINDING_MISMATCH",
+                    detail={
+                        "kind": kind,
+                        "stable_identity": r.get("stable_identity"),
+                        "reason": "fields_id_missing",
+                    },
+                )
+            expected_sid = f"{kind}:{rid}"
+            if r.get("stable_identity") != expected_sid:
+                raise LedgerSnapshotError(
+                    "STABLE_IDENTITY_BINDING_MISMATCH",
+                    detail={
+                        "kind": kind,
+                        "stable_identity": r.get("stable_identity"),
+                        "expected": expected_sid,
+                        "fields_id": str(rid),
+                        "reason": "stable_identity_does_not_match_fields_id",
+                    },
+                )
+    # 2. operation.fields.id 重复检测
+    seen_op_ids: set[str] = set()
+    for r in records.get(RECORD_KIND_OPERATION, ()):
+        rid = str(r["fields"]["id"])
+        if rid in seen_op_ids:
+            raise LedgerSnapshotError(
+                "DUPLICATE_OPERATION_ID",
+                detail={
+                    "operation_id": rid,
+                    "stable_identity": r["stable_identity"],
+                },
+            )
+        seen_op_ids.add(rid)
+    # 3. checkpoint (purge_operation_id, owner_key) 重复检测
+    seen_cp_keys: set[tuple[str, str]] = set()
+    for r in records.get(RECORD_KIND_CHECKPOINT, ()):
+        fields = r.get("fields", {})
+        op_id = fields.get("purge_operation_id")
+        ok = fields.get("owner_key")
+        if op_id is None or ok is None:
+            # OWNER_SIX_TUPLE_INCOMPLETE 负责
+            continue
+        key = (str(op_id), str(ok))
+        if key in seen_cp_keys:
+            raise LedgerSnapshotError(
+                "DUPLICATE_CHECKPOINT_OWNER_KEY",
+                detail={
+                    "purge_operation_id": str(op_id),
+                    "owner_key": str(ok),
+                    "stable_identity": r.get("stable_identity"),
+                },
+            )
+        seen_cp_keys.add(key)
 
 
 def _assert_kind_table_match(records: Mapping[str, list[dict[str, Any]]]) -> None:
@@ -726,6 +869,54 @@ def _assert_cross_tenant(env: Mapping[str, Any], declared_tenant: str) -> None:
                     "CROSS_TENANT_RECORD",
                     detail={"kind": kind, "stable_identity": r.get("stable_identity")},
                 )
+
+
+def _assert_owner_six_tuple_complete(
+    records: Mapping[str, list[dict[str, Any]]],
+) -> None:
+    """六元组必需字段在 decode 阶段严格校验（按用户裁决 一-3）。
+
+    六元组字段：
+    - checkpoint: owner_key / purge_operation_id / owner_version / capability_digest /
+                  state（ack_digest 在 state<>'acked' 时允许 None，否则由 ``_assert_checkpoint_ack_invariant`` 校验）
+    - operation: purge_revision
+
+    任意缺失 → OWNER_SIX_TUPLE_INCOMPLETE。reconstruct_owner_facts 因此**不再**触发
+    KeyError（即便 decoder 阶段有未捕获的字段缺失，reconstruct 也不再静默——见该函数
+    末尾的 fallback 防御）。
+    """
+    required_cp_fields = (
+        "owner_key",
+        "purge_operation_id",
+        "owner_version",
+        "capability_digest",
+        "state",
+    )
+    for r in records.get(RECORD_KIND_CHECKPOINT, ()):
+        fields = r.get("fields", {})
+        missing = [f for f in required_cp_fields if fields.get(f) is None]
+        if missing:
+            raise LedgerSnapshotError(
+                "OWNER_SIX_TUPLE_INCOMPLETE",
+                detail={
+                    "kind": RECORD_KIND_CHECKPOINT,
+                    "stable_identity": r.get("stable_identity"),
+                    "missing_fields": missing,
+                    "reason": "checkpoint_required_field_missing",
+                },
+            )
+    for r in records.get(RECORD_KIND_OPERATION, ()):
+        fields = r.get("fields", {})
+        if fields.get("purge_revision") is None:
+            raise LedgerSnapshotError(
+                "OWNER_SIX_TUPLE_INCOMPLETE",
+                detail={
+                    "kind": RECORD_KIND_OPERATION,
+                    "stable_identity": r.get("stable_identity"),
+                    "missing_fields": ["purge_revision"],
+                    "reason": "operation_purge_revision_missing",
+                },
+            )
 
 
 def _assert_no_cross_layer_state_mix(records: Mapping[str, list[dict[str, Any]]]) -> None:
@@ -875,24 +1066,27 @@ def _assert_state_whitelist(records: Mapping[str, list[dict[str, Any]]]) -> None
 def _assert_checkpoint_ack_invariant(
     records: Mapping[str, list[dict[str, Any]]],
 ) -> None:
-    """checkpoint.state / ack_digest 基本关系校验（migration 034 ck_agent_purge_owner_ack）。
+    """checkpoint.state / ack_digest 基本关系校验。
 
-    规则：
-    - state='acked' ⇒ ack_digest 必须为 64-hex 非空字符串
+    规则（按用户裁决 三-3）：
+    - state='acked' ⇒ ack_digest 必须为 64 位小写 hex 字符串（**应用层严格校验**；
+      与 migration 034 ``length(ack_digest)=64`` CHECK 区别——后者仅约束长度，前者
+      附加 hex 字符集门禁，**不得**误称为"migration 034 要求 64-hex"）
     - state<>'acked' ⇒ ack_digest 必须为 None
+
     任意违反 ⇒ ACK_INVARIANT_VIOLATED。
     """
     for r in records[RECORD_KIND_CHECKPOINT]:
         s = r["fields"].get("state")
         ack = r["fields"].get("ack_digest")
         if s == "acked":
-            if not isinstance(ack, str) or len(ack) != 64:
+            if not isinstance(ack, str) or not _HEX_LOWER_64.match(ack):
                 raise LedgerSnapshotError(
                     "ACK_INVARIANT_VIOLATED",
                     detail={
                         "stable_identity": r["stable_identity"],
                         "state": s,
-                        "reason": "acked_requires_64hex_ack_digest",
+                        "reason": "acked_requires_64hex_lowercase_ack_digest",
                     },
                 )
         else:
@@ -953,37 +1147,57 @@ def _assert_runtime_proof_strict_false(env: Mapping[str, Any]) -> None:
         )
 
 
-def decode_ledger_segment(payload: bytes) -> Manifest:
-    """严格 parse + 多类 fail closed 校验（按用户裁决 1~5）。
+def decode_ledger_segment(
+    payload: bytes,
+    *,
+    expected_tenant_id: uuid.UUID,
+) -> Manifest:
+    """严格 parse + 多类 fail closed 校验（按用户裁决 1~5 + 第二轮 P1）。
 
-    校验顺序：
+    Args:
+        payload: ledger segment bytes（producer = ``export_ledger_segment`` 或经
+            归档存储/传输后由 caller 重新读取的字节）。
+        expected_tenant_id: caller 提供的**可信** tenant_id（DB 来源 tenant 或
+            archive sink 路由表的 tenant）——必须与 envelope 顶层 tenant_id 严格一致，
+            否则 ``TENANT_BINDING_MISMATCH``。该绑定校验在 records 解析之前执行，
+            确保即使 artifact 全空（records 全 0）也不能跨 tenant 注入。
+
+    校验顺序（按用户裁决 + 本轮 P1）：
     1. 顶层 envelope 类型
     2. schema_version
-    3. tenant_id 类型
-    4. manifest 结构 + 每 kind count / content_digest 长度
-    5. records 顶层结构 + RECORD_KINDS 闭集 + 每 record 类型 + stable_identity 类型 + stable_identity 升序
-    6. kind / table_identity 配对
-    7. manifest count == records count
-    8. content_digest 校验
-    9. 跨 tenant 检测（tenant_id 缺失或不等）
-    10. stable_identity 去重
-    11. operation.state / checkpoint.state 闭集（migration 034）
-    12. checkpoint.state / ack_digest 基本关系（migration 034 ck_agent_purge_owner_ack）
-    13. 跨层字段混读
-    14. runtime 敏感值防御（ref_value / runtime_session_ref）
-    15. checkpoint 必须有对应 operation（purge_operation_id 缺失也 fail closed）
-    16. runtime_per_binding_proof_available 严格 false
+    3. tenant_id 类型 + UUID 格式（canonical）
+    4. tenant 绑定：declared == expected_tenant_id（在 records 解析之前）
+    5. manifest 结构 + 顶层 keys 严格 == RECORD_KINDS + 每 kind count/digest 长度
+    6. records 顶层结构 + 每 record 类型 + stable_identity 类型 + 升序
+    7. stable_identity 严格 == f"{kind}:{fields.id}"（所有 kind）；operation / checkpoint
+       重复逻辑身份检测
+    8. kind / table_identity 配对
+    9. manifest count == records count
+    10. content_digest 校验
+    11. 跨 tenant 检测（record fields.tenant_id == declared）
+    12. 跨 kind stable_identity 去重（catch-all；同 kind 已由 7 处理）
+    13. 六元组完整性（OWNER_SIX_TUPLE_INCOMPLETE）
+    14. operation.state / checkpoint.state 闭集
+    15. checkpoint.state / ack_digest 关系（64-hex lowercase，应用层门禁）
+    16. 跨层字段混读
+    17. runtime 敏感值防御（ref_value / runtime_session_ref）
+    18. checkpoint 必须有对应 operation（purge_operation_id 缺失也 fail closed）
+    19. runtime_per_binding_proof_available 严格 false
     """
     env = _envelope_typed(payload)
     _assert_schema_version(env)
     declared_tenant = _assert_tenant(env)
+    # tenant 绑定在 records 解析之前——空 artifact 也必须 fail closed
+    _assert_tenant_binding(declared_tenant, expected_tenant_id)
     manifest = _assert_manifest(env)
     records = _assert_records(env)
+    _assert_logical_identity_binding(records)
     _assert_kind_table_match(records)
     _assert_count_match(manifest, records)
     _assert_content_digest(manifest, records)
     _assert_cross_tenant(env, declared_tenant)
     _assert_no_duplicate_stable_identity(records)
+    _assert_owner_six_tuple_complete(records)
     _assert_state_whitelist(records)
     _assert_checkpoint_ack_invariant(records)
     _assert_no_cross_layer_state_mix(records)
@@ -1047,27 +1261,82 @@ def reconstruct_owner_facts(
     内两个 operation 共享同一 owner_key 时，**均**进入 facts（不得仅以 owner_key
     为键覆盖前一个）。
 
-    decoder 阶段已严格 fail closed：缺失 operation / 缺失 purge_operation_id /
-    六元组字段缺失 → OWNER_SIX_TUPLE_INCOMPLETE 已在 decode 阶段抛出。本函数
-    不再做二次校验；只完成 key = (operation_id, owner_key) 的查找与构造。
+    按用户裁决 一-3：decoder 阶段已严格 fail closed（``OWNER_SIX_TUPLE_INCOMPLETE``、
+    ``CHECKPOINT_WITHOUT_OPERATION`` 等）；本函数**不**再做二次校验，只完成
+    key = (operation_id, owner_key) 的查找与构造。所有字段读取若仍因 envelope 异常
+    返回 None（防御性 fallback），同样以 ``OWNER_SIX_TUPLE_INCOMPLETE`` 抛出——
+    绝不静默覆盖或用 sentinel 值伪造 owner fact。
     """
     operation_by_id = _operation_lookup(manifest.records[RECORD_KIND_OPERATION])
     out: dict[tuple[str, str], OwnerFacts] = {}
     for cp in manifest.records[RECORD_KIND_CHECKPOINT]:
         f = cp.fields
-        owner_key = f["owner_key"]
-        operation_id = f["purge_operation_id"]
+        # decoder 已校验：必需字段非 None；此处仍防御性检查并具名抛出，
+        # **绝不**用 sentinel 值或默认字符串静默构造 owner fact
+        owner_key = f.get("owner_key")
+        operation_id = f.get("purge_operation_id")
+        owner_version = f.get("owner_version")
+        capability_digest = f.get("capability_digest")
+        state = f.get("state")
         ack_digest = f.get("ack_digest")
-        owner_version = f["owner_version"]
-        capability_digest = f["capability_digest"]
-        state = f["state"]
+        if any(v is None for v in (owner_key, operation_id, owner_version, capability_digest, state)):
+            raise LedgerSnapshotError(
+                "OWNER_SIX_TUPLE_INCOMPLETE",
+                detail={
+                    "kind": RECORD_KIND_CHECKPOINT,
+                    "stable_identity": cp.stable_identity,
+                    "missing_fields": [
+                        name
+                        for name, v in (
+                            ("owner_key", owner_key),
+                            ("purge_operation_id", operation_id),
+                            ("owner_version", owner_version),
+                            ("capability_digest", capability_digest),
+                            ("state", state),
+                        )
+                        if v is None
+                    ],
+                    "reason": "checkpoint_required_field_missing_at_reconstruct",
+                    "hint": (
+                        "decoder must reject this envelope earlier; this path is "
+                        "defensive only and never silently overwrites"
+                    ),
+                },
+            )
         op = operation_by_id.get(str(operation_id))
-        purge_revision = op.get("purge_revision") if op else -1
+        if op is None:
+            raise LedgerSnapshotError(
+                "CHECKPOINT_WITHOUT_OPERATION",
+                detail={
+                    "stable_identity": cp.stable_identity,
+                    "purge_operation_id": str(operation_id),
+                    "reason": "operation_missing_at_reconstruct",
+                    "hint": (
+                        "decoder must reject this envelope earlier; this path is "
+                        "defensive only"
+                    ),
+                },
+            )
+        purge_revision = op.get("purge_revision")
+        if purge_revision is None:
+            raise LedgerSnapshotError(
+                "OWNER_SIX_TUPLE_INCOMPLETE",
+                detail={
+                    "kind": RECORD_KIND_OPERATION,
+                    "stable_identity": cp.stable_identity,
+                    "missing_fields": ["purge_revision"],
+                    "reason": "operation_purge_revision_missing_at_reconstruct",
+                    "hint": (
+                        "decoder must reject this envelope earlier; this path is "
+                        "defensive only"
+                    ),
+                },
+            )
         out[(str(operation_id), str(owner_key))] = OwnerFacts(
             owner_key=str(owner_key),
             operation_id=str(operation_id),
             ack_digest=str(ack_digest) if ack_digest is not None else None,
-            owner_version=int(owner_version),
+            owner_version=int(owner_version),  # type: ignore[arg-type]
             capability_digest=str(capability_digest),
             checkpoint_state=str(state),
             purge_revision=int(purge_revision),  # type: ignore[arg-type]

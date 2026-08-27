@@ -11,6 +11,15 @@
 > 冻结契约：Plan §S6-8 / §S6-12 / §S6-13 / §S6-14 / §S6-15.5（已随 PR #586 / #591 / #592 / #596 合入 main）
 >
 > 净 diff 统计仅在 PR body 记录，不嵌入 committed 文档（易漂移）
+>
+> **⚠️ 历史文档 supersede 说明**：本文档 §1 「archive sink 待用户裁决」、§6 「M 类互斥三方案 / 待用户裁决 A/B/C」、§10 「runtime per-binding proof 路径用户裁决 a/b/c」三处章节的所有「待用户裁决」表述，**已被 current-work §17.5 用户裁决完全 supersede**（2026-08-27）：
+> - Runtime per-binding proof = **c**（用户裁决 c：仅显式标记 `runtime_per_binding_proof_available=False`，不重算 per-binding receipt）
+> - D1b archive sink = **专用 MinIO archive bucket**（不复用 `minio_bucket=metaedu-resources`）
+> - D2 M 类互斥 = **A 方案**（PostgreSQL advisory maintenance lock；须写作 S6-4 锁序登记修订）
+> - D1a-D1b-D2 = **三独立 PR**
+> - 顺序 = **D1a → D1b → D2**
+>
+> 本审计保留历史讨论**仅作为 contract-to-code 推导依据**——任何读 PR #598 / current-work TASK-R1-S6-I3-D 章节请以 §17.5 裁决为准；本文档不修改冻结 Plan 文字，但「待用户裁决」章节已不再代表当前待办。
 
 ## 0. 审计范围与边界 + 本轮 correction 目标
 

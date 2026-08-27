@@ -13,10 +13,14 @@ mutation 项（按用户裁决）：
 - M4：count 校验 bypass（decoder 跳过 count 校验）→ 红：篡改 count 后 decode 仍通过
 - M5：schema_version 校验 bypass（decoder 接受任意 schema_version）→ 红：未知 schema_version 不被拒
 - M6：kind/table identity 校验 bypass（decoder 不检查 table_identity）→ 红：错配不被拒
-- M7：stable sort bypass（envelope 不按 stable_identity 排序）→ 红：同一 DB state 多次 export 字节不同
-- M8：duplicate identity 校验 bypass（decoder 允许 stable_identity 重复）→ 红：重复不被拒
+- M7：stable sort corruption（exporter 反向输出 records）→ 红：decoder RECORDS_NOT_SORTED 拒绝
+- M8：duplicate stable identity 校验 bypass（decoder 允许 stable_identity 重复）→ 红：重复不被拒
 - M9：cross-tenant 校验 bypass（decoder 跳过 cross-tenant 检查）→ 红：跨 tenant record 不被拒
-- M10：runtime per-binding proof 显式标记 bypass（删除显式 false 标记）→ 红：标记为 true，错误暗示 per-binding proof 可用
+- M10：runtime per-binding proof 显式标记 bypass（删除 false 显式声明）→ 红：标记为 true，错误暗示 per-binding proof 可用
+- M11：identity binding bypass（移除 _assert_logical_identity_binding 整体）→ 红：STABLE_IDENTITY_BINDING_MISMATCH / DUPLICATE_OPERATION_ID / DUPLICATE_CHECKPOINT_OWNER_KEY 不被拒
+- M12：duplicate owner-fact key bypass（移除 per-kind 重复检测，仅保留 cross-kind stable_identity 去重）→ 红：op / checkpoint owner 重复不被拒
+- M13：owner tuple completeness bypass（移除 _assert_owner_six_tuple_complete）→ 红：六元组缺失不被拒
+- M14：expected tenant binding bypass（移除 _assert_tenant_binding）→ 红：declared != expected 不被拒
 
 NOT-RED 如实登记（不计入 kill 分母）：
 - N1：mutate 7 类 checkpoint state 字段 rename → 不影响 D1a 行为（D1a 不解析 state 跨层语义）
@@ -149,21 +153,25 @@ MUTATIONS = [
         ],
         [f"{D1A_TEST}::test_d1a_kind_table_mismatch_fails"],
     ),
-    # --- M7：stable sort bypass ---
+    # --- M7：stable sort corruption ---
+    # 注意：本 mutation 是「producer 反向输出 corruption」——exporter 端将 records 反转
+    # 后输出（违反 byte-level deterministic），decoder 端 ``RECORDS_NOT_SORTED`` 拒绝。
+    # **不可**称为"删除 sorted() 调用必然可观察"——原 mutation 形如
+    # ``tuple(operation)``（去 sorted）不可观察，因 SELECT 已 ORDER BY id。
     (
-        "M7 stable sort bypass（_records_to_envelope 反转 records 顺序）",
+        "M7 stable sort corruption（_records_to_envelope 反转 records 顺序）",
         [
             (
                 TARGET,
                 "    by_kind: dict[str, tuple[ExportedRecord, ...]] = {\n        RECORD_KIND_OPERATION: tuple(sorted(operation, key=lambda r: r.stable_identity)),\n        RECORD_KIND_CHECKPOINT: tuple(sorted(checkpoint, key=lambda r: r.stable_identity)),\n        RECORD_KIND_EXTERNAL_REF: tuple(sorted(external_ref, key=lambda r: r.stable_identity)),\n        RECORD_KIND_RECONCILE: tuple(sorted(reconcile, key=lambda r: r.stable_identity)),\n    }",
-                "    by_kind: dict[str, tuple[ExportedRecord, ...]] = {\n        RECORD_KIND_OPERATION: tuple(reversed(operation)),  # mutation M7: reverse\n        RECORD_KIND_CHECKPOINT: tuple(reversed(checkpoint)),\n        RECORD_KIND_EXTERNAL_REF: tuple(reversed(external_ref)),\n        RECORD_KIND_RECONCILE: tuple(reversed(reconcile)),\n    }",
+                "    by_kind: dict[str, tuple[ExportedRecord, ...]] = {\n        RECORD_KIND_OPERATION: tuple(reversed(operation)),  # mutation M7: producer-side reverse corruption\n        RECORD_KIND_CHECKPOINT: tuple(reversed(checkpoint)),\n        RECORD_KIND_EXTERNAL_REF: tuple(reversed(external_ref)),\n        RECORD_KIND_RECONCILE: tuple(reversed(reconcile)),\n    }",
             )
         ],
         [f"{D1A_TEST}::test_d1a_records_out_of_order_fails"],
     ),
-    # --- M8：duplicate identity 校验 bypass ---
+    # --- M8：duplicate stable identity 校验 bypass ---
     (
-        "M8 duplicate identity 校验 bypass（_assert_no_duplicate_stable_identity 跳过）",
+        "M8 duplicate stable identity 校验 bypass（_assert_no_duplicate_stable_identity 跳过）",
         [
             (
                 TARGET,
@@ -196,6 +204,67 @@ MUTATIONS = [
             )
         ],
         [f"{D1A_TEST}::test_d1a_runtime_per_binding_proof_unavailable_explicit"],
+    ),
+    # --- M11：identity binding bypass（按用户裁决 第二轮 P1）---
+    (
+        "M11 identity binding bypass（_assert_logical_identity_binding 直接 return）",
+        [
+            (
+                TARGET,
+                "def _assert_logical_identity_binding(\n    records: Mapping[str, list[dict[str, Any]]],\n) -> None:",
+                "def _assert_logical_identity_binding(\n    records: Mapping[str, list[dict[str, Any]]],\n) -> None:\n    return  # mutation M11: bypass logical identity binding + per-kind duplicate",
+            )
+        ],
+        [
+            f"{D1A_TEST}::test_d1a_stable_identity_id_mismatch_fails",
+            f"{D1A_TEST}::test_d1a_duplicate_operation_id_fails",
+            f"{D1A_TEST}::test_d1a_duplicate_checkpoint_owner_key_fails",
+        ],
+    ),
+    # --- M12：duplicate owner-fact key bypass（per-kind 重复检测移除）---
+    (
+        "M12 duplicate owner-fact key bypass（仅保留 cross-kind 去重，移除 per-kind 重复检测）",
+        [
+            (
+                TARGET,
+                "    # 2. operation.fields.id 重复检测\n    seen_op_ids: set[str] = set()\n    for r in records.get(RECORD_KIND_OPERATION, ()):\n        rid = str(r[\"fields\"][\"id\"])\n        if rid in seen_op_ids:\n            raise LedgerSnapshotError(\n                \"DUPLICATE_OPERATION_ID\",\n                detail={\n                    \"operation_id\": rid,\n                    \"stable_identity\": r[\"stable_identity\"],\n                },\n            )\n        seen_op_ids.add(rid)\n    # 3. checkpoint (purge_operation_id, owner_key) 重复检测\n    seen_cp_keys: set[tuple[str, str]] = set()\n    for r in records.get(RECORD_KIND_CHECKPOINT, ()):\n        fields = r.get(\"fields\", {})\n        op_id = fields.get(\"purge_operation_id\")\n        ok = fields.get(\"owner_key\")\n        if op_id is None or ok is None:\n            # OWNER_SIX_TUPLE_INCOMPLETE 负责\n            continue\n        key = (str(op_id), str(ok))\n        if key in seen_cp_keys:\n            raise LedgerSnapshotError(\n                \"DUPLICATE_CHECKPOINT_OWNER_KEY\",\n                detail={\n                    \"purge_operation_id\": str(op_id),\n                    \"owner_key\": str(ok),\n                    \"stable_identity\": r.get(\"stable_identity\"),\n                },\n            )\n        seen_cp_keys.add(key)",
+                "    # mutation M12: per-kind duplicate checks removed",
+            )
+        ],
+        [
+            f"{D1A_TEST}::test_d1a_duplicate_operation_id_fails",
+            f"{D1A_TEST}::test_d1a_duplicate_checkpoint_owner_key_fails",
+        ],
+    ),
+    # --- M13：owner tuple completeness bypass ---
+    (
+        "M13 owner tuple completeness bypass（_assert_owner_six_tuple_complete 直接 return）",
+        [
+            (
+                TARGET,
+                "def _assert_owner_six_tuple_complete(\n    records: Mapping[str, list[dict[str, Any]]],\n) -> None:",
+                "def _assert_owner_six_tuple_complete(\n    records: Mapping[str, list[dict[str, Any]]],\n) -> None:\n    return  # mutation M13: bypass six-tuple completeness check",
+            )
+        ],
+        [
+            f"{D1A_TEST}::test_d1a_owner_six_tuple_incomplete_checkpoint_field_missing",
+            f"{D1A_TEST}::test_d1a_owner_six_tuple_incomplete_purge_revision_missing",
+        ],
+    ),
+    # --- M14：expected tenant binding bypass ---
+    (
+        "M14 expected tenant binding bypass（_assert_tenant_binding 直接 return）",
+        [
+            (
+                TARGET,
+                "def _assert_tenant_binding(declared_tenant: str, expected_tenant_id: uuid.UUID) -> None:",
+                "def _assert_tenant_binding(declared_tenant: str, expected_tenant_id: uuid.UUID) -> None:\n    return  # mutation M14: bypass tenant binding check",
+            )
+        ],
+        [
+            f"{D1A_TEST}::test_d1a_tenant_binding_mismatch_empty_artifact_fails",
+            f"{D1A_TEST}::test_d1a_tenant_not_uuid_fails",
+        ],
     ),
 ]
 

@@ -256,8 +256,8 @@ async def test_d1a_round_trip_four_record_kinds(snapshot_factory):
             payload = await export_ledger_segment(session, tenant_id=ids["tid"])
 
     # 字节级 deterministic：同一 state 多次 decode 应得相同内容
-    manifest1 = decode_ledger_segment(payload)
-    manifest2 = decode_ledger_segment(payload)
+    manifest1 = decode_ledger_segment(payload, expected_tenant_id=ids["tid"])
+    manifest2 = decode_ledger_segment(payload, expected_tenant_id=ids["tid"])
     assert manifest1.schema_version == SCHEMA_VERSION
     assert manifest1.tenant_id == str(ids["tid"])
     assert manifest1.schema_version == manifest2.schema_version
@@ -313,8 +313,8 @@ async def test_d1a_tenant_isolation(snapshot_factory):
     async with factory() as session, session.begin():
         await session.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"))
         payload_b = await export_ledger_segment(session, tenant_id=tid_b)
-    m_a = decode_ledger_segment(payload_a)
-    m_b = decode_ledger_segment(payload_b)
+    m_a = decode_ledger_segment(payload_a, expected_tenant_id=tid_a)
+    m_b = decode_ledger_segment(payload_b, expected_tenant_id=tid_b)
     assert m_a.tenant_id == str(tid_a)
     assert m_b.tenant_id == str(tid_b)
     # 所有 record 的 tenant_id 必须等于 declared tenant
@@ -336,7 +336,7 @@ async def test_d1a_empty_tenant(snapshot_factory):
     async with factory() as session, session.begin():
         await session.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"))
         payload = await export_ledger_segment(session, tenant_id=tid)
-    m = decode_ledger_segment(payload)
+    m = decode_ledger_segment(payload, expected_tenant_id=tid)
     for kind in ("operation", "checkpoint", "external_ref", "reconcile"):
         assert m.record_count[kind] == 0
         assert m.records[kind] == ()
@@ -354,7 +354,7 @@ async def test_d1a_manifest_digest_and_count_consistency(snapshot_factory):
     async with factory() as session, session.begin():
         await session.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"))
         payload = await export_ledger_segment(session, tenant_id=ids["tid"])
-    m = decode_ledger_segment(payload)
+    m = decode_ledger_segment(payload, expected_tenant_id=ids["tid"])
     for kind in ("operation", "checkpoint", "external_ref", "reconcile"):
         assert m.record_count[kind] == len(m.records[kind])
         # content_digest 已通过 decoder 校验 → 隐式一致
@@ -375,7 +375,7 @@ async def test_d1a_schema_version_mismatch_fails(snapshot_factory):
     env["schema_version"] = SCHEMA_VERSION + 1
     bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
     with pytest.raises(LedgerSnapshotError) as exc:
-        decode_ledger_segment(bad)
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
     assert exc.value.reason == "SCHEMA_VERSION_UNKNOWN"
 
 
@@ -391,7 +391,7 @@ async def test_d1a_kind_table_mismatch_fails(snapshot_factory):
     env["records"]["operation"][0]["table_identity"] = "agent_external_object_refs"
     bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
     with pytest.raises(LedgerSnapshotError) as exc:
-        decode_ledger_segment(bad)
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
     assert exc.value.reason == "KIND_TABLE_MISMATCH"
 
 
@@ -407,15 +407,16 @@ async def test_d1a_digest_tamper_fails(snapshot_factory):
     env["records"]["operation"][0]["fields"]["state"] = "completed"  # tamper a field
     bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
     with pytest.raises(LedgerSnapshotError) as exc:
-        decode_ledger_segment(bad)
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
     assert exc.value.reason == "CONTENT_DIGEST_MISMATCH"
 
 
 async def test_d1a_duplicate_stable_identity_fails(snapshot_factory):
-    """重复 stable_identity → DUPLICATE_STABLE_IDENTITY。
+    """重复 stable_identity → DUPLICATE_STABLE_IDENTITY（cross-kind catch-all）。
 
-    注意：必须把重复项插入到「原记录相邻位置」才能避开 RECORDS_NOT_SORTED 检查
-    （新增校验顺序：RECORDS_NOT_SORTED → DUPLICATE_STABLE_IDENTITY）。
+    注意：必须用 external_ref record 构造（operation 重复已被 DUPLICATE_OPERATION_ID
+    优先拦截，checkpoint 重复已被 DUPLICATE_CHECKPOINT_OWNER_KEY 拦截）。
+    本测试只验证 stable_identity 跨 kind 去重这一 catch-all。
     """
     factory = snapshot_factory
     async with factory() as seed:
@@ -424,29 +425,29 @@ async def test_d1a_duplicate_stable_identity_fails(snapshot_factory):
         await session.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"))
         payload = await export_ledger_segment(session, tenant_id=ids["tid"])
     env = json.loads(payload)
-    # 复制第一条 operation record 并插入紧邻其原位之后 → 仍按 stable_identity 升序
-    dup = dict(env["records"]["operation"][0])
-    env["records"]["operation"].insert(1, dup)
+    # 复制第一条 external_ref record 并插入紧邻其原位之后 → 仍按 stable_identity 升序
+    dup = dict(env["records"]["external_ref"][0])
+    env["records"]["external_ref"].insert(1, dup)
     # count / digest 同步以隔离此 fail closed
-    env["manifest"]["operation"]["count"] = len(env["records"]["operation"])
+    env["manifest"]["external_ref"]["count"] = len(env["records"]["external_ref"])
     from app.shared.schemas.canonical_json import canonical_digest as _cd
-    env["manifest"]["operation"]["content_digest"] = _cd(
+    env["manifest"]["external_ref"]["content_digest"] = _cd(
         {
             "schema_version": SCHEMA_VERSION,
-            "kind": "operation",
+            "kind": "external_ref",
             "records": [
                 {
                     "stable_identity": r["stable_identity"],
                     "table_identity": r["table_identity"],
                     "fields": r["fields"],
                 }
-                for r in env["records"]["operation"]
+                for r in env["records"]["external_ref"]
             ],
         }
     )
     bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
     with pytest.raises(LedgerSnapshotError) as exc:
-        decode_ledger_segment(bad)
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
     assert exc.value.reason == "DUPLICATE_STABLE_IDENTITY"
 
 
@@ -467,7 +468,7 @@ async def test_d1a_external_ref_value_not_exported(snapshot_factory):
         await session.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"))
         payload = await export_ledger_segment(session, tenant_id=ids["tid"])
     # precondition：external_ref records 必须非空（确保 M2 真命中 select 路径）
-    m = decode_ledger_segment(payload)
+    m = decode_ledger_segment(payload, expected_tenant_id=ids["tid"])
     assert len(m.records["external_ref"]) >= 1, (
         "precondition failed: external_ref records empty, M2 mutation target unreachable"
     )
@@ -518,7 +519,7 @@ async def test_d1a_runtime_session_ref_not_exported(snapshot_factory):
     # 字符串搜索：runtime_ref 不应出现
     assert runtime_ref.encode("utf-8") not in payload
     # decoder 进一步断言：任何 record 字段集合不含 runtime_session_ref
-    m = decode_ledger_segment(payload)
+    m = decode_ledger_segment(payload, expected_tenant_id=tid)
     for kind, recs in m.records.items():
         for r in recs:
             assert "runtime_session_ref" not in r.fields, (
@@ -596,7 +597,7 @@ async def test_d1a_reconstruct_owner_facts_six_tuple(snapshot_factory):
     async with factory() as session, session.begin():
         await session.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"))
         payload = await export_ledger_segment(session, tenant_id=ids["tid"])
-    m = decode_ledger_segment(payload)
+    m = decode_ledger_segment(payload, expected_tenant_id=ids["tid"])
     facts = reconstruct_owner_facts(m)
     expected_op = str(ids["op_ids"][0])
     key = (expected_op, "external.payload.v1")
@@ -624,7 +625,7 @@ async def test_d1a_runtime_per_binding_proof_unavailable_explicit(snapshot_facto
         payload = await export_ledger_segment(session, tenant_id=ids["tid"])
     env = json.loads(payload)
     assert env["runtime_per_binding_proof_available"] is False
-    m = decode_ledger_segment(payload)
+    m = decode_ledger_segment(payload, expected_tenant_id=ids["tid"])
     assert m.runtime_per_binding_proof_available is False
 
 
@@ -704,7 +705,7 @@ async def test_d1a_transaction_repeatable_read_only_accepted(snapshot_factory):
             text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         )
         payload = await export_ledger_segment(session, tenant_id=ids["tid"])
-    decode_ledger_segment(payload)
+    decode_ledger_segment(payload, expected_tenant_id=ids["tid"])
 
 
 # --- tests: six-tuple no overwrite (用户裁决 3) ---
@@ -753,7 +754,7 @@ async def test_d1a_two_operations_same_owner_key_preserved(snapshot_factory):
             text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         )
         payload = await export_ledger_segment(session, tenant_id=tid)
-    m = decode_ledger_segment(payload)
+    m = decode_ledger_segment(payload, expected_tenant_id=tid)
     facts = reconstruct_owner_facts(m)
     # 两条 facts 都应在，键为 (operation_id, owner_key)
     key1 = (str(op1_id), "external.payload.v1")
@@ -801,7 +802,7 @@ async def test_d1a_operation_state_out_of_whitelist(snapshot_factory):
     )
     bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
     with pytest.raises(LedgerSnapshotError) as exc:
-        decode_ledger_segment(bad)
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
     assert exc.value.reason == "CROSS_LAYER_STATE_MIX"
     assert exc.value.detail["reason"] == "state_out_of_whitelist"
     assert exc.value.detail["kind"] == "operation"
@@ -839,7 +840,7 @@ async def test_d1a_checkpoint_state_out_of_whitelist(snapshot_factory):
     )
     bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
     with pytest.raises(LedgerSnapshotError) as exc:
-        decode_ledger_segment(bad)
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
     assert exc.value.reason == "CROSS_LAYER_STATE_MIX"
     assert exc.value.detail["reason"] == "state_out_of_whitelist"
     assert exc.value.detail["kind"] == "checkpoint"
@@ -880,7 +881,7 @@ async def test_d1a_ack_constraint_violation_acked_missing_digest(snapshot_factor
     )
     bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
     with pytest.raises(LedgerSnapshotError) as exc:
-        decode_ledger_segment(bad)
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
     assert exc.value.reason == "ACK_INVARIANT_VIOLATED"
 
 
@@ -928,7 +929,7 @@ async def test_d1a_records_out_of_order_fails(snapshot_factory):
     )
     bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
     with pytest.raises(LedgerSnapshotError) as exc:
-        decode_ledger_segment(bad)
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
     assert exc.value.reason == "RECORDS_NOT_SORTED"
 
     # --- 层 2：真实 exporter 调用 → 若 M7 mutation 注入（绕过 sorted）则失败 ---
@@ -938,7 +939,7 @@ async def test_d1a_records_out_of_order_fails(snapshot_factory):
             text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         )
         real_payload = await export_ledger_segment(session2, tenant_id=ids["tid"])
-    decode_ledger_segment(real_payload)  # 正常 sorted → 通过
+    decode_ledger_segment(real_payload, expected_tenant_id=ids["tid"])  # 正常 sorted → 通过
 
 
 async def test_d1a_decoder_unknown_kind_fails(snapshot_factory):
@@ -955,7 +956,7 @@ async def test_d1a_decoder_unknown_kind_fails(snapshot_factory):
     env["records"]["bogus_kind"] = []
     bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
     with pytest.raises(LedgerSnapshotError) as exc:
-        decode_ledger_segment(bad)
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
     assert exc.value.reason == "UNKNOWN_KIND"
 
 
@@ -974,14 +975,14 @@ async def test_d1a_decoder_runtime_proof_missing_or_true_fails(snapshot_factory)
     env.pop("runtime_per_binding_proof_available")
     bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
     with pytest.raises(LedgerSnapshotError) as exc:
-        decode_ledger_segment(bad)
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
     assert exc.value.reason == "RUNTIME_PROOF_FLAG_MISSING"
     # 2. 显式 True
     env = json.loads(payload)
     env["runtime_per_binding_proof_available"] = True
     bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
     with pytest.raises(LedgerSnapshotError) as exc:
-        decode_ledger_segment(bad)
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
     assert exc.value.reason == "RUNTIME_PROOF_FLAG_TRUE"
 
 
@@ -1006,7 +1007,7 @@ async def test_d1a_count_tamper_fails(snapshot_factory):
     env["manifest"]["operation"]["count"] = env["manifest"]["operation"]["count"] + 1
     bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
     with pytest.raises(LedgerSnapshotError) as exc:
-        decode_ledger_segment(bad)
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
     assert exc.value.reason == "COUNT_MISMATCH"
 
 
@@ -1047,5 +1048,326 @@ async def test_d1a_cross_tenant_tamper_fails(snapshot_factory):
     )
     bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
     with pytest.raises(LedgerSnapshotError) as exc:
-        decode_ledger_segment(bad)
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
     assert exc.value.reason == "CROSS_TENANT_RECORD"
+
+
+# --- 第二轮 P1：逻辑身份 + 六元组完整性 + tenant 绑定 + strict decoder ---
+
+
+def _recompute_kind_digest(env: dict, kind: str) -> str:
+    """辅助：篡改 record fields 后必须同步重算对应 kind content_digest，
+    否则会被 CONTENT_DIGEST_MISMATCH 抢占，无法命中目标 fail-closed。"""
+    from app.shared.schemas.canonical_json import canonical_digest as _cd
+
+    return _cd(
+        {
+            "schema_version": SCHEMA_VERSION,
+            "kind": kind,
+            "records": [
+                {
+                    "stable_identity": r["stable_identity"],
+                    "table_identity": r["table_identity"],
+                    "fields": r["fields"],
+                }
+                for r in env["records"][kind]
+            ],
+        }
+    )
+
+
+async def test_d1a_stable_identity_id_mismatch_fails(snapshot_factory):
+    """stable_identity 与 fields.id 不一致（破坏 f"{record_kind}:{fields.id}" 绑定）
+    → STABLE_IDENTITY_BINDING_MISMATCH（按用户裁决 一-1）。"""
+    factory = snapshot_factory
+    async with factory() as seed:
+        ids = await _seed_minimal_ledger(seed)
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        )
+        payload = await export_ledger_segment(session, tenant_id=ids["tid"])
+    env = json.loads(payload)
+    # 把第一条 operation 的 stable_identity 改成不匹配 fields.id 的字符串
+    real_id = env["records"]["operation"][0]["fields"]["id"]
+    env["records"]["operation"][0]["stable_identity"] = f"operation:{real_id}-mismatch"
+    # 同步重算 digest 以隔离 CONTENT_DIGEST_MISMATCH 抢占
+    env["manifest"]["operation"]["content_digest"] = _recompute_kind_digest(env, "operation")
+    bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
+    assert exc.value.reason == "STABLE_IDENTITY_BINDING_MISMATCH"
+    assert exc.value.detail["kind"] == "operation"
+    assert exc.value.detail["reason"] == "stable_identity_does_not_match_fields_id"
+
+
+async def test_d1a_duplicate_operation_id_fails(snapshot_factory):
+    """两条 operation record 共享同一 fields.id → DUPLICATE_OPERATION_ID（按用户裁决 一-2）。
+
+    注意：构造时必须保持 stable_identity 仍 == f"operation:{fields.id}"（否则会被
+    STABLE_IDENTITY_BINDING_MISMATCH 抢占），并保持 sorted 顺序（prev_sid == sid）。
+    """
+    factory = snapshot_factory
+    async with factory() as seed:
+        ids = await _seed_minimal_ledger(seed, n_operations=2)
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        )
+        payload = await export_ledger_segment(session, tenant_id=ids["tid"])
+    env = json.loads(payload)
+    # 拿第二条 op 的 record，覆写 fields.id 与 stable_identity 与第一条相同（保持 binding）
+    op1_id = env["records"]["operation"][0]["fields"]["id"]
+    op1_sid = env["records"]["operation"][0]["stable_identity"]
+    env["records"]["operation"][1]["fields"]["id"] = op1_id
+    env["records"]["operation"][1]["stable_identity"] = op1_sid
+    # count + digest 同步
+    env["manifest"]["operation"]["count"] = len(env["records"]["operation"])
+    env["manifest"]["operation"]["content_digest"] = _recompute_kind_digest(env, "operation")
+    bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
+    assert exc.value.reason == "DUPLICATE_OPERATION_ID"
+    assert exc.value.detail["operation_id"] == str(op1_id)
+
+
+async def test_d1a_duplicate_checkpoint_owner_key_fails(snapshot_factory):
+    """两条 checkpoint record 共享同一 (purge_operation_id, owner_key) → DUPLICATE_CHECKPOINT_OWNER_KEY
+    （按用户裁决 一-2）。
+    """
+    factory = snapshot_factory
+    async with factory() as seed:
+        ids = await _seed_minimal_ledger(seed, n_checkpoints=2)
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        )
+        payload = await export_ledger_segment(session, tenant_id=ids["tid"])
+    env = json.loads(payload)
+    cp1 = env["records"]["checkpoint"][0]
+    cp2 = env["records"]["checkpoint"][1]
+    # 把 cp2 的 (purge_operation_id, owner_key) 改为与 cp1 相同（stable_identity 因 fields.id 不同而不同）
+    cp2["fields"]["purge_operation_id"] = cp1["fields"]["purge_operation_id"]
+    cp2["fields"]["owner_key"] = cp1["fields"]["owner_key"]
+    # stable_identity 因 fields.id 不同而不同 → 不触发 STABLE_IDENTITY_BINDING_MISMATCH
+    # 两 record 共用 (op_id, owner_key) → DUPLICATE_CHECKPOINT_OWNER_KEY
+    env["records"]["checkpoint"].sort(key=lambda r: r["stable_identity"])
+    # count + digest 同步
+    env["manifest"]["checkpoint"]["count"] = len(env["records"]["checkpoint"])
+    env["manifest"]["checkpoint"]["content_digest"] = _recompute_kind_digest(env, "checkpoint")
+    bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
+    assert exc.value.reason == "DUPLICATE_CHECKPOINT_OWNER_KEY"
+    assert exc.value.detail["purge_operation_id"] == str(cp1["fields"]["purge_operation_id"])
+    assert exc.value.detail["owner_key"] == str(cp1["fields"]["owner_key"])
+
+
+@pytest.mark.parametrize(
+    "missing_field",
+    [
+        "owner_key",
+        "purge_operation_id",
+        "owner_version",
+        "capability_digest",
+        "state",
+    ],
+)
+async def test_d1a_owner_six_tuple_incomplete_checkpoint_field_missing(
+    snapshot_factory, missing_field
+):
+    """checkpoint 六元组各必需字段缺失 → OWNER_SIX_TUPLE_INCOMPLETE（按用户裁决 一-3）。
+
+    decoder 阶段即抛（不再等到 reconstruct_owner_facts 才暴露 KeyError）。
+    """
+    factory = snapshot_factory
+    async with factory() as seed:
+        ids = await _seed_minimal_ledger(seed)
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        )
+        payload = await export_ledger_segment(session, tenant_id=ids["tid"])
+    env = json.loads(payload)
+    env["records"]["checkpoint"][0]["fields"][missing_field] = None
+    env["manifest"]["checkpoint"]["count"] = len(env["records"]["checkpoint"])
+    env["manifest"]["checkpoint"]["content_digest"] = _recompute_kind_digest(env, "checkpoint")
+    bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
+    assert exc.value.reason == "OWNER_SIX_TUPLE_INCOMPLETE"
+    assert exc.value.detail["kind"] == "checkpoint"
+    assert missing_field in exc.value.detail["missing_fields"]
+    assert exc.value.detail["reason"] == "checkpoint_required_field_missing"
+
+
+async def test_d1a_owner_six_tuple_incomplete_purge_revision_missing(snapshot_factory):
+    """operation.purge_revision 缺失 → OWNER_SIX_TUPLE_INCOMPLETE（按用户裁决 一-3）。
+
+    decoder 阶段即抛；reconstruct_owner_facts 不再触发 KeyError。
+    """
+    factory = snapshot_factory
+    async with factory() as seed:
+        ids = await _seed_minimal_ledger(seed)
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        )
+        payload = await export_ledger_segment(session, tenant_id=ids["tid"])
+    env = json.loads(payload)
+    env["records"]["operation"][0]["fields"]["purge_revision"] = None
+    env["manifest"]["operation"]["count"] = len(env["records"]["operation"])
+    env["manifest"]["operation"]["content_digest"] = _recompute_kind_digest(env, "operation")
+    bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
+    assert exc.value.reason == "OWNER_SIX_TUPLE_INCOMPLETE"
+    assert exc.value.detail["kind"] == "operation"
+    assert "purge_revision" in exc.value.detail["missing_fields"]
+    assert exc.value.detail["reason"] == "operation_purge_revision_missing"
+
+
+async def test_d1a_tenant_binding_mismatch_empty_artifact_fails(snapshot_factory):
+    """空 artifact（records 全空）也必须校验 tenant binding——不得依赖 records 非空
+    （按用户裁决 二-4）。"""
+    factory = snapshot_factory
+    async with factory() as seed:
+        tid_a = await _seed_tenant(seed, name="ta")
+        tid_b = await _seed_tenant(seed, name="tb")
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        )
+        payload = await export_ledger_segment(session, tenant_id=tid_a)
+    # 确认 envelope 是空 records + declared=tid_a
+    m = decode_ledger_segment(payload, expected_tenant_id=tid_a)
+    assert m.record_count["operation"] == 0
+    # 现在传 expected=tid_b → TENANT_BINDING_MISMATCH（即使 artifact 全空）
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(payload, expected_tenant_id=tid_b)
+    assert exc.value.reason == "TENANT_BINDING_MISMATCH"
+    assert exc.value.detail["declared_tenant_id"] == str(tid_a)
+    assert exc.value.detail["expected_tenant_id"] == str(tid_b)
+
+
+async def test_d1a_tenant_not_uuid_fails(snapshot_factory):
+    """tenant_id 字符串不是规范 UUID → TENANT_ID_NOT_UUID（按用户裁决 二-3）。
+
+    非空记录与空记录都必须拒绝——以防 producer 端某 tenant 字段被静默序列化。
+    """
+    factory = snapshot_factory
+    async with factory() as seed:
+        ids = await _seed_minimal_ledger(seed)
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        )
+        payload = await export_ledger_segment(session, tenant_id=ids["tid"])
+    env = json.loads(payload)
+    env["tenant_id"] = "not-a-uuid"
+    bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
+    assert exc.value.reason == "TENANT_ID_NOT_UUID"
+
+
+async def test_d1a_manifest_unknown_kind_fails(snapshot_factory):
+    """manifest 顶层 keys 含 RECORD_KINDS 之外的 kind → MANIFEST_KIND_UNKNOWN（按用户裁决 三-1）。
+    与 UNKNOWN_KIND（records 顶层）独立；manifest-only 反例覆盖此隔离路径。
+    """
+    factory = snapshot_factory
+    async with factory() as seed:
+        ids = await _seed_minimal_ledger(seed)
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        )
+        payload = await export_ledger_segment(session, tenant_id=ids["tid"])
+    env = json.loads(payload)
+    # manifest 额外加 bogus_kind（records 不变——确保 records 路径不抢先）
+    env["manifest"]["bogus_kind"] = {"count": 0, "content_digest": "a" * 64}
+    bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
+    assert exc.value.reason == "MANIFEST_KIND_UNKNOWN"
+    assert "bogus_kind" in exc.value.detail["extra_kinds"]
+
+
+async def test_d1a_ack_not_hex_fails(snapshot_factory):
+    """checkpoint.state='acked' 但 ack_digest 是 64 字符但非小写 hex
+    → ACK_INVARIANT_VIOLATED（按用户裁决 三-3：64-hex lowercase 应用层门禁）。
+
+    注意：迁移 034 仅约束 length=64，**64-hex 校验为应用层附加门禁**。
+    """
+    factory = snapshot_factory
+    async with factory() as seed:
+        ids = await _seed_minimal_ledger(seed)
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        )
+        payload = await export_ledger_segment(session, tenant_id=ids["tid"])
+    env = json.loads(payload)
+    ck = env["records"]["checkpoint"][0]
+    ck["fields"]["state"] = "acked"
+    ck["fields"]["ack_digest"] = "Z" * 64  # 64 chars 但含大写 Z（非小写 hex）
+    env["manifest"]["checkpoint"]["count"] = len(env["records"]["checkpoint"])
+    env["manifest"]["checkpoint"]["content_digest"] = _recompute_kind_digest(env, "checkpoint")
+    bad = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    with pytest.raises(LedgerSnapshotError) as exc:
+        decode_ledger_segment(bad, expected_tenant_id=ids["tid"])
+    assert exc.value.reason == "ACK_INVARIANT_VIOLATED"
+    assert (
+        exc.value.detail["reason"] == "acked_requires_64hex_lowercase_ack_digest"
+    )
+
+
+async def test_d1a_reconstruct_owner_facts_defensive_no_silent_overwrite(snapshot_factory):
+    """reconstruct_owner_facts 防御性兜底：即使 envelope 异常导致必须字段 None，
+    仍以具名错误抛出（OWNER_SIX_TUPLE_INCOMPLETE / CHECKPOINT_WITHOUT_OPERATION），
+    **绝不**以默认字符串/sentinel 静默构造 owner fact。
+
+    此处直接构造 ``Manifest`` 对象绕过 decoder（六元组缺失不会被 decoder 捕获），
+    验证 reconstruct 路径同样 fail closed。
+    """
+    from app.composition.s6i3_ledger_snapshot import (
+        ExportedRecord,
+        Manifest,
+    )
+
+    factory = snapshot_factory
+    async with factory() as seed:
+        ids = await _seed_minimal_ledger(seed)
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        )
+        payload = await export_ledger_segment(session, tenant_id=ids["tid"])
+    m = decode_ledger_segment(payload, expected_tenant_id=ids["tid"])
+    # 篡改 checkpoint record 的 owner_key 字段为 None（绕过 decoder；直接改 Manifest.records）
+    cp_records = list(m.records["checkpoint"])
+    cp0 = cp_records[0]
+    tampered_fields = dict(cp0.fields)
+    tampered_fields["owner_key"] = None
+    tampered = ExportedRecord(
+        record_kind=cp0.record_kind,
+        table_identity=cp0.table_identity,
+        stable_identity=cp0.stable_identity,
+        fields=tampered_fields,
+    )
+    cp_records[0] = tampered
+    new_records = dict(m.records)
+    new_records["checkpoint"] = tuple(cp_records)
+    bad_manifest = Manifest(
+        schema_version=m.schema_version,
+        tenant_id=m.tenant_id,
+        record_count=m.record_count,
+        content_digest=m.content_digest,
+        runtime_per_binding_proof_available=m.runtime_per_binding_proof_available,
+        records=new_records,
+        raw=m.raw,
+    )
+    with pytest.raises(LedgerSnapshotError) as exc:
+        reconstruct_owner_facts(bad_manifest)
+    assert exc.value.reason == "OWNER_SIX_TUPLE_INCOMPLETE"
+    assert "owner_key" in exc.value.detail["missing_fields"]
