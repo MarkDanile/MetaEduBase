@@ -1,6 +1,6 @@
 # R1-S6-I3-D 事实审计（contract-to-code，第二轮事实纠偏 + merged-boundary 收口标注）
 
-> Status: 🟡 TASK-R1-S6-I3-D 整体仍进行中（PR-D / PR-E / D2 / S5 wiring / capability flip / 六 erase 入口生产可达仍未启动）；**D1a 子阶段 🟢 已完成并入 main**（PR #598 squash mergeCommit `5868831e`，source head `ca9f4404`，FINAL_IMPL_HEAD `8a836733`，评分 97 Original；评审对象 main@`aff54883`..`8a836733` 净 diff 7 文件 4941+/1-）
+> Status: 🟡 TASK-R1-S6-I3-D 整体仍进行中（PR-D / PR-E / D2 / S5 wiring / capability flip / 六 erase 入口生产可达仍未启动）；**D1a 子阶段 🟢 已完成并入 main**（PR #598 squash mergeCommit `5868831e`，source head `ca9f4404`，FINAL_IMPL_HEAD `8a836733`，评分 97 Original；评审对象 main@`aff54883`..`8a836733` 净 diff 7 文件 4941+/1-）；**D1b 子阶段 🟢 已完成并入 main**（PR #600 squash mergeCommit `01c84f7c`，source head `467e8d24`，FINAL_IMPL_HEAD `061f4a66`，评分 commit `1293ea51`，correction commit `467e8d24`，评分 94 Original；评审对象 main@`5e1d4dff`..`061f4a66` 净 diff 7 文件 3088+/5-）
 >
 > 任务卡：`docs/03-engineering-governance/current-work.md` TASK-R1-S6-I3-D
 >
@@ -836,6 +836,76 @@ D1b 与 D1a **不可合并于**「D1a 是只读 codec + decoder + bounded export
 | 5. 固定顺序 | **D1a → D1b → D2** | |
 
 **Phase 1 启动 D1a only**——本轮实施 D1a（只读 codec + bounded snapshot/segment exporter + decode/validate + 只读 identity reconstruction），不实现 D1b / D2 / PR-E / C1 / S5 production wiring / capability flip。
+
+## 17.6. D1b merged-boundary 收口标注（2026-08-28）
+
+> 本节为 D1b 子阶段 merge 入 main 的事实收口。审计责任范围：D1b 实现本体（专用 MinIO ledger archive sink + 不可变 commit-graph 发布协议 + 两阶段 API 拆分 + per-kind generation sink 端语义）；不宣称 D2 / PR-D / PR-E / C1 / S5 wiring / capability flip / 六 erase 入口生产可达已交付。
+
+**集成事实链**：
+
+1. **PR #600 squash merge 入 main `01c84f7c`**（2026-08-28，mergeCommit.oid `01c84f7c44de693642ac71150f9bf377e8685539`，mergedAt `2026-08-28T10:15:08Z`，feature branch `feature/req041-047-r1-s6-i3-d-d1b-minio-archive` 已 `--delete-branch` 删除）
+2. source head `467e8d24a74f0c68ef2325340f7f86e2cca4397c` + FINAL_IMPL_HEAD `061f4a66` + 评分 commit `1293ea5194ccef9086188acf5677c51a4bf1d932`（首次 #600 Original 94 行落入 Score Log）+ correction commit `467e8d24`（同 #600 Original 行 in-place 修订事实更正：`#598 mergeCommit 8a836733` → `#598 FINAL_IMPL_HEAD 8a836733，squash mergeCommit 5868831e`；D1b 实现本体已明确为本 PR 完成评审；普通新 commit + push，**非** amend / 非 rebase / 非 force-push）
+3. 评审对象 main@`5e1d4dff`..`061f4a66` 净 diff 7 文件 3088+/5-：codec + tests + 真实 MinIO opt-in + mutation script + 1 production config `minio_ledger_archive_bucket` + 2 governance（current-work + td-032）+ Score Log 1 行
+4. main 累积 diff（5e1d4dff..01c84f7c = 8 文件 3089+/5-）含 D1b 实现 + 测试 + 真实 MinIO acceptance + mutation + 唯一 #600 评分行
+
+**契约事实校核（contract-to-code）**：
+
+- **专用 MinIO archive bucket**（用户裁决 2）= `metaedu-ledger-archive` ≠ `minio_bucket=metaedu-resources`；`app/config.py:30` 新增 `minio_ledger_archive_bucket: str = "metaedu-ledger-archive"` 但**当前实现无任何 production caller**——settings 注册但 scheduler / producer / cursor / continuous capture 全部未启动
+- **不可变 commit-graph 协议**：segment key = sha256(segment_bytes)，commit marker key = `{generation:020d}-{export_id}.json`，segment PUT 先于 marker PUT（marker 出现 = 提交成功），per-tenant single publisher（V1）并发 fork fail-closed
+- **D1a bytes → archive → D1a decoder round-trip**：phase-1 事务内 D1a export 后立即 D1a decoder 二次校验；phase-2 publish 后 GET-back digest verify；D1a round-trip 真实 MinIO 测试首轮发现并修复两处真 bug（`stable_identity` 必须 == `f"{kind}:{fields.id}"` 共享 UUID 变量绑定 + `table_identity` 必须 == 真实 DB 表名 `agent_conversation_purges` / `agent_conversation_purge_owners` 非字面 `purge_operation` / `purge_checkpoint` + `fields` 集合必须 ⊆ kind 闭集不允许 `created_at` 之类未授权字段）
+- **idempotent retry**：marker 字节确定性由 segment_sha256 / export_id / generation / parent_export_id / per-kind 共同保证，**不依赖**任何 wall-clock 字段
+- **三 P1 修复闭环**（用户裁决 1+2+3）：
+  - **A-1 语义伪造**：`CommitMarker.published_at_unix` 字段删除 + `build_commit_marker` 无 `now_unix` 参数 + `to_canonical_dict` 不输出 wall-clock 字段
+  - **B-1 事务持网络 I/O**：拆两阶段 API（`export_ledger_segment_for_archive(session, *, tenant_id)` L804-856 接收 session 强制 RR+RO 事务内 D1a export + decode 双校验零 sink I/O；`publish_ledger_segment(*, sink, tenant_id, segment_bytes, manifest, parent_export_id=None, sleeper=None)` L859-1011 不接收 AsyncSession 严格 sink I/O 零 DB I/O；`archive_ledger_segment` 删除 caller 显式编排；mask-style sink 写入集合断言 `_publish_two_phase` helper L436-479）
+  - **C-1 零真实 MinIO 验收**：新增 `tests/composition/test_s6i3_d_ledger_archive_real_minio.py` opt-in `@pytest.mark.external_network` 模块已执行 6/6 PASS
+- **A-5 per-kind generation 修订**：写入当前 commit marker 的实际 publication generation（=顶层 `CommitMarker.generation`），sink 端语义（**非** DB source cursor）；同 marker 内 per-kind 共享顶层值；marker 间单调推进；新增 `test_d1b_per_kind_generation_advances_with_marker_generation` 真实 PG 双代验证 first gen=1 / second gen=2
+
+**验证事实**：
+
+- **47/47 D1b composition**（31 纯内存 in-memory + 12 真实 PG via `snapshot_factory` fixture 连接 `metaedu_test` + 4 transient retry + per-kind generation 双代 `test_d1b_per_kind_generation_advances_with_marker_generation` L514-558 真实 PG 验证 first gen=1 / second gen=2 + per-kind 与顶层 generation 一致）
+- **6/6 opt-in real MinIO acceptance**（per-run UUID bucket `metaedu-d1b-acceptance-{uuid4.hex[:12]}-{pid}-{ts_ms_low16}` + try/finally cleanup + 三层防御 `bucket != "metaedu-resources"` / `bucket != settings.minio_bucket` / `bucket not in FORBIDDEN_BUCKETS`；测试后 dev MinIO `total buckets: 0`，metaedu-resources 未被创建/触碰；`@pytest.mark.external_network` opt-in `RUN_REAL_MINIO_TESTS=1`）
+- **11/11 behavioral mutation KILLED**（M1-M11 全部 subprocess pytest 真实 red→green 驱动；byte backup + try/finally + SHA-256 byte-identical `1d1e3bfd5509f0e3bc26139232d083bb1de701b792e40ce21acaef4e8860f3ab` 一致；M2/M4/M10 重定义为独立故障：M2 = segment 不存在时仍 PUT marker / M4 = 吞 segment PUT 异常 + 继续 marker PUT / M10 = 跳过 phase-1 decode；新增 3 项 invariant test `test_d1b_m2_segment_required_for_marker` / `test_d1b_m4_segment_failure_does_not_commit_marker` / `test_d1b_m10_phase1_calls_decode_validator`）
+- **三套独立验证口径禁止合并**：opt-in MinIO 6 + 常规 47 + mutation 11 各自独立，**不得**合并相加或混入常规 CI 报告
+- ruff clean + 官方 mypy baseline gate `cd packages/server-python && uv run --frozen --extra dev python scripts/check_mypy_baseline.py` → `passed: 243 historical errors across 76 keys; 0 regressions`（D1b 文件在 main 上 → baseline 覆盖）+ git diff --check clean + engineering-docs `--full` 全绿（31 known issues allowlisted；本 PR `engineer docs checks passed (31 known issue(s) allowlisted)` 落地门禁）
+- PR #600 Ready 三路 required checks 全 SUCCESS（run `33160395058` Backend 19m53s SUCCESS + Frontend 2m17s SUCCESS + Engineering docs 19s SUCCESS）
+
+**三面复审 + 评分事实**：
+
+- 独立三面复审 P0=0/P1=0/P2=5/P3=6：面 A 契约/scope/facts 2+3 + 面 B 事务/并发/原子发布/数据完整性 3+1 + 面 C 测试/mutation/真实 MinIO/运维 0+2
+- 维度评分（15/17/19/15/15/9/4 = 94/100）：范围与需求匹配 15 + 实现质量 17 + 测试与验证证据 19 + 事实源与流程遵守 15 + 风险与行为变化控制 15 + 可评审性与交接质量 9 + 持续改进信号 4
+- 保留 5 P2：同步 MinIO SDK `put_object` / `get_object` / `list_objects` 在 asyncio 事件循环中阻塞未通过 `asyncio.to_thread` 移交未做性能硬化 / V1 single publisher 非 linearizable / `response.close()` + `response.release_conn()` 无 spy / 真实 MinIO 未覆盖 transient/collision/concurrent fork / D1a double-decode 性能
+- 保留 6 P3：A-P3-1 `test_d1b_marker_contains_per_kind_counts_and_digests` 残留旧 assertion / A-P3-2 真实 MinIO 两阶段 API 测试 table_identity 字面量 `purge_operation` / `purge_checkpoint` 不一致 / A-P3-3 TD-032 split 待办 / B-P3-1 Protocol 命名混淆 / C-P3-1 真实 MinIO 非 CI 默认 opt-in / C-P3-2 M10 spy 仅次数未断言参数
+- **正式评分门禁真实 PASS** `scripts/check-review-score-submit --base 061f4a66 --pr 600` → `review-score-submit: passed (base 061f4a66, PR #600, one Original row, Metrics unchanged)`（PR #555 / commit `2b801a60` 落地门禁脚本 `scripts/check-review-score-submit` + `scripts/engineering/review_score_submit.py` + `tests/engineering/test_review_score_submit.py`）
+- 历史 finding 永久保留：TD-032（D1b `s6i3_d_ledger_archive_sink.py` 1052 行 + `test_s6i3_d_ledger_archive_sink.py` 1117 行 双超 1000 行硬限制已登记 🟢 待拆分）+ REQ-047（R1-S6 implementation conformance：B/C/D 联合启用门禁 — D1b/D2 合并后由 conformance 验收；D1b 评审完成 + 三 P1 修复闭环 + 47/6/11 测试与 mutation = D1b 实施合规事实）+ A-2 13 命名 `LedgerArchiveError` 子类精确目录（用户裁决）+ 5 P2 + 6 P3
+
+**D1b 完成不等于以下后续事项已完成（merged-boundary 不变式）**：
+
+- ❌ **D1b production wiring 未启动**（scheduler 接入 / capability flip / 六 erase 入口生产可达）——`minio_ledger_archive_bucket` settings 注册但无 production caller
+- ❌ **D2 未启动**（replay executor + M 类互斥 A advisory lock + restore-before-open 编排 + restore 端 DB mutation）——须先解决：(1) Runtime per-binding proof 路径用户裁决 a/b/c（D2 硬阻塞）+ (2) M 类互斥 A 方案接法（须写作 S6-4 锁序登记修订）+ (3) D1a codec 已被 D2 消费
+- ❌ **PR-D 未启动**（ledger export additional safety drills）
+- ❌ **PR-E 未启动**（release drill 五阶段 canary）
+- ❌ **C1 未启动**（Durable Core 总验收）
+- ❌ **S5 production wiring 未启动**
+- ❌ **registry capability flip 未启动**（external/runtime 仍 `erase_available=False`）
+- ❌ **六 erase 入口生产可达 未启动**
+- ❌ **F-matrix 7/12 NOT-RED mutation 增强 PR 未启动**（保持原编号与状态）
+- ❌ **M-F3/F5/F8 mutation 停止条件登记保持**
+- ❌ **TD-104 未启动**（PR-A schema/test alignment 残项）
+
+**用户裁决 5 项冻结（merged-boundary 不变式）**：
+
+1. Runtime per-binding proof = c（archived completed runtime 缺 per-binding proof 时返回具名 `RUNTIME_BINDING_EVIDENCE_UNPROVABLE`；零 DB 写、不修改 terminal operation、不伪造 blocked/acked、不写假 receipt；restore-before-open 保持关闭，转 runbook 人工处置）
+2. D1b = 专用 MinIO archive bucket（`metaedu-ledger-archive` ≠ `metaedu-resources`）—— 已落地
+3. D2 = A advisory lock（全局 transaction-level advisory lock；retention/audit 取 `pg_advisory_xact_lock_shared`，replay 取 `pg_advisory_xact_lock`；新锁必须在 Run/Conversation/owner/collection 锁之前取得；同一稳定 namespace/scope）—— 未启动
+4. D1a / D1b / D2 阶段 = 各自独立 PR —— 已遵守（D1a → D1b 顺序）
+5. 固定顺序 D1a → D1b → D2 —— 已遵守（D1a 已合 main，D1b 已合 main，D2 待启动）
+
+**未覆盖边界的真实性声明**：
+
+- 真实 MinIO acceptance **仅覆盖主路径**（PUT/GET / marker / find_committed_tip / bucket 构造器拒绝 / 两阶段 API publish / D1a round-trip），**未覆盖** transient/collision/concurrent fork 三类错误路径（属 P2 follow-up）
+- 真实 MinIO 测试结束后 dev MinIO `total buckets: 0`，per-run bucket 全部清理；metaedu-resources 未被创建/触碰
+- D1b 三套验证口径禁止合并：opt-in MinIO 6 + 常规 47 + mutation 11 各自独立
+- 任何后续声称 D1b 完成的工作，必须同时满足：(1) 评分 94 Original 已登记 (2) 三 P1 修复闭环 (3) 47/6/11 验证基线 (4) merged-boundary 不冒充 D2/PR-D/PR-E/C1/S5 wiring/capability flip/六 erase
 
 ## 18. 关键引用
 
