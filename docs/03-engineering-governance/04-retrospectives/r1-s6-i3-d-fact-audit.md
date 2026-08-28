@@ -1,10 +1,10 @@
-# R1-S6-I3-D 事实审计（contract-to-code，第二轮事实纠偏）
+# R1-S6-I3-D 事实审计（contract-to-code，第二轮事实纠偏 + merged-boundary 收口标注）
 
-> Status: 🟡 进行中（事实审计 + 第二轮 correction 阶段）—— **本轮不实施业务代码**；本审计文档仅做 contract-to-code 读审查 + 第二轮事实纠偏
+> Status: 🟡 TASK-R1-S6-I3-D 整体仍进行中（PR-D / PR-E / D2 / S5 wiring / capability flip / 六 erase 入口生产可达仍未启动）；**D1a 子阶段 🟢 已完成并入 main**（PR #598 squash mergeCommit `5868831e`，source head `ca9f4404`，FINAL_IMPL_HEAD `8a836733`，评分 97 Original；评审对象 main@`aff54883`..`8a836733` 净 diff 7 文件 4941+/1-）
 >
 > 任务卡：`docs/03-engineering-governance/current-work.md` TASK-R1-S6-I3-D
 >
-> PR：#598（Draft, base=main `aff54883`）
+> 本审计范围仅作为 contract-to-code 推导依据保留——D1a 已落 main 不再需要评审触发审计；本文档不修改冻结 Plan 文字，「待用户裁决」章节已 supersede（见下）
 >
 > 本轮输入 baseline：`4cf3ab369af240873754d6e6c9890a92c2c03e39`（不要在 committed 文档写"当前 HEAD"——每次提交后自我陈旧）
 >
