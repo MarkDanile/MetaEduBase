@@ -72,12 +72,8 @@ _RUN_REAL_MINIO = os.environ.get("RUN_REAL_MINIO_TESTS") == "1"
 
 # Real MinIO endpoint（与 deploy/docker-compose.dev.yml 对齐）
 _REAL_MINIO_ENDPOINT = os.environ.get("METAEDU_MINIO_ENDPOINT", "127.0.0.1:9000")
-_REAL_MINIO_ACCESS_KEY = os.environ.get(
-    "METAEDU_MINIO_ACCESS_KEY", "metaedu"
-)
-_REAL_MINIO_SECRET_KEY = os.environ.get(
-    "METAEDU_MINIO_SECRET_KEY", "dev_only_123"
-)
+_REAL_MINIO_ACCESS_KEY = os.environ.get("METAEDU_MINIO_ACCESS_KEY", "metaedu")
+_REAL_MINIO_SECRET_KEY = os.environ.get("METAEDU_MINIO_SECRET_KEY", "dev_only_123")
 
 
 def _per_run_bucket_name() -> str:
@@ -211,9 +207,7 @@ def per_run_minio_bucket() -> Any:
         # cleanup 阶段异常用 contextlib.suppress 抑制，避免掩盖测试本身的 pass/fail
         try:
             # 1) 列所有对象 + 删除
-            objs = list(
-                admin_client.list_objects(bucket, prefix="", recursive=True)
-            )
+            objs = list(admin_client.list_objects(bucket, prefix="", recursive=True))
             for obj in objs:
                 with contextlib.suppress(Exception):
                     admin_client.remove_object(bucket, obj.object_name)
@@ -303,21 +297,22 @@ def test_real_minio_archive_segment_via_two_phase_api(per_run_minio_bucket: Any)
     _bucket, sink = per_run_minio_bucket
     tenant_id = uuid.uuid4()
     tenant_id_str = str(tenant_id)
-    segment_bytes = (
-        b'{"tenant_id":"' + tenant_id_str.encode() + b'","schema_version":1}'
-    )
+    segment_bytes = b'{"tenant_id":"' + tenant_id_str.encode() + b'","schema_version":1}'
 
+    # D1a decoder 强制 stable_identity == f"{kind}:{fields.id}"，故 id 必须先生成
+    op_id = uuid.uuid4()
     op = ExportedRecord(
         record_kind="operation",
         table_identity="purge_operation",
-        stable_identity=f"operation:{uuid.uuid4()}",
-        fields={"id": str(uuid.uuid4())},
+        stable_identity=f"operation:{op_id}",
+        fields={"id": str(op_id)},
     )
+    ck_id = uuid.uuid4()
     ck = ExportedRecord(
         record_kind="checkpoint",
         table_identity="purge_checkpoint",
-        stable_identity=f"checkpoint:{uuid.uuid4()}",
-        fields={"id": str(uuid.uuid4())},
+        stable_identity=f"checkpoint:{ck_id}",
+        fields={"id": str(ck_id)},
     )
     digest = "a" * 64
     manifest = Manifest(
@@ -370,33 +365,35 @@ def test_real_minio_archive_segment_d1a_round_trip(per_run_minio_bucket: Any) ->
     tenant_id = uuid.uuid4()
     tenant_id_str = str(tenant_id)
     # 构造合法 envelope → D1a encode → phase-2 publish → phase-2 后 GET-back → D1a decode
+    # D1a decoder 强制 stable_identity == f"{kind}:{fields.id}"，故 id 必须先生成
+    op_id = uuid.uuid4()
     op_record = ExportedRecord(
         record_kind="operation",
-        table_identity="purge_operation",
-        stable_identity=f"operation:{uuid.uuid4()}",
+        table_identity="agent_conversation_purges",
+        stable_identity=f"operation:{op_id}",
         fields={
-            "id": str(uuid.uuid4()),
+            "id": str(op_id),
             "tenant_id": tenant_id_str,
             "conversation_id": str(uuid.uuid4()),
             "purge_revision": 1,
             "state": "running",
-            "created_at": "2026-01-01T00:00:00",
         },
     )
+    ck_id = uuid.uuid4()
+    # checkpoint 必须挂在 operation 上：D1a 校验 purge_operation_id 是 canonical UUID
     ck_record = ExportedRecord(
         record_kind="checkpoint",
-        table_identity="purge_checkpoint",
-        stable_identity=f"checkpoint:{uuid.uuid4()}",
+        table_identity="agent_conversation_purge_owners",
+        stable_identity=f"checkpoint:{ck_id}",
         fields={
-            "id": str(uuid.uuid4()),
+            "id": str(ck_id),
             "tenant_id": tenant_id_str,
-            "purge_operation_id": str(uuid.uuid4()),
+            "purge_operation_id": str(op_id),
             "owner_key": "external.payload.v1",
             "owner_version": 1,
             "capability_digest": "a" * 64,
             "state": "erasing",
             "attempt": 1,
-            "created_at": "2026-01-01T00:00:00",
         },
     )
     envelope = _records_to_envelope(
