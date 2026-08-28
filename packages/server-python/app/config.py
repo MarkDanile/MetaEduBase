@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     minio_bucket: str = "metaedu-resources"
     minio_secure: bool = False
 
+    # R1-S6-I3-D D1b：专用 MinIO ledger archive bucket（用户裁决 5 项已冻结）。
+    # 严格 ≠ minio_bucket（metaedu-resources）；生产 publish 不自动创建 bucket。
+    # V1 = per-tenant single publisher；不可变 commit-graph 协议。
+    minio_ledger_archive_bucket: str = "metaedu-ledger-archive"
+
     upload_dir: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
 
     jwt_secret: str = "dev-only-change-in-production"
