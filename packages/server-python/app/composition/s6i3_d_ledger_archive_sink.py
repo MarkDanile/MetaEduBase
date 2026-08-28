@@ -18,11 +18,22 @@ D1b = 把 D1a 的 segment 字节不可变发布到专用 MinIO archive bucket，
 对象协议（用户裁决 D1b 冻结）：
 - segment key: ``v1/tenants/{tenant_id}/segments/{segment_sha256}.json``
 - commit marker key: ``v1/tenants/{tenant_id}/commits/{generation:020d}-{export_id}.json``
-- marker 至少含 schema_version / tenant_id / export_id / parent_export_id / generation /
-  segment_key / segment_sha256 / 每个 record kind 的 generation/count/content_digest
+- marker 字段：schema_version / tenant_id / export_id / parent_export_id / generation /
+  segment_key / segment_sha256 / per_kind (count + content_digest)
+- marker 不承载 wall-clock 时间戳 —— 不可变发布事实与观测时刻解耦；
+  ``published_at_unix`` 字段**已删除**（A-1 用户裁决：marker 不得伪造发布时间）
 
-发布顺序：RR + READ ONLY 事务导出 segment → D1a decode 校验 → PUT immutable segment
-→ GET-back + digest 校验 → 再 PUT immutable commit marker；marker 出现才代表提交成功。
+两阶段 API（用户裁决 B-1）：
+- ``export_ledger_segment_for_archive(session, *, tenant_id)``
+  在 caller-managed RR + READ ONLY 事务内**只**完成 D1a export + decode 校验，
+  返回 ``(segment_bytes, manifest)``。**任何 sink I/O / retry / sleep 禁止在此阶段。**
+- ``publish_ledger_segment(*, sink, tenant_id, segment_bytes, manifest, ...)``
+  接收已校验的 segment_bytes + manifest，**不**接收 AsyncSession，**不**触发 DB I/O。
+  所有 MinIO/list/get/put/retry/sleep 必须在此阶段，且必须发生在 DB 事务结束后。
+
+发布顺序：phase-1 RR + READ ONLY 导出 segment + D1a decode 校验（事务内）
+→ 事务结束 → phase-2 不可变 PUT segment → GET-back + digest 校验
+→ 不可变 PUT commit marker；marker 出现才代表提交成功。
 
 禁止：临时对象 rename / 普通可变 HEAD 覆盖冒充原子发布；用「写前 stat + 普通 PUT」
 伪造 CAS；维护 last-write-wins HEAD；DB 事务持网络 I/O；自动创建 bucket（生产）；drop
@@ -42,10 +53,10 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import structlog
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.composition.s6i3_ledger_snapshot import (
     LedgerSnapshotError,
+    Manifest,
     decode_ledger_segment,
     export_ledger_segment,
 )
@@ -268,7 +279,13 @@ def prefix_for_tenant(tenant_id: str) -> str:
 
 @dataclass(frozen=True)
 class PerKindMarker:
-    """marker 中每个 record kind 的 generation / count / content_digest 三元组。"""
+    """marker 中每个 record kind 的 count + content_digest 二元组。
+
+    注（用户裁决 A-5）：本 slice **不**区分 per-kind 推进语义。
+    ``generation`` 字段为该 kind 在本 marker 中的本地代数；当前 D1b 切片下每个
+    kind 在一个 commit marker 中只占 1 代（不持久 per-kind 推进序列 —— 此属
+    D2 / replay executor 范畴）。该字段保留仅为 schema 占位与未来扩展。
+    """
 
     generation: int
     count: int
@@ -294,7 +311,13 @@ class PerKindMarker:
 
 @dataclass(frozen=True)
 class CommitMarker:
-    """不可变 commit marker —— 写入后等同发布事实。"""
+    """不可变 commit marker —— 写入后等同发布事实。
+
+    不承载任何发布时间字段（用户裁决 A-1）：
+    - 不可变发布事实与观测时刻解耦
+    - 字节稳定性由 segment_sha256 / export_id / generation / parent_export_id /
+      per-kind count + content_digest 共同保证，无需伪造时间戳参与 idempotent 判定
+    """
 
     schema_version: int
     tenant_id: str
@@ -304,7 +327,6 @@ class CommitMarker:
     segment_key: str
     segment_sha256: str
     per_kind: dict[str, PerKindMarker]
-    published_at_unix: int
 
     def to_canonical_dict(self) -> dict[str, Any]:
         # sort_keys=True 用于 marker 序列化（marker 自身亦不可变 + 字节确定）
@@ -317,7 +339,6 @@ class CommitMarker:
             "segment_key": self.segment_key,
             "segment_sha256": self.segment_sha256,
             "per_kind": {k: v.to_dict() for k, v in sorted(self.per_kind.items())},
-            "published_at_unix": self.published_at_unix,
         }
 
     def to_bytes(self) -> bytes:
@@ -355,9 +376,6 @@ class CommitMarker:
         if not isinstance(per_kind_raw, dict):
             raise CommitMarkerPayloadCorruptError("MARKER_PER_KIND_NOT_OBJECT")
         per_kind = {k: PerKindMarker.from_dict(v) for k, v in per_kind_raw.items()}
-        published_at_unix = _assert_strict_int(
-            obj.get("published_at_unix"), field="published_at_unix"
-        )
         return cls(
             schema_version=schema_version,
             tenant_id=tenant_id,
@@ -367,7 +385,6 @@ class CommitMarker:
             segment_key=seg_key,
             segment_sha256=seg_sha,
             per_kind=per_kind,
-            published_at_unix=published_at_unix,
         )
 
 
@@ -380,12 +397,8 @@ def build_commit_marker(
     segment_key_str: str,
     segment_sha256: str,
     per_kind: Mapping[str, PerKindMarker],
-    now_unix: int | None = None,
 ) -> CommitMarker:
-    if now_unix is None:
-        # Deterministic derivation from segment_sha256 —— 保证 marker bytes deterministic，
-        # idempotent retry 时字节一致；非用于外部排序/优先级。
-        now_unix = int(segment_sha256[:8], 16)
+    """构造不可变 commit marker（不承载任何 wall-clock 字段）。"""
     return CommitMarker(
         schema_version=SCHEMA_VERSION,
         tenant_id=tenant_id,
@@ -395,7 +408,6 @@ def build_commit_marker(
         segment_key=segment_key_str,
         segment_sha256=segment_sha256,
         per_kind=dict(per_kind),
-        published_at_unix=now_unix,
     )
 
 
@@ -755,12 +767,25 @@ def fetch_segment_bytes(sink: LedgerArchiveSink, *, tenant_id: str, marker: Comm
     return body
 
 
-# --- Publish orchestration ---
+# --- 两阶段 API（用户裁决 B-1） ---
+
+
+@dataclass(frozen=True)
+class ExportedSegment:
+    """Phase 1 导出结果：已 D1a decode 校验的 segment_bytes + manifest。
+
+    仅承载 manifest 中的 ``record_count`` 与 ``content_digest`` 派生所需的子集
+    （per-kind count + content_digest），完整 Manifest 由 caller 持有。
+    """
+
+    segment_bytes: bytes
+    segment_sha256: str
+    manifest: Manifest
 
 
 @dataclass(frozen=True)
 class PublishOutcome:
-    """publish 结果 —— caller 据此推进 source cursor（不属 D1b）。"""
+    """Phase 2 publish 结果 —— caller 据此推进 source cursor（不属 D1b）。"""
 
     export_id: str
     generation: int
@@ -770,42 +795,32 @@ class PublishOutcome:
     idempotent_retry: bool
 
 
-async def archive_ledger_segment(
-    session: AsyncSession,
+async def export_ledger_segment_for_archive(
+    session: Any,
     *,
-    sink: LedgerArchiveSink,
     tenant_id: uuid.UUID,
-    parent_export_id: str | None = None,
-    sleeper: Sleeper | None = None,
-    per_kind_counts_and_digests: Mapping[str, tuple[int, str]] | None = None,
-    now_unix: int | None = None,
-) -> PublishOutcome:
-    """D1b 主入口：导出 D1a segment 字节 → 不可变发布到 archive sink。
+) -> ExportedSegment:
+    """Phase 1 — RR + READ ONLY 事务内的 D1a export + decode 校验。
 
-    Args:
-        session: caller-managed RR + READ ONLY DB 事务（按 D1a 用户裁决）。
-        sink: archive sink（fake / MinIO）。
-        tenant_id: 规范 UUID —— sink 路由 key 由其决定，cross-tenant 严格隔离。
-        parent_export_id: 同 payload 同 export_id 重试必须返回相同结果；
-            同一 segment 重试会自动落到同一 export_id（无需 caller 传）。
-        sleeper: 测试可注入，禁用真实 sleep。
-        per_kind_counts_and_digests: D1a decoder 输出的 manifest counts/content_digest；
-            None 时 publish 内部 decode 校验并提取。
-        now_unix: 测试可注入；None 时取 ``int(time.time())``。
+    严格契约（用户裁决 B-1）：
+    - caller **必须**在外层开启 REPEATABLE READ + READ ONLY 事务并传入 session
+    - 本函数**只**执行 D1a export + decode 双侧校验 + sha/export_id 派生
+    - 本函数**禁止**触发任何 sink I/O / retry / sleep（哪怕 1 次）
+    - 错误归一化为 ``PublishPreconditionFailedError``（不向上抛裸 LedgerSnapshotError）
 
-    Raises:
-        PublishPreconditionFailedError: D1a decode 校验失败 / RR+RO 事务属性未满足。
-        ForkDetectedError: 同 generation 多 export_id。
-        GenerationRegressionError: 新 generation 不严格大于既有 tip。
-        ParentExportMissingError: 指定 parent_export_id 在 tenant 不存在。
-        ArchiveUnavailableError: 重试超限。
+    Returns:
+        ExportedSegment: segment_bytes + manifest。caller 拿到返回值后须立即
+        关闭事务（``async with session.begin()`` 块结束），再进入 phase-2 sink I/O。
     """
+    if session is None:
+        raise PublishPreconditionFailedError(
+            "EXPORT_REQUIRES_SESSION",
+            detail={"hint": "phase-1 caller must pass AsyncSession with active RR+RO transaction"},
+        )
     tenant_id_str = str(tenant_id)
     _assert_canonical_uuid(tenant_id_str, field="tenant_id")
-    if parent_export_id is not None:
-        _assert_lowercase_16hex(parent_export_id, field="parent_export_id")
 
-    # 1. D1a 导出（caller-managed RR + READ ONLY 事务）
+    # 1. D1a 导出（caller-managed RR + READ ONLY 事务；D1a 内部强制事务属性）
     try:
         segment_bytes = await export_ledger_segment(session, tenant_id=tenant_id)
     except LedgerSnapshotError as exc:
@@ -814,10 +829,8 @@ async def archive_ledger_segment(
             detail={"reason": exc.reason, **exc.detail},
         ) from exc
 
-    # 2. 计算 segment sha + export_id
+    # 2. 计算 segment sha + export_id（无 DB / sink I/O —— 纯本地 hash）
     segment_sha = _sha256_hex(segment_bytes)
-    export_id = _export_id_from_segment(segment_bytes)
-    seg_key = segment_key(tenant_id_str, segment_sha)
 
     # 3. PUT 前 D1a decoder 校验（用户裁决：发布前后均调用 decode）
     try:
@@ -830,19 +843,64 @@ async def archive_ledger_segment(
             detail={"reason": exc.reason, **exc.detail},
         ) from exc
 
-    # 4. 提取 per-kind counts/content_digest（如 caller 未传）
-    if per_kind_counts_and_digests is None:
-        per_kind_payload: dict[str, tuple[int, str]] = {
-            kind: (
-                int(manifest.record_count[kind]),
-                str(manifest.content_digest[kind]),
-            )
-            for kind in sorted(manifest.record_count)
-        }
-    else:
-        per_kind_payload = dict(per_kind_counts_and_digests)
+    return ExportedSegment(
+        segment_bytes=segment_bytes,
+        segment_sha256=segment_sha,
+        manifest=manifest,
+    )
 
-    # 5. 推导 tip（必须发生在 PUT 之前 —— 用以确定 parent / generation）
+
+async def publish_ledger_segment(
+    *,
+    sink: LedgerArchiveSink,
+    tenant_id: uuid.UUID,
+    segment_bytes: bytes,
+    manifest: Manifest,
+    parent_export_id: str | None = None,
+    sleeper: Sleeper | None = None,
+) -> PublishOutcome:
+    """Phase 2 — 不可变 commit-graph 发布（纯 sink I/O）。
+
+    严格契约（用户裁决 B-1）：
+    - 本函数**不**接收 AsyncSession，**不**触发任何 DB I/O
+    - 本函数**必须**在 caller 的 RR + READ ONLY 事务**结束之后**调用
+    - 任何 MinIO/list/get/put/retry/sleep 都发生在本函数体内
+
+    Args:
+        sink: archive sink（fake / MinIO）。
+        tenant_id: 规范 UUID —— sink 路由 key 由其决定，cross-tenant 严格隔离。
+        segment_bytes: 来自 ``export_ledger_segment_for_archive`` 的字节（已 D1a 校验）。
+        manifest: 同上（per-kind count + content_digest 来源）。
+        parent_export_id: 同 payload 同 export_id 重试必须返回相同结果；
+            同一 segment 重试会自动落到同一 export_id（无需 caller 传）。
+        sleeper: 测试可注入，禁用真实 sleep。
+
+    Raises:
+        ParentExportMissingError: 指定 parent_export_id 在 tenant 不存在。
+        ForkDetectedError: 同 generation 多 export_id。
+        GenerationRegressionError: 新 generation 不严格大于既有 tip。
+        ArchiveUnavailableError: 重试超限。
+    """
+    tenant_id_str = str(tenant_id)
+    _assert_canonical_uuid(tenant_id_str, field="tenant_id")
+    if parent_export_id is not None:
+        _assert_lowercase_16hex(parent_export_id, field="parent_export_id")
+
+    # 1. 派生 segment sha + export_id（本地 hash，无 I/O）
+    segment_sha = _sha256_hex(segment_bytes)
+    export_id = _export_id_from_segment(segment_bytes)
+    seg_key = segment_key(tenant_id_str, segment_sha)
+
+    # 2. 提取 per-kind count + content_digest（纯本地读取 manifest，无 I/O）
+    per_kind_payload: dict[str, tuple[int, str]] = {
+        kind: (
+            int(manifest.record_count[kind]),
+            str(manifest.content_digest[kind]),
+        )
+        for kind in sorted(manifest.record_count)
+    }
+
+    # 3. 推导 tip（仅 sink I/O —— list + get —— 不带 retry/sleep 自身）
     tip = find_committed_tip(sink, tenant_id=tenant_id_str)
     if parent_export_id is None:
         # caller 未指定：跟随 current tip 链
@@ -859,7 +917,7 @@ async def archive_ledger_segment(
     new_generation = (tip.generation + 1) if tip is not None else 1
     marker_key_str = commit_marker_key(tenant_id_str, new_generation, export_id)
 
-    # 6. PUT segment（不可变；同 sha 同 key；同 key 不同字节 → collision）
+    # 4. PUT segment（不可变；同 sha 同 key；同 key 不同字节 → collision）
     try:
         await _retry_with_backoff(
             lambda: sink.put_object(seg_key, segment_bytes),
@@ -868,7 +926,7 @@ async def archive_ledger_segment(
     except LedgerArchiveError:
         raise
 
-    # 7. GET-back + digest 校验（确保 MinIO/S3 端字节未损坏）
+    # 5. GET-back + digest 校验（确保 MinIO/S3 端字节未损坏）
     def _get_back_and_verify() -> None:
         body = sink.get_object(seg_key)
         actual_sha = _sha256_hex(body)
@@ -880,10 +938,10 @@ async def archive_ledger_segment(
 
     await _retry_with_backoff(_get_back_and_verify, sleeper=sleeper)
 
-    # 8. 构造 commit marker
+    # 6. 构造 commit marker（per-kind generation = 1 占位；见 PerKindMarker docstring）
     per_kind_markers: dict[str, PerKindMarker] = {
         kind: PerKindMarker(
-            generation=1,  # per-kind generation 起点 = 1（本 slice 不区分 per-kind 推进语义）
+            generation=1,  # V1 D1b 不维护 per-kind 推进序列
             count=int(count),
             content_digest=digest,
         )
@@ -897,11 +955,11 @@ async def archive_ledger_segment(
         segment_key_str=seg_key,
         segment_sha256=segment_sha,
         per_kind=per_kind_markers,
-        now_unix=now_unix,
     )
 
-    # 9. idempotent retry: candidate marker key 已存在且字节完全一致 → 复用
-    # marker bytes 在 publish_at_unix 确定性派生后字节稳定；不同字节 = diverges
+    # 7. idempotent retry: candidate marker key 已存在且字节完全一致 → 复用
+    # marker bytes 由 segment_sha256 / export_id / generation / parent_export_id /
+    # per-kind count + content_digest 共同保证字节稳定（不依赖任何 wall-clock 字段）
     candidate_marker_key = marker_key_str
     try:
         existing_marker_bytes = sink.get_object(candidate_marker_key)
@@ -923,7 +981,7 @@ async def archive_ledger_segment(
         # 不存在或损坏 → 走 PUT 路径
         pass
 
-    # 10. PUT commit marker（不可变；同 key 不同字节 → collision）
+    # 8. PUT commit marker（不可变；同 key 不同字节 → collision）
     try:
         await _retry_with_backoff(
             lambda: sink.put_object(marker_key_str, marker.to_bytes()),
@@ -974,6 +1032,7 @@ __all__ = [
     "PerKindMarker",
     "CommitMarker",
     "CommittedTip",
+    "ExportedSegment",
     "PublishOutcome",
     "build_commit_marker",
     "segment_key",
@@ -981,5 +1040,6 @@ __all__ = [
     "prefix_for_tenant",
     "find_committed_tip",
     "fetch_segment_bytes",
-    "archive_ledger_segment",
+    "export_ledger_segment_for_archive",
+    "publish_ledger_segment",
 ]

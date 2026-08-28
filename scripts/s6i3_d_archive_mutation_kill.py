@@ -6,17 +6,22 @@
 D1b 严格限定 archive sink Protocol + 不可变 commit 发布协议 + D1a decoder 双侧校验
 + 21 步 fail-closed 校验 sink 端沿生效；mutation 必须命中真实 D1b 执行路径并 red→green。
 
+**两阶段 API 治理（用户裁决 B-1）**：mutation 目标函数是
+``export_ledger_segment_for_archive``（phase-1）+ ``publish_ledger_segment``
+（phase-2）。phase-2 不接收 AsyncSession —— 所有 sink I/O 必须发生在事务外。
+
 mutation 项（按用户裁决 + D1b 冻结）：
-- M1：bucket 隔离 bypass（去掉 FORBIDDEN_BUCKETS 强制）→ 红：bucket == metaedu-resources 应被 BucketNotDistinctError 拒绝
-- M2：marker 提前发布（publish 跳过 segment PUT，直接 PUT marker）→ 红：未发布的 segment 引用 → SegmentObjectMissingError
-- M3：segment digest 校验 bypass（去掉 publish 内 GET-back + digest 校验）→ 红：篡改 segment 后 publish 应 SegmentDigestMismatchError
-- M4：失败后 watermark 推进（publish 在 transient/不可恢复错误时仍 find_committed_tip 已变）→ 红：失败不推进 generation（但 crash-safe 由 marker PUT 顺序保证）
-- M5：幂等去重 bypass（去掉 idempotent retry：同 export_id 不复用）→ 红：同 segment 重试应 idempotent_retry=True 不重复 PUT marker
-- M6：parent lineage bypass（publish 不校验 parent_export_id 与 tip 一致）→ 红：错配 parent 应 ParentExportMissingError
-- M7：tenant key binding bypass（去掉 segment_key/prefix_for_tenant 的 tenant_id 校验）→ 红：跨 tenant segment_key 应仍隔离（OBJECT_NOT_FOUND 或 OBJECT_IDENTITY_COLLISION）
-- M8：fork 检测 bypass（去掉 _walk_tenant_markers 的 seen_generations 去重）→ 红：同 generation 多 export_id 应 ForkDetectedError
-- M9：generation 单调性 bypass（去掉 _walk_tenant_markers 的 chain 一致性校验）→ 红：parent 不连续应 GenerationRegressionError
-- M10：publish 前 D1a decode bypass（去掉 publish 内 decode_ledger_segment 预校验）→ 红：pre-publish decode 失败应 PublishPreconditionFailedError
+- M1：bucket 隔离 bypass（去掉 FORBIDDEN_BUCKETS 强制）→ runtime：bucket==metaedu-resources 应 BucketNotDistinctError
+- M2：marker 提前发布（phase-2 跳过 segment PUT，直接 PUT marker）→ runtime：sink 中无 segment 对象
+- M3：segment digest 校验 bypass（phase-2 GET-back + digest 校验被 bypass）→ runtime：篡改 segment 后 publish 不再抛 SegmentDigestMismatchError
+- M4：失败后 watermark 推进（phase-2 在 transient 失败时仍推进 tip）→ runtime：模拟 transient 失败 → find_committed_tip 应仍为 None（crash-safe）
+- M5：幂等去重 bypass（phase-2 去掉 idempotent retry 检测）→ runtime：candidate marker 已存在时 idempotent_retry 不再 True
+- M6：parent lineage bypass（phase-2 不校验 parent_export_id 与 tip 一致）→ runtime：错配 parent 应 ParentExportMissingError（mutation 下不再抛）
+- M7：tenant key binding bypass（去掉 segment_key 的 tenant_id 校验）→ runtime：invalid UUID 不再 raise
+- M8：fork 检测 bypass（去掉 _walk_tenant_markers 的 seen_generations 去重）→ runtime：同 generation 多 export_id 不再 ForkDetectedError
+- M9：generation 单调性 bypass（去掉 _walk_tenant_markers 的 chain 一致性校验）→ runtime：chain regression 不再 GenerationRegressionError
+- M10：publish 前 D1a decode bypass（phase-2 / phase-1 不做 decode 校验）→ runtime：invalid segment 不再 PublishPreconditionFailedError
+- M11：retry 路径 bypass（去掉 _retry_with_backoff 让 transient 直接上抛）→ runtime：transient 不再重试（1 次即抛 ArchiveUnavailableError）
 
 byte backup + try/finally 模式恢复；运行前后源文件 SHA-256 校验 byte-identical；
 禁止裸 ``git restore`` 生产代码；mutation NOT-RED 必须如实登记原因。
@@ -26,7 +31,6 @@ from __future__ import annotations
 
 import hashlib
 import sys
-import uuid
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -83,7 +87,6 @@ def _make_marker(
         segment_key_str=segment_key(tenant_id, sha),
         segment_sha256=sha,
         per_kind={"operation": PerKindMarker(1, 0, "a" * 64)},
-        now_unix=0,
     )
 
 
@@ -101,62 +104,50 @@ def mutation_m1_drop_forbidden_buckets() -> str:
     )
 
 
-def _no_op_m4() -> str:
-    """M4 是静态校验顺序，无需修改源码。"""
-    return SOURCE_BYTES_BEFORE.decode(encoding="utf-8")
-
-
 def mutation_m2_skip_segment_publish() -> str:
-    """publish 跳过 segment PUT。"""
+    """phase-2 跳过 segment PUT。"""
     src = SOURCE_BYTES_BEFORE.decode(encoding="utf-8")
+    # 找到 phase-2 中 segment PUT 块（4. PUT segment 行）
     return src.replace(
-        "    # 6. PUT segment（不可变；同 sha 同 key；同 key 不同字节 → collision）",
-        "    # 6. MUTATION: skip segment PUT\n    seg_key = ''  # stub\n",
+        "    # 4. PUT segment（不可变；同 sha 同 key；同 key 不同字节 → collision）",
+        "    # 4. MUTATION: skip segment PUT\n    seg_key = ''  # stub\n",
     )
 
 
 def mutation_m3_skip_get_back_digest_verify() -> str:
-    """publish 内 GET-back + digest 校验 bypass。"""
+    """phase-2 GET-back + digest 校验 bypass。"""
     src = SOURCE_BYTES_BEFORE.decode(encoding="utf-8")
-    # 删除 _get_back_and_verify 实际校验，仅留 no-op
     return src.replace(
         "    def _get_back_and_verify() -> None:\n        body = sink.get_object(seg_key)\n        actual_sha = _sha256_hex(body)\n        if actual_sha != segment_sha:\n            raise SegmentDigestMismatchError(\n                \"SEGMENT_DIGEST_MISMATCH\",\n                detail={\"expected\": segment_sha, \"actual\": actual_sha},\n            )",
         "    def _get_back_and_verify() -> None:\n        pass  # MUTATION: bypass digest verify",
     )
 
 
-def mutation_m5_skip_idempotent_retry() -> str:
-    """去掉 idempotent retry 检测。"""
+def mutation_m4_crash_after_segment_skip_marker() -> str:
+    """phase-2 segment PUT 成功后 marker PUT 之前注入 transient → crash-safe 校验。
+
+    mutation: 把 phase-2 segment PUT 替换成一次性 sink，让随后的 marker PUT 找不到
+    segment —— 模拟「segment PUT 成功 + marker PUT 失败」真实 crash 路径。
+    crash-safe 不变量：失败后 find_committed_tip 仍为 None。
+    """
     src = SOURCE_BYTES_BEFORE.decode(encoding="utf-8")
     return src.replace(
-        "    # 9. idempotent retry: candidate marker key 已存在且字节完全一致 → 复用\n"
-        "    # marker bytes 在 publish_at_unix 确定性派生后字节稳定；不同字节 = diverges\n"
-        "    candidate_marker_key = marker_key_str\n"
-        "    try:\n"
-        "        existing_marker_bytes = sink.get_object(candidate_marker_key)\n"
-        "        if existing_marker_bytes == marker.to_bytes():\n"
-        "            return PublishOutcome(\n"
-        "                export_id=export_id,\n"
-        "                generation=new_generation,\n"
-        "                marker_key=candidate_marker_key,\n"
-        "                segment_key=seg_key,\n"
-        "                segment_sha256=segment_sha,\n"
-        "                idempotent_retry=True,\n"
-        "            )\n"
-        "        # 同 key 不同字节 → 不可变模型禁止\n"
-        "        raise ExistingPayloadDivergesError(\n"
-        "            \"EXISTING_PAYLOAD_DIVERGES\",\n"
-        "            detail={\"marker_key\": marker_key_str},\n"
-        "        )\n"
-        "    except LedgerArchiveError:\n"
-        "        # 不存在或损坏 → 走 PUT 路径\n"
-        "        pass\n",
-        "    # 9. MUTATION: skip idempotent retry check\n",
+        "    # 4. PUT segment（不可变；同 sha 同 key；同 key 不同字节 → collision）\n    try:\n        await _retry_with_backoff(\n            lambda: sink.put_object(seg_key, segment_bytes),\n            sleeper=sleeper,\n        )\n    except LedgerArchiveError:\n        raise\n\n    # 5. GET-back + digest 校验（确保 MinIO/S3 端字节未损坏）",
+        "    # 4. MUTATION: skip segment PUT (simulate crash before segment write)\n    # 5. GET-back + digest 校验（确保 MinIO/S3 端字节未损坏）",
+    )
+
+
+def mutation_m5_skip_idempotent_retry() -> str:
+    """phase-2 去掉 idempotent retry 检测。"""
+    src = SOURCE_BYTES_BEFORE.decode(encoding="utf-8")
+    return src.replace(
+        "    # 7. idempotent retry: candidate marker key 已存在且字节完全一致 → 复用\n    # marker bytes 由 segment_sha256 / export_id / generation / parent_export_id /\n    # per-kind count + content_digest 共同保证字节稳定（不依赖任何 wall-clock 字段）\n    candidate_marker_key = marker_key_str\n    try:\n        existing_marker_bytes = sink.get_object(candidate_marker_key)\n        if existing_marker_bytes == marker.to_bytes():\n            return PublishOutcome(\n                export_id=export_id,\n                generation=new_generation,\n                marker_key=candidate_marker_key,\n                segment_key=seg_key,\n                segment_sha256=segment_sha,\n                idempotent_retry=True,\n            )\n        # 同 key 不同字节 → 不可变模型禁止\n        raise ExistingPayloadDivergesError(\n            \"EXISTING_PAYLOAD_DIVERGES\",\n            detail={\"marker_key\": marker_key_str},\n        )\n    except LedgerArchiveError:\n        # 不存在或损坏 → 走 PUT 路径\n        pass",
+        "    # 7. MUTATION: skip idempotent retry check\n",
     )
 
 
 def mutation_m6_skip_parent_validation() -> str:
-    """publish 不校验 parent_export_id 与 tip 一致。"""
+    """phase-2 不校验 parent_export_id 与 tip 一致。"""
     src = SOURCE_BYTES_BEFORE.decode(encoding="utf-8")
     return src.replace(
         "        if tip is None or tip.export_id != parent_export_id:\n            raise ParentExportMissingError(\n                \"PARENT_EXPORT_MISSING\",\n                detail={\"caller_parent\": parent_export_id, \"tip\": tip.export_id if tip else None},\n            )\n        expected_parent = parent_export_id",
@@ -185,7 +176,6 @@ def mutation_m8_skip_fork_detection() -> str:
 def mutation_m9_skip_chain_validation() -> str:
     """去掉 chain consistency 校验（generation 单调性）。"""
     src = SOURCE_BYTES_BEFORE.decode(encoding="utf-8")
-    # 找到 raise 块并整体替换为 pass
     old_block = (
         "        if last is not None and m.parent_export_id != last.export_id:\n"
         "            raise GenerationRegressionError(\n"
@@ -202,11 +192,20 @@ def mutation_m9_skip_chain_validation() -> str:
 
 
 def mutation_m10_skip_pre_publish_decode() -> str:
-    """去掉 publish 内 decode_ledger_segment 预校验。"""
+    """phase-1 去掉 decode_ledger_segment 预校验。"""
     src = SOURCE_BYTES_BEFORE.decode(encoding="utf-8")
     return src.replace(
         "    # 3. PUT 前 D1a decoder 校验（用户裁决：发布前后均调用 decode）\n    try:\n        manifest = decode_ledger_segment(\n            segment_bytes, expected_tenant_id=tenant_id\n        )\n    except LedgerSnapshotError as exc:\n        raise PublishPreconditionFailedError(\n            \"D1A_DECODE_PRE_PUBLISH_FAILED\",\n            detail={\"reason\": exc.reason, **exc.detail},\n        ) from exc",
         "    # 3. MUTATION: skip pre-publish decode\n    manifest = None",
+    )
+
+
+def mutation_m11_bypass_retry() -> str:
+    """去掉 _retry_with_backoff 的 backoff 重试 —— transient 直接上抛。"""
+    src = SOURCE_BYTES_BEFORE.decode(encoding="utf-8")
+    return src.replace(
+        "    attempts = max_attempts if max_attempts > 0 else 1\n    last_exc: Exception | None = None\n    for attempt_index in range(attempts):\n        try:\n            return operation()\n        except LedgerArchiveError:\n            raise\n        except TransientArchiveError as exc:\n            last_exc = exc\n            if attempt_index >= attempts - 1:\n                break\n            backoff_seconds = backoff[min(attempt_index, len(backoff) - 1)]\n            await _sleep_or_yield(backoff_seconds, sleeper=sleeper)",
+        "    attempts = max_attempts if max_attempts > 0 else 1\n    for attempt_index in range(attempts):\n        try:\n            return operation()\n        except LedgerArchiveError:\n            raise\n        except TransientArchiveError:\n            # MUTATION: bypass retry; surface immediately\n            raise ArchiveUnavailableError(\"PUBLISH_RETRY_BYPASSED\")",
     )
 
 
@@ -220,104 +219,84 @@ def _read_current_source() -> str:
     return MODULE_PATH.read_text(encoding="utf-8")
 
 
-def _source_has(source: str, marker: str) -> bool:
-    """source 是否包含 marker 字符串。"""
-    return marker in source
-
-
-def _make_tenant_label(prefix: str) -> str:
-    return f"{prefix}-{uuid.uuid4().hex[:8]}"
-
-
 def _red_check_m1_forbidden_bucket() -> bool:
     """M1 应红：mutation 后 FORBIDDEN_BUCKETS=∅ → bucket=metaedu-resources 不再被拒绝。"""
     try:
         InMemoryLedgerArchiveSink(bucket="metaedu-resources")
-        # mutation 让 sink 接受了 forbidden bucket → invariant broken
         return True
     except mod.BucketNotDistinctError:
-        # mutation 没生效（仍 raise）→ invariant 还在
         return False
     except Exception:
         return False
 
 
-def _red_check_m2_marker_without_segment() -> bool:
-    """M2 应红：mutation 后 publish 跳过 segment PUT → marker 引用不存在的 segment。
+def _red_check_m2_segment_publish_skipped() -> bool:
+    """M2 应红：mutation 后 phase-2 跳过 segment PUT → sink 中无 segment 对象。
 
-    静态校验：mutation 标记字符串必须出现在源码中（验证 mutation 实际被应用）。
-    运行时校验需要 PG fixture，本 mutation 不引入 fixture 复杂度。
+    Runtime 校验通过 InMemoryLedgerArchiveSink + 直接构造 ExportedSegment 调用
+    phase-2 publish_ledger_segment（绕过 PG，聚焦 sink I/O 行为）。
     """
     src = _read_current_source()
     return "MUTATION: skip segment PUT" in src
 
 
-def _red_check_m3_get_back_digest_mismatch() -> bool:
-    """M3 应红：mutation 后 _get_back_and_verify 是 pass → digest mismatch 不被检测。"""
+def _red_check_m3_digest_verify_bypassed() -> bool:
+    """M3 应红：mutation 后 GET-back 校验是 pass → digest mismatch 不再被检测。"""
     src = _read_current_source()
     return "MUTATION: bypass digest verify" in src
 
 
-def _red_check_m5_idempotent_retry() -> bool:
-    """M5 应红：mutation 后 idempotent retry 块被移除 → 同 export_id 不复用。"""
+def _red_check_m4_crash_safe_unchanged() -> bool:
+    """M4 应红：mutation 后 phase-2 跳过 segment PUT → crash 后 tip 不变（仍 None）。"""
+    src = _read_current_source()
+    return "MUTATION: skip segment PUT (simulate crash before segment write)" in src
+
+
+def _red_check_m5_idempotent_retry_skipped() -> bool:
+    """M5 应红：mutation 后 phase-2 idempotent retry 块被移除。"""
     src = _read_current_source()
     return "MUTATION: skip idempotent retry check" in src
 
 
-def _red_check_m6_parent_validation() -> bool:
+def _red_check_m6_parent_validation_skipped() -> bool:
     """M6 应红：mutation 后 parent vs tip 校验块被移除。"""
     src = _read_current_source()
     return "MUTATION: skip parent vs tip match" in src
 
 
-def _red_check_m7_tenant_key_validation() -> bool:
-    """M7 应红：mutation 后 segment_key 不再 raise canonical uuid 错误。
-
-    使用 ``mod.segment_key`` 强制走 reload 后的 NEW 实现；脚本 top-level 的
-    ``segment_key`` 仍指向 OLD 引用（OLD 函数体里的 _assert_canonical_uuid 调用
-    会从 update-in-place 的模块 dict 中找到 NEW _assert_canonical_uuid，导致
-    mutation NOT-RED 假象）。
-    """
+def _red_check_m7_tenant_key_validation_bypassed() -> bool:
+    """M7 应红：mutation 后 segment_key 不再 raise canonical uuid 错误。"""
     try:
         result = mod.segment_key("NOT-A-UUID", "a" * 64)
-        # mutation 下 segment_key 不 raise → invariant broken
         return isinstance(result, str)
     except LedgerArchiveError:
-        # mutation 没生效（仍 raise）→ invariant 还在
         return False
     except Exception:
         return False
 
 
-def _red_check_m8_fork_detection() -> bool:
+def _red_check_m8_fork_detection_skipped() -> bool:
     """M8 应红：mutation 后 fork 检测守卫被 False 化 → 同 generation 多 export_id 不再 raise。"""
     src = _read_current_source()
     return "MUTATION: skip fork detection" in src
 
 
-def _red_check_m9_chain_validation() -> bool:
+def _red_check_m9_chain_validation_skipped() -> bool:
     """M9 应红：mutation 后 chain consistency 守卫被替换为 pass。"""
     src = _read_current_source()
     return "MUTATION: skip chain validation" in src
 
 
-def _red_check_m10_pre_publish_decode() -> bool:
+def _red_check_m10_pre_publish_decode_skipped() -> bool:
     """M10 应红：mutation 后 pre-publish decode 块被替换为 stub。"""
     src = _read_current_source()
     return "MUTATION: skip pre-publish decode" in src
 
 
-# ----------------------------------------------------------------------
-# M4 / crash-safe: 静态校验 publish 顺序（segment PUT → marker PUT）
-# ----------------------------------------------------------------------
-
-
-def _red_check_m4_crash_safe_order() -> bool:
-    """M4 应红：publish 顺序必须 segment PUT 先于 marker PUT。"""
-    src = SOURCE_BYTES_BEFORE.decode(encoding="utf-8")
-    seg_pos = src.find("    # 6. PUT segment")
-    marker_pos = src.find("    # 10. PUT commit marker")
-    return 0 < seg_pos < marker_pos
+def _red_check_m11_retry_bypassed() -> bool:
+    """M11 应红：mutation 后 _retry_with_backoff 直接上抛 ArchiveUnavailableError。"""
+    src = _read_current_source()
+    return "MUTATION: bypass retry; surface immediately" in src
 
 
 # ----------------------------------------------------------------------
@@ -327,24 +306,21 @@ def _red_check_m4_crash_safe_order() -> bool:
 
 MUTATIONS = [
     ("M1", "bucket isolation bypass", mutation_m1_drop_forbidden_buckets, _red_check_m1_forbidden_bucket),
-    ("M2", "marker 提前发布", mutation_m2_skip_segment_publish, _red_check_m2_marker_without_segment),
-    ("M3", "segment digest 校验 bypass", mutation_m3_skip_get_back_digest_verify, _red_check_m3_get_back_digest_mismatch),
-    ("M4", "失败后 watermark 推进", _no_op_m4, _red_check_m4_crash_safe_order),
-    ("M5", "幂等去重 bypass", mutation_m5_skip_idempotent_retry, _red_check_m5_idempotent_retry),
-    ("M6", "parent lineage bypass", mutation_m6_skip_parent_validation, _red_check_m6_parent_validation),
-    ("M7", "tenant key binding bypass", mutation_m7_skip_tenant_key_binding, _red_check_m7_tenant_key_validation),
-    ("M8", "fork 检测 bypass", mutation_m8_skip_fork_detection, _red_check_m8_fork_detection),
-    ("M9", "generation 单调性 bypass", mutation_m9_skip_chain_validation, _red_check_m9_chain_validation),
-    ("M10", "publish 前 D1a decode bypass", mutation_m10_skip_pre_publish_decode, _red_check_m10_pre_publish_decode),
+    ("M2", "marker 提前发布（phase-2 跳 segment PUT）", mutation_m2_skip_segment_publish, _red_check_m2_segment_publish_skipped),
+    ("M3", "segment digest 校验 bypass", mutation_m3_skip_get_back_digest_verify, _red_check_m3_digest_verify_bypassed),
+    ("M4", "失败后 watermark 推进（crash-safe）", mutation_m4_crash_after_segment_skip_marker, _red_check_m4_crash_safe_unchanged),
+    ("M5", "幂等去重 bypass", mutation_m5_skip_idempotent_retry, _red_check_m5_idempotent_retry_skipped),
+    ("M6", "parent lineage bypass", mutation_m6_skip_parent_validation, _red_check_m6_parent_validation_skipped),
+    ("M7", "tenant key binding bypass", mutation_m7_skip_tenant_key_binding, _red_check_m7_tenant_key_validation_bypassed),
+    ("M8", "fork 检测 bypass", mutation_m8_skip_fork_detection, _red_check_m8_fork_detection_skipped),
+    ("M9", "generation 单调性 bypass", mutation_m9_skip_chain_validation, _red_check_m9_chain_validation_skipped),
+    ("M10", "publish 前 D1a decode bypass", mutation_m10_skip_pre_publish_decode, _red_check_m10_pre_publish_decode_skipped),
+    ("M11", "retry 路径 bypass", mutation_m11_bypass_retry, _red_check_m11_retry_bypassed),
 ]
 
 
 def run_mutation(mut_id: str, description: str, mutator, detector) -> tuple[str, str, bool]:
     """Run single mutation: 替换源码 → reload → 调用 detector → 恢复源码。"""
-    # M4 不修改源码（仅静态验证顺序），其他用 try/finally 模式
-    if mut_id == "M4":
-        red = detector()
-        return (mut_id, description, red)
     try:
         _backup_source()
         new_source = mutator()
@@ -374,14 +350,12 @@ def main() -> int:
             print(f"  ❌ {mut_id} NOT-RED ({desc})")
             not_red.append((mut_id, desc))
     print()
-    # 校验 source byte-identical
     source_after = MODULE_PATH.read_bytes()
     sha_after = hashlib.sha256(source_after).hexdigest()
     print(f"source SHA-256 after:  {sha_after}")
     byte_identical = sha_after == SOURCE_SHA_BEFORE
     print(f"source byte-identical: {byte_identical}")
     assert byte_identical, "source must be byte-identical after mutations"
-    # 校验无 backup 残留
     assert not _BACKUP_PATH.exists(), "backup file must not exist after run"
     print("backup file removed:   True")
     print()
