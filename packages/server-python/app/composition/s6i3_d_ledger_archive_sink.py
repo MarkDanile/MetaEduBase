@@ -279,12 +279,18 @@ def prefix_for_tenant(tenant_id: str) -> str:
 
 @dataclass(frozen=True)
 class PerKindMarker:
-    """marker 中每个 record kind 的 count + content_digest 二元组。
+    """marker 中每个 record kind 的 publication generation + count + content_digest。
 
-    注（用户裁决 A-5）：本 slice **不**区分 per-kind 推进语义。
-    ``generation`` 字段为该 kind 在本 marker 中的本地代数；当前 D1b 切片下每个
-    kind 在一个 commit marker 中只占 1 代（不持久 per-kind 推进序列 —— 此属
-    D2 / replay executor 范畴）。该字段保留仅为 schema 占位与未来扩展。
+    注（用户裁决 A-5 修订）：``generation`` 字段**不再**恒为 1 —— 写入当前
+    commit marker 的实际 sink publication generation（即顶层 ``CommitMarker.generation``
+    的值）。同 commit 内的所有 kind 共享同一 publication generation。
+
+    **语义**：这是 sink 端的发布代数 —— 同 marker 内 per-kind 一致；marker 之间
+    单调推进（由顶层 generation 保证）。它**不**是 DB source cursor（不在 D1b 范围，
+    由 caller 推进 source cursor —— 见 PublishOutcome.export_id/generation）。
+
+    **未引入**：per-kind 推进序列（同一 kind 在不同 commit 中的代数差异）。
+    本 slice 仍以 commit marker 为最小发布单元；per-kind 拆分序列属 D2 / replay executor 范畴。
     """
 
     generation: int
@@ -938,10 +944,11 @@ async def publish_ledger_segment(
 
     await _retry_with_backoff(_get_back_and_verify, sleeper=sleeper)
 
-    # 6. 构造 commit marker（per-kind generation = 1 占位；见 PerKindMarker docstring）
+    # 6. 构造 commit marker —— per_kind[k].generation 与顶层 CommitMarker.generation
+    #    一致（即 sink 端 publication generation；非 DB source cursor）
     per_kind_markers: dict[str, PerKindMarker] = {
         kind: PerKindMarker(
-            generation=1,  # V1 D1b 不维护 per-kind 推进序列
+            generation=new_generation,
             count=int(count),
             content_digest=digest,
         )

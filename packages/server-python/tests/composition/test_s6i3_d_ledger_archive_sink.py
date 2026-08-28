@@ -511,6 +511,53 @@ async def test_d1b_second_publish_advances_generation(snapshot_factory) -> None:
     assert tip_first.export_id == first.export_id
 
 
+async def test_d1b_per_kind_generation_advances_with_marker_generation(
+    snapshot_factory,
+) -> None:
+    """per_kind[k].generation 必须 == 顶层 CommitMarker.generation（sink publication gen）。
+
+    用户裁决 A-5 修订：per-kind generation 不再恒为 1。
+    同一 marker 内 per-kind generation 共享顶层值；不同 commit 间单调推进。
+    """
+    factory = snapshot_factory
+    async with factory() as seed:
+        await _assert_metaedu_test(seed)
+        ids = await _seed_minimal_ledger(seed, tenant_label="d1b-perkind")
+
+    sink = InMemoryLedgerArchiveSink(bucket="metaedu-ledger-archive")
+    _, first = await _publish_two_phase(factory, sink=sink, tenant_id=ids["tid"])
+    _, second = await _publish_two_phase(factory, sink=sink, tenant_id=ids["tid"])
+
+    # 从 sink 读回两个 marker 的 per_kind 内容（不依赖内部状态）
+    def _read_marker(generation: int, export_id: str) -> CommitMarker:
+        key = commit_marker_key(str(ids["tid"]), generation, export_id)
+        return CommitMarker.from_bytes(sink.get_object(key))
+
+    first_marker = _read_marker(first.generation, first.export_id)
+    second_marker = _read_marker(second.generation, second.export_id)
+
+    # 顶层 generation 单调推进
+    assert second_marker.generation == first_marker.generation + 1
+    assert first_marker.generation == 1
+    assert second_marker.generation == 2
+
+    # 每个 kind 的 per_kind.generation 与顶层 generation 一致
+    assert set(first_marker.per_kind.keys()) == set(second_marker.per_kind.keys())
+    assert len(first_marker.per_kind) >= 2  # 至少 operation + checkpoint
+    for kind, per_kind in first_marker.per_kind.items():
+        assert per_kind.generation == first_marker.generation == 1, (
+            f"first_marker[{kind}].generation must == 1, got {per_kind.generation}"
+        )
+        assert per_kind.count >= 0
+        assert per_kind.content_digest != ""
+    for kind, per_kind in second_marker.per_kind.items():
+        assert per_kind.generation == second_marker.generation == 2, (
+            f"second_marker[{kind}].generation must == 2, got {per_kind.generation}"
+        )
+        assert per_kind.count >= 0
+        assert per_kind.content_digest != ""
+
+
 async def test_d1b_publish_phase1_rejects_non_read_only_transaction(snapshot_factory) -> None:
     """Phase-1（export）必须 RR + READ ONLY —— 否则 PublishPreconditionFailedError。"""
     factory = snapshot_factory
@@ -616,6 +663,16 @@ async def test_d1b_idempotent_retry_returns_true_when_candidate_marker_matches(
     # 因为 list_keys 被 mask 看不到 candidate marker）。
     expected_gen = first.generation + 1
     candidate_key = commit_marker_key(str(ids["tid"]), expected_gen, first.export_id)
+    # per_kind[k].generation 必须与顶层 generation 一致（用户裁决 A-5 修订）：
+    # 复用 first_marker 的 count/content_digest，把 generation 推到 expected_gen
+    candidate_per_kind = {
+        kind: PerKindMarker(
+            generation=expected_gen,
+            count=pkm.count,
+            content_digest=pkm.content_digest,
+        )
+        for kind, pkm in first_marker_obj.per_kind.items()
+    }
     candidate_marker = build_commit_marker(
         tenant_id=str(ids["tid"]),
         export_id=first.export_id,
@@ -623,7 +680,7 @@ async def test_d1b_idempotent_retry_returns_true_when_candidate_marker_matches(
         generation=expected_gen,
         segment_key_str=first_marker_obj.segment_key,
         segment_sha256=first_marker_obj.segment_sha256,
-        per_kind=dict(first_marker_obj.per_kind),
+        per_kind=candidate_per_kind,
     )
     candidate_bytes = candidate_marker.to_bytes()
 
@@ -892,6 +949,127 @@ async def test_d1b_publish_retry_succeeds_after_transient_in_phase2(snapshot_fac
         assert sink._seen_transient >= 1
     finally:
         await session.close()
+
+
+# ----------------------------------------------------------------------
+# M2/M4/M10 mutation red invariants
+# ----------------------------------------------------------------------
+
+
+async def test_d1b_m2_segment_required_for_marker(snapshot_factory) -> None:
+    """M2 mutation red invariant：segment 不存在时 marker 不应成为 committed。
+
+    M2 mutation（mutate phase-2 跳过 segment PUT）→ 仍 PUT marker → sink 中
+    有 marker 但无 segment → invariant 违反。
+
+    invariant：完整两阶段 publish 成功后，**segment 必须**在 sink；marker key
+    指向的 segment_sha256 必须能在 sink 中找到。
+    """
+    factory = snapshot_factory
+    async with factory() as seed:
+        await _assert_metaedu_test(seed)
+        ids = await _seed_minimal_ledger(seed, tenant_label="d1b-m2")
+
+    sink = InMemoryLedgerArchiveSink(bucket="metaedu-ledger-archive")
+    exported, outcome = await _publish_two_phase(factory, sink=sink, tenant_id=ids["tid"])
+
+    # 不变量 1：segment key 必须在 sink（segment_sha256 派生）
+    assert outcome.segment_key in sink._objects, (
+        "M2 invariant violation: segment MUST exist after publish; "
+        f"missing {outcome.segment_key} from sink keys"
+    )
+    # 不变量 2：marker key 必须在 sink
+    assert outcome.marker_key in sink._objects
+    # 不变量 3：segment 字节必须 == 导出字节（数据未损坏）
+    assert sink.get_object(outcome.segment_key) == exported.segment_bytes
+
+
+async def test_d1b_m4_segment_failure_does_not_commit_marker() -> None:
+    """M4 mutation red invariant：segment PUT 失败后 marker 不应成为 committed。
+
+    M4 mutation（吞掉 segment PUT 异常并继续 PUT marker）→ ArchiveUnavailableError
+    不再抛 + marker 已写入 → invariant 违反。
+
+    invariant：phase-2 segment PUT 因 transient 永久失败 → ArchiveUnavailableError
+    被抛出 + sink 中不应有 marker / tip。
+    """
+    sink = _FlakySink(
+        bucket="metaedu-ledger-archive",
+        transient_count=10,  # 永远 transient，触发 ArchiveUnavailableError
+    )
+
+    factory = create_async_engine(_TEST_DB_URL, echo=False, poolclass=NullPool)
+    maker = async_sessionmaker(factory, expire_on_commit=False)
+    try:
+        async with maker() as seed:
+            await _assert_metaedu_test(seed)
+            ids = await _seed_minimal_ledger(seed, tenant_label="d1b-m4")
+
+        session = maker()
+        try:
+            async with session.begin():
+                await session.execute(
+                    text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                )
+                exported = await export_ledger_segment_for_archive(
+                    session, tenant_id=ids["tid"]
+                )
+            with pytest.raises(ArchiveUnavailableError):
+                await publish_ledger_segment(
+                    sink=sink,
+                    tenant_id=ids["tid"],
+                    segment_bytes=exported.segment_bytes,
+                    manifest=exported.manifest,
+                    sleeper=lambda _s: None,
+                )
+            # 不变量：失败后 tip 必须为 None（无 marker 提交）
+            tip = find_committed_tip(sink, tenant_id=str(ids["tid"]))
+            assert tip is None, (
+                "M4 invariant violation: tip must be None after ArchiveUnavailableError; "
+                "marker MUST NOT be committed without segment"
+            )
+        finally:
+            await session.close()
+    finally:
+        await factory.dispose()
+
+
+async def test_d1b_m10_phase1_calls_decode_validator(snapshot_factory) -> None:
+    """M10 mutation red invariant：phase-1 必须调用 D1a decoder 校验 segment_bytes。
+
+    M10 mutation 跳过 decode_ledger_segment 调用 → 此处 monkeypatch 不会被触发 →
+    invariant 违反（spy decode_call_count 必须 ≥ 1）。
+
+    验证手段：在 sink 模块全局 monkey-patch decode_ledger_segment 为 sentinel —— 记
+    录调用次数 + 仍返回合法 Manifest（让 phase-1 走完）。phase-1 必须调用此函数；
+    未调用 = phase-1 跳过了 decode 校验（用户裁决 A-2/B-1）。
+    """
+    import app.composition.s6i3_d_ledger_archive_sink as sink_mod
+
+    factory = snapshot_factory
+    async with factory() as seed:
+        await _assert_metaedu_test(seed)
+        ids = await _seed_minimal_ledger(seed, tenant_label="d1b-m10")
+
+    decode_call_count = 0
+    original_decode = sink_mod.decode_ledger_segment
+
+    def spy_decode(payload: bytes, **kw: Any) -> Any:
+        nonlocal decode_call_count
+        decode_call_count += 1
+        return original_decode(payload, **kw)
+
+    sink_mod.decode_ledger_segment = spy_decode
+    try:
+        sink = InMemoryLedgerArchiveSink(bucket="metaedu-ledger-archive")
+        _, _ = await _publish_two_phase(factory, sink=sink, tenant_id=ids["tid"])
+    finally:
+        sink_mod.decode_ledger_segment = original_decode
+
+    assert decode_call_count >= 1, (
+        "M10 invariant violation: phase-1 MUST call decode_ledger_segment to validate "
+        "segment_bytes; call_count = 0 means decode was bypassed"
+    )
 
 
 # ----------------------------------------------------------------------
