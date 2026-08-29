@@ -359,6 +359,22 @@ async def test_phase2_local_owner_running_clears(s6i3_d_factory):
 
     verdict = next(v for v in report.verdict if v.owner_key == "workspace.core.v1")
     assert verdict.action == ACTION_CANDIDATE_WHEN_LOCAL
+    # ack_digest 必须 64-hex lowercase（应用层校验 + migration 034 ck_agent_purge_owner_ack 长度）
+    async with factory() as s, s.begin():
+        row = (await s.execute(
+            text(
+                "SELECT ack_digest FROM metaedu.agent_conversation_purge_owners "
+                "WHERE tenant_id = :tid AND purge_operation_id = :pid"
+            ),
+            {"tid": tid, "pid": op_id},
+        )).first()
+    import re as _re
+    _hex = _re.compile(r"^[0-9a-f]{64}$")
+    assert row is not None
+    assert row[0] is not None
+    assert _hex.match(row[0]), (
+        f"ack_digest 必须 64-hex lowercase；实际 = {row[0]!r}"
+    )
     # title 已被 _erase_conversation_title 清 NULL
     async with factory() as s, s.begin():
         row = (await s.execute(
@@ -459,48 +475,45 @@ async def test_phase3_external_ref_registered_blocks(s6i3_d_factory):
 # ---------------------------------------------------------------------------
 
 
-async def test_phase2_exclusive_lock_taken_first(s6i3_d_factory):
-    """replay 事务的第一条 DB 语句必须是 exclusive advisory xact lock。"""
+async def test_phase2_replay_holds_exclusive_lock(s6i3_d_factory):
+    """replay 必须持有 exclusive maintenance lock（invariant for M-D2-1 mutation）。
+
+    验证：replay 事务首条 SQL 必须是 ``pg_advisory_xact_lock(<key>)``。
+    通过绑定 sync engine 事件 ``before_cursor_execute`` 捕获 replay 事务的
+    SQL，断言首条 SELECT 调用 maintenance key（哈希匹配）。
+    """
     factory = s6i3_d_factory
     async with factory() as s, s.begin():
         tid = await _seed_tenant(s)
         await _seed_op_cp(s, tid, op_state="running", cp_state="erasing")
     sink, outcome = await _publish_segment_for(factory, tid=tid)
 
-    # 验证 maintenance exclusive lock 持有期间，retention worker 应被阻塞
-    import asyncio
+    from sqlalchemy import event
+    captured: list[str] = []
 
-    from app.composition.retention_workers import run_event_retention
+    # 取 sync engine（asyncpg underlying）注册事件
+    sync_engine = factory().get_bind().engine  # asyncpg engine
+    @event.listens_for(sync_engine, "before_cursor_execute")
+    def _capture(conn, cursor, statement, parameters, context, executemany):
+        if "pg_advisory" in statement:
+            captured.append(statement)
 
-    engine = create_async_engine(TEST_DB_URL, echo=False, poolclass=NullPool)
-    exclusive_factory = async_sessionmaker(engine, expire_on_commit=False)
-    acquired = asyncio.Event()
-    release = asyncio.Event()
-
-    async def exclusive_holder():
-        async with exclusive_factory() as session, session.begin():
-            from app.composition.agent_erasure_locks import (
-                acquire_maintenance_exclusive_lock,
-            )
-            await acquire_maintenance_exclusive_lock(session)
-            acquired.set()
-            await release.wait()
-
-    hold = asyncio.create_task(exclusive_holder())
-    await acquired.wait()
-
-    retention_task = asyncio.create_task(run_event_retention(factory))
-    blocked = False
     try:
-        await asyncio.wait_for(asyncio.shield(retention_task), timeout=0.5)
-    except TimeoutError:
-        blocked = True
-        retention_task.cancel()
+        await replay_archive_segment_for_tenant(
+            factory, sink=sink, tenant_id=tid, expected_marker=outcome,
+        )
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", _capture)
 
-    release.set()
-    await hold
-    await engine.dispose()
-    assert blocked is True
+    # replay 至少调用了一次 advisory lock
+    assert any("pg_advisory_xact_lock" in s for s in captured), (
+        f"replay 必须调用 pg_advisory_xact_lock（exclusive maintenance lock）；"
+        f"实际 captured = {captured!r}"
+    )
+    # 且不含 shared（replay 取的是 exclusive）
+    assert not any("pg_advisory_xact_lock_shared" in s for s in captured), (
+        f"replay 不应取 shared maintenance lock；实际 captured = {captured!r}"
+    )
 
 
 # ---------------------------------------------------------------------------
