@@ -264,7 +264,7 @@ async def _read_archive_outside_tx(
     except LedgerSnapshotError as exc:
         raise RestoreReplayError(
             "D1A_DECODE_FAILED",
-            detail={"reason": exc.code, **exc.detail},
+            detail={"reason": exc.reason, **exc.detail},
         ) from exc
     facts = reconstruct_owner_facts(manifest)
     return manifest, facts
@@ -644,7 +644,7 @@ async def replay_archive_segment_for_tenant(
                         operation_id=fact.operation_id,
                         owner_key=fact.owner_key,
                         action=ACTION_ZERO_WRITE,
-                        reason_code=f"snapshot_error:{exc.code}",
+                        reason_code=f"snapshot_error:{exc.reason}",
                     )
                 )
                 continue

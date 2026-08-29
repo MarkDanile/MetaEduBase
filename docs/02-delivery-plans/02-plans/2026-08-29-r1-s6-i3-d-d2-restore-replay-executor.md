@@ -4,7 +4,7 @@
 >
 > **Spec source (already frozen):** the user's directive (this branch input) is the binding spec. Frozen decisions: runtime per-binding proof = c / D2 互斥 = A / D1a+D1b+D2 三独立 PR / 不修改 migration/schema/enum/CHECK.
 >
-> **Frozen Plan references (already in main via PR #581/#586/#591/#592/#596):** Plan §R1-S6-8 / §R1-S6-12 / §R1-S6-13 / §R1-S6-14 / §R1-S6-15.5.
+> **Frozen Plan references (already in main via PR #581/#586/#591/#592/#596):** [R1 分 Slice 实施计划 §R1-S6-8 / §R1-S6-12 / §R1-S6-13 / §R1-S6-14 / §R1-S6-15.5](./2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) + [R1 Retention/Purge/恢复专项契约 §3 / §10 / §11](../01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md).
 
 **Goal:** Implement `restore_replay_executor` (D2) — read archive + replay six-state routing + restore-before-open gate — wired into writer conformance via M-class registration.
 
@@ -12,7 +12,7 @@
 
 **Tech Stack:** Python 3.14 / SQLAlchemy 2 async / asyncpg / PostgreSQL advisory locks (xact_lock / xact_lock_shared) / pytest-asyncio (auto mode).
 
-**Spec:** [R1 Retention/Purge/恢复专项契约 §3 / §10 / §11](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md) + [R1 分 Slice 实施计划 §R1-S6-8 / §R1-S6-12 / §R1-S6-13 / §R1-S6-14 / §R1-S6-15.5](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
+**Spec:** [R1 Retention/Purge/恢复专项契约 §3 / §10 / §11](../01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md) + [R1 分 Slice 实施计划 §R1-S6-8 / §R1-S6-12 / §R1-S6-13 / §R1-S6-14 / §R1-S6-15.5](./2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)
 
 ## Global Constraints
 
