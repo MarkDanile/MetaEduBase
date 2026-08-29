@@ -37,6 +37,14 @@ _DEFINING_FILES = {
 # 违规引用（partial wiring 不得使 erase 入口可达）。
 _COMPOSITION_ROOT = "scheduler_composition.py"
 
+# M 类维护路径（M-class；S6-8.3 冻结）：restore_replay.py 作为 replay executor 维护
+# 路径是 D2 的主入口（用户裁决 A 方案；Plan §S6-8.3）。M 类不属于生产组合根（与
+# S5-A-5 切换安全保证无关）——六 owner erase 入口可达是 M 类维护路径的契约事实。
+# 本文件 allowlist 让 S5-A-5 静态扫描放行 M 类入口调用，同时保留生产组合根禁线。
+_MAINTENANCE_FILES = {
+    "restore_replay.py",
+}
+
 
 def test_six_erase_entries_unreachable_from_production_composition():
     # 本文件位于 packages/server-python/tests/composition/ →
@@ -49,6 +57,10 @@ def test_six_erase_entries_unreachable_from_production_composition():
             continue
         if path.name == _COMPOSITION_ROOT:
             continue  # 联合边界：单独门禁断言覆盖
+        if path.name in _MAINTENANCE_FILES:
+            # M 类维护路径 allowlist：restore_replay.py（D2 M-class executor）
+            # 是 S6-8.3 冻结 M 类入口调用者；不属于 S5-A-5 生产组合根禁线。
+            continue
         content = path.read_text(encoding="utf-8")
         for name in _ENTRY_NAMES:
             if name in content:
