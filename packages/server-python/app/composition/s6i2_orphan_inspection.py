@@ -58,14 +58,10 @@ FENCE_N = "N"
 FENCE_D = "D"
 FENCE_M = "M"
 
-# 巡检写者登记：restore 重放执行器（M 类）只登记 pending——S6-I3 实现，本 PR 不接。
-S6I2_PENDING_WRITERS: tuple[tuple[str, str, str], ...] = (
-    (
-        "restore_replay_executor",
-        "M",
-        "S6-8 item 3; 与 retention/audit jobs 互斥；本 PR 不实现，S6-I3 落地",
-    ),
-)
+# 巡检写者登记：S6-I3-D D2 restore replay executor（M 类）已 registered；
+# ``S6I2_PENDING_WRITERS`` 保持空 tuple 以表示无 pending 写者（演进：未来切片如
+# 有 pending 写者再回填；当前所有 S6-4 字面写者均已注册）。
+S6I2_PENDING_WRITERS: tuple[tuple[str, str, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,11 +96,11 @@ class ConformanceResult:
 def _required_writer_specs() -> tuple[WriterSpec, ...]:
     """S6-4 全表字面登记——含 S6-I1 已落地的 S6 自身 N 类写者（前三个）+ S6-I2
     ``event-gap 巡检写者`` = S6-4 ``event-gap 巡检写者``（owner=execution.core.v1，
-    N 类）。
+    N 类）+ **S6-I3-D D2 restore_replay_executor**（M 类；owner=execution.core.v1；
+    S6-4 全表第 4 个写者；与 retention/audit jobs 互斥；exclusive advisory xact_lock；
+    不调 adapter；不接 production scheduler）。
 
-    本表为 S6-4 契约收敛登记。S6 自身第四个写者 ``restore_replay_executor``（M 类）
-    仅登记 pending，不进入 conformance 集合判定（plan §S6-4「前三个均在 S6-2/S6-3/S6-6
-    冻结谓词内幂等」= 已实现；第四个 restore 重放执行器归 S6-I3）。
+    本表为 S6-4 契约收敛登记。S6 自身全部 4 个写者均已 registered。
     """
 
     return (
@@ -117,7 +113,7 @@ def _required_writer_specs() -> tuple[WriterSpec, ...]:
             function_name="run_event_retention",
             tenant_scoped=True,
             scope_class="Run",
-            notes="S6-2 冻结；Run 行锁；不取 Conv/owner/fence",
+            notes="S6-2 冻结；Run 行锁；不取 Conv/owner/fence；M-class shared maintenance lock",
         ),
         WriterSpec(
             writer_name="run_audit_retention",
@@ -127,7 +123,7 @@ def _required_writer_specs() -> tuple[WriterSpec, ...]:
             function_name="run_audit_retention",
             tenant_scoped=True,
             scope_class="Run",
-            notes="S6-3 冻结；Run 行锁 + children 行级锁",
+            notes="S6-3 冻结；Run 行锁 + children 行级锁；M-class shared maintenance lock",
         ),
         WriterSpec(
             writer_name="event_gap_inspection_writer",
@@ -138,6 +134,21 @@ def _required_writer_specs() -> tuple[WriterSpec, ...]:
             tenant_scoped=True,
             scope_class="Run",
             notes="S6-6 冻结；置 event_log_complete=False；Run 行锁内",
+        ),
+        # ---------- S6 自身 M 类写者（D2 落地；R1-S6-I3-D PR 转入） ----------
+        WriterSpec(
+            writer_name="restore_replay_executor",
+            owner_key="execution.core.v1",
+            fence_status=FENCE_M,
+            module_path="app.composition.restore_replay",
+            function_name="replay_archive_segment_for_tenant",
+            tenant_scoped=True,
+            scope_class="Maintenance",
+            notes=(
+                "S6-8.3 M 类；exclusive advisory xact_lock；不调 external/runtime "
+                "adapter；不接 production scheduler；不翻 capability；runtime  "
+                "completed 走 RUNTIME_BINDING_EVIDENCE_UNPROVABLE"
+            ),
         ),
     )
 
@@ -240,11 +251,13 @@ def run_writer_conformance_static() -> ConformanceResult:
 
 
 # 已发现的 writer 名称集合（PR 内部注册位 = ``run_event_retention`` /
-# ``run_audit_retention`` 模块顶层函数 + event-gap 巡检写者）。
+# ``run_audit_retention`` 模块顶层函数 + event-gap 巡检写者 + D2
+# ``restore_replay_executor`` 模块顶层函数）。
 _DISCOVERED_WRITER_NAMES: set[str] = {
     "run_event_retention",
     "run_audit_retention",
     "event_gap_inspection_writer",
+    "restore_replay_executor",
 }
 
 # stage_with_created 已发现的生产调用方集合（plan §S6-4 P2-4 裁决：生产调用方
