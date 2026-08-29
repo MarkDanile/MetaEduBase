@@ -41,10 +41,10 @@ RESTORE_REPLAY = PACKAGES / "app" / "composition" / "restore_replay.py"
 TEST_IDS: dict[str, str] = {
     # M-D2-1: replay 不取 exclusive maintenance lock → retention worker 测试不再通过
     #   测试用例直接验证 replay 持有 exclusive lock 期间 shared 申请必须阻塞
-    "M-D2-1": "tests/composition/test_s6i3_d_restore_replay.py::test_phase2_replay_holds_exclusive_lock",
+    "M-D2-1": "tests/composition/test_s6i3_d_restore_replay.py::test_p1_replay_holds_exclusive_lock",
     "M-D2-3": "tests/composition/test_s6i3_d_restore_replay.py::test_phase1_segment_sha_mismatch_fails_closed",
     "M-D2-4": "tests/composition/test_s6i3_d_restore_replay.py::test_phase2_quiesced_op_state_fail_closed",
-    "M-D2-6": "tests/composition/test_s6i3_d_restore_replay.py::test_phase2_local_owner_running_clears",
+    "M-D2-6": "tests/composition/test_s6i3_d_restore_replay.py::test_p4_runtime_completed_returns_unprovable",
 }
 
 # (mutation_name, file, old_anchor, new_anchor)
@@ -53,8 +53,7 @@ MUTATIONS: list[tuple[str, Path, str, str]] = [
     (
         "M-D2-1",
         RESTORE_REPLAY,
-        "        # 第一条 DB 语句必须是 exclusive advisory xact lock（Plan §S6-8.3 + 用户裁决 A）\n"
-        "        # 早于任何其他锁；同一 stable namespace/scope（maintenance_lock_key）\n"
+        "        # 第一条 DB 语句必须是 exclusive advisory xact lock\n"
         "        await acquire_maintenance_exclusive_lock(session)\n",
         "        # M-D2-1 mutation: 不取 exclusive lock\n"
         "        pass\n",
@@ -68,17 +67,20 @@ MUTATIONS: list[tuple[str, Path, str, str]] = [
         "    actual_sha = expected_sha  # M-D2-3 mutation: 跳过校验\n"
         "    if False:\n",
     ),
-    # M-D2-6: ack_digest 复算 bypass —— 改为非法 64-hex lowercase（触发 _update_checkpoint_to_acked 失败）
+    # M-D2-6: external vs runtime 分离 bypass —— runtime completed 改为返回 external_verify_only
     (
         "M-D2-6",
         RESTORE_REPLAY,
-        "def _compute_ack_digest(\n"
-        "    *, tenant_id: uuid.UUID, operation_id: str, owner_key: str\n"
-        ") -> str:\n",
-        "def _compute_ack_digest(  # M-D2-6 mutation: 返回非法 digest（uppercase）\n"
-        "    *, tenant_id: uuid.UUID, operation_id: str, owner_key: str\n"
-        ") -> str:\n"
-        "    return 'DEADBEEF' * 8  # uppercase hex — 64 chars 但含非小写 → ACK_DIGEST_FORMAT_INVALID\n",
+        "            if owner_key == \"runtime.private.v1\":\n"
+        "                return (\n"
+        "                    ACTION_RUNTIME_BINDING_UNPROVABLE,\n"
+        "                    \"RUNTIME_BINDING_EVIDENCE_UNPROVABLE\",\n"
+        "                )\n",
+        "            if False:  # M-D2-6 mutation\n"
+        "                return (\n"
+        "                    ACTION_RUNTIME_BINDING_UNPROVABLE,\n"
+        "                    \"RUNTIME_BINDING_EVIDENCE_UNPROVABLE\",\n"
+        "                )\n",
     ),
 ]
 
