@@ -25,6 +25,8 @@ from sqlalchemy import text
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.composition.agent_erasure_locks import acquire_maintenance_shared_lock
+
 # 冻结时间基线（S6-1 item 2，Spec §3）：RunEvent 热重放 90 天（``persisted_at``
 # 起算）；AgentRun 终态/审计 envelope 365 天（``ended_at`` 起算）。当前无 tenant
 # policy 表，worker 侧策略 = 冻结默认基线，hardcode（S6-7 裁决六）。
@@ -169,6 +171,11 @@ async def run_event_retention(
     seen_hold_skipped: set[tuple[uuid.UUID, uuid.UUID]] = set()
     while True:
         async with session_factory() as session, session.begin():
+            # M-class 维护互斥：每个事务先取 shared maintenance advisory lock，
+            # 早于 DB clock / candidate query / _lock_run_row；replay 事务取
+            # exclusive（Plan §S6-8.3 + 用户裁决 A）。同 worker 多实例并发可同
+            # 时持有 shared（PG advisory lock shared 语义）。
+            await acquire_maintenance_shared_lock(session)
             effective_now = await _effective_now(session, now)
             candidates = [
                 (tid, rid, cid)
@@ -429,6 +436,10 @@ async def run_audit_retention(
     seen_blocked: set[tuple[uuid.UUID, uuid.UUID]] = set()
     while True:
         async with session_factory() as session, session.begin():
+            # M-class 维护互斥：每个事务先取 shared maintenance advisory lock，
+            # 早于 DB clock / candidate query / _lock_run_row（Plan §S6-8.3 +
+            # 用户裁决 A）。
+            await acquire_maintenance_shared_lock(session)
             effective_now = await _effective_now(session, now)
             candidates = await _audit_retention_candidates(
                 session,
