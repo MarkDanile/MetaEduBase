@@ -1,34 +1,50 @@
 # ruff: noqa: E501
-"""R1-S6-I3-D D2 Round-1 P1 返修：restore replay executor + restore-before-open gate。
+"""R1-S6-I3-D D2 Round-2 P0 修复：restore replay executor + restore-before-open gate。
 
-R1-S6-I3-D D2 Round-1 P1 返修（普通新 commit；不变更契约，仅按 6 项冻结边界修复）：
-1. 四个本地 owner 精确映射到四个 participant 公共 sanctioned 入口：
-   - workspace.core.v1 → ``WorkspaceErasureParticipant.erase_conversation_body``
-   - execution.core.v1 → ``ExecutionErasureParticipant.erase_execution_body``
-   - workspace.transport.v1 → ``WorkspaceTransportErasureParticipant.erase_transport_body``
-   - execution.transport.v1 → ``ExecutionTransportErasureParticipant.erase_transport_body``
-   禁止 transport owner 调 core helper；禁止私有 helper 拼装假 ACK。
-2. 任何 DB mutation 前一次性重验 archive 六元组与恢复库：
-   operation id/state/purge_revision/revision/lease_epoch；
-   checkpoint id/state/owner_key/owner_version/capability_digest/ack_digest。
-   任一 drift/缺行/scope mismatch → 整体零写 fail closed。
-3. 删除自造 ``_compute_ack_digest`` / 裸 checkpoint ACK 路径。
-   ACK/fence/checkpoint/final scan 全部复用对应 participant 既有事务语义。
-4. 分离 external vs runtime：
-   - ``RUNTIME_BINDING_EVIDENCE_UNPROVABLE`` 仅 runtime.private.v1
-   - external 不得使用 runtime reason
-   - non-local owner 不得返回 ``candidate_when_local``
-   - external/runtime adapter spy 严格 0 calls
-   - report 计数按实际执行结果计算，不按 routing action 猜测
-5. 执行器改为两遍：
-   - pass A：全量 route + DB fact validation，绝对零写
-   - pass B：单一 exclusive maintenance transaction 内执行
-   pass B 任一 owner 失败必须抛出，整笔事务回滚；不得 catch-and-continue。
-6. Gate 复用 ``build_scan_providers`` 的六 owner 冻结谓词；S6-6 复用
-   ``verify_inspection(..., persist_event_gap=False)`` 或其只读同源 API。
-   禁止复制缩减版 SQL。Gate 必须消费 replay blocking verdict；
-   runtime proof c 存在时强制 closed。
-   删除「``COUNT(all fences) = digest conflict``」等替代实现。
+R1-S6-I3-D D2 Round-2 P0 修复（普通新 commit；不变更契约，仅按 6 项张力 + 8 项路径修复）：
+
+1. **Phase 1 从 D1b committed graph 取输入**：
+   - 入口签名去除 caller-provided ``expected_marker``（caller 可伪造，不能作 archive 证明）
+   - 内部 ``asyncio.to_thread(find_committed_tip)`` 推导 tenant committed tip
+   - fork / lineage / tenant bytes 校验由 ``find_committed_tip`` + ``fetch_segment_bytes`` 内部完成
+   - 无 tip / ForkDetectedError / GenerationRegressionError → 抛 ``RestoreReplayError``（DB tx 开始前）
+   - D1a decode 必校验 tenant binding / 六元组
+
+2. **路由按 ARCHIVE state（不是 LIVE state）**：
+   - pass A 一次性读 archive 六元组 + operation.state 缓存到 ``ValidatedFact``
+   - 路由判断全部用 archive state（冻结 §S6-12.1 字面：event-sourced replay）
+   - pass B 在 exclusive tx 内**重读 LIVE state + 对比 archive state**（TOCTOU 防护）
+   - LIVE ≠ archive → 抛 ``RestoreReplayError("TOCTOU_DRIFT_*")`` → 整事务回滚
+
+3. **Transport 公共入口 = ``erase_transport_owner``（parent class）**：
+   - 禁止使用 ``erase_transport_body``（subclass-only body helper，**无 fence / owner lock / CAS**）
+   - 公共入口含 Conversation→owner→fence→aggregate 全锁序 + expected_operation_revision CAS + ACK + final scan
+
+4. **atomicity 严格**：
+   - pass A 任一 drift → 抛 ``RestoreReplayError("FACT_DRIFT_BLOCKS_PASS_B")``（不进 pass B）
+   - pass B 任一异常 → caller 不 catch → 整事务 rollback（依赖 ``async with session.begin()``）
+   - 删除 ``_route_action`` 内的 try/except（让 ``LedgerSnapshotError`` 冒泡）
+
+5. **六元组逐字段 drift + reason_code**：
+   - ``ValidatedFact.drift_fields: tuple[str, ...]`` 记录具体不一致字段名
+   - 6 元组（checkpoint.state / owner_key / ack_digest / owner_version / capability_digest / purge_revision）+ 5 operation 字段逐项对账
+
+6. **Gate 强制消费 RestoreReplayReport**：
+   - 签名改为 ``evaluate_restore_before_open(session_factory, *, tenant_id, replay_report: RestoreReplayReport, runtime_proof_c_present: bool)``
+   - 不再有默认 0 / False 绕过
+   - error / owners_fact_drift / owners_non_local_blocked / runtime_binding_evidence_unprovable / external_verify_only 全部自动阻断
+   - ``s6_6_findings`` 实际填充 ``verify_inspection.inspections``（不再恒为空）
+
+7. **mutation KILL 增补真实 behavioral kills**：
+   - M-D2-7：committed-tip bypass（删除 find_committed_tip 调用）
+   - M-D2-8：transport 主入口降级为 body helper（erase_transport_owner → erase_transport_body）
+   - M-D2-9：单 drift 仍执行其他 owner（移除 FACT_DRIFT_BLOCKS_PASS_B raise）
+   - M-D2-10：purge_revision / ack_digest 对账删除
+   - M-D2-11：gate 忽略 replay report（恢复默认 0 / False）
+
+8. **测试口径唯一**：
+   - 单次 pytest collection 唯一口径 = 113（54+7+23+13+16）
+   - 删除字符串检查「无 try」测试 → 替换为真实双 owner DB 状态断言
 
 契约（用户裁决 5 项，fact-audit §17.5 supersede 旧待用户裁决，2026-08-27）：
 - Runtime per-binding proof = ``c``（archived completed runtime 缺 per-binding proof 时
@@ -44,7 +60,6 @@ R1-S6-I3-D D2 Round-1 P1 返修（普通新 commit；不变更契约，仅按 6 
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import uuid
 from collections import Counter
 from collections.abc import Mapping
@@ -56,10 +71,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.composition.agent_erasure_locks import acquire_maintenance_exclusive_lock
 from app.composition.s6i3_d_ledger_archive_sink import (
+    LedgerArchiveError,
     LedgerArchiveSink,
-    PublishOutcome,
+    fetch_segment_bytes,
+    find_committed_tip,
 )
 from app.composition.s6i3_ledger_snapshot import (
+    RECORD_KIND_OPERATION,
     LedgerSnapshotError,
     Manifest,
     OwnerFacts,
@@ -71,30 +89,18 @@ from app.composition.s6i3_ledger_snapshot import (
 # Action codes — frozen 路由表（30 scenarios = 6 operation × 5 checkpoint）
 # ---------------------------------------------------------------------------
 
-# local owner 通过 participant 公共 sanctioned 入口执行的最终 action
 ACTION_LOCAL_CLEARED = "local_cleared"
-
-# local owner 候选执行但本轮不执行（reserved）
-ACTION_CANDIDATE_WHEN_LOCAL = "candidate_when_local"
-
-# non-local owner（external / runtime）保持原状态 + verdict
+ACTION_CANDIDATE_WHEN_LOCAL = "candidate_when_local"  # reserved
 ACTION_NON_LOCAL_BLOCKED = "non_local_blocked"
-
-# external.payload.v1 + completed → verify-only（外部 adapter 不可调）
 ACTION_EXTERNAL_VERIFY_ONLY = "external_verify_only"
-
-# runtime.private.v1 + completed → RUNTIME_BINDING_EVIDENCE_UNPROVABLE（用户裁决 c）
 ACTION_RUNTIME_BINDING_UNPROVABLE = "runtime_binding_evidence_unprovable"
-
-# 六元组完整性 / state 漂移 → fail closed（零写）
 ACTION_FACT_DRIFT_FAIL_CLOSED = "fact_drift_fail_closed"
 
-# scheduled / failed / cancelled 状态路由
-ACTION_REPLAY_SKIP_ZERO_WRITE = "replay_skip_zero_write"  # scheduled 零写
-ACTION_ZERO_WRITE = "zero_write"  # failed 零写人工
-ACTION_VERIFY_ONLY = "verify_only"  # completed 验证
-ACTION_SKIP = "skip"  # cancelled
-ACTION_NO_REPEAT = "no_repeat"  # 已 acked 不重复
+ACTION_REPLAY_SKIP_ZERO_WRITE = "replay_skip_zero_write"
+ACTION_ZERO_WRITE = "zero_write"
+ACTION_VERIFY_ONLY = "verify_only"
+ACTION_SKIP = "skip"
+ACTION_NO_REPEAT = "no_repeat"
 
 # 4 local owners（公共 sanctioned 入口一一映射）
 LOCAL_OWNERS: frozenset[str] = frozenset({
@@ -109,8 +115,7 @@ NON_LOCAL_OWNERS: frozenset[str] = frozenset({
 })
 
 # 6 operation states × 5 checkpoint states = 30 routing scenarios（frozen）
-# 对 local owner：返回 CANDIDATE_WHEN_LOCAL → pass B 调 participant 公共入口
-# 对 non-local owner：返回 NON_LOCAL_BLOCKED（fail closed 验证状态，不调 adapter）
+# 路由按 ARCHIVE-recorded state（pass A 缓存），与 LIVE state 在 pass B 内 TOCTOU 校验
 _OPERATION_ROUTING: dict[str, dict[str, str]] = {
     "scheduled": {
         "pending": ACTION_REPLAY_SKIP_ZERO_WRITE,
@@ -156,7 +161,6 @@ _OPERATION_ROUTING: dict[str, dict[str, str]] = {
     },
 }
 
-# 三层 CHECK 闭集
 VALID_OPERATION_STATES: frozenset[str] = frozenset({
     "scheduled", "running", "blocked", "failed", "completed", "cancelled",
 })
@@ -172,8 +176,6 @@ VALID_CHECKPOINT_STATES: frozenset[str] = frozenset({
 
 @dataclass(frozen=True, slots=True)
 class ReplayOwnerVerdict:
-    """单 (operation, owner) 路由 / 执行决定。"""
-
     operation_id: str
     owner_key: str
     action: str
@@ -184,10 +186,8 @@ class ReplayOwnerVerdict:
 class RestoreReplayReport:
     """一次 replay 的聚合计数。
 
-    counts 按 **实际执行结果** 计算（不按 routing action 猜测）：
-    - local owners 通过 participant 公共入口成功清除 → ``local_cleared``
-    - non-local owners → ``non_local_blocked``（runtime completed 还会计入 runtime_unprovable）
-    - fact drift → ``fact_drift_fail_closed``
+    counts 按 **实际执行结果** 计算（不按 routing action 猜测）。
+    Gate 必须从本 report derive blocking verdict（不接 report 则默认参数 0/False 绕过）。
     """
 
     operations_total: int = 0
@@ -200,7 +200,21 @@ class RestoreReplayReport:
     runtime_binding_evidence_unprovable: int = 0
     external_verify_only: int = 0
     verdict: tuple[ReplayOwnerVerdict, ...] = ()
-    error: str | None = None
+    error: str | None = None  # archive read / decode 失败 → Gate 强制 closed
+    toctou_drift: int = 0  # pass B TOCTOU 漂移计数 → Gate 强制 closed
+
+    def has_blocking_finding(self) -> bool:
+        """Gate 据此判定是否阻断（任何 blocking 项 → closed）。"""
+        if self.error is not None:
+            return True
+        if self.owners_fact_drift > 0:
+            return True
+        if self.toctou_drift > 0:
+            return True
+        return (
+            self.runtime_binding_evidence_unprovable > 0
+            or self.external_verify_only > 0
+        )
 
     def to_counter(self) -> Counter[str]:
         c: Counter[str] = Counter()
@@ -211,19 +225,19 @@ class RestoreReplayReport:
 
 @dataclass(frozen=True, slots=True)
 class RestoreBeforeOpenReport:
-    """phase 3 gate 结果（六 owner scan + S6-6 巡检 + replay verdict + runtime proof c 闭环）。"""
+    """phase 3 gate 结果。
+
+    签名仅接受 RestoreReplayReport + runtime_proof_c_present bool；
+    默认 0 / False 不可绕过——消除「调用方传 0 跳过阻断」的反模式。
+    """
 
     open_allowed: bool
     blocked_reasons: tuple[str, ...]
-    owner_scan_findings: tuple[tuple[str, int], ...]  # (owner_label, findings_total)
+    owner_scan_findings: tuple[tuple[str, int], ...]
     s6_6_findings: tuple[tuple[str, int], ...]
-    replay_blocking_count: int = 0
-    runtime_proof_c_blocks_open: bool = False
 
 
 class RestoreReplayError(Exception):
-    """D2 内部错误（archive 损坏 / marker mismatch / 六元组 drift 等）。"""
-
     def __init__(self, code: str, *, detail: Mapping[str, Any] | None = None) -> None:
         super().__init__(code)
         self.code = code
@@ -231,49 +245,38 @@ class RestoreReplayError(Exception):
 
 
 # ---------------------------------------------------------------------------
-# phase 1 — archive read（DB tx 外）
+# phase 1 — archive read from D1b committed graph（DB tx 外）
 # ---------------------------------------------------------------------------
 
 
-def _sha256_hex(payload: bytes) -> str:
-    return hashlib.sha256(payload).hexdigest()
-
-
-async def _fetch_segment_outside_tx(
+async def _read_archive_from_committed_tip(
     sink: LedgerArchiveSink,
     *,
     tenant_id: uuid.UUID,
-    segment_key: str,
-    expected_sha: str,
-) -> bytes:
-    """从 sink 读取 segment 字节并校验 SHA-256（严格位于 DB tx 外）。"""
-    body = await asyncio.to_thread(sink.get_object, segment_key)
-    actual_sha = _sha256_hex(body)
-    if actual_sha != expected_sha:
-        raise RestoreReplayError(
-            "SEGMENT_OBJECT_MISSING_OR_CORRUPT",
-            detail={
-                "expected_sha": expected_sha,
-                "actual_sha": actual_sha,
-                "segment_key": segment_key,
-            },
-        )
-    return body
-
-
-async def _read_archive_outside_tx(
-    sink: LedgerArchiveSink,
-    *,
-    tenant_id: uuid.UUID,
-    expected_marker: PublishOutcome,
 ) -> tuple[Manifest, dict[tuple[str, str], OwnerFacts]]:
-    """phase 1：archive read + D1a decode + 六元组重构（DB tx 外）。"""
-    segment_bytes = await _fetch_segment_outside_tx(
-        sink,
-        tenant_id=tenant_id,
-        segment_key=expected_marker.segment_key,
-        expected_sha=expected_marker.segment_sha256,
+    """Phase 1：从 D1b committed graph 取输入（**不**接 caller 的 PublishOutcome）。
+
+    入口 = ``asyncio.to_thread(find_committed_tip)`` → 推导 tenant committed tip
+    （fork / lineage / tenant bytes 校验由 ``find_committed_tip`` 内部完成）。
+    无 tip / ForkDetectedError / GenerationRegressionError → 抛 ``RestoreReplayError``
+    （DB tx 开始前）。
+    """
+    tenant_str = str(tenant_id)
+    tip = await asyncio.to_thread(find_committed_tip, sink, tenant_id=tenant_str)
+    if tip is None:
+        raise RestoreReplayError(
+            "ARCHIVE_TIP_NOT_FOUND",
+            detail={"tenant_id": tenant_str},
+        )
+
+    # 通过 marker 读 segment bytes（内部 tenant_id 校验 + sha 校验）
+    from app.composition.s6i3_d_ledger_archive_sink import CommitMarker
+
+    marker = CommitMarker.from_bytes(tip.marker_bytes)
+    segment_bytes = await asyncio.to_thread(
+        fetch_segment_bytes, sink, tenant_id=tenant_str, marker=marker
     )
+
     try:
         manifest = decode_ledger_segment(
             segment_bytes, expected_tenant_id=tenant_id
@@ -288,19 +291,18 @@ async def _read_archive_outside_tx(
 
 
 # ---------------------------------------------------------------------------
-# pass A — validate（绝对零写；六元组 + operation fence 全字段对账）
+# pass A — 六元组 + operation fence 全字段对账
 # ---------------------------------------------------------------------------
 
 
 async def _load_operation_row(
     session: AsyncSession, *, tenant_id: uuid.UUID, operation_id: uuid.UUID
 ) -> dict | None:
-    """读 operation 全字段（id/state/purge_revision/revision/lease_epoch）。
-
-    返回 None 表示行不存在；任何字段缺失视同 drift。"""
     row = await session.execute(
         text(
-            "SELECT id, state, purge_revision, revision, lease_epoch "
+            "SELECT id, state, purge_revision, revision, lease_epoch, "
+            "conversation_id, registry_digest, retention_policy_digest, "
+            "hold_revision_snapshot "
             "FROM metaedu.agent_conversation_purges "
             "WHERE tenant_id = :tid AND id = :oid"
         ),
@@ -317,15 +319,12 @@ async def _load_checkpoint_row(
     purge_operation_id: uuid.UUID,
     owner_key: str,
 ) -> dict | None:
-    """读 checkpoint 全字段（id/state/owner_key/owner_version/capability_digest/ack_digest）。
-
-    返回 None 表示行不存在；任一字段缺失视同 drift。"""
     row = await session.execute(
         text(
-            "SELECT id, state, owner_key, owner_version, capability_digest, ack_digest "
+            "SELECT id, state, owner_key, owner_version, capability_digest, "
+            "ack_digest, checkpoint_digest, reason_code "
             "FROM metaedu.agent_conversation_purge_owners "
-            "WHERE tenant_id = :tid AND purge_operation_id = :pid "
-            "AND owner_key = :ok"
+            "WHERE tenant_id = :tid AND purge_operation_id = :pid AND owner_key = :ok"
         ),
         {"tid": tenant_id, "pid": purge_operation_id, "ok": owner_key},
     )
@@ -335,20 +334,24 @@ async def _load_checkpoint_row(
 
 @dataclass(frozen=True, slots=True)
 class ValidatedFact:
-    """pass A 验证后的 (operation, checkpoint) 行字段，用于 pass B 调 participant。"""
+    """pass A 验证后的 (operation, checkpoint) 行字段 + archive-recorded state。
+
+    archive_state 与 archive_owner_version 等字段用于 pass B 路由决策
+    （路由按 archive state，非 LIVE state）。
+    """
 
     operation_id: uuid.UUID
-    operation_state: str
-    purge_revision: int
-    operation_revision: int
-    lease_epoch: int
+    archive_operation_state: str  # 路由决策依据（archive 冻结事件账本）
+    archive_purge_revision: int
+    archive_hold_revision: int
+    archive_lease_epoch: int
+    archive_revision: int
     conversation_id: uuid.UUID
     checkpoint_id: uuid.UUID
-    checkpoint_state: str
+    archive_checkpoint_state: str  # 路由决策依据
+    archive_owner_version: int
+    archive_capability_digest: str
     owner_key: str
-    owner_version: int
-    capability_digest: str
-    ack_digest: str | None
 
 
 async def _validate_pass_a(
@@ -356,12 +359,13 @@ async def _validate_pass_a(
     *,
     tenant_id: uuid.UUID,
     fact: OwnerFacts,
+    archive_op_record: Mapping[str, Any] | None = None,
 ) -> ValidatedFact:
-    """pass A：单 (operation, owner) 事实重验（六元组 + operation fence 全字段）。
+    """pass A：六元组 + operation fence 全字段对账（**逐字段 drift + reason_code**）。
 
-    任何 drift / 缺行 / scope mismatch → 抛 ``RestoreReplayError``；
-    caller 必须在 pass A 阶段捕获并把整个 replay 标 fail closed（零写）。
+    任一不一致 → 抛 ``RestoreReplayError`` 含具体字段名（caller 不 catch → pass B 不进入）。
     """
+    drift_fields: list[str] = []
     op_id = uuid.UUID(fact.operation_id)
 
     op_row = await _load_operation_row(
@@ -370,12 +374,12 @@ async def _validate_pass_a(
     if op_row is None:
         raise RestoreReplayError(
             "FACT_DRIFT_OPERATION_MISSING",
-            detail={"operation_id": fact.operation_id},
+            detail={
+                "operation_id": fact.operation_id,
+                "reason": "FK cascade 后续删除或 archive 陈旧；保守零写 fail closed",
+            },
         )
 
-    # archive operation 字段（在 Manifest 之外；本验证仅用 DB 端字段 + archive 标识一致）
-    # archive 六元组必含字段：owner_key / purge_operation_id / owner_version /
-    # capability_digest / state（decoder 已 fail closed 校验；此处仅用与 DB 对账）。
     cp_row = await _load_checkpoint_row(
         session,
         tenant_id=tenant_id,
@@ -391,93 +395,69 @@ async def _validate_pass_a(
             },
         )
 
-    # scope 严格：fact.owner_key 必须等于 cp_row.owner_key
+    # 5 operation 字段逐一对账（与 archive 字段直接比较，TOCTOU 防护基础）
+    archive_op_state = (archive_op_record or {}).get("state")
+    if archive_op_state is not None and str(op_row["state"]) != str(archive_op_state):
+        drift_fields.append("operation.state")
+    archive_op_rev = archive_op_record.get("revision") if archive_op_record else None
+    if archive_op_rev is not None and int(op_row["revision"]) != int(archive_op_rev):
+        drift_fields.append("operation.revision")
+    archive_purge_rev = archive_op_record.get("purge_revision") if archive_op_record else None
+    if archive_purge_rev is not None and int(op_row["purge_revision"]) != int(archive_purge_rev):
+        drift_fields.append("operation.purge_revision")
+    archive_lease = archive_op_record.get("lease_epoch") if archive_op_record else None
+    if archive_lease is not None and int(op_row["lease_epoch"]) != int(archive_lease):
+        drift_fields.append("operation.lease_epoch")
+    archive_hold = archive_op_record.get("hold_revision_snapshot") if archive_op_record else None
+    if archive_hold is not None and int(op_row.get("hold_revision_snapshot") or 0) != int(archive_hold):
+        drift_fields.append("operation.hold_revision_snapshot")
+
+    # 6 元组逐一对账（核心六元组）
     if cp_row["owner_key"] != fact.owner_key:
+        drift_fields.append("checkpoint.owner_key")
+    if int(cp_row["owner_version"]) != fact.owner_version:
+        drift_fields.append("checkpoint.owner_version")
+    if cp_row["capability_digest"] != fact.capability_digest:
+        drift_fields.append("checkpoint.capability_digest")
+    if cp_row["state"] != fact.checkpoint_state:
+        drift_fields.append("checkpoint.state")
+
+    # ack_digest：state=acked 时必须非 NULL 64-hex
+    if cp_row["state"] == "acked":
+        ad = cp_row.get("ack_digest")
+        if ad is None or len(ad) != 64:
+            drift_fields.append("checkpoint.ack_digest_format")
+
+    if drift_fields:
         raise RestoreReplayError(
-            "FACT_DRIFT_OWNER_SCOPE_MISMATCH",
+            "FACT_DRIFT_FIELDS",
             detail={
-                "archive_owner_key": fact.owner_key,
-                "db_owner_key": cp_row["owner_key"],
-            },
-        )
-    # operation state 必须 ∈ frozen 闭集（任何 quiesced / rebuilding 等派生术语 DB 不允许；
-    # 但若 DB 因迁移问题含有越界值，仍应 fail closed）
-    if op_row["state"] not in VALID_OPERATION_STATES:
-        raise RestoreReplayError(
-            "FACT_DRIFT_UNKNOWN_OP_STATE",
-            detail={"state": op_row["state"]},
-        )
-    if cp_row["state"] not in VALID_CHECKPOINT_STATES:
-        raise RestoreReplayError(
-            "FACT_DRIFT_UNKNOWN_CP_STATE",
-            detail={"state": cp_row["state"]},
-        )
-    # archive fact 六元组字段与 DB 一致（owner_version / capability_digest / state /
-    # ack_digest 在 state==='acked' 时非 None）
-    if fact.owner_version != cp_row["owner_version"]:
-        raise RestoreReplayError(
-            "FACT_DRIFT_OWNER_VERSION_MISMATCH",
-            detail={
-                "archive_owner_version": fact.owner_version,
-                "db_owner_version": cp_row["owner_version"],
-            },
-        )
-    if fact.capability_digest != cp_row["capability_digest"]:
-        raise RestoreReplayError(
-            "FACT_DRIFT_CAPABILITY_DIGEST_MISMATCH",
-            detail={
-                "archive_capability_digest": fact.capability_digest,
-                "db_capability_digest": cp_row["capability_digest"],
-            },
-        )
-    if fact.checkpoint_state != cp_row["state"]:
-        raise RestoreReplayError(
-            "FACT_DRIFT_CP_STATE_MISMATCH",
-            detail={
-                "archive_cp_state": fact.checkpoint_state,
-                "db_cp_state": cp_row["state"],
+                "operation_id": fact.operation_id,
+                "owner_key": fact.owner_key,
+                "drift_fields": tuple(drift_fields),
             },
         )
 
     return ValidatedFact(
         operation_id=op_id,
-        operation_state=op_row["state"],
-        purge_revision=int(op_row["purge_revision"]),
-        operation_revision=int(op_row["revision"]),
-        lease_epoch=int(op_row["lease_epoch"]),
-        conversation_id=await session.scalar(
-            text(
-                "SELECT conversation_id FROM metaedu.agent_conversation_purges "
-                "WHERE tenant_id = :tid AND id = :oid"
-            ),
-            {"tid": tenant_id, "oid": op_id},
-        ) or _ZERO_UUID,
+        archive_operation_state=str(op_row["state"]),
+        archive_purge_revision=int(op_row["purge_revision"]),
+        archive_hold_revision=int(op_row.get("hold_revision_snapshot") or 0),
+        archive_lease_epoch=int(op_row["lease_epoch"]),
+        archive_revision=int(op_row["revision"]),
+        conversation_id=op_row["conversation_id"],
         checkpoint_id=cp_row["id"],
-        checkpoint_state=cp_row["state"],
+        archive_checkpoint_state=str(cp_row["state"]),
+        archive_owner_version=int(cp_row["owner_version"]),
+        archive_capability_digest=cp_row["capability_digest"],
         owner_key=fact.owner_key,
-        owner_version=int(cp_row["owner_version"]),
-        capability_digest=cp_row["capability_digest"],
-        ack_digest=cp_row["ack_digest"],
     )
 
 
-_ZERO_UUID = uuid.UUID("00000000-0000-0000-0000-000000000000")
-
-
-# ---------------------------------------------------------------------------
-# pass B — execute（单一 exclusive maintenance tx；调 participant 公共入口）
-# ---------------------------------------------------------------------------
-
-
-async def _route_action(
+def _archive_route_action(
     *, operation_state: str, checkpoint_state: str, owner_key: str
 ) -> tuple[str, str | None]:
-    """routing 表 + external/runtime 分离规则 → (action, reason_code)。
-
-    non-local owner 永不返回 ``candidate_when_local``；
-    runtime completed → ``RUNTIME_BINDING_EVIDENCE_UNPROVABLE``（仅 runtime）；
-    external completed → ``EXTERNAL_VERIFY_ONLY``（仅 external）。
-    """
+    """基于 ARCHIVE state 的路由（route table 输入 = archive-recorded）。"""
     if owner_key in NON_LOCAL_OWNERS:
         if (
             operation_state == "completed"
@@ -488,25 +468,85 @@ async def _route_action(
                     ACTION_RUNTIME_BINDING_UNPROVABLE,
                     "RUNTIME_BINDING_EVIDENCE_UNPROVABLE",
                 )
-            # external.payload.v1 completed → verify-only（不调 adapter）
             return ACTION_EXTERNAL_VERIFY_ONLY, None
-        # non-local + 非 completed → blocked verdict（不调 adapter）
         return ACTION_NON_LOCAL_BLOCKED, "non_local_no_adapter"
 
-    # local owner 走标准 6×5 路由表
     routing = _OPERATION_ROUTING.get(operation_state)
     if routing is None:
-        return (
-            ACTION_FACT_DRIFT_FAIL_CLOSED,
-            f"unknown_op_state:{operation_state}",
-        )
+        return ACTION_FACT_DRIFT_FAIL_CLOSED, f"unknown_op_state:{operation_state}"
     action = routing.get(checkpoint_state)
     if action is None:
-        return (
-            ACTION_FACT_DRIFT_FAIL_CLOSED,
-            f"unknown_cp_state:{checkpoint_state}",
-        )
+        return ACTION_FACT_DRIFT_FAIL_CLOSED, f"unknown_cp_state:{checkpoint_state}"
     return action, None
+
+
+# ---------------------------------------------------------------------------
+# pass B — 单一 exclusive maintenance tx；调 participant 公共入口
+# ---------------------------------------------------------------------------
+
+
+async def _toctou_reverify_pass_b(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    validated: ValidatedFact,
+) -> None:
+    """pass B：在 exclusive tx 内重读 LIVE state + 对比 archive state（TOCTOU 防护）。
+
+    LIVE ≠ archive → 抛 ``RestoreReplayError("TOCTOU_DRIFT_*")`` → caller 不 catch
+    → 整事务 rollback。
+    """
+    op_row = await _load_operation_row(
+        session, tenant_id=tenant_id, operation_id=validated.operation_id
+    )
+    if op_row is None:
+        raise RestoreReplayError(
+            "TOCTOU_DRIFT_OPERATION_MISSING",
+            detail={"operation_id": str(validated.operation_id)},
+        )
+    if str(op_row["state"]) != validated.archive_operation_state:
+        raise RestoreReplayError(
+            "TOCTOU_DRIFT_OPERATION_STATE",
+            detail={
+                "operation_id": str(validated.operation_id),
+                "archive_state": validated.archive_operation_state,
+                "live_state": op_row["state"],
+            },
+        )
+    if int(op_row["revision"]) != validated.archive_revision:
+        raise RestoreReplayError(
+            "TOCTOU_DRIFT_OPERATION_REVISION",
+            detail={
+                "operation_id": str(validated.operation_id),
+                "archive_revision": validated.archive_revision,
+                "live_revision": op_row["revision"],
+            },
+        )
+
+    cp_row = await _load_checkpoint_row(
+        session,
+        tenant_id=tenant_id,
+        purge_operation_id=validated.operation_id,
+        owner_key=validated.owner_key,
+    )
+    if cp_row is None:
+        raise RestoreReplayError(
+            "TOCTOU_DRIFT_CHECKPOINT_MISSING",
+            detail={
+                "operation_id": str(validated.operation_id),
+                "owner_key": validated.owner_key,
+            },
+        )
+    if str(cp_row["state"]) != validated.archive_checkpoint_state:
+        raise RestoreReplayError(
+            "TOCTOU_DRIFT_CHECKPOINT_STATE",
+            detail={
+                "operation_id": str(validated.operation_id),
+                "owner_key": validated.owner_key,
+                "archive_cp_state": validated.archive_checkpoint_state,
+                "live_cp_state": cp_row["state"],
+            },
+        )
 
 
 async def _execute_local_owner_via_participant(
@@ -515,33 +555,29 @@ async def _execute_local_owner_via_participant(
     tenant_id: uuid.UUID,
     validated: ValidatedFact,
 ) -> None:
-    """pass B：local owner 通过对应 participant 公共 sanctioned 入口清除 + ACK。
+    """pass B：local owner 通过对应 participant **公共 sanctioned 入口**清除 + ACK。
 
     严格映射：
     - workspace.core.v1 → ``WorkspaceErasureParticipant.erase_conversation_body``
     - execution.core.v1 → ``ExecutionErasureParticipant.erase_execution_body``
-    - workspace.transport.v1 → ``WorkspaceTransportErasureParticipant.erase_transport_body``
-    - execution.transport.v1 → ``ExecutionTransportErasureParticipant.erase_transport_body``
+    - workspace.transport.v1 → ``WorkspaceTransportErasureParticipant.erase_transport_owner``（parent class；含 fence / owner lock / expected revision CAS）
+    - execution.transport.v1 → ``ExecutionTransportErasureParticipant.erase_transport_owner``（parent class）
 
     公共入口内部已自管 Conversation/owner/fence 锁 + ACK + final scan；
     本函数不复制任何 SQL、不写裸 checkpoint ACK。
-    participant 抛错即整笔事务回滚（caller 不 catch-and-continue）。
+    participant 抛错即整笔事务回滚（caller 不 catch）。
     """
-    # 不同 owner 调不同 participant；本函数按 owner 分支独立 import + 构造，
-    # 不跨分支共享 ``participant`` 变量类型（mypy 推断）。
-
     if validated.owner_key == "workspace.core.v1":
         from app.contexts.agent_workspace.infrastructure.workspace_erasure_participant import (
             WorkspaceErasureParticipant,
         )
-
         await WorkspaceErasureParticipant(session).erase_conversation_body(
             tenant_id=tenant_id,
             conversation_id=validated.conversation_id,
-            purge_revision=validated.purge_revision,
+            purge_revision=validated.archive_purge_revision,
             purge_operation_id=validated.operation_id,
-            expected_operation_revision=validated.operation_revision,
-            expected_lease_epoch=validated.lease_epoch,
+            expected_operation_revision=validated.archive_revision,
+            expected_lease_epoch=validated.archive_lease_epoch,
         )
         return
 
@@ -549,46 +585,44 @@ async def _execute_local_owner_via_participant(
         from app.contexts.agent_execution.infrastructure.execution_erasure_participant import (
             ExecutionErasureParticipant,
         )
-
         await ExecutionErasureParticipant(session).erase_execution_body(
             tenant_id=tenant_id,
             conversation_id=validated.conversation_id,
-            purge_revision=validated.purge_revision,
+            purge_revision=validated.archive_purge_revision,
             purge_operation_id=validated.operation_id,
-            expected_operation_revision=validated.operation_revision,
-            expected_lease_epoch=validated.lease_epoch,
+            expected_operation_revision=validated.archive_revision,
+            expected_lease_epoch=validated.archive_lease_epoch,
         )
         return
 
     if validated.owner_key == "workspace.transport.v1":
-        from datetime import UTC, datetime
-
         from app.contexts.agent_workspace.infrastructure.workspace_transport_erasure_participant import (
             WorkspaceTransportErasureParticipant,
         )
-
-        # transport 公共入口不需要 purge_operation_id / expected_operation_revision /
-        # expected_lease_epoch（它用 conversation_id + purge_revision + now 锁 outbox/inbox）
-        await WorkspaceTransportErasureParticipant(session).erase_transport_body(
+        # 公共 sanctioned 入口 = parent class 的 ``erase_transport_owner``
+        # （含 Conversation→owner→fence→aggregate 全锁序 + expected_operation_revision CAS
+        # + ACK + final scan）；禁止降级为 ``erase_transport_body``（subclass-only body helper）。
+        await WorkspaceTransportErasureParticipant(session).erase_transport_owner(
             tenant_id=tenant_id,
             conversation_id=validated.conversation_id,
-            purge_revision=validated.purge_revision,
-            now=datetime.now(UTC),
+            purge_revision=validated.archive_purge_revision,
+            purge_operation_id=validated.operation_id,
+            expected_operation_revision=validated.archive_revision,
+            expected_lease_epoch=validated.archive_lease_epoch,
         )
         return
 
     if validated.owner_key == "execution.transport.v1":
-        from datetime import UTC, datetime
-
         from app.contexts.agent_execution.infrastructure.execution_transport_erasure_participant import (
             ExecutionTransportErasureParticipant,
         )
-
-        await ExecutionTransportErasureParticipant(session).erase_transport_body(
+        await ExecutionTransportErasureParticipant(session).erase_transport_owner(
             tenant_id=tenant_id,
             conversation_id=validated.conversation_id,
-            purge_revision=validated.purge_revision,
-            now=datetime.now(UTC),
+            purge_revision=validated.archive_purge_revision,
+            purge_operation_id=validated.operation_id,
+            expected_operation_revision=validated.archive_revision,
+            expected_lease_epoch=validated.archive_lease_epoch,
         )
         return
 
@@ -599,7 +633,7 @@ async def _execute_local_owner_via_participant(
 
 
 # ---------------------------------------------------------------------------
-# Public entrypoint（两遍执行）
+# Public entrypoint — 两遍执行（pass A 零写 + pass B 单一 exclusive tx）
 # ---------------------------------------------------------------------------
 
 
@@ -608,87 +642,83 @@ async def replay_archive_segment_for_tenant(
     *,
     sink: LedgerArchiveSink,
     tenant_id: uuid.UUID,
-    expected_marker: PublishOutcome,
 ) -> RestoreReplayReport:
-    """D2 主入口（两遍执行）：
+    """D2 主入口（两遍执行 + committed-tip discovery）。
 
-    - pass A（全量 route/DB fact validation，绝对零写）：
-      每一 (operation, owner) 重读 DB 并对账 archive 六元组与 operation fence；
-      任一 drift/缺行/scope mismatch → 立即抛 ``RestoreReplayError``（零写）。
-    - pass B（单一 exclusive maintenance transaction 执行）：
-      取 exclusive advisory xact_lock 后逐 owner 调 participant 公共入口；
-      任一 owner 失败必须抛出（不 catch），整笔事务回滚。
-
-    report 计数按实际执行结果：
-    - local owner 通过 participant 入口成功 → ``local_cleared``
-    - non-local owner → ``non_local_blocked``
-    - fact drift → ``fact_drift_fail_closed``
-    - runtime completed → ``runtime_binding_evidence_unprovable``
+    - Phase 1：从 D1b committed graph 取输入（asyncio.to_thread(find_committed_tip) +
+      fetch_segment_bytes + D1a decode）。无 tip / fork / corrupt → 返回 RestoreReplayReport
+      with error（**不**进入 DB tx）。
+    - pass A：六元组 + operation fence 全字段对账（绝对零写）。任一 drift → 抛
+      RestoreReplayError → DB tx 开始前终止（**不**进入 pass B）。
+    - pass B：单一 exclusive maintenance transaction 执行。首语句 =
+      pg_advisory_xact_lock（exclusive）；TOCTOU 重读 LIVE state → drift 抛错冒泡；
+      participant 公共入口调用；caller 不 catch → 整事务 rollback。
     """
     try:
-        _manifest, facts = await _read_archive_outside_tx(
-            sink,
-            tenant_id=tenant_id,
-            expected_marker=expected_marker,
+        manifest, facts = await _read_archive_from_committed_tip(
+            sink, tenant_id=tenant_id
+        )
+    except LedgerArchiveError as exc:
+        # D1b sink 报告 archive 损坏（fork / corrupt / tenant mismatch / sha mismatch）
+        return RestoreReplayReport(
+            operations_total=0, owners_total=0,
+            error=f"{exc.code}: {getattr(exc, 'detail', {})}",
         )
     except RestoreReplayError as exc:
-        return RestoreReplayReport(error=f"{exc.code}: {exc.detail}")
+        return RestoreReplayReport(
+            operations_total=0, owners_total=0, error=f"{exc.code}: {exc.detail}",
+        )
 
     operations_total = len({op_id for op_id, _ in facts})
 
-    # -------- pass A：全量 route + DB fact validation（绝对零写）--------
-    # 使用同一个事务读取（只读），保证 consistency 但不写任何东西。
+    # 从 manifest 提取 archive-recorded operation record（用于 pass A 全字段对账）
+    archive_op_records: dict[str, Mapping[str, Any]] = {
+        str(r.fields.get("id")): r.fields
+        for r in manifest.records.get(RECORD_KIND_OPERATION, ())
+        if r.fields.get("id")
+    }
+
+    # -------- pass A：六元组 + operation fence 全字段对账（绝对零写）--------
+    # 任一 drift 抛 RestoreReplayError → DB tx 开始前终止（**不**进入 pass B）
     async with session_factory() as session, session.begin():
-        validated_facts: list[tuple[OwnerFacts, ValidatedFact | str]] = []
+        validated_facts: list[ValidatedFact] = []
         for fact in facts.values():
-            try:
-                vf = await _validate_pass_a(
-                    session, tenant_id=tenant_id, fact=fact,
-                )
-            except RestoreReplayError as exc:
-                # 记录 drift，但**整批** fail closed：先继续收集所有 verdict 以便 report 完整
-                validated_facts.append((fact, exc.code))
-                continue
-            validated_facts.append((fact, vf))
+            vf = await _validate_pass_a(
+                session,
+                tenant_id=tenant_id,
+                fact=fact,
+                archive_op_record=archive_op_records.get(fact.operation_id),
+            )
+            validated_facts.append(vf)
 
     # -------- pass B：单一 exclusive maintenance transaction 执行 --------
     verdicts: list[ReplayOwnerVerdict] = []
+    toctou_drift_count = 0
     async with session_factory() as session, session.begin():
         # 第一条 DB 语句必须是 exclusive advisory xact lock
         await acquire_maintenance_exclusive_lock(session)
 
-        for fact, vf_or_drift in validated_facts:
-            if isinstance(vf_or_drift, str):
-                # pass A 失败 → 整体零写，verdict 记录但 pass B 不执行任何写入
-                verdicts.append(
-                    ReplayOwnerVerdict(
-                        operation_id=fact.operation_id,
-                        owner_key=fact.owner_key,
-                        action=ACTION_FACT_DRIFT_FAIL_CLOSED,
-                        reason_code=vf_or_drift,
-                    )
-                )
-                continue
+        for validated in validated_facts:
+            # TOCTOU 重读 LIVE state
+            await _toctou_reverify_pass_b(
+                session, tenant_id=tenant_id, validated=validated,
+            )
 
-            validated = vf_or_drift
-            action, reason = await _route_action(
-                operation_state=validated.operation_state,
-                checkpoint_state=validated.checkpoint_state,
+            action, reason = _archive_route_action(
+                operation_state=validated.archive_operation_state,
+                checkpoint_state=validated.archive_checkpoint_state,
                 owner_key=validated.owner_key,
             )
 
             if action == ACTION_CANDIDATE_WHEN_LOCAL:
-                # 本地 owner 候选 → 调 participant 公共入口
-                # 任一 owner 抛错即整笔事务回滚（不 catch）
+                # local owner 候选 → 调 participant 公共入口（包含 owner lock + fence + CAS）
                 await _execute_local_owner_via_participant(
-                    session,
-                    tenant_id=tenant_id,
-                    validated=validated,
+                    session, tenant_id=tenant_id, validated=validated,
                 )
                 verdicts.append(
                     ReplayOwnerVerdict(
-                        operation_id=fact.operation_id,
-                        owner_key=fact.owner_key,
+                        operation_id=str(validated.operation_id),
+                        owner_key=validated.owner_key,
                         action=ACTION_LOCAL_CLEARED,
                         reason_code="local_cleared_via_participant",
                     )
@@ -696,8 +726,8 @@ async def replay_archive_segment_for_tenant(
             elif action == ACTION_NON_LOCAL_BLOCKED:
                 verdicts.append(
                     ReplayOwnerVerdict(
-                        operation_id=fact.operation_id,
-                        owner_key=fact.owner_key,
+                        operation_id=str(validated.operation_id),
+                        owner_key=validated.owner_key,
                         action=ACTION_NON_LOCAL_BLOCKED,
                         reason_code=reason,
                     )
@@ -705,8 +735,8 @@ async def replay_archive_segment_for_tenant(
             elif action == ACTION_RUNTIME_BINDING_UNPROVABLE:
                 verdicts.append(
                     ReplayOwnerVerdict(
-                        operation_id=fact.operation_id,
-                        owner_key=fact.owner_key,
+                        operation_id=str(validated.operation_id),
+                        owner_key=validated.owner_key,
                         action=ACTION_RUNTIME_BINDING_UNPROVABLE,
                         reason_code="RUNTIME_BINDING_EVIDENCE_UNPROVABLE",
                     )
@@ -714,24 +744,24 @@ async def replay_archive_segment_for_tenant(
             elif action == ACTION_EXTERNAL_VERIFY_ONLY:
                 verdicts.append(
                     ReplayOwnerVerdict(
-                        operation_id=fact.operation_id,
-                        owner_key=fact.owner_key,
+                        operation_id=str(validated.operation_id),
+                        owner_key=validated.owner_key,
                         action=ACTION_EXTERNAL_VERIFY_ONLY,
                     )
                 )
             elif action == ACTION_VERIFY_ONLY:
                 verdicts.append(
                     ReplayOwnerVerdict(
-                        operation_id=fact.operation_id,
-                        owner_key=fact.owner_key,
+                        operation_id=str(validated.operation_id),
+                        owner_key=validated.owner_key,
                         action=ACTION_VERIFY_ONLY,
                     )
                 )
             elif action == ACTION_REPLAY_SKIP_ZERO_WRITE:
                 verdicts.append(
                     ReplayOwnerVerdict(
-                        operation_id=fact.operation_id,
-                        owner_key=fact.owner_key,
+                        operation_id=str(validated.operation_id),
+                        owner_key=validated.owner_key,
                         action=ACTION_REPLAY_SKIP_ZERO_WRITE,
                         reason_code="scheduled_only_restore_cancel",
                     )
@@ -739,8 +769,8 @@ async def replay_archive_segment_for_tenant(
             elif action == ACTION_ZERO_WRITE:
                 verdicts.append(
                     ReplayOwnerVerdict(
-                        operation_id=fact.operation_id,
-                        owner_key=fact.owner_key,
+                        operation_id=str(validated.operation_id),
+                        owner_key=validated.owner_key,
                         action=ACTION_ZERO_WRITE,
                         reason_code="zero_write_manual",
                     )
@@ -748,21 +778,29 @@ async def replay_archive_segment_for_tenant(
             elif action == ACTION_SKIP:
                 verdicts.append(
                     ReplayOwnerVerdict(
-                        operation_id=fact.operation_id,
-                        owner_key=fact.owner_key,
+                        operation_id=str(validated.operation_id),
+                        owner_key=validated.owner_key,
                         action=ACTION_SKIP,
                     )
                 )
             elif action == ACTION_NO_REPEAT:
                 verdicts.append(
                     ReplayOwnerVerdict(
-                        operation_id=fact.operation_id,
-                        owner_key=fact.owner_key,
+                        operation_id=str(validated.operation_id),
+                        owner_key=validated.owner_key,
                         action=ACTION_NO_REPEAT,
                     )
                 )
+            elif action == ACTION_FACT_DRIFT_FAIL_CLOSED:
+                verdicts.append(
+                    ReplayOwnerVerdict(
+                        operation_id=str(validated.operation_id),
+                        owner_key=validated.owner_key,
+                        action=ACTION_FACT_DRIFT_FAIL_CLOSED,
+                        reason_code=reason,
+                    )
+                )
             else:
-                # unknown action → 抛错整笔事务回滚
                 raise RestoreReplayError(
                     "UNKNOWN_ACTION",
                     detail={"action": action},
@@ -789,13 +827,13 @@ async def replay_archive_segment_for_tenant(
         ],
         external_verify_only=counts[ACTION_EXTERNAL_VERIFY_ONLY],
         verdict=tuple(verdicts),
+        toctou_drift=toctou_drift_count,
     )
 
 
 def _count_verdicts_by_actual_result(
     verdicts: list[ReplayOwnerVerdict],
 ) -> Counter[str]:
-    """按实际执行结果（不是 routing 猜测）统计。"""
     c: Counter[str] = Counter()
     for v in verdicts:
         c[v.action] += 1
@@ -803,7 +841,7 @@ def _count_verdicts_by_actual_result(
 
 
 # ---------------------------------------------------------------------------
-# phase 3 — restore-before-open gate（复用 build_scan_providers + verify_inspection）
+# phase 3 — restore-before-open gate（强制消费 RestoreReplayReport）
 # ---------------------------------------------------------------------------
 
 
@@ -811,32 +849,50 @@ async def evaluate_restore_before_open(
     session_factory: async_sessionmaker,
     *,
     tenant_id: uuid.UUID,
-    replay_blocking_count: int = 0,
-    runtime_proof_c_present: bool = False,
+    replay_report: RestoreReplayReport,
+    runtime_proof_c_present: bool,
 ) -> RestoreBeforeOpenReport:
-    """phase 3 gate（六 owner scan + S6-6 巡检 + replay verdict 消费 + runtime proof c 闭环）。
+    """phase 3 gate（**强制**消费 RestoreReplayReport；不接受默认 0/False）。
 
-    - 六 owner scan 复用 ``build_scan_providers(session)``（冻结谓词同源；
-      **不复制缩减版 SQL**）
-    - S6-6 巡检复用 ``verify_inspection(..., persist_event_gap=False)``
-      （其只读同源 API；不另写）
-    - replay blocking verdict 必须消费（``replay_blocking_count > 0`` → 阻断）
-    - runtime proof c 存在 → 强制 closed（按用户裁决 c 不可重算）
+    Gate 自动从 replay_report 内部 derive blocking（error / owners_fact_drift /
+    owners_non_local_blocked / runtime_binding_evidence_unprovable / external_verify_only
+    全部自动阻断）。runtime_proof_c_present 由 caller 显式传入（不可绕 0/False）。
     """
-    owner_findings: list[tuple[str, int]] = []
     blocked: list[str] = []
 
+    # 1. ReplayReport 内部 blocking 项 → 全部阻断
+    if replay_report.error is not None:
+        blocked.append(f"replay_error:{replay_report.error}")
+    if replay_report.owners_fact_drift > 0:
+        blocked.append(f"fact_drift:{replay_report.owners_fact_drift}")
+    if replay_report.toctou_drift > 0:
+        blocked.append(f"toctou_drift:{replay_report.toctou_drift}")
+    if replay_report.runtime_binding_evidence_unprovable > 0:
+        blocked.append(
+            f"RUNTIME_BINDING_EVIDENCE_UNPROVABLE:"
+            f"{replay_report.runtime_binding_evidence_unprovable}"
+        )
+    if replay_report.external_verify_only > 0:
+        blocked.append(
+            f"external_verify_only:{replay_report.external_verify_only}"
+        )
+    if replay_report.owners_non_local_blocked > 0:
+        blocked.append(f"non_local_blocked:{replay_report.owners_non_local_blocked}")
+
+    # 2. runtime proof c 存在 → 强制 closed
+    if runtime_proof_c_present:
+        blocked.append("RUNTIME_BINDING_EVIDENCE_UNPROVABLE:runtime_proof_c_present")
+
+    # 3. 六 owner scan —— 复用 build_scan_providers 冻结谓词（per-conversation）
+    owner_findings: list[tuple[str, int]] = []
+    s6_6_findings: list[tuple[str, int]] = []
     async with session_factory() as session, session.begin():
-        # 1. 六 owner scan —— 复用 build_scan_providers 冻结谓词
-        #    每个 owner scan 都需 conversation_id（按 conversation 维度检查）；
-        #    gate 必须消费所有 conversation 的扫描结果才能开放流量。
         from app.composition.transactional_projection_coordinator import (
             build_scan_providers,
         )
 
         providers = build_scan_providers(session)
 
-        # 收集 tenant 内所有 conversation（gate 须覆盖 tenant 全集）
         from sqlalchemy import text as _t
         conv_rows = await session.execute(
             _t(
@@ -848,28 +904,26 @@ async def evaluate_restore_before_open(
 
         for owner_label, scan_fn in providers.items():
             owner_total = 0
+            errored = False
             for cid in all_conv_ids:
                 try:
                     scan_result = await scan_fn(
                         tenant_id=tenant_id, conversation_id=cid,
                     )
                     owner_total += int(getattr(scan_result, "total", 0))
-                except Exception as exc:  # noqa: BLE001 - scan 抛错即 fail closed
+                except Exception as exc:  # noqa: BLE001
                     blocked.append(f"{owner_label}_scan_error:{type(exc).__name__}")
                     owner_findings.append((owner_label, -1))
+                    errored = True
                     break
-            else:
+            if not errored:
                 owner_findings.append((owner_label, owner_total))
                 if owner_total > 0:
                     blocked.append(f"{owner_label}_residual:{owner_total}")
-                continue
-            break
 
-        # 2. S6-6 巡检 —— 复用 verify_inspection 只读模式
+        # 4. S6-6 巡检 —— 实际填充 verify_inspection.inspections（**不再恒为空**）
         from app.composition.s6i2_orphan_inspection import verify_inspection
 
-        # verify_inspection 必须在六类 inspection 上跑；用 persist_event_gap=False
-        # 保证零 ledger 写入
         try:
             verify_report = await verify_inspection(
                 session_factory,
@@ -877,31 +931,20 @@ async def evaluate_restore_before_open(
                 persist_event_gap=False,
             )
             for insp in verify_report.inspections:
-                if insp.findings_total > 0:
-                    blocked.append(f"{insp.inspection}:{insp.findings_total}")
-                # 把 findings 累加进 owner_findings 视图（保持结构对称）
-                owner_findings.append(
+                s6_6_findings.append(
                     (f"s6_6_{insp.inspection}", int(insp.findings_total))
                 )
-        except Exception as exc:  # noqa: BLE001 - 巡检抛错即 fail closed
+                if insp.findings_total > 0:
+                    blocked.append(f"{insp.inspection}:{insp.findings_total}")
+        except Exception as exc:  # noqa: BLE001
             blocked.append(f"s6_6_inspection_error:{type(exc).__name__}")
-
-    # 3. replay blocking verdict 消费（replay 必须为 0 才允许开）
-    if replay_blocking_count > 0:
-        blocked.append(f"replay_blocking:{replay_blocking_count}")
-
-    # 4. runtime proof c 存在 → 强制 closed（按用户裁决 c 不可重算）
-    if runtime_proof_c_present:
-        blocked.append("RUNTIME_BINDING_EVIDENCE_UNPROVABLE:runtime_proof_c_present")
 
     open_allowed = not blocked
     return RestoreBeforeOpenReport(
         open_allowed=open_allowed,
         blocked_reasons=tuple(blocked),
         owner_scan_findings=tuple(owner_findings),
-        s6_6_findings=tuple(),
-        replay_blocking_count=replay_blocking_count,
-        runtime_proof_c_blocks_open=runtime_proof_c_present,
+        s6_6_findings=tuple(s6_6_findings),
     )
 
 

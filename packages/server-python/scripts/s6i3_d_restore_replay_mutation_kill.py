@@ -1,21 +1,23 @@
 # ruff: noqa: E501
 #!/usr/bin/env python3
-"""R1-S6-I3-D D2: restore replay executor mutation kill。
+"""R1-S6-I3-D D2 restore replay executor mutation kill（Round-2 P0 修复版）。
 
-真实 PG 真实路径 mutation 驱动（参照 ``s6i1_retention_mutation_kill`` 模式）：
+真实 PG 真实路径 mutation 驱动（参照 s6i1_retention_mutation_kill 模式）：
 - byte backup + try/finally + SHA-256 byte-identical
 - 每条 mutation 绑定对应 invariant test
 - subprocess pytest exit=1 → KILLED；恢复后 exit=0 → 干净
-- 仅 mutation 期间 mutate；mutation 后 ``git restore`` 还原未跟踪文件
+- 仅 mutation 期间 mutate；mutation 后 restore 还原
 
-Mutation 覆盖（每项对应 invariant test；任何 KILLED → 写入 Score Log）：
+Round-2 mutation 覆盖（每项对应 invariant test；任何 KILLED → 写入 Score Log）：
 
-M-D2-1: replay 不取 exclusive maintenance lock → retention worker 不被阻塞
-M-D2-2: replay 不调用 external.runtime adapter → 不可观察（构造 spy）
-M-D2-3: replay 不验证 expected_marker sha → cross-tenant 注入可行
-M-D2-4: replay 跳过六元组完整性 → state 篡改可通过（构造 scenario 验）
-M-D2-5: replay 在 maintenance tx 内做 I/O → asyncio.to_thread 内 sync I/O 被观察
-M-D2-6: replay ack_digest 复算 bypass → 已 acked checkpoint 二次清除
+M-D2-1：replay 不取 exclusive maintenance lock → 0/False bypass
+M-D2-3：replay 不验证 expected_marker sha → fail closed
+M-D2-6：external vs runtime 分离 bypass（runtime 改走 fall-through）
+M-D2-7：committed-tip bypass（删除 find_committed_tip 调用）
+M-D2-8：transport 主入口降级为 body helper（erase_transport_owner → erase_transport_body）
+M-D2-9：单 drift 仍执行其他 owner（移除 FACT_DRIFT_FIELDS raise）
+M-D2-10：purge_revision / ack_digest 对账删除
+M-D2-11：gate 忽略 replay report（恢复默认 0 / False）
 
 每条 mutation 真实 subprocess pytest 驱动；mutation 存在 exit=1 + 恢复后
 exit=0 + byte backup SHA-256 byte-identical = KILLED 真红。
@@ -33,23 +35,25 @@ import sys
 from pathlib import Path
 
 PACKAGES = Path(__file__).resolve().parent.parent
-REPO = PACKAGES.parent.parent
 TEST_DIR = PACKAGES
 RESTORE_REPLAY = PACKAGES / "app" / "composition" / "restore_replay.py"
 
 # 测试 ID 对应的 invariant test（每个 mutation 至少一个）
 TEST_IDS: dict[str, str] = {
-    # M-D2-1: replay 不取 exclusive maintenance lock → retention worker 测试不再通过
-    #   测试用例直接验证 replay 持有 exclusive lock 期间 shared 申请必须阻塞
-    "M-D2-1": "tests/composition/test_s6i3_d_restore_replay.py::test_p1_replay_holds_exclusive_lock",
-    "M-D2-3": "tests/composition/test_s6i3_d_restore_replay.py::test_phase1_segment_sha_mismatch_fails_closed",
-    "M-D2-4": "tests/composition/test_s6i3_d_restore_replay.py::test_phase2_quiesced_op_state_fail_closed",
-    "M-D2-6": "tests/composition/test_s6i3_d_restore_replay.py::test_p4_runtime_completed_returns_unprovable",
+    "M-D2-1": "tests/composition/test_s6i3_d_restore_replay.py::test_r1_p1_replay_holds_exclusive_lock",
+    # M-D2-3: 移除 fetch_segment_bytes 验证（返回空 bytes → decode 失败）
+    "M-D2-3": "tests/composition/test_s6i3_d_restore_replay.py::test_phase1_archive_read_from_committed_tip",
+    "M-D2-6": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_runtime_completed_returns_unprovable",
+    "M-D2-7": "tests/composition/test_s6i3_d_restore_replay.py::test_phase1_archive_read_from_committed_tip",
+    "M-D2-8": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_workspace_transport_uses_erase_transport_owner",
+    "M-D2-9": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_fact_drift_blocks_pass_b_entry",
+    "M-D2-10": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_purge_revision_drift_fails_closed",
+    "M-D2-11": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_gate_consumes_fact_drift",
 }
 
 # (mutation_name, file, old_anchor, new_anchor)
 MUTATIONS: list[tuple[str, Path, str, str]] = [
-    # M-D2-1: 移除 exclusive advisory lock —— retention worker 不再阻塞
+    # M-D2-1: 移除 exclusive advisory lock —— retention worker 不被阻塞
     (
         "M-D2-1",
         RESTORE_REPLAY,
@@ -58,16 +62,18 @@ MUTATIONS: list[tuple[str, Path, str, str]] = [
         "        # M-D2-1 mutation: 不取 exclusive lock\n"
         "        pass\n",
     ),
-    # M-D2-3: 移除 sha 校验 —— sha mismatch 不再失败
+    # M-D2-3: 移除 sha 校验 —— 跳过 fetch_segment_bytes 内部 tenant 校验
     (
         "M-D2-3",
         RESTORE_REPLAY,
-        "    actual_sha = _sha256_hex(body)\n"
-        "    if actual_sha != expected_sha:\n",
-        "    actual_sha = expected_sha  # M-D2-3 mutation: 跳过校验\n"
-        "    if False:\n",
+        "    marker = CommitMarker.from_bytes(tip.marker_bytes)\n"
+        "    segment_bytes = await asyncio.to_thread(\n"
+        "        fetch_segment_bytes, sink, tenant_id=tenant_str, marker=marker\n"
+        "    )\n",
+        "    marker = CommitMarker.from_bytes(tip.marker_bytes)\n"
+        "    segment_bytes = b\"\"  # M-D2-3 mutation: 跳过 fetch（带 sha 校验）\n",
     ),
-    # M-D2-6: external vs runtime 分离 bypass —— runtime completed 改为返回 external_verify_only
+    # M-D2-6: external vs runtime 分离 bypass —— runtime 改走 fall-through
     (
         "M-D2-6",
         RESTORE_REPLAY,
@@ -76,13 +82,84 @@ MUTATIONS: list[tuple[str, Path, str, str]] = [
         "                    ACTION_RUNTIME_BINDING_UNPROVABLE,\n"
         "                    \"RUNTIME_BINDING_EVIDENCE_UNPROVABLE\",\n"
         "                )\n",
-        "            if False:  # M-D2-6 mutation\n"
+        "            if False:  # M-D2-6 mutation: runtime 改走 external_verify_only（合并语义）\n"
         "                return (\n"
         "                    ACTION_RUNTIME_BINDING_UNPROVABLE,\n"
         "                    \"RUNTIME_BINDING_EVIDENCE_UNPROVABLE\",\n"
         "                )\n",
     ),
+    # M-D2-7: committed-tip bypass —— 直接调 D1a export，跳过 find_committed_tip
+    (
+        "M-D2-7",
+        RESTORE_REPLAY,
+        "    tenant_str = str(tenant_id)\n"
+        "    tip = await asyncio.to_thread(find_committed_tip, sink, tenant_id=tenant_str)\n"
+        "    if tip is None:\n",
+        "    tenant_str = str(tenant_id)\n"
+        "    tip = None  # M-D2-7 mutation: 跳过 committed-tip 推导\n"
+        "    if tip is None:\n",
+    ),
+    # M-D2-8: transport 主入口降级为 body helper
+    (
+        "M-D2-8",
+        RESTORE_REPLAY,
+        "        await WorkspaceTransportErasureParticipant(session).erase_transport_owner(\n"
+        "            tenant_id=tenant_id,\n"
+        "            conversation_id=validated.conversation_id,\n"
+        "            purge_revision=validated.archive_purge_revision,\n"
+        "            purge_operation_id=validated.operation_id,\n"
+        "            expected_operation_revision=validated.archive_revision,\n"
+        "            expected_lease_epoch=validated.archive_lease_epoch,\n"
+        "        )\n",
+        "        # M-D2-8 mutation: 降级为 body helper（丢失 fence / owner lock / CAS）\n"
+        "        await WorkspaceTransportErasureParticipant(session).erase_transport_body(\n"
+        "            tenant_id=tenant_id,\n"
+        "            conversation_id=validated.conversation_id,\n"
+        "        )\n",
+    ),
+    # M-D2-9: 单 drift 仍执行其他 owner —— 移除 FACT_DRIFT_FIELDS raise（pass A 继续）
+    (
+        "M-D2-9",
+        RESTORE_REPLAY,
+        "    if drift_fields:\n"
+        "        raise RestoreReplayError(\n"
+        "            \"FACT_DRIFT_FIELDS\",\n"
+        "            detail={\n"
+        "                \"operation_id\": fact.operation_id,\n"
+        "                \"owner_key\": fact.owner_key,\n"
+        "                \"drift_fields\": tuple(drift_fields),\n"
+        "            },\n"
+        "        )\n",
+        "    if drift_fields:\n"
+        "        pass  # M-D2-9 mutation: 单 drift 不阻断（错误）\n",
+    ),
+    # M-D2-10: purge_revision 对账删除 —— 移除 operation.purge_revision 检查
+    (
+        "M-D2-10",
+        RESTORE_REPLAY,
+        "    archive_purge_rev = archive_op_record.get(\"purge_revision\") if archive_op_record else None\n"
+        "    if archive_purge_rev is not None and int(op_row[\"purge_revision\"]) != int(archive_purge_rev):\n"
+        "        drift_fields.append(\"operation.purge_revision\")\n",
+        "    # M-D2-10 mutation: 删除 purge_revision 对账\n",
+    ),
+    # M-D2-11: gate 忽略 replay report —— 恢复默认 0 / False
+    (
+        "M-D2-11",
+        RESTORE_REPLAY,
+        "    # 1. ReplayReport 内部 blocking 项 → 全部阻断\n"
+        "    if replay_report.error is not None:\n"
+        "        blocked.append(f\"replay_error:{replay_report.error}\")\n"
+        "    if replay_report.owners_fact_drift > 0:\n"
+        "        blocked.append(f\"fact_drift:{replay_report.owners_fact_drift}\")\n",
+        "    # M-D2-11 mutation: gate 忽略 replay report\n"
+        "    if False:\n"
+        "        if replay_report.error is not None:\n"
+        "            blocked.append(f\"replay_error:{replay_report.error}\")\n"
+        "        if replay_report.owners_fact_drift > 0:\n"
+        "            blocked.append(f\"fact_drift:{replay_report.owners_fact_drift}\")\n",
+    ),
 ]
+
 
 _BACKUPS: dict[str, str] = {}
 
@@ -92,7 +169,6 @@ def _sha256_bytes(payload: bytes) -> str:
 
 
 def backup_file(file: Path) -> str:
-    """内存备份文件原内容（不依赖 git；本分支 untracked 文件居多）。"""
     text = file.read_text()
     _BACKUPS[str(file)] = text
     return text
