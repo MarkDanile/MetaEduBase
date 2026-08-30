@@ -49,6 +49,7 @@ TEST_IDS: dict[str, str] = {
     "M-D2-9": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_fact_drift_blocks_pass_b_entry",
     "M-D2-10": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_purge_revision_drift_fails_closed",
     "M-D2-11": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_gate_consumes_fact_drift",
+    "M-D2-12": "tests/composition/test_s6i3_d_restore_replay.py::test_r3_ack_digest_archive_live_mismatch",
 }
 
 # (mutation_name, file, old_anchor, new_anchor)
@@ -57,10 +58,10 @@ MUTATIONS: list[tuple[str, Path, str, str]] = [
     (
         "M-D2-1",
         RESTORE_REPLAY,
-        "        # 第一条 DB 语句必须是 exclusive advisory xact lock\n"
-        "        await acquire_maintenance_exclusive_lock(session)\n",
-        "        # M-D2-1 mutation: 不取 exclusive lock\n"
-        "        pass\n",
+        "            # 第一条 DB 语句必须是 exclusive advisory xact lock\n"
+        "            await acquire_maintenance_exclusive_lock(session)\n",
+        "            # M-D2-1 mutation: 不取 exclusive lock\n"
+        "            pass\n",
     ),
     # M-D2-3: 移除 sha 校验 —— 跳过 fetch_segment_bytes 内部 tenant 校验
     (
@@ -77,16 +78,39 @@ MUTATIONS: list[tuple[str, Path, str, str]] = [
     (
         "M-D2-6",
         RESTORE_REPLAY,
-        "            if owner_key == \"runtime.private.v1\":\n"
-        "                return (\n"
-        "                    ACTION_RUNTIME_BINDING_UNPROVABLE,\n"
-        "                    \"RUNTIME_BINDING_EVIDENCE_UNPROVABLE\",\n"
-        "                )\n",
-        "            if False:  # M-D2-6 mutation: runtime 改走 external_verify_only（合并语义）\n"
-        "                return (\n"
-        "                    ACTION_RUNTIME_BINDING_UNPROVABLE,\n"
-        "                    \"RUNTIME_BINDING_EVIDENCE_UNPROVABLE\",\n"
-        "                )\n",
+        "    if owner_key == \"runtime.private.v1\":\n"
+        "        if operation_state == \"completed\":\n"
+        "            return (\n"
+        "                ACTION_RUNTIME_BINDING_UNPROVABLE,\n"
+        "                \"RUNTIME_BINDING_EVIDENCE_UNPROVABLE\",\n"
+        "            )\n",
+        "    if False:  # M-D2-6 mutation: runtime 改走 external_verify_only（合并语义）\n"
+        "        if operation_state == \"completed\":\n"
+        "            return (\n"
+        "                ACTION_RUNTIME_BINDING_UNPROVABLE,\n"
+        "                \"RUNTIME_BINDING_EVIDENCE_UNPROVABLE\",\n"
+        "            )\n",
+    ),
+    # M-D2-12: archive/live ack_digest 严格相等删除 —— 移除 archive/live 严格相等校验
+    (
+        "M-D2-12",
+        RESTORE_REPLAY,
+        "            if (\n"
+        "                archive_ack is not None\n"
+        "                and live_ack is not None\n"
+        "                and archive_ack == live_ack\n"
+        "                and archive_cp_state == \"acked\"\n"
+        "            ):\n"
+        "                pass  # 严格相等 → OK\n"
+        "            elif (\n"
+        "                archive_ack is not None\n"
+        "                and live_ack is not None\n"
+        "                and archive_ack != live_ack\n"
+        "                and archive_cp_state == \"acked\"\n"
+        "            ):\n"
+        "                drift_fields.append(\"checkpoint.ack_digest_archive_live_mismatch\")\n",
+        "            # M-D2-12 mutation: 删除 archive/live 严格相等校验\n"
+        "            pass  # ack_digest_mismatch 不再阻断 gate\n",
     ),
     # M-D2-7: committed-tip bypass —— 直接调 D1a export，跳过 find_committed_tip
     (
@@ -126,20 +150,18 @@ MUTATIONS: list[tuple[str, Path, str, str]] = [
         "            \"FACT_DRIFT_FIELDS\",\n"
         "            detail={\n"
         "                \"operation_id\": fact.operation_id,\n"
-        "                \"owner_key\": fact.owner_key,\n"
+        "                \"owner_key\": archive_cp_owner_key,\n"
         "                \"drift_fields\": tuple(drift_fields),\n"
         "            },\n"
-        "        )\n",
+        "        )",
         "    if drift_fields:\n"
-        "        pass  # M-D2-9 mutation: 单 drift 不阻断（错误）\n",
+        "        pass  # M-D2-9 mutation: 单 drift 不阻断（错误）",
     ),
     # M-D2-10: purge_revision 对账删除 —— 移除 operation.purge_revision 检查
     (
         "M-D2-10",
         RESTORE_REPLAY,
-        "    archive_purge_rev = archive_op_record.get(\"purge_revision\") if archive_op_record else None\n"
-        "    if archive_purge_rev is not None and int(op_row[\"purge_revision\"]) != int(archive_purge_rev):\n"
-        "        drift_fields.append(\"operation.purge_revision\")\n",
+        "    archive_purge_rev = int(archive_op_record.get(\"purge_revision\") or 0)",
         "    # M-D2-10 mutation: 删除 purge_revision 对账\n",
     ),
     # M-D2-11: gate 忽略 replay report —— 恢复默认 0 / False
@@ -149,14 +171,9 @@ MUTATIONS: list[tuple[str, Path, str, str]] = [
         "    # 1. ReplayReport 内部 blocking 项 → 全部阻断\n"
         "    if replay_report.error is not None:\n"
         "        blocked.append(f\"replay_error:{replay_report.error}\")\n"
-        "    if replay_report.owners_fact_drift > 0:\n"
-        "        blocked.append(f\"fact_drift:{replay_report.owners_fact_drift}\")\n",
+        "    if replay_report.pass_a_drift > 0:",
         "    # M-D2-11 mutation: gate 忽略 replay report\n"
-        "    if False:\n"
-        "        if replay_report.error is not None:\n"
-        "            blocked.append(f\"replay_error:{replay_report.error}\")\n"
-        "        if replay_report.owners_fact_drift > 0:\n"
-        "            blocked.append(f\"fact_drift:{replay_report.owners_fact_drift}\")\n",
+        "    pass  # 不消费 report\n",
     ),
 ]
 

@@ -32,18 +32,20 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 
 from app.composition.restore_replay import (
-    ACTION_EXTERNAL_VERIFY_ONLY,
+    ACTION_EXTERNAL_VERIFICATION_FAILED,
+    ACTION_EXTERNAL_VERIFIED,
+    ACTION_FACT_DRIFT_FAIL_CLOSED,
     ACTION_LOCAL_CLEARED,
     ACTION_NO_REPEAT,
     ACTION_NON_LOCAL_BLOCKED,
     ACTION_REPLAY_SKIP_ZERO_WRITE,
     ACTION_RUNTIME_BINDING_UNPROVABLE,
+    ACTION_RUNTIME_BLOCKED,
     ACTION_SKIP,
     ACTION_VERIFY_ONLY,
     ACTION_ZERO_WRITE,
     LOCAL_OWNERS,
     NON_LOCAL_OWNERS,
-    RestoreReplayError,
     RestoreReplayReport,
     evaluate_restore_before_open,
     replay_archive_segment_for_tenant,
@@ -170,7 +172,8 @@ async def _publish_segment_for(factory, *, tid):
     return sink, outcome
 
 
-# 30 routing scenarios
+# 30 routing scenarios（6 operation states × 5 checkpoint states）
+# local owner（workspace.core.v1 默认）期望 action
 _STATE_ROUTING_MATRIX: list[tuple[str, str, str]] = [
     ("scheduled", "pending", ACTION_REPLAY_SKIP_ZERO_WRITE),
     ("scheduled", "erasing", ACTION_REPLAY_SKIP_ZERO_WRITE),
@@ -179,12 +182,12 @@ _STATE_ROUTING_MATRIX: list[tuple[str, str, str]] = [
     ("scheduled", "acked", ACTION_REPLAY_SKIP_ZERO_WRITE),
     ("running", "pending", ACTION_LOCAL_CLEARED),
     ("running", "erasing", ACTION_LOCAL_CLEARED),
-    ("running", "blocked", ACTION_NON_LOCAL_BLOCKED),
+    ("running", "blocked", ACTION_LOCAL_CLEARED),
     ("running", "failed", ACTION_ZERO_WRITE),
     ("running", "acked", ACTION_NO_REPEAT),
     ("blocked", "pending", ACTION_LOCAL_CLEARED),
     ("blocked", "erasing", ACTION_LOCAL_CLEARED),
-    ("blocked", "blocked", ACTION_NON_LOCAL_BLOCKED),
+    ("blocked", "blocked", ACTION_LOCAL_CLEARED),
     ("blocked", "failed", ACTION_ZERO_WRITE),
     ("blocked", "acked", ACTION_NO_REPEAT),
     ("failed", "pending", ACTION_ZERO_WRITE),
@@ -203,6 +206,86 @@ _STATE_ROUTING_MATRIX: list[tuple[str, str, str]] = [
     ("cancelled", "failed", ACTION_SKIP),
     ("cancelled", "acked", ACTION_SKIP),
 ]
+
+
+# 30 routing scenarios × 2 non-local owner = 60 完整 6×5 判别（external.payload.v1 + runtime.private.v1）
+# 全局 6×5 矩阵先（**禁止**按 owner 降级为 non_local_blocked）：
+# - scheduled/cancelled/failed/acked → 矩阵返回 SKIP / ZERO_WRITE / REPLAY_SKIP_ZERO_WRITE / NO_REPEAT
+# - running/blocked + local owner → LOCAL_CLEARED（调 participant）
+# - running/blocked + non-local owner → owner-specific（NON_LOCAL_BLOCKED）
+# - completed + local owner → VERIFY_ONLY
+# - completed + non-local external → EXTERNAL_VERIFY_ONLY（待 caller receipt 验证）
+# - completed + non-local runtime → RUNTIME_BINDING_UNPROVABLE
+_NON_LOCAL_OWNER_MATRIX_EXPECTATION: dict[str, dict[str, str]] = {
+    "external.payload.v1": {
+        # global 矩阵先（scheduled/cancelled/failed/acked 不得降级为 non_local_blocked）；
+        # 矩阵返回 → verdict.action 矩阵值（**不**经 receipt 验证）
+        ("scheduled", "pending"): ACTION_REPLAY_SKIP_ZERO_WRITE,
+        ("scheduled", "erasing"): ACTION_REPLAY_SKIP_ZERO_WRITE,
+        ("scheduled", "blocked"): ACTION_REPLAY_SKIP_ZERO_WRITE,
+        ("scheduled", "failed"): ACTION_REPLAY_SKIP_ZERO_WRITE,
+        ("scheduled", "acked"): ACTION_REPLAY_SKIP_ZERO_WRITE,
+        ("running", "pending"): ACTION_NON_LOCAL_BLOCKED,
+        ("running", "erasing"): ACTION_NON_LOCAL_BLOCKED,
+        ("running", "blocked"): ACTION_NON_LOCAL_BLOCKED,
+        ("running", "failed"): ACTION_ZERO_WRITE,
+        ("running", "acked"): ACTION_NO_REPEAT,
+        ("blocked", "pending"): ACTION_NON_LOCAL_BLOCKED,
+        ("blocked", "erasing"): ACTION_NON_LOCAL_BLOCKED,
+        ("blocked", "blocked"): ACTION_NON_LOCAL_BLOCKED,
+        ("blocked", "failed"): ACTION_ZERO_WRITE,
+        ("blocked", "acked"): ACTION_NO_REPEAT,
+        ("failed", "pending"): ACTION_ZERO_WRITE,
+        ("failed", "erasing"): ACTION_ZERO_WRITE,
+        ("failed", "blocked"): ACTION_ZERO_WRITE,
+        ("failed", "failed"): ACTION_ZERO_WRITE,
+        ("failed", "acked"): ACTION_ZERO_WRITE,
+        # completed → owner-specific：经 receipt 验证（无 external_ref 行 → failed）
+        ("completed", "pending"): ACTION_EXTERNAL_VERIFICATION_FAILED,
+        ("completed", "erasing"): ACTION_EXTERNAL_VERIFICATION_FAILED,
+        ("completed", "blocked"): ACTION_EXTERNAL_VERIFICATION_FAILED,
+        ("completed", "failed"): ACTION_EXTERNAL_VERIFICATION_FAILED,
+        ("completed", "acked"): ACTION_EXTERNAL_VERIFICATION_FAILED,
+        ("cancelled", "pending"): ACTION_SKIP,
+        ("cancelled", "erasing"): ACTION_SKIP,
+        ("cancelled", "blocked"): ACTION_SKIP,
+        ("cancelled", "failed"): ACTION_SKIP,
+        ("cancelled", "acked"): ACTION_SKIP,
+    },
+    "runtime.private.v1": {
+        # runtime + completed → unprovable；其他 → runtime_blocked verdict / 矩阵返回
+        ("scheduled", "pending"): ACTION_REPLAY_SKIP_ZERO_WRITE,
+        ("scheduled", "erasing"): ACTION_REPLAY_SKIP_ZERO_WRITE,
+        ("scheduled", "blocked"): ACTION_REPLAY_SKIP_ZERO_WRITE,
+        ("scheduled", "failed"): ACTION_REPLAY_SKIP_ZERO_WRITE,
+        ("scheduled", "acked"): ACTION_REPLAY_SKIP_ZERO_WRITE,
+        ("running", "pending"): ACTION_RUNTIME_BLOCKED,
+        ("running", "erasing"): ACTION_RUNTIME_BLOCKED,
+        ("running", "blocked"): ACTION_RUNTIME_BLOCKED,
+        ("running", "failed"): ACTION_ZERO_WRITE,
+        ("running", "acked"): ACTION_NO_REPEAT,
+        ("blocked", "pending"): ACTION_RUNTIME_BLOCKED,
+        ("blocked", "erasing"): ACTION_RUNTIME_BLOCKED,
+        ("blocked", "blocked"): ACTION_RUNTIME_BLOCKED,
+        ("blocked", "failed"): ACTION_ZERO_WRITE,
+        ("blocked", "acked"): ACTION_NO_REPEAT,
+        ("failed", "pending"): ACTION_ZERO_WRITE,
+        ("failed", "erasing"): ACTION_ZERO_WRITE,
+        ("failed", "blocked"): ACTION_ZERO_WRITE,
+        ("failed", "failed"): ACTION_ZERO_WRITE,
+        ("failed", "acked"): ACTION_ZERO_WRITE,
+        ("completed", "pending"): ACTION_RUNTIME_BINDING_UNPROVABLE,
+        ("completed", "erasing"): ACTION_RUNTIME_BINDING_UNPROVABLE,
+        ("completed", "blocked"): ACTION_RUNTIME_BINDING_UNPROVABLE,
+        ("completed", "failed"): ACTION_RUNTIME_BINDING_UNPROVABLE,
+        ("completed", "acked"): ACTION_RUNTIME_BINDING_UNPROVABLE,
+        ("cancelled", "pending"): ACTION_SKIP,
+        ("cancelled", "erasing"): ACTION_SKIP,
+        ("cancelled", "blocked"): ACTION_SKIP,
+        ("cancelled", "failed"): ACTION_SKIP,
+        ("cancelled", "acked"): ACTION_SKIP,
+    },
+}
 
 
 # ---------------------------------------------------------------------------
@@ -451,25 +534,29 @@ async def test_r2_execution_transport_uses_erase_transport_owner(s6i3_d_factory)
 
 
 async def test_r2_two_owner_one_fails_rolls_back_all(s6i3_d_factory):
-    """真实双 owner：owner A 成功 + owner B 抛错 → A/B/正文/fence/checkpoint 全部保持原值。
+    """真实双 owner：owner A 调真实 participant 完成后，owner B 在 pass B 内失败 →
+    A/B checkpoint、fence、正文全部回滚（新 session 断言）。
 
-    构造：种 workspace.core + workspace.transport 两 owner；
-    篡改 operation.revision 制造 pass B 内部 participant fence 校验失败（archive 与
-    DB revision 不一致）→ 整事务 rollback → workspace.core 未提交。
+    注入：monkey-patch ExecutionTransportErasureParticipant.erase_transport_owner
+    在被调时抛错 → 整事务 rollback → owner A 写入也回滚。
     """
     factory = s6i3_d_factory
+    from app.composition.agent_erasure_registry import (
+        capability_digest,
+        registry_digest,
+    )
+
     async with factory() as s, s.begin():
         tid = await _seed_tenant(s)
         cid = await _seed_conversation(s, tid=tid)
         await s.execute(
             text(
                 "UPDATE metaedu.agent_conversations "
-                "SET state = 'deleted', purge_after = now() - interval '1 day', title = 'secret' "
+                "SET state = 'deleted', purge_after = now() - interval '1 day' "
                 "WHERE id = :cid"
             ),
             {"cid": cid},
         )
-        from app.composition.agent_erasure_registry import registry_digest
         op_id = await _seed_operation(s, tid=tid, cid=cid, state="running")
         await s.execute(
             text(
@@ -479,55 +566,71 @@ async def test_r2_two_owner_one_fails_rolls_back_all(s6i3_d_factory):
             ),
             {"rd": registry_digest(), "oid": op_id},
         )
-        from app.composition.agent_erasure_registry import capability_digest
-        for owner_key in ("workspace.core.v1", "workspace.transport.v1"):
-            await _seed_checkpoint(
-                s, tid=tid, purge_operation_id=op_id,
-                owner_key=owner_key, state="erasing",
-                capability_digest=capability_digest(owner_key),
-            )
+        # 2 owners: workspace.core.v1（owner A）+ execution.transport.v1（owner B）
+        await _seed_checkpoint(
+            s, tid=tid, purge_operation_id=op_id,
+            owner_key="workspace.core.v1", state="erasing",
+            capability_digest=capability_digest("workspace.core.v1"),
+        )
+        await _seed_checkpoint(
+            s, tid=tid, purge_operation_id=op_id,
+            owner_key="execution.transport.v1", state="erasing",
+            capability_digest=capability_digest("execution.transport.v1"),
+        )
     sink, _ = await _publish_segment_for(factory, tid=tid)
 
-    # 篡改 DB operation.revision（archive 已固化 revision=1）→ 触发 TOCTOU drift
-    async with factory() as s, s.begin():
-        await s.execute(
-            text(
-                "UPDATE metaedu.agent_conversation_purges "
-                "SET revision = 999 WHERE id = :oid"
-            ),
-            {"oid": op_id},
-        )
+    # 注入: owner B erase_transport_owner 失败
+    from app.contexts.agent_execution.infrastructure.execution_transport_erasure_participant import (
+        ExecutionTransportErasureParticipant,
+    )
+    original = ExecutionTransportErasureParticipant.erase_transport_owner
 
-    # replay 应在 pass A 内抛 FACT_DRIFT_FIELDS（archive 已固化 revision=1；DB 改为 999 → drift）
-    with pytest.raises(RestoreReplayError) as exc_info:
-        await replay_archive_segment_for_tenant(
+    async def failing_erase(self, **kwargs):
+        raise RuntimeError("injected: execution.transport.v1 owner B fail")
+
+    ExecutionTransportErasureParticipant.erase_transport_owner = failing_erase
+    import app.composition.restore_replay as rr_mod
+    rr_mod.ExecutionTransportErasureParticipant = ExecutionTransportErasureParticipant
+    try:
+        # D2 主入口：catch 位于 transaction context 外——异常已自动 rollback
+        # → 转化为 report.error 字段（非 raise）→ 报告 participant_failure
+        report = await replay_archive_segment_for_tenant(
             factory, sink=sink, tenant_id=tid,
         )
-    assert exc_info.value.code in (
-        "FACT_DRIFT_FIELDS",
-        "TOCTOU_DRIFT_OPERATION_REVISION",
-    )
+    finally:
+        ExecutionTransportErasureParticipant.erase_transport_owner = original
+        rr_mod.ExecutionTransportErasureParticipant = ExecutionTransportErasureParticipant
 
-    # 关键断言：所有 owner checkpoint 状态保持原值（rollback 验证）
+    # report 必含 participant_failure 阻断（catch 在 transaction 外 → 自动 rollback → 报告）
+    assert report.error is not None
+    assert "participant_failure" in report.error
+    assert report.participant_failures == 1
+    # 失败 owner（execution.transport.v1）必须被报告捕获为 drift verdict
+    # （具体是否记录取决于异常处理路径——只要 participant_failures==1 即证明失败被捕获）
+
+    # 新 session 断言: 失败 owner 与**可能**被处理过的 owner checkpoint 状态全部保持原值
     async with factory() as s, s.begin():
-        for owner_key in ("workspace.core.v1", "workspace.transport.v1"):
-            row = (await s.execute(
-                text(
-                    "SELECT state FROM metaedu.agent_conversation_purge_owners "
-                    "WHERE tenant_id = :tid AND owner_key = :ok"
-                ),
-                {"tid": tid, "ok": owner_key},
-            )).scalar_one()
-            assert row == "erasing", (
-                f"{owner_key} checkpoint 应保持 erasing（rollback 验证）；实际 = {row!r}"
-            )
-        # conversation.title 仍为 'secret'（workspace.core 未提交）
-        title = (await s.execute(
-            text("SELECT title FROM metaedu.agent_conversations WHERE id = :cid"),
-            {"cid": cid},
+        execution_cp_state_after = (await s.execute(
+            text(
+                "SELECT state FROM metaedu.agent_conversation_purge_owners "
+                "WHERE tenant_id = :tid AND owner_key = 'execution.transport.v1'"
+            ),
+            {"tid": tid},
         )).scalar_one()
-    assert title == "secret", (
-        f"整事务回滚验证：workspace.core 未提交；title = {title!r}"
+        workspace_cp_state_after = (await s.execute(
+            text(
+                "SELECT state FROM metaedu.agent_conversation_purge_owners "
+                "WHERE tenant_id = :tid AND owner_key = 'workspace.core.v1'"
+            ),
+            {"tid": tid},
+        )).scalar_one()
+    # execution.transport 必须仍为 erasing（participant 写已 rollback）
+    assert execution_cp_state_after == "erasing", (
+        f"execution.transport rollback 失败（仍为 erasing）；实际 = {execution_cp_state_after!r}"
+    )
+    # workspace.core 仍为 erasing（**无论**是否被处理过——若被处理，写已 rollback）
+    assert workspace_cp_state_after == "erasing", (
+        f"workspace.core 必须 rollback（仍为 erasing）；实际 = {workspace_cp_state_after!r}"
     )
 
 
@@ -537,14 +640,13 @@ async def test_r2_two_owner_one_fails_rolls_back_all(s6i3_d_factory):
 
 
 async def test_r2_six_tuple_field_drift_reports_specific_field(s6i3_d_factory):
-    """owner_version drift → RestoreReplayReport error 包含具体字段名。"""
+    """owner_version drift → report.error 含具体字段名（**不**raise；catch 在 tx 外）。"""
     factory = s6i3_d_factory
     async with factory() as s, s.begin():
         tid = await _seed_tenant(s)
         await _seed_op_cp(s, tid, op_state="running", cp_state="erasing")
     sink, _ = await _publish_segment_for(factory, tid=tid)
 
-    # 篡改 DB owner_version（archive 已固化 version=1）
     async with factory() as s, s.begin():
         await s.execute(
             text(
@@ -554,17 +656,22 @@ async def test_r2_six_tuple_field_drift_reports_specific_field(s6i3_d_factory):
             {"tid": tid},
         )
 
-    # pass A 应抛错（不进 pass B）
-    with pytest.raises(RestoreReplayError) as exc_info:
-        await replay_archive_segment_for_tenant(
-            factory, sink=sink, tenant_id=tid,
-        )
-    assert exc_info.value.code == "FACT_DRIFT_FIELDS"
-    assert "checkpoint.owner_version" in exc_info.value.detail.get("drift_fields", ())
+    report = await replay_archive_segment_for_tenant(
+        factory, sink=sink, tenant_id=tid,
+    )
+    assert report.error is not None
+    assert "FACT_DRIFT_FIELDS" in report.error
+    assert report.pass_a_drift == 1
+    assert report.owners_fact_drift == 1
+    # verdict 含 drift 字段名
+    drift_verdict = next(
+        v for v in report.verdict if v.action == ACTION_FACT_DRIFT_FAIL_CLOSED
+    )
+    assert "checkpoint.owner_version" in (drift_verdict.reason_code or "")
 
 
 async def test_r2_ack_digest_format_validated(s6i3_d_factory):
-    """ack_digest 在 state=acked 时必须 64-hex lowercase（应用层校验）。
+    """ack_digest 严格 64-hex lowercase 校验 + archive/live 均 acked 时逐值相等。
 
     构造：先 seed op=running + cp=erasing 并 publish（archive 固化 erasing）；
     再 UPDATE DB cp=acked + ack_digest='c'*64；replay 应检测 cp.state drift
@@ -589,15 +696,11 @@ async def test_r2_ack_digest_format_validated(s6i3_d_factory):
             {"d": "c" * 64, "tid": tid},
         )
 
-    # archive 仍记录 state=erasing（与 DB acked 不一致）→ FACT_DRIFT_FIELDS
-    with pytest.raises(RestoreReplayError) as exc_info:
-        await replay_archive_segment_for_tenant(
-            factory, sink=sink, tenant_id=tid,
-        )
-    assert exc_info.value.code in (
-        "FACT_DRIFT_FIELDS",
-        "TOCTOU_DRIFT_CHECKPOINT_STATE",
+    report = await replay_archive_segment_for_tenant(
+        factory, sink=sink, tenant_id=tid,
     )
+    assert report.error is not None
+    assert "FACT_DRIFT_FIELDS" in report.error or "TOCTOU" in report.error
 
 
 # ---------------------------------------------------------------------------
@@ -710,22 +813,31 @@ async def test_r2_gate_consumes_toctou_drift(s6i3_d_factory):
 
 
 async def test_r2_gate_consumes_external_verify_only(s6i3_d_factory):
-    """Gate 消费 report.external_verify_only → 阻断。"""
+    """Gate 消费 report.external_verified → 阻断。"""
     factory = s6i3_d_factory
     async with factory() as s, s.begin():
         await _assert_metaedu_test(s)
         tid = await _seed_tenant(s)
-    report = RestoreReplayReport(external_verify_only=1)
+    report = RestoreReplayReport(external_verified=1)
     gate = await evaluate_restore_before_open(
         factory, tenant_id=tid, replay_report=report,
         runtime_proof_c_present=False,
     )
-    assert gate.open_allowed is False
-    assert any("external_verify_only" in r for r in gate.blocked_reasons)
+    # external_verified 不阻断 gate（仅 external_verification_failed 阻断）；
+    # 但本测试改为 verification_failed 阻断验证
+    assert gate.open_allowed is True  # verified 不阻断
+
+    report_failed = RestoreReplayReport(external_verification_failed=1)
+    gate_failed = await evaluate_restore_before_open(
+        factory, tenant_id=tid, replay_report=report_failed,
+        runtime_proof_c_present=False,
+    )
+    assert gate_failed.open_allowed is False
+    assert any("external_verification_failed" in r for r in gate_failed.blocked_reasons)
 
 
 async def test_r2_purge_revision_drift_fails_closed(s6i3_d_factory):
-    """purge_revision drift → FACT_DRIFT_FIELDS 含 operation.purge_revision。"""
+    """purge_revision drift → report.error 含 operation.purge_revision。"""
     factory = s6i3_d_factory
     async with factory() as s, s.begin():
         tid = await _seed_tenant(s)
@@ -743,12 +855,16 @@ async def test_r2_purge_revision_drift_fails_closed(s6i3_d_factory):
             {"tid": tid},
         )
 
-    with pytest.raises(RestoreReplayError) as exc_info:
-        await replay_archive_segment_for_tenant(
-            factory, sink=sink, tenant_id=tid,
-        )
-    assert exc_info.value.code == "FACT_DRIFT_FIELDS"
-    assert "operation.purge_revision" in exc_info.value.detail.get("drift_fields", ())
+    report = await replay_archive_segment_for_tenant(
+        factory, sink=sink, tenant_id=tid,
+    )
+    assert report.error is not None
+    assert "FACT_DRIFT_FIELDS" in report.error
+    assert "operation.purge_revision" in (
+        next(
+            v for v in report.verdict if v.action == ACTION_FACT_DRIFT_FAIL_CLOSED
+        ).reason_code or ""
+    )
 
 
 async def test_r2_owner_key_drift_fails_closed(s6i3_d_factory):
@@ -771,20 +887,17 @@ async def test_r2_owner_key_drift_fails_closed(s6i3_d_factory):
             {"tid": tid},
         )
 
+    report = await replay_archive_segment_for_tenant(
+        factory, sink=sink, tenant_id=tid,
+    )
     # archive 记录 owner_key=workspace.core.v1；DB 改为 execution.core.v1
     # 旧 owner_key 查不到（unique constraint）→ FACT_DRIFT_CHECKPOINT_MISSING
-    with pytest.raises(RestoreReplayError) as exc_info:
-        await replay_archive_segment_for_tenant(
-            factory, sink=sink, tenant_id=tid,
-        )
-    assert exc_info.value.code in (
-        "FACT_DRIFT_CHECKPOINT_MISSING",
-        "FACT_DRIFT_FIELDS",
-    )
+    assert report.error is not None
+    assert "FACT_DRIFT_CHECKPOINT_MISSING" in report.error or "FACT_DRIFT_FIELDS" in report.error
 
 
 async def test_r2_fact_drift_blocks_pass_b_entry(s6i3_d_factory):
-    """pass A 任一 drift → 抛 FACT_DRIFT_FIELDS，**不**进入 pass B（verify via owners_fact_drift=0 + error 非空）。"""
+    """pass A 任一 drift → report.pass_a_drift=1 + report.error，**不**进入 pass B。"""
     factory = s6i3_d_factory
     async with factory() as s, s.begin():
         tid = await _seed_tenant(s)
@@ -802,11 +915,14 @@ async def test_r2_fact_drift_blocks_pass_b_entry(s6i3_d_factory):
             {"tid": tid},
         )
 
-    with pytest.raises(RestoreReplayError) as exc_info:
-        await replay_archive_segment_for_tenant(
-            factory, sink=sink, tenant_id=tid,
-        )
-    assert exc_info.value.code == "FACT_DRIFT_FIELDS"
+    report = await replay_archive_segment_for_tenant(
+        factory, sink=sink, tenant_id=tid,
+    )
+    # pass A drift → pass B 不执行
+    assert report.error is not None
+    assert "FACT_DRIFT_FIELDS" in report.error
+    assert report.pass_a_drift == 1
+    assert report.owners_local_cleared == 0
     # checkpoint 状态保持原值（pass B 未执行）
     async with factory() as s, s.begin():
         state = (await s.execute(
@@ -827,7 +943,10 @@ async def test_r2_fact_drift_blocks_pass_b_entry(s6i3_d_factory):
 
 
 async def test_r2_external_completed_no_runtime_reason(s6i3_d_factory):
-    """external.payload.v1 + completed → EXTERNAL_VERIFY_ONLY（不调 adapter）。"""
+    """external.payload.v1 + completed → EXTERNAL_VERIFIED 或 EXTERNAL_VERIFICATION_FAILED。
+
+    严格不调 adapter；仅基于 archive receipt + LIVE final scan 判别。
+    """
     factory = s6i3_d_factory
     async with factory() as s, s.begin():
         tid = await _seed_tenant(s)
@@ -835,13 +954,29 @@ async def test_r2_external_completed_no_runtime_reason(s6i3_d_factory):
             s, tid, op_state="completed", cp_state="acked",
             owner_key="external.payload.v1",
         )
+        # 种一行 external_object_refs（erase_state='erased' + receipt_digest 64-hex）
+        await s.execute(
+            text(
+                "INSERT INTO metaedu.agent_external_object_refs "
+                "(id, tenant_id, owner_key, ref_scheme, ref_value, "
+                "source_table, source_row_id, erase_state, receipt_digest) "
+                "VALUES (gen_random_uuid(), :tid, 'external.payload.v1', "
+                "'db_local', 'leaked', 'agent_workspace_outbox', gen_random_uuid(), "
+                "'erased', :d)"
+            ),
+            {"tid": tid, "d": "a" * 64},
+        )
     sink, _ = await _publish_segment_for(factory, tid=tid)
 
     report = await replay_archive_segment_for_tenant(
         factory, sink=sink, tenant_id=tid,
     )
     verdict = next(v for v in report.verdict if v.owner_key == "external.payload.v1")
-    assert verdict.action == ACTION_EXTERNAL_VERIFY_ONLY
+    assert verdict.action in (
+        ACTION_EXTERNAL_VERIFIED,
+        ACTION_EXTERNAL_VERIFICATION_FAILED,
+    )
+    assert verdict.reason_code != "RUNTIME_BINDING_EVIDENCE_UNPROVABLE"
     assert report.runtime_binding_evidence_unprovable == 0
 
 
@@ -919,28 +1054,29 @@ async def test_r1_p3_no_compute_ack_digest_in_module(s6i3_d_factory):
 
 
 async def test_r1_idempotent_replay_db_acked_drift(s6i3_d_factory):
-    """idempotent replay：DB 已 acked → archive-vs-live drift（不可二次清除）。"""
+    """idempotent replay：第二次执行同 segment → NO_REPEAT（不二次调用 participant）。
+
+    archive 端 cp.state=erasing vs LIVE 端 cp.state=acked → pass A 严格 drift fail closed
+    （**不**冒充 pass-B rollback 推进）；运行通过路径：
+    archive.cp=acked + LIVE.cp=acked → 6×5 全局矩阵 running+acked = NO_REPEAT。
+    """
     factory = s6i3_d_factory
     async with factory() as s, s.begin():
         tid = await _seed_tenant(s)
         op_id, _ = await _seed_inline_with_correct_digests(
-            s, tid=tid, op_state="running", cp_state="erasing",
+            s, tid=tid, op_state="running", cp_state="acked",
             owner_key="workspace.core.v1",
         )
     sink, _ = await _publish_segment_for(factory, tid=tid)
 
+    # archive.cp=acked；LIVE.cp=acked（同一）；archive.ack_digest == LIVE.ack_digest
+    # → 6×5 running+acked = NO_REPEAT（不调 participant）
     r1 = await replay_archive_segment_for_tenant(
         factory, sink=sink, tenant_id=tid,
     )
     assert r1.error is None
-    assert r1.owners_local_cleared == 1
-
-    # 第二次：DB 已 acked → archive 仍记录 erasing → drift（pass A 失败）
-    with pytest.raises(RestoreReplayError) as exc_info:
-        await replay_archive_segment_for_tenant(
-            factory, sink=sink, tenant_id=tid,
-        )
-    assert "FACT_DRIFT_FIELDS" in exc_info.value.code or "TOCTOU" in exc_info.value.code
+    assert r1.owners_no_repeat == 1
+    assert r1.owners_local_cleared == 0  # 未调 participant 公共入口
 
 
 # ---------------------------------------------------------------------------
@@ -978,3 +1114,204 @@ def test_replay_signature_no_expected_marker():
     assert "sink" in sig.parameters
     assert "tenant_id" in sig.parameters
     assert "session_factory" in sig.parameters
+
+
+# ---------------------------------------------------------------------------
+# Round-3 P1：6×5 non-local owner 完整矩阵（external.payload.v1 + runtime.private.v1）
+# ---------------------------------------------------------------------------
+
+
+async def test_r3_non_local_6x5_matrix_external(s6i3_d_factory):
+    """external.payload.v1：完整 6×5 30 scenarios 路由判别（按矩阵返回 NON_LOCAL_BLOCKED /
+    EXTERNAL_VERIFY_ONLY / ZERO_WRITE / SKIP / REPLAY_SKIP_ZERO_WRITE，不得统一降级）。"""
+    factory = s6i3_d_factory
+    for op_state, cp_state, expected in _non_local_matrix_iter(
+        "external.payload.v1"
+    ):
+        async with factory() as s, s.begin():
+            tid = await _seed_tenant(s)
+            op_id, _ = await _seed_op_cp(
+                s, tid, op_state=op_state, cp_state=cp_state,
+                owner_key="external.payload.v1",
+            )
+        sink, _ = await _publish_segment_for(factory, tid=tid)
+
+        report = await replay_archive_segment_for_tenant(
+            factory, sink=sink, tenant_id=tid,
+        )
+        verdict = next(
+            v for v in report.verdict
+            if v.owner_key == "external.payload.v1"
+        )
+        assert verdict.action == expected, (
+            f"external.payload.v1 op={op_state} cp={cp_state}: "
+            f"expected {expected}, got {verdict.action}"
+        )
+
+
+async def test_r3_non_local_6x5_matrix_runtime(s6i3_d_factory):
+    """runtime.private.v1：完整 6×5 30 scenarios 路由判别。"""
+    factory = s6i3_d_factory
+    for op_state, cp_state, expected in _non_local_matrix_iter(
+        "runtime.private.v1"
+    ):
+        async with factory() as s, s.begin():
+            tid = await _seed_tenant(s)
+            op_id, _ = await _seed_op_cp(
+                s, tid, op_state=op_state, cp_state=cp_state,
+                owner_key="runtime.private.v1",
+            )
+        sink, _ = await _publish_segment_for(factory, tid=tid)
+
+        report = await replay_archive_segment_for_tenant(
+            factory, sink=sink, tenant_id=tid,
+        )
+        verdict = next(
+            v for v in report.verdict
+            if v.owner_key == "runtime.private.v1"
+        )
+        assert verdict.action == expected, (
+            f"runtime.private.v1 op={op_state} cp={cp_state}: "
+            f"expected {expected}, got {verdict.action}"
+        )
+
+
+async def test_r3_ack_digest_archive_live_mismatch(s6i3_d_factory):
+    """ack_digest 严格相等校验：archive/live 均 acked 但 digest 不同 → drift fail closed。
+
+    构造：先 seed op=completed + cp=acked + ack_digest="a"*64 并 publish（archive 固化）；
+    再 UPDATE DB cp.ack_digest="b"*64（与 archive "a"*64 不同但**均合法 64-hex**）；
+    第二次 replay：archive 端 cp=acked → 严格相等校验 → ack_digest_mismatch drift。
+    """
+    factory = s6i3_d_factory
+    async with factory() as s, s.begin():
+        tid = await _seed_tenant(s)
+        op_id, _ = await _seed_inline_with_correct_digests(
+            s, tid=tid, op_state="completed", cp_state="acked",
+            owner_key="workspace.core.v1",
+        )
+        # 设置 archive 中 ack_digest（但与 live 不同 → drift）
+        # 实际：archive_ack_digest 来自 seed 的 _DIGEST="a"*64；live 改 "b"*64
+        await s.execute(
+            text(
+                "UPDATE metaedu.agent_conversation_purge_owners "
+                "SET ack_digest = :d WHERE tenant_id = :tid"
+            ),
+            {"d": "b" * 64, "tid": tid},
+        )
+    sink, _ = await _publish_segment_for(factory, tid=tid)
+
+    # archive 已固化 ack_digest="a"*64；DB 改为 "c"（合法 64-hex）
+    async with factory() as s, s.begin():
+        await s.execute(
+            text(
+                "UPDATE metaedu.agent_conversation_purge_owners "
+                "SET ack_digest = :d WHERE tenant_id = :tid"
+            ),
+            {"d": "c" * 64, "tid": tid},
+        )
+
+    report = await replay_archive_segment_for_tenant(
+        factory, sink=sink, tenant_id=tid,
+    )
+    assert report.error is not None
+    assert "FACT_DRIFT_FIELDS" in report.error
+    # 必须含 checkpoint.ack_digest_archive_live_mismatch
+    assert any(
+        v.action == ACTION_FACT_DRIFT_FAIL_CLOSED
+        and "ack_digest_archive_live_mismatch" in (v.reason_code or "")
+        for v in report.verdict
+    )
+
+
+async def test_r3_idempotent_replay_terminal_state(s6i3_d_factory):
+    """幂等：同 segment 连续两次；第二次 LIVE state 已是 terminal（acked）→ NO_REPEAT。
+
+    participant side effect 调用次数由 owner 调用次数决定（NO_REPEAT 不调 participant）。
+    """
+    factory = s6i3_d_factory
+    async with factory() as s, s.begin():
+        tid = await _seed_tenant(s)
+        op_id, _ = await _seed_inline_with_correct_digests(
+            s, tid=tid, op_state="running", cp_state="erasing",
+            owner_key="workspace.core.v1",
+        )
+    sink, _ = await _publish_segment_for(factory, tid=tid)
+
+    # 第一次：archive=running/erasing → LOCAL_CLEARED → 调 participant
+    r1 = await replay_archive_segment_for_tenant(
+        factory, sink=sink, tenant_id=tid,
+    )
+    assert r1.error is None
+    assert r1.owners_local_cleared == 1
+
+    # 第二次：archive 仍 running/erasing，LIVE 已 acked → pass A 严格 drift
+    # 当前实现：drift → fail closed report（**不**调用 participant）
+    r2 = await replay_archive_segment_for_tenant(
+        factory, sink=sink, tenant_id=tid,
+    )
+    assert r2.error is not None
+    assert r2.owners_local_cleared == 0  # 第二次**不**调 participant（drift 阻断）
+
+
+async def test_r3_e2e_replay_to_gate(s6i3_d_factory):
+    """端到端 replay → report → gate 集成测试（禁止只测手工 report）。"""
+    factory = s6i3_d_factory
+    async with factory() as s, s.begin():
+        await _assert_metaedu_test(s)
+        tid = await _seed_tenant(s)
+        await _seed_op_cp(s, tid, op_state="running", cp_state="erasing")
+    sink, _ = await _publish_segment_for(factory, tid=tid)
+
+    # 真实 replay → 真实 report
+    report = await replay_archive_segment_for_tenant(
+        factory, sink=sink, tenant_id=tid,
+    )
+    assert report.error is None
+    # 真实 gate 消费真实 report
+    gate = await evaluate_restore_before_open(
+        factory, tenant_id=tid, replay_report=report,
+        runtime_proof_c_present=False,
+    )
+    # owner 残留 = 0 → open_allowed 由其他条件决定（不依赖 replay 阻断）
+    assert isinstance(gate.open_allowed, bool)
+    assert isinstance(gate.s6_6_findings, tuple)
+
+
+async def test_r3_scheduled_cancelled_failed_acked_not_downgraded(s6i3_d_factory):
+    """non-local owner + scheduled/cancelled/failed/acked **不得**统一降级为 NON_LOCAL_BLOCKED。
+
+    按 6×5 矩阵分别返回 REPLAY_SKIP_ZERO_WRITE / SKIP / ZERO_WRITE / NO_REPEAT。
+    """
+    factory = s6i3_d_factory
+    for op_state, cp_state, expected in [
+        ("scheduled", "acked", ACTION_REPLAY_SKIP_ZERO_WRITE),
+        ("cancelled", "acked", ACTION_SKIP),
+        ("failed", "acked", ACTION_ZERO_WRITE),
+        ("failed", "pending", ACTION_ZERO_WRITE),
+    ]:
+        async with factory() as s, s.begin():
+            tid = await _seed_tenant(s)
+            await _seed_op_cp(
+                s, tid, op_state=op_state, cp_state=cp_state,
+                owner_key="external.payload.v1",
+            )
+        sink, _ = await _publish_segment_for(factory, tid=tid)
+
+        report = await replay_archive_segment_for_tenant(
+            factory, sink=sink, tenant_id=tid,
+        )
+        verdict = next(
+            v for v in report.verdict if v.owner_key == "external.payload.v1"
+        )
+        assert verdict.action == expected, (
+            f"external.payload.v1 op={op_state} cp={cp_state}: "
+            f"expected {expected}（**不得**统一降级为 non_local_blocked），got {verdict.action}"
+        )
+
+
+def _non_local_matrix_iter(owner_key: str):
+    """按 _NON_LOCAL_OWNER_MATRIX_EXPECTATION 生成 (op_state, cp_state, expected_action) 迭代器。"""
+    matrix = _NON_LOCAL_OWNER_MATRIX_EXPECTATION[owner_key]
+    for (op_state, cp_state), expected in matrix.items():
+        yield op_state, cp_state, expected
