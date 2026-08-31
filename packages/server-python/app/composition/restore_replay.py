@@ -407,14 +407,26 @@ async def _read_checkpoint_state_live(
 
 
 def _read_external_ref_archive_facts(
-    manifest: Manifest, *, operation_id: str
-) -> Mapping[str, Any] | None:
-    """从 archive manifest 提取 external_ref 行（external.payload.v1 验证用）。"""
+    manifest: Manifest, *, conversation_id: str, owner_key: str = "external.payload.v1"
+) -> tuple[list[Mapping[str, Any]], str | None]:
+    """从 archive manifest 提取 external_ref 行（external.payload.v1 验证用）。
+
+    按 (archive.conversation_id, owner_key) **精确绑定**；返回 (matches, error)：
+    - matches: 匹配的 archive record 列表（0 条 / 1 条 / 多条均返回）
+    - error: 错绑/重复等具名错误（None 表示无错）
+    """
     er_records = manifest.records.get(RECORD_KIND_EXTERNAL_REF, ())
+    matches: list[Mapping[str, Any]] = []
+    error: str | None = None
     for r in er_records:
-        if str(r.fields.get("owner_key")) == "external.payload.v1":
-            return r.fields
-    return None
+        rk = str(r.fields.get("owner_key") or "")
+        rc = str(r.fields.get("conversation_id") or "")
+        if rk == owner_key and rc == conversation_id:
+            matches.append(r.fields)
+    # 重复 archive record（**禁止**取任意 LIVE row 冒充前先拒绝重复）
+    if len(matches) > 1:
+        error = "EXTERNAL_ARCHIVE_DUPLICATE"
+    return matches, error
 
 
 async def _validate_pass_a(
@@ -439,14 +451,53 @@ async def _validate_pass_a(
             detail={"operation_id": fact.operation_id},
         )
     # 严格 6 元组 / 5 operation 字段对账（**全部**使用 archive facts）
-    archive_op_state = str(archive_op_record.get("state") or "")
-    archive_op_rev = int(archive_op_record.get("revision") or 0)
-    archive_purge_rev = int(archive_op_record.get("purge_revision") or 0)
-    archive_lease = int(archive_op_record.get("lease_epoch") or 0)
-    archive_hold = int(archive_op_record.get("hold_revision_snapshot") or 0)
-    archive_registry = str(archive_op_record.get("registry_digest") or "")
-    archive_rpd = str(archive_op_record.get("retention_policy_digest") or "")
-    conversation_id = uuid.UUID(str(archive_op_record.get("conversation_id")))
+    # 必需字段先检查 key 存在 → 缺失使用具名 ARCHIVE_FACTS_*_MISSING
+    def _require_field(record: Mapping[str, Any], key: str, code: str) -> Any:
+        if key not in record or record[key] is None:
+            raise RestoreReplayError(
+                code,
+                detail={"missing_field": key, "operation_id": fact.operation_id},
+            )
+        return record[key]
+    archive_op_state = str(_require_field(archive_op_record, "state", "ARCHIVE_FACTS_FIELD_MISSING"))
+    archive_op_rev_raw = _require_field(archive_op_record, "revision", "ARCHIVE_FACTS_FIELD_MISSING")
+    if not isinstance(archive_op_rev_raw, int) or isinstance(archive_op_rev_raw, bool):
+        raise RestoreReplayError(
+            "ARCHIVE_FACTS_TYPE_INVALID",
+            detail={"field": "operation.revision", "expected_type": "int"},
+        )
+    archive_op_rev = archive_op_rev_raw
+    archive_purge_rev_raw = _require_field(archive_op_record, "purge_revision", "ARCHIVE_FACTS_FIELD_MISSING")
+    if not isinstance(archive_purge_rev_raw, int) or isinstance(archive_purge_rev_raw, bool):
+        raise RestoreReplayError(
+            "ARCHIVE_FACTS_TYPE_INVALID",
+            detail={"field": "operation.purge_revision", "expected_type": "int"},
+        )
+    archive_purge_rev = archive_purge_rev_raw
+    archive_lease_raw = _require_field(archive_op_record, "lease_epoch", "ARCHIVE_FACTS_FIELD_MISSING")
+    if not isinstance(archive_lease_raw, int) or isinstance(archive_lease_raw, bool):
+        raise RestoreReplayError(
+            "ARCHIVE_FACTS_TYPE_INVALID",
+            detail={"field": "operation.lease_epoch", "expected_type": "int"},
+        )
+    archive_lease = archive_lease_raw
+    archive_hold_raw = _require_field(archive_op_record, "hold_revision_snapshot", "ARCHIVE_FACTS_FIELD_MISSING")
+    if not isinstance(archive_hold_raw, int) or isinstance(archive_hold_raw, bool):
+        raise RestoreReplayError(
+            "ARCHIVE_FACTS_TYPE_INVALID",
+            detail={"field": "operation.hold_revision_snapshot", "expected_type": "int"},
+        )
+    archive_hold = archive_hold_raw
+    archive_registry = str(_require_field(archive_op_record, "registry_digest", "ARCHIVE_FACTS_FIELD_MISSING"))
+    archive_rpd = str(_require_field(archive_op_record, "retention_policy_digest", "ARCHIVE_FACTS_FIELD_MISSING"))
+    conversation_id_raw = _require_field(archive_op_record, "conversation_id", "ARCHIVE_FACTS_FIELD_MISSING")
+    try:
+        conversation_id = uuid.UUID(str(conversation_id_raw))
+    except (ValueError, TypeError, AttributeError):
+        raise RestoreReplayError(
+            "ARCHIVE_FACTS_TYPE_INVALID",
+            detail={"field": "operation.conversation_id", "expected_type": "uuid"},
+        ) from None
 
     # 2. checkpoint archive facts 必须存在
     if not archive_cp_record:
@@ -457,12 +508,35 @@ async def _validate_pass_a(
                 "owner_key": fact.owner_key,
             },
         )
-    archive_cp_state = str(archive_cp_record.get("state") or "")
-    archive_cp_owner_key = str(archive_cp_record.get("owner_key") or "")
-    archive_owner_version = int(archive_cp_record.get("owner_version") or 0)
-    archive_capability = str(archive_cp_record.get("capability_digest") or "")
-    archive_ack = archive_cp_record.get("ack_digest")
-    archive_checkpoint_id = uuid.UUID(str(archive_cp_record.get("id")))
+    archive_cp_state = str(_require_field(archive_cp_record, "state", "ARCHIVE_FACTS_FIELD_MISSING"))
+    archive_cp_owner_key = str(_require_field(archive_cp_record, "owner_key", "ARCHIVE_FACTS_FIELD_MISSING"))
+    archive_owner_version_raw = _require_field(archive_cp_record, "owner_version", "ARCHIVE_FACTS_FIELD_MISSING")
+    if not isinstance(archive_owner_version_raw, int) or isinstance(archive_owner_version_raw, bool):
+        raise RestoreReplayError(
+            "ARCHIVE_FACTS_TYPE_INVALID",
+            detail={"field": "checkpoint.owner_version", "expected_type": "int"},
+        )
+    archive_owner_version = archive_owner_version_raw
+    archive_capability = str(_require_field(archive_cp_record, "capability_digest", "ARCHIVE_FACTS_FIELD_MISSING"))
+    archive_ack_raw = archive_cp_record.get("ack_digest")
+    if "ack_digest" not in archive_cp_record:
+        archive_ack_raw = None
+    archive_ack: str | None = None
+    if archive_ack_raw is not None:
+        if not isinstance(archive_ack_raw, str):
+            raise RestoreReplayError(
+                "ARCHIVE_FACTS_TYPE_INVALID",
+                detail={"field": "checkpoint.ack_digest", "expected_type": "str"},
+            )
+        archive_ack = archive_ack_raw
+    archive_checkpoint_id_raw = _require_field(archive_cp_record, "id", "ARCHIVE_FACTS_FIELD_MISSING")
+    try:
+        archive_checkpoint_id = uuid.UUID(str(archive_checkpoint_id_raw))
+    except (ValueError, TypeError, AttributeError):
+        raise RestoreReplayError(
+            "ARCHIVE_FACTS_TYPE_INVALID",
+            detail={"field": "checkpoint.id", "expected_type": "uuid"},
+        ) from None
 
     # 3. LIVE 读 operation / checkpoint 用于 drift 检测（不写入任何 archive_*）
     op_row = await _load_operation_row(
@@ -509,7 +583,14 @@ async def _validate_pass_a(
         drift_fields.append("checkpoint.capability_digest")
     if int(cp_row["owner_version"]) != archive_owner_version:
         drift_fields.append("checkpoint.owner_version")
-    if cp_row["state"] != archive_cp_state:
+    # checkpoint.state 单向终态转换特例：archive=erasing/pending + LIVE=acked
+    # 是完整 terminal evidence 单向推进，**禁止**判定为 drift。
+    # 其他 drift（**任何**其他无证据 cp_state mismatch / owner_version / 等）仍 fail closed。
+    is_terminal_single_direction = (
+        archive_cp_state in ("erasing", "pending")
+        and cp_row["state"] == "acked"
+    )
+    if cp_row["state"] != archive_cp_state and not is_terminal_single_direction:
         drift_fields.append("checkpoint.state")
 
     # 6. ack_digest：state=acked 时必须严格 64-hex lowercase（应用层门禁；与 migration 034
@@ -741,10 +822,11 @@ async def _toctou_reverify_pass_b(
     tenant_id: uuid.UUID,
     validated: ValidatedFact,
 ) -> None:
-    """pass B：在 exclusive tx 内重读 LIVE state + 对比 archive state（TOCTOU 防护）。
+    """pass B：在 exclusive tx 内逐字段重读 LIVE state + 对比 archive facts（TOCTOU 防护）。
 
-    用保存的 archive facts（**不**重新读 archive）做对账。LIVE ≠ archive → 抛
-    ``RestoreReplayError("TOCTOU_DRIFT_*")`` → caller 不 catch → 整事务 rollback。
+    全 11 字段对账（5 operation fence + 6 checkpoint 六元组）；每个字段 drift 使用
+    稳定、可定位的错误码/字段名。LIVE ≠ archive → 抛 ``RestoreReplayError("TOCTOU_DRIFT_*")``
+    → caller 不 catch → 整事务 rollback。
     """
     op_row = await _load_operation_row(
         session, tenant_id=tenant_id, operation_id=validated.operation_id
@@ -754,25 +836,28 @@ async def _toctou_reverify_pass_b(
             "TOCTOU_DRIFT_OPERATION_MISSING",
             detail={"operation_id": str(validated.operation_id)},
         )
-    if str(op_row["state"]) != validated.archive_operation_state:
-        raise RestoreReplayError(
-            "TOCTOU_DRIFT_OPERATION_STATE",
-            detail={
-                "operation_id": str(validated.operation_id),
-                "archive_state": validated.archive_operation_state,
-                "live_state": op_row["state"],
-            },
-        )
-    if int(op_row["revision"]) != validated.archive_revision:
-        raise RestoreReplayError(
-            "TOCTOU_DRIFT_OPERATION_REVISION",
-            detail={
-                "operation_id": str(validated.operation_id),
-                "archive_revision": validated.archive_revision,
-                "live_revision": op_row["revision"],
-            },
-        )
 
+    drift_fields: list[str] = []
+
+    # 5 operation 字段对账
+    if str(op_row["state"]) != validated.archive_operation_state:
+        drift_fields.append("operation.state")
+    if int(op_row["revision"]) != validated.archive_revision:
+        drift_fields.append("operation.revision")
+    if int(op_row["purge_revision"]) != validated.archive_purge_revision:
+        drift_fields.append("operation.purge_revision")
+    if int(op_row["lease_epoch"]) != validated.archive_lease_epoch:
+        drift_fields.append("operation.lease_epoch")
+    if int(op_row.get("hold_revision_snapshot") or 0) != validated.archive_hold_revision:
+        drift_fields.append("operation.hold_revision_snapshot")
+    if str(op_row.get("registry_digest") or "") != validated.archive_registry_digest:
+        drift_fields.append("operation.registry_digest")
+    if str(op_row.get("retention_policy_digest") or "") != validated.archive_retention_policy_digest:
+        drift_fields.append("operation.retention_policy_digest")
+    if str(op_row.get("conversation_id") or "") != str(validated.conversation_id):
+        drift_fields.append("operation.conversation_id")
+
+    # 6 checkpoint 六元组对账
     cp_row = await _load_checkpoint_row(
         session,
         tenant_id=tenant_id,
@@ -788,13 +873,28 @@ async def _toctou_reverify_pass_b(
             },
         )
     if str(cp_row["state"]) != validated.archive_checkpoint_state:
+        drift_fields.append("checkpoint.state")
+    if str(cp_row["owner_key"]) != validated.archive_owner_key:
+        drift_fields.append("checkpoint.owner_key")
+    if int(cp_row["owner_version"]) != validated.archive_owner_version:
+        drift_fields.append("checkpoint.owner_version")
+    if str(cp_row["capability_digest"] or "") != validated.archive_capability_digest:
+        drift_fields.append("checkpoint.capability_digest")
+    if str(cp_row["id"]) != str(validated.checkpoint_id):
+        drift_fields.append("checkpoint.id")
+    # ack_digest 严格相等（**禁止**取任意 LIVE row 冒充前先严格相等）
+    live_ack = cp_row.get("ack_digest")
+    archive_ack = validated.archive_ack_digest
+    if (archive_ack or live_ack) and archive_ack != live_ack:
+        drift_fields.append("checkpoint.ack_digest_archive_live_mismatch")
+
+    if drift_fields:
         raise RestoreReplayError(
-            "TOCTOU_DRIFT_CHECKPOINT_STATE",
+            "TOCTOU_DRIFT_FIELDS",
             detail={
                 "operation_id": str(validated.operation_id),
                 "owner_key": validated.archive_owner_key,
-                "archive_cp_state": validated.archive_checkpoint_state,
-                "live_cp_state": cp_row["state"],
+                "drift_fields": tuple(drift_fields),
             },
         )
 
@@ -989,25 +1089,21 @@ async def replay_archive_segment_for_tenant(
             # participant（archive_non_terminal + live_acked 是单向终态转换，凭
             # 完整 terminal evidence 返 NO_REPEAT）。其他情况按 archive state 路由。
             for _fact, validated, archive_external_for_fact in validated_facts:
-                # TOCTOU 重读 LIVE state（**任一失败必 raise 退出事务**——不 `continue`）
-                await _toctou_reverify_pass_b(
-                    session, tenant_id=tenant_id, validated=validated,
-                )
-                live_cp_state = await _read_checkpoint_state_live(
+                # TOCTOU 重读 LIVE state
+                # （**任一失败必 raise 退出事务**——不 `continue`）
+                # **特殊 NO_REPEAT 例外**：archive=erasing/pending + LIVE=acked 是
+                # 单向终态转换；**禁止**无证据的 LIVE/archive drift 走 NO_REPEAT。
+                live_cp_state_pre = await _read_checkpoint_state_live(
                     session,
                     tenant_id=tenant_id,
                     operation_id=validated.operation_id,
                     owner_key=validated.archive_owner_key,
                 )
-                # 真实幂等：archive 端为非 terminal（erasing/pending）且 LIVE 端为
-                # terminal（acked）→ 单向终态转换有完整 evidence → NO_REPEAT（**不**调
-                # participant）。其他情况按 archive state 路由（任何不带完整 evidence
-                # 的 drift 仍 fail closed）。
                 if (
-                    validated.archive_checkpoint_state
-                    in ("erasing", "pending")
-                    and live_cp_state == "acked"
+                    validated.archive_checkpoint_state in ("erasing", "pending")
+                    and live_cp_state_pre == "acked"
                 ):
+                    # 完整 terminal evidence 单向终态推进 → NO_REPEAT（**不**调 participant）
                     verdicts.append(
                         ReplayOwnerVerdict(
                             operation_id=str(validated.operation_id),
@@ -1017,6 +1113,11 @@ async def replay_archive_segment_for_tenant(
                         )
                     )
                     continue
+
+                # 其他情况 → 严格 TOCTOU 逐字段对账（11 字段）
+                await _toctou_reverify_pass_b(
+                    session, tenant_id=tenant_id, validated=validated,
+                )
 
                 # 6×5 全局矩阵先（**禁止**按 owner 跳过）——scheduled/cancelled/
                 # failed/acked 等 terminal / 特殊状态**必须**按矩阵返回

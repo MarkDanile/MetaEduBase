@@ -670,36 +670,48 @@ async def test_r2_six_tuple_field_drift_reports_specific_field(s6i3_d_factory):
 
 
 async def test_r2_ack_digest_format_validated(s6i3_d_factory):
-    """ack_digest 严格 64-hex lowercase 校验 + archive/live 均 acked 时逐值相等。
+    """ack_digest 严格 64-hex lowercase 校验（live 端真实可达路径）。
 
-    构造：先 seed op=running + cp=erasing 并 publish（archive 固化 erasing）；
-    再 UPDATE DB cp=acked + ack_digest='c'*64；replay 应检测 cp.state drift
-    （archive=erasing vs DB=acked）。
+    Round-5：archive=erasing + live=acked 是单向终态推进（NO_REPEAT，无 drift），
+    所以格式校验必须构造 **archive=acked + live=acked**（无 state drift）场景。
+
+    构造：archive ack_digest='a'*64（合法）→ publish → 改 LIVE ack_digest='A'*64
+    （大写，过 migration 034 ``char_length=64`` CHECK，但应用层 lowercase 校验
+    fail）→ ``live.ACK_DIGEST_FORMAT_INVALID`` drift fail closed。
+
+    注：archive 端格式校验（``archive.ACK_DIGEST_FORMAT_INVALID``）经 D1a codec
+    ``_assert_checkpoint_ack_invariant`` 在 pre-publish decode 即 fail closed
+    （``ACK_INVARIANT_VIOLATED``），真实路径不可达——archive 不可能固化非法格式
+    ack_digest，故不在本测试构造（**禁止**伪造账本行绕过 publish 路径）。
     """
     factory = s6i3_d_factory
+
     async with factory() as s, s.begin():
         tid = await _seed_tenant(s)
-        op_id, _ = await _seed_op_cp(
-            s, tid, op_state="running", cp_state="erasing",
+        await _seed_inline_with_correct_digests(
+            s, tid=tid, op_state="completed", cp_state="acked",
+            owner_key="workspace.core.v1",
         )
     sink, _ = await _publish_segment_for(factory, tid=tid)
-
-    # archive 已固化 cp.state=erasing；现在改 DB cp.state=acked
     async with factory() as s, s.begin():
         await s.execute(
             text(
                 "UPDATE metaedu.agent_conversation_purge_owners "
-                "SET state = 'acked', ack_digest = :d "
-                "WHERE tenant_id = :tid"
+                "SET ack_digest = :d WHERE tenant_id = :tid"
             ),
-            {"d": "c" * 64, "tid": tid},
+            {"d": "A" * 64, "tid": tid},
         )
 
     report = await replay_archive_segment_for_tenant(
         factory, sink=sink, tenant_id=tid,
     )
     assert report.error is not None
-    assert "FACT_DRIFT_FIELDS" in report.error or "TOCTOU" in report.error
+    assert "FACT_DRIFT_FIELDS" in report.error
+    assert report.pass_a_drift == 1
+    drift_verdict = next(
+        v for v in report.verdict if v.action == ACTION_FACT_DRIFT_FAIL_CLOSED
+    )
+    assert "live.ACK_DIGEST_FORMAT_INVALID" in (drift_verdict.reason_code or "")
 
 
 # ---------------------------------------------------------------------------
@@ -1224,7 +1236,8 @@ async def test_r3_ack_digest_archive_live_mismatch(s6i3_d_factory):
 async def test_r3_idempotent_replay_terminal_state(s6i3_d_factory):
     """幂等：同 segment 连续两次；第二次 LIVE state 已是 terminal（acked）→ NO_REPEAT。
 
-    participant side effect 调用次数由 owner 调用次数决定（NO_REPEAT 不调 participant）。
+    Round-5：archive=erasing + LIVE=acked 是单向终态转换（完整 terminal evidence），
+    第二次 replay 返 ``NO_REPEAT``（error=None），**不**调 participant、**不**报 drift。
     """
     factory = s6i3_d_factory
     async with factory() as s, s.begin():
@@ -1242,13 +1255,14 @@ async def test_r3_idempotent_replay_terminal_state(s6i3_d_factory):
     assert r1.error is None
     assert r1.owners_local_cleared == 1
 
-    # 第二次：archive 仍 running/erasing，LIVE 已 acked → pass A 严格 drift
-    # 当前实现：drift → fail closed report（**不**调用 participant）
+    # 第二次：archive 仍 running/erasing，LIVE 已 acked → 单向终态推进 → NO_REPEAT
+    # （**不**调 participant、**不**报 drift）
     r2 = await replay_archive_segment_for_tenant(
         factory, sink=sink, tenant_id=tid,
     )
-    assert r2.error is not None
-    assert r2.owners_local_cleared == 0  # 第二次**不**调 participant（drift 阻断）
+    assert r2.error is None
+    assert r2.owners_no_repeat == 1
+    assert r2.owners_local_cleared == 0  # 第二次**不**调 participant
 
 
 async def test_r3_e2e_replay_to_gate(s6i3_d_factory):
@@ -1312,3 +1326,335 @@ def _non_local_matrix_iter(owner_key: str):
     matrix = _NON_LOCAL_OWNER_MATRIX_EXPECTATION[owner_key]
     for (op_state, cp_state), expected in matrix.items():
         yield op_state, cp_state, expected
+
+
+# ---------------------------------------------------------------------------
+# Round-5 P0 收口测试
+# ---------------------------------------------------------------------------
+
+
+async def test_r5_idempotent_real_no_participant_call(s6i3_d_factory):
+    """真实幂等：第一次 participant 真实执行 → 第二次 NO_REPEAT 且不调 participant。
+
+    断言：两次 replay 间 participant 公共入口调用次数 = 1（不是 2），
+    且第二次 report.owners_no_repeat == 1、owners_local_cleared == 0。
+    """
+    from app.contexts.agent_workspace.infrastructure.workspace_erasure_participant import (
+        WorkspaceErasureParticipant,
+    )
+    factory = s6i3_d_factory
+    async with factory() as s, s.begin():
+        tid = await _seed_tenant(s)
+        op_id, _ = await _seed_op_cp(
+            s, tid, op_state="running", cp_state="erasing",
+            owner_key="workspace.core.v1",
+        )
+    sink, _ = await _publish_segment_for(factory, tid=tid)
+
+    # 计数 participant 公共入口调用次数
+    original = WorkspaceErasureParticipant.erase_conversation_body
+    call_count = 0
+
+    async def counting_erase(self, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return await original(self, **kwargs)
+
+    WorkspaceErasureParticipant.erase_conversation_body = counting_erase
+    try:
+        # 第一次 replay
+        r1 = await replay_archive_segment_for_tenant(
+            factory, sink=sink, tenant_id=tid,
+        )
+        assert r1.error is None
+        assert r1.owners_local_cleared == 1
+        assert r1.owners_no_repeat == 0
+        first_call_count = call_count
+        assert first_call_count == 1, f"expected 1 call, got {first_call_count}"
+
+        # 第二次 replay（archive=erasing, LIVE=acked → NO_REPEAT）
+        r2 = await replay_archive_segment_for_tenant(
+            factory, sink=sink, tenant_id=tid,
+        )
+        # 第二次应该不调 participant，且返回 NO_REPEAT
+        assert r2.owners_no_repeat == 1
+        assert r2.owners_local_cleared == 0
+        # 关键断言：call_count 没增加
+        assert call_count == first_call_count, (
+            f"participant 第二次被调用了（{call_count} vs {first_call_count}）；幂等失败"
+        )
+    finally:
+        WorkspaceErasureParticipant.erase_conversation_body = original
+
+
+async def test_r5_toctou_purge_revision_drift(s6i3_d_factory):
+    """TOCTOU：DB op.purge_revision ≠ archive.purge_revision → FACT_DRIFT_FIELDS 含 operation.purge_revision。"""
+    factory = s6i3_d_factory
+    async with factory() as s, s.begin():
+        tid = await _seed_tenant(s)
+        op_id, _ = await _seed_op_cp(
+            s, tid, op_state="running", cp_state="erasing",
+        )
+    sink, _ = await _publish_segment_for(factory, tid=tid)
+
+    async with factory() as s, s.begin():
+        await s.execute(
+            text(
+                "UPDATE metaedu.agent_conversation_purges "
+                "SET purge_revision = 99 WHERE tenant_id = :tid"
+            ),
+            {"tid": tid},
+        )
+    # 失败必须以 RestoreReplayReport.error 形式上报（catch 在 tx context 外）
+    report = await replay_archive_segment_for_tenant(
+        factory, sink=sink, tenant_id=tid,
+    )
+    assert report.error is not None
+    assert report.pass_a_drift == 1
+    # drift field 在 verdict.reason_code 中
+    assert any(
+        v.action == ACTION_FACT_DRIFT_FAIL_CLOSED
+        and "operation.purge_revision" in (v.reason_code or "")
+        for v in report.verdict
+    )
+
+
+async def test_r5_toctou_lease_epoch_drift(s6i3_d_factory):
+    """TOCTOU：DB op.lease_epoch ≠ archive.lease_epoch → drift 含 operation.lease_epoch。"""
+    factory = s6i3_d_factory
+    async with factory() as s, s.begin():
+        tid = await _seed_tenant(s)
+        op_id, _ = await _seed_op_cp(
+            s, tid, op_state="running", cp_state="erasing",
+        )
+    sink, _ = await _publish_segment_for(factory, tid=tid)
+
+    async with factory() as s, s.begin():
+        await s.execute(
+            text(
+                "UPDATE metaedu.agent_conversation_purges "
+                "SET lease_epoch = 99 WHERE id = :oid"
+            ),
+            {"oid": op_id},
+        )
+    report = await replay_archive_segment_for_tenant(
+        factory, sink=sink, tenant_id=tid,
+    )
+    assert report.error is not None
+    assert report.pass_a_drift == 1
+    assert any(
+        v.action == ACTION_FACT_DRIFT_FAIL_CLOSED
+        and "operation.lease_epoch" in (v.reason_code or "")
+        for v in report.verdict
+    )
+
+
+async def test_r5_toctou_checkpoint_owner_version_drift(s6i3_d_factory):
+    """TOCTOU：DB cp.owner_version ≠ archive.owner_version → drift 含 checkpoint.owner_version。"""
+    factory = s6i3_d_factory
+    async with factory() as s, s.begin():
+        tid = await _seed_tenant(s)
+        op_id, _ = await _seed_op_cp(
+            s, tid, op_state="running", cp_state="erasing",
+            owner_key="workspace.core.v1",
+        )
+    sink, _ = await _publish_segment_for(factory, tid=tid)
+
+    async with factory() as s, s.begin():
+        await s.execute(
+            text(
+                "UPDATE metaedu.agent_conversation_purge_owners "
+                "SET owner_version = 99 WHERE tenant_id = :tid"
+            ),
+            {"tid": tid},
+        )
+    report = await replay_archive_segment_for_tenant(
+        factory, sink=sink, tenant_id=tid,
+    )
+    assert report.error is not None
+    assert report.pass_a_drift == 1
+    assert any(
+        v.action == ACTION_FACT_DRIFT_FAIL_CLOSED
+        and "checkpoint.owner_version" in (v.reason_code or "")
+        for v in report.verdict
+    )
+
+
+async def test_r5_toctou_checkpoint_capability_digest_drift(s6i3_d_factory):
+    """TOCTOU：DB cp.capability_digest ≠ archive.capability_digest → drift。"""
+    factory = s6i3_d_factory
+    async with factory() as s, s.begin():
+        tid = await _seed_tenant(s)
+        op_id, _ = await _seed_op_cp(
+            s, tid, op_state="running", cp_state="erasing",
+            owner_key="workspace.core.v1",
+        )
+    sink, _ = await _publish_segment_for(factory, tid=tid)
+
+    async with factory() as s, s.begin():
+        await s.execute(
+            text(
+                "UPDATE metaedu.agent_conversation_purge_owners "
+                "SET capability_digest = :d WHERE tenant_id = :tid"
+            ),
+            {"d": "c" * 64, "tid": tid},
+        )
+    report = await replay_archive_segment_for_tenant(
+        factory, sink=sink, tenant_id=tid,
+    )
+    assert report.error is not None
+    assert report.pass_a_drift == 1
+    assert any(
+        v.action == ACTION_FACT_DRIFT_FAIL_CLOSED
+        and "checkpoint.capability_digest" in (v.reason_code or "")
+        for v in report.verdict
+    )
+
+
+async def test_r5_external_record_wrong_binding(s6i3_d_factory):
+    """External record 错绑：archive external_ref conversation_id 与 operation 不一致 → fail closed。"""
+    factory = s6i3_d_factory
+    async with factory() as s, s.begin():
+        tid = await _seed_tenant(s)
+        op_id, _ = await _seed_op_cp(
+            s, tid, op_state="completed", cp_state="acked",
+            owner_key="external.payload.v1",
+        )
+        # 故意种一个 binding 错误的 external_ref（用随机 conversation_id）
+        await s.execute(
+            text(
+                "INSERT INTO metaedu.agent_external_object_refs "
+                "(id, tenant_id, owner_key, ref_scheme, ref_value, "
+                "source_table, source_row_id, conversation_id, "
+                "erase_state, receipt_digest) "
+                "VALUES (gen_random_uuid(), :tid, 'external.payload.v1', "
+                "'db_local', 'leaked', 'agent_workspace_outbox', "
+                "gen_random_uuid(), gen_random_uuid(), 'erased', :d)"
+            ),
+            {"tid": tid, "d": "a" * 64},
+        )
+    sink, _ = await _publish_segment_for(factory, tid=tid)
+
+    report = await replay_archive_segment_for_tenant(
+        factory, sink=sink, tenant_id=tid,
+    )
+    assert report.error is not None
+    assert "external_verification_failed" in report.error.lower()
+
+
+async def test_r5_external_record_duplicate_in_archive(s6i3_d_factory):
+    """External record 重复：archive 中 2 条同 (operation, owner_key) → fail closed。"""
+    factory = s6i3_d_factory
+    async with factory() as s, s.begin():
+        tid = await _seed_tenant(s)
+        cid, _ = await _seed_conversation(s, tid=tid), None
+        op_id, _ = await _seed_op_cp(
+            s, tid, op_state="completed", cp_state="acked",
+            owner_key="external.payload.v1",
+        )
+        # 种 2 条同 (conversation_id, owner_key) external_ref
+        for i in range(2):
+            await s.execute(
+                text(
+                    "INSERT INTO metaedu.agent_external_object_refs "
+                    "(id, tenant_id, owner_key, ref_scheme, ref_value, "
+                    "source_table, source_row_id, conversation_id, "
+                    "erase_state, receipt_digest) "
+                    "VALUES (gen_random_uuid(), :tid, 'external.payload.v1', "
+                    "'db_local', 'ref_' || :i, 'agent_workspace_outbox', "
+                    "gen_random_uuid(), :cid, 'erased', :d)"
+                ),
+                {"tid": tid, "i": str(i), "cid": str(cid), "d": "a" * 64 + str(i).zfill(1) * 0},
+            )
+    sink, _ = await _publish_segment_for(factory, tid=tid)
+
+    # 修正：实际 receipt_digest 必须不同
+    factory2 = s6i3_d_factory
+    async with factory2() as s, s.begin():
+        for i in range(2):
+            await s.execute(
+                text(
+                    "UPDATE metaedu.agent_external_object_refs "
+                    "SET receipt_digest = :d WHERE owner_key = 'external.payload.v1' "
+                    "AND conversation_id = :cid"
+                ),
+                {"d": (chr(ord("a") + i)) * 64, "cid": str(cid)},
+            )
+
+    report = await replay_archive_segment_for_tenant(
+        factory, sink=sink, tenant_id=tid,
+    )
+    assert report.error is not None
+
+
+async def test_r5_archive_facts_missing_field(s6i3_d_factory):
+    """Archive facts 必需字段缺失 → ARCHIVE_FACTS_FIELD_MISSING fail closed。
+
+    通过 monkey-patch ``_read_operation_archive_facts`` 从真实 archive record 移除
+    ``revision`` 必需字段 → pass A ``_require_field`` 检测缺失 →
+    ``ARCHIVE_FACTS_FIELD_MISSING``（**禁止**用 ``str("")`` / ``0`` 默认值静默默转）。
+    异常被 pass A 外层 catch 转为 ``RestoreReplayReport.error``（非 raise 传播）。
+    """
+    factory = s6i3_d_factory
+    async with factory() as s, s.begin():
+        tid = await _seed_tenant(s)
+        await _seed_op_cp(s, tid, op_state="running", cp_state="erasing")
+    sink, _ = await _publish_segment_for(factory, tid=tid)
+
+    import app.composition.restore_replay as rr_mod
+    original_read = rr_mod._read_operation_archive_facts
+
+    async def read_with_missing_field(session, *, manifest, operation_id):
+        record = dict(
+            await original_read(session, manifest=manifest, operation_id=operation_id)
+        )
+        record.pop("revision", None)  # 删除必需字段
+        return record
+
+    rr_mod._read_operation_archive_facts = read_with_missing_field
+    try:
+        report = await replay_archive_segment_for_tenant(
+            factory, sink=sink, tenant_id=tid,
+        )
+    finally:
+        rr_mod._read_operation_archive_facts = original_read
+
+    assert report.error is not None
+    assert "ARCHIVE_FACTS_FIELD_MISSING" in report.error
+    assert report.pass_a_drift == 1
+
+
+async def test_r5_archive_facts_invalid_uuid(s6i3_d_factory):
+    """Archive facts UUID 字段格式错误 → ARCHIVE_FACTS_TYPE_INVALID fail closed。
+
+    通过 monkey-patch ``_read_operation_archive_facts`` 注入非 UUID conversation_id
+    → pass A 严格类型检查（``uuid.UUID(...)`` ValueError）→
+    ``ARCHIVE_FACTS_TYPE_INVALID``。异常被 pass A 外层 catch 转为 report（非 raise 传播）。
+    """
+    factory = s6i3_d_factory
+    async with factory() as s, s.begin():
+        tid = await _seed_tenant(s)
+        await _seed_op_cp(s, tid, op_state="running", cp_state="erasing")
+    sink, _ = await _publish_segment_for(factory, tid=tid)
+
+    import app.composition.restore_replay as rr_mod
+    original_read = rr_mod._read_operation_archive_facts
+
+    async def read_with_bad_uuid(session, *, manifest, operation_id):
+        record = dict(
+            await original_read(session, manifest=manifest, operation_id=operation_id)
+        )
+        record["conversation_id"] = "not-a-uuid"  # 注入无效 UUID
+        return record
+
+    rr_mod._read_operation_archive_facts = read_with_bad_uuid
+    try:
+        report = await replay_archive_segment_for_tenant(
+            factory, sink=sink, tenant_id=tid,
+        )
+    finally:
+        rr_mod._read_operation_archive_facts = original_read
+
+    assert report.error is not None
+    assert "ARCHIVE_FACTS_TYPE_INVALID" in report.error
+    assert report.pass_a_drift == 1

@@ -1,12 +1,19 @@
 # ruff: noqa: E501
 #!/usr/bin/env python3
-"""R1-S6-I3-D D2 restore replay executor mutation kill（Round-2 P0 修复版）。
+"""R1-S6-I3-D D2 restore replay executor mutation kill（Round-5 真红证据版）。
 
 真实 PG 真实路径 mutation 驱动（参照 s6i1_retention_mutation_kill 模式）：
 - byte backup + try/finally + SHA-256 byte-identical
 - 每条 mutation 绑定对应 invariant test
 - subprocess pytest exit=1 → KILLED；恢复后 exit=0 → 干净
 - 仅 mutation 期间 mutate；mutation 后 restore 还原
+
+Round-5 强化（每条 mutant **必须是可运行 Python**——禁止 SyntaxError 冒充真红）：
+- mutated pytest 失败必须**因业务不变量**（assertion / drift / rollback），
+  **不是** collection SyntaxError
+- 输出区分 ``syntax``（mutant 不可运行，**不计入** KILLED）vs
+  ``behavioral``（业务不变量失败，计入 KILLED）
+- 每条 mutation 绑定真实存在的测试；恢复后 SHA-256 byte-identical
 
 Round-2 mutation 覆盖（每项对应 invariant test；任何 KILLED → 写入 Score Log）：
 
@@ -16,11 +23,15 @@ M-D2-6：external vs runtime 分离 bypass（runtime 改走 fall-through）
 M-D2-7：committed-tip bypass（删除 find_committed_tip 调用）
 M-D2-8：transport 主入口降级为 body helper（erase_transport_owner → erase_transport_body）
 M-D2-9：单 drift 仍执行其他 owner（移除 FACT_DRIFT_FIELDS raise）
-M-D2-10：purge_revision / ack_digest 对账删除
+M-D2-10：purge_revision 对账删除（移除 operation.purge_revision drift 检查）
 M-D2-11：gate 忽略 replay report（恢复默认 0 / False）
+M-D2-12：archive/live ack_digest 严格相等删除
+M-D2-14：partial commit —— participant 失败 catch-and-continue（吞掉异常继续提交）
+M-D2-15：archive-fact 缺失 fallback —— _require_field 缺失字段默认 0（bypass 严格缺失校验）
+M-D2-17：verified-without-receipt —— 跳过 _verify_external_receipt（receipt/final-scan bypass）
 
 每条 mutation 真实 subprocess pytest 驱动；mutation 存在 exit=1 + 恢复后
-exit=0 + byte backup SHA-256 byte-identical = KILLED 真红。
+exit=0 + byte backup SHA-256 byte-identical = KILLED 真红（behavioral）。
 
 Run:
     cd packages/server-python && uv run python scripts/s6i3_d_restore_replay_mutation_kill.py
@@ -51,7 +62,7 @@ TEST_IDS: dict[str, str] = {
     "M-D2-11": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_gate_consumes_fact_drift",
     "M-D2-12": "tests/composition/test_s6i3_d_restore_replay.py::test_r3_ack_digest_archive_live_mismatch",
     "M-D2-14": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_two_owner_one_fails_rolls_back_all",
-    "M-D2-15": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_fact_drift_blocks_pass_b_entry",
+    "M-D2-15": "tests/composition/test_s6i3_d_restore_replay.py::test_r5_archive_facts_missing_field",
     "M-D2-17": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_external_completed_no_runtime_reason",
 }
 
@@ -117,32 +128,50 @@ MUTATIONS: list[tuple[str, Path, str, str]] = [
     ),
     # M-D2-13: TOCTOU continue —— 任何 TOCTOU drift 改为 continue（**禁止**——必 raise）
     # 跳过此 mutation（行为正确性已通过 atomic rollback 测试覆盖）
-    # M-D2-15: archive fact 缺失绕过
+    # M-D2-15: archive-fact 缺失 fallback —— _require_field 缺失字段默认 0（bypass 严格缺失校验）
     (
         "M-D2-15",
         RESTORE_REPLAY,
-        "    if not archive_op_record:\n"
-        "        raise RestoreReplayError(\n"
-        "            \"ARCHIVE_FACTS_OPERATION_MISSING\",\n",
-        "    if not archive_op_record:\n"
-        "        pass  # M-D2-15 mutation: 绕过 archive_op 缺失校验\n",
+        "    def _require_field(record: Mapping[str, Any], key: str, code: str) -> Any:\n"
+        "        if key not in record or record[key] is None:\n"
+        "            raise RestoreReplayError(\n"
+        "                code,\n"
+        "                detail={\"missing_field\": key, \"operation_id\": fact.operation_id},\n"
+        "            )\n"
+        "        return record[key]\n",
+        "    def _require_field(record: Mapping[str, Any], key: str, code: str) -> Any:\n"
+        "        return record.get(key, 0)  # M-D2-15 mutation: 缺失字段默认 0（archive-fact fallback bypass）\n",
     ),
-    # M-D2-14: partial commit —— participant 失败时 catch 掉（**禁止**——必 raise）
+    # M-D2-14: partial commit —— participant 失败 catch-and-continue（吞掉异常继续提交）
     (
         "M-D2-14",
         RESTORE_REPLAY,
         "                        participant_failure_count += 1\n"
-        "                        raise RestoreReplayError(\n",
-        "                        pass  # M-D2-14 mutation: 吞掉异常继续\n",
+        "                        raise RestoreReplayError(\n"
+        "                            \"PARTICIPANT_FAILURE\",\n"
+        "                            detail={\n"
+        "                                \"owner_key\": validated.archive_owner_key,\n"
+        "                                \"operation_id\": str(validated.operation_id),\n"
+        "                                \"error_type\": type(exc).__name__,\n"
+        "                                \"error\": str(exc),\n"
+        "                            },\n"
+        "                        ) from exc\n",
+        "                        participant_failure_count += 1\n"
+        "                        pass  # M-D2-14 mutation: catch-and-continue（吞掉 participant 异常 → partial commit）\n",
     ),
     # M-D2-16: external record 错绑 —— 退回取任意 LIVE row 冒充 archive 证据
     # 跳过此 mutation（已通过 test_r3_external_record_wrong_binding 真实 PG 负例覆盖）
-    # M-D2-17: final-scan bypass —— 跳过 _verify_external_receipt（直接 verified）
+    # M-D2-17: verified-without-receipt —— 跳过 _verify_external_receipt（receipt/final-scan bypass，直接 verified）
     (
         "M-D2-17",
         RESTORE_REPLAY,
-        "                            verified = await _verify_external_receipt(\n",
-        "                            verified = True  # M-D2-17 mutation: 跳过 receipt 验证\n",
+        "                            verified = await _verify_external_receipt(\n"
+        "                                session,\n"
+        "                                tenant_id=tenant_id,\n"
+        "                                validated=validated,\n"
+        "                                archive_external_record=archive_external_for_fact,\n"
+        "                            )\n",
+        "                            verified = True  # M-D2-17 mutation: verified-without-receipt（跳过 receipt/final-scan）\n",
     ),
     # M-D2-18: 幂等路径 bypass —— 删 NO_REPEAT 检查（archive non-terminal + live acked 仍调 participant）
     # 跳过此 mutation（已通过 test_r1_idempotent_replay_db_acked_drift 真实 PG 负例覆盖）
@@ -157,7 +186,7 @@ MUTATIONS: list[tuple[str, Path, str, str]] = [
         "    tip = None  # M-D2-7 mutation: 跳过 committed-tip 推导\n"
         "    if tip is None:\n",
     ),
-    # M-D2-8: transport 主入口降级为 body helper
+    # M-D2-8: transport 主入口降级为 body helper（丢失 fence / owner lock / CAS / ACK / final scan）
     (
         "M-D2-8",
         RESTORE_REPLAY,
@@ -169,10 +198,13 @@ MUTATIONS: list[tuple[str, Path, str, str]] = [
         "            expected_operation_revision=validated.archive_revision,\n"
         "            expected_lease_epoch=validated.archive_lease_epoch,\n"
         "        )\n",
-        "        # M-D2-8 mutation: 降级为 body helper（丢失 fence / owner lock / CAS）\n"
+        "        # M-D2-8 mutation: 降级为 body helper（丢失 fence / owner lock / CAS / ACK / final scan）\n"
+        "        from datetime import datetime, timezone\n"
         "        await WorkspaceTransportErasureParticipant(session).erase_transport_body(\n"
         "            tenant_id=tenant_id,\n"
         "            conversation_id=validated.conversation_id,\n"
+        "            purge_revision=validated.archive_purge_revision,\n"
+        "            now=datetime.now(timezone.utc),\n"
         "        )\n",
     ),
     # M-D2-9: 单 drift 仍执行其他 owner —— 移除 FACT_DRIFT_FIELDS raise（pass A 继续）
@@ -191,23 +223,45 @@ MUTATIONS: list[tuple[str, Path, str, str]] = [
         "    if drift_fields:\n"
         "        pass  # M-D2-9 mutation: 单 drift 不阻断（错误）",
     ),
-    # M-D2-10: purge_revision 对账删除 —— 移除 operation.purge_revision 检查
+    # M-D2-10: purge_revision 对账删除 —— 移除 operation.purge_revision drift 检查
     (
         "M-D2-10",
         RESTORE_REPLAY,
-        "    archive_purge_rev = int(archive_op_record.get(\"purge_revision\") or 0)",
+        "    if int(op_row[\"purge_revision\"]) != archive_purge_rev:\n"
+        "        drift_fields.append(\"operation.purge_revision\")\n",
         "    # M-D2-10 mutation: 删除 purge_revision 对账\n",
     ),
-    # M-D2-11: gate 忽略 replay report —— 恢复默认 0 / False
+    # M-D2-11: gate 忽略 replay report —— 移除全部 report 内部 blocking 消费
     (
         "M-D2-11",
         RESTORE_REPLAY,
         "    # 1. ReplayReport 内部 blocking 项 → 全部阻断\n"
         "    if replay_report.error is not None:\n"
         "        blocked.append(f\"replay_error:{replay_report.error}\")\n"
-        "    if replay_report.pass_a_drift > 0:",
-        "    # M-D2-11 mutation: gate 忽略 replay report\n"
-        "    pass  # 不消费 report\n",
+        "    if replay_report.pass_a_drift > 0:\n"
+        "        blocked.append(f\"pass_a_drift:{replay_report.pass_a_drift}\")\n"
+        "    if replay_report.toctou_drift > 0:\n"
+        "        blocked.append(f\"toctou_drift:{replay_report.toctou_drift}\")\n"
+        "    if replay_report.participant_failures > 0:\n"
+        "        blocked.append(f\"participant_failure:{replay_report.participant_failures}\")\n"
+        "    if replay_report.owners_fact_drift > 0:\n"
+        "        blocked.append(f\"fact_drift:{replay_report.owners_fact_drift}\")\n"
+        "    if replay_report.runtime_binding_evidence_unprovable > 0:\n"
+        "        blocked.append(\n"
+        "            f\"RUNTIME_BINDING_EVIDENCE_UNPROVABLE:\"\n"
+        "            f\"{replay_report.runtime_binding_evidence_unprovable}\"\n"
+        "        )\n"
+        "    if replay_report.external_verification_failed > 0:\n"
+        "        blocked.append(\n"
+        "            f\"external_verification_failed:\"\n"
+        "            f\"{replay_report.external_verification_failed}\"\n"
+        "        )\n"
+        "    if replay_report.owners_non_local_blocked > 0:\n"
+        "        blocked.append(\n"
+        "            f\"non_local_blocked:{replay_report.owners_non_local_blocked}\"\n"
+        "        )\n",
+        "    # 1. ReplayReport 内部 blocking 项 → 全部阻断\n"
+        "    pass  # M-D2-11 mutation: gate 忽略 replay report（不消费内部 blocking 项）\n",
     ),
 ]
 
@@ -246,23 +300,41 @@ def run_pytest(test_id: str) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, cwd=TEST_DIR, timeout=120)
 
 
+def _is_syntax_failure(proc: subprocess.CompletedProcess) -> bool:
+    """mutated pytest 失败是否因 mutant **不可运行**（SyntaxError / IndentationError / TabError）。
+
+    语法失败的 mutant **不是** 真红证据（pytest 连业务断言都跑不到）——必须重做
+    为可运行 Python，**不计入** KILLED。behavioral 失败（assertion / drift / rollback）
+    才计入 KILLED。
+    """
+    out = (proc.stdout or "") + (proc.stderr or "")
+    return (
+        "SyntaxError" in out
+        or "IndentationError" in out
+        or "TabError" in out
+    )
+
+
 async def _main() -> int:
     print(f"Mutation kill: {len(MUTATIONS)} mutations\n")
-    results: list[tuple[str, bool, bool]] = []
+    # name -> (behavioral_killed, clean_passed, syntax_invalid)
+    results: list[tuple[str, bool, bool, bool]] = []
     for name, file, old, new in MUTATIONS:
         test_id = TEST_IDS.get(name)
         if test_id is None:
             print(f"SKIP   {name} (no test binding)")
-            results.append((name, False, False))
+            results.append((name, False, False, False))
             continue
 
         original_sha = _sha256_bytes(file.read_bytes())
         apply_mutation(file, old, new, name)
         killed = False
+        syntax_invalid = False
         clean_passed = False
         try:
             mutated = run_pytest(test_id)
             killed = mutated.returncode != 0
+            syntax_invalid = killed and _is_syntax_failure(mutated)
         finally:
             # 关键：先 restore 再跑 clean（确保 clean 跑在干净文件上）
             restore_file(file)
@@ -272,19 +344,33 @@ async def _main() -> int:
             ), f"{name}: restore failed sha mismatch ({original_sha} != {restored_sha})"
         clean = run_pytest(test_id)
         clean_passed = clean.returncode == 0
-        ok = killed and clean_passed
-        results.append((name, ok, True))
+        # 真红 = behavioral 红（**非** syntax）+ 恢复后绿
+        ok = killed and not syntax_invalid and clean_passed
+        results.append((name, ok, clean_passed, syntax_invalid))
+        if syntax_invalid:
+            verdict = "SYNTAX-INVALID"
+            detail = "syntax (mutant 不可运行，不计入 KILLED)"
+        else:
+            verdict = "KILLED" if ok else "FAILED"
+            detail = "behavioral" if killed else "NOT-RED"
         print(
-            f"{'KILLED' if ok else 'FAILED':8} "
-            f"mutated={'red' if killed else 'NOT-RED'} "
+            f"{verdict:15} "
+            f"mutated={detail} "
             f"restored={'green' if clean_passed else 'NOT-GREEN'} "
             f"{name}"
         )
 
-    passed = sum(1 for _, ok, _ in results if ok)
-    total = len([r for r in results if r[2]])
-    print(f"\n{passed}/{total} mutation kills passed (run_id=scripts/s6i3_d_restore_replay_mutation_kill)")
-    return 0 if passed == total else 1
+    passed = sum(1 for _, ok, _, _ in results if ok)
+    syntax_bad = sum(1 for _, _, _, syn in results if syn)
+    print(
+        f"\n{passed}/{len(MUTATIONS)} mutation kills passed "
+        f"(behavioral red + byte-identical restore green; "
+        f"syntax-invalid={syntax_bad} 不计入) "
+        f"(run_id=scripts/s6i3_d_restore_replay_mutation_kill)"
+    )
+    if syntax_bad:
+        print(f"⚠️  {syntax_bad} mutant(s) 不可运行（SyntaxError）——必须重做为可运行 Python")
+    return 0 if passed == len(MUTATIONS) and syntax_bad == 0 else 1
 
 
 if __name__ == "__main__":
