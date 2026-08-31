@@ -352,6 +352,94 @@ def _assert_64hex_lowercase(value: Any, *, field: str) -> str:
     return value
 
 
+# ---------------------------------------------------------------------------
+# archive facts 严格类型 helpers（Round-6：禁止 str()/int() 隐式转换）
+#
+# 每种类型一个明确 helper；缺失字段与类型错误分别返回稳定的具名错误码：
+# - 缺失 → ``missing_code``（调用方按 operation/checkpoint/external-ref 传
+#   ``ARCHIVE_FACTS_FIELD_MISSING`` 等）
+# - 类型不符 → ``ARCHIVE_FACTS_TYPE_INVALID``（``field`` 携带 ``operation.revision``
+#   等定位符）
+# 所有解析异常在此归一化为 ``RestoreReplayError``，**绝不**泄漏 ValueError/TypeError。
+# ---------------------------------------------------------------------------
+
+
+def _require_field(
+    record: Mapping[str, Any], key: str, *, missing_code: str
+) -> Any:
+    """archive record 必需字段存在性检查；缺失/None → 具名 ``missing_code`` fail closed。"""
+    if key not in record or record[key] is None:
+        raise RestoreReplayError(
+            missing_code,
+            detail={"missing_field": key},
+        )
+    return record[key]
+
+
+def _require_strict_int(
+    record: Mapping[str, Any], key: str, *, missing_code: str, field: str
+) -> int:
+    """strict int（排除 bool；**禁止** ``int()`` 隐式转换）。"""
+    raw = _require_field(record, key, missing_code=missing_code)
+    if not isinstance(raw, int) or isinstance(raw, bool):
+        raise RestoreReplayError(
+            "ARCHIVE_FACTS_TYPE_INVALID",
+            detail={"field": field, "expected_type": "int"},
+        )
+    return raw
+
+
+def _require_str(
+    record: Mapping[str, Any], key: str, *, missing_code: str, field: str
+) -> str:
+    """严格 string（**禁止** ``str()`` 隐式转换）。"""
+    raw = _require_field(record, key, missing_code=missing_code)
+    if not isinstance(raw, str):
+        raise RestoreReplayError(
+            "ARCHIVE_FACTS_TYPE_INVALID",
+            detail={"field": field, "expected_type": "str"},
+        )
+    return raw
+
+
+def _require_canonical_uuid(
+    record: Mapping[str, Any], key: str, *, missing_code: str, field: str
+) -> uuid.UUID:
+    """canonical UUID（解析失败 → ``ARCHIVE_FACTS_TYPE_INVALID``；**不**泄漏 ValueError）。"""
+    raw = _require_field(record, key, missing_code=missing_code)
+    try:
+        return uuid.UUID(str(raw))
+    except (ValueError, TypeError, AttributeError):
+        raise RestoreReplayError(
+            "ARCHIVE_FACTS_TYPE_INVALID",
+            detail={"field": field, "expected_type": "uuid"},
+        ) from None
+
+
+def _require_64hex_lower(
+    record: Mapping[str, Any], key: str, *, missing_code: str, field: str
+) -> str:
+    """严格 lowercase 64-hex（应用层门禁）。"""
+    raw = _require_str(record, key, missing_code=missing_code, field=field)
+    if not _HEX_LOWER_64_RE.match(raw):
+        raise RestoreReplayError(
+            "ARCHIVE_FACTS_TYPE_INVALID",
+            detail={"field": field, "expected_type": "64hex_lowercase"},
+        )
+    return raw
+
+
+def _optional_64hex_lower(
+    record: Mapping[str, Any], key: str, *, field: str
+) -> str | None:
+    """可选 lowercase 64-hex（``None`` 允许；非 None 必须严格格式，否则 TYPE_INVALID）。"""
+    if key not in record or record[key] is None:
+        return None
+    return _require_64hex_lower(
+        record, key, missing_code="ARCHIVE_FACTS_FIELD_MISSING", field=field
+    )
+
+
 async def _read_operation_archive_facts(
     session: AsyncSession,
     *,
@@ -406,27 +494,82 @@ async def _read_checkpoint_state_live(
     return str(m["state"]) if m is not None else None
 
 
-def _read_external_ref_archive_facts(
-    manifest: Manifest, *, conversation_id: str, owner_key: str = "external.payload.v1"
-) -> tuple[list[Mapping[str, Any]], str | None]:
-    """从 archive manifest 提取 external_ref 行（external.payload.v1 验证用）。
+def _bind_archive_external_ref(
+    manifest: Manifest,
+    *,
+    conversation_id: uuid.UUID,
+    owner_key: str = "external.payload.v1",
+) -> Mapping[str, Any]:
+    """统一 archive external-ref binder（Round-6）：按 ``conversation_id`` + ``owner_key``
+    **精确绑定唯一一条** archive external_ref record 并严格解析。
 
-    按 (archive.conversation_id, owner_key) **精确绑定**；返回 (matches, error)：
-    - matches: 匹配的 archive record 列表（0 条 / 1 条 / 多条均返回）
-    - error: 错绑/重复等具名错误（None 表示无错）
+    - **恰好一条**：0 条 → ``EXTERNAL_ARCHIVE_MISSING``；≥2 条 → ``EXTERNAL_ARCHIVE_DUPLICATE``；
+      conversation/owner 不匹配 → ``EXTERNAL_ARCHIVE_MISSING``（无绑定）。
+    - **严格解析**（禁止 ``str()``/``int()`` 隐式转换；缺失 → ``ARCHIVE_FACTS_FIELD_MISSING``；
+      类型/格式不符 → ``ARCHIVE_FACTS_TYPE_INVALID``）：``id``/``conversation_id``（canonical
+      UUID）、``owner_key``（string）、``receipt_digest``（lowercase 64-hex）。
+    - **禁止**回退任意 LIVE row 冒充 archive 证据。
     """
+    cid_str = str(conversation_id)
     er_records = manifest.records.get(RECORD_KIND_EXTERNAL_REF, ())
     matches: list[Mapping[str, Any]] = []
-    error: str | None = None
     for r in er_records:
-        rk = str(r.fields.get("owner_key") or "")
-        rc = str(r.fields.get("conversation_id") or "")
-        if rk == owner_key and rc == conversation_id:
+        rk_raw = r.fields.get("owner_key")
+        rc_raw = r.fields.get("conversation_id")
+        # owner_key / conversation_id 必须可解析后精确匹配（不匹配不计入）
+        if not isinstance(rk_raw, str) or not isinstance(rc_raw, str):
+            continue
+        try:
+            rc = str(uuid.UUID(rc_raw))
+        except (ValueError, TypeError, AttributeError):
+            continue
+        if rk_raw == owner_key and rc == cid_str:
             matches.append(r.fields)
-    # 重复 archive record（**禁止**取任意 LIVE row 冒充前先拒绝重复）
+
+    if not matches:
+        raise RestoreReplayError(
+            "EXTERNAL_ARCHIVE_MISSING",
+            detail={
+                "conversation_id": cid_str,
+                "owner_key": owner_key,
+                "reason": "no_archive_external_ref_bound",
+            },
+        )
     if len(matches) > 1:
-        error = "EXTERNAL_ARCHIVE_DUPLICATE"
-    return matches, error
+        raise RestoreReplayError(
+            "EXTERNAL_ARCHIVE_DUPLICATE",
+            detail={
+                "conversation_id": cid_str,
+                "owner_key": owner_key,
+                "count": len(matches),
+                "reason": "duplicate_archive_external_ref",
+            },
+        )
+
+    record = matches[0]
+    _missing_code = "ARCHIVE_FACTS_FIELD_MISSING"
+    # 严格解析必需字段（不此处使用返回值——仅触发 fail-closed 校验；绑定本身已确认）
+    parsed_id = _require_canonical_uuid(record, "id", missing_code=_missing_code, field="external_ref.id")
+    parsed_cid = _require_canonical_uuid(record, "conversation_id", missing_code=_missing_code, field="external_ref.conversation_id")
+    parsed_owner = _require_str(record, "owner_key", missing_code=_missing_code, field="external_ref.owner_key")
+    parsed_receipt = _require_64hex_lower(record, "receipt_digest", missing_code=_missing_code, field="external_ref.receipt_digest")
+    # 绑定的 record 必须与请求精确一致（防御性二次确认）
+    if str(parsed_cid) != cid_str or parsed_owner != owner_key:
+        raise RestoreReplayError(
+            "EXTERNAL_ARCHIVE_BINDING_MISMATCH",
+            detail={
+                "conversation_id": cid_str,
+                "owner_key": owner_key,
+                "record_conversation_id": str(parsed_cid),
+                "record_owner_key": parsed_owner,
+            },
+        )
+    return {
+        "id": parsed_id,
+        "conversation_id": parsed_cid,
+        "owner_key": parsed_owner,
+        "receipt_digest": parsed_receipt,
+    }
 
 
 async def _validate_pass_a(
@@ -450,54 +593,34 @@ async def _validate_pass_a(
             "ARCHIVE_FACTS_OPERATION_MISSING",
             detail={"operation_id": fact.operation_id},
         )
-    # 严格 6 元组 / 5 operation 字段对账（**全部**使用 archive facts）
-    # 必需字段先检查 key 存在 → 缺失使用具名 ARCHIVE_FACTS_*_MISSING
-    def _require_field(record: Mapping[str, Any], key: str, code: str) -> Any:
-        if key not in record or record[key] is None:
-            raise RestoreReplayError(
-                code,
-                detail={"missing_field": key, "operation_id": fact.operation_id},
-            )
-        return record[key]
-    archive_op_state = str(_require_field(archive_op_record, "state", "ARCHIVE_FACTS_FIELD_MISSING"))
-    archive_op_rev_raw = _require_field(archive_op_record, "revision", "ARCHIVE_FACTS_FIELD_MISSING")
-    if not isinstance(archive_op_rev_raw, int) or isinstance(archive_op_rev_raw, bool):
-        raise RestoreReplayError(
-            "ARCHIVE_FACTS_TYPE_INVALID",
-            detail={"field": "operation.revision", "expected_type": "int"},
-        )
-    archive_op_rev = archive_op_rev_raw
-    archive_purge_rev_raw = _require_field(archive_op_record, "purge_revision", "ARCHIVE_FACTS_FIELD_MISSING")
-    if not isinstance(archive_purge_rev_raw, int) or isinstance(archive_purge_rev_raw, bool):
-        raise RestoreReplayError(
-            "ARCHIVE_FACTS_TYPE_INVALID",
-            detail={"field": "operation.purge_revision", "expected_type": "int"},
-        )
-    archive_purge_rev = archive_purge_rev_raw
-    archive_lease_raw = _require_field(archive_op_record, "lease_epoch", "ARCHIVE_FACTS_FIELD_MISSING")
-    if not isinstance(archive_lease_raw, int) or isinstance(archive_lease_raw, bool):
-        raise RestoreReplayError(
-            "ARCHIVE_FACTS_TYPE_INVALID",
-            detail={"field": "operation.lease_epoch", "expected_type": "int"},
-        )
-    archive_lease = archive_lease_raw
-    archive_hold_raw = _require_field(archive_op_record, "hold_revision_snapshot", "ARCHIVE_FACTS_FIELD_MISSING")
-    if not isinstance(archive_hold_raw, int) or isinstance(archive_hold_raw, bool):
-        raise RestoreReplayError(
-            "ARCHIVE_FACTS_TYPE_INVALID",
-            detail={"field": "operation.hold_revision_snapshot", "expected_type": "int"},
-        )
-    archive_hold = archive_hold_raw
-    archive_registry = str(_require_field(archive_op_record, "registry_digest", "ARCHIVE_FACTS_FIELD_MISSING"))
-    archive_rpd = str(_require_field(archive_op_record, "retention_policy_digest", "ARCHIVE_FACTS_FIELD_MISSING"))
-    conversation_id_raw = _require_field(archive_op_record, "conversation_id", "ARCHIVE_FACTS_FIELD_MISSING")
-    try:
-        conversation_id = uuid.UUID(str(conversation_id_raw))
-    except (ValueError, TypeError, AttributeError):
-        raise RestoreReplayError(
-            "ARCHIVE_FACTS_TYPE_INVALID",
-            detail={"field": "operation.conversation_id", "expected_type": "uuid"},
-        ) from None
+    # 严格 6 元组 / 5 operation 字段对账（**全部**使用 archive facts；禁止 str()/int()
+    # 隐式转换——经明确类型 helper；缺失 → ARCHIVE_FACTS_FIELD_MISSING；类型不符 →
+    # ARCHIVE_FACTS_TYPE_INVALID）
+    _missing_code = "ARCHIVE_FACTS_FIELD_MISSING"
+    archive_op_state = _require_str(
+        archive_op_record, "state", missing_code=_missing_code, field="operation.state"
+    )
+    archive_op_rev = _require_strict_int(
+        archive_op_record, "revision", missing_code=_missing_code, field="operation.revision"
+    )
+    archive_purge_rev = _require_strict_int(
+        archive_op_record, "purge_revision", missing_code=_missing_code, field="operation.purge_revision"
+    )
+    archive_lease = _require_strict_int(
+        archive_op_record, "lease_epoch", missing_code=_missing_code, field="operation.lease_epoch"
+    )
+    archive_hold = _require_strict_int(
+        archive_op_record, "hold_revision_snapshot", missing_code=_missing_code, field="operation.hold_revision_snapshot"
+    )
+    archive_registry = _require_str(
+        archive_op_record, "registry_digest", missing_code=_missing_code, field="operation.registry_digest"
+    )
+    archive_rpd = _require_str(
+        archive_op_record, "retention_policy_digest", missing_code=_missing_code, field="operation.retention_policy_digest"
+    )
+    conversation_id = _require_canonical_uuid(
+        archive_op_record, "conversation_id", missing_code=_missing_code, field="operation.conversation_id"
+    )
 
     # 2. checkpoint archive facts 必须存在
     if not archive_cp_record:
@@ -508,35 +631,22 @@ async def _validate_pass_a(
                 "owner_key": fact.owner_key,
             },
         )
-    archive_cp_state = str(_require_field(archive_cp_record, "state", "ARCHIVE_FACTS_FIELD_MISSING"))
-    archive_cp_owner_key = str(_require_field(archive_cp_record, "owner_key", "ARCHIVE_FACTS_FIELD_MISSING"))
-    archive_owner_version_raw = _require_field(archive_cp_record, "owner_version", "ARCHIVE_FACTS_FIELD_MISSING")
-    if not isinstance(archive_owner_version_raw, int) or isinstance(archive_owner_version_raw, bool):
-        raise RestoreReplayError(
-            "ARCHIVE_FACTS_TYPE_INVALID",
-            detail={"field": "checkpoint.owner_version", "expected_type": "int"},
-        )
-    archive_owner_version = archive_owner_version_raw
-    archive_capability = str(_require_field(archive_cp_record, "capability_digest", "ARCHIVE_FACTS_FIELD_MISSING"))
-    archive_ack_raw = archive_cp_record.get("ack_digest")
-    if "ack_digest" not in archive_cp_record:
-        archive_ack_raw = None
-    archive_ack: str | None = None
-    if archive_ack_raw is not None:
-        if not isinstance(archive_ack_raw, str):
-            raise RestoreReplayError(
-                "ARCHIVE_FACTS_TYPE_INVALID",
-                detail={"field": "checkpoint.ack_digest", "expected_type": "str"},
-            )
-        archive_ack = archive_ack_raw
-    archive_checkpoint_id_raw = _require_field(archive_cp_record, "id", "ARCHIVE_FACTS_FIELD_MISSING")
-    try:
-        archive_checkpoint_id = uuid.UUID(str(archive_checkpoint_id_raw))
-    except (ValueError, TypeError, AttributeError):
-        raise RestoreReplayError(
-            "ARCHIVE_FACTS_TYPE_INVALID",
-            detail={"field": "checkpoint.id", "expected_type": "uuid"},
-        ) from None
+    archive_cp_state = _require_str(
+        archive_cp_record, "state", missing_code=_missing_code, field="checkpoint.state"
+    )
+    archive_cp_owner_key = _require_str(
+        archive_cp_record, "owner_key", missing_code=_missing_code, field="checkpoint.owner_key"
+    )
+    archive_owner_version = _require_strict_int(
+        archive_cp_record, "owner_version", missing_code=_missing_code, field="checkpoint.owner_version"
+    )
+    archive_capability = _require_str(
+        archive_cp_record, "capability_digest", missing_code=_missing_code, field="checkpoint.capability_digest"
+    )
+    archive_ack = _optional_64hex_lower(archive_cp_record, "ack_digest", field="checkpoint.ack_digest")
+    archive_checkpoint_id = _require_canonical_uuid(
+        archive_cp_record, "id", missing_code=_missing_code, field="checkpoint.id"
+    )
 
     # 3. LIVE 读 operation / checkpoint 用于 drift 检测（不写入任何 archive_*）
     op_row = await _load_operation_row(
@@ -653,7 +763,7 @@ async def _validate_pass_a(
         archive_owner_key=archive_cp_owner_key,
         archive_owner_version=archive_owner_version,
         archive_capability_digest=archive_capability,
-        archive_ack_digest=str(archive_ack) if archive_ack else None,
+        archive_ack_digest=archive_ack,
     )
 
 
@@ -761,33 +871,50 @@ async def _verify_external_receipt(
     *,
     tenant_id: uuid.UUID,
     validated: ValidatedFact,
-    archive_external_record: Mapping[str, Any] | None,
+    manifest: Manifest,
 ) -> bool:
-    """external.payload.v1 验证：按 validated.archive_conversation_id + owner_key 精确绑定
-    archive external_ref record；archive.receipt_digest == live.receipt_digest 且 LIVE
-    erase_state='erased'。
+    """external.payload.v1 verify-only：统一 binder 绑定唯一 archive record + receipt
+    精确匹配 + LIVE state=erased + **final scan**（复用 ``build_scan_providers`` 的
+    external.payload.v1 谓词，要求该 conversation residual total == 0）。
 
-    **禁止**回退到任意 LIVE external row 冒充 archive 证据（必须 archive 行存在且
-    与 archive_external_record.id 精确匹配）。
-
-    严格使用既有事实源（**不**发 adapter 请求；**不**发明新 digest 算法）。
+    - **实际调用统一 binder** ``_bind_archive_external_ref``（恰好一条 + 严格解析）；
+      binder 失败（0 条 / ≥2 条 / 错 conversation/owner / 解析失败）→ 转换为
+      ``EXTERNAL_VERIFICATION_FAILED``（reason 携带具体 binder code）。
+    - **禁止**回退任意 LIVE row 冒充 archive 证据（必须按 archive ``id`` 精确匹配 LIVE 行）。
+    - **禁止**发 adapter 请求；**不**发明新 digest 算法。
+    - 返回 ``True`` = 绑定 + receipt 匹配 + state=erased + final scan total==0；
+      否则抛 ``RestoreReplayError("EXTERNAL_VERIFICATION_FAILED", reason=...)``（具名）。
     """
-    archive_conversation_id = str(validated.conversation_id)
+    cid = validated.conversation_id
 
-    if archive_external_record is None:
-        # archive 无 external_ref 行 → fail closed（**禁止**取任意 LIVE row 冒充）
-        return False
+    def _fail(reason: str) -> RestoreReplayError:
+        return RestoreReplayError(
+            "EXTERNAL_VERIFICATION_FAILED",
+            detail={
+                "operation_id": str(validated.operation_id),
+                "owner_key": validated.archive_owner_key,
+                "conversation_id": str(cid),
+                "reason": reason,
+            },
+        )
 
-    # archive 有 external_ref 行 → 严格对比 receipt_digest
-    archive_receipt = archive_external_record.get("receipt_digest")
-    if not isinstance(archive_receipt, str) or len(archive_receipt) != 64:
-        # archive external_ref 缺/格式错误 receipt → fail closed
-        return False
-    archive_eid = archive_external_record.get("id")
-    if archive_eid is None:
-        return False
+    # 统一 binder：恰好一条 + 严格解析（id / conversation_id / owner_key / receipt_digest）。
+    # binder 抛具名错（EXTERNAL_ARCHIVE_MISSING / EXTERNAL_ARCHIVE_DUPLICATE /
+    # ARCHIVE_FACTS_*）→ 转换为 EXTERNAL_VERIFICATION_FAILED（reason=具体 code）。
+    try:
+        archive_external_record = _bind_archive_external_ref(
+            manifest,
+            conversation_id=cid,
+            owner_key="external.payload.v1",
+        )
+    except RestoreReplayError as exc:
+        raise _fail(exc.code) from exc
 
-    # 必须按 archive operation.conversation_id + owner_key + archive_eid 精确绑定 LIVE 行
+    # archive 端严格字段（binder 已校验；此处取用对账）
+    archive_eid = archive_external_record["id"]
+    archive_receipt = archive_external_record["receipt_digest"]
+
+    # 按 archive id + conversation_id + owner_key 精确绑定 LIVE 行（**禁止**任意 LIVE row）
     row = await session.execute(
         text(
             "SELECT receipt_digest, erase_state "
@@ -795,20 +922,33 @@ async def _verify_external_receipt(
             "WHERE tenant_id = :tid AND owner_key = 'external.payload.v1' "
             "AND conversation_id = :cid AND id = :eid"
         ),
-        {
-            "tid": tenant_id,
-            "cid": archive_conversation_id,
-            "eid": uuid.UUID(str(archive_eid)),
-        },
+        {"tid": tenant_id, "cid": str(cid), "eid": str(archive_eid)},
     )
     m = row.mappings().first()
     if m is None:
-        # archive 行存在但 LIVE 找不到完全匹配 record → 错绑 → fail closed
-        return False
-    return (
-        m["erase_state"] == "erased"
-        and m["receipt_digest"] == archive_receipt
+        raise _fail("external_live_row_missing")
+
+    # receipt 精确匹配 + LIVE erase_state == erased
+    if m["receipt_digest"] != archive_receipt:
+        raise _fail("external_receipt_mismatch")
+    if m["erase_state"] != "erased":
+        raise _fail("external_state_not_erased")
+
+    # final scan：复用 build_scan_providers 冻结谓词；该 conversation external residual
+    # 必须 total == 0（registered 残留 → 证据不完整 → fail closed）
+    from app.composition.transactional_projection_coordinator import (
+        build_scan_providers,
     )
+
+    scan_fn = build_scan_providers(session).get("external.payload.v1")
+    if scan_fn is None:
+        raise _fail("external_scan_provider_missing")
+    scan_result = await scan_fn(tenant_id=tenant_id, conversation_id=cid)
+    scan_total = int(getattr(scan_result, "total", 0))
+    if scan_total != 0:
+        raise _fail(f"external_final_scan_residual:{scan_total}")
+
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -821,12 +961,22 @@ async def _toctou_reverify_pass_b(
     *,
     tenant_id: uuid.UUID,
     validated: ValidatedFact,
+    allow_terminal_single_direction: bool = False,
 ) -> None:
     """pass B：在 exclusive tx 内逐字段重读 LIVE state + 对比 archive facts（TOCTOU 防护）。
 
-    全 11 字段对账（5 operation fence + 6 checkpoint 六元组）；每个字段 drift 使用
-    稳定、可定位的错误码/字段名。LIVE ≠ archive → 抛 ``RestoreReplayError("TOCTOU_DRIFT_*")``
+    **所有**路径（含 NO_REPEAT）都必须调用本函数——**禁止**只读 ``checkpoint.state``
+    后直接 continue。
+
+    全字段对账（operation 8 字段 + checkpoint 6 元组）；每个字段 drift 使用稳定、可
+    定位的错误码/字段名。LIVE ≠ archive → 抛 ``RestoreReplayError("TOCTOU_DRIFT_*")``
     → caller 不 catch → 整事务 rollback。
+
+    ``allow_terminal_single_direction=True``（唯一例外，仅 caller 在
+    ``archive_checkpoint_state ∈ {pending, erasing}`` 时设置）：
+    - **只**豁免 ``checkpoint.state`` 的合法单向变化（archive pending/erasing → LIVE acked）；
+      豁免生效时**必须** LIVE ``ack_digest`` 为 lowercase 64-hex（否则仍 drift）。
+    - 其余**所有**字段（operation 8 字段 + checkpoint 其余 5 字段）任何 drift 均失败。
     """
     op_row = await _load_operation_row(
         session, tenant_id=tenant_id, operation_id=validated.operation_id
@@ -839,7 +989,7 @@ async def _toctou_reverify_pass_b(
 
     drift_fields: list[str] = []
 
-    # 5 operation 字段对账
+    # operation fence 全字段对账（**禁止**用 LIVE 值回填 archive_*；反向检查）
     if str(op_row["state"]) != validated.archive_operation_state:
         drift_fields.append("operation.state")
     if int(op_row["revision"]) != validated.archive_revision:
@@ -857,7 +1007,7 @@ async def _toctou_reverify_pass_b(
     if str(op_row.get("conversation_id") or "") != str(validated.conversation_id):
         drift_fields.append("operation.conversation_id")
 
-    # 6 checkpoint 六元组对账
+    # checkpoint 六元组对账
     cp_row = await _load_checkpoint_row(
         session,
         tenant_id=tenant_id,
@@ -872,8 +1022,18 @@ async def _toctou_reverify_pass_b(
                 "owner_key": validated.archive_owner_key,
             },
         )
-    if str(cp_row["state"]) != validated.archive_checkpoint_state:
+
+    # checkpoint.state：唯一例外 = archive ∈ {pending, erasing} + LIVE = acked
+    # （单向终态推进）；其余 state mismatch 均 drift。
+    live_cp_state = str(cp_row["state"])
+    is_terminal_single_direction = (
+        allow_terminal_single_direction
+        and validated.archive_checkpoint_state in ("erasing", "pending")
+        and live_cp_state == "acked"
+    )
+    if live_cp_state != validated.archive_checkpoint_state and not is_terminal_single_direction:
         drift_fields.append("checkpoint.state")
+
     if str(cp_row["owner_key"]) != validated.archive_owner_key:
         drift_fields.append("checkpoint.owner_key")
     if int(cp_row["owner_version"]) != validated.archive_owner_version:
@@ -882,10 +1042,27 @@ async def _toctou_reverify_pass_b(
         drift_fields.append("checkpoint.capability_digest")
     if str(cp_row["id"]) != str(validated.checkpoint_id):
         drift_fields.append("checkpoint.id")
-    # ack_digest 严格相等（**禁止**取任意 LIVE row 冒充前先严格相等）
+
+    # ack_digest：LIVE acked → live ack_digest **必须**为 lowercase 64-hex。
     live_ack = cp_row.get("ack_digest")
     archive_ack = validated.archive_ack_digest
-    if (archive_ack or live_ack) and archive_ack != live_ack:
+    if live_cp_state == "acked":
+        if live_ack is None:
+            drift_fields.append("checkpoint.live_ack_digest_missing")
+        else:
+            try:
+                _assert_64hex_lowercase(live_ack, field="checkpoint.live_ack_digest")
+            except RestoreReplayError as exc:
+                drift_fields.append(f"live.{exc.code}")
+    # 严格相等比较：**仅当** archive 端也是 acked（archive_ack 非 None）时比较。
+    # 单向终态推进（archive erasing/pending → LIVE acked）时 archive_ack=None，
+    # LIVE ack_digest 是 participant 新写的合法值，**不**与 archive 比较。
+    if (
+        validated.archive_checkpoint_state == "acked"
+        and archive_ack is not None
+        and live_ack is not None
+        and archive_ack != live_ack
+    ):
         drift_fields.append("checkpoint.ack_digest_archive_live_mismatch")
 
     if drift_fields:
@@ -1026,7 +1203,7 @@ async def replay_archive_segment_for_tenant(
     # 不再使用全局 archive_external_record 变量（**禁止**任意 LIVE row 冒充）。
 
     # -------- pass A：DB tx 外（async session.begin() 之外）；任何 drift 抛错
-    validated_facts: list[tuple[OwnerFacts, ValidatedFact, Mapping[str, Any] | None]] = []
+    validated_facts: list[tuple[OwnerFacts, ValidatedFact]] = []
     try:
         async with session_factory() as session, session.begin():
             for fact in facts.values():
@@ -1037,22 +1214,6 @@ async def replay_archive_segment_for_tenant(
                 archive_cp_record = _read_checkpoint_archive_facts(
                     manifest, operation_id=op_id, owner_key=fact.owner_key,
                 )
-                # per-fact external ref 绑定（按 conversation_id + owner_key）
-                if fact.owner_key == "external.payload.v1" and archive_op_record:
-                    archive_conversation_id = str(
-                        archive_op_record.get("conversation_id")
-                    )
-                    fact_ext = None
-                    for r in manifest.records.get(RECORD_KIND_EXTERNAL_REF, ()):
-                        if (
-                            str(r.fields.get("owner_key")) == "external.payload.v1"
-                            and str(r.fields.get("conversation_id")) == archive_conversation_id
-                        ):
-                            fact_ext = r.fields
-                            break
-                    archive_external_for_fact = fact_ext
-                else:
-                    archive_external_for_fact = None
                 vf = await _validate_pass_a(
                     session,
                     tenant_id=tenant_id,
@@ -1060,7 +1221,7 @@ async def replay_archive_segment_for_tenant(
                     archive_op_record=archive_op_record,
                     archive_cp_record=archive_cp_record,
                 )
-                validated_facts.append((fact, vf, archive_external_for_fact))
+                validated_facts.append((fact, vf))
     except RestoreReplayError as exc:
         # pass A 失败 → 报告 pass_a_drift；caller 不需 catch，异常已冒泡到本函数
         return RestoreReplayReport(
@@ -1085,24 +1246,30 @@ async def replay_archive_segment_for_tenant(
             # 第一条 DB 语句必须是 exclusive advisory xact lock
             await acquire_maintenance_exclusive_lock(session)
 
-            # 真实幂等：若 LIVE state 已是 terminal（acked），整次 replay 不调
-            # participant（archive_non_terminal + live_acked 是单向终态转换，凭
-            # 完整 terminal evidence 返 NO_REPEAT）。其他情况按 archive state 路由。
-            for _fact, validated, archive_external_for_fact in validated_facts:
-                # TOCTOU 重读 LIVE state
-                # （**任一失败必 raise 退出事务**——不 `continue`）
-                # **特殊 NO_REPEAT 例外**：archive=erasing/pending + LIVE=acked 是
-                # 单向终态转换；**禁止**无证据的 LIVE/archive drift 走 NO_REPEAT。
+            for _fact, validated in validated_facts:
+                # TOCTOU 重读 LIVE state（**任一失败必 raise 退出事务**——不 `continue`）。
+                # **所有路径**（含 NO_REPEAT）都经同一 ``_toctou_reverify_pass_b`` 完整重验
+                # ValidatedFact 全字段——**禁止**只读 checkpoint.state 后直接 continue。
                 live_cp_state_pre = await _read_checkpoint_state_live(
                     session,
                     tenant_id=tenant_id,
                     operation_id=validated.operation_id,
                     owner_key=validated.archive_owner_key,
                 )
-                if (
+                # 唯一例外：archive=erasing/pending + LIVE=acked 是单向终态推进 →
+                # NO_REPEAT；但**仍须**完整 reverify 其余字段（仅豁免 checkpoint.state
+                # 的合法单向变化，其余字段任何 drift 均 fail closed）。
+                _is_no_repeat_candidate = (
                     validated.archive_checkpoint_state in ("erasing", "pending")
                     and live_cp_state_pre == "acked"
-                ):
+                )
+                await _toctou_reverify_pass_b(
+                    session,
+                    tenant_id=tenant_id,
+                    validated=validated,
+                    allow_terminal_single_direction=_is_no_repeat_candidate,
+                )
+                if _is_no_repeat_candidate:
                     # 完整 terminal evidence 单向终态推进 → NO_REPEAT（**不**调 participant）
                     verdicts.append(
                         ReplayOwnerVerdict(
@@ -1113,11 +1280,6 @@ async def replay_archive_segment_for_tenant(
                         )
                     )
                     continue
-
-                # 其他情况 → 严格 TOCTOU 逐字段对账（11 字段）
-                await _toctou_reverify_pass_b(
-                    session, tenant_id=tenant_id, validated=validated,
-                )
 
                 # 6×5 全局矩阵先（**禁止**按 owner 跳过）——scheduled/cancelled/
                 # failed/acked 等 terminal / 特殊状态**必须**按矩阵返回
@@ -1154,37 +1316,26 @@ async def replay_archive_segment_for_tenant(
                             checkpoint_state=validated.archive_checkpoint_state,
                         )
                         if nl_action == ACTION_EXTERNAL_VERIFY_ONLY:
-                            # 必须按 archive operation.conversation_id + owner_key 精确绑定
-                            # external_ref record；多 record / 缺 / 错绑 → 阻断
-                            verified = await _verify_external_receipt(
+                            # 必须按 archive operation.conversation_id + owner_key 经统一
+                            # binder 精确绑定 external_ref record；0 条 / ≥2 条 / 错 conversation/
+                            # owner / receipt mismatch / final-scan residual → 具名
+                            # EXTERNAL_VERIFICATION_FAILED（函数内部 raise，失败即退出事务）
+                            await _verify_external_receipt(
                                 session,
                                 tenant_id=tenant_id,
                                 validated=validated,
-                                archive_external_record=archive_external_for_fact,
+                                manifest=manifest,
                             )
-                            if verified:
-                                external_verified_count += 1
-                                verdicts.append(
-                                    ReplayOwnerVerdict(
-                                        operation_id=str(validated.operation_id),
-                                        owner_key=validated.archive_owner_key,
-                                        action=ACTION_EXTERNAL_VERIFIED,
-                                        reason_code="external_receipt_match_and_erased",
-                                    )
+                            external_verified_count += 1
+                            verdicts.append(
+                                ReplayOwnerVerdict(
+                                    operation_id=str(validated.operation_id),
+                                    owner_key=validated.archive_owner_key,
+                                    action=ACTION_EXTERNAL_VERIFIED,
+                                    reason_code="external_receipt_match_and_erased",
                                 )
-                            else:
-                                # **verification failure 必 raise 退出事务**
-                                raise RestoreReplayError(
-                                    "EXTERNAL_VERIFICATION_FAILED",
-                                    detail={
-                                        "operation_id": str(validated.operation_id),
-                                        "owner_key": validated.archive_owner_key,
-                                        "archive_op_conversation_id": str(
-                                            validated.conversation_id
-                                        ),
-                                        "reason": "external_receipt_or_state_mismatch",
-                                    },
-                                )
+                            )
+                            continue
                         else:
                             # runtime + completed → RUNTIME_BINDING_UNPROVABLE
                             verdicts.append(
@@ -1295,7 +1446,20 @@ async def replay_archive_segment_for_tenant(
                 owners_total=len(facts),
                 external_verification_failed=1,
                 verdict=tuple(verdicts),
-                error=f"external_verification_failed:{exc.detail.get('owner_key', '?')}",
+                error=(
+                    f"external_verification_failed:{exc.detail.get('owner_key', '?')}"
+                    f":{exc.detail.get('reason', '?')}"
+                ),
+            )
+        if exc.code.startswith("TOCTOU_DRIFT"):
+            # pass B exclusive tx 内的 TOCTOU drift → toctou_drift **真实递增**（不恒 0）
+            return RestoreReplayReport(
+                operations_total=operations_total,
+                owners_total=len(facts),
+                owners_fact_drift=1,
+                toctou_drift=1,
+                verdict=tuple(verdicts),
+                error=f"{exc.code}:{exc.detail}",
             )
         return RestoreReplayReport(
             operations_total=operations_total,

@@ -28,7 +28,10 @@ M-D2-11：gate 忽略 replay report（恢复默认 0 / False）
 M-D2-12：archive/live ack_digest 严格相等删除
 M-D2-14：partial commit —— participant 失败 catch-and-continue（吞掉异常继续提交）
 M-D2-15：archive-fact 缺失 fallback —— _require_field 缺失字段默认 0（bypass 严格缺失校验）
-M-D2-17：verified-without-receipt —— 跳过 _verify_external_receipt（receipt/final-scan bypass）
+M-D2-17：verified-without-receipt —— 跳过整个 _verify_external_receipt（receipt+final-scan bypass）
+M-D2-18：NO_REPEAT 绕过完整 reverify（NO_REPEAT 候选跳过 _toctou_reverify_pass_b）
+M-D2-19：duplicate binder bypass —— 删除 EXTERNAL_ARCHIVE_DUPLICATE 检查（取第一条）
+M-D2-20：external final-scan bypass —— 删除 scan_total residual 检查（始终视为 clean）
 
 每条 mutation 真实 subprocess pytest 驱动；mutation 存在 exit=1 + 恢复后
 exit=0 + byte backup SHA-256 byte-identical = KILLED 真红（behavioral）。
@@ -63,7 +66,10 @@ TEST_IDS: dict[str, str] = {
     "M-D2-12": "tests/composition/test_s6i3_d_restore_replay.py::test_r3_ack_digest_archive_live_mismatch",
     "M-D2-14": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_two_owner_one_fails_rolls_back_all",
     "M-D2-15": "tests/composition/test_s6i3_d_restore_replay.py::test_r5_archive_facts_missing_field",
-    "M-D2-17": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_external_completed_no_runtime_reason",
+    "M-D2-17": "tests/composition/test_s6i3_d_restore_replay.py::test_r6_external_receipt_mismatch",
+    "M-D2-18": "tests/composition/test_s6i3_d_restore_replay.py::test_r6_toctou_drift_under_no_repeat_exception",
+    "M-D2-19": "tests/composition/test_s6i3_d_restore_replay.py::test_r5_external_record_duplicate_in_archive",
+    "M-D2-20": "tests/composition/test_s6i3_d_restore_replay.py::test_r6_external_final_scan_residual",
 }
 
 # (mutation_name, file, old_anchor, new_anchor)
@@ -132,15 +138,13 @@ MUTATIONS: list[tuple[str, Path, str, str]] = [
     (
         "M-D2-15",
         RESTORE_REPLAY,
-        "    def _require_field(record: Mapping[str, Any], key: str, code: str) -> Any:\n"
-        "        if key not in record or record[key] is None:\n"
-        "            raise RestoreReplayError(\n"
-        "                code,\n"
-        "                detail={\"missing_field\": key, \"operation_id\": fact.operation_id},\n"
-        "            )\n"
-        "        return record[key]\n",
-        "    def _require_field(record: Mapping[str, Any], key: str, code: str) -> Any:\n"
-        "        return record.get(key, 0)  # M-D2-15 mutation: 缺失字段默认 0（archive-fact fallback bypass）\n",
+        "    if key not in record or record[key] is None:\n"
+        "        raise RestoreReplayError(\n"
+        "            missing_code,\n"
+        "            detail={\"missing_field\": key},\n"
+        "        )\n"
+        "    return record[key]\n",
+        "    return record.get(key, 0)  # M-D2-15 mutation: 缺失字段默认 0（archive-fact fallback bypass）\n",
     ),
     # M-D2-14: partial commit —— participant 失败 catch-and-continue（吞掉异常继续提交）
     (
@@ -161,17 +165,68 @@ MUTATIONS: list[tuple[str, Path, str, str]] = [
     ),
     # M-D2-16: external record 错绑 —— 退回取任意 LIVE row 冒充 archive 证据
     # 跳过此 mutation（已通过 test_r3_external_record_wrong_binding 真实 PG 负例覆盖）
-    # M-D2-17: verified-without-receipt —— 跳过 _verify_external_receipt（receipt/final-scan bypass，直接 verified）
+    # M-D2-17: verified-without-receipt —— 跳过整个 _verify_external_receipt（receipt+final-scan bypass）
+    # 绑定 receipt_mismatch：跳过校验 → receipt 漂移不被发现 → report.error=None → 测试红
     (
         "M-D2-17",
         RESTORE_REPLAY,
-        "                            verified = await _verify_external_receipt(\n"
+        "                            await _verify_external_receipt(\n"
         "                                session,\n"
         "                                tenant_id=tenant_id,\n"
         "                                validated=validated,\n"
-        "                                archive_external_record=archive_external_for_fact,\n"
+        "                                manifest=manifest,\n"
         "                            )\n",
-        "                            verified = True  # M-D2-17 mutation: verified-without-receipt（跳过 receipt/final-scan）\n",
+        "                            pass  # M-D2-17 mutation: verified-without-receipt（跳过 receipt+final-scan 校验）\n",
+    ),
+    # M-D2-18: NO_REPEAT 绕过完整 reverify —— NO_REPEAT 候选跳过 _toctou_reverify_pass_b
+    # 绑定 toctou_drift_under_no_repeat_exception：跳过 reverify → operation.revision drift
+    # 不被发现 → report.error=None → 测试红
+    (
+        "M-D2-18",
+        RESTORE_REPLAY,
+        "                await _toctou_reverify_pass_b(\n"
+        "                    session,\n"
+        "                    tenant_id=tenant_id,\n"
+        "                    validated=validated,\n"
+        "                    allow_terminal_single_direction=_is_no_repeat_candidate,\n"
+        "                )\n",
+        "                if not _is_no_repeat_candidate:  # M-D2-18 mutation: NO_REPEAT 绕过完整 reverify\n"
+        "                    await _toctou_reverify_pass_b(\n"
+        "                        session,\n"
+        "                        tenant_id=tenant_id,\n"
+        "                        validated=validated,\n"
+        "                        allow_terminal_single_direction=_is_no_repeat_candidate,\n"
+        "                    )\n",
+    ),
+    # M-D2-19: duplicate binder bypass —— 删除 EXTERNAL_ARCHIVE_DUPLICATE 检查（取第一条）
+    # 绑定 duplicate_in_archive：删除重复检测 → 恰好 1 条假象 → verified → 测试红
+    (
+        "M-D2-19",
+        RESTORE_REPLAY,
+        "    if len(matches) > 1:\n"
+        "        raise RestoreReplayError(\n"
+        "            \"EXTERNAL_ARCHIVE_DUPLICATE\",\n"
+        "            detail={\n"
+        "                \"conversation_id\": cid_str,\n"
+        "                \"owner_key\": owner_key,\n"
+        "                \"count\": len(matches),\n"
+        "                \"reason\": \"duplicate_archive_external_ref\",\n"
+        "            },\n"
+        "        )\n",
+        "    # M-D2-19 mutation: duplicate binder bypass（删除重复检测，取第一条）\n",
+    ),
+    # M-D2-20: external final-scan bypass —— 删除 scan_total residual 检查（始终视为 clean）
+    # 绑定 final_scan_residual：删除 residual 检查 → registered 残留不被发现 → 测试红
+    (
+        "M-D2-20",
+        RESTORE_REPLAY,
+        "    scan_result = await scan_fn(tenant_id=tenant_id, conversation_id=cid)\n"
+        "    scan_total = int(getattr(scan_result, \"total\", 0))\n"
+        "    if scan_total != 0:\n"
+        "        raise _fail(f\"external_final_scan_residual:{scan_total}\")\n",
+        "    scan_result = await scan_fn(tenant_id=tenant_id, conversation_id=cid)\n"
+        "    scan_total = int(getattr(scan_result, \"total\", 0))\n"
+        "    # M-D2-20 mutation: external final-scan bypass（不校验 residual）\n",
     ),
     # M-D2-18: 幂等路径 bypass —— 删 NO_REPEAT 检查（archive non-terminal + live acked 仍调 participant）
     # 跳过此 mutation（已通过 test_r1_idempotent_replay_db_acked_drift 真实 PG 负例覆盖）
@@ -289,7 +344,11 @@ def apply_mutation(file: Path, old: str, new: str, name: str) -> None:
     src = file.read_text()
     assert old in src, f"{name}: anchor not found in {file}\n  old[:80]={old[:80]!r}"
     backup_file(file)
-    file.write_text(src.replace(old, new, 1))
+    mutated = src.replace(old, new, 1)
+    # 预校验：mutant **必须是可运行 Python**——syntax-invalid 不计入 KILLED，强制重做。
+    # 在写盘 + 跑 pytest 前 compile() 预检，避免 SyntaxError 冒充真红。
+    compile(mutated, str(file), "exec")
+    file.write_text(mutated)
 
 
 def run_pytest(test_id: str) -> subprocess.CompletedProcess:
