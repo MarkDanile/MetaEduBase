@@ -33,7 +33,6 @@ from sqlalchemy.pool import NullPool
 
 from app.composition.restore_replay import (
     ACTION_EXTERNAL_VERIFICATION_FAILED,
-    ACTION_EXTERNAL_VERIFIED,
     ACTION_FACT_DRIFT_FAIL_CLOSED,
     ACTION_LOCAL_CLEARED,
     ACTION_NO_REPEAT,
@@ -943,9 +942,9 @@ async def test_r2_fact_drift_blocks_pass_b_entry(s6i3_d_factory):
 
 
 async def test_r2_external_completed_no_runtime_reason(s6i3_d_factory):
-    """external.payload.v1 + completed → EXTERNAL_VERIFIED 或 EXTERNAL_VERIFICATION_FAILED。
-
-    严格不调 adapter；仅基于 archive receipt + LIVE final scan 判别。
+    """external.payload.v1 + completed → EXTERNAL_VERIFICATION_FAILED（**禁止**取
+    任意 LIVE row 冒充 archive 证据——必须 archive 行按 operation.conversation_id 精确
+    匹配。本测试：archive 无 external_ref 行绑定 operation → fail closed）。
     """
     factory = s6i3_d_factory
     async with factory() as s, s.begin():
@@ -954,30 +953,16 @@ async def test_r2_external_completed_no_runtime_reason(s6i3_d_factory):
             s, tid, op_state="completed", cp_state="acked",
             owner_key="external.payload.v1",
         )
-        # 种一行 external_object_refs（erase_state='erased' + receipt_digest 64-hex）
-        await s.execute(
-            text(
-                "INSERT INTO metaedu.agent_external_object_refs "
-                "(id, tenant_id, owner_key, ref_scheme, ref_value, "
-                "source_table, source_row_id, erase_state, receipt_digest) "
-                "VALUES (gen_random_uuid(), :tid, 'external.payload.v1', "
-                "'db_local', 'leaked', 'agent_workspace_outbox', gen_random_uuid(), "
-                "'erased', :d)"
-            ),
-            {"tid": tid, "d": "a" * 64},
-        )
     sink, _ = await _publish_segment_for(factory, tid=tid)
 
     report = await replay_archive_segment_for_tenant(
         factory, sink=sink, tenant_id=tid,
     )
-    verdict = next(v for v in report.verdict if v.owner_key == "external.payload.v1")
-    assert verdict.action in (
-        ACTION_EXTERNAL_VERIFIED,
-        ACTION_EXTERNAL_VERIFICATION_FAILED,
-    )
-    assert verdict.reason_code != "RUNTIME_BINDING_EVIDENCE_UNPROVABLE"
-    assert report.runtime_binding_evidence_unprovable == 0
+    # 无 archive external_ref → fail closed → report.error 非空
+    assert report.error is not None
+    assert "external_verification_failed" in report.error
+    assert report.external_verification_failed == 1
+    assert report.owners_local_cleared == 0
 
 
 async def test_r2_runtime_completed_returns_unprovable(s6i3_d_factory):
@@ -1123,7 +1108,11 @@ def test_replay_signature_no_expected_marker():
 
 async def test_r3_non_local_6x5_matrix_external(s6i3_d_factory):
     """external.payload.v1：完整 6×5 30 scenarios 路由判别（按矩阵返回 NON_LOCAL_BLOCKED /
-    EXTERNAL_VERIFY_ONLY / ZERO_WRITE / SKIP / REPLAY_SKIP_ZERO_WRITE，不得统一降级）。"""
+    EXTERNAL_VERIFIED / ZERO_WRITE / SKIP / REPLAY_SKIP_ZERO_WRITE，不得统一降级）。
+
+    completed scenarios → external_ref 无 archive 行 → EXTERNAL_VERIFICATION_FAILED
+    （report.error 非空，**无** verdict 落入 list）。
+    """
     factory = s6i3_d_factory
     for op_state, cp_state, expected in _non_local_matrix_iter(
         "external.payload.v1"
@@ -1139,14 +1128,22 @@ async def test_r3_non_local_6x5_matrix_external(s6i3_d_factory):
         report = await replay_archive_segment_for_tenant(
             factory, sink=sink, tenant_id=tid,
         )
-        verdict = next(
-            v for v in report.verdict
-            if v.owner_key == "external.payload.v1"
-        )
-        assert verdict.action == expected, (
-            f"external.payload.v1 op={op_state} cp={cp_state}: "
-            f"expected {expected}, got {verdict.action}"
-        )
+        if expected == ACTION_EXTERNAL_VERIFICATION_FAILED:
+            # 强制要求 archive external_ref 行按 operation.conversation_id + owner_key
+            # 精确绑定；现有测试 setup 无 external_ref 行 → fail closed
+            assert report.error is not None
+            assert "external_verification_failed" in report.error.lower()
+            assert report.external_verification_failed == 1
+            assert report.owners_local_cleared == 0
+        else:
+            verdict = next(
+                v for v in report.verdict
+                if v.owner_key == "external.payload.v1"
+            )
+            assert verdict.action == expected, (
+                f"external.payload.v1 op={op_state} cp={cp_state}: "
+                f"expected {expected}, got {verdict.action}"
+            )
 
 
 async def test_r3_non_local_6x5_matrix_runtime(s6i3_d_factory):

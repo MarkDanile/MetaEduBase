@@ -387,6 +387,25 @@ def _read_checkpoint_archive_facts(
     return None
 
 
+async def _read_checkpoint_state_live(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    operation_id: uuid.UUID,
+    owner_key: str,
+) -> str | None:
+    """读 LIVE checkpoint state（用于真实幂等判断）。"""
+    row = await session.execute(
+        text(
+            "SELECT state FROM metaedu.agent_conversation_purge_owners "
+            "WHERE tenant_id = :tid AND purge_operation_id = :pid AND owner_key = :ok"
+        ),
+        {"tid": tenant_id, "pid": operation_id, "ok": owner_key},
+    )
+    m = row.mappings().first()
+    return str(m["state"]) if m is not None else None
+
+
 def _read_external_ref_archive_facts(
     manifest: Manifest, *, operation_id: str
 ) -> Mapping[str, Any] | None:
@@ -394,8 +413,6 @@ def _read_external_ref_archive_facts(
     er_records = manifest.records.get(RECORD_KIND_EXTERNAL_REF, ())
     for r in er_records:
         if str(r.fields.get("owner_key")) == "external.payload.v1":
-            # 与 operation_id 通过 source_row 关联；D1a codec 已 omit ref_value 故只能
-            # 校验 receipt_digest 一致性
             return r.fields
     return None
 
@@ -662,48 +679,53 @@ async def _verify_external_receipt(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
+    validated: ValidatedFact,
     archive_external_record: Mapping[str, Any] | None,
 ) -> bool:
-    """external.payload.v1 验证：archive.receipt_digest == live.receipt_digest
-    且 LIVE erase_state='erased'。
+    """external.payload.v1 验证：按 validated.archive_conversation_id + owner_key 精确绑定
+    archive external_ref record；archive.receipt_digest == live.receipt_digest 且 LIVE
+    erase_state='erased'。
+
+    **禁止**回退到任意 LIVE external row 冒充 archive 证据（必须 archive 行存在且
+    与 archive_external_record.id 精确匹配）。
 
     严格使用既有事实源（**不**发 adapter 请求；**不**发明新 digest 算法）。
     """
+    archive_conversation_id = str(validated.conversation_id)
+
     if archive_external_record is None:
-        # archive 无 external_ref 行（按 owner 聚合；D1a codec 全 owner 一行）→ 取 LIVE
-        row = await session.execute(
-            text(
-                "SELECT receipt_digest, erase_state "
-                "FROM metaedu.agent_external_object_refs "
-                "WHERE tenant_id = :tid AND owner_key = 'external.payload.v1' LIMIT 1"
-            ),
-            {"tid": tenant_id},
-        )
-        m = row.mappings().first()
-        # archive 行存在 + erase_state='erased' → 仅凭 LIVE final scan（已 erased）→ verified；
-        # 否则 verification failed
-        return m is not None and m["erase_state"] == "erased"
+        # archive 无 external_ref 行 → fail closed（**禁止**取任意 LIVE row 冒充）
+        return False
 
     # archive 有 external_ref 行 → 严格对比 receipt_digest
     archive_receipt = archive_external_record.get("receipt_digest")
+    if not isinstance(archive_receipt, str) or len(archive_receipt) != 64:
+        # archive external_ref 缺/格式错误 receipt → fail closed
+        return False
+    archive_eid = archive_external_record.get("id")
+    if archive_eid is None:
+        return False
+
+    # 必须按 archive operation.conversation_id + owner_key + archive_eid 精确绑定 LIVE 行
     row = await session.execute(
         text(
             "SELECT receipt_digest, erase_state "
             "FROM metaedu.agent_external_object_refs "
             "WHERE tenant_id = :tid AND owner_key = 'external.payload.v1' "
-            "AND id = :eid"
+            "AND conversation_id = :cid AND id = :eid"
         ),
         {
             "tid": tenant_id,
-            "eid": uuid.UUID(str(archive_external_record.get("id"))),
+            "cid": archive_conversation_id,
+            "eid": uuid.UUID(str(archive_eid)),
         },
     )
     m = row.mappings().first()
     if m is None:
+        # archive 行存在但 LIVE 找不到完全匹配 record → 错绑 → fail closed
         return False
     return (
         m["erase_state"] == "erased"
-        and archive_receipt is not None
         and m["receipt_digest"] == archive_receipt
     )
 
@@ -900,14 +922,11 @@ async def replay_archive_segment_for_tenant(
     pass_a_drift_count = 0
     toctou_drift_count = 0
     participant_failure_count = 0
-    archive_external_record = _read_external_ref_archive_facts(manifest, operation_id="")
-    # 取任意 external_ref（external.payload.v1 在 archive 中聚合）
-    er_records = manifest.records.get(RECORD_KIND_EXTERNAL_REF, ())
-    if er_records:
-        archive_external_record = er_records[0].fields
+    # archive external_ref 严格 per-fact 绑定（在 pass A 段按 conversation_id 精确匹配）；
+    # 不再使用全局 archive_external_record 变量（**禁止**任意 LIVE row 冒充）。
 
     # -------- pass A：DB tx 外（async session.begin() 之外）；任何 drift 抛错
-    validated_facts: list[tuple[OwnerFacts, ValidatedFact]] = []
+    validated_facts: list[tuple[OwnerFacts, ValidatedFact, Mapping[str, Any] | None]] = []
     try:
         async with session_factory() as session, session.begin():
             for fact in facts.values():
@@ -918,6 +937,22 @@ async def replay_archive_segment_for_tenant(
                 archive_cp_record = _read_checkpoint_archive_facts(
                     manifest, operation_id=op_id, owner_key=fact.owner_key,
                 )
+                # per-fact external ref 绑定（按 conversation_id + owner_key）
+                if fact.owner_key == "external.payload.v1" and archive_op_record:
+                    archive_conversation_id = str(
+                        archive_op_record.get("conversation_id")
+                    )
+                    fact_ext = None
+                    for r in manifest.records.get(RECORD_KIND_EXTERNAL_REF, ()):
+                        if (
+                            str(r.fields.get("owner_key")) == "external.payload.v1"
+                            and str(r.fields.get("conversation_id")) == archive_conversation_id
+                        ):
+                            fact_ext = r.fields
+                            break
+                    archive_external_for_fact = fact_ext
+                else:
+                    archive_external_for_fact = None
                 vf = await _validate_pass_a(
                     session,
                     tenant_id=tenant_id,
@@ -925,7 +960,7 @@ async def replay_archive_segment_for_tenant(
                     archive_op_record=archive_op_record,
                     archive_cp_record=archive_cp_record,
                 )
-                validated_facts.append((fact, vf))
+                validated_facts.append((fact, vf, archive_external_for_fact))
     except RestoreReplayError as exc:
         # pass A 失败 → 报告 pass_a_drift；caller 不需 catch，异常已冒泡到本函数
         return RestoreReplayReport(
@@ -950,26 +985,41 @@ async def replay_archive_segment_for_tenant(
             # 第一条 DB 语句必须是 exclusive advisory xact lock
             await acquire_maintenance_exclusive_lock(session)
 
-            for _, validated in validated_facts:
-                # TOCTOU 重读 LIVE state
-                try:
-                    await _toctou_reverify_pass_b(
-                        session, tenant_id=tenant_id, validated=validated,
-                    )
-                except RestoreReplayError as exc:
-                    toctou_drift_count += 1
+            # 真实幂等：若 LIVE state 已是 terminal（acked），整次 replay 不调
+            # participant（archive_non_terminal + live_acked 是单向终态转换，凭
+            # 完整 terminal evidence 返 NO_REPEAT）。其他情况按 archive state 路由。
+            for _fact, validated, archive_external_for_fact in validated_facts:
+                # TOCTOU 重读 LIVE state（**任一失败必 raise 退出事务**——不 `continue`）
+                await _toctou_reverify_pass_b(
+                    session, tenant_id=tenant_id, validated=validated,
+                )
+                live_cp_state = await _read_checkpoint_state_live(
+                    session,
+                    tenant_id=tenant_id,
+                    operation_id=validated.operation_id,
+                    owner_key=validated.archive_owner_key,
+                )
+                # 真实幂等：archive 端为非 terminal（erasing/pending）且 LIVE 端为
+                # terminal（acked）→ 单向终态转换有完整 evidence → NO_REPEAT（**不**调
+                # participant）。其他情况按 archive state 路由（任何不带完整 evidence
+                # 的 drift 仍 fail closed）。
+                if (
+                    validated.archive_checkpoint_state
+                    in ("erasing", "pending")
+                    and live_cp_state == "acked"
+                ):
                     verdicts.append(
                         ReplayOwnerVerdict(
                             operation_id=str(validated.operation_id),
                             owner_key=validated.archive_owner_key,
-                            action=ACTION_FACT_DRIFT_FAIL_CLOSED,
-                            reason_code=exc.code,
+                            action=ACTION_NO_REPEAT,
+                            reason_code="live_already_acked_terminal_evidence",
                         )
                     )
                     continue
 
                 # 6×5 全局矩阵先（**禁止**按 owner 跳过）——scheduled/cancelled/
-                # failed/acked 等 terminal / 特殊状态**必须**按矩阵返回，不得降级
+                # failed/acked 等 terminal / 特殊状态**必须**按矩阵返回
                 global_action, global_reason = _route_global_matrix(
                     operation_state=validated.archive_operation_state,
                     checkpoint_state=validated.archive_checkpoint_state,
@@ -993,20 +1043,23 @@ async def replay_archive_segment_for_tenant(
                     )
                     continue
 
-                # completed + acked → verify-only（local owner 不调 participant；
-                # non-local owner → owner-specific 验证 receipt）
+                # completed + acked → verify-only（local owner 不调 participant）
                 if global_action == ACTION_VERIFY_ONLY:
                     if validated.archive_owner_key in NON_LOCAL_OWNERS:
+                        # non-local owner → 走 _route_non_local（runtime / external）
                         nl_action, nl_reason = _route_non_local(
                             owner_key=validated.archive_owner_key,
                             operation_state=validated.archive_operation_state,
                             checkpoint_state=validated.archive_checkpoint_state,
                         )
                         if nl_action == ACTION_EXTERNAL_VERIFY_ONLY:
+                            # 必须按 archive operation.conversation_id + owner_key 精确绑定
+                            # external_ref record；多 record / 缺 / 错绑 → 阻断
                             verified = await _verify_external_receipt(
                                 session,
                                 tenant_id=tenant_id,
-                                archive_external_record=archive_external_record,
+                                validated=validated,
+                                archive_external_record=archive_external_for_fact,
                             )
                             if verified:
                                 external_verified_count += 1
@@ -1019,14 +1072,17 @@ async def replay_archive_segment_for_tenant(
                                     )
                                 )
                             else:
-                                external_verification_failed_count += 1
-                                verdicts.append(
-                                    ReplayOwnerVerdict(
-                                        operation_id=str(validated.operation_id),
-                                        owner_key=validated.archive_owner_key,
-                                        action=ACTION_EXTERNAL_VERIFICATION_FAILED,
-                                        reason_code="external_receipt_or_state_mismatch",
-                                    )
+                                # **verification failure 必 raise 退出事务**
+                                raise RestoreReplayError(
+                                    "EXTERNAL_VERIFICATION_FAILED",
+                                    detail={
+                                        "operation_id": str(validated.operation_id),
+                                        "owner_key": validated.archive_owner_key,
+                                        "archive_op_conversation_id": str(
+                                            validated.conversation_id
+                                        ),
+                                        "reason": "external_receipt_or_state_mismatch",
+                                    },
                                 )
                         else:
                             # runtime + completed → RUNTIME_BINDING_UNPROVABLE
@@ -1070,7 +1126,7 @@ async def replay_archive_segment_for_tenant(
                         checkpoint_state=validated.archive_checkpoint_state,
                     )
                     if nl_action == ACTION_EXTERNAL_VERIFY_ONLY:
-                        # 不应到达这里（completed 已走 verify-only 分支）
+                        # completed → 已走 verify-only 分支
                         raise RestoreReplayError(
                             "ROUTING_BUG",
                             detail={"owner_key": validated.archive_owner_key},
@@ -1085,24 +1141,13 @@ async def replay_archive_segment_for_tenant(
                     )
                     continue
                 if validated.archive_owner_key in LOCAL_OWNERS:
-                    # 幂等：local owner 路径 — LIVE 已是 terminal（acked）→ NO_REPEAT
-                    if validated.archive_checkpoint_state == "acked":
-                        verdicts.append(
-                            ReplayOwnerVerdict(
-                                operation_id=str(validated.operation_id),
-                                owner_key=validated.archive_owner_key,
-                                action=ACTION_NO_REPEAT,
-                                reason_code="local_owner_already_acked",
-                            )
-                        )
-                        continue
                     # local owner 候选 → 调 participant 公共入口
+                    # **participant 失败必 raise 退出事务**（caller 不 catch）
                     try:
                         await _execute_local_owner_via_participant(
                             session, tenant_id=tenant_id, validated=validated,
                         )
                     except Exception as exc:
-                        # 参与者失败 → 整事务 rollback（caller 不 catch）
                         participant_failure_count += 1
                         raise RestoreReplayError(
                             "PARTICIPANT_FAILURE",
@@ -1142,6 +1187,14 @@ async def replay_archive_segment_for_tenant(
                 participant_failures=participant_failure_count,
                 verdict=tuple(verdicts),
                 error=f"participant_failure:{exc.detail.get('owner_key', '?')}",
+            )
+        if exc.code == "EXTERNAL_VERIFICATION_FAILED":
+            return RestoreReplayReport(
+                operations_total=operations_total,
+                owners_total=len(facts),
+                external_verification_failed=1,
+                verdict=tuple(verdicts),
+                error=f"external_verification_failed:{exc.detail.get('owner_key', '?')}",
             )
         return RestoreReplayReport(
             operations_total=operations_total,

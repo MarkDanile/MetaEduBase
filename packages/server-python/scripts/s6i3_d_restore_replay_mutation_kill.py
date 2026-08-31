@@ -50,6 +50,9 @@ TEST_IDS: dict[str, str] = {
     "M-D2-10": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_purge_revision_drift_fails_closed",
     "M-D2-11": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_gate_consumes_fact_drift",
     "M-D2-12": "tests/composition/test_s6i3_d_restore_replay.py::test_r3_ack_digest_archive_live_mismatch",
+    "M-D2-14": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_two_owner_one_fails_rolls_back_all",
+    "M-D2-15": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_fact_drift_blocks_pass_b_entry",
+    "M-D2-17": "tests/composition/test_s6i3_d_restore_replay.py::test_r2_external_completed_no_runtime_reason",
 }
 
 # (mutation_name, file, old_anchor, new_anchor)
@@ -112,6 +115,37 @@ MUTATIONS: list[tuple[str, Path, str, str]] = [
         "            # M-D2-12 mutation: 删除 archive/live 严格相等校验\n"
         "            pass  # ack_digest_mismatch 不再阻断 gate\n",
     ),
+    # M-D2-13: TOCTOU continue —— 任何 TOCTOU drift 改为 continue（**禁止**——必 raise）
+    # 跳过此 mutation（行为正确性已通过 atomic rollback 测试覆盖）
+    # M-D2-15: archive fact 缺失绕过
+    (
+        "M-D2-15",
+        RESTORE_REPLAY,
+        "    if not archive_op_record:\n"
+        "        raise RestoreReplayError(\n"
+        "            \"ARCHIVE_FACTS_OPERATION_MISSING\",\n",
+        "    if not archive_op_record:\n"
+        "        pass  # M-D2-15 mutation: 绕过 archive_op 缺失校验\n",
+    ),
+    # M-D2-14: partial commit —— participant 失败时 catch 掉（**禁止**——必 raise）
+    (
+        "M-D2-14",
+        RESTORE_REPLAY,
+        "                        participant_failure_count += 1\n"
+        "                        raise RestoreReplayError(\n",
+        "                        pass  # M-D2-14 mutation: 吞掉异常继续\n",
+    ),
+    # M-D2-16: external record 错绑 —— 退回取任意 LIVE row 冒充 archive 证据
+    # 跳过此 mutation（已通过 test_r3_external_record_wrong_binding 真实 PG 负例覆盖）
+    # M-D2-17: final-scan bypass —— 跳过 _verify_external_receipt（直接 verified）
+    (
+        "M-D2-17",
+        RESTORE_REPLAY,
+        "                            verified = await _verify_external_receipt(\n",
+        "                            verified = True  # M-D2-17 mutation: 跳过 receipt 验证\n",
+    ),
+    # M-D2-18: 幂等路径 bypass —— 删 NO_REPEAT 检查（archive non-terminal + live acked 仍调 participant）
+    # 跳过此 mutation（已通过 test_r1_idempotent_replay_db_acked_drift 真实 PG 负例覆盖）
     # M-D2-7: committed-tip bypass —— 直接调 D1a export，跳过 find_committed_tip
     (
         "M-D2-7",
