@@ -74,7 +74,7 @@ import uuid
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -103,6 +103,8 @@ from app.composition.s6i3_ledger_snapshot import (
 
 ACTION_LOCAL_CLEARED = "local_cleared"
 ACTION_CANDIDATE_WHEN_LOCAL = "candidate_when_local"  # reserved
+# local owner participant 返回 blocked=True（真实 outcome，非异常）→ 保留不清除
+ACTION_BLOCKED_KEPT = "blocked_kept"
 
 # non-local owner（external / runtime）实际执行结果
 ACTION_NON_LOCAL_BLOCKED = "non_local_blocked"  # 阻断，runbook 人工
@@ -244,6 +246,7 @@ class RestoreReplayReport:
     operations_total: int = 0
     owners_total: int = 0
     owners_local_cleared: int = 0
+    owners_blocked_kept: int = 0  # local owner participant blocked=True（保留不清除）
     owners_non_local_blocked: int = 0
     owners_verify_only: int = 0
     owners_skipped: int = 0
@@ -268,6 +271,8 @@ class RestoreReplayReport:
         if self.toctou_drift > 0:
             return True
         if self.owners_fact_drift > 0:
+            return True
+        if self.owners_blocked_kept > 0:
             return True
         if self.runtime_binding_evidence_unprovable > 0:
             return True
@@ -405,15 +410,36 @@ def _require_str(
 def _require_canonical_uuid(
     record: Mapping[str, Any], key: str, *, missing_code: str, field: str
 ) -> uuid.UUID:
-    """canonical UUID（解析失败 → ``ARCHIVE_FACTS_TYPE_INVALID``；**不**泄漏 ValueError）。"""
+    """canonical UUID（**严格**：raw 必须本就是 ``str`` 且 ``str(uuid.UUID(raw)) == raw``）。
+
+    逐一 fail closed（具名 ``ARCHIVE_FACTS_TYPE_INVALID``，**不**泄漏 ValueError）：
+    - 非 ``str``（含 ``uuid.UUID`` 对象 / bytes / int）→ 拒绝（**禁止** ``str()`` 隐式转换）；
+    - 非法字符串（``uuid.UUID`` 解析失败）→ 拒绝；
+    - 非 canonical 形态（大写 / 无连字符 / 带花括号等——``str(uuid.UUID(raw)) != raw``）→ 拒绝。
+    """
     raw = _require_field(record, key, missing_code=missing_code)
+    if not isinstance(raw, str):
+        raise RestoreReplayError(
+            "ARCHIVE_FACTS_TYPE_INVALID",
+            detail={"field": field, "expected_type": "canonical_uuid_str"},
+        )
     try:
-        return uuid.UUID(str(raw))
+        parsed = uuid.UUID(raw)
     except (ValueError, TypeError, AttributeError):
         raise RestoreReplayError(
             "ARCHIVE_FACTS_TYPE_INVALID",
-            detail={"field": field, "expected_type": "uuid"},
+            detail={"field": field, "expected_type": "canonical_uuid_str"},
         ) from None
+    if str(parsed) != raw:
+        raise RestoreReplayError(
+            "ARCHIVE_FACTS_TYPE_INVALID",
+            detail={
+                "field": field,
+                "expected_type": "canonical_uuid_str",
+                "reason": "not_lowercase_hyphenated_canonical",
+            },
+        )
+    return parsed
 
 
 def _require_64hex_lower(
@@ -475,25 +501,6 @@ def _read_checkpoint_archive_facts(
     return None
 
 
-async def _read_checkpoint_state_live(
-    session: AsyncSession,
-    *,
-    tenant_id: uuid.UUID,
-    operation_id: uuid.UUID,
-    owner_key: str,
-) -> str | None:
-    """读 LIVE checkpoint state（用于真实幂等判断）。"""
-    row = await session.execute(
-        text(
-            "SELECT state FROM metaedu.agent_conversation_purge_owners "
-            "WHERE tenant_id = :tid AND purge_operation_id = :pid AND owner_key = :ok"
-        ),
-        {"tid": tenant_id, "pid": operation_id, "ok": owner_key},
-    )
-    m = row.mappings().first()
-    return str(m["state"]) if m is not None else None
-
-
 def _bind_archive_external_ref(
     manifest: Manifest,
     *,
@@ -515,15 +522,18 @@ def _bind_archive_external_ref(
     matches: list[Mapping[str, Any]] = []
     for r in er_records:
         rk_raw = r.fields.get("owner_key")
-        rc_raw = r.fields.get("conversation_id")
-        # owner_key / conversation_id 必须可解析后精确匹配（不匹配不计入）
-        if not isinstance(rk_raw, str) or not isinstance(rc_raw, str):
+        # 非本 owner → 非候选，跳过（不参与绑定）。
+        if rk_raw != owner_key:
             continue
-        try:
-            rc = str(uuid.UUID(rc_raw))
-        except (ValueError, TypeError, AttributeError):
-            continue
-        if rk_raw == owner_key and rc == cid_str:
+        # 本 owner 的候选 → conversation_id 必须严格 canonical UUID（malformed 候选
+        # **禁止**静默跳过冒充"无绑定"/"单条"——fail closed 为 ARCHIVE_FACTS_TYPE_INVALID）。
+        rc = _require_canonical_uuid(
+            r.fields,
+            "conversation_id",
+            missing_code="ARCHIVE_FACTS_FIELD_MISSING",
+            field="external_ref.conversation_id",
+        )
+        if str(rc) == cid_str:
             matches.append(r.fields)
 
     if not matches:
@@ -944,7 +954,11 @@ async def _verify_external_receipt(
     if scan_fn is None:
         raise _fail("external_scan_provider_missing")
     scan_result = await scan_fn(tenant_id=tenant_id, conversation_id=cid)
-    scan_total = int(getattr(scan_result, "total", 0))
+    # scan result 必须严格携带非负 int ``total``——缺失 / 类型错误（含 bool）/ 负数
+    # 一律 fail closed（**禁止** ``getattr(..., 0)`` / ``int()`` 默认化冒充 clean）。
+    scan_total = getattr(scan_result, "total", None)
+    if not isinstance(scan_total, int) or isinstance(scan_total, bool) or scan_total < 0:
+        raise _fail("external_scan_total_invalid")
     if scan_total != 0:
         raise _fail(f"external_final_scan_residual:{scan_total}")
 
@@ -961,8 +975,7 @@ async def _toctou_reverify_pass_b(
     *,
     tenant_id: uuid.UUID,
     validated: ValidatedFact,
-    allow_terminal_single_direction: bool = False,
-) -> None:
+) -> bool:
     """pass B：在 exclusive tx 内逐字段重读 LIVE state + 对比 archive facts（TOCTOU 防护）。
 
     **所有**路径（含 NO_REPEAT）都必须调用本函数——**禁止**只读 ``checkpoint.state``
@@ -972,11 +985,19 @@ async def _toctou_reverify_pass_b(
     定位的错误码/字段名。LIVE ≠ archive → 抛 ``RestoreReplayError("TOCTOU_DRIFT_*")``
     → caller 不 catch → 整事务 rollback。
 
-    ``allow_terminal_single_direction=True``（唯一例外，仅 caller 在
-    ``archive_checkpoint_state ∈ {pending, erasing}`` 时设置）：
-    - **只**豁免 ``checkpoint.state`` 的合法单向变化（archive pending/erasing → LIVE acked）；
-      豁免生效时**必须** LIVE ``ack_digest`` 为 lowercase 64-hex（否则仍 drift）。
-    - 其余**所有**字段（operation 8 字段 + checkpoint 其余 5 字段）任何 drift 均失败。
+    **单一快照语义（Round-7）**：checkpoint.state 只在本函数内读取**一次**（同一
+    ``cp_row`` 快照）。terminal evidence（``archive_checkpoint_state ∈ {pending, erasing}``
+    + LIVE ``acked`` 的合法单向终态推进）在**该同一快照**上判定并作为返回值交给 caller——
+    caller 据此决定 NO_REPEAT，**禁止**在调用本函数前再单独读一次 checkpoint.state
+    （消除双读 TOCTOU 窗口）。
+
+    Returns:
+        ``True`` ⟺ 本次为合法单向终态推进（terminal evidence，且**无任何**字段 drift）——
+        caller 应据此登记 ``NO_REPEAT``（**不**调 participant）。``False`` = 非终态推进
+        （正常走矩阵路由）。任何字段 drift → 抛错（**不**返回）。
+
+    terminal evidence 生效时**必须** LIVE ``ack_digest`` 为 lowercase 64-hex（否则仍 drift）；
+    其余**所有**字段（operation 8 字段 + checkpoint 其余 5 字段）任何 drift 均失败。
     """
     op_row = await _load_operation_row(
         session, tenant_id=tenant_id, operation_id=validated.operation_id
@@ -1024,11 +1045,10 @@ async def _toctou_reverify_pass_b(
         )
 
     # checkpoint.state：唯一例外 = archive ∈ {pending, erasing} + LIVE = acked
-    # （单向终态推进）；其余 state mismatch 均 drift。
+    # （单向终态推进），在**同一 cp_row 快照**上判定；其余 state mismatch 均 drift。
     live_cp_state = str(cp_row["state"])
     is_terminal_single_direction = (
-        allow_terminal_single_direction
-        and validated.archive_checkpoint_state in ("erasing", "pending")
+        validated.archive_checkpoint_state in ("erasing", "pending")
         and live_cp_state == "acked"
     )
     if live_cp_state != validated.archive_checkpoint_state and not is_terminal_single_direction:
@@ -1075,13 +1095,104 @@ async def _toctou_reverify_pass_b(
             },
         )
 
+    # 无 drift → 返回同一 cp_row 快照上的 terminal evidence（caller 据此决定 NO_REPEAT）。
+    return is_terminal_single_direction
+
+
+# ---------------------------------------------------------------------------
+# participant 真实 outcome 分类（Round-7：接住 outcome，不得凭空调 LOCAL_CLEARED）
+# ---------------------------------------------------------------------------
+
+
+class _ParticipantOutcome(Protocol):
+    """participant 公共入口返回的 outcome 最小结构契约（结构化校验，不导入具体类）。
+
+    四个 participant 入口（workspace/execution core + 两 transport）均返回承载
+    ``blocked`` / ``block_reason`` / ``ack_digest`` / ``erased`` 的 frozen dataclass。
+    以只读 ``@property`` 声明（frozen dataclass 暴露只读属性；Protocol 数据成员默认
+    要求可写，会与 frozen 属性不兼容）。
+    """
+
+    @property
+    def blocked(self) -> bool: ...
+
+    @property
+    def block_reason(self) -> str | None: ...
+
+    @property
+    def ack_digest(self) -> str | None: ...
+
+    @property
+    def erased(self) -> bool: ...
+
+
+# participant outcome 分类结果
+_OUTCOME_CLEARED = "cleared"
+_OUTCOME_BLOCKED = "blocked"
+
+
+def _classify_participant_outcome(
+    outcome: Any,
+    *,
+    owner_key: str,
+    operation_id: uuid.UUID,
+) -> str:
+    """把 participant 真实 outcome 分类为 ``_OUTCOME_CLEARED`` / ``_OUTCOME_BLOCKED``；
+    非法 shape → ``RestoreReplayError("PARTICIPANT_OUTCOME_INVALID")`` fail closed。
+
+    - ``blocked=True`` → ``_OUTCOME_BLOCKED``：**必须**携带稳定非空 ``block_reason``、
+      ``ack_digest is None``、``erased is False``（blocked 与 erased 互斥）。
+    - ``blocked=False`` → 必须 ``erased=True`` 且 ``ack_digest`` 为 lowercase 64-hex
+      → ``_OUTCOME_CLEARED``（erased/ack 证据成立才允许登记 LOCAL_CLEARED）。
+    - 其它任何形态（None / 缺字段 / 类型错误 / blocked 无 reason / blocked 带 ack /
+      非 blocked 非 erased / erased 无合法 ack）→ fail closed。
+    """
+
+    def _illegal(reason: str) -> RestoreReplayError:
+        return RestoreReplayError(
+            "PARTICIPANT_OUTCOME_INVALID",
+            detail={
+                "owner_key": owner_key,
+                "operation_id": str(operation_id),
+                "reason": reason,
+            },
+        )
+
+    if outcome is None:
+        raise _illegal("outcome_none")
+    try:
+        blocked = outcome.blocked
+        block_reason = outcome.block_reason
+        ack_digest = outcome.ack_digest
+        erased = outcome.erased
+    except AttributeError as exc:
+        raise _illegal(f"missing_field:{exc}") from exc
+    if not isinstance(blocked, bool):
+        raise _illegal("blocked_not_bool")
+    if not isinstance(erased, bool):
+        raise _illegal("erased_not_bool")
+    if blocked:
+        if not isinstance(block_reason, str) or not block_reason:
+            raise _illegal("blocked_without_reason")
+        if ack_digest is not None:
+            raise _illegal("blocked_with_ack_digest")
+        if erased:
+            raise _illegal("blocked_and_erased_inconsistent")
+        return _OUTCOME_BLOCKED
+    # blocked=False → 必须 erased + 合法 ack 证据
+    if not erased:
+        raise _illegal("neither_blocked_nor_erased")
+    if not isinstance(ack_digest, str) or not _HEX_LOWER_64_RE.match(ack_digest):
+        raise _illegal("cleared_without_valid_ack_digest")
+    return _OUTCOME_CLEARED
+
 
 async def _execute_local_owner_via_participant(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
     validated: ValidatedFact,
-) -> None:
+) -> _ParticipantOutcome:
     """pass B：local owner 通过对应 participant 公共 sanctioned 入口清除 + ACK。
 
     严格映射（**禁止** transport owner 调 core helper；**禁止**私有 helper 拼装假 ACK）：
@@ -1089,12 +1200,15 @@ async def _execute_local_owner_via_participant(
     - execution.core.v1 → ExecutionErasureParticipant.erase_execution_body
     - workspace.transport.v1 → WorkspaceTransportErasureParticipant.erase_transport_owner
     - execution.transport.v1 → ExecutionTransportErasureParticipant.erase_transport_owner
+
+    返回 participant 的**真实 outcome**（caller 据此分类 LOCAL_CLEARED / BLOCKED_KEPT，
+    **禁止**凭空登记 cleared）。
     """
     if validated.archive_owner_key == "workspace.core.v1":
         from app.contexts.agent_workspace.infrastructure.workspace_erasure_participant import (
             WorkspaceErasureParticipant,
         )
-        await WorkspaceErasureParticipant(session).erase_conversation_body(
+        return await WorkspaceErasureParticipant(session).erase_conversation_body(
             tenant_id=tenant_id,
             conversation_id=validated.conversation_id,
             purge_revision=validated.archive_purge_revision,
@@ -1102,13 +1216,12 @@ async def _execute_local_owner_via_participant(
             expected_operation_revision=validated.archive_revision,
             expected_lease_epoch=validated.archive_lease_epoch,
         )
-        return
 
     if validated.archive_owner_key == "execution.core.v1":
         from app.contexts.agent_execution.infrastructure.execution_erasure_participant import (
             ExecutionErasureParticipant,
         )
-        await ExecutionErasureParticipant(session).erase_execution_body(
+        return await ExecutionErasureParticipant(session).erase_execution_body(
             tenant_id=tenant_id,
             conversation_id=validated.conversation_id,
             purge_revision=validated.archive_purge_revision,
@@ -1116,13 +1229,12 @@ async def _execute_local_owner_via_participant(
             expected_operation_revision=validated.archive_revision,
             expected_lease_epoch=validated.archive_lease_epoch,
         )
-        return
 
     if validated.archive_owner_key == "workspace.transport.v1":
         from app.contexts.agent_workspace.infrastructure.workspace_transport_erasure_participant import (
             WorkspaceTransportErasureParticipant,
         )
-        await WorkspaceTransportErasureParticipant(session).erase_transport_owner(
+        return await WorkspaceTransportErasureParticipant(session).erase_transport_owner(
             tenant_id=tenant_id,
             conversation_id=validated.conversation_id,
             purge_revision=validated.archive_purge_revision,
@@ -1130,13 +1242,12 @@ async def _execute_local_owner_via_participant(
             expected_operation_revision=validated.archive_revision,
             expected_lease_epoch=validated.archive_lease_epoch,
         )
-        return
 
     if validated.archive_owner_key == "execution.transport.v1":
         from app.contexts.agent_execution.infrastructure.execution_transport_erasure_participant import (
             ExecutionTransportErasureParticipant,
         )
-        await ExecutionTransportErasureParticipant(session).erase_transport_owner(
+        return await ExecutionTransportErasureParticipant(session).erase_transport_owner(
             tenant_id=tenant_id,
             conversation_id=validated.conversation_id,
             purge_revision=validated.archive_purge_revision,
@@ -1144,7 +1255,6 @@ async def _execute_local_owner_via_participant(
             expected_operation_revision=validated.archive_revision,
             expected_lease_epoch=validated.archive_lease_epoch,
         )
-        return
 
     raise RestoreReplayError(
         "UNKNOWN_LOCAL_OWNER",
@@ -1238,6 +1348,24 @@ async def replay_archive_segment_for_tenant(
             error=f"pass_a_drift:{exc.code}",
         )
 
+    # -------- owner_key 预验证（Round-7 Req2）：进入 pass B（任何写入）**之前**，
+    # 一次性验证全部 owner_key ∈ LOCAL_OWNERS ∪ NON_LOCAL_OWNERS。任何未知 owner →
+    # 在进入 pass B 前 fail closed（不开启写事务 → 零 partial commit）。
+    for _fact, validated in validated_facts:
+        if validated.archive_owner_key not in (LOCAL_OWNERS | NON_LOCAL_OWNERS):
+            return RestoreReplayReport(
+                operations_total=operations_total,
+                owners_total=len(facts),
+                owners_fact_drift=1,
+                verdict=(ReplayOwnerVerdict(
+                    operation_id=str(validated.operation_id),
+                    owner_key=validated.archive_owner_key,
+                    action=ACTION_FACT_DRIFT_FAIL_CLOSED,
+                    reason_code=f"unknown_owner_pre_pass_b:{validated.archive_owner_key}",
+                ),),
+                error=f"unknown_owner:{validated.archive_owner_key}",
+            )
+
     # -------- pass B：单一 exclusive maintenance transaction
     external_verified_count = 0
     external_verification_failed_count = 0
@@ -1247,29 +1375,18 @@ async def replay_archive_segment_for_tenant(
             await acquire_maintenance_exclusive_lock(session)
 
             for _fact, validated in validated_facts:
-                # TOCTOU 重读 LIVE state（**任一失败必 raise 退出事务**——不 `continue`）。
                 # **所有路径**（含 NO_REPEAT）都经同一 ``_toctou_reverify_pass_b`` 完整重验
-                # ValidatedFact 全字段——**禁止**只读 checkpoint.state 后直接 continue。
-                live_cp_state_pre = await _read_checkpoint_state_live(
-                    session,
-                    tenant_id=tenant_id,
-                    operation_id=validated.operation_id,
-                    owner_key=validated.archive_owner_key,
-                )
-                # 唯一例外：archive=erasing/pending + LIVE=acked 是单向终态推进 →
-                # NO_REPEAT；但**仍须**完整 reverify 其余字段（仅豁免 checkpoint.state
-                # 的合法单向变化，其余字段任何 drift 均 fail closed）。
-                _is_no_repeat_candidate = (
-                    validated.archive_checkpoint_state in ("erasing", "pending")
-                    and live_cp_state_pre == "acked"
-                )
-                await _toctou_reverify_pass_b(
+                # ValidatedFact 全字段（**禁止**只读 checkpoint.state 后直接 continue）。
+                # reverify 在其**同一 cp_row 快照**上判定 terminal evidence（archive cp ∈
+                # {pending,erasing} + LIVE acked 的单向终态推进）并作为返回值交给本循环——
+                # 最终 action **只消费该返回结果**，**禁止**在调用前再单独读一次
+                # checkpoint.state（消除双读 TOCTOU 窗口）。
+                terminal_evidence = await _toctou_reverify_pass_b(
                     session,
                     tenant_id=tenant_id,
                     validated=validated,
-                    allow_terminal_single_direction=_is_no_repeat_candidate,
                 )
-                if _is_no_repeat_candidate:
+                if terminal_evidence:
                     # 完整 terminal evidence 单向终态推进 → NO_REPEAT（**不**调 participant）
                     verdicts.append(
                         ReplayOwnerVerdict(
@@ -1393,10 +1510,10 @@ async def replay_archive_segment_for_tenant(
                     )
                     continue
                 if validated.archive_owner_key in LOCAL_OWNERS:
-                    # local owner 候选 → 调 participant 公共入口
-                    # **participant 失败必 raise 退出事务**（caller 不 catch）
+                    # local owner 候选 → 调 participant 公共入口（**接住真实 outcome**）
+                    # **participant 抛错必 raise 退出事务**（caller 不 catch）
                     try:
-                        await _execute_local_owner_via_participant(
+                        outcome = await _execute_local_owner_via_participant(
                             session, tenant_id=tenant_id, validated=validated,
                         )
                     except Exception as exc:
@@ -1410,6 +1527,24 @@ async def replay_archive_segment_for_tenant(
                                 "error": str(exc),
                             },
                         ) from exc
+                    # 接住真实 outcome：非法 shape → fail closed（raise → rollback）；
+                    # blocked=True → BLOCKED_KEPT（保留不清除 + 稳定 reason）；
+                    # erased/ack 证据成立 → LOCAL_CLEARED（**禁止**凭空登记 cleared）。
+                    classification = _classify_participant_outcome(
+                        outcome,
+                        owner_key=validated.archive_owner_key,
+                        operation_id=validated.operation_id,
+                    )
+                    if classification == _OUTCOME_BLOCKED:
+                        verdicts.append(
+                            ReplayOwnerVerdict(
+                                operation_id=str(validated.operation_id),
+                                owner_key=validated.archive_owner_key,
+                                action=ACTION_BLOCKED_KEPT,
+                                reason_code=outcome.block_reason,
+                            )
+                        )
+                        continue
                     verdicts.append(
                         ReplayOwnerVerdict(
                             operation_id=str(validated.operation_id),
@@ -1419,14 +1554,15 @@ async def replay_archive_segment_for_tenant(
                         )
                     )
                     continue
-                # 未知 owner → fail closed
-                verdicts.append(
-                    ReplayOwnerVerdict(
-                        operation_id=str(validated.operation_id),
-                        owner_key=validated.archive_owner_key,
-                        action=ACTION_FACT_DRIFT_FAIL_CLOSED,
-                        reason_code=f"unknown_owner:{validated.archive_owner_key}",
-                    )
+                # 未知 owner → 防御分支：**必须 raise 并 rollback**（Round-7 Req2；
+                # 正常路径已被 pass B 前的 owner_key 一次性预验证拦截，此处仅防御，
+                # 不得以 verdict 静默默认后继续提交 → 零 partial commit）。
+                raise RestoreReplayError(
+                    "UNKNOWN_OWNER",
+                    detail={
+                        "operation_id": str(validated.operation_id),
+                        "owner_key": validated.archive_owner_key,
+                    },
                 )
     except RestoreReplayError as exc:
         # 异常已通过 async with session.begin() 自动 rollback；冒泡到 caller →
@@ -1439,6 +1575,28 @@ async def replay_archive_segment_for_tenant(
                 participant_failures=participant_failure_count,
                 verdict=tuple(verdicts),
                 error=f"participant_failure:{exc.detail.get('owner_key', '?')}",
+            )
+        if exc.code == "PARTICIPANT_OUTCOME_INVALID":
+            # participant 返回非法 outcome shape → fail closed（已 rollback）
+            return RestoreReplayReport(
+                operations_total=operations_total,
+                owners_total=len(facts),
+                owners_fact_drift=1,
+                participant_failures=participant_failure_count + 1,
+                verdict=tuple(verdicts),
+                error=(
+                    f"participant_outcome_invalid:{exc.detail.get('owner_key', '?')}"
+                    f":{exc.detail.get('reason', '?')}"
+                ),
+            )
+        if exc.code == "UNKNOWN_OWNER":
+            # pass B 未知 owner 防御分支 raise（预验证已拦截；此处 fail closed + rollback）
+            return RestoreReplayReport(
+                operations_total=operations_total,
+                owners_total=len(facts),
+                owners_fact_drift=1,
+                verdict=tuple(verdicts),
+                error=f"unknown_owner:{exc.detail.get('owner_key', '?')}",
             )
         if exc.code == "EXTERNAL_VERIFICATION_FAILED":
             return RestoreReplayReport(
@@ -1475,6 +1633,7 @@ async def replay_archive_segment_for_tenant(
         operations_total=operations_total,
         owners_total=len(facts),
         owners_local_cleared=counts[ACTION_LOCAL_CLEARED],
+        owners_blocked_kept=counts[ACTION_BLOCKED_KEPT],
         owners_non_local_blocked=(
             counts[ACTION_NON_LOCAL_BLOCKED]
             + counts[ACTION_RUNTIME_BLOCKED]
@@ -1526,8 +1685,9 @@ async def evaluate_restore_before_open(
     """phase 3 gate（**强制**消费 RestoreReplayReport；不接受默认 0/False）。
 
     Gate 自动从 replay_report 内部 derive blocking（error / pass_a_drift / toctou_drift /
-    owners_fact_drift / runtime_binding_evidence_unprovable / external_verification_failed
-    全部自动阻断）。runtime_proof_c_present 由 caller 显式传入（**不可**绕 0/False）。
+    owners_fact_drift / owners_blocked_kept / runtime_binding_evidence_unprovable /
+    external_verification_failed 全部自动阻断）。runtime_proof_c_present 由 caller 显式传入
+    （**不可**绕 0/False）。
     """
     blocked: list[str] = []
 
@@ -1542,6 +1702,9 @@ async def evaluate_restore_before_open(
         blocked.append(f"participant_failure:{replay_report.participant_failures}")
     if replay_report.owners_fact_drift > 0:
         blocked.append(f"fact_drift:{replay_report.owners_fact_drift}")
+    if replay_report.owners_blocked_kept > 0:
+        # local owner participant blocked=True（保留不清除）→ 仍有未清残留 → 保持关闭
+        blocked.append(f"blocked_kept:{replay_report.owners_blocked_kept}")
     if replay_report.runtime_binding_evidence_unprovable > 0:
         blocked.append(
             f"RUNTIME_BINDING_EVIDENCE_UNPROVABLE:"
@@ -1628,6 +1791,7 @@ async def evaluate_restore_before_open(
 
 __all__ = [
     "ACTION_LOCAL_CLEARED",
+    "ACTION_BLOCKED_KEPT",
     "ACTION_CANDIDATE_WHEN_LOCAL",
     "ACTION_NON_LOCAL_BLOCKED",
     "ACTION_EXTERNAL_VERIFIED",

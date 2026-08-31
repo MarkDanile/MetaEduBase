@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 
 from app.composition.restore_replay import (
+    ACTION_BLOCKED_KEPT,
     ACTION_EXTERNAL_VERIFICATION_FAILED,
     ACTION_FACT_DRIFT_FAIL_CLOSED,
     ACTION_LOCAL_CLEARED,
@@ -1114,7 +1115,12 @@ async def test_r2_runtime_completed_returns_unprovable(s6i3_d_factory):
     report = await replay_archive_segment_for_tenant(
         factory, sink=sink, tenant_id=tid,
     )
-    verdict = next(v for v in report.verdict if v.owner_key == "runtime.private.v1")
+    # next(..., None) + 显式断言（避免 bare next() 在 mutation 下抛 StopIteration crash，
+    # 确保 invariant failure 以**断言**形式呈现——mutation 分类器只计断言级失败）
+    verdict = next(
+        (v for v in report.verdict if v.owner_key == "runtime.private.v1"), None,
+    )
+    assert verdict is not None, "runtime.private.v1 verdict 必须存在"
     assert verdict.action == ACTION_RUNTIME_BINDING_UNPROVABLE
     assert report.runtime_binding_evidence_unprovable == 1
 
@@ -1207,6 +1213,7 @@ async def test_r1_idempotent_replay_db_acked_drift(s6i3_d_factory):
 def test_frozen_action_constants():
     from app.composition import restore_replay as rr
     assert rr.ACTION_LOCAL_CLEARED == "local_cleared"
+    assert rr.ACTION_BLOCKED_KEPT == "blocked_kept"
     assert rr.ACTION_NON_LOCAL_BLOCKED == "non_local_blocked"
     assert rr.ACTION_EXTERNAL_VERIFY_ONLY == "external_verify_only"
     assert rr.ACTION_RUNTIME_BINDING_UNPROVABLE == "runtime_binding_evidence_unprovable"
@@ -1958,3 +1965,387 @@ async def test_r5_archive_facts_invalid_uuid(s6i3_d_factory):
     assert report.error is not None
     assert "ARCHIVE_FACTS_TYPE_INVALID" in report.error
     assert report.pass_a_drift == 1
+
+
+# ---------------------------------------------------------------------------
+# Round-7 有界重构返修
+# ---------------------------------------------------------------------------
+#
+# Req 1：接住四个 participant 真实 outcome（blocked → BLOCKED_KEPT / gate 消费 /
+#         非法 shape fail closed）
+# Req 2：进入 pass B 前一次性预验证全部 owner_key；未知 owner → 零 partial commit
+# Req 3：删除 NO_REPEAT 双读；terminal evidence 只消费 reverify 同一快照返回值
+# Req 4：canonical UUID 严格 str 校验
+# Req 6：malformed external candidate + scan total 严格校验 fail closed
+
+
+async def test_r7_blocked_kept_real_pg_gate_stays_closed(s6i3_d_factory):
+    """真实 PG blocked 正例：active legal hold → participant blocked=True → 登记
+    ``BLOCKED_KEPT`` + ``owners_blocked_kept`` + 稳定 reason；**不得**误记 cleared；
+    restore-before-open gate 必须消费 blocked_kept → 保持关闭。
+    """
+    factory = s6i3_d_factory
+    async with factory() as s, s.begin():
+        tid = await _seed_tenant(s)
+        op_id, cid = await _seed_op_cp(
+            s, tid, op_state="running", cp_state="erasing",
+            owner_key="workspace.core.v1",
+        )
+        # active legal hold（state='active', expires_at NULL）→ erase_conversation_body blocked=True
+        await s.execute(
+            text(
+                "INSERT INTO metaedu.agent_conversation_legal_holds "
+                "(id, tenant_id, conversation_id, reason_code, purpose, actor_id, "
+                "state, expires_at, revision, created_at, updated_at) "
+                "VALUES (gen_random_uuid(), :tid, :cid, 'retention_test', 'test', :tid, "
+                "'active', NULL, 1, now(), now())"
+            ),
+            {"tid": tid, "cid": cid},
+        )
+    sink, _ = await _publish_segment_for(factory, tid=tid)
+
+    report = await replay_archive_segment_for_tenant(factory, sink=sink, tenant_id=tid)
+
+    # 不得误记 cleared；blocked=True → BLOCKED_KEPT + owners_blocked_kept + 稳定 reason
+    assert report.error is None
+    assert report.owners_local_cleared == 0
+    assert report.owners_blocked_kept == 1
+    verdict = next(v for v in report.verdict if v.owner_key == "workspace.core.v1")
+    assert verdict.action == ACTION_BLOCKED_KEPT
+    assert verdict.reason_code == "purge_blocked_by_legal_hold"
+
+    # gate 必须消费 blocked_kept → 保持关闭
+    gate = await evaluate_restore_before_open(
+        factory, tenant_id=tid, replay_report=report,
+        runtime_proof_c_present=False,
+    )
+    assert gate.open_allowed is False
+    assert any("blocked_kept" in r for r in gate.blocked_reasons)
+
+
+async def test_r7_participant_outcome_invalid_shape_fail_closed(s6i3_d_factory):
+    """participant 返回非法 outcome shape（erased=True 但 ack_digest=None）→
+    ``PARTICIPANT_OUTCOME_INVALID`` fail closed + rollback（新 session checkpoint 仍 erasing，
+    **不得**凭空登记 cleared）。
+    """
+    import dataclasses
+
+    from app.contexts.agent_workspace.infrastructure.workspace_erasure_participant import (
+        WorkspaceErasureParticipant,
+    )
+    factory = s6i3_d_factory
+    async with factory() as s, s.begin():
+        tid = await _seed_tenant(s)
+        op_id, cid = await _seed_op_cp(
+            s, tid, op_state="running", cp_state="erasing",
+            owner_key="workspace.core.v1",
+        )
+    sink, _ = await _publish_segment_for(factory, tid=tid)
+
+    original = WorkspaceErasureParticipant.erase_conversation_body
+
+    async def bad_outcome(self, **kwargs):
+        # 真实执行（写入发生）→ 返回被破坏的 outcome（erased 但无合法 ack）
+        real = await original(self, **kwargs)
+        return dataclasses.replace(real, ack_digest=None)
+
+    WorkspaceErasureParticipant.erase_conversation_body = bad_outcome
+    try:
+        report = await replay_archive_segment_for_tenant(
+            factory, sink=sink, tenant_id=tid,
+        )
+    finally:
+        WorkspaceErasureParticipant.erase_conversation_body = original
+
+    assert report.error is not None
+    assert "participant_outcome_invalid" in report.error
+    assert report.owners_local_cleared == 0
+
+    # rollback：participant 写入被回滚 → checkpoint 仍为 erasing
+    async with factory() as s, s.begin():
+        cp_state = (await s.execute(
+            text(
+                "SELECT state FROM metaedu.agent_conversation_purge_owners "
+                "WHERE purge_operation_id = :oid AND owner_key = 'workspace.core.v1'"
+            ),
+            {"oid": op_id},
+        )).scalar_one()
+    assert cp_state == "erasing"
+
+
+async def test_r7_unknown_owner_prevalidated_zero_partial_commit(s6i3_d_factory, monkeypatch):
+    """进入 pass B 写入前一次性预验证全部 owner_key ∈ LOCAL ∪ NON_LOCAL。
+
+    种「已排序 local owner 先写 + unknown owner 后到」双 owner → 预验证在进入 pass B 前
+    拦截 unknown owner → ``report.error`` 具名 unknown_owner，**零 partial commit**
+    （新 session 完整前后快照不变：local owner checkpoint 也未被清除）。
+
+    判别点（确定性与排序无关）：spy ``acquire_maintenance_exclusive_lock``——预验证在
+    进入 pass B **之前**拦截 → exclusive lock **从未**获取（``lock_calls == []``）。若
+    删除预验证（M-D2-22），pass B 必先进 tx 取锁 → ``lock_calls != []`` → 真红。
+    """
+    import app.composition.restore_replay as rr_mod
+    from app.composition.agent_erasure_registry import (
+        capability_digest,
+        registry_digest,
+    )
+    factory = s6i3_d_factory
+    async with factory() as s, s.begin():
+        tid = await _seed_tenant(s)
+        cid = await _seed_conversation(s, tid=tid)
+        await s.execute(
+            text(
+                "UPDATE metaedu.agent_conversations "
+                "SET state = 'deleted', purge_after = now() - interval '1 day' "
+                "WHERE id = :cid"
+            ),
+            {"cid": cid},
+        )
+        op_id = await _seed_operation(s, tid=tid, cid=cid, state="running")
+        await s.execute(
+            text(
+                "UPDATE metaedu.agent_conversation_purges "
+                "SET revision = 1, lease_epoch = 0, registry_digest = :rd, "
+                "retention_policy_digest = :rd WHERE id = :oid"
+            ),
+            {"rd": registry_digest(), "oid": op_id},
+        )
+        # 有效 local owner（按 stable_identity 排序可能先处理）
+        await _seed_checkpoint(
+            s, tid=tid, purge_operation_id=op_id,
+            owner_key="workspace.core.v1", state="erasing",
+            capability_digest=capability_digest("workspace.core.v1"),
+        )
+        # unknown owner（raw SQL 绕过 registry capability_digest 校验，任意合法 64-hex）
+        await s.execute(
+            text(
+                "INSERT INTO metaedu.agent_conversation_purge_owners "
+                "(id, tenant_id, purge_operation_id, owner_key, owner_version, "
+                "capability_digest, state, attempt, checkpoint_digest, ack_digest, "
+                "reason_code, created_at) "
+                "VALUES (gen_random_uuid(), :tid, :oid, 'unknown.owner.v1', 1, :cd, "
+                "'erasing', 1, :cd, NULL, NULL, now())"
+            ),
+            {"tid": tid, "oid": op_id, "cd": "b" * 64},
+        )
+    sink, _ = await _publish_segment_for(factory, tid=tid)
+
+    async def _snapshot(s):
+        cps = dict((await s.execute(
+            text(
+                "SELECT owner_key, state FROM metaedu.agent_conversation_purge_owners "
+                "WHERE tenant_id = :tid"
+            ),
+            {"tid": tid},
+        )).all())
+        op = dict((await s.execute(
+            text(
+                "SELECT state, revision, purge_revision, lease_epoch "
+                "FROM metaedu.agent_conversation_purges WHERE id = :oid"
+            ),
+            {"oid": op_id},
+        )).mappings().one())
+        return (cps, op)
+
+    async with factory() as s, s.begin():
+        snap_before = await _snapshot(s)
+
+    # spy exclusive lock：预验证在进入 pass B 前拦截 → 锁从未获取
+    lock_calls: list[int] = []
+    real_lock = rr_mod.acquire_maintenance_exclusive_lock
+
+    async def lock_spy(session):
+        lock_calls.append(1)
+        return await real_lock(session)
+
+    monkeypatch.setattr(rr_mod, "acquire_maintenance_exclusive_lock", lock_spy)
+
+    report = await replay_archive_segment_for_tenant(factory, sink=sink, tenant_id=tid)
+
+    # 预验证在进入 pass B 前拦截 unknown owner → error，**零写入**（锁从未获取）
+    assert report.error is not None
+    assert "unknown_owner" in report.error
+    assert report.owners_local_cleared == 0
+    assert lock_calls == [], (
+        f"预验证应在进入 pass B 前拦截（不取锁）；实际 lock_calls={lock_calls}"
+    )
+
+    # 零 partial commit：完整前后快照不变（local owner checkpoint 也未被清除）
+    async with factory() as s, s.begin():
+        snap_after = await _snapshot(s)
+    assert snap_after == snap_before, (
+        f"出现 partial commit：before={snap_before!r} after={snap_after!r}"
+    )
+    assert snap_after[0]["workspace.core.v1"] == "erasing"
+
+
+async def test_r7_no_repeat_single_snapshot_terminal_evidence(s6i3_d_factory, monkeypatch):
+    """NO_REPEAT 单快照语义：最终 action **只消费** reverify 在同一 cp_row 快照返回的
+    terminal evidence（消除双读 TOCTOU 窗口）。
+
+    判别点（两次读取结果不同 → 旧实现真红）：patch ``_load_checkpoint_row`` 让 reverify 的
+    **同一快照**看到 ``state=acked``（合法单向终态推进），而真实 DB 仍是 ``erasing``。
+    旧实现的**独立第一读**（``_read_checkpoint_state_live`` 读真实 DB → ``erasing``）会让
+    NO_REPEAT 候选判定与 reverify 快照脱节（candidate=False → reverify 无 terminal 豁免 →
+    checkpoint.state drift → 整事务 TOCTOU_DRIFT fail closed），**真红**。新实现只读一次
+    （reverify 同一快照）→ 正确判定 terminal evidence → ``NO_REPEAT``（**不**调 participant）。
+    """
+    import app.composition.restore_replay as rr_mod
+    from app.contexts.agent_workspace.infrastructure.workspace_erasure_participant import (
+        WorkspaceErasureParticipant,
+    )
+    factory = s6i3_d_factory
+    async with factory() as s, s.begin():
+        tid = await _seed_tenant(s)
+        op_id, cid = await _seed_op_cp(
+            s, tid, op_state="running", cp_state="erasing",
+            owner_key="workspace.core.v1",
+        )
+    sink, _ = await _publish_segment_for(factory, tid=tid)
+
+    # patch checkpoint 快照读：同一行返回 state=acked（真实 DB 仍 erasing → 两次读不同）
+    real_load_cp = rr_mod._load_checkpoint_row
+
+    async def fake_load_cp(session, *, tenant_id, purge_operation_id, owner_key):
+        row = await real_load_cp(
+            session, tenant_id=tenant_id,
+            purge_operation_id=purge_operation_id, owner_key=owner_key,
+        )
+        mutated = dict(row)
+        mutated["state"] = "acked"
+        mutated["ack_digest"] = "c" * 64  # acked 必须合法 64-hex
+        return mutated
+
+    monkeypatch.setattr(rr_mod, "_load_checkpoint_row", fake_load_cp)
+
+    # spy participant：NO_REPEAT **不得**调 participant
+    participant_calls: list[str] = []
+    original = WorkspaceErasureParticipant.erase_conversation_body
+
+    async def spy(self, **kwargs):
+        participant_calls.append("called")
+        return await original(self, **kwargs)
+
+    monkeypatch.setattr(
+        WorkspaceErasureParticipant, "erase_conversation_body", spy,
+    )
+
+    report = await replay_archive_segment_for_tenant(factory, sink=sink, tenant_id=tid)
+
+    # reverify 同一快照判定 terminal evidence → NO_REPEAT（不调 participant；无 drift/error）
+    assert report.error is None
+    assert report.owners_no_repeat == 1
+    assert report.owners_local_cleared == 0
+    assert participant_calls == []
+    assert any(
+        v.action == ACTION_NO_REPEAT and v.owner_key == "workspace.core.v1"
+        for v in report.verdict
+    )
+
+
+def test_r7_canonical_uuid_strict_fail_closed():
+    """canonical UUID helper：raw 必须严格为 ``str`` 且 ``str(uuid.UUID(raw)) == raw``。
+    UUID 对象 / 大写 / 无连字符 / 非法字符串 / int / bytes 全部具名
+    ``ARCHIVE_FACTS_TYPE_INVALID`` fail closed（**禁止** ``str()`` 隐式转换）。
+    """
+    import app.composition.restore_replay as rr_mod
+
+    good = "123e4567-e89b-12d3-a456-426614174000"
+    # 合法 canonical → 通过（返回 uuid.UUID，str 还原为原值）
+    assert str(rr_mod._require_canonical_uuid(
+        {"id": good}, "id", missing_code="M", field="f",
+    )) == good
+
+    bad_cases = [
+        uuid.UUID(good),          # UUID 对象（非 str）
+        good.upper(),             # 大写
+        good.replace("-", ""),    # 无连字符
+        "not-a-uuid",             # 非法字符串
+        12345,                    # int
+        b"\x00" * 16,             # bytes
+    ]
+    for bad in bad_cases:
+        with pytest.raises(rr_mod.RestoreReplayError) as excinfo:
+            rr_mod._require_canonical_uuid(
+                {"id": bad}, "id", missing_code="M", field="f",
+            )
+        assert excinfo.value.code == "ARCHIVE_FACTS_TYPE_INVALID", (
+            f"bad={bad!r} 应 fail closed 为 ARCHIVE_FACTS_TYPE_INVALID"
+        )
+
+
+def test_r7_external_malformed_candidate_type_invalid():
+    """malformed external candidate（owner 匹配但 conversation_id 非法）→
+    ``ARCHIVE_FACTS_TYPE_INVALID`` fail closed（**禁止**静默跳过冒充"无绑定"/"恰好一条"）。
+    """
+    from types import SimpleNamespace
+
+    import app.composition.restore_replay as rr_mod
+
+    cid = uuid.uuid4()
+    malformed = SimpleNamespace(fields={
+        "owner_key": "external.payload.v1",
+        "conversation_id": "not-a-uuid",  # malformed 候选
+        "id": str(uuid.uuid4()),
+        "receipt_digest": "a" * 64,
+    })
+    manifest = SimpleNamespace(
+        records={rr_mod.RECORD_KIND_EXTERNAL_REF: (malformed,)},
+    )
+    with pytest.raises(rr_mod.RestoreReplayError) as excinfo:
+        rr_mod._bind_archive_external_ref(
+            manifest, conversation_id=cid, owner_key="external.payload.v1",
+        )
+    assert excinfo.value.code == "ARCHIVE_FACTS_TYPE_INVALID"
+
+
+_ABSENT = object()
+
+
+@pytest.mark.parametrize(
+    "bad_total",
+    [None, "5", -1, True, _ABSENT],
+    ids=["none", "str", "negative", "bool", "absent"],
+)
+async def test_r7_external_scan_total_invalid_fail_closed(
+    s6i3_d_factory, monkeypatch, bad_total,
+):
+    """external final-scan result 缺 ``total`` / 类型错误 / 负数 → fail closed
+    （**禁止** ``getattr(..., 0)`` / ``int()`` 默认 0 冒充 clean）。
+
+    判别点：receipt 匹配 + state=erased 全部通过，唯 scan ``total`` 非法
+    → ``external_scan_total_invalid`` → ``EXTERNAL_VERIFICATION_FAILED``。
+    """
+    factory = s6i3_d_factory
+    async with factory() as s, s.begin():
+        tid = await _seed_tenant(s)
+        op_id, cid = await _seed_op_cp(
+            s, tid, op_state="completed", cp_state="acked",
+            owner_key="external.payload.v1",
+        )
+        await _seed_external_ref(s, tid=tid, cid=cid, receipt="a" * 64)
+    sink, _ = await _publish_segment_for(factory, tid=tid)
+
+    import app.composition.transactional_projection_coordinator as tpc
+    real_build = tpc.build_scan_providers
+
+    def patched_build(session):
+        providers = real_build(session)
+
+        async def bad_scan(*, tenant_id, conversation_id):
+            class _Res:
+                pass
+            res = _Res()
+            if bad_total is not _ABSENT:
+                res.total = bad_total
+            return res
+
+        providers["external.payload.v1"] = bad_scan
+        return providers
+
+    monkeypatch.setattr(tpc, "build_scan_providers", patched_build)
+
+    report = await replay_archive_segment_for_tenant(factory, sink=sink, tenant_id=tid)
+    assert report.error is not None
+    assert report.external_verification_failed == 1
+    assert "external_scan_total_invalid" in report.error
