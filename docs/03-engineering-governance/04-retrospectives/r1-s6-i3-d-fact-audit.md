@@ -907,6 +907,56 @@ D1b 与 D1a **不可合并于**「D1a 是只读 codec + decoder + bounded export
 - D1b 三套验证口径禁止合并：opt-in MinIO 6 + 常规 47 + mutation 11 各自独立
 - 任何后续声称 D1b 完成的工作，必须同时满足：(1) 评分 94 Original 已登记 (2) 三 P1 修复闭环 (3) 47/6/11 验证基线 (4) merged-boundary 不冒充 D2/PR-D/PR-E/C1/S5 wiring/capability flip/六 erase
 
+## 17.7. D2 merged-boundary 收口标注（2026-09-01）
+
+> 本节为 D2 子阶段 merge 入 main 的事实收口。审计责任范围：D2 实现本体（bounded read-only restore replay executor + M 类互斥 A 方案 advisory lock + restore-before-open gate）；不宣称 D2 production wiring / PR-D / PR-E / C1 / S5 wiring / capability flip / 六 erase 入口生产可达已交付。**§17.6 中「D2 未启动」是 D1b closeout 时点（2026-08-28）的历史事实，已由本次 D2 merged-boundary supersede。**
+
+**集成事实链**：
+
+1. **PR #602 squash merge 入 main `ae7f3c98`**（2026-09-01，mergeCommit.oid `ae7f3c9814d7258dab288aceaeb2ff1bd00d77ee`，mergedAt `2026-09-01T12:29:10Z`，feature branch `feature/req041-047-r1-s6-i3-d-d2-restore-replay` 已 `--delete-branch` 删除）
+2. source head = score commit `177a226a03be6181df1970be1e36216f4777d4a3`（FINAL_IMPL_HEAD `4bc22328` = Round-8.1 纯文档 docs commit 之后追加 #602 Original 评分行的最终 source head；implementation baseline main `b88704a7`；评分 92 Original 落入 Score Log）
+3. 评审对象 main@`b88704a7`..`4bc22328` 净 diff 14 文件 6814+/48-：2 plan 文档 + `restore_replay.py` 1876 行 + `test_s6i3_d_restore_replay.py` 2559 行 + `test_s6i3_d_mutation_classifier.py` 253 行 + `test_s6i3_d_restore_replay_locks.py` 230 行 + `s6i3_d_restore_replay_mutation_kill.py` 671 行 + 3 既有 production/test M（`agent_erasure_locks.py` / `retention_workers.py` / `s6i2_orphan_inspection.py` M 类 writer 注册 FENCE_M）+ `test_s5i2_production_wiring_boundary.py` / `test_s6i2_orphan_inspection.py` + 2 governance（current-work + td-032）+ Score Log 1 行
+4. main 累积含 D2 实现 + 测试 + mutation script + 唯一 #602 评分行
+
+**实现事实（contract-to-code）**：
+
+- **两阶段 replay**：phase 1 从 D1b committed graph 取输入（`asyncio.to_thread(find_committed_tip)` + `CommitMarker.from_bytes` + `fetch_segment_bytes`）；pass A 零写六元组 + operation fence 全字段对账（archive facts 严格来源 `_require_field`/`_require_strict_int`/`_require_str`/`_require_canonical_uuid`/`_require_64hex_lower` helper 族，禁止 LIVE 值回填）；pass B 单一 exclusive maintenance tx 调 4 owner participant 公共入口（Conversation→owner→fence→aggregate 全锁序 + ACK）
+- **M-class advisory lock**（用户裁决 3 = A 方案）：frozen prefix `metaedu.agent.maintenance.v1\x00`；retention/audit 每事务取 `pg_advisory_xact_lock_shared`，replay 事务取 `pg_advisory_xact_lock` exclusive；新锁在 Run/Conversation/owner/collection 锁之前取得
+- **restore-before-open gate**：强制消费 `RestoreReplayReport`（error / pass_a_drift / toctou_drift / participant_failures / runtime_proof_c_present / external_verification_failed 全部自动阻断）
+- **pass B 报告提交边界**（Round-8）：事务内 verdict 仅 provisional，仅 `async with session.begin()` 成功退出后发布 committed verdict；rollback 时 6 个 pass-B except handler 一律 `_rolled_back_evidence` 改标 `ACTION_ROLLED_BACK`，不保留已回滚 success verdict
+- **participant outcome 结构化分类**（Round-7）：blocked → BLOCKED_KEPT + gate 消费保持关闭；非 blocked 必须 erased+64-hex ack → LOCAL_CLEARED；非法 shape → PARTICIPANT_OUTCOME_INVALID fail closed
+- **writer `restore_replay_executor` 保持 registered=FENCE_M**（`app.composition.restore_replay.replay_archive_segment_for_tenant`，登记于 `s6i2_orphan_inspection.py`）
+
+**验证事实**：
+
+- **90 restore_replay 专项 + 18 classifier 自测 = 108 D2 专项全 pass**
+- **composition 全量 992 passed / 6 skipped**
+- **mutation 21/21 用修正后分类器重跑 KILLED**（byte-identical restore，不沿用旧数字；Round-8 修正 crash/setup 优先于 killed）
+- ruff clean + 官方 mypy baseline `passed: 243 historical errors / 76 keys / 0 regressions` + `restore_replay.py` targeted mypy no issues + git diff --check clean + engineering-docs `--full` 全绿
+- **CI 如实登记（不掩饰为首次成功）**：Draft 首轮 Backend iteration run `33462867892` hermetic runner ~33min 无 pytest 输出后超时 CANCELLED（job conclusion=cancelled 非 failure）→ 同 HEAD `gh run rerun --failed` 14m38s PASS；Round-8.1 run `33469001980` 三路全 SUCCESS；Ready run `33474589073`（Backend 14m4s / Eng docs 9s / Frontend 4s）+ post-score run `33476012685`（Backend 15m1s / Eng docs 8s / Frontend 5s）全 SUCCESS
+
+**三面复审 + 评分事实**：
+
+- Round-8/8.1 三面复审 P0=0/P1=0/P2=0/P3=0
+- 维度评分（15/17/19/14/15/8/4 = 92/100）：范围与需求匹配 15 + 实现质量 17 + 测试与验证证据 19 + 事实源与流程遵守 14 + 风险与行为变化控制 15 + 可评审性与交接质量 8 + 持续改进信号 4
+- 扣分如实登记：TD-032（`restore_replay.py` 1876 + test 2559 双超 1000 硬限制，实现质量 -2 + 可评审性 -1）；单模块聚合 + 6814+/48- 长链降可评审性（可评审性 -1）；mutation classifier 自身缺陷到 Round-8 才被发现（测试 -1 + 持续改进 -1）；current-work 事实漂移经 Round-8.1 才修正（事实源 -1）；Draft 首次 Backend iteration 超时 CANCELLED 后同 HEAD rerun 成功（如实登记非首次成功）
+- **正式评分门禁真实 PASS** `scripts/check-review-score-submit --base 4bc22328 --pr 602` → `review-score-submit: passed (base 4bc22328, PR #602, one Original row, Metrics unchanged)`
+
+**D2 完成不等于以下后续事项已完成（merged-boundary 不变式）**：
+
+- ❌ **D2 production wiring 未启动**（scheduler 接入 / capability flip / 六 erase 入口生产可达）
+- ❌ **PR-D 未启动**（ledger export additional safety drills）
+- ❌ **PR-E 未启动**（release drill 五阶段 canary）
+- ❌ **C1 未启动**（Durable Core 总验收）
+- ❌ **S5 production wiring 未启动**
+- ❌ **registry capability flip 未启动**（external/runtime 仍 `erase_available=False`）
+- ❌ **六 erase 入口生产可达 未启动**
+- ❌ **TD-032 保持待拆分不关闭**（`restore_replay.py` 1876 行 + `test_s6i3_d_restore_replay.py` 2559 行 双超 1000 行硬限制已登记 🟢 待拆分）
+- ❌ **TD-104 未启动**（PR-A schema/test alignment 残项）
+- **REQ-047 保持后续联合验收归属**（R1-S6 implementation conformance：B/C/D 联合启用门禁 — D2 合并后由 conformance 验收）
+
+**用户裁决 5 项冻结（merged-boundary 不变式）**：runtime per-binding proof = c / D1b = 专用 MinIO archive bucket（已落地）/ D2 = A advisory lock（已落地）/ D1a / D1b / D2 = 三独立 PR（已遵守）/ 固定顺序 D1a → D1b → D2（已遵守，三者均合 main）
+
 ## 18. 关键引用
 
 - 任务卡：`docs/03-engineering-governance/current-work.md` TASK-R1-S6-I3-D
