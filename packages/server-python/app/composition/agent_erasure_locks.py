@@ -146,3 +146,56 @@ async def acquire_transport_aggregate_lock(
         text("SELECT pg_advisory_xact_lock(:agg_key)"),
         {"agg_key": key},
     )
+
+
+# ---------------------------------------------------------------------------
+# R1-S6-I3-D D2: M 类维护路径 advisory lock（Plan §S6-8.3 + 用户裁决 A）。
+#
+# retention/audit 每个事务先取 ``pg_advisory_xact_lock_shared``（与 replay
+# 事务互斥）；replay 事务取 ``pg_advisory_xact_lock``（独占）。锁序必须早于
+# Run/Conversation/owner/aggregate/row 锁（保留各自层级；本锁提供顶层互斥
+# 串行化）。同一 stable namespace/scope — 单 global key（M 类是维护路径层
+# 串行化，不按 tenant 切分）。
+#
+# ``maintenance_lock_key`` 必须保持稳定 + signed 64-bit + 独立前缀（避免与
+# owner / transport aggregate 前缀撞域，跨部署互斥依赖固定前缀）。
+# ---------------------------------------------------------------------------
+
+_MAINTENANCE_KEY_V1_PREFIX = b"metaedu.agent.maintenance.v1\x00"
+
+
+def maintenance_lock_key() -> int:
+    """派生稳定 signed 64-bit maintenance advisory lock key（global）。
+
+    material = 版本前缀 + ``b"global"``（不按 tenant 切分；M 类是维护路径
+    串行化）。SHA-256 取前 8 字节 big-endian signed，与 ``conversation_owner_key``
+    / ``conversation_guard_key`` / ``transport_aggregate_key`` 位宽一致。
+    """
+    material = _MAINTENANCE_KEY_V1_PREFIX + b"global"
+    return int.from_bytes(
+        hashlib.sha256(material).digest()[:8], byteorder="big", signed=True
+    )
+
+
+async def acquire_maintenance_shared_lock(session: AsyncSession) -> None:
+    """retention/audit worker transaction-level shared maintenance lock。
+
+    与 replay 事务互斥（replay 取 exclusive；shared 申请在 exclusive 持锁
+    期间阻塞）。任意 worker 可并发持有本 shared lock（多 retention/audit
+    实例可同时跑）。
+    """
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock_shared(:key)"),
+        {"key": maintenance_lock_key()},
+    )
+
+
+async def acquire_maintenance_exclusive_lock(session: AsyncSession) -> None:
+    """replay executor transaction-level exclusive maintenance lock。
+
+    独占串行化：与所有 shared 持有者互斥，且任意时刻仅允许一个 exclusive
+    持有者。锁在事务 commit/rollback 时由 PG 自动释放（事务级语义）。"""
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(:key)"),
+        {"key": maintenance_lock_key()},
+    )

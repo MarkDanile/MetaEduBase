@@ -35,6 +35,7 @@ from app.composition.agent_erasure_registry import (
     registry_digest,
 )
 from app.composition.s6i2_orphan_inspection import (
+    FENCE_M,
     VerifyReport,
     _register_ledger_issue,
     _required_writer_specs,
@@ -378,13 +379,39 @@ async def _seed_unknown_scheme_ref(session, *, tid: uuid.UUID) -> uuid.UUID:
 
 async def test_static_writer_specs_complete():
     specs = _required_writer_specs()
-    assert len(specs) == 3, specs
+    assert len(specs) == 4, specs
     names = {s.writer_name for s in specs}
     assert {
         "run_event_retention",
         "run_audit_retention",
         "event_gap_inspection_writer",
+        "restore_replay_executor",
     } == names
+
+
+async def test_static_writer_specs_includes_restore_replay_m_class():
+    """D2：restore_replay_executor（M 类）必须列入 required writer specs。
+
+    用户裁决 A（M 类互斥 = advisory lock）；FENCE_M + scope_class=Maintenance。
+    """
+    specs = _required_writer_specs()
+    m_specs = [s for s in specs if s.fence_status == FENCE_M]
+    assert len(m_specs) == 1, f"expected 1 M-class writer, got {m_specs}"
+    m = m_specs[0]
+    assert m.writer_name == "restore_replay_executor"
+    assert m.scope_class == "Maintenance"
+    assert m.tenant_scoped is True
+    assert m.owner_key == "execution.core.v1"
+    assert m.module_path == "app.composition.restore_replay"
+    assert m.function_name == "replay_archive_segment_for_tenant"
+
+
+async def test_s6i2_pending_writers_empty_after_d2_registered():
+    """D2 落地后 S6I2_PENDING_WRITERS 必须为空（restore_replay_executor 已转 registered）。"""
+    from app.composition.s6i2_orphan_inspection import S6I2_PENDING_WRITERS
+    assert S6I2_PENDING_WRITERS == (), (
+        f"D2 落地后 S6I2_PENDING_WRITERS 应为空（无 pending 写者）；实际 = {S6I2_PENDING_WRITERS!r}"
+    )
 
 
 async def test_static_writer_all_owners_in_registry():
@@ -396,7 +423,7 @@ async def test_static_writer_all_owners_in_registry():
 
 async def test_static_conformance_clean():
     result = run_writer_conformance_static()
-    assert result.writers_total == 3
+    assert result.writers_total == 4
     assert result.writers_failed == ()
     assert result.registry_keys_total >= 6
     assert result.registry_unknown_keys == ()
