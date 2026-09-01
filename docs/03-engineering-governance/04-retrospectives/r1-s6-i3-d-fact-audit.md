@@ -1,6 +1,6 @@
 # R1-S6-I3-D 事实审计（contract-to-code，第二轮事实纠偏 + merged-boundary 收口标注）
 
-> Status: 🟡 TASK-R1-S6-I3-D 整体仍进行中（PR-D / PR-E / D2 / S5 wiring / capability flip / 六 erase 入口生产可达仍未启动）；**D1a 子阶段 🟢 已完成并入 main**（PR #598 squash mergeCommit `5868831e`，source head `ca9f4404`，FINAL_IMPL_HEAD `8a836733`，评分 97 Original；评审对象 main@`aff54883`..`8a836733` 净 diff 7 文件 4941+/1-）；**D1b 子阶段 🟢 已完成并入 main**（PR #600 squash mergeCommit `01c84f7c`，source head `467e8d24`，FINAL_IMPL_HEAD `061f4a66`，评分 commit `1293ea51`，correction commit `467e8d24`，评分 94 Original；评审对象 main@`5e1d4dff`..`061f4a66` 净 diff 7 文件 3088+/5-）
+> Status: 🟡 TASK-R1-S6-I3-D 整体仍进行中（PR-D 剩余 operational closeout / PR-E / C1 / S5 wiring / capability flip / 六 erase 入口生产可达仍未启动）；**D1a 子阶段 🟢 已完成并入 main**（PR #598 squash mergeCommit `5868831e`，source head `ca9f4404`，FINAL_IMPL_HEAD `8a836733`，评分 97 Original；评审对象 main@`aff54883`..`8a836733` 净 diff 7 文件 4941+/1-）；**D1b 子阶段 🟢 已完成并入 main**（PR #600 squash mergeCommit `01c84f7c`，source head `467e8d24`，FINAL_IMPL_HEAD `061f4a66`，评分 commit `1293ea51`，correction commit `467e8d24`，评分 94 Original；评审对象 main@`5e1d4dff`..`061f4a66` 净 diff 7 文件 3088+/5-）；**D2 子阶段 🟢 已完成并入 main**（PR #602 squash mergeCommit `ae7f3c98`，source head `177a226a`，FINAL_IMPL_HEAD `4bc22328`，评分 92 Original；评审对象 main@`b88704a7`..`4bc22328` 净 diff 14 文件 6814+/48-；Round-8/8.1 三面复审 P0/P1/P2/P3=0；writer `restore_replay_executor` 保持 `registered=FENCE_M`）；**pure-docs closeout PR #603 squash mergeCommit `4b92b980`**（仅 3 治理文件 current-work / work-log / §17.7 零代码/测试/schema/migration/registry/CI 改动）
 >
 > 任务卡：`docs/03-engineering-governance/current-work.md` TASK-R1-S6-I3-D
 >
@@ -945,14 +945,14 @@ D1b 与 D1a **不可合并于**「D1a 是只读 codec + decoder + bounded export
 **D2 完成不等于以下后续事项已完成（merged-boundary 不变式）**：
 
 - ❌ **D2 production wiring 未启动**（scheduler 接入 / capability flip / 六 erase 入口生产可达）
-- ❌ **PR-D 未启动**（ledger export additional safety drills）
-- ❌ **PR-E 未启动**（release drill 五阶段 canary）
+- ❌ **PR-D 剩余 operational closeout 未启动**（production-neutral continuous ledger export/archive orchestration entry + restore-before-open runbook + D1a→D1b→D2→gate cross-layer safety drill/contract verification + crash/retry/post-snapshot purge/manual reconcile ops 步骤；详见 plan §S6-14 post-D2 rebaseline 注解；**禁止** scheduler production caller / S5/D1b/D2 production wiring / capability flip / 六 erase 入口生产可达；旧 `c07c031c` scaffold 已随 #586 scope 收敛撤回，禁止 cherry-pick）
+- ❌ **PR-E 未启动**（release drill 五阶段 canary；前置依赖 = PR-D 剩余 operational closeout，禁止 PR-D 未落地先启动 PR-E）
 - ❌ **C1 未启动**（Durable Core 总验收）
 - ❌ **S5 production wiring 未启动**
 - ❌ **registry capability flip 未启动**（external/runtime 仍 `erase_available=False`）
 - ❌ **六 erase 入口生产可达 未启动**
 - ❌ **TD-032 保持待拆分不关闭**（`restore_replay.py` 1876 行 + `test_s6i3_d_restore_replay.py` 2559 行 双超 1000 行硬限制已登记 🟢 待拆分）
-- ❌ **TD-104 未启动**（PR-A schema/test alignment 残项）
+- ❌ **TD-104 未启动**（PR-A schema/test alignment 残项）；**待重新审计**是否已被 #586 scope 收敛撤回的 scaffold / D1a `#598` / D2 `#602` 三个 merged-boundary 落 main supersede（**仅注册审计需要**，本 PR 不修改 `technical-debt.md`，不单方面关闭 TD-104）
 - **REQ-047 保持后续联合验收归属**（R1-S6 implementation conformance：B/C/D 联合启用门禁 — D2 合并后由 conformance 验收）
 
 **用户裁决 5 项冻结（merged-boundary 不变式）**：runtime per-binding proof = c / D1b = 专用 MinIO archive bucket（已落地）/ D2 = A advisory lock（已落地）/ D1a / D1b / D2 = 三独立 PR（已遵守）/ 固定顺序 D1a → D1b → D2（已遵守，三者均合 main）
@@ -963,5 +963,5 @@ D1b 与 D1a **不可合并于**「D1a 是只读 codec + decoder + bounded export
 - Spec: `docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md` §3 / §10 / §11
 - Plan: `docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md` §R1-S6-8 / §R1-S6-12 / §R1-S6-13 / §R1-S6-14 / §R1-S6-15.5
 - 工程门禁：`docs/03-engineering-governance/01-rules/quality-gates.md`、`engineering-principles.md`、`data-integrity.md`、`testing.md`
-- PR-D 基线：main `aff5488381e0e84878dd386cbc83be5abad3745a`（2026-08-27 closeout of PR #596/#597）
+- ~~PR-D 基线：main `aff5488381e0e84878dd386cbc83be5abad3745a`（2026-08-27 closeout of PR #596/#597）~~ → **supersede（2026-09-01）**：D1a / D1b / D2 已分别 squash merge 入 main（PR #598 / #600 / #602 + closeout PR #603），旧 PR-D 基线 `aff54883` 仅作为 D1b closeout 时点的历史事实保留；PR-D 剩余 operational closeout 范围以 plan §S6-14 post-D2 rebaseline 注解为唯一依据
 - TD-106 P2-1（runtime per-binding receipt）：`docs/03-engineering-governance/technical-debt.md#td-106` 仍登记未关
