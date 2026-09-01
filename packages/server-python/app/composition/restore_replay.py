@@ -72,7 +72,7 @@ import asyncio
 import re
 import uuid
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -125,6 +125,12 @@ ACTION_ZERO_WRITE = "zero_write"  # failed
 ACTION_VERIFY_ONLY = "verify_only"  # completed（local owner）
 ACTION_SKIP = "skip"  # cancelled
 ACTION_NO_REPEAT = "no_repeat"  # terminal state 不重复推进
+
+# pass B rollback 后的 provisional verdict 证据标记（**非** committed verdict——
+# 事务已回滚，任何 in-tx 写入均未生效）。error report 以此标记替代被回滚的
+# success verdict（LOCAL_CLEARED / BLOCKED_KEPT / EXTERNAL_VERIFIED 等），
+# **禁止**在 error report 中保留原 success action 冒充已提交。
+ACTION_ROLLED_BACK = "rolled_back"
 
 # 4 local owners（公共 sanctioned 入口一一映射）
 LOCAL_OWNERS: frozenset[str] = frozenset({
@@ -522,7 +528,24 @@ def _bind_archive_external_ref(
     matches: list[Mapping[str, Any]] = []
     for r in er_records:
         rk_raw = r.fields.get("owner_key")
-        # 非本 owner → 非候选，跳过（不参与绑定）。
+        # Round-8 低成本：**先**严格校验 owner_key 类型（必须 str），**再**做匹配。
+        # malformed owner_key（缺失 / 非 str）→ fail closed，**禁止** ``!= owner_key``
+        # 静默跳过冒充"非本 owner"——malformed owner record 与合法匹配记录共存时，
+        # 静默忽略会掩盖 archive 损坏并冒充"恰好一条绑定"。
+        if rk_raw is None:
+            raise RestoreReplayError(
+                "ARCHIVE_FACTS_FIELD_MISSING",
+                detail={"field": "external_ref.owner_key"},
+            )
+        if not isinstance(rk_raw, str):
+            raise RestoreReplayError(
+                "ARCHIVE_FACTS_TYPE_INVALID",
+                detail={
+                    "field": "external_ref.owner_key",
+                    "actual_type": type(rk_raw).__name__,
+                },
+            )
+        # 非本 owner（合法 str，但非目标 owner）→ 非候选，跳过（不参与绑定）。
         if rk_raw != owner_key:
             continue
         # 本 owner 的候选 → conversation_id 必须严格 canonical UUID（malformed 候选
@@ -1369,6 +1392,13 @@ async def replay_archive_segment_for_tenant(
     # -------- pass B：单一 exclusive maintenance transaction
     external_verified_count = 0
     external_verification_failed_count = 0
+    # pass B 事务内累积进 ``verdicts`` 的 verdict 仅为 **provisional/attempted**——
+    # 事务未提交前不算数。``committed_verdicts`` 仅当 ``async with session.begin()``
+    # 成功退出（事务真正提交）后才赋值；success 路径只发布 ``committed_verdicts``。
+    # 任一 owner 失败并 rollback 时，except 分支用 ``_rolled_back_evidence`` 把已累积的
+    # provisional verdict 全部改标 ``ACTION_ROLLED_BACK``，**禁止**在 error report 中
+    # 保留原 success action（LOCAL_CLEARED / BLOCKED_KEPT / EXTERNAL_VERIFIED 等）冒充已提交。
+    committed_verdicts: tuple[ReplayOwnerVerdict, ...] = ()
     try:
         async with session_factory() as session, session.begin():
             # 第一条 DB 语句必须是 exclusive advisory xact lock
@@ -1564,6 +1594,10 @@ async def replay_archive_segment_for_tenant(
                         "owner_key": validated.archive_owner_key,
                     },
                 )
+        # ``async with session.begin()`` 正常退出 → 事务已提交。此刻 provisional
+        # verdicts 才提升为 committed；success 路径只发布 ``committed_verdicts``。
+        # （本行仅在事务提交后执行；任何 owner 失败都会先跳到下方 except。）
+        committed_verdicts = tuple(verdicts)
     except RestoreReplayError as exc:
         # 异常已通过 async with session.begin() 自动 rollback；冒泡到 caller →
         # 在本函数内转化为 report.error
@@ -1573,7 +1607,7 @@ async def replay_archive_segment_for_tenant(
                 owners_total=len(facts),
                 owners_fact_drift=participant_failure_count,
                 participant_failures=participant_failure_count,
-                verdict=tuple(verdicts),
+                verdict=_rolled_back_evidence(verdicts),
                 error=f"participant_failure:{exc.detail.get('owner_key', '?')}",
             )
         if exc.code == "PARTICIPANT_OUTCOME_INVALID":
@@ -1583,7 +1617,7 @@ async def replay_archive_segment_for_tenant(
                 owners_total=len(facts),
                 owners_fact_drift=1,
                 participant_failures=participant_failure_count + 1,
-                verdict=tuple(verdicts),
+                verdict=_rolled_back_evidence(verdicts),
                 error=(
                     f"participant_outcome_invalid:{exc.detail.get('owner_key', '?')}"
                     f":{exc.detail.get('reason', '?')}"
@@ -1595,7 +1629,7 @@ async def replay_archive_segment_for_tenant(
                 operations_total=operations_total,
                 owners_total=len(facts),
                 owners_fact_drift=1,
-                verdict=tuple(verdicts),
+                verdict=_rolled_back_evidence(verdicts),
                 error=f"unknown_owner:{exc.detail.get('owner_key', '?')}",
             )
         if exc.code == "EXTERNAL_VERIFICATION_FAILED":
@@ -1603,7 +1637,7 @@ async def replay_archive_segment_for_tenant(
                 operations_total=operations_total,
                 owners_total=len(facts),
                 external_verification_failed=1,
-                verdict=tuple(verdicts),
+                verdict=_rolled_back_evidence(verdicts),
                 error=(
                     f"external_verification_failed:{exc.detail.get('owner_key', '?')}"
                     f":{exc.detail.get('reason', '?')}"
@@ -1616,7 +1650,7 @@ async def replay_archive_segment_for_tenant(
                 owners_total=len(facts),
                 owners_fact_drift=1,
                 toctou_drift=1,
-                verdict=tuple(verdicts),
+                verdict=_rolled_back_evidence(verdicts),
                 error=f"{exc.code}:{exc.detail}",
             )
         return RestoreReplayReport(
@@ -1624,11 +1658,11 @@ async def replay_archive_segment_for_tenant(
             owners_total=len(facts),
             owners_fact_drift=toctou_drift_count,
             toctou_drift=toctou_drift_count,
-            verdict=tuple(verdicts),
+            verdict=_rolled_back_evidence(verdicts),
             error=f"{exc.code}:{exc.detail}",
         )
 
-    counts = _count_verdicts_by_actual_result(verdicts)
+    counts = _count_verdicts_by_actual_result(committed_verdicts)
     return RestoreReplayReport(
         operations_total=operations_total,
         owners_total=len(facts),
@@ -1654,7 +1688,7 @@ async def replay_archive_segment_for_tenant(
         external_verified=external_verified_count,
         external_verification_failed=external_verification_failed_count,
         external_verify_only=counts[ACTION_EXTERNAL_VERIFY_ONLY],
-        verdict=tuple(verdicts),
+        verdict=committed_verdicts,
         toctou_drift=toctou_drift_count,
         pass_a_drift=pass_a_drift_count,
         participant_failures=participant_failure_count,
@@ -1662,12 +1696,34 @@ async def replay_archive_segment_for_tenant(
 
 
 def _count_verdicts_by_actual_result(
-    verdicts: list[ReplayOwnerVerdict],
+    verdicts: Iterable[ReplayOwnerVerdict],
 ) -> Counter[str]:
     c: Counter[str] = Counter()
     for v in verdicts:
         c[v.action] += 1
     return c
+
+
+def _rolled_back_evidence(
+    provisional: Iterable[ReplayOwnerVerdict],
+) -> tuple[ReplayOwnerVerdict, ...]:
+    """把 pass B 事务内累积的 provisional verdict 改标为 rollback 证据。
+
+    pass B 任一 owner 失败 → ``async with session.begin()`` 已自动 rollback，
+    in-tx 写入均未生效。error report **禁止**保留原 success action
+    （``LOCAL_CLEARED`` / ``BLOCKED_KEPT`` / ``EXTERNAL_VERIFIED`` 等）冒充已提交。
+    此处保留 per-owner 归属（operation_id / owner_key），但 action 一律改标
+    ``ACTION_ROLLED_BACK``，reason_code 记录被回滚的原 action（``rolled_back:<action>``）。
+    """
+    return tuple(
+        ReplayOwnerVerdict(
+            operation_id=v.operation_id,
+            owner_key=v.owner_key,
+            action=ACTION_ROLLED_BACK,
+            reason_code=f"rolled_back:{v.action}",
+        )
+        for v in provisional
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1805,6 +1861,7 @@ __all__ = [
     "ACTION_VERIFY_ONLY",
     "ACTION_SKIP",
     "ACTION_NO_REPEAT",
+    "ACTION_ROLLED_BACK",
     "LOCAL_OWNERS",
     "NON_LOCAL_OWNERS",
     "VALID_OPERATION_STATES",

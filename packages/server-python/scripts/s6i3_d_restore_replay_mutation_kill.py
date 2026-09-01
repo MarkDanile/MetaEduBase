@@ -513,10 +513,13 @@ def classify_pytest_run(
     2. exit 5 → ``no_tests``（不计）；exit 2/3/4 → ``collection_error``（不计）。
     3. exit 0 → ``survived``（测试全绿，mutation 未被捕获；不计）。
     4. 解析 JUnit；解析失败 → ``collection_error``（不计）。
-    5. 任一 ``<testcase><failure>`` 为断言级 → ``killed``（**计** KILLED）。
-    6. 否则任一 ``<failure>``（call 阶段非断言崩溃）→ ``crash``（不计）。
-    7. 否则任一 ``<error>``（setup/fixture/teardown）→ ``setup_error``（不计）。
-    8. 0 个 ``<testcase>`` → ``no_tests``（不计）；其余 → ``collection_error``（不计）。
+    5. 0 个 ``<testcase>`` → ``no_tests``（不计）。
+    6. 任一 ``<error>``（setup/fixture/teardown）→ ``setup_error``（不计；**优先于** killed）。
+    7. 否则任一 call 阶段**非断言**崩溃（``<failure>`` 非断言签名）→ ``crash``
+       （不计；**优先于** killed）。
+    8. 否则任一断言级 ``<failure>``（``saw_invariant`` 且无 crash/setup error）
+       → ``killed``（**计** KILLED）。
+    9. 其余 → ``collection_error``（不计）。
     """
     if timed_out:
         return CLS_TIMEOUT
@@ -545,12 +548,17 @@ def classify_pytest_run(
             saw_setup_error = True
     if tests == 0:
         return CLS_NO_TESTS
-    if saw_invariant:
-        return CLS_KILLED
-    if saw_crash:
-        return CLS_CRASH
+    # Round-8 P1-2：任一 crash / setup / fixture / teardown / 结构化环境错误**必须优先于**
+    # KILLED——仅当 ``saw_invariant=True`` 且 ``saw_crash=False`` 且 ``saw_setup_error=False``
+    # 时才计 KILLED。即使某 testcase 断言失败，只要**任一** testcase 存在 crash 或
+    # setup/teardown error（含跨 testcase mixed），就**不**计 KILLED，防止崩溃/环境错误
+    # 被伴随的断言失败掩盖而冒充 invariant-failure red。
     if saw_setup_error:
         return CLS_SETUP_ERROR
+    if saw_crash:
+        return CLS_CRASH
+    if saw_invariant:
+        return CLS_KILLED
     return CLS_COLLECTION_ERROR
 
 
@@ -583,9 +591,7 @@ def run_pytest(test_id: str, junit_path: Path) -> _RunResult:
     )
 
 
-async def _main() -> int:
-    print(f"Mutation kill: {len(MUTATIONS)} mutations\n")
-    junit_dir = Path(tempfile.mkdtemp(prefix="s6i3_d_mutation_"))
+async def _run_all(junit_dir: Path) -> int:
     # name -> (classification, clean_passed)
     results: list[tuple[str, str, bool]] = []
     for name, file, old, new in MUTATIONS:
@@ -652,6 +658,13 @@ async def _main() -> int:
         for n, c in not_killed:
             print(f"    {n}: {c}")
     return 0 if killed == total else 1
+
+
+async def _main() -> int:
+    print(f"Mutation kill: {len(MUTATIONS)} mutations\n")
+    # JUnit 临时目录用 TemporaryDirectory 自动清理（正常返回与异常路径均清理）
+    with tempfile.TemporaryDirectory(prefix="s6i3_d_mutation_") as _junit_tmp:
+        return await _run_all(Path(_junit_tmp))
 
 
 if __name__ == "__main__":

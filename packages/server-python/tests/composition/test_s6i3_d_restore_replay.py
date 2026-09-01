@@ -41,6 +41,7 @@ from app.composition.restore_replay import (
     ACTION_NO_REPEAT,
     ACTION_NON_LOCAL_BLOCKED,
     ACTION_REPLAY_SKIP_ZERO_WRITE,
+    ACTION_ROLLED_BACK,
     ACTION_RUNTIME_BINDING_UNPROVABLE,
     ACTION_RUNTIME_BLOCKED,
     ACTION_SKIP,
@@ -744,6 +745,19 @@ async def test_r2_two_owner_one_fails_rolls_back_all(s6i3_d_factory):
         f"实际调用顺序 = {calls}"
     )
 
+    # Round-8 P1-1：error report **不得**保留任何已回滚的 success verdict。
+    # owner A 已在事务内产生 provisional LOCAL_CLEARED；事务 rollback 后必须改标
+    # ACTION_ROLLED_BACK（reason_code 记录被回滚的原 action），**禁止**冒充已提交。
+    assert not any(v.action == ACTION_LOCAL_CLEARED for v in report.verdict), (
+        f"error report 泄露已回滚的 success verdict（LOCAL_CLEARED）：{report.verdict!r}"
+    )
+    rolled_back = [v for v in report.verdict if v.action == ACTION_ROLLED_BACK]
+    assert len(rolled_back) == 1, (
+        f"期望恰好 1 条 rolled_back evidence（owner A）；实际 verdict = {report.verdict!r}"
+    )
+    assert rolled_back[0].owner_key == first_owner
+    assert rolled_back[0].reason_code == "rolled_back:local_cleared"
+
     # 新 session 完整快照：checkpoint / operation fence / 正文 / 源表 全部 == 之前（rollback）
     async with factory() as s, s.begin():
         snap_after = await _snapshot(s)
@@ -752,6 +766,150 @@ async def test_r2_two_owner_one_fails_rolls_back_all(s6i3_d_factory):
     )
     # 双 owner checkpoint 都必须仍为 erasing（participant 写已 rollback）
     assert snap_after[0] == {
+        "workspace.core.v1": "erasing",
+        "execution.transport.v1": "erasing",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Round-8 P1-1: pass B 报告提交边界（TOCTOU 后序失败 → 不得冒充 committed）
+# ---------------------------------------------------------------------------
+
+
+async def test_r8_toctou_failure_rolls_back_verdict_evidence(
+    s6i3_d_factory, monkeypatch,
+):
+    """pass B 内**后序** owner 触发 TOCTOU drift → 整事务 rollback，error report
+    **不得**保留任何已回滚的 success verdict（Round-8 P1-1，覆盖 TOCTOU 后序失败）。
+
+    构造两个 local owner（op=running / cp=erasing → 二者均路由 local cleared）。spy
+    ``_toctou_reverify_pass_b``：第 1 次（owner A，处理顺序第一）call-through 真实重验
+    （返回非 terminal → owner A 调真实 participant 成功 → 事务内 provisional
+    LOCAL_CLEARED）；第 2 次（owner B）注入 ``TOCTOU_DRIFT_FIELDS`` → rollback。
+
+    判别点：
+    - report.error 含 toctou；``report.toctou_drift == 1``（pass B 内 TOCTOU drift 真实递增）
+    - report.verdict **无** LOCAL_CLEARED（已回滚不得冒充 committed）
+    - owner A 改标 ACTION_ROLLED_BACK（reason_code="rolled_back:local_cleared"）
+    - 新 session 快照：双 owner checkpoint 仍 erasing（owner A participant 写已 rollback）
+    """
+    import app.composition.restore_replay as rr_mod
+    from app.composition.agent_erasure_registry import (
+        capability_digest,
+        registry_digest,
+    )
+
+    factory = s6i3_d_factory
+    async with factory() as s, s.begin():
+        tid = await _seed_tenant(s)
+        cid = await _seed_conversation(s, tid=tid)
+        await s.execute(
+            text(
+                "UPDATE metaedu.agent_conversations "
+                "SET state = 'deleted', purge_after = now() - interval '1 day' "
+                "WHERE id = :cid"
+            ),
+            {"cid": cid},
+        )
+        op_id = await _seed_operation(s, tid=tid, cid=cid, state="running")
+        await s.execute(
+            text(
+                "UPDATE metaedu.agent_conversation_purges "
+                "SET revision = 1, lease_epoch = 0, registry_digest = :rd, "
+                "retention_policy_digest = :rd WHERE id = :oid"
+            ),
+            {"rd": registry_digest(), "oid": op_id},
+        )
+        await _seed_checkpoint(
+            s, tid=tid, purge_operation_id=op_id,
+            owner_key="workspace.core.v1", state="erasing",
+            capability_digest=capability_digest("workspace.core.v1"),
+        )
+        await _seed_checkpoint(
+            s, tid=tid, purge_operation_id=op_id,
+            owner_key="execution.transport.v1", state="erasing",
+            capability_digest=capability_digest("execution.transport.v1"),
+        )
+        # 源表行（execution.transport 清除对象），供 owner A participant 真实写入 + 前后快照
+        await s.execute(
+            text(
+                "INSERT INTO metaedu.agent_execution_outbox "
+                "(id, tenant_id, conversation_id, aggregate_id, aggregate_type, "
+                "event_type, schema_version, payload_inline, payload_digest, "
+                "correlation_id, status, created_at) "
+                "VALUES (gen_random_uuid(), :t, :c, gen_random_uuid(), 'conversation', "
+                "'run.requested.v1', 1, '\"leaked\"'::jsonb, :d, gen_random_uuid(), "
+                "'pending', now())"
+            ),
+            {"t": tid, "c": cid, "d": _DIGEST},
+        )
+    sink, _ = await _publish_segment_for(factory, tid=tid)
+
+    # pass B 处理顺序 = checkpoint stable_identity（checkpoint:{id}）= id::text 排序
+    async with factory() as s, s.begin():
+        order = [r[0] for r in (await s.execute(
+            text(
+                "SELECT owner_key FROM metaedu.agent_conversation_purge_owners "
+                "WHERE tenant_id = :tid ORDER BY id::text"
+            ),
+            {"tid": tid},
+        )).all()]
+        cps_before = dict((await s.execute(
+            text(
+                "SELECT owner_key, state FROM metaedu.agent_conversation_purge_owners "
+                "WHERE tenant_id = :tid"
+            ),
+            {"tid": tid},
+        )).all())
+    first_owner = order[0]
+
+    real_reverify = rr_mod._toctou_reverify_pass_b
+    call_count = {"n": 0}
+
+    async def reverify_spy(session, *, tenant_id, validated):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            # owner A：call-through 真实重验（非 terminal → 继续走 participant 成功）
+            return await real_reverify(
+                session, tenant_id=tenant_id, validated=validated,
+            )
+        # owner B：注入 TOCTOU drift → rollback
+        raise rr_mod.RestoreReplayError(
+            "TOCTOU_DRIFT_FIELDS",
+            detail={
+                "owner_key": validated.archive_owner_key,
+                "field": "checkpoint.state",
+            },
+        )
+
+    monkeypatch.setattr(rr_mod, "_toctou_reverify_pass_b", reverify_spy)
+
+    report = await replay_archive_segment_for_tenant(factory, sink=sink, tenant_id=tid)
+
+    assert report.error is not None
+    assert "TOCTOU_DRIFT" in report.error
+    assert report.toctou_drift == 1
+    assert call_count["n"] == 2  # owner A reverify + owner B reverify（后者注入失败）
+    # 已回滚的 success verdict 不得冒充 committed
+    assert not any(v.action == ACTION_LOCAL_CLEARED for v in report.verdict), (
+        f"error report 泄露已回滚的 success verdict（LOCAL_CLEARED）：{report.verdict!r}"
+    )
+    rolled_back = [v for v in report.verdict if v.action == ACTION_ROLLED_BACK]
+    assert len(rolled_back) == 1, (
+        f"期望恰好 1 条 rolled_back evidence（owner A）；实际 verdict = {report.verdict!r}"
+    )
+    assert rolled_back[0].owner_key == first_owner
+    assert rolled_back[0].reason_code == "rolled_back:local_cleared"
+    # 新 session 快照：双 owner checkpoint 仍 erasing（owner A participant 写已 rollback）
+    async with factory() as s, s.begin():
+        cps_after = dict((await s.execute(
+            text(
+                "SELECT owner_key, state FROM metaedu.agent_conversation_purge_owners "
+                "WHERE tenant_id = :tid"
+            ),
+            {"tid": tid},
+        )).all())
+    assert cps_after == cps_before == {
         "workspace.core.v1": "erasing",
         "execution.transport.v1": "erasing",
     }
@@ -2297,6 +2455,56 @@ def test_r7_external_malformed_candidate_type_invalid():
             manifest, conversation_id=cid, owner_key="external.payload.v1",
         )
     assert excinfo.value.code == "ARCHIVE_FACTS_TYPE_INVALID"
+
+
+def test_r8_external_binder_malformed_owner_coexists_with_valid():
+    """Round-8 低成本：external-ref binder **先**严格校验 owner_key 类型，**再**匹配。
+
+    反例：malformed owner record（非 str owner_key）与**合法匹配记录共存** → 必须
+    fail closed ``ARCHIVE_FACTS_TYPE_INVALID``，**禁止**静默忽略 malformed record
+    冒充"恰好一条绑定"；owner_key 缺失 → ``ARCHIVE_FACTS_FIELD_MISSING``。
+    """
+    from types import SimpleNamespace
+
+    import app.composition.restore_replay as rr_mod
+
+    cid = uuid.uuid4()
+    valid = SimpleNamespace(fields={
+        "owner_key": "external.payload.v1",
+        "conversation_id": str(cid),
+        "id": str(uuid.uuid4()),
+        "receipt_digest": "a" * 64,
+    })
+    # malformed owner_key（int）与合法匹配记录共存 → TYPE_INVALID（不静默返回 valid）
+    malformed_type = SimpleNamespace(fields={
+        "owner_key": 123,  # 非 str
+        "conversation_id": str(cid),
+        "id": str(uuid.uuid4()),
+        "receipt_digest": "b" * 64,
+    })
+    manifest = SimpleNamespace(
+        records={rr_mod.RECORD_KIND_EXTERNAL_REF: (valid, malformed_type)},
+    )
+    with pytest.raises(rr_mod.RestoreReplayError) as excinfo:
+        rr_mod._bind_archive_external_ref(
+            manifest, conversation_id=cid, owner_key="external.payload.v1",
+        )
+    assert excinfo.value.code == "ARCHIVE_FACTS_TYPE_INVALID"
+
+    # owner_key 缺失 → FIELD_MISSING
+    missing = SimpleNamespace(fields={
+        "conversation_id": str(cid),
+        "id": str(uuid.uuid4()),
+        "receipt_digest": "c" * 64,
+    })
+    manifest2 = SimpleNamespace(
+        records={rr_mod.RECORD_KIND_EXTERNAL_REF: (valid, missing)},
+    )
+    with pytest.raises(rr_mod.RestoreReplayError) as excinfo2:
+        rr_mod._bind_archive_external_ref(
+            manifest2, conversation_id=cid, owner_key="external.payload.v1",
+        )
+    assert excinfo2.value.code == "ARCHIVE_FACTS_FIELD_MISSING"
 
 
 _ABSENT = object()

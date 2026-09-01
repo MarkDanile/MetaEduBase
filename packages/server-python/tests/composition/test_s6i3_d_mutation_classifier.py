@@ -12,6 +12,10 @@
 
 脚本非包模块 → 经 importlib 加载并注册 ``sys.modules``（NamedTuple 无需模块解析，
 但保持一致加载方式）。
+
+Round-8 P1-2：任一 crash / setup / fixture / teardown / 结构化环境错误**必须优先于**
+KILLED——仅 ``saw_invariant=True`` 且 ``saw_crash=False`` 且 ``saw_setup_error=False``
+才计 KILLED。新增 mixed assertion+error / assertion+crash / 跨 testcase mixed 三类自测。
 """
 
 from __future__ import annotations
@@ -58,6 +62,32 @@ def _junit(*, tests: int, failures: int = 0, errors: int = 0,
         f'<?xml version="1.0" encoding="utf-8"?>'
         f'<testsuites><testsuite name="pytest" errors="{errors}" failures="{failures}" '
         f'skipped="0" tests="{tests}" time="0.0">{testcase}</testsuite></testsuites>'
+    )
+
+
+def _junit_cases(cases: list[tuple[list[str], list[str]]]) -> str:
+    """构造**多 testcase** JUnit XML。每个 case = ``(failure_msgs, error_msgs)``。
+
+    用于 Round-8 P1-2 mixed 优先级自测（crash / setup error 必须优先于 killed）：
+    同一 testcase 可携带多个 ``<failure>`` / ``<error>``；也可跨多个 testcase 混合。
+    """
+    tcs = ""
+    total_failures = 0
+    total_errors = 0
+    for i, (fmsgs, emsgs) in enumerate(cases):
+        body = ""
+        for fm in fmsgs:
+            body += f'<failure message="{fm}">tb</failure>'
+            total_failures += 1
+        for em in emsgs:
+            body += f'<error message="{em}">tb</error>'
+            total_errors += 1
+        tcs += f'<testcase classname="c" name="t{i}" time="0.0">{body}</testcase>'
+    return (
+        f'<?xml version="1.0" encoding="utf-8"?>'
+        f'<testsuites><testsuite name="pytest" errors="{total_errors}" '
+        f'failures="{total_failures}" skipped="0" tests="{len(cases)}" time="0.0">'
+        f'{tcs}</testsuite></testsuites>'
     )
 
 
@@ -169,3 +199,55 @@ def test_is_invariant_failure_prefixes():
     assert not mk._is_invariant_failure("NameError: name 'x' is not defined")
     assert not mk._is_invariant_failure("TypeError: bad")
     assert not mk._is_invariant_failure("")
+
+
+# ---------------------------------------------------------------------------
+# Round-8 P1-2：crash / setup error **优先于** killed
+# （仅 saw_invariant=True 且 saw_crash=False 且 saw_setup_error=False 才计 KILLED）
+# ---------------------------------------------------------------------------
+
+
+def test_classifier_mixed_assertion_and_error_is_setup_error():
+    """同一 testcase 既有断言失败（``<failure>`` AssertionError）又有 teardown/setup
+    error（``<error>``）→ ``setup_error`` **优先于** killed（不计 KILLED）。
+
+    旧实现先判 ``saw_invariant`` → 误计 KILLED（真红判别：本断言在旧实现下失败）。
+    """
+    xml = _junit_cases([(["AssertionError: bad"], ["failed on teardown"])])
+    cls = mk.classify_pytest_run(returncode=1, timed_out=False, junit_xml_text=xml)
+    assert cls == mk.CLS_SETUP_ERROR
+    assert not mk.is_killed(cls)
+
+
+def test_classifier_mixed_assertion_and_crash_is_crash():
+    """同一 testcase 既有断言失败又有非断言崩溃（``NameError``）→ ``crash``
+    **优先于** killed（不计 KILLED）。旧实现误计 KILLED（真红判别）。"""
+    xml = _junit_cases([(["AssertionError: bad", "NameError: boom"], [])])
+    cls = mk.classify_pytest_run(returncode=1, timed_out=False, junit_xml_text=xml)
+    assert cls == mk.CLS_CRASH
+    assert not mk.is_killed(cls)
+
+
+def test_classifier_cross_testcase_mixed_not_killed():
+    """跨 testcase mixed：一个 testcase 断言失败、另一个 crash 或 setup error →
+    crash / setup_error **优先于** killed（不计 KILLED）。旧实现误计 KILLED（真红判别）。"""
+    # tc0 断言失败 + tc1 崩溃 → crash
+    xml_crash = _junit_cases([
+        (["AssertionError: bad"], []),
+        (["NameError: boom"], []),
+    ])
+    cls_crash = mk.classify_pytest_run(
+        returncode=1, timed_out=False, junit_xml_text=xml_crash,
+    )
+    assert cls_crash == mk.CLS_CRASH
+    assert not mk.is_killed(cls_crash)
+    # tc0 断言失败 + tc1 setup error → setup_error
+    xml_setup = _junit_cases([
+        (["AssertionError: bad"], []),
+        ([], ["failed on setup"]),
+    ])
+    cls_setup = mk.classify_pytest_run(
+        returncode=1, timed_out=False, junit_xml_text=xml_setup,
+    )
+    assert cls_setup == mk.CLS_SETUP_ERROR
+    assert not mk.is_killed(cls_setup)
