@@ -957,6 +957,79 @@ D1b 与 D1a **不可合并于**「D1a 是只读 codec + decoder + bounded export
 
 **用户裁决 5 项冻结（merged-boundary 不变式）**：runtime per-binding proof = c / D1b = 专用 MinIO archive bucket（已落地）/ D2 = A advisory lock（已落地）/ D1a / D1b / D2 = 三独立 PR（已遵守）/ 固定顺序 D1a → D1b → D2（已遵守，三者均合 main）
 
+## 17.8. GOV closeout merged-boundary 收口标注（2026-09-02）
+
+> 本节为 R1-S6-I3-D 工作台精简 + PR-D 剩余边界重定基 GOV 子卡 merge 入 main 的事实收口。审计责任范围：**纯文档 3 文件治理归位**——`current-work.md` slim + plan §S6-14 post-D2 rebaseline 注解 + 本文档 §17.7 4 处过期修复。**§17.7 中「TD-104 未启动...待重新审计是否已被 #586 scope 收敛撤回的 scaffold / D1a `#598` / D2 `#602` 三个 merged-boundary 落 main supersede」属 D2 closeout 时点（2026-09-01）的历史事实，已由本次 GOV closeout 审计 supersede：#586 / #598 / #602 三个 merged-boundary 均已 supersede 该 scaffold；TD-104 仍 ⚫ 待办保持不关闭。**本节不宣称 PR-D / PR-E / F-matrix 7/12 + F10 M6 / C1 / S5 production wiring / capability flip / 六 erase 入口生产可达已交付。
+
+**集成事实链**：
+
+1. **PR #604 squash merge 入 main `e37561fe`**（2026-09-02，mergeCommit.oid `e37561fea2cc9859651fb462ee71472d581b9224`，mergedAt `2026-09-02T01:34:20Z`，feature branch `docs/req041-047-r1-s6-i3-d-gov` 已 `--delete-branch` 删除）
+2. source head = score commit（single squash commit mergeCommit = source head = FINAL_IMPL_HEAD `e37561fe`；implementation baseline main `68fafd81` = PR #586 root squash mergeCommit 入 main）
+3. 评审对象 main@`68fafd81`..`e37561fe` 净 diff 3 文件 8+/127-：仅 `current-work.md` slim + `2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md` §S6-14 APPEND + `r1-s6-i3-d-fact-audit.md`（本文件）§17.7 4 处过期修复
+4. main 累积含 D1a（#598）+ D1b（#600）+ D2（#602）+ F10 真实 PG（#596）+ R1-S6-I3 root（#586）+ GOV closeout（#604）+ GOV sub-TASK closeout 独立 PR 6 个 merged-boundary + 各自评分行
+5. **GOV 子卡 = pure-docs 治理归位，不引入任何业务代码 / 测试 / 评审 Score Log Metrics 字段 / technical-debt / plan 既有 rebaseline 内容修改**
+
+**GOV 完成内容（pure-docs 3 文件）**：
+
+- **`current-work.md` slim**：
+  - 从「当前进行中」移除 TASK-R1-S6-I3-D-GOV 子卡，回归 `当前无活跃任务。` 硬门禁（`current-work-in-progress-pollution` gate 触发）
+  - 候选表保留 3 行（PR-D → F-matrix → PR-E），顺序严格 PR-E depends on PR-D
+  - 「最近完成」表追加 #604 行（首位），摘要 213 字符（< 220 字符硬限制）
+  - 总行数裁剪至 12 行（移除 5 行最旧：R1-S5 SCH-D / SCH-C / SCH-A / D-A / D）
+- **plan §S6-14 post-D2 rebaseline 注解 APPEND 块**（不改写既有 rebaseline 内容）：
+  - PR-D 剩余交付边界精确冻结：(1) production-neutral continuous ledger export/archive orchestration entry；(2) restore-before-open runbook；(3) D1a→D1b→D2→gate cross-layer safety drill/contract verification；(4) crash/retry、post-snapshot purge、manual reconcile ops 步骤
+  - 明确禁止：scheduler production caller、S5/D1b/D2 production wiring、capability flip、六 erase 入口生产可达
+  - PR-D 与 F-matrix 7/12 / F10 M6 / PR-E 三者依赖关系在 §S6-14 段落统一冻结
+- **本文档 §17.7 4 处过期修复**（不改写历史事实段，仅删过期措辞）：
+  - 移除 3 处过期 main mergeCommit 引用（如 `#586 mergeCommit 68fafd81` 早已固定，删去"待合并"措辞）
+  - 修 1 处 TASK-R1-S6-I3 状态措辞（从 🟢 → 🟡；GOV 子卡完成 ≠ TASK 整体完成）
+
+**严格禁止面零触碰**（merged-boundary 不变式，已核对）：
+
+- ❌ **Score Log Metrics 字段未触动**（仅新增 #604 Original 单行，Metrics byte-identical，`git diff 68fafd81..e37561fe -- docs/03-engineering-governance/04-retrospectives/review-score-log.md` 仅 +1 行）
+- ❌ **`technical-debt.md` 未修改**——TD-104 保持 ⚫ 待办不关闭（PR-A schema/test alignment 残项：三个 merged-boundary supersede scaffold 后**仍保持 ⚫ 待办**属历史事实，本 PR 不单方面关闭）；TD-032 保持 🟢 待拆分不关闭
+- ❌ **plan 既有 §S6-14 rebaseline 内容未改写**（仅 APPEND 块）
+- ❌ **业务代码 / 测试 / migration 043 / schema / enum / CHECK / registry / 门禁脚本 / KNOWN_ISSUES 未触碰**
+
+**GOV closeout merged-boundary 不变式（与 §17.6 / §17.7 一致口径）**：
+
+- ✅ GOV closeout = pure-docs 治理归位（current-work slim + plan §S6-14 APPEND + fact-audit §17.7 4 处过期修复）= TASK-R1-S6-I3-D-GOV 子卡完成
+- ❌ GOV closeout ≠ TASK-R1-S6-I3-D TASK 整体完成（任务卡整体仍 🟡 进行中）
+- ❌ GOV closeout ≠ PR-D / PR-E / F-matrix 7/12 + F10 M6 / C1 / S5 production wiring / capability flip / 六 erase 入口生产可达任何一项已交付
+- ❌ GOV closeout ≠ TD-104 / TD-032 任何一项已关闭
+- ❌ GOV closeout ≠ runtime per-binding proof 路径任何决策已落地（用户裁决 5 项冻结仅重申既有，未做新决策）
+
+**三面复审 + 评分事实**：
+
+- 三面独立复审 P0=0/P1=0/P2=0/P3=5（non-blocking）
+- 维度评分（15/17/14/15/14/10/6 = 91/100）：范围与需求匹配 15 + 实现质量 17 + 测试与验证证据 14 + 事实源与流程遵守 15 + 风险与行为变化控制 14 + 可评审性与交接质量 10 + 持续改进信号 6
+- 扣分如实登记：5 P3 non-blocking（A-P3-1 评估 PD-7 实质等同 contract-first / B-P3-1 Ready `gh pr ready` 跨 PR 时机 / B-P3-2 评分双 metric（fact-audit 缺独立 metric）/ C-P3-1 plan §S6-14 旧 PR-D 块追加「post-D2 改 supersede 关系」 / C-P3-2 Score Log `#604` row 加事实源列字段说明）；5 P3 全部登记不冒充收口
+- **正式评分门禁真实 PASS** `scripts/check-review-score-submit --base e37561fe --pr 604` → `review-score-submit: passed (base e37561fe, PR #604, one Original row, Metrics unchanged)`
+
+**GOV closeout 验证事实**：
+
+- pure-docs `git diff --check` clean + `scripts/check-engineering-docs --full` 全绿
+- Ready 三路 required checks 全 SUCCESS（合并前最后一次推送）
+- 评分提交后重跑三路全 SUCCESS
+- 零业务代码 / 测试 / migration / schema / enum / CHECK / registry / Score Log Metrics / 门禁脚本 / KNOWN_ISSUES 改动
+- **本地验证**：local main `e37561fe` == origin/main `e37561fe` == closeout mergeCommit `e37561fe` ✓
+
+**GOV 完成边界（精确登记，不越界）**：
+
+- **已完成**：工作台 slim（TASK-R1-S6-I3-D-GOV 子卡移除 + 候选表 3 行 + 最近完成 12 行）+ PR-D 剩余边界重定基冻结（plan §S6-14 APPEND 块）+ 评审流程合规（5 P3 non-blocking）+ 评分 91 Original + main closeout
+- **未启动**：PR-D / F-matrix 7/12 + F10 M6 / PR-E / C1 / S5 production wiring / capability flip / 六 erase 入口生产可达
+- **未关闭**：TD-104（PR-A schema/test alignment 残项保持 ⚫ 待办）+ TD-032（D1a/D1b/D2 三对超 1000 行硬限制保持 🟢 待拆分）+ REQ-047（R1-S6 implementation conformance 联合闭环）
+- **5 P3 follow-up non-blocking**：A-P3-1 / B-P3-1 / B-P3-2 / C-P3-1 / C-P3-2（详见三面复审事实段）
+
+**§17.6 / §17.7 / §17.8 关系关系**：
+
+- §17.6（D1b closeout 标注，2026-08-28）：D1b merged-boundary 收口 + D2 未启动的历史事实
+- §17.7（D2 closeout 标注，2026-09-01）：D2 merged-boundary 收口 + supersede §17.6「D2 未启动」+ PR-D 未启动历史事实
+- §17.8（本节，GOV closeout 标注，2026-09-02）：GOV 子卡 merged-boundary 收口 + supersede §17.7「TD-104 未启动...待重新审计」+ 任务卡整体仍 🟡 进行中 + PR-D / PR-E / F-matrix / C1 / S5 wiring / capability flip / 六 erase 全部未启动
+- **三节关系 = 累积 supersede 关系**（每节都 supersede 前一节中"待启动"或"待重新审计"措辞为 merged-boundary 事实，但**不** supersede 前一节"未启动"清单（PR-D/PR-E/C1/S5 wiring/capability flip/六 erase 仍全部未启动）
+
+**用户裁决 5 项冻结（merged-boundary 不变式，与 §17.7 一致）**：runtime per-binding proof = c / D1b = 专用 MinIO archive bucket（已落地）/ D2 = A advisory lock（已落地）/ D1a / D1b / D2 = 三独立 PR（已遵守）/ 固定顺序 D1a → D1b → D2（已遵守）
+
 ## 18. 关键引用
 
 - 任务卡：`docs/03-engineering-governance/current-work.md` TASK-R1-S6-I3-D
