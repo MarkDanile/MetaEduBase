@@ -2349,6 +2349,22 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 
 > **merged-boundary（2026-08-24，契约纠偏 PR #587，squash merge `66674f23`，评分 85，Original，基线 `96ddc014`，FINAL_IMPL_HEAD `eb4f3ffc`）**：R1-S6-I3-B restore replay 持久状态域契约纠偏冻结并入 main——S6-11 三层 CHECK 闭集事实基线（migration 034 行级引用 + fresh PG head=043 复核）+ S6-12 replay 状态路由表（operation 六态 × checkpoint 五态 × fence 四态分层，禁止跨层混用；`quiesced`/`rebuilding` 派生术语 → `UNRECOGNIZED_STATE` fail closed）+ S6-13 replay 判定方式（`REPLAYABLE_OPERATION_STATES={running,blocked}` 仅来自 operation CHECK 闭集 + owner 可重放六元组 + 快照 record kind/table identity + 未知/跨层/不可证明一律 fail closed）+ S6-14 后续拆分（PR-A schema/test alignment → PR-C F1-F14 → PR-D ledger export/replay executor + runbook → PR-E release drill）与 #586 处置（保持 Draft，关闭 supersede 或只读历史载体待决）+ §S6-8 item 7 / §S6-10 纠偏指针。正式三面复审 P0=0/P1=0/P2=0/P3=1（唯一 P3 = S6-11 audit 分类 A×3 vs 审计报告 A×5 计数口径，绑定 TD-104 备注）；`check-review-score-submit` passed（base=FINAL_IMPL_HEAD，Score Log 唯一 #587 Original 行，Metrics Snapshot 未变）；Draft / Ready / 评分三层三路 required checks 全 SUCCESS。**纠偏完成不代表 #586 已修复或 PR-A/C/D/E 已启动**：#586 仍 Draft（head=`3fb71cc6`，Backend iteration 红，未修复、未 rerun，分支与提交全部保留）；C1、S5 production wiring、registry capability 翻转（external/runtime 保持 `erase_available=False`）、六 erase 入口生产可达均未启动；零代码/测试/schema/migration/registry/CI 改动。follow-up **TD-104**（PR-A schema/test alignment 稳定承接：observed_at→created_at/resolved_at + 删除不存在列 + acked fixture 合法 64-hex + 独立 CHECK 拒绝负例）+ **REQ-047**（R1-S6 implementation conformance 随后续 slice 闭环）。
 
+> **D2 merged-boundary（2026-09-01，PR #602 + closeout PR #603，squash merge `ae7f3c98` + closeout `4b92b980`，评分 92 Original，基线 `b88704a7`，FINAL_IMPL_HEAD `4bc22328`）**：D1a / D1b / D2 已分别 squash merge 入 main——**D1a** = PR #598 mergeCommit `5868831e`（评分 97 Original，bounded read-only ledger snapshot codec）；**D1b** = PR #600 mergeCommit `01c84f7c`（评分 94 Original，专用 MinIO archive sink + 不可变 commit-graph 发布协议 + 两阶段 API 拆分）；**D2** = PR #602 mergeCommit `ae7f3c98`（评分 92 Original，bounded read-only restore replay executor + M 类 A 方案 advisory lock + restore-before-open gate + M-class writer `restore_replay_executor` registered=FENCE_M）。PR #603 pure-docs closeout 已 squash merge 入 main `4b92b980`（仅 3 治理文件 current-work / work-log / fact-audit §17.7，零代码/测试/schema/migration/registry/CI 改动）。**因此**：上述 §S6-14 原始 frozen 顺序（PR-A → PR-C → PR-D → PR-E）作为历史事实保留不再重写；**禁止**再使用「PR-D 整体未启动」「D1a/D1b/D2 需要重做」「#586 仍 supersede 待决」等表述——三者均已 merged-boundary 落 main，相关历史叙述见 `docs/03-engineering-governance/04-retrospectives/r1-s6-i3-d-fact-audit.md` §17.5 / §17.6 / §17.7 + `docs/03-engineering-governance/work-log.md` + `docs/03-engineering-governance/04-retrospectives/review-score-log.md`。
+
+> **PR-D 剩余边界 rebaseline（2026-09-01，post-D2 注解，pure-docs 治理）**：基于上述 D2 merged-boundary 重新定基 PR-D 剩余交付边界——**仅包含**以下 4 项 production-neutral 工作：
+> 1. **production-neutral continuous ledger export / archive orchestration entry**（独立 CLI / 编排入口，与 D1a snapshot codec + D1b publish 两阶段 API 串联；**不**接 scheduler production caller、**不**做 capability flip、**不**进入六 erase 入口生产可达路径）
+> 2. **restore-before-open runbook**（人工 runbook 文档：何时用 D2 `replay_archive_segment_for_tenant`、入口参数、`RestoreReplayReport` 消费约定、blocked / drift / 缺证据 / participant outcome 不齐时的处置路径与责任分工）
+> 3. **D1a→D1b→D2→gate cross-layer safety drill / contract verification**（跨层 safety drill：独立测试或独立 acceptance 脚本，跨 D1a snapshot + D1b publish + D2 replay + restore-before-open gate 四层，验证 §S6-12/§S6-13 路由表与判定方式在串联路径上的 fail-closed 一致性）
+> 4. **crash/retry、post-snapshot purge、manual reconcile ops 步骤**（运维步骤文档：M 类 advisory lock 持有期间崩溃 / D1a→D2 重试 / purge 与 replay 时间窗冲突 / blocked + reconcile 手动处置流程）
+>
+> **明确排除**（不属于 PR-D 剩余交付范围，禁止合并进 PR-D，禁止 cherry-pick 旧 `c07c031c` scaffold）：
+> - scheduler production caller 接入（S5 production wiring 范畴）
+> - S5 / D1b / D2 production wiring（scheduler 启用后真实链路启动）
+> - registry capability flip（external / runtime 保持 `erase_available=False`）
+> - 六 erase 入口生产可达（writer 仍为 `registered=FENCE_M` advisory lock 互斥保护，不进入生产 traffic 路径）
+>
+> **决策门禁（pure-docs 治理要求）**：若 PR-D 剩余 4 项任一项无法从现有 spec / plan / main 代码直接证明范围，立即停止并列出张力，不自行发明新架构。事实基线以 `docs/03-engineering-governance/04-retrospectives/r1-s6-i3-d-fact-audit.md` §17.7 D2 merged-boundary 收口标注为权威，PR-D 实现启动后必须引用此 rebaseline 注解作为唯一范围依据；PR-D 不替代 PR-E，PR-E 必须显式登记 PR-D 剩余交付为前置依赖（禁止 PR-D 未落地先启动 PR-E）。
+
 
 
 #### S6-15 S6-F10 契约路由表（冻结，契约核对纠偏）
