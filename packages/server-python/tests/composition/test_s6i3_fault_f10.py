@@ -42,6 +42,10 @@ from app.contexts.agent_workspace.infrastructure.erasure_repository import (
 
 # 复用 settlement / projection / rebuild 已落地 helper（re-scope：F10 仅消费既有
 # helper，不复制、不改 S5 代码）。
+from tests.composition.s6i3_seeds import (
+    _seed_6_owner_acked_with_residual_body,
+    _seed_tenant,
+)
 from tests.composition.test_s5_sch_d_settlement import (
     _EXTERNAL,
     _claim,
@@ -730,3 +734,168 @@ async def test_f10_no_body_resurrection_no_repeated_adapter_replay_idempotent(
         assert first_title == "t" and second_title == "t", (
             "settlement 不写正文；append-only guard 防任何回写"
         )
+
+
+# ---------------------------------------------------------------------------
+# F10 M6 priority-3 scan 真实 PG 判别载体（独立 test contract）
+# ---------------------------------------------------------------------------
+
+async def test_f10_m6_completed_bypass_scan_check_blocked(
+    db_session, session_factory
+):
+    """F10 M6：priority-3 scan nonzero 阻断 → blocked（精确 scan reason）。
+
+    既有 F10 测试集（test_f10_* 8 项）**全部**走 hold_revision 0→1 → G2
+    提前 return blocked_hold_revision_changed（``projection_calculator.py:319-326``），
+    永远到不了 priority-3 scan check（``L491-507``）。本测试是 M6 NOT-RED 解除
+    的独立判别载体：构造 G1/G2/G3 cleared 场景使 priority-3 唯一可达。
+
+    构造路径（**不**依赖 hold drift）：
+    - G1 cleared：registry_digest_matches=True（snapshot 与 operation registry 一致）。
+    - G2 cleared：hold_revision_snapshot=0 == conversation.hold_revision=0
+      （**不** create_legal_hold；**不**推进 hold_revision）。
+    - G3 cleared：无 active legal hold（**不** INSERT agent_legal_holds active）。
+    - 6 owner 全部 checkpoint.state=acked + ack_digest=64hex + capability_digest
+      匹配 snapshot + owner_version=1（通过 my new helper
+      ``_seed_6_owner_acked_with_residual_body``）。
+    - 5-party validation 全 pass：5 非 window owner fence=erased + window owner
+      fence 由 closeout_erasing 从 erasing 推到 erased。
+    - workspace.core.v1 final scan nonzero：conversation.actor_state='present'
+      （默认 _seed_conversation）→ unanonymized_actors=1 → scan_total=1。
+
+    Control 期望：aggregate_projection 返回 state=blocked + failure_code=
+    "workspace_body_scan_nonzero"（``projection_calculator.py:485-507`` +
+    ``SCAN_REASON_BY_OWNER["workspace.core.v1"]``）。
+    Mutant 期望（M6 折叠 priority-3）：``nonzero_scans = []`` + ``if False`` →
+    priority 1 completed 分支（``L509-516``）→ state="completed" + failure_code=None
+    → 测试断言 `state == "blocked"` 失败 → **红**。
+    """
+    from app.composition.transactional_projection_coordinator import (
+        TransactionalProjectionCoordinator,
+    )
+
+    # ---- phase 1: seed 全 6 owner pending + window owner fence erased（**不**走
+    #   closeout_erasing 的 fence erasing→erased 路径，理由：empty window + _LookupNoneAdapter
+    #   走 OUTCOME_UNKNOWN 路径，_apply_window_outcome 对 fence 写 erased 触发 S5-C-1
+    #   例外条款（ValueError swallowed），fence 保持 'erasing' → 5-party fail → priority 2
+    #   提前 blocked with purge_owner_ack_conflict → priority 3 scan 不达。M6 必走 priority
+    #   3，唯一办法：fence 预置 'erased'，让 closeout_erasing _apply_window_outcome 中
+    #   `if fence.state == "erasing"` 条件 False → 跳过 fence 写，fence 保持 'erased' →
+    #   5-party passes → priority 3 触发。empty intent digest 仍由 _settle_empty_window
+    #   提供，保证 closeout_erasing 的 _validate_frozen_snapshot 通过）。
+    from tests.composition.test_s5_sch_d_settlement import _seed_fence
+    from tests.composition.test_s6_td106_settlement_ledger import (
+        _settle_empty_window,
+    )
+    tid, cid, op1 = await _settle_empty_window(db_session, owner_key=_EXTERNAL)
+    # 强制 UPDATE window owner fence 从 'erasing' → 'erased'（**不**改其他字段）。
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_erasure_fences "
+            "SET state='erased', ack_digest=:a, acked_at=now() "
+            "WHERE tenant_id=:t AND conversation_id=:c AND owner_key=:k"
+        ),
+        {"a": "a" * 64, "t": tid, "c": cid, "k": _EXTERNAL},
+    )
+    # _settle_empty_window → _claim → 触发 actor_state='redacted' + created_by=NULL。
+    # M6 测试需 actor_state='present' 触发 workspace.core.v1 final scan
+    # unanonymized_actors 非零 → priority 3 scan_reason 触发。ck_agent_conv_actor 约束：
+    # present AND created_by NOT NULL AND creator_identity_digest NULL。强制 UPDATE
+    # 回 'present' + created_by=tid + creator_identity_digest=NULL（**不**改其他字段）。
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_conversations SET actor_state='present', "
+            "    created_by = :tid, creator_identity_digest = NULL "
+            "WHERE id = :c"
+        ),
+        {"c": cid, "tid": tid},
+    )
+    await db_session.commit()
+
+    # ---- phase 2: 6 owner acked + 5 非 window fence erased（我新 helper；不动
+    #   window owner fence=erasing 留 closeout_erasing 推到 erased）
+    await _seed_6_owner_acked_with_residual_body(
+        db_session,
+        tid=tid, cid=cid, purge_operation_id=op1,
+        window_owner_key=_EXTERNAL,
+    )
+    await db_session.commit()
+
+    # ---- phase 3: 公开 production entry closeout_erasing → external.fence erased
+    #   + external.checkpoint acked。所有 6 owner 终态（acked + fence=erased）。
+    #   用 _LookupNoneAdapter：empty window 路径 → outcome=OUTCOME_UNKNOWN；
+    #   closeout 仍正常推进 fence=erased + checkpoint=acked（TD-106 严格计数守卫
+    #   处理 0 ref 窗口合法 no-op SUCCESS）。
+    from tests.composition.test_s5_sch_d_settlement import _LookupNoneAdapter
+    service = SettlementService(
+        session_factory, scan_providers=build_scan_providers,
+        adapter_resolver=_noop_adapter_resolver(_LookupNoneAdapter()),
+    )
+    await service.closeout_erasing(
+        tenant_id=tid, conversation_id=cid, purge_operation_id=op1,
+        owner_key=_EXTERNAL,
+    )
+    await db_session.commit()
+
+    # ---- phase 4: 公开 production entry aggregate_projection → priority 3 scan
+    async with session_factory() as s, s.begin():
+        coordinator = TransactionalProjectionCoordinator(
+            s, scan_providers=build_scan_providers(s)
+        )
+        await coordinator.aggregate_projection(
+            tenant_id=tid,
+            conversation_id=cid,
+            purge_operation_id=op1,
+        )
+
+    # ---- phase 4: 公开 production entry aggregate_projection → priority 3 scan
+    async with session_factory() as s, s.begin():
+        coordinator = TransactionalProjectionCoordinator(
+            s, scan_providers=build_scan_providers(s)
+        )
+        await coordinator.aggregate_projection(
+            tenant_id=tid,
+            conversation_id=cid,
+            purge_operation_id=op1,
+        )
+
+    # ---- phase 5: control 断言（priority-3 scan 阻断）----
+    # operation 状态必为 blocked（G1/G2/G3 cleared → 5-party pass → priority-3 触发）。
+    # _op_state_failure 接收 session_factory（内部 `async with session_factory() as s:`）；
+    # _cp / _fence_state 接收 AsyncSession。分开两层。
+    state, fc = await _op_state_failure(session_factory, op1)
+    assert state == "blocked", (
+        f"M6 control failure: G1/G2/G3 cleared + 6 owner acked + 5-party pass + "
+        f"workspace scan nonzero 必须经 priority-3 阻断；operation state 实际 "
+        f"{state!r} (failure_code={fc!r})。可能原因：(a) closeout_erasing 未完成 "
+        f"fence 推 erased；(b) G1/G2/G3 未 cleared（hold drift 残留 / registry drift / "
+        f"active legal hold）；(c) 五方验证未 pass（fence_row 缺失）；(d) 6 owner "
+        f"checkpoint 未全 acked（ack_digest 非 64hex）"
+    )
+    assert fc == "workspace_body_scan_nonzero", (
+        f"M6 control failure: priority-3 scan 阻断必须产生精确 scan reason "
+        f"workspace_body_scan_nonzero（SCAN_REASON_BY_OWNER['workspace.core.v1']），"
+        f"实际 failure_code={fc!r}"
+    )
+    # 6 owner 全部 acked + fence=erased（closeout_erasing 推到 + 5 非 window pre-state）。
+    async with session_factory() as assert_s:
+        for owner_key in (
+            "workspace.core.v1", "workspace.transport.v1",
+            "execution.core.v1", "execution.transport.v1",
+            "external.payload.v1", "runtime.private.v1",
+        ):
+            assert await _cp(assert_s, op1, owner_key, "state") == "acked", (
+                f"M6 control failure: owner {owner_key} checkpoint.state 必须为 acked；"
+                f"实际 {await _cp(assert_s, op1, owner_key, 'state')!r}"
+            )
+            assert await _fence_state(assert_s, cid, owner_key) == "erased", (
+                f"M6 control failure: owner {owner_key} fence.state 必须为 erased（window"
+                f" owner 由 closeout_erasing 推 erasing→erased；其他 5 由 helper 预置）；"
+                f"实际 {await _fence_state(assert_s, cid, owner_key)!r}"
+            )
+
+    # 完成后不能 claimed/erased/completed（priority-3 唯一可达；completed 必为 False）
+    # 此断言由上面 state=="blocked" 已隐含；保留显式 ack 确认。
+    assert state != "completed", (
+        "M6 control 严禁 completed（priority-3 scan nonzero 必阻断 → blocked）"
+    )
