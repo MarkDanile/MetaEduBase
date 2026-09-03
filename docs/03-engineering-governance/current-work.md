@@ -14,7 +14,44 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-R1-S6-I3-D-PR-D: R1-S6 PR-D 剩余 operational closeout（独立后续 PR）
+
+类型: 文档 + 后端 composition + 后端测试（pure contract）
+领域: 后端 / Erasure / Restore-Replay / 治理
+当前执行模式: Phase 1 实现 + 验证（Phase 0 契约审计已交付并经用户接受）
+最近接手工具: Claude Code (Opus 4.8 / 1M)
+分支: `feature/req041-047-r1-s6-i3-d-pr-d-operational-closeout`（基于 main `840bcaf2`）
+
+需求来源:
+- Spec: §3 / §10 / §11（[`2026-07-27-req-041-047-r1-retention-purge-recovery.md`](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
+- Plan: §S6-14 post-D2 rebaseline 注解（[`2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md`](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)）+ §S6-7/§S6-8/§S6-12/§S6-13/§S6-14/§S6-15
+- 技术债: TD-104（⚫ 待办，PR-A schema/test alignment 残项）+ TD-032（🟢 完成但 D1b 1052 + D2 1876 双超 1000 待拆分；PR-D **不**拆分）
+- 架构约束: plan §S6-14 严格禁止项（scheduler caller / D1b/D2/S5 wiring / capability flip / 六 erase / migration / schema / registry / CI / 门禁脚本）
+
+当前进展:
+- Phase 0 契约审计已交付并经用户接受（4 项默认最小方案冻结：continuous export = fresh-snapshot series / 仅 production-neutral callable / 不新增 CLI / 新增串联 acceptance test）
+- Phase 1 实现：
+  - `packages/server-python/app/composition/s6i3_d_ledger_orchestration.py` 新增（export_and_archive_ledger_segment：D1b phase-1 + phase-2 thin composition）
+  - `packages/server-python/tests/composition/test_s6i3_d_cross_layer_drill.py` 新增（5 项 acceptance / contract test）
+  - `docs/02-delivery-plans/03-runbooks/2026-09-03-r1-s6-i3-d-restore-before-open.md` 新增（restore-before-open 入口 + crash/retry + post-snapshot purge + M-class 并发窗口 + blocked/manual reconcile ops）
+  - `docs/03-engineering-governance/current-work.md` 登记 PR-D 活跃卡（本节）
+
+下一步:
+- 验证 ruff + mypy baseline（0 regression）+ git diff --check + scripts/check-engineering-docs --full + 完整 backend composition 回归
+- 确认无 migration / schema / enum / CHECK / registry / CI / Score Log / Metrics / technical-debt.md 改动
+- 普通新 commit + push
+- 创建 OPEN/Draft PR；等待三路 CI 全 SUCCESS
+
+验证状态:
+- Phase 1 测试：5/5 PASS（`test_s6i3_d_cross_layer_drill.py`：full_path_open_allowed / continuous_export_advances_generation / gate_blocks_on_runtime_proof_c / cross_tenant_decoder_rejects / asserts_metaedu_test）
+- 待运行：ruff check / mypy baseline / git diff --check / engineering-docs --full / 完整 backend composition 回归
+
+交接备注:
+- PR-D = independent Draft PR；完成后停在 OPEN/Draft
+- **禁止** Ready / 评分 / 合并 / closeout
+- TD-104 / TD-032 / Score Log / Metrics / technical-debt.md **零改动**
+- 旧 `c07c031c` scaffold 禁止 cherry-pick / 恢复 / 复制
+- 测试数据库仅 `metaedu_test`
 
 ## 下一批候选任务
 
