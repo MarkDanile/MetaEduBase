@@ -14,44 +14,7 @@
 
 ## 当前进行中
 
-### TASK-R1-S6-I3-D-PR-D: R1-S6 PR-D 剩余 operational closeout（独立后续 PR）
-
-类型: 文档 + 后端 composition + 后端测试（pure contract）
-领域: 后端 / Erasure / Restore-Replay / 治理
-当前执行模式: Phase 1 实现 + 验证（Phase 0 契约审计已交付并经用户接受）
-最近接手工具: Claude Code (Opus 4.8 / 1M)
-分支: `feature/req041-047-r1-s6-i3-d-pr-d-operational-closeout`（基于 main `840bcaf2`）
-
-需求来源:
-- Spec: §3 / §10 / §11（[`2026-07-27-req-041-047-r1-retention-purge-recovery.md`](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md)
-- Plan: §S6-14 post-D2 rebaseline 注解（[`2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md`](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md)）+ §S6-7/§S6-8/§S6-12/§S6-13/§S6-14/§S6-15
-- 技术债: TD-104（⚫ 待办，PR-A schema/test alignment 残项）+ TD-032（🟢 完成但 D1b 1052 + D2 1876 双超 1000 待拆分；PR-D **不**拆分）
-- 架构约束: plan §S6-14 严格禁止项（scheduler caller / D1b/D2/S5 wiring / capability flip / 六 erase / migration / schema / registry / CI / 门禁脚本）
-
-当前进展:
-- Phase 0 契约审计已交付并经用户接受（4 项默认最小方案冻结：continuous export = fresh-snapshot series / 仅 production-neutral callable / 不新增 CLI / 新增串联 acceptance test）
-- Phase 1 实现：
-  - `packages/server-python/app/composition/s6i3_d_ledger_orchestration.py` 新增（export_and_archive_ledger_segment：D1b phase-1 + phase-2 thin composition）
-  - `packages/server-python/tests/composition/test_s6i3_d_cross_layer_drill.py` 新增（5 项 acceptance / contract test）
-  - `docs/02-delivery-plans/03-runbooks/2026-09-03-r1-s6-i3-d-restore-before-open.md` 新增（restore-before-open 入口 + crash/retry + post-snapshot purge + M-class 并发窗口 + blocked/manual reconcile ops）
-  - `docs/03-engineering-governance/current-work.md` 登记 PR-D 活跃卡（本节）
-
-下一步:
-- 验证 ruff + mypy baseline（0 regression）+ git diff --check + scripts/check-engineering-docs --full + 完整 backend composition 回归
-- 确认无 migration / schema / enum / CHECK / registry / CI / Score Log / Metrics / technical-debt.md 改动
-- 普通新 commit + push
-- 创建 OPEN/Draft PR；等待三路 CI 全 SUCCESS
-
-验证状态:
-- Phase 1 测试：5/5 PASS（`test_s6i3_d_cross_layer_drill.py`：full_path_open_allowed / continuous_export_advances_generation / gate_blocks_on_runtime_proof_c / cross_tenant_decoder_rejects / asserts_metaedu_test）
-- 待运行：ruff check / mypy baseline / git diff --check / engineering-docs --full / 完整 backend composition 回归
-
-交接备注:
-- PR-D = independent Draft PR；完成后停在 OPEN/Draft
-- **禁止** Ready / 评分 / 合并 / closeout
-- TD-104 / TD-032 / Score Log / Metrics / technical-debt.md **零改动**
-- 旧 `c07c031c` scaffold 禁止 cherry-pick / 恢复 / 复制
-- 测试数据库仅 `metaedu_test`
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -59,9 +22,8 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | R1-S6 PR-D **剩余交付**（production-neutral 边界，按 plan §S6-14 post-D2 rebaseline 注解） | ⚫ 待办，独立后续 PR | 仅包含：(1) production-neutral continuous ledger export/archive orchestration entry；(2) restore-before-open runbook；(3) D1a→D1b→D2→gate cross-layer safety drill / contract verification；(4) crash/retry、post-snapshot purge、manual reconcile ops 步骤。**禁止**：scheduler production caller、S5/D1b/D2 production wiring、capability flip、六 erase 入口生产可达。详见 plan §S6-14 post-D2 supersede/rebaseline 注解 | [Plan §S6-14](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) post-D2 rebaseline 注解 / [fact-audit §17.7](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | P1 | R1-S6 F-matrix 7/12 + F10 M6 test contract 增强 | ⚫ 待办，独立后续 PR | F-matrix 7/12 mutation NOT-RED（M-F2/F3/F4/F5/F6/F8/F12）+ F10 M6（completed 绕过最终扫描）判别载体补齐；M6 真实 PG 路径需 G1/G2/G3 cleared + 所有 owner acked + final scan 非零 → blocked (scan reason) 的测试矩阵 | [TD-105](technical-debt.md#td-105-r1-s6-f10-实现承接契约纠偏后解除-skip--真实-pg-判别) closeout note / F-matrix #590 mutation follow-up |
-| P2 | R1-S6 PR-E release drill 五阶段 canary（真实 PG / 备份 / 流量开关） | ⚫ 待办，独立后续 PR；**前置依赖 = PR-D 剩余交付**，**禁止在 PR-D 之前启动** | 本地无法执行（无生产基础设施 + 无备份保留 runbook 执行环境）——按 R1-AC12 字面降级为 contract-tested 验证；登记生产门禁；待 PR-D 剩余交付的 runbook / 编排 / 跨层 drill 落地后再启动 | [Plan §S6-7](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
+| P2 | R1-S6 PR-E release drill 五阶段 canary（真实 PG / 备份 / 流量开关） | ⚫ 待办，独立后续 PR；**前置依赖 = PR-D 剩余交付，已由 PR #606 满足** | 本地无法执行（无生产基础设施 + 无备份保留 runbook 执行环境）——按 R1-AC12 字面降级为 contract-tested 验证；登记生产门禁；PR-D runbook / 编排 / 跨层 drill 已落地（PR #606 mergeCommit `d196d7f0`，source head `ad9a8fd2` + FINAL_IMPL_HEAD `69803364`），可启动 | [Plan §S6-7](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [PR #606](https://github.com/MarkDanile/MetaEduBase/pull/606) |
 
 ## 最近完成
 
@@ -71,6 +33,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-09-03 | R1-S6-I3-D PR-D 剩余 operational closeout（production-neutral 4 项：orchestration entry + restore-before-open runbook + D1a→D1b→D2→gate cross-layer safety drill + crash/retry/post-snapshot purge/M-class/blocked-manual reconcile ops） | 🟢 完成（PR-D 子阶段；TASK-R1-S6-I3-D 整体仍 🟡 进行中——F-matrix/PR-E/C1/S5/capability flip/六 erase 未启动） | PR #606 squash mergeCommit `d196d7f0`；评分 95 Original；4 文件净 diff 851 insertions(+)/1(-)；zero-touch（无 migration/schema/CHECK/CI）；TD-104 保持 ⚫ 待办 / TD-032 保持 🟢 待拆分不关闭 | [PR #606](https://github.com/MarkDanile/MetaEduBase/pull/606)（mergeCommit `d196d7f0`）/ [work-log](work-log.md) / [score 95](04-retrospectives/review-score-log.md) / [fact-audit §17.9](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | 2026-09-02 | R1-S6-I3-D 工作台精简 + PR-D 剩余边界重定基 GOV closeout（pure-docs；TASK-R1-S6-I3-D-GOV 子卡） | 🟢 完成（GOV 子卡；TASK-R1-S6-I3-D 整体仍 🟡 进行中——PR-D/PR-E/C1/S5/capability flip 未启动） | PR #604 squash mergeCommit `e37561fe`；评分 91 Original；pure-docs 3 文件（current-work slim + plan §S6-14 APPEND + fact-audit 4 处过期修复）；P3=5 non-blocking；TASK-R1-S6-I3-D 整体仍 🟡（PR-D/PR-E/C1/S5/capability flip 未启动）；零业务代码改动 | [PR #604](https://github.com/MarkDanile/MetaEduBase/pull/604)（mergeCommit `e37561fe`）/ [work-log](work-log.md) / [score 91](04-retrospectives/review-score-log.md) / [fact-audit](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | 2026-09-01 | R1-S6-I3-D D2 restore replay executor + restore-before-open gate（M 类；Round-8/8.1 三面复审 P0/P1/P2/P3=0 + squash merge 入 main） | 🟢 完成（D2 子阶段；TASK-R1-S6-I3-D 仍 🟡 进行中——PR-D 未启动） | PR #602 squash mergeCommit `ae7f3c98`；评分 92 Original；108 D2 专项 + 992 composition + 21/21 mutation；D2 wiring / PR-D / PR-E / C1 / S5 wiring / capability flip / 六 erase 未启动 | [PR #602](https://github.com/MarkDanile/MetaEduBase/pull/602)（mergeCommit `ae7f3c98`）/ [work-log](work-log.md) / [score 92](04-retrospectives/review-score-log.md) / [fact-audit](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | 2026-08-28 | R1-S6-I3-D D1b 专用 MinIO ledger archive sink + 不可变 commit-graph 发布协议（两阶段 API 拆分；三面 P1 修复闭环 + squash merge 入 main） | 🟢 完成（D1b 子阶段；TASK-R1-S6-I3-D 仍 🟡 进行中） | PR #600 squash mergeCommit `01c84f7c`；评分 94 Original；47/47 composition + 6/6 opt-in real MinIO + 11/11 mutation；D1b wiring / D2 / PR-D / PR-E / C1 / S5 wiring / capability flip / 六 erase 未启动 | [PR #600](https://github.com/MarkDanile/MetaEduBase/pull/600)（mergeCommit `01c84f7c`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) / [fact-audit](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
@@ -82,4 +45,3 @@
 | 2026-08-24 | R1-S6-I3-B restore replay 持久状态域契约纠偏（contract-first，纯文档） | 🟢 完成 | PR #587（squash `66674f23`）；评分 85；三层 CHECK 闭集 + replay 路由表 + 判定方式冻结；**#586 已合 main**；TD-104 + REQ-047 | [PR #587](https://github.com/MarkDanile/MetaEduBase/pull/587)（squash `66674f23`）/ [work-log](work-log.md) / [score 85](04-retrospectives/review-score-log.md) |
 | 2026-08-20 | R1-S6-I2 Writer conformance suite + body/ref orphan inspection | 🟢 完成 | PR #584（merge `ad7ac3e5`）；评分 88；3 writer spec + 六类 verify 巡检 + Run 行锁；21 项专项 + 726 composition；TD-100~103 + REQ-047；S6-I3/C1/S5 wiring 未启动 | [PR #584](https://github.com/MarkDanile/MetaEduBase/pull/584)（merge `ad7ac3e5`）/ [work-log](work-log.md) / [score 88](04-retrospectives/review-score-log.md) |
 | 2026-08-19 | R1-S6-I1 Retention workers（run_event_retention + run_audit_retention + migration 043） | 🟢 完成 | PR #582（squash `f5072ec6`）；评分 87（基线 `d1427567`）；两 worker + 043 guard + 两处 S5 修复落地；三面返修+决 A 测试兼容升级后 P0/P1=0；Backend 2649/1/4/0 + mutation 18/18 + 043 往返稳定；S6-I2/I3/C1/S5 wiring 未启动；TD-097/098/099 + REQ-047 | [PR #582](https://github.com/MarkDanile/MetaEduBase/pull/582)（squash `f5072ec6`）/ [work-log](work-log.md) / [score 87](04-retrospectives/review-score-log.md) |
-| 2026-08-19 | R1-S5 Root Integration: settlement idempotency key 对齐 + B/C/D 联合组合根 | 🟢 完成 | root PR #577（squash `636fc425`）合并；评分 92（基线 `995aa223`）；126 专项 + composition 665 + mutation 8 组 + Backend 2600/1/4 + Frontend 326+55；production erase 入口仍不可达；follow-up REQ-047 + TD-093/095/096 + td-032 | [PR #577](https://github.com/MarkDanile/MetaEduBase/pull/577)（squash `636fc425`）/ [work-log](work-log.md) / [score 92](04-retrospectives/review-score-log.md) |

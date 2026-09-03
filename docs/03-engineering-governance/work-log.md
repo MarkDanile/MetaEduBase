@@ -678,3 +678,96 @@
 5. C1 Durable Core 总验收
 6. S5 production wiring
 7. registry capability 翻转 / 六 erase 入口生产可达
+
+## R1-S6-I3-D PR-D 剩余 operational closeout（2026-09-03）
+
+**任务**：REQ-041/047 R1-S6-I3-D PR-D 剩余 operational closeout（plan §S6-14 post-D2 rebaseline 注解 4 项 production-neutral 工作：orchestration entry + restore-before-open runbook + D1a→D1b→D2→gate cross-layer safety drill + crash/retry / post-snapshot purge / M-class / blocked + manual reconcile ops）
+**分支**：`feature/req041-047-r1-s6-i3-d-pr-d-operational-closeout`（已随 merge `--delete-branch` 删除）
+**PR**：[#606](https://github.com/MarkDanile/MetaEduBase/pull/606)（squash mergeCommit `d196d7f0a829d3bc45653d5bca3d08bf663b3346`，2026-09-03T07:35:58Z）
+**评分**：95 Original（`docs/03-engineering-governance/04-retrospectives/review-score-log.md` 新增行；评审对象 main@`840bcaf2`..`69803364`，净 diff 4 文件 851 insertions(+)/1(-)）
+**实现基线 / FINAL_IMPL_HEAD**：main `840bcaf2`（PR #606 squash mergeCommit 入 main）/ `69803364`（source head = score commit `ad9a8fd2` 的合 commit；ad9a8fd2 = `69803364` + 评分 row commit）
+
+### 完成内容
+
+1. **production-neutral continuous ledger export / archive orchestration entry**：
+   - `packages/server-python/app/composition/s6i3_d_ledger_orchestration.py` 新增 107 行（`export_and_archive_ledger_segment(session_factory, *, sink, tenant_id) -> PublishOutcome`）
+   - thin composition：caller-managed RR+RO tx 入口 `SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY` + D1b phase-1（`export_ledger_segment_for_archive` D1a export + decode 双校验）+ commit + D1b phase-2（`publish_ledger_segment` 纯 sink I/O 零 DB）；`async with (session_factory() as session, session.begin())` PEP 654 严格分立 tx / sink 边界
+   - 严格保持 D1a RR+RO phase-1 与 D1b sink-only phase-2 边界；不修改 D1a / D1b 业务逻辑
+   - **不**新增 schema / migration / cursor / watermark / 增量状态表
+   - **不**接 scheduler caller / 不实现 CLI / argparse / shell wrapper
+   - **不**实现 capability flip / 不进入六 erase 入口生产可达路径
+
+2. **D1a → D1b → D2 → restore-before-open gate 跨层 safety drill**：
+   - `packages/server-python/tests/composition/test_s6i3_d_cross_layer_drill.py` 新增 361 行
+   - 5 项 acceptance / contract test（真实 PG + in-memory sink）：`test_cross_layer_drill_full_path_open_allowed` 完整路径 happy / `test_cross_layer_drill_continuous_export_advances_generation` 同 export_id + generation 推进（验证 audit 4 fresh-snapshot series）/ `test_cross_layer_drill_gate_blocks_on_runtime_proof_c` gate fail-closed / `test_cross_layer_drill_cross_tenant_decoder_rejects` TENANT_BINDING_MISMATCH / `test_cross_layer_drill_asserts_metaedu_test` DB hard boundary
+   - 仅做 callable composition，不复制 D1a decoder 21 /  / D1b publish  /  D2 6×5 路由矩阵 / D2 pass A / pass B 任一实现；不新增 mutation script（既有 D1b 11/11 + D2 21/21 覆盖单层）
+   - **5/5 PASS**（metaedu_test）
+
+3. **restore-before-open runbook**：
+   - `docs/02-delivery-plans/03-runbooks/2026-09-03-r1-s6-i3-d-restore-before-open.md` 新增 344 行
+   - 9 章：入口与参数 / 不变式 / caller 必接字段 / report 消费约定 /  blocked_reasons 责任路径 / crash-retry 路径 / post-snapshot purge 处置 / M-class 并发窗口 / blocked + manual reconcile ops / 生产门禁登记
+   - 6 owner manual reconcile 路径明确（owner_blocked_kept / runtime_binding_evidence_unprovable / external_verification_failed / fact_drift / owner scan residual）
+   - 9 个稳定事实源链接（plan §S6-14/§S6-8/§S6-12/§S6-13/§S6-15 + fact-audit §17.6/§17.7/§17.8 + spec §10/§11 + D1a/D1b/D2 main impl + PR-D main impl）
+
+4. **TASK-R1-S6-I3-D-PR-D 活跃卡登记**（current-work.md +38/-1）：
+   - 10 模板字段齐全（state/branch/mode/工具/类型/需求/进展/下一步/验证/事实源）
+
+### 三面最终 P0/P1/P2/P3（独立三面复审，2026-09-03）
+
+- 面 A 契约 / 边界 / 事务严格性：：0/0/1/1（P2-B-1 orchestration DB boundary defense-in-depth + P3-A docstring idempotent_retry 例子误导）
+- 面 B 串联 / 锁序 / 异常：：0/0/1/1（P2-C-2 runbook 缺既有测试集交叉引用 + P3-D 行内 import CommitMarker）
+- 面 C 测试覆盖 / 风险 / 文档：：0/0/1/2（P2-C-1 drill 缺 crash-retry-drift-lock-blocked 串联实证 + P3-B 未使用 import structlog + P3-C 未使用常量 _DIGEST_B）
+- **合计：P0=0/P1=0/P2=3/P3=4**（全部保留不冒充收口）
+
+### 正式评分（Ready 状态）
+
+- **P0/P1=0**（结论中明确锁定）
+- **总分 95 Original**（七维：范围与需求匹配 15/15 + 实现质量 19/20 + 测试与验证证据 18/20 + 事实源与流程遵守 15/15 + 风险与行为变化控制 15/15 + 可评审性与交接质量 8/10 + 持续改进信号 5/5；扣分：docstring 例子误导 -1 + drill 覆盖缺口 -2 + runbook 缺交叉引用 -1 + 风格细节 -1）
+- `scripts/check-review-score-submit --base 69803364 --pr 606` PASS（one Original row, Metrics unchanged）
+- Score Log 净变化 +1 行（PR #606 Original）；历史评分行未触动、Metrics byte-identical
+
+### 关键不变量（main closeout 时核对）
+
+- **mergeCommit `d196d7f0a829d3bc45653d5bca3d08bf663b3346`** = source head（squash merge 单 commit）
+- **评审对象 main@`840bcaf2`..`69803364`（净 diff 4 文件 851 insertions(+)/1(-)）**仅含：`app/composition/s6i3_d_ledger_orchestration.py` + `tests/composition/test_s6i3_d_cross_layer_drill.py` + `docs/02-delivery-plans/03-runbooks/2026-09-03-r1-s6-i3-d-restore-before-open.md` + `docs/03-engineering-governance/current-work.md` 活跃卡；无业务代码 mutation / S5 状态机 / 锁序 / 写者矩阵越界
+- 验证：5/5 drill test PASS（1.43s） + 完整 backend composition **997 passed + 6 skipped** + ruff check All checks passed + mypy baseline `passed: 243 historical errors across 76 keys; 0 regressions` + git diff --check clean + `scripts/check-engineering-docs --full` engineering docs checks passed (32 known issue(s) allowlisted) + Ready 三路 required checks 全 SUCCESS（run `33720434968` Backend 15m5s + Engineering docs 9s + Frontend 5s）+ post-score 三路 required checks 全 SUCCESS（run `33722320505` Backend + Engineering docs 9s + Frontend 5s）
+- TASK-R1-S6-I3-D 整体仍 🟡 进行中（**PR-D 子阶段完成 ≠ TASK 整体完成**——F-matrix / PR-E / C1 / S5 production wiring / capability flip / 六 erase 入口生产可达 / REQ-047 conformance 全部保持未启动）
+
+### PR-D 完成边界（精确登记，不越界）
+
+- **已完成**：orchestration entry（thin composition 107 行）+ 跨层 safety drill（5 项 acceptance test 361 行）+ restore-before-open runbook（9 章 344 行）+ current-work 活跃卡（10 模板字段）+ 评分 95 Original + main closeout
+- **未启动**：F-matrix 7/12 + F10 M6 test contract 增强 / PR-E（前置依赖 = PR-D 已由本 PR #606 满足，可启动）/ / S5 production wiring / capability flip（registry external/runtime 仍 `erase_available=False`）/ 六 erase 入口生产可达 / C1 / REQ-047 conformance
+- **未关闭**：TD-104（PR-A schema/test alignment 残项保持 ⚫ 待办，不关闭）/ TD-032（D1a 1724 + D1b 1052 + D2 1876 + 双 test 1117/2559 超 1000 行硬限制保持 🟢 待拆分，不拆分）/ REQ-047（R1-S6 implementation conformance：B/C/D 联合启用门禁，PR-D 合并后由 conformance 联合验收）
+- **3 P2 follow-up non-blocking**：B-1 orchestration DB boundary defense-in-depth / C-1 drill 缺 crash-retry-drift-lock-blocked 串联实证 / C-2 runbook 缺既有测试集交叉引用
+- **4 P3 follow-up non-blocking**：P3-A docstring idempotent_retry 括号例子误导 / P3-B 未使用 import structlog / P3-C 未使用常量 _DIGEST_B / P3-D 行内 import CommitMarker
+
+### follow-up（保持登记，不关闭）
+
+- **TD-104**：PR-A schema/test alignment 残项（保持 ⚫ 待办，不关闭）
+- **TD-032**：D1a/D1b/D2 + 双 test 超 1000 行硬限制（保持 🟢 待拆分，不拆分）
+- **REQ-047**：R1-S6 implementation conformance 联合闭环（B/C/D 联合启用门禁）
+- **PR-D**：本节完成（mergeCommit `d196d7f0`，source head `ad9a8fd2` + FINAL_IMPL_HEAD `69803364`）
+- **PR-E**：release drill 五阶段 canary（plan §S6-7；前置依赖 = PR-D 剩余交付，**已由本 PR #606 满足**，可启动独立后续 PR）
+- **F-matrix 7/12 + F10 M6 test contract 增强**：独立测试 contract 增强 PR
+- **C1 Durable Core 总验收**：未启动
+- **S5 production wiring**：未启动
+- **registry capability 翻转 / 六 erase 入口生产可达**：未启动
+
+### 教训入账（thin composition + 跨层 safety drill + production-neutral closeout 模板）
+
+1. **thin composition orchestration 模式**——`async with (session_factory() as session, session.begin())` PEP 654 严格分立 tx / sink 边界 + phase-1 D1b `export_ledger_segment_for_archive`（caller-managed RR+RO tx 内 D1a export + decode 双校验）+ commit + phase-2 D1b `publish_ledger_segment`（纯 sink I/O 零 DB）；`exported_ledger_segment` bytes + dataclass 跨 phase 安全传递；orchestration 不接 scheduler / 不调任一 participant（4 local + 2 non-local owners）/ 不调 external / runtime adapter；作为后续 high-stakes archive slice 反例模板可复用
+2. **跨层 safety drill template**——5 项 acceptance / contract test 真实 PG + in-memory sink 串联 D1a export → D1b publish → fetch → decode → reconstruct → D2 replay → restore-before-open gate；仅做 callable composition 不复制单层业务逻辑；audit 4 决策（fresh-snapshot series）+ audit 5 决策（不新增 CLI）+ audit 6 决策（新增串联 acceptance test）形成完整 contract-to-code decision note 模板可复用
+3. **production-neutral closeout 边界**——orchestration entry 不接 scheduler caller / D1b/D2/S5 production wiring 全部保持未启动 / capability flip 仍 False / 六 erase 入口生产可达 不可达；与 #586 root + #604 GOV 评审 row 模板一致（implementation baseline main + FINAL_IMPL_HEAD 双记 + 3 维 P0/P1/P2/P3 + 4 文件净 diff 严格保持 + zero-touch 禁止项清单）
+4. **plan §S6-14 三阶段注解叠加**——GOV closeout（#604）post-D2 rebaseline 注解 + PR-D merged-boundary（#606）closeout 注解 = 完整 plan rebaseline 历史链（fact-audit §17.7 / §17.8 / §17.9 累积 supersede 关系）；不改写 plan 既有 frozen 顺序
+5. **stacked PR 评分行模板**（implementation baseline main `840bcaf2` + FINAL_IMPL_HEAD `69803364` 双记）成为本轮第十一次复用模板（#587/#589/#591/#592/#590/#586/#596/#604 + #606 + 后续 7 维评分口径）
+6. **3 P2 + 4 P3 follow-up 全部保留登记不冒充收口**——drill 覆盖扩展 / runbook 文档补强 / docstring 例子修正 / 风格清理 = 后续 governance 收口批处理
+7. **closeout PR-D 与 PR-E 显式前置依赖解除**——候选表 row "**前置依赖 = PR-D 剩余交付，已由 PR #606 满足**" + PR-E 可启动；F-matrix → PR-E 顺序严格保持
+
+### 后续接力（按计划建议执行顺序）
+
+1. F-matrix 7/12 + F10 M6 test contract 增强
+3. PR-E（release drill 五阶段 canary，前置依赖 = PR-D 剩余交付，**已由本 PR #606 满足**）
+4. TD-104（PR-A schema/test alignment 残项）
+5. C1 Durable Core 总验收
+6. S5 production wiring
+7. registry capability 翻转 / 六 erase 入口生产可达
