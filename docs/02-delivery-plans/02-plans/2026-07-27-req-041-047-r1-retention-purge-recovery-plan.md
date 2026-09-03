@@ -2365,6 +2365,22 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 >
 > **决策门禁（pure-docs 治理要求）**：若 PR-D 剩余 4 项任一项无法从现有 spec / plan / main 代码直接证明范围，立即停止并列出张力，不自行发明新架构。事实基线以 `docs/03-engineering-governance/04-retrospectives/r1-s6-i3-d-fact-audit.md` §17.7 D2 merged-boundary 收口标注为权威，PR-D 实现启动后必须引用此 rebaseline 注解作为唯一范围依据；PR-D 不替代 PR-E，PR-E 必须显式登记 PR-D 剩余交付为前置依赖（禁止 PR-D 未落地先启动 PR-E）。
 
+> **PR-D merged-boundary 收口注解（2026-09-03，pure-docs 治理收口；保留既有 frozen 顺序 + post-D2 rebaseline 注解）**：
+> PR-D 剩余 4 项 production-neutral 边界已由 PR #606 完整交付（mergeCommit `d196d7f0a829d3bc45653d5bca3d08bf663b3346`，mergedAt `2026-09-03T07:35:58Z`；source head `ad9a8fd2` + FINAL_IMPL_HEAD `69803364`；评分 95 Original；详见 `docs/03-engineering-governance/04-retrospectives/r1-s6-i3-d-fact-audit.md` §17.9 PR-D closeout 标注）：
+> 1. **production-neutral continuous ledger export / archive orchestration entry**——`packages/server-python/app/composition/s6i3_d_ledger_orchestration.py` 新增（107 行；`export_and_archive_ledger_segment(session_factory, *, sink, tenant_id) -> PublishOutcome`；thin composition of D1b `export_ledger_segment_for_archive` + `publish_ledger_segment` 两阶段 API；`async with (session_factory() as session, session.begin())` PEP 654 严格分立 tx / sink 边界）
+> 2. **restore-before-open runbook**——`docs/02-delivery-plans/03-runbooks/2026-09-03-r1-s6-i3-d-restore-before-open.md` 新增（344 行；9 章 = 入口与参数 + 不变式 + caller 必接字段 + report 消费约定 + blocked_reasons 责任路径 + crash-retry 路径 + post-snapshot purge 处置 + M-class 并发窗口 + blocked + manual reconcile ops + 生产门禁登记）
+> 3. **D1a → D1b → D2 → restore-before-open gate 跨层 safety drill**——`packages/server-python/tests/composition/test_s6i3_d_cross_layer_drill.py` 新增（5 项 acceptance / contract test：full_path_open_allowed / continuous_export_advances_generation / gate_blocks_on_runtime_proof_c / cross_tenant_decoder_rejects / asserts_metaedu_test；5/5 PASS）
+> 4. **crash/retry / post-snapshot purge / M-class 并发窗口 / blocked + manual reconcile ops 步骤**——runbook §4-7 完整覆盖；M-class advisory lock 协议（frozen prefix `metaedu.agent.maintenance.v1\x00`，retention/audit shared + replay exclusive）= D2 M-class advisory lock (PR #602 `ae7f3c98`) 支持；不新增任何新基础设施
+>
+> **明确禁止（PR-D 边界已冻结，不允许追加）**：
+> - scheduler production caller 接入（S5 production wiring 范畴）
+> - S5 / D1b / D2 production wiring（scheduler 启用后真实链路启动）
+> - registry capability flip（external / runtime 保持 `erase_available=False`）
+> - 六 erase 入口生产可达（writer 仍为 `registered=FENCE_M` advisory lock 互斥保护，不进入生产 traffic 路径）
+> - 旧 `c07c031c` scaffold cherry-pick / 恢复 / 复制
+>
+> **决策门禁（pure-docs 治理要求）**：若 PR-D 剩余 4 项任一项无法从现有 spec / plan / main 代码直接证明范围，立即停止并列出张力，不自行发明新架构。事实基线以 `docs/03-engineering-governance/04-retrospectives/r1-s6-i3-d-fact-audit.md` §17.9 PR-D closeout 标注为权威，PR-D 落地后 PR-E **前置依赖解除**，可启动独立后续 PR。
+
 
 
 #### S6-15 S6-F10 契约路由表（冻结，契约核对纠偏）
