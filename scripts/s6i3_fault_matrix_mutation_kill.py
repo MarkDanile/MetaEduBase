@@ -16,6 +16,8 @@ PASS=绿）。**所有 mutation 绝不 commit / push**。
 F1-F14 映射（每行 1 个具名 mutation；F10 契约冲突 skip）：
 - M-F13 takeover _TAKEOVER_SQL 跳过 lease_epoch CAS → F1/F13 撕裂
 - M-F2 claim 不持 Conversation FOR UPDATE → F2 准备就绪门失效
+  （Phase 2 修正：原 F2/F8 共享测试 → F2 单独判别载体 `test_mf2_lock_conversation_serializes_dual_claim`；
+   F8 单独判别 → `test_mf8_top_operation_for_update_locks_existing_row`）
 - M-F3 _ack_lost_repair 不写 ack_digest → F3 重放入口识别失效
 - M-F4 external _write_erased_and_clear_ref 跳过 _clear_source_ref → F4 收口失
 - M-F5 closeout _classify_input 跳过 checkpoint.state == 'erasing' → F5 ledger
@@ -23,6 +25,9 @@ F1-F14 映射（每行 1 个具名 mutation；F10 契约冲突 skip）：
 - M-F6 _find_event_gap count 比较改 true → F6 409 失效
 - M-F7 retention prune 不置 event_log_complete=false → F7 410 失效
 - M-F8 _select_top_purge_operation_for_update 去掉 FOR UPDATE → F8 重入撕裂
+  （Phase 2 修正：F2/F8 共享断言拆分为 F2 单独判别 + F8 单独判别；F8 真红需 existing
+   operation 行锁 + SET LOCAL lock_timeout `1s` + OperationalError `lock timeout` 断言——
+   见 `test_mf8_top_operation_for_update_locks_existing_row`）
 - M-F9 _load_verified_operation 跳过 hold_revision drift → F9 快照校验失效
 - M-F11 settlement _verify_t2_tokens 跳过 checkpoint.state == 'erasing' 重验 →
   F11 fail closed 失效
@@ -99,7 +104,7 @@ MUTATIONS = [
         CLAIM,
         '                .where(\n                    ConversationModel.tenant_id == tenant_id,\n                    ConversationModel.id == conversation_id,\n                )\n                .with_for_update()',
         '                .where(\n                    ConversationModel.tenant_id == tenant_id,\n                    ConversationModel.id == conversation_id,\n                )\n                # mutation: skip FOR UPDATE',
-        "tests/composition/test_s6i3_fault_mutation_evidence.py::test_f2_f8_dual_connection_claim_collapses_to_single_writer",
+        "tests/composition/test_s6i3_fault_mutation_evidence.py::test_mf2_lock_conversation_serializes_dual_claim",
     ),
     # --- F3 _ack_lost_repair 不写 ack_digest ---
     # Phase 0 契约审计修正：原映射 test_f3_lease_ack_lost_replay_no_fork（仅 raw SQL
@@ -156,12 +161,15 @@ MUTATIONS = [
         "tests/composition/test_s6i3_fault_events.py::test_f7_first_available_advance_sse_410_monotone_no_gap",
     ),
     # --- F8 _select_top_purge_operation_for_update 不取 FOR UPDATE ---
+    # Phase 2 M-F8 单独判别载体（新增 test_mf8_top_operation_for_update_locks_existing_row）：
+    # existing purge operation row 持锁 + SET LOCAL lock_timeout + OperationalError "lock timeout"/55P03 断言。
+    # 移除 .with_for_update() 后 B 不会 lock-timeout → pytest.raises OperationalError 不触发 → assertion failure → KILLED。
     (
         "M-F8 _select_top_purge_operation_for_update 跳过 FOR UPDATE",
         CLAIM,
         '                .order_by(PurgeOperationModel.purge_revision.desc())\n                .limit(1)\n                .with_for_update()',
         '                .order_by(PurgeOperationModel.purge_revision.desc())\n                .limit(1)\n                # mutation: skip FOR UPDATE',
-        "tests/composition/test_s6i3_fault_mutation_evidence.py::test_f2_f8_dual_connection_claim_collapses_to_single_writer",
+        "tests/composition/test_s6i3_fault_mutation_evidence.py::test_mf8_top_operation_for_update_locks_existing_row",
     ),
     # --- F9 _load_verified_operation 跳过 hold_revision drift ---
     (
