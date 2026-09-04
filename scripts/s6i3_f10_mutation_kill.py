@@ -160,12 +160,15 @@ MUTATIONS = [
     ),
     # --- M6 completed 绕过最终扫描 ---
     # projection_calculator nonzero scan 检查整段 skip → 即使 scan 非零也判 completed。
-    # **NOT-RED（已登记，不计入 kill 分母）**：F10 测试链经 G2（G2 hold drift 在
-    # projection_calculator:319-326 提前 return blocked_hold_revision_changed）阻断，
-    # 永远走不到 priority 3 scan check（projection_calculator:491-507）。本 mutation
-    # 在 F10 测试集下判别载体为零。M6 实际判别载体属「completed 全链路 completed
-    # 前置完整性」独立测试集，与 F10 测试正交，留作后续独立 test contract 增强 PR
-    # （同 F-matrix 7/12 NOT-RED 处置）。
+    # Phase 1 解除 NOT-RED 登记：M6 判别载体已迁移到独立 test
+    # ``test_f10_m6_completed_bypass_scan_check_blocked``（新增
+    # ``tests/composition/s6i3_fault_f10.py::test_f10_m6_completed_bypass_scan_check_blocked``）——
+    # 真实 PG 路径：closeout_erasing → aggregate_projection；构造 G1/G2/G3 cleared
+    # + 6 owner acked + workspace.core.v1 final scan nonzero（actor_state='present'）→
+    # priority-3 scan 唯一可达。control 断言 state=blocked + failure_code=
+    # workspace_body_scan_nonzero；mutant（M6 priority-3 折叠）允许 completed →
+    # 测试转红。本测试**不**走 hold-drift 场景（F10 既有测试集 G2 提前 return
+    # 不可达 priority-3），用 5-party 全 pass + scan nonzero 唯一触发 priority-3。
     (
         "M6 completed 绕过最终扫描（projection nonzero scan check skip）",
         [
@@ -181,7 +184,7 @@ MUTATIONS = [
                 "    if False and nonzero_scans:  # mutation M6\n",
             )
         ],
-        [f"{F10_TEST}::test_f10_projection_g2_blocked_hold_revision_changed_no_completed"],
+        [f"{F10_TEST}::test_f10_m6_completed_bypass_scan_check_blocked"],
     ),
     # --- M7 重复 adapter 调用 ---
     # settlement._apply_window_outcome SUCCESS 路径在 fence/checkpoint 落账前强制再调

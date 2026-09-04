@@ -14,7 +14,48 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-R1-S6-F-MATRIX-TEST-CONTRACT: F-matrix + F10 M6 test contract 增强（独立后续 PR）
+
+类型: 纯测试契约 + mutation harness 修正（不动 production code）
+领域: 后端 / Erasure / Settlement / Restore-Replay / 测试
+当前执行模式: Phase 1 实现 + 验证（Phase 0 契约审计已交付并经用户接受）
+最近接手工具: Claude Code (Opus 4.8 / 1M)
+分支: `feature/req041-047-r1-s6-f-matrix-test-contract-enhancement`（基于 main `4c376373`）
+
+需求来源:
+- Spec: §R1-S6-5（[`2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md`](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) plan §R1-S6-5 故障点清单冻结）
+- Plan: §S6-5 / §S6-14 / §S6-15 + fact-audit §17.7 9/12 真红 + M-F3/M-F5/M-F8 stop condition 登记保持
+- 技术债: TD-104（⚫ 待办，PR-A schema/test alignment 残项）+ TD-032（🟢 完成但 D1b 1052 + D2 1876 双超 1000 待拆分；本任务**不**拆分）
+- 既有事实源: `scripts/s6i3_fault_matrix_mutation_kill.py` 12 项 mutation + `scripts/s6i3_f10_mutation_kill.py` 8 项 mutation
+
+Phase 0 契约审计结论（已交付 + 用户接受）：
+1. **M-F3**：错映射（`test_f3_lease_ack_lost_replay_no_fork` 仅 raw SQL seed + COUNT(*)断言，**不**调被变异 `_ack_lost_repair`）→ 修正到 `test_s5_sch_d_settlement.py::test_settlement_ack_lost_repair`（真实调 `closeout_erasing` → `_classify_input("ack_lost")` → `_ack_lost_repair`）
+2. **M-F5**：错映射 + 不可达（`test_f5_ack_after_operation_pre_aggregation_crash_takeover_safe` 仅 seed + COUNT(*)，**且** seed 用 checkpoint=acked 不进 mutated `erasing` 分支）→ 修正到 `test_s6_td106_settlement_ledger.py::test_external_multi_ref_per_ref_receipt`（真实调 `closeout_erasing` → `_classify_input(fence=erasing, checkpoint=erasing)` → mutated 分支 → `_t1_plan_recovery` → `_apply_window_outcome`）
+3. **M-F2 / M-F4 / M-F6 / M-F8 / M-F12**：当前映射均经公开 production entry 调被变异 helper，**已真红**
+4. **F10 M6**：不可达路径（既有 F10 测试集全部走 `hold_revision 0→1` → G2 提前 return，**永远到不了 priority 3 scan check**）→ 新增独立真实 PG test `test_f10_m6_completed_bypass_scan_check_blocked`：G1 cleared + G2 cleared（**不**推进 hold_revision）+ G3 cleared（无 active legal hold）+ 6 owner acked + 5-party pass + workspace.core.v1 final scan 非零（title 残留）→ control 期望 `blocked` + 精确 scan reason；mutant（M6 priority 3 折叠）允许 completed → 转红
+
+下一步:
+- 修改 `scripts/s6i3_fault_matrix_mutation_kill.py` M-F3 / M-F5 映射 nodeid
+- 新增 `tests/composition/s6i3_seeds.py::_seed_6_owner_acked_with_residual_body`（30 行 helper）
+- 新增 `tests/composition/test_s6i3_fault_f10.py::test_f10_m6_completed_bypass_scan_check_blocked`（80-120 行）
+- 修改 `scripts/s6i3_f10_mutation_kill.py` M6 映射 nodeid → 新 test_f10_m6_*
+- M-F4 定向 mutation 实跑验证 post-TD-106 锚点真红（**未完成实跑前不得报告 M-F4 KILLED**）
+- 验证 ruff + mypy baseline（0 regression）+ git diff --check + scripts/check-engineering-docs --full + 完整 backend composition 回归 + M-F3/M-F5/M-F4/M6 定向真实 PG mutation + F-matrix mutation 全量 + F10 mutation 全量
+- 普通新 commit + push
+- 创建 OPEN/Draft PR；等待三路 CI 全 SUCCESS
+
+验证状态:
+- Phase 0 审计：8 项 mutation（含 F10 M6）均经实际生产代码 + 公开入口路径验证完成
+- 待运行：上述8 项定向 mutation + 全量 mutation kill + composition 回归 + ruff/mypy baseline
+
+交接备注:
+- 本任务**只**增强测试契约与 mutation 映射；**不**修改 production code / migration / schema / enum / CHECK / registry / CI / 门禁脚本 / KNOWN_ISSUES
+- metaedu_test 独占 + 串行执行（`db_session` + `session_factory` fixture；**禁止** `s6i3_session_factory`）；禁止触碰 metaedu
+- TD-104 / TD-032 保持登记不关闭；TD-105 / TD-106 🟢 完成不重开
+- 不启动 F-matrix / PR-E / C1 / S5 wiring / capability flip / 六 erase 入口生产可达 / REQ-047 conformance
+- **禁止** amend / rebase / force-push
+- 完成后停在 OPEN/Draft，**不** Ready / **不**评分 / **不**合并 / **不** closeout
+- 旧 `c07c031c` scaffold 禁止 cherry-pick / 恢复 / 复制
 
 ## 下一批候选任务
 

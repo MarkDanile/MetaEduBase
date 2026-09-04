@@ -102,12 +102,16 @@ MUTATIONS = [
         "tests/composition/test_s6i3_fault_mutation_evidence.py::test_f2_f8_dual_connection_claim_collapses_to_single_writer",
     ),
     # --- F3 _ack_lost_repair 不写 ack_digest ---
+    # Phase 0 契约审计修正：原映射 test_f3_lease_ack_lost_replay_no_fork（仅 raw SQL
+    # seed + COUNT(*)断言，**不**调被变异 _ack_lost_repair helper）→ 改映射到
+    # ``test_settlement_ack_lost_repair``（真实经 closeout_erasing → _classify_input
+    # ("ack_lost") → _ack_lost_repair → 断言 ack_digest 字段）。
     (
         "M-F3 _ack_lost_repair 跳过 ack_digest 写入",
         SETTLEMENT,
         '        checkpoint.state = "acked"\n        checkpoint.ack_digest = ack_digest\n',
         '        checkpoint.state = "acked"\n        checkpoint.ack_digest = None  # mutation: skip\n',
-        "tests/composition/test_s6i3_fault_matrix.py::test_f3_lease_ack_lost_replay_no_fork",
+        "tests/composition/test_s5_sch_d_settlement.py::test_settlement_ack_lost_repair",
     ),
     # --- F4 external 唯一清除路径跳过 source-ref 清除 ---
     # TD-106 方案 A（stacked impl PR）：participant Tx2 的清除逻辑已提取为模块级
@@ -123,12 +127,17 @@ MUTATIONS = [
         "tests/composition/test_s6i3_fault_external.py::test_f4_single_owner_stepwise_ack_partial_ref_crash_replay",
     ),
     # --- F5 closeout _classify_input 跳过 checkpoint.state == 'erasing' 分支 ---
+    # Phase 0 契约审计修正：原映射 test_f5_ack_after_operation_pre_aggregation_crash_takeover_safe
+    # （仅 raw SQL + 4 owner acked seed，**不**调 _classify_input，且 seed 用 checkpoint=acked
+    # 不进 mutated `erasing` 分支）→ 改映射到 ``test_external_multi_ref_per_ref_receipt``（真实
+    # 经 closeout_erasing → _classify_input(fence=erasing, checkpoint=erasing) → mutated
+    # 分支 → _t1_plan_recovery → adapter → ledger 写入路径）。
     (
         "M-F5 _classify_input 不分 'erasing'+'erasing'（接 eraser 后强制走 post_window_blocked）",
         SETTLEMENT,
         '            if checkpoint.state == "blocked":\n                return "post_window_blocked"\n            if checkpoint.state == "erasing":\n                return "window_erasing"',
         '            if checkpoint.state == "blocked":\n                return "post_window_blocked"\n            if False:  # mutation: collapse erasing into blocked\n                return "window_erasing"\n            if checkpoint.state == "erasing":\n                return "post_window_blocked"  # mutation: collapse',
-        "tests/composition/test_s6i3_fault_matrix.py::test_f5_ack_after_operation_pre_aggregation_crash_takeover_safe",
+        "tests/composition/test_s6_td106_settlement_ledger.py::test_external_multi_ref_per_ref_receipt",
     ),
     # --- F6 _find_event_gap count 比较改 true ---
     (

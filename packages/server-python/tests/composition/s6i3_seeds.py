@@ -8,6 +8,7 @@ pytest 不收集）。所有 SQL 列名以 migration 034/040/043 + ORM + fresh P
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import AsyncIterator
 
@@ -18,6 +19,8 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+
+from app.shared.schemas.canonical_json import canonical_digest
 
 pytestmark = pytest.mark.asyncio
 
@@ -153,3 +156,132 @@ async def _seed_checkpoint(
         },
     )
     return cp_id
+
+
+async def _seed_6_owner_acked_with_residual_body(
+    session: AsyncSession,
+    *,
+    tid: uuid.UUID,
+    cid: uuid.UUID,
+    purge_operation_id: uuid.UUID,
+    window_owner_key: str = "external.payload.v1",
+) -> None:
+    """F10 M6 priority-3 scan 真实 PG 判别载体：6 owner 全部 pre-state=acked + 5-party
+    validation 全 pass + workspace.core.v1 final scan nonzero。
+
+    - 6 owner 全部 pre-INSERT checkpoint.state=acked + capability_digest=64hex +
+      ack_digest=64hex（**不**依赖 closeout_erasing 写入路径；M6 判别只关心 projection
+      聚合 stage 看到的状态）；
+    - conversation 保留 actor_state='present'（workspace.core.v1 final scan 命中
+      unanonymized_actors=1 → scan_total=1 nonzero → priority 3 scan_reason 触发）；
+    - **不** create legal hold（**不**推进 hold_revision；G2/G3 cleared）；
+    - **不**改 registry_digest（**不**触发 G1 drift）；
+    - **不**改 purge_revision（**不**触发五方版本 mismatch）；
+
+    caller 责任：调用此 helper **前** 须确保 conversation 状态满足：
+    - state='deleted' 或 'erasing' + purge_after 已过期（closeout_erasing 前置）
+    - 已有 1 行 agent_conversation_purges (state=running/erasing 起始，purge_revision=1)
+    - 已有对应的 fence 行 state='erasing'（window owner 的 closeout_erasing 前置）
+
+    usage（test_s6i3_fault_f10.py::test_f10_m6_completed_bypass_scan_check_blocked）:
+        tid = await _seed_tenant(seed, name="f10-m6")
+        cid = await _seed_conversation(seed, tid=tid)
+        await _seed_fence(seed, tid, cid, "external.payload.v1", state="erasing")
+        op_id = await _seed_operation(seed, tid=tid, cid=cid, state="running")
+        await _seed_6_owner_acked_with_residual_body(
+            seed, tid=tid, cid=cid, purge_operation_id=op_id,
+            window_owner_key="external.payload.v1",
+        )
+    """
+    from app.composition.agent_erasure_registry import capability_digest
+
+    # 6 owner：workspace.core/transport + execution.core/transport + external + runtime
+    # 唯一约束 = (tenant_id, purge_operation_id, owner_key)（migration 034 uq_agent_purge_owner）
+    for owner_key in (
+        "workspace.core.v1",
+        "workspace.transport.v1",
+        "execution.core.v1",
+        "execution.transport.v1",
+        "external.payload.v1",
+        "runtime.private.v1",
+    ):
+        await session.execute(
+            text(
+                "INSERT INTO metaedu.agent_conversation_purge_owners "
+                "(id, tenant_id, purge_operation_id, owner_key, owner_version, "
+                "capability_digest, state, attempt, checkpoint_digest, "
+                "ack_digest, reason_code, created_at) "
+                "VALUES (gen_random_uuid(), :tid, :pid, :ok, 1, :cap, 'acked', "
+                "        1, :digest, :digest, NULL, now()) "
+                "ON CONFLICT (tenant_id, purge_operation_id, owner_key) DO UPDATE SET "
+                "state='acked', attempt=1, capability_digest=EXCLUDED.capability_digest, "
+                "checkpoint_digest=EXCLUDED.checkpoint_digest, "
+                "ack_digest=EXCLUDED.ack_digest, reason_code=NULL"
+            ),
+            {
+                "tid": tid,
+                "pid": purge_operation_id,
+                "ok": owner_key,
+                "cap": capability_digest(owner_key),
+                "digest": _DIGEST,
+            },
+        )
+
+    # 5 非 window owner fence 预置 erased（fence.owner_version=1 + ack_digest 64hex +
+    # hold_revision=0 + purge_revision=1）。**不**改 window owner fence —— 留 caller 通过
+    # closeout_erasing 从 erasing 推到 erased（演示 production entry path）。
+    # 缺 fence 行的 owner 在 5-party 验证失败（fence_row is None → return False）→
+    # priority 2 提前 blocked，priority 3 scan 不达——故必须全部 6 owner fence 显式
+    # 预置（5 非 window=erased + 1 window=由 closeout_erasing 推到 erased）。
+    for owner_key in (
+        "workspace.core.v1",
+        "workspace.transport.v1",
+        "execution.core.v1",
+        "execution.transport.v1",
+        "runtime.private.v1",
+    ):
+        await _seed_fence(
+            session, tid, cid, owner_key, state="erased", ack=_DIGEST
+        )
+
+    # 对话 actor_state 保持 'present'（默认 seed）→ workspace.core.v1 scan 命中
+    # unanonymized_actors=1 → scan_total nonzero。**不**修改 title / created_by /
+    # archived_by / deleted_by（保持默认即可触发 scan）。
+    # **不**改 hold_revision（保持 0 → G2 cleared）。
+    # **不**create legal hold（G3 cleared）。
+    # **不**改 registry（snapshot 一致 → G1 cleared）。
+
+async def _seed_fence(
+    session: AsyncSession,
+    tid: uuid.UUID,
+    cid: uuid.UUID,
+    owner_key: str,
+    *,
+    state: str = "erasing",
+    ack: str | None = None,
+) -> None:
+    """种 1 行 ``agent_erasure_fences``（state + 可选 ack_digest）。
+
+    复用 test_s5_sch_d_settlement.py::_seed_fence 形态（列名 + JSON 序列化 +
+    canonical_digest）；ack 仅 state='erased' 时落 DB 列。
+    """
+    ic = {"schema_version": 1, "sources": {}}
+    ack_sql = ", ack_digest, acked_at" if state == "erased" else ""
+    ack_vals = ", :ack, now()" if state == "erased" else ""
+    await session.execute(
+        text(
+            "INSERT INTO metaedu.agent_erasure_fences "
+            "(tenant_id, conversation_id, owner_key, owner_version, state, "
+            "purge_revision, hold_revision, ingress_checkpoint, ingress_digest"
+            + ack_sql
+            + ", revision, created_at, updated_at) VALUES (:tid, :cid, :k, 1, "
+            ":st, 1, 0, :ic, :ing"
+            + ack_vals
+            + ", 1, now(), now())"
+        ),
+        {
+            "tid": tid, "cid": cid, "k": owner_key, "st": state,
+            "ic": json.dumps(ic, sort_keys=True), "ing": canonical_digest(ic),
+            "ack": ack,
+        },
+    )
