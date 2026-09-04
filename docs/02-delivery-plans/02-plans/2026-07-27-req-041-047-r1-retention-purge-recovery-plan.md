@@ -2383,6 +2383,20 @@ G4 判定**先于 checkpoint 聚合**（先于 completed/running/缺行判断，
 
 
 
+
+> **F-matrix + F10 M6 test contract 增强 merged-boundary 收口注解（2026-09-04，pure-docs 治理收口；保留既有 frozen 顺序 + 历史 NOT-RED 记录，不重写历史事实）**：
+> F-matrix 11/12 KILLED + F10 8/8 KILLED = 19/20 behavioral KILLED（**不**冒充 20/20；M-F8 NOT-RED = test-contract / shared-observation gap，**不**写成 KILLED，登记为 future test contract 增强 PR 单独修复）已由 PR #608 完整交付（squash mergeCommit `e07c601bdf112c9f6dc0f4e7fecdaa0631ea555b`，mergedAt `2026-09-04T02:07:56Z`；source head `2ec93467` + FINAL_IMPL_HEAD `011af6eb`；评分 94 Original；三面独立复审 P0=0/P1=0/P2=2/P3=3；详见 `docs/03-engineering-governance/04-retrospectives/r1-s6-i3-d-fact-audit.md` §17.10 F-matrix test contract 增强 merged-boundary 标注）：
+> 1. **M-F3 错映射修正** — 原映射 `test_f3_lease_ack_lost_replay_no_fork`（仅 raw SQL seed + COUNT(*)断言，**不**调被变异 `_ack_lost_repair`）→ 改映射到 `test_s5_sch_d_settlement.py::test_settlement_ack_lost_repair`（真实经 `closeout_erasing` → `_classify_input("ack_lost")` → `_ack_lost_repair` → 断言 `ack_digest == _ACK`）
+> 2. **M-F5 错映射修正 + 不可达路径解除** — 原映射 `test_f5_ack_after_operation_pre_aggregation_crash_takeover_safe`（仅 seed + COUNT(*)，**且** seed 用 checkpoint=acked 不进 mutated `erasing` 分支 → 不可达路径）→ 改映射到 `test_s6_td106_settlement_ledger.py::test_external_multi_ref_per_ref_receipt`（真实经 `closeout_erasing` → `_classify_input(fence=erasing, checkpoint=erasing)` → mutated 分支 → `_t1_plan_recovery` → `_apply_window_outcome` → ledger 写入）
+> 3. **F10 M6 不可达路径解除（新增独立真实 PG test）** — 既有 F10 测试集（test_f10_* 8 项）**全部**走 `hold_revision 0→1` → G2 提前 return blocked_hold_revision_changed → **永远到不了 priority 3 scan check** → 新增 `test_f10_m6_completed_bypass_scan_check_blocked`：构造 G1/G2/G3 cleared + 6 owner acked + 5-party validation 全 pass + workspace.core.v1 final scan nonzero（actor_state='present'）→ control 期望 `blocked` + `failure_code=workspace_body_scan_nonzero`；mutant（M6 priority-3 折叠）允许 completed → 转红
+> 4. **2 新 seed helper** — `_seed_fence`（复制 test_s5_sch_d_settlement 同形态）+ `_seed_6_owner_acked_with_residual_body`（M6 真实 PG 判别载体：6 owner checkpoint=acked + 5 非 window fence=erased via `ON CONFLICT (tenant_id, purge_operation_id, owner_key) DO UPDATE`）
+> 5. **3 mutation script nodeid 修正** — M-F3 → `test_settlement_ack_lost_repair`；M-F5 → `test_external_multi_ref_per_ref_receipt`；M6 → `test_f10_m6_completed_bypass_scan_check_blocked`
+> 6. **零生产代码改动** — 5 文件净 diff 364 insertions(+)/10(-) 仅含 pure test contract 增量 + 治理归位 active task card，无业务代码 / 无 migration 043 / 无 schema / 无 enum / 无 CHECK / 无 S5 状态机 / 无锁序 / 无写者矩阵 / 无 registry / 无 agent_erasure_registry.py / 无 CI 门禁 / 无 KNOWN_ISSUES 改动；零 review-score-log.md 历史评分行 + 零 metrics-snapshot.md 改动；zero-touch production
+> 7. **保留历史 NOT-RED 记录** — PR-D closeout 注解（2026-09-03）原文不变；F-matrix `7/12 NOT-RED` 措辞按当时历史事实保留；本节**不**supersede PR-D 历史 NOT-RED / **不**修改 S6-14 frozen 顺序 / **不**改写 plan 既有 frozen 内容
+> 8. **明确 M-F8 单独判别仍未闭合** — M-F8 NOT-RED = test-contract / shared-observation gap：`_lock_conversation` FOR UPDATE 串行化隐藏 `_top_operation` 失锁影响；本 PR **不**扩张 production helper 以制造真红；保留为 future test contract 增强 PR 单独修复（需直接调 `_top_operation` 在两个并发 session 中验证 FOR UPDATE 失锁的并发可见性，超出本 PR 5 文件 allowed list 范围）
+> 9. **F-matrix + F10 mutation 实证** — 11/12 KILLED（M-F2/F3/F4/F5/F6/F7/F9/F11/F12/F13/F14 真红）+ M-F8 NOT-RED = test-contract / shared-observation gap；F10 8/8 KILLED（含 M6 真红——priority-3 真实可达）= **19/20 behavioral KILLED（不冒充 20/20）**
+> 10. **零启动 / 零关闭 / 零重开** — PR-E（release drill）/ C1 Durable Core / S5 production wiring / registry capability flip / 六 erase 入口生产可达 / REQ-047 conformance 全部保持未启动；TD-104（PR-A schema/test alignment 残项 ⚫ 待办）/ TD-032（D1a 1724 + D1b 1052 + D2 1876 + 双 test 1117/2559 双超 1000 行硬限制 🟢 待拆分）/ TD-105（F10 实现承接 🟢 完成）/ TD-106（settlement SUCCESS 不写 ledger/binding 🟢 完成）全部保持登记不关闭不重开；测试数据库仅 `metaedu_test`（不触碰 `metaedu`）
+
 #### S6-15 S6-F10 契约路由表（冻结，契约核对纠偏）
 
 > Status: Draft（本段仅纯文档契约核对与冻结；不写代码/测试/schema/migration/enum/CHECK/registry/CI，不修改 S5 settlement/participant/terminal guard，不接 fake；PR #590 保持 Draft 不改写、不 rerun、不转 Ready）
