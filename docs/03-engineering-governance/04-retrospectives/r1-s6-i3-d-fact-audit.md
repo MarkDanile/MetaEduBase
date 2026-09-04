@@ -1109,6 +1109,63 @@ D1b 与 D1a **不可合并于**「D1a 是只读 codec + decoder + bounded export
 - §17.9（本节，PR-D closeout 标注，2026-09-03）：PR-D merged-boundary 收口 + supersede §17.8「PR-D 未启动」+ 任务卡整体仍 🟡 进行中 + **PR-E / F-matrix / C1 / S5 wiring / capability flip / 六 erase 仍全部未启动**（PR-D 完成 ≠ 其他任务完成；前置依赖解除：PR-E 可启动）
 - **四节关系 = 累积 supersede 关系**（每节都 supersede 前一节中"待启动"或"待重新审计"措辞为 merged-boundary 事实，但**不** supersede 前一节"未启动"清单）
 
+## 17.10. F-matrix + F10 M6 test contract 增强 merged-boundary 收口标注（2026-09-04）
+
+> 本节为 R1-S6 F-matrix + F10 M6 test contract 增强（独立后续 PR）merge 入 main 的事实收口。审计责任范围：**纯 test contract + mutation harness 修正**（不修改任何 production code / migration / schema / enum / CHECK / registry / CI / 门禁）；**不**启动 F-matrix / PR-E / C1 / S5 wiring / capability flip / 六 erase / REQ-047 conformance。
+
+**集成事实链**：
+
+1. **PR #608 squash merge 入 main `e07c601bdf112c9f6dc0f4e7fecdaa0631ea555b`**（2026-09-04T02:07:56Z，source head `2ec93467` + FINAL_IMPL_HEAD `011af6eb` + score correction commit `2ec93467` 同次提交）
+2. 评审对象 main `4c376373..011af6eb` 净 diff 5 文件 364 insertions(+)/10(-)：3 新增 `tests/composition/s6i3_seeds.py` 新增 `_seed_fence`（复制 test_s5_sch_d_settlement 同形态）+ `_seed_6_owner_acked_with_residual_body`（M6 真实 PG 判别载体：6 owner checkpoint=acked + 5 非 window fence=erased via `ON CONFLICT (tenant_id, purge_operation_id, owner_key) DO UPDATE`） / `tests/composition/test_s6i3_fault_f10.py` 新增 `test_f10_m6_completed_bypass_scan_check_blocked` 真实 PG 端到端（_settle_empty_window + UPDATE actor_state='present' + UPDATE external.fence='erased' + _seed_6_owner_acked_with_residual_body + service.closeout_erasing(_LookupNoneAdapter) + coordinator.aggregate_projection，**不**改 production helper）/ 2 修改 `scripts/s6i3_fault_matrix_mutation_kill.py` M-F3 nodeid → test_settlement_ack_lost_repair + M-F5 nodeid → test_external_multi_ref_per_ref_receipt / `scripts/s6i3_f10_mutation_kill.py` M6 nodeid → test_f10_m6_completed_bypass_scan_check_blocked + 1 治理归位 `current-work.md` TASK-R1-S6-F-MATRIX-TEST-CONTRACT 活跃卡
+3. main 累积 diff（`4c376373..e07c601b` = 6 文件 365 insertions(+)/10(-)）：F-matrix + F10 M6 test contract 增强（5 文件）+ score correction commit `2ec93467`（1 文件 review-score-log.md +1 / -1 调整 cell count）；F-matrix + F10 仍 11/12 + 8/8 KILLED = 19/20 behavioral KILLED，**不**冒充 20/20
+
+**事实基线对账（PR #608 完成内容）**：
+
+1. **M-F3 错映射修正** — 原映射 `test_f3_lease_ack_lost_replay_no_fork`（仅 raw SQL seed + COUNT(*)断言，**不**调被变异 `_ack_lost_repair`）→ 改映射到 `test_s5_sch_d_settlement.py::test_settlement_ack_lost_repair`（真实经 `closeout_erasing` → `_classify_input("ack_lost")` → `_ack_lost_repair` → 断言 `ack_digest == _ACK`）
+2. **M-F5 错映射修正 + 不可达路径解除** — 原映射 `test_f5_ack_after_operation_pre_aggregation_crash_takeover_safe`（仅 seed + COUNT(*)，**且** seed 用 checkpoint=acked 不进 mutated `erasing` 分支 → 不可达路径）→ 改映射到 `test_s6_td106_settlement_ledger.py::test_external_multi_ref_per_ref_receipt`（真实经 `closeout_erasing` → `_classify_input(fence=erasing, checkpoint=erasing)` → mutated 分支 → `_t1_plan_recovery` → `_apply_window_outcome` → ledger 写入）
+3. **F10 M6 不可达路径解除** — 既有 F10 测试集（test_f10_* 8 项）**全部**走 `hold_revision 0→1` → G2 提前 return blocked_hold_revision_changed → **永远到不了 priority 3 scan check** → 新增 `test_f10_m6_completed_bypass_scan_check_blocked` 独立真实 PG test：构造 G1/G2/G3 cleared + 6 owner acked + 5-party validation 全 pass + workspace.core.v1 final scan nonzero（actor_state='present'）→ control 期望 `blocked` + `failure_code=workspace_body_scan_nonzero`；mutant（M6 priority-3 折叠）允许 completed → 转红
+
+**mutation 分母 + KILLED/NOT-RED 口径（独占 metaedu_test + 串行 + try/finally byte-identical restore）**：
+
+| Suite | 总数 | KILLED | NOT-RED | NOT-RED 原因 |
+|---|---|---|---|---|
+| F-matrix | 12 | **11** | **1** (M-F8) | test-contract / shared-observation gap（`_lock_conversation` FOR UPDATE 串行化隐藏 `_top_operation` 失锁影响） |
+| F10 | 8 | **8** | 0 | M6 真实 PG 判别载体已新增（不可达路径解除） |
+| **合计** | **20** | **19** | **1** | 19/20 behavioral KILLED（**不**冒充 20/20） |
+
+**契约事实校核（contract-to-code）**：
+
+- **M-F3 真实 production path 调被变异 `_ack_lost_repair`** — `_classify_input("ack_lost")` 分支命中 fence=erased + checkpoint=pending/ blocked → `_ack_lost_repair` 写 `checkpoint.state="acked"` + `checkpoint.ack_digest=ack_digest` → mutation 注入后 ack_digest=None → control 断言 `ack_digest == _ACK` 失败 → 真红
+- **M-F5 真实 production path 调被变异 `_classify_input`** — `_classify_input(fence=erasing, checkpoint=erasing)` 命中 mutated 分支 → `_t1_plan_recovery` → adapter → `_apply_window_outcome(SUCCESS)` → `_close_window_ledger` (TD-106) 写 2 ref `erase_state=erased` + 2 `receipt_digest`；mutation 折叠 erasing 分支 → closeout 走 `_fence_to_blocked`（零 adapter 调用 + 零 ledger 写入）→ control 断言 `ref_row['erase_state'] == "erased"` 失败 → 真红
+- **F10 M6 真的可达 priority-3** — `_settle_empty_window` 设 6 owner=pending + external checkpoint=erasing + fence=erasing → UPDATE actor_state='present' + UPDATE external.fence='erased'（绕开 _apply_window_outcome 的 OUTCOME_UNKNOWN fence 写失败） + `_seed_6_owner_acked_with_residual_body`（6 owner checkpoint=acked + 5 非 window fence=erased）→ closeout_erasing 走 `_apply_window_outcome` 但 fence 已非 erasing → 跳过 fence 写 + checkpoint 已 acked 跳过 → 零写；aggregate_projection 经 G1/G2/G3 cleared → 5-party 全 pass → priority-3 scan 命中 workspace.core.v1 un_anonymized_actors=1 → blocked
+- **mutation 还原源码 byte-identical 验证** — 内存 backup + try/finally 模式无 git restore；5 个被变异的 production 文件 mutation 前后 SHA-256 完全一致
+- **真实 PG 端到端** — `metaedu_test` 独占 + 串行；production helper + external/runtime capability 零改动；registry external/runtime 仍 `erase_available=False`；六 erase 入口生产可达仍不可达
+
+**三面独立复审 + 评分事实**：
+
+- 三面独立复审合计 P0=0/P1=0/P2=2/P3=3（保留全部**不**冒充关闭）
+- 维度评分（7 维 100 分制）：范围与需求匹配 15/15 + 实现质量 18/20 + 测试与验证证据 18/20 + 事实源与流程遵守 15/15 + 风险与行为变化控制 15/15 + 可评审性与交接质量 8/10 + 持续改进信号 5/5
+- **总分 94 Original**（15+18+18+15+15+8+5）
+- **正式评分门禁真实 PASS** `scripts/check-review-score-submit --base 011af6eb --pr 608` → `passed (base 011af6eb, PR #608, one Original row, Metrics unchanged)`
+- 三路 Ready required checks 全 SUCCESS（run `33788987146` Backend 15m22s + Engineering docs 18s + Frontend 2m57s）+ 后置 score correction commit `2ec93467` post-score 三路 required checks 全 SUCCESS（run `33824897616`）
+
+**F-matrix test contract 增强 merged-boundary 不变式**：
+
+- ✅ **已完成**：F-matrix + F10 M6 test contract 增强（PR #608 已 mergeCommit 入 main）+ main closeout + 治理归位（current-work TASK-R1-S6-F-MATRIX-TEST-CONTRACT 活跃卡 + 候选区 7/12 NOT-RED 过期措辞保留待 closeout 修订——本 closeout PR 阶段一并提交修订）
+- ✅ **历史 NOT-RED 记录保留**：PR-D closeout 标注（§17.9 2026-09-03）原文不变；本节**不**supersede §17.9「F-matrix 7/12 NOT-RED」措辞（保留为历史事实）；本节**不**修改 S6-14 frozen 顺序 / **不**改写 plan 既有 frozen 内容
+- ✅ **明确 M-F8 NOT-RED 真实 harness issue 仍未闭合** — `_lock_conversation` FOR UPDATE 串行化隐藏 `_top_operation` 失锁影响；本 PR **不**扩张 production helper 以制造真红；保留为 future test contract 增强 PR 单独修复（需直接调 `_top_operation` 在两个并发 session 中验证 FOR UPDATE 失锁的并发可见性，超出本 PR 5 文件 allowed list 范围）；**不**冒充收口，**不**扩大测试范围
+- ✅ **明确零启动 / 零关闭 / 零重开边界保持** — PR-E（release drill）/ C1 Durable Core / S5 production wiring / registry capability flip / 六 erase 入口生产可达 / REQ-047 conformance 全部保持未启动；TD-104（PR-A schema/test alignment 残项 ⚫ 待办）/ TD-032（D1a 1724 + D1b 1052 + D2 1876 + 双 test 1117/2559 双超 1000 行硬限制 🟢 待拆分）/ TD-105（F10 实现承接 🟢 完成）/ TD-106（settlement SUCCESS 不写 ledger/binding 🟢 完成）全部保持登记不关闭不重开
+
+**§17.6 / §17.7 / §17.8 / §17.9 / §17.10 关系（累积 supersede + 历史 NOT-RED 保留）**：
+
+- §17.6（D1b closeout 标注，2026-08-28）：D1b merged-boundary 收口 + D2 未启动的历史事实
+- §17.7（D2 closeout 标注，2026-09-01）：D2 merged-boundary 收口 + supersede §17.6「D2 未启动」+ PR-D 未启动历史事实
+- §17.8（GOV closeout 标注，2026-09-02）：GOV 子卡 merged-boundary 收口 + supersede §17.7「TD-104 未启动...待重新审计」+ 任务卡整体仍 🟡 进行中 + PR-D / PR-E / F-matrix / C1 / S5 wiring / capability flip / 六 erase 全部未启动
+- §17.9（PR-D closeout 标注，2026-09-03）：PR-D merged-boundary 收口 + supersede §17.8「PR-D 未启动」+ 任务卡整体仍 🟡 进行中 + **PR-E / F-matrix / C1 / S5 wiring / capability flip / 六 erase 仍全部未启动**（PR-D 完成 ≠ 其他任务完成；前置依赖解除：PR-E 可启动）
+- **§17.10（本节，F-matrix test contract 增强 merged-boundary 标注，2026-09-04）**：F-matrix + F10 M6 test contract 增强 merged-boundary 收口 + **保留 §17.6/§17.7/§17.8/§17.9 历史 NOT-RED 记录不变** + **不**supersede §17.9「F-matrix 7/12 NOT-RED」历史措辞 + 任务卡整体仍 🟡 进行中 + F-matrix M-F8 NOT-RED test-contract/shared-observation gap 单独 follow-up + PR-E / F-matrix / C1 / S5 wiring / capability flip / 六 erase / REQ-047 仍全部未启动
+- **五节关系 = 累积 supersede + 历史 NOT-RED 保留**（每节 supersede 前一节中「待启动」或「待重新审计」措辞为 merged-boundary 事实，但**不** supersede 前一节「未启动」清单；本节**不**重写 §17.9「F-matrix 7/12 NOT-RED」历史措辞）
+
+
 ## 18. 关键引用
 
 - 任务卡：`docs/03-engineering-governance/current-work.md` TASK-R1-S6-I3-D

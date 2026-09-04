@@ -765,9 +765,67 @@
 
 ### 后续接力（按计划建议执行顺序）
 
-1. F-matrix 7/12 + F10 M6 test contract 增强
-3. PR-E（release drill 五阶段 canary，前置依赖 = PR-D 剩余交付，**已由本 PR #606 满足**）
-4. TD-104（PR-A schema/test alignment 残项）
-5. C1 Durable Core 总验收
-6. S5 production wiring
-7. registry capability 翻转 / 六 erase 入口生产可达
+1. F-matrix M-F8 单独判别（test-contract / shared-observation gap，future test contract 增强 PR）
+2. PR-E（release drill 五阶段 canary，前置依赖 = PR-D 剩余交付，**已由 PR #606 满足**）
+3. TD-104（PR-A schema/test alignment 残项）
+4. C1 Durable Core 总验收
+5. S5 production wiring
+6. registry capability 翻转 / 六 erase 入口生产可达
+
+## R1-S6 F-matrix + F10 M6 test contract 增强 closeout（2026-09-04）
+
+**任务**：REQ-041/047 R1-S6-I3-D F-matrix + F10 M6 test contract 增强（独立后续 PR；Phase 0 契约审计修正 3 项 M-F3 / M-F5 错映射 + F10 M6 不可达路径解除；5 文件 pure test contract + mutation harness 修正）
+**分支**：`docs/req041-047-r1-s6-f-matrix-closeout`（已随 #608 merge `--delete-branch` 删除原 `feature/req041-047-r1-s6-f-matrix-test-contract-enhancement`）
+**PR**：[#608](https://github.com/MarkDanile/MetaEduBase/pull/608)（squash mergeCommit `e07c601bdf112c9f6dc0f4e7fecdaa0631ea555b`，2026-09-04T02:07:56Z）
+**评分**：94 Original（[`review-score-log.md`](../03-engineering-governance/04-retrospectives/review-score-log.md) 新增行；评审对象 `4c376373..011af6eb`，净 diff 5 文件 364 insertions(+)/10(-)：3 新增 `tests/composition/s6i3_seeds.py` 新增 `_seed_fence` + `_seed_6_owner_acked_with_residual_body` / `tests/composition/test_s6i3_fault_f10.py` 新增 `test_f10_m6_completed_bypass_scan_check_blocked` / 2 修改 `scripts/s6i3_fault_matrix_mutation_kill.py` M-F3+M-F5 nodeid / `scripts/s6i3_f10_mutation_kill.py` M6 nodeid / 1 治理归位 `current-work.md` 活跃卡）
+**实现基线 / FINAL_IMPL_HEAD**：main `4c376373` / `011af6eb`（source head `2ec93467` 含 score correction commit）
+
+### 完成内容
+
+1. **M-F3 错映射修正**：原映射 `test_f3_lease_ack_lost_replay_no_fork`（仅 raw SQL seed + COUNT(*)断言，**不**调被变异 `_ack_lost_repair`）→ 改映射到 `test_s5_sch_d_settlement.py::test_settlement_ack_lost_repair`（真实经 `closeout_erasing` → `_classify_input("ack_lost")` → **`_ack_lost_repair`** → 断言 `ack_digest == _ACK`）
+2. **M-F5 错映射修正**：原映射 `test_f5_ack_after_operation_pre_aggregation_crash_takeover_safe`（仅 seed + COUNT(*)，**且** seed 用 checkpoint=acked 不进 mutated `erasing` 分支 → 不可达路径）→ 改映射到 `test_s6_td106_settlement_ledger.py::test_external_multi_ref_per_ref_receipt`（真实经 `closeout_erasing` → `_classify_input(fence=erasing, checkpoint=erasing)` → mutated 分支 → `_t1_plan_recovery` → `_apply_window_outcome` → ledger 写入）
+3. **F10 M6 不可达路径解除**：既有 F10 测试集（test_f10_* 8 项）**全部**走 `hold_revision 0→1` → G2 提前 return blocked_hold_revision_changed → **永远到不了 priority 3 scan check** → 新增独立真实 PG test `test_f10_m6_completed_bypass_scan_check_blocked`：构造 G1/G2/G3 cleared + 6 owner acked + 5-party validation 全 pass + workspace.core.v1 final scan nonzero → priority-3 唯一可达 → control 期望 `blocked` + `failure_code=workspace_body_scan_nonzero`；mutant（M6 priority-3 折叠）允许 completed → 转红
+4. **2 新 seed helper**：`_seed_fence`（复制 test_s5_sch_d_settlement 同形态）+ `_seed_6_owner_acked_with_residual_body`（M6 真实 PG 判别载体：6 owner checkpoint=acked + 5 非 window fence=erased via `ON CONFLICT (tenant_id, purge_operation_id, owner_key) DO UPDATE`）
+5. **3 mutation script nodeid 修正**：M-F3 → `test_settlement_ack_lost_repair`；M-F5 → `test_external_multi_ref_per_ref_receipt`；M6 → `test_f10_m6_completed_bypass_scan_check_blocked`
+6. **治理归位**：`current-work.md` 新增 TASK-R1-S6-F-MATRIX-TEST-CONTRACT 活跃卡（10 模板字段齐全）；closeout 阶段移除
+
+### mutation 分母 + KILLED/NOT-RED 口径
+
+| Suite | 总数 | KILLED | NOT-RED | NOT-RED 原因 |
+|---|---|---|---|---|
+| F-matrix | 12 | **11** | **1** (M-F8) | test-contract / shared-observation gap（`_lock_conversation` FOR UPDATE 串行化隐藏 `_top_operation` 失锁影响） |
+| F10 | 8 | **8** | 0 | M6 真实 PG 判别载体已新增（不可达路径解除） |
+| **合计** | **20** | **19** | **1** | 19/20 behavioral KILLED（**不**冒充 20/20） |
+
+### 关键不变量（main closeout 时核对）
+
+- **mergeCommit `e07c601bdf112c9f6dc0f4e7fecdaa0631ea555b`** = source head（squash merge 单 commit）
+- 评审对象 main `4c376373`..`011af6eb`（净 diff 5 文件 364 insertions(+)/10(-)）仅含 pure test contract 增量（3 新增 + 2 修改）+ 治理归位 active task card，无 production code / 无 migration 043 / 无 schema / 无 enum / 无 CHECK / 无 S5 状态机 / 无 锁序 / 无 写者矩阵 / 无 registry capability / 无 CI 门禁 / 无 KNOWN_ISSUES 改动
+- 验证：5/5 drill test PASS（metaedu_test 真实 PG）+ 998 composition passed + 6 skipped + ruff check All checks passed + mypy baseline `passed: 243 historical errors / 76 keys / 0 regressions` 0 回归 + git diff --check clean + engineering-docs --full passed (32 known issue(s) allowlisted) + pre-commit + pre-push hooks All checks passed + 三路 Ready required checks 全 SUCCESS（run `33788987146` Backend 15m22s + Engineering docs 18s + Frontend 2m57s）+ 后置 score correction commit `2ec93467`（condense row to 10 cells）+ post-score 三路 required checks 全 SUCCESS（run `33824897616`）
+- TASK-R1-S6-I3-D 整体仍 🟡 进行中（F-matrix M-F8 NOT-RED test-contract/shared-observation gap / PR-E / C1 / S5 wiring / capability flip / 六 erase / REQ-047 仍全部保持未启动）
+
+### 完成边界（精确登记，不越界）
+
+- **已完成**：orchestration entry（PR-D 已落 #606）+ F-matrix + F10 M6 test contract 增强（#608 落地 + score 94 Original + 三面复审 P0/P1=0）+ main closeout
+- **未启动 / 未关闭**：F-matrix M-F8 NOT-RED（test-contract / shared-observation gap，future test contract 增强 PR 单独修复，不冒充 KILLED）/ PR-E / C1 / S5 production wiring / capability flip（registry external/runtime 仍 `erase_available=False`）/ 六 erase 入口生产可达 / REQ-047 conformance
+- **未关闭**：TD-104（PR-A schema/test alignment 残项 ⚫ 待办）/ TD-032（D1a 1724 + D1b 1052 + D2 1876 + 双 test 1117/2559 双超 1000 行硬限制 🟢 待拆分，不拆分）/ TD-105 / TD-106（保持 🟢 完成不重开）
+- **5 P3 + 2 P2 follow-up 全部保留登记不冒充关闭**：M-F3 / M-F5 / M6 真实 PG 端到端字段级 control vs mutant DB 状态差异已复核；M-F8 NOT-RED = test-contract / shared-observation gap 登记保持；M6 test 重复 `phase 4` 块冗余 + M6 test seed workaround raw SQL 显式 docstring 但缺详细 why-not-production 段落为 minor P3 code quality（不冒充关闭）
+
+### 教训入账（test-contract 增强范式）
+
+1. **Phase 0 契约审计 + Phase 1 实施 + 三面独立复审 + 正式评分 四阶段流程模板可复用**——为后续 cross-layer PR-E / C1 slice 提供"契约审计 → thin composition → 串联 audit → 评分"完整闭环范式
+2. **audit-driven mapping 修正**（M-F3 + M-F5 raw SQL 伪映射修正为真实 production entry 调用）—— Phase 0 三面独立复审的 contract-to-test decision 必须**实际执行被变异 production symbol**，**仅** raw SQL seed / COUNT(*) 断言不构成 mutation 真红判别
+3. **不可达路径解除（F10 M6 新 test 构造 G1/G2/G3 cleared）**——既有 F10 hold-drift 场景（G2 提前 return blocked_hold_revision_changed）永远到不了 priority-3 scan check；必须新构造 priority 单一可达场景 + control vs mutant 字段级 DB 状态差异可复核
+4. **mutation 还原源码 byte-identical 验证** + 独占 metaedu_test + 串行执行（autouse TRUNCATE 锁）—— 内存 backup + try/finally 模式无 git restore
+5. **候选区"7/12 NOT-RED"措辞过期**——本 closeout 阶段修正为当前事实 "1/12 = M-F8 only"（实际 NOT-RED 数量），**不**冒充 20/20 全真红；M-F8 NOT-RED = test-contract / shared-observation gap 单独 follow-up
+6. **stacked PR 评分行模板**（implementation baseline main `4c376373` + FINAL_IMPL_HEAD `011af6eb` 双记 + score correction commit `2ec93467`）成为本轮第十二次复用模板（#587/#589/#591/#592/#590/#586/#596/#604/#606 + #608 + 后续 7 维评分口径）
+7. **test contract 增强范式**可作为后续 cross-layer 判别载体扩展模板（audit-driven mapping 修正 + 真实 PG 端到端 test contract + priority 单一可达性构造 + control vs mutant 字段级 DB 状态差异）
+
+### 后续接力（按计划建议执行顺序）
+
+1. F-matrix M-F8 单独判别（test-contract / shared-observation gap，future test contract 增强 PR 单独修复）
+2. PR-E（release drill 五阶段 canary，前置依赖 = PR-D 剩余交付 + F-matrix + F10 M6 test contract 增强 = PR #606 + #608 已落地，可启动独立后续 PR）
+3. TD-104（PR-A schema/test alignment 残项，保持 ⚫ 待办，不关闭）
+4. C1 Durable Core 总验收（未启动）
+5. S5 production wiring（未启动）
+6. registry capability 翻转 / 六 erase 入口生产可达（未启动）
