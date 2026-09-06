@@ -1166,6 +1166,72 @@ D1b 与 D1a **不可合并于**「D1a 是只读 codec + decoder + bounded export
 - **五节关系 = 累积 supersede + 历史 NOT-RED 保留**（每节 supersede 前一节中「待启动」或「待重新审计」措辞为 merged-boundary 事实，但**不** supersede 前一节「未启动」清单；本节**不**重写 §17.9「F-matrix 7/12 NOT-RED」历史措辞）
 
 
+## 17.11. F-matrix M-F8 单独判别 test contract 增强 merged-boundary 收口标注（2026-09-06）
+
+> 本节为 R1-S6 F-matrix M-F8 单独判别（独立后续 PR）merge 入 main 的事实收口。审计责任范围：**M-F8 shared-observation gap 闭合**（将 PR #608 遗留 F2/F8 共享断言拆分为 M-F2 独立判别 + M-F8 独立判别，独立 existing-row + `SET LOCAL lock_timeout` 真锁超时机制）；**不**修改任何 production code / migration / schema / enum / CHECK / registry / CI / 门禁；**不**启动 F-matrix / PR-E / C1 / S5 wiring / capability flip / 六 erase / REQ-047 conformance。
+
+**集成事实链**：
+
+1. **PR #610 squash merge 入 main `b8daa934a65491c09a6399cbb4a77235452a290c`**（2026-09-06T13:59:40Z，source head `785d7dbe515cea8f1e0498954994a022ec56d459` + FINAL_IMPL_HEAD `2cc609a26dca3d6ed2b1f1eb93566094bee0ffc0`）
+2. 评审对象 main `4884db00..2cc609a2` 净 diff 2 文件 115 insertions(+)/25(-)：1 修改 `packages/server-python/tests/composition/test_s6i3_fault_mutation_evidence.py`（重命名 `test_f2_f8_dual_connection_claim_collapses_to_single_writer` → `test_mf2_lock_conversation_serializes_dual_claim` 移除 M-F8 共享断言 + 新增 `test_mf8_top_operation_for_update_locks_existing_row` M-F8 独立 existing-row + `SET LOCAL lock_timeout = '1s'` + OperationalError `lock timeout`/SQLSTATE `55P03` 真红判定）/ 1 修改 `scripts/s6i3_fault_matrix_mutation_kill.py`（M-F2 mapping → `test_mf2_lock_conversation_serializes_dual_claim`；M-F8 mapping → `test_mf8_top_operation_for_update_locks_existing_row` + docstring 同步 Phase 2 拆分说明）
+3. main 累积 diff（`4884db00..b8daa934` = 3 文件 116 insertions(+)/25(-)）：F-matrix M-F8 单独判别 test contract 增强（2 文件）+ score commit `785d7dbe`（1 文件 review-score-log.md 新增 1 行 Original 95）；F-matrix 12/12 KILLED + F10 8/8 KILLED = **20/20 behavioral KILLED**（PR #608 历史 19/20 措辞按当时历史事实保留，本节**不**覆写 PR #608 历史口径）
+
+**事实基线对账（PR #610 完成内容）**：
+
+1. **共享测试拆分** — 原 `test_f2_f8_dual_connection_claim_collapses_to_single_writer`（用 M-F2 `_lock_conversation` FOR UPDATE 串行化 claim() 竞争 → 掩盖 M-F8 `_top_operation` 缺 FOR UPDATE 的独立效应 → shared observation gap）→ 拆分：
+   - `test_mf2_lock_conversation_serializes_dual_claim`：M-F2 独立判别（双连接 `asyncio.gather` `ConversationPurgeScheduler.claim` 同 conversation → 期望 `kinds == {ClaimKind.CLAIMED, ClaimKind.HELD}`）
+   - `test_mf8_top_operation_for_update_locks_existing_row`：M-F8 独立判别（经公开 `claim()` 创建并 commit 一条 existing purge operation 作真实锁载体；Session A 开事务调 `_top_operation` 持 existing 行 FOR UPDATE；Session B `SET LOCAL lock_timeout = '1s'` 调同一 `_top_operation`；control B 锁等待超时，异常文本含 `lock timeout` 或 SQLSTATE `55P03`；mutant 去掉 `.with_for_update()` 后 B 不超时 → `pytest.raises` 触发 `DID NOT RAISE Exception` → 转红）
+2. **跨变独立性双证明** — CROSS-CHECK 1：M-F2 mutation 单独 → M-F8 test `rc=0` PASS（M-F8 test 不被 M-F2 mutation 杀）；CROSS-CHECK 2：M-F8 mutation 单独 → M-F2 test `rc=0` PASS（M-F2 test 不被 M-F8 mutation 杀）→ 双证明 M-F2 与 M-F8 无 shared observation
+3. **mutation script nodeid 重映射** — `scripts/s6i3_fault_matrix_mutation_kill.py`：M-F2 → `test_mf2_lock_conversation_serializes_dual_claim`；M-F8 → `test_mf8_top_operation_for_update_locks_existing_row`
+4. **mutation 还原源码 SHA-256 byte-identical verified** — 内存 backup + try/finally 模式无 git restore；6 个被变异的 production 文件（`conversation_purge_scheduler.py` / `settlement.py` / `retention_workers.py` / `external_ref_erasure_participant.py` / `workspace_erasure_participant.py` / `execution_query_repository.py`）mutation 前后 disk SHA-256 完全一致
+5. **直接调 private `_top_operation` 的取舍** — 隔离 M-F2 / M-F8 共享观察的唯一手段；公开 `claim()` 路径先经 `_lock_conversation`（M-F2 标的）会复现 PR #608 的 shared-observation 问题；该取舍已 docstring 化记录在 test 与 PR body 中；方法名 / 签名是 Plan §S6-F8 冻结契约一部分
+6. **零生产代码改动** — 2 文件净 diff 115 insertions(+)/25(-) 仅含 pure test contract 增量 + mutation harness nodeid 重映射 + docstring 同步；无业务代码 / 无 migration 043 / 无 schema / 无 enum / 无 CHECK / 无 S5 状态机 / 无锁序 / 无写者矩阵 / 无 registry / 无 agent_erasure_registry.py / 无 CI 门禁 / 无 KNOWN_ISSUES 改动；零 review-score-log.md 历史评分行 + 零 metrics-snapshot.md 改动；zero-touch production
+7. **保留 PR #608 19/20 历史口径** — PR #608 历史 `F-matrix 11/12 KILLED + F10 8/8 KILLED = 19/20 behavioral KILLED（不冒充 20/20）` 措辞按当时历史事实保留，本节**不**覆写 PR #608 历史口径为 20/20；PR #608 F-matrix 11/12 + F10 8/8 + PR #610 新增 M-F8 1 KILLED = **PR #610 收口后 F-matrix 12/12 KILLED + F10 8/8 KILLED = 20/20 behavioral KILLED**（仅本节新增事实，不 supersede PR #608 19/20 历史措辞）
+8. **保留 PR-D 边界注解（2026-09-03）** 与 F-matrix test contract 增强 merged-boundary 注解（2026-09-04）原文不变；本节**不**supersede 任何既有 merged-boundary 注解 / **不**修改 S6-14 frozen 顺序 / **不**改写 plan 既有 frozen 内容
+
+**mutation 分母 + KILLED/NOT-RED 口径（独占 metaedu_test + 串行 + try/finally byte-identical restore）**：
+
+| Suite | 总数 | KILLED | NOT-RED | NOT-RED 原因 |
+|---|---|---|---|---|
+| F-matrix | 12 | **12** | **0** | M-F2 / M-F8 重映射为独立判别载体，shared-observation gap 闭合 |
+| F10 | 8 | **8** | 0 | M6 真实 PG 判别载体已新增（PR #608） |
+| **合计** | **20** | **20** | **0** | **20/20 behavioral KILLED** |
+
+**契约事实校核（contract-to-code）**：
+
+- **M-F2 真实 production path 调被变异 `_lock_conversation`** — 双连接 `asyncio.gather` `ConversationPurgeScheduler.claim` 同 conversation → control 双 session 中一方 CLAIMED + 另一方 HELD（`_lock_conversation` FOR UPDATE 持锁未释放 → 后到者被 claim 谓词 / 事务锁阻塞为 HELD）；mutation 注入 `_lock_conversation` 失锁 → 双连接均能进入 `_top_operation`（仍 FOR UPDATE）→ 双方都查到 NULL → 双方各自 INSERT 新 operation 行 → 双 CLAIMED → 单写者破缺 → 断言失败 → 真红
+- **M-F8 真实 production path 调被变异 `_top_operation`** — 经公开 `claim()` 创建并 commit 一条 existing purge operation 作真实锁载体；Session A 开事务调 `_top_operation` 持 existing 行 FOR UPDATE 保持不 commit；Session B `SET LOCAL lock_timeout = '1s'` 调同一 `_top_operation` → control B 锁等待超时抛 asyncpg.LockNotAvailableError wrapped as DBAPIError（SQLSTATE 55P03 `lock timeout`）；`pytest.raises(Exception)` 命中 + 内层 `assert "lock timeout" in error_str or "55p03" in error_str` 校验命中 → 真红
+- **M-F8 mutant 失败模式** — 去掉 `_top_operation` 的 `.with_for_update()` 后 B 不发生 lock-timeout（无锁可等），`pytest.raises(Exception)` 触发 `DID NOT RAISE Exception` → 纯 assertion failure（**非** crash / setup / timeout / no-tests / survived）→ 真红
+- **跨变独立性双证明** — M-F2 mutation 单独 → M-F8 test `rc=0` PASS（M-F8 test 不被 M-F2 mutation 杀）；M-F8 mutation 单独 → M-F2 test `rc=0` PASS（M-F2 test 不被 M-F8 mutation 杀）→ 双证明 M-F2 与 M-F8 无 shared observation
+- **mutation 还原源码 byte-identical 验证** — 内存 backup + try/finally 模式无 git restore；6 个被变异的 production 文件 mutation 前后 disk SHA-256 完全一致
+- **真实 PG 端到端** — `metaedu_test` 独占 + 串行；production helper + external/runtime capability 零改动；registry external/runtime 仍 `erase_available=False`；六 erase 入口生产可达仍不可达
+
+**三面独立复审 + 评分事实**：
+
+- 三面独立复审合计 P0=0/P1=0/P2=0/P3=1（**唯一 P3 = G-1 governance finding = implementation 期间缺活跃任务卡**，closeout 阶段补登 TASK-R1-S6-FMATRIX-MF8-CLOSEOUT 活跃卡，避免重复 G-1）
+- 维度评分（7 维 100 分制）：范围与需求匹配 15/15 + 实现质量 19/20 + 测试与验证证据 20/20 + 事实源与流程遵守 15/15 + 风险与行为变化控制 15/15 + 可评审性与交接质量 9/10 + 持续改进信号 5/5 = 95（Original）
+- **总分 95 Original**
+- **正式评分门禁真实 PASS** `python3 scripts/engineering/review_score_submit.py --base 2cc609a2 --pr 610` → `passed (base 2cc609a2, PR #610, one Original row, Metrics unchanged)`
+- 三路 Ready required checks 全 SUCCESS（run `33850361049` Backend 18m44s + Backend iteration 15m7s + Engineering docs 15s + Frontend 8m28s）+ post-score 三路 required checks 全 SUCCESS（run `33852851817` Engineering docs 17s + Frontend 3m28s + Backend **首次 cancelled** 35m24s → 获授权单次 `gh run rerun 33852851817 --failed` → rerun Backend 21m36s PASS，最终三路全绿）
+
+**F-matrix M-F8 单独判别 merged-boundary 不变式**：
+
+- ✅ **已完成**：F-matrix M-F8 单独判别 test contract 增强（PR #610 已 squash mergeCommit `b8daa934` 入 main）+ closeout PR pure-docs 治理收口（current-work slim + work-log 登记 + plan §S6-14 APPEND + fact-audit §17.11）+ M-F2 / M-F8 跨变独立性双证明
+- ✅ **历史 NOT-RED 记录保留**：PR-D closeout 标注（§17.9 2026-09-03）原文不变；F-matrix test contract 增强标注（§17.10 2026-09-04）原文不变；本节**不**supersede §17.9「F-matrix 7/12 NOT-RED」措辞 / **不**覆写 PR #608 历史 19/20 口径为 20/20 / **不**修改 S6-14 frozen 顺序 / **不**改写 plan 既有 frozen 内容
+- ✅ **明确 M-F8 NOT-RED 已闭合** — M-F8 NOT-RED（test-contract / shared-observation gap）通过 PR #610 独立后续 PR 单独闭合：shared test 拆分 + M-F2 / M-F8 独立 existing-row + lock_timeout 真锁超时机制；F-matrix 12/12 KILLED + F10 8/8 KILLED = **20/20 behavioral KILLED**
+- ✅ **明确零启动 / 零关闭 / 零重开边界保持** — PR-E（release drill）/ C1 Durable Core / S5 production wiring / registry capability flip / 六 erase 入口生产可达 / REQ-047 conformance 全部保持未启动；TD-104（PR-A schema/test alignment 残项 ⚫ 待办）/ TD-032（D1a 1724 + D1b 1052 + D2 1876 + 双 test 1117/2559 双超 1000 行硬限制 🟢 待拆分）/ TD-105（F10 实现承接 🟢 完成）/ TD-106（settlement SUCCESS 不写 ledger/binding 🟢 完成）全部保持登记不关闭不重开；G-1（implementation 期间缺活跃任务卡）作为真实 P3 governance finding 保留（closeout 阶段已在该分支先登记 TASK-R1-S6-FMATRIX-MF8-CLOSEOUT 活跃卡再跨文件修改，避免重复 G-1；不静默删除、不伪造已提前修复）
+
+**§17.6 / §17.7 / §17.8 / §17.9 / §17.10 / §17.11 关系（累积 supersede + 历史 NOT-RED 保留）**：
+
+- §17.6（D1b closeout 标注，2026-08-28）：D1b merged-boundary 收口 + D2 未启动的历史事实
+- §17.7（D2 closeout 标注，2026-09-01）：D2 merged-boundary 收口 + supersede §17.6「D2 未启动」+ PR-D 未启动历史事实
+- §17.8（GOV closeout 标注，2026-09-02）：GOV 子卡 merged-boundary 收口 + supersede §17.7「TD-104 未启动...待重新审计」+ 任务卡整体仍 🟡 进行中 + PR-D / PR-E / F-matrix / C1 / S5 wiring / capability flip / 六 erase 全部未启动
+- §17.9（PR-D closeout 标注，2026-09-03）：PR-D merged-boundary 收口 + supersede §17.8「PR-D 未启动」+ 任务卡整体仍 🟡 进行中 + **PR-E / F-matrix / C1 / S5 wiring / capability flip / 六 erase 仍全部未启动**（PR-D 完成 ≠ 其他任务完成；前置依赖解除：PR-E 可启动）
+- §17.10（F-matrix test contract 增强 merged-boundary 标注，2026-09-04）：F-matrix + F10 M6 test contract 增强 merged-boundary 收口 + PR-E 可启动 + 任务卡整体仍 🟡 进行中 + F-matrix M-F8 NOT-RED test-contract/shared-observation gap 单独 follow-up + PR-E / F-matrix / C1 / S5 wiring / capability flip / 六 erase / REQ-047 仍全部未启动
+- **§17.11（本节，F-matrix M-F8 单独判别 test contract 增强 merged-boundary 标注，2026-09-06）**：F-matrix M-F8 单独判别 test contract 增强 merged-boundary 收口 + **保留 §17.6/§17.7/§17.8/§17.9/§17.10 历史 NOT-RED 记录不变** + **不**supersede §17.9「F-matrix 7/12 NOT-RED」历史措辞 / **不**覆写 PR #608 19/20 历史口径为 20/20 + 任务卡整体仍 🟡 进行中 + PR-E 前置依赖再次确认解除（F-matrix M-F8 单独判别已由 PR #610 满足）+ G-1 真实 P3 finding 保留 + PR-E / F-matrix / C1 / S5 wiring / capability flip / 六 erase / REQ-047 仍全部未启动
+- **六节关系 = 累积 supersede + 历史 NOT-RED 保留**（每节 supersede 前一节中「待启动」或「待重新审计」或「M-F8 NOT-RED 单独 follow-up」措辞为 merged-boundary 事实，但**不** supersede 前一节「未启动」清单 / **不**重写前一节历史措辞）
+
+
 ## 18. 关键引用
 
 - 任务卡：`docs/03-engineering-governance/current-work.md` TASK-R1-S6-I3-D
