@@ -829,3 +829,49 @@
 4. C1 Durable Core 总验收（未启动）
 5. S5 production wiring（未启动）
 6. registry capability 翻转 / 六 erase 入口生产可达（未启动）
+
+## R1-S6 F-matrix M-F8 单独判别 test contract 增强 closeout（2026-09-06）
+
+### 完成内容
+
+- PR #610 已 squash merge 入 main `b8daa934a65491c09a6399cbb4a77235452a290c`（mergedAt `2026-09-06T13:59:40Z`；source head `785d7dbe` + FINAL_IMPL_HEAD `2cc609a2`；评分 95 Original；三面独立复审 P0=0/P1=0/P2=0/P3=1，唯一 P3 = G-1 governance finding）
+- 评审对象 main `4884db00..2cc609a2` 净 diff 2 文件 115 insertions(+)/25(-) 仅含 pure test contract 增量（`test_s6i3_fault_mutation_evidence.py` 重命名 `test_f2_f8_dual_connection_claim_collapses_to_single_writer` → `test_mf2_lock_conversation_serializes_dual_claim` 移除 M-F8 共享断言 + 新增 `test_mf8_top_operation_for_update_locks_existing_row` M-F8 独立 existing-row + `SET LOCAL lock_timeout = '1s'` + OperationalError `lock timeout`/SQLSTATE `55P03` 真红判定；`scripts/s6i3_fault_matrix_mutation_kill.py` M-F2 / M-F8 mapping 重映射 + docstring 同步 Phase 2 拆分说明）
+- M-F8 NOT-RED（test-contract / shared-observation gap）闭合：F-matrix **12/12 KILLED** + F10 **8/8 KILLED** = **20/20 behavioral KILLED**（PR #608 历史 19/20 措辞按当时历史事实保留，本节**不**覆写 PR #608 历史口径为 20/20）
+- 跨变独立性双证明：CROSS-CHECK 1（M-F2 mutation 单独 → M-F8 test `rc=0` PASS）+ CROSS-CHECK 2（M-F8 mutation 单独 → M-F2 test `rc=0` PASS）→ 双证明 M-F2 与 M-F8 无 shared observation
+- mutation 还原源码 SHA-256 byte-identical verified：6 个被变异的 production 文件 mutation 前后 disk SHA-256 完全一致（内存 backup + try/finally 模式无 git restore）
+- post-score Backend 首次 cancelled（run `33852851817` job `100951517726` 35m24s 时 CI runner 外部取消，进度 46% ≈ 720/999 tests passed，0 failures / 0 errors）→ 获用户授权单次 `gh run rerun 33852851817 --failed` → rerun job `101087930930` 21m36s PASS → 最终三路 required checks 全 SUCCESS（Backend rerun 21m36s + Engineering docs 17s + Frontend 3m28s）
+- 独立 pure-docs closeout 治理收口（本 commit 完成）：TASK-R1-S6-FMATRIX-MF8-CLOSEOUT 活跃卡先登记再跨文件修改（避免重复 G-1）+ current-work slim（移除 M-F8 候选 + 提升 PR-E 至 P1 + 新增 closeout 条目至"最近完成"）+ plan §S6-14 APPEND merged-boundary 注解（**不**改写既有 #608/PR-D 历史）+ fact-audit §17.11（F-matrix M-F8 单独判别 closeout 标注）
+- G-1 [P3, governance] 真实保留：implementation 期间缺活跃任务卡；closeout 阶段已在该分支先登记 TASK-R1-S6-FMATRIX-MF8-CLOSEOUT 活跃卡再跨文件修改，避免重复 G-1；**不**静默删除、**不**伪造已提前修复
+
+### 关键不变量（main closeout 时核对）
+
+- **mergeCommit `b8daa934a65491c09a6399cbb4a77235452a290c`** = source head（squash merge 单 commit）+ FINAL_IMPL_HEAD `2cc609a26dca3d6ed2b1f1eb93566094bee0ffc0`（评分基线）
+- 评审对象 main `4884db00..2cc609a2`（净 diff 2 文件 115 insertions(+)/25(-)）仅含 pure test contract 增量（1 修改 test contract + 1 修改 mutation harness mapping + docstring 同步），无 production code / 无 migration 043 / 无 schema / 无 enum / 无 CHECK / 无 S5 状态机 / 无 锁序 / 无 写者矩阵 / 无 registry capability / 无 CI 门禁 / 无 KNOWN_ISSUES 改动
+- 验证：F-matrix 12/12 KILLED（含 M-F2 / M-F8 重映射后独立真红）+ F10 8/8 KILLED = 20/20 behavioral KILLED + composition 999 passed + 6 deselected（external_network opt-in）+ ruff check All checks passed + mypy baseline `passed: 243 historical errors / 76 keys / 0 regressions` 0 回归 + git diff --check clean + engineering-docs passed (31 known issue(s) allowlisted) + pre-commit + pre-push hooks All checks passed + 三路 Ready required checks 全 SUCCESS（run `33850361049` Backend 18m44s + Backend iteration 15m7s + Engineering docs 15s + Frontend 8m28s）+ post-score 三路 required checks 全 SUCCESS（run `33852851817` Engineering docs 17s + Frontend 3m28s + Backend 首次 cancelled 35m24s → 获授权单次 rerun → 21m36s PASS）
+- TASK-R1-S6-I3-D 整体仍 🟡 进行中（PR-E / C1 / S5 wiring / capability flip / 六 erase / REQ-047 仍全部保持未启动）
+
+### 完成边界（精确登记，不越界）
+
+- **已完成**：F-matrix M-F8 单独判别 test contract 增强（PR #610 落地 + score 95 Original + 三面复审 P0/P1=0）+ main closeout + 独立 pure-docs closeout 治理收口（本 commit）+ plan §S6-14 APPEND + fact-audit §17.11
+- **未启动 / 未关闭**：PR-E（release drill，前置依赖 = PR-D 剩余交付 + F-matrix + F10 M6 test contract 增强 + F-matrix M-F8 单独判别 = PR #606 + #608 + #610 已全部落地，可启动独立后续 PR）/ C1 / S5 production wiring / capability flip（registry external/runtime 仍 `erase_available=False`）/ 六 erase 入口生产可达 / REQ-047 conformance
+- **未关闭**：TD-104（PR-A schema/test alignment 残项 ⚫ 待办）/ TD-032（D1a 1724 + D1b 1052 + D2 1876 + 双 test 1117/2559 双超 1000 行硬限制 🟢 待拆分，不拆分）/ TD-105 / TD-106（保持 🟢 完成不重开）
+- **G-1 [P3, governance] 真实保留**：implementation 期间缺活跃任务卡；closeout 阶段已在该分支先登记 TASK-R1-S6-FMATRIX-MF8-CLOSEOUT 活跃卡再跨文件修改，避免重复 G-1；**不**静默删除、**不**伪造已提前修复
+
+### 教训入账（M-F8 shared-observation gap 闭合范式 + GOV closeout 流程）
+
+1. **shared test 拆分范式（M-F2 / M-F8 独立判别载体）**——当一个测试同时验证多个 mutation 的契约时，若其中一个 mutation 的副作用掩盖另一个 mutation 的独立效应，必须拆分测试，使每个 mutation 有独立的失败模式。拆分原则：每个 mutation 的失败模式必须**唯一**对应其 mutation（不能用 M-F2 的 lock 串行化掩盖 M-F8 的 lock 缺失）
+2. **跨变独立性双证明（CROSS-CHECK 1 + 2）**——证明两个 mutation 独立判别的充分条件：单独 mutation A → 测试 B 仍 PASS（M-F2 mut + M-F8 test rc=0）+ 单独 mutation B → 测试 A 仍 PASS（M-F8 mut + M-F2 test rc=0）；双证明证实无 shared observation，可作为 M-F 系列 mutation 的标准验证模式
+3. **直接调 private `_top_operation` 的取舍**——隔离 shared observation 的唯一手段；公开 `claim()` 路径先经 `_lock_conversation`（M-F2 标的）会复现 shared-observation 问题；该取舍必须 docstring 化 + 在 PR body 中明确记录边界（方法名 / 签名是 Plan §S6-F8 冻结契约一部分，重构导致测试失败即正确信号）
+4. **existing-row + `SET LOCAL lock_timeout` 真锁超时机制**——真锁超时的必要条件：(a) 真锁载体（existing row 持锁）；(b) 真锁等待触发（Session B 等待 Session A 的 row-lock）；(c) 真锁超时断言（异常文本必须含 `lock timeout` 或 SQLSTATE `55P03`，**不**接受任意 TimeoutError / relation lock 错误冒充）；(d) mutant 失败模式（`pytest.raises DID NOT RAISE Exception` 纯 assertion failure，**非** crash / setup / timeout / no-tests / survived）
+5. **GOV closeout 流程纪律**——TASK-R1-S6-FMATRIX-MF8-CLOSEOUT 活跃卡先登记再跨文件修改，避免重复 G-1（PR #610 implementation 阶段确实缺活跃任务卡的事实保持登记不静默删除）；G-1 作为真实 P3 governance finding 保留，closeout 阶段补登，不伪造已提前修复
+6. **post-score Backend 首次 cancelled 单次授权 rerun 模板**——CI runner 外部取消（`##[error]The operation was canceled`，非 test failure，进度 46% 0 failures / 0 errors）→ 获用户授权单次 `gh run rerun --failed` → rerun PASS；模板可复用：`run 33852851817 job 100951517726` 35m24s cancelled → `gh run rerun 33852851817 --failed` → `job 101087930930` 21m36s PASS；不自动重跑、不修改文件、不重新评分
+7. **shared test 拆分范式**可作为后续 cross-layer mutation 判别载体扩展模板（mutation 独立失败模式 + 跨变独立性双证明 + 真锁载体 + `SET LOCAL lock_timeout` 真锁超时 + 直接调 private helper 取舍已 docstring 化）
+
+### 后续接力（按计划建议执行顺序）
+
+1. PR-E（release drill 五阶段 canary，前置依赖 = PR-D 剩余交付 + F-matrix + F10 M6 test contract 增强 + F-matrix M-F8 单独判别 = PR #606 + #608 + #610 已全部落地，可启动独立后续 PR）
+2. TD-104（PR-A schema/test alignment 残项，保持 ⚫ 待办，不关闭）
+3. C1 Durable Core 总验收（未启动）
+4. S5 production wiring（未启动）
+5. registry capability 翻转 / 六 erase 入口生产可达（未启动）
+6. G-1 [P3, governance] 已在本 closeout 阶段补登 TASK-R1-S6-FMATRIX-MF8-CLOSEOUT 活跃卡，避免重复；保持登记不冒充关闭
