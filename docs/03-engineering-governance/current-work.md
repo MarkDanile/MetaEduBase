@@ -14,7 +14,9 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+| TASK ID | 状态 | 当前进展 | 下一步 | 验证 | 事实源 |
+|---------|------|----------|--------|------|--------|
+| TASK-R1-S6-FMATRIX-MF8-CLOSEOUT | 🟡 进行中 | PR #610 已 squash merge 入 main（mergeCommit `b8daa934a65491c09a6399cbb4a77235452a290c`，mergedAt `2026-09-06T13:59:40Z`，source head `785d7dbe`，FINAL_IMPL_HEAD `2cc609a2`）；现进入独立 pure-docs closeout 治理收口 | 完成 work-log 登记 + current-work slim + plan §S6-14 APPEND + fact-audit §17.11；创建 closeout PR 等待三路 required checks 全绿后 squash merge | score=95 Original；三路 required checks 全绿（Backend 含授权 rerun PASS / Engineering docs / Frontend）；M-F8 不再登记为 NOT-RED；F-matrix 12/12 + F10 8/8 = 20/20 behavioral KILLED；G-1 真实 P3 finding 保留 | [PR #610](https://github.com/MarkDanile/MetaEduBase/pull/610)（mergeCommit `b8daa934`）/ [score 95](../03-engineering-governance/04-retrospectives/review-score-log.md) |
 
 ## 下一批候选任务
 
