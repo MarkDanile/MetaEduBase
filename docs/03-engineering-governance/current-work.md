@@ -29,9 +29,9 @@
 - 技术债：不关闭/不重开 TD-104/TD-032/TD-105/TD-106
 - 架构约束：scheduler 三重 fail-closed（registry False + 静态守卫 + 无生产调用方）；M-class 维护锁互斥（retention/audit shared vs replay exclusive）
 
-当前进展：Phase 0 contract-to-test audit 完成（用户裁决 pure test harness，不新增 thin composition）；基线 main `e2814233`；分支已建；活跃卡已登记
-下一步：新增 `packages/server-python/tests/composition/test_s6_release_drill.py`（expand/capability/backfill/verify/canary 五阶段 fail-closed 判别，复用 main 既有入口，真实 PG + 静态守卫；旧 writer 变体仅测试内注入）
-验证状态：未运行（实现后按验证矩阵：PR-E 测试全过 + composition 回归 + ruff + mypy baseline 0 回归 + git diff --check + check-engineering-docs --full）
+当前进展：实现完成（Draft PR #612，head `0f0f5bbd`）→ 三面独立复审首轮 P0/P1/P2=0、P3=2（stage2 跨 owner 版本推导耦合 + M-class 锁缺多 replay 串行用例）→ 本轮返修 2 项
+下一步：返修后重跑 PR-E 专项 + composition 回归 + 静态门禁 → 正式评分（base=最终实现 head）→ 保持 PR 未合并等"按流程合并"
+验证状态：已运行——PR-E 专项 15/15 passed；composition 全量 1014 passed/6 skipped/0 failed；ruff clean；mypy baseline 0 回归；git diff --check clean；check-engineering-docs --full passed；Draft 三路 CI 全 SUCCESS（run 34079565011）；mutation 等价判别探针 P1-P4 实证（guard 移除转红 / 锁 key 失配无冲突 / 版本匹配 backfill 放行 / gate tenant 谓词判别）
 交接备注：允许范围 = 新增测试文件 + 本工作台卡；禁止 production code/migration/schema/enum/CHECK/registry capability/CI/门禁脚本/KNOWN_ISSUES/Score Log/Metrics/technical-debt/work-log/plan/fact-audit 改动；不修复 runbook §6.4 历史漂移（如实保留报告）；不翻转 erase_available、不接 scheduler production caller、不使六 erase 入口生产可达；测试库仅 metaedu_test；真实 pg_dump/多实例 canary/流量切换登记生产门禁不冒充已验证
 
 ## 下一批候选任务

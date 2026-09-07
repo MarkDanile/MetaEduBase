@@ -343,15 +343,17 @@ async def test_stage2_capability_owner_version_mismatch_fail_closed():
       ``OwnerRegistryChangedError``（``assert_snapshot_current``）。
     均为纯函数 fail closed，不产生任何越权写入。
     """
-    installed = require_owner("workspace.core.v1").owner_version
+    ws_installed = require_owner("workspace.core.v1").owner_version
+    exec_installed = require_owner("execution.core.v1").owner_version
     with pytest.raises(OwnerRegistryChangedError):
-        require_owner_version("workspace.core.v1", installed + 1)
+        require_owner_version("workspace.core.v1", ws_installed + 1)
     with pytest.raises(OwnerRegistryChangedError):
-        require_owner_version("execution.core.v1", installed - 1)
+        require_owner_version("execution.core.v1", exec_installed + 1)
     with pytest.raises(OwnerRegistryChangedError):
         assert_snapshot_current("0" * 64)
     # 正向控制：当前版本 + 当前 digest 放行
-    require_owner_version("workspace.core.v1", installed)
+    require_owner_version("workspace.core.v1", ws_installed)
+    require_owner_version("execution.core.v1", exec_installed)
     assert_snapshot_current(registry_digest())
 
 
@@ -653,6 +655,8 @@ async def test_stage5_m_class_lock_mutual_exclusion_enforced(session_factory):
     - Session A 持 exclusive（replay 形态）→ Session B ``lock_timeout='1s'`` 申请
       shared（retention/audit 形态）→ 锁等待超时（55P03）；
     - 反向：A 持 shared → B 申请 exclusive → 同样超时；
+    - A 持 exclusive → 第二 replay 实例申请 exclusive → 同样超时（V1 多 replay
+      串行约束，runbook §6.2）；
     - 释放后 B 可正常获取（正向控制，证明超时确由互斥而非锁不可用）。
     """
     # A exclusive → B shared 超时
@@ -678,6 +682,20 @@ async def test_stage5_m_class_lock_mutual_exclusion_enforced(session_factory):
             err = str(exc_excl.value).lower()
             assert "lock timeout" in err or "55p03" in err, (
                 f"shared 持锁期间 exclusive 必须锁等待超时；实际: {exc_excl.value!r}"
+            )
+        await a.rollback()
+
+    # A exclusive → 第二 replay 实例 exclusive 超时（多 replay 串行）
+    async with session_factory() as a, a.begin():
+        await acquire_maintenance_exclusive_lock(a)
+        async with session_factory() as b, b.begin():
+            await b.execute(text("SET LOCAL lock_timeout = '1s'"))
+            with pytest.raises(Exception) as exc_replay:
+                await acquire_maintenance_exclusive_lock(b)
+            err = str(exc_replay.value).lower()
+            assert "lock timeout" in err or "55p03" in err, (
+                "exclusive 持锁期间第二 replay 实例 exclusive 必须锁等待超时"
+                f"（多 replay 串行）；实际: {exc_replay.value!r}"
             )
         await a.rollback()
 
