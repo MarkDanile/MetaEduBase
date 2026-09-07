@@ -1232,6 +1232,57 @@ D1b 与 D1a **不可合并于**「D1a 是只读 codec + decoder + bounded export
 - **六节关系 = 累积 supersede + 历史 NOT-RED 保留**（每节 supersede 前一节中「待启动」或「待重新审计」或「M-F8 NOT-RED 单独 follow-up」措辞为 merged-boundary 事实，但**不** supersede 前一节「未启动」清单 / **不**重写前一节历史措辞）
 
 
+## 17.12. PR-E release drill 五阶段 fail-closed canary contract merged-boundary 收口标注（2026-09-07）
+
+> 本节为 R1-S6 PR-E release drill（Plan §S6-14 item 4，独立后续 PR）merge 入 main 的事实收口。审计责任范围：**五阶段 fail-closed canary contract（pure test harness）**——expand / writer capability / batched backfill / verify / canary enable 五阶段 + restore-before-open 顺序 + M-class 维护锁互斥，全部复用 main 既有入口（migration 034-043 事实 / registry / conformance / backfill CLI / verify_inspection / reconcile gate / scheduler 组合根门禁 / 静态 wiring 守卫 / agent_erasure_locks / evaluate_restore_before_open）；**不**修改任何 production code / migration / schema / enum / CHECK / registry / CI / 门禁；**不**启动 C1 / S5 wiring / capability flip / 六 erase / REQ-047 conformance；**不**把 contract-tested drill 写成真实生产 release drill 完成。
+
+**集成事实链**：
+
+1. **PR #612 squash merge 入 main `25aefc74a51cd3bcac0d17d54a5dbbcd959292cc`**（mergedAt 2026-09-07T05:39:35Z；implementation baseline main `e281423311b0c4c76bf1cbcf6f3ed745fa3e0e40`；FINAL_IMPL_HEAD `0a59831198fad79e0789714ac9fd017ffc9fd39e`；source head / score commit `536629fd1ff7ca6998f3452b5b2d965430e7e354`）
+2. 评审对象 main `e2814233..0a598311` 净 diff 2 文件 786 insertions(+)/2(-)：1 新增 `packages/server-python/tests/composition/test_s6_release_drill.py`（15 项 PR-E 专项测试）/ 1 修改 `docs/03-engineering-governance/current-work.md`（TASK-R1-S6-I3-D-PR-E 活跃卡先于文件修改登记，无 G-1 重演）
+3. main 累积 diff（`e2814233..25aefc74` = 3 文件 787 insertions(+)/2(-)）：PR-E release drill test contract（2 文件）+ score commit `536629fd`（1 文件 review-score-log.md 新增 1 行 Original 95）
+
+**事实基线对账（PR #612 完成内容）**：
+
+1. **五阶段 contract drill（pure test harness，用户裁决不新增 thin composition / production orchestrator）**：
+   - **Stage 1 expand**（真实 PG）：`metaedu.alembic_version` head = `043_run_event_retention_guard` + `guard_agent_run_event_append_only` 函数与 `trg_agent_run_event_append_only` trigger 在网；live 行非 tombstone UPDATE / DELETE → guard RAISE（`append-only`，55000）；分支 1 tombstone UPDATE（`payload_inline→NULL` + `payload_state='expired'`）放行正向控制——043 四分支白名单 frozen 判别
+   - **Stage 2 writer capability**（静态 + 真实 PG）：`snapshot_digest(registry_snapshot()) == registry_digest()` 内部一致 + `run_writer_conformance_static()` 全过；stale `owner_version`（各 owner 自身 installed 版本 +1）→ `OwnerRegistryChangedError`；stale registry digest → `assert_snapshot_current` fail closed；未知 owner → `UnknownOwnerError`；external/runtime `require_capability(..., "erase")` → `OwnerCapabilityUnavailableError`（`erase_available=False` 保持）
+   - **Stage 3 batched backfill**（真实 PG）：fence backfill 分批（batch_size=2 / max_conversations=2）+ `next_after_id` 游标续跑 + 幂等重跑 `fences_created=0`；版本漂移 fence（owner_version=999）→ `failure_count=1` / `OwnerRegistryChangedError` / 漂移行不覆盖 / 同事务整体回滚零 partial commit；transport phantom outbox（aggregate_id 指向不存在 Message）→ 具名 `source_message_missing` / `tenant_scope` / `state='open'` reconcile + scope 不回填 + `tenant_scope_gate_hits` 阻断（不静默跳过）
+   - **Stage 4 verify**（真实 PG）：干净 tenant exit 0；event gap（terminal run 缺 seq 2）→ exit 1 + `event_log_complete=False` + `epoch_unresolvable` / `tenant_scope` / `state='open'` reconcile + gate 阻断 + **不自动 resolve**；未知巡检名 → exit 2 indeterminate
+   - **Stage 5 canary enable**（静态守卫 + 真实 PG）：三重 fail-closed——registry False + 静态生产 wiring 守卫（跨测试 import 复用 S5-I2 源码扫描门禁本体）+ 组合根 `CompositionNotReadyError`（缺 claim / 缺 owner entries 两种 partial wiring）；旧 writer 变体注入（stale owner_version / stale registry digest / 未 resolved tenant_scope reconcile）每处 gate fail closed；M-class shared（retention/audit）↔ exclusive（replay）双向 `lock_timeout='1s'` 55P03 判别 + 第二 replay 实例 exclusive 串行 + 释放后正向控制
+2. **restore-before-open 顺序（§S6-8，contract-tested 级）**：blocking replay report（`error`）→ `evaluate_restore_before_open` closed（`replay_error:*`）；`runtime_proof_c_present=True` 即使 replay 干净也强制 closed；replay 干净 + 六 owner scan 零 + S6-6 巡检零 → `open_allowed=True`（顺序链尾：replay 干净、scan 为零之后才允许测试环境 gate）
+3. **mutation 等价判别探针（不改生产代码）**：P1 guard 触发器禁用（`session_replication_role=replica`）→ live 行 UPDATE 成功（stage1 负例无 guard 必转红）；P2 锁 key 失配 → shared 瞬时获取（M-class 测试判别 same-key 冲突）；P3 版本匹配 fence → backfill ok（漂移测试对照）；P4 gate 同 tenant=True / 异 tenant=False（tenant 谓词判别力）；附证：`agent_transport_scope_reconcile.tenant_id` 存在 FK `fk_agent_transport_reconcile_tenant`（本 PR 测试均先 seed tenant，正确）
+4. **零生产代码改动** — 净 diff 2 文件仅含 pure test contract 增量 + 工作台活跃卡；无业务代码 / 无 migration / 无 schema / 无 enum / 无 CHECK / 无 S5 状态机 / 无锁序 / 无写者矩阵 / 无 registry / 无 CI 门禁 / 无 KNOWN_ISSUES 改动；零 review-score-log.md 历史评分行 + 零 metrics-snapshot.md 改动；zero-touch production
+5. **保留 §17.9 / §17.10 / §17.11 历史口径** — PR-D closeout 标注（2026-09-03）、F-matrix test contract 增强标注（2026-09-04）、M-F8 单独判别标注（2026-09-06）原文不变；本节**不**supersede 任何既有 merged-boundary 注解 / **不**修改 S6-14 frozen 顺序 / **不**改写 plan 既有 frozen 内容 / **不**覆写 PR #608 19/20 历史口径
+6. **runbook §6.4 历史文档漂移如实保留** — runbook 称 `restore_replay_executor`「pending in `S6I2_PENDING_WRITERS`」，代码现状已 registered=FENCE_M（`S6I2_PENDING_WRITERS=()` 空，由 `test_s6i2_pending_writers_empty_after_d2_registered` 钉住）；本 PR 与 closeout **均不**修改 runbook 历史事实源，漂移如实保留不冒充已消除
+
+**三面独立复审 + 评分事实**：
+
+- 三面独立复审合计 P0=0/P1=0/P2=0/P3=2（stage2 跨 owner 版本推导耦合 + M-class 锁缺多 replay 串行用例），**均已本轮返修闭环**（commit `0a598311`）；follow-up=无
+- 维度评分（7 维 100 分制）：范围与需求匹配 15/15 + 实现质量 18/20 + 测试与验证证据 18/20 + 事实源与流程遵守 15/15 + 风险与行为变化控制 15/15 + 可评审性与交接质量 10/10 + 持续改进信号 4/5 = 95（Original）
+- **总分 95 Original**
+- **正式评分门禁真实 PASS** `python3 scripts/check-review-score-submit --base 0a59831198fad79e0789714ac9fd017ffc9fd39e --pr 612` → `passed (base 0a598311, PR #612, one Original row, Metrics unchanged)`
+- Draft 三路 CI 全 SUCCESS（run `34079565011` Backend iteration 1m56s + Engineering docs 8s + Frontend 5s）+ post-score 三路 required checks 全 SUCCESS（run `34085767833` Backend 1m20s selector=targeted（Ruff + mypy baseline + targeted PR tests）+ Engineering docs 9s + Frontend 8s）；全量 hermetic 由本地 composition 承载
+
+**验证事实（实际输出）**：
+
+- PR-E 专项 **15/15 passed**（`uv run pytest tests/composition/test_s6_release_drill.py -q`，真实 PG @ metaedu_test）
+- composition 全量 **1014 passed / 6 skipped / 0 failed**（两轮：实现轮 5m02s + 返修轮 4m34s）
+- ruff clean + mypy baseline 243 historical / **0 regressions** + `git diff --check` clean + `scripts/check-engineering-docs --full` passed + pre-commit / pre-push hooks 过
+
+**PR-E merged-boundary 不变式**：
+
+- ✅ **已完成**：PR-E release drill 五阶段 fail-closed canary contract（PR #612 已 squash mergeCommit `25aefc74` 入 main）+ 15/15 专项 + composition 1014/6 + 评分 95 Original + 首轮 P3×2 闭环 + closeout PR pure-docs 治理收口（current-work + work-log + plan §S6-14 APPEND + fact-audit §17.12）
+- ✅ **PR-E 完成性质（冻结声明）**：PR-E = **production-neutral contract-tested test harness**，验证五阶段 fail-closed contract 在真实 PG / 静态守卫层成立；**不是**生产 release enable、**不是**真实生产 release drill 完成；「canary enable」仅断言测试环境 tenant 级 fail-closed gate 行为
+- ✅ **生产门禁保持登记（未执行，不冒充已验证）**：真实 pg_dump / restore / 流量切换、多实例滚动 canary、旧 writer 真实进程部署——本仓库无该基础设施（Plan §S6-8.6 / R1-AC12 字面降级），由生产基础设施负责人承接；restore-before-open 断言为 contract-tested 级别
+- ✅ **明确零启动 / 零关闭 / 零重开边界保持** — C1 Durable Core / S5 production wiring / D1b/D2 production wiring / registry capability flip（external/runtime 保持 `erase_available=False`）/ 六 erase 入口生产可达 / REQ-047 conformance 全部保持未启动；TD-104（⚫ 待办）/ TD-032（🟢 待拆分）/ TD-105（🟢 完成）/ TD-106（🟢 完成）全部保持登记不关闭不重开；runbook §6.4 历史漂移如实保留；测试数据库仅 `metaedu_test`（不触碰 `metaedu`）；TASK-R1-S6-I3-D 整体仍 🟡 进行中（PR-E 完成 ≠ 整个 TASK 完成）
+
+**§17.6 / §17.7 / §17.8 / §17.9 / §17.10 / §17.11 / §17.12 关系（累积 supersede + 历史保留）**：
+
+- §17.6 ~ §17.11 关系链原文不变（见 §17.11 末节）；**§17.12（本节，PR-E release drill merged-boundary 标注，2026-09-07）**：PR-E release drill 五阶段 fail-closed canary contract merged-boundary 收口 + supersede §17.8/§17.9/§17.10/§17.11 各节「PR-E 未启动」历史措辞为 merged-boundary 事实（**不**改写各节原文）+ 任务卡整体仍 🟡 进行中 + C1 / S5 wiring / capability flip / 六 erase / REQ-047 仍全部未启动 + 真实生产 release drill 保持生产门禁登记
+- **七节关系 = 累积 supersede + 历史保留**（本节仅追加「PR-E 未启动 → 已 merged」事实，不 supersede 前六节任何其他「未启动」清单 / 不重写前六节历史措辞）
+
+
 ## 18. 关键引用
 
 - 任务卡：`docs/03-engineering-governance/current-work.md` TASK-R1-S6-I3-D
