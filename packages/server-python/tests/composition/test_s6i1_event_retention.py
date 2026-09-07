@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import text
@@ -681,3 +681,59 @@ async def test_event_write_hold_reverify_blocks(session_factory):
     async with session_factory() as verify:
         state, inline, _ = await _event_state(verify, tid=tid, run_id=run_id, seq=1)
         assert state == "inline", "写时点 hold 重验：正文未清"
+
+
+async def test_event_payload_expiry_90_day_exact_cutoff_boundary(session_factory):
+    """R1-AC1：90 天 event payload expiry 精确边界（注入 clock，非本机时钟）。
+
+    判据 ``persisted_at <= now - 90d``（含等于）。每个 run 种两行：seq=1 活体头行
+    （``persisted_at = now``，未到期、非 tombstone）阻断连续前缀 prune，使 90 天
+    expiry 判别与 envelope prune 解耦；seq=2 为被测边界行（``expires_at = NULL``，
+    只看 ``persisted_at``）。
+
+    - before（persisted_at = cutoff-1s）→ expire；
+    - equal（persisted_at = cutoff，含等于）→ expire；
+    - after（persisted_at = cutoff+1s）→ 不 expire（run 非候选）；
+    - 非 UTC offset 等值瞬时（cutoff 的 +08:00 表达）→ 与 UTC 同等 expire。
+    """
+    fixed_now = datetime(2026, 9, 7, 12, 0, 0, tzinfo=UTC)
+    cutoff = fixed_now - timedelta(days=90)
+
+    async def _seed_pair(seed, boundary_persisted_at: datetime):
+        tid, cid = await _seed_conversation(seed)
+        run_id = await _seed_run(seed, tid=tid, cid=cid, last_seq=2)
+        # 活体头行：阻断连续前缀 prune，隔离 expiry 判别。
+        await _seed_event(
+            seed, tid=tid, cid=cid, run_id=run_id, seq=1, persisted_at=fixed_now
+        )
+        # 被测边界行：expires_at NULL → 只看 persisted_at。
+        await _seed_event(
+            seed,
+            tid=tid,
+            cid=cid,
+            run_id=run_id,
+            seq=2,
+            persisted_at=boundary_persisted_at,
+            expires_at=None,
+        )
+        return tid, run_id
+
+    async with session_factory() as seed, seed.begin():
+        before = await _seed_pair(seed, cutoff - timedelta(seconds=1))
+        equal = await _seed_pair(seed, cutoff)
+        after = await _seed_pair(seed, cutoff + timedelta(seconds=1))
+        offset_equal = await _seed_pair(
+            seed, cutoff.astimezone(timezone(timedelta(hours=8)))
+        )
+
+    result = await run_event_retention(session_factory, now=fixed_now)
+
+    assert result.payloads_expired == 3, "before/equal/offset-equal 到期，after 不到期"
+    assert result.envelopes_pruned == 0, "活体头行阻断 prune，expiry 与 prune 解耦"
+    async with session_factory() as verify:
+        assert (await _event_state(verify, tid=before[0], run_id=before[1], seq=2))[0] == "expired"
+        assert (await _event_state(verify, tid=equal[0], run_id=equal[1], seq=2))[0] == "expired"
+        assert (await _event_state(verify, tid=after[0], run_id=after[1], seq=2))[0] == "inline"
+        assert (
+            await _event_state(verify, tid=offset_equal[0], run_id=offset_equal[1], seq=2)
+        )[0] == "expired"

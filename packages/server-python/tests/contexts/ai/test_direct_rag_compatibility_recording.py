@@ -39,7 +39,10 @@ from app.contexts.agent_execution.infrastructure.models import (
 )
 from app.contexts.agent_workspace.application.dto import MessagePartInput, TurnCommand
 from app.contexts.agent_workspace.domain import MessagePartType
-from app.contexts.agent_workspace.infrastructure.models import MessageModel
+from app.contexts.agent_workspace.infrastructure.models import (
+    MessageModel,
+    MessagePartModel,
+)
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.contexts.knowledge.domain.evidence import EvidenceItem
 from app.main import app
@@ -270,6 +273,110 @@ async def test_evidence_chat_records_durable_contract_and_replays_without_duplic
         assert events_response.status_code == 200, events_response.text
     finally:
         app.dependency_overrides.pop(get_session_factory, None)
+        await engine.dispose()
+
+
+async def test_evidence_chat_never_records_private_reasoning_sentinel(
+    client: AsyncClient,
+    auth_headers: dict,
+) -> None:
+    """REQ-041 AC-6：Direct RAG 兼容路径结构性不记录私有推理（CoT/thinking）。
+
+    适配器只读 ``response.reply/sources/diagnostics``，从不读 ``thinking``/
+    ``reasoning``（无隐藏推理记录）。注入与公开答案**不同**的私有推理 sentinel，
+    驱动真实 compat 路径（POST /ai/chat/evidence），断言任何持久化载体
+    （Message part / CompatibilityOutput.reply_text + response_envelope /
+    RunEvent.payload_inline）均不含该 sentinel、raw CoT 或 raw prompt，而公开
+    答案正常持久化。不新增生产 scrubber；若 sentinel 泄漏则判 D 类并上报。"""
+    conversation_id = uuid.uuid4()
+    response_value = _fake_chat_response()
+    response_value.thinking = "PRIVATE-COT-TRACE-MUST-NOT-BE-RECORDED"
+    response_value.reasoning = "PRIVATE-REASONING-MUST-NOT-BE-RECORDED"
+    fake_service = MagicMock()
+    fake_service.chat = AsyncMock(return_value=response_value)
+    request = {
+        "message": "Record the public answer, never the private reasoning",
+        "conversation_id": str(conversation_id),
+        "client_message_id": str(uuid.uuid4()),
+    }
+
+    with patch(
+        "app.contexts.knowledge.interfaces.api.ai_router._evidence_service",
+        new=fake_service,
+    ):
+        response = await client.post(
+            "/api/v1/ai/chat/evidence", headers=auth_headers, json=request
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["reply"] == "The durable compatibility answer."
+    # 适配器从不读 thinking/reasoning：私有推理 sentinel 不回泄到 live 响应。
+    # （RAW-PROMPT/RAW-CONTEXT 属 diagnostics 的 live passthrough，既有害放行仅
+    # 在 replay/持久化侧被 sanitize——AC-6 判别的是持久化记录，见下方载体断言。）
+    assert "PRIVATE-COT-TRACE-MUST-NOT-BE-RECORDED" not in response.text
+    assert "PRIVATE-REASONING-MUST-NOT-BE-RECORDED" not in response.text
+    sentinels = (
+        "PRIVATE-COT-TRACE-MUST-NOT-BE-RECORDED",
+        "PRIVATE-REASONING-MUST-NOT-BE-RECORDED",
+        "RAW-PROMPT-MUST-NOT-BE-RECORDED",
+        "RAW-CONTEXT-MUST-NOT-BE-RECORDED",
+        "PRIVATE-SNIPPET-MUST-NOT-BE-RECORDED",
+    )
+
+    run_id = uuid.UUID(body["run_id"])
+    actual_conversation_id = uuid.UUID(body["conversation_id"])
+    engine, factory = await _db_session()
+    try:
+        async with factory() as session:
+            output = (
+                await session.execute(
+                    select(CompatibilityOutputModel).where(
+                        CompatibilityOutputModel.run_id == run_id
+                    )
+                )
+            ).scalar_one()
+            # 公开答案正常持久化。
+            assert output.reply_text == "The durable compatibility answer."
+            envelope = json.dumps(output.response_envelope, ensure_ascii=False)
+            for sentinel in sentinels:
+                assert sentinel not in (output.reply_text or "")
+                assert sentinel not in envelope
+
+            parts = list(
+                (
+                    await session.execute(
+                        select(MessagePartModel)
+                        .join(
+                            MessageModel,
+                            MessagePartModel.message_id == MessageModel.id,
+                        )
+                        .where(MessageModel.conversation_id == actual_conversation_id)
+                    )
+                ).scalars()
+            )
+            assert parts, "公开答案应持久化为 Message part"
+            assert any(
+                part.text_content == "The durable compatibility answer."
+                for part in parts
+            )
+            for part in parts:
+                for sentinel in sentinels:
+                    assert sentinel not in (part.text_content or "")
+
+            events = list(
+                (
+                    await session.execute(
+                        select(RunEventModel).where(RunEventModel.run_id == run_id)
+                    )
+                ).scalars()
+            )
+            serialized_events = json.dumps(
+                [event.payload_inline for event in events], ensure_ascii=False
+            )
+            for sentinel in sentinels:
+                assert sentinel not in serialized_events
+    finally:
         await engine.dispose()
 
 
