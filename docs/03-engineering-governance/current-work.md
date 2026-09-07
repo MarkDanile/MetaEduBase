@@ -14,25 +14,25 @@
 
 ## 当前进行中
 
-### TASK-R1-S6-I3-D-PR-E: R1-S6 PR-E release drill 五阶段 fail-closed canary contract test
+### TASK-R1-S6-I3-D-PR-E-CLOSEOUT: R1-S6 PR-E release drill merged-boundary 治理收口（pure-docs）
 
 状态：🟡 进行中
-类型：test contract（pure test harness，production-neutral）
-领域：backend / composition
-当前执行模式：单人顺序执行（Phase 1 实现 → Draft PR → 停，等待"按流程评审"）
+类型：docs closeout（pure-docs 治理收口，零代码/测试改动）
+领域：engineering governance
+当前执行模式：单人顺序执行（active-card commit → 跨文件治理修改 → 验证 → 非 Draft closeout PR → 等三路 CI → squash merge）
 最近接手工具：Claude Code
-分支：feature/req041-047-r1-s6-i3-d-pr-e-release-drill
+分支：docs/req041-047-r1-s6-pr-e-closeout
 
 需求来源：
 - Spec: `docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md` §10/§11（R1-AC11/AC12）
-- Plan: `docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md` §S6-7/§S6-8/§S6-9/§S6-10/§S6-14 item 4
+- Plan: `docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md` §S6-14 item 4 + merged-boundary 注解链
 - 技术债：不关闭/不重开 TD-104/TD-032/TD-105/TD-106
-- 架构约束：scheduler 三重 fail-closed（registry False + 静态守卫 + 无生产调用方）；M-class 维护锁互斥（retention/audit shared vs replay exclusive）
+- 架构约束：PR-E = production-neutral contract-tested test harness，非生产 release enable
 
-当前进展：实现完成（Draft PR #612，head `0f0f5bbd`）→ 三面独立复审首轮 P0/P1/P2=0、P3=2（stage2 跨 owner 版本推导耦合 + M-class 锁缺多 replay 串行用例）→ 本轮返修 2 项
-下一步：返修后重跑 PR-E 专项 + composition 回归 + 静态门禁 → 正式评分（base=最终实现 head）→ 保持 PR 未合并等"按流程合并"
-验证状态：已运行——PR-E 专项 15/15 passed；composition 全量 1014 passed/6 skipped/0 failed；ruff clean；mypy baseline 0 回归；git diff --check clean；check-engineering-docs --full passed；Draft 三路 CI 全 SUCCESS（run 34079565011）；mutation 等价判别探针 P1-P4 实证（guard 移除转红 / 锁 key 失配无冲突 / 版本匹配 backfill 放行 / gate tenant 谓词判别）
-交接备注：允许范围 = 新增测试文件 + 本工作台卡；禁止 production code/migration/schema/enum/CHECK/registry capability/CI/门禁脚本/KNOWN_ISSUES/Score Log/Metrics/technical-debt/work-log/plan/fact-audit 改动；不修复 runbook §6.4 历史漂移（如实保留报告）；不翻转 erase_available、不接 scheduler production caller、不使六 erase 入口生产可达；测试库仅 metaedu_test；真实 pg_dump/多实例 canary/流量切换登记生产门禁不冒充已验证
+当前进展：PR #612 已 squash merge（mergeCommit `25aefc74`，mergedAt 2026-09-07T05:39:35Z；评分 95 Original；base `e2814233`；FINAL_IMPL_HEAD `0a598311`；source head `536629fd`）；active-card commit 先行
+下一步：work-log 索引 + plan §S6-14 APPEND merged-boundary 注解 + fact-audit 追加下一顺序节 + current-work 收口（移除 PR-E 活跃卡、恢复无活跃任务、登记下一未启动候选）
+验证状态：未运行（修改后执行 git diff --check + check-engineering-docs --full + 完成门禁核对）
+交接备注：允许范围仅 4 治理文件（current-work/work-log/plan/fact-audit）；禁止 Score Log/Metrics/technical-debt/代码/测试/mutation script/migration/schema/enum/CHECK/registry/CI/门禁脚本/KNOWN_ISSUES 改动；不修复 runbook §6.4 历史漂移（如实保留）；真实 pg_dump/多实例 canary/流量切换保持生产门禁登记不冒充；TASK-R1-S6-I3-D 整体仍 🟡 不冒充完成；不启动 C1/REQ-047/S5 wiring/capability flip/六 erase 入口生产可达
 
 ## 下一批候选任务
 
