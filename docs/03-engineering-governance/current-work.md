@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-R1-S6-I3-D-PR-E: R1-S6 PR-E release drill 五阶段 fail-closed canary contract test
+
+状态：🟡 进行中
+类型：test contract（pure test harness，production-neutral）
+领域：backend / composition
+当前执行模式：单人顺序执行（Phase 1 实现 → Draft PR → 停，等待"按流程评审"）
+最近接手工具：Claude Code
+分支：feature/req041-047-r1-s6-i3-d-pr-e-release-drill
+
+需求来源：
+- Spec: `docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md` §10/§11（R1-AC11/AC12）
+- Plan: `docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md` §S6-7/§S6-8/§S6-9/§S6-10/§S6-14 item 4
+- 技术债：不关闭/不重开 TD-104/TD-032/TD-105/TD-106
+- 架构约束：scheduler 三重 fail-closed（registry False + 静态守卫 + 无生产调用方）；M-class 维护锁互斥（retention/audit shared vs replay exclusive）
+
+当前进展：Phase 0 contract-to-test audit 完成（用户裁决 pure test harness，不新增 thin composition）；基线 main `e2814233`；分支已建；活跃卡已登记
+下一步：新增 `packages/server-python/tests/composition/test_s6_release_drill.py`（expand/capability/backfill/verify/canary 五阶段 fail-closed 判别，复用 main 既有入口，真实 PG + 静态守卫；旧 writer 变体仅测试内注入）
+验证状态：未运行（实现后按验证矩阵：PR-E 测试全过 + composition 回归 + ruff + mypy baseline 0 回归 + git diff --check + check-engineering-docs --full）
+交接备注：允许范围 = 新增测试文件 + 本工作台卡；禁止 production code/migration/schema/enum/CHECK/registry capability/CI/门禁脚本/KNOWN_ISSUES/Score Log/Metrics/technical-debt/work-log/plan/fact-audit 改动；不修复 runbook §6.4 历史漂移（如实保留报告）；不翻转 erase_available、不接 scheduler production caller、不使六 erase 入口生产可达；测试库仅 metaedu_test；真实 pg_dump/多实例 canary/流量切换登记生产门禁不冒充已验证
 
 ## 下一批候选任务
 
@@ -22,7 +40,6 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P1 | R1-S6 PR-E release drill 五阶段 canary（真实 PG / 备份 / 流量开关） | ⚫ 待办，独立后续 PR；**前置依赖 = PR-D 剩余交付，已由 PR #606 满足 + F-matrix M-F8 单独判别已由 PR #610 满足** | 本地无法执行（无生产基础设施 + 无备份保留 runbook 执行环境）——按 R1-AC12 字面降级为 contract-tested 验证；登记生产门禁；PR-D runbook / 编排 / 跨层 drill 已落地（PR #606 mergeCommit `d196d7f0`），M-F8 单独判别已落地（PR #610 mergeCommit `b8daa934`），可启动 | [Plan §S6-7](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [PR #606](https://github.com/MarkDanile/MetaEduBase/pull/606) / [PR #610](https://github.com/MarkDanile/MetaEduBase/pull/610) |
 
 ## 最近完成
 
