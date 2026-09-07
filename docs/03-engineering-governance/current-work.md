@@ -14,25 +14,7 @@
 
 ## 当前进行中
 
-### TASK-R1-S6-I3-D-PR-E-CLOSEOUT: R1-S6 PR-E release drill merged-boundary 治理收口（pure-docs）
-
-状态：🟡 进行中
-类型：docs closeout（pure-docs 治理收口，零代码/测试改动）
-领域：engineering governance
-当前执行模式：单人顺序执行（active-card commit → 跨文件治理修改 → 验证 → 非 Draft closeout PR → 等三路 CI → squash merge）
-最近接手工具：Claude Code
-分支：docs/req041-047-r1-s6-pr-e-closeout
-
-需求来源：
-- Spec: `docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md` §10/§11（R1-AC11/AC12）
-- Plan: `docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md` §S6-14 item 4 + merged-boundary 注解链
-- 技术债：不关闭/不重开 TD-104/TD-032/TD-105/TD-106
-- 架构约束：PR-E = production-neutral contract-tested test harness，非生产 release enable
-
-当前进展：PR #612 已 squash merge（mergeCommit `25aefc74`，mergedAt 2026-09-07T05:39:35Z；评分 95 Original；base `e2814233`；FINAL_IMPL_HEAD `0a598311`；source head `536629fd`）；active-card commit 先行
-下一步：work-log 索引 + plan §S6-14 APPEND merged-boundary 注解 + fact-audit 追加下一顺序节 + current-work 收口（移除 PR-E 活跃卡、恢复无活跃任务、登记下一未启动候选）
-验证状态：未运行（修改后执行 git diff --check + check-engineering-docs --full + 完成门禁核对）
-交接备注：允许范围仅 4 治理文件（current-work/work-log/plan/fact-audit）；禁止 Score Log/Metrics/technical-debt/代码/测试/mutation script/migration/schema/enum/CHECK/registry/CI/门禁脚本/KNOWN_ISSUES 改动；不修复 runbook §6.4 历史漂移（如实保留）；真实 pg_dump/多实例 canary/流量切换保持生产门禁登记不冒充；TASK-R1-S6-I3-D 整体仍 🟡 不冒充完成；不启动 C1/REQ-047/S5 wiring/capability flip/六 erase 入口生产可达
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -40,6 +22,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P0 | TASK-R1-S6-C1: R1-S6 C1 Durable Core 总验收（REQ-041/047 R1-S6 最后一个未启动主线子阶段；S1-S6 + PR-D/F-matrix/PR-E 均已收口，C1 仍未启动） | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 按 task-modes 走实现/验收模式：先读 plan §S6 + spec §10/§11 + C1 验收矩阵，再登记独立活跃卡开工；不在本卡内启动 C1 / S5 production wiring / capability flip / 六 erase 入口生产可达 / REQ-047 conformance | [plan §S6](../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) / [spec §10/§11](../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md) / [fact-audit §17.12](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 
 ## 最近完成
 
@@ -49,6 +32,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-09-07 | R1-S6 PR-E release drill 五阶段 fail-closed canary contract（pure test harness）+ 独立 closeout 治理收口（TASK-R1-S6-I3-D-PR-E-CLOSEOUT 子卡） | 🟢 完成（PR-E 子阶段 + CLOSEOUT 子卡；TASK-R1-S6-I3-D 整体仍 🟡 进行中——C1/S5 wiring/capability flip/六 erase/REQ-047 未启动） | PR #612 squash mergeCommit `25aefc74`；score 95 Original；PR-E 15/15 + composition 1014/6；P3×2 闭环 follow-up=无；PR-E=production-neutral contract-tested test harness 非生产 release enable；真实 pg_dump/多实例 canary 保持生产门禁未执行 | [PR #612](https://github.com/MarkDanile/MetaEduBase/pull/612)（mergeCommit `25aefc74`）/ [work-log](work-log.md) / [score 95](04-retrospectives/review-score-log.md) / [fact-audit §17.12](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | 2026-09-06 | R1-S6 F-matrix M-F8 单独判别（test-contract / shared-observation gap 闭合）+ 独立 closeout 治理收口（TASK-R1-S6-FMATRIX-MF8-CLOSEOUT 子卡） | 🟢 完成（F-matrix M-F8 单独判别 + CLOSEOUT 子卡；TASK-R1-S6-I3-D 整体仍 🟡 进行中——PR-E/C1/S5/capability flip/六 erase/REQ-047 未启动） | PR #610 squash mergeCommit `b8daa934`；score 95；F-matrix 12/12 + F10 8/8 = 20/20 KILLED（PR #608 19/20 口径保持）；跨变独立性双证明；G-1 [P3] 真实保留 | [PR #610](https://github.com/MarkDanile/MetaEduBase/pull/610)（mergeCommit `b8daa934`）/ [work-log](work-log.md) / [score 95](04-retrospectives/review-score-log.md) / [fact-audit §17.11](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | 2026-09-04 | R1-S6 F-matrix + F10 M6 test contract 增强（独立后续 PR；Phase 0 审计修正 3 项 M-F3/M-F5 错映射 + F10 M6 不可达路径解除；5 文件 pure test contract + mutation harness 修正） | 🟢 完成（F-matrix + F10 M6 子阶段；TASK-R1-S6-I3-D 整体仍 🟡 进行中——F-matrix M-F8 NOT-RED test-contract/shared-observation gap / PR-E/C1/S5/capability flip/六 erase/REQ-047 未启动） | PR #608 squash mergeCommit `e07c601b`；评分 94 Original；**F-matrix 11/12 KILLED + F10 8/8 KILLED = 19/20**（M-F8 NOT-RED 真实 harness issue 不冒充 KILLED）；zero-touch；TD-104/TD-032 保持登记 | [PR #608](https://github.com/MarkDanile/MetaEduBase/pull/608)（mergeCommit `e07c601b`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) / [fact-audit §17.10](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | 2026-09-03 | R1-S6-I3-D PR-D 剩余 operational closeout（production-neutral 4 项：orchestration entry + restore-before-open runbook + D1a→D1b→D2→gate cross-layer safety drill + crash/retry/post-snapshot purge/M-class/blocked-manual reconcile ops） | 🟢 完成（PR-D 子阶段；TASK-R1-S6-I3-D 整体仍 🟡 进行中——F-matrix/PR-E/C1/S5/capability flip/六 erase 未启动） | PR #606 squash mergeCommit `d196d7f0`；评分 95 Original；4 文件净 diff 851 insertions(+)/1(-)；zero-touch（无 migration/schema/CHECK/CI）；TD-104 保持 ⚫ 待办 / TD-032 保持 🟢 待拆分不关闭 | [PR #606](https://github.com/MarkDanile/MetaEduBase/pull/606)（mergeCommit `d196d7f0`）/ [work-log](work-log.md) / [score 95](04-retrospectives/review-score-log.md) / [fact-audit §17.9](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
