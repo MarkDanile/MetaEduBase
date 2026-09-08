@@ -1282,6 +1282,42 @@ D1b 与 D1a **不可合并于**「D1a 是只读 codec + decoder + bounded export
 - §17.6 ~ §17.11 关系链原文不变（见 §17.11 末节）；**§17.12（本节，PR-E release drill merged-boundary 标注，2026-09-07）**：PR-E release drill 五阶段 fail-closed canary contract merged-boundary 收口 + supersede §17.8/§17.9/§17.10/§17.11 各节「PR-E 未启动」历史措辞为 merged-boundary 事实（**不**改写各节原文）+ 任务卡整体仍 🟡 进行中 + C1 / S5 wiring / capability flip / 六 erase / REQ-047 仍全部未启动 + 真实生产 release drill 保持生产门禁登记
 - **七节关系 = 累积 supersede + 历史保留**（本节仅追加「PR-E 未启动 → 已 merged」事实，不 supersede 前六节任何其他「未启动」清单 / 不重写前六节历史措辞）
 
+## 17.13. sch_d mutation harness stale anchor 重锚维护 merged-boundary 收口标注（2026-09-08）
+
+> 本节为 R1-S6 SCH-D settlement mutation harness stale anchor 维护（独立任务 TASK-R1-S6-SCH-D-MUTATION-HARNESS-MAINTENANCE）merge 入 main 的事实收口。审计责任范围：**仅 mutation harness 锚点维护**——settlement.py 在 #586（`68fafd81`）重构（per-operation→per-ref、`_fence_to_blocked`/`_repo_transition_settlement` 抽取、`self._session`→`session`、`self._database_now()`→`self._database_now(session)`）导致 sch_d harness 6 个 anchor 失配崩溃，本任务仅重锚这 6 个 anchor 到当前实现；**不**修改任何 production code / 测试语义 / migration / schema / enum / CHECK / registry / CI / 门禁；**不**新增/删除/跳过/重命名 mutation、**不**改 nodeid；**不**把 harness 维护写成生产 enable / REQ-047 完成 / C1 完成。
+
+**集成事实链**：
+
+1. **PR #615 squash merge 入 main `6a804a1d408fe66835596dcca63c4488eb3d3f99`**（mergedAt 2026-09-08T03:58:58Z；implementation baseline main `011412880d56cf496ff3ca73c2d9f0e4b4c1f6ec`；implementation/governance head `ac3f4c6a`；score commit `8b56e53d9ca3f5f87d8d656911740315f3becb67`）
+2. 评审对象 main `01141288..ac3f4c6a` 净 diff 2 文件 29 insertions(+)/10(-)：`scripts/sch_d_mutation_kill.py`（9+/9-，6 anchor 重锚）+ `docs/03-engineering-governance/current-work.md`（active card 登记）
+3. main 累积 diff（`01141288..6a804a1d` = 3 文件 30 insertions(+)/10(-)）：harness 重锚 + 工作台 active card + score commit `8b56e53d`（review-score-log.md 新增 1 行 Original 94）；source branch `chore/req041-047-r1-s6-sch-d-mutation-harness-anchor` 本地/远端已删除
+
+**事实基线对账（PR #615 完成内容）**：
+
+1. **6 个 stale anchor 重锚（mutation 语义/nodeid 不变）**：fence-write（`self._repo.transition_fence_state_settlement` → `_fence_to_blocked`/`self._repo_transition_settlement` helper）、ack-lost（`self._database_now()`→`self._database_now(session)`、`self._session`→`session`）、lookup-none-delete（单行 guard → lookup 路径多行 `if (...)`）、replay-window（`descriptor.`→`t1.descriptor.`、`self._replay_adapter`→`self._replay_ref_outside`、`replay_outcome`→`replayed`）、unresolvable（except 体现为 `_PlanResult(outcome=_WindowOutcome(...))`）、reconcile-exception（同 fence-write helper 重锚）；其余 6 个未漂移 mutation 字节不变
+2. **stale 范围如实更正**：批量 runner 停在首个 fence-write 曾掩盖真实范围；全 anchor 静态核验发现 6 个 stale（非 1 个），经停止-上报-用户裁决扩范围重锚全部 6 个
+3. **sch_d 12/12 mutation-level KILLED**（每项 `mutated=red + restored=green`，零 NOT-RED/NOT-GREEN/stale/nodeid 错误；`settlement.py` 恢复对 HEAD byte-identical）；12/12 old anchor `present=True 且 count=1`
+4. **合并后 main（`6a804a1d`）fresh 串行重跑 11 个 mutation harness 全绿**：s6i1_retention 18/18、s6i3_fault_matrix 12/12、s6i3_f10 8/8、s6i3_d_snapshot 20/20、s6i3_d_archive 11/11、s6_td106_settlement_ledger 9/9、sch_a 13/13、sch_b 12/12、sch_c 27/27、sch_d 12/12、s6i3_d_restore_replay 21/21（f10/snapshot/td106 各含已登记 NOT-RED，不计入分母）；全程 `metaedu_test`，app/+alembic 每 harness 跑后 byte-identical
+5. **保留 §17.6 ~ §17.12 历史口径** — 本节不 supersede 任何既有 merged-boundary 注解 / 不改写任何「未启动」清单 / 不动 S6-14 frozen 顺序 / 不覆写 PR #608 19/20 等历史口径
+
+**三面复核 + 评分事实**：
+
+- 复核 P0=0/P1=0/P2=0/P3=2（均**真实保留、不冒充消除**）：G-1 active-card 开工顺序偏差（harness 修改 `c0a6f7ca` 先于 active-card 登记 `bbde812d`，违反 workbench「实现前登记到工作台」）+ all(...) mutation-level evidence limitation（harness 用 `all(...)` 短路聚合映射 nodeid → mutation-level 合取判定非 per-nodeid 独立执行/报告，既有 limitation 留作独立后续维护、本 PR 不改 harness）
+- 维度评分：范围 15/15 + 实现 20/20 + 测试 19/20 + 事实源 12/15 + 风险 15/15 + 可评审性 10/10 + 持续改进 3/5 = **94（Original）**
+- **正式评分门禁真实 PASS** `scripts/check-review-score-submit --base ac3f4c6a --pr 615` → `passed (base ac3f4c6a, PR #615, one Original row, Metrics unchanged)`
+- Ready 三路 required checks 全 SUCCESS（Backend 15m52s / Engineering docs 15s / Frontend 2m34s）+ post-score 三路 required checks 全 SUCCESS（Backend 15m8s / Engineering docs 17s / Frontend 2m37s）
+
+**sch_d harness maintenance merged-boundary 不变式**：
+
+- ✅ **已完成**：sch_d mutation harness 6 个 stale anchor 重锚（PR #615 squash mergeCommit `6a804a1d` 入 main）+ sch_d 12/12 mutation-level KILLED + 合并后 main 11 harness 全绿 + 评分 94 Original + 两个 P3 真实保留 + pure-docs closeout 治理收口
+- ✅ **完成性质（冻结声明）**：本节 = **mutation harness 锚点维护**（verification 工具对当前生产代码重新对齐），**不是**生产代码改动、**不是**生产 erase enable、**不是** REQ-047 / C1 完成；sch_d 12/12 为 **mutation-level** KILLED 合取判定，非 per-nodeid 独立验证
+- ✅ **明确零启动 / 零关闭 / 零重开边界保持** — C1 Durable Core / S5 production wiring / capability flip / 六 erase 入口生产可达 / REQ-047 conformance 全部保持未启动；TD-104（⚫ 待办）/ TD-032（🟢 待拆分）/ TD-105（🟢 完成）/ TD-106（🟢 完成）全部保持登记不关闭不重开；G-1 与 all(...) limitation 两个 P3 真实保留不写成已消除；测试数据库仅 `metaedu_test`（不触碰 `metaedu`）；PR #614（C1）保持 OPEN/Draft 不受影响、不因本节 Ready/评分/合并；TASK-R1-S6-I3-D 整体仍 🟡 进行中
+
+**§17.6 ~ §17.13 关系（累积 supersede + 历史保留）**：
+
+- §17.6 ~ §17.12 关系链原文不变；**§17.13（本节，sch_d harness 维护 merged-boundary 标注，2026-09-08）**：sch_d mutation harness stale anchor 重锚维护 merged-boundary 收口（PR #615 已 merge）+ **不**supersede 任何前节「未启动」清单 / **不**改写任何前节历史措辞（本节为正交 harness 维护，不改变 C1 / S5 wiring / capability flip / 六 erase / REQ-047 任何启动/完成边界）+ 任务卡整体仍 🟡 进行中
+- **八节关系 = 累积 supersede + 历史保留**（本节仅追加「sch_d harness 维护已 merged」事实，不 supersede 前七节任何「未启动」清单 / 不重写前七节历史措辞）
+
 
 ## 18. 关键引用
 
