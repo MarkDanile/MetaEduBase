@@ -14,25 +14,25 @@
 
 ## 当前进行中
 
-### TASK-R1-S6-C1: R1-S6 C1 Durable Core 联合契约/conformance 总验收（Phase 1：B 类 test 补强 + 已落地架构事实修正）
+### TASK-R1-S6-C1-CLOSEOUT: R1-S6 C1 Durable Core 合并后独立 pure-docs 治理事实收口
 
 状态：🟡 进行中
-类型：new-requirement acceptance（Durable Core 总验收；B 类 test-only 补强 + C 类已落地架构事实修正）
-领域：engineering / agent_workspace / agent_execution / composition
-当前执行模式：单人顺序执行（active-card commit → 5 项 B 类 test 补强 + ARCHITECTURE.md 修正 → 逐项定向 + 分层验证 + 全量回归 + 11 mutation harness 重跑 → OPEN/Draft PR → 等三路 CI → 停止待评审）
+类型：governance closeout（pure-docs；零代码/零测试/零 migration/schema/registry/CI/门禁改动）
+领域：engineering / governance / product-planning
+当前执行模式：单人顺序执行（closeout active-card commit → 治理事实同步 → git diff --check + docs gate --full → pure-docs PR → 等三路 CI → squash merge 不评分 → 移除本卡恢复「当前无活跃任务」）
 最近接手工具：Claude Code
-分支：feature/req041-047-r1-s6-c1-durable-core-acceptance
+分支：docs/req041-047-r1-s6-c1-closeout
 
 需求来源：
+- 交付 PR：#614（squash mergeCommit `62eef1a3`，评分 94 Original；C1_IMPL_HEAD `35be3e7d`，merge-sync/SCORE_BASE `1d71e168`，source head `56bd83dd`）
 - Spec: `docs/02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md` §14 + `docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md` §10/§11/§12
-- Plan: `docs/02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md` Slice C1 + §6 全局矩阵 + `docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md` §S6
-- 技术债：不关闭/不重开 TD-104/TD-032/TD-105/TD-106
-- 架构约束：C1 = Durable Core 联合契约/conformance 总验收，**不等于** production erase/release enable
+- Plan: `docs/02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md` Slice C1 + `docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md` §S6（仅 APPEND C1 merged-boundary，不重写冻结内容）
+- 技术债：TD-104/TD-032/TD-105/TD-106 状态不变（不关闭/不重开/不改动 technical-debt.md）
 
-当前进展：Phase 0 contract-to-test audit 已完成（REQ-041 6 满足/2 部分[AC-3/AC-6]；REQ-047 Core 9 满足/1 部分-缺口[R-AC5 extended entities]；R1-AC 11 满足/1 部分[AC-9 hold 写侧未接线]；全局矩阵 14/15[permission revoke 部分]）；Phase 1 开工，active-card commit 先行
-下一步：5 项 B 类 test 补强（AC-3 re-auth / AC-6 CoT sentinel / permission-revoke unused_grants / R1-AC1 时间边界 / R1-AC10 日志指标 sentinel）+ ARCHITECTURE.md 已落地事实修正（§4/§5.5/§6）
-验证状态：未运行（实现后按 §验证顺序执行：定向 → contexts → composition → 全量后端 → ruff/mypy/alembic → 11 mutation harness → docs gate）
-交接备注：C1 = Durable Core contract/conformance 完成（非生产 erase/release enable）；REQ-041/REQ-047/TASK 完成态留待 post-merge 独立 closeout（已批准裁决：C1 合并后 REQ-041 翻 Done、REQ-047 仅标 Durable Core 完成保持 Shaping、R1-S6 关闭为 Durable Core 完成；S5 wiring/capability flip/六 erase/hold 管理 API/生产门禁/完整 REQ-047 保持独立未启动）；allowed files 仅 current-work + ARCHITECTURE + 5 个 test 文件；external/runtime 保持 erase_available=False，fake 仅 contract-tested；真实 pg_dump/多实例 canary/旧 writer 进程保持生产门禁未执行；测试库仅 metaedu_test；任一测试暴露 production 缺陷即停止（不越界改 app/）
+当前进展：PR #614 已 squash 合并入 main（mergeCommit `62eef1a3`），C1 Durable Core B 类 test 补强 + ARCHITECTURE.md 落地事实修正已交付；进入治理事实收口
+下一步：按状态口径同步 REQ-041→Done、REQ-047→Shaping(Durable Core Done/Extended Shaping)、R1-S6/C1/TASK-R1-S6-I3-D→Durable Core 完成；fact-audit §17.14 + work-log #614 索引；Milestone/Backlog/Iteration stale 状态修正；登记下一批候选（REQ-042/REQ-062/REQ-063，仅登记不开工）
+验证状态：git diff --check + scripts/check-engineering-docs --full；净 diff 仅治理文件；不触 metaedu/metaedu_test 数据库
+交接备注：C1 = Durable Core 联合契约/conformance 完成，**不等于** production erase/release enable、不等于完整 P3 完成；保留未启动边界（HumanInput/Approval、Tool/Grant/Snapshot、Artifact/Evidence、hold 管理 API、S5/D1b/D2 production wiring、capability flip、六 erase 入口生产可达、真实 pg_dump/restore/traffic-switch/多实例 canary）；external/runtime 继续 `erase_available=False`，fake 仅 contract-tested；P3 Milestone 仍 Doing，「2026-08 Durable Core Close」保留为历史目标，REQ-042 可实施 spec/plan、REQ-063 source spike、完整 P3 仍未完成；严格禁止改 review-score-log.md/Metrics/technical-debt.md/ARCHITECTURE.md、不重新评分、不启动 REQ-042 实现/TD-085/REQ-043/production wiring/capability enable
 
 ## 下一批候选任务
 
