@@ -14,25 +14,7 @@
 
 ## 当前进行中
 
-### TASK-R1-S6-C1: R1-S6 C1 Durable Core 联合契约/conformance 总验收（Phase 1：B 类 test 补强 + 已落地架构事实修正）
-
-状态：🟡 进行中
-类型：new-requirement acceptance（Durable Core 总验收；B 类 test-only 补强 + C 类已落地架构事实修正）
-领域：engineering / agent_workspace / agent_execution / composition
-当前执行模式：单人顺序执行（active-card commit → 5 项 B 类 test 补强 + ARCHITECTURE.md 修正 → 逐项定向 + 分层验证 + 全量回归 + 11 mutation harness 重跑 → OPEN/Draft PR → 等三路 CI → 停止待评审）
-最近接手工具：Claude Code
-分支：feature/req041-047-r1-s6-c1-durable-core-acceptance
-
-需求来源：
-- Spec: `docs/02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md` §14 + `docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md` §10/§11/§12
-- Plan: `docs/02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md` Slice C1 + §6 全局矩阵 + `docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md` §S6
-- 技术债：不关闭/不重开 TD-104/TD-032/TD-105/TD-106
-- 架构约束：C1 = Durable Core 联合契约/conformance 总验收，**不等于** production erase/release enable
-
-当前进展：Phase 0 contract-to-test audit 已完成（REQ-041 6 满足/2 部分[AC-3/AC-6]；REQ-047 Core 9 满足/1 部分-缺口[R-AC5 extended entities]；R1-AC 11 满足/1 部分[AC-9 hold 写侧未接线]；全局矩阵 14/15[permission revoke 部分]）；Phase 1 开工，active-card commit 先行
-下一步：5 项 B 类 test 补强（AC-3 re-auth / AC-6 CoT sentinel / permission-revoke unused_grants / R1-AC1 时间边界 / R1-AC10 日志指标 sentinel）+ ARCHITECTURE.md 已落地事实修正（§4/§5.5/§6）
-验证状态：未运行（实现后按 §验证顺序执行：定向 → contexts → composition → 全量后端 → ruff/mypy/alembic → 11 mutation harness → docs gate）
-交接备注：C1 = Durable Core contract/conformance 完成（非生产 erase/release enable）；REQ-041/REQ-047/TASK 完成态留待 post-merge 独立 closeout（已批准裁决：C1 合并后 REQ-041 翻 Done、REQ-047 仅标 Durable Core 完成保持 Shaping、R1-S6 关闭为 Durable Core 完成；S5 wiring/capability flip/六 erase/hold 管理 API/生产门禁/完整 REQ-047 保持独立未启动）；allowed files 仅 current-work + ARCHITECTURE + 5 个 test 文件；external/runtime 保持 erase_available=False，fake 仅 contract-tested；真实 pg_dump/多实例 canary/旧 writer 进程保持生产门禁未执行；测试库仅 metaedu_test；任一测试暴露 production 缺陷即停止（不越界改 app/）
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -40,6 +22,11 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P0 | REQ-042: Codex 式 Agent Workspace 三栏体验（Durable Core 已完成，事件协议稳定可依托） | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 按 task-modes 走塑形/spec-plan：先读 REQ-042 requirement + 联合契约事件协议，产出可实施 spec/plan 再登记独立活跃卡开工；不直接跳到 Pi Worker / 不在本卡内开工 | [REQ-042](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) / [backlog](../01-product-planning/04-backlog.md) |
+| P0 | REQ-062: 动态数据采集、填报与报表发布平台 contract shaping | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 在 Run/Artifact 契约上塑形 Campaign/FormSchemaVersion/Submission/ReportSnapshot；AI 草案审核后才发布；仅契约塑形不实现自由表单引擎 | [REQ-062](../01-product-planning/05-requirements/REQ-062-dynamic-data-collection-and-reporting.md) / [backlog](../01-product-planning/04-backlog.md) |
+| P0 | REQ-063: 受治理的外部数据采集与研究证据链 source spike | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 先做授权来源/许可/网络/快照策略 spike，不提前实现自由爬虫；Connector 等待 Tool Gateway | [REQ-063](../01-product-planning/05-requirements/REQ-063-governed-external-data-acquisition.md) / [backlog](../01-product-planning/04-backlog.md) |
+
+> 后续顺序保持：TD-085 Boundary Closure、REQ-043 Runtime/Tool Gateway 按 backlog 既定顺序承接，不在本批候选开工。
 
 ## 最近完成
 
@@ -49,6 +36,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-09-08 | TASK-R1-S6-C1：R1-S6 C1 Durable Core 联合契约/conformance 总验收 Phase 1（5 类 B 类缺口判别测试 + ARCHITECTURE.md 落地事实修正）+ 独立 pure-docs closeout（TASK-R1-S6-C1-CLOSEOUT 子卡） | 🟢 完成（C1 子阶段 + CLOSEOUT 子卡；R1-S6/TASK-R1-S6-I3-D 翻 Durable Core 完成；REQ-041 翻 Done、REQ-047 标 Durable Core Done 保持 Shaping；S5 wiring/capability flip/六 erase/Extended REQ-047/完整 P3 保持未启动） | PR #614 squash mergeCommit `62eef1a3`；评分 94 Original；5 类 B 类测试+ARCHITECTURE 修正；11/11 mutation harness（sch_d 12/12）+全量 2966/0；C1=Durable Core 完成非生产 enable；无 G-1；保留 P3 既有 | [PR #614](https://github.com/MarkDanile/MetaEduBase/pull/614)（mergeCommit `62eef1a3`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) / [fact-audit §17.14](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | 2026-09-08 | TASK-R1-S6-SCH-D-MUTATION-HARNESS-MAINTENANCE：sch_d mutation harness stale anchor 重锚维护（settlement.py #586 重构漂移）+ 独立 pure-docs closeout | 🟢 完成（sch_d harness 维护子任务；REQ-041/047 完成态与 C1 总验收不受此影响、仍按各自边界推进） | PR #615 squash mergeCommit `6a804a1d`；评分 94 Original；sch_d 6 stale anchor 重锚当前 settlement.py + sch_d 12/12 mutation-level KILLED；合并后 main 11 harness 串行全绿；零生产/测试改动；G-1 顺序偏差 + all(...) limitation 两 P3 真实保留未消除 | [PR #615](https://github.com/MarkDanile/MetaEduBase/pull/615)（mergeCommit `6a804a1d`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) / [fact-audit §17.13](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | 2026-09-07 | R1-S6 PR-E release drill 五阶段 fail-closed canary contract（pure test harness）+ 独立 closeout 治理收口（TASK-R1-S6-I3-D-PR-E-CLOSEOUT 子卡） | 🟢 完成（PR-E 子阶段 + CLOSEOUT 子卡；TASK-R1-S6-I3-D 整体仍 🟡 进行中——C1/S5 wiring/capability flip/六 erase/REQ-047 未启动） | PR #612 squash mergeCommit `25aefc74`；score 95 Original；PR-E 15/15 + composition 1014/6；P3×2 闭环 follow-up=无；PR-E=production-neutral contract-tested test harness 非生产 release enable；真实 pg_dump/多实例 canary 保持生产门禁未执行 | [PR #612](https://github.com/MarkDanile/MetaEduBase/pull/612)（mergeCommit `25aefc74`）/ [work-log](work-log.md) / [score 95](04-retrospectives/review-score-log.md) / [fact-audit §17.12](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | 2026-09-06 | R1-S6 F-matrix M-F8 单独判别（test-contract / shared-observation gap 闭合）+ 独立 closeout 治理收口（TASK-R1-S6-FMATRIX-MF8-CLOSEOUT 子卡） | 🟢 完成（F-matrix M-F8 单独判别 + CLOSEOUT 子卡；TASK-R1-S6-I3-D 整体仍 🟡 进行中——PR-E/C1/S5/capability flip/六 erase/REQ-047 未启动） | PR #610 squash mergeCommit `b8daa934`；score 95；F-matrix 12/12 + F10 8/8 = 20/20 KILLED（PR #608 19/20 口径保持）；跨变独立性双证明；G-1 [P3] 真实保留 | [PR #610](https://github.com/MarkDanile/MetaEduBase/pull/610)（mergeCommit `b8daa934`）/ [work-log](work-log.md) / [score 95](04-retrospectives/review-score-log.md) / [fact-audit §17.11](04-retrospectives/r1-s6-i3-d-fact-audit.md) |

@@ -1318,6 +1318,41 @@ D1b 与 D1a **不可合并于**「D1a 是只读 codec + decoder + bounded export
 - §17.6 ~ §17.12 关系链原文不变；**§17.13（本节，sch_d harness 维护 merged-boundary 标注，2026-09-08）**：sch_d mutation harness stale anchor 重锚维护 merged-boundary 收口（PR #615 已 merge）+ **不**supersede 任何前节「未启动」清单 / **不**改写任何前节历史措辞（本节为正交 harness 维护，不改变 C1 / S5 wiring / capability flip / 六 erase / REQ-047 任何启动/完成边界）+ 任务卡整体仍 🟡 进行中
 - **八节关系 = 累积 supersede + 历史保留**（本节仅追加「sch_d harness 维护已 merged」事实，不 supersede 前七节任何「未启动」清单 / 不重写前七节历史措辞）
 
+## 17.14. R1-S6 C1 Durable Core 联合契约/conformance 总验收 merged-boundary 收口标注（2026-09-08）
+
+> 本节为 R1-S6 最后一个主线子阶段 C1（Durable Core 联合契约/conformance 总验收 Phase 1：B 类 test 补强 + 已落地架构事实修正）merge 入 main 的事实收口。审计责任范围：**C1 = Durable Core contract/conformance 完成**——仅 B 类 test-only 补强（5 类缺口）+ ARCHITECTURE.md 已落地事实修正；**不**含 production erase / release enable / capability flip / S5 wiring / 六 erase 入口生产可达；**不**等于完整 P3 阶段完成。
+
+**集成事实链**：
+
+1. **PR #614 squash merge 入 main `62eef1a38662e54cf85a8f5c133b3e0209115ca3`**（mergedAt 2026-09-08T14:44:39Z；implementation baseline main `0d202783`；C1_IMPL_HEAD `35be3e7d`；merge-sync/SCORE_BASE `1d71e168`；source head `56bd83dd`；score commit 同 source head）
+2. 评审对象 main `0d202783..1d71e168` 净 diff 7 文件 616 insertions(+)/12(-)：5 个 B 类 test 文件 + `ARCHITECTURE.md`（§4/§5.5/§6 落地事实修正）+ `docs/03-engineering-governance/current-work.md`（active card）
+3. main 同步以普通 merge commit `1d71e168` 合入 `origin/main@0d202783`（仅带入 PR #615/#616 已合并事实；`current-work.md` 自动合并干净：保 C1 active card + 删候选区重复 C1 行 + 保 main #615 最近完成行；`review-score-log.md` 与 main 一致 C1 未改）；source branch `feature/req041-047-r1-s6-c1-durable-core-acceptance` 本地/远端已删除
+
+**事实基线对账（PR #614 完成内容）**：
+
+1. **5 类 B 类缺口 → 契约 AC 判别测试（真实 PG，零生产代码）**：re-auth 重认证恢复（REQ-041 C-AC4，全新 AsyncClient 跨 owner/tenant 404、写读不共享会话）+ CoT sentinel（REQ-041 C-AC7/R1-AC10，Message part/CompatibilityOutput/RunEvent.payload_inline 均无泄漏）+ permission-revoke unused_grants guard（REQ-047 R-AC6，commit_terminal fail-closed）+ 30/90/365 时间边界（R1-AC1，注入 clock before/equal/after + 非 UTC offset）+ 日志/指标 sentinel（R1-AC10，blocked_reasons ⊆ 冻结 reason code 且 repr 无泄漏）
+2. **ARCHITECTURE.md 落地事实修正**：§4 登记 Run/Event/TurnInput/binding/retention 已落地；§5.5 移除 stale「Run/Event/Worker 未落地」；§6 补 Run/Event/retention 所有权；未预写 Runtime/Approval/Tool/Artifact/Evidence/生产调度/capability enable
+3. **同步后验证（独占 `metaedu_test`，全 fresh）**：7/7 新测试 + 三上下文 1214 passed/6 skipped + 全量后端 `-m 'not external_network'` 2966 passed/0 failed/10 deselected（同步后首跑全绿未复现既往 flaky）+ ruff/mypy 243·0 reg/alembic 单 head 043 在 head/git diff --check/docs gate `--full`=32；**11/11 mutation harness 串行 fresh 全通过**（s6i1 18/18、fault_matrix 12/12、f10 8/8、snapshot 20/20、archive 11/11、td106 9/9、sch_a 13/13、sch_b 12/12、sch_c 27/27、sch_d 12/12、D2 21/21；f10/snapshot/td106 各含已登记 NOT-RED 不计分母；sch_d 为 mutation-level 合取判定非 per-nodeid 独立）；恢复 byte-identical、全程 tree CLEAN
+4. **保留 §17.6 ~ §17.13 历史口径** — 本节不 supersede 任何既有 merged-boundary 注解原文 / 不改写任何前节历史措辞 / 不动 S6-14 frozen 顺序 / 不覆写 PR #608 19/20 等历史口径
+
+**三面复核 + 评分事实**：
+
+- 复核 P0=0/P1=0/P2=0（无 G-1：active card `e6c7fea8` 先于实现 `35be3e7d` 登记）；保留 P3 均既有不冒充消除：all(...) mutation-level 非 per-nodeid limitation + f10/snapshot/td106 NOT-RED 排除项；本轮发现 docs-gate 计数 31 误记为 default 口径已更正为 `--full`=32 并如实留修正记录
+- 维度评分：范围 15/15 + 实现 19/20 + 测试 19/20 + 事实源 13/15 + 风险 15/15 + 可评审性 10/10 + 持续改进 3/5 = **94（Original）**
+- **正式评分门禁真实 PASS** `scripts/check-review-score-submit --base 1d71e168 --pr 614` → `passed (base 1d71e168, PR #614, one Original row, Metrics unchanged)`
+- Ready 三路 required checks 全 SUCCESS（Backend/Engineering docs/Frontend）+ post-score 三路 required checks 全 SUCCESS
+
+**C1 / R1-S6 / TASK-R1-S6-I3-D Durable Core merged-boundary 不变式**：
+
+- ✅ **已完成**：C1 Durable Core 联合契约/conformance 总验收（PR #614 squash mergeCommit `62eef1a3` 入 main）+ 5 类 B 类判别测试 + ARCHITECTURE.md 落地事实修正 + 11/11 mutation harness + 评分 94 Original；**R1-S6（S1-S6 + PR-D/F-matrix/PR-E + C1）Durable Core 范围全部完成**；**TASK-R1-S6-I3-D Durable Core 范围完成**；REQ-041 翻 🟢 Done；REQ-047 标 Durable Core Done（整体仍 🟣 Shaping，Extended Contracts 继续）
+- ✅ **完成性质（冻结声明）**：本节 = **Durable Core 联合契约/conformance 完成**，**不是** production erase / release enable / capability flip / 完整 P3 阶段完成；external/runtime 继续 `erase_available=False`，fake 仅 contract-tested
+- ✅ **明确零启动边界保持** — HumanInput/Approval、Tool/Grant/Snapshot、Artifact/Evidence、hold 管理 API、S5/D1b/D2 production wiring、capability flip、六 erase 入口生产可达、真实 pg_dump/restore/traffic-switch/多实例 canary 全部保持未启动；完整 REQ-047（Extended Contracts）保持 Shaping 不翻 Done；TD-104（⚫ 待办）/ TD-032（🟢 待拆分）/ TD-105（🟢 完成）/ TD-106（🟢 完成）全部保持登记不关闭不重开；测试数据库仅 `metaedu_test`（不触碰 `metaedu`）；P3 Milestone 保持 🟡 Doing，「2026-08 Durable Core Close」保留为历史目标，REQ-042 可实施 spec/plan、REQ-063 授权来源 spike、完整 P3 仍未完成
+
+**§17.6 ~ §17.14 关系（累积 supersede + 历史保留）**：
+
+- §17.6 ~ §17.13 关系链原文不变；**§17.14（本节，C1 Durable Core merged-boundary 标注，2026-09-08）**：C1 Durable Core 联合契约/conformance 总验收 merged-boundary 收口（PR #614 已 merge）+ supersede §17.8 ~ §17.13 各节「C1 未启动」历史措辞为 merged-boundary 事实（**不**改写各节原文）+ R1-S6 / TASK-R1-S6-I3-D 翻 Durable Core 完成 + REQ-041 翻 Done / REQ-047 标 Durable Core Done；**不**supersede 任何前节关于 S5 wiring / capability flip / 六 erase / Extended REQ-047 / 完整 P3 的「未启动」清单（这些边界继续保持未启动）
+- **九节关系 = 累积 supersede + 历史保留**（本节仅追加「C1 Durable Core 已 merged + R1-S6 Durable Core 完成」事实，不 supersede 前八节任何 S5 wiring / capability flip / 六 erase / Extended REQ-047 / 完整 P3 的「未启动」清单 / 不重写前八节历史措辞）
+
 
 ## 18. 关键引用
 

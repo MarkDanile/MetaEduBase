@@ -16,8 +16,8 @@ Goal: 完成 P2 -> P3 路线切换，冻结企业 Agent Control Plane、源码�
 
 | 顺序 | 任务 | 当前状态 | 下一步 |
 |------|------|----------|--------|
-| 1 | REQ-041 Conversation/Message | 🟡 Doing（R1 Planning） | W1/E0/E1/B1/A1/D1 已合并；R1 已进入专项契约评审，随后按 S1-S6 实施并进入 C1；submit-turn 保持关闭 |
-| 2 | REQ-047 Run/Event/Approval/Artifact | 🟣 Shaping（Durable Core D1 Done / R1 Planning） | D1 已由 PR #489 合并；后续 R1/C1，HumanInput/Approval、Tool/Grant/Snapshot、Artifact/Evidence 继续独立塑形 |
+| 1 | REQ-041 Conversation/Message | 🟢 Done | W1/E0/E1/B1/A1/D1 与 R1-S1..S6、C1（PR #614，mergeCommit `62eef1a3`）已合并，Durable Core 完成；submit-turn 保持关闭 |
+| 2 | REQ-047 Run/Event/Approval/Artifact | 🟣 Shaping（Durable Core Done / Extended Shaping） | Durable Core（含 R1-S1..S6、C1，PR #614）已合并；HumanInput/Approval、Tool/Grant/Snapshot、Artifact/Evidence 继续独立塑形 |
 | 2P | REQ-060 控制台导航 | 🟢 Done | Slice 1-4 与 closeout 已合并；326/326 vitest、55/55 Playwright、三路 CI 全绿 |
 | 3 | REQ-042 Agent Workspace | ⚫ Candidate | 用 Direct RAG/Skill compatibility path 验收，不等待 Pi 才开始产品体验 |
 | 4 | TD-085 边界收口 | ⚫ 待办 | 分 Slice 抽 LLM Port、Direct RAG 和业务专属逻辑，保持现有行为 |

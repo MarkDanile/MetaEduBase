@@ -1,6 +1,6 @@
 # REQ-041: AI Workspace 会话持久化与多会话事实源
 
-> Status: 🟡 Doing
+> Status: 🟢 Done
 > Priority: P0
 > Milestone: P3 / Enterprise Agent Platform
 > Area: AI Workspace / Conversation / Message
@@ -57,5 +57,6 @@
 ## Dependencies / Next Step
 
 - Slice W1 已由 [PR #479](https://github.com/MarkDanile/MetaEduBase/pull/479) 合并：`agent_workspace` durable store、owner-private Conversation API、Message history、双 seq、完整 command digest 与 workspace inbox/outbox 已落地。
-- Slice B1 已由 [PR #485](https://github.com/MarkDanile/MetaEduBase/pull/485) 合并，A1 已由 [PR #487](https://github.com/MarkDanile/MetaEduBase/pull/487) 合并，D1 已由 [PR #489](https://github.com/MarkDanile/MetaEduBase/pull/489) 合并。Conversation/Run/Event durable compatibility path 已落地；新 Workspace submit-turn 生产入口仍保持关闭，下一步按 R1 专项计划完成 S1-S6，再执行 C1。
+- Slice B1 已由 [PR #485](https://github.com/MarkDanile/MetaEduBase/pull/485) 合并，A1 已由 [PR #487](https://github.com/MarkDanile/MetaEduBase/pull/487) 合并，D1 已由 [PR #489](https://github.com/MarkDanile/MetaEduBase/pull/489) 合并。Conversation/Run/Event durable compatibility path 已落地；新 Workspace submit-turn 生产入口仍保持关闭。
+- R1 专项 S1-S6 与 C1 Durable Core 联合契约/conformance 总验收已全部完成：C1 由 [PR #614](https://github.com/MarkDanile/MetaEduBase/pull/614) 合并（mergeCommit `62eef1a3`，评分 94 Original）。REQ-041 Durable Core 范围完成，翻 🟢 Done；三栏工作台视觉、re-auth 页面与 REQ-042 UI 验收不在本需求范围，归 REQ-042。C1 不等于 production erase / release enable。
 - REQ-047 Durable Core 与本需求联合实施；Approval/Tool/Artifact/Evidence 扩展不阻塞 W1/E1，但不属于 REQ-041 的完成范围。

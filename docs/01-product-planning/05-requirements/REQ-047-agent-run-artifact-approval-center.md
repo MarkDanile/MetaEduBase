@@ -1,7 +1,7 @@
 # REQ-047: Agent Run、产物、证据与人工确认中心
 
-> Status: 🟣 Shaping
-> Core Contract: 🟡 Doing（Slice D1 已由 PR #489 合并；R1 Planning；完整 REQ-047 继续 Shaping）
+> Status: 🟣 Shaping（Durable Core Done / Extended Contracts Shaping）
+> Core Contract: 🟢 Done（Durable Core 全 Slice W1→E0→E1→B1→A1→D1→R1-S1..S6→C1 已完成；C1 由 [PR #614](https://github.com/MarkDanile/MetaEduBase/pull/614) 合并，mergeCommit `62eef1a3`；Extended Contracts 继续 Shaping）
 > Priority: P0
 > Milestone: P3 / Enterprise Agent Platform
 > Area: Agent Run / Event / Approval / Artifact / Evidence
@@ -62,7 +62,7 @@
 
 ## Dependencies / Next Step
 
-- Conversation/Message/Run/Event Durable Core 已与 REQ-041 冻结；W1、E0、E1、B1、A1 与 D1 已合并，后续按 R1-S1..S6 -> C1 推进。两个 context 分别迁移，不共享 ORM/repository；RunEvent/receipt 与 Runtime ACK cursor 必须在同一事务提交。
+- Conversation/Message/Run/Event Durable Core 已与 REQ-041 冻结；W1、E0、E1、B1、A1、D1、R1-S1..S6 与 C1 均已合并，Durable Core 完成。两个 context 分别迁移，不共享 ORM/repository；RunEvent/receipt 与 Runtime ACK cursor 必须在同一事务提交。
 - B1 已由 [PR #485](https://github.com/MarkDanile/MetaEduBase/pull/485) 合并：版本化 shared schema、JCS canonical JSON、双向 inbox/outbox、attempt/claimant fencing、真实 Workspace FIFO barrier、terminal output projection、dead-letter/reconcile/suppress、ConversationExecutionGuard、guarded DELETE/restore 与 `031` migration 已落地；该 Slice 未越界实现新 `/turns` 生产入口、A1 SSE、Pi/Worker、Tool Gateway、D1 或 R1。
 - A1 已由 [PR #487](https://github.com/MarkDanile/MetaEduBase/pull/487) 合并：owner-private GET Run、持久化幂等 cancel intent、PostgreSQL ledger SSE replay/live polling、权限重验、gap/retention/cursor 错误与 `032` migration 已落地；该 Slice 未开放新 Workspace `/turns`、Pi/Worker、Tool Gateway、D1/R1 或 extended entities。
 - D1 已由 [PR #489](https://github.com/MarkDanile/MetaEduBase/pull/489) 合并（`56de6bf1`）：旧 `/ai/chat/evidence` 通过 composition adapter 写 Conversation、user/assistant Message、compatibility Run、裁剪事件与 canonical terminal；`033_agent_compat_output` 为终态回答和裁剪后的 evidence refs 提供 durable staging，输入与输出桥均复用 B1 的 claim/consume/ACK 短事务。显式 `conversation_id + client_message_id` 支持幂等重放；外部 Conversation alias 映射为 tenant+actor scoped 内部 ID，单 Run 使用容量隔离的 PostgreSQL advisory execution claim pool 防止并发重复调用模型且不占用主业务池。Vue 客户端按 tenant+JWT subject 隔离稳定 identity，durable pending/停止时保留恢复凭据。D1 policy 的同步 compatibility Run 在 cancel 时直接结算为 `cancelled`；provider 异常对外转稳定 502 且不记录原始 diagnostics。全量 1623 passed、三路 CI 与独立 `max` 复审全绿；最高验证层级为 deterministic fake LLM + 真实 PostgreSQL，真实 LLM 产品效果不在本 Slice 声明范围。
