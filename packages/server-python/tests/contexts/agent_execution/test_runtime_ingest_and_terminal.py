@@ -637,6 +637,79 @@ async def test_resume_required_terminal_closes_recovery_intent_atomically(db_ses
 
 
 @pytest.mark.asyncio
+async def test_resume_required_terminal_blocks_on_unused_grants_fail_closed(db_session):
+    """Durable-state guard 判别（非完整 Grant 生命周期）：resume_required Run 持有
+    未回收授权（``unused_grants > 0``）时 ``commit_terminal`` 必须 fail-closed——
+    抛 ``RunGuardBlockedError``、零 canonical terminal event、Run 状态零未授权推进。
+    本测试只判别 ``_require_terminal_guard`` 的 ``unused_grants`` 分支，不建模 Grant
+    申领/回收生命周期。"""
+    coordinator, command, binding, _, run = await _create_native_running(db_session)
+    await db_session.execute(
+        update(RuntimeSessionBindingModel)
+        .where(RuntimeSessionBindingModel.id == binding.id)
+        .values(stream_lease_expires_at=datetime.now(UTC) - timedelta(seconds=1))
+    )
+    await db_session.flush()
+    run, _, _ = await coordinator.mark_run_resume_required(
+        tenant_id=TENANT_A,
+        run_id=run.id,
+        expected_status=RunStatus.RUNNING,
+        expected_run_revision=run.status_revision,
+        expected_runtime_epoch=binding.current_epoch,
+        expected_binding_revision=binding.revision,
+        summary="Runtime cannot be resumed",
+    )
+    await db_session.commit()
+    assert run.status is RunStatus.RESUME_REQUIRED
+
+    # 独立 guard：仅 unused_grants>0（其余 durable state 全 0），隔离该分支。
+    guarded = RunCoordinator(
+        db_session,
+        start_barrier=AllowStartBarrier(),
+        guard_state=StaticGuardState(DurableGuardState(unused_grants=1)),
+    )
+    with pytest.raises(RunGuardBlockedError, match="revoke unused grants"):
+        await guarded.commit_terminal(
+            tenant_id=TENANT_A,
+            run_id=run.id,
+            expected_status=RunStatus.RESUME_REQUIRED,
+            expected_revision=run.status_revision,
+            result=TerminalResult(
+                outcome="failed",
+                code="resume_failed",
+                reason="Recovery intent closed",
+            ),
+        )
+    await db_session.rollback()
+
+    # fail-closed：Run 停留 RESUME_REQUIRED（零未授权状态推进）+ 零 canonical
+    # terminal event。
+    persisted = await db_session.get(AgentRunModel, run.id)
+    assert persisted is not None
+    assert persisted.status == RunStatus.RESUME_REQUIRED.value
+    terminal_events = (
+        (
+            await db_session.execute(
+                select(RunEventModel).where(
+                    RunEventModel.run_id == run.id,
+                    RunEventModel.event_type.in_(
+                        [
+                            RunEventType.RUN_COMPLETED.value,
+                            RunEventType.RUN_FAILED.value,
+                            RunEventType.RUN_CANCELLED.value,
+                            RunEventType.RUN_EXPIRED.value,
+                        ]
+                    ),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert terminal_events == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "guard",
     [

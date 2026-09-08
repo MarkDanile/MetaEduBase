@@ -114,7 +114,7 @@ flowchart LR
 | Template | 数据要素模板及其 AI 初始化 | 模板结构、字段定义、初始化结果 |
 | Resource | 旧资源管理能力，保留兼容职责 | 历史资源接口和过渡能力 |
 | Agent Workspace | 产品 Conversation、用户级会话状态、Message 与 MessagePart | 持久会话、消息历史、置顶和归档状态 |
-| Agent Execution | AgentDefinitionVersion、RuntimeProfile 与 RuntimeSessionBinding；后续执行事实仍按独立契约分 Slice 落地 | 版本化执行身份、Runtime 能力摘要、epoch/lease/连续 ACK cursor |
+| Agent Execution | AgentDefinitionVersion、RuntimeProfile、Run/Event/TurnInput 与 RuntimeSessionBinding；事件与审计 retention worker 已落地（独立可调用，未接生产调度） | 版本化执行身份、持久 Run/Event 事实、Runtime 能力摘要、epoch/lease/连续 ACK cursor、保留期清理计数 |
 
 这些上下文共享基础设施，但不应随意共享业务语义。跨上下文复用时，优先共享契约、基础设施或显式服务，而不是互相穿透内部实现。
 
@@ -153,7 +153,7 @@ flowchart LR
 
 产品 Conversation/Message 由 Agent Workspace 持有，Runtime 私有 Session 的绑定由 Agent Execution 持有。两个上下文只交换 tenant-scoped opaque UUID 或版本化 application contract，不共享 ORM、repository，也不建立跨上下文数据库外键。
 
-Direct RAG compatibility path 只登记稳定 AgentDefinitionVersion/RuntimeProfile 身份，不伪造 Runtime Session。原生 Runtime Binding 使用单调 epoch 隔离旧执行所有者，并以单活动 stream lease 和连续 ACK cursor 为后续事件摄取提供持久边界；Run/Event、Worker 和浏览器 SSE 不属于当前已落地范围。
+Direct RAG compatibility path 只登记稳定 AgentDefinitionVersion/RuntimeProfile 身份，不伪造 Runtime Session。原生 Runtime Binding 使用单调 epoch 隔离旧执行所有者，并以单活动 stream lease 和连续 ACK cursor 为事件摄取提供持久边界。Run/Event/TurnInput 持久事实、Durable Core 联合契约与事件/审计 retention worker 已落地（retention 为独立可调用维护函数，未接生产调度）；Runtime 私有执行、Tool/Approval/Artifact/Evidence 扩展实体与生产能力开关不属于当前已落地范围。
 
 ## 6. 数据所有权与边界
 
@@ -165,7 +165,7 @@ Direct RAG compatibility path 只登记稳定 AgentDefinitionVersion/RuntimeProf
 - 数据集与结构化图谱构建过程由 Structured Data 拥有
 - 模板定义由 Template 拥有
 - 产品 Conversation、Message 与用户级会话状态由 Agent Workspace 拥有
-- Agent/Runtime 版本身份与 Runtime 私有 Session Binding 由 Agent Execution 拥有
+- Agent/Runtime 版本身份、持久 Run/Event/TurnInput 事实、Runtime 私有 Session Binding 与事件/审计 retention 由 Agent Execution 拥有
 
 如果一个改动会改变这些所有权边界，例如把某类派生结果迁到另一个上下文、把旧 resource 能力正式废弃、或让 shared 包开始承载新的公共契约族，这类变化应更新本文件。
 

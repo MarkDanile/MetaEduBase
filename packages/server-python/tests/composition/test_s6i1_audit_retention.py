@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import text
@@ -92,6 +92,7 @@ async def _seed_terminal_run(
     cid,
     status: str = "failed",
     ended_days_ago: int = 400,
+    ended_at: datetime | None = None,
     output_publish_state: str = "not_required",
     parent_run_id: uuid.UUID | None = None,
     queue_seq: int = 1,
@@ -102,10 +103,12 @@ async def _seed_terminal_run(
     """终态 run（默认 failed，非 completed 简化 terminal output envelope）。
     同一 conversation 内多个 run 必须传不同 ``queue_seq``（uq_agent_run_queue_seq）；
     ``run_id`` 可显式传（排序/饿死判别）；``first_available``/``last_seq`` 可
-    显式传（前缀剪除 fail-closed 判别，满足 ck_agent_run_sequences）。"""
+    显式传（前缀剪除 fail-closed 判别，满足 ck_agent_run_sequences）。
+    ``ended_at`` 显式传（精确边界判别）时覆盖 ``ended_days_ago`` 计算。"""
     run_id = run_id or uuid.uuid4()
     def_id, prof_id = await _seed_catalog(session, tid=tid)
-    ended_at = datetime.now(UTC) - timedelta(days=ended_days_ago)
+    if ended_at is None:
+        ended_at = datetime.now(UTC) - timedelta(days=ended_days_ago)
     await session.execute(
         text(
             "INSERT INTO metaedu.agent_runs "
@@ -761,6 +764,136 @@ async def test_blocked_on_ref_bearing_event(session_factory):
     assert result.blocked_reasons["events_payload_not_tombstoned"] == 1
     async with session_factory() as verify:
         assert await _run_exists(verify, tid=tid, run_id=run_id) is True
+
+
+async def test_audit_retention_365_day_exact_cutoff_boundary(session_factory):
+    """R1-AC1：365 天 audit envelope 候选精确边界（注入 clock，非本机时钟）。
+
+    判据 ``ended_at <= now - 365d``（含等于）。候选性用统一 blocked 前置
+    （非 tombstone inline event → ``events_payload_not_tombstoned``）观察：
+    到期 run 进入候选并被 blocked（计数），未到期 run 非候选（既不计数也不删除）。
+
+    - before（ended_at = cutoff-1s）→ 候选 blocked；
+    - equal（ended_at = cutoff，含等于）→ 候选 blocked；
+    - after（ended_at = cutoff+1s）→ 非候选；
+    - 非 UTC offset 等值瞬时（cutoff 的 +08:00 表达）→ 与 UTC 同等候选 blocked。
+    """
+    fixed_now = datetime(2026, 9, 7, 12, 0, 0, tzinfo=UTC)
+    cutoff = fixed_now - timedelta(days=365)
+
+    async def _seed_blocked(seed, ended_at: datetime):
+        tid, cid = await _seed_conversation(seed)
+        run_id = await _seed_terminal_run(seed, tid=tid, cid=cid, ended_at=ended_at)
+        await _seed_event(
+            seed, tid=tid, cid=cid, run_id=run_id, seq=1, payload_state="inline"
+        )
+        return tid, run_id
+
+    async with session_factory() as seed, seed.begin():
+        before = await _seed_blocked(seed, cutoff - timedelta(seconds=1))
+        equal = await _seed_blocked(seed, cutoff)
+        after = await _seed_blocked(seed, cutoff + timedelta(seconds=1))
+        offset_equal = await _seed_blocked(
+            seed, cutoff.astimezone(timezone(timedelta(hours=8)))
+        )
+
+    result = await run_audit_retention(session_factory, now=fixed_now)
+
+    assert result.runs_pruned == 0
+    assert result.runs_blocked == 3, "before/equal/offset-equal 到期候选 blocked；after 非候选"
+    assert result.blocked_reasons["events_payload_not_tombstoned"] == 3
+    async with session_factory() as verify:
+        # blocked = 零写，候选 run 保留；非候选 after 也未删除。
+        assert await _run_exists(verify, tid=before[0], run_id=before[1]) is True
+        assert await _run_exists(verify, tid=equal[0], run_id=equal[1]) is True
+        assert await _run_exists(verify, tid=after[0], run_id=after[1]) is True
+        assert (
+            await _run_exists(verify, tid=offset_equal[0], run_id=offset_equal[1])
+            is True
+        )
+
+
+async def test_audit_retention_observability_emits_only_counts_and_reason_codes(
+    session_factory,
+):
+    """R1-AC10：audit worker 可观察输出（返回的 ``AuditRetentionResult``）只含计数 +
+    结构化 reason code，不泄漏正文 / payload_ref / 自由文本 reason。
+
+    在 DB 行内埋 sentinel（payload 正文、payload_ref），驱动真实 worker 路径，
+    捕获实际返回结果，断言：``blocked_reasons`` 键全部落在冻结 reason code 集合内，
+    且结果的字符串表示不含任何 sentinel。worker 无 logger/metrics 发射，返回的
+    结果 dataclass 即其可观察面。"""
+    allowed_reason_codes = {
+        "events_payload_not_tombstoned",
+        "outcome_unknown",
+        "unresolved_approval",
+        "projection_reconcile_incomplete",
+        "surviving_child_run",
+    }
+    secret_body = "SECRET-BODY-SENTINEL-MUST-NOT-BE-OBSERVED"
+    secret_ref = "PAYLOAD-REF-SENTINEL-MUST-NOT-BE-OBSERVED"
+
+    async with session_factory() as seed, seed.begin():
+        # blocked：非 tombstone inline event，正文含 sentinel。
+        tid1, cid1 = await _seed_conversation(seed)
+        run1 = await _seed_terminal_run(seed, tid=tid1, cid=cid1)
+        await seed.execute(
+            text(
+                "INSERT INTO metaedu.agent_run_events "
+                "(id, tenant_id, conversation_id, run_id, seq, event_type, "
+                "schema_version, occurred_at, persisted_at, visibility, classification, "
+                "payload_inline, payload_ref, payload_state, payload_digest, "
+                "payload_size, media_type, expires_at, correlation_id, causation_id) "
+                "VALUES (gen_random_uuid(), :tid, :cid, :rid, 1, 'tool.completed', 1, "
+                "now(), now(), 'user', 'public', cast(:inline as jsonb), NULL, "
+                "'inline', :digest, 1, 'application/json', NULL, :rid, NULL)"
+            ),
+            {
+                "tid": tid1,
+                "cid": cid1,
+                "rid": run1,
+                "inline": json.dumps({"summary": secret_body}),
+                "digest": _DIGEST,
+            },
+        )
+        # blocked：external event 携带 payload_ref sentinel（ref 未清 → 非 tombstone）。
+        tid2, cid2 = await _seed_conversation(seed)
+        run2 = await _seed_terminal_run(seed, tid=tid2, cid=cid2)
+        await _seed_event(
+            seed,
+            tid=tid2,
+            cid=cid2,
+            run_id=run2,
+            seq=1,
+            payload_state="external",
+            payload_ref=secret_ref,
+        )
+        # blocked：outcome_unknown 无后续 resolve（第二种 reason code）。
+        tid3, cid3 = await _seed_conversation(seed)
+        run3 = await _seed_terminal_run(seed, tid=tid3, cid=cid3)
+        await _seed_event(
+            seed,
+            tid=tid3,
+            cid=cid3,
+            run_id=run3,
+            seq=1,
+            event_type="tool.outcome_unknown",
+        )
+
+    result = await run_audit_retention(session_factory)
+
+    assert result.runs_blocked == 3
+    # reason code 全为冻结集合内的结构化码，非自由文本。
+    assert set(result.blocked_reasons) <= allowed_reason_codes
+    assert result.blocked_reasons["events_payload_not_tombstoned"] == 2
+    assert result.blocked_reasons["outcome_unknown"] == 1
+    # 可观察输出（结果 dataclass 的字符串表示）不泄漏任何 sentinel。
+    observable = repr(result)
+    assert secret_body not in observable
+    assert secret_ref not in observable
+    for reason_code in result.blocked_reasons:
+        assert secret_body not in reason_code
+        assert secret_ref not in reason_code
 
 
 async def test_blocked_when_approval_evidence_pruned(session_factory):
