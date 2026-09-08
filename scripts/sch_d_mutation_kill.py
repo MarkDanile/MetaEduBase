@@ -36,7 +36,7 @@ MUTATIONS = [
     (
         "M-SCH-D-fence-write 删 settlement fence erasing→blocked 写",
         SETTLEMENT,
-        ['        try:\n            await self._repo.transition_fence_state_settlement(\n                tenant_id=tenant_id,\n                conversation_id=conversation_id,\n                owner_key=fence.owner_key,\n                expected_state=ErasureFenceState.ERASING,\n                expected_revision=fence.revision,\n                new_state=ErasureFenceState.BLOCKED,\n                expected_owner_version=frozen.owner_version,\n                purge_revision=frozen.purge_revision,\n                hold_revision=hold_revision,\n                now=await self._database_now(),\n            )\n        except ValueError:\n            # S5-C-1 例外条款：fence 写失败 → 具名 reconcile（checkpoint 已落账\n            # 输出态 reason），零自动重试。\n            return'],
+        ['        try:\n            await self._repo_transition_settlement(\n                session=session,\n                tenant_id=tenant_id,\n                conversation_id=conversation_id,\n                fence=fence,\n                frozen=frozen,\n                hold_revision=hold_revision,\n                new_state=ErasureFenceState.BLOCKED,\n                ack_digest=None,\n            )\n        except ValueError:\n            # S5-C-1 例外条款：fence 写失败 → 具名 reconcile（checkpoint 已落账\n            # 输出态 reason），零自动重试。\n            return'],
         ['        # M：删 settlement fence 写（fence 保持 erasing）'],
         [
             f"{_T}test_settlement_post_window_blocked_converges",
@@ -46,22 +46,22 @@ MUTATIONS = [
     (
         "M-SCH-D-ack-lost repair 清 operation failure_code / 写 purge_state",
         SETTLEMENT,
-        ['        checkpoint.state = "acked"\n        checkpoint.ack_digest = ack_digest\n        checkpoint.checkpoint_digest = scan_digest\n        checkpoint.reason_code = None\n        checkpoint.updated_at = await self._database_now()\n        await self._session.flush()'],
-        ['        checkpoint.state = "acked"\n        checkpoint.ack_digest = ack_digest\n        checkpoint.checkpoint_digest = scan_digest\n        checkpoint.reason_code = None\n        checkpoint.updated_at = await self._database_now()\n        # M：repair 清 operation failure_code\n        await self._session.execute(\n            text("UPDATE metaedu.agent_conversation_purges SET failure_code=NULL")\n        )\n        await self._session.flush()'],
+        ['        checkpoint.state = "acked"\n        checkpoint.ack_digest = ack_digest\n        checkpoint.checkpoint_digest = scan_digest\n        checkpoint.reason_code = None\n        checkpoint.updated_at = await self._database_now(session)\n        await session.flush()'],
+        ['        checkpoint.state = "acked"\n        checkpoint.ack_digest = ack_digest\n        checkpoint.checkpoint_digest = scan_digest\n        checkpoint.reason_code = None\n        checkpoint.updated_at = await self._database_now(session)\n        # M：repair 清 operation failure_code\n        await session.execute(\n            text("UPDATE metaedu.agent_conversation_purges SET failure_code=NULL")\n        )\n        await session.flush()'],
         [f"{_T}test_settlement_ack_lost_repair"],
     ),
     (
         "M-SCH-D-lookup-none-delete None 视为未执行再次 delete",
         SETTLEMENT,
-        ["            if supports_replay and descriptor.dedup_window >= descriptor.settlement_deadline:"],
+        ["            if (\n                item.supports_replay\n                and t1.descriptor.dedup_window >= t1.descriptor.settlement_deadline\n            ):"],
         ["            if True:  # M：None 视为未执行再次 delete"],
         [f"{_T}test_settlement_lookup_none_unknown"],
     ),
     (
         "M-SCH-D-replay-window 窗口不足仍 replay",
         SETTLEMENT,
-        ["            if descriptor.dedup_window >= descriptor.settlement_deadline:\n                replay_outcome = await self._replay_adapter("],
-        ["            if True:  # M：窗口不足仍 replay\n                replay_outcome = await self._replay_adapter("],
+        ["            if t1.descriptor.dedup_window >= t1.descriptor.settlement_deadline:\n                replayed = await self._replay_ref_outside("],
+        ["            if True:  # M：窗口不足仍 replay\n                replayed = await self._replay_ref_outside("],
         [f"{_T}test_settlement_replay_window_insufficient"],
     ),
     (
@@ -74,7 +74,7 @@ MUTATIONS = [
     (
         "M-SCH-D-unresolvable fallback 当前 adapter",
         SETTLEMENT,
-        ['        try:\n            raw_adapter = self._adapter_resolver(\n                owner_key=owner_key, owner_version=frozen.owner_version\n            )\n        except AdapterUnresolvableError:\n            return _WindowOutcome(\n                OutputState.ADAPTER_UNRESOLVABLE,\n                reason=_unresolvable_reason(owner_key),\n            )'],
+        ['        try:\n            raw_adapter = self._adapter_resolver(\n                owner_key=owner_key, owner_version=frozen.owner_version\n            )\n        except AdapterUnresolvableError:\n            # 输出态 6 早退不需要 frozen refs（adapter 不可用，零调用）。\n            return _PlanResult(\n                outcome=_WindowOutcome(\n                    OutputState.ADAPTER_UNRESOLVABLE,\n                    reason=_unresolvable_reason(owner_key),\n                )\n            )'],
         ['        try:\n            raw_adapter = self._adapter_resolver(\n                owner_key=owner_key, owner_version=frozen.owner_version\n            )\n        except AdapterUnresolvableError:\n            raise  # M：fallback 当前 adapter（不 fail closed）'],
         [f"{_T}test_settlement_adapter_unresolvable"],
     ),
@@ -102,8 +102,8 @@ MUTATIONS = [
     (
         "M-SCH-D-reconcile-exception 删例外映射（fence 写失败不收敛）",
         SETTLEMENT,
-        ['        try:\n            await self._repo.transition_fence_state_settlement(\n                tenant_id=tenant_id,\n                conversation_id=conversation_id,\n                owner_key=fence.owner_key,\n                expected_state=ErasureFenceState.ERASING,\n                expected_revision=fence.revision,\n                new_state=ErasureFenceState.BLOCKED,\n                expected_owner_version=frozen.owner_version,\n                purge_revision=frozen.purge_revision,\n                hold_revision=hold_revision,\n                now=await self._database_now(),\n            )\n        except ValueError:\n            # S5-C-1 例外条款：fence 写失败 → 具名 reconcile（checkpoint 已落账\n            # 输出态 reason），零自动重试。\n            return'],
-        ['        try:\n            await self._repo.transition_fence_state_settlement(\n                tenant_id=tenant_id,\n                conversation_id=conversation_id,\n                owner_key=fence.owner_key,\n                expected_state=ErasureFenceState.ERASING,\n                expected_revision=fence.revision,\n                new_state=ErasureFenceState.BLOCKED,\n                expected_owner_version=frozen.owner_version,\n                purge_revision=frozen.purge_revision,\n                hold_revision=hold_revision,\n                now=await self._database_now(),\n            )\n        except ValueError:\n            raise  # M：删例外映射（fence 写失败崩溃）'],
+        ['        try:\n            await self._repo_transition_settlement(\n                session=session,\n                tenant_id=tenant_id,\n                conversation_id=conversation_id,\n                fence=fence,\n                frozen=frozen,\n                hold_revision=hold_revision,\n                new_state=ErasureFenceState.BLOCKED,\n                ack_digest=None,\n            )\n        except ValueError:\n            # S5-C-1 例外条款：fence 写失败 → 具名 reconcile（checkpoint 已落账\n            # 输出态 reason），零自动重试。\n            return'],
+        ['        try:\n            await self._repo_transition_settlement(\n                session=session,\n                tenant_id=tenant_id,\n                conversation_id=conversation_id,\n                fence=fence,\n                frozen=frozen,\n                hold_revision=hold_revision,\n                new_state=ErasureFenceState.BLOCKED,\n                ack_digest=None,\n            )\n        except ValueError:\n            raise  # M：删例外映射（fence 写失败崩溃）'],
         [f"{_T}test_settlement_fence_write_failure_reconcile"],
     ),
     (

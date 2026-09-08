@@ -14,7 +14,26 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-R1-S6-SCH-D-MUTATION-HARNESS-MAINTENANCE: sch_d mutation harness stale anchor 维护（settlement.py 重构漂移重锚）
+
+状态：🟡 进行中
+类型：technical-debt / infrastructure（mutation harness 维护，零生产 / 零测试语义改动）
+领域：engineering / composition（settlement mutation 证据链）
+当前执行模式：单人顺序执行（**实际提交顺序**：6 个 stale anchor 重锚 + fence-write 单项/全量验证（commit `c0a6f7ca`）→ active-card 登记（commit `bbde812d`）→ OPEN/Draft PR → 等三路 CI → 停止待评审；开工顺序偏差见下方 G-1 [P3]）
+最近接手工具：Claude Code
+分支：chore/req041-047-r1-s6-sch-d-mutation-harness-anchor
+
+需求来源：
+- 触发：PR #614 验证证据修正轮发现 sch_d harness 在 M-SCH-D-fence-write 因 settlement.py 重构（#586 `68fafd81`：per-operation→per-ref、`_fence_to_blocked`/`_repo_transition_settlement` 抽取、`self._session`→`session` 参数、`self._database_now()`→`self._database_now(session)`）导致 stale anchor 崩溃；用户裁决扩范围重锚全部 6 个 stale anchor
+- 技术债：不关闭/不重开任何 TD（TD-104/TD-032/TD-105/TD-106 保持现状）
+- 架构约束：零生产代码 / 零测试语义 / 零 migration/schema/enum/CHECK/registry/CI 改动
+
+当前进展：6 个 stale anchor（fence-write / ack-lost / lookup-none-delete / replay-window / unresolvable / reconcile-exception）全部重锚到当前 settlement.py；mutation 语义、测试 nodeid、其余 6 个未漂移 mutation 定义不变
+下一步：OPEN/Draft PR → 等三路 CI → 停止待评审
+验证状态：fence-write 单项 mutated=red / restored=green KILLED；全量 sch_d 串行 12/12 KILLED（**mutation-level KILLED**：每项 `mutated=red + restored=green`，零 NOT-RED/NOT-GREEN/stale/nodeid 错误）；恢复后 settlement.py 对 HEAD byte-identical；git diff --check clean；working tree 仅 scripts/sch_d_mutation_kill.py + current-work.md
+证据粒度说明（如实）：harness 对每项 mutation 用 `all(...)` 短路聚合其映射 nodeid——输出是 mutation 级 KILLED/FAILED 合取判定，**不是 per-nodeid 独立执行/报告**；多 nodeid mutation（fence-write，2 个 nodeid）的 KILLED 为合取结论，不能表述为「每个映射测试均独立执行」。此为既有 harness evidence limitation，留作独立后续维护，本任务不改 harness。
+G-1 [P3]（真实保留）：开工顺序偏差——实际为**先修改 harness 再登记 active card**（`c0a6f7ca` harness 重锚先于 `bbde812d` active-card 登记），违反 `workbench.md`「实现前登记到工作台」。如实登记为 G-1 / P3 governance finding，不伪造为开工顺序正确、不删除本卡、不重写 Git 历史（不 amend/rebase/force-push）。根因：本轮先做了只读静态比对与 fence-write 单项验证以确认 6 个 stale anchor 的真实范围，再补登记，顺序颠倒。
+交接备注：允许文件仅 scripts/sch_d_mutation_kill.py + 本卡登记；禁止改 settlement.py / 任何测试 / migration / CI / 治理事实源；不新增/删除/跳过/重命名 mutation，不改语义/nodeid；数据库仅 metaedu_test，未触碰 metaedu；任一 mutation 仍失败即停止不扩大修复；PR #614 保持 OPEN/Draft 不动（不改其分支/描述）；本任务只收口 sch_d 12/12（mutation-level），不宣称 11 个 harness 全部完成；不 Ready / 不评分 / 不合并 / 不 closeout
 
 ## 下一批候选任务
 
