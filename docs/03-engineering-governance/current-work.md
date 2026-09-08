@@ -14,26 +14,7 @@
 
 ## 当前进行中
 
-### TASK-R1-S6-SCH-D-MUTATION-HARNESS-MAINTENANCE: sch_d mutation harness stale anchor 维护（settlement.py 重构漂移重锚）
-
-状态：🟡 进行中
-类型：technical-debt / infrastructure（mutation harness 维护，零生产 / 零测试语义改动）
-领域：engineering / composition（settlement mutation 证据链）
-当前执行模式：单人顺序执行（**实际提交顺序**：6 个 stale anchor 重锚 + fence-write 单项/全量验证（commit `c0a6f7ca`）→ active-card 登记（commit `bbde812d`）→ OPEN/Draft PR → 等三路 CI → 停止待评审；开工顺序偏差见下方 G-1 [P3]）
-最近接手工具：Claude Code
-分支：chore/req041-047-r1-s6-sch-d-mutation-harness-anchor
-
-需求来源：
-- 触发：PR #614 验证证据修正轮发现 sch_d harness 在 M-SCH-D-fence-write 因 settlement.py 重构（#586 `68fafd81`：per-operation→per-ref、`_fence_to_blocked`/`_repo_transition_settlement` 抽取、`self._session`→`session` 参数、`self._database_now()`→`self._database_now(session)`）导致 stale anchor 崩溃；用户裁决扩范围重锚全部 6 个 stale anchor
-- 技术债：不关闭/不重开任何 TD（TD-104/TD-032/TD-105/TD-106 保持现状）
-- 架构约束：零生产代码 / 零测试语义 / 零 migration/schema/enum/CHECK/registry/CI 改动
-
-当前进展：6 个 stale anchor（fence-write / ack-lost / lookup-none-delete / replay-window / unresolvable / reconcile-exception）全部重锚到当前 settlement.py；mutation 语义、测试 nodeid、其余 6 个未漂移 mutation 定义不变
-下一步：OPEN/Draft PR → 等三路 CI → 停止待评审
-验证状态：fence-write 单项 mutated=red / restored=green KILLED；全量 sch_d 串行 12/12 KILLED（**mutation-level KILLED**：每项 `mutated=red + restored=green`，零 NOT-RED/NOT-GREEN/stale/nodeid 错误）；恢复后 settlement.py 对 HEAD byte-identical；git diff --check clean；working tree 仅 scripts/sch_d_mutation_kill.py + current-work.md
-证据粒度说明（如实）：harness 对每项 mutation 用 `all(...)` 短路聚合其映射 nodeid——输出是 mutation 级 KILLED/FAILED 合取判定，**不是 per-nodeid 独立执行/报告**；多 nodeid mutation（fence-write，2 个 nodeid）的 KILLED 为合取结论，不能表述为「每个映射测试均独立执行」。此为既有 harness evidence limitation，留作独立后续维护，本任务不改 harness。
-G-1 [P3]（真实保留）：开工顺序偏差——实际为**先修改 harness 再登记 active card**（`c0a6f7ca` harness 重锚先于 `bbde812d` active-card 登记），违反 `workbench.md`「实现前登记到工作台」。如实登记为 G-1 / P3 governance finding，不伪造为开工顺序正确、不删除本卡、不重写 Git 历史（不 amend/rebase/force-push）。根因：本轮先做了只读静态比对与 fence-write 单项验证以确认 6 个 stale anchor 的真实范围，再补登记，顺序颠倒。
-交接备注：允许文件仅 scripts/sch_d_mutation_kill.py + 本卡登记；禁止改 settlement.py / 任何测试 / migration / CI / 治理事实源；不新增/删除/跳过/重命名 mutation，不改语义/nodeid；数据库仅 metaedu_test，未触碰 metaedu；任一 mutation 仍失败即停止不扩大修复；PR #614 保持 OPEN/Draft 不动（不改其分支/描述）；本任务只收口 sch_d 12/12（mutation-level），不宣称 11 个 harness 全部完成；不 Ready / 不评分 / 不合并 / 不 closeout
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -51,6 +32,7 @@ G-1 [P3]（真实保留）：开工顺序偏差——实际为**先修改 harnes
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-09-08 | TASK-R1-S6-SCH-D-MUTATION-HARNESS-MAINTENANCE：sch_d mutation harness stale anchor 重锚维护（settlement.py #586 重构漂移）+ 独立 pure-docs closeout | 🟢 完成（sch_d harness 维护子任务；REQ-041/047 完成态与 C1 总验收不受此影响、仍按各自边界推进） | PR #615 squash mergeCommit `6a804a1d`；评分 94 Original；sch_d 6 stale anchor 重锚当前 settlement.py + sch_d 12/12 mutation-level KILLED；合并后 main 11 harness 串行全绿；零生产/测试改动；G-1 顺序偏差 + all(...) limitation 两 P3 真实保留未消除 | [PR #615](https://github.com/MarkDanile/MetaEduBase/pull/615)（mergeCommit `6a804a1d`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) / [fact-audit §17.13](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | 2026-09-07 | R1-S6 PR-E release drill 五阶段 fail-closed canary contract（pure test harness）+ 独立 closeout 治理收口（TASK-R1-S6-I3-D-PR-E-CLOSEOUT 子卡） | 🟢 完成（PR-E 子阶段 + CLOSEOUT 子卡；TASK-R1-S6-I3-D 整体仍 🟡 进行中——C1/S5 wiring/capability flip/六 erase/REQ-047 未启动） | PR #612 squash mergeCommit `25aefc74`；score 95 Original；PR-E 15/15 + composition 1014/6；P3×2 闭环 follow-up=无；PR-E=production-neutral contract-tested test harness 非生产 release enable；真实 pg_dump/多实例 canary 保持生产门禁未执行 | [PR #612](https://github.com/MarkDanile/MetaEduBase/pull/612)（mergeCommit `25aefc74`）/ [work-log](work-log.md) / [score 95](04-retrospectives/review-score-log.md) / [fact-audit §17.12](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | 2026-09-06 | R1-S6 F-matrix M-F8 单独判别（test-contract / shared-observation gap 闭合）+ 独立 closeout 治理收口（TASK-R1-S6-FMATRIX-MF8-CLOSEOUT 子卡） | 🟢 完成（F-matrix M-F8 单独判别 + CLOSEOUT 子卡；TASK-R1-S6-I3-D 整体仍 🟡 进行中——PR-E/C1/S5/capability flip/六 erase/REQ-047 未启动） | PR #610 squash mergeCommit `b8daa934`；score 95；F-matrix 12/12 + F10 8/8 = 20/20 KILLED（PR #608 19/20 口径保持）；跨变独立性双证明；G-1 [P3] 真实保留 | [PR #610](https://github.com/MarkDanile/MetaEduBase/pull/610)（mergeCommit `b8daa934`）/ [work-log](work-log.md) / [score 95](04-retrospectives/review-score-log.md) / [fact-audit §17.11](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | 2026-09-04 | R1-S6 F-matrix + F10 M6 test contract 增强（独立后续 PR；Phase 0 审计修正 3 项 M-F3/M-F5 错映射 + F10 M6 不可达路径解除；5 文件 pure test contract + mutation harness 修正） | 🟢 完成（F-matrix + F10 M6 子阶段；TASK-R1-S6-I3-D 整体仍 🟡 进行中——F-matrix M-F8 NOT-RED test-contract/shared-observation gap / PR-E/C1/S5/capability flip/六 erase/REQ-047 未启动） | PR #608 squash mergeCommit `e07c601b`；评分 94 Original；**F-matrix 11/12 KILLED + F10 8/8 KILLED = 19/20**（M-F8 NOT-RED 真实 harness issue 不冒充 KILLED）；zero-touch；TD-104/TD-032 保持登记 | [PR #608](https://github.com/MarkDanile/MetaEduBase/pull/608)（mergeCommit `e07c601b`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) / [fact-audit §17.10](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
