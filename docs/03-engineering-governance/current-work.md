@@ -14,7 +14,45 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-REQ-042-WS-S1-DURABLE-READ-SHELL: Workspace durable read/recovery 三栏 shell（只读，零写路径）
+
+状态：🟡 进行中
+类型：新需求开发（REQ-042 首个实施 Slice WS-S1）
+领域：前端 Workspace（packages/web）
+当前执行模式：plan-do（Phase 0 只读审计已批准 WS-S1；本任务卡即实施边界，不另建 spec/plan）
+最近接手工具：Claude Code
+分支：feature/req042-ws-s1-durable-read-shell
+
+需求来源：
+- Spec: [REQ-042](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md)（Status ⚫ Candidate，本 Slice 不翻 Done）
+- Plan: 无独立 plan 文档——以 Phase 0 审计报告 + 本任务卡为实施边界（用户明确禁止本轮新建/修改 spec、plan）
+- 技术债：无
+- 架构约束：数据只读自已落地 real PG 的 [REQ-041 Conversation/Message API] 与 [REQ-047 Run/Event query]；不开放新 submit-turn
+
+允许范围：
+- 前端 Workspace 路由、页面、组件、store、service、类型与前端测试
+- 现有 Playwright 导航/布局测试与必要测试 fixture
+- 本文件（current-work.md）本任务 active card
+- 具体：接通已有 agent_workspace feature flag + 路由守卫；三栏 shell（左 Conversation 列表/搜索/创建/切换/重命名/置顶/归档/恢复/删除；中 Message history after_seq/before_seq keyset 分页 + 加载/空/错态；右栏无 Run 诚实空态、有 Run 只读 GET /agent-runs/{id} 终态/状态/序号窗口）；前端 service 层按现有后端 DTO/错误语义消费 Conversation/Message-history/Run-query；Workspace store（会话选择、loading/empty/error/404/权限、切换刷新、keyset 游标）；草稿 store（tenant/owner/conversation 隔离、刷新恢复、不存 token/凭据）；复用现有导航/RBAC/主题/EmptyState/Loading/Toast/消息渲染组件；desktop 1280×800 + Pixel 5 + 中间断点布局；真实 DTO fixture 前端测试（mock 仅用于界面状态，不作生产能力证据）。
+
+禁止范围：
+- 新增/开放 Workspace submit-turn；调用/接入 /ai/chat/evidence；Composer 真实发送
+- SSE / EventSource / after_seq 事件订阅 / 断线重连 / live token；Run cancel/stop
+- AgentTurnLoopRuntime；Approval/HumanInput；Tool/Grant/Snapshot；run-scoped Evidence；Artifact；thinking/plan summary emitter；SkillRunner 时间线 producer
+- erase_available / production wiring / capability flip；REQ-043/062/063/TD-085
+- 修改生产后端、migration、schema、registry、CI、门禁
+- 修改 requirements、spec、plan、work-log、fact-audit、technical-debt、Score Log、Metrics
+- 用静态卡片/假事件/占位数据/disabled UI 冒充 AC-3/4/5/7/8；composer 仅可为明确非提交态，不得有假成功发送路径
+
+验证计划：
+- Workspace route/feature flag/RBAC；Conversation list/search/create/switch/rename/pin/archive/restore/delete；Message history 首屏/分页/空态/错误态/序号连续性；Run 终态读取 + 无 Run 空态；刷新后草稿恢复；tenant/owner 切换隔离；404/403/409/410 错误映射；desktop 1280×800 + mobile Pixel 5 + 中间断点无重叠/横向溢出/明显跳动
+- 门禁：前端 lint + typecheck + unit/component tests + Playwright desktop/mobile + `git diff --check` + `check-engineering-docs --full` + pre-commit/pre-push hooks
+- 不启动数据库、不跑 mutation harness；Playwright mock 结果不写成 real PG 验证
+
+当前进展：已建分支并登记 active card；实现未开始。
+下一步：实现三栏 shell + service/store + 草稿恢复，按验证计划本地验证。
+验证状态：未运行（实现未开始）。
+交接备注：本 Slice 完成后仅可宣称 AC-1（会话生命周期+草稿恢复）、AC-2 读半边（刷新/重进 durable read）、AC-6 基础 desktop/mobile 布局；AC-3 仅呈现已有真实 Message/Evidence 引用；AC-4/AC-8 保持未完成（待 REQ-043 + REQ-047 Extended）；AC-5/AC-7 保持受限。REQ-042 不翻整体 Done。交付到 OPEN/Draft PR + 三路 CI SUCCESS 后停止，不 Ready/评分/合并/closeout/启动下一 Slice。
 
 ## 下一批候选任务
 
@@ -22,7 +60,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-042: Codex 式 Agent Workspace 三栏体验（Durable Core 已完成，事件协议稳定可依托） | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 按 task-modes 走塑形/spec-plan：先读 REQ-042 requirement + 联合契约事件协议，产出可实施 spec/plan 再登记独立活跃卡开工；不直接跳到 Pi Worker / 不在本卡内开工 | [REQ-042](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) / [backlog](../01-product-planning/04-backlog.md) |
+| P0 | REQ-042: Codex 式 Agent Workspace 三栏体验（Durable Core 已完成，事件协议稳定可依托） | 🟡 WS-S1 进行中（durable read/recovery shell 已开活跃卡，见上方「当前进行中」；REQ-042 整体仍 ⚫ Candidate） | WS-S1 实施 + 本地验证 + OPEN/Draft PR；剩余 WS-S2/WS-S3 与 AC-4/AC-8 依赖待本 Slice 交付后另行裁决；不直接跳到 Pi Worker / 不开放 submit-turn | [REQ-042](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) / [backlog](../01-product-planning/04-backlog.md) |
 | P0 | REQ-062: 动态数据采集、填报与报表发布平台 contract shaping | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 在 Run/Artifact 契约上塑形 Campaign/FormSchemaVersion/Submission/ReportSnapshot；AI 草案审核后才发布；仅契约塑形不实现自由表单引擎 | [REQ-062](../01-product-planning/05-requirements/REQ-062-dynamic-data-collection-and-reporting.md) / [backlog](../01-product-planning/04-backlog.md) |
 | P0 | REQ-063: 受治理的外部数据采集与研究证据链 source spike | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 先做授权来源/许可/网络/快照策略 spike，不提前实现自由爬虫；Connector 等待 Tool Gateway | [REQ-063](../01-product-planning/05-requirements/REQ-063-governed-external-data-acquisition.md) / [backlog](../01-product-planning/04-backlog.md) |
 
