@@ -2815,6 +2815,8 @@ participant（ensure/transition，owner lock 内）· **settlement fence `erasin
 - [ ] 更新 Backlog、Milestone、Iteration、current-work、work-log、review scorecard 和真实验证数据。
 - [ ] 下一步切到 REQ-042 Workspace；不在 C1 顺手实现 UI、TD-085、Runtime 或 extended entities。
 
+> **merged-boundary（2026-09-08，C1 实现 PR #614，squash merge `62eef1a3`，评分 94 Original）**：R1-S6 C1 Durable Core 联合契约/conformance 总验收 Phase 1 并入 main（C1_IMPL_HEAD `35be3e7d`，merge-sync/SCORE_BASE `1d71e168`，source head/score commit `56bd83dd`，`scripts/check-review-score-submit --base 1d71e168 --pr 614` PASS，Metrics byte-identical；评审对象 main `0d202783..1d71e168` 净 diff 7 文件 616+/12-）。落地 5 类 B 类缺口判别测试（真实 PG，零生产代码）：re-auth 重认证恢复（C-AC4）/ CoT sentinel（C-AC7/R1-AC10）/ permission-revoke unused_grants guard（R-AC6）/ 30-90-365 时间边界（R1-AC1）/ 日志指标 sentinel（R1-AC10）+ `ARCHITECTURE.md` §4/§5.5/§6 落地事实修正。验证：7/7 新测试 + 三上下文 1214/6 + 全量 2966 passed/0 failed/10 deselected + 11/11 mutation harness（sch_d 12/12 mutation-level）同步后全 fresh 通过。**C1 完成 = Durable Core contract/conformance 完成**：REQ-041 翻 🟢 Done、REQ-047 标 `Durable Core Done / Extended Contracts Shaping`（整体仍 🟣 Shaping）、R1-S6 / TASK-R1-S6-I3-D 翻 Durable Core 完成。**C1 不等于 production erase / release enable，不等于完整 P3 阶段完成**；HumanInput/Approval、Tool/Grant/Snapshot、Artifact/Evidence、hold 管理 API、S5/D1b/D2 production wiring、capability flip、六 erase 入口生产可达、真实 pg_dump/restore/traffic-switch/多实例 canary 全部保持未启动；external/runtime 保持 `erase_available=False`；TD-104/TD-032/TD-105/TD-106 状态不变；P3 Milestone 保持 Doing，REQ-042 可实施 spec/plan、REQ-063 授权来源 spike、完整 P3 仍未完成。详见 [fact-audit §17.14](../../03-engineering-governance/04-retrospectives/r1-s6-i3-d-fact-audit.md)。
+
 ## 5. PR 与模型分工矩阵
 
 | PR | 复杂度 | 推荐主模型 | 第二评审 | 人工门禁 |

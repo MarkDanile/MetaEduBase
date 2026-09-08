@@ -113,7 +113,7 @@ Agent Apps
 ## Current Iteration
 
 - [2026-W30 P3 企业 Agent 平台控制面塑形](../03-iterations/2026-W30-p3-enterprise-agent-platform.md)
-- REQ-059 Architecture Gate 与 REQ-060 已完成；REQ-041/047 的 W1/E0/E1/B1/A1/D1 已合并；R1-S1..S3（Fence/Hold/Purge schema 基座、Workspace owner、Execution owner 含 dispatch/竞态收口）已全部合并。近期固定顺序为 R1-S4 -> R1-S5 -> R1-S6 -> C1 Durable Core 总验收 -> REQ-042 Workspace -> TD-085 -> REQ-043 Runtime/Tool Gateway；当前正在 R1-S4（S4-A 契约冻结），REQ-042 只允许并行文档塑形，不直接跳到 Pi Worker。
+- REQ-059 Architecture Gate 与 REQ-060 已完成；REQ-041/047 的 W1/E0/E1/B1/A1/D1 与 R1-S1..S6 已全部合并，C1 Durable Core 总验收由 [PR #614](https://github.com/MarkDanile/MetaEduBase/pull/614) 合并（mergeCommit `62eef1a3`），Durable Core 完成。原近期固定顺序 R1-S4 -> R1-S5 -> R1-S6 -> C1 已全部走完；后续顺序为 REQ-042 Workspace -> TD-085 -> REQ-043 Runtime/Tool Gateway；REQ-042 只允许并行文档塑形，不直接跳到 Pi Worker。
 
 ### 阶段目标：2026-08 Durable Core Close
 
@@ -126,6 +126,12 @@ Agent Apps
 - REQ-047 标记 Durable Core Done；extended entities（Approval/Artifact/Evidence）继续后续阶段，不在本阶段收口。
 - REQ-042 完成可实施 spec/plan；**不承诺** 8 月完成全部 Workspace UI 代码。
 - REQ-063 完成授权来源 spike（Connector 仍等 Tool Gateway）。
+
+实际完成事实（2026-09-08 追加，不冒充整个阶段目标完成）：
+
+- 可收底口径「R1-S4~S6 + C1 Durable Core」已达成：R1-S4/S5/S6 与 C1 全部完成并合并（C1 经 [PR #614](https://github.com/MarkDanile/MetaEduBase/pull/614)，mergeCommit `62eef1a3`，评分 94 Original）。
+- REQ-041 已标记 🟢 Done；REQ-047 已标记 Durable Core Done（整体仍 🟣 Shaping，Extended Contracts 继续）。
+- **未达成项**：REQ-042 可实施 spec/plan、REQ-063 授权来源 spike 均未完成；完整 P3 Completion Criteria 仍开放，本 Milestone 保持 🟡 Doing。C1 不等于 production erase / release enable。
 - Runtime、Pi、治理能力和真实应用验收保留为 P3 后续波次，不在本阶段目标内。
 
 ## Completion Criteria
@@ -155,8 +161,8 @@ Agent Apps
 
 | ID | 状态 | 说明 | 事实源 |
 |----|------|------|--------|
-| REQ-041 | 🟡 Doing（R1-S1..S3 完成，当前 R1-S4） | W1/E0/E1/B1/A1/D1 已合并；R1-S1..S3 已合并，当前 R1-S4（S4-A 契约冻结），后续 S5/S6 与 C1，新 Workspace submit-turn 保持关闭 | [Requirement](../05-requirements/REQ-041-ai-workspace-conversation-persistence.md) / [R1 Spec](../../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md) / [R1 Plan](../../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
-| REQ-047 | 🟣 Shaping（Durable Core D1 Done / R1-S1..S3 完成，当前 R1-S4） | D1 已由 PR #489 合并；R1-S1..S3 已合并，当前 R1-S4，后续 S5/S6 与 C1，extended contracts 继续独立塑形 | [Requirement](../05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [R1 Spec](../../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md) |
+| REQ-041 | 🟢 Done | W1/E0/E1/B1/A1/D1 与 R1-S1..S6、C1（PR #614，mergeCommit `62eef1a3`）已合并，Durable Core 完成，新 Workspace submit-turn 保持关闭 | [Requirement](../05-requirements/REQ-041-ai-workspace-conversation-persistence.md) / [R1 Spec](../../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md) / [R1 Plan](../../02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md) |
+| REQ-047 | 🟣 Shaping（Durable Core Done / Extended Shaping） | D1 已由 PR #489 合并；R1-S1..S6 与 C1（PR #614，mergeCommit `62eef1a3`）已合并，Durable Core 完成，extended contracts 继续独立塑形 | [Requirement](../05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [R1 Spec](../../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md) |
 | REQ-060 | 🟢 Done（Slice 1-4 全部合并 PR #497/#499/#501/#503；326/326 vitest + 55/55 Playwright；三路 CI 全绿；评分 95） | 控制台信息架构和权限化导航，可与 Durable State 并行 | [Requirement](../05-requirements/REQ-060-enterprise-console-information-architecture.md) |
 | REQ-042 | ⚫ Candidate | Codex 式 Agent Workspace | [Requirement](../05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
 | TD-085 | ⚫ 待办 | 收口 AI Chat、Skill 与 Agent App 上下文边界倒置 | [Technical Debt](../../03-engineering-governance/technical-debt.md#td-085-收口-ai-chatskill-与-agent-app-的上下文边界倒置) |

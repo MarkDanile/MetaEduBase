@@ -14,25 +14,7 @@
 
 ## 当前进行中
 
-### TASK-R1-S6-C1-CLOSEOUT: R1-S6 C1 Durable Core 合并后独立 pure-docs 治理事实收口
-
-状态：🟡 进行中
-类型：governance closeout（pure-docs；零代码/零测试/零 migration/schema/registry/CI/门禁改动）
-领域：engineering / governance / product-planning
-当前执行模式：单人顺序执行（closeout active-card commit → 治理事实同步 → git diff --check + docs gate --full → pure-docs PR → 等三路 CI → squash merge 不评分 → 移除本卡恢复「当前无活跃任务」）
-最近接手工具：Claude Code
-分支：docs/req041-047-r1-s6-c1-closeout
-
-需求来源：
-- 交付 PR：#614（squash mergeCommit `62eef1a3`，评分 94 Original；C1_IMPL_HEAD `35be3e7d`，merge-sync/SCORE_BASE `1d71e168`，source head `56bd83dd`）
-- Spec: `docs/02-delivery-plans/01-specs/2026-07-24-req-041-047-conversation-run-contract.md` §14 + `docs/02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md` §10/§11/§12
-- Plan: `docs/02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md` Slice C1 + `docs/02-delivery-plans/02-plans/2026-07-27-req-041-047-r1-retention-purge-recovery-plan.md` §S6（仅 APPEND C1 merged-boundary，不重写冻结内容）
-- 技术债：TD-104/TD-032/TD-105/TD-106 状态不变（不关闭/不重开/不改动 technical-debt.md）
-
-当前进展：PR #614 已 squash 合并入 main（mergeCommit `62eef1a3`），C1 Durable Core B 类 test 补强 + ARCHITECTURE.md 落地事实修正已交付；进入治理事实收口
-下一步：按状态口径同步 REQ-041→Done、REQ-047→Shaping(Durable Core Done/Extended Shaping)、R1-S6/C1/TASK-R1-S6-I3-D→Durable Core 完成；fact-audit §17.14 + work-log #614 索引；Milestone/Backlog/Iteration stale 状态修正；登记下一批候选（REQ-042/REQ-062/REQ-063，仅登记不开工）
-验证状态：git diff --check + scripts/check-engineering-docs --full；净 diff 仅治理文件；不触 metaedu/metaedu_test 数据库
-交接备注：C1 = Durable Core 联合契约/conformance 完成，**不等于** production erase/release enable、不等于完整 P3 完成；保留未启动边界（HumanInput/Approval、Tool/Grant/Snapshot、Artifact/Evidence、hold 管理 API、S5/D1b/D2 production wiring、capability flip、六 erase 入口生产可达、真实 pg_dump/restore/traffic-switch/多实例 canary）；external/runtime 继续 `erase_available=False`，fake 仅 contract-tested；P3 Milestone 仍 Doing，「2026-08 Durable Core Close」保留为历史目标，REQ-042 可实施 spec/plan、REQ-063 source spike、完整 P3 仍未完成；严格禁止改 review-score-log.md/Metrics/technical-debt.md/ARCHITECTURE.md、不重新评分、不启动 REQ-042 实现/TD-085/REQ-043/production wiring/capability enable
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -40,6 +22,11 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
+| P0 | REQ-042: Codex 式 Agent Workspace 三栏体验（Durable Core 已完成，事件协议稳定可依托） | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 按 task-modes 走塑形/spec-plan：先读 REQ-042 requirement + 联合契约事件协议，产出可实施 spec/plan 再登记独立活跃卡开工；不直接跳到 Pi Worker / 不在本卡内开工 | [REQ-042](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) / [backlog](../01-product-planning/04-backlog.md) |
+| P0 | REQ-062: 动态数据采集、填报与报表发布平台 contract shaping | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 在 Run/Artifact 契约上塑形 Campaign/FormSchemaVersion/Submission/ReportSnapshot；AI 草案审核后才发布；仅契约塑形不实现自由表单引擎 | [REQ-062](../01-product-planning/05-requirements/REQ-062-dynamic-data-collection-and-reporting.md) / [backlog](../01-product-planning/04-backlog.md) |
+| P0 | REQ-063: 受治理的外部数据采集与研究证据链 source spike | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 先做授权来源/许可/网络/快照策略 spike，不提前实现自由爬虫；Connector 等待 Tool Gateway | [REQ-063](../01-product-planning/05-requirements/REQ-063-governed-external-data-acquisition.md) / [backlog](../01-product-planning/04-backlog.md) |
+
+> 后续顺序保持：TD-085 Boundary Closure、REQ-043 Runtime/Tool Gateway 按 backlog 既定顺序承接，不在本批候选开工。
 
 ## 最近完成
 
@@ -49,6 +36,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-09-08 | TASK-R1-S6-C1：R1-S6 C1 Durable Core 联合契约/conformance 总验收 Phase 1（5 类 B 类缺口判别测试 + ARCHITECTURE.md 落地事实修正）+ 独立 pure-docs closeout（TASK-R1-S6-C1-CLOSEOUT 子卡） | 🟢 完成（C1 子阶段 + CLOSEOUT 子卡；R1-S6/TASK-R1-S6-I3-D 翻 Durable Core 完成；REQ-041 翻 Done、REQ-047 标 Durable Core Done 保持 Shaping；S5 wiring/capability flip/六 erase/Extended REQ-047/完整 P3 保持未启动） | PR #614 squash mergeCommit `62eef1a3`；评分 94 Original；5 类 B 类测试+ARCHITECTURE 修正；11/11 mutation harness（sch_d 12/12）+全量 2966/0；C1=Durable Core 完成非生产 enable；无 G-1；保留 P3 既有 | [PR #614](https://github.com/MarkDanile/MetaEduBase/pull/614)（mergeCommit `62eef1a3`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) / [fact-audit §17.14](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | 2026-09-08 | TASK-R1-S6-SCH-D-MUTATION-HARNESS-MAINTENANCE：sch_d mutation harness stale anchor 重锚维护（settlement.py #586 重构漂移）+ 独立 pure-docs closeout | 🟢 完成（sch_d harness 维护子任务；REQ-041/047 完成态与 C1 总验收不受此影响、仍按各自边界推进） | PR #615 squash mergeCommit `6a804a1d`；评分 94 Original；sch_d 6 stale anchor 重锚当前 settlement.py + sch_d 12/12 mutation-level KILLED；合并后 main 11 harness 串行全绿；零生产/测试改动；G-1 顺序偏差 + all(...) limitation 两 P3 真实保留未消除 | [PR #615](https://github.com/MarkDanile/MetaEduBase/pull/615)（mergeCommit `6a804a1d`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) / [fact-audit §17.13](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | 2026-09-07 | R1-S6 PR-E release drill 五阶段 fail-closed canary contract（pure test harness）+ 独立 closeout 治理收口（TASK-R1-S6-I3-D-PR-E-CLOSEOUT 子卡） | 🟢 完成（PR-E 子阶段 + CLOSEOUT 子卡；TASK-R1-S6-I3-D 整体仍 🟡 进行中——C1/S5 wiring/capability flip/六 erase/REQ-047 未启动） | PR #612 squash mergeCommit `25aefc74`；score 95 Original；PR-E 15/15 + composition 1014/6；P3×2 闭环 follow-up=无；PR-E=production-neutral contract-tested test harness 非生产 release enable；真实 pg_dump/多实例 canary 保持生产门禁未执行 | [PR #612](https://github.com/MarkDanile/MetaEduBase/pull/612)（mergeCommit `25aefc74`）/ [work-log](work-log.md) / [score 95](04-retrospectives/review-score-log.md) / [fact-audit §17.12](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | 2026-09-06 | R1-S6 F-matrix M-F8 单独判别（test-contract / shared-observation gap 闭合）+ 独立 closeout 治理收口（TASK-R1-S6-FMATRIX-MF8-CLOSEOUT 子卡） | 🟢 完成（F-matrix M-F8 单独判别 + CLOSEOUT 子卡；TASK-R1-S6-I3-D 整体仍 🟡 进行中——PR-E/C1/S5/capability flip/六 erase/REQ-047 未启动） | PR #610 squash mergeCommit `b8daa934`；score 95；F-matrix 12/12 + F10 8/8 = 20/20 KILLED（PR #608 19/20 口径保持）；跨变独立性双证明；G-1 [P3] 真实保留 | [PR #610](https://github.com/MarkDanile/MetaEduBase/pull/610)（mergeCommit `b8daa934`）/ [work-log](work-log.md) / [score 95](04-retrospectives/review-score-log.md) / [fact-audit §17.11](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
