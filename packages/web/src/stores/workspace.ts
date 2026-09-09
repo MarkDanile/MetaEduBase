@@ -69,8 +69,14 @@ export const useWorkspaceStore = defineStore("workspace", () => {
   const selectedRunId = ref<string | null>(null);
   const run = ref<AgentRunDTO | null>(null);
   const runLoading = ref(false);
-  const runUnavailable = ref(false); // 404 not_found / 409 tombstone → 诚实空态
+  const runUnavailable = ref(false); // 404 not_found / 403 / 410 event_history_expired / 409 tombstone → 诚实空态
   const runError = ref<string | null>(null);
+
+  // --- 写操作 in-flight 标记（防双击/快速重复提交；不掩盖 409 revision_conflict）---
+  const archiveInFlight = ref(false);
+  const restoreInFlight = ref(false);
+  const renameInFlight = ref(false);
+  const deleteInFlight = ref(false);
 
   // --- 会话列表加载 ---
 
@@ -127,6 +133,9 @@ export const useWorkspaceStore = defineStore("workspace", () => {
     messages.value = [];
     messagesError.value = null;
     messagesHasMoreOlder.value = false;
+    // 重置旧会话的 in-flight 标记：避免 load-older guard 误拒新会话的合法加载，
+    // 同时避免派生 run 的 selectedRunId 跨会话串留。
+    messagesLoadingOlder.value = false;
     selectedConversation.value = null;
     selectedNotFound.value = false;
     await Promise.all([loadSelectedConversation(id), loadMessages(id)]);
@@ -135,8 +144,12 @@ export const useWorkspaceStore = defineStore("workspace", () => {
 
   async function loadSelectedConversation(id: string): Promise<void> {
     try {
-      selectedConversation.value = await getConversation(id);
+      const result = await getConversation(id);
+      // GUARD：切换到其它会话后丢弃迟到的 A 响应，避免覆盖 B 的 selectedConversation。
+      if (selectedId.value !== id) return;
+      selectedConversation.value = result;
     } catch {
+      if (selectedId.value !== id) return;
       // 不存在 / 跨 owner / 已删除：一律诚实 not-found（不区分，防存在性泄露）。
       selectedConversation.value = null;
       selectedNotFound.value = true;
@@ -148,14 +161,19 @@ export const useWorkspaceStore = defineStore("workspace", () => {
     messagesError.value = null;
     try {
       const res = await listMessages(conversationId, { limit: MESSAGE_PAGE_SIZE });
+      // GUARD：切换后丢弃迟到的旧会话消息（防 A 响应覆盖 B 的 messages 列表）。
+      if (selectedId.value !== conversationId) return;
       messages.value = res.items; // 响应恒按 seq 升序
       messagesHasMoreOlder.value = res.has_more;
     } catch (e) {
+      if (selectedId.value !== conversationId) return;
       messagesError.value = parseApiError(e, "加载消息失败").message;
       messages.value = [];
       messagesHasMoreOlder.value = false;
     } finally {
-      messagesLoading.value = false;
+      if (selectedId.value === conversationId) {
+        messagesLoading.value = false;
+      }
     }
   }
 
@@ -170,14 +188,19 @@ export const useWorkspaceStore = defineStore("workspace", () => {
         before_seq: minSeq,
         limit: MESSAGE_PAGE_SIZE,
       });
+      // GUARD：切换后丢弃迟到的旧会话 load-older（防 A 响应污染 B 的 messages）。
+      if (selectedId.value !== id) return;
       const existing = new Set(messages.value.map((m) => m.seq));
       const older = res.items.filter((m) => !existing.has(m.seq));
       messages.value = [...older, ...messages.value];
       messagesHasMoreOlder.value = res.has_more;
     } catch (e) {
+      if (selectedId.value !== id) return;
       messagesError.value = parseApiError(e, "加载更早消息失败").message;
     } finally {
-      messagesLoadingOlder.value = false;
+      if (selectedId.value === id) {
+        messagesLoadingOlder.value = false;
+      }
     }
   }
 
@@ -208,23 +231,32 @@ export const useWorkspaceStore = defineStore("workspace", () => {
     runError.value = null;
     runLoading.value = true;
     try {
-      run.value = await getRun(runId);
+      const result = await getRun(runId);
+      // GUARD：切换到其它 run 后丢弃迟到的旧 run 响应。
+      if (selectedRunId.value !== runId) return;
+      run.value = result;
     } catch (e) {
+      if (selectedRunId.value !== runId) return;
       const info = parseApiError(e, "加载运行详情失败");
       run.value = null;
-      // 不存在 / 跨 owner / tombstone（actor 匿名化）：诚实空态，不当普通错误。
+      // 不存在 / 跨 owner / tombstone（actor 匿名化）/ 事件历史保留期过期：诚实空态。
+      // 410 event_history_expired 不显示为普通未知错误——保留期过期是确定的非错误状态。
       if (
         info.status === 404 ||
         info.status === 403 ||
+        info.status === 410 ||
         info.code === "not_found" ||
-        info.code === "run_conflict"
+        info.code === "run_conflict" ||
+        info.code === "event_history_expired"
       ) {
         runUnavailable.value = true;
       } else {
         runError.value = info.message;
       }
     } finally {
-      runLoading.value = false;
+      if (selectedRunId.value === runId) {
+        runLoading.value = false;
+      }
     }
   }
 
@@ -252,10 +284,17 @@ export const useWorkspaceStore = defineStore("workspace", () => {
   }
 
   async function renameSelected(newTitle: string): Promise<void> {
+    // in-flight guard：双击/快速提交防重复发请求；不掩盖后端 409 revision_conflict。
+    if (renameInFlight.value) return;
     const conv = selectedConversation.value;
     if (!conv) return;
-    const updated = await renameConversation(conv.id, newTitle, conv.revision);
-    applyConversationUpdate(updated);
+    renameInFlight.value = true;
+    try {
+      const updated = await renameConversation(conv.id, newTitle, conv.revision);
+      applyConversationUpdate(updated);
+    } finally {
+      renameInFlight.value = false;
+    }
   }
 
   async function togglePin(conv: ConversationDTO): Promise<void> {
@@ -268,27 +307,48 @@ export const useWorkspaceStore = defineStore("workspace", () => {
   }
 
   async function archiveSelected(): Promise<void> {
+    // in-flight guard：双击"归档"防并发请求导致 409 revision_conflict 错误 toast 误报。
+    if (archiveInFlight.value) return;
     const conv = selectedConversation.value;
     if (!conv) return;
-    const updated = await archiveConversation(conv.id, conv.revision);
-    applyConversationUpdate(updated);
-    await loadConversations(true);
+    archiveInFlight.value = true;
+    try {
+      const updated = await archiveConversation(conv.id, conv.revision);
+      applyConversationUpdate(updated);
+      await loadConversations(true);
+    } finally {
+      archiveInFlight.value = false;
+    }
   }
 
   async function restoreConversationById(conv: ConversationDTO): Promise<void> {
-    const updated = await restoreConversation(conv.id, conv.revision);
-    applyConversationUpdate(updated);
-    await loadConversations(true);
+    // in-flight guard：双击"恢复"防并发请求。
+    if (restoreInFlight.value) return;
+    restoreInFlight.value = true;
+    try {
+      const updated = await restoreConversation(conv.id, conv.revision);
+      applyConversationUpdate(updated);
+      await loadConversations(true);
+    } finally {
+      restoreInFlight.value = false;
+    }
   }
 
   async function deleteSelected(): Promise<void> {
+    // in-flight guard：双击"删除"防并发请求。
+    if (deleteInFlight.value) return;
     const conv = selectedConversation.value;
     if (!conv) return;
     const id = conv.id;
-    await deleteConversation(id, conv.revision);
-    await loadConversations(true);
-    if (selectedId.value === id) {
-      clearSelection();
+    deleteInFlight.value = true;
+    try {
+      await deleteConversation(id, conv.revision);
+      await loadConversations(true);
+      if (selectedId.value === id) {
+        clearSelection();
+      }
+    } finally {
+      deleteInFlight.value = false;
     }
   }
 
@@ -342,5 +402,10 @@ export const useWorkspaceStore = defineStore("workspace", () => {
     archiveSelected,
     restoreConversationById,
     deleteSelected,
+    // 写操作 in-flight 标记（view 绑定 :disabled 防双击/快速重复提交）
+    archiveInFlight,
+    restoreInFlight,
+    renameInFlight,
+    deleteInFlight,
   };
 });

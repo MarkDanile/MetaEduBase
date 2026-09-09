@@ -338,4 +338,129 @@ describe("workspace store (REQ-042 WS-S1)", () => {
     expect(store.selectedId).toBeNull();
     expect(store.selectedConversation).toBeNull();
   });
+
+  // --- 修复轮 P1/P2 复审新增 ---
+
+  it("selectRun 410 event_history_expired -> runUnavailable 诚实空态（不显示为普通错误）", async () => {
+    // 事件历史保留期过期是确定的非错误状态（数据已 purge），不应弹"加载失败"错误。
+    vi.mocked(getRun).mockRejectedValue(
+      apiError(410, "event_history_expired", "事件历史已过期"),
+    );
+    const store = useWorkspaceStore();
+    await store.selectRun("r-expired");
+    expect(store.run).toBeNull();
+    expect(store.runUnavailable).toBe(true);
+    expect(store.runError).toBeNull();
+    expect(store.runLoading).toBe(false);
+  });
+
+  it("selectRun 切到其它 run 后，旧 run 的迟到响应被丢弃（防跨 run 数据串读）", async () => {
+    // 模拟快速 selectRun(A) → selectRun(B)：A 的响应延迟到达，必须不覆盖 B 的 state。
+    let resolveA: (v: AgentRunDTO) => void;
+    const aPromise = new Promise<AgentRunDTO>((r) => {
+      resolveA = r;
+    });
+    vi.mocked(getRun).mockImplementation(async (id) => {
+      if (id === "r-A") return aPromise;
+      return makeRun({ id: "r-B", conversation_id: "c-2" });
+    });
+    const store = useWorkspaceStore();
+
+    // 触发 selectRun(r-A)（不 await，让其挂起）
+    const selectA = store.selectRun("r-A");
+    // 同步切换到 r-B；r-B 的 mock 立即 resolve。
+    const selectB = store.selectRun("r-B");
+    await flushPromises();
+
+    // 现在 A 的延迟 promise resolve——必须被 GUARD 丢弃。
+    resolveA!(makeRun({ id: "r-A" }));
+    await selectA;
+    await selectB;
+
+    expect(store.selectedRunId).toBe("r-B");
+    expect(store.run?.id).toBe("r-B");
+    expect(store.runLoading).toBe(false);
+  });
+
+  it("切换会话时重置 messagesLoadingOlder：旧会话 load-older in-flight 不阻塞新会话 load-older", async () => {
+    // 旧会话 A 触发 load-older 进入 in-flight（messagesLoadingOlder=true），
+    // 然后切换到 B（selectConversation 应重置该 flag），
+    // B 的 load-older 必须可立即执行（不被 guard 误拒）。
+    // listMessages 调用顺序：A 首屏 → A load-older(deferred) → B 首屏 → B load-older。
+    let resolveOlderA: (v: { items: MessageDTO[]; has_more: boolean }) => void;
+    const olderAPromise = new Promise<{ items: MessageDTO[]; has_more: boolean }>((r) => {
+      resolveOlderA = r;
+    });
+    vi.mocked(listMessages)
+      .mockResolvedValueOnce({
+        // [1] A 首屏
+        items: [makeMsg({ id: "m-A1", seq: 1 })],
+        has_more: true,
+      })
+      .mockReturnValueOnce(olderAPromise) // [2] A load-older（deferred）
+      .mockResolvedValueOnce({
+        // [3] B 首屏
+        items: [makeMsg({ id: "m-B1", seq: 1 })],
+        has_more: true,
+      })
+      .mockResolvedValueOnce({
+        // [4] B load-older
+        items: [],
+        has_more: false,
+      });
+    vi.mocked(getConversation).mockImplementation(async (id) => makeConv({ id }));
+    const store = useWorkspaceStore();
+    await store.selectConversation("c-A");
+
+    // 启动 A 的 load-older 但不 await（模拟延迟响应）。
+    const olderA = store.loadOlderMessages();
+    expect(store.messagesLoadingOlder).toBe(true);
+
+    // 切换到 B——应重置 messagesLoadingOlder=false。
+    await store.selectConversation("c-B");
+    expect(store.selectedId).toBe("c-B");
+    expect(store.messagesLoadingOlder).toBe(false);
+
+    // B 的 load-older 必须可立即执行（不被 guard 误拒）。
+    await store.loadOlderMessages();
+    expect(store.messagesLoadingOlder).toBe(false);
+    expect(store.messages.map((m) => m.id)).toEqual(["m-B1"]);
+
+    // 清理 A 的延迟响应——GUARD 应丢弃其结果，不污染 B 的 messages。
+    resolveOlderA!({ items: [], has_more: false });
+    await olderA;
+    // A 的迟到响应不影响 B 的 state（messages 仍是 B 的 m-B1）。
+    expect(store.selectedId).toBe("c-B");
+    expect(store.messages.map((m) => m.id)).toEqual(["m-B1"]);
+  });
+
+  it("archiveSelected 双击/快速重复提交：第二次调用被 in-flight guard 拒绝", async () => {
+    // store 层 guard：防 view 层即使漏掉 disabled 也能阻止并发请求。
+    vi.mocked(getConversation).mockResolvedValue(makeConv({ id: "c-1", revision: 2, state: "active" }));
+    vi.mocked(listMessages).mockResolvedValue({ items: [], has_more: false });
+    let resolveArchive: (v: ConversationDTO) => void;
+    const archivePromise = new Promise<ConversationDTO>((r) => {
+      resolveArchive = r;
+    });
+    vi.mocked(archiveConversation).mockReturnValueOnce(archivePromise);
+    vi.mocked(listConversations).mockResolvedValue({ items: [], next_cursor: null });
+    const store = useWorkspaceStore();
+
+    await store.selectConversation("c-1");
+
+    // 第一次 archiveSelected 进入 in-flight。
+    const first = store.archiveSelected();
+    expect(store.archiveInFlight).toBe(true);
+
+    // 第二次立即调用——必须被 guard 拒绝（archiveConversation 仍只调用 1 次）。
+    const second = store.archiveSelected();
+    expect(store.archiveInFlight).toBe(true);
+
+    // 第一次完成。
+    resolveArchive!(makeConv({ id: "c-1", state: "archived", revision: 3 }));
+    await Promise.all([first, second]);
+
+    expect(archiveConversation).toHaveBeenCalledTimes(1);
+    expect(store.archiveInFlight).toBe(false);
+  });
 });

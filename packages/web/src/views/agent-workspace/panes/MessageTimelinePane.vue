@@ -43,12 +43,18 @@
         </div>
         <div class="ws-timeline-actions">
           <template v-if="!renaming">
-            <button class="ui-btn ui-btn-ghost" data-testid="ws-rename-btn" @click="startRename">
+            <button
+              class="ui-btn ui-btn-ghost"
+              :disabled="store.renameInFlight"
+              data-testid="ws-rename-btn"
+              @click="startRename"
+            >
               重命名
             </button>
             <button
               v-if="store.selectedConversation?.state === 'active'"
               class="ui-btn ui-btn-ghost"
+              :disabled="store.archiveInFlight"
               data-testid="ws-archive-btn"
               @click="onArchive"
             >
@@ -57,6 +63,7 @@
             <button
               v-if="store.selectedConversation?.state === 'archived'"
               class="ui-btn ui-btn-ghost"
+              :disabled="store.restoreInFlight"
               data-testid="ws-restore-btn"
               @click="onRestore"
             >
@@ -64,6 +71,7 @@
             </button>
             <button
               class="ui-btn ui-btn-ghost ws-danger"
+              :disabled="store.deleteInFlight"
               data-testid="ws-delete-btn"
               @click="askDelete"
             >
