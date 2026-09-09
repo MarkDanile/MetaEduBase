@@ -14,6 +14,8 @@
 
 ## 当前进行中
 
+当前无活跃任务。
+
 ## 下一批候选任务
 
 按"建议执行顺序"排序；候选区只保留近期 1 到 3 个入口，完整任务池回 `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/technical-debt.md`。
@@ -33,7 +35,8 @@
 按"最近优先"（最新任务在最上）排序：
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
-|------|
+|------|------|------|------|------|
+| 2026-09-09 | TASK-REQ-042-WS-S1-GOVERNANCE-CORRECTION：WS-S1 治理收口事实最小 pure-docs 纠正（active card 登记 + 当前进行中 placeholder + 最近完成分隔线 5 列修复） | 🟢 完成（pure-docs 子阶段；WS-S1 边界声明保留：真实 PG 正向 restore 仍不在 scope / 未运行 backfill / 未改 erase_available / 未触碰 metaedu/metaedu_test / AC-4/AC-5/AC-7/AC-8 仍保持未完成 / REQ-042 整体不翻 Done；不重开 WS-S1 / 不启动 WS-S2/S3/REQ-043/062/063/TD-085 / 不重新评分 / 不修改 review-score-log.md / Metrics / 历史评分行 / fact-audit / spec / plan / 技术债 / 后端 / migration / schema / registry / CI / 门禁） | 最小 pure-docs：active card 登记 commit + 当前进行中改回 `当前无活跃任务。` 占位 + 最近完成分隔线 1 段 → 5 段（`|------|` → `|------|------|------|------|------|`）；事实核对：`git rev-list --count 23d1c0c5..main = 2`（`235f4085` PR #618 + `ea1b51f8` PR #619，均为 squash merge）；最近完成表实际行数 19 → 20（closeout row 中「19 行」为 closeout 当时快照，本轮追加 1 行 = 20，仍 ≤ 20 窗口）；stale remote-tracking ref `origin/docs/req042-ws-s1-closeout` + `origin/feature/req042-ws-s1-durable-read-shell` **仍存在**，本任务未擅自 prune（仅如实登记） | [current-work active card](current-work.md) / [work-log](work-log.md) |
 | 2026-09-09 | TASK-REQ-042-WS-S1：Workspace durable read/recovery 三栏 shell（只读，零写路径）+ 独立 closeout（TASK-REQ-042-WS-S1-CLOSEOUT 子卡） | 🟢 完成（WS-S1 + CLOSEOUT 子卡；REQ-042 仍 ⚫ Candidate — 仅交付 AC-1[不含 restore] / AC-2 读半边 / AC-6 desktop/mobile 布局 + restore UI/API wiring；AC-4/AC-5/AC-7/AC-8 保持未完成待 REQ-043 + REQ-047 Extended；WS-S2/S3/REQ-043/062/063/TD-085/erase_available/S5 wiring/capability flip 全部未启动） | PR #618 squash merge `235f4085`；评分 94 Original；382 unit + 66 Playwright + 45 unique；3 路 CI 全 SUCCESS；手动验收 9 项 pass | [PR #618](https://github.com/MarkDanile/MetaEduBase/pull/618)（mergeCommit `235f4085`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) |
 | 2026-09-08 | TASK-R1-S6-C1：R1-S6 C1 Durable Core 联合契约/conformance 总验收 Phase 1（5 类 B 类缺口判别测试 + ARCHITECTURE.md 落地事实修正）+ 独立 pure-docs closeout（TASK-R1-S6-C1-CLOSEOUT 子卡） | 🟢 完成（C1 子阶段 + CLOSEOUT 子卡；R1-S6/TASK-R1-S6-I3-D 翻 Durable Core 完成；REQ-041 翻 Done、REQ-047 标 Durable Core Done 保持 Shaping；S5 wiring/capability flip/六 erase/Extended REQ-047/完整 P3 保持未启动） | PR #614 squash mergeCommit `62eef1a3`；评分 94 Original；5 类 B 类测试+ARCHITECTURE 修正；11/11 mutation harness（sch_d 12/12）+全量 2966/0；C1=Durable Core 完成非生产 enable；无 G-1；保留 P3 既有 | [PR #614](https://github.com/MarkDanile/MetaEduBase/pull/614)（mergeCommit `62eef1a3`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) / [fact-audit §17.14](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | 2026-09-08 | TASK-R1-S6-SCH-D-MUTATION-HARNESS-MAINTENANCE：sch_d mutation harness stale anchor 重锚维护（settlement.py #586 重构漂移）+ 独立 pure-docs closeout | 🟢 完成（sch_d harness 维护子任务；REQ-041/047 完成态与 C1 总验收不受此影响、仍按各自边界推进） | PR #615 squash mergeCommit `6a804a1d`；评分 94 Original；sch_d 6 stale anchor 重锚当前 settlement.py + sch_d 12/12 mutation-level KILLED；合并后 main 11 harness 串行全绿；零生产/测试改动；G-1 顺序偏差 + all(...) limitation 两 P3 真实保留未消除 | [PR #615](https://github.com/MarkDanile/MetaEduBase/pull/615)（mergeCommit `6a804a1d`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) / [fact-audit §17.13](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
