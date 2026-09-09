@@ -37,6 +37,7 @@ import {
   listMessages,
   pinConversation,
   renameConversation,
+  restoreConversation,
   unpinConversation,
   type AgentRunDTO,
   type ConversationDTO,
@@ -462,5 +463,262 @@ describe("workspace store (REQ-042 WS-S1)", () => {
 
     expect(archiveConversation).toHaveBeenCalledTimes(1);
     expect(store.archiveInFlight).toBe(false);
+  });
+
+  // --- 覆盖补强（增量复审）---
+
+  it("selectConversation A→B race：deferred getConversation A 不覆盖 B 的 selectedConversation", async () => {
+    // 真实 deferred race：延迟 A 的 getConversation，模拟服务端慢响应；
+    // 切到 B 后 resolve A，验证 GUARD 丢弃 A 的迟到响应不污染 B 的 selectedConversation
+    // 及 messages / error / loading 状态。
+    let resolveA: (v: ConversationDTO) => void;
+    const aPromise = new Promise<ConversationDTO>((r) => {
+      resolveA = r;
+    });
+    vi.mocked(getConversation).mockImplementation(async (id) => {
+      if (id === "c-A") return aPromise;
+      return makeConv({ id: "c-B", title: "B", revision: 1, state: "active" });
+    });
+    vi.mocked(listMessages).mockResolvedValue({ items: [], has_more: false });
+    const store = useWorkspaceStore();
+
+    // 触发 selectConversation("c-A")（不 await，让其挂起）
+    const selectA = store.selectConversation("c-A");
+    // 同步切到 c-B；mock 立即 resolve
+    await store.selectConversation("c-B");
+
+    // 此时 selectedConversation 应为 B（B 的 detail 已落地）
+    expect(store.selectedConversation?.id).toBe("c-B");
+
+    // resolve A 的迟到 selectedConversation 响应——必须被 GUARD 丢弃
+    resolveA!(
+      makeConv({ id: "c-A", title: "A", revision: 1, state: "active" }),
+    );
+    await selectA;
+
+    // A 的迟到响应不覆盖 B 的 selectedConversation / messages / loading / error
+    expect(store.selectedId).toBe("c-B");
+    expect(store.selectedConversation?.id).toBe("c-B");
+    expect(store.selectedConversation?.title).toBe("B");
+    expect(store.messages).toEqual([]);
+    expect(store.messagesError).toBeNull();
+    expect(store.messagesLoading).toBe(false);
+  });
+
+  it("selectConversation A→B race：deferred 首屏 listMessages A 不覆盖 B 的 messages", async () => {
+    // 真实 deferred race：延迟 A 的首屏 listMessages；切到 B 后 resolve A，
+    // 验证 GUARD 丢弃 A 的迟到 messages 不污染 B 的 messages 列表。
+    let resolveAMsgs: (v: { items: MessageDTO[]; has_more: boolean }) => void;
+    const aMsgsPromise = new Promise<{ items: MessageDTO[]; has_more: boolean }>(
+      (r) => {
+        resolveAMsgs = r;
+      },
+    );
+    vi.mocked(listMessages)
+      .mockReturnValueOnce(aMsgsPromise) // [1] A 首屏（deferred）
+      .mockResolvedValueOnce({
+        // [2] B 首屏
+        items: [
+          makeMsg({ id: "m-B1", seq: 1 }),
+          makeMsg({ id: "m-B2", seq: 2 }),
+        ],
+        has_more: false,
+      });
+    vi.mocked(getConversation).mockImplementation(async (id) =>
+      makeConv({ id, revision: 1, state: "active" }),
+    );
+    const store = useWorkspaceStore();
+
+    // select A 不 await（listMessages(A) deferred）
+    const selectA = store.selectConversation("c-A");
+    // 切到 B 并完成加载（B 的 listMessages 立即 resolve）
+    await store.selectConversation("c-B");
+
+    // 此时 messages 应为 B 的 m-B1 + m-B2
+    expect(store.messages.map((m) => m.id)).toEqual(["m-B1", "m-B2"]);
+
+    // resolve A 的迟到 messages——必须被 GUARD 丢弃
+    resolveAMsgs!({
+      items: [makeMsg({ id: "m-A1", seq: 1 })],
+      has_more: false,
+    });
+    await selectA;
+
+    // A 的迟到响应不污染 B 的 messages
+    expect(store.selectedId).toBe("c-B");
+    expect(store.messages.map((m) => m.id)).toEqual(["m-B1", "m-B2"]);
+    expect(store.messagesError).toBeNull();
+    expect(store.messagesLoading).toBe(false);
+  });
+
+  it("restoreConversationById 双击 guard：两次快速调用只产生一个 API 请求 + finally 复位", async () => {
+    vi.mocked(getConversation).mockResolvedValue(
+      makeConv({ id: "c-1", revision: 1, state: "archived" }),
+    );
+    vi.mocked(listMessages).mockResolvedValue({ items: [], has_more: false });
+    let resolveRestore: (v: ConversationDTO) => void;
+    const restorePromise = new Promise<ConversationDTO>((r) => {
+      resolveRestore = r;
+    });
+    vi.mocked(restoreConversation).mockReturnValueOnce(restorePromise);
+    vi.mocked(listConversations).mockResolvedValue({ items: [], next_cursor: null });
+    const store = useWorkspaceStore();
+    await store.selectConversation("c-1");
+    const archivedConv = store.selectedConversation!;
+
+    // 第一次 restoreConversationById 进入 in-flight。
+    const first = store.restoreConversationById(archivedConv);
+    expect(store.restoreInFlight).toBe(true);
+
+    // 第二次立即调用——必须被 guard 拒绝（restoreConversation 仍只调用 1 次）。
+    const second = store.restoreConversationById(archivedConv);
+    expect(store.restoreInFlight).toBe(true);
+
+    // 第一次完成。
+    resolveRestore!(makeConv({ id: "c-1", state: "active", revision: 2 }));
+    await Promise.all([first, second]);
+
+    expect(restoreConversation).toHaveBeenCalledTimes(1);
+    expect(store.restoreInFlight).toBe(false);
+  });
+
+  it("renameSelected 双击 guard：两次快速调用只产生一个 API 请求 + finally 复位", async () => {
+    vi.mocked(getConversation).mockResolvedValue(
+      makeConv({ id: "c-1", revision: 3, title: "旧标题", state: "active" }),
+    );
+    vi.mocked(listMessages).mockResolvedValue({ items: [], has_more: false });
+    let resolveRename: (v: ConversationDTO) => void;
+    const renamePromise = new Promise<ConversationDTO>((r) => {
+      resolveRename = r;
+    });
+    vi.mocked(renameConversation).mockReturnValueOnce(renamePromise);
+    const store = useWorkspaceStore();
+    await store.selectConversation("c-1");
+
+    // 第一次 renameSelected 进入 in-flight。
+    const first = store.renameSelected("新标题 A");
+    expect(store.renameInFlight).toBe(true);
+
+    // 第二次立即调用——必须被 guard 拒绝（renameConversation 仍只调用 1 次）。
+    const second = store.renameSelected("新标题 B");
+    expect(store.renameInFlight).toBe(true);
+
+    // 第一次完成。
+    resolveRename!(
+      makeConv({ id: "c-1", title: "新标题 A", revision: 4, state: "active" }),
+    );
+    await Promise.all([first, second]);
+
+    expect(renameConversation).toHaveBeenCalledTimes(1);
+    expect(renameConversation).toHaveBeenCalledWith("c-1", "新标题 A", 3);
+    expect(store.renameInFlight).toBe(false);
+  });
+
+  it("deleteSelected 双击 guard：两次快速调用只产生一个 API 请求 + finally 复位", async () => {
+    vi.mocked(getConversation).mockResolvedValue(
+      makeConv({ id: "c-1", revision: 2, state: "active" }),
+    );
+    vi.mocked(listMessages).mockResolvedValue({ items: [], has_more: false });
+    let resolveDelete: (v: ConversationDTO) => void;
+    const deletePromise = new Promise<ConversationDTO>((r) => {
+      resolveDelete = r;
+    });
+    vi.mocked(deleteConversation).mockReturnValueOnce(deletePromise);
+    vi.mocked(listConversations).mockResolvedValue({ items: [], next_cursor: null });
+    const store = useWorkspaceStore();
+    await store.selectConversation("c-1");
+
+    // 第一次 deleteSelected 进入 in-flight。
+    const first = store.deleteSelected();
+    expect(store.deleteInFlight).toBe(true);
+
+    // 第二次立即调用——必须被 guard 拒绝（deleteConversation 仍只调用 1 次）。
+    const second = store.deleteSelected();
+    expect(store.deleteInFlight).toBe(true);
+
+    // 第一次完成。
+    resolveDelete!(makeConv({ id: "c-1", state: "deleted", revision: 3 }));
+    await Promise.all([first, second]);
+
+    expect(deleteConversation).toHaveBeenCalledTimes(1);
+    expect(deleteConversation).toHaveBeenCalledWith("c-1", 2);
+    expect(store.deleteInFlight).toBe(false);
+  });
+
+  it("restoreConversationById 409 revision_conflict 透明抛出 + finally 复位 + 后续可发起", async () => {
+    // 证明：409 错误不被 guard 吞掉；finally 仍执行复位 ref；后续调用可重新发起。
+    vi.mocked(getConversation).mockResolvedValue(
+      makeConv({ id: "c-1", revision: 1, state: "archived" }),
+    );
+    vi.mocked(listMessages).mockResolvedValue({ items: [], has_more: false });
+    vi.mocked(restoreConversation)
+      .mockRejectedValueOnce(
+        apiError(409, "revision_conflict", "已被其他人修改"),
+      )
+      .mockResolvedValueOnce(
+        makeConv({ id: "c-1", state: "active", revision: 2 }),
+      );
+    vi.mocked(listConversations).mockResolvedValue({ items: [], next_cursor: null });
+    const store = useWorkspaceStore();
+    await store.selectConversation("c-1");
+    const conv = store.selectedConversation!;
+
+    // 第一次调用应 throw（409 透明上抛，不被 finally 吞掉）
+    await expect(store.restoreConversationById(conv)).rejects.toMatchObject({
+      response: { status: 409, data: { detail: { code: "revision_conflict" } } },
+    });
+
+    // finally 已复位
+    expect(store.restoreInFlight).toBe(false);
+
+    // 第二次调用可重新发起（ref 已复位，guard 不阻塞）
+    await store.restoreConversationById(conv);
+    expect(restoreConversation).toHaveBeenCalledTimes(2);
+    expect(store.restoreInFlight).toBe(false);
+  });
+
+  it("renameSelected 409 revision_conflict 透明抛出 + finally 复位 + 后续可发起", async () => {
+    vi.mocked(getConversation).mockResolvedValue(
+      makeConv({ id: "c-1", revision: 3, title: "旧", state: "active" }),
+    );
+    vi.mocked(listMessages).mockResolvedValue({ items: [], has_more: false });
+    vi.mocked(renameConversation)
+      .mockRejectedValueOnce(apiError(409, "revision_conflict", "已被其他人修改"))
+      .mockResolvedValueOnce(makeConv({ id: "c-1", title: "新", revision: 4 }));
+    const store = useWorkspaceStore();
+    await store.selectConversation("c-1");
+
+    await expect(store.renameSelected("新")).rejects.toMatchObject({
+      response: { status: 409, data: { detail: { code: "revision_conflict" } } },
+    });
+    expect(store.renameInFlight).toBe(false);
+
+    await store.renameSelected("新");
+    expect(renameConversation).toHaveBeenCalledTimes(2);
+    expect(store.renameInFlight).toBe(false);
+  });
+
+  it("deleteSelected 409 revision_conflict 透明抛出 + finally 复位 + 后续可发起", async () => {
+    vi.mocked(getConversation).mockResolvedValue(
+      makeConv({ id: "c-1", revision: 2, state: "active" }),
+    );
+    vi.mocked(listMessages).mockResolvedValue({ items: [], has_more: false });
+    vi.mocked(deleteConversation)
+      .mockRejectedValueOnce(apiError(409, "revision_conflict", "已被其他人修改"))
+      .mockResolvedValueOnce(makeConv({ id: "c-1", state: "deleted", revision: 3 }));
+    vi.mocked(listConversations).mockResolvedValue({ items: [], next_cursor: null });
+    const store = useWorkspaceStore();
+    await store.selectConversation("c-1");
+
+    await expect(store.deleteSelected()).rejects.toMatchObject({
+      response: { status: 409, data: { detail: { code: "revision_conflict" } } },
+    });
+    expect(store.deleteInFlight).toBe(false);
+
+    // selectedConversation 仍存在（第一次 delete 在 409 后未到 clearSelection 路径）
+    // 后续调用可发起，deleteConversation 被调用第二次
+    await store.deleteSelected();
+    expect(deleteConversation).toHaveBeenCalledTimes(2);
+    expect(store.deleteInFlight).toBe(false);
   });
 });
