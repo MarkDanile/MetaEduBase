@@ -167,11 +167,11 @@ test.describe("shared: restore mock UI contract（非真实 PG 正向路径）",
     // 点击恢复
     await restoreBtn.click();
 
-    // 1) 校验请求：endpoint + method + If-Match
+    // 1) 校验请求：endpoint + method + If-Match（精确等于当前 archived 会话 revision = 5）
     const restoreReq = await restoreRequestPromise;
     expect(restoreReq.method()).toBe("POST");
     expect(restoreReq.url()).toMatch(/\/conversations\/conv-1\/restore$/);
-    expect(restoreReq.headers()["if-match"]).toBeTruthy();
+    expect(restoreReq.headers()["if-match"]).toBe("5");
 
     // 2) toast 显示后端真实错误（不冒充成功）
     const errorToast = page.locator(".toast-item.toast-error");
