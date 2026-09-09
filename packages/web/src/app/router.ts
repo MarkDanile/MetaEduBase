@@ -11,6 +11,7 @@ import {
   Plug,
   LayoutTemplate,
   Cog,
+  Columns3,
 } from "lucide-vue-next";
 import {
   canAccess,
@@ -101,6 +102,14 @@ const routes: RouteRecordRaw[] = [
         name: "ai-chat",
         component: () => import("@/views/ai-chat/AiChatView.vue"),
         meta: { section: "ai_work", title: "AI 问答", icon: MessageSquare, permission: "nav.ai_work", activeNav: "ai-chat", order: 1 },
+      },
+      // REQ-042 WS-S1: 智能体工作区（只读三栏 shell，feature flag fail-closed 门控）。
+      // 选中会话经 query ?c=<id> 承载，不单独建 path-param 子路由（避免 LayoutView 按 path remount）。
+      {
+        path: "agent-workspace",
+        name: "agent-workspace",
+        component: () => import("@/views/agent-workspace/AgentWorkspaceView.vue"),
+        meta: { section: "ai_work", title: "工作区", icon: Columns3, permission: "nav.ai_work", featureFlag: "agent_workspace", activeNav: "agent-workspace", order: 2, requiresAuth: true },
       },
       // REQ-060 Slice 2: 新建目标路由（复用既有页面组件）
       {

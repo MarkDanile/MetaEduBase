@@ -14,7 +14,47 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-REQ-042-WS-S1-DURABLE-READ-SHELL: Workspace durable read/recovery 三栏 shell（只读，零写路径）
+
+状态：🟡 进行中
+类型：新需求开发（REQ-042 首个实施 Slice WS-S1）
+领域：前端 Workspace（packages/web）
+当前执行模式：plan-do（Phase 0 只读审计已批准 WS-S1；本任务卡即实施边界，不另建 spec/plan）
+最近接手工具：Claude Code
+分支：feature/req042-ws-s1-durable-read-shell
+
+需求来源：
+- Spec: [REQ-042](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md)（Status ⚫ Candidate，本 Slice 不翻 Done）
+- Plan: 无独立 plan 文档——以 Phase 0 审计报告 + 本任务卡为实施边界（用户明确禁止本轮新建/修改 spec、plan）
+- 技术债：无
+- 架构约束：数据只读自已落地 real PG 的 [REQ-041 Conversation/Message API] 与 [REQ-047 Run/Event query]；不开放新 submit-turn
+
+允许范围：
+- 前端 Workspace 路由、页面、组件、store、service、类型与前端测试
+- 现有 Playwright 导航/布局测试与必要测试 fixture
+- 本文件（current-work.md）本任务 active card
+- 具体：接通已有 agent_workspace feature flag + 路由守卫；三栏 shell（左 Conversation 列表/搜索/创建/切换/重命名/置顶/归档/恢复/删除；中 Message history after_seq/before_seq keyset 分页 + 加载/空/错态；右栏无 Run 诚实空态、有 Run 只读 GET /agent-runs/{id} 终态/状态/序号窗口）；前端 service 层按现有后端 DTO/错误语义消费 Conversation/Message-history/Run-query；Workspace store（会话选择、loading/empty/error/404/权限、切换刷新、keyset 游标）；草稿 store（tenant/owner/conversation 隔离、刷新恢复、不存 token/凭据）；复用现有导航/RBAC/主题/EmptyState/Loading/Toast/消息渲染组件；desktop 1280×800 + Pixel 5 + 中间断点布局；真实 DTO fixture 前端测试（mock 仅用于界面状态，不作生产能力证据）。
+
+禁止范围：
+- 新增/开放 Workspace submit-turn；调用/接入 /ai/chat/evidence；Composer 真实发送
+- SSE / EventSource / after_seq 事件订阅 / 断线重连 / live token；Run cancel/stop
+- AgentTurnLoopRuntime；Approval/HumanInput；Tool/Grant/Snapshot；run-scoped Evidence；Artifact；thinking/plan summary emitter；SkillRunner 时间线 producer
+- erase_available / production wiring / capability flip；REQ-043/062/063/TD-085
+- 修改生产后端、migration、schema、registry、CI、门禁
+- 修改 requirements、spec、plan、work-log、fact-audit、technical-debt、Score Log、Metrics
+- 用静态卡片/假事件/占位数据/disabled UI 冒充 AC-3/4/5/7/8；composer 仅可为明确非提交态，不得有假成功发送路径
+
+验证计划：
+- Workspace route/feature flag/RBAC；Conversation list/search/create/switch/rename/pin/archive/restore/delete；Message history 首屏/分页/空态/错误态/序号连续性；Run 终态读取 + 无 Run 空态；刷新后草稿恢复；tenant/owner 切换隔离；404/403/409/410 错误映射；desktop 1280×800 + mobile Pixel 5 + 中间断点无重叠/横向溢出/明显跳动
+- 门禁：前端 lint + typecheck + unit/component tests + Playwright desktop/mobile + `git diff --check` + `check-engineering-docs --full` + pre-commit/pre-push hooks
+- 不启动数据库、不跑 mutation harness；Playwright mock 结果不写成 real PG 验证
+
+当前进展：实现 + 修复轮 + 覆盖补强 + restore 证据边界收紧完成——service 层（agentWorkspace DTO/端点/parseApiError）+ workspace store（keyset 分页/run 三态含 410 event_history_expired→runUnavailable/If-Match CAS/race GUARD：`loadSelectedConversation` / `loadMessages` / `loadOlderMessages` / `selectRun` 全部 selectedId GUARD；`messagesLoadingOlder` 切换重置；archive/restore/rename/delete in-flight guard）+ workspaceDraft store（tenant+owner+conversation 隔离草稿）+ 三栏 shell（ConversationList/MessageTimeline/RunDetail/Composer + AgentWorkspaceView）+ agent_workspace 路由 flag 门控；8 个 base..HEAD 线性 commit（active card 注册 bfb2d71d + ff449511/b9f61ddf/f17f68e8/d63f1969/878d6da5/68d39435/c265f229 + 本 restore 证据边界收紧 commit）；OPEN/Draft PR #618 已创建；修复轮 4 例 + 覆盖补强 8 例 unit tests（含 2 例真实 deferred A→B conversation/message race + 3 例 restore/rename/delete 双击 guard + 3 例 409 transparency）+ restore 失败 mock UI contract 1 例 Playwright（桌面+移动双 project）。
+**Restore 证据边界（手动验收复审 + 本轮收紧）**：`restoreConversationById` 的 UI（按钮 `:disabled="store.restoreInFlight"` 绑定）/ store / endpoint（POST /agent-workspace/conversations/{id}/restore + If-Match）/ 409 + `conversation_restore_not_allowed` 错误透传到 toast / finally 复位 + 后续可重发均已实现；前端 mock UI contract 1 例 e2e 已新增（409 + fence ledger incomplete 错误透传）。**真实 PG 正向 restore 不在 WS-S1 scope**：后端 fail-closed 要求完整六-owner erasure fence（[bridge.py:90-126](../../packages/server-python/app/contexts/agent_workspace/application/bridge.py#L90) `_require_restorable_fences`）；普通新建会话只建 `workspace.core.v1` 一根 baseline fence（[repository.py:101-120](../../packages/server-python/app/contexts/agent_workspace/infrastructure/repository.py#L101)），其余 5 owner 由 backfill 补齐。手动验收「新建 → archive → restore 返回 409」是预期 fail-closed，不是前端缺陷；后端 fail-closed 由 [test_restore_recovery.py:260/275/305/333](../../packages/server-python/tests/contexts/agent_control_plane/test_restore_recovery.py#L260) `ConversationRestoreNotAllowedError` 反例真实 PG 覆盖，正向路径需经 `agent_erasure_backfill` 建完整六-owner baseline fence——该 fixture 准备不属于 WS-S1。REQ-042 AC-1 原文不含 restore。
+下一步：等 Draft PR #618 三路 CI SUCCESS 后停止；不 Ready/评分/合并/closeout/启动下一 Slice，等用户裁决 WS-S2/S3 与 AC-4/8。
+验证状态：本地全绿——前端 lint 0 error；typecheck（app+e2e 双 tsconfig）0 error；unit/component **382/382**（Node 20 对齐 CI，新增 56 例 + nav.spec 业务 leaf 23→24；其中修复轮 4 例 + 覆盖补强 8 例：2 例 deferred A→B race + 3 例 restore/rename/delete 双击 guard + 3 例 409 transparency）；Playwright **66 CI 执行**（chromium-desktop 31 + chromium-mobile 35，覆盖 45 unique test()），含本轮新增 restore 失败 mock UI contract 1 unique / 2 CI 执行；**本地 desktop 1 个 pre-existing failure**（navigation-desktop.spec.ts:33 /ai-chat activeNav 在 main 分支独立验证同样失败 + spec 未被本 PR 修改 + CI ubuntu-latest 通过 → macOS local 时序 flake，与本 PR 无关）；git diff --check clean；check-engineering-docs --full passed（32 known allowlisted 与基线一致）。未启动数据库、未跑 mutation harness。
+**post-review tightening（三面复审 P2 闭环）**：restore 失败 mock UI contract e2e 的 If-Match 断言从 `toBeTruthy()` 收紧为精确值 `toBe("5")`（mock 中 archived conversation revision = 5），捕获"前端发送非当前会话 revision / 固定错误值 / revision 链路漂移"；其余断言（endpoint / 409 / toast / 不显示成功 / 按钮复位 / 无 submit-turn/SSE/evidence）保持不变。测试数量不变：仍为 382 unit + 66 Playwright CI 执行 + 45 unique + Workspace 8 unique / 10 CI；restore 仍仅为 mock UI contract，不是 real PG 正向路径。
+交接备注：本 Slice 完成后仅可宣称 AC-1（**会话生命周期[不含 restore] + 草稿恢复**）、AC-2 读半边（刷新/重进 durable read）、AC-6 基础 desktop/mobile 布局；AC-3 仅呈现已有真实 Message/Evidence 引用；AC-4/AC-8 保持未完成（待 REQ-043 + REQ-047 Extended）；AC-5/AC-7 保持受限。**restore = UI/API wiring 已实现（mock UI contract e2e 已覆盖），不表示真实 PG 正向 restore 已通过；正向路径需 backfill 完整六-owner baseline fence（六 owner 定义见 agent_erasure_registry.py:84-122，runtime/external owner erase_available 仍 False，registry 冻结 6 owner）**。REQ-042 不翻整体 Done。交付到 OPEN/Draft PR + 三路 CI SUCCESS 后停止，不 Ready/评分/合并/closeout/启动下一 Slice。
 
 ## 下一批候选任务
 
@@ -22,7 +62,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-042: Codex 式 Agent Workspace 三栏体验（Durable Core 已完成，事件协议稳定可依托） | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 按 task-modes 走塑形/spec-plan：先读 REQ-042 requirement + 联合契约事件协议，产出可实施 spec/plan 再登记独立活跃卡开工；不直接跳到 Pi Worker / 不在本卡内开工 | [REQ-042](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) / [backlog](../01-product-planning/04-backlog.md) |
+| P0 | REQ-042: Codex 式 Agent Workspace 三栏体验（Durable Core 已完成，事件协议稳定可依托） | 🟡 WS-S1 进行中（durable read/recovery shell 已开活跃卡，见上方「当前进行中」；REQ-042 整体仍 ⚫ Candidate） | WS-S1 实施 + 本地验证 + OPEN/Draft PR；剩余 WS-S2/WS-S3 与 AC-4/AC-8 依赖待本 Slice 交付后另行裁决；不直接跳到 Pi Worker / 不开放 submit-turn | [REQ-042](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) / [backlog](../01-product-planning/04-backlog.md) |
 | P0 | REQ-062: 动态数据采集、填报与报表发布平台 contract shaping | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 在 Run/Artifact 契约上塑形 Campaign/FormSchemaVersion/Submission/ReportSnapshot；AI 草案审核后才发布；仅契约塑形不实现自由表单引擎 | [REQ-062](../01-product-planning/05-requirements/REQ-062-dynamic-data-collection-and-reporting.md) / [backlog](../01-product-planning/04-backlog.md) |
 | P0 | REQ-063: 受治理的外部数据采集与研究证据链 source spike | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 先做授权来源/许可/网络/快照策略 spike，不提前实现自由爬虫；Connector 等待 Tool Gateway | [REQ-063](../01-product-planning/05-requirements/REQ-063-governed-external-data-acquisition.md) / [backlog](../01-product-planning/04-backlog.md) |
 

@@ -183,3 +183,41 @@ describe("REQ-060 Slice 2: unauthenticated redirect", () => {
     expect(router.currentRoute.value.name).toBe("login");
   });
 });
+
+describe("REQ-042 WS-S1: agent-workspace feature flag guard", () => {
+  it("flag off -> 403 (fail-closed)", async () => {
+    setAuth("admin");
+    const router = await createTestRouter();
+    await router.push("/agent-workspace");
+    await router.isReady();
+    expect(router.currentRoute.value.name).toBe("forbidden");
+  });
+
+  it("flag on -> allowed (base nav.ai_work permission, low role)", async () => {
+    setAuth("teacher");
+    localStorageMock.setItem("metaedu_feature_agent_workspace", "true");
+    const router = await createTestRouter();
+    await router.push("/agent-workspace");
+    await router.isReady();
+    expect(router.currentRoute.value.name).toBe("agent-workspace");
+  });
+
+  it("flag on + query ?c=<id> -> allowed, query preserved (deep link)", async () => {
+    setAuth("teacher");
+    localStorageMock.setItem("metaedu_feature_agent_workspace", "true");
+    const router = await createTestRouter();
+    await router.push("/agent-workspace?c=conv-1");
+    await router.isReady();
+    expect(router.currentRoute.value.name).toBe("agent-workspace");
+    expect(router.currentRoute.value.query.c).toBe("conv-1");
+  });
+
+  it("unknown role + flag on -> 403 (fail-closed)", async () => {
+    setAuth("unknown_role");
+    localStorageMock.setItem("metaedu_feature_agent_workspace", "true");
+    const router = await createTestRouter();
+    await router.push("/agent-workspace");
+    await router.isReady();
+    expect(router.currentRoute.value.name).toBe("forbidden");
+  });
+});
