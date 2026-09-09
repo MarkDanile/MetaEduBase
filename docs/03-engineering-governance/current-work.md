@@ -14,6 +14,47 @@
 
 ## 当前进行中
 
+### TASK-REQ-042-WS-S1-GOVERNANCE-CORRECTION: WS-S1 治理收口事实最小 pure-docs 纠正
+
+状态：🟡 进行中
+类型：pure-docs 治理收口纠正
+领域：docs/03-engineering-governance/
+当前执行模式：plan-do（手工最小纠正；用户明确禁止重开 WS-S1 / 启动 WS-S2/S3/REQ-043/062/063/TD-085 / 改 backend / 跑 backfill）
+最近接手工具：Claude Code
+分支：docs/req042-ws-s1-governance-correction
+
+需求来源：
+- 上一轮 TASK-REQ-042-WS-S1 完成闭环后用户手动治理复审发现 current-work.md 收口事实需核对修正
+- 无独立 spec/plan：本任务卡即实施边界
+
+允许范围：
+- 仅修改 docs/03-engineering-governance/current-work.md
+- 不改 review-score-log.md / Metrics / 历史评分行 / fact-audit / spec / plan / 技术债
+- 不修改后端、migration、schema、registry、CI、门禁
+- 不运行 agent_erasure_backfill / 不修改 erase_available / 不触碰 metaedu 或 metaedu_test
+- 不触碰 recover-claude-dropped-stash-td047 与 dangling commit 91fe0290
+
+禁止范围：
+- 不重开 WS-S1 实现 / 不启动 WS-S2/S3/REQ-043/062/063/TD-085
+- 不重新评分 / 不 Ready / 不合并 / 不创建新功能任务
+
+验证计划：
+- git diff --check
+- scripts/check-engineering-docs --full
+- 重新统计最近完成表实际行数（不修改 doc 中已正确的 19 行 claim）
+- git rev-list --count 23d1c0c5..main（应得 2 个 squash merge commit）
+- 核对 main 2 个 squash merge commit：`235f4085`（PR #618）+ `ea1b51f8`（PR #619）
+- 核对 local HEAD / origin/main / working tree 一致性
+- 如实报告 stale remote-tracking ref（不擅自 prune / 不写「本地引用已清理」除非实际执行）
+
+当前进展：active-card 登记 commit
+
+下一步：apply corrections（separator fix + 当前无活跃任务 placeholder + 本卡 → 最近完成）+ commit + push + create OPEN/Draft PR
+
+验证状态：active card 登记尚未做修正（pending）
+
+交接备注：本任务卡完成后即可从当前进行中移除（active 状态完成）；WS-S1 边界声明保留（真实 PG 正向 restore 仍不在 scope / 未运行 backfill / 未改 erase_available / 未触碰 metaedu/metaedu_test / AC-4/AC-5/AC-7/AC-8 仍保持未完成 / REQ-042 整体不翻 Done）
+
 ## 下一批候选任务
 
 按"建议执行顺序"排序；候选区只保留近期 1 到 3 个入口，完整任务池回 `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/technical-debt.md`。
