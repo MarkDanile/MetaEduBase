@@ -228,7 +228,7 @@ WS-S1 完成 ✅
   │   │       └─ WS-S2.D mock e2e
   │   │           └─ WS-S2.E manual acceptance
   └─ (independent) ────────────────────
-                                          
+
 REQ-047 Extended Contracts 🟣 Shaping
   ├─ WS-S3.A SSE transport
   │   ├─ WS-S3.B RunEvent timeline
