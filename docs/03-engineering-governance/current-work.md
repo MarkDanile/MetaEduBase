@@ -14,52 +14,7 @@
 
 ## 当前进行中
 
-### TASK-REQ-042-WS-S2-CONTRACT-SHAPING-CLOSEOUT: WS-S2 / WS-S3 contract-shaping 报告（Phase 0）治理收口
-
-状态：🟡 进行中（pure-docs closeout 任务；仅收口已合并的 Phase 0 shaping 报告，不启动任何实现）
-类型：pure-docs 治理收口
-领域：docs/03-engineering-governance/current-work.md + docs/03-engineering-governance/work-log.md
-当前执行模式：plan-do（用户明确禁止本轮启动 WS-S2 implementation / 修改 requirements 状态 / 触碰后端 / 运行 backfill）
-最近接手工具：Claude Code
-分支：docs/req042-ws-s2-contract-shaping-closeout
-
-需求来源：
-- PR #621（TASK-REQ-042-WS-S2-CONTRACT-SHAPING）已 squash merge 入 main（mergeCommit `aa88e5ea55f894459a086b240c67fc1db89b9337`，mergedAt `2026-09-10T06:20:56Z`）
-- Original 评分 94 已入账（review-score-log.md 新增 #621 Original 评分行）
-- 用户明确请求 pure-docs closeout 收口，不创建 closeout 之外的 follow-up
-
-允许范围：
-- 仅修改 docs/03-engineering-governance/current-work.md（active card 转 CLOSEOUT + 最近完成表新增 #621 closeout 行 + 20 行窗口强制约束处理）
-- 仅修改 docs/03-engineering-governance/work-log.md（长期索引新增 #621 closeout 行）
-- 可在 shaping plan 中追加最小 merged-boundary 事实（如治理惯例要求），不得重写 Phase 0 内容
-
-禁止范围：
-- 不实现 submit-turn / SSE / after_seq / cancel / stop / steer
-- 不创建公共 `/turns` 路由
-- 不开放发送按钮
-- 不实现前端 SSE transport
-- 不启动 WS-S2 / WS-S3 / REQ-043 / REQ-062 / REQ-063 / TD-085
-- 不运行 agent_erasure_backfill / 不修改 erase_available / 不触碰 metaedu 或 metaedu_test
-- 不处理或 prune stale remote-tracking refs
-- 不修改 Score Log / Metrics / 历史评分行
-- 不修改 REQ-042 状态 / REQ-043 / REQ-047 Extended / TD-085
-- 不创建新的 high-priority 规则修订
-- 不 amend / rebase / force-push / reset
-
-验证计划：
-- `git diff --check`
-- `scripts/check-engineering-docs --full`
-- 最近完成表实际行数与 workbench.md 20 行窗口 / 12 行归档策略一致性核对
-- 最近完成区新增的 #621 closeout 行 + work-log.md 索引新增行 一一对应
-- REQ-042 仍为 Candidate / REQ-047 Extended 仍为 Shaping 核对
-
-当前进展：active card 登记 commit（本 commit；active card 由 SHAPING 转 CLOSEOUT，先于 closeout 内容修改）
-
-下一步：1) commit 2 = 应用 closeout（删除 active card / 当前进行中改回 `当前无活跃任务。` / 最近完成区新增 #621 closeout 行 / 触发 20 → 12 行批量归档 / work-log.md 索引新增 #621 closeout 行）；2) push + 创建 OPEN/Draft PR；3) 等待三路 CI 全 settled；4) 等待独立三面只读复审 + 评分 + 用户裁决合并
-
-验证状态：active card 登记完成；closeout 内容尚未应用（pending）
-
-交接备注：本任务为 TASK-REQ-042-WS-S2-CONTRACT-SHAPING 的独立 pure-docs closeout（CLOSEOUT 子卡）；WS-S2 implementation 仍未启动；WS-S2 唯一产品路径 option B 仍 BLOCKED；按钮保持 disabled；公共 `/turns` 不存在；WS-S3、REQ-043、REQ-047 Extended、TD-085 仍未解锁；REQ-042 仍 ⚫ Candidate；REQ-047 Extended 仍 🟣 Shaping；WS-S1 边界声明完整保留（真实 PG 正向 restore 仍不在 scope / 未运行 backfill / 未改 erase_available / 未触碰 metaedu/metaedu_test / AC-4/AC-5/AC-7/AC-8 仍保持未完成）
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -81,6 +36,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-09-10 | TASK-REQ-042-WS-S2-CONTRACT-SHAPING：WS-S2 / WS-S3 contract-shaping 报告（Phase 0 audit + 切片规划；pure-spec / pure-docs）+ 独立 closeout 治理收口 | 🟢 完成（Phase 0 shaping/audit 子阶段；WS-S2 唯一产品路径 option B 仍 BLOCKED；WS-S3 仍 BLOCKED；仅 pure-spec/pure-docs，0 后端 / 0 测试 / 0 migration / 0 schema / 0 CI 改动；REQ-042 仍 ⚫ Candidate；REQ-047 Extended 仍 🟣 Shaping） | PR #621 squash merge `aa88e5ea`；Original 评分 94（7 维 15+18+20+14+15+10+1）；Draft + Ready + 评分后 CI 全 SUCCESS；Phase 0 最高 L0 静态代码审计；保留 P3：3 个 stale `origin/*` remote-tracking ref 未擅自 prune | [PR #621](https://github.com/MarkDanile/MetaEduBase/pull/621)（mergeCommit `aa88e5ea`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) |
 | 2026-09-09 | TASK-REQ-042-WS-S1-GOVERNANCE-CORRECTION：WS-S1 治理收口事实最小 pure-docs 纠正（active card 登记 + 当前进行中 placeholder + 最近完成分隔线 5 列修复） | 🟢 完成（pure-docs 子阶段；WS-S1 边界声明保留：真实 PG 正向 restore 仍不在 scope / 未运行 backfill / 未改 erase_available / 未触碰 metaedu/metaedu_test / AC-4/AC-5/AC-7/AC-8 仍保持未完成 / REQ-042 整体不翻 Done；不重开 WS-S1 / 不启动 WS-S2/S3/REQ-043/062/063/TD-085 / 不重新评分 / 不修改 review-score-log.md / Metrics / 历史评分行 / fact-audit / spec / plan / 技术债 / 后端 / migration / schema / registry / CI / 门禁） | 最小 pure-docs：active card 登记 commit + 当前进行中改回 `当前无活跃任务。` 占位 + 最近完成分隔线 1 段 → 5 段（`|------|` → `|------|------|------|------|------|`）；事实核对：`git rev-list --count 23d1c0c5..main = 2`（`235f4085` PR #618 + `ea1b51f8` PR #619，均为 squash merge）；最近完成表实际行数 19 → 20（closeout row 中「19 行」为 closeout 当时快照，本轮追加 1 行 = 20，仍 ≤ 20 窗口）；stale remote-tracking ref `origin/docs/req042-ws-s1-closeout` + `origin/feature/req042-ws-s1-durable-read-shell` **仍存在**，本任务未擅自 prune（仅如实登记） | [current-work active card](current-work.md) / [work-log](work-log.md) |
 | 2026-09-09 | TASK-REQ-042-WS-S1：Workspace durable read/recovery 三栏 shell（只读，零写路径）+ 独立 closeout（TASK-REQ-042-WS-S1-CLOSEOUT 子卡） | 🟢 完成（WS-S1 + CLOSEOUT 子卡；REQ-042 仍 ⚫ Candidate — 仅交付 AC-1[不含 restore] / AC-2 读半边 / AC-6 desktop/mobile 布局 + restore UI/API wiring；AC-4/AC-5/AC-7/AC-8 保持未完成待 REQ-043 + REQ-047 Extended；WS-S2/S3/REQ-043/062/063/TD-085/erase_available/S5 wiring/capability flip 全部未启动） | PR #618 squash merge `235f4085`；评分 94 Original；382 unit + 66 Playwright + 45 unique；3 路 CI 全 SUCCESS；手动验收 9 项 pass | [PR #618](https://github.com/MarkDanile/MetaEduBase/pull/618)（mergeCommit `235f4085`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) |
 | 2026-09-08 | TASK-R1-S6-C1：R1-S6 C1 Durable Core 联合契约/conformance 总验收 Phase 1（5 类 B 类缺口判别测试 + ARCHITECTURE.md 落地事实修正）+ 独立 pure-docs closeout（TASK-R1-S6-C1-CLOSEOUT 子卡） | 🟢 完成（C1 子阶段 + CLOSEOUT 子卡；R1-S6/TASK-R1-S6-I3-D 翻 Durable Core 完成；REQ-041 翻 Done、REQ-047 标 Durable Core Done 保持 Shaping；S5 wiring/capability flip/六 erase/Extended REQ-047/完整 P3 保持未启动） | PR #614 squash mergeCommit `62eef1a3`；评分 94 Original；5 类 B 类测试+ARCHITECTURE 修正；11/11 mutation harness（sch_d 12/12）+全量 2966/0；C1=Durable Core 完成非生产 enable；无 G-1；保留 P3 既有 | [PR #614](https://github.com/MarkDanile/MetaEduBase/pull/614)（mergeCommit `62eef1a3`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) / [fact-audit §17.14](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
@@ -93,10 +49,3 @@
 | 2026-09-01 | R1-S6-I3-D D2 restore replay executor + restore-before-open gate（M 类；Round-8/8.1 三面复审 P0/P1/P2/P3=0 + squash merge 入 main） | 🟢 完成（D2 子阶段；TASK-R1-S6-I3-D 仍 🟡 进行中——PR-D 未启动） | PR #602 squash mergeCommit `ae7f3c98`；评分 92 Original；108 D2 专项 + 992 composition + 21/21 mutation；D2 wiring / PR-D / PR-E / C1 / S5 wiring / capability flip / 六 erase 未启动 | [PR #602](https://github.com/MarkDanile/MetaEduBase/pull/602)（mergeCommit `ae7f3c98`）/ [work-log](work-log.md) / [score 92](04-retrospectives/review-score-log.md) / [fact-audit](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | 2026-08-28 | R1-S6-I3-D D1b 专用 MinIO ledger archive sink + 不可变 commit-graph 发布协议（两阶段 API 拆分；三面 P1 修复闭环 + squash merge 入 main） | 🟢 完成（D1b 子阶段；TASK-R1-S6-I3-D 仍 🟡 进行中） | PR #600 squash mergeCommit `01c84f7c`；评分 94 Original；47/47 composition + 6/6 opt-in real MinIO + 11/11 mutation；D1b wiring / D2 / PR-D / PR-E / C1 / S5 wiring / capability flip / 六 erase 未启动 | [PR #600](https://github.com/MarkDanile/MetaEduBase/pull/600)（mergeCommit `01c84f7c`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) / [fact-audit](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
 | 2026-08-28 | R1-S6-I3-D D1a bounded read-only ledger snapshot codec（三轮 P1 治理闭环 + squash merge 入 main） | 🟢 完成（D1a 子阶段；TASK-R1-S6-I3-D 仍 🟡 进行中） | PR #598 squash mergeCommit `5868831e`；评分 97 Original；57/57 D1a + 828 composition + 20/20 mutation；D1a 已并入 main，D1b/D2/PR-D 未启动 | [PR #598](https://github.com/MarkDanile/MetaEduBase/pull/598)（mergeCommit `5868831e`）/ [work-log](work-log.md) / [score 97](04-retrospectives/review-score-log.md) / [fact-audit](04-retrospectives/r1-s6-i3-d-fact-audit.md) |
-| 2026-08-26 | R1-S6-I3-F10 settlement T1/T2 hold 推进故障矩阵真实 PG 判别 + TD-105 实现承接 | 🟢 完成 | PR #596（squash `c0ec008d`）；评分 97 Original；8 项 PG 测试 + 7/8 mutation 真红（M6 NOT-RED）；净 diff 3 文件 1005+/23- 无生产代码；**TD-105 已完成并关闭**；F10 不直接 completed；PR-D/E/C1/S5 wiring 未启动 | [PR #596](https://github.com/MarkDanile/MetaEduBase/pull/596)（squash `c0ec008d`）/ [work-log](work-log.md) / [score 97](04-retrospectives/review-score-log.md) |
-| 2026-08-26 | R1-S6-I3 root bounded integration: S6-F1..F14 故障矩阵 + TD-106 方案 A + scope 收敛 + main closeout | 🟢 完成 | root PR #586（squash `68fafd81`）+ main closeout；评分 94 Original；scope = F1-F14 故障矩阵 + TD-106 方案 A bounded integration；PR-D/E scaffold 已撤回；**TD-106 已完成并关闭**；F10 仍 skip（TD-105 承接）+ PR-D/PR-E/C1/S5 wiring/capability flip 均未启动 | [PR #586](https://github.com/MarkDanile/MetaEduBase/pull/586)（squash `68fafd81`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) |
-| 2026-08-25 | R1-S6-I3-F10 S6-F10 契约核对纠偏 + TD-106 决策门禁（contract-first，纯文档） | 🟢 完成 | PR #591（squash `738be6f9`）；评分 89（Original）；§S6-15 冻结入 main；**TD-106 实现已随 #586 入 main 完成**（详细见 work-log + [TD-106](technical-debt.md#td-106-r1-s6-settlement-success-不写-ledgerbinding实现-vs-s5-c-1-冻结契约缺口pre-existing)） | [PR #591](https://github.com/MarkDanile/MetaEduBase/pull/591)（squash `738be6f9`）/ [work-log](work-log.md) / [score 89](04-retrospectives/review-score-log.md) |
-| 2026-08-24 | R1-S6-I3-A schema/test alignment bounded repair（squash 入 #586） | 🟢 完成 | squash 入 #586；评分 92（Original）；幽灵列对齐真实 schema + acked fixture 合法化 + 独立 CHECK 负例 + F3 补种；fresh PG 043 24/24 + composition 750；**#586 已合 main**；TD-104 保持承接 | [PR #589](https://github.com/MarkDanile/MetaEduBase/pull/589)（squash `f6062466`）/ [work-log](work-log.md) / [score 92](04-retrospectives/review-score-log.md) |
-| 2026-08-24 | R1-S6-I3-B restore replay 持久状态域契约纠偏（contract-first，纯文档） | 🟢 完成 | PR #587（squash `66674f23`）；评分 85；三层 CHECK 闭集 + replay 路由表 + 判定方式冻结；**#586 已合 main**；TD-104 + REQ-047 | [PR #587](https://github.com/MarkDanile/MetaEduBase/pull/587)（squash `66674f23`）/ [work-log](work-log.md) / [score 85](04-retrospectives/review-score-log.md) |
-| 2026-08-20 | R1-S6-I2 Writer conformance suite + body/ref orphan inspection | 🟢 完成 | PR #584（merge `ad7ac3e5`）；评分 88；3 writer spec + 六类 verify 巡检 + Run 行锁；21 项专项 + 726 composition；TD-100~103 + REQ-047；S6-I3/C1/S5 wiring 未启动 | [PR #584](https://github.com/MarkDanile/MetaEduBase/pull/584)（merge `ad7ac3e5`）/ [work-log](work-log.md) / [score 88](04-retrospectives/review-score-log.md) |
-| 2026-08-19 | R1-S6-I1 Retention workers（run_event_retention + run_audit_retention + migration 043） | 🟢 完成 | PR #582（squash `f5072ec6`）；评分 87（基线 `d1427567`）；两 worker + 043 guard + 两处 S5 修复落地；三面返修+决 A 测试兼容升级后 P0/P1=0；Backend 2649/1/4/0 + mutation 18/18 + 043 往返稳定；S6-I2/I3/C1/S5 wiring 未启动；TD-097/098/099 + REQ-047 | [PR #582](https://github.com/MarkDanile/MetaEduBase/pull/582)（squash `f5072ec6`）/ [work-log](work-log.md) / [score 87](04-retrospectives/review-score-log.md) |
