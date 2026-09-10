@@ -14,7 +14,52 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-REQ-042-WS-S2-CONTRACT-SHAPING: WS-S2 / WS-S3 contract-to-implementation 审计与切片规划（Phase 0 shaping）
+
+状态：🟡 进行中（**第二次事实纠偏完成，待第二轮三面复审**；本轮新增 §0 修订历史 + §4.2 §4.3 §6.2 §7 §8 §9 §10 §11.2 全文统一）
+类型：shaping（Phase 0，pure-spec + 现状盘点 + 切片规划，不直接实现业务代码）
+领域：docs/ + REQ-042 AC 映射 + WS-S1 现状盘点 + WS-S2/WS-S3 切片边界
+当前执行模式：plan-do（用户明确禁止本轮重开 WS-S1 / 启动 WS-S2/S3 实现 / 跑 backfill / 改后端）
+最近接手工具：Claude Code
+分支：docs/req042-ws-s2-contract-shaping
+
+需求来源：
+- REQ-042 status 仍 ⚫ Candidate；WS-S1 已完成 AC-1[不含 restore] / AC-2 读半边 / AC-6 desktop/mobile + restore UI/API wiring
+- AC-4（审批 contract）/ AC-5（thinking summary 与 CoT 禁止）/ AC-7（统一时间线协议）/ AC-8（Run 继续 + steer）均未交付
+- 后端前置 REQ-041 🟢 Done；REQ-047 Durable Core 🟢 Done / Extended Contracts 🟣 Shaping；REQ-043 ⚫ Candidate
+- 用户明确请求 contract-to-implementation 审计与切片规划作为 WS-S2 开工前的 Phase 0 shaping
+
+允许范围：
+- 仅修改 docs/03-engineering-governance/current-work.md（active card 状态更新）
+- 仅修改 docs/02-delivery-plans/01-specs/ 与 docs/02-delivery-plans/02-plans/ 中 WS-S2 / WS-S3 相关 spec/plan（contract-first shaping）
+- 可写最小 WS-S2 contract shaping 文档 + audit 报告（matrix + slice 边界）
+- 不实现 submit-turn、不开放发送按钮、不接 Runtime / Approval / Tool / Artifact
+
+禁止范围：
+- 不实现 submit-turn / SSE / after_seq / cancel / stop / steer
+- 不接 AgentTurnLoopRuntime / Pi / ACP / MCP Server
+- 不实现 Approval / Tool / Artifact / Evidence / SkillRunner timeline
+- 不修改后端 / migration / schema / registry / CI / 门禁
+- 不运行 agent_erasure_backfill / 不修改 erase_available / 不触碰 metaedu 或 metaedu_test
+- 不启动 REQ-043 / REQ-062 / REQ-063 / TD-085
+- 不把 REQ-042 翻 Done / 不把 REQ-047 Extended 翻 Ready
+- 不处理 stale remote-tracking refs
+- 不修改 review-score-log.md 或 Metrics
+
+验证计划：
+- WS-S1 现状盘点：grep 关键调用路径 + test_workspace_api.py / test_run_api.py 测试断言
+- AC 矩阵：逐条对 REQ-042 AC-1..AC-8 与 WS-S1 实际交付 / WS-S2/WS-S3 待交付 / REQ-043 / REQ-047 Extended 边界映射
+- WS-S2/WS-S3 切片推荐：每个 Slice 目标 / 输入 / 输出 / 完成标准 / 前置依赖 / 不允许交叉内容 / 证据等级
+- **事实纠偏**：核实公共 /turns 真伪 / CancelRunRequest body schema / SSE /events + /cancel 现状 / 浏览器 SSE 鉴权 transport / TurnCommand+TurnLaunchSpecV1+SubmitTurnReceipt 真实字段
+- 仅产出 spec/plan shaping，不启动任何实现
+
+当前进展：active card 登记 commit + 第一版 shaping 报告 commit + 第一次纠偏 commit（重写 §6.2 §6.3 §9.1 §9.3 但保留 §4.2 §4.3 §7 §10 §11.2 错误） + 第二次纠偏 commit（本次）：通读 §4 - §14 + §0 修订历史 + §12 honest 记录，**全文统一为 option B (real submit closure, 当前 BLOCKED)**；删除所有 "option A 作为可立即开工的 WS-S2 implementation" 口径；option A 仅可作为公共契约冻结后的 L1 mock contract experiment（非交付、非合并）；REQ-017 typo 全部纠正为 REQ-047；取消原 §11.2 「WS-S2 五 mini-slice 实施边界」+「WS-S3 五 mini-slice」建议，替换为「WS-S2 phase-A 公共 submit API 冻结」+「WS-S3 phase-A 浏览器 SSE 鉴权 transport 冻结」+ 「WS-S2 phase-B launch policy」+「REQ-047 Extended spec 冻结」+「REQ-043 Runtime conformance spec 冻结」（全部 P0 硬门禁）；§7 证据等级降级为「本 Phase 0 报告最高 L0 静态代码审计；L1/L2/L3 只能写成未来验收门禁」；§8 测试矩阵改为「全部未来验收门禁，严禁写已通过」；§10 禁止表述 + §9.4 历史错误校正新增 14 项强制规范。
+
+下一步：1) commit 第二次纠偏 + current-work.md active card 状态更新；2) push + PR #621 自动更新；3) 等待三路 CI 全 settled；4) 等待第二轮独立三面复审裁决
+
+验证状态：1) 用户 §四 命令残留扫描全部命中均位于 §0 修订历史 / §10 禁止表述 / §9.4 历史错误校正 / §12 honest 记录（**所有命中均为历史错误引用，禁止在规范正文中出现**）；2) §4.2 / §4.3 / §6.2 / §7 / §8 / §9 / §10 / §11.2 全文一致裁决 = WS-S2 option B BLOCKED；3) `git diff --check` clean；4) `scripts/check-engineering-docs --full` passed（32 known allowlisted）
+
+交接备注：本任务仍为 Phase 0 shaping；本轮唯一裁决 = **option B 真实提交闭环**；当前 WS-S2 + WS-S3 implementation **均未启动**（WS-S2 phase-A/B/C/D/E + WS-S3 phase-A/B/C/D/E 全部未来顺序 planning）；按钮**保持 disabled**直到公共 `/turns` spec + server-selected launch policy + 最小 execution profile + 真实 PG submit-loop 端到端全部通过；**option A mock-only pre-wire 已断开作为"启动 WS-S2 implementation"路径**（至多作为 `non-deliverable / non-mergeable / L1 contract experiment`）；Phase 0 报告本身**最高已验证层级仅为 L0 静态代码审计**；WS-S1 边界声明保留（真实 PG 正向 restore 仍不在 scope / 未运行 backfill / 未改 erase_available / 未触碰 metaedu/metaedu_test / AC-4/AC-5/AC-7/AC-8 仍保持未完成 / REQ-042 整体不翻 Done / REQ-047 Extended 不翻 Ready）
 
 ## 下一批候选任务
 
