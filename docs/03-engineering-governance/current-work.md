@@ -14,7 +14,53 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-REQ-042-WS-S2-CONTRACT-SHAPING-CLOSEOUT-FACT-CORRECTION: 事实统计 / SHA 拼写纠正（pure-docs）
+
+状态：🟡 进行中（pure-docs 事实纠偏；仅修正 work-log.md 中 PR #621 score base SHA 拼写错误 + 修正 closeout report / PR body 中的 Git 统计口径，不启动任何实现）
+类型：pure-docs 事实纠偏
+领域：docs/03-engineering-governance/work-log.md（+ PR body 描述同步修正）
+当前执行模式：plan-do（用户明确禁止本轮启动 WS-S2 implementation / 触碰后端 / 运行 backfill）
+最近接手工具：Claude Code
+分支：docs/req042-ws-s2-contract-shaping-closeout
+
+需求来源：
+- 三面只读复审 PR #621 报告已发现 PR #621 历史 score 提交时使用的 `1662e2f6` 是 SHA 拼写错误（实际 score base = `1661e2f6396f90103e57e08e579eb9787de3f5b5`，validator 命令行与 merge-sync/SCORE_BASE 中均一致使用 `1661e2f6`）
+- PR #622 closeout report 中沿用了错误 SHA `1662e2f6` 与错误 commit count「5 commits on branch」（实际 base..HEAD = 2 commits：8fefee22 + f7aa9671）
+
+允许范围：
+- 仅修改 docs/03-engineering-governance/work-log.md（替换 #621 行中 3 处错误 `1662e2f6` → `1661e2f6`）
+- 仅修改 PR #622 body 中 closeout report / commit chain 统计表述
+
+禁止范围：
+- 不实现 submit-turn / SSE / after_seq / cancel / stop / steer
+- 不创建公共 `/turns` 路由
+- 不开放发送按钮
+- 不实现前端 SSE transport
+- 不启动 WS-S2 / WS-S3 / REQ-043 / REQ-062 / REQ-063 / TD-085
+- 不运行 agent_erasure_backfill / 不修改 erase_available / 不触碰 metaedu 或 metaedu_test
+- 不处理或 prune stale remote-tracking refs
+- 不修改 review-score-log.md / Metrics / 历史评分行
+- 不修改 shaping plan / requirements / REQ-042 状态 / REQ-043 / REQ-047 Extended / TD-085
+- 不修改 technical-debt.md / fact-audit.md
+- 不修改后端 / 前端 / 测试 / migration / schema / registry / CI / 门禁
+- 不修改 current-work.md（active card 登记除外；本轮 active card 登记必须先于纠正内容）
+- 不 amend / rebase / force-push / reset
+
+验证计划：
+- `git diff --check`
+- `scripts/check-engineering-docs --full`
+- `rg -n '1662e2f6' docs/03-engineering-governance/work-log.md` 结果必须为 0
+- `git rev-parse --verify 1661e2f6396f90103e57e08e579eb9787de3f5b5` 必须成功
+- Score Log / Metrics / shaping plan / historical files byte-identical vs main HEAD
+- PR body 中 closeout report 表述与实际 Git 输出一致
+
+当前进展：active-card 登记 commit（本 commit；先于纠正内容修改）
+
+下一步：commit 2 = 应用纠正（work-log.md 3 处 SHA 替换为 `1661e2f6` + PR body closeout report 修正为 base..HEAD = 2 commits + 实际 diff numstat 明确分文件）
+
+验证状态：active card 登记完成；纠正内容尚未应用（pending）
+
+交接备注：本任务为 TASK-REQ-042-WS-S2-CONTRACT-SHAPING-CLOSEOUT 的事实纠偏 follow-up；不启动任何实现；WS-S2 implementation 仍未启动；按钮保持 disabled；公共 `/turns` 不存在；WS-S3、REQ-043、REQ-047 Extended、TD-085 仍未解锁；REQ-042 仍 ⚫ Candidate；REQ-047 Extended 仍 🟣 Shaping；待 commit 2 应用后 closeout 表述与实际 Git 输出一致
 
 ## 下一批候选任务
 
