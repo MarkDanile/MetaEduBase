@@ -24,7 +24,7 @@
 分支：docs/req042-ws-s2-contract-shaping-closeout
 
 需求来源：
-- 三面只读复审 PR #621 报告已发现 PR #621 历史 score 提交时使用的 `1662e2f6` 是 SHA 拼写错误（实际 score base = `1661e2f6396f90103e57e08e579eb9787de3f5b5`，validator 命令行与 merge-sync/SCORE_BASE 中均一致使用 `1661e2f6`）
+- PR #622 第二轮独立只读复审发现：PR #621 历史 score 提交时使用的 `1662e2f6` 是 SHA 拼写错误（实际 score base = `1661e2f6396f90103e57e08e579eb9787de3f5b5`，validator 命令行与 merge-sync/SCORE_BASE 中均一致使用 `1661e2f6`）
 - PR #622 closeout report 中沿用了错误 SHA `1662e2f6` 与错误 commit count「5 commits on branch」（实际 base..HEAD = 2 commits：8fefee22 + f7aa9671）
 
 允许范围：
@@ -56,11 +56,11 @@
 
 当前进展：active-card 登记 commit（本 commit；先于纠正内容修改）
 
-下一步：commit 2 = 应用纠正（work-log.md 3 处 SHA 替换为 `1661e2f6` + PR body closeout report 修正为 base..HEAD = 2 commits + 实际 diff numstat 明确分文件）
+下一步：1) commit 3（本轮）= 应用第二层纠偏（work-log.md 重写 #621 评审对象分层语义 + 删除错误 `b0fec031` + current-work.md active card 同步 + PR body closeout 报告同步更新）；2) push + Draft PR 自动更新；3) 等待三路 CI settled；4) 等待第三轮独立只读复审裁决
 
-验证状态：active card 登记完成；纠正内容尚未应用（pending）
+验证状态：1) 第一轮 fact-correction 已 commit (`ec8ccf49` 登记 + `4626c053` SHA 替换)；2) 第二轮 fact-correction 本 commit 已应用（work-log.md 重写分层语义 + current-work.md active card 同步）；3) `git merge-base --is-ancestor` 三项验证：9fda8ae1→1661e2f6 exit=0，1661e2f6→3a37d5f0 exit=0，b0fec031≠1661e2f6 祖先 exit=1（确认 b0fec031 不在 PR #621 祖先链）；4) `git diff --check` clean；5) `scripts/check-engineering-docs --full` passed（32 known allowlisted）
 
-交接备注：本任务为 TASK-REQ-042-WS-S2-CONTRACT-SHAPING-CLOSEOUT 的事实纠偏 follow-up；不启动任何实现；WS-S2 implementation 仍未启动；按钮保持 disabled；公共 `/turns` 不存在；WS-S3、REQ-043、REQ-047 Extended、TD-085 仍未解锁；REQ-042 仍 ⚫ Candidate；REQ-047 Extended 仍 🟣 Shaping；待 commit 2 应用后 closeout 表述与实际 Git 输出一致
+交接备注：本任务为 TASK-REQ-042-WS-S2-CONTRACT-SHAPING-CLOSEOUT 的事实纠偏 follow-up（已进行两轮）；不启动任何实现；WS-S2 implementation 仍未启动；按钮保持 disabled；公共 `/turns` 不存在；WS-S3、REQ-043、REQ-047 Extended、TD-085 仍未解锁；REQ-042 仍 ⚫ Candidate；REQ-047 Extended 仍 🟣 Shaping；active card 保持进行中待第三轮独立只读复审裁决
 
 ## 下一批候选任务
 
