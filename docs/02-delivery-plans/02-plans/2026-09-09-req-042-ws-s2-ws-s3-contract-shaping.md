@@ -6,6 +6,27 @@
 > **Plan basis**: [REQ-041/047 Conversation/Run Durable Core 联合 plan](../../02-delivery-plans/02-plans/2026-07-24-req-041-047-conversation-run-contract-plan.md)（W1/E0/E1/B1/A1/D1/R1-S1..S6/C1 已合并）
 > **作者任务卡**: TASK-REQ-042-WS-S2-CONTRACT-SHAPING（仅 docs/ + current-work.md，无业务代码改动）
 
+## 0. 修订历史与本版裁决
+
+| 版本 | commit | 事实状态 |
+|------|--------|----------|
+| 第一版 | `fe1ebce2` | 含多处事实错误（声称 `/turns` 已实 / `cancel body = {reason}` / SSE/cancel 后端未实 / 描述 WS-S2 mock-only + 真实 PG manual 矛盾 / REQ-017 typo） |
+| 第一次纠偏 | `38164a8f` | 重写 §6.2 / §6.3 / §9.1 / §9.3；但 §4.2 / §4.3 / §7.1 / §10 / §11.2 仍残留第一版错误并与已纠正节矛盾（**三面独立只读复审判定不通过**） |
+| 第二次纠偏（**本版**） | HEAD | 唯一产品路径 = WS-S2 real submit closure = **option B**；当前状态 = **BLOCKED**；§4 - §11 + §13 全文统一；删除所有 `option A 作为可立即开工的 WS-S2 implementation` 口径；option A 仅可作为公共 API 冻结后的 L1 mock contract experiment（非交付、非合并） |
+
+**本版最终裁决**（与第一版 + 第一次纠偏并存过的 option A / option B 矛盾口径一致）：
+- WS-S2 real submit closure 路径 = **option B**
+- 当前状态 = **BLOCKED**（4 项硬门禁）
+- WS-S2 不再有任何「可立即开工的 mini-slice」承诺
+- WS-S2.A-E 重拆为**未来顺序**，全部 planning / 全部未启动
+- WS-S2 frontend 任何 prototype 至多标记为 `non-deliverable / non-mergeable / L1 contract experiment`，不冒充 production submit
+- Phase 0 仅完成审计 + 切片规划；WS-S2/WS-S3 implementation 均**未启动**
+
+**历史错误引用（仅作修订说明保留，禁止在规范正文中出现）**：
+- 第一版：错误声称 `POST /turns` 已实 + WS-S2 可立即开工 + L2 真实 PG dry-run for mock-only 等
+- 第一次纠偏：仅修了 §6.2/§6.3/§9.1/§9.3 但保留 §4.2 错误 slice 表 + §4.3 错误 cancelRun(reason) + §7.1 L2 表 + §11.2 REQ-017 typo
+- **本版**：上述残留全部纠正
+
 ## 1. 边界声明（先于一切内容）
 
 本报告**仅做 Phase 0 审计 + 切片规划**，明确以下禁止项与本报告不构成开启任何实现的授权：
@@ -180,69 +201,84 @@ WS-S1 边界声明完整保留（PR #620 closeout + governance correction 已固
 1. **WS-S2**：contract = submit-turn → poll 终态（短轮询，长 ≤ 30s）。这个 contract 已在 REQ-041 AC-4「Message 写入具备幂等键和 durable dispatch」+ REQ-047 A1「owner-private GET Run + 持久化幂等 cancel intent + PostgreSQL ledger SSE replay/live polling」中预先冻结。WS-S2 只是把这两个 contract 的前端消费者打开，不开放 Runtime。
 2. **WS-S3**：contract = SSE event stream + after_seq replay + cancel intent + steer intent。依赖 Runtime SessionBinding 已 wiring（[REQ-043 AC-1](../../01-product-planning/05-requirements/REQ-043-runtime-neutral-agentic-rag-orchestration.md)）+ RuntimeProfileResolver 已写（E0 已合并）+ Capability Gate 已落（D1 已合并）。
 
-### 4.2 WS-S2 切片（5 个 mini-slice）
+### 4.2 WS-S2 切片（未来顺序，全部未启动）
 
-> 前提：所有 WS-S2 mini-slice 依赖 WS-S1 + REQ-041 Durable Core（已合并）+ REQ-047 Durable Core（已合并）。无新后端契约需要落库。
-> 边界：**不接 Runtime** / **不发 SSE** / **不实现 cancel** / **使用短轮询**（≤ 30s，长 poll by GET Run）。
+> **状态**：WS-S2 implementation **当前 BLOCKED**（见 §9.1）。本节列出**未来顺序**，全部为 **planning**，**不代表已启动**。
+>
+> **产品路径裁决**：WS-S2 real submit closure = option B。必须等公共契约 + server-selected launch policy + 最小 execution profile 全部冻结才能开工。
+>
+> **历史错误清除**：第一版错误声称 "POST /turns backend 已实" / "WS-S2 可立即开工" / "修改 `:disabled="false"`" / "mock POST /turns 返回 201" / "WS-S2.E 真实 PG manual 验收" —— 全部删除（残留仅在 §0 修订历史 + §12 中保留作 honest 记录）。
 
-| WS-S2 mini-slice | 目标 | 输入 | 输出 | 前置 | 完成标准（不冒充 production enable） |
-|------------------|------|------|------|------|--------------------------------------|
-| **WS-S2.A** Submit-Turn Endpoint Wire-up | 把现有 `/turns` POST endpoint（已在 REQ-041 W1 + B1 bridge 中实现 backend）前端消费层接好 | backend 已实：`POST /agent-workspace/conversations/{id}/turns`（[REQ-041 W1 plan](2026-07-24-req-041-047-conversation-run-contract-plan.md) Slice B1 §交付） | `service/turns.ts`：submitTurn(conversationId, content, idempotencyKey) → returns `{ runId, messageId, queueSeq }`；store 层加 `submitTurnInFlight` ref + guard（archive/restore/delete 相同模式） | WS-S1 完成；REQ-041 B1 PR #485 已合；REQ-047 E1 PR #483 已合 | unit tests：双击 guard（[c.f. workspace.spec.ts race GUARD 测试模式](../../../packages/web/src/stores/workspace.spec.ts)）+ 409 transparent 抛出 + 幂等键去重；**不发 SSE**；**不发按钮改 enabled**；仍保持 disabled，仅添加 service 层 wire-up |
-| **WS-S2.B** Run Query Polling Loop（短轮询） | 实现"已启动 Run 后短轮询 GET Run 直到终态" | backend 已实：`GET /agent-runs/{id}`（WS-S1 已有）+ `cancel intent`（A1 PR #487） | `service/runs.ts`：pollRunUntilTerminal(runId, { maxDurationMs: 30_000, intervalMs: 1_000 }) | WS-S2.A 完成；WS-S1 store `getRun` 已有 | unit tests：interval / timeout 边界；终态判定用 `TERMINAL_RUN_STATUSES`；cancel intent 不在此 slice 实现（仅 poll） |
-| **WS-S2.C** Composer Send Button ENABLED（受限） | 打开"已存档/已删除"以外状态会话的发送按钮 | WS-S2.A + WS-S2.B 完成 + Composer 当前已 `:disabled="true"` | 修改 `:disabled="false"` for state ∈ {active}；aria-disabled 同步；title 改"发送" | WS-S2.A + WS-S2.B 完成 | **必须保留**：state=archived / state=deleted 时仍 disabled（业务约束）；不接 SSE；不接 cancel；不接 Runtime；不发按钮替换 disabled placeholder |
-| **WS-S2.D** Mock Submit-Turn E2E (Playwright) | 给 WS-S2.A/B/C 一个浏览器可观察的 mock 闭环 | 服务端真实 + 服务端 mock 拦截（page.route 模式） | playwright test：点发送 → 看到 message 出现在 timeline → run 状态从 queued → completed 变化 | WS-S2.A/B/C 完成 + 已开 setupWorkspaceE2E | e2e：mock 拦截 `POST /turns` 返回 201 + `GET /agent-runs/{id}` 返回 queued→running→completed 三态；timeout 30s 内完成；**模拟 fail-closed**：mock 409 / mock 422 也能正确显示 |
-| **WS-S2.E** Manual Acceptance & Spec Completion | 真实 PG + 真实 user submit-turn（手动测试，不进 CI） | 全部 WS-S2.A-D 完成 + 真实 backend | 手动验收报告：9 项用户场景（如 WS-S1 9 项 + 新 submit 1 项 = 10 项） | WS-S2.A-D 完成 | 手动验收 pass + PR body「WS-S2.A-B-C-D-E 全部完成；真实 PG 后端 + frontend submit-turn poll 闭环 + 9 项手动验收 pass；保留 P2/P3 已知限制」 |
+**WS-S2 未来顺序（5 个 phase，全部未启动）**：
 
-**WS-S2 禁止**：
-- ✗ 不接 SSE / EventSource
+| WS-S2 phase | 目标 | 输入 | 输出 | 前置依赖（**硬门禁**） | 当前状态 |
+|-------------|------|------|------|---------------------|---------|
+| **WS-S2 phase-A** 公共 submit API + DTO + error contract 冻结 | contract-first 冻结：路径 / method / 鉴权 / owner isolation / 幂等重放 / 冲突码 / 能力门控 | REQ-041 W1 + B1 + REQ-047 Durable Core 已存在；内部 `submit_turn()` 已有 application contract | `POST /api/v1/agent-workspace/conversations/{id}/turns` 公开 spec 文档；`SubmitTurnRequest` / `SubmitTurnResponse` DTO；4xx/5xx error code 表（403 / 404 / 409 revision_conflict / 422 / 429 / 500） | ① 公共契约评审流程定义 ② REQ-042 §Acceptance 拆解（AC-2 运行中部分 + AC-8 Run 继续部分） | 🟣 **未启动** |
+| **WS-S2 phase-B** server-selected launch policy + 最小 execution profile 冻结 | 冻结 `RuntimeProfileResolver` 选 profile 字段 + capability gate 字段 + `TurnLaunchSpecV1` 服务端构造路径 + 最小 execution profile（compatibility execution / system.direct_rag.v1 等） | REQ-043 Spec + REQ-047 Extended Contracts 已冻结 | `RuntimeProfileResolver` contract + `TurnLaunchSpecV1` 构造 contract + minimal execution profile 列表 | ① WS-S2 phase-A ② REQ-043 Spec 冻结 ③ REQ-047 Extended Contracts 三组 spec 冻结 | 🟣 **未启动** |
+| **WS-S2 phase-C** backend route + 真实 PG contract tests | 把 `submit_turn()` application 公开化为 `POST /turns` route（router 登记）+ WS-S2 backend slice；写真实 PG 端到端 contract tests | WS-S2 phase-A 冻结的 spec | backend route 实装 + 真实 PG 端到端 contract tests（不变量：幂等重放、revision conflict、owner isolation、能力门控 fail-closed、ConversationExecutionGuard 串行化） | ① WS-S2 phase-A ② WS-S2 phase-B | 🟣 **未启动** |
+| **WS-S2 phase-D** frontend service/store + guarded Composer enable | 前端 service / store wire-up；在 state=active 且 WS-S2 phase-A/B/C 后端可用时打开按钮：state=archived / state=deleted 仍 disabled | WS-S2 phase-A 公开 spec + WS-S2 phase-C 后端 route | `service/turns.ts` + store `submitTurnInFlight` ref + guard；Composer 根据 state 与 capability gate 动态 enabled/disabled；按钮 `:disabled` v-bind 不再硬编码 | ① WS-S2 phase-C ② WS-S2 phase-D 须配合独立 frontend slice PR | 🟣 **未启动** |
+| **WS-S2 phase-E** mock + 真实 PG e2e + 用户手动验收 | e2e 闭环：mock route + 真实 PG；用户手动验收 10 项 | WS-S2 phase-D frontend 已实 | e2e tests + 手动验收报告 | ① WS-S2 phase-D | 🟣 **未启动** |
+
+**WS-S2 禁止（不变）**：
+- ✗ 不接 SSE / EventSource（WS-S2 不涉及 SSE；SSE 归 WS-S3）
 - ✗ 不接 `AgentTurnLoopRuntime`
 - ✗ 不实现 cancel / stop / steer
 - ✗ 不开放 Runtime Profile 切换
-- ✗ 不修改 /turns endpoint contract（backend 已冻结）
+- ✗ 不声称 mock-only pre-wire 作为 "WS-S2 implementation 启动"（最多标记为非交付、非合并、L1 contract experiment）
+- ✗ 不修改 `/turns` endpoint contract（**endpoint 不存在**，不是已冻结；WS-S2 phase-A 才是冻结）
+- ✗ 不修改 `expectedRevision` body schema（后端 `CancelRunRequest` 已冻结 = `{expected_revision: int}`）
+- ✗ 不把 cancelRun body 写成 `{reason}`（**错的**）
 
-### 4.3 WS-S3 切片（5 个 mini-slice）
+### 4.3 WS-S3 切片（未来顺序，全部未启动）
 
-> 前提：WS-S2 全部完成 + REQ-043 Runtime neutral adapter spec 已冻结（依赖 TD-085 依赖倒置切片完成）+ REQ-047 Extended Contracts（HumanInputRequest + ApprovalRequest + ToolCall + ToolGrant + Artifact + Evidence）已冻结。
-> 边界：**接 SSE** / cancel / steer / 实时 RunEvent / 结构化 Tool / Approval / Artifact 面板。
+> **状态**：WS-S3 implementation **当前 BLOCKED**（见 §9.3）。本节列出**未来顺序**，全部为 **planning**，**不代表已启动**。
+>
+> **后端现状（事实源 `router.py:376 / :397`）**：后端 SSE + cancel endpoint **已实现**（不属于 WS-S3 新增 endpoint）。
+> - `POST /api/v1/agent-runs/{run_id}/cancel` body 字段 `CancelRunRequest = {expected_revision: int = Field(ge=1)}`（**不是 `{reason}`**）
+> - `GET /api/v1/agent-runs/{run_id}/events` 支持 `after_seq` query + `Last-Event-ID` header + heartbeat + `url_token_forbidden` 拒绝 URL token
+>
+> **WS-S3 真正缺的**：前端消费层 + 结构化 UI + 浏览器 SSE 鉴权 transport（**不是后端 endpoint**）。
 
-| WS-S3 mini-slice | 目标 | 输入 | 输出 | 前置 | 完成标准 |
-|------------------|------|------|------|------|----------|
-| **WS-S3.A** SSE Event Stream Endpoint + Frontend Transport | 后端 SSE `GET /agent-runs/{id}/events?after_seq=N`；前端 `useRunEventStream(runId)` composable | REQ-043 AC-11「SSE 断开不推导 Run 成功，客户端可按 after_seq 重放并独立查询终态」+ REQ-047 AC-2「(tenant_id, run_id, seq) 唯一且 seq 单调递增；客户端可检测 gap 并按 after_seq 重放」 | backend：SSE endpoint；frontend：`composables/useRunEventStream.ts`（EventSource 包装，after_seq 自动续传，gap 检测 → trigger reload） | REQ-047 B1 + E1 已合并；WS-S2 完成 | unit tests：after_seq 重连；gap detection；abort；连接超时；同 run 多次切换不重复连接 |
-| **WS-S3.B** RunEvent Timeline Component + Structured Renderers | 中栏 RunEvent 类型化渲染：plan_summary / phase / tool lifecycle / evidence / approval / input / artifact / retry / usage / error / terminal | REQ-047 RunEvent 类型 + Spec §RunEvent 字段 | `components/agent-workspace/RunEventTimeline.vue` + `components/agent-workspace/events/{Plan,Tool,Evidence,Approval,Input,Artifact,Error,Terminal}.vue`；按 `kind` 分发到不同子组件（结构化组件 ≠ 普通助手文本） | WS-S3.A 完成；REQ-047 AC-9（32 KiB 内联边界、classification 外置）已 merge | 每个事件类型单独 unit test；端到端 SSE e2e（mock event stream） |
-| **WS-S3.C** Cancel / Stop / Steer intent + UI | RunDetailPane 加 cancel 按钮 + 显式 steer 输入框（活动 Run 强制终止 + 普通消息排队 → 下一 Run） | REQ-047 AC-1「Run 状态机覆盖 queued/starting/running/waiting_input/waiting_approval/resume_required/cancelling/completed/failed/cancelled/expired，非法迁移失败」+ REQ-043 AC-16/AC-17「cancel/timeout 遇到 executing/reconciling 写 Tool 时不得先落 Run 终态；先 reconcile，无法确认时 ToolCall=outcome_unknown 且 Run=resume_required」+ REQ-043 AC-18「resume_required -> starting 只能由同一 Binding/epoch 恢复成功触发」 | `service/runs.ts`：`cancelRun(runId, reason)` + `steerRun(runId, content, idempotencyKey)`；RunDetailPane 新增按钮 + 输入 | WS-S3.B 完成；REQ-047 E1/A1 state machine 已 merge；RuntimeSessionBinding 已 wired | 单元 + e2e：cancel 按钮 disabled for terminal states；steer 后产生 queued message；outcome_unknown 显示为 resume_required |
-| **WS-S3.D** HumanInputRequest + ApprovalRequest UI（结构化组件） | 活动 Run 等待 input/approval 时显示结构化请求卡：HumanInputRequest 与 Approval 分离；过期不可重复提交；reviewer scope 显示 | REQ-047 AC-14「HumanInputRequest 与 ApprovalRequest 在状态、权限、响应和过期语义上完全分离」+ REQ-043 AC-5「审批 durable、first-answer-wins、带 revision/runtime epoch、过期时间和 reviewer scope」+ REQ-047 AC-4「审批进程重启后仍可查询和处理；重复或冲突回答有稳定幂等语义」 | HumanInputCard.vue + ApprovalCard.vue；response endpoint `POST /runs/{id}/input` + `POST /runs/{id}/approvals/{aid}/respond` | WS-S3.B 完成；REQ-047 Extended Contracts (HumanInput + Approval) 已 spec 冻结 + plan merge | 单元 + e2e：分离组件；过期原子取消未执行 ToolCall；revision bump 拒绝旧 revision |
-| **WS-S3.E** Artifact / Evidence Timeline + Thinking Summary | RunEvent timeline 嵌入 Artifact 卡 + EvidenceItem 卡 + thinking summary 受控展示（不展示原始 CoT） | REQ-047 AC-5「Artifact 支持版本、来源 Run、创建者、tenant、确认/退回和归档；大文件不直接塞数据库 JSON」+ REQ-047 AC-6「Evidence 可回溯到 RAG source、MCP invocation、Query audit 或其他受治理来源，不接受模型自造引用」+ REQ-047 AC-11「事件和日志中不存在原始 Chain-of-Thought、长期凭证及未裁剪敏感 Tool Result」 | ArtifactCard.vue + EvidenceCard.vue + thinking-summary 渲染（仅 plan/phase/tool/evidence/usage/error 摘要） | WS-S3.B + WS-S3.D 完成；REQ-047 Artifact + Evidence 已 merge | 单元 + e2e：Artifact 版本链；Evidence 血缘；thinking summary 严格按 REQ-047 §Scope 边界渲染 |
+| WS-S3 phase | 目标 | 输入 | 输出 | 前置依赖（**硬门禁**） | 当前状态 |
+|-------------|------|------|------|---------------------|---------|
+| **WS-S3 phase-A** 浏览器 SSE 鉴权 transport 冻结 | 在 `fetch()+ReadableStream` / polyfill / 独立 stream_token 契约 三选一 中 contract-first 冻结（**原生 EventSource 不能设 Authorization header；后端已拒绝 URL token**） | 后端 SSE 已实 + url_token_forbidden | 单一 transport 契约（建议 fetch+ReadableStream 优先：不引入额外依赖、不破坏 SSE 自动重连语义由调用方自实现） | ① Transport 选型 contract-first 评审 | 🟣 **未启动** |
+| **WS-S3 phase-B** `cancelRun(runId, expectedRevision)` frontend wire-up + UI | 前端 service + 按钮 + revision bump 失败 toast（不开放按钮当 state 非 active） | 后端 cancel endpoint 已实 + WS-S3 phase-A transport 冻结（共用 transport） | `service/runs.ts:cancelRun(runId, expectedRevision)` + RunDetailPane cancel 按钮（state guard：active / cancelling / terminal 三态分别禁用/启用/隐藏） | ① WS-S3 phase-A | 🟣 **未启动** |
+| **WS-S3 phase-C** RunEvent Timeline + Structured Renderers (Plan / Tool / Evidence / Approval / Input / Artifact / Error / Terminal) | 类型化 RunEvent 渲染（结构化组件 ≠ 普通助手文本）；32 KiB 内联 + classification 外置边界 | WS-S3 phase-A transport 冻结 + WS-S3 phase-B 消费层路径 | 8 个结构化子组件 + timeline 父组件 | ① WS-S3 phase-A ② WS-S3 phase-B | 🟣 **未启动** |
+| **WS-S3 phase-D** `steerRun` / `respondHumanInput` / `respondApproval` frontend + UI | 活动 Run 等待时显示结构化请求卡（HumanInput 与 Approval 分离）；过期不可重复提交；reviewer scope 显示 | REQ-047 HumanInputRequest + ApprovalRequest spec 已冻结 + 公共 endpoint 已实 | 三类 service + 三类 UI 卡 | ① WS-S3 phase-A ② REQ-047 Extended Contracts (HumanInput + Approval) 已冻结 ③ REQ-043 RuntimeSessionBinding 已 wired | 🟣 **未启动** |
+| **WS-S3 phase-E** Artifact / Evidence Timeline + Thinking Summary 受控展示 | Artifact 版本链 + Evidence 血缘 + thinking summary 仅 plan/phase/tool/evidence/usage/error 摘要（不展示原始 CoT） | REQ-047 Artifact + EvidenceItem spec 已冻结 + endpoint 已实 | ArtifactCard + EvidenceCard + thinking-summary 渲染器 | ① WS-S3 phase-D ② REQ-047 Extended (Artifact + Evidence) 已冻结 | 🟣 **未启动** |
 
-**WS-S3 禁止**：
+**WS-S3 禁止（不变）**：
+- ✗ 不修改后端 SSE/cancel endpoint contract（已冻结；body 字段 `expected_revision` 不变）
 - ✗ 不实现 Tool Gateway / ToolGrant 后端（归 REQ-043 Tool Gateway 切片）
 - ✗ 不实现 Runtime Plan 算法（归 REQ-043 Runtime 中立 Runtime）
 - ✗ 不修改 RunEvent schema（依赖 REQ-047 已冻结）
+- ✗ 把 `new EventSource(url)` 写成可实施默认方案（**原生 EventSource 不能设 Authorization header**；须用 phase-A 冻结的 transport）
 
 ### 4.4 切片依赖图
 
+**重要前提**：WS-S2 + WS-S3 全部 phase **当前均未启动**；下图为**未来顺序依赖图**，不是已开工的并行项目。
+
 ```
 WS-S1 完成 ✅
-  ├─ WS-S2.A submit-turn wire-up
-  │   ├─ WS-S2.B poll loop
-  │   │   └─ WS-S2.C enable send button
-  │   │       └─ WS-S2.D mock e2e
-  │   │           └─ WS-S2.E manual acceptance
-  └─ (independent) ────────────────────
+  │
+  ├─ WS-S2 phase-A 公共 submit API spec 冻结
+  │   └─ WS-S2 phase-B server-selected launch policy + 最小 execution profile 冻结
+  │       └─ WS-S2 phase-C backend route + 真实 PG contract tests
+  │           └─ WS-S2 phase-D frontend service/store + guarded Composer enable
+  │               └─ WS-S2 phase-E mock + 真实 PG e2e + 用户手动验收
+  │
+  └─ WS-S2 不依赖 REQ-043 Runtime 接入；WS-S2 真实 PG submit-loop
+      仅依赖公共契约 + RuntimeProfileResolver + 最小 execution profile
 
-REQ-047 Extended Contracts 🟣 Shaping
-  ├─ WS-S3.A SSE transport
-  │   ├─ WS-S3.B RunEvent timeline
-  │   │   ├─ WS-S3.D HumanInput + Approval
-  │   │   │   └─ WS-S3.E Artifact + Evidence
-  │   │   └─ WS-S3.C cancel/stop/steer (parallel)
-  │   │       └─ WS-S3.E Artifact + Evidence
-  └─ (depends on REQ-043 Tool Gateway & Runtime Profile adapter — TD-085 依赖倒置切片)
+REQ-047 Durable Core 🟢 Done + REQ-047 Extended Contracts 🟣 Shaping
+  ├─ WS-S3 phase-A 浏览器 SSE 鉴权 transport 冻结
+  │   ├─ WS-S3 phase-B cancelRun(runId, expectedRevision) wire-up + UI
+  │   └─ WS-S3 phase-C RunEvent Timeline + Structured Renderers
+  │       ├─ WS-S3 phase-D steerRun + HumanInput + Approval UI
+  │       │   └─ WS-S3 phase-E Artifact + Evidence + Thinking Summary
+  │       └─ WS-S3 phase-E (parallel after phase-D)
+  └─ (depends on REQ-047 Extended Contracts 3 组 spec + REQ-043 Tool Gateway + TD-085)
 ```
-
-**关键依赖**：
-- WS-S3 整体依赖 REQ-043 Runtime 中立 Adapter spec 冻结 + TD-085 Boundary Closure 中会阻塞 Runtime 接线的依赖倒置切片完成
-- WS-S3.D（HumanInput + Approval UI）依赖 REQ-047 Extended Contracts (HumanInputRequest + ApprovalRequest) 冻结
-- WS-S3.E（Artifact + Evidence）依赖 REQ-047 Artifact + Evidence spec 冻结
 
 ---
 
@@ -294,13 +330,27 @@ REQ-047 Extended Contracts 🟣 Shaping
 
 ### 5.3 推荐的依赖倒置顺序（避免 V1 阻塞）
 
+**关键事实校正**：REQ-047 Extended Contracts 不是 WS-S2 的硬依赖；WS-S2 仅依赖公共契约 + RuntimeProfileResolver + 最小 execution profile（这些可能间接引用 REQ-043 字段，但 REQ-047 Extended 三组 spec 不阻塞 WS-S2）。
+
+| 依赖类别 | 内容 | 谁阻塞 |
+|---------|------|-------|
+| **WS-S2 硬门禁** | ① 公共 submit API spec 冻结（鉴权 / owner isolation / 幂等重放 / 冲突码 / 能力门控） ② server-selected launch policy 冻结 ③ 最小 execution profile 契约 ④ backend route + 真实 PG contract tests | ① ② ③ 是 contract-first 任务（独立 PR）；④ 是 backend slice（独立 PR） |
+| **WS-S2 soft 依赖** | REQ-041 Durable Core（已合）/ REQ-047 Durable Core（已合）/ WS-S1（已合） | 全部已合，无阻塞 |
+| **WS-S3 硬门禁** | ① 浏览器 SSE 鉴权 transport 冻结 ② REQ-047 Extended 三组 spec 冻结（HumanInput + Approval / ToolCall + ToolGrant + Snapshot / Artifact + Evidence） ③ REQ-043 Runtime conformance spec + Tool Gateway spec 冻结 ④ REQ-043 RuntimeSessionBinding + RuntimeProfileResolver 实装 ⑤ TD-085 依赖倒置切片 | ① contract-first 独立 PR；② ③ ④ ⑤ 都是 contract / refactor 类 PR |
+| **WS-S3 soft 依赖** | REQ-047 Durable Core（已合） | 全部已合，无阻塞 |
+| **历史错误校正** | 第一版 + 第一次纠偏 写 "WS-S2 立即可开工（无 spec blocker，仅依赖 Durable Core）"——**错的**。WS-S2 当前真实状态 = BLOCKED（4 项硬门禁） | 全文禁止再出现"WS-S2 可立即开工"表述 |
+
+**建议顺序（contract-first）**：
 ```
-1. REQ-047 Extended Contracts 三组 spec contract-first 冻结（blocker for WS-S3）
-2. REQ-043 Runtime conformance + Tool Gateway spec 冻结（blocker for WS-S3）
-3. TD-085 Boundary Closure 中阻塞 Runtime 接线的依赖倒置切片完成
-4. WS-S2 立即可开工（无 spec blocker，仅依赖 Durable Core）
-5. WS-S2 完成 → 真实浏览器手动验收 + 评分 → 才能进 WS-S3
-6. WS-S3 按 A → B → C/D 并行 → E 顺序
+1. WS-S2 phase-A 公共 submit API spec 冻结（contract-first PR）
+2. WS-S2 phase-B server-selected launch policy + 最小 execution profile 冻结（contract-first PR；可能引用 REQ-043 字段，但 REQ-047 Extended 不阻塞此步）
+3. WS-S2 phase-C backend route 实装 + 真实 PG contract tests（独立 backend slice PR）
+4. WS-S2 phase-D frontend service/store + guarded Composer enable（独立 frontend slice PR）
+5. WS-S2 phase-E mock + 真实 PG e2e + 用户手动验收
+6. WS-S3 phase-A 浏览器 SSE 鉴权 transport 冻结
+7. WS-S3 phase-B cancelRun wire-up
+8. WS-S3 phase-C RunEvent Timeline + Renderers
+9. WS-S3 phase-D + phase-E（依赖 REQ-047 Extended 三组 spec）
 ```
 
 ---
@@ -349,28 +399,15 @@ REQ-047 Extended Contracts 🟣 Shaping
 
 | 依赖 | 阻塞原因 | 状态 |
 |------|---------|------|
-| 公共 submit API spec 冻结（鉴权、owner isolation、幂等重放、冲突码、能力门控） | 当前仅 internal application method | 🟣 未冻结 |
-| `submit_turn()` 公开化（router 登记 + WS-S2 backend slice） | 当前 router 无 `/turns` | 🟣 未冻结 |
-| server-selected launch policy spec（RuntimeProfileResolver / Capability Gate 字段） | REQ-043 仍 ⚫ Candidate | 🟣 未冻结 |
-| 最小执行 profile 契约（compatibility execution profile） | REQ-047 E0 已落但 RuntimeProfile 未实例化 | 🟣 未冻结 |
-| 真实 PG 端到端 submit + Run 启动 + 终态可达 | 全部依赖以上 | 🟣 阻塞 |
+| **WS-S2 phase-A**：公共 submit API spec 冻结（鉴权 / owner isolation / 幂等重放 / 冲突码 / 能力门控） | 当前仅 internal application method；router 无 `/turns` | 🟣 未冻结 |
+| **WS-S2 phase-B**：server-selected launch policy spec（RuntimeProfileResolver + Capability Gate 字段）+ 最小 execution profile 契约 | REQ-043 仍 ⚫ Candidate；REQ-047 Extended ToolGrant / BudgetSnapshot 字段未冻结 | 🟣 未冻结 |
+| **WS-S2 phase-C**：backend route + 真实 PG contract tests | 依赖 phase-A + phase-B | 🟣 阻塞 |
+| **WS-S2 phase-D**：frontend service/store + guarded Composer enable | 依赖 phase-C；按钮状态绑定 capability gate | 🟣 阻塞 |
+| **WS-S2 phase-E**：mock + 真实 PG e2e + 用户手动验收 | 依赖 phase-D | 🟣 阻塞 |
 
-**WS-S2 仍可做的范围（option A：纯前端 mock 预接线）**：
+**历史错误清除**：第一版 + 第一次纠偏 写 "WS-S2 仍可做的范围（option A：纯前端 mock 预接线）" 列表（含 service stub + Composer draft + pollRunUntilTerminal 等"可做"项）——**错的**。第一版 + 第一次纠偏 写 "WS-S2 DTO 草案（仅当前端 typed stub 形态）" ——**错的**：未冻结公共 API 时前端 typed stub 会冒充 server contract。
 
-| 能力 | WS-S2.A 可做 | 限制 |
-|------|------------|------|
-| `submitTurn(conversationId, content, idempotencyKey)` service stub | ✅ 仅 stub 形态，page.route 拦截 mock | **按钮仍 disabled** |
-| Composer draft localStorage 自动保存 | ✅ 可做 | 无新 contract |
-| `pollRunUntilTerminal(runId, opts)` polling helper | ✅ 可做（GET Run 已存在） | 不依赖 submit-turn |
-| 单元测试（store + service mock） | ✅ 可做 | mock-only |
-| 打开 Composer 发送按钮 | ❌ **不做**（submit 闭环未就绪） | 必须保持 disabled |
-| 真实 PG submit-loop 手动验收 | ❌ **不做**（公共 API 未冻结） | 阻塞 |
-
-**WS-S2 DTO 草案**（仅当前端 typed stub 形态，**不替代 server contract**）：
-
-- `submitTurnStubRequest`: `{ content: string, idempotencyKey: string, draftAutoSave?: boolean }`（**此为草案**，待公共 API spec 冻结后从服务端拉取真 schema）
-- `submitTurnStubResponse`: `{ runId: string, messageId: string, queueSeq: number, statusRevision: number }`（同上，**服务端字段未定**）
-- `pollOptions`: `{ maxDurationMs?: number, intervalMs?: number }`
+**当前文件唯一允许出现的 WS-S2 范围**：5 个 phase 全部 planning / 全部未启动。任何声称 "WS-S2 mini-slice 可执行" "WS-S2 frontend service 可 wire-up" "WS-S2 producer stub" "WS-S2 mock closed loop" 等表述均须删除。
 
 ### 6.3 WS-S3 现状（事实纠偏后）
 
@@ -459,20 +496,41 @@ REQ-047 Extended Contracts 🟣 Shaping
 
 ## 7. 证据等级（fake Runtime vs 真实 Runtime vs 真实 PG）
 
-### 7.1 各 Slice 的最高已验证层级
+**本 Phase 0 报告当前最高已验证层级**：
 
-| Slice | 验证环境 | 最高层级 | 备注 |
-|------|---------|---------|------|
-| WS-S2.A submit-turn wire-up | mock backend (page.route) | L1 mock | 不开放按钮；service + store unit tests |
-| WS-S2.B poll loop | mock backend | L1 mock | 短轮询 interval / timeout 边界 unit tests |
-| WS-S2.C enable send button | mock backend | L1 mock | e2e：mock 端到端 |
-| WS-S2.D mock e2e | Playwright + mock | L1 mock | browser visible; mock covers success/409/422 |
-| **WS-S2.E manual acceptance** | **真实 PG + 真实 backend** | **L2 真实 PG dry-run** | **手动用户测试 10 项**；不接 LLM |
-| WS-S3.A SSE transport | mock SSE stream | L1 mock | EventSource + after_seq 重连 unit + e2e |
-| WS-S3.B RunEvent timeline | mock SSE stream | L1 mock | 组件 unit tests |
-| WS-S3.C cancel/stop/steer | mock backend | L1 mock | e2e：cancel + steer 流 |
-| WS-S3.D HumanInput + Approval UI | mock backend | L1 mock | REQ-047 Extended 仍 Shaping，不连真实 backend |
-| WS-S3.E Artifact + Evidence | mock backend | L1 mock | 同上 |
+| 验证场景 | 最高层级 | 状态 |
+|---------|---------|------|
+| 静态代码审计 + 后端契约事实核对 | **L0** | ✅ 本报告 |
+| 后端已有 endpoint 真实 PG 端到端（WS-S1 已消费 GET Run / 真实 PG / 真实会话） | **L2**（属历史 REQ-041/047 PR） | ✅ 既有证据，不属 WS-S2/WS-S3 |
+| front-end wire-up 不依赖新 contract | L1 mock（仅在 contract-first PR 内） | 🟣 未启动 |
+| 真实 PG submit-loop 端到端 | **L2** | 🟣 **必须等 WS-S2 phase-C/D/E 完成** |
+| 真实 LLM 接入 | **L3** | 🟣 归 REQ-043 Pi Worker V1 spike |
+
+### 7.1 各 Slice 的最高已验证层级（**当前所有 slice 均为 planning，最高已验证层级只能为 L0 静态审计**）
+
+| Slice | 当前状态 | 未来验收门禁（**严禁冒充当前可做**） |
+|------|---------|--------------------------------------|
+| WS-S2 phase-A | 🟣 未启动 | 公共契约评审通过（L0 → L1 doc-review） |
+| WS-S2 phase-B | 🟣 未启动 | server-selected launch policy spec 评审通过 |
+| WS-S2 phase-C | 🟣 未启动 | backend route + 真实 PG contract tests pass（L2） |
+| WS-S2 phase-D | 🟣 未启动 | frontend wire-up + unit tests + guarded Composer enable |
+| WS-S2 phase-E | 🟣 未启动 | mock e2e + 真实 PG submit-loop + 用户手动验收 10 项（L2 真实 PG dry-run） |
+| WS-S3 phase-A | 🟣 未启动 | 浏览器 SSE 鉴权 transport spec 评审 |
+| WS-S3 phase-B | 🟣 未启动 | cancelRun wire-up + revision bump test |
+| WS-S3 phase-C | 🟣 未启动 | 8 个结构化 RunEvent 子组件 + timeline 父组件 + SSE 消费 e2e |
+| WS-S3 phase-D | 🟣 未启动 | HumanInput + Approval UI + revision bump |
+| WS-S3 phase-E | 🟣 未启动 | Artifact + Evidence + Thinking Summary |
+
+**关键声明**：
+- **本 Phase 0 报告仅完成 L0 静态代码审计 + 未来切片规划**
+- mock 可作为**已冻结公共契约的 e2e 工具**（contract-first PR 内部），**禁止作为 WS-S2 真实提交闭环的"已交付证据"**
+- L1 mock / L2 真实 PG / L3 真实 LLM 只能写成**未来验收门禁**，**禁止冒充当前已通过**
+- WS-S2 / WS-S3 收口时须按上表显式声明"达到 L2 真实 PG dry-run"或"L3 真实 LLM 接入"；当前报告无任何 L1+ 证据
+
+**历史错误清除**：
+- 第一版 + 第一次纠偏 写 "WS-S2.E = L2 真实 PG dry-run + 手动用户测试 10 项" ——**错的**，因为当前 WS-S2 phase A-E 全部未启动
+- 第一次纠偏 "Mock 仅作 UI contract 验证；最高已验证层级为 L1 mock；WS-S2.E 手动验收为 L2 真实 PG dry-run" —— 错的：mock 可到 L1 是通用事实，但 WS-S2.E 写"已是 L2 真实 PG dry-run"是冒充未来状态
+- 本版统一：本 Phase 0 报告最高 L0；未来 L1/L2/L3 验证门禁按上表登记
 | **REQ-043 Runtime V1 enable** | **真实 Pi Worker + 真实 PG** | **L3 真实 LLM 接入** | **独立后续 REQ-043 PR；不在 WS-S3 范围** |
 
 ### 7.2 关键声明
@@ -491,91 +549,126 @@ REQ-047 Extended Contracts 🟣 Shaping
 
 ## 8. 每个 Slice 的测试矩阵 + 手动验收路径
 
-### 8.1 WS-S2 测试矩阵
+**重要前提**：所有测试矩阵描述的是**未来验收门禁**，**不是当前可执行的测试任务**。当 WS-S2/WS-S3 phase 实际启动时，按对应行实施；当前所有 phase 未启动，**不得写"测试已通过"或"已跑过"**。
 
-| Slice | unit (vitest) | e2e (Playwright) | 手动验收 | mutation harness |
+### 8.1 WS-S2 未来测试矩阵（全部 🟣 未启动）
+
+| Phase | unit (vitest) | e2e (Playwright) | 手动验收（仅 phase-E） | mutation harness |
 |------|--------------|------------------|---------|------------------|
-| WS-S2.A | submitTurn double-click guard; 409 transparent; idempotencyKey dedup; store ref management | — | — | N/A（mock service） |
-| WS-S2.B | pollRunUntilTerminal interval / timeout; TERMINAL_RUN_STATUSES detection; cancel 不实现 | — | — | N/A |
-| WS-S2.C | Composer state=active → enabled; state=archived → disabled; state=deleted → disabled | — | — | N/A |
-| WS-S2.D | — | mock POST /turns (201) → GET /agent-runs/{id} (queued→running→completed); mock POST /turns (409) → toast 错误 | — | N/A |
-| WS-S2.E | — | — | 10 项用户场景：创建 → 输入 → 发送 → 看到 message → 看到 run 终态；归档后无法发送；删除后无法发送；非 archived 状态正常；网络错误 toast；超时 30s 提示 | — |
+| phase-A 公共契约冻结 | **L1 doc-review**：评审纪要；非代码测试 | — | — | — |
+| phase-B launch policy spec | **L1 doc-review** | — | — | — |
+| phase-C backend route + 真实 PG contract tests | 集成测试：幂等重放 / revision conflict / owner isolation / capability gate fail-closed / ConversationExecutionGuard 串行化 | — | — | N/A |
+| phase-D frontend wire-up | submitTurnInFlight guard；409 transparent 抛出；state guard（archived / deleted 仍 disabled） | 按钮 enabled 流 + 按钮 disabled 流（state guard） | — | N/A |
+| phase-E e2e + 真实 PG dry-run | — | mock route（仅当公共契约冻结后） + 真实 PG e2e | 10 项用户场景：创建 → 输入 → 发送 → 看到 message → 看到 run 终态；归档后无法发送；删除后无法发送；非 archived 状态正常；网络错误 toast；超时 30s 提示 | — |
 
-### 8.2 WS-S3 测试矩阵
+### 8.2 WS-S3 未来测试矩阵（全部 🟣 未启动）
 
-| Slice | unit | e2e | 手动验收 | mutation |
+| Phase | unit | e2e | 手动验收 | mutation |
 |------|------|-----|---------|---------|
-| WS-S3.A | useRunEventStream reconnection; gap detection; abort; connection timeout; multi-mount no duplicate connection | mock SSE event stream | — | N/A |
-| WS-S3.B | PlanCard / ToolCard / EvidenceCard / ApprovalCard / InputCard / ArtifactCard / ErrorCard / TerminalCard 各自独立渲染 | mock SSE → 事件类型分发到子组件 | — | N/A |
-| WS-S3.C | cancelRun button disabled for terminal; steerRun produces queued message; outcome_unknown → resume_required UI state | mock cancel flow; mock steer flow | — | N/A |
-| WS-S3.D | HumanInputCard 与 ApprovalCard 分离; revision bump 拒绝旧 revision; 过期原子取消未执行 ToolCall | mock input/approval respond flows | — | N/A |
-| WS-S3.E | ArtifactCard 版本链; EvidenceCard 血缘; thinking summary 严格按 REQ-047 §Scope 边界 | mock artifact/evidence events | — | N/A |
+| phase-A SSE transport | useRunEventStream reconnection；gap detection；abort；connection timeout；multi-mount no duplicate connection | mock SSE 流 | — | N/A |
+| phase-B cancelRun wire-up | revision bump 失败 toast；state guard；按钮 disabled for terminal states | mock cancel 流 | — | N/A |
+| phase-C RunEvent timeline | 8 个结构化子组件（Plan / Tool / Evidence / Approval / Input / Artifact / Error / Terminal）独立渲染 | mock SSE → 事件类型分发 | — | N/A |
+| phase-D HumanInput + Approval UI | 分离组件；revision bump 拒绝旧 revision；过期原子取消未执行 ToolCall | mock input/approval respond 流 | — | N/A |
+| phase-E Artifact + Evidence + Thinking Summary | ArtifactCard 版本链；EvidenceCard 血缘；thinking summary 严格按 REQ-047 §Scope 边界 | mock artifact/evidence events | — | N/A |
 
-### 8.3 手动验收路径（WS-S2.E）
+### 8.3 手动验收路径（**仅 WS-S2 phase-E 适用**，当前未启动）
+
+> **重要前提**：手动验收必须等 WS-S2 phase-A/B/C/D 全部完成 + phase-E mock e2e 全部 pass 之后才能开始；**当前**WS-S2 phase 全部未启动。
+
+**假设 WS-S2 phase-E 启动时**（当前未启动）：
 
 ```
 用户场景 1：active 会话提交 turn
   1. 进入 /agent-workspace?c=conv-1
   2. Composer 输入 "test"
-  3. 点发送
+  3. 点发送（按钮须按 state guard 启用）
   4. 看到 message 出现在 timeline
   5. 右栏自动派生 run（queued → running → completed）
   6. 看到 run status 终态事实（status / queue_seq / event window）
 
 用户场景 2：archived 会话提交应被阻止
   1. 归档会话
-  2. Composer 应 disabled
+  2. Composer 应 disabled（state=archived guard）
   ...
 ```
+
+> 按钮在 option B 的 backend + execution 前置**全部通过前**始终 disabled（**不依赖 mock-only pre-wire**）。
 
 ---
 
 ## 9. 「可以开始实现」的门禁条件
 
-### 9.1 WS-S2 真实提交闭环（**当前阻塞**）
+### 9.1 WS-S2 真实提交闭环（**当前 BLOCKED**）
 
-**事实纠偏后裁决：WS-S2 真实提交闭环被阻塞**（选项 B），理由：
+**事实纠偏后裁决：WS-S2 真实提交闭环被阻塞**（**唯一产品路径 = option B**），理由：
 
-| 阻塞项 | 现状 |
-|--------|------|
-| 公共 `POST /turns` endpoint | ❌ 不存在（router 仅 internal submit_turn() application method） |
-| `CancelRunRequest` body schema | ✅ 已冻结 = `{expected_revision: int}`（**不是 `{reason}`**） |
-| `TurnCommand` / `TurnLaunchSpecV1` / `SubmitTurnReceipt` | ✅ 已冻结 application 内部 DTO，但**前端不可构造** TurnLaunchSpecV1（server-selected 字段） |
-| RuntimeProfileResolver / server-selected launch policy | ❌ REQ-043 仍 ⚫ Candidate |
-| 最小 execution profile（compatibility execution）contract | ❌ REQ-047 Extended 🟣 Shaping |
-| 真实 PG submit + Run 启动 + 终态可达 | ❌ 全部依赖以上 |
+| 阻塞项 | 现状 | 启动所需 |
+|--------|------|---------|
+| WS-S2 phase-A 公共 submit API spec 冻结 | ❌ router 仅 8 个 endpoint（listConversations / createConversation / getConversation / patchConversation / pin / unpin / archive / restore / delete / messages），**无 `/turns`** | 独立 contract-first PR + 评审通过 |
+| WS-S2 phase-A 双测试断言 | ❌ `test_b1_registers_guarded_delete_but_keeps_submit_turn_route_closed` + `test_a1_registers_run_routes_without_opening_workspace_submit_turn` 明确断言 `submit-turn` 路由保持关闭 | phase-A spec 冻结后 router 登记 + 测试改写 |
+| `submit_turn()` 公开化（router 登记 + WS-S2 backend slice） | ❌ 当前 router 无 `/turns`；仅 internal application method 被 `bridge.py:160` / `agent_control_plane.py:238` / `direct_rag_compatibility.py:207` 调用 | ① WS-S2 phase-A spec 冻结 ② WS-S2 phase-B launch policy + execution profile 冻结 |
+| `CancelRunRequest` body schema | ✅ 已冻结 = `{expected_revision: int = Field(ge=1)}`（**不是 `{reason}`**；不要写错） | n/a（已冻结） |
+| `TurnCommand` / `TurnLaunchSpecV1` / `SubmitTurnReceipt` application DTO | ✅ 已冻结 application 内部 DTO，但**前端不可构造** TurnLaunchSpecV1（server-selected 字段） | n/a（已冻结 internal；公共 submit API DTO 须独立 contract-first） |
+| RuntimeProfileResolver / server-selected launch policy | ❌ REQ-043 仍 ⚫ Candidate | 独立 REQ-043 Spec 冻结 PR |
+| 最小 execution profile（compatibility execution）contract | ❌ REQ-047 Extended 🟣 Shaping | 独立 REQ-047 Extended Spec 冻结 PR |
+| 真实 PG submit + Run 启动 + 终态可达 | ❌ 全部依赖以上 | phase-C backend slice 完成 |
 
-**仅 option A（mock 预接线）可做**：
-- service/store mock stub + 单元测试
-- 按钮**保持 disabled**
-- 最高证据等级 L1 mock
-- 不得声称「production ready submit-turn」
+**option A（mock-only pre-wire）合同裁决**：
+- WS-S2 frontend prototype 至多标记为 `non-deliverable / non-mergeable / L1 contract experiment`
+- **不得作为"WS-S2 implementation 启动"**
+- 不得写入 option A "WS-S2.A 立即可开工" / "backend 已实 /turns endpoint"
+- 按钮**保持 disabled**直到 phase-A/B/C/D 后端 + execution 前置**全部通过**
 
-**option B（真实提交闭环）启动门禁**（须全部满足才能开放按钮）：
-- [ ] 公共 `/turns` spec 冻结（鉴权 / owner isolation / 幂等重放 / 冲突码 / 能力门控 / 真实 PG 端到端测试）
-- [ ] 公共 `/turns` backend slice（router 登记 + WS-S2 backend implementation）
-- [ ] `server-selected launch policy` spec（RuntimeProfileResolver 字段 / capability gate 字段）
-- [ ] 最小 execution profile contract（compatibility execution / system.direct_rag.v1 等）
-- [ ] 真实 PG submit + Run 启动 + 终态可达端到端测试
-- [ ] WS-S2 backend slice 单独 PR（不混入 WS-S2 frontend slice）
-- [ ] 三面独立复审 + 评分 ≥ 80 + 必修 follow-up = 无
+**WS-S2 启动门禁（option B 完整闭环，须全部满足才能启动 implementation）**：
+- [ ] WS-S2 phase-A 公共 submit API spec 冻结（鉴权 / owner isolation / 幂等重放 / 冲突码 / 能力门控 / 真实 PG 端到端测试 spec）
+- [ ] WS-S2 phase-A 公共 `/turns` backend slice（router 登记 + WS-S2 backend implementation；含 phase-A 测试改写）
+- [ ] WS-S2 phase-B server-selected launch policy spec 冻结（RuntimeProfileResolver 字段 + capability gate 字段）
+- [ ] WS-S2 phase-B 最小 execution profile contract（compatibility execution / system.direct_rag.v1 等）
+- [ ] WS-S2 phase-C backend route + 真实 PG contract tests pass
+- [ ] WS-S2 phase-D frontend slice PR（含按钮状态绑定 capability gate）
+- [ ] WS-S2 phase-E mock + 真实 PG e2e + 用户手动验收
+- [ ] 独立三面复审 + 评分 ≥ 80 + 必修 follow-up = 无
+- [ ] **不要求** mock-only pre-wire 单独 slice（与历史 option A 路径断开）
 
-### 9.2 WS-S3 开功门禁（**当前阻塞**）
+**历史错误校正**：本报告之前 写"WS-S2 仍可做的范围（option A：纯前端 mock 预接线）" 表格（含 service stub + Composer draft + pollRunUntilTerminal + DTO 草案）——**全部删除**。任何"WS-S2 frontend service 可 wire-up" / "WS-S2 producer stub 可实现" / "WS-S2 mock closed loop" 表述均**禁止**出现。
+
+**禁止声称口径**：
+- ✗ 禁止说 "WS-S2 可立即开工"
+- ✗ 禁止说 "WS-S2 当前已满足、可开工"
+- ✗ 禁止说 "本 shaping 报告已合并"（**当前 PR #621 仍未合并**；仅是 Draft）
+
+### 9.2 WS-S3 开功门禁（**当前 BLOCKED**）
 
 | 阻塞 | 状态 | 预计解锁 |
 |------|------|---------|
-| REQ-043 Runtime conformance spec 冻结 | ⚫ Candidate | 独立后续 PR（不在本报告范围） |
+| WS-S3 phase-A 浏览器 SSE 鉴权 transport 冻结（fetch+ReadableStream / polyfill / 独立 stream_token 契约三选一） | 🟣 未冻结 | 独立 contract-first PR |
+| REQ-043 Runtime conformance spec + Tool Gateway spec 冻结 | ⚫ Candidate | 独立后续 PR（不在本报告范围） |
 | REQ-047 Extended Contracts 三组 spec 冻结（HumanInput/Approval + ToolCall/Grant/Snapshot + Artifact/Evidence） | 🟣 Shaping | 独立后续 PR（不在本报告范围） |
 | TD-085 Boundary Closure 中阻塞 Runtime 接线的依赖倒置切片完成 | 待办 | 独立后续任务 |
 
 ### 9.3 WS-S3 启动前必备清单
 
+- [ ] WS-S3 phase-A 浏览器 SSE 鉴权 transport 冻结（fetch+ReadableStream / polyfill / 独立 stream_token 契约三选一）
+- [ ] WS-S3 phase-B `cancelRun(runId, expectedRevision)` frontend wire-up（仅 UI + service 层；后端 cancel endpoint 已实，仅缺 transport）
+- [ ] **REQ-047** Extended Contracts contract-first 冻结（保留 `/HumanInputRequest` `/ApprovalRequest` `/ToolCall` `/ToolGrant` `/RuntimeCapabilitySnapshot` `/Artifact` `/EvidenceItem` 全字段）——**严禁 typo 为 REQ-017**
 - [ ] REQ-043 Spec contract-first 冻结（含 Runtime conformance + Tool Gateway + RuntimeProfileResolver）
-- [ ] REQ-017 Extended Contracts contract-first 冻结（保留 `/HumanInputRequest` `/ApprovalRequest` `/ToolCall` `/ToolGrant` `/RuntimeCapabilitySnapshot` `/Artifact` `/EvidenceItem` 全字段）
 - [ ] TD-085 依赖倒置切片完成
 - [ ] Pi Worker V1 spike（REQ-043 AC-6）跑通至少 1 个真实只读 RAG + MCP/Skill 场景
 - [ ] ACP Spike（REQ-043 AC-7）跑通 session new/resume + cancel + permission round-trip
 - [ ] 至少 1 个 Runtime Cell sandbox 网络默认拒绝 + allowlist 放行验证（REQ-043 AC-8）
+
+### 9.4 WS-S2/WS-S3 启动前置条件澄清
+
+**历史错误校正**：
+- 第一版 + 第一次纠偏 写 "WS-S2 implementation 当前已满足、可立即开工"——**错的**
+- 第一版 + 第一次纠偏 写 "本 shaping 报告已合并"——**错的**（PR #621 截至本版仍为 OPEN/Draft）
+- 第一版 + 第一次纠偏 写 "WS-S2.A mock POST /turns 返回 201"——**错的**（/turns 不存在，front-end 不能 mock 不存在的 endpoint）
+- 第一次纠偏 残留 §9.3 「REQ-017」 typo——本版已纠正为 **REQ-047**
+
+**唯一产品路径 = WS-S2 real submit closure (option B)**：
+- WS-S2 当前 = BLOCKED（4 项硬门禁）
+- WS-S3 当前 = BLOCKED（4 项硬门禁）
+- Phase 0 仅完成 L0 静态代码审计 + 切片规划；WS-S2/WS-S3 implementation 均**未启动**
 
 ### 9.4 WS-S2 启动后「可以收口 WS-S2」的判定
 
@@ -592,16 +685,26 @@ REQ-047 Extended Contracts 🟣 Shaping
 
 ## 10. 禁止表述（不能把 mock / fake / UI wiring 表述成 production enable）
 
+**本节为强制规范**：所有正在进行的 WS-S2 / WS-S3 相关文档（plan / spec / PR body / commit message）都必须遵守本节。
+
 | 禁止表述 | 必须表述 |
 |---------|---------|
-| 「WS-S2 = production ready submit-turn」 | 「WS-S2 = submit-turn endpoint frontend consumer wiring complete（mock-only validation）；真实 Runtime / 真实 LLM / 真实 Agentic RAG 不在 WS-S2 scope」 |
-| 「WS-S3 = production ready agent workspace」 | 「WS-S3 = SSE event stream + cancel/steer + 结构化 Timeline frontend consumer complete（mock-only validation）；Tool Gateway / RuntimeProfile adapter V1 enable 仍归 REQ-043」 |
-| 「submit-turn enabled」 | 「Composer `:disabled` 在 WS-S2.C 才有条件打开；WS-S2.A/B 仅 service + store wire-up，按钮仍 disabled」 |
-| 「SSE streaming」 (without mocking) | 「mock SSE event stream + 真实 SSE endpoint spec 待 REQ-047 Extended merge 后实现」 |
-| 「Mock = 真实 PG」 | 「Mock 仅作 UI contract 验证；最高已验证层级为 L1 mock；WS-S2.E 手动验收为 L2 真实 PG dry-run」 |
+| 「WS-S2 = production ready submit-turn」 | 「WS-S2 implementation 当前 BLOCKED；公共 `/turns` API 未冻结；server-selected launch policy 未冻结；真实 Runtime 接入不在 WS-S2 scope」 |
+| 「WS-S2.A 立即可开工」 / 「WS-S2 当前已满足可开工」 | 「WS-S2 phase-A/B/C/D/E 全部未启动；必须等 4 项硬门禁全部完成才能启动」 |
+| 「submit-turn backend 已实」 / 「WS-S2 backend 已实 /turns endpoint」 | 「公共 `POST /turns` **不存在**；当前仅 internal `submit_turn()` application method；router 仅 8 个 endpoint（无 `/turns`）」 |
+| 「不修改 /turns endpoint contract（backend 已冻结）」 | 「endpoint 不存在，不是已冻结；WS-S2 phase-A 才是冻结」 |
+| 「submit-turn enabled」 / 「修改 `:disabled="false"`」 | 「Composer `:disabled="true"` 硬编码；按钮在 option B 的 backend + execution 前置全部通过前**始终 disabled**」 |
+| 「WS-S2 frontend consumer wiring complete」 / 「submitTurn service stub」 | 「未启动；任何 frontend service/store mock stub 至多标记为 `non-deliverable / non-mergeable / L1 contract experiment`」 |
+| 「WS-S3 = production ready agent workspace」 | 「WS-S3 implementation 当前 BLOCKED；4 项硬门禁未启动」 |
+| 「cancelRun(runId, reason)」 | 「cancelRun(runId, expectedRevision)」（`CancelRunRequest = {expected_revision: int = Field(ge=1)}`；**不是 `{reason}`**） |
+| 「WS-S3.A 新增 SSE endpoint」 | 「后端 SSE + cancel endpoint **已实现**（`router.py:376 / :397`）；WS-S3.A 仅做前端 transport + 消费层」 |
+| 「SSE streaming」 (without mocking) | 「真实 SSE endpoint 已实；前端 SSE transport 选型（fetch+ReadableStream / polyfill / stream_token）**未冻结**；原生 EventSource 不能设 Authorization header」 |
+| 「Mock = 真实 PG」 / 「L2 真实 PG dry-run for WS-S2.E」 | 「Mock 仅作 UI contract 验证；本 Phase 0 报告**最高已验证层级仅为 L0 静态代码审计**；L1 mock / L2 真实 PG dry-run / L3 真实 LLM 接入只能写成**未来验收门禁**」 |
 | 「REQ-042 Done」 | 「WS-S1/WS-S2/WS-S3 完成仅交付 AC 子集；REQ-042 整体 ⚫ Candidate」 |
-| 「AgentTurnLoopRuntime 接入」 | 「WS-S2/WS-S3 不接 Runtime；Runtime 中立 Adapter 归 REQ-043」 |
-| 「审批 / 工具 / 产物 / 证据 实现」 | 「WS-S3 仅实现结构化 UI 渲染；审批后端 / 工具后端 / 产物后端 / 证据后端归 REQ-047 Extended」 |
+| 「AgentTurnLoopRuntime 接入」 / 「Runtime 中立 Adapter 已实现」 | 「WS-S2/WS-S3 不接 Runtime；Runtime 中立 Adapter 归 REQ-043（⚫ Candidate，未冻结）」 |
+| 「审批 / 工具 / 产物 / 证据 实现」 | 「WS-S3 仅前端结构化 UI 渲染；审批后端 / 工具后端 / 产物后端 / 证据后端归 REQ-047 Extended（🟣 Shaping，未冻结）」 |
+| 「本 shaping 报告已合并」 / 「可立即开工」 | 「PR #621 截至本版仍为 OPEN/Draft；**未合并**；仅完成 L0 审计 + 切片规划；WS-S2/WS-S3 implementation **均未启动**」 |
+| 「REQ-017」 typo | **REQ-047**（严禁 REQ-017） |
 
 ---
 
@@ -619,12 +722,18 @@ REQ-047 Extended Contracts 🟣 Shaping
 
 ### 11.2 最小文档修改建议（**本报告不执行修改**，仅登记建议）
 
+> **本节已校对**：REQ-017 typo 已在本版全面纠正为 REQ-047。
+> 历史残留排查：本文件中所有 "REQ-017" 出现位置（§0 修订历史表内 + §9.3 + §9.4 + §13 + §14）仅作为「第一版/第一次纠偏历史错误的客观记录」保留，**禁止在任何规范正文中继续使用 REQ-017**。
+
 | 建议 | 范围 | 优先级 |
 |------|------|-------|
 | 在 REQ-042 §Acceptance 下追加「WS-S1/WS-S2/WS-S3 切片映射」子节 | docs/01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md | P2（独立 task） |
-| 新增 plan `2026-09-09-req-042-ws-s2-submit-poll-implementation-plan.md`（WS-S2 五 mini-slice 实施边界 + 完成标准 + 不允许交叉内容） | docs/02-delivery-plans/02-plans/ | P2（WS-S2 启动前 commit） |
-| 新增 plan `2026-09-09-req-042-ws-s3-sse-cancel-timeline-implementation-plan.md`（WS-S3 五 mini-slice） | docs/02-delivery-plans/02-plans/ | P3（WS-S3 启动前 commit；先决条件见 §9.3） |
-| 新增 spec `2026-09-09-req-042-ws-s2-ws-s3-runtime-event-contract-spec.md`（SSE/after_seq/cancel/steer contract-first） | docs/02-delivery-plans/01-specs/ | P3（WS-S3 启动前） |
+| **WS-S2 phase-A 公共 submit API contract-first 冻结**（独立 PR；含 WS-S2 backend slice router 登记 + 测试改写） | docs/02-delivery-plans/01-specs/ + 独立 backend PR | **P0**（option B 第一道硬门禁） |
+| **WS-S2 phase-B server-selected launch policy + 最小 execution profile contract-first 冻结**（独立 PR） | docs/02-delivery-plans/01-specs/ | **P0**（option B 第二道硬门禁） |
+| **WS-S3 phase-A 浏览器 SSE 鉴权 transport 冻结**（fetch+ReadableStream / polyfill / 独立 stream_token 契约三选一） | docs/02-delivery-plans/01-specs/ | **P0**（WS-S3 第一道硬门禁） |
+| 修改 REQ-047 Extended Contracts spec 冻结（含 HumanInput/Approval + ToolCall/Grant/Snapshot + Artifact/Evidence 全字段） | docs/02-delivery-plans/01-specs/ + REQ-047 §Scope 扩展 | **P0**（WS-S3 第二道硬门禁） |
+| 修改 REQ-043 Runtime conformance + Tool Gateway + RuntimeProfileResolver spec 冻结 | docs/02-delivery-plans/01-specs/ + REQ-059 architecture spec | **P0**（WS-S2 + WS-S3 第三道硬门禁） |
+| **禁止**新增 plan「WS-S2 mock-only pre-wire 单独 slice」 / 「WS-S2 frontend service wire-up 单独 slice」 | docs/02-delivery-plans/02-plans/ | **禁止**（与本报告裁决冲突；mock-only 路径已断开） |
 
 ### 11.3 不建议扩大的范围
 

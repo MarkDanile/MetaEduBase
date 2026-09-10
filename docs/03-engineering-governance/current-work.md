@@ -16,7 +16,7 @@
 
 ### TASK-REQ-042-WS-S2-CONTRACT-SHAPING: WS-S2 / WS-S3 contract-to-implementation 审计与切片规划（Phase 0 shaping）
 
-状态：🟡 进行中（事实纠偏轮：§6.2 §6.3 §9.1 §9.3 已重写，committing + Draft PR + 等待独立三面复审）
+状态：🟡 进行中（**第二次事实纠偏完成，待第二轮三面复审**；本轮新增 §0 修订历史 + §4.2 §4.3 §6.2 §7 §8 §9 §10 §11.2 全文统一）
 类型：shaping（Phase 0，pure-spec + 现状盘点 + 切片规划，不直接实现业务代码）
 领域：docs/ + REQ-042 AC 映射 + WS-S1 现状盘点 + WS-S2/WS-S3 切片边界
 当前执行模式：plan-do（用户明确禁止本轮重开 WS-S1 / 启动 WS-S2/S3 实现 / 跑 backfill / 改后端）
@@ -53,13 +53,13 @@
 - **事实纠偏**：核实公共 /turns 真伪 / CancelRunRequest body schema / SSE /events + /cancel 现状 / 浏览器 SSE 鉴权 transport / TurnCommand+TurnLaunchSpecV1+SubmitTurnReceipt 真实字段
 - 仅产出 spec/plan shaping，不启动任何实现
 
-当前进展：active card 登记 commit + 第一版 shaping 报告 commit + 事实纠偏轮重写 §6.2 §6.3 §9.1 §9.3（WS-S2 真实提交闭环被阻塞裁决；SSE/cancel 后端已实，前端消费层缺；REQ-017 typo 已纠正为 REQ-047）
+当前进展：active card 登记 commit + 第一版 shaping 报告 commit + 第一次纠偏 commit（重写 §6.2 §6.3 §9.1 §9.3 但保留 §4.2 §4.3 §7 §10 §11.2 错误） + 第二次纠偏 commit（本次）：通读 §4 - §14 + §0 修订历史 + §12 honest 记录，**全文统一为 option B (real submit closure, 当前 BLOCKED)**；删除所有 "option A 作为可立即开工的 WS-S2 implementation" 口径；option A 仅可作为公共契约冻结后的 L1 mock contract experiment（非交付、非合并）；REQ-017 typo 全部纠正为 REQ-047；取消原 §11.2 「WS-S2 五 mini-slice 实施边界」+「WS-S3 五 mini-slice」建议，替换为「WS-S2 phase-A 公共 submit API 冻结」+「WS-S3 phase-A 浏览器 SSE 鉴权 transport 冻结」+ 「WS-S2 phase-B launch policy」+「REQ-047 Extended spec 冻结」+「REQ-043 Runtime conformance spec 冻结」（全部 P0 硬门禁）；§7 证据等级降级为「本 Phase 0 报告最高 L0 静态代码审计；L1/L2/L3 只能写成未来验收门禁」；§8 测试矩阵改为「全部未来验收门禁，严禁写已通过」；§10 禁止表述 + §9.4 历史错误校正新增 14 项强制规范。
 
-下一步：1) commit 事实纠偏版 shaping plan + active card 状态更新；2) push + 创建 OPEN/Draft PR；3) 等待三路 CI 全 settled；4) 等待独立三面复审
+下一步：1) commit 第二次纠偏 + current-work.md active card 状态更新；2) push + PR #621 自动更新；3) 等待三路 CI 全 settled；4) 等待第二轮独立三面复审裁决
 
-事实纠偏事实清单（已核实）：公共 `POST /turns` 路由不存在（仅 internal application method）+ `CancelRunRequest` body = `{expected_revision: int}` + SSE `/agent-runs/{id}/events` + cancel `/agent-runs/{id}/cancel` 后端已实现 + 浏览器 SSE 鉴权 transport 未冻结（原生 EventSource 不能设 Authorization header；后端拒绝 URL token）+ TurnCommand / TurnLaunchSpecV1 / SubmitTurnReceipt 真实字段已核实（TurnLaunchSpecV1 server-selected 字段不可由前端填）+ REQ-017 typo 修正为 REQ-047
+验证状态：1) 用户 §四 命令残留扫描全部命中均位于 §0 修订历史 / §10 禁止表述 / §9.4 历史错误校正 / §12 honest 记录（**所有命中均为历史错误引用，禁止在规范正文中出现**）；2) §4.2 / §4.3 / §6.2 / §7 / §8 / §9 / §10 / §11.2 全文一致裁决 = WS-S2 option B BLOCKED；3) `git diff --check` clean；4) `scripts/check-engineering-docs --full` passed（32 known allowlisted）
 
-交接备注：本任务仍为 Phase 0 shaping，**WS-S2 真实提交闭环被阻塞**（option B 裁决），仅 option A（mock 预接线）可做；按钮**保持 disabled** 直到公共 /turns spec 冻结 + server-selected launch policy + 最小 execution profile + 真实 PG submit-loop 端到端；WS-S1 边界声明保留（真实 PG 正向 restore 仍不在 scope / 未运行 backfill / 未改 erase_available / 未触碰 metaedu/metaedu_test / AC-4/AC-5/AC-7/AC-8 仍保持未完成 / REQ-042 整体不翻 Done / REQ-047 Extended 不翻 Ready）
+交接备注：本任务仍为 Phase 0 shaping；本轮唯一裁决 = **option B 真实提交闭环**；当前 WS-S2 + WS-S3 implementation **均未启动**（WS-S2 phase-A/B/C/D/E + WS-S3 phase-A/B/C/D/E 全部未来顺序 planning）；按钮**保持 disabled**直到公共 `/turns` spec + server-selected launch policy + 最小 execution profile + 真实 PG submit-loop 端到端全部通过；**option A mock-only pre-wire 已断开作为"启动 WS-S2 implementation"路径**（至多作为 `non-deliverable / non-mergeable / L1 contract experiment`）；Phase 0 报告本身**最高已验证层级仅为 L0 静态代码审计**；WS-S1 边界声明保留（真实 PG 正向 restore 仍不在 scope / 未运行 backfill / 未改 erase_available / 未触碰 metaedu/metaedu_test / AC-4/AC-5/AC-7/AC-8 仍保持未完成 / REQ-042 整体不翻 Done / REQ-047 Extended 不翻 Ready）
 
 ## 下一批候选任务
 
