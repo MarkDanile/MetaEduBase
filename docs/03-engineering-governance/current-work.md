@@ -16,7 +16,7 @@
 
 ### TASK-REQ-042-WS-S2-CONTRACT-SHAPING: WS-S2 / WS-S3 contract-to-implementation 审计与切片规划（Phase 0 shaping）
 
-状态：🟡 进行中
+状态：🟡 进行中（事实纠偏轮：§6.2 §6.3 §9.1 §9.3 已重写，committing + Draft PR + 等待独立三面复审）
 类型：shaping（Phase 0，pure-spec + 现状盘点 + 切片规划，不直接实现业务代码）
 领域：docs/ + REQ-042 AC 映射 + WS-S1 现状盘点 + WS-S2/WS-S3 切片边界
 当前执行模式：plan-do（用户明确禁止本轮重开 WS-S1 / 启动 WS-S2/S3 实现 / 跑 backfill / 改后端）
@@ -30,13 +30,13 @@
 - 用户明确请求 contract-to-implementation 审计与切片规划作为 WS-S2 开工前的 Phase 0 shaping
 
 允许范围：
-- 仅修改 docs/03-engineering-governance/current-work.md（active card 登记 + 本任务推进/收口状态更新）
+- 仅修改 docs/03-engineering-governance/current-work.md（active card 状态更新）
 - 仅修改 docs/02-delivery-plans/01-specs/ 与 docs/02-delivery-plans/02-plans/ 中 WS-S2 / WS-S3 相关 spec/plan（contract-first shaping）
-- 可写最小 WS-S2 contract shaping 文档（独立目录或合并现有 plan）+ audit 报告（matrix + slice 边界）
+- 可写最小 WS-S2 contract shaping 文档 + audit 报告（matrix + slice 边界）
 - 不实现 submit-turn、不开放发送按钮、不接 Runtime / Approval / Tool / Artifact
 
 禁止范围：
-- 不实现 submit-turn / SSE / after_seq / cancel / stop
+- 不实现 submit-turn / SSE / after_seq / cancel / stop / steer
 - 不接 AgentTurnLoopRuntime / Pi / ACP / MCP Server
 - 不实现 Approval / Tool / Artifact / Evidence / SkillRunner timeline
 - 不修改后端 / migration / schema / registry / CI / 门禁
@@ -47,18 +47,19 @@
 - 不修改 review-score-log.md 或 Metrics
 
 验证计划：
-- WS-S1 现状盘点：grep 关键调用路径（agent-workspace 路由、flag 门控、workspace store/service、conversation/message durable read、draft persistence、archive/restore/rename/delete/search、race guard、410 mapping、in-flight guard、发送按钮 disabled 原因、未存在的 submit-turn / SSE / after_seq / stop / cancel / RunEvent 时间线）
+- WS-S1 现状盘点：grep 关键调用路径 + test_workspace_api.py / test_run_api.py 测试断言
 - AC 矩阵：逐条对 REQ-042 AC-1..AC-8 与 WS-S1 实际交付 / WS-S2/WS-S3 待交付 / REQ-043 / REQ-047 Extended 边界映射
-- WS-S2/WS-S3 切片推荐：每个 Slice 目标 / 输入 / 输出 / 完成标准 / 前置依赖 / 不允许交叉内容 / 证据等级（mock / fake Runtime / 真实 PG / 浏览器手动）
-- spec/plan 不足点：仅作最小文档修改建议，不自行扩大范围
+- WS-S2/WS-S3 切片推荐：每个 Slice 目标 / 输入 / 输出 / 完成标准 / 前置依赖 / 不允许交叉内容 / 证据等级
+- **事实纠偏**：核实公共 /turns 真伪 / CancelRunRequest body schema / SSE /events + /cancel 现状 / 浏览器 SSE 鉴权 transport / TurnCommand+TurnLaunchSpecV1+SubmitTurnReceipt 真实字段
+- 仅产出 spec/plan shaping，不启动任何实现
 
-当前进展：active-card 登记 commit（本 commit）
+当前进展：active card 登记 commit + 第一版 shaping 报告 commit + 事实纠偏轮重写 §6.2 §6.3 §9.1 §9.3（WS-S2 真实提交闭环被阻塞裁决；SSE/cancel 后端已实，前端消费层缺；REQ-017 typo 已纠正为 REQ-047）
 
-下一步：完成 WS-S1 现状代码级盘点 → AC 矩阵 → WS-S2/WS-S3 切片边界 → spec/plan 最小 shaping 文档 + audit 报告
+下一步：1) commit 事实纠偏版 shaping plan + active card 状态更新；2) push + 创建 OPEN/Draft PR；3) 等待三路 CI 全 settled；4) 等待独立三面复审
 
-验证状态：active card 登记尚未做调研与 shaping（pending）
+事实纠偏事实清单（已核实）：公共 `POST /turns` 路由不存在（仅 internal application method）+ `CancelRunRequest` body = `{expected_revision: int}` + SSE `/agent-runs/{id}/events` + cancel `/agent-runs/{id}/cancel` 后端已实现 + 浏览器 SSE 鉴权 transport 未冻结（原生 EventSource 不能设 Authorization header；后端拒绝 URL token）+ TurnCommand / TurnLaunchSpecV1 / SubmitTurnReceipt 真实字段已核实（TurnLaunchSpecV1 server-selected 字段不可由前端填）+ REQ-017 typo 修正为 REQ-047
 
-交接备注：本任务为 Phase 0 shaping，交付物为 spec/plan 与 audit 报告，不直接实现业务代码；不重开 WS-S1、不启动 WS-S2/S3 实现、不跑 backfill；WS-S1 边界声明保留（真实 PG 正向 restore 仍不在 scope / 未运行 backfill / 未改 erase_available / 未触碰 metaedu/metaedu_test / AC-4/AC-5/AC-7/AC-8 仍保持未完成 / REQ-042 整体不翻 Done / REQ-047 Extended 不翻 Ready）
+交接备注：本任务仍为 Phase 0 shaping，**WS-S2 真实提交闭环被阻塞**（option B 裁决），仅 option A（mock 预接线）可做；按钮**保持 disabled** 直到公共 /turns spec 冻结 + server-selected launch policy + 最小 execution profile + 真实 PG submit-loop 端到端；WS-S1 边界声明保留（真实 PG 正向 restore 仍不在 scope / 未运行 backfill / 未改 erase_available / 未触碰 metaedu/metaedu_test / AC-4/AC-5/AC-7/AC-8 仍保持未完成 / REQ-042 整体不翻 Done / REQ-047 Extended 不翻 Ready）
 
 ## 下一批候选任务
 

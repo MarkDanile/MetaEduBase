@@ -320,35 +320,111 @@ REQ-047 Extended Contracts 🟣 Shaping
 | `TERMINAL_RUN_STATUSES` | [agentWorkspace.ts:144-148](../../../packages/web/src/services/agentWorkspace.ts#L144) | `completed/failed/cancelled/expired` |
 | Restore 持久化 endpoint + `event_history_expired` 错误码 | [agentWorkspace.ts:293-303](../../../packages/web/src/services/agentWorkspace.ts#L293) + REQ-047 R1-S6 (410 event_history_expired) | 仅 mock UI contract；非真实 PG 验证 |
 
-### 6.2 WS-S2 新增契约（仅前端消费层，不动 backend）
+### 6.2 WS-S2 现状（事实纠偏后）
 
-| 新增 service 方法 | 路径 | 后端对应 |
-|------------------|------|---------|
-| `submitTurn(conversationId, content, idempotencyKey, draftAutoSave?)` | `POST /agent-workspace/conversations/{id}/turns` | 已在 REQ-041 W1 + B1 bridge 中实现 backend；前端未消费 |
-| `pollRunUntilTerminal(runId, {maxDurationMs, intervalMs})` | `GET /agent-runs/{id}`（已存在） | 无新 contract |
-| Composer 草稿自动保存 (`composerDraftStore`) | localStorage 镜像 | 无新 contract |
-| RunStatusRevision 在 poll loop 中检测乐观并发变更 | `GET /agent-runs/{id}` 响应 `status_revision` 字段（已存在） | 无新 contract |
+**关键事实（事实源 `packages/server-python/app/`）**：
 
-**WS-S2 DTO 扩展**（仅前端 typed，不动 backend）：
-- `submitTurnRequest`: `{ content: string, idempotencyKey: string, draftAutoSave?: boolean }`
-- `submitTurnResponse`: `{ runId: string, messageId: string, queueSeq: number, statusRevision: number }`
+1. **公开 `POST /agent-workspace/conversations/{id}/turns` 路由不存在**：
+   - `packages/server-python/app/contexts/agent_workspace/interfaces/api/router.py` 仅注册 8 个 endpoint（`listConversations` / `createConversation` / `getConversation` / `patchConversation` / `pin / unpin / archive / restore / delete / messages`），**无 `/turns`**
+   - `packages/server-python/app/contexts/agent_workspace/application/bridge.py:160` 有 `async def submit_turn(...)` — 这是 **internal application method**，被 `agent_control_plane.py:238` 与 `direct_rag_compatibility.py:207` 组件层调用，**不是 public API**
+   - `test_workspace_api.py:277` `test_b1_registers_guarded_delete_but_keeps_submit_turn_route_closed` 与 `test_run_api.py:902` `test_a1_registers_run_routes_without_opening_workspace_submit_turn` 两测试明确断言 public `/turns` 路由保持关闭
+   - REQ-041 AC-7「它不得消费新 Workspace submit-turn，新 Agent Workspace 的统一 Turn Loop 语义由 REQ-043 承接」
+
+2. **后端 `submit_turn()` 已有 application contract**（仅 internal 使用，**禁止直接当公共 DTO**）：
+   - `TurnCommand`（[dto.py:48-55](../../../packages/server-python/app/contexts/agent_workspace/application/dto.py)）：`client_message_id: UUID`, `parts: tuple[MessagePartInput, ...]`, `agent_definition_version_id: UUID`, `client_options: dict[str, Any]`
+   - `TurnLaunchSpecV1`（[agent_integration.py:65+](../../../packages/server-python/app/shared/schemas/agent_integration.py)）：**server-selected immutable execution inputs** — `agent_definition_version_id`, `runtime_profile_id`, `runtime_binding_id`, `runtime_capability_snapshot`, `run_config_snapshot`, `context_snapshot_ref/digest/classification`, `budget_snapshot`
+   - `SubmitTurnReceipt`（[bridge.py:64+](../../../packages/server-python/app/contexts/agent_workspace/application/bridge.py)）：`reserved: ReservedUserTurn`, `event_id: UUID`, `correlation_id: UUID`, `dispatch_state: TurnDispatchState`
+
+3. **server-selected 字段不可由前端填**：
+   - `runtime_profile_id` / `runtime_binding_id` / `runtime_capability_snapshot` / `run_config_snapshot` / `budget_snapshot` 全部由 server 端 RuntimeProfileResolver / Capability Gate 解析后选定
+   - 前端即使 wire-up service 层也无法构造合法 TurnLaunchSpecV1（必须等待 server 端解析）
+   - 在 REQ-043 RuntimeProfileResolver spec + REQ-047 Extended Contracts（ToolGrant / BudgetSnapshot 字段）冻结之前，前端不可自行补默认值
+
+4. **dispatch 路径需要 Runtime**：
+   - `submit_turn()` 走 composition Coordinator → RuntimeProfileResolver → Runtime（暂未接入）→ TerminalOutputReader
+   - 没有可消费 dispatch 的 Runtime 时，Run 不会经 `queued → running → completed`
+   - 「提交 + 轮询但不依赖 Runtime」方案不可行（composition 层会因 Runtime Profile 未安装 fail closed）
+
+**结论**：WS-S2 真实提交闭环**被阻塞**，依赖以下全部完成：
+
+| 依赖 | 阻塞原因 | 状态 |
+|------|---------|------|
+| 公共 submit API spec 冻结（鉴权、owner isolation、幂等重放、冲突码、能力门控） | 当前仅 internal application method | 🟣 未冻结 |
+| `submit_turn()` 公开化（router 登记 + WS-S2 backend slice） | 当前 router 无 `/turns` | 🟣 未冻结 |
+| server-selected launch policy spec（RuntimeProfileResolver / Capability Gate 字段） | REQ-043 仍 ⚫ Candidate | 🟣 未冻结 |
+| 最小执行 profile 契约（compatibility execution profile） | REQ-047 E0 已落但 RuntimeProfile 未实例化 | 🟣 未冻结 |
+| 真实 PG 端到端 submit + Run 启动 + 终态可达 | 全部依赖以上 | 🟣 阻塞 |
+
+**WS-S2 仍可做的范围（option A：纯前端 mock 预接线）**：
+
+| 能力 | WS-S2.A 可做 | 限制 |
+|------|------------|------|
+| `submitTurn(conversationId, content, idempotencyKey)` service stub | ✅ 仅 stub 形态，page.route 拦截 mock | **按钮仍 disabled** |
+| Composer draft localStorage 自动保存 | ✅ 可做 | 无新 contract |
+| `pollRunUntilTerminal(runId, opts)` polling helper | ✅ 可做（GET Run 已存在） | 不依赖 submit-turn |
+| 单元测试（store + service mock） | ✅ 可做 | mock-only |
+| 打开 Composer 发送按钮 | ❌ **不做**（submit 闭环未就绪） | 必须保持 disabled |
+| 真实 PG submit-loop 手动验收 | ❌ **不做**（公共 API 未冻结） | 阻塞 |
+
+**WS-S2 DTO 草案**（仅当前端 typed stub 形态，**不替代 server contract**）：
+
+- `submitTurnStubRequest`: `{ content: string, idempotencyKey: string, draftAutoSave?: boolean }`（**此为草案**，待公共 API spec 冻结后从服务端拉取真 schema）
+- `submitTurnStubResponse`: `{ runId: string, messageId: string, queueSeq: number, statusRevision: number }`（同上，**服务端字段未定**）
 - `pollOptions`: `{ maxDurationMs?: number, intervalMs?: number }`
 
-### 6.3 WS-S3 新增契约（contract-first 待 spec 冻结）
+### 6.3 WS-S3 现状（事实纠偏后）
 
-| 新增 service 方法 | 路径 | 依赖 |
-|------------------|------|------|
-| `useRunEventStream(runId, { afterSeq, abortSignal })` | SSE `GET /agent-runs/{id}/events?after_seq=N` | REQ-043 AC-11 + REQ-047 AC-2 |
-| `cancelRun(runId, reason)` | `POST /agent-runs/{id}/cancel` | REQ-047 AC-1 |
-| `steerRun(runId, content, idempotencyKey)` | `POST /agent-runs/{id}/steer` | REQ-043 AC-16 |
-| `respondHumanInput(inputId, answer)` | `POST /runs/inputs/{id}/respond` | REQ-047 HumanInputRequest |
-| `respondApproval(approvalId, option, idempotencyKey)` | `POST /runs/approvals/{id}/respond` | REQ-043 AC-5 + REQ-047 AC-14 |
-| `fetchArtifact(artifactId)` + `fetchEvidence(evidenceId)` | `GET /artifacts/{id}` / `GET /evidence/{id}` | REQ-047 AC-5/AC-6 |
+**关键事实（事实源 `packages/server-python/app/contexts/agent_execution/interfaces/api/router.py`）**：
 
-**WS-S3 RunEvent schema**（contract-first 须冻结）：
-- `RunEvent` 类型：plan_summary / phase / tool_lifecycle / evidence / input / approval / artifact / retry / usage / error / terminal
-- `(tenant_id, run_id, seq)` 唯一且 seq 单调递增（REQ-047 AC-2）
-- 32 KiB 内联边界 + classification 不高于 `internal`（REQ-047 AC-9）
+1. **`POST /agent-runs/{run_id}/cancel` 已实现**（[router.py:376](../../../packages/server-python/app/contexts/agent_execution/interfaces/api/router.py#L376)）：
+   - `CancelRunRequest` body 字段（[router.py:50-53](../../../packages/server-python/app/contexts/agent_execution/interfaces/api/router.py#L50)）：
+     ```python
+     class CancelRunRequest(BaseModel):
+         model_config = ConfigDict(extra="forbid")
+         expected_revision: int = Field(ge=1)
+     ```
+   - **body 是 `{expected_revision: int}`，不是 `{reason: string}`**（用户原报 `{reason}` 错）
+
+2. **`GET /agent-runs/{run_id}/events` SSE 已实现**（[router.py:397](../../../packages/server-python/app/contexts/agent_execution/interfaces/api/router.py#L397)）：
+   - 支持 `after_seq` query param（`Annotated[int | None, Query(ge=0, le=_MAX_EVENT_SEQ)]`）
+   - 支持 `Last-Event-ID` HTTP header
+   - heartbeat interval（`_HEARTBEAT_INTERVAL_SECONDS` + `yield b": heartbeat\n\n"`）
+   - 显式拒绝 URL token query params（`url_token_forbidden` 400 错误）
+   - cursor 解析 `_resolve_after_seq(after_seq, last_event_id)` 同时校验两个来源一致
+
+3. **WS-S3 真正缺的是「前端消费」与「结构化 UI」**（不是后端路由）：
+   - WS-S1 frontend 仅消费 `GET /agent-runs/{id}` 终态事实（[agentWorkspace.ts:335-340](../../../packages/web/src/services/agentWorkspace.ts#L335)），**未消费 SSE event stream**
+   - **RunEvent 类型化子组件不存在**：RunDetailPane 仅显示 metadata，无 PlanCard / ToolCard / EvidenceCard / ApprovalCard / InputCard / ArtifactCard / ErrorCard / TerminalCard 结构化渲染
+   - **cancel/stop/steer UI 不存在**：WS-S1 未实现 `cancelRun` / `stopRun` / `steerRun` frontend service（grep 全仓库 service 仅 `getRun`，无 `cancelRun`/`steerRun`）
+   - **Approval/HumanInput 卡组件不存在**：WS-S1 RunDetailPane 仅显示 `pending_approval_count: number`（仅数字呈现），无审批卡 / 人类输入卡
+
+4. **WS-S3 浏览器 SSE 鉴权问题**（未在前端层解决）：
+   - 后端 SSE endpoint 要求 Authorization Bearer（`_identity(current_user)` 依赖 `get_current_user`，与普通 endpoint 同样的鉴权）
+   - **原生 `EventSource` 无法设置 `Authorization` header**；前端代码 `useEventSource` 仅类型定义（[auto-imports.d.ts:181](../../../packages/web/src/auto-imports.d.ts)），零调用
+   - **后端拒绝 URL query token**（`url_token_forbidden`），所以 query token 方案被排除
+   - **可行 transport**（contract-first 须冻结）：
+     - (a) `fetch()` + ReadableStream 手动解析 SSE 帧（带 Authorization header）；缺点：失去 EventSource 自动重连，需自实现
+     - (b) polyfill（如 `eventsource` npm 包 + 拦截 header） — 增加依赖
+     - (c) 独立鉴权契约 — 例如短时 `stream_token` 走单独 endpoint
+   - **未裁决前不得把 `new EventSource(url)` 写成可实施方案**
+
+**WS-S3 仍需新增/冻结的 contract（前端消费层）**：
+
+| 能力 | 状态 | 依赖 |
+|------|------|------|
+| `useRunEventStream(runId, { afterSeq, abortSignal })` composable | 🟣 未实现（前端无 SSE transport） | 浏览器 SSE 鉴权 transport 冻结（见上） |
+| `pollRunUntilTerminal` 替代 / 辅助 | ✅ 已存在 `getRun` | 无 |
+| `cancelRun(runId, expectedRevision)` | 🟣 后端已实 / 前端未消费 + UI 不存在 | 按钮 + DTO alignment |
+| `steerRun(runId, content, idempotencyKey)` | ❌ 后端未实 + 前端 UI 不存在 | REQ-043 AC-16 + REQ-047 spec |
+| `respondHumanInput(inputId, answer)` | ❌ 后端未实 + 前端 UI 不存在 | REQ-047 HumanInputRequest spec |
+| `respondApproval(approvalId, option, idempotencyKey)` | ❌ 后端未实 + 前端 UI 不存在 | REQ-047 ApprovalRequest spec |
+| `fetchArtifact(artifactId)` / `fetchEvidence(evidenceId)` | ❌ 后端未实 + 前端 UI 不存在 | REQ-047 Artifact/Evidence spec |
+
+**RunEvent schema**（REQ-047 已冻结，事实源 [REQ-047 §Scope](../../01-product-planning/05-requirements/REQ-047-agent-run-artifact-approval-center.md)）：
+- 类型：phase / plan summary / tool lifecycle / evidence / input / approval / artifact / retry / usage / error / terminal
+- `(tenant_id, run_id, seq)` 唯一且 seq 单调递增
+- 32 KiB 内联边界 + classification 不高于 `internal`
+- 大/二进制/敏感 payload 外置
 
 ### 6.4 状态机（WS-S2/WS-S3 新增意图）
 
@@ -456,15 +532,33 @@ REQ-047 Extended Contracts 🟣 Shaping
 
 ## 9. 「可以开始实现」的门禁条件
 
-### 9.1 WS-S2 开功门禁（**当前已满足，可开工**）
+### 9.1 WS-S2 真实提交闭环（**当前阻塞**）
 
-- ✅ WS-S1 完成（PR #618 merge + governance correction PR #620 merge）
-- ✅ REQ-041 Durable Core 完成（🟢 Done）
-- ✅ REQ-047 Durable Core 完成（C1 PR #614 merge）
-- ✅ `/turns` endpoint backend 已实现（REQ-041 W1 + B1 bridge）
-- ✅ GET Run endpoint 已存在（WS-S1 已消费）
-- ✅ active card 登记（本任务 commit 1）
-- ✅ 本 Phase 0 shaping 报告合并（spec/plan 完成）
+**事实纠偏后裁决：WS-S2 真实提交闭环被阻塞**（选项 B），理由：
+
+| 阻塞项 | 现状 |
+|--------|------|
+| 公共 `POST /turns` endpoint | ❌ 不存在（router 仅 internal submit_turn() application method） |
+| `CancelRunRequest` body schema | ✅ 已冻结 = `{expected_revision: int}`（**不是 `{reason}`**） |
+| `TurnCommand` / `TurnLaunchSpecV1` / `SubmitTurnReceipt` | ✅ 已冻结 application 内部 DTO，但**前端不可构造** TurnLaunchSpecV1（server-selected 字段） |
+| RuntimeProfileResolver / server-selected launch policy | ❌ REQ-043 仍 ⚫ Candidate |
+| 最小 execution profile（compatibility execution）contract | ❌ REQ-047 Extended 🟣 Shaping |
+| 真实 PG submit + Run 启动 + 终态可达 | ❌ 全部依赖以上 |
+
+**仅 option A（mock 预接线）可做**：
+- service/store mock stub + 单元测试
+- 按钮**保持 disabled**
+- 最高证据等级 L1 mock
+- 不得声称「production ready submit-turn」
+
+**option B（真实提交闭环）启动门禁**（须全部满足才能开放按钮）：
+- [ ] 公共 `/turns` spec 冻结（鉴权 / owner isolation / 幂等重放 / 冲突码 / 能力门控 / 真实 PG 端到端测试）
+- [ ] 公共 `/turns` backend slice（router 登记 + WS-S2 backend implementation）
+- [ ] `server-selected launch policy` spec（RuntimeProfileResolver 字段 / capability gate 字段）
+- [ ] 最小 execution profile contract（compatibility execution / system.direct_rag.v1 等）
+- [ ] 真实 PG submit + Run 启动 + 终态可达端到端测试
+- [ ] WS-S2 backend slice 单独 PR（不混入 WS-S2 frontend slice）
+- [ ] 三面独立复审 + 评分 ≥ 80 + 必修 follow-up = 无
 
 ### 9.2 WS-S3 开功门禁（**当前阻塞**）
 
