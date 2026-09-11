@@ -14,37 +14,28 @@
 
 ## 当前进行中
 
-### TASK-REQ-042-WS-S2-CONTRACT-SHAPING-CLOSEOUT-FACT-CORRECTION: 三轮事实纠偏（pure-docs）
+### TASK-REQ-042-WS-S2-CONTRACT-SHAPING-CLOSEOUT-FACT-CORRECTION: 收口治理（pure-docs）
 
-状态：🟡 进行中（pure-docs 事实纠偏；前两轮仓库正文纠正已落地，第三轮本轮仅修 current-work active card 状态 + PR body 事实口径，不启动任何实现）
+状态：🟡 进行中（pure-docs 事实纠偏；前序事实纠正已落地，PR 本体等待最终独立只读复审）
 类型：pure-docs 事实纠偏
-领域：docs/03-engineering-governance/current-work.md（active card 状态同步）+ PR #622 body（事实纠正）
-当前执行模式：plan-do（用户明确禁止本轮启动 WS-S2 implementation / 触碰后端 / 运行 backfill）
+领域：docs/03-engineering-governance/current-work.md（active card 与候选行状态同步）
+当前执行模式：plan-do（用户明确禁止启动 WS-S2 implementation / 触碰后端 / 运行 backfill）
 最近接手工具：Claude Code
 分支：docs/req042-ws-s2-contract-shaping-closeout
 
-需求来源（三轮独立只读复审）：
+需求来源（多轮独立只读复审的稳定事实清单）：
 
-- **PR #622 第一轮复审发现**：
-  - work-log.md #621 行中 `1662e2f6` 是 SHA 拼写错误（实际 score base = `1661e2f6396f90103e57e08e579eb9787de3f5b5`）
-  - 初始完成报告 commit / diff 统计口径错误
-- **PR #622 第二轮复审发现**：
-  - `b0fec031` 不在 PR #621 祖先链（`git merge-base --is-ancestor b0fec031 1661e2f6` exit=1）
-  - work-log.md 的 implementation baseline / SCORE_BASE / source-head 语义未分层
-  - active card 与 PR body 状态过期
-- **PR #622 第三轮复审发现**：
-  - PR body 混淆逐 commit churn 与区间净 diff
-  - active card 当前进展、下一步、允许范围仍过期
-- **PR #622 第四轮复审发现**：
-  - current-work 候选行（REQ-042）状态与已合并 shaping 裁决矛盾（候选行写"待独立裁决"，实际 WS-S2 option B / WS-S3 已 BLOCKED）
-  - PR body 范围摘要不完整（缺 SHAPING→CLOSEOUT active card 删除 + closeout active card 删除 + 最近完成新增 + 窗口缩减等描述）
+- work-log.md #621 行中 `1662e2f6` 是 SHA 拼写错误（实际 score base = `1661e2f6396f90103e57e08e579eb9787de3f5b5`）
+- `b0fec031` 不在 PR #621 祖先链（`git merge-base --is-ancestor b0fec031 1661e2f6` exit=1）
+- work-log.md 的 implementation baseline / SCORE_BASE / source-head 语义需分层表达
+- PR body 多次混淆逐 commit churn 与区间净 diff
+- current-work 候选行（REQ-042）状态与已合并 shaping 裁决矛盾（候选行此前写"待独立裁决"，实际 WS-S2 option B / WS-S3 已 BLOCKED）
 
-允许范围（本轮放宽，允许修改 active card 自身 + 候选行）：
+允许范围（最终收口修订）：
 
-- 修改 docs/03-engineering-governance/current-work.md active card 状态同步
-- 修改 docs/03-engineering-governance/current-work.md 候选行状态同步
+- 修改 docs/03-engineering-governance/current-work.md active card 与候选行状态同步
 - 修改 PR #622 body 范围摘要
-- work-log.md 本轮禁止修改（前两轮已正确）
+- work-log.md 本轮禁止修改（已正确）
 
 禁止范围：
 
@@ -61,37 +52,32 @@
 - 不修改后端 / 前端 / 测试 / migration / schema / registry / CI / 门禁
 - 不 amend / rebase / force-push / reset
 
-验证计划：
+验证计划（稳定门禁）：
 
 - `git diff --check`
 - `scripts/check-engineering-docs --full`
-- work-log.md SHA / 评审链已核对（与 Score Log #621 Original 行 byte-identical 对齐）
-- Score Log / Metrics / shaping plan vs main HEAD byte-identical
+- Score Log / Metrics / shaping plan 相对 main HEAD byte-identical
 - PR body 事实口径与实际 `git diff --numstat aa88e5ea..HEAD` 一致
 - Draft CI 以 PR Checks 当前状态为准
 
-当前进展（稳定事实，不列本 commit 或待生成 SHA）：
+当前进展（稳定事实，不列 commit 或 pending）：
 
-- work-log.md SHA 与评审链已正确
+- work-log.md #621 行 SHA 与评审链已正确
 - PR body 的整体 Git 直接输出已正确
-- 第四轮复审发现 REQ-042 候选行状态过期（候选行写"待独立裁决"vs 已合并 BLOCKED 裁决）
-- 第四轮复审发现 PR body 范围摘要不完整
-- 本轮仅修 current-work 候选行 + active card 同步 + PR body 范围摘要
+- current-work 候选行（REQ-042）已同步已合并 shaping 裁决（WS-S2 option B 仍 BLOCKED；WS-S3 仍 BLOCKED）
+- 前序事实纠正已落地
 
-下一步：
+下一步（用户裁决）：
 
-- 等待第五轮独立只读复审
-- 复审通过前不得 Ready、评分或合并
+- 等待用户裁决
+- 在用户明确授权前不得 Ready、评分或合并
 
-验证状态：
+验证状态（已实际执行）：
 
-- work-log.md SHA / 评审链已核对
+- work-log.md SHA / 评审链与 Score Log #621 Original 行 byte-identical 对齐
 - `git merge-base --is-ancestor` 三项验证：9fda8ae1→1661e2f6 exit=0，1661e2f6→3a37d5f0 exit=0，b0fec031≠1661e2f6 祖先 exit=1
 - `scripts/check-engineering-docs --full` passed（32 known allowlisted）
 - Draft CI 以 PR Checks 当前状态为准
-- 第五轮独立只读复审待执行
-
-交接备注：本任务为 TASK-REQ-042-WS-S2-CONTRACT-SHAPING-CLOSEOUT 的事实纠偏 follow-up（已进行四轮）；不启动任何实现；WS-S2 implementation 仍未启动；按钮保持 disabled；公共 `/turns` 不存在；WS-S3、REQ-043、REQ-047 Extended、TD-085 仍未解锁；REQ-042 仍 ⚫ Candidate；REQ-047 Extended 仍 🟣 Shaping；active card 保持进行中待第五轮独立只读复审裁决
 
 ## 下一批候选任务
 
