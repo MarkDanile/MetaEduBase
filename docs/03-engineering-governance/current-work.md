@@ -35,12 +35,16 @@
 - **PR #622 第三轮复审发现**：
   - PR body 混淆逐 commit churn 与区间净 diff
   - active card 当前进展、下一步、允许范围仍过期
+- **PR #622 第四轮复审发现**：
+  - current-work 候选行（REQ-042）状态与已合并 shaping 裁决矛盾（候选行写"待独立裁决"，实际 WS-S2 option B / WS-S3 已 BLOCKED）
+  - PR body 范围摘要不完整（缺 SHAPING→CLOSEOUT active card 删除 + closeout active card 删除 + 最近完成新增 + 窗口缩减等描述）
 
-允许范围（本轮放宽，允许修改 active card 自身）：
+允许范围（本轮放宽，允许修改 active card 自身 + 候选行）：
 
 - 修改 docs/03-engineering-governance/current-work.md active card 状态同步
-- 修改 PR #622 body 事实纠正（含历史子区间 commit 列举）
-- work-log.md 当前已正确，**本轮禁止继续修改**（前两轮已纠正 SHA + 移除 b0fec031 + 分层语义）
+- 修改 docs/03-engineering-governance/current-work.md 候选行状态同步
+- 修改 PR #622 body 范围摘要
+- work-log.md 本轮禁止修改（前两轮已正确）
 
 禁止范围：
 
@@ -68,13 +72,15 @@
 
 当前进展（稳定事实，不列本 commit 或待生成 SHA）：
 
-- 前两轮仓库正文纠正已落地（work-log.md SHA 拼写纠正 + 评审对象分层语义）
-- 第三轮独立只读复审确认 work-log.md #621 行正文正确（`aa88e5ea` squash mergeCommit + implementation baseline `9fda8ae1` + FINAL_IMPL_HEAD/SCORE_BASE `1661e2f6` + source head = score correction commit `3a37d5f0` + 正式评审对象 `9fda8ae1..1661e2f6`）
-- 本轮仅修 current-work active card 同步状态 + PR body 事实口径
+- work-log.md SHA 与评审链已正确
+- PR body 的整体 Git 直接输出已正确
+- 第四轮复审发现 REQ-042 候选行状态过期（候选行写"待独立裁决"vs 已合并 BLOCKED 裁决）
+- 第四轮复审发现 PR body 范围摘要不完整
+- 本轮仅修 current-work 候选行 + active card 同步 + PR body 范围摘要
 
 下一步：
 
-- 等待第四轮独立只读复审
+- 等待第五轮独立只读复审
 - 复审通过前不得 Ready、评分或合并
 
 验证状态：
@@ -83,9 +89,9 @@
 - `git merge-base --is-ancestor` 三项验证：9fda8ae1→1661e2f6 exit=0，1661e2f6→3a37d5f0 exit=0，b0fec031≠1661e2f6 祖先 exit=1
 - `scripts/check-engineering-docs --full` passed（32 known allowlisted）
 - Draft CI 以 PR Checks 当前状态为准
-- 第四轮独立只读复审待执行
+- 第五轮独立只读复审待执行
 
-交接备注：本任务为 TASK-REQ-042-WS-S2-CONTRACT-SHAPING-CLOSEOUT 的事实纠偏 follow-up（已进行三轮）；不启动任何实现；WS-S2 implementation 仍未启动；按钮保持 disabled；公共 `/turns` 不存在；WS-S3、REQ-043、REQ-047 Extended、TD-085 仍未解锁；REQ-042 仍 ⚫ Candidate；REQ-047 Extended 仍 🟣 Shaping；active card 保持进行中待第四轮独立只读复审裁决
+交接备注：本任务为 TASK-REQ-042-WS-S2-CONTRACT-SHAPING-CLOSEOUT 的事实纠偏 follow-up（已进行四轮）；不启动任何实现；WS-S2 implementation 仍未启动；按钮保持 disabled；公共 `/turns` 不存在；WS-S3、REQ-043、REQ-047 Extended、TD-085 仍未解锁；REQ-042 仍 ⚫ Candidate；REQ-047 Extended 仍 🟣 Shaping；active card 保持进行中待第五轮独立只读复审裁决
 
 ## 下一批候选任务
 
@@ -93,7 +99,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-042: Codex 式 Agent Workspace 三栏体验（Durable Core 已完成，事件协议稳定可依托） | 🟢 WS-S1 已完成（durable read/recovery shell 已 squash merge 入 main `235f4085`；REQ-042 整体仍 ⚫ Candidate — WS-S1 仅交付 AC-1[不含 restore] / AC-2 读半边 / AC-6 desktop/mobile 布局 + restore UI/API wiring；AC-3 仅呈现已有真实引用；AC-4/AC-5/AC-7/AC-8 保持未完成待 REQ-043 + REQ-047 Extended；WS-S2/WS-S3 待独立裁决） | WS-S1 完成并 squash merge 入 main；剩余 WS-S2/WS-S3 与 AC-4/AC-8 依赖待独立裁决；不直接跳到 Pi Worker / 不开放 submit-turn | [REQ-042](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) / [backlog](../01-product-planning/04-backlog.md) |
+| P0 | REQ-042: Codex 式 Agent Workspace 三栏体验（Durable Core 已完成，事件协议稳定可依托） | 🟢 WS-S1 已完成（durable read/recovery shell 已 squash merge 入 main `235f4085`；REQ-042 整体仍 ⚫ Candidate — WS-S1 仅交付 AC-1[不含 restore] / AC-2 读半边 / AC-6 desktop/mobile 布局 + restore UI/API wiring；AC-3 仅呈现已有真实引用；AC-4/AC-5/AC-7/AC-8 保持未完成待 REQ-043 + REQ-047 Extended；WS-S2 option B 仍 BLOCKED；WS-S3 仍 BLOCKED） | WS-S1 完成并 squash merge 入 main；WS-S2 option B 仍 BLOCKED（4 项硬门禁：公共 submit API spec + server-selected launch policy + 最小 execution profile + 真实 PG submit-loop 端到端全部通过前）；WS-S3 仍 BLOCKED（4 项硬门禁：浏览器 SSE 鉴权 transport + cancelRun/steerRun 前端 + REQ-047 Extended spec + REQ-043 Runtime conformance spec）；不直接跳到 Pi Worker / 不开放 submit-turn | [REQ-042](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) / [backlog](../01-product-planning/04-backlog.md) |
 | P0 | REQ-062: 动态数据采集、填报与报表发布平台 contract shaping | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 在 Run/Artifact 契约上塑形 Campaign/FormSchemaVersion/Submission/ReportSnapshot；AI 草案审核后才发布；仅契约塑形不实现自由表单引擎 | [REQ-062](../01-product-planning/05-requirements/REQ-062-dynamic-data-collection-and-reporting.md) / [backlog](../01-product-planning/04-backlog.md) |
 | P0 | REQ-063: 受治理的外部数据采集与研究证据链 source spike | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 先做授权来源/许可/网络/快照策略 spike，不提前实现自由爬虫；Connector 等待 Tool Gateway | [REQ-063](../01-product-planning/05-requirements/REQ-063-governed-external-data-acquisition.md) / [backlog](../01-product-planning/04-backlog.md) |
 
