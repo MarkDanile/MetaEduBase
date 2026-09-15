@@ -14,7 +14,47 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-TD-085-BOUNDARY-CLOSURE-SHAPING: TD-085 AI Chat / Skill / Agent App 上下文边界收口 Phase 0
+
+状态：🟡 进行中（pure-spec / pure-docs 现状审计 + 契约塑形 + 实施切片规划；不实施 TD-085，不启动 REQ-043 / REQ-047 Extended / WS-S2 / WS-S3 / REQ-062 / REQ-063；不修改 backend / frontend / tests / migration / schema / registry / CI / 门禁 / Score Log / Metrics / 历史评分行 / requirements / technical-debt.md / fact-audit.md / shaping plan；不运行 agent_erasure_backfill / 不修改 erase_available / 不触碰 metaedu-metaedu_test / stale refs / 恢复分支 / dangling commit 91fe0290；不 amend / rebase / force-push / reset）
+类型：TD-085 边界收口 shaping（Phase 0）
+领域：docs/03-engineering-governance/technical-debt.md（TD-085） + docs/02-delivery-plans/01-specs/ + docs/02-delivery-plans/02-plans/ + current-work.md
+当前执行模式：plan-do（独立可评审 + 可回滚切片）
+最近接手工具：Claude Code
+分支：docs/td085-boundary-closure-shaping
+
+需求来源：
+
+- TD-085 在 docs/03-engineering-governance/technical-debt.md ⚫ 待办（P1）
+- 仓库规划顺序 REQ-042 → TD-085 → REQ-043：TD-085 是 REQ-043 Runtime Port / Tool Gateway 的硬阻塞
+- WS-S2 option B 仍 BLOCKED、WS-S3 仍 BLOCKED（PR #622 closeout 事实）
+- 用户明确要求独立 Phase 0 审计 + 契约塑形 + 切片规划，不预设源码结论
+
+允许范围：
+
+- 仅修改 docs/03-engineering-governance/technical-debt.md（TD-085 区块最小更新）
+- 仅新增 docs/02-delivery-plans/01-specs/<TD-085 spec>.md
+- 仅新增 docs/02-delivery-plans/02-plans/<TD-085 plan>.md
+- 仅修改 docs/03-engineering-governance/current-work.md（active card 状态同步）
+
+禁止范围：
+
+- 不修改 backend / frontend / tests / migration / schema / registry / CI / 门禁
+- 不实现 LLM Port / Tool Gateway / RuntimeProfileResolver / 公共 /turns
+- 不启动 REQ-043 / REQ-047 Extended / WS-S2 / WS-S3 / REQ-062 / REQ-063
+- 不修改 Score Log / Metrics / 历史评分行
+- 不运行 agent_erasure_backfill / 不修改 erase_available
+- 不触碰 metaedu / metaedu_test / stale refs / 恢复分支 / dangling commit 91fe0290
+- 不 amend / rebase / force-push / reset
+
+验证计划：
+
+- `git diff --check`
+- `scripts/check-engineering-docs --full`
+- 相对 main HEAD 的 diff 仅包含上述允许文件
+- 所有相对链接可解析
+- 创建 Draft PR 等 Draft CI settled
+- 保持未 Ready / 未评分 / 未合并（保持 Draft 状态由用户决定）
 ## 下一批候选任务
 
 按"建议执行顺序"排序；候选区只保留近期 1 到 3 个入口，完整任务池回 `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/technical-debt.md`。
