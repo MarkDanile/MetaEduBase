@@ -14,71 +14,7 @@
 
 ## 当前进行中
 
-### TASK-REQ-042-WS-S2-CONTRACT-SHAPING-CLOSEOUT-FACT-CORRECTION: 收口治理（pure-docs）
-
-状态：🟡 进行中（pure-docs 事实纠偏；前序事实纠正已落地，PR 本体等待最终独立只读复审）
-类型：pure-docs 事实纠偏
-领域：docs/03-engineering-governance/current-work.md（active card 与候选行状态同步）
-当前执行模式：plan-do（用户明确禁止启动 WS-S2 implementation / 触碰后端 / 运行 backfill）
-最近接手工具：Claude Code
-分支：docs/req042-ws-s2-contract-shaping-closeout
-
-需求来源（多轮独立只读复审的稳定事实清单）：
-
-- work-log.md #621 行中 `1662e2f6` 是 SHA 拼写错误（实际 score base = `1661e2f6396f90103e57e08e579eb9787de3f5b5`）
-- `b0fec031` 不在 PR #621 祖先链（`git merge-base --is-ancestor b0fec031 1661e2f6` exit=1）
-- work-log.md 的 implementation baseline / SCORE_BASE / source-head 语义需分层表达
-- PR body 多次混淆逐 commit churn 与区间净 diff
-- current-work 候选行（REQ-042）状态与已合并 shaping 裁决矛盾（候选行此前写"待独立裁决"，实际 WS-S2 option B / WS-S3 已 BLOCKED）
-
-允许范围（最终收口修订）：
-
-- 修改 docs/03-engineering-governance/current-work.md active card 与候选行状态同步
-- 修改 PR #622 body 范围摘要
-- work-log.md 本轮禁止修改（已正确）
-
-禁止范围：
-
-- 不实现 submit-turn / SSE / after_seq / cancel / stop / steer
-- 不创建公共 `/turns` 路由
-- 不开放发送按钮
-- 不实现前端 SSE transport
-- 不启动 WS-S2 / WS-S3 / REQ-043 / REQ-062 / REQ-063 / TD-085
-- 不运行 agent_erasure_backfill / 不修改 erase_available / 不触碰 metaedu 或 metaedu_test
-- 不处理或 prune stale remote-tracking refs
-- 不修改 review-score-log.md / Metrics / 历史评分行
-- 不修改 shaping plan / requirements / REQ-042 状态 / REQ-043 / REQ-047 Extended / TD-085
-- 不修改 technical-debt.md / fact-audit.md
-- 不修改后端 / 前端 / 测试 / migration / schema / registry / CI / 门禁
-- 不 amend / rebase / force-push / reset
-
-验证计划（稳定门禁）：
-
-- `git diff --check`
-- `scripts/check-engineering-docs --full`
-- Score Log / Metrics / shaping plan 相对 main HEAD byte-identical
-- PR body 事实口径与实际 `git diff --numstat aa88e5ea..HEAD` 一致
-- Draft CI 以 PR Checks 当前状态为准
-
-当前进展（稳定事实，不列 commit 或 pending）：
-
-- work-log.md #621 行 SHA 与评审链已正确
-- PR body 的整体 Git 直接输出已正确
-- current-work 候选行（REQ-042）已同步已合并 shaping 裁决（WS-S2 option B 仍 BLOCKED；WS-S3 仍 BLOCKED）
-- 前序事实纠正已落地
-
-下一步（用户裁决）：
-
-- 等待用户裁决
-- 在用户明确授权前不得 Ready、评分或合并
-
-验证状态（已实际执行）：
-
-- work-log.md SHA / 评审链与 Score Log #621 Original 行 byte-identical 对齐
-- `git merge-base --is-ancestor` 三项验证：9fda8ae1→1661e2f6 exit=0，1661e2f6→3a37d5f0 exit=0，b0fec031≠1661e2f6 祖先 exit=1
-- `scripts/check-engineering-docs --full` passed（32 known allowlisted）
-- Draft CI 以 PR Checks 当前状态为准
-
+当前无活跃任务。
 ## 下一批候选任务
 
 按"建议执行顺序"排序；候选区只保留近期 1 到 3 个入口，完整任务池回 `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/technical-debt.md`。
@@ -99,6 +35,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-09-14 | TASK-REQ-042-WS-S2-CONTRACT-SHAPING-CLOSEOUT-FACT-CORRECTION：PR #622 mergeCommit 85ec8659 squash merge 后独立 pure-docs 治理收口；修正 work-log.md SHA 拼写 + 移除虚构祖先链 + 分层语义 + 修正 candidate 行 + Original 评分 91 / 100 + active card 转最近完成 | 🟢 完成（pure-docs post-merge 治理收口；PR #622 已 main；5 轮独立只读复审全部通过；Original 评分 91 / 100 已入账；保持 REQ-042 ⚫ Candidate / REQ-047 Extended 🟣 Shaping / WS-S2 option B / WS-S3 仍 BLOCKED） | PR #622 squash mergeCommit `85ec8659`（评审对象 `aa88e5ea..d40dc9c3` 净 diff 2 文件 55+/41-；7 维：范围 15/15 + 实现 18/20 + 测试 20/20 + 事实源 13/15 + 风险 15/15 + 可评审性 9/10 + 持续改进 1/5 = 91 / 100） | [PR #622](https://github.com/Markdanile/MetaEduBase/pull/622)（mergeCommit `85ec8659`）/ [work-log #621 长期索引行 18](work-log.md) / [Score Log #622 Original 91](04-retrospectives/review-score-log.md) |
 | 2026-09-10 | TASK-REQ-042-WS-S2-CONTRACT-SHAPING：WS-S2 / WS-S3 contract-shaping 报告（Phase 0 audit + 切片规划；pure-spec / pure-docs）+ 独立 closeout 治理收口 | 🟢 完成（Phase 0 shaping/audit 子阶段；WS-S2 唯一产品路径 option B 仍 BLOCKED；WS-S3 仍 BLOCKED；仅 pure-spec/pure-docs，0 后端 / 0 测试 / 0 migration / 0 schema / 0 CI 改动；REQ-042 仍 ⚫ Candidate；REQ-047 Extended 仍 🟣 Shaping） | PR #621 squash merge `aa88e5ea`；Original 评分 94（7 维 15+18+20+14+15+10+1）；Draft + Ready + 评分后 CI 全 SUCCESS；Phase 0 最高 L0 静态代码审计；保留 P3：3 个 stale `origin/*` remote-tracking ref 未擅自 prune | [PR #621](https://github.com/MarkDanile/MetaEduBase/pull/621)（mergeCommit `aa88e5ea`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) |
 | 2026-09-09 | TASK-REQ-042-WS-S1-GOVERNANCE-CORRECTION：WS-S1 治理收口事实最小 pure-docs 纠正（active card 登记 + 当前进行中 placeholder + 最近完成分隔线 5 列修复） | 🟢 完成（pure-docs 子阶段；WS-S1 边界声明保留：真实 PG 正向 restore 仍不在 scope / 未运行 backfill / 未改 erase_available / 未触碰 metaedu/metaedu_test / AC-4/AC-5/AC-7/AC-8 仍保持未完成 / REQ-042 整体不翻 Done；不重开 WS-S1 / 不启动 WS-S2/S3/REQ-043/062/063/TD-085 / 不重新评分 / 不修改 review-score-log.md / Metrics / 历史评分行 / fact-audit / spec / plan / 技术债 / 后端 / migration / schema / registry / CI / 门禁） | 最小 pure-docs：active card 登记 commit + 当前进行中改回 `当前无活跃任务。` 占位 + 最近完成分隔线 1 段 → 5 段（`|------|` → `|------|------|------|------|------|`）；事实核对：`git rev-list --count 23d1c0c5..main = 2`（`235f4085` PR #618 + `ea1b51f8` PR #619，均为 squash merge）；最近完成表实际行数 19 → 20（closeout row 中「19 行」为 closeout 当时快照，本轮追加 1 行 = 20，仍 ≤ 20 窗口）；stale remote-tracking ref `origin/docs/req042-ws-s1-closeout` + `origin/feature/req042-ws-s1-durable-read-shell` **仍存在**，本任务未擅自 prune（仅如实登记） | [current-work active card](current-work.md) / [work-log](work-log.md) |
 | 2026-09-09 | TASK-REQ-042-WS-S1：Workspace durable read/recovery 三栏 shell（只读，零写路径）+ 独立 closeout（TASK-REQ-042-WS-S1-CLOSEOUT 子卡） | 🟢 完成（WS-S1 + CLOSEOUT 子卡；REQ-042 仍 ⚫ Candidate — 仅交付 AC-1[不含 restore] / AC-2 读半边 / AC-6 desktop/mobile 布局 + restore UI/API wiring；AC-4/AC-5/AC-7/AC-8 保持未完成待 REQ-043 + REQ-047 Extended；WS-S2/S3/REQ-043/062/063/TD-085/erase_available/S5 wiring/capability flip 全部未启动） | PR #618 squash merge `235f4085`；评分 94 Original；382 unit + 66 Playwright + 45 unique；3 路 CI 全 SUCCESS；手动验收 9 项 pass | [PR #618](https://github.com/MarkDanile/MetaEduBase/pull/618)（mergeCommit `235f4085`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) |
