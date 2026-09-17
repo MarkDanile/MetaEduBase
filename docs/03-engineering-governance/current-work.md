@@ -14,33 +14,34 @@
 
 ## 当前进行中
 
-### TASK-TD-085-BOUNDARY-CLOSURE-SHAPING: TD-085 AI Chat / Skill / Agent App 上下文边界收口 Phase 0
+### TASK-TD-085-BOUNDARY-CLOSURE-READINESS: TD-085 implementation-readiness 决策门禁
 
-状态：🟡 进行中（pure-spec / pure-docs 现状审计 + 契约塑形 + 实施切片规划；不实施 TD-085，不启动 REQ-043 / REQ-047 Extended / WS-S2 / WS-S3 / REQ-062 / REQ-063；不修改 backend / frontend / tests / migration / schema / registry / CI / 门禁 / Score Log / Metrics / 历史评分行 / requirements / technical-debt.md / fact-audit.md / shaping plan；不运行 agent_erasure_backfill / 不修改 erase_available / 不触碰 metaedu-metaedu_test / stale refs / 恢复分支 / dangling commit 91fe0290；不 amend / rebase / force-push / reset）
-类型：TD-085 边界收口 shaping（Phase 0）
-领域：docs/03-engineering-governance/technical-debt.md（TD-085） + docs/02-delivery-plans/01-specs/ + docs/02-delivery-plans/02-plans/ + current-work.md
-当前执行模式：plan-do（独立可评审 + 可回滚切片）
+状态：🟡 进行中（pure-spec / pure-docs decision gating；裁决 4 项 OQ + 消除 spec/plan 文档矛盾 + 升级 TD-085 状态；不实施任何 slice、不实现 LLM Port / Tool Gateway / RuntimeProfileResolver / 公共 /turns / agent_workspace↔agent_execution mutual import 解除 / DD 业务迁移；不启动 REQ-043 / REQ-047 Extended / WS-S2 / WS-S3 / REQ-062 / REQ-063；不修改 backend / frontend / tests / migration / schema / registry / CI / 门禁 / Score Log / Metrics / 历史评分行 / requirements / fact-audit.md / shaping plan；不运行 agent_erasure_backfill / 不修改 erase_available；不触碰 metaedu / metaedu_test / stale refs / 恢复分支 / dangling commit 91fe0290；不 amend / rebase / force-push / reset）
+类型：TD-085 readiness decision gate（Phase 0 → Phase 1 切换门禁）
+领域：docs/02-delivery-plans/01-specs/2026-09-15-td-085-...md + docs/02-delivery-plans/02-plans/2026-09-15-td-085-...md + docs/03-engineering-governance/technical-debt.md（TD-085 区块最小更新）+ current-work.md
+当前执行模式：decision-gate（pure-docs，4 项 OQ 裁决 + 文档矛盾消除）
 最近接手工具：Claude Code
-分支：docs/td085-boundary-closure-shaping
+分支：docs/td085-boundary-closure-readiness
 
 需求来源：
 
-- TD-085 在 docs/03-engineering-governance/technical-debt.md ⚫ 待办（P1）
+- TD-085 在 docs/03-engineering-governance/technical-debt.md ⚫ 待办（P1）；PR #624 Phase 0 shaping 已 squash merge 入 main `2d479991`（Original 评分 98/100）
 - 仓库规划顺序 REQ-042 → TD-085 → REQ-043：TD-085 是 REQ-043 Runtime Port / Tool Gateway 的硬阻塞
 - WS-S2 option B 仍 BLOCKED、WS-S3 仍 BLOCKED（PR #622 closeout 事实）
-- 用户明确要求独立 Phase 0 审计 + 契约塑形 + 切片规划，不预设源码结论
+- 用户明确要求决策门禁：裁决 4 项 OQ、消除 spec/plan 矛盾、判断 readiness 升级门
 
 允许范围：
 
-- 仅修改 docs/03-engineering-governance/technical-debt.md（TD-085 区块最小更新）
-- 仅新增 docs/02-delivery-plans/01-specs/<TD-085 spec>.md
-- 仅新增 docs/02-delivery-plans/02-plans/<TD-085 plan>.md
-- 仅修改 docs/03-engineering-governance/current-work.md（active card 状态同步）
+- 仅修改 docs/02-delivery-plans/01-specs/2026-09-15-td-085-...md（新增 §11 4 项 ADR-style 决策 + §6.1 三态语义）
+- 仅修改 docs/02-delivery-plans/02-plans/2026-09-15-td-085-...md（§0 base 修正 + §1 slice 依赖真伪 + §3 测试策略统一 + §8 重复清理）
+- 最小更新 docs/03-engineering-governance/technical-debt.md（TD-085 状态 ⚫ → 🔵 + 4 项 OQ 决议链接）
+- 仅修改 docs/03-engineering-governance/current-work.md（active card 状态迁移 + Phase 0 shaping 移入最近完成）
 
 禁止范围：
 
 - 不修改 backend / frontend / tests / migration / schema / registry / CI / 门禁
 - 不实现 LLM Port / Tool Gateway / RuntimeProfileResolver / 公共 /turns
+- 不启动 Slice A / B / C / D / E
 - 不启动 REQ-043 / REQ-047 Extended / WS-S2 / WS-S3 / REQ-062 / REQ-063
 - 不修改 Score Log / Metrics / 历史评分行
 - 不运行 agent_erasure_backfill / 不修改 erase_available
@@ -51,10 +52,11 @@
 
 - `git diff --check`
 - `scripts/check-engineering-docs --full`
-- 相对 main HEAD 的 diff 仅包含上述允许文件
+- 相对 main HEAD（`2d479991`）的 diff 仅包含 4 个允许文件（spec + plan + technical-debt + current-work）
 - 所有相对链接可解析
 - 创建 Draft PR 等 Draft CI settled
 - 保持未 Ready / 未评分 / 未合并（保持 Draft 状态由用户决定）
+- 裁决结论：4 项 OQ 全部 ADR-style 入 spec §11，TD-085 状态严格按唯一阻塞判定（无关键决策阻塞则 🔵 就绪，否则保持 ⚫ 待办 + 写清唯一阻塞）
 ## 下一批候选任务
 
 按"建议执行顺序"排序；候选区只保留近期 1 到 3 个入口，完整任务池回 `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/technical-debt.md`。
@@ -75,6 +77,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-09-17 | TASK-TD-085-BOUNDARY-CLOSURE-SHAPING：TD-085 Phase 0 shaping 收口（pure-spec / pure-docs）+ PR closeout | 🟢 完成（PR #624 squash mergeCommit `2d479991`；Original 评分 98/100；评审对象 `448f4f6d..dc8eecdca` 2 commits 4 文件 +647/-14；评分提交 commit `89773179`；保持 TD-085 ⚫ 待办 / REQ-043 ⚫ Candidate / WS-S2 / WS-S3 仍 BLOCKED） | PR #624 squash mergeCommit `2d479991`（PR base `448f4f6d`；最终 PR diff 5 文件 +648/-14；7 维 15+20+20+15+15+9+4 = 98/100；Draft + Ready + 评分后 CI 全 SUCCESS） | [PR #624](https://github.com/MarkDanile/MetaEduBase/pull/624)（mergeCommit `2d479991`）/ [Score Log #624 Original 98](04-retrospectives/review-score-log.md) / [TD-085 spec](../02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) |
 | 2026-09-14 | TASK-REQ-042-WS-S2-CONTRACT-SHAPING-CLOSEOUT-FACT-CORRECTION：PR #622 mergeCommit 85ec8659 squash merge 后独立 pure-docs 治理收口；修正 work-log.md SHA 拼写 + 移除虚构祖先链 + 分层语义 + 修正 candidate 行 + Original 评分 91 / 100 + active card 转最近完成 | 🟢 完成（pure-docs post-merge 治理收口；PR #622 已 main；5 轮独立只读复审全部通过；Original 评分 91 / 100 已入账；保持 REQ-042 ⚫ Candidate / REQ-047 Extended 🟣 Shaping / WS-S2 option B / WS-S3 仍 BLOCKED） | PR #622 squash mergeCommit `85ec8659`（评审对象 `aa88e5ea..d40dc9c3` 净 diff 2 文件 55+/41-；7 维：范围 15/15 + 实现 18/20 + 测试 20/20 + 事实源 13/15 + 风险 15/15 + 可评审性 9/10 + 持续改进 1/5 = 91 / 100） | [PR #622](https://github.com/Markdanile/MetaEduBase/pull/622)（mergeCommit `85ec8659`）/ [work-log #621 长期索引行 18](work-log.md) / [Score Log #622 Original 91](04-retrospectives/review-score-log.md) |
 | 2026-09-10 | TASK-REQ-042-WS-S2-CONTRACT-SHAPING：WS-S2 / WS-S3 contract-shaping 报告（Phase 0 audit + 切片规划；pure-spec / pure-docs）+ 独立 closeout 治理收口 | 🟢 完成（Phase 0 shaping/audit 子阶段；WS-S2 唯一产品路径 option B 仍 BLOCKED；WS-S3 仍 BLOCKED；仅 pure-spec/pure-docs，0 后端 / 0 测试 / 0 migration / 0 schema / 0 CI 改动；REQ-042 仍 ⚫ Candidate；REQ-047 Extended 仍 🟣 Shaping） | PR #621 squash merge `aa88e5ea`；Original 评分 94（7 维 15+18+20+14+15+10+1）；Draft + Ready + 评分后 CI 全 SUCCESS；Phase 0 最高 L0 静态代码审计；保留 P3：3 个 stale `origin/*` remote-tracking ref 未擅自 prune | [PR #621](https://github.com/MarkDanile/MetaEduBase/pull/621)（mergeCommit `aa88e5ea`）/ [work-log](work-log.md) / [score 94](04-retrospectives/review-score-log.md) |
 | 2026-09-09 | TASK-REQ-042-WS-S1-GOVERNANCE-CORRECTION：WS-S1 治理收口事实最小 pure-docs 纠正（active card 登记 + 当前进行中 placeholder + 最近完成分隔线 5 列修复） | 🟢 完成（pure-docs 子阶段；WS-S1 边界声明保留：真实 PG 正向 restore 仍不在 scope / 未运行 backfill / 未改 erase_available / 未触碰 metaedu/metaedu_test / AC-4/AC-5/AC-7/AC-8 仍保持未完成 / REQ-042 整体不翻 Done；不重开 WS-S1 / 不启动 WS-S2/S3/REQ-043/062/063/TD-085 / 不重新评分 / 不修改 review-score-log.md / Metrics / 历史评分行 / fact-audit / spec / plan / 技术债 / 后端 / migration / schema / registry / CI / 门禁） | 最小 pure-docs：active card 登记 commit + 当前进行中改回 `当前无活跃任务。` 占位 + 最近完成分隔线 1 段 → 5 段（`|------|` → `|------|------|------|------|------|`）；事实核对：`git rev-list --count 23d1c0c5..main = 2`（`235f4085` PR #618 + `ea1b51f8` PR #619，均为 squash merge）；最近完成表实际行数 19 → 20（closeout row 中「19 行」为 closeout 当时快照，本轮追加 1 行 = 20，仍 ≤ 20 窗口）；stale remote-tracking ref `origin/docs/req042-ws-s1-closeout` + `origin/feature/req042-ws-s1-durable-read-shell` **仍存在**，本任务未擅自 prune（仅如实登记） | [current-work active card](current-work.md) / [work-log](work-log.md) |
