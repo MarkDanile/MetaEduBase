@@ -178,7 +178,7 @@
 | TD-082 | 分层质量门禁与 CI 提速 | 🟢 完成 | P1 | 工程基础设施 / CI / Hooks / 测试性能 / 依赖管理 | [PR #467](https://github.com/MarkDanile/MetaEduBase/pull/467)（`754ca109`）：scope-aware 三路 CI、秒级 hooks、MCP lock 与前端去重已交付；后端专项转 TD-083。 |
 | TD-083 | 后端风险分级测试选择与性能专项治理 | 🟢 完成 | P1 | 后端 / 测试基础设施 / CI 性能 | [PR #469](https://github.com/MarkDanile/MetaEduBase/pull/469)（`cccb3ff6`）/ [Spec](../02-delivery-plans/01-specs/2026-07-23-td-083-backend-risk-tiered-test-selection.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-td-083-backend-risk-tiered-test-selection-plan.md) |
 | TD-084 | GitHub Actions Node 24 与 hermetic 测试分类收口 | 🟢 完成 | P2 | 工程基础设施 / CI / 依赖维护 / 测试语义 | [PR #472](https://github.com/MarkDanile/MetaEduBase/pull/472)（`beb7c6fd`）/ [Spec](../02-delivery-plans/01-specs/2026-07-23-td-084-node24-hermetic-test-classification.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-td-084-node24-hermetic-test-classification-plan.md) |
-| TD-085 | 收口 AI Chat、Skill 与 Agent App 的上下文边界倒置 | ⚫ 待办 | P1 | 后端 / Agent Platform / DDD / 可维护性 | [REQ-059](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md) / 2026-07-23 源码复核 |
+| TD-085 | 收口 AI Chat、Skill 与 Agent App 的上下文边界倒置 | 🔵 就绪 | P1 | 后端 / Agent Platform / DDD / 可维护性 | [REQ-059](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md) / 2026-07-23 源码复核 + 2026-09-15 Phase 0 审计 + 2026-09-17 readiness decision gate |
 | TD-086 | 收口 Alembic target metadata 漂移并建立可执行 schema drift gate | ⚫ 待办 | P2 | 后端 / 数据库迁移 / CI / 质量门禁 | REQ-041 W1 migration 验证 / 2026-07-24 `alembic check` 实测 |
 | TD-087 | 模板管理 API 缺少后端 RBAC | 🟢 完成 | P1 | 后端 / Template / Identity / RBAC / 多租户 | [PR #495](https://github.com/MarkDanile/MetaEduBase/pull/495)（`40a7bf46`）：15 个管理端点统一高权守卫，最小 lookup DTO、脱敏审计与完整角色 / 租户矩阵通过 |
 | TD-088 | REQ-060 Slice 2 旧链接重定向移除 | 🔵 就绪 | P3 | 前端 / Web / Navigation / 技术债 | [PR #499](https://github.com/MarkDanile/MetaEduBase/pull/499)（`a1fa26dc`）：6 条旧链接重定向（/skill-editor /admin /admin/template(+/:id) /admin/mcp-servers /admin/skills -> 新路径）保留 1 版本周期后移除；移除前确认无外部书签/链接引用 |
@@ -501,17 +501,39 @@ _（待 S2-C/S3 或独立切片处理；登记于 2026-07-29，源自独立 `max
 
 ### TD-085: 收口 AI Chat、Skill 与 Agent App 的上下文边界倒置
 
-状态：⚫ 待办
+状态：🔵 就绪
 
 | 字段 | 内容 |
 |------|------|
 | 优先级 | P1 |
 | 领域 | 后端 / Agent Platform / DDD / 可维护性 |
-| 事实源 | [REQ-059](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md) / 2026-07-23 源码复核 + [TD-085 spec](../02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / 2026-09-15 Phase 0 现场审计 |
-| Spec | [TD-085 Spec](../02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) |
-| Plan | [TD-085 Plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) |
+| 事实源 | [REQ-059](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md) / 2026-07-23 源码复核 + [TD-085 spec](../02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / 2026-09-15 Phase 0 现场审计 + 2026-09-17 readiness decision gate |
+| Spec | [TD-085 Spec](../02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) §6.0 三态语义 + §11 4 项 ADR |
+| Plan | [TD-085 Plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) §1.1 真实依赖图 + §3 测试策略统一 |
+| Readiness 决策 | 4 项 OQ 全部裁决 + spec/plan 文档矛盾清除 + 工程门禁 passed；启动 Slice A 的硬条件满足（不进入 implementation 直至独立 Slice A PR 启动） |
 
-**证据（Phase 0 现场审计 code:line 引用）**
+**4 项 OQ 裁决（readiness 阶段，引用 spec §11 ADR）**
+
+- OQ-1 `tool_gateway` 目录边界：runtime 作为新增子包（`packages/server-python/app/runtime/`），不建立独立 context。详见 spec [§11.1 ADR-085-1](../02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md#111-adr-085-1runtime-路径选择oq-1)。
+- OQ-2 `ai_chat_service.py` 拆分后职责归属：knowledge 保留 NER/检索/Fusion/Diagnostics；runtime 抽 LlmProvider port + OpenAIProvider adapter + prompt_builder + tool_orchestrator。详见 spec [§11.2 ADR-085-2](../02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md#112-adr-085-2ai_chat_servicepy-拆分后职责归属oq-2)。
+- OQ-3 SkillRunner `internal_query` 契约：必须保留（不是 REQ-045 兼容要求，是 REQ-046 v2 业务方契约）；Slice C 迁移 dd_query_runner + park_investment_dd.yaml + 4 个测试到 due_diligence，internal_query 入口能力本身保留。详见 spec [§11.3 ADR-085-3](../02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md#113-adr-085-3skill_runnerpy-internal_query-契约保留oq-3)。
+- OQ-4 erasure participant 双向依赖：port 抽象保留双向能力，composition 协调 fence ledger 双边不变性；FencedExecutionPort 已存在复用，新增 WorkspaceSnapshotPort 到 agent_workspace/application/ports.py；snapshot_digest 调用下沉到 composition/runtime_snapshot.py。详见 spec [§11.4 ADR-085-4](../02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md#114-adr-085-4erasure-participant-双向依赖通过-composition-协调oq-4)。
+
+**Slice 真实依赖图（plan §1.1，readiness 阶段裁决）**
+
+- Slice A → Slice B：真依赖（B 复用 A 的 LlmProvider port）
+- Slice C：独立（不依赖 A；grep 验证 skill_runner 无 llm_provider 引用）
+- Slice D：独立（不依赖 A/B/C；FencedExecutionPort 已存在可直接复用；grep 验证 erasure participant 无 llm_provider 引用）
+- Slice E：barrier（依赖 A-D 全部完成）
+
+原 plan §1 各 Slice 标注"前置：Slice A 完成"经 code:line 验证后修正：Slice C / D 可与 A 并行实施（不同 PR 不同分支）；B 必须在 A 之后；E 在所有之后。
+
+**Readiness → TD-085 Completion → REQ-043 启动的阶段边界**
+
+- **Readiness**（本 PR 完成）：4 项 OQ 裁决 + 文档矛盾清除 + 工程门禁通过 = 解锁"可启动 Slice A"
+- **Slice Acceptance**：单个 Slice PR 独立评审；不连续多个 Slice
+- **TD-085 Completion** = Slice E 完成 = 启动 REQ-043 shaping 的硬前置
+- **TD-085 Completion ≠ REQ-043 / WS-S2 / WS-S3 已解除全部阻塞**（spec §6.3）
 
 - A. layer inversion（应用层 → interface/api 反向 import）：
   - [packages/server-python/app/contexts/knowledge/application/ai_chat_service.py:565](/packages/server-python/app/contexts/knowledge/application/ai_chat_service.py#L565)、[:589](/packages/server-python/app/contexts/knowledge/application/ai_chat_service.py#L589) — `from app.contexts.knowledge.interfaces.api.ai_router import ...`
@@ -587,6 +609,7 @@ REQ-043 必须在 TD-085 完成后才能开始独立 shaping / implementation（
 
 - 2026-07-23：在 BUG-017/018/019、REQ-058 和 TD-080~084 收口后登记；待 REQ-059 架构边界冻结并拆分 spec/plan，不与菜单 REQ-060 混为同一实施 PR。
 - 2026-09-15：TD-085 Phase 0 现状审计 + 契约塑形 + 实施切片规划已完成；[spec](../02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) 冻结当前边界、目标依赖方向、允许/禁止跨 context 调用、compat adapter 边界、行为保持要求、4 项 open question 状态明确；[plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) 列出 5 个可独立回滚 slice（A LLM Port 抽离 / B ai_chat_service 拆分 / C skill_runner DD 解耦 / D 双向 mutual import 解除 / E 综合验证）、slice 依赖顺序、各 slice 允许文件范围、测试矩阵、风险 / 失败模式 / 停止条件；Repository planning ordering：REQ-042 → **TD-085** → REQ-043；TD-085 单条完成 ≠ REQ-043 / WS-S2 / WS-S3 已解除全部阻塞——此为隐性误表述必须避免。
+- 2026-09-17：TD-085 readiness decision gate 已完成（独立 PR `docs/td085-boundary-closure-readiness`）；4 项 OQ 全部 ADR-style 裁决并写入 [spec §11](../02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md#11-adrarchitecture-decision-records--4-项-oq-裁决)：OQ-1 runtime 子包路径 / OQ-2 knowledge 保留 NER-Fusion-Diagnostics / OQ-3 internal_query 是 REQ-046 v2 契约保留 / OQ-4 FencedExecutionPort 复用 + WorkspaceSnapshotPort 新增；spec §6.0 新增三态语义（readiness / slice acceptance / TD-085 completion）消除原 §6.1 与 §8/§9 循环门禁；plan §0 base 修正为 `2d479991`、§1.1 真实依赖图（grep 验证 Slice C/D 独立）、§3 测试策略统一表（不修改 / 允许新增 / 允许迁移 / 禁止新增重复）、§8 重复清理；TD-085 状态由 ⚫ 待办升级为 🔵 就绪；不启动 Slice A / B / C / D / E；启动条件 = 独立 Slice A PR 单独登记。
 ### TD-084: GitHub Actions Node 24 与 hermetic 测试分类收口
 
 状态：🟢 完成
