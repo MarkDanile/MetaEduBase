@@ -507,22 +507,64 @@ _（待 S2-C/S3 或独立切片处理；登记于 2026-07-29，源自独立 `max
 |------|------|
 | 优先级 | P1 |
 | 领域 | 后端 / Agent Platform / DDD / 可维护性 |
-| 事实源 | [REQ-059](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md) / 2026-07-23 源码复核 |
+| 事实源 | [REQ-059](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md) / 2026-07-23 源码复核 + [TD-085 spec](../02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / 2026-09-15 Phase 0 现场审计 |
+| Spec | [TD-085 Spec](../02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) |
+| Plan | [TD-085 Plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) |
 
-**证据**
+**证据（Phase 0 现场审计 code:line 引用）**
 
-- `knowledge/application/ai_chat_service.py` 1015 行，超过仓库 1000 行硬边界；同时承担 NER、检索、Fusion、Context Packing、Prompt、LLM、内部问数 Tool Calling 和 diagnostics。
-- `AIChatService._call_llm*` 从 application 层反向导入 `knowledge/interfaces/api/ai_router.py`；`hybrid_ner_service.py` 也存在同类反向依赖，靠函数内 lazy import 避免循环。
-- `skill_registry/application/dd_query_runner.py` 258 行，名称、配置、主体解析和数据关系均属于企业背调，却位于通用 Skill 上下文；Skill Router 和 DD Router 都直接装配该 adapter。
-- `skill_registry/application/skill_runner.py` 565 行，包含“企业尽调报告助手”系统 Prompt、QCC 参数映射、`internal_query` 专用分支和背调证据绑定，通用 Registry/Runner 已被首个业务场景反向塑形。
-- 当前不存在 `agent_workspace`、`agent_runtime` 或 `tool_gateway` bounded context；直接接 Pi/ACP 会与 AI Chat、SkillRunner、DdOrchestrator 形成平行编排链。
+- A. layer inversion（应用层 → interface/api 反向 import）：
+  - [packages/server-python/app/contexts/knowledge/application/ai_chat_service.py:565](/packages/server-python/app/contexts/knowledge/application/ai_chat_service.py#L565)、[:589](/packages/server-python/app/contexts/knowledge/application/ai_chat_service.py#L589) — `from app.contexts.knowledge.interfaces.api.ai_router import ...`
+  - [packages/server-python/app/contexts/knowledge/application/hybrid_ner_service.py:93](/packages/server-python/app/contexts/knowledge/application/hybrid_ner_service.py#L93) — 同向 import
+  - [ai_chat_service.py:16](/packages/server-python/app/contexts/knowledge/application/ai_chat_service.py#L16) — 自认"行为由 ai_router 单独保留"
+- B. 单文件 1015 行 > 1000 行硬边界：[packages/server-python/app/contexts/knowledge/application/ai_chat_service.py](/packages/server-python/app/contexts/knowledge/application/ai_chat_service.py) `wc -l = 1015`
+- C. 通用 Skill 层被企业尽调反向塑形：
+  - [packages/server-python/app/contexts/skill_registry/application/skill_runner.py:103](/packages/server-python/app/contexts/skill_registry/application/skill_runner.py#L103) `Real QCC tools (any qcc* server — company / risk / history / executive)`
+  - [:110](/packages/server-python/app/contexts/skill_registry/application/skill_runner.py#L110) `if server.startswith("qcc")`
+  - [:538](/packages/server-python/app/contexts/skill_registry/application/skill_runner.py#L538) `你是企业尽调报告助手`
+  - [dd_query_runner.py:30-34](/packages/server-python/app/contexts/skill_registry/application/dd_query_runner.py#L30-L34) `from app.contexts.mcp_registry.application.mcp_invocation_service` / `from app.contexts.structured_data.application.query_service`
+  - [packages/server-python/app/contexts/skill_registry/application/dd_query_runner.py](/packages/server-python/app/contexts/skill_registry/application/dd_query_runner.py) `wc -l = 258`（位于 skill_registry 而非 due_diligence）
+- D. agent_workspace ↔ agent_execution mutual import（双向 leak）：
+  - [agent_workspace/infrastructure/workspace_transport_erasure_participant.py:241](/packages/server-python/app/contexts/agent_workspace/infrastructure/workspace_transport_erasure_participant.py#L241) — `from app.contexts.agent_execution.domain.snapshots`
+  - [agent_execution/infrastructure/execution_erasure_participant.py:79-88](/packages/server-python/app/contexts/agent_execution/infrastructure/execution_erasure_participant.py#L79-L88) — `from app.contexts.agent_workspace.domain` / `.infrastructure.erasure_repository` / `.infrastructure.models`
+- E. 上下文文件 + 测试分布：
+  - agent_workspace: 23 .py + 6 tests；agent_execution: 29 + 12；knowledge: 31 + 25；skill_registry: 14 + 14（100% 覆盖，含 DD 测试）；due_diligence: 17 + 15（88%）；ai_app: 12 + 5
+- F. 合理调用（保留为 Port 抽象）：
+  - `composition/direct_rag_compatibility → agent_workspace`（composition 可调用 context application）
+  - `composition/agent_control_plane → agent_workspace + agent_execution`（composition 是合法编排层）
+  - `agent_execution/application/compatibility_output_service → agent_workspace/application/ports`（仅 import port 接口，类型抽象，无循环）
 
 **问题**
 
-- 依赖方向从 domain/application 指向 interface 和具体业务 adapter，违反仓库 Router 轻量与上下文分层规则。
-- Direct RAG、确定性 Skill 和未来 Agent Runtime 的职责无法清晰组合，新增工具只能继续硬编码进 AIChatService 或 SkillRunner。
-- 企业背调字段和 Prompt 泄漏进通用层，后续教育、政策、园区其他 Agent App 会被迫适配背调语义。
-- 一次性大重构风险高；必须以特征测试和 Port/Adapter 逐步迁移，保持现有真实业务闭环。
+- 依赖方向：domain/application 指向 interface 和具体业务 adapter，违反 Router 轻量与上下文分层规则
+- 职责模糊：Direct RAG、确定性 Skill 和未来 Agent Runtime 无法清晰组合
+- 业务泄漏：企业尽调字段和 Prompt 泄漏进通用 Skill 层
+- 一次性大重构风险高；必须以特征测试和 Port/Adapter 逐步迁移
+
+**完成标准（spec §6.1，已 spec 冻结）**
+
+- layer inversion 修复：`rg "from app\.contexts\.knowledge\.interfaces\.api" packages/server-python/app/contexts/knowledge/application/` 返回 0 行
+- ai_chat_service 拆分：`wc -l packages/server-python/app/contexts/knowledge/application/ai_chat_service.py` ≤ 1000 行（hard cap），最好 ≤ 500 行
+- skill_runner DD 解耦：`rg -i "qcc|dd|背调|enterprise_diligence" packages/server-python/app/contexts/skill_registry/application/skill_runner.py` 业务专属分支归零
+- agent_workspace ↔ agent_execution mutual import 解除：双向 `rg` 仅基础设施兼容层返回
+- 测试覆盖行为保持：`pytest` 全 pass（不增删测试用例）
+- 文件规模门禁：`scan_source_sizes.py` pass
+
+**验证方式（spec §6.2）**
+
+- `grep` 路径扫描：`rg` 证明跨 context 违规 import 归零
+- 文件规模：`wc -l` + `scan_source_sizes.py`
+- hermetic 回归：`pytest` 全 pass
+- `scripts/check-engineering-docs`：pass
+- `git diff --check`：clean
+
+**TD-085 完成 ≠ REQ-043 / WS-S2 / WS-S3 已解除全部阻塞**
+
+完成 TD-085 仅意味着：`tool_gateway` 边界已抽离（Port 抽象 ready）+ LLM 调用由 application → ai_router 反向依赖 → application → runtime/tool_gateway port + skill_runner 不再含业务硬编码（DD 业务回归 due_diligence）+ agent_workspace / agent_execution 互不依赖。
+
+TD-085 完成**不**意味着：REQ-043 Runtime conformance spec 已冻结 + WS-S2 / WS-S3 / REQ-043 已解除全部阻塞 + 任何 public `/turns` endpoint 已实现 + RuntimeProfileResolver 已实现。
+
+REQ-043 必须在 TD-085 完成后才能开始独立 shaping / implementation（仓库规划顺序：REQ-042 → TD-085 → REQ-043）。
 
 **完成标准**
 
@@ -544,7 +586,7 @@ _（待 S2-C/S3 或独立切片处理；登记于 2026-07-29，源自独立 `max
 **交付记录**
 
 - 2026-07-23：在 BUG-017/018/019、REQ-058 和 TD-080~084 收口后登记；待 REQ-059 架构边界冻结并拆分 spec/plan，不与菜单 REQ-060 混为同一实施 PR。
-
+- 2026-09-15：TD-085 Phase 0 现状审计 + 契约塑形 + 实施切片规划已完成；[spec](../02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) 冻结当前边界、目标依赖方向、允许/禁止跨 context 调用、compat adapter 边界、行为保持要求、4 项 open question 状态明确；[plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) 列出 5 个可独立回滚 slice（A LLM Port 抽离 / B ai_chat_service 拆分 / C skill_runner DD 解耦 / D 双向 mutual import 解除 / E 综合验证）、slice 依赖顺序、各 slice 允许文件范围、测试矩阵、风险 / 失败模式 / 停止条件；Repository planning ordering：REQ-042 → **TD-085** → REQ-043；TD-085 单条完成 ≠ REQ-043 / WS-S2 / WS-S3 已解除全部阻塞——此为隐性误表述必须避免。
 ### TD-084: GitHub Actions Node 24 与 hermetic 测试分类收口
 
 状态：🟢 完成
