@@ -87,17 +87,34 @@ class HybridQueryUnderstandingService:
     async def _call_llm_qu(
         self, query: str, ner_result: NERResult
     ) -> HybridQueryUnderstandingResult:
-        """Call LLM for Query Understanding on a rule-missed query."""
+        """Call LLM for Query Understanding on a rule-missed query.
+
+        TD-085 Slice A: routes through the ``LlmProvider`` port instead
+        of importing ``ai_router._call_llm`` directly. The legacy
+        ``self._llm_provider`` callable override path is preserved for
+        callers that inject a sync callable for tests.
+        """
         if self._llm_provider is None:
-            # Lazy import to avoid circular dependency at module load time
+            # Lazy import of the router callables keeps the eager
+            # module import graph free of the cross-context reference.
+            from app.contexts.knowledge.interfaces.api.ai_router import (  # noqa: PLC0415
+                _call_llm as _router_call_llm,
+            )
             from app.contexts.knowledge.interfaces.api.ai_router import (
-                _call_llm as _sync_llm,
+                _call_llm_with_tools as _router_call_llm_with_tools,
+            )
+            from app.runtime.application.llm_provider import (  # noqa: PLC0415
+                LlmProvider,
+            )
+            from app.runtime.infrastructure.openai_provider import (  # noqa: PLC0415
+                OpenAIProvider,
             )
 
-            async def _async_llm(sys: str, user: str) -> str:
-                return await _sync_llm(sys, user)  # pragma: no cover — async path
-
-            llm_response = await _async_llm(
+            port_provider: LlmProvider = OpenAIProvider(
+                chat_text=_router_call_llm,
+                chat_with_tools=_router_call_llm_with_tools,
+            )
+            llm_response = await port_provider.chat_text(
                 QUERY_UNDERSTANDING_PROMPT,
                 f"用户查询：{query}",
             )

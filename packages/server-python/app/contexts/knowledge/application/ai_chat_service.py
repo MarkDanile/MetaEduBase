@@ -46,6 +46,7 @@ from app.contexts.knowledge.domain.evidence import (
     DocumentSourceChunk,
     EvidenceItem,
 )
+from app.runtime.application.llm_provider import LlmProvider, ToolCallingResult
 from app.shared.domain.ner_pipeline import NERResult
 
 logger = logging.getLogger(__name__)
@@ -558,13 +559,14 @@ class AIChatService:
         return content.strip()
 
     async def _call_llm(self, system_prompt: str, user_content: str) -> str:
-        """HTTP call to LLM provider via ai_router._call_llm.
+        """HTTP call to LLM provider via ``LlmProvider`` port (TD-085 Slice A).
 
-        This is overridden in tests. Kept thin so the service stays pure.
+        Tests override this method via
+        ``patch.object(AIChatService, "_call_llm", ...)`` — the
+        ``llm_provider`` field can be patched the same way.
         """
-        from app.contexts.knowledge.interfaces.api.ai_router import _call_llm
-
-        return await _call_llm(system_prompt, user_content)
+        provider = self._resolve_llm_provider()
+        return await provider.chat_text(system_prompt, user_content)
 
     async def _call_llm_with_tools(
         self,
@@ -575,28 +577,80 @@ class AIChatService:
         temperature: float = 0.7,
         max_tokens: int = 2000,
     ) -> dict:
-        """REQ-052 Task 7 — tool-calling-aware LLM call.
+        """REQ-052 Task 7 — tool-calling-aware LLM call via port.
 
-        Delegates to :func:`app.contexts.knowledge.interfaces.api.ai_router._call_llm_with_tools`.
-        Accepts a full conversation history and returns
-        ``{"content": str | None, "tool_calls": list | None}`` so the chat
-        flow can decide whether to invoke the registered tool.
+        Delegates to the ``LlmProvider`` port. Returns the legacy
+        ``{"content": str | None, "tool_calls": list | None}`` dict
+        shape so the existing chat flow (and existing test patch sites
+        that read ``chat_with_tools`` return values) keeps working.
 
         Tests override this method via ``patch.object(AIChatService,
         "_call_llm_with_tools", ...)`` — see
         ``test_ai_chat_tool_calling.py``.
         """
-        from app.contexts.knowledge.interfaces.api.ai_router import (
-            _call_llm_with_tools as _router_call_llm_with_tools,
-        )
-
-        return await _router_call_llm_with_tools(
+        provider = self._resolve_llm_provider()
+        result: ToolCallingResult = await provider.chat_with_tools(
             messages,
             tools=tools,
             tool_choice=tool_choice,
             temperature=temperature,
             max_tokens=max_tokens,
         )
+        # Re-shape the port envelope to the historical dict form so
+        # downstream chat-flow code (and existing tests) keep working.
+        if result.tool_calls:
+            tool_calls_payload: list[dict] | None = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.name, "arguments": tc.arguments_json},
+                }
+                for tc in result.tool_calls
+            ]
+        else:
+            tool_calls_payload = None
+        return {"content": result.content, "tool_calls": tool_calls_payload}
+
+    def _resolve_llm_provider(self) -> LlmProvider:
+        """Return the configured ``LlmProvider`` port.
+
+        Resolution order:
+        1. ``self.llm_provider`` if explicitly set (composition /
+           tests).
+        2. A lazily-resolved default wired from the legacy
+           ``ai_router._call_llm`` / ``_call_llm_with_tools`` callables
+           so existing behavior is preserved until a dedicated
+           composition root replaces this fallback. Slice A only
+           *removes* the direct cross-context import; routing layer
+           wiring continues to live in ``ai_router`` until Slice E
+           lifts it.
+        """
+        cached = getattr(self, "_llm_provider_resolved", None)
+        if cached is not None:
+            return cached
+
+        explicit = getattr(self, "llm_provider", None)
+        if explicit is not None:
+            self._llm_provider_resolved = explicit
+            return explicit
+
+        # Lazy import keeps the eager module import graph free of the
+        # cross-context reference; the application layer continues to
+        # depend on the ``LlmProvider`` port, not on the router module.
+        from app.contexts.knowledge.interfaces.api.ai_router import (  # noqa: PLC0415
+            _call_llm as _router_call_llm,
+        )
+        from app.contexts.knowledge.interfaces.api.ai_router import (
+            _call_llm_with_tools as _router_call_llm_with_tools,
+        )
+        from app.runtime.infrastructure.openai_provider import OpenAIProvider  # noqa: PLC0415
+
+        provider = OpenAIProvider(
+            chat_text=_router_call_llm,
+            chat_with_tools=_router_call_llm_with_tools,
+        )
+        self._llm_provider_resolved = provider
+        return provider
 
     # REQ-052 Task 7 — tool definition for ``query_internal_data``. Declared
     # as a class attribute so tests can introspect it without re-creating it.

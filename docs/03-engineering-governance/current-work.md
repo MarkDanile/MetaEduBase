@@ -14,7 +14,58 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-TD-085-BOUNDARY-CLOSURE-SLICE-A: TD-085 Slice A — LLM Port 抽离
+
+状态：🟡 进行中（Slice A 实现；不动 Slice B/C/D/E；不启动 REQ-043 / REQ-047 Extended / WS-S2 / WS-S3 / REQ-062 / REQ-063；不修改 backend 业务代码 / tests / migration / schema / registry / CI / 门禁；新增 runtime 子包与必要 tests；保留现有 AI Chat RAG 对话、prompt 行为、异常语义；保留 query_planner.py 若已有 LLM 依赖必须走 port boundary；不修改 erase_available；不运行 agent_erasure_backfill；不触碰 metaedu / metaedu_test / stale refs / 恢复分支 / dangling commit 91fe0290；不 amend / rebase / force-push / reset）
+类型：TD-085 Slice A 实现（refactor 行为不变 + 新增 port/adapter 子包）
+领域：packages/server-python/app/runtime/（新增子包）+ packages/server-python/app/contexts/knowledge/application/（仅修改 import 与函数体接入 port）+ packages/server-python/tests/runtime/（新增测试）+ current-work.md + technical-debt.md（最小同步 TD-085 状态）
+当前执行模式：refactor / plan-do（行为保持 + 边界建立）
+最近接手工具：Claude Code
+分支：refactor/td085-slice-a-llm-port
+
+需求来源：
+
+- TD-085 在 docs/03-engineering-governance/technical-debt.md 🔵 就绪；PR #625 / PR #626 已 squash merge 入 main；4 项 ADR 已入 spec §11；启动 Slice A = 独立 PR
+- plan §1.2 Slice A：新增 `runtime/application/llm_provider.py` port + `runtime/infrastructure/openai_provider.py` adapter；移除 `knowledge/application` → `knowledge/interfaces/api` 反向 import
+- ADR-085-1：runtime 子包路径（不建立独立 tool_gateway context）
+- ADR-085-2：knowledge 保留 NER / 检索 / Fusion / Diagnostics；runtime 抽 LLM port
+- ADR-085-3 / 085-4：与 Slice C / D 独立，本任务不触达
+
+允许范围：
+
+- 新增 packages/server-python/app/runtime/__init__.py + runtime/application/__init__.py + runtime/application/llm_provider.py（port）
+- 新增 packages/server-python/app/runtime/infrastructure/__init__.py + runtime/infrastructure/openai_provider.py（adapter）
+- 修改 packages/server-python/app/contexts/knowledge/application/ai_chat_service.py（替换 _call_llm / _call_llm_with_tools 的反向 import 与函数体 → 通过 port 调用）
+- 修改 packages/server-python/app/contexts/knowledge/application/hybrid_ner_service.py（同上）
+- 修改 packages/server-python/app/contexts/knowledge/interfaces/api/ai_router.py（仅允许删除冗余分支 / 保留 Router HTTP 路由职责）
+- 修改 packages/server-python/app/contexts/structured_data/application/query_planner.py（仅当 _call_llm 替换为 port 调用）
+- 新增 packages/server-python/tests/runtime/__init__.py + conftest.py + tests/runtime/test_llm_provider.py（port / adapter 契约）
+- 仅修改 docs/03-engineering-governance/current-work.md（active card）+ docs/03-engineering-governance/technical-debt.md（TD-085 状态最小同步）
+
+禁止范围：
+
+- 不实现 Slice B / C / D / E
+- 不拆分 ai_chat_service.py 完整编排逻辑（仅替换 _call_llm / _call_llm_with_tools 的反向 import；不重构方法 / 不拆分文件）
+- 不移动 dd_query_runner.py / 不删除 DD / QCC / internal_query 业务
+- 不解除 agent_workspace ↔ agent_execution mutual import
+- 不实现 WorkspaceSnapshotPort / Tool Gateway / RuntimeProfileResolver / 公共 /turns
+- 不启动 REQ-043 / REQ-047 Extended / WS-S2 / WS-S3 / REQ-062 / REQ-063
+- 不修改 backend 业务代码（除上述允许文件）+ tests（除新增 runtime tests）+ migration / schema / registry / CI / 门禁 / Score Log / Metrics / 历史评分行 / spec / plan / requirements / fact-audit.md / shaping plan / review-score-log.md
+- 不运行 agent_erasure_backfill / 不修改 erase_available
+- 不触碰 metaedu / metaedu_test / stale refs / 恢复分支 / dangling commit 91fe0290
+- 不 amend / rebase / force-push / reset
+
+验证计划：
+
+- git diff --check
+- scripts/check-engineering-docs --full
+- ruff check + mypy baseline（按 backend scope）
+- pytest packages/server-python/tests/runtime/ packages/server-python/tests/contexts/ai/ packages/server-python/tests/contexts/structured_data/ -v（端口 + adapter + 回归）
+- 验收层级声明：代码接入 + mock / fixture；真实 LLM 不在本任务执行（按 testing.md mock 边界）
+- 相对 main HEAD diff 仅包含上述允许文件
+- 创建 Draft PR 等 Draft CI settled
+- 保持未 Ready / 未评分 / 未合并（保持 Draft 状态由用户决定）
+- 不自动启动 Slice B / 不创建 closeout / fact-correction
 
 ## 下一批候选任务
 
