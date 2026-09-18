@@ -14,14 +14,14 @@
 
 ## 当前进行中
 
-### TASK-TD-085-BOUNDARY-CLOSURE-READINESS: TD-085 implementation-readiness 决策门禁
+### TASK-TD-085-BOUNDARY-CLOSURE-READINESS-POST-MERGE-CLOSEOUT: TD-085 readiness PR #625 merge 后治理收口
 
-状态：🟡 进行中（pure-spec / pure-docs decision gating；裁决 4 项 OQ + 消除 spec/plan 文档矛盾 + 升级 TD-085 状态；不实施任何 slice、不实现 LLM Port / Tool Gateway / RuntimeProfileResolver / 公共 /turns / agent_workspace↔agent_execution mutual import 解除 / DD 业务迁移；不启动 REQ-043 / REQ-047 Extended / WS-S2 / WS-S3 / REQ-062 / REQ-063；不修改 backend / frontend / tests / migration / schema / registry / CI / 门禁 / Score Log / Metrics / 历史评分行 / requirements / fact-audit.md / shaping plan；不运行 agent_erasure_backfill / 不修改 erase_available；不触碰 metaedu / metaedu_test / stale refs / 恢复分支 / dangling commit 91fe0290；不 amend / rebase / force-push / reset）
-类型：TD-085 readiness decision gate（Phase 0 → Phase 1 切换门禁）
-领域：docs/02-delivery-plans/01-specs/2026-09-15-td-085-...md + docs/02-delivery-plans/02-plans/2026-09-15-td-085-...md + docs/03-engineering-governance/technical-debt.md（TD-085 区块最小更新）+ current-work.md
-当前执行模式：decision-gate（pure-docs，4 项 OQ 裁决 + 文档矛盾消除）
+状态：🟡 进行中（PR #625 已 squash merge 入 main `b7339a12`；本阶段只收口 current-work / work-log / technical-debt 合并事实；TD-085 保持 🔵 就绪、不翻 🟢 完成；不启动 Slice A/B/C/D/E；不启动 REQ-043 / REQ-047 Extended / WS-S2 / WS-S3 / REQ-062 / REQ-063；不修改业务代码 / 测试 / migration / schema / registry / CI / 门禁 / Score Log / Metrics / 历史评分行 / spec / plan / review-score-log / requirements / fact-audit.md / shaping plan；不运行 agent_erasure_backfill / 不修改 erase_available；不触碰 metaedu / metaedu_test / stale refs / 恢复分支 / dangling commit 91fe0290；不 amend / rebase / force-push / reset）
+类型：TD-085 readiness post-merge governance closeout（pure-docs）
+领域：docs/03-engineering-governance/current-work.md + work-log.md + technical-debt.md（仅 TD-085 详情交付记录追加一行）
+当前执行模式：plan-do（governance closeout；2 提交 + Draft PR）
 最近接手工具：Claude Code
-分支：docs/td085-boundary-closure-readiness
+分支：docs/td085-boundary-closure-readiness-closeout
 
 需求来源：
 
