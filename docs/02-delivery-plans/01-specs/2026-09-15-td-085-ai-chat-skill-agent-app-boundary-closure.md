@@ -219,16 +219,46 @@ agent_workspace ←X→ agent_execution（禁止 direct import，通过 composit
 
 ## 6. 完成标准与验证方式
 
+### 6.0 三态语义（readiness / slice acceptance / TD-085 completion）
+
+为避免"启动条件"与"完成条件"语义倒置，本节明确区分三种状态：
+
+| 状态 | 含义 | 触发 | 本 spec 章节 |
+|------|------|------|------|
+| **Readiness** | 4 项 OQ 全部裁决 + spec/plan 文档矛盾清除 + 工程门禁通过 | 本 PR（[PR #625](https://github.com/MarkDanile/MetaEduBase/pull/625) `docs/td085-boundary-closure-readiness`） | §6.0 + §11 |
+| **Slice Acceptance** | 单个 slice 全部通过其"允许文件范围 + 测试 + 验证方式" | 后续 Slice A/B/C/D/E PR（独立可回滚） | §6.1 单项 + plan §1 |
+| **TD-085 Completion** | Slice A-E 全部完成 + Slice E 综合验收 + 跨 context 零违规 + 文件规模门禁 pass | 最后一张 Slice E PR squash merge 入 main | §6.1 + plan §8 |
+
+**重要区别**：
+
+- **Readiness 解锁 ≠ TD-085 完成**。Readiness 仅解锁"可启动 Slice A"，不解决 A-E 的实现交付。
+- **Slice Acceptance 解锁 ≠ TD-085 完成**。每个 slice 通过仅代表其交付达成，不解锁 TD-085。
+- **TD-085 完成 ≠ REQ-043 / WS-S2 / WS-S3 已解除全部阻塞**（§6.3 进一步明确）。
+
 ### 6.1 完成标准
 
-满足以下全部条件 TD-085 才视为进入 "可进入实现" 状态：
+本节列出的"完成标准"按所属状态分组：
 
-1. **layer inversion 修复**：`knowledge/application → knowledge/interfaces/api` 零行反向 import；`rg "from app\.contexts\.knowledge\.interfaces\.api" packages/server-python/app/contexts/knowledge/application/` 返回 0 行
-2. **ai_chat_service.py 拆分**：`wc -l packages/server-python/app/contexts/knowledge/application/ai_chat_service.py` ≤ 1000 行（hard cap），最好 ≤ 500 行
-3. **skill_runner.py DD 解耦**：`rg -i "qcc|dd|背调|enterprise_diligence|internal_query" packages/server-python/app/contexts/skill_registry/application/skill_runner.py` 业务专属分支零行
-4. **agent_workspace ↔ agent_execution mutual import 解除**：`rg "from app\.contexts\.agent_execution" packages/server-python/app/contexts/agent_workspace/` 返回仅基础设施兼容层（如 erasure participant 临时保留 port 抽象）；`rg "from app\.contexts\.agent_workspace" packages/server-python/app/contexts/agent_execution/` 同条件
-5. **测试覆盖行为保持**：`pytest packages/server-python/tests/contexts/ai/test_ai_chat.py packages/server-python/tests/contexts/skill_registry/ packages/server-python/tests/contexts/due_diligence/ packages/server-python/tests/contexts/agent_workspace/ packages/server-python/tests/contexts/agent_execution/` 全 pass（不增删测试用例）
-6. **文件规模门禁**：`deal_check_files.py` / `scan_source_sizes.py` 全部 pass
+#### Readiness 标准（启动 Slice A 的硬条件）
+
+1. 4 项 OQ 全部裁决并写入 spec §11（OQ-1/2/3/4 ADR-style）。
+2. spec §6.0 / §8 / §9 文档矛盾清除（本 spec 已修订）。
+3. plan §0 / §1 / §2 / §3 / §8 stale 表述、slice 依赖真伪、测试策略统一（本 plan 已修订）。
+4. `scripts/check-engineering-docs --full` passed（commit `716b82b3` 后已验证）。
+
+#### Slice Acceptance 标准（A-E 各 slice 独立达成）
+
+| Slice | 标准 | 阻断 |
+|-------|------|------|
+| **A** | `rg "from app\.contexts\.knowledge\.interfaces\.api" packages/server-python/app/contexts/knowledge/application/` 返回 0 行 + LlmProvider port + OpenAIProvider adapter + 测试 pass + 文件规模门禁 pass | 任何测试失败 → 回滚 A → 不进入 B |
+| **B** | `wc -l ai_chat_service.py ≤ 500` + Prompt/Tool/Diagnostics 各自文件 ≤ 500 行 + response 形状 byte-identical | 任一文件 > 500 行 → 回滚 → 重新设计边界 |
+| **C** | `rg -i "qcc|dd|背调|enterprise_diligence" skill_runner.py` 业务专属分支零行 + dd_query_runner 迁移到 due_diligence + DD 测试路径同步迁移 + due_diligence→skill_registry 单向 port adapter ready | DD 业务测试失败 → 回滚 → 不进入 D |
+| **D** | 双向 `rg` 仅基础设施兼容层返回 + FencedExecutionPort 复用 + WorkspaceSnapshotPort 新增（如缺）+ fence ledger 双边不变性测试 pass | 双向 import 残留 1 行 → 回滚 → 不进入 E |
+| **E** | 所有 verifier 复跑 + 全量 hermetic 测试 pass + 跨 context dependency graph 零违规 | 任何失败 → 回滚上一个 slice |
+
+#### TD-085 Completion 标准（Slice E 完成后达成）
+
+A-E 全部完成 + Slice E 综合验收通过 + 跨 context 零违规 import + 文件规模门禁 `scan_source_sizes.py` pass。
 
 ### 6.2 验证方式
 
@@ -265,29 +295,118 @@ REQ-043 必须在 TD-085 完成后才能开始独立 shaping / implementation（
 - 本 spec 不修改 WS-S2 closeout 报告（PR #622 已 merge）
 - 本 spec 与 TD-080 ~ TD-084 无重叠（已分别完成）
 
-## 8. 开放问题（open questions）
+## 8. 开放问题（open questions）— readiness 阶段裁决结果
 
-本 Phase 0 不能下结论的事项，需在 implementation slices 中明确：
+原 Phase 0 §8 中 4 项 OQ 已在 readiness 阶段裁决（见 §11 ADR），消除"§8 在 slices 中明确 / §9 在 readiness 明确"的循环门禁：
 
-- **OQ-1**：`tool_gateway` 是新独立 bounded context 还是 `runtime` 子包？决定后续 REQ-043 实现的目录结构（建议：先以子包形式迁移，待稳定后提升为独立 context；本 spec 不下结论）
-- **OQ-2**：`ai_chat_service.py` 拆分后，编排逻辑归 `knowledge` 还是 `tool_gateway`？（建议：NEE + Fusion + Context Packing 归 knowledge；Tool Calling + Dispatch 归 tool_gateway；本 spec 不下结论）
-- **OQ-3**：`skill_runner.py` 的"is internal_query"分支（行 110/146/194/261/267/407/411）是否 REQ-045 兼容要求强制保留？（基于历史 commit msg "Both are optional for REQ-045 backward compat"，需进一步读 commit history 确认——本 spec 不下结论，仅 flag）
-- **OQ-4**：`erasure participant` 的跨 context mutual import 在迁移期间是 port 抽象还是直接撤除？（基于架构约束，原则上撤除；但 REQ-059 与 fence ledger 要求 participant 双向协作，可能需保留 port 抽象层；本 spec 不下结论）
+- **OQ-1**：`tool_gateway` 是新独立 bounded context 还是 `runtime` 子包？ → **裁决**：runtime 子包（`packages/server-python/app/runtime/`）。详见 §11.1。
+- **OQ-2**：`ai_chat_service.py` 拆分后，编排逻辑归 `knowledge` 还是 `tool_gateway`？ → **裁决**：knowledge 保留 NER/检索/Fusion/Diagnostics；runtime 抽 LlmProvider port + OpenAIProvider adapter + prompt_builder + tool_orchestrator。详见 §11.2。
+- **OQ-3**：`skill_runner.py` 的"is internal_query"分支是否 REQ-045 兼容要求强制保留？ → **裁决**：必须保留，但理由不是 REQ-045 而是 REQ-046 v2 业务方契约。详见 §11.3。
+- **OQ-4**：`erasure participant` 的跨 context mutual import 在迁移期间是 port 抽象还是直接撤除？ → **裁决**：port 抽象保留双向能力，composition 协调 fence ledger 双边不变性。详见 §11.4。
 
-## 9. Spec 完成标准
+## 9. Spec 完成标准 — 已升级为 readiness 标准
 
-本 spec 进入 "可实施" 状态的条件（任一不满足则保持 ⚫ 待办）：
+本 spec 进入 "可启动 Slice A" 状态（readiness）的条件（任一不满足则保持 ⚫ 待办）：
 
-- Phase 0 审计 evidence 列出每项关键事实 code:line
-- 上述 4 项 open question 状态明确
-- TD-085 在 technical-debt.md 中事实源 / 证据 / 完成标准 / 验证方式 区块均已最小更新
-- 本 spec 与 REQ-059 不矛盾
-- 未越界修改 backend / tests / migration / schema / registry / CI / 门禁
-- 工程文档门禁 `scripts/check-engineering-docs --full` passed
-- 当前 PR 仍为 Draft（PR `#624` 或新建）
+- [x] Phase 0 审计 evidence 列出每项关键事实 code:line（spec §0.2）
+- [x] 上述 4 项 open question 状态明确（spec §11）
+- [x] TD-085 在 technical-debt.md 中事实源 / 证据 / 完成标准 / 验证方式 / 4 项 OQ 决议链接 均已最小更新
+- [x] 本 spec 与 REQ-059 不矛盾
+- [x] 未越界修改 backend / tests / migration / schema / registry / CI / 门禁
+- [x] 工程文档门禁 `scripts/check-engineering-docs --full` passed（commit `716b82b3` 后已验证）
+- [x] 当前 PR 仍为 Draft（[PR #625](https://github.com/MarkDanile/MetaEduBase/pull/625) `docs/td085-boundary-closure-readiness`）
+
+进入 readiness 后，**Slice A/B/C/D/E 的实现交付按 plan §1 各 slice 的"允许文件范围 + 测试 + 验证方式"独立执行**，不在本 spec 覆盖。每个 slice 完成后由对应 slice PR 单独评审；TD-085 完成 = Slice E PR squash merge 入 main（详见 §6.0 三态语义）。
 
 ## 10. 下游依赖
 
-- **REQ-043**：本 spec 完成后可启动 REQ-043 shaping；REQ-043 在 TD-085 完成（slice 全部落地 + 测试通过 + 跨 context 零违规）后才能从 ⚫ Candidate 进入 🟣 Shaping → Ready → Implementation
-- **REQ-047 Extended**：HumanInput/Approval/ToolCall 等字段依赖于 agent_workspace 与 agent_execution 的 port 抽象；TD-085 完成后才能开始 REQ-047 Extended 的字段定义（必须等待 agent_workspace 与 agent_execution 边界稳定）
+- **REQ-043**：TD-085 readiness 解锁后启动 REQ-043 shaping；REQ-043 在 TD-085 完成（slice 全部落地 + 测试通过 + 跨 context 零违规）后才能从 ⚫ Candidate 进入 🟣 Shaping → Ready → Implementation
+- **REQ-047 Extended**：HumanInput/Approval/ToolCall 等字段依赖于 agent_workspace 与 agent_execution 的 port 抽象；TD-085 Slice D 完成后才能开始 REQ-047 Extended 的字段定义（必须等待 agent_workspace 与 agent_execution 边界稳定）
 - **WS-S2 / WS-S3**：**不依赖** TD-085 直接完成（依赖 REQ-043 公共 `/turns`、server-selected launch policy、最小 execution profile、真实 PG submit-loop 端到端）
+
+## 11. ADR（Architecture Decision Records）— 4 项 OQ 裁决
+
+### 11.1 ADR-085-1：`runtime` 路径选择（OQ-1）
+
+- **状态**：Accepted
+- **日期**：2026-09-17
+- **上下文**：spec Phase 0 §8 OQ-1 提问 `tool_gateway` 是新独立 bounded context 还是 `runtime` 子包？原 plan §1 Slice A 已硬编码 `runtime/application/llm_provider.py` + `runtime/infrastructure/openai_provider.py` 路径，但未明确"为何不建立独立 context"。
+- **选项**：
+  - **A**：建立独立 `tool_gateway` bounded context（`packages/server-python/app/contexts/tool_gateway/`）。被拒：违反 [architecture.md](../../03-engineering-governance/01-rules/architecture.md#何时更新-architecturemd) "新增 / 删除 / 重定义 bounded context 改变核心运行单元 / 主要集成关系" 硬约束；TD-085 readiness 阶段不建立新 context（避免一次性建立两个新 context 越界）。
+  - **B（采纳）**：runtime 作为新增子包（`packages/server-python/app/runtime/`），未来稳定后再评估提升为独立 context。
+- **决策**：B。
+- **影响**：
+  - Slice A 必须新增 `runtime/__init__.py` + `runtime/application/llm_provider.py`（port）+ `runtime/infrastructure/__init__.py` + `runtime/infrastructure/openai_provider.py`（adapter）。
+  - Slice B 必须新增 `runtime/application/prompt_builder.py` + `runtime/application/tool_orchestrator.py`。
+  - 与 plan §1 文件路径一致，无须修改 plan。
+- **被拒方案代价**：A 选项若采纳，TD-085 readiness 必须额外同步 `ARCHITECTURE.md` 顶层架构映射（违反 readiness 阶段"不修改 ARCHITECTURE"硬约束）。
+
+### 11.2 ADR-085-2：`ai_chat_service.py` 拆分后职责归属（OQ-2）
+
+- **状态**：Accepted
+- **日期**：2026-09-17
+- **上下文**：spec Phase 0 §8 OQ-2 提问 `ai_chat_service.py` 拆分后编排逻辑归 `knowledge` 还是 `tool_gateway`？实际文件结构：`AIChatService` 单 class（行 112）+ 4 个 Pydantic DTO（行 55/61/68/82/98）+ 1015 行（> 1000 行硬边界）。
+- **决策**：
+
+| 职责 | 归属 | 文件路径 |
+|------|------|---------|
+| NER + 检索 + Fusion | `knowledge` 保留 | `packages/server-python/app/contexts/knowledge/application/ai_chat_service.py`（拆分后剩余部分） |
+| Prompt 构造（含 Context Packing） | `runtime` | `packages/server-python/app/runtime/application/prompt_builder.py` |
+| LLM 调用 | `runtime` | `runtime/application/llm_provider.py`（port）+ `runtime/infrastructure/openai_provider.py`（adapter） |
+| Tool Calling + Dispatch | `runtime` | `runtime/application/tool_orchestrator.py` |
+| Diagnostics | `knowledge` | `packages/server-python/app/contexts/knowledge/application/ai_chat_diagnostics.py`（从原文件拆出） |
+| Pydantic DTO（ChatRequest/Response/RetrievalTrace/PackedBlock） | `knowledge` 保留 | `packages/server-python/app/contexts/knowledge/application/ai_chat_dto.py`（按需拆出） |
+
+- **影响**：
+  - Slice B 完成后 `ai_chat_service.py` 行数 ≤ 500（hard cap）。
+  - 与 plan §1 Slice B 拆分方向一致，仅在文件命名上新增 `prompt_builder.py` + `tool_orchestrator.py`（plan §1 已列名）+ `ai_chat_diagnostics.py`（plan §1 未列，本 ADR 补充）。
+- **被拒方案**：
+  - "全部归 knowledge"——违反 plan §1 Slice B "Prompt 构造 + Context Packing → 迁移至 runtime" 既定方向。
+  - "全部归 tool_gateway"——超出 TD-085 scope，tool_gateway 是 REQ-043 范围。
+
+### 11.3 ADR-085-3：`skill_runner.py` `internal_query` 契约保留（OQ-3）
+
+- **状态**：Accepted
+- **日期**：2026-09-17
+- **上下文**：spec Phase 0 §8 OQ-3 提问 `skill_runner.py` 的"is internal_query"分支是否 REQ-045 兼容要求强制保留？原 spec §8 推测"基于历史 commit msg `Both are optional for REQ-045 backward compat`"。
+- **证据收集**：
+  - 注释行 144-148 真实文本：`SkillStepResult` 字段 `query_audit_id` points at the `query_audit_log` row for an `internal_query` step. **Both are optional for REQ-045 backward compat.**（"Both" 指 `invocation_audit_id` + `query_audit_id` 两个字段非必填，不是 `internal_query` 本身可选）
+  - `internal_query` 实际契约来源 = **REQ-046 v2**：
+    - `524d7a32 feat(dd): REQ-046 PR-3 SkillRunner v2 可审计编排 (#446)` 引入 `internal_query` step 类型
+    - `ccd9b5d7 feat(dd): REQ-046 PR-5/Slice 4 园区招商背调 SKILL 模板 + internal_query step (#448)` 在 `park_investment_dd.yaml` 模板定义 3 个 `internal_query` step
+    - `21309395 feat(dd): REQ-046 AC-8 真实企业端到端 — internal_query 真实链路修复 (#452)` 真实链路修复
+  - `internal_query` 真实调用方：`packages/server-python/app/contexts/skill_registry/application/dd_query_runner.py`（258 行）+ `packages/server-python/app/contexts/skill_registry/templates/park_investment_dd.yaml`（3 个 internal_query step）
+  - `internal_query` 真实测试：`tests/contexts/skill_registry/test_skill_runner_v2.py` + `test_dd_internal_query_e2e.py` + `test_dd_query_runner.py` + `test_park_investment_dd_template.py`（4 个测试文件覆盖）
+- **决策**：`internal_query` **必须保留**，理由不是 REQ-045 兼容而是 REQ-046 v2 业务方契约。Slice C 实施时迁移 `dd_query_runner.py` + `park_investment_dd.yaml` + 4 个测试到 `due_diligence/`，迁移后 due_diligence 通过单向 port adapter 调用 skill_runner 的 `internal_query` 入口。
+- **影响**：
+  - Slice C 完成后 `skill_runner.py` 行 110/146/194/261/267/407/411 的 `internal_query` 分支**保留**为通用 Skills 入口能力；DD 业务通过 port 调用而非直接注入 `query_runner`。
+  - `dd_query_runner.py` 仍是 `internal_query` 的 production 实现，但物理位置从 `skill_registry/application/` 迁移到 `due_diligence/application/`。
+- **被拒方案**：
+  - "internal_query 是 REQ-045 兼容要求强制保留"（原 spec §8 猜测）——错误归因。REQ-045 不要求 internal_query；REQ-046 才是契约来源。
+  - "删除 internal_query"——破坏 REQ-046 v2 业务契约，违反 spec §5.1 行为保持要求。
+
+### 11.4 ADR-085-4：erasure participant 双向依赖通过 composition 协调（OQ-4）
+
+- **状态**：Accepted
+- **日期**：2026-09-17
+- **上下文**：spec Phase 0 §8 OQ-4 提问 erasure participant 跨 context mutual import 是 port 抽象还是直接撤除？原 plan §1 Slice D 假设"FencedExecutionPort 已存在，确认复用"。
+- **证据收集**：
+  - `FencedExecutionPort` **已存在**：`packages/server-python/app/composition/execution_fenced_port.py:53 class FencedExecutionPort`
+  - 8 处调用方：`agent_control_plane.py:282/301/416/430/446/468/865/869`（composition 层调用）
+  - `WorkspaceSnapshotPort` **不存在**（grep 无匹配，plan §1 Slice D 假设"如不存在则新增"验证为不存在）
+  - `snapshot_digest` 签名：`packages/server-python/app/contexts/agent_execution/domain/snapshots.py:149 def snapshot_digest(snapshot: _FrozenSnapshot | Mapping[str, Any]) -> str`（纯函数无状态）
+  - 当前双向 import 真实存在：
+    - `agent_workspace/infrastructure/workspace_transport_erasure_participant.py:241 from app.contexts.agent_execution.domain.snapshots import snapshot_digest`（workspace ← execution domain）
+    - `agent_execution/infrastructure/execution_erasure_participant.py:79-88 from app.contexts.agent_workspace.domain import (...)` 等多处（execution ← workspace）
+- **决策**：**port 抽象保留双向能力**，composition 协调 fence ledger 双边不变性。具体：
+  - **Slice D 必须**：
+    - 复用 `FencedExecutionPort`（已存在于 composition 层），不重新建立
+    - 新增 `WorkspaceSnapshotPort` 到 `packages/server-python/app/contexts/agent_workspace/application/ports.py`（plan 假设验证为不存在，本 ADR 确认新增）
+    - 双向 erasure participant 改为通过 port + composition 协调；`snapshot_digest` 调用下沉到 `composition/runtime_snapshot.py` 作为共享 helper（**不通过 direct import，而是 composition 层工具调用**）
+  - **Slice D 必须保持**：fence ledger 双边不变性（REQ-059 AC-3 + REQ-047 S6-15.5 路由表冻结项）
+- **影响**：
+  - Slice D 完成后 `agent_workspace` 不再直接 import `agent_execution.domain`；`agent_execution` 不再直接 import `agent_workspace.domain/infrastructure`。
+  - 双向 erasure participant 能力通过 port 保持（不撤除），满足 fence ledger 双边不变性硬约束。
+- **被拒方案**：
+  - "直接撤除 erasure participant 双向能力"——违反 REQ-059 AC-3 fence ledger 双边不变性。
+  - "snapshot_digest 通过 direct import 跨 context 共享"——绕过 ADR-085-1 runtime 子包路径，回退 layer inversion 旧问题。
