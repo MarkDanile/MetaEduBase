@@ -178,7 +178,7 @@
 | TD-082 | 分层质量门禁与 CI 提速 | 🟢 完成 | P1 | 工程基础设施 / CI / Hooks / 测试性能 / 依赖管理 | [PR #467](https://github.com/MarkDanile/MetaEduBase/pull/467)（`754ca109`）：scope-aware 三路 CI、秒级 hooks、MCP lock 与前端去重已交付；后端专项转 TD-083。 |
 | TD-083 | 后端风险分级测试选择与性能专项治理 | 🟢 完成 | P1 | 后端 / 测试基础设施 / CI 性能 | [PR #469](https://github.com/MarkDanile/MetaEduBase/pull/469)（`cccb3ff6`）/ [Spec](../02-delivery-plans/01-specs/2026-07-23-td-083-backend-risk-tiered-test-selection.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-td-083-backend-risk-tiered-test-selection-plan.md) |
 | TD-084 | GitHub Actions Node 24 与 hermetic 测试分类收口 | 🟢 完成 | P2 | 工程基础设施 / CI / 依赖维护 / 测试语义 | [PR #472](https://github.com/MarkDanile/MetaEduBase/pull/472)（`beb7c6fd`）/ [Spec](../02-delivery-plans/01-specs/2026-07-23-td-084-node24-hermetic-test-classification.md) / [Plan](../02-delivery-plans/02-plans/2026-07-23-td-084-node24-hermetic-test-classification-plan.md) |
-| TD-085 | 收口 AI Chat、Skill 与 Agent App 的上下文边界倒置 | 🔵 就绪 | P1 | 后端 / Agent Platform / DDD / 可维护性 | [REQ-059](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md) / 2026-07-23 源码复核 + 2026-09-15 Phase 0 审计 + 2026-09-17 readiness decision gate |
+| TD-085 | 收口 AI Chat、Skill 与 Agent App 的上下文边界倒置 | 🟡 进行中 | P1 | 后端 / Agent Platform / DDD / 可维护性 | [REQ-059](../01-product-planning/05-requirements/REQ-059-enterprise-agent-platform-kernel.md) / 2026-07-23 源码复核 + 2026-09-15 Phase 0 审计 + 2026-09-17 readiness decision gate + 2026-09-18 Slice A 启动 |
 | TD-086 | 收口 Alembic target metadata 漂移并建立可执行 schema drift gate | ⚫ 待办 | P2 | 后端 / 数据库迁移 / CI / 质量门禁 | REQ-041 W1 migration 验证 / 2026-07-24 `alembic check` 实测 |
 | TD-087 | 模板管理 API 缺少后端 RBAC | 🟢 完成 | P1 | 后端 / Template / Identity / RBAC / 多租户 | [PR #495](https://github.com/MarkDanile/MetaEduBase/pull/495)（`40a7bf46`）：15 个管理端点统一高权守卫，最小 lookup DTO、脱敏审计与完整角色 / 租户矩阵通过 |
 | TD-088 | REQ-060 Slice 2 旧链接重定向移除 | 🔵 就绪 | P3 | 前端 / Web / Navigation / 技术债 | [PR #499](https://github.com/MarkDanile/MetaEduBase/pull/499)（`a1fa26dc`）：6 条旧链接重定向（/skill-editor /admin /admin/template(+/:id) /admin/mcp-servers /admin/skills -> 新路径）保留 1 版本周期后移除；移除前确认无外部书签/链接引用 |
@@ -501,7 +501,9 @@ _（待 S2-C/S3 或独立切片处理；登记于 2026-07-29，源自独立 `max
 
 ### TD-085: 收口 AI Chat、Skill 与 Agent App 的上下文边界倒置
 
-状态：🔵 就绪
+状态：🟡 进行中
+
+（Slice A 已启动；runtime 子包路径下抽出 LlmProvider port + OpenAIProvider adapter；knowledge/application 反向 import 待移除；Slice B/C/D/E 未启动；TD-085 仍为整体进行中而非完成；REQ-043 / WS-S2 / WS-S3 状态未推进）
 
 | 字段 | 内容 |
 |------|------|
