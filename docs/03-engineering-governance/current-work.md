@@ -14,58 +14,7 @@
 
 ## 当前进行中
 
-### TASK-TD-085-BOUNDARY-CLOSURE-SLICE-A: TD-085 Slice A — LLM Port 抽离
-
-状态：🟡 进行中（Slice A 实现；不动 Slice B/C/D/E；不启动 REQ-043 / REQ-047 Extended / WS-S2 / WS-S3 / REQ-062 / REQ-063；不修改 backend 业务代码 / tests / migration / schema / registry / CI / 门禁；新增 runtime 子包与必要 tests；保留现有 AI Chat RAG 对话、prompt 行为、异常语义；保留 query_planner.py 若已有 LLM 依赖必须走 port boundary；不修改 erase_available；不运行 agent_erasure_backfill；不触碰 metaedu / metaedu_test / stale refs / 恢复分支 / dangling commit 91fe0290；不 amend / rebase / force-push / reset）
-类型：TD-085 Slice A 实现（refactor 行为不变 + 新增 port/adapter 子包）
-领域：packages/server-python/app/runtime/（新增子包）+ packages/server-python/app/contexts/knowledge/application/（仅修改 import 与函数体接入 port）+ packages/server-python/tests/runtime/（新增测试）+ current-work.md + technical-debt.md（最小同步 TD-085 状态）
-当前执行模式：refactor / plan-do（行为保持 + 边界建立）
-最近接手工具：Claude Code
-分支：refactor/td085-slice-a-llm-port
-
-需求来源：
-
-- TD-085 在 docs/03-engineering-governance/technical-debt.md 🔵 就绪；PR #625 / PR #626 已 squash merge 入 main；4 项 ADR 已入 spec §11；启动 Slice A = 独立 PR
-- plan §1.2 Slice A：新增 `runtime/application/llm_provider.py` port + `runtime/infrastructure/openai_provider.py` adapter；移除 `knowledge/application` → `knowledge/interfaces/api` 反向 import
-- ADR-085-1：runtime 子包路径（不建立独立 tool_gateway context）
-- ADR-085-2：knowledge 保留 NER / 检索 / Fusion / Diagnostics；runtime 抽 LLM port
-- ADR-085-3 / 085-4：与 Slice C / D 独立，本任务不触达
-
-允许范围：
-
-- 新增 packages/server-python/app/runtime/__init__.py + runtime/application/__init__.py + runtime/application/llm_provider.py（port）
-- 新增 packages/server-python/app/runtime/infrastructure/__init__.py + runtime/infrastructure/openai_provider.py（adapter）
-- 修改 packages/server-python/app/contexts/knowledge/application/ai_chat_service.py（替换 _call_llm / _call_llm_with_tools 的反向 import 与函数体 → 通过 port 调用）
-- 修改 packages/server-python/app/contexts/knowledge/application/hybrid_ner_service.py（同上）
-- 修改 packages/server-python/app/contexts/knowledge/interfaces/api/ai_router.py（仅允许删除冗余分支 / 保留 Router HTTP 路由职责）
-- 修改 packages/server-python/app/contexts/structured_data/application/query_planner.py（仅当 _call_llm 替换为 port 调用）
-- 新增 packages/server-python/tests/runtime/__init__.py + conftest.py + tests/runtime/test_llm_provider.py（port / adapter 契约）
-- 仅修改 docs/03-engineering-governance/current-work.md（active card）+ docs/03-engineering-governance/technical-debt.md（TD-085 状态最小同步）
-
-禁止范围：
-
-- 不实现 Slice B / C / D / E
-- 不拆分 ai_chat_service.py 完整编排逻辑（仅替换 _call_llm / _call_llm_with_tools 的反向 import；不重构方法 / 不拆分文件）
-- 不移动 dd_query_runner.py / 不删除 DD / QCC / internal_query 业务
-- 不解除 agent_workspace ↔ agent_execution mutual import
-- 不实现 WorkspaceSnapshotPort / Tool Gateway / RuntimeProfileResolver / 公共 /turns
-- 不启动 REQ-043 / REQ-047 Extended / WS-S2 / WS-S3 / REQ-062 / REQ-063
-- 不修改 backend 业务代码（除上述允许文件）+ tests（除新增 runtime tests）+ migration / schema / registry / CI / 门禁 / Score Log / Metrics / 历史评分行 / spec / plan / requirements / fact-audit.md / shaping plan / review-score-log.md
-- 不运行 agent_erasure_backfill / 不修改 erase_available
-- 不触碰 metaedu / metaedu_test / stale refs / 恢复分支 / dangling commit 91fe0290
-- 不 amend / rebase / force-push / reset
-
-验证计划：
-
-- git diff --check
-- scripts/check-engineering-docs --full
-- ruff check + mypy baseline（按 backend scope）
-- pytest packages/server-python/tests/runtime/ packages/server-python/tests/contexts/ai/ packages/server-python/tests/contexts/structured_data/ -v（端口 + adapter + 回归）
-- 验收层级声明：代码接入 + mock / fixture；真实 LLM 不在本任务执行（按 testing.md mock 边界）
-- 相对 main HEAD diff 仅包含上述允许文件
-- 创建 Draft PR 等 Draft CI settled
-- 保持未 Ready / 未评分 / 未合并（保持 Draft 状态由用户决定）
-- 不自动启动 Slice B / 不创建 closeout / fact-correction
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -87,6 +36,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-09-20 | TASK-TD-085-BOUNDARY-CLOSURE-SLICE-A：TD-085 Slice A — LLM Port 抽离（行为保持 refactor） | 🟢 完成（Slice A 已完成；TD-085 整体仍 🟡 进行中，Slice B/C/D/E 未启动） | PR #627 squash mergeCommit `8fb60704`；Original 评分 95/100；runtime 子包 LlmProvider port + OpenAIProvider adapter 入 main，反向 import 双向清零；TD-085 整体仍 🟡 进行中，Slice B/C/D/E 未启动 | [PR #627](https://github.com/MarkDanile/MetaEduBase/pull/627)（mergeCommit `8fb60704`）/ [Score Log #627 Original 95](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [technical-debt TD-085 🟡 进行中](technical-debt.md) |
 | 2026-09-18 | TASK-TD-085-BOUNDARY-CLOSURE-READINESS 含 post-merge governance closeout | 🟢 完成（readiness gate 与治理收口完成；TD-085 保持 🔵 就绪、未翻 🟢 完成） | PR #625 squash mergeCommit `b7339a12`；Original 评分 92/100；TD-085 保持 🔵 就绪，Slice A-E 未启动 | [PR #625](https://github.com/MarkDanile/MetaEduBase/pull/625) / [work-log](work-log.md) / [Score Log #625 Original 92](04-retrospectives/review-score-log.md) / [TD-085 spec](../02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [technical-debt TD-085 🔵 就绪](technical-debt.md) |
 | 2026-09-17 | TASK-TD-085-BOUNDARY-CLOSURE-SHAPING：TD-085 Phase 0 shaping 收口（pure-spec / pure-docs）+ PR closeout | 🟢 完成（PR #624 squash mergeCommit `2d479991`；Original 评分 98/100；评审对象 `448f4f6d..dc8eecdca` 2 commits 4 文件 +647/-14；评分提交 commit `89773179`；保持 TD-085 ⚫ 待办 / REQ-043 ⚫ Candidate / WS-S2 / WS-S3 仍 BLOCKED） | PR #624 squash mergeCommit `2d479991`（PR base `448f4f6d`；最终 PR diff 5 文件 +648/-14；7 维 15+20+20+15+15+9+4 = 98/100；Draft + Ready + 评分后 CI 全 SUCCESS） | [PR #624](https://github.com/MarkDanile/MetaEduBase/pull/624)（mergeCommit `2d479991`）/ [Score Log #624 Original 98](04-retrospectives/review-score-log.md) / [TD-085 spec](../02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) |
 | 2026-09-14 | TASK-REQ-042-WS-S2-CONTRACT-SHAPING-CLOSEOUT-FACT-CORRECTION：PR #622 mergeCommit 85ec8659 squash merge 后独立 pure-docs 治理收口；修正 work-log.md SHA 拼写 + 移除虚构祖先链 + 分层语义 + 修正 candidate 行 + Original 评分 91 / 100 + active card 转最近完成 | 🟢 完成（pure-docs post-merge 治理收口；PR #622 已 main；5 轮独立只读复审全部通过；Original 评分 91 / 100 已入账；保持 REQ-042 ⚫ Candidate / REQ-047 Extended 🟣 Shaping / WS-S2 option B / WS-S3 仍 BLOCKED） | PR #622 squash mergeCommit `85ec8659`（评审对象 `aa88e5ea..d40dc9c3` 净 diff 2 文件 55+/41-；7 维：范围 15/15 + 实现 18/20 + 测试 20/20 + 事实源 13/15 + 风险 15/15 + 可评审性 9/10 + 持续改进 1/5 = 91 / 100） | [PR #622](https://github.com/Markdanile/MetaEduBase/pull/622)（mergeCommit `85ec8659`）/ [work-log #621 长期索引行 18](work-log.md) / [Score Log #622 Original 91](04-retrospectives/review-score-log.md) |

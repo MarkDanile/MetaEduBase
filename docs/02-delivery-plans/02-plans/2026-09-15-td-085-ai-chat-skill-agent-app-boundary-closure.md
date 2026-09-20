@@ -42,6 +42,8 @@ Slice E (综合验证 + 进入 implementation-readiness)  → barrier（依赖 A
 
 ### 1.2 Slice A：`ai_chat.py` 反向依赖修复与 LLM Port 抽离
 
+**状态**：🟢 已完成（2026-09-20，PR #627 squash mergeCommit `8fb60704` 入 main；Original 评分 95/100；application → interfaces/api 与 application → runtime.infrastructure 反向 import 双向 0 lines；23 runtime 测试 + 35 AI 回归全 pass；CI Backend / Backend iteration / Frontend / Engineering docs 全 SUCCESS）
+
 **目标**：
 - `knowledge/application/ai_chat_service.py:565, 589` 与 `hybrid_ner_service.py:93` 的 `from app.contexts.knowledge.interfaces.api.ai_router import ...` 反向 import 全部移除
 - 抽离 `runtime.application.llm_provider.LlmProvider` port（abstract interface）+ `runtime.infrastructure.openai_provider.OpenAIProvider` adapter（具体实现）
@@ -250,7 +252,7 @@ Slice E (综合验证 + 进入 implementation-readiness)  → barrier（依赖 A
 
 本 plan 进入 "TD-085 Completion" 状态：
 
-- [ ] Slice A 完成 + 跨 context 零违规 import + 测试 pass + 文件规模门禁 pass
+- [x] Slice A 完成（PR #627 mergeCommit `8fb60704`，Original 95/100）+ 跨 context 零违规 import + 测试 pass + 文件规模门禁 pass
 - [ ] Slice B 完成 + ai_chat_service ≤ 500 行
 - [ ] Slice C 完成 + skill_runner 零业务硬编码 + DD 业务完整迁移至 due_diligence（含 park_investment_dd.yaml 模板 + 4 个测试迁移）
 - [ ] Slice D 完成 + agent_workspace ↔ agent_execution mutual import 解除 + FencedExecutionPort 复用 + WorkspaceSnapshotPort 新增
