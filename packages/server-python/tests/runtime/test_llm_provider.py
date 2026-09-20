@@ -1,9 +1,10 @@
 """Tests for TD-085 Slice A — ``LlmProvider`` port and ``OpenAIProvider`` adapter.
 
-Coverage (per Slice A acceptance matrix in the user brief):
+Coverage (per Slice A acceptance matrix, including the round-2
+P1-fix verification matrix):
 
-1. Port contract: ``LlmProvider`` is a runtime-checkable Protocol; both
-   methods are awaited and return the documented shape.
+1. Port contract: ``LlmProvider`` exposes ``chat_text`` and
+   ``chat_with_tools`` with the documented shape.
 2. Adapter contract: ``OpenAIProvider`` accepts injected callables and
    forwards arguments verbatim; the adapter never builds its own
    credentials / HTTP client.
@@ -11,18 +12,22 @@ Coverage (per Slice A acceptance matrix in the user brief):
    injected callable returns — including the legacy
    ``ai_router._call_llm`` placeholder string when no provider is
    configured.
-4. Tool-calling path (chat_with_tools): the adapter flattens the
-   nested OpenAI tool-call envelope into the port's
-   ``ToolCallingResult`` with ``ToolCall`` entries, and re-shapes
-   back to the legacy dict form when callers still expect it.
-5. Error propagation: a raised exception in either callable becomes
-   ``LlmUnavailableError``; ``LlmUnavailableError`` passes through
-   unchanged.
-6. Edge cases: missing tools / no tool_calls in response / unknown
+4. Compatibility path (chat_text passthrough): the adapter does NOT
+   normalise arbitrary exceptions into ``LlmUnavailableError``; it
+   propagates the underlying callable's exception verbatim.
+5. Tool-calling path (chat_with_tools): the adapter flattens the
+   nested OpenAI tool-call envelope into ``ToolCallingResult`` and
+   re-shapes back to the legacy dict form when callers still expect it.
+6. Tool-calling legacy exception passthrough: ``LLMProviderCallError``
+   (the legacy ``ai_router._call_llm_with_tools`` exception type) is
+   NOT replaced by the adapter — it propagates with the original type.
+7. Edge cases: missing tools / no tool_calls in response / unknown
    callable return shape.
+8. Module boundary: importing ``openai_provider`` does not pull
+   ``ai_router`` into ``sys.modules``.
 
 Tests use only plain ``asyncio`` + dummy callables — no DB, no
-network, no LLM. The acceptance layer is *mock / fixture* per the
+network, no LLM. Acceptance layer is *mock / fixture* per the
 quality-gates verification tiering; real LLM calls are explicitly
 out of Slice A scope.
 """
@@ -35,7 +40,6 @@ import pytest
 
 from app.runtime.application.llm_provider import (
     LlmProvider,
-    LlmUnavailableError,
     ToolCall,
     ToolCallingResult,
 )
@@ -57,7 +61,7 @@ def _ok_tools_callable(
     )
 
 
-def _failing_callable(exc: BaseException):
+def _raising_callable(exc: BaseException):
     async def _call(*args, **kwargs):
         raise exc
 
@@ -67,30 +71,10 @@ def _failing_callable(exc: BaseException):
 # --- 1. Port contract ----------------------------------------------------
 
 
-def test_llm_provider_is_runtime_protocol():
-    """LlmProvider must be runtime-checkable (typing.Protocol semantics)."""
-    # The Protocol declares two async methods. A class implementing
-    # them with matching shape should be recognised by isinstance.
-    class _Stub:
-        async def chat_text(self, system_prompt, user_content):
-            return "stub"
-
-        async def chat_with_tools(
-            self,
-            messages,
-            *,
-            tools=None,
-            tool_choice="auto",
-            temperature=0.7,
-            max_tokens=2000,
-        ):
-            return ToolCallingResult(content=None, tool_calls=[])
-
-    # Use runtime_checkable Protocol via duck typing import (see
-    # ``LlmProvider`` declaration). Static Protocols are only
-    # recognised at runtime when decorated with
-    # ``@runtime_checkable``. Here we verify the surface area
-    # instead: required methods exist with matching signatures.
+def test_llm_provider_declares_required_methods():
+    """LlmProvider Protocol declares both async methods with the
+    documented surface so application code can rely on duck typing.
+    """
     assert hasattr(LlmProvider, "chat_text")
     assert hasattr(LlmProvider, "chat_with_tools")
     assert callable(LlmProvider.chat_text)
@@ -115,32 +99,54 @@ async def test_adapter_chat_text_forwards_arguments_and_returns_value():
 
 
 @pytest.mark.asyncio
-async def test_adapter_chat_text_passes_through_unavailable_error():
-    chat_text = _failing_callable(
-        LlmUnavailableError("upstream provider said no")
-    )
+async def test_adapter_chat_text_passes_through_unconfigured_placeholder():
+    """The router returns a Chinese placeholder when no API key is set;
+    the adapter must return that string verbatim (no exception wrapping).
+    """
+    chat_text = _ok_text_callable("⚠️ 尚未配置 LLM API Key")
     chat_with_tools = _ok_tools_callable()
 
     provider = OpenAIProvider(
         chat_text=chat_text, chat_with_tools=chat_with_tools
     )
-
-    with pytest.raises(LlmUnavailableError):
-        await provider.chat_text("s", "u")
+    result = await provider.chat_text("system", "user")
+    assert result == "⚠️ 尚未配置 LLM API Key"
 
 
 @pytest.mark.asyncio
-async def test_adapter_chat_text_normalizes_unknown_exception():
-    chat_text = _failing_callable(RuntimeError("socket timeout"))
+async def test_adapter_chat_text_passes_through_failure_string():
+    """Legacy ``_call_llm`` catches HTTP errors and returns a
+    ``"❌ AI 回答生成失败: ..."`` string. The adapter must propagate
+    that string unchanged — not raise.
+    """
+    failure_string = "❌ AI 回答生成失败: ConnectError"
+    chat_text = _ok_text_callable(failure_string)
+    chat_with_tools = _ok_tools_callable()
+
+    provider = OpenAIProvider(
+        chat_text=chat_text, chat_with_tools=chat_with_tools
+    )
+    result = await provider.chat_text("system", "user")
+    assert result == failure_string
+
+
+@pytest.mark.asyncio
+async def test_adapter_chat_text_propagates_arbitrary_exception_verbatim():
+    """Adapter MUST NOT normalise an arbitrary exception into a
+    port-level exception type. Whatever the callable raises must
+    propagate verbatim, including ``RuntimeError`` / ``ValueError``
+    / etc. (TD-085 spec §5.1 behavior-compatibility.)
+    """
+    chat_text = _raising_callable(RuntimeError("socket timeout"))
     chat_with_tools = _ok_tools_callable()
 
     provider = OpenAIProvider(
         chat_text=chat_text, chat_with_tools=chat_with_tools
     )
 
-    with pytest.raises(LlmUnavailableError) as excinfo:
-        await provider.chat_text("s", "u")
-    assert "chat_text" in str(excinfo.value)
+    with pytest.raises(RuntimeError) as excinfo:
+        await provider.chat_text("system", "user")
+    assert str(excinfo.value) == "socket timeout"
 
 
 # --- 4. Tool-calling path -------------------------------------------------
@@ -272,40 +278,53 @@ async def test_adapter_chat_with_tools_handles_dict_arguments():
     assert parsed == {"id": 7, "nested": {"k": "v"}}
 
 
+# --- 5. Legacy exception passthrough (chat_with_tools) ------------------
+
+
 @pytest.mark.asyncio
-async def test_adapter_chat_with_tools_normalizes_unknown_exception():
+async def test_adapter_chat_with_tools_propagates_legacy_exception_type_verbatim():
+    """``ai_router._call_llm_with_tools`` raises ``LLMProviderCallError``
+    on HTTP failure. The adapter must propagate that exact exception
+    type — not replace it with a generic port-level exception.
+    """
+
+    class _LegacyProviderError(RuntimeError):
+        """Stand-in for ``app.contexts.knowledge.interfaces.api.ai_router
+        .LLMProviderCallError`` — identical inheritance so isinstance
+        checks elsewhere keep working.
+        """
+
+    legacy_exc = _LegacyProviderError("upstream socket reset")
+
     chat_text = _ok_text_callable()
-    chat_with_tools = _failing_callable(ValueError("malformed upstream"))
+    chat_with_tools = _raising_callable(legacy_exc)
 
     provider = OpenAIProvider(
         chat_text=chat_text, chat_with_tools=chat_with_tools
     )
 
-    with pytest.raises(LlmUnavailableError) as excinfo:
+    with pytest.raises(_LegacyProviderError) as excinfo:
         await provider.chat_with_tools(
             [{"role": "user", "content": "hi"}]
         )
-    assert "chat_with_tools" in str(excinfo.value)
+    # Exact same exception object passes through (not wrapped, not
+    # replaced). This preserves ``except LLMProviderCallError`` sites in
+    # ``ai_router`` callers.
+    assert excinfo.value is legacy_exc
 
 
-# --- 5. Composition boundary --------------------------------------------
+# --- 6. Module boundary --------------------------------------------------
 
 
 def test_adapter_does_not_import_ai_router_at_module_level():
-    """The adapter must not depend on ``knowledge.interfaces.api.ai_router``.
-
-    Verified by importing the adapter module and asserting the router
-    module is *not* in ``sys.modules`` yet. Composition wires the
-    callables; the adapter remains portable.
+    """Importing the adapter module must not pull ``ai_router`` into
+    ``sys.modules`` — composition root is the single wiring point.
     """
     import sys
 
-    # Drop the router from sys.modules to make the assertion meaningful
-    # even if another test already imported it.
     router_name = "app.contexts.knowledge.interfaces.api.ai_router"
     saved = sys.modules.pop(router_name, None)
     try:
-        # Re-import the adapter fresh.
         import importlib
 
         mod = importlib.import_module(
@@ -315,7 +334,6 @@ def test_adapter_does_not_import_ai_router_at_module_level():
             "OpenAIProvider module should not pull ai_router into "
             "sys.modules — composition must wire the callables."
         )
-        # Sanity: the adapter class still exists.
         assert hasattr(mod, "OpenAIProvider")
     finally:
         if saved is not None:

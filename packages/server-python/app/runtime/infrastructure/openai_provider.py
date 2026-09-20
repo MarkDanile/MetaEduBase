@@ -3,10 +3,10 @@
 This adapter implements the ``LlmProvider`` port against the existing
 ``knowledge.interfaces.api.ai_router`` HTTP client. It is wired at
 composition time — the constructor accepts the two async callables
-exposed by ``ai_router`` (``_call_llm`` and ``_call_llm_with_tools``)
-plus an optional output-cleaner hook. The adapter performs only
-*transport shape* translation (port Protocol -> router callables) and
-never builds its own HTTP client, credentials, or retry policy.
+exposed by ``ai_router`` (``_call_llm`` and ``_call_llm_with_tools``).
+The adapter performs only *transport shape* translation (port Protocol
+-> router callables) and never builds its own HTTP client, credentials,
+or retry policy.
 
 Why callables instead of importing the router module directly:
 
@@ -19,6 +19,17 @@ Why callables instead of importing the router module directly:
 3. Composition root is the single wiring point: when a future Slice
    swaps the underlying client (e.g. onto ``shared.llm.chat``), only
    the wiring changes — the adapter and port remain stable.
+
+Error-propagation contract:
+
+This adapter deliberately does NOT normalise exceptions raised by the
+underlying callable into a single port-level exception type. The legacy
+``_call_llm`` swallows HTTP errors and returns an error string; the
+legacy ``_call_llm_with_tools`` raises ``LLMProviderCallError``.
+Replacing either path with a new exception type would break
+behavior-compatibility (TD-085 spec §5.1 — response shape, error
+codes). The port therefore returns / raises whatever the wrapped
+callable returns / raises, verbatim.
 """
 
 from __future__ import annotations
@@ -29,7 +40,6 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.runtime.application.llm_provider import (
-    LlmUnavailableError,
     ToolCall,
     ToolCallingResult,
 )
@@ -50,14 +60,18 @@ class OpenAIProvider:
 
     - ``chat_text``: a 2-arg async callable with signature
       ``(system_prompt, user_content) -> str``. Equivalent to the
-      existing ``ai_router._call_llm``.
+      existing ``ai_router._call_llm``. The router swallows HTTP
+      errors and returns an error string; this adapter passes the
+      return value through verbatim.
     - ``chat_with_tools``: a keyword-only async callable compatible with
       ``ai_router._call_llm_with_tools(messages, *, tools, tool_choice,
       temperature, max_tokens) -> dict``. The returned dict has the
       shape ``{"content": str | None, "tool_calls": list | None}`` where
       each ``tool_calls`` entry is OpenAI's nested function object:
       ``{"id": ..., "type": "function", "function": {"name": ...,
-      "arguments": "<json-string>"}}``.
+      "arguments": "<json-string>"}}``. The router raises
+      ``LLMProviderCallError`` on HTTP failure; this adapter lets that
+      exception propagate verbatim.
     """
 
     def __init__(
@@ -72,17 +86,12 @@ class OpenAIProvider:
     async def chat_text(self, system_prompt: str, user_content: str) -> str:
         """Synchronous-style chat completion.
 
-        Errors raised by the underlying callable are normalized into
-        ``LlmUnavailableError`` so callers can handle a single failure
-        mode without leaking provider-specific exception types.
+        Returns the underlying callable's value verbatim. Errors raised
+        by the callable are propagated unchanged so callers can match
+        against the specific exception types the router / provider
+        actually emits.
         """
-        try:
-            return await self._chat_text(system_prompt, user_content)
-        except LlmUnavailableError:
-            raise
-        except Exception as exc:  # noqa: BLE001 — boundary normalization
-            logger.error("LLM chat_text call failed: %s", type(exc).__name__)
-            raise LlmUnavailableError("LLM provider chat_text failed") from exc
+        return await self._chat_text(system_prompt, user_content)
 
     async def chat_with_tools(
         self,
@@ -100,21 +109,13 @@ class OpenAIProvider:
         ``content`` is ``None`` when the model short-circuits to a tool
         call.
         """
-        try:
-            raw = await self._chat_with_tools(
-                messages,
-                tools=tools,
-                tool_choice=tool_choice,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-        except LlmUnavailableError:
-            raise
-        except Exception as exc:  # noqa: BLE001 — boundary normalization
-            logger.error("LLM chat_with_tools call failed: %s", type(exc).__name__)
-            raise LlmUnavailableError(
-                "LLM provider chat_with_tools failed"
-            ) from exc
+        raw = await self._chat_with_tools(
+            messages,
+            tools=tools,
+            tool_choice=tool_choice,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
 
         content = raw.get("content") if isinstance(raw, dict) else None
         raw_calls = raw.get("tool_calls") if isinstance(raw, dict) else None
