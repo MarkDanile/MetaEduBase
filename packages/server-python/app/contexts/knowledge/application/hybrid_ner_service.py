@@ -65,7 +65,9 @@ class HybridQueryUnderstandingService:
         # field so existing tests that read ``service._llm_provider``
         # directly keep working unchanged.
         if llm_provider is not None:
-            self._llm_provider = llm_provider
+            self._llm_provider: LlmProvider | Callable[[str, str], Any] | None = (
+                llm_provider
+            )
         elif legacy_llm_callable is not None:
             self._llm_provider = legacy_llm_callable
         else:
