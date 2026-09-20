@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
+from typing import Any
 
 from app.contexts.knowledge.application.ner_service import RuleBasedNER
 from app.contexts.knowledge.application.query_understanding import (
@@ -19,6 +20,7 @@ from app.contexts.knowledge.application.query_understanding import (
     HybridQueryUnderstandingResult,
     QueryUnderstandingResult,
 )
+from app.runtime.application.llm_provider import LlmProvider
 from app.shared.domain.ner_pipeline import NERResult
 
 logger = logging.getLogger(__name__)
@@ -41,12 +43,35 @@ class HybridQueryUnderstandingService:
 
     def __init__(
         self,
-        llm_provider: Callable[[str, str], str] | None = None,
+        # Production wiring (TD-085 Slice A): an ``LlmProvider`` port
+        # implementation. Composition root injects the same instance
+        # into ``AIChatService`` and ``HybridQueryUnderstandingService``.
+        llm_provider: LlmProvider | None = None,
+        # Legacy test seam: pre-Slice A tests inject a raw
+        # ``Callable[[str, str], str]`` directly. Production must inject
+        # the port (``llm_provider``) instead. If both are supplied,
+        # the port wins; if neither, this service refuses to call LLM.
+        # Duck-typing: any callable passed positionally as the first
+        # argument is treated as a legacy callable, not an LlmProvider.
+        # This preserves pre-Slice A test compatibility without
+        # requiring changes to existing test sites.
+        legacy_llm_callable: Callable[[str, str], Any] | None = None,
     ) -> None:
         self._rule_ner = RuleBasedNER()
-        # LLM provider: (system_prompt, user_content) -> str response (sync or async)
-        # When None, the service calls ai_router._call_llm lazily at runtime.
-        self._llm_provider = llm_provider
+        # Duck-typed resolution: ``_llm_provider`` may be either a real
+        # ``LlmProvider`` instance (production wiring via composition
+        # root) or a raw ``Callable[[str, str], str]`` (pre-Slice A
+        # legacy test seam). We keep both accessible via the same
+        # field so existing tests that read ``service._llm_provider``
+        # directly keep working unchanged.
+        if llm_provider is not None:
+            self._llm_provider: LlmProvider | Callable[[str, str], Any] | None = (
+                llm_provider
+            )
+        elif legacy_llm_callable is not None:
+            self._llm_provider = legacy_llm_callable
+        else:
+            self._llm_provider = None
 
     async def extract(self, query: str) -> HybridQueryUnderstandingResult:
         """Extract NER + optionally call LLM QU based on trigger strategy."""
@@ -87,30 +112,44 @@ class HybridQueryUnderstandingService:
     async def _call_llm_qu(
         self, query: str, ner_result: NERResult
     ) -> HybridQueryUnderstandingResult:
-        """Call LLM for Query Understanding on a rule-missed query."""
+        """Call LLM for Query Understanding on a rule-missed query.
+
+        TD-085 Slice A: production path uses the ``LlmProvider`` port
+        injected by composition root (or a callable seam preserved
+        from pre-Slice A tests). The application layer never imports
+        concrete adapters or ``ai_router`` symbols — Slice A removes
+        the application -> interfaces/api reverse import entirely.
+        """
         if self._llm_provider is None:
-            # Lazy import to avoid circular dependency at module load time
-            from app.contexts.knowledge.interfaces.api.ai_router import (
-                _call_llm as _sync_llm,
+            raise RuntimeError(
+                "HybridQueryUnderstandingService has no LLM provider "
+                "configured; composition root must inject an "
+                "LlmProvider before _call_llm_qu runs."
             )
 
-            async def _async_llm(sys: str, user: str) -> str:
-                return await _sync_llm(sys, user)  # pragma: no cover — async path
-
-            llm_response = await _async_llm(
+        if isinstance(self._llm_provider, LlmProvider):
+            llm_response = await self._llm_provider.chat_text(
                 QUERY_UNDERSTANDING_PROMPT,
                 f"用户查询：{query}",
             )
-        else:
-            try:
-                llm_response = self._llm_provider(
-                    QUERY_UNDERSTANDING_PROMPT,
-                    f"用户查询：{query}",
-                )
-            except Exception as e:  # noqa: BLE001
-                logger.warning("LLM QU provider raised: %s", e)
-                return self._llm_fallback(query, f"llm_provider_error:{e}")
+            return self._parse_llm_response(query, llm_response)
 
+        # Legacy callable seam: pre-Slice A tests pass a raw
+        # ``Callable[[str, str], str]`` directly. The callable may be
+        # sync or async; we await it directly so async LlmProvider
+        # ports work transparently.
+        try:
+            result = self._llm_provider(
+                QUERY_UNDERSTANDING_PROMPT,
+                f"用户查询：{query}",
+            )
+            if hasattr(result, "__await__"):
+                llm_response = await result  # type: ignore[func-returns-value]
+            else:
+                llm_response = result  # type: ignore[assignment]
+        except Exception as e:  # noqa: BLE001
+            logger.warning("LLM QU provider raised: %s", e)
+            return self._llm_fallback(query, f"llm_provider_error:{e}")
         return self._parse_llm_response(query, llm_response)
 
     def _parse_llm_response(

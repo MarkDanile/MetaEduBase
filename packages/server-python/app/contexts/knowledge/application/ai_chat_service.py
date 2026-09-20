@@ -46,6 +46,7 @@ from app.contexts.knowledge.domain.evidence import (
     DocumentSourceChunk,
     EvidenceItem,
 )
+from app.runtime.application.llm_provider import LlmProvider
 from app.shared.domain.ner_pipeline import NERResult
 
 logger = logging.getLogger(__name__)
@@ -145,6 +146,15 @@ class AIChatService:
         # the ``query_internal_data`` tool. Wired by the router at request
         # time so the audit row commits with the response.
         query_service: Any | None = None,
+        # TD-085 Slice A — LLM port injection. Composition root
+        # (``ai_router._build_evidence_service``) constructs an
+        # ``OpenAIProvider`` once and passes the same instance here so
+        # application code never imports concrete adapters or
+        # ``ai_router`` symbols. Falls back to a legacy ``_call_llm`` /
+        # ``_call_llm_with_tools``-compatible callables for tests that
+        # pre-date Slice A; the legacy fallback is recognised by the
+        # ``LlmProvider`` protocol surface (duck-typed).
+        llm_provider: LlmProvider | None = None,
     ) -> None:
         self.chunk_retriever = chunk_retriever
         self.graph_retriever = graph_retriever
@@ -169,6 +179,7 @@ class AIChatService:
         else:
             self.semantic_model_repository_factory = semantic_model_repository_factory
         self.query_service = query_service
+        self.llm_provider = llm_provider
 
     @staticmethod
     def _normalize_candidate_channels(
@@ -558,13 +569,23 @@ class AIChatService:
         return content.strip()
 
     async def _call_llm(self, system_prompt: str, user_content: str) -> str:
-        """HTTP call to LLM provider via ai_router._call_llm.
+        """Synchronous-style LLM call routed through the ``LlmProvider`` port.
 
-        This is overridden in tests. Kept thin so the service stays pure.
+        Composition root (``ai_router._build_evidence_service``) injects
+        an ``OpenAIProvider`` wrapping ``ai_router._call_llm`` so this
+        method stays a thin port call. Tests may either inject an
+        explicit ``llm_provider`` argument to ``AIChatService(...)`` or
+        ``patch.object(AIChatService, "_call_llm", ...)`` for legacy
+        seams.
         """
-        from app.contexts.knowledge.interfaces.api.ai_router import _call_llm
-
-        return await _call_llm(system_prompt, user_content)
+        provider = self.llm_provider
+        if provider is None:
+            raise RuntimeError(
+                "AIChatService.llm_provider is not configured; "
+                "composition root must inject an LlmProvider before "
+                "calling _call_llm."
+            )
+        return await provider.chat_text(system_prompt, user_content)
 
     async def _call_llm_with_tools(
         self,
@@ -575,28 +596,46 @@ class AIChatService:
         temperature: float = 0.7,
         max_tokens: int = 2000,
     ) -> dict:
-        """REQ-052 Task 7 — tool-calling-aware LLM call.
+        """REQ-052 Task 7 — tool-calling-aware LLM call via ``LlmProvider``.
 
-        Delegates to :func:`app.contexts.knowledge.interfaces.api.ai_router._call_llm_with_tools`.
-        Accepts a full conversation history and returns
-        ``{"content": str | None, "tool_calls": list | None}`` so the chat
-        flow can decide whether to invoke the registered tool.
+        Delegates to the injected ``LlmProvider`` port. Returns the
+        legacy ``{"content": str | None, "tool_calls": list | None}``
+        dict shape so the existing chat flow (and existing test patch
+        sites that read ``chat_with_tools`` return values) keeps
+        working.
 
-        Tests override this method via ``patch.object(AIChatService,
-        "_call_llm_with_tools", ...)`` — see
-        ``test_ai_chat_tool_calling.py``.
+        Tests may either inject an explicit ``llm_provider`` argument
+        to ``AIChatService(...)`` or ``patch.object(AIChatService,
+        "_call_llm_with_tools", ...)`` for legacy seams.
         """
-        from app.contexts.knowledge.interfaces.api.ai_router import (
-            _call_llm_with_tools as _router_call_llm_with_tools,
-        )
-
-        return await _router_call_llm_with_tools(
+        provider = self.llm_provider
+        if provider is None:
+            raise RuntimeError(
+                "AIChatService.llm_provider is not configured; "
+                "composition root must inject an LlmProvider before "
+                "calling _call_llm_with_tools."
+            )
+        result = await provider.chat_with_tools(
             messages,
             tools=tools,
             tool_choice=tool_choice,
             temperature=temperature,
             max_tokens=max_tokens,
         )
+        # Re-shape the port envelope to the historical dict form so
+        # downstream chat-flow code (and existing tests) keep working.
+        if result.tool_calls:
+            tool_calls_payload: list[dict] | None = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.name, "arguments": tc.arguments_json},
+                }
+                for tc in result.tool_calls
+            ]
+        else:
+            tool_calls_payload = None
+        return {"content": result.content, "tool_calls": tool_calls_payload}
 
     # REQ-052 Task 7 — tool definition for ``query_internal_data``. Declared
     # as a class attribute so tests can introspect it without re-creating it.

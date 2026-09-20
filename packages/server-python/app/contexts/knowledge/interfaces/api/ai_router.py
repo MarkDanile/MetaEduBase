@@ -122,13 +122,27 @@ def _build_evidence_service(
         os.environ.get("GRAPH_EDGE_RECALL_ENABLED", ""),
     )
 
+    # TD-085 Slice A — composition wiring. The LlmProvider port is
+    # constructed once here using the router's own private callables
+    # and the *same* instance is injected into both ``AIChatService``
+    # and ``HybridQueryUnderstandingService``. The application layer
+    # never imports ``OpenAIProvider`` or any router symbol.
+    from app.runtime.infrastructure.openai_provider import OpenAIProvider
+
+    llm_provider = OpenAIProvider(
+        chat_text=_call_llm,
+        chat_with_tools=_call_llm_with_tools,
+    )
+
     # Lazy import to avoid circular dependency with hybrid_ner_service → ai_router
     if use_hybrid_ner:
         from app.contexts.knowledge.application.hybrid_ner_service import (
             HybridQueryUnderstandingService,
         )
 
-        ner_pipeline = HybridQueryUnderstandingService()
+        ner_pipeline = HybridQueryUnderstandingService(
+            llm_provider=llm_provider,
+        )
     else:
         ner_pipeline = None
 
@@ -147,6 +161,7 @@ def _build_evidence_service(
         # REQ-036: graph_edge 通道默认禁用（REQ-035 决策）。经
         # GRAPH_EDGE_RECALL_ENABLED env 启用。PgEdgeRetriever 代码保留。
         edge_retriever=PgEdgeRetriever() if graph_edge_on else None,
+        llm_provider=llm_provider,
     )
 
 
