@@ -15,21 +15,41 @@ fake 注入。
 注意：`RecallChannel` / `FrequencyFusion` 旧契约不动 — 旧 ai_chat 入口
 行为由 ai_router 单独保留（如有遗留调用方）。本 service 是 RAG 编排层
 唯一入口。
+
+TD-085 Slice B 拆分（spec ADR-085-2）：
+- Prompt 构造 → `app.runtime.application.prompt_builder`
+- Tool Calling 编排 → `app.runtime.application.tool_orchestrator`
+- Diagnostics（trace DTO + 装配）→ `ai_chat_diagnostics`
+- ChatRequest/ChatResponse/工具 schema/证据 DTO 装配 → `ai_chat_dto`
+以上名字均在本模块 re-export，既有导入路径与 `patch.object` 测试缝不变。
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import uuid
-from dataclasses import dataclass, field
 from typing import Any
 
-from pydantic import BaseModel, Field
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.contexts.knowledge.application.ai_chat_diagnostics import (
+    AIChatDiagnostics,
+    PackedBlockTraceItem,
+    RetrievalTraceItem,
+    build_chat_diagnostics,
+    enrich_fusion_diagnostics,
+    log_retrieval_summary,
+)
+from app.contexts.knowledge.application.ai_chat_dto import (
+    QUERY_INTERNAL_DATA_TOOL,
+    ChatRequest,
+    ChatResponse,
+    build_document_sources,
+    build_fallback_packed,
+    dispatch_query_internal_data,
+    hydrate_graph_chunks,
+)
 from app.contexts.knowledge.application.context_packer import (
     ContextPacker,
     ContextPackingOptions,
@@ -41,73 +61,25 @@ from app.contexts.knowledge.application.retrievers import (
     GraphRetriever,
     MetadataFilter,
 )
-from app.contexts.knowledge.domain.evidence import (
-    DocumentSource,
-    DocumentSourceChunk,
-    EvidenceItem,
-)
+from app.contexts.knowledge.domain.evidence import EvidenceItem
 from app.runtime.application.llm_provider import LlmProvider
+from app.runtime.application.prompt_builder import (
+    build_prompt_context,
+    build_user_content,
+)
+from app.runtime.application.tool_orchestrator import run_tool_calling
 from app.shared.domain.ner_pipeline import NERResult
 
+__all__ = [
+    "AIChatDiagnostics",
+    "AIChatService",
+    "ChatRequest",
+    "ChatResponse",
+    "PackedBlockTraceItem",
+    "RetrievalTraceItem",
+]
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class ChatRequest:
-    message: str
-    context_window: int = 5
-
-
-@dataclass
-class ChatResponse:
-    reply: str
-    sources: list[EvidenceItem] = field(default_factory=list)
-    document_sources: list[DocumentSource] = field(default_factory=list)
-    diagnostics: dict[str, Any] = field(default_factory=dict)
-
-
-class RetrievalTraceItem(BaseModel):
-    index: int
-    evidence_id: str
-    source_type: str
-    title: str
-    file_id: str | None = None
-    chunk_id: str | None = None
-    source_chunk_id: str | None = None
-    score: float | None = None
-    channels: list[str] = Field(default_factory=list)
-    snippet: str = ""
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-class PackedBlockTraceItem(BaseModel):
-    evidence_index: int
-    file_id: str | None = None
-    chunk_ids: list[str] = Field(default_factory=list)
-    source_type: str
-    title: str
-    section_title: str | None = None
-    section_path: str | None = None
-    chars: int
-    content: str
-    channels: list[str] = Field(default_factory=list)
-    score: float | None = None
-    is_toc_like: bool = False
-    expansion_type: str
-
-
-class AIChatDiagnostics(BaseModel):
-    query: str
-    retrieval_topn: dict[str, list[RetrievalTraceItem]] = Field(default_factory=dict)
-    fusion_topn: list[RetrievalTraceItem] = Field(default_factory=list)
-    packed_blocks: list[PackedBlockTraceItem] = Field(default_factory=list)
-    prompt_preview: str = ""
-    packed: dict[str, Any] = Field(default_factory=dict)
-    query_understanding: dict | None = None  # REQ-016 Slice 2
-    # REQ-052 Task 7 — tool calling trace (None / list of tool-call summaries).
-    tool_calls: list[dict] | None = None
-
-    model_config = {"extra": "forbid"}
 
 
 class AIChatService:
@@ -125,6 +97,11 @@ class AIChatService:
         "如果证据不足，请直接说「未找到足够参考来源」，不要编造。"
         "回答请使用中文，结构清晰，适合教学场景使用。"
     )
+
+    # REQ-052 Task 7 — tool definition lives in `ai_chat_dto` (Slice B);
+    # the class attribute keeps the historical introspection seam
+    # (``AIChatService._QUERY_INTERNAL_DATA_TOOL``) pointing at the same dict.
+    _QUERY_INTERNAL_DATA_TOOL = QUERY_INTERNAL_DATA_TOOL
 
     def __init__(
         self,
@@ -220,230 +197,17 @@ class AIChatService:
         """
         return getattr(evidence_fusion, "score_semantics", "absolute") == "absolute"
 
-    @staticmethod
-    def _trace_evidence(items: list[EvidenceItem]) -> list[RetrievalTraceItem]:
-        traced: list[RetrievalTraceItem] = []
-        for index, item in enumerate(items, start=1):
-            traced.append(
-                RetrievalTraceItem(
-                    index=index,
-                    evidence_id=item.evidence_id,
-                    source_type=item.source_type,
-                    title=item.title,
-                    file_id=str(item.file_id) if item.file_id else None,
-                    chunk_id=str(item.chunk_id) if item.chunk_id else None,
-                    source_chunk_id=(
-                        str(item.source_chunk_id) if item.source_chunk_id else None
-                    ),
-                    score=item.score,
-                    channels=list(item.channels or []),
-                    snippet=(item.snippet or item.content or "")[:240],
-                    metadata=dict(item.metadata or {}),
-                )
-            )
-        return traced
-
-    @staticmethod
-    def _trace_packed_blocks(packed: PackedContext) -> list[PackedBlockTraceItem]:
-        traced: list[PackedBlockTraceItem] = []
-        for block in packed.blocks:
-            traced.append(
-                PackedBlockTraceItem(
-                    evidence_index=block.evidence_index,
-                    file_id=str(block.file_id) if block.file_id else None,
-                    chunk_ids=[str(cid) for cid in block.chunk_ids],
-                    source_type=block.source_type,
-                    title=block.title,
-                    section_title=block.section_title,
-                    section_path=block.section_path,
-                    chars=len(block.content),
-                    content=block.content[:500],
-                    channels=list(block.channels or []),
-                    score=block.score,
-                    is_toc_like=block.is_toc_like,
-                    expansion_type=block.expansion_type,
-                )
-            )
-        return traced
-
     def _enrich_fusion_diagnostics(
         self,
         packed: PackedContext,
         channel_results: dict[str, list[EvidenceItem]],
         fused: list[EvidenceItem],
     ) -> PackedContext:
-        """REQ-017 Slice 2: populate RRF fusion diagnostics.
-
-        Fills fusion_method / rrf_k / rrf_weights_used / fusion_scores /
-        channel_ranks on packed.diagnostics.
-        """
-        fusion = self.evidence_fusion
-        diag = packed.diagnostics
-
-        # Identify fusion type
-        fusion_name = fusion.__class__.__name__
-        diag.fusion_method = fusion_name
-
-        # RRF-specific fields
-        if hasattr(fusion, "k"):
-            diag.rrf_k = fusion.k  # type: ignore[attr-defined]
-        if hasattr(fusion, "channel_weights"):
-            diag.rrf_weights_used = dict(fusion.channel_weights or {})  # type: ignore[attr-defined]
-
-        # channel_ranks: channel -> evidence_id -> rank (1-based)
-        channel_ranks: dict[str, dict[str, int]] = {}
-        for ch, items in channel_results.items():
-            channel_ranks[ch] = {
-                it.evidence_id: rank + 1 for rank, it in enumerate(items)
-            }
-        diag.channel_ranks = channel_ranks
-
-        # fusion_scores: evidence_id -> score from fusion output
-        diag.fusion_scores = {e.evidence_id: e.score for e in fused}
-
-        return packed
-
-    async def _hydrate_graph_chunks(
-        self,
-        fused: list[EvidenceItem],
-        tenant_id: str,
-        session: AsyncSession,
-    ) -> list[EvidenceItem]:
-        chunk_ids = {
-            item.source_chunk_id or item.chunk_id
-            for item in fused
-            if item.source_type in {"knowledge_node", "knowledge_edge"}
-            and (item.source_chunk_id is not None or item.chunk_id is not None)
-        }
-        if not chunk_ids:
-            return fused
-
-        placeholders = ", ".join(f":c{i}" for i in range(len(chunk_ids)))
-        params: dict[str, Any] = {"tid": tenant_id}
-        for i, cid in enumerate(chunk_ids):
-            params[f"c{i}"] = cid
-
-        try:
-            result = await session.execute(
-                text(
-                    "SELECT id, file_id, chunk_index, content, section_title, section_path "
-                    "FROM metaedu.document_chunks "
-                    f"WHERE tenant_id = :tid AND id IN ({placeholders})"
-                ),
-                params,
-            )
-            chunks = {row["id"]: row for row in result.mappings().all()}
-        except Exception as e:  # noqa: BLE001
-            logger.warning("graph chunk hydration failed: %s", e)
-            return fused
-
-        hydrated: list[EvidenceItem] = []
-        for item in fused:
-            chunk_id = item.source_chunk_id or item.chunk_id
-            chunk = chunks.get(chunk_id) if chunk_id is not None else None
-            if item.source_type not in {"knowledge_node", "knowledge_edge"} or chunk is None:
-                hydrated.append(item)
-                continue
-
-            updated = item.model_copy(deep=True)
-            content = chunk["content"] or updated.content
-            updated.file_id = updated.file_id or chunk["file_id"]
-            updated.chunk_id = chunk["id"]
-            updated.source_chunk_id = chunk["id"]
-            updated.content = content
-            updated.snippet = content[:500]
-            updated.metadata = {
-                **(updated.metadata or {}),
-                "chunk_index": chunk["chunk_index"],
-                "section_title": chunk["section_title"],
-                "section_path": chunk["section_path"],
-                "content_source": "document_chunk",
-            }
-            hydrated.append(updated)
-        return hydrated
-
-    async def _build_document_sources(
-        self,
-        fused: list[EvidenceItem],
-        tenant_id: str,
-        session: AsyncSession,
-    ) -> list[DocumentSource]:
-        file_ids = {item.file_id for item in fused if item.file_id is not None}
-        if not file_ids:
-            return []
-
-        placeholders = ", ".join(f":f{i}" for i in range(len(file_ids)))
-        params: dict[str, Any] = {"tid": tenant_id}
-        for i, fid in enumerate(file_ids):
-            params[f"f{i}"] = fid
-
-        try:
-            result = await session.execute(
-                text(
-                    "SELECT id, filename, doc_type, tags "
-                    "FROM metaedu.files "
-                    f"WHERE tenant_id = :tid AND id IN ({placeholders})"
-                ),
-                params,
-            )
-            file_meta = {row["id"]: row for row in result.mappings().all()}
-        except Exception as e:  # noqa: BLE001
-            logger.warning("document source metadata lookup failed: %s", e)
-            file_meta = {}
-
-        grouped: dict[Any, DocumentSource] = {}
-        for evidence_index, item in enumerate(fused, start=1):
-            if item.file_id is None:
-                continue
-            row = file_meta.get(item.file_id)
-            title = (
-                row["filename"]
-                if row is not None and row["filename"]
-                else item.title or str(item.file_id)
-            )
-            doc = grouped.get(item.file_id)
-            if doc is None:
-                doc = DocumentSource(
-                    file_id=item.file_id,
-                    title=title,
-                    file_name=row["filename"] if row is not None else None,
-                    doc_type=row["doc_type"] if row is not None else None,
-                    tags=list(row["tags"] or []) if row is not None else [],
-                )
-                grouped[item.file_id] = doc
-
-            doc.evidence_indices.append(evidence_index)
-            doc.channels = sorted(set(doc.channels).union(item.channels or []))
-            if item.score is not None:
-                doc.best_score = (
-                    item.score
-                    if doc.best_score is None
-                    else max(doc.best_score, item.score)
-                )
-
-            if item.chunk_id is not None:
-                doc.chunks.append(
-                    DocumentSourceChunk(
-                        evidence_index=evidence_index,
-                        chunk_id=item.chunk_id,
-                        chunk_index=self._metadata_int(item, "chunk_index"),
-                        title=item.metadata.get("section_title") or item.title,
-                        snippet=item.snippet or item.content[:500],
-                        score=item.score,
-                        channels=list(item.channels or []),
-                    )
-                )
-
-        return sorted(
-            grouped.values(),
-            key=lambda source: source.best_score if source.best_score is not None else -1,
-            reverse=True,
+        """REQ-017 Slice 2 compat seam — implementation moved to
+        ``ai_chat_diagnostics.enrich_fusion_diagnostics`` (Slice B)."""
+        return enrich_fusion_diagnostics(
+            self.evidence_fusion, packed, channel_results, fused
         )
-
-    @staticmethod
-    def _metadata_int(item: EvidenceItem, key: str) -> int | None:
-        value = (item.metadata or {}).get(key)
-        return value if isinstance(value, int) else None
 
     async def _safe_metadata_filter(
         self,
@@ -512,55 +276,6 @@ class AIChatService:
         except Exception as e:  # noqa: BLE001
             logger.warning("edge retrieval failed: %s", e)
             return []
-
-    def _build_prompt_context(self, packed: PackedContext) -> str:
-        """Build 「参考证据」 prompt segment with [1] / [2] numbering.
-
-        Uses PackedContext.blocks[] for content (neighbor-expanded / section-expanded).
-        Citation numbering follows block.evidence_index to stay consistent with
-        the evidence[] citation sequence the caller sees in sources.
-        """
-        if not packed.blocks:
-            return ""
-        ctx = "\n\n参考证据：\n"
-        for block in packed.blocks:
-            evidence_idx = block.evidence_index
-            # Look up the original EvidenceItem for stable source label
-            ev = (
-                packed.evidence[evidence_idx - 1]
-                if evidence_idx <= len(packed.evidence)
-                else None
-            )
-            source_label = (
-                self._evidence_source_label(ev)
-                if ev else block.source_type
-            )
-            title_part = block.title or (ev.title if ev else block.evidence_index)
-            channels = ",".join(block.channels) if block.channels else "—"
-            expansion_tag = (
-                f" [{block.expansion_type}]"
-                if block.expansion_type != "hit"
-                else ""
-            )
-            ctx += (
-                f"[{evidence_idx}] 来源: {source_label}{expansion_tag} | "
-                f"标题: {title_part} | 命中: {channels}\n{block.content}\n"
-            )
-        return ctx
-
-    @staticmethod
-    def _evidence_source_label(ev: EvidenceItem | None) -> str:
-        if ev is None:
-            return "unknown"
-        if ev.source_type == "chunk":
-            return "chunk"
-        if ev.source_type == "knowledge_node":
-            return "knowledge_node"
-        if ev.source_type == "knowledge_edge":
-            return "knowledge_edge"
-        if ev.source_type == "structured_field":
-            return "structured_field"
-        return ev.source_type
 
     def _clean_llm_output(self, content: str) -> str:
         content = re.sub(r"考量.*?生成", "", content, flags=re.DOTALL)
@@ -637,55 +352,6 @@ class AIChatService:
             tool_calls_payload = None
         return {"content": result.content, "tool_calls": tool_calls_payload}
 
-    # REQ-052 Task 7 — tool definition for ``query_internal_data``. Declared
-    # as a class attribute so tests can introspect it without re-creating it.
-    # REQ-056 Task 3 — ``catalog_id`` added so the LLM can route by catalog.
-    # When the LLM fills this field, AI Chat resolves the SemanticModel via
-    # ``get_active_by_catalog_and_entity_type`` (dual-key) so multi-catalog
-    # tenants don't accidentally hit the wrong ``bill``/``contract`` model.
-    # When omitted, AI Chat falls back to ``get_active_by_entity_type`` (V1
-    # legacy behavior — REQ-052 Task 7 path).
-    _QUERY_INTERNAL_DATA_TOOL: dict[str, Any] = {
-        "type": "function",
-        "function": {
-            "name": "query_internal_data",
-            "description": (
-                "查询内部结构化业务数据（账单/合同/工单/租约/客户等）。"
-                "当用户问金额、数量、统计、列表、明细等结构化数据问题时调用。"
-                "若用户的问题明显属于某个数据库（catalog），必须把对应的 "
-                "catalog_id 填到 catalog_id 参数；未指定时由系统按 entity_hint "
-                "单键路由（可能命中错的 catalog）。"
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "question": {
-                        "type": "string",
-                        "description": "自然语言问题（包含具体想问的指标 / 时间范围 / 过滤条件）",
-                    },
-                    "entity_hint": {
-                        "type": "string",
-                        "enum": ["bill", "contract", "ticket", "lease", "customer"],
-                        "description": "可选 — 实体类型提示；不填时由 QueryService 自动归类",
-                    },
-                    # REQ-056 Task 3 — catalog routing key. LLM fills this when
-                    # the user's question is scoped to a specific catalog
-                    # (e.g. "园区欠费" → park catalog). String form so the
-                    # model can emit it verbatim; the service parses to UUID
-                    # before calling the repository.
-                    "catalog_id": {
-                        "type": "string",
-                        "description": (
-                            "数据库（catalog）的 UUID；不填时按 entity_hint 单键路由。"
-                            "多 catalog 场景强烈建议填写，避免命中错误 schema。"
-                        ),
-                    },
-                },
-                "required": ["question"],
-            },
-        },
-    }
-
     async def chat(
         self,
         request: ChatRequest,
@@ -723,10 +389,6 @@ class AIChatService:
         channel_results = await self._retrieve(
             request.message, ner_result, tenant_id, session, top_k
         )
-        retrieval_topn = {
-            channel: self._trace_evidence(items)
-            for channel, items in channel_results.items()
-        }
 
         fused = self.evidence_fusion.fuse(channel_results, top_k=min(top_k * 2, 15))
 
@@ -740,7 +402,7 @@ class AIChatService:
                 e for e in fused
                 if e.score is None or e.score >= self.min_evidence_score
             ]
-        fused = await self._hydrate_graph_chunks(fused, tenant_id, session)
+        fused = await hydrate_graph_chunks(fused, tenant_id, session)
 
         # REQ-013: context packing — expand fused evidence with neighbors / section
         channel_top_k = {ch: len(items) for ch, items in channel_results.items()}
@@ -750,301 +412,64 @@ class AIChatService:
                 channel_top_k=channel_top_k,
             )
         else:
-            # No packer injected — build a minimal PackedContext for _build_prompt_context
-            from app.contexts.knowledge.application.context_packer import (
-                PackedContext,
-                PackedContextBlock,
-                PackedContextDiagnostics,
-            )
-
-            packed = PackedContext(
-                blocks=[
-                    PackedContextBlock(
-                        evidence_index=i + 1,
-                        file_id=ev.file_id,
-                        chunk_ids=[ev.chunk_id] if ev.chunk_id else [],
-                        source_type=ev.source_type,
-                        title=ev.title or "",
-                        section_title=ev.metadata.get("section_title"),
-                        section_path=ev.metadata.get("section_path"),
-                        content=ev.content or ev.snippet or "",
-                        channels=ev.channels,
-                        score=ev.score,
-                        is_toc_like=False,
-                        expansion_type="hit",
-                    )
-                    for i, ev in enumerate(fused)
-                ],
-                evidence=fused,
-                diagnostics=PackedContextDiagnostics(
-                    fused_count=len(fused),
-                    channel_top_k=channel_top_k,
-                ),
-            )
+            # No packer injected — minimal PackedContext compat shim.
+            packed = build_fallback_packed(fused, channel_top_k)
 
         # REQ-017 Slice 2: populate RRF fusion diagnostics
         packed = self._enrich_fusion_diagnostics(
             packed, channel_results, fused
         )
 
-        document_sources = await self._build_document_sources(fused, tenant_id, session)
+        document_sources = await build_document_sources(fused, tenant_id, session)
 
-        # REQ-012 diagnostic log: channel labels may be vector/keyword/graph,
-        # so count source types after grouping to keep the log faithful.
-        all_channel_items = [
-            item
-            for items in channel_results.values()
-            for item in items
-        ]
-        chunk_count = len(
-            {
-                item.evidence_id
-                for item in all_channel_items
-                if item.source_type == "chunk"
-            }
-        )
-        graph_count = len(
-            {
-                item.evidence_id
-                for item in all_channel_items
-                if item.source_type == "knowledge_node"
-            }
-        )
-        logger.info(
-            "ai_chat_service: query=%r ner_domains=%r ner_levels=%r "
-            "chunk=%d graph=%d fused=%d",
-            request.message[:120],
-            ner_result.domains,
-            ner_result.levels,
-            chunk_count,
-            graph_count,
-            len(fused),
+        # REQ-012 diagnostic summary log (Slice B: moved to ai_chat_diagnostics)
+        log_retrieval_summary(
+            request.message, ner_result, channel_results, fused
         )
 
-        context_text = self._build_prompt_context(packed)
-        # REQ-016 Slice 2: include query_understanding trace when available
-        qu = getattr(ner_result, "query_understanding", None)
-        query_understanding_diag: dict[str, Any] | None = None
-        if qu is not None:
-            query_understanding_diag = {
-                "method": qu.method,
-                "confidence": qu.confidence,
-                "normalized_query": qu.normalized_query,
-                "core_terms": qu.core_terms,
-                "expanded_terms": qu.expanded_terms,
-                "entities": qu.entities,
-                "filters": qu.filters,
-                "trigger_reason": getattr(ner_result, "trigger_reason", None),
-            }
-
-        diagnostics_model = AIChatDiagnostics(
+        context_text = build_prompt_context(packed)
+        diagnostics_model = build_chat_diagnostics(
             query=request.message,
-            retrieval_topn=retrieval_topn,
-            fusion_topn=self._trace_evidence(fused),
-            packed_blocks=self._trace_packed_blocks(packed),
-            prompt_preview=context_text[:1200],
-            packed=packed.diagnostics.model_dump(mode="json"),
-            query_understanding=query_understanding_diag,
+            channel_results=channel_results,
+            fused=fused,
+            packed=packed,
+            context_text=context_text,
+            ner_result=ner_result,
         )
-        logger.info(
-            "ai_chat_trace: %s",
-            json.dumps(diagnostics_model.model_dump(mode="json"), ensure_ascii=False),
-        )
-        user_content = (
-            f"{context_text}\n\n学生问题：{request.message}"
-            if context_text
-            else f"学生问题：{request.message}"
-        )
+        user_content = build_user_content(context_text, request.message)
 
         # ------------------------------------------------------------------
-        # REQ-052 Task 7 — tool-calling orchestration
-        #
-        # Flow:
-        #   1. LLM first call (with `tools=[query_internal_data]`)
-        #      → either returns direct ``content`` (no tool needed)
-        #      → or returns ``tool_calls`` requesting `query_internal_data`.
-        #   2. If tool_calls present and the function name is supported,
-        #      look up the ``SemanticModel`` by ``entity_hint`` (or fall back
-        #      to a default) and call :meth:`QueryService.ask`. The audit
-        #      log row is written inside ``QueryService.ask`` (REQ-052 §12).
-        #   3. LLM second call (with full conversation history: system →
-        #      user → assistant+tool_call → tool result) → final ``content``.
+        # REQ-052 Task 7 — tool-calling orchestration (TD-085 Slice B:
+        # generic two-round loop lives in runtime/tool_orchestrator; the
+        # business dispatch below keeps SemanticModel resolution and
+        # QueryService.ask on the knowledge side).
         # ------------------------------------------------------------------
-
         first_messages = [
             {"role": "system", "content": self.SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
         ]
-        first_result = await self._call_llm_with_tools(
+        outcome = await run_tool_calling(
+            # Call-time attribute lookup keeps the
+            # ``patch.object(AIChatService, "_call_llm_with_tools", ...)``
+            # test seam working.
+            self._call_llm_with_tools,
             first_messages,
             tools=[self._QUERY_INTERNAL_DATA_TOOL],
-            tool_choice="auto",
+            supported_tool_names={"query_internal_data"},
+            dispatch=lambda _fn_name, arguments: dispatch_query_internal_data(
+                arguments,
+                semantic_model_repository_factory=self.semantic_model_repository_factory,
+                query_service=self.query_service,
+                session=session,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                role=role,
+                message=request.message,
+            ),
+            unsupported_fallback_reply="抱歉，我暂时无法执行该操作。",
         )
-        tool_calls = first_result.get("tool_calls")
-        first_content = first_result.get("content")
-
-        if not tool_calls:
-            # LLM answered directly — no tool invocation, no second LLM call.
-            reply = self._clean_llm_output(first_content or "")
-            diagnostics_model.tool_calls = None
-        else:
-            # We have at least one tool call. We only handle one for V1;
-            # the function name must be ``query_internal_data``.
-            tool_call = tool_calls[0]
-            fn_name = (tool_call.get("function") or {}).get("name")
-            if fn_name != "query_internal_data":
-                # Unknown / unsupported tool — fall back to first-response
-                # content (or a polite fallback if the model returned None).
-                logger.warning(
-                    "ai_chat_service: unsupported tool_call name=%r; "
-                    "falling back to direct content.",
-                    fn_name,
-                )
-                reply = self._clean_llm_output(
-                    first_content or "抱歉，我暂时无法执行该操作。"
-                )
-                diagnostics_model.tool_calls = [
-                    {
-                        "name": fn_name,
-                        "skipped": True,
-                        "reason": "unsupported_function_name",
-                    }
-                ]
-            else:
-                diagnostics_model.tool_calls = [
-                    {"name": fn_name, "skipped": False}
-                ]
-                # ---- 3a. Resolve SemanticModel from entity_hint ----
-                arguments_raw = (tool_call.get("function") or {}).get(
-                    "arguments", "{}"
-                )
-                try:
-                    arguments = json.loads(arguments_raw)
-                except (TypeError, ValueError):
-                    logger.warning(
-                        "ai_chat_service: invalid tool_call arguments=%r; "
-                        "treating as empty dict.",
-                        arguments_raw,
-                    )
-                    arguments = {}
-                entity_hint = arguments.get("entity_hint") or "bill"
-                question = arguments.get("question") or request.message
-
-                # REQ-056 Task 3 — resolve catalog_id from the LLM-filled
-                # tool argument. The LLM emits a string UUID; we defensively
-                # parse to ``uuid.UUID`` so a malformed value degrades to the
-                # legacy single-key path rather than crashing the chat.
-                catalog_id_arg = arguments.get("catalog_id")
-                resolved_catalog_id: uuid.UUID | None = None
-                if catalog_id_arg:
-                    try:
-                        resolved_catalog_id = uuid.UUID(str(catalog_id_arg))
-                    except (TypeError, ValueError):
-                        logger.warning(
-                            "ai_chat_service: invalid catalog_id=%r from "
-                            "tool_call arguments; falling back to "
-                            "entity_type-only routing.",
-                            catalog_id_arg,
-                        )
-                        resolved_catalog_id = None
-
-                # Resolve the SemanticModel via the injected repository factory
-                # (production wires ``SemanticModelRepository(session)`` via
-                # ``ai_router._build_evidence_service``; tests inject a fake).
-                semantic_repo = self.semantic_model_repository_factory(session)
-                tenant_uuid = (
-                    uuid.UUID(str(tenant_id))
-                    if not isinstance(tenant_id, uuid.UUID)
-                    else tenant_id
-                )
-                if resolved_catalog_id is not None:
-                    # Dual-key routing — REQ-054 catalog-scoped lookup. Safe
-                    # even when a tenant has multiple catalogs with the same
-                    # ``entity_type`` registered.
-                    semantic_model = (
-                        await semantic_repo.get_active_by_catalog_and_entity_type(
-                            tenant_id=tenant_uuid,
-                            catalog_id=resolved_catalog_id,
-                            entity_type=entity_hint,
-                        )
-                    )
-                else:
-                    # Legacy single-key fallback — REQ-052 Task 7 path. Kept
-                    # for V1 backward compat: small/old models that don't
-                    # know the ``catalog_id`` field, and tenants without
-                    # multi-catalog schemas.
-                    semantic_model = await semantic_repo.get_active_by_entity_type(
-                        tenant_id=tenant_uuid, entity_type=entity_hint
-                    )
-
-                if semantic_model is None:
-                    # No semantic model registered for this entity_hint —
-                    # degrade gracefully to a textual apology so the user
-                    # doesn't see a raw stack trace.
-                    logger.warning(
-                        "ai_chat_service: no semantic_model for entity_hint=%r "
-                        "(tenant=%s); skipping QueryService.ask.",
-                        entity_hint,
-                        tenant_uuid,
-                    )
-                    tool_result_payload = {
-                        "ok": False,
-                        "errors": [
-                            f"entity_type '{entity_hint}' not configured for tenant"
-                        ],
-                        "suggestion": "请尝试更具体的问题。",
-                    }
-                else:
-                    # ---- 3b. Call QueryService.ask (writes audit row) ----
-                    query_service = getattr(self, "query_service", None)
-                    if query_service is None:
-                        # Production path: QueryService is built at lifespan
-                        # startup and bound to the request session. The router
-                        # is responsible for injecting it; if it's missing
-                        # here we degrade to a no-data reply rather than
-                        # crashing the chat.
-                        logger.warning(
-                            "ai_chat_service: query_service not injected; "
-                            "skipping tool execution."
-                        )
-                        tool_result_payload = {
-                            "ok": False,
-                            "errors": ["query_service not available"],
-                            "suggestion": "请稍后重试。",
-                        }
-                    else:
-                        effective_user_id = user_id or uuid.uuid4()
-                        tool_result_payload = await query_service.ask(
-                            question=question,
-                            semantic_model=semantic_model,
-                            user_id=effective_user_id,
-                            tenant_id=tenant_uuid,
-                            role=role,
-                            business_purpose=(
-                                f"AI Chat 工具调用 — question={question[:80]}"
-                            ),
-                        )
-
-                # ---- 3c. Second LLM call with full conversation history ----
-                second_messages = [
-                    {"role": "system", "content": self.SYSTEM_PROMPT},
-                    {"role": "user", "content": user_content},
-                    {
-                        "role": "assistant",
-                        "content": None,
-                        "tool_calls": [tool_call],
-                    },
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call["id"],
-                        "content": json.dumps(
-                            tool_result_payload, ensure_ascii=False
-                        ),
-                    },
-                ]
-                second_result = await self._call_llm_with_tools(second_messages)
-                second_content = second_result.get("content")
-                reply = self._clean_llm_output(second_content or "")
+        diagnostics_model.tool_calls = outcome.tool_calls_trace
+        reply = self._clean_llm_output(outcome.reply_text)
 
         return ChatResponse(
             reply=reply,

@@ -28,7 +28,6 @@ tests connect to PG or invoke an LLM.
 """
 
 import ast
-import inspect
 import sys
 from unittest.mock import AsyncMock
 
@@ -384,23 +383,64 @@ async def test_hybrid_ner_service_raises_when_no_provider_configured():
 # --- 7. Composition root wires the same instance ------------------------
 
 
-def test_composition_root_injects_same_provider_into_both_services():
-    """``ai_router._build_evidence_service`` constructs ONE
-    ``OpenAIProvider`` and injects it into both ``AIChatService``
-    and ``HybridQueryUnderstandingService``.
-    """
-    from app.contexts.knowledge.interfaces.api import ai_router
+@pytest.mark.asyncio
+async def test_composition_root_injects_same_provider_into_both_services():
+    """Slice B (承接 Slice A P2 follow-up)：真实构造断言，替换原先的
+    ``inspect.getsource`` 源码字符串检查。
 
-    src = inspect.getsource(ai_router._build_evidence_service)
-    # Construction site
-    assert "OpenAIProvider(" in src, (
-        "Composition root must construct OpenAIProvider exactly once"
-        " per request."
+    调用真实装配入口 ``ai_router._build_evidence_service``（构造期不触发
+    DB / LLM I/O：Pg* retriever 与 ChunkRepository 构造仅保存引用），验证：
+
+    1. 返回的 ``AIChatService.llm_provider`` 是 ``OpenAIProvider`` 实例；
+    2. ``HybridQueryUnderstandingService._llm_provider`` 与
+       ``AIChatService.llm_provider`` 是**同一个** provider 实例。
+    """
+    import uuid as _uuid
+    from unittest.mock import MagicMock
+
+    from app.contexts.knowledge.interfaces.api import ai_router
+    from app.runtime.infrastructure.openai_provider import OpenAIProvider
+
+    session = MagicMock()  # 构造期不使用；不连接数据库
+    service = ai_router._build_evidence_service(session, str(_uuid.uuid4()))
+
+    assert isinstance(service.llm_provider, OpenAIProvider)
+    ner_pipeline = service.ner_pipeline
+    assert ner_pipeline is not None, "use_hybrid_ner 默认 True"
+    assert ner_pipeline._llm_provider is service.llm_provider
+
+
+def test_runtime_application_does_not_import_knowledge_contexts():
+    """Slice B 新增边界：``app.runtime.application``（prompt_builder /
+    tool_orchestrator / llm_provider）不得 import 任何 ``app.contexts.*``
+    模块 —— runtime 通过窄 Protocol / 参数注入消费业务能力，保持
+    knowledge/application → runtime/application 单向依赖。
+    """
+    import os
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    repo_root = here
+    pyproject_rel = os.path.join(
+        "packages", "server-python", "pyproject.toml"
     )
-    # Both services receive the same instance
-    assert src.count("llm_provider=") >= 2, (
-        "Both AIChatService and HybridQueryUnderstandingService must"
-        " receive the llm_provider= argument from composition root."
+    while not os.path.isfile(os.path.join(repo_root, pyproject_rel)):
+        parent = os.path.dirname(repo_root)
+        if parent == repo_root:
+            raise FileNotFoundError("Could not find repo root from " + here)
+        repo_root = parent
+    runtime_app = os.path.join(
+        repo_root, "packages", "server-python", "app", "runtime", "application"
+    )
+    offenders: list[tuple[str, int]] = []
+    for fname in os.listdir(runtime_app):
+        if not fname.endswith(".py"):
+            continue
+        path = os.path.join(runtime_app, fname)
+        for module, line in _imports_in_file(path):
+            if module.startswith("app.contexts"):
+                offenders.append((path, line))
+    assert not offenders, (
+        f"runtime/application imports knowledge contexts: {offenders}"
     )
 
 

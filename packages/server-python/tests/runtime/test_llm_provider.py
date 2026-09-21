@@ -13,8 +13,8 @@ P1-fix verification matrix):
    ``ai_router._call_llm`` placeholder string when no provider is
    configured.
 4. Compatibility path (chat_text passthrough): the adapter does NOT
-   normalise arbitrary exceptions into ``LlmUnavailableError``; it
-   propagates the underlying callable's exception verbatim.
+   normalise arbitrary exceptions into any port-level exception type;
+   it propagates the underlying callable's exception verbatim.
 5. Tool-calling path (chat_with_tools): the adapter flattens the
    nested OpenAI tool-call envelope into ``ToolCallingResult`` and
    re-shapes back to the legacy dict form when callers still expect it.
