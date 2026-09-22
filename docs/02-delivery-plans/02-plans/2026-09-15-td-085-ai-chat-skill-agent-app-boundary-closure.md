@@ -100,6 +100,16 @@ Slice E (综合验证 + 进入 implementation-readiness)  → barrier（依赖 A
 - 失败模式：拆分粒度不当导致单文件 < 50 行（违反最小粒度）
 - 停止条件：拆分后任一文件 > 500 行 → 回滚并重新设计边界
 
+**Slice B 验收口径澄清与进度（2026-09-21 登记，实现已提交 Draft PR 待评审，未 Ready / 未评分 / 未合并）**：
+
+- 口径澄清：开工时 ai_chat_service.py 实际 1054 行（> TD-032 HARD_LIMIT 1000，既有 baseline 700 为陈旧值）；基线超限属本任务待解决项，不构成开工即回滚条件；规模验收以 plan 目标 ≤ 500 行 + 现行规则判定为准，`scan_source_sizes.py` 仅为 TD-032 baseline 管理工具（未接入 CI），不以 exit 0 冒充规模验收通过。
+- 实际拆分结果：ai_chat_service.py 1054 → **479 行**（≤500 达标）；新增 `runtime/application/prompt_builder.py`（124 行，Prompt 构造 + Context Packing 消费侧编排）+ `runtime/application/tool_orchestrator.py`（143 行，通用 Tool Calling 两轮编排）+ `knowledge/application/ai_chat_diagnostics.py`（244 行，trace DTO + fusion 诊断富化 + 装配）+ `knowledge/application/ai_chat_dto.py`（399 行，Chat DTO + QUERY_INTERNAL_DATA_TOOL schema + 业务 dispatch + document sources）；各新模块均 ≥ 50 行满足最小粒度。
+- 边界核验：knowledge/application → interfaces/api = 0、knowledge/application → runtime.infrastructure = 0、runtime/application → app.contexts = 0（AST 扫描 + grep 双重证据）；runtime 通过窄 Protocol（property 协变）+ 参数注入消费业务能力，未携带 DD/QCC 或具体业务 Query 语义。
+- 行为保持：既有 1237 行 test_ai_chat_service.py + tool_calling / catalog_dual_key / query_service_integration 回归断言零修改通过；prompt 渲染 byte-identical 由固定 fixture 判别测试锁定（tests/runtime/test_prompt_builder.py 11 例）；tool-calling 两轮消息信封逐字锁定（test_tool_orchestrator.py 9 例）；diagnostics 装配锁定（test_ai_chat_diagnostics.py 10 例）。
+- 承接 Slice A follow-up：组合根测试由 inspect.getsource 字符串计数替换为真实构造断言（`ai_router._build_evidence_service` 实际装配，两个 service 共享同一 OpenAIProvider 实例）；LlmUnavailableError 失效 docstring 已清理。
+- AI Delivery Profile：验收层级 = 代码接入 + mock / fixture；真实 LLM 不在本任务执行；本地 DB 依赖测试因 PG 不可用报 OSError（与 base 30da367d 同剖面，非回归），hermetic 全套由 CI Backend iteration 覆盖。
+- 遗留：mypy baseline 提示 2 个 key 可缩减（错误随拆分迁出 ai_chat_service.py）；baseline 维护属独立任务，本 Slice 不修改门禁 / 阈值 / baseline / allowlist。
+
 ### 1.4 Slice C：skill_runner.py DD/QCC 解耦 + DD 业务回收至 due_diligence
 
 **前置**：**无**（spec readiness 阶段裁决：Slice C 独立，不依赖 A；与 D 可并行）

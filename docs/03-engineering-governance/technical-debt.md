@@ -503,7 +503,7 @@ _（待 S2-C/S3 或独立切片处理；登记于 2026-07-29，源自独立 `max
 
 状态：🟡 进行中
 
-（Slice A 已合并入 main：PR #627 mergeCommit `8fb60704`、Original 评分 95/100；runtime 子包 LlmProvider port + OpenAIProvider adapter 已抽出；knowledge/application 反向 import 已双向清零；Slice B/C/D/E 未启动；TD-085 仍为整体进行中而非完成；REQ-043 / WS-S2 / WS-S3 状态未推进）
+（Slice A 已合并入 main：PR #627 mergeCommit `8fb60704`、Original 评分 95/100；runtime 子包 LlmProvider port + OpenAIProvider adapter 已抽出；knowledge/application 反向 import 已双向清零；Slice B 实现已提交 Draft PR 待评审（2026-09-21，未 Ready / 未评分 / 未合并）：ai_chat_service.py 1054 → 479 行，prompt/tool-calling 编排入 runtime/application，diagnostics/DTO 留 knowledge/application；Slice C/D/E 未启动；TD-085 仍为整体进行中而非完成；REQ-043 / WS-S2 / WS-S3 状态未推进）
 
 | 字段 | 内容 |
 |------|------|
