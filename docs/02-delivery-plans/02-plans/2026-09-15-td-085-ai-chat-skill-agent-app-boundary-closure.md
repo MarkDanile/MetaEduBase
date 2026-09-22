@@ -71,7 +71,7 @@ Slice E (综合验证 + 进入 implementation-readiness)  → barrier（依赖 A
 
 ### 1.3 Slice B：ai_chat_service.py 单文件拆分（> 1000 行 → ≤ 500 行）
 
-**状态**：🟢 已完成（2026-09-22，PR #629 squash mergeCommit `e36a70c1` 入 main；Original 评分 95/100；ai_chat_service.py 1054→479 行（≤500 达标）；30 个新判别测试 + 既有回归断言零修改；Draft CI 3/3 + Ready CI 3/3 + 评分后 CI 3/3 全 SUCCESS，Backend full hermetic 3017 passed / 797.89s）
+**状态**：🟢 已完成（2026-09-22，PR #629 squash mergeCommit `e36a70c1` 入 main；Original 评分 95/100；ai_chat_service.py 1054→479 行（≤500 达标）；28 个新判别测试 + 既有回归断言零修改；Draft CI 3/3 + Ready CI 3/3 + 评分后 CI 3/3 全 SUCCESS，Backend full hermetic 3017 passed / 797.89s）
 
 **前置**：Slice A 完成（依赖 LlmProvider port 抽离，B 复用 A 的 port）
 
