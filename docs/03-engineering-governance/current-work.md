@@ -14,54 +14,7 @@
 
 ## 当前进行中
 
-### TASK-TD-085-BOUNDARY-CLOSURE-SLICE-B: TD-085 Slice B — ai_chat_service.py 职责拆分
-
-状态：🟡 进行中（Slice B 实现；不动 Slice C/D/E；不启动 REQ-043 / REQ-047 Extended / WS-S2 / WS-S3 / REQ-062 / REQ-063；不修改 migration / schema / registry / CI / 门禁 / Score Log / Metrics / 历史评分行 / spec；行为保持：API/DTO/prompt/消息顺序/工具参数/结果信封/错误降级语义/session/tenant/审计关联不变；不运行 agent_erasure_backfill；不修改 erase_available；不触碰 metaedu / metaedu_test / stale refs / 恢复分支 / dangling commit 91fe0290；不 amend / rebase / force-push / reset）
-类型：TD-085 Slice B 实现（refactor 行为不变 + 单文件职责拆分）
-领域：packages/server-python/app/contexts/knowledge/application/ai_chat_service.py（拆分至 ≤500 行）+ 新增 app/runtime/application/prompt_builder.py + tool_orchestrator.py + knowledge/application/ai_chat_diagnostics.py + ai_chat_dto.py + 新增测试（tests/runtime/test_prompt_builder.py / test_tool_orchestrator.py + tests/contexts/knowledge/test_ai_chat_diagnostics.py）+ tests/runtime/test_application_boundary.py 组合根测试升级（承接 Slice A P2）+ test_llm_provider.py docstring 清理 + current-work.md + technical-debt.md + plan §1.3
-当前执行模式：refactor / plan-do（行为保持 + 职责拆分）
-最近接手工具：Claude Code
-分支：refactor/td085-slice-b-chat-service-split
-
-需求来源：
-
-- TD-085 🟡 进行中；Slice A 已合并（PR #627 + closeout PR #628）；ADR-085-2 职责归属表；plan §1.3 Slice B 目标 ≤500 行
-- 验收口径澄清（本任务内登记 plan §1.3）：基线超限（1054 > 1000）是本任务待解决项而非开工即回滚条件；目标 ai_chat_service.py ≤ 500 行；scan_source_sizes.py 为 baseline 管理工具（不在 CI），报告实际行数 + 规则判定，不以 exit 0 冒充规模验收
-
-允许范围：
-
-- 修改 packages/server-python/app/contexts/knowledge/application/ai_chat_service.py（拆分）
-- 新增 packages/server-python/app/runtime/application/prompt_builder.py + tool_orchestrator.py
-- 新增 packages/server-python/app/contexts/knowledge/application/ai_chat_diagnostics.py + ai_chat_dto.py（ADR-085-2 按需）
-- 新增 tests/runtime/test_prompt_builder.py + test_tool_orchestrator.py + tests/contexts/knowledge/test_ai_chat_diagnostics.py
-- 修改 tests/runtime/test_application_boundary.py（组合根字符串测试 → 真实构造断言，承接 Slice A P2 follow-up）+ tests/runtime/test_llm_provider.py（仅清理 LlmUnavailableError 失效 docstring）
-- 修改 docs/03-engineering-governance/current-work.md + technical-debt.md + docs/02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md（仅 §1.3 澄清与进度）
-
-禁止范围：
-
-- 不实现 Slice C / D / E；不拆分 skill_runner / 不解除 mutual import
-- 不修改既有测试用例的断言 / 输入 / 期望值（行为保持硬约束；仅允许上述两个 tests/runtime 文件的既定 follow-up 修改）
-- 不修改 migration / schema / registry / CI / 门禁 / Score Log / Metrics / spec / 历史评分行 / erase_available
-- 不修改门禁阈值 / baseline / allowlist 来通过规模检查
-- 不复制平行实现，不以转发壳或移位凑行数；旧导入路径用最小兼容导出
-- 不运行 agent_erasure_backfill / 不触碰 metaedu / metaedu_test / stale refs / 恢复分支 / dangling commit 91fe0290
-- 不 amend / rebase / force-push / reset
-
-验证计划：
-
-- git diff --check + scripts/check-engineering-docs --full
-- ruff + mypy（按 backend scope，无新增基线错误）
-- pytest tests/runtime/ + tests/contexts/ai/ + tests/contexts/knowledge/（非 DB 子集本地；hermetic 全套由 CI Backend iteration 覆盖）
-- 拆分前后行为：既有 1237 行 test_ai_chat_service.py + tool_calling / catalog_dual_key / query_service_integration 回归不改不动
-- 文件行数核验：ai_chat_service.py ≤ 500 行；各新模块 ≥ 50 行（最小粒度）；报告 scan_source_sizes 实际行数与规则判定
-- 验收层级声明：代码接入 + mock / fixture；真实 LLM 不在本任务执行
-- 创建 Draft PR 等 Draft CI settled；保持未 Ready / 未评分 / 未合并
-
-当前进展：拆分实现已完成并提交 Draft PR 待评审（未 Ready / 未评分 / 未合并）。ai_chat_service.py 1054 → 479 行（≤500 达标）；新增 prompt_builder.py（124）/ tool_orchestrator.py（143）/ ai_chat_diagnostics.py（244）/ ai_chat_dto.py（399），均 ≥50 行最小粒度；组合根 inspect.getsource 测试已替换为真实构造断言（承接 Slice A P2）；LlmUnavailableError 失效 docstring 已清理。
-下一步：等待独立复审 → Ready 门禁 → 正式评分 → 合并 → post-merge closeout（均不在本任务执行）。
-验证状态：本地已完成——ruff 全绿；mypy 基线门禁 0 回归（241 历史错误不变，提示 2 个 key 可缩减，本任务不改 baseline）；新增 30 个判别测试全 pass（prompt_builder 11 + tool_orchestrator 9 + diagnostics 10）；非 DB 回归 142 passed + 1 failed + 17 errors（全部 OSError 本地 PG 不可用，与 base 30da367d 同剖面，非 Slice B 回归）；依赖边界 grep 三路归零（application→interfaces/api 0、application→runtime.infrastructure 0、runtime/application→app.contexts 0）；git diff --check clean。hermetic 全套由 CI Backend iteration 覆盖。
-交接备注：组合根真实构造测试承接 Slice A P2；conftest 弃用警告归 Slice E；mypy baseline 2 个可缩减 key（ai_chat_service.py 迁出错误）留待独立 baseline 维护任务，本 PR 不动。
-
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -83,6 +36,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-09-22 | TASK-TD-085-BOUNDARY-CLOSURE-SLICE-B：TD-085 Slice B — ai_chat_service.py 职责拆分（行为保持 refactor） | 🟢 完成（Slice B 已完成；TD-085 整体仍 🟡 进行中，Slice C/D/E 未启动） | PR #629 squash mergeCommit `e36a70c1`；Original 评分 95/100；ai_chat_service.py 1054→479 行达标；prompt/tool-calling 入 runtime，diagnostics/DTO 留 knowledge；CI hermetic 3017 passed；TD-085 整体仍 🟡 进行中，Slice C/D/E 未启动 | [PR #629](https://github.com/MarkDanile/MetaEduBase/pull/629)（mergeCommit `e36a70c1`）/ [Score Log #629 Original 95](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [technical-debt TD-085 🟡 进行中](technical-debt.md) |
 | 2026-09-20 | TASK-TD-085-BOUNDARY-CLOSURE-SLICE-A：TD-085 Slice A — LLM Port 抽离（行为保持 refactor） | 🟢 完成（Slice A 已完成；TD-085 整体仍 🟡 进行中，Slice B/C/D/E 未启动） | PR #627 squash mergeCommit `8fb60704`；Original 评分 95/100；runtime 子包 LlmProvider port + OpenAIProvider adapter 入 main，反向 import 双向清零；TD-085 整体仍 🟡 进行中，Slice B/C/D/E 未启动 | [PR #627](https://github.com/MarkDanile/MetaEduBase/pull/627)（mergeCommit `8fb60704`）/ [Score Log #627 Original 95](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [technical-debt TD-085 🟡 进行中](technical-debt.md) |
 | 2026-09-18 | TASK-TD-085-BOUNDARY-CLOSURE-READINESS 含 post-merge governance closeout | 🟢 完成（readiness gate 与治理收口完成；TD-085 保持 🔵 就绪、未翻 🟢 完成） | PR #625 squash mergeCommit `b7339a12`；Original 评分 92/100；TD-085 保持 🔵 就绪，Slice A-E 未启动 | [PR #625](https://github.com/MarkDanile/MetaEduBase/pull/625) / [work-log](work-log.md) / [Score Log #625 Original 92](04-retrospectives/review-score-log.md) / [TD-085 spec](../02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [technical-debt TD-085 🔵 就绪](technical-debt.md) |
 | 2026-09-17 | TASK-TD-085-BOUNDARY-CLOSURE-SHAPING：TD-085 Phase 0 shaping 收口（pure-spec / pure-docs）+ PR closeout | 🟢 完成（PR #624 squash mergeCommit `2d479991`；Original 评分 98/100；评审对象 `448f4f6d..dc8eecdca` 2 commits 4 文件 +647/-14；评分提交 commit `89773179`；保持 TD-085 ⚫ 待办 / REQ-043 ⚫ Candidate / WS-S2 / WS-S3 仍 BLOCKED） | PR #624 squash mergeCommit `2d479991`（PR base `448f4f6d`；最终 PR diff 5 文件 +648/-14；7 维 15+20+20+15+15+9+4 = 98/100；Draft + Ready + 评分后 CI 全 SUCCESS） | [PR #624](https://github.com/MarkDanile/MetaEduBase/pull/624)（mergeCommit `2d479991`）/ [Score Log #624 Original 98](04-retrospectives/review-score-log.md) / [TD-085 spec](../02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) |

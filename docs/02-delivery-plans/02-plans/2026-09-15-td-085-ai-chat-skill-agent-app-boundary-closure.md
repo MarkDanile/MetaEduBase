@@ -71,6 +71,8 @@ Slice E (综合验证 + 进入 implementation-readiness)  → barrier（依赖 A
 
 ### 1.3 Slice B：ai_chat_service.py 单文件拆分（> 1000 行 → ≤ 500 行）
 
+**状态**：🟢 已完成（2026-09-22，PR #629 squash mergeCommit `e36a70c1` 入 main；Original 评分 95/100；ai_chat_service.py 1054→479 行（≤500 达标）；30 个新判别测试 + 既有回归断言零修改；Draft CI 3/3 + Ready CI 3/3 + 评分后 CI 3/3 全 SUCCESS，Backend full hermetic 3017 passed / 797.89s）
+
 **前置**：Slice A 完成（依赖 LlmProvider port 抽离，B 复用 A 的 port）
 
 **目标**：
@@ -100,7 +102,7 @@ Slice E (综合验证 + 进入 implementation-readiness)  → barrier（依赖 A
 - 失败模式：拆分粒度不当导致单文件 < 50 行（违反最小粒度）
 - 停止条件：拆分后任一文件 > 500 行 → 回滚并重新设计边界
 
-**Slice B 验收口径澄清与进度（2026-09-21 登记，实现已提交 Draft PR 待评审，未 Ready / 未评分 / 未合并）**：
+**Slice B 验收口径澄清与进度（2026-09-21 登记；2026-09-22 已合并入 main：PR #629 squash mergeCommit `e36a70c1`，Original 评分 95/100）**：
 
 - 口径澄清：开工时 ai_chat_service.py 实际 1054 行（> TD-032 HARD_LIMIT 1000，既有 baseline 700 为陈旧值）；基线超限属本任务待解决项，不构成开工即回滚条件；规模验收以 plan 目标 ≤ 500 行 + 现行规则判定为准，`scan_source_sizes.py` 仅为 TD-032 baseline 管理工具（未接入 CI），不以 exit 0 冒充规模验收通过。
 - 实际拆分结果：ai_chat_service.py 1054 → **479 行**（≤500 达标）；新增 `runtime/application/prompt_builder.py`（124 行，Prompt 构造 + Context Packing 消费侧编排）+ `runtime/application/tool_orchestrator.py`（143 行，通用 Tool Calling 两轮编排）+ `knowledge/application/ai_chat_diagnostics.py`（244 行，trace DTO + fusion 诊断富化 + 装配）+ `knowledge/application/ai_chat_dto.py`（399 行，Chat DTO + QUERY_INTERNAL_DATA_TOOL schema + 业务 dispatch + document sources）；各新模块均 ≥ 50 行满足最小粒度。
@@ -263,7 +265,7 @@ Slice E (综合验证 + 进入 implementation-readiness)  → barrier（依赖 A
 本 plan 进入 "TD-085 Completion" 状态：
 
 - [x] Slice A 完成（PR #627 mergeCommit `8fb60704`，Original 95/100）+ 跨 context 零违规 import + 测试 pass + 文件规模门禁 pass
-- [ ] Slice B 完成 + ai_chat_service ≤ 500 行
+- [x] Slice B 完成（PR #629 mergeCommit `e36a70c1`，Original 95/100）+ ai_chat_service ≤ 500 行（实测 479）
 - [ ] Slice C 完成 + skill_runner 零业务硬编码 + DD 业务完整迁移至 due_diligence（含 park_investment_dd.yaml 模板 + 4 个测试迁移）
 - [ ] Slice D 完成 + agent_workspace ↔ agent_execution mutual import 解除 + FencedExecutionPort 复用 + WorkspaceSnapshotPort 新增
 - [ ] Slice E 完成 + 综合验证 + TD-085 Completion
