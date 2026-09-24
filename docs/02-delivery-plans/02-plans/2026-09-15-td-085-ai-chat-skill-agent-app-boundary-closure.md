@@ -71,7 +71,7 @@ Slice E (综合验证 + 进入 implementation-readiness)  → barrier（依赖 A
 
 ### 1.3 Slice B：ai_chat_service.py 单文件拆分（> 1000 行 → ≤ 500 行）
 
-**状态**：🟢 已完成（2026-09-22，PR #629 squash mergeCommit `e36a70c1` 入 main；Original 评分 95/100；ai_chat_service.py 1054→479 行（≤500 达标）；28 个新判别测试 + 既有回归断言零修改；Draft CI 3/3 + Ready CI 3/3 + 评分后 CI 3/3 全 SUCCESS，Backend full hermetic 3017 passed / 797.89s）
+**状态**：🟢 已完成（2026-09-22，PR #629 squash mergeCommit `e36a70c1` 入 main；Original 评分 95/100；ai_chat_service.py 1054→479 行（≤500 达标）；28 个新判别测试 + 既有回归断言零修改；Draft CI 3/3 + Ready CI 3/3 + 评分后 CI 3/3 全 SUCCESS，Backend full hermetic 3017 passed / 797.89s）；post-merge 治理收口 PR #630 已于 2026-09-23 squash merge 入 main `08c84452`（Original 94/100；#630 为 pure-docs，CI 走 scope-aware docs-only 路径，full hermetic PG 证据属实现 PR #629、未在 closeout 重跑）
 
 **前置**：Slice A 完成（依赖 LlmProvider port 抽离，B 复用 A 的 port）
 
@@ -265,7 +265,7 @@ Slice E (综合验证 + 进入 implementation-readiness)  → barrier（依赖 A
 本 plan 进入 "TD-085 Completion" 状态：
 
 - [x] Slice A 完成（PR #627 mergeCommit `8fb60704`，Original 95/100）+ 跨 context 零违规 import + 测试 pass + 文件规模门禁 pass
-- [x] Slice B 完成（PR #629 mergeCommit `e36a70c1`，Original 95/100）+ ai_chat_service ≤ 500 行（实测 479）
+- [x] Slice B 完成（PR #629 mergeCommit `e36a70c1`，Original 95/100）+ ai_chat_service ≤ 500 行（实测 479）+ post-merge 治理收口 PR #630 mergeCommit `08c84452`（Original 94/100）
 - [ ] Slice C 完成 + skill_runner 零业务硬编码 + DD 业务完整迁移至 due_diligence（含 park_investment_dd.yaml 模板 + 4 个测试迁移）
 - [ ] Slice D 完成 + agent_workspace ↔ agent_execution mutual import 解除 + FencedExecutionPort 复用 + WorkspaceSnapshotPort 新增
 - [ ] Slice E 完成 + 综合验证 + TD-085 Completion
