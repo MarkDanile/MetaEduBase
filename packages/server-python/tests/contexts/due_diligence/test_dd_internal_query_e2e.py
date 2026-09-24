@@ -61,20 +61,33 @@ _ACME_CONTRACTS = ["HT-1", "HT-2"]
 _ACME_ROOMS = ["RM-1", "RM-2"]
 
 
+_CLEAN_STMTS = (
+    "DELETE FROM metaedu.skill_execution_audit WHERE tenant_id = :tid",
+    "DELETE FROM metaedu.skills WHERE tenant_id = :tid",
+    "DELETE FROM metaedu.semantic_models WHERE tenant_id = :tid",
+    "DELETE FROM metaedu.query_audit_log WHERE tenant_id = :tid",
+    "DELETE FROM metaedu.role_permissions WHERE tenant_id = :tid AND role = 'admin'",
+    "DELETE FROM metaedu.dataset_rows WHERE tenant_id = :tid",
+    "DELETE FROM metaedu.datasets WHERE tenant_id = :tid AND name LIKE 'dd-e2e-%'",
+)
+
+
 @pytest.fixture(autouse=True)
 async def _clean(db_session):
-    for stmt in (
-        "DELETE FROM metaedu.skill_execution_audit WHERE tenant_id = :tid",
-        "DELETE FROM metaedu.skills WHERE tenant_id = :tid",
-        "DELETE FROM metaedu.semantic_models WHERE tenant_id = :tid",
-        "DELETE FROM metaedu.query_audit_log WHERE tenant_id = :tid",
-        "DELETE FROM metaedu.role_permissions WHERE tenant_id = :tid AND role = 'admin'",
-        "DELETE FROM metaedu.dataset_rows WHERE tenant_id = :tid",
-        "DELETE FROM metaedu.datasets WHERE tenant_id = :tid AND name LIKE 'dd-e2e-%'",
-    ):
+    # TD-085 Slice C: this file moved from skill_registry/ (ran after all
+    # due_diligence tests) to due_diligence/ (runs before test_dd_run_router),
+    # so its committed rows — above all the ``park_investment_dd`` v1.0.0 skill
+    # with internal_query steps — must not leak into later tests: the run-router
+    # fixtures tolerate 409 on re-registering that skill code and would then
+    # execute THIS test's SOP (unpaid_query → DD catalog required). Teardown
+    # therefore mirrors the pre-test wipe (db_session fixture commits it).
+    for stmt in _CLEAN_STMTS:
         await db_session.execute(text(stmt), {"tid": DEFAULT_TENANT_ID})
     await db_session.flush()
     yield
+    for stmt in _CLEAN_STMTS:
+        await db_session.execute(text(stmt), {"tid": DEFAULT_TENANT_ID})
+    await db_session.flush()
 
 
 async def _insert_dataset(db_session, catalog_id, name, columns, rows):
