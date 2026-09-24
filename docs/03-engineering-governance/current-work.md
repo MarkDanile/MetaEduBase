@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-TD-085-BOUNDARY-CLOSURE-SLICE-C：skill_runner DD/QCC 解耦 + DD 业务回收至 due_diligence
+
+状态：🟡 进行中
+类型：TD / P1 / Backend / Agent-Platform / DDD / Boundary-Closure / Refactor / Test
+领域：skill_registry / due_diligence
+当前执行模式：technical-debt（refactor，行为保持）
+最近接手工具：Claude Code
+分支：refactor/td085-slice-c-dd-decoupling
+
+需求来源：
+- Spec: docs/02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md（ADR-085-3：internal_query 契约保留 + 4 个 DD 测试迁移裁决）
+- Plan: docs/02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md §1.4
+- 技术债：technical-debt.md TD-085（保持 🟡 进行中）
+- 架构约束：architecture.md；due_diligence → skill_registry 单向，禁止反向依赖
+
+当前进展：开工核验完成（main `bc6359b7` 建支、tree clean）；DD/QCC 硬编码定位完成——`_mcp_step_params` QCC 映射（100-113 行）+ 「企业尽调报告助手」persona（538 行）；`dd_query_runner.py` 零 skill_registry import 可净迁移；测试锚点盘点完成（`test_skill_runner_v2.py:243` QCC 断言需装配适配，其余 15 处构造点不受影响）
+下一步：skill_runner 泛化（mapper/persona 注入点）→ git mv dd_query_runner + 模板 → 新增 skill_caller port adapter → 两个路由器 rewiring → 迁移 4 个 DD 测试（断言零修改）→ 新增 test_dd_skill_caller → 测试 / ruff / mypy / 依赖方向扫描
+验证状态：未运行（计划：`pytest tests/contexts/skill_registry/ tests/contexts/due_diligence/ -v` + QCC/报告骨架/internal_query/query_audit_id 链路核验 + ruff/mypy + git diff --check + check-engineering-docs --full；本地 PG 不可用限制如实申报，hermetic 由 CI 覆盖）
+交接备注：ADR-085-3（spec §11.3）裁决迁移 4 个测试文件（含 test_skill_runner_v2.py），与 plan §3 列举的 2 文件存在口径差异，按 ADR 决策执行并在 PR body 明示；internal_query step 类型与 SkillStepResult.query_audit_id 契约保留
 
 ## 下一批候选任务
 
