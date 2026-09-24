@@ -44,9 +44,9 @@
 - [skill_runner.py:407](../../../packages/server-python/app/contexts/skill_registry/application/skill_runner.py#L407) — `Run one \`internal_query\` step via the injectable query runner.`
 - [skill_runner.py:411](../../../packages/server-python/app/contexts/skill_registry/application/skill_runner.py#L411) — `f"step '{step.id}' 是 internal_query,但 runner 未配置 query_runner"`
 - [skill_runner.py:538](../../../packages/server-python/app/contexts/skill_registry/application/skill_runner.py#L538) — `你是企业尽调报告助手。严格按给定报告骨架填空：只填值、不更改结构；`
-- [dd_query_runner.py](../../../packages/server-python/app/contexts/skill_registry/application/dd_query_runner.py) — `wc -l = 258`（位于 skill_registry 上下文，命名、配置、主体解析均属于 due_diligence）
-- [dd_query_runner.py:30-34](../../../packages/server-python/app/contexts/skill_registry/application/dd_query_runner.py#L30-L34) — `from app.contexts.mcp_registry.application.mcp_invocation_service import (...)` 和 `from app.contexts.structured_data.application.query_service import QueryService`（DD 借通用 Skill 与 QueryService 入口）
-- 测试证据：[test_dd_query_runner.py](../../../packages/server-python/tests/contexts/skill_registry/test_dd_query_runner.py)、[test_dd_internal_query_e2e.py](../../../packages/server-python/tests/contexts/skill_registry/test_dd_internal_query_e2e.py) 存在于 skill_registry 测试目录，证明 DD 测试覆盖归 Skill 上下文
+- `dd_query_runner.py`（历史路径 `skill_registry/application/dd_query_runner.py`；TD-085 Slice C 起迁至 [due_diligence/application/dd_query_runner.py](../../../packages/server-python/app/contexts/due_diligence/application/dd_query_runner.py)）— `wc -l = 258`（位于 skill_registry 上下文，命名、配置、主体解析均属于 due_diligence）
+- `dd_query_runner.py:30-34`（历史路径 `skill_registry/application/`，Slice C 起迁至 `due_diligence/application/`）— `from app.contexts.mcp_registry.application.mcp_invocation_service import (...)` 和 `from app.contexts.structured_data.application.query_service import QueryService`（DD 借通用 Skill 与 QueryService 入口）
+- 测试证据：`test_dd_query_runner.py`、`test_dd_internal_query_e2e.py`（历史位于 `tests/contexts/skill_registry/`，Slice C 起迁至 [tests/contexts/due_diligence/](../../../packages/server-python/tests/contexts/due_diligence/)）存在于 skill_registry 测试目录，证明 DD 测试覆盖归 Skill 上下文
 
 事实判断：**真实 domain boundary 倒置**（DD 业务渗入通用 Skill 上下文 + 通过 compatibility adapter 维持兼容）。
 

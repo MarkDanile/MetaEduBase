@@ -503,7 +503,7 @@ _（待 S2-C/S3 或独立切片处理；登记于 2026-07-29，源自独立 `max
 
 状态：🟡 进行中
 
-（Slice A 已合并入 main：PR #627 mergeCommit `8fb60704`、Original 评分 95/100；runtime 子包 LlmProvider port + OpenAIProvider adapter 已抽出；knowledge/application 反向 import 已双向清零；Slice B 已合并入 main：PR #629 mergeCommit `e36a70c1`、Original 评分 95/100，ai_chat_service.py 1054 → 479 行（≤500 达标），prompt/tool-calling 编排入 runtime/application，diagnostics/DTO 留 knowledge/application；Slice C/D/E 未启动；TD-085 仍为整体进行中而非完成；REQ-043 / WS-S2 / WS-S3 状态未推进）
+（Slice A 已合并入 main：PR #627 mergeCommit `8fb60704`、Original 评分 95/100；runtime 子包 LlmProvider port + OpenAIProvider adapter 已抽出；knowledge/application 反向 import 已双向清零；Slice B 已合并入 main：PR #629 mergeCommit `e36a70c1`、Original 评分 95/100，ai_chat_service.py 1054 → 479 行（≤500 达标），prompt/tool-calling 编排入 runtime/application，diagnostics/DTO 留 knowledge/application；Slice C 实现已提交 Draft PR 待评审（2026-09-24，未 Ready / 未评分 / 未合并）：skill_runner.py DD/QCC/persona 硬编码移除并泛化为注入式通用 runner，dd_query_runner.py 与 park_investment_dd.yaml 迁至 due_diligence，新增 skill_caller.py 单一装配点保持 due_diligence → skill_registry 单向；Slice D/E 未启动；TD-085 仍为整体进行中而非完成；REQ-043 / WS-S2 / WS-S3 状态未推进）
 
 | 字段 | 内容 |
 |------|------|
@@ -546,8 +546,8 @@ _（待 S2-C/S3 或独立切片处理；登记于 2026-07-29，源自独立 `max
   - [packages/server-python/app/contexts/skill_registry/application/skill_runner.py:103](/packages/server-python/app/contexts/skill_registry/application/skill_runner.py#L103) `Real QCC tools (any qcc* server — company / risk / history / executive)`
   - [:110](/packages/server-python/app/contexts/skill_registry/application/skill_runner.py#L110) `if server.startswith("qcc")`
   - [:538](/packages/server-python/app/contexts/skill_registry/application/skill_runner.py#L538) `你是企业尽调报告助手`
-  - [dd_query_runner.py:30-34](/packages/server-python/app/contexts/skill_registry/application/dd_query_runner.py#L30-L34) `from app.contexts.mcp_registry.application.mcp_invocation_service` / `from app.contexts.structured_data.application.query_service`
-  - [packages/server-python/app/contexts/skill_registry/application/dd_query_runner.py](/packages/server-python/app/contexts/skill_registry/application/dd_query_runner.py) `wc -l = 258`（位于 skill_registry 而非 due_diligence）
+  - `dd_query_runner.py:30-34`（历史路径 `skill_registry/application/`，Slice C 起迁至 `due_diligence/application/`） `from app.contexts.mcp_registry.application.mcp_invocation_service` / `from app.contexts.structured_data.application.query_service`
+  - `packages/server-python/app/contexts/skill_registry/application/dd_query_runner.py`（历史路径，Slice C 起迁至 [due_diligence/application/dd_query_runner.py](/packages/server-python/app/contexts/due_diligence/application/dd_query_runner.py)） `wc -l = 258`（位于 skill_registry 而非 due_diligence）
 - D. agent_workspace ↔ agent_execution mutual import（双向 leak）：
   - [agent_workspace/infrastructure/workspace_transport_erasure_participant.py:241](/packages/server-python/app/contexts/agent_workspace/infrastructure/workspace_transport_erasure_participant.py#L241) — `from app.contexts.agent_execution.domain.snapshots`
   - [agent_execution/infrastructure/execution_erasure_participant.py:79-88](/packages/server-python/app/contexts/agent_execution/infrastructure/execution_erasure_participant.py#L79-L88) — `from app.contexts.agent_workspace.domain` / `.infrastructure.erasure_repository` / `.infrastructure.models`

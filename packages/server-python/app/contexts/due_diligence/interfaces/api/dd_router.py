@@ -31,6 +31,9 @@ from app.contexts.due_diligence.application.dd_task_service import (
     DdTaskNotFoundError,
     DdTaskService,
 )
+from app.contexts.due_diligence.application.skill_caller import (
+    build_dd_skill_runner,
+)
 from app.contexts.due_diligence.application.subject_resolver import SubjectResolver
 from app.contexts.due_diligence.domain.dd_task import (
     DdTaskStateError,
@@ -52,13 +55,9 @@ from app.contexts.mcp_registry.application.mcp_invocation_service import (
     MCPInvocationError,
     MCPInvocationService,
 )
-from app.contexts.skill_registry.application.dd_query_runner import (
-    build_dd_internal_query_runner,
-)
 from app.contexts.skill_registry.application.skill_runner import (
     SkillExecutionError,
     SkillExecutionNotFoundError,
-    SkillRunner,
 )
 from app.shared.infrastructure.database import get_session
 
@@ -115,13 +114,9 @@ def _report_service(session: AsyncSession) -> DdReportService:
 
 
 def _orchestrator(session: AsyncSession, request: Request) -> DdOrchestrator:
-    """Assemble the run pipeline: SkillRunner with the production
-    ``internal_query`` channel bound (mirrors the skill run router) plus the
-    report store."""
-    query_runner = build_dd_internal_query_runner(
-        request.app.state.query_service, session
-    )
-    runner = SkillRunner(session, query_runner=query_runner)
+    """Assemble the run pipeline via the DD skill port adapter (single DD
+    assembly point, TD-085 Slice C) plus the report store."""
+    runner = build_dd_skill_runner(request.app.state.query_service, session)
     return DdOrchestrator(
         session, runner=runner, report_service=_report_service(session)
     )

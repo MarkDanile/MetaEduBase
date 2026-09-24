@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.config import settings
-from app.contexts.skill_registry.application import dd_query_runner as mod
+from app.contexts.due_diligence.application import dd_query_runner as mod
 
 pytestmark = pytest.mark.asyncio
 

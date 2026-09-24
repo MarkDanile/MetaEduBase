@@ -29,9 +29,9 @@
 - 技术债：technical-debt.md TD-085（保持 🟡 进行中）
 - 架构约束：architecture.md；due_diligence → skill_registry 单向，禁止反向依赖
 
-当前进展：开工核验完成（main `bc6359b7` 建支、tree clean）；DD/QCC 硬编码定位完成——`_mcp_step_params` QCC 映射（100-113 行）+ 「企业尽调报告助手」persona（538 行）；`dd_query_runner.py` 零 skill_registry import 可净迁移；测试锚点盘点完成（`test_skill_runner_v2.py:243` QCC 断言需装配适配，其余 15 处构造点不受影响）
-下一步：skill_runner 泛化（mapper/persona 注入点）→ git mv dd_query_runner + 模板 → 新增 skill_caller port adapter → 两个路由器 rewiring → 迁移 4 个 DD 测试（断言零修改）→ 新增 test_dd_skill_caller → 测试 / ruff / mypy / 依赖方向扫描
-验证状态：未运行（计划：`pytest tests/contexts/skill_registry/ tests/contexts/due_diligence/ -v` + QCC/报告骨架/internal_query/query_audit_id 链路核验 + ruff/mypy + git diff --check + check-engineering-docs --full；本地 PG 不可用限制如实申报，hermetic 由 CI 覆盖）
+当前进展：解耦实现已完成（本 commit 提交 Draft PR 待评审，未 Ready / 未评分 / 未合并）。skill_runner.py 泛化——`_mcp_step_params` QCC 映射与「企业尽调报告助手」persona 移除，新增 `step_params_mapper` / `report_persona` 构造注入点（默认 pass-through + 中性 persona）；`dd_query_runner.py` 与 `park_investment_dd.yaml` git mv 至 due_diligence（内容零修改）；新增 `due_diligence/application/skill_caller.py` 单一装配点（DD query channel + QCC mapper + DD persona）；dd_router 改走 skill_caller，skill_registry_router 试用入口回归通用 runner（internal_query fail-closed，无测试锚定该 wiring）；4 个 DD 测试文件按 ADR-085-3 迁移（断言/输入/期望零修改，仅 v2 文件 1 处构造点注入 mapper）；新增 test_dd_skill_caller.py 11 个 DB-free 判别测试。
+下一步：等待独立复审 → Ready 门禁 → 正式评分 → 合并 → post-merge closeout（均不在本任务执行）。
+验证状态：本地已完成——ruff 全绿；mypy baseline 0 回归（241 历史错误 / 74 keys；dd_query_runner key 随迁移同数改名，2 个可缩减 key 遗留不动）；新增 11 个 DB-free 测试全 pass（mapper parity 6 + persona 1 + 装配 1 + 通用默认 1 + 业务 token 归零源码扫描 1 + 单向依赖 AST 扫描 1）；双目录 collect 260（base 249 + 新增 11）；失败归因严格闭环——base `bc6359b7` vs 分支 148 行 FAILED/ERROR node-ID 集合在归一化 2 个迁移文件路径（18 测试）后完全一致（17 failed + 131 errors 全为本地 PG 不可用 OSError，零新回归）；skill_runner.py 业务 token grep 归零；skill_registry → due_diligence import 归零；git diff --check clean；check-engineering-docs --full passed（6 处历史证据断链已按「历史路径代码化 + 新位置活链」修复）。hermetic 全套由 CI Backend 覆盖。
 交接备注：ADR-085-3（spec §11.3）裁决迁移 4 个测试文件（含 test_skill_runner_v2.py），与 plan §3 列举的 2 文件存在口径差异，按 ADR 决策执行并在 PR body 明示；internal_query step 类型与 SkillStepResult.query_audit_id 契约保留
 
 ## 下一批候选任务

@@ -32,11 +32,11 @@ import pytest
 from sqlalchemy import text
 
 from app.config import settings
+from app.contexts.due_diligence.application.dd_query_runner import (
+    build_dd_internal_query_runner,
+)
 from app.contexts.mcp_registry.application.mcp_invocation_service import (
     InvocationCaller,
-)
-from app.contexts.skill_registry.application.dd_query_runner import (
-    build_dd_internal_query_runner,
 )
 from app.contexts.skill_registry.application.skill_runner import SkillRunner
 from app.contexts.structured_data.application.query_service import QueryService
