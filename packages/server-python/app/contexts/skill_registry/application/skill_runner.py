@@ -38,6 +38,19 @@ Assembly boundary (spec §4.1): this is the ONLY place an
 :class:`MCPInvocationService` and the LLM entry
 (:func:`app.shared.llm.chat.chat`) are wired together — business code
 receives the runner, never the underlying services.
+
+Generic-by-design (TD-085 Slice C): the runner carries NO business-specific
+knowledge. Two injection points keep it business-neutral —
+
+- ``step_params_mapper``: subject -> tool-params shaping for ``mcp`` steps
+  (default pass-through; e.g. an external provider's expected key names are
+  the consuming business context's concern, not the runner's).
+- ``report_persona``: the LLM synthesis persona (default generic
+  "你是报告生成助手。"; business contexts pin their own).
+
+``internal_query`` steps and ``SkillStepResult.query_audit_id`` remain a
+generic runner capability (REQ-046 v2 contract, spec ADR-085-3): the
+``query_runner`` callable is injected by the consuming business context.
 """
 from __future__ import annotations
 
@@ -71,6 +84,11 @@ from app.shared.llm.chat import chat
 
 _ERROR_MESSAGE_MAX = 500
 
+# Generic report persona for LLM synthesis. Business contexts inject their
+# own persona via ``report_persona``; the generic runner must not carry
+# business role semantics.
+_DEFAULT_REPORT_PERSONA = "你是报告生成助手。"
+
 
 def _iter_subject_values(subject: Any) -> list[str]:
     """Yield every scalar value in ``subject`` as a string for scrubbing.
@@ -97,19 +115,13 @@ def _iter_subject_values(subject: Any) -> list[str]:
     return values
 
 
-def _mcp_step_params(server: str, subject: Any) -> dict:
-    """Map the skill ``subject`` to the tool params an MCP server expects.
+def _default_step_params(server: str, subject: Any) -> dict:
+    """Generic subject -> tool params mapping: the subject dict passes through.
 
-    Real QCC tools (any ``qcc*`` server — company / risk / history / executive)
-    all take a single ``searchKey`` (the company name); the internal customer
-    MCP takes ``company_name`` + ``credit_code`` (the same shape as
-    ``confirmed_subject``). Without this mapping a QCC step would send
-    ``{company_name, credit_code}`` and QCC would reject it (``searchKey``
-    undefined) — the gap AC-8 surfaced. Non-QCC servers get the subject as-is.
+    Business-specific param shaping (e.g. an external provider's expected
+    key names) is injected by the assembling business context via
+    ``step_params_mapper``; the generic runner carries none.
     """
-    if server.startswith("qcc") and isinstance(subject, dict):
-        name = subject.get("company_name") or subject.get("searchKey") or ""
-        return {"searchKey": name}
     return subject if isinstance(subject, dict) else {}
 
 
@@ -184,6 +196,8 @@ class SkillRunner:
         session: AsyncSession,
         invocation_service: MCPInvocationService | None = None,
         query_runner: Any | None = None,
+        step_params_mapper: Any | None = None,
+        report_persona: str | None = None,
     ) -> None:
         self._session = session
         self._skills = SkillRepository(session)
@@ -194,8 +208,15 @@ class SkillRunner:
         # REQ-046 v2: internal_query steps run through this callable
         # (question, entity_type, subject, caller, tenant_id) -> dict with
         # ``audit_id``; injected so tests stay network-free and production
-        # wires the REQ-052 QueryService adapter.
+        # wires the business-owned adapter (the REQ-052 QueryService binding
+        # lives with the consuming business context).
         self._query_runner = query_runner
+        # Business-specific subject -> tool-params shaping (e.g. an external
+        # provider's expected key names) is injected by the assembling
+        # business context; the generic default is pass-through.
+        self._step_params_mapper = step_params_mapper or _default_step_params
+        # LLM synthesis persona; business contexts inject their own.
+        self._report_persona = report_persona or _DEFAULT_REPORT_PERSONA
 
     async def run(
         self,
@@ -384,7 +405,7 @@ class SkillRunner:
                 tenant_id=tenant_id,
                 server_code=step.server,
                 tool_name=step.tool,
-                params=_mcp_step_params(step.server, subject),
+                params=self._step_params_mapper(step.server, subject),
                 caller=caller,
             )
             result, audit_id = trace.result, trace.audit_id
@@ -521,21 +542,25 @@ class SkillRunner:
             duration_ms=duration_ms,
         )
 
-    @staticmethod
     def _build_messages(
-        template: SopTemplate, subject_digest: str, facts: dict[str, Any]
+        self,
+        template: SopTemplate,
+        subject_digest: str,
+        facts: dict[str, Any],
     ) -> list[dict]:
         """Build the LLM prompt: fill-in skeleton + collected facts.
 
-        The raw subject never enters the prompt by reference here — facts
-        are the tool outputs; the subject digest is included so the model
-        context is bound to this execution without exposing identifiers
-        beyond what the tools themselves returned.
+        The persona is injected at assembly time (``report_persona``) so the
+        generic runner carries no business role semantics. The raw subject
+        never enters the prompt by reference here — facts are the tool
+        outputs; the subject digest is included so the model context is bound
+        to this execution without exposing identifiers beyond what the tools
+        themselves returned.
         """
         principles = "\n".join(f"- {p}" for p in template.principles) or "- 无"
         report_skeleton = template.report_template or "## 事实数据\n## AI 分析"
         system = (
-            "你是企业尽调报告助手。严格按给定报告骨架填空：只填值、不更改结构；"
+            f"{self._report_persona}严格按给定报告骨架填空：只填值、不更改结构；"
             "缺失数据显式标注，不得编造。\n\n"
             f"执行纪律:\n{principles}\n\n"
             f"报告骨架:\n{report_skeleton}"

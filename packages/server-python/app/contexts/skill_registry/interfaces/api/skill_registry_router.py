@@ -31,9 +31,6 @@ from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.contexts.mcp_registry.application.mcp_invocation_service import (
     InvocationCaller,
 )
-from app.contexts.skill_registry.application.dd_query_runner import (
-    build_dd_internal_query_runner,
-)
 from app.contexts.skill_registry.application.skill_registry_service import (
     SKILL_REGISTRY_ADMIN_ROLES,
     SkillNotFoundError,
@@ -427,11 +424,13 @@ async def run_skill(
     audit row is committed BEFORE the error is re-raised as an HTTP error,
     otherwise ``get_session`` would roll it back.
 
-    REQ-046 PR-5: wire the production ``internal_query`` channel. The runner
-    gets a ``query_runner`` bound to the request-scoped ``QueryService``
-    (``app.state.query_service`` re-bound to this session, mirroring the
-    query_router wiring) so ``internal_query`` steps execute governed
-    structured-data queries; skills without such steps are unaffected.
+    TD-085 Slice C: this endpoint wires the GENERIC runner only — no
+    business ``query_runner`` / param mapper / persona is bound here
+    (business wiring lives with the consuming business context). Skills
+    without ``internal_query`` steps are unaffected; a trial run hitting an
+    ``internal_query`` step fails closed with an audited ``tool_error``
+    (runner 未配置 query_runner) instead of executing a business query —
+    run business skills through their business router instead.
     """
     tenant_id = uuid.UUID(str(current_user["tenant_id"]))
     role = str(current_user.get("role", "employee"))
@@ -441,10 +440,7 @@ async def run_skill(
         skill = await service.get_by_id(tenant_id, uuid.UUID(skill_id))
     except SkillNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
-    query_runner = build_dd_internal_query_runner(
-        request.app.state.query_service, session
-    )
-    runner = SkillRunner(session, query_runner=query_runner)
+    runner = SkillRunner(session)
     caller = InvocationCaller(
         caller_type="http_api",
         role=role,

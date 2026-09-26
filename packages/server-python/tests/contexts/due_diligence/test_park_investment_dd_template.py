@@ -21,7 +21,7 @@ TEMPLATE_PATH = (
     Path(__file__).resolve().parents[3]
     / "app"
     / "contexts"
-    / "skill_registry"
+    / "due_diligence"
     / "templates"
     / "park_investment_dd.yaml"
 )

@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-TD-085-BOUNDARY-CLOSURE-SLICE-C：skill_runner DD/QCC 解耦 + DD 业务回收至 due_diligence
+
+状态：🟡 进行中
+类型：TD / P1 / Backend / Agent-Platform / DDD / Boundary-Closure / Refactor / Test
+领域：skill_registry / due_diligence
+当前执行模式：technical-debt（refactor，行为保持）
+最近接手工具：Claude Code
+分支：refactor/td085-slice-c-dd-decoupling
+
+需求来源：
+- Spec: docs/02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md（ADR-085-3：internal_query 契约保留 + 4 个 DD 测试迁移裁决）
+- Plan: docs/02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md §1.4
+- 技术债：technical-debt.md TD-085（保持 🟡 进行中）
+- 架构约束：architecture.md；due_diligence → skill_registry 单向，禁止反向依赖
+
+当前进展：解耦实现已完成（本 commit 提交 Draft PR 待评审，未 Ready / 未评分 / 未合并）。skill_runner.py 泛化——`_mcp_step_params` QCC 映射与「企业尽调报告助手」persona 移除，新增 `step_params_mapper` / `report_persona` 构造注入点（默认 pass-through + 中性 persona）；`dd_query_runner.py` 与 `park_investment_dd.yaml` git mv 至 due_diligence（内容零修改）；新增 `due_diligence/application/skill_caller.py` 单一装配点（DD query channel + QCC mapper + DD persona）；dd_router 改走 skill_caller，skill_registry_router 试用入口回归通用 runner（internal_query fail-closed，无测试锚定该 wiring）；4 个 DD 测试文件按 ADR-085-3 迁移（断言/输入/期望零修改，仅 v2 文件 1 处构造点注入 mapper）；新增 test_dd_skill_caller.py 11 个 DB-free 判别测试。
+下一步：等待独立复审 → Ready 门禁 → 正式评分 → 合并 → post-merge closeout（均不在本任务执行）。
+验证状态：本地门禁全绿——ruff；mypy baseline 0 回归（241 / 74 keys；dd_query_runner key 随迁移同数改名，2 个可缩减 key 遗留不动）；11/11 新 DB-free 测试 pass；双目录 collect 260；本地失败归因闭环（base `bc6359b7` vs 分支 148 行 FAILED/ERROR node-ID 归一化迁移路径后集合一致，全为本地 PG 不可用）；业务 token / 反向依赖双向归零；git diff --check clean；check-engineering-docs --full passed。**首轮 CI 如实记录**：Backend hermetic 5 failed / 3023 passed——测试隔离回归（非行为回归）：ADR-085-3 迁移使 test_dd_internal_query_e2e.py 从 skill_registry/（原在全部 due_diligence 测试之后运行）移入 due_diligence/ 并排在 test_dd_run_router.py 之前；其提交的 `park_investment_dd` v1.0.0（含 internal_query SOP）残留库中，run-router 注册对该 code+version 409 容忍后复用该 SOP → unpaid_query 真实执行 → DD catalog 未配置 fail-closed（3 failed + 2 级联 KeyError）。修复：该 e2e `_clean` autouse fixture 增加 teardown 镜像清理（断言/输入/期望零修改，仅隔离卫生），普通 commit 复验 CI。hermetic 全套由 CI Backend 覆盖。
+交接备注：ADR-085-3（spec §11.3）裁决迁移 4 个测试文件（含 test_skill_runner_v2.py），与 plan §3 列举的 2 文件存在口径差异，按 ADR 决策执行并在 PR body 明示；internal_query step 类型与 SkillStepResult.query_audit_id 契约保留
 
 ## 下一批候选任务
 

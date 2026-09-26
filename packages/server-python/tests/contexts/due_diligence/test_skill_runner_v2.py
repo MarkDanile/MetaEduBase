@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy import text
 
+from app.contexts.due_diligence.application.skill_caller import dd_mcp_step_params
 from app.contexts.mcp_registry.application.mcp_invocation_service import (
     InvocationCaller,
     InvocationTrace,
@@ -240,8 +241,11 @@ async def test_mcp_step_maps_company_name_to_searchkey_for_qcc(db_session, monke
     )
     await _register_skill(db_session, sop=MIXED_SOP)
     invocation = _mock_invocation()
+    # TD-085 Slice C: QCC param shaping moved out of the generic runner;
+    # the DD business wires it via step_params_mapper (see skill_caller).
     runner = SkillRunner(
         db_session, invocation_service=invocation, query_runner=_mock_query(),
+        step_params_mapper=dd_mcp_step_params,
     )
     await runner.run(
         tenant_id=DEFAULT_TENANT_ID, skill_code="dd", version="1.0.0",

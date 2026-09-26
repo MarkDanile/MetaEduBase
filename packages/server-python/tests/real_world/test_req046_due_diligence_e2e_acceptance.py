@@ -64,7 +64,7 @@ PARK_TEMPLATE_PATH = (
     Path(__file__).resolve().parents[2]
     / "app"
     / "contexts"
-    / "skill_registry"
+    / "due_diligence"
     / "templates"
     / "park_investment_dd.yaml"
 )
