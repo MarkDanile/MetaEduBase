@@ -114,6 +114,8 @@ Slice E (综合验证 + 进入 implementation-readiness)  → barrier（依赖 A
 
 ### 1.4 Slice C：skill_runner.py DD/QCC 解耦 + DD 业务回收至 due_diligence
 
+**状态**：🟢 已完成（2026-09-26，PR #632 squash mergeCommit `ff85a47f` 入 main；Original 评分 96/100；skill_runner DD/QCC/尽调 persona 业务 token 归零并泛化为注入式通用 runner（step_params_mapper / report_persona 构造注入点，默认业务中性）；internal_query step 类型与 SkillStepResult.query_audit_id 契约保留；dd_query_runner.py 与 park_investment_dd.yaml R100 迁至 due_diligence，新增 skill_caller.py 唯一装配点保持单向；4 个测试文件迁移按 ADR-085-3 裁决执行（含 test_skill_runner_v2.py，与 §3 列举 2 文件的口径差异已按 ADR 裁决并在 PR body 明示）；CI Draft Round-1 Backend 5 failed（测试隔离：迁移改变目录执行序 → e2e 残留 park_investment_dd v1.0.0 被 run-router 409 容忍复用）经 _clean fixture teardown 镜像清理修复后，Round-2 / Ready / 评分后三轮 CI 全 SUCCESS，Backend full hermetic 3028 passed / 1 skipped / 10 deselected；本地 PG 不可用期间 DB 测试仅由 CI hermetic 覆盖，真实 LLM 验收（real_world AC-8）保持 manual opt-in 未执行——两层级如实区分；Slice D/E 未启动）
+
 **前置**：**无**（spec readiness 阶段裁决：Slice C 独立，不依赖 A；与 D 可并行）
 
 **目标**：
@@ -266,7 +268,7 @@ Slice E (综合验证 + 进入 implementation-readiness)  → barrier（依赖 A
 
 - [x] Slice A 完成（PR #627 mergeCommit `8fb60704`，Original 95/100）+ 跨 context 零违规 import + 测试 pass + 文件规模门禁 pass
 - [x] Slice B 完成（PR #629 mergeCommit `e36a70c1`，Original 95/100）+ ai_chat_service ≤ 500 行（实测 479）+ post-merge 治理收口 PR #630 mergeCommit `08c84452`（Original 94/100）
-- [ ] Slice C 完成 + skill_runner 零业务硬编码 + DD 业务完整迁移至 due_diligence（含 park_investment_dd.yaml 模板 + 4 个测试迁移）
+- [x] Slice C 完成（PR #632 mergeCommit `ff85a47f`，Original 96/100）+ skill_runner 零业务硬编码（DD/QCC/尽调 persona token 归零，注入式泛化）+ DD 业务完整迁移至 due_diligence（dd_query_runner + park_investment_dd.yaml 模板 R100 迁移 + skill_caller 单一装配点 + 4 个测试迁移）
 - [ ] Slice D 完成 + agent_workspace ↔ agent_execution mutual import 解除 + FencedExecutionPort 复用 + WorkspaceSnapshotPort 新增
 - [ ] Slice E 完成 + 综合验证 + TD-085 Completion
 
