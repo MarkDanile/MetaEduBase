@@ -238,7 +238,9 @@ class WorkspaceTransportErasureParticipant(TransportErasureParticipantBase):
         # - 其余已 tombstone digest 不匹配 -> fail closed（不静默）。
         # receipt tombstone digest = snapshot_digest({schema_version:1, reason,
         # event_id})（S4-C Tx1 冻结键名，同一 helper；reason 为冻结键值）。
-        from app.contexts.agent_execution.domain.snapshots import snapshot_digest
+        # TD-085 Slice D（ADR-085-4）：helper 经 composition 共享模块调用，
+        # 不再 direct import execution domain（digest 算法与负载构造不变）。
+        from app.composition.runtime_snapshot import snapshot_digest
 
         rows = (
             await self._session.execute(

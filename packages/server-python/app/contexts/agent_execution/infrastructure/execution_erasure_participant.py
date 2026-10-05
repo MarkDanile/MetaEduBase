@@ -41,7 +41,9 @@ Spec §5.2/§6.1/§7.2/§9.2（plan §R1-S3「S3-D 契约注记」）：
 - ACK digest：排序 ``{owner_key, owner_version, purge_revision, 各类清除计数,
   body_scan_digest}`` canonical digest，不含正文/actor 明文。
 
-本模块组合既有 ``AgentErasureRepository``（锁序/fence CAS）和共享
+本模块经 ``WorkspaceSnapshotPort``（TD-085 Slice D / ADR-085-4，
+``agent_workspace.application.ports``）访问 workspace 的 fence/锁/ledger 原语
+（锁序/fence CAS 语义不变，默认 adapter 由 composition 装配），并组合共享
 ``agent_actor_digest`` / ``agent_suppression_reasons`` helper，只新增 execution
 正文清除与 body scan，不复制 fence/锁逻辑。
 """
@@ -51,6 +53,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func, null, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -68,6 +71,7 @@ from app.composition.agent_erasure_registry import (
     require_owner,
 )
 from app.composition.agent_suppression_reasons import suppression_reason_code
+from app.composition.runtime_snapshot import WorkspaceSnapshotAdapter
 from app.config import settings
 from app.contexts.agent_execution.infrastructure.models import (
     AgentRunModel,
@@ -76,21 +80,30 @@ from app.contexts.agent_execution.infrastructure.models import (
     RuntimeSessionBindingModel,
     TurnInputModel,
 )
-from app.contexts.agent_workspace.domain import (
+
+# TD-085 Slice D（ADR-085-4）：workspace erasure 协调原语经
+# ``agent_workspace.application.ports`` 的 ``WorkspaceSnapshotPort`` 访问，
+# 不再 direct import ``agent_workspace.domain`` / ``infrastructure``——
+# domain 类型（ErasureFence / 三个状态枚举）经 ports 再导出引用，
+# fence/hold 委托与 FOR UPDATE 加载由 composition 默认 adapter
+# （``app.composition.runtime_snapshot.WorkspaceSnapshotAdapter``）装配。
+from app.contexts.agent_workspace.application.ports import (
     ErasureFence,
     ErasureFenceState,
     PurgeOperationState,
     PurgeOwnerState,
-)
-from app.contexts.agent_workspace.infrastructure.erasure_repository import (
-    AgentErasureRepository,
-)
-from app.contexts.agent_workspace.infrastructure.models import (
-    ConversationModel,
-    PurgeOperationModel,
-    PurgeOwnerCheckpointModel,
+    WorkspaceSnapshotPort,
 )
 from app.shared.schemas.canonical_json import canonical_digest
+
+if TYPE_CHECKING:
+    # 仅类型层引用（``from __future__ import annotations`` 下运行期零 import）：
+    # 内部 helper 的参数/返回标注；运行期 ORM 行由 port adapter 返回。
+    from app.contexts.agent_workspace.application.ports import (
+        ConversationModel,
+        PurgeOperationModel,
+        PurgeOwnerCheckpointModel,
+    )
 
 # execution.core.v1 owner key（Spec §4，唯一受管 execution 正文 owner）。
 EXECUTION_CORE_OWNER = "execution.core.v1"
@@ -231,7 +244,10 @@ class ExecutionErasureParticipant:
         audit_secret_version: int | None = None,
     ) -> None:
         self._session = session
-        self._erasure = AgentErasureRepository(session)
+        # TD-085 Slice D（ADR-085-4）：workspace erasure 原语经
+        # WorkspaceSnapshotPort 访问；默认 adapter 由 composition 装配，
+        # 构造签名与行为不变（既有调用方/测试仍只传 session）。
+        self._erasure: WorkspaceSnapshotPort = WorkspaceSnapshotAdapter(session)
         # 独立 actor_erasure_secret（非 jwt_secret）+ V1 冻结契约 + 构造器禁覆盖
         # （与 WorkspaceErasureParticipant 同模式，复用 composition shared helper）。
         if settings.environment == "production" and (
@@ -401,17 +417,12 @@ class ExecutionErasureParticipant:
         require_capability(EXECUTION_CORE_OWNER, "erase")
         require_owner(EXECUTION_CORE_OWNER)
 
-        # 锁序第一步：Conversation 行锁。
-        conversation = (
-            await self._session.execute(
-                select(ConversationModel)
-                .where(
-                    ConversationModel.tenant_id == tenant_id,
-                    ConversationModel.id == conversation_id,
-                )
-                .with_for_update()
-            )
-        ).scalar_one_or_none()
+        # 锁序第一步：Conversation 行锁（经 WorkspaceSnapshotPort；SELECT FOR
+        # UPDATE 逐字迁至 composition adapter，锁范围不变）。
+        conversation = await self._erasure.lock_conversation_for_update(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
         if conversation is None:
             raise ValueError(
                 f"conversation {conversation_id} not found for execution erasure"
@@ -1095,19 +1106,9 @@ class ExecutionErasureParticipant:
         ``operation.purge_revision == conversation.purge_revision`` 旧 revision
         拒绝门禁（首锁内读到的 Conversation 当前值裁决）。
         """
-        operation = (
-            (
-                await self._session.execute(
-                    select(PurgeOperationModel)
-                    .where(
-                        PurgeOperationModel.tenant_id == tenant_id,
-                        PurgeOperationModel.id == purge_operation_id,
-                    )
-                    .with_for_update()
-                )
-            )
-            .scalars()
-            .one_or_none()
+        operation = await self._erasure.lock_operation_for_update(
+            tenant_id=tenant_id,
+            purge_operation_id=purge_operation_id,
         )
         if operation is None:
             raise ValueError(f"purge operation {purge_operation_id} not found")
@@ -1146,21 +1147,10 @@ class ExecutionErasureParticipant:
         fence_owner_version: int,
     ) -> PurgeOwnerCheckpointModel:
         """校验 owner checkpoint（owner_version / capability_digest CAS）。"""
-        checkpoint = (
-            (
-                await self._session.execute(
-                    select(PurgeOwnerCheckpointModel)
-                    .where(
-                        PurgeOwnerCheckpointModel.tenant_id == tenant_id,
-                        PurgeOwnerCheckpointModel.purge_operation_id
-                        == purge_operation_id,
-                        PurgeOwnerCheckpointModel.owner_key == EXECUTION_CORE_OWNER,
-                    )
-                    .with_for_update()
-                )
-            )
-            .scalars()
-            .one_or_none()
+        checkpoint = await self._erasure.lock_checkpoint_for_update(
+            tenant_id=tenant_id,
+            purge_operation_id=purge_operation_id,
+            owner_key=EXECUTION_CORE_OWNER,
         )
         if checkpoint is None:
             raise ValueError(
