@@ -14,25 +14,7 @@
 
 ## 当前进行中
 
-### TASK-TD-085-BOUNDARY-CLOSURE-SLICE-C：skill_runner DD/QCC 解耦 + DD 业务回收至 due_diligence
-
-状态：🟡 进行中
-类型：TD / P1 / Backend / Agent-Platform / DDD / Boundary-Closure / Refactor / Test
-领域：skill_registry / due_diligence
-当前执行模式：technical-debt（refactor，行为保持）
-最近接手工具：Claude Code
-分支：refactor/td085-slice-c-dd-decoupling
-
-需求来源：
-- Spec: docs/02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md（ADR-085-3：internal_query 契约保留 + 4 个 DD 测试迁移裁决）
-- Plan: docs/02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md §1.4
-- 技术债：technical-debt.md TD-085（保持 🟡 进行中）
-- 架构约束：architecture.md；due_diligence → skill_registry 单向，禁止反向依赖
-
-当前进展：解耦实现已完成（本 commit 提交 Draft PR 待评审，未 Ready / 未评分 / 未合并）。skill_runner.py 泛化——`_mcp_step_params` QCC 映射与「企业尽调报告助手」persona 移除，新增 `step_params_mapper` / `report_persona` 构造注入点（默认 pass-through + 中性 persona）；`dd_query_runner.py` 与 `park_investment_dd.yaml` git mv 至 due_diligence（内容零修改）；新增 `due_diligence/application/skill_caller.py` 单一装配点（DD query channel + QCC mapper + DD persona）；dd_router 改走 skill_caller，skill_registry_router 试用入口回归通用 runner（internal_query fail-closed，无测试锚定该 wiring）；4 个 DD 测试文件按 ADR-085-3 迁移（断言/输入/期望零修改，仅 v2 文件 1 处构造点注入 mapper）；新增 test_dd_skill_caller.py 11 个 DB-free 判别测试。
-下一步：等待独立复审 → Ready 门禁 → 正式评分 → 合并 → post-merge closeout（均不在本任务执行）。
-验证状态：本地门禁全绿——ruff；mypy baseline 0 回归（241 / 74 keys；dd_query_runner key 随迁移同数改名，2 个可缩减 key 遗留不动）；11/11 新 DB-free 测试 pass；双目录 collect 260；本地失败归因闭环（base `bc6359b7` vs 分支 148 行 FAILED/ERROR node-ID 归一化迁移路径后集合一致，全为本地 PG 不可用）；业务 token / 反向依赖双向归零；git diff --check clean；check-engineering-docs --full passed。**首轮 CI 如实记录**：Backend hermetic 5 failed / 3023 passed——测试隔离回归（非行为回归）：ADR-085-3 迁移使 test_dd_internal_query_e2e.py 从 skill_registry/（原在全部 due_diligence 测试之后运行）移入 due_diligence/ 并排在 test_dd_run_router.py 之前；其提交的 `park_investment_dd` v1.0.0（含 internal_query SOP）残留库中，run-router 注册对该 code+version 409 容忍后复用该 SOP → unpaid_query 真实执行 → DD catalog 未配置 fail-closed（3 failed + 2 级联 KeyError）。修复：该 e2e `_clean` autouse fixture 增加 teardown 镜像清理（断言/输入/期望零修改，仅隔离卫生），普通 commit 复验 CI。hermetic 全套由 CI Backend 覆盖。
-交接备注：ADR-085-3（spec §11.3）裁决迁移 4 个测试文件（含 test_skill_runner_v2.py），与 plan §3 列举的 2 文件存在口径差异，按 ADR 决策执行并在 PR body 明示；internal_query step 类型与 SkillStepResult.query_audit_id 契约保留
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -54,6 +36,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-09-26 | TASK-TD-085-BOUNDARY-CLOSURE-SLICE-C：TD-085 Slice C — skill_runner DD/QCC 解耦 + DD 业务回收至 due_diligence（行为保持 refactor，ADR-085-3） | 🟢 完成（Slice C 已合并；TD-085 整体仍 🟡 进行中，Slice D/E 未启动） | PR #632 squash mergeCommit `ff85a47f`；Original 96/100；skill_runner DD/QCC/persona 归零，泛化为注入式 runner；dd_query_runner + 模板 + 4 测试迁至 due_diligence，skill_caller 单一装配点保持单向；CI hermetic 3028 passed；TD-085 仍 🟡 进行中，Slice D/E 未启动 | [PR #632](https://github.com/MarkDanile/MetaEduBase/pull/632)（mergeCommit `ff85a47f`）/ [Score Log #632 Original 96](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [technical-debt TD-085 🟡 进行中](technical-debt.md) |
 | 2026-09-23 | TASK-TD-085-BOUNDARY-CLOSURE-SLICE-B-POST-MERGE-CLOSEOUT：PR #629 Slice B 合并后治理收口（pure-docs 4 治理文件 +11/-52）+ P1-1 测试计数返修（30→28） | 🟢 完成（Slice B 治理收口已合并；TD-085 整体仍 🟡 进行中，Slice C/D/E 未启动） | PR #630 squash mergeCommit `08c84452`；Original 评分 94/100；Slice B 治理事实（479 行 / 28 测试 / SHA 角色）同步入 main；P1-1 计数 30→28 经 collect-only 11+8+9=28 返修闭环；TD-085 整体仍 🟡 进行中，Slice C/D/E 未启动 | [PR #630](https://github.com/MarkDanile/MetaEduBase/pull/630)（mergeCommit `08c84452`）/ [Score Log #630 Original 94](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [technical-debt TD-085 🟡 进行中](technical-debt.md) |
 | 2026-09-22 | TASK-TD-085-BOUNDARY-CLOSURE-SLICE-B：TD-085 Slice B — ai_chat_service.py 职责拆分（行为保持 refactor） | 🟢 完成（Slice B 已完成；TD-085 整体仍 🟡 进行中，Slice C/D/E 未启动） | PR #629 squash mergeCommit `e36a70c1`；Original 评分 95/100；ai_chat_service.py 1054→479 行达标；prompt/tool-calling 入 runtime，diagnostics/DTO 留 knowledge；CI hermetic 3017 passed；TD-085 整体仍 🟡 进行中，Slice C/D/E 未启动 | [PR #629](https://github.com/MarkDanile/MetaEduBase/pull/629)（mergeCommit `e36a70c1`）/ [Score Log #629 Original 95](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [technical-debt TD-085 🟡 进行中](technical-debt.md) |
 | 2026-09-20 | TASK-TD-085-BOUNDARY-CLOSURE-SLICE-A：TD-085 Slice A — LLM Port 抽离（行为保持 refactor） | 🟢 完成（Slice A 已完成；TD-085 整体仍 🟡 进行中，Slice B/C/D/E 未启动） | PR #627 squash mergeCommit `8fb60704`；Original 评分 95/100；runtime 子包 LlmProvider port + OpenAIProvider adapter 入 main，反向 import 双向清零；TD-085 整体仍 🟡 进行中，Slice B/C/D/E 未启动 | [PR #627](https://github.com/MarkDanile/MetaEduBase/pull/627)（mergeCommit `8fb60704`）/ [Score Log #627 Original 95](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [technical-debt TD-085 🟡 进行中](technical-debt.md) |

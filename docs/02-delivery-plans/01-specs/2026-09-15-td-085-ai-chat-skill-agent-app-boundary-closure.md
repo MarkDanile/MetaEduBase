@@ -37,7 +37,7 @@
 
 #### C. 通用 Skill 层被企业尽调反向塑形（domain boundary 混淆）
 
-事实源：
+事实源（其中 :103 / :110 / :538 三个行号锚点为 2026-09-15 基线快照；对应 DD/QCC/尽调 persona 硬编码已于 Slice C（2026-09-26，PR #632）移除/迁至 due_diligence，历史结论保持有效）：
 
 - [skill_runner.py:103](../../../packages/server-python/app/contexts/skill_registry/application/skill_runner.py#L103) — `Real QCC tools (any \`qcc*\` server — company / risk / history / executive)`
 - [skill_runner.py:110](../../../packages/server-python/app/contexts/skill_registry/application/skill_runner.py#L110) — `if server.startswith("qcc") and isinstance(subject, dict):`
