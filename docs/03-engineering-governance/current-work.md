@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-TD-085-BOUNDARY-CLOSURE-SLICE-D：agent_workspace ↔ agent_execution mutual import 解除
+
+状态：🟡 进行中
+类型：TD / P1 / Backend / Agent-Platform / DDD / Boundary-Closure / Refactor / Test
+领域：agent_workspace / agent_execution / composition
+当前执行模式：technical-debt（refactor，行为保持）
+最近接手工具：Claude Code
+分支：refactor/td085-slice-d-mutual-import-closure
+
+需求来源：
+- Spec: docs/02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md（ADR-085-4：port 抽象保留双向能力 + composition 协调 fence ledger 双边不变性）
+- Plan: docs/02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md §1.5
+- 技术债：technical-debt.md TD-085（保持 🟡 进行中）
+- 架构约束：architecture.md；composition 为合法编排层（FencedExecutionPort 既有先例复用，不新建同义 port）
+
+当前进展：开工门禁完成（main `e89db379` clean；Slice A/B/C 已合并，Slice E 与下游未启动）。AST 双形式扫描基线：workspace→execution 违规 1 处（workspace_transport_erasure_participant.py:241 `snapshot_digest`）；execution→workspace 违规 3 处（execution_erasure_participant.py:79/85/88 — domain / erasure_repository / models），合法 application ports 引用 2 处保留（compatibility_output_service / run_query_service）。设计定稿：`agent_workspace/application/ports.py` 新增 `WorkspaceSnapshotPort`（fence/hold 4 方法委托 + 3 个 FOR UPDATE 加载 + domain 类型再导出）；新增 `app/composition/runtime_snapshot.py`（`snapshot_digest` 共享 helper + `WorkspaceSnapshotAdapter` 默认实现，3 个 SELECT FOR UPDATE 自 execution participant 逐字搬迁）；execution participant 改经 port（`__init__` 签名与全部公开符号不变，既有测试零修改）；workspace participant :241 改经 composition helper。
+下一步：实现 → AST + grep 双向归零验证 → ruff / mypy → pytest（agent_workspace / agent_execution / composition）→ commit / push / Draft PR。
+验证状态：待执行。
+交接备注：行为保持硬约束——fence ledger 双边不变性、锁序、SQL、幂等 / CAS / fail-closed / 异常传播语义不变；不修改既有测试输入断言期望；不启动 Slice E / REQ-043 / REQ-047 Extended / WS-S2 / WS-S3 / REQ-062 / REQ-063；不改 erase_available / migration / schema / registry / CI / 门禁。
 
 ## 下一批候选任务
 
