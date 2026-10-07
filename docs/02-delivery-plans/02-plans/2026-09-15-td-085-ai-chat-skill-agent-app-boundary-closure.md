@@ -149,6 +149,8 @@ Slice E (综合验证 + 进入 implementation-readiness)  → barrier（依赖 A
 
 ### 1.5 Slice D：agent_workspace ↔ agent_execution mutual import 解除
 
+**状态**：🟡 实现完成、Draft PR 待评审（2026-10-05，分支 `refactor/td085-slice-d-mutual-import-closure`，未 Ready / 未评分 / 未合并）：双向直接 import 解除——`workspace_transport_erasure_participant.py` 原 :241 反向 import 改经 `app.composition.runtime_snapshot` 共享 helper（digest 算法与负载构造不变）；`execution_erasure_participant.py` 原 :79/85/88 三处 `agent_workspace` domain / infrastructure / models import 移除，改经 `agent_workspace.application.ports` 新增 `WorkspaceSnapshotPort`（7 方法 Protocol + erasure domain 类型冗余别名 re-export + TYPE_CHECKING 模型标注）访问；默认 adapter `WorkspaceSnapshotAdapter` 由 composition 装配（fence / legal hold 4 方法 1:1 委托 `AgentErasureRepository`，Conversation / PurgeOperation / PurgeOwnerCheckpoint 三个 `SELECT ... FOR UPDATE` 逐字搬迁，SQL / 锁序 / `ExecutionErasureParticipant(session)` 构造签名不变，复用既有 `FencedExecutionPort` 未新建同义 port）；AST 双形式 + grep 双向扫描：workspace→execution 0 命中，execution→workspace 仅 `application.ports`（2 处既有合法 + 2 处新 port 引用），无 `__import__` / importlib 动态绕过；本地真实 PG 全量：agent_workspace 22/22、agent_execution 175/175、composition 1027 passed + 6 skipped（含新增 `tests/composition/test_runtime_snapshot.py` 10/10）；ruff / mypy（baseline 0 回归，提示 2 key 可缩减属独立维护本 Slice 不动）/ `git diff --check` / `check-engineering-docs --full` 全过；Slice E 未启动
+
 **前置**：**无**（spec readiness 阶段裁决：Slice D 独立，不依赖 A/B/C；FencedExecutionPort 已存在可直接复用）
 
 **目标**：
