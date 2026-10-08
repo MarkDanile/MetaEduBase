@@ -112,7 +112,8 @@ Agent Apps
 
 ## Current Iteration
 
-- [2026-W30 P3 企业 Agent 平台控制面塑形](../03-iterations/2026-W30-p3-enterprise-agent-platform.md)
+- 当前没有已批准的新 P3 iteration；本节只保留已关闭迭代的规划事实，不预建 W31。新的 P3 iteration 须另行立项后再登记。
+- 已关闭：[2026-W30 P3 企业 Agent 平台控制面塑形](../03-iterations/2026-W30-p3-enterprise-agent-platform.md)（2026-10-09 收口，Committed Scope 唯一条目 REQ-059 已 🟢 Done）——该文件是 AG-1～AG-8 冻结决策与园区主线 Product Decisions 的唯一详细事实源，下方 Delivery Order 的散文摘要不替代其具体冻结值。
 - REQ-059 Architecture Gate 与 REQ-060 已完成；REQ-041/047 的 W1/E0/E1/B1/A1/D1 与 R1-S1..S6 已全部合并，C1 Durable Core 总验收由 [PR #614](https://github.com/MarkDanile/MetaEduBase/pull/614) 合并（mergeCommit `62eef1a3`），Durable Core 完成。原近期固定顺序 R1-S4 -> R1-S5 -> R1-S6 -> C1 已全部走完；TD-085 已于 2026-10-08 完成（TD-085 Completion 达成，PR #636 mergeCommit `d83962a9`）；后续顺序为 REQ-042 Workspace -> REQ-043 Runtime/Tool Gateway——TD-085 Completion 仅解除「可启动 REQ-043 shaping」这一条前置关系，REQ-043 本身仍 ⚫ Candidate 未启动，WS-S2 / WS-S3 仍 BLOCKED；REQ-042 整体保持 ⚫ Candidate（WS-S1 已完成不等于 REQ-042 整体完成），只允许并行文档塑形，不直接跳到 Pi Worker。
 
 ### 阶段目标：2026-08 Durable Core Close

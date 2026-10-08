@@ -1,6 +1,6 @@
 # Iteration 2026-W30: P3 企业 Agent 平台控制面塑形
 
-Status: 🟡 Doing
+Status: 🟢 Done
 Dates: 2026-07-20 ~ 2026-07-26
 Goal: 完成 P2 -> P3 路线切换，冻结企业 Agent Control Plane、源码依据、任务依赖顺序和园区优先的首批 Pilot 边界，为 REQ-041/047 contract-first 设计建立开工门禁。
 
@@ -66,6 +66,7 @@ Goal: 完成 P2 -> P3 路线切换，冻结企业 Agent Control Plane、源码�
 | 现有 AIChatService/SkillRunner 已有边界倒置 | 不能先加第四条编排链；先 contract，再分 Slice 收口 | TD-085 |
 | 菜单存在 Skill 重复和管理层级漂移 | REQ-060 可与持久化控制面并行，但不能展示未交付模块 | REQ-060 |
 | 招商团队确认园区近期五应用，且与旧候选重叠 | 固定 APP-005/009/012/030/016；APP-011 并入 016，APP-022 并入 012；教育样例顺延 | APP-005/009/012/030/016 / REQ-062/063 |
+| W30 整体收口（2026-10-09） | Committed Scope 全 🟢 Done（唯一承诺条目 REQ-059，PR #475 已合并，squash merge `132730a0`），W30 承诺范围已完成。AG-1～AG-8 八项冻结决策继续作为后续 P3 实施契约，本文件是其唯一详细事实源（milestone 与 backlog 只承载散文摘要，不替代具体冻结值）；Product Decisions 六项冻结值同样保持有效。上方 Ready Queue 为 W30 时点（2026-07）快照，其中各任务状态反映当时事实，当前进度以各任务自身事实源为准，本行不把其中 Candidate / Shaping 项写为 W30 已完成。 | 后续任务进入各自独立事实源推进：REQ-042 Workspace（⚫ Candidate）、REQ-043 Runtime/Tool Gateway（⚫ Candidate）、REQ-047 Extended（🟣 Shaping）、REQ-062 / REQ-063（⚫ Candidate），TD-085 已于 2026-10-08 完成（🟢）。**当前没有已批准的 W31**，不得虚构新迭代；新的 P3 iteration 须另行立项并同步 `03-iterations/README.md`。 |
 
 ## Evidence
 
