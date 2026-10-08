@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TASK-TD-085-BOUNDARY-CLOSURE-SLICE-E: TD-085 Slice E — 综合验证与 TD-085 Completion 前置验收（不新增测试、不修改既有断言或业务实现）
+
+状态：🟡 进行中
+类型：technical-debt
+领域：backend / 架构治理
+当前执行模式：technical-debt（Slice E 综合验证）
+最近接手工具：Claude Code
+分支：docs/td085-slice-e-comprehensive-verification
+
+需求来源：
+- Spec: `docs/02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md` §6
+- Plan: `docs/02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md` §1.6 / §8
+- 技术债：`docs/03-engineering-governance/technical-debt.md` TD-085
+- 架构约束：`docs/03-engineering-governance/01-rules/architecture.md`
+
+当前进展：plan §1.6 全部 verifier 已逐项复跑通过（2026-10-08，本地真实 PG postgresql@16 metaedu_test @ localhost:5432，macOS Darwin 27.0.0，分支 base=main `fbc06ae5`）——V1 `rg "from app\.contexts\.knowledge\.interfaces\.api" .../knowledge/application/` exit 1 零行；V2 `wc -l ai_chat_service.py`=479 ≤500；V3 `rg -i "qcc|dd|背调" skill_runner.py` 逐字命令 3 行全部为英文单词 `forbidden` 的子串误配（:7/:131/:270），词边界消歧 `qcc|背调`、`\bdd\b`、`enterprise_diligence|due_diligence|尽调` 均 exit 1 零行，业务专属分支归零语义判据达成；V4 workspace→execution exit 1 零行；V5 execution→workspace 4 行全部 `application.ports` 合法 port 通道（2 既有 TerminalOutput/WorkspaceReadPort + 2 Slice D 新增 WorkspaceSnapshotPort 运行时与 TYPE_CHECKING），非 port 归零；V6 AST 双形式（ast.Import+ast.ImportFrom，344 文件 2169 边 0 解析错误）七组专项扫描全零，无 `__import__`/`importlib` 动态绕过；V7 `scripts/scan-source-sizes` exit 0；V8a 七目录聚焦回归 1603 passed / 6 skipped / 0 failed（460.12s）；V8b 全仓 hermetic（spec §6.1 口径，`uv run --frozen --extra dev pytest -q -m "not external_network" --durations=20`，TEST_DATABASE_URL+DATABASE_URL 双 env 与 CI 对等）**3039 passed / 10 deselected / 0 failed / 0 errors**（386.13s，collection 3049 与 CI full hermetic 一致）；§6.2 附加 git diff --check exit 0、check-engineering-docs --full passed（32 allowlisted 与 main 基线一致）、ruff check 全过、mypy baseline 0 regressions（241 historical / 74 keys）
+下一步：Draft PR #636 已创建待聚焦复审；不 Ready、不评分、不合并，等待复审裁决
+验证状态：Slice E 综合验证全部通过——V8a 七目录聚焦 + V8b 全仓 hermetic 双层级证据齐备（全仓前置排障记录见 plan §1.6 状态行：两次环境缺陷运行已定位非 TD-085 回归——dev 库 env 缺省 + tests/scripts/test_seed_dd_semantic_models.py base 既有隔离缺陷同日时区混排遮蔽，清理其自身清理范围残留后全绿）；Slice E PR 未合并，TD-085 Completion 未达成，TD-085 保持 🟡 进行中
+交接备注：Slice E 零新增测试、零修改既有断言或业务实现（diff 仅治理文件）；任何验收项失败 → 定位并报告阻断，不宣称 TD-085 Completion，不通过修改门禁或基线绕过；TD-085 只有在 Slice E PR squash merge 入 main 且全部验收通过后才能标记完成；CI 对 pure-docs diff 走 docs-only 快路径，full hermetic 证据以本次本地真实 PG 运行为准
 
 ## 下一批候选任务
 
