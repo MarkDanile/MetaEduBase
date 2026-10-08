@@ -26,7 +26,7 @@
 | P0 | REQ-062: 动态数据采集、填报与报表发布平台 contract shaping | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 在 Run/Artifact 契约上塑形 Campaign/FormSchemaVersion/Submission/ReportSnapshot；AI 草案审核后才发布；仅契约塑形不实现自由表单引擎 | [REQ-062](../01-product-planning/05-requirements/REQ-062-dynamic-data-collection-and-reporting.md) / [backlog](../01-product-planning/04-backlog.md) |
 | P0 | REQ-063: 受治理的外部数据采集与研究证据链 source spike | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 先做授权来源/许可/网络/快照策略 spike，不提前实现自由爬虫；Connector 等待 Tool Gateway | [REQ-063](../01-product-planning/05-requirements/REQ-063-governed-external-data-acquisition.md) / [backlog](../01-product-planning/04-backlog.md) |
 
-> 后续顺序保持：TD-085 Boundary Closure、REQ-043 Runtime/Tool Gateway 按 backlog 既定顺序承接，不在本批候选开工。
+> 后续顺序保持：TD-085 Boundary Closure 已于 2026-10-08 完成（TD-085 Completion 达成），不再作为待承接任务；REQ-043 Runtime/Tool Gateway 仍为 ⚫ Candidate 未启动，按 backlog 既定顺序等待后续任务安排，不在本批候选开工。TD-085 Completion ≠ REQ-043 / WS-S2 / WS-S3 已解除全部阻塞（spec §6.3）。
 
 ## 最近完成
 
