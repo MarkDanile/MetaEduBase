@@ -14,25 +14,7 @@
 
 ## 当前进行中
 
-### TASK-TD-085-BOUNDARY-CLOSURE-SLICE-E: TD-085 Slice E — 综合验证与 TD-085 Completion 前置验收（不新增测试、不修改既有断言或业务实现）
-
-状态：🟡 进行中
-类型：technical-debt
-领域：backend / 架构治理
-当前执行模式：technical-debt（Slice E 综合验证）
-最近接手工具：Claude Code
-分支：docs/td085-slice-e-comprehensive-verification
-
-需求来源：
-- Spec: `docs/02-delivery-plans/01-specs/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md` §6
-- Plan: `docs/02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md` §1.6 / §8
-- 技术债：`docs/03-engineering-governance/technical-debt.md` TD-085
-- 架构约束：`docs/03-engineering-governance/01-rules/architecture.md`
-
-当前进展：plan §1.6 全部 verifier 已逐项复跑通过（2026-10-08，本地真实 PG postgresql@16 metaedu_test @ localhost:5432，macOS Darwin 27.0.0，分支 base=main `fbc06ae5`）——V1 `rg "from app\.contexts\.knowledge\.interfaces\.api" .../knowledge/application/` exit 1 零行；V2 `wc -l ai_chat_service.py`=479 ≤500；V3 `rg -i "qcc|dd|背调" skill_runner.py` 逐字命令 3 行全部为英文单词 `forbidden` 的子串误配（:7/:131/:270），词边界消歧 `qcc|背调`、`\bdd\b`、`enterprise_diligence|due_diligence|尽调` 均 exit 1 零行，业务专属分支归零语义判据达成；V4 workspace→execution exit 1 零行；V5 execution→workspace 4 行全部 `application.ports` 合法 port 通道（2 既有 TerminalOutput/WorkspaceReadPort + 2 Slice D 新增 WorkspaceSnapshotPort 运行时与 TYPE_CHECKING），非 port 归零；V6 AST 双形式（ast.Import+ast.ImportFrom，344 文件 2169 边 0 解析错误）七组专项扫描全零，无 `__import__`/`importlib` 动态绕过；V7 `scripts/scan-source-sizes` exit 0；V8a 七目录聚焦回归 1603 passed / 6 skipped / 0 failed（460.12s）；V8b 全仓 hermetic（spec §6.1 口径，`uv run --frozen --extra dev pytest -q -m "not external_network" --durations=20`，TEST_DATABASE_URL+DATABASE_URL 双 env 与 CI 对等）**3039 passed / 10 deselected / 0 failed / 0 errors**（386.13s，collection 3049 与 CI full hermetic 一致）；§6.2 附加 git diff --check exit 0、check-engineering-docs --full passed（32 allowlisted 与 main 基线一致）、ruff check 全过、mypy baseline 0 regressions（241 historical / 74 keys）
-下一步：Draft PR #636 已创建待聚焦复审；不 Ready、不评分、不合并，等待复审裁决
-验证状态：Slice E 综合验证全部通过——V8a 七目录聚焦 + V8b 全仓 hermetic 双层级证据齐备（全仓前置排障记录见 plan §1.6 状态行：两次环境缺陷运行已定位非 TD-085 回归——dev 库 env 缺省 + tests/scripts/test_seed_dd_semantic_models.py base 既有隔离缺陷同日时区混排遮蔽，清理其自身清理范围残留后全绿）；Slice E PR 未合并，TD-085 Completion 未达成，TD-085 保持 🟡 进行中
-交接备注：Slice E 零新增测试、零修改既有断言或业务实现（diff 仅治理文件）；任何验收项失败 → 定位并报告阻断，不宣称 TD-085 Completion，不通过修改门禁或基线绕过；TD-085 只有在 Slice E PR squash merge 入 main 且全部验收通过后才能标记完成；CI 对 pure-docs diff 走 docs-only 快路径，full hermetic 证据以本次本地真实 PG 运行为准
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -54,6 +36,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-10-08 | TASK-TD-085-BOUNDARY-CLOSURE-SLICE-E：TD-085 Slice E — plan §1.6 综合验证与 TD-085 Completion（pure-docs；零新增测试、零修改既有断言或业务实现） | 🟢 完成（Slice E 已合并；TD-085 整体 🟢 完成） |  PR #636 squash mergeCommit `d83962a9`（mergedAt 2026-10-08T09:58:52Z）；Original 评分 98/100；V8b 全仓 hermetic 3039 passed / 0 failed；**TD-085 Completion 已达成**并翻 🟢 完成；Completion ≠ REQ-043 / WS-S2 / WS-S3 解除阻塞（三者状态不变） | [PR #636](https://github.com/MarkDanile/MetaEduBase/pull/636)（mergeCommit `d83962a9`）/ [Score Log #636 Original 98](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [technical-debt TD-085 🟢 完成](technical-debt.md) |
 | 2026-10-07 | TASK-TD-085-BOUNDARY-CLOSURE-SLICE-D：TD-085 Slice D — agent_workspace ↔ agent_execution mutual import 解除（行为保持 refactor，ADR-085-4） | 🟢 完成（Slice D 已合并；TD-085 整体仍 🟡 进行中，Slice E 未启动） | PR #634 squash mergeCommit `838bd9fb`；Original 100/100；WorkspaceSnapshotPort + composition/runtime_snapshot adapter，双向非法 import 归零；CI full hermetic 3038 passed；TD-085 仍 🟡 进行中，Slice E 未启动 | [PR #634](https://github.com/MarkDanile/MetaEduBase/pull/634)（mergeCommit `838bd9fb`）/ [Score Log #634 Original 100](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [technical-debt TD-085 🟡 进行中](technical-debt.md) |
 | 2026-09-26 | TASK-TD-085-BOUNDARY-CLOSURE-SLICE-C：TD-085 Slice C — skill_runner DD/QCC 解耦 + DD 业务回收至 due_diligence（行为保持 refactor，ADR-085-3） | 🟢 完成（Slice C 已合并；TD-085 整体仍 🟡 进行中，Slice D/E 未启动） | PR #632 squash mergeCommit `ff85a47f`；Original 96/100；skill_runner DD/QCC/persona 归零，泛化为注入式 runner；dd_query_runner + 模板 + 4 测试迁至 due_diligence，skill_caller 单一装配点保持单向；CI hermetic 3028 passed；TD-085 仍 🟡 进行中，Slice D/E 未启动 | [PR #632](https://github.com/MarkDanile/MetaEduBase/pull/632)（mergeCommit `ff85a47f`）/ [Score Log #632 Original 96](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [technical-debt TD-085 🟡 进行中](technical-debt.md) |
 | 2026-09-23 | TASK-TD-085-BOUNDARY-CLOSURE-SLICE-B-POST-MERGE-CLOSEOUT：PR #629 Slice B 合并后治理收口（pure-docs 4 治理文件 +11/-52）+ P1-1 测试计数返修（30→28） | 🟢 完成（Slice B 治理收口已合并；TD-085 整体仍 🟡 进行中，Slice C/D/E 未启动） | PR #630 squash mergeCommit `08c84452`；Original 评分 94/100；Slice B 治理事实（479 行 / 28 测试 / SHA 角色）同步入 main；P1-1 计数 30→28 经 collect-only 11+8+9=28 返修闭环；TD-085 整体仍 🟡 进行中，Slice C/D/E 未启动 | [PR #630](https://github.com/MarkDanile/MetaEduBase/pull/630)（mergeCommit `08c84452`）/ [Score Log #630 Original 94](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [technical-debt TD-085 🟡 进行中](technical-debt.md) |

@@ -113,7 +113,7 @@ Agent Apps
 ## Current Iteration
 
 - [2026-W30 P3 企业 Agent 平台控制面塑形](../03-iterations/2026-W30-p3-enterprise-agent-platform.md)
-- REQ-059 Architecture Gate 与 REQ-060 已完成；REQ-041/047 的 W1/E0/E1/B1/A1/D1 与 R1-S1..S6 已全部合并，C1 Durable Core 总验收由 [PR #614](https://github.com/MarkDanile/MetaEduBase/pull/614) 合并（mergeCommit `62eef1a3`），Durable Core 完成。原近期固定顺序 R1-S4 -> R1-S5 -> R1-S6 -> C1 已全部走完；后续顺序为 REQ-042 Workspace -> TD-085 -> REQ-043 Runtime/Tool Gateway；REQ-042 只允许并行文档塑形，不直接跳到 Pi Worker。
+- REQ-059 Architecture Gate 与 REQ-060 已完成；REQ-041/047 的 W1/E0/E1/B1/A1/D1 与 R1-S1..S6 已全部合并，C1 Durable Core 总验收由 [PR #614](https://github.com/MarkDanile/MetaEduBase/pull/614) 合并（mergeCommit `62eef1a3`），Durable Core 完成。原近期固定顺序 R1-S4 -> R1-S5 -> R1-S6 -> C1 已全部走完；TD-085 已于 2026-10-08 完成（TD-085 Completion 达成，PR #636 mergeCommit `d83962a9`）；后续顺序为 REQ-042 Workspace -> REQ-043 Runtime/Tool Gateway——TD-085 Completion 仅解除「可启动 REQ-043 shaping」这一条前置关系，REQ-043 本身仍 ⚫ Candidate 未启动，WS-S2 / WS-S3 仍 BLOCKED；REQ-042 整体保持 ⚫ Candidate（WS-S1 已完成不等于 REQ-042 整体完成），只允许并行文档塑形，不直接跳到 Pi Worker。
 
 ### 阶段目标：2026-08 Durable Core Close
 
@@ -165,7 +165,7 @@ Agent Apps
 | REQ-047 | 🟣 Shaping（Durable Core Done / Extended Shaping） | D1 已由 PR #489 合并；R1-S1..S6 与 C1（PR #614，mergeCommit `62eef1a3`）已合并，Durable Core 完成，extended contracts 继续独立塑形 | [Requirement](../05-requirements/REQ-047-agent-run-artifact-approval-center.md) / [R1 Spec](../../02-delivery-plans/01-specs/2026-07-27-req-041-047-r1-retention-purge-recovery.md) |
 | REQ-060 | 🟢 Done（Slice 1-4 全部合并 PR #497/#499/#501/#503；326/326 vitest + 55/55 Playwright；三路 CI 全绿；评分 95） | 控制台信息架构和权限化导航，可与 Durable State 并行 | [Requirement](../05-requirements/REQ-060-enterprise-console-information-architecture.md) |
 | REQ-042 | ⚫ Candidate | Codex 式 Agent Workspace | [Requirement](../05-requirements/REQ-042-agent-workspace-three-pane-experience.md) |
-| TD-085 | ⚫ 待办 | 收口 AI Chat、Skill 与 Agent App 上下文边界倒置 | [Technical Debt](../../03-engineering-governance/technical-debt.md#td-085-收口-ai-chatskill-与-agent-app-的上下文边界倒置) |
+| TD-085 | 🟢 完成 | 收口 AI Chat、Skill 与 Agent App 上下文边界倒置——Slice A-E 五个 slice 已全部完成并 squash merge 入 main（最新 Slice E 经 PR #636，mergeCommit `d83962a9`，mergedAt 2026-10-08T09:58:52Z，Original 评分 98/100）；V8b 全仓 hermetic 3039 passed / 0 failed；**TD-085 Completion 已达成**。TD-085 Completion ≠ REQ-043 / WS-S2 / WS-S3 已解除全部阻塞：仅解除「可启动 REQ-043 shaping」这一条前置关系，REQ-043 仍 ⚫ Candidate 未启动，WS-S2 option B 与 WS-S3 仍 BLOCKED，REQ-047 Extended 仍 🟣 Shaping | [Technical Debt](../../03-engineering-governance/technical-debt.md#td-085-收口-ai-chatskill-与-agent-app-的上下文边界倒置) |
 | REQ-043 | ⚫ Candidate | Runtime Port、Tool Gateway、Pi Worker、ACP 和 Agentic RAG | [Requirement](../05-requirements/REQ-043-runtime-neutral-agentic-rag-orchestration.md) |
 | REQ-061 | ⚫ Candidate | Agent Memory 与 Context Governance | [Requirement](../05-requirements/REQ-061-agent-memory-and-context-governance.md) |
 | REQ-062 | ⚫ Candidate | APP-012/030 共用的动态采集、填报与报表发布平台 | [Requirement](../05-requirements/REQ-062-dynamic-data-collection-and-reporting.md) |
