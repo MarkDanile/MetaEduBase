@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### DOC-081: 迭代状态与保留策略收口 — W23 完成事实同步及历史迭代留存口径
+
+状态：🟡 进行中
+类型：DOC
+领域：治理 / 迭代窗口 / 文档口径
+当前执行模式：plan-do（pure-docs；零业务代码、零测试改动）
+最近接手工具：MCode
+分支：docs/doc-081-iteration-retention-closeout
+
+需求来源：
+- Spec: 无（实施已登记治理事项，不新建 spec）
+- Plan: 无（完成标准直接取自 `docs/01-product-planning/04-backlog.md` 的 DOC-081 登记条目）
+- 技术债: 无（本任务登记为 DOC，不进入 technical-debt 总账）
+- 架构约束: `2026-W30-p3-enterprise-agent-platform.md` 内 AG-1～AG-8 与 Product Decisions 是架构冻结决策的唯一详细事实源，本任务对该文件零改动
+
+当前进展：W23 已按 Scope 完成事实收口——`Status` 由 `🟡 Planned` 翻 `🟢 Done`，Review 表追加整体收口行（数据行 3 → 4），既有 Scope 六行与验收文字零改动。`03-iterations/README.md` 保留规则已改写为「当前及近期迭代窗口 / 历史摘要 / 长期冻结契约」三类用途口径，并写明文件数量不能单独作为删除依据、W30 必须保留、W23 与 W25 当前保留完整文件、不预建 W31。本次仅改动 3 个授权文件，W23 / W25 / W30 三个迭代文件全部保留未删除。
+下一步：提交本轮改动、推送并创建独立 Draft PR，等待三路 CI settled 后停止；不 Ready、不评分、不合并。
+验证状态：`git diff --check` 退出码 0；`scripts/check-engineering-docs --full` 退出码 0（`32 known issue(s) allowlisted`，与 base 基线一致）；W30 整文件及 AG-1～AG-8 / Product Decisions / Ready Queue / Out of Scope / Evidence / Committed Scope 六段对 base `0e9a679b` 逐段 byte-identical；milestone、backlog、technical-debt、work-log、review-score-log、根 README、ARCHITECTURE 及 server/web/scripts/tests/.github 路径对 base 零改动；W23 与 README 表格列数一致；W23 / W25 / W30 与本文件相对链接零缺失；DOC-081 在 backlog 仍唯一且位于 DOC 前缀末尾。本轮为 pure-docs，未运行 pytest、ruff 或前端构建。
+交接备注：允许修改范围仅 `2026-W23-p1-final-gap-closure.md`、`03-iterations/README.md` 与本文件；W25 因「最近关闭」表述在本次裁决后仍准确而无需同步，未作改动；W23 / W25 / W30 文件均不删除；不创建新迭代编号；不推进 REQ-042 / REQ-043 / REQ-047 / WS-S2 / WS-S3。本次收口只同步 W23 迭代状态与文件留存口径，**不代表 P1 或阶段一整体完成**。
 
 ## 下一批候选任务
 
