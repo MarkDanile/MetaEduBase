@@ -1,6 +1,6 @@
 # Iteration 2026-W23: P1 最终查漏补缺
 
-Status: 🟡 Planned
+Status: 🟢 Done
 Dates: 2026-W23
 Goal: 关闭阶段一验证期剩余缺口，重点验证轨道 B：检索 / 抽取质量。
 
@@ -28,3 +28,4 @@ Goal: 关闭阶段一验证期剩余缺口，重点验证轨道 B：检索 / 抽
 | 轨道 B 多项已有代码但缺直接测试和端到端证据 | 不能按完成处理，应按”已实现 / 待验证”追踪 | REQ-003（已由 PR #74 关闭为 Done）；复盘发现的验收缺口由 REQ-007 承接 |
 | 模板匹配和嵌套抽取仍依赖真实样例验收 | 阶段一关闭前必须收口为可验证结果 | REQ-004 / REQ-008 / REQ-005 |
 | 本次复核后端集成测试无法连接 PostgreSQL | 2026-06-09 沙箱已恢复：REQ-003 通过 PR #74（`337238b`）合入，`pytest -q` 222 passed 含 e2e 3 passed；`scripts/check-engineering-docs` 退出码 0；当前沙箱可证明 P1 后端集成验收通过 | REQ-003 / REQ-006 |
+| W23 整体收口（2026-10-10，DOC-081） | 本迭代 Scope 6 项（REQ-003 至 REQ-008）全部为 `🟢 Done`，且 Backlog 主表对应六项状态一致、`work-log.md` 对六项均有长期索引行；按 Scope 完成事实而非日期判定，本迭代整体完成，`Status` 由 `🟡 Planned` 翻 `🟢 Done` | 仅同步本迭代状态与文件留存口径，**不代表 P1 或阶段一整体完成**；更早迭代文件的留存依据见 `03-iterations/README.md` 的保留规则 |
