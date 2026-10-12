@@ -14,25 +14,7 @@
 
 ## 当前进行中
 
-### REQ-042-WS-S2-PHASE-B: launch policy 消费面 + V1 最小 execution profile contract shaping
-
-状态：🟡 进行中
-类型：REQ / contract shaping（pure-docs；零业务代码、零测试改动）
-领域：AI Workspace / API 契约
-当前执行模式：plan-do
-最近接手工具：Claude Code
-分支：docs/req-042-ws-s2-phaseb-launch-policy-contract
-
-需求来源：
-- Spec: 新建 `docs/02-delivery-plans/01-specs/2026-10-12-req-042-ws-s2-launch-policy-profile-contract.md`（本任务产出）
-- Plan: `docs/02-delivery-plans/02-plans/2026-09-09-req-042-ws-s2-ws-s3-contract-shaping.md` §WS-S2 phase-B（第三版裁决：REQ-043 完整 spec 与 REQ-047 Extended 非本 phase 硬门禁）
-- 技术债：无
-- 架构约束：phase-A spec（PR #642 已冻结）错误码与 server-selected 禁提交语义对齐不改写；W30 AG-1～AG-8 冻结事实零改写
-
-当前进展：phase-B spec 已撰写——覆盖 TurnLaunchSpecV1 逐字段消费表（来源/必填/选择责任/不可变边界/验证时点）、V1 最小 execution profile（compatibility/direct_rag 单一实现三命名侧面核实，budget 常量逐项）、capability gate 消费面（如实标注 capability_denied 代码零命中、实装归 phase-C）、输入事实与未确定事项表、phase-C 验收矩阵 B-1..B-9 与非目标；REQ-042 requirement 与 backlog 行已追加 phase-B 链接。
-下一步：提交、推送、创建 Draft PR，等待 CI settled 与后续独立复审；不 Ready、不评分、不合并。
-验证状态：`git diff --check` 退出码 0；`scripts/check-engineering-docs --full` 退出码 0（32 allowlisted，与 base `4b6a08f5` 基线一致）；新 spec 相对链接逐一存在；禁止路径零命中（无代码 / 测试 / migration / CI 变更）；REQ-042 整体保持 ⚫ Candidate。
-交接备注：本任务只冻结 phase-B 消费面与 V1 profile；不定义 RuntimeProfileResolver / RuntimeSessionBinding / conformance / Tool Gateway（归 REQ-043）；不定义 ToolGrant / Approval / Artifact / Evidence（归 REQ-047 Extended）；不实现公共 /turns、不启动 phase-C–E / WS-S3。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -54,6 +36,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-10-12 | REQ-042-WS-S2-PHASE-B：launch policy 消费面 + V1 最小 execution profile contract shaping（pure-spec / pure-docs；contract freeze 候选 spec 已落地 main） | 🟢 完成（phase-B 已合并；REQ-042 整体仍 ⚫ Candidate，phase-C–E 未启动） | PR #645 squash mergeCommit `2c402ab8`（mergedAt 2026-10-12T07:06:54Z）；Original 评分 99/100；TurnLaunchSpecV1 十字段消费表与 V1 最小 execution profile 契约冻结入 main；纯契约塑形，公共 `/turns` route 与新运行时行为均未实现。 | [phase-B spec](../02-delivery-plans/01-specs/2026-10-12-req-042-ws-s2-launch-policy-profile-contract.md) / [Score Log #645 Original 99](04-retrospectives/review-score-log.md) / [PR #645](https://github.com/MarkDanile/MetaEduBase/pull/645) / [work-log](work-log.md) |
 | 2026-10-12 | REQ-042-WS-S2-PHASE-A：公共 submit API contract shaping（pure-spec / pure-docs；contract freeze 候选 spec 落地 main） | 🟢 完成（PR #642 已合并） | PR #642 squash mergeCommit `2c912c6c`；Original 99/100；公共 submit API 契约已冻结（端点 / 鉴权与 owner isolation / 幂等 / server-selected 字段 / 错误码）；revision 语义沿用 REQ-041/047 联合核心契约；P3 括号示例观察保留非阻塞；phase-B/C、REQ-043、REQ-047 Extended 未启动 | [PR #642](https://github.com/MarkDanile/MetaEduBase/pull/642)（mergeCommit `2c912c6c`）/ [Score Log #642 Original 99](04-retrospectives/review-score-log.md) / [phase-A spec](../02-delivery-plans/01-specs/2026-10-12-req-042-ws-s2-public-submit-api-contract.md) / [work-log](work-log.md) |
 | 2026-10-10 | DOC-081：迭代状态与保留策略收口 — W23 完成事实同步及历史迭代留存口径（pure-docs 治理；承接 PR #638 复审保留项 P3-1 / P3-2，经 PR #639 登记、PR #640 实施） | 🟢 完成（DOC-081 已收口；下游状态未推进） | PR #640 squash mergeCommit `5132c1af`；Original 评分 100/100；W23 Status 翻 🟢 Done（Scope 六行与验收文字零改动）；iterations README 三类迭代保留规则落地（文件数量不作删除依据，W30 必须保留）；W30 / W25 / W23 文件保留、W30 冻结契约零改写；W31 未创建；下游未推进 | [PR #640](https://github.com/MarkDanile/MetaEduBase/pull/640)（mergeCommit `5132c1af`）/ [Score Log #640 Original 100](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [backlog DOC-081 🟢 Done](../01-product-planning/04-backlog.md) |
 | 2026-10-08 | TASK-TD-085-BOUNDARY-CLOSURE-SLICE-E：TD-085 Slice E — plan §1.6 综合验证与 TD-085 Completion（pure-docs；零新增测试、零修改既有断言或业务实现） | 🟢 完成（Slice E 已合并；TD-085 整体 🟢 完成） |  PR #636 squash mergeCommit `d83962a9`（mergedAt 2026-10-08T09:58:52Z）；Original 评分 98/100；V8b 全仓 hermetic 3039 passed / 0 failed；**TD-085 Completion 已达成**并翻 🟢 完成；Completion ≠ REQ-043 / WS-S2 / WS-S3 解除阻塞（三者状态不变） | [PR #636](https://github.com/MarkDanile/MetaEduBase/pull/636)（mergeCommit `d83962a9`）/ [Score Log #636 Original 98](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [technical-debt TD-085 🟢 完成](technical-debt.md) |
