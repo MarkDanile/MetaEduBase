@@ -319,6 +319,10 @@ async def _seed_mismatched_profile_tenant(
 # --------------------------------------------------------------------------
 # phase-A §1/§7 + phase-B B-1/B-8：合法提交 -> 201 + receipt + durable 事实
 # --------------------------------------------------------------------------
+#
+# TD-085 依赖方向的 composition 装配取证在独立文件
+# ``test_workspace_submit_turn_composition_wiring.py``：TD-032 源文件行数硬限制
+# 不允许本文件继续增长。
 
 
 async def test_submit_turn_returns_201_receipt_and_durable_rows(
@@ -774,12 +778,13 @@ async def test_unmapped_exception_returns_stable_internal_error_code(
 
     from app.contexts.agent_workspace.interfaces.api import router as ws_router
 
-    original = ws_router.V1CompatibilityLaunchPolicy.build_launch
+    original = ws_router.build_v1_launch_policy
 
-    async def _boom(self, **_kwargs):
-        raise RuntimeError("synthetic unmapped failure")
+    class _BoomPolicy:
+        async def build_launch(self, **_kwargs):
+            raise RuntimeError("synthetic unmapped failure")
 
-    ws_router.V1CompatibilityLaunchPolicy.build_launch = _boom
+    ws_router.build_v1_launch_policy = lambda _session: _BoomPolicy()
     try:
         resp = await client.post(
             _TURNS_PATH.format(conversation_id=conversation_id),
@@ -787,7 +792,7 @@ async def test_unmapped_exception_returns_stable_internal_error_code(
             json=_payload(identity.agent_definition_version.id),
         )
     finally:
-        ws_router.V1CompatibilityLaunchPolicy.build_launch = original
+        ws_router.build_v1_launch_policy = original
 
     assert resp.status_code == 500, resp.text
     assert resp.json()["detail"]["code"] == "internal_error"

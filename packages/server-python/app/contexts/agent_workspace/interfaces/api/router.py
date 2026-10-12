@@ -14,6 +14,7 @@ from app.composition.agent_control_plane import (
     ConversationHasPendingTurnError,
     ExecutionPortUnavailableError,
 )
+from app.composition.runtime_launch_policy import build_v1_launch_policy
 from app.contexts.agent_workspace.application.conversation_service import (
     AgentWorkspaceService,
 )
@@ -22,9 +23,6 @@ from app.contexts.agent_workspace.application.dto import (
     ConversationView,
     MessagePartInput,
     TurnCommand,
-)
-from app.contexts.agent_workspace.application.v1_launch_policy import (
-    V1CompatibilityLaunchPolicy,
 )
 from app.contexts.agent_workspace.domain import (
     AgentDefinitionNotFoundError,
@@ -741,7 +739,10 @@ async def submit_turn(
         ) from exc
 
     try:
-        launch = await V1CompatibilityLaunchPolicy(session).build_launch(
+        # launch policy 经 composition 装配（execution 侧身份事实由
+        # ``app.composition.runtime_launch_policy`` adapter 供给）；
+        # workspace application 层不直接依赖 agent_execution。
+        launch = await build_v1_launch_policy(session).build_launch(
             tenant_id=tenant_id,
             agent_definition_version_id=request_model.agent_definition_version_id,
         )

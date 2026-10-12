@@ -15,8 +15,9 @@ V1 冻结取值（phase-B §2）：
   profile；不引入多 profile 选择或 Runtime 切换）。
 - ``runtime_binding_id`` 恒 ``None``（compatibility 路径无 session binding）。
 - context snapshot 三字段恒全 ``None``（schema 内建 all-null-or-all-present 校验）。
-- budget 六项取既有 ``_DIRECT_RAG_BUDGET`` 常量，且不得由客户端选项放大。
-- capability 快照取 ``DIRECT_RAG_CAPABILITIES``（V1 全 ``False``）。
+- budget 六项与 capability 快照取 ``RuntimeLaunchFactsPort`` 供给的既有常量
+  （composition 侧从 execution/compatibility 路径原样投影），且不得由客户端
+  选项放大。**本模块不重新声明这些常量**，避免两份冻结值静默漂移。
 
 fail-closed 判定顺序（phase-B §3.2）：
 
@@ -29,27 +30,18 @@ fail-closed 判定顺序（phase-B §3.2）：
    ``reserve_user_turn`` 既有 ``_authorize_resource_references`` 承担）
 
 以上任一不满足即拒绝，不降级放行。
+
+依赖边界（TD-085）：本模块只 import workspace 自己的 domain / ports 与 shared
+integration schema。execution 侧的 ORM / 仓储 / 领域枚举 / V1 常量一律经
+``RuntimeLaunchFactsPort`` 由 composition adapter 供给。
 """
 
 from __future__ import annotations
 
 import uuid
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.composition.direct_rag_compatibility import _DIRECT_RAG_BUDGET
-from app.contexts.agent_execution.application.execution_identity_service import (
-    DIRECT_RAG_CAPABILITIES,
-    DIRECT_RAG_POLICY_VERSION,
-    DIRECT_RAG_PROFILE_KEY,
-)
-from app.contexts.agent_execution.domain import (
-    AgentDefinitionStatus,
-    RunConfigSnapshot,
-    snapshot_digest,
-)
-from app.contexts.agent_execution.infrastructure.repository import (
-    AgentExecutionIdentityRepository,
+from app.contexts.agent_workspace.application.ports import (
+    RuntimeLaunchFactsPort,
 )
 from app.contexts.agent_workspace.domain import (
     AgentDefinitionNotFoundError,
@@ -57,9 +49,7 @@ from app.contexts.agent_workspace.domain import (
     LaunchPolicyInternalError,
 )
 from app.shared.schemas.agent_integration import (
-    RunBudgetSnapshotV1,
     RunConfigSnapshotV1,
-    RuntimeCapabilitySnapshotV1,
     TurnLaunchSpecV1,
 )
 
@@ -74,10 +64,13 @@ class V1CompatibilityLaunchPolicy:
 
     本类是 phase-C 的提交期构造器，不是 profile 选择器：V1 只有一个目标
     profile（``compat.direct_rag.v1``），解析即「按 key 取或拒绝」。
+
+    ``facts`` 是 composition 装配的 execution 侧事实供给面；本类不持有 session、
+    不直接查询任何表。
     """
 
-    def __init__(self, session: AsyncSession):
-        self._identity = AgentExecutionIdentityRepository(session)
+    def __init__(self, facts: RuntimeLaunchFactsPort):
+        self._facts = facts
 
     async def build_launch(
         self,
@@ -89,8 +82,10 @@ class V1CompatibilityLaunchPolicy:
 
         调用方（router）负责把异常映射到 phase-A §10 冻结错误码。
         """
+        frozen = self._facts.v1_launch_facts()
+
         # §3.2-1 definition 存在性：未知 definition -> 422。
-        definition = await self._identity.get_agent_definition_version(
+        definition = await self._facts.get_definition_servability(
             tenant_id=tenant_id,
             definition_version_id=agent_definition_version_id,
         )
@@ -101,15 +96,15 @@ class V1CompatibilityLaunchPolicy:
         # phase-A §3「服务端校验存在性与启用状态」：只有 published definition 可
         # 服务 V1 launch。draft / retired 等不可服务状态一律 403 capability_denied
         # （fail-closed），不得因「行存在」而放行。
-        if definition.status is not AgentDefinitionStatus.PUBLISHED:
+        if not definition.is_published:
             raise CapabilityDeniedError(
                 "agent definition version is not in a servable published state"
             )
 
         # §3.2-2 可服务性：按 key 解析 V1 唯一 compatibility profile。
-        profile = await self._identity.get_runtime_profile_by_key(
+        profile = await self._facts.get_runtime_profile_facts(
             tenant_id=tenant_id,
-            profile_key=DIRECT_RAG_PROFILE_KEY,
+            profile_key=frozen.profile_key,
         )
         if profile is None:
             raise CapabilityDeniedError(
@@ -120,52 +115,44 @@ class V1CompatibilityLaunchPolicy:
                 "tenant compatibility Runtime profile is disabled"
             )
         if (
-            profile.runtime_kind != "compatibility"
-            or profile.adapter_key != "direct_rag"
+            profile.runtime_kind != frozen.capability_snapshot.runtime_kind
+            or profile.adapter_key != frozen.capability_snapshot.adapter_key
         ):
-            # profile 身份与 V1 compatibility 路径不符：不可服务。
+            # profile 身份与 V1 compatibility 路径不符：不可服务。期望身份即冻结
+            # capability 快照自带的 runtime_kind / adapter_key，不另存字面量。
             raise CapabilityDeniedError(
                 "tenant Runtime profile is not the V1 compatibility profile"
             )
 
         # §3.2-3 快照一致性：构造快照必须等于 profile 登记的 capability digest，
         # 否则视为服务端缺陷，构造失败即提交失败（fail-closed -> 500）。
-        if profile.capability_digest != snapshot_digest(DIRECT_RAG_CAPABILITIES):
+        if profile.capability_digest != frozen.capability_digest:
             raise LaunchPolicyInternalError(
                 "tenant compatibility profile capability digest does not match "
                 "the frozen V1 capability snapshot"
             )
 
         # §1 / §2：构造 immutable launch。binding/context 恒 None；
-        # budget 六项取既有常量且不得被客户端放大。
-        capability = RuntimeCapabilitySnapshotV1.model_validate(
-            DIRECT_RAG_CAPABILITIES.model_dump(mode="json")
-        )
-        budget_v1 = RunBudgetSnapshotV1.model_validate(
-            _DIRECT_RAG_BUDGET.model_dump(mode="json")
-        )
-        run_config = RunConfigSnapshot(
+        # budget 与 capability 取 composition 供给的冻结常量且不得被客户端放大。
+        run_config_v1 = RunConfigSnapshotV1(
             agent_definition_version_id=agent_definition_version_id,
-            runtime_profile_id=profile.id,
+            runtime_profile_id=profile.runtime_profile_id,
             model_profile_key=_V1_MODEL_PROFILE_KEY,
             autonomy_level=_V1_AUTONOMY_LEVEL,
-            policy_version=DIRECT_RAG_POLICY_VERSION,
+            policy_version=frozen.policy_version,
             tool_keys=_V1_TOOL_KEYS,
-            budget=_DIRECT_RAG_BUDGET,
-        )
-        run_config_v1 = RunConfigSnapshotV1.model_validate(
-            run_config.model_dump(mode="json")
+            budget=frozen.budget,
         )
         return TurnLaunchSpecV1(
             agent_definition_version_id=agent_definition_version_id,
-            runtime_profile_id=profile.id,
+            runtime_profile_id=profile.runtime_profile_id,
             runtime_binding_id=None,
-            runtime_capability_snapshot=capability,
+            runtime_capability_snapshot=frozen.capability_snapshot,
             run_config_snapshot=run_config_v1,
             context_snapshot_ref=None,
             context_snapshot_digest=None,
             context_snapshot_classification=None,
-            budget_snapshot=budget_v1,
+            budget_snapshot=frozen.budget,
             parent_run_id=None,
         )
 
