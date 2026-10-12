@@ -72,8 +72,10 @@ schema 级不变量（既有，phase-C 不得削弱）：frozen + extra-forbid�
 
 ### 3.1 现状事实（如实）
 
-- 代码中**不存在** `capability_denied` 错误码或独立 capability gate 组件（全仓 grep 零命中）；phase-A §10 错误码表中的 `403 capability_denied` 是已冻结的**公共契约语义**，其实装归 phase-C。
-- 既有可复用校验：`require_enabled_runtime_profile`（profile disabled → `RuntimeProfileDisabledError`）、capability 快照与 profile 身份一致性校验（`CatalogConflictError`）、definition 存在性与 digest 校验（identity repository）。
+- 公共错误码 `capability_denied` 在代码中**尚不存在**（全仓 grep 零命中）；phase-A §10 错误码表中的 `403 capability_denied` 是已冻结的**公共契约语义**，其提交期实装归 phase-C。
+- 执行侧已存在 fail-closed capability 强制（与提交期 403 属不同阶段）：`run_coordinator.py:406-408` 在 Run 启动时拒绝 `tool_calls` / `input_requests` / `approvals` 任一为真的 capability 快照（`UnsupportedRunCapabilitiesError`，"E1 only accepts compatibility/read-only capability snapshots"）。
+- 既有可复用校验：`require_enabled_runtime_profile`（profile disabled → `RuntimeProfileDisabledError`，repository.py:167）、capability 快照与 profile 身份一致性校验（`CatalogConflictError`）、definition **publish 时** digest 一致性 / 冲突检测（identity repository）。
+- 按 `agent_definition_version_id` 查询存在性的方法**当前不存在**；§3.2-1 的「未知 → 422」判定须由 phase-C 新增查询实装，本 spec 不声称已有该查询。
 
 ### 3.2 phase-B 冻结的判定要求
 
@@ -114,7 +116,9 @@ dispatch 前（与 phase-A §8 durable 边界同一事务内）必须依次满�
 | B-6 | capability snapshot 与 profile digest 不一致 → 500 fail-closed | §3.2-3 |
 | B-7 | resource 未授权 → 403 `resource_access_denied` | §3.2-4 |
 | B-8 | V1 launch 恒 `runtime_binding_id=None`、context snapshot 三字段全 None、budget 取 §2.3 常量 | §2.3 / §2.4 |
-| B-9 | 幂等重放不再重新构造 launch（返回原 receipt） | phase-A §5 |
+| B-9 | 幂等重放返回原 receipt，不改变既有 Message / Run / outbox 结果（不约束 route 是否临时构造随后被丢弃的 launch 对象） | phase-A §5 |
+
+> phase-A §5 的「同键不同 digest → `409 idempotency_conflict`」路径由 phase-A 契约承担，phase-C 验收时须一并覆盖；本 spec 不另定义 digest 或幂等规则。
 
 ### 5.2 非目标（本 spec 明确不交付）
 
