@@ -20,7 +20,9 @@ V1 冻结取值（phase-B §2）：
 
 fail-closed 判定顺序（phase-B §3.2）：
 
-1. definition 存在性：未知 ``agent_definition_version_id`` -> 422 validation_error
+1. definition 存在性与可服务状态：未知 ``agent_definition_version_id`` -> 422
+   validation_error；存在但非 published -> 403 capability_denied
+   （phase-A §3「服务端校验存在性与启用状态」）
 2. 可服务性：无可服务的 enabled compatibility profile -> 403 capability_denied
 3. 快照一致性：capability 快照与 profile 登记 digest 不一致 -> 500 internal_error
 4. 授权：``parts`` resource 未授权 -> 403 resource_access_denied（由 durable
@@ -42,6 +44,7 @@ from app.contexts.agent_execution.application.execution_identity_service import 
     DIRECT_RAG_PROFILE_KEY,
 )
 from app.contexts.agent_execution.domain import (
+    AgentDefinitionStatus,
     RunConfigSnapshot,
     snapshot_digest,
 )
@@ -94,6 +97,13 @@ class V1CompatibilityLaunchPolicy:
         if definition is None:
             raise AgentDefinitionNotFoundError(
                 "agent definition version is not registered for this tenant"
+            )
+        # phase-A §3「服务端校验存在性与启用状态」：只有 published definition 可
+        # 服务 V1 launch。draft / retired 等不可服务状态一律 403 capability_denied
+        # （fail-closed），不得因「行存在」而放行。
+        if definition.status is not AgentDefinitionStatus.PUBLISHED:
+            raise CapabilityDeniedError(
+                "agent definition version is not in a servable published state"
             )
 
         # §3.2-2 可服务性：按 key 解析 V1 唯一 compatibility profile。

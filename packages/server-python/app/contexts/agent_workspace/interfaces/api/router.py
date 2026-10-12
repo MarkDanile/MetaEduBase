@@ -681,7 +681,13 @@ def _raise_submit_turn_error(exc: Exception) -> NoReturn:
             status_code=422,
             detail=_error_detail("validation_error", str(exc)),
         ) from exc
-    raise exc
+    # phase-A §10 最终兜底：未列举异常必须仍返回稳定 code `internal_error`，
+    # 否则客户端按 detail.code 分流时该路径拿不到 code。用 `from exc` 保留
+    # 异常链，服务端日志仍可拿到原始异常用于诊断。
+    raise HTTPException(
+        status_code=500,
+        detail=_error_detail("internal_error", "unexpected submit-turn failure"),
+    ) from exc
 
 
 @router.post(

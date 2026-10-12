@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from httpx import AsyncClient
@@ -65,6 +66,23 @@ async def _create_conversation(
     )
     assert resp.status_code == 201, resp.text
     return resp.json()["id"]
+
+
+async def _login_in_tenant(
+    client: AsyncClient, db_session: AsyncSession, tenant_id: uuid.UUID
+) -> dict[str, str]:
+    """在指定 tenant 下建用户并登录，返回 Authorization 头。
+
+    用户名带随机后缀：``users`` 表不在 workspace conftest 的清理清单里，
+    固定用户名会在同进程重复运行时报「用户名已存在」。
+    """
+    token = await register_and_login(
+        client,
+        username=f"phasec_b6_{uuid.uuid4().hex[:12]}",
+        role="student",
+        tenant_id=str(tenant_id),
+    )
+    return {"Authorization": f"Bearer {token}"}
 
 
 def _payload(
@@ -160,6 +178,142 @@ async def _enable_compatibility_profile(db_session: AsyncSession, tenant_id: uui
         {"tid": tenant_id},
     )
     await db_session.commit()
+
+
+async def _insert_unservable_definition(
+    db_session: AsyncSession, tenant_id: uuid.UUID, status: str = "retired"
+) -> uuid.UUID:
+    """插入一行「存在但不可服务」的 definition，返回其 id。
+
+    刻意**不复用** V1 正在服务的 ``system.direct_rag`` 行：DB 层有
+    ``published agent definition identity is immutable`` 约束，既禁止改动已
+    published 行，也禁止 retired -> published 复活，因此测试无法靠改回来自清理。
+    独立 key/version 的行不参与 ``bootstrap_direct_rag``，用完即可删除。
+
+    ``publish_agent_definition_version`` 是唯一写入路径且恒写 ``published``，
+    全仓暂无 retire 代码路径，故这里直接 INSERT 构造该状态以覆盖 phase-A §3
+    要求的「启用状态校验」fail-closed 分支。
+    """
+    definition_id = uuid.uuid4()
+    await db_session.execute(
+        text(
+            "INSERT INTO metaedu.agent_definition_versions "
+            "(id, tenant_id, definition_key, version, status, definition_digest, "
+            " created_by, created_at) "
+            "VALUES (:id, :tid, :key, 1, :status, :digest, :created_by, now())"
+        ),
+        {
+            "id": definition_id,
+            "tid": tenant_id,
+            "key": f"test.unservable.{definition_id.hex[:8]}",
+            "status": status,
+            "digest": "a" * 64,
+            "created_by": DEFAULT_ADMIN_ID,
+        },
+    )
+    await db_session.commit()
+    return definition_id
+
+
+async def _delete_definition(
+    db_session: AsyncSession, tenant_id: uuid.UUID, definition_id: uuid.UUID
+):
+    await db_session.execute(
+        text(
+            "DELETE FROM metaedu.agent_definition_versions "
+            "WHERE tenant_id = :tid AND id = :did"
+        ),
+        {"tid": tenant_id, "did": definition_id},
+    )
+    await db_session.commit()
+
+
+async def _capability_digest(db_session: AsyncSession, tenant_id: uuid.UUID) -> str:
+    return (
+        await db_session.execute(
+            text(
+                "SELECT capability_digest FROM metaedu.agent_runtime_profiles "
+                "WHERE tenant_id = :tid AND profile_key = 'compat.direct_rag.v1'"
+            ),
+            {"tid": tenant_id},
+        )
+    ).scalar_one()
+
+
+async def _set_capability_digest(
+    db_session: AsyncSession, tenant_id: uuid.UUID, digest: str
+):
+    await db_session.execute(
+        text(
+            "UPDATE metaedu.agent_runtime_profiles SET capability_digest = :digest "
+            "WHERE tenant_id = :tid AND profile_key = 'compat.direct_rag.v1'"
+        ),
+        {"tid": tenant_id, "digest": digest},
+    )
+    await db_session.commit()
+
+
+async def _seed_mismatched_profile_tenant(
+    db_session: AsyncSession
+) -> tuple[uuid.UUID, uuid.UUID]:
+    """为独立 tenant 播种「capability digest 与 V1 快照不一致」的 profile。
+
+    无法在默认 tenant 上触发 B-6：``trg_agent_runtime_profile_immutable`` 禁止修改
+    已 published 的 profile identity，且 ``(tenant_id, profile_key)`` 唯一，
+    所以只能换一个新 tenant 直接 INSERT 一行 digest 不匹配的 profile。
+    返回 ``(tenant_id, definition_version_id)``。
+    """
+    tenant_id = uuid.uuid4()
+    now = datetime.now(UTC).replace(tzinfo=None)
+    await db_session.execute(
+        text(
+            "INSERT INTO metaedu.tenants "
+            "(id, name, school_name, isolation, is_active, created_at, updated_at) "
+            "VALUES (:id, :name, :school, 'shared', true, :now, :now)"
+        ),
+        {
+            "id": tenant_id,
+            "name": f"phasec-b6-{tenant_id.hex[:8]}",
+            "school": "phase-C B6",
+            "now": now,
+        },
+    )
+    definition_id = uuid.uuid4()
+    await db_session.execute(
+        text(
+            "INSERT INTO metaedu.agent_definition_versions "
+            "(id, tenant_id, definition_key, version, status, definition_digest, "
+            " created_by, created_at) "
+            "VALUES (:id, :tid, 'system.direct_rag', 1, 'published', :digest, "
+            "        :created_by, :now)"
+        ),
+        {
+            "id": definition_id,
+            "tid": tenant_id,
+            "digest": "a" * 64,
+            "created_by": DEFAULT_ADMIN_ID,
+            "now": now,
+        },
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO metaedu.agent_runtime_profiles "
+            "(id, tenant_id, profile_key, runtime_kind, adapter_key, config_digest, "
+            " capability_digest, enabled, revision, created_at, updated_at) "
+            "VALUES (:id, :tid, 'compat.direct_rag.v1', 'compatibility', 'direct_rag', "
+            "        :config_digest, :capability_digest, true, 1, :now, :now)"
+        ),
+        {
+            "id": uuid.uuid4(),
+            "tid": tenant_id,
+            "config_digest": "b" * 64,
+            # 与真实 V1 capability 快照的 digest 刻意不一致 -> 触发 B-6。
+            "capability_digest": "f" * 64,
+            "now": now,
+        },
+    )
+    await db_session.commit()
+    return tenant_id, definition_id
 
 
 # --------------------------------------------------------------------------
@@ -559,6 +713,88 @@ async def test_unknown_definition_returns_422(
     assert resp.status_code == 422, resp.text
     assert resp.json()["detail"]["code"] == "validation_error"
     assert await _message_rows(db_session, conversation_id) == []
+
+
+async def test_non_published_definition_returns_403_capability_denied(
+    client: AsyncClient, auth_headers: dict[str, str], db_session
+):
+    """phase-A §3：服务端校验 definition 的**启用状态**，未启用 -> 403。
+
+    未知 definition 走 422（另一条用例），本例覆盖「行存在但 retired」，
+    必须 fail-closed 拒绝而非因「行存在」放行。
+    """
+    await _bootstrap_v1_identity(db_session)
+    conversation_id = await _create_conversation(client, auth_headers)
+    unservable_id = await _insert_unservable_definition(db_session, DEFAULT_TENANT_ID)
+    try:
+        resp = await client.post(
+            _TURNS_PATH.format(conversation_id=conversation_id),
+            headers=auth_headers,
+            json=_payload(unservable_id),
+        )
+        assert resp.status_code == 403, resp.text
+        assert resp.json()["detail"]["code"] == "capability_denied"
+        # fail-closed：拒绝路径不得留下任何 durable 副作用。
+        assert await _message_rows(db_session, conversation_id) == []
+        assert await _outbox_rows(db_session, conversation_id) == []
+    finally:
+        await _delete_definition(db_session, DEFAULT_TENANT_ID, unservable_id)
+
+
+async def test_capability_digest_mismatch_returns_500_internal_error(
+    client: AsyncClient, auth_headers: dict[str, str], db_session
+):
+    """phase-B B-6：capability 快照与 profile 登记 digest 不一致 -> 500 fail-closed。"""
+    tenant_id, definition_id = await _seed_mismatched_profile_tenant(db_session)
+    other_headers = await _login_in_tenant(client, db_session, tenant_id)
+    conversation_id = await _create_conversation(client, other_headers)
+
+    resp = await client.post(
+        _TURNS_PATH.format(conversation_id=conversation_id),
+        headers=other_headers,
+        json=_payload(definition_id),
+    )
+    assert resp.status_code == 500, resp.text
+    assert resp.json()["detail"]["code"] == "internal_error"
+    # 构造失败即提交失败：不得产生 Message / Run request / outbox。
+    assert await _message_rows(db_session, conversation_id) == []
+    assert await _outbox_rows(db_session, conversation_id) == []
+
+
+async def test_unmapped_exception_returns_stable_internal_error_code(
+    client: AsyncClient, auth_headers: dict[str, str], db_session
+):
+    """phase-A §10：未列举异常也必须返回稳定 code `internal_error`。
+
+    用未列入映射表的 ``RuntimeError`` 走 submit 路径，证明兜底生效且
+    客户端不依赖内部异常 message 即可分流。
+    """
+    identity = await _bootstrap_v1_identity(db_session)
+    conversation_id = await _create_conversation(client, auth_headers)
+
+    from app.contexts.agent_workspace.interfaces.api import router as ws_router
+
+    original = ws_router.V1CompatibilityLaunchPolicy.build_launch
+
+    async def _boom(self, **_kwargs):
+        raise RuntimeError("synthetic unmapped failure")
+
+    ws_router.V1CompatibilityLaunchPolicy.build_launch = _boom
+    try:
+        resp = await client.post(
+            _TURNS_PATH.format(conversation_id=conversation_id),
+            headers=auth_headers,
+            json=_payload(identity.agent_definition_version.id),
+        )
+    finally:
+        ws_router.V1CompatibilityLaunchPolicy.build_launch = original
+
+    assert resp.status_code == 500, resp.text
+    assert resp.json()["detail"]["code"] == "internal_error"
+    # 响应不得泄露内部异常 message。
+    assert "synthetic unmapped failure" not in resp.text
+    assert await _message_rows(db_session, conversation_id) == []
+    assert await _outbox_rows(db_session, conversation_id) == []
 
 
 async def test_disabled_compatibility_profile_returns_403_capability_denied(
