@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-042-WS-S2-PHASE-B: launch policy 消费面 + V1 最小 execution profile contract shaping
+
+状态：🟡 进行中
+类型：REQ / contract shaping（pure-docs；零业务代码、零测试改动）
+领域：AI Workspace / API 契约
+当前执行模式：plan-do
+最近接手工具：Claude Code
+分支：docs/req-042-ws-s2-phaseb-launch-policy-contract
+
+需求来源：
+- Spec: 新建 `docs/02-delivery-plans/01-specs/2026-10-12-req-042-ws-s2-launch-policy-profile-contract.md`（本任务产出）
+- Plan: `docs/02-delivery-plans/02-plans/2026-09-09-req-042-ws-s2-ws-s3-contract-shaping.md` §WS-S2 phase-B（第三版裁决：REQ-043 完整 spec 与 REQ-047 Extended 非本 phase 硬门禁）
+- 技术债：无
+- 架构约束：phase-A spec（PR #642 已冻结）错误码与 server-selected 禁提交语义对齐不改写；W30 AG-1～AG-8 冻结事实零改写
+
+当前进展：phase-B spec 已撰写——覆盖 TurnLaunchSpecV1 逐字段消费表（来源/必填/选择责任/不可变边界/验证时点）、V1 最小 execution profile（compatibility/direct_rag 单一实现三命名侧面核实，budget 常量逐项）、capability gate 消费面（如实标注 capability_denied 代码零命中、实装归 phase-C）、输入事实与未确定事项表、phase-C 验收矩阵 B-1..B-9 与非目标；REQ-042 requirement 与 backlog 行已追加 phase-B 链接。
+下一步：提交、推送、创建 Draft PR，等待 CI settled 与后续独立复审；不 Ready、不评分、不合并。
+验证状态：`git diff --check` 退出码 0；`scripts/check-engineering-docs --full` 退出码 0（32 allowlisted，与 base `4b6a08f5` 基线一致）；新 spec 相对链接逐一存在；禁止路径零命中（无代码 / 测试 / migration / CI 变更）；REQ-042 整体保持 ⚫ Candidate。
+交接备注：本任务只冻结 phase-B 消费面与 V1 profile；不定义 RuntimeProfileResolver / RuntimeSessionBinding / conformance / Tool Gateway（归 REQ-043）；不定义 ToolGrant / Approval / Artifact / Evidence（归 REQ-047 Extended）；不实现公共 /turns、不启动 phase-C–E / WS-S3。
 
 ## 下一批候选任务
 
