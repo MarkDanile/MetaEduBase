@@ -45,3 +45,4 @@
 
 - 依赖 REQ-041 会话事实源、REQ-047 RunEvent/Approval/Artifact 契约。
 - 导航归属和权限显示遵循 REQ-060，不在页面内硬编码角色菜单。
+- WS-S2 phase-A 公共 submit API 契约塑形：[2026-10-12 phase-A contract spec](../../02-delivery-plans/01-specs/2026-10-12-req-042-ws-s2-public-submit-api-contract.md)（contract freeze 候选；仅冻结公共 submit 契约，不代表本需求进入 Ready / Planned / Done，phase-B/C/D/E 与 WS-S3 仍按 WS-S2/WS-S3 计划推进）。

@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-042-WS-S2-PHASE-A: 公共 submit API contract shaping
+
+状态：🟡 进行中
+类型：REQ / contract shaping（pure-docs；零业务代码、零测试改动）
+领域：AI Workspace / API 契约
+当前执行模式：plan-do
+最近接手工具：Claude Code
+分支：docs/req-042-ws-s2-public-submit-contract
+
+需求来源：
+- Spec: 新建 `docs/02-delivery-plans/01-specs/2026-10-12-req-042-ws-s2-public-submit-api-contract.md`（本任务产出）
+- Plan: `docs/02-delivery-plans/02-plans/2026-09-09-req-042-ws-s2-ws-s3-contract-shaping.md` §WS-S2 phase-A
+- 技术债：无
+- 架构约束：REQ-041/047 联合核心契约（Durable Core 🟢 Done，引用不改写）；W30 AG-1～AG-8 冻结事实零改写
+
+当前进展：phase-A spec 已撰写——覆盖端点、鉴权与 owner isolation、active/archived/deleted 可提交性矩阵、SubmitTurnRequest/Response 字段表、client_message_id 幂等重放、revision 边界（submit 不接受 If-Match，继承联合核心契约既有冻结）、capability gate fail-closed、403/404/409/422/429/500 错误码、durable 边界与短轮询引用、四层边界对照表；REQ-042 requirement 与 backlog 行已补 phase-A 事实源链接。
+下一步：提交、推送、创建 Draft PR，等待 CI settled 与后续独立复审；不 Ready、不评分、不合并。
+验证状态：`git diff --check` 退出码 0；`scripts/check-engineering-docs --full` 退出码 0（32 allowlisted，与 base `e12da694` 基线一致）；新 spec 内相对链接逐一直验存在；禁止路径零命中（无代码 / 测试 / migration / CI 变更）；REQ-042 整体保持 ⚫ Candidate。
+交接备注：REQ-042 整体仍 ⚫ Candidate；本任务只冻结 phase-A 公共契约，不裁定 WS-S2 计划内 phase-B 依赖表述冲突（phase-B 开工前另行裁决）；不触碰 REQ-043 / REQ-047 Extended / WS-S3 / 任何代码与测试。
 
 ## 下一批候选任务
 
