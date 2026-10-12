@@ -81,3 +81,26 @@ class TitleSourceConflictError(AgentWorkspaceError):
 
 class WorkspaceIntegrationConflictError(AgentWorkspaceError):
     """An inbox/outbox replay conflicts with durable workspace facts."""
+
+
+class AgentDefinitionNotFoundError(AgentWorkspaceError, LookupError):
+    """WS-S2 phase-B §3.2-1：租户内不存在该 ``agent_definition_version_id``。
+
+    映射到 phase-A §10 ``422 validation_error``（未知 definition），不是 404：
+    会话本身仍存在，失败的是请求体引用的 definition 选择。
+    """
+
+
+class CapabilityDeniedError(AgentWorkspaceError, PermissionError):
+    """WS-S2 phase-B §3.2-2：无可服务的 enabled compatibility profile。
+
+    映射到 phase-A §10 ``403 capability_denied``，fail-closed 不降级放行。
+    """
+
+
+class LaunchPolicyInternalError(AgentWorkspaceError):
+    """WS-S2 phase-B §3.2-3：构造的 launch 与 profile 登记事实不一致。
+
+    属服务端缺陷（不是客户端错误），映射到 phase-A §10 ``500 internal_error``，
+    构造失败即提交失败，绝不返回 2xx。
+    """

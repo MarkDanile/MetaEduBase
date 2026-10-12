@@ -16,7 +16,9 @@ from app.contexts.agent_workspace.domain.erasure import (
     PurgeOwnerState,
 )
 from app.contexts.agent_workspace.domain.errors import (
+    AgentDefinitionNotFoundError,
     AgentWorkspaceError,
+    CapabilityDeniedError,
     ConversationIdConflictError,
     ConversationNotFoundError,
     ConversationNotPurgeableError,
@@ -28,6 +30,7 @@ from app.contexts.agent_workspace.domain.errors import (
     IdempotencyConflictError,
     InvalidConversationStateError,
     LateBodyWriteRejectedError,
+    LaunchPolicyInternalError,
     ResourceReferenceForbiddenError,
     RevisionConflictError,
     TitleSourceConflictError,
@@ -83,5 +86,8 @@ __all__ = [
     "TitleSourceConflictError",
     "WorkspaceBodyScanNonZeroError",
     "WorkspaceIntegrationConflictError",
+    "AgentDefinitionNotFoundError",
+    "CapabilityDeniedError",
+    "LaunchPolicyInternalError",
     "TurnDispatchState",
 ]

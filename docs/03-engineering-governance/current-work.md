@@ -14,7 +14,26 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-042-WS-S2-PHASE-C: public submit route + real PostgreSQL contract tests
+
+状态：🟡 进行中
+类型：REQ / backend implementation（真实业务代码 + 真实 PostgreSQL contract tests；非 pure-docs）
+领域：AI Workspace / API 契约 / Backend
+当前执行模式：plan-do
+最近接手工具：Claude Code
+分支：feat/req-042-ws-s2-phasec-submit-route
+
+需求来源：
+- Spec: [WS-S2 phase-A 公共 submit API 契约](../02-delivery-plans/01-specs/2026-10-12-req-042-ws-s2-public-submit-api-contract.md)（PR #642 已冻结）
+- Spec: [WS-S2 phase-B launch policy / V1 profile 契约](../02-delivery-plans/01-specs/2026-10-12-req-042-ws-s2-launch-policy-profile-contract.md)（PR #645 已冻结）
+- Plan: [WS-S2 / WS-S3 contract-shaping](../02-delivery-plans/02-plans/2026-09-09-req-042-ws-s2-ws-s3-contract-shaping.md) §WS-S2 phase-C
+- 技术债：无
+- 架构约束：phase-A/B 为唯一公共契约事实源，不重新定义字段 / 错误码 / digest / 幂等作用域 / revision 语义；复用既有 durable `submit_turn()` 事务边界与 owner/tenant 隔离
+
+当前进展：实现与测试已完成，待 Draft PR 复审。新增公共端点 `POST /api/v1/agent-workspace/conversations/{conversation_id}/turns`（router 只做认证、DTO 解析、异常到 phase-A 错误码映射与响应映射；launch 构造、capability gate、durable 写入下沉到既有 `ConversationExecutionCoordinator.submit_turn()`，锁序 Guard → Conversation 行锁 → owner lock → fence 保持不变）。V1 launch 由新增的局部 `V1CompatibilityLaunchPolicy` 按 phase-B §2/§3 构造（单一 `compat.direct_rag.v1` profile、budget 六项取既有 `_DIRECT_RAG_BUDGET` 常量、binding 与 context 三字段恒 `None`、capability 快照全 `False`），显式不实现 RuntimeProfileResolver。phase-B §3.1 记录的「按 definition 查存在性」缺口已补 `get_agent_definition_version`；另补 `get_runtime_profile_by_key` 供 V1 按 key 解析 profile。phase-A §10 要求而仓库此前不存在的 429 提交限流已实装（进程内滑动窗口 + `Retry-After`，如实标注非分布式）。
+下一步：提交、推送、创建 Draft PR 并等待 CI settled 与后续独立复审；不 Ready、不评分、不合并。
+验证状态：已运行并通过——新增真实 PostgreSQL contract tests 30 条（`tests/contexts/agent_workspace/test_workspace_submit_turn_api.py`，覆盖 phase-A §1/§2/§3/§4/§5/§7/§10 与 phase-B B-1/B-2/B-4/B-5/B-7/B-8/B-9，含 201/200 receipt、server-selected 字段 422、owner/未知/deleted 统一 404、archived 409、幂等重放与冲突、429 + Retry-After、并发同键不产生重复 durable 结果）；既有回归 `tests/contexts/{agent_workspace,agent_control_plane,agent_execution}` 493 passed / 0 failed；`.venv/bin/ruff check .` 退出码 0；`.venv/bin/python scripts/check_mypy_baseline.py` 退出码 0（241 historical errors / 0 regressions）；`git diff --check` 退出码 0；`scripts/check-engineering-docs --full` 退出码 0（32 allowlisted）。本切片零 migration / schema 变更；REQ-042 requirement / backlog / 候选区三源仍为 ⚫ Candidate。未运行：真实 LLM 执行闭环（不在本 phase 范围，Run 从 queued 到终态仍依赖后续 Runtime 接入）；真实 SSE / 浏览器端验收（归 WS-S3）；`pnpm --filter @metaedu/web lint` 与 typecheck（本切片零前端改动，前端消费面归 phase-D）。
+交接备注：两个 WS-S1/A1 时期的既有守卫测试（`test_b1_registers_guarded_delete_but_keeps_submit_turn_route_closed` 与 `test_a1_registers_run_routes_without_opening_workspace_submit_turn`）原断言「`/turns` 必须保持关闭」，phase-C 开放该端点后按新边界改写为「已开放且挂鉴权、不接受 If-Match」与「归属 workspace context 而非 execution router」，守卫意图保留而非删除。REQ-042 整体保持 ⚫ Candidate；不做前端 / SSE / RuntimeProfileResolver / AgentTurnLoopRuntime / Tool Gateway / REQ-047 Extended / migration；不翻 REQ-042 状态；不声称 Runtime、LLM 执行闭环或业务最终回答已实现。
 
 ## 下一批候选任务
 
