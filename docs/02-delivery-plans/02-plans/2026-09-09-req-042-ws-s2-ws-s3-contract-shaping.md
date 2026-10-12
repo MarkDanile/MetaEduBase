@@ -12,13 +12,14 @@
 |------|--------|----------|
 | 第一版 | `fe1ebce2` | 含多处事实错误（声称 `/turns` 已实 / `cancel body = {reason}` / SSE/cancel 后端未实 / 描述 WS-S2 mock-only + 真实 PG manual 矛盾 / REQ-017 typo） |
 | 第一次纠偏 | `38164a8f` | 重写 §6.2 / §6.3 / §9.1 / §9.3；但 §4.2 / §4.3 / §7.1 / §10 / §11.2 仍残留第一版错误并与已纠正节矛盾（**三面独立只读复审判定不通过**） |
-| 第二次纠偏（**本版**） | HEAD | 唯一产品路径 = WS-S2 real submit closure = **option B**；当前状态 = **BLOCKED**；§4 - §11 + §13 全文统一；删除所有 `option A 作为可立即开工的 WS-S2 implementation` 口径；option A 仅可作为公共 API 冻结后的 L1 mock contract experiment（非交付、非合并） |
+| 第二次纠偏 | `aa88e5ea` | 唯一产品路径 = WS-S2 real submit closure = **option B**；当前状态 = **BLOCKED**；§4 - §11 + §13 全文统一；删除所有 `option A 作为可立即开工的 WS-S2 implementation` 口径；option A 仅可作为公共 API 冻结后的 L1 mock contract experiment（非交付、非合并） |
+| 第三次纠偏（**本版**） | HEAD | 裁决两处同版依赖冲突：① REQ-047 Extended 三组 spec 是否阻塞 WS-S2 phase-B（§4.2 门禁 ③ / §6.2 / §9.1 称阻塞 vs §5.2 / §5.3 称不阻塞）→ **裁决不阻塞**，采纳 §5.2 / §5.3 读法（phase-A 已示范引用级冻结可行）；② REQ-043 完整 spec 是否阻塞 phase-B（§4.2 门禁 ② / §9.1 称阻塞 vs §5.1 称 WS-S2 不依赖 REQ-043）→ **裁决不阻塞**：phase-B 只冻结 launch policy **消费面** + V1 最小 execution profile（基于 `TurnLaunchSpecV1` / `DIRECT_RAG_CAPABILITIES` 等现有代码事实），RuntimeProfileResolver / RuntimeSessionBinding / Runtime 内部选择语义所有权归 REQ-043，phase-B 不定义不实现；同步事实修正：phase-A spec 已冻结入 main（PR #642，mergeCommit `2c912c6c`）、RuntimeProfileResolver 类在代码中不存在（§4.1 与 §6.2 概念性表述已对齐）、§9.1 checklist 中误挂 phase-A 名下的 backend slice 项归位 phase-C、PR #621 时点表述过期修正、phase-A 完成态全文同步（§0 裁决块门禁计数 / §4.2 标题导语与状态格 / §4.4 / §6.2 末尾 / §7 两处 / §10 对照表两处——复审 P1 返修闭合） |
 
 **本版最终裁决**（与第一版 + 第一次纠偏并存过的 option A / option B 矛盾口径一致）：
 - WS-S2 real submit closure 路径 = **option B**
-- 当前状态 = **BLOCKED**（4 项硬门禁）
+- 当前状态 = **BLOCKED**（原 4 项硬门禁已满足 1 项、尚未满足 3 项：① 公共 submit API spec 已满足（phase-A，PR #642，mergeCommit `2c912c6c`）；② server-selected launch policy 冻结与 ③ 最小 execution profile 契约未满足（phase-B）；④ 真实 PG submit-loop 端到端未满足（phase-C–E 交付闭环））
 - WS-S2 不再有任何「可立即开工的 mini-slice」承诺
-- WS-S2.A-E 重拆为**未来顺序**，全部 planning / 全部未启动
+- WS-S2.A-E 重拆为**未来顺序**；phase-A spec 已冻结，phase-B–E 全部 planning / 未启动
 - WS-S2 frontend 任何 prototype 至多标记为 `non-deliverable / non-mergeable / L1 contract experiment`，不冒充 production submit
 - Phase 0 仅完成审计 + 切片规划；WS-S2/WS-S3 implementation 均**未启动**
 
@@ -199,9 +200,9 @@ WS-S1 边界声明完整保留（PR #620 closeout + governance correction 已固
 
 **建议拆分原则**（按 contract-first）：
 1. **WS-S2**：contract = submit-turn → poll 终态（短轮询，长 ≤ 30s）。这个 contract 已在 REQ-041 AC-4「Message 写入具备幂等键和 durable dispatch」+ REQ-047 A1「owner-private GET Run + 持久化幂等 cancel intent + PostgreSQL ledger SSE replay/live polling」中预先冻结。WS-S2 只是把这两个 contract 的前端消费者打开，不开放 Runtime。
-2. **WS-S3**：contract = SSE event stream + after_seq replay + cancel intent + steer intent。依赖 Runtime SessionBinding 已 wiring（[REQ-043 AC-1](../../01-product-planning/05-requirements/REQ-043-runtime-neutral-agentic-rag-orchestration.md)）+ RuntimeProfileResolver 已写（E0 已合并）+ Capability Gate 已落（D1 已合并）。
+2. **WS-S3**：contract = SSE event stream + after_seq replay + cancel intent + steer intent。依赖 Runtime SessionBinding 已 wiring（[REQ-043 AC-1](../../01-product-planning/05-requirements/REQ-043-runtime-neutral-agentic-rag-orchestration.md)）+ Runtime Profile / Binding / Snapshot 持久化已落（E0 已合并；RuntimeProfileResolver 选择语义未实现、所有权归 REQ-043）+ Capability Gate 已落（D1 已合并）。
 
-### 4.2 WS-S2 切片（未来顺序，全部未启动）
+### 4.2 WS-S2 切片（phase-A spec 已冻结；phase-B–E 为未来顺序，未启动）
 
 > **状态**：WS-S2 implementation **当前 BLOCKED**（见 §9.1）。本节列出**未来顺序**，全部为 **planning**，**不代表已启动**。
 >
@@ -209,12 +210,12 @@ WS-S1 边界声明完整保留（PR #620 closeout + governance correction 已固
 >
 > **历史错误清除**：第一版错误声称 "POST /turns backend 已实" / "WS-S2 可立即开工" / "修改 `:disabled="false"`" / "mock POST /turns 返回 201" / "WS-S2.E 真实 PG manual 验收" —— 全部删除（残留仅在 §0 修订历史 + §12 中保留作 honest 记录）。
 
-**WS-S2 未来顺序（5 个 phase，全部未启动）**：
+**WS-S2 未来顺序（5 个 phase；phase-A spec 已冻结，phase-B–E 全部未启动）**：
 
 | WS-S2 phase | 目标 | 输入 | 输出 | 前置依赖（**硬门禁**） | 当前状态 |
 |-------------|------|------|------|---------------------|---------|
-| **WS-S2 phase-A** 公共 submit API + DTO + error contract 冻结 | contract-first 冻结：路径 / method / 鉴权 / owner isolation / 幂等重放 / 冲突码 / 能力门控 | REQ-041 W1 + B1 + REQ-047 Durable Core 已存在；内部 `submit_turn()` 已有 application contract | `POST /api/v1/agent-workspace/conversations/{id}/turns` 公开 spec 文档；`SubmitTurnRequest` / `SubmitTurnResponse` DTO；4xx/5xx error code 表（403 / 404 / 409 revision_conflict / 422 / 429 / 500） | ① 公共契约评审流程定义 ② REQ-042 §Acceptance 拆解（AC-2 运行中部分 + AC-8 Run 继续部分） | 🟣 **未启动** |
-| **WS-S2 phase-B** server-selected launch policy + 最小 execution profile 冻结 | 冻结 `RuntimeProfileResolver` 选 profile 字段 + capability gate 字段 + `TurnLaunchSpecV1` 服务端构造路径 + 最小 execution profile（compatibility execution / system.direct_rag.v1 等） | REQ-043 Spec + REQ-047 Extended Contracts 已冻结 | `RuntimeProfileResolver` contract + `TurnLaunchSpecV1` 构造 contract + minimal execution profile 列表 | ① WS-S2 phase-A ② REQ-043 Spec 冻结 ③ REQ-047 Extended Contracts 三组 spec 冻结 | 🟣 **未启动** |
+| **WS-S2 phase-A** 公共 submit API + DTO + error contract 冻结 | contract-first 冻结：路径 / method / 鉴权 / owner isolation / 幂等重放 / 冲突码 / 能力门控 | REQ-041 W1 + B1 + REQ-047 Durable Core 已存在；内部 `submit_turn()` 已有 application contract | `POST /api/v1/agent-workspace/conversations/{id}/turns` 公开 spec 文档；`SubmitTurnRequest` / `SubmitTurnResponse` DTO；4xx/5xx error code 表（403 / 404 / 409 revision_conflict / 422 / 429 / 500） | ① 公共契约评审流程定义 ② REQ-042 §Acceptance 拆解（AC-2 运行中部分 + AC-8 Run 继续部分） | 🟢 **已冻结**（PR #642 已合并，mergeCommit `2c912c6c`） |
+| **WS-S2 phase-B** server-selected launch policy 消费面 + V1 最小 execution profile 冻结 | 冻结 server-selected launch policy 的**消费面**（capability gate 输入字段 + `TurnLaunchSpecV1` 服务端构造路径与 fail-closed 语义）+ V1 最小 execution profile（compatibility execution / system.direct_rag.v1 等，基于 `DIRECT_RAG_CAPABILITIES` / capability snapshot 现有代码事实）；**不定义** RuntimeProfileResolver 选择语义（归 REQ-043） | WS-S2 phase-A spec 已冻结（PR #642 已合并） | launch policy consumption contract + `TurnLaunchSpecV1` 构造 contract + V1 minimal execution profile 列表 | ① WS-S2 phase-A（✅ 已冻结入 main）；**第三版裁决**：REQ-043 完整 spec 与 REQ-047 Extended 三组 spec 均**非** phase-B 硬门禁（依据 §5.1 / §5.2 / §5.3） | 🟣 **未启动** |
 | **WS-S2 phase-C** backend route + 真实 PG contract tests | 把 `submit_turn()` application 公开化为 `POST /turns` route（router 登记）+ WS-S2 backend slice；写真实 PG 端到端 contract tests | WS-S2 phase-A 冻结的 spec | backend route 实装 + 真实 PG 端到端 contract tests（不变量：幂等重放、revision conflict、owner isolation、能力门控 fail-closed、ConversationExecutionGuard 串行化） | ① WS-S2 phase-A ② WS-S2 phase-B | 🟣 **未启动** |
 | **WS-S2 phase-D** frontend service/store + guarded Composer enable | 前端 service / store wire-up；在 state=active 且 WS-S2 phase-A/B/C 后端可用时打开按钮：state=archived / state=deleted 仍 disabled | WS-S2 phase-A 公开 spec + WS-S2 phase-C 后端 route | `service/turns.ts` + store `submitTurnInFlight` ref + guard；Composer 根据 state 与 capability gate 动态 enabled/disabled；按钮 `:disabled` v-bind 不再硬编码 | ① WS-S2 phase-C ② WS-S2 phase-D 须配合独立 frontend slice PR | 🟣 **未启动** |
 | **WS-S2 phase-E** mock + 真实 PG e2e + 用户手动验收 | e2e 闭环：mock route + 真实 PG；用户手动验收 10 项 | WS-S2 phase-D frontend 已实 | e2e tests + 手动验收报告 | ① WS-S2 phase-D | 🟣 **未启动** |
@@ -256,19 +257,20 @@ WS-S1 边界声明完整保留（PR #620 closeout + governance correction 已固
 
 ### 4.4 切片依赖图
 
-**重要前提**：WS-S2 + WS-S3 全部 phase **当前均未启动**；下图为**未来顺序依赖图**，不是已开工的并行项目。
+**重要前提**：WS-S2 phase-A spec 已冻结（PR #642）；WS-S2 phase-B–E 与 WS-S3 全部 phase **当前均未启动**；下图为**未来顺序依赖图**，不是已开工的并行项目。
 
 ```
 WS-S1 完成 ✅
   │
-  ├─ WS-S2 phase-A 公共 submit API spec 冻结
+  ├─ WS-S2 phase-A 公共 submit API spec 冻结 ✅（PR #642）
   │   └─ WS-S2 phase-B server-selected launch policy + 最小 execution profile 冻结
   │       └─ WS-S2 phase-C backend route + 真实 PG contract tests
   │           └─ WS-S2 phase-D frontend service/store + guarded Composer enable
   │               └─ WS-S2 phase-E mock + 真实 PG e2e + 用户手动验收
   │
   └─ WS-S2 不依赖 REQ-043 Runtime 接入；WS-S2 真实 PG submit-loop
-      仅依赖公共契约 + RuntimeProfileResolver + 最小 execution profile
+      仅依赖公共契约 + launch policy 消费面 + V1 最小 execution profile
+      （RuntimeProfileResolver 选择语义归 REQ-043，非 WS-S2 交付物）
 
 REQ-047 Durable Core 🟢 Done + REQ-047 Extended Contracts 🟣 Shaping
   ├─ WS-S3 phase-A 浏览器 SSE 鉴权 transport 冻结
@@ -330,7 +332,7 @@ REQ-047 Durable Core 🟢 Done + REQ-047 Extended Contracts 🟣 Shaping
 
 ### 5.3 推荐的依赖倒置顺序（避免 V1 阻塞）
 
-**关键事实校正**：REQ-047 Extended Contracts 不是 WS-S2 的硬依赖；WS-S2 仅依赖公共契约 + RuntimeProfileResolver + 最小 execution profile（这些可能间接引用 REQ-043 字段，但 REQ-047 Extended 三组 spec 不阻塞 WS-S2）。
+**关键事实校正**：REQ-047 Extended Contracts 不是 WS-S2 的硬依赖；WS-S2 仅依赖公共契约 + launch policy 消费面 + V1 最小 execution profile（RuntimeProfileResolver 选择语义归 REQ-043，WS-S2 phase-B 只冻结消费面与 V1 profile；REQ-047 Extended 三组 spec 不阻塞 WS-S2）。
 
 | 依赖类别 | 内容 | 谁阻塞 |
 |---------|------|-------|
@@ -343,7 +345,7 @@ REQ-047 Durable Core 🟢 Done + REQ-047 Extended Contracts 🟣 Shaping
 **建议顺序（contract-first）**：
 ```
 1. WS-S2 phase-A 公共 submit API spec 冻结（contract-first PR）
-2. WS-S2 phase-B server-selected launch policy + 最小 execution profile 冻结（contract-first PR；可能引用 REQ-043 字段，但 REQ-047 Extended 不阻塞此步）
+2. WS-S2 phase-B server-selected launch policy 消费面 + V1 最小 execution profile 冻结（contract-first PR；第三版裁决：REQ-043 完整 spec 与 REQ-047 Extended 均不阻塞此步；phase-B 不定义 RuntimeProfileResolver 选择语义）
 3. WS-S2 phase-C backend route 实装 + 真实 PG contract tests（独立 backend slice PR）
 4. WS-S2 phase-D frontend service/store + guarded Composer enable（独立 frontend slice PR）
 5. WS-S2 phase-E mock + 真实 PG e2e + 用户手动验收
@@ -386,12 +388,12 @@ REQ-047 Durable Core 🟢 Done + REQ-047 Extended Contracts 🟣 Shaping
    - `SubmitTurnReceipt`（[bridge.py:64+](../../../packages/server-python/app/contexts/agent_workspace/application/bridge.py)）：`reserved: ReservedUserTurn`, `event_id: UUID`, `correlation_id: UUID`, `dispatch_state: TurnDispatchState`
 
 3. **server-selected 字段不可由前端填**：
-   - `runtime_profile_id` / `runtime_binding_id` / `runtime_capability_snapshot` / `run_config_snapshot` / `budget_snapshot` 全部由 server 端 RuntimeProfileResolver / Capability Gate 解析后选定
+   - `runtime_profile_id` / `runtime_binding_id` / `runtime_capability_snapshot` / `run_config_snapshot` / `budget_snapshot` 全部由 server 端按 launch policy 解析后选定（RuntimeProfileResolver 选择语义归 REQ-043；phase-A spec §4 已冻结禁提交语义）
    - 前端即使 wire-up service 层也无法构造合法 TurnLaunchSpecV1（必须等待 server 端解析）
-   - 在 REQ-043 RuntimeProfileResolver spec + REQ-047 Extended Contracts（ToolGrant / BudgetSnapshot 字段）冻结之前，前端不可自行补默认值
+   - server-selected 字段**永久**不可由前端提交或补默认值（提交即 422）；其取值 policy 由 WS-S2 phase-B 冻结，不以 REQ-043 完整 spec 或 REQ-047 Extended 三组 spec 冻结为先决条件（第三版裁决）
 
 4. **dispatch 路径需要 Runtime**：
-   - `submit_turn()` 走 composition Coordinator → RuntimeProfileResolver → Runtime（暂未接入）→ TerminalOutputReader
+   - `submit_turn()` 走 composition Coordinator 写 outbox（durable）；execution 侧消费后实体化 Run；RuntimeProfileResolver 选择语义当前**不存在于代码**（归 REQ-043），Runtime 暂未接入
    - 没有可消费 dispatch 的 Runtime 时，Run 不会经 `queued → running → completed`
    - 「提交 + 轮询但不依赖 Runtime」方案不可行（composition 层会因 Runtime Profile 未安装 fail closed）
 
@@ -399,15 +401,15 @@ REQ-047 Durable Core 🟢 Done + REQ-047 Extended Contracts 🟣 Shaping
 
 | 依赖 | 阻塞原因 | 状态 |
 |------|---------|------|
-| **WS-S2 phase-A**：公共 submit API spec 冻结（鉴权 / owner isolation / 幂等重放 / 冲突码 / 能力门控） | 当前仅 internal application method；router 无 `/turns` | 🟣 未冻结 |
-| **WS-S2 phase-B**：server-selected launch policy spec（RuntimeProfileResolver + Capability Gate 字段）+ 最小 execution profile 契约 | REQ-043 仍 ⚫ Candidate；REQ-047 Extended ToolGrant / BudgetSnapshot 字段未冻结 | 🟣 未冻结 |
+| **WS-S2 phase-A**：公共 submit API spec 冻结（鉴权 / owner isolation / 幂等重放 / 冲突码 / 能力门控） | ✅ 已冻结入 main（PR #642，mergeCommit `2c912c6c`）；router 仍无 `/turns`（归 phase-C） | 🟢 已冻结 |
+| **WS-S2 phase-B**：launch policy 消费面 spec + V1 最小 execution profile 契约 | 仅依赖 phase-A（已冻结）；第三版裁决：REQ-043 完整 spec 与 REQ-047 Extended 三组 spec 均非硬门禁 | 🟣 未冻结 |
 | **WS-S2 phase-C**：backend route + 真实 PG contract tests | 依赖 phase-A + phase-B | 🟣 阻塞 |
 | **WS-S2 phase-D**：frontend service/store + guarded Composer enable | 依赖 phase-C；按钮状态绑定 capability gate | 🟣 阻塞 |
 | **WS-S2 phase-E**：mock + 真实 PG e2e + 用户手动验收 | 依赖 phase-D | 🟣 阻塞 |
 
 **历史错误清除**：第一版 + 第一次纠偏 写 "WS-S2 仍可做的范围（option A：纯前端 mock 预接线）" 列表（含 service stub + Composer draft + pollRunUntilTerminal 等"可做"项）——**错的**。第一版 + 第一次纠偏 写 "WS-S2 DTO 草案（仅当前端 typed stub 形态）" ——**错的**：未冻结公共 API 时前端 typed stub 会冒充 server contract。
 
-**当前文件唯一允许出现的 WS-S2 范围**：5 个 phase 全部 planning / 全部未启动。任何声称 "WS-S2 mini-slice 可执行" "WS-S2 frontend service 可 wire-up" "WS-S2 producer stub" "WS-S2 mock closed loop" 等表述均须删除。
+**当前文件唯一允许出现的 WS-S2 范围**：phase-A spec 已冻结（PR #642）；phase-B–E 全部 planning / 未启动。任何声称 "WS-S2 mini-slice 可执行" "WS-S2 frontend service 可 wire-up" "WS-S2 producer stub" "WS-S2 mock closed loop" 等表述均须删除。
 
 ### 6.3 WS-S3 现状（事实纠偏后）
 
@@ -528,7 +530,7 @@ REQ-047 Durable Core 🟢 Done + REQ-047 Extended Contracts 🟣 Shaping
 - WS-S2 / WS-S3 收口时须按上表显式声明"达到 L2 真实 PG dry-run"或"L3 真实 LLM 接入"；当前报告无任何 L1+ 证据
 
 **历史错误清除**：
-- 第一版 + 第一次纠偏 写 "WS-S2.E = L2 真实 PG dry-run + 手动用户测试 10 项" ——**错的**，因为当前 WS-S2 phase A-E 全部未启动
+- 第一版 + 第一次纠偏 写 "WS-S2.E = L2 真实 PG dry-run + 手动用户测试 10 项" ——**错的**，因为 WS-S2 phase-B–E 未启动（phase-A 仅契约层冻结，不构成可测实现）
 - 第一次纠偏 "Mock 仅作 UI contract 验证；最高已验证层级为 L1 mock；WS-S2.E 手动验收为 L2 真实 PG dry-run" —— 错的：mock 可到 L1 是通用事实，但 WS-S2.E 写"已是 L2 真实 PG dry-run"是冒充未来状态
 - 本版统一：本 Phase 0 报告最高 L0；未来 L1/L2/L3 验证门禁按上表登记
 | **REQ-043 Runtime V1 enable** | **真实 Pi Worker + 真实 PG** | **L3 真实 LLM 接入** | **独立后续 REQ-043 PR；不在 WS-S3 范围** |
@@ -573,7 +575,7 @@ REQ-047 Durable Core 🟢 Done + REQ-047 Extended Contracts 🟣 Shaping
 
 ### 8.3 手动验收路径（**仅 WS-S2 phase-E 适用**，当前未启动）
 
-> **重要前提**：手动验收必须等 WS-S2 phase-A/B/C/D 全部完成 + phase-E mock e2e 全部 pass 之后才能开始；**当前**WS-S2 phase 全部未启动。
+> **重要前提**：手动验收必须等 WS-S2 phase-A/B/C/D 全部完成 + phase-E mock e2e 全部 pass 之后才能开始；**当前** phase-A spec 已冻结（PR #642），phase-B–E 全部未启动。
 
 **假设 WS-S2 phase-E 启动时**（当前未启动）：
 
@@ -604,13 +606,13 @@ REQ-047 Durable Core 🟢 Done + REQ-047 Extended Contracts 🟣 Shaping
 
 | 阻塞项 | 现状 | 启动所需 |
 |--------|------|---------|
-| WS-S2 phase-A 公共 submit API spec 冻结 | ❌ router 仅 8 个 endpoint（listConversations / createConversation / getConversation / patchConversation / pin / unpin / archive / restore / delete / messages），**无 `/turns`** | 独立 contract-first PR + 评审通过 |
-| WS-S2 phase-A 双测试断言 | ❌ `test_b1_registers_guarded_delete_but_keeps_submit_turn_route_closed` + `test_a1_registers_run_routes_without_opening_workspace_submit_turn` 明确断言 `submit-turn` 路由保持关闭 | phase-A spec 冻结后 router 登记 + 测试改写 |
+| WS-S2 phase-A 公共 submit API spec 冻结 | ✅ 已冻结入 main（PR #642，mergeCommit `2c912c6c`，Original 99）；router 仍仅 8 个 endpoint、**无 `/turns`**（归 phase-C） | 已完成（本项闭合） |
+| WS-S2 phase-A 双测试断言 | ✅ `test_b1_registers_guarded_delete_but_keeps_submit_turn_route_closed` + `test_a1_registers_run_routes_without_opening_workspace_submit_turn` 断言 `submit-turn` 路由保持关闭——**应保持**，直到 phase-C 登记路由时改写 | phase-C 登记路由时改写 |
 | `submit_turn()` 公开化（router 登记 + WS-S2 backend slice） | ❌ 当前 router 无 `/turns`；仅 internal application method 被 `bridge.py:160` / `agent_control_plane.py:238` / `direct_rag_compatibility.py:207` 调用 | ① WS-S2 phase-A spec 冻结 ② WS-S2 phase-B launch policy + execution profile 冻结 |
 | `CancelRunRequest` body schema | ✅ 已冻结 = `{expected_revision: int = Field(ge=1)}`（**不是 `{reason}`**；不要写错） | n/a（已冻结） |
 | `TurnCommand` / `TurnLaunchSpecV1` / `SubmitTurnReceipt` application DTO | ✅ 已冻结 application 内部 DTO，但**前端不可构造** TurnLaunchSpecV1（server-selected 字段） | n/a（已冻结 internal；公共 submit API DTO 须独立 contract-first） |
-| RuntimeProfileResolver / server-selected launch policy | ❌ REQ-043 仍 ⚫ Candidate | 独立 REQ-043 Spec 冻结 PR |
-| 最小 execution profile（compatibility execution）contract | ❌ REQ-047 Extended 🟣 Shaping | 独立 REQ-047 Extended Spec 冻结 PR |
+| launch policy 消费面 / server-selected launch policy | 🟣 未冻结；RuntimeProfileResolver 选择语义不存在于代码、归 REQ-043（第三版裁决：REQ-043 完整 spec **非** phase-B 硬门禁） | WS-S2 phase-B contract-first PR（只冻结消费面） |
+| V1 最小 execution profile（compatibility execution）contract | 🟣 未冻结；代码现事实 `DIRECT_RAG_CAPABILITIES` / capability snapshot 已存在（第三版裁决：REQ-047 Extended **非** phase-B 硬门禁） | WS-S2 phase-B contract-first PR |
 | 真实 PG submit + Run 启动 + 终态可达 | ❌ 全部依赖以上 | phase-C backend slice 完成 |
 
 **option A（mock-only pre-wire）合同裁决**：
@@ -620,10 +622,9 @@ REQ-047 Durable Core 🟢 Done + REQ-047 Extended Contracts 🟣 Shaping
 - 按钮**保持 disabled**直到 phase-A/B/C/D 后端 + execution 前置**全部通过**
 
 **WS-S2 启动门禁（option B 完整闭环，须全部满足才能启动 implementation）**：
-- [ ] WS-S2 phase-A 公共 submit API spec 冻结（鉴权 / owner isolation / 幂等重放 / 冲突码 / 能力门控 / 真实 PG 端到端测试 spec）
-- [ ] WS-S2 phase-A 公共 `/turns` backend slice（router 登记 + WS-S2 backend implementation；含 phase-A 测试改写）
-- [ ] WS-S2 phase-B server-selected launch policy spec 冻结（RuntimeProfileResolver 字段 + capability gate 字段）
-- [ ] WS-S2 phase-B 最小 execution profile contract（compatibility execution / system.direct_rag.v1 等）
+- [x] WS-S2 phase-A 公共 submit API spec 冻结（鉴权 / owner isolation / 幂等重放 / 冲突码 / 能力门控）——PR #642 已合并（mergeCommit `2c912c6c`）
+- [ ] WS-S2 phase-B launch policy 消费面 spec 冻结（capability gate 输入字段 + `TurnLaunchSpecV1` 构造路径；不含 RuntimeProfileResolver 选择语义，归 REQ-043）
+- [ ] WS-S2 phase-B V1 最小 execution profile contract（compatibility execution / system.direct_rag.v1 等）
 - [ ] WS-S2 phase-C backend route + 真实 PG contract tests pass
 - [ ] WS-S2 phase-D frontend slice PR（含按钮状态绑定 capability gate）
 - [ ] WS-S2 phase-E mock + 真实 PG e2e + 用户手动验收
@@ -635,7 +636,7 @@ REQ-047 Durable Core 🟢 Done + REQ-047 Extended Contracts 🟣 Shaping
 **禁止声称口径**：
 - ✗ 禁止说 "WS-S2 可立即开工"
 - ✗ 禁止说 "WS-S2 当前已满足、可开工"
-- ✗ 禁止说 "本 shaping 报告已合并"（**当前 PR #621 仍未合并**；仅是 Draft）
+- ✗ 禁止说 "本 shaping 报告已合并"（PR #621 已合并 squash `aa88e5ea`；该禁止口径针对 #621 评审期时点，保留作历史记录）
 
 ### 9.2 WS-S3 开功门禁（**当前 BLOCKED**）
 
@@ -661,13 +662,13 @@ REQ-047 Durable Core 🟢 Done + REQ-047 Extended Contracts 🟣 Shaping
 
 **历史错误校正**：
 - 第一版 + 第一次纠偏 写 "WS-S2 implementation 当前已满足、可立即开工"——**错的**
-- 第一版 + 第一次纠偏 写 "本 shaping 报告已合并"——**错的**（PR #621 截至本版仍为 OPEN/Draft）
+- 第一版 + 第一次纠偏 写 "本 shaping 报告已合并"——**错的**（PR #621 于第二次纠偏后才合并，squash `aa88e5ea`）
 - 第一版 + 第一次纠偏 写 "WS-S2.A mock POST /turns 返回 201"——**错的**（/turns 不存在，front-end 不能 mock 不存在的 endpoint）
 - 第一次纠偏 残留 §9.3 「REQ-017」 typo——本版已纠正为 **REQ-047**
 
 **唯一产品路径 = WS-S2 real submit closure (option B)**：
-- WS-S2 当前 = BLOCKED（4 项硬门禁）
-- WS-S3 当前 = BLOCKED（4 项硬门禁）
+- WS-S2 当前 = BLOCKED（phase-A spec 已冻结 ✅ PR #642；剩余硬门禁：phase-B launch policy 消费面 + V1 最小 profile 冻结、phase-C backend route + 真实 PG contract tests、phase-D / phase-E）
+- WS-S3 当前 = BLOCKED（4 项硬门禁，不变）
 - Phase 0 仅完成 L0 静态代码审计 + 切片规划；WS-S2/WS-S3 implementation 均**未启动**
 
 ### 9.4 WS-S2 启动后「可以收口 WS-S2」的判定
@@ -689,8 +690,8 @@ REQ-047 Durable Core 🟢 Done + REQ-047 Extended Contracts 🟣 Shaping
 
 | 禁止表述 | 必须表述 |
 |---------|---------|
-| 「WS-S2 = production ready submit-turn」 | 「WS-S2 implementation 当前 BLOCKED；公共 `/turns` API 未冻结；server-selected launch policy 未冻结；真实 Runtime 接入不在 WS-S2 scope」 |
-| 「WS-S2.A 立即可开工」 / 「WS-S2 当前已满足可开工」 | 「WS-S2 phase-A/B/C/D/E 全部未启动；必须等 4 项硬门禁全部完成才能启动」 |
+| 「WS-S2 = production ready submit-turn」 | 「WS-S2 implementation 当前 BLOCKED；公共 `/turns` API spec 已冻结（phase-A，PR #642）但 route 未实装（归 phase-C）；server-selected launch policy 消费面未冻结；真实 Runtime 接入不在 WS-S2 scope」 |
+| 「WS-S2.A 立即可开工」 / 「WS-S2 当前已满足可开工」 | 「WS-S2 phase-A spec 已冻结（PR #642）；phase-B–E 全部未启动；原 4 项硬门禁已满足 1 项（① 公共 submit API spec）、尚未满足 3 项（② launch policy 冻结与 ③ 最小 execution profile 契约——phase-B；④ 真实 PG submit-loop 端到端——phase-C–E），全部满足前不得启动 implementation」 |
 | 「submit-turn backend 已实」 / 「WS-S2 backend 已实 /turns endpoint」 | 「公共 `POST /turns` **不存在**；当前仅 internal `submit_turn()` application method；router 仅 8 个 endpoint（无 `/turns`）」 |
 | 「不修改 /turns endpoint contract（backend 已冻结）」 | 「endpoint 不存在，不是已冻结；WS-S2 phase-A 才是冻结」 |
 | 「submit-turn enabled」 / 「修改 `:disabled="false"`」 | 「Composer `:disabled="true"` 硬编码；按钮在 option B 的 backend + execution 前置全部通过前**始终 disabled**」 |
@@ -729,10 +730,10 @@ REQ-047 Durable Core 🟢 Done + REQ-047 Extended Contracts 🟣 Shaping
 |------|------|-------|
 | 在 REQ-042 §Acceptance 下追加「WS-S1/WS-S2/WS-S3 切片映射」子节 | docs/01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md | P2（独立 task） |
 | **WS-S2 phase-A 公共 submit API contract-first 冻结**（独立 PR；含 WS-S2 backend slice router 登记 + 测试改写） | docs/02-delivery-plans/01-specs/ + 独立 backend PR | **P0**（option B 第一道硬门禁） |
-| **WS-S2 phase-B server-selected launch policy + 最小 execution profile contract-first 冻结**（独立 PR） | docs/02-delivery-plans/01-specs/ | **P0**（option B 第二道硬门禁） |
+| **WS-S2 phase-B server-selected launch policy 消费面 + V1 最小 execution profile contract-first 冻结**（独立 PR；不定义 RuntimeProfileResolver 选择语义） | docs/02-delivery-plans/01-specs/ | **P0**（option B 第二道硬门禁） |
 | **WS-S3 phase-A 浏览器 SSE 鉴权 transport 冻结**（fetch+ReadableStream / polyfill / 独立 stream_token 契约三选一） | docs/02-delivery-plans/01-specs/ | **P0**（WS-S3 第一道硬门禁） |
 | 修改 REQ-047 Extended Contracts spec 冻结（含 HumanInput/Approval + ToolCall/Grant/Snapshot + Artifact/Evidence 全字段） | docs/02-delivery-plans/01-specs/ + REQ-047 §Scope 扩展 | **P0**（WS-S3 第二道硬门禁） |
-| 修改 REQ-043 Runtime conformance + Tool Gateway + RuntimeProfileResolver spec 冻结 | docs/02-delivery-plans/01-specs/ + REQ-059 architecture spec | **P0**（WS-S2 + WS-S3 第三道硬门禁） |
+| 修改 REQ-043 Runtime conformance + Tool Gateway + RuntimeProfileResolver spec 冻结 | docs/02-delivery-plans/01-specs/ + REQ-059 architecture spec | **P0**（WS-S3 第三道硬门禁；第三版裁决后不再阻塞 WS-S2 phase-B） |
 | **禁止**新增 plan「WS-S2 mock-only pre-wire 单独 slice」 / 「WS-S2 frontend service wire-up 单独 slice」 | docs/02-delivery-plans/02-plans/ | **禁止**（与本报告裁决冲突；mock-only 路径已断开） |
 
 ### 11.3 不建议扩大的范围
