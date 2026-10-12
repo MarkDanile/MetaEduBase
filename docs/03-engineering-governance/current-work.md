@@ -14,25 +14,7 @@
 
 ## 当前进行中
 
-### DOC-081: 迭代状态与保留策略收口 — W23 完成事实同步及历史迭代留存口径
-
-状态：🟡 进行中
-类型：DOC
-领域：治理 / 迭代窗口 / 文档口径
-当前执行模式：plan-do（pure-docs；零业务代码、零测试改动）
-最近接手工具：MCode
-分支：docs/doc-081-iteration-retention-closeout
-
-需求来源：
-- Spec: 无（实施已登记治理事项，不新建 spec）
-- Plan: 无（完成标准直接取自 `docs/01-product-planning/04-backlog.md` 的 DOC-081 登记条目）
-- 技术债: 无（本任务登记为 DOC，不进入 technical-debt 总账）
-- 架构约束: `2026-W30-p3-enterprise-agent-platform.md` 内 AG-1～AG-8 与 Product Decisions 是架构冻结决策的唯一详细事实源，本任务对该文件零改动
-
-当前进展：W23 已按 Scope 完成事实收口——`Status` 由 `🟡 Planned` 翻 `🟢 Done`，Review 表追加整体收口行（数据行 3 → 4），既有 Scope 六行与验收文字零改动。`03-iterations/README.md` 保留规则已改写为「当前及近期迭代窗口 / 历史摘要 / 长期冻结契约」三类用途口径，并写明文件数量不能单独作为删除依据、W30 必须保留、W23 与 W25 当前保留完整文件、不预建 W31。本次仅改动 3 个授权文件，W23 / W25 / W30 三个迭代文件全部保留未删除。改动已提交为 `4006bbbe` 并推送，独立 Draft PR #640 已创建。
-下一步：PR #640 已创建并保持 Draft，分支 `docs/doc-081-iteration-retention-closeout` 当前等待独立复审与 Ready 门禁；不 Ready、不评分、不合并。
-验证状态：`git diff --check` 退出码 0；`git diff --check 0e9a679b..HEAD` 退出码 0；`scripts/check-engineering-docs --full` 退出码 0（`32 known issue(s) allowlisted`，与 base 基线一致）；PR #640 首轮 Draft CI（run `38017050638`）三路 settled/SUCCESS——Backend 走 `No backend or MCP changes` 后 21 个 step 全部 skipped（含 `Backend full hermetic tests`，**pytest 0 次**），Frontend `No frontend changes` 后 9 个 step skipped，Engineering docs 的文档门禁与 Whitespace gate **实际执行**并通过；本 PR 为 pure-docs、无业务测试要求，未运行 pytest、ruff 或前端构建，**不构成 full hermetic**。W30 整文件及 AG-1～AG-8 / Product Decisions / Ready Queue / Out of Scope / Evidence / Committed Scope 六段对 base `0e9a679b` 逐段 byte-identical；milestone、backlog、technical-debt、work-log、review-score-log、根 README、ARCHITECTURE 及 server/web/scripts/tests/.github 路径对 base 零改动；W23 与 README 表格列数一致；W23 / W25 / W30 与本文件相对链接零缺失；DOC-081 在 backlog 仍唯一且位于 DOC 前缀末尾，**登记行未被本任务修改**。**DOC-081 尚未完成**——backlog 登记行仍为 `🔵 Ready`，待 PR 合并后的 docs closeout 才推进完成态。
-交接备注：允许修改范围仅 `2026-W23-p1-final-gap-closure.md`、`03-iterations/README.md` 与本文件；W25 因「最近关闭」表述在本次裁决后仍准确而无需同步，未作改动；W23 / W25 / W30 文件均不删除；不创建新迭代编号；不推进 REQ-042 / REQ-043 / REQ-047 / WS-S2 / WS-S3。本次收口只同步 W23 迭代状态与文件留存口径，**不代表 P1 或阶段一整体完成**。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -54,6 +36,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-10-10 | DOC-081：迭代状态与保留策略收口 — W23 完成事实同步及历史迭代留存口径（pure-docs 治理；承接 PR #638 复审保留项 P3-1 / P3-2，经 PR #639 登记、PR #640 实施） | 🟢 完成（DOC-081 已收口；下游状态未推进） | PR #640 squash mergeCommit `5132c1af`；Original 评分 100/100；W23 Status 翻 🟢 Done（Scope 六行与验收文字零改动）；iterations README 三类迭代保留规则落地（文件数量不作删除依据，W30 必须保留）；W30 / W25 / W23 文件保留、W30 冻结契约零改写；W31 未创建；下游未推进 | [PR #640](https://github.com/MarkDanile/MetaEduBase/pull/640)（mergeCommit `5132c1af`）/ [Score Log #640 Original 100](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [backlog DOC-081 🟢 Done](../01-product-planning/04-backlog.md) |
 | 2026-10-08 | TASK-TD-085-BOUNDARY-CLOSURE-SLICE-E：TD-085 Slice E — plan §1.6 综合验证与 TD-085 Completion（pure-docs；零新增测试、零修改既有断言或业务实现） | 🟢 完成（Slice E 已合并；TD-085 整体 🟢 完成） |  PR #636 squash mergeCommit `d83962a9`（mergedAt 2026-10-08T09:58:52Z）；Original 评分 98/100；V8b 全仓 hermetic 3039 passed / 0 failed；**TD-085 Completion 已达成**并翻 🟢 完成；Completion ≠ REQ-043 / WS-S2 / WS-S3 解除阻塞（三者状态不变） | [PR #636](https://github.com/MarkDanile/MetaEduBase/pull/636)（mergeCommit `d83962a9`）/ [Score Log #636 Original 98](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [technical-debt TD-085 🟢 完成](technical-debt.md) |
 | 2026-10-07 | TASK-TD-085-BOUNDARY-CLOSURE-SLICE-D：TD-085 Slice D — agent_workspace ↔ agent_execution mutual import 解除（行为保持 refactor，ADR-085-4） | 🟢 完成（Slice D 已合并；TD-085 整体仍 🟡 进行中，Slice E 未启动） | PR #634 squash mergeCommit `838bd9fb`；Original 100/100；WorkspaceSnapshotPort + composition/runtime_snapshot adapter，双向非法 import 归零；CI full hermetic 3038 passed；TD-085 仍 🟡 进行中，Slice E 未启动 | [PR #634](https://github.com/MarkDanile/MetaEduBase/pull/634)（mergeCommit `838bd9fb`）/ [Score Log #634 Original 100](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [technical-debt TD-085 🟡 进行中](technical-debt.md) |
 | 2026-09-26 | TASK-TD-085-BOUNDARY-CLOSURE-SLICE-C：TD-085 Slice C — skill_runner DD/QCC 解耦 + DD 业务回收至 due_diligence（行为保持 refactor，ADR-085-3） | 🟢 完成（Slice C 已合并；TD-085 整体仍 🟡 进行中，Slice D/E 未启动） | PR #632 squash mergeCommit `ff85a47f`；Original 96/100；skill_runner DD/QCC/persona 归零，泛化为注入式 runner；dd_query_runner + 模板 + 4 测试迁至 due_diligence，skill_caller 单一装配点保持单向；CI hermetic 3028 passed；TD-085 仍 🟡 进行中，Slice D/E 未启动 | [PR #632](https://github.com/MarkDanile/MetaEduBase/pull/632)（mergeCommit `ff85a47f`）/ [Score Log #632 Original 96](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [TD-085 plan](../02-delivery-plans/02-plans/2026-09-15-td-085-ai-chat-skill-agent-app-boundary-closure.md) / [technical-debt TD-085 🟡 进行中](technical-debt.md) |
