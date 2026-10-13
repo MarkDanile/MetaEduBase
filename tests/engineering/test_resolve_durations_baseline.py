@@ -46,11 +46,16 @@ class FakeGh:
         raise AssertionError(f"unexpected gh args: {args}")
 
     def gh_download(self, run_id: str, dest_dir: Path) -> Path:
+        """忠实模拟 gh run download：目标文件已存在时拒绝提取（file exists）。"""
         dest_dir.mkdir(parents=True, exist_ok=True)
         payload = self.downloads.get(int(run_id))
         if payload is None:
             raise RuntimeError("HTTP 403: artifact expired or forbidden")
         path = dest_dir / "backend-durations.json"
+        if path.exists():
+            raise RuntimeError(
+                'error extracting "backend-durations.json": file exists'
+            )
         path.write_text(payload, encoding="utf-8")
         return path
 
@@ -86,6 +91,8 @@ def test_selects_first_valid_candidate_and_pins_identity(tmp_path: Path) -> None
 
 
 def test_corrupt_candidate_skipped_with_reason_then_next_selected(tmp_path: Path) -> None:
+    """损坏候选被跳过且原因留痕；其残留文件不得阻塞后续候选（真实 gh 行为：
+    目标已存在时拒绝提取——曾因共享目录导致后续候选全部伪 download-failed）。"""
     fake = FakeGh()
     fake.branch_runs["feature"] = [111, 222]
     fake.artifacts[111] = [_artifact(7)]

@@ -176,7 +176,9 @@ def resolve(
             skipped.append(f"run {run_id} ({br}): no usable '{ARTIFACT_NAME}' artifact")
             continue
         try:
-            path = gh_download(run_id, workdir)
+            # 每个候选下载到独立子目录：gh run download 拒绝覆盖已存在文件，
+            # 前一候选的残留不得阻塞后续候选的真实下载+校验。
+            path = gh_download(run_id, workdir / f"candidate-{run_id}")
         except RuntimeError as exc:
             skipped.append(f"run {run_id}: download-failed: {exc}")
             continue
@@ -185,6 +187,10 @@ def resolve(
         except RuntimeError as exc:
             skipped.append(f"run {run_id}: corrupt-baseline: {exc}")
             continue
+        # 校验通过 → 提升到稳定发布位置（调用方作为当前 run artifact 重新发布）。
+        final = workdir / BASELINE_FILENAME
+        final.parent.mkdir(parents=True, exist_ok=True)
+        final.write_bytes(path.read_bytes())
         for entry in skipped:
             log(f"skipped candidate: {entry}")
         log(
