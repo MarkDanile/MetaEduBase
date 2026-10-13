@@ -601,7 +601,7 @@ jobs:
         working-directory: packages/server-python
         run: |
           set -euo pipefail
-          if [[ ! -s artifacts/shards/packages/server-python/test-results/shard1.list ]] || [[ ! -s artifacts/shards/packages/server-python/test-results/shard2.list ]]; then
+          if [[ ! -s artifacts/shards/shard1.list ]] || [[ ! -s artifacts/shards/shard2.list ]]; then
             echo "shard file lists missing or empty" >&2
             exit 1
           fi
@@ -609,8 +609,8 @@ jobs:
           python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" --all \
             --repo-root "$PWD" \
             --output artifacts/shards/serial_full.list
-          sort -u artifacts/shards/packages/server-python/test-results/shard1.list > /tmp/s1.sorted
-          sort -u artifacts/shards/packages/server-python/test-results/shard2.list > /tmp/s2.sorted
+          sort -u artifacts/shards/shard1.list > /tmp/s1.sorted
+          sort -u artifacts/shards/shard2.list > /tmp/s2.sorted
           sort -u /tmp/s1.sorted /tmp/s2.sorted > /tmp/union.sorted
           sort -u artifacts/shards/serial_full.list > /tmp/serial.sorted
           if ! cmp -s /tmp/union.sorted /tmp/serial.sorted; then
