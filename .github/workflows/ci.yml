@@ -556,12 +556,15 @@ jobs:
 
   backend-full-summary:
     name: Backend full hermetic (summary)
-    needs: [backend-full-shard-1, backend-full-shard-2]
-    # TD-107 P0 fix: if: always() so a failed / cancelled / skipped shard still
-    # lands here; the first step explicitly asserts both shard results and fails
-    # the job otherwise. Do NOT gate this job on shard success via `if` — a
-    # skipped required check is treated as passing by branch protection.
-    if: always()
+    # TD-107 P0 fix（第二轮）: needs 加入 backend 以读取选择器 mode。
+    # if = always() && mode == 'full'：
+    #   - full 模式：summary 必然运行；shard 失败/取消/意外 skipped 时 Gate step
+    #     读到非 success 立即 exit 1（always() 保证不被跳过）。
+    #   - 非 full 模式（targeted / risk-targeted / docs-only）：summary skipped
+    #     ——required check 对 skipped 视为通过，保持原有非 full 语义。
+    # 不得把 shard result 写进 job-level if（skipped 的 required check 视为通过）。
+    needs: [backend, backend-full-shard-1, backend-full-shard-2]
+    if: always() && needs.backend.outputs.mode == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:

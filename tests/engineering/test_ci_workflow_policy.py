@@ -40,17 +40,18 @@ def _summary_job_block(workflow: str) -> str:
 
 
 def test_summary_job_always_runs_and_gates_on_shard_results() -> None:
-    """TD-107 P0: shard 失败/取消/skipped 时 summary 必须运行并失败。
+    """TD-107 P0: full 模式下 shard 失败/取消/skipped 时 summary 必须运行并失败。
 
     GitHub branch protection 把 skipped 的 required check 视为通过，因此
     summary 绝不能用 job-level if 把自己 gate 在 shard success 之后；
     必须 always() 运行并在首个 step 显式断言两个 shard 的 result。
     """
     block = _summary_job_block(CI_WORKFLOW.read_text())
-    # job-level if 必须恰好是 always()，不得混入 shard result 条件。
+    # job-level if 必须以 always() 开头，且不得混入 shard result 条件。
     assert "if: always()" in block
-    assert "needs.backend-full-shard-1.result == 'success'" not in block.split("steps:")[0]
-    assert "needs.backend-full-shard-2.result == 'success'" not in block.split("steps:")[0]
+    header = block.split("steps:")[0]
+    assert "needs.backend-full-shard-1.result == 'success'" not in header
+    assert "needs.backend-full-shard-2.result == 'success'" not in header
     # 首个 step 必须是 shard result 门禁，且对 failure / cancelled / skipped 一律 exit 1。
     first_step = block.split("steps:", maxsplit=1)[1].split("- name:", maxsplit=1)[1]
     assert "Gate on shard results" in first_step
@@ -58,6 +59,21 @@ def test_summary_job_always_runs_and_gates_on_shard_results() -> None:
     assert "needs.backend-full-shard-2.result" in first_step
     assert '!= "success"' in first_step
     assert "exit 1" in first_step
+
+
+def test_summary_only_runs_in_full_mode() -> None:
+    """TD-107 P0-1 修复: 非 full 模式 summary 必须 skipped（不得运行后失败）。
+
+    targeted / risk-targeted / docs-only 模式下 shard jobs 被跳过；若 summary
+    无条件 always() 运行，Gate step 会读到 skipped 而失败——这会把所有非
+    full PR 打成红。因此 job-level if 必须同时含 always() 与
+    needs.backend.outputs.mode == 'full'（needs 须含 backend 以读取 mode）。
+    """
+    block = _summary_job_block(CI_WORKFLOW.read_text())
+    header = block.split("steps:")[0]
+    assert "needs: [backend, backend-full-shard-1, backend-full-shard-2]" in header
+    assert "always()" in header
+    assert "needs.backend.outputs.mode == 'full'" in header
 
 
 def test_summary_still_verifies_union_equals_serial_collection() -> None:
