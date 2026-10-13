@@ -24,7 +24,9 @@ def test_ci_passes_draft_state_to_selector() -> None:
 def test_ci_runs_risk_targeted_through_targeted_step() -> None:
     workflow = CI_WORKFLOW.read_text()
     assert "steps.backend_tests.outputs.mode == 'risk-targeted'" in workflow
-    assert "steps.backend_tests.outputs.mode == 'full'" in workflow
+    # TD-107: full 模式由 backend-full-shard-{1,2} + summary 接管；
+    # 断言 full 模式的下游触发条件存在（needs.backend.outputs.mode）。
+    assert "needs.backend.outputs.mode == 'full'" in workflow
 
 
 def test_ci_rejects_every_unknown_backend_selector_mode() -> None:
