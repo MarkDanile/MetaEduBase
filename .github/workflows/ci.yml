@@ -643,7 +643,7 @@ jobs:
           from pathlib import Path
 
           per_file = {}
-          for junit_path in Path("artifacts/shards/packages/server-python/test-results").glob("junit-backend-full-shard*.xml"):
+          for junit_path in Path("artifacts/shards").glob("junit-backend-full-shard*.xml"):
               try:
                   root = ET.parse(junit_path).getroot()
               except ET.ParseError:
