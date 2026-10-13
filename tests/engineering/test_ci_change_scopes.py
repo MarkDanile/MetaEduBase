@@ -204,10 +204,9 @@ def test_ci_uses_node24_actions_and_hermetic_pytest_boundary() -> None:
         assert action not in workflow
 
     assert "not slow" not in workflow
-    # TD-107: full hermetic now fans out to shard-1 + shard-2 (each with its own
-    # pytest invocation) on top of the legacy targeted/full/scheduled steps, so
-    # the marker appears five times.
-    assert workflow.count('-m "not external_network"') == 5
+    # TD-107: full hermetic pytest 由 shard-1 / shard-2 两 job 并行承担，本 job
+    # 内仅剩 targeted 路径的一处调用；三处 = targeted + shard-1 + shard-2。
+    assert workflow.count('-m "not external_network"') == 3
     # TD-107: prune-cache now applies to backend, shard-1, shard-2 and
     # engineering-docs (four uv install sites).
     assert workflow.count("prune-cache: true") == 4
