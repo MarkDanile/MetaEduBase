@@ -19,3 +19,4 @@
 - 工程规则、质量门禁、技术债和复盘都进入工程治理层。
 - 历史插件输出只放在兼容层；新任务必须迁移或镜像到规划层或交付层。
 - 旧顶层文档目录已完成迁移，不保留兼容入口。所有 AI IDE 和人工协作入口以本文件和根目录 `AGENTS.md` 为准。
+<!-- TD-107 probe: docs-only change to verify non-full CI path skips shards/summary -->
