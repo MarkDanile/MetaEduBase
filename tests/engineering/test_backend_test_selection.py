@@ -278,6 +278,37 @@ def test_ready_agent_composition_remains_full() -> None:
     assert result.mode == "full"
 
 
+def test_draft_agent_composition_includes_runtime_snapshot_risk_test() -> None:
+    """TD-107: tests/composition/test_runtime_snapshot.py 加入 AGENT_RISK_TESTS。
+
+    当 draft PR 仅触及 agent composition（不修改 composition 自身）时，
+    risk-targeted 集合必须把 test_runtime_snapshot.py 一并带入，
+    避免 mutation / 边界回归在 targeted / risk-targeted 集合中漏跑。
+    """
+    result = select_backend_tests(
+        ["packages/server-python/app/composition/agent_transport_backfill.py"],
+        draft=True,
+    )
+    assert result.mode == "risk-targeted"
+    assert "tests/composition/test_runtime_snapshot.py" in result.pytest_paths
+
+
+def test_draft_non_agent_change_includes_runtime_snapshot_risk_test() -> None:
+    """TD-107: 非 agent 上下文的小改动也必须带 test_runtime_snapshot.py。
+
+    验证：仅修改 ai_app context（不触发 composition / migration / ci-infrastructure）
+    的 draft PR 走 targeted 模式，但 targeted 必须仍包含 test_runtime_snapshot.py
+    （来自 ALWAYS_INCLUDED_RISK_TESTS），避免跨上下文不变式被静默绕过。
+    """
+    result = select_backend_tests(
+        ["packages/server-python/app/contexts/ai_app/application/foo.py"],
+        draft=True,
+    )
+    assert result.mode == "targeted"
+    assert "tests/composition/test_runtime_snapshot.py" in result.pytest_paths
+    assert "td-107:always-included-risk" in result.reason
+
+
 @pytest.mark.parametrize(
     "path",
     [

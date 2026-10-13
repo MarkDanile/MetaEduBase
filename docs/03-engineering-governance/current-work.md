@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TD-107: Backend full hermetic 等待时间优化（按文件分片并行 + JUnit 上传 + 选器与基线接入）
+
+状态：🟡 进行中
+类型：CI / 测试基础设施（pure-infra；不修改 #647 业务实现 / migration / 历史评分 / Metrics）
+领域：后端 / CI / 质量门禁
+当前执行模式：plan-do
+最近接手工具：Claude Code
+分支：docs/td-107-backend-full-sharding
+
+需求来源：
+- 技术债：TD-107（technical-debt.md 第 204 行）
+- 事实源：`.github/workflows/ci.yml`（单一 Backend job，35 min timeout；full 模式串行跑 265+ 文件）、`scripts/ci/select_backend_tests.py`（AGENT_RISK_TESTS 集合）
+- 关联：#647（feat/req-042-ws-s2-phasec-submit-route）——**本轮不得修改**
+
+当前进展：1) TD-107 已登记（Open 进行中）；2) worktree 已建自 origin/main `91590551`；3) **本轮范围为骨架提交**——CI 架构、shard 选择器、test_runtime_snapshot.py 纳入 risk-targeted、JUnit 上传、summary 校验门禁、durations baseline 接入。baseline 串行耗时 / 加速比 / 稳定性待 Draft CI 实跑后补齐。
+下一步：编写 `scripts/ci/shard_backend_tests.py` + 修改 `ci.yml` full 分支为 fan-out + 修改 `select_backend_tests.py` AGENT_RISK_TESTS 增列 test_runtime_snapshot.py；推 Draft PR，等 CI 实际跑两次 full 并行后回填实测数据。
+验证状态：TD-107 登记完成；本机无 Docker Buildx / PostgreSQL 镜像、亦无 runner，**串行基线与加速比无法本地预跑**——本轮交骨架 + 必交项，**不冒称加速达成**。
+交接备注：必须保留 full 模式必依赖两 shard 的汇总门禁语义（任一失败/取消/缺失/skipped 即 fail）；分片内部串行（不允许多 worker 共库）；新增测试自动入分片（不维护手工文件名单）；targeted / docs-only no-op / main push / schedule / workflow_dispatch 选择器与原 #647 行为一致。本轮边界：不优化业务 fixture、不降断言、不增跳过、不复用旧 head 测试结果、不升 runner 规格、不修改 #647 / migration / WS-S2 spec / 历史评分 / Metrics。
 
 ## 下一批候选任务
 
