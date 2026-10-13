@@ -582,6 +582,8 @@ jobs:
       needs.backend-full-shard-2.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      BACKEND_DURATIONS_ARTIFACT: backend-durations
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -599,7 +601,7 @@ jobs:
         working-directory: packages/server-python
         run: |
           set -euo pipefail
-          if [[ ! -s artifacts/shards/test-results/shard1.list ]] || [[ ! -s artifacts/shards/test-results/shard2.list ]]; then
+          if [[ ! -s artifacts/shards/packages/server-python/test-results/shard1.list ]] || [[ ! -s artifacts/shards/packages/server-python/test-results/shard2.list ]]; then
             echo "shard file lists missing or empty" >&2
             exit 1
           fi
@@ -607,8 +609,8 @@ jobs:
           python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" --all \
             --repo-root "$PWD" \
             --output artifacts/shards/serial_full.list
-          sort -u artifacts/shards/test-results/shard1.list > /tmp/s1.sorted
-          sort -u artifacts/shards/test-results/shard2.list > /tmp/s2.sorted
+          sort -u artifacts/shards/packages/server-python/test-results/shard1.list > /tmp/s1.sorted
+          sort -u artifacts/shards/packages/server-python/test-results/shard2.list > /tmp/s2.sorted
           sort -u /tmp/s1.sorted /tmp/s2.sorted > /tmp/union.sorted
           sort -u artifacts/shards/serial_full.list > /tmp/serial.sorted
           if ! cmp -s /tmp/union.sorted /tmp/serial.sorted; then
@@ -641,7 +643,7 @@ jobs:
           from pathlib import Path
 
           per_file = {}
-          for junit_path in Path("artifacts/shards/test-results").glob("junit-backend-full-shard*.xml"):
+          for junit_path in Path("artifacts/shards/packages/server-python/test-results").glob("junit-backend-full-shard*.xml"):
               try:
                   root = ET.parse(junit_path).getroot()
               except ET.ParseError:
