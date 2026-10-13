@@ -396,7 +396,7 @@ jobs:
           if [[ -f artifacts/backend-durations.json ]]; then
             DURS="--durations artifacts/backend-durations.json"
           fi
-          python3 scripts/ci/shard_backend_tests.py --shard 1 \
+          python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" --shard 1 \
             --repo-root "$PWD" \
             $DURS \
             --output test-results/shard1.list
@@ -528,7 +528,7 @@ jobs:
           if [[ -f artifacts/backend-durations.json ]]; then
             DURS="--durations artifacts/backend-durations.json"
           fi
-          python3 scripts/ci/shard_backend_tests.py --shard 2 \
+          python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" --shard 2 \
             --repo-root "$PWD" \
             $DURS \
             --output test-results/shard2.list
@@ -606,7 +606,7 @@ jobs:
             exit 1
           fi
           # serial_full baseline via the shard script (re-derives from git ls-files)
-          python3 scripts/ci/shard_backend_tests.py --all \
+          python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" --all \
             --repo-root "$PWD" \
             --output artifacts/shards/serial_full.list
           sort -u artifacts/shards/test-results/shard1.list > /tmp/s1.sorted
