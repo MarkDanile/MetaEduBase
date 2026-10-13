@@ -109,6 +109,98 @@ def test_shard_jobs_use_independent_postgres_and_serial_in_shard() -> None:
         assert "-n auto" not in block and "--numprocesses" not in block
 
 
+def _shard_region(workflow: str) -> str:
+    start = workflow.index("  backend-full-shard-1:")
+    end = workflow.index("  backend-full-summary:")
+    return workflow[start:end]
+
+
+def _code_lines(block: str) -> str:
+    """剥离注释行，避免断言语料与注释说明互相污染。"""
+    return "\n".join(
+        line for line in block.splitlines() if not line.strip().startswith("#")
+    )
+
+
+def test_durations_baseline_resolved_once_not_per_shard() -> None:
+    """TD-107 P2-1: 基线只在 backend job 单点解析，shard 消费同一 pinned 身份。"""
+    workflow = CI_WORKFLOW.read_text()
+    backend_block = workflow[
+        workflow.index("  backend:") : workflow.index("  backend-full-shard-1:")
+    ]
+    assert "Resolve pinned durations baseline" in backend_block
+    assert "resolve_durations_baseline.py" in backend_block
+    # job outputs 把 pinned 身份传给下游
+    assert "durations_baseline_status: ${{ steps.durations_baseline.outputs.baseline_status }}" in backend_block
+    assert "durations_baseline_sha256: ${{ steps.durations_baseline.outputs.baseline_sha256 }}" in backend_block
+    # shard 区域禁止任何“自己查最新”的逻辑
+    shard_region = _shard_region(workflow)
+    assert "resolve_durations_baseline" not in shard_region
+    assert "gh run list" not in shard_region
+    assert "actions/runs/" not in shard_region
+    # 两个 shard 消费同一 pinned run id 与 sha256（各至少出现两次：verify + generate）
+    assert shard_region.count("needs.backend.outputs.durations_baseline_run_id") >= 2
+    assert shard_region.count("needs.backend.outputs.durations_baseline_sha256") >= 2
+    # 跨 run 只读解析需要 actions: read 权限
+    assert "actions: read" in workflow
+
+
+def test_selected_baseline_download_failure_fails_loudly() -> None:
+    """TD-107 P2-1: 已选定基线下载/校验失败 = 硬性失败，不得伪装冷启动。"""
+    shard_region = _shard_region(CI_WORKFLOW.read_text())
+    download_step = shard_region.split("Download pinned durations baseline", 1)[1].split(
+        "- name:", maxsplit=1
+    )[0]
+    assert "continue-on-error" not in _code_lines(download_step)
+    assert "if-no-files-found: ignore" not in _code_lines(download_step)
+    # sha256 一致性 + 格式校验，任一失败 exit 1
+    assert "sha256sum" in shard_region
+    assert "baseline sha256 mismatch" in shard_region
+    assert "--validate-durations" in shard_region
+
+
+def test_cold_start_is_explicitly_logged_in_shards() -> None:
+    """TD-107 P2-1: 冷启动允许等权回退，但必须在两个 shard 显式记录原因。"""
+    shard_region = _shard_region(CI_WORKFLOW.read_text())
+    assert shard_region.count("::warning title=durations baseline::") == 2
+    assert shard_region.count("needs.backend.outputs.durations_baseline_reason") >= 2
+
+
+def test_baseline_publication_gated_on_gate_and_union_success() -> None:
+    """TD-107 P2-1: 失败 run 不得发布空白/不完整基线；JUnit 诊断仍保留。"""
+    block = _summary_job_block(CI_WORKFLOW.read_text())
+    build_step = block.split("Build next durations baseline", maxsplit=1)[1].split(
+        "- name:", maxsplit=1
+    )[0]
+    # 无 if: always() → 默认 success() 门控：Gate / union 校验失败时不运行
+    assert "if: always()" not in _code_lines(build_step)
+    # 产物完整性（双 JUnit 齐备）+ 格式校验，缺一即失败
+    assert "refusing to build baseline" in build_step
+    assert "--validate-durations" in build_step
+    upload_step = block.split("Upload next durations baseline", maxsplit=1)[1]
+    assert "if: always()" not in _code_lines(upload_step)
+    assert "if-no-files-found: error" in upload_step
+    # shard 的 JUnit 诊断 artifact 仍在失败时上传
+    shard_region = _shard_region(CI_WORKFLOW.read_text())
+    upload_junit = shard_region.split("Upload shard-1 JUnit + collect list", maxsplit=1)[1].split(
+        "- name:", maxsplit=1
+    )[0]
+    assert "if: always()" in upload_junit
+
+
+def test_baseline_builder_maps_classnames_via_shard_lists() -> None:
+    """TD-107 P2-1: pytest JUnit 无 file 属性——构建器必须经 shard 清单映射。"""
+    block = _summary_job_block(CI_WORKFLOW.read_text())
+    build_step = block.split("Build next durations baseline", maxsplit=1)[1].split(
+        "- name:", maxsplit=1
+    )[0]
+    assert "shard1.list" in build_step and "shard2.list" in build_step
+    assert "classname" in build_step
+    # 不再容忍解析失败/空产物静默通过
+    assert "except ET.ParseError" not in build_step
+    assert "no testcase durations extracted" in build_step
+
+
 def test_ci_rejects_every_unknown_backend_selector_mode() -> None:
     workflow = CI_WORKFLOW.read_text()
     assert "case \"$TEST_MODE\" in" in workflow

@@ -12,6 +12,9 @@ on:
 
 permissions:
   contents: read
+  # TD-107 P2-1: backend job 通过 gh api / gh run download 跨 run 只读解析历史
+  # durations baseline artifact（单一解析点，两个 shard 消费同一 pinned 身份）。
+  actions: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
@@ -33,15 +36,16 @@ jobs:
     # change for #647 Draft PRs which use risk-targeted).
     outputs:
       mode: ${{ steps.backend_tests.outputs.mode }}
+      # TD-107 P2-1: 单点解析的 durations 基线身份。两个 shard 必须消费同一份
+      # pinned (run_id, sha256)，不得各自查询“最新”（避免跨 shard 漂移）。
+      durations_baseline_status: ${{ steps.durations_baseline.outputs.baseline_status }}
+      durations_baseline_reason: ${{ steps.durations_baseline.outputs.baseline_reason }}
+      durations_baseline_run_id: ${{ steps.durations_baseline.outputs.baseline_run_id }}
+      durations_baseline_sha256: ${{ steps.durations_baseline.outputs.baseline_sha256 }}
     env:
       TEST_DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test
       DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test
       JWT_SECRET_KEY: ci-only-not-for-production
-      # TD-107: artifact name used by shard jobs to read previous-run durations
-      # baseline (uploaded by the summary job after a successful full run).
-      BACKEND_DURATIONS_ARTIFACT: backend-durations
-      # TD-107: PG ports for sharded PG instances. The main job still uses 5432
-      # so existing targeted / risk-targeted code paths are unchanged.
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -117,6 +121,35 @@ jobs:
               exit 1
               ;;
           esac
+
+      # TD-107 P2-1: durations 基线的唯一解析点。两个 shard 通过
+      # needs.backend.outputs.durations_baseline_* 消费同一份 pinned 身份；
+      # shard 内禁止各自查询“最新”。选定后基线作为当前 run artifact
+      # （backend-durations-baseline）重新发布，shard 在同 run 内下载并做
+      # sha256 + 格式双重校验；选定后下载/校验失败 = 硬性失败，不回退冷启动。
+      - name: Resolve pinned durations baseline
+        if: steps.backend_tests.outputs.mode == 'full'
+        id: durations_baseline
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RESOLVE_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          python3 scripts/ci/resolve_durations_baseline.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --branch "$RESOLVE_BRANCH" \
+            --workdir /tmp/durations-baseline \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Upload pinned durations baseline (current run)
+        if: >-
+          steps.backend_tests.outputs.mode == 'full' &&
+          steps.durations_baseline.outputs.baseline_status == 'selected'
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-durations-baseline
+          path: /tmp/durations-baseline/backend-durations.json
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Install uv
         if: steps.scopes.outputs.backend == 'true' || steps.scopes.outputs.mcp == 'true'
@@ -289,7 +322,10 @@ jobs:
   # test database; shards run serially within themselves (no worker sharing).
   # The summary job requires both shards to succeed, verifies the union of
   # collected items equals the serial full collection, and uploads the next
-  # durations baseline.
+  # durations baseline. TD-107 P2-1: both shards consume the SAME pinned
+  # durations baseline resolved once in the backend job (status=selected →
+  # download + sha256/format 校验，失败即红；status=cold-start → 等权回退并
+  # 显式记录原因)。
   backend-full-shard-1:
     name: Backend full hermetic (shard 1)
     needs: backend
@@ -358,29 +394,61 @@ jobs:
         working-directory: packages/server-python
         run: uv run --frozen --extra dev python -m app.shared.infrastructure.test_db_setup
 
-      - name: Download prior durations baseline
-        if: always()
-        continue-on-error: true
+      - name: Download pinned durations baseline
+        # TD-107 P2-1: 仅在 backend 单点解析选定基线时下载当前 run 的 shuttle
+        # artifact。不得 continue-on-error——已选定基线下载失败必须硬性失败，
+        # 绝不静默伪装成冷启动。
+        if: needs.backend.outputs.durations_baseline_status == 'selected'
         uses: actions/download-artifact@v4
         with:
-          name: ${{ env.BACKEND_DURATIONS_ARTIFACT }}
-          path: artifacts
-          if-no-files-found: ignore
+          name: backend-durations-baseline
+          path: artifacts/baseline
+
+      - name: Verify pinned baseline integrity
+        if: needs.backend.outputs.durations_baseline_status == 'selected'
+        run: |
+          set -euo pipefail
+          FILE="$GITHUB_WORKSPACE/artifacts/baseline/backend-durations.json"
+          if [[ ! -s "$FILE" ]]; then
+            echo "selected baseline missing after download (source run ${{ needs.backend.outputs.durations_baseline_run_id }})" >&2
+            exit 1
+          fi
+          EXPECTED="${{ needs.backend.outputs.durations_baseline_sha256 }}"
+          ACTUAL=$(sha256sum "$FILE" | awk '{print $1}')
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            echo "selected baseline sha256 mismatch: expected $EXPECTED got $ACTUAL" >&2
+            exit 1
+          fi
+          python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" \
+            --validate-durations "$FILE"
+
+      - name: Log cold-start baseline reason
+        if: needs.backend.outputs.durations_baseline_status == 'cold-start'
+        run: |
+          echo "::warning title=durations baseline::cold start — ${{ needs.backend.outputs.durations_baseline_reason }}; all files use default weight 1.0"
 
       - name: Generate shard-1 test list
         working-directory: packages/server-python
         run: |
           mkdir -p test-results
-          DURS=""
-          if [[ -f artifacts/backend-durations.json ]]; then
-            DURS="--durations artifacts/backend-durations.json"
+          DURS=()
+          SOURCE="cold-start (${{ needs.backend.outputs.durations_baseline_reason }})"
+          if [[ "${{ needs.backend.outputs.durations_baseline_status }}" == "selected" ]]; then
+            DURS=(--durations "$GITHUB_WORKSPACE/artifacts/baseline/backend-durations.json")
+            SOURCE="run:${{ needs.backend.outputs.durations_baseline_run_id }} sha256:${{ needs.backend.outputs.durations_baseline_sha256 }}"
           fi
           python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" --shard 1 \
             --repo-root "$PWD" \
-            $DURS \
+            "${DURS[@]}" \
+            --baseline-source "$SOURCE" \
             --output test-results/shard1.list
           SHARD_PATHS=$(wc -l < test-results/shard1.list)
           echo "shard1 file count: $SHARD_PATHS"
+          {
+            echo "- baseline_source: $SOURCE"
+            echo "- current_run_id: $GITHUB_RUN_ID"
+            echo "- shard_file_count: $SHARD_PATHS"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run shard-1 pytest
         id: run
@@ -490,29 +558,59 @@ jobs:
         working-directory: packages/server-python
         run: uv run --frozen --extra dev python -m app.shared.infrastructure.test_db_setup
 
-      - name: Download prior durations baseline
-        if: always()
-        continue-on-error: true
+      - name: Download pinned durations baseline
+        # TD-107 P2-1: 与 shard-1 消费同一份 pinned 基线（同一 run_id/sha256）。
+        if: needs.backend.outputs.durations_baseline_status == 'selected'
         uses: actions/download-artifact@v4
         with:
-          name: ${{ env.BACKEND_DURATIONS_ARTIFACT }}
-          path: artifacts
-          if-no-files-found: ignore
+          name: backend-durations-baseline
+          path: artifacts/baseline
+
+      - name: Verify pinned baseline integrity
+        if: needs.backend.outputs.durations_baseline_status == 'selected'
+        run: |
+          set -euo pipefail
+          FILE="$GITHUB_WORKSPACE/artifacts/baseline/backend-durations.json"
+          if [[ ! -s "$FILE" ]]; then
+            echo "selected baseline missing after download (source run ${{ needs.backend.outputs.durations_baseline_run_id }})" >&2
+            exit 1
+          fi
+          EXPECTED="${{ needs.backend.outputs.durations_baseline_sha256 }}"
+          ACTUAL=$(sha256sum "$FILE" | awk '{print $1}')
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            echo "selected baseline sha256 mismatch: expected $EXPECTED got $ACTUAL" >&2
+            exit 1
+          fi
+          python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" \
+            --validate-durations "$FILE"
+
+      - name: Log cold-start baseline reason
+        if: needs.backend.outputs.durations_baseline_status == 'cold-start'
+        run: |
+          echo "::warning title=durations baseline::cold start — ${{ needs.backend.outputs.durations_baseline_reason }}; all files use default weight 1.0"
 
       - name: Generate shard-2 test list
         working-directory: packages/server-python
         run: |
           mkdir -p test-results
-          DURS=""
-          if [[ -f artifacts/backend-durations.json ]]; then
-            DURS="--durations artifacts/backend-durations.json"
+          DURS=()
+          SOURCE="cold-start (${{ needs.backend.outputs.durations_baseline_reason }})"
+          if [[ "${{ needs.backend.outputs.durations_baseline_status }}" == "selected" ]]; then
+            DURS=(--durations "$GITHUB_WORKSPACE/artifacts/baseline/backend-durations.json")
+            SOURCE="run:${{ needs.backend.outputs.durations_baseline_run_id }} sha256:${{ needs.backend.outputs.durations_baseline_sha256 }}"
           fi
           python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" --shard 2 \
             --repo-root "$PWD" \
-            $DURS \
+            "${DURS[@]}" \
+            --baseline-source "$SOURCE" \
             --output test-results/shard2.list
           SHARD_PATHS=$(wc -l < test-results/shard2.list)
           echo "shard2 file count: $SHARD_PATHS"
+          {
+            echo "- baseline_source: $SOURCE"
+            echo "- current_run_id: $GITHUB_RUN_ID"
+            echo "- shard_file_count: $SHARD_PATHS"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run shard-2 pytest
         id: run
@@ -642,31 +740,61 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build next durations baseline from shard JUnit XML
-        if: always()
+        # TD-107 P2-1: 发布门禁——本步无 if: always()，仅在 Gate（双 shard
+        # 成功）与 union 覆盖校验通过后运行；产物必须完整（两个 shard JUnit
+        # 齐备）且通过 --validate-durations 严格校验，否则本步失败、基线
+        # 不发布（shard 的 JUnit 诊断 artifact 已由 if: always() 保留）。
         run: |
+          set -euo pipefail
+          JUNIT_COUNT=$(find "$GITHUB_WORKSPACE/artifacts/shards" -name 'junit-backend-full-shard*.xml' | wc -l)
+          if [[ "$JUNIT_COUNT" -ne 2 ]]; then
+            echo "expected 2 shard JUnit files, found $JUNIT_COUNT — refusing to build baseline" >&2
+            exit 1
+          fi
           python3 - <<'PY'
           import json
+          import sys
           import xml.etree.ElementTree as ET
           from pathlib import Path
 
+          shards_dir = Path("artifacts/shards")
+          # pytest 的 JUnit testcase 无 file 属性——用 shard 清单把 classname
+          # （点分模块路径，可能带类名后缀）映射回文件。
+          files = (shards_dir / "shard1.list").read_text().split() + (
+              shards_dir / "shard2.list"
+          ).read_text().split()
+          mod_to_file = {f[:-3].replace("/", "."): f for f in files}
+
+          def to_file(classname: str) -> str | None:
+              mod = next(
+                  (m for m in mod_to_file if classname == m or classname.startswith(m + ".")),
+                  None,
+              )
+              return mod_to_file.get(mod) if mod else None
+
           per_file = {}
-          for junit_path in Path("artifacts/shards").glob("junit-backend-full-shard*.xml"):
-              try:
-                  root = ET.parse(junit_path).getroot()
-              except ET.ParseError:
-                  continue
+          unmappable = []
+          for junit_path in sorted(shards_dir.glob("junit-backend-full-shard*.xml")):
+              root = ET.parse(junit_path).getroot()  # 解析失败即异常退出，不静默
               for tc in root.iter("testcase"):
-                  file_attr = tc.attrib.get("file", "")
-                  if not file_attr:
+                  classname = tc.attrib.get("classname", "")
+                  rel = to_file(classname)
+                  if rel is None:
+                      unmappable.append(classname)
                       continue
-                  # pytest may report a system path; normalize to repo-relative.
-                  rel = file_attr.split("packages/server-python/", 1)
-                  rel = rel[1] if len(rel) == 2 else file_attr
                   try:
                       t = float(tc.attrib.get("time", "0") or 0)
                   except ValueError:
                       t = 0.0
                   per_file[rel] = per_file.get(rel, 0.0) + t
+
+          if unmappable:
+              sample = sorted(set(unmappable))[:10]
+              print(f"unmappable testcase classnames: {sample}", file=sys.stderr)
+              sys.exit(1)
+          if not per_file:
+              print("no testcase durations extracted — refusing to build baseline", file=sys.stderr)
+              sys.exit(1)
 
           out = {
               "version": 1,
@@ -678,14 +806,17 @@ jobs:
           )
           print(f"durations baseline files: {len(per_file)}")
           PY
+          python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" \
+            --validate-durations "$GITHUB_WORKSPACE/artifacts/durations/backend-durations.json"
 
       - name: Upload next durations baseline
-        if: always()
+        # TD-107 P2-1: 仅在以上全部成功后才发布可复用基线；失败 run 不得发布
+        # 空白或不完整基线供后续消费。
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BACKEND_DURATIONS_ARTIFACT }}
           path: artifacts/durations/backend-durations.json
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 14
 
   frontend:
