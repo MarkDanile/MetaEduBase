@@ -406,17 +406,21 @@ jobs:
 
       - name: Verify pinned baseline integrity
         if: needs.backend.outputs.durations_baseline_status == 'selected'
+        # TD-107: 所有 baseline 输出经 env 传入（不表达式插入 shell 源码），
+        # run 块内只做带引号变量展开 + printf 固定格式串。
+        env:
+          BASELINE_RUN_ID: ${{ needs.backend.outputs.durations_baseline_run_id }}
+          BASELINE_SHA256: ${{ needs.backend.outputs.durations_baseline_sha256 }}
         run: |
           set -euo pipefail
           FILE="$GITHUB_WORKSPACE/artifacts/baseline/backend-durations.json"
           if [[ ! -s "$FILE" ]]; then
-            echo "selected baseline missing after download (source run ${{ needs.backend.outputs.durations_baseline_run_id }})" >&2
+            printf 'selected baseline missing after download (source run %s)\n' "$BASELINE_RUN_ID" >&2
             exit 1
           fi
-          EXPECTED="${{ needs.backend.outputs.durations_baseline_sha256 }}"
           ACTUAL=$(sha256sum "$FILE" | awk '{print $1}')
-          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
-            echo "selected baseline sha256 mismatch: expected $EXPECTED got $ACTUAL" >&2
+          if [[ "$ACTUAL" != "$BASELINE_SHA256" ]]; then
+            printf 'selected baseline sha256 mismatch: expected %s got %s\n' "$BASELINE_SHA256" "$ACTUAL" >&2
             exit 1
           fi
           python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" \
@@ -424,18 +428,26 @@ jobs:
 
       - name: Log cold-start baseline reason
         if: needs.backend.outputs.durations_baseline_status == 'cold-start'
+        env:
+          BASELINE_REASON: ${{ needs.backend.outputs.durations_baseline_reason }}
         run: |
-          echo "::warning title=durations baseline::cold start — ${{ needs.backend.outputs.durations_baseline_reason }}; all files use default weight 1.0"
+          # reason 经 env 传入（不经表达式插入 shell 源码），printf 固定格式串输出
+          printf '::warning title=durations baseline::cold start — %s; all files use default weight 1.0\n' "$BASELINE_REASON"
 
       - name: Generate shard-1 test list
         working-directory: packages/server-python
+        env:
+          BASELINE_STATUS: ${{ needs.backend.outputs.durations_baseline_status }}
+          BASELINE_REASON: ${{ needs.backend.outputs.durations_baseline_reason }}
+          BASELINE_RUN_ID: ${{ needs.backend.outputs.durations_baseline_run_id }}
+          BASELINE_SHA256: ${{ needs.backend.outputs.durations_baseline_sha256 }}
         run: |
           mkdir -p test-results
           DURS=()
-          SOURCE="cold-start (${{ needs.backend.outputs.durations_baseline_reason }})"
-          if [[ "${{ needs.backend.outputs.durations_baseline_status }}" == "selected" ]]; then
+          SOURCE="cold-start ($BASELINE_REASON)"
+          if [[ "$BASELINE_STATUS" == "selected" ]]; then
             DURS=(--durations "$GITHUB_WORKSPACE/artifacts/baseline/backend-durations.json")
-            SOURCE="run:${{ needs.backend.outputs.durations_baseline_run_id }} sha256:${{ needs.backend.outputs.durations_baseline_sha256 }}"
+            SOURCE="run:${BASELINE_RUN_ID} sha256:${BASELINE_SHA256}"
           fi
           python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" --shard 1 \
             --repo-root "$PWD" \
@@ -445,9 +457,9 @@ jobs:
           SHARD_PATHS=$(wc -l < test-results/shard1.list)
           echo "shard1 file count: $SHARD_PATHS"
           {
-            echo "- baseline_source: $SOURCE"
-            echo "- current_run_id: $GITHUB_RUN_ID"
-            echo "- shard_file_count: $SHARD_PATHS"
+            printf -- '- baseline_source: %s\n' "$SOURCE"
+            printf -- '- current_run_id: %s\n' "$GITHUB_RUN_ID"
+            printf -- '- shard_file_count: %s\n' "$SHARD_PATHS"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run shard-1 pytest
@@ -568,17 +580,21 @@ jobs:
 
       - name: Verify pinned baseline integrity
         if: needs.backend.outputs.durations_baseline_status == 'selected'
+        # TD-107: 所有 baseline 输出经 env 传入（不表达式插入 shell 源码），
+        # run 块内只做带引号变量展开 + printf 固定格式串。
+        env:
+          BASELINE_RUN_ID: ${{ needs.backend.outputs.durations_baseline_run_id }}
+          BASELINE_SHA256: ${{ needs.backend.outputs.durations_baseline_sha256 }}
         run: |
           set -euo pipefail
           FILE="$GITHUB_WORKSPACE/artifacts/baseline/backend-durations.json"
           if [[ ! -s "$FILE" ]]; then
-            echo "selected baseline missing after download (source run ${{ needs.backend.outputs.durations_baseline_run_id }})" >&2
+            printf 'selected baseline missing after download (source run %s)\n' "$BASELINE_RUN_ID" >&2
             exit 1
           fi
-          EXPECTED="${{ needs.backend.outputs.durations_baseline_sha256 }}"
           ACTUAL=$(sha256sum "$FILE" | awk '{print $1}')
-          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
-            echo "selected baseline sha256 mismatch: expected $EXPECTED got $ACTUAL" >&2
+          if [[ "$ACTUAL" != "$BASELINE_SHA256" ]]; then
+            printf 'selected baseline sha256 mismatch: expected %s got %s\n' "$BASELINE_SHA256" "$ACTUAL" >&2
             exit 1
           fi
           python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" \
@@ -586,18 +602,26 @@ jobs:
 
       - name: Log cold-start baseline reason
         if: needs.backend.outputs.durations_baseline_status == 'cold-start'
+        env:
+          BASELINE_REASON: ${{ needs.backend.outputs.durations_baseline_reason }}
         run: |
-          echo "::warning title=durations baseline::cold start — ${{ needs.backend.outputs.durations_baseline_reason }}; all files use default weight 1.0"
+          # reason 经 env 传入（不经表达式插入 shell 源码），printf 固定格式串输出
+          printf '::warning title=durations baseline::cold start — %s; all files use default weight 1.0\n' "$BASELINE_REASON"
 
       - name: Generate shard-2 test list
         working-directory: packages/server-python
+        env:
+          BASELINE_STATUS: ${{ needs.backend.outputs.durations_baseline_status }}
+          BASELINE_REASON: ${{ needs.backend.outputs.durations_baseline_reason }}
+          BASELINE_RUN_ID: ${{ needs.backend.outputs.durations_baseline_run_id }}
+          BASELINE_SHA256: ${{ needs.backend.outputs.durations_baseline_sha256 }}
         run: |
           mkdir -p test-results
           DURS=()
-          SOURCE="cold-start (${{ needs.backend.outputs.durations_baseline_reason }})"
-          if [[ "${{ needs.backend.outputs.durations_baseline_status }}" == "selected" ]]; then
+          SOURCE="cold-start ($BASELINE_REASON)"
+          if [[ "$BASELINE_STATUS" == "selected" ]]; then
             DURS=(--durations "$GITHUB_WORKSPACE/artifacts/baseline/backend-durations.json")
-            SOURCE="run:${{ needs.backend.outputs.durations_baseline_run_id }} sha256:${{ needs.backend.outputs.durations_baseline_sha256 }}"
+            SOURCE="run:${BASELINE_RUN_ID} sha256:${BASELINE_SHA256}"
           fi
           python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" --shard 2 \
             --repo-root "$PWD" \
@@ -607,9 +631,9 @@ jobs:
           SHARD_PATHS=$(wc -l < test-results/shard2.list)
           echo "shard2 file count: $SHARD_PATHS"
           {
-            echo "- baseline_source: $SOURCE"
-            echo "- current_run_id: $GITHUB_RUN_ID"
-            echo "- shard_file_count: $SHARD_PATHS"
+            printf -- '- baseline_source: %s\n' "$SOURCE"
+            printf -- '- current_run_id: %s\n' "$GITHUB_RUN_ID"
+            printf -- '- shard_file_count: %s\n' "$SHARD_PATHS"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run shard-2 pytest

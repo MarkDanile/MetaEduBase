@@ -1,5 +1,9 @@
+"""Tests for CI workflow invariants (TD-107 sharding, draft gating, etc.)."""
+
 from __future__ import annotations
 
+import os
+import subprocess
 from pathlib import Path
 
 
@@ -199,6 +203,118 @@ def test_baseline_builder_maps_classnames_via_shard_lists() -> None:
     # 不再容忍解析失败/空产物静默通过
     assert "except ET.ParseError" not in build_step
     assert "no testcase durations extracted" in build_step
+
+
+def _shard_blocks(workflow: str) -> tuple[str, str]:
+    shard1 = workflow.split("  backend-full-shard-1:")[1].split("  backend-full-shard-2:")[0]
+    shard2 = workflow.split("  backend-full-shard-2:")[1].split("  backend-full-summary:")[0]
+    return shard1, shard2
+
+
+def _step_block(shard_block: str, name: str) -> str:
+    after = shard_block.split(f"- name: {name}", maxsplit=1)[1]
+    return after.split("\n      - name:", maxsplit=1)[0]
+
+
+def _run_block_lines(step_block: str) -> list[str]:
+    """提取 run: | 的字面 shell 行（step 内容缩进 10 空格）。"""
+    body = step_block.split("run: |", maxsplit=1)[1]
+    lines: list[str] = []
+    for raw in body.splitlines()[1:]:
+        if raw.strip() == "":
+            continue
+        if raw.startswith("          "):
+            lines.append(raw[10:])
+        else:
+            break
+    return lines
+
+
+def _exec_shell(lines: list[str], env_extra: dict[str, str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    script = cwd / "step.sh"
+    script.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), **env_extra}
+    return subprocess.run(
+        ["bash", str(script)], cwd=cwd, env=env, capture_output=True, text=True
+    )
+
+
+def test_baseline_outputs_never_interpolated_into_shell_source() -> None:
+    """TD-107: baseline 输出只能经 env 传入——任何 shard run: 块内禁止表达式插入。"""
+    workflow = CI_WORKFLOW.read_text()
+    for shard in _shard_blocks(workflow):
+        for step in shard.split("      - name: ")[1:]:
+            if "run: |" not in step:
+                continue
+            run_text = "\n".join(_run_block_lines(step))
+            assert "durations_baseline" not in run_text, run_text
+
+
+def test_baseline_outputs_passed_via_step_env() -> None:
+    """TD-107: 消费 baseline 输出的三个步骤必须显式声明 env 映射。"""
+    workflow = CI_WORKFLOW.read_text()
+    for idx, shard in enumerate(_shard_blocks(workflow), start=1):
+        verify = _step_block(shard, "Verify pinned baseline integrity")
+        verify_env = verify.split("run: |", maxsplit=1)[0]
+        assert "BASELINE_RUN_ID: ${{ needs.backend.outputs.durations_baseline_run_id }}" in verify_env
+        assert "BASELINE_SHA256: ${{ needs.backend.outputs.durations_baseline_sha256 }}" in verify_env
+
+        log_step = _step_block(shard, "Log cold-start baseline reason")
+        log_env = log_step.split("run: |", maxsplit=1)[0]
+        assert "BASELINE_REASON: ${{ needs.backend.outputs.durations_baseline_reason }}" in log_env
+
+        gen = _step_block(shard, f"Generate shard-{idx} test list")
+        gen_env = gen.split("run: |", maxsplit=1)[0]
+        for var, output in (
+            ("BASELINE_STATUS", "durations_baseline_status"),
+            ("BASELINE_REASON", "durations_baseline_reason"),
+            ("BASELINE_RUN_ID", "durations_baseline_run_id"),
+            ("BASELINE_SHA256", "durations_baseline_sha256"),
+        ):
+            assert f"{var}: ${{{{ needs.backend.outputs.{output} }}}}" in gen_env
+
+
+def test_cold_start_reason_is_literal_data_with_no_execution(tmp_path: Path) -> None:
+    """执行级：恶意 reason（双引号/单引号/$()/反引号）必须字面透传且零副作用。
+
+    提取 ci.yml 中 Log cold-start 步骤的真实 run: 行执行——不是副本。
+    """
+    sentinel_dollar = tmp_path / "pwn_dollar"
+    sentinel_backtick = tmp_path / "pwn_backtick"
+    payload = (
+        "run 1: weird \"double\" and 'single' quotes; "
+        f"$(touch {sentinel_dollar}) `touch {sentinel_backtick}`; 100% literal %s %d"
+    )
+    workflow = CI_WORKFLOW.read_text()
+    shard1, _ = _shard_blocks(workflow)
+    lines = _run_block_lines(_step_block(shard1, "Log cold-start baseline reason"))
+    assert any(line.startswith("printf ") and '"$BASELINE_REASON"' in line for line in lines)
+    result = _exec_shell(lines, {"BASELINE_REASON": payload}, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert payload in result.stdout  # 引号不被吞、内容不被改写
+    assert not sentinel_dollar.exists()
+    assert not sentinel_backtick.exists()
+
+
+def test_generate_source_assignment_is_literal_data(tmp_path: Path) -> None:
+    """执行级：Generate 步骤的 SOURCE 赋值对恶意 reason 不做任何求值。"""
+    sentinel = tmp_path / "pwn_source"
+    sentinel_bt = tmp_path / "pwn_source_bt"
+    payload = f'evil $(touch {sentinel}) `touch {sentinel_bt}` "dq" \'sq\''
+    workflow = CI_WORKFLOW.read_text()
+    for idx, shard in enumerate(_shard_blocks(workflow), start=1):
+        lines = _run_block_lines(_step_block(shard, f"Generate shard-{idx} test list"))
+        source_line = next(l for l in lines if l.startswith('SOURCE="cold-start ('))
+        assert source_line == 'SOURCE="cold-start ($BASELINE_REASON)"'
+        result = _exec_shell(
+            [source_line, 'printf "%s" "$SOURCE"'],
+            {"BASELINE_REASON": payload},
+            tmp_path,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == f"cold-start ({payload})"
+    assert not sentinel.exists()
+    assert not sentinel_bt.exists()
 
 
 def test_ci_rejects_every_unknown_backend_selector_mode() -> None:
