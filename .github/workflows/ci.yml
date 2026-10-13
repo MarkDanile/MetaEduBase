@@ -237,45 +237,12 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Backend full hermetic tests
-        if: >-
-          steps.scopes.outputs.backend == 'true' &&
-          steps.scopes.outputs.full != 'true' &&
-          steps.backend_tests.outputs.mode == 'full'
-        working-directory: packages/server-python
-        run: |
-          mkdir -p test-results
-          BACKEND_START=$SECONDS
-          BACKEND_ENV_PREP=$SECONDS
-          uv run --frozen --extra dev pytest \
-            -q -m "not external_network" --durations=20 \
-            --junitxml=test-results/junit-backend-full.xml
-          BACKEND_PYTEST_SECONDS=$((SECONDS - BACKEND_ENV_PREP))
-          BACKEND_TOTAL_SECONDS=$((SECONDS - BACKEND_START))
-          {
-            echo "### Backend full hermetic timing (single-job path, pre-shard)"
-            echo "- pytest_seconds: ${BACKEND_PYTEST_SECONDS}"
-            echo "- total_seconds: ${BACKEND_TOTAL_SECONDS}"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload JUnit (full)
-        if: >-
-          always() &&
-          steps.scopes.outputs.backend == 'true' &&
-          steps.scopes.outputs.full != 'true' &&
-          steps.backend_tests.outputs.mode == 'full' &&
-          hashFiles('packages/server-python/test-results/junit-backend-full.xml') != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: junit-backend-full
-          path: packages/server-python/test-results/junit-backend-full.xml
-          if-no-files-found: ignore
-          retention-days: 14
-
-      - name: Backend scheduled hermetic tests
-        if: steps.scopes.outputs.backend == 'true' && steps.scopes.outputs.full == 'true'
-        working-directory: packages/server-python
-        run: uv run --frozen --extra dev pytest -q -m "not external_network" --durations=20
+      # TD-107: full hermetic pytest 不在本 job 运行——由 backend-full-shard-1/2 +
+      # backend-full-summary 并行接管（push / schedule / workflow_dispatch 与 PR full
+      # 模式统一走分片）。本 job 在 full 模式下只负责 scope 检测、Ruff 与 mypy。
+      # 门禁语义：full 模式的测试通过性由 "Backend full hermetic (summary)" 承载
+      # （needs 两个 shard，任一失败/取消/缺失即失败）；required checks 需将该 job
+      # 加入 branch protection（见 PR body）。
 
       - name: Check MCP lockfile
         if: steps.scopes.outputs.mcp == 'true'
