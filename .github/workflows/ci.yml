@@ -38,8 +38,6 @@ jobs:
       BACKEND_DURATIONS_ARTIFACT: backend-durations
       # TD-107: PG ports for sharded PG instances. The main job still uses 5432
       # so existing targeted / risk-targeted code paths are unchanged.
-      BACKEND_SHARD1_PG_PORT: 5433
-      BACKEND_SHARD2_PG_PORT: 5434
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -318,10 +316,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      TEST_DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5433/metaedu_test
-      DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5433/metaedu_test
+      TEST_DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test
+      DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test
       JWT_SECRET_KEY: ci-only-not-for-production
-      BACKEND_SHARD_PORT: 5433
+      BACKEND_SHARD_PORT: 5432
       BACKEND_SHARD_NAME: metaedu-ci-postgres-shard1
     steps:
       - name: Check out repository
@@ -450,10 +448,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      TEST_DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5434/metaedu_test
-      DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5434/metaedu_test
+      TEST_DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test
+      DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test
       JWT_SECRET_KEY: ci-only-not-for-production
-      BACKEND_SHARD_PORT: 5434
+      BACKEND_SHARD_PORT: 5432
       BACKEND_SHARD_NAME: metaedu-ci-postgres-shard2
     steps:
       - name: Check out repository
