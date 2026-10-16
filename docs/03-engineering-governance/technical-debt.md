@@ -216,6 +216,7 @@
 | DOC-066 | 任务池主表插入顺序门禁 | 🟢 完成 | P2 | 文档 / 工程脚本 / 任务池 / 质量门禁 | PR #246 merged `4a58906`：Backlog / technical-debt 主表最新编号位置已脚本化。 |
 | DOC-067 | 分布式临时编号与正式任务编号归并规则 | 🟢 完成 | P2 | 文档 / 工程脚本 / 任务池 / 跨设备协作 | PR #248 merged `9bf177b`：保留正式短编号，`DRAFT-*` 只作临时来源，主表门禁已实现。 |
 | DOC-080 | 固化正式评分提交原子边界与 Metrics Snapshot 所有权 | 🟢 完成 | P1 | 文档 / 工程流程 / 评分 / 质量门禁 / 跨 AI 协作 | [PR #555](https://github.com/MarkDanile/MetaEduBase/pull/555)（squash merge `2b801a60`）：正式评分原子边界、工作台 closeout 例外、Metrics 复盘所有权及基线感知检查器已落地；评分 91。 |
+| DOC-082 | 补齐正式评分后返修的追加复评（Reassessment）机制 | 🟢 完成 | P2 | 工程流程 / 评分门禁 / 跨 AI 协作 | 承接 PR #647 返修后复评结构性阻塞：`check-review-score-submit` 的『同 PR 已有评分行即拒』使同一 PR 返修后无法合规追加复评行。本任务定义最小 Reassessment 语义（Original 每 PR 唯一且不可改删排；复评引用同 PR 上一条评分及其实现基线；拒绝孤立复评、跨 PR 引用、同实现基线重复入账；历史分数不覆盖，最新有效复评用于当前交付判断），同步评分卡 / git-workflow / validator 与行为测试。不在 #647 内修改校验器放行自身。 **2026-10-16 完成**：PR #652 squash mergeCommit `535d205690b5cee722047bb191c6f6f5103a85e7` 入 main（mergedAt 2026-10-16T09:33:52Z），Original 评分 99/100；Reassessment 机制（类型、引用链、严格基线绑定、孤立/跨 PR/重复拒绝）与 validator、评分卡、git-workflow、行为测试同步落地。**完成语义边界**：仅代表复评机制落地，不代表 #647 已复评或可合并。 |
 
 ## 任务详情
 
