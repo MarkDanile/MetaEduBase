@@ -14,24 +14,7 @@
 
 ## 当前进行中
 
-### TD-107: Backend full hermetic 等待时间优化（按文件分片并行 + JUnit 上传 + 选器与基线接入）
-
-状态：🟡 进行中
-类型：CI / 测试基础设施（pure-infra；不修改 #647 业务实现 / migration / 历史评分 / Metrics）
-领域：后端 / CI / 质量门禁
-当前执行模式：plan-do
-最近接手工具：Claude Code
-分支：docs/td-107-backend-full-sharding
-
-需求来源：
-- 技术债：TD-107（technical-debt.md 第 204 行）
-- 事实源：`.github/workflows/ci.yml`（单一 Backend job，35 min timeout；full 模式串行跑 265+ 文件）、`scripts/ci/select_backend_tests.py`（AGENT_RISK_TESTS 集合）
-- 关联：#647（feat/req-042-ws-s2-phasec-submit-route）——**本轮不得修改**
-
-当前进展：1) TD-107 已登记（Open 进行中）；2) worktree 已建自 origin/main `91590551`；3) **本轮范围为骨架提交**——CI 架构、shard 选择器、test_runtime_snapshot.py 纳入 risk-targeted、JUnit 上传、summary 校验门禁、durations baseline 接入。baseline 串行耗时 / 加速比 / 稳定性待 Draft CI 实跑后补齐。
-下一步：编写 `scripts/ci/shard_backend_tests.py` + 修改 `ci.yml` full 分支为 fan-out + 修改 `select_backend_tests.py` AGENT_RISK_TESTS 增列 test_runtime_snapshot.py；推 Draft PR，等 CI 实际跑两次 full 并行后回填实测数据。
-验证状态：TD-107 登记完成；本机无 Docker Buildx / PostgreSQL 镜像、亦无 runner，**串行基线与加速比无法本地预跑**——本轮交骨架 + 必交项，**不冒称加速达成**。
-交接备注：必须保留 full 模式必依赖两 shard 的汇总门禁语义（任一失败/取消/缺失/skipped 即 fail）；分片内部串行（不允许多 worker 共库）；新增测试自动入分片（不维护手工文件名单）；targeted / docs-only no-op / main push / schedule / workflow_dispatch 选择器与原 #647 行为一致。本轮边界：不优化业务 fixture、不降断言、不增跳过、不复用旧 head 测试结果、不升 runner 规格、不修改 #647 / migration / WS-S2 spec / 历史评分 / Metrics。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -53,6 +36,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-10-16 | TASK-TD-107-BACKEND-FULL-SHARDING：TD-107 Backend full hermetic 串行→双分片并行 + durations 基线跨 run 消费 + summary fail-closed 汇总门禁（pure CI 基础设施） | 🟢 完成（PR #649 已合并；TD-107 翻 🟢 完成；TD-108 保持 ⚫ 待办） | PR #649 squash mergeCommit `159873dd`（mergedAt 2026-10-16T02:02:59Z）；Original 99/100；四轮复审 P0-2/P0-1/P2-1/reason 注入全闭合；`Backend full hermetic (summary)` 已入 main required checks；8–10min/分片实测达成但不稳定，不宣称稳定达成 | [PR #649](https://github.com/MarkDanile/MetaEduBase/pull/649)（mergeCommit `159873dd`）/ [Score Log #649 Original 99](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [technical-debt TD-107 🟢 完成](technical-debt.md) |
 | 2026-10-12 | REQ-042-WS-S2-PHASE-B：launch policy 消费面 + V1 最小 execution profile contract shaping（pure-spec / pure-docs；contract freeze 候选 spec 已落地 main） | 🟢 完成（phase-B 已合并；REQ-042 整体仍 ⚫ Candidate，phase-C–E 未启动） | PR #645 squash mergeCommit `2c402ab8`（mergedAt 2026-10-12T07:06:54Z）；Original 评分 99/100；TurnLaunchSpecV1 十字段消费表与 V1 最小 execution profile 契约冻结入 main；纯契约塑形，公共 `/turns` route 与新运行时行为均未实现。 | [phase-B spec](../02-delivery-plans/01-specs/2026-10-12-req-042-ws-s2-launch-policy-profile-contract.md) / [Score Log #645 Original 99](04-retrospectives/review-score-log.md) / [PR #645](https://github.com/MarkDanile/MetaEduBase/pull/645) / [work-log](work-log.md) |
 | 2026-10-12 | REQ-042-WS-S2-PHASE-A：公共 submit API contract shaping（pure-spec / pure-docs；contract freeze 候选 spec 落地 main） | 🟢 完成（PR #642 已合并） | PR #642 squash mergeCommit `2c912c6c`；Original 99/100；公共 submit API 契约已冻结（端点 / 鉴权与 owner isolation / 幂等 / server-selected 字段 / 错误码）；revision 语义沿用 REQ-041/047 联合核心契约；P3 括号示例观察保留非阻塞；phase-B/C、REQ-043、REQ-047 Extended 未启动 | [PR #642](https://github.com/MarkDanile/MetaEduBase/pull/642)（mergeCommit `2c912c6c`）/ [Score Log #642 Original 99](04-retrospectives/review-score-log.md) / [phase-A spec](../02-delivery-plans/01-specs/2026-10-12-req-042-ws-s2-public-submit-api-contract.md) / [work-log](work-log.md) |
 | 2026-10-10 | DOC-081：迭代状态与保留策略收口 — W23 完成事实同步及历史迭代留存口径（pure-docs 治理；承接 PR #638 复审保留项 P3-1 / P3-2，经 PR #639 登记、PR #640 实施） | 🟢 完成（DOC-081 已收口；下游状态未推进） | PR #640 squash mergeCommit `5132c1af`；Original 评分 100/100；W23 Status 翻 🟢 Done（Scope 六行与验收文字零改动）；iterations README 三类迭代保留规则落地（文件数量不作删除依据，W30 必须保留）；W30 / W25 / W23 文件保留、W30 冻结契约零改写；W31 未创建；下游未推进 | [PR #640](https://github.com/MarkDanile/MetaEduBase/pull/640)（mergeCommit `5132c1af`）/ [Score Log #640 Original 100](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [backlog DOC-081 🟢 Done](../01-product-planning/04-backlog.md) |
