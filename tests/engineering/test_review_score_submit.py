@@ -661,4 +661,3 @@ def test_unit_reference_must_hit_previous_own_baseline_not_ancestor(tmp_path: Pa
         assert "must reference the previous formal score row's own" in str(exc)
     else:
         raise AssertionError("expected CheckFailure")
-
