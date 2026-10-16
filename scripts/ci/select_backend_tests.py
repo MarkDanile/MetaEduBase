@@ -22,6 +22,7 @@ AGENT_RISK_TESTS = (
     "tests/composition/test_s3c_fenced_port.py",
     "tests/composition/test_s3c_writer_fence_e2e.py",
     "tests/composition/test_s3e_fenced_port_no_bypass.py",
+    "tests/composition/test_runtime_snapshot.py",
     "tests/contexts/agent_control_plane/test_integration_contract.py",
     "tests/contexts/agent_control_plane/test_output_bridge.py",
     "tests/contexts/agent_control_plane/test_run_api.py",
@@ -37,6 +38,15 @@ AGENT_RISK_TESTS = (
     "tests/contexts/agent_execution/test_snapshots_and_ingest_contract.py",
     "tests/contexts/agent_workspace",
     "tests/contexts/ai/test_direct_rag_compatibility_recording.py",
+)
+
+# TD-107: ALWAYS_INCLUDED_RISK_TESTS runs in BOTH targeted and risk-targeted
+# modes. These tests guard cross-context invariants (notably the workspace
+# snapshot port's deterministic digest re-export) that other contexts may
+# silently break without touching the test files themselves. Skipping them in
+# a non-agent change would let a regression land undetected.
+ALWAYS_INCLUDED_RISK_TESTS = (
+    "tests/composition/test_runtime_snapshot.py",
 )
 
 TRANSPORT_RISK_TESTS = (
@@ -288,6 +298,11 @@ def select_backend_tests(
 
     if not backend_seen:
         return Selection(mode="none", reason="no-backend-change")
+    # TD-107: always include cross-context invariant tests, regardless of
+    # targeted vs risk-targeted mode, so non-agent context changes still
+    # exercise the workspace snapshot port etc.
+    selected.update(ALWAYS_INCLUDED_RISK_TESTS)
+    reasons.add("td-107:always-included-risk")
     if risk_reasons:
         return _risk_targeted(selected, risk_reasons, tuple(sorted(risk_tests)))
     return Selection(
