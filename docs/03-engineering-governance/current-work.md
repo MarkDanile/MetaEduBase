@@ -14,23 +14,7 @@
 
 ## 当前进行中
 
-### DOC-082: 补齐正式评分后返修的追加复评（Reassessment）机制
-
-状态：🟡 进行中
-类型：治理 / 评分门禁（scripts/engineering + 规则文档 + 行为测试；不修改业务代码）
-领域：工程流程 / 评分 / 质量门禁
-当前执行模式：plan-do
-最近接手工具：Claude Code
-分支：docs/doc-082-score-reassessment
-
-需求来源：
-- 技术债：DOC-082（technical-debt.md）
-- 触发事实：PR #647 返修后复评被 validator「同 PR 已有评分行即拒」结构性阻塞（2026-10-16 实证）
-
-当前进展：开工登记完成；validator / 评分卡 / git-workflow / 行为测试编写中。
-下一步：实现 Reassessment 语义与回归测试，engineering 测试全绿后推 Draft PR；不 Ready、不评分、不合并。
-验证状态：未运行（开工态）；计划运行 engineering 测试全套 + diff-check + docs gate + CI 实测。
-交接备注：边界——Original 保护全部保留；复评提交仍仅允许评分总账新增一行；不改 Metrics；不在 #647 内修改校验器；不处理 #647 / TD-108 / 其他 P3。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -52,6 +36,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-10-16 | TASK-DOC-082-SCORE-REASSESSMENT：DOC-082 追加复评（Reassessment）机制（validator + 评分卡 + git-workflow + 行为测试；pure 治理/门禁） | 🟢 完成（PR #652 已合并；DOC-082 翻 🟢 完成；不代表 #647 已复评或可合并） | PR #652 squash mergeCommit `535d2056`（mergedAt 2026-10-16T09:33:52Z）；Original 99/100；两轮交付（初版+严格化返修），validator 36/36、engineering 186/186 | [PR #652](https://github.com/MarkDanile/MetaEduBase/pull/652)（mergeCommit `535d2056`）/ [Score Log #652 Original 99](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [technical-debt DOC-082 🟢 完成](technical-debt.md) |
 | 2026-10-16 | TASK-TD-107-BACKEND-FULL-SHARDING：TD-107 Backend full hermetic 串行→双分片并行 + durations 基线跨 run 消费 + summary fail-closed 汇总门禁（pure CI 基础设施） | 🟢 完成（PR #649 已合并；TD-107 翻 🟢 完成；TD-108 保持 ⚫ 待办） | PR #649 squash mergeCommit `159873dd`（mergedAt 2026-10-16T02:02:59Z）；Original 99/100；四轮复审 P0-2/P0-1/P2-1/reason 注入全闭合；`Backend full hermetic (summary)` 已入 main required checks；8–10min/分片实测达成但不稳定，不宣称稳定达成 | [PR #649](https://github.com/MarkDanile/MetaEduBase/pull/649)（mergeCommit `159873dd`）/ [Score Log #649 Original 99](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [technical-debt TD-107 🟢 完成](technical-debt.md) |
 | 2026-10-12 | REQ-042-WS-S2-PHASE-B：launch policy 消费面 + V1 最小 execution profile contract shaping（pure-spec / pure-docs；contract freeze 候选 spec 已落地 main） | 🟢 完成（phase-B 已合并；REQ-042 整体仍 ⚫ Candidate，phase-C–E 未启动） | PR #645 squash mergeCommit `2c402ab8`（mergedAt 2026-10-12T07:06:54Z）；Original 评分 99/100；TurnLaunchSpecV1 十字段消费表与 V1 最小 execution profile 契约冻结入 main；纯契约塑形，公共 `/turns` route 与新运行时行为均未实现。 | [phase-B spec](../02-delivery-plans/01-specs/2026-10-12-req-042-ws-s2-launch-policy-profile-contract.md) / [Score Log #645 Original 99](04-retrospectives/review-score-log.md) / [PR #645](https://github.com/MarkDanile/MetaEduBase/pull/645) / [work-log](work-log.md) |
 | 2026-10-12 | REQ-042-WS-S2-PHASE-A：公共 submit API contract shaping（pure-spec / pure-docs；contract freeze 候选 spec 落地 main） | 🟢 完成（PR #642 已合并） | PR #642 squash mergeCommit `2c912c6c`；Original 99/100；公共 submit API 契约已冻结（端点 / 鉴权与 owner isolation / 幂等 / server-selected 字段 / 错误码）；revision 语义沿用 REQ-041/047 联合核心契约；P3 括号示例观察保留非阻塞；phase-B/C、REQ-043、REQ-047 Extended 未启动 | [PR #642](https://github.com/MarkDanile/MetaEduBase/pull/642)（mergeCommit `2c912c6c`）/ [Score Log #642 Original 99](04-retrospectives/review-score-log.md) / [phase-A spec](../02-delivery-plans/01-specs/2026-10-12-req-042-ws-s2-public-submit-api-contract.md) / [work-log](work-log.md) |
