@@ -148,6 +148,48 @@ class AgentExecutionIdentityRepository:
             )
         return self._to_profile(row)
 
+    async def get_agent_definition_version(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        definition_version_id: uuid.UUID,
+    ) -> AgentDefinitionVersion | None:
+        """按 ``agent_definition_version_id`` 查 tenant 内定义版本。
+
+        WS-S2 phase-B §3.1 记录该查询此前不存在；phase-C 提交期
+        ``422 validation_error``（未知 definition）判定依赖本方法。
+        """
+        row = (
+            await self._session.execute(
+                select(AgentDefinitionVersionModel).where(
+                    AgentDefinitionVersionModel.tenant_id == tenant_id,
+                    AgentDefinitionVersionModel.id == definition_version_id,
+                )
+            )
+        ).scalar_one_or_none()
+        return self._to_definition(row) if row is not None else None
+
+    async def get_runtime_profile_by_key(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        profile_key: str,
+    ) -> RuntimeProfile | None:
+        """按 ``profile_key`` 查 tenant 内 Runtime profile。
+
+        WS-S2 phase-B §2.4：V1 提交期的 profile 解析目标恒为 tenant 内
+        ``compat.direct_rag.v1``；按 key（而非 id）解析，不引入多 profile 选择。
+        """
+        row = (
+            await self._session.execute(
+                select(RuntimeProfileModel).where(
+                    RuntimeProfileModel.tenant_id == tenant_id,
+                    RuntimeProfileModel.profile_key == profile_key,
+                )
+            )
+        ).scalar_one_or_none()
+        return self._to_profile(row) if row is not None else None
+
     async def get_runtime_profile(
         self,
         *,

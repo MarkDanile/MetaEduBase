@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated, NoReturn
+from typing import Annotated, Any, NoReturn
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Response, status
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.composition.agent_control_plane import (
@@ -14,13 +14,21 @@ from app.composition.agent_control_plane import (
     ConversationHasPendingTurnError,
     ExecutionPortUnavailableError,
 )
+from app.composition.runtime_launch_policy import build_v1_launch_policy
 from app.contexts.agent_workspace.application.conversation_service import (
     AgentWorkspaceService,
 )
 from app.contexts.agent_workspace.application.cursor import InvalidCursorError
-from app.contexts.agent_workspace.application.dto import ConversationView
+from app.contexts.agent_workspace.application.dto import (
+    ConversationView,
+    MessagePartInput,
+    TurnCommand,
+)
 from app.contexts.agent_workspace.domain import (
+    AgentDefinitionNotFoundError,
     AgentWorkspaceError,
+    CapabilityDeniedError,
+    ContentClassification,
     ConversationIdConflictError,
     ConversationNotFoundError,
     ConversationPurgedError,
@@ -32,11 +40,16 @@ from app.contexts.agent_workspace.domain import (
     IdempotencyConflictError,
     InvalidConversationStateError,
     LateBodyWriteRejectedError,
+    LaunchPolicyInternalError,
     Message,
     MessagePart,
+    MessagePartType,
     ResourceReferenceForbiddenError,
     RevisionConflictError,
     TitleSourceConflictError,
+)
+from app.contexts.agent_workspace.interfaces.api.submit_turn_rate_limit import (
+    submit_turn_rate_limiter,
 )
 from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.shared.infrastructure.database import get_session
@@ -107,6 +120,57 @@ class MessageDTO(BaseModel):
 class MessageListResponse(BaseModel):
     items: list[MessageDTO]
     has_more: bool
+
+
+# ---------------------------------------------------------------------------
+# WS-S2 phase-A 公共 submit turn 契约（phase-A §1/§3/§4/§7，PR #642 冻结）
+# ---------------------------------------------------------------------------
+
+
+class SubmitTurnPartRequest(BaseModel):
+    """客户端可提交的单个消息片段（对齐内部 ``MessagePartInput``）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: str = Field(..., min_length=1, max_length=50)
+    text: str | None = Field(default=None, max_length=200_000)
+    format: str | None = Field(default=None, max_length=100)
+    resource_id: uuid.UUID | None = None
+    media_type: str | None = Field(default=None, max_length=100)
+    display_name: str | None = Field(default=None, max_length=400)
+    classification: str = Field(default="internal", max_length=50)
+
+
+class SubmitTurnRequest(BaseModel):
+    """phase-A §3：仅这四个字段可由客户端提供。
+
+    ``model_config`` 用 ``extra="forbid"``：phase-A §4 的 server-selected 字段
+    （``tenant_id`` / ``actor_id`` / ``runtime_profile_id`` / ``runtime_binding_id``
+    / ``runtime_capability_snapshot`` / ``run_config_snapshot`` / ``context_snapshot_*``
+    / ``budget_snapshot`` / ``parent_run_id`` / message seq / run_queue_seq）与任何
+    未知顶层字段都由 schema 层直接拒绝为 ``422 validation_error``。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    client_message_id: uuid.UUID
+    parts: list[SubmitTurnPartRequest] = Field(..., min_length=1, max_length=100)
+    agent_definition_version_id: uuid.UUID
+    client_options: dict[str, Any] = Field(default_factory=dict)
+
+
+class SubmitTurnResponse(BaseModel):
+    """phase-A §7：receipt 的公共字段。不暴露 outbox event_id、digest 或任何
+    server-selected launch 字段。"""
+
+    message_id: uuid.UUID
+    message_seq: int
+    run_id: uuid.UUID
+    run_queue_seq: int
+    dispatch_state: str
+    idempotent_replay: bool
+    correlation_id: uuid.UUID
+    created_at: datetime
 
 
 def _service(session: AsyncSession) -> AgentWorkspaceService:
@@ -535,3 +599,192 @@ async def list_messages(
         items=[_message_dto(item) for item in page.items],
         has_more=page.has_more,
     )
+
+
+def _submit_turn_part_input(part: SubmitTurnPartRequest) -> MessagePartInput:
+    return MessagePartInput(
+        type=MessagePartType(part.type),
+        text=part.text,
+        format=part.format,
+        resource_id=part.resource_id,
+        media_type=part.media_type,
+        display_name=part.display_name,
+        classification=ContentClassification(part.classification),
+    )
+
+
+def _raise_submit_turn_error(exc: Exception) -> NoReturn:
+    """phase-A §10 错误表到 HTTP 的映射（submit-turn 专属命名空间）。
+
+    与既有 ``_raise_workspace_error`` 分开是刻意的：phase-A §6 冻结 submit-turn
+    的 ``409`` 命名空间只含 ``idempotency_conflict`` 与 ``conversation_not_active``，
+    而会话元数据端点仍沿用 ``invalid_state_transition``。共用一张映射表会改动
+    既有端点的对外错误码，属破坏性契约变更，故不合并。
+    """
+    if isinstance(exc, AgentDefinitionNotFoundError):
+        raise HTTPException(
+            status_code=422,
+            detail=_error_detail("validation_error", str(exc)),
+        ) from exc
+    if isinstance(exc, CapabilityDeniedError):
+        raise HTTPException(
+            status_code=403,
+            detail=_error_detail("capability_denied", str(exc)),
+        ) from exc
+    if isinstance(exc, ResourceReferenceForbiddenError):
+        raise HTTPException(
+            status_code=403,
+            detail=_error_detail("resource_access_denied", str(exc)),
+        ) from exc
+    if isinstance(exc, LaunchPolicyInternalError):
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail("internal_error", str(exc)),
+        ) from exc
+    if isinstance(exc, IdempotencyConflictError | ConversationIdConflictError):
+        raise HTTPException(
+            status_code=409,
+            detail=_error_detail("idempotency_conflict", str(exc)),
+        ) from exc
+    if isinstance(exc, InvalidConversationStateError):
+        # archived 会话：phase-A §2 要求 conversation_not_active（先 restore 再提交）。
+        # deleted 会话在 repository 层以 include_deleted=False 取行，已落到 404 分支。
+        raise HTTPException(
+            status_code=409,
+            detail=_error_detail("conversation_not_active", str(exc)),
+        ) from exc
+    if isinstance(exc, ConversationNotFoundError):
+        # 不存在 / 非 owner / 已删除三者统一 404，反枚举（phase-A §10）。
+        raise HTTPException(
+            status_code=404,
+            detail=_error_detail("conversation_not_found", str(exc)),
+        ) from exc
+    if isinstance(exc, LateBodyWriteRejectedError):
+        raise HTTPException(
+            status_code=409,
+            detail=_error_detail("late_body_write_rejected", str(exc)),
+        ) from exc
+    if isinstance(exc, ConversationHasPendingTurnError):
+        raise HTTPException(
+            status_code=409,
+            detail=_error_detail("conversation_has_pending_turn", str(exc)),
+        ) from exc
+    if isinstance(exc, ConversationHasNonTerminalRunError):
+        raise HTTPException(
+            status_code=409,
+            detail=_error_detail("conversation_has_non_terminal_run", str(exc)),
+        ) from exc
+    if isinstance(exc, ValueError):
+        raise HTTPException(
+            status_code=422,
+            detail=_error_detail("validation_error", str(exc)),
+        ) from exc
+    # phase-A §10 最终兜底：未列举异常必须仍返回稳定 code `internal_error`，
+    # 否则客户端按 detail.code 分流时该路径拿不到 code。用 `from exc` 保留
+    # 异常链，服务端日志仍可拿到原始异常用于诊断。
+    raise HTTPException(
+        status_code=500,
+        detail=_error_detail("internal_error", "unexpected submit-turn failure"),
+    ) from exc
+
+
+@router.post(
+    "/{conversation_id}/turns",
+    response_model=SubmitTurnResponse,
+    status_code=201,
+)
+async def submit_turn(
+    conversation_id: uuid.UUID,
+    response: Response,
+    payload: dict[str, Any] = Body(..., embed=False),  # noqa: B008
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+    current_user: dict = Depends(get_current_user),  # noqa: B008
+):
+    """WS-S2 phase-A 公共提交端点。
+
+    phase-A §6：submit-turn **不接受** ``If-Match`` / expected revision；无关的
+    Conversation revision 变化（auto title、rename 等）不得让正常发送失败。
+
+    本函数只做 phase-A §1 冻结的 router 职责：认证上下文、DTO 解析、调用
+    application/composition 层、异常到错误码映射、响应映射。launch 构造、
+    capability gate 与 durable 写入都在下层。
+    """
+    tenant_id, actor_id = _identity(current_user)
+
+    # phase-A §10：per-actor / per-tenant 提交限流，带 Retry-After。
+    decision = submit_turn_rate_limiter.acquire(tenant_id=tenant_id, actor_id=actor_id)
+    if not decision.allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=_error_detail(
+                "rate_limited", "submit rate limit exceeded for this actor"
+            ),
+            headers={"Retry-After": str(decision.retry_after_seconds)},
+        )
+
+    # 严格 schema：未知顶层字段与 server-selected 字段一律 422（fail-closed）。
+    try:
+        request_model = SubmitTurnRequest.model_validate(payload)
+        parts = tuple(_submit_turn_part_input(part) for part in request_model.parts)
+        command = TurnCommand(
+            client_message_id=request_model.client_message_id,
+            parts=parts,
+            agent_definition_version_id=request_model.agent_definition_version_id,
+            client_options=request_model.client_options,
+        )
+    except (ValidationError, ValueError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=_error_detail("validation_error", _validation_message(exc)),
+        ) from exc
+
+    try:
+        # launch policy 经 composition 装配（execution 侧身份事实由
+        # ``app.composition.runtime_launch_policy`` adapter 供给）；
+        # workspace application 层不直接依赖 agent_execution。
+        launch = await build_v1_launch_policy(session).build_launch(
+            tenant_id=tenant_id,
+            agent_definition_version_id=request_model.agent_definition_version_id,
+        )
+        receipt = await ConversationExecutionCoordinator(session).submit_turn(
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            conversation_id=conversation_id,
+            command=command,
+            launch=launch,
+        )
+        await session.commit()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        await session.rollback()
+        _raise_submit_turn_error(exc)
+
+    message = receipt.reserved.message
+    assert message.requested_run_id is not None
+    assert message.requested_run_queue_seq is not None
+    # phase-A §1：首次接受 201；幂等重放 200 + idempotent_replay=true。
+    if receipt.reserved.idempotent_replay:
+        response.status_code = status.HTTP_200_OK
+    return SubmitTurnResponse(
+        message_id=message.id,
+        message_seq=message.seq,
+        run_id=message.requested_run_id,
+        run_queue_seq=message.requested_run_queue_seq,
+        dispatch_state=receipt.dispatch_state.value,
+        idempotent_replay=receipt.reserved.idempotent_replay,
+        correlation_id=receipt.correlation_id,
+        created_at=message.created_at,
+    )
+
+
+def _validation_message(exc: Exception) -> str:
+    """把 pydantic 校验错误压成稳定可读的 message（客户端只依赖 code）。"""
+    if isinstance(exc, ValidationError):
+        parts = []
+        for error in exc.errors():
+            location = ".".join(str(part) for part in error.get("loc", ()))
+            parts.append(f"{location}: {error.get('msg', 'invalid')}" if location
+                         else str(error.get("msg", "invalid")))
+        return "; ".join(parts) or "request validation failed"
+    return str(exc)

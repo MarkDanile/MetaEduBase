@@ -899,14 +899,25 @@ async def test_sse_heartbeat_is_a_comment_and_does_not_consume_event_seq(
     await stream.aclose()
 
 
-async def test_a1_registers_run_routes_without_opening_workspace_submit_turn():
+async def test_a1_registers_run_routes_and_phase_c_opens_workspace_submit_turn():
+    """Run 路由仍注册；``/turns`` 自 WS-S2 phase-C 起由 workspace context 公开。
+
+    A1 时期该断言是「workspace submit_turn 不得开放」。phase-C 实装公共端点后，
+    守卫意图从「不存在」演进为「存在但归属 workspace context，且 Run 路由不受影响」。
+    """
     paths = app.openapi()["paths"]
     assert "get" in paths["/api/v1/agent-runs/{run_id}"]
     assert "post" in paths["/api/v1/agent-runs/{run_id}/cancel"]
     assert "get" in paths["/api/v1/agent-runs/{run_id}/events"]
     assert (
-        "/api/v1/agent-workspace/conversations/{conversation_id}/turns"
-        not in paths
+        "post"
+        in paths["/api/v1/agent-workspace/conversations/{conversation_id}/turns"]
+    )
+    # submit 端点不属于 execution router：Run context 不因 phase-C 扩张写入面。
+    assert not any(
+        getattr(route, "path", None)
+        == "/api/v1/agent-workspace/conversations/{conversation_id}/turns"
+        for route in agent_execution_router.routes
     )
 
     stream_route = next(
