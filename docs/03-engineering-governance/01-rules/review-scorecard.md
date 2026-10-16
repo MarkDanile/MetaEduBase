@@ -40,6 +40,25 @@ scripts/check-review-score-submit --base <implementation-head> --pr <number>
 
 该检查器按基线到最终 HEAD 的净 diff 验证上述不变量；失败时不得以临时提交、回退工作区或手工解释替代修复。
 
+## 返修复评（Reassessment）
+
+正式 Original 评分入账后，若同一 PR 在合并前继续发生返修、合并同步或证据补齐，可对最新实现追加一次复评，而不触碰既有评分历史：
+
+- 每 PR 的 `Original` 仍唯一；既有记录（含 Original 与历史 Reassessment）不得修改、删除或重排。
+- 复评使用类型 `Reassessment`，不借用 `Backfilled`（Backfilled 仅用于历史复盘补录，且不得单独充当前序正式评分）。
+- 复评行必须引用同 PR 的上一条正式评分行（Original 或更新的 Reassessment）及其实现基线，并给出本次实现基线、分数、结论与 follow-up。
+- 历史分数不被覆盖；当前交付判断以最新一条有效复评为准。
+- 复评提交与 Original 同一边界：只允许向 `review-score-log.md` 新增一行（表头下一行），历史与 Metrics Snapshot 不变，使用同一命令 `scripts/check-review-score-submit --base <new-implementation-head> --pr <number>`。
+- 复评不重新触发 Original 的合并授权语义：复评入账后仍按用户显式指令决定是否合并。
+
+### 复评行字段约定（validator 硬执行）
+
+- **本次实现基线**：行内恰有一个 `SCORE_BASE` 标签声明，其值必须与 `--base` 解析出的 commit 一致——完整 40 位逐字相等；7–39 位短 SHA 仅当是 `--base` 前缀且经 `git rev-parse --disambiguate` 在仓库对象库中唯一解析时才接受，否则报错要求完整 SHA。行内其他位置出现真实 SHA（如「提交 HEAD」「mergeCommit」）不能替代该字段。
+- **前序引用**：以「前序评分行（实现基线 `<token>`）」等措辞引用上一条同 PR 正式行**自身的**实现基线，且引用措辞不得使用 `SCORE_BASE` 标签。匹配上一条行中的祖先引用（如 merge 基线）或其他无关 SHA 无效。
+- **前序行基线识别规则**（读取历史行时）：优先取 `SCORE_BASE` 标签后的 hex token（多个标签 token 必须一致，冲突即报错）；无标签 token 时回退 `implementation base` / `implementation head` / `实现基线` / `评分基线` 标签（同样必须唯一）；无法唯一识别即报错，不退回任意 token 相交。
+- **拒绝**：孤立复评（同 PR 无 Original/Reassessment 前序行）；SCORE_BASE 声明缺失、多于一个或与 `--base` 不一致；短 SHA 有歧义；前序引用未命中上一条行自身基线；本次声明基线就是上一条行的基线（同一实现重复入账）。
+- 注：在「声明基线必须等于 `--base`」的硬约束下，同一实现基线的重复入账在真实 git 历史中已被结构性排除（包含前序行的树必然是该基线的后代），校验器的重复检查为防御性兜底。
+
 ## 首轮复审包
 
 复杂或高风险 PR 在请求独立复审前，PR 描述必须附当前 HEAD SHA 和以下复审包：

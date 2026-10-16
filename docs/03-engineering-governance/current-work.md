@@ -14,7 +14,23 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### DOC-082: 补齐正式评分后返修的追加复评（Reassessment）机制
+
+状态：🟡 进行中
+类型：治理 / 评分门禁（scripts/engineering + 规则文档 + 行为测试；不修改业务代码）
+领域：工程流程 / 评分 / 质量门禁
+当前执行模式：plan-do
+最近接手工具：Claude Code
+分支：docs/doc-082-score-reassessment
+
+需求来源：
+- 技术债：DOC-082（technical-debt.md）
+- 触发事实：PR #647 返修后复评被 validator「同 PR 已有评分行即拒」结构性阻塞（2026-10-16 实证）
+
+当前进展：开工登记完成；validator / 评分卡 / git-workflow / 行为测试编写中。
+下一步：实现 Reassessment 语义与回归测试，engineering 测试全绿后推 Draft PR；不 Ready、不评分、不合并。
+验证状态：未运行（开工态）；计划运行 engineering 测试全套 + diff-check + docs gate + CI 实测。
+交接备注：边界——Original 保护全部保留；复评提交仍仅允许评分总账新增一行；不改 Metrics；不在 #647 内修改校验器；不处理 #647 / TD-108 / 其他 P3。
 
 ## 下一批候选任务
 
