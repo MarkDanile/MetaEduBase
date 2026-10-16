@@ -40,6 +40,18 @@ scripts/check-review-score-submit --base <implementation-head> --pr <number>
 
 该检查器按基线到最终 HEAD 的净 diff 验证上述不变量；失败时不得以临时提交、回退工作区或手工解释替代修复。
 
+## 返修复评（Reassessment）
+
+正式 Original 评分入账后，若同一 PR 在合并前继续发生返修、合并同步或证据补齐，可对最新实现追加一次复评，而不触碰既有评分历史：
+
+- 每 PR 的 `Original` 仍唯一；既有记录（含 Original 与历史 Reassessment）不得修改、删除或重排。
+- 复评使用类型 `Reassessment`，不借用 `Backfilled`（Backfilled 仅用于历史复盘补录）。
+- 复评行必须引用同 PR 的上一条正式评分行（Original 或更新的 Reassessment）及其实现基线：结论中显式写出上一条的 SCORE_BASE，并给出本次实现基线、分数、结论与 follow-up。
+- 历史分数不被覆盖；当前交付判断以最新一条有效复评为准。
+- 校验器拒绝：孤立复评（同 PR 无前序评分行）、未引用上一条同 PR 行实现基线的复评（含跨 PR 引用）、与既有同 PR 行相同实现基线的重复入账。
+- 复评提交与 Original 同一边界：只允许向 `review-score-log.md` 新增一行（表头下一行），历史与 Metrics Snapshot 不变，使用同一命令 `scripts/check-review-score-submit --base <new-implementation-head> --pr <number>`。
+- 复评不重新触发 Original 的合并授权语义：复评入账后仍按用户显式指令决定是否合并。
+
 ## 首轮复审包
 
 复杂或高风险 PR 在请求独立复审前，PR 描述必须附当前 HEAD SHA 和以下复审包：

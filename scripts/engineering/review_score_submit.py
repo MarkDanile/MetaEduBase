@@ -3,6 +3,11 @@
 The checker compares the final tree with the implementation baseline. It is
 deliberately independent of GitHub so a score-only push can be verified in a
 local hook or in CI without network access.
+
+Row types: `Original`（每 PR 唯一，既有记录不可改/删/排）与 `Reassessment`
+（DOC-082：正式评分后同 PR 再次发生返修时的追加复评；必须引用同 PR 上一条
+评分行及其实现基线；拒绝孤立复评、跨 PR 引用与同实现基线重复入账；历史
+分数不被覆盖，最新有效复评用于当前交付判断）。
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ from pathlib import Path
 SCORE_LOG = "docs/03-engineering-governance/04-retrospectives/review-score-log.md"
 BASE_SHA_RE = re.compile(r"(?<![0-9a-f])([0-9a-f]{7,40})(?![0-9a-f])", re.I)
 FOLLOW_UP_RE = re.compile(r"\b(?:REQ|BUG|TD|DOC)-\d{3}\b(?!-)")
+DECLARED_BASE_RE = re.compile(r"SCORE_BASE[^0-9a-f]{0,12}([0-9a-f]{7,40})", re.I)
 P0_P1_CLEAR_RE = re.compile(
     r"(?:P0\s*/\s*P1\s*=\s*0\b|P0\s*=\s*0\b\s*/\s*P1\s*=\s*0\b|P0\s*/\s*P1\s*(?:已)?清零)"
 )
@@ -100,8 +106,10 @@ def _validate_inserted_row(
         raise CheckFailure("the inserted score row must contain exactly 10 Score Log cells")
     if any(not cell for cell in cells):
         raise CheckFailure("the inserted score row must not contain empty Score Log cells")
-    if cells[1] != "Original":
-        raise CheckFailure("the inserted score row must be typed `Original`")
+    if cells[1] not in ("Original", "Reassessment"):
+        raise CheckFailure(
+            "the inserted score row must be typed `Original` or `Reassessment`"
+        )
     if not _targets_pr(cells, pr_number):
         raise CheckFailure(f"the inserted score row does not target PR #{pr_number}")
     if not re.fullmatch(r"\d{1,3}", cells[4]) or not 0 <= int(cells[4]) <= 100:
@@ -120,8 +128,73 @@ def _validate_inserted_row(
             "the inserted score row does not contain the requested implementation baseline "
             f"{base_oid[:12]}"
         )
-    if any(_targets_pr(_table_cells(line), pr_number) for line in baseline.splitlines()):
-        raise CheckFailure(f"review-score-log.md already contains a row for PR #{pr_number}")
+    prior_rows = [
+        line
+        for line in baseline.splitlines()
+        if _targets_pr(_table_cells(line), pr_number)
+    ]
+    if cells[1] == "Original":
+        # Original 每 PR 唯一：既有记录（Original 或 Reassessment）不可改、删、排，
+        # 亦不得再追加第二条 Original。
+        if prior_rows:
+            raise CheckFailure(
+                f"review-score-log.md already contains a row for PR #{pr_number}"
+            )
+        return
+    _validate_reassessment_row(
+        row, prior_rows=prior_rows, pr_number=pr_number, base_oid=base_oid
+    )
+
+
+def _validate_reassessment_row(
+    row: str,
+    *,
+    prior_rows: list[str],
+    pr_number: str,
+    base_oid: str,
+) -> None:
+    """Reassessment 专属规则（Original 的所有保护在调用方已先行通过）。
+
+    - 孤立复评拒绝：同 PR 必须已有正式评分行（Original 或更新的 Reassessment）。
+    - 跨 PR / 错误引用拒绝：复投行必须携带上一条同 PR 评分行中出现过的
+      实现基线 token（即显式引用上一条行及其实现基线）。引用措辞不得使用
+      `SCORE_BASE` 标签——该标签在复投行中唯一标识本次实现基线。
+    - 同一实现基线重复入账拒绝：复投行以 `SCORE_BASE` 标签声明的本次实现
+      基线 token 不得出现在任何既有同 PR 评分行中（历史行覆盖过的实现
+      不得重复评分）。
+    """
+    if not prior_rows:
+        raise CheckFailure(
+            f"orphan reassessment: no prior formal score row exists for PR #{pr_number}"
+        )
+    previous_tokens = {token.lower() for token in BASE_SHA_RE.findall(prior_rows[0])}
+    row_tokens = {token.lower() for token in BASE_SHA_RE.findall(row)}
+    if not (row_tokens & previous_tokens):
+        raise CheckFailure(
+            "the reassessment row must reference the previous formal score row and its "
+            f"implementation baseline for PR #{pr_number}"
+        )
+    declared = [token.lower() for token in DECLARED_BASE_RE.findall(row)]
+    if not declared:
+        raise CheckFailure(
+            "the reassessment row must declare its own implementation baseline "
+            "via a `SCORE_BASE` label"
+        )
+    prior_tokens = {
+        token.lower()
+        for prior in prior_rows
+        for token in BASE_SHA_RE.findall(prior)
+    }
+    for token in declared:
+        if any(
+            token == prior or (len(token) >= 7 and prior.startswith(token))
+            or (len(prior) >= 7 and token.startswith(prior))
+            for prior in prior_tokens
+        ):
+            raise CheckFailure(
+                f"implementation baseline {token[:12]} is already covered by an "
+                f"existing score row for PR #{pr_number}"
+            )
 
 
 def validate(root: Path, *, base: str, pr_number: str) -> None:
@@ -167,6 +240,7 @@ def validate(root: Path, *, base: str, pr_number: str) -> None:
         base_oid=base_oid,
         baseline=baseline,
     )
+    return _table_cells(inserted_row)[1]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -179,13 +253,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     root = Path(args.root).resolve()
     try:
-        validate(root, base=args.base, pr_number=args.pr)
+        row_type = validate(root, base=args.base, pr_number=args.pr)
     except (CheckFailure, UnicodeDecodeError) as exc:
         print(f"review-score-submit: {exc}", file=sys.stderr)
         return 1
     print(
         "review-score-submit: passed "
-        f"(base {args.base}, PR #{args.pr}, one Original row, Metrics unchanged)"
+        f"(base {args.base}, PR #{args.pr}, one {row_type} row, Metrics unchanged)"
     )
     return 0
 

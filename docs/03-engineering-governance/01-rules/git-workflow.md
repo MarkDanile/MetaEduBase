@@ -33,7 +33,7 @@
 
 6. 用户明确说“按流程评审”后，按 `review-scorecard.md` 评审当前待合并 PR Head；当前任务范围内的阻塞 finding 优先修复，非阻塞问题绑定稳定 follow-up。
 7. 完成正式评分并按 `review-scorecard.md#正式评分提交不变量` 运行 `scripts/check-review-score-submit --base <implementation-head> --pr <number>`；评分记录只能新增一行到 `review-score-log.md`，与评审修复一起推送到同一 PR，重新执行受影响验证并等待 required checks。
-8. 报告评分、finding、follow-up 和 CI 状态，然后停止并保持 PR 开放。评分记录本身的纯文档提交不使评审失效；评分后若代码、测试或契约继续变化，合并前必须复核变化范围并更新评审结论。
+8. 报告评分、finding、follow-up 和 CI 状态，然后停止并保持 PR 开放。评分记录本身的纯文档提交不使评审失效；评分后若代码、测试或契约继续变化，合并前必须复核变化范围并更新评审结论——此时按 `review-scorecard.md#返修复评reassessment` 追加一条 `Reassessment` 行（引用上一条评分及其基线），不得修改或覆盖原 Original 行。
 
 ### 合并阶段
 
