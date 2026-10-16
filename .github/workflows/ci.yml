@@ -12,6 +12,9 @@ on:
 
 permissions:
   contents: read
+  # TD-107 P2-1: backend job 通过 gh api / gh run download 跨 run 只读解析历史
+  # durations baseline artifact（单一解析点，两个 shard 消费同一 pinned 身份）。
+  actions: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
@@ -21,7 +24,24 @@ jobs:
   backend:
     name: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft && 'Backend iteration' || 'Backend' }}
     runs-on: ubuntu-latest
+    # TD-107: timeout 保留 35min——targeted / risk-targeted 模式仍在本 job 跑真实
+    # PG 测试（含 PG 镜像构建 + 启动 + 初始化），需要与原先一致的保守上限；
+    # full 模式下本 job 只跑 Ruff/mypy（~2min），上限不碍事。不缩减以避免
+    # targeted 大集合（如 migration 测试族）被误裁。
     timeout-minutes: 35
+    # TD-107: expose selection mode to downstream shard jobs so they can
+    # decide whether to take over the full path. Full mode (push / schedule /
+    # workflow_dispatch) fans out to backend-full-shard-{1,2} + summary;
+    # targeted / risk-targeted / no-op stay on this single job (no behavior
+    # change for #647 Draft PRs which use risk-targeted).
+    outputs:
+      mode: ${{ steps.backend_tests.outputs.mode }}
+      # TD-107 P2-1: 单点解析的 durations 基线身份。两个 shard 必须消费同一份
+      # pinned (run_id, sha256)，不得各自查询“最新”（避免跨 shard 漂移）。
+      durations_baseline_status: ${{ steps.durations_baseline.outputs.baseline_status }}
+      durations_baseline_reason: ${{ steps.durations_baseline.outputs.baseline_reason }}
+      durations_baseline_run_id: ${{ steps.durations_baseline.outputs.baseline_run_id }}
+      durations_baseline_sha256: ${{ steps.durations_baseline.outputs.baseline_sha256 }}
     env:
       TEST_DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test
       DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test
@@ -102,6 +122,35 @@ jobs:
               ;;
           esac
 
+      # TD-107 P2-1: durations 基线的唯一解析点。两个 shard 通过
+      # needs.backend.outputs.durations_baseline_* 消费同一份 pinned 身份；
+      # shard 内禁止各自查询“最新”。选定后基线作为当前 run artifact
+      # （backend-durations-baseline）重新发布，shard 在同 run 内下载并做
+      # sha256 + 格式双重校验；选定后下载/校验失败 = 硬性失败，不回退冷启动。
+      - name: Resolve pinned durations baseline
+        if: steps.backend_tests.outputs.mode == 'full'
+        id: durations_baseline
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RESOLVE_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          python3 scripts/ci/resolve_durations_baseline.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --branch "$RESOLVE_BRANCH" \
+            --workdir /tmp/durations-baseline \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Upload pinned durations baseline (current run)
+        if: >-
+          steps.backend_tests.outputs.mode == 'full' &&
+          steps.durations_baseline.outputs.baseline_status == 'selected'
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-durations-baseline
+          path: /tmp/durations-baseline/backend-durations.json
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Install uv
         if: steps.scopes.outputs.backend == 'true' || steps.scopes.outputs.mcp == 'true'
         uses: astral-sh/setup-uv@v9.0.0
@@ -117,15 +166,21 @@ jobs:
         run: uv sync --project packages/server-python --python 3.12 --frozen --extra dev
 
       - name: Prepare pinned PostgreSQL build sources
-        if: steps.scopes.outputs.backend == 'true'
+        if: >-
+          steps.scopes.outputs.backend == 'true' &&
+          steps.backend_tests.outputs.mode != 'full'
         run: scripts/ci/prepare-postgres-sources
 
       - name: Set up Docker Buildx
-        if: steps.scopes.outputs.backend == 'true'
+        if: >-
+          steps.scopes.outputs.backend == 'true' &&
+          steps.backend_tests.outputs.mode != 'full'
         uses: docker/setup-buildx-action@v4
 
       - name: Build PostgreSQL test image
-        if: steps.scopes.outputs.backend == 'true'
+        if: >-
+          steps.scopes.outputs.backend == 'true' &&
+          steps.backend_tests.outputs.mode != 'full'
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -136,7 +191,9 @@ jobs:
           cache-to: type=gha,mode=max,scope=metaedu-postgres
 
       - name: Start PostgreSQL
-        if: steps.scopes.outputs.backend == 'true'
+        if: >-
+          steps.scopes.outputs.backend == 'true' &&
+          steps.backend_tests.outputs.mode != 'full'
         run: |
           docker run --detach --rm \
             --name metaedu-ci-postgres \
@@ -157,7 +214,9 @@ jobs:
           exit 1
 
       - name: Initialize test database
-        if: steps.scopes.outputs.backend == 'true'
+        if: >-
+          steps.scopes.outputs.backend == 'true' &&
+          steps.backend_tests.outputs.mode != 'full'
         working-directory: packages/server-python
         run: uv run --frozen --extra dev python -m app.shared.infrastructure.test_db_setup
 
@@ -189,21 +248,48 @@ jobs:
             exit 1
           fi
           echo "Backend targeted reason: ${{ steps.backend_tests.outputs.reason }}"
+          # TD-107: write JUnit XML and capture pytest / env prep / total times
+          mkdir -p test-results
+          {
+            echo "### Backend targeted test timing"
+            echo "- env_prep_seconds: ${BACKEND_ENV_PREP_SECONDS:-0}"
+            echo "- pytest_seconds: ${BACKEND_PYTEST_SECONDS:-0}"
+            echo "- total_seconds: ${BACKEND_TOTAL_SECONDS:-0}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          BACKEND_START=$SECONDS
+          BACKEND_ENV_PREP=$SECONDS
           uv run --frozen --extra dev pytest \
-            -q -m "not external_network" --durations=20 "${pytest_paths[@]}"
+            -q -m "not external_network" --durations=20 \
+            --junitxml=test-results/junit-backend-targeted.xml \
+            "${pytest_paths[@]}"
+          BACKEND_PYTEST_SECONDS=$((SECONDS - BACKEND_ENV_PREP))
+          BACKEND_TOTAL_SECONDS=$((SECONDS - BACKEND_START))
+          {
+            echo "- env_prep_seconds: ${BACKEND_ENV_PREP_SECONDS:-0}"
+            echo "- pytest_seconds: ${BACKEND_PYTEST_SECONDS}"
+            echo "- total_seconds: ${BACKEND_TOTAL_SECONDS}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Backend full hermetic tests
+      - name: Upload JUnit (targeted)
         if: >-
+          always() &&
           steps.scopes.outputs.backend == 'true' &&
-          steps.scopes.outputs.full != 'true' &&
-          steps.backend_tests.outputs.mode == 'full'
-        working-directory: packages/server-python
-        run: uv run --frozen --extra dev pytest -q -m "not external_network" --durations=20
+          (steps.backend_tests.outputs.mode == 'targeted' ||
+           steps.backend_tests.outputs.mode == 'risk-targeted') &&
+          hashFiles('packages/server-python/test-results/junit-backend-targeted.xml') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-backend-targeted
+          path: packages/server-python/test-results/junit-backend-targeted.xml
+          if-no-files-found: ignore
+          retention-days: 14
 
-      - name: Backend scheduled hermetic tests
-        if: steps.scopes.outputs.backend == 'true' && steps.scopes.outputs.full == 'true'
-        working-directory: packages/server-python
-        run: uv run --frozen --extra dev pytest -q -m "not external_network" --durations=20
+      # TD-107: full hermetic pytest 不在本 job 运行——由 backend-full-shard-1/2 +
+      # backend-full-summary 并行接管（push / schedule / workflow_dispatch 与 PR full
+      # 模式统一走分片）。本 job 在 full 模式下只负责 scope 检测、Ruff 与 mypy。
+      # 门禁语义：full 模式的测试通过性由 "Backend full hermetic (summary)" 承载
+      # （needs 两个 shard，任一失败/取消/缺失即失败）；required checks 需将该 job
+      # 加入 branch protection（见 PR body）。
 
       - name: Check MCP lockfile
         if: steps.scopes.outputs.mcp == 'true'
@@ -230,6 +316,532 @@ jobs:
       - name: Stop PostgreSQL
         if: always() && steps.scopes.outputs.backend == 'true'
         run: docker stop metaedu-ci-postgres || true
+
+  # TD-107: full hermetic mode fans out to two parallel shard jobs. Each shard
+  # owns an independent PostgreSQL on its own port and its own initialized
+  # test database; shards run serially within themselves (no worker sharing).
+  # The summary job requires both shards to succeed, verifies the union of
+  # collected items equals the serial full collection, and uploads the next
+  # durations baseline. TD-107 P2-1: both shards consume the SAME pinned
+  # durations baseline resolved once in the backend job (status=selected →
+  # download + sha256/format 校验，失败即红；status=cold-start → 等权回退并
+  # 显式记录原因)。
+  backend-full-shard-1:
+    name: Backend full hermetic (shard 1)
+    needs: backend
+    if: needs.backend.outputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test
+      DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test
+      JWT_SECRET_KEY: ci-only-not-for-production
+      BACKEND_SHARD_PORT: 5432
+      BACKEND_SHARD_NAME: metaedu-ci-postgres-shard1
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          prune-cache: true
+          cache-dependency-glob: packages/server-python/uv.lock
+
+      - name: Install Python 3.12 backend dependencies
+        run: uv sync --project packages/server-python --python 3.12 --frozen --extra dev
+
+      - name: Prepare pinned PostgreSQL build sources
+        run: scripts/ci/prepare-postgres-sources
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build PostgreSQL test image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: deploy/Dockerfile.postgres
+          load: true
+          tags: metaedu/postgres-zhparser:ci
+          cache-from: type=gha,scope=metaedu-postgres
+          cache-to: type=gha,mode=max,scope=metaedu-postgres
+
+      - name: Start shard-1 PostgreSQL
+        run: |
+          docker run --detach --rm \
+            --name "$BACKEND_SHARD_NAME" \
+            --publish "${BACKEND_SHARD_PORT}:5432" \
+            --env POSTGRES_DB=metaedu \
+            --env POSTGRES_USER=metaedu \
+            --env POSTGRES_PASSWORD=dev_only_123 \
+            metaedu/postgres-zhparser:ci
+          for attempt in $(seq 1 30); do
+            if docker exec "$BACKEND_SHARD_NAME" pg_isready -U metaedu -d metaedu; then
+              sleep 3
+              docker exec "$BACKEND_SHARD_NAME" pg_isready -U metaedu -d metaedu
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs "$BACKEND_SHARD_NAME"
+          exit 1
+
+      - name: Initialize shard-1 test database
+        working-directory: packages/server-python
+        run: uv run --frozen --extra dev python -m app.shared.infrastructure.test_db_setup
+
+      - name: Download pinned durations baseline
+        # TD-107 P2-1: 仅在 backend 单点解析选定基线时下载当前 run 的 shuttle
+        # artifact。不得 continue-on-error——已选定基线下载失败必须硬性失败，
+        # 绝不静默伪装成冷启动。
+        if: needs.backend.outputs.durations_baseline_status == 'selected'
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-durations-baseline
+          path: artifacts/baseline
+
+      - name: Verify pinned baseline integrity
+        if: needs.backend.outputs.durations_baseline_status == 'selected'
+        # TD-107: 所有 baseline 输出经 env 传入（不表达式插入 shell 源码），
+        # run 块内只做带引号变量展开 + printf 固定格式串。
+        env:
+          BASELINE_RUN_ID: ${{ needs.backend.outputs.durations_baseline_run_id }}
+          BASELINE_SHA256: ${{ needs.backend.outputs.durations_baseline_sha256 }}
+        run: |
+          set -euo pipefail
+          FILE="$GITHUB_WORKSPACE/artifacts/baseline/backend-durations.json"
+          if [[ ! -s "$FILE" ]]; then
+            printf 'selected baseline missing after download (source run %s)\n' "$BASELINE_RUN_ID" >&2
+            exit 1
+          fi
+          ACTUAL=$(sha256sum "$FILE" | awk '{print $1}')
+          if [[ "$ACTUAL" != "$BASELINE_SHA256" ]]; then
+            printf 'selected baseline sha256 mismatch: expected %s got %s\n' "$BASELINE_SHA256" "$ACTUAL" >&2
+            exit 1
+          fi
+          python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" \
+            --validate-durations "$FILE"
+
+      - name: Log cold-start baseline reason
+        if: needs.backend.outputs.durations_baseline_status == 'cold-start'
+        env:
+          BASELINE_REASON: ${{ needs.backend.outputs.durations_baseline_reason }}
+        run: |
+          # reason 经 env 传入（不经表达式插入 shell 源码），printf 固定格式串输出
+          printf '::warning title=durations baseline::cold start — %s; all files use default weight 1.0\n' "$BASELINE_REASON"
+
+      - name: Generate shard-1 test list
+        working-directory: packages/server-python
+        env:
+          BASELINE_STATUS: ${{ needs.backend.outputs.durations_baseline_status }}
+          BASELINE_REASON: ${{ needs.backend.outputs.durations_baseline_reason }}
+          BASELINE_RUN_ID: ${{ needs.backend.outputs.durations_baseline_run_id }}
+          BASELINE_SHA256: ${{ needs.backend.outputs.durations_baseline_sha256 }}
+        run: |
+          mkdir -p test-results
+          DURS=()
+          SOURCE="cold-start ($BASELINE_REASON)"
+          if [[ "$BASELINE_STATUS" == "selected" ]]; then
+            DURS=(--durations "$GITHUB_WORKSPACE/artifacts/baseline/backend-durations.json")
+            SOURCE="run:${BASELINE_RUN_ID} sha256:${BASELINE_SHA256}"
+          fi
+          python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" --shard 1 \
+            --repo-root "$PWD" \
+            "${DURS[@]}" \
+            --baseline-source "$SOURCE" \
+            --output test-results/shard1.list
+          SHARD_PATHS=$(wc -l < test-results/shard1.list)
+          echo "shard1 file count: $SHARD_PATHS"
+          {
+            printf -- '- baseline_source: %s\n' "$SOURCE"
+            printf -- '- current_run_id: %s\n' "$GITHUB_RUN_ID"
+            printf -- '- shard_file_count: %s\n' "$SHARD_PATHS"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run shard-1 pytest
+        id: run
+        working-directory: packages/server-python
+        run: |
+          mapfile -t shard_paths < test-results/shard1.list
+          if [[ ${#shard_paths[@]} -eq 0 ]]; then
+            echo "shard-1 file list is empty" >&2
+            exit 1
+          fi
+          BACKEND_START=$SECONDS
+          BACKEND_ENV_PREP=$SECONDS
+          set -o pipefail
+          uv run --frozen --extra dev pytest \
+            -q -m "not external_network" --durations=20 \
+            --junitxml=test-results/junit-backend-full-shard1.xml \
+            "${shard_paths[@]}"
+          BACKEND_PYTEST_SECONDS=$((SECONDS - BACKEND_ENV_PREP))
+          BACKEND_TOTAL_SECONDS=$((SECONDS - BACKEND_START))
+          {
+            echo "### Backend full hermetic (shard 1) timing"
+            echo "- pytest_seconds: ${BACKEND_PYTEST_SECONDS}"
+            echo "- total_seconds: ${BACKEND_TOTAL_SECONDS}"
+            echo "- shard_file_count: ${#shard_paths[@]}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Stop shard-1 PostgreSQL
+        if: always()
+        run: docker stop "$BACKEND_SHARD_NAME" || true
+
+      - name: Upload shard-1 JUnit + collect list
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-full-shard-1
+          path: |
+            packages/server-python/test-results/junit-backend-full-shard1.xml
+            packages/server-python/test-results/shard1.list
+          if-no-files-found: ignore
+          retention-days: 14
+
+  backend-full-shard-2:
+    name: Backend full hermetic (shard 2)
+    needs: backend
+    if: needs.backend.outputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test
+      DATABASE_URL: postgresql+asyncpg://metaedu:dev_only_123@localhost:5432/metaedu_test
+      JWT_SECRET_KEY: ci-only-not-for-production
+      BACKEND_SHARD_PORT: 5432
+      BACKEND_SHARD_NAME: metaedu-ci-postgres-shard2
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          prune-cache: true
+          cache-dependency-glob: packages/server-python/uv.lock
+
+      - name: Install Python 3.12 backend dependencies
+        run: uv sync --project packages/server-python --python 3.12 --frozen --extra dev
+
+      - name: Prepare pinned PostgreSQL build sources
+        run: scripts/ci/prepare-postgres-sources
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build PostgreSQL test image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: deploy/Dockerfile.postgres
+          load: true
+          tags: metaedu/postgres-zhparser:ci
+          cache-from: type=gha,scope=metaedu-postgres
+          cache-to: type=gha,mode=max,scope=metaedu-postgres
+
+      - name: Start shard-2 PostgreSQL
+        run: |
+          docker run --detach --rm \
+            --name "$BACKEND_SHARD_NAME" \
+            --publish "${BACKEND_SHARD_PORT}:5432" \
+            --env POSTGRES_DB=metaedu \
+            --env POSTGRES_USER=metaedu \
+            --env POSTGRES_PASSWORD=dev_only_123 \
+            metaedu/postgres-zhparser:ci
+          for attempt in $(seq 1 30); do
+            if docker exec "$BACKEND_SHARD_NAME" pg_isready -U metaedu -d metaedu; then
+              sleep 3
+              docker exec "$BACKEND_SHARD_NAME" pg_isready -U metaedu -d metaedu
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs "$BACKEND_SHARD_NAME"
+          exit 1
+
+      - name: Initialize shard-2 test database
+        working-directory: packages/server-python
+        run: uv run --frozen --extra dev python -m app.shared.infrastructure.test_db_setup
+
+      - name: Download pinned durations baseline
+        # TD-107 P2-1: 与 shard-1 消费同一份 pinned 基线（同一 run_id/sha256）。
+        if: needs.backend.outputs.durations_baseline_status == 'selected'
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-durations-baseline
+          path: artifacts/baseline
+
+      - name: Verify pinned baseline integrity
+        if: needs.backend.outputs.durations_baseline_status == 'selected'
+        # TD-107: 所有 baseline 输出经 env 传入（不表达式插入 shell 源码），
+        # run 块内只做带引号变量展开 + printf 固定格式串。
+        env:
+          BASELINE_RUN_ID: ${{ needs.backend.outputs.durations_baseline_run_id }}
+          BASELINE_SHA256: ${{ needs.backend.outputs.durations_baseline_sha256 }}
+        run: |
+          set -euo pipefail
+          FILE="$GITHUB_WORKSPACE/artifacts/baseline/backend-durations.json"
+          if [[ ! -s "$FILE" ]]; then
+            printf 'selected baseline missing after download (source run %s)\n' "$BASELINE_RUN_ID" >&2
+            exit 1
+          fi
+          ACTUAL=$(sha256sum "$FILE" | awk '{print $1}')
+          if [[ "$ACTUAL" != "$BASELINE_SHA256" ]]; then
+            printf 'selected baseline sha256 mismatch: expected %s got %s\n' "$BASELINE_SHA256" "$ACTUAL" >&2
+            exit 1
+          fi
+          python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" \
+            --validate-durations "$FILE"
+
+      - name: Log cold-start baseline reason
+        if: needs.backend.outputs.durations_baseline_status == 'cold-start'
+        env:
+          BASELINE_REASON: ${{ needs.backend.outputs.durations_baseline_reason }}
+        run: |
+          # reason 经 env 传入（不经表达式插入 shell 源码），printf 固定格式串输出
+          printf '::warning title=durations baseline::cold start — %s; all files use default weight 1.0\n' "$BASELINE_REASON"
+
+      - name: Generate shard-2 test list
+        working-directory: packages/server-python
+        env:
+          BASELINE_STATUS: ${{ needs.backend.outputs.durations_baseline_status }}
+          BASELINE_REASON: ${{ needs.backend.outputs.durations_baseline_reason }}
+          BASELINE_RUN_ID: ${{ needs.backend.outputs.durations_baseline_run_id }}
+          BASELINE_SHA256: ${{ needs.backend.outputs.durations_baseline_sha256 }}
+        run: |
+          mkdir -p test-results
+          DURS=()
+          SOURCE="cold-start ($BASELINE_REASON)"
+          if [[ "$BASELINE_STATUS" == "selected" ]]; then
+            DURS=(--durations "$GITHUB_WORKSPACE/artifacts/baseline/backend-durations.json")
+            SOURCE="run:${BASELINE_RUN_ID} sha256:${BASELINE_SHA256}"
+          fi
+          python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" --shard 2 \
+            --repo-root "$PWD" \
+            "${DURS[@]}" \
+            --baseline-source "$SOURCE" \
+            --output test-results/shard2.list
+          SHARD_PATHS=$(wc -l < test-results/shard2.list)
+          echo "shard2 file count: $SHARD_PATHS"
+          {
+            printf -- '- baseline_source: %s\n' "$SOURCE"
+            printf -- '- current_run_id: %s\n' "$GITHUB_RUN_ID"
+            printf -- '- shard_file_count: %s\n' "$SHARD_PATHS"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run shard-2 pytest
+        id: run
+        working-directory: packages/server-python
+        run: |
+          mapfile -t shard_paths < test-results/shard2.list
+          if [[ ${#shard_paths[@]} -eq 0 ]]; then
+            echo "shard-2 file list is empty" >&2
+            exit 1
+          fi
+          BACKEND_START=$SECONDS
+          BACKEND_ENV_PREP=$SECONDS
+          set -o pipefail
+          uv run --frozen --extra dev pytest \
+            -q -m "not external_network" --durations=20 \
+            --junitxml=test-results/junit-backend-full-shard2.xml \
+            "${shard_paths[@]}"
+          BACKEND_PYTEST_SECONDS=$((SECONDS - BACKEND_ENV_PREP))
+          BACKEND_TOTAL_SECONDS=$((SECONDS - BACKEND_START))
+          {
+            echo "### Backend full hermetic (shard 2) timing"
+            echo "- pytest_seconds: ${BACKEND_PYTEST_SECONDS}"
+            echo "- total_seconds: ${BACKEND_TOTAL_SECONDS}"
+            echo "- shard_file_count: ${#shard_paths[@]}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Stop shard-2 PostgreSQL
+        if: always()
+        run: docker stop "$BACKEND_SHARD_NAME" || true
+
+      - name: Upload shard-2 JUnit + collect list
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-full-shard-2
+          path: |
+            packages/server-python/test-results/junit-backend-full-shard2.xml
+            packages/server-python/test-results/shard2.list
+          if-no-files-found: ignore
+          retention-days: 14
+
+  backend-full-summary:
+    name: Backend full hermetic (summary)
+    # TD-107 P0 fix（第二轮）: needs 加入 backend 以读取选择器 mode。
+    # if = always() && mode == 'full'：
+    #   - full 模式：summary 必然运行；shard 失败/取消/意外 skipped 时 Gate step
+    #     读到非 success 立即 exit 1（always() 保证不被跳过）。
+    #   - 非 full 模式（targeted / risk-targeted / docs-only）：summary skipped
+    #     ——required check 对 skipped 视为通过，保持原有非 full 语义。
+    # 不得把 shard result 写进 job-level if（skipped 的 required check 视为通过）。
+    needs: [backend, backend-full-shard-1, backend-full-shard-2]
+    if: always() && needs.backend.outputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BACKEND_DURATIONS_ARTIFACT: backend-durations
+    steps:
+      - name: Gate on shard results
+        # TD-107 P0 fix: this step must be the first real step and must fail the
+        # job when either shard failed, was cancelled, or was unexpectedly
+        # skipped. The job-level `if: always()` above guarantees this step runs.
+        env:
+          SHARD1_RESULT: ${{ needs.backend-full-shard-1.result }}
+          SHARD2_RESULT: ${{ needs.backend-full-shard-2.result }}
+        run: |
+          set -euo pipefail
+          echo "shard-1 result: $SHARD1_RESULT"
+          echo "shard-2 result: $SHARD2_RESULT"
+          if [[ "$SHARD1_RESULT" != "success" ]]; then
+            echo "shard-1 did not succeed (result=$SHARD1_RESULT)" >&2
+            exit 1
+          fi
+          if [[ "$SHARD2_RESULT" != "success" ]]; then
+            echo "shard-2 did not succeed (result=$SHARD2_RESULT)" >&2
+            exit 1
+          fi
+
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Download shard-1 + shard-2 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: backend-full-shard-*
+          path: artifacts/shards
+          merge-multiple: true
+
+      - name: Verify shard union equals serial full
+        working-directory: packages/server-python
+        run: |
+          set -euo pipefail
+          SHARDS_DIR="$GITHUB_WORKSPACE/artifacts/shards"
+          if [[ ! -s "$SHARDS_DIR/shard1.list" ]] || [[ ! -s "$SHARDS_DIR/shard2.list" ]]; then
+            echo "shard file lists missing or empty" >&2
+            ls -la "$SHARDS_DIR" >&2 || true
+            exit 1
+          fi
+          # serial_full baseline via the shard script (re-derives from git ls-files)
+          python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" --all \
+            --repo-root "$PWD" \
+            --output "$SHARDS_DIR/serial_full.list"
+          sort -u "$SHARDS_DIR/shard1.list" > /tmp/s1.sorted
+          sort -u "$SHARDS_DIR/shard2.list" > /tmp/s2.sorted
+          sort -u /tmp/s1.sorted /tmp/s2.sorted > /tmp/union.sorted
+          sort -u "$SHARDS_DIR/serial_full.list" > /tmp/serial.sorted
+          if ! cmp -s /tmp/union.sorted /tmp/serial.sorted; then
+            echo "shard union does not match serial full collection" >&2
+            diff /tmp/union.sorted /tmp/serial.sorted >&2 || true
+            exit 1
+          fi
+          # also check no overlap (defense in depth)
+          comm -12 /tmp/s1.sorted /tmp/s2.sorted > /tmp/overlap
+          if [[ -s /tmp/overlap ]]; then
+            echo "shard-1 and shard-2 share items: $(wc -l < /tmp/overlap)" >&2
+            cat /tmp/overlap >&2
+            exit 1
+          fi
+          {
+            echo "### Backend full hermetic (summary)"
+            echo "- serial_full_files: $(wc -l < /tmp/serial.sorted)"
+            echo "- shard1_files: $(wc -l < /tmp/s1.sorted)"
+            echo "- shard2_files: $(wc -l < /tmp/s2.sorted)"
+            echo "- overlap: 0"
+            echo "- union_eq_serial: true"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build next durations baseline from shard JUnit XML
+        # TD-107 P2-1: 发布门禁——本步无 if: always()，仅在 Gate（双 shard
+        # 成功）与 union 覆盖校验通过后运行；产物必须完整（两个 shard JUnit
+        # 齐备）且通过 --validate-durations 严格校验，否则本步失败、基线
+        # 不发布（shard 的 JUnit 诊断 artifact 已由 if: always() 保留）。
+        run: |
+          set -euo pipefail
+          JUNIT_COUNT=$(find "$GITHUB_WORKSPACE/artifacts/shards" -name 'junit-backend-full-shard*.xml' | wc -l)
+          if [[ "$JUNIT_COUNT" -ne 2 ]]; then
+            echo "expected 2 shard JUnit files, found $JUNIT_COUNT — refusing to build baseline" >&2
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          shards_dir = Path("artifacts/shards")
+          # pytest 的 JUnit testcase 无 file 属性——用 shard 清单把 classname
+          # （点分模块路径，可能带类名后缀）映射回文件。
+          files = (shards_dir / "shard1.list").read_text().split() + (
+              shards_dir / "shard2.list"
+          ).read_text().split()
+          mod_to_file = {f[:-3].replace("/", "."): f for f in files}
+
+          def to_file(classname: str) -> str | None:
+              mod = next(
+                  (m for m in mod_to_file if classname == m or classname.startswith(m + ".")),
+                  None,
+              )
+              return mod_to_file.get(mod) if mod else None
+
+          per_file = {}
+          unmappable = []
+          for junit_path in sorted(shards_dir.glob("junit-backend-full-shard*.xml")):
+              root = ET.parse(junit_path).getroot()  # 解析失败即异常退出，不静默
+              for tc in root.iter("testcase"):
+                  classname = tc.attrib.get("classname", "")
+                  rel = to_file(classname)
+                  if rel is None:
+                      unmappable.append(classname)
+                      continue
+                  try:
+                      t = float(tc.attrib.get("time", "0") or 0)
+                  except ValueError:
+                      t = 0.0
+                  per_file[rel] = per_file.get(rel, 0.0) + t
+
+          if unmappable:
+              sample = sorted(set(unmappable))[:10]
+              print(f"unmappable testcase classnames: {sample}", file=sys.stderr)
+              sys.exit(1)
+          if not per_file:
+              print("no testcase durations extracted — refusing to build baseline", file=sys.stderr)
+              sys.exit(1)
+
+          out = {
+              "version": 1,
+              "files": {k: round(v, 4) for k, v in sorted(per_file.items())},
+          }
+          Path("artifacts/durations").mkdir(parents=True, exist_ok=True)
+          Path("artifacts/durations/backend-durations.json").write_text(
+              json.dumps(out, ensure_ascii=False, sort_keys=True, indent=2)
+          )
+          print(f"durations baseline files: {len(per_file)}")
+          PY
+          python3 "$GITHUB_WORKSPACE/scripts/ci/shard_backend_tests.py" \
+            --validate-durations "$GITHUB_WORKSPACE/artifacts/durations/backend-durations.json"
+
+      - name: Upload next durations baseline
+        # TD-107 P2-1: 仅在以上全部成功后才发布可复用基线；失败 run 不得发布
+        # 空白或不完整基线供后续消费。
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BACKEND_DURATIONS_ARTIFACT }}
+          path: artifacts/durations/backend-durations.json
+          if-no-files-found: error
+          retention-days: 14
 
   frontend:
     name: Frontend
