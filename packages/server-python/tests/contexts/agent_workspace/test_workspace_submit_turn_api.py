@@ -316,6 +316,35 @@ async def _seed_mismatched_profile_tenant(
     return tenant_id, definition_id
 
 
+async def _cleanup_mismatched_profile_tenant(
+    db_session: AsyncSession, tenant_id: uuid.UUID
+) -> None:
+    """按外键依赖顺序删除 B-6 播种产生的全部行（仅该随机 tenant 作用域）。
+
+    删除顺序复用 workspace conftest _CLEAN_SQL 的已验证 FK 链（会话附属族
+    → 会话），再清 users 与本辅助播种的 profile / definition / tenant。
+    不触碰默认 tenant 或任何其他测试的数据（全部由随机 tenant_id 限定）。
+    """
+    for statement in (
+        "DELETE FROM metaedu.agent_conversation_legal_holds WHERE tenant_id = :tid",
+        "DELETE FROM metaedu.agent_conversation_purge_owners WHERE tenant_id = :tid",
+        "DELETE FROM metaedu.agent_conversation_purges WHERE tenant_id = :tid",
+        "DELETE FROM metaedu.agent_erasure_fences WHERE tenant_id = :tid",
+        "DELETE FROM metaedu.agent_workspace_inbox WHERE tenant_id = :tid",
+        "DELETE FROM metaedu.agent_workspace_outbox WHERE tenant_id = :tid",
+        "DELETE FROM metaedu.agent_message_parts WHERE tenant_id = :tid",
+        "DELETE FROM metaedu.agent_messages WHERE tenant_id = :tid",
+        "DELETE FROM metaedu.agent_conversation_user_state WHERE tenant_id = :tid",
+        "DELETE FROM metaedu.agent_conversations WHERE tenant_id = :tid",
+        "DELETE FROM metaedu.users WHERE tenant_id = :tid",
+        "DELETE FROM metaedu.agent_runtime_profiles WHERE tenant_id = :tid",
+        "DELETE FROM metaedu.agent_definition_versions WHERE tenant_id = :tid",
+        "DELETE FROM metaedu.tenants WHERE id = :tid",
+    ):
+        await db_session.execute(text(statement), {"tid": tenant_id})
+    await db_session.commit()
+
+
 # --------------------------------------------------------------------------
 # phase-A §1/§7 + phase-B B-1/B-8：合法提交 -> 201 + receipt + durable 事实
 # --------------------------------------------------------------------------
@@ -750,19 +779,22 @@ async def test_capability_digest_mismatch_returns_500_internal_error(
 ):
     """phase-B B-6：capability 快照与 profile 登记 digest 不一致 -> 500 fail-closed。"""
     tenant_id, definition_id = await _seed_mismatched_profile_tenant(db_session)
-    other_headers = await _login_in_tenant(client, db_session, tenant_id)
-    conversation_id = await _create_conversation(client, other_headers)
+    try:
+        other_headers = await _login_in_tenant(client, db_session, tenant_id)
+        conversation_id = await _create_conversation(client, other_headers)
 
-    resp = await client.post(
-        _TURNS_PATH.format(conversation_id=conversation_id),
-        headers=other_headers,
-        json=_payload(definition_id),
-    )
-    assert resp.status_code == 500, resp.text
-    assert resp.json()["detail"]["code"] == "internal_error"
-    # 构造失败即提交失败：不得产生 Message / Run request / outbox。
-    assert await _message_rows(db_session, conversation_id) == []
-    assert await _outbox_rows(db_session, conversation_id) == []
+        resp = await client.post(
+            _TURNS_PATH.format(conversation_id=conversation_id),
+            headers=other_headers,
+            json=_payload(definition_id),
+        )
+        assert resp.status_code == 500, resp.text
+        assert resp.json()["detail"]["code"] == "internal_error"
+        # 构造失败即提交失败：不得产生 Message / Run request / outbox。
+        assert await _message_rows(db_session, conversation_id) == []
+        assert await _outbox_rows(db_session, conversation_id) == []
+    finally:
+        await _cleanup_mismatched_profile_tenant(db_session, tenant_id)
 
 
 async def test_unmapped_exception_returns_stable_internal_error_code(
@@ -894,6 +926,10 @@ async def test_rate_limited_submit_returns_429_with_retry_after(
         limited = statuses[-1]
         assert limited.json()["detail"]["code"] == "rate_limited"
         assert int(limited.headers["Retry-After"]) >= 1
+        # TD-109：被限流请求不产生任何 durable 写入——Message 与 outbox 行数
+        # 仍恰为前两次 201 提交产生的各 2 行。
+        assert len(await _message_rows(db_session, conversation_id)) == 2
+        assert len(await _outbox_rows(db_session, conversation_id)) == 2
     finally:
         submit_turn_rate_limiter._limit = original
         submit_turn_rate_limiter.reset()
