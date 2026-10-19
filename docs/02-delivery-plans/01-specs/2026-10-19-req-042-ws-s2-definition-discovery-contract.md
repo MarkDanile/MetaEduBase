@@ -109,33 +109,42 @@ phase-A §3 冻结 `agent_definition_version_id` 为客户端必填字段，但�
 - **仓储缺口**：`AgentExecutionIdentityRepository` 当前只有按 id/key 的点查，无 tenant 范围 list——实现侧需新增一个 tenant 作用域的只读 list 查询（本契约授权的最小仓储扩展）。
 - **router**：workspace router 新增该 GET；异常映射沿用既有路径，不新增错误码。
 
-## 8. 验收矩阵（实现 PR 据此写真实 PG contract tests）
+## 8. 跨切片验收矩阵
 
-| 编号 | 验收 | 依据 |
-|---|---|---|
-| D-1 | 未认证 401；他 tenant 数据不可见 | §2 |
-| D-2 | 无任何注册时返回 `{"items": []}`（200 非错误） | §2/§4 |
-| D-3 | draft/retired definition 不出现 | §3-1 |
-| D-4 | profile 缺失或 `enabled=false` 时不出现 | §3-2/3-3 |
-| D-5 | profile 身份（runtime_kind/adapter_key）不符 V1 时不出现 | §3-4 |
-| D-6 | capability digest 不一致时该项省略且有服务端 warning 日志；读面仍 200 | §3-5 |
-| D-7 | 响应项不含任何 server-selected launch 字段（profile id/digest/budget 等） | §2 |
-| D-8 | 调用前后 `agent_definition_versions` / `agent_runtime_profiles` 行数不变（无隐式写） | §4 |
-| D-9 | 同 tenant 多 definition 时按 `(definition_key, version)` 排序返回全部可服务项（不假定单元素） | §2 |
-| D-10 | 发现成功不替代提交期校验：发现含该项后，将其 profile 置 disabled，提交仍 403 `capability_denied` | §0/§3 |
-| D-11 | 同键 + 同完整快照重试：已落库时返回原 receipt（200 + `idempotent_replay=true`），未落库时正常 201 | §6.2 |
-| D-12 | 反例：结果未知时以「messages 未找到」判定未提交 → 实现/测试均不得出现该推断路径 | §6.2 |
-| D-13 | 反例：以消息内容/时间近似匹配判定提交成功 → 实现/测试均不得出现 | §6.2 |
-| D-14 | 已有 receipt 后按 `message_id` 在 messages 读面精确确认与刷新 | §6.2 |
-| D-15 | 结果未知期间编辑内容生成新草稿与原快照分离；在途成功仅清对应快照草稿 | §6.3 |
-| D-16 | 页面刷新恢复快照但不自动重发；tenant/actor 切换清除提交状态并丢弃旧身份在途响应 | §5/§6.4 |
-| D-17 | 共享 profile digest 缺陷：发现返回 200 + 空列表 + 按缺陷去重的单条 warning（不按 definition 重复刷）；客户端无从区分原因 | §3 |
-| D-18 | 403 `capability_denied` 后仅刷新快照，不自动循环重提交（须用户再次点击） | §5 |
-| D-19 | 新 tenant 零初始化时返回空列表且 GET 前后身份表行数不变（无隐式写） | §2/§4 |
+本矩阵按**承载任务/验证方式**分层：同一行由哪一层负责写断言，决定它落在哪个任务/PR 的验证面。跨层场景在「承载任务/验证方式」列内**拆分**责任，不把整条笼统归给一层；分层只决定验收归属，**不改变 §2～§7 的任何行为约定**。
+
+| 编号 | 验收 | 承载任务/验证方式 | 依据 |
+|---|---|---|---|
+| D-1 | 未认证 401；他 tenant 数据不可见 | 后端真实 PG contract tests | §2 |
+| D-2 | 无任何注册时返回 `{"items": []}`（200 非错误） | 后端真实 PG contract tests | §2/§4 |
+| D-3 | draft/retired definition 不出现 | 后端真实 PG contract tests | §3-1 |
+| D-4 | profile 缺失或 `enabled=false` 时不出现 | 后端真实 PG contract tests | §3-2/3-3 |
+| D-5 | profile 身份（runtime_kind/adapter_key）不符 V1 时不出现 | 后端真实 PG contract tests | §3-4 |
+| D-6 | capability digest 不一致时该项省略且有服务端 warning 日志；读面仍 200 | 后端真实 PG contract tests（**已被 D-17 取代**，见本节末说明；保留编号仅为引用稳定，不计独立覆盖） | §3-5 |
+| D-7 | 响应项不含任何 server-selected launch 字段（profile id/digest/budget 等） | 后端真实 PG contract tests | §2 |
+| D-8 | 调用前后 `agent_definition_versions` / `agent_runtime_profiles` 行数不变（无隐式写） | 后端真实 PG contract tests | §4 |
+| D-9 | 同 tenant 多 definition 时按 `(definition_key, version)` 排序返回全部可服务项（不假定单元素） | 后端真实 PG contract tests | §2 |
+| D-10 | 发现成功不替代提交期校验：发现含该项后，将其 profile 置 disabled，提交仍 403 `capability_denied` | 服务端 TOCTOU 拒绝语义 → 后端真实 PG contract tests；同一场景的浏览器端到端复核 → phase-E 联合验收 | §0/§3 |
+| D-11 | 同键 + 同完整快照重试：已落库时返回原 receipt（200 + `idempotent_replay=true`），未落库时正常 201 | 服务端 replay/201/409 语义 → 后端真实 PG contract tests（phase-C 已冻结语义，实现 PR 回归覆盖）；客户端「必须同键同快照重试」→ phase-D 前端测试 | §6.2 |
+| D-12 | 反例：结果未知时以「messages 未找到」判定未提交 → 实现/测试均不得出现该推断路径 | phase-D 前端测试 | §6.2 |
+| D-13 | 反例：以消息内容/时间近似匹配判定提交成功 → 实现/测试均不得出现 | phase-D 前端测试 | §6.2 |
+| D-14 | 已有 receipt 后按 `message_id` 在 messages 读面精确确认与刷新 | phase-D 前端测试 | §6.2 |
+| D-15 | 结果未知期间编辑内容生成新草稿与原快照分离；在途成功仅清对应快照草稿 | phase-D 前端测试 | §6.3 |
+| D-16 | 页面刷新恢复快照但不自动重发；tenant/actor 切换清除提交状态并丢弃旧身份在途响应 | phase-D 前端测试 | §5/§6.4 |
+| D-17 | 共享 profile digest 缺陷：发现返回 200 + 空列表 + 按缺陷去重的单条 warning（不按 definition 重复刷）；客户端无从区分原因 | 200 + 空列表 + warning 去重 → 后端真实 PG contract tests；「空结果不得被客户端解读为具体原因」→ phase-D 前端测试 | §3 |
+| D-18 | 403 `capability_denied` 后仅刷新快照，不自动循环重提交（须用户再次点击） | phase-D 前端测试 | §5 |
+| D-19 | 新 tenant 零初始化时返回空列表且 GET 前后身份表行数不变（无隐式写） | 后端真实 PG contract tests；其「零注册」前提由 TD-114 闭合后须在新前提下重跑本行 | §2/§4 |
+
+**取代关系（本表唯一）**：D-17 取代 D-6。两者同指 §3-5 的共享 profile digest 缺陷场景，语义以 D-17 为准（200 + 空列表 + 按缺陷去重的单条 warning + 客户端不可归因）；D-6 退为 §3-5 谓词层的简写，**保留编号以免既有引用漂移，但不得计为第二项独立覆盖**。
+
+**未在本表新增行的承载任务**（避免本契约越权声明他人验收）：
+
+- **TD-114**：身份初始化的幂等性、tenant 隔离、既有租户补齐、失败重试——验收标准由技术债台账 TD-114 行承载，本表只在 D-19 标注其对前提的影响。
+- **phase-E 联合验收**：浏览器到真实后端的首次提交闭环——由 phase-E 计划承载，本表只在 D-10 标注同一 TOCTOU 场景的端到端复核点。
 
 ## 9. 非目标（本 spec 明确不交付）
 
-- 后端实现与测试（归后续实现 PR，依据 §7/§8）。
+- 后端实现与测试（归后续实现 PR，依据 §7 及 §8 中标注为「后端真实 PG contract tests」的行）；§8 中标注为 phase-D 前端测试 / TD-114 / phase-E 联合验收的行由各自任务承载，不在本 spec 交付。
 - Composer 开放与 phase-D 其余前端切片；phase-E 联调与手动验收。
 - tenant provisioning 初始化编排（§4 缺口登记给独立任务）。
 - SSE / cancel / steer / Runtime / REQ-047 Extended / WS-S3；REQ-042 状态变更。
