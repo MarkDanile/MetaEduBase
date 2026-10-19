@@ -19,6 +19,10 @@ from app.contexts.agent_workspace.domain import (
 from app.contexts.agent_workspace.infrastructure.repository import (
     AgentWorkspaceRepository,
 )
+from app.contexts.agent_workspace.interfaces.api.router import (
+    router as agent_workspace_router,
+)
+from app.contexts.identity.interfaces.api.dependencies import get_current_user
 from app.main import app
 from app.shared.infrastructure.seed import DEFAULT_ADMIN_ID, DEFAULT_TENANT_ID
 from tests.conftest import TEST_DB_URL
@@ -274,12 +278,34 @@ async def test_super_admin_role_does_not_grant_other_owners_message_access(
     assert conversation_id not in {item["id"] for item in listing.json()["items"]}
 
 
-async def test_b1_registers_guarded_delete_but_keeps_submit_turn_route_closed():
+async def test_b1_registers_guarded_delete_and_phase_c_opens_guarded_submit_turn():
+    """delete 仍受 guard；``/turns`` 自 WS-S2 phase-C 起公开且必须挂鉴权。
+
+    WS-S1 / B1 时期该断言是「``/turns`` 必须保持关闭」。phase-A（PR #642）冻结了
+    公共 submit 契约、phase-C 实装该端点后，边界从「不开放」演进为「开放但受
+    鉴权与严格 schema 保护」——因此这里改为锁定新的守卫不变量，而不是删除守卫。
+    """
     paths = app.openapi()["paths"]
     base = "/api/v1/agent-workspace/conversations/{conversation_id}"
     assert "delete" in paths[base]
-    assert f"{base}/turns" not in paths
     assert "delete" in paths[f"{base}/pin"]
+    assert "post" in paths[f"{base}/turns"]
+
+    turns_route = next(
+        route
+        for route in agent_workspace_router.routes
+        if getattr(route, "path", None) == f"{base}/turns"
+    )
+    # phase-A §1：tenant/actor 只能从鉴权上下文派生，submit 必须挂认证依赖。
+    assert any(
+        dependency.call is get_current_user
+        for dependency in turns_route.dependant.dependencies
+    )
+    # phase-A §6：submit-turn 不接受 If-Match / expected revision。
+    assert not any(
+        parameter.name == "if_match"
+        for parameter in turns_route.dependant.query_params
+    )
 
 
 async def test_durable_history_survives_new_client_reauth_and_actor_isolation(
