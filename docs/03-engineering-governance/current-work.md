@@ -14,7 +14,23 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-042-WS-S2-PHASE-D-DISCOVERY: servable definition discovery 契约塑形（方案 A）
+
+状态：🟡 进行中
+类型：REQ / contract shaping（pure-spec / pure-docs；零后端实现、零前端实现）
+领域：AI Workspace / API 契约
+当前执行模式：plan-do
+最近接手工具：Claude Code
+分支：docs/req-042-ws-s2-definition-discovery
+
+需求来源：
+- 上游阻塞实证：phase-D 前置核验（2026-10-19 只读轮）确认 `agent_definition_version_id` 无合法公开读源
+- 关联契约：phase-A（#642 冻结）、phase-B（#645 冻结）、phase-C（#647 已合并）
+
+当前进展：实现侧事实核对完成（无 list 读方法、鉴权依赖 get_current_user、可服务性五谓词链、生产唯一初始化路径为 compatibility 懒 bootstrap）；契约编写中。
+下一步：完成 spec + plan 最小同步 + 门禁，推 Draft PR；不 Ready、不评分、不实现。
+验证状态：未运行（开工态）；计划 docs gate + diff-check + CI 实测。
+交接备注：边界——GET 不得隐式写库；不硬编码 UUID；发现成功不替代提交期 fail-closed 校验；不动 REQ-042 Candidate 状态；本轮不实现后端/不开放 Composer/不启动 phase-E。
 
 ## 下一批候选任务
 
