@@ -14,23 +14,7 @@
 
 ## 当前进行中
 
-### REQ-042-WS-S2-PHASE-D-DISCOVERY: servable definition discovery 契约塑形（方案 A）
-
-状态：🟡 进行中
-类型：REQ / contract shaping（pure-spec / pure-docs；零后端实现、零前端实现）
-领域：AI Workspace / API 契约
-当前执行模式：plan-do
-最近接手工具：Claude Code
-分支：docs/req-042-ws-s2-definition-discovery
-
-需求来源：
-- 上游阻塞实证：phase-D 前置核验（2026-10-19 只读轮）确认 `agent_definition_version_id` 无合法公开读源
-- 关联契约：phase-A（#642 冻结）、phase-B（#645 冻结）、phase-C（#647 已合并）
-
-当前进展：实现侧事实核对完成（无 list 读方法、鉴权依赖 get_current_user、可服务性五谓词链、生产唯一初始化路径为 compatibility 懒 bootstrap）；契约编写中。
-下一步：首轮 Draft 已推（#655）；返修轮完成——§6 恢复流程重写（同键同快照重试为唯一恢复路径、禁内容/时间推断、快照保留与身份隔离）、§3 共享 profile 缺陷语义（200+空+去重 warning、客户端不可归因）、§5 403/切换对齐、§8 反例行扩至 D-19、TD-114 初始化缺口登记。等返修后独立复审；不 Ready、不评分、不实现。
-验证状态：未运行（开工态）；计划 docs gate + diff-check + CI 实测。
-交接备注：边界——GET 不得隐式写库；不硬编码 UUID；发现成功不替代提交期 fail-closed 校验；不动 REQ-042 Candidate 状态；本轮不实现后端/不开放 Composer/不启动 phase-E。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -52,6 +36,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-10-19 | REQ-042-WS-S2-PHASE-D-DISCOVERY：servable definition discovery 契约塑形（方案 A，pure-spec / pure-docs；contract freeze 已落地 main） | 🟢 完成（PR #655 已合并；REQ-042 整体仍 ⚫ Candidate——discovery 端点未实现、TD-114 初始化编排 / phase-D / phase-E 未启动；TD-108/111/112/113/114 保持 ⚫ 待办） | PR #655 squash mergeCommit `567aac31`（mergedAt 2026-10-19T09:04:54Z）；Original 评分 99/100；两轮独立复审闭合；契约冻结入 main（GET 端点 + 五谓词 + 零隐式写 + 跨切片验收矩阵）；不表示端点已实现 | [PR #655](https://github.com/MarkDanile/MetaEduBase/pull/655)（mergeCommit `567aac31`）/ [Score Log #655 Original 99](04-retrospectives/review-score-log.md) / [discovery spec](../02-delivery-plans/01-specs/2026-10-19-req-042-ws-s2-definition-discovery-contract.md) / [work-log](work-log.md) / [technical-debt DOC-083 🟢 完成 / TD-114 ⚫ 待办](technical-debt.md) |
 | 2026-10-19 | TASK-REQ-042-WS-S2-PHASE-C：WS-S2 phase-C 公共 submit route + 真实 PostgreSQL contract tests + V1 launch composition（含 TD-085 边界 port 化返修与 TD-109/TD-110 复审返修） | 🟢 完成（PR #647 已合并；REQ-042 整体仍 ⚫ Candidate——phase-D/E、SSE、REQ-043、REQ-047 Extended、WS-S3、Runtime/LLM 执行闭环均未启动；TD-108/111/112/113 保持 ⚫ 待办） | PR #647 squash mergeCommit `940e81d6`（mergedAt 2026-10-19T01:22:31Z）；Original 90 + 返修后 Reassessment 98（DOC-082 机制首例）；四轮独立复审 + 两轮返修；末轮 full 分片 3079 passed 双 shard 实跑 | [PR #647](https://github.com/MarkDanile/MetaEduBase/pull/647)（mergeCommit `940e81d6`）/ [Score Log #647](04-retrospectives/review-score-log.md)（Original 90 + Reassessment 98）/ [work-log](work-log.md) / [technical-debt TD-109/TD-110 🟢 完成](technical-debt.md) |
 | 2026-10-16 | TASK-DOC-082-SCORE-REASSESSMENT：DOC-082 追加复评（Reassessment）机制（validator + 评分卡 + git-workflow + 行为测试；pure 治理/门禁） | 🟢 完成（PR #652 已合并；DOC-082 翻 🟢 完成；不代表 #647 已复评或可合并） | PR #652 squash mergeCommit `535d2056`（mergedAt 2026-10-16T09:33:52Z）；Original 99/100；两轮交付（初版+严格化返修），validator 36/36、engineering 186/186 | [PR #652](https://github.com/MarkDanile/MetaEduBase/pull/652)（mergeCommit `535d2056`）/ [Score Log #652 Original 99](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [technical-debt DOC-082 🟢 完成](technical-debt.md) |
 | 2026-10-16 | TASK-TD-107-BACKEND-FULL-SHARDING：TD-107 Backend full hermetic 串行→双分片并行 + durations 基线跨 run 消费 + summary fail-closed 汇总门禁（pure CI 基础设施） | 🟢 完成（PR #649 已合并；TD-107 翻 🟢 完成；TD-108 保持 ⚫ 待办） | PR #649 squash mergeCommit `159873dd`（mergedAt 2026-10-16T02:02:59Z）；Original 99/100；四轮复审 P0-2/P0-1/P2-1/reason 注入全闭合；`Backend full hermetic (summary)` 已入 main required checks；8–10min/分片实测达成但不稳定，不宣称稳定达成 | [PR #649](https://github.com/MarkDanile/MetaEduBase/pull/649)（mergeCommit `159873dd`）/ [Score Log #649 Original 99](04-retrospectives/review-score-log.md) / [work-log](work-log.md) / [technical-debt TD-107 🟢 完成](technical-debt.md) |
