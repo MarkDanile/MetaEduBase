@@ -276,3 +276,40 @@ class RuntimeLaunchFactsPort(Protocol):
     ) -> RuntimeProfileFacts | None: ...
 
     def v1_launch_facts(self) -> V1LaunchFacts: ...
+
+
+# --- TD-114：agent identity 显式初始化编排 port -------------------------------
+#
+# 契约：docs/02-delivery-plans/01-specs/2026-10-19-td-114-agent-identity-bootstrap-contract.md
+# workspace application 层只消费下列中性类型；execution 的 ORM / 仓储 / 领域
+# 枚举一律由 composition adapter 投影，TD-085 依赖方向不变。
+
+
+@dataclass(frozen=True, slots=True)
+class BootstrapOutcome:
+    """V1 identity 显式初始化的中性结果（契约 §2 响应语义的 port 形态）。
+
+    - ``initialized=True``：调用结束后 tenant 的 V1 identity 行齐备且身份匹配
+      （definition published + profile 身份/digest 等于 V1 冻结内容）。
+    - ``disabled_existing=True``：identity 齐备但既有 profile ``enabled=false``
+      ——初始化不重新启用 disabled profile（契约 §3）。
+    - ``conflict=True``：既有记录与 V1 冻结内容不符（draft/retired/digest/
+      身份漂移），零写入；``conflict_reason`` 供错误消息使用。
+    """
+
+    initialized: bool
+    disabled_existing: bool
+    conflict: bool
+    conflict_reason: str | None = None
+
+
+class AgentIdentityBootstrapPort(Protocol):
+    """TD-114 显式初始化编排的 workspace 消费面。
+
+    默认实现由 composition 装配：
+    ``app.composition.agent_identity_bootstrap.ExecutionIdentityBootstrapAdapter``。
+    """
+
+    async def bootstrap_v1_identity(
+        self, *, tenant_id: uuid.UUID, actor_id: uuid.UUID
+    ) -> BootstrapOutcome: ...

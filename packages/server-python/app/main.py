@@ -15,6 +15,9 @@ from app.contexts.agent_workspace.infrastructure.workspace_erasure_participant i
     validate_production_actor_erasure_key_fingerprint,
     validate_production_actor_erasure_secret,
 )
+from app.contexts.agent_workspace.interfaces.api.agent_identity_router import (
+    router as agent_identity_router,
+)
 from app.contexts.agent_workspace.interfaces.api.router import (
     router as agent_workspace_router,
 )
@@ -162,6 +165,7 @@ async def _db_unavailable_handler(
 app.include_router(identity_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(agent_execution_router)
 app.include_router(agent_workspace_router)
+app.include_router(agent_identity_router)
 app.include_router(identity_admin_router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(knowledge_router, prefix="/api/v1/knowledge", tags=["knowledge"])
 app.include_router(
