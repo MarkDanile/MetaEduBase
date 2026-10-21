@@ -41,7 +41,7 @@
 - **已初始化（initialized）**：definition published 行存在 + profile 行存在且四项身份字段匹配 V1。
 - **当前可服务（servable）**：已初始化 **且** `profile.enabled == true`（即 discovery 五谓词全过）。
 - 本端点保证「已初始化」（或报 409）；**不保证**「当前可服务」——disabled profile 不自动启用，`disabled_existing=true` 时 submit 仍 403 `capability_denied`、discovery 仍空。重新启用是独立的显式运维决定，不在本契约内。
-- **discovery 空列表不得被判定为「未初始化」**（#655 §3 客户端认知边界：空 = 当前无可服务项，不可归因）。初始化不得由「discovery 为空」自动推导触发。
+- **discovery 空列表不得被判定为「未初始化」**（#655 §3 客户端认知边界：空 = 当前无可服务项，不可归因）。初始化不得由「discovery 为空」归因推导触发（§6-1 允许的一次性有界尝试不做归因，不在此限）。
 
 ## 4. 状态处理矩阵（逐项冻结）
 
