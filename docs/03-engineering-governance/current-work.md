@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### TD-114-AGENT-IDENTITY-BOOTSTRAP-SHAPING: Agent identity 显式初始化编排契约与最小实施计划（contract shaping）
+
+状态：🟡 进行中
+类型：TD / contract shaping（pure-spec / pure-docs；零实现）
+领域：后端 / Agent 运行时 / 供给编排 / API 契约
+当前执行模式：plan-do
+最近接手工具：Claude Code
+分支：docs/td-114-agent-identity-bootstrap-contract
+
+需求来源：
+- TD-114 台账行（⚫→🟡）：新 tenant 无 bootstrap 路径，WS-S2 真实首提前置
+- 前置只读调查（2026-10-19 两轮）：生产唯一初始化路径为 compatibility 懒 bootstrap（direct_rag_compatibility.py:166-168）；tenant 创建无生产代码路径
+- 关联契约：phase-A（#642）、phase-B（#645）、discovery（#655 已合并）、DOC-083 closeout（#656 已合并）
+
+当前进展：契约与最小实施计划 Draft 完成——窄幂等 POST（空体、两字段响应、409 identity_conflict、不重新启用 disabled）、§4 状态矩阵九态、§5 事务/并发/RETURNING 创建归属、§6 双触发禁止自动修复循环、§7 CLI（--actor 必填不虚构系统 UUID）、§10 A/B/C/D 四组验收分层、§11 完成判据（A+B 组，不等浏览器 phase-E）。
+下一步：推 Draft PR → 独立复审；不 Ready、不评分、不实现 API/CLI/前端。
+验证状态：docs gate + diff-check + CI 实测（本 PR）。
+交接备注：边界——初始化不写入 discovery GET；不启动 Run/LLM；不覆盖受控记录；TD-114 保持进行中不翻完成；REQ-042 仍 ⚫ Candidate；TD-108/111/112/113 保持待办。
 
 ## 下一批候选任务
 
