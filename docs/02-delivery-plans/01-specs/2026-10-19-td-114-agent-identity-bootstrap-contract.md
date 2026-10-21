@@ -62,21 +62,26 @@
 
 - **事务所有者**：composition bootstrap 服务在调用方 session 内执行两个 publish（与 compatibility 路径同模式）；route 成功时 `session.commit()`、异常时 `session.rollback()`。**两表写入同事务**：任一失败整体回滚，不产生半初始化残留。
 - **并发**：并发安全由数据库唯一约束（`uq_agent_definition_key_version`、`uq_agent_runtime_profile_key`）+ `INSERT ... ON CONFLICT DO NOTHING` 仲裁；独立连接/独立事务下的并发调用全部返回 200 同一终态，不产生重复行。
-- **创建归属判定（CLI 统计需要时）**：**不得凭写前查询推断**（并发下两调用方都读到「不存在」，都会误认为自己创建了）。唯一合法判定 = `INSERT ... ON CONFLICT DO NOTHING ... RETURNING id` 的返回行：`scalar_one_or_none()` 非空 = 本事务实际插入（计 created），为空 = 冲突未插入（计 skipped）。既有代码先例：`app/contexts/agent_workspace/infrastructure/repository.py:78-84`。
+- **创建归属判定（CLI 统计需要时）**：**不得凭写前查询推断**（并发下两调用方都读到「不存在」，都会误认为自己创建了）。唯一合法判定 = `INSERT ... ON CONFLICT DO NOTHING ... RETURNING id` 的返回行：`scalar_one_or_none()` 非空 = 本事务实际插入（计 created），为空 = 冲突未插入。既有代码先例：`app/contexts/agent_workspace/infrastructure/repository.py:78-84`。
+- **insert 未插入后的回读（冻结）**：RETURNING 返回空时，服务**必须**在同一事务内回读目标 tenant 的目标行并按 §4 重新分流——内容匹配（含 enabled 状态）→ 按既有状态返回 200 / 计 skipped；内容不匹配（digest / 身份 / status 不符）→ 409 `identity_conflict`；仍不存在或状态无法确认 → 显式失败并回滚，不得静默计为 skipped。**禁止**把 RETURNING 为空直接当作「已存在」或「本次 skipped」。
 - 既有 `publish_agent_definition_version` / `publish_runtime_profile` 的签名与语义**不变**（compatibility 路径零影响）；RETURNING 判定经新增的窄仓储方法提供（见 plan）。
 
 ## 6. 触发方式、次数与失败处理（禁止自动修复循环）
 
 初始化的合法触发方式**有且仅有两种**：
 
-1. **客户端显式调用本 POST**：由用户显式操作触发，或在 phase-D 由前端在用户打开 Composer 且 discovery 为空时**每次会话最多一次**自动调用一次（需用户在界面上可感知）；失败后**不得**自动反复调用——5xx 提示用户可重试（用户发起），409 提示联系管理员并停止。
+1. **客户端触发本 POST**：
+   - 用户显式操作触发（任何时刻可用）；或
+   - **一次性有界自动尝试**（仅 phase-D 前端）：用户打开 Composer 且 discovery **已成功返回空列表**后，当前会话**最多自动发起一次**幂等 bootstrap 尝试。该动作是有界的一次性初始化尝试，**不是**根据空列表推断 tenant 尚未初始化——空列表的原因不做归因，bootstrap 幂等，无论何种原因调用都安全；bootstrap 成功后**最多进行一次**重新 discovery。
+   - 失败处理：5xx / 网络失败 → 该次自动尝试终止，提示用户可重试（用户发起）；409 `identity_conflict` → 提示联系管理员并停止。一次性自动尝试失败后**不再自动发起**，后续只能由用户显式触发，且仍受幂等和错误语义约束。
 2. **运维 CLI**（§7）：存量补齐与新 tenant 的运维路径。
 
 **禁止**的触发模式（本契约显式排除）：
 
 - 不得由 discovery GET、conversation 创建、submit_turn 等既有端点隐式触发初始化；
-- 不得由「discovery 返回空」自动推导「未初始化」并触发初始化（空 ≠ 未初始化，§3）；
-- 不得实现任何形式的自动修复循环（空 → bootstrap → 再空 → 再 bootstrap）。
+- 不得把 discovery 空列表**判定为**「未初始化」，也不得根据空列表在「未初始化 / disabled / 配置缺陷」之间归因（空 ≠ 未初始化，§3；§6-1 允许的一次性尝试不做归因）；
+- 不得因空列表、bootstrap 失败或重新 discovery 仍为空进入任何形式的自动循环（空 → bootstrap → 再空 → 再 bootstrap）；
+- 身份切换（tenant/actor）后，旧身份的在途 bootstrap / discovery 响应一律丢弃，不得带入新身份。
 
 ## 7. CLI 契约（存量补齐）
 
@@ -116,8 +121,8 @@
 | A-2 | tenant 隔离：初始化 A，B 的两表零变化 | composition 真实 PG |
 | A-3 | 重复调用：两次 200，同行同 id、零新增 | API + composition 真实 PG |
 | A-4 | 并发：独立连接/独立事务 N 路并发 → 全部 200、两表恰各 1 行 | 真实双 session（仿 `test_two_database_sessions_allow_only_one_live_ingest_stream` 模式） |
-| A-5 | 部分失败整体回滚：预置冲突 profile → 409 且 definition 零残留；清除冲突后重试 → 200 两表齐备 | composition 真实 PG |
-| A-6 | §4 状态矩阵逐项：全缺失 / 部分缺失×2 / 完整 / disabled / draft / retired / digest 冲突 / 身份冲突 / 自定义记录保留 | composition 真实 PG |
+| A-5 | 部分失败整体回滚（真实 PG 注入式中途失败）：profile 写入方法在 definition 已成功写入后抛错 → bootstrap 返回明确失败结果；事务整体回滚——definition 不残留、profile 不残留、不产生半初始化状态；撤除注入后重试 → 200 且两表恰各 1 行；再次重试幂等。独立事务语义实测，不用 mock 或写前查询替代 | composition 真实 PG |
+| A-6 | §4 状态矩阵逐项：全缺失 / 部分缺失×2 / 完整 / disabled / draft / retired / digest 冲突 / 身份冲突 / 自定义记录保留；含预置冲突 profile → 409 且 definition 零写入（该场景按写前分流，零写入属平凡事实，归入本行，不在 A-5 重复计作回滚覆盖） | composition 真实 PG |
 | A-7 | disabled profile：响应 `disabled_existing: true` 且 `enabled` 保持 false（行为断言：不自动启用） | composition 真实 PG |
 | A-8 | CLI：dry-run 两表行数不变；`--tenant` 只动指定 tenant；失败统计与退出码；重跑全 skipped；`--actor` 缺失或不存在即报错不执行 | CLI 测试（真实 PG） |
 | A-9 | created 归属：双并发下全局 created 计数 == 实际插入行数（RETURNING 判定，非写前查询） | composition 真实 PG |
@@ -134,8 +139,8 @@
 
 | 编号 | 验收 |
 |---|---|
-| C-1 | 空态显式触发：触发一次 bootstrap → 重 discovery → 有项可提交 |
-| C-2 | 触发有界：每会话最多一次触发；失败后不自动循环（§6） |
+| C-1 | 空态触发闭环：按 §6-1 触发一次 bootstrap（用户显式或每会话一次有界自动尝试）→ 最多一次重新 discovery → 有项可提交 |
+| C-2 | 触发有界与归因禁止：每会话最多一次自动尝试；失败或重发现仍空后不自动循环；不得由空列表归因（§6） |
 | C-3 | tenant/actor 切换后初始化相关状态按身份键隔离 |
 
 ### D 组 — phase-E 浏览器验收（phase-E 任务承载）
