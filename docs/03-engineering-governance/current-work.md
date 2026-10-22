@@ -46,9 +46,9 @@
 - Spec：[全局 UI 规范](../02-delivery-plans/01-specs/2026-10-22-req-064-ui-design-system.md) / [参考矩阵与原始文件校验](../02-delivery-plans/01-specs/2026-10-22-req-064-reference-matrix.md)
 - Plan：[分阶段实施与 Agent 交接](../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md)
 
-当前进展：独立 worktree 已产出需求/spec/plan、16 库参考矩阵与 240 文件 hash manifest，并通过本地文档与来源校验；本轮仅规划交付，原始资料只读保留在项目 `.local/design_libraries`（Git ignored）与外部备份路径。
-下一步：交付规划 PR 并进入独立评审；评审与排程就绪后才派发 S1，S2–S8 由后续 Agent 按依赖接力。
-验证状态：docs gate、diff check、16 库 / 240 文件校验及 18 个本地链接检查通过；TraeWork/Doubao 子集 61 文件通过，缺资料/未知库失败路径按预期拒绝。UI/后端/真实 LLM 验收未运行，证据层级仅静态资料与文档。
+当前进展：规划 [PR #664](https://github.com/MarkDanile/MetaEduBase/pull/664) 已创建并保持开放；本轮校准 TraeWork 全站范围、Doubao 聊天局部与来源边界、登录样式升级及 S1/S2/S4 用户视觉确认节点，保留三份既有未提交交接补充。16 库 / 240 文件 manifest 与项目 `.local/design_libraries`（Git ignored）及外部备份继续作为资料入口。
+下一步：PR #664 保持开放，停在独立复审前；后续按流程独立评审。UI 实现仍等待 TD-114 完成核验与治理收口，满足排程后才派发 S1；本轮不评分、不合并、不清理资源，不推进 phase-D/E。
+验证状态：本轮校准后 docs gate、diff check、19 个本地链接及本地/外部 16 库 / 240 文件校验通过；TraeWork/Doubao 子集 61 文件通过，缺目录/未知库按预期拒绝，manifest 原路径/字节数/hash 未改。UI/后端/真实 LLM 验收未运行，证据层级仅静态资料与文档。
 交接备注：仅本 S0 文档任务活跃；REQ-064 整体仍 Shaping，REQ-042/TD-114/phase-D/E/WS-S3 的状态与前置不由本任务改变。工作树 / 文件所有权 / 端口与集成协议见 plan，禁止多个写入 Agent 共用 checkout。
 
 ## 下一批候选任务

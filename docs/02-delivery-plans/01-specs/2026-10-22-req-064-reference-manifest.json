@@ -263,7 +263,7 @@
     },
     {
       "name": "Doubao",
-      "decision": "composer-supplement",
+      "decision": "ai-chat-local-reference",
       "evidenceConfidence": "C",
       "components": [
         "chat-composer",
