@@ -14,24 +14,23 @@
 
 ## 当前进行中
 
-### TD-114-AGENT-IDENTITY-BOOTSTRAP: Agent identity 显式初始化编排实现（按已冻结契约/计划）
+### REQ-042-WS-S2-DISCOVERY-IMPL: definition discovery 后端实现（#655 冻结契约）
 
 状态：🟡 进行中
-类型：TD / 实现（backend；契约与计划已冻结入 main）
-领域：后端 / Agent 运行时 / 供给编排 / API 契约
+类型：REQ / 实现（backend；契约已冻结入 main）
+领域：AI Workspace / API 契约 / 后端
 当前执行模式：plan-do
 最近接手工具：Claude Code
-分支：feat/td-114-agent-identity-bootstrap
+分支：feat/req-042-ws-s2-definition-discovery
 
 需求来源：
-- TD-114 台账行（🟡 进行中）：新 tenant 无 bootstrap 路径，WS-S2 真实首提前置
-- 已冻结契约：[spec](../02-delivery-plans/01-specs/2026-10-19-td-114-agent-identity-bootstrap-contract.md)（#657 已合并，mergeCommit `9f411349`）
-- 最小实施计划：[plan](../02-delivery-plans/02-plans/2026-10-19-td-114-agent-identity-bootstrap-plan.md)（同 PR）
+- 已冻结契约：[discovery spec](../02-delivery-plans/01-specs/2026-10-19-req-042-ws-s2-definition-discovery-contract.md)（#655 已合并，Original 99）
+- 关联：TD-114 A 组实现已合并（#659，Original 98）；phase-A/B/C 契约与实现已冻结/合并
 
-当前进展：A 组实现已合并（PR #659 squash mergeCommit `19c0b9f7`，mergedAt 2026-10-22T03:16:02Z，Original 98）——契约 §10-A 组真实 PG 验收全过、§12 mutation 5/5 KILLED；等待 discovery 后端及 B 组联合测试；TD-114 仍 🟡 进行中（完成判据 = 契约 §11：A+B 组，B 组未交付）。
-下一步：discovery 后端（#655 §7）→ bootstrap/discovery/submit 三个真实公开 API 联合测试（§10-B）→ 按契约 §11 核验 TD-114 完成 → 全站 UI 升级（覆盖所有页面；本轮仅记录方向，不启动实现；phase-D/E 的既有依赖与验收保留）。
-验证状态：契约 §10-A 全绿——本地专项真实 PG 30/30（注入式回滚 + 双独立连接并发 + CLI 真实入口）；CI run 39714642105（评分 head `e7cd93f0`）Backend full hermetic 双 shard 实跑 1605 + 1504 = 3109 passed、summary union 核验通过；两轮复审返修闭合（R1：500 错误映射 + CLI 有界样本 + CLI 入口测试；R2：commit 纳入错误映射 + dry-run 冲突明细有界 + commit 成功才记录统计）；保留 P3 观察未修（见 #659 评分行）。
-交接备注：边界——初始化不写入 discovery GET；不启动 Run/LLM；不覆盖受控记录；不自动循环触发；TD-114 保持 🟡 进行中，完成判据 = 契约 §11（A+B 组），不提前关闭；REQ-042 仍 ⚫ Candidate；TD-108/111/112/113 保持待办；discovery 后端、B 组联合测试、phase-D/phase-E、生产 backfill 均未交付。
+当前进展：实现已开工（Draft PR #661）——契约 §8 后端验收 D-1~D-10 + D-17 后端部分 + D-19 真实 PG 11/11 通过；三路 CI 实跑全绿（full hermetic 双 shard 1722+1398=3120 passed，run 39722895781）。
+下一步：独立复审 → Ready → 评分 → 合并；之后接 TD-114 B 组三真实公开 API 联合测试（bootstrap/discovery/submit）。
+验证状态：契约 §8 后端行全绿（见 PR #661）；复审中。
+交接备注：边界——GET 零写库；空列表不归因「未初始化」；不覆盖受控记录；digest 缺陷按 (tenant, profile) 去重单条 warning；config_digest 不进五谓词（契约 §3 未含）；TD-114 保持 🟡 进行中（B 组未交付）不翻完成；REQ-042 仍 ⚫ Candidate；phase-D/E、联合测试、生产 backfill、全站 UI 升级均未启动。
 
 ## 下一批候选任务
 
