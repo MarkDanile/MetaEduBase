@@ -14,23 +14,25 @@
 
 ## 当前进行中
 
-### REQ-042-WS-S2-DISCOVERY-IMPL: definition discovery 后端实现（#655 冻结契约）
+### TD-114-B-GROUP-JOINT-API: B 组三真实公开 API 联合测试（bootstrap → discovery → submit）
 
 状态：🟡 进行中
-类型：REQ / 实现（backend；契约已冻结入 main）
-领域：AI Workspace / API 契约 / 后端
+类型：TD / 验收测试（真实 PostgreSQL + 真实公开 HTTP API；无生产代码改动）
+领域：AI Workspace / API 契约 / 后端验收
 当前执行模式：plan-do
 最近接手工具：Claude Code
-分支：feat/req-042-ws-s2-definition-discovery
+分支：feat/td-114-b-group-joint-api-test
 
 需求来源：
-- 已冻结契约：[discovery spec](../02-delivery-plans/01-specs/2026-10-19-req-042-ws-s2-definition-discovery-contract.md)（#655 已合并，Original 99）
-- 关联：TD-114 A 组实现已合并（#659，Original 98）；phase-A/B/C 契约与实现已冻结/合并
+- 冻结契约：[TD-114 初始化编排契约](../02-delivery-plans/01-specs/2026-10-19-td-114-agent-identity-bootstrap-contract.md) §10-B 组（#657 已冻结）
+- 关联契约：[discovery 契约](../02-delivery-plans/01-specs/2026-10-19-req-042-ws-s2-definition-discovery-contract.md) §8（#655 已冻结）、[phase-A 公共 submit API 契约](../02-delivery-plans/01-specs/2026-10-12-req-042-ws-s2-public-submit-api-contract.md)（#642 已冻结）
+- 计划：[TD-114 最小实施计划](../02-delivery-plans/02-plans/2026-10-19-td-114-agent-identity-bootstrap-plan.md) §0 第 3 步
+- 前置已合入 main：TD-114 A 组实现（#659，mergeCommit `19c0b9f7`）、discovery 后端（#661，mergeCommit `6122d29a`）、#661 post-merge closeout（#662，mergeCommit `05adab21`）
 
-当前进展：discovery 后端已合并（PR #661 squash mergeCommit `6122d29a`，mergedAt 2026-10-22T07:12:13Z，Original 99）——契约 §8 后端验收真实 PG 11/11 通过；TD-114 仍 🟡 进行中（完成判据 = 契约 §11：A+B 组，B 组未交付）。
-下一步：B 组三真实公开 API 联合测试（bootstrap → discovery → submit 201）→ 按契约 §11 核验 TD-114 完成 → 全站 UI 升级（覆盖所有页面；仅记录方向，不启动实现；phase-D/E 的既有依赖与验收保留）。
-验证状态：契约 §8 后端行全绿——本地专项真实 PG 11/11；CI run 39722895781（实现 head）双 shard 1722+1398=3120 passed 实跑、summary union 核验通过；一轮独立复审 P0/P1/P2=0（保留 P3-1/P3-2 观察未修，见 #661 评分行）。
-交接备注：边界——GET 零写库；空列表不归因「未初始化」；不覆盖受控记录；digest 缺陷按 (tenant, profile) 去重单条 warning；config_digest 不进五谓词（契约 §3 未含）；TD-114 保持 🟡 进行中（B 组未交付）不翻完成；REQ-042 仍 ⚫ Candidate；phase-D/E、联合测试、生产 backfill、全站 UI 升级均未启动。
+当前进展：B 组联合验收已实现并本地跑通——新增 `packages/server-python/tests/contexts/agent_workspace/test_agent_identity_discovery_submit_joint_api.py`（664 行，12 条用例），以**三个真实公开 HTTP 端点**串联验证：①`POST /api/v1/agent-workspace/agent-identity/bootstrap`（TD-114 生产初始化路径）→ ②`GET /api/v1/agent-workspace/servable-agent-definitions`（discovery 生产读面）→ ③`POST /api/v1/agent-workspace/conversations/{id}/turns`（phase-A 生产提交路径），三者共用同一真实认证 token、同一 tenant 与同一真实 PostgreSQL 状态。覆盖契约 §10-B 的 B-1（新 tenant bootstrap 200 → discovery 返回 V1 项 → submit 201）、B-2（未初始化 tenant discovery 空 + GET 零写库，承接 discovery D-19 在初始化路径落地后的新前提复跑）、B-3（bootstrap 重复幂等、重复 discovery 一致、submit 201 后同键同快照重放 200 + idempotent_replay），并按本轮要求补齐跨端点数据流（B-1-1：discovery 返回的 id 被 submit 接受，且同 tenant 下非 discovery 来源的随机 id 被 422 拒绝，证明 submit 不是接受任意 definition id）、身份归属（B-1-2：definition.created_by 等于认证派生的真实 actor）、capability digest 与 definition/profile 关联（B-1-3：profile.capability_digest 等于 V1 冻结 capability 快照摘要）、server-selected 字段双向边界（B-1-4：读面响应不返回、客户端提交即 422 且无 durable 副作用）、跨 tenant 拒绝（CT-1：tenant A 的 definition id 在 tenant B 提交 → 422 且 B 无副作用；CT-2：B 的 discovery 看不到 A 的项）、错误状态（ERR-1 未认证 401/403；ERR-2 bootstrap 请求体含 tenant_id → 422 且零写入）。**identity 记录只经生产 bootstrap API 产生**，submit 的 `agent_definition_version_id` 只来自 discovery 响应，未直插 identity 表、未伪造内部 DTO、未用测试 bootstrap 冒充生产路径。
+下一步：CI 已 settled——run `39743718253`（head `d63f3e3b`）结论 success，Backend iteration（targeted）27 passed，本轮 12 条 B 组用例在 CI 中逐条 PASS（JUnit `junit-backend-targeted.xml`：tests=27 / failures=0 / errors=0 / skipped=0）。**full hermetic 双 shard 与 summary 实测为 skipped**——Draft PR 下 `scripts/ci/select_backend_tests.py` 对「纯测试文件改动」判为 `mode=targeted`，不进入 full 分片（实测 reason：`td-107:always-included-risk,test:tests/contexts/agent_workspace/test_agent_identity_discovery_submit_joint_api.py`）；本卡同步为 docs-only 追加提交，PR 累计 diff 仍含新增测试文件 → 选择模式不变，双 shard 与 summary 仍 skipped（最终 head 的 run 以 PR #663 实际结果为准）。下一步进入独立只读复审；A+B 组全绿后方可按契约 §11 核验 TD-114 完成。**本轮不翻 TD-114 为完成**，不 Ready、不评分、不合并。
+验证状态：专项联合测试本地实跑 12 passed（真实 PostgreSQL `metaedu_test`）；邻近回归 `tests/contexts/agent_workspace` + `agent_execution` + `composition` 实跑 1318 passed / 6 deselected / exit 0（含本轮 12 条新用例）；清理语义经实测——测试后 `tenants`/`agent_definition_versions`/`agent_runtime_profiles` 中本用例新建 tenant 残留为 0，可失败后重跑；静态门禁——`ruff check .` 全过、`scripts/check_mypy_baseline.py` 241 historical errors / **0 regressions**、`git diff --check`（工作区 + vs main）均干净、`scripts/check-engineering-docs --full` passed（32 known issues allowlisted）；CI run `39743718253`（head `d63f3e3b`）settled=success——Frontend ✅ / Engineering docs ✅ / Backend iteration ✅（targeted 27 passed，含本轮 12 条）、**Backend full hermetic shard 1 / shard 2 / summary = skipped**。**未运行**：真实浏览器 phase-E 验收（归 phase-D/E）、前端 phase-D 自动化（归 phase-D）、生产 backfill（独立授权的运维操作）、full hermetic 双 shard 全量套件（本 Draft PR 不执行，不沿用历史 shard 数字）。
+交接备注：边界——本轮**零生产代码改动**，只新增测试文件与 current-work 任务卡；不修改冻结 spec/plan、评分总账、Metrics、technical-debt、migration 或 schema；不启动 phase-D 前端、phase-E 浏览器验收或全站 UI 升级；不执行生产 backfill；不处理 TD-108/111/112/113；TD-114 保持 🟡 进行中（完成判据 = 契约 §11：A+B 组全部通过），**不提前翻完成**；REQ-042 整体仍 ⚫ Candidate。fixture 边界——每用例自建独立随机 tenant + 独立用户并真实登录取 token，无跨用例共享可变状态；直连数据库仅用于建 tenant 行（仓库无公开 tenant provisioning API）、只读断言与按依赖顺序的清理（workspace conftest 清理清单不含 users / agent_runtime_profiles / agent_definition_versions / tenants，故显式按 tenant 维度补齐）。
 
 ## 下一批候选任务
 
