@@ -30,7 +30,7 @@
 
 当前进展：实现已开工（Draft PR #659）——契约 §10-A 组真实 PG 验收 21/21 通过、§12 mutation 5/5 KILLED、三路 CI 实跑全绿（full hermetic 双 shard 3100 passed）；TD-114 仍 🟡 进行中。
 下一步：独立复审 → Ready → 评分 → 合并；顺序保持：TD-114 实现 → discovery 后端（#655 §7）→ 三个真实公开 API 联合测试（§10-B）→ phase-D 前端（§10-C）→ phase-E 浏览器验收（§10-D）。
-验证状态：契约 §10-A 全绿 + mutation 转红证据齐（见 PR #659）；复审中。
+验证状态：契约 §10-A 全绿 + mutation 转红证据齐；两轮复审返修闭合（R1：500 错误映射 + CLI 有界样本 + CLI 入口测试；R2：commit 纳入错误映射 + dry-run 冲突明细有界 + commit 成功才记录统计）——见 PR #659；复审中。
 交接备注：边界——初始化不写入 discovery GET；不启动 Run/LLM；不覆盖受控记录；不自动循环触发；TD-114 保持 🟡 进行中，完成判据 = 契约 §11（A+B 组），不提前关闭；REQ-042 仍 ⚫ Candidate；TD-108/111/112/113 保持待办；discovery 后端、B 组联合测试、phase-D/phase-E、生产 backfill 均未交付。
 
 ## 下一批候选任务

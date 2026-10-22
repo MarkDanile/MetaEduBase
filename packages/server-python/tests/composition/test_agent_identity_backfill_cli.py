@@ -359,3 +359,120 @@ async def test_cli_entry_valid_actor_returns_payload_and_exit_code(db_session, s
         assert await _counts(db_session, t1) == (1, 1)
     finally:
         await _cleanup(db_session, t1)
+
+async def test_dry_run_conflict_samples_bounded(db_session, session_factory):
+    """P2-1：dry-run 的 conflict 明细同样有界；全部分类完整；零写入。"""
+    from app.composition.agent_identity_bootstrap import _MAX_FAILURE_SAMPLES
+
+    n = _MAX_FAILURE_SAMPLES + 2
+    tenants = [await _make_tenant(db_session) for _ in range(n)]
+    actor = await _make_actor(db_session, tenants[0])
+    try:
+        for tid in tenants:
+            await db_session.execute(
+                text(
+                    "INSERT INTO metaedu.agent_definition_versions "
+                    "(id, tenant_id, definition_key, version, status, "
+                    " definition_digest, created_by, created_at) "
+                    "VALUES (:id, :tid, 'system.direct_rag', 1, 'published', "
+                    "        :digest, :actor, now())"
+                ),
+                {"id": uuid.uuid4(), "tid": tid, "digest": "f" * 64, "actor": actor},
+            )
+        await db_session.commit()
+
+        report = await backfill_agent_identity(
+            session_factory, tenant_ids=tenants, actor_id=actor, dry_run=True
+        )
+        assert report.dry_run is True
+        assert len(report.tenants) == n
+        assert all(t.classification == "conflict" for t in report.tenants)
+        assert len(report.failure_samples) == _MAX_FAILURE_SAMPLES
+        assert sum(1 for t in report.tenants if t.error is not None) == _MAX_FAILURE_SAMPLES
+        assert report.exit_code == 1
+        # dry-run 零写入：只有预置的 definition，profile 未建
+        assert await _counts(db_session, tenants[0]) == (1, 0)
+        assert await _counts(db_session, tenants[-1]) == (1, 0)
+    finally:
+        await _cleanup(db_session, *tenants)
+
+
+class _FlakyCommitFactory:
+    """包装 session_factory：fail_armed 时下一次 commit 在实际提交前抛错。"""
+
+    def __init__(self, inner):
+        self._inner = inner
+        self.fail_armed = False
+
+    def __call__(self):
+        outer = self
+        real_cm = self._inner()
+
+        class _SessionProxy:
+            def __init__(self, real):
+                self._real = real
+
+            def __getattr__(self, name):
+                return getattr(self._real, name)
+
+            async def commit(self):
+                if outer.fail_armed:
+                    outer.fail_armed = False
+                    raise RuntimeError("injected commit failure")
+                await self._real.commit()
+
+            async def rollback(self):
+                await self._real.rollback()
+
+        class _CM:
+            async def __aenter__(self):
+                return _SessionProxy(await real_cm.__aenter__())
+
+            async def __aexit__(self, *exc):
+                return await real_cm.__aexit__(*exc)
+
+        return _CM()
+
+
+async def test_commit_failure_records_single_failed_and_retries(
+    db_session, session_factory
+):
+    """P2-2：两表写入后、实际提交前失败 → 回滚、该 tenant 只有一条 failed、
+    created/skipped 不虚报；其他 tenant 继续正常处理；撤除后重跑幂等。"""
+    t_fail = await _make_tenant(db_session)
+    t_ok = await _make_tenant(db_session)
+    actor = await _make_actor(db_session, t_ok)
+    flaky = _FlakyCommitFactory(session_factory)
+    try:
+        flaky.fail_armed = True  # 第一个 tenant 的提交失败
+        report = await backfill_agent_identity(
+            flaky, tenant_ids=[t_fail, t_ok], actor_id=actor, dry_run=False
+        )
+        by_tenant = {t.tenant_id: t for t in report.tenants}
+        # 该 tenant 只有一条 failed（commit 失败不留下 complete + failed 双记录）
+        assert len(report.tenants) == 2
+        assert by_tenant[t_fail].classification == "failed"
+        assert by_tenant[t_fail].created == 0
+        assert by_tenant[t_fail].skipped == 0
+        assert by_tenant[t_ok].classification == "complete"
+        assert by_tenant[t_ok].created == 2
+        assert report.failed == 1
+        assert report.exit_code == 1
+        # 回滚实证：t_fail 两表零残留；t_ok 正常
+        assert await _counts(db_session, t_fail) == (0, 0)
+        assert await _counts(db_session, t_ok) == (1, 1)
+
+        # 撤除故障后重跑幂等：t_fail 补齐，t_ok skipped，无重复创建
+        rerun = await backfill_agent_identity(
+            session_factory, tenant_ids=[t_fail, t_ok], actor_id=actor, dry_run=False
+        )
+        by_tenant = {t.tenant_id: t for t in rerun.tenants}
+        assert by_tenant[t_fail].classification == "complete"
+        assert by_tenant[t_fail].created == 2
+        assert by_tenant[t_ok].classification == "complete"
+        assert by_tenant[t_ok].skipped == 2
+        assert rerun.exit_code == 0
+        assert await _counts(db_session, t_fail) == (1, 1)
+        assert await _counts(db_session, t_ok) == (1, 1)
+    finally:
+        await _cleanup(db_session, t_fail, t_ok)

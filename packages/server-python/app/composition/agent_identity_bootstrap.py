@@ -386,10 +386,20 @@ async def backfill_agent_identity(
         async with session_factory() as session:
             try:
                 if dry_run:
-                    scans.append(await classify_tenant_identity(session, tenant_id))
+                    scan = await classify_tenant_identity(session, tenant_id)
+                    # 冲突明细同样经有界采样（dry-run 不豁免上限）。
+                    if scan.classification == "conflict":
+                        scan = TenantIdentityScan(
+                            tenant_id=tenant_id,
+                            classification="conflict",
+                            error=_sample(tenant_id, "conflict", scan.error or ""),
+                        )
+                    scans.append(scan)
                     continue
                 scan = await classify_tenant_identity(session, tenant_id)
                 if scan.classification in {"complete", "disabled"}:
+                    # 成功统计仅在 commit 成功后记录（commit 失败只留一条 failed）。
+                    await session.commit()
                     scans.append(
                         TenantIdentityScan(
                             tenant_id=tenant_id,
@@ -397,45 +407,48 @@ async def backfill_agent_identity(
                             skipped=2,
                         )
                     )
-                    await session.commit()
                     continue
                 if scan.classification == "conflict":
+                    error = _sample(tenant_id, "conflict", scan.error or "")
+                    await session.commit()
                     scans.append(
                         TenantIdentityScan(
                             tenant_id=tenant_id,
                             classification="conflict",
-                            error=_sample(tenant_id, "conflict", scan.error or ""),
+                            error=error,
                         )
                     )
-                    await session.commit()
                     continue
                 detail = await build_agent_identity_bootstrap(
                     session
                 ).bootstrap_v1_identity_with_stats(tenant_id=tenant_id, actor_id=actor_id)
                 if detail.outcome.conflict:
+                    error = _sample(
+                        tenant_id, "conflict", detail.outcome.conflict_reason or ""
+                    )
+                    await session.rollback()
                     scans.append(
                         TenantIdentityScan(
                             tenant_id=tenant_id,
                             classification="conflict",
-                            error=_sample(
-                                tenant_id,
-                                "conflict",
-                                detail.outcome.conflict_reason or "",
-                            ),
+                            error=error,
                         )
                     )
-                    await session.rollback()
                     continue
+                classification = (
+                    "disabled" if detail.outcome.disabled_existing else "complete"
+                )
+                created = detail.created
+                # 提交失败时不得同时留下成功记录与 failed 记录：先 commit，成功后才
+                # 记录终态；commit 抛错落入 except，只产生一条 failed。
+                await session.commit()
                 scans.append(
                     TenantIdentityScan(
                         tenant_id=tenant_id,
-                        classification="disabled"
-                        if detail.outcome.disabled_existing
-                        else "complete",
-                        created=detail.created,
+                        classification=classification,
+                        created=created,
                     )
                 )
-                await session.commit()
             except Exception as exc:  # noqa: BLE001 - CLI 失败如实计数不静默
                 await session.rollback()
                 failed += 1

@@ -244,3 +244,35 @@ async def test_unexpected_failure_returns_500_and_rolls_back(
         assert await _identity_counts(db_session, tenant_id) == (1, 1)
     finally:
         await _cleanup_tenant(db_session, tenant_id)
+
+async def test_commit_failure_returns_500_and_rolls_back(
+    client: AsyncClient, db_session, monkeypatch
+):
+    """P1-1：提交路径注入失败（commit 在实际提交前抛错）→ 500 internal_error，
+    独立 session 确认两表无残留；撤除注入后重试成功。
+
+    口径说明：本测试注入的 commit 在真实提交发生**之前**抛错（替代式），
+    证明的是「提交未执行 + 回滚无残留」；不外推为「提交已成功但确认丢失」。
+    """
+    from sqlalchemy.ext.asyncio import AsyncSession as _AsyncSession
+
+    tenant_id, headers = await _make_tenant_and_headers(client, db_session)
+    try:
+
+        async def failing_commit(self):
+            raise RuntimeError("injected commit failure")
+
+        monkeypatch.setattr(_AsyncSession, "commit", failing_commit)
+        resp = await client.post(_BOOTSTRAP_PATH, headers=headers)
+        assert resp.status_code == 500
+        assert resp.json()["detail"]["code"] == "internal_error"
+        monkeypatch.undo()
+
+        # db_session 是与请求 session 独立的 session：两表无残留
+        assert await _identity_counts(db_session, tenant_id) == (0, 0)
+
+        resp = await client.post(_BOOTSTRAP_PATH, headers=headers)
+        assert resp.status_code == 200
+        assert await _identity_counts(db_session, tenant_id) == (1, 1)
+    finally:
+        await _cleanup_tenant(db_session, tenant_id)

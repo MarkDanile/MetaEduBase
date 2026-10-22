@@ -62,26 +62,29 @@ async def bootstrap_agent_identity(
         outcome = await build_agent_identity_bootstrap(session).bootstrap_v1_identity(
             tenant_id=tenant_id, actor_id=actor_id
         )
+        if outcome.conflict:
+            await session.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail=_error_detail(
+                    "identity_conflict",
+                    outcome.conflict_reason or "identity records conflict with V1",
+                ),
+            )
+        # 提交也在异常映射范围内：commit 失败同样按 500 internal_error + 整体回滚，
+        # 不得让未映射异常裸奔（契约 §2 错误形状对提交路径同样成立）。
+        await session.commit()
     except HTTPException:
         raise
     except Exception as exc:
-        # 契约 §2：未预期失败（含 BootstrapIndeterminateError、数据库/事务异常）
-        # 一律 500 internal_error（phase-A §10 形状），整体回滚不产生半初始化残留。
+        # 契约 §2：未预期失败（含 BootstrapIndeterminateError、数据库/事务异常、
+        # commit 失败）一律 500 internal_error（phase-A §10 形状），整体回滚
+        # 不产生半初始化残留。
         await session.rollback()
         raise HTTPException(
             status_code=500,
             detail=_error_detail("internal_error", "identity bootstrap failed"),
         ) from exc
-    if outcome.conflict:
-        await session.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail=_error_detail(
-                "identity_conflict",
-                outcome.conflict_reason or "identity records conflict with V1",
-            ),
-        )
-    await session.commit()
     return BootstrapResponse(
         initialized=outcome.initialized,
         disabled_existing=outcome.disabled_existing,
