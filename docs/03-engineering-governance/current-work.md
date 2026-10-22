@@ -32,6 +32,25 @@
 验证状态：契约 §8 后端行全绿——本地专项真实 PG 11/11；CI run 39722895781（实现 head）双 shard 1722+1398=3120 passed 实跑、summary union 核验通过；一轮独立复审 P0/P1/P2=0（保留 P3-1/P3-2 观察未修，见 #661 评分行）。
 交接备注：边界——GET 零写库；空列表不归因「未初始化」；不覆盖受控记录；digest 缺陷按 (tenant, profile) 去重单条 warning；config_digest 不进五谓词（契约 §3 未含）；TD-114 保持 🟡 进行中（B 组未交付）不翻完成；REQ-042 仍 ⚫ Candidate；phase-D/E、联合测试、生产 backfill、全站 UI 升级均未启动。
 
+### REQ-064-S0: 全局 UI 升级设计规范与隔离式 Agent 接力规划（纯文档）
+
+状态：🟡 进行中（仅规划文档；UI 实现未启动）
+类型：REQ / product planning / pure-spec / pure-docs
+领域：Web / Design System / AI Workspace
+当前执行模式：product planning
+最近接手工具：Codex
+分支：codex/req-064-ui-upgrade-planning
+
+需求来源：
+- [REQ-064](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md)
+- Spec：[全局 UI 规范](../02-delivery-plans/01-specs/2026-10-22-req-064-ui-design-system.md) / [参考矩阵与原始文件校验](../02-delivery-plans/01-specs/2026-10-22-req-064-reference-matrix.md)
+- Plan：[分阶段实施与 Agent 交接](../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md)
+
+当前进展：独立 worktree 已产出需求/spec/plan、16 库参考矩阵与 240 文件 hash manifest，并通过本地文档与来源校验；本轮仅规划交付，原始资料只读保留在项目 `.local/design_libraries`（Git ignored）与外部备份路径。
+下一步：交付规划 PR 并进入独立评审；评审与排程就绪后才派发 S1，S2–S8 由后续 Agent 按依赖接力。
+验证状态：docs gate、diff check、16 库 / 240 文件校验及 18 个本地链接检查通过；TraeWork/Doubao 子集 61 文件通过，缺资料/未知库失败路径按预期拒绝。UI/后端/真实 LLM 验收未运行，证据层级仅静态资料与文档。
+交接备注：仅本 S0 文档任务活跃；REQ-064 整体仍 Shaping，REQ-042/TD-114/phase-D/E/WS-S3 的状态与前置不由本任务改变。工作树 / 文件所有权 / 端口与集成协议见 plan，禁止多个写入 Agent 共用 checkout。
+
 ## 下一批候选任务
 
 按"建议执行顺序"排序；候选区只保留近期 1 到 3 个入口，完整任务池回 `docs/01-product-planning/04-backlog.md` / `docs/03-engineering-governance/technical-debt.md`。
