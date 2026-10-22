@@ -21,17 +21,17 @@
 领域：后端 / Agent 运行时 / 供给编排 / API 契约
 当前执行模式：plan-do
 最近接手工具：Claude Code
-分支：（实现分支未建；本卡片由 closeout 分支维护）
+分支：feat/td-114-agent-identity-bootstrap
 
 需求来源：
 - TD-114 台账行（🟡 进行中）：新 tenant 无 bootstrap 路径，WS-S2 真实首提前置
 - 已冻结契约：[spec](../02-delivery-plans/01-specs/2026-10-19-td-114-agent-identity-bootstrap-contract.md)（#657 已合并，mergeCommit `9f411349`）
 - 最小实施计划：[plan](../02-delivery-plans/02-plans/2026-10-19-td-114-agent-identity-bootstrap-plan.md)（同 PR）
 
-当前进展：塑形阶段完成（契约 + 计划 + 两轮复审闭合，Original 99）；实现未启动。
-下一步：按已合并 spec/plan 实施 TD-114（契约 §10-A 组真实 PG 验收 + mutation §12）。顺序：TD-114 实现 → discovery 后端（#655 §7）→ 三个真实公开 API 联合测试（§10-B）→ phase-D 前端（§10-C）→ phase-E 浏览器验收（§10-D）。
-验证状态：本卡片阶段无代码；实现 PR 需契约 §10-A 全绿 + mutation 转红证据 + 三路 CI。
-交接备注：边界——初始化不写入 discovery GET；不启动 Run/LLM；不覆盖受控记录；不自动循环触发；TD-114 保持 🟡 进行中，完成判据 = 契约 §11（A+B 组），不提前关闭；REQ-042 仍 ⚫ Candidate；TD-108/111/112/113 保持待办。
+当前进展：实现已开工（Draft PR #659）——契约 §10-A 组真实 PG 验收 21/21 通过、§12 mutation 5/5 KILLED、三路 CI 实跑全绿（full hermetic 双 shard 3100 passed）；TD-114 仍 🟡 进行中。
+下一步：独立复审 → Ready → 评分 → 合并；顺序保持：TD-114 实现 → discovery 后端（#655 §7）→ 三个真实公开 API 联合测试（§10-B）→ phase-D 前端（§10-C）→ phase-E 浏览器验收（§10-D）。
+验证状态：契约 §10-A 全绿 + mutation 转红证据齐；两轮复审返修闭合（R1：500 错误映射 + CLI 有界样本 + CLI 入口测试；R2：commit 纳入错误映射 + dry-run 冲突明细有界 + commit 成功才记录统计）——见 PR #659；复审中。
+交接备注：边界——初始化不写入 discovery GET；不启动 Run/LLM；不覆盖受控记录；不自动循环触发；TD-114 保持 🟡 进行中，完成判据 = 契约 §11（A+B 组），不提前关闭；REQ-042 仍 ⚫ Candidate；TD-108/111/112/113 保持待办；discovery 后端、B 组联合测试、phase-D/phase-E、生产 backfill 均未交付。
 
 ## 下一批候选任务
 

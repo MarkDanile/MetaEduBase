@@ -169,6 +169,116 @@ class AgentExecutionIdentityRepository:
         ).scalar_one_or_none()
         return self._to_definition(row) if row is not None else None
 
+    async def insert_agent_definition_version_if_absent(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        definition_key: str,
+        version: int,
+        definition_digest: str,
+        created_by: uuid.UUID,
+    ) -> uuid.UUID | None:
+        """TD-114 契约 §5：仅当 (tenant, key, version) 不存在时插入。
+
+        ``INSERT ... ON CONFLICT DO NOTHING ... RETURNING id``：返回新行 id 表示
+        本事务实际插入（计 created）；返回 ``None`` 表示唯一约束冲突未插入——
+        调用方**必须**同事务回读并按契约 §4 重新分流，不得把 ``None`` 直接当作
+        「已存在且内容匹配」。
+        """
+        self._validate_key(definition_key, "definition key")
+        self._validate_digest(definition_digest, "definition digest")
+        if version < 1:
+            raise ValueError("definition version must be positive")
+        values = {
+            "id": uuid.uuid4(),
+            "tenant_id": tenant_id,
+            "definition_key": definition_key,
+            "version": version,
+            "status": AgentDefinitionStatus.PUBLISHED.value,
+            "definition_digest": definition_digest,
+            "created_by": created_by,
+        }
+        stmt = (
+            insert(AgentDefinitionVersionModel)
+            .values(**values)
+            .on_conflict_do_nothing(
+                index_elements=[
+                    AgentDefinitionVersionModel.tenant_id,
+                    AgentDefinitionVersionModel.definition_key,
+                    AgentDefinitionVersionModel.version,
+                ]
+            )
+            .returning(AgentDefinitionVersionModel.id)
+        )
+        return (await self._session.execute(stmt)).scalar_one_or_none()
+
+    async def insert_runtime_profile_if_absent(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        profile_key: str,
+        runtime_kind: str,
+        adapter_key: str,
+        config_digest: str,
+        capability_digest: str,
+        enabled: bool,
+    ) -> uuid.UUID | None:
+        """TD-114 契约 §5：仅当 (tenant, profile_key) 不存在时插入。
+
+        返回值语义同 ``insert_agent_definition_version_if_absent``。
+        """
+        self._validate_key(profile_key, "profile key")
+        self._validate_key(runtime_kind, "runtime kind")
+        self._validate_key(adapter_key, "adapter key")
+        self._validate_digest(config_digest, "config digest")
+        self._validate_digest(capability_digest, "capability digest")
+        values = {
+            "id": uuid.uuid4(),
+            "tenant_id": tenant_id,
+            "profile_key": profile_key,
+            "runtime_kind": runtime_kind,
+            "adapter_key": adapter_key,
+            "config_digest": config_digest,
+            "capability_digest": capability_digest,
+            "enabled": enabled,
+            "revision": 1,
+        }
+        stmt = (
+            insert(RuntimeProfileModel)
+            .values(**values)
+            .on_conflict_do_nothing(
+                index_elements=[
+                    RuntimeProfileModel.tenant_id,
+                    RuntimeProfileModel.profile_key,
+                ]
+            )
+            .returning(RuntimeProfileModel.id)
+        )
+        return (await self._session.execute(stmt)).scalar_one_or_none()
+
+    async def get_agent_definition_version_by_key(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        definition_key: str,
+        version: int,
+    ) -> AgentDefinitionVersion | None:
+        """按 (tenant_id, definition_key, version) 查 tenant 内定义版本。
+
+        TD-114：显式初始化编排的现状读取与 §5 回读依赖本方法；既有
+        ``get_agent_definition_version`` 按 id 点查，不满足按 key 的现状分流。
+        """
+        row = (
+            await self._session.execute(
+                select(AgentDefinitionVersionModel).where(
+                    AgentDefinitionVersionModel.tenant_id == tenant_id,
+                    AgentDefinitionVersionModel.definition_key == definition_key,
+                    AgentDefinitionVersionModel.version == version,
+                )
+            )
+        ).scalar_one_or_none()
+        return self._to_definition(row) if row is not None else None
+
     async def get_runtime_profile_by_key(
         self,
         *,
