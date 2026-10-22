@@ -41,6 +41,7 @@
 10. 无阻塞后 squash merge 并删除远端分支；同步本地 `main`。
 11. 如任务完成状态依赖 merge 事实，从最新 `main` 创建轻量 docs closeout 分支和 PR，更新工作台、Requirement / TD、plan、work-log 等必要事实源并合并。
 12. 确认最终 `main...origin/main` 干净，且交付事实源不再有完成日期、PR、验证结果等活动占位。
+13. 任务完成后按“Worktree 生命周期”检查并退休本任务 worktree；保留例外必须写入交接或最终报告。
 
 中间只报告关键阶段：已提交、PR 已创建、评审已完成、已合并 main、最终干净。失败时再展开原因。
 
@@ -107,3 +108,13 @@ PR 描述至少包含：
 ## 并行分支规则
 
 并行模式只在用户明确触发时启用。每个任务独立分支，推荐独立 worktree / clone；合并前同步最新 `main`。共享 DTO / schema / migration / 核心抽象时，先合 contract-first PR，再并行实现。
+
+## Worktree 生命周期
+
+- worktree 只承载一个任务或一个明确的并行切片。任务进入开发、复审、评分或 closeout 阶段时保留；任务完成并完成所需 closeout 后，默认退休，不要求用户再次单独授权。
+- 只有同时满足以下条件才可退休：对应 PR 已 `MERGED`；required checks、验收和必要的 post-merge closeout 已完成；worktree 无已跟踪或未跟踪改动；没有未发布提交；没有活动进程、锁文件或依赖它的其他任务；忽略文件中没有需要保留的本地配置、设计资产、测试数据或其他人工资料。
+- squash merge 不能只凭分支祖先关系判定交付完成。清理前核对 PR 最终 `headRefOid`、`MERGED` 状态、`mergeCommit`、最终树一致性和合并后的事实源；至少确认 `origin/main^{tree}`、合并前最终 head 的 tree 与 squash merge commit 的 tree 一致，或记录确有意内容差异及其来源。
+- 清理顺序固定为：列出 worktree 和分支 → 检查状态、未跟踪/忽略文件、锁和进程 → 以精确路径执行 `git worktree remove` 的非强制删除 → 对失效注册执行 `git worktree prune --dry-run` 后再 prune → 复核剩余 worktree。不得用 `--force`、`git clean` 或递归删除来绕过检查。
+- worktree、local branch、remote branch 是三个独立资源。退休 worktree 不删除任何分支；删除分支必须另行核对合并状态、未发布提交和依赖关系。合并命令是否按默认流程删除远端分支，仍以用户当次指令和本节分支核验为准。
+- 以下情况必须保留并说明原因：任务尚未合并或 closeout 未完成；仍有其他 Agent / 服务 / 文件监听器使用；存在未提交、未发布或有价值的忽略文件；另一个任务依赖该分支或提交；用户明确要求保留；或无法实时核验远端交付事实。条件解除后再清理。
+- 清理报告至少记录：清理前后 worktree 数量、移除的精确路径、保留的路径及原因、是否删除分支，以及任何未能核验的项目。没有活动任务时，不为清理本身创建递归 closeout。
