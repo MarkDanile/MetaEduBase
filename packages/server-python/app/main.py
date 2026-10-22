@@ -18,6 +18,9 @@ from app.contexts.agent_workspace.infrastructure.workspace_erasure_participant i
 from app.contexts.agent_workspace.interfaces.api.agent_identity_router import (
     router as agent_identity_router,
 )
+from app.contexts.agent_workspace.interfaces.api.discovery_router import (
+    router as agent_discovery_router,
+)
 from app.contexts.agent_workspace.interfaces.api.router import (
     router as agent_workspace_router,
 )
@@ -166,6 +169,7 @@ app.include_router(identity_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(agent_execution_router)
 app.include_router(agent_workspace_router)
 app.include_router(agent_identity_router)
+app.include_router(agent_discovery_router)
 app.include_router(identity_admin_router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(knowledge_router, prefix="/api/v1/knowledge", tags=["knowledge"])
 app.include_router(
