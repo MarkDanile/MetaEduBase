@@ -278,6 +278,36 @@ class RuntimeLaunchFactsPort(Protocol):
     def v1_launch_facts(self) -> V1LaunchFacts: ...
 
 
+# --- REQ-042 WS-S2 discovery：servable definition 目录 port ------------------
+#
+# 契约：docs/02-delivery-plans/01-specs/2026-10-19-req-042-ws-s2-definition-discovery-contract.md
+# workspace application 层只消费下列中性类型；execution 的 ORM / 领域枚举由
+# composition adapter 投影，TD-085 依赖方向不变。
+
+
+@dataclass(frozen=True, slots=True)
+class ServableDefinitionItem:
+    """discovery 响应项（契约 §2：恰三字段，无 server-selected launch 输入）。"""
+
+    id: uuid.UUID
+    definition_key: str
+    version: int
+
+
+class ServableDefinitionCatalogPort(Protocol):
+    """definition discovery 的 workspace 消费面（契约 §7）。
+
+    默认实现由 composition 装配：
+    ``app.composition.servable_definition_catalog.ExecutionServableDefinitionCatalog``。
+    实现语义（契约 §3/§4）：空列表是正常语义；GET 零写库；共享 profile 缺陷
+    语义（digest 不符 -> 空 + 按缺陷去重 warning）归实现侧。
+    """
+
+    async def list_servable_definitions(
+        self, *, tenant_id: uuid.UUID
+    ) -> list[ServableDefinitionItem]: ...
+
+
 # --- TD-114：agent identity 显式初始化编排 port -------------------------------
 #
 # 契约：docs/02-delivery-plans/01-specs/2026-10-19-td-114-agent-identity-bootstrap-contract.md

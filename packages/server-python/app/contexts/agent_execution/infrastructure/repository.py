@@ -279,6 +279,29 @@ class AgentExecutionIdentityRepository:
         ).scalar_one_or_none()
         return self._to_definition(row) if row is not None else None
 
+    async def list_published_agent_definition_versions(
+        self, *, tenant_id: uuid.UUID
+    ) -> list[AgentDefinitionVersion]:
+        """列出 tenant 内全部 published definition 版本（按 (key, version) 升序）。
+
+        REQ-042 WS-S2 discovery 契约（#655 §7）授权的最小仓储扩展：discovery
+        需要 tenant 范围的 published 列表；draft/retired 由查询谓词排除。
+        只读，不写库。
+        """
+        stmt = (
+            select(AgentDefinitionVersionModel)
+            .where(
+                AgentDefinitionVersionModel.tenant_id == tenant_id,
+                AgentDefinitionVersionModel.status == AgentDefinitionStatus.PUBLISHED.value,
+            )
+            .order_by(
+                AgentDefinitionVersionModel.definition_key,
+                AgentDefinitionVersionModel.version,
+            )
+        )
+        result = await self._session.execute(stmt)
+        return [self._to_definition(row) for row in result.scalars().all()]
+
     async def get_runtime_profile_by_key(
         self,
         *,
