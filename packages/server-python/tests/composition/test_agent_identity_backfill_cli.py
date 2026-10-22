@@ -259,3 +259,103 @@ async def test_list_all_tenant_ids_scans_tenants_table(db_session):
         assert t1 in ids
     finally:
         await _cleanup(db_session, t1)
+
+
+async def test_failure_samples_bounded_beyond_cap(db_session, session_factory):
+    """P2：超过样本上限时——总失败/冲突计数完整、明细样本有界、
+    其余 tenant 仍全部处理。"""
+    from app.composition.agent_identity_bootstrap import _MAX_FAILURE_SAMPLES
+
+    n = _MAX_FAILURE_SAMPLES + 2  # 18 个冲突 tenant
+    tenants = [await _make_tenant(db_session) for _ in range(n)]
+    actor = await _make_actor(db_session, tenants[0])
+    try:
+        for tid in tenants:
+            await db_session.execute(
+                text(
+                    "INSERT INTO metaedu.agent_definition_versions "
+                    "(id, tenant_id, definition_key, version, status, "
+                    " definition_digest, created_by, created_at) "
+                    "VALUES (:id, :tid, 'system.direct_rag', 1, 'published', "
+                    "        :digest, :actor, now())"
+                ),
+                {"id": uuid.uuid4(), "tid": tid, "digest": "f" * 64, "actor": actor},
+            )
+        await db_session.commit()
+
+        report = await backfill_agent_identity(
+            session_factory, tenant_ids=tenants, actor_id=actor, dry_run=False
+        )
+        # 全部 tenant 仍被处理（分类完整）
+        assert len(report.tenants) == n
+        assert all(t.classification == "conflict" for t in report.tenants)
+        # 总需介入数完整累计（分类计数），退出码为 1
+        assert report.exit_code == 1
+        # 明细样本有界
+        assert len(report.failure_samples) == _MAX_FAILURE_SAMPLES
+        retained = sum(1 for t in report.tenants if t.error is not None)
+        assert retained == _MAX_FAILURE_SAMPLES
+        # 冲突行零写入（抽样验证首尾各一）
+        assert await _counts(db_session, tenants[0]) == (1, 0)
+        assert await _counts(db_session, tenants[-1]) == (1, 0)
+    finally:
+        await _cleanup(db_session, *tenants)
+
+
+async def test_cli_entry_missing_actor_fails_without_writes(db_session, session_factory):
+    """P2：真实 CLI 入口——缺 --actor 立即报错，零写入。"""
+    from app.cli.backfill import _run_agent_identity
+
+    t1 = await _make_tenant(db_session)
+    try:
+        with pytest.raises(SystemExit):
+            await _run_agent_identity(session_factory, str(t1), True, None)
+        assert await _counts(db_session, t1) == (0, 0)
+    finally:
+        await _cleanup(db_session, t1)
+
+
+async def test_cli_entry_invalid_actor_uuid_fails_without_writes(db_session, session_factory):
+    """P2：真实 CLI 入口——非法 UUID 报错，零写入。"""
+    from app.cli.backfill import _run_agent_identity
+
+    t1 = await _make_tenant(db_session)
+    try:
+        with pytest.raises(SystemExit):
+            await _run_agent_identity(session_factory, str(t1), True, "not-a-uuid")
+        assert await _counts(db_session, t1) == (0, 0)
+    finally:
+        await _cleanup(db_session, t1)
+
+
+async def test_cli_entry_nonexistent_actor_fails_without_writes(db_session, session_factory):
+    """P2：真实 CLI 入口——actor 不存在于 metaedu.users 报错，零写入。"""
+    from app.cli.backfill import _run_agent_identity
+
+    t1 = await _make_tenant(db_session)
+    try:
+        with pytest.raises(SystemExit):
+            await _run_agent_identity(session_factory, str(t1), True, str(uuid.uuid4()))
+        assert await _counts(db_session, t1) == (0, 0)
+    finally:
+        await _cleanup(db_session, t1)
+
+
+async def test_cli_entry_valid_actor_returns_payload_and_exit_code(db_session, session_factory):
+    """P2：真实 CLI 入口——合法 actor 可执行，返回 JSON 可序列化 payload + 退出码。"""
+    import json
+
+    from app.cli.backfill import _run_agent_identity
+
+    t1 = await _make_tenant(db_session)
+    actor = await _make_actor(db_session, t1)
+    try:
+        payload, exit_code = await _run_agent_identity(session_factory, str(t1), False, str(actor))
+        assert exit_code == 0
+        assert payload["subcommand"] == "agent-identity"
+        assert payload["failed"] == 0
+        assert payload["tenants"][0]["classification"] == "complete"
+        json.dumps(payload)  # JSON 可序列化
+        assert await _counts(db_session, t1) == (1, 1)
+    finally:
+        await _cleanup(db_session, t1)

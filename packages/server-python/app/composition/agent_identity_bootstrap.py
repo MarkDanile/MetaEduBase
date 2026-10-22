@@ -80,8 +80,25 @@ class TenantIdentityScan:
     skipped: int = 0
     # dry-run 下为预测将创建的行数；实写下恒 0
     would_create: int = 0
-    # 失败/冲突说明（无则 None）
+    # 失败/冲突说明（无则 None）；**有界**：仅前 ``_MAX_FAILURE_SAMPLES`` 个
+    # failed/conflict tenant 保留 error 明细，超上限者 error=None（明细见
+    # ``BackfillReport.failure_samples``，总数经 ``failed`` / 分类计数完整累计）。
     error: str | None = None
+
+
+# 失败样本上限：超过后只累计计数，不再保留明细（内存有界）。
+# 沿用 agent_erasure_backfill 的 _MAX_FAILURE_SAMPLES 模式（值对齐 16）。
+_MAX_FAILURE_SAMPLES = 16
+
+
+@dataclass(frozen=True, slots=True)
+class BackfillFailureSample:
+    """有界失败/冲突明细样本（仅前 ``_MAX_FAILURE_SAMPLES`` 个）。"""
+
+    tenant_id: uuid.UUID
+    classification: str
+    error_type: str
+    message: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,7 +107,10 @@ class BackfillReport:
 
     dry_run: bool
     tenants: tuple[TenantIdentityScan, ...] = ()
+    # 总失败数：完整累计，不受样本上限影响。
     failed: int = 0
+    # 失败/冲突明细样本（有界，最多 _MAX_FAILURE_SAMPLES 条）。
+    failure_samples: tuple[BackfillFailureSample, ...] = ()
 
     @property
     def exit_code(self) -> int:
@@ -346,6 +366,22 @@ async def backfill_agent_identity(
     """
     scans: list[TenantIdentityScan] = []
     failed = 0
+    samples: list[BackfillFailureSample] = []
+
+    def _sample(tenant_id: uuid.UUID, classification: str, error: str) -> str | None:
+        """保留有界失败明细；返回该 tenant 行上应保留的 error（超上限为 None）。"""
+        if len(samples) < _MAX_FAILURE_SAMPLES:
+            samples.append(
+                BackfillFailureSample(
+                    tenant_id=tenant_id,
+                    classification=classification,
+                    error_type=classification,
+                    message=error[:200],
+                )
+            )
+            return error[:200]
+        return None
+
     for tenant_id in tenant_ids:
         async with session_factory() as session:
             try:
@@ -364,7 +400,13 @@ async def backfill_agent_identity(
                     await session.commit()
                     continue
                 if scan.classification == "conflict":
-                    scans.append(scan)
+                    scans.append(
+                        TenantIdentityScan(
+                            tenant_id=tenant_id,
+                            classification="conflict",
+                            error=_sample(tenant_id, "conflict", scan.error or ""),
+                        )
+                    )
                     await session.commit()
                     continue
                 detail = await build_agent_identity_bootstrap(
@@ -375,7 +417,11 @@ async def backfill_agent_identity(
                         TenantIdentityScan(
                             tenant_id=tenant_id,
                             classification="conflict",
-                            error=detail.outcome.conflict_reason,
+                            error=_sample(
+                                tenant_id,
+                                "conflict",
+                                detail.outcome.conflict_reason or "",
+                            ),
                         )
                     )
                     await session.rollback()
@@ -397,17 +443,24 @@ async def backfill_agent_identity(
                     TenantIdentityScan(
                         tenant_id=tenant_id,
                         classification="failed",
-                        error=f"{type(exc).__name__}: {exc}",
+                        error=_sample(tenant_id, "failed", f"{type(exc).__name__}: {exc}"),
                     )
                 )
-    return BackfillReport(dry_run=dry_run, tenants=tuple(scans), failed=failed)
+    return BackfillReport(
+        dry_run=dry_run,
+        tenants=tuple(scans),
+        failed=failed,
+        failure_samples=tuple(samples),
+    )
 
 
 __all__ = [
+    "BackfillFailureSample",
     "BackfillReport",
     "BootstrapIndeterminateError",
     "ExecutionIdentityBootstrapAdapter",
     "TenantIdentityScan",
+    "_MAX_FAILURE_SAMPLES",
     "actor_exists",
     "backfill_agent_identity",
     "build_agent_identity_bootstrap",

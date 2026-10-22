@@ -205,3 +205,42 @@ async def test_bootstrap_writes_only_token_tenant(client: AsyncClient, db_sessio
     finally:
         await _cleanup_tenant(db_session, tenant_a)
         await _cleanup_tenant(db_session, tenant_b)
+
+
+async def test_unexpected_failure_returns_500_and_rolls_back(
+    client: AsyncClient, db_session, monkeypatch
+):
+    """P1：注入未预期失败（definition 已写入后抛错）→ 500 internal_error，
+    事务整体回滚，无半初始化残留。"""
+    from app.composition.agent_identity_bootstrap import (
+        ExecutionIdentityBootstrapAdapter,
+    )
+
+    tenant_id, headers = await _make_tenant_and_headers(client, db_session)
+    try:
+
+        async def boom(self, *, tenant_id, actor_id):
+            # 先真实写入 definition，再抛未预期异常——验证 route 回滚覆盖写路径
+            await self._identity.insert_agent_definition_version_if_absent(
+                tenant_id=tenant_id,
+                definition_key="system.direct_rag",
+                version=1,
+                definition_digest="a" * 64,
+                created_by=actor_id,
+            )
+            raise RuntimeError("injected unexpected failure")
+
+        monkeypatch.setattr(ExecutionIdentityBootstrapAdapter, "bootstrap_v1_identity", boom)
+        resp = await client.post(_BOOTSTRAP_PATH, headers=headers)
+        assert resp.status_code == 500
+        assert resp.json()["detail"]["code"] == "internal_error"
+        # 事务回滚：definition 不残留、profile 未创建
+        assert await _identity_counts(db_session, tenant_id) == (0, 0)
+
+        # 撤除注入后重试成功（无半初始化残留导致的后续冲突）
+        monkeypatch.undo()
+        resp = await client.post(_BOOTSTRAP_PATH, headers=headers)
+        assert resp.status_code == 200
+        assert await _identity_counts(db_session, tenant_id) == (1, 1)
+    finally:
+        await _cleanup_tenant(db_session, tenant_id)

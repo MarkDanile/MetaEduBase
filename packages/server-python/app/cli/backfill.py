@@ -108,6 +108,15 @@ async def _run_agent_identity(
         "subcommand": "agent-identity",
         "dry_run": report.dry_run,
         "failed": report.failed,
+        "failure_samples": [
+            {
+                "tenant": str(s.tenant_id),
+                "classification": s.classification,
+                "error_type": s.error_type,
+                "message": s.message,
+            }
+            for s in report.failure_samples
+        ],
         "tenants": [
             {
                 "tenant": str(t.tenant_id),

@@ -58,9 +58,20 @@ async def bootstrap_agent_identity(
     tenant_id = uuid.UUID(str(current_user["tenant_id"]))
     actor_id = uuid.UUID(str(current_user["id"]))
 
-    outcome = await build_agent_identity_bootstrap(session).bootstrap_v1_identity(
-        tenant_id=tenant_id, actor_id=actor_id
-    )
+    try:
+        outcome = await build_agent_identity_bootstrap(session).bootstrap_v1_identity(
+            tenant_id=tenant_id, actor_id=actor_id
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # 契约 §2：未预期失败（含 BootstrapIndeterminateError、数据库/事务异常）
+        # 一律 500 internal_error（phase-A §10 形状），整体回滚不产生半初始化残留。
+        await session.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail("internal_error", "identity bootstrap failed"),
+        ) from exc
     if outcome.conflict:
         await session.rollback()
         raise HTTPException(
