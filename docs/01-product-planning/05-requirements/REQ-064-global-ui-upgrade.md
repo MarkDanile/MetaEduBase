@@ -49,7 +49,7 @@ Related: REQ-010 / REQ-020 / REQ-021 / REQ-022 / REQ-023 / REQ-042 / REQ-047 / R
 ## Dependencies / Next Step
 
 - 规划登记与 UI 实现是两个阶段；本需求保持 Shaping，文档评审后可转 Ready，不自动转 Doing/Done。
-- UI 实现仍等待 TD-114 完成核验与治理收口：按 [TD-114 契约 §11](../../02-delivery-plans/01-specs/2026-10-19-td-114-agent-identity-bootstrap-contract.md#11-td-114-完成判据) 核验 A+B 组证据，并以相关交付及治理收口已合并、工作台/总账/日志状态一致作为开工依据。文档评审通过不替代此门禁；S1 最先开工，页面切片依赖其合入。
+- TD-114 前置已满足：[契约 §11](../../02-delivery-plans/01-specs/2026-10-19-td-114-agent-identity-bootstrap-contract.md#11-td-114-完成判据) 的 A+B 组证据由 #659/#663 交付，#665 治理收口已合入 main `a6fc4877`。本需求仍为 Shaping；S0 独立评审和排程就绪后才单独启动 S1，页面切片依赖 S1 合入。
 - REQ-042 phase-D/E、WS-S3 和 REQ-047 Extended 的实现继续走各自契约与验收；本需求只适配已交付表面；方案更新及 TD-114 收口均不自动推进 phase-D/E 或启用未交付能力。
 - 不要求先处理主 checkout 的其他任务才能读源码；新 worktree 从已知提交创建，不依赖、复制或提交他人的未提交内容。
 

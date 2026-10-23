@@ -7,8 +7,8 @@
 ## 1. 当前事实与排程
 
 - 源码研究基线为 `6122d29a177e2a67ed0dad626d4066261dae0d90`；写文档前已快进到本地 `origin/main` 的已合并 closeout `05adab213a831fa46f290b3eb2086fba2da36613`（#662）。独立分支 `codex/req-064-ui-upgrade-planning`，worktree `/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase-wt-req064-planning`。未重置、stash 或搬动其他 Agent 文件。
-- 当前工作台仍持有 REQ-042 相关任务；其后端 discovery 已在该基线落地，但 UI 发送与 TD-114 B 组不能据此宣称完成。只增加 REQ-064 的 **S0 规划文档任务卡**，不修改其他卡片状态，也不增加第四个候选入口。
-- REQ-064 整体保持 Shaping；文档经评审再转 Ready。**UI 实现（含 S1）仍等待 TD-114 完成核验与治理收口**：集成者按 TD-114 契约 §11 核验 A+B 组通过的真实证据、相关交付及治理收口的合并事实，并确认工作台/技术债/日志状态一致，登记依赖 PR 与 commit 后才能开工。仅规划评审通过、某一测试通过或某个后端 PR 合并都不替代此门禁；本次更新不推进 phase-D/E 或启用未交付能力。
+- 2026-10-23 集成最新 main `a6fc4877`（#665）：TD-114 契约 §11 A+B 组已由 #659/#663 验收，#665 已完成治理收口，工作台/技术债/日志状态一致。保留 REQ-064 的 **S0 规划文档任务卡**，不恢复已完成的 REQ-042/TD-114 活跃卡，也不增加第四个候选入口。
+- REQ-064 整体保持 Shaping；文档经独立评审再转 Ready。**TD-114 前置现已满足**，但 S1 仍需 S0 评审及排程就绪后另行启动；后续 Agent 在开工卡登记 #663/#665 和基线 commit。本次集成不启动 UI 实现，不推进 phase-D/E 或启用未交付能力。
 - 此后每个切片从**所需依赖已合并的明确 commit**创建独立 worktree；不从另一个 Agent 的脏目录复制文件。切片完成指代码/验证交接，REQ-064 Done 还需全站验收和合并事实。
 
 本轮校准范围统一为：TraeWork 主导全站外壳、导航、布局、字体、间距、控件、表格、表单、卡片、菜单、确认弹窗及状态；Doubao 局部覆盖 AI 聊天输入、消息排列、回答阅读、消息操作与滚动，配色/字体/基础控件服从统一系统，确认弹窗除外。其他库只补必要信息组织。Doubao 原包没有的消息/回答/操作/跟随滚动规则按 spec §4 和矩阵 DB-03 标明为本项目适配。
@@ -135,6 +135,8 @@ S1/S2/S4 另附可运行预览命令/URL/准备方式与 commit；用户确认�
 首个实现派发固定为 S1，必读 TW-01/TW-02/TW-03/DB-01/DB-02；S2 读 TW-03/DB-01/DB-02/DB-03，CL-01 仅作必要的消息元信息组织补充，S3 读 TW-03/TC-01 和 REQ-042 契约，S4/S6 读 TW-02/TW-04/VE-01/VE-02，S5 读 TW-05/TC-01，S7 读 TW-01/TW-02、REQ-023 品牌约束、VE-02 及报告/来源模式。每个切片都仍读 TraeWork 基础 Token。
 
 ## 7. S0 交付记录
+
+2026-10-23 main 集成：从 #664 独立 worktree 合入 `origin/main` 的 `a6fc4877`（#665），逐段核对并保留 TD-114 完成记录、候选区与最近完成区，保留 REQ-064-S0 活跃卡，删除与其矛盾的“当前无活跃任务。”。requirement/spec/plan 同步当前 TD-114 已完成事实；`scripts/check-engineering-docs --full` 退出码 0（32 项既有 allowlist），`git diff --check` 退出码 0，相对最新 main 的累计 PR 差异仍仅 7 个规划/索引文件。UI 实现、phase-D/E 与评分/合并均未启动。
 
 2026-10-22 校准入口核验：分支 `codex/req-064-ui-upgrade-planning`，本地 HEAD 与 PR #664 headRefOid 一致为 `5e745303e3cbbec23a96f591f50ce3b8fff9d6d7`。开工前已有 reference-matrix / plan / current-work 三份未提交修改，内容为本地资料忽略协议、验证实录及 PR 链接；已保存差异并保留，合入本次文档提交。原 checkout 无未提交受跟踪改动；本轮仅校准规划，不评分、不合并、不清理任何资源。
 
