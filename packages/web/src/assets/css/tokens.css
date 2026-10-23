@@ -3,6 +3,8 @@
   --color-ink: var(--theme-ink);
   --color-ink-secondary: var(--theme-ink-secondary);
   --color-ink-tertiary: var(--theme-ink-tertiary);
+  /* 可读提示色：保持「提示 < 次要正文」的层级，但对比度 >= 4.5:1（浅/深均达标） */
+  --color-ink-hint: var(--theme-ink-hint);
   --color-ink-inverse: var(--theme-ink-inverse);
   --color-ink-dim: var(--theme-ink-dim);
 
@@ -41,6 +43,7 @@
   --color-border: var(--theme-border);
   --color-border-subtle: var(--theme-border-subtle);
   --color-border-accent: var(--theme-border-accent);
+  /* 交互边界语义别名见下方 @theme static（须真实进入产物，且被交互控件实际引用） */
 
   /* ---- Semantic (constant across themes) ---- */
   --color-success: #10B981;
@@ -117,23 +120,72 @@
   --duration-slow: 300ms;
   --duration-liquid: 300ms;
 
-  /* ---- Type scale (constant) ---- */
+  /* ---- Type scale (constant) ----
+     行高与字号成对定义：正文 14/20、页面标题 24/32 对齐 TraeWork 类型契约
+     （--body-base-font-size/line-height、heading 等级）。 */
   --text-page-title: 24px;
   --text-section-title: 18px;
   --text-subtitle: 16px;
   --text-body: 14px;
+  --text-body-lh: 20px;
   --text-caption: 13px;
   --text-small: 12px;
   --text-micro: 11px;
 
   /* ---- Spacing (constant) ---- */
-  --spacing-page: 32px;
+  --spacing-page: 24px;
+  --spacing-page-mobile: 16px;
   --spacing-section: 24px;
   --spacing-card: 16px;
+  --spacing-control-gap: 8px;
+
+  /* ---- Control / icon sizes (constant) ----
+     --size-control-sm 移入下方 @theme static（当前无引用，需真实进入产物） */
+  --size-control-md: 36px;
+
+  /* ---- Focus ring (constant) ---- */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --focus-ring-color: var(--color-accent);
 
   /* ---- Z-index (constant) ---- */
   --z-sidebar: 10;
   --z-drawer: 30;
   --z-dialog: 40;
   --z-toast: 50;
+}
+
+/* ================================================================
+   S1a 新增、当前尚未被任何 utility 引用的语义 Token。
+
+   Tailwind v4 会对 `@theme` 中未被引用的变量做 tree-shake（不进入生产
+   产物）。这些 Token 是为后续切片预留的（页面标题行高、触控区与图标
+   尺寸、Composer 圆角与输入高度），必须真实存在于运行时，故用
+   `@theme static` 显式输出。
+
+   注意：Composer 系列仅为 S2 预留，S1a 不实现也不接入任何对话页面。
+   ================================================================ */
+@theme static {
+  /* Type scale 行高层（正文 14/20 已在上方 @theme 内被引用） */
+  --text-page-title-lh: 32px;
+  --text-section-title-lh: 24px;
+  --text-subtitle-lh: 24px;
+  --text-caption-lh: 18px;
+  --text-small-lh: 18px;
+  --text-micro-lh: 16px;
+
+  /* Control / icon sizes */
+  --size-control-sm: 32px;
+  --size-control-touch: 44px;
+  --size-icon-sm: 16px;
+  --size-icon-md: 20px;
+
+  /* 交互边界语义别名：浅/深均 >= 3:1（浅最低 3.55、深最低 4.55），
+     且被 .ui-input / .ui-btn-ghost / .mobile-opener / .desktop-collapse-toggle 实际引用 */
+  --color-border-interactive: var(--theme-border-interactive);
+
+  /* Composer（为 S2 预留） */
+  --radius-composer: 16px;
+  --size-composer-input-min: 24px;
+  --size-composer-input-max: 160px;
 }

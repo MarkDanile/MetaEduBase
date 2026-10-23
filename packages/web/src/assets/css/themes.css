@@ -14,6 +14,8 @@
   --theme-ink: #202124;
   --theme-ink-secondary: #5F6368;
   --theme-ink-tertiary: #9AA0A6;
+  /* 可读提示：对比度 >= 4.5:1（bg 5.07 / panel 5.30 / sidebar 4.86），层级仍浅于 secondary */
+  --theme-ink-hint: #676C72;
   --theme-ink-inverse: #FFFFFF;
   --theme-ink-dim: #C2C7CF;
 
@@ -51,6 +53,8 @@
   --theme-border: #DADCE0;
   --theme-border-subtle: #EDEFF2;
   --theme-border-accent: #BFD0F8;
+  /* 交互边界：对比度 >= 3:1（bg 3.71 / panel 3.87 / sidebar 3.55） */
+  --theme-border-interactive: #7C828C;
 
   /* Surfaces */
   --_surface-card-bg: #FFFFFF;
@@ -107,6 +111,8 @@
   --theme-ink: #F5F7FA;
   --theme-ink-secondary: #C6CAD2;
   --theme-ink-tertiary: #8E95A3;
+  /* 可读提示：深色下 tertiary 已达标（bg 6.27），直接沿用同值 */
+  --theme-ink-hint: #8E95A3;
   --theme-ink-inverse: #0F1115;
   --theme-ink-dim: #5D6675;
 
@@ -144,6 +150,8 @@
   --theme-border: #343842;
   --theme-border-subtle: #252932;
   --theme-border-accent: #3A5F8F;
+  /* 交互边界：对比度 >= 3:1（bg 4.88 / panel 4.55 / sidebar 4.64） */
+  --theme-border-interactive: #7C828C;
 
   /* Surfaces */
   --_surface-card-bg: #17191E;

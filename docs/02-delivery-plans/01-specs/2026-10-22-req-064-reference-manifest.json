@@ -1,0 +1,1469 @@
+{
+  "schemaVersion": 1,
+  "capturedOn": "2026-10-22",
+  "rootOverrideEnvironment": "REQ064_REFERENCE_ROOT",
+  "inspection": "Static source inspection; browser validation is required during implementation. These are reconstructed design libraries, not verified official product source.",
+  "scope": "Selected reference entry files only; not a backup and not all assets/dependencies.",
+  "libraryCount": 16,
+  "fileCount": 240,
+  "libraries": [
+    {
+      "name": "21th",
+      "decision": "supplement",
+      "evidenceConfidence": "C",
+      "components": [
+        "data-table",
+        "chart-panel"
+      ],
+      "uiKits": [
+        "dashboard"
+      ],
+      "files": [
+        {
+          "path": "21th/README.md",
+          "bytes": 12494,
+          "sha256": "0807b35dc2ef37af735561231b7359662485fc7b11862e69357eb93a4b5adbdf"
+        },
+        {
+          "path": "21th/colors_and_type.css",
+          "bytes": 10069,
+          "sha256": "3639a42f015f017ec7331cf948593623a1e1c176d91975e1e8713670d03ef5aa"
+        },
+        {
+          "path": "21th/components/chart-panel.json",
+          "bytes": 1089,
+          "sha256": "03436c3180a771b340d563681b6c996953fa3e8bfc48d2d948922316082bb528"
+        },
+        {
+          "path": "21th/components/data-table.json",
+          "bytes": 1025,
+          "sha256": "0ce05af42d02eed81cbd5112b872211657358d11c1e8c386959025c3ec961c78"
+        },
+        {
+          "path": "21th/components/index.json",
+          "bytes": 1808,
+          "sha256": "5e0e269eed4cc4f76d83357fbf9cc6b43b8ef1af01d79b87dab54cb15a10b55e"
+        },
+        {
+          "path": "21th/css.json",
+          "bytes": 4058,
+          "sha256": "a20011b1bbcda08ec30939ba19cac3d8946d0eda0c1b772c5721b4d4f9d1c15f"
+        },
+        {
+          "path": "21th/preview/component-chart-panel.html",
+          "bytes": 4785,
+          "sha256": "1eae035086ac0acd29f055c962f78fca9921478f005e6ffc28c4db4e8949f528"
+        },
+        {
+          "path": "21th/preview/component-data-table.html",
+          "bytes": 3310,
+          "sha256": "56041694323bba4804ee9b175ddf5d25ab4763e2a01da83563006d8ba16afc48"
+        },
+        {
+          "path": "21th/ui_kits/dashboard/index.html",
+          "bytes": 23722,
+          "sha256": "3e546f5ea1856f94907acfea2636c6ca6408dbc8d194780b9c25892ec74e969a"
+        }
+      ]
+    },
+    {
+      "name": "Apple",
+      "decision": "future-only",
+      "evidenceConfidence": "C",
+      "components": [
+        "comparison-table",
+        "product-grid"
+      ],
+      "uiKits": [
+        "website"
+      ],
+      "files": [
+        {
+          "path": "Apple/README.md",
+          "bytes": 11565,
+          "sha256": "175f1575defeb9756cd010e4f23617429916fe6cb920672209c5e5e1ae785c83"
+        },
+        {
+          "path": "Apple/colors_and_type.css",
+          "bytes": 8868,
+          "sha256": "6cd1bcf1c46cdb38e7ef29d47a211eee438d90a98e8795c524fb6347d282098b"
+        },
+        {
+          "path": "Apple/components/comparison-table.json",
+          "bytes": 1255,
+          "sha256": "f83f360bbcd01399e9017c8a2dcca0d1b7cfb40efcbe56255c2b37ebc5db8fb9"
+        },
+        {
+          "path": "Apple/components/index.json",
+          "bytes": 2228,
+          "sha256": "a61b2dfd383c25d90746dbf26a2e4087942899be4e509aa16a89146d4af273c9"
+        },
+        {
+          "path": "Apple/components/product-grid.json",
+          "bytes": 1242,
+          "sha256": "6a5f247029593a7f9493f0855af8ddc66315c54854c2128b475dbb41bf67b053"
+        },
+        {
+          "path": "Apple/components.css",
+          "bytes": 19675,
+          "sha256": "44722d3db51ff170a497b9389563bc9e2b779ed663c0cfd88e53a0e8e035c26f"
+        },
+        {
+          "path": "Apple/css.json",
+          "bytes": 5464,
+          "sha256": "ca387eef9c607a7957b6f338835e1d24b922ba40f767c7bf2b03744ee902d5c9"
+        },
+        {
+          "path": "Apple/library-consumption.json",
+          "bytes": 1382,
+          "sha256": "ad5b756fcac3c7b5e2c171d2033c41f9bc74cbd05bf1b91aa3dc67b39f7843ac"
+        },
+        {
+          "path": "Apple/preview/component-comparison-table.html",
+          "bytes": 3824,
+          "sha256": "aee8b67fe4864596fc57b5ed64f2e7e986bace7c60b5a605b144bf64f0f50b58"
+        },
+        {
+          "path": "Apple/preview/component-product-grid.html",
+          "bytes": 3675,
+          "sha256": "9eb0cf973c478d88e3e3487403989a9ed55e756529a688a907bb2a52bba765c8"
+        },
+        {
+          "path": "Apple/ui_kits/website/index.html",
+          "bytes": 36213,
+          "sha256": "35099575e374aab58e73fe335a41147840d8618c0766ad369575c51bc011b903"
+        },
+        {
+          "path": "Apple/ui_kits/website/quality-report.json",
+          "bytes": 788,
+          "sha256": "5ee7c1c43ed4c7033458ce5f82c06f59f51cbbbdb2f905fd0ab910aa5a8ce428"
+        }
+      ]
+    },
+    {
+      "name": "Barbie",
+      "decision": "exclude-current",
+      "evidenceConfidence": "C",
+      "components": [
+        "chart",
+        "table"
+      ],
+      "uiKits": [
+        "dashboard"
+      ],
+      "files": [
+        {
+          "path": "Barbie/README.md",
+          "bytes": 13604,
+          "sha256": "604772e08e2a6a8690d541725159357b886f0035f770be7fff79db37bc5a635e"
+        },
+        {
+          "path": "Barbie/colors_and_type.css",
+          "bytes": 8509,
+          "sha256": "e3fcc75177145430c52181603773080709c3e85ad55b71374e714bcf44a4d2a0"
+        },
+        {
+          "path": "Barbie/components/chart.json",
+          "bytes": 888,
+          "sha256": "4d3aa8bc43ae0f1e5f54fa1b3cf11a65ccd9d02c482def984024f3b70f29e3bf"
+        },
+        {
+          "path": "Barbie/components/index.json",
+          "bytes": 1610,
+          "sha256": "3f087dee4f42b9fc364f8cf50cc240960d6d2eb0c2203a95a931709fbfdcb805"
+        },
+        {
+          "path": "Barbie/components/table.json",
+          "bytes": 951,
+          "sha256": "aa28f5980ded804adb69e93b55813640e8075050822f8df34afe741db55ed60c"
+        },
+        {
+          "path": "Barbie/css.json",
+          "bytes": 4316,
+          "sha256": "df6bef4da254f8bf47e3e23ed06256b61ebe86f217f0858be9743ee87442f06c"
+        },
+        {
+          "path": "Barbie/preview/component-chart.html",
+          "bytes": 3852,
+          "sha256": "ce6fc05e09ba44a02908b997dd41ebe559bb6c6f2da7934289a07eb45669e696"
+        },
+        {
+          "path": "Barbie/preview/component-table.html",
+          "bytes": 3909,
+          "sha256": "6691396e2344a79ede47bdb61249c120a0f4c3012876caef463709270737dc36"
+        },
+        {
+          "path": "Barbie/ui_kits/dashboard/index.html",
+          "bytes": 23366,
+          "sha256": "ce48e1935c85fa166381e4a9e166e707ea6fe26cc91e85bb29291a07193f03dd"
+        }
+      ]
+    },
+    {
+      "name": "Claude",
+      "decision": "reading-supplement",
+      "evidenceConfidence": "C",
+      "components": [
+        "chat-bubble",
+        "input"
+      ],
+      "uiKits": [],
+      "files": [
+        {
+          "path": "Claude/README.md",
+          "bytes": 7944,
+          "sha256": "5686617df580ba8ef526491b032b360680a7b89f97a3d07c71835a714b26bde3"
+        },
+        {
+          "path": "Claude/colors_and_type.css",
+          "bytes": 12502,
+          "sha256": "afd126b5cf29388979a07ff35a599569b93deec8e55ac55db4c2b7ba33ff8cba"
+        },
+        {
+          "path": "Claude/components/chat-bubble.json",
+          "bytes": 931,
+          "sha256": "c7adefdde0d85db949fc25d79e518f401963a20535e1871034f0acd75b459c96"
+        },
+        {
+          "path": "Claude/components/index.json",
+          "bytes": 1121,
+          "sha256": "dea4287b23ec1dc69afe727d4ac77c05357c320d82a3c65db84a7638514b84cb"
+        },
+        {
+          "path": "Claude/components/input.json",
+          "bytes": 869,
+          "sha256": "1255c7c80ae311169c69cde788197a90566f4e3726681c00d2d822dbdc35f02b"
+        },
+        {
+          "path": "Claude/components.css",
+          "bytes": 20280,
+          "sha256": "b7e1a577f5be7262e48772b324b727b502bcc7c6b3de9005e29dc359544212d6"
+        },
+        {
+          "path": "Claude/css.json",
+          "bytes": 6390,
+          "sha256": "b19a33cd2b3f365e1d9cfa6ea0d91d45527fad5dca61862115c5d0d491b5e69a"
+        },
+        {
+          "path": "Claude/library-consumption.json",
+          "bytes": 1439,
+          "sha256": "0e085e72578f811d7a9a20db247370ec88440b151c7b8bc16e78d2c3fe5a6577"
+        },
+        {
+          "path": "Claude/preview/component-chat-bubble.html",
+          "bytes": 3412,
+          "sha256": "6cf50e125a24ef50602287df25806c0251e63c89312b55a3e748e5706cc3f943"
+        },
+        {
+          "path": "Claude/preview/component-input.html",
+          "bytes": 3083,
+          "sha256": "af3719bef01a335fbe228fcc19077675799983d71f19bc5a9c91b7b04061811d"
+        }
+      ]
+    },
+    {
+      "name": "Doubao",
+      "decision": "ai-chat-local-reference",
+      "evidenceConfidence": "C",
+      "components": [
+        "chat-composer",
+        "search-input",
+        "app-card"
+      ],
+      "uiKits": [
+        "dashboard"
+      ],
+      "files": [
+        {
+          "path": "Doubao/README.md",
+          "bytes": 3699,
+          "sha256": "d73ccdda425ea832ac77785081a82df5955da16b0c7e580d56470cb931d2f5c1"
+        },
+        {
+          "path": "Doubao/colors_and_type.css",
+          "bytes": 6127,
+          "sha256": "56c251b4a83798eddac445b226276723cb7ac4b90afe11c49a4d95183fc052b3"
+        },
+        {
+          "path": "Doubao/components/app-card.json",
+          "bytes": 1504,
+          "sha256": "3d96ea19a4654b04eb84ab4ed37206470f8a6241fabc5c0fde92778dab858e86"
+        },
+        {
+          "path": "Doubao/components/chat-composer.json",
+          "bytes": 1570,
+          "sha256": "c402e070e59c6523746e2d8bf79a0000cc88c852d3f2a4ce65687b84a94a11e7"
+        },
+        {
+          "path": "Doubao/components/index.json",
+          "bytes": 1994,
+          "sha256": "a472f55aab4c944d1a443f10287b996a53f338fbecd754c8bc581d7ec1e0f929"
+        },
+        {
+          "path": "Doubao/components/search-input.json",
+          "bytes": 1476,
+          "sha256": "6d88c3695c042e52d17865262e51a8acf66e0b6a1af484758aa418e4e0145597"
+        },
+        {
+          "path": "Doubao/components.css",
+          "bytes": 30024,
+          "sha256": "e2fd2bd6dc7b097c8d62edd369b5fba9785c0b30061e2c0dfdeae60114303b61"
+        },
+        {
+          "path": "Doubao/css.json",
+          "bytes": 2958,
+          "sha256": "918e6ceabe614e1566e698808cafa3d416926249b2b94d0af9acc5501a5965aa"
+        },
+        {
+          "path": "Doubao/library-consumption.json",
+          "bytes": 1477,
+          "sha256": "b14be13534296924878ac8fa689f2e2fd01a069dc9512702e507e7e2e0b44a59"
+        },
+        {
+          "path": "Doubao/preview/component-app-card.html",
+          "bytes": 3971,
+          "sha256": "b988f356fc61e0ec093315dfec2b4238e839ca3a29684c532615eca39e4e5385"
+        },
+        {
+          "path": "Doubao/preview/component-chat-composer.html",
+          "bytes": 5433,
+          "sha256": "29d874d6dda3e4f9683db54136d628fd0ba087afb327aba32bfcb0764a52f701"
+        },
+        {
+          "path": "Doubao/preview/component-search-input.html",
+          "bytes": 3932,
+          "sha256": "e86e980d28cce3509810052fcd61b15ba36538d01e0a7ac0f6e88a26b0faa6fa"
+        },
+        {
+          "path": "Doubao/ui_kits/dashboard/index.html",
+          "bytes": 40024,
+          "sha256": "ef46c82cfc69f96454dab7296a7f070e9bebe5a68b9a8eae1b0cf8e02a5b0fff"
+        },
+        {
+          "path": "Doubao/ui_kits/dashboard/quality-report.json",
+          "bytes": 802,
+          "sha256": "671dbe11a6081d7e1fc45fe939aadf73458fbbca19a2ae2b8cd90530b3d733ae"
+        }
+      ]
+    },
+    {
+      "name": "Golden Time",
+      "decision": "report-supplement",
+      "evidenceConfidence": "C",
+      "components": [
+        "chart-panel",
+        "data-table"
+      ],
+      "uiKits": [
+        "dashboard"
+      ],
+      "files": [
+        {
+          "path": "Golden Time/README.md",
+          "bytes": 12066,
+          "sha256": "d88d0f143122409c5a80f7c4228011ed194652a3c1991148dee9c64123321adb"
+        },
+        {
+          "path": "Golden Time/colors_and_type.css",
+          "bytes": 4633,
+          "sha256": "69bd4aa7ce9d4db343e72c44c12bfa5f7ac48460d63df0081c7f28ce4663bc5e"
+        },
+        {
+          "path": "Golden Time/components/chart-panel.json",
+          "bytes": 2806,
+          "sha256": "6cb0be4df740e813ca70abf31d56c148f646d3fa514b66aa8308e8a74c01370f"
+        },
+        {
+          "path": "Golden Time/components/data-table.json",
+          "bytes": 2772,
+          "sha256": "80a6977cbe33cfb42e9af98d3f4ca8fa6cf750a35bcfbb5fa80b2e427715a925"
+        },
+        {
+          "path": "Golden Time/components/index.json",
+          "bytes": 2987,
+          "sha256": "916d98aece7575e9dfac179c3023df6cf1b64073196e7b76a90800d26d0ce48f"
+        },
+        {
+          "path": "Golden Time/css.json",
+          "bytes": 4005,
+          "sha256": "36ee568579225a8b8925a2a62e1e3cecbdd66315ca7bf4d669b746552b85bdb3"
+        },
+        {
+          "path": "Golden Time/preview/component-chart-panel.html",
+          "bytes": 3992,
+          "sha256": "e5383c70c23d3ab2ed6ce8c553d716dd66d628f25010c01a03616a3ca7ec7a48"
+        },
+        {
+          "path": "Golden Time/preview/component-data-table.html",
+          "bytes": 35888,
+          "sha256": "1dc39d2a2ecabb2020ddd74023f92d9595d234e728b45436c3b045e54958eb55"
+        },
+        {
+          "path": "Golden Time/ui_kits/dashboard/index.html",
+          "bytes": 33335,
+          "sha256": "954d6a6fbc1483008937d6605c8c36f7ea2b83f459d85649e23a159010b9f803"
+        }
+      ]
+    },
+    {
+      "name": "Google",
+      "decision": "report-supplement",
+      "evidenceConfidence": "C",
+      "components": [
+        "table",
+        "chart"
+      ],
+      "uiKits": [
+        "dashboard"
+      ],
+      "files": [
+        {
+          "path": "Google/README.md",
+          "bytes": 12976,
+          "sha256": "9d78147baa9e9e5d9ce2d1e211156134b10cf7651d9bfa012c8b7fc21ee3c92d"
+        },
+        {
+          "path": "Google/colors_and_type.css",
+          "bytes": 7029,
+          "sha256": "1ce5dd288d66f264ddd6b02f96cae53229c24710001d4edd89cca544ec650d52"
+        },
+        {
+          "path": "Google/components/chart.json",
+          "bytes": 1182,
+          "sha256": "d6311a07394e1164008c5f7cfa6b6a723e4306d140ed04cca5f260d31e5ef78c"
+        },
+        {
+          "path": "Google/components/index.json",
+          "bytes": 1802,
+          "sha256": "5dfc35fb2fbb8c223c25890f0eb8c14f04fd604c85262bb1d95e3c23dac3fd13"
+        },
+        {
+          "path": "Google/components/table.json",
+          "bytes": 1105,
+          "sha256": "886ddfe8efc782c70697e4dff19cdc846063c9780b5b7bfecd3228cffd8f086a"
+        },
+        {
+          "path": "Google/css.json",
+          "bytes": 4151,
+          "sha256": "191d1cb5b00715279c07fa5f70117047dcfdb55f53069a5819484083b4c0f7b7"
+        },
+        {
+          "path": "Google/preview/component-chart.html",
+          "bytes": 4065,
+          "sha256": "006503daaf27c5bdde2d4e3da76955cbe11ae934b458629859cd73d26c902ad6"
+        },
+        {
+          "path": "Google/preview/component-table.html",
+          "bytes": 3911,
+          "sha256": "e89be5602c20fe119d1278020dd2f37664fcdbe2b622fccfa360673870bc3c3c"
+        },
+        {
+          "path": "Google/ui_kits/dashboard/index.html",
+          "bytes": 28922,
+          "sha256": "62b179960305549f68aea5384d1fe8d6e41f3e3dbfd11be51f8efbca730fd84c"
+        }
+      ]
+    },
+    {
+      "name": "Minimalist",
+      "decision": "density-supplement",
+      "evidenceConfidence": "C",
+      "components": [
+        "table",
+        "sidebar"
+      ],
+      "uiKits": [
+        "dashboard"
+      ],
+      "files": [
+        {
+          "path": "Minimalist/README.md",
+          "bytes": 11818,
+          "sha256": "833aaad01c357587b76c82f021a12314bae14726dceef774ba0078986632ae78"
+        },
+        {
+          "path": "Minimalist/colors_and_type.css",
+          "bytes": 10346,
+          "sha256": "3adcfb062028deda16391fb7e1fc2366ad4e64acc4190a01e796a0054362caaa"
+        },
+        {
+          "path": "Minimalist/components/index.json",
+          "bytes": 2084,
+          "sha256": "6a444694c91952570f969c71591866f451bc6b9b6b4dad093ceb81a32c5552ed"
+        },
+        {
+          "path": "Minimalist/components/sidebar.json",
+          "bytes": 1206,
+          "sha256": "384206f7de7cf7b9b9c3a3953541ca2e2cfb5f16c31845957eec43e99a0189aa"
+        },
+        {
+          "path": "Minimalist/components/table.json",
+          "bytes": 1118,
+          "sha256": "de2c7c538ee3a612ec579d0272164077042989ada0a10e7c0bd88575fe2cf007"
+        },
+        {
+          "path": "Minimalist/components.css",
+          "bytes": 19177,
+          "sha256": "278d37baac1894fbcd10e5159b6fe6db5342e9094d2510c5d8b546103338a9a2"
+        },
+        {
+          "path": "Minimalist/css.json",
+          "bytes": 6145,
+          "sha256": "03f38c068b0807bfc4a7b77d13f14c650317ab424203ab17e8c1876647e93ef0"
+        },
+        {
+          "path": "Minimalist/library-consumption.json",
+          "bytes": 1214,
+          "sha256": "beaa69d11c1c5cc569fc4ba05199cb3643e86ab1f1f81e2f788db952d1894ce1"
+        },
+        {
+          "path": "Minimalist/preview/component-sidebar.html",
+          "bytes": 4176,
+          "sha256": "14cda553cad9e6aed599098f1c0884adfb70f4fc9c21e131e8c0e4a00d475802"
+        },
+        {
+          "path": "Minimalist/preview/component-table.html",
+          "bytes": 3017,
+          "sha256": "2169fe267a3a0280a9bbd387f1d5f7b733cdbb5332c48e3851b5cdc5478fb846"
+        },
+        {
+          "path": "Minimalist/ui_kits/dashboard/index.html",
+          "bytes": 51902,
+          "sha256": "42b7ed809798fa2e582576973fdf7911aede83a10d42aaaad32a2bdc7c289aec"
+        },
+        {
+          "path": "Minimalist/ui_kits/dashboard/quality-report.json",
+          "bytes": 796,
+          "sha256": "78ebe2c95d66c101887090c59314d7946cb25423fbf1544c39a7ad0d8aee8dd5"
+        }
+      ]
+    },
+    {
+      "name": "Motion Fit",
+      "decision": "comparison-only",
+      "evidenceConfidence": "C",
+      "components": [
+        "bottom-nav",
+        "chip"
+      ],
+      "uiKits": [
+        "dashboard"
+      ],
+      "files": [
+        {
+          "path": "Motion Fit/README.md",
+          "bytes": 12508,
+          "sha256": "ad581f78b1755f06d68f9f2043362cc30c597ec0f97cc93ae50f4cfc4d47a260"
+        },
+        {
+          "path": "Motion Fit/colors_and_type.css",
+          "bytes": 3867,
+          "sha256": "ae9c7386a45acf385724b45bac038ced0c1fd8b75f54078080d0ad85da00b412"
+        },
+        {
+          "path": "Motion Fit/components/bottom-nav.json",
+          "bytes": 1138,
+          "sha256": "c8e1a60851b5492c33d3c0c0e57e2bb261da3c3d5497713e5ffdd6438520cf3b"
+        },
+        {
+          "path": "Motion Fit/components/chip.json",
+          "bytes": 1052,
+          "sha256": "3114b89d82e97b807f9604fb8d11c722579361691d3f2f402d34c17bc56a0fdc"
+        },
+        {
+          "path": "Motion Fit/components/index.json",
+          "bytes": 2848,
+          "sha256": "4f7227f97ee3f71f18660b10ac6755cd5d7e3c3e002b46338f41ed7eb62bdfdb"
+        },
+        {
+          "path": "Motion Fit/css.json",
+          "bytes": 4067,
+          "sha256": "c8ea2050b0344672696b7ae8b4805f02bbb777907320d77c3ffa48796ce5a2aa"
+        },
+        {
+          "path": "Motion Fit/preview/component-bottom-nav.html",
+          "bytes": 3782,
+          "sha256": "1b8c5ffca41e45b88a6818ca9596e8f35f705f442249cf2566ed331e7174a439"
+        },
+        {
+          "path": "Motion Fit/preview/component-chip.html",
+          "bytes": 2077,
+          "sha256": "e9b7a2aea5579b480c50025ccc2aa52b8a54e5f89866ea1828b875a5924aa3e3"
+        },
+        {
+          "path": "Motion Fit/ui_kits/dashboard/index.html",
+          "bytes": 35739,
+          "sha256": "ee3846da52b5ac1b5456fca2f7cbd94458405ebf413d4625d50d8909875a20bb"
+        }
+      ]
+    },
+    {
+      "name": "Nerv",
+      "decision": "comparison-only",
+      "evidenceConfidence": "C",
+      "components": [
+        "chart",
+        "table"
+      ],
+      "uiKits": [
+        "dashboard"
+      ],
+      "files": [
+        {
+          "path": "Nerv/README.md",
+          "bytes": 13799,
+          "sha256": "bbd89024a76e8c2579b032fff886169e28f2d4229589dbc26536f4048a1869d5"
+        },
+        {
+          "path": "Nerv/colors_and_type.css",
+          "bytes": 6367,
+          "sha256": "b606f2cea9c9a45d06fed68eeb760055aaee3215e92896373ec0f95324fa2ed9"
+        },
+        {
+          "path": "Nerv/components/chart.json",
+          "bytes": 938,
+          "sha256": "2251448f5fed1f9df944a3901151afb1290b13d952964d5ce5d286cdb6e5aadf"
+        },
+        {
+          "path": "Nerv/components/index.json",
+          "bytes": 1802,
+          "sha256": "982476f038af04a6f7108aaf475a301b7019187f05a010eb9b5093e707cf2c9f"
+        },
+        {
+          "path": "Nerv/components/table.json",
+          "bytes": 926,
+          "sha256": "2d71390e72ea4b5a8f204fd78e669cecbd3f6b05cfbf149ac0eb4027a8387624"
+        },
+        {
+          "path": "Nerv/css.json",
+          "bytes": 4048,
+          "sha256": "d6e054b08f1ea5c17cfae0c572dc29a9f684f970c800e5d31e007024eefb136f"
+        },
+        {
+          "path": "Nerv/preview/component-chart.html",
+          "bytes": 4673,
+          "sha256": "f3813ceff174102dffab272987b7df39a464b386b0817dbe44d01182a6e67457"
+        },
+        {
+          "path": "Nerv/preview/component-table.html",
+          "bytes": 3458,
+          "sha256": "30ab2924c6468c029a305c2932383d7462be4de8cd1d41cdff6d42ba0ae49fde"
+        },
+        {
+          "path": "Nerv/ui_kits/dashboard/index.html",
+          "bytes": 25507,
+          "sha256": "b14939c58267d11067927e97b97874c5d920dae002b197e0694500e1e9c0434f"
+        }
+      ]
+    },
+    {
+      "name": "TikTok",
+      "decision": "future-only",
+      "evidenceConfidence": "C",
+      "components": [
+        "video-card",
+        "right-rail"
+      ],
+      "uiKits": [
+        "app"
+      ],
+      "files": [
+        {
+          "path": "TikTok/README.md",
+          "bytes": 15120,
+          "sha256": "7d6f020cc936acdb71ff1f3b8fcf9d89d21cfd022a8a1e970deb93e6a34d130a"
+        },
+        {
+          "path": "TikTok/colors_and_type.css",
+          "bytes": 5221,
+          "sha256": "88b60edab8c1289e91c1a701fa25a03a2f2e54c0148e6d77b733a6b2ba5b89c8"
+        },
+        {
+          "path": "TikTok/components/index.json",
+          "bytes": 1165,
+          "sha256": "242913a12e6c6966a22340a6430aac5b22ed4055bbecf5996fe2d66a51730bf3"
+        },
+        {
+          "path": "TikTok/components/right-rail.json",
+          "bytes": 851,
+          "sha256": "2bd1851c099915543fb68a0214cdde4a434415e240744d02fdc7dbad61e64c6d"
+        },
+        {
+          "path": "TikTok/components/video-card.json",
+          "bytes": 876,
+          "sha256": "66e28f85fe2a0cf770b151e5ca573dbdf0b9ff59c8bcb5e3f0c9293bd7cf6405"
+        },
+        {
+          "path": "TikTok/components.css",
+          "bytes": 22698,
+          "sha256": "383464f7193c326f50281b0e6c4e4b20868ce4f6282209a7ed6b750ee73efebb"
+        },
+        {
+          "path": "TikTok/css.json",
+          "bytes": 2537,
+          "sha256": "89d5accdeb0ced68aca219c12e6b2aee9363a0e3c673aac9d043f59b89bc5dbd"
+        },
+        {
+          "path": "TikTok/library-consumption.json",
+          "bytes": 1339,
+          "sha256": "efeef203912cbb0922638eff9fbcb3a41db14ffdf24fa987406f3f3d858e3d89"
+        },
+        {
+          "path": "TikTok/preview/component-right-rail.html",
+          "bytes": 6066,
+          "sha256": "b94fe08816f5dfa6151f80216890ff5ad9ccf44038bb0d0763d4b3c294ade9c6"
+        },
+        {
+          "path": "TikTok/preview/component-video-card.html",
+          "bytes": 3299,
+          "sha256": "15e19427578f4267854a6f94ec56e36e51a083dbdb76e21b00f9f7a9df0378d9"
+        },
+        {
+          "path": "TikTok/ui_kits/app/index.html",
+          "bytes": 42225,
+          "sha256": "9dd7e3b27ed18100f8fd076675a9dfa7958a749fbb29e5a05f53f64ceba9cee0"
+        },
+        {
+          "path": "TikTok/ui_kits/app/quality-report.json",
+          "bytes": 793,
+          "sha256": "bc28338e9e8c566ba948374c0ecf76b3519eeac1a3c34c806205ddc28d9f8dd0"
+        }
+      ]
+    },
+    {
+      "name": "TraeCode",
+      "decision": "workspace-supplement",
+      "evidenceConfidence": "B",
+      "components": [
+        "nav-list",
+        "setting-row",
+        "table-panel",
+        "chat-composer",
+        "activity-rail"
+      ],
+      "uiKits": [
+        "dashboard",
+        "dev-explorer"
+      ],
+      "files": [
+        {
+          "path": "TraeCode/README.md",
+          "bytes": 7724,
+          "sha256": "067c45ac2fd55de85066fcf5dfcb2cd1e5fc8b6fad615b797757f61574984ca3"
+        },
+        {
+          "path": "TraeCode/colors_and_type.css",
+          "bytes": 15156,
+          "sha256": "2a9be2d1e7adc4125656004f04bdea9c7c75235d36e18b04570a9cf49d25603d"
+        },
+        {
+          "path": "TraeCode/components/activity-rail.json",
+          "bytes": 1917,
+          "sha256": "e1fb9b76650d533d018af3a0e37a7364a74eb52cd58e36c7ae5e39440f4be968"
+        },
+        {
+          "path": "TraeCode/components/chat-composer.json",
+          "bytes": 2796,
+          "sha256": "964122bcfe56a7fd1e7b2976f62c9fd4b49e1ee110b99371885000462692f63d"
+        },
+        {
+          "path": "TraeCode/components/index.json",
+          "bytes": 2508,
+          "sha256": "1148eba5d49f3d260a61aea03dfe24d9aa2364ac401843e55ee3f44391cf4bf3"
+        },
+        {
+          "path": "TraeCode/components/nav-list.json",
+          "bytes": 2379,
+          "sha256": "8a7f1bbf3f0c17b0a8761744fda8b70b25e6ab59338231b55d1e8e18447a8e67"
+        },
+        {
+          "path": "TraeCode/components/setting-row.json",
+          "bytes": 3701,
+          "sha256": "d4aeeedfa96f0d0bacb93231ef4b1cc37e08fb80edd5c3b5ac29019652108972"
+        },
+        {
+          "path": "TraeCode/components/table-panel.json",
+          "bytes": 2529,
+          "sha256": "914a0249facdce91919d994ef9147b352b3e313b27afe774fd793be341538e71"
+        },
+        {
+          "path": "TraeCode/components.css",
+          "bytes": 62478,
+          "sha256": "6a1015db28843bc44c1f0c44ae06c2400a07c4861615a22b982f1b2d6f28fb3e"
+        },
+        {
+          "path": "TraeCode/css.json",
+          "bytes": 13548,
+          "sha256": "f2e1e463d6c43b1d364d817f800add88db3f7a5d2b753f111fc9deefd1f411bd"
+        },
+        {
+          "path": "TraeCode/library-consumption.json",
+          "bytes": 5460,
+          "sha256": "866ec62dddc48ca723be5cd8724a6fd15fbd875fe15690392e5c8996e3ab0cbc"
+        },
+        {
+          "path": "TraeCode/preview/component-activity-rail.html",
+          "bytes": 4746,
+          "sha256": "fbb2d5461d694429915a39b7393765262a9ce72fd0e174d6e13d69c2f0fe2dd9"
+        },
+        {
+          "path": "TraeCode/preview/component-chat-composer.html",
+          "bytes": 7814,
+          "sha256": "186dadc134b8e324db186a01f0c19545be6fefe63f5bc19777c466cc6d3ea956"
+        },
+        {
+          "path": "TraeCode/preview/component-nav-list.html",
+          "bytes": 5509,
+          "sha256": "56d00cca5ff869e7c7b5dd33c5ed29581f5afa4cac1f1a89a524d8a7662ee277"
+        },
+        {
+          "path": "TraeCode/preview/component-setting-row.html",
+          "bytes": 13320,
+          "sha256": "94a652eb66f04c7167dfa6abb6d1b951234d4a052f7744d5e5c0b44310a22ac8"
+        },
+        {
+          "path": "TraeCode/preview/component-table-panel.html",
+          "bytes": 6809,
+          "sha256": "d178ebade016a0ea28768b93a14db87c2388a7babddeeb11964d9d3486070e0f"
+        },
+        {
+          "path": "TraeCode/ui_kits/dashboard/index.html",
+          "bytes": 15980,
+          "sha256": "92d4d78f700a464eb09ea6b6d0b122ae3edde43f23cd2761197da817114666af"
+        },
+        {
+          "path": "TraeCode/ui_kits/dashboard/quality-report.json",
+          "bytes": 538,
+          "sha256": "95d1923af9a0bc071d44d7ff387a74f72432458ad1f30989ecd052cb2edd3c99"
+        },
+        {
+          "path": "TraeCode/ui_kits/dev-explorer/index.html",
+          "bytes": 38108,
+          "sha256": "0f2363a71879b7b3b692d08b5d0fbac3eeb97d55f74958d74bc932ef18a22c48"
+        },
+        {
+          "path": "TraeCode/ui_kits/dev-explorer/quality-report.json",
+          "bytes": 544,
+          "sha256": "d34684a91b968aab9a484d6cc715a5234f99a3881cc07f25dee8f0867e4305a6"
+        },
+        {
+          "path": "TraeCode/uikit-plan.json",
+          "bytes": 4870,
+          "sha256": "110e3826f6b55382a323043eb5bb07654bada27f4805af2404431d245e0f82e3"
+        }
+      ]
+    },
+    {
+      "name": "TraeWork",
+      "decision": "primary",
+      "evidenceConfidence": "B",
+      "components": [
+        "buttons",
+        "forms",
+        "table",
+        "tabs",
+        "dialog",
+        "menu",
+        "cards",
+        "tag",
+        "breadcrumb",
+        "skeleton",
+        "progress",
+        "alert",
+        "avatar",
+        "pagination"
+      ],
+      "uiKits": [
+        "dev-explorer",
+        "settings",
+        "skills-library",
+        "dashboard",
+        "dashboard-2",
+        "comment-threads-plan"
+      ],
+      "files": [
+        {
+          "path": "TraeWork/README.md",
+          "bytes": 5016,
+          "sha256": "25e8dc30d31424929d5928ffc04c84dfcf8d140a4e1ec2c3ea847eedecdc9b6d"
+        },
+        {
+          "path": "TraeWork/colors_and_type.css",
+          "bytes": 16449,
+          "sha256": "ae2b7b893c9bfda04673836506cb94488b6c29a6485ebf80a5aa97f24ee75028"
+        },
+        {
+          "path": "TraeWork/components/alert.json",
+          "bytes": 5829,
+          "sha256": "f60dabe456b081526942c2b111039b9b63838144d8826f83caa84046344c7c44"
+        },
+        {
+          "path": "TraeWork/components/avatar.json",
+          "bytes": 3057,
+          "sha256": "6f7d41e6e04b70050a928a1f5cd70f2766e1eb9ee4317821521c4c419c4ffdf6"
+        },
+        {
+          "path": "TraeWork/components/breadcrumb.json",
+          "bytes": 3736,
+          "sha256": "02589265b833c15e169009fc63c1948e8680bcb92b13d374641ee8670d79b208"
+        },
+        {
+          "path": "TraeWork/components/buttons.json",
+          "bytes": 5989,
+          "sha256": "5350bdc3f5c843f8cd7e5698a6b8a6659c9c658a4fd1775d10f1dab9ef2c3e1d"
+        },
+        {
+          "path": "TraeWork/components/cards.json",
+          "bytes": 3264,
+          "sha256": "b72e8ce4b68d0a9bbdc41f6f943225d2e3495276f2eeaa37980d073b2a5dff58"
+        },
+        {
+          "path": "TraeWork/components/dialog.json",
+          "bytes": 4975,
+          "sha256": "b05ab56372dc2711242d82502b57eaabd8d8c30a45f317ad9d0e4f37c9d3a00b"
+        },
+        {
+          "path": "TraeWork/components/forms.json",
+          "bytes": 5422,
+          "sha256": "6476d9777cf2e0192fd593a679523cd5d373e41b7772d6fd8c0bb884dc9411cf"
+        },
+        {
+          "path": "TraeWork/components/index.json",
+          "bytes": 5693,
+          "sha256": "ae37c220d2af4a426811370050f8a4b22386087ad2bed6836d7e0492da452358"
+        },
+        {
+          "path": "TraeWork/components/menu.json",
+          "bytes": 4715,
+          "sha256": "0dbcbfc6ef740ba7a146479444fb04978d55ff638f329e3bcf760841b4a16f5b"
+        },
+        {
+          "path": "TraeWork/components/pagination.json",
+          "bytes": 4243,
+          "sha256": "a63337b6cfffb0844f9fee5458af87fb3186adc7f8a13e283b6adf4c43ec1abd"
+        },
+        {
+          "path": "TraeWork/components/progress.json",
+          "bytes": 3312,
+          "sha256": "4a5c2483c27d962bfa1e4f9e2d3f2769c80cc595a0d914b44e2860b2decf6b6e"
+        },
+        {
+          "path": "TraeWork/components/skeleton.json",
+          "bytes": 3777,
+          "sha256": "2bc660a1daf4a3bd5a9989eb4c3d234fadbfdccfab2de347a6a4c06cf1ec951a"
+        },
+        {
+          "path": "TraeWork/components/table.json",
+          "bytes": 4727,
+          "sha256": "aa718917b3da9e45c49c9bfe4470d2774f7fac1a9b7029b0afac81ae7d898308"
+        },
+        {
+          "path": "TraeWork/components/tabs.json",
+          "bytes": 3805,
+          "sha256": "a13b41d9d9dd0de0a040fd6a3345028ac7c7d9088ebd32affbe99e00f0a6eaae"
+        },
+        {
+          "path": "TraeWork/components/tag.json",
+          "bytes": 3901,
+          "sha256": "aa12a38bdd7f94833e3a265234e5c80708c72c16d6991d5717e76ae597401570"
+        },
+        {
+          "path": "TraeWork/components.css",
+          "bytes": 38077,
+          "sha256": "975a0ae2ec3e89dab7df42fc10d1ab8469b3a3d2960ef8e23806f38e0914dae1"
+        },
+        {
+          "path": "TraeWork/css.json",
+          "bytes": 26993,
+          "sha256": "7cf2261efbf328e2738889179d0d2a1868b68ffd20002b93191851f910bcdb37"
+        },
+        {
+          "path": "TraeWork/library-consumption.json",
+          "bytes": 5070,
+          "sha256": "62ca8446bff9a75623c0954da767a8c009982b1141a21284011dd83804f42e78"
+        },
+        {
+          "path": "TraeWork/preview/component-alert.html",
+          "bytes": 35154,
+          "sha256": "7f580c77bcf883d42e6ed6b7454168243d560a92feed730627f3ff2c2967e5bb"
+        },
+        {
+          "path": "TraeWork/preview/component-avatar.html",
+          "bytes": 5555,
+          "sha256": "e866f84a7968474e7af1faf79f5bbfe36ea0faf6e4f3f0cb03954315ab2f0878"
+        },
+        {
+          "path": "TraeWork/preview/component-breadcrumb.html",
+          "bytes": 10727,
+          "sha256": "9d90d7f8c58edc394fc52139dca938fe5bff643f1b7a97f365aaa51aabd9abb1"
+        },
+        {
+          "path": "TraeWork/preview/component-buttons.html",
+          "bytes": 121765,
+          "sha256": "fd6ea1cb6ea53453efbfc1e2bd9ccffd1ed21b36c5c54befafa14916db1e530d"
+        },
+        {
+          "path": "TraeWork/preview/component-cards.html",
+          "bytes": 15544,
+          "sha256": "0541c689f5ed208ff1644268697c7b89a4101f16c2248288708cfa730ed75c58"
+        },
+        {
+          "path": "TraeWork/preview/component-dialog.html",
+          "bytes": 17093,
+          "sha256": "c568cf4a10e7d7295b5cdb0cf93dac15caeff0f81d40bd0825ed104e3d084ead"
+        },
+        {
+          "path": "TraeWork/preview/component-forms.html",
+          "bytes": 61496,
+          "sha256": "aed8980e7d4f853d6afcd84256fdfff51a23bcd9da04f2b9cde445ab32ff4224"
+        },
+        {
+          "path": "TraeWork/preview/component-menu.html",
+          "bytes": 26728,
+          "sha256": "61c7f67dca8aa4df8aba5b77f8b8b675a884f14785cfade6a8d8cd621ed48940"
+        },
+        {
+          "path": "TraeWork/preview/component-pagination.html",
+          "bytes": 9793,
+          "sha256": "7d8aea7f5b41d460f79e74e93a5118bb5e903f8778a5f9449719c6849cb325cc"
+        },
+        {
+          "path": "TraeWork/preview/component-progress.html",
+          "bytes": 7297,
+          "sha256": "c273312f5ee2864d3212777a27c3170e6628356636636d6c3b523462619a00fa"
+        },
+        {
+          "path": "TraeWork/preview/component-skeleton.html",
+          "bytes": 6387,
+          "sha256": "6817a7dc9956ba2fa95ee9f94adf6ca7b50af0f195a9acc33e996b19692821de"
+        },
+        {
+          "path": "TraeWork/preview/component-table.html",
+          "bytes": 11991,
+          "sha256": "6f776a4cfb9a9e8e06aaa7303dd8f581d243f149c2753149ee9c567bdb10e1c6"
+        },
+        {
+          "path": "TraeWork/preview/component-tabs.html",
+          "bytes": 6149,
+          "sha256": "baee1341ab6f0a3de5caacfc4f058b226f53fc856aca8641a416a0cd01b83098"
+        },
+        {
+          "path": "TraeWork/preview/component-tag.html",
+          "bytes": 5523,
+          "sha256": "891887567ecee35a0a55e82c2e20902cdd1db88af1ed696d6622c5952d03dc3e"
+        },
+        {
+          "path": "TraeWork/ui_kits/comment-threads-plan/index.html",
+          "bytes": 54130,
+          "sha256": "44b4c7fa2b6b3fa1d29e30a7ccebc9a2fb450afa66c484d24ff037c9c992ddee"
+        },
+        {
+          "path": "TraeWork/ui_kits/comment-threads-plan/quality-report.json",
+          "bytes": 982,
+          "sha256": "a30f8f2ca41440c83f09865c152ca29ff2c629be1e8681118eb21a07083986e5"
+        },
+        {
+          "path": "TraeWork/ui_kits/dashboard/index.html",
+          "bytes": 124140,
+          "sha256": "b234a3a80b392dd42b1a20888edab6c408d93c203c69e54b9774f56d151c3891"
+        },
+        {
+          "path": "TraeWork/ui_kits/dashboard/quality-report.json",
+          "bytes": 951,
+          "sha256": "eca27fa0ae46a2882e205a22d1190351aaf37f7d26261cd85e7bc862ed3155fd"
+        },
+        {
+          "path": "TraeWork/ui_kits/dashboard-2/index.html",
+          "bytes": 109126,
+          "sha256": "1a411b381a2b0f746019291c8bce53a8cf51d9767384243c031597dfacbbe099"
+        },
+        {
+          "path": "TraeWork/ui_kits/dashboard-2/quality-report.json",
+          "bytes": 952,
+          "sha256": "ddb231ecc086530722ea08a8df07a1293564dec2a9f2dd7e20ca12905416e4fc"
+        },
+        {
+          "path": "TraeWork/ui_kits/dev-explorer/index.html",
+          "bytes": 98938,
+          "sha256": "54c1560095cc76cfdfd235704d08814c1df8c05d7c4d75a2910f902806a8e456"
+        },
+        {
+          "path": "TraeWork/ui_kits/dev-explorer/quality-report.json",
+          "bytes": 1143,
+          "sha256": "3c30df62e419b49d22e591e7a548576fe4548dc2a2455314c9623cf3fe8497f5"
+        },
+        {
+          "path": "TraeWork/ui_kits/settings/index.html",
+          "bytes": 22167,
+          "sha256": "67475a967424ca4d5c6f9b7d0cad73e575486d3eea7310b66e84a298f5af23f5"
+        },
+        {
+          "path": "TraeWork/ui_kits/settings/quality-report.json",
+          "bytes": 942,
+          "sha256": "48817da9fd11056960a6a61dc0ddf51eec53438d8b24513398648b66d497faa8"
+        },
+        {
+          "path": "TraeWork/ui_kits/skills-library/index.html",
+          "bytes": 44719,
+          "sha256": "30d0c3226750b990ffc8680dc6eecfd025eea838ee5d0dd94914fc52fce1bcf9"
+        },
+        {
+          "path": "TraeWork/ui_kits/skills-library/quality-report.json",
+          "bytes": 948,
+          "sha256": "b62d40da9756a151358d1d7c794620fbd6cb328c000967e395ec94ecc0e8bbad"
+        },
+        {
+          "path": "TraeWork/uikit-plan.json",
+          "bytes": 6939,
+          "sha256": "ea2187720fd83c3914e4bd67a2468139885fd05c0548a9c2b74c32e133855f2e"
+        }
+      ]
+    },
+    {
+      "name": "Vercel",
+      "decision": "admin-supplement",
+      "evidenceConfidence": "C",
+      "components": [
+        "table",
+        "card"
+      ],
+      "uiKits": [
+        "dashboard"
+      ],
+      "files": [
+        {
+          "path": "Vercel/README.md",
+          "bytes": 10804,
+          "sha256": "55ddf327a17b430c818f355368ea4b7d92c9b0a08fbde27eba29553441f6e6b3"
+        },
+        {
+          "path": "Vercel/colors_and_type.css",
+          "bytes": 6452,
+          "sha256": "e9458de4c11641db115884a9e1fe388ad287af5eb4f6548eac6493413072f1a2"
+        },
+        {
+          "path": "Vercel/components/card.json",
+          "bytes": 1096,
+          "sha256": "ca5f633cb65fba9fef2ddf57f9a2458fa01ae537312a72035910467fb40ad6eb"
+        },
+        {
+          "path": "Vercel/components/index.json",
+          "bytes": 1809,
+          "sha256": "4dab9d3beb3358ff37cf7bc14be9737acc60fedd027a46c96ca85e6fe2e8d20a"
+        },
+        {
+          "path": "Vercel/components/table.json",
+          "bytes": 1007,
+          "sha256": "f7117b3634212b547208ff7ffad0c9961c70591b4637e501a030aef14133ff57"
+        },
+        {
+          "path": "Vercel/components.css",
+          "bytes": 20157,
+          "sha256": "e34d8271a078fb10feb1445b331660d6c8406ca91998931401365c817599e416"
+        },
+        {
+          "path": "Vercel/css.json",
+          "bytes": 3547,
+          "sha256": "6bc15f0143a7f342be34befc28aa94effd8ec1d770280e5760ffbc345a48cad6"
+        },
+        {
+          "path": "Vercel/library-consumption.json",
+          "bytes": 1431,
+          "sha256": "7e302049846a9e8d351c60d78bc05606978ef81b690d47063537be5601f0e60b"
+        },
+        {
+          "path": "Vercel/preview/component-card.html",
+          "bytes": 3616,
+          "sha256": "524e458937b1e9ebbe3aa3bc6ad48f6fa4b7758f59daf38105aabbd2b030d3cb"
+        },
+        {
+          "path": "Vercel/preview/component-table.html",
+          "bytes": 3063,
+          "sha256": "ee60a4302bbaf92e6511bb9a202993c7697d1b52b5dea926d43478b079635559"
+        },
+        {
+          "path": "Vercel/ui_kits/dashboard/index.html",
+          "bytes": 52138,
+          "sha256": "8c100ecdf5348bd4eed3732225faa04ab3ea43df83f4ff7600b3bea33a2ca096"
+        },
+        {
+          "path": "Vercel/ui_kits/dashboard/quality-report.json",
+          "bytes": 798,
+          "sha256": "7993643b5a9ab9412ba94eac2f50a7ef76a433b29a50ccb47e194176956aef82"
+        }
+      ]
+    },
+    {
+      "name": "Vibe Camp",
+      "decision": "future-only",
+      "evidenceConfidence": "C",
+      "components": [
+        "chart",
+        "table"
+      ],
+      "uiKits": [
+        "dashboard"
+      ],
+      "files": [
+        {
+          "path": "Vibe Camp/README.md",
+          "bytes": 13978,
+          "sha256": "7e6256ae02a789223dd6921b1ef810454e9fdab70f3911079d09276c0b138383"
+        },
+        {
+          "path": "Vibe Camp/colors_and_type.css",
+          "bytes": 6558,
+          "sha256": "dc9878ae88e8f95e09571cd61710853cd4cf33a425e5c18132489a1df026fcfa"
+        },
+        {
+          "path": "Vibe Camp/components/chart.json",
+          "bytes": 2046,
+          "sha256": "68a14f7cf6d1e88f1a5f07bb34e7e6b906907345f963152e661897598e382107"
+        },
+        {
+          "path": "Vibe Camp/components/index.json",
+          "bytes": 2116,
+          "sha256": "ebbe16e148364896fbcc3193db2cae4e6d56442a0e70554aa04b8a82188a3741"
+        },
+        {
+          "path": "Vibe Camp/components/table.json",
+          "bytes": 2090,
+          "sha256": "7a167b1764635520b37290dcd9a3368a2687e063b75ea5e4399f7021427fe861"
+        },
+        {
+          "path": "Vibe Camp/components.css",
+          "bytes": 20299,
+          "sha256": "210032d1e7e58335be71f0bd1f59ed1b6d4ca04c73618c68ea4f1e2eb2670988"
+        },
+        {
+          "path": "Vibe Camp/css.json",
+          "bytes": 4144,
+          "sha256": "d8b3c362948ecdf697fd9954e55cd51bb70d13bdc9452ca5d02da9858fb3296a"
+        },
+        {
+          "path": "Vibe Camp/library-consumption.json",
+          "bytes": 1429,
+          "sha256": "689ac801b2a8c764f234128059967062e991f0b5a82731f7903cdeb94951df0b"
+        },
+        {
+          "path": "Vibe Camp/preview/component-chart.html",
+          "bytes": 3929,
+          "sha256": "0a33ed810e7106d1fcff4a2dd9b09687367e2464de126003421c79d5c66af781"
+        },
+        {
+          "path": "Vibe Camp/preview/component-table.html",
+          "bytes": 3055,
+          "sha256": "f07c0d7efb3aa4f2f385910f79c1df474a45f3803e4514e4c47d2c13d7dd75b4"
+        },
+        {
+          "path": "Vibe Camp/ui_kits/dashboard/index.html",
+          "bytes": 74629,
+          "sha256": "ffc59ead7a65045ff0af5a821506ee8e145612ce1130188b4182de64eb3b93f9"
+        },
+        {
+          "path": "Vibe Camp/ui_kits/dashboard/quality-report.json",
+          "bytes": 793,
+          "sha256": "3249ae0a668b0b22dc9ac26efb96e601aae851e83bff6b3d19896fd8d7e9af8c"
+        }
+      ]
+    },
+    {
+      "name": "Volcengine",
+      "decision": "enterprise-supplement",
+      "evidenceConfidence": "B",
+      "components": [
+        "table",
+        "form",
+        "descriptions",
+        "drawer",
+        "steps",
+        "page-header",
+        "pagination",
+        "tabs"
+      ],
+      "uiKits": [
+        "list-page",
+        "config-page",
+        "detail-tab-page",
+        "detail-basic-page",
+        "detail-with-sidebar",
+        "data-dashboard"
+      ],
+      "files": [
+        {
+          "path": "Volcengine/README.md",
+          "bytes": 16391,
+          "sha256": "c350ef86840bb5ed60e558b8cfc3bc43bd30f3b081f812773c948cfa24617033"
+        },
+        {
+          "path": "Volcengine/colors_and_type.css",
+          "bytes": 26842,
+          "sha256": "cf0e1514ac1ee87c5d310e679726c1ebbc7c262e17ba656f1906c8af9446e8f5"
+        },
+        {
+          "path": "Volcengine/components/descriptions.json",
+          "bytes": 3576,
+          "sha256": "de66a99072574a230d6ac67e6c46d518d1b2079606d9a40cbc8f25698fa7d8b6"
+        },
+        {
+          "path": "Volcengine/components/drawer.json",
+          "bytes": 3089,
+          "sha256": "ad32eb9c1cf35d8fa74b49ae66be1e0766730fd60fcf1e1596fe66dad9939f2e"
+        },
+        {
+          "path": "Volcengine/components/form.json",
+          "bytes": 3273,
+          "sha256": "8d638b0fc52871a463f4e66a8eb571d2f5e2dd7702a606da56a009b5b8ef36f8"
+        },
+        {
+          "path": "Volcengine/components/index.json",
+          "bytes": 10707,
+          "sha256": "60f1e7b25f1da1c345ed36fb42b5600a369d1b03ad873ac6e65fc889a23e51a2"
+        },
+        {
+          "path": "Volcengine/components/page-header.json",
+          "bytes": 3736,
+          "sha256": "20b4615e64cf68c3b9b89d4b6bdbe4ebbbc8e1fe5a96621045d10be78584744d"
+        },
+        {
+          "path": "Volcengine/components/pagination.json",
+          "bytes": 3439,
+          "sha256": "64345114cfc904f62d673515d1d6cfac5d47fe1b5a52b2619794406804579903"
+        },
+        {
+          "path": "Volcengine/components/steps.json",
+          "bytes": 3327,
+          "sha256": "08299404840c818eb5541800adc5e042185ee72a9f0b92d94efd956119426421"
+        },
+        {
+          "path": "Volcengine/components/table.json",
+          "bytes": 3832,
+          "sha256": "5411188bc35a511a08e7619edf14628787fd7a05dbf54069943e56ca96399feb"
+        },
+        {
+          "path": "Volcengine/components/tabs.json",
+          "bytes": 3260,
+          "sha256": "e5b4b74ba5730d5e92876f65b9e3d3ef1abf24f11c63fc05be1264f4026773e8"
+        },
+        {
+          "path": "Volcengine/components.css",
+          "bytes": 109403,
+          "sha256": "50e3f6d05601dd3723750b4166a4b394ec6275867e60502a6134e1a57a80fcda"
+        },
+        {
+          "path": "Volcengine/css.json",
+          "bytes": 16879,
+          "sha256": "0326532c645b9579646445b5a5c82b3f5b88b255450cb2a7884e3064de4c2b21"
+        },
+        {
+          "path": "Volcengine/library-consumption.json",
+          "bytes": 6075,
+          "sha256": "593b42d639295e1c1dcbc6ef640a9e90d9eaa9f6b1980b4ed7d013653c8262de"
+        },
+        {
+          "path": "Volcengine/preview/component-descriptions.html",
+          "bytes": 6946,
+          "sha256": "e6923a49816c1a946fdbf7760c01ae861ec0724abf4a0859a4d81f92f9d5d4a4"
+        },
+        {
+          "path": "Volcengine/preview/component-drawer.html",
+          "bytes": 2938,
+          "sha256": "689e9f9d9c531c3c14dd2864d1d2ae2ccbde62208ac0ef9aea91907c0ff9c30e"
+        },
+        {
+          "path": "Volcengine/preview/component-form.html",
+          "bytes": 10195,
+          "sha256": "9cc749cf1c6fbbf4490704c9660ad887df94afd577cb07f2a7fb2c568943d4cd"
+        },
+        {
+          "path": "Volcengine/preview/component-page-header.html",
+          "bytes": 9226,
+          "sha256": "308b2ee30bb5a7df061c794240250cfcba417a4c868143af76e5d7c446d0e427"
+        },
+        {
+          "path": "Volcengine/preview/component-pagination.html",
+          "bytes": 9971,
+          "sha256": "8f9cfeaf2302b1854ce52a3793540b81373b9cd5f253784f94b5e6c6c9516c66"
+        },
+        {
+          "path": "Volcengine/preview/component-steps.html",
+          "bytes": 23771,
+          "sha256": "4729df578ff021e4cdf7264d3c32296dc222a5ce32ae0b846aa9279dc94fd0bb"
+        },
+        {
+          "path": "Volcengine/preview/component-table.html",
+          "bytes": 10668,
+          "sha256": "31a7eb472586037b729bbf2655907b7049edab5fa5b76ead30edb6c4bcb6fa94"
+        },
+        {
+          "path": "Volcengine/preview/component-tabs.html",
+          "bytes": 16724,
+          "sha256": "173a4e9ac52bc533784c4c0e7c88a0a30345a73bba658b9339fbbbdd4a72ded8"
+        },
+        {
+          "path": "Volcengine/ui_kits/config-page/index.html",
+          "bytes": 44600,
+          "sha256": "434b01fcd38174e168b84071a3dbdccb99d568d5b13151bd154ff13b12000348"
+        },
+        {
+          "path": "Volcengine/ui_kits/config-page/quality-report.json",
+          "bytes": 1108,
+          "sha256": "9a6a1185c1fe6bda5d41ac21973d73e5189897baa6f70c904a651f1374729fbf"
+        },
+        {
+          "path": "Volcengine/ui_kits/data-dashboard/index.html",
+          "bytes": 68428,
+          "sha256": "1ef0f9925d6816a92e0c9e4c420585ad08dc2ff0993637bcbfbca14ec583f9d0"
+        },
+        {
+          "path": "Volcengine/ui_kits/data-dashboard/quality-report.json",
+          "bytes": 939,
+          "sha256": "dc449ca6dd90ac5cc2bfb514459fac4e6abee3b6f215a6f4ad8f810598b84d33"
+        },
+        {
+          "path": "Volcengine/ui_kits/detail-basic-page/index.html",
+          "bytes": 49194,
+          "sha256": "22dfb02aa9f219dc52b175239fcd756d4b45eb64a5439bdd47b140124e62e858"
+        },
+        {
+          "path": "Volcengine/ui_kits/detail-basic-page/quality-report.json",
+          "bytes": 1000,
+          "sha256": "fff68a9691ee2a749235f43a9f5b7d2b82f9c2b41fd1fe511055347d45c69361"
+        },
+        {
+          "path": "Volcengine/ui_kits/detail-tab-page/index.html",
+          "bytes": 51272,
+          "sha256": "e15b3368b4470d402a0a9e3ff0fc2b76bb48ce196cf799477a2cd13aa6b55c4d"
+        },
+        {
+          "path": "Volcengine/ui_kits/detail-with-sidebar/index.html",
+          "bytes": 62102,
+          "sha256": "f3893ace1e5ba26ed46c23fe75fe31e03fec9ee9581e29350dc85ba2e24c9b78"
+        },
+        {
+          "path": "Volcengine/ui_kits/detail-with-sidebar/quality-report.json",
+          "bytes": 1032,
+          "sha256": "c5d054ac8cea82ddf65abde73ae06a3f2985a3d91bce6d5edf32c08f91d3dbfc"
+        },
+        {
+          "path": "Volcengine/ui_kits/list-page/index.html",
+          "bytes": 53716,
+          "sha256": "e41498467a3de1565ad5866fb65869d471eaf67996816a883dd9e3494abe789e"
+        },
+        {
+          "path": "Volcengine/ui_kits/list-page/quality-report.json",
+          "bytes": 1027,
+          "sha256": "373cfe687bc7e24310f7585c5166d9eeccd98fcad6bfe150cb7dd003949a1d8f"
+        },
+        {
+          "path": "Volcengine/uikit-plan.json",
+          "bytes": 11041,
+          "sha256": "829507e86b480bc9a60c020b87610b76fca816000f85b4336839693c22cd804f"
+        }
+      ]
+    }
+  ],
+  "projectLocalRoot": ".local/design_libraries",
+  "externalRoot": "/Users/strony/Desktop/design_libraries",
+  "root": ".local/design_libraries"
+}
