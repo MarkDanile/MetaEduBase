@@ -125,19 +125,13 @@
      行高与字号成对定义：正文 14/20、页面标题 24/32 对齐 TraeWork 类型契约
      （--body-base-font-size/line-height、heading 等级）。 */
   --text-page-title: 24px;
-  --text-page-title-lh: 32px;
   --text-section-title: 18px;
-  --text-section-title-lh: 24px;
   --text-subtitle: 16px;
-  --text-subtitle-lh: 24px;
   --text-body: 14px;
   --text-body-lh: 20px;
   --text-caption: 13px;
-  --text-caption-lh: 18px;
   --text-small: 12px;
-  --text-small-lh: 18px;
   --text-micro: 11px;
-  --text-micro-lh: 16px;
 
   /* ---- Spacing (constant) ---- */
   --spacing-page: 24px;
@@ -149,14 +143,6 @@
   /* ---- Control / icon sizes (constant) ---- */
   --size-control-sm: 32px;
   --size-control-md: 36px;
-  --size-control-touch: 44px;
-  --size-icon-sm: 16px;
-  --size-icon-md: 20px;
-
-  /* ---- Composer tokens（为 S2 预留，S1a 不实现也不接入任何对话页面）---- */
-  --radius-composer: 16px;
-  --size-composer-input-min: 24px;
-  --size-composer-input-max: 160px;
 
   /* ---- Focus ring (constant) ---- */
   --focus-ring-width: 2px;
@@ -168,4 +154,34 @@
   --z-drawer: 30;
   --z-dialog: 40;
   --z-toast: 50;
+}
+
+/* ================================================================
+   S1a 新增、当前尚未被任何 utility 引用的语义 Token。
+
+   Tailwind v4 会对 `@theme` 中未被引用的变量做 tree-shake（不进入生产
+   产物）。这些 Token 是为后续切片预留的（页面标题行高、触控区与图标
+   尺寸、Composer 圆角与输入高度），必须真实存在于运行时，故用
+   `@theme static` 显式输出。
+
+   注意：Composer 系列仅为 S2 预留，S1a 不实现也不接入任何对话页面。
+   ================================================================ */
+@theme static {
+  /* Type scale 行高层（正文 14/20 已在上方 @theme 内被引用） */
+  --text-page-title-lh: 32px;
+  --text-section-title-lh: 24px;
+  --text-subtitle-lh: 24px;
+  --text-caption-lh: 18px;
+  --text-small-lh: 18px;
+  --text-micro-lh: 16px;
+
+  /* Control / icon sizes */
+  --size-control-touch: 44px;
+  --size-icon-sm: 16px;
+  --size-icon-md: 20px;
+
+  /* Composer（为 S2 预留） */
+  --radius-composer: 16px;
+  --size-composer-input-min: 24px;
+  --size-composer-input-max: 160px;
 }

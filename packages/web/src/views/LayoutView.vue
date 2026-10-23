@@ -10,7 +10,7 @@
       <button
         ref="mobileOpenerRef"
         type="button"
-        class="mobile-opener w-11 h-11 rounded-md flex items-center justify-center border border-[var(--color-border)] bg-[var(--color-bg-base)] hover:bg-[var(--color-bg-hover)] cursor-pointer"
+        class="mobile-opener w-[var(--size-control-touch)] h-[var(--size-control-touch)] rounded-md flex items-center justify-center border border-[var(--color-border)] bg-[var(--color-bg-base)] hover:bg-[var(--color-bg-hover)] cursor-pointer"
         aria-controls="mobile-drawer"
         :aria-expanded="mobileDrawer.open.value"
         :aria-label="mobileDrawer.open.value ? '关闭导航' : '打开导航'"
