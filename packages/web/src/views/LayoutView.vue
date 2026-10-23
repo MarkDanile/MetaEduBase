@@ -10,7 +10,7 @@
       <button
         ref="mobileOpenerRef"
         type="button"
-        class="mobile-opener w-9 h-9 rounded-md flex items-center justify-center border border-[var(--color-border)] bg-[var(--color-bg-base)] hover:bg-[var(--color-bg-hover)] cursor-pointer"
+        class="mobile-opener w-[var(--size-control-touch)] h-[var(--size-control-touch)] rounded-md flex items-center justify-center border border-[var(--color-border-interactive)] bg-[var(--color-bg-base)] hover:bg-[var(--color-bg-hover)] cursor-pointer"
         aria-controls="mobile-drawer"
         :aria-expanded="mobileDrawer.open.value"
         :aria-label="mobileDrawer.open.value ? '关闭导航' : '打开导航'"
@@ -19,7 +19,7 @@
         <Menu v-if="!mobileDrawer.open.value" :size="18" :stroke-width="1.5" aria-hidden="true" />
         <X v-else :size="18" :stroke-width="1.5" aria-hidden="true" />
       </button>
-      <h1 class="text-[var(--text-body)] font-semibold text-[var(--color-ink)] truncate">
+      <h1 class="text-[var(--text-body)] leading-[var(--text-body-lh)] font-semibold text-[var(--color-ink)] truncate">
         元知职教基座
       </h1>
     </header>
@@ -35,7 +35,7 @@
       ref="mobileDrawerRef"
       :class="[
         'sidebar-shell fixed left-0 top-0 bottom-0 flex flex-col z-[var(--z-sidebar)] transition-all duration-300 ease-out w-72',
-        desktopCollapsed ? 'md:w-[60px]' : 'md:w-[200px]',
+        desktopCollapsed ? 'md:w-[60px]' : 'md:w-[240px]',
         mobileDrawer.open.value
           ? 'translate-x-0'
           : '-translate-x-full md:translate-x-0',
@@ -52,8 +52,8 @@
           <BookOpen :size="16" :stroke-width="2" />
         </div>
         <div v-if="showFullContent">
-          <h1 class="text-[var(--text-body)] font-semibold text-[var(--color-ink)]">元知职教基座</h1>
-          <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)] -mt-0.5">MetaEduBase</p>
+          <h1 class="text-[var(--text-body)] leading-[var(--text-body-lh)] font-semibold text-[var(--color-ink)]">元知职教基座</h1>
+          <p class="text-[var(--text-micro)] text-[var(--color-ink-hint)] -mt-0.5">MetaEduBase</p>
         </div>
       </div>
 
@@ -147,7 +147,7 @@
       <button
         v-show="!mobileDrawer.open.value"
         @click="desktopCollapsed = !desktopCollapsed"
-        class="desktop-collapse-toggle absolute -right-3 top-7 w-6 h-6 rounded-full bg-[var(--color-bg-elevated)] border border-[var(--color-border)] shadow-sm items-center justify-center hover:bg-[var(--color-accent-bg)] transition-colors hidden md:flex"
+        class="desktop-collapse-toggle absolute -right-3 top-7 w-6 h-6 rounded-full bg-[var(--color-bg-elevated)] border border-[var(--color-border-interactive)] shadow-sm items-center justify-center hover:bg-[var(--color-accent-bg)] transition-colors hidden md:flex"
         data-desktop-only="true"
         :aria-label="desktopCollapsed ? '展开侧边栏' : '折叠侧边栏'"
         :aria-expanded="!desktopCollapsed"
@@ -169,7 +169,7 @@
       tabindex="-1"
       :class="[
         'flex-1 min-h-screen transition-all duration-300 ease-out',
-        isMobile ? 'ml-0' : desktopCollapsed ? 'md:ml-[60px]' : 'md:ml-[200px]',
+        isMobile ? 'ml-0' : desktopCollapsed ? 'md:ml-[60px]' : 'md:ml-[240px]',
       ]"
     >
       <div class="ui-page-shell pt-12 md:pt-0">
@@ -336,7 +336,7 @@ onUnmounted(() => {
 .user-menu-label {
   padding: 4px 12px 6px;
   font-size: var(--text-micro);
-  color: var(--color-ink-tertiary);
+  color: var(--color-ink-hint);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -390,6 +390,15 @@ onUnmounted(() => {
   color: var(--color-ink);
 }
 
+/* REQ-064 S1a：外壳可交互控件的 focus-visible 焦点环 */
+.nav-item:focus-visible,
+.user-menu-item:focus-visible,
+.mobile-opener:focus-visible,
+.desktop-collapse-toggle:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
 /* REQ-060 Slice 4: prefers-reduced-motion 取消所有过渡 */
 @media (prefers-reduced-motion: reduce) {
   .sidebar-shell,
@@ -407,7 +416,7 @@ onUnmounted(() => {
 .nav-section-label {
   padding: 8px 12px 4px;
   font-size: var(--text-micro);
-  color: var(--color-ink-tertiary);
+  color: var(--color-ink-hint);
   text-transform: uppercase;
   letter-spacing: 0;
   margin: 0;
