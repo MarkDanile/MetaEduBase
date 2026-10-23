@@ -24,7 +24,17 @@ pnpm --filter @metaedu/web build:bundle
 pnpm --filter @metaedu/web test:e2e
 ```
 
-`playwright.config.ts` 的 `webServer.command` 自动启动 `vite preview --port 3000`（生产构建）。`reuseExistingServer` 在非 CI 模式下复用已启动服务，CI 模式自动启停。
+### 端口隔离（REQ-064 S1a）
+
+`playwright.config.ts` 的 `webServer.command` 自动启动 `vite preview --port <port> --strictPort`（生产构建）。端口由环境变量 `METAEDU_E2E_PORT` 决定，默认 `3000`，合法范围 **1024–65535**，越界直接报错退出。
+
+`reuseExistingServer` 固定为 `false`：**端口被占用时测试直接失败**，不会静默复用其他 checkout 已在运行的服务（避免并行 Agent 的测试打到别的 worktree 构建产物）。本地已占用 3000 时请改用其他端口：
+
+```bash
+METAEDU_E2E_PORT=3101 pnpm --filter @metaedu/web test:e2e
+```
+
+CI 集成（`ci.yml` frontend job）不设该变量，使用默认 3000（runner 上无占用）。
 
 ## 设计
 
