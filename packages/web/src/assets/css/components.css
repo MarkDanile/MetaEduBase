@@ -8,8 +8,15 @@
 
   .ui-page-shell {
     width: 100%;
-    padding: var(--spacing-page);
+    padding: var(--spacing-page-mobile);
     background: var(--color-bg-base);
+  }
+
+  /* 桌面页边距 24px、移动 16px（REQ-064 spec §2.2） */
+  @media (min-width: 768px) {
+    .ui-page-shell {
+      padding: var(--spacing-page);
+    }
   }
 
   .ui-page-section {
@@ -64,12 +71,13 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     color: var(--color-ink);
-    font-size: 14px;
+    font-size: var(--text-body);
     outline: none;
     transition: all var(--duration-liquid) var(--ease-elastic);
   }
 
-  .ui-input:focus {
+  .ui-input:focus,
+  .ui-input:focus-visible {
     background: var(--surface-input-bg-focus);
     border-color: var(--color-accent);
     box-shadow: 0 0 0 3px var(--color-accent-ring), inset 0 0 0 1px var(--color-accent-ring);
@@ -79,13 +87,25 @@
     color: var(--color-ink-tertiary);
   }
 
+  /* 禁用态：沿用 TraeWork `.ds-input.is-disabled` 的层级（禁用控件不受对比度门槛约束） */
+  .ui-input:disabled {
+    background: var(--color-bg-warm);
+    color: var(--color-ink-tertiary);
+    cursor: not-allowed;
+  }
+
+  /* 错误态：沿用 TraeWork `.ds-input.is-error` 的边界语义 */
+  .ui-input.is-error {
+    border-color: var(--color-danger);
+  }
+
   .ui-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: var(--spacing-control-gap);
     padding: 8px 18px;
-    height: 36px;
+    height: var(--size-control-md);
     font-family: var(--font-body);
     font-size: var(--text-caption);
     font-weight: 500;
@@ -97,6 +117,11 @@
                 border-color var(--duration-fast) var(--ease-out),
                 color var(--duration-fast) var(--ease-out),
                 box-shadow var(--duration-fast) var(--ease-out);
+  }
+
+  .ui-btn:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
   }
 
   .ui-btn-primary {
@@ -264,5 +289,16 @@
 
   .liquid-card-scan::after {
     display: none;
+  }
+
+  /* ---- 动效降级：跟随系统 prefers-reduced-motion ---- */
+  @media (prefers-reduced-motion: reduce) {
+    .ui-btn,
+    .ui-input,
+    .ui-panel,
+    .ui-interactive-row,
+    .ui-toolbar {
+      transition: none !important;
+    }
   }
 }

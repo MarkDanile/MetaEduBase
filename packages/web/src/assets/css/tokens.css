@@ -3,6 +3,8 @@
   --color-ink: var(--theme-ink);
   --color-ink-secondary: var(--theme-ink-secondary);
   --color-ink-tertiary: var(--theme-ink-tertiary);
+  /* 可读提示色：保持「提示 < 次要正文」的层级，但对比度 >= 4.5:1（浅/深均达标） */
+  --color-ink-hint: var(--theme-ink-hint);
   --color-ink-inverse: var(--theme-ink-inverse);
   --color-ink-dim: var(--theme-ink-dim);
 
@@ -41,6 +43,8 @@
   --color-border: var(--theme-border);
   --color-border-subtle: var(--theme-border-subtle);
   --color-border-accent: var(--theme-border-accent);
+  /* 交互边界：对比度 >= 3:1（浅 3.55~3.87 / 深 4.55~4.88），区别于非交互分隔线 */
+  --color-border-interactive: var(--theme-border-interactive);
 
   /* ---- Semantic (constant across themes) ---- */
   --color-success: #10B981;
@@ -117,19 +121,47 @@
   --duration-slow: 300ms;
   --duration-liquid: 300ms;
 
-  /* ---- Type scale (constant) ---- */
+  /* ---- Type scale (constant) ----
+     行高与字号成对定义：正文 14/20、页面标题 24/32 对齐 TraeWork 类型契约
+     （--body-base-font-size/line-height、heading 等级）。 */
   --text-page-title: 24px;
+  --text-page-title-lh: 32px;
   --text-section-title: 18px;
+  --text-section-title-lh: 24px;
   --text-subtitle: 16px;
+  --text-subtitle-lh: 24px;
   --text-body: 14px;
+  --text-body-lh: 20px;
   --text-caption: 13px;
+  --text-caption-lh: 18px;
   --text-small: 12px;
+  --text-small-lh: 18px;
   --text-micro: 11px;
+  --text-micro-lh: 16px;
 
   /* ---- Spacing (constant) ---- */
-  --spacing-page: 32px;
+  --spacing-page: 24px;
+  --spacing-page-mobile: 16px;
   --spacing-section: 24px;
   --spacing-card: 16px;
+  --spacing-control-gap: 8px;
+
+  /* ---- Control / icon sizes (constant) ---- */
+  --size-control-sm: 32px;
+  --size-control-md: 36px;
+  --size-control-touch: 44px;
+  --size-icon-sm: 16px;
+  --size-icon-md: 20px;
+
+  /* ---- Composer tokens（为 S2 预留，S1a 不实现也不接入任何对话页面）---- */
+  --radius-composer: 16px;
+  --size-composer-input-min: 24px;
+  --size-composer-input-max: 160px;
+
+  /* ---- Focus ring (constant) ---- */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --focus-ring-color: var(--color-accent);
 
   /* ---- Z-index (constant) ---- */
   --z-sidebar: 10;
