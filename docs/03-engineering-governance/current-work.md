@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-064-S0: 全局 UI 升级设计规范与隔离式 Agent 接力规划（纯文档）
+
+状态：🟡 进行中（仅规划文档；UI 实现未启动）
+类型：REQ / product planning / pure-spec / pure-docs
+领域：Web / Design System / AI Workspace
+当前执行模式：product planning
+最近接手工具：Codex
+分支：codex/req-064-ui-upgrade-planning
+
+需求来源：
+- [REQ-064](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md)
+- Spec：[全局 UI 规范](../02-delivery-plans/01-specs/2026-10-22-req-064-ui-design-system.md) / [参考矩阵与原始文件校验](../02-delivery-plans/01-specs/2026-10-22-req-064-reference-matrix.md)
+- Plan：[分阶段实施与 Agent 交接](../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md)
+
+当前进展：规划 [PR #664](https://github.com/MarkDanile/MetaEduBase/pull/664) 已创建并保持开放；TraeWork 全站范围、Doubao 聊天局部与来源边界、登录样式升级及 S1/S2/S4 用户视觉确认节点均已校准。分支集成最新 main `a6fc4877`（#665 治理收口），保留 TD-114 完成事实及 REQ-064-S0 活跃卡。16 库 / 240 文件 manifest 与项目 `.local/design_libraries`（Git ignored）及外部备份继续作为资料入口。
+下一步：PR #664 保持开放，停在独立复审前；后续按流程独立评审。TD-114 完成核验与治理收口已由 #663/#665 落地，S1 仍需 S0 评审通过及排程就绪后单独派发；本轮不评分、不合并、不清理资源，不推进 UI 实现或 phase-D/E。
+验证状态：原校准的 19 个本地链接、本地/外部 16 库 / 240 文件及 TraeWork/Doubao 子集 61 文件校验通过，manifest 原路径/字节数/hash 未改；本次集成 `scripts/check-engineering-docs --full` 通过（32 项既有 allowlist），`git diff --check` 与累计 7 文件范围核对通过。UI/后端/真实 LLM 验收未运行，证据层级仅静态资料与文档。
+交接备注：仅本 S0 文档任务活跃；REQ-064 整体仍 Shaping，TD-114 已完成，REQ-042/phase-D/E/WS-S3 状态不由本任务推进。工作树 / 文件所有权 / 端口与集成协议见 plan，禁止多个写入 Agent 共用 checkout。
 
 ## 下一批候选任务
 
