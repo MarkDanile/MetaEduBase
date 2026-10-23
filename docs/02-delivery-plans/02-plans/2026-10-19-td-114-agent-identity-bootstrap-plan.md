@@ -1,6 +1,6 @@
 # TD-114 Agent identity 显式初始化编排 — 最小实施计划
 
-- 状态：Draft（随契约评审冻结后执行）
+- 状态：🟢 完成（2026-10-22；契约 §10-A A 组 #659 与 §10-B B 组 #663 均已合入 main，契约 §11 完成判据达成；交付记录见 `technical-debt.md#td-114`）
 - 契约：[2026-10-19-td-114-agent-identity-bootstrap-contract.md](../01-specs/2026-10-19-td-114-agent-identity-bootstrap-contract.md)（本计划只展开其实现切片，不复制契约条款；编号引用契约 §）
 - 基线：origin/main `4288d01c5400bb83142ceec278d09fea7c518f33`
 
