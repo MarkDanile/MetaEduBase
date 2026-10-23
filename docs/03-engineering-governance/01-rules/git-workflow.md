@@ -115,6 +115,8 @@ PR 描述至少包含：
 - 只有同时满足以下条件才可退休：对应 PR 已 `MERGED`；required checks、验收和必要的 post-merge closeout 已完成；worktree 无已跟踪或未跟踪改动；没有未发布提交；没有活动进程、锁文件或依赖它的其他任务；忽略文件中没有需要保留的本地配置、设计资产、测试数据或其他人工资料。
 - squash merge 不能只凭分支祖先关系判定交付完成。清理前核对 PR 最终 `headRefOid`、`MERGED` 状态、`mergeCommit`、最终树一致性和合并后的事实源；至少确认 `origin/main^{tree}`、合并前最终 head 的 tree 与 squash merge commit 的 tree 一致，或记录确有意内容差异及其来源。
 - 清理顺序固定为：列出 worktree 和分支 → 检查状态、未跟踪/忽略文件、锁和进程 → 以精确路径执行 `git worktree remove` 的非强制删除 → 对失效注册执行 `git worktree prune --dry-run` 后再 prune → 复核剩余 worktree。不得用 `--force`、`git clean` 或递归删除来绕过检查。
+- ignored 资产必须显式枚举：`git status --porcelain` 输出为空不代表 worktree 没有本地资产——被忽略的文件既不进入默认状态输出，也不阻断 `git worktree remove`。退休判定前必须执行 `git status --porcelain --ignored=matching --untracked-files=all` 列出 ignored 资产，必要时再用只读 dry-run `git clean -ndX` 预览候选删除项。`git clean -ndX` 只用于列出候选，不得执行 `git clean -fdX` 或任何自动清理，也不得因为路径被忽略就判定可以删除。
+- ignored 资产至少逐项检查本仓库已知位置：`.local/design_libraries/`（设计参考库）、`.codegraph/`、`.dev-logs/`、`.venv/`、`.env*`、`deploy/.env`，以及其他本地配置、测试数据与人工资料；用 `git check-ignore -v <path>` 核验实际忽略来源，目录型规则需带结尾斜杠，且除仓库 `.gitignore` 外还可能存在本机 `.git/info/exclude` 规则。每个 ignored 资产都要判断是否有 Agent、运行环境、设计库、后续任务或本地资料依赖。
 - worktree、local branch、remote branch 是三个独立资源。退休 worktree 不删除任何分支；删除分支必须另行核对合并状态、未发布提交和依赖关系。合并命令是否按默认流程删除远端分支，仍以用户当次指令和本节分支核验为准。
-- 以下情况必须保留并说明原因：任务尚未合并或 closeout 未完成；仍有其他 Agent / 服务 / 文件监听器使用；存在未提交、未发布或有价值的忽略文件；另一个任务依赖该分支或提交；用户明确要求保留；或无法实时核验远端交付事实。条件解除后再清理。
-- 清理报告至少记录：清理前后 worktree 数量、移除的精确路径、保留的路径及原因、是否删除分支，以及任何未能核验的项目。没有活动任务时，不为清理本身创建递归 closeout。
+- 以下情况必须保留并说明原因：任务尚未合并或 closeout 未完成；仍有其他 Agent / 服务 / 文件监听器使用；存在未提交、未发布或有价值的忽略文件；ignored 资产的归属、用途或后续依赖无法确认；另一个任务依赖该分支或提交；用户明确要求保留；或无法实时核验远端交付事实。条件解除后再清理。
+- 清理报告至少记录：清理前后 worktree 数量、移除的精确路径、保留的路径及原因、是否删除分支、ignored 资产的逐项判定结论，以及任何未能核验的项目。没有活动任务时，不为清理本身创建递归 closeout。
