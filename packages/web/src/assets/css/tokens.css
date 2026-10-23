@@ -43,8 +43,7 @@
   --color-border: var(--theme-border);
   --color-border-subtle: var(--theme-border-subtle);
   --color-border-accent: var(--theme-border-accent);
-  /* 交互边界：对比度 >= 3:1（浅 3.55~3.87 / 深 4.55~4.88），区别于非交互分隔线 */
-  --color-border-interactive: var(--theme-border-interactive);
+  /* 交互边界语义别名见下方 @theme static（须真实进入产物，且被交互控件实际引用） */
 
   /* ---- Semantic (constant across themes) ---- */
   --color-success: #10B981;
@@ -140,8 +139,8 @@
   --spacing-card: 16px;
   --spacing-control-gap: 8px;
 
-  /* ---- Control / icon sizes (constant) ---- */
-  --size-control-sm: 32px;
+  /* ---- Control / icon sizes (constant) ----
+     --size-control-sm 移入下方 @theme static（当前无引用，需真实进入产物） */
   --size-control-md: 36px;
 
   /* ---- Focus ring (constant) ---- */
@@ -176,9 +175,14 @@
   --text-micro-lh: 16px;
 
   /* Control / icon sizes */
+  --size-control-sm: 32px;
   --size-control-touch: 44px;
   --size-icon-sm: 16px;
   --size-icon-md: 20px;
+
+  /* 交互边界语义别名：浅/深均 >= 3:1（浅最低 3.55、深最低 4.55），
+     且被 .ui-input / .ui-btn-ghost / .mobile-opener / .desktop-collapse-toggle 实际引用 */
+  --color-border-interactive: var(--theme-border-interactive);
 
   /* Composer（为 S2 预留） */
   --radius-composer: 16px;

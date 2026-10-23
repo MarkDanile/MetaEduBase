@@ -68,7 +68,8 @@
     background: var(--surface-input-bg);
     backdrop-filter: var(--surface-glass-blur-light);
     -webkit-backdrop-filter: var(--surface-glass-blur-light);
-    border: 1px solid var(--color-border);
+    /* 交互边界：对比度 >= 3:1（浅最低 3.55 / 深最低 4.55） */
+    border: 1px solid var(--color-border-interactive);
     border-radius: var(--radius-md);
     color: var(--color-ink);
     font-size: var(--text-body);
@@ -173,7 +174,8 @@
     background: var(--surface-ghost-btn-bg);
     backdrop-filter: var(--surface-glass-blur-light);
     -webkit-backdrop-filter: var(--surface-glass-blur-light);
-    border: 1px solid var(--color-border);
+    /* 交互边界：对比度 >= 3:1（浅最低 3.55 / 深最低 4.55） */
+    border: 1px solid var(--color-border-interactive);
     color: var(--color-ink-secondary);
   }
 

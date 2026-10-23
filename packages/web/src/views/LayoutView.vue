@@ -10,7 +10,7 @@
       <button
         ref="mobileOpenerRef"
         type="button"
-        class="mobile-opener w-[var(--size-control-touch)] h-[var(--size-control-touch)] rounded-md flex items-center justify-center border border-[var(--color-border)] bg-[var(--color-bg-base)] hover:bg-[var(--color-bg-hover)] cursor-pointer"
+        class="mobile-opener w-[var(--size-control-touch)] h-[var(--size-control-touch)] rounded-md flex items-center justify-center border border-[var(--color-border-interactive)] bg-[var(--color-bg-base)] hover:bg-[var(--color-bg-hover)] cursor-pointer"
         aria-controls="mobile-drawer"
         :aria-expanded="mobileDrawer.open.value"
         :aria-label="mobileDrawer.open.value ? '关闭导航' : '打开导航'"
@@ -147,7 +147,7 @@
       <button
         v-show="!mobileDrawer.open.value"
         @click="desktopCollapsed = !desktopCollapsed"
-        class="desktop-collapse-toggle absolute -right-3 top-7 w-6 h-6 rounded-full bg-[var(--color-bg-elevated)] border border-[var(--color-border)] shadow-sm items-center justify-center hover:bg-[var(--color-accent-bg)] transition-colors hidden md:flex"
+        class="desktop-collapse-toggle absolute -right-3 top-7 w-6 h-6 rounded-full bg-[var(--color-bg-elevated)] border border-[var(--color-border-interactive)] shadow-sm items-center justify-center hover:bg-[var(--color-accent-bg)] transition-colors hidden md:flex"
         data-desktop-only="true"
         :aria-label="desktopCollapsed ? '展开侧边栏' : '折叠侧边栏'"
         :aria-expanded="!desktopCollapsed"

@@ -201,3 +201,114 @@ test(`REQ-064 S1a 外壳度量断言 [${LABEL}]`, async ({ page }) => {
   console.log("ZOOM200 overflowX=" + zoom);
   expect(zoom).toBeLessThanOrEqual(0);
 });
+
+/**
+ * S1a 交互边界对比度断言：确认「Token 已进入产物」且「实际被交互控件应用」，
+ * 并按 WCAG 相对亮度公式实测所覆盖边界的对比度 >= 3:1。
+ *
+ * 覆盖边界（仅交互控件边界；容器/分隔线/品牌/面板边界不在承诺范围）：
+ *   .ui-input、.ui-btn-ghost（共享 CSS，用探针元素取计算样式）
+ *   .mobile-opener、.desktop-collapse-toggle（外壳真实元素）
+ */
+
+test(`REQ-064 S1a 交互边界对比度 >= 3:1 [${LABEL}]`, async ({ page }) => {
+  await setupE2E(page, "admin");
+  await page.goto(target("/"));
+  await page.waitForLoadState("networkidle");
+
+  const expectations: { theme: string; token: string; controlSm: string }[] = [
+    { theme: "light", token: "rgb(124, 130, 140)", controlSm: "32px" },
+    { theme: "dark", token: "rgb(124, 130, 140)", controlSm: "32px" },
+  ];
+
+  for (const exp of expectations) {
+    await switchTheme(page, exp.theme);
+    const result = await page.evaluate(
+      ({ theme }: { theme: string }) => {
+        const lum = (rgb: string): number | null => {
+          const m = rgb.match(/rgba?\(([^)]+)\)/);
+          if (!m) return null;
+          const parts = m[1].split(",").map((s) => parseFloat(s.trim()));
+          const [r, g, b, a] = parts;
+          if (a !== undefined && a < 0.05) return null;
+          const f = (c: number) => {
+            const v = c / 255;
+            return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+          };
+          return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+        };
+        const ratio = (a: string, b: string): number | null => {
+          const la = lum(a);
+          const lb = lum(b);
+          if (la === null || lb === null) return null;
+          const hi = Math.max(la, lb);
+          const lo = Math.min(la, lb);
+          return (hi + 0.05) / (lo + 0.05);
+        };
+        const root = getComputedStyle(document.documentElement);
+        const token = root.getPropertyValue("--color-border-interactive").trim();
+        const resolved = (() => {
+          const probe = document.createElement("div");
+          probe.style.color = `var(--color-border-interactive)`;
+          document.body.appendChild(probe);
+          const v = getComputedStyle(probe).color;
+          probe.remove();
+          return v;
+        })();
+        const pageBg = getComputedStyle(document.body).backgroundColor;
+        const targets: { selector: string; probe: boolean }[] = [
+          { selector: ".ui-input", probe: true },
+          { selector: ".ui-btn-ghost", probe: true },
+          { selector: ".mobile-opener", probe: false },
+          { selector: ".desktop-collapse-toggle", probe: false },
+        ];
+        const out: Record<string, { border: string; min: number | null }> = {};
+        for (const t of targets) {
+          let el: HTMLElement | null = document.querySelector(t.selector);
+          let created: HTMLElement | null = null;
+          if (!el && t.probe) {
+            created = document.createElement(t.selector.startsWith(".ui-btn") ? "button" : "input");
+            // className 不能带前导点，否则探针不会命中共享类（曾导致空洞通过）
+            created.className = t.selector.replace(/^\./, "");
+            document.body.appendChild(created);
+            el = created;
+          }
+          if (!el) continue;
+          const cs = getComputedStyle(el);
+          const border = cs.borderTopColor;
+          const own = cs.backgroundColor;
+          const candidates = [own, pageBg].filter((c) => c && c !== "rgba(0, 0, 0, 0)");
+          const ratios = candidates.map((c) => ratio(border, c)).filter((r): r is number => r !== null);
+          out[t.selector] = { border, min: ratios.length ? Math.min(...ratios) : null };
+          created?.remove();
+        }
+        return {
+          theme,
+          tokenRaw: token,
+          tokenResolved: resolved,
+          controlSm: root.getPropertyValue("--size-control-sm").trim(),
+          pageBg,
+          out,
+        };
+      },
+      { theme: exp.theme },
+    );
+
+    console.log(`BOUNDARY ${JSON.stringify(result)}`);
+    // Token 必须真实存在于运行时（未被 tree-shake）
+    expect(result.tokenRaw).not.toBe("");
+    expect(result.tokenResolved).toBe(exp.token);
+    // P2-2：控制尺寸 Token 必须真实存在
+    expect(result.controlSm).toBe(exp.controlSm);
+
+    // 本次承诺覆盖的每条交互边界都必须 >= 3:1
+    for (const [selector, info] of Object.entries(result.out)) {
+      // 非空洞：边界色必须就是语义 Token（防止探针未命中类而量到默认样式）
+      expect(info.border, `${selector} 未使用交互边界 Token`).toBe(result.tokenResolved);
+      expect(info.min, `${selector} 边界对比度不足或未取到`).not.toBeNull();
+      expect(info.min as number, `${selector} 边界对比度 ${info.min}`).toBeGreaterThanOrEqual(3);
+    }
+    // 四条边界都要被实际检查到
+    expect(Object.keys(result.out).length).toBe(4);
+  }
+});
