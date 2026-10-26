@@ -16,7 +16,7 @@
 
 ### REQ-064-GOVERNANCE-SYNC: 全局 UI 升级治理事实同步（纯文档）
 
-状态：🟡 进行中（首次独立复审 P1/P2 返修；停在第二轮独立复审前）
+状态：🟡 进行中（current-work 事实同步返修已完成；等待最新 HEAD 独立复核）
 类型：REQ / governance / pure-docs
 领域：Web / Design System / Delivery Governance
 当前执行模式：plan-do
@@ -29,10 +29,10 @@
 - Plan：[分阶段实施与 Agent 交接](../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md)
 - 规则：[Worktree 生命周期](01-rules/git-workflow.md#worktree-生命周期) / [完成门禁](01-rules/quality-gates.md#完成门禁)（PR #666 已合入并生效）
 
-当前进展：实时 GitHub main 与 `origin/main` 均为 `f3f87fefb88cedc2cfe99f583f7a8c64c9ec66b6`，本分支从该提交创建。S0 规划 PR #664 已 `MERGED`（mergeCommit `12f71df3`，最终 8 文件 = 7 个规划/索引文件 + 1 条评分记录）；S1a 共享基础 PR #667 已 `MERGED`（mergeCommit `7a73d62d`，最终 9 文件 = 8 个实现文件 + 1 条评分记录）；Worktree 生命周期 PR #666 已 `MERGED`（mergeCommit `f3f87fef`）。本次仅同步这些权威事实及一致依赖，不修改生产代码、测试或评分历史。
-下一步：首次独立复审 P1/P2 已按范围返修，当前停在第二轮独立复审前并等待后续指令；复审后再单独对齐整体 UI 切片顺序、范围和验收标准，对齐完成前不派发 S2–S8。不启动 phase-D/E 或生产 backfill，不自行评分、推进 Ready 或合并。
-验证状态：首次独立复审结论为 `NEEDS_CHANGES`（P1×1、P2×1，P0/P3=0），本返修不写成第二轮复审 PASS。本地预检（非正式独立复审）：本机 Darwin / zsh 下 `scripts/check-engineering-docs --full` 通过（32 项既有 allowlist），`git diff --check` 与 `git diff --check origin/main...HEAD` 均退出码 0；本次工作区仅修改本文件，PR 累计仍仅原授权 7 个 Markdown 文件，工作台为 1 个活跃卡、3 个候选、18 条最近完成。线上新 CI 以 PR 最新 head 的实际 run 为准；本任务不重跑 S1a UI 测试，不宣称新的视觉、真实 PG、真实 LLM 或前后端业务测试验收。
-交接备注：REQ-064 整体为 🟡 Doing，S0 与 S1a 合入不等于整体 Done；S1a 仅交付共享 Token、应用外壳和 E2E 端口隔离，未交付 UiComposer 或业务页面，S1 整体未收口，S2–S8 未启动。TD-114 保持 🟢 完成、TD-115 保持 ⚫ 待办，REQ-042 保持 ⚫ Candidate，phase-D/E/WS-S3 状态不由本任务推进。本返修只处理首次复审 P1/P2，不处理 #666 P3，不执行 worktree、分支或 refs 清理。
+当前进展：实时 GitHub main 与 `origin/main` 均为 `f3f87fefb88cedc2cfe99f583f7a8c64c9ec66b6`，本分支从该提交创建。S0 规划 PR #664 已 `MERGED`（mergeCommit `12f71df3`，最终 8 文件 = 7 个规划/索引文件 + 1 条评分记录）；S1a 共享基础 PR #667 已 `MERGED`（mergeCommit `7a73d62d`，最终 9 文件 = 8 个实现文件 + 1 条评分记录）；Worktree 生命周期 PR #666 已 `MERGED`（mergeCommit `f3f87fef`）。本次仅同步这些权威事实及一致依赖，不修改生产代码、测试或评分历史。第二轮独立复审已在旧 HEAD `1de0f6d1f7e5fcb0511a68630da8d49352fe2af0` 上 `PASS`（P0/P1/P2/P3=0），仅作为旧 HEAD 的历史事实。本次 current-work 阶段事实修正以独立提交产生新的 HEAD，旧 PASS 不自动覆盖该新提交；current-work 事实同步返修已完成，等待针对最新 HEAD 的独立复核。
+下一步：等待针对最新 HEAD 的独立复核，复核通过后才推进 Ready；复核后再单独对齐整体 UI 切片顺序、范围和验收标准，对齐完成前不派发 S2–S8。不启动 phase-D/E 或生产 backfill，不自行评分、推进 Ready 或合并。
+验证状态：首次独立复审 `NEEDS_CHANGES`（P1×1、P2×1，P0/P3=0）与第二轮旧 HEAD `1de0f6d1f7e5fcb0511a68630da8d49352fe2af0` 的 `PASS`（P0/P1/P2/P3=0）均作为历史记录保留；本次 current-work 修正产生的新 HEAD 尚未独立复核，不写成 PASS。本地预检（非正式独立复审）：本机 Darwin / zsh 下 `scripts/check-engineering-docs --full` 通过（32 项既有 allowlist），`git diff --check` 与 `git diff --check origin/main...HEAD` 均退出码 0；本次增量仅修改本文件，PR 累计仍仅原授权 7 个 Markdown 文件，工作台为 1 个活跃卡、3 个候选、18 条最近完成。线上最新 CI 以 PR 最新 head 的实际 run 为准；本任务不重跑 S1a UI 测试，不宣称新的视觉、真实 PG、真实 LLM 或前后端业务测试验收。
+交接备注：REQ-064 整体为 🟡 Doing，S0 与 S1a 合入不等于整体 Done；S1a 仅交付共享 Token、应用外壳和 E2E 端口隔离，未交付 UiComposer 或业务页面，S1 整体未收口，S2–S8 未启动。TD-114 保持 🟢 完成、TD-115 保持 ⚫ 待办，REQ-042 保持 ⚫ Candidate，phase-D/E/WS-S3 状态不由本任务推进。本轮只做 current-work 阶段事实修正；首次复审 P1/P2 的返修已完成，不处理 #666 P3，不执行 worktree、分支或 refs 清理。
 资源交接：
 - 当前注册事实（2026-10-26 本轮开工实时 `git worktree list --porcelain`）：全仓当前仅 1 个注册 worktree，即本任务使用的主 checkout `/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase`；未创建新的 worktree。
 - 历史退休事实：本卡涉及的 #666、S0、S1a、DOC-081、REQ-042 phase-C 共 5 个任务 worktree 已按退休规则由 5 个注册项变为 0 个。移除路径分别为 `/Users/strony/.codex/worktrees/worktree-retirement-rules/MetaEduBase`、`/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase-wt-req064-planning`、`/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase-wt-req064-s1a`、`/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase-wt-doc081-impl`、`/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase-wt-req042-phasec`；本轮只读检查这些路径均不存在。该历史事实不再表述为这些 worktree 当前仍保留。
