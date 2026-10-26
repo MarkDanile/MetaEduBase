@@ -6,10 +6,10 @@
 
 ## 1. 当前事实与排程
 
-- 2026-10-26 当前权威基线：GitHub main 与 `origin/main` 均为 `f3f87fefb88cedc2cfe99f583f7a8c64c9ec66b6`（PR #666 mergeCommit）。本次治理同步分支 `docs/req-064-governance-fact-sync` 从该提交创建；不沿用 S0 的旧 base 作为当前 main。
+- 2026-10-26 治理事实同步已合入：PR #668 squash merge 入 main `81e503294767f97dadcbb509242b273a1ce1815d`（mergedAt 2026-10-26T06:06:33Z，Original 95/100；实现净 diff 7 文件 +71/-44，含 Original 评分行后 8 文件 +72/-44）。合并前 main 为 `f3f87fefb88cedc2cfe99f583f7a8c64c9ec66b6`（PR #666 mergeCommit），本次治理同步分支从该提交创建，未沿用 S0 的旧 base。
 - S0 历史研究基线为 `6122d29a177e2a67ed0dad626d4066261dae0d90`；写文档前曾快进到当时 `origin/main` 的已合并 closeout `05adab213a831fa46f290b3eb2086fba2da36613`（#662）。S0 独立分支为 `codex/req-064-ui-upgrade-planning`，worktree 为 `/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase-wt-req064-planning`；这些记录仅描述 S0 当时环境，不代表当前分支或资源处置。
 - 2026-10-23 S0 当时集成 main `a6fc4877`（#665）：TD-114 契约 §11 A+B 组已由 #659/#663 验收，#665 已完成治理收口。该 SHA 是 S0 的历史集成 base；S0 最终由 PR #664 合入 main `12f71df3e2d050e2d83167db3e121d56b58e9473`。
-- 当前 REQ-064 整体为 🟡 Doing，非 Done：S0 已由 #664 交付，S1a 已由 #667 交付；S1a 仅含共享 Token、应用外壳和 E2E 端口隔离，未新增 UiComposer、未改业务页面，故 S1 整体未收口，S2–S8 未启动。TD-114 保持已完成、TD-115 保持待办。本次治理同步复审后，再单独对齐整体 UI 切片顺序、范围和验收标准；对齐完成前不派发 S2–S8，不推进 phase-D/E 或生产 backfill。
+- 当前 REQ-064 整体为 🟡 Doing，非 Done：S0 已由 #664 交付，S1a 已由 #667 交付；S1a 仅含共享 Token、应用外壳和 E2E 端口隔离，未新增 UiComposer、未改业务页面，故 S1 整体未收口，S2–S8 未启动。TD-114 保持已完成、TD-115 保持待办。治理事实同步已由 #668 合入 main（`81e50329`，Original 95）；下一步为单独对齐整体 UI 切片顺序、范围和验收标准，对齐完成前不派发 S2–S8，不推进 phase-D/E 或生产 backfill。
 - 此后每个切片仍从**所需依赖已合并的明确 commit**创建独立 worktree；不从另一个 Agent 的脏目录复制文件。切片完成指代码/验证交接，REQ-064 Done 还需全站验收和合并事实。PR #666 已合入 main `f3f87fef`，后续资源退休须遵守 [Worktree 生命周期](../../03-engineering-governance/01-rules/git-workflow.md#worktree-生命周期) 与 [完成门禁](../../03-engineering-governance/01-rules/quality-gates.md#完成门禁)；本任务不执行退休、分支删除、prune 或清理。
 
 本轮校准范围统一为：TraeWork 主导全站外壳、导航、布局、字体、间距、控件、表格、表单、卡片、菜单、确认弹窗及状态；Doubao 局部覆盖 AI 聊天输入、消息排列、回答阅读、消息操作与滚动，配色/字体/基础控件服从统一系统，确认弹窗除外。其他库只补必要信息组织。Doubao 原包没有的消息/回答/操作/跟随滚动规则按 spec §4 和矩阵 DB-03 标明为本项目适配。
@@ -168,4 +168,4 @@ S0 规划交付 PR #664 的实时合并状态、最终 diff 和 CI 见本节首�
 - PR #667 记录的本地实测（Node `v20.20.2`、pnpm `9.15.0`；本次治理同步未重跑）：`pnpm --filter @metaedu/web lint` 退出码 0（0 errors / 28 warnings，与基线相同）；typecheck、build 均退出码 0；全量前端 Vitest **40 文件 / 382 用例通过**；`METAEDU_E2E_PORT=3101 pnpm --filter @metaedu/web test:e2e navigation` **55 passed**；`scripts/check-engineering-docs --full` 与 `git diff --check` 均退出码 0。
 - 参考与视觉证据：16 库 / 240 文件 hash 校验 `problems=0`；15 组同条件改前/改后截图共 30 张；端口占用负例按预期退出 1 且未复用或杀死其他服务。截图未入库，未建立自动像素 diff 基线；未做人工点击流、多 OS 字体渲染对比、真实 PG 或真实 LLM 验收。
 - 最终 CI run 39930161830 的 headSha 与最终 head 一致，Backend / Frontend / Engineering docs 均 SUCCESS；Backend full hermetic 两 shard 与 summary 按前端 scope 为 SKIPPED，不作为后端业务测试证据。两轮独立复审后 P0/P1/P2=0，P3=4 保留在评分记录中，本任务不扩范围处理。
-- 完成边界：以上仅证明 **S1a 共享基础**已交付，不等于 S1 整体退出条件或 REQ-064 AC 全部达成。S2–S8 尚未启动；本次治理事实同步复审后，先单独对齐整体 UI 切片顺序、范围和验收标准，对齐完成前不派发 S2–S8。
+- 完成边界：以上仅证明 **S1a 共享基础**已交付，不等于 S1 整体退出条件或 REQ-064 AC 全部达成。S2–S8 尚未启动；治理事实同步已由 PR #668 合入 main（`81e50329`，Original 95），下一步为单独对齐整体 UI 切片顺序、范围和验收标准，对齐完成前不派发 S2–S8。
