@@ -10,6 +10,7 @@
 - S0 历史研究基线为 `6122d29a177e2a67ed0dad626d4066261dae0d90`；写文档前曾快进到当时 `origin/main` 的已合并 closeout `05adab213a831fa46f290b3eb2086fba2da36613`（#662）。S0 独立分支为 `codex/req-064-ui-upgrade-planning`，worktree 为 `/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase-wt-req064-planning`；这些记录仅描述 S0 当时环境，不代表当前分支或资源处置。
 - 2026-10-23 S0 当时集成 main `a6fc4877`（#665）：TD-114 契约 §11 A+B 组已由 #659/#663 验收，#665 已完成治理收口。该 SHA 是 S0 的历史集成 base；S0 最终由 PR #664 合入 main `12f71df3e2d050e2d83167db3e121d56b58e9473`。
 - 当前 REQ-064 整体为 🟡 Doing，非 Done：S0 已由 #664 交付，S1a 已由 #667 交付；S1a 仅含共享 Token、应用外壳和 E2E 端口隔离，未新增 UiComposer、未改业务页面，故 S1 整体未收口，S2–S8 未启动。TD-114 保持已完成、TD-115 保持待办。治理事实同步已由 #668 合入 main（`81e50329`，Original 95）；下一步为单独对齐整体 UI 切片顺序、范围和验收标准，对齐完成前不派发 S2–S8，不推进 phase-D/E 或生产 backfill。
+- 后续派发依据：顺序、范围、依赖与验收门已在 [后续 UI 切片路线与验收对齐](2026-10-26-req-064-ui-slice-roadmap.md) 中专项对齐（含 S1 未收口缺口 G1–G8、切片卡片与待用户裁决项 D1–D8）；门 A 通过前不派发 S1b、S2–S8。本 plan 其余章节保留为历史基线，design spec §6 的三类用户视觉确认门不因此弱化。
 - 此后每个切片仍从**所需依赖已合并的明确 commit**创建独立 worktree；不从另一个 Agent 的脏目录复制文件。切片完成指代码/验证交接，REQ-064 Done 还需全站验收和合并事实。PR #666 已合入 main `f3f87fef`，后续资源退休须遵守 [Worktree 生命周期](../../03-engineering-governance/01-rules/git-workflow.md#worktree-生命周期) 与 [完成门禁](../../03-engineering-governance/01-rules/quality-gates.md#完成门禁)；本任务不执行退休、分支删除、prune 或清理。
 
 本轮校准范围统一为：TraeWork 主导全站外壳、导航、布局、字体、间距、控件、表格、表单、卡片、菜单、确认弹窗及状态；Doubao 局部覆盖 AI 聊天输入、消息排列、回答阅读、消息操作与滚动，配色/字体/基础控件服从统一系统，确认弹窗除外。其他库只补必要信息组织。Doubao 原包没有的消息/回答/操作/跟随滚动规则按 spec §4 和矩阵 DB-03 标明为本项目适配。

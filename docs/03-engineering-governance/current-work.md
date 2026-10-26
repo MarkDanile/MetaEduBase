@@ -14,7 +14,24 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-064-SLICE-ALIGNMENT: 后续 UI 切片路线与验收对齐（纯规划）
+
+状态：🟡 进行中（纯规划；不派发或启动任何 UI 实现）
+类型：REQ / product planning / pure-docs
+领域：Web / Design System / Delivery Planning
+当前执行模式：product planning
+最近接手工具：Claude Code
+分支：docs/req-064-slice-alignment
+
+需求来源：
+- [REQ-064](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md)
+- [后续 UI 切片路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md)
+- [设计 spec §6](../02-delivery-plans/01-specs/2026-10-22-req-064-ui-design-system.md) / [实施计划](../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md) / [参考矩阵](../02-delivery-plans/01-specs/2026-10-22-req-064-reference-matrix.md)
+
+当前进展：开工基线已复核——REQ-064 为 🟡 Doing（非 Done）；S0 #664、S1a #667、治理事实同步 #668 与收口 #669 均已合入；S1a 仅交付共享 Token、应用外壳与 E2E 端口隔离，未交付 UiComposer 或业务页面，S1 整体未收口，S2–S8 未启动。main = `origin/main` = `6ad038d8829f3383cb75a06757688d97163c13da`，开放 PR 0 个，仅 1 个主 checkout worktree，工作区 clean。已产出路线与验收对齐文档（切片顺序与理由、目标/包含/排除、依赖与并行阻塞、交付物、自动化/技术/视觉三层验收、S1 缺口 G1–G8、待用户裁决 D1–D8、派发模板）。
+下一步：提交并推送规划 Draft PR，完成适用 CI 核验后停在独立复审前；复审与用户裁决（门 A）前不派发 S1b、S2–S8，不启动 phase-D/E 或生产 backfill。
+验证状态：`scripts/check-engineering-docs --full` 通过（32 项既有 allowlist）；`git diff --check` 通过；净 diff 为新增规划文档加 current-work、requirement、Backlog、plan 四处索引共 5 个 Markdown 文件，无生产代码、测试、依赖、CI、评分总账、Metrics 或 technical-debt 改动。CI 结果按实跑/no-op/skipped 分层记录，不把 no-op/skipped 写成业务测试通过。
+交接备注：本任务只做规划，不实现界面、共享组件、UiComposer 或业务页面；不修改评分总账、Metrics、technical-debt 或历史 PR 记录；不清理远程分支、worktree 或 refs；视觉确认门（S1/S2/S4）按 design spec §6 保留，不弱化、不扩展。
 
 ## 下一批候选任务
 
