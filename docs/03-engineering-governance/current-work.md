@@ -16,7 +16,7 @@
 
 ### REQ-064-SLICE-ALIGNMENT: 后续 UI 切片路线与验收对齐（纯规划）
 
-状态：🟡 进行中（第三轮独立复审 P1-1 已返修；等待最新 head 独立复审，不派发实现）
+状态：🟡 进行中（第四轮独立复审 P2×2 / P3×6 已返修；等待最新 head 独立复审，不派发实现）
 类型：REQ / product planning / pure-docs
 领域：Web / Design System / Delivery Planning
 当前执行模式：product planning
@@ -28,10 +28,10 @@
 - [后续 UI 切片路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md)
 - [设计 spec §6](../02-delivery-plans/01-specs/2026-10-22-req-064-ui-design-system.md) / [实施计划](../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md) / [参考矩阵](../02-delivery-plans/01-specs/2026-10-22-req-064-reference-matrix.md)
 
-当前进展：PR #670 已发布且保持 OPEN / Draft，base=main。首轮独立复审 NEEDS_CHANGES（P1×8、P2×2）与第二轮 NEEDS_CHANGES（P1×1、P2×1）均已完成对应返修。最新独立复审覆盖 head `e7e2a341c7d1b89b4f1e00213cc6bf3f8b0c4e68`，结论为 NEEDS_CHANGES（P1×1，P0/P2/P3=0）：阶段 G 与 S6/S7 卡片仍遗漏 S4 强制分页门，可能绕过待用户决定的分页缺口。本轮已在阶段 G 依赖、S6/S7 前置条件、阻塞项和并行条件中统一补上“S4 强制分页项已有真实候选并通过，或用户已正式批准调整验收口径”，与阶段 F、S4 退出条件及派发模板保持同一口径；固定 limit、静态参数、no-op 和无路由组件仍不算真实候选，方案 A/B 仍待用户决定。REQ-064 仍为 🟡 Doing，S1 整体未收口，S2–S8 未启动。返修提交在 PR #670 上形成新 head，旧 head 的复审结论不自动覆盖新提交。
+当前进展：PR #670 已发布且保持 OPEN / Draft，base=main。首轮独立复审 NEEDS_CHANGES（P1×8、P2×2）与第二轮 NEEDS_CHANGES（P1×1、P2×1）均已完成对应返修。最新独立复审为第四轮，覆盖 head `92fd6060cce830fb358a5dfec6dafa94be52f2ad`，结论为 NEEDS_CHANGES（P0=0、P1=0、P2×2、P3×6），并确认第三轮 P1-1 已实质闭合。本轮返修范围：① 把 §4.5“没有经核实的真实分页样板”限定到 design spec §6 所要求的 S4 候选范围（knowledge / resource / database 路由）内，并补充披露范围外已核实事实——`capabilities/skills` → `SkillListView.vue`、`capabilities/mcp` → `McpServerListView.vue` 已挂路由且审计弹窗内执行记录列表有真实服务端分页（`listExecutions` / `listInvocations` + `auditPrev/auditNext` 边界禁用），但分页对象是审计弹窗、页面主列表无分页、归属 S5 而非 S4 既有候选，可否作为 S4 候选或范式仍待用户裁决；② 补齐 S4 卡片自身「可并行」字段的强制分页门，使任何局部入口都不产生“样板确认即可派发”的读法；③ 统一全文 canonical 措辞、补记四轮复审状态、修正 §9 映射引用、S4 交付物不再把分页列为既有原行为回归项，并在 §1 不可变约束并列登记 S4 强制分页门不得未经用户批准弱化。固定 limit、静态参数、no-op 和无路由组件仍不算真实候选，方案 A/B 仍待用户决定，S4 门禁未解除。REQ-064 仍为 🟡 Doing，S1 整体未收口，S2–S8 未启动。返修提交在 PR #670 上形成新 head，旧 head 的复审结论不自动覆盖新提交。
 下一步：等待未参与本轮返修的独立 Agent 对最新 head 复审；复审通过前不推进 Ready、不评分、不合并，不派发 S1b、S2–S8，不启动 phase-D/E 或生产 backfill。S4 强制分页缺口的方案选择仍待用户决定，未决定前不宣称该项通过，也不派发 S6/S7。
 验证状态：`scripts/check-engineering-docs --full` 通过（32 项既有 allowlist）；`git diff --check` 通过；净 diff 限原授权的规划文档与 current-work、requirement、Backlog、plan 索引，无生产代码、测试、依赖、CI、评分总账、Metrics 或 technical-debt 改动。最新 CI 以 PR #670 当前 head 的实际 run 为准，按实跑/no-op/skipped 分层记录，不把 no-op/skipped 写成业务测试通过。
-交接备注：本任务只做规划返修，不实现界面、共享组件、UiComposer 或业务页面，不新增业务分页功能，不弱化 design spec 的强制验收要求；不修改评分总账、Metrics、technical-debt 或历史 PR 记录；不清理远程分支、worktree 或 refs；视觉确认按 D4/D8 使用固定环境同条件截图、结构化度量和绑定 commit 的 PR 结构化评论，不新建独立 sign-off 文档，不宣称视觉验收已完成。
+交接备注：本任务只做规划返修，不实现界面、共享组件、UiComposer 或业务页面，不新增业务分页功能，不弱化 design spec 的强制验收要求；本轮不替用户选择 S4 分页方案 A/B，也不替用户指定 S3 目录归属人；不修改评分总账、Metrics、technical-debt 或历史 PR 记录；不清理远程分支、worktree 或 refs；视觉确认按 D4/D8 使用固定环境同条件截图、结构化度量和绑定 commit 的 PR 结构化评论，不新建独立 sign-off 文档，不宣称视觉验收已完成。
 
 ## 下一批候选任务
 
@@ -43,7 +43,7 @@
 | P0 | REQ-062: 动态数据采集、填报与报表发布平台 contract shaping | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 在 Run/Artifact 契约上塑形 Campaign/FormSchemaVersion/Submission/ReportSnapshot；AI 草案审核后才发布；仅契约塑形不实现自由表单引擎 | [REQ-062](../01-product-planning/05-requirements/REQ-062-dynamic-data-collection-and-reporting.md) / [backlog](../01-product-planning/04-backlog.md) |
 | P0 | REQ-063: 受治理的外部数据采集与研究证据链 source spike | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 先做授权来源/许可/网络/快照策略 spike，不提前实现自由爬虫；Connector 等待 Tool Gateway | [REQ-063](../01-product-planning/05-requirements/REQ-063-governed-external-data-acquisition.md) / [backlog](../01-product-planning/04-backlog.md) |
 
-> 后续顺序保持：TD-085 Boundary Closure 已于 2026-10-08 完成（TD-085 Completion 达成），不再作为待承接任务；REQ-043 Runtime/Tool Gateway 仍为 ⚫ Candidate 未启动，按 backlog 既定顺序等待后续任务安排，不在本批候选开工。TD-085 Completion ≠ REQ-043 / WS-S2 / WS-S3 已解除全部阻塞（spec §6.3）。REQ-064 治理事实同步已由 PR #668 squash merge 入 main（mergeCommit `81e50329`，Original 95），REQ-064 整体仍 🟡 Doing；D1–D8 已确认并回填至路线文档，首轮至第三轮独立复审 findings 已分别返修，第三轮已统一 S6/S7 的 S4 强制分页门禁后，须等待最新 head 独立复审，复审通过前不派发 S1b、S2–S8。
+> 后续顺序保持：TD-085 Boundary Closure 已于 2026-10-08 完成（TD-085 Completion 达成），不再作为待承接任务；REQ-043 Runtime/Tool Gateway 仍为 ⚫ Candidate 未启动，按 backlog 既定顺序等待后续任务安排，不在本批候选开工。TD-085 Completion ≠ REQ-043 / WS-S2 / WS-S3 已解除全部阻塞（spec §6.3）。REQ-064 治理事实同步已由 PR #668 squash merge 入 main（mergeCommit `81e50329`，Original 95），REQ-064 整体仍 🟡 Doing；D1–D8 已确认并回填至路线文档，首轮至第四轮独立复审 findings 已分别返修，第四轮已限定 S4 分页否定范围、披露范围外已核实的真实分页并补齐 S4 卡片自身的派发门禁后，须等待最新 head 独立复审，复审通过前不派发 S1b、S2–S8。
 
 ## 最近完成
 
