@@ -14,24 +14,25 @@
 
 ## 当前进行中
 
-### REQ-064-S0: 全局 UI 升级设计规范与隔离式 Agent 接力规划（纯文档）
+### REQ-064-GOVERNANCE-SYNC: 全局 UI 升级治理事实同步（纯文档）
 
-状态：🟡 进行中（仅规划文档；UI 实现未启动）
-类型：REQ / product planning / pure-spec / pure-docs
-领域：Web / Design System / AI Workspace
-当前执行模式：product planning
-最近接手工具：Codex
-分支：codex/req-064-ui-upgrade-planning
+状态：🟡 进行中（事实同步；停在独立复审前）
+类型：REQ / governance / pure-docs
+领域：Web / Design System / Delivery Governance
+当前执行模式：plan-do
+最近接手工具：Claude Code
+分支：docs/req-064-governance-fact-sync
 
 需求来源：
 - [REQ-064](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md)
 - Spec：[全局 UI 规范](../02-delivery-plans/01-specs/2026-10-22-req-064-ui-design-system.md) / [参考矩阵与原始文件校验](../02-delivery-plans/01-specs/2026-10-22-req-064-reference-matrix.md)
 - Plan：[分阶段实施与 Agent 交接](../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md)
+- 规则：[Worktree 生命周期](01-rules/git-workflow.md#worktree-生命周期) / [完成门禁](01-rules/quality-gates.md#完成门禁)（PR #666 已合入并生效）
 
-当前进展：规划 [PR #664](https://github.com/MarkDanile/MetaEduBase/pull/664) 已创建并保持开放；TraeWork 全站范围、Doubao 聊天局部与来源边界、登录样式升级及 S1/S2/S4 用户视觉确认节点均已校准。分支集成最新 main `a6fc4877`（#665 治理收口），保留 TD-114 完成事实及 REQ-064-S0 活跃卡。16 库 / 240 文件 manifest 与项目 `.local/design_libraries`（Git ignored）及外部备份继续作为资料入口。
-下一步：PR #664 保持开放，停在独立复审前；后续按流程独立评审。TD-114 完成核验与治理收口已由 #663/#665 落地，S1 仍需 S0 评审通过及排程就绪后单独派发；本轮不评分、不合并、不清理资源，不推进 UI 实现或 phase-D/E。
-验证状态：原校准的 19 个本地链接、本地/外部 16 库 / 240 文件及 TraeWork/Doubao 子集 61 文件校验通过，manifest 原路径/字节数/hash 未改；本次集成 `scripts/check-engineering-docs --full` 通过（32 项既有 allowlist），`git diff --check` 与累计 7 文件范围核对通过。UI/后端/真实 LLM 验收未运行，证据层级仅静态资料与文档。
-交接备注：仅本 S0 文档任务活跃；REQ-064 整体仍 Shaping，TD-114 已完成，REQ-042/phase-D/E/WS-S3 状态不由本任务推进。工作树 / 文件所有权 / 端口与集成协议见 plan，禁止多个写入 Agent 共用 checkout。
+当前进展：实时 GitHub main 与 `origin/main` 均为 `f3f87fefb88cedc2cfe99f583f7a8c64c9ec66b6`，本分支从该提交创建。S0 规划 PR #664 已 `MERGED`（mergeCommit `12f71df3`，最终 8 文件 = 7 个规划/索引文件 + 1 条评分记录）；S1a 共享基础 PR #667 已 `MERGED`（mergeCommit `7a73d62d`，最终 9 文件 = 8 个实现文件 + 1 条评分记录）；Worktree 生命周期 PR #666 已 `MERGED`（mergeCommit `f3f87fef`）。本次仅同步这些权威事实及一致依赖，不修改生产代码、测试或评分历史。
+下一步：本次事实同步与门禁已完成，停在独立复审前并等待下一步指令；复审后再单独对齐整体 UI 切片顺序、范围和验收标准，对齐完成前不派发 S2–S8。不启动 phase-D/E 或生产 backfill，不自行评分、推进 PR 状态或合并。
+验证状态：本机 Darwin / zsh 下 `scripts/check-engineering-docs` 通过（31 项既有 allowlist），`scripts/check-engineering-docs --full` 通过（32 项既有 allowlist），`git diff --check` 退出码 0；`git diff --name-status` 确认仅 7 个 Markdown 文件，工作台为 1 个活跃卡、3 个候选、18 条最近完成。上游证据以 plan §7/§8、对应 PR 与评分总账为准；本任务不重跑 S1a UI 测试，不宣称新的视觉、真实 PG 或真实 LLM 验收。
+交接备注：REQ-064 整体为 🟡 Doing，S0 与 S1a 合入不等于整体 Done；S1a 仅交付共享 Token、应用外壳和 E2E 端口隔离，未交付 UiComposer 或业务页面，S1 整体未收口，S2–S8 未启动。TD-114 保持 🟢 完成、TD-115 保持 ⚫ 待办，REQ-042 保持 ⚫ Candidate，phase-D/E/WS-S3 状态不由本任务推进。只读 `git worktree list --porcelain` 确认：PR #666 worktree `/Users/strony/.codex/worktrees/worktree-retirement-rules/MetaEduBase`、S0 worktree `/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase-wt-req064-planning`、S1a worktree `/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase-wt-req064-s1a` 均因用户明确要求本任务不清理而保留，对应分支也未删除；未做退休条件判定。PR #666 的 worktree 与分支退休属独立任务，须按已生效规则另行实时核验；本任务不删除、移动、prune 或清理任何资源。
 
 ## 下一批候选任务
 
@@ -39,7 +40,7 @@
 
 | 优先级 | 任务 | 状态 | 建议下一步 | 事实源 |
 |--------|------|------|------------|--------|
-| P0 | REQ-042: Codex 式 Agent Workspace 三栏体验（Durable Core 已完成，事件协议稳定可依托） | 🟢 WS-S1 已完成（durable read/recovery shell 已 squash merge 入 main `235f4085`；REQ-042 整体仍 ⚫ Candidate — WS-S1 仅交付 AC-1[不含 restore] / AC-2 读半边 / AC-6 desktop/mobile 布局 + restore UI/API wiring；AC-3 仅呈现已有真实引用；AC-4/AC-5/AC-7/AC-8 保持未完成待 REQ-043 + REQ-047 Extended；WS-S2 option B 仍 BLOCKED（其 4 项硬门禁中 TD-114 初始化编排已由 PR #663 闭合；整体阻塞解除与否属 REQ-042 任务范围，本 closeout 不翻转、不代为核销）；WS-S3 仍 BLOCKED） | TD-114 初始化编排已完成并合入 main（PR #663 mergeCommit `5216cb77`，契约 §11 A+B 判据达成）；REQ-042 下一阶段的全站 UI 升级方案见 PR #664（**仍需方案校准与独立复审**，UI 实现未启动、phase-D 与 phase-E 未启动）；WS-S2 option B 仍 BLOCKED（4 项硬门禁：公共 submit API spec + server-selected launch policy + 最小 execution profile + 真实 PG submit-loop 端到端全部通过前）；WS-S3 仍 BLOCKED（4 项硬门禁：浏览器 SSE 鉴权 transport + cancelRun/steerRun 前端 + REQ-047 Extended spec + REQ-043 Runtime conformance spec）；不直接跳到 Pi Worker / 不开放 submit-turn | [REQ-042](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) / [backlog](../01-product-planning/04-backlog.md) |
+| P0 | REQ-042: Codex 式 Agent Workspace 三栏体验（Durable Core 已完成，事件协议稳定可依托） | 🟢 WS-S1 已完成（durable read/recovery shell 已 squash merge 入 main `235f4085`；REQ-042 整体仍 ⚫ Candidate — WS-S1 仅交付 AC-1[不含 restore] / AC-2 读半边 / AC-6 desktop/mobile 布局 + restore UI/API wiring；AC-3 仅呈现已有真实引用；AC-4/AC-5/AC-7/AC-8 保持未完成待 REQ-043 + REQ-047 Extended；WS-S2 option B 仍 BLOCKED（其 4 项硬门禁中 TD-114 初始化编排已由 PR #663 闭合；整体阻塞解除与否属 REQ-042 任务范围，本 closeout 不翻转、不代为核销）；WS-S3 仍 BLOCKED） | TD-114 初始化编排已完成并合入 main（PR #663 mergeCommit `5216cb77`，契约 §11 A+B 判据达成）；REQ-042 的全站 UI 升级方案已由 PR #664 合入，S1a 共享基础已由 PR #667 合入（**REQ-064 整体仍未完成，S2–S8 未启动**；phase-D 与 phase-E 未启动）；WS-S2 option B 仍 BLOCKED（4 项硬门禁：公共 submit API spec + server-selected launch policy + 最小 execution profile + 真实 PG submit-loop 端到端全部通过前）；WS-S3 仍 BLOCKED（4 项硬门禁：浏览器 SSE 鉴权 transport + cancelRun/steerRun 前端 + REQ-047 Extended spec + REQ-043 Runtime conformance spec）；不直接跳到 Pi Worker / 不开放 submit-turn | [REQ-042](../01-product-planning/05-requirements/REQ-042-agent-workspace-three-pane-experience.md) / [backlog](../01-product-planning/04-backlog.md) |
 | P0 | REQ-062: 动态数据采集、填报与报表发布平台 contract shaping | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 在 Run/Artifact 契约上塑形 Campaign/FormSchemaVersion/Submission/ReportSnapshot；AI 草案审核后才发布；仅契约塑形不实现自由表单引擎 | [REQ-062](../01-product-planning/05-requirements/REQ-062-dynamic-data-collection-and-reporting.md) / [backlog](../01-product-planning/04-backlog.md) |
 | P0 | REQ-063: 受治理的外部数据采集与研究证据链 source spike | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 先做授权来源/许可/网络/快照策略 spike，不提前实现自由爬虫；Connector 等待 Tool Gateway | [REQ-063](../01-product-planning/05-requirements/REQ-063-governed-external-data-acquisition.md) / [backlog](../01-product-planning/04-backlog.md) |
 
@@ -53,6 +54,9 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-10-26 | PR #666：Worktree 生命周期规则（退休条件、squash 树核验、ignored 资产枚举与非强制清理顺序） | 🟢 完成（规则已合入并生效；不代表任何 worktree 或分支已退休） | mergeCommit `f3f87fef`；Original 93；最终 3 文件（2 规则 + 1 评分）；CI 40257794001 三路 SUCCESS；未执行清理 | [PR #666](https://github.com/MarkDanile/MetaEduBase/pull/666) / [Worktree 生命周期](01-rules/git-workflow.md#worktree-生命周期) / [Score Log](04-retrospectives/review-score-log.md) / [work-log](work-log.md) |
+| 2026-10-23 | REQ-064-S1a：全局 UI 升级共享基础（Token 收敛 + 应用外壳 + E2E 端口隔离） | 🟢 完成（**仅限 S1a**；REQ-064 整体 🟡 Doing，S1 整体未收口，S2–S8 未启动） | PR #667 mergeCommit `7a73d62d`；Original 96；最终 9 文件（8 实现 + 1 评分）；382 Vitest + 55 navigation e2e；CI 39930161830 三路 SUCCESS | [PR #667](https://github.com/MarkDanile/MetaEduBase/pull/667) / [Score Log](04-retrospectives/review-score-log.md) / [plan §8](../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md#8-s1a-交付记录) / [work-log](work-log.md) |
+| 2026-10-23 | REQ-064-S0：全局 UI 升级设计规范与隔离式 Agent 接力规划（纯文档） | 🟢 完成（**仅限 S0 规划**；REQ-064 整体 🟡 Doing，不表示全站 UI 验收完成） | PR #664 mergeCommit `12f71df3`；Original 97；最终 8 文件（7 规划/索引 + 1 评分）；复审 P0–P3=0；CI 39889251123 三路 SUCCESS | [PR #664](https://github.com/MarkDanile/MetaEduBase/pull/664) / [Score Log](04-retrospectives/review-score-log.md) / [plan §7](../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md#7-s0-交付记录) / [work-log](work-log.md) |
 | 2026-10-22 | TD-114-B-GROUP-JOINT-API：B 组三真实公开 API 联合测试（契约 §10-B 组：bootstrap → discovery → conversations → submit 真实链路；12 条联合用例） | 🟢 完成（PR #663 已合并；**TD-114 整体完成判据（A 组 + B 组）同批达成并翻 🟢 完成**——生产 backfill 未执行、phase-D 前端与 phase-E 浏览器验收未启动、REQ-042 整体仍 ⚫ Candidate、TD-108/111/112/113 保持 ⚫ 待办） | PR #663 mergeCommit `5216cb77`；Original 98/100；复审 P0/P1/P2=0（P3 未修）；main push CI 39754455250 full hermetic：总 3133 / failures 0 / errors 0 / skipped 1 → **passed 3132**（skip 属 TD-113）；union == serial full 通过；本地 PG 12/12 | [PR #663](https://github.com/MarkDanile/MetaEduBase/pull/663)（mergeCommit `5216cb77`）/ [Score Log #663 Original 98](04-retrospectives/review-score-log.md) / [TD-114 spec](../02-delivery-plans/01-specs/2026-10-19-td-114-agent-identity-bootstrap-contract.md) / [TD-114 plan](../02-delivery-plans/02-plans/2026-10-19-td-114-agent-identity-bootstrap-plan.md) / [work-log](work-log.md) / [technical-debt TD-114 🟢 完成（含 664 行联合测试保留理由）](technical-debt.md#td-114) / [PR #664 UI 升级方案](https://github.com/MarkDanile/MetaEduBase/pull/664) |
 | 2026-10-22 | REQ-042-WS-S2-DISCOVERY-IMPL：definition discovery 后端实现（#655 冻结契约 §8 后端验收；GET /servable-agent-definitions + 五谓词 + 零写 + digest 缺陷去重 warning） | 🟢 完成（PR #661 已合并；**仅代表 discovery 后端交付**——TD-114 B 组联合测试未完成、TD-114 整体仍 🟡 进行中；REQ-042 整体仍 ⚫ Candidate） | PR #661 squash mergeCommit `6122d29a`（mergedAt 2026-10-22T07:12:13Z）；Original 评分 99/100；一轮独立复审 P0/P1/P2=0；契约 §8 后端行真实 PG 11/11 | [PR #661](https://github.com/MarkDanile/MetaEduBase/pull/661)（mergeCommit `6122d29a`）/ [Score Log #661 Original 99](04-retrospectives/review-score-log.md) / [discovery spec](../02-delivery-plans/01-specs/2026-10-19-req-042-ws-s2-definition-discovery-contract.md) / [work-log](work-log.md) |
 | 2026-10-22 | TD-114-AGENT-IDENTITY-BOOTSTRAP-A：Agent identity 显式初始化编排实现（契约 §10-A 组：bootstrap API + CLI agent-identity + 真实 PG 验收 + mutation） | 🟢 A 组完成（PR #659 已合并；**TD-114 整体仍 🟡 进行中**——B 组联合测试 / discovery 后端 / phase-D/E / 生产 backfill 均未交付；REQ-042 整体仍 ⚫ Candidate） | PR #659 squash mergeCommit `19c0b9f7`（mergedAt 2026-10-22T03:16:02Z）；Original 评分 98/100；两轮复审返修闭合；CI run 39714642105 双 shard 1605+1504=3109 passed | [PR #659](https://github.com/MarkDanile/MetaEduBase/pull/659)（mergeCommit `19c0b9f7`）/ [Score Log #659 Original 98](04-retrospectives/review-score-log.md) / [TD-114 spec](../02-delivery-plans/01-specs/2026-10-19-td-114-agent-identity-bootstrap-contract.md) / [TD-114 plan](../02-delivery-plans/02-plans/2026-10-19-td-114-agent-identity-bootstrap-plan.md) / [work-log](work-log.md) / [technical-debt TD-114 🟡 进行中](technical-debt.md) |
