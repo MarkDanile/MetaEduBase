@@ -1,9 +1,9 @@
 # REQ-064: 全局 UI 升级与可追溯设计规范
 
-Status: 🟣 Shaping
+Status: 🟡 Doing
 Priority: P1
 Milestone: P3 / Web / Design System
-Owner: 本轮 Codex 负责规划；实现由后续切片 Agent 承接
+Owner: S0 规划与 S1a 共享基础已交付；后续切片由集成者按独立任务分派
 Created: 2026-10-22
 Source: 用户要求以 TraeWork 为主参照、Doubao 补充 AI 聊天区域的局部体验，研究 16 套本机设计库，形成可交接且能隔离并行的实施依据。
 Related: REQ-010 / REQ-020 / REQ-021 / REQ-022 / REQ-023 / REQ-042 / REQ-047 / REQ-052 / REQ-060 / REQ-061 / REQ-062 / REQ-063
@@ -31,27 +31,28 @@ Related: REQ-010 / REQ-020 / REQ-021 / REQ-022 / REQ-023 / REQ-042 / REQ-047 / R
 - 沿用 Vue 3、Tailwind、Lucide、现有 Token/`ui-*` 与双主题；不引入整套友商 CSS、React 运行时或品牌资产。
 - 覆盖已交付路由和其子组件，包括应用、知识/数据、资源、管理、背调、分享与 403；登录页纳入全站视觉一致性验收与必要样式升级，保留既有鉴权、表单语义和 REQ-023 项目品牌约束；不能仅用兼容回归代表升级完成。
 - 对未来 Memory、采集/报表、外部来源和审批/产物提供布局、状态、来源与权限呈现规则；业务功能仍由所属 REQ 交付。
-- 本轮只交付文档、源文件校验清单和登记；UI、测试基础设施、API、数据库、运行时均不在本轮修改范围。
+- S0 规划阶段只交付文档、源文件校验清单和登记；后续 S1a 已按 plan 交付共享基础，业务页面、API、数据库和运行时仍不在该子切片修改范围。
 
 ## Acceptance
 
 | ID | 验收结果 | 证据 |
 |---|---|---|
-| AC-1 | 16 套库都有实际来源、候选模式、取舍、可信度和必读文件；不冒称官方源码 | 参考矩阵 + 带 SHA-256 的 manifest |
-| AC-2 | TraeWork 全站覆盖、Doubao 聊天局部范围、Token 映射、布局尺寸、完整状态与无障碍明确；确认弹窗归统一共享层 | 设计 spec；后续 S1 基线截图 |
+| AC-1 | 16 套库都有实际来源、候选模式、取舍、可信度和必读文件；不冒称官方源码 | 参考矩阵 + 带 SHA-256 的 manifest；S0 已由 #664 合入，静态校验记录见 plan §7 |
+| AC-2 | TraeWork 全站覆盖、Doubao 聊天局部范围、Token 映射、布局尺寸、完整状态与无障碍明确；确认弹窗归统一共享层 | 设计 spec；S1a 已有外壳截图与度量，S1 全量共享控件基线仍待完成 |
 | AC-3 | 问答输入/消息/回答/操作/滚动区分原资料证据与项目适配；证据和 Workspace 能力遵循原契约，不借换样式启用未交付功能 | spec 问答状态矩阵 + 既有契约链接 |
 | AC-4 | 每个现有路由及共享层有实施归属；未交付占位页不因升级上线 | plan 路由覆盖表 |
 | AC-5 | 每个后续 Agent 有独立 worktree/分支、文件所有权、资料读取证明、测试环境和交接模板 | plan 并行协议与任务卡 |
-| AC-6 | 全站（含登录页样式升级）light/dark、桌面/平板/手机、中文输入法、长内容、权限拒绝及错误状态通过验收；登录鉴权与表单语义保持 | 各切片 PR + S8 集成验证；本轮不宣称已达成 |
+| AC-6 | 全站（含登录页样式升级）light/dark、桌面/平板/手机、中文输入法、长内容、权限拒绝及错误状态通过验收；登录鉴权与表单语义保持 | 各切片 PR + S8 集成验证；REQ-064 整体尚未达成 |
 | AC-7 | 未实现功能可据同一规范设计，公开 API 和领域状态所有权不被 UI 规范重定义 | spec 未来功能模式；新需求引用本 spec |
-| AC-8 | 后续 S1 外壳与共享控件、S2 AI 聊天页面、S4 列表/表单/详情样板均提供可运行预览与同条件截图，由用户确认后批量扩展 | spec §6 / plan §3；本轮仅定义节点，不制作生产页面或预览 |
+| AC-8 | 后续 S1 外壳与共享控件、S2 AI 聊天页面、S4 列表/表单/详情样板均提供可运行预览与同条件截图，由用户确认后批量扩展 | spec §6 / plan §3、§8；S1a 已交付 15 组改前/改后截图（共 30 张），S1 整体、S2、S4 节点未完成，不宣称本 AC 已全达成 |
 
 ## Dependencies / Next Step
 
-- 规划登记与 UI 实现是两个阶段；本需求保持 Shaping，文档评审后可转 Ready，不自动转 Doing/Done。
-- TD-114 前置已满足：[契约 §11](../../02-delivery-plans/01-specs/2026-10-19-td-114-agent-identity-bootstrap-contract.md#11-td-114-完成判据) 的 A+B 组证据由 #659/#663 交付，#665 治理收口已合入 main `a6fc4877`。本需求仍为 Shaping；S0 独立评审和排程就绪后才单独启动 S1，页面切片依赖 S1 合入。
-- REQ-042 phase-D/E、WS-S3 和 REQ-047 Extended 的实现继续走各自契约与验收；本需求只适配已交付表面；方案更新及 TD-114 收口均不自动推进 phase-D/E 或启用未交付能力。
-- 不要求先处理主 checkout 的其他任务才能读源码；新 worktree 从已知提交创建，不依赖、复制或提交他人的未提交内容。
+- S0 规划已完成独立评审并由 PR #664 合入 main（mergeCommit `12f71df3e2d050e2d83167db3e121d56b58e9473`，Original 97）；S1a 共享基础已由 PR #667 合入 main（mergeCommit `7a73d62ddd2b6fc66c4c4964c38ba595b4c6ff70`，Original 96）。REQ-064 因已进入实现交付窗口而更新为 🟡 Doing；两项合入均不等于 REQ-064 整体 Done。
+- S1a 仅交付共享 Token、应用外壳与 Playwright 端口隔离，未新增 UiComposer、未改业务页面；S1 整体未收口，S2–S8 未启动。本次治理事实同步完成并独立复审后，再单独对齐整体 UI 切片顺序、范围和验收标准；对齐完成前不派发 S2–S8。
+- TD-114 前置保持已满足：[契约 §11](../../02-delivery-plans/01-specs/2026-10-19-td-114-agent-identity-bootstrap-contract.md#11-td-114-完成判据) 的 A+B 组证据由 #659/#663 交付，#665 治理收口已合入 main `a6fc4877`；TD-114 保持 🟢 完成，TD-115 保持 ⚫ 待办。
+- REQ-042 保持 ⚫ Candidate；phase-D/E、WS-S3 和 REQ-047 Extended 的实现继续走各自契约与验收。S0/S1a 合入不自动推进 phase-D/E、生产 backfill 或启用未交付能力。
+- 新 worktree 仍从依赖已合并的明确提交创建，不依赖、复制或提交他人的未提交内容。PR #666 已合入 main `f3f87fefb88cedc2cfe99f583f7a8c64c9ec66b6`，Worktree 退休与 ignored 资产核验规则已生效；PR #666 自身 worktree 与分支退休另案核验，本需求事实同步不执行清理。
 
 ## Delivery Links
 

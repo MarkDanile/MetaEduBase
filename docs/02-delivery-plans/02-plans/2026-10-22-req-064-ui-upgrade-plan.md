@@ -1,15 +1,16 @@
 # REQ-064 全局 UI 升级实施计划与 Agent 接力
 
-日期：2026-10-22。本轮范围：S0 文档塑形；S1–S8 均未启动。
+日期：2026-10-22。S0 为文档塑形；当前实施事实：S0 与 S1a 已分别通过 PR #664 / #667 合入 main，S1 整体未收口，S2–S8 未启动。
 需求：[REQ-064](../../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md)。
 依据：[设计 spec](../01-specs/2026-10-22-req-064-ui-design-system.md)、[参考矩阵与检查命令](../01-specs/2026-10-22-req-064-reference-matrix.md)、[manifest](../01-specs/2026-10-22-req-064-reference-manifest.json)。
 
 ## 1. 当前事实与排程
 
-- 源码研究基线为 `6122d29a177e2a67ed0dad626d4066261dae0d90`；写文档前已快进到本地 `origin/main` 的已合并 closeout `05adab213a831fa46f290b3eb2086fba2da36613`（#662）。独立分支 `codex/req-064-ui-upgrade-planning`，worktree `/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase-wt-req064-planning`。未重置、stash 或搬动其他 Agent 文件。
-- 2026-10-23 集成最新 main `a6fc4877`（#665）：TD-114 契约 §11 A+B 组已由 #659/#663 验收，#665 已完成治理收口，工作台/技术债/日志状态一致。保留 REQ-064 的 **S0 规划文档任务卡**，不恢复已完成的 REQ-042/TD-114 活跃卡，也不增加第四个候选入口。
-- REQ-064 整体保持 Shaping；文档经独立评审再转 Ready。**TD-114 前置现已满足**，但 S1 仍需 S0 评审及排程就绪后另行启动；后续 Agent 在开工卡登记 #663/#665 和基线 commit。本次集成不启动 UI 实现，不推进 phase-D/E 或启用未交付能力。
-- 此后每个切片从**所需依赖已合并的明确 commit**创建独立 worktree；不从另一个 Agent 的脏目录复制文件。切片完成指代码/验证交接，REQ-064 Done 还需全站验收和合并事实。
+- 2026-10-26 当前权威基线：GitHub main 与 `origin/main` 均为 `f3f87fefb88cedc2cfe99f583f7a8c64c9ec66b6`（PR #666 mergeCommit）。本次治理同步分支 `docs/req-064-governance-fact-sync` 从该提交创建；不沿用 S0 的旧 base 作为当前 main。
+- S0 历史研究基线为 `6122d29a177e2a67ed0dad626d4066261dae0d90`；写文档前曾快进到当时 `origin/main` 的已合并 closeout `05adab213a831fa46f290b3eb2086fba2da36613`（#662）。S0 独立分支为 `codex/req-064-ui-upgrade-planning`，worktree 为 `/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase-wt-req064-planning`；这些记录仅描述 S0 当时环境，不代表当前分支或资源处置。
+- 2026-10-23 S0 当时集成 main `a6fc4877`（#665）：TD-114 契约 §11 A+B 组已由 #659/#663 验收，#665 已完成治理收口。该 SHA 是 S0 的历史集成 base；S0 最终由 PR #664 合入 main `12f71df3e2d050e2d83167db3e121d56b58e9473`。
+- 当前 REQ-064 整体为 🟡 Doing，非 Done：S0 已由 #664 交付，S1a 已由 #667 交付；S1a 仅含共享 Token、应用外壳和 E2E 端口隔离，未新增 UiComposer、未改业务页面，故 S1 整体未收口，S2–S8 未启动。TD-114 保持已完成、TD-115 保持待办。本次治理同步复审后，再单独对齐整体 UI 切片顺序、范围和验收标准；对齐完成前不派发 S2–S8，不推进 phase-D/E 或生产 backfill。
+- 此后每个切片仍从**所需依赖已合并的明确 commit**创建独立 worktree；不从另一个 Agent 的脏目录复制文件。切片完成指代码/验证交接，REQ-064 Done 还需全站验收和合并事实。PR #666 已合入 main `f3f87fef`，后续资源退休须遵守 [Worktree 生命周期](../../03-engineering-governance/01-rules/git-workflow.md#worktree-生命周期) 与 [完成门禁](../../03-engineering-governance/01-rules/quality-gates.md#完成门禁)；本任务不执行退休、分支删除、prune 或清理。
 
 本轮校准范围统一为：TraeWork 主导全站外壳、导航、布局、字体、间距、控件、表格、表单、卡片、菜单、确认弹窗及状态；Doubao 局部覆盖 AI 聊天输入、消息排列、回答阅读、消息操作与滚动，配色/字体/基础控件服从统一系统，确认弹窗除外。其他库只补必要信息组织。Doubao 原包没有的消息/回答/操作/跟随滚动规则按 spec §4 和矩阵 DB-03 标明为本项目适配。
 
@@ -20,10 +21,12 @@
 - Lead：本轮 Codex（GPT-6，运行配置以任务记录为准）；后续由集成者指定共享层负责人及页面负责人，开工任务卡登记实际 Harness/model id/effort，不把推荐 profile 当作实际执行记录。
 - Delegable：S1 合入后，仅允许 §4 列出的非重叠页面和各自测试切片；CSS/公共组件/导航/协议/全局文档不能分散修改。
 - Independent Review：每个切片由未参与实现的另一 Agent 评审；S1 重点检查全站影响，S2/S3 重点检查状态与证据；实际第二 Harness/model 在交接卡记录。参考 [AI Delivery Routing](../../03-engineering-governance/03-matrices/agent-platform-ai-delivery-routing.md)。
-- Human Gate：后续实现阶段保留 S1 外壳与共享控件、S2 AI 聊天页面、S4 列表/表单/详情样板三类节点；各自提供可运行预览和同条件截图，由用户确认后批量扩展。启动信息、截图条件及确认记录按 spec §6；本轮不制作生产页面或预览。后续 merge 仍需用户明确授权。
+- Human Gate：后续实现阶段保留 S1 外壳与共享控件、S2 AI 聊天页面、S4 列表/表单/详情样板三类节点；各自提供可运行预览和同条件截图，由用户确认后批量扩展。启动信息、截图条件及确认记录按 spec §6；S0 不制作生产页面或预览，S1a 已交付的证据及其边界见 §8。后续 merge 仍需用户明确授权。
 - Validation：§5 的文档/前端/浏览器矩阵；只报告实际达到的静态、fixture、真实环境证据层级。
 
 ## 3. 切片交付顺序
+
+下表保留 S0 的原始切片范围与验收基线；S1a 是已交付的 S1 子切片，实际证据见 §8。本次只做事实同步，不重新排列或改写整体 UI 切片；后续顺序、范围和验收标准须在专项对齐后更新，对齐前不得据本表派发 S2–S8。
 
 | 切片 | 负责人角色与依赖 | 工作和可审查产物 | 退出条件 |
 |---|---|---|---|
@@ -85,7 +88,7 @@
 4. **端口也要隔离**：现有 Playwright 固定 3000 且本地 `reuseExistingServer=true`，S1 改为从 `METAEDU_E2E_PORT` 读取端口（默认仍 3000，校验 1024–65535），baseURL/server URL 同源、Vite 加 `--strictPort`、`reuseExistingServer=false`。遇占用直接失败，不杀别人的进程或自动换端口。
 5. 后续默认保留端口 S1=3101、S2=3102…S8=3108；运行前实际检查占用并登记，冲突由集成者重新分配。开发服务另行登记自己的端口；服务由启动它的 Agent 关闭。
 6. fixture/UI 测试不连接共享数据库，不写生产/真实租户。需要真实后端验收时依据仓库 testing 规则使用专属测试实例/数据集；多 worktree 不能以独立目录为由并发跑同一库的迁移或清理。
-7. S1 的测试隔离修改尚未交付前，现有 Playwright **串行运行**，并验证 3000 服务确实来自当前 checkout。不能只设一个尚未被配置读取的环境变量便声称隔离成功。
+7. S1a 已由 PR #667 交付 `METAEDU_E2E_PORT`、baseURL/server URL 同源、`--strictPort` 与 `reuseExistingServer=false`；后续切片必须使用自己实际登记且未被占用的端口。只有不含 S1a 的旧基线才沿用原串行约束，并验证 3000 服务确实来自当前 checkout；不能只设一个未被旧配置读取的环境变量便声称隔离成功。
 8. 集成前逐一确认工作树、HEAD、文件 allowlist、依赖 SHA；同步最新已合并基线，复验后交接 PR。合并冲突按每个任务的意图解决，不用整文件 `ours/theirs` 覆盖另一个任务；无文本冲突也必须查视觉/语义冲突。
 
 ## 5. 验证矩阵与交付门禁
@@ -132,15 +135,17 @@ S1/S2/S4 另附可运行预览命令/URL/准备方式与 commit；用户确认�
 按仓库流程 commit/push/PR，保持未合并；不要移动他人 worktree 或更改其他任务状态。
 ```
 
-首个实现派发固定为 S1，必读 TW-01/TW-02/TW-03/DB-01/DB-02；S2 读 TW-03/DB-01/DB-02/DB-03，CL-01 仅作必要的消息元信息组织补充，S3 读 TW-03/TC-01 和 REQ-042 契约，S4/S6 读 TW-02/TW-04/VE-01/VE-02，S5 读 TW-05/TC-01，S7 读 TW-01/TW-02、REQ-023 品牌约束、VE-02 及报告/来源模式。每个切片都仍读 TraeWork 基础 Token。
+S0 原计划的首个实现派发为 S1；实际已先完成 S1a，证据见 §8。后续不得直接据旧派发语启动 S2–S8，须待整体切片顺序、范围和验收标准专项对齐。参考资料分工仍为：S1 剩余共享层读 TW-01/TW-02/TW-03/DB-01/DB-02；S2 读 TW-03/DB-01/DB-02/DB-03，CL-01 仅作必要的消息元信息组织补充，S3 读 TW-03/TC-01 和 REQ-042 契约，S4/S6 读 TW-02/TW-04/VE-01/VE-02，S5 读 TW-05/TC-01，S7 读 TW-01/TW-02、REQ-023 品牌约束、VE-02 及报告/来源模式。每个切片都仍读 TraeWork 基础 Token。
 
 ## 7. S0 交付记录
 
-2026-10-23 main 集成：从 #664 独立 worktree 合入 `origin/main` 的 `a6fc4877`（#665），逐段核对并保留 TD-114 完成记录、候选区与最近完成区，保留 REQ-064-S0 活跃卡，删除与其矛盾的“当前无活跃任务。”。requirement/spec/plan 同步当前 TD-114 已完成事实；`scripts/check-engineering-docs --full` 退出码 0（32 项既有 allowlist），`git diff --check` 退出码 0，相对最新 main 的累计 PR 差异仍仅 7 个规划/索引文件。UI 实现、phase-D/E 与评分/合并均未启动。
+2026-10-23 S0 合并收口：PR #664 实时状态为 `MERGED`，mergedAt `2026-10-23T02:28:09Z`，mergeCommit `12f71df3e2d050e2d83167db3e121d56b58e9473`，最终 headRefOid `7c402905c3a0272ee636488c1910f2ef27407f6d`。实现基线 `a6fc4877` 到评分基线 `cfd0b659` 的净 diff 为 7 个规划/索引文件；加入 Original 97 评分行后，最终合并 diff 为 **8 文件、+1947/-1**。CI run 39889251123 的 headSha 与最终 head 一致，Backend / Frontend / Engineering docs 均 SUCCESS；Backend full hermetic 两 shard 与 summary 按 docs-only scope 为 SKIPPED，不作为业务测试证据。
 
-2026-10-22 校准入口核验：分支 `codex/req-064-ui-upgrade-planning`，本地 HEAD 与 PR #664 headRefOid 一致为 `5e745303e3cbbec23a96f591f50ce3b8fff9d6d7`。开工前已有 reference-matrix / plan / current-work 三份未提交修改，内容为本地资料忽略协议、验证实录及 PR 链接；已保存差异并保留，合入本次文档提交。原 checkout 无未提交受跟踪改动；本轮仅校准规划，不评分、不合并、不清理任何资源。
+2026-10-23 S0 历史集成记录：从 #664 独立 worktree 合入当时 `origin/main` 的 `a6fc4877`（#665），逐段核对并保留 TD-114 完成记录、候选区与最近完成区，保留当时的 REQ-064-S0 活跃卡，删除与其矛盾的“当前无活跃任务。”。requirement/spec/plan 同步当时的 TD-114 已完成事实；`scripts/check-engineering-docs --full` 退出码 0（32 项既有 allowlist），`git diff --check` 退出码 0；此处“7 个规划/索引文件”是**评分前实现净 diff**，最终含评分行的 8 文件口径见上。S0 当时的 UI 实现、phase-D/E 与评分/合并均未启动。
 
-本节只记录本轮规划产物的验证。S1–S8 的实现、UI 截图与真实业务验证均未执行，不因 S0 文档检查成功提前翻状态。后续当前任务/Git 状态以工作台卡片和 PR 为准。
+2026-10-22 校准入口核验：分支 `codex/req-064-ui-upgrade-planning`，当时本地 HEAD 与 PR #664 headRefOid 一致为 `5e745303e3cbbec23a96f591f50ce3b8fff9d6d7`。开工前已有 reference-matrix / plan / current-work 三份未提交修改，内容为本地资料忽略协议、验证实录及 PR 链接；已保存差异并保留，合入本次文档提交。原 checkout 无未提交受跟踪改动；该记录仅描述 S0 当时校准，不评分、不合并、不清理任何资源。
+
+本节其余表格只记录 S0 当时规划产物的验证；S1a 的后续实现、截图与验证证据见 §8。S0 文档检查成功不证明任何 UI 切片已交付，也不提前翻转 REQ-064 整体状态；当前任务与 Git 状态以工作台和实时 PR 为准。
 
 
 | 检查 | 实际结果（2026-10-22，本机独立 worktree） |
@@ -150,8 +155,17 @@ S1/S2/S4 另附可运行预览命令/URL/准备方式与 commit；用户确认�
 | 矩阵内原样 Python 校验命令 | 本地与外部目录各 16 套 / 240 文件匹配；本地 `REQ064_LIBRARIES=TraeWork,Doubao` 子集 61 文件匹配；均退出码 0 |
 | 校验命令失败路径 | 不存在的根目录：退出码 1、240 项缺失；未知库名：退出码 1；按预期拒绝，未改动资料 |
 | 本轮文档链接及登记 | 4 份需求/交付 Markdown 的 19 个本地链接目标存在；Backlog 保持唯一 REQ-064 登记 |
-| 修改边界 | 仅提交 7 个需求/规范/计划/登记文件；原 checkout 受跟踪文件未改，既有任务卡与评分总账未改；另按用户要求准备本地忽略的参考副本 |
+| 修改边界 | S0 实现提交（评分前）仅 7 个需求/规范/计划/登记文件；原 checkout 受跟踪文件未改，当时评分总账未改；最终含评分行的 8 文件见本节首段。另按用户要求准备本地忽略的参考副本 |
 | 本地参考副本 | `.local/design_libraries` 已在主项目与本 worktree 准备；2,449 个文件约 17 MB，逐文件 SHA-256 核对通过；路径由本地 `.git/info/exclude` 忽略，不进入 PR |
 | 未运行 | UI/Vitest/Playwright/前后端构建、真实 PG、真实 LLM 和原预览浏览器验收；本轮是文档交付，不宣称视觉或业务验证通过 |
 
-规划交付 PR：[#664](https://github.com/MarkDanile/MetaEduBase/pull/664)，保持开放等待独立评审；本轮校准后文档门禁、diff check、19 个本地链接及 16 库 / 240 文件校验通过，manifest 原路径/字节数/hash 未改。最新 HEAD 的 CI 状态以 PR 为准，UI 实现验收仍未启动。资料清单只覆盖选定入口，不代表所有图片、字体、脚本依赖均已封存或可离线运行。
+S0 规划交付 PR #664 的实时合并状态、最终 diff 和 CI 见本节首段。原校准后的文档门禁、diff check、19 个本地链接及 16 库 / 240 文件校验通过，manifest 原路径/字节数/hash 未改。资料清单只覆盖选定入口，不代表所有图片、字体、脚本依赖均已封存或可离线运行。
+
+## 8. S1a 交付记录
+
+- 2026-10-23 合并事实：PR #667 实时状态为 `MERGED`，mergedAt `2026-10-23T09:17:56Z`，mergeCommit `7a73d62ddd2b6fc66c4c4964c38ba595b4c6ff70`，最终 headRefOid `d07ac7915bfd1c4faa9b401d3305749d3c04f99a`，实现 base 为 S0 mergeCommit `12f71df3`。Original 评分 96/100，评分基线为 `f7d339f8`。
+- 最终 diff 口径：实现净 diff **8 文件、+523/-25**；追加评分行后最终合并 **9 文件、+524/-25**。交付仅含 Token/themes/components、LayoutView、Playwright 配置与截图采集、e2e README；未新增 UiComposer，未改业务页面、router/nav/permissions、stores/services、API/DTO、数据库或后端。
+- PR #667 记录的本地实测（Node `v20.20.2`、pnpm `9.15.0`；本次治理同步未重跑）：`pnpm --filter @metaedu/web lint` 退出码 0（0 errors / 28 warnings，与基线相同）；typecheck、build 均退出码 0；全量前端 Vitest **40 文件 / 382 用例通过**；`METAEDU_E2E_PORT=3101 pnpm --filter @metaedu/web test:e2e navigation` **55 passed**；`scripts/check-engineering-docs --full` 与 `git diff --check` 均退出码 0。
+- 参考与视觉证据：16 库 / 240 文件 hash 校验 `problems=0`；15 组同条件改前/改后截图共 30 张；端口占用负例按预期退出 1 且未复用或杀死其他服务。截图未入库，未建立自动像素 diff 基线；未做人工点击流、多 OS 字体渲染对比、真实 PG 或真实 LLM 验收。
+- 最终 CI run 39930161830 的 headSha 与最终 head 一致，Backend / Frontend / Engineering docs 均 SUCCESS；Backend full hermetic 两 shard 与 summary 按前端 scope 为 SKIPPED，不作为后端业务测试证据。两轮独立复审后 P0/P1/P2=0，P3=4 保留在评分记录中，本任务不扩范围处理。
+- 完成边界：以上仅证明 **S1a 共享基础**已交付，不等于 S1 整体退出条件或 REQ-064 AC 全部达成。S2–S8 尚未启动；本次治理事实同步复审后，先单独对齐整体 UI 切片顺序、范围和验收标准，对齐完成前不派发 S2–S8。
