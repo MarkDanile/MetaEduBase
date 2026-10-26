@@ -6,7 +6,7 @@
 
 依据：[REQ-064 requirement](../../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md)、[设计 spec §6](../01-specs/2026-10-22-req-064-ui-design-system.md)、[实施计划 §1–§6、§8](2026-10-22-req-064-ui-upgrade-plan.md)、[参考矩阵](../01-specs/2026-10-22-req-064-reference-matrix.md)。后续派发以本文件为准，但**不得弱化 design spec §6 的三类用户视觉确认门**；plan §3–§6 保留为历史基线。
 
-复审状态：PR #670 的独立复审已进行五轮，均为只读；**前四轮结论均为 NEEDS_CHANGES，第五轮为 PASS**。首轮覆盖 head `b60781711b87270e366c110a70541577c82f10c9`（P1×8、P2×2，P0/P3=0）；第二轮覆盖 head `10d79023e15e78f678ea01b42e667ed5d0dad612`（P1×1、P2×1，P0/P3=0）；第三轮覆盖 head `e7e2a341c7d1b89b4f1e00213cc6bf3f8b0c4e68`（P1×1，P0/P2/P3=0）；第四轮覆盖 head `92fd6060cce830fb358a5dfec6dafa94be52f2ad`（P0=0、P1=0、P2×2、P3×6，确认第三轮 P1-1 已实质闭合）。第五轮覆盖 head `324a107c2f809bbcfcea754fb0e554911afe7e29`，结论为 **PASS**（P0=0、P1=0、P2=0、P3=2，非阻塞），判定前四轮共 21 项 findings 全部实质闭合。本版按用户裁决同步 S4 分页方案 A（新增 D9）；同步后产生新 head，第五轮的 PASS 只覆盖 `324a107c`，不自动覆盖新提交，必须等待针对最新 head 的独立复审。
+复审状态：PR #670 的独立复审已进行五轮，均为只读；**前四轮结论均为 NEEDS_CHANGES，第五轮为 PASS**。首轮覆盖 head `b60781711b87270e366c110a70541577c82f10c9`（P1×8、P2×2，P0/P3=0）；第二轮覆盖 head `10d79023e15e78f678ea01b42e667ed5d0dad612`（P1×1、P2×1，P0/P3=0）；第三轮覆盖 head `e7e2a341c7d1b89b4f1e00213cc6bf3f8b0c4e68`（P1×1，P0/P2/P3=0）；第四轮覆盖 head `92fd6060cce830fb358a5dfec6dafa94be52f2ad`（P0=0、P1=0、P2×2、P3×6，确认第三轮 P1-1 已实质闭合）。第五轮覆盖 head `324a107c2f809bbcfcea754fb0e554911afe7e29`，结论为 **PASS**（P0=0、P1=0、P2=0、P3=2，非阻塞），判定前四轮共 21 项 findings 全部实质闭合。其后按用户裁决同步 S4 分页方案 A（新增 D9），裁决同步后独立复审 PASS 覆盖 head `1d297471`；本规划已由 PR #670 squash merge 入 main（mergeCommit `b4dd5dfb`，mergedAt 2026-10-26T13:08:27Z，被评 head `f96e4055`，Original 92/100，SCORE_BASE `1d297471`），自此作为后续切片的派发事实源。
 
 ## 0. 开工基线核验
 
@@ -17,8 +17,8 @@
 | S1a 共享基础 | 已合入 #667，mergeCommit `7a73d62d`，Original 96 | plan §8、评分总账 |
 | 治理事实同步 | 已合入 #668，mergeCommit `81e50329`，Original 95 | plan §1、评分总账 |
 | 合并后收口 | 已合入 #669，mergeCommit `6ad038d8`，Original 95 | work-log、评分总账 |
-| main / origin/main / 本地 main | `6ad038d8829f3383cb75a06757688d97163c13da` | 实时 git 核验 |
-| 规划 PR #670 | OPEN / Draft；已进行五轮独立复审，前四轮 NEEDS_CHANGES、第五轮 PASS（P0=0、P1=0、P2=0、P3=2） | 实时 PR 与五轮完整复审报告 |
+| main / origin/main / 本地 main | `b4dd5dfb214b9831346cd6fe90806d50668a8126`（PR #670 合并后的 main） | 实时 git 核验 |
+| 规划 PR #670 | MERGED（squash；mergeCommit `b4dd5dfb`，mergedAt 2026-10-26T13:08:27Z，被评 head `f96e4055`，Original 92/100）；独立复审六轮：前四轮 NEEDS_CHANGES、第五轮 PASS 覆盖 `324a107c`、裁决同步后 PASS 覆盖 `1d297471` | 实时 PR 与各轮完整复审报告 |
 | worktree | 1 个（主 checkout，工作区 clean） | `git worktree list --porcelain` |
 | 远程分支 | 2026-10-26 时点快照：`git ls-remote --heads origin` 计 47 个（含本 PR 任务分支本身）；main 受保护 | 时点快照，非当前计数，引用时须重新查询；branch protection |
 | TD-114 / TD-115 / REQ-042 | 🟢 完成 / ⚫ 待办 / ⚫ Candidate | technical-debt、REQ-042 requirement、Backlog |
@@ -301,7 +301,7 @@ S4 强制分页项目前仍未闭合，不得以其他列表/详情/弹窗样板
 
 - 验证要求：`scripts/check-engineering-docs --full`、`git diff --check`、净 diff 范围核对（仅规划文档与必要治理索引）；CI 结果按实跑 / no-op / skipped 分别记录，不把 no-op/skipped 写成业务测试通过。
 - 限制：本文件不构成任何 UI 实现、视觉验收或用户确认；S1b/S2–S8 均未启动；REQ-064 仍为 Doing；phase-D/E 与生产 backfill 未启动；远程分支清理不在本规划范围。
-- 复审要求：首轮 NEEDS_CHANGES 的 10 项 findings 已按 §9 逐项处理；第二轮 NEEDS_CHANGES 的 P1-1 与 P2-1 已按 §10 补充真实代码证据、分页缺口及 S8 统一放行口径；第三轮 NEEDS_CHANGES 的 P1-1（S6/S7 派发门禁遗漏强制分页项）已按 §11 统一补齐阶段 G 与 S6/S7 的前置、阻塞和并行条件；第四轮 NEEDS_CHANGES 的 P2×2 与 P3×6 已按 §12 限定 S4 分页否定的范围、披露范围外已核实的真实分页、补齐 S4 卡片自身的派发门，并统一复审状态记录与全文 canonical 措辞。第五轮独立复审（覆盖 head `324a107c`）结论为 **PASS**（P0=0、P1=0、P2=0、P3=2），判定前四轮共 21 项 findings 全部实质闭合；其结论只覆盖 `324a107c`，不自动覆盖本次同步后的新提交。本版按用户裁决同步 S4 分页方案 A（D9）、S3 阻塞事实与 2 项非阻塞 P3 观察项，**当前为裁决同步后状态**，必须等待未参与本轮同步的独立 Agent 对最新 head 复审，不以实施者自检替代独立复审，不推进 Ready、评分或合并。
+- 复审要求：首轮 NEEDS_CHANGES 的 10 项 findings 已按 §9 逐项处理；第二轮 NEEDS_CHANGES 的 P1-1 与 P2-1 已按 §10 补充真实代码证据、分页缺口及 S8 统一放行口径；第三轮 NEEDS_CHANGES 的 P1-1（S6/S7 派发门禁遗漏强制分页项）已按 §11 统一补齐阶段 G 与 S6/S7 的前置、阻塞和并行条件；第四轮 NEEDS_CHANGES 的 P2×2 与 P3×6 已按 §12 限定 S4 分页否定的范围、披露范围外已核实的真实分页、补齐 S4 卡片自身的派发门，并统一复审状态记录与全文 canonical 措辞。第五轮独立复审（覆盖 head `324a107c`）结论为 **PASS**（P0=0、P1=0、P2=0、P3=2），判定前四轮共 21 项 findings 全部实质闭合；其结论只覆盖 `324a107c`，不自动覆盖本次同步后的新提交。其后按用户裁决同步 S4 分页方案 A（D9）、S3 阻塞事实与 2 项非阻塞 P3 观察项，裁决同步后独立复审 PASS 覆盖 head `1d297471`；**本规划已随 PR #670 squash merge 入 main**（mergeCommit `b4dd5dfb`，mergedAt 2026-10-26T13:08:27Z，Original 92/100，SCORE_BASE `1d297471`），后续派发以本文件为准；各轮复审均为只读独立复审，未以实施者自检替代。**在 S4 强制分页门闭合并完成用户决策前，不派发 S6/S7**。
 
 ## 9. 首轮独立复审 findings 逐项闭合映射
 
@@ -358,4 +358,5 @@ S4 强制分页项目前仍未闭合，不得以其他列表/详情/弹窗样板
 | S5 审计弹窗分页的定位 | **只作参考**，不自动纳入 S4 候选，不作为 S4 已通过分页验收的证据 | §4.5 范围外披露③、§4.5 已裁决块、§6 D9 | 两页仍归属 S5；分页对象仍是审计弹窗内的执行记录而非页面主列表；固定 limit、静态参数、no-op 处理器与无路由组件仍不算真实分页证据 |
 | 分页工作的实施边界 | S4 分页候选确认与分页前置工作**仅做规划**，**不在本任务实现业务分页**；实现须在后续独立切片按 §7 派发模板单独开工 | §4.5 已裁决块「后续工作边界」、§6 D9、§1 边界段 | 本 PR 不含任何 UI 实现、测试、依赖或 CI 改动；不新增业务分页功能 |
 | S3 目录/文件归属人 | **用户暂不指定**；S3 在 phase-D/E 互斥边界、目录归属与文件所有权明确前继续阻塞 | §6 待执行条件、§4.4 前置/阻塞（保持原措辞）、§1 第 6/7 条 | Agent 不得自行认领或据默认归属派发；仅不同 worktree 仍不足以解除 |
+| 规划 PR #670 合并与收口 | **已 squash merge 入 main**：mergeCommit `b4dd5dfb`，mergedAt 2026-10-26T13:08:27Z，被评 head `f96e4055`；Original 92/100，SCORE_BASE `1d297471`；裁决同步后独立复审 PASS 覆盖 `1d297471` | 文件头复审状态、§0 基线表、§8 复审要求、本节；closeout 另见 work-log | 合并与评分只证明规划事实源已交付，**不等于 S4 强制分页门闭合、S6/S7 可派发、S3 可开工或 REQ-064 Done**；合并后 main push CI `40328033157` 仅 Engineering docs 与 Whitespace 实跑，Frontend/Backend 为 no-op、full hermetic 为 skipped，不构成业务测试通过证据 |
 | 第五轮遗留 2 项非阻塞 P3 | **本轮不返修，保留为非阻塞观察项** | §6 待执行条件、PR body 第四轮小节与 Risks | ① 旧 plan §3「S4 样板确认仍是 S6/S7 前置」未带分页门（该段已整体降级为历史基线并指向本文件，不构成可执行口径来源）；② PR body「开放 PR 0 个」为开工时点快照（实时为 1 个，即本 PR） |
