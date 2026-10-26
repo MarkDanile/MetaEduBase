@@ -49,7 +49,7 @@ Related: REQ-010 / REQ-020 / REQ-021 / REQ-022 / REQ-023 / REQ-042 / REQ-047 / R
 ## Dependencies / Next Step
 
 - S0 规划已完成独立评审并由 PR #664 合入 main（mergeCommit `12f71df3e2d050e2d83167db3e121d56b58e9473`，Original 97）；S1a 共享基础已由 PR #667 合入 main（mergeCommit `7a73d62ddd2b6fc66c4c4964c38ba595b4c6ff70`，Original 96）；治理事实同步已由 PR #668 squash merge 入 main（mergeCommit `81e503294767f97dadcbb509242b273a1ce1815d`，mergedAt 2026-10-26T06:06:33Z，Original 95）。REQ-064 因已进入实现交付窗口而更新为 🟡 Doing；上述合入均不等于 REQ-064 整体 Done。
-- S1a 仅交付共享 Token、应用外壳与 Playwright 端口隔离，未新增 UiComposer、未改业务页面；S1 整体未收口，S2–S8 未启动。下一步：单独对齐整体 UI 切片顺序、范围和验收标准；对齐完成前不派发 S2–S8。phase-D/E 与生产 backfill 未启动。
+- S1a 仅交付共享 Token、应用外壳与 Playwright 端口隔离，未新增 UiComposer、未改业务页面；S1 整体未收口，S2–S8 未启动。下一步：按 [后续 UI 切片路线与验收对齐](../../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md) 同步用户裁决（S4 强制分页采用方案 A：保留 design spec §6 的强制验收要求，“调整验收口径”未采用；S5 技能/MCP 审计弹窗分页只作参考、不自动纳入 S4 候选；分页候选确认与前置工作仅做规划，不在本任务实现业务分页），并等待新 head 独立复审；复审通过前不派发 S1b、S2–S8。**S4 强制分页门尚未闭合**（S4 候选范围内无合格真实候选），不宣称该项通过，S6/S7 继续受阻。S3 目录/文件归属人由用户指定，用户已明确暂不指定，S3 继续阻塞。phase-D/E 与生产 backfill 未启动。
 - TD-114 前置保持已满足：[契约 §11](../../02-delivery-plans/01-specs/2026-10-19-td-114-agent-identity-bootstrap-contract.md#11-td-114-完成判据) 的 A+B 组证据由 #659/#663 交付，#665 治理收口已合入 main `a6fc4877`；TD-114 保持 🟢 完成，TD-115 保持 ⚫ 待办。
 - REQ-042 保持 ⚫ Candidate；phase-D/E、WS-S3 和 REQ-047 Extended 的实现继续走各自契约与验收。S0/S1a 合入不自动推进 phase-D/E、生产 backfill 或启用未交付能力。
 - 新 worktree 仍从依赖已合并的明确提交创建，不依赖、复制或提交他人的未提交内容。PR #666 已合入 main `f3f87fefb88cedc2cfe99f583f7a8c64c9ec66b6`，Worktree 退休与 ignored 资产核验规则已生效；PR #666 自身 worktree 与分支退休另案核验，本需求事实同步不执行清理。
@@ -60,4 +60,5 @@ Related: REQ-010 / REQ-020 / REQ-021 / REQ-022 / REQ-023 / REQ-042 / REQ-047 / R
 - [参考矩阵与资料检查](../../02-delivery-plans/01-specs/2026-10-22-req-064-reference-matrix.md)
 - [源文件 manifest](../../02-delivery-plans/01-specs/2026-10-22-req-064-reference-manifest.json)
 - [实施计划与 Agent 接力模板](../../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md)
+- [后续 UI 切片路线与验收对齐](../../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md)
 - [工作台](../../03-engineering-governance/current-work.md) / [Backlog](../04-backlog.md)

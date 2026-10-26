@@ -9,7 +9,8 @@
 - 2026-10-26 治理事实同步已合入：PR #668 squash merge 入 main `81e503294767f97dadcbb509242b273a1ce1815d`（mergedAt 2026-10-26T06:06:33Z，Original 95/100；实现净 diff 7 文件 +71/-44，含 Original 评分行后 8 文件 +72/-44）。合并前 main 为 `f3f87fefb88cedc2cfe99f583f7a8c64c9ec66b6`（PR #666 mergeCommit），本次治理同步分支从该提交创建，未沿用 S0 的旧 base。
 - S0 历史研究基线为 `6122d29a177e2a67ed0dad626d4066261dae0d90`；写文档前曾快进到当时 `origin/main` 的已合并 closeout `05adab213a831fa46f290b3eb2086fba2da36613`（#662）。S0 独立分支为 `codex/req-064-ui-upgrade-planning`，worktree 为 `/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase-wt-req064-planning`；这些记录仅描述 S0 当时环境，不代表当前分支或资源处置。
 - 2026-10-23 S0 当时集成 main `a6fc4877`（#665）：TD-114 契约 §11 A+B 组已由 #659/#663 验收，#665 已完成治理收口。该 SHA 是 S0 的历史集成 base；S0 最终由 PR #664 合入 main `12f71df3e2d050e2d83167db3e121d56b58e9473`。
-- 当前 REQ-064 整体为 🟡 Doing，非 Done：S0 已由 #664 交付，S1a 已由 #667 交付；S1a 仅含共享 Token、应用外壳和 E2E 端口隔离，未新增 UiComposer、未改业务页面，故 S1 整体未收口，S2–S8 未启动。TD-114 保持已完成、TD-115 保持待办。治理事实同步已由 #668 合入 main（`81e50329`，Original 95）；下一步为单独对齐整体 UI 切片顺序、范围和验收标准，对齐完成前不派发 S2–S8，不推进 phase-D/E 或生产 backfill。
+- 当前 REQ-064 整体为 🟡 Doing，非 Done：S0 已由 #664 交付，S1a 已由 #667 交付；S1a 仅含共享 Token、应用外壳和 E2E 端口隔离，未新增 UiComposer、未改业务页面，故 S1 整体未收口，S2–S8 未启动。TD-114 保持已完成、TD-115 保持待办。治理事实同步已由 #668 合入 main（`81e50329`，Original 95）；D1–D9 已确认并回填路线文档，首轮至第四轮独立复审 findings 已分别返修，第五轮独立复审（覆盖 head `324a107c`）结论 PASS（P0=0、P1=0、P2=0、P3=2）；其后按用户裁决同步 S4 强制分页方案 A（S5 审计弹窗分页只作参考、不自动纳入 S4 候选），等待新 head 独立复审，复审通过前不派发 S2–S8，不推进 phase-D/E 或生产 backfill。
+- 后续派发依据：顺序、范围、依赖与验收门已在 [后续 UI 切片路线与验收对齐](2026-10-26-req-064-ui-slice-roadmap.md) 按用户确认的 D1–D9 回填（S1b-1 共享 CSS/语义 token → S1b-2 UiComposer → S2 → S3 满足稳定与互斥解除条件后 → S4/S5 → S6/S7 → S8）。规划 PR #670 首轮独立复审为 NEEDS_CHANGES（P1×8、P2×2），第二轮独立复审为 NEEDS_CHANGES（P1×1、P2×1），第三轮独立复审为 NEEDS_CHANGES（P1×1，P0/P2/P3=0），第四轮独立复审为 NEEDS_CHANGES（P0=0、P1=0、P2×2、P3×6，确认第三轮 P1-1 已实质闭合），第五轮独立复审（覆盖 head `324a107c`）为 PASS（P0=0、P1=0、P2=0、P3=2，前四轮 21 项 findings 全部实质闭合）；其后按用户裁决同步 S4 分页方案 A，必须等待新 head 独立复审，复审通过前不派发实现。本 plan 其余章节保留为历史基线，design spec §6 的三类用户视觉确认门不因此弱化。
 - 此后每个切片仍从**所需依赖已合并的明确 commit**创建独立 worktree；不从另一个 Agent 的脏目录复制文件。切片完成指代码/验证交接，REQ-064 Done 还需全站验收和合并事实。PR #666 已合入 main `f3f87fef`，后续资源退休须遵守 [Worktree 生命周期](../../03-engineering-governance/01-rules/git-workflow.md#worktree-生命周期) 与 [完成门禁](../../03-engineering-governance/01-rules/quality-gates.md#完成门禁)；本任务不执行退休、分支删除、prune 或清理。
 
 本轮校准范围统一为：TraeWork 主导全站外壳、导航、布局、字体、间距、控件、表格、表单、卡片、菜单、确认弹窗及状态；Doubao 局部覆盖 AI 聊天输入、消息排列、回答阅读、消息操作与滚动，配色/字体/基础控件服从统一系统，确认弹窗除外。其他库只补必要信息组织。Doubao 原包没有的消息/回答/操作/跟随滚动规则按 spec §4 和矩阵 DB-03 标明为本项目适配。
@@ -26,7 +27,7 @@
 
 ## 3. 切片交付顺序
 
-下表保留 S0 的原始切片范围与验收基线；S1a 是已交付的 S1 子切片，实际证据见 §8。本次只做事实同步，不重新排列或改写整体 UI 切片；后续顺序、范围和验收标准须在专项对齐后更新，对齐前不得据本表派发 S2–S8。
+下表保留 S0 的原始切片范围与历史验收基线；S1a 是已交付的 S1 子切片，实际证据见 §8。当前派发顺序、并行窗口与 PR 拆分以 [后续 UI 切片路线与验收对齐](2026-10-26-req-064-ui-slice-roadmap.md) 中已确认的 D1–D9 为准：S1b 拆为 S1b-1 共享 CSS/语义 token → S1b-2 UiComposer 的有序 PR，S2 先接 UiComposer，S3 仅在接口与所有权稳定且互斥解除后进入。不得据本表旧的单 S1 PR 或 S2/S3 并行表述直接派发。
 
 | 切片 | 负责人角色与依赖 | 工作和可审查产物 | 退出条件 |
 |---|---|---|---|
@@ -40,7 +41,7 @@
 | S7 背调与外围页面 | Business Agent；依赖 S1 + S4 样板 | due-diligence、HomeView、share、ForbiddenView；登录页必要样式升级 | 报告/证据/制审行为不变；登录升级截图/全站视觉一致，鉴权、表单语义及品牌约束保留；分享 token 路由与首页权限回归 |
 | S8 集成与收口 | 集成 Agent；依赖 S2–S7 | 全路由审计、视觉矩阵、文档/状态更新和未来功能接入核对 | required checks、样板一致、无遗漏路由；PR 合并后才能收口 |
 
-可行并行批次：S1 用户确认并合入后 S2/S3/S4/S5 可独立开发；S4 列表/表单/详情样板经用户确认并合入后 S6/S7 可独立开发。S2 用户确认前不在其他对话表面批量扩展其聊天模式。S3 与另一个正在修改 Workspace 的 Agent 绝不同时开工。默认合入次序 S1→S2→S3→S4→S5→S6→S7→S8；某切片依赖未交付能力时记录阻塞，其他独立切片可继续，集成者显式记录调整后的次序。
+历史并行基线：S1 用户确认并合入后 S2/S3/S4/S5 可独立开发；S4 列表/表单/详情样板经用户确认并合入后 S6/S7 可独立开发。**当前不直接沿用该旧并行表述**：S1b 已拆为有序双 PR，S2 为 UiComposer 首个消费方，S2/S3 不并行，S3 另须满足接口/文件所有权稳定与 D5 互斥解除条件；S4 样板确认仍是 S6/S7 前置。默认合入次序以新路线文档为准；某切片依赖未交付能力时记录阻塞，其他独立切片可继续，集成者显式记录调整后的次序。
 
 不规定虚构的日期/工时。首个 S1 PR 的实际工作量作为后续排期依据；单切片过大时只按已有页面/模式继续拆分，保持一个 PR 一个主要风险面。
 
@@ -135,7 +136,7 @@ S1/S2/S4 另附可运行预览命令/URL/准备方式与 commit；用户确认�
 按仓库流程 commit/push/PR，保持未合并；不要移动他人 worktree 或更改其他任务状态。
 ```
 
-S0 原计划的首个实现派发为 S1；实际已先完成 S1a，证据见 §8。后续不得直接据旧派发语启动 S2–S8，须待整体切片顺序、范围和验收标准专项对齐。参考资料分工仍为：S1 剩余共享层读 TW-01/TW-02/TW-03/DB-01/DB-02；S2 读 TW-03/DB-01/DB-02/DB-03，CL-01 仅作必要的消息元信息组织补充，S3 读 TW-03/TC-01 和 REQ-042 契约，S4/S6 读 TW-02/TW-04/VE-01/VE-02，S5 读 TW-05/TC-01，S7 读 TW-01/TW-02、REQ-023 品牌约束、VE-02 及报告/来源模式。每个切片都仍读 TraeWork 基础 Token。
+S0 原计划的首个实现派发为 S1；实际已先完成 S1a，证据见 §8。当前已确认路线为 S1b-1 共享 CSS/语义 token → S1b-2 UiComposer → S2 首个 Composer 消费方；S2/S3 不并行，S3 另须满足稳定与互斥解除条件。参考资料分工仍为：S1b-1/S1b-2 读 TW-01/TW-02/TW-03/DB-01/DB-02；S2 读 TW-03/DB-01/DB-02/DB-03，CL-01 仅作必要的消息元信息组织补充，S3 读 TW-03/TC-01 和 REQ-042 契约，S4/S6 读 TW-02/TW-04/VE-01/VE-02，S5 读 TW-05/TC-01，S7 读 TW-01/TW-02、REQ-023 品牌约束、VE-02 及报告/来源模式。每个切片都仍读 TraeWork 基础 Token。
 
 ## 7. S0 交付记录
 
@@ -168,4 +169,4 @@ S0 规划交付 PR #664 的实时合并状态、最终 diff 和 CI 见本节首�
 - PR #667 记录的本地实测（Node `v20.20.2`、pnpm `9.15.0`；本次治理同步未重跑）：`pnpm --filter @metaedu/web lint` 退出码 0（0 errors / 28 warnings，与基线相同）；typecheck、build 均退出码 0；全量前端 Vitest **40 文件 / 382 用例通过**；`METAEDU_E2E_PORT=3101 pnpm --filter @metaedu/web test:e2e navigation` **55 passed**；`scripts/check-engineering-docs --full` 与 `git diff --check` 均退出码 0。
 - 参考与视觉证据：16 库 / 240 文件 hash 校验 `problems=0`；15 组同条件改前/改后截图共 30 张；端口占用负例按预期退出 1 且未复用或杀死其他服务。截图未入库，未建立自动像素 diff 基线；未做人工点击流、多 OS 字体渲染对比、真实 PG 或真实 LLM 验收。
 - 最终 CI run 39930161830 的 headSha 与最终 head 一致，Backend / Frontend / Engineering docs 均 SUCCESS；Backend full hermetic 两 shard 与 summary 按前端 scope 为 SKIPPED，不作为后端业务测试证据。两轮独立复审后 P0/P1/P2=0，P3=4 保留在评分记录中，本任务不扩范围处理。
-- 完成边界：以上仅证明 **S1a 共享基础**已交付，不等于 S1 整体退出条件或 REQ-064 AC 全部达成。S2–S8 尚未启动；治理事实同步已由 PR #668 合入 main（`81e50329`，Original 95），下一步为单独对齐整体 UI 切片顺序、范围和验收标准，对齐完成前不派发 S2–S8。
+- 完成边界：以上仅证明 **S1a 共享基础**已交付，不等于 S1 整体退出条件或 REQ-064 AC 全部达成。S2–S8 尚未启动；治理事实同步已由 PR #668 合入 main（`81e50329`，Original 95）。当前路线已按用户确认的 D1–D9 回填至 [后续 UI 切片路线与验收对齐](2026-10-26-req-064-ui-slice-roadmap.md)，并在后续返修中统一 S4/S6/S7 的 S4 强制分页门、按用户裁决收敛为方案 A；规划 PR #670 最新独立复审为 PASS（P0=0、P1=0、P2=0、P3=2，覆盖 head `324a107c`）；其后已按用户裁决同步 S4 强制分页方案 A，须等待新 head 独立复审，复审通过前不派发 S1b、S2–S8。
