@@ -14,30 +14,7 @@
 
 ## 当前进行中
 
-### REQ-064-GOVERNANCE-SYNC: 全局 UI 升级治理事实同步（纯文档）
-
-状态：🟡 进行中（current-work 事实同步返修已完成；等待最新 HEAD 独立复核）
-类型：REQ / governance / pure-docs
-领域：Web / Design System / Delivery Governance
-当前执行模式：plan-do
-最近接手工具：Claude Code
-分支：docs/req-064-governance-fact-sync
-
-需求来源：
-- [REQ-064](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md)
-- Spec：[全局 UI 规范](../02-delivery-plans/01-specs/2026-10-22-req-064-ui-design-system.md) / [参考矩阵与原始文件校验](../02-delivery-plans/01-specs/2026-10-22-req-064-reference-matrix.md)
-- Plan：[分阶段实施与 Agent 交接](../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md)
-- 规则：[Worktree 生命周期](01-rules/git-workflow.md#worktree-生命周期) / [完成门禁](01-rules/quality-gates.md#完成门禁)（PR #666 已合入并生效）
-
-当前进展：实时 GitHub main 与 `origin/main` 均为 `f3f87fefb88cedc2cfe99f583f7a8c64c9ec66b6`，本分支从该提交创建。S0 规划 PR #664 已 `MERGED`（mergeCommit `12f71df3`，最终 8 文件 = 7 个规划/索引文件 + 1 条评分记录）；S1a 共享基础 PR #667 已 `MERGED`（mergeCommit `7a73d62d`，最终 9 文件 = 8 个实现文件 + 1 条评分记录）；Worktree 生命周期 PR #666 已 `MERGED`（mergeCommit `f3f87fef`）。本次仅同步这些权威事实及一致依赖，不修改生产代码、测试或评分历史。第二轮独立复审已在旧 HEAD `1de0f6d1f7e5fcb0511a68630da8d49352fe2af0` 上 `PASS`（P0/P1/P2/P3=0），仅作为旧 HEAD 的历史事实。本次 current-work 阶段事实修正以独立提交产生新的 HEAD，旧 PASS 不自动覆盖该新提交；current-work 事实同步返修已完成，等待针对最新 HEAD 的独立复核。
-下一步：等待针对最新 HEAD 的独立复核，复核通过后才推进 Ready；复核后再单独对齐整体 UI 切片顺序、范围和验收标准，对齐完成前不派发 S2–S8。不启动 phase-D/E 或生产 backfill，不自行评分、推进 Ready 或合并。
-验证状态：首次独立复审 `NEEDS_CHANGES`（P1×1、P2×1，P0/P3=0）与第二轮旧 HEAD `1de0f6d1f7e5fcb0511a68630da8d49352fe2af0` 的 `PASS`（P0/P1/P2/P3=0）均作为历史记录保留；本次 current-work 修正产生的新 HEAD 尚未独立复核，不写成 PASS。本地预检（非正式独立复审）：本机 Darwin / zsh 下 `scripts/check-engineering-docs --full` 通过（32 项既有 allowlist），`git diff --check` 与 `git diff --check origin/main...HEAD` 均退出码 0；本次增量仅修改本文件，PR 累计仍仅原授权 7 个 Markdown 文件，工作台为 1 个活跃卡、3 个候选、18 条最近完成。线上最新 CI 以 PR 最新 head 的实际 run 为准；本任务不重跑 S1a UI 测试，不宣称新的视觉、真实 PG、真实 LLM 或前后端业务测试验收。
-交接备注：REQ-064 整体为 🟡 Doing，S0 与 S1a 合入不等于整体 Done；S1a 仅交付共享 Token、应用外壳和 E2E 端口隔离，未交付 UiComposer 或业务页面，S1 整体未收口，S2–S8 未启动。TD-114 保持 🟢 完成、TD-115 保持 ⚫ 待办，REQ-042 保持 ⚫ Candidate，phase-D/E/WS-S3 状态不由本任务推进。本轮只做 current-work 阶段事实修正；首次复审 P1/P2 的返修已完成，不处理 #666 P3，不执行 worktree、分支或 refs 清理。
-资源交接：
-- 当前注册事实（2026-10-26 本轮开工实时 `git worktree list --porcelain`）：全仓当前仅 1 个注册 worktree，即本任务使用的主 checkout `/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase`；未创建新的 worktree。
-- 历史退休事实：本卡涉及的 #666、S0、S1a、DOC-081、REQ-042 phase-C 共 5 个任务 worktree 已按退休规则由 5 个注册项变为 0 个。移除路径分别为 `/Users/strony/.codex/worktrees/worktree-retirement-rules/MetaEduBase`、`/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase-wt-req064-planning`、`/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase-wt-req064-s1a`、`/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase-wt-doc081-impl`、`/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase-wt-req042-phasec`；本轮只读检查这些路径均不存在。该历史事实不再表述为这些 worktree 当前仍保留。
-- 分支保留事实：上述任务对应的 local branch 与 origin 同名 remote branch 均仍存在（本轮 `git branch --list` / `git ls-remote` 逐项核对）：`codex/worktree-retirement-rules`、`codex/req-064-ui-upgrade-planning`、`codex/req-064-s1a-shell-token`、`docs/doc-081-iteration-retention-closeout`、`feat/req-042-ws-s2-phasec-submit-route`。worktree 退休不等于 local 或 remote branch 删除。
-- ignored 资产处置：phase-C 独有的 `deploy/.env` 已迁移至用户配置目录并保留，不是配置丢失；本返修未读取其内容，也未重新执行任何退休或清理操作。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -49,7 +26,7 @@
 | P0 | REQ-062: 动态数据采集、填报与报表发布平台 contract shaping | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 在 Run/Artifact 契约上塑形 Campaign/FormSchemaVersion/Submission/ReportSnapshot；AI 草案审核后才发布；仅契约塑形不实现自由表单引擎 | [REQ-062](../01-product-planning/05-requirements/REQ-062-dynamic-data-collection-and-reporting.md) / [backlog](../01-product-planning/04-backlog.md) |
 | P0 | REQ-063: 受治理的外部数据采集与研究证据链 source spike | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 先做授权来源/许可/网络/快照策略 spike，不提前实现自由爬虫；Connector 等待 Tool Gateway | [REQ-063](../01-product-planning/05-requirements/REQ-063-governed-external-data-acquisition.md) / [backlog](../01-product-planning/04-backlog.md) |
 
-> 后续顺序保持：TD-085 Boundary Closure 已于 2026-10-08 完成（TD-085 Completion 达成），不再作为待承接任务；REQ-043 Runtime/Tool Gateway 仍为 ⚫ Candidate 未启动，按 backlog 既定顺序等待后续任务安排，不在本批候选开工。TD-085 Completion ≠ REQ-043 / WS-S2 / WS-S3 已解除全部阻塞（spec §6.3）。
+> 后续顺序保持：TD-085 Boundary Closure 已于 2026-10-08 完成（TD-085 Completion 达成），不再作为待承接任务；REQ-043 Runtime/Tool Gateway 仍为 ⚫ Candidate 未启动，按 backlog 既定顺序等待后续任务安排，不在本批候选开工。TD-085 Completion ≠ REQ-043 / WS-S2 / WS-S3 已解除全部阻塞（spec §6.3）。REQ-064 治理事实同步已由 PR #668 squash merge 入 main（mergeCommit `81e50329`，Original 95），REQ-064 整体仍 🟡 Doing；其下一步为整体 UI 切片顺序、范围与验收标准的专项对齐，对齐完成前不派发 S2–S8。
 
 ## 最近完成
 
@@ -59,6 +36,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-10-26 | 全局 UI 升级治理事实同步（纯文档：7 份治理事实源 + Original 评分行；8 文件 +72/-44） | 🟢 完成（仅本治理同步子任务；REQ-064 整体仍 🟡 Doing，S1 未收口，S2–S8 未启动） | PR #668 squash merge `81e50329`；Original 95/100；实现净 diff 7 文件 +71/-44；三轮独立复审闭合首轮 P1/P2；当前 1 个注册 worktree，5 个已退休、5 条分支保留、phase-C deploy/.env 已迁移保留 | [PR #668](https://github.com/MarkDanile/MetaEduBase/pull/668) / [REQ-064 requirement](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md) / [Score Log](04-retrospectives/review-score-log.md) / [plan §8](../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md#8-s1a-交付记录) / [work-log](work-log.md) |
 | 2026-10-26 | PR #666：Worktree 生命周期规则（退休条件、squash 树核验、ignored 资产枚举与非强制清理顺序） | 🟢 完成（规则已合入并生效；不代表任何 worktree 或分支已退休） | mergeCommit `f3f87fef`；Original 93；最终 3 文件（2 规则 + 1 评分）；CI 40257794001 三路 SUCCESS；未执行清理 | [PR #666](https://github.com/MarkDanile/MetaEduBase/pull/666) / [Worktree 生命周期](01-rules/git-workflow.md#worktree-生命周期) / [Score Log](04-retrospectives/review-score-log.md) / [work-log](work-log.md) |
 | 2026-10-23 | REQ-064-S1a：全局 UI 升级共享基础（Token 收敛 + 应用外壳 + E2E 端口隔离） | 🟢 完成（**仅限 S1a**；REQ-064 整体 🟡 Doing，S1 整体未收口，S2–S8 未启动） | PR #667 mergeCommit `7a73d62d`；Original 96；最终 9 文件（8 实现 + 1 评分）；382 Vitest + 55 navigation e2e；CI 39930161830 三路 SUCCESS | [PR #667](https://github.com/MarkDanile/MetaEduBase/pull/667) / [Score Log](04-retrospectives/review-score-log.md) / [plan §8](../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md#8-s1a-交付记录) / [work-log](work-log.md) |
 | 2026-10-23 | REQ-064-S0：全局 UI 升级设计规范与隔离式 Agent 接力规划（纯文档） | 🟢 完成（**仅限 S0 规划**；REQ-064 整体 🟡 Doing，不表示全站 UI 验收完成） | PR #664 mergeCommit `12f71df3`；Original 97；最终 8 文件（7 规划/索引 + 1 评分）；复审 P0–P3=0；CI 39889251123 三路 SUCCESS | [PR #664](https://github.com/MarkDanile/MetaEduBase/pull/664) / [Score Log](04-retrospectives/review-score-log.md) / [plan §7](../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md#7-s0-交付记录) / [work-log](work-log.md) |

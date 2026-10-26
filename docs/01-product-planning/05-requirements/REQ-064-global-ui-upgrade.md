@@ -3,7 +3,7 @@
 Status: 🟡 Doing
 Priority: P1
 Milestone: P3 / Web / Design System
-Owner: S0 规划与 S1a 共享基础已交付；后续切片由集成者按独立任务分派
+Owner: S0 规划、S1a 共享基础与治理事实同步已交付；后续切片由集成者按独立任务分派
 Created: 2026-10-22
 Source: 用户要求以 TraeWork 为主参照、Doubao 补充 AI 聊天区域的局部体验，研究 16 套本机设计库，形成可交接且能隔离并行的实施依据。
 Related: REQ-010 / REQ-020 / REQ-021 / REQ-022 / REQ-023 / REQ-042 / REQ-047 / REQ-052 / REQ-060 / REQ-061 / REQ-062 / REQ-063
@@ -48,8 +48,8 @@ Related: REQ-010 / REQ-020 / REQ-021 / REQ-022 / REQ-023 / REQ-042 / REQ-047 / R
 
 ## Dependencies / Next Step
 
-- S0 规划已完成独立评审并由 PR #664 合入 main（mergeCommit `12f71df3e2d050e2d83167db3e121d56b58e9473`，Original 97）；S1a 共享基础已由 PR #667 合入 main（mergeCommit `7a73d62ddd2b6fc66c4c4964c38ba595b4c6ff70`，Original 96）。REQ-064 因已进入实现交付窗口而更新为 🟡 Doing；两项合入均不等于 REQ-064 整体 Done。
-- S1a 仅交付共享 Token、应用外壳与 Playwright 端口隔离，未新增 UiComposer、未改业务页面；S1 整体未收口，S2–S8 未启动。本次治理事实同步完成并独立复审后，再单独对齐整体 UI 切片顺序、范围和验收标准；对齐完成前不派发 S2–S8。
+- S0 规划已完成独立评审并由 PR #664 合入 main（mergeCommit `12f71df3e2d050e2d83167db3e121d56b58e9473`，Original 97）；S1a 共享基础已由 PR #667 合入 main（mergeCommit `7a73d62ddd2b6fc66c4c4964c38ba595b4c6ff70`，Original 96）；治理事实同步已由 PR #668 squash merge 入 main（mergeCommit `81e503294767f97dadcbb509242b273a1ce1815d`，mergedAt 2026-10-26T06:06:33Z，Original 95）。REQ-064 因已进入实现交付窗口而更新为 🟡 Doing；上述合入均不等于 REQ-064 整体 Done。
+- S1a 仅交付共享 Token、应用外壳与 Playwright 端口隔离，未新增 UiComposer、未改业务页面；S1 整体未收口，S2–S8 未启动。下一步：单独对齐整体 UI 切片顺序、范围和验收标准；对齐完成前不派发 S2–S8。phase-D/E 与生产 backfill 未启动。
 - TD-114 前置保持已满足：[契约 §11](../../02-delivery-plans/01-specs/2026-10-19-td-114-agent-identity-bootstrap-contract.md#11-td-114-完成判据) 的 A+B 组证据由 #659/#663 交付，#665 治理收口已合入 main `a6fc4877`；TD-114 保持 🟢 完成，TD-115 保持 ⚫ 待办。
 - REQ-042 保持 ⚫ Candidate；phase-D/E、WS-S3 和 REQ-047 Extended 的实现继续走各自契约与验收。S0/S1a 合入不自动推进 phase-D/E、生产 backfill 或启用未交付能力。
 - 新 worktree 仍从依赖已合并的明确提交创建，不依赖、复制或提交他人的未提交内容。PR #666 已合入 main `f3f87fefb88cedc2cfe99f583f7a8c64c9ec66b6`，Worktree 退休与 ignored 资产核验规则已生效；PR #666 自身 worktree 与分支退休另案核验，本需求事实同步不执行清理。
