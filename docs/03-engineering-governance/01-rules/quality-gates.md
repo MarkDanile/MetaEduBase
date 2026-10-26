@@ -47,6 +47,7 @@
 10. 门禁失败：先修被拦截对象；禁止在当前任务内修改门禁脚本、`KNOWN_ISSUES`、忽略列表、阈值或 CI 配置来绕过失败。
 11. AI / RAG 效果型任务：完成态必须写最高验证层级；代码接入、mock、dry-run、真实 PG、真实 LLM / 用户验收不得互相冒充。
 12. 正式评分提交：以实现基线到最终 HEAD 的净 diff 为准，运行 `scripts/check-review-score-submit --base <implementation-head> --pr <number>`；失败时不得提交评分行。该检查仅适用于正式评分提交，不替代普通 PR 的文档门禁。
+13. Worktree 生命周期：声明任务完成前，必须记录本任务 worktree 已按 `git-workflow.md#Worktree 生命周期` 退休，或写明保留路径、原因和后续清理条件。退休只表示删除本地 worktree，不代表删除 local / remote branch。
 
 文档、规则、spec、plan、任务状态或交接信息变化时，额外运行：
 
