@@ -16,7 +16,7 @@
 
 ### REQ-064-SLICE-ALIGNMENT: 后续 UI 切片路线与验收对齐（纯规划）
 
-状态：🟡 进行中（纯规划；不派发或启动任何 UI 实现）
+状态：🟡 进行中（首轮独立复审 10 项 findings 已返修；等待最新 head 独立复审，不派发实现）
 类型：REQ / product planning / pure-docs
 领域：Web / Design System / Delivery Planning
 当前执行模式：product planning
@@ -28,10 +28,10 @@
 - [后续 UI 切片路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md)
 - [设计 spec §6](../02-delivery-plans/01-specs/2026-10-22-req-064-ui-design-system.md) / [实施计划](../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md) / [参考矩阵](../02-delivery-plans/01-specs/2026-10-22-req-064-reference-matrix.md)
 
-当前进展：开工基线已复核——REQ-064 为 🟡 Doing（非 Done）；S0 #664、S1a #667、治理事实同步 #668 与收口 #669 均已合入；S1a 仅交付共享 Token、应用外壳与 E2E 端口隔离，未交付 UiComposer 或业务页面，S1 整体未收口，S2–S8 未启动。main = `origin/main` = `6ad038d8829f3383cb75a06757688d97163c13da`，开放 PR 0 个，仅 1 个主 checkout worktree，工作区 clean。已产出路线与验收对齐文档（切片顺序与理由、目标/包含/排除、依赖与并行阻塞、交付物、自动化/技术/视觉三层验收、S1 缺口 G1–G8、待用户裁决 D1–D8、派发模板）。
-下一步：提交并推送规划 Draft PR，完成适用 CI 核验后停在独立复审前；复审与用户裁决（门 A）前不派发 S1b、S2–S8，不启动 phase-D/E 或生产 backfill。
-验证状态：`scripts/check-engineering-docs --full` 通过（32 项既有 allowlist）；`git diff --check` 通过；净 diff 为新增规划文档加 current-work、requirement、Backlog、plan 四处索引共 5 个 Markdown 文件，无生产代码、测试、依赖、CI、评分总账、Metrics 或 technical-debt 改动。CI 结果按实跑/no-op/skipped 分层记录，不把 no-op/skipped 写成业务测试通过。
-交接备注：本任务只做规划，不实现界面、共享组件、UiComposer 或业务页面；不修改评分总账、Metrics、technical-debt 或历史 PR 记录；不清理远程分支、worktree 或 refs；视觉确认门（S1/S2/S4）按 design spec §6 保留，不弱化、不扩展。
+当前进展：PR #670 已发布且保持 OPEN / Draft，base=main。首轮独立复审覆盖旧 head `b60781711b87270e366c110a70541577c82f10c9`，结论为 NEEDS_CHANGES（P1×8、P2×2，P0/P3=0）。本次已按完整复审原文逐项返修：D1–D8 全部按用户确认方向回填；S1b 改为先共享 CSS/语义 token、后 UiComposer 的有序双 PR；S2 为首个 Composer 消费方且不与 S3 并行；S3 解除条件补齐；S4 写入具体路由、组件、列表/详情/弹窗表单映射及独立编辑页待补充边界；工作台阶段与 PR body CI 证据同步修正。REQ-064 仍为 🟡 Doing，S1 整体未收口，S2–S8 未启动。返修提交在 PR #670 上形成新 head，旧 head 的复审结论不自动覆盖新提交。
+下一步：等待未参与实施和返修的独立 Agent 对最新 head 复审；复审通过前不推进 Ready、不评分、不合并，不派发 S1b、S2–S8，不启动 phase-D/E 或生产 backfill。
+验证状态：`scripts/check-engineering-docs --full` 通过（32 项既有 allowlist）；`git diff --check` 通过；净 diff 限原授权的规划文档与 current-work、requirement、Backlog、plan 索引，无生产代码、测试、依赖、CI、评分总账、Metrics 或 technical-debt 改动。最新 CI 以 PR #670 当前 head 的实际 run 为准，按实跑/no-op/skipped 分层记录，不把 no-op/skipped 写成业务测试通过。
+交接备注：本任务只做规划返修，不实现界面、共享组件、UiComposer 或业务页面；不修改评分总账、Metrics、technical-debt 或历史 PR 记录；不清理远程分支、worktree 或 refs；视觉确认按 D4/D8 使用固定环境同条件截图、结构化度量和绑定 commit 的 PR 结构化评论，不新建独立 sign-off 文档，不宣称视觉验收已完成。
 
 ## 下一批候选任务
 
@@ -43,7 +43,7 @@
 | P0 | REQ-062: 动态数据采集、填报与报表发布平台 contract shaping | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 在 Run/Artifact 契约上塑形 Campaign/FormSchemaVersion/Submission/ReportSnapshot；AI 草案审核后才发布；仅契约塑形不实现自由表单引擎 | [REQ-062](../01-product-planning/05-requirements/REQ-062-dynamic-data-collection-and-reporting.md) / [backlog](../01-product-planning/04-backlog.md) |
 | P0 | REQ-063: 受治理的外部数据采集与研究证据链 source spike | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 先做授权来源/许可/网络/快照策略 spike，不提前实现自由爬虫；Connector 等待 Tool Gateway | [REQ-063](../01-product-planning/05-requirements/REQ-063-governed-external-data-acquisition.md) / [backlog](../01-product-planning/04-backlog.md) |
 
-> 后续顺序保持：TD-085 Boundary Closure 已于 2026-10-08 完成（TD-085 Completion 达成），不再作为待承接任务；REQ-043 Runtime/Tool Gateway 仍为 ⚫ Candidate 未启动，按 backlog 既定顺序等待后续任务安排，不在本批候选开工。TD-085 Completion ≠ REQ-043 / WS-S2 / WS-S3 已解除全部阻塞（spec §6.3）。REQ-064 治理事实同步已由 PR #668 squash merge 入 main（mergeCommit `81e50329`，Original 95），REQ-064 整体仍 🟡 Doing；其下一步为整体 UI 切片顺序、范围与验收标准的专项对齐，对齐完成前不派发 S2–S8。
+> 后续顺序保持：TD-085 Boundary Closure 已于 2026-10-08 完成（TD-085 Completion 达成），不再作为待承接任务；REQ-043 Runtime/Tool Gateway 仍为 ⚫ Candidate 未启动，按 backlog 既定顺序等待后续任务安排，不在本批候选开工。TD-085 Completion ≠ REQ-043 / WS-S2 / WS-S3 已解除全部阻塞（spec §6.3）。REQ-064 治理事实同步已由 PR #668 squash merge 入 main（mergeCommit `81e50329`，Original 95），REQ-064 整体仍 🟡 Doing；D1–D8 已确认并回填至路线文档，规划 PR #670 首轮独立复审 NEEDS_CHANGES 的返修完成后，须等待最新 head 独立复审，复审通过前不派发 S1b、S2–S8。
 
 ## 最近完成
 
