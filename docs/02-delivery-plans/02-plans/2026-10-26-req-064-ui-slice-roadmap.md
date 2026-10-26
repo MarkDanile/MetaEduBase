@@ -41,7 +41,7 @@ S1a 的已交付内容与证据边界（不得扩大解释）：
 6. 文件所有权：共享层只有一个 owner；`assets/css/`、`components/`、`LayoutView.vue`、UiComposer、`playwright.config.ts` 与公共 e2e fixture 归共享层；`package.json`/锁文件、`app/router.ts`/nav/permission、`stores/`、`services/`、shared schema、backend、CI 门禁不在页面切片 allowlist；发现功能问题登记所属 REQ/BUG，不在 UI PR 扩范围。S3 的目录归属人只能由用户指定，Agent 不得自行认领。
 7. 环境隔离：每切片独立 worktree 与明确 base SHA，不复制他人脏目录、不共享 `node_modules`/dist/测试输出；端口默认 S1=3101、S2=3102…S8=3108，`METAEDU_E2E_PORT` + baseURL/server URL 同源 + `--strictPort` + `reuseExistingServer=false`；占用直接失败，不杀进程、不自动换端口。新增 e2e 文件须匹配 `*-desktop.spec.ts` / `*-mobile.spec.ts` / `*-shared.spec.ts` 发现规则，平板视口在 desktop/shared 内显式 setViewportSize。**仅使用不同 worktree 不足以解除 S3 的目录互斥。**
 8. 停止边界：本路线任何阶段都不得顺带启动 phase-D/E、生产 backfill、远程分支/worktree/refs 清理，也不得把未交付能力画成已交付按钮。
-9. **D1–D8 已是用户确认的决策**，不得再写成待裁决，也不得恢复被这些决策排除的旧方案；规划仍未等于实施或验收完成。
+9. **D1–D9 已是用户确认的决策**，不得再写成待裁决，也不得恢复被这些决策排除的旧方案；规划仍未等于实施或验收完成。
 10. **S4 强制分页门不得未经用户批准弱化**：design spec §6 的 S4「列表筛选/分页」是强制验收范围。用户已裁决采用**方案 A**（D9），验收口径保持不变；S4 强制分页项只有在**已有真实候选并通过**后才视为闭合。在此之前不得以其他样板冒充、不得宣称 S4 全部验收完成、不得派发 S6/S7；**方案 B（调整验收口径）未采用**，不得由 Agent 自行推进或写成已获批准。
 
 ## 2. S1 尚未收口的具体缺口（S1a ≠ S1）
@@ -59,11 +59,11 @@ S1a 的已交付内容与证据边界（不得扩大解释）：
 
 ## 3. 已确认路线与排序理由
 
-D1–D8 已由用户确认。下表中的“依赖”是允许开工的硬条件；“退出后才允许”是允许下一切片的硬条件。
+D1–D9 已由用户确认。下表中的“依赖”是允许开工的硬条件；“退出后才允许”是允许下一切片的硬条件。
 
 | 阶段 | 内容 | 依赖 | 退出后才允许 |
 |---|---|---|---|
-| A. 路线决策回填 | 本文件与相关索引同步已确认 D1–D8，并处理首轮 10 项 findings | 首轮完整复审报告与实时 head 已核验 | 最新 head 通过独立复审前，仍不得派发实现 |
+| A. 路线决策回填 | 本文件与相关索引同步已确认 D1–D9，并处理首轮 10 项 findings | 首轮完整复审报告与实时 head 已核验 | 最新 head 通过独立复审前，仍不得派发实现 |
 | B. S1b-1 共享 CSS / 语义 token（顺序 PR 1） | G2/G3/G4 的共享层收敛与 opt-in 渐进入口；共享层预览证据 | A 的规划返修已通过独立复审；S0/S1a 已合入；TD-114 完成；共享层 owner 已分配 | S1b-1 验证通过且合入后，才允许 C |
 | C. S1b-2 UiComposer（顺序 PR 2） | G1 UiComposer、G5 S1 全量预览、G6 S1 用户视觉确认 | **S1b-1 已合入且验证通过**；base 必须包含 S1b-1 merge commit | S1b-2 验证通过 + **S1 用户视觉确认并合入** → S1 才收口，才允许 D/F |
 | D. S2 AI 问答（UiComposer 首个消费方） | 采用 UiComposer 的聊天输入与阅读体验，完成 S2 视觉门 | C 已合入且 S1 已收口；S2/S3 不并行 | S2 合入后，先固定 Composer 接口与文件所有权，再评估 E；F 可按自身依赖推进 |
