@@ -14,24 +14,7 @@
 
 ## 当前进行中
 
-### REQ-064-SLICE-ALIGNMENT: 后续 UI 切片路线与验收对齐（纯规划）
-
-状态：🟡 进行中（第五轮独立复审 PASS 后已同步用户裁决；等待新 head 独立复审，不派发实现）
-类型：REQ / product planning / pure-docs
-领域：Web / Design System / Delivery Planning
-当前执行模式：product planning
-最近接手工具：Claude Code
-分支：docs/req-064-slice-alignment
-
-需求来源：
-- [REQ-064](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md)
-- [后续 UI 切片路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md)
-- [设计 spec §6](../02-delivery-plans/01-specs/2026-10-22-req-064-ui-design-system.md) / [实施计划](../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md) / [参考矩阵](../02-delivery-plans/01-specs/2026-10-22-req-064-reference-matrix.md)
-
-当前进展：PR #670 已发布且保持 OPEN / Draft，base=main。首轮独立复审 NEEDS_CHANGES（P1×8、P2×2）与第二轮 NEEDS_CHANGES（P1×1、P2×1）均已完成对应返修。第四轮独立复审覆盖 head `92fd6060cce830fb358a5dfec6dafa94be52f2ad`，结论为 NEEDS_CHANGES（P0=0、P1=0、P2×2、P3×6），并确认第三轮 P1-1 已实质闭合。第四轮返修范围：① 把 §4.5“没有经核实的真实分页样板”限定到 design spec §6 所要求的 S4 候选范围（knowledge / resource / database 路由）内，并补充披露范围外已核实事实——`capabilities/skills` → `SkillListView.vue`、`capabilities/mcp` → `McpServerListView.vue` 已挂路由且审计弹窗内执行记录列表有真实服务端分页（`listExecutions` / `listInvocations` + `auditPrev/auditNext` 边界禁用），但分页对象是审计弹窗、页面主列表无分页、归属 S5 而非 S4 既有候选（第四轮时可否作为 S4 候选或范式仍待用户裁决，现已裁决为只作参考）；② 补齐 S4 卡片自身「可并行」字段的强制分页门，使任何局部入口都不产生“样板确认即可派发”的读法；③ 统一全文 canonical 措辞、补记四轮复审状态、修正 §9 映射引用、S4 交付物不再把分页列为既有原行为回归项，并在 §1 不可变约束并列登记 S4 强制分页门不得未经用户批准弱化。固定 limit、静态参数、no-op 和无路由组件仍不算真实候选。第五轮独立复审覆盖 head `324a107c2f809bbcfcea754fb0e554911afe7e29`，结论为 **PASS**（P0=0、P1=0、P2=0、P3=2，非阻塞），判定前四轮共 21 项 findings 全部实质闭合。本轮按用户裁决同步规划事实：S4 强制分页采用**方案 A**（保留 design spec §6 强制验收要求，方案 B 未采用；S5 技能/MCP 审计弹窗分页只作参考、不自动纳入 S4 候选），分页候选确认与前置工作仅做规划、不在本任务实现业务分页；S3 目录/文件归属人用户已明确暂不指定，S3 继续阻塞；第五轮遗留 2 项非阻塞 P3 经用户决定本轮不返修、保留为观察项。**S4 强制分页项仍未闭合**（S4 候选范围内无合格真实候选），S4 不得宣称全部验收完成，S6/S7 继续受阻。REQ-064 仍为 🟡 Doing，S1 整体未收口，S2–S8 未启动。同步提交在 PR #670 上形成新 head，第五轮的 PASS 只覆盖 `324a107c`，不自动覆盖新提交。
-下一步：等待未参与本轮裁决同步的独立 Agent 对新 head 复审；复审通过前不推进 Ready、不评分、不合并，不派发 S1b、S2–S8，不启动 phase-D/E 或生产 backfill。S4 强制分页门未闭合前不宣称该项通过，也不派发 S6/S7；S3 在用户指定目录/文件归属人前继续阻塞。
-验证状态：`scripts/check-engineering-docs --full` 通过（32 项既有 allowlist）；`git diff --check` 通过；净 diff 限原授权的规划文档与 current-work、requirement、Backlog、plan 索引，无生产代码、测试、依赖、CI、评分总账、Metrics 或 technical-debt 改动。最新 CI 以 PR #670 当前 head 的实际 run 为准，按实跑/no-op/skipped 分层记录，不把 no-op/skipped 写成业务测试通过。
-交接备注：本任务只做规划同步，不实现界面、共享组件、UiComposer 或业务页面，不新增业务分页功能，不弱化 design spec 的强制验收要求；S4 分页方案已由用户裁决为 A，本轮仅同步该裁决，不实现业务分页；S3 目录/文件归属人由用户指定，本轮不代为指定，也不自行认领；不修改评分总账、Metrics、technical-debt 或历史 PR 记录；不清理远程分支、worktree 或 refs；视觉确认按 D4/D8 使用固定环境同条件截图、结构化度量和绑定 commit 的 PR 结构化评论，不新建独立 sign-off 文档，不宣称视觉验收已完成。
+当前无活跃任务。
 
 ## 下一批候选任务
 
@@ -43,7 +26,7 @@
 | P0 | REQ-062: 动态数据采集、填报与报表发布平台 contract shaping | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 在 Run/Artifact 契约上塑形 Campaign/FormSchemaVersion/Submission/ReportSnapshot；AI 草案审核后才发布；仅契约塑形不实现自由表单引擎 | [REQ-062](../01-product-planning/05-requirements/REQ-062-dynamic-data-collection-and-reporting.md) / [backlog](../01-product-planning/04-backlog.md) |
 | P0 | REQ-063: 受治理的外部数据采集与研究证据链 source spike | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 先做授权来源/许可/网络/快照策略 spike，不提前实现自由爬虫；Connector 等待 Tool Gateway | [REQ-063](../01-product-planning/05-requirements/REQ-063-governed-external-data-acquisition.md) / [backlog](../01-product-planning/04-backlog.md) |
 
-> 后续顺序保持：TD-085 Boundary Closure 已于 2026-10-08 完成（TD-085 Completion 达成），不再作为待承接任务；REQ-043 Runtime/Tool Gateway 仍为 ⚫ Candidate 未启动，按 backlog 既定顺序等待后续任务安排，不在本批候选开工。TD-085 Completion ≠ REQ-043 / WS-S2 / WS-S3 已解除全部阻塞（spec §6.3）。REQ-064 治理事实同步已由 PR #668 squash merge 入 main（mergeCommit `81e50329`，Original 95），REQ-064 整体仍 🟡 Doing；D1–D9 已确认并回填至路线文档，首轮至第四轮独立复审 findings 已分别返修、第五轮独立复审 PASS（P0=0、P1=0、P2=0、P3=2；用户决定其中 2 项非阻塞 P3 本轮不返修、保留观察），并已按用户裁决同步 S4 分页方案 A，须等待新 head 独立复审，复审通过前不派发 S1b、S2–S8。
+> 后续顺序保持：TD-085 Boundary Closure 已于 2026-10-08 完成（TD-085 Completion 达成），不再作为待承接任务；REQ-043 Runtime/Tool Gateway 仍为 ⚫ Candidate 未启动，按 backlog 既定顺序等待后续任务安排，不在本批候选开工。TD-085 Completion ≠ REQ-043 / WS-S2 / WS-S3 已解除全部阻塞（spec §6.3）。REQ-064 治理事实同步已由 PR #668 squash merge 入 main（mergeCommit `81e50329`，Original 95）；后续 UI 切片路线与验收对齐已由 PR #670 squash merge 入 main（mergeCommit `b4dd5dfb`，mergedAt 2026-10-26T13:08:27Z，被评 head `f96e4055`，Original 92/100）。REQ-064 整体仍 🟡 Doing；D1–D9 已确认并回填至路线文档并随 #670 进入 main；**S4 强制分页门仍未闭合、S6/S7 仍受阻、S3 负责人待指定、S1b 与 S2–S8 未启动、phase-D/E 与生产 backfill 未启动**；下一步先完成 S4 分页候选确认/前置规划与用户决策，不直接派发 S6/S7。
 
 ## 最近完成
 
@@ -53,6 +36,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-10-26 | 全局 UI 升级后续切片路线与验收对齐（纯规划：新增路线事实源 2026-10-26-req-064-ui-slice-roadmap.md，回填 D1–D9、S1 缺口 G1–G8、S1b-1/S1b-2 有序 PR、S2–S8 切片卡与三层验收、S4 强制分页门与方案 A 裁决；实现净 diff 5 文件 +389/-9，含 Original 评分行后 6 文件 +390/-9） | 🟢 完成（仅本规划 closeout；REQ-064 整体仍 🟡 Doing，S1 未收口，S2–S8 未启动） | PR #670 squash merge `b4dd5dfb`（mergedAt 2026-10-26T13:08:27Z；被评 head `f96e4055`，Original 92/100）；前四轮 NEEDS_CHANGES 已闭合，第五轮 PASS 覆盖 `324a107c`、第六轮 PASS 覆盖 `1d297471`；S4 分页门未闭合、S6/S7 受阻、S3 负责人待指定；下一步：S4 分页候选确认/前置规划与用户决策 | [PR #670](https://github.com/MarkDanile/MetaEduBase/pull/670) / [路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md) / [REQ-064 requirement](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md) / [Score Log](04-retrospectives/review-score-log.md) / [work-log](work-log.md) |
 | 2026-10-26 | 全局 UI 升级治理事实同步（纯文档：7 份治理事实源 + Original 评分行；8 文件 +72/-44） | 🟢 完成（仅本治理同步子任务；REQ-064 整体仍 🟡 Doing，S1 未收口，S2–S8 未启动） | PR #668 squash merge `81e50329`；Original 95/100；实现净 diff 7 文件 +71/-44；三轮独立复审闭合首轮 P1/P2；当前 1 个注册 worktree，5 个已退休、5 条分支保留、phase-C deploy/.env 已迁移保留 | [PR #668](https://github.com/MarkDanile/MetaEduBase/pull/668) / [REQ-064 requirement](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md) / [Score Log](04-retrospectives/review-score-log.md) / [plan §8](../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md#8-s1a-交付记录) / [work-log](work-log.md) |
 | 2026-10-26 | PR #666：Worktree 生命周期规则（退休条件、squash 树核验、ignored 资产枚举与非强制清理顺序） | 🟢 完成（规则已合入并生效；不代表任何 worktree 或分支已退休） | mergeCommit `f3f87fef`；Original 93；最终 3 文件（2 规则 + 1 评分）；CI 40257794001 三路 SUCCESS；未执行清理 | [PR #666](https://github.com/MarkDanile/MetaEduBase/pull/666) / [Worktree 生命周期](01-rules/git-workflow.md#worktree-生命周期) / [Score Log](04-retrospectives/review-score-log.md) / [work-log](work-log.md) |
 | 2026-10-23 | REQ-064-S1a：全局 UI 升级共享基础（Token 收敛 + 应用外壳 + E2E 端口隔离） | 🟢 完成（**仅限 S1a**；REQ-064 整体 🟡 Doing，S1 整体未收口，S2–S8 未启动） | PR #667 mergeCommit `7a73d62d`；Original 96；最终 9 文件（8 实现 + 1 评分）；382 Vitest + 55 navigation e2e；CI 39930161830 三路 SUCCESS | [PR #667](https://github.com/MarkDanile/MetaEduBase/pull/667) / [Score Log](04-retrospectives/review-score-log.md) / [plan §8](../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md#8-s1a-交付记录) / [work-log](work-log.md) |
