@@ -70,6 +70,9 @@ test.describe("REQ-064 S4 数据预览分页 (D-P1=3a + D-P2=B)", () => {
 
     await expect(page.getByTestId("dataset-rows-next")).toBeDisabled();
     await expect(page.locator("tbody tr")).toHaveCount(1);
+    // 跨页连续性：第 3 页首行必须是第 41 行（ds-bill#40），
+    // 证明 offset 分页没有重复或漏读。
+    await expect(page.locator("tbody tr").first()).toContainText("ds-bill#40");
   });
 
   test("首页「上一页」禁用，不产生额外请求", async ({ page }) => {

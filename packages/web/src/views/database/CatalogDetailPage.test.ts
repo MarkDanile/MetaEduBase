@@ -533,12 +533,15 @@ describe("CatalogDetailPage.vue (REQ-064 S4 数据预览分页 D-P1=3a + D-P2=B)
 
     const tabs = wrapper.findComponent({ name: "StubTabs" });
     const props = tabs.props() as Record<string, unknown>;
-    expect(props.totalRows).toBeUndefined();
-    expect(props.totalRows).toBeUndefined();
     // 只传页码与"是否有下一页"，不传总数
     expect(props.page).toBe(0);
     expect(props.hasNextPage).toBe(true);
     expect(props.canGoPrev).toBe(false);
+    // 未声明的 prop 会作为 fallthrough attr 渲染到根元素上，
+    // 因此断言渲染产物（而不是 props）才能真正锁死
+    // "父层没有再传 total-rows / page-size" 这一硬边界。
+    expect(tabs.attributes("total-rows")).toBeUndefined();
+    expect(tabs.attributes("page-size")).toBeUndefined();
   });
 });
 
