@@ -25,13 +25,13 @@
 
 需求来源：
 - [REQ-064](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md)
-- [S4 强制分页候选确认与前置规划](../02-delivery-plans/02-plans/2026-10-27-req-064-s4-pagination-prerequisite.md)（PR #672 已合入 main，mergeCommit `5ebff34c`）
+- [S4 强制分页候选确认与前置规划](../02-delivery-plans/02-plans/2026-10-27-req-064-s4-pagination-prerequisite.md)（PR #672 已合入 main，mergeCommit `c57ebf33e32cbc263e5590b0ef2d6fcd650ffe58`；注意 `5ebff34c` 是 #671 治理收口的 mergeCommit，不含该规划文档）
 - [后续 UI 切片路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md)
 
 当前进展：用户已裁决 D-P1=**3a 数据预览子视图**、D-P2=**B（`limit+1` 探测）**、D-P3=规划规定的完整验收证据。实现已完成：页大小 20、每次请求 21 行（≤ rows 端点上限 200），有第 21 行即「下一页」可用、不足即禁用，只显示当前页序号、不显示总条数/总页数；`row_count` 不参与分页；切换数据集先重置页码再切换选中项（避免用旧 offset 请求新数据集）；并发保护依赖 Vue Query 按 queryKey 隔离旧响应，并由 e2e 延迟响应用例实证。新增 `rowsPagination.ts` 纯函数模块、`DatasetTabsPanel` 契约测试、`CatalogDetailPage` 分页行为测试、e2e 交互 spec 与手动截图采集 spec。Draft PR #673 已发布。
 下一步：等待未参与本轮实现的独立 Agent 对最新 head 复审；复审通过后才推进 Ready、评分与合并。**S4 强制分页门是否闭合须由用户按验收证据裁决**，在此之前 S6/S7 继续受阻。
 验证状态：lint 0 errors / 28 warnings（与 main 基线一致）；typecheck 通过；build:bundle 通过；全量前端 Vitest 409/409（42 文件，main 基线 382 + 新增 27）；全量 e2e 72/72（新增 6 项分页 e2e）。CI 分层：Frontend job **实跑** typecheck / lint / 单元测试（42 文件 409 通过）/ 构建 / e2e（72 passed）；Engineering docs job **实跑**文档门禁（32 项 allowlist）与 Whitespace gate；Backend iteration job 为 **no-op**（`No backend or MCP changes`，其后 22 步 skipped）、Backend full hermetic 三 job **skipped**——后两者反映本次无后端改动，**不构成任何后端或业务测试通过证据**。改前/改后截图各 9 张 + 结构化度量已采集（改前 `paginationPresent=false`、请求 limit=20；改后 `paginationPresent=true`、页码指示"第 1 页"、请求 limit=21、首页「上一页」禁用、有下一页）。
-交接备注：本切片只做 3a 数据预览的分页交互，不扩展到其他页面；不改 design spec §6、后端契约、router、共享组件与 CSS、store、权限语义；不启动 S1b、S2–S8、phase-D/E 或生产 backfill；不指定 S3 负责人；不删除分支、worktree 或 refs。验收证据使用 e2e fixture mock，已标注为 fixture，不冒充真实后端数据形态；用户视觉确认尚未执行。
+交接备注：本切片只做 3a 数据预览的分页交互，不扩展到其他页面；**本次未覆盖的既有缺口（绑定 REQ-064 后续切片跟踪，不新建技术债编号）**：① 重初始化后端为「同步删行 + 异步解析」，解析完成前 rows 不会自动刷新（预览显示空态，EmptyState 文案为「等待数据解析任务完成」）；② rows 查询失败态未实现，失败与真空态都渲染「暂无数据」；③ `row_index` 唯一性仅由应用层保证（两条写入路径均 `enumerate` 从 0 赋值），后端 `models.py` 无 `(dataset_id, row_index)` 唯一约束，跨页排序的稳定性依赖该约定；不改 design spec §6、后端契约、router、共享组件与 CSS、store、权限语义；不启动 S1b、S2–S8、phase-D/E 或生产 backfill；不指定 S3 负责人；不删除分支、worktree 或 refs。验收证据使用 e2e fixture mock，已标注为 fixture，不冒充真实后端数据形态；用户视觉确认尚未执行。
 
 ## 下一批候选任务
 
