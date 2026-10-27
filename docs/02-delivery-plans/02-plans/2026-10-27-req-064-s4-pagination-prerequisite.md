@@ -24,7 +24,7 @@
 - 前端服务与查询：`packages/web/src/services/document.ts`、`services/knowledge.ts`、`services/skillRegistry.ts`、`services/mcpRegistry.ts`、`packages/web/src/views/database/queries.ts`
 - 后端端点与仓储：`packages/server-python/app/contexts/document/interfaces/api/files.py`、`knowledge/infrastructure/knowledge_repository.py`、`structured_data/interfaces/api/router.py`
 - 共享分页组件检索：`find packages/web/src -iname "*pagin*"`（**无结果**）；关键词 `usePagination` / `Pagination` / `pageSize` / `totalPages` / `hasNext` / `change-page` / `offset` / `limit` / `total`
-- 未挂路由文件的引用检索：全仓 `grep ResourceView`（除 `ResourceLibraryView` 外**零命中**）
+- 未挂路由文件的引用检索：**代码范围** `packages/web/src` 与 `packages/web/e2e` 中 `grep ResourceView`（排除 `ResourceLibraryView` 后**零命中**；`app/router.ts` 亦无引用）。**该检索仅限代码范围，不写成全仓零文本命中**——仓库文档中另有该字符串出现
 
 **核查方式限制**：本次为**只读静态核查**，未启动前端应用实际点击分页控件，未运行或修改 UI 来补齐缺口，未运行 Vitest / Playwright / 真实 PG / 真实 LLM。**不能绝对排除**经 store / composable / 第三方组件的间接分页实现，但已在视图、服务、查询与后端端点四层逐层核对，未发现此类实现；结论限定于下列已列路由及其实际组件。
 
@@ -45,7 +45,7 @@
 |---|---|---|---|
 | `capabilities/skills` → `SkillListView.vue` | **S5** | 页面主列表 `loadSkills()` → `listSkills()` 无分页；**审计弹窗**内 `listExecutions(id, { limit, offset: auditPage * auditLimit })` → 消费 `res.items` / `res.total`，`auditPrev` / `auditNext` 带边界禁用，`auditPageInfo` 显示 `start-end / 共 total`；服务层返回 `ExecutionListResponse { items, total, limit, offset }` | **真实服务端分页**，但属 S5 且分页对象是审计弹窗而非页面主列表；**只作实现与契约参考** |
 | `capabilities/mcp` → `McpServerListView.vue` | **S5** | 同构：`listInvocations(...)`，`auditPrev` / `auditNext`、边界禁用、`res.items` / `res.total`；主列表 `loadServers()` 无分页 | 同上，**只作参考** |
-| `views/resource/ResourceView.vue` | 无路由、无组件引用 | 有 `offset/limit`、上一页/下一页、边界禁用与 `loadResources()`；但 `app/router.ts` 的 `/resource` 指向 `ResourceLibraryView.vue`，且全仓检索 `ResourceView` 无其他引用 | **存在分页代码 ≠ 存在可验收页面**，不计入候选 |
+| `views/resource/ResourceView.vue` | 无路由、无组件引用 | 有 `offset/limit`、上一页/下一页、边界禁用与 `loadResources()`；但 `app/router.ts` 的 `/resource` 指向 `ResourceLibraryView.vue`，且在 `packages/web/src` 的路由与组件引用检索中排除 `ResourceLibraryView` 后**无其他引用**（**仅限代码范围**，不据此断言全仓零文本命中） | **存在分页代码 ≠ 存在可验收页面**，不计入候选 |
 
 ## 2. 核查结论：S4 当前**尚无合格分页候选**
 
@@ -95,7 +95,7 @@ S4 强制分页项的验收证据必须来自**真实候选页面**：可运行�
 **包含**
 
 1. **分页交互**：上一页/下一页（或页码）控件；边界禁用（首页禁上一页、末页禁下一页）；加载中禁用；翻页重新请求数据并更新列表。
-2. **数据契约**：按 D-P2 的选择实现——D 复用 `DatasetDTO.row_count` 并验证其与物理行数的一致性；A 需后端 `total`（契约变更单列任务、单独验收，可复用已有 `DatasetRepository.count_rows()`）；B 采用前端 `limit + 1` 探测；**C 客户端分页须先证明「全量可取得」**：受后端单请求 limit 上限约束（`/document/files` ≤ 100、`/knowledge/nodes` 默认 50、数据集 rows ≤ 200、主数据集列表默认 50），须分批拉取直至取尽或由用户确认上界，`total` 由全量数组长度得到，筛选与翻页在客户端对全量数组切片，测试须覆盖「实际超过单请求上限时不会被静默截断」。**禁止**把 `totalRows` 绑定为当前页行数（`CatalogDetailPage` 现有错误不得复制）。**所有 offset 分页须有稳定且确定的全排序**：主排序键可重复（`created_at`、名称、数据量等）时**必须追加唯一键（如 `id`）作 tie-breaker**，并覆盖相同排序键跨页的重复与漏读测试；B 的 `limit + 1` 须满足**页大小 < 端点最大 limit**，否则首页即 422。
+2. **数据契约**：按 D-P2 的选择实现——D 复用 `DatasetDTO.row_count` 并验证其与物理行数的一致性；A 需后端 `total`（契约变更单列任务、单独验收；**仅 3a 数据预览可复用已有 `DatasetRepository.count_rows()`**；**3b 主数据集列表须改用带相同 catalog/status/tag 过滤条件的数据集计数查询，禁止把 `count_rows()` 用于 3b**——它统计的是单个数据集的数据行，不是目录中数据集的总条数）；B 采用前端 `limit + 1` 探测；**C 客户端分页须先证明「全量可取得」**：受后端单请求 limit 上限约束（`/document/files` ≤ 100、`/knowledge/nodes` 默认 50、数据集 rows ≤ 200、主数据集列表默认 50），须分批拉取直至取尽或由用户确认上界，`total` 由全量数组长度得到，筛选与翻页在客户端对全量数组切片，测试须覆盖「实际超过单请求上限时不会被静默截断」。**禁止**把 `totalRows` 绑定为当前页行数（`CatalogDetailPage` 现有错误不得复制）。**所有 offset 分页须有稳定且确定的全排序**：主排序键可重复（`created_at`、名称、数据量等）时**必须追加唯一键（如 `id`）作 tie-breaker**，并覆盖相同排序键跨页的重复与漏读测试；B 的 `limit + 1` 须满足**页大小 < 端点最大 limit**，否则首页即 422。
 3. **状态与边界**：空态、加载、错误、无权限；翻页后空页（如删除末页最后一条后回退）；筛选/搜索条件变化时重置到第一页；文件夹/目录切换时重置分页状态。并补充以下硬边界：
    - **搜索态（仅 `/knowledge`）**：`handleSearch()` 会把同一 `nodes` 列表切换为 `/knowledge/search` 结果，该接口只有 `top_k`（默认 5、`le=50`），**无 offset、无 total**。须在 D-P1 一并确认搜索态口径：①搜索态**不分页**（搜索替换列表，分页控件隐藏/禁用并说明原因，验收时明确「搜索原行为不变」的口径）；②搜索态**也需分页**（须先扩展 search 契约支持 offset/total，属后端变更，单列验收）。**不得**在搜索态直接调用 `listNodes` 翻页而丢失搜索谓词。
    - **主数据集列表的其他消费者（仅 3b）**：`allDatasetsForCatalog` 还驱动 `discoveredEntityTypes`、`semanticModels`、`hasDatasetsWithoutEntityType` 与 `selectedDataset`，`DatasetListPanel` 标题直接显示 `datasets.length`。服务端分页后，**语义聚合须基于全 catalog 数据集（或独立全量查询）**，**选中详情须保留跨页引用**，**标题须区分「当前页条数」与「目录总条数」**；不得把该数组直接替换为当前页数据。补跨页语义层、详情与标题计数回归测试。
