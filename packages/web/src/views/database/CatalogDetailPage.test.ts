@@ -31,12 +31,14 @@ const {
   mockListRows,
   mockGetKnowledgeGraph,
   mockRebuildKg,
+  mockReinitializeDataset,
   mockUpdateDataset,
 } = vi.hoisted(() => ({
   mockListDatasets: vi.fn(),
   mockListRows: vi.fn(),
   mockGetKnowledgeGraph: vi.fn(),
   mockRebuildKg: vi.fn(),
+  mockReinitializeDataset: vi.fn(),
   mockUpdateDataset: vi.fn(),
 }));
 
@@ -44,6 +46,7 @@ vi.mock("@/services/structured-data", () => ({
   structuredDataApi: {
     listDatasets: mockListDatasets,
     listRows: mockListRows,
+    reinitializeDataset: mockReinitializeDataset,
     uploadDataset: vi.fn(),
     updateDataset: mockUpdateDataset,
     getKnowledgeGraph: mockGetKnowledgeGraph,
@@ -80,6 +83,7 @@ vi.mock("@/views/database/DatasetListPanel.vue", () => ({
 vi.mock("@/views/database/DatasetDetailMetaBar.vue", () => ({
   default: defineComponent({
     name: "StubMeta",
+    emits: ["reinitialize", "delete", "update-entity-type"],
     render() {
       return h("div", { "data-testid": "stub-meta" }, "meta");
     },
@@ -535,5 +539,102 @@ describe("CatalogDetailPage.vue (REQ-064 S4 数据预览分页 D-P1=3a + D-P2=B)
     expect(props.page).toBe(0);
     expect(props.hasNextPage).toBe(true);
     expect(props.canGoPrev).toBe(false);
+  });
+});
+
+/**
+ * 第二轮独立复审 findings 的行为锁：
+ * - 翻页后空页（末页最后一条被删 / 重新初始化后行数变少）自动回退。
+ * - 重新初始化后 rows 查询失效且回到第一页。
+ * - 非 onSelectDataset 路径切换数据集时，首个请求的 offset 必须为 0
+ *   （依赖 flush:"sync" 的兜底 watch，早于 Vue Query 内部的 pre-flush watcher）。
+ */
+describe("CatalogDetailPage.vue (S4 分页边界：空页回退 / 重初始化 / 兜底 watch)", () => {
+  const ROWS_PAGE_SIZE = 20;
+  /** 探测请求 21 行 → 取到第 21 行即存在下一页。 */
+  const ROWS_PROBE_SIZE = ROWS_PAGE_SIZE + 1;
+
+  function makeRows(count: number, startIndex = 0) {
+    return Array.from({ length: count }, (_, i) => ({
+      id: `row-${startIndex + i}`,
+      dataset_id: "ds-bill",
+      row_index: startIndex + i,
+      data: { id: startIndex + i },
+      created_at: "2026-01-01T00:00:00",
+    }));
+  }
+
+  async function selectFirstDataset(wrapper: Awaited<ReturnType<typeof mountDetail>>["wrapper"]) {
+    wrapper.findComponent({ name: "StubList" }).vm.$emit("select", SAMPLE_DATASETS[0]);
+    await flushPromises();
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockListDatasets.mockReset().mockResolvedValue({ data: SAMPLE_DATASETS });
+    mockListRows.mockReset().mockResolvedValue({ data: [] });
+    mockGetKnowledgeGraph.mockReset().mockResolvedValue({ data: { nodes: [], edges: [] } });
+    mockReinitializeDataset.mockReset().mockResolvedValue({ data: SAMPLE_DATASETS[0] });
+  });
+
+  it("翻页后空页自动回退到上一页", async () => {
+    // 第 1 页返回 21 行（探测到第 21 行 → 有下一页），第 2 页起返回 0 行（模拟末页最后一条被删）
+    mockListRows.mockImplementation((_id: string, params: { offset: number }) =>
+      Promise.resolve({
+        data: params.offset === 0 ? makeRows(ROWS_PROBE_SIZE) : [],
+      }),
+    );
+    const { wrapper } = await mountDetail();
+    await selectFirstDataset(wrapper);
+    mockListRows.mockClear();
+
+    wrapper.findComponent({ name: "StubTabs" }).vm.$emit("change-page", 1);
+    await flushPromises();
+    await flushPromises();
+
+    // 空页被识别并回退到第一页
+    expect(wrapper.find('[data-testid="stub-tabs"]').attributes("data-page")).toBe("0");
+    const offsets = mockListRows.mock.calls.map((c) => (c[1] as { offset: number }).offset);
+    expect(offsets).toContain(0);
+  });
+
+  it("重新初始化后 rows 查询失效且回到第一页", async () => {
+    mockListRows.mockResolvedValue({ data: makeRows(ROWS_PROBE_SIZE) });
+    const { wrapper } = await mountDetail();
+    await selectFirstDataset(wrapper);
+
+    wrapper.findComponent({ name: "StubTabs" }).vm.$emit("change-page", 1);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="stub-tabs"]').attributes("data-page")).toBe("1");
+
+    mockListRows.mockClear();
+    wrapper.findComponent({ name: "StubMeta" }).vm.$emit("reinitialize");
+    await flushPromises();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="stub-tabs"]').attributes("data-page")).toBe("0");
+    // rows 查询被 invalidate（offset 0 重新请求）
+    const offsets = mockListRows.mock.calls.map((c) => (c[1] as { offset: number }).offset);
+    expect(offsets).toContain(0);
+  });
+
+  it("非 onSelectDataset 路径切换数据集时首个请求 offset 为 0", async () => {
+    mockListRows.mockResolvedValue({ data: makeRows(ROWS_PROBE_SIZE) });
+    const { wrapper } = await mountDetail();
+    await selectFirstDataset(wrapper);
+
+    wrapper.findComponent({ name: "StubTabs" }).vm.$emit("change-page", 1);
+    await flushPromises();
+    mockListRows.mockClear();
+
+    // 直接改写组件内部状态（模拟 onSelectDataset 之外的路径）
+    (wrapper.vm as unknown as { selectedDatasetId: string | null }).selectedDatasetId =
+      SAMPLE_DATASETS[1].id;
+    await flushPromises();
+    await flushPromises();
+
+    const firstCall = mockListRows.mock.calls[0];
+    expect(firstCall).toBeDefined();
+    expect((firstCall[1] as { offset: number }).offset).toBe(0);
   });
 });

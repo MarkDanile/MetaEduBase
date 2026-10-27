@@ -37,6 +37,16 @@ export function rowsPageOffset(page: number): number {
 }
 
 /**
+ * 翻页后空页回退判定：当前页取不到任何行、且不在首页时，应回退一页。
+ *
+ * 典型场景：末页最后一条被删除，或数据集重新初始化后行数变少，
+ * 此时停留在原页会渲染成空表 + 「暂无数据」。
+ */
+export function shouldFallbackRowsPage(page: number, fetchedCount: number): boolean {
+  return page > 0 && fetchedCount === 0;
+}
+
+/**
  * 计算翻页目标页；不可翻页时返回 `null`。
  *
  * - 向前（delta < 0）：首页（page = 0）不可再向前。

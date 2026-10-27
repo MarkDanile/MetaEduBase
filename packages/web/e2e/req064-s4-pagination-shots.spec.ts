@@ -88,10 +88,15 @@ async function openPreview(page: import("@playwright/test").Page) {
  * 且改后的分页控件必定可见。
  */
 async function focusPreviewBottom(page: import("@playwright/test").Page): Promise<void> {
+  // 改前/改后使用**同一锚点**（数据预览面板容器），保证取景一致：
+  // 先回到页面顶部，再把面板底边滚到视口底部。改后面板内多出分页条，
+  // 因此分页条在改后截图内可见，而改前同一位置无分页条。
   await page.evaluate(() => {
-    const pagination = document.querySelector('[data-testid="dataset-rows-pagination"]');
-    const table = document.querySelector("table");
-    const anchor = pagination ?? table?.parentElement;
+    window.scrollTo(0, 0);
+  });
+  await page.waitForTimeout(150);
+  await page.evaluate(() => {
+    const anchor = document.querySelector("table")?.closest(".ui-panel");
     (anchor as HTMLElement | null)?.scrollIntoView({ block: "end" });
   });
   await page.waitForTimeout(200);

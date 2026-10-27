@@ -243,6 +243,7 @@ import {
   detectHasNextPage,
   nextRowsPage,
   rowsPageOffset,
+  shouldFallbackRowsPage,
   visibleRows,
 } from "@/views/database/rowsPagination";
 import DatasetTabsPanel from "@/views/database/DatasetTabsPanel.vue";
@@ -391,8 +392,27 @@ function onChangeRowsPage(delta: number): void {
 }
 
 // 兜底：任何其他路径改变选中数据集时同样重置页码。
-watch(selectedDatasetId, () => {
-  rowsPage.value = 0;
+// flush:"sync" 必须——Vue Query 在 useBaseQuery 内部注册的
+// watch(defaultedOptions) 属于 pre-flush 且创建更早，会先于本 watcher 执行，
+// 若此处不同步重置，vue-query 会用**旧 rowsPage** 算出新 queryKey，
+// 先发出「(新数据集, 旧 offset)」的无效请求，再由本 watcher 置 0 触发第二次请求。
+watch(
+  selectedDatasetId,
+  () => {
+    rowsPage.value = 0;
+  },
+  { flush: "sync" },
+);
+
+// 翻页后空页回退（如末页最后一条被删、或重新初始化后行数变少）。
+// 只有当前页**已有响应**时才判断：切换 key 期间 data 为 undefined，
+// 若此时按「0 行」判断会把正常翻页误判为空页。
+const rowsResolved = computed(() => rowsQuery.data.value !== undefined);
+watch([fetchedRows, rowsResolved], ([rows, resolved]) => {
+  if (!resolved) return;
+  if (shouldFallbackRowsPage(rowsPage.value, rows.length)) {
+    rowsPage.value -= 1;
+  }
 });
 const datasetKgNodes = computed<KnowledgeNodeDTO[]>(() => kgQuery.data.value?.nodes ?? []);
 const datasetKgEdges = computed<KnowledgeEdgeDTO[]>(() => kgQuery.data.value?.edges ?? []);
@@ -512,6 +532,8 @@ function onDeleteDataset() {
 
 const reinitMutation = useReinitializeMutation(selectedDatasetId, () => {
   toast.success("已重新初始化数据集");
+  // 重新初始化会改变行数与行内容：回到第一页，避免停在越界页码
+  rowsPage.value = 0;
 });
 
 function onReinitialize() {

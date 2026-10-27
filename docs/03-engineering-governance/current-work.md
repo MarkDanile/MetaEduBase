@@ -30,7 +30,7 @@
 
 当前进展：用户已裁决 D-P1=**3a 数据预览子视图**、D-P2=**B（`limit+1` 探测）**、D-P3=规划规定的完整验收证据。实现已完成：页大小 20、每次请求 21 行（≤ rows 端点上限 200），有第 21 行即「下一页」可用、不足即禁用，只显示当前页序号、不显示总条数/总页数；`row_count` 不参与分页；切换数据集先重置页码再切换选中项（避免用旧 offset 请求新数据集）；并发保护依赖 Vue Query 按 queryKey 隔离旧响应，并由 e2e 延迟响应用例实证。新增 `rowsPagination.ts` 纯函数模块、`DatasetTabsPanel` 契约测试、`CatalogDetailPage` 分页行为测试、e2e 交互 spec 与手动截图采集 spec。Draft PR #673 已发布。
 下一步：等待未参与本轮实现的独立 Agent 对最新 head 复审；复审通过后才推进 Ready、评分与合并。**S4 强制分页门是否闭合须由用户按验收证据裁决**，在此之前 S6/S7 继续受阻。
-验证状态：lint 0 errors / 28 warnings（与 main 基线一致）；typecheck 通过；build:bundle 通过；全量前端 Vitest 399/399（41 文件，main 基线 382 + 新增 17）；全量 e2e 72/72（新增 6 项分页 e2e）；改前/改后截图各 9 张 + 结构化度量已采集（改前 `paginationPresent=false`、请求 limit=20；改后 `paginationPresent=true`、页码指示"第 1 页"、请求 limit=21、首页禁向前、有下一页）。
+验证状态：lint 0 errors / 28 warnings（与 main 基线一致）；typecheck 通过；build:bundle 通过；全量前端 Vitest 409/409（42 文件，main 基线 382 + 新增 27）；全量 e2e 72/72（新增 6 项分页 e2e）。CI 分层：Frontend job **实跑** typecheck / lint / 单元测试（42 文件 409 通过）/ 构建 / e2e（72 passed）；Engineering docs job **实跑**文档门禁（32 项 allowlist）与 Whitespace gate；Backend iteration job 为 **no-op**（`No backend or MCP changes`，其后 22 步 skipped）、Backend full hermetic 三 job **skipped**——后两者反映本次无后端改动，**不构成任何后端或业务测试通过证据**。改前/改后截图各 9 张 + 结构化度量已采集（改前 `paginationPresent=false`、请求 limit=20；改后 `paginationPresent=true`、页码指示"第 1 页"、请求 limit=21、首页「上一页」禁用、有下一页）。
 交接备注：本切片只做 3a 数据预览的分页交互，不扩展到其他页面；不改 design spec §6、后端契约、router、共享组件与 CSS、store、权限语义；不启动 S1b、S2–S8、phase-D/E 或生产 backfill；不指定 S3 负责人；不删除分支、worktree 或 refs。验收证据使用 e2e fixture mock，已标注为 fixture，不冒充真实后端数据形态；用户视觉确认尚未执行。
 
 ## 下一批候选任务
@@ -43,7 +43,7 @@
 | P0 | REQ-062: 动态数据采集、填报与报表发布平台 contract shaping | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 在 Run/Artifact 契约上塑形 Campaign/FormSchemaVersion/Submission/ReportSnapshot；AI 草案审核后才发布；仅契约塑形不实现自由表单引擎 | [REQ-062](../01-product-planning/05-requirements/REQ-062-dynamic-data-collection-and-reporting.md) / [backlog](../01-product-planning/04-backlog.md) |
 | P0 | REQ-063: 受治理的外部数据采集与研究证据链 source spike | ⬜ 未启动（仅登记候选，不在本 closeout 开工） | 先做授权来源/许可/网络/快照策略 spike，不提前实现自由爬虫；Connector 等待 Tool Gateway | [REQ-063](../01-product-planning/05-requirements/REQ-063-governed-external-data-acquisition.md) / [backlog](../01-product-planning/04-backlog.md) |
 
-> 后续顺序保持：TD-085 Boundary Closure 已于 2026-10-08 完成（TD-085 Completion 达成），不再作为待承接任务；REQ-043 Runtime/Tool Gateway 仍为 ⚫ Candidate 未启动，按 backlog 既定顺序等待后续任务安排，不在本批候选开工。TD-085 Completion ≠ REQ-043 / WS-S2 / WS-S3 已解除全部阻塞（spec §6.3）。REQ-064 治理事实同步已由 PR #668 squash merge 入 main（mergeCommit `81e50329`，Original 95）；后续 UI 切片路线与验收对齐已由 PR #670 squash merge 入 main（mergeCommit `b4dd5dfb`，mergedAt 2026-10-26T13:08:27Z，被评 head `f96e4055`，Original 92/100）。REQ-064 整体仍 🟡 Doing；D1–D9 已确认并回填至路线文档并随 #670 进入 main；**S4 强制分页门仍未闭合、S6/S7 仍受阻、S3 负责人待指定、S1b 与 S2–S8 未启动、phase-D/E 与生产 backfill 未启动**；下一步先完成 S4 分页候选确认/前置规划与用户决策，不直接派发 S6/S7。
+> 后续顺序保持：TD-085 Boundary Closure 已于 2026-10-08 完成（TD-085 Completion 达成），不再作为待承接任务；REQ-043 Runtime/Tool Gateway 仍为 ⚫ Candidate 未启动，按 backlog 既定顺序等待后续任务安排，不在本批候选开工。TD-085 Completion ≠ REQ-043 / WS-S2 / WS-S3 已解除全部阻塞（spec §6.3）。REQ-064 治理事实同步已由 PR #668 squash merge 入 main（mergeCommit `81e50329`，Original 95）；后续 UI 切片路线与验收对齐已由 PR #670 squash merge 入 main（mergeCommit `b4dd5dfb`，mergedAt 2026-10-26T13:08:27Z，被评 head `f96e4055`，Original 92/100）。REQ-064 整体仍 🟡 Doing；D1–D9 已确认并回填至路线文档并随 #670 进入 main；**S4 强制分页门仍未闭合、S6/S7 仍受阻、S3 负责人待指定、S1b 与 S2–S8 未启动、phase-D/E 与生产 backfill 未启动**；S4 候选核查与前置规划已由 #672 合入 main，用户已裁决 D-P1=3a / D-P2=B / D-P3=完整验收证据，实现见 PR #673（独立复审与用户视觉确认尚未完成，分页门仍未闭合）；下一步完成 #673 的复审与验收取证，不直接派发 S6/S7。
 
 ## 最近完成
 

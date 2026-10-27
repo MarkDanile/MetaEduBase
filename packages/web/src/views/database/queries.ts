@@ -257,6 +257,9 @@ function useReinitializeMutation(
       if (datasetId.value) {
         void qc.invalidateQueries({ queryKey: datasetKeys.tasks(datasetId.value) });
         void qc.invalidateQueries({ queryKey: datasetKeys.kg(datasetId.value) });
+        // 重新初始化会先删行再重新解析，行数与行内容都可能变化：
+        // 必须让 rows 查询失效，否则分页展示的是旧缓存行。
+        void qc.invalidateQueries({ queryKey: ["datasets", datasetId.value, "rows"] });
       }
     },
   });
