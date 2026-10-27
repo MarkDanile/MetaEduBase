@@ -14,26 +14,24 @@
 
 ## 当前进行中
 
-### REQ-064-S4-PAGINATION-PREREQ: S4 强制分页候选确认与前置规划（纯规划）
+### REQ-064-S4-PAGINATION-3A: S4 数据预览分页实现（D-P1=3a + D-P2=B）
 
-状态：🟡 进行中（第三轮独立复审 P1×1 / P2×1 已返修；当前 head CI 已核验，等待最新 head 独立复审；不实现分页、不派发 S4 或 S6/S7）
-类型：REQ / product planning / pure-docs
-领域：Web / Design System / Delivery Planning
-当前执行模式：product planning
+状态：🟡 进行中（实现与测试已完成，Draft PR #673 待独立复审；不关闭 S4 强制分页门，不派发 S6/S7）
+类型：REQ / frontend / feature
+领域：Web / Design System / Database 详情
+当前执行模式：implementation
 最近接手工具：Claude Code
-分支：docs/req-064-s4-pagination-prereq
+分支：codex/req-064-s4-data-preview-pagination
 
 需求来源：
 - [REQ-064](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md)
-- [S4 强制分页候选确认与前置规划](../02-delivery-plans/02-plans/2026-10-27-req-064-s4-pagination-prerequisite.md)
-- [design spec §6](../02-delivery-plans/01-specs/2026-10-22-req-064-ui-design-system.md) / [后续 UI 切片路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md) / [参考矩阵](../02-delivery-plans/01-specs/2026-10-22-req-064-reference-matrix.md)
+- [S4 强制分页候选确认与前置规划](../02-delivery-plans/02-plans/2026-10-27-req-064-s4-pagination-prerequisite.md)（PR #672 已合入 main，mergeCommit `5ebff34c`）
+- [后续 UI 切片路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md)
 
-当前进展：已按 design spec §6 的 S4「列表筛选/分页」强制要求完成只读代码核查。核查结论：在 S4 候选范围（knowledge / resource / database 路由）内**尚无合格真实分页候选**——`/knowledge` 无分页实现、`/resource` 为固定 `limit: 100`、`/database` 卡片网格无分页、`/resource/:id` 为详情样板；`/database/:catalogCode` 是**静态分页壳**（`@change-page="() => {}"` no-op、`:offset="0"` / `:page-size="20"` 静态参数，且 `:total-rows` 绑定当前页行数使分页控件永不渲染）。S5 `SkillListView.vue` / `McpServerListView.vue` 的真实服务端分页位于审计弹窗，只作参考、不自动纳入 S4；`ResourceView.vue` 有分页代码但无路由引用。三个相关后端列表接口均只返回数组、不含 total。已新增前置规划文档，列出 **D-P1（目标页面与分页对象）**、**D-P2（总数 total 来源）**、**D-P3（验收证据形态）** 三项待用户决定事项与最小前置任务边界。首轮独立复审（覆盖 head `aa84b300`）结论 NEEDS_CHANGES（P1×1、P2×3、P3×2），已逐项返修：D-P2 补入**现有 total 来源**（`DatasetDTO.row_count` 与 `DatasetRepository.count_rows()`，仅适用数据预览对象，并保留 `/document/files` 与 `/knowledge/nodes` 的无 total 限定）；`/resource/:id` 改为「存在 chunks 次级列表但当前无分页实现」；`/database/:catalogCode` 拆清主数据集列表（后端默认 `limit=50` 隐式截断）与数据预览静态分页壳；§4 补方案 C 的实施与测试边界；`CatalogCreateDialog` 改为「code/name 校验，description 可选」。第二轮独立复审（覆盖 head `c5e9f1c3`）结论 NEEDS_CHANGES（P1×1、P2×5、P3×2），首轮 6 项中 5 项实质闭合，本轮继续返修：D-P1=3 拆为 **3a 数据预览 / 3b 主数据集列表**，D 仅限 3a，3b 的 A 须用带相同过滤条件的数据集计数；补 `/knowledge` 搜索态契约（`/knowledge/search` 仅 `top_k`、无 offset/total）、3b 的语义层/选中详情/标题计数消费者隔离、offset 分页的**稳定全排序**（唯一键 tie-breaker）、`limit+1` 探测的**页大小 < 端点上限**约束（否则首页 422）、主数据集列表排序控件为 no-op 的事实修正、`/resource` 筛选手动刷新语义、并发请求竞态防护。第三轮独立复审（覆盖 head `208e15b0`）结论 NEEDS_CHANGES（P1×1、P2×1），第二轮 8 项中 7 项实质闭合；本轮继续修正：§4 方案 A 同步 §3 的对象分流（仅 3a 可复用 `count_rows()`，3b 须用带相同过滤条件的数据集计数查询并禁止用于 3b）；`ResourceView` 检索表述由「全仓零命中」改为**代码范围**（`packages/web/src` 与 `packages/web/e2e` 的路由与组件引用检索，排除 `ResourceLibraryView` 后零命中），不再写成全仓零文本命中。
-下一步：当前 head CI 已核验，等待未参与本轮返修的独立 Agent 对最新 head 复审；复审通过前不推进 Ready、不评分、不合并。D-P1/D-P2/D-P3 由用户确认后才派发实施任务；S4 强制分页门未闭合前 S6/S7 继续受阻，S3 负责人未指定且 S3 继续阻塞。
-验证状态：`scripts/check-engineering-docs --full` 通过（32 项既有 allowlist）；`git diff --check` 通过；净 diff 限前置规划文档与必要索引 Markdown，无生产代码、测试、依赖、CI、评分总账、Metrics 或 technical-debt 改动。CI 按实跑 / no-op / skipped 分层记录，不把 no-op/skipped 写成业务测试通过。
-交接备注：本任务只做只读代码核查与前置规划，不实现分页，不启动 S4 或 S6/S7；不修改 design spec §6、评分总账、Metrics、technical-debt、生产代码、测试、依赖或 CI 配置；不指定 S3 负责人；不删除分支/worktree/refs。核查为静态只读，未启动前端应用实际点击分页控件，不能绝对排除经 store/composable/第三方组件的间接实现。
-
-
+当前进展：用户已裁决 D-P1=**3a 数据预览子视图**、D-P2=**B（`limit+1` 探测）**、D-P3=规划规定的完整验收证据。实现已完成：页大小 20、每次请求 21 行（≤ rows 端点上限 200），有第 21 行即「下一页」可用、不足即禁用，只显示当前页序号、不显示总条数/总页数；`row_count` 不参与分页；切换数据集先重置页码再切换选中项（避免用旧 offset 请求新数据集）；并发保护依赖 Vue Query 按 queryKey 隔离旧响应，并由 e2e 延迟响应用例实证。新增 `rowsPagination.ts` 纯函数模块、`DatasetTabsPanel` 契约测试、`CatalogDetailPage` 分页行为测试、e2e 交互 spec 与手动截图采集 spec。Draft PR #673 已发布。
+下一步：等待未参与本轮实现的独立 Agent 对最新 head 复审；复审通过后才推进 Ready、评分与合并。**S4 强制分页门是否闭合须由用户按验收证据裁决**，在此之前 S6/S7 继续受阻。
+验证状态：lint 0 errors / 28 warnings（与 main 基线一致）；typecheck 通过；build:bundle 通过；全量前端 Vitest 399/399（41 文件，main 基线 382 + 新增 17）；全量 e2e 72/72（新增 6 项分页 e2e）；改前/改后截图各 9 张 + 结构化度量已采集（改前 `paginationPresent=false`、请求 limit=20；改后 `paginationPresent=true`、页码指示"第 1 页"、请求 limit=21、首页禁向前、有下一页）。
+交接备注：本切片只做 3a 数据预览的分页交互，不扩展到其他页面；不改 design spec §6、后端契约、router、共享组件与 CSS、store、权限语义；不启动 S1b、S2–S8、phase-D/E 或生产 backfill；不指定 S3 负责人；不删除分支、worktree 或 refs。验收证据使用 e2e fixture mock，已标注为 fixture，不冒充真实后端数据形态；用户视觉确认尚未执行。
 
 ## 下一批候选任务
 

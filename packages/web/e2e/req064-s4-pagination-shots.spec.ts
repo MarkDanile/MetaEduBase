@@ -71,11 +71,43 @@ async function switchTheme(
   expect(await page.evaluate(() => document.documentElement.getAttribute("data-theme"))).toBe(expected);
 }
 
+/** 选中 fixture 数据集，进入数据预览。 */
+async function selectDataset(page: import("@playwright/test").Page) {
+  await page.getByRole("button", { name: /账单数据集/ }).first().click();
+  await page.waitForTimeout(600);
+}
+
 async function openPreview(page: import("@playwright/test").Page) {
   await page.goto(target(`/database/${CATALOG_CODE}`));
   await page.waitForLoadState("networkidle");
-  await page.getByRole("button", { name: /账单数据集/ }).first().click();
-  await page.waitForTimeout(600);
+  await selectDataset(page);
+}
+
+/**
+ * 把预览表格底部（改后即分页条所在位置）滚动进视口，使改前/改后取景一致，
+ * 且改后的分页控件必定可见。
+ */
+async function focusPreviewBottom(page: import("@playwright/test").Page): Promise<void> {
+  await page.evaluate(() => {
+    const pagination = document.querySelector('[data-testid="dataset-rows-pagination"]');
+    const table = document.querySelector("table");
+    const anchor = pagination ?? table?.parentElement;
+    (anchor as HTMLElement | null)?.scrollIntoView({ block: "end" });
+  });
+  await page.waitForTimeout(200);
+}
+
+/**
+ * 切换主题会整页 reload（与用户路径一致），重载后组件内的选中状态会重置，
+ * 因此主题切换后必须重新选中数据集，否则会拍到"未选中"的空态页面。
+ */
+async function switchThemeAndSelect(
+  page: import("@playwright/test").Page,
+  stored: string,
+  expected: string = stored,
+): Promise<void> {
+  await switchTheme(page, stored, expected);
+  await selectDataset(page);
 }
 
 test.describe.configure({ mode: "serial" });
@@ -91,7 +123,8 @@ test(`REQ-064 S4 数据预览分页截图 light/dark [${LABEL}]`, async ({ page 
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
     for (const theme of FULL_THEMES) {
-      await switchTheme(page, theme);
+      await switchThemeAndSelect(page, theme);
+      await focusPreviewBottom(page);
       await page.screenshot({
         path: path.join(SHOT_DIR, `${LABEL}-s4-data-preview-${vp.name}-${theme}.png`),
       });
@@ -104,12 +137,13 @@ test(`REQ-064 S4 数据预览分页第二页截图 [${LABEL}]`, async ({ page })
   await installPaginationMocks(page, DATASETS);
   await openPreview(page);
   await page.setViewportSize({ width: 1280, height: 800 });
-  await switchTheme(page, "light");
+  await switchThemeAndSelect(page, "light");
   const next = page.getByTestId("dataset-rows-next");
   if (await next.isVisible()) {
     await next.click();
     await page.waitForTimeout(600);
   }
+  await focusPreviewBottom(page);
   await page.screenshot({
     path: path.join(SHOT_DIR, `${LABEL}-s4-data-preview-page2-1280x800-light.png`),
   });
@@ -125,7 +159,8 @@ test(`REQ-064 S4 数据预览分页结构化度量 [${LABEL}]`, async ({ page })
   const requests = await installPaginationMocks(page, DATASETS);
   await openPreview(page);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await switchTheme(page, "light");
+  await switchThemeAndSelect(page, "light");
+  await focusPreviewBottom(page);
 
   const metrics = await page.evaluate(() => {
     const pagination = document.querySelector('[data-testid="dataset-rows-pagination"]');
