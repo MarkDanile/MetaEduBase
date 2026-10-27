@@ -34,9 +34,10 @@
 |---|---|---|---|---|---|---|
 | `/knowledge` | `KnowledgeBaseView.vue` | **S4** | 节点列表、`handleSearch`（`knowledgeApi.search`）、`clearSearch`、层级 `drillDown`、新建/删除节点 | `loadNodes(parentId?)` → `knowledgeApi.listNodes({ parent_id })`，**未传 offset/limit**；返回 `KnowledgeNodeDTO[]` 数组直接赋 `nodes`，**无 total**；无上一页/下一页控件 | 页面主列表 | **无分页实现**。后端 `list_nodes` 支持 `offset`/`limit`（默认 limit 50）且返回数组；可列为待选，但须补分页交互与总数来源 |
 | `/resource` | `ResourceLibraryView.vue` | **S4** | 文件夹树 + 文件列表、`filterStatus` 状态筛选、上传/删除 | `loadFiles()` → `documentApi.listFiles({ folder_id, status, limit: 100 })`，**固定 limit 100、无 offset**；返回 `FileDTO[]` 数组直接赋 `files`，**无 total**；无翻页控件 | 页面主列表 | **固定 limit ≠ 分页**。后端 `GET /document/files` 支持 `offset`/`limit`（`response_model=list[FileDTO]`，`limit` ≤ 100）；可列为待选，须补分页交互与总数来源 |
-| `/resource/:id` | `FileDetailView.vue` | **S4** | 文件元信息、处理状态、Tabs（structured/chunks/kg）、重试/删除 | `useFileChunksQuery` / `useFileKgQuery` 按 Tab 懒加载；无分页参数、无翻页控件 | 详情子视图 | **不作分页候选**：详情样板，无列表分页对象 |
-| `/database` | `DatabaseView.vue` + `CatalogCreateDialog.vue` | **S4** | catalog 卡片网格、新建数据库弹窗（code/name/description 校验） | `catalogStore.fetch()` → `catalogs` 计算属性；`v-for catalog in catalogs`；无分页参数、无翻页控件 | 页面主列表（卡片网格） | **无分页实现** |
-| `/database/:catalogCode` | `CatalogDetailPage.vue` + `DatasetTabsPanel.vue` | **S4** | 数据集列表、数据预览 Tab、KG、问数、上传 | 子组件按钮 `emit('change-page', ±1)`，`:disabled="offset === 0"` / `:disabled="offset + pageSize >= totalRows"`，且整块 `v-if="totalRows > pageSize"`；**父级 `:offset="0"`、`:page-size="20"` 为静态值**，`@change-page="() => {}"` 为 **no-op**；`rowsQuery = useDatasetRowsQuery(selectedDatasetId, ref({ offset: 0, limit: 20 }))` 为**静态参数**；**`:total-rows="datasetRows.length"` 绑定的是当前页行数（≤ 20），故 `totalRows > pageSize` 恒为 false，分页控件在当前绑定下永不渲染** | 数据集**数据预览**子视图 | **静态分页壳**：no-op handler + 静态参数 + totalRows 语义错误（以当前页行数冒充总数）→ 不可作为真实分页证据。后端 rows 端点支持 `offset`/`limit`（`limit` ≤ 200）且返回数组 |
+| `/resource/:id` | `FileDetailView.vue` + `FileTabsPanel.vue` | **S4** | 文件元信息、处理状态、Tabs（structured/chunks/kg）、重试/删除；**「切片列表」Tab 有 `v-for="chunk in chunks"` 的 chunks 次级列表** | `useFileChunksQuery` → `documentApi.listChunks(fileId)` 按 Tab 懒加载、一次性取回数组，**无 offset/limit、无 total、无翻页控件**；`useFileKgQuery` 同型 | **详情次级列表（chunks）** | 存在可分页对象，但**当前无分页实现**；是否作为 S4 对象由 **D-P1** 决定，不自动升为候选，也不以「无列表分页对象」排除 |
+| `/database` | `DatabaseView.vue` + `CatalogCreateDialog.vue` | **S4** | catalog 卡片网格、新建数据库弹窗（**code/name 校验，description 可选**） | `catalogStore.fetch()` → `catalogs` 计算属性；`v-for catalog in catalogs`；无分页参数、无翻页控件 | 页面主列表（卡片网格） | **无分页实现** |
+| `/database/:catalogCode`（**主数据集列表**） | `CatalogDetailPage.vue` + `DatasetListPanel.vue` | **S4** | 数据集列表、按时间/名称/数据量排序、上传入口 | `loadCatalogDatasets()` → `structuredDataApi.listDatasets({ catalog_id })`，**未传 offset/limit**；后端 `list_datasets` 默认 `offset=0`、`limit=50`（`le=100`），返回 `list[DatasetDTO]`，**存在默认 50 条的隐式截断**；无 total、无翻页控件 | 页面主数据集列表 | **隐式截断 ≠ 分页**。注意：`DatasetDTO.row_count` 是**各数据集自身的行数元数据**，不是本列表的总条数，不能混用 |
+| `/database/:catalogCode`（**数据预览**） | `CatalogDetailPage.vue` + `DatasetTabsPanel.vue` | **S4** | 数据预览 Tab、KG、问数 | 子组件按钮 `emit('change-page', ±1)`，`:disabled="offset === 0"` / `:disabled="offset + pageSize >= totalRows"`，且整块 `v-if="totalRows > pageSize"`；**父级 `:offset="0"`、`:page-size="20"` 为静态值**，`@change-page="() => {}"` 为 **no-op**；`rowsQuery = useDatasetRowsQuery(selectedDatasetId, ref({ offset: 0, limit: 20 }))` 为**静态参数**；**`:total-rows="datasetRows.length"` 绑定的是当前页行数（≤ 20），故 `totalRows > pageSize` 恒为 false，分页控件在当前绑定下永不渲染** | 数据集**数据预览**子视图 | **静态分页壳**：no-op handler + 静态参数 + totalRows 语义错误（以当前页行数冒充总数）→ 不可作为真实分页证据。后端 rows 端点支持 `offset`/`limit`（`limit` ≤ 200）且返回数组；**该对象已有 `selectedDataset.row_count` 可作为 total 候选来源**（见 D-P2 选项 D） |
 
 ### 范围外参考（**不自动算作 S4 候选**）
 
@@ -53,6 +54,7 @@
 - 固定 `limit`（`/resource` 的 100）、静态分页参数（`CatalogDetailPage` 的 `offset: 0` / `page-size: 20`）、no-op 事件处理器（`@change-page="() => {}"`）、无路由组件（`ResourceView.vue`）**均不算真实分页证据**。
 - `CatalogDetailPage` 的分页控件在当前绑定下**永不渲染**（`totalRows` 为当前页行数，恒 `≤ pageSize`），因此连"按钮存在但不可用"都不能算作用户可见的分页行为。
 - **S5 两页不自动迁入 S4**，也不得用其审计弹窗分页冒充 S4 已通过验收。
+- **数据集已有 `row_count` 元数据与 `DatasetRepository.count_rows()`**，属于**现有 total 来源**（仅适用于数据预览对象），**不改变**「当前没有可工作的分页行为」的结论，但直接影响 D-P2 的选择，不能被「列表接口只返回数组」掩盖。
 - 本结论为**限定于上述路由与组件的静态核查结论**，不是"全仓不存在分页代码"的绝对断言。
 
 ## 3. 待用户决定（本文件不代为决定）
@@ -65,18 +67,19 @@
 |---|---|---|
 | 1 | `/knowledge` 节点**主列表** | 当前完全无分页；后端 `list_nodes` 已支持 `offset`/`limit`（默认 50）；需新增翻页交互、状态与总数来源 |
 | 2 | `/resource` 文件**主列表** | 当前固定 `limit: 100`；后端 `GET /document/files` 已支持 `offset`/`limit`（`limit` ≤ 100）；需把固定 limit 改为真实翻页，并说明对现有"一次取 100 条"行为的影响 |
-| 3 | `/database/:catalogCode` 的**数据预览**子视图 | 当前为静态分页壳（no-op + 静态参数 + totalRows 语义错误）；后端 rows 端点已支持 `offset`/`limit`（`limit` ≤ 200）；需同时修正 `totalRows` 语义与事件接线 |
+| 3 | `/database/:catalogCode` 的**数据预览**子视图（或同页**主数据集列表**，由用户指定其一） | 数据预览当前为静态分页壳（no-op + 静态参数 + totalRows 语义错误），后端 rows 端点已支持 `offset`/`limit`（`limit` ≤ 200），需同时修正 `totalRows` 语义与事件接线，且**已有 `selectedDataset.row_count` 可作 total 来源**；若选主数据集列表，则需处理后端默认 `limit=50` 的隐式截断，且该列表无现成 total 来源 |
 | 4 | 用户另行指定的 S4 页面/子视图 | 需先按 §1 的核查口径补证据，再决定是否纳入 |
 
 **明确不采纳**：把 S5 审计弹窗分页"算作"S4 候选（切片归属不同、分页对象为弹窗）。
 
 ### D-P2：总数（total）来源（必选）
 
-当前 S4 三个相关后端列表接口（`/document/files`、`/knowledge/nodes`、数据集 rows）**均只返回数组，不含 total**。
+当前 S4 三个相关后端列表接口（`/document/files`、`/knowledge/nodes`、数据集 rows）**均只返回数组，响应体不含 total 字段**。**这不等于「数据集没有 total 来源」**：数据集本身已带有行数元数据，且仓储已有精确计数方法（见下表选项 D）。
 
 | 选项 | 内容 | 影响 |
 |---|---|---|
-| A | **后端契约扩展**：为选定接口增加 `total`，或统一为 `{ items, total, limit, offset }` 信封（参照 S5 `ExecutionListResponse`） | 属**后端契约变更**，须走契约所有权与同步验证流程，并单列后端验收（真实 PG 用例）；**不在本规划任务内实施** |
+| D（**现有来源，仅 D-P1=3 可用**） | **复用 `DatasetDTO.row_count`**：数据集列表/详情 DTO 已返回该字段（`packages/web/src/services/structured-data.ts`、`packages/server-python/app/contexts/structured_data/application/dto.py`），现有 UI 已展示（`DatasetDetailMetaBar.vue`、`DatasetListPanel.vue`）；父组件 `selectedDataset` 已持有，可作为 `totalRows` 的真实来源 | **不需新增后端契约**。**必须评估** `row_count` 与物理行数在处理中、重新初始化、删除/重传等时序下的一致性，以及翻页/刷新时的更新时机；若评估发现不一致，须先修正元数据或改选 A/B |
+| A | **后端契约扩展**：为选定接口增加 `total`，或统一为 `{ items, total, limit, offset }` 信封（参照 S5 `ExecutionListResponse`）。**数据集已有 `DatasetRepository.count_rows()`（精确 `COUNT(*)`，见 `dataset_repository.py:206-214`）可作为实现基础**，不是从零增加计数查询 | 属**后端契约变更**，须走契约所有权与同步验证流程，并单列后端验收（真实 PG 用例）；**不在本规划任务内实施** |
 | B | **前端 `limit + 1` 探测**：请求 `limit + 1` 条判断是否有下一页，只提供「上一页/下一页 + 边界禁用」，**不显示总条数/总页数** | 不改后端契约；须明确向用户说明"不显示总数"是有意取舍 |
 | C | **客户端分页**（对已取回的全量数组切片） | **仅在数据量有明确上界且用户接受时才可选**，否则与"真实分页"目标不符；本文件不默认推荐 |
 
@@ -91,7 +94,7 @@ S4 强制分页项的验收证据必须来自**真实候选页面**：可运行�
 **包含**
 
 1. **分页交互**：上一页/下一页（或页码）控件；边界禁用（首页禁上一页、末页禁下一页）；加载中禁用；翻页重新请求数据并更新列表。
-2. **数据契约**：按 D-P2 的选择实现——A 需后端 `total`（契约变更单列任务、单独验收），B 采用前端 `limit + 1` 探测。**禁止**把 `totalRows` 绑定为当前页行数（`CatalogDetailPage` 现有错误不得复制）。
+2. **数据契约**：按 D-P2 的选择实现——D 复用 `DatasetDTO.row_count` 并验证其与物理行数的一致性；A 需后端 `total`（契约变更单列任务、单独验收，可复用已有 `DatasetRepository.count_rows()`）；B 采用前端 `limit + 1` 探测；**C 客户端分页须先证明「全量可取得」**：受后端单请求 limit 上限约束（`/document/files` ≤ 100、`/knowledge/nodes` 默认 50、数据集 rows ≤ 200、主数据集列表默认 50），须分批拉取直至取尽或由用户确认上界，`total` 由全量数组长度得到，筛选与翻页在客户端对全量数组切片，测试须覆盖「实际超过单请求上限时不会被静默截断」。**禁止**把 `totalRows` 绑定为当前页行数（`CatalogDetailPage` 现有错误不得复制）。
 3. **状态与边界**：空态、加载、错误、无权限；翻页后空页（如删除末页最后一条后回退）；筛选/搜索条件变化时重置到第一页；文件夹/目录切换时重置分页状态。
 4. **可访问性**：按钮可聚焦、有可读名称（如 `aria-label="上一页"`）、禁用态不仅靠颜色区分、键盘可达；翻页后焦点合理保持；若分页位于弹窗内，遵循 spec §6 的 role/aria-modal 约束。
 5. **回归**：既有列表/筛选/上传/删除/详情行为不变；不得引入新的默认截断（如 `/resource` 现有"一次取 100 条"的行为若改变须显式说明）。
@@ -122,6 +125,7 @@ S4 强制分页项的验收证据必须来自**真实候选页面**：可运行�
 
 - 本次为**只读静态核查**：未启动前端应用实际点击分页控件，未运行 UI / Vitest / Playwright / 真实 PostgreSQL / 真实 LLM，未执行视觉确认。
 - "无分页实现"结论**限定于已列路由与其实际组件**，并已在视图、服务、查询、后端端点四层核对；**不能绝对排除**经 store / composable / 第三方组件的间接实现。
+- **`row_count` 与物理行数的一致性未做动态验证**：本文件把它列为**必须评估的现有候选来源**，而非未经验证的最终权威；处理中、重新初始化、删除/重传等时序下是否一致，须在实施前评估。
 - 本 PR 的 CI 为 docs-only scope：Engineering docs 与 Whitespace gate 实跑，Frontend / Backend 为 no-op，full hermetic 为 skipped，**不构成任何前后端、Playwright、full hermetic 或业务测试通过证据**。
 
 ## 7. 索引
