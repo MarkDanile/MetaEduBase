@@ -51,28 +51,36 @@
             </tr>
           </tbody>
         </table>
-
-        <!-- Pagination -->
-        <div v-if="totalRows > pageSize" class="flex items-center justify-between mt-3 pt-2 border-t border-[var(--color-border)]">
-          <span class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">
-            共 {{ totalRows }} 行
-          </span>
-          <div class="flex gap-1">
-            <button
-              class="ui-btn-ghost px-2 py-1 text-[var(--text-micro)]"
-              :disabled="offset === 0"
-              @click="emit('change-page', -1)"
-            >
-              上一页
-            </button>
-            <button
-              class="ui-btn-ghost px-2 py-1 text-[var(--text-micro)]"
-              :disabled="offset + pageSize >= totalRows"
-              @click="emit('change-page', 1)"
-            >
-              下一页
-            </button>
-          </div>
+      </div>
+      <!-- Pagination（D-P1=3a + D-P2=B：limit+1 探测；不展示总条数/总页数） -->
+      <div
+        v-if="canGoPrev || hasNextPage"
+        class="flex items-center justify-between mt-3 pt-2 border-t border-[var(--color-border)]"
+        data-testid="dataset-rows-pagination"
+      >
+        <span
+          class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]"
+          data-testid="dataset-rows-page-indicator"
+        >
+          第 {{ page + 1 }} 页
+        </span>
+        <div class="flex gap-1">
+          <button
+            class="ui-btn-ghost px-2 py-1 text-[var(--text-micro)]"
+            data-testid="dataset-rows-prev"
+            :disabled="!canGoPrev || loadingRows"
+            @click="emit('change-page', -1)"
+          >
+            上一页
+          </button>
+          <button
+            class="ui-btn-ghost px-2 py-1 text-[var(--text-micro)]"
+            data-testid="dataset-rows-next"
+            :disabled="!hasNextPage || loadingRows"
+            @click="emit('change-page', 1)"
+          >
+            下一页
+          </button>
         </div>
       </div>
     </div>
@@ -111,9 +119,12 @@ defineProps<{
   rows: DatasetRowDTO[];
   kgNodes: KnowledgeNodeDTO[];
   kgEdges: KnowledgeEdgeDTO[];
-  totalRows: number;
-  offset: number;
-  pageSize: number;
+  /** 当前页（0 基）。分页方案不展示总条数/总页数，故不传 total/pageCount。 */
+  page: number;
+  /** 是否存在下一页：由父层的 limit+1 探测得出。 */
+  hasNextPage: boolean;
+  /** 是否可以回到上一页（当前页 > 0）。 */
+  canGoPrev: boolean;
   loadingRows: boolean;
   loadingKg: boolean;
   activeTab: string;

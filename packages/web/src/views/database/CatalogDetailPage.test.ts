@@ -26,8 +26,15 @@ vi.mock("@/services/catalog", () => ({
   deleteCatalog: vi.fn(),
 }));
 
-const { mockListDatasets, mockGetKnowledgeGraph, mockRebuildKg, mockUpdateDataset } = vi.hoisted(() => ({
+const {
+  mockListDatasets,
+  mockListRows,
+  mockGetKnowledgeGraph,
+  mockRebuildKg,
+  mockUpdateDataset,
+} = vi.hoisted(() => ({
   mockListDatasets: vi.fn(),
+  mockListRows: vi.fn(),
   mockGetKnowledgeGraph: vi.fn(),
   mockRebuildKg: vi.fn(),
   mockUpdateDataset: vi.fn(),
@@ -36,6 +43,7 @@ const { mockListDatasets, mockGetKnowledgeGraph, mockRebuildKg, mockUpdateDatase
 vi.mock("@/services/structured-data", () => ({
   structuredDataApi: {
     listDatasets: mockListDatasets,
+    listRows: mockListRows,
     uploadDataset: vi.fn(),
     updateDataset: mockUpdateDataset,
     getKnowledgeGraph: mockGetKnowledgeGraph,
@@ -62,6 +70,7 @@ vi.mock("@/composables/useToast", () => ({
 vi.mock("@/views/database/DatasetListPanel.vue", () => ({
   default: defineComponent({
     name: "StubList",
+    emits: ["select"],
     render() {
       return h("div", { "data-testid": "stub-list" }, "list");
     },
@@ -80,8 +89,25 @@ vi.mock("@/views/database/DatasetDetailMetaBar.vue", () => ({
 vi.mock("@/views/database/DatasetTabsPanel.vue", () => ({
   default: defineComponent({
     name: "StubTabs",
+    props: {
+      page: { type: Number, default: 0 },
+      hasNextPage: { type: Boolean, default: false },
+      canGoPrev: { type: Boolean, default: false },
+      rows: { type: Array, default: () => [] },
+    },
+    emits: ["change-page"],
     render() {
-      return h("div", { "data-testid": "stub-tabs" }, "tabs");
+      return h(
+        "div",
+        {
+          "data-testid": "stub-tabs",
+          "data-page": String(this.page ?? 0),
+          "data-has-next": String(this.hasNextPage ?? false),
+          "data-can-go-prev": String(this.canGoPrev ?? false),
+          "data-row-count": String(this.rows?.length ?? 0),
+        },
+        "tabs",
+      );
     },
   }),
 }));
@@ -254,6 +280,7 @@ describe("CatalogDetailPage.vue (REQ-054 Task 8 + review fix)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockListDatasets.mockReset().mockResolvedValue({ data: SAMPLE_DATASETS });
+    mockListRows.mockReset().mockResolvedValue({ data: [] });
     mockGetKnowledgeGraph.mockReset().mockResolvedValue({ data: { nodes: [], edges: [] } });
     mockRebuildKg.mockReset().mockResolvedValue({ data: { status: "ok", dataset_count: 3 } });
     mockUpdateDataset.mockReset().mockResolvedValue({ data: SAMPLE_DATASETS[0] });
@@ -363,5 +390,150 @@ describe("CatalogDetailPage.vue (REQ-054 Task 8 + review fix)", () => {
     const notFound = wrapper.find('[data-testid="catalog-not-found"]');
     expect(notFound.exists()).toBe(true);
     expect(notFound.text()).toContain("unknown_code");
+  });
+});
+
+/**
+ * REQ-064 S4 数据预览分页（D-P1=3a 数据预览 + D-P2=B `limit+1` 探测）。
+ *
+ * - 请求行数 = 页大小 20 + 1 = 21（探测是否存在下一页），不越界端点上限 200。
+ * - 取到第 21 行即认为有下一页；只展示前 20 行。
+ * - 翻页后 offset = 页码 * 20；首页不可再向前；无下一页时不可再向后。
+ * - 切换数据集（条件变化）重置页码。
+ * - 不使用 `row_count` 作为分页总数，也不向面板传总数。
+ */
+describe("CatalogDetailPage.vue (REQ-064 S4 数据预览分页 D-P1=3a + D-P2=B)", () => {
+  const ROWS_PAGE_SIZE = 20;
+  const ROWS_PROBE_SIZE = 21;
+
+  function makeRows(count: number, startIndex = 0) {
+    return Array.from({ length: count }, (_, i) => ({
+      id: `row-${startIndex + i}`,
+      dataset_id: "ds-bill",
+      row_index: startIndex + i,
+      data: { id: startIndex + i },
+      created_at: "2026-01-01T00:00:00",
+    }));
+  }
+
+  async function selectFirstDataset(wrapper: Awaited<ReturnType<typeof mountDetail>>["wrapper"]) {
+    wrapper.findComponent({ name: "StubList" }).vm.$emit("select", SAMPLE_DATASETS[0]);
+    await flushPromises();
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockListDatasets.mockReset().mockResolvedValue({ data: SAMPLE_DATASETS });
+    mockListRows.mockReset().mockResolvedValue({ data: [] });
+    mockGetKnowledgeGraph.mockReset().mockResolvedValue({ data: { nodes: [], edges: [] } });
+  });
+
+  it("requests page size + 1 rows to probe the next page", async () => {
+    mockListRows.mockResolvedValue({ data: makeRows(ROWS_PROBE_SIZE) });
+    const { wrapper } = await mountDetail();
+    await selectFirstDataset(wrapper);
+
+    expect(mockListRows).toHaveBeenCalled();
+    const [datasetId, params] = mockListRows.mock.calls[0];
+    expect(datasetId).toBe(SAMPLE_DATASETS[0].id);
+    expect(params).toEqual({ offset: 0, limit: ROWS_PROBE_SIZE });
+    // 探测上限不得越过端点 limit 上限 200
+    expect(params.limit).toBeLessThanOrEqual(200);
+  });
+
+  it("treats the 21st row as the existence of a next page", async () => {
+    mockListRows.mockResolvedValue({ data: makeRows(ROWS_PROBE_SIZE) });
+    const { wrapper } = await mountDetail();
+    await selectFirstDataset(wrapper);
+
+    const tabs = wrapper.find('[data-testid="stub-tabs"]');
+    expect(tabs.attributes("data-has-next")).toBe("true");
+    // 只展示当前页 20 行，第 21 行仅用于探测
+    expect(tabs.attributes("data-row-count")).toBe(String(ROWS_PAGE_SIZE));
+  });
+
+  it("reports no next page when the probe returns fewer rows than the page size", async () => {
+    mockListRows.mockResolvedValue({ data: makeRows(ROWS_PAGE_SIZE) });
+    const { wrapper } = await mountDetail();
+    await selectFirstDataset(wrapper);
+
+    const tabs = wrapper.find('[data-testid="stub-tabs"]');
+    expect(tabs.attributes("data-has-next")).toBe("false");
+    expect(tabs.attributes("data-row-count")).toBe(String(ROWS_PAGE_SIZE));
+  });
+
+  it("requests the next page with offset = page * page size", async () => {
+    mockListRows.mockResolvedValue({ data: makeRows(ROWS_PROBE_SIZE) });
+    const { wrapper } = await mountDetail();
+    await selectFirstDataset(wrapper);
+    mockListRows.mockClear();
+
+    wrapper.findComponent({ name: "StubTabs" }).vm.$emit("change-page", 1);
+    await flushPromises();
+
+    const [, params] = mockListRows.mock.calls[0];
+    expect(params).toEqual({ offset: ROWS_PAGE_SIZE, limit: ROWS_PROBE_SIZE });
+    expect(wrapper.find('[data-testid="stub-tabs"]').attributes("data-page")).toBe("1");
+    expect(wrapper.find('[data-testid="stub-tabs"]').attributes("data-can-go-prev")).toBe("true");
+  });
+
+  it("does not go back from the first page", async () => {
+    mockListRows.mockResolvedValue({ data: makeRows(ROWS_PROBE_SIZE) });
+    const { wrapper } = await mountDetail();
+    await selectFirstDataset(wrapper);
+    mockListRows.mockClear();
+
+    wrapper.findComponent({ name: "StubTabs" }).vm.$emit("change-page", -1);
+    await flushPromises();
+
+    expect(mockListRows).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="stub-tabs"]').attributes("data-page")).toBe("0");
+  });
+
+  it("does not go forward when there is no next page", async () => {
+    mockListRows.mockResolvedValue({ data: makeRows(5) });
+    const { wrapper } = await mountDetail();
+    await selectFirstDataset(wrapper);
+    mockListRows.mockClear();
+
+    wrapper.findComponent({ name: "StubTabs" }).vm.$emit("change-page", 1);
+    await flushPromises();
+
+    expect(mockListRows).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="stub-tabs"]').attributes("data-page")).toBe("0");
+  });
+
+  it("resets the page when the selected dataset changes", async () => {
+    mockListRows.mockResolvedValue({ data: makeRows(ROWS_PROBE_SIZE) });
+    const { wrapper } = await mountDetail();
+    await selectFirstDataset(wrapper);
+
+    wrapper.findComponent({ name: "StubTabs" }).vm.$emit("change-page", 1);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="stub-tabs"]').attributes("data-page")).toBe("1");
+
+    // 切换到另一个数据集 → 条件变化，页码重置为 0
+    mockListRows.mockClear();
+    wrapper.findComponent({ name: "StubList" }).vm.$emit("select", SAMPLE_DATASETS[1]);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="stub-tabs"]').attributes("data-page")).toBe("0");
+    const [, params] = mockListRows.mock.calls[0];
+    expect(params).toEqual({ offset: 0, limit: ROWS_PROBE_SIZE });
+  });
+
+  it("does not pass any total to the panel (row_count is not the pagination total)", async () => {
+    mockListRows.mockResolvedValue({ data: makeRows(ROWS_PROBE_SIZE) });
+    const { wrapper } = await mountDetail();
+    await selectFirstDataset(wrapper);
+
+    const tabs = wrapper.findComponent({ name: "StubTabs" });
+    const props = tabs.props() as Record<string, unknown>;
+    expect(props.totalRows).toBeUndefined();
+    expect(props.totalRows).toBeUndefined();
+    // 只传页码与"是否有下一页"，不传总数
+    expect(props.page).toBe(0);
+    expect(props.hasNextPage).toBe(true);
+    expect(props.canGoPrev).toBe(false);
   });
 });

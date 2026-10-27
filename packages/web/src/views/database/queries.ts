@@ -125,7 +125,7 @@ function useDatasetTasksQuery(
 
 function useDatasetRowsQuery(
   datasetId: Ref<string | null>,
-  params: Ref<{ offset: number; limit: number }>,
+  params: MaybeRef<{ offset: number; limit: number }>,
 ): UseQueryReturnType<DatasetRowDTO[], Error> {
   return useQuery({
     queryKey: computed(() =>
