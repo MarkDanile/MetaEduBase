@@ -13,6 +13,8 @@
 
 ## 索引
 
+> #673 交接补充（2026-10-28）：四轮独立复审末轮 PASS 覆盖被评 head `19370612`，但四轮原始报告未入库且不在 PR review/comment 中，不能逐轮回放；评分后 CI `40621220324` 与 main push CI `40621972901` 均为 Frontend/Engineering docs 实跑、Backend no-op、full hermetic 三 job skipped，细节与未关闭事项见路线文档 §14、评分总账 #673 Original 行。#674 首版 docs-only CI 为 `40622735069`：仅 Engineering docs 与 Whitespace 实跑，Frontend/Backend no-op、full hermetic 三 job skipped，不构成前后端测试通过证据。#673/#674 使用主 checkout `/Users/strony/Desktop/StronyCodePlace/Edu_ProjectSpace/MetaEduBase`；主 checkout 与 `codex/req-064-s4-data-preview-pagination`、`docs/req-064-s4-pagination-closeout` 分支 refs 决定保留，供 REQ-064 后续切片使用。清理前须独立核验 PR 合并状态、未发布提交、忽略资产归属与引用依赖，再分别决定 worktree 退休及 local/remote branch 删除；不表示已清理，worktree 与 refs 不得混同。
+
 | 日期 | 任务 | 类型 | PR 可选 | Merge Commit 可选 | 归档位置 |
 |------|------|------|----|-------------------|----------|
 | 2026-10-28 | REQ-064 S4 数据预览分页实现（D-P1=3a 数据预览子视图 + D-P2=B `limit+1` 探测：页大小 20、每请求 21 行探测下一页、分页条内不显示总条数与总页数、`row_count` 不作分页总数、后端契约零改动；前端实现/测试/e2e 11 文件 +1116/-38，治理索引 5 文件 +17/-18，含 Original 评分行后 17 文件 +1134/-56） | REQ / P1 / Frontend / Web / Design System | [#673](https://github.com/MarkDanile/MetaEduBase/pull/673)（squash merge；Original 85；SCORE_BASE `193706128c0d0627db70681a9e05537f5a0cbd57`） | `c76b06b7798e56e17cdf2716598b0d7ad97d48e5` | [REQ-064 requirement](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md) / [路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md) / [S4 分页前置规划](../02-delivery-plans/02-plans/2026-10-27-req-064-s4-pagination-prerequisite.md) / [Score Log](04-retrospectives/review-score-log.md) |
