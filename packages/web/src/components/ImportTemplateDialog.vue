@@ -26,9 +26,9 @@
         <div class="modal-body">
           <div class="space-y-4">
             <div>
-              <label class="field-label" for="import-template-file">选择 JSON 文件</label>
+              <label class="field-label" :for="fileInputId">选择 JSON 文件</label>
               <input
-                id="import-template-file"
+                :id="fileInputId"
                 ref="fileInput"
                 type="file"
                 accept=".json"
@@ -72,7 +72,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, useId } from 'vue'
+
+/** 组件实例级 id：与 ConfirmDialog / UiComposer 的 useId() 做法一致，避免复用时重复 id。 */
+const fileInputId = useId()
 import { X, Upload, Check } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
 import { templateApi } from '@/services/template'

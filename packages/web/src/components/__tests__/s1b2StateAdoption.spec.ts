@@ -8,7 +8,7 @@
  *   长内容以 `title` 暴露完整值；
  * - `ConfirmDialog` 提交中采用 `.ui-dialog-busy`；
  * - `ImportTemplateDialog` 在解析 / 导入失败时给文件输入 `.is-error`；
- * - `CloneTemplateDialog` 提交中给名称输入 `.is-loading`。
+ * - `ImportTemplateDialog` 导入进行中给文件输入 `.is-loading`。
  *
  * 这些是**真实生产者**（不是只有 CSS 规则没有使用方）。
  */

@@ -278,6 +278,8 @@ export const SHARED_LAYER_CONTRACT: ControlContract[] = [
           ".ui-composer-toolbar",
           ".ui-composer-tools",
           ".ui-composer-actions",
+          ".ui-composer-attachments",
+          ".ui-composer-stop",
         ],
         "S1b-2 交付的共享 Composer（design spec §3 / roadmap §4.2 G1）：受控 modelValue、mode ready/busy/readonly/unavailable，事件仅 update:modelValue / submit / stop，附件与工具用具名插槽",
       ),
@@ -335,7 +337,8 @@ export const SHARED_LAYER_CONTRACT: ControlContract[] = [
         "S1b-2 建立共享表格契约并由 TableRenderer 采用（表头 / 单元格 / 空态行）；"
         + "注意这是一次**视觉变更**而非等价重绘：改前使用的 --panel-bg / --panel-border "
         + "在本仓库未定义（表头实为无背景、单元格底边为 currentColor），改后表头使用 "
-        + "--color-bg-warm、单元格底边使用 --color-border-subtle、表格新增外框与圆角",
+        + "--color-bg-warm、单元格底边使用 --color-border-subtle、表格新增 1px 外框"
+        + "（圆角与裁剪在 border-collapse: collapse 下**不生效**，不作为已实现的视觉效果登记）",
       ),
       hover: implementedAs(
         [".ui-table-row:hover .ui-table-cell"],

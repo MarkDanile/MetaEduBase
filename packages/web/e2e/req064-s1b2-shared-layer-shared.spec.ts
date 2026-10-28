@@ -3,7 +3,7 @@
  *
  * 覆盖**真实页面 + 真实构建产物**上的共享层采用与状态：
  * - 导入模板对话框：解析非法 JSON 时，文件输入采用 `.is-error` 状态（真实生产者）；
- * - 复制模板对话框：提交进行中时，名称输入采用 `.is-loading` 状态（真实生产者，
+ * - 导入模板对话框：导入进行中时，文件输入采用 `.is-loading` 状态（真实生产者，
  *   由延迟 mock 保持请求 pending）；两个输入都沿用 S1b-1 的 `.ui-input-leading` 行高 opt-in。
  *
  * 边界说明（不夸大覆盖）：
@@ -19,7 +19,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { setupE2E } from "./fixtures";
 
 /**
- * 窄视口跳过说明：模板列表页在 390px 宽下，对话框**页脚按钮**（确认导入 / 复制）
+ * 窄视口跳过说明：模板列表页在窄视口下（跳过阈值 < 768；CI mobile project 使用 Pixel 5 393×851，390×844 仅为手动截图脚本的自定义视口），对话框**页脚按钮**（确认导入 / 复制）
  * 不可见可点（页面布局的既有缺口，与 S1b-1 窄视口跳过同源，非共享层契约问题），
  * 故依赖点击页脚按钮的两项在窄视口按原因跳过；只上传文件并断言状态的那项
  * （解析失败态）仍在窄视口执行。
@@ -56,7 +56,8 @@ async function installTemplateMocks(page: Page): Promise<void> {
       await route.fulfill({ json: [] });
       return;
     }
-    if (path.includes("/clone") || path.endsWith("/import")) {
+    // 只有 /import 会被本 spec 的用例消费；此前并列的 /clone 分支没有任何断言消费，属死 mock
+    if (path.endsWith("/import")) {
       // 保持请求 pending，用于观察提交中的加载态
       await new Promise((resolve) => setTimeout(resolve, 3000));
       await route.fulfill({ json: { ...TEMPLATE, id: "tpl-2" } });
