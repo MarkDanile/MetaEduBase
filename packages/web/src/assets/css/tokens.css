@@ -211,6 +211,4 @@
 @theme static {
   /* 控制类文本行高：正文 14/20（spec §2.1 类型契约） */
   --lh-control: 20px;
-  /* 控制类紧凑文本行高：辅助文字 13/18 */
-  --lh-control-compact: 18px;
 }

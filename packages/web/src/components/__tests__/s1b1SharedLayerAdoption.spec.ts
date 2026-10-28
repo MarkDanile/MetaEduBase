@@ -87,9 +87,12 @@ describe("S1b-1 共享控件 opt-in 采用（G3 / G4）", () => {
         },
       },
     });
-    const inputs = wrapper.findAll("input.ui-input");
-    expect(inputs.length).toBeGreaterThan(0);
+    // 用 input 全量匹配并锁定数量，避免「丢掉 ui-input 但保留 ui-input-leading」时断言空转
+    // 用 input/select 全量匹配并锁定数量，避免「丢掉 ui-input 但保留 ui-input-leading」时断言空转
+    const inputs = wrapper.findAll("input, select");
+    expect(inputs.length).toBe(3);
     for (const input of inputs) {
+      expect(input.classes()).toContain("ui-input");
       expect(input.classes()).toContain("ui-input-leading");
     }
   });
@@ -100,9 +103,10 @@ describe("S1b-1 共享控件 opt-in 采用（G3 / G4）", () => {
       global: { stubs: { teleport: true } },
       props: { open: true },
     });
-    const inputs = wrapper.findAll("input.ui-input");
-    expect(inputs.length).toBeGreaterThan(0);
+    const inputs = wrapper.findAll("input, select");
+    expect(inputs.length).toBe(1);
     for (const input of inputs) {
+      expect(input.classes()).toContain("ui-input");
       expect(input.classes()).toContain("ui-input-leading");
     }
   });
@@ -113,9 +117,11 @@ describe("S1b-1 共享控件 opt-in 采用（G3 / G4）", () => {
         modelValue: { key: "k", label: "标签", type: "text", description: "" },
       },
     });
-    const inputs = wrapper.findAll("input.ui-input");
-    expect(inputs.length).toBeGreaterThan(0);
+    // 默认 type='text' 时只渲染 3 个 <input> + 1 个 <select>（object / table 子块按条件渲染）
+    const inputs = wrapper.findAll("input, select");
+    expect(inputs.length).toBe(4);
     for (const input of inputs) {
+      expect(input.classes()).toContain("ui-input");
       expect(input.classes()).toContain("ui-input-leading");
     }
   });

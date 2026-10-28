@@ -182,7 +182,8 @@ test(`REQ-064 S1b-1 输入框 hover 态截图 [${LABEL}]`, async ({ page }) => {
     await page.getByTitle("复制").first().click();
     await focusElement(page, ".ui-input");
     await page.locator(".ui-input").first().hover();
-    await page.waitForTimeout(300);
+    // 等过渡结束再取色/取景（.ui-input 沿用 300ms 弹性过渡）
+    await page.waitForTimeout(700);
     await page.screenshot({
       path: path.join(SHOT_DIR, `${LABEL}-s1b1-input-hover-${theme}.png`),
     });
@@ -229,7 +230,8 @@ test(`REQ-064 S1b-1 共享层结构化度量 [${LABEL}]`, async ({ page }) => {
   };
   const inputMetrics = await input.evaluate(readInput);
   await input.hover();
-  await page.waitForTimeout(250);
+  // 等过渡结束再取色（.ui-input 沿用 300ms 弹性过渡）
+  await page.waitForTimeout(700);
   const hoverMetrics = await input.evaluate(readInput);
 
   console.log(

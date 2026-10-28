@@ -149,19 +149,42 @@ test.describe("REQ-064 S1b-1 共享层语义（G2 / G3 / G4）", () => {
     const borderOf = (el: Element) => getComputedStyle(el).borderTopColor;
     const restBorder = await input.evaluate(borderOf);
     await input.hover();
-    await page.waitForTimeout(250);
+    // 取色前必须等过渡结束：.ui-input 沿用 S1a 的 transition: all 300ms 弹性缓动，
+    // 过早读会拿到过渡中间值而不是最终色值。
+    await page.waitForTimeout(700);
     const hoverBorder = await input.evaluate(borderOf);
     expect(hoverBorder).not.toBe(restBorder);
 
+    // 焦点态边框必须精确等于强调色：探针放在**输入框的父元素**里读取
+    // --color-accent 的计算值（主题层可能在内层容器上覆写该变量，
+    // 放到 body 上会读到不同的值）。
+    const expectedAccent = await input.evaluate((el) => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--color-accent)";
+      (el.parentElement ?? document.body).appendChild(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    });
+
     await input.focus();
-    await page.waitForTimeout(150);
+    await page.waitForTimeout(700);
     const focusState = await input.evaluate((el) => {
       const cs = getComputedStyle(el);
       return { boxShadow: cs.boxShadow, borderTopColor: cs.borderTopColor };
     });
     expect(focusState.boxShadow).not.toBe("none");
-    // 焦点态边框切换到强调色（focus 规则同时改 border-color）
-    expect(focusState.borderTopColor).not.toBe(hoverBorder);
+    expect(focusState.borderTopColor).toBe(expectedAccent);
+
+    // 冲突态：指针仍悬停在输入框上时聚焦，边框必须仍是强调色
+    // （hover 规则用 :where() 降权，不得压过 :focus 的强调色）
+    await input.hover();
+    await page.waitForTimeout(700);
+    const focusHoverState = await input.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { borderTopColor: cs.borderTopColor };
+    });
+    expect(focusHoverState.borderTopColor).toBe(expectedAccent);
   });
 
   test("spec §2.1：交互边界对比度 ≥ 3:1、正文对比度 ≥ 4.5:1", async ({
@@ -221,7 +244,7 @@ test.describe("REQ-064 S1b-1 共享层语义（G2 / G3 / G4）", () => {
     // hover 态的交互边界同样必须 >= 3:1（S1b-1 返修项：
     // hover 边框不得换成低对比度的 --color-border）
     await input.hover();
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(700);
     const hovered = await measure();
     expect(hovered.borderRatio).toBeGreaterThanOrEqual(3);
     expect(hovered.borderColor).not.toBe(rest.borderColor);

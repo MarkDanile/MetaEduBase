@@ -133,8 +133,14 @@
   /* hover：交互边界**提高对比度**一档（浅色更深 / 深色更浅，见
      --color-border-interactive-hover 的主题层登记）；禁用与只读不响应。
      注意：不可改用 --color-border（浅 #DADCE0 对输入底色仅 1.37:1，
-     深 #343842 仅 1.58:1，均低于 spec §2.1 的 3:1 门槛）。 */
-  .ui-input:hover:not(:disabled):not([aria-readonly="true"]) {
+     深 #343842 仅 1.54:1，均低于 spec §2.1 的 3:1 门槛）。
+
+     特异性：用 `:where()` 把 hover 条件的选择器权重降为 0，使本规则只
+     拿到 `.ui-input` 的基础权重（0,1,0）。这样「聚焦 + 悬停」同时成立时，
+     `.ui-input:focus` / `.ui-input:focus-visible`（0,2,0）与
+     `.ui-input.is-error` / `.ui-input.is-success`（0,2,0）仍然胜出——
+     否则 hover 的灰边会把聚焦强调色与错误 / 成功态边界覆盖掉。 */
+  .ui-input:where(:hover:not(:disabled):not([aria-readonly="true"])) {
     border-color: var(--color-border-interactive-hover);
   }
 

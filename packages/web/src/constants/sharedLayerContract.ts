@@ -106,7 +106,7 @@ export const SHARED_LAYER_CONTRACT: ControlContract[] = [
         ".ui-input-leading 是 G4 的行高 opt-in 入口（正文 14/20）；默认不改变既有输入框的继承行高",
       ),
       hover: implementedAs(
-        ['.ui-input:hover:not(:disabled):not([aria-readonly="true"])'],
+        ['.ui-input:where(:hover:not(:disabled):not([aria-readonly="true"]))'],
         "hover 边框使用 --color-border-interactive-hover（主题层登记，浅/深对输入底色均 >= 3:1）；禁用与只读不响应",
       ),
       "focus-visible": implemented(".ui-input:focus-visible"),

@@ -141,7 +141,7 @@ describe("S1b-1 共享层状态契约（spec §2.1 / roadmap G2）", () => {
 
   it("G2 输入控件补齐 hover / success / 无权限三态", () => {
     expect(componentsCss).toContain(
-      '.ui-input:hover:not(:disabled):not([aria-readonly="true"])',
+      '.ui-input:where(:hover:not(:disabled):not([aria-readonly="true"]))',
     );
     expect(componentsCss).toContain(".ui-input.is-success");
     expect(componentsCss).toContain('.ui-input[aria-readonly="true"]');
