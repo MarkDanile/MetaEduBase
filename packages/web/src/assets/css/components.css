@@ -37,6 +37,30 @@
     box-shadow: var(--surface-card-shadow-hover);
   }
 
+  /* ---- S1b-1 面板语义区分（G3，opt-in） ----
+     spec §2.1 要求「非交互面板不因 hover 增强阴影或表现为可点击」。
+     既有 `.ui-panel:hover` 是历史行为，直接删除会让 37 处使用点同时失去
+     抬升反馈（构成全站一次性行为改写），因此本切片改为**语义显式化**：
+
+       - `.ui-panel-static`      显式静态容器：hover 不抬升、不表现为可点击；
+       - `.ui-panel-interactive` 显式可交互容器：pointer 光标 + focus-visible 焦点环。
+
+     未迁移的使用点继续沿用历史 `.ui-panel:hover`，由后续页面切片按所有权
+     逐步采用（roadmap G3：不要求一次性全改）。 */
+  .ui-panel.ui-panel-static:hover {
+    border-color: var(--color-border-subtle);
+    box-shadow: var(--surface-card-shadow);
+  }
+
+  .ui-panel-interactive {
+    cursor: pointer;
+  }
+
+  .ui-panel-interactive:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+  }
+
   .ui-toolbar {
     display: flex;
     align-items: center;
@@ -98,6 +122,35 @@
   /* 错误态：沿用 TraeWork `.ds-input.is-error` 的边界语义 */
   .ui-input.is-error {
     border-color: var(--color-danger);
+  }
+
+  /* ---- S1b-1 共享控件状态补齐（G2）与行高 opt-in（G4） ----
+     状态矩阵（面 × 控件 × 状态）见 packages/web/src/constants/sharedLayerContract.ts，
+     由同目录 __tests__/sharedLayerContract.spec.ts 强制与本文件保持一致：
+     标为 implemented 的选择器必须真实存在于本文件，标为不适用/门控的必须写明原因，
+     **不以静态示例补造生产状态**。 */
+
+  /* hover：交互边界提亮一档；禁用与只读不响应 */
+  .ui-input:hover:not(:disabled):not([aria-readonly="true"]) {
+    border-color: var(--color-border);
+  }
+
+  /* 成功态 */
+  .ui-input.is-success {
+    border-color: var(--color-success);
+  }
+
+  /* 无权限 / 只读态：不可编辑，不响应 hover，弱化到次要文字层级 */
+  .ui-input[aria-readonly="true"] {
+    background: var(--color-bg-warm);
+    color: var(--color-ink-secondary);
+    cursor: default;
+  }
+
+  /* 行高 opt-in（G4）：默认仍继承 body 的 line-height，
+     由共享控件按所有权显式采用，避免一次性改写全部使用点 */
+  .ui-input-leading {
+    line-height: var(--lh-control);
   }
 
   .ui-btn {

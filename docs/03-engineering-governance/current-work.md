@@ -14,7 +14,25 @@
 
 ## 当前进行中
 
-当前无活跃任务。
+### REQ-064-S1B-1: S1b-1 共享 CSS / 语义 token（顺序 PR 1）
+
+状态：🟡 进行中（实现与自动化验证已完成，待独立复审与用户视觉确认；S1b-1 单独不关闭 S1，不派发 S1b-2 / S2–S8）
+类型：REQ / frontend / feature
+领域：Web / Design System / 共享层
+当前执行模式：implementation
+最近接手工具：Claude Code
+分支：codex/req-064-s1b-1-shared-css-token
+
+需求来源：
+- [REQ-064](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md)
+- [后续 UI 切片路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md)（§4.1 S1b-1 切片卡；roadmap §3 默认合入次序 S1b-1 → S1b-2 → S2 → S3 → S4 → S5 → S6 → S7 → S8，S1b-1 是顺序 PR 1）
+- [设计 spec §2.1](../02-delivery-plans/01-specs/2026-10-22-req-064-ui-design-system.md)（共享层 token 映射与状态契约）
+
+当前进展：按 roadmap §4.1 交付共享样式契约与渐进迁移入口。① **G2 共享控件状态契约**：新增机器可读状态矩阵 `packages/web/src/constants/sharedLayerContract.ts`（表单 / 卡片 / 表格 / 菜单 / 确认弹窗五类载体 × default / hover / focus-visible / active / selected / disabled / loading / empty / error / success / 无权限 11 态），矩阵由 `src/constants/__tests__/sharedLayerContract.spec.ts` 强制与 CSS 一致——标为已实现的选择器必须真实存在于 `components.css`，标为不适用或门控的必须写明原因（表格与菜单尚无共享类，按 spec 记为门控项，不新建平行 `ds-*` 系统、不补造生产状态）；输入控件补齐 hover / success / 无权限（`aria-readonly`）三态。② **G3 面板语义区分**：新增 opt-in 入口 `.ui-panel-static`（静态容器 hover 不抬升、不表现为可点击）与 `.ui-panel-interactive`（pointer 光标 + focus-visible 焦点环），未迁移使用点继续沿用历史 `.ui-panel:hover`，**不做全量一次性改写**（spec §2.1 的「非交互面板不因 hover 增强阴影」由页面切片按所有权逐步收敛）。③ **G4 行高语义 token**：新增 `--lh-control: 20px`（正文 14/20）与 opt-in 样式 `.ui-input-leading`，未采用的输入框仍继承原行高，**不要求 82 处一次性全改**。④ 采用范围仅限**共享组件**：`EmptyState`（静态面板）、`EvidenceCard`（可交互面板）、`FieldEditor` / `CloneTemplateDialog` / `ImportTemplateDialog`（行高 opt-in）；不改业务页面、router / nav / permission 语义、stores / services / API / DTO、数据库、后端、CI 配置与依赖。
+下一步：等待未参与本轮实现的独立 Agent 对最新 head 复审；复审通过后才推进 Ready、评分与合并。**S1b-1 单独不关闭 S1，也不代替 S1b-2 的 S1 用户视觉确认**；S1b-2 及后续切片按 roadmap 依赖另行派发。
+验证状态：lint 0 errors / 28 warnings（与 main 基线一致）；typecheck 通过；build:bundle 通过；全量前端 Vitest 421/421（44 文件，main 基线 409 + 新增 12）；全量 e2e 79 passed / 3 skipped（新增 5 项 S1b-1 共享层 e2e，窄视口下 3 项依赖模板列表页对话框的断言按原因跳过）。CI 分层：Frontend job **实跑** typecheck / lint / 单元测试 / 构建 / e2e；Engineering docs job **实跑**文档门禁与 Whitespace gate；Backend job 为 **no-op**（`No backend or MCP changes`，其后 22 步 skipped）、Backend full hermetic 三 job **skipped**——后两者反映本次无后端改动，**不构成任何后端或业务测试通过证据**。e2e 覆盖 G3 静态面板 hover 不抬升、G4 行高 20px 与未采用方仍继承原行高、G2 hover / focus-visible 可复现、spec §2.1 对比度（交互边界 ≥3:1、正文 ≥4.5:1，浏览器内实算）与 prefers-reduced-motion 过渡关闭。
+交接备注：本切片只做共享层契约与 opt-in 入口，**不关闭 S1**、不关闭 S4 强制分页门、不派发 S1b-2 / S2–S8、不指定 S3 负责人；不清理分支、worktree 或 refs。已知既有缺口（不在本切片范围、绑定后续切片跟踪、不新建技术债编号）：① 模板列表页（`/data/templates`）在 390px 窄视口下操作按钮不可点击，故依赖该对话框的 3 项 e2e 在窄视口按原因跳过；② 表格与菜单尚无共享类契约，状态矩阵中按门控登记；③ `.ui-panel:hover` 的历史抬升行为仅在采用 opt-in 的共享组件处收敛，其余使用点待页面切片按所有权迁移。验收证据按 D4/D8 提供固定环境预览、同条件前后截图与结构化度量；**用户视觉确认尚未执行**。
+
 
 ## 下一批候选任务
 

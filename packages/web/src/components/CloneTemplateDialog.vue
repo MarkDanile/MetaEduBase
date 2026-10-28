@@ -27,7 +27,7 @@
           <div class="space-y-4">
             <div>
               <label class="field-label">新模板名称</label>
-              <input v-model="form.name" class="ui-input w-full" :placeholder="`${source.name} - 副本`" />
+              <input v-model="form.name" class="ui-input ui-input-leading w-full" :placeholder="`${source.name} - 副本`" />
             </div>
             <div>
               <label class="field-label">文档类型</label>
@@ -43,13 +43,13 @@
                 :value="docTypeInput"
                 @input="docTypeInput = ($event.target as HTMLInputElement).value"
                 @keydown.enter.prevent="addDocType"
-                class="ui-input w-full"
+                class="ui-input ui-input-leading w-full"
                 placeholder="输入后回车添加"
               />
             </div>
             <div>
               <label class="field-label">样例文件 ID（可选）</label>
-              <input v-model="form.source_file_id" class="ui-input w-full" placeholder="UUID" />
+              <input v-model="form.source_file_id" class="ui-input ui-input-leading w-full" placeholder="UUID" />
             </div>
           </div>
         </div>

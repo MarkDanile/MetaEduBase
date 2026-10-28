@@ -98,6 +98,7 @@ D1–D9 已由用户确认。下表中的“依赖”是允许开工的硬条件
 - **技术验收（非视觉）**：props/events 兼容；default/hover/focus-visible/disabled/loading/empty/error/success/无权限等适用状态可复现；焦点不丢、键盘可达、reduced-motion 生效；交互边界对比度 ≥3:1、正文 ≥4.5:1；端口占用负例失败退出且不杀进程；无全站一次性行为改写，无业务行为变化。
 - **用户视觉证据**：按 D4/D8 提供固定环境预览、同条件前后截图、结构化度量与 PR 评论所需环境信息；**S1b-1 单独不关闭 S1，也不代替 S1b-2 的 S1 用户视觉确认**。
 - **退出条件**：自动化与技术验收通过 + PR 合入。**只有 S1b-1 合入后，才允许派发 S1b-2。**
+- **交付状态（2026-10-28，实施中）**：分支 `codex/req-064-s1b-1-shared-css-token`。已交付：① **G2** 机器可读共享控件状态矩阵 `packages/web/src/constants/sharedLayerContract.ts`（五类载体 × 11 态，由单测强制与 `components.css` 一致：标为已实现的选择器必须真实存在，标为不适用或门控的必须写明原因；表格与菜单尚无共享类，按 spec 记为门控项，**不新建平行 `ds-*` 系统、不补造生产状态**）；② **G3** opt-in 入口 `.ui-panel-static`（静态容器 hover 不抬升、不表现为可点击）与 `.ui-panel-interactive`（pointer + focus-visible 焦点环）；③ **G4** 行高语义 token `--lh-control: 20px` 与 opt-in 样式 `.ui-input-leading`。采用范围**仅限共享组件**（`EmptyState` / `EvidenceCard` / `FieldEditor` / `CloneTemplateDialog` / `ImportTemplateDialog`）；**不改业务页面**，未迁移使用点仍沿用历史 `.ui-panel:hover` 与继承行高，按页面切片按所有权逐步收敛。
 
 ### 4.2 S1b-2 — UiComposer（顺序 PR 2，依赖 S1b-1）
 
