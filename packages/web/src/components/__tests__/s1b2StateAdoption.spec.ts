@@ -81,15 +81,25 @@ describe("S1b-2 共享组件采用（表格 / 确认弹窗 / 表单状态生产�
   it("TableRenderer 对象 / 数组值与 title 共用同一格式化（不出现 [object Object]）", () => {
     const wrapper = mount(TableRenderer, {
       props: {
-        columns: [{ key: "meta", label: "元数据", type: "text" }],
+        // 两列都渲染：meta 承载对象、other 承载数组，确保数组也真正进入单元格
+        columns: [
+          { key: "meta", label: "元数据", type: "text" },
+          { key: "other", label: "其它", type: "text" },
+        ],
         rows: [{ meta: { a: 1 }, other: [1, 2] }],
       },
     });
-    const cell = wrapper.find("td");
-    const shown = cell.text();
-    expect(shown).toContain("{");
-    expect(shown).not.toContain("[object Object]");
-    expect(cell.attributes("title")).toBe(shown.trim());
+    const cells = wrapper.findAll("td");
+    expect(cells).toHaveLength(2);
+
+    // 对象：JSON 序列化，不出现 [object Object]
+    expect(cells[0].text()).toContain("{");
+    expect(cells[0].text()).not.toContain("[object Object]");
+    expect(cells[0].attributes("title")).toBe(cells[0].text().trim());
+
+    // 数组：JSON 序列化为 [1,2]，而不是 String(value) 的逗号拼接 "1,2"
+    expect(cells[1].text()).toBe("[1,2]");
+    expect(cells[1].attributes("title")).toBe("[1,2]");
   });
 
   it("ConfirmDialog 提交中采用 .ui-dialog-busy", async () => {
