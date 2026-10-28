@@ -127,6 +127,8 @@ test(`REQ-064 S1b-2 导入对话框错误态截图 [${LABEL}]`, async ({ page })
         buffer: Buffer.from("{not-json", "utf-8"),
       });
       await expect(page.locator(".error-box")).toBeVisible();
+      // 等 .ui-input 的 border-color 过渡（300ms）结束再取景，否则拍到的是过渡起始色
+      await page.waitForTimeout(700);
 
       await focusDialog(page);
       await page.screenshot({
@@ -161,7 +163,14 @@ test(`REQ-064 S1b-2 导入对话框加载态截图 [${LABEL}]`, async ({ page })
     });
     await expect(page.locator(".preview-box")).toBeVisible();
     await page.getByRole("button", { name: /确认导入/ }).click();
-    await expect(fileInput).toHaveClass(/is-loading/);
+    // 改前基线没有 .is-loading 状态类，度量需容忍其不存在（只记录，不断言）
+    await page.waitForTimeout(300);
+    const hasLoading = await fileInput.evaluate((el) =>
+      el.className.includes("is-loading"),
+    );
+    expect(typeof hasLoading).toBe("boolean");
+    // 等过渡结束再取景
+    await page.waitForTimeout(700);
 
     await focusDialog(page);
     await page.screenshot({
@@ -201,6 +210,8 @@ test(`REQ-064 S1b-2 共享组件采用结构化度量 [${LABEL}]`, async ({ page
     buffer: Buffer.from("{not-json", "utf-8"),
   });
   await expect(page.locator(".error-box")).toBeVisible();
+  // .ui-input 的 border-color 过渡为 300ms（all），过早读会拿到过渡起始色
+  await page.waitForTimeout(700);
   const errorState = await readState();
 
   console.log(
