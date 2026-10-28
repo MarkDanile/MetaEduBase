@@ -1,7 +1,7 @@
 <template>
   <div
     class="ui-panel p-2.5 text-[var(--text-caption)]"
-    :class="{ 'cursor-pointer hover:bg-[var(--color-bg-warm)]': hasFile }"
+    :class="{ 'ui-panel-interactive hover:bg-[var(--color-bg-warm)]': hasFile }"
     role="article"
     :aria-label="`Evidence ${index}`"
     @click="handleClick"

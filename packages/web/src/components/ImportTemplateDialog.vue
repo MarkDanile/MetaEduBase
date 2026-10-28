@@ -32,7 +32,7 @@
                 type="file"
                 accept=".json"
                 @change="onFileSelect"
-                class="ui-input w-full"
+                class="ui-input ui-input-leading w-full"
               />
             </div>
             <div v-if="preview" class="preview-box">

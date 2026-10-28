@@ -183,9 +183,32 @@
   /* 交互边界语义别名：浅/深均 >= 3:1（浅最低 3.55、深最低 4.55），
      且被 .ui-input / .ui-btn-ghost / .mobile-opener / .desktop-collapse-toggle 实际引用 */
   --color-border-interactive: var(--theme-border-interactive);
+  /* 交互边界 hover 态语义别名（S1b-1）：主题层差异见 themes.css 注释；
+     浅 #5A6068 / 深 #9AA0AA，两主题对输入底色均 >= 3:1 */
+  --color-border-interactive-hover: var(--theme-border-interactive-hover);
 
   /* Composer（为 S2 预留） */
   --radius-composer: 16px;
   --size-composer-input-min: 24px;
   --size-composer-input-max: 160px;
+}
+
+/* ================================================================
+   S1b-1 共享层语义 Token（控制类文本行高）。
+
+   spec §2.1 的正文行高契约是「正文 14px/20px、辅助文字 13px/18px」，
+   但 S1a 只把行高写进类型刻度（--text-body-lh 等）而**没有任何控件引用**，
+   控件因此继承 body 的 line-height: 1.6（14px 下约 22.4px）——这正是 G4
+   「`.ui-input` 行高未施加」的根因。
+
+   S1b-1 不做全量改写（82 处使用点一次全改会构成全站一次性行为改写），
+   而是把行高抽成**语义别名**并配 opt-in 样式（见 components.css 的
+   `.ui-input-leading`），由页面切片按所有权逐步采用。
+
+   这些 Token 必须在产物中真实存在（被共享类引用），故用 `@theme static`
+   显式输出，不依赖 Tailwind 的引用扫描。
+   ================================================================ */
+@theme static {
+  /* 控制类文本行高：正文 14/20（spec §2.1 类型契约） */
+  --lh-control: 20px;
 }

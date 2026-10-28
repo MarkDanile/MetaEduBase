@@ -3,15 +3,15 @@
     <div class="grid grid-cols-[1fr_1fr_auto] gap-2 items-start">
       <div>
         <label class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-1 block">字段名</label>
-        <input v-model="local.key" class="ui-input w-full" placeholder="field_key" />
+        <input v-model="local.key" class="ui-input ui-input-leading w-full" placeholder="field_key" />
       </div>
       <div>
         <label class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-1 block">中文标签</label>
-        <input v-model="local.label" class="ui-input w-full" placeholder="字段标签" />
+        <input v-model="local.label" class="ui-input ui-input-leading w-full" placeholder="字段标签" />
       </div>
       <div>
         <label class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-1 block">类型</label>
-        <select v-model="local.type" class="ui-input w-full">
+        <select v-model="local.type" class="ui-input ui-input-leading w-full">
           <option v-for="ft in FIELD_TYPES" :key="ft.value" :value="ft.value">{{ ft.label }}</option>
         </select>
       </div>
@@ -25,7 +25,7 @@
 
     <div>
       <label class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-1 block">说明（可选）</label>
-      <input v-model="local.description" class="ui-input w-full" placeholder="字段描述，供 AI 抽取参考" />
+      <input v-model="local.description" class="ui-input ui-input-leading w-full" placeholder="字段描述，供 AI 抽取参考" />
     </div>
 
     <!-- Object: children -->
@@ -48,9 +48,9 @@
       <p class="text-[var(--text-small)] text-[var(--color-ink-tertiary)] mb-2">列定义</p>
       <div class="space-y-1">
         <div v-for="(col, i) in columnsArr" :key="i" class="grid grid-cols-[1fr_1fr_auto_auto] gap-2 items-center">
-          <input v-model="col.key" class="ui-input w-full" placeholder="列键名" />
-          <input v-model="col.label" class="ui-input w-full" placeholder="列标签" />
-          <select v-model="col.type" class="ui-input w-full">
+          <input v-model="col.key" class="ui-input ui-input-leading w-full" placeholder="列键名" />
+          <input v-model="col.label" class="ui-input ui-input-leading w-full" placeholder="列标签" />
+          <select v-model="col.type" class="ui-input ui-input-leading w-full">
             <option v-for="ct in COLUMN_TYPES" :key="ct.value" :value="ct.value">{{ ct.label }}</option>
           </select>
           <button class="ui-btn-ghost p-1.5 !rounded-[var(--radius-sm)]" @click="setColumns(columnsArr.filter((_, idx) => idx !== i))">

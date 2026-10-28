@@ -1,5 +1,5 @@
 <template>
-  <div class="ui-panel p-6 text-center">
+  <div class="ui-panel ui-panel-static p-6 text-center">
     <slot name="icon">
       <FileText :size="40" :stroke-width="1.25" class="mx-auto mb-4 text-[var(--color-ink-dim)]" aria-hidden="true" />
     </slot>
