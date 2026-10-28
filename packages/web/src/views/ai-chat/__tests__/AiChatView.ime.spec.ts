@@ -1,52 +1,82 @@
-/**
- * `AiChatView` — 中文 IME 兼容 + loading 错误态行为契约回归锁（AC-4）。
- *
- * BUG-003 fix5：
- * - <textarea> 加 @compositionstart / @compositionend 追踪 IME composing 状态；
- * - @keydown.enter 改调 onEnterKey 包装，composing=true 时不触发 sendMessage；
- * - chat-input 加 data-testid 便于测试 / 维护者定位。
- *
- * 真实中文输入法点击验证由维护者人工验收；本 spec 锁住 source 字符串契约
- * 作为回归锁——后续若有人改回无 IME 兼容的 @keydown.enter.exact.prevent=
-  "sendMessage"，CI 必断。
- */
-import { describe, expect, it } from "vitest";
-import aiChatViewSource from "../AiChatView.vue?raw";
+import { beforeEach, describe, expect, it } from "vitest";
+import { mount, type VueWrapper } from "@vue/test-utils";
+import AiChatComposer from "../AiChatComposer.vue";
 
-const source = aiChatViewSource as string;
+let wrapper: VueWrapper | undefined;
 
-describe("AiChatView IME compatibility — BUG-003 fix5 AC-4", () => {
-  it("textarea 必须有 @compositionstart 监听 IME composing 开始", () => {
-    expect(source).toMatch(/@compositionstart\s*=\s*"isComposing\s*=\s*true"/);
+function mountComposer(props: Partial<{
+  modelValue: string;
+  mode: "ready" | "busy" | "readonly" | "unavailable";
+  canSubmit: boolean;
+  canStop: boolean;
+  hint: string;
+}> = {}) {
+  wrapper?.unmount();
+  wrapper = mount(AiChatComposer, {
+    props: { modelValue: "中文草稿", ...props },
+  });
+  return wrapper;
+}
+
+beforeEach(() => wrapper?.unmount());
+
+describe("AiChatComposer + UiComposer integration", () => {
+  it("保留真实 textarea 的 chat-input 定位点并转发受控输入", async () => {
+    const chat = mountComposer();
+    const input = chat.find('[data-testid="chat-input"]');
+    expect(input.element.tagName).toBe("TEXTAREA");
+    await input.setValue("新的问题");
+    expect(chat.emitted("update:modelValue")?.at(-1)).toEqual(["新的问题"]);
   });
 
-  it("textarea 必须有 @compositionend 监听 IME composing 结束", () => {
-    expect(source).toMatch(/@compositionend\s*=\s*"isComposing\s*=\s*false"/);
+  it("Enter 提交、Shift+Enter 换行，IME composing 不提交", async () => {
+    const chat = mountComposer();
+    const input = chat.find("textarea");
+    await input.trigger("compositionstart");
+    await input.trigger("keydown", { key: "Enter" });
+    expect(chat.emitted("submit")).toBeUndefined();
+
+    await input.trigger("compositionend");
+    await input.trigger("keydown", { key: "Enter", shiftKey: true });
+    expect(chat.emitted("submit")).toBeUndefined();
+
+    await input.trigger("keydown", { key: "Enter" });
+    expect(chat.emitted("submit")).toHaveLength(1);
   });
 
-  it("@keydown.enter 必须调 onEnterKey 包装（不再是直接 sendMessage）", () => {
-    expect(source).toMatch(/@keydown\.enter\.exact\.prevent\s*=\s*"onEnterKey"/);
-    // 旧直接绑定 sendMessage 必须在 textarea 块附近不再出现。
-    const textareaIdx = source.indexOf("<textarea");
-    const textareaEnd = source.indexOf("</textarea>");
-    const textareaBlock = source.slice(textareaIdx, textareaEnd);
-    expect(textareaBlock).not.toMatch(/@keydown\.enter\.exact\.prevent\s*=\s*"sendMessage"/);
+  it("busy 禁止编辑和重复提交，只转发停止", async () => {
+    const chat = mountComposer({ mode: "busy", canStop: true });
+    expect(chat.find("textarea").attributes("disabled")).toBeDefined();
+    expect(chat.find(".ui-composer-submit").attributes("disabled")).toBeDefined();
+    await chat.find(".ui-composer-stop").trigger("click");
+    expect(chat.emitted("stop")).toHaveLength(1);
+    expect(chat.emitted("submit")).toBeUndefined();
   });
 
-  it("onEnterKey 函数必须检查 isComposing=true 时 return（不 sendMessage）", () => {
-    expect(source).toMatch(/function\s+onEnterKey\s*\(/);
-    const fnStart = source.indexOf("function onEnterKey(");
-    const fnEnd = source.indexOf("\n}", fnStart);
-    const fnBody = source.slice(fnStart, fnEnd + 2);
-    expect(fnBody).toMatch(/isComposing\.value/);
-    expect(fnBody).toMatch(/return\s*;/);
+  it("readonly 保留草稿但禁止编辑和提交", () => {
+    const chat = mountComposer({ mode: "readonly" });
+    expect(chat.find("textarea").attributes("readonly")).toBeDefined();
+    expect(chat.find("textarea").attributes("disabled")).toBeUndefined();
+    expect(chat.find(".ui-composer-submit").attributes("disabled")).toBeDefined();
   });
 
-  it("isComposing 必须在 setup 顶层 ref 声明", () => {
-    expect(source).toMatch(/const\s+isComposing\s*=\s*ref\(false\)/);
+  it("unavailable 禁用输入并展示父级提供的原因", () => {
+    const chat = mountComposer({ mode: "unavailable", hint: "当前会话不可提问" });
+    expect(chat.find("textarea").attributes("disabled")).toBeDefined();
+    expect(chat.find(".ui-composer-hint").text()).toBe("当前会话不可提问");
+    expect(chat.find(".ui-composer-submit").attributes("disabled")).toBeDefined();
   });
 
-  it("textarea 加 data-testid=chat-input 便于测试定位", () => {
-    expect(source).toMatch(/data-testid=["']chat-input["']/);
+  it("父级清空草稿后自动回缩，长文本按 scrollHeight 增高", async () => {
+    const chat = mountComposer({ modelValue: "" });
+    const input = chat.find("textarea");
+    const element = input.element as HTMLTextAreaElement;
+    Object.defineProperty(element, "scrollHeight", { configurable: true, value: 220 });
+    await chat.setProps({ modelValue: "第一行\n第二行\n第三行" });
+    expect(element.style.height).toBe("220px");
+
+    Object.defineProperty(element, "scrollHeight", { configurable: true, value: 24 });
+    await chat.setProps({ modelValue: "" });
+    expect(element.style.height).toBe("24px");
   });
 });
