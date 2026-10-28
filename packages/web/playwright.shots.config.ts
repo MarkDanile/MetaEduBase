@@ -1,5 +1,5 @@
 /**
- * REQ-064 S1a：视觉证据采集专用配置（手动运行，不进 CI）。
+ * REQ-064 视觉证据采集专用配置（手动运行，不进 CI）。
  *
  * 与 `playwright.config.ts` 分开的原因：主配置的 project 级 `testMatch` 只收集
  * `*-desktop` / `*-mobile` / `*-shared`，本目录下的截图采集脚本按设计不参与
@@ -7,6 +7,10 @@
  *
  *   REQ064_SHOT_LABEL=before METAEDU_E2E_PORT=3201 \
  *     pnpm --filter @metaedu/web exec playwright test --config=playwright.shots.config.ts
+ *
+ * 覆盖的截图 spec：S1a 外壳（`req064-s1a-shell-shots.spec.ts`）与 S4 数据预览
+ * 分页（`req064-s4-pagination-shots.spec.ts`）。S4 采集「改前」时用
+ * REQ064_SHOT_BASE_URL 指向改动前基线的预览服务。
  *
  * 端口规则与主配置一致：METAEDU_E2E_PORT（默认 3000，范围 1024–65535）、
  * --strictPort、reuseExistingServer=false（端口被占用时明确失败）。
@@ -43,7 +47,8 @@ export default defineConfig({
   projects: [
     {
       name: "shots",
-      testMatch: /req064-s1a-shell-shots\.spec\.ts/,
+      testMatch:
+        /req064-s1a-shell-shots\.spec\.ts|req064-s4-pagination-shots\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
   ],

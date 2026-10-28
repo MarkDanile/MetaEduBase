@@ -8,7 +8,7 @@
 //
 // 成功提示：mutation 的 onSuccess 自行 toast.success 业务文案。
 
-import { computed, type MaybeRef, type Ref, unref } from "vue";
+import { computed, nextTick, type MaybeRef, type Ref, unref } from "vue";
 import {
   useMutation,
   useQuery,
@@ -125,7 +125,7 @@ function useDatasetTasksQuery(
 
 function useDatasetRowsQuery(
   datasetId: Ref<string | null>,
-  params: Ref<{ offset: number; limit: number }>,
+  params: MaybeRef<{ offset: number; limit: number }>,
 ): UseQueryReturnType<DatasetRowDTO[], Error> {
   return useQuery({
     queryKey: computed(() =>
@@ -252,11 +252,18 @@ function useReinitializeMutation(
       structuredDataApi
         .reinitializeDataset(datasetId.value as string)
         .then((r) => r.data),
-    onSuccess: () => {
+    onSuccess: async () => {
       onSuccess();
       if (datasetId.value) {
         void qc.invalidateQueries({ queryKey: datasetKeys.tasks(datasetId.value) });
         void qc.invalidateQueries({ queryKey: datasetKeys.kg(datasetId.value) });
+        // 重新初始化会先删行再重新解析，行数与行内容都可能变化：
+        // 必须让 rows 查询失效，否则分页展示的是旧缓存行。
+        // 放到 nextTick 之后：onSuccess 回调已把页码归零，但 Vue Query 的
+        // queryKey 变更属于 pre-flush，此刻观察者仍挂在旧 offset 的 key 上，
+        // 直接失效会额外用旧 offset 重取一次。
+        await nextTick();
+        void qc.invalidateQueries({ queryKey: ["datasets", datasetId.value, "rows"] });
       }
     },
   });

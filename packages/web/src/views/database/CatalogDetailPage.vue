@@ -91,14 +91,14 @@
               :rows="datasetRows"
               :kg-nodes="datasetKgNodes"
               :kg-edges="datasetKgEdges"
-              :total-rows="datasetRows.length"
-              :offset="0"
-              :page-size="20"
+              :page="rowsPage"
+              :has-next-page="hasNextRowsPage"
+              :can-go-prev="canPrevRowsPage"
               :loading-rows="rowsLoading"
               :loading-kg="kgLoading"
               active-tab="preview"
               @update:active-tab="() => {}"
-              @change-page="() => {}"
+              @change-page="onChangeRowsPage"
               @node-click="() => {}"
             />
             <EmptyState
@@ -238,6 +238,14 @@ import PageHeader from "@/components/PageHeader.vue";
 import EmptyState from "@/components/EmptyState.vue";
 import LoadingSpinner from "@/components/LoadingSpinner.vue";
 import DatasetListPanel from "@/views/database/DatasetListPanel.vue";
+import {
+  ROWS_PROBE_SIZE,
+  detectHasNextPage,
+  nextRowsPage,
+  rowsPageOffset,
+  shouldFallbackRowsPage,
+  visibleRows,
+} from "@/views/database/rowsPagination";
 import DatasetTabsPanel from "@/views/database/DatasetTabsPanel.vue";
 import DatasetDetailMetaBar from "@/views/database/DatasetDetailMetaBar.vue";
 import KgOverviewPanel from "@/views/database/KgOverviewPanel.vue";
@@ -356,16 +364,64 @@ const selectedDataset = computed<DatasetDTO | null>(() => {
   return allDatasetsForCatalog.value.find((d) => d.id === id) ?? null;
 });
 
-const rowsQuery = useDatasetRowsQuery(selectedDatasetId, ref({ offset: 0, limit: 20 }));
+// S4 数据预览分页（D-P1=3a + D-P2=B）：
+// 每页展示 20 行，请求 21 行（页大小 + 1）探测下一页；不展示总条数/总页数，
+// 也不使用 `row_count` 作为分页总数（row_count 是单个数据集的数据行元数据）。
+// 并发保护依赖 Vue Query 按 queryKey 隔离响应：offset/limit 变化即产生新 key，
+// 旧 key 的迟到响应不会被写入当前 key 的 data。
+const rowsPage = ref(0);
+const rowsParams = computed(() => ({
+  offset: rowsPageOffset(rowsPage.value),
+  limit: ROWS_PROBE_SIZE,
+}));
+const rowsQuery = useDatasetRowsQuery(selectedDatasetId, rowsParams);
 const kgQuery = useDatasetKgQuery(selectedDatasetId);
 
-const datasetRows = computed<DatasetRowDTO[]>(() => rowsQuery.data.value ?? []);
+const fetchedRows = computed<DatasetRowDTO[]>(() => rowsQuery.data.value ?? []);
+const datasetRows = computed<DatasetRowDTO[]>(() => visibleRows(fetchedRows.value));
 const rowsLoading = computed(() => rowsQuery.isLoading.value);
+/** 是否存在下一页：探测请求多取到了第 21 行。 */
+const hasNextRowsPage = computed(() => detectHasNextPage(fetchedRows.value));
+/** 是否可以回到上一页。 */
+const canPrevRowsPage = computed(() => rowsPage.value > 0);
+
+function onChangeRowsPage(delta: number): void {
+  const target = nextRowsPage(rowsPage.value, delta, hasNextRowsPage.value);
+  if (target === null) return;
+  rowsPage.value = target;
+}
+
+// 兜底：任何其他路径改变选中数据集时同样重置页码。
+// flush:"sync" 必须——Vue Query 在 useBaseQuery 内部注册的
+// watch(defaultedOptions) 属于 pre-flush 且创建更早，会先于本 watcher 执行，
+// 若此处不同步重置，vue-query 会用**旧 rowsPage** 算出新 queryKey，
+// 先发出「(新数据集, 旧 offset)」的无效请求，再由本 watcher 置 0 触发第二次请求。
+watch(
+  selectedDatasetId,
+  () => {
+    rowsPage.value = 0;
+  },
+  { flush: "sync" },
+);
+
+// 翻页后空页回退（如末页最后一条被删、或重新初始化后行数变少）。
+// 只有当前页**已有响应**时才判断：切换 key 期间 data 为 undefined，
+// 若此时按「0 行」判断会把正常翻页误判为空页。
+const rowsResolved = computed(() => rowsQuery.data.value !== undefined);
+watch([fetchedRows, rowsResolved], ([rows, resolved]) => {
+  if (!resolved) return;
+  if (shouldFallbackRowsPage(rowsPage.value, rows.length)) {
+    rowsPage.value -= 1;
+  }
+});
 const datasetKgNodes = computed<KnowledgeNodeDTO[]>(() => kgQuery.data.value?.nodes ?? []);
 const datasetKgEdges = computed<KnowledgeEdgeDTO[]>(() => kgQuery.data.value?.edges ?? []);
 const kgLoading = computed(() => kgQuery.isLoading.value);
 
 function onSelectDataset(ds: DatasetDTO) {
+  // 切换数据集属于"条件变化"：先重置页码再切换 id，
+  // 否则会对新数据集先用上一页的 offset 发出一次无效请求。
+  rowsPage.value = 0;
   selectedDatasetId.value = ds.id;
 }
 
@@ -476,6 +532,8 @@ function onDeleteDataset() {
 
 const reinitMutation = useReinitializeMutation(selectedDatasetId, () => {
   toast.success("已重新初始化数据集");
+  // 重新初始化会改变行数与行内容：回到第一页，避免停在越界页码
+  rowsPage.value = 0;
 });
 
 function onReinitialize() {
