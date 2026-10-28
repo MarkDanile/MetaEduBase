@@ -124,6 +124,145 @@
     border-color: var(--color-danger);
   }
 
+  /* ---- S1b-2 共享 Composer（design spec §3 / roadmap §4.2 G1）----
+     容器圆角取 --radius-composer(16px)，文本区高度取
+     --size-composer-input-min/max(24/160px)，行高取 --lh-control。 */
+  .ui-composer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-control-gap);
+    padding: var(--spacing-card);
+    background: var(--surface-input-bg);
+    border: 1px solid var(--color-border-interactive);
+    border-radius: var(--radius-composer);
+  }
+
+  .ui-composer-label {
+    font-size: var(--text-caption);
+    color: var(--color-ink-secondary);
+  }
+
+  .ui-composer-input {
+    min-height: var(--size-composer-input-min);
+    max-height: var(--size-composer-input-max);
+    /* 竖向内边距取 --spacing-control-gap(8px)；横向 10px 为本 PR 新引入值（未 token 化，非既有先例） */
+    padding: var(--spacing-control-gap) 10px;
+    line-height: var(--lh-control);
+    resize: vertical;
+  }
+
+  .ui-composer-hint {
+    font-size: var(--text-caption);
+    color: var(--color-ink-tertiary);
+  }
+
+  .ui-composer-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-control-gap);
+    /* 窄视口下工具行换行，避免溢出容器 */
+    flex-wrap: wrap;
+  }
+
+  .ui-composer-tools,
+  .ui-composer-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-control-gap);
+    flex-wrap: wrap;
+  }
+
+  /* 空态：内容为空时由 placeholder 表达，容器给出可观察标记 */
+  .ui-composer.ui-composer-empty .ui-composer-input::placeholder {
+    color: var(--color-ink-tertiary);
+  }
+
+  /* 附件区与停止按钮：补齐布局规则，使共享 DOM 钩子与共享层契约一致 */
+  .ui-composer-attachments {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-control-gap);
+    flex-wrap: wrap;
+  }
+
+  .ui-composer-stop {
+    white-space: nowrap;
+  }
+
+  /* 只读 / 不可用：与输入框的弱化态一致 */
+  .ui-composer.ui-composer-readonly .ui-composer-input,
+  .ui-composer.ui-composer-unavailable .ui-composer-input {
+    background: var(--color-bg-warm);
+  }
+
+  /* 忙碌：指针语义为进行中，覆盖 .ui-input:disabled 的 not-allowed */
+  .ui-composer.ui-composer-busy .ui-composer-input {
+    cursor: progress;
+  }
+
+  /* ---- S1b-2 共享表格契约（design spec §3 表格面）---- */
+  .ui-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-caption);
+    color: var(--color-ink);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
+    /* 外框 1px 生效；border-radius 与 overflow 在 border-collapse:collapse 的表格盒上不生效（故不宣称圆角） */
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .ui-table-header-cell {
+    /* 纵向取 --spacing-control-gap(8px)；横向 12px 为本文件既有写法（如 .ui-toolbar） */
+    padding: var(--spacing-control-gap) 12px;
+    text-align: left;
+    font-weight: 500;
+    color: var(--color-ink-secondary);
+    background: var(--color-bg-warm);
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+
+  .ui-table-cell {
+    /* 纵向取 --spacing-control-gap(8px)；横向 12px 为本文件既有写法 */
+    padding: var(--spacing-control-gap) 12px;
+    color: var(--color-ink);
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+
+  /* 长内容：td 的 max-width 在 table-layout:auto 下会被浏览器忽略，
+     故由单元格内的块级 span 承载截断（省略号 + 不换行），
+     表格整体仍由外层 .overflow-x-auto 横向滚动。 */
+  .ui-table-cell-text {
+    display: block;
+    /* 截断宽度上限（新引入值，未 token 化；与 .ui-input 的宽度口径独立） */
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ui-table-row:hover .ui-table-cell {
+    background: var(--color-bg-hover);
+  }
+
+  .ui-table-empty-cell {
+    /* 纵向取 --spacing-card(16px)；横向 12px 为本文件既有写法 */
+    padding: var(--spacing-card) 12px;
+    text-align: center;
+    color: var(--color-ink-tertiary);
+  }
+
+  /* ---- S1b-2 确认弹窗提交中（design spec §3 确认弹窗面）---- */
+  .ui-dialog.ui-dialog-busy {
+    cursor: progress;
+  }
+
+  .ui-dialog.ui-dialog-busy > * {
+    opacity: 0.85;
+  }
+
   /* ---- S1b-1 共享控件状态补齐（G2）与行高 opt-in（G4） ----
      状态矩阵（面 × 控件 × 状态）见 packages/web/src/constants/sharedLayerContract.ts，
      由同目录 __tests__/sharedLayerContract.spec.ts 强制与本文件保持一致：
@@ -142,6 +281,12 @@
      否则 hover 的灰边会把聚焦强调色与错误 / 成功态边界覆盖掉。 */
   .ui-input:where(:hover:not(:disabled):not([aria-readonly="true"])) {
     border-color: var(--color-border-interactive-hover);
+  }
+
+  /* 加载态：操作进行中（指针 progress + 文字弱化），**不改变可编辑性** */
+  .ui-input.is-loading {
+    cursor: progress;
+    color: var(--color-ink-tertiary);
   }
 
   /* 成功态 */

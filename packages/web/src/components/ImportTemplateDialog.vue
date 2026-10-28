@@ -26,13 +26,17 @@
         <div class="modal-body">
           <div class="space-y-4">
             <div>
-              <label class="field-label">选择 JSON 文件</label>
+              <label class="field-label" :for="fileInputId">选择 JSON 文件</label>
               <input
+                :id="fileInputId"
                 ref="fileInput"
                 type="file"
                 accept=".json"
                 @change="onFileSelect"
                 class="ui-input ui-input-leading w-full"
+                :class="{ 'is-error': !!error, 'is-loading': submitting }"
+                :aria-invalid="error ? 'true' : undefined"
+                :aria-busy="submitting ? 'true' : undefined"
               />
             </div>
             <div v-if="preview" class="preview-box">
@@ -68,7 +72,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, useId } from 'vue'
+
+/** 组件实例级 id：与 ConfirmDialog / UiComposer 的 useId() 做法一致，避免复用时重复 id。 */
+const fileInputId = useId()
 import { X, Upload, Check } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
 import { templateApi } from '@/services/template'
