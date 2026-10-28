@@ -145,6 +145,28 @@ test(`REQ-064 S1b-1 表单输入截图 [${LABEL}]`, async ({ page }) => {
 });
 
 /**
+ * hover 态对照：G3 的差异**只在 hover 时可见**——静态面板在改前会随 hover
+ * 抬升阴影（表现为可点击），改后采用 `.ui-panel-static` 则不抬升。
+ * 因此单独采集 hover 态的前后对照图，否则静态截图看不出差别。
+ */
+test(`REQ-064 S1b-1 静态面板 hover 态截图 [${LABEL}]`, async ({ page }) => {
+  await setupE2E(page, "super_admin");
+  await installSharedLayerMocks(page);
+  await page.goto(target("/knowledge"));
+  await page.waitForLoadState("networkidle");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  for (const theme of FULL_THEMES) {
+    await switchTheme(page, theme);
+    await focusElement(page, ".ui-panel");
+    await page.locator(".ui-panel").first().hover();
+    await page.waitForTimeout(300);
+    await page.screenshot({
+      path: path.join(SHOT_DIR, `${LABEL}-s1b1-empty-panel-hover-${theme}.png`),
+    });
+  }
+});
+
+/**
  * 结构化度量：把「共享层改了什么」变成可复核的硬条件。
  * 「改前」基线没有 opt-in 类，度量需容忍其不存在。
  */
