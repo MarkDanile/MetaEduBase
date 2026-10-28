@@ -4,8 +4,10 @@
  * 强制 `src/constants/sharedLayerContract.ts` 的状态矩阵与
  * `src/assets/css/components.css` / `tokens.css` **保持一致**：
  *
- * - 标为 `implemented` 的选择器必须**锚定到规则块**存在于 components.css
- *   （`选择器 + {`），避免 `.ui-input` 被 `.ui-input-leading` 之类的子串误命中；
+ * - 标为 `implemented` 的选择器必须是 components.css 中**真实的规则选择器**：
+ *   归一化后必须紧跟 `,` 或 `{`（规则列表分隔或规则块起始），
+ *   既避免 `.ui-input` 被 `.ui-input-leading` 之类的子串误命中，
+ *   也避免 `.ui-input` 借 `.ui-input:focus-visible` 蒙混过关；
  * - **反向扫描**：components.css 中出现的每个 `ui-*` 类，必须能在矩阵中找到归属，
  *   或被显式登记为布局壳类（LAYOUT_SHELL_CLASSES）；
  * - 标为 `not-applicable` / `gated` 的状态必须写明原因（spec §2.1：
@@ -13,9 +15,9 @@
  * - 五类界面载体（表单 / 卡片 / 表格 / 菜单 / 确认弹窗）必须都被登记；
  * - 不允许出现 spec §2.1 禁止的平行 `ds-*` 类体系。
  *
- * 覆盖的漂移方向：**矩阵写了但 CSS 没有**（锚定断言）与
- * **CSS 新增了 ui-* 类但矩阵没登记**（反向扫描）。矩阵中「已实现但已无生产者」
- * 的状态由人工复核保证，契约测试不判定运行时生产者。
+ * 覆盖的漂移方向：**矩阵写了但 CSS 没有**（规则选择器断言 + gated 状态提及的
+ * 类也必须存在）与 **CSS 新增了 ui-* 类但矩阵没登记**（反向扫描）。
+ * 矩阵中「已实现但已无生产者」的状态由人工复核保证，契约测试不判定运行时生产者。
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -83,11 +85,12 @@ describe("S1b-1 共享层状态契约（spec §2.1 / roadmap G2）", () => {
     for (const entry of contractEntries()) {
       if (entry.support.kind !== "implemented") continue;
       for (const selector of entry.support.selectors) {
-        // 锚定：选择器必须真实出现在规则选择器位置，且其后**不得是类名续写字符**
-        // （避免 `.ui-input` 被 `.ui-input-leading` 之类的更长类名误命中），
-        // 同时允许复合/后代选择器（`.ui-table-row:hover .ui-table-cell`）。
+        // 规则选择器断言：归一化后必须紧跟 `,` 或 `{`。
+        // - 排除子串误命中：`.ui-input` 不会匹配 `.ui-input-leading`（其后是 `-`），
+        //   也不会借 `.ui-input:focus-visible` 蒙混过关（其后是 `:`）；
+        // - 允许逗号分隔的规则项（`.ui-composer-tools,`）与复合/后代选择器。
         const anchored = new RegExp(
-          `${escapeRegExp(normalize(selector))}(?![a-z0-9-])`,
+          `${escapeRegExp(normalize(selector))}\\s*[,{]`,
         );
         if (!anchored.test(componentsCss)) {
           missing.push(`${entry.surface}/${entry.control}/${entry.state} → ${selector}`);
@@ -104,6 +107,26 @@ describe("S1b-1 共享层状态契约（spec §2.1 / roadmap G2）", () => {
       .map((match) => match[0])
       .filter((name) => !registered.has(name));
     expect([...new Set(unregistered)].sort()).toEqual([]);
+  });
+
+  it("门控 / 不适用状态在原因中提及的 ui-* 类也必须真实存在", () => {
+    // 否则「只在原因文本里被提到」的类（例如 .ui-dialog-busy）会形成
+    // 覆盖空洞：删掉它的 CSS 规则，测试仍然全绿。
+    const missing: string[] = [];
+    for (const entry of contractEntries()) {
+      if (entry.support.kind === "implemented") continue;
+      const text = `${entry.support.reason} ${entry.support.note ?? ""}`;
+      for (const match of text.matchAll(/\.ui-[a-z0-9-]+/g)) {
+        const name = match[0];
+        const present = new RegExp(
+          `${escapeRegExp(name)}(?![a-z0-9-])`,
+        ).test(componentsCss);
+        if (!present) {
+          missing.push(`${entry.surface}/${entry.control}/${entry.state} → ${name}`);
+        }
+      }
+    }
+    expect(missing).toEqual([]);
   });
 
   it("标为不适用或门控的状态都写明了原因", () => {

@@ -26,14 +26,17 @@
         <div class="modal-body">
           <div class="space-y-4">
             <div>
-              <label class="field-label">选择 JSON 文件</label>
+              <label class="field-label" for="import-template-file">选择 JSON 文件</label>
               <input
+                id="import-template-file"
                 ref="fileInput"
                 type="file"
                 accept=".json"
                 @change="onFileSelect"
                 class="ui-input ui-input-leading w-full"
                 :class="{ 'is-error': !!error, 'is-loading': submitting }"
+                :aria-invalid="error ? 'true' : undefined"
+                :aria-busy="submitting ? 'true' : undefined"
               />
             </div>
             <div v-if="preview" class="preview-box">

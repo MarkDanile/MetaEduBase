@@ -15,8 +15,13 @@
  *   一致（选择器缺失即失败；缺原因即失败；漏状态即失败），因此契约不会
  *   与实现悄悄漂移。
  *
- * 本切片**不新建平行设计系统**：只登记共享层已拥有的 `ui-*` 类；表格与菜单
- * 尚无共享类，按 spec 记为门控项，交由后续页面切片收敛，不在本切片补造。
+ * **不新建平行设计系统**：只使用 `ui-*` 前缀与既有 token，不引入 `ds-*` 平行
+ * 类体系（spec §2.1）。
+ *
+ * 演进：S1b-1 建立了共享层契约与 opt-in 入口；**S1b-2 落地了表格面
+ * （`.ui-table*`）与 Composer（`.ui-composer*`）共享类**，并为确认弹窗建立
+ * `.ui-dialog-busy`、为表单建立 `.ui-input.is-loading`。**菜单面至今仍无共享
+ * 组件**，按 spec 记为门控项，交由后续切片收敛，不在本文件补造。
  */
 
 /** spec §2.1 列出的共享层适用状态。 */
@@ -296,11 +301,11 @@ export const SHARED_LAYER_CONTRACT: ControlContract[] = [
         "busy 与 unavailable 模式下文本区禁用；readonly 模式为可读不可编辑",
       ),
       loading: implementedAs(
-        [".ui-composer.ui-composer-busy"],
+        [".ui-composer.ui-composer-busy .ui-composer-input"],
         "busy 模式：指针 progress，仅 canStop 时显示并允许停止",
       ),
       empty: implementedAs(
-        [".ui-composer.ui-composer-empty"],
+        [".ui-composer.ui-composer-empty .ui-composer-input::placeholder"],
         "内容为空时给出可观察标记，并由 placeholder 表达",
       ),
       error: gated(
@@ -310,7 +315,7 @@ export const SHARED_LAYER_CONTRACT: ControlContract[] = [
         "Composer 没有成功态；发送结果由父级处理",
       ),
       "no-permission": implementedAs(
-        [".ui-composer.ui-composer-unavailable"],
+        [".ui-composer.ui-composer-unavailable .ui-composer-input"],
         "unavailable 模式承载父级下发的不可用原因；**组件不推断租户权限**（design spec §3）",
       ),
     },
@@ -324,10 +329,13 @@ export const SHARED_LAYER_CONTRACT: ControlContract[] = [
           ".ui-table",
           ".ui-table-header-cell",
           ".ui-table-cell",
-          ".ui-table-row",
+          ".ui-table-cell-text",
           ".ui-table-empty-cell",
         ],
-        "S1b-2 建立共享表格契约并由 TableRenderer 采用（表头 / 单元格 / 空态行）",
+        "S1b-2 建立共享表格契约并由 TableRenderer 采用（表头 / 单元格 / 空态行）；"
+        + "注意这是一次**视觉变更**而非等价重绘：改前使用的 --panel-bg / --panel-border "
+        + "在本仓库未定义（表头实为无背景、单元格底边为 currentColor），改后表头使用 "
+        + "--color-bg-warm、单元格底边使用 --color-border-subtle、表格新增外框与圆角",
       ),
       hover: implementedAs(
         [".ui-table-row:hover .ui-table-cell"],

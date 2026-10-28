@@ -14,7 +14,7 @@
           <td v-for="col in columns" :key="col.key"
             class="ui-table-cell"
             :title="cellTitle(row[col.key])">
-            {{ row[col.key] ?? '-' }}
+            <span class="ui-table-cell-text">{{ row[col.key] ?? '-' }}</span>
           </td>
         </tr>
         <tr v-if="rows.length === 0">

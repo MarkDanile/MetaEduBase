@@ -145,7 +145,8 @@
   .ui-composer-input {
     min-height: var(--size-composer-input-min);
     max-height: var(--size-composer-input-max);
-    padding: 8px 10px;
+    /* 竖向内边距取 --spacing-control-gap(8px)；横向 10px 为本文件既有写法 */
+    padding: var(--spacing-control-gap) 10px;
     line-height: var(--lh-control);
     resize: vertical;
   }
@@ -201,7 +202,8 @@
   }
 
   .ui-table-header-cell {
-    padding: 8px 12px;
+    /* 纵向取 --spacing-control-gap(8px)；横向 12px 为本文件既有写法（如 .ui-toolbar） */
+    padding: var(--spacing-control-gap) 12px;
     text-align: left;
     font-weight: 500;
     color: var(--color-ink-secondary);
@@ -210,10 +212,17 @@
   }
 
   .ui-table-cell {
-    padding: 8px 12px;
+    /* 纵向取 --spacing-control-gap(8px)；横向 12px 为本文件既有写法 */
+    padding: var(--spacing-control-gap) 12px;
     color: var(--color-ink);
     border-bottom: 1px solid var(--color-border-subtle);
-    /* 长内容：单元格内省略，不撑破表格容器 */
+  }
+
+  /* 长内容：td 的 max-width 在 table-layout:auto 下会被浏览器忽略，
+     故由单元格内的块级 span 承载截断（省略号 + 不换行），
+     表格整体仍由外层 .overflow-x-auto 横向滚动。 */
+  .ui-table-cell-text {
+    display: block;
     max-width: 320px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -225,7 +234,8 @@
   }
 
   .ui-table-empty-cell {
-    padding: 16px 12px;
+    /* 纵向取 --spacing-card(16px)；横向 12px 为本文件既有写法 */
+    padding: var(--spacing-card) 12px;
     text-align: center;
     color: var(--color-ink-tertiary);
   }

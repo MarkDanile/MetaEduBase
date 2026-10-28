@@ -30,8 +30,8 @@
 
 当前进展：实现基线为已合入 S1b-1 的 main（mergeCommit `df4bf853de5111d95e48d746152bfcce575f136d`）。本切片只做**共享组件采用范围**：
 ① **G1 共享 `UiComposer`**：受控 `modelValue`、`mode: ready/busy/readonly/unavailable`、`canSubmit/canStop/placeholder/hint/inputLabel`；事件**仅** `update:modelValue` / `submit` / `stop`，附件与工具用具名插槽；提交门槛 = `mode === "ready" && canSubmit && modelValue.trim().length > 0` 且输入法非 composing，按钮与键盘共用；`ready + canSubmit=false` 仍可编辑草稿；`readonly` 可读不可编辑、提交禁用；`unavailable` 禁用输入并给出原因；`busy` 禁止编辑与再次提交，仅 `canStop` 时显示并允许停止；**不请求 API、不选模型、不管理 Conversation、不推断租户权限**。
-② **共享控件采用与状态落地**：新增 `.ui-table` / `.ui-table-header-cell` / `.ui-table-cell` / `.ui-table-row` / `.ui-table-empty-cell`（`TableRenderer` 采用，空态行与长内容 title 一并落地）、`.ui-dialog.ui-dialog-busy`（`ConfirmDialog` 提交中采用）、`.ui-input.is-loading`（`CloneTemplateDialog` 提交中采用）、`.ui-input.is-error`（`ImportTemplateDialog` 解析/导入失败采用）；`.ui-composer*` 一组共享类随 Composer 落地。
-③ **状态矩阵同步**：表格面与确认弹窗的**门控项转已落地**，表单的 loading / error 取得真实生产者；菜单面仍无共享组件，**保持门控**并写明原因；Composer 契约以新行登记。
+② **共享控件采用与状态落地**：新增 `.ui-table` / `.ui-table-header-cell` / `.ui-table-cell` / `.ui-table-cell-text` / `.ui-table-empty-cell`（`TableRenderer` 采用，空态行与长内容 title 一并落地；**这是一次视觉变更而非等价重绘**——改前引用的 `--panel-bg` / `--panel-border` 在本仓库未定义，改后表头用 `--color-bg-warm`、单元格底边用 `--color-border-subtle`、表格新增外框与圆角）、`.ui-dialog.ui-dialog-busy`（`ConfirmDialog` 提交中加类，但**真实流程中不可见**：确认即关闭自身，状态矩阵仍登记为 gated）、`.ui-input.is-loading`（**`ImportTemplateDialog` 导入进行中**采用）、`.ui-input.is-error`（**`ImportTemplateDialog` 解析/导入失败**采用）；`.ui-composer*` 一组共享类随 Composer 落地。
+③ **状态矩阵同步**：**表格面由门控转已落地**；表单的 loading / error 取得真实生产者并转已落地；**确认弹窗建立了 `.ui-dialog-busy` 契约但仍登记为 gated**（真实流程中不可见，不写成已生效）；菜单面仍无共享组件，**保持门控**并写明原因；Composer 契约以新行登记。
 ④ **不改**：路由、权限、nav、store / service、DTO、API、后端契约、CI 配置、依赖与锁文件、评分总账、Metrics、design spec §6、technical-debt；**不接入 S2/S3 业务页面**（Composer 在本切片没有生产消费方，S2 才是首个消费方），**不启动 S2–S8、不处理 S3、不推进 phase-D/E 或生产 backfill**。
 
 允许文件范围：
@@ -45,7 +45,7 @@
 验证计划：Node 20 下 `pnpm lint`、`pnpm typecheck`、`pnpm build:bundle`、全量前端 Vitest、全量 e2e（`METAEDU_E2E_PORT=3101`）、`scripts/check-engineering-docs --full`、`git diff --check`；CI 逐 job 区分实跑 / no-op / skipped。
 下一步：完成实现与证据（可运行预览、同条件前后截图、绑定最终 commit 的结构化 PR 评论）后进入独立复审；**复审通过后才推进 Ready、Original 评分与合并**。
 
-交接备注：本切片**不关闭 S1**（S1b-2 单独不关闭 S1，也不代替 S1 用户视觉确认），不关闭 S4 强制分页门，不派发 S1b-2/S2–S8，不指定 S3 负责人，不清理分支 / worktree / refs，不新建技术债编号。**S1b-1 的 10 项非阻塞 P3（6 项末轮复审保留 + 4 项评分新增）保留为既有 follow-up，本切片不为它们单独返修**；若本切片必须触及相关文件，只修正与当前任务直接相关的事实。**G6 的 S1 用户视觉确认仍需用户本人完成**，本切片只提供可运行预览、前后截图与结构化度量，不代为确认。
+交接备注：本切片**不关闭 S1**（S1b-2 单独不关闭 S1，也不代替 S1 用户视觉确认），不关闭 S4 强制分页门，不派发 S1b-2/S2–S8，不指定 S3 负责人，不清理分支 / worktree / refs，不新建技术债编号。**S1b-1 的 10 项非阻塞 P3（6 项末轮复审保留 + 4 项评分新增）保留为既有 follow-up，本切片不为它们单独返修**；若本切片必须触及相关文件，只修正与当前任务直接相关的事实。**G6 的 S1 用户视觉确认仍需用户本人完成**，本切片只提供可运行预览、前后截图与结构化度量，不代为确认。**G5 / 退出条件尚不满足**：本切片未提供 S1 全量共享控件与 Composer 的全量预览（表格契约的唯一下游消费方无独立路由，Composer 无生产消费方、无可浏览视觉表面），截图只覆盖导入对话框两态、缺 design spec §6 的 1440×900 与 1024×768 两个默认视口——**该缺口需用户裁决路径**（新增 dev-only 预览路由，或推迟到 S2 接入时取证）后再推进 Ready。**窄视口口径**：CI mobile project 使用 Pixel 5（393×851），e2e 跳过阈值为 `< 768`；390×844 仅为手动截图脚本的自定义视口。**既有缺陷（本切片未修）**：模板列表页以 `v-if="cloneSource"` 挂载 `CloneTemplateDialog`，使其 `watch(() => props.open)` 永不触发、表单未预填，**复制流程在真实应用中不可用**。
 
 ## 下一批候选任务
 
