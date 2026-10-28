@@ -60,10 +60,6 @@ function target(pathname: string): string {
 async function installTemplateMocks(page: import("@playwright/test").Page) {
   await page.route("**/api/v1/templates**", async (route) => {
     const url = new URL(route.request().url()).pathname;
-    if (url.includes("/lookup")) {
-      await route.fulfill({ json: [] });
-      return;
-    }
     if (url.endsWith("/import")) {
       // 保持请求 pending，用于观察导入进行中的加载态
       await new Promise((resolve) => setTimeout(resolve, 5000));

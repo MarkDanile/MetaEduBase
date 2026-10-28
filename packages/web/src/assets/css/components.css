@@ -283,7 +283,7 @@
     border-color: var(--color-border-interactive-hover);
   }
 
-  /* 加载态：操作进行中，输入内容可读但不可编辑 */
+  /* 加载态：操作进行中（指针 progress + 文字弱化），**不改变可编辑性** */
   .ui-input.is-loading {
     cursor: progress;
     color: var(--color-ink-tertiary);

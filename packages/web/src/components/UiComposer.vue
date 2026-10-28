@@ -23,7 +23,7 @@
       :placeholder="placeholder"
       :disabled="mode === 'busy' || mode === 'unavailable'"
       :readonly="mode === 'readonly'"
-      :aria-describedby="hint ? hintId : undefined"
+      :aria-describedby="reasonText ? hintId : undefined"
       rows="1"
       @input="onInput"
       @keydown="onKeydown"
@@ -31,7 +31,7 @@
       @compositionend="onCompositionEnd"
     />
 
-    <p v-if="hint" :id="hintId" class="ui-composer-hint">{{ hint }}</p>
+    <p v-if="reasonText" :id="hintId" class="ui-composer-hint">{{ reasonText }}</p>
 
     <div class="ui-composer-toolbar">
       <div class="ui-composer-tools">
@@ -112,6 +112,17 @@ const emit = defineEmits<{
 
 const inputId = useId();
 const hintId = useId();
+
+/**
+ * `unavailable` 必须给出原因（design spec §3「禁用输入并给出原因」）。
+ * 父级未传 hint 时使用缺省原因，避免出现「输入被禁用却不知道为什么」。
+ */
+const reasonText = computed(() => {
+  if (props.hint?.trim()) return props.hint.trim();
+  return props.mode === "unavailable"
+    ? "当前不可用（原因由父级决定，组件不推断租户权限）"
+    : "";
+});
 const inputEl = ref<HTMLTextAreaElement | null>(null);
 /** 输入法组合中（拼音候选窗未确认）时不得触发提交。 */
 const composing = ref(false);

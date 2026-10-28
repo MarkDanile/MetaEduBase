@@ -128,6 +128,16 @@ describe("UiComposer（design spec §3 契约）", () => {
     );
   });
 
+  it("unavailable 未传 hint 时仍给出缺省原因（design spec §3 要求给出原因）", () => {
+    const wrapper = makeComposer({ mode: "unavailable" });
+    const hint = wrapper.find(".ui-composer-hint");
+    expect(hint.exists()).toBe(true);
+    expect(hint.text().length).toBeGreaterThan(0);
+    expect(wrapper.find("textarea").attributes("aria-describedby")).toBe(
+      hint.attributes("id"),
+    );
+  });
+
   it("busy：禁止编辑与再次提交；仅 canStop 时显示并允许停止", async () => {
     const withStop = makeComposer({
       modelValue: "内容",

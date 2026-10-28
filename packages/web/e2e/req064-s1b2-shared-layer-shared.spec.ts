@@ -52,10 +52,6 @@ const TEMPLATE = {
 async function installTemplateMocks(page: Page): Promise<void> {
   await page.route("**/api/v1/templates**", async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path.includes("/lookup")) {
-      await route.fulfill({ json: [] });
-      return;
-    }
     // 只有 /import 会被本 spec 的用例消费；此前并列的 /clone 分支没有任何断言消费，属死 mock
     if (path.endsWith("/import")) {
       // 保持请求 pending，用于观察提交中的加载态
@@ -128,7 +124,7 @@ test.describe("REQ-064 S1b-2 共享组件采用与状态生产者", () => {
     await expect(fileInput).toHaveClass(/is-loading/);
   });
 
-  test("共享控件在模板页沿用 S1b-1 的共享 base（行高与面板语义）", async ({
+  test("共享控件在模板页沿用 S1b-1 的行高 opt-in", async ({
     page,
   }) => {
     test.skip(
