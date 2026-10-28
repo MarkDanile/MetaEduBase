@@ -93,7 +93,7 @@ test.describe("REQ-064 S1b-1 共享层语义（G2 / G3 / G4）", () => {
 
     expect(after.boxShadow).toBe(before.boxShadow);
     expect(after.borderTopColor).toBe(before.borderTopColor);
-    expect(after.cursor).not.toBe("pointer");
+    expect(after.cursor).toBe("auto");
   });
 
   test("G4：采用 opt-in 的输入行高为 20px，未采用的仍继承原行高", async ({
@@ -126,7 +126,8 @@ test.describe("REQ-064 S1b-1 共享层语义（G2 / G3 / G4）", () => {
     const plainLh = await plain.evaluate(
       (el) => getComputedStyle(el).lineHeight,
     );
-    expect(plainLh).not.toBe("20px");
+    // 锁定具体值：未采用方继承 body 的 line-height: 1.6（14px → 22.4px）
+    expect(plainLh).toBe("22.4px");
   });
 
   test("G2：输入控件的 hover 与 focus-visible 状态可复现", async ({
@@ -154,10 +155,13 @@ test.describe("REQ-064 S1b-1 共享层语义（G2 / G3 / G4）", () => {
 
     await input.focus();
     await page.waitForTimeout(150);
-    const focusShadow = await input.evaluate(
-      (el) => getComputedStyle(el).boxShadow,
-    );
-    expect(focusShadow).not.toBe("none");
+    const focusState = await input.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { boxShadow: cs.boxShadow, borderTopColor: cs.borderTopColor };
+    });
+    expect(focusState.boxShadow).not.toBe("none");
+    // 焦点态边框切换到强调色（focus 规则同时改 border-color）
+    expect(focusState.borderTopColor).not.toBe(hoverBorder);
   });
 
   test("spec §2.1：交互边界对比度 ≥ 3:1、正文对比度 ≥ 4.5:1", async ({
@@ -176,8 +180,9 @@ test.describe("REQ-064 S1b-1 共享层语义（G2 / G3 / G4）", () => {
     const input = page.locator(".ui-input-leading").first();
     await expect(input).toBeVisible();
 
-    const ratios = await input.evaluate((el) => {
-      const parse = (value: string): [number, number, number] => {
+    const measure = async () =>
+      input.evaluate((el) => {
+        const parse = (value: string): [number, number, number] => {
         const nums = value.match(/[\d.]+/g) ?? ["0", "0", "0"];
         return [Number(nums[0]), Number(nums[1]), Number(nums[2])];
       };
@@ -198,18 +203,28 @@ test.describe("REQ-064 S1b-1 共享层语义（G2 / G3 / G4）", () => {
         const [hi, lo] = la > lb ? [la, lb] : [lb, la];
         return (hi + 0.05) / (lo + 0.05);
       };
-      const cs = getComputedStyle(el);
-      const bodyColor = getComputedStyle(document.body).color;
-      return {
-        borderRatio: ratio(cs.borderTopColor, cs.backgroundColor),
-        textRatio: ratio(cs.color, cs.backgroundColor),
-        bodyTextRatio: ratio(bodyColor, cs.backgroundColor),
-      };
-    });
+        const cs = getComputedStyle(el);
+        const bodyColor = getComputedStyle(document.body).color;
+        return {
+          borderRatio: ratio(cs.borderTopColor, cs.backgroundColor),
+          textRatio: ratio(cs.color, cs.backgroundColor),
+          bodyTextRatio: ratio(bodyColor, cs.backgroundColor),
+          borderColor: cs.borderTopColor,
+        };
+      });
 
-    expect(ratios.borderRatio).toBeGreaterThanOrEqual(3);
-    expect(ratios.textRatio).toBeGreaterThanOrEqual(4.5);
-    expect(ratios.bodyTextRatio).toBeGreaterThanOrEqual(4.5);
+    const rest = await measure();
+    expect(rest.borderRatio).toBeGreaterThanOrEqual(3);
+    expect(rest.textRatio).toBeGreaterThanOrEqual(4.5);
+    expect(rest.bodyTextRatio).toBeGreaterThanOrEqual(4.5);
+
+    // hover 态的交互边界同样必须 >= 3:1（S1b-1 返修项：
+    // hover 边框不得换成低对比度的 --color-border）
+    await input.hover();
+    await page.waitForTimeout(250);
+    const hovered = await measure();
+    expect(hovered.borderRatio).toBeGreaterThanOrEqual(3);
+    expect(hovered.borderColor).not.toBe(rest.borderColor);
   });
 
   test("动效降级：prefers-reduced-motion 下共享层过渡被关闭", async ({

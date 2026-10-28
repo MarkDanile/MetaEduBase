@@ -167,6 +167,29 @@ test(`REQ-064 S1b-1 静态面板 hover 态截图 [${LABEL}]`, async ({ page }) =
 });
 
 /**
+ * 输入框 hover 态对照：S1b-1 新增的 `.ui-input:hover` 是**全站所有输入框**都会
+ * 命中的共享层变更（含业务页面未迁移的用法），因此必须与 G3 一样单独采集
+ * hover 态前后对照，否则该变更没有可复核的同条件视觉证据。
+ */
+test(`REQ-064 S1b-1 输入框 hover 态截图 [${LABEL}]`, async ({ page }) => {
+  await setupE2E(page, "super_admin");
+  await installSharedLayerMocks(page);
+  await page.goto(target("/data/templates"));
+  await page.waitForLoadState("networkidle");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  for (const theme of FULL_THEMES) {
+    await switchTheme(page, theme);
+    await page.getByTitle("复制").first().click();
+    await focusElement(page, ".ui-input");
+    await page.locator(".ui-input").first().hover();
+    await page.waitForTimeout(300);
+    await page.screenshot({
+      path: path.join(SHOT_DIR, `${LABEL}-s1b1-input-hover-${theme}.png`),
+    });
+  }
+});
+
+/**
  * 结构化度量：把「共享层改了什么」变成可复核的硬条件。
  * 「改前」基线没有 opt-in 类，度量需容忍其不存在。
  */
@@ -194,7 +217,7 @@ test(`REQ-064 S1b-1 共享层结构化度量 [${LABEL}]`, async ({ page }) => {
   await page.getByTitle("复制").first().click();
   const input = page.locator(".ui-input").first();
   await expect(input).toBeVisible();
-  const inputMetrics = await input.evaluate((el) => {
+  const readInput = (el: Element) => {
     const cs = getComputedStyle(el);
     return {
       hasLeadingOptIn: el.classList.contains("ui-input-leading"),
@@ -203,7 +226,11 @@ test(`REQ-064 S1b-1 共享层结构化度量 [${LABEL}]`, async ({ page }) => {
       borderTopColor: cs.borderTopColor,
       backgroundColor: cs.backgroundColor,
     };
-  });
+  };
+  const inputMetrics = await input.evaluate(readInput);
+  await input.hover();
+  await page.waitForTimeout(250);
+  const hoverMetrics = await input.evaluate(readInput);
 
   console.log(
     "METRICS " +
@@ -211,6 +238,7 @@ test(`REQ-064 S1b-1 共享层结构化度量 [${LABEL}]`, async ({ page }) => {
         label: LABEL,
         emptyPanel: emptyMetrics,
         formInput: inputMetrics,
+        formInputHover: hoverMetrics,
       }),
   );
 });

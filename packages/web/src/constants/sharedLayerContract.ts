@@ -50,11 +50,11 @@ export type SharedLayerSurface = (typeof SHARED_LAYER_SURFACES)[number];
 /** 单个状态的支持方式。 */
 export type StateSupport =
   /** 已实现：选择器必须真实存在于 components.css */
-  | { kind: "implemented"; selectors: string[] }
+  | { kind: "implemented"; selectors: string[]; note?: string }
   /** 不适用：该控件没有此状态的真实语义 */
-  | { kind: "not-applicable"; reason: string }
+  | { kind: "not-applicable"; reason: string; note?: string }
   /** 门控：需要真实能力或后续切片才可建立，本切片不补造 */
-  | { kind: "gated"; reason: string };
+  | { kind: "gated"; reason: string; note?: string };
 
 /** 一个「面 × 共享控件」的状态契约。 */
 export interface ControlContract {
@@ -71,14 +71,23 @@ const implemented = (...selectors: string[]): StateSupport => ({
   selectors,
 });
 
-const notApplicable = (reason: string): StateSupport => ({
-  kind: "not-applicable",
-  reason,
+/** 已实现 + 补充说明（用于需要解释口径的状态）。 */
+const implementedAs = (selectors: string[], note: string): StateSupport => ({
+  kind: "implemented",
+  selectors,
+  note,
 });
 
-const gated = (reason: string): StateSupport => ({
+const notApplicable = (reason: string, note?: string): StateSupport => ({
+  kind: "not-applicable",
+  reason,
+  note,
+});
+
+const gated = (reason: string, note?: string): StateSupport => ({
   kind: "gated",
   reason,
+  note,
 });
 
 /**
@@ -92,9 +101,13 @@ export const SHARED_LAYER_CONTRACT: ControlContract[] = [
     surface: "表单",
     control: ".ui-input",
     states: {
-      default: implemented(".ui-input"),
-      hover: implemented(
-        '.ui-input:hover:not(:disabled):not([aria-readonly="true"])',
+      default: implementedAs(
+        [".ui-input", ".ui-input-leading"],
+        ".ui-input-leading 是 G4 的行高 opt-in 入口（正文 14/20）；默认不改变既有输入框的继承行高",
+      ),
+      hover: implementedAs(
+        ['.ui-input:hover:not(:disabled):not([aria-readonly="true"])'],
+        "hover 边框使用 --color-border-interactive-hover（主题层登记，浅/深对输入底色均 >= 3:1）；禁用与只读不响应",
       ),
       "focus-visible": implemented(".ui-input:focus-visible"),
       active: notApplicable(
@@ -110,9 +123,18 @@ export const SHARED_LAYER_CONTRACT: ControlContract[] = [
       empty: notApplicable(
         "输入框无空态；列表空态由 EmptyState 组件承担",
       ),
-      error: implemented(".ui-input.is-error"),
-      success: implemented(".ui-input.is-success"),
-      "no-permission": implemented('.ui-input[aria-readonly="true"]'),
+      error: gated(
+        "共享层已有 .ui-input.is-error 规则（S1a 遗留），但仓库内当前没有任何生产者产出 error 状态",
+        "待真实校验接入后再登记为生效状态",
+      ),
+      success: gated(
+        "S1b-1 建立了 .ui-input.is-success 规则，但仓库内当前没有任何生产者产出 success 状态",
+        "opt-in 契约先行，生产者接入后再登记为生效状态",
+      ),
+      "no-permission": gated(
+        "S1b-1 建立了 .ui-input[aria-readonly=\"true\"] 规则，但仓库内当前没有任何生产者下发 aria-readonly",
+        "opt-in 契约先行，权限层接入后再登记为生效状态",
+      ),
     },
   },
   {
@@ -148,11 +170,18 @@ export const SHARED_LAYER_CONTRACT: ControlContract[] = [
     surface: "卡片",
     control: ".ui-panel（.ui-panel-static / .ui-panel-interactive）",
     states: {
-      default: implemented(".ui-panel"),
-      hover: gated(
-        "静态面板不响应 hover（.ui-panel-static 已提供显式静态入口），可交互面板沿用 .ui-panel:hover；未迁移使用点的历史抬升行为由页面切片按所有权逐步收敛",
+      default: implementedAs(
+        [".ui-panel", ".ui-panel-interactive"],
+        ".ui-panel-interactive 是 G3 的可交互 opt-in 入口（pointer 光标；其 focus-visible 见下方门控项）",
       ),
-      "focus-visible": implemented(".ui-panel-interactive:focus-visible"),
+      hover: implementedAs(
+        [".ui-panel:hover", ".ui-panel.ui-panel-static:hover"],
+        "未迁移使用点沿用历史 .ui-panel:hover 抬升；已采用 .ui-panel-static 的静态容器在 hover 时逐字回退到基线边框与阴影（EmptyState 已是生效实例）",
+      ),
+      "focus-visible": gated(
+        "仓库内当前没有可聚焦的面板实例：唯一候选使用者 EvidenceCard 的根节点是 div[role=article]（无 tabindex），:focus-visible 不触发",
+        "opt-in 契约先行；出现真实可交互面板后再登记为生效状态",
+      ),
       active: notApplicable("面板本身没有按下态；按下反馈由内部控件承担"),
       selected: gated(
         "面板选中态当前由页面级 ring 工具类表达，共享层未建立统一选中契约",
@@ -175,7 +204,13 @@ export const SHARED_LAYER_CONTRACT: ControlContract[] = [
     surface: "卡片",
     control: ".ui-tag",
     states: {
-      default: implemented(".ui-tag"),
+      default: implemented(
+        ".ui-tag",
+        ".ui-tag-blue",
+        ".ui-tag-green",
+        ".ui-tag-amber",
+        ".ui-tag-purple",
+      ),
       hover: notApplicable("标签不可交互，没有 hover 语义"),
       "focus-visible": notApplicable("标签不可交互，不进入焦点序列"),
       active: notApplicable("标签不可交互，没有按下语义"),
@@ -188,6 +223,40 @@ export const SHARED_LAYER_CONTRACT: ControlContract[] = [
       ),
       success: implemented(".ui-tag-green"),
       "no-permission": notApplicable("标签没有权限语义"),
+    },
+  },
+  {
+    surface: "卡片",
+    control: ".ui-toolbar",
+    states: {
+      default: implemented(".ui-toolbar"),
+      hover: notApplicable("工具条本身不响应 hover，交互由内部控件承担"),
+      "focus-visible": gated("工具条容器本身不可聚焦，焦点环由内部控件承担"),
+      active: notApplicable("工具条没有按下态"),
+      selected: notApplicable("工具条没有选中态"),
+      disabled: notApplicable("工具条禁用语义作用于内部控件"),
+      loading: notApplicable("工具条没有加载语义"),
+      empty: notApplicable("工具条本身没有空态；空态由内部内容承担"),
+      error: notApplicable("工具条没有错误语义"),
+      success: notApplicable("工具条没有成功语义"),
+      "no-permission": notApplicable("工具条本身不承载权限语义"),
+    },
+  },
+  {
+    surface: "卡片",
+    control: ".ui-interactive-row",
+    states: {
+      default: implemented(".ui-interactive-row"),
+      hover: implemented(".ui-interactive-row:hover"),
+      "focus-visible": gated("可交互行尚未建立可聚焦语义与焦点环契约"),
+      active: notApplicable("可交互行没有按下态"),
+      selected: gated("可交互行选中态尚未建立共享契约"),
+      disabled: notApplicable("可交互行没有禁用语义"),
+      loading: notApplicable("可交互行没有加载语义"),
+      empty: notApplicable("可交互行没有空态"),
+      error: notApplicable("可交互行没有错误语义"),
+      success: notApplicable("可交互行没有成功语义"),
+      "no-permission": notApplicable("可交互行本身不承载权限语义"),
     },
   },
   {
@@ -232,7 +301,7 @@ export const SHARED_LAYER_CONTRACT: ControlContract[] = [
     surface: "确认弹窗",
     control: ".ui-dialog / .ui-dialog-overlay",
     states: {
-      default: implemented(".ui-dialog"),
+      default: implemented(".ui-dialog", ".ui-dialog-overlay"),
       hover: notApplicable("弹窗本体不响应 hover"),
       "focus-visible": gated(
         "弹窗容器本身不可聚焦，焦点环由内部控件承担；弹窗级焦点陷阱契约尚未建立",
@@ -250,6 +319,35 @@ export const SHARED_LAYER_CONTRACT: ControlContract[] = [
     },
   },
 ];
+
+/**
+ * 共享层中**不承担交互状态**的布局壳类：它们只是页面骨架，
+ * 没有控件状态语义（无 hover / focus / disabled 等），
+ * 因此不进入状态矩阵，但必须在反向扫描中被显式登记。
+ */
+export const LAYOUT_SHELL_CLASSES = [
+  ".ui-page-shell",
+  ".ui-page-section",
+] as const;
+
+/**
+ * 契约矩阵中登记过的全部 `ui-*` 类（供反向扫描使用）：
+ * CSS 里出现但矩阵未登记的 `ui-*` 类即视为契约漂移。
+ */
+export function registeredSharedClasses(): Set<string> {
+  const classes = new Set<string>();
+  for (const row of SHARED_LAYER_CONTRACT) {
+    for (const support of Object.values(row.states)) {
+      if (support.kind !== "implemented") continue;
+      for (const selector of support.selectors) {
+        for (const match of selector.matchAll(/\.ui-[a-z0-9-]+/g)) {
+          classes.add(match[0]);
+        }
+      }
+    }
+  }
+  return classes;
+}
 
 /** 契约矩阵覆盖的全部「面 × 控件」条目。 */
 export function contractEntries(): {

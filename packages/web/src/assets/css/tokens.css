@@ -183,6 +183,9 @@
   /* 交互边界语义别名：浅/深均 >= 3:1（浅最低 3.55、深最低 4.55），
      且被 .ui-input / .ui-btn-ghost / .mobile-opener / .desktop-collapse-toggle 实际引用 */
   --color-border-interactive: var(--theme-border-interactive);
+  /* 交互边界 hover 态语义别名（S1b-1）：主题层差异见 themes.css 注释；
+     浅 #5A6068 / 深 #9AA0AA，两主题对输入底色均 >= 3:1 */
+  --color-border-interactive-hover: var(--theme-border-interactive-hover);
 
   /* Composer（为 S2 预留） */
   --radius-composer: 16px;

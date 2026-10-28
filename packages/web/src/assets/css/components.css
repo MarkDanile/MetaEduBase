@@ -130,9 +130,12 @@
      标为 implemented 的选择器必须真实存在于本文件，标为不适用/门控的必须写明原因，
      **不以静态示例补造生产状态**。 */
 
-  /* hover：交互边界提亮一档；禁用与只读不响应 */
+  /* hover：交互边界**提高对比度**一档（浅色更深 / 深色更浅，见
+     --color-border-interactive-hover 的主题层登记）；禁用与只读不响应。
+     注意：不可改用 --color-border（浅 #DADCE0 对输入底色仅 1.37:1，
+     深 #343842 仅 1.58:1，均低于 spec §2.1 的 3:1 门槛）。 */
   .ui-input:hover:not(:disabled):not([aria-readonly="true"]) {
-    border-color: var(--color-border);
+    border-color: var(--color-border-interactive-hover);
   }
 
   /* 成功态 */

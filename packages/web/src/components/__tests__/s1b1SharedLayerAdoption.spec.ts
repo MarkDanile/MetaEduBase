@@ -18,6 +18,8 @@ import { mount } from "@vue/test-utils";
 import EmptyState from "@/components/EmptyState.vue";
 import EvidenceCard from "@/components/EvidenceCard.vue";
 import FieldEditor from "@/components/FieldEditor.vue";
+import CloneTemplateDialog from "@/components/CloneTemplateDialog.vue";
+import ImportTemplateDialog from "@/components/ImportTemplateDialog.vue";
 import type { EvidenceItem } from "@/types/evidence";
 
 function makeEvidence(overrides: Partial<EvidenceItem> = {}): EvidenceItem {
@@ -60,6 +62,49 @@ describe("S1b-1 共享控件 opt-in 采用（G3 / G4）", () => {
     });
     expect(wrapper.classes()).toContain("ui-panel");
     expect(wrapper.classes()).not.toContain("ui-panel-interactive");
+  });
+
+  it("CloneTemplateDialog 的输入框采用行高 opt-in（.ui-input-leading）", () => {
+    const wrapper = mount(CloneTemplateDialog, {
+      // 对话框内容走 Teleport，测试内改为就地渲染才能查询 DOM
+      global: { stubs: { teleport: true } },
+      props: {
+        open: true,
+        source: {
+          id: "tpl-1",
+          name: "测试模板",
+          doc_types: ["invoice"],
+          fields: [],
+          ai_prompt: null,
+          ai_context: null,
+          source_file_id: null,
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+          schema_version: 1,
+          is_deprecated: false,
+          deprecated_at: null,
+          deprecated_reason: null,
+        },
+      },
+    });
+    const inputs = wrapper.findAll("input.ui-input");
+    expect(inputs.length).toBeGreaterThan(0);
+    for (const input of inputs) {
+      expect(input.classes()).toContain("ui-input-leading");
+    }
+  });
+
+  it("ImportTemplateDialog 的输入框采用行高 opt-in（.ui-input-leading）", () => {
+    const wrapper = mount(ImportTemplateDialog, {
+      // 对话框内容走 Teleport，测试内改为就地渲染才能查询 DOM
+      global: { stubs: { teleport: true } },
+      props: { open: true },
+    });
+    const inputs = wrapper.findAll("input.ui-input");
+    expect(inputs.length).toBeGreaterThan(0);
+    for (const input of inputs) {
+      expect(input.classes()).toContain("ui-input-leading");
+    }
   });
 
   it("FieldEditor 的输入框采用行高 opt-in（.ui-input-leading）", () => {

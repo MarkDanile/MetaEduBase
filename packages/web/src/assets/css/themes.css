@@ -55,6 +55,10 @@
   --theme-border-accent: #BFD0F8;
   /* 交互边界：对比度 >= 3:1（bg 3.71 / panel 3.87 / sidebar 3.55） */
   --theme-border-interactive: #7C828C;
+  /* 交互边界 hover 态：S1b-1 登记的主题层差异。
+     浅色下「更明显」= 更深（输入底 #FFFFFF 上 6.35:1，>= 3:1 门槛）；
+     不可用 --theme-border(#DADCE0)，其对输入底色仅 1.37:1，低于门槛。 */
+  --theme-border-interactive-hover: #5A6068;
 
   /* Surfaces */
   --_surface-card-bg: #FFFFFF;
@@ -152,6 +156,10 @@
   --theme-border-accent: #3A5F8F;
   /* 交互边界：对比度 >= 3:1（bg 4.88 / panel 4.55 / sidebar 4.64） */
   --theme-border-interactive: #7C828C;
+  /* 交互边界 hover 态：S1b-1 登记的主题层差异。
+     深色下「更明显」= 更浅（输入底 #14161A 上 7.05:1，>= 3:1 门槛）；
+     不可用 --theme-border(#343842)，其对输入底色仅 1.58:1，低于门槛。 */
+  --theme-border-interactive-hover: #9AA0AA;
 
   /* Surfaces */
   --_surface-card-bg: #17191E;
