@@ -83,9 +83,11 @@ describe("S1b-1 共享层状态契约（spec §2.1 / roadmap G2）", () => {
     for (const entry of contractEntries()) {
       if (entry.support.kind !== "implemented") continue;
       for (const selector of entry.support.selectors) {
-        // 锚定到规则块：`.ui-input` 不会被 `.ui-input-leading` 之类的子串误命中
+        // 锚定：选择器必须真实出现在规则选择器位置，且其后**不得是类名续写字符**
+        // （避免 `.ui-input` 被 `.ui-input-leading` 之类的更长类名误命中），
+        // 同时允许复合/后代选择器（`.ui-table-row:hover .ui-table-cell`）。
         const anchored = new RegExp(
-          `${escapeRegExp(normalize(selector))}\\s*\\{`,
+          `${escapeRegExp(normalize(selector))}(?![a-z0-9-])`,
         );
         if (!anchored.test(componentsCss)) {
           missing.push(`${entry.surface}/${entry.control}/${entry.state} → ${selector}`);

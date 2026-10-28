@@ -33,6 +33,7 @@
                 accept=".json"
                 @change="onFileSelect"
                 class="ui-input ui-input-leading w-full"
+                :class="{ 'is-error': !!error, 'is-loading': submitting }"
               />
             </div>
             <div v-if="preview" class="preview-box">

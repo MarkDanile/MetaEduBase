@@ -10,7 +10,11 @@
       @click.self="cancel"
       @keydown.escape="cancel"
     >
-      <div class="ui-dialog" style="max-width:400px">
+      <div
+        class="ui-dialog"
+        :class="{ 'ui-dialog-busy': submitting }"
+        style="max-width:400px"
+      >
         <h3 :id="titleId" class="text-[var(--text-subtitle)] font-semibold mb-2">{{ title }}</h3>
         <p :id="descId" class="text-[var(--text-body)] text-[var(--color-ink-secondary)] mb-[var(--spacing-section)]">{{ message }}</p>
         <div class="flex gap-2 justify-end">

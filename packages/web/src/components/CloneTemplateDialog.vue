@@ -27,7 +27,11 @@
           <div class="space-y-4">
             <div>
               <label class="field-label">新模板名称</label>
-              <input v-model="form.name" class="ui-input ui-input-leading w-full" :placeholder="`${source.name} - 副本`" />
+              <input
+                v-model="form.name"
+                class="ui-input ui-input-leading w-full"
+                :placeholder="`${source.name} - 副本`"
+              />
             </div>
             <div>
               <label class="field-label">文档类型</label>

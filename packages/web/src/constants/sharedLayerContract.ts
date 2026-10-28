@@ -117,15 +117,16 @@ export const SHARED_LAYER_CONTRACT: ControlContract[] = [
         "输入框无选中态语义；文本选区由浏览器原生选择表达，不另建共享态",
       ),
       disabled: implemented(".ui-input:disabled"),
-      loading: gated(
-        "输入框本身无法呈现加载指示（::after 不可用于原生输入控件）；真实 loading 由按钮与容器承担，待共享层建立统一加载契约后再补",
+      loading: implementedAs(
+        [".ui-input.is-loading"],
+        "S1b-2 建立 .ui-input.is-loading（操作进行中：指针为 progress、文字弱化）；真实生产者为 ImportTemplateDialog 导入进行中的文件输入",
       ),
       empty: notApplicable(
         "输入框无空态；列表空态由 EmptyState 组件承担",
       ),
-      error: gated(
-        "共享层已有 .ui-input.is-error 规则（S1a 遗留），但仓库内当前没有任何生产者产出 error 状态",
-        "待真实校验接入后再登记为生效状态",
+      error: implementedAs(
+        [".ui-input.is-error"],
+        "S1a 已有该规则；S1b-2 建立真实生产者：ImportTemplateDialog 在文件解析 / 导入失败时给文件输入加 is-error",
       ),
       success: gated(
         "S1b-1 建立了 .ui-input.is-success 规则，但仓库内当前没有任何生产者产出 success 状态",
@@ -260,19 +261,89 @@ export const SHARED_LAYER_CONTRACT: ControlContract[] = [
     },
   },
   {
-    surface: "表格",
-    control: "（共享层尚未建立 .ui-table 契约）",
+    surface: "表单",
+    control: ".ui-composer（.ui-composer-input / .ui-composer-toolbar / .ui-composer-hint）",
     states: {
-      default: gated(
-        "TableRenderer 仍使用页面级 utility；本切片不新建平行类体系，表格契约由后续页面切片收敛",
+      default: implementedAs(
+        [
+          ".ui-composer",
+          ".ui-composer-label",
+          ".ui-composer-input",
+          ".ui-composer-hint",
+          ".ui-composer-toolbar",
+          ".ui-composer-tools",
+          ".ui-composer-actions",
+        ],
+        "S1b-2 交付的共享 Composer（design spec §3 / roadmap §4.2 G1）：受控 modelValue、mode ready/busy/readonly/unavailable，事件仅 update:modelValue / submit / stop，附件与工具用具名插槽",
       ),
-      hover: gated("表格行 hover 契约尚未建立"),
-      "focus-visible": gated("表格可聚焦单元格契约尚未建立"),
-      active: gated("表格排序/激活态契约尚未建立"),
+      hover: notApplicable(
+        "Composer 容器本身不响应 hover；交互反馈由内部输入框与按钮承担",
+      ),
+      "focus-visible": implementedAs(
+        [".ui-input:focus-visible"],
+        "Composer 文本区复用 .ui-input，焦点环沿用共享层既有契约",
+      ),
+      active: notApplicable("Composer 没有按下态"),
+      selected: notApplicable(
+        "Composer 没有选中态；文本选区由浏览器原生选择表达",
+      ),
+      disabled: implementedAs(
+        [
+          ".ui-composer.ui-composer-busy .ui-composer-input",
+          ".ui-composer.ui-composer-readonly .ui-composer-input",
+          ".ui-composer.ui-composer-unavailable .ui-composer-input",
+        ],
+        "busy 与 unavailable 模式下文本区禁用；readonly 模式为可读不可编辑",
+      ),
+      loading: implementedAs(
+        [".ui-composer.ui-composer-busy"],
+        "busy 模式：指针 progress，仅 canStop 时显示并允许停止",
+      ),
+      empty: implementedAs(
+        [".ui-composer.ui-composer-empty"],
+        "内容为空时给出可观察标记，并由 placeholder 表达",
+      ),
+      error: gated(
+        "Composer 契约（design spec §3）未定义错误态；错误信息由父级通过 hint 下发",
+      ),
+      success: notApplicable(
+        "Composer 没有成功态；发送结果由父级处理",
+      ),
+      "no-permission": implementedAs(
+        [".ui-composer.ui-composer-unavailable"],
+        "unavailable 模式承载父级下发的不可用原因；**组件不推断租户权限**（design spec §3）",
+      ),
+    },
+  },
+  {
+    surface: "表格",
+    control: ".ui-table（.ui-table-header-cell / .ui-table-cell / .ui-table-empty-cell）",
+    states: {
+      default: implementedAs(
+        [
+          ".ui-table",
+          ".ui-table-header-cell",
+          ".ui-table-cell",
+          ".ui-table-row",
+          ".ui-table-empty-cell",
+        ],
+        "S1b-2 建立共享表格契约并由 TableRenderer 采用（表头 / 单元格 / 空态行）",
+      ),
+      hover: implementedAs(
+        [".ui-table-row:hover .ui-table-cell"],
+        "行 hover 由 .ui-table-row 承载（背景弱化一档）",
+      ),
+      "focus-visible": gated(
+        "表格单元格当前不可聚焦，共享层尚未建立可聚焦单元格契约",
+      ),
+      active: gated("表格排序 / 激活态契约尚未建立"),
       selected: gated("表格行选中态契约尚未建立"),
       disabled: gated("表格禁用行契约尚未建立"),
-      loading: gated("表格加载态契约尚未建立"),
-      empty: gated("表格空态契约尚未建立"),
+      loading: gated("表格加载态尚未建立（当前由页面级 LoadingSpinner 承担）"),
+      empty: implementedAs(
+        [".ui-table-empty-cell"],
+        "空态行已落地：TableRenderer 在 rows 为空时渲染 .ui-table-empty-cell",
+      ),
       error: gated("表格错误态契约尚未建立"),
       success: gated("表格成功态契约尚未建立"),
       "no-permission": gated("表格无权限态契约尚未建立"),
@@ -310,7 +381,7 @@ export const SHARED_LAYER_CONTRACT: ControlContract[] = [
       selected: notApplicable("弹窗是模态容器，没有选中态；选中语义由内部控件承担"),
       disabled: notApplicable("弹窗禁用语义作用于内部按钮"),
       loading: gated(
-        "弹窗提交中状态当前由按钮 disabled 表达，共享层未建立统一加载契约",
+        "S1b-2 建立了 .ui-dialog-busy 契约并由 ConfirmDialog 在提交中加类（组件级单测可观察），但**真实流程中不可见**：ConfirmDialog 在 confirm 时立即 emit update:open(false) 关闭自身，提交中状态不会被绘制；待出现「提交中保持打开」的对话框消费方后转为已实现",
       ),
       empty: notApplicable("弹窗是模态容器，没有空态；空态由内部内容承担"),
       error: gated("弹窗错误提示当前由页面级文本承担，共享层未建立统一错误契约"),
@@ -336,13 +407,21 @@ export const LAYOUT_SHELL_CLASSES = [
  */
 export function registeredSharedClasses(): Set<string> {
   const classes = new Set<string>();
+  const collect = (text: string) => {
+    for (const match of text.matchAll(/\.ui-[a-z0-9-]+/g)) {
+      classes.add(match[0]);
+    }
+  };
   for (const row of SHARED_LAYER_CONTRACT) {
     for (const support of Object.values(row.states)) {
-      if (support.kind !== "implemented") continue;
-      for (const selector of support.selectors) {
-        for (const match of selector.matchAll(/\.ui-[a-z0-9-]+/g)) {
-          classes.add(match[0]);
-        }
+      if (support.kind === "implemented") {
+        for (const selector of support.selectors) collect(selector);
+        if (support.note) collect(support.note);
+      } else {
+        // 门控 / 不适用状态也必须在矩阵里**指名**其相关类，
+        // 否则反向扫描会把「CSS 里存在但矩阵完全没提」的类漏出去。
+        collect(support.reason);
+        if (support.note) collect(support.note);
       }
     }
   }

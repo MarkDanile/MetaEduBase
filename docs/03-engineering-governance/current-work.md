@@ -14,25 +14,38 @@
 
 ## 当前进行中
 
-### REQ-064-S1B-1: S1b-1 共享 CSS / 语义 token（顺序 PR 1）
+### REQ-064-S1B-2: S1b-2 共享组件采用（UiComposer + 共享控件状态落地，顺序 PR 2）
 
-状态：🟡 进行中（实现与自动化验证已完成，待独立复审与用户视觉确认；S1b-1 单独不关闭 S1，不派发 S1b-2 / S2–S8）
+状态：🟡 进行中（实现中；不关闭 S1，不派发 S1b-2 之后的任何切片）
 类型：REQ / frontend / feature
 领域：Web / Design System / 共享层
 当前执行模式：implementation
 最近接手工具：Claude Code
-分支：codex/req-064-s1b-1-shared-css-token
+分支：codex/req-064-s1b-2-shared-component-adoption
 
 需求来源：
 - [REQ-064](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md)
-- [后续 UI 切片路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md)（§4.1 S1b-1 切片卡；roadmap §3 默认合入次序 S1b-1 → S1b-2 → S2 → S3 → S4 → S5 → S6 → S7 → S8，S1b-1 是顺序 PR 1）
-- [设计 spec §2.1](../02-delivery-plans/01-specs/2026-10-22-req-064-ui-design-system.md)（共享层 token 映射与状态契约）
+- [后续 UI 切片路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md)（§4.2 S1b-2 切片卡：G1 UiComposer、G5 S1 全量预览、G6 S1 用户视觉确认）
+- [设计 spec §3 组件组织及前端接口边界](../02-delivery-plans/01-specs/2026-10-22-req-064-ui-design-system.md)
 
-当前进展：按 roadmap §4.1 交付共享样式契约与渐进迁移入口。① **G2 共享控件状态契约**：新增机器可读状态矩阵 `packages/web/src/constants/sharedLayerContract.ts`（表单 / 卡片 / 表格 / 菜单 / 确认弹窗五类载体 × default / hover / focus-visible / active / selected / disabled / loading / empty / error / success / 无权限 11 态），矩阵由 `src/constants/__tests__/sharedLayerContract.spec.ts` 强制与 CSS 一致——标为已实现的选择器必须真实存在于 `components.css`，标为不适用或门控的必须写明原因（表格与菜单尚无共享类，按 spec 记为门控项，不新建平行 `ds-*` 系统、不补造生产状态）；输入控件补齐 hover / success / 无权限（`aria-readonly`）三态。② **G3 面板语义区分**：新增 opt-in 入口 `.ui-panel-static`（静态容器 hover 不抬升、不表现为可点击）与 `.ui-panel-interactive`（pointer 光标 + focus-visible 焦点环），未迁移使用点继续沿用历史 `.ui-panel:hover`，**不做全量一次性改写**（spec §2.1 的「非交互面板不因 hover 增强阴影」由页面切片按所有权逐步收敛）。③ **G4 行高语义 token**：新增 `--lh-control: 20px`（正文 14/20）与 opt-in 样式 `.ui-input-leading`，未采用的输入框仍继承原行高，**不要求 82 处一次性全改**。④ 采用范围仅限**共享组件**：`EmptyState`（静态面板，**已生效**）、`CloneTemplateDialog` / `ImportTemplateDialog`（行高 opt-in，**已生效**）、`FieldEditor`（行高 opt-in，**预备**——该组件在 `src/` 内当前无消费者）、`EvidenceCard`（可交互面板——**组件级已支持但当前尚未生效**：其唯一渲染路径 `AiChatView.unattributedSources()` 只产出无 `file_id` 的来源，`hasFile` 恒为 false）；不改业务页面、router / nav / permission 语义、stores / services / API / DTO、数据库、后端、CI 配置与依赖。
-下一步：等待未参与本轮实现的独立 Agent 对最新 head 复审；复审通过后才推进 Ready、评分与合并。**S1b-1 单独不关闭 S1，也不代替 S1b-2 的 S1 用户视觉确认**；S1b-2 及后续切片按 roadmap 依赖另行派发。
-验证状态：lint 0 errors / 28 warnings（与 main 基线一致）；typecheck 通过；build:bundle 通过；全量前端 Vitest 424/424（44 文件，main 基线 409 + 新增 15：状态契约 9 + 采用行为锁 6）；全量 e2e 79 passed / 3 skipped（新增 5 个 S1b-1 共享层用例，desktop 与 mobile 各收集一次共 10 次执行，其中 3 次在窄视口按原因跳过）。e2e 覆盖 G3 静态面板 hover 不抬升、G4 行高 20px 与未采用方仍为 22.4px、G2 hover / focus-visible 可复现、spec §2.1 对比度（静止态与 **hover 态**的交互边界均 ≥3:1、正文 ≥4.5:1，浏览器内实算）与 prefers-reduced-motion 过渡关闭。CI 分层：Frontend job **实跑** typecheck / lint / 单元测试 / 构建 / e2e；Engineering docs job **实跑**文档门禁与 Whitespace gate；Backend job 为 **no-op**（`No backend or MCP changes`，其后 22 步 skipped）、Backend full hermetic 三 job **skipped**——后两者反映本次无后端改动，**不构成任何后端或业务测试通过证据**。
-交接备注：本切片只做共享层契约与 opt-in 入口，**不关闭 S1**、不关闭 S4 强制分页门、不派发 S1b-2 / S2–S8、不指定 S3 负责人；不清理分支、worktree 或 refs。**主题层色值差异登记**（spec §2.1：必要的色值修正只发生在主题层）：新增 `--theme-border-interactive-hover`（浅 `#5A6068` / 深 `#9AA0AA`）用于 `.ui-input:hover` 的交互边界——原先改用 `--color-border` 会使浅色下交互边界对输入底色跌至 1.37:1、深色 1.54:1，低于 spec 的 3:1 门槛；新值两主题对输入底色分别为 6.35:1 与 6.89:1。已知既有缺口（不在本切片范围、绑定后续切片跟踪、不新建技术债编号）：① 模板列表页（`/data/templates`）在 390px 窄视口下操作按钮不可点击，故依赖该对话框的 3 项 e2e 在窄视口按原因跳过；② 表格与菜单尚无共享类契约，状态矩阵中按门控登记；③ `.ui-panel:hover` 的历史抬升行为仅在采用 opt-in 的共享组件处收敛，其余使用点待页面切片按所有权迁移；④ `FieldEditor` 在 `src/` 内**当前没有消费者**（组件尚未接入页面），其行高采用属**预备**，不计入生效采用点；⑤ 状态矩阵中 `.ui-input.is-success` / `.ui-input[aria-readonly="true"]` / `.ui-panel-interactive:focus-visible` 三态**尚无生产生产者**（契约先行，按 gated 登记，未写成已生效）；⑥ `playwright.shots.config.ts` 不在 `pnpm lint` 的覆盖范围内（既有配置问题，本 PR 未改 lint 范围）；⑦ `.ui-input` 的过渡参数仍为 S1a 遗留的 `transition: all var(--duration-liquid) var(--ease-elastic)`（300ms + 弹性缓动），与 spec §2.1「150/200ms + `--ease-out`、不使用弹跳」不一致（**S1a 遗留，本 PR 未改动**，绑定后续共享层动效收敛切片跟踪）。验收证据按 D4/D8 提供固定环境预览、同条件前后截图与结构化度量；**用户视觉确认尚未执行**。
+当前进展：实现基线为已合入 S1b-1 的 main（mergeCommit `df4bf853de5111d95e48d746152bfcce575f136d`）。本切片只做**共享组件采用范围**：
+① **G1 共享 `UiComposer`**：受控 `modelValue`、`mode: ready/busy/readonly/unavailable`、`canSubmit/canStop/placeholder/hint/inputLabel`；事件**仅** `update:modelValue` / `submit` / `stop`，附件与工具用具名插槽；提交门槛 = `mode === "ready" && canSubmit && modelValue.trim().length > 0` 且输入法非 composing，按钮与键盘共用；`ready + canSubmit=false` 仍可编辑草稿；`readonly` 可读不可编辑、提交禁用；`unavailable` 禁用输入并给出原因；`busy` 禁止编辑与再次提交，仅 `canStop` 时显示并允许停止；**不请求 API、不选模型、不管理 Conversation、不推断租户权限**。
+② **共享控件采用与状态落地**：新增 `.ui-table` / `.ui-table-header-cell` / `.ui-table-cell` / `.ui-table-row` / `.ui-table-empty-cell`（`TableRenderer` 采用，空态行与长内容 title 一并落地）、`.ui-dialog.ui-dialog-busy`（`ConfirmDialog` 提交中采用）、`.ui-input.is-loading`（`CloneTemplateDialog` 提交中采用）、`.ui-input.is-error`（`ImportTemplateDialog` 解析/导入失败采用）；`.ui-composer*` 一组共享类随 Composer 落地。
+③ **状态矩阵同步**：表格面与确认弹窗的**门控项转已落地**，表单的 loading / error 取得真实生产者；菜单面仍无共享组件，**保持门控**并写明原因；Composer 契约以新行登记。
+④ **不改**：路由、权限、nav、store / service、DTO、API、后端契约、CI 配置、依赖与锁文件、评分总账、Metrics、design spec §6、technical-debt；**不接入 S2/S3 业务页面**（Composer 在本切片没有生产消费方，S2 才是首个消费方），**不启动 S2–S8、不处理 S3、不推进 phase-D/E 或生产 backfill**。
 
+允许文件范围：
+- `packages/web/src/components/UiComposer.vue`（新增）、`packages/web/src/components/UiComposer.spec.ts`（新增）
+- `packages/web/src/assets/css/components.css`（共享层类）
+- `packages/web/src/constants/sharedLayerContract.ts`、`packages/web/src/constants/__tests__/sharedLayerContract.spec.ts`
+- `packages/web/src/components/TableRenderer.vue`、`ConfirmDialog.vue`、`ImportTemplateDialog.vue`、`CloneTemplateDialog.vue`（采用与状态生产者）
+- `packages/web/e2e/req064-s1b2-*.spec.ts`（新增）、`packages/web/playwright.shots.config.ts`（testMatch）
+- `docs/03-engineering-governance/current-work.md`（本卡与最近完成）
+
+验证计划：Node 20 下 `pnpm lint`、`pnpm typecheck`、`pnpm build:bundle`、全量前端 Vitest、全量 e2e（`METAEDU_E2E_PORT=3101`）、`scripts/check-engineering-docs --full`、`git diff --check`；CI 逐 job 区分实跑 / no-op / skipped。
+下一步：完成实现与证据（可运行预览、同条件前后截图、绑定最终 commit 的结构化 PR 评论）后进入独立复审；**复审通过后才推进 Ready、Original 评分与合并**。
+
+交接备注：本切片**不关闭 S1**（S1b-2 单独不关闭 S1，也不代替 S1 用户视觉确认），不关闭 S4 强制分页门，不派发 S1b-2/S2–S8，不指定 S3 负责人，不清理分支 / worktree / refs，不新建技术债编号。**S1b-1 的 10 项非阻塞 P3（6 项末轮复审保留 + 4 项评分新增）保留为既有 follow-up，本切片不为它们单独返修**；若本切片必须触及相关文件，只修正与当前任务直接相关的事实。**G6 的 S1 用户视觉确认仍需用户本人完成**，本切片只提供可运行预览、前后截图与结构化度量，不代为确认。
 
 ## 下一批候选任务
 
@@ -55,6 +68,7 @@
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
 | 2026-10-28 | REQ-064-S4-PAGINATION-3A：S4 数据预览分页实现（D-P1=3a + D-P2=B `limit+1`；含评分 17 文件 +1134/-56） | 🟢 完成（仅 3a 已合入；S4 门未闭合、S6/S7 受阻、S3 未指定、用户视觉未确认；REQ-064 仍 Doing） | #673 merge `c76b06b7`；Original 85/100；四轮末轮 PASS 覆盖 `19370612`（原始报告未入库、非 PR review/comment、不可逐轮回放；详见 §14/评分总账）；CI：Frontend/docs 实跑，Backend no-op、full hermetic skipped；3 项既有缺口与 5 项 P3 未解决 | [PR #673](https://github.com/MarkDanile/MetaEduBase/pull/673) / [路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md) / [REQ-064 requirement](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md) / [Score Log](04-retrospectives/review-score-log.md) / [work-log](work-log.md) |
+| 2026-10-28 | REQ-064-S1b-1 共享 CSS / 语义 token（顺序 PR 1：G2 机器可读状态矩阵、G3 `.ui-panel-static` / `.ui-panel-interactive` opt-in、G4 `--lh-control` 行高 token 与 `.ui-input-leading` opt-in；18 文件 +1291/-19） | 🟢 完成（**仅 S1b-1 切片已交付**；S1 未收口、S4 强制分页门未闭合、S1b-2 与 S2–S8 未启动、S3 负责人未指定、用户视觉确认未执行） | PR #675 squash merge `df4bf853`（被评 head `5eac45aa`，Original 83/100）；三轮独立复审末轮 PASS；**10 项非阻塞 P3 保留未关闭**；CI 全绿（Frontend/docs 实跑，Backend no-op、full hermetic skipped） | [PR #675](https://github.com/MarkDanile/MetaEduBase/pull/675) / [路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md) / [REQ-064 requirement](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md) / [Score Log](04-retrospectives/review-score-log.md) / [work-log](work-log.md) |
 | 2026-10-26 | 全局 UI 升级后续切片路线与验收对齐（纯规划：新增路线事实源 2026-10-26-req-064-ui-slice-roadmap.md，回填 D1–D9、S1 缺口 G1–G8、S1b-1/S1b-2 有序 PR、S2–S8 切片卡与三层验收、S4 强制分页门与方案 A 裁决；实现净 diff 5 文件 +389/-9，含 Original 评分行后 6 文件 +390/-9） | 🟢 完成（仅本规划 closeout；REQ-064 整体仍 🟡 Doing，S1 未收口，S2–S8 未启动） | PR #670 squash merge `b4dd5dfb`（mergedAt 2026-10-26T13:08:27Z；被评 head `f96e4055`，Original 92/100）；前四轮 NEEDS_CHANGES 已闭合，第五轮 PASS 覆盖 `324a107c`、第六轮 PASS 覆盖 `1d297471`；S4 分页门未闭合、S6/S7 受阻、S3 负责人待指定；下一步：S4 分页候选确认/前置规划与用户决策 | [PR #670](https://github.com/MarkDanile/MetaEduBase/pull/670) / [路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md) / [REQ-064 requirement](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md) / [Score Log](04-retrospectives/review-score-log.md) / [work-log](work-log.md) |
 | 2026-10-26 | 全局 UI 升级治理事实同步（纯文档：7 份治理事实源 + Original 评分行；8 文件 +72/-44） | 🟢 完成（仅本治理同步子任务；REQ-064 整体仍 🟡 Doing，S1 未收口，S2–S8 未启动） | PR #668 squash merge `81e50329`；Original 95/100；实现净 diff 7 文件 +71/-44；三轮独立复审闭合首轮 P1/P2；当前 1 个注册 worktree，5 个已退休、5 条分支保留、phase-C deploy/.env 已迁移保留 | [PR #668](https://github.com/MarkDanile/MetaEduBase/pull/668) / [REQ-064 requirement](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md) / [Score Log](04-retrospectives/review-score-log.md) / [plan §8](../02-delivery-plans/02-plans/2026-10-22-req-064-ui-upgrade-plan.md#8-s1a-交付记录) / [work-log](work-log.md) |
 | 2026-10-26 | PR #666：Worktree 生命周期规则（退休条件、squash 树核验、ignored 资产枚举与非强制清理顺序） | 🟢 完成（规则已合入并生效；不代表任何 worktree 或分支已退休） | mergeCommit `f3f87fef`；Original 93；最终 3 文件（2 规则 + 1 评分）；CI 40257794001 三路 SUCCESS；未执行清理 | [PR #666](https://github.com/MarkDanile/MetaEduBase/pull/666) / [Worktree 生命周期](01-rules/git-workflow.md#worktree-生命周期) / [Score Log](04-retrospectives/review-score-log.md) / [work-log](work-log.md) |
