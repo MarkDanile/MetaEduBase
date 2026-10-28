@@ -78,6 +78,20 @@ describe("S1b-2 共享组件采用（表格 / 确认弹窗 / 表单状态生产�
     expect(wrapper.find("td").attributes("title")).toBeUndefined();
   });
 
+  it("TableRenderer 对象 / 数组值与 title 共用同一格式化（不出现 [object Object]）", () => {
+    const wrapper = mount(TableRenderer, {
+      props: {
+        columns: [{ key: "meta", label: "元数据", type: "text" }],
+        rows: [{ meta: { a: 1 }, other: [1, 2] }],
+      },
+    });
+    const cell = wrapper.find("td");
+    const shown = cell.text();
+    expect(shown).toContain("{");
+    expect(shown).not.toContain("[object Object]");
+    expect(cell.attributes("title")).toBe(shown.trim());
+  });
+
   it("ConfirmDialog 提交中采用 .ui-dialog-busy", async () => {
     const wrapper = mount(ConfirmDialog, {
       props: { open: true },
