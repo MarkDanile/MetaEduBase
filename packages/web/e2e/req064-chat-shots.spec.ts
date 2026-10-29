@@ -54,10 +54,12 @@ async function resetChat(
 ): Promise<void> {
   await page.setViewportSize(viewport);
   await page.goto("/ai-chat");
-  await page.evaluate((storedTheme) => {
+  // 主题用 init script 覆盖（后注册的 init script 在 reload 时后执行），
+  // 否则 fixture 的 init script 会把主题改回默认值。
+  await page.addInitScript((storedTheme) => {
     localStorage.setItem("metaedu_theme", storedTheme);
-    sessionStorage.clear();
   }, theme);
+  await page.evaluate(() => { sessionStorage.clear(); });
   await page.reload();
   await page.getByTestId("chat-input").waitFor({ state: "visible" });
   await page.addStyleTag({ content: FREEZE_CSS });
@@ -131,8 +133,10 @@ async function capture(
     const composer = document.querySelector(".ai-chat-bottom") as HTMLElement | null;
     const content = document.querySelector(".ai-chat-content") as HTMLElement | null;
     const user = document.querySelector(".chat-message-user .chat-message-content") as HTMLElement | null;
-    const tableScroll = document.querySelector(".chat-table-scroll") as HTMLElement | null;
-    const table = document.querySelector(".markdown-body table") as HTMLElement | null;
+    // 取最宽的表格滚动容器（fixture 中宽表在后），避免只测到窄表。
+    const tableScroll = (Array.from(document.querySelectorAll(".chat-table-scroll")) as HTMLElement[])
+      .sort((a, b) => b.scrollWidth - a.scrollWidth)[0] ?? null;
+    const table = tableScroll?.querySelector("table") as HTMLElement | null;
     const inputStyle = input ? getComputedStyle(input) : null;
     return {
       route: location.pathname,
@@ -217,7 +221,7 @@ test(`S2 desktop empty/long/citation/scroll matrix [${LABEL}]`, async ({ page })
       await resetChat(page, viewport, theme);
       await capture(page, "empty-composer", viewport, theme);
       await sendChat(page);
-      await expect(page.locator(".markdown-body table")).toBeVisible();
+      await expect(page.locator(".markdown-body table").first()).toBeVisible();
       await expect.poll(() => remainingScroll(page)).toBe(0);
       await capture(page, "conversation-bottom", viewport, theme);
       await scrollChat(page, "top");
@@ -270,7 +274,7 @@ test.describe("Pixel 5 尺寸移动视口", () => {
       await resetChat(page, viewport, theme);
       await capture(page, "empty-composer", viewport, theme);
       await sendChat(page);
-      await expect(page.locator(".markdown-body table")).toBeVisible();
+      await expect(page.locator(".markdown-body table").first()).toBeVisible();
       await expect.poll(() => remainingScroll(page)).toBe(0);
       await capture(page, "conversation-bottom", viewport, theme);
       await scrollChat(page, "top");

@@ -20,6 +20,7 @@ export function useChatScroll(
   /** 用户是否处于跟随（贴底）状态；只有用户主动滚动才会把它置为 false。 */
   const following = ref(true);
   let observer: ResizeObserver | null = null;
+  let lastScrollTop = 0;
 
   function bottomTarget(element: HTMLElement): number {
     return Math.max(0, element.scrollHeight - element.clientHeight);
@@ -33,6 +34,7 @@ export function useChatScroll(
     const element = container.value;
     if (!element) return;
     element.scrollTop = bottomTarget(element);
+    lastScrollTop = element.scrollTop;
   }
 
   /**
@@ -50,13 +52,30 @@ export function useChatScroll(
     showBackToLatest.value = !isAtBottom(element);
   }
 
-  /** 由容器的 scroll 事件驱动：判定用户当前是否离开底部。 */
+  /**
+   * 由容器的 scroll 事件驱动。
+   *
+   * 只有「滚动位置向上移动」才算用户主动上滑：容器高度变化（Composer 增高、
+   * 移动键盘）会派发 scroll 事件，但不会让 scrollTop 变小，因此不会误伤
+   * 跟随状态；这避免了 scroll 事件与 ResizeObserver 回调之间的竞态。
+   */
   function updateScrollState(): void {
     const element = container.value;
     if (!element) return;
-    const atBottom = isAtBottom(element);
-    following.value = atBottom;
-    showBackToLatest.value = !atBottom;
+    const previousScrollTop = lastScrollTop;
+    lastScrollTop = element.scrollTop;
+    if (element.scrollTop < previousScrollTop - 1) {
+      following.value = false;
+      showBackToLatest.value = true;
+      return;
+    }
+    if (isAtBottom(element)) {
+      following.value = true;
+      showBackToLatest.value = false;
+      return;
+    }
+    // 尺寸变化引起的中间态：保持既有跟随意图，不误判为用户上滑。
+    showBackToLatest.value = !following.value;
   }
 
   async function scrollToLatest(force = false): Promise<void> {

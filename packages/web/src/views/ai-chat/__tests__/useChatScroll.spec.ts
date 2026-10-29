@@ -141,8 +141,28 @@ describe("useChatScroll (DB-03 跟随状态)", () => {
     expect(harness.api.showBackToLatest.value).toBe(true);
   });
 
+  it("容器高度变化引起的 scroll 事件不会把跟随状态误判为用户上滑", () => {
+    const harness = mountScroll();
+    harness.element.scrollTop = 600;
+    harness.api.updateScrollState();
+    expect(harness.api.following.value).toBe(true);
+
+    // Composer 增高 → 容器变矮：浏览器可能派发 scroll 事件（scrollTop 不变）
+    harness.setSize(1000, 260);
+    harness.api.updateScrollState();
+    expect(harness.api.following.value).toBe(true);
+    expect(harness.api.showBackToLatest.value).toBe(false);
+
+    // 随后的尺寸回调重新贴底，尾部回到可视区
+    harness.fireResize();
+    expect(harness.remaining()).toBe(0);
+    expect(harness.api.following.value).toBe(true);
+  });
+
   it("回到最新恢复贴底并隐藏控件", async () => {
     const harness = mountScroll();
+    harness.element.scrollTop = 600;
+    harness.api.updateScrollState();
     harness.element.scrollTop = 120;
     harness.api.updateScrollState();
     await nextTick();
