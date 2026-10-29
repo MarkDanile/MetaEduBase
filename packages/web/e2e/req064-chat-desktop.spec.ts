@@ -72,10 +72,13 @@ test.describe("REQ-064 S2 AI Chat desktop", () => {
     const metrics = await code.evaluate((element) => ({
       clientWidth: element.clientWidth,
       scrollWidth: element.scrollWidth,
+      overflowX: getComputedStyle(element).overflowX,
       pageScrollWidth: document.documentElement.scrollWidth,
       viewportWidth: window.innerWidth,
     }));
     expect(metrics.scrollWidth).toBeGreaterThan(metrics.clientWidth);
+    // 代码块必须真的可横向滚动；overflow-x:hidden 会把溢出内容藏起来且用户无法滚到
+    expect(["auto", "scroll"]).toContain(metrics.overflowX);
     expect(metrics.pageScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth);
 
     // 滚到最大位移后代码末尾进入块内，确认内容可经块内横滚访问
