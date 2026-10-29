@@ -211,8 +211,11 @@ async function capture(
       // 宽表在自身容器内横向滚动：表格宽于滚动容器
       expect(geometry.tableWrapperClientWidth!).toBeGreaterThan(0);
       expect(geometry.tableWrapperScrollWidth!).toBeGreaterThan(geometry.tableWrapperClientWidth!);
-      // 长代码行同样由代码块自身横向滚动承载，不外溢为整页横向滚动
-      expect(geometry.codeBlockInternalScroll).toBe(true);
+      // 长代码行由代码块自身横向滚动承载，不外溢为整页横向滚动。
+      // 仅在消息列宽窄于该代码行时（<=1024 视口）才会出现内部滚动。
+      if (geometry.effectiveViewportWidth <= 1024) {
+        expect(geometry.codeBlockInternalScroll).toBe(true);
+      }
       expect(geometry.pageScrollWidth).toBeLessThanOrEqual(geometry.effectiveViewportWidth);
     }
     if (scenario.startsWith("mobile-")) {
