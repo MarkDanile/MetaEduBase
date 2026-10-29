@@ -285,12 +285,22 @@ test.describe("Pixel 5 尺寸移动视口", () => {
 
       const input = page.getByTestId("chat-input");
       await input.fill(Array.from({ length: 24 }, (_, index) => `第 ${index + 1} 行固定草稿`).join("\n"));
-      await expect.poll(() => remainingScroll(page)).toBe(0);
+      // 改后：Composer 增高后仍贴底（尾部可见）；改前实现不会回贴底，
+      // 其实际剩余距离按实测值记录在度量里，不在此断言。
+      if (LABEL === "after") {
+        await expect.poll(() => remainingScroll(page)).toBe(0);
+      } else {
+        await page.waitForTimeout(400);
+      }
       await capture(page, "mobile-input-160", viewport, theme);
 
       const keyboardViewport = { name: "pixel5-keyboard-393x500", width: 393, height: 500 };
       await page.setViewportSize(keyboardViewport);
-      await expect.poll(() => remainingScroll(page)).toBe(0);
+      if (LABEL === "after") {
+        await expect.poll(() => remainingScroll(page)).toBe(0);
+      } else {
+        await page.waitForTimeout(400);
+      }
       await capture(page, "mobile-keyboard", keyboardViewport, theme);
     }
   });
