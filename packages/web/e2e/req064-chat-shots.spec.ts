@@ -42,9 +42,9 @@ test.beforeAll(async () => {
   await mkdir(SHOT_DIR, { recursive: true });
 });
 
+/** 消息区剩余滚动距离（0 表示已贴底，尾部可见）；兼容改前实现的容器结构。 */
 async function remainingScroll(page: Page): Promise<number> {
-  return page.locator(".ai-chat-scroll").evaluate((element) =>
-    element.scrollHeight - element.scrollTop - element.clientHeight);
+  return (await scrollInfo(page))?.remaining ?? 0;
 }
 
 async function resetChat(
@@ -65,9 +65,50 @@ async function resetChat(
   await page.evaluate(async () => { await document.fonts.ready; });
 }
 
+/**
+ * 消息滚动容器信息：优先使用 S2 实现的新类；改前实现没有该类时，
+ * 回退到 main 内容区内实际发生滚动的容器，保证 before/after 取景一致。
+ */
+async function scrollInfo(page: Page): Promise<{
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+  remaining: number;
+  kind: string;
+} | null> {
+  return page.evaluate(() => {
+    const explicit = document.querySelector(".ai-chat-scroll") as HTMLElement | null;
+    const element = explicit ?? (() => {
+      const candidates = Array.from(
+        document.querySelectorAll<HTMLElement>("main#main-content div, main#main-content section"),
+      ).filter((candidate) => candidate.scrollHeight > candidate.clientHeight + 1);
+      return candidates.sort((a, b) => b.scrollHeight - a.scrollHeight)[0] ?? null;
+    })();
+    if (!element) return null;
+    return {
+      scrollTop: element.scrollTop,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+      remaining: element.scrollHeight - element.scrollTop - element.clientHeight,
+      kind: explicit ? "ai-chat-scroll" : "fallback-overflow-container",
+    };
+  });
+}
+
+/** 消息滚动容器当前 scrollTop（兼容改前实现的容器结构）。 */
+async function scrollTop(page: Page): Promise<number> {
+  return (await scrollInfo(page))?.scrollTop ?? 0;
+}
+
 async function scrollChat(page: Page, position: "top" | "bottom"): Promise<void> {
   await page.evaluate((target) => {
-    const element = document.querySelector(".ai-chat-scroll") as HTMLElement | null;
+    const explicit = document.querySelector(".ai-chat-scroll") as HTMLElement | null;
+    const element = explicit ?? (() => {
+      const candidates = Array.from(
+        document.querySelectorAll<HTMLElement>("main#main-content div, main#main-content section"),
+      ).filter((candidate) => candidate.scrollHeight > candidate.clientHeight + 1);
+      return candidates.sort((a, b) => b.scrollHeight - a.scrollHeight)[0] ?? null;
+    })();
     if (!element) return;
     element.scrollTop = target === "top" ? 0 : element.scrollHeight;
     element.dispatchEvent(new Event("scroll"));
@@ -84,13 +125,14 @@ async function capture(
   const filename = `${LABEL}-${scenario}-${viewport.name}-${theme}.png`;
   await page.screenshot({ path: path.join(SHOT_DIR, filename), fullPage: false });
 
+  const scroll = await scrollInfo(page);
   const geometry = await page.evaluate(() => {
     const input = document.querySelector('[data-testid="chat-input"]') as HTMLTextAreaElement | null;
-    const scroll = document.querySelector(".ai-chat-scroll") as HTMLElement | null;
     const composer = document.querySelector(".ai-chat-bottom") as HTMLElement | null;
     const content = document.querySelector(".ai-chat-content") as HTMLElement | null;
     const user = document.querySelector(".chat-message-user .chat-message-content") as HTMLElement | null;
     const tableScroll = document.querySelector(".chat-table-scroll") as HTMLElement | null;
+    const table = document.querySelector(".markdown-body table") as HTMLElement | null;
     const inputStyle = input ? getComputedStyle(input) : null;
     return {
       route: location.pathname,
@@ -103,13 +145,9 @@ async function capture(
       viewportHeight: window.innerHeight,
       pageScrollWidth: document.documentElement.scrollWidth,
       docScrollHeight: document.documentElement.scrollHeight,
-      contentWidth: content?.getBoundingClientRect().width ?? scroll?.clientWidth ?? null,
+      contentWidth: content?.getBoundingClientRect().width ?? null,
       userMessageWidth: user?.getBoundingClientRect().width ?? null,
       composerBottom: composer?.getBoundingClientRect().bottom ?? null,
-      chatClientHeight: scroll?.clientHeight ?? null,
-      chatScrollHeight: scroll?.scrollHeight ?? null,
-      chatScrollTop: scroll?.scrollTop ?? null,
-      chatRemaining: scroll ? scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight : null,
       inputOffsetHeight: input?.offsetHeight ?? null,
       inputClientHeight: input?.clientHeight ?? null,
       inputScrollHeight: input?.scrollHeight ?? null,
@@ -121,8 +159,11 @@ async function capture(
       evidenceReferenceCount: document.querySelectorAll("a.evidence-ref").length,
       codeBlockCount: document.querySelectorAll(".markdown-body pre code").length,
       tableCount: document.querySelectorAll(".markdown-body table").length,
-      tableScrollClientWidth: tableScroll?.clientWidth ?? null,
-      tableScrollScrollWidth: tableScroll?.scrollWidth ?? null,
+      tableWidth: table?.getBoundingClientRect().width ?? null,
+      tableOwnClientWidth: table?.clientWidth ?? null,
+      tableOwnScrollWidth: table?.scrollWidth ?? null,
+      tableWrapperClientWidth: tableScroll?.clientWidth ?? null,
+      tableWrapperScrollWidth: tableScroll?.scrollWidth ?? null,
     };
   });
   metrics.push({
@@ -132,6 +173,11 @@ async function capture(
     requestedTheme: theme,
     implementationCommit: SOURCE_REVISION,
     ...geometry,
+    scrollContainerKind: scroll?.kind ?? null,
+    chatClientHeight: scroll?.clientHeight ?? null,
+    chatScrollHeight: scroll?.scrollHeight ?? null,
+    chatScrollTop: scroll?.scrollTop ?? null,
+    chatRemaining: scroll?.remaining ?? null,
   });
 
   if (LABEL === "after") {
@@ -145,15 +191,16 @@ async function capture(
       expect(geometry.userMessageWidth!).toBeLessThanOrEqual(geometry.contentWidth! * 0.85 + 1);
     } else {
       // 贴底场景：剩余滚动距离必须为 0，尾部可见
-      expect(geometry.chatRemaining).toBe(0);
+      expect(scroll?.remaining).toBe(0);
       expect(geometry.backToLatestVisible).toBe(false);
     }
     if (scenario === "conversation-bottom") {
       expect(geometry.codeBlockCount).toBeGreaterThan(0);
       expect(geometry.tableCount).toBeGreaterThan(0);
       expect(geometry.evidenceReferenceCount).toBeGreaterThan(0);
-      // 宽表在自身容器内横向滚动
-      expect(geometry.tableScrollScrollWidth!).toBeGreaterThan(geometry.tableScrollClientWidth!);
+      // 宽表在自身容器内横向滚动：表格宽于滚动容器
+      expect(geometry.tableWrapperClientWidth!).toBeGreaterThan(0);
+      expect(geometry.tableWrapperScrollWidth!).toBeGreaterThan(geometry.tableWrapperClientWidth!);
     }
     if (scenario.startsWith("mobile-")) {
       expect(geometry.inputOffsetHeight).toBe(160);
@@ -174,7 +221,7 @@ test(`S2 desktop empty/long/citation/scroll matrix [${LABEL}]`, async ({ page })
       await expect.poll(() => remainingScroll(page)).toBe(0);
       await capture(page, "conversation-bottom", viewport, theme);
       await scrollChat(page, "top");
-      await expect.poll(() => page.locator(".ai-chat-scroll").evaluate((el) => el.scrollTop)).toBe(0);
+      await expect.poll(() => scrollTop(page)).toBe(0);
       await capture(page, "conversation-top", viewport, theme);
     }
   }
@@ -227,7 +274,7 @@ test.describe("Pixel 5 尺寸移动视口", () => {
       await expect.poll(() => remainingScroll(page)).toBe(0);
       await capture(page, "conversation-bottom", viewport, theme);
       await scrollChat(page, "top");
-      await expect.poll(() => page.locator(".ai-chat-scroll").evaluate((el) => el.scrollTop)).toBe(0);
+      await expect.poll(() => scrollTop(page)).toBe(0);
       await capture(page, "conversation-top", viewport, theme);
       await scrollChat(page, "bottom");
       await expect.poll(() => remainingScroll(page)).toBe(0);
