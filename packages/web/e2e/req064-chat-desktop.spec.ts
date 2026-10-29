@@ -36,7 +36,7 @@ test.describe("REQ-064 S2 AI Chat desktop", () => {
     await openAiChat(page);
     await sendChat(page);
     await expect(page.locator(".chat-message-assistant table").first()).toBeVisible();
-    await expect(page.locator(".chat-message-assistant pre code")).toBeVisible();
+    await expect(page.locator(".chat-message-assistant pre code").first()).toBeVisible();
     await expect(page.locator("a.evidence-ref").first()).toHaveAttribute("data-ref", "1");
 
     for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768 }]) {
@@ -59,6 +59,41 @@ test.describe("REQ-064 S2 AI Chat desktop", () => {
       expect(metrics.userWidth).toBeLessThanOrEqual(metrics.contentWidth * 0.85 + 1);
       expect(metrics.tableClientWidth).toBeLessThanOrEqual(metrics.contentWidth);
     }
+  });
+
+  test("1024 下长代码行在代码块内横向滚动，页面不横向溢出", async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await setupAiChat(page, { reply: CHAT_LONG_REPLY, sources: CHAT_EVIDENCE });
+    await openAiChat(page);
+    await sendChat(page);
+    const code = page.locator(".chat-message-assistant pre").last();
+    await expect(code).toBeVisible();
+
+    const metrics = await code.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      pageScrollWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+    }));
+    expect(metrics.scrollWidth).toBeGreaterThan(metrics.clientWidth);
+    expect(metrics.pageScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth);
+
+    // 滚到最大位移后代码末尾进入块内，确认内容可经块内横滚访问
+    const reach = await code.evaluate((element) => {
+      element.scrollLeft = 9999;
+      const content = element.querySelector("code");
+      const blockRect = element.getBoundingClientRect();
+      const contentRect = content?.getBoundingClientRect();
+      return {
+        scrollLeft: Math.round(element.scrollLeft),
+        maxScrollLeft: Math.round(element.scrollWidth - element.clientWidth),
+        contentRight: contentRect ? Math.round(contentRect.right) : null,
+        blockRight: Math.round(blockRect.right),
+      };
+    });
+    expect(reach.maxScrollLeft).toBeGreaterThan(0);
+    expect(reach.scrollLeft).toBe(reach.maxScrollLeft);
+    expect(reach.contentRight!).toBeLessThanOrEqual(reach.blockRight + 2);
   });
 
   test("宽表在自身容器内横向滚动，列不被压缩，页面不产生横向溢出", async ({ page }) => {

@@ -113,9 +113,14 @@ function evidenceIndex(message: ChatMessage, source: EvidenceItem, fallbackIndex
   overflow-wrap: anywhere;
 }
 
+/* 代码块：自身容器内横向滚动。
+   contain:inline-size 用于切断长代码行的 min-content 尺寸向外传导——否则长行会把
+   祖先的 content-based minimum size 撑大，经共享 LayoutView 的 min-width:auto
+   变成整页横向溢出（与下方宽表同一处理）。 */
 .chat-assistant-markdown :deep(pre) {
   max-width: 100%;
   overflow-x: auto;
+  contain: inline-size;
 }
 
 /* 宽表：容器横向滚动，表格保持自然列宽（覆盖共享 width:100% 的压缩行为）。

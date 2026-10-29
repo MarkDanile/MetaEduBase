@@ -10,6 +10,14 @@ export const CHAT_WIDE_TABLE = [
   "| 交流电路分析 | 56 | 40 | 考查 | 电路基础 | 李四 | 直流电路分析 | 第四 | 电工实训室 | 交流电源 | 60% | 需分组轮换 |",
 ].join("\n");
 
+/** 长代码行：用于验证代码块在自身容器内横向滚动，而不是把整页撑出横向溢出。 */
+export const CHAT_LONG_CODE = [
+  "```python",
+  "def course_hours(theory, practice, safety_factor=1.0, lab_hours=0, exam_weight=0.4, credit=3):",
+  "    return theory + practice * safety_factor + lab_hours + exam_weight + credit",
+  "```",
+].join("\n");
+
 export const CHAT_LONG_REPLY = Array.from({ length: 12 }, (_, index) =>
   `第 ${index + 1} 段：电路基础强调原理、实验与工程安全，引用课程标准 [1]。这段固定文本用于形成真实滚动距离。`,
 ).join("\n\n") + `
@@ -18,6 +26,8 @@ export const CHAT_LONG_REPLY = Array.from({ length: 12 }, (_, index) =>
 def course_hours(theory, practice):
     return theory + practice
 \`\`\`
+
+${CHAT_LONG_CODE}
 
 | 课程模块 | 理论学时 | 实践学时 |
 | --- | ---: | ---: |

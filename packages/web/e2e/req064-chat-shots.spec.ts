@@ -137,6 +137,8 @@ async function capture(
     const tableScroll = (Array.from(document.querySelectorAll(".chat-table-scroll")) as HTMLElement[])
       .sort((a, b) => b.scrollWidth - a.scrollWidth)[0] ?? null;
     const table = tableScroll?.querySelector("table") as HTMLElement | null;
+    const codeBlocks = Array.from(document.querySelectorAll(".markdown-body pre")) as HTMLElement[];
+    const codeBlock = codeBlocks.length ? codeBlocks[codeBlocks.length - 1] : null;
     const inputStyle = input ? getComputedStyle(input) : null;
     return {
       route: location.pathname,
@@ -168,6 +170,10 @@ async function capture(
       tableOwnScrollWidth: table?.scrollWidth ?? null,
       tableWrapperClientWidth: tableScroll?.clientWidth ?? null,
       tableWrapperScrollWidth: tableScroll?.scrollWidth ?? null,
+      codeBlockClientWidth: codeBlock?.clientWidth ?? null,
+      codeBlockScrollWidth: codeBlock?.scrollWidth ?? null,
+      codeBlockInternalScroll: codeBlock ? codeBlock.scrollWidth > codeBlock.clientWidth : null,
+      preBlockCount: codeBlocks.length,
     };
   });
   metrics.push({
@@ -205,6 +211,9 @@ async function capture(
       // 宽表在自身容器内横向滚动：表格宽于滚动容器
       expect(geometry.tableWrapperClientWidth!).toBeGreaterThan(0);
       expect(geometry.tableWrapperScrollWidth!).toBeGreaterThan(geometry.tableWrapperClientWidth!);
+      // 长代码行同样由代码块自身横向滚动承载，不外溢为整页横向滚动
+      expect(geometry.codeBlockInternalScroll).toBe(true);
+      expect(geometry.pageScrollWidth).toBeLessThanOrEqual(geometry.effectiveViewportWidth);
     }
     if (scenario.startsWith("mobile-")) {
       expect(geometry.inputOffsetHeight).toBe(160);

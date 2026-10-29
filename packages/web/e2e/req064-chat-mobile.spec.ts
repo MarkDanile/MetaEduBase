@@ -102,4 +102,62 @@ test.describe("REQ-064 S2 AI Chat mobile", () => {
     expect(metrics.columnWidth).toBeGreaterThan(60);
     expect(metrics.pageScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth);
   });
+
+  test("长代码行在代码块内横向滚动，页面本身不横向溢出", async ({ page }) => {
+    await setupAiChat(page, { reply: CHAT_LONG_REPLY });
+    await openAiChat(page);
+    await sendChat(page);
+    const code = page.locator(".chat-message-assistant pre").last();
+    await expect(code).toBeVisible();
+
+    const metrics = await code.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      pageScrollWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+    }));
+    // 长代码行超出消息列宽 → 由代码块自身横向滚动承载
+    expect(metrics.scrollWidth).toBeGreaterThan(metrics.clientWidth);
+    // 页面本身不产生横向溢出
+    expect(metrics.pageScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth);
+
+    // 代码内容可通过代码块内部横向滚动访问：滚到最大位移后，代码末尾进入块内可视区
+    const reach = await code.evaluate((element) => {
+      element.scrollLeft = 9999;
+      const content = element.querySelector("code");
+      const blockRect = element.getBoundingClientRect();
+      const contentRect = content?.getBoundingClientRect();
+      return {
+        scrollLeft: Math.round(element.scrollLeft),
+        maxScrollLeft: Math.round(element.scrollWidth - element.clientWidth),
+        contentRight: contentRect ? Math.round(contentRect.right) : null,
+        blockRight: Math.round(blockRect.right),
+      };
+    });
+    expect(reach.maxScrollLeft).toBeGreaterThan(0);
+    expect(reach.scrollLeft).toBe(reach.maxScrollLeft);
+    expect(reach.contentRight).not.toBeNull();
+    expect(reach.contentRight!).toBeLessThanOrEqual(reach.blockRight + 2);
+  });
+
+  test("内容增高引起的中间态 scroll 事件不误判为用户上滑", async ({ page }) => {
+    await setupAiChat(page, { reply: CHAT_LONG_REPLY });
+    await openAiChat(page);
+    await sendChat(page);
+    await expect(page.locator(".chat-message-assistant")).toHaveCount(1);
+    await expect.poll(() => remainingScroll(page)).toBe(0);
+
+    // 在同一个 JS 任务内制造「内容增高 → 容器暂时不在底部 → 派发 scroll」的中间态：
+    // scroll 事件在任务结束时派发，ResizeObserver 回调在帧末派发，因此该顺序是确定的。
+    // 若贴底判定退化为「不在底部即视为用户上滑」，此处会被误判并出现「回到最新」。
+    await page.locator(".ai-chat-scroll").evaluate((element) => {
+      const spacer = document.createElement("div");
+      spacer.style.height = "400px";
+      element.querySelector(".ai-chat-content")!.appendChild(spacer);
+      element.dispatchEvent(new Event("scroll"));
+    });
+
+    await expect(page.getByRole("button", { name: "回到最新" })).toHaveCount(0);
+    await expect.poll(() => remainingScroll(page)).toBe(0);
+  });
 });
