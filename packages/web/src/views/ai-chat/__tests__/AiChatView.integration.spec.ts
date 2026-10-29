@@ -182,4 +182,10 @@ describe("AiChatView S2 integration", () => {
     expect(postMock).not.toHaveBeenCalled();
     expect(chat.find(".ui-composer-submit").attributes("disabled")).toBeDefined();
   });
+
+  it("页面不产生嵌套 main landmark，消息区保留可访问名称", () => {
+    const chat = mountChat();
+    expect(chat.find("main").exists()).toBe(false);
+    expect(chat.find('section[aria-label="对话消息"]').exists()).toBe(true);
+  });
 });

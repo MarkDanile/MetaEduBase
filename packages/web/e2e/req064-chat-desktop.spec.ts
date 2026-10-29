@@ -35,7 +35,7 @@ test.describe("REQ-064 S2 AI Chat desktop", () => {
     await setupAiChat(page, { reply: CHAT_LONG_REPLY, sources: CHAT_EVIDENCE });
     await openAiChat(page);
     await sendChat(page);
-    await expect(page.locator(".chat-message-assistant table")).toBeVisible();
+    await expect(page.locator(".chat-message-assistant table").first()).toBeVisible();
     await expect(page.locator(".chat-message-assistant pre code")).toBeVisible();
     await expect(page.locator("a.evidence-ref").first()).toHaveAttribute("data-ref", "1");
 
@@ -59,6 +59,41 @@ test.describe("REQ-064 S2 AI Chat desktop", () => {
       expect(metrics.userWidth).toBeLessThanOrEqual(metrics.contentWidth * 0.85 + 1);
       expect(metrics.tableClientWidth).toBeLessThanOrEqual(metrics.contentWidth);
     }
+  });
+
+  test("宽表在自身容器内横向滚动，列不被压缩，页面不产生横向溢出", async ({ page }) => {
+    await setupAiChat(page, { reply: CHAT_LONG_REPLY, sources: CHAT_EVIDENCE });
+    await openAiChat(page);
+    await sendChat(page);
+    const scroll = page.locator(".chat-table-scroll").last();
+    await expect(scroll).toBeVisible();
+
+    const metrics = await scroll.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      tableWidth: (element.querySelector("table") as HTMLElement).getBoundingClientRect().width,
+      columnWidth: (element.querySelector("th") as HTMLElement).getBoundingClientRect().width,
+      pageScrollWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+    }));
+    // 宽表内容宽于容器 → 滚动发生在表格容器内
+    expect(metrics.scrollWidth).toBeGreaterThan(metrics.clientWidth);
+    // 列保持可读宽度，不被压缩到容器宽度以内
+    expect(metrics.columnWidth).toBeGreaterThan(60);
+    expect(metrics.tableWidth).toBeGreaterThan(metrics.clientWidth);
+    // 页面本身不产生横向溢出
+    expect(metrics.pageScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth);
+  });
+
+  test("页面只有一个主 landmark，消息区保留可访问名称", async ({ page }) => {
+    await setupAiChat(page);
+    await openAiChat(page);
+    const landmarks = await page.evaluate(() => ({
+      mains: document.querySelectorAll("main:not([hidden])").length,
+      sections: document.querySelectorAll('section[aria-label="对话消息"]').length,
+    }));
+    expect(landmarks.mains).toBe(1);
+    expect(landmarks.sections).toBe(1);
   });
 
   test("busy/stop 恢复草稿，error 保留稳定错误说明", async ({ page }) => {

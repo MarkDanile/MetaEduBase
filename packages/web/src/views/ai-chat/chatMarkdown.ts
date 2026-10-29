@@ -69,12 +69,24 @@ const marked = new Marked({
   },
 });
 
+/**
+ * 宽表包裹：marked 输出的 `<table>` 没有容器，共享 `.markdown-body table`
+ * 的 `width:100%` 会把宽表压缩成窄列（spec §4.2 要求长表格在自身容器内
+ * 横向滚动）。这里为表格加一层可横向滚动的容器，表格本身保持自然宽度。
+ * marked 已把用户输入中的原始 HTML 转义，因此 `<table>` 只可能来自表格语法。
+ */
+function wrapTables(html: string): string {
+  return html
+    .replace(/<table>/g, '<div class="chat-table-scroll"><table>')
+    .replace(/<\/table>/g, "</table></div>");
+}
+
 export function renderMarkdown(
   content: string,
   sources?: EvidenceItem[],
   messageId?: string,
 ): string {
   // REQ-010 AC-4: marked 渲染后再把有效的 [N] 改为消息内隔离的证据链接。
-  const html = marked.parse(content) as string;
+  const html = wrapTables(marked.parse(content) as string);
   return replaceEvidenceReferences(html, sources, messageId);
 }

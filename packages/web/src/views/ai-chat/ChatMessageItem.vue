@@ -106,7 +106,7 @@ function evidenceIndex(message: ChatMessage, source: EvidenceItem, fallbackIndex
   overflow-wrap: anywhere;
 }
 
-/* spec §2.2 / §4.2：回答 16px/1.65；长 URL 换行，代码与表格局部滚动。 */
+/* spec §2.2 / §4.2：回答 16px/1.65；长 URL 换行，代码在自身容器内横向滚动。 */
 .chat-assistant-markdown {
   font-size: var(--text-subtitle);
   line-height: 1.65;
@@ -118,10 +118,20 @@ function evidenceIndex(message: ChatMessage, source: EvidenceItem, fallbackIndex
   overflow-x: auto;
 }
 
-.chat-assistant-markdown :deep(table) {
-  display: block;
+/* 宽表：容器横向滚动，表格保持自然列宽（覆盖共享 width:100% 的压缩行为）。
+   contain:inline-size 用于切断宽表的 min-content 尺寸向外传导——否则宽表会把
+   祖先的 content-based minimum size 撑大，经共享 LayoutView 的 min-width:auto
+   变成整页横向溢出。 */
+.chat-assistant-markdown :deep(.chat-table-scroll) {
   max-width: 100%;
   overflow-x: auto;
+  contain: inline-size;
+}
+
+.chat-assistant-markdown :deep(.chat-table-scroll table) {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
 }
 
 .chat-assistant-markdown :deep(a) {

@@ -51,6 +51,19 @@ describe("ChatMessageItem (DB-03)", () => {
     expect(reference.attributes("data-message-id")).toBe("assistant-1");
   });
 
+  it("宽表被包裹进可横向滚动的容器，表格本身保持自然宽度", () => {
+    const wrapper = mount(ChatMessageItem, {
+      props: {
+        message: message({
+          content: "| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| a | b | c |",
+        }),
+      },
+    });
+    const scroll = wrapper.find(".chat-assistant-markdown .chat-table-scroll");
+    expect(scroll.exists()).toBe(true);
+    expect(scroll.find("table").exists()).toBe(true);
+  });
+
   it("无证据提示保留，原始 HTML 不作为节点注入", () => {
     const wrapper = mount(ChatMessageItem, {
       props: { message: message({ content: "<img src=x onerror=alert(1)>" }) },

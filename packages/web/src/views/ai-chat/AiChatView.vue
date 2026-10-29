@@ -10,13 +10,16 @@
       </div>
     </header>
 
-    <main
+    <!-- 消息区使用 section 而非 main：LayoutView 已提供 main#main-content，
+         避免嵌套出第二个主 landmark（a11y）。 -->
+    <section
       ref="chatContainer"
       class="ai-chat-scroll"
+      aria-label="对话消息"
       @scroll="updateScrollState"
       @click="onChatClick"
     >
-      <div class="ai-chat-content">
+      <div ref="chatContent" class="ai-chat-content">
         <EmptyState
           v-if="messages.length === 0"
           class="ai-chat-empty"
@@ -51,7 +54,7 @@
           <LoadingSpinner text="检索中" />
         </div>
       </div>
-    </main>
+    </section>
 
     <div class="ai-chat-bottom">
       <div class="ai-chat-composer-column">
@@ -112,6 +115,7 @@ const messages = ref<ChatMessage[]>([]);
 const inputText = ref("");
 const loading = ref(false);
 const chatContainer = ref<HTMLElement | null>(null);
+const chatContent = ref<HTMLElement | null>(null);
 const chatPage = ref<HTMLElement | null>(null);
 const abortController = ref<AbortController | null>(null);
 const storageKeys = aiChatStorageKeys();
@@ -127,7 +131,7 @@ const {
   updateScrollState,
   scrollToLatest,
   notifyContentChanged,
-} = useChatScroll(chatContainer);
+} = useChatScroll(chatContainer, chatContent);
 
 const quickQuestions = [
   "电子信息工程专业有哪些核心课程？",
@@ -376,7 +380,8 @@ function sendQuick(question: string) {
   line-height: var(--text-caption-lh);
 }
 
-/* spec §2.2 / DB-03：唯一消息滚动轴；Composer 在 normal flow 底部占位。 */
+/* spec §2.2 / DB-03：页面内唯一消息滚动轴；Composer 在 normal flow 底部占位。
+   文档级仍有共享外壳 .ui-page-shell 的 24px padding-bottom 残留（共享层范围外）。 */
 .ai-chat-scroll {
   flex: 1;
   min-height: 0;

@@ -24,4 +24,16 @@ describe("AiChatView S2 layout contract", () => {
     expect(source).toContain('class="ai-chat-composer-column"');
     expect(source).toContain("@scroll=\"updateScrollState\"");
   });
+
+  it("不在 LayoutView 的 main#main-content 内产生第二个 main landmark", () => {
+    // 页面自身不渲染 <main>；消息区使用带可访问名称的 section。
+    expect(source).not.toMatch(/<main[\s>]/);
+    expect(source).toContain('aria-label="对话消息"');
+    expect(source).toMatch(/<section[\s\S]*class="ai-chat-scroll"/);
+  });
+
+  it("消息内容容器被传给滚动 composable，用于尺寸变化时重新定位", () => {
+    expect(source).toContain('ref="chatContent"');
+    expect(source).toContain("useChatScroll(chatContainer, chatContent)");
+  });
 });
