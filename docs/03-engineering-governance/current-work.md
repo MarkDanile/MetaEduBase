@@ -34,6 +34,13 @@
 
 当前进展：已在真实 `/ai-chat` 路由接入共享 `UiComposer`，S2 局部适配承载四种模式（当前页面真实生产状态仍只有 ready/busy，不伪造只读或无权限来源）；完成 800px 阅读列、用户消息 85% 上限、长回答 / 代码 / 表格 / 引用、建议问题、错误 / 停止语气、阅读位置保持与工具行内「回到最新」、输入 160px 上限、双主题与移动视口适配。发送、HTTP abort、request identity、Conversation、证据导航及 API / store / service / DTO / 权限语义保持；未改共享组件、共享 CSS 或 Workspace。
 
+第 1 轮独立复审返修（实现提交 `4dc039cabcad7c61477f90d5882eeefd80d2857d`）已落地：
+- **贴底跟随（P1-1 / P3-4）**：`useChatScroll` 改为「只有用户主动上滑才暂停跟随」，并用 ResizeObserver 观察消息容器与内容容器；Composer 增高、内容增高、可见视口收缩（移动键盘）都不再被误判为用户上滑，贴底用户始终保持最后一条消息可见（剩余滚动距离为 0），上滑用户保留阅读位置并显示「回到最新」。e2e 以「剩余滚动距离 = 0」替换原先恒真的几何断言。
+- **唯一主地标（P2-2）**：消息区由 `<main>` 改为 `<section aria-label="对话消息">`，页面不再在 `main#main-content` 内产生第二个主地标。
+- **宽表内滚动（P2-3）**：Markdown 表格被包裹进 `.chat-table-scroll`（`overflow-x:auto` + `contain:inline-size`），表格保持自然列宽，横向滚动发生在表格容器内；`contain:inline-size` 用于切断宽表 min-content 向外传导，避免经共享 LayoutView 的 `min-width:auto` 形成整页横向溢出。共享 CSS 未改。
+- **证据口径（P2-4 / P2-5）**：采集脚本改为固定 CSS 视口 + 关闭移动端自动缩放（改前页面自身高度溢出会触发 Chrome shrink-to-fit，使 before/after 有效视口不可比），逐组记录实际生效视口；manifest 的 `sourceRevision` 改为真实实现提交 SHA（占位文本会被拒绝），并注入 CSS 关闭动画 / 过渡 / 光标闪烁以降低渲染噪声。
+- **行为声明（P3-3）**：响应后不再无条件滚到底部，仅在用户原本贴底时跟随（design spec §4.2）。
+
 允许文件范围：
 - `packages/web/src/views/ai-chat/**`（S2 页面、局部适配与测试）
 - `packages/web/e2e/req064-chat-*`（S2 专用 e2e、fixture 与证据采集配置）
@@ -41,10 +48,10 @@
 
 禁止范围：不改 Workspace / S3、共享组件与共享 CSS、router/nav/permission、stores/services/DTO/API、后端、依赖、CI、design spec、technical-debt、评分总账与 Metrics；不实现 SSE、cancel/steer、审批或产物协议，不处理 S4/S5。
 
-验证状态：Node `20.20.2` / pnpm `9.15.0`；lint 0 errors / 28 既有 warnings、typecheck / build 退出 0；全量 Vitest 49 文件 / 460 用例通过；`METAEDU_E2E_PORT=3102` 全量 Playwright 89 passed / 5 skipped（含 S2 6 项）；前后截图采集各 4 项通过，共 26 组 / 52 张，manifest 哈希与 52 条几何度量已复算。预览 `http://localhost:3102/ai-chat`。fixture mock 不代表真实后端或真实 LLM；用户视觉确认未执行。
-下一步：创建并停在 OPEN / Draft PR，交由独立复审；不推进 Ready、不评分、不合并。
+验证状态：Node `20.20.2` / pnpm `9.15.0`；lint 0 errors / 28 既有 warnings、typecheck / build 退出 0；全量 Vitest 49 文件 / 466 用例通过；`METAEDU_E2E_PORT=3102` 全量 Playwright 94 passed / 5 skipped（含 S2 11 项）；截图采集按新口径重采，26 组 / 52 张，manifest 绑定实现提交并逐图记录 SHA-256。预览 `http://localhost:3102/ai-chat`。fixture mock 不代表真实后端、真实检索或真实 LLM；真机软键盘未验证；用户视觉确认未执行。
+下一步：更新 PR body 与绑定最终 head 的证据评论后，停在 OPEN / Draft 交由**未参与实现的独立 Agent** 复审；不推进 Ready、不评分、不合并。
 
-交接备注：S2 用户视觉确认由用户本人执行；本任务只交付预览和证据。S1b-2 的 G5/G6 按路径 b 延后，Composer 真实页面随 S2 取证，但不宣称 S1 已收口。S3 未指定负责人且不并行认领；S4 状态不变。worktree 与 local/remote branch 在 Draft 评审期间全部保留，后续只能在合并、closeout 和 ignored 资产核验完成后另按规则处置。
+交接备注：S2 用户视觉确认由用户本人执行；本任务只交付预览和证据。S1b-2 的 G5/G6 按路径 b 延后，Composer 真实页面随 S2 取证，但不宣称 S1 已收口。S3 未指定负责人且不并行认领；S4 状态不变。worktree 与 local/remote branch 在 Draft 评审期间全部保留，后续只能在合并、closeout 和 ignored 资产核验完成后另按规则处置。**本切片范围外遗留**：① 桌面端仍有 24px 文档级滚动，来源是共享 `.ui-page-shell` 的 `padding-bottom`，属共享层范围外，本切片只修正注释表述；② 停止按钮可访问名由图标按钮的「停止生成」变为文本「停止」，恢复旧名需共享 `UiComposer` 增加可选属性（共享层 owner 事项），本切片不改共享组件契约；③ S1b-1 的 10 项非阻塞 P3 与 #676 的 P2/P3 保留未关闭，锚点见评分总账 #675 / #676 行。
 
 ## 下一批候选任务
 
@@ -66,6 +73,7 @@
 
 | 日期 | 任务 | 状态 | 摘要 | 事实源 |
 |------|------|------|------|------|
+| 2026-10-28 | REQ-064-S1b-2 共享组件采用（顺序 PR 2：G1 共享 UiComposer、共享控件状态契约与采用行为锁；15 文件 +1307/-49） | 🟢 完成（**仅 S1b-2 切片已交付**；S1 未收口、G5/G6 仍 gated、用户视觉确认未执行） | PR #676 squash merge `2e1d740e`（被评 head `51cce87f`，Original 85/100；评分行见 Score Log 第 19 行）；**本行仅为最小完成索引，不改写 S1、G5/G6 或 REQ-064 的完成状态** | [PR #676](https://github.com/MarkDanile/MetaEduBase/pull/676) / [路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md) / [Score Log](04-retrospectives/review-score-log.md) / [work-log](work-log.md) |
 | 2026-10-28 | REQ-064-S4-PAGINATION-3A：S4 数据预览分页实现（D-P1=3a + D-P2=B `limit+1`；含评分 17 文件 +1134/-56） | 🟢 完成（仅 3a 已合入；S4 门未闭合、S6/S7 受阻、S3 未指定、用户视觉未确认；REQ-064 仍 Doing） | #673 merge `c76b06b7`；Original 85/100；四轮末轮 PASS 覆盖 `19370612`（原始报告未入库、非 PR review/comment、不可逐轮回放；详见 §14/评分总账）；CI：Frontend/docs 实跑，Backend no-op、full hermetic skipped；3 项既有缺口与 5 项 P3 未解决 | [PR #673](https://github.com/MarkDanile/MetaEduBase/pull/673) / [路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md) / [REQ-064 requirement](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md) / [Score Log](04-retrospectives/review-score-log.md) / [work-log](work-log.md) |
 | 2026-10-28 | REQ-064-S1b-1 共享 CSS / 语义 token（顺序 PR 1：G2 机器可读状态矩阵、G3 `.ui-panel-static` / `.ui-panel-interactive` opt-in、G4 `--lh-control` 行高 token 与 `.ui-input-leading` opt-in；18 文件 +1291/-19） | 🟢 完成（**仅 S1b-1 切片已交付**；S1 未收口、S4 强制分页门未闭合、S1b-2 与 S2–S8 未启动、S3 负责人未指定、用户视觉确认未执行） | PR #675 squash merge `df4bf853`（被评 head `5eac45aa`，Original 83/100）；三轮独立复审末轮 PASS；**10 项非阻塞 P3 保留未关闭**；CI 全绿（Frontend/docs 实跑，Backend no-op、full hermetic skipped） | [PR #675](https://github.com/MarkDanile/MetaEduBase/pull/675) / [路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md) / [REQ-064 requirement](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md) / [Score Log](04-retrospectives/review-score-log.md) / [work-log](work-log.md) |
 | 2026-10-26 | 全局 UI 升级后续切片路线与验收对齐（纯规划：新增路线事实源 2026-10-26-req-064-ui-slice-roadmap.md，回填 D1–D9、S1 缺口 G1–G8、S1b-1/S1b-2 有序 PR、S2–S8 切片卡与三层验收、S4 强制分页门与方案 A 裁决；实现净 diff 5 文件 +389/-9，含 Original 评分行后 6 文件 +390/-9） | 🟢 完成（仅本规划 closeout；REQ-064 整体仍 🟡 Doing，S1 未收口，S2–S8 未启动） | PR #670 squash merge `b4dd5dfb`（mergedAt 2026-10-26T13:08:27Z；被评 head `f96e4055`，Original 92/100）；前四轮 NEEDS_CHANGES 已闭合，第五轮 PASS 覆盖 `324a107c`、第六轮 PASS 覆盖 `1d297471`；S4 分页门未闭合、S6/S7 受阻、S3 负责人待指定；下一步：S4 分页候选确认/前置规划与用户决策 | [PR #670](https://github.com/MarkDanile/MetaEduBase/pull/670) / [路线与验收对齐](../02-delivery-plans/02-plans/2026-10-26-req-064-ui-slice-roadmap.md) / [REQ-064 requirement](../01-product-planning/05-requirements/REQ-064-global-ui-upgrade.md) / [Score Log](04-retrospectives/review-score-log.md) / [work-log](work-log.md) |
