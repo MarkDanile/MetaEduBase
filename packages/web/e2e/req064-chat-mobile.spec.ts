@@ -81,9 +81,12 @@ test.describe("REQ-064 S2 AI Chat mobile", () => {
       // 这一步是有界轮询，不用固定 sleep 代替断言；没有它就可能读到收缩前的旧布局。
       await expect.poll(() => composerBottom(page), { timeout: 10_000 }).toBeLessThanOrEqual(500);
 
-      // 屏障之后再分别断言：尾部可见、剩余滚动距离为 0、未出现「回到最新」。
-      expect(await lastMessageTailVisible(page)).toBe(true);
+      // 屏障之后再分别断言。顺序不可颠倒：布局落定与滚动状态落定之间存在
+      // ResizeObserver 交付窗口，先读尾部会读到「尚未重新贴底」的中间态。
+      // 因此先用有界轮询等待贴底落定（remaining === 0 ⟺ 容器已在内容底部），
+      // 再断言由它派生的尾部可见性，最后断言未出现「回到最新」。
       await expect.poll(() => remainingScroll(page), { timeout: 5000 }).toBe(0);
+      expect(await lastMessageTailVisible(page)).toBe(true);
       const scroll = await page.locator(".ai-chat-scroll").boundingBox();
       expect(scroll).not.toBeNull();
       expect(scroll!.height).toBeGreaterThanOrEqual(80);

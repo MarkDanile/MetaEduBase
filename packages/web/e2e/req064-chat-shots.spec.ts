@@ -117,13 +117,54 @@ async function scrollChat(page: Page, position: "top" | "bottom"): Promise<void>
   }, position);
 }
 
+/**
+ * 等待布局与样式落定：连续两帧几何签名一致才返回。
+ * 这是**状态断言**，不是固定 sleep——固定 sleep 无法证明布局已按新视口重排。
+ */
+async function waitForLayoutSettled(page: Page): Promise<void> {
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    let previous = "";
+    let stableFrames = 0;
+    const tick = () => {
+      const composer = document.querySelector(".ai-chat-bottom");
+      const rect = composer?.getBoundingClientRect();
+      const signature = rect
+        ? `${Math.round(rect.bottom)}:${Math.round(rect.height)}:${window.innerHeight}`
+        : `no-composer:${window.innerHeight}`;
+      if (signature === previous) stableFrames += 1;
+      else { stableFrames = 0; previous = signature; }
+      if (stableFrames >= 2) { resolve(); return; }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }));
+}
+
+/**
+ * 视口收缩后的**布局屏障**：先确认视口层生效，再确认布局层已按新视口重排。
+ * 改前实现没有 `.ai-chat-bottom`（其高度由 CSS `100dvh` 决定，收缩后同帧落定），
+ * 因此布局层断言只对改后实现生效；改前侧以视口层断言 + 帧稳定性等待兜底。
+ */
+async function waitForViewportShrink(page: Page, targetHeight: number): Promise<void> {
+  await expect
+    .poll(() => page.evaluate(() => window.innerHeight), { timeout: 10_000 })
+    .toBe(targetHeight);
+  await expect
+    .poll(() => page.evaluate((height) => {
+      const composer = document.querySelector(".ai-chat-bottom");
+      if (!composer) return true;
+      return composer.getBoundingClientRect().bottom <= height + 1;
+    }, targetHeight), { timeout: 10_000 })
+    .toBe(true);
+}
+
 async function capture(
   page: Page,
   scenario: string,
   viewport: { name: string; width: number; height: number },
   theme: "light" | "dark",
 ): Promise<void> {
-  await page.waitForTimeout(120);
+  await waitForLayoutSettled(page);
   const filename = `${LABEL}-${scenario}-${viewport.name}-${theme}.png`;
   await page.screenshot({ path: path.join(SHOT_DIR, filename), fullPage: false });
 
@@ -302,16 +343,17 @@ test.describe("Pixel 5 尺寸移动视口", () => {
       if (LABEL === "after") {
         await expect.poll(() => remainingScroll(page)).toBe(0);
       } else {
-        await page.waitForTimeout(400);
+        await waitForLayoutSettled(page);
       }
       await capture(page, "mobile-input-160", viewport, theme);
 
       const keyboardViewport = { name: "pixel5-keyboard-393x500", width: 393, height: 500 };
       await page.setViewportSize(keyboardViewport);
+      // 视口收缩后的布局屏障：先视口层、再布局层；随后 remaining 断言才是在
+      // **收缩后的**容器上评估（收缩前该谓词本已成立，不能当屏障用）。
+      await waitForViewportShrink(page, keyboardViewport.height);
       if (LABEL === "after") {
         await expect.poll(() => remainingScroll(page)).toBe(0);
-      } else {
-        await page.waitForTimeout(400);
       }
       await capture(page, "mobile-keyboard", keyboardViewport, theme);
     }
