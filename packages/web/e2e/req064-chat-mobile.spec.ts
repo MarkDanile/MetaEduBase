@@ -1,0 +1,201 @@
+import { expect, test, type Page } from "@playwright/test";
+import {
+  CHAT_LONG_REPLY,
+  openAiChat,
+  sendChat,
+  setupAiChat,
+} from "./req064-chat-fixtures";
+
+/** 消息区剩余滚动距离（0 表示已贴底，尾部可见）。 */
+async function remainingScroll(page: Page): Promise<number> {
+  return page.locator(".ai-chat-scroll").evaluate((element) =>
+    element.scrollHeight - element.scrollTop - element.clientHeight);
+}
+
+/**
+ * 最后一条助手消息的**尾部**是否真的落在消息区可视范围内。
+ * 用尾部底边与滚动区底边的关系判定（长回答的顶部可以超出可视区，这是正常的）。
+ */
+async function lastMessageTailVisible(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const scroll = document.querySelector(".ai-chat-scroll");
+    const messages = document.querySelectorAll(".chat-message-assistant");
+    const last = messages[messages.length - 1] as HTMLElement | undefined;
+    if (!scroll || !last) return false;
+    const scrollRect = scroll.getBoundingClientRect();
+    const tailBottom = last.getBoundingClientRect().bottom;
+    return tailBottom <= scrollRect.bottom + 1 && tailBottom >= scrollRect.top;
+  });
+}
+
+/** 消息区底边（Composer）当前所在位置；尚未重排时返回 Infinity。 */
+async function composerBottom(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const composer = document.querySelector(".ai-chat-bottom");
+    return composer ? composer.getBoundingClientRect().bottom : Infinity;
+  });
+}
+
+/** 像素 5（393×851）；键盘场景使用 393×500 视口收缩模拟，不是真机软键盘验收。 */
+test.describe("REQ-064 S2 AI Chat mobile", () => {
+  test("输入区 160px 封顶并内部滚动，主要动作保持可达", async ({ page }) => {
+    await setupAiChat(page);
+    await openAiChat(page);
+    const input = page.getByTestId("chat-input");
+    await input.fill(Array.from({ length: 24 }, (_, index) => `第 ${index + 1} 行固定草稿`).join("\n"));
+
+    const metrics = await input.evaluate((element: HTMLTextAreaElement) => ({
+      offsetHeight: element.offsetHeight,
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      overflowY: getComputedStyle(element).overflowY,
+      pageWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+    }));
+    expect(metrics.offsetHeight).toBe(160);
+    expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
+    expect(metrics.overflowY).toBe("auto");
+    expect(metrics.pageWidth).toBeLessThanOrEqual(metrics.viewportWidth);
+
+    const send = await page.getByRole("button", { name: "发送", exact: true }).boundingBox();
+    expect(send).not.toBeNull();
+    expect(send!.height).toBeGreaterThanOrEqual(44);
+  });
+
+  for (const theme of ["light", "dark"] as const) {
+    test(`393×500 键盘等效视口下最后一条消息尾部仍可见（${theme}）`, async ({ page }) => {
+      await setupAiChat(page, { reply: CHAT_LONG_REPLY, theme });
+      await openAiChat(page);
+      await sendChat(page);
+      await expect(page.locator(".chat-message-assistant")).toHaveCount(1);
+      const input = page.getByTestId("chat-input");
+      await input.fill(Array.from({ length: 24 }, (_, index) => `第 ${index + 1} 行固定草稿`).join("\n"));
+      await expect.poll(() => remainingScroll(page)).toBe(0);
+
+      await input.focus();
+      await page.setViewportSize({ width: 393, height: 500 });
+
+      // 屏障 1（视口层）：视口确实收缩到 500。
+      await expect.poll(() => page.evaluate(() => window.innerHeight), { timeout: 10_000 }).toBe(500);
+      // 屏障 2（布局层）：布局已按新视口重排，Composer 底边进入目标视口。
+      // 这一步是有界轮询，不用固定 sleep 代替断言；没有它就可能读到收缩前的旧布局。
+      await expect.poll(() => composerBottom(page), { timeout: 10_000 }).toBeLessThanOrEqual(500);
+
+      // 屏障之后再分别断言。顺序不可颠倒：布局落定与滚动状态落定之间存在
+      // ResizeObserver 交付窗口，先读尾部会读到「尚未重新贴底」的中间态。
+      // 因此先用有界轮询等待贴底落定（remaining === 0 ⟺ 容器已在内容底部），
+      // 再断言由它派生的尾部可见性，最后断言未出现「回到最新」。
+      await expect.poll(() => remainingScroll(page), { timeout: 5000 }).toBe(0);
+      expect(await lastMessageTailVisible(page)).toBe(true);
+      const scroll = await page.locator(".ai-chat-scroll").boundingBox();
+      expect(scroll).not.toBeNull();
+      expect(scroll!.height).toBeGreaterThanOrEqual(80);
+      // 用户没有主动上滑 → 不应出现「回到最新」
+      await expect(page.getByRole("button", { name: "回到最新" })).toHaveCount(0);
+    });
+  }
+
+  test("用户主动上滑后暂停跟随，出现回到最新并可恢复贴底", async ({ page }) => {
+    await setupAiChat(page, { reply: CHAT_LONG_REPLY });
+    await openAiChat(page);
+    await sendChat(page);
+    await expect(page.locator(".chat-message-assistant")).toHaveCount(1);
+    await expect.poll(() => remainingScroll(page)).toBe(0);
+
+    await page.locator(".ai-chat-scroll").evaluate((element) => {
+      element.scrollTop = 0;
+      element.dispatchEvent(new Event("scroll"));
+    });
+    const backToLatest = page.getByRole("button", { name: "回到最新" });
+    await expect(backToLatest).toBeVisible();
+    expect(await remainingScroll(page)).toBeGreaterThan(0);
+    // 上滑后尾部确实不在可视区内（尾部可见性判定能区分上下两种状态）
+    expect(await lastMessageTailVisible(page)).toBe(false);
+
+    await backToLatest.click();
+    await expect.poll(() => remainingScroll(page)).toBe(0);
+    await expect(backToLatest).toHaveCount(0);
+    // 回到最新后尾部重新进入可视区
+    await expect.poll(() => lastMessageTailVisible(page)).toBe(true);
+  });
+
+  test("宽表在 Pixel 5 下于表格容器内横向滚动，页面无横向溢出", async ({ page }) => {
+    await setupAiChat(page, { reply: CHAT_LONG_REPLY });
+    await openAiChat(page);
+    await sendChat(page);
+    const scroll = page.locator(".chat-table-scroll").last();
+    await expect(scroll).toBeVisible();
+
+    const metrics = await scroll.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      columnWidth: (element.querySelector("th") as HTMLElement).getBoundingClientRect().width,
+      pageScrollWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+    }));
+    expect(metrics.scrollWidth).toBeGreaterThan(metrics.clientWidth);
+    expect(metrics.columnWidth).toBeGreaterThan(60);
+    expect(metrics.pageScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth);
+  });
+
+  test("长代码行在代码块内横向滚动，页面本身不横向溢出", async ({ page }) => {
+    await setupAiChat(page, { reply: CHAT_LONG_REPLY });
+    await openAiChat(page);
+    await sendChat(page);
+    const code = page.locator(".chat-message-assistant pre").last();
+    await expect(code).toBeVisible();
+
+    const metrics = await code.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      overflowX: getComputedStyle(element).overflowX,
+      pageScrollWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+    }));
+    // 长代码行超出消息列宽 → 由代码块自身横向滚动承载
+    expect(metrics.scrollWidth).toBeGreaterThan(metrics.clientWidth);
+    // 代码块必须真的可横向滚动；overflow-x:hidden 会把溢出内容藏起来且用户无法滚到
+    expect(["auto", "scroll"]).toContain(metrics.overflowX);
+    // 页面本身不产生横向溢出
+    expect(metrics.pageScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth);
+
+    // 代码内容可通过代码块内部横向滚动访问：滚到最大位移后，代码末尾进入块内可视区
+    const reach = await code.evaluate((element) => {
+      element.scrollLeft = 9999;
+      const content = element.querySelector("code");
+      const blockRect = element.getBoundingClientRect();
+      const contentRect = content?.getBoundingClientRect();
+      return {
+        scrollLeft: Math.round(element.scrollLeft),
+        maxScrollLeft: Math.round(element.scrollWidth - element.clientWidth),
+        contentRight: contentRect ? Math.round(contentRect.right) : null,
+        blockRight: Math.round(blockRect.right),
+      };
+    });
+    expect(reach.maxScrollLeft).toBeGreaterThan(0);
+    expect(reach.scrollLeft).toBe(reach.maxScrollLeft);
+    expect(reach.contentRight).not.toBeNull();
+    expect(reach.contentRight!).toBeLessThanOrEqual(reach.blockRight + 2);
+  });
+
+  test("内容增高引起的中间态 scroll 事件不误判为用户上滑", async ({ page }) => {
+    await setupAiChat(page, { reply: CHAT_LONG_REPLY });
+    await openAiChat(page);
+    await sendChat(page);
+    await expect(page.locator(".chat-message-assistant")).toHaveCount(1);
+    await expect.poll(() => remainingScroll(page)).toBe(0);
+
+    // 在同一个 JS 任务内制造「内容增高 → 容器暂时不在底部 → 派发 scroll」的中间态：
+    // scroll 事件在任务结束时派发，ResizeObserver 回调在帧末派发，因此该顺序是确定的。
+    // 若贴底判定退化为「不在底部即视为用户上滑」，此处会被误判并出现「回到最新」。
+    await page.locator(".ai-chat-scroll").evaluate((element) => {
+      const spacer = document.createElement("div");
+      spacer.style.height = "400px";
+      element.querySelector(".ai-chat-content")!.appendChild(spacer);
+      element.dispatchEvent(new Event("scroll"));
+    });
+
+    await expect(page.getByRole("button", { name: "回到最新" })).toHaveCount(0);
+    await expect.poll(() => remainingScroll(page)).toBe(0);
+  });
+});

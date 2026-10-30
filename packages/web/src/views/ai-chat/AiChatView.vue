@@ -1,266 +1,137 @@
 <template>
-  <div class="flex flex-col h-[100dvh]">
-    <header class="px-[var(--spacing-page)] py-3 border-b border-[var(--color-border)] animate-slide-up">
-      <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-[var(--radius-md)] bg-[var(--color-accent-bg)] flex items-center justify-center relative overflow-hidden icon-glow">
-          <div class="icon-glow-fill"></div>
-          <MessageSquare :size="15" :stroke-width="1.5" class="relative z-[1] text-[var(--color-accent)]" />
-        </div>
-        <div>
-          <h1 class="text-[var(--text-subtitle)] font-semibold">AI 问答</h1>
-          <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)] -mt-0.5">基于知识库的智能问答与内容溯源</p>
-        </div>
-        <div class="wet-line ml-auto" style="width:32px"></div>
+  <div ref="chatPage" class="ai-chat-page" :style="viewportStyle">
+    <header class="ai-chat-header">
+      <div class="ai-chat-header-icon" aria-hidden="true">
+        <MessageSquare :size="16" :stroke-width="1.5" />
+      </div>
+      <div>
+        <h1>AI 问答</h1>
+        <p>基于知识库的智能问答与内容溯源</p>
       </div>
     </header>
 
-    <div ref="chatContainer" class="flex-1 overflow-y-auto px-[var(--spacing-page)] py-6 pb-[88px] space-y-4" @click="onChatClick">
-      <EmptyState
-        v-if="messages.length === 0"
-        title="欢迎使用 AI 问答"
-        hint="你可以问我关于职教课程、知识点、技能标准等问题"
-      >
-        <template #action>
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full max-w-[560px] mt-4 mx-auto">
-            <button
-              v-for="q in quickQuestions"
-              :key="q"
-              type="button"
-              @click="sendQuick(q)"
-              class="text-left p-3 ui-panel text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
-            >
-              {{ q }}
-            </button>
-          </div>
-        </template>
-      </EmptyState>
-
-      <div
-        v-for="msg in messages"
-        :key="msg.id"
-        :class="['flex', msg.role === 'user' ? 'justify-end' : 'justify-start']"
-      >
-        <div v-if="msg.role === 'assistant'" class="w-7 h-7 rounded-full bg-[var(--color-accent-bg)] flex items-center justify-center flex-shrink-0 mr-2.5 mt-1">
-          <MessageSquare :size="13" :stroke-width="1.5" class="text-[var(--color-accent)]" />
-        </div>
-
-        <div :class="[
-          'max-w-[60%] px-4 py-3 text-[var(--text-body)] leading-relaxed',
-          msg.role === 'user'
-            ? 'user-bubble rounded-[var(--radius-lg)_var(--radius-lg)_4px_var(--radius-lg)] whitespace-pre-wrap'
-            : 'bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-[var(--radius-lg)_var(--radius-lg)_var(--radius-lg)_4px] markdown-body'
-        ]">
-          <div v-if="msg.role === 'user'">{{ msg.content }}</div>
-          <!-- eslint-disable-next-line vue/no-v-html -- renderMarkdown blocks raw HTML and unsafe links before this controlled injection point. -->
-          <div v-else v-html="renderMarkdown(msg.content, msg.sources, msg.id)"></div>
-          <!-- REQ-010 AC-5/AC-6: 渲染证据来源列表 + 无证据 banner -->
-          <div
-            v-if="msg.role === 'assistant' && (!msg.sources || msg.sources.length === 0)"
-            class="mt-3 pt-2.5 border-t border-[var(--color-border-subtle)]"
-          >
-            <p class="text-[var(--text-micro)] text-[var(--color-warning)] uppercase tracking-wider">
-              ⚠️ 参考资料不足
-            </p>
-            <p class="text-[var(--text-caption)] text-[var(--color-ink-tertiary)] mt-1">
-              本次回答未引用证据，建议补充提问或提供更多资料。
-            </p>
-          </div>
-          <div v-else-if="msg.sources && msg.sources.length > 0" class="mt-3 pt-2.5 border-t border-[var(--color-border-subtle)]">
-            <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)] mb-1.5 uppercase tracking-wider">参考来源</p>
-            <DocumentSourceList
-              v-if="msg.document_sources_view.length > 0"
-              :sources="msg.document_sources_view"
-              @open-document="openDocumentSource"
-              @open-chunk="openDocumentSourceChunk"
-            />
-            <div
-              v-if="unattributedSources(msg).length > 0"
-              class="mt-2 space-y-1.5"
-            >
-              <p class="text-[var(--text-micro)] text-[var(--color-ink-tertiary)]">
-                补充证据 / 来源待细化
-              </p>
-              <EvidenceCard
-                v-for="(src, idx) in unattributedSources(msg)"
-                :key="src.evidence_id"
-                :index="evidenceIndex(msg, src, idx)"
-                :evidence="src"
-                @open-file="openEvidenceFile"
-              />
+    <!-- 消息区使用 section 而非 main：LayoutView 已提供 main#main-content，
+         避免嵌套出第二个主 landmark（a11y）。 -->
+    <section
+      ref="chatContainer"
+      class="ai-chat-scroll"
+      aria-label="对话消息"
+      @scroll="updateScrollState"
+      @click="onChatClick"
+    >
+      <div ref="chatContent" class="ai-chat-content">
+        <EmptyState
+          v-if="messages.length === 0"
+          class="ai-chat-empty"
+          title="欢迎使用 AI 问答"
+          hint="你可以问我关于职教课程、知识点、技能标准等问题"
+        >
+          <template #action>
+            <div class="ai-chat-suggestions">
+              <button
+                v-for="q in quickQuestions"
+                :key="q"
+                type="button"
+                class="ui-panel ui-panel-interactive ai-chat-suggestion"
+                @click="sendQuick(q)"
+              >
+                {{ q }}
+              </button>
             </div>
-          </div>
-        </div>
+          </template>
+        </EmptyState>
 
-        <div v-if="msg.role === 'user'" class="w-7 h-7 rounded-full bg-[var(--color-accent)] flex items-center justify-center flex-shrink-0 ml-2.5 mt-1 text-[var(--text-micro)] font-semibold text-[var(--color-ink-inverse)]">
-          我
+        <ChatMessageItem
+          v-for="message in messages"
+          :key="message.id"
+          :message="message"
+          @open-evidence="openEvidenceFile"
+          @open-document="openDocumentSource"
+          @open-chunk="openDocumentSourceChunk"
+        />
+
+        <div v-if="loading" class="ai-chat-loading" role="status">
+          <LoadingSpinner text="检索中" />
         </div>
       </div>
+    </section>
 
-      <LoadingSpinner v-if="loading" text="检索中" />
-    </div>
-
-    <div class="sticky bottom-0 z-10 px-[var(--spacing-page)] py-3 border-t border-[var(--color-border)] bg-[var(--color-bg)]">
-      <form @submit.prevent="sendMessage" class="flex gap-2.5 items-end">
-        <div class="flex-1 bg-[var(--color-bg-warm)] border border-[var(--color-border)] rounded-[var(--radius-md)] px-4 py-2.5 flex items-center transition-all duration-200 focus-within:border-[var(--color-accent)] focus-within:shadow-[0_0_0_2px_var(--color-accent-bg)]">
-          <textarea
-            ref="inputEl"
-            v-model="inputText"
-            placeholder="输入你的问题... (Shift+Enter 换行)"
-            rows="1"
-            data-testid="chat-input"
-            class="flex-1 bg-transparent outline-none text-[var(--text-body)] text-[var(--color-ink)] placeholder:text-[var(--color-ink-tertiary)] resize-none max-h-[120px]"
-            :disabled="loading"
-            @keydown.enter.exact.prevent="onEnterKey"
-            @compositionstart="isComposing = true"
-            @compositionend="isComposing = false"
-            @input="autoResize"
-          />
-        </div>
-        <button
-          v-if="loading"
-          type="button"
-          @click="abortRequest"
-          class="ui-btn ui-btn-ghost w-10 h-10 !p-0 !rounded-[var(--radius-md)]"
-          aria-label="停止生成"
+    <div class="ai-chat-bottom">
+      <div class="ai-chat-composer-column">
+        <AiChatComposer
+          v-model="inputText"
+          :mode="composerMode"
+          :can-submit="!loading"
+          :can-stop="loading && abortController !== null"
+          :hint="loading ? '正在生成回答，可停止当前请求' : 'Enter 发送，Shift+Enter 换行'"
+          @submit="sendMessage"
+          @stop="abortRequest"
         >
-          <StopCircle :size="16" class="text-[var(--color-danger)]" />
-        </button>
-        <button
-          v-else
-          type="submit"
-          :disabled="!inputText.trim()"
-          class="ui-btn ui-btn-primary w-10 h-10 !p-0 !rounded-[var(--radius-md)]"
-        >
-          <Send :size="16" :stroke-width="2" />
-        </button>
-      </form>
+          <template #tools>
+            <button
+              v-if="showBackToLatest"
+              type="button"
+              class="ui-btn ui-btn-ghost ai-chat-latest"
+              @click="scrollToLatest(true)"
+            >
+              <ArrowDown :size="16" aria-hidden="true" />
+              回到最新
+            </button>
+          </template>
+        </AiChatComposer>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from "vue";
-import { Marked, type Tokens } from "marked";
-import hljs from "highlight.js/lib/core";
-import python from "highlight.js/lib/languages/python";
-import javascript from "highlight.js/lib/languages/javascript";
-import typescript from "highlight.js/lib/languages/typescript";
-import sql from "highlight.js/lib/languages/sql";
-import json from "highlight.js/lib/languages/json";
-import bash from "highlight.js/lib/languages/bash";
-import xml from "highlight.js/lib/languages/xml";
-import css from "highlight.js/lib/languages/css";
-import markdown from "highlight.js/lib/languages/markdown";
-import { MessageSquare, StopCircle, Send } from "lucide-vue-next";
+import { computed, ref } from "vue";
+import { ArrowDown, MessageSquare } from "lucide-vue-next";
 import api from "@/services/api";
 import EmptyState from "@/components/EmptyState.vue";
 import LoadingSpinner from "@/components/LoadingSpinner.vue";
-import EvidenceCard from "@/components/EvidenceCard.vue";
-import DocumentSourceList from "@/components/DocumentSourceList.vue";
-import type { DocumentSource, DocumentSourceChunk, EvidenceChatResponse, EvidenceItem } from "@/types/evidence";
+import type {
+  DocumentSource,
+  DocumentSourceChunk,
+  EvidenceChatResponse,
+  EvidenceItem,
+} from "@/types/evidence";
+import { aiChatStorageKeys } from "@/utils/aiChatSessionStorage";
+import AiChatComposer from "./AiChatComposer.vue";
+import ChatMessageItem from "./ChatMessageItem.vue";
+import type { ChatMessage } from "./chatMessage";
 import { deriveDocumentSourcesFromEvidence } from "./documentSources";
 import { findEvidenceForMessage } from "./evidenceNavigation";
-import { replaceEvidenceReferences } from "./evidenceReferences";
 import { buildFileOpenUrl, openInNewTab } from "./openFileUrl";
-import { aiChatStorageKeys } from "@/utils/aiChatSessionStorage";
+import { useChatScroll } from "./useChatScroll";
+import { useChatViewport } from "./useChatViewport";
 import {
   describeChatError,
   shouldPreserveRequestIdentity,
   type ChatErrorShape,
 } from "./chatError";
 
-hljs.registerLanguage("python", python);
-hljs.registerLanguage("javascript", javascript);
-hljs.registerLanguage("typescript", typescript);
-hljs.registerLanguage("sql", sql);
-hljs.registerLanguage("json", json);
-hljs.registerLanguage("bash", bash);
-hljs.registerLanguage("html", xml);
-hljs.registerLanguage("xml", xml);
-hljs.registerLanguage("css", css);
-hljs.registerLanguage("markdown", markdown);
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    "\"": "&quot;",
-    "'": "&#39;",
-  })[char] ?? char);
-}
-
-function isSafeLink(href: string): boolean {
-  try {
-    const url = new URL(href, window.location.origin);
-    return ["http:", "https:", "mailto:"].includes(url.protocol);
-  } catch {
-    return false;
-  }
-}
-
-const marked = new Marked({
-  gfm: true,
-  breaks: true,
-  renderer: {
-    code({ text, lang }: { text: string; lang?: string }) {
-      const language = lang && hljs.getLanguage(lang) ? lang : undefined;
-      const highlighted = language
-        ? hljs.highlight(text, { language }).value
-        : hljs.highlightAuto(text).value;
-      const className = `hljs${language ? ` language-${escapeHtml(language)}` : ""}`;
-      return `<pre><code class="${className}">${highlighted}</code></pre>`;
-    },
-    html({ text }: Tokens.HTML | Tokens.Tag) {
-      return escapeHtml(text);
-    },
-    link({ href, title, tokens }: Tokens.Link) {
-      const label = this.parser.parseInline(tokens);
-      if (!isSafeLink(href)) return label;
-      const safeTitle = title ? ` title="${escapeHtml(title)}"` : "";
-      return `<a href="${escapeHtml(href)}"${safeTitle} target="_blank" rel="noopener noreferrer">${label}</a>`;
-    },
-    image({ text }: Tokens.Image) {
-      return escapeHtml(text);
-    },
-  },
-});
-
-function renderMarkdown(content: string, sources?: EvidenceItem[], messageId?: string): string {
-  // REQ-010 AC-4: 在 marked 渲染之后再改写 [1] / [2] 引用编号为可点击
-  // evidence-ref 链接。marked 自定义 html() tokenizer 会 escape 我们的
-  // 注入字符串，所以必须后处理才能保留 <a> 标签。
-  // 数字必须 <= sources.length 才改写；越界或 sources 为空时保持原样。
-  // 实际改写逻辑抽到 evidenceReferences.ts 以便 spec 独立测试
-  // （<script setup> 不能 ES module export）。
-  const html = marked.parse(content) as string;
-  return replaceEvidenceReferences(html, sources, messageId);
-}
-
-interface ChatMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  sources?: EvidenceItem[];
-  document_sources?: DocumentSource[];
-  document_sources_view: DocumentSource[];
-}
-
 const messages = ref<ChatMessage[]>([]);
 const inputText = ref("");
 const loading = ref(false);
 const chatContainer = ref<HTMLElement | null>(null);
-const inputEl = ref<HTMLTextAreaElement | null>(null);
+const chatContent = ref<HTMLElement | null>(null);
+const chatPage = ref<HTMLElement | null>(null);
 const abortController = ref<AbortController | null>(null);
 const storageKeys = aiChatStorageKeys();
 const conversationStorageKey = storageKeys.conversation;
 const pendingRequestStorageKey = storageKeys.pendingRequest;
 let conversationId = sessionStorage.getItem(conversationStorageKey) || crypto.randomUUID();
 sessionStorage.setItem(conversationStorageKey, conversationId);
-// BUG-003 fix5 AC-4: 中文输入法兼容。@keydown.enter 在 IME composing
-// 阶段也会触发（中文选词），需要在 compositionstart/end 显式追踪；
-// onEnterKey 在 isComposing=true 时不调 sendMessage。
-const isComposing = ref(false);
+
+const composerMode = computed<"ready" | "busy">(() => loading.value ? "busy" : "ready");
+const { viewportStyle } = useChatViewport(chatPage);
+const {
+  showBackToLatest,
+  updateScrollState,
+  scrollToLatest,
+  notifyContentChanged,
+} = useChatScroll(chatContainer, chatContent);
 
 const quickQuestions = [
   "电子信息工程专业有哪些核心课程？",
@@ -306,31 +177,6 @@ function nextMessageId(role: ChatMessage["role"]): string {
   return `${role}-${Date.now()}-${messageSeq}`;
 }
 
-function scrollToBottom() {
-  nextTick(() => {
-    if (chatContainer.value) {
-      chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
-    }
-  });
-}
-
-function autoResize() {
-  nextTick(() => {
-    if (inputEl.value) {
-      inputEl.value.style.height = "auto";
-      inputEl.value.style.height = inputEl.value.scrollHeight + "px";
-    }
-  });
-}
-
-// BUG-003 fix5 AC-4: 中文 IME 兼容。Enter 在 IME composing 阶段不触发 sendMessage。
-function onEnterKey() {
-  if (isComposing.value) {
-    return;
-  }
-  void sendMessage();
-}
-
 async function sendMessage() {
   const text = inputText.value.trim();
   if (!text || loading.value) return;
@@ -341,8 +187,9 @@ async function sendMessage() {
       role: "assistant",
       content: "上一条请求状态仍待确认，请先重试原问题。",
       document_sources_view: [],
+      tone: "error",
     });
-    scrollToBottom();
+    void scrollToLatest(true);
     return;
   }
 
@@ -353,10 +200,9 @@ async function sendMessage() {
     document_sources_view: [],
   });
   inputText.value = "";
-  if (inputEl.value) inputEl.value.style.height = "auto";
   loading.value = true;
   abortController.value = new AbortController();
-  scrollToBottom();
+  void scrollToLatest(true);
 
   try {
     const pendingRequest = pendingRequestFor(text);
@@ -379,7 +225,7 @@ async function sendMessage() {
       {
         signal: abortController.value.signal,
         timeout: 120000,
-      }
+      },
     );
     const documentSources = data.document_sources?.length
       ? data.document_sources
@@ -395,22 +241,22 @@ async function sendMessage() {
     conversationId = data.conversation_id;
     sessionStorage.setItem(conversationStorageKey, conversationId);
     sessionStorage.removeItem(pendingRequestStorageKey);
+    notifyContentChanged();
   } catch (e: unknown) {
     if ((e as Error).name === "CanceledError" || (e as Error).name === "AbortError") {
       inputText.value = text;
-      autoResize();
       messages.value.push({
         id: nextMessageId("assistant"),
         role: "assistant",
         content: "（已停止生成）",
         document_sources_view: [],
+        tone: "stopped",
       });
     } else {
       // BUG-011: 区分超时 / 真网络错误 / 后端 detail，超时不再误报「网络错误」。
       const err = e as ChatErrorShape;
       if (shouldPreserveRequestIdentity(err)) {
         inputText.value = text;
-        autoResize();
       } else {
         sessionStorage.removeItem(pendingRequestStorageKey);
       }
@@ -419,12 +265,13 @@ async function sendMessage() {
         role: "assistant",
         content: describeChatError(err),
         document_sources_view: [],
+        tone: "error",
       });
     }
   } finally {
     loading.value = false;
     abortController.value = null;
-    scrollToBottom();
+    notifyContentChanged();
   }
 }
 
@@ -457,17 +304,7 @@ function openDocumentSourceChunk(source: DocumentSource, chunk: DocumentSourceCh
   openFile(source.file_id, chunk.chunk_id);
 }
 
-function unattributedSources(message: ChatMessage): EvidenceItem[] {
-  return (message.sources ?? []).filter((source) => !source.file_id);
-}
-
-function evidenceIndex(message: ChatMessage, source: EvidenceItem, fallbackIdx: number): number {
-  const idx = message.sources?.findIndex((item) => item.evidence_id === source.evidence_id) ?? -1;
-  return idx >= 0 ? idx + 1 : fallbackIdx + 1;
-}
-
-// REQ-010 AC-4: chatContainer 全局 click 委托捕获 .evidence-ref 元素
-// （renderMarkdown 后处理注入），按 data-ref 调 openEvidenceFileByIndex。
+// REQ-010 AC-4: 聊天滚动容器委托证据引用点击，消息 ID 保证跨消息隔离。
 function onChatClick(event: MouseEvent) {
   const target = event.target as HTMLElement | null;
   if (!target) return;
@@ -481,40 +318,161 @@ function onChatClick(event: MouseEvent) {
   openEvidenceFileByIndex(refEl.dataset.messageId, ref);
 }
 
-function openEvidenceFileByIndex(messageId: string | undefined, idx: number) {
-  const evidence = findEvidenceForMessage(messages.value, messageId, idx);
+function openEvidenceFileByIndex(messageId: string | undefined, index: number) {
+  const evidence = findEvidenceForMessage(messages.value, messageId, index);
   if (evidence) {
     openEvidenceFile(evidence);
   }
 }
 
-function sendQuick(q: string) {
-  inputText.value = q;
-  sendMessage();
+function sendQuick(question: string) {
+  inputText.value = question;
+  void sendMessage();
 }
 </script>
 
 <style scoped>
-.user-bubble {
-  background: var(--color-accent);
-  color: var(--color-ink-inverse);
+.ai-chat-page {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-bg-base);
 }
 
-.icon-glow-fill {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to top, var(--color-accent-bg) 0%, transparent 50%);
-  background-size: 100% 200%;
-  animation: icon-fill 3.5s ease-in-out infinite;
-  z-index: 0;
+/* TW-03 / spec §2.2：标题先行；去除呼吸光效，保留中性工作台层级。 */
+.ai-chat-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--spacing-control-gap);
+  padding: var(--spacing-card) var(--spacing-page);
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-elevated);
 }
 
-@keyframes icon-fill {
-  0%, 100% { background-position: 0% 100%; }
-  50% { background-position: 0% 0%; }
+.ai-chat-header-icon {
+  display: grid;
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
+  place-items: center;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--color-accent);
+  background: var(--color-accent-bg);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .icon-glow-fill { animation: none; }
+.ai-chat-header h1,
+.ai-chat-header p {
+  margin: 0;
+}
+
+.ai-chat-header h1 {
+  font-size: var(--text-subtitle);
+  line-height: var(--text-subtitle-lh);
+  font-weight: 600;
+}
+
+.ai-chat-header p {
+  color: var(--color-ink-secondary);
+  font-size: var(--text-caption);
+  line-height: var(--text-caption-lh);
+}
+
+/* spec §2.2 / DB-03：页面内唯一消息滚动轴；Composer 在 normal flow 底部占位。
+   文档级仍有共享外壳 .ui-page-shell 的 24px padding-bottom 残留（共享层范围外）。 */
+.ai-chat-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--spacing-page);
+}
+
+.ai-chat-content,
+.ai-chat-composer-column {
+  width: 100%;
+  max-width: 800px;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.ai-chat-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-section);
+  min-height: 100%;
+  padding: var(--spacing-section) 0;
+}
+
+.ai-chat-empty {
+  width: 100%;
+  margin: auto;
+}
+
+.ai-chat-suggestions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-control-gap);
+  width: 100%;
+  margin-top: var(--spacing-card);
+}
+
+.ai-chat-suggestion {
+  padding: var(--spacing-card);
+  color: var(--color-ink-secondary);
+  text-align: left;
+}
+
+.ai-chat-loading {
+  align-self: flex-start;
+}
+
+.ai-chat-bottom {
+  flex: none;
+  padding: var(--spacing-card) var(--spacing-page);
+  padding-bottom: max(var(--spacing-card), env(safe-area-inset-bottom));
+  border-top: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-base);
+}
+
+.ai-chat-latest {
+  min-height: var(--size-control-sm);
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .ai-chat-header,
+  .ai-chat-scroll,
+  .ai-chat-bottom {
+    padding-right: var(--spacing-page-mobile);
+    padding-left: var(--spacing-page-mobile);
+  }
+
+  .ai-chat-content {
+    gap: var(--spacing-card);
+    padding: var(--spacing-card) 0;
+  }
+
+  .ai-chat-suggestions {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-chat-latest {
+    min-height: var(--size-control-touch);
+  }
+}
+
+/* spec §2.2 手机键盘避让：矮视口收起重复页标题，优先保留消息与 Composer。 */
+@media (max-width: 767px) and (max-height: 600px) {
+  .ai-chat-header {
+    display: none;
+  }
+
+  .ai-chat-bottom {
+    padding-top: var(--spacing-control-gap);
+    padding-bottom: max(var(--spacing-control-gap), env(safe-area-inset-bottom));
+  }
 }
 </style>
